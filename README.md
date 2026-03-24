@@ -1,42 +1,31 @@
-# POM1 - Emulateur Apple 1
+# POM1 — Apple 1 Emulator
 
-Emulateur Apple 1 utilisant **Dear ImGui** avec GLFW/OpenGL. Emulation complete du CPU MOS 6502, de la memoire (64 Ko), et du hardware Apple 1 (I/O clavier, affichage, ROMs).
+A faithful **Apple 1** emulator built with **Dear ImGui** and GLFW/OpenGL.
+Full MOS 6502 CPU emulation, 64 KB memory, memory-mapped I/O, and the original ROM set — all in a lightweight, GPU-accelerated package.
 
-Ce projet est un portage de la version Java originale vers C++ Dear ImGui pour une installation simplifiee et de meilleures performances.
+Ported from the original Java POM1 project to modern C++ for speed, simplicity, and zero framework bloat.
 
-## Fonctionnalites
+## What You Get
 
-- **Ecran Apple 1** : grille 40x24, moniteur vert vintage ou blanc, curseur `@` clignotant, effet scanline CRT, echelle ajustable
-- **Emulation CPU 6502** : tous les opcodes, modes d'adressage, compteur de cycles, vitesse configurable (1 MHz / 2 MHz / Max)
-- **Visualiseur memoire** : editeur hexadecimal interactif avec recherche, navigation rapide, edition en temps reel
-- **ROMs incluses** : Woz Monitor (0xFF00), Apple BASIC (0xE000), Krusader assembler (0xA000)
-- **Chargement de programmes** : fichiers binaires ou hex dumps au format Woz Monitor (repertoire `soft-asm/`)
-- **Debogage** : execution pas-a-pas, reset logiciel/materiel, acces aux registres CPU
+- **Authentic Apple 1 display** — 40x24 character grid, green phosphor or white mode, blinking `@` cursor, CRT scanline effect
+- **Cycle-accurate 6502 CPU** — all official opcodes, all addressing modes, adjustable clock speed (1 MHz / 2 MHz / Max)
+- **Live memory editor** — interactive hex viewer with search, quick-jump shortcuts, real-time editing
+- **Three ROMs loaded at boot** — Woz Monitor (`$FF00`), Apple BASIC (`$E000`), Krusader assembler (`$A000`)
+- **Program loader** — binary files or Woz Monitor hex dumps, with a built-in browser for the `soft-asm/` library
+- **Step debugger** — single-step execution, soft/hard reset, full register inspection
 
-## Prerequis
-
-- CMake >= 3.16
-- GLFW 3
-- OpenGL
-- pkg-config
-- Compilateur C++17
-
-## Installation
+## Quick Start
 
 ```bash
-# Installation automatique des dependances et de Dear ImGui
-./setup_imgui.sh
-
-# Build
-cd build
-cmake ..
-make
+./setup_imgui.sh          # fetch Dear ImGui + install deps (one-time)
+cd build && cmake .. && make
+./run_emulator.sh         # copies ROMs, launches the emulator
 ```
 
-### Linux (manuel)
+### Manual dependency install
 
 ```bash
-# Ubuntu/Debian
+# Ubuntu / Debian
 sudo apt install cmake libglfw3-dev libgl1-mesa-dev pkg-config
 
 # Fedora
@@ -44,64 +33,65 @@ sudo dnf install cmake glfw-devel mesa-libGL-devel pkgconf
 
 # Arch
 sudo pacman -S cmake glfw mesa pkgconf
-```
 
-### macOS (manuel)
-
-```bash
+# macOS
 brew install cmake glfw pkg-config
 ```
 
-## Lancement
+## Software Library
 
-```bash
-# Methode recommandee (copie les ROMs et verifie le build)
-./run_emulator.sh
+The `soft-asm/` directory ships with ready-to-run Apple 1 programs (hex dumps, loadable via **File > Load Memory**):
 
-# Ou directement
-cd build
-./pom1_imgui
-```
+| Program | Description |
+|---------|-------------|
+| **Microchess** | Peter Jennings' chess engine — the first commercial microcomputer game |
+| **Lunar Lander** | Pilot your lander to the surface |
+| **Game of Life** | Conway's cellular automaton |
+| **LittleTower** | Text adventure — explore a tower, defeat a vampire |
+| **fig-FORTH** | FORTH language interpreter |
+| **Enhanced BASIC** | Extended BASIC with extra commands |
+| **Mastermind** | Code-breaking logic game |
+| **Star Trek** | Mini Star Trek strategy game |
 
-## Programmes disponibles
+## Assembling Your Own Programs
 
-Le repertoire `soft-asm/` contient des programmes au format hex dump Woz Monitor, chargeables via **File > Load Memory** :
-
-- **Microchess** - Jeu d'echecs
-- **Lunar Lander** - Alunissage
-- **Game of Life** - Automate cellulaire de Conway
-- **LittleTower** - Jeu d'aventure textuel
-- **fig-FORTH** - Interpreteur Forth
-- **Enhanced BASIC** - BASIC etendu
-- Et d'autres...
-
-## Assemblage de programmes (cc65)
+POM1 includes a linker config for [cc65](https://cc65.github.io/):
 
 ```bash
 ca65 -o build/program.o source.in
 ld65 -C build/apple1.cfg -o build/program.bin build/program.o
 ```
 
-## Structure du projet
+Load the resulting binary via **File > Load Memory** and type the start address + `R` in the Woz Monitor (e.g. `300R`).
+
+## Project Layout
 
 ```
 POM1/
-├── M6502.cpp/h              # Emulation CPU MOS 6502
-├── Memory.cpp/h             # Memoire 64 Ko + I/O
-├── main_imgui.cpp           # Point d'entree GLFW/OpenGL
-├── MainWindow_ImGui.cpp/h   # Fenetre principale + menus
-├── Screen_ImGui.cpp/h       # Ecran Apple 1
-├── MemoryViewer_ImGui.cpp/h # Editeur memoire hexadecimal
-├── roms/                    # ROMs Apple 1 (chargees au demarrage)
-├── soft-asm/                # Programmes hex dump
-├── fonts/                   # Font Awesome (icones UI)
-├── doc/                     # Documentation (manuel Krusader)
-├── images/                  # Icones UI
-├── CMakeLists.txt           # Configuration CMake
-├── setup_imgui.sh           # Script d'installation
-└── run_emulator.sh          # Script de lancement
+├── M6502.cpp/h              # MOS 6502 CPU — all opcodes, cycle counting
+├── Memory.cpp/h             # 64 KB address space, ROM loader, PIA I/O
+├── main_imgui.cpp           # GLFW/OpenGL bootstrap
+├── MainWindow_ImGui.cpp/h   # App window, menus, CPU speed control
+├── Screen_ImGui.cpp/h       # Apple 1 display (40x24, CRT effects)
+├── MemoryViewer_ImGui.cpp/h # Hex editor with search & navigation
+├── roms/                    # WozMonitor, BASIC, Krusader, charmap
+├── soft-asm/                # Hex dump programs + assembly sources
+├── build/apple1.cfg         # cc65 linker config
+├── setup_imgui.sh           # One-shot setup script
+└── run_emulator.sh          # Build check + ROM copy + launch
 ```
 
-## Licence
+## ROMs
 
-GPL-3.0 - voir [LICENSE](LICENSE)
+| ROM | Size | Address | Origin |
+|-----|------|---------|--------|
+| **Woz Monitor** | 256 B | `$FF00` | Steve Wozniak's original system monitor |
+| **Apple BASIC** | 4 KB | `$E000` | Integer BASIC interpreter |
+| **Krusader 1.3** | 8 KB | `$A000` | Ken Wessen's symbolic assembler |
+| **Charmap** | 1 KB | — | Character generator table |
+
+All three main ROMs are loaded automatically at startup.
+
+## License
+
+GPL-3.0 — see [LICENSE](LICENSE)

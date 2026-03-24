@@ -405,7 +405,7 @@ COMPIT:		INY
 		LDA (AddressL),Y;load charac
 		CMP #$25	;EOF ?
 		BEQ COMPTRUE	;Yes, branch to true
-		ADC #$7F	;Add Bit7 to compare kbd output
+		ORA #$80	;Set Bit7 to compare with kbd output
 		CMP BUF,Y	;Compare with user buffer
 		BEQ COMPIT	;Ok,continue comparison
 		LDA #$00	;Result false
