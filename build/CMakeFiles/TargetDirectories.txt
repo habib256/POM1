@@ -1,0 +1,3 @@
+/home/gistarcade/src/POM1/build/CMakeFiles/pom1_imgui.dir
+/home/gistarcade/src/POM1/build/CMakeFiles/edit_cache.dir
+/home/gistarcade/src/POM1/build/CMakeFiles/rebuild_cache.dir

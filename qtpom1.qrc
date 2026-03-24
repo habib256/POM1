@@ -1,0 +1,20 @@
+<RCC>
+    <qresource prefix="/">
+        <file>images/about.png</file>
+        <file>images/hardreset.png</file>
+        <file>images/loadMemory.png</file>
+        <file>images/memory.png</file>
+        <file>images/pasteCode.png</file>
+        <file>images/pom1.png</file>
+        <file>images/reset.png</file>
+        <file>images/saveMemory.png</file>
+        <file>images/screen.png</file>
+        <file>images/aboutQt.png</file>
+        <file>images/quit.png</file>
+        <file>images/debug.png</file>
+        <file>roms/basic.rom</file>
+        <file>roms/charmap.rom</file>
+        <file>roms/WozMonitor.rom</file>
+        <file>roms/krusader-1.3.rom</file>
+    </qresource>
+</RCC>
