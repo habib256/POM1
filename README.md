@@ -2,7 +2,7 @@
 
 Emulateur Apple 1 utilisant **Dear ImGui** avec GLFW/OpenGL. Emulation complete du CPU MOS 6502, de la memoire (64 Ko), et du hardware Apple 1 (I/O clavier, affichage, ROMs).
 
-Ce projet est un portage de la version Qt originale vers Dear ImGui pour une installation simplifiee et de meilleures performances.
+Ce projet est un portage de la version Java originale vers C++ Dear ImGui pour une installation simplifiee et de meilleures performances.
 
 ## Fonctionnalites
 
