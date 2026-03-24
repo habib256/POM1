@@ -157,7 +157,10 @@ CMakeFiles/pom1_imgui.dir/MainWindow_ImGui.cpp.o: \
  /usr/include/KHR/khrplatform.h /home/gistarcade/src/POM1/Memory.h \
  /usr/include/c++/13/vector /usr/include/c++/13/bits/stl_vector.h \
  /usr/include/c++/13/bits/stl_bvector.h \
- /usr/include/c++/13/bits/vector.tcc /usr/include/c++/13/cstdint \
+ /usr/include/c++/13/bits/vector.tcc /usr/include/c++/13/queue \
+ /usr/include/c++/13/deque /usr/include/c++/13/bits/stl_deque.h \
+ /usr/include/c++/13/bits/deque.tcc /usr/include/c++/13/bits/stl_heap.h \
+ /usr/include/c++/13/bits/stl_queue.h /usr/include/c++/13/cstdint \
  /home/gistarcade/src/POM1/MemoryViewer_ImGui.h \
  /home/gistarcade/src/POM1/imgui/imgui.h \
  /home/gistarcade/src/POM1/imgui/imconfig.h \
@@ -329,6 +332,5 @@ CMakeFiles/pom1_imgui.dir/MainWindow_ImGui.cpp.o: \
  /usr/include/c++/13/bits/fs_dir.h /usr/include/c++/13/bits/fs_ops.h \
  /usr/include/c++/13/algorithm /usr/include/c++/13/bits/stl_algo.h \
  /usr/include/c++/13/bits/algorithmfwd.h \
- /usr/include/c++/13/bits/stl_heap.h \
  /usr/include/c++/13/bits/uniform_int_dist.h \
  /usr/include/c++/13/pstl/glue_algorithm_defs.h

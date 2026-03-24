@@ -178,7 +178,10 @@ CMakeFiles/pom1_imgui.dir/main_imgui.cpp.o: \
  /home/gistarcade/src/POM1/Memory.h /usr/include/c++/13/vector \
  /usr/include/c++/13/bits/stl_vector.h \
  /usr/include/c++/13/bits/stl_bvector.h \
- /usr/include/c++/13/bits/vector.tcc /usr/include/c++/13/cstdint \
+ /usr/include/c++/13/bits/vector.tcc /usr/include/c++/13/queue \
+ /usr/include/c++/13/deque /usr/include/c++/13/bits/stl_deque.h \
+ /usr/include/c++/13/bits/deque.tcc /usr/include/c++/13/bits/stl_heap.h \
+ /usr/include/c++/13/bits/stl_queue.h /usr/include/c++/13/cstdint \
  /home/gistarcade/src/POM1/MemoryViewer_ImGui.h \
  /home/gistarcade/src/POM1/M6502.h \
  /home/gistarcade/src/POM1/Screen_ImGui.h \

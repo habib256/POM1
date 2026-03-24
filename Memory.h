@@ -20,6 +20,7 @@
 #define MEMORY_H
 
 #include <vector>
+#include <queue>
 #include <cstdint>
 using namespace std;
 
@@ -72,6 +73,7 @@ private:
     char lastKey = 0;
     bool keyReady = false;
     int keyStickyCounter = 0;
+    queue<char> keyBuffer;
 
     // Display Apple 1 (0xD012) - délai d'affichage
     int displayBusyCycles = 0;       // Cycles restants avant display ready

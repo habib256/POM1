@@ -1,1 +1,22 @@
+# Claude Code
 /.claude
+
+# Build output
+build/
+
+# Dear ImGui library (downloaded by setup_imgui.sh)
+imgui/
+
+# ImGui layout state
+imgui.ini
+
+# IDE / Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db

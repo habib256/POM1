@@ -48,10 +48,6 @@ ld65 -C build/apple1.cfg -o build/program.bin build/program.o
 - **Screen_ImGui.cpp/h**: Apple 1 display emulation (40x24 character grid) with green/white monitor modes, `@` blinking cursor, scanline CRT effect, and configurable text scale.
 - **MemoryViewer_ImGui.cpp/h**: Interactive hex editor with search, navigation shortcuts, and real-time editing.
 
-### Legacy Files (Qt version - not used)
-The following files are from the original Qt version and are NOT compiled in the ImGui build:
-- MainWindow.cpp/h, MemoryViewer.cpp/h, Screen.cpp/h, main.cpp
-
 ### ROM Files (roms/)
 - **WozMonitor.rom** (256B @ 0xFF00): Wozniak's system monitor
 - **basic.rom** (4KB @ 0xE000): Apple BASIC interpreter
@@ -95,17 +91,32 @@ Memory supports two loading methods:
 
 The UI dialog (File > Load Memory) scans the `soft-asm/` directory and lists available programs.
 
+### Additional Directories
+- **bios/**: Legacy BIOS/ROM files from the original POM1 project (6502.rom.bin, 65C02.rom.bin, apple1.rom, apple1.vid).
+- **fonts/**: Font Awesome icon font (fa-solid-900.ttf) used by the UI.
+- **doc/**: Documentation (Krusader 1.3 manual PDF).
+- **images/**: UI icons for menus and dialogs (PNG files).
+- **IconsFontAwesome6.h**: Font Awesome 6 icon codepoints header.
+
+### Legacy Files (Qt version - not used)
+The following files are from the original Qt version and are NOT compiled in the ImGui build:
+- MainWindow.cpp/h, MemoryViewer.cpp/h, Screen.cpp/h, main.cpp
+- qtpom1.pro, qtpom1.pro.user, qtpom1.qrc
+
 ## Platform-Specific Notes
 
 ### macOS
-CMakeLists.txt currently hardcodes GLFW path for Homebrew on Apple Silicon:
-```cmake
-/opt/homebrew/Cellar/glfw/3.4/lib/libglfw.dylib
-```
-Update this path if GLFW version changes or for Intel Macs.
+CMakeLists.txt uses pkg-config to find GLFW and adds macOS-specific framework links (Cocoa, IOKit, CoreVideo).
 
 ### Linux
 The setup script supports apt (Ubuntu/Debian), dnf (Fedora/CentOS), and pacman (Arch). CMakeLists.txt uses pkg-config to find GLFW dynamically.
+
+## Repository Notes
+
+The `build/` and `imgui/` directories are currently tracked in git but should ideally be ignored. The `.gitignore` covers them for future additions. To fully untrack them, run:
+```bash
+git rm -r --cached build/ imgui/
+```
 
 ## Known Issues & TODOs
 

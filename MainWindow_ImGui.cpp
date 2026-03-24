@@ -920,13 +920,9 @@ void MainWindow_ImGui::handleKeyboardInput()
 
 void MainWindow_ImGui::handleGlfwChar(unsigned int codepoint)
 {
-    if (codepoint >= 32 && codepoint <= 126) {
-        memory->setKeyPressed((char)codepoint);
-    } else if (codepoint == '\r' || codepoint == '\n') {
-        memory->setKeyPressed('\r');
-    } else if (codepoint == '\b' || codepoint == 127) {
-        memory->setKeyPressed('\b');
-    }
+    // Les caractères sont traités par handleKeyboardInput() via InputQueueCharacters.
+    // Ne pas envoyer ici pour éviter les doublons vers l'Apple 1.
+    (void)codepoint;
 }
 
 void MainWindow_ImGui::handleGlfwKey(int key, int scancode, int action, int mods)

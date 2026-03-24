@@ -339,6 +339,12 @@ quint8 Memory::memRead(quint16 address)
         quint8 result = keyReady ? (lastKey | 0x80) : 0x00;
         keyReady = false;
         keyStickyCounter = 0;
+        // Charger la touche suivante du buffer si disponible
+        if (!keyBuffer.empty()) {
+            lastKey = keyBuffer.front();
+            keyBuffer.pop();
+            keyReady = true;
+        }
         return result;
     } else if (address == 0xD012) {
         // Display port: bit 7 = busy flag
@@ -390,8 +396,13 @@ void Memory::setKeyPressed(char key)
     if (key >= 'a' && key <= 'z') {
         key = key - 'a' + 'A';
     }
-    lastKey = key & 0x7F;
-    keyReady = true;
+    char k = key & 0x7F;
+    if (!keyReady) {
+        lastKey = k;
+        keyReady = true;
+    } else {
+        keyBuffer.push(k);
+    }
 }
 
 void Memory::setTerminalSpeed(int charsPerSec)
