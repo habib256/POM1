@@ -34,9 +34,10 @@ Memory::Memory()
 void Memory::initMemory(){
     ramSize = 64;  // Ouaahh 64Kbytes !
     writeInRom = true;
-    for (int i=0; i < ramSize*1024; i++)
-    {
-        mem.push_back(0);
+    if (mem.size() < (size_t)(ramSize * 1024)) {
+        mem.resize(ramSize * 1024, 0);
+    } else {
+        std::fill(mem.begin(), mem.end(), 0);
     }
     loadBasic();
     loadKrusader();

@@ -52,7 +52,7 @@ void MainWindow_ImGui::destroyPom1()
 
 void MainWindow_ImGui::render()
 {
-    static float deltaTime = 1.0f/60.0f; // Approximation pour le timer
+    float deltaTime = ImGui::GetIO().DeltaTime;
     updateStatus(deltaTime);
     
     // Gérer les entrées clavier
@@ -902,6 +902,9 @@ void MainWindow_ImGui::handleKeyboardInput()
 {
     ImGuiIO& io = ImGui::GetIO();
 
+    // Ne pas envoyer les touches à l'Apple 1 quand un widget ImGui a le focus
+    if (io.WantTextInput) return;
+
     for (int i = 0; i < io.InputQueueCharacters.Size; i++) {
         ImWchar c = io.InputQueueCharacters[i];
         if (c >= 32 && c <= 126) {
@@ -911,6 +914,14 @@ void MainWindow_ImGui::handleKeyboardInput()
         } else if (c == '\b' || c == 127) {
             memory->setKeyPressed('\b');
         }
+    }
+
+    if (ImGui::IsKeyPressed(ImGuiKey_Enter) || ImGui::IsKeyPressed(ImGuiKey_KeypadEnter)) {
+        memory->setKeyPressed('\r');
+    }
+
+    if (ImGui::IsKeyPressed(ImGuiKey_Backspace)) {
+        memory->setKeyPressed('\b');
     }
 
     if (ImGui::IsKeyPressed(ImGuiKey_Escape)) {
@@ -962,13 +973,6 @@ void MainWindow_ImGui::handleGlfwKey(int key, int scancode, int action, int mods
         break;
     }
 
-    if (key == GLFW_KEY_ESCAPE) {
-        memory->setKeyPressed(27);
-    } else if (key == GLFW_KEY_ENTER || key == GLFW_KEY_KP_ENTER) {
-        memory->setKeyPressed('\r');
-    } else if (key == GLFW_KEY_BACKSPACE) {
-        memory->setKeyPressed('\b');
-    }
 }
 
 std::string MainWindow_ImGui::getInstructionName(quint8 opcode)
