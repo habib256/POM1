@@ -52,8 +52,7 @@ public:
     quint8 memRead(quint16 address);
     //quint8 memReadAbsolute(quint16 adr);
     void memWrite(quint16 address, quint8 value);
-    unsigned char *dumpMemory(quint16 start, quint16 end);
-    
+
     // Callback pour l'affichage Apple 1
     void setDisplayCallback(void (*callback)(char));
     
