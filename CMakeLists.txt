@@ -9,7 +9,7 @@ find_package(PkgConfig REQUIRED)
 find_package(OpenGL REQUIRED)
 
 # GLFW
-pkg_check_modules(GLFW3 REQUIRED glfw3)
+pkg_check_modules(GLFW3 REQUIRED IMPORTED_TARGET glfw3)
 
 # ImGui
 set(IMGUI_DIR ${CMAKE_CURRENT_SOURCE_DIR}/imgui)
@@ -49,7 +49,7 @@ target_include_directories(${PROJECT_NAME} PRIVATE
 
 # Link libraries
 target_link_libraries(${PROJECT_NAME}
-    ${GLFW3_LIBRARIES}
+    PkgConfig::GLFW3
     ${OPENGL_LIBRARIES}
 )
 
