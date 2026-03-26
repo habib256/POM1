@@ -1,0 +1,37 @@
+; SIERPINSKI TRIANGLE FOR APPLE 1
+; Rule 90 Cellular Automaton
+; Each cell = left_neighbor XOR right_neighbor
+; Generates 22 rows on 40-column display
+;
+; Load at $0300, run with: 0300R
+; Press any key to regenerate
+;
+; Memory usage:
+;   $0200-$0227 = Row buffer A (40 bytes)
+;   $0228-$024F = Row buffer B (40 bytes)
+;   $00-$01     = pointer to current row
+;   $02-$03     = pointer to previous row
+;   $04         = row counter
+;   $06         = temp (left neighbor)
+;
+; Code: 149 bytes ($0300-$0394)
+;
+0300: A2 4F A9 00 9D 00 02 CA
+0308: 10 FA A9 01 8D 13 02 A9
+0310: 00 85 00 A9 02 85 01 20
+0318: 7A 03 A9 28 85 00 A9 02
+0320: 85 01 A9 00 85 02 A9 02
+0328: 85 03 A9 15 85 04 A0 00
+0330: C0 00 F0 06 88 B1 02 C8
+0338: D0 02 A9 00 85 06 C0 27
+0340: F0 07 C8 B1 02 88 4C 4B
+0348: 03 A9 00 45 06 91 00 C8
+0350: C0 28 D0 DC 20 7A 03 A5
+0358: 00 48 A5 01 48 A5 02 85
+0360: 00 A5 03 85 01 68 85 03
+0368: 68 85 02 C6 04 D0 BF AD
+0370: 11 D0 10 FB AD 10 D0 4C
+0378: 00 03 A0 00 B1 00 F0 05
+0380: A9 AA 4C 87 03 A9 A0 20
+0388: EF FF C8 C0 28 D0 ED A9
+0390: 8D 20 EF FF 60
