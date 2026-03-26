@@ -473,7 +473,7 @@ void MainWindow_ImGui::renderDebugDialog()
             
             ImGui::Spacing();
             ImGui::Text("Vitesse d'exécution:");
-            ImGui::SliderInt("##Speed", &executionSpeed, 1, 10000, "%d cycles/frame");
+            ImGui::SliderInt("##Speed", &executionSpeed, 1, 1000000, "%d cycles/frame");
             
             ImGui::Spacing();
             ImGui::Text("État: %s", cpuRunning ? "EN COURS" : "ARRÊTÉ");
