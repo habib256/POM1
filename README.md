@@ -11,7 +11,7 @@ Ported from the original Java POM1 project to modern C++ for speed, simplicity, 
 - **Cycle-accurate 6502 CPU** — all official opcodes, all addressing modes, adjustable clock speed (1 MHz / 2 MHz / Max)
 - **Live memory editor** — interactive hex viewer with search, quick-jump shortcuts, real-time editing
 - **Three ROMs loaded at boot** — Woz Monitor (`$FF00`), Apple BASIC (`$E000`), Krusader assembler (`$A000`)
-- **Program loader** — binary files or Woz Monitor hex dumps, with a built-in browser for the `soft-asm/` library
+- **Program loader** — binary files or Woz Monitor hex dumps, with a built-in file browser and folder navigation for the `soft-asm/` library
 - **Step debugger** — single-step execution, soft/hard reset, full register inspection
 
 ## Quick Start
@@ -40,7 +40,7 @@ brew install cmake glfw pkg-config
 
 ## Software Library
 
-The `soft-asm/` directory ships with ready-to-run Apple 1 programs (hex dumps, loadable via **File > Load Memory**):
+The `soft-asm/` directory ships with ready-to-run Apple 1 programs organized by category (loadable via **File > Load Memory** with folder navigation):
 
 | Program | Description |
 |---------|-------------|
@@ -76,6 +76,10 @@ POM1/
 ├── MemoryViewer_ImGui.cpp/h # Hex editor with search & navigation
 ├── roms/                    # WozMonitor, BASIC, Krusader, charmap
 ├── soft-asm/                # Hex dump programs + assembly sources
+│   ├── games/               #   Games (Microchess, LittleTower, 2048…)
+│   ├── demos/               #   Demos (Life, Maze, Mandelbrot…)
+│   ├── dev/                 #   Dev tools (Woz Monitor, BASIC, FORTH)
+│   └── tests/               #   Hardware test programs
 ├── build/apple1.cfg         # cc65 linker config
 ├── setup_imgui.sh           # One-shot setup script
 └── run_emulator.sh          # Build check + ROM copy + launch

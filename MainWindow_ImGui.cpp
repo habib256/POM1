@@ -686,52 +686,87 @@ void MainWindow_ImGui::renderLoadDialog()
         static char filePath[512] = "";
         static char addressStr[8] = "0300";
         static int fileType = 1; // 0=binary, 1=hex dump
+        static std::vector<std::string> dirList;
         static std::vector<std::string> fileList;
         static bool filesScanned = false;
-        static std::string softAsmDir;
+        static std::string softAsmRoot;
+        static std::string currentDir;
 
         // Scanner le dossier soft-asm au premier affichage
         if (!filesScanned) {
-            fileList.clear();
-            // Chercher le dossier soft-asm relatif à l'exécutable
-            std::string dirs[] = {"soft-asm", "../soft-asm", "../../soft-asm"};
-            for (const auto& d : dirs) {
-                if (std::filesystem::is_directory(d)) {
-                    softAsmDir = std::filesystem::canonical(d).string();
-                    break;
+            // Trouver la racine soft-asm si pas encore fait
+            if (softAsmRoot.empty()) {
+                std::string dirs[] = {"soft-asm", "../soft-asm", "../../soft-asm"};
+                for (const auto& d : dirs) {
+                    if (std::filesystem::is_directory(d)) {
+                        softAsmRoot = std::filesystem::canonical(d).string();
+                        currentDir = softAsmRoot;
+                        break;
+                    }
                 }
             }
-            if (!softAsmDir.empty()) {
-                for (const auto& entry : std::filesystem::directory_iterator(softAsmDir)) {
-                    if (entry.is_regular_file()) {
+            dirList.clear();
+            fileList.clear();
+            if (!currentDir.empty() && std::filesystem::is_directory(currentDir)) {
+                for (const auto& entry : std::filesystem::directory_iterator(currentDir)) {
+                    if (entry.is_directory()) {
+                        std::string name = entry.path().filename().string();
+                        if (name[0] != '.')
+                            dirList.push_back(name);
+                    } else if (entry.is_regular_file()) {
                         std::string ext = entry.path().extension().string();
                         if (ext == ".txt" || ext == ".bin")
                             fileList.push_back(entry.path().filename().string());
                     }
                 }
+                std::sort(dirList.begin(), dirList.end());
                 std::sort(fileList.begin(), fileList.end());
             }
             filesScanned = true;
         }
 
-        // Liste des programmes disponibles
-        if (!fileList.empty()) {
-            ImGui::Text("Programmes disponibles :");
-            ImGui::BeginChild("FileList", ImVec2(-1, 200), true);
-            for (const auto& f : fileList) {
-                if (ImGui::Selectable(f.c_str())) {
-                    std::string fullPath = softAsmDir + "/" + f;
-                    strncpy(filePath, fullPath.c_str(), sizeof(filePath) - 1);
-                    filePath[sizeof(filePath) - 1] = '\0';
-                    // Auto-detect type
-                    if (f.size() > 4 && f.substr(f.size() - 4) == ".bin")
-                        fileType = 0;
-                    else
-                        fileType = 1;
-                }
-            }
-            ImGui::EndChild();
+        // Afficher le chemin courant relatif à soft-asm
+        {
+            std::string displayPath = "soft-asm/";
+            if (currentDir.size() > softAsmRoot.size())
+                displayPath += currentDir.substr(softAsmRoot.size() + 1) + "/";
+            ImGui::Text("%s", displayPath.c_str());
         }
+
+        // Liste des dossiers et fichiers
+        ImGui::BeginChild("FileList", ImVec2(-1, 220), true);
+
+        // Bouton pour remonter au dossier parent
+        if (currentDir != softAsmRoot) {
+            if (ImGui::Selectable(".. /", false)) {
+                currentDir = std::filesystem::path(currentDir).parent_path().string();
+                filesScanned = false;
+            }
+        }
+
+        // Sous-dossiers
+        for (const auto& d : dirList) {
+            std::string label = d + "/";
+            if (ImGui::Selectable(label.c_str(), false)) {
+                currentDir = currentDir + "/" + d;
+                filesScanned = false;
+            }
+        }
+
+        // Fichiers
+        for (const auto& f : fileList) {
+            if (ImGui::Selectable(f.c_str())) {
+                std::string fullPath = currentDir + "/" + f;
+                strncpy(filePath, fullPath.c_str(), sizeof(filePath) - 1);
+                filePath[sizeof(filePath) - 1] = '\0';
+                // Auto-detect type
+                if (f.size() > 4 && f.substr(f.size() - 4) == ".bin")
+                    fileType = 0;
+                else
+                    fileType = 1;
+            }
+        }
+        ImGui::EndChild();
 
         ImGui::Separator();
         ImGui::Text("Fichier sélectionné :");
@@ -779,6 +814,7 @@ void MainWindow_ImGui::renderLoadDialog()
                 setStatusMessage(ss.str(), 3.0f);
                 showLoadDialog = false;
                 filesScanned = false;
+                softAsmRoot.clear();
             } else {
                 setStatusMessage("Erreur : impossible de charger le fichier", 3.0f);
             }
@@ -787,6 +823,7 @@ void MainWindow_ImGui::renderLoadDialog()
         if (ImGui::Button("Annuler", ImVec2(120, 0))) {
             showLoadDialog = false;
             filesScanned = false;
+            softAsmRoot.clear();
         }
     }
     ImGui::End();
