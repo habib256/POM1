@@ -57,9 +57,13 @@ ld65 -C build/apple1.cfg -o build/program.bin build/program.o
 All three main ROMs are loaded automatically at startup by Memory::loadWozMonitor(), loadBasic(), and loadKrusader().
 
 ### Software directory (soft-asm/)
-Contains Apple 1 programs in Woz Monitor hex dump format (.txt). These can be loaded via File > Load Memory and selecting "Hex dump (.txt)". Programs include Microchess, Lunar Lander, Game of Life, LittleTower (adventure game), Maze, etc.
+Contains Apple 1 programs in Woz Monitor hex dump format (.txt) organized in subdirectories:
+- **games/**: Games — Microchess, LittleTower, Lunar Lander, Blackjack, 2048, etc.
+- **demos/**: Demos — Game of Life, Maze, Mandelbrot, Cellular automaton, etc.
+- **dev/**: Development tools — Woz Monitor, Enhanced BASIC, fig-FORTH
+- **tests/**: Hardware test programs — hex I/O, keyboard, terminal tests
 
-Assembly source files (`.asm`) can be assembled with cc65: `LittleTower.asm` (text adventure) and `Maze.asm` (binary tree maze generator, 215 bytes).
+Programs can be loaded via File > Load Memory, which provides a file browser with folder navigation. Assembly source files (`.asm`) can be assembled with cc65.
 
 ## Key Implementation Details
 
@@ -89,7 +93,7 @@ Memory supports two loading methods:
 - `loadBinary(filename, startAddress)`: Raw binary loaded at specified address
 - `loadHexDump(filename, startAddress)`: Parses Woz Monitor hex format (lines like `0300: A2 58 BD ...`), supports comment lines starting with `//`, `#`, or `;`, and continuation lines (`:` without address prefix).
 
-The UI dialog (File > Load Memory) scans the `soft-asm/` directory and lists available programs.
+The UI dialog (File > Load Memory) provides a file browser with folder navigation across the `soft-asm/` directory tree. Subdirectories are shown with a `/` suffix and can be clicked to navigate into them; `.. /` navigates back to the parent directory.
 
 ### Additional Directories
 - **bios/**: Legacy BIOS/ROM files from the original POM1 project (6502.rom.bin, 65C02.rom.bin, apple1.rom, apple1.vid).
@@ -135,4 +139,4 @@ The `build/` and `imgui/` directories are excluded from git via `.gitignore`.
 
 1. **File save not implemented**: Save memory function is stubbed.
 2. **Clipboard paste**: Paste code function is stubbed but not implemented.
-3. **No native file dialog**: File loading uses a text input field + directory scan of soft-asm/ instead of a system file picker.
+3. **No native file dialog**: File loading uses a built-in file browser with folder navigation instead of a system file picker.
