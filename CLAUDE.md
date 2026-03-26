@@ -32,7 +32,7 @@ Note: ROMs must be present in the `build/` directory. The `run_emulator.sh` scri
 
 ### Assembling programs (requires cc65)
 ```bash
-ca65 -o build/program.o source.in
+ca65 -o build/program.o soft-asm/program.asm
 ld65 -C build/apple1.cfg -o build/program.bin build/program.o
 ```
 
@@ -57,9 +57,9 @@ ld65 -C build/apple1.cfg -o build/program.bin build/program.o
 All three main ROMs are loaded automatically at startup by Memory::loadWozMonitor(), loadBasic(), and loadKrusader().
 
 ### Software directory (soft-asm/)
-Contains Apple 1 programs in Woz Monitor hex dump format (.txt). These can be loaded via File > Load Memory and selecting "Hex dump (.txt)". Programs include Microchess, Lunar Lander, Game of Life, LittleTower (adventure game), etc.
+Contains Apple 1 programs in Woz Monitor hex dump format (.txt). These can be loaded via File > Load Memory and selecting "Hex dump (.txt)". Programs include Microchess, Lunar Lander, Game of Life, LittleTower (adventure game), Maze, etc.
 
-The file `LittleTower.in` is ca65 assembly source that can be assembled with cc65.
+Assembly source files (`.asm`) can be assembled with cc65: `LittleTower.asm` (text adventure) and `Maze.asm` (binary tree maze generator, 215 bytes).
 
 ## Key Implementation Details
 
@@ -94,8 +94,7 @@ The UI dialog (File > Load Memory) scans the `soft-asm/` directory and lists ava
 ### Additional Directories
 - **bios/**: Legacy BIOS/ROM files from the original POM1 project (6502.rom.bin, 65C02.rom.bin, apple1.rom, apple1.vid).
 - **fonts/**: Font Awesome icon font (fa-solid-900.ttf) used by the UI.
-- **doc/**: Documentation (Krusader 1.3 manual PDF).
-- **images/**: UI icons for menus and dialogs (PNG files).
+- **doc/**: Documentation — Krusader 1.3 manual PDF and Apple 1 software reference (French).
 - **IconsFontAwesome6.h**: Font Awesome 6 icon codepoints header.
 
 ### Legacy Files (Qt version - not used)
@@ -103,20 +102,34 @@ The following files are from the original Qt version and are NOT compiled in the
 - MainWindow.cpp/h, MemoryViewer.cpp/h, Screen.cpp/h, main.cpp
 - qtpom1.pro, qtpom1.pro.user, qtpom1.qrc
 
+## Memory Map
+
+```
+0x0000-0x00FF  Zero page
+0x0100-0x01FF  Stack
+0x0200-0x9FFF  User RAM (programs typically load at 0x0280 or 0x0300)
+0xA000-0xBFFF  Krusader ROM (8 KB)
+0xD010         KBD - Keyboard data register
+0xD011         KBDCR - Keyboard control register
+0xD012         DSP - Display output register
+0xE000-0xEFFF  Apple BASIC ROM (4 KB)
+0xFF00-0xFFFF  WOZ Monitor ROM (256 B)
+  0xFFFA/B     NMI vector
+  0xFFFC/D     Reset vector → 0xFF00
+  0xFFFE/F     IRQ vector → 0xFF00
+```
+
 ## Platform-Specific Notes
 
 ### macOS
-CMakeLists.txt uses pkg-config to find GLFW and adds macOS-specific framework links (Cocoa, IOKit, CoreVideo).
+CMakeLists.txt uses pkg-config with `IMPORTED_TARGET` to find GLFW and links via `PkgConfig::GLFW3`. Adds macOS-specific framework links (Cocoa, IOKit, CoreVideo).
 
 ### Linux
 The setup script supports apt (Ubuntu/Debian), dnf (Fedora/CentOS), and pacman (Arch). CMakeLists.txt uses pkg-config to find GLFW dynamically.
 
 ## Repository Notes
 
-The `build/` and `imgui/` directories are currently tracked in git but should ideally be ignored. The `.gitignore` covers them for future additions. To fully untrack them, run:
-```bash
-git rm -r --cached build/ imgui/
-```
+The `build/` and `imgui/` directories are excluded from git via `.gitignore`.
 
 ## Known Issues & TODOs
 
