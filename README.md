@@ -42,16 +42,40 @@ brew install cmake glfw pkg-config
 
 The `soft-asm/` directory ships with ready-to-run Apple 1 programs organized by category (loadable via **File > Load Memory** with folder navigation):
 
+### Games (`soft-asm/games/`)
+
 | Program | Description |
 |---------|-------------|
 | **Microchess** | Peter Jennings' chess engine — the first commercial microcomputer game |
-| **Lunar Lander** | Pilot your lander to the surface |
-| **Game of Life** | Conway's cellular automaton |
 | **LittleTower** | Text adventure — explore a tower, defeat a vampire |
-| **fig-FORTH** | FORTH language interpreter |
-| **Enhanced BASIC** | Extended BASIC with extra commands |
-| **Mastermind** | Code-breaking logic game |
+| **Lunar Lander** | Pilot your lander to the surface |
 | **Star Trek** | Mini Star Trek strategy game |
+| **2048** | Sliding tile puzzle |
+| **Blackjack** | Classic card game |
+| **Codebreaker** | Code-breaking logic game |
+| **Worple** | Word guessing game |
+| **15-Puzzle** | Sliding number puzzle |
+| **Peg Solitaire** | Board peg-jumping game |
+| **Shut the Box** | Dice and tile game |
+
+### Demos (`soft-asm/demos/`)
+
+| Program | Description |
+|---------|-------------|
+| **Game of Life** | Conway's cellular automaton |
+| **Maze** | Binary tree maze generator |
+| **Mandelbrot** | Mandelbrot fractal renderer |
+| **Cellular** | 1D cellular automaton |
+| **30th** | Apple 1 30th anniversary demo |
+| **Cat** | Simple echo program |
+
+### Dev Tools (`soft-asm/dev/`)
+
+| Program | Description |
+|---------|-------------|
+| **Woz Monitor** | Steve Wozniak's original system monitor |
+| **Enhanced BASIC** | Extended BASIC with extra commands |
+| **fig-FORTH** | FORTH language interpreter |
 
 ## Assembling Your Own Programs
 
