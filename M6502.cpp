@@ -133,7 +133,6 @@ void M6502::Imm(void)
     // Immediate mode: op points to the address of the immediate value
     // so memRead(op) will return the immediate value correctly
     op = programCounter++;
-    cycles++;
 }
 
 void M6502::Zero(void)
@@ -196,7 +195,7 @@ void M6502::IndZeroX(void)
     ptr = (memory->memRead(programCounter++) + xRegister) & 0xFF;
     op = memory->memRead(ptr);
     op |= (quint16)memory->memRead((quint8)((ptr + 1) & 0xFF)) << 8;
-    cycles += 3;
+    cycles += 4;
 }
 
 void M6502::IndZeroY(void)
@@ -550,7 +549,7 @@ btmp = memory->memRead(op);
     btmp++;
     setStatusRegisterNZ(btmp);
 memory->memWrite(op, btmp);
-    cycles += 2;
+    cycles += 3;
 }
 
 void M6502::DEC(void)
@@ -559,7 +558,7 @@ btmp = memory->memRead(op);
     btmp--;
     setStatusRegisterNZ(btmp);
 memory->memWrite(op, btmp);
-    cycles += 2;
+    cycles += 3;
 }
 
 void M6502::INX(void)
@@ -652,7 +651,6 @@ void M6502::RTI(void)
 {
     PLP();
     popProgramCounter();
-    cycles++;
 }
 
 void M6502::JMP(void)
@@ -830,7 +828,7 @@ void M6502::Hang(void)
 
 void M6502::executeOpcode(void)
 {
-    cycles = 0;  // Réinitialiser le compteur de cycles pour cette instruction
+    cycles = 1;  // Count the opcode fetch cycle
     quint16 pcBefore = programCounter;
     unsigned char opcode = memory->memRead(programCounter++);
     

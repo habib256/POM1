@@ -357,7 +357,7 @@ void MemoryViewer_ImGui::searchAsciiString()
     int searchStart = (searchAddress >= 0) ? searchAddress + 1 : startAddress;
 
     // Rechercher la chaîne ASCII
-    for (int addr = searchStart; addr <= 0xFFFF - searchLen; ++addr) {
+    for (int addr = searchStart; addr <= 0x10000 - searchLen; ++addr) {
         bool found = true;
         for (int i = 0; i < searchLen; ++i) {
             if (memory->memPeek(addr + i) != (quint8)searchBuffer[i]) {
@@ -372,7 +372,7 @@ void MemoryViewer_ImGui::searchAsciiString()
     }
 
     // Si pas trouvé, rechercher depuis le début
-    for (int addr = 0; addr < searchStart && addr <= 0xFFFF - searchLen; ++addr) {
+    for (int addr = 0; addr < searchStart && addr <= 0x10000 - searchLen; ++addr) {
         bool found = true;
         for (int i = 0; i < searchLen; ++i) {
             if (memory->memPeek(addr + i) != (quint8)searchBuffer[i]) {
