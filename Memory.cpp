@@ -103,10 +103,12 @@ int Memory::loadBasic(void)
     file.read(fileContent.data(), fileSize);
     file.close();
     
-    for (size_t i = 0; i < fileContent.size(); ++i) {
+    size_t maxSize = 0x10000 - 0xE000; // Max bytes that fit from 0xE000
+    size_t loadSize = std::min(fileContent.size(), maxSize);
+    for (size_t i = 0; i < loadSize; ++i) {
         mem[i+0xE000] = (quint8)fileContent[i];
     }
-    cout <<"Basic Loaded to 0xE000 : " << fileContent.size() << " Bytes" << endl;
+    cout <<"Basic Loaded to 0xE000 : " << loadSize << " Bytes" << endl;
     return 0;
 }
 
@@ -140,10 +142,12 @@ int Memory::loadKrusader(void)
     file.read(fileContent.data(), fileSize);
     file.close();
     
-    for (size_t i = 0; i < fileContent.size(); ++i) {
+    size_t maxSize = 0x10000 - 0xA000; // Max bytes that fit from 0xA000
+    size_t loadSize = std::min(fileContent.size(), maxSize);
+    for (size_t i = 0; i < loadSize; ++i) {
         mem[i+0xA000] = (quint8)fileContent[i];
     }
-    cout <<"Krusader-1.3 Loaded to 0xA000 : " << fileContent.size() << " Bytes" << endl;
+    cout <<"Krusader-1.3 Loaded to 0xA000 : " << loadSize << " Bytes" << endl;
     return 0;
 }
 
@@ -175,10 +179,12 @@ int Memory::loadWozMonitor(void)
     file.read(fileContent.data(), fileSize);
     file.close();
     
-    for (size_t i = 0; i < fileContent.size(); ++i) {
+    size_t maxSize = 0x10000 - 0xFF00; // Max bytes that fit from 0xFF00
+    size_t loadSize = std::min(fileContent.size(), maxSize);
+    for (size_t i = 0; i < loadSize; ++i) {
         mem[i+0xFF00] = (quint8)fileContent[i];
     }
-    cout <<"WozMonitor Loaded to 0xFF00 : " << fileContent.size() << " Bytes" << endl;
+    cout <<"WozMonitor Loaded to 0xFF00 : " << loadSize << " Bytes" << endl;
     return 0;
 }
 
@@ -237,8 +243,8 @@ int Memory::loadHexDump(const char* filename, quint16 &startAddress)
         cleaned += line;
     }
 
-    quint16 currentAddr = 0;
-    quint16 runAddr = 0;
+    int currentAddr = 0;
+    int runAddr = 0;
     bool firstAddr = true;
     bool hasRunAddr = false;
     int totalBytes = 0;
@@ -305,8 +311,14 @@ int Memory::loadHexDump(const char* filename, quint16 &startAddress)
             }
 
             // Sinon c'est des données hex — parser par paires
-            for (size_t j = 0; j + 1 < hexStr.size(); j += 2) {
-                quint8 val = (hexVal(hexStr[j]) << 4) | hexVal(hexStr[j + 1]);
+            // Odd trailing digit is treated as low nibble (e.g. "F" -> 0x0F)
+            for (size_t j = 0; j < hexStr.size(); j += 2) {
+                quint8 val;
+                if (j + 1 < hexStr.size()) {
+                    val = (hexVal(hexStr[j]) << 4) | hexVal(hexStr[j + 1]);
+                } else {
+                    val = hexVal(hexStr[j]);
+                }
                 if (currentAddr < 0x10000) {
                     mem[currentAddr++] = val;
                     totalBytes++;
@@ -328,6 +340,11 @@ int Memory::loadHexDump(const char* filename, quint16 &startAddress)
     return firstAddr && !hasRunAddr ? 1 : 0;
 }
 
+quint8 Memory::memPeek(quint16 address) const
+{
+    return mem[address];
+}
+
 quint8 Memory::memRead(quint16 address)
 {
     // Apple 1 Clavier : lecture de 0xD010 (KBD) et 0xD011 (KBDCR)
@@ -339,7 +356,6 @@ quint8 Memory::memRead(quint16 address)
         // Lire 0xD010 efface le strobe (PIA 6821 behavior)
         quint8 result = keyReady ? (lastKey | 0x80) : 0x00;
         keyReady = false;
-        keyStickyCounter = 0;
         // Charger la touche suivante du buffer si disponible
         if (!keyBuffer.empty()) {
             lastKey = keyBuffer.front();

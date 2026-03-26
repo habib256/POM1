@@ -616,7 +616,8 @@ memory->memWrite((quint16)(0x100 + stackPointer), accumulator);
 
 void M6502::PHP(void)
 {
- memory->memWrite((quint16)(0x100 + stackPointer), statusRegister);
+    // 6502 spec: PHP always pushes with bits 4 (B) and 5 (unused) set
+    memory->memWrite((quint16)(0x100 + stackPointer), statusRegister | B | 0x20);
     stackPointer--;
     cycles++;
 }
@@ -1856,12 +1857,15 @@ void M6502::setNMI(void)
 
 void M6502::step(void)
 {
+    cycles = 0;
     if (!(statusRegister & I) && IRQ)
         handleIRQ();
     if (NMI)
         handleNMI();
-    
+
+    int irqCycles = cycles;
     executeOpcode();
+    cycles += irqCycles;
 }
 
 void M6502::run(int maxCycles)
@@ -1888,11 +1892,6 @@ void M6502::start(void)
 void M6502::stop(void)
 {
     running = 0;
-}
-
-void M6502::setDisplayCallback(void (*callback)(char))
-{
-    displayCallback = callback;
 }
 
 /*

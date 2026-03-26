@@ -59,13 +59,6 @@ public:
     quint8 getStackPointer(void) const { return stackPointer; }
     quint16 getProgramCounter(void) const { return programCounter; }
     
-    // Callback pour l'affichage (Apple 1 utilise 0xD012)
-    void setDisplayCallback(void (*callback)(char));
-    
-private:
-    void (*displayCallback)(char) = nullptr;
-
-
 private :
 
     Memory *memory;
