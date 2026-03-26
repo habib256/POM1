@@ -603,7 +603,8 @@ void MainWindow_ImGui::renderMemoryConfigDialog()
 {
     ImGui::SetNextWindowSize(ImVec2(450, 400), ImGuiCond_FirstUseEver);
     if (ImGui::Begin("Configuration de la mémoire", &showMemoryConfig)) {
-        static bool writeProtect = true;
+        // Read current state each frame to stay in sync
+        bool writeProtect = !memory->getWriteInRom();
         
         ImGui::Text("Protection ROM");
         ImGui::Separator();

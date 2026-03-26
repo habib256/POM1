@@ -1,7 +1,6 @@
 #include "Screen_ImGui.h"
 #include "imgui.h"
 #include <cstring>
-#include <cmath>
 #include <iostream>
 
 Screen_ImGui* Screen_ImGui::instance = nullptr;

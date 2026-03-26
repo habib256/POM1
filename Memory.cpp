@@ -392,10 +392,11 @@ void Memory::memWrite(quint16 address, quint8 value)
     // Apple 1 Display : écriture vers 0xD012 (PIA 6821)
     if (address == 0xD012) {
         char displayChar = (char)(value & 0x7F);
-        displayBusyCycles = displayCharDelay; // Simuler le délai du terminal
+        displayBusyCycles = displayCharDelay;
         if (displayCallback) {
             displayCallback(displayChar);
         }
+        return; // I/O register: don't persist value in memory
     }
 
     mem[address] = value;
@@ -408,10 +409,10 @@ void Memory::setDisplayCallback(void (*callback)(char))
 
 void Memory::setKeyPressed(char key)
 {
-    if (key >= 'a' && key <= 'z') {
-        key = key - 'a' + 'A';
+    char k = key & 0x7F; // Strip bit 7 first (Apple 1 is 7-bit ASCII)
+    if (k >= 'a' && k <= 'z') {
+        k = k - 'a' + 'A';
     }
-    char k = key & 0x7F;
     if (!keyReady) {
         lastKey = k;
         keyReady = true;
