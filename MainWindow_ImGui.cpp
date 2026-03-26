@@ -806,7 +806,7 @@ void MainWindow_ImGui::pasteCode()
 
 void MainWindow_ImGui::quit()
 {
-    glfwSetWindowShouldClose(glfwGetCurrentContext(), GLFW_TRUE);
+    glfwSetWindowShouldClose(window, GLFW_TRUE);
 }
 
 void MainWindow_ImGui::reset()
