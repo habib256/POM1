@@ -50,6 +50,7 @@ public:
 
 
     quint8 memRead(quint16 address);
+    quint8 memPeek(quint16 address) const; // Read without I/O side effects
     //quint8 memReadAbsolute(quint16 adr);
     void memWrite(quint16 address, quint8 value);
 
@@ -71,7 +72,6 @@ private:
     // Clavier Apple 1 (0xD010 = KBD, 0xD011 = KBDCR)
     char lastKey = 0;
     bool keyReady = false;
-    int keyStickyCounter = 0;
     queue<char> keyBuffer;
 
     // Display Apple 1 (0xD012) - délai d'affichage

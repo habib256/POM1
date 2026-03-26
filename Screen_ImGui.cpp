@@ -123,6 +123,7 @@ void Screen_ImGui::writeChar(char c)
         if (cursorX >= SCREEN_WIDTH) newLine();
         screenBuffer[cursorY][cursorX] = c;
         cursorX++;
+        if (cursorX >= SCREEN_WIDTH) newLine();
     }
 }
 

@@ -143,7 +143,7 @@ void MemoryViewer_ImGui::renderHexView()
             int currentAddr = address + col;
             if (currentAddr > 0xFFFF) break;
             
-            quint8 value = memory->memRead(currentAddr);
+            quint8 value = memory->memPeek(currentAddr);
 
             ImGui::SameLine();
 
@@ -257,7 +257,7 @@ void MemoryViewer_ImGui::searchMemory()
     int searchStart = (searchAddress >= 0) ? searchAddress + 1 : startAddress;
     
     for (int addr = searchStart; addr <= 0xFFFF; ++addr) {
-        if (memory->memRead(addr) == searchValue) {
+        if (memory->memPeek(addr) == searchValue) {
             searchAddress = addr;
             return;
         }
@@ -265,7 +265,7 @@ void MemoryViewer_ImGui::searchMemory()
     
     // Si pas trouvé, rechercher depuis le début
     for (int addr = 0; addr < searchStart; ++addr) {
-        if (memory->memRead(addr) == searchValue) {
+        if (memory->memPeek(addr) == searchValue) {
             searchAddress = addr;
             return;
         }
@@ -303,7 +303,7 @@ void MemoryViewer_ImGui::renderEditPopup()
 
     if (ImGui::BeginPopupModal("Éditer Mémoire", nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
         ImGui::Text("Adresse: %s", formatAddress(editAddress).c_str());
-        ImGui::Text("Valeur actuelle: 0x%02X (%d)", memory->memRead(editAddress), memory->memRead(editAddress));
+        ImGui::Text("Valeur actuelle: 0x%02X (%d)", memory->memPeek(editAddress), memory->memPeek(editAddress));
 
         ImGui::Spacing();
         ImGui::Text("Nouvelle valeur (hex):");
@@ -360,7 +360,7 @@ void MemoryViewer_ImGui::searchAsciiString()
     for (int addr = searchStart; addr <= 0xFFFF - searchLen; ++addr) {
         bool found = true;
         for (int i = 0; i < searchLen; ++i) {
-            if (memory->memRead(addr + i) != (quint8)searchBuffer[i]) {
+            if (memory->memPeek(addr + i) != (quint8)searchBuffer[i]) {
                 found = false;
                 break;
             }
@@ -375,7 +375,7 @@ void MemoryViewer_ImGui::searchAsciiString()
     for (int addr = 0; addr < searchStart && addr <= 0xFFFF - searchLen; ++addr) {
         bool found = true;
         for (int i = 0; i < searchLen; ++i) {
-            if (memory->memRead(addr + i) != (quint8)searchBuffer[i]) {
+            if (memory->memPeek(addr + i) != (quint8)searchBuffer[i]) {
                 found = false;
                 break;
             }

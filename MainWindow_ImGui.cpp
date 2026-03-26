@@ -30,9 +30,8 @@ void MainWindow_ImGui::createPom1()
     screen = std::make_unique<Screen_ImGui>();
     memoryViewer = std::make_unique<MemoryViewer_ImGui>(memory.get());
     
-    // Connecter l'affichage
+    // Connecter l'affichage (display goes through Memory's I/O at 0xD012)
     memory->setDisplayCallback(Screen_ImGui::displayCallback);
-    cpu->setDisplayCallback(Screen_ImGui::displayCallback);
 
     // Initialiser le CPU au WOZ Monitor
     cpu->hardReset();
@@ -483,9 +482,9 @@ void MainWindow_ImGui::renderDebugDialog()
         // Désassemblage de l'instruction courante
         if (ImGui::CollapsingHeader("Instruction courante", ImGuiTreeNodeFlags_DefaultOpen)) {
             quint16 pc = cpu->getProgramCounter();
-            quint8 opcode = memory->memRead(pc);
-            quint8 operand1 = memory->memRead(pc + 1);
-            quint8 operand2 = memory->memRead(pc + 2);
+            quint8 opcode = memory->memPeek(pc);
+            quint8 operand1 = memory->memPeek(pc + 1);
+            quint8 operand2 = memory->memPeek(pc + 2);
             
             ImGui::Text("PC: 0x%04X", pc);
             ImGui::Text("Opcode: 0x%02X", opcode);
@@ -504,7 +503,7 @@ void MainWindow_ImGui::renderDebugDialog()
             ImGui::Columns(2, "StackColumns");
             for (int i = 0; i < 8; i++) {
                 quint16 addr = 0x0100 + ((sp + i + 1) & 0xFF);
-                quint8 value = memory->memRead(addr);
+                quint8 value = memory->memPeek(addr);
                 ImGui::Text("0x01%02X:", (sp + i + 1) & 0xFF);
                 ImGui::NextColumn();
                 ImGui::Text("0x%02X", value);
@@ -527,7 +526,7 @@ void MainWindow_ImGui::renderDebugDialog()
                 std::stringstream ss;
                 ss << "PC: 0x" << std::hex << std::uppercase << currentPC 
                    << " - Opcode: 0x" << std::setfill('0') << std::setw(2) 
-                   << static_cast<int>(memory->memRead(currentPC));
+                   << static_cast<int>(memory->memPeek(currentPC));
                 debugLog.push_back(ss.str());
                 
                 // Garder seulement les 50 dernières entrées
@@ -817,9 +816,9 @@ void MainWindow_ImGui::reset()
 
 void MainWindow_ImGui::hardReset()
 {
-    cpu->hardReset();
     memory->resetMemory();
     memory->initMemory();
+    cpu->hardReset();  // Must be after initMemory so reset vector is read from fresh ROMs
     screen->clear();
     setStatusMessage("Reset matériel effectué - Mémoire réinitialisée", 2.0f);
 }
@@ -907,12 +906,10 @@ void MainWindow_ImGui::handleKeyboardInput()
 
     for (int i = 0; i < io.InputQueueCharacters.Size; i++) {
         ImWchar c = io.InputQueueCharacters[i];
+        // Only process printable ASCII chars here; control keys (Enter, Backspace, Escape)
+        // are handled separately via IsKeyPressed below to avoid double input
         if (c >= 32 && c <= 126) {
             memory->setKeyPressed((char)c);
-        } else if (c == '\r' || c == '\n') {
-            memory->setKeyPressed('\r');
-        } else if (c == '\b' || c == 127) {
-            memory->setKeyPressed('\b');
         }
     }
 
