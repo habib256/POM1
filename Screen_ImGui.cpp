@@ -89,7 +89,8 @@ void Screen_ImGui::render()
             if (showCursor && x == cursorX && y == cursorY) {
                 static float blinkTimer = 0.0f;
                 blinkTimer += ImGui::GetIO().DeltaTime;
-                if (fmod(blinkTimer, 1.0f) < 0.5f) c = '@';
+                if (blinkTimer >= 1.0f) blinkTimer -= 1.0f;
+                if (blinkTimer < 0.5f) c = '@';
             }
             line += (c == 0 || c < 32) ? ' ' : c;
         }

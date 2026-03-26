@@ -365,9 +365,7 @@ quint8 Memory::memRead(quint16 address)
         return result;
     } else if (address == 0xD012) {
         // Display port: bit 7 = busy flag
-        // Simule le délai du terminal Apple 1 (~60 chars/sec)
         if (displayBusyCycles > 0) {
-            displayBusyCycles -= 7; // ~7 cycles par itération de la boucle ECHO (BIT+BMI)
             return mem[address] | 0x80; // busy
         }
         return mem[address] & 0x7F; // ready
@@ -434,6 +432,15 @@ int Memory::getTerminalSpeed() const
 {
     if (displayCharDelay <= 0) return 0;
     return 1000000 / displayCharDelay;
+}
+
+void Memory::tickDisplayBusy(int elapsedCycles)
+{
+    if (displayBusyCycles > 0) {
+        displayBusyCycles -= elapsedCycles;
+        if (displayBusyCycles < 0)
+            displayBusyCycles = 0;
+    }
 }
 
 

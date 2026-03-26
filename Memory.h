@@ -66,6 +66,9 @@ public:
     void setTerminalSpeed(int charsPerSec);
     int getTerminalSpeed() const;
 
+    // Tick display busy counter by elapsed CPU cycles
+    void tickDisplayBusy(int elapsedCycles);
+
 private:
     void (*displayCallback)(char) = nullptr;
     

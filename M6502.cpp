@@ -130,9 +130,10 @@ void M6502::Imp(void)
 
 void M6502::Imm(void)
 {
-    // Mode immédiat : op pointe vers l'adresse de la valeur immédiate
-    // Ainsi memRead(op) retournera la valeur immédiate correctement
+    // Immediate mode: op points to the address of the immediate value
+    // so memRead(op) will return the immediate value correctly
     op = programCounter++;
+    cycles++;
 }
 
 void M6502::Zero(void)
@@ -639,26 +640,18 @@ void M6502::PLP(void)
 
 void M6502::BRK(void)
 {
-    // BRK doit sauvegarder PC+1 (car le PC a déjà été incrémenté après la lecture de l'opcode)
     pushProgramCounter();
     memory->memWrite((quint16)(0x100 + stackPointer), statusRegister | B | 0x20);
     stackPointer--;
     statusRegister |= I;
-    quint16 irqVector = memReadAbsolute(0xFFFE);
-    std::cout << "BRK: Lecture vecteur IRQ 0xFFFE = 0x" << std::hex << irqVector << " (PC avant=" << programCounter << ")" << std::endl;
-    programCounter = irqVector;
-    std::cout << "BRK: PC redirigé vers 0x" << std::hex << programCounter << std::endl;
+    programCounter = memReadAbsolute(0xFFFE);
     cycles += 4;
 }
 
 void M6502::RTI(void)
 {
-    std::cout << "=== RTI appelé ===" << std::endl;
-    std::cout << "RTI: PC avant=" << std::hex << programCounter << ", SP=" << (int)stackPointer << std::endl;
     PLP();
-    quint16 pcBefore = programCounter;
     popProgramCounter();
-    std::cout << "RTI: PC restauré depuis stack: 0x" << std::hex << pcBefore << " -> 0x" << programCounter << std::endl;
     cycles++;
 }
 
@@ -1866,21 +1859,23 @@ void M6502::step(void)
     int irqCycles = cycles;
     executeOpcode();
     cycles += irqCycles;
+
+    // Tick display busy counter with actual CPU cycles elapsed
+    memory->tickDisplayBusy(cycles);
 }
 
 void M6502::run(int maxCycles)
 {
     int cyclesExecuted = 0;
     running = 1;
-    
+
     while (running && cyclesExecuted < maxCycles) {
         step();
-        cyclesExecuted += cycles;
-        
-        // Protection contre les boucles infinies si cycles reste à 0
+        // Protection against infinite loop if cycles stays at 0
         if (cycles == 0) {
-            cycles = 1; // Forcer au moins 1 cycle pour éviter la boucle infinie
+            cycles = 1;
         }
+        cyclesExecuted += cycles;
     }
 }
 
