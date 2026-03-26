@@ -283,7 +283,7 @@ int Memory::loadHexDump(const char* filename, quint16 &startAddress)
             // Vérifier ce qui suit : 'R' = run, ':' = adresse, sinon = données
             // Sauter les espaces pour voir le prochain caractère significatif
             size_t peek = i;
-            while (peek < cleaned.size() && (cleaned[peek] == ' ' || cleaned[peek] == '\t')) peek++;
+            while (peek < cleaned.size() && (cleaned[peek] == ' ' || cleaned[peek] == '\t' || cleaned[peek] == '\r' || cleaned[peek] == '\n')) peek++;
 
             if (i < cleaned.size() && (cleaned[i] == 'R' || cleaned[i] == 'r')) {
                 // XXXXR = run command
@@ -293,8 +293,8 @@ int Memory::loadHexDump(const char* filename, quint16 &startAddress)
                 continue;
             }
 
-            if (peek < cleaned.size() && cleaned[peek] == ':') {
-                // XXXX: = adresse
+            if (peek < cleaned.size() && cleaned[peek] == ':' && hexStr.size() >= 3) {
+                // XXXX: = adresse (3+ hex digits; 2-digit values are data bytes)
                 currentAddr = (quint16)strtol(hexStr.c_str(), nullptr, 16);
                 if (firstAddr) {
                     startAddress = currentAddr;
