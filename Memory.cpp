@@ -352,9 +352,9 @@ quint8 Memory::memRead(quint16 address)
     // - 0xD011 (KBDCR) : bit 7 = strobe (1 si touche prête). La lecture réinitialise le strobe.
     // - 0xD010 (KBD) : caractère avec bit 7 = 1 si prêt. Le caractère reste disponible jusqu'à nouvelle touche.
     if (address == 0xD010) {
-        // KBD : retourne le caractère avec bit 7 à 1
-        // Lire 0xD010 efface le strobe (PIA 6821 behavior)
-        quint8 result = keyReady ? (lastKey | 0x80) : 0x00;
+        // KBD: always returns last key with bit 7 set (PIA 6821 behavior)
+        // Reading KBD clears the strobe (keyReady flag)
+        quint8 result = lastKey | 0x80;
         keyReady = false;
         // Charger la touche suivante du buffer si disponible
         if (!keyBuffer.empty()) {

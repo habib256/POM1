@@ -27,7 +27,6 @@ M6502::M6502()
    statusRegister = 0x24;
    IRQ = 0;
    NMI = 0;
-   // Initialiser tous les registres
    accumulator = 0;
    xRegister = 0;
    yRegister = 0;
@@ -35,6 +34,13 @@ M6502::M6502()
    programCounter = 0;
    cycles = 0;
    running = 0;
+   btmp = 0;
+   op = 0; opH = 0; opL = 0; ptrH = 0; ptrL = 0;
+   ptr = 0;
+   tmp = 0;
+   lastTime = 0;
+   cyclesBeforeSynchro = 0;
+   _synchroMillis = 0;
 }
 
 M6502::M6502(Memory * mem)
@@ -44,13 +50,19 @@ M6502::M6502(Memory * mem)
    IRQ = 0;
    NMI = 0;
    memory = mem;
-   // Initialiser tous les registres
    accumulator = 0;
    xRegister = 0;
    yRegister = 0;
    stackPointer = 0xFF;
    cycles = 0;
    running = 0;
+   btmp = 0;
+   op = 0; opH = 0; opL = 0; ptrH = 0; ptrL = 0;
+   ptr = 0;
+   tmp = 0;
+   lastTime = 0;
+   cyclesBeforeSynchro = 0;
+   _synchroMillis = 0;
    
    // Initialiser le program counter depuis le vecteur de reset
    // Si la mémoire est disponible, lire le vecteur, sinon utiliser 0xFF00 (valeur par défaut Apple 1)
@@ -1855,10 +1867,11 @@ void M6502::setNMI(void)
 void M6502::step(void)
 {
     cycles = 0;
-    if (!(statusRegister & I) && IRQ)
-        handleIRQ();
+    // NMI has priority over IRQ; only one interrupt per step
     if (NMI)
         handleNMI();
+    else if (!(statusRegister & I) && IRQ)
+        handleIRQ();
 
     int irqCycles = cycles;
     executeOpcode();
