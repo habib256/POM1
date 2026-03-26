@@ -1,0 +1,7 @@
+https://apple1software.com/
+https://github.com/jefftranter/6502/tree/master/asm/ehbasic
+https://github.com/microsoft/BASIC-M6502
+https://gotbasic.com/ehbasic.html
+https://www.applefritter.com/node/6970
+https://www.reddit.com/r/retrocomputing/comments/1rhegp0/i_wrote_a_basic_interpreter_for_the_6502/?tl=fr
+https://github.com/alexander-akhmetov/apple1/blob/master/roms/apple1basic.bin
