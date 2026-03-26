@@ -651,7 +651,9 @@ accumulator = memory->memRead((quint16)(stackPointer + 0x100));
 void M6502::PLP(void)
 {
     stackPointer++;
-  statusRegister = memory->memRead((quint16)(stackPointer + 0x100));
+    // B flag (bit 4) doesn't exist as a physical register bit on the 6502;
+    // bit 5 is always 1.  PLP must ignore bit 4 and force bit 5.
+    statusRegister = (memory->memRead((quint16)(stackPointer + 0x100)) | 0x20) & ~B;
     cycles += 2;
 }
 
@@ -1836,10 +1838,10 @@ void M6502::hardReset(void)
     }
     
     quint16 resetVector = memReadAbsolute(0xFFFC);
-    std::cout << "hardReset: Lecture vecteur reset 0xFFFC = 0x" << std::hex << resetVector << std::endl;
+    std::cout << "hardReset: Lecture vecteur reset 0xFFFC = 0x" << std::hex << resetVector << std::dec << std::endl;
     programCounter = resetVector;
-    std::cout << "hardReset: PC initialisé à 0x" << std::hex << programCounter << " (devrait être 0xFF00)" << std::endl;
-    std::cout << "hardReset: SP=0x" << std::hex << (int)stackPointer << ", A=0x" << (int)accumulator << std::endl;
+    std::cout << "hardReset: PC initialisé à 0x" << std::hex << programCounter << std::dec << " (devrait être 0xFF00)" << std::endl;
+    std::cout << "hardReset: SP=0x" << std::hex << (int)stackPointer << ", A=0x" << (int)accumulator << std::dec << std::endl;
 }
 void M6502::softReset(void)
 {

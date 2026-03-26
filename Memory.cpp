@@ -201,7 +201,7 @@ int Memory::loadBinary(const char* filename, quint16 startAddress)
     file.seekg(0, std::ios::beg);
 
     if (startAddress + fileSize > 0x10000) {
-        cout << "ERROR : File too large for address 0x" << std::hex << startAddress << endl;
+        cout << "ERROR : File too large for address 0x" << std::hex << startAddress << std::dec << endl;
         file.close();
         return 1;
     }
