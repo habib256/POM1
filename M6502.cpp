@@ -27,7 +27,6 @@ M6502::M6502()
    statusRegister = 0x24;
    IRQ = 0;
    NMI = 0;
-   // Initialiser tous les registres
    accumulator = 0;
    xRegister = 0;
    yRegister = 0;
@@ -35,6 +34,13 @@ M6502::M6502()
    programCounter = 0;
    cycles = 0;
    running = 0;
+   btmp = 0;
+   op = 0; opH = 0; opL = 0; ptrH = 0; ptrL = 0;
+   ptr = 0;
+   tmp = 0;
+   lastTime = 0;
+   cyclesBeforeSynchro = 0;
+   _synchroMillis = 0;
 }
 
 M6502::M6502(Memory * mem)
@@ -44,13 +50,19 @@ M6502::M6502(Memory * mem)
    IRQ = 0;
    NMI = 0;
    memory = mem;
-   // Initialiser tous les registres
    accumulator = 0;
    xRegister = 0;
    yRegister = 0;
    stackPointer = 0xFF;
    cycles = 0;
    running = 0;
+   btmp = 0;
+   op = 0; opH = 0; opL = 0; ptrH = 0; ptrL = 0;
+   ptr = 0;
+   tmp = 0;
+   lastTime = 0;
+   cyclesBeforeSynchro = 0;
+   _synchroMillis = 0;
    
    // Initialiser le program counter depuis le vecteur de reset
    // Si la mémoire est disponible, lire le vecteur, sinon utiliser 0xFF00 (valeur par défaut Apple 1)
@@ -130,8 +142,8 @@ void M6502::Imp(void)
 
 void M6502::Imm(void)
 {
-    // Mode immédiat : op pointe vers l'adresse de la valeur immédiate
-    // Ainsi memRead(op) retournera la valeur immédiate correctement
+    // Immediate mode: op points to the address of the immediate value
+    // so memRead(op) will return the immediate value correctly
     op = programCounter++;
 }
 
@@ -195,7 +207,7 @@ void M6502::IndZeroX(void)
     ptr = (memory->memRead(programCounter++) + xRegister) & 0xFF;
     op = memory->memRead(ptr);
     op |= (quint16)memory->memRead((quint8)((ptr + 1) & 0xFF)) << 8;
-    cycles += 3;
+    cycles += 4;
 }
 
 void M6502::IndZeroY(void)
@@ -318,7 +330,7 @@ void M6502::ADC(void)
 
    tmp = (Op1 & 0x0F) + (Op2 & 0x0F) + (statusRegister & C ? 1 : 0);
         accumulator = tmp < 0x0A ? tmp : tmp + 6;
- tmp = (Op1 & 0xF0) + (Op2 & 0xF0) + (tmp & 0xF0);
+ tmp = (Op1 & 0xF0) + (Op2 & 0xF0) + (accumulator & 0xF0);
 
         if (tmp & 0x80)
             statusRegister |= N;
@@ -374,6 +386,12 @@ quint8 Op1 = accumulator, Op2 = memory->memRead(op);
       tmp = (Op1 & 0xF0) - (Op2 & 0xF0) - (accumulator & 0x10);
         accumulator = (accumulator & 0x0F) | (!(tmp & 0x100) ? tmp : tmp - 0x60);
      tmp = Op1 - Op2 - (statusRegister & C ? 0 : 1);
+
+      if (((Op1 ^ Op2) & (Op1 ^ (quint8)tmp)) & 0x80)
+            statusRegister |= V;
+       else
+            statusRegister &= ~V;
+
         setFlagBorrow(tmp);
         setStatusRegisterNZ((quint8)tmp);
     }
@@ -549,7 +567,7 @@ btmp = memory->memRead(op);
     btmp++;
     setStatusRegisterNZ(btmp);
 memory->memWrite(op, btmp);
-    cycles += 2;
+    cycles += 3;
 }
 
 void M6502::DEC(void)
@@ -558,7 +576,7 @@ btmp = memory->memRead(op);
     btmp--;
     setStatusRegisterNZ(btmp);
 memory->memWrite(op, btmp);
-    cycles += 2;
+    cycles += 3;
 }
 
 void M6502::INX(void)
@@ -639,27 +657,18 @@ void M6502::PLP(void)
 
 void M6502::BRK(void)
 {
-    // BRK doit sauvegarder PC+1 (car le PC a déjà été incrémenté après la lecture de l'opcode)
     pushProgramCounter();
     memory->memWrite((quint16)(0x100 + stackPointer), statusRegister | B | 0x20);
     stackPointer--;
     statusRegister |= I;
-    quint16 irqVector = memReadAbsolute(0xFFFE);
-    std::cout << "BRK: Lecture vecteur IRQ 0xFFFE = 0x" << std::hex << irqVector << " (PC avant=" << programCounter << ")" << std::endl;
-    programCounter = irqVector;
-    std::cout << "BRK: PC redirigé vers 0x" << std::hex << programCounter << std::endl;
+    programCounter = memReadAbsolute(0xFFFE);
     cycles += 4;
 }
 
 void M6502::RTI(void)
 {
-    std::cout << "=== RTI appelé ===" << std::endl;
-    std::cout << "RTI: PC avant=" << std::hex << programCounter << ", SP=" << (int)stackPointer << std::endl;
     PLP();
-    quint16 pcBefore = programCounter;
     popProgramCounter();
-    std::cout << "RTI: PC restauré depuis stack: 0x" << std::hex << pcBefore << " -> 0x" << programCounter << std::endl;
-    cycles++;
 }
 
 void M6502::JMP(void)
@@ -837,7 +846,7 @@ void M6502::Hang(void)
 
 void M6502::executeOpcode(void)
 {
-    cycles = 0;  // Réinitialiser le compteur de cycles pour cette instruction
+    cycles = 1;  // Count the opcode fetch cycle
     quint16 pcBefore = programCounter;
     unsigned char opcode = memory->memRead(programCounter++);
     
@@ -1858,29 +1867,32 @@ void M6502::setNMI(void)
 void M6502::step(void)
 {
     cycles = 0;
-    if (!(statusRegister & I) && IRQ)
-        handleIRQ();
+    // NMI has priority over IRQ; only one interrupt per step
     if (NMI)
         handleNMI();
+    else if (!(statusRegister & I) && IRQ)
+        handleIRQ();
 
     int irqCycles = cycles;
     executeOpcode();
     cycles += irqCycles;
+
+    // Tick display busy counter with actual CPU cycles elapsed
+    memory->tickDisplayBusy(cycles);
 }
 
 void M6502::run(int maxCycles)
 {
     int cyclesExecuted = 0;
     running = 1;
-    
+
     while (running && cyclesExecuted < maxCycles) {
         step();
-        cyclesExecuted += cycles;
-        
-        // Protection contre les boucles infinies si cycles reste à 0
+        // Protection against infinite loop if cycles stays at 0
         if (cycles == 0) {
-            cycles = 1; // Forcer au moins 1 cycle pour éviter la boucle infinie
+            cycles = 1;
         }
+        cyclesExecuted += cycles;
     }
 }
 

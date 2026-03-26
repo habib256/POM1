@@ -240,7 +240,7 @@ int Memory::loadHexDump(const char* filename, quint16 &startAddress)
         char first = line[start];
         if (first == '#' || first == ';') continue;
         if (start + 1 < line.size() && first == '/' && line[start + 1] == '/') continue;
-        cleaned += line;
+        cleaned += line + '\n';
     }
 
     int currentAddr = 0;
@@ -352,9 +352,9 @@ quint8 Memory::memRead(quint16 address)
     // - 0xD011 (KBDCR) : bit 7 = strobe (1 si touche prête). La lecture réinitialise le strobe.
     // - 0xD010 (KBD) : caractère avec bit 7 = 1 si prêt. Le caractère reste disponible jusqu'à nouvelle touche.
     if (address == 0xD010) {
-        // KBD : retourne le caractère avec bit 7 à 1
-        // Lire 0xD010 efface le strobe (PIA 6821 behavior)
-        quint8 result = keyReady ? (lastKey | 0x80) : 0x00;
+        // KBD: always returns last key with bit 7 set (PIA 6821 behavior)
+        // Reading KBD clears the strobe (keyReady flag)
+        quint8 result = lastKey | 0x80;
         keyReady = false;
         // Charger la touche suivante du buffer si disponible
         if (!keyBuffer.empty()) {
@@ -365,9 +365,7 @@ quint8 Memory::memRead(quint16 address)
         return result;
     } else if (address == 0xD012) {
         // Display port: bit 7 = busy flag
-        // Simule le délai du terminal Apple 1 (~60 chars/sec)
         if (displayBusyCycles > 0) {
-            displayBusyCycles -= 7; // ~7 cycles par itération de la boucle ECHO (BIT+BMI)
             return mem[address] | 0x80; // busy
         }
         return mem[address] & 0x7F; // ready
@@ -394,10 +392,11 @@ void Memory::memWrite(quint16 address, quint8 value)
     // Apple 1 Display : écriture vers 0xD012 (PIA 6821)
     if (address == 0xD012) {
         char displayChar = (char)(value & 0x7F);
-        displayBusyCycles = displayCharDelay; // Simuler le délai du terminal
+        displayBusyCycles = displayCharDelay;
         if (displayCallback) {
             displayCallback(displayChar);
         }
+        return; // I/O register: don't persist value in memory
     }
 
     mem[address] = value;
@@ -410,10 +409,10 @@ void Memory::setDisplayCallback(void (*callback)(char))
 
 void Memory::setKeyPressed(char key)
 {
-    if (key >= 'a' && key <= 'z') {
-        key = key - 'a' + 'A';
+    char k = key & 0x7F; // Strip bit 7 first (Apple 1 is 7-bit ASCII)
+    if (k >= 'a' && k <= 'z') {
+        k = k - 'a' + 'A';
     }
-    char k = key & 0x7F;
     if (!keyReady) {
         lastKey = k;
         keyReady = true;
@@ -434,6 +433,15 @@ int Memory::getTerminalSpeed() const
 {
     if (displayCharDelay <= 0) return 0;
     return 1000000 / displayCharDelay;
+}
+
+void Memory::tickDisplayBusy(int elapsedCycles)
+{
+    if (displayBusyCycles > 0) {
+        displayBusyCycles -= elapsedCycles;
+        if (displayBusyCycles < 0)
+            displayBusyCycles = 0;
+    }
 }
 
 
