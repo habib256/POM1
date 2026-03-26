@@ -318,7 +318,7 @@ void M6502::ADC(void)
 
    tmp = (Op1 & 0x0F) + (Op2 & 0x0F) + (statusRegister & C ? 1 : 0);
         accumulator = tmp < 0x0A ? tmp : tmp + 6;
- tmp = (Op1 & 0xF0) + (Op2 & 0xF0) + (tmp & 0xF0);
+ tmp = (Op1 & 0xF0) + (Op2 & 0xF0) + (accumulator & 0xF0);
 
         if (tmp & 0x80)
             statusRegister |= N;
@@ -374,6 +374,12 @@ quint8 Op1 = accumulator, Op2 = memory->memRead(op);
       tmp = (Op1 & 0xF0) - (Op2 & 0xF0) - (accumulator & 0x10);
         accumulator = (accumulator & 0x0F) | (!(tmp & 0x100) ? tmp : tmp - 0x60);
      tmp = Op1 - Op2 - (statusRegister & C ? 0 : 1);
+
+      if (((Op1 ^ Op2) & (Op1 ^ (quint8)tmp)) & 0x80)
+            statusRegister |= V;
+       else
+            statusRegister &= ~V;
+
         setFlagBorrow(tmp);
         setStatusRegisterNZ((quint8)tmp);
     }

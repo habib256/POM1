@@ -240,7 +240,7 @@ int Memory::loadHexDump(const char* filename, quint16 &startAddress)
         char first = line[start];
         if (first == '#' || first == ';') continue;
         if (start + 1 < line.size() && first == '/' && line[start + 1] == '/') continue;
-        cleaned += line;
+        cleaned += line + '\n';
     }
 
     int currentAddr = 0;
