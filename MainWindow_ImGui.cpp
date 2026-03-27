@@ -14,7 +14,7 @@
 MainWindow_ImGui::MainWindow_ImGui()
 {
     createPom1();
-    setStatusMessage("Prêt", 0.0f);
+    setStatusMessage("Ready", 0.0f);
 }
 
 MainWindow_ImGui::~MainWindow_ImGui()
@@ -24,7 +24,7 @@ MainWindow_ImGui::~MainWindow_ImGui()
 
 void MainWindow_ImGui::createPom1()
 {
-    std::cout << "Bienvenue dans POM1 - Émulateur Apple I" << std::endl;
+    std::cout << "Welcome to POM1 - Apple I Emulator" << std::endl;
     memory = std::make_unique<Memory>();
     cpu = std::make_unique<M6502>(memory.get());
     screen = std::make_unique<Screen_ImGui>();
@@ -42,7 +42,7 @@ void MainWindow_ImGui::createPom1()
     stepMode = false;
     cpu->start();
     
-    setStatusMessage("Système initialisé - WOZ Monitor chargé à 0xFF00 - CPU démarré", 3.0f);
+    setStatusMessage("System initialized - WOZ Monitor loaded at 0xFF00 - CPU started", 3.0f);
 }
 
 void MainWindow_ImGui::destroyPom1()
@@ -92,7 +92,7 @@ void MainWindow_ImGui::render()
         }
         firstFrame = false;
     }
-    ImGui::Begin("Écran Apple 1");
+    ImGui::Begin("Apple 1 Screen");
     screen->render();
     ImGui::End();
 
@@ -101,7 +101,7 @@ void MainWindow_ImGui::render()
         ImGuiIO& mio = ImGui::GetIO();
         ImGui::SetNextWindowPos(ImVec2(mio.DisplaySize.x - 410, 30), ImGuiCond_FirstUseEver);
         ImGui::SetNextWindowSize(ImVec2(400, mio.DisplaySize.y * 0.45f), ImGuiCond_FirstUseEver);
-        ImGui::Begin("Visualiseur de mémoire", &showMemoryViewer);
+        ImGui::Begin("Memory Viewer", &showMemoryViewer);
         memoryViewer->render();
         ImGui::End();
     }
@@ -114,11 +114,15 @@ void MainWindow_ImGui::render()
         renderDebugDialog();
     }
 
+    // Carte mémoire
+    if (showMemoryMap) renderMemoryMapWindow();
+
     // Dialogues
     if (showAbout) renderAboutDialog();
     if (showScreenConfig) renderScreenConfigDialog();
     if (showMemoryConfig) renderMemoryConfigDialog();
     if (showLoadDialog) renderLoadDialog();
+    if (showSaveDialog) renderSaveDialog();
 
     // Barre de statut
     renderStatusBar();
@@ -126,19 +130,19 @@ void MainWindow_ImGui::render()
 
 void MainWindow_ImGui::renderMenuBar()
 {
-        if (ImGui::BeginMenu("Fichier")) {
-            if (ImGui::MenuItem("Charger mémoire", "Ctrl+O")) {
+        if (ImGui::BeginMenu("File")) {
+            if (ImGui::MenuItem("Load Memory", "Ctrl+O")) {
                 loadMemory();
             }
-            if (ImGui::MenuItem("Sauvegarder mémoire", "Ctrl+S")) {
+            if (ImGui::MenuItem("Save Memory", "Ctrl+S")) {
                 saveMemory();
             }
             ImGui::Separator();
-            if (ImGui::MenuItem("Coller code", "Ctrl+V")) {
+            if (ImGui::MenuItem("Paste Code", "Ctrl+V")) {
                 pasteCode();
             }
             ImGui::Separator();
-            if (ImGui::MenuItem("Quitter", "Ctrl+Q")) {
+            if (ImGui::MenuItem("Quit", "Ctrl+Q")) {
                 quit();
             }
             ImGui::EndMenu();
@@ -146,63 +150,61 @@ void MainWindow_ImGui::renderMenuBar()
 
         if (ImGui::BeginMenu("CPU")) {
             if (cpuRunning) {
-                if (ImGui::MenuItem("Arrêter", "F6")) {
+                if (ImGui::MenuItem("Stop", "F6")) {
                     stopCpu();
                 }
             } else {
-                if (ImGui::MenuItem("Démarrer", "F6")) {
+                if (ImGui::MenuItem("Start", "F6")) {
                     startCpu();
                 }
             }
-            if (ImGui::MenuItem("Pas à pas", "F7")) {
+            if (ImGui::MenuItem("Step", "F7")) {
                 stepCpu();
             }
             ImGui::Separator();
-            if (ImGui::MenuItem("Reset logiciel", "F5")) {
+            if (ImGui::MenuItem("Soft Reset", "F5")) {
                 reset();
             }
-            if (ImGui::MenuItem("Reset matériel", "Ctrl+F5")) {
+            if (ImGui::MenuItem("Hard Reset", "Ctrl+F5")) {
                 hardReset();
             }
             ImGui::Separator();
-            if (ImGui::MenuItem("Console de débogage", "F12")) {
+            if (ImGui::MenuItem("Debug Console", "F3")) {
                 debugCpu();
             }
             ImGui::EndMenu();
         }
 
-        if (ImGui::BeginMenu("Configuration")) {
-            if (ImGui::MenuItem("Options d'écran")) {
+        if (ImGui::BeginMenu("Settings")) {
+            if (ImGui::MenuItem("Display Options")) {
                 configScreen();
             }
-            if (ImGui::MenuItem("Options de mémoire")) {
+            if (ImGui::MenuItem("Memory Options")) {
                 configMemory();
             }
             ImGui::Separator();
-            ImGui::Text("Vitesse CPU:");
+            ImGui::Text("CPU Speed:");
             if (ImGui::RadioButton("1 MHz", executionSpeed == 16667)) { executionSpeed = 16667; }
             ImGui::SameLine();
             if (ImGui::RadioButton("2 MHz", executionSpeed == 33333)) { executionSpeed = 33333; }
             ImGui::SameLine();
             if (ImGui::RadioButton("Max", executionSpeed == 1000000)) { executionSpeed = 1000000; }
             ImGui::Separator();
-            ImGui::Text("Vitesse terminal (chars/sec):");
+            ImGui::Text("Terminal Speed (chars/sec):");
             static int termSpeed = 60;
             ImGui::SetNextItemWidth(150);
             if (ImGui::SliderInt("##termspeed", &termSpeed, 0, 2000, termSpeed == 0 ? "Max" : "%d c/s")) {
                 memory->setTerminalSpeed(termSpeed);
             }
+            ImGui::Separator();
+            ImGui::MenuItem("Memory Viewer", "F1", &showMemoryViewer);
+            ImGui::MenuItem("Memory Map", "F2", &showMemoryMap);
+            ImGui::MenuItem("Debug Console", "F3", &showDebugger);
             ImGui::EndMenu();
         }
 
-        if (ImGui::BeginMenu("Affichage")) {
-            ImGui::MenuItem("Visualiseur de mémoire", nullptr, &showMemoryViewer);
-            ImGui::MenuItem("Console de débogage", "F12", &showDebugger);
-            ImGui::EndMenu();
-        }
-
-        if (ImGui::BeginMenu("Aide")) {
-            if (ImGui::MenuItem("À propos")) {
+        if (ImGui::BeginMenu("Help")) {
+            if (ImGui::MenuItem("About")) {
                 about();
             }
             ImGui::EndMenu();
@@ -230,7 +232,7 @@ void MainWindow_ImGui::renderToolbar()
 
         // --- Chargement (premier) ---
         if (ImGui::Button(ICON_FA_FOLDER_OPEN, btnSize)) loadMemory();
-        if (ImGui::IsItemHovered()) ImGui::SetTooltip("Charger (Ctrl+O)");
+        if (ImGui::IsItemHovered()) ImGui::SetTooltip("Load (Ctrl+O)");
 
         // --- Séparateur ---
         ImGui::SameLine(0, 12);
@@ -261,11 +263,11 @@ void MainWindow_ImGui::renderToolbar()
 
         // --- Resets groupés ---
         if (ImGui::Button(ICON_FA_ARROW_ROTATE_LEFT, btnSize)) reset();
-        if (ImGui::IsItemHovered()) ImGui::SetTooltip("Reset logiciel (F5)");
+        if (ImGui::IsItemHovered()) ImGui::SetTooltip("Soft Reset (F5)");
 
         ImGui::SameLine();
         if (ImGui::Button(ICON_FA_POWER_OFF, btnSize)) hardReset();
-        if (ImGui::IsItemHovered()) ImGui::SetTooltip("Reset matériel (Ctrl+F5)");
+        if (ImGui::IsItemHovered()) ImGui::SetTooltip("Hard Reset (Ctrl+F5)");
 
         // --- Séparateur ---
         ImGui::SameLine(0, 12);
@@ -316,7 +318,15 @@ void MainWindow_ImGui::renderToolbar()
             if (mem) ImGui::PushStyleColor(ImGuiCol_Button, activeColor);
             if (ImGui::Button(ICON_FA_MEMORY, btnSize)) showMemoryViewer = !showMemoryViewer;
             if (mem) ImGui::PopStyleColor();
-            if (ImGui::IsItemHovered()) ImGui::SetTooltip("Mémoire");
+            if (ImGui::IsItemHovered()) ImGui::SetTooltip("Memory");
+        }
+        ImGui::SameLine();
+        {
+            bool map = showMemoryMap;
+            if (map) ImGui::PushStyleColor(ImGuiCol_Button, activeColor);
+            if (ImGui::Button(ICON_FA_MAP, btnSize)) showMemoryMap = !showMemoryMap;
+            if (map) ImGui::PopStyleColor();
+            if (ImGui::IsItemHovered()) ImGui::SetTooltip("Memory Map");
         }
     }
     ImGui::End();
@@ -385,14 +395,14 @@ void MainWindow_ImGui::renderAboutDialog()
         }
         
         ImGui::BulletText("Upgraded by Ken WESSEN (21/2/2006)");
-        ImGui::BulletText("Porté en C/SDL par John D. CORRADO (2006-2014)");
-        ImGui::BulletText("Version Dear ImGui par Arnaud VERHILLE (2026)");
+        ImGui::BulletText("Ported to C/SDL by John D. CORRADO (2006-2014)");
+        ImGui::BulletText("Dear ImGui version by Arnaud VERHILLE (2026)");
         
         ImGui::Spacing();
         ImGui::TextWrapped("Thanks to:");
         ImGui::BulletText("Steve WOZNIAK & Steve JOBS");
         ImGui::BulletText("Vince BRIEL (Replica 1)");
-        ImGui::BulletText("Fabrice FRANCES (Émulateur Java Microtan)");
+        ImGui::BulletText("Fabrice FRANCES (Java Microtan Emulator)");
         ImGui::BulletText("And All Apple 1 Community");
     }
     ImGui::End();
@@ -401,12 +411,12 @@ void MainWindow_ImGui::renderAboutDialog()
 void MainWindow_ImGui::renderDebugDialog()
 {
     ImGui::SetNextWindowSize(ImVec2(520, 520), ImGuiCond_FirstUseEver);
-    if (ImGui::Begin("Console de débogage CPU", &showDebugger)) {
-        ImGui::Text("Débogueur CPU 6502");
+    if (ImGui::Begin("CPU Debug Console", &showDebugger)) {
+        ImGui::Text("6502 CPU Debugger");
         ImGui::Separator();
         
         // Informations sur les registres
-        if (ImGui::CollapsingHeader("Registres", ImGuiTreeNodeFlags_DefaultOpen)) {
+        if (ImGui::CollapsingHeader("Registers", ImGuiTreeNodeFlags_DefaultOpen)) {
             ImGui::Columns(2, "RegisterColumns");
             
             ImGui::Text("Program Counter (PC):");
@@ -451,18 +461,18 @@ void MainWindow_ImGui::renderDebugDialog()
         }
         
         // Contrôles de débogage
-        if (ImGui::CollapsingHeader("Contrôles", ImGuiTreeNodeFlags_DefaultOpen)) {
-            if (ImGui::Button("Pas à pas")) {
+        if (ImGui::CollapsingHeader("Controls", ImGuiTreeNodeFlags_DefaultOpen)) {
+            if (ImGui::Button("Step")) {
                 stepCpu();
             }
             ImGui::SameLine();
-            
+
             if (cpuRunning) {
-                if (ImGui::Button("Arrêter")) {
+                if (ImGui::Button("Stop")) {
                     stopCpu();
                 }
             } else {
-                if (ImGui::Button("Démarrer")) {
+                if (ImGui::Button("Start")) {
                     startCpu();
                 }
             }
@@ -475,15 +485,15 @@ void MainWindow_ImGui::renderDebugDialog()
             }
             
             ImGui::Spacing();
-            ImGui::Text("Vitesse d'exécution:");
+            ImGui::Text("Execution Speed:");
             ImGui::SliderInt("##Speed", &executionSpeed, 1, 10000, "%d cycles/frame");
-            
+
             ImGui::Spacing();
-            ImGui::Text("État: %s", cpuRunning ? "EN COURS" : "ARRÊTÉ");
+            ImGui::Text("Status: %s", cpuRunning ? "RUNNING" : "STOPPED");
         }
         
         // Désassemblage de l'instruction courante
-        if (ImGui::CollapsingHeader("Instruction courante", ImGuiTreeNodeFlags_DefaultOpen)) {
+        if (ImGui::CollapsingHeader("Current Instruction", ImGuiTreeNodeFlags_DefaultOpen)) {
             quint16 pc = cpu->getProgramCounter();
             quint8 opcode = memory->memRead(pc);
             quint8 operand1 = memory->memRead(pc + 1);
@@ -498,11 +508,11 @@ void MainWindow_ImGui::renderDebugDialog()
         }
         
         // Pile
-        if (ImGui::CollapsingHeader("Pile (Stack)", ImGuiTreeNodeFlags_DefaultOpen)) {
+        if (ImGui::CollapsingHeader("Stack", ImGuiTreeNodeFlags_DefaultOpen)) {
             quint8 sp = cpu->getStackPointer();
             ImGui::Text("Stack Pointer: 0x01%02X", sp);
             
-            ImGui::Text("Top 8 bytes de la pile:");
+            ImGui::Text("Top 8 stack bytes:");
             ImGui::Columns(2, "StackColumns");
             for (int i = 0; i < 8; i++) {
                 quint16 addr = 0x0100 + ((sp + i + 1) & 0xFF);
@@ -516,7 +526,7 @@ void MainWindow_ImGui::renderDebugDialog()
         }
         
         // Console de log
-        if (ImGui::CollapsingHeader("Console de log")) {
+        if (ImGui::CollapsingHeader("Log Console")) {
             ImGui::BeginChild("DebugConsole", ImVec2(0, 200), true);
             
             // Afficher les dernières opérations
@@ -551,7 +561,7 @@ void MainWindow_ImGui::renderDebugDialog()
             
             ImGui::EndChild();
             
-            if (ImGui::Button("Effacer log")) {
+            if (ImGui::Button("Clear Log")) {
                 debugLog.clear();
             }
         }
@@ -562,27 +572,27 @@ void MainWindow_ImGui::renderDebugDialog()
 void MainWindow_ImGui::renderScreenConfigDialog()
 {
     ImGui::SetNextWindowSize(ImVec2(400, 300), ImGuiCond_FirstUseEver);
-    if (ImGui::Begin("Configuration de l'écran", &showScreenConfig)) {
-        ImGui::Text("Options d'affichage");
+    if (ImGui::Begin("Display Settings", &showScreenConfig)) {
+        ImGui::Text("Display Options");
         ImGui::Separator();
 
-        ImGui::Checkbox("Moniteur vert (style vintage)", &screen->greenMonitor);
-        ImGui::Checkbox("Curseur", &screen->showCursor);
+        ImGui::Checkbox("Green Monitor (vintage style)", &screen->greenMonitor);
+        ImGui::Checkbox("Cursor", &screen->showCursor);
 
         ImGui::Spacing();
-        ImGui::Text("Échelle d'affichage:");
+        ImGui::Text("Display Scale:");
         ImGui::SliderFloat("##Scale", &screen->scale, 0.5f, 4.0f, "%.1fx");
 
         ImGui::Spacing();
-        ImGui::Text("Effet écran cathodique (CRT)");
+        ImGui::Text("CRT Effect");
         ImGui::Separator();
         ImGui::Checkbox("Scanlines", &screen->crtEffect);
         if (screen->crtEffect) {
-            ImGui::SliderFloat("Intensité scanlines", &screen->crtScanlineAlpha, 0.0f, 0.8f, "%.2f");
+            ImGui::SliderFloat("Scanline Intensity", &screen->crtScanlineAlpha, 0.0f, 0.8f, "%.2f");
         }
 
         ImGui::Spacing();
-        if (ImGui::Checkbox("Plein écran", &fullscreen)) {
+        if (ImGui::Checkbox("Fullscreen", &fullscreen)) {
             if (window) {
                 if (fullscreen) {
                     GLFWmonitor* monitor = glfwGetPrimaryMonitor();
@@ -595,7 +605,7 @@ void MainWindow_ImGui::renderScreenConfigDialog()
         }
 
         ImGui::Spacing();
-        if (ImGui::Button("Fermer")) {
+        if (ImGui::Button("Close")) {
             showScreenConfig = false;
         }
     }
@@ -605,70 +615,70 @@ void MainWindow_ImGui::renderScreenConfigDialog()
 void MainWindow_ImGui::renderMemoryConfigDialog()
 {
     ImGui::SetNextWindowSize(ImVec2(450, 400), ImGuiCond_FirstUseEver);
-    if (ImGui::Begin("Configuration de la mémoire", &showMemoryConfig)) {
+    if (ImGui::Begin("Memory Settings", &showMemoryConfig)) {
         static bool writeProtect = true;
-        
-        ImGui::Text("Protection ROM");
+
+        ImGui::Text("ROM Protection");
         ImGui::Separator();
-        if (ImGui::Checkbox("Protéger les ROM en écriture", &writeProtect)) {
+        if (ImGui::Checkbox("Write-protect ROMs", &writeProtect)) {
             memory->setWriteInRom(!writeProtect);
         }
-        
+
         ImGui::Spacing();
-        ImGui::Text("Chargement des ROM");
+        ImGui::Text("ROM Loading");
         ImGui::Separator();
-        
-        if (ImGui::Button("Recharger BASIC")) {
+
+        if (ImGui::Button("Reload BASIC")) {
             memory->setWriteInRom(true);
             memory->loadBasic();
             memory->setWriteInRom(!writeProtect);
-            setStatusMessage("BASIC rechargé", 2.0f);
+            setStatusMessage("BASIC reloaded", 2.0f);
         }
-        
-        if (ImGui::Button("Recharger WOZ Monitor")) {
+
+        if (ImGui::Button("Reload WOZ Monitor")) {
             memory->setWriteInRom(true);
             memory->loadWozMonitor();
             memory->setWriteInRom(!writeProtect);
-            setStatusMessage("WOZ Monitor rechargé", 2.0f);
+            setStatusMessage("WOZ Monitor reloaded", 2.0f);
         }
-        
-        if (ImGui::Button("Recharger Krusader")) {
+
+        if (ImGui::Button("Reload Krusader")) {
             memory->setWriteInRom(true);
             memory->loadKrusader();
             memory->setWriteInRom(!writeProtect);
-            setStatusMessage("Krusader rechargé", 2.0f);
+            setStatusMessage("Krusader reloaded", 2.0f);
         }
-        
+
         ImGui::Spacing();
-        ImGui::Text("Mémoire");
+        ImGui::Text("Memory");
         ImGui::Separator();
-        
-        if (ImGui::Button("Effacer toute la mémoire")) {
-            ImGui::OpenPopup("Confirmation##ClearMemory");
+
+        if (ImGui::Button("Clear All Memory")) {
+            ImGui::OpenPopup("Confirm##ClearMemory");
         }
-        
-        if (ImGui::BeginPopupModal("Confirmation##ClearMemory", nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
-            ImGui::Text("Êtes-vous sûr de vouloir effacer toute la mémoire ?");
+
+        if (ImGui::BeginPopupModal("Confirm##ClearMemory", nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
+            ImGui::Text("Are you sure you want to clear all memory?");
             ImGui::Separator();
-            
-            if (ImGui::Button("Oui", ImVec2(120, 0))) {
+
+            if (ImGui::Button("Yes", ImVec2(120, 0))) {
                 memory->resetMemory();
-                setStatusMessage("Mémoire effacée", 2.0f);
+                setStatusMessage("Memory cleared", 2.0f);
                 ImGui::CloseCurrentPopup();
             }
             ImGui::SameLine();
-            if (ImGui::Button("Non", ImVec2(120, 0))) {
+            if (ImGui::Button("No", ImVec2(120, 0))) {
                 ImGui::CloseCurrentPopup();
             }
             ImGui::EndPopup();
         }
-        
-        if (ImGui::Button("Actualiser le visualiseur")) {
-            setStatusMessage("Visualiseur actualisé", 2.0f);
+
+        if (ImGui::Button("Refresh Viewer")) {
+            setStatusMessage("Viewer refreshed", 2.0f);
         }
-        
+
         ImGui::Spacing();
-        if (ImGui::Button("Fermer")) {
+        if (ImGui::Button("Close")) {
             showMemoryConfig = false;
         }
     }
@@ -684,7 +694,7 @@ void MainWindow_ImGui::loadMemory()
 void MainWindow_ImGui::renderLoadDialog()
 {
     ImGui::SetNextWindowSize(ImVec2(550, 450), ImGuiCond_FirstUseEver);
-    if (ImGui::Begin("Charger un programme", &showLoadDialog)) {
+    if (ImGui::Begin("Load Program", &showLoadDialog)) {
         static char filePath[512] = "";
         static char addressStr[8] = "0300";
         static int fileType = 1; // 0=binary, 1=hex dump
@@ -771,16 +781,16 @@ void MainWindow_ImGui::renderLoadDialog()
         ImGui::EndChild();
 
         ImGui::Separator();
-        ImGui::Text("Fichier sélectionné :");
+        ImGui::Text("Selected file:");
         ImGui::SetNextItemWidth(-1);
         ImGui::InputText("##filepath", filePath, sizeof(filePath));
 
-        ImGui::RadioButton("Binaire (.bin)", &fileType, 0);
+        ImGui::RadioButton("Binary (.bin)", &fileType, 0);
         ImGui::SameLine();
         ImGui::RadioButton("Hex dump (.txt)", &fileType, 1);
 
         if (fileType == 0) {
-            ImGui::Text("Adresse (hex) :");
+            ImGui::Text("Address (hex):");
             ImGui::SameLine();
             ImGui::SetNextItemWidth(80);
             ImGui::InputText("##address", addressStr, sizeof(addressStr),
@@ -788,7 +798,7 @@ void MainWindow_ImGui::renderLoadDialog()
         }
 
         ImGui::Spacing();
-        if (ImGui::Button("Charger", ImVec2(120, 0))) {
+        if (ImGui::Button("Load", ImVec2(120, 0))) {
             int result;
             quint16 addr = 0;
             if (fileType == 0) {
@@ -812,17 +822,17 @@ void MainWindow_ImGui::renderLoadDialog()
                 cpuRunning = true;
                 stepMode = false;
                 std::stringstream ss;
-                ss << "Programme lancé à 0x" << std::hex << std::uppercase << addr;
+                ss << "Program started at 0x" << std::hex << std::uppercase << addr;
                 setStatusMessage(ss.str(), 3.0f);
                 showLoadDialog = false;
                 filesScanned = false;
                 softAsmRoot.clear();
             } else {
-                setStatusMessage("Erreur : impossible de charger le fichier", 3.0f);
+                setStatusMessage("Error: unable to load file", 3.0f);
             }
         }
         ImGui::SameLine();
-        if (ImGui::Button("Annuler", ImVec2(120, 0))) {
+        if (ImGui::Button("Cancel", ImVec2(120, 0))) {
             showLoadDialog = false;
             filesScanned = false;
             softAsmRoot.clear();
@@ -833,14 +843,115 @@ void MainWindow_ImGui::renderLoadDialog()
 
 void MainWindow_ImGui::saveMemory()
 {
-    setStatusMessage("Fonction de sauvegarde de mémoire (à implémenter avec nativefiledialog)", 3.0f);
-    // Nécessiterait nativefiledialog ou une implémentation système
+    showSaveDialog = true;
+}
+
+void MainWindow_ImGui::renderSaveDialog()
+{
+    ImGui::SetNextWindowSize(ImVec2(500, 320), ImGuiCond_FirstUseEver);
+    if (ImGui::Begin("Save Memory", &showSaveDialog)) {
+        static char filename[256] = "dump.txt";
+        static char startStr[8] = "0000";
+        static char endStr[8] = "0FFF";
+        static int saveFormat = 1; // 0=binary, 1=hex dump
+
+        ImGui::Text("Format:");
+        ImGui::RadioButton("Binary (.bin)", &saveFormat, 0);
+        ImGui::SameLine();
+        ImGui::RadioButton("Hex dump (.txt)", &saveFormat, 1);
+
+        ImGui::Spacing();
+        ImGui::Text("Filename:");
+        ImGui::SetNextItemWidth(-1);
+        ImGui::InputText("##savefile", filename, sizeof(filename));
+
+        ImGui::Spacing();
+        ImGui::Text("Address range (hex):");
+        ImGui::SetNextItemWidth(80);
+        ImGui::InputText("##startaddr", startStr, sizeof(startStr),
+                         ImGuiInputTextFlags_CharsHexadecimal | ImGuiInputTextFlags_CharsUppercase);
+        ImGui::SameLine();
+        ImGui::Text("-");
+        ImGui::SameLine();
+        ImGui::SetNextItemWidth(80);
+        ImGui::InputText("##endaddr", endStr, sizeof(endStr),
+                         ImGuiInputTextFlags_CharsHexadecimal | ImGuiInputTextFlags_CharsUppercase);
+
+        quint16 startAddr = (quint16)strtol(startStr, nullptr, 16);
+        quint16 endAddr = (quint16)strtol(endStr, nullptr, 16);
+        int size = (endAddr >= startAddr) ? (endAddr - startAddr + 1) : 0;
+        ImGui::Text("Size: %d bytes (%d pages)", size, (size + 255) / 256);
+
+        ImGui::Spacing();
+        if (ImGui::Button("Save", ImVec2(120, 0)) && size > 0) {
+            // Build path in soft-asm directory
+            std::string path = filename;
+
+            std::ofstream file(path, saveFormat == 0 ? std::ios::binary : std::ios::out);
+            if (file.is_open()) {
+                if (saveFormat == 0) {
+                    // Binary format
+                    for (quint16 a = startAddr; a <= endAddr; ++a) {
+                        quint8 b = memory->memRead(a);
+                        file.write(reinterpret_cast<char*>(&b), 1);
+                        if (a == 0xFFFF) break;
+                    }
+                } else {
+                    // Woz Monitor hex dump format
+                    for (quint16 a = startAddr; a <= endAddr; a += 16) {
+                        file << std::hex << std::uppercase << std::setfill('0')
+                             << std::setw(4) << a << ":";
+                        int lineEnd = std::min((int)a + 16, (int)endAddr + 1);
+                        for (int i = a; i < lineEnd; ++i) {
+                            file << " " << std::setw(2) << (int)memory->memRead((quint16)i);
+                        }
+                        file << "\n";
+                        if (a + 16 < a) break; // overflow guard
+                    }
+                }
+                file.close();
+                std::stringstream ss;
+                ss << "Saved $" << std::hex << std::uppercase << startAddr
+                   << "-$" << endAddr << " to " << path;
+                setStatusMessage(ss.str(), 3.0f);
+                showSaveDialog = false;
+            } else {
+                setStatusMessage("Error: unable to write file", 3.0f);
+            }
+        }
+        ImGui::SameLine();
+        if (ImGui::Button("Cancel", ImVec2(120, 0))) {
+            showSaveDialog = false;
+        }
+    }
+    ImGui::End();
 }
 
 void MainWindow_ImGui::pasteCode()
 {
-    setStatusMessage("Fonction de collage de code (à implémenter avec clipboard)", 3.0f);
-    // Nécessiterait l'accès au presse-papiers système
+    const char* clipboard = glfwGetClipboardString(window);
+    if (!clipboard || strlen(clipboard) == 0) {
+        setStatusMessage("Clipboard is empty", 2.0f);
+        return;
+    }
+
+    // Feed each character to the Apple 1 keyboard as if typed
+    const char* p = clipboard;
+    while (*p) {
+        char c = *p;
+        // Convert newline to carriage return (Apple 1 convention)
+        if (c == '\n') c = '\r';
+        // Skip non-printable except CR
+        if (c == '\r' || (c >= 32 && c <= 126)) {
+            // Convert to uppercase (Apple 1 convention)
+            if (c >= 'a' && c <= 'z') c = c - 'a' + 'A';
+            memory->setKeyPressed(c);
+            // Run some CPU cycles to process each character
+            cpu->run(5000);
+        }
+        ++p;
+    }
+    setStatusMessage("Code pasted from clipboard", 2.0f);
 }
 
 void MainWindow_ImGui::quit()
@@ -851,7 +962,7 @@ void MainWindow_ImGui::quit()
 void MainWindow_ImGui::reset()
 {
     cpu->softReset();
-    setStatusMessage("Reset logiciel effectué", 2.0f);
+    setStatusMessage("Soft reset done", 2.0f);
 }
 
 void MainWindow_ImGui::hardReset()
@@ -860,7 +971,7 @@ void MainWindow_ImGui::hardReset()
     memory->resetMemory();
     memory->initMemory();
     screen->clear();
-    setStatusMessage("Reset matériel effectué - Mémoire réinitialisée", 2.0f);
+    setStatusMessage("Hard reset done - Memory cleared", 2.0f);
 }
 
 void MainWindow_ImGui::debugCpu()
@@ -883,6 +994,164 @@ void MainWindow_ImGui::about()
     showAbout = true;
 }
 
+void MainWindow_ImGui::renderMemoryMapWindow()
+{
+    ImGui::SetNextWindowSize(ImVec2(340, 560), ImGuiCond_FirstUseEver);
+    if (!ImGui::Begin("Memory Map", &showMemoryMap)) {
+        ImGui::End();
+        return;
+    }
+
+    // Memory regions with colors
+    struct MemRegion {
+        quint16 start;
+        quint16 end; // inclusive
+        ImU32 color;
+        const char* label;
+    };
+
+    MemRegion regions[] = {
+        { 0x0000, 0x00FF, IM_COL32(100, 100, 255, 255), "Zero Page" },
+        { 0x0100, 0x01FF, IM_COL32(255, 165,   0, 255), "Stack" },
+        { 0x0200, 0x9FFF, IM_COL32( 80, 200,  80, 255), "User RAM" },
+        { 0xA000, 0xBFFF, IM_COL32(200,  80, 200, 255), "Krusader ROM" },
+        { 0xC000, 0xCFFF, IM_COL32( 60,  60,  60, 255), "Unused" },
+        { 0xD000, 0xD0FF, IM_COL32(255,  80,  80, 255), "I/O (KBD/DSP)" },
+        { 0xD100, 0xDFFF, IM_COL32( 60,  60,  60, 255), "Unused" },
+        { 0xE000, 0xEFFF, IM_COL32(255, 255,  80, 255), "BASIC ROM" },
+        { 0xF000, 0xFEFF, IM_COL32( 60,  60,  60, 255), "Unused" },
+        { 0xFF00, 0xFFFF, IM_COL32(  0, 200, 255, 255), "Woz Monitor ROM" },
+    };
+    int numRegions = sizeof(regions) / sizeof(regions[0]);
+
+    // --- Legende ---
+    ImGui::Text("Legend:");
+    ImGui::Separator();
+    for (int i = 0; i < numRegions; ++i) {
+        ImVec2 p = ImGui::GetCursorScreenPos();
+        ImDrawList* dl = ImGui::GetWindowDrawList();
+        dl->AddRectFilled(p, ImVec2(p.x + 12, p.y + 12), regions[i].color);
+        dl->AddRect(p, ImVec2(p.x + 12, p.y + 12), IM_COL32(180, 180, 180, 255));
+        ImGui::Dummy(ImVec2(16, 14));
+        ImGui::SameLine();
+        ImGui::Text("$%04X-$%04X %s", regions[i].start, regions[i].end, regions[i].label);
+    }
+
+    ImGui::Spacing();
+    ImGui::Separator();
+    ImGui::Spacing();
+
+    // --- Visual memory map ---
+    // Each row = 256 bytes (one page), 256 rows total for 64KB
+    // Display as a grid: each pixel = 1 page (256 bytes)
+    ImGui::Text("Map (1 cell = 256 bytes):");
+    ImGui::Spacing();
+
+    const int COLS = 16;  // 16 columns x 16 rows = 256 pages = 64KB
+    const int ROWS = 16;
+    float cellSize = 16.0f;
+    float spacing = 1.0f;
+
+    ImVec2 origin = ImGui::GetCursorScreenPos();
+    ImDrawList* drawList = ImGui::GetWindowDrawList();
+
+    const quint8* memPtr = memory->getMemoryPointer();
+
+    // PC marker
+    quint16 pc = cpu->getProgramCounter();
+    int pcPage = pc >> 8;
+    // SP marker
+    quint8 sp = cpu->getStackPointer();
+    int spPage = 1; // stack is always page 1
+
+    for (int row = 0; row < ROWS; ++row) {
+        for (int col = 0; col < COLS; ++col) {
+            int page = row * COLS + col;
+            quint16 addr = (quint16)(page << 8);
+
+            // Find region color
+            ImU32 baseColor = IM_COL32(40, 40, 40, 255);
+            for (int r = 0; r < numRegions; ++r) {
+                if (addr >= regions[r].start && addr <= regions[r].end) {
+                    baseColor = regions[r].color;
+                    break;
+                }
+            }
+
+            // Check if page has non-zero data (for RAM regions, show activity)
+            bool hasData = false;
+            if (addr < 0xA000) { // Only check RAM area
+                for (int b = 0; b < 256; ++b) {
+                    if (memPtr[addr + b] != 0) {
+                        hasData = true;
+                        break;
+                    }
+                }
+            }
+
+            // Dim empty RAM pages
+            ImU32 cellColor = baseColor;
+            if (addr >= 0x0200 && addr <= 0x9FFF && !hasData) {
+                // Darken unused RAM
+                cellColor = IM_COL32(30, 60, 30, 255);
+            }
+
+            float x = origin.x + col * (cellSize + spacing);
+            float y = origin.y + row * (cellSize + spacing);
+            ImVec2 p0(x, y);
+            ImVec2 p1(x + cellSize, y + cellSize);
+
+            drawList->AddRectFilled(p0, p1, cellColor);
+
+            // PC indicator: white border
+            if (page == pcPage) {
+                drawList->AddRect(p0, p1, IM_COL32(255, 255, 255, 255), 0.0f, 0, 2.0f);
+            }
+            // SP indicator: orange border
+            if (page == spPage) {
+                ImVec2 inner0(p0.x + 1, p0.y + 1);
+                ImVec2 inner1(p1.x - 1, p1.y - 1);
+                drawList->AddRect(inner0, inner1, IM_COL32(255, 165, 0, 255), 0.0f, 0, 1.0f);
+            }
+
+            // Tooltip on hover
+            ImVec2 mousePos = ImGui::GetMousePos();
+            if (mousePos.x >= p0.x && mousePos.x < p1.x &&
+                mousePos.y >= p0.y && mousePos.y < p1.y) {
+                ImGui::BeginTooltip();
+                ImGui::Text("Page $%02X : $%04X-$%04X", page, addr, addr + 0xFF);
+                // Find region name
+                for (int r = 0; r < numRegions; ++r) {
+                    if (addr >= regions[r].start && addr <= regions[r].end) {
+                        ImGui::Text("%s", regions[r].label);
+                        break;
+                    }
+                }
+                if (page == pcPage) ImGui::Text("PC = $%04X", pc);
+                ImGui::EndTooltip();
+            }
+        }
+    }
+
+    // Address labels on the right: each row = 4KB
+    float rightMargin = origin.x + COLS * (cellSize + spacing) + 4;
+    for (int row = 0; row < ROWS; ++row) {
+        float y = origin.y + row * (cellSize + spacing) + 2;
+        int kb = row * 4;
+        char label[16];
+        snprintf(label, sizeof(label), "%dK", kb);
+        drawList->AddText(ImVec2(rightMargin, y), IM_COL32(150, 150, 150, 255), label);
+    }
+
+    // Reserve space for the grid + right labels
+    ImGui::Dummy(ImVec2(COLS * (cellSize + spacing) + 40, ROWS * (cellSize + spacing)));
+
+    ImGui::Spacing();
+    ImGui::Text("PC = $%04X  SP = $01%02X", pc, sp);
+
+    ImGui::End();
+}
+
 void MainWindow_ImGui::setStatusMessage(const std::string& message, float duration)
 {
     statusMessage = message;
@@ -894,7 +1163,7 @@ void MainWindow_ImGui::updateStatus(float deltaTime)
     if (statusTimer > 0.0f) {
         statusTimer -= deltaTime;
         if (statusTimer <= 0.0f) {
-            statusMessage = "Prêt";
+            statusMessage = "Ready";
         }
     }
 }
@@ -912,14 +1181,14 @@ void MainWindow_ImGui::startCpu()
     cpuRunning = true;
     stepMode = false;
     cpu->start();
-    setStatusMessage("CPU démarré - Exécution en cours", 2.0f);
+    setStatusMessage("CPU started - Running", 2.0f);
 }
 
 void MainWindow_ImGui::stopCpu()
 {
     cpuRunning = false;
     cpu->stop();
-    setStatusMessage("CPU arrêté", 2.0f);
+    setStatusMessage("CPU stopped", 2.0f);
 }
 
 void MainWindow_ImGui::stepCpu()
@@ -933,7 +1202,7 @@ void MainWindow_ImGui::stepCpu()
     cpu->step();
     
     std::stringstream ss;
-    ss << "Pas à pas - PC: 0x" << std::hex << std::uppercase << cpu->getProgramCounter();
+    ss << "Step - PC: 0x" << std::hex << std::uppercase << cpu->getProgramCounter();
     setStatusMessage(ss.str(), 2.0f);
 }
 
@@ -995,6 +1264,9 @@ void MainWindow_ImGui::handleGlfwKey(int key, int scancode, int action, int mods
     }
 
     switch (key) {
+    case GLFW_KEY_F1: showMemoryViewer = !showMemoryViewer; return;
+    case GLFW_KEY_F2: showMemoryMap = !showMemoryMap; return;
+    case GLFW_KEY_F3: showDebugger = !showDebugger; return;
     case GLFW_KEY_F5: reset(); return;
     case GLFW_KEY_F6:
         if (cpuRunning)
@@ -1004,9 +1276,6 @@ void MainWindow_ImGui::handleGlfwKey(int key, int scancode, int action, int mods
         return;
     case GLFW_KEY_F7:
         stepCpu();
-        return;
-    case GLFW_KEY_F12:
-        debugCpu();
         return;
     default:
         break;
