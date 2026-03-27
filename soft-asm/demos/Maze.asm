@@ -22,10 +22,10 @@
 030C  A2 00     LDX #$00          ; cell_col = 0
 
 ; --- GENCHOICE: decide NORTH or EAST ---
-030E  A5 03     LDA $03           ; load CY
-0310  F0 0C     BEQ $031E         ; CY==0 → TOPROW
-0312  E0 12     CPX #$12          ; CX==18 (rightmost)?
-0314  F0 0D     BEQ $0323         ; → RIGHTCOL
+030E  E0 12     CPX #$12          ; CX==18 (rightmost)?
+0310  F0 11     BEQ $0323         ; → RIGHTCOL (force NORTH)
+0312  A5 03     LDA $03           ; load CY
+0314  F0 08     BEQ $031E         ; CY==0 → TOPROW (force EAST)
 0316  20 C0 03  JSR $03C0         ; call RANDOM
 0319  29 01     AND #$01          ; 0=NORTH, 1=EAST
 031B  4C 25 03  JMP $0325         ; → STORECHOICE
