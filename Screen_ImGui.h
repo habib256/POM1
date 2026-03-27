@@ -22,7 +22,7 @@ public:
     // Options d'affichage
     bool showCursor = true;
     bool greenMonitor = true;
-    float scale = 2.0f;
+    float scale = 1.4f;
     bool crtEffect = true;
     float crtScanlineAlpha = 0.35f;
 
