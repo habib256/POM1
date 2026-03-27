@@ -5,6 +5,8 @@ Full MOS 6502 CPU emulation, 64 KB memory, memory-mapped I/O, and the original R
 
 Ported from the original Java POM1 project to modern C++ for speed, simplicity, and zero framework bloat.
 
+![POM1 Screenshot](doc/screenshot.png)
+
 ## What You Get
 
 - **Authentic Apple 1 display** — 40x24 character grid, green phosphor or white mode, blinking `@` cursor, CRT scanline effect
