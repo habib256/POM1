@@ -652,12 +652,8 @@ void M6502::BRK(void)
 
 void M6502::RTI(void)
 {
-    std::cout << "=== RTI appelé ===" << std::endl;
-    std::cout << "RTI: PC avant=" << std::hex << programCounter << ", SP=" << (int)stackPointer << std::endl;
     PLP();
-    quint16 pcBefore = programCounter;
     popProgramCounter();
-    std::cout << "RTI: PC restauré depuis stack: 0x" << std::hex << pcBefore << " -> 0x" << programCounter << std::endl;
     cycles++;
 }
 
