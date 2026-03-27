@@ -7,7 +7,7 @@
 A faithful Apple 1 emulator built with Dear ImGui & OpenGL — fast, lightweight, and pixel-perfect.
 
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](LICENSE)
-[![Platform](https://img.shields.io/badge/Platform-Linux%20%7C%20macOS-lightgrey.svg)](#-quick-start)
+[![Platform](https://img.shields.io/badge/Platform-Linux%20%7C%20macOS%20%7C%20Windows-lightgrey.svg)](#-quick-start)
 [![C++](https://img.shields.io/badge/C%2B%2B-17-orange.svg)](#)
 
 ![POM1 Screenshot](doc/screenshot.png)
@@ -40,12 +40,28 @@ A faithful Apple 1 emulator built with Dear ImGui & OpenGL — fast, lightweight
 
 ## 🚀 Quick Start
 
+### 🐧 Linux / 🍏 macOS
+
 ```bash
 git clone https://github.com/gistarcade/POM1.git
 cd POM1
 ./setup_imgui.sh                    # fetch Dear ImGui + install deps (one-time)
 cd build && cmake .. && make
 cd .. && ./run_emulator.sh          # copies ROMs & launches the emulator
+```
+
+### 🪟 Windows
+
+**Prerequisites:** [Visual Studio](https://visualstudio.microsoft.com/) (C++ workload), [CMake](https://cmake.org/download/), [Git](https://git-scm.com/download/win), [vcpkg](https://vcpkg.io/)
+
+```batch
+git clone https://github.com/gistarcade/POM1.git
+cd POM1
+setup_imgui.bat                     REM fetch Dear ImGui + install GLFW via vcpkg
+cd build
+cmake --build . --config Release
+cd ..
+run_emulator.bat                    REM copies ROMs & launches the emulator
 ```
 
 ### 📦 Manual dependency install
@@ -79,6 +95,14 @@ sudo pacman -S cmake glfw mesa pkgconf
 
 ```bash
 brew install cmake glfw pkg-config
+```
+</details>
+
+<details>
+<summary>Windows (vcpkg)</summary>
+
+```batch
+vcpkg install glfw3:x64-windows
 ```
 </details>
 

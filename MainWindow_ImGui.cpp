@@ -760,7 +760,7 @@ void MainWindow_ImGui::renderLoadDialog()
         for (const auto& d : dirList) {
             std::string label = d + "/";
             if (ImGui::Selectable(label.c_str(), false)) {
-                currentDir = currentDir + "/" + d;
+                currentDir = (std::filesystem::path(currentDir) / d).string();
                 filesScanned = false;
             }
         }
@@ -768,7 +768,7 @@ void MainWindow_ImGui::renderLoadDialog()
         // Fichiers
         for (const auto& f : fileList) {
             if (ImGui::Selectable(f.c_str())) {
-                std::string fullPath = currentDir + "/" + f;
+                std::string fullPath = (std::filesystem::path(currentDir) / f).string();
                 strncpy(filePath, fullPath.c_str(), sizeof(filePath) - 1);
                 filePath[sizeof(filePath) - 1] = '\0';
                 // Auto-detect type

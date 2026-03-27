@@ -4,16 +4,22 @@ project(pom1_imgui)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-# Find packages
-find_package(PkgConfig REQUIRED)
+# Find OpenGL
 find_package(OpenGL REQUIRED)
 
-# GLFW
-pkg_check_modules(GLFW3 REQUIRED IMPORTED_TARGET glfw3)
+# Find GLFW: try find_package first (vcpkg, Homebrew), fall back to pkg-config (apt, dnf)
+find_package(glfw3 3.3 QUIET CONFIG)
+if(glfw3_FOUND)
+    set(GLFW_TARGET glfw)
+else()
+    find_package(PkgConfig REQUIRED)
+    pkg_check_modules(GLFW3 REQUIRED IMPORTED_TARGET glfw3)
+    set(GLFW_TARGET PkgConfig::GLFW3)
+endif()
 
 # ImGui
 set(IMGUI_DIR ${CMAKE_CURRENT_SOURCE_DIR}/imgui)
-file(GLOB IMGUI_SOURCES 
+file(GLOB IMGUI_SOURCES
     ${IMGUI_DIR}/*.cpp
     ${IMGUI_DIR}/backends/imgui_impl_glfw.cpp
     ${IMGUI_DIR}/backends/imgui_impl_opengl3.cpp
@@ -44,12 +50,11 @@ add_executable(${PROJECT_NAME} ${SOURCES} ${HEADERS} ${IMGUI_SOURCES})
 target_include_directories(${PROJECT_NAME} PRIVATE
     ${IMGUI_DIR}
     ${IMGUI_DIR}/backends
-    ${GLFW3_INCLUDE_DIRS}
 )
 
 # Link libraries
 target_link_libraries(${PROJECT_NAME}
-    PkgConfig::GLFW3
+    ${GLFW_TARGET}
     ${OPENGL_LIBRARIES}
 )
 
@@ -62,5 +67,17 @@ if(APPLE)
     )
 endif()
 
-# Compiler flags
-target_compile_options(${PROJECT_NAME} PRIVATE ${GLFW3_CFLAGS_OTHER}) 
+# Windows-specific
+if(WIN32)
+    target_link_libraries(${PROJECT_NAME} opengl32)
+endif()
+
+if(MSVC)
+    target_compile_definitions(${PROJECT_NAME} PRIVATE _CRT_SECURE_NO_WARNINGS)
+    target_compile_options(${PROJECT_NAME} PRIVATE /utf-8)
+endif()
+
+# Compiler flags (pkg-config only)
+if(NOT glfw3_FOUND)
+    target_compile_options(${PROJECT_NAME} PRIVATE ${GLFW3_CFLAGS_OTHER})
+endif()
