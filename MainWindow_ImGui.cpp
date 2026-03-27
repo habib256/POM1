@@ -77,8 +77,10 @@ void MainWindow_ImGui::render()
         ImGui::PushFont(ImGui::GetIO().Fonts->Fonts[0]);
         ImVec2 charSize = ImGui::CalcTextSize("M");
         ImGui::PopFont();
-        float sw = charSize.x * 40 * screen->scale + 40; // marge fenêtre
-        float sh = charSize.y * 24 * screen->scale + 60;
+        float cellW = charSize.x * 1.4f; // must match Screen_ImGui::render() cell spacing
+        float cellH = charSize.y * 1.3f;
+        float sw = cellW * 40 * screen->scale + 40; // marge fenêtre
+        float sh = cellH * 24 * screen->scale + 60;
         float toolbarBottom = ImGui::GetFrameHeight() + 34.0f;
         ImGui::SetNextWindowPos(ImVec2(10, toolbarBottom + 5));
         ImGui::SetNextWindowSize(ImVec2(sw, sh));
