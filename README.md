@@ -4,7 +4,7 @@
 
 **Experience the machine that started the personal computer revolution.**
 
-A faithful Apple 1 emulator built with Dear ImGui & OpenGL — fast, lightweight, and pixel-perfect.
+A faithful Apple 1 emulator built with Dear ImGui & OpenGL — fast, lightweight, and cross-platform.
 
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](LICENSE)
 [![Platform](https://img.shields.io/badge/Platform-Linux%20%7C%20macOS%20%7C%20Windows-lightgrey.svg)](#-quick-start)
