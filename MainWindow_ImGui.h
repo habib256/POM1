@@ -37,6 +37,8 @@ private:
     bool showScreenConfig = false;
     bool showMemoryConfig = false;
     bool showLoadDialog = false;
+    bool showMemoryMap = false;
+    bool showSaveDialog = false;
     bool fullscreen = false;
     
     // CPU execution state
@@ -63,6 +65,8 @@ private:
     void renderScreenConfigDialog();
     void renderMemoryConfigDialog();
     void renderLoadDialog();
+    void renderMemoryMapWindow();
+    void renderSaveDialog();
 
     // Action functions
     void loadMemory();

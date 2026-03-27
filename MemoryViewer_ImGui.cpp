@@ -41,7 +41,7 @@ void MemoryViewer_ImGui::renderControls()
     }
     
     ImGui::SameLine();
-    if (ImGui::Button("Aller##gotoAddr")) {
+    if (ImGui::Button("Go##gotoAddr")) {
         int addr = 0;
         if (sscanf(addressBuffer, "%X", &addr) == 1) {
             jumpToAddress(addr);
@@ -49,34 +49,34 @@ void MemoryViewer_ImGui::renderControls()
     }
     
     ImGui::SameLine();
-    if (ImGui::Button("Rechercher##toggleSearch")) {
+    if (ImGui::Button("Search##toggleSearch")) {
         showSearch = !showSearch;
     }
     
     // Options d'affichage
     ImGui::Spacing();
-    ImGui::Text("Affichage:");
+    ImGui::Text("Display:");
     ImGui::SameLine();
     
     ImGui::SetNextItemWidth(60);
-    ImGui::SliderInt("##BytesPerRow", &bytesPerRow, 8, 32, "%d octets/ligne");
+    ImGui::SliderInt("##BytesPerRow", &bytesPerRow, 8, 32, "%d bytes/row");
     
     ImGui::SameLine();
     ImGui::SetNextItemWidth(60);
-    ImGui::SliderInt("##DisplayRows", &displayRows, 16, 64, "%d lignes");
+    ImGui::SliderInt("##DisplayRows", &displayRows, 16, 64, "%d rows");
     
     ImGui::SameLine();
     ImGui::Checkbox("ASCII", &showAscii);
     
     ImGui::SameLine();
-    ImGui::Checkbox("Auto-actualisation", &autoRefresh);
+    ImGui::Checkbox("Auto-refresh", &autoRefresh);
 
     ImGui::SameLine();
-    ImGui::Checkbox("Coloriser", &colorizeRegions);
+    ImGui::Checkbox("Colorize", &colorizeRegions);
     
     // Raccourcis rapides
     ImGui::Spacing();
-    ImGui::Text("Raccourcis:");
+    ImGui::Text("Shortcuts:");
     ImGui::SameLine();
     
     if (ImGui::SmallButton("0x0000##shortcut0")) jumpToAddress(0x0000);
@@ -101,7 +101,7 @@ void MemoryViewer_ImGui::renderControls()
     // Afficher les bookmarks
     if (!bookmarks.empty()) {
         ImGui::SameLine();
-        ImGui::Text("Favoris:");
+        ImGui::Text("Bookmarks:");
         for (size_t i = 0; i < bookmarks.size() && i < 5; ++i) {
             ImGui::SameLine();
             std::string label = formatAddress(bookmarks[i]) + "##bookmark" + std::to_string(i);
@@ -117,7 +117,7 @@ void MemoryViewer_ImGui::renderHexView()
     ImGui::BeginChild("HexView", ImVec2(0, 0), true);
     
     // En-tête des colonnes
-    ImGui::Text("Adresse ");
+    ImGui::Text("Address ");
     for (int i = 0; i < bytesPerRow; ++i) {
         ImGui::SameLine();
         ImGui::Text("%02X", i);
@@ -195,14 +195,14 @@ void MemoryViewer_ImGui::renderHexView()
 void MemoryViewer_ImGui::renderSearchDialog()
 {
     ImGui::SetNextWindowSize(ImVec2(450, 250), ImGuiCond_FirstUseEver);
-    if (ImGui::Begin("Recherche en mémoire", &showSearch)) {
-        ImGui::Checkbox("Recherche ASCII (texte)", &searchAscii);
+    if (ImGui::Begin("Memory Search", &showSearch)) {
+        ImGui::Checkbox("ASCII search (text)", &searchAscii);
 
         ImGui::Spacing();
         if (searchAscii) {
-            ImGui::Text("Rechercher une chaîne de caractères:");
+            ImGui::Text("Search for a string:");
         } else {
-            ImGui::Text("Rechercher une valeur hexadécimale:");
+            ImGui::Text("Search for a hex value:");
         }
 
         ImGui::SetNextItemWidth(-1);
@@ -212,7 +212,7 @@ void MemoryViewer_ImGui::renderSearchDialog()
         }
         bool searchTriggered = ImGui::InputText("##SearchInput", searchBuffer, sizeof(searchBuffer), flags);
 
-        if (ImGui::Button("Rechercher##searchBtn") || searchTriggered) {
+        if (ImGui::Button("Search##searchBtn") || searchTriggered) {
             if (searchAscii) {
                 searchAsciiString();
             } else {
@@ -221,15 +221,15 @@ void MemoryViewer_ImGui::renderSearchDialog()
         }
         
         ImGui::SameLine();
-        if (ImGui::Button("Fermer##closeBtn")) {
+        if (ImGui::Button("Close##closeBtn")) {
             showSearch = false;
         }
         
         if (searchAddress >= 0) {
             ImGui::Spacing();
-            ImGui::Text("Trouvé à l'adresse: 0x%04X", searchAddress);
+            ImGui::Text("Found at address: 0x%04X", searchAddress);
             ImGui::SameLine();
-            if (ImGui::Button("Aller à##gotoBtn")) {
+            if (ImGui::Button("Go to##gotoBtn")) {
                 jumpToAddress(searchAddress);
                 showSearch = false;
             }
@@ -297,16 +297,16 @@ char MemoryViewer_ImGui::getPrintableChar(quint8 value)
 void MemoryViewer_ImGui::renderEditPopup()
 {
     if (showEditPopup) {
-        ImGui::OpenPopup("Éditer Mémoire");
-        showEditPopup = false; // Reset pour la prochaine fois
+        ImGui::OpenPopup("Edit Memory");
+        showEditPopup = false;
     }
 
-    if (ImGui::BeginPopupModal("Éditer Mémoire", nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
-        ImGui::Text("Adresse: %s", formatAddress(editAddress).c_str());
-        ImGui::Text("Valeur actuelle: 0x%02X (%d)", memory->memRead(editAddress), memory->memRead(editAddress));
+    if (ImGui::BeginPopupModal("Edit Memory", nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
+        ImGui::Text("Address: %s", formatAddress(editAddress).c_str());
+        ImGui::Text("Current value: 0x%02X (%d)", memory->memRead(editAddress), memory->memRead(editAddress));
 
         ImGui::Spacing();
-        ImGui::Text("Nouvelle valeur (hex):");
+        ImGui::Text("New value (hex):");
         ImGui::SetNextItemWidth(60);
         bool enterPressed = ImGui::InputText("##EditValue", editBuffer, sizeof(editBuffer),
                                             ImGuiInputTextFlags_CharsHexadecimal |
@@ -314,7 +314,7 @@ void MemoryViewer_ImGui::renderEditPopup()
                                             ImGuiInputTextFlags_EnterReturnsTrue);
 
         ImGui::Spacing();
-        if (ImGui::Button("Écrire##writeBtn", ImVec2(120, 0)) || enterPressed) {
+        if (ImGui::Button("Write##writeBtn", ImVec2(120, 0)) || enterPressed) {
             quint8 newValue = 0;
             if (sscanf(editBuffer, "%hhX", &newValue) == 1) {
                 memory->memWrite(editAddress, newValue);
@@ -322,7 +322,7 @@ void MemoryViewer_ImGui::renderEditPopup()
             }
         }
         ImGui::SameLine();
-        if (ImGui::Button("Annuler##cancelBtn", ImVec2(120, 0))) {
+        if (ImGui::Button("Cancel##cancelBtn", ImVec2(120, 0))) {
             ImGui::CloseCurrentPopup();
         }
 
@@ -409,11 +409,21 @@ bool MemoryViewer_ImGui::isIO(int address)
 
 ImVec4 MemoryViewer_ImGui::getColorForAddress(int address)
 {
-    if (isROM(address)) {
-        return ImVec4(1.0f, 0.6f, 0.6f, 1.0f); // Rouge clair pour ROM
-    } else if (isIO(address)) {
-        return ImVec4(1.0f, 1.0f, 0.6f, 1.0f); // Jaune clair pour I/O
-    } else {
-        return ImVec4(0.8f, 1.0f, 0.8f, 1.0f); // Vert clair pour RAM
-    }
+    // Colors match the Memory Map window
+    if (address <= 0x00FF)
+        return ImVec4(0.39f, 0.39f, 1.0f, 1.0f);  // Zero Page - blue
+    if (address <= 0x01FF)
+        return ImVec4(1.0f, 0.65f, 0.0f, 1.0f);    // Stack - orange
+    if (address <= 0x9FFF)
+        return ImVec4(0.31f, 0.78f, 0.31f, 1.0f);   // User RAM - green
+    if (address <= 0xBFFF)
+        return ImVec4(0.78f, 0.31f, 0.78f, 1.0f);   // Krusader ROM - purple
+    if (address >= 0xD000 && address <= 0xD0FF)
+        return ImVec4(1.0f, 0.31f, 0.31f, 1.0f);    // I/O (KBD/DSP) - red
+    if (address >= 0xE000 && address <= 0xEFFF)
+        return ImVec4(1.0f, 1.0f, 0.31f, 1.0f);     // BASIC ROM - yellow
+    if (address >= 0xFF00)
+        return ImVec4(0.0f, 0.78f, 1.0f, 1.0f);     // Woz Monitor ROM - cyan
+    // Unused regions
+    return ImVec4(0.4f, 0.4f, 0.4f, 1.0f);
 } 

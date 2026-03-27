@@ -52,6 +52,7 @@ public:
     quint8 memRead(quint16 address);
     //quint8 memReadAbsolute(quint16 adr);
     void memWrite(quint16 address, quint8 value);
+    const quint8* getMemoryPointer() const { return mem.data(); }
 
     // Callback pour l'affichage Apple 1
     void setDisplayCallback(void (*callback)(char));
