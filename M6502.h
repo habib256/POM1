@@ -74,7 +74,7 @@ private :
     quint8 accumulator, xRegister, yRegister, statusRegister, stackPointer;
     int IRQ, NMI;
     quint16 programCounter;
-    quint8 btmp;
+    quint8 btmp = 0;
     quint16 op, opH, opL, ptrH, ptrL;
     quint8 ptr;
     int tmp;

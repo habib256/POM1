@@ -105,8 +105,8 @@ void Screen_ImGui::render()
             char c = screenBuffer[y][x];
             if (showCursor && x == cursorX && y == cursorY) {
                 static float blinkTimer = 0.0f;
-                blinkTimer += ImGui::GetIO().DeltaTime;
-                if (fmod(blinkTimer, 1.0f) < 0.5f) c = '@';
+                blinkTimer = fmod(blinkTimer + ImGui::GetIO().DeltaTime, 2.0f);
+                if (blinkTimer < 1.0f) c = '@';
             }
             if (c == 0 || c < 32) c = ' ';
             if (c == ' ') continue;

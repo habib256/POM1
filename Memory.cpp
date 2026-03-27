@@ -103,6 +103,10 @@ int Memory::loadBasic(void)
     file.read(fileContent.data(), fileSize);
     file.close();
     
+    if (fileContent.size() > 0x1000) {
+        cout << "ERROR: basic.rom too large (" << fileContent.size() << " bytes, max 4096)" << endl;
+        return 1;
+    }
     for (size_t i = 0; i < fileContent.size(); ++i) {
         mem[i+0xE000] = (quint8)fileContent[i];
     }
@@ -140,6 +144,10 @@ int Memory::loadKrusader(void)
     file.read(fileContent.data(), fileSize);
     file.close();
     
+    if (fileContent.size() > 0x2000) {
+        cout << "ERROR: krusader ROM too large (" << fileContent.size() << " bytes, max 8192)" << endl;
+        return 1;
+    }
     for (size_t i = 0; i < fileContent.size(); ++i) {
         mem[i+0xA000] = (quint8)fileContent[i];
     }
@@ -175,6 +183,10 @@ int Memory::loadWozMonitor(void)
     file.read(fileContent.data(), fileSize);
     file.close();
     
+    if (fileContent.size() > 0x100) {
+        cout << "ERROR: WozMonitor ROM too large (" << fileContent.size() << " bytes, max 256)" << endl;
+        return 1;
+    }
     for (size_t i = 0; i < fileContent.size(); ++i) {
         mem[i+0xFF00] = (quint8)fileContent[i];
     }
@@ -286,25 +298,47 @@ int Memory::loadHexDump(const char* filename, quint16 &startAddress)
             while (peek < cleaned.size() && (cleaned[peek] == ' ' || cleaned[peek] == '\t' || cleaned[peek] == '\r' || cleaned[peek] == '\n')) peek++;
 
             if (i < cleaned.size() && (cleaned[i] == 'R' || cleaned[i] == 'r')) {
-                // XXXXR = run command
+                // Handle merged data+run: e.g. "FFE2B3R" = data FF, run E2B3
+                if (hexStr.size() > 4) {
+                    size_t dataLen = hexStr.size() - 4;
+                    for (size_t j = 0; j + 1 < dataLen; j += 2) {
+                        quint8 val = (hexVal(hexStr[j]) << 4) | hexVal(hexStr[j + 1]);
+                        if (currentAddr < 0x10000) {
+                            mem[currentAddr++] = val;
+                            totalBytes++;
+                        }
+                    }
+                    hexStr = hexStr.substr(dataLen);
+                }
                 runAddr = (quint16)strtol(hexStr.c_str(), nullptr, 16);
                 hasRunAddr = true;
-                i++; // sauter le R
+                i++; // skip the R
                 continue;
             }
 
             if (peek < cleaned.size() && cleaned[peek] == ':' && hexStr.size() >= 3) {
-                // XXXX: = adresse (3+ hex digits; 2-digit values are data bytes)
+                // Handle merged data+address: e.g. "ED0300:" = data ED, address 0300
+                if (hexStr.size() > 4) {
+                    size_t dataLen = hexStr.size() - 4;
+                    for (size_t j = 0; j + 1 < dataLen; j += 2) {
+                        quint8 val = (hexVal(hexStr[j]) << 4) | hexVal(hexStr[j + 1]);
+                        if (currentAddr < 0x10000) {
+                            mem[currentAddr++] = val;
+                            totalBytes++;
+                        }
+                    }
+                    hexStr = hexStr.substr(dataLen);
+                }
                 currentAddr = (quint16)strtol(hexStr.c_str(), nullptr, 16);
                 if (firstAddr) {
                     startAddress = currentAddr;
                     firstAddr = false;
                 }
-                i = peek + 1; // sauter le ':'
+                i = peek + 1; // skip the ':'
                 continue;
             }
 
-            // Sinon c'est des données hex — parser par paires
+            // Data bytes — parse in pairs
             for (size_t j = 0; j + 1 < hexStr.size(); j += 2) {
                 quint8 val = (hexVal(hexStr[j]) << 4) | hexVal(hexStr[j + 1]);
                 if (currentAddr < 0x10000) {
@@ -351,7 +385,7 @@ quint8 Memory::memRead(quint16 address)
         // Display port: bit 7 = busy flag
         // Simule le délai du terminal Apple 1 (~60 chars/sec)
         if (displayBusyCycles > 0) {
-            displayBusyCycles -= 7; // ~7 cycles par itération de la boucle ECHO (BIT+BMI)
+            displayBusyCycles = std::max(0, displayBusyCycles - 7);
             return mem[address] | 0x80; // busy
         }
         return mem[address] & 0x7F; // ready

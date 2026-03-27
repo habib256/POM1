@@ -903,7 +903,7 @@ void MainWindow_ImGui::renderSaveDialog()
                              << std::setw(4) << a << ":";
                         int lineEnd = std::min((int)a + 16, (int)endAddr + 1);
                         for (int i = a; i < lineEnd; ++i) {
-                            file << " " << std::setw(2) << (int)memory->memRead((quint16)i);
+                            file << " " << std::setfill('0') << std::setw(2) << (int)memory->memRead((quint16)i);
                         }
                         file << "\n";
                         if (a + 16 < a) break; // overflow guard
@@ -937,7 +937,9 @@ void MainWindow_ImGui::pasteCode()
 
     // Feed each character to the Apple 1 keyboard as if typed
     const char* p = clipboard;
-    while (*p) {
+    int charCount = 0;
+    const int MAX_PASTE_CHARS = 4096;
+    while (*p && charCount < MAX_PASTE_CHARS) {
         char c = *p;
         // Convert newline to carriage return (Apple 1 convention)
         if (c == '\n') c = '\r';
@@ -948,15 +950,19 @@ void MainWindow_ImGui::pasteCode()
             memory->setKeyPressed(c);
             // Run some CPU cycles to process each character
             cpu->run(5000);
+            charCount++;
         }
         ++p;
     }
-    setStatusMessage("Code pasted from clipboard", 2.0f);
+    std::stringstream ss;
+    ss << "Pasted " << charCount << " characters";
+    if (*p) ss << " (truncated at " << MAX_PASTE_CHARS << ")";
+    setStatusMessage(ss.str(), 2.0f);
 }
 
 void MainWindow_ImGui::quit()
 {
-    glfwSetWindowShouldClose(glfwGetCurrentContext(), GLFW_TRUE);
+    glfwSetWindowShouldClose(window, GLFW_TRUE);
 }
 
 void MainWindow_ImGui::reset()
@@ -1024,10 +1030,12 @@ void MainWindow_ImGui::renderMemoryMapWindow()
     };
     int numRegions = sizeof(regions) / sizeof(regions[0]);
 
-    // --- Legende ---
+    // --- Legend (Unused at the bottom) ---
     ImGui::Text("Legend:");
     ImGui::Separator();
+    ImU32 unusedColor = IM_COL32(60, 60, 60, 255);
     for (int i = 0; i < numRegions; ++i) {
+        if (regions[i].color == unusedColor) continue;
         ImVec2 p = ImGui::GetCursorScreenPos();
         ImDrawList* dl = ImGui::GetWindowDrawList();
         dl->AddRectFilled(p, ImVec2(p.x + 12, p.y + 12), regions[i].color);
@@ -1035,6 +1043,16 @@ void MainWindow_ImGui::renderMemoryMapWindow()
         ImGui::Dummy(ImVec2(16, 14));
         ImGui::SameLine();
         ImGui::Text("$%04X-$%04X %s", regions[i].start, regions[i].end, regions[i].label);
+    }
+    // Unused entry last
+    {
+        ImVec2 p = ImGui::GetCursorScreenPos();
+        ImDrawList* dl = ImGui::GetWindowDrawList();
+        dl->AddRectFilled(p, ImVec2(p.x + 12, p.y + 12), unusedColor);
+        dl->AddRect(p, ImVec2(p.x + 12, p.y + 12), IM_COL32(180, 180, 180, 255));
+        ImGui::Dummy(ImVec2(16, 14));
+        ImGui::SameLine();
+        ImGui::Text("Unused");
     }
 
     ImGui::Spacing();
@@ -1114,21 +1132,22 @@ void MainWindow_ImGui::renderMemoryMapWindow()
                 drawList->AddRect(inner0, inner1, IM_COL32(255, 165, 0, 255), 0.0f, 0, 1.0f);
             }
 
-            // Tooltip on hover
-            ImVec2 mousePos = ImGui::GetMousePos();
-            if (mousePos.x >= p0.x && mousePos.x < p1.x &&
-                mousePos.y >= p0.y && mousePos.y < p1.y) {
-                ImGui::BeginTooltip();
-                ImGui::Text("Page $%02X : $%04X-$%04X", page, addr, addr + 0xFF);
-                // Find region name
-                for (int r = 0; r < numRegions; ++r) {
-                    if (addr >= regions[r].start && addr <= regions[r].end) {
-                        ImGui::Text("%s", regions[r].label);
-                        break;
+            // Tooltip on hover (only when this window is hovered)
+            if (ImGui::IsWindowHovered(ImGuiHoveredFlags_AllowWhenBlockedByPopup)) {
+                ImVec2 mousePos = ImGui::GetMousePos();
+                if (mousePos.x >= p0.x && mousePos.x < p1.x &&
+                    mousePos.y >= p0.y && mousePos.y < p1.y) {
+                    ImGui::BeginTooltip();
+                    ImGui::Text("Page $%02X : $%04X-$%04X", page, addr, addr + 0xFF);
+                    for (int r = 0; r < numRegions; ++r) {
+                        if (addr >= regions[r].start && addr <= regions[r].end) {
+                            ImGui::Text("%s", regions[r].label);
+                            break;
+                        }
                     }
+                    if (page == pcPage) ImGui::Text("PC = $%04X", pc);
+                    ImGui::EndTooltip();
                 }
-                if (page == pcPage) ImGui::Text("PC = $%04X", pc);
-                ImGui::EndTooltip();
             }
         }
     }
@@ -1148,6 +1167,24 @@ void MainWindow_ImGui::renderMemoryMapWindow()
 
     ImGui::Spacing();
     ImGui::Text("PC = $%04X  SP = $01%02X", pc, sp);
+
+    // Special addresses section
+    ImGui::Spacing();
+    ImGui::Separator();
+    ImGui::Spacing();
+    ImGui::Text("I/O Registers:");
+    ImGui::BulletText("$D010  KBD   - Keyboard data");
+    ImGui::BulletText("$D011  KBDCR - Keyboard control");
+    ImGui::BulletText("$D012  DSP   - Display output");
+
+    ImGui::Spacing();
+    ImGui::Text("CPU Vectors:");
+    ImGui::BulletText("$FFFA/B  NMI   -> $%04X",
+        (int)memory->memRead(0xFFFA) | ((int)memory->memRead(0xFFFB) << 8));
+    ImGui::BulletText("$FFFC/D  RESET -> $%04X",
+        (int)memory->memRead(0xFFFC) | ((int)memory->memRead(0xFFFD) << 8));
+    ImGui::BulletText("$FFFE/F  IRQ   -> $%04X",
+        (int)memory->memRead(0xFFFE) | ((int)memory->memRead(0xFFFF) << 8));
 
     ImGui::End();
 }
