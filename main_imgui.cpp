@@ -7,6 +7,10 @@
 #include "MainWindow_ImGui.h"
 #include "IconsFontAwesome6.h"
 
+#ifdef __EMSCRIPTEN__
+#include <emscripten.h>
+#endif
+
 static void glfw_error_callback(int error, const char* description)
 {
     fprintf(stderr, "GLFW Error %d: %s\n", error, description);
@@ -43,13 +47,22 @@ int main(int argc, char* argv[])
     if (!glfwInit())
         return -1;
 
-    // GL 3.2 + GLSL 150 pour macOS
+    // OpenGL / GLSL context hints
+#ifdef __EMSCRIPTEN__
+    // WebGL 2.0 = OpenGL ES 3.0 — GLSL ES 300
+    const char* glsl_version = "#version 300 es";
+    glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
+    glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 0);
+    glfwWindowHint(GLFW_CLIENT_API, GLFW_OPENGL_ES_API);
+#else
+    // GL 3.2 + GLSL 150 pour macOS / Linux / Windows
     const char* glsl_version = "#version 150";
     glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
     glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 2);
     glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
 #ifdef __APPLE__
     glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GL_TRUE);
+#endif
 #endif
 
     // Create window
@@ -79,7 +92,11 @@ int main(int argc, char* argv[])
     iconsConfig.PixelSnapH = true;
     iconsConfig.GlyphMinAdvanceX = 15.0f;
     static const ImWchar iconsRanges[] = { ICON_MIN_FA, ICON_MAX_16_FA, 0 };
+#ifdef __EMSCRIPTEN__
+    io.Fonts->AddFontFromFileTTF("fonts/fa-solid-900.ttf", 14.0f, &iconsConfig, iconsRanges);
+#else
     io.Fonts->AddFontFromFileTTF("../fonts/fa-solid-900.ttf", 14.0f, &iconsConfig, iconsRanges);
+#endif
 
     // Setup Dear ImGui style
     ImGui::StyleColorsDark();
@@ -98,6 +115,38 @@ int main(int argc, char* argv[])
     glfwSetKeyCallback(window, glfw_key_callback);
 
     // Main loop
+#ifdef __EMSCRIPTEN__
+    // Emscripten: browser controls the loop — pass a callback
+    struct LoopContext {
+        GLFWwindow* window;
+        MainWindow_ImGui* mainWindow;
+    };
+    static LoopContext ctx;
+    ctx.window = window;
+    ctx.mainWindow = &mainWindow;
+
+    emscripten_set_main_loop_arg([](void* arg) {
+        LoopContext* c = static_cast<LoopContext*>(arg);
+        glfwPollEvents();
+
+        ImGui_ImplOpenGL3_NewFrame();
+        ImGui_ImplGlfw_NewFrame();
+        ImGui::NewFrame();
+
+        c->mainWindow->render();
+
+        ImGui::Render();
+        int display_w, display_h;
+        glfwGetFramebufferSize(c->window, &display_w, &display_h);
+        glViewport(0, 0, display_w, display_h);
+        glClearColor(0.45f, 0.55f, 0.60f, 1.00f);
+        glClear(GL_COLOR_BUFFER_BIT);
+        ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+
+        glfwSwapBuffers(c->window);
+    }, &ctx, 0, true);
+    // emscripten_set_main_loop_arg never returns when simulate_infinite_loop=true
+#else
     while (!glfwWindowShouldClose(window))
     {
         glfwPollEvents();
@@ -129,6 +178,7 @@ int main(int argc, char* argv[])
 
     glfwDestroyWindow(window);
     glfwTerminate();
+#endif
 
     return 0;
 } 
