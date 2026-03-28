@@ -44,6 +44,7 @@ if(EMSCRIPTEN)
     # GLFW3 & WebGL are provided as Emscripten ports — no find_package needed.
     # Preload assets into the virtual filesystem.
     set(PRELOAD_DIR ${CMAKE_CURRENT_SOURCE_DIR})
+    set(SHELL_FILE ${CMAKE_CURRENT_SOURCE_DIR}/shell.html)
     set(EM_LINK_FLAGS
         "-s USE_GLFW=3"
         "-s MAX_WEBGL_VERSION=2"
@@ -53,6 +54,7 @@ if(EMSCRIPTEN)
         "--preload-file ${PRELOAD_DIR}/roms@roms"
         "--preload-file ${PRELOAD_DIR}/fonts@fonts"
         "--preload-file ${PRELOAD_DIR}/soft-asm@soft-asm"
+        "--shell-file ${SHELL_FILE}"
     )
     # Join list into a single space-separated string for linker flags
     list(JOIN EM_LINK_FLAGS " " EM_LINK_FLAGS_STR)
@@ -60,6 +62,7 @@ if(EMSCRIPTEN)
     set_target_properties(${PROJECT_NAME} PROPERTIES
         SUFFIX ".html"
         LINK_FLAGS "${EM_LINK_FLAGS_STR}"
+        LINK_DEPENDS "${SHELL_FILE}"
     )
     # Compile flags needed for the GLFW port header resolution
     target_compile_options(${PROJECT_NAME} PRIVATE "SHELL:-s USE_GLFW=3")

@@ -9,6 +9,7 @@
 
 #ifdef __EMSCRIPTEN__
 #include <emscripten.h>
+#include <emscripten/html5.h>
 #endif
 
 static void glfw_error_callback(int error, const char* description)
@@ -129,8 +130,23 @@ int main(int argc, char* argv[])
         LoopContext* c = static_cast<LoopContext*>(arg);
         glfwPollEvents();
 
+        // Sync canvas drawing buffer with CSS size (fixes fullscreen/resize)
+        double cssW, cssH;
+        emscripten_get_element_css_size("#canvas", &cssW, &cssH);
+        int bufW, bufH;
+        emscripten_get_canvas_element_size("#canvas", &bufW, &bufH);
+        if (bufW != (int)cssW || bufH != (int)cssH) {
+            emscripten_set_canvas_element_size("#canvas", (int)cssW, (int)cssH);
+        }
+
         ImGui_ImplOpenGL3_NewFrame();
         ImGui_ImplGlfw_NewFrame();
+
+        // Override ImGui display size with actual canvas dimensions
+        // (GLFW's cached window size may be stale after fullscreen toggle)
+        ImGuiIO& io = ImGui::GetIO();
+        io.DisplaySize = ImVec2((float)cssW, (float)cssH);
+
         ImGui::NewFrame();
 
         c->mainWindow->render();

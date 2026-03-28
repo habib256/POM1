@@ -11,6 +11,11 @@
 #include <algorithm>
 #include <GLFW/glfw3.h>
 
+#ifdef __EMSCRIPTEN__
+#include <emscripten.h>
+#include <emscripten/html5.h>
+#endif
+
 MainWindow_ImGui::MainWindow_ImGui()
 {
     createPom1();
@@ -54,7 +59,15 @@ void MainWindow_ImGui::render()
 {
     float deltaTime = ImGui::GetIO().DeltaTime;
     updateStatus(deltaTime);
-    
+
+#ifdef __EMSCRIPTEN__
+    // Sync fullscreen flag with browser state (user may exit via Escape)
+    EmscriptenFullscreenChangeEvent fsStatus;
+    if (emscripten_get_fullscreen_status(&fsStatus) == EMSCRIPTEN_RESULT_SUCCESS) {
+        fullscreen = fsStatus.isFullscreen;
+    }
+#endif
+
     // Gérer les entrées clavier
     handleKeyboardInput();
     
@@ -593,6 +606,17 @@ void MainWindow_ImGui::renderScreenConfigDialog()
 
         ImGui::Spacing();
         if (ImGui::Checkbox("Fullscreen", &fullscreen)) {
+#ifdef __EMSCRIPTEN__
+            if (fullscreen) {
+                EmscriptenFullscreenStrategy strategy{};
+                strategy.scaleMode = EMSCRIPTEN_FULLSCREEN_SCALE_STRETCH;
+                strategy.canvasResolutionScaleMode = EMSCRIPTEN_FULLSCREEN_CANVAS_SCALE_HIDEF;
+                strategy.filteringMode = EMSCRIPTEN_FULLSCREEN_FILTERING_DEFAULT;
+                emscripten_request_fullscreen_strategy("#canvas", true, &strategy);
+            } else {
+                emscripten_exit_fullscreen();
+            }
+#else
             if (window) {
                 if (fullscreen) {
                     GLFWmonitor* monitor = glfwGetPrimaryMonitor();
@@ -602,6 +626,7 @@ void MainWindow_ImGui::renderScreenConfigDialog()
                     glfwSetWindowMonitor(window, nullptr, 100, 100, 1280, 720, 0);
                 }
             }
+#endif
         }
 
         ImGui::Spacing();
