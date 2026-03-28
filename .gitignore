@@ -4,6 +4,10 @@
 # Build output
 build/
 
+# WASM build — keep only the pom1_imgui.* output files
+build-wasm/*
+!build-wasm/pom1_imgui.*
+
 # Dear ImGui library (downloaded by setup_imgui.sh)
 imgui/
 

@@ -4,15 +4,15 @@
 
 **Experience the machine that started the personal computer revolution.**
 
-**Experience the machine that started the personal computer revolution.**
-
 A faithful Apple 1 emulator built with Dear ImGui & OpenGL — fast, lightweight, and cross-platform.
+
 **Play it now in your browser** or build it natively.
+[![Play Online](https://img.shields.io/badge/Play%20Online-WebAssembly-blueviolet.svg)](https://habib256.github.io/POM1/build-wasm/pom1_imgui.html)
 
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](LICENSE)
 [![Platform](https://img.shields.io/badge/Platform-Linux%20%7C%20macOS%20%7C%20Windows%20%7C%20Web-lightgrey.svg)](#-quick-start)
 [![C++](https://img.shields.io/badge/C%2B%2B-17-orange.svg)](#)
-[![Play Online](https://img.shields.io/badge/Play%20Online-WebAssembly-blueviolet.svg)](https://habib256.github.io/POM1/)
+
 
 ![POM1 Screenshot](doc/screenshot.png)
 
@@ -70,7 +70,7 @@ run_emulator.bat                    REM copies ROMs & launches the emulator
 
 ### 🌐 Web Version (WebAssembly)
 
-**Play directly in your browser:** [https://habib256.github.io/POM1/](https://habib256.github.io/POM1/)
+**Play directly in your browser:** [https://habib256.github.io/POM1/](https://habib256.github.io/POM1/html/pom1_imgui.html)
 
 To build the WASM version yourself:
 
