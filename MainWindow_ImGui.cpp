@@ -86,6 +86,7 @@ void MainWindow_ImGui::render()
     // Fenêtre de l'écran (centrale)
     // Au premier frame, dimensionner selon l'écran Apple 1 (40x24 * scale)
     static bool firstFrame = true;
+    static bool wasFullscreen = false;
     if (firstFrame) {
         ImGui::PushFont(ImGui::GetIO().Fonts->Fonts[0]);
         ImVec2 charSize = ImGui::CalcTextSize("M");
@@ -105,6 +106,30 @@ void MainWindow_ImGui::render()
         }
         firstFrame = false;
     }
+
+    // Resize Apple 1 screen window on fullscreen transitions
+    if (fullscreen != wasFullscreen) {
+        ImGuiIO& fsio = ImGui::GetIO();
+        float toolbarBottom = ImGui::GetFrameHeight() + 34.0f;
+        if (fullscreen) {
+            // Fill the entire display
+            ImGui::SetNextWindowPos(ImVec2(0, toolbarBottom));
+            ImGui::SetNextWindowSize(ImVec2(fsio.DisplaySize.x, fsio.DisplaySize.y - toolbarBottom));
+        } else {
+            // Restore to default Apple 1 size
+            ImGui::PushFont(fsio.Fonts->Fonts[0]);
+            ImVec2 charSize = ImGui::CalcTextSize("M");
+            ImGui::PopFont();
+            float cellW = charSize.x * 1.4f;
+            float cellH = charSize.y * 1.3f;
+            float sw = cellW * 40 * screen->scale + 40;
+            float sh = cellH * 24 * screen->scale + 60;
+            ImGui::SetNextWindowPos(ImVec2(10, toolbarBottom + 5));
+            ImGui::SetNextWindowSize(ImVec2(sw, sh));
+        }
+        wasFullscreen = fullscreen;
+    }
+
     ImGui::Begin("Apple 1 Screen");
     screen->render();
     ImGui::End();
