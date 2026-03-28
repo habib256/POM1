@@ -137,6 +137,8 @@ int main(int argc, char* argv[])
         emscripten_get_canvas_element_size("#canvas", &bufW, &bufH);
         if (bufW != (int)cssW || bufH != (int)cssH) {
             emscripten_set_canvas_element_size("#canvas", (int)cssW, (int)cssH);
+            // Tell GLFW about the new size so mouse coords stay correct
+            glfwSetWindowSize(c->window, (int)cssW, (int)cssH);
         }
 
         ImGui_ImplOpenGL3_NewFrame();
@@ -152,9 +154,8 @@ int main(int argc, char* argv[])
         c->mainWindow->render();
 
         ImGui::Render();
-        int display_w, display_h;
-        glfwGetFramebufferSize(c->window, &display_w, &display_h);
-        glViewport(0, 0, display_w, display_h);
+        // Use actual canvas size for viewport (not glfwGetFramebufferSize which may be stale)
+        glViewport(0, 0, (int)cssW, (int)cssH);
         glClearColor(0.45f, 0.55f, 0.60f, 1.00f);
         glClear(GL_COLOR_BUFFER_BIT);
         ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());

@@ -44,7 +44,7 @@ if(EMSCRIPTEN)
     # GLFW3 & WebGL are provided as Emscripten ports — no find_package needed.
     # Preload assets into the virtual filesystem.
     set(PRELOAD_DIR ${CMAKE_CURRENT_SOURCE_DIR})
-    set(SHELL_FILE ${CMAKE_CURRENT_SOURCE_DIR}/shell.html)
+    set(SHELL_FILE ${CMAKE_CURRENT_SOURCE_DIR}/build-wasm/shell.html)
     set(EM_LINK_FLAGS
         "-s USE_GLFW=3"
         "-s MAX_WEBGL_VERSION=2"
