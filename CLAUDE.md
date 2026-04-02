@@ -34,10 +34,19 @@ build\Release\pom1_imgui.exe  # Windows
 
 Note: ROMs must be present next to the executable. The run scripts automatically copy them from `roms/` if needed.
 
+### Build WASM (requires Emscripten)
+```bash
+source /path/to/emsdk/emsdk_env.sh
+mkdir -p build-wasm && cd build-wasm
+emcmake cmake ..
+emmake make -j$(nproc)
+emrun pom1_imgui.html         # Test locally
+```
+
 ### Assembling programs (requires cc65)
 ```bash
 ca65 -o build/program.o software/program.asm
-ld65 -C build/apple1.cfg -o build/program.bin build/program.o
+ld65 -C software/apple1.cfg -o build/program.bin build/program.o
 ```
 
 ## Architecture Overview
@@ -161,19 +170,22 @@ The setup script supports apt (Ubuntu/Debian), dnf (Fedora/CentOS), and pacman (
 
 ## Repository Notes
 
-The `build/` and `imgui/` directories are excluded from git via `.gitignore`.
+The `build/`, `build-wasm/`, and `imgui/` directories are excluded from git via `.gitignore`.
 
 ## Version History
 
 ### v1.0 (April 2026)
 - Dear ImGui UI with green/white CRT monitor, scanline effect
 - Complete MOS 6502 CPU emulation (BRK opcode fixed to use implied addressing)
-- Memory viewer, memory map, step debugger
+- Memory viewer with aligned hex columns, memory map, step debugger
 - File browser for loading/saving programs (binary and Woz Monitor hex dump)
+- About dialog with credits, resources, and toolbar info button
+- ROM write-protection toggle in Settings (synced with actual memory state)
 - 20+ programs included (games, demos, dev tools)
-- Maze (Sidewinder algorithm) and Maze 2 (Recursive Backtracker) with title screens
-- Builds on Linux, macOS, Windows, and Web (Emscripten/WASM)
-- Dead code cleanup: removed legacy SDL stubs (saveState/loadState, setSpeed, synchronize)
+- Maze (Sidewinder algorithm) and Maze 2 (Recursive Backtracker) with title screens, S/E markers
+- Builds on Linux, macOS, Windows, and Web (Emscripten/WASM via Emscripten 5.x)
+- Dead code cleanup: removed legacy SDL stubs (saveState/loadState, setSpeed, synchronize, keyStickyCounter)
+- Renamed software directory from `soft-asm/` to `software/`
 
 ## Known Issues & TODOs
 

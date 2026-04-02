@@ -199,7 +199,7 @@ POM1 includes a linker config for [cc65](https://cc65.github.io/):
 
 ```bash
 ca65 -o build/program.o source.asm
-ld65 -C build/apple1.cfg -o build/program.bin build/program.o
+ld65 -C software/apple1.cfg -o build/program.bin build/program.o
 ```
 
 Load the binary via **File > Load Memory**, or type the start address + `R` in the Woz Monitor (e.g. `300R`).
@@ -222,7 +222,8 @@ POM1/
 │   ├── demos/               #   🎨 Demos
 │   ├── dev/                 #   🛠️ Dev tools
 │   └── tests/               #   🧪 Hardware test programs
-├── build/apple1.cfg         # ⚙️ cc65 linker config
+├── build-wasm/              # 🌐 WebAssembly build output
+├── software/apple1.cfg      # ⚙️ cc65 linker config
 ├── setup_imgui.sh           # 📦 One-shot setup script
 └── run_emulator.sh          # 🚀 Build check + ROM copy + launch
 ```
