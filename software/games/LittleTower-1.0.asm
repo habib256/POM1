@@ -1,7 +1,8 @@
-;       Little Tower
-; Apple1 Adventure Game v0.2
+;       Little Tower v1.0
+; Apple1 Adventure Game
 ;    	Written by VERHILLE Arnaud
 ;		(C) September 2000
+;       Updated April 2026
 
 ;********************************************
 ;*********** MACROS DEFINITIONS *************
@@ -112,17 +113,19 @@ MAIN2:		JSR ESCAPE	;Get usr input
 
 ANALYSE:	;Test General Actions
                 testString Help
-		BMI ANAHELP	;Yes, branch
+		jmi ANAHELP	;Yes, branch
 		testString Exit
-		BMI ANAEXIT	;Yes, branch	
+		jmi ANAEXIT	;Yes, branch	
 		testString Look
-		BMI ANALOOK	;Yes, branch
+		jmi ANALOOK	;Yes, branch
                 testString Shit
-		BMI ANASHIT	;Yes, branch
+		jmi ANASHIT	;Yes, branch
                 testString Fuck
-		BMI ANASHIT	;Yes, branch
+		jmi ANASHIT	;Yes, branch
                 testString Inventory
-                BMI ANAI        ;Yes, branch
+                jmi ANAI        ;Yes, branch
+                testString Restart
+                jmi ANARESTART  ;Yes, branch
 		; Now room specific actions
 		LDA RoomPos	;Load Room Position
 		CMP #$01
@@ -139,11 +142,13 @@ ANALYSE:	;Test General Actions
 		jeq ANA6	;if room 6 go ....
                 ;It normally never reach this point
                 printString RoomError
+                RTS
 
                 ; General Actions Subroutines
 ANAHELP:	printString HelpTxt
 		RTS
 ANAEXIT:	JMP RESET	 ;Jump to monitor
+ANARESTART:     JMP INIT         ;Restart the game
 ANALOOK:	LDA #$00
 		STA PrintLook	;Enable Reprint Description
 		RTS
@@ -166,17 +171,45 @@ ANAINOTORCH:    LDA DaggerState
                 BPL ANAINODAGGER
                 printString Dagger
 ANAINODAGGER:   RTS
+ANANONE:        testString NorthFull
+                jmi ANANODIR
+                testString North
+                BMI ANANODIR
+                testString SouthFull
+                BMI ANANODIR
+                testString South
+                BMI ANANODIR
+                testString WestFull
+                BMI ANANODIR
+                testString West
+                BMI ANANODIR
+                testString EastFull
+                BMI ANANODIR
+                testString East
+                BMI ANANODIR
+                testString Up
+                BMI ANANODIR
+                testString Down
+                BMI ANANODIR
+                printString DontUnderstand
+                RTS
+ANANODIR:       printString CantGoThere
+                RTS
 
                 ; Room 1 Specific Action
-ANA1:		testString South
-		BMI ANA1S	   ;Yes, branch
+ANA1:		testString SouthFull
+		BMI ANA1S
+                testString South
+		BMI ANA1S
                 testString ExamineDoor
                 BMI ANA1DOOR
                 testString UseKey
                 BMI ANA1KEY
+                testString OpenDoor
+                BMI ANA1KEY
                 testString Enter
                 BMI ANA1ENTER
-                RTS
+                JMP ANANONE
 ANA1S:          LDA #$02        ;if South Go to Room 2
                 STA RoomPos
                 LDA #$00
@@ -207,15 +240,19 @@ ANA1ENTEROK:    LDA #$03        ;if Enter Go to Room 3
                 RTS
 
                 ; Room 2 Specific Action
-ANA2:		testString North
-		BMI ANA2N	   ;Yes, branch
+ANA2:		testString NorthFull
+		BMI ANA2N
+                testString North
+		BMI ANA2N
+                testString SouthFull
+                BMI ANA2S
                 testString South
                 BMI ANA2S
                 testString ExamineBoat
                 BMI ANA2BOAT
                 testString ExamineSkeleton
                 BMI ANA2SKELETON
-                RTS
+                JMP ANANONE
 ANA2N:          LDA #$01        ;if North Go to Room 1
                 STA RoomPos
                 LDA #$00
@@ -223,16 +260,23 @@ ANA2N:          LDA #$01        ;if North Go to Room 1
                 RTS
 ANA2S:          printString Room2Boat
                 PLA             ;Destroy JSR ref
+                PLA
                 JMP RESET
 ANA2BOAT:       printString BoatState
                 RTS
-ANA2SKELETON:   printString Skeleton
+ANA2SKELETON:   LDA KeyState
+                BMI ANA2SKELOLD
+                printString Skeleton
                 LDA #$FF
                 STA KeyState    ;OK, Key in your inventory
                 RTS
+ANA2SKELOLD:    printString SkeletonNoKey
+                RTS
 
                 ; Room 3 Specific Action
-ANA3:		testString West
+ANA3:		testString WestFull
+                BMI ANA3W
+                testString West
                 BMI ANA3W
                 testString Up
                 BMI ANA3UP
@@ -240,7 +284,9 @@ ANA3:		testString West
                 BMI ANA3ETORCH
                 testString GetTorch
                 BMI ANA3GTORCH
-                RTS
+                testString TakeTorch
+                BMI ANA3GTORCH
+                JMP ANANONE
 ANA3W:          LDA #$01        ;if West Go to Room 1
                 STA RoomPos
                 LDA #$00
@@ -251,11 +297,21 @@ ANA3UP:         LDA #$04        ;if Up Go to Room 4
                 LDA #$00
 		STA PrintLook	;Enable Reprint Description
                 RTS
-ANA3ETORCH:     printString ExamineTorchTxt
+ANA3ETORCH:     LDA TorchState
+                BMI ANA3ENOTCH
+                LDA Room5State
+                BMI ANA3ENOTCH
+                printString ExamineTorchTxt
                 RTS
-ANA3GTORCH:     printString GetTorchTxt
+ANA3ENOTCH:     printString TorchGone
+                RTS
+ANA3GTORCH:     LDA TorchState
+                BMI ANA3GOTHAVE
+                printString GetTorchTxt
                 LDA #$FF
                 STA TorchState
+                RTS
+ANA3GOTHAVE:    printString AlreadyHave
                 RTS
 
                 ; Room 4 Specific Action
@@ -263,24 +319,26 @@ ANA4:		testString Up
                 BMI ANA4UP
                 testString Down
                 BMI ANA4DOWN
+                testString SouthFull
+                BMI ANA4S
                 testString South
                 BMI ANA4S
                 testString ExaminePicture
                 BMI ANA4EPIC
                 testString ExamineBed
                 BMI ANA4EBED
-                RTS
+                JMP ANANONE
 ANA4UP:         LDA #$06        ;if Up Go to Room 6
                 STA RoomPos
                 LDA #$00
 		STA PrintLook	;Enable Reprint Description
                 RTS
-ANA4DOWN:       LDA #$03        ;if Up Go to Room 3
+ANA4DOWN:       LDA #$03        ;if Down Go to Room 3
                 STA RoomPos
                 LDA #$00
 		STA PrintLook	;Enable Reprint Description
                 RTS
-ANA4S:          LDA #$05        ;if Up Go to Room 5
+ANA4S:          LDA #$05        ;if South Go to Room 5
                 STA RoomPos
                 LDA #$00
 		STA PrintLook	;Enable Reprint Description
@@ -291,18 +349,28 @@ ANA4EBED:       printString ExamineBedTxt
                 RTS
 
                 ; Room 5 Specific Action
-ANA5:		testString ExamineDesk
-                BMI ANA5DESK
-                testString ExamineBook
-                BMI ANA5BOOK
+ANA5:		testString NorthFull
+                BMI ANA5N
                 testString North
                 BMI ANA5N
                 testString UseTorch
                 BMI ANA5LIGHT
+                LDA Room5State          ;Is there light ?
+                BPL ANA5DARK            ;No, block examine actions
+                testString ExamineDesk
+                BMI ANA5DESK
+                testString ExamineBook
+                BMI ANA5BOOK
+                JMP ANANONE
+ANA5DARK:       printString TooDark
                 RTS
-ANA5DESK:       printString ExamineDeskTxt
+ANA5DESK:       LDA DaggerState
+                BMI ANA5DESKMT
+                printString ExamineDeskTxt
                 LDA #$FF
                 STA DaggerState         ;Put dagger in bag
+                RTS
+ANA5DESKMT:     printString DeskEmpty
                 RTS
 ANA5BOOK:       printString ExamineBookTxt
                 RTS
@@ -311,7 +379,15 @@ ANA5N:          LDA #$04        ;if North Go to Room 4
                 LDA #$00
 		STA PrintLook	;Enable Reprint Description
                 RTS
-ANA5LIGHT:      LDA #$FF
+ANA5LIGHT:      LDA Room5State          ;Already lit ?
+                BMI ANA5LITYET          ;Yes, branch
+                LDA TorchState          ;Torch in inventory ?
+                BMI ANA5LIGHTOK         ;Yes, branch
+                printString NoTorch
+                RTS
+ANA5LITYET:     printString AlreadyLit
+                RTS
+ANA5LIGHTOK:    LDA #$FF
                 STA Room5State  ;LIGHT in room 5
                 LDA #$00
 		STA PrintLook	;Enable Reprint Description
@@ -325,11 +401,16 @@ ANA6:		testString Down
                 BMI ANA6PARA
                 testString UseDagger
                 BMI ANA6DAGGER
-                RTS
+                testString Kill
+                BMI ANA6DAGGER
+                testString Attack
+                BMI ANA6DAGGER
+                JMP ANANONE
 ANA6D:          LDA Paralysis
                 BPL ANA6DOK
                 printString Death
                 PLA             ;Destroy JSR ref
+                PLA
                 JMP RESET
 ANA6DOK:        LDA #$04        ;if Down Go to Room 4
                 STA RoomPos
@@ -342,12 +423,18 @@ ANA6PARA:       printString SayAnaetoshTxt
                 LDA #$00
                 STA Paralysis   ;No Paralysis
                 RTS
-ANA6DAGGER:     LDA Paralysis
+ANA6DAGGER:     LDA DaggerState       ;Dagger in inventory ?
+                BMI ANA6DAGCHK        ;Yes, check paralysis
+                printString NoDagger
+                RTS
+ANA6DAGCHK:     LDA Paralysis
                 BPL ANA6DAGGEROK
                 printString Cantmove
                 RTS
 ANA6DAGGEROK:   printString Win
+                printString WinArt
                 PLA             ;Destroy JSR ref
+                PLA
                 JMP RESET
 
 ; *** Print Room Information ***
@@ -371,6 +458,7 @@ ROOMTXT:	LDA #$FF	;Mask for
 		jeq ROOMTXT6	;if room 6 go ....
 		;It normally never reach this point
                 printString RoomError
+                RTS
 
 ROOMTXT1:	printRoomInfo Room1Txt,Room1Obj,Room1Exit
 		RTS
@@ -387,6 +475,7 @@ ROOMTXT5:	LDA Room5State
 ROOMTXT5LIGHT:  printRoomInfo Room5Txt,Room5Obj,Room5Exit
                 RTS
 ROOMTXT6:	printRoomInfo Room6Txt,Room6Obj,Room6Exit
+                printString Room6Art
 		RTS
 
 ;********************************************
@@ -404,11 +493,18 @@ COMPARE:	LDY #$FF	;reset index
 COMPIT:		INY
 		LDA (AddressL),Y;load charac
 		CMP #$25	;EOF ?
-		BEQ COMPTRUE	;Yes, branch to true
+		BEQ COMPCHK	;Yes, check word boundary
 		ORA #$80	;Set Bit7 to compare with kbd output
 		CMP BUF,Y	;Compare with user buffer
 		BEQ COMPIT	;Ok,continue comparison
 		LDA #$00	;Result false
+		RTS
+COMPCHK:	LDA BUF,Y	;Next char in user buffer
+		CMP #$8D	;CR ? (end of input)
+		BEQ COMPTRUE
+		CMP #$A0	;Space ? (word separator)
+		BEQ COMPTRUE
+		LDA #$00	;Partial word match, false
 		RTS
 COMPTRUE:	LDA #$FF	;Result true
 		RTS
@@ -636,7 +732,7 @@ INTEND:		printString LetBegin
 
 ;*** Copyrights
 
-CopyMess1: 	.byte "LITTLE TOWER&%"
+CopyMess1: 	.byte "LITTLE TOWER V1.0&%"
 CopyMess2:	.byte "APPLE 1 COOL GAME&%"
 CopyMess3:	.byte "WRITTEN BY A.VERHILLE&%"
 
@@ -647,7 +743,7 @@ IntroChoice:	.byte "1] PLAY  2] HELP&&%"
 ;*** Misc Txt
 
 LetBegin:	.byte "OK, NOW LET'S BEGIN ...&&%"
-HelpTxt: 	.byte "THIS IS A BASIC TXT ADVENTURE.&VALIDS COMMANDS ARE:&&DIRECTION: N,S,W,E,UP,DOWN.&ACTION: LOOK,EXAMINE,ENTER,GET,USE,SAY.&SPECIAL: INVENTORY,HELP,EXIT.&OBJECT: BOAT,DOOR,AND MORE...&&COMPLEX COMMAND USE TWO WORD MAX&%"
+HelpTxt: 	.byte "THIS IS A BASIC TXT ADVENTURE.&VALIDS COMMANDS ARE:&&DIRECTION: N,S,W,UP,DOWN.&ACTION: LOOK,EXAMINE,ENTER,&GET,TAKE,USE,SAY,OPEN.&SPECIAL: INVENTORY,HELP,&RESTART,EXIT.&OBJECT: BOAT,DOOR,AND MORE...&&COMPLEX COMMAND USE TWO WORD MAX&%"
 ObjTxt:		.byte "OBJECT(S): %"
 ExitTxt:	.byte "EXIT(S): %"
 ShitTxt:	.byte "HEY, BECAUSE YOU SAY THAT,&YOU MUST TYPE 'SORRY' TO CONTINUE.&OBEY CAN BE A GOOD IDEA&%"
@@ -668,11 +764,17 @@ Shit:		.byte "SHIT%"
 Fuck:           .byte "FUCK%"
 Sorry:          .byte "SORRY%" 
 Inventory:      .byte "INVENTORY%"
+Restart:        .byte "RESTART%"
 
 ; Directions Commands
 North:          .byte "N%"
+NorthFull:      .byte "NORTH%"
 South:          .byte "S%"
+SouthFull:      .byte "SOUTH%"
 West:           .byte "W%"
+WestFull:       .byte "WEST%"
+East:           .byte "E%"
+EastFull:       .byte "EAST%"
 Up:             .byte "UP%"
 Down:           .byte "DOWN%"
 
@@ -689,8 +791,12 @@ ExamineBoat:    .byte "EXAMINE BOAT%"
 ExamineSkeleton:.byte "EXAMINE SKELETON%"
 ExamineDoor:	.byte "EXAMINE DOOR%"
 GetTorch:       .byte "GET TORCH%"
+TakeTorch:      .byte "TAKE TORCH%"
 Enter:          .byte "ENTER%"
 UseKey:         .byte "USE KEY%"
+OpenDoor:       .byte "OPEN DOOR%"
+Kill:           .byte "KILL%"
+Attack:         .byte "ATTACK%"
 
 ;*** Room Information
 
@@ -702,7 +808,7 @@ Room2Txt:	.byte "YOU'RE ON THE LAKE'S BANK,&THERE IS A SKELETON HERE, AND AN OLD
 Room2Obj:	.byte "SKELETON,BOAT&%"
 Room2Exit:	.byte "N,S&%"
 
-Room3Txt:       .byte "YOU'RE IN A WORKSHOP. LOTS OF WOOD'S&PLANKS ARE RESTING ON THE WALLS. THERE&ARE SOME TORCHS ON A WORKBENCH, STAIRS&TO THE NORTH AND A DOOR TO THE WEST.&%"
+Room3Txt:       .byte "YOU'RE IN A WORKSHOP. LOTS OF WOOD'S&PLANKS ARE RESTING ON THE WALLS. THERE&ARE SOME TORCHS ON A WORKBENCH, STAIRS&GOING UP AND A DOOR TO THE WEST.&%"
 Room3Obj:       .byte "TORCH&%"
 Room3Exit:      .byte "W,UP&%"
 
@@ -736,5 +842,20 @@ ExamineBookTxt: .byte "LOTS OF BOOK TALK ABOUT&VAMPIRES EXTERMINATION.&%"
 Room5TxtNoLight:.byte "THERE IS NO LIGHT HERE,&APART FROM THE NORTH DOOR.&%"
 SayAnaetoshTxt: .byte "YEAHH, IT WORKS !!!&YOU CAN MOVE NOW.&%"
 Cantmove:       .byte "IT'S IMPOSSIBLE, YOU CAN'T MOVE !&%"
-Win:            .byte "THE VAMPIRE IS DISAPPEARING&UNDER YOUR ATTACK&CONGRATULATION, YOU WIN !!&%"
+NoDagger:       .byte "YOU DON'T HAVE A DAGGER !&%"
+NoTorch:        .byte "YOU DON'T HAVE A TORCH !&%"
+TooDark:        .byte "IT'S TOO DARK TO SEE ANYTHING !&%"
+SkeletonNoKey:  .byte "JUST AN OLD SKELETON&%"
+AlreadyHave:    .byte "YOU ALREADY HAVE THAT&%"
+DeskEmpty:      .byte "THERE IS NOTHING ON THE DESK&%"
+DontUnderstand: .byte "I DON'T UNDERSTAND, TYPE 'HELP'&%"
+CantGoThere:    .byte "YOU CAN'T GO THAT WAY&%"
+TorchGone:      .byte "YOU ALREADY TOOK THE BEST ONE&%"
+AlreadyLit:     .byte "THE ROOM IS ALREADY LIT&%"
+Win:            .byte "THE VAMPIRE IS DISAPPEARING&UNDER YOUR ATTACK !&%"
 Death:          .byte "YOU ARE TRYING TO ESCAPE,&BUT YOU CAN'T MOVE. THE VAMPIRE&IS SUCKING YOUR BLOOD NOW.&THAT'S THE END.&%"
+
+;*** ASCII Art
+
+Room6Art:       .byte "&&      () ()&       \/&   ___/  \___&  /\/\/\/\/\/\&  \_/      \_/&&%"
+WinArt:         .byte "&&    *******************&    *                 *&    * CONGRATULATIONS *&    *   YOU WIN !!    *&    *                 *&    *******************&&%"
