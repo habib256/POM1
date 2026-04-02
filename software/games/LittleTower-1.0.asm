@@ -115,7 +115,13 @@ ANALYSE:	;Test General Actions
                 testString Help
 		jmi ANAHELP	;Yes, branch
 		testString Exit
-		jmi ANAEXIT	;Yes, branch	
+		jmi ANAEXIT	;Yes, branch
+		testString Quit
+		jmi ANAEXIT	;Yes, branch
+		testString LookPicture
+		jmi ANALOOKPIC	;Yes, branch
+		testString LookPictures
+		jmi ANALOOKPIC	;Yes, branch
 		testString Look
 		jmi ANALOOK	;Yes, branch
                 testString Shit
@@ -152,6 +158,11 @@ ANARESTART:     JMP INIT         ;Restart the game
 ANALOOK:	LDA #$00
 		STA PrintLook	;Enable Reprint Description
 		RTS
+ANALOOKPIC:     LDA RoomPos
+                CMP #$04        ;Pictures are in Room 4
+                jeq ANA4EPIC
+                printString DontUnderstand
+                RTS
 ANASHIT:	printString ShitTxt
 ANASHITIT:      JSR ESCAPE	     ;Get usr input
                 testString Sorry
@@ -159,18 +170,23 @@ ANASHITIT:      JSR ESCAPE	     ;Get usr input
                 printString ShitTxt2
                 RTS
 ANAI:           printString InventoryTxt
+                LDX #$00        ;Item counter
                 LDA KeyState
-                BMI ANAIKEY
-                printString InventoryNothing
-                RTS
-ANAIKEY:        printString Key
-                LDA TorchState
+                BPL ANAINOKEY
+                printString Key
+                INX
+ANAINOKEY:      LDA TorchState
                 BPL ANAINOTORCH
                 printString Torch
+                INX
 ANAINOTORCH:    LDA DaggerState
                 BPL ANAINODAGGER
                 printString Dagger
-ANAINODAGGER:   RTS
+                INX
+ANAINODAGGER:   CPX #$00
+                BNE ANAIDONE
+                printString InventoryNothing
+ANAIDONE:       RTS
 ANANONE:        testString NorthFull
                 jmi ANANODIR
                 testString North
@@ -221,8 +237,10 @@ ANA1DOOR:       LDA Room1DoorState
                 RTS
 ANA1DOOROPEN:   printString Room1Door2
                 RTS
-ANA1KEY:        LDA KeyState      ;Key in inventory ?
-                BMI ANA1KEYOK     ;Yes, branch
+ANA1KEY:        LDA Room1DoorState  ;Door already open ?
+                BMI ANA1DOOROPEN    ;Yes, remind player
+                LDA KeyState        ;Key in inventory ?
+                BMI ANA1KEYOK       ;Yes, branch
                 printString NoKey
                 RTS
 ANA1KEYOK:      printString UnlockDoor
@@ -325,6 +343,8 @@ ANA4:		testString Up
                 BMI ANA4S
                 testString ExaminePicture
                 BMI ANA4EPIC
+                testString ExaminePictures
+                BMI ANA4EPIC
                 testString ExamineBed
                 BMI ANA4EBED
                 JMP ANANONE
@@ -355,16 +375,14 @@ ANA5:		testString NorthFull
                 BMI ANA5N
                 testString UseTorch
                 BMI ANA5LIGHT
-                LDA Room5State          ;Is there light ?
-                BPL ANA5DARK            ;No, block examine actions
                 testString ExamineDesk
-                BMI ANA5DESK
+                BMI ANA5DESKCHK
                 testString ExamineBook
-                BMI ANA5BOOK
+                BMI ANA5BOOKCHK
                 JMP ANANONE
-ANA5DARK:       printString TooDark
-                RTS
-ANA5DESK:       LDA DaggerState
+ANA5DESKCHK:    LDA Room5State          ;Is there light ?
+                BPL ANA5DARKEX          ;No, too dark
+                LDA DaggerState
                 BMI ANA5DESKMT
                 printString ExamineDeskTxt
                 LDA #$FF
@@ -372,7 +390,11 @@ ANA5DESK:       LDA DaggerState
                 RTS
 ANA5DESKMT:     printString DeskEmpty
                 RTS
-ANA5BOOK:       printString ExamineBookTxt
+ANA5BOOKCHK:    LDA Room5State          ;Is there light ?
+                BPL ANA5DARKEX          ;No, too dark
+                printString ExamineBookTxt
+                RTS
+ANA5DARKEX:     printString TooDark
                 RTS
 ANA5N:          LDA #$04        ;if North Go to Room 4
                 STA RoomPos
@@ -405,7 +427,13 @@ ANA6:		testString Down
                 BMI ANA6DAGGER
                 testString Attack
                 BMI ANA6DAGGER
+                testString ExamineVampire
+                BMI ANA6EXAM
+                testString ExamineMan
+                BMI ANA6EXAM
                 JMP ANANONE
+ANA6EXAM:       printString ExamineVampireTxt
+                RTS
 ANA6D:          LDA Paralysis
                 BPL ANA6DOK
                 printString Death
@@ -564,150 +592,16 @@ READTXTCR:	LDA #$8D	;CR
 		JMP READTXTIT	;Continue
 READTXTEND:	RTS
 
-;*** Draw introduction Subroutine ***
+;*** Introduction Subroutine ***
 
-INTRO: 		LDA #$8D	;CR
+INTRO:		LDA #$8D	;CR
 		JSR ECHO
 		JSR ECHO
-		LDA #$08	;8 space
-		STA CharacNumb	;Store it
-		LDA #$A0	;" "
-		STA CharacValue	;Store Space
-		JSR GRAPH	;Output 8 space
 		printString CopyMess1
-		LDA #$0A	;10 space
-		STA CharacNumb	;Store it
-		JSR GRAPH	;Output 10 space
 		printString CopyMess2
-		LDA #$0C	;12 space
-		STA CharacNumb	;Store it
-		JSR GRAPH	;Output 12 space
 		printString CopyMess3
-
-		;Draw the ASCII Tower Line 1
-		LDA #$8D	;CR
-		JSR ECHO
-		LDA #$10	;16 space
-		STA CharacNumb	;Store it
-		LDA #$A0	;" "
-		STA CharacValue	;Store Space
-		JSR GRAPH	;Output 16 space
-		LDA #$08
-		STA CharacNumb
-		LDA #$C9	;"I"
-		STA CharacValue
-		JSR GRAPH
-		;Line 2
-		LDA #$8D	;CR
-		JSR ECHO
-		LDA #$10	;16 space
-		STA CharacNumb	;Store it
-		LDA #$A0	;" "
-		STA CharacValue	;Store Space
-		JSR GRAPH	;Output 16 space
-		LDA #$C9	;"I"
-		JSR ECHO
-		LDA #$06	;6 space now
-		STA CharacNumb
-		JSR GRAPH
-		LDA #$C9	;"I"
-		JSR ECHO
-		;Line 3
-		LDA #$8D	;CR
-		JSR ECHO
-		LDA #$10	;16 space
-		STA CharacNumb	;Store it
-		LDA #$A0	;" "
-		STA CharacValue	;Store Space
-		JSR GRAPH	;Output 16 space
-		LDA #$C9	;"I"
-		JSR ECHO
-		LDA #$06	;6 space now
-		STA CharacNumb
-		JSR GRAPH
-		LDA #$C9	;"I"
-		JSR ECHO
-		;Line 4
-		LDA #$8D	;CR
-		JSR ECHO
-		LDA #$10	;16 space
-		STA CharacNumb	;Store it
-		LDA #$A0	;" "
-		STA CharacValue	;Store Space
-		JSR GRAPH	;Output 16 space
-		LDA #$C9	;"I"
-		JSR ECHO
-		LDA #$06	;6 space now
-		STA CharacNumb
-		JSR GRAPH
-		LDA #$C9	;"I"
-		JSR ECHO
-		;Line 5
-		LDA #$8D	;CR
-		JSR ECHO
-		LDA #$10	;16 space
-		STA CharacNumb	;Store it
-		LDA #$A0	;" "
-		STA CharacValue	;Store Space
-		JSR GRAPH	;Output 16 space
-		LDA #$C9	;"I"
-		JSR ECHO
-		LDA #$02	;2 space now
-		STA CharacNumb
-		JSR GRAPH
-		LDA #$C9	;"I"
-		STA CharacValue
-		JSR GRAPH
-		LDA #$A0	;" "
-		STA CharacValue
-		JSR GRAPH
-		LDA #$C9
-		JSR ECHO
-		;Line 6
-		LDA #$8D	;CR
-		JSR ECHO
-		LDA #$10	;16 space
-		STA CharacNumb	;Store it
-		LDA #$A0	;" "
-		STA CharacValue	;Store Space
-		JSR GRAPH	;Output 16 space
-		LDA #$C9	;"I"
-		JSR ECHO
-		LDA #$02	;2 space now
-		STA CharacNumb
-		JSR GRAPH
-		LDA #$C9	;"I"
-		STA CharacValue
-		JSR GRAPH
-		LDA #$A0	;" "
-		STA CharacValue
-		JSR GRAPH
-		LDA #$C9
-		JSR ECHO
-		;Line 7
-		LDA #$8D	;CR
-		JSR ECHO
-		LDA #$0C	;12 space
-		STA CharacNumb	;Store it
-		LDA #$A0	;" "
-		STA CharacValue	;Store Space
-		JSR GRAPH	;Output 12 space
-		LDA #$C9	;"I"
-		STA CharacValue
-		LDA #$10	;16 "I"
-		STA CharacNumb
-		JSR GRAPH
-		; Choice Menu
-		LDA #$8D	;CR
-		JSR ECHO
-		JSR ECHO
-		LDA #$0C	;12 space
-		STA CharacNumb	;Store it
-		LDA #$A0	;" "
-		STA CharacValue	;Store Space
-		JSR GRAPH	;Output 12 space
+		printString TowerArt
 		printString IntroChoice
-
 		;Check Intro Choice
 		LDA #$3E	;">"
 		JSR ECHO
@@ -721,7 +615,7 @@ INTNXTCHAR:	LDA KBDCR
 		JMP INTNXTCHAR
 INTHELP:	printString HelpTxt
 INTEND:		printString LetBegin
-		RTS	
+		RTS
 
 ;********************************************
 ;************** DATA ADDRESS ****************
@@ -732,18 +626,19 @@ INTEND:		printString LetBegin
 
 ;*** Copyrights
 
-CopyMess1: 	.byte "LITTLE TOWER V1.0&%"
-CopyMess2:	.byte "APPLE 1 COOL GAME&%"
-CopyMess3:	.byte "WRITTEN BY A.VERHILLE&%"
+CopyMess1: 	.byte "        LITTLE TOWER V1.0&%"
+CopyMess2:	.byte "          APPLE 1 COOL GAME&%"
+CopyMess3:	.byte "            WRITTEN BY A.VERHILLE&&%"
+TowerArt:	.byte "                IIIIIIII&                I      I&                I      I&                I      I&                I  II  I&                I  II  I&            IIIIIIIIIIIIIIII&&%"
 
 ;*** Introduction choice
 
-IntroChoice:	.byte "1] PLAY  2] HELP&&%"
+IntroChoice:	.byte "            1] PLAY  2] HELP&&%"
 
 ;*** Misc Txt
 
 LetBegin:	.byte "OK, NOW LET'S BEGIN ...&&%"
-HelpTxt: 	.byte "THIS IS A BASIC TXT ADVENTURE.&VALIDS COMMANDS ARE:&&DIRECTION: N,S,W,UP,DOWN.&ACTION: LOOK,EXAMINE,ENTER,&GET,TAKE,USE,SAY,OPEN.&SPECIAL: INVENTORY,HELP,&RESTART,EXIT.&OBJECT: BOAT,DOOR,AND MORE...&&COMPLEX COMMAND USE TWO WORD MAX&%"
+HelpTxt: 	.byte "THIS IS A BASIC TXT ADVENTURE.&VALID COMMANDS ARE:&&DIRECTION: N,S,W,UP,DOWN.&ACTION: LOOK,EXAMINE,ENTER,&GET,TAKE,USE,SAY,OPEN.&SPECIAL: INVENTORY,HELP,&RESTART,QUIT,EXIT.&OBJECT: BOAT,DOOR,AND MORE...&&COMMANDS USE TWO WORDS MAX&%"
 ObjTxt:		.byte "OBJECT(S): %"
 ExitTxt:	.byte "EXIT(S): %"
 ShitTxt:	.byte "HEY, BECAUSE YOU SAY THAT,&YOU MUST TYPE 'SORRY' TO CONTINUE.&OBEY CAN BE A GOOD IDEA&%"
@@ -765,6 +660,7 @@ Fuck:           .byte "FUCK%"
 Sorry:          .byte "SORRY%" 
 Inventory:      .byte "INVENTORY%"
 Restart:        .byte "RESTART%"
+Quit:           .byte "QUIT%"
 
 ; Directions Commands
 North:          .byte "N%"
@@ -797,6 +693,11 @@ UseKey:         .byte "USE KEY%"
 OpenDoor:       .byte "OPEN DOOR%"
 Kill:           .byte "KILL%"
 Attack:         .byte "ATTACK%"
+ExaminePictures:.byte "EXAMINE PICTURES%"
+ExamineVampire: .byte "EXAMINE VAMPIRE%"
+ExamineMan:     .byte "EXAMINE MAN%"
+LookPicture:    .byte "LOOK PICTURE%"
+LookPictures:   .byte "LOOK PICTURES%"
 
 ;*** Room Information
 
@@ -804,11 +705,11 @@ Room1Txt:	.byte "YOU'RE IN A DARK FOREST.&ELUSIVE SHADOWS ARE FLYING AROUND.&IN 
 Room1Obj:	.byte "DOOR&%"
 Room1Exit:	.byte "S,ENTER&%"
 
-Room2Txt:	.byte "YOU'RE ON THE LAKE'S BANK,&THERE IS A SKELETON HERE, AND AN OLD&SMALL BOAT FLOATTING ON THE WATER. IT&CAN PROBABLY TRANSPORT YOU TO THE SOUTH&%"
+Room2Txt:	.byte "YOU'RE ON THE LAKE'S BANK,&THERE IS A SKELETON HERE, AND AN OLD&SMALL BOAT FLOATING ON THE WATER. IT&CAN PROBABLY TRANSPORT YOU TO THE SOUTH&%"
 Room2Obj:	.byte "SKELETON,BOAT&%"
 Room2Exit:	.byte "N,S&%"
 
-Room3Txt:       .byte "YOU'RE IN A WORKSHOP. LOTS OF WOOD'S&PLANKS ARE RESTING ON THE WALLS. THERE&ARE SOME TORCHS ON A WORKBENCH, STAIRS&GOING UP AND A DOOR TO THE WEST.&%"
+Room3Txt:       .byte "YOU'RE IN A WORKSHOP. LOTS OF WOODEN&PLANKS ARE RESTING ON THE WALLS. THERE&ARE SOME TORCHES ON A WORKBENCH, STAIRS&GOING UP AND A DOOR TO THE WEST.&%"
 Room3Obj:       .byte "TORCH&%"
 Room3Exit:      .byte "W,UP&%"
 
@@ -816,11 +717,11 @@ Room4Txt:       .byte "WELCOME TO THE TOWER'S BEDROOM.&THERE ARE SOME PICTURES O
 Room4Obj:       .byte "PICTURE,BED&%"
 Room4Exit:      .byte "UP,DOWN,S&%"
 
-Room5Txt:       .byte "IN THIS ROOM, THERE'S A LIBRARY WHERE&HUNDRED OF BOOKS ARE STORED.&A WOODEN DESK AND A CHAIR&ARE RESTING HERE.&%"
+Room5Txt:       .byte "IN THIS ROOM, THERE'S A LIBRARY WHERE&HUNDREDS OF BOOKS ARE STORED.&A WOODEN DESK AND A CHAIR&ARE RESTING HERE.&%"
 Room5Obj:       .byte "DESK,BOOK&%"
 Room5Exit:      .byte "N&%"
 
-Room6Txt:       .byte "THIS ROOM IS TOTALY WIPED OUT,&YOU CAN SEE THE STARS FROM HERE.&IN THE MIDDLE OF THE MESS,&A DARK MAN IS LOOKING AT YOU.&%"
+Room6Txt:       .byte "THIS ROOM IS TOTALLY WRECKED,&YOU CAN SEE THE STARS FROM HERE.&IN THE MIDDLE OF THE MESS,&A PALE FIGURE WITH GLOWING EYES&STARES AT YOU SILENTLY.&%"
 Room6Obj:       .byte "NOTHING&%"
 Room6Exit:      .byte "DOWN&%"
 
@@ -835,10 +736,10 @@ NoKey:          .byte "NO KEY IN YOUR INVENTORY !!!!&%"
 UnlockDoor:     .byte "OK, THE DOOR IS UNLOCKED&%"
 ExamineTorchTxt:.byte "GOOD TORCH FOR GOOD LIGHT !&%"
 GetTorchTxt:    .byte "OK, THE TORCH IS IN YOUR BAG.&%"
-ExaminePictureTxt: .byte "THERE ARE SOME CABALISTICS SIGNS.&ONE ONLY CAN BE READ :&'ANAETOSH' IS THE WORD WHO CAN SAVE&YOU FROM PARALYSIS.&%"
+ExaminePictureTxt: .byte "THERE ARE SOME CABALISTIC SIGNS.&ONE ONLY CAN BE READ :&'ANAETOSH' IS THE WORD THAT CAN SAVE&YOU FROM PARALYSIS.&%"
 ExamineBedTxt:  .byte "THERE'S NOTHING ON THE BED&AND UNDER THE BED.&%"
 ExamineDeskTxt: .byte "THERE IS A SILVER DAGGER HERE&YOU GET THE DAGGER WITH YOU.&%"
-ExamineBookTxt: .byte "LOTS OF BOOK TALK ABOUT&VAMPIRES EXTERMINATION.&%"
+ExamineBookTxt: .byte "LOTS OF BOOKS TALK ABOUT&VAMPIRE EXTERMINATION.&%"
 Room5TxtNoLight:.byte "THERE IS NO LIGHT HERE,&APART FROM THE NORTH DOOR.&%"
 SayAnaetoshTxt: .byte "YEAHH, IT WORKS !!!&YOU CAN MOVE NOW.&%"
 Cantmove:       .byte "IT'S IMPOSSIBLE, YOU CAN'T MOVE !&%"
@@ -852,10 +753,11 @@ DontUnderstand: .byte "I DON'T UNDERSTAND, TYPE 'HELP'&%"
 CantGoThere:    .byte "YOU CAN'T GO THAT WAY&%"
 TorchGone:      .byte "YOU ALREADY TOOK THE BEST ONE&%"
 AlreadyLit:     .byte "THE ROOM IS ALREADY LIT&%"
+ExamineVampireTxt: .byte "HIS SKIN IS PALE AS DEATH,&HIS EYES GLOW WITH A RED LIGHT.&YOU FEEL A CHILL DOWN YOUR SPINE.&%"
 Win:            .byte "THE VAMPIRE IS DISAPPEARING&UNDER YOUR ATTACK !&%"
 Death:          .byte "YOU ARE TRYING TO ESCAPE,&BUT YOU CAN'T MOVE. THE VAMPIRE&IS SUCKING YOUR BLOOD NOW.&THAT'S THE END.&%"
 
 ;*** ASCII Art
 
-Room6Art:       .byte "&&      () ()&       \/&   ___/  \___&  /\/\/\/\/\/\&  \_/      \_/&&%"
+Room6Art:       .byte "&&       /\     /\&      /  \   /  \&     /    \_/    \&    |   O     O   |&    |      ^      |&     \   V   V   /&      \         /&       \_______/&&%"
 WinArt:         .byte "&&    *******************&    *                 *&    * CONGRATULATIONS *&    *   YOU WIN !!    *&    *                 *&    *******************&&%"

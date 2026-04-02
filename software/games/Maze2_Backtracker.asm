@@ -1,5 +1,6 @@
 ; =============================================
 ; MAZE 2 - GENERATOR FOR APPLE 1
+; VERHILLE Arnaud - 2026
 ; Recursive Backtracker (DFS) Algorithm
 ; 19x11 cells -> 40x24 display
 ; With title screen and S/E markers
