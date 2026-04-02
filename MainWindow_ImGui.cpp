@@ -479,6 +479,7 @@ void MainWindow_ImGui::renderAboutDialog()
         ImGui::BulletText("Lee DAVISON (Enhanced BASIC)");
         ImGui::BulletText("Achim BREIDENBACH (Sim6502)");
         ImGui::BulletText("Fabrice FRANCES (Java Microtan Emulator)");
+        ImGui::BulletText("Tom OWAD (Applefritter)");
         ImGui::BulletText("And All Apple 1 Community");
 
         ImGui::Spacing();
