@@ -72,7 +72,7 @@ run_emulator.bat                    REM copies ROMs & launches the emulator
 
 ### 🌐 Web Version (WebAssembly)
 
-**Play directly in your browser:** [https://habib256.github.io/POM1/](https://habib256.github.io/POM1/html/pom1_imgui.html)
+**Play directly in your browser:** [https://habib256.github.io/POM1/build-wasm/pom1_imgui.html](https://habib256.github.io/POM1/build-wasm/pom1_imgui.html)
 
 To build the WASM version yourself:
 
