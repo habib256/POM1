@@ -71,7 +71,7 @@ var ENVIRONMENT_IS_SHELL = !ENVIRONMENT_IS_WEB && !ENVIRONMENT_IS_NODE && !ENVIR
 
 // --pre-jses are emitted after the Module integration code, so that they can
 // refer to Module (if they choose; they can also define Module)
-// include: /tmp/tmpkq35dizg.js
+// include: /var/folders/jh/nhf0yjx91mn8mcldfwcm4_s40000gn/T/tmp8wegabky.js
 
   if (!Module['expectedDataFileDownloads']) Module['expectedDataFileDownloads'] = 0;
   Module['expectedDataFileDownloads']++;
@@ -161,11 +161,13 @@ var ENVIRONMENT_IS_SHELL = !ENVIRONMENT_IS_WEB && !ENVIRONMENT_IS_NODE && !ENVIR
       }
 Module['FS_createPath']("/", "fonts", true, true);
 Module['FS_createPath']("/", "roms", true, true);
-Module['FS_createPath']("/", "soft-asm", true, true);
-Module['FS_createPath']("/soft-asm", "demos", true, true);
-Module['FS_createPath']("/soft-asm", "dev", true, true);
-Module['FS_createPath']("/soft-asm", "games", true, true);
-Module['FS_createPath']("/soft-asm", "tests", true, true);
+Module['FS_createPath']("/", "software", true, true);
+Module['FS_createPath']("/software", "basic", true, true);
+Module['FS_createPath']("/software", "demos", true, true);
+Module['FS_createPath']("/software", "dev", true, true);
+Module['FS_createPath']("/software", "games", true, true);
+Module['FS_createPath']("/software", "tests", true, true);
+Module['FS_createPath']("/software", "utils", true, true);
 
     for (var file of metadata['files']) {
       var name = file['filename']
@@ -206,25 +208,25 @@ Module['FS_createPath']("/soft-asm", "tests", true, true);
     }
 
     }
-    loadPackage({"files": [{"filename": "/fonts/fa-solid-900.ttf", "start": 0, "end": 426112}, {"filename": "/roms/WozMonitor.rom", "start": 426112, "end": 426368}, {"filename": "/roms/basic.rom", "start": 426368, "end": 430464}, {"filename": "/roms/charmap.rom", "start": 430464, "end": 431488}, {"filename": "/roms/krusader-1.3.rom", "start": 431488, "end": 439680}, {"filename": "/soft-asm/demos/30th.apl.txt", "start": 439680, "end": 450491}, {"filename": "/soft-asm/demos/Maze.asm", "start": 450491, "end": 456301}, {"filename": "/soft-asm/demos/cat.apl.txt", "start": 456301, "end": 458534}, {"filename": "/soft-asm/demos/cellular.apl.txt", "start": 458534, "end": 460286}, {"filename": "/soft-asm/demos/life.txt", "start": 460286, "end": 461954}, {"filename": "/soft-asm/demos/mandelbrot-65.apl.txt", "start": 461954, "end": 466137}, {"filename": "/soft-asm/dev/6502_EhBASIC_V2.22-master.zip", "start": 466137, "end": 1022589}, {"filename": "/soft-asm/dev/ENHANCEDBASIC.txt", "start": 1022589, "end": 1054806}, {"filename": "/soft-asm/dev/WozMonitor.txt", "start": 1054806, "end": 1055825}, {"filename": "/soft-asm/dev/fig-fORTH110.txt", "start": 1055825, "end": 1076426}, {"filename": "/soft-asm/games/15-puzzle.apl.txt", "start": 1076426, "end": 1079556}, {"filename": "/soft-asm/games/2048.apl.txt", "start": 1079556, "end": 1085699}, {"filename": "/soft-asm/games/LittleTower.asm", "start": 1085699, "end": 1107009}, {"filename": "/soft-asm/games/LittleTower.txt", "start": 1107009, "end": 1124811}, {"filename": "/soft-asm/games/codebreaker.apl.txt", "start": 1124811, "end": 1131222}, {"filename": "/soft-asm/games/lunar_lander.txt", "start": 1131222, "end": 1136735}, {"filename": "/soft-asm/games/microchess.apl.txt", "start": 1136735, "end": 1143771}, {"filename": "/soft-asm/games/peg-solitaire.apl.txt", "start": 1143771, "end": 1146182}, {"filename": "/soft-asm/games/shut-the-box.apl.txt", "start": 1146182, "end": 1149393}, {"filename": "/soft-asm/games/worple.apl.txt", "start": 1149393, "end": 1159801}, {"filename": "/soft-asm/tests/ASCII_hex_Terminal.txt", "start": 1159801, "end": 1160063}, {"filename": "/soft-asm/tests/ASCII_hex_keyboard.txt", "start": 1160063, "end": 1160285}, {"filename": "/soft-asm/tests/Getting_The_System_Running.txt", "start": 1160285, "end": 1161112}, {"filename": "/soft-asm/tests/Print_with_hex.txt", "start": 1161112, "end": 1162127}], "remote_package_size": 1162127});
+    loadPackage({"files": [{"filename": "/fonts/fa-solid-900.ttf", "start": 0, "end": 426112}, {"filename": "/roms/WozMonitor.rom", "start": 426112, "end": 426368}, {"filename": "/roms/basic.rom", "start": 426368, "end": 430464}, {"filename": "/roms/charmap.rom", "start": 430464, "end": 431488}, {"filename": "/roms/krusader-1.3.rom", "start": 431488, "end": 439680}, {"filename": "/software/.DS_Store", "start": 439680, "end": 445828}, {"filename": "/software/apple1.cfg", "start": 445828, "end": 446072}, {"filename": "/software/basic/blackjack.apl.txt", "start": 446072, "end": 453057}, {"filename": "/software/basic/dobble.apl.txt", "start": 453057, "end": 464442}, {"filename": "/software/basic/hamurabi.apl.txt", "start": 464442, "end": 475427}, {"filename": "/software/basic/lunar-lander-ascii-graphics.apl.txt", "start": 475427, "end": 486412}, {"filename": "/software/basic/mini-startrek.apl.txt", "start": 486412, "end": 497397}, {"filename": "/software/basic/resistor-calculator.apl.txt", "start": 497397, "end": 504382}, {"filename": "/software/basic/stopwatch.apl.txt", "start": 504382, "end": 511367}, {"filename": "/software/demos/30th.apl.txt", "start": 511367, "end": 522178}, {"filename": "/software/demos/beer.apl.txt", "start": 522178, "end": 522814}, {"filename": "/software/demos/cat.apl.txt", "start": 522814, "end": 525047}, {"filename": "/software/demos/cellular.apl.txt", "start": 525047, "end": 526799}, {"filename": "/software/demos/life.txt", "start": 526799, "end": 528467}, {"filename": "/software/demos/mandelbrot-65.apl.txt", "start": 528467, "end": 532650}, {"filename": "/software/demos/pasart.apl.txt", "start": 532650, "end": 534430}, {"filename": "/software/dev/ENHANCEDBASIC.txt", "start": 534430, "end": 566647}, {"filename": "/software/dev/WozMonitor.txt", "start": 566647, "end": 567666}, {"filename": "/software/dev/a1assembler.apl.txt", "start": 567666, "end": 580321}, {"filename": "/software/dev/dis-assembler.apl.txt", "start": 580321, "end": 581820}, {"filename": "/software/dev/fig-fORTH110.txt", "start": 581820, "end": 602421}, {"filename": "/software/games/15-puzzle.apl.txt", "start": 602421, "end": 605551}, {"filename": "/software/games/2048.apl.txt", "start": 605551, "end": 611694}, {"filename": "/software/games/LittleTower.asm", "start": 611694, "end": 633004}, {"filename": "/software/games/LittleTower.txt", "start": 633004, "end": 650806}, {"filename": "/software/games/Maze.asm", "start": 650806, "end": 664488}, {"filename": "/software/games/Maze.txt", "start": 664488, "end": 667147}, {"filename": "/software/games/Maze2.asm", "start": 667147, "end": 681676}, {"filename": "/software/games/Maze2.txt", "start": 681676, "end": 685076}, {"filename": "/software/games/codebreaker.apl.txt", "start": 685076, "end": 691487}, {"filename": "/software/games/lunar-lander-text-only.apl.txt", "start": 691487, "end": 696877}, {"filename": "/software/games/mastermind.apl.txt", "start": 696877, "end": 697442}, {"filename": "/software/games/microchess.apl.txt", "start": 697442, "end": 704478}, {"filename": "/software/games/peg-solitaire.apl.txt", "start": 704478, "end": 706889}, {"filename": "/software/games/shut-the-box.apl.txt", "start": 706889, "end": 710100}, {"filename": "/software/games/worple.apl.txt", "start": 710100, "end": 720508}, {"filename": "/software/pom1.cfg", "start": 720508, "end": 720752}, {"filename": "/software/tests/ASCII_hex_Terminal.txt", "start": 720752, "end": 721014}, {"filename": "/software/tests/ASCII_hex_keyboard.txt", "start": 721014, "end": 721236}, {"filename": "/software/tests/Getting_The_System_Running.txt", "start": 721236, "end": 722063}, {"filename": "/software/tests/Print_with_hex.txt", "start": 722063, "end": 723078}, {"filename": "/software/utils/party.apl.txt", "start": 723078, "end": 734755}, {"filename": "/software/utils/typewriter.apl.txt", "start": 734755, "end": 735475}], "remote_package_size": 735475});
 
   })();
 
-// end include: /tmp/tmpkq35dizg.js
-// include: /tmp/tmpen_s4vij.js
+// end include: /var/folders/jh/nhf0yjx91mn8mcldfwcm4_s40000gn/T/tmp8wegabky.js
+// include: /var/folders/jh/nhf0yjx91mn8mcldfwcm4_s40000gn/T/tmpd8oje08z.js
 
     // All the pre-js content up to here must remain later on, we need to run
     // it.
     if ((typeof ENVIRONMENT_IS_WASM_WORKER != 'undefined' && ENVIRONMENT_IS_WASM_WORKER) || (typeof ENVIRONMENT_IS_PTHREAD != 'undefined' && ENVIRONMENT_IS_PTHREAD) || (typeof ENVIRONMENT_IS_AUDIO_WORKLET != 'undefined' && ENVIRONMENT_IS_AUDIO_WORKLET)) Module['preRun'] = [];
     var necessaryPreJSTasks = Module['preRun'].slice();
-  // end include: /tmp/tmpen_s4vij.js
-// include: /tmp/tmpgl2eg7uf.js
+  // end include: /var/folders/jh/nhf0yjx91mn8mcldfwcm4_s40000gn/T/tmpd8oje08z.js
+// include: /var/folders/jh/nhf0yjx91mn8mcldfwcm4_s40000gn/T/tmpu18lwodj.js
 
     if (!Module['preRun']) throw 'Module.preRun should exist because file support used it; did a pre-js delete it?';
     necessaryPreJSTasks.forEach((task) => {
       if (Module['preRun'].indexOf(task) < 0) throw 'All preRun tasks that exist before user pre-js code should remain after; did you replace Module or modify Module.preRun?';
     });
-  // end include: /tmp/tmpgl2eg7uf.js
+  // end include: /var/folders/jh/nhf0yjx91mn8mcldfwcm4_s40000gn/T/tmpu18lwodj.js
 
 
 var arguments_ = [];
@@ -8049,6 +8051,12 @@ var stringToUTF8Array = (str, heap, outIdx, maxBytesToWrite) => {
 
   var _glfwGetWindowSize = (winid, width, height) => GLFW.getWindowSize(winid, width, height);
 
+  var _glfwGetWindowUserPointer = (winid) => {
+      var win = GLFW.WindowFromId(winid);
+      if (!win) return 0;
+      return win.userptr;
+    };
+
   var _glfwInit = () => {
       if (GLFW.windows) return 1; // GL_TRUE
   
@@ -8160,6 +8168,12 @@ var stringToUTF8Array = (str, heap, outIdx, maxBytesToWrite) => {
     };
 
   var _glfwSetWindowSize = (winid, width, height) => GLFW.setWindowSize(winid, width, height);
+
+  var _glfwSetWindowUserPointer = (winid, ptr) => {
+      var win = GLFW.WindowFromId(winid);
+      if (!win) return;
+      win.userptr = ptr;
+    };
 
   var _glfwSwapBuffers = (winid) => GLFW.swapBuffers(winid);
 
@@ -8895,6 +8909,8 @@ var wasmImports = {
   /** @export */
   glfwGetWindowSize: _glfwGetWindowSize,
   /** @export */
+  glfwGetWindowUserPointer: _glfwGetWindowUserPointer,
+  /** @export */
   glfwInit: _glfwInit,
   /** @export */
   glfwMakeContextCurrent: _glfwMakeContextCurrent,
@@ -8930,6 +8946,8 @@ var wasmImports = {
   glfwSetWindowShouldClose: _glfwSetWindowShouldClose,
   /** @export */
   glfwSetWindowSize: _glfwSetWindowSize,
+  /** @export */
+  glfwSetWindowUserPointer: _glfwSetWindowUserPointer,
   /** @export */
   glfwSwapBuffers: _glfwSwapBuffers,
   /** @export */
