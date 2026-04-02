@@ -36,7 +36,7 @@ Note: ROMs must be present next to the executable. The run scripts automatically
 
 ### Assembling programs (requires cc65)
 ```bash
-ca65 -o build/program.o soft-asm/program.asm
+ca65 -o build/program.o software/program.asm
 ld65 -C build/apple1.cfg -o build/program.bin build/program.o
 ```
 
@@ -60,7 +60,7 @@ ld65 -C build/apple1.cfg -o build/program.bin build/program.o
 
 All three main ROMs are loaded automatically at startup by Memory::loadWozMonitor(), loadBasic(), and loadKrusader(). Each function validates the file size before loading.
 
-### Software directory (soft-asm/)
+### Software directory (software/)
 Contains Apple 1 programs in Woz Monitor hex dump format (.txt) organized in subdirectories:
 - **games/**: Games — Microchess, LittleTower, Lunar Lander, Blackjack, 2048, Mini Star Trek, etc.
 - **demos/**: Demos — Game of Life, Maze (Sidewinder), Maze 2 (Recursive Backtracker), Mandelbrot, Cellular automaton, etc.

@@ -154,7 +154,7 @@ vcpkg install glfw3:x64-windows
 
 ## 🎮 Software Library
 
-The `soft-asm/` directory ships with **20+ ready-to-run programs** — load them via **File > Load Memory**.
+The `software/` directory ships with **20+ ready-to-run programs** — load them via **File > Load Memory**.
 
 ### 🕹️ Games
 
@@ -217,7 +217,7 @@ POM1/
 ├── Screen_ImGui.cpp/h       # 🖥️ Apple 1 display (40×24, CRT effects)
 ├── MemoryViewer_ImGui.cpp/h # 🔍 Hex editor with search & navigation
 ├── roms/                    # 📀 WozMonitor, BASIC, Krusader, charmap
-├── soft-asm/                # 📂 Hex dump programs + assembly sources
+├── software/                # 📂 Hex dump programs + assembly sources
 │   ├── games/               #   🎮 Games
 │   ├── demos/               #   🎨 Demos
 │   ├── dev/                 #   🛠️ Dev tools

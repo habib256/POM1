@@ -154,15 +154,20 @@ void MemoryViewer_ImGui::renderHexView()
 {
     ImGui::BeginChild("HexView", ImVec2(0, 0), true);
 
+    // Compute column positions so header and data rows are perfectly aligned
+    float addrW = ImGui::CalcTextSize("0x0000  ").x;
+    float cellW = ImGui::CalcTextSize("FF").x + ImGui::GetStyle().ItemSpacing.x;
+    float hexStartX = ImGui::GetCursorPosX() + addrW;
+
     // Column header
-    ImGui::Text("Address ");
+    ImGui::Text("Address");
     for (int i = 0; i < bytesPerRow; ++i) {
-        ImGui::SameLine();
+        ImGui::SameLine(hexStartX + i * cellW);
         ImGui::Text("%02X", i);
     }
     if (showAscii) {
-        ImGui::SameLine();
-        ImGui::Text("  ASCII");
+        ImGui::SameLine(hexStartX + bytesPerRow * cellW + ImGui::GetStyle().ItemSpacing.x);
+        ImGui::Text("ASCII");
     }
 
     ImGui::Separator();
@@ -184,7 +189,7 @@ void MemoryViewer_ImGui::renderHexView()
 
             quint8 value = readByte(currentAddr);
 
-            ImGui::SameLine();
+            ImGui::SameLine(hexStartX + col * cellW);
 
             // Color by memory region
             bool pushedColor = false;
@@ -199,7 +204,7 @@ void MemoryViewer_ImGui::renderHexView()
             // Clickable hex value for editing
             char selectableId[16];
             snprintf(selectableId, sizeof(selectableId), "%02X##%04X", value, currentAddr);
-            if (ImGui::Selectable(selectableId, false, ImGuiSelectableFlags_None, ImVec2(20, 0))) {
+            if (ImGui::Selectable(selectableId, false, ImGuiSelectableFlags_None, ImVec2(cellW - ImGui::GetStyle().ItemSpacing.x, 0))) {
                 editAddress = currentAddr;
                 snprintf(editBuffer, sizeof(editBuffer), "%02X", value);
                 showEditPopup = true;
@@ -217,8 +222,8 @@ void MemoryViewer_ImGui::renderHexView()
         // ASCII column
         if (showAscii && asciiIdx > 0) {
             asciiLine[asciiIdx] = '\0';
-            ImGui::SameLine();
-            ImGui::Text("  %s", asciiLine);
+            ImGui::SameLine(hexStartX + bytesPerRow * cellW + ImGui::GetStyle().ItemSpacing.x);
+            ImGui::Text("%s", asciiLine);
         }
     }
 

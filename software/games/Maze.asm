@@ -5,8 +5,8 @@
 ; With title screen and S/E markers
 ; =============================================
 ; Assemble with cc65:
-;   ca65 -o build/Maze.o soft-asm/demos/Maze.asm
-;   ld65 -C soft-asm/apple1.cfg -o build/Maze.bin build/Maze.o
+;   ca65 -o build/Maze.o software/demos/Maze.asm
+;   ld65 -C software/apple1.cfg -o build/Maze.bin build/Maze.o
 ;
 ; Load in POM1 via File > Load Memory (Maze.txt)
 ; or load binary at $0300, then type 300R in Woz Monitor.
