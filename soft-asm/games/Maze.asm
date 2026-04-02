@@ -1,6 +1,6 @@
 ; =============================================
 ; MAZE GENERATOR FOR APPLE 1
-; Binary Tree Algorithm
+; Sidewinder Algorithm
 ; 19x11 cells -> 40x24 display
 ; With title screen and S/E markers
 ; =============================================
@@ -23,18 +23,25 @@ DISP_W  = 39            ; Display width - 1 (for hashcr to add 40th)
 END_CY  = 10            ; End marker cell row (last row = NROWS-1)
 END_DX  = 37            ; End marker display col (2*18+1)
 
+; choices[] bitfield:
+;   bit 0 = NORTH passage (horizontal wall above removed)
+;   bit 1 = EAST passage  (vertical wall to right removed)
+NORTH_BIT = $01
+EAST_BIT  = $02
+
 ; --- Zero page variables ---
 .zeropage
 prng_lo:    .res 1      ; $00 - PRNG state low byte
 prng_hi:    .res 1      ; $01 - PRNG state high byte
-            .res 1      ; $02 - unused
+run_start:  .res 1      ; $02 - Sidewinder: start column of current run
 cell_row:   .res 1      ; $03 - current cell row (CY)
 temp:       .res 1      ; $04 - temp storage
-temp2:      .res 1      ; $05 - temp for empty line count
+temp2:      .res 1      ; $05 - temp / empty line count
 str_lo:     .res 1      ; $06 - string pointer low
 str_hi:     .res 1      ; $07 - string pointer high
-            .res 8      ; $08-$0F unused
-choices:    .res 19     ; $10-$22 - choices[19] for each cell column
+run_len:    .res 1      ; $08 - Sidewinder: length of current run
+            .res 7      ; $09-$0F unused
+choices:    .res 19     ; $10-$22 - choices[19] bitfield per cell column
 
 ; --- Code at $0300 ---
 .code
@@ -54,31 +61,85 @@ restart:
         LDA #$00
         STA cell_row            ; CY = 0
 
-; === ROWLOOP: Generate choices for current row ===
+; ======================================================
+; ROWLOOP: Generate choices using Sidewinder algorithm
+; ======================================================
 rowloop:
-        LDX #$00                ; cell_col = 0
-
-; --- GENCHOICE: decide NORTH or EAST for each cell ---
-genchoice:
-        CPX #(NCOLS-1)          ; CX == rightmost?
-        BEQ rightcol            ; -> force NORTH
-        LDA cell_row
-        BEQ toprow              ; CY == 0 -> force EAST
-        JSR random              ; call PRNG
-        AND #$01                ; 0=NORTH, 1=EAST
-        JMP storechoice
-
-toprow:
-        LDA #$01                ; choice = EAST
-        JMP storechoice
-
-rightcol:
-        LDA #$00                ; choice = NORTH
-                                ; fall through
-
-storechoice:
-        STA choices,X           ; choices[CX] = A
+        ; Clear choices array
+        LDX #$00
+        LDA #$00
+@clear: STA choices,X
         INX
+        CPX #NCOLS
+        BNE @clear
+
+        LDA #$00
+        STA run_start           ; run starts at column 0
+        LDX #$00                ; CX = 0
+
+; --- Sidewinder: process each cell ---
+genchoice:
+        LDA cell_row
+        BNE @not_top
+
+        ; === Top row: always EAST except last column ===
+        CPX #(NCOLS-1)
+        BEQ @next               ; last col: stays 0 (dead end)
+        LDA choices,X
+        ORA #EAST_BIT
+        STA choices,X
+        JMP @next
+
+@not_top:
+        ; === Other rows: close run or extend east ===
+        CPX #(NCOLS-1)
+        BEQ @close              ; must close at right edge
+
+        JSR random
+        AND #$01
+        BEQ @close              ; 50% chance to close run
+
+        ; Extend run east
+        LDA choices,X
+        ORA #EAST_BIT
+        STA choices,X
+        JMP @next
+
+@close:
+        ; Close the run: pick random cell for NORTH passage
+        ; run_len = CX - run_start + 1
+        STX temp                ; save CX
+        TXA
+        SEC
+        SBC run_start           ; A = CX - run_start
+        CLC
+        ADC #$01                ; A = CX - run_start + 1 = run_len
+        STA run_len
+
+        ; Pick random offset within run
+        JSR random              ; A = random byte
+        AND #$1F                ; mask to 0-31
+@mod:   CMP run_len             ; A >= run_len?
+        BCC @mod_done
+        SBC run_len             ; A -= run_len (carry is set from CMP)
+        JMP @mod
+@mod_done:
+        ; A = random offset in [0, run_len-1]
+        CLC
+        ADC run_start           ; A = north_cell column index
+        TAX
+        LDA choices,X
+        ORA #NORTH_BIT          ; set NORTH passage
+        STA choices,X
+
+        LDX temp                ; restore CX
+        ; Next run starts after this cell
+        TXA
+        CLC
+        ADC #$01
+        STA run_start
+
+@next:  INX
         CPX #NCOLS              ; CX == 19?
         BNE genchoice           ; -> loop
 
@@ -88,10 +149,10 @@ storechoice:
 
 ; --- TOP BORDER: 39x '#' + HASHCR ---
         LDX #DISP_W             ; count = 39
-@loop:  LDA #($23 | $80)       ; '#' | $80
+@bdr:   LDA #($23 | $80)       ; '#' | $80
         JSR ECHO
         DEX
-        BNE @loop
+        BNE @bdr
         JSR hashcr              ; 40th '#' + newline
         JMP cellrow             ; skip to CELLROW
 
@@ -105,15 +166,15 @@ wallrowloop:
         TXA                     ; A = display col
         AND #$01                ; even or odd?
         BEQ wallhash            ; even -> always '#'
-        ; Odd position: check if cell opens NORTH
+        ; Odd position: check if cell has NORTH passage
         STX temp                ; save display col
         TXA
         LSR A                   ; cell_col = X >> 1
         TAX
         LDA choices,X           ; choices[cell_col]
         LDX temp                ; restore display col
-        CMP #$00                ; NORTH?
-        BNE wallhash            ; no -> '#'
+        AND #NORTH_BIT          ; NORTH bit set?
+        BEQ wallhash            ; no -> '#'
         ; Wall removed (NORTH passage)
         LDA #($20 | $80)       ; ' ' | $80
         JMP wallout
@@ -148,8 +209,8 @@ cellrowloop:
         DEX                     ; X/2 - 1 = cell to the left
         LDA choices,X           ; choices[left_cell]
         LDX temp                ; restore display col
-        CMP #$01                ; EAST?
-        BEQ cellspace_char      ; yes -> wall removed = ' '
+        AND #EAST_BIT           ; EAST bit set?
+        BNE cellspace_char      ; yes -> wall removed = ' '
         ; Wall present
         LDA #($23 | $80)       ; '#'
         JMP cellout
@@ -206,7 +267,7 @@ bottomborder:
         BNE @loop
         JSR hashcr              ; '#' + CR
 
-        ; Status line (24th line)
+        ; Status line (24th line, no trailing CR)
         LDA #<str_status
         LDX #>str_status
         JSR print_str_ax
@@ -215,12 +276,14 @@ bottomborder:
 ; WAITKEY: press key -> new maze
 ; ======================================================
 waitkey:
-        LDA KBDCR              ; keyboard control register
+        INC prng_lo             ; spin PRNG while waiting (timing = randomness)
+        BNE @no_hi
+        INC prng_hi
+@no_hi: LDA KBDCR              ; keyboard control register
         BPL waitkey             ; loop until key ready
         LDA KBD                 ; read key (clear strobe)
-        STA prng_lo             ; key -> new PRNG seed low
-        EOR #$FF
-        STA prng_hi             ; complement -> seed high
+        EOR prng_lo             ; mix key into PRNG state
+        STA prng_lo
         JSR clearscr
         JMP restart             ; -> new maze
 
@@ -284,7 +347,7 @@ show_title:
         JSR title_empty         ; line 7: empty
         LDA #<str_algo
         LDX #>str_algo
-        JSR title_text          ; line 8: Binary Tree...
+        JSR title_text          ; line 8: Sidewinder...
         LDA #<str_apple
         LDX #>str_apple
         JSR title_text          ; line 9: for Apple 1
@@ -305,13 +368,15 @@ show_title:
         JSR ECHO
         DEX
         BNE @bdr
-        ; Wait for key and seed PRNG
-@wait:  LDA KBDCR
+        ; Wait for key and seed PRNG (timing-based)
+@wait:  INC prng_lo
+        BNE @no_hi
+        INC prng_hi
+@no_hi: LDA KBDCR
         BPL @wait
         LDA KBD
+        EOR prng_lo             ; mix key into PRNG state
         STA prng_lo
-        EOR #$FF
-        STA prng_hi
         RTS
 
 ; === EMPTY_LINES: print A empty bordered lines ===
@@ -383,7 +448,7 @@ title_text:
 str_title:
         .byte "             * M A Z E *", 0
 str_algo:
-        .byte "      Binary Tree Maze Algorithm", 0
+        .byte "     Sidewinder Maze Algorithm", 0
 str_apple:
         .byte "            for Apple 1", 0
 str_author:

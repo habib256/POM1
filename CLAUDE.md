@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-POM1 is an Apple 1 emulator ported from Qt to Dear ImGui. It emulates the MOS 6502 CPU and Apple 1 hardware including memory-mapped I/O, display, and keyboard input. The UI is fully in English. Builds on Linux, macOS, and Windows.
+POM1 v1.0 is an Apple 1 emulator built with Dear ImGui. It emulates the MOS 6502 CPU and Apple 1 hardware including memory-mapped I/O, display, and keyboard input. The UI is fully in English. Builds on Linux, macOS, Windows, and Web (Emscripten/WASM).
 
 ## Build & Run Commands
 
@@ -63,7 +63,7 @@ All three main ROMs are loaded automatically at startup by Memory::loadWozMonito
 ### Software directory (soft-asm/)
 Contains Apple 1 programs in Woz Monitor hex dump format (.txt) organized in subdirectories:
 - **games/**: Games — Microchess, LittleTower, Lunar Lander, Blackjack, 2048, Mini Star Trek, etc.
-- **demos/**: Demos — Game of Life, Maze, Mandelbrot, Cellular automaton, etc.
+- **demos/**: Demos — Game of Life, Maze (Sidewinder), Maze 2 (Recursive Backtracker), Mandelbrot, Cellular automaton, etc.
 - **dev/**: Development tools — Woz Monitor, Enhanced BASIC, fig-FORTH
 - **tests/**: Hardware test programs — hex I/O, keyboard, terminal tests
 
@@ -162,6 +162,18 @@ The setup script supports apt (Ubuntu/Debian), dnf (Fedora/CentOS), and pacman (
 ## Repository Notes
 
 The `build/` and `imgui/` directories are excluded from git via `.gitignore`.
+
+## Version History
+
+### v1.0 (April 2026)
+- Dear ImGui UI with green/white CRT monitor, scanline effect
+- Complete MOS 6502 CPU emulation (BRK opcode fixed to use implied addressing)
+- Memory viewer, memory map, step debugger
+- File browser for loading/saving programs (binary and Woz Monitor hex dump)
+- 20+ programs included (games, demos, dev tools)
+- Maze (Sidewinder algorithm) and Maze 2 (Recursive Backtracker) with title screens
+- Builds on Linux, macOS, Windows, and Web (Emscripten/WASM)
+- Dead code cleanup: removed legacy SDL stubs (saveState/loadState, setSpeed, synchronize)
 
 ## Known Issues & TODOs
 

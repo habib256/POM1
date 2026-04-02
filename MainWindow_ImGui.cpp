@@ -443,31 +443,43 @@ void MainWindow_ImGui::renderStatusBar()
 
 void MainWindow_ImGui::renderAboutDialog()
 {
-    ImGui::SetNextWindowSize(ImVec2(400, 360), ImGuiCond_FirstUseEver);
-    if (        ImGui::Begin("About POM1", &showAbout)) {
-        ImGui::TextWrapped("POM1 - Apple 1 Emulator (Dear ImGui Version)");
+    ImGui::SetNextWindowSize(ImVec2(440, 480), ImGuiCond_FirstUseEver);
+    if (ImGui::Begin("About POM1", &showAbout)) {
+        ImGui::TextWrapped("POM1 v1.0 - Apple 1 Emulator (Dear ImGui)");
         ImGui::Separator();
-        
+
         ImGui::TextWrapped("Copyright © 2000-2026 GPL3");
         ImGui::Spacing();
-        
+
         ImGui::TextWrapped("Written by:");
         ImGui::BulletText("Arnaud VERHILLE (2000-2026)");
         ImGui::SameLine();
         if (ImGui::SmallButton("gist974@gmail.com")) {
             // Ouvrir email (nécessiterait une implémentation système)
         }
-        
+
         ImGui::BulletText("Upgraded by Ken WESSEN (21/2/2006)");
+        ImGui::BulletText("MacOS Cocoa port by Joe CROBAK");
         ImGui::BulletText("Ported to C/SDL by John D. CORRADO (2006-2014)");
         ImGui::BulletText("Dear ImGui version by Arnaud VERHILLE (2026)");
-        
+
         ImGui::Spacing();
         ImGui::TextWrapped("Thanks to:");
         ImGui::BulletText("Steve WOZNIAK & Steve JOBS");
         ImGui::BulletText("Vince BRIEL (Replica 1)");
+        ImGui::BulletText("Lee DAVISON (Enhanced BASIC)");
+        ImGui::BulletText("Achim BREIDENBACH (Sim6502)");
         ImGui::BulletText("Fabrice FRANCES (Java Microtan Emulator)");
         ImGui::BulletText("And All Apple 1 Community");
+
+        ImGui::Spacing();
+        ImGui::Separator();
+        ImGui::Spacing();
+        ImGui::TextWrapped("Resources:");
+        ImGui::Indent();
+        ImGui::BulletText("https://apple1software.com/");
+        ImGui::BulletText("https://applefritter.com/apple1/");
+        ImGui::Unindent();
     }
     ImGui::End();
 }

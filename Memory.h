@@ -76,7 +76,6 @@ private:
     // Clavier Apple 1 (0xD010 = KBD, 0xD011 = KBDCR)
     char lastKey = 0;
     bool keyReady = false;
-    int keyStickyCounter = 0;
     queue<char> keyBuffer;
 
     // Display Apple 1 (0xD012) - délai d'affichage
