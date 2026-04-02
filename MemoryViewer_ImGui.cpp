@@ -5,8 +5,24 @@
 #include <algorithm>
 #include <cstring>
 
-MemoryViewer_ImGui::MemoryViewer_ImGui(Memory* mem) : memory(mem)
+MemoryViewer_ImGui::MemoryViewer_ImGui(Memory* mem)
+    : memory(mem), memPtr(mem->getMemoryPointer())
 {
+    snapshot.resize(0x10000);
+}
+
+// Read a byte: live from raw pointer (no I/O side effects) or from snapshot
+quint8 MemoryViewer_ImGui::readByte(int address) const
+{
+    if (autoRefresh || !snapshotValid)
+        return memPtr[address & 0xFFFF];
+    return snapshot[address & 0xFFFF];
+}
+
+void MemoryViewer_ImGui::takeSnapshot()
+{
+    memcpy(snapshot.data(), memPtr, 0x10000);
+    snapshotValid = true;
 }
 
 void MemoryViewer_ImGui::render()
@@ -30,7 +46,7 @@ void MemoryViewer_ImGui::renderControls()
     // Navigation
     ImGui::Text("Navigation:");
     ImGui::SameLine();
-    
+
     static char addressBuffer[8] = "0000";
     ImGui::SetNextItemWidth(80);
     if (ImGui::InputText("##Address", addressBuffer, sizeof(addressBuffer), ImGuiInputTextFlags_CharsHexadecimal | ImGuiInputTextFlags_CharsUppercase)) {
@@ -39,7 +55,7 @@ void MemoryViewer_ImGui::renderControls()
             jumpToAddress(addr);
         }
     }
-    
+
     ImGui::SameLine();
     if (ImGui::Button("Go##gotoAddr")) {
         int addr = 0;
@@ -47,38 +63,59 @@ void MemoryViewer_ImGui::renderControls()
             jumpToAddress(addr);
         }
     }
-    
+
     ImGui::SameLine();
     if (ImGui::Button("Search##toggleSearch")) {
         showSearch = !showSearch;
     }
-    
-    // Options d'affichage
+
+    // Undo/Redo
+    ImGui::SameLine();
+    ImGui::BeginDisabled(undoStack.empty());
+    if (ImGui::Button("Undo")) { undo(); }
+    ImGui::EndDisabled();
+    ImGui::SameLine();
+    ImGui::BeginDisabled(redoStack.empty());
+    if (ImGui::Button("Redo")) { redo(); }
+    ImGui::EndDisabled();
+
+    // Display options
     ImGui::Spacing();
     ImGui::Text("Display:");
     ImGui::SameLine();
-    
+
     ImGui::SetNextItemWidth(60);
     ImGui::SliderInt("##BytesPerRow", &bytesPerRow, 8, 32, "%d bytes/row");
-    
+
     ImGui::SameLine();
     ImGui::SetNextItemWidth(60);
     ImGui::SliderInt("##DisplayRows", &displayRows, 16, 64, "%d rows");
-    
+
     ImGui::SameLine();
     ImGui::Checkbox("ASCII", &showAscii);
-    
+
     ImGui::SameLine();
-    ImGui::Checkbox("Auto-refresh", &autoRefresh);
+    if (ImGui::Checkbox("Auto-refresh", &autoRefresh)) {
+        if (!autoRefresh) {
+            takeSnapshot(); // freeze current state
+        }
+    }
+
+    if (!autoRefresh) {
+        ImGui::SameLine();
+        if (ImGui::Button("Refresh")) {
+            takeSnapshot();
+        }
+    }
 
     ImGui::SameLine();
     ImGui::Checkbox("Colorize", &colorizeRegions);
-    
-    // Raccourcis rapides
+
+    // Quick shortcuts
     ImGui::Spacing();
     ImGui::Text("Shortcuts:");
     ImGui::SameLine();
-    
+
     if (ImGui::SmallButton("0x0000##shortcut0")) jumpToAddress(0x0000);
     ImGui::SameLine();
     if (ImGui::SmallButton("0x0300##shortcut1")) jumpToAddress(0x0300);
@@ -98,14 +135,15 @@ void MemoryViewer_ImGui::renderControls()
         }
     }
 
-    // Afficher les bookmarks
+    // Display bookmarks
     if (!bookmarks.empty()) {
         ImGui::SameLine();
         ImGui::Text("Bookmarks:");
         for (size_t i = 0; i < bookmarks.size() && i < 5; ++i) {
             ImGui::SameLine();
-            std::string label = formatAddress(bookmarks[i]) + "##bookmark" + std::to_string(i);
-            if (ImGui::SmallButton(label.c_str())) {
+            char label[32];
+            snprintf(label, sizeof(label), "0x%04X##bookmark%zu", bookmarks[i], i);
+            if (ImGui::SmallButton(label)) {
                 jumpToAddress(bookmarks[i]);
             }
         }
@@ -115,8 +153,8 @@ void MemoryViewer_ImGui::renderControls()
 void MemoryViewer_ImGui::renderHexView()
 {
     ImGui::BeginChild("HexView", ImVec2(0, 0), true);
-    
-    // En-tête des colonnes
+
+    // Column header
     ImGui::Text("Address ");
     for (int i = 0; i < bytesPerRow; ++i) {
         ImGui::SameLine();
@@ -126,47 +164,42 @@ void MemoryViewer_ImGui::renderHexView()
         ImGui::SameLine();
         ImGui::Text("  ASCII");
     }
-    
+
     ImGui::Separator();
-    
-    // Données hexadécimales
+
+    // Hex data
     for (int row = 0; row < displayRows; ++row) {
         int address = startAddress + (row * bytesPerRow);
         if (address > 0xFFFF) break;
-        
-        // Adresse de la ligne
-        ImGui::Text("%s", formatAddress(address).c_str());
-        
-        // Données hex
-        std::string asciiLine;
+
+        // Row address
+        ImGui::Text("0x%04X", address);
+
+        // Hex bytes
+        char asciiLine[33]; // max bytesPerRow=32 + null
+        int asciiIdx = 0;
         for (int col = 0; col < bytesPerRow; ++col) {
             int currentAddr = address + col;
             if (currentAddr > 0xFFFF) break;
-            
-            quint8 value = memory->memRead(currentAddr);
+
+            quint8 value = readByte(currentAddr);
 
             ImGui::SameLine();
 
-            // Coloration selon la région mémoire
+            // Color by memory region
             bool pushedColor = false;
-            if (colorizeRegions) {
-                ImVec4 color = getColorForAddress(currentAddr);
-                if (currentAddr == searchAddress) {
-                    ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 1.0f, 0.0f, 1.0f)); // Jaune pour recherche
-                } else {
-                    ImGui::PushStyleColor(ImGuiCol_Text, color);
-                }
+            if (currentAddr == searchAddress) {
+                ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 1.0f, 0.0f, 1.0f));
                 pushedColor = true;
-            } else if (currentAddr == searchAddress) {
-                ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 1.0f, 0.0f, 1.0f)); // Jaune
+            } else if (colorizeRegions) {
+                ImGui::PushStyleColor(ImGuiCol_Text, getColorForAddress(currentAddr));
                 pushedColor = true;
             }
 
-            // Rendre la valeur hex cliquable pour édition
-            std::string hexStr = formatHex(value);
-            std::string selectableId = hexStr + "##" + std::to_string(currentAddr);
-            if (ImGui::Selectable(selectableId.c_str(), false, ImGuiSelectableFlags_None, ImVec2(20, 0))) {
-                // Ouvrir le popup d'édition
+            // Clickable hex value for editing
+            char selectableId[16];
+            snprintf(selectableId, sizeof(selectableId), "%02X##%04X", value, currentAddr);
+            if (ImGui::Selectable(selectableId, false, ImGuiSelectableFlags_None, ImVec2(20, 0))) {
                 editAddress = currentAddr;
                 snprintf(editBuffer, sizeof(editBuffer), "%02X", value);
                 showEditPopup = true;
@@ -175,20 +208,20 @@ void MemoryViewer_ImGui::renderHexView()
             if (pushedColor) {
                 ImGui::PopStyleColor();
             }
-            
-            // Construire la ligne ASCII
+
             if (showAscii) {
-                asciiLine += getPrintableChar(value);
+                asciiLine[asciiIdx++] = getPrintableChar(value);
             }
         }
-        
-        // Afficher la colonne ASCII
-        if (showAscii && !asciiLine.empty()) {
+
+        // ASCII column
+        if (showAscii && asciiIdx > 0) {
+            asciiLine[asciiIdx] = '\0';
             ImGui::SameLine();
-            ImGui::Text("  %s", asciiLine.c_str());
+            ImGui::Text("  %s", asciiLine);
         }
     }
-    
+
     ImGui::EndChild();
 }
 
@@ -197,12 +230,16 @@ void MemoryViewer_ImGui::renderSearchDialog()
     ImGui::SetNextWindowSize(ImVec2(450, 250), ImGuiCond_FirstUseEver);
     if (ImGui::Begin("Memory Search", &showSearch)) {
         ImGui::Checkbox("ASCII search (text)", &searchAscii);
+        if (searchAscii) {
+            ImGui::SameLine();
+            ImGui::TextDisabled("(case-insensitive)");
+        }
 
         ImGui::Spacing();
         if (searchAscii) {
             ImGui::Text("Search for a string:");
         } else {
-            ImGui::Text("Search for a hex value:");
+            ImGui::Text("Search for hex bytes (e.g. A9 00 8D):");
         }
 
         ImGui::SetNextItemWidth(-1);
@@ -219,12 +256,12 @@ void MemoryViewer_ImGui::renderSearchDialog()
                 searchMemory();
             }
         }
-        
+
         ImGui::SameLine();
         if (ImGui::Button("Close##closeBtn")) {
             showSearch = false;
         }
-        
+
         if (searchAddress >= 0) {
             ImGui::Spacing();
             ImGui::Text("Found at address: 0x%04X", searchAddress);
@@ -241,52 +278,119 @@ void MemoryViewer_ImGui::renderSearchDialog()
 void MemoryViewer_ImGui::jumpToAddress(int address)
 {
     startAddress = std::max(0, std::min(address, 0xFFFF - (displayRows * bytesPerRow)));
-    // Aligner sur une ligne
     startAddress = (startAddress / bytesPerRow) * bytesPerRow;
+    if (!autoRefresh) {
+        takeSnapshot();
+    }
 }
 
+// Parse hex search string into byte pattern, then search using raw pointer
 void MemoryViewer_ImGui::searchMemory()
 {
     if (strlen(searchBuffer) == 0) return;
-    
-    // Convertir la chaîne hex en valeur
-    quint8 searchValue = 0;
-    if (sscanf(searchBuffer, "%hhX", &searchValue) != 1) return;
-    
-    // Rechercher à partir de l'adresse actuelle
+
+    // Parse space-separated hex bytes (e.g. "A9 00 8D" or "A9008D")
+    quint8 pattern[128];
+    int patternLen = 0;
+    const char* p = searchBuffer;
+    while (*p && patternLen < 128) {
+        while (*p == ' ') p++;
+        if (!*p) break;
+        unsigned int val;
+        if (sscanf(p, "%2X", &val) != 1) break;
+        pattern[patternLen++] = (quint8)val;
+        // advance past the parsed hex chars
+        if (p[0] && p[1] && p[1] != ' ') p += 2;
+        else if (p[0]) p += 1;
+        while (*p && *p != ' ') p++;
+    }
+    if (patternLen == 0) return;
+
     int searchStart = (searchAddress >= 0) ? searchAddress + 1 : startAddress;
-    
-    for (int addr = searchStart; addr <= 0xFFFF; ++addr) {
-        if (memory->memRead(addr) == searchValue) {
-            searchAddress = addr;
-            return;
+    int limit = 0x10000 - patternLen;
+
+    // Search from current position to end, then wrap around
+    for (int pass = 0; pass < 2; pass++) {
+        int from = (pass == 0) ? searchStart : 0;
+        int to   = (pass == 0) ? limit : std::min(searchStart, limit);
+        for (int addr = from; addr <= to; ++addr) {
+            if (memPtr[addr] == pattern[0]) {
+                if (patternLen == 1 || memcmp(memPtr + addr, pattern, patternLen) == 0) {
+                    searchAddress = addr;
+                    return;
+                }
+            }
         }
     }
-    
-    // Si pas trouvé, rechercher depuis le début
-    for (int addr = 0; addr < searchStart; ++addr) {
-        if (memory->memRead(addr) == searchValue) {
-            searchAddress = addr;
-            return;
-        }
-    }
-    
-    // Pas trouvé
     searchAddress = -1;
 }
 
-std::string MemoryViewer_ImGui::formatHex(quint8 value, int width)
+void MemoryViewer_ImGui::searchAsciiString()
 {
-    std::stringstream ss;
-    ss << std::hex << std::uppercase << std::setfill('0') << std::setw(width) << static_cast<int>(value);
-    return ss.str();
+    if (strlen(searchBuffer) == 0) return;
+
+    int searchLen = (int)strlen(searchBuffer);
+    int searchStart = (searchAddress >= 0) ? searchAddress + 1 : startAddress;
+    int limit = 0x10000 - searchLen;
+
+    // Convert search string to uppercase for case-insensitive matching
+    char upperPattern[256];
+    for (int i = 0; i < searchLen && i < 255; ++i) {
+        char c = searchBuffer[i];
+        upperPattern[i] = (c >= 'a' && c <= 'z') ? (c - 'a' + 'A') : c;
+    }
+    upperPattern[std::min(searchLen, 255)] = '\0';
+
+    auto matchAt = [&](int addr) -> bool {
+        for (int i = 0; i < searchLen; ++i) {
+            char c = (char)(memPtr[addr + i] & 0x7F);
+            if (c >= 'a' && c <= 'z') c = c - 'a' + 'A';
+            if (c != upperPattern[i]) return false;
+        }
+        return true;
+    };
+
+    for (int pass = 0; pass < 2; pass++) {
+        int from = (pass == 0) ? searchStart : 0;
+        int to   = (pass == 0) ? limit : std::min(searchStart, limit);
+        for (int addr = from; addr <= to; ++addr) {
+            if (matchAt(addr)) {
+                searchAddress = addr;
+                return;
+            }
+        }
+    }
+    searchAddress = -1;
 }
 
-std::string MemoryViewer_ImGui::formatAddress(int address)
+// Edit with undo support
+void MemoryViewer_ImGui::applyEdit(quint16 address, quint8 newValue)
 {
-    std::stringstream ss;
-    ss << "0x" << std::hex << std::uppercase << std::setfill('0') << std::setw(4) << address;
-    return ss.str();
+    quint8 oldValue = memPtr[address];
+    if (oldValue == newValue) return;
+    memory->memWrite(address, newValue);
+    undoStack.push_back({address, oldValue, newValue});
+    redoStack.clear();
+}
+
+void MemoryViewer_ImGui::undo()
+{
+    if (undoStack.empty()) return;
+    EditRecord rec = undoStack.back();
+    undoStack.pop_back();
+    memory->memWrite(rec.address, rec.oldValue);
+    redoStack.push_back(rec);
+    jumpToAddress(rec.address);
+}
+
+void MemoryViewer_ImGui::redo()
+{
+    if (redoStack.empty()) return;
+    EditRecord rec = redoStack.back();
+    redoStack.pop_back();
+    memory->memWrite(rec.address, rec.newValue);
+    undoStack.push_back(rec);
+    jumpToAddress(rec.address);
 }
 
 char MemoryViewer_ImGui::getPrintableChar(quint8 value)
@@ -302,8 +406,9 @@ void MemoryViewer_ImGui::renderEditPopup()
     }
 
     if (ImGui::BeginPopupModal("Edit Memory", nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
-        ImGui::Text("Address: %s", formatAddress(editAddress).c_str());
-        ImGui::Text("Current value: 0x%02X (%d)", memory->memRead(editAddress), memory->memRead(editAddress));
+        quint8 current = memPtr[editAddress];
+        ImGui::Text("Address: 0x%04X", editAddress);
+        ImGui::Text("Current value: 0x%02X (%d)", current, current);
 
         ImGui::Spacing();
         ImGui::Text("New value (hex):");
@@ -317,7 +422,7 @@ void MemoryViewer_ImGui::renderEditPopup()
         if (ImGui::Button("Write##writeBtn", ImVec2(120, 0)) || enterPressed) {
             quint8 newValue = 0;
             if (sscanf(editBuffer, "%hhX", &newValue) == 1) {
-                memory->memWrite(editAddress, newValue);
+                applyEdit(editAddress, newValue);
                 ImGui::CloseCurrentPopup();
             }
         }
@@ -332,7 +437,6 @@ void MemoryViewer_ImGui::renderEditPopup()
 
 void MemoryViewer_ImGui::handleNavigation()
 {
-    // Navigation avec PageUp/PageDown
     if (ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows)) {
         if (ImGui::IsKeyPressed(ImGuiKey_PageUp)) {
             jumpToAddress(startAddress - (bytesPerRow * displayRows));
@@ -349,61 +453,16 @@ void MemoryViewer_ImGui::handleNavigation()
     }
 }
 
-void MemoryViewer_ImGui::searchAsciiString()
-{
-    if (strlen(searchBuffer) == 0) return;
-
-    int searchLen = strlen(searchBuffer);
-    int searchStart = (searchAddress >= 0) ? searchAddress + 1 : startAddress;
-
-    // Rechercher la chaîne ASCII
-    for (int addr = searchStart; addr <= 0xFFFF - searchLen; ++addr) {
-        bool found = true;
-        for (int i = 0; i < searchLen; ++i) {
-            if (memory->memRead(addr + i) != (quint8)searchBuffer[i]) {
-                found = false;
-                break;
-            }
-        }
-        if (found) {
-            searchAddress = addr;
-            return;
-        }
-    }
-
-    // Si pas trouvé, rechercher depuis le début
-    for (int addr = 0; addr < searchStart && addr <= 0xFFFF - searchLen; ++addr) {
-        bool found = true;
-        for (int i = 0; i < searchLen; ++i) {
-            if (memory->memRead(addr + i) != (quint8)searchBuffer[i]) {
-                found = false;
-                break;
-            }
-        }
-        if (found) {
-            searchAddress = addr;
-            return;
-        }
-    }
-
-    // Pas trouvé
-    searchAddress = -1;
-}
-
 bool MemoryViewer_ImGui::isROM(int address)
 {
-    // WozMonitor: 0xFF00-0xFFFF
     if (address >= 0xFF00) return true;
-    // BASIC: 0xE000-0xEFFF
     if (address >= 0xE000 && address <= 0xEFFF) return true;
-    // Krusader: 0xA000-0xBFFF
     if (address >= 0xA000 && address <= 0xBFFF) return true;
     return false;
 }
 
 bool MemoryViewer_ImGui::isIO(int address)
 {
-    // Memory-mapped I/O: 0xD010-0xD013
     return (address >= 0xD010 && address <= 0xD013);
 }
 
@@ -424,6 +483,5 @@ ImVec4 MemoryViewer_ImGui::getColorForAddress(int address)
         return ImVec4(1.0f, 1.0f, 0.31f, 1.0f);     // BASIC ROM - yellow
     if (address >= 0xFF00)
         return ImVec4(0.0f, 0.78f, 1.0f, 1.0f);     // Woz Monitor ROM - cyan
-    // Unused regions
-    return ImVec4(0.4f, 0.4f, 0.4f, 1.0f);
-} 
+    return ImVec4(0.4f, 0.4f, 0.4f, 1.0f);          // Unused
+}

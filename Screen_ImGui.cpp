@@ -2,7 +2,6 @@
 #include "imgui.h"
 #include <cstring>
 #include <cmath>
-#include <iostream>
 
 Screen_ImGui* Screen_ImGui::instance = nullptr;
 
@@ -14,44 +13,45 @@ Screen_ImGui::Screen_ImGui()
 
 void Screen_ImGui::initializeScreen()
 {
-    screenBuffer.resize(SCREEN_HEIGHT);
-    for (int i = 0; i < SCREEN_HEIGHT; ++i)
-        screenBuffer[i].resize(SCREEN_WIDTH, ' ');
+    screenBuffer.assign(BUFFER_SIZE, ' ');
+    topRow = 0;
 
     std::string welcome = "APPLE I - POM1 EMULATOR";
-    int startX = (SCREEN_WIDTH - welcome.length()) / 2;
+    int startX = (SCREEN_WIDTH - (int)welcome.length()) / 2;
     for (size_t i = 0; i < welcome.length() && startX + (int)i < SCREEN_WIDTH; ++i)
-        screenBuffer[0][startX + i] = welcome[i];
+        screenBuffer[bufferIndex(0, startX + (int)i)] = welcome[i];
 
     std::string version = "Dear ImGui Version";
-    startX = (SCREEN_WIDTH - version.length()) / 2;
+    startX = (SCREEN_WIDTH - (int)version.length()) / 2;
     for (size_t i = 0; i < version.length() && startX + (int)i < SCREEN_WIDTH; ++i)
-        screenBuffer[1][startX + i] = version[i];
+        screenBuffer[bufferIndex(1, startX + (int)i)] = version[i];
 
     cursorX = 0;
     cursorY = 3;
+    dirty = true;
 }
 
 void Screen_ImGui::drawCRTOverlay(float x0, float y0, float x1, float y1)
 {
     ImDrawList* dl = ImGui::GetWindowDrawList();
-    float w = x1 - x0;
-    float h = y1 - y0;
-    float cx = (x0 + x1) * 0.5f;
-    float cy = (y0 + y1) * 0.5f;
-    float hw = w * 0.5f;
-    float hh = h * 0.5f;
 
-    // === Scanlines : 1 ligne sur 2 ===
+    // Scanlines: 1 line out of 2
     ImU32 scanColor = IM_COL32(0, 0, 0, (int)(crtScanlineAlpha * 255));
     for (float py = y0; py < y1; py += 2.0f) {
         dl->AddLine(ImVec2(x0, py), ImVec2(x1, py), scanColor, 1.0f);
     }
-
 }
 
 void Screen_ImGui::render()
 {
+    // Update blink timer
+    float dt = ImGui::GetIO().DeltaTime;
+    blinkTimer = fmod(blinkTimer + dt, 2.0f);
+    blinkOn = showCursor && (blinkTimer < 1.0f);
+
+    prevBlinkOn = blinkOn;
+    dirty = false;
+
     ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(0, 0));
     ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(8, 8));
 
@@ -87,39 +87,36 @@ void Screen_ImGui::render()
     ImGui::SetCursorPos(screenPos);
     ImGui::Dummy(screenSize);
 
-    // Render each character individually with proper cell spacing
-    ImDrawList* drawList = ImGui::GetWindowDrawList();
-    ImFont* font = ImGui::GetFont();
-    float fontSize = ImGui::GetFontSize() * scale;
-    ImU32 col = ImGui::ColorConvertFloat4ToU32(textColor);
+    {
+        ImDrawList* drawList = ImGui::GetWindowDrawList();
+        ImFont* font = ImGui::GetFont();
+        float fontSize = ImGui::GetFontSize() * scale;
+        ImU32 col = ImGui::ColorConvertFloat4ToU32(textColor);
 
-    float scaledCellW = cellWidth * scale;
-    float scaledCellH = cellHeight * scale;
-    // Center glyph horizontally within its cell
-    float charOffsetX = (scaledCellW - charSize.x * scale) * 0.5f;
-    // Center glyph vertically within its cell
-    float charOffsetY = (scaledCellH - charSize.y * scale) * 0.5f;
+        float scaledCellW = cellWidth * scale;
+        float scaledCellH = cellHeight * scale;
+        float charOffsetX = (scaledCellW - charSize.x * scale) * 0.5f;
+        float charOffsetY = (scaledCellH - charSize.y * scale) * 0.5f;
 
-    for (int y = 0; y < SCREEN_HEIGHT; ++y) {
-        for (int x = 0; x < SCREEN_WIDTH; ++x) {
-            char c = screenBuffer[y][x];
-            if (showCursor && x == cursorX && y == cursorY) {
-                static float blinkTimer = 0.0f;
-                blinkTimer = fmod(blinkTimer + ImGui::GetIO().DeltaTime, 2.0f);
-                if (blinkTimer < 1.0f) c = '@';
+        for (int y = 0; y < SCREEN_HEIGHT; ++y) {
+            for (int x = 0; x < SCREEN_WIDTH; ++x) {
+                char c = screenBuffer[bufferIndex(y, x)];
+                if (blinkOn && x == cursorX && y == cursorY) {
+                    c = '@';
+                }
+                if (c == 0 || c < 32) c = ' ';
+                if (c == ' ') continue;
+
+                float px = windowPos.x + screenPos.x + x * scaledCellW + charOffsetX;
+                float py = windowPos.y + screenPos.y + y * scaledCellH + charOffsetY;
+
+                char str[2] = { c, 0 };
+                drawList->AddText(font, fontSize, ImVec2(px, py), col, str);
             }
-            if (c == 0 || c < 32) c = ' ';
-            if (c == ' ') continue;
-
-            float px = windowPos.x + screenPos.x + x * scaledCellW + charOffsetX;
-            float py = windowPos.y + screenPos.y + y * scaledCellH + charOffsetY;
-
-            char str[2] = { c, 0 };
-            drawList->AddText(font, fontSize, ImVec2(px, py), col, str);
         }
     }
 
-    // Appliquer les effets CRT par-dessus
+    // Apply CRT effects on top
     if (crtEffect) {
         ImVec2 absP0 = ImVec2(windowPos.x + screenPos.x, windowPos.y + screenPos.y);
         ImVec2 absP1 = ImVec2(absP0.x + screenSize.x, absP0.y + screenSize.y);
@@ -138,36 +135,40 @@ void Screen_ImGui::writeChar(char c)
     } else if (c == '\b') {
         if (cursorX > 0) {
             cursorX--;
-            screenBuffer[cursorY][cursorX] = ' ';
+            screenBuffer[bufferIndex(cursorY, cursorX)] = ' ';
         }
     } else if (c >= 32 && c <= 126) {
         if (cursorX >= SCREEN_WIDTH) newLine();
-        screenBuffer[cursorY][cursorX] = c;
+        screenBuffer[bufferIndex(cursorY, cursorX)] = c;
         cursorX++;
     }
+    dirty = true;
 }
 
 void Screen_ImGui::clear()
 {
-    for (int y = 0; y < SCREEN_HEIGHT; ++y)
-        for (int x = 0; x < SCREEN_WIDTH; ++x)
-            screenBuffer[y][x] = ' ';
+    std::fill(screenBuffer.begin(), screenBuffer.end(), ' ');
+    topRow = 0;
     cursorX = 0;
     cursorY = 0;
+    dirty = true;
 }
 
 void Screen_ImGui::setCursorPosition(int x, int y)
 {
     cursorX = (x >= 0 && x < SCREEN_WIDTH) ? x : 0;
     cursorY = (y >= 0 && y < SCREEN_HEIGHT) ? y : 0;
+    dirty = true;
 }
 
 void Screen_ImGui::scrollUp()
 {
-    for (int y = 0; y < SCREEN_HEIGHT - 1; ++y)
-        screenBuffer[y] = screenBuffer[y + 1];
+    // Clear the row that is about to become the new bottom line
+    int newBottomRow = topRow; // current top becomes the recycled bottom
     for (int x = 0; x < SCREEN_WIDTH; ++x)
-        screenBuffer[SCREEN_HEIGHT - 1][x] = ' ';
+        screenBuffer[newBottomRow * SCREEN_WIDTH + x] = ' ';
+    topRow = (topRow + 1) % SCREEN_HEIGHT;
+    dirty = true;
 }
 
 void Screen_ImGui::newLine()

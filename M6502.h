@@ -74,9 +74,7 @@ private :
     quint8 accumulator, xRegister, yRegister, statusRegister, stackPointer;
     int IRQ, NMI;
     quint16 programCounter;
-    quint8 btmp = 0;
-    quint16 op, opH, opL, ptrH, ptrL;
-    quint8 ptr;
+    quint16 op;
     int tmp;
     long lastTime;
     int cycles, cyclesBeforeSynchro, _synchroMillis;
@@ -172,6 +170,12 @@ private :
     void Unoff3(void);
     void Hang(void);
     void executeOpcode(void);
+
+    struct OpcodeEntry {
+        void (M6502::*addrMode)();
+        void (M6502::*operation)();
+    };
+    static const OpcodeEntry opcodeTable[256];
 
 
 

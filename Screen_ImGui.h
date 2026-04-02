@@ -29,10 +29,26 @@ public:
 private:
     static const int SCREEN_WIDTH = 40;
     static const int SCREEN_HEIGHT = 24;
+    static const int BUFFER_SIZE = SCREEN_WIDTH * SCREEN_HEIGHT;
 
-    std::vector<std::vector<char>> screenBuffer;
+    // Linear buffer with circular row indexing
+    std::vector<char> screenBuffer;
+    int topRow = 0;          // circular buffer: index of the top visible row
     int cursorX = 0;
-    int cursorY = 0;
+    int cursorY = 0;         // logical row (0 = top visible line)
+
+    // Cursor blink state
+    float blinkTimer = 0.0f;
+    bool blinkOn = false;
+
+    // Dirty tracking
+    bool dirty = true;       // content changed since last render
+    bool prevBlinkOn = false; // previous blink state to detect cursor transitions
+
+    // Map logical row (0..23) to buffer index accounting for circular offset
+    int bufferIndex(int logicalY, int x) const {
+        return ((topRow + logicalY) % SCREEN_HEIGHT) * SCREEN_WIDTH + x;
+    }
 
     void scrollUp();
     void newLine();

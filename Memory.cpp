@@ -52,8 +52,6 @@ void Memory::initMemory(){
     mem[0xFFFE] = 0x00;  // Low byte de 0xFF00
     mem[0xFFFF] = 0xFF;  // High byte de 0xFF00
     
-    cout << "Vecteurs Apple 1 configurés - Reset: 0xFF00" << endl;
-    
     setWriteInRom(0);
 }
 
@@ -75,123 +73,66 @@ bool Memory::getWriteInRom(void)
     return writeInRom;
 }
 
-int Memory::loadBasic(void)
+int Memory::loadROM(const char* filename, quint16 startAddress, size_t maxSize, const char* label)
 {
-    // Essayer plusieurs emplacements pour trouver le fichier ROM
-    std::string paths[] = {"basic.rom", "roms/basic.rom", "../roms/basic.rom"};
+    lastError.clear();
+
+    const std::string searchPaths[] = {
+        filename,
+        std::string("roms/") + filename,
+        std::string("../roms/") + filename
+    };
+
     std::ifstream file;
-    bool found = false;
-    
-    for (const auto& path : paths) {
+    for (const auto& path : searchPaths) {
         file.open(path, std::ios::binary);
-        if (file.is_open()) {
-            found = true;
+        if (file.is_open())
             break;
-        }
     }
-    
-    if (!found) {
-        cout << "ERROR : Cannot Read basic File." << endl;
+
+    if (!file.is_open()) {
+        lastError = std::string("Cannot find ROM file: ") + filename;
+        cout << "ERROR: " << lastError << endl;
         return 1;
     }
-    
+
     file.seekg(0, std::ios::end);
     size_t fileSize = file.tellg();
     file.seekg(0, std::ios::beg);
-    
+
+    if (fileSize > maxSize) {
+        lastError = std::string(label) + " ROM too large (" + std::to_string(fileSize)
+                  + " bytes, max " + std::to_string(maxSize) + ")";
+        cout << "ERROR: " << lastError << endl;
+        file.close();
+        return 1;
+    }
+
     std::vector<char> fileContent(fileSize);
     file.read(fileContent.data(), fileSize);
     file.close();
-    
-    if (fileContent.size() > 0x1000) {
-        cout << "ERROR: basic.rom too large (" << fileContent.size() << " bytes, max 4096)" << endl;
-        return 1;
-    }
+
     for (size_t i = 0; i < fileContent.size(); ++i) {
-        mem[i+0xE000] = (quint8)fileContent[i];
+        mem[startAddress + i] = (quint8)fileContent[i];
     }
-    cout <<"Basic Loaded to 0xE000 : " << fileContent.size() << " Bytes" << endl;
+    cout << label << " loaded to 0x" << std::hex << std::uppercase << startAddress
+         << ": " << std::dec << fileContent.size() << " bytes" << endl;
     return 0;
 }
 
+int Memory::loadBasic(void)
+{
+    return loadROM("basic.rom", 0xE000, 0x1000, "BASIC");
+}
 
-// Loading Krusader do not work for now ...
 int Memory::loadKrusader(void)
 {
-    // Essayer plusieurs emplacements pour trouver le fichier ROM
-    std::string paths[] = {"krusader-1.3.rom", "roms/krusader-1.3.rom", "../roms/krusader-1.3.rom"};
-    std::ifstream file;
-    bool found = false;
-    
-    for (const auto& path : paths) {
-        file.open(path, std::ios::binary);
-        if (file.is_open()) {
-            found = true;
-            break;
-        }
-    }
-    
-    if (!found) {
-        cout << "ERROR : Cannot Read krusader-1.3 File." << endl;
-        return 1;
-    }
-    
-    file.seekg(0, std::ios::end);
-    size_t fileSize = file.tellg();
-    file.seekg(0, std::ios::beg);
-    
-    std::vector<char> fileContent(fileSize);
-    file.read(fileContent.data(), fileSize);
-    file.close();
-    
-    if (fileContent.size() > 0x2000) {
-        cout << "ERROR: krusader ROM too large (" << fileContent.size() << " bytes, max 8192)" << endl;
-        return 1;
-    }
-    for (size_t i = 0; i < fileContent.size(); ++i) {
-        mem[i+0xA000] = (quint8)fileContent[i];
-    }
-    cout <<"Krusader-1.3 Loaded to 0xA000 : " << fileContent.size() << " Bytes" << endl;
-    return 0;
+    return loadROM("krusader-1.3.rom", 0xA000, 0x2000, "Krusader");
 }
 
 int Memory::loadWozMonitor(void)
 {
-    // Essayer plusieurs emplacements pour trouver le fichier ROM
-    std::string paths[] = {"WozMonitor.rom", "roms/WozMonitor.rom", "../roms/WozMonitor.rom"};
-    std::ifstream file;
-    bool found = false;
-    
-    for (const auto& path : paths) {
-        file.open(path, std::ios::binary);
-        if (file.is_open()) {
-            found = true;
-            break;
-        }
-    }
-    
-    if (!found) {
-        cout << "ERROR : Cannot Read WozMonitor File." << endl;
-        return 1;
-    }
-    
-    file.seekg(0, std::ios::end);
-    size_t fileSize = file.tellg();
-    file.seekg(0, std::ios::beg);
-    
-    std::vector<char> fileContent(fileSize);
-    file.read(fileContent.data(), fileSize);
-    file.close();
-    
-    if (fileContent.size() > 0x100) {
-        cout << "ERROR: WozMonitor ROM too large (" << fileContent.size() << " bytes, max 256)" << endl;
-        return 1;
-    }
-    for (size_t i = 0; i < fileContent.size(); ++i) {
-        mem[i+0xFF00] = (quint8)fileContent[i];
-    }
-    cout <<"WozMonitor Loaded to 0xFF00 : " << fileContent.size() << " Bytes" << endl;
-    return 0;
+    return loadROM("WozMonitor.rom", 0xFF00, 0x100, "WOZ Monitor");
 }
 
 int Memory::loadBinary(const char* filename, quint16 startAddress)
@@ -249,7 +190,7 @@ int Memory::loadHexDump(const char* filename, quint16 &startAddress)
         cleaned += line;
     }
 
-    quint16 currentAddr = 0;
+    unsigned int currentAddr = 0;
     quint16 runAddr = 0;
     bool firstAddr = true;
     bool hasRunAddr = false;
@@ -385,7 +326,9 @@ quint8 Memory::memRead(quint16 address)
         // Display port: bit 7 = busy flag
         // Simule le délai du terminal Apple 1 (~60 chars/sec)
         if (displayBusyCycles > 0) {
-            displayBusyCycles = std::max(0, displayBusyCycles - 7);
+            // A typical polling loop (LDA $D012 / BPL loop) takes ~7 CPU cycles per iteration
+            static constexpr int POLL_LOOP_CYCLES = 7;
+            displayBusyCycles = std::max(0, displayBusyCycles - POLL_LOOP_CYCLES);
             return mem[address] | 0x80; // busy
         }
         return mem[address] & 0x7F; // ready

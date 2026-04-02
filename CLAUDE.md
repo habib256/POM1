@@ -123,11 +123,6 @@ Visual 16x16 grid (256 pages = 64KB) with color-coded regions, KB labels, PC/SP 
 - **doc/**: Documentation — Krusader 1.3 manual PDF, Apple 1 software reference, screenshot.
 - **IconsFontAwesome6.h**: Font Awesome 6 icon codepoints header.
 
-### Legacy Files (Qt version - not used)
-The following files are from the original Qt version and are NOT compiled in the ImGui build:
-- MainWindow.cpp/h, MemoryViewer.cpp/h, Screen.cpp/h, main.cpp
-- qtpom1.pro, qtpom1.pro.user, qtpom1.qrc
-
 ## Memory Map
 
 ```

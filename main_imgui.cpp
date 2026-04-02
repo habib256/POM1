@@ -17,25 +17,25 @@ static void glfw_error_callback(int error, const char* description)
     fprintf(stderr, "GLFW Error %d: %s\n", error, description);
 }
 
-// Variables globales pour les callbacks GLFW
-static MainWindow_ImGui* g_mainWindow = nullptr;
-
 static void glfw_char_callback(GLFWwindow* window, unsigned int codepoint)
 {
     ImGui_ImplGlfw_CharCallback(window, codepoint);
 
-    if (g_mainWindow) {
-        g_mainWindow->handleGlfwChar(codepoint);
+    auto* mw = static_cast<MainWindow_ImGui*>(glfwGetWindowUserPointer(window));
+    if (mw) {
+        mw->handleGlfwChar(codepoint);
     }
 }
 
 static void glfw_key_callback(GLFWwindow* window, int key, int scancode, int action, int mods)
 {
-    // IMPORTANT: Appeler le callback ImGui d'abord pour qu'ImGui fonctionne correctement
     ImGui_ImplGlfw_KeyCallback(window, key, scancode, action, mods);
 
-    if (g_mainWindow && action == GLFW_PRESS) {
-        g_mainWindow->handleGlfwKey(key, scancode, action, mods);
+    if (action == GLFW_PRESS) {
+        auto* mw = static_cast<MainWindow_ImGui*>(glfwGetWindowUserPointer(window));
+        if (mw) {
+            mw->handleGlfwKey(key, scancode, action, mods);
+        }
     }
 }
 
@@ -94,10 +94,13 @@ int main(int argc, char* argv[])
     iconsConfig.GlyphMinAdvanceX = 15.0f;
     static const ImWchar iconsRanges[] = { ICON_MIN_FA, ICON_MAX_16_FA, 0 };
 #ifdef __EMSCRIPTEN__
-    io.Fonts->AddFontFromFileTTF("fonts/fa-solid-900.ttf", 14.0f, &iconsConfig, iconsRanges);
+    const char* fontPath = "fonts/fa-solid-900.ttf";
 #else
-    io.Fonts->AddFontFromFileTTF("../fonts/fa-solid-900.ttf", 14.0f, &iconsConfig, iconsRanges);
+    const char* fontPath = "../fonts/fa-solid-900.ttf";
 #endif
+    if (!io.Fonts->AddFontFromFileTTF(fontPath, 14.0f, &iconsConfig, iconsRanges)) {
+        fprintf(stderr, "Warning: Could not load icon font '%s' — toolbar icons will be missing\n", fontPath);
+    }
 
     // Setup Dear ImGui style
     ImGui::StyleColorsDark();
@@ -108,8 +111,8 @@ int main(int argc, char* argv[])
 
     // Create main application
     MainWindow_ImGui mainWindow;
-    g_mainWindow = &mainWindow;
     mainWindow.setWindow(window);
+    glfwSetWindowUserPointer(window, &mainWindow);
 
     // Installer nos callbacks GLFW APRÈS ImGui pour les chaîner
     glfwSetCharCallback(window, glfw_char_callback);
