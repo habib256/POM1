@@ -1102,7 +1102,8 @@ void MainWindow_ImGui::renderMemoryMapWindow()
     MemRegion regions[] = {
         { 0x0000, 0x00FF, IM_COL32(100, 100, 255, 255), "Zero Page" },
         { 0x0100, 0x01FF, IM_COL32(255, 165,   0, 255), "Stack" },
-        { 0x0200, 0x9FFF, IM_COL32( 80, 200,  80, 255), "User RAM" },
+        { 0x0200, 0x027F, IM_COL32(  0, 200, 255, 255), "Keyboard Buffer" },
+        { 0x0280, 0x9FFF, IM_COL32( 80, 200,  80, 255), "User RAM" },
         { 0xA000, 0xBFFF, IM_COL32(200,  80, 200, 255), "Krusader ROM" },
         { 0xC000, 0xCFFF, IM_COL32( 60,  60,  60, 255), "Unused" },
         { 0xD000, 0xD0FF, IM_COL32(255,  80,  80, 255), "I/O (KBD/DSP)" },
@@ -1192,7 +1193,7 @@ void MainWindow_ImGui::renderMemoryMapWindow()
 
             // Dim empty RAM pages
             ImU32 cellColor = baseColor;
-            if (addr >= 0x0200 && addr <= 0x9FFF && !hasData) {
+            if (addr >= 0x0300 && addr <= 0x9FFF && !hasData) {
                 // Darken unused RAM
                 cellColor = IM_COL32(30, 60, 30, 255);
             }

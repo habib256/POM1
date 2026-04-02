@@ -118,6 +118,8 @@ void MemoryViewer_ImGui::renderControls()
 
     if (ImGui::SmallButton("0x0000##shortcut0")) jumpToAddress(0x0000);
     ImGui::SameLine();
+    if (ImGui::SmallButton("0x0200##shortcutBuf")) jumpToAddress(0x0200);
+    ImGui::SameLine();
     if (ImGui::SmallButton("0x0300##shortcut1")) jumpToAddress(0x0300);
     ImGui::SameLine();
     if (ImGui::SmallButton("0xA000##shortcut2")) jumpToAddress(0xA000);
@@ -478,6 +480,8 @@ ImVec4 MemoryViewer_ImGui::getColorForAddress(int address)
         return ImVec4(0.39f, 0.39f, 1.0f, 1.0f);  // Zero Page - blue
     if (address <= 0x01FF)
         return ImVec4(1.0f, 0.65f, 0.0f, 1.0f);    // Stack - orange
+    if (address <= 0x027F)
+        return ImVec4(0.0f, 0.78f, 1.0f, 1.0f);     // Keyboard Buffer - cyan
     if (address <= 0x9FFF)
         return ImVec4(0.31f, 0.78f, 0.31f, 1.0f);   // User RAM - green
     if (address <= 0xBFFF)
