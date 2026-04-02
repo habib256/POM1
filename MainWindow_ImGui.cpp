@@ -16,6 +16,32 @@
 #include <emscripten/html5.h>
 #endif
 
+// Single source of truth: keyboard shortcuts with display labels
+// Entries with action=nullptr are handled specially in handleGlfwKey
+const MainWindow_ImGui::Shortcut MainWindow_ImGui::shortcuts[] = {
+    { GLFW_KEY_O,  GLFW_MOD_CONTROL, "Ctrl+O",  &MainWindow_ImGui::loadMemory },
+    { GLFW_KEY_S,  GLFW_MOD_CONTROL, "Ctrl+S",  &MainWindow_ImGui::saveMemory },
+    { GLFW_KEY_V,  GLFW_MOD_CONTROL, "Ctrl+V",  &MainWindow_ImGui::pasteCode },
+    { GLFW_KEY_Q,  GLFW_MOD_CONTROL, "Ctrl+Q",  &MainWindow_ImGui::quit },
+    { GLFW_KEY_F5, GLFW_MOD_CONTROL, "Ctrl+F5", &MainWindow_ImGui::hardReset },
+    { GLFW_KEY_F5, 0,                "F5",       &MainWindow_ImGui::reset },
+    { GLFW_KEY_F6, 0,                "F6",       nullptr }, // toggle start/stop
+    { GLFW_KEY_F7, 0,                "F7",       &MainWindow_ImGui::stepCpu },
+    { GLFW_KEY_F1, 0,                "F1",       nullptr }, // toggle showMemoryViewer
+    { GLFW_KEY_F2, 0,                "F2",       nullptr }, // toggle showMemoryMap
+    { GLFW_KEY_F3, 0,                "F3",       nullptr }, // toggle showDebugger
+};
+const int MainWindow_ImGui::shortcutCount = sizeof(shortcuts) / sizeof(shortcuts[0]);
+
+const char* MainWindow_ImGui::shortcutLabel(int key, int mods)
+{
+    for (int i = 0; i < shortcutCount; i++) {
+        if (shortcuts[i].key == key && shortcuts[i].mods == mods)
+            return shortcuts[i].label;
+    }
+    return nullptr;
+}
+
 MainWindow_ImGui::MainWindow_ImGui()
 {
     createPom1();
@@ -169,18 +195,18 @@ void MainWindow_ImGui::render()
 void MainWindow_ImGui::renderMenuBar()
 {
         if (ImGui::BeginMenu("File")) {
-            if (ImGui::MenuItem("Load Memory", "Ctrl+O")) {
+            if (ImGui::MenuItem("Load Memory", shortcutLabel(GLFW_KEY_O, GLFW_MOD_CONTROL))) {
                 loadMemory();
             }
-            if (ImGui::MenuItem("Save Memory", "Ctrl+S")) {
+            if (ImGui::MenuItem("Save Memory", shortcutLabel(GLFW_KEY_S, GLFW_MOD_CONTROL))) {
                 saveMemory();
             }
             ImGui::Separator();
-            if (ImGui::MenuItem("Paste Code", "Ctrl+V")) {
+            if (ImGui::MenuItem("Paste Code", shortcutLabel(GLFW_KEY_V, GLFW_MOD_CONTROL))) {
                 pasteCode();
             }
             ImGui::Separator();
-            if (ImGui::MenuItem("Quit", "Ctrl+Q")) {
+            if (ImGui::MenuItem("Quit", shortcutLabel(GLFW_KEY_Q, GLFW_MOD_CONTROL))) {
                 quit();
             }
             ImGui::EndMenu();
@@ -188,26 +214,26 @@ void MainWindow_ImGui::renderMenuBar()
 
         if (ImGui::BeginMenu("CPU")) {
             if (cpuRunning) {
-                if (ImGui::MenuItem("Stop", "F6")) {
+                if (ImGui::MenuItem("Stop", shortcutLabel(GLFW_KEY_F6))) {
                     stopCpu();
                 }
             } else {
-                if (ImGui::MenuItem("Start", "F6")) {
+                if (ImGui::MenuItem("Start", shortcutLabel(GLFW_KEY_F6))) {
                     startCpu();
                 }
             }
-            if (ImGui::MenuItem("Step", "F7")) {
+            if (ImGui::MenuItem("Step", shortcutLabel(GLFW_KEY_F7))) {
                 stepCpu();
             }
             ImGui::Separator();
-            if (ImGui::MenuItem("Soft Reset", "F5")) {
+            if (ImGui::MenuItem("Soft Reset", shortcutLabel(GLFW_KEY_F5))) {
                 reset();
             }
-            if (ImGui::MenuItem("Hard Reset", "Ctrl+F5")) {
+            if (ImGui::MenuItem("Hard Reset", shortcutLabel(GLFW_KEY_F5, GLFW_MOD_CONTROL))) {
                 hardReset();
             }
             ImGui::Separator();
-            if (ImGui::MenuItem("Debug Console", "F3")) {
+            if (ImGui::MenuItem("Debug Console", shortcutLabel(GLFW_KEY_F3))) {
                 debugCpu();
             }
             ImGui::EndMenu();
@@ -235,9 +261,9 @@ void MainWindow_ImGui::renderMenuBar()
                 memory->setTerminalSpeed(termSpeed);
             }
             ImGui::Separator();
-            ImGui::MenuItem("Memory Viewer", "F1", &showMemoryViewer);
-            ImGui::MenuItem("Memory Map", "F2", &showMemoryMap);
-            ImGui::MenuItem("Debug Console", "F3", &showDebugger);
+            ImGui::MenuItem("Memory Viewer", shortcutLabel(GLFW_KEY_F1), &showMemoryViewer);
+            ImGui::MenuItem("Memory Map", shortcutLabel(GLFW_KEY_F2), &showMemoryMap);
+            ImGui::MenuItem("Debug Console", shortcutLabel(GLFW_KEY_F3), &showDebugger);
             ImGui::EndMenu();
         }
 
@@ -533,16 +559,19 @@ void MainWindow_ImGui::renderDebugDialog()
         // Désassemblage de l'instruction courante
         if (ImGui::CollapsingHeader("Current Instruction", ImGuiTreeNodeFlags_DefaultOpen)) {
             quint16 pc = cpu->getProgramCounter();
-            quint8 opcode = memory->memRead(pc);
-            quint8 operand1 = memory->memRead(pc + 1);
-            quint8 operand2 = memory->memRead(pc + 2);
-            
-            ImGui::Text("PC: 0x%04X", pc);
-            ImGui::Text("Opcode: 0x%02X", opcode);
-            ImGui::Text("Operands: 0x%02X 0x%02X", operand1, operand2);
-            
-            // Affichage simple de l'instruction (peut être étendu)
-            ImGui::Text("Instruction: %s", getInstructionName(opcode).c_str());
+            int instrLen = 1;
+            std::string disasm = disassemble(pc, instrLen);
+
+            ImGui::Text("PC: $%04X", pc);
+            // Show raw bytes
+            std::stringstream rawBytes;
+            for (int i = 0; i < instrLen; i++) {
+                if (i > 0) rawBytes << " ";
+                rawBytes << std::hex << std::uppercase << std::setw(2) << std::setfill('0')
+                         << (int)memory->memRead(pc + i);
+            }
+            ImGui::Text("Bytes: %s", rawBytes.str().c_str());
+            ImGui::Text("  %s", disasm.c_str());
         }
         
         // Pile
@@ -644,11 +673,13 @@ void MainWindow_ImGui::renderScreenConfigDialog()
 #else
             if (window) {
                 if (fullscreen) {
+                    glfwGetWindowPos(window, &windowedPosX, &windowedPosY);
+                    glfwGetWindowSize(window, &windowedWidth, &windowedHeight);
                     GLFWmonitor* monitor = glfwGetPrimaryMonitor();
                     const GLFWvidmode* mode = glfwGetVideoMode(monitor);
                     glfwSetWindowMonitor(window, monitor, 0, 0, mode->width, mode->height, mode->refreshRate);
                 } else {
-                    glfwSetWindowMonitor(window, nullptr, 100, 100, 1280, 720, 0);
+                    glfwSetWindowMonitor(window, nullptr, windowedPosX, windowedPosY, windowedWidth, windowedHeight, 0);
                 }
             }
 #endif
@@ -680,23 +711,23 @@ void MainWindow_ImGui::renderMemoryConfigDialog()
 
         if (ImGui::Button("Reload BASIC")) {
             memory->setWriteInRom(true);
-            memory->loadBasic();
+            int result = memory->loadBasic();
             memory->setWriteInRom(!writeProtect);
-            setStatusMessage("BASIC reloaded", 2.0f);
+            setStatusMessage(result == 0 ? "BASIC reloaded" : memory->getLastError(), 3.0f);
         }
 
         if (ImGui::Button("Reload WOZ Monitor")) {
             memory->setWriteInRom(true);
-            memory->loadWozMonitor();
+            int result = memory->loadWozMonitor();
             memory->setWriteInRom(!writeProtect);
-            setStatusMessage("WOZ Monitor reloaded", 2.0f);
+            setStatusMessage(result == 0 ? "WOZ Monitor reloaded" : memory->getLastError(), 3.0f);
         }
 
         if (ImGui::Button("Reload Krusader")) {
             memory->setWriteInRom(true);
-            memory->loadKrusader();
+            int result = memory->loadKrusader();
             memory->setWriteInRom(!writeProtect);
-            setStatusMessage("Krusader reloaded", 2.0f);
+            setStatusMessage(result == 0 ? "Krusader reloaded" : memory->getLastError(), 3.0f);
         }
 
         ImGui::Spacing();
@@ -738,6 +769,7 @@ void MainWindow_ImGui::renderMemoryConfigDialog()
 // Implémentation des actions
 void MainWindow_ImGui::loadMemory()
 {
+    loadDlg.reset();
     showLoadDialog = true;
 }
 
@@ -745,87 +777,71 @@ void MainWindow_ImGui::renderLoadDialog()
 {
     ImGui::SetNextWindowSize(ImVec2(550, 450), ImGuiCond_FirstUseEver);
     if (ImGui::Begin("Load Program", &showLoadDialog)) {
-        static char filePath[512] = "";
-        static char addressStr[8] = "0300";
-        static int fileType = 1; // 0=binary, 1=hex dump
-        static std::vector<std::string> dirList;
-        static std::vector<std::string> fileList;
-        static bool filesScanned = false;
-        static std::string softAsmRoot;
-        static std::string currentDir;
 
-        // Scanner le dossier soft-asm au premier affichage
-        if (!filesScanned) {
-            // Trouver la racine soft-asm si pas encore fait
-            if (softAsmRoot.empty()) {
+        if (!loadDlg.filesScanned) {
+            if (loadDlg.softAsmRoot.empty()) {
                 std::string dirs[] = {"soft-asm", "../soft-asm", "../../soft-asm"};
                 for (const auto& d : dirs) {
                     if (std::filesystem::is_directory(d)) {
-                        softAsmRoot = std::filesystem::canonical(d).string();
-                        currentDir = softAsmRoot;
+                        loadDlg.softAsmRoot = std::filesystem::canonical(d).string();
+                        loadDlg.currentDir = loadDlg.softAsmRoot;
                         break;
                     }
                 }
             }
-            dirList.clear();
-            fileList.clear();
-            if (!currentDir.empty() && std::filesystem::is_directory(currentDir)) {
-                for (const auto& entry : std::filesystem::directory_iterator(currentDir)) {
+            loadDlg.dirList.clear();
+            loadDlg.fileList.clear();
+            if (!loadDlg.currentDir.empty() && std::filesystem::is_directory(loadDlg.currentDir)) {
+                for (const auto& entry : std::filesystem::directory_iterator(loadDlg.currentDir)) {
                     if (entry.is_directory()) {
                         std::string name = entry.path().filename().string();
                         if (name[0] != '.')
-                            dirList.push_back(name);
+                            loadDlg.dirList.push_back(name);
                     } else if (entry.is_regular_file()) {
                         std::string ext = entry.path().extension().string();
                         if (ext == ".txt" || ext == ".bin")
-                            fileList.push_back(entry.path().filename().string());
+                            loadDlg.fileList.push_back(entry.path().filename().string());
                     }
                 }
-                std::sort(dirList.begin(), dirList.end());
-                std::sort(fileList.begin(), fileList.end());
+                std::sort(loadDlg.dirList.begin(), loadDlg.dirList.end());
+                std::sort(loadDlg.fileList.begin(), loadDlg.fileList.end());
             }
-            filesScanned = true;
+            loadDlg.filesScanned = true;
         }
 
-        // Afficher le chemin courant relatif à soft-asm
         {
             std::string displayPath = "soft-asm/";
-            if (currentDir.size() > softAsmRoot.size())
-                displayPath += currentDir.substr(softAsmRoot.size() + 1) + "/";
+            if (loadDlg.currentDir.size() > loadDlg.softAsmRoot.size())
+                displayPath += loadDlg.currentDir.substr(loadDlg.softAsmRoot.size() + 1) + "/";
             ImGui::Text("%s", displayPath.c_str());
         }
 
-        // Liste des dossiers et fichiers
         ImGui::BeginChild("FileList", ImVec2(-1, 220), true);
 
-        // Bouton pour remonter au dossier parent
-        if (currentDir != softAsmRoot) {
+        if (loadDlg.currentDir != loadDlg.softAsmRoot) {
             if (ImGui::Selectable(".. /", false)) {
-                currentDir = std::filesystem::path(currentDir).parent_path().string();
-                filesScanned = false;
+                loadDlg.currentDir = std::filesystem::path(loadDlg.currentDir).parent_path().string();
+                loadDlg.filesScanned = false;
             }
         }
 
-        // Sous-dossiers
-        for (const auto& d : dirList) {
+        for (const auto& d : loadDlg.dirList) {
             std::string label = d + "/";
             if (ImGui::Selectable(label.c_str(), false)) {
-                currentDir = (std::filesystem::path(currentDir) / d).string();
-                filesScanned = false;
+                loadDlg.currentDir = (std::filesystem::path(loadDlg.currentDir) / d).string();
+                loadDlg.filesScanned = false;
             }
         }
 
-        // Fichiers
-        for (const auto& f : fileList) {
+        for (const auto& f : loadDlg.fileList) {
             if (ImGui::Selectable(f.c_str())) {
-                std::string fullPath = (std::filesystem::path(currentDir) / f).string();
-                strncpy(filePath, fullPath.c_str(), sizeof(filePath) - 1);
-                filePath[sizeof(filePath) - 1] = '\0';
-                // Auto-detect type
+                std::string fullPath = (std::filesystem::path(loadDlg.currentDir) / f).string();
+                strncpy(loadDlg.filePath, fullPath.c_str(), sizeof(loadDlg.filePath) - 1);
+                loadDlg.filePath[sizeof(loadDlg.filePath) - 1] = '\0';
                 if (f.size() > 4 && f.substr(f.size() - 4) == ".bin")
-                    fileType = 0;
+                    loadDlg.fileType = 0;
                 else
-                    fileType = 1;
+                    loadDlg.fileType = 1;
             }
         }
         ImGui::EndChild();
@@ -833,17 +849,17 @@ void MainWindow_ImGui::renderLoadDialog()
         ImGui::Separator();
         ImGui::Text("Selected file:");
         ImGui::SetNextItemWidth(-1);
-        ImGui::InputText("##filepath", filePath, sizeof(filePath));
+        ImGui::InputText("##filepath", loadDlg.filePath, sizeof(loadDlg.filePath));
 
-        ImGui::RadioButton("Binary (.bin)", &fileType, 0);
+        ImGui::RadioButton("Binary (.bin)", &loadDlg.fileType, 0);
         ImGui::SameLine();
-        ImGui::RadioButton("Hex dump (.txt)", &fileType, 1);
+        ImGui::RadioButton("Hex dump (.txt)", &loadDlg.fileType, 1);
 
-        if (fileType == 0) {
+        if (loadDlg.fileType == 0) {
             ImGui::Text("Address (hex):");
             ImGui::SameLine();
             ImGui::SetNextItemWidth(80);
-            ImGui::InputText("##address", addressStr, sizeof(addressStr),
+            ImGui::InputText("##address", loadDlg.addressStr, sizeof(loadDlg.addressStr),
                              ImGuiInputTextFlags_CharsHexadecimal | ImGuiInputTextFlags_CharsUppercase);
         }
 
@@ -851,17 +867,15 @@ void MainWindow_ImGui::renderLoadDialog()
         if (ImGui::Button("Load", ImVec2(120, 0))) {
             int result;
             quint16 addr = 0;
-            if (fileType == 0) {
-                addr = (quint16)strtol(addressStr, nullptr, 16);
-                result = memory->loadBinary(filePath, addr);
+            if (loadDlg.fileType == 0) {
+                addr = (quint16)strtol(loadDlg.addressStr, nullptr, 16);
+                result = memory->loadBinary(loadDlg.filePath, addr);
             } else {
-                result = memory->loadHexDump(filePath, addr);
-                snprintf(addressStr, sizeof(addressStr), "%04X", addr);
+                result = memory->loadHexDump(loadDlg.filePath, addr);
+                snprintf(loadDlg.addressStr, sizeof(loadDlg.addressStr), "%04X", addr);
             }
             if (result == 0) {
-                // Lancer le programme automatiquement
                 screen->clear();
-                // Écrire le vecteur reset vers l'adresse du programme
                 bool prevWriteInRom = memory->getWriteInRom();
                 memory->setWriteInRom(true);
                 memory->memWrite(0xFFFC, addr & 0xFF);
@@ -875,8 +889,7 @@ void MainWindow_ImGui::renderLoadDialog()
                 ss << "Program started at 0x" << std::hex << std::uppercase << addr;
                 setStatusMessage(ss.str(), 3.0f);
                 showLoadDialog = false;
-                filesScanned = false;
-                softAsmRoot.clear();
+                loadDlg.reset();
             } else {
                 setStatusMessage("Error: unable to load file", 3.0f);
             }
@@ -884,8 +897,7 @@ void MainWindow_ImGui::renderLoadDialog()
         ImGui::SameLine();
         if (ImGui::Button("Cancel", ImVec2(120, 0))) {
             showLoadDialog = false;
-            filesScanned = false;
-            softAsmRoot.clear();
+            loadDlg.reset();
         }
     }
     ImGui::End();
@@ -985,21 +997,23 @@ void MainWindow_ImGui::pasteCode()
         return;
     }
 
-    // Feed each character to the Apple 1 keyboard as if typed
+    // Cycles to run per character: enough for the CPU to read the key and echo it.
+    // At ~60 chars/sec on a 1 MHz CPU, one character takes ~16667 cycles to display.
+    // We use 2x that to leave margin for processing (WOZ Monitor read + echo loop).
+    const int CYCLES_PER_CHAR = memory->getTerminalSpeed() > 0
+        ? (2 * 1000000 / memory->getTerminalSpeed())
+        : 1000; // max speed: minimal delay
+
     const char* p = clipboard;
     int charCount = 0;
     const int MAX_PASTE_CHARS = 4096;
     while (*p && charCount < MAX_PASTE_CHARS) {
         char c = *p;
-        // Convert newline to carriage return (Apple 1 convention)
         if (c == '\n') c = '\r';
-        // Skip non-printable except CR
         if (c == '\r' || (c >= 32 && c <= 126)) {
-            // Convert to uppercase (Apple 1 convention)
-            if (c >= 'a' && c <= 'z') c = c - 'a' + 'A';
+            // setKeyPressed() already converts to uppercase
             memory->setKeyPressed(c);
-            // Run some CPU cycles to process each character
-            cpu->run(5000);
+            cpu->run(CYCLES_PER_CHAR);
             charCount++;
         }
         ++p;
@@ -1333,170 +1347,171 @@ void MainWindow_ImGui::handleGlfwChar(unsigned int codepoint)
 
 void MainWindow_ImGui::handleGlfwKey(int key, int scancode, int action, int mods)
 {
+    (void)scancode;
     if (action != GLFW_PRESS)
         return;
 
-    const bool ctrl = (mods & GLFW_MOD_CONTROL) != 0;
+    int activeMods = mods & (GLFW_MOD_CONTROL | GLFW_MOD_SHIFT | GLFW_MOD_ALT | GLFW_MOD_SUPER);
 
-    // Raccourcis globaux (libellés dans le menu — ImGui ne les lie pas automatiquement)
-    if (ctrl) {
-        switch (key) {
-        case GLFW_KEY_O: loadMemory(); return;
-        case GLFW_KEY_S: saveMemory(); return;
-        case GLFW_KEY_V: pasteCode(); return;
-        case GLFW_KEY_Q: quit(); return;
-        case GLFW_KEY_F5: hardReset(); return;
-        default: break;
+    for (int i = 0; i < shortcutCount; i++) {
+        if (shortcuts[i].key != key || shortcuts[i].mods != activeMods)
+            continue;
+
+        if (shortcuts[i].action) {
+            (this->*shortcuts[i].action)();
+        } else if (key == GLFW_KEY_F6) {
+            cpuRunning ? stopCpu() : startCpu();
+        } else if (key == GLFW_KEY_F1) {
+            showMemoryViewer = !showMemoryViewer;
+        } else if (key == GLFW_KEY_F2) {
+            showMemoryMap = !showMemoryMap;
+        } else if (key == GLFW_KEY_F3) {
+            showDebugger = !showDebugger;
         }
-    }
-
-    switch (key) {
-    case GLFW_KEY_F1: showMemoryViewer = !showMemoryViewer; return;
-    case GLFW_KEY_F2: showMemoryMap = !showMemoryMap; return;
-    case GLFW_KEY_F3: showDebugger = !showDebugger; return;
-    case GLFW_KEY_F5: reset(); return;
-    case GLFW_KEY_F6:
-        if (cpuRunning)
-            stopCpu();
-        else
-            startCpu();
         return;
-    case GLFW_KEY_F7:
-        stepCpu();
-        return;
-    default:
-        break;
     }
-
 }
 
-std::string MainWindow_ImGui::getInstructionName(quint8 opcode)
+// 6502 addressing modes for disassembly formatting
+enum AddrMode {
+    AM_IMP, AM_IMM, AM_ZP, AM_ZPX, AM_ZPY,
+    AM_ABS, AM_ABX, AM_ABY, AM_IND,
+    AM_IZX, AM_IZY, AM_REL
+};
+
+struct OpcodeInfo {
+    const char* mnemonic;
+    AddrMode mode;
+};
+
+// Complete 6502 opcode table (256 entries)
+static const OpcodeInfo opcodeInfo[256] = {
+    {"BRK",AM_IMP}, {"ORA",AM_IZX}, {"???",AM_IMP}, {"???",AM_IMP},  // 00-03
+    {"???",AM_IMP}, {"ORA",AM_ZP},  {"ASL",AM_ZP},  {"???",AM_IMP},  // 04-07
+    {"PHP",AM_IMP}, {"ORA",AM_IMM}, {"ASL",AM_IMP}, {"???",AM_IMP},  // 08-0B
+    {"???",AM_IMP}, {"ORA",AM_ABS}, {"ASL",AM_ABS}, {"???",AM_IMP},  // 0C-0F
+    {"BPL",AM_REL}, {"ORA",AM_IZY}, {"???",AM_IMP}, {"???",AM_IMP},  // 10-13
+    {"???",AM_IMP}, {"ORA",AM_ZPX}, {"ASL",AM_ZPX}, {"???",AM_IMP},  // 14-17
+    {"CLC",AM_IMP}, {"ORA",AM_ABY}, {"???",AM_IMP}, {"???",AM_IMP},  // 18-1B
+    {"???",AM_IMP}, {"ORA",AM_ABX}, {"ASL",AM_ABX}, {"???",AM_IMP},  // 1C-1F
+    {"JSR",AM_ABS}, {"AND",AM_IZX}, {"???",AM_IMP}, {"???",AM_IMP},  // 20-23
+    {"BIT",AM_ZP},  {"AND",AM_ZP},  {"ROL",AM_ZP},  {"???",AM_IMP},  // 24-27
+    {"PLP",AM_IMP}, {"AND",AM_IMM}, {"ROL",AM_IMP}, {"???",AM_IMP},  // 28-2B
+    {"BIT",AM_ABS}, {"AND",AM_ABS}, {"ROL",AM_ABS}, {"???",AM_IMP},  // 2C-2F
+    {"BMI",AM_REL}, {"AND",AM_IZY}, {"???",AM_IMP}, {"???",AM_IMP},  // 30-33
+    {"???",AM_IMP}, {"AND",AM_ZPX}, {"ROL",AM_ZPX}, {"???",AM_IMP},  // 34-37
+    {"SEC",AM_IMP}, {"AND",AM_ABY}, {"???",AM_IMP}, {"???",AM_IMP},  // 38-3B
+    {"???",AM_IMP}, {"AND",AM_ABX}, {"ROL",AM_ABX}, {"???",AM_IMP},  // 3C-3F
+    {"RTI",AM_IMP}, {"EOR",AM_IZX}, {"???",AM_IMP}, {"???",AM_IMP},  // 40-43
+    {"???",AM_IMP}, {"EOR",AM_ZP},  {"LSR",AM_ZP},  {"???",AM_IMP},  // 44-47
+    {"PHA",AM_IMP}, {"EOR",AM_IMM}, {"LSR",AM_IMP}, {"???",AM_IMP},  // 48-4B
+    {"JMP",AM_ABS}, {"EOR",AM_ABS}, {"LSR",AM_ABS}, {"???",AM_IMP},  // 4C-4F
+    {"BVC",AM_REL}, {"EOR",AM_IZY}, {"???",AM_IMP}, {"???",AM_IMP},  // 50-53
+    {"???",AM_IMP}, {"EOR",AM_ZPX}, {"LSR",AM_ZPX}, {"???",AM_IMP},  // 54-57
+    {"CLI",AM_IMP}, {"EOR",AM_ABY}, {"???",AM_IMP}, {"???",AM_IMP},  // 58-5B
+    {"???",AM_IMP}, {"EOR",AM_ABX}, {"LSR",AM_ABX}, {"???",AM_IMP},  // 5C-5F
+    {"RTS",AM_IMP}, {"ADC",AM_IZX}, {"???",AM_IMP}, {"???",AM_IMP},  // 60-63
+    {"???",AM_IMP}, {"ADC",AM_ZP},  {"ROR",AM_ZP},  {"???",AM_IMP},  // 64-67
+    {"PLA",AM_IMP}, {"ADC",AM_IMM}, {"ROR",AM_IMP}, {"???",AM_IMP},  // 68-6B
+    {"JMP",AM_IND}, {"ADC",AM_ABS}, {"ROR",AM_ABS}, {"???",AM_IMP},  // 6C-6F
+    {"BVS",AM_REL}, {"ADC",AM_IZY}, {"???",AM_IMP}, {"???",AM_IMP},  // 70-73
+    {"???",AM_IMP}, {"ADC",AM_ZPX}, {"ROR",AM_ZPX}, {"???",AM_IMP},  // 74-77
+    {"SEI",AM_IMP}, {"ADC",AM_ABY}, {"???",AM_IMP}, {"???",AM_IMP},  // 78-7B
+    {"???",AM_IMP}, {"ADC",AM_ABX}, {"ROR",AM_ABX}, {"???",AM_IMP},  // 7C-7F
+    {"???",AM_IMP}, {"STA",AM_IZX}, {"???",AM_IMP}, {"???",AM_IMP},  // 80-83
+    {"STY",AM_ZP},  {"STA",AM_ZP},  {"STX",AM_ZP},  {"???",AM_IMP},  // 84-87
+    {"DEY",AM_IMP}, {"???",AM_IMP}, {"TXA",AM_IMP}, {"???",AM_IMP},  // 88-8B
+    {"STY",AM_ABS}, {"STA",AM_ABS}, {"STX",AM_ABS}, {"???",AM_IMP},  // 8C-8F
+    {"BCC",AM_REL}, {"STA",AM_IZY}, {"???",AM_IMP}, {"???",AM_IMP},  // 90-93
+    {"STY",AM_ZPX}, {"STA",AM_ZPX}, {"STX",AM_ZPY}, {"???",AM_IMP},  // 94-97
+    {"TYA",AM_IMP}, {"STA",AM_ABY}, {"TXS",AM_IMP}, {"???",AM_IMP},  // 98-9B
+    {"???",AM_IMP}, {"STA",AM_ABX}, {"???",AM_IMP}, {"???",AM_IMP},  // 9C-9F
+    {"LDY",AM_IMM}, {"LDA",AM_IZX}, {"LDX",AM_IMM}, {"???",AM_IMP},  // A0-A3
+    {"LDY",AM_ZP},  {"LDA",AM_ZP},  {"LDX",AM_ZP},  {"???",AM_IMP},  // A4-A7
+    {"TAY",AM_IMP}, {"LDA",AM_IMM}, {"TAX",AM_IMP}, {"???",AM_IMP},  // A8-AB
+    {"LDY",AM_ABS}, {"LDA",AM_ABS}, {"LDX",AM_ABS}, {"???",AM_IMP},  // AC-AF
+    {"BCS",AM_REL}, {"LDA",AM_IZY}, {"???",AM_IMP}, {"???",AM_IMP},  // B0-B3
+    {"LDY",AM_ZPX}, {"LDA",AM_ZPX}, {"LDX",AM_ZPY}, {"???",AM_IMP},  // B4-B7
+    {"CLV",AM_IMP}, {"LDA",AM_ABY}, {"TSX",AM_IMP}, {"???",AM_IMP},  // B8-BB
+    {"LDY",AM_ABX}, {"LDA",AM_ABX}, {"LDX",AM_ABY}, {"???",AM_IMP},  // BC-BF
+    {"CPY",AM_IMM}, {"CMP",AM_IZX}, {"???",AM_IMP}, {"???",AM_IMP},  // C0-C3
+    {"CPY",AM_ZP},  {"CMP",AM_ZP},  {"DEC",AM_ZP},  {"???",AM_IMP},  // C4-C7
+    {"INY",AM_IMP}, {"CMP",AM_IMM}, {"DEX",AM_IMP}, {"???",AM_IMP},  // C8-CB
+    {"CPY",AM_ABS}, {"CMP",AM_ABS}, {"DEC",AM_ABS}, {"???",AM_IMP},  // CC-CF
+    {"BNE",AM_REL}, {"CMP",AM_IZY}, {"???",AM_IMP}, {"???",AM_IMP},  // D0-D3
+    {"???",AM_IMP}, {"CMP",AM_ZPX}, {"DEC",AM_ZPX}, {"???",AM_IMP},  // D4-D7
+    {"CLD",AM_IMP}, {"CMP",AM_ABY}, {"???",AM_IMP}, {"???",AM_IMP},  // D8-DB
+    {"???",AM_IMP}, {"CMP",AM_ABX}, {"DEC",AM_ABX}, {"???",AM_IMP},  // DC-DF
+    {"CPX",AM_IMM}, {"SBC",AM_IZX}, {"???",AM_IMP}, {"???",AM_IMP},  // E0-E3
+    {"CPX",AM_ZP},  {"SBC",AM_ZP},  {"INC",AM_ZP},  {"???",AM_IMP},  // E4-E7
+    {"INX",AM_IMP}, {"SBC",AM_IMM}, {"NOP",AM_IMP}, {"???",AM_IMP},  // E8-EB
+    {"CPX",AM_ABS}, {"SBC",AM_ABS}, {"INC",AM_ABS}, {"???",AM_IMP},  // EC-EF
+    {"BEQ",AM_REL}, {"SBC",AM_IZY}, {"???",AM_IMP}, {"???",AM_IMP},  // F0-F3
+    {"???",AM_IMP}, {"SBC",AM_ZPX}, {"INC",AM_ZPX}, {"???",AM_IMP},  // F4-F7
+    {"SED",AM_IMP}, {"SBC",AM_ABY}, {"???",AM_IMP}, {"???",AM_IMP},  // F8-FB
+    {"???",AM_IMP}, {"SBC",AM_ABX}, {"INC",AM_ABX}, {"???",AM_IMP},  // FC-FF
+};
+
+std::string MainWindow_ImGui::disassemble(quint16 pc, int& instrLen)
 {
-    // Table simplifiée des instructions 6502 les plus courantes
-    switch (opcode) {
-        // ADC
-        case 0x69: return "ADC #$";
-        case 0x65: return "ADC $";
-        case 0x75: return "ADC $,X";
-        case 0x6D: return "ADC $";
-        case 0x7D: return "ADC $,X";
-        case 0x79: return "ADC $,Y";
-        case 0x61: return "ADC ($,X)";
-        case 0x71: return "ADC ($),Y";
-        
-        // AND
-        case 0x29: return "AND #$";
-        case 0x25: return "AND $";
-        case 0x35: return "AND $,X";
-        case 0x2D: return "AND $";
-        case 0x3D: return "AND $,X";
-        case 0x39: return "AND $,Y";
-        case 0x21: return "AND ($,X)";
-        case 0x31: return "AND ($),Y";
-        
-        // Branch instructions
-        case 0x10: return "BPL";
-        case 0x30: return "BMI";
-        case 0x50: return "BVC";
-        case 0x70: return "BVS";
-        case 0x90: return "BCC";
-        case 0xB0: return "BCS";
-        case 0xD0: return "BNE";
-        case 0xF0: return "BEQ";
-        
-        // Compare
-        case 0xC9: return "CMP #$";
-        case 0xC5: return "CMP $";
-        case 0xD5: return "CMP $,X";
-        case 0xCD: return "CMP $";
-        case 0xDD: return "CMP $,X";
-        case 0xD9: return "CMP $,Y";
-        case 0xC1: return "CMP ($,X)";
-        case 0xD1: return "CMP ($),Y";
-        
-        // Jump/Call
-        case 0x4C: return "JMP $";
-        case 0x6C: return "JMP ($)";
-        case 0x20: return "JSR $";
-        case 0x60: return "RTS";
-        case 0x40: return "RTI";
-        
-        // Load/Store
-        case 0xA9: return "LDA #$";
-        case 0xA5: return "LDA $";
-        case 0xB5: return "LDA $,X";
-        case 0xAD: return "LDA $";
-        case 0xBD: return "LDA $,X";
-        case 0xB9: return "LDA $,Y";
-        case 0xA1: return "LDA ($,X)";
-        case 0xB1: return "LDA ($),Y";
-        
-        case 0xA2: return "LDX #$";
-        case 0xA6: return "LDX $";
-        case 0xB6: return "LDX $,Y";
-        case 0xAE: return "LDX $";
-        case 0xBE: return "LDX $,Y";
-        
-        case 0xA0: return "LDY #$";
-        case 0xA4: return "LDY $";
-        case 0xB4: return "LDY $,X";
-        case 0xAC: return "LDY $";
-        case 0xBC: return "LDY $,X";
-        
-        case 0x84: return "STY $";
-        case 0x94: return "STY $,X";
-        case 0x8C: return "STY $";
-        
-        case 0x85: return "STA $";
-        case 0x95: return "STA $,X";
-        case 0x8D: return "STA $";
-        case 0x9D: return "STA $,X";
-        case 0x99: return "STA $,Y";
-        case 0x81: return "STA ($,X)";
-        case 0x91: return "STA ($),Y";
-        
-        // Stack operations
-        case 0x48: return "PHA";
-        case 0x68: return "PLA";
-        case 0x08: return "PHP";
-        case 0x28: return "PLP";
-        
-        // Status flags
-        case 0x18: return "CLC";
-        case 0x38: return "SEC";
-        case 0x58: return "CLI";
-        case 0x78: return "SEI";
-        case 0xB8: return "CLV";
-        case 0xD8: return "CLD";
-        case 0xF8: return "SED";
-        
-        // Transfers
-        case 0xAA: return "TAX";
-        case 0x8A: return "TXA";
-        case 0xA8: return "TAY";
-        case 0x98: return "TYA";
-        case 0x9A: return "TXS";
-        case 0xBA: return "TSX";
-        
-        // Increment/Decrement
-        case 0xE8: return "INX";
-        case 0xC8: return "INY";
-        case 0xCA: return "DEX";
-        case 0x88: return "DEY";
-        case 0xE6: return "INC $";
-        case 0xF6: return "INC $,X";
-        case 0xEE: return "INC $";
-        case 0xFE: return "INC $,X";
-        case 0xC6: return "DEC $";
-        case 0xD6: return "DEC $,X";
-        case 0xCE: return "DEC $";
-        case 0xDE: return "DEC $,X";
-        
-        // Misc
-        case 0x00: return "BRK";
-        case 0xEA: return "NOP";
-        
-        default:
-            return "???";
+    quint8 opcode = memory->memRead(pc);
+    const OpcodeInfo& info = opcodeInfo[opcode];
+    quint8 lo = memory->memRead(pc + 1);
+    quint8 hi = memory->memRead(pc + 2);
+    char buf[32];
+
+    switch (info.mode) {
+    case AM_IMP:
+        instrLen = 1;
+        snprintf(buf, sizeof(buf), "%s", info.mnemonic);
+        break;
+    case AM_IMM:
+        instrLen = 2;
+        snprintf(buf, sizeof(buf), "%s #$%02X", info.mnemonic, lo);
+        break;
+    case AM_ZP:
+        instrLen = 2;
+        snprintf(buf, sizeof(buf), "%s $%02X", info.mnemonic, lo);
+        break;
+    case AM_ZPX:
+        instrLen = 2;
+        snprintf(buf, sizeof(buf), "%s $%02X,X", info.mnemonic, lo);
+        break;
+    case AM_ZPY:
+        instrLen = 2;
+        snprintf(buf, sizeof(buf), "%s $%02X,Y", info.mnemonic, lo);
+        break;
+    case AM_ABS:
+        instrLen = 3;
+        snprintf(buf, sizeof(buf), "%s $%04X", info.mnemonic, lo | (hi << 8));
+        break;
+    case AM_ABX:
+        instrLen = 3;
+        snprintf(buf, sizeof(buf), "%s $%04X,X", info.mnemonic, lo | (hi << 8));
+        break;
+    case AM_ABY:
+        instrLen = 3;
+        snprintf(buf, sizeof(buf), "%s $%04X,Y", info.mnemonic, lo | (hi << 8));
+        break;
+    case AM_IND:
+        instrLen = 3;
+        snprintf(buf, sizeof(buf), "%s ($%04X)", info.mnemonic, lo | (hi << 8));
+        break;
+    case AM_IZX:
+        instrLen = 2;
+        snprintf(buf, sizeof(buf), "%s ($%02X,X)", info.mnemonic, lo);
+        break;
+    case AM_IZY:
+        instrLen = 2;
+        snprintf(buf, sizeof(buf), "%s ($%02X),Y", info.mnemonic, lo);
+        break;
+    case AM_REL:
+        instrLen = 2;
+        {
+            quint16 target = pc + 2 + (int8_t)lo;
+            snprintf(buf, sizeof(buf), "%s $%04X", info.mnemonic, target);
+        }
+        break;
     }
+    return buf;
 } 

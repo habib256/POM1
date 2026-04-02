@@ -21,6 +21,7 @@
 
 #include <vector>
 #include <queue>
+#include <string>
 #include <cstdint>
 using namespace std;
 
@@ -42,12 +43,15 @@ public:
     int getRamSizeKB(void) const { return ramSize; }
 
     // Load Memory from file
+    int loadROM(const char* filename, quint16 startAddress, size_t maxSize, const char* label);
     int loadBasic(void);
     int loadKrusader(void);
     int loadWozMonitor(void);
     int loadBinary(const char* filename, quint16 startAddress);
     int loadHexDump(const char* filename, quint16 &startAddress);
 
+    // Last ROM loading error (empty if no error)
+    const std::string& getLastError() const { return lastError; }
 
     quint8 memRead(quint16 address);
     //quint8 memReadAbsolute(quint16 adr);
@@ -88,6 +92,7 @@ private :
 
     int ramSize; // in kilobytes
     bool writeInRom;
+    std::string lastError;
 
 };
 

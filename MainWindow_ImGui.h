@@ -2,6 +2,7 @@
 #define MAINWINDOW_IMGUI_H
 
 #include <string>
+#include <vector>
 #include <memory>
 #include <GLFW/glfw3.h>
 #include "Memory.h"
@@ -40,6 +41,10 @@ private:
     bool showMemoryMap = false;
     bool showSaveDialog = false;
     bool fullscreen = false;
+    int windowedWidth = 1200;
+    int windowedHeight = 800;
+    int windowedPosX = 100;
+    int windowedPosY = 100;
     
     // CPU execution state
     bool cpuRunning = false;
@@ -90,7 +95,41 @@ private:
     void setStatusMessage(const std::string& message, float duration = 3.0f);
     void updateStatus(float deltaTime);
     void handleKeyboardInput();
-    std::string getInstructionName(quint8 opcode);
+    std::string disassemble(quint16 pc, int& instrLen);
+
+    // Load dialog state (non-static, reset on open)
+    struct LoadDialogState {
+        char filePath[512] = "";
+        char addressStr[8] = "0300";
+        int fileType = 1;
+        std::vector<std::string> dirList;
+        std::vector<std::string> fileList;
+        bool filesScanned = false;
+        std::string softAsmRoot;
+        std::string currentDir;
+        void reset() {
+            filePath[0] = '\0';
+            snprintf(addressStr, sizeof(addressStr), "0300");
+            fileType = 1;
+            dirList.clear();
+            fileList.clear();
+            filesScanned = false;
+            softAsmRoot.clear();
+            currentDir.clear();
+        }
+    };
+    LoadDialogState loadDlg;
+
+    // Keyboard shortcuts — single source of truth for label + binding
+    struct Shortcut {
+        int key;
+        int mods;          // 0 = no modifier, GLFW_MOD_CONTROL, etc.
+        const char* label; // display string for MenuItem
+        void (MainWindow_ImGui::*action)();
+    };
+    static const Shortcut shortcuts[];
+    static const int shortcutCount;
+    static const char* shortcutLabel(int key, int mods = 0);
 };
 
 #endif // MAINWINDOW_IMGUI_H 

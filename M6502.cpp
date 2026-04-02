@@ -17,8 +17,6 @@
 // Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 #include "M6502.h"
-#include <iostream>
-#include <iomanip>
 
 
 M6502::M6502()
@@ -182,27 +180,27 @@ void M6502::AbsY(void)
 
 void M6502::Ind(void)
 {
-    ptrL = memory->memRead(programCounter++);
-    ptrH = (quint16)memory->memRead(programCounter++) << 8;
-    op = memory->memRead((quint16)(ptrH + ptrL));
-    ptrL = (ptrL + 1) & 0xFF;
-    op |= (quint16)memory->memRead((quint16)(ptrH + ptrL)) << 8;
+    quint8 lo = memory->memRead(programCounter++);
+    quint16 hi = (quint16)memory->memRead(programCounter++) << 8;
+    op = memory->memRead((quint16)(hi + lo));
+    lo = (lo + 1) & 0xFF;
+    op |= (quint16)memory->memRead((quint16)(hi + lo)) << 8;
     cycles += 4;
 }
 
 void M6502::IndZeroX(void)
 {
-    ptr = (memory->memRead(programCounter++) + xRegister) & 0xFF;
-    op = memory->memRead(ptr);
-    op |= (quint16)memory->memRead((quint8)((ptr + 1) & 0xFF)) << 8;
+    quint8 zp = (memory->memRead(programCounter++) + xRegister) & 0xFF;
+    op = memory->memRead(zp);
+    op |= (quint16)memory->memRead((quint8)((zp + 1) & 0xFF)) << 8;
     cycles += 3;
 }
 
 void M6502::IndZeroY(void)
 {
-    ptr = memory->memRead(programCounter++);
-    quint16 base = memory->memRead(ptr);
-    base |= (quint16)memory->memRead((quint8)((ptr + 1) & 0xFF)) << 8;
+    quint8 zp = memory->memRead(programCounter++);
+    quint16 base = memory->memRead(zp);
+    base |= (quint16)memory->memRead((quint8)((zp + 1) & 0xFF)) << 8;
     op = base + yRegister;
     cycles += 3;
     if ((base & 0xFF00) != (op & 0xFF00))
@@ -237,9 +235,9 @@ void M6502::WAbsY(void)
 
 void M6502::WIndZeroY(void)
 {
-    ptr = memory->memRead(programCounter++);
-    quint16 base = memory->memRead(ptr);
-    base |= (quint16)memory->memRead((quint8)((ptr + 1) & 0xFF)) << 8;
+    quint8 zp = memory->memRead(programCounter++);
+    quint16 base = memory->memRead(zp);
+    base |= (quint16)memory->memRead((quint8)((zp + 1) & 0xFF)) << 8;
     op = base + yRegister;
     cycles += 4;
 }
@@ -325,6 +323,7 @@ void M6502::ADC(void)
         else
             statusRegister &= ~N;
 
+ // V flag in BCD mode is undefined on NMOS 6502; this matches real hardware behavior
  if (((Op1 ^ tmp) & ~(Op1 ^ Op2)) & 0x80)
       statusRegister |= V;
  else
@@ -369,6 +368,7 @@ quint8 Op1 = accumulator, Op2 = memory->memRead(op);
 
     if (statusRegister & D)
     {
+       // V flag in BCD mode is undefined on NMOS 6502; N/Z set from binary result
        tmp = (Op1 & 0x0F) - (Op2 & 0x0F) - (statusRegister & C ? 0 : 1);
         accumulator = !(tmp & 0x10) ? tmp : tmp - 6;
       tmp = (Op1 & 0xF0) - (Op2 & 0xF0) - (accumulator & 0x10);
@@ -439,16 +439,16 @@ void M6502::EOR(void)
 
 void M6502::ASL(void)
 {
-    btmp = memory->memRead(op);
+    quint8 val = memory->memRead(op);
 
-    if (btmp & 0x80)
+    if (val & 0x80)
         statusRegister |= C;
     else
         statusRegister &= ~C;
 
-    btmp <<= 1;
-    setStatusRegisterNZ(btmp);
-   memory->memWrite(op, btmp);
+    val <<= 1;
+    setStatusRegisterNZ(val);
+    memory->memWrite(op, val);
     cycles += 3;
 }
 
@@ -462,16 +462,16 @@ void M6502::ASL_A(void)
 
 void M6502::LSR(void)
 {
-   btmp = memory->memRead(op);
+    quint8 val = memory->memRead(op);
 
-    if (btmp & 1)
+    if (val & 1)
         statusRegister |= C;
     else
         statusRegister &= ~C;
 
-    btmp >>= 1;
-    setStatusRegisterNZ(btmp);
-memory->memWrite(op, btmp);
+    val >>= 1;
+    setStatusRegisterNZ(val);
+    memory->memWrite(op, val);
     cycles += 3;
 }
 
@@ -488,19 +488,17 @@ void M6502::LSR_A(void)
 
 void M6502::ROL(void)
 {
-    quint8 newCarry;
-
-btmp = memory->memRead(op);
-    newCarry = btmp & 0x80;
-    btmp = (btmp << 1) | (statusRegister & C ? 1 : 0);
+    quint8 val = memory->memRead(op);
+    quint8 newCarry = val & 0x80;
+    val = (val << 1) | (statusRegister & C ? 1 : 0);
 
     if (newCarry)
         statusRegister |= C;
     else
         statusRegister &= ~C;
 
-    setStatusRegisterNZ(btmp);
-memory->memWrite(op, btmp);
+    setStatusRegisterNZ(val);
+    memory->memWrite(op, val);
     cycles += 3;
 }
 
@@ -514,19 +512,17 @@ void M6502::ROL_A(void)
 
 void M6502::ROR(void)
 {
-    int newCarry;
-
- btmp = memory->memRead(op);
-    newCarry = btmp & 1;
-    btmp = (btmp >> 1) | (statusRegister & C ? 0x80 : 0);
+    quint8 val = memory->memRead(op);
+    int newCarry = val & 1;
+    val = (val >> 1) | (statusRegister & C ? 0x80 : 0);
 
     if (newCarry)
         statusRegister |= C;
     else
         statusRegister &= ~C;
 
-    setStatusRegisterNZ(btmp);
-memory->memWrite(op, btmp);
+    setStatusRegisterNZ(val);
+    memory->memWrite(op, val);
     cycles += 3;
 }
 
@@ -545,19 +541,19 @@ void M6502::ROR_A(void)
 
 void M6502::INC(void)
 {
-btmp = memory->memRead(op);
-    btmp++;
-    setStatusRegisterNZ(btmp);
-memory->memWrite(op, btmp);
+    quint8 val = memory->memRead(op);
+    val++;
+    setStatusRegisterNZ(val);
+    memory->memWrite(op, val);
     cycles += 2;
 }
 
 void M6502::DEC(void)
 {
-btmp = memory->memRead(op);
-    btmp--;
-    setStatusRegisterNZ(btmp);
-memory->memWrite(op, btmp);
+    quint8 val = memory->memRead(op);
+    val--;
+    setStatusRegisterNZ(val);
+    memory->memWrite(op, val);
     cycles += 2;
 }
 
@@ -587,19 +583,19 @@ void M6502::DEY(void)
 
 void M6502::BIT(void)
 {
-btmp = memory->memRead(op);
+    quint8 val = memory->memRead(op);
 
-    if (btmp & 0x40)
+    if (val & 0x40)
         statusRegister |= V;
     else
         statusRegister &= ~V;
 
-    if (btmp & 0x80)
+    if (val & 0x80)
         statusRegister |= N;
     else
         statusRegister &= ~N;
 
-    if (!(btmp & accumulator))
+    if (!(val & accumulator))
         statusRegister |= Z;
     else
         statusRegister &= ~Z;
@@ -643,10 +639,7 @@ void M6502::BRK(void)
     memory->memWrite((quint16)(0x100 + stackPointer), statusRegister | B | 0x20);
     stackPointer--;
     statusRegister |= I;
-    quint16 irqVector = memReadAbsolute(0xFFFE);
-    std::cout << "BRK: Lecture vecteur IRQ 0xFFFE = 0x" << std::hex << irqVector << " (PC avant=" << programCounter << ")" << std::endl;
-    programCounter = irqVector;
-    std::cout << "BRK: PC redirigé vers 0x" << std::hex << programCounter << std::endl;
+    programCounter = memReadAbsolute(0xFFFE);
     cycles += 4;
 }
 
@@ -671,9 +664,9 @@ void M6502::RTS(void)
 
 void M6502::JSR(void)
 {
-opL = memory->memRead(programCounter++);
+    quint8 lo = memory->memRead(programCounter++);
     pushProgramCounter();
-programCounter = opL + (memory->memRead(programCounter) << 8);
+    programCounter = lo + (memory->memRead(programCounter) << 8);
     cycles += 3;
 }
 
@@ -809,961 +802,317 @@ void M6502::NOP(void)
 
 void M6502::Unoff(void)
 {
+    cycles += 2;
 }
 
 void M6502::Unoff1(void)
 {
+    cycles += 2;
 }
 
 void M6502::Unoff2(void)
 {
     programCounter++;
+    cycles += 2;
 }
 
 void M6502::Unoff3(void)
 {
     programCounter += 2;
+    cycles += 4;
 }
 
 void M6502::Hang(void)
 {
     programCounter--;
+    cycles += 2;
 }
+
+// Opcode dispatch table: each entry is {addressingMode, operation}
+// For single-function opcodes (JSR, Hang, Unoff*), operation is nullptr
+const M6502::OpcodeEntry M6502::opcodeTable[256] = {
+    /* 0x00 */ {&M6502::Imm,      &M6502::BRK},
+    /* 0x01 */ {&M6502::IndZeroX,  &M6502::ORA},
+    /* 0x02 */ {&M6502::Hang,      nullptr},
+    /* 0x03 */ {&M6502::Unoff,     nullptr},
+    /* 0x04 */ {&M6502::Unoff2,    nullptr},
+    /* 0x05 */ {&M6502::Zero,      &M6502::ORA},
+    /* 0x06 */ {&M6502::Zero,      &M6502::ASL},
+    /* 0x07 */ {&M6502::Unoff,     nullptr},
+    /* 0x08 */ {&M6502::Imp,       &M6502::PHP},
+    /* 0x09 */ {&M6502::Imm,       &M6502::ORA},
+    /* 0x0A */ {&M6502::Imp,       &M6502::ASL_A},
+    /* 0x0B */ {&M6502::Imm,       &M6502::AND},
+    /* 0x0C */ {&M6502::Unoff3,    nullptr},
+    /* 0x0D */ {&M6502::Abs,       &M6502::ORA},
+    /* 0x0E */ {&M6502::Abs,       &M6502::ASL},
+    /* 0x0F */ {&M6502::Unoff,     nullptr},
+
+    /* 0x10 */ {&M6502::Rel,       &M6502::BPL},
+    /* 0x11 */ {&M6502::IndZeroY,  &M6502::ORA},
+    /* 0x12 */ {&M6502::Hang,      nullptr},
+    /* 0x13 */ {&M6502::Unoff,     nullptr},
+    /* 0x14 */ {&M6502::Unoff2,    nullptr},
+    /* 0x15 */ {&M6502::ZeroX,     &M6502::ORA},
+    /* 0x16 */ {&M6502::ZeroX,     &M6502::ASL},
+    /* 0x17 */ {&M6502::Unoff,     nullptr},
+    /* 0x18 */ {&M6502::Imp,       &M6502::CLC},
+    /* 0x19 */ {&M6502::AbsY,      &M6502::ORA},
+    /* 0x1A */ {&M6502::Unoff1,    nullptr},
+    /* 0x1B */ {&M6502::Unoff,     nullptr},
+    /* 0x1C */ {&M6502::Unoff3,    nullptr},
+    /* 0x1D */ {&M6502::AbsX,      &M6502::ORA},
+    /* 0x1E */ {&M6502::WAbsX,     &M6502::ASL},
+    /* 0x1F */ {&M6502::Unoff,     nullptr},
+
+    /* 0x20 */ {&M6502::JSR,       nullptr},
+    /* 0x21 */ {&M6502::IndZeroX,  &M6502::AND},
+    /* 0x22 */ {&M6502::Hang,      nullptr},
+    /* 0x23 */ {&M6502::Unoff,     nullptr},
+    /* 0x24 */ {&M6502::Zero,      &M6502::BIT},
+    /* 0x25 */ {&M6502::Zero,      &M6502::AND},
+    /* 0x26 */ {&M6502::Zero,      &M6502::ROL},
+    /* 0x27 */ {&M6502::Unoff,     nullptr},
+    /* 0x28 */ {&M6502::Imp,       &M6502::PLP},
+    /* 0x29 */ {&M6502::Imm,       &M6502::AND},
+    /* 0x2A */ {&M6502::Imp,       &M6502::ROL_A},
+    /* 0x2B */ {&M6502::Imm,       &M6502::AND},
+    /* 0x2C */ {&M6502::Abs,       &M6502::BIT},
+    /* 0x2D */ {&M6502::Abs,       &M6502::AND},
+    /* 0x2E */ {&M6502::Abs,       &M6502::ROL},
+    /* 0x2F */ {&M6502::Unoff,     nullptr},
+
+    /* 0x30 */ {&M6502::Rel,       &M6502::BMI},
+    /* 0x31 */ {&M6502::IndZeroY,  &M6502::AND},
+    /* 0x32 */ {&M6502::Hang,      nullptr},
+    /* 0x33 */ {&M6502::Unoff,     nullptr},
+    /* 0x34 */ {&M6502::Unoff2,    nullptr},
+    /* 0x35 */ {&M6502::ZeroX,     &M6502::AND},
+    /* 0x36 */ {&M6502::ZeroX,     &M6502::ROL},
+    /* 0x37 */ {&M6502::Unoff,     nullptr},
+    /* 0x38 */ {&M6502::Imp,       &M6502::SEC},
+    /* 0x39 */ {&M6502::AbsY,      &M6502::AND},
+    /* 0x3A */ {&M6502::Unoff1,    nullptr},
+    /* 0x3B */ {&M6502::Unoff,     nullptr},
+    /* 0x3C */ {&M6502::Unoff3,    nullptr},
+    /* 0x3D */ {&M6502::AbsX,      &M6502::AND},
+    /* 0x3E */ {&M6502::WAbsX,     &M6502::ROL},
+    /* 0x3F */ {&M6502::Unoff,     nullptr},
+
+    /* 0x40 */ {&M6502::Imp,       &M6502::RTI},
+    /* 0x41 */ {&M6502::IndZeroX,  &M6502::EOR},
+    /* 0x42 */ {&M6502::Hang,      nullptr},
+    /* 0x43 */ {&M6502::Unoff,     nullptr},
+    /* 0x44 */ {&M6502::Unoff2,    nullptr},
+    /* 0x45 */ {&M6502::Zero,      &M6502::EOR},
+    /* 0x46 */ {&M6502::Zero,      &M6502::LSR},
+    /* 0x47 */ {&M6502::Unoff,     nullptr},
+    /* 0x48 */ {&M6502::Imp,       &M6502::PHA},
+    /* 0x49 */ {&M6502::Imm,       &M6502::EOR},
+    /* 0x4A */ {&M6502::Imp,       &M6502::LSR_A},
+    /* 0x4B */ {&M6502::Unoff,     nullptr},
+    /* 0x4C */ {&M6502::Abs,       &M6502::JMP},
+    /* 0x4D */ {&M6502::Abs,       &M6502::EOR},
+    /* 0x4E */ {&M6502::Abs,       &M6502::LSR},
+    /* 0x4F */ {&M6502::Unoff,     nullptr},
+
+    /* 0x50 */ {&M6502::Rel,       &M6502::BVC},
+    /* 0x51 */ {&M6502::IndZeroY,  &M6502::EOR},
+    /* 0x52 */ {&M6502::Hang,      nullptr},
+    /* 0x53 */ {&M6502::Unoff,     nullptr},
+    /* 0x54 */ {&M6502::Unoff2,    nullptr},
+    /* 0x55 */ {&M6502::ZeroX,     &M6502::EOR},
+    /* 0x56 */ {&M6502::ZeroX,     &M6502::LSR},
+    /* 0x57 */ {&M6502::Unoff,     nullptr},
+    /* 0x58 */ {&M6502::Imp,       &M6502::CLI},
+    /* 0x59 */ {&M6502::AbsY,      &M6502::EOR},
+    /* 0x5A */ {&M6502::Unoff1,    nullptr},
+    /* 0x5B */ {&M6502::Unoff,     nullptr},
+    /* 0x5C */ {&M6502::Unoff3,    nullptr},
+    /* 0x5D */ {&M6502::AbsX,      &M6502::EOR},
+    /* 0x5E */ {&M6502::WAbsX,     &M6502::LSR},
+    /* 0x5F */ {&M6502::Unoff,     nullptr},
+
+    /* 0x60 */ {&M6502::Imp,       &M6502::RTS},
+    /* 0x61 */ {&M6502::IndZeroX,  &M6502::ADC},
+    /* 0x62 */ {&M6502::Hang,      nullptr},
+    /* 0x63 */ {&M6502::Unoff,     nullptr},
+    /* 0x64 */ {&M6502::Unoff2,    nullptr},
+    /* 0x65 */ {&M6502::Zero,      &M6502::ADC},
+    /* 0x66 */ {&M6502::Zero,      &M6502::ROR},
+    /* 0x67 */ {&M6502::Unoff,     nullptr},
+    /* 0x68 */ {&M6502::Imp,       &M6502::PLA},
+    /* 0x69 */ {&M6502::Imm,       &M6502::ADC},
+    /* 0x6A */ {&M6502::Imp,       &M6502::ROR_A},
+    /* 0x6B */ {&M6502::Unoff,     nullptr},
+    /* 0x6C */ {&M6502::Ind,       &M6502::JMP},
+    /* 0x6D */ {&M6502::Abs,       &M6502::ADC},
+    /* 0x6E */ {&M6502::Abs,       &M6502::ROR},
+    /* 0x6F */ {&M6502::Unoff,     nullptr},
+
+    /* 0x70 */ {&M6502::Rel,       &M6502::BVS},
+    /* 0x71 */ {&M6502::IndZeroY,  &M6502::ADC},
+    /* 0x72 */ {&M6502::Hang,      nullptr},
+    /* 0x73 */ {&M6502::Unoff,     nullptr},
+    /* 0x74 */ {&M6502::Unoff2,    nullptr},
+    /* 0x75 */ {&M6502::ZeroX,     &M6502::ADC},
+    /* 0x76 */ {&M6502::ZeroX,     &M6502::ROR},
+    /* 0x77 */ {&M6502::Unoff,     nullptr},
+    /* 0x78 */ {&M6502::Imp,       &M6502::SEI},
+    /* 0x79 */ {&M6502::AbsY,      &M6502::ADC},
+    /* 0x7A */ {&M6502::Unoff1,    nullptr},
+    /* 0x7B */ {&M6502::Unoff,     nullptr},
+    /* 0x7C */ {&M6502::Unoff3,    nullptr},
+    /* 0x7D */ {&M6502::AbsX,      &M6502::ADC},
+    /* 0x7E */ {&M6502::WAbsX,     &M6502::ROR},
+    /* 0x7F */ {&M6502::Unoff,     nullptr},
+
+    /* 0x80 */ {&M6502::Unoff2,    nullptr},
+    /* 0x81 */ {&M6502::IndZeroX,  &M6502::STA},
+    /* 0x82 */ {&M6502::Unoff2,    nullptr},
+    /* 0x83 */ {&M6502::Unoff,     nullptr},
+    /* 0x84 */ {&M6502::Zero,      &M6502::STY},
+    /* 0x85 */ {&M6502::Zero,      &M6502::STA},
+    /* 0x86 */ {&M6502::Zero,      &M6502::STX},
+    /* 0x87 */ {&M6502::Unoff,     nullptr},
+    /* 0x88 */ {&M6502::Imp,       &M6502::DEY},
+    /* 0x89 */ {&M6502::Unoff2,    nullptr},
+    /* 0x8A */ {&M6502::Imp,       &M6502::TXA},
+    /* 0x8B */ {&M6502::Unoff,     nullptr},
+    /* 0x8C */ {&M6502::Abs,       &M6502::STY},
+    /* 0x8D */ {&M6502::Abs,       &M6502::STA},
+    /* 0x8E */ {&M6502::Abs,       &M6502::STX},
+    /* 0x8F */ {&M6502::Unoff,     nullptr},
+
+    /* 0x90 */ {&M6502::Rel,       &M6502::BCC},
+    /* 0x91 */ {&M6502::WIndZeroY, &M6502::STA},
+    /* 0x92 */ {&M6502::Hang,      nullptr},
+    /* 0x93 */ {&M6502::Unoff,     nullptr},
+    /* 0x94 */ {&M6502::ZeroX,     &M6502::STY},
+    /* 0x95 */ {&M6502::ZeroX,     &M6502::STA},
+    /* 0x96 */ {&M6502::ZeroY,     &M6502::STX},
+    /* 0x97 */ {&M6502::Unoff,     nullptr},
+    /* 0x98 */ {&M6502::Imp,       &M6502::TYA},
+    /* 0x99 */ {&M6502::WAbsY,     &M6502::STA},
+    /* 0x9A */ {&M6502::Imp,       &M6502::TXS},
+    /* 0x9B */ {&M6502::Unoff,     nullptr},
+    /* 0x9C */ {&M6502::Unoff,     nullptr},
+    /* 0x9D */ {&M6502::WAbsX,     &M6502::STA},
+    /* 0x9E */ {&M6502::Unoff,     nullptr},
+    /* 0x9F */ {&M6502::Unoff,     nullptr},
+
+    /* 0xA0 */ {&M6502::Imm,       &M6502::LDY},
+    /* 0xA1 */ {&M6502::IndZeroX,  &M6502::LDA},
+    /* 0xA2 */ {&M6502::Imm,       &M6502::LDX},
+    /* 0xA3 */ {&M6502::Unoff,     nullptr},
+    /* 0xA4 */ {&M6502::Zero,      &M6502::LDY},
+    /* 0xA5 */ {&M6502::Zero,      &M6502::LDA},
+    /* 0xA6 */ {&M6502::Zero,      &M6502::LDX},
+    /* 0xA7 */ {&M6502::Unoff,     nullptr},
+    /* 0xA8 */ {&M6502::Imp,       &M6502::TAY},
+    /* 0xA9 */ {&M6502::Imm,       &M6502::LDA},
+    /* 0xAA */ {&M6502::Imp,       &M6502::TAX},
+    /* 0xAB */ {&M6502::Unoff,     nullptr},
+    /* 0xAC */ {&M6502::Abs,       &M6502::LDY},
+    /* 0xAD */ {&M6502::Abs,       &M6502::LDA},
+    /* 0xAE */ {&M6502::Abs,       &M6502::LDX},
+    /* 0xAF */ {&M6502::Unoff,     nullptr},
+
+    /* 0xB0 */ {&M6502::Rel,       &M6502::BCS},
+    /* 0xB1 */ {&M6502::IndZeroY,  &M6502::LDA},
+    /* 0xB2 */ {&M6502::Hang,      nullptr},
+    /* 0xB3 */ {&M6502::Unoff,     nullptr},
+    /* 0xB4 */ {&M6502::ZeroX,     &M6502::LDY},
+    /* 0xB5 */ {&M6502::ZeroX,     &M6502::LDA},
+    /* 0xB6 */ {&M6502::ZeroY,     &M6502::LDX},
+    /* 0xB7 */ {&M6502::Unoff,     nullptr},
+    /* 0xB8 */ {&M6502::Imp,       &M6502::CLV},
+    /* 0xB9 */ {&M6502::AbsY,      &M6502::LDA},
+    /* 0xBA */ {&M6502::Imp,       &M6502::TSX},
+    /* 0xBB */ {&M6502::Unoff,     nullptr},
+    /* 0xBC */ {&M6502::AbsX,      &M6502::LDY},
+    /* 0xBD */ {&M6502::AbsX,      &M6502::LDA},
+    /* 0xBE */ {&M6502::AbsY,      &M6502::LDX},
+    /* 0xBF */ {&M6502::Unoff,     nullptr},
+
+    /* 0xC0 */ {&M6502::Imm,       &M6502::CPY},
+    /* 0xC1 */ {&M6502::IndZeroX,  &M6502::CMP},
+    /* 0xC2 */ {&M6502::Unoff2,    nullptr},
+    /* 0xC3 */ {&M6502::Unoff,     nullptr},
+    /* 0xC4 */ {&M6502::Zero,      &M6502::CPY},
+    /* 0xC5 */ {&M6502::Zero,      &M6502::CMP},
+    /* 0xC6 */ {&M6502::Zero,      &M6502::DEC},
+    /* 0xC7 */ {&M6502::Unoff,     nullptr},
+    /* 0xC8 */ {&M6502::Imp,       &M6502::INY},
+    /* 0xC9 */ {&M6502::Imm,       &M6502::CMP},
+    /* 0xCA */ {&M6502::Imp,       &M6502::DEX},
+    /* 0xCB */ {&M6502::Unoff,     nullptr},
+    /* 0xCC */ {&M6502::Abs,       &M6502::CPY},
+    /* 0xCD */ {&M6502::Abs,       &M6502::CMP},
+    /* 0xCE */ {&M6502::Abs,       &M6502::DEC},
+    /* 0xCF */ {&M6502::Unoff,     nullptr},
+
+    /* 0xD0 */ {&M6502::Rel,       &M6502::BNE},
+    /* 0xD1 */ {&M6502::IndZeroY,  &M6502::CMP},
+    /* 0xD2 */ {&M6502::Hang,      nullptr},
+    /* 0xD3 */ {&M6502::Unoff,     nullptr},
+    /* 0xD4 */ {&M6502::Unoff2,    nullptr},
+    /* 0xD5 */ {&M6502::ZeroX,     &M6502::CMP},
+    /* 0xD6 */ {&M6502::ZeroX,     &M6502::DEC},
+    /* 0xD7 */ {&M6502::Unoff,     nullptr},
+    /* 0xD8 */ {&M6502::Imp,       &M6502::CLD},
+    /* 0xD9 */ {&M6502::AbsY,      &M6502::CMP},
+    /* 0xDA */ {&M6502::Unoff1,    nullptr},
+    /* 0xDB */ {&M6502::Unoff,     nullptr},
+    /* 0xDC */ {&M6502::Unoff3,    nullptr},
+    /* 0xDD */ {&M6502::AbsX,      &M6502::CMP},
+    /* 0xDE */ {&M6502::WAbsX,     &M6502::DEC},
+    /* 0xDF */ {&M6502::Unoff,     nullptr},
+
+    /* 0xE0 */ {&M6502::Imm,       &M6502::CPX},
+    /* 0xE1 */ {&M6502::IndZeroX,  &M6502::SBC},
+    /* 0xE2 */ {&M6502::Unoff2,    nullptr},
+    /* 0xE3 */ {&M6502::Unoff,     nullptr},
+    /* 0xE4 */ {&M6502::Zero,      &M6502::CPX},
+    /* 0xE5 */ {&M6502::Zero,      &M6502::SBC},
+    /* 0xE6 */ {&M6502::Zero,      &M6502::INC},
+    /* 0xE7 */ {&M6502::Unoff,     nullptr},
+    /* 0xE8 */ {&M6502::Imp,       &M6502::INX},
+    /* 0xE9 */ {&M6502::Imm,       &M6502::SBC},
+    /* 0xEA */ {&M6502::Imp,       &M6502::NOP},
+    /* 0xEB */ {&M6502::Imm,       &M6502::SBC},
+    /* 0xEC */ {&M6502::Abs,       &M6502::CPX},
+    /* 0xED */ {&M6502::Abs,       &M6502::SBC},
+    /* 0xEE */ {&M6502::Abs,       &M6502::INC},
+    /* 0xEF */ {&M6502::Unoff,     nullptr},
+
+    /* 0xF0 */ {&M6502::Rel,       &M6502::BEQ},
+    /* 0xF1 */ {&M6502::IndZeroY,  &M6502::SBC},
+    /* 0xF2 */ {&M6502::Hang,      nullptr},
+    /* 0xF3 */ {&M6502::Unoff,     nullptr},
+    /* 0xF4 */ {&M6502::Unoff2,    nullptr},
+    /* 0xF5 */ {&M6502::ZeroX,     &M6502::SBC},
+    /* 0xF6 */ {&M6502::ZeroX,     &M6502::INC},
+    /* 0xF7 */ {&M6502::Unoff,     nullptr},
+    /* 0xF8 */ {&M6502::Imp,       &M6502::SED},
+    /* 0xF9 */ {&M6502::AbsY,      &M6502::SBC},
+    /* 0xFA */ {&M6502::Unoff1,    nullptr},
+    /* 0xFB */ {&M6502::Unoff,     nullptr},
+    /* 0xFC */ {&M6502::Unoff3,    nullptr},
+    /* 0xFD */ {&M6502::AbsX,      &M6502::SBC},
+    /* 0xFE */ {&M6502::WAbsX,     &M6502::INC},
+    /* 0xFF */ {&M6502::Unoff,     nullptr},
+};
 
 void M6502::executeOpcode(void)
 {
-    cycles = 0;  // Réinitialiser le compteur de cycles pour cette instruction
-    quint16 pcBefore = programCounter;
+    cycles = 0;
     unsigned char opcode = memory->memRead(programCounter++);
-    
-    // Log pour les adresses critiques et périodiquement
-    static int instructionCount = 0;
-    instructionCount++;
 
-    switch (opcode)
-    {
-    case 0x00:
-        Imm();
-        BRK();
-        break;
-    case 0x01:
-        IndZeroX();
-        ORA();
-        break;
-    case 0x02:
-        Hang();
-        break;
-    case 0x03:
-        Unoff();
-        break;
-    case 0x04:
-        Unoff2();
-        break;
-    case 0x05:
-        Zero();
-        ORA();
-        break;
-    case 0x06:
-        Zero();
-        ASL();
-        break;
-    case 0x07:
-        Unoff();
-        break;
-    case 0x08:
-        Imp();
-        PHP();
-        break;
-    case 0x09:
-        Imm();
-        ORA();
-        break;
-    case 0x0A:
-        Imp();
-        ASL_A();
-        break;
-    case 0x0B:
-        Imm();
-        AND();
-        break;
-    case 0x0C:
-        Unoff3();
-        break;
-    case 0x0D:
-        Abs();
-        ORA();
-        break;
-    case 0x0E:
-        Abs();
-        ASL();
-        break;
-    case 0x0F:
-        Unoff();
-        break;
-    case 0x10:
-        Rel();
-        BPL();
-        break;
-    case 0x11:
-        IndZeroY();
-        ORA();
-        break;
-    case 0x12:
-        Hang();
-        break;
-    case 0x13:
-        Unoff();
-        break;
-    case 0x14:
-        Unoff2();
-        break;
-    case 0x15:
-        ZeroX();
-        ORA();
-        break;
-    case 0x16:
-        ZeroX();
-        ASL();
-        break;
-    case 0x17:
-        Unoff();
-        break;
-    case 0x18:
-        Imp();
-        CLC();
-        break;
-    case 0x19:
-        AbsY();
-        ORA();
-        break;
-    case 0x1A:
-        Unoff1();
-        break;
-    case 0x1B:
-        Unoff();
-        break;
-    case 0x1C:
-        Unoff3();
-        break;
-    case 0x1D:
-        AbsX();
-        ORA();
-        break;
-    case 0x1E:
-        WAbsX();
-        ASL();
-        break;
-    case 0x1F:
-        Unoff();
-        break;
-    case 0x20:
-        JSR();
-        break;
-    case 0x21:
-        IndZeroX();
-        AND();
-        break;
-    case 0x22:
-        Hang();
-        break;
-    case 0x23:
-        Unoff();
-        break;
-    case 0x24:
-        Zero();
-        BIT();
-        break;
-    case 0x25:
-        Zero();
-        AND();
-        break;
-    case 0x26:
-        Zero();
-        ROL();
-        break;
-    case 0x27:
-        Unoff();
-        break;
-    case 0x28:
-        Imp();
-        PLP();
-        break;
-    case 0x29:
-        Imm();
-        AND();
-        break;
-    case 0x2A:
-        Imp();
-        ROL_A();
-        break;
-    case 0x2B:
-        Imm();
-        AND();
-        break;
-    case 0x2C:
-        Abs();
-        BIT();
-        break;
-    case 0x2D:
-        Abs();
-        AND();
-        break;
-    case 0x2E:
-        Abs();
-        ROL();
-        break;
-    case 0x2F:
-        Unoff();
-        break;
-    case 0x30:
-        Rel();
-        BMI();
-        break;
-    case 0x31:
-        IndZeroY();
-        AND();
-        break;
-    case 0x32:
-        Hang();
-        break;
-    case 0x33:
-        Unoff();
-        break;
-    case 0x34:
-        Unoff2();
-        break;
-    case 0x35:
-        ZeroX();
-        AND();
-        break;
-    case 0x36:
-        ZeroX();
-        ROL();
-        break;
-    case 0x37:
-        Unoff();
-        break;
-    case 0x38:
-        Imp();
-        SEC();
-        break;
-    case 0x39:
-        AbsY();
-        AND();
-        break;
-    case 0x3A:
-        Unoff1();
-        break;
-    case 0x3B:
-        Unoff();
-        break;
-    case 0x3C:
-        Unoff3();
-        break;
-    case 0x3D:
-        AbsX();
-        AND();
-        break;
-    case 0x3E:
-        WAbsX();
-        ROL();
-        break;
-    case 0x3F:
-        Unoff();
-        break;
-    case 0x40:
-        Imp();
-        RTI();
-        break;
-    case 0x41:
-        IndZeroX();
-        EOR();
-        break;
-    case 0x42:
-        Hang();
-        break;
-    case 0x43:
-        Unoff();
-        break;
-    case 0x44:
-        Unoff2();
-        break;
-    case 0x45:
-        Zero();
-        EOR();
-        break;
-    case 0x46:
-        Zero();
-        LSR();
-        break;
-    case 0x47:
-        Unoff();
-        break;
-    case 0x48:
-        Imp();
-        PHA();
-        break;
-    case 0x49:
-        Imm();
-        EOR();
-        break;
-    case 0x4A:
-        Imp();
-        LSR_A();
-        break;
-    case 0x4B:
-        Unoff();
-        break;
-    case 0x4C:
-        Abs();
-        JMP();
-        break;
-    case 0x4D:
-        Abs();
-        EOR();
-        break;
-    case 0x4E:
-        Abs();
-        LSR();
-        break;
-    case 0x4F:
-        Unoff();
-        break;
-    case 0x50:
-        Rel();
-        BVC();
-        break;
-    case 0x51:
-        IndZeroY();
-        EOR();
-        break;
-    case 0x52:
-        Hang();
-        break;
-    case 0x53:
-        Unoff();
-        break;
-    case 0x54:
-        Unoff2();
-        break;
-    case 0x55:
-        ZeroX();
-        EOR();
-        break;
-    case 0x56:
-        ZeroX();
-        LSR();
-        break;
-    case 0x57:
-        Unoff();
-        break;
-    case 0x58:
-        Imp();
-        CLI();
-        break;
-    case 0x59:
-        AbsY();
-        EOR();
-        break;
-    case 0x5A:
-        Unoff1();
-        break;
-    case 0x5B:
-        Unoff();
-        break;
-    case 0x5C:
-        Unoff3();
-        break;
-    case 0x5D:
-        AbsX();
-        EOR();
-        break;
-    case 0x5E:
-        WAbsX();
-        LSR();
-        break;
-    case 0x5F:
-        Unoff();
-        break;
-    case 0x60:
-        Imp();
-        RTS();
-        break;
-    case 0x61:
-        IndZeroX();
-        ADC();
-        break;
-    case 0x62:
-        Hang();
-        break;
-    case 0x63:
-        Unoff();
-        break;
-    case 0x64:
-        Unoff2();
-        break;
-    case 0x65:
-        Zero();
-        ADC();
-        break;
-    case 0x66:
-        Zero();
-        ROR();
-        break;
-    case 0x67:
-        Unoff();
-        break;
-    case 0x68:
-        Imp();
-        PLA();
-        break;
-    case 0x69:
-        Imm();
-        ADC();
-        break;
-    case 0x6A:
-        Imp();
-        ROR_A();
-        break;
-    case 0x6B:
-        Unoff();
-        break;
-    case 0x6C:
-        Ind();
-        JMP();
-        break;
-    case 0x6D:
-        Abs();
-        ADC();
-        break;
-    case 0x6E:
-        Abs();
-        ROR();
-        break;
-    case 0x6F:
-        Unoff();
-        break;
-    case 0x70:
-        Rel();
-        BVS();
-        break;
-    case 0x71:
-        IndZeroY();
-        ADC();
-        break;
-    case 0x72:
-        Hang();
-        break;
-    case 0x73:
-        Unoff();
-        break;
-    case 0x74:
-        Unoff2();
-        break;
-    case 0x75:
-        ZeroX();
-        ADC();
-        break;
-    case 0x76:
-        ZeroX();
-        ROR();
-        break;
-    case 0x77:
-        Unoff();
-        break;
-    case 0x78:
-        Imp();
-        SEI();
-        break;
-    case 0x79:
-        AbsY();
-        ADC();
-        break;
-    case 0x7A:
-        Unoff1();
-        break;
-    case 0x7B:
-        Unoff();
-        break;
-    case 0x7C:
-        Unoff3();
-        break;
-    case 0x7D:
-        AbsX();
-        ADC();
-        break;
-    case 0x7E:
-        WAbsX();
-        ROR();
-        break;
-    case 0x7F:
-        Unoff();
-        break;
-    case 0x80:
-        Unoff2();
-        break;
-    case 0x81:
-        IndZeroX();
-        STA();
-        break;
-    case 0x82:
-        Unoff2();
-        break;
-    case 0x83:
-        Unoff();
-        break;
-    case 0x84:
-        Zero();
-        STY();
-        break;
-    case 0x85:
-        Zero();
-        STA();
-        break;
-    case 0x86:
-        Zero();
-        STX();
-        break;
-    case 0x87:
-        Unoff();
-        break;
-    case 0x88:
-        Imp();
-        DEY();
-        break;
-    case 0x89:
-        Unoff2();
-        break;
-    case 0x8A:
-        Imp();
-        TXA();
-        break;
-    case 0x8B:
-        Unoff();
-        break;
-    case 0x8C:
-        Abs();
-        STY();
-        break;
-    case 0x8D:
-        Abs();
-        STA();
-        break;
-    case 0x8E:
-        Abs();
-        STX();
-        break;
-    case 0x8F:
-        Unoff();
-        break;
-    case 0x90:
-        Rel();
-        BCC();
-        break;
-    case 0x91:
-        WIndZeroY();
-        STA();
-        break;
-    case 0x92:
-        Hang();
-        break;
-    case 0x93:
-        Unoff();
-        break;
-    case 0x94:
-        ZeroX();
-        STY();
-        break;
-    case 0x95:
-        ZeroX();
-        STA();
-        break;
-    case 0x96:
-        ZeroY();
-        STX();
-        break;
-    case 0x97:
-        Unoff();
-        break;
-    case 0x98:
-        Imp();
-        TYA();
-        break;
-    case 0x99:
-        WAbsY();
-        STA();
-        break;
-    case 0x9A:
-        Imp();
-        TXS();
-        break;
-    case 0x9B:
-        Unoff();
-        break;
-    case 0x9C:
-        Unoff();
-        break;
-    case 0x9D:
-        WAbsX();
-        STA();
-        break;
-    case 0x9E:
-        Unoff();
-        break;
-    case 0x9F:
-        Unoff();
-        break;
-    case 0xA0:
-        Imm();
-        LDY();
-        break;
-    case 0xA1:
-        IndZeroX();
-        LDA();
-        break;
-    case 0xA2:
-        Imm();
-        LDX();
-        break;
-    case 0xA3:
-        Unoff();
-        break;
-    case 0xA4:
-        Zero();
-        LDY();
-        break;
-    case 0xA5:
-        Zero();
-        LDA();
-        break;
-    case 0xA6:
-        Zero();
-        LDX();
-        break;
-    case 0xA7:
-        Unoff();
-        break;
-    case 0xA8:
-        Imp();
-        TAY();
-        break;
-    case 0xA9:
-        Imm();
-        LDA();
-        break;
-    case 0xAA:
-        Imp();
-        TAX();
-        break;
-    case 0xAB:
-        Unoff();
-        break;
-    case 0xAC:
-        Abs();
-        LDY();
-        break;
-    case 0xAD:
-        Abs();
-        LDA();
-        break;
-    case 0xAE:
-        Abs();
-        LDX();
-        break;
-    case 0xAF:
-        Unoff();
-        break;
-    case 0xB0:
-        Rel();
-        BCS();
-        break;
-    case 0xB1:
-        IndZeroY();
-        LDA();
-        break;
-    case 0xB2:
-        Hang();
-        break;
-    case 0xB3:
-        Unoff();
-        break;
-    case 0xB4:
-        ZeroX();
-        LDY();
-        break;
-    case 0xB5:
-        ZeroX();
-        LDA();
-        break;
-    case 0xB6:
-        ZeroY();
-        LDX();
-        break;
-    case 0xB7:
-        Unoff();
-        break;
-    case 0xB8:
-        Imp();
-        CLV();
-        break;
-    case 0xB9:
-        AbsY();
-        LDA();
-        break;
-    case 0xBA:
-        Imp();
-        TSX();
-        break;
-    case 0xBB:
-        Unoff();
-        break;
-    case 0xBC:
-        AbsX();
-        LDY();
-        break;
-    case 0xBD:
-        AbsX();
-        LDA();
-        break;
-    case 0xBE:
-        AbsY();
-        LDX();
-        break;
-    case 0xBF:
-        Unoff();
-        break;
-    case 0xC0:
-        Imm();
-        CPY();
-        break;
-    case 0xC1:
-        IndZeroX();
-        CMP();
-        break;
-    case 0xC2:
-        Unoff2();
-        break;
-    case 0xC3:
-        Unoff();
-        break;
-    case 0xC4:
-        Zero();
-        CPY();
-        break;
-    case 0xC5:
-        Zero();
-        CMP();
-        break;
-    case 0xC6:
-        Zero();
-        DEC();
-        break;
-    case 0xC7:
-        Unoff();
-        break;
-    case 0xC8:
-        Imp();
-        INY();
-        break;
-    case 0xC9:
-        Imm();
-        CMP();
-        break;
-    case 0xCA:
-        Imp();
-        DEX();
-        break;
-    case 0xCB:
-        Unoff();
-        break;
-    case 0xCC:
-        Abs();
-        CPY();
-        break;
-    case 0xCD:
-        Abs();
-        CMP();
-        break;
-    case 0xCE:
-        Abs();
-        DEC();
-        break;
-    case 0xCF:
-        Unoff();
-        break;
-    case 0xD0:
-        Rel();
-        BNE();
-        break;
-    case 0xD1:
-        IndZeroY();
-        CMP();
-        break;
-    case 0xD2:
-        Hang();
-        break;
-    case 0xD3:
-        Unoff();
-        break;
-    case 0xD4:
-        Unoff2();
-        break;
-    case 0xD5:
-        ZeroX();
-        CMP();
-        break;
-    case 0xD6:
-        ZeroX();
-        DEC();
-        break;
-    case 0xD7:
-        Unoff();
-        break;
-    case 0xD8:
-        Imp();
-        CLD();
-        break;
-    case 0xD9:
-        AbsY();
-        CMP();
-        break;
-    case 0xDA:
-        Unoff1();
-        break;
-    case 0xDB:
-        Unoff();
-        break;
-    case 0xDC:
-        Unoff3();
-        break;
-    case 0xDD:
-        AbsX();
-        CMP();
-        break;
-    case 0xDE:
-        WAbsX();
-        DEC();
-        break;
-    case 0xDF:
-        Unoff();
-        break;
-    case 0xE0:
-        Imm();
-        CPX();
-        break;
-    case 0xE1:
-        IndZeroX();
-        SBC();
-        break;
-    case 0xE2:
-        Unoff2();
-        break;
-    case 0xE3:
-        Unoff();
-        break;
-    case 0xE4:
-        Zero();
-        CPX();
-        break;
-    case 0xE5:
-        Zero();
-        SBC();
-        break;
-    case 0xE6:
-        Zero();
-        INC();
-        break;
-    case 0xE7:
-        Unoff();
-        break;
-    case 0xE8:
-        Imp();
-        INX();
-        break;
-    case 0xE9:
-        Imm();
-        SBC();
-        break;
-    case 0xEA:
-        Imp();
-        NOP();
-        break;
-    case 0xEB:
-        Imm();
-        SBC();
-        break;
-    case 0xEC:
-        Abs();
-        CPX();
-        break;
-    case 0xED:
-        Abs();
-        SBC();
-        break;
-    case 0xEE:
-        Abs();
-        INC();
-        break;
-    case 0xEF:
-        Unoff();
-        break;
-    case 0xF0:
-        Rel();
-        BEQ();
-        break;
-    case 0xF1:
-        IndZeroY();
-        SBC();
-        break;
-    case 0xF2:
-        Hang();
-        break;
-    case 0xF3:
-        Unoff();
-        break;
-    case 0xF4:
-        Unoff2();
-        break;
-    case 0xF5:
-        ZeroX();
-        SBC();
-        break;
-    case 0xF6:
-        ZeroX();
-        INC();
-        break;
-    case 0xF7:
-        Unoff();
-        break;
-    case 0xF8:
-        Imp();
-        SED();
-        break;
-    case 0xF9:
-        AbsY();
-        SBC();
-        break;
-    case 0xFA:
-        Unoff1();
-        break;
-    case 0xFB:
-        Unoff();
-        break;
-    case 0xFC:
-        Unoff3();
-        break;
-    case 0xFD:
-        AbsX();
-        SBC();
-        break;
-    case 0xFE:
-        WAbsX();
-        INC();
-        break;
-    case 0xFF:
-        Unoff();
-        break;
-    }
+    const OpcodeEntry& entry = opcodeTable[opcode];
+    (this->*entry.addrMode)();
+    if (entry.operation)
+        (this->*entry.operation)();
 }
 
 /*
@@ -1805,27 +1154,20 @@ void M6502::stopM6502(void)
 */
 void M6502::hardReset(void)
 {
-    std::cout << "=== hardReset appelé ===" << std::endl;
-    statusRegister = 0x24; // Reset status register (bit 5 toujours à 1, bit 2 à 1)
-    statusRegister |= I; // Set interrupt disable flag
+    statusRegister = 0x24;
+    statusRegister |= I;
     stackPointer = 0xFF;
     accumulator = 0;
     xRegister = 0;
     yRegister = 0;
-    
-    // Nettoyer la stack pour éviter de restaurer des valeurs incorrectes
-    // La stack va de 0x100 à 0x1FF
-    for (int i = 0x100; i <= 0x1FF; i++) {
-        if (memory != nullptr) {
+
+    if (memory != nullptr) {
+        for (int i = 0x100; i <= 0x1FF; i++) {
             memory->memWrite(i, 0x00);
         }
     }
-    
-    quint16 resetVector = memReadAbsolute(0xFFFC);
-    std::cout << "hardReset: Lecture vecteur reset 0xFFFC = 0x" << std::hex << resetVector << std::endl;
-    programCounter = resetVector;
-    std::cout << "hardReset: PC initialisé à 0x" << std::hex << programCounter << " (devrait être 0xFF00)" << std::endl;
-    std::cout << "hardReset: SP=0x" << std::hex << (int)stackPointer << ", A=0x" << (int)accumulator << std::endl;
+
+    programCounter = memReadAbsolute(0xFFFC);
 }
 void M6502::softReset(void)
 {
@@ -1868,11 +1210,6 @@ void M6502::run(int maxCycles)
     while (running && cyclesExecuted < maxCycles) {
         step();
         cyclesExecuted += cycles;
-        
-        // Protection contre les boucles infinies si cycles reste à 0
-        if (cycles == 0) {
-            cycles = 1; // Forcer au moins 1 cycle pour éviter la boucle infinie
-        }
     }
 }
 
