@@ -53,7 +53,7 @@ if(EMSCRIPTEN)
         "-s WASM=1"
         "--preload-file ${PRELOAD_DIR}/roms@roms"
         "--preload-file ${PRELOAD_DIR}/fonts@fonts"
-        "--preload-file ${PRELOAD_DIR}/soft-asm@soft-asm"
+        "--preload-file ${PRELOAD_DIR}/software@software"
         "--shell-file ${SHELL_FILE}"
     )
     # Join list into a single space-separated string for linker flags

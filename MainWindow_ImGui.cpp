@@ -163,8 +163,11 @@ void MainWindow_ImGui::render()
     // Visualiseur de mémoire
     if (showMemoryViewer) {
         ImGuiIO& mio = ImGui::GetIO();
-        ImGui::SetNextWindowPos(ImVec2(mio.DisplaySize.x - 410, 30), ImGuiCond_FirstUseEver);
-        ImGui::SetNextWindowSize(ImVec2(400, mio.DisplaySize.y * 0.45f), ImGuiCond_FirstUseEver);
+        // Width: "0x0000 " (7ch) + 16*"00 " (48ch) + " " (1ch) + 16 ASCII (16ch) + margins ~= 82 chars
+        float charW = ImGui::CalcTextSize("0").x;
+        float memViewerW = charW * 82.0f + ImGui::GetStyle().WindowPadding.x * 2.0f;
+        ImGui::SetNextWindowPos(ImVec2(mio.DisplaySize.x - memViewerW - 10, 30), ImGuiCond_FirstUseEver);
+        ImGui::SetNextWindowSize(ImVec2(memViewerW, mio.DisplaySize.y * 0.45f), ImGuiCond_FirstUseEver);
         ImGui::Begin("Memory Viewer", &showMemoryViewer);
         memoryViewer->render();
         ImGui::End();
@@ -392,6 +395,12 @@ void MainWindow_ImGui::renderToolbar()
             if (map) ImGui::PopStyleColor();
             if (ImGui::IsItemHovered()) ImGui::SetTooltip("Memory Map");
         }
+
+        // --- About button aligned to the right ---
+        float aboutBtnW = ImGui::CalcTextSize(ICON_FA_CIRCLE_INFO).x + ImGui::GetStyle().FramePadding.x * 2.0f;
+        ImGui::SameLine(io.DisplaySize.x - aboutBtnW - ImGui::GetStyle().WindowPadding.x);
+        if (ImGui::Button(ICON_FA_CIRCLE_INFO, btnSize)) showAbout = !showAbout;
+        if (ImGui::IsItemHovered()) ImGui::SetTooltip("About");
     }
     ImGui::End();
     ImGui::PopStyleVar();
@@ -443,21 +452,21 @@ void MainWindow_ImGui::renderStatusBar()
 
 void MainWindow_ImGui::renderAboutDialog()
 {
-    ImGui::SetNextWindowSize(ImVec2(440, 480), ImGuiCond_FirstUseEver);
-    if (ImGui::Begin("About POM1", &showAbout)) {
+    ImGui::SetNextWindowSizeConstraints(ImVec2(380, 0), ImVec2(500, FLT_MAX));
+    ImGui::SetNextWindowSize(ImVec2(0, 0), ImGuiCond_Always);
+    if (ImGui::Begin("About POM1", &showAbout, ImGuiWindowFlags_AlwaysAutoResize)) {
         ImGui::TextWrapped("POM1 v1.0 - Apple 1 Emulator (Dear ImGui)");
         ImGui::Separator();
 
-        ImGui::TextWrapped("Copyright © 2000-2026 GPL3");
+        ImGui::TextWrapped("Copyright (C) 2000-2026 GPL3");
         ImGui::Spacing();
 
         ImGui::TextWrapped("Written by:");
         ImGui::BulletText("Arnaud VERHILLE (2000-2026)");
         ImGui::SameLine();
         if (ImGui::SmallButton("gist974@gmail.com")) {
-            // Ouvrir email (nécessiterait une implémentation système)
+            // Ouvrir email
         }
-
         ImGui::BulletText("Upgraded by Ken WESSEN (21/2/2006)");
         ImGui::BulletText("MacOS Cocoa port by Joe CROBAK");
         ImGui::BulletText("Ported to C/SDL by John D. CORRADO (2006-2014)");
@@ -476,10 +485,8 @@ void MainWindow_ImGui::renderAboutDialog()
         ImGui::Separator();
         ImGui::Spacing();
         ImGui::TextWrapped("Resources:");
-        ImGui::Indent();
         ImGui::BulletText("https://apple1software.com/");
         ImGui::BulletText("https://applefritter.com/apple1/");
-        ImGui::Unindent();
     }
     ImGui::End();
 }
@@ -709,7 +716,7 @@ void MainWindow_ImGui::renderMemoryConfigDialog()
 {
     ImGui::SetNextWindowSize(ImVec2(450, 400), ImGuiCond_FirstUseEver);
     if (ImGui::Begin("Memory Settings", &showMemoryConfig)) {
-        static bool writeProtect = true;
+        bool writeProtect = !memory->getWriteInRom();
 
         ImGui::Text("ROM Protection");
         ImGui::Separator();
@@ -792,7 +799,7 @@ void MainWindow_ImGui::renderLoadDialog()
 
         if (!loadDlg.filesScanned) {
             if (loadDlg.softAsmRoot.empty()) {
-                std::string dirs[] = {"soft-asm", "../soft-asm", "../../soft-asm"};
+                std::string dirs[] = {"software", "../software", "../../software"};
                 for (const auto& d : dirs) {
                     if (std::filesystem::is_directory(d)) {
                         loadDlg.softAsmRoot = std::filesystem::canonical(d).string();
@@ -822,7 +829,7 @@ void MainWindow_ImGui::renderLoadDialog()
         }
 
         {
-            std::string displayPath = "soft-asm/";
+            std::string displayPath = "software/";
             if (loadDlg.currentDir.size() > loadDlg.softAsmRoot.size())
                 displayPath += loadDlg.currentDir.substr(loadDlg.softAsmRoot.size() + 1) + "/";
             ImGui::Text("%s", displayPath.c_str());
@@ -958,7 +965,7 @@ void MainWindow_ImGui::renderSaveDialog()
 
         ImGui::Spacing();
         if (ImGui::Button("Save", ImVec2(120, 0)) && size > 0) {
-            // Build path in soft-asm directory
+            // Build path in software directory
             std::string path = filename;
 
             std::ofstream file(path, saveFormat == 0 ? std::ios::binary : std::ios::out);
