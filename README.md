@@ -40,7 +40,7 @@ or build it natively.
 
 📋 **Clipboard Paste** — Paste code directly into the Apple 1 keyboard from your clipboard
 
-🎮 **20+ Programs Included** — Games, demos, and dev tools ready to run out of the box
+🎮 **30+ Programs Included** — Games, demos, BASIC programs, and dev tools ready to run out of the box
 
 ---
 
@@ -154,19 +154,19 @@ vcpkg install glfw3:x64-windows
 
 ## 🎮 Software Library
 
-The `software/` directory ships with **20+ ready-to-run programs** — load them via **File > Load Memory**.
+The `software/` directory ships with **30+ ready-to-run programs** — load them via **File > Load Memory**.
+Some programs also include their 6502 assembly source code (`.asm`) for study and modification.
 
 ### 🕹️ Games
 
 | Program | Description |
 |---------|-------------|
 | ♟️ **Microchess** | Peter Jennings' chess engine — the first commercial microcomputer game |
-| 🏰 **LittleTower** | Text adventure — explore a tower, defeat a vampire |
+| 🏰 **LittleTower** | Text adventure — explore a tower, defeat a vampire ([asm](software/games/LittleTower-1.0.asm)) |
 | 🌙 **Lunar Lander** | Pilot your lander safely to the surface |
-| 🚀 **Star Trek** | Mini Star Trek strategy game |
 | 🔢 **2048** | Sliding tile puzzle |
-| 🃏 **Blackjack** | Classic card game |
 | 🔐 **Codebreaker** | Code-breaking logic game |
+| 🧠 **Mastermind** | Classic code-breaking board game |
 | 📝 **Worple** | Word guessing game |
 | 🧩 **15-Puzzle** | Sliding number puzzle |
 | 🔵 **Peg Solitaire** | Board peg-jumping game |
@@ -177,11 +177,28 @@ The `software/` directory ships with **20+ ready-to-run programs** — load them
 | Program | Description |
 |---------|-------------|
 | 🧬 **Game of Life** | Conway's cellular automaton |
-| 🌀 **Maze** | Sidewinder maze generator with title screen |
-| 🌀 **Maze 2** | Recursive Backtracker (DFS) maze generator |
+| 🌀 **Maze** | Sidewinder maze generator with title screen ([asm](software/games/Maze_Sidewinder.asm)) |
+| 🌀 **Maze 2** | Recursive Backtracker (DFS) maze generator ([asm](software/games/Maze2_Backtracker.asm)) |
 | 🌌 **Mandelbrot** | Mandelbrot fractal renderer |
 | 📊 **Cellular** | 1D cellular automaton |
 | 🎂 **30th** | Apple 1 30th anniversary demo |
+| 🎨 **PasArt** | Parametric ASCII art generator |
+| 🍺 **99 Bottles of Beer** | Classic song countdown demo |
+| 🐱 **ASCII Cat** | ASCII art display |
+
+### 💻 BASIC Programs
+
+*Require loading Enhanced BASIC first (E000R).*
+
+| Program | Description |
+|---------|-------------|
+| 🚀 **Star Trek** | Mini Star Trek strategy game |
+| 🃏 **Blackjack** | Classic card game |
+| 🌙 **Lunar Lander (Graphics)** | Lunar Lander with ASCII graphics |
+| 🏛️ **Hamurabi** | Rule ancient Sumeria — classic strategy game |
+| 🎯 **Dobble** | Spot-it card matching game |
+| ⏱️ **Stopwatch** | Real-time clock and stopwatch |
+| 🔧 **Resistor Calculator** | 4-band resistor color code calculator |
 
 ### 🛠️ Dev Tools
 
@@ -190,6 +207,15 @@ The `software/` directory ships with **20+ ready-to-run programs** — load them
 | 👁️ **Woz Monitor** | Steve Wozniak's original system monitor |
 | 💻 **Enhanced BASIC** | Extended BASIC with extra commands |
 | 📘 **fig-FORTH** | FORTH language interpreter |
+| 🔬 **Disassembler** | 6502 disassembler |
+| 🔨 **A1 Assembler** | Apple 1 in-memory assembler |
+
+### 🧰 Utilities
+
+| Program | Description |
+|---------|-------------|
+| ✍️ **Typewriter** | Text input and display tool |
+| 🎉 **Party** | Guest check-in management tool |
 
 ---
 
@@ -220,7 +246,9 @@ POM1/
 ├── software/                # 📂 Hex dump programs + assembly sources
 │   ├── games/               #   🎮 Games
 │   ├── demos/               #   🎨 Demos
+│   ├── basic/               #   💻 BASIC programs
 │   ├── dev/                 #   🛠️ Dev tools
+│   ├── utils/               #   🧰 Utilities
 │   └── tests/               #   🧪 Hardware test programs
 ├── build-wasm/              # 🌐 WebAssembly build output
 ├── software/apple1.cfg      # ⚙️ cc65 linker config
@@ -266,6 +294,7 @@ $FF00-$FFFF   Woz Monitor ROM (256 B)
 - **Lee Davison** — Enhanced BASIC
 - **Achim Breidenbach** — Sim6502
 - **Fabrice Frances** — Java Microtan Emulator
+- **Tom Owad** — AppleFritter community & Apple 1 resources
 - **Steve Wozniak & Steve Jobs** — For creating the Apple 1 🍎
 
 ## 🔗 Resources
