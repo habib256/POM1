@@ -39,11 +39,8 @@ public:
     void stop(void);
     void softReset(void);
     void hardReset(void);
-    void setSpeed(int freq, int synchroMillis);
     void setIRQ(int state);
     void setNMI(void);
-    int saveState(void);
-    void loadState(int *state);
     quint16 memReadAbsolute(quint16 adr);
     
     // Nouvelles méthodes pour l'exécution et l'affichage
@@ -70,14 +67,12 @@ private :
 
     Memory *memory;
 
-    //int runM6502(void *data);
     quint8 accumulator, xRegister, yRegister, statusRegister, stackPointer;
     int IRQ, NMI;
     quint16 programCounter;
     quint16 op;
     int tmp;
-    long lastTime;
-    int cycles, cyclesBeforeSynchro, _synchroMillis;
+    int cycles;
     int running;
 
 

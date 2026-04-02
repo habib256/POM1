@@ -1,6 +1,6 @@
 <div align="center">
 
-# 🍎 POM1 — Apple 1 Emulator
+# 🍎 POM1 v1.0 — Apple 1 Emulator
 
 **Experience the machine that started the personal computer revolution.**
 
@@ -177,7 +177,8 @@ The `soft-asm/` directory ships with **20+ ready-to-run programs** — load them
 | Program | Description |
 |---------|-------------|
 | 🧬 **Game of Life** | Conway's cellular automaton |
-| 🌀 **Maze** | Binary tree maze generator |
+| 🌀 **Maze** | Sidewinder maze generator with title screen |
+| 🌀 **Maze 2** | Recursive Backtracker (DFS) maze generator |
 | 🌌 **Mandelbrot** | Mandelbrot fractal renderer |
 | 📊 **Cellular** | 1D cellular automaton |
 | 🎂 **30th** | Apple 1 30th anniversary demo |
@@ -258,9 +259,19 @@ $FF00-$FFFF   Woz Monitor ROM (256 B)
 ## 👏 Credits
 
 - **Arnaud Verhille** — Original POM1 (Java, 2000) & Dear ImGui port (2026)
-- **Ken Wessen** — Upgrades (2006)
+- **Ken Wessen** — Upgrades, 65C02 support (2006)
+- **Joe Crobak** — macOS Cocoa port
 - **John D. Corrado** — C/SDL port (2006–2014)
+- **Lee Davison** — Enhanced BASIC
+- **Achim Breidenbach** — Sim6502
+- **Fabrice Frances** — Java Microtan Emulator
 - **Steve Wozniak & Steve Jobs** — For creating the Apple 1 🍎
+
+## 🔗 Resources
+
+- [Apple 1 Software Collection](https://apple1software.com/)
+- [AppleFritter Apple 1 Forum](https://applefritter.com/apple1/)
+- [POM1 Project Page](https://www.gistlabs.net/Apple1project/)
 
 ---
 

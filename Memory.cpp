@@ -314,7 +314,6 @@ quint8 Memory::memRead(quint16 address)
         // Lire 0xD010 efface le strobe (PIA 6821 behavior)
         quint8 result = keyReady ? (lastKey | 0x80) : 0x00;
         keyReady = false;
-        keyStickyCounter = 0;
         // Charger la touche suivante du buffer si disponible
         if (!keyBuffer.empty()) {
             lastKey = keyBuffer.front();

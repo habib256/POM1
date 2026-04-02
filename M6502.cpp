@@ -64,21 +64,6 @@ quint16 M6502::memReadAbsolute(quint16 adr)
   return (memory->memRead(adr) | memory->memRead((unsigned short)(adr + 1)) << 8);
 }
 
-/*
-static void M6502::synchronize(void)
-{
-    int realTimeMillis = SDL_GetTicks() - lastTime;
-    int sleepMillis = _synchroMillis - realTimeMillis;
-
-    if (sleepMillis < 0)
-        sleepMillis = 5;
-
-    SDL_Delay(sleepMillis);
-
-    lastTime = SDL_GetTicks();
-}
-*/
-
 void M6502::pushProgramCounter(void)
 {
     memory->memWrite((unsigned short)(stackPointer + 0x100), (unsigned char)(programCounter >> 8));
@@ -831,7 +816,7 @@ void M6502::Hang(void)
 // Opcode dispatch table: each entry is {addressingMode, operation}
 // For single-function opcodes (JSR, Hang, Unoff*), operation is nullptr
 const M6502::OpcodeEntry M6502::opcodeTable[256] = {
-    /* 0x00 */ {&M6502::Imm,      &M6502::BRK},
+    /* 0x00 */ {&M6502::Imp,      &M6502::BRK},
     /* 0x01 */ {&M6502::IndZeroX,  &M6502::ORA},
     /* 0x02 */ {&M6502::Hang,      nullptr},
     /* 0x03 */ {&M6502::Unoff,     nullptr},
@@ -1115,43 +1100,6 @@ void M6502::executeOpcode(void)
         (this->*entry.operation)();
 }
 
-/*
-static int M6502::runM6502(void *data)
-{
-    while (running)
-    {
-        synchronize();
-
-        cycles = 0;
-
-        while (running && cycles < cyclesBeforeSynchro)
-        {
-            if (!(statusRegister & I) && IRQ)
-                handleIRQ();
-            if (NMI)
-                handleNMI();
-
-            executeOpcode();
-        }
-    }
-
-    return 0;
-}
-
-void M6502::startM6502(void)
-{
-    running = 1;
-    lastTime = SDL_GetTicks();
-    thread = SDL_CreateThread(runM6502, NULL);
-}
-
-void M6502::stopM6502(void)
-{
-    running = 0;
-    SDL_WaitThread(thread, NULL);
-}
-
-*/
 void M6502::hardReset(void)
 {
     statusRegister = 0x24;
@@ -1174,12 +1122,6 @@ void M6502::softReset(void)
     statusRegister |= I;
     stackPointer = 0xFF;
     programCounter = memReadAbsolute(0xFFFC);
-}
-
-void M6502::setSpeed(int freq, int synchroMillis)
-{
-    cyclesBeforeSynchro = synchroMillis * freq;
-    _synchroMillis = synchroMillis;
 }
 
 void M6502::setIRQ(int state)
@@ -1228,31 +1170,3 @@ void M6502::setDisplayCallback(void (*callback)(char))
     displayCallback = callback;
 }
 
-/*
-int M6502::saveState(void)
-{
-
-    int *state = (int *)malloc(sizeof(int) * 6);
-
-    state[0] = programCounter;
-    state[1] = statusRegister;
-    state[2] = accumulator;
-    state[3] = xRegister;
-    state[4] = yRegister;
-    state[5] = stackPointer;
-
-    return state;
-
-}
-
-
-void M6502::loadState(int *state)
-{
-    programCounter = state[0];
-    statusRegister = state[1];
-    accumulator = state[2];
-    xRegister = state[3];
-    yRegister = state[4];
-    stackPointer = state[5];
-}
-*/
