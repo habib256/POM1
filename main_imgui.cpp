@@ -31,7 +31,8 @@ static void glfw_key_callback(GLFWwindow* window, int key, int scancode, int act
 {
     ImGui_ImplGlfw_KeyCallback(window, key, scancode, action, mods);
 
-    if (action == GLFW_PRESS) {
+    // PRESS + REPEAT : le handler n’exécute les raccourcis sur REPEAT que pour F7 (step).
+    if (action == GLFW_PRESS || action == GLFW_REPEAT) {
         auto* mw = static_cast<MainWindow_ImGui*>(glfwGetWindowUserPointer(window));
         if (mw) {
             mw->handleGlfwKey(key, scancode, action, mods);
@@ -131,6 +132,14 @@ int main(int argc, char* argv[])
 
     emscripten_set_main_loop_arg([](void* arg) {
         LoopContext* c = static_cast<LoopContext*>(arg);
+        // Efface le message Emscripten du type « Getting the system running » / spinner dès la 1ʳᵉ frame.
+        if (static bool clearedWasmStatus = false; !clearedWasmStatus) {
+            clearedWasmStatus = true;
+            emscripten_run_script(
+                "if(typeof Module!=='undefined'&&Module.setStatus){Module.setStatus('');}"
+                "var sp=document.getElementById('spinner');if(sp)sp.style.display='none';"
+                "var st=document.getElementById('status');if(st)st.textContent='Ready';");
+        }
         glfwPollEvents();
 
         // Sync canvas drawing buffer with CSS size (fixes fullscreen/resize)

@@ -42,6 +42,8 @@ public:
      * La hauteur de cellule suit la police ; la largeur est dérivée pour respecter ce ratio.
      */
     static constexpr float kApple1ViewportAspectRatio = 280.0f / 192.0f;
+    /** Strictement inférieur à 1 : resserre la largeur du raster et de la fenêtre, hauteur inchangée. */
+    static constexpr float kApple1RasterWidthScale = 0.92f;
     static constexpr float kCellHeightFontScale = 1.3f;
 
     /** À appeler avec CalcTextSize("M") de la même police que render() (Fonts[0]). */
@@ -52,6 +54,8 @@ public:
     MonitorMode monitorMode = MonitorMode::Amber;
     CharacterRenderMode characterRenderMode = CharacterRenderMode::Apple1Charmap;
     float scale = 1.4f;
+    /** Multiplicateur de la taille de police en mode Host ASCII uniquement. */
+    float hostAsciiGlyphScale = 1.5f;
     bool crtEffect = true;
     float crtScanlineAlpha = 0.50f;
 

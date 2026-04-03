@@ -105,6 +105,8 @@ private:
     std::atomic<bool> terminateRequested { false };
     std::atomic<bool> runRequested { false };
     std::atomic<int> executionSpeedCyclesPerFrame { 16667 };
+    /// Dernière vitesse utilisée pour le budget temps réel (réinitialise le budget si elle change).
+    int cycleBudgetAnchorCpf = -1;
 };
 
 #endif // EMULATIONCONTROLLER_H

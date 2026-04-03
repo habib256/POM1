@@ -79,6 +79,7 @@ void EmulationController::stopCpu()
         cpu->stop();
         publishSnapshotLocked();
     }
+    wakeCv.notify_all();
 }
 
 void EmulationController::softReset()
@@ -425,7 +426,13 @@ void EmulationController::emulationLoop()
         const std::chrono::duration<double> elapsed = now - lastTick;
         lastTick = now;
 
-        const double cyclesPerSecond = static_cast<double>(executionSpeedCyclesPerFrame.load()) * kFramesPerSecond;
+        const int cpf = executionSpeedCyclesPerFrame.load();
+        if (cpf != cycleBudgetAnchorCpf) {
+            cycleBudget = 0.0;
+            cycleBudgetAnchorCpf = cpf;
+        }
+
+        const double cyclesPerSecond = static_cast<double>(cpf) * kFramesPerSecond;
         cycleBudget += cyclesPerSecond * elapsed.count();
 
         int cyclesToRun = std::min(kMaxSliceCycles, static_cast<int>(cycleBudget));
@@ -433,14 +440,18 @@ void EmulationController::emulationLoop()
             std::this_thread::sleep_for(std::chrono::milliseconds(1));
             continue;
         }
-        cycleBudget -= cyclesToRun;
 
         {
             std::lock_guard<std::mutex> lock(stateMutex);
             memory->getCassetteDevice().setLiveAudioTimebaseHz(static_cast<uint32_t>(std::max(1.0, cyclesPerSecond)));
             processQueuedKeysLocked();
-            cpu->start();
-            cpu->run(cyclesToRun);
+            // Re-vérifier sous le mutex : stopCpu()/step peut avoir eu lieu après le test du haut de boucle.
+            // Sinon cpu->start() annule cpu->stop() et une tranche entière s'exécute entre deux F7.
+            if (runRequested.load()) {
+                cycleBudget -= static_cast<double>(cyclesToRun);
+                cpu->start();
+                cpu->run(cyclesToRun);
+            }
             publishSnapshotLocked();
         }
     }

@@ -71,7 +71,7 @@ var ENVIRONMENT_IS_SHELL = !ENVIRONMENT_IS_WEB && !ENVIRONMENT_IS_NODE && !ENVIR
 
 // --pre-jses are emitted after the Module integration code, so that they can
 // refer to Module (if they choose; they can also define Module)
-// include: /var/folders/jh/nhf0yjx91mn8mcldfwcm4_s40000gn/T/tmp1zkkt5by.js
+// include: /var/folders/rr/935v6_790s9d0711dv99d16r0000gn/T/tmpjtrhxim4.js
 
   if (!Module['expectedDataFileDownloads']) Module['expectedDataFileDownloads'] = 0;
   Module['expectedDataFileDownloads']++;
@@ -208,25 +208,25 @@ Module['FS_createPath']("/software", "utils", true, true);
     }
 
     }
-    loadPackage({"files": [{"filename": "/fonts/fa-solid-900.ttf", "start": 0, "end": 426112}, {"filename": "/roms/WozMonitor.rom", "start": 426112, "end": 426368}, {"filename": "/roms/basic.rom", "start": 426368, "end": 430464}, {"filename": "/roms/charmap.rom", "start": 430464, "end": 431488}, {"filename": "/roms/krusader-1.3.rom", "start": 431488, "end": 439680}, {"filename": "/software/.DS_Store", "start": 439680, "end": 445828}, {"filename": "/software/apple1.cfg", "start": 445828, "end": 446072}, {"filename": "/software/basic/blackjack.apl.txt", "start": 446072, "end": 453057}, {"filename": "/software/basic/dobble.apl.txt", "start": 453057, "end": 464442}, {"filename": "/software/basic/hamurabi.apl.txt", "start": 464442, "end": 475427}, {"filename": "/software/basic/lunar-lander-ascii-graphics.apl.txt", "start": 475427, "end": 486412}, {"filename": "/software/basic/mini-startrek.apl.txt", "start": 486412, "end": 497397}, {"filename": "/software/basic/resistor-calculator.apl.txt", "start": 497397, "end": 504382}, {"filename": "/software/basic/stopwatch.apl.txt", "start": 504382, "end": 511367}, {"filename": "/software/demos/30th.apl.txt", "start": 511367, "end": 522178}, {"filename": "/software/demos/beer.apl.txt", "start": 522178, "end": 522814}, {"filename": "/software/demos/cat.apl.txt", "start": 522814, "end": 525047}, {"filename": "/software/demos/cellular.apl.txt", "start": 525047, "end": 526799}, {"filename": "/software/demos/life.txt", "start": 526799, "end": 528467}, {"filename": "/software/demos/mandelbrot-65.apl.txt", "start": 528467, "end": 532650}, {"filename": "/software/demos/pasart.apl.txt", "start": 532650, "end": 534430}, {"filename": "/software/dev/ENHANCEDBASIC.txt", "start": 534430, "end": 566647}, {"filename": "/software/dev/WozMonitor.txt", "start": 566647, "end": 567666}, {"filename": "/software/dev/a1assembler.apl.txt", "start": 567666, "end": 580321}, {"filename": "/software/dev/dis-assembler.apl.txt", "start": 580321, "end": 581820}, {"filename": "/software/dev/fig-fORTH110.txt", "start": 581820, "end": 602421}, {"filename": "/software/games/15-puzzle.apl.txt", "start": 602421, "end": 605551}, {"filename": "/software/games/2048.apl.txt", "start": 605551, "end": 611694}, {"filename": "/software/games/LittleTower-1.0.asm", "start": 611694, "end": 636494}, {"filename": "/software/games/LittleTower-1.0.txt", "start": 636494, "end": 656910}, {"filename": "/software/games/Maze2_Backtracker.asm", "start": 656910, "end": 671464}, {"filename": "/software/games/Maze2_Backtracker.txt", "start": 671464, "end": 674864}, {"filename": "/software/games/Maze_Sidewinder.asm", "start": 674864, "end": 688571}, {"filename": "/software/games/Maze_Sidewinder.txt", "start": 688571, "end": 691230}, {"filename": "/software/games/codebreaker.apl.txt", "start": 691230, "end": 697641}, {"filename": "/software/games/lunar-lander-text-only.apl.txt", "start": 697641, "end": 703031}, {"filename": "/software/games/mastermind.apl.txt", "start": 703031, "end": 703596}, {"filename": "/software/games/microchess.apl.txt", "start": 703596, "end": 710632}, {"filename": "/software/games/peg-solitaire.apl.txt", "start": 710632, "end": 713043}, {"filename": "/software/games/shut-the-box.apl.txt", "start": 713043, "end": 716254}, {"filename": "/software/games/worple.apl.txt", "start": 716254, "end": 726662}, {"filename": "/software/pom1.cfg", "start": 726662, "end": 726906}, {"filename": "/software/tests/.DS_Store", "start": 726906, "end": 733054}, {"filename": "/software/tests/ASCII_hex_Terminal.txt", "start": 733054, "end": 733316}, {"filename": "/software/tests/ASCII_hex_keyboard.txt", "start": 733316, "end": 733538}, {"filename": "/software/tests/Getting_The_System_Running.txt", "start": 733538, "end": 734365}, {"filename": "/software/tests/Print_with_hex.txt", "start": 734365, "end": 735380}, {"filename": "/software/utils/party.apl.txt", "start": 735380, "end": 747057}, {"filename": "/software/utils/typewriter.apl.txt", "start": 747057, "end": 747777}], "remote_package_size": 747777});
+    loadPackage({"files": [{"filename": "/fonts/fa-solid-900.ttf", "start": 0, "end": 426112}, {"filename": "/roms/ACI.rom", "start": 426112, "end": 426368}, {"filename": "/roms/WozMonitor.rom", "start": 426368, "end": 426624}, {"filename": "/roms/basic.rom", "start": 426624, "end": 430720}, {"filename": "/roms/charmap.rom", "start": 430720, "end": 431744}, {"filename": "/roms/krusader-1.3.rom", "start": 431744, "end": 439936}, {"filename": "/software/apple1.cfg", "start": 439936, "end": 440180}, {"filename": "/software/basic/blackjack.apl.txt", "start": 440180, "end": 447165}, {"filename": "/software/basic/dobble.apl.txt", "start": 447165, "end": 458550}, {"filename": "/software/basic/hamurabi.apl.txt", "start": 458550, "end": 469535}, {"filename": "/software/basic/lunar-lander-ascii-graphics.apl.txt", "start": 469535, "end": 480520}, {"filename": "/software/basic/mini-startrek.apl.txt", "start": 480520, "end": 491505}, {"filename": "/software/basic/resistor-calculator.apl.txt", "start": 491505, "end": 498490}, {"filename": "/software/basic/stopwatch.apl.txt", "start": 498490, "end": 505475}, {"filename": "/software/basic/twinkle.apl.txt", "start": 505475, "end": 512460}, {"filename": "/software/demos/30th.apl.txt", "start": 512460, "end": 523271}, {"filename": "/software/demos/beer.apl.txt", "start": 523271, "end": 523907}, {"filename": "/software/demos/cat.apl.txt", "start": 523907, "end": 526140}, {"filename": "/software/demos/cellular.apl.txt", "start": 526140, "end": 527892}, {"filename": "/software/demos/life.txt", "start": 527892, "end": 529560}, {"filename": "/software/demos/mandelbrot-65.apl.txt", "start": 529560, "end": 533743}, {"filename": "/software/demos/pasart.apl.txt", "start": 533743, "end": 535523}, {"filename": "/software/dev/ENHANCEDBASIC.txt", "start": 535523, "end": 567740}, {"filename": "/software/dev/WozMonitor.txt", "start": 567740, "end": 568759}, {"filename": "/software/dev/a1assembler.apl.txt", "start": 568759, "end": 581414}, {"filename": "/software/dev/dis-assembler.apl.txt", "start": 581414, "end": 582913}, {"filename": "/software/dev/fig-fORTH110.txt", "start": 582913, "end": 603514}, {"filename": "/software/games/15-puzzle.apl.txt", "start": 603514, "end": 606644}, {"filename": "/software/games/2048.apl.txt", "start": 606644, "end": 612787}, {"filename": "/software/games/LittleTower-1.0.asm", "start": 612787, "end": 637587}, {"filename": "/software/games/LittleTower-1.0.txt", "start": 637587, "end": 658003}, {"filename": "/software/games/Maze2_Backtracker.asm", "start": 658003, "end": 672557}, {"filename": "/software/games/Maze2_Backtracker.txt", "start": 672557, "end": 675957}, {"filename": "/software/games/Maze_Sidewinder.asm", "start": 675957, "end": 689664}, {"filename": "/software/games/Maze_Sidewinder.txt", "start": 689664, "end": 692323}, {"filename": "/software/games/codebreaker.apl.txt", "start": 692323, "end": 698734}, {"filename": "/software/games/lunar-lander-text-only.apl.txt", "start": 698734, "end": 704124}, {"filename": "/software/games/mastermind.apl.txt", "start": 704124, "end": 704689}, {"filename": "/software/games/microchess.apl.txt", "start": 704689, "end": 711725}, {"filename": "/software/games/peg-solitaire.apl.txt", "start": 711725, "end": 714136}, {"filename": "/software/games/shut-the-box.apl.txt", "start": 714136, "end": 717347}, {"filename": "/software/games/worple.apl.txt", "start": 717347, "end": 727755}, {"filename": "/software/pom1.cfg", "start": 727755, "end": 727999}, {"filename": "/software/tests/ASCII_hex_Terminal.txt", "start": 727999, "end": 728261}, {"filename": "/software/tests/ASCII_hex_keyboard.txt", "start": 728261, "end": 728483}, {"filename": "/software/tests/Getting_The_System_Running.txt", "start": 728483, "end": 729310}, {"filename": "/software/tests/Print_with_hex.txt", "start": 729310, "end": 730325}, {"filename": "/software/utils/party.apl.txt", "start": 730325, "end": 742002}, {"filename": "/software/utils/typewriter.apl.txt", "start": 742002, "end": 742722}], "remote_package_size": 742722});
 
   })();
 
-// end include: /var/folders/jh/nhf0yjx91mn8mcldfwcm4_s40000gn/T/tmp1zkkt5by.js
-// include: /var/folders/jh/nhf0yjx91mn8mcldfwcm4_s40000gn/T/tmp7z10kbwo.js
+// end include: /var/folders/rr/935v6_790s9d0711dv99d16r0000gn/T/tmpjtrhxim4.js
+// include: /var/folders/rr/935v6_790s9d0711dv99d16r0000gn/T/tmp_gqk8suh.js
 
     // All the pre-js content up to here must remain later on, we need to run
     // it.
     if ((typeof ENVIRONMENT_IS_WASM_WORKER != 'undefined' && ENVIRONMENT_IS_WASM_WORKER) || (typeof ENVIRONMENT_IS_PTHREAD != 'undefined' && ENVIRONMENT_IS_PTHREAD) || (typeof ENVIRONMENT_IS_AUDIO_WORKLET != 'undefined' && ENVIRONMENT_IS_AUDIO_WORKLET)) Module['preRun'] = [];
     var necessaryPreJSTasks = Module['preRun'].slice();
-  // end include: /var/folders/jh/nhf0yjx91mn8mcldfwcm4_s40000gn/T/tmp7z10kbwo.js
-// include: /var/folders/jh/nhf0yjx91mn8mcldfwcm4_s40000gn/T/tmpfxtwls5l.js
+  // end include: /var/folders/rr/935v6_790s9d0711dv99d16r0000gn/T/tmp_gqk8suh.js
+// include: /var/folders/rr/935v6_790s9d0711dv99d16r0000gn/T/tmpsn88ar0o.js
 
     if (!Module['preRun']) throw 'Module.preRun should exist because file support used it; did a pre-js delete it?';
     necessaryPreJSTasks.forEach((task) => {
       if (Module['preRun'].indexOf(task) < 0) throw 'All preRun tasks that exist before user pre-js code should remain after; did you replace Module or modify Module.preRun?';
     });
-  // end include: /var/folders/jh/nhf0yjx91mn8mcldfwcm4_s40000gn/T/tmpfxtwls5l.js
+  // end include: /var/folders/rr/935v6_790s9d0711dv99d16r0000gn/T/tmpsn88ar0o.js
 
 
 var arguments_ = [];
@@ -477,6 +477,11 @@ function checkStackCookie() {
 }
 // end include: runtime_stack_check.js
 // include: runtime_exceptions.js
+// Base Emscripten EH error class
+class EmscriptenEH {}
+
+class EmscriptenSjLj extends EmscriptenEH {}
+
 // end include: runtime_exceptions.js
 // include: runtime_debug.js
 var runtimeDebug = true; // Switch to false at runtime to disable logging at the right times
@@ -682,11 +687,14 @@ function postRun() {
   // End ATPOSTRUNS hooks
 }
 
-/** @param {string|number=} what */
+/**
+ * @param {string|number=} what
+ * @noreturn
+ */
 function abort(what) {
   Module['onAbort']?.(what);
 
-  what = 'Aborted(' + what + ')';
+  what = `Aborted(${what})`;
   // TODO(sbc): Should we remove printing and leave it up to whoever
   // catches the exception?
   err(what);
@@ -1106,7 +1114,7 @@ async function createWasm() {
         if ((u0 & 0xF0) == 0xE0) {
           u0 = ((u0 & 15) << 12) | (u1 << 6) | u2;
         } else {
-          if ((u0 & 0xF8) != 0xF0) warnOnce('Invalid UTF-8 leading byte ' + ptrToString(u0) + ' encountered when deserializing a UTF-8 string in wasm memory to a JS string!');
+          if ((u0 & 0xF8) != 0xF0) warnOnce(`Invalid UTF-8 leading byte ${ptrToString(u0)} encountered when deserializing a UTF-8 string in wasm memory to a JS string!`);
           u0 = ((u0 & 7) << 18) | (u1 << 12) | (u2 << 6) | (heapOrArray[idx++] & 63);
         }
   
@@ -1197,14 +1205,11 @@ async function createWasm() {
       }
     }
   
-  var exceptionLast = 0;
-  
   var uncaughtExceptionCount = 0;
   var ___cxa_throw = (ptr, type, destructor) => {
       var info = new ExceptionInfo(ptr);
       // Initialize ExceptionInfo content after it was allocated in __cxa_allocate_exception.
       info.init(type, destructor);
-      exceptionLast = ptr;
       uncaughtExceptionCount++;
       assert(false, 'Exception thrown, but exception catching is not enabled. Compile with -sNO_DISABLE_EXCEPTION_CATCHING or -sEXCEPTION_CATCHING_ALLOWED=[..] to catch.');
     };
@@ -1287,12 +1292,9 @@ var initRandomFill = () => {
       return (view) => nodeCrypto.randomFillSync(view);
     }
 
-    return (view) => crypto.getRandomValues(view);
+    return (view) => (crypto.getRandomValues(view), 0);
   };
-var randomFill = (view) => {
-    // Lazily init on the first invocation.
-    (randomFill = initRandomFill())(view);
-  };
+var randomFill = (view) => (randomFill = initRandomFill())(view);
 
 
 
@@ -1403,7 +1405,7 @@ var stringToUTF8Array = (str, heap, outIdx, maxBytesToWrite) => {
         heap[outIdx++] = 0x80 | (u & 63);
       } else {
         if (outIdx + 3 >= endIdx) break;
-        if (u > 0x10FFFF) warnOnce('Invalid Unicode code point ' + ptrToString(u) + ' encountered when serializing a JS string to a UTF-8 string in wasm memory! (Valid unicode code points should be in range 0-0x10FFFF).');
+        if (u > 0x10FFFF) warnOnce(`Invalid Unicode code point ${ptrToString(u)} encountered when serializing a JS string to a UTF-8 string in wasm memory! (Valid unicode code points should be in range 0-0x10FFFF).`);
         heap[outIdx++] = 0xF0 | (u >> 18);
         heap[outIdx++] = 0x80 | ((u >> 12) & 63);
         heap[outIdx++] = 0x80 | ((u >> 6) & 63);
@@ -4211,6 +4213,83 @@ var stringToUTF8Array = (str, heap, outIdx, maxBytesToWrite) => {
       }
     };
 
+  var _emscripten_get_now = () => performance.now();
+  
+  var _emscripten_date_now = () => Date.now();
+  
+  var nowIsMonotonic = 1;
+  
+  var checkWasiClock = (clock_id) => clock_id >= 0 && clock_id <= 3;
+  
+  var INT53_MAX = 9007199254740992;
+  
+  var INT53_MIN = -9007199254740992;
+  var bigintToI53Checked = (num) => (num < INT53_MIN || num > INT53_MAX) ? NaN : Number(num);
+  function _clock_time_get(clk_id, ignored_precision, ptime) {
+    ignored_precision = bigintToI53Checked(ignored_precision);
+  
+  
+      if (!checkWasiClock(clk_id)) {
+        return 28;
+      }
+      var now;
+      // all wasi clocks but realtime are monotonic
+      if (clk_id === 0) {
+        now = _emscripten_date_now();
+      } else if (nowIsMonotonic) {
+        now = _emscripten_get_now();
+      } else {
+        return 52;
+      }
+      // "now" is in ms, and wasi times are in ns.
+      var nsec = Math.round(now * 1000 * 1000);
+      HEAP64[((ptime)>>3)] = BigInt(nsec);
+      return 0;
+    ;
+  }
+
+  var readEmAsmArgsArray = [];
+  var readEmAsmArgs = (sigPtr, buf) => {
+      // Nobody should have mutated _readEmAsmArgsArray underneath us to be something else than an array.
+      assert(Array.isArray(readEmAsmArgsArray));
+      // The input buffer is allocated on the stack, so it must be stack-aligned.
+      assert(buf % 16 == 0);
+      readEmAsmArgsArray.length = 0;
+      var ch;
+      // Most arguments are i32s, so shift the buffer pointer so it is a plain
+      // index into HEAP32.
+      while (ch = HEAPU8[sigPtr++]) {
+        var chr = String.fromCharCode(ch);
+        var validChars = ['d', 'f', 'i', 'p'];
+        // In WASM_BIGINT mode we support passing i64 values as bigint.
+        validChars.push('j');
+        assert(validChars.includes(chr), `Invalid character ${ch}("${chr}") in readEmAsmArgs! Use only [${validChars}], and do not specify "v" for void return argument.`);
+        // Floats are always passed as doubles, so all types except for 'i'
+        // are 8 bytes and require alignment.
+        var wide = (ch != 105);
+        wide &= (ch != 112);
+        buf += wide && (buf % 8) ? 4 : 0;
+        readEmAsmArgsArray.push(
+          // Special case for pointers under wasm64 or CAN_ADDRESS_2GB mode.
+          ch == 112 ? HEAPU32[((buf)>>2)] :
+          ch == 106 ? HEAP64[((buf)>>3)] :
+          ch == 105 ?
+            HEAP32[((buf)>>2)] :
+            HEAPF64[((buf)>>3)]
+        );
+        buf += wide ? 8 : 4;
+      }
+      return readEmAsmArgsArray;
+    };
+  var runEmAsmFunction = (code, sigPtr, argbuf) => {
+      var args = readEmAsmArgs(sigPtr, argbuf);
+      assert(ASM_CONSTS.hasOwnProperty(code), `No EM_ASM constant found at address ${code}.  The loaded WebAssembly file is likely out of sync with the generated JavaScript.`);
+      return ASM_CONSTS[code](...args);
+    };
+  var _emscripten_asm_const_int = (code, sigPtr, argbuf) => {
+      return runEmAsmFunction(code, sigPtr, argbuf);
+    };
+
   var _emscripten_err = (str) => err(UTF8ToString(str));
 
   var onExits = [];
@@ -4657,6 +4736,7 @@ var stringToUTF8Array = (str, heap, outIdx, maxBytesToWrite) => {
       return 0;
     };
 
+
   
   
   var doRequestFullscreen = (target, strategy) => {
@@ -4774,6 +4854,10 @@ var stringToUTF8Array = (str, heap, outIdx, maxBytesToWrite) => {
       return false;
     };
 
+  var _emscripten_run_script = (ptr) => {
+      eval(UTF8ToString(ptr));
+    };
+
 
   
   var handleException = (e) => {
@@ -4797,6 +4881,7 @@ var stringToUTF8Array = (str, heap, outIdx, maxBytesToWrite) => {
   
   var runtimeKeepaliveCounter = 0;
   var keepRuntimeAlive = () => noExitRuntime || runtimeKeepaliveCounter > 0;
+  /** @noreturn */
   var _proc_exit = (code) => {
       EXITSTATUS = code;
       if (!keepRuntimeAlive()) {
@@ -4989,7 +5074,6 @@ var stringToUTF8Array = (str, heap, outIdx, maxBytesToWrite) => {
   };
   
   
-  var _emscripten_get_now = () => performance.now();
   
   
     /**
@@ -5192,10 +5276,6 @@ var stringToUTF8Array = (str, heap, outIdx, maxBytesToWrite) => {
   }
 
   
-  var INT53_MAX = 9007199254740992;
-  
-  var INT53_MIN = -9007199254740992;
-  var bigintToI53Checked = (num) => (num < INT53_MIN || num > INT53_MAX) ? NaN : Number(num);
   function _fd_seek(fd, offset, whence, newOffset) {
     offset = bigintToI53Checked(offset);
   
@@ -8286,7 +8366,7 @@ if (Module['wasmBinary']) wasmBinary = Module['wasmBinary'];
   'inetNtop6',
   'readSockaddr',
   'writeSockaddr',
-  'readEmAsmArgs',
+  'runMainThreadEmAsm',
   'autoResumeAudioContext',
   'getDynCaller',
   'dynCall',
@@ -8351,7 +8431,6 @@ if (Module['wasmBinary']) wasmBinary = Module['wasmBinary'];
   'jsStackTrace',
   'getCallstack',
   'convertPCtoSourceLocation',
-  'checkWasiClock',
   'wasiRightsToMuslOFlags',
   'wasiOFlagsToMuslOFlags',
   'setImmediateWrapped',
@@ -8364,6 +8443,8 @@ if (Module['wasmBinary']) wasmBinary = Module['wasmBinary'];
   'idsToPromises',
   'makePromiseCallback',
   'findMatchingCatch',
+  'incrementUncaughtExceptionCount',
+  'decrementUncaughtExceptionCount',
   'Browser_asyncPrepareDataCounter',
   'isLeapYear',
   'ydayFromDate',
@@ -8434,6 +8515,8 @@ missingLibrarySymbols.forEach(missingLibrarySymbol)
   'timers',
   'warnOnce',
   'readEmAsmArgsArray',
+  'readEmAsmArgs',
+  'runEmAsmFunction',
   'jstoi_q',
   'getExecutableName',
   'handleException',
@@ -8485,6 +8568,7 @@ missingLibrarySymbols.forEach(missingLibrarySymbol)
   'UNWIND_CACHE',
   'ExitStatus',
   'getEnvStrings',
+  'checkWasiClock',
   'doReadv',
   'doWritev',
   'initRandomFill',
@@ -8495,7 +8579,6 @@ missingLibrarySymbols.forEach(missingLibrarySymbol)
   'emClearImmediate',
   'promiseMap',
   'uncaughtExceptionCount',
-  'exceptionLast',
   'exceptionCaught',
   'ExceptionInfo',
   'Browser',
@@ -8676,13 +8759,30 @@ function checkIncomingModuleAPI() {
   ignoredModuleProp('onFree');
   ignoredModuleProp('onSbrkGrow');
 }
+var ASM_CONSTS = {
+  193292: ($0, $1, $2, $3, $4) => { if (typeof window === 'undefined' || (window.AudioContext || window.webkitAudioContext) === undefined) { return 0; } if (typeof(window.miniaudio) === 'undefined') { window.miniaudio = { referenceCount: 0 }; window.miniaudio.device_type = {}; window.miniaudio.device_type.playback = $0; window.miniaudio.device_type.capture = $1; window.miniaudio.device_type.duplex = $2; window.miniaudio.device_state = {}; window.miniaudio.device_state.stopped = $3; window.miniaudio.device_state.started = $4; let miniaudio = window.miniaudio; miniaudio.devices = []; miniaudio.track_device = function(device) { for (var iDevice = 0; iDevice < miniaudio.devices.length; ++iDevice) { if (miniaudio.devices[iDevice] == null) { miniaudio.devices[iDevice] = device; return iDevice; } } miniaudio.devices.push(device); return miniaudio.devices.length - 1; }; miniaudio.untrack_device_by_index = function(deviceIndex) { miniaudio.devices[deviceIndex] = null; while (miniaudio.devices.length > 0) { if (miniaudio.devices[miniaudio.devices.length-1] == null) { miniaudio.devices.pop(); } else { break; } } }; miniaudio.untrack_device = function(device) { for (var iDevice = 0; iDevice < miniaudio.devices.length; ++iDevice) { if (miniaudio.devices[iDevice] == device) { return miniaudio.untrack_device_by_index(iDevice); } } }; miniaudio.get_device_by_index = function(deviceIndex) { return miniaudio.devices[deviceIndex]; }; miniaudio.unlock_event_types = (function(){ return ['touchend', 'click']; })(); miniaudio.unlock = function() { for(var i = 0; i < miniaudio.devices.length; ++i) { var device = miniaudio.devices[i]; if (device != null && device.webaudio != null && device.state === miniaudio.device_state.started) { device.webaudio.resume().then(() => { _ma_device__on_notification_unlocked(device.pDevice); }, (error) => {console.error("Failed to resume audiocontext", error); }); } } miniaudio.unlock_event_types.map(function(event_type) { document.removeEventListener(event_type, miniaudio.unlock, true); }); }; miniaudio.unlock_event_types.map(function(event_type) { document.addEventListener(event_type, miniaudio.unlock, true); }); } window.miniaudio.referenceCount += 1; return 1; },  
+ 195470: () => { if (typeof(window.miniaudio) !== 'undefined') { window.miniaudio.unlock_event_types.map(function(event_type) { document.removeEventListener(event_type, window.miniaudio.unlock, true); }); window.miniaudio.referenceCount -= 1; if (window.miniaudio.referenceCount === 0) { delete window.miniaudio; } } },  
+ 195774: () => { return (navigator.mediaDevices !== undefined && navigator.mediaDevices.getUserMedia !== undefined); },  
+ 195878: () => { try { var temp = new (window.AudioContext || window.webkitAudioContext)(); var sampleRate = temp.sampleRate; temp.close(); return sampleRate; } catch(e) { return 0; } },  
+ 196049: ($0, $1, $2, $3, $4, $5) => { var deviceType = $0; var channels = $1; var sampleRate = $2; var bufferSize = $3; var pIntermediaryBuffer = $4; var pDevice = $5; if (typeof(window.miniaudio) === 'undefined') { return -1; } var device = {}; var audioContextOptions = {}; if (deviceType == window.miniaudio.device_type.playback && sampleRate != 0) { audioContextOptions.sampleRate = sampleRate; } device.webaudio = new (window.AudioContext || window.webkitAudioContext)(audioContextOptions); device.webaudio.suspend(); device.state = window.miniaudio.device_state.stopped; var channelCountIn = 0; var channelCountOut = channels; if (deviceType != window.miniaudio.device_type.playback) { channelCountIn = channels; } device.scriptNode = device.webaudio.createScriptProcessor(bufferSize, channelCountIn, channelCountOut); device.scriptNode.onaudioprocess = function(e) { if (device.intermediaryBufferView == null || device.intermediaryBufferView.length == 0) { device.intermediaryBufferView = new Float32Array(HEAPF32.buffer, pIntermediaryBuffer, bufferSize * channels); } if (deviceType == window.miniaudio.device_type.capture || deviceType == window.miniaudio.device_type.duplex) { for (var iChannel = 0; iChannel < channels; iChannel += 1) { var inputBuffer = e.inputBuffer.getChannelData(iChannel); var intermediaryBuffer = device.intermediaryBufferView; for (var iFrame = 0; iFrame < bufferSize; iFrame += 1) { intermediaryBuffer[iFrame*channels + iChannel] = inputBuffer[iFrame]; } } _ma_device_process_pcm_frames_capture__webaudio(pDevice, bufferSize, pIntermediaryBuffer); } if (deviceType == window.miniaudio.device_type.playback || deviceType == window.miniaudio.device_type.duplex) { _ma_device_process_pcm_frames_playback__webaudio(pDevice, bufferSize, pIntermediaryBuffer); for (var iChannel = 0; iChannel < e.outputBuffer.numberOfChannels; ++iChannel) { var outputBuffer = e.outputBuffer.getChannelData(iChannel); var intermediaryBuffer = device.intermediaryBufferView; for (var iFrame = 0; iFrame < bufferSize; iFrame += 1) { outputBuffer[iFrame] = intermediaryBuffer[iFrame*channels + iChannel]; } } } else { for (var iChannel = 0; iChannel < e.outputBuffer.numberOfChannels; ++iChannel) { e.outputBuffer.getChannelData(iChannel).fill(0.0); } } }; if (deviceType == window.miniaudio.device_type.capture || deviceType == window.miniaudio.device_type.duplex) { navigator.mediaDevices.getUserMedia({audio:true, video:false}) .then(function(stream) { device.streamNode = device.webaudio.createMediaStreamSource(stream); device.streamNode.connect(device.scriptNode); device.scriptNode.connect(device.webaudio.destination); }) .catch(function(error) { console.log("Failed to get user media: " + error); }); } if (deviceType == window.miniaudio.device_type.playback) { device.scriptNode.connect(device.webaudio.destination); } device.pDevice = pDevice; return window.miniaudio.track_device(device); },  
+ 198926: ($0) => { return window.miniaudio.get_device_by_index($0).webaudio.sampleRate; },  
+ 198999: ($0) => { var device = window.miniaudio.get_device_by_index($0); if (device.scriptNode !== undefined) { device.scriptNode.onaudioprocess = function(e) {}; device.scriptNode.disconnect(); device.scriptNode = undefined; } if (device.streamNode !== undefined) { device.streamNode.disconnect(); device.streamNode = undefined; } device.webaudio.close(); device.webaudio = undefined; device.pDevice = undefined; },  
+ 199399: ($0) => { window.miniaudio.untrack_device_by_index($0); },  
+ 199449: ($0) => { var device = window.miniaudio.get_device_by_index($0); device.webaudio.resume(); device.state = window.miniaudio.device_state.started; },  
+ 199588: ($0) => { var device = window.miniaudio.get_device_by_index($0); device.webaudio.suspend(); device.state = window.miniaudio.device_state.stopped; }
+};
 function ImGui_ImplGlfw_EmscriptenOpenURL(url) { url = url ? UTF8ToString(url) : null; if (url) window.open(url, '_blank'); }
 
 // Imports from the Wasm binary.
-var _main = Module['_main'] = makeInvalidEarlyAccess('_main');
-var _fflush = makeInvalidEarlyAccess('_fflush');
+var _ma_device__on_notification_unlocked = Module['_ma_device__on_notification_unlocked'] = makeInvalidEarlyAccess('_ma_device__on_notification_unlocked');
+var _ma_malloc_emscripten = Module['_ma_malloc_emscripten'] = makeInvalidEarlyAccess('_ma_malloc_emscripten');
+var _ma_free_emscripten = Module['_ma_free_emscripten'] = makeInvalidEarlyAccess('_ma_free_emscripten');
+var _ma_device_process_pcm_frames_capture__webaudio = Module['_ma_device_process_pcm_frames_capture__webaudio'] = makeInvalidEarlyAccess('_ma_device_process_pcm_frames_capture__webaudio');
+var _ma_device_process_pcm_frames_playback__webaudio = Module['_ma_device_process_pcm_frames_playback__webaudio'] = makeInvalidEarlyAccess('_ma_device_process_pcm_frames_playback__webaudio');
 var _malloc = makeInvalidEarlyAccess('_malloc');
 var _free = makeInvalidEarlyAccess('_free');
+var _main = Module['_main'] = makeInvalidEarlyAccess('_main');
+var _fflush = makeInvalidEarlyAccess('_fflush');
 var _emscripten_stack_get_end = makeInvalidEarlyAccess('_emscripten_stack_get_end');
 var _emscripten_stack_get_base = makeInvalidEarlyAccess('_emscripten_stack_get_base');
 var _strerror = makeInvalidEarlyAccess('_strerror');
@@ -8697,10 +8797,15 @@ var wasmMemory = makeInvalidEarlyAccess('wasmMemory');
 var wasmTable = makeInvalidEarlyAccess('wasmTable');
 
 function assignWasmExports(wasmExports) {
-  assert(typeof wasmExports['__main_argc_argv'] != 'undefined', 'missing Wasm export: __main_argc_argv');
-  assert(typeof wasmExports['fflush'] != 'undefined', 'missing Wasm export: fflush');
+  assert(typeof wasmExports['ma_device__on_notification_unlocked'] != 'undefined', 'missing Wasm export: ma_device__on_notification_unlocked');
+  assert(typeof wasmExports['ma_malloc_emscripten'] != 'undefined', 'missing Wasm export: ma_malloc_emscripten');
+  assert(typeof wasmExports['ma_free_emscripten'] != 'undefined', 'missing Wasm export: ma_free_emscripten');
+  assert(typeof wasmExports['ma_device_process_pcm_frames_capture__webaudio'] != 'undefined', 'missing Wasm export: ma_device_process_pcm_frames_capture__webaudio');
+  assert(typeof wasmExports['ma_device_process_pcm_frames_playback__webaudio'] != 'undefined', 'missing Wasm export: ma_device_process_pcm_frames_playback__webaudio');
   assert(typeof wasmExports['malloc'] != 'undefined', 'missing Wasm export: malloc');
   assert(typeof wasmExports['free'] != 'undefined', 'missing Wasm export: free');
+  assert(typeof wasmExports['__main_argc_argv'] != 'undefined', 'missing Wasm export: __main_argc_argv');
+  assert(typeof wasmExports['fflush'] != 'undefined', 'missing Wasm export: fflush');
   assert(typeof wasmExports['emscripten_stack_get_end'] != 'undefined', 'missing Wasm export: emscripten_stack_get_end');
   assert(typeof wasmExports['emscripten_stack_get_base'] != 'undefined', 'missing Wasm export: emscripten_stack_get_base');
   assert(typeof wasmExports['strerror'] != 'undefined', 'missing Wasm export: strerror');
@@ -8711,10 +8816,15 @@ function assignWasmExports(wasmExports) {
   assert(typeof wasmExports['emscripten_stack_get_current'] != 'undefined', 'missing Wasm export: emscripten_stack_get_current');
   assert(typeof wasmExports['memory'] != 'undefined', 'missing Wasm export: memory');
   assert(typeof wasmExports['__indirect_function_table'] != 'undefined', 'missing Wasm export: __indirect_function_table');
-  _main = Module['_main'] = createExportWrapper('__main_argc_argv', 2);
-  _fflush = createExportWrapper('fflush', 1);
+  _ma_device__on_notification_unlocked = Module['_ma_device__on_notification_unlocked'] = createExportWrapper('ma_device__on_notification_unlocked', 1);
+  _ma_malloc_emscripten = Module['_ma_malloc_emscripten'] = createExportWrapper('ma_malloc_emscripten', 2);
+  _ma_free_emscripten = Module['_ma_free_emscripten'] = createExportWrapper('ma_free_emscripten', 2);
+  _ma_device_process_pcm_frames_capture__webaudio = Module['_ma_device_process_pcm_frames_capture__webaudio'] = createExportWrapper('ma_device_process_pcm_frames_capture__webaudio', 3);
+  _ma_device_process_pcm_frames_playback__webaudio = Module['_ma_device_process_pcm_frames_playback__webaudio'] = createExportWrapper('ma_device_process_pcm_frames_playback__webaudio', 3);
   _malloc = createExportWrapper('malloc', 1);
   _free = createExportWrapper('free', 1);
+  _main = Module['_main'] = createExportWrapper('__main_argc_argv', 2);
+  _fflush = createExportWrapper('fflush', 1);
   _emscripten_stack_get_end = wasmExports['emscripten_stack_get_end'];
   _emscripten_stack_get_base = wasmExports['emscripten_stack_get_base'];
   _strerror = createExportWrapper('strerror', 1);
@@ -8759,6 +8869,10 @@ var wasmImports = {
   /** @export */
   _tzset_js: __tzset_js,
   /** @export */
+  clock_time_get: _clock_time_get,
+  /** @export */
+  emscripten_asm_const_int: _emscripten_asm_const_int,
+  /** @export */
   emscripten_err: _emscripten_err,
   /** @export */
   emscripten_exit_fullscreen: _emscripten_exit_fullscreen,
@@ -8769,9 +8883,13 @@ var wasmImports = {
   /** @export */
   emscripten_get_fullscreen_status: _emscripten_get_fullscreen_status,
   /** @export */
+  emscripten_get_now: _emscripten_get_now,
+  /** @export */
   emscripten_request_fullscreen_strategy: _emscripten_request_fullscreen_strategy,
   /** @export */
   emscripten_resize_heap: _emscripten_resize_heap,
+  /** @export */
+  emscripten_run_script: _emscripten_run_script,
   /** @export */
   emscripten_set_canvas_element_size: _emscripten_set_canvas_element_size,
   /** @export */
