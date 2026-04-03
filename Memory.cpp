@@ -375,12 +375,10 @@ quint8 Memory::memRead(quint16 address)
         }
         return result;
     } else if (address == 0xD012) {
-        // Display port: bit 7 = busy flag
-        // Simule le délai du terminal Apple 1 (~60 chars/sec)
+        // Display port: bit 7 = busy flag. Le compteur displayBusyCycles décrémente dans
+        // advanceCycles() (cycles 6502 réels) pour que le mode Step avance comme RUN
+        // (boucle BIT $D012 / BMI du Woz ~0xFFEF).
         if (displayBusyCycles > 0) {
-            // A typical polling loop (LDA $D012 / BPL loop) takes ~7 CPU cycles per iteration
-            static constexpr int POLL_LOOP_CYCLES = 7;
-            displayBusyCycles = std::max(0, displayBusyCycles - POLL_LOOP_CYCLES);
             return mem[address] | 0x80; // busy
         }
         return mem[address] & 0x7F; // ready
@@ -457,6 +455,9 @@ int Memory::getTerminalSpeed() const
 
 void Memory::advanceCycles(int cycles)
 {
+    if (cycles > 0 && displayBusyCycles > 0) {
+        displayBusyCycles = std::max(0, displayBusyCycles - cycles);
+    }
     cassetteDevice->advanceCycles(cycles);
 }
 

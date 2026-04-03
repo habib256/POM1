@@ -10,7 +10,8 @@ namespace {
 
 constexpr int kCharmapGlyphCount = 128;
 constexpr int kCharmapBytesPerGlyph = 8;
-constexpr int kCharmapVisibleRows = 7;
+/** 5 colonnes × 8 lignes dans la ROM (ligne 7 = descentes y, g, p, q, j, …). */
+constexpr int kCharmapVisibleRows = 8;
 constexpr int kCharmapVisibleCols = 5;
 
 }
@@ -28,7 +29,8 @@ ImVec2 Screen_ImGui::computeApple1CellDimensions(ImVec2 charSize)
 {
     const float cellHeight = charSize.y * kCellHeightFontScale;
     const float cellWidth = cellHeight * (kApple1ViewportAspectRatio * static_cast<float>(kApple1Rows) /
-                                          static_cast<float>(kApple1Columns));
+                                          static_cast<float>(kApple1Columns)) *
+                            kApple1RasterWidthScale;
     return ImVec2(cellWidth, cellHeight);
 }
 
@@ -91,7 +93,7 @@ void Screen_ImGui::drawCharmapGlyph(ImDrawList* drawList, float x, float y, floa
         return;
     }
 
-    // Avec kApple1ViewportAspectRatio, ~60%/72% donne des « pixels » 5×7 quasi carrés à l’écran
+    // Avec kApple1ViewportAspectRatio, ~60%/72% donne des « pixels » 5×8 quasi carrés à l’écran
     const float glyphAreaW = cellWidth * 0.60f;
     const float glyphAreaH = cellHeight * 0.72f;
     const float gapX = std::max(1.0f, glyphAreaW / 22.0f);
@@ -229,7 +231,7 @@ void Screen_ImGui::render()
     dirty = false;
 
     ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(0, 0));
-    ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(8, 8));
+    ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(4, 4));
 
     const bool useCharmapRenderer = charmapLoaded &&
         characterRenderMode == CharacterRenderMode::Apple1Charmap;
@@ -269,14 +271,14 @@ void Screen_ImGui::render()
     const float cellWidth = cellDim.x;
     const float cellHeight = cellDim.y;
 
-    // Taille « nominale » du raster (ratio Apple 1 fixe via computeApple1CellDimensions)
+    // Taille « nominale » du raster (hauteur = police ; largeur = ratio matériel × kApple1RasterWidthScale)
     const float nomW = cellWidth * static_cast<float>(SCREEN_WIDTH) * scale;
     const float nomH = cellHeight * static_cast<float>(SCREEN_HEIGHT) * scale;
 
     // Zone dessinable sous la barre de titre (pas GetWindowSize, qui inclut la décoration)
     ImVec2 avail = ImGui::GetContentRegionAvail();
-    // Laisse une marge horizontale : le raster ne s’étire pas sur toute la largeur utile
-    constexpr float kRasterHorizontalFill = 0.93f;
+    // Fraction de la largeur utile utilisée pour dimensionner le raster (proche de 1 = peu de bandes latérales)
+    constexpr float kRasterHorizontalFill = 0.97f;
     const float fitW = avail.x * kRasterHorizontalFill;
     const float safeNomW = std::max(nomW, 1.0f);
     const float safeNomH = std::max(nomH, 1.0f);
@@ -335,10 +337,11 @@ void Screen_ImGui::render()
                     if (c == 0) c = ' ';
                     if (c == ' ') continue;
 
-                    const float charOffsetX = (scaledCellW - charSize.x * textScale) * 0.5f;
-                    const float charOffsetY = (scaledCellH - charSize.y * textScale) * 0.5f;
+                    const float hostTextScale = textScale * hostAsciiGlyphScale;
+                    const float charOffsetX = (scaledCellW - charSize.x * hostTextScale) * 0.5f;
+                    const float charOffsetY = (scaledCellH - charSize.y * hostTextScale) * 0.5f;
                     char str[2] = { static_cast<char>(c), 0 };
-                    drawList->AddText(ImGui::GetFont(), ImGui::GetFontSize() * textScale,
+                    drawList->AddText(ImGui::GetFont(), ImGui::GetFontSize() * hostTextScale,
                                       ImVec2(px + charOffsetX, py + charOffsetY), col, str);
                 }
             }

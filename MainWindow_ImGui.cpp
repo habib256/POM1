@@ -16,6 +16,17 @@
 #include <emscripten/html5.h>
 #endif
 
+namespace {
+
+// Taille fenêtre « Apple 1 Screen » ≈ raster + chrome ImGui (serré pour limiter l’espace vide)
+constexpr float kApple1ImGuiWinPadW = 22.0f;
+constexpr float kApple1ImGuiWinPadH = 46.0f;
+/** Marge OS autour de la zone utile (barre menu, dock, autres panneaux ImGui). */
+constexpr int kApple1GlfwExtraW = 22;
+constexpr int kApple1GlfwExtraH = 42;
+
+} // namespace
+
 // Single source of truth: keyboard shortcuts with display labels
 // Entries with action=nullptr are handled specially in handleGlfwKey
 const MainWindow_ImGui::Shortcut MainWindow_ImGui::shortcuts[] = {
@@ -62,8 +73,10 @@ void MainWindow_ImGui::createPom1()
     memoryViewer->setWriteCallback([this](quint16 address, quint8 value) {
         emulation->writeMemory(address, value);
     });
+    // Republie cpuRunning=true (le constructeur publie une fois avant runRequested.store(true)).
+    emulation->startCpu();
     emulation->copySnapshot(uiSnapshot);
-    
+
     // Démarrer le CPU automatiquement pour que le Woz Monitor fonctionne
     cpuRunning = true;
     stepMode = false;
@@ -113,15 +126,15 @@ void MainWindow_ImGui::render()
         ImVec2 charSize = ImGui::CalcTextSize("M");
         ImGui::PopFont();
         const ImVec2 cell = Screen_ImGui::computeApple1CellDimensions(charSize);
-        float sw = cell.x * Screen_ImGui::kApple1Columns * screen->scale + 40; // marge fenêtre
-        float sh = cell.y * Screen_ImGui::kApple1Rows * screen->scale + 60;
+        float sw = cell.x * Screen_ImGui::kApple1Columns * screen->scale + kApple1ImGuiWinPadW;
+        float sh = cell.y * Screen_ImGui::kApple1Rows * screen->scale + kApple1ImGuiWinPadH;
         float toolbarBottom = ImGui::GetFrameHeight() + 34.0f;
         ImGui::SetNextWindowPos(ImVec2(10, toolbarBottom + 5));
         ImGui::SetNextWindowSize(ImVec2(sw, sh));
         // Redimensionner la fenêtre GLFW
         if (window) {
-            int winW = (int)sw + 20;
-            int winH = (int)sh + (int)toolbarBottom + 40;
+            int winW = (int)sw + kApple1GlfwExtraW;
+            int winH = (int)sh + (int)toolbarBottom + kApple1GlfwExtraH;
             glfwSetWindowSize(window, winW, winH);
         }
         firstFrame = false;
@@ -141,17 +154,19 @@ void MainWindow_ImGui::render()
             ImVec2 charSize = ImGui::CalcTextSize("M");
             ImGui::PopFont();
             const ImVec2 cell = Screen_ImGui::computeApple1CellDimensions(charSize);
-            float sw = cell.x * Screen_ImGui::kApple1Columns * screen->scale + 40;
-            float sh = cell.y * Screen_ImGui::kApple1Rows * screen->scale + 60;
+            float sw = cell.x * Screen_ImGui::kApple1Columns * screen->scale + kApple1ImGuiWinPadW;
+            float sh = cell.y * Screen_ImGui::kApple1Rows * screen->scale + kApple1ImGuiWinPadH;
             ImGui::SetNextWindowPos(ImVec2(10, toolbarBottom + 5));
             ImGui::SetNextWindowSize(ImVec2(sw, sh));
         }
         wasFullscreen = fullscreen;
     }
 
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(6.0f, 5.0f));
     ImGui::Begin("Apple 1 Screen");
     screen->render();
     ImGui::End();
+    ImGui::PopStyleVar();
 
     // Visualiseur de mémoire
     if (showMemoryViewer) {
@@ -430,6 +445,71 @@ void MainWindow_ImGui::renderToolbar()
             if (ImGui::Button(ICON_FA_MAP, btnSize)) showMemoryMap = !showMemoryMap;
             if (map) ImGui::PopStyleColor();
             if (ImGui::IsItemHovered()) ImGui::SetTooltip("Memory Map");
+        }
+
+        // --- Séparateur ---
+        ImGui::SameLine(0, 12);
+        ImGui::SeparatorEx(ImGuiSeparatorFlags_Vertical);
+        ImGui::SameLine(0, 12);
+
+        // --- Character mode: Font Awesome apple (charmap) / font (host) ---
+        {
+            const bool charm = (screen->characterRenderMode == Screen_ImGui::CharacterRenderMode::Apple1Charmap);
+            const char* charIcon = charm ? ICON_FA_APPLE_WHOLE : ICON_FA_FONT;
+            if (charm) {
+                ImGui::PushStyleColor(ImGuiCol_Button, activeColor);
+            }
+            if (ImGui::Button(charIcon, btnSize)) {
+                screen->characterRenderMode = charm ? Screen_ImGui::CharacterRenderMode::HostAscii
+                                                     : Screen_ImGui::CharacterRenderMode::Apple1Charmap;
+            }
+            if (charm) {
+                ImGui::PopStyleColor();
+            }
+            if (ImGui::IsItemHovered()) {
+                ImGui::SetTooltip(
+                    charm ? "Apple-1 charmap (bitmap ROM)\nClick — use host ASCII font"
+                          : "Host ASCII font\nClick — use Apple-1 charmap");
+            }
+        }
+
+        ImGui::SameLine(0, 6);
+
+        // --- Monitor phosphor tint (color swatches, no text) ---
+        {
+            const ImVec2 swatchSize(22.0f, 22.0f);
+            const ImVec4 borderSel(0.35f, 0.55f, 1.0f, 1.0f);
+            const ImVec4 borderIdle(0.0f, 0.0f, 0.0f, 0.5f);
+
+            auto swatch = [&](const char* id, bool selected, ImVec4 base, Screen_ImGui::MonitorMode mode,
+                              const char* tip) {
+                const ImVec4 hov(std::min(1.0f, base.x * 1.14f + 0.03f), std::min(1.0f, base.y * 1.14f + 0.03f),
+                                 std::min(1.0f, base.z * 1.14f + 0.03f), 1.0f);
+                const ImVec4 act(base.x * 0.82f, base.y * 0.82f, base.z * 0.82f, 1.0f);
+                ImGui::PushStyleColor(ImGuiCol_Button, base);
+                ImGui::PushStyleColor(ImGuiCol_ButtonHovered, hov);
+                ImGui::PushStyleColor(ImGuiCol_ButtonActive, act);
+                ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.0f, 0.0f, 0.0f, 0.0f));
+                ImGui::PushStyleVar(ImGuiStyleVar_FrameBorderSize, selected ? 2.5f : 1.0f);
+                ImGui::PushStyleColor(ImGuiCol_Border, selected ? borderSel : borderIdle);
+                if (ImGui::Button(id, swatchSize)) {
+                    screen->monitorMode = mode;
+                }
+                ImGui::PopStyleColor(5);
+                ImGui::PopStyleVar();
+                if (ImGui::IsItemHovered()) {
+                    ImGui::SetTooltip("%s", tip);
+                }
+            };
+
+            swatch("##phos_green", screen->monitorMode == Screen_ImGui::MonitorMode::Green,
+                   ImVec4(0.12f, 0.78f, 0.28f, 1.0f), Screen_ImGui::MonitorMode::Green, "Green phosphor");
+            ImGui::SameLine(0, 6);
+            swatch("##phos_amber", screen->monitorMode == Screen_ImGui::MonitorMode::Amber,
+                   ImVec4(0.98f, 0.58f, 0.12f, 1.0f), Screen_ImGui::MonitorMode::Amber, "Amber / brown phosphor");
+            ImGui::SameLine(0, 6);
+            swatch("##phos_mono", screen->monitorMode == Screen_ImGui::MonitorMode::Monochrome,
+                   ImVec4(0.9f, 0.9f, 0.92f, 1.0f), Screen_ImGui::MonitorMode::Monochrome, "Monochrome (white)");
         }
 
         // --- About button aligned to the right ---
@@ -764,6 +844,14 @@ void MainWindow_ImGui::renderScreenConfigDialog()
         ImGui::SameLine();
         ImGui::RadioButton("ASCII Host", &renderMode, static_cast<int>(Screen_ImGui::CharacterRenderMode::HostAscii));
         screen->characterRenderMode = static_cast<Screen_ImGui::CharacterRenderMode>(renderMode);
+        if (screen->characterRenderMode == Screen_ImGui::CharacterRenderMode::HostAscii) {
+            ImGui::Indent();
+            ImGui::SliderFloat("Host ASCII character size", &screen->hostAsciiGlyphScale, 1.0f, 2.0f, "%.2f×");
+            if (ImGui::IsItemHovered()) {
+                ImGui::SetTooltip("Larger than 1.0 uses more of each cell; may touch neighbors slightly.");
+            }
+            ImGui::Unindent();
+        }
 
         int monitorMode = static_cast<int>(screen->monitorMode);
         ImGui::Spacing();
@@ -1646,8 +1734,13 @@ void MainWindow_ImGui::handleGlfwChar(unsigned int codepoint)
 void MainWindow_ImGui::handleGlfwKey(int key, int scancode, int action, int mods)
 {
     (void)scancode;
-    if (action != GLFW_PRESS)
+    if (action == GLFW_RELEASE) {
         return;
+    }
+    // GLFW ne renvoie qu'un seul PRESS au début ; les pas suivants pendant un maintien sont des REPEAT.
+    if (action == GLFW_REPEAT && key != GLFW_KEY_F7) {
+        return;
+    }
 
     int activeMods = mods & (GLFW_MOD_CONTROL | GLFW_MOD_SHIFT | GLFW_MOD_ALT | GLFW_MOD_SUPER);
 
