@@ -111,6 +111,11 @@ void CassetteDevice::audioDataCallback(ma_device* pDevice, void* pOutput, const 
 
 bool CassetteDevice::initAudio()
 {
+#ifdef __EMSCRIPTEN__
+    // Pas de fil audio miniaudio sur le Web (pas de pthreads par défaut, AudioContext après geste utilisateur).
+    audioAvailable = false;
+    return false;
+#else
     shutdownAudio();
 
     ma_device_config config = ma_device_config_init(ma_device_type_playback);
@@ -141,6 +146,7 @@ bool CassetteDevice::initAudio()
 
     audioAvailable = true;
     return true;
+#endif
 }
 
 double CassetteDevice::getQueuedAudioSeconds() const

@@ -78,11 +78,15 @@ public:
     void clearTapeCapture();
     void setHardwareAccurateLiveAudio(bool enabled);
 
+    /// Web (Emscripten) : pas de std::thread — avancer l’émulation depuis la boucle principale.
+    void pumpEmulationMainThread(double deltaSeconds);
+
 private:
     static constexpr quint16 kDefaultResetVector = 0xFF00;
 
 private:
     void emulationLoop();
+    void runEmulationSlice(double elapsedSeconds);
     void publishSnapshotLocked();
     void processQueuedKeysLocked();
 
@@ -107,6 +111,8 @@ private:
     std::atomic<int> executionSpeedCyclesPerFrame { 16667 };
     /// Dernière vitesse utilisée pour le budget temps réel (réinitialise le budget si elle change).
     int cycleBudgetAnchorCpf = -1;
+    /// Budget de cycles partagé entre le fil d’émulation (natif) et pumpEmulationMainThread (Web).
+    double emulationCycleBudget = 0.0;
 };
 
 #endif // EMULATIONCONTROLLER_H
