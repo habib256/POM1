@@ -1661,8 +1661,10 @@ void MainWindow_ImGui::updateStatus(float deltaTime)
 
 void MainWindow_ImGui::updateCpuExecution(float deltaTime)
 {
-    (void)deltaTime;
     emulation->setExecutionSpeedCyclesPerFrame(executionSpeed);
+#ifdef __EMSCRIPTEN__
+    emulation->pumpEmulationMainThread(static_cast<double>(deltaTime));
+#endif
 }
 
 void MainWindow_ImGui::startCpu()

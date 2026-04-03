@@ -32,16 +32,20 @@ EmulationController::EmulationController(Screen_ImGui* screenWidget)
     }
 
     runRequested.store(true);
+#ifndef __EMSCRIPTEN__
     emulationThread = std::thread(&EmulationController::emulationLoop, this);
+#endif
 }
 
 EmulationController::~EmulationController()
 {
     terminateRequested.store(true);
     wakeCv.notify_all();
+#ifndef __EMSCRIPTEN__
     if (emulationThread.joinable()) {
         emulationThread.join();
     }
+#endif
 }
 
 void EmulationController::copySnapshot(EmulationSnapshot& out) const
@@ -397,11 +401,69 @@ void EmulationController::publishSnapshotLocked()
     latestSnapshot = std::move(snapshot);
 }
 
+void EmulationController::runEmulationSlice(double elapsedSeconds)
+{
+    const int cpf = executionSpeedCyclesPerFrame.load();
+    if (cpf != cycleBudgetAnchorCpf) {
+        emulationCycleBudget = 0.0;
+        cycleBudgetAnchorCpf = cpf;
+    }
+
+    const double cyclesPerSecond = static_cast<double>(cpf) * kFramesPerSecond;
+    emulationCycleBudget += cyclesPerSecond * elapsedSeconds;
+
+    int cyclesToRun = std::min(kMaxSliceCycles, static_cast<int>(emulationCycleBudget));
+    if (cyclesToRun <= 0) {
+#ifndef __EMSCRIPTEN__
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+#endif
+        return;
+    }
+
+    {
+        std::lock_guard<std::mutex> lock(stateMutex);
+        memory->getCassetteDevice().setLiveAudioTimebaseHz(static_cast<uint32_t>(std::max(1.0, cyclesPerSecond)));
+        processQueuedKeysLocked();
+        // Re-vérifier sous le mutex : stopCpu()/step peut avoir eu lieu après le test du haut de boucle.
+        // Sinon cpu->start() annule cpu->stop() et une tranche entière s'exécute entre deux F7.
+        if (runRequested.load()) {
+            emulationCycleBudget -= static_cast<double>(cyclesToRun);
+            cpu->start();
+            cpu->run(cyclesToRun);
+        }
+        publishSnapshotLocked();
+    }
+}
+
+void EmulationController::pumpEmulationMainThread(double deltaSeconds)
+{
+#ifdef __EMSCRIPTEN__
+    if (!runRequested.load()) {
+        return;
+    }
+
+    double queuedAudioSeconds = 0.0;
+    {
+        std::lock_guard<std::mutex> lock(stateMutex);
+        queuedAudioSeconds = memory->getCassetteDevice().getQueuedAudioSeconds();
+    }
+    if (queuedAudioSeconds > kMaxLiveAudioLeadSeconds) {
+        return;
+    }
+
+    const double elapsed =
+        (deltaSeconds > 0.0 && deltaSeconds < 0.5) ? deltaSeconds : (1.0 / kFramesPerSecond);
+    runEmulationSlice(elapsed);
+#else
+    (void)deltaSeconds;
+#endif
+}
+
 void EmulationController::emulationLoop()
 {
     using clock = std::chrono::steady_clock;
     auto lastTick = clock::now();
-    double cycleBudget = 0.0;
+    emulationCycleBudget = 0.0;
 
     while (!terminateRequested.load()) {
         if (!runRequested.load()) {
@@ -426,33 +488,6 @@ void EmulationController::emulationLoop()
         const std::chrono::duration<double> elapsed = now - lastTick;
         lastTick = now;
 
-        const int cpf = executionSpeedCyclesPerFrame.load();
-        if (cpf != cycleBudgetAnchorCpf) {
-            cycleBudget = 0.0;
-            cycleBudgetAnchorCpf = cpf;
-        }
-
-        const double cyclesPerSecond = static_cast<double>(cpf) * kFramesPerSecond;
-        cycleBudget += cyclesPerSecond * elapsed.count();
-
-        int cyclesToRun = std::min(kMaxSliceCycles, static_cast<int>(cycleBudget));
-        if (cyclesToRun <= 0) {
-            std::this_thread::sleep_for(std::chrono::milliseconds(1));
-            continue;
-        }
-
-        {
-            std::lock_guard<std::mutex> lock(stateMutex);
-            memory->getCassetteDevice().setLiveAudioTimebaseHz(static_cast<uint32_t>(std::max(1.0, cyclesPerSecond)));
-            processQueuedKeysLocked();
-            // Re-vérifier sous le mutex : stopCpu()/step peut avoir eu lieu après le test du haut de boucle.
-            // Sinon cpu->start() annule cpu->stop() et une tranche entière s'exécute entre deux F7.
-            if (runRequested.load()) {
-                cycleBudget -= static_cast<double>(cyclesToRun);
-                cpu->start();
-                cpu->run(cyclesToRun);
-            }
-            publishSnapshotLocked();
-        }
+        runEmulationSlice(elapsed.count());
     }
 }
