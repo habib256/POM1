@@ -142,32 +142,45 @@ int main(int argc, char* argv[])
         }
         glfwPollEvents();
 
-        // Sync canvas drawing buffer with CSS size (fixes fullscreen/resize)
-        double cssW, cssH;
+        // Sync taille canvas (CSS) ↔ buffer WebGL ; garde-fous si get_element_css_size renvoie 0
+        double cssW = 0.0;
+        double cssH = 0.0;
         emscripten_get_element_css_size("#canvas", &cssW, &cssH);
-        int bufW, bufH;
+        int cssWi = (int)cssW;
+        int cssHi = (int)cssH;
+        if (cssWi < 1) {
+            cssWi = 1200;
+        }
+        if (cssHi < 1) {
+            cssHi = 800;
+        }
+        int bufW = 0;
+        int bufH = 0;
         emscripten_get_canvas_element_size("#canvas", &bufW, &bufH);
-        if (bufW != (int)cssW || bufH != (int)cssH) {
-            emscripten_set_canvas_element_size("#canvas", (int)cssW, (int)cssH);
-            // Tell GLFW about the new size so mouse coords stay correct
-            glfwSetWindowSize(c->window, (int)cssW, (int)cssH);
+        if (bufW != cssWi || bufH != cssHi) {
+            emscripten_set_canvas_element_size("#canvas", cssWi, cssHi);
+            glfwSetWindowSize(c->window, cssWi, cssHi);
         }
 
         ImGui_ImplOpenGL3_NewFrame();
         ImGui_ImplGlfw_NewFrame();
 
-        // Override ImGui display size with actual canvas dimensions
-        // (GLFW's cached window size may be stale after fullscreen toggle)
         ImGuiIO& io = ImGui::GetIO();
-        io.DisplaySize = ImVec2((float)cssW, (float)cssH);
+        int fbW = 0;
+        int fbH = 0;
+        glfwGetFramebufferSize(c->window, &fbW, &fbH);
+        if (fbW < 1 || fbH < 1) {
+            fbW = cssWi;
+            fbH = cssHi;
+        }
+        io.DisplaySize = ImVec2((float)fbW, (float)fbH);
 
         ImGui::NewFrame();
 
         c->mainWindow->render();
 
         ImGui::Render();
-        // Use actual canvas size for viewport (not glfwGetFramebufferSize which may be stale)
-        glViewport(0, 0, (int)cssW, (int)cssH);
+        glViewport(0, 0, fbW, fbH);
         glClearColor(0.45f, 0.55f, 0.60f, 1.00f);
         glClear(GL_COLOR_BUFFER_BIT);
         ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
