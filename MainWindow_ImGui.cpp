@@ -1,4 +1,5 @@
 #include "MainWindow_ImGui.h"
+#include "POM1Build.h"
 #include "imgui.h"
 #include "imgui_internal.h"
 #include "IconsFontAwesome6.h"
@@ -11,7 +12,7 @@
 #include <algorithm>
 #include <GLFW/glfw3.h>
 
-#ifdef __EMSCRIPTEN__
+#if POM1_IS_WASM
 #include <emscripten.h>
 #include <emscripten/html5.h>
 #endif
@@ -97,7 +98,7 @@ void MainWindow_ImGui::render()
     cpuRunning = uiSnapshot.cpuRunning;
     memoryViewer->updateLiveMemory(uiSnapshot.memory);
 
-#ifdef __EMSCRIPTEN__
+#if POM1_IS_WASM
     // Sync fullscreen flag with browser state (user may exit via Escape)
     EmscriptenFullscreenChangeEvent fsStatus;
     if (emscripten_get_fullscreen_status(&fsStatus) == EMSCRIPTEN_RESULT_SUCCESS) {
@@ -878,7 +879,7 @@ void MainWindow_ImGui::renderScreenConfigDialog()
 
         ImGui::Spacing();
         if (ImGui::Checkbox("Fullscreen", &fullscreen)) {
-#ifdef __EMSCRIPTEN__
+#if POM1_IS_WASM
             if (fullscreen) {
                 EmscriptenFullscreenStrategy strategy{};
                 strategy.scaleMode = EMSCRIPTEN_FULLSCREEN_SCALE_STRETCH;
@@ -1662,7 +1663,7 @@ void MainWindow_ImGui::updateStatus(float deltaTime)
 void MainWindow_ImGui::updateCpuExecution(float deltaTime)
 {
     emulation->setExecutionSpeedCyclesPerFrame(executionSpeed);
-#ifdef __EMSCRIPTEN__
+#if POM1_IS_WASM
     emulation->pumpEmulationMainThread(static_cast<double>(deltaTime));
 #endif
 }
