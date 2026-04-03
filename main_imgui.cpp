@@ -1,13 +1,14 @@
 #define GL_SILENCE_DEPRECATION
 #include <iostream>
 #include <GLFW/glfw3.h>
+#include "POM1Build.h"
 #include "imgui.h"
 #include "imgui_impl_glfw.h"
 #include "imgui_impl_opengl3.h"
 #include "MainWindow_ImGui.h"
 #include "IconsFontAwesome6.h"
 
-#ifdef __EMSCRIPTEN__
+#if POM1_IS_WASM
 #include <emscripten.h>
 #include <emscripten/html5.h>
 #endif
@@ -50,7 +51,7 @@ int main(int argc, char* argv[])
         return -1;
 
     // OpenGL / GLSL context hints
-#ifdef __EMSCRIPTEN__
+#if POM1_IS_WASM
     // WebGL 2.0 = OpenGL ES 3.0 — GLSL ES 300
     const char* glsl_version = "#version 300 es";
     glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
@@ -94,7 +95,7 @@ int main(int argc, char* argv[])
     iconsConfig.PixelSnapH = true;
     iconsConfig.GlyphMinAdvanceX = 15.0f;
     static const ImWchar iconsRanges[] = { ICON_MIN_FA, ICON_MAX_16_FA, 0 };
-#ifdef __EMSCRIPTEN__
+#if POM1_IS_WASM
     const char* fontPath = "fonts/fa-solid-900.ttf";
 #else
     const char* fontPath = "../fonts/fa-solid-900.ttf";
@@ -120,7 +121,7 @@ int main(int argc, char* argv[])
     glfwSetKeyCallback(window, glfw_key_callback);
 
     // Main loop
-#ifdef __EMSCRIPTEN__
+#if POM1_IS_WASM
     // Emscripten: browser controls the loop — pass a callback
     struct LoopContext {
         GLFWwindow* window;

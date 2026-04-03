@@ -1,4 +1,5 @@
 #include "EmulationController.h"
+#include "POM1Build.h"
 
 #include <algorithm>
 #include <chrono>
@@ -32,7 +33,7 @@ EmulationController::EmulationController(Screen_ImGui* screenWidget)
     }
 
     runRequested.store(true);
-#ifndef __EMSCRIPTEN__
+#if !POM1_IS_WASM
     emulationThread = std::thread(&EmulationController::emulationLoop, this);
 #endif
 }
@@ -41,7 +42,7 @@ EmulationController::~EmulationController()
 {
     terminateRequested.store(true);
     wakeCv.notify_all();
-#ifndef __EMSCRIPTEN__
+#if !POM1_IS_WASM
     if (emulationThread.joinable()) {
         emulationThread.join();
     }
@@ -414,7 +415,7 @@ void EmulationController::runEmulationSlice(double elapsedSeconds)
 
     int cyclesToRun = std::min(kMaxSliceCycles, static_cast<int>(emulationCycleBudget));
     if (cyclesToRun <= 0) {
-#ifndef __EMSCRIPTEN__
+#if !POM1_IS_WASM
         std::this_thread::sleep_for(std::chrono::milliseconds(1));
 #endif
         return;
@@ -437,7 +438,7 @@ void EmulationController::runEmulationSlice(double elapsedSeconds)
 
 void EmulationController::pumpEmulationMainThread(double deltaSeconds)
 {
-#ifdef __EMSCRIPTEN__
+#if POM1_IS_WASM
     if (!runRequested.load()) {
         return;
     }
@@ -459,6 +460,7 @@ void EmulationController::pumpEmulationMainThread(double deltaSeconds)
 #endif
 }
 
+#if !POM1_IS_WASM
 void EmulationController::emulationLoop()
 {
     using clock = std::chrono::steady_clock;
@@ -491,3 +493,9 @@ void EmulationController::emulationLoop()
         runEmulationSlice(elapsed.count());
     }
 }
+#else
+void EmulationController::emulationLoop()
+{
+    /* WASM : jamais appelé — l’émulation est poussée par pumpEmulationMainThread(). */
+}
+#endif

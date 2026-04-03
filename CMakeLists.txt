@@ -47,7 +47,10 @@ target_include_directories(${PROJECT_NAME} PRIVATE
 if(EMSCRIPTEN)
     # ── Emscripten / WebAssembly ──────────────────────────────────────
     # ImGui OpenGL3 : forcer le profil GLES3 / WebGL2 (sinon le loader « desktop » casse le rendu).
-    target_compile_definitions(${PROJECT_NAME} PRIVATE IMGUI_IMPL_OPENGL_ES3)
+    target_compile_definitions(${PROJECT_NAME} PRIVATE
+        IMGUI_IMPL_OPENGL_ES3
+        POM1_BUILD_FOR_EMSCRIPTEN=1
+    )
     # GLFW3 & WebGL are provided as Emscripten ports — no find_package needed.
     # Preload assets into the virtual filesystem.
     set(PRELOAD_DIR ${CMAKE_CURRENT_SOURCE_DIR})

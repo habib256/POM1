@@ -7,8 +7,12 @@
 #include <mutex>
 #include <queue>
 #include <string>
-#include <thread>
 #include <vector>
+
+#include "POM1Build.h"
+#if !POM1_IS_WASM
+#include <thread>
+#endif
 
 #include "M6502.h"
 #include "Memory.h"
@@ -105,7 +109,9 @@ private:
     EmulationSnapshot latestSnapshot;
     quint16 preferredSoftResetVector = kDefaultResetVector;
 
+#if !POM1_IS_WASM
     std::thread emulationThread;
+#endif
     std::atomic<bool> terminateRequested { false };
     std::atomic<bool> runRequested { false };
     std::atomic<int> executionSpeedCyclesPerFrame { 16667 };

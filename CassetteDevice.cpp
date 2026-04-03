@@ -1,4 +1,5 @@
 #include "CassetteDevice.h"
+#include "POM1Build.h"
 
 #include <algorithm>
 #include <cmath>
@@ -111,7 +112,7 @@ void CassetteDevice::audioDataCallback(ma_device* pDevice, void* pOutput, const 
 
 bool CassetteDevice::initAudio()
 {
-#ifdef __EMSCRIPTEN__
+#if POM1_IS_WASM
     // Pas de fil audio miniaudio sur le Web (pas de pthreads par défaut, AudioContext après geste utilisateur).
     audioAvailable = false;
     return false;
