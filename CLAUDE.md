@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-POM1 v1.0 is an Apple 1 emulator built with Dear ImGui. It emulates the MOS 6502 CPU and Apple 1 hardware including memory-mapped I/O, display, and keyboard input. The UI is fully in English. Builds on Linux, macOS, Windows, and Web (Emscripten/WASM).
+POM1 v1.1 is an Apple 1 emulator built with Dear ImGui. It emulates the MOS 6502 CPU and Apple 1 hardware including memory-mapped I/O, display, keyboard input, and the Apple Cassette Interface (ACI) with live audio and tape files. The UI is fully in English. Builds on Linux, macOS, Windows, and Web (Emscripten/WASM).
 
 ## Build & Run Commands
 
@@ -58,7 +58,7 @@ ld65 -C software/apple1.cfg -o build/program.bin build/program.o
 ### UI Layer (ImGui-based)
 - **main_imgui.cpp**: GLFW/OpenGL3 initialization (GL 3.2 Core, GLSL 150) and main render loop with GLFW keyboard callbacks chained to ImGui. `GLFW_OPENGL_FORWARD_COMPAT` is macOS-only (`#ifdef __APPLE__`).
 - **MainWindow_ImGui.cpp/h**: Main application window with menu bar, toolbar with icon buttons, status bar, window management, CPU speed control (1/2/Max MHz), file loading/saving dialogs, clipboard paste, memory map window, and keyboard input handling.
-- **Screen_ImGui.cpp/h**: Apple 1 display emulation (40x24 character grid) with green/white monitor modes, `@` blinking cursor (timer uses `fmod` to avoid float overflow), scanline CRT effect, and configurable text scale. Characters are rendered individually with cell spacing for authentic Apple 1 look.
+- **Screen_ImGui.cpp/h**: Apple 1 display emulation (40x24 character grid) with green/white monitor modes, `@` blinking cursor (timer uses `fmod` to avoid float overflow), scanline CRT effect, configurable text scale, and bitmap glyph rendering sourced from `roms/charmap.rom` when available.
 - **MemoryViewer_ImGui.cpp/h**: Interactive hex editor with color-coded regions (matching Memory Map colors), search (hex and ASCII), bookmarks, navigation shortcuts, and real-time editing.
 
 ### ROM Files (roms/)
@@ -67,7 +67,7 @@ ld65 -C software/apple1.cfg -o build/program.bin build/program.o
 - **krusader-1.3.rom** (8KB @ 0xA000): Symbolic assembler
 - **charmap.rom** (1KB): Character map for display
 
-All three main ROMs are loaded automatically at startup by Memory::loadWozMonitor(), loadBasic(), and loadKrusader(). Each function validates the file size before loading.
+The main firmware ROMs are loaded automatically at startup by `Memory::loadWozMonitor()`, `loadBasic()`, `loadKrusader()`, and `loadAciRom()`. The terminal renderer also uses `charmap.rom` when available.
 
 ### Software directory (software/)
 Contains Apple 1 programs in Woz Monitor hex dump format (.txt) organized in subdirectories:
@@ -96,7 +96,7 @@ The CPU has three execution modes managed by MainWindow_ImGui:
 Access CPU state via getter methods for debugging: `getAccumulator()`, `getProgramCounter()`, etc.
 
 ### Display Rendering
-Characters are rendered individually via `ImDrawList::AddText()` with cell-based positioning. Each cell is wider than the glyph (1.4x width, 1.3x height) to provide authentic Apple 1 character spacing. The window size at startup is calculated from these cell dimensions.
+Characters are rendered from the Apple-1 bitmap character generator ROM (`charmap.rom`) using a 5x7 pixel matrix within widened display cells. The window size at startup is still calculated from the cell dimensions used by `Screen_ImGui::render()`.
 
 ### Addressing Mode Implementation
 The M6502 addressing mode functions (Abs, AbsX, AbsY, Ind, IndZeroX, IndZeroY, etc.) store the resolved address in `op` (quint16). The Imm() function stores `programCounter` in `op` (so memRead(op) fetches the immediate value). All instructions use `memory->memRead(op)` or `memory->memWrite(op, value)` uniformly.
@@ -173,6 +173,13 @@ The setup script supports apt (Ubuntu/Debian), dnf (Fedora/CentOS), and pacman (
 The `build/`, `build-wasm/`, and `imgui/` directories are excluded from git via `.gitignore`.
 
 ## Version History
+
+### v1.1 (April 2026)
+- Apple Cassette Interface: ACI ROM at `$C100`, I/O at `$C000`/`$C081`, live audio (hardware-faithful or stabilized), load/save `.aci` and `.wav`, Cassette Control window
+- Terminal: bitmap rendering from `charmap.rom`, CRT scanlines/glow, green / brown / monochrome, optional host-ASCII mode; viewport aspect ~280:192; charmap contrast tuning
+- Emulation on a worker thread with UI snapshots; CPU speed (1 MHz / 2 MHz / Max) syncs immediately from toolbar and Settings
+- Memory Map: two-column layout (map + I/O under map, legend + ACI ROM / CPU vectors)
+- Defaults: brown phosphor, cassette live audio hardware-faithful
 
 ### v1.0 (April 2026)
 - Dear ImGui UI with green/white CRT monitor, scanline effect

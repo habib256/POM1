@@ -1,0 +1,447 @@
+#include "EmulationController.h"
+
+#include <algorithm>
+#include <chrono>
+#include <fstream>
+#include <iomanip>
+#include <sstream>
+
+namespace {
+
+constexpr double kFramesPerSecond = 60.0;
+constexpr int kMaxSliceCycles = 12000;
+constexpr double kMaxLiveAudioLeadSeconds = 0.025;
+
+} // namespace
+
+EmulationController::EmulationController(Screen_ImGui* screenWidget)
+    : screen(screenWidget)
+{
+    memory = std::make_unique<Memory>();
+    cpu = std::make_unique<M6502>(memory.get());
+
+    memory->setDisplayCallback(Screen_ImGui::displayCallback);
+    cpu->setDisplayCallback(Screen_ImGui::displayCallback);
+
+    {
+        std::lock_guard<std::mutex> lock(stateMutex);
+        memory->configureResetVectors(kDefaultResetVector);
+        cpu->hardReset();
+        cpu->start();
+        publishSnapshotLocked();
+    }
+
+    runRequested.store(true);
+    emulationThread = std::thread(&EmulationController::emulationLoop, this);
+}
+
+EmulationController::~EmulationController()
+{
+    terminateRequested.store(true);
+    wakeCv.notify_all();
+    if (emulationThread.joinable()) {
+        emulationThread.join();
+    }
+}
+
+void EmulationController::copySnapshot(EmulationSnapshot& out) const
+{
+    std::lock_guard<std::mutex> lock(snapshotMutex);
+    out = latestSnapshot;
+}
+
+void EmulationController::setExecutionSpeedCyclesPerFrame(int cyclesPerFrame)
+{
+    executionSpeedCyclesPerFrame.store(cyclesPerFrame);
+}
+
+int EmulationController::getExecutionSpeedCyclesPerFrame() const
+{
+    return executionSpeedCyclesPerFrame.load();
+}
+
+void EmulationController::startCpu()
+{
+    runRequested.store(true);
+    {
+        std::lock_guard<std::mutex> lock(stateMutex);
+        cpu->start();
+        publishSnapshotLocked();
+    }
+    wakeCv.notify_all();
+}
+
+void EmulationController::stopCpu()
+{
+    runRequested.store(false);
+    {
+        std::lock_guard<std::mutex> lock(stateMutex);
+        cpu->stop();
+        publishSnapshotLocked();
+    }
+}
+
+void EmulationController::softReset()
+{
+    stopCpu();
+    std::lock_guard<std::mutex> lock(stateMutex);
+    memory->configureResetVectors(preferredSoftResetVector);
+    cpu->softReset();
+    cpu->start();
+    runRequested.store(true);
+    publishSnapshotLocked();
+    wakeCv.notify_all();
+}
+
+void EmulationController::hardReset()
+{
+    stopCpu();
+    std::lock_guard<std::mutex> lock(stateMutex);
+    memory->resetMemory();
+    memory->initMemory();
+    preferredSoftResetVector = kDefaultResetVector;
+    memory->configureResetVectors(kDefaultResetVector);
+    cpu->hardReset();
+    cpu->start();
+    runRequested.store(true);
+    if (screen) {
+        screen->clear();
+    }
+    publishSnapshotLocked();
+    wakeCv.notify_all();
+}
+
+void EmulationController::stepCpu()
+{
+    stopCpu();
+    std::lock_guard<std::mutex> lock(stateMutex);
+    cpu->step();
+    publishSnapshotLocked();
+}
+
+void EmulationController::queueKey(char key)
+{
+    {
+        std::lock_guard<std::mutex> lock(keyMutex);
+        queuedKeys.push(key);
+    }
+    wakeCv.notify_all();
+}
+
+void EmulationController::writeMemory(quint16 address, quint8 value)
+{
+    std::lock_guard<std::mutex> lock(stateMutex);
+    memory->memWrite(address, value);
+    publishSnapshotLocked();
+}
+
+bool EmulationController::loadHexDump(const std::string& path, quint16& startAddress, std::string& error)
+{
+    stopCpu();
+    std::lock_guard<std::mutex> lock(stateMutex);
+
+    quint16 addr = 0;
+    int result = memory->loadHexDump(path.c_str(), addr);
+    if (result != 0) {
+        error = "Error: unable to load file";
+        publishSnapshotLocked();
+        return false;
+    }
+
+    if (screen) {
+        screen->clear();
+    }
+
+    bool prevWriteInRom = memory->getWriteInRom();
+    memory->setWriteInRom(true);
+    memory->configureResetVectors(addr);
+    memory->setWriteInRom(prevWriteInRom);
+    preferredSoftResetVector = addr;
+    cpu->hardReset();
+    cpu->start();
+    runRequested.store(true);
+    startAddress = addr;
+    publishSnapshotLocked();
+    wakeCv.notify_all();
+    return true;
+}
+
+bool EmulationController::loadBinary(const std::string& path, quint16 startAddress, std::string& error)
+{
+    stopCpu();
+    std::lock_guard<std::mutex> lock(stateMutex);
+
+    int result = memory->loadBinary(path.c_str(), startAddress);
+    if (result != 0) {
+        error = "Error: unable to load file";
+        publishSnapshotLocked();
+        return false;
+    }
+
+    if (screen) {
+        screen->clear();
+    }
+
+    bool prevWriteInRom = memory->getWriteInRom();
+    memory->setWriteInRom(true);
+    memory->configureResetVectors(startAddress);
+    memory->setWriteInRom(prevWriteInRom);
+    preferredSoftResetVector = startAddress;
+    cpu->hardReset();
+    cpu->start();
+    runRequested.store(true);
+    publishSnapshotLocked();
+    wakeCv.notify_all();
+    return true;
+}
+
+bool EmulationController::saveMemoryRange(const std::string& path, quint16 startAddress, quint16 endAddress, bool binaryFormat, std::string& error)
+{
+    std::lock_guard<std::mutex> lock(stateMutex);
+    const quint8* memPtr = memory->getMemoryPointer();
+    std::ofstream file(path, binaryFormat ? std::ios::binary : std::ios::out);
+    if (!file.is_open()) {
+        error = "Error: unable to write file";
+        return false;
+    }
+
+    if (binaryFormat) {
+        for (quint16 a = startAddress; a <= endAddress; ++a) {
+            quint8 b = memPtr[a];
+            file.write(reinterpret_cast<char*>(&b), 1);
+            if (a == 0xFFFF) break;
+        }
+    } else {
+        for (quint16 a = startAddress; a <= endAddress; a += 16) {
+            file << std::hex << std::uppercase << std::setfill('0')
+                 << std::setw(4) << a << ":";
+            int lineEnd = std::min((int)a + 16, (int)endAddress + 1);
+            for (int i = a; i < lineEnd; ++i) {
+                file << " " << std::setfill('0') << std::setw(2) << (int)memPtr[(quint16)i];
+            }
+            file << "\n";
+            if (a + 16 < a) break;
+        }
+    }
+    return true;
+}
+
+void EmulationController::setWriteInRom(bool enabled)
+{
+    std::lock_guard<std::mutex> lock(stateMutex);
+    memory->setWriteInRom(enabled);
+    publishSnapshotLocked();
+}
+
+bool EmulationController::getWriteInRom() const
+{
+    std::lock_guard<std::mutex> lock(stateMutex);
+    return memory->getWriteInRom();
+}
+
+void EmulationController::setTerminalSpeed(int charsPerSecond)
+{
+    std::lock_guard<std::mutex> lock(stateMutex);
+    memory->setTerminalSpeed(charsPerSecond);
+    publishSnapshotLocked();
+}
+
+bool EmulationController::reloadBasic(std::string& error)
+{
+    std::lock_guard<std::mutex> lock(stateMutex);
+    bool prev = memory->getWriteInRom();
+    memory->setWriteInRom(true);
+    int result = memory->loadBasic();
+    memory->setWriteInRom(prev);
+    if (result != 0) {
+        error = memory->getLastError();
+    }
+    publishSnapshotLocked();
+    return result == 0;
+}
+
+bool EmulationController::reloadWozMonitor(std::string& error)
+{
+    std::lock_guard<std::mutex> lock(stateMutex);
+    bool prev = memory->getWriteInRom();
+    memory->setWriteInRom(true);
+    int result = memory->loadWozMonitor();
+    memory->setWriteInRom(prev);
+    if (result != 0) {
+        error = memory->getLastError();
+    }
+    publishSnapshotLocked();
+    return result == 0;
+}
+
+bool EmulationController::reloadKrusader(std::string& error)
+{
+    std::lock_guard<std::mutex> lock(stateMutex);
+    bool prev = memory->getWriteInRom();
+    memory->setWriteInRom(true);
+    int result = memory->loadKrusader();
+    memory->setWriteInRom(prev);
+    if (result != 0) {
+        error = memory->getLastError();
+    }
+    publishSnapshotLocked();
+    return result == 0;
+}
+
+void EmulationController::clearMemory()
+{
+    std::lock_guard<std::mutex> lock(stateMutex);
+    memory->resetMemory();
+    preferredSoftResetVector = kDefaultResetVector;
+    memory->configureResetVectors(kDefaultResetVector);
+    publishSnapshotLocked();
+}
+
+bool EmulationController::loadTape(const std::string& path, std::string& error)
+{
+    std::lock_guard<std::mutex> lock(stateMutex);
+    if (!memory->getCassetteDevice().loadTape(path)) {
+        error = memory->getCassetteDevice().getLastError();
+        publishSnapshotLocked();
+        return false;
+    }
+    memory->getCassetteDevice().rewindTape();
+    publishSnapshotLocked();
+    return true;
+}
+
+bool EmulationController::saveTape(const std::string& path, std::string& error)
+{
+    std::lock_guard<std::mutex> lock(stateMutex);
+    if (!memory->getCassetteDevice().saveTape(path)) {
+        error = memory->getCassetteDevice().getLastError();
+        publishSnapshotLocked();
+        return false;
+    }
+    publishSnapshotLocked();
+    return true;
+}
+
+void EmulationController::rewindTape()
+{
+    std::lock_guard<std::mutex> lock(stateMutex);
+    memory->getCassetteDevice().rewindTape();
+    publishSnapshotLocked();
+}
+
+void EmulationController::ejectTape()
+{
+    std::lock_guard<std::mutex> lock(stateMutex);
+    memory->getCassetteDevice().ejectTape();
+    publishSnapshotLocked();
+}
+
+void EmulationController::clearTapeCapture()
+{
+    std::lock_guard<std::mutex> lock(stateMutex);
+    memory->getCassetteDevice().clearRecordedTape();
+    publishSnapshotLocked();
+}
+
+void EmulationController::setHardwareAccurateLiveAudio(bool enabled)
+{
+    std::lock_guard<std::mutex> lock(stateMutex);
+    memory->getCassetteDevice().setHardwareAccurateLiveAudio(enabled);
+    publishSnapshotLocked();
+}
+
+void EmulationController::processQueuedKeysLocked()
+{
+    std::queue<char> localKeys;
+    {
+        std::lock_guard<std::mutex> lock(keyMutex);
+        std::swap(localKeys, queuedKeys);
+    }
+
+    while (!localKeys.empty()) {
+        memory->setKeyPressed(localKeys.front());
+        localKeys.pop();
+    }
+}
+
+void EmulationController::publishSnapshotLocked()
+{
+    EmulationSnapshot snapshot;
+    const quint8* memPtr = memory->getMemoryPointer();
+    std::copy(memPtr, memPtr + 0x10000, snapshot.memory.begin());
+    snapshot.programCounter = cpu->getProgramCounter();
+    snapshot.accumulator = cpu->getAccumulator();
+    snapshot.xRegister = cpu->getXRegister();
+    snapshot.yRegister = cpu->getYRegister();
+    snapshot.stackPointer = cpu->getStackPointer();
+    snapshot.statusRegister = cpu->getStatusRegister();
+    snapshot.cpuRunning = runRequested.load();
+    snapshot.keyReady = memory->isKeyReady();
+    snapshot.lastKey = memory->getLastKey();
+    snapshot.writeInRom = memory->getWriteInRom();
+    snapshot.ramSizeKB = memory->getRamSizeKB();
+
+    CassetteDevice& cassette = memory->getCassetteDevice();
+    snapshot.cassetteLoadedTape = cassette.hasLoadedTape();
+    snapshot.cassetteRecordedTape = cassette.hasRecordedTape();
+    snapshot.cassettePlaybackActive = cassette.isPlaybackActive();
+    snapshot.cassetteAudioAvailable = cassette.isAudioAvailable();
+    snapshot.cassetteHardwareAccurateLiveAudio = cassette.isHardwareAccurateLiveAudio();
+    snapshot.cassetteQueuedAudioSeconds = cassette.getQueuedAudioSeconds();
+    snapshot.cassetteLoadedTransitionCount = cassette.getLoadedTransitionCount();
+    snapshot.cassetteRecordedTransitionCount = cassette.getRecordedTransitionCount();
+    snapshot.cassetteLoadedTapePath = cassette.getLoadedTapePath();
+
+    std::lock_guard<std::mutex> snapshotLock(snapshotMutex);
+    latestSnapshot = std::move(snapshot);
+}
+
+void EmulationController::emulationLoop()
+{
+    using clock = std::chrono::steady_clock;
+    auto lastTick = clock::now();
+    double cycleBudget = 0.0;
+
+    while (!terminateRequested.load()) {
+        if (!runRequested.load()) {
+            std::unique_lock<std::mutex> waitLock(wakeMutex);
+            wakeCv.wait_for(waitLock, std::chrono::milliseconds(2));
+            lastTick = clock::now();
+            continue;
+        }
+
+        double queuedAudioSeconds = 0.0;
+        {
+            std::lock_guard<std::mutex> lock(stateMutex);
+            queuedAudioSeconds = memory->getCassetteDevice().getQueuedAudioSeconds();
+        }
+        if (queuedAudioSeconds > kMaxLiveAudioLeadSeconds) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+            lastTick = clock::now();
+            continue;
+        }
+
+        const auto now = clock::now();
+        const std::chrono::duration<double> elapsed = now - lastTick;
+        lastTick = now;
+
+        const double cyclesPerSecond = static_cast<double>(executionSpeedCyclesPerFrame.load()) * kFramesPerSecond;
+        cycleBudget += cyclesPerSecond * elapsed.count();
+
+        int cyclesToRun = std::min(kMaxSliceCycles, static_cast<int>(cycleBudget));
+        if (cyclesToRun <= 0) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+            continue;
+        }
+        cycleBudget -= cyclesToRun;
+
+        {
+            std::lock_guard<std::mutex> lock(stateMutex);
+            memory->getCassetteDevice().setLiveAudioTimebaseHz(static_cast<uint32_t>(std::max(1.0, cyclesPerSecond)));
+            processQueuedKeysLocked();
+            cpu->start();
+            cpu->run(cyclesToRun);
+            publishSnapshotLocked();
+        }
+    }
+}

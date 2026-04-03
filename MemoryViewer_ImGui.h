@@ -3,20 +3,25 @@
 
 #include "Memory.h"
 #include "imgui.h"
+#include <functional>
 #include <vector>
 #include <string>
 
 class MemoryViewer_ImGui
 {
 public:
-    explicit MemoryViewer_ImGui(Memory* memory);
+    explicit MemoryViewer_ImGui(Memory* memory = nullptr);
     ~MemoryViewer_ImGui() = default;
 
     void render();
+    void navigateToAddress(int address);
+    void updateLiveMemory(const std::vector<quint8>& memoryImage);
+    void setWriteCallback(std::function<void(quint16, quint8)> callback);
 
 private:
     Memory* memory;
-    const quint8* memPtr; // raw pointer for side-effect-free reads
+    const std::vector<quint8>* liveMemory = nullptr;
+    std::function<void(quint16, quint8)> writeCallback;
 
     // Interface state
     int startAddress = 0x0000;

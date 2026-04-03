@@ -23,6 +23,8 @@
 #include <queue>
 #include <string>
 #include <cstdint>
+#include <memory>
+#include "CassetteDevice.h"
 using namespace std;
 
 // Remplacer quint8 par uint8_t et quint16 par uint16_t
@@ -47,6 +49,8 @@ public:
     int loadBasic(void);
     int loadKrusader(void);
     int loadWozMonitor(void);
+    int loadAciRom(void);
+    void configureResetVectors(quint16 vectorAddress = 0xFF00);
     int loadBinary(const char* filename, quint16 startAddress);
     int loadHexDump(const char* filename, quint16 &startAddress);
 
@@ -70,6 +74,13 @@ public:
     void setTerminalSpeed(int charsPerSec);
     int getTerminalSpeed() const;
 
+    // Horloge CPU partagée avec les périphériques synchronisés
+    void advanceCycles(int cycles);
+
+    // Apple Cassette Interface (ACI)
+    CassetteDevice& getCassetteDevice() { return *cassetteDevice; }
+    const CassetteDevice& getCassetteDevice() const { return *cassetteDevice; }
+
 private:
     void (*displayCallback)(char) = nullptr;
     
@@ -92,6 +103,7 @@ private :
     int ramSize; // in kilobytes
     bool writeInRom;
     std::string lastError;
+    std::unique_ptr<CassetteDevice> cassetteDevice;
 
 };
 

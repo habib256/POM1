@@ -41,7 +41,7 @@ static void glfw_key_callback(GLFWwindow* window, int key, int scancode, int act
 
 int main(int argc, char* argv[])
 {
-    std::cout << "POM1 v1.0 - Apple 1 Emulator (Dear ImGui)" << std::endl;
+    std::cout << "POM1 v1.1 - Apple 1 Emulator (Dear ImGui)" << std::endl;
     
     // Setup GLFW
     glfwSetErrorCallback(glfw_error_callback);
@@ -67,7 +67,7 @@ int main(int argc, char* argv[])
 #endif
 
     // Create window
-    GLFWwindow* window = glfwCreateWindow(1200, 800, "POM1 v1.0 - Apple 1 Emulator", NULL, NULL);
+    GLFWwindow* window = glfwCreateWindow(1200, 800, "POM1 v1.1 - Apple 1 Emulator", NULL, NULL);
     if (window == NULL)
         return -1;
 

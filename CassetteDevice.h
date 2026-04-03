@@ -1,0 +1,110 @@
+#ifndef CASSETTEDEVICE_H
+#define CASSETTEDEVICE_H
+
+#include <cstdint>
+#include <deque>
+#include <mutex>
+#include <string>
+#include <vector>
+
+struct ma_device;
+
+class CassetteDevice
+{
+public:
+    using quint8 = uint8_t;
+    using quint16 = uint16_t;
+
+    CassetteDevice();
+    ~CassetteDevice();
+
+    void reset();
+    void advanceCycles(int cycles);
+
+    quint8 readTapeInput();
+    quint8 toggleOutput();
+
+    bool loadTape(const std::string& path);
+    bool saveTape(const std::string& path) const;
+
+    void rewindTape();
+    void ejectTape();
+    void clearRecordedTape();
+
+    bool hasLoadedTape() const { return loadedTapeReady; }
+    bool hasRecordedTape() const { return !recordedDurations.empty(); }
+    bool isPlaybackActive() const { return playbackActive; }
+    bool isAudioAvailable() const { return audioAvailable; }
+    bool isHardwareAccurateLiveAudio() const { return hardwareAccurateLiveAudio; }
+    double getQueuedAudioSeconds() const;
+    void setHardwareAccurateLiveAudio(bool enabled);
+    void setLiveAudioTimebaseHz(uint32_t hz);
+
+    size_t getLoadedTransitionCount() const { return loadedDurations.size(); }
+    size_t getRecordedTransitionCount() const { return recordedDurations.size(); }
+    const std::string& getLoadedTapePath() const { return loadedTapePath; }
+    const std::string& getLastError() const { return lastError; }
+
+private:
+    // Live playback must stay aligned with the running emulation thread.
+    static constexpr uint32_t kRealtimeAudioTimebaseHz = 1000000;
+    // Export/import stays calibrated slightly below raw CPU clock so generated
+    // WAV files match verified Apple-1 reference recordings better.
+    static constexpr uint32_t kTapeFileTimebaseHz = 900000;
+    static constexpr uint32_t kAudioSampleRate = 44100;
+
+    bool initAudio();
+    void shutdownAudio();
+    void queueAudioSegment(uint32_t cycles, bool level);
+    void advancePlayback(uint32_t cycles);
+
+    bool loadAciTape(const std::string& path);
+    bool saveAciTape(const std::string& path) const;
+    bool loadWavTape(const std::string& path);
+    bool saveWavTape(const std::string& path) const;
+
+    bool loadPlaybackDurations(std::vector<uint32_t> durations, bool initialLevel, const std::string& path);
+
+    void resetPlaybackState();
+    void beginRecordingIfNeeded();
+    void clearLiveAudioState();
+
+private:
+    ma_device* audioDevice = nullptr;
+    bool audioAvailable = false;
+    bool hardwareAccurateLiveAudio = true;
+    uint32_t liveAudioTimebaseHz = kRealtimeAudioTimebaseHz;
+
+    static void audioDataCallback(ma_device* pDevice, void* pOutput, const void* pInput, uint32_t frameCount);
+    struct AudioSegment {
+        uint32_t remainingSamples;
+        float sampleValue;
+    };
+
+    mutable std::mutex audioMutex;
+    std::deque<AudioSegment> audioQueue;
+    float audioPlaybackSample = 0.0f;
+    uint32_t audioRampInSamplesRemaining = 0;
+
+    uint64_t currentCycle = 0;
+    double audioSampleRemainder = 0.0;
+
+    bool outputLevel = false;
+    bool recordedInitialLevel = false;
+    uint64_t lastOutputToggleCycle = 0;
+    std::vector<uint32_t> recordedDurations;
+
+    bool inputLevel = false;
+    bool loadedInitialLevel = false;
+    bool loadedTapeReady = false;
+    bool playbackArmed = false;
+    bool playbackActive = false;
+    uint64_t cyclesUntilInputToggle = 0;
+    size_t playbackIndex = 0;
+    std::vector<uint32_t> loadedDurations;
+    std::string loadedTapePath;
+
+    std::string lastError;
+};
+
+#endif // CASSETTEDEVICE_H

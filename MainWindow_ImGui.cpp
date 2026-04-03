@@ -56,22 +56,17 @@ MainWindow_ImGui::~MainWindow_ImGui()
 void MainWindow_ImGui::createPom1()
 {
     std::cout << "Welcome to POM1 - Apple I Emulator" << std::endl;
-    memory = std::make_unique<Memory>();
-    cpu = std::make_unique<M6502>(memory.get());
     screen = std::make_unique<Screen_ImGui>();
-    memoryViewer = std::make_unique<MemoryViewer_ImGui>(memory.get());
-    
-    // Connecter l'affichage
-    memory->setDisplayCallback(Screen_ImGui::displayCallback);
-    cpu->setDisplayCallback(Screen_ImGui::displayCallback);
-
-    // Initialiser le CPU au WOZ Monitor
-    cpu->hardReset();
+    emulation = std::make_unique<EmulationController>(screen.get());
+    memoryViewer = std::make_unique<MemoryViewer_ImGui>();
+    memoryViewer->setWriteCallback([this](quint16 address, quint8 value) {
+        emulation->writeMemory(address, value);
+    });
+    emulation->copySnapshot(uiSnapshot);
     
     // Démarrer le CPU automatiquement pour que le Woz Monitor fonctionne
     cpuRunning = true;
     stepMode = false;
-    cpu->start();
     
     setStatusMessage("System initialized - WOZ Monitor loaded at 0xFF00 - CPU started", 3.0f);
 }
@@ -85,6 +80,9 @@ void MainWindow_ImGui::render()
 {
     float deltaTime = ImGui::GetIO().DeltaTime;
     updateStatus(deltaTime);
+    emulation->copySnapshot(uiSnapshot);
+    cpuRunning = uiSnapshot.cpuRunning;
+    memoryViewer->updateLiveMemory(uiSnapshot.memory);
 
 #ifdef __EMSCRIPTEN__
     // Sync fullscreen flag with browser state (user may exit via Escape)
@@ -96,9 +94,6 @@ void MainWindow_ImGui::render()
 
     // Gérer les entrées clavier
     handleKeyboardInput();
-    
-    // Mettre à jour l'exécution du CPU
-    updateCpuExecution();
 
     // Fenêtre principale avec menu
     if (ImGui::BeginMainMenuBar()) {
@@ -117,10 +112,9 @@ void MainWindow_ImGui::render()
         ImGui::PushFont(ImGui::GetIO().Fonts->Fonts[0]);
         ImVec2 charSize = ImGui::CalcTextSize("M");
         ImGui::PopFont();
-        float cellW = charSize.x * 1.4f; // must match Screen_ImGui::render() cell spacing
-        float cellH = charSize.y * 1.3f;
-        float sw = cellW * 40 * screen->scale + 40; // marge fenêtre
-        float sh = cellH * 24 * screen->scale + 60;
+        const ImVec2 cell = Screen_ImGui::computeApple1CellDimensions(charSize);
+        float sw = cell.x * Screen_ImGui::kApple1Columns * screen->scale + 40; // marge fenêtre
+        float sh = cell.y * Screen_ImGui::kApple1Rows * screen->scale + 60;
         float toolbarBottom = ImGui::GetFrameHeight() + 34.0f;
         ImGui::SetNextWindowPos(ImVec2(10, toolbarBottom + 5));
         ImGui::SetNextWindowSize(ImVec2(sw, sh));
@@ -146,10 +140,9 @@ void MainWindow_ImGui::render()
             ImGui::PushFont(fsio.Fonts->Fonts[0]);
             ImVec2 charSize = ImGui::CalcTextSize("M");
             ImGui::PopFont();
-            float cellW = charSize.x * 1.4f;
-            float cellH = charSize.y * 1.3f;
-            float sw = cellW * 40 * screen->scale + 40;
-            float sh = cellH * 24 * screen->scale + 60;
+            const ImVec2 cell = Screen_ImGui::computeApple1CellDimensions(charSize);
+            float sw = cell.x * Screen_ImGui::kApple1Columns * screen->scale + 40;
+            float sh = cell.y * Screen_ImGui::kApple1Rows * screen->scale + 60;
             ImGui::SetNextWindowPos(ImVec2(10, toolbarBottom + 5));
             ImGui::SetNextWindowSize(ImVec2(sw, sh));
         }
@@ -189,10 +182,17 @@ void MainWindow_ImGui::render()
     if (showScreenConfig) renderScreenConfigDialog();
     if (showMemoryConfig) renderMemoryConfigDialog();
     if (showLoadDialog) renderLoadDialog();
+    if (showLoadTapeDialog) renderLoadTapeDialog();
+    if (showCassetteControl) renderCassetteControlWindow();
     if (showSaveDialog) renderSaveDialog();
+    if (showSaveTapeDialog) renderSaveTapeDialog();
 
     // Barre de statut
     renderStatusBar();
+
+    // Après tous les widgets (barre d’outils, menus, débogueur) pour que la vitesse
+    // soit poussée vers l’émulation dès le clic, pas au frame suivant.
+    updateCpuExecution(deltaTime);
 }
 
 void MainWindow_ImGui::renderMenuBar()
@@ -203,6 +203,16 @@ void MainWindow_ImGui::renderMenuBar()
             }
             if (ImGui::MenuItem("Save Memory", shortcutLabel(GLFW_KEY_S, GLFW_MOD_CONTROL))) {
                 saveMemory();
+            }
+            ImGui::Separator();
+            if (ImGui::MenuItem("Load Tape")) {
+                loadTape();
+            }
+            if (ImGui::MenuItem("Save Tape")) {
+                saveTape();
+            }
+            if (ImGui::MenuItem("Cassette Control")) {
+                showCassetteControl = true;
             }
             ImGui::Separator();
             if (ImGui::MenuItem("Paste Code", shortcutLabel(GLFW_KEY_V, GLFW_MOD_CONTROL))) {
@@ -251,17 +261,26 @@ void MainWindow_ImGui::renderMenuBar()
             }
             ImGui::Separator();
             ImGui::Text("CPU Speed:");
-            if (ImGui::RadioButton("1 MHz", executionSpeed == 16667)) { executionSpeed = 16667; }
+            if (ImGui::RadioButton("1MHz", executionSpeed == 16667)) {
+                executionSpeed = 16667;
+                emulation->setExecutionSpeedCyclesPerFrame(executionSpeed);
+            }
             ImGui::SameLine();
-            if (ImGui::RadioButton("2 MHz", executionSpeed == 33333)) { executionSpeed = 33333; }
+            if (ImGui::RadioButton("2MHz", executionSpeed == 33333)) {
+                executionSpeed = 33333;
+                emulation->setExecutionSpeedCyclesPerFrame(executionSpeed);
+            }
             ImGui::SameLine();
-            if (ImGui::RadioButton("Max", executionSpeed == 1000000)) { executionSpeed = 1000000; }
+            if (ImGui::RadioButton("Max", executionSpeed == 1000000)) {
+                executionSpeed = 1000000;
+                emulation->setExecutionSpeedCyclesPerFrame(executionSpeed);
+            }
             ImGui::Separator();
             ImGui::Text("Terminal Speed (chars/sec):");
             static int termSpeed = 60;
             ImGui::SetNextItemWidth(150);
             if (ImGui::SliderInt("##termspeed", &termSpeed, 0, 2000, termSpeed == 0 ? "Max" : "%d c/s")) {
-                memory->setTerminalSpeed(termSpeed);
+                emulation->setTerminalSpeed(termSpeed);
             }
             ImGui::Separator();
             ImGui::MenuItem("Memory Viewer", shortcutLabel(GLFW_KEY_F1), &showMemoryViewer);
@@ -296,10 +315,18 @@ void MainWindow_ImGui::renderToolbar()
 
         ImVec4 activeColor(0.2f, 0.4f, 0.8f, 1.0f);
         ImVec2 btnSize(28, 24);
+        const float mhzBtnPadX = ImGui::GetStyle().FramePadding.x * 2.0f;
+        const float mhzBtnW =
+            std::max(ImGui::CalcTextSize("1MHz").x, ImGui::CalcTextSize("2MHz").x) + mhzBtnPadX;
+        const ImVec2 mhzBtnSize(mhzBtnW, 24.0f);
 
         // --- Chargement (premier) ---
         if (ImGui::Button(ICON_FA_FOLDER_OPEN, btnSize)) loadMemory();
         if (ImGui::IsItemHovered()) ImGui::SetTooltip("Load (Ctrl+O)");
+
+        ImGui::SameLine();
+        if (ImGui::Button(ICON_FA_TAPE, btnSize)) showCassetteControl = !showCassetteControl;
+        if (ImGui::IsItemHovered()) ImGui::SetTooltip("Cassette Control");
 
         // --- Séparateur ---
         ImGui::SameLine(0, 12);
@@ -341,27 +368,36 @@ void MainWindow_ImGui::renderToolbar()
         ImGui::SeparatorEx(ImGuiSeparatorFlags_Vertical);
         ImGui::SameLine(0, 12);
 
-        // --- Vitesse CPU ---
+        // --- Vitesse CPU (1MHz / 2MHz, appliqués tout de suite) ---
         {
             bool is1M = (executionSpeed == 16667);
             if (is1M) ImGui::PushStyleColor(ImGuiCol_Button, activeColor);
-            if (ImGui::Button("1M", btnSize)) executionSpeed = 16667;
+            if (ImGui::Button("1MHz", mhzBtnSize)) {
+                executionSpeed = 16667;
+                emulation->setExecutionSpeedCyclesPerFrame(executionSpeed);
+            }
             if (is1M) ImGui::PopStyleColor();
-            if (ImGui::IsItemHovered()) ImGui::SetTooltip("1 MHz");
+            if (ImGui::IsItemHovered()) ImGui::SetTooltip("1MHz (~16667 cycles/frame @ 60 Hz)");
         }
         ImGui::SameLine();
         {
             bool is2M = (executionSpeed == 33333);
             if (is2M) ImGui::PushStyleColor(ImGuiCol_Button, activeColor);
-            if (ImGui::Button("2M", btnSize)) executionSpeed = 33333;
+            if (ImGui::Button("2MHz", mhzBtnSize)) {
+                executionSpeed = 33333;
+                emulation->setExecutionSpeedCyclesPerFrame(executionSpeed);
+            }
             if (is2M) ImGui::PopStyleColor();
-            if (ImGui::IsItemHovered()) ImGui::SetTooltip("2 MHz");
+            if (ImGui::IsItemHovered()) ImGui::SetTooltip("2MHz (~33333 cycles/frame @ 60 Hz)");
         }
         ImGui::SameLine();
         {
             bool isMax = (executionSpeed == 1000000);
             if (isMax) ImGui::PushStyleColor(ImGuiCol_Button, activeColor);
-            if (ImGui::Button("Max", btnSize)) executionSpeed = 1000000;
+            if (ImGui::Button("Max", btnSize)) {
+                executionSpeed = 1000000;
+                emulation->setExecutionSpeedCyclesPerFrame(executionSpeed);
+            }
             if (isMax) ImGui::PopStyleColor();
             if (ImGui::IsItemHovered()) ImGui::SetTooltip("Max");
         }
@@ -421,30 +457,89 @@ void MainWindow_ImGui::renderStatusBar()
         // Côté gauche: message de statut
         ImGui::Text("%s", statusMessage.c_str());
 
-        // Côté droit
-        ImGui::SameLine(io.DisplaySize.x - 350);
+        std::string cpuText = cpuRunning ? "RUNNING" : "STOPPED";
+        std::string speedText = (executionSpeed >= 1000000)
+            ? "| Max"
+            : [&]() {
+                char buf[32];
+                float mhz = executionSpeed * 60.0f / 1000000.0f;
+                snprintf(buf, sizeof(buf), "| %.1f MHz", mhz);
+                return std::string(buf);
+            }();
+        char ramBuf[32];
+        snprintf(ramBuf, sizeof(ramBuf), "| RAM: %d KB", uiSnapshot.ramSizeKB);
+        std::string ramText = ramBuf;
+
+        std::string tapeText;
+        if (uiSnapshot.cassetteLoadedTape) {
+            char buf[64];
+            snprintf(buf, sizeof(buf), "| TAPE: %s (%zu tr)",
+                     uiSnapshot.cassettePlaybackActive ? "READ" : "READY",
+                     uiSnapshot.cassetteLoadedTransitionCount);
+            tapeText = buf;
+        } else if (uiSnapshot.cassetteRecordedTape) {
+            char buf[64];
+            snprintf(buf, sizeof(buf), "| TAPE OUT: %zu tr",
+                     uiSnapshot.cassetteRecordedTransitionCount);
+            tapeText = buf;
+        } else {
+            tapeText = "| TAPE: empty";
+        }
+
+        std::string audioText = !uiSnapshot.cassetteAudioAvailable ? "| AUDIO OFF" : "";
+        std::string keyText;
+        if (uiSnapshot.keyReady) {
+            char buf[24];
+            snprintf(buf, sizeof(buf), "| KEY: '%c'", uiSnapshot.lastKey);
+            keyText = buf;
+        }
+
+        const float spacing = ImGui::GetStyle().ItemSpacing.x;
+        float rightWidth =
+            ImGui::CalcTextSize(cpuText.c_str()).x +
+            ImGui::CalcTextSize(speedText.c_str()).x +
+            ImGui::CalcTextSize(ramText.c_str()).x +
+            ImGui::CalcTextSize(tapeText.c_str()).x +
+            (audioText.empty() ? 0.0f : ImGui::CalcTextSize(audioText.c_str()).x) +
+            (keyText.empty() ? 0.0f : ImGui::CalcTextSize(keyText.c_str()).x) +
+            spacing * 5.0f;
+
+        ImGui::SameLine();
+        ImGui::SetCursorPosX(std::max(ImGui::GetCursorPosX(), ImGui::GetWindowWidth() - rightWidth - 16.0f));
 
         if (cpuRunning) {
-            ImGui::TextColored(ImVec4(1.0f, 1.0f, 0.0f, 1.0f), "RUNNING");
+            ImGui::TextColored(ImVec4(1.0f, 1.0f, 0.0f, 1.0f), "%s", cpuText.c_str());
         } else {
-            ImGui::TextColored(ImVec4(1.0f, 0.0f, 0.0f, 1.0f), "STOPPED");
+            ImGui::TextColored(ImVec4(1.0f, 0.0f, 0.0f, 1.0f), "%s", cpuText.c_str());
         }
 
         ImGui::SameLine();
-        float mhz = executionSpeed * 60.0f / 1000000.0f;
-        if (executionSpeed >= 1000000)
-            ImGui::Text("| Max");
-        else
-            ImGui::Text("| %.1f MHz", mhz);
+        ImGui::Text("%s", speedText.c_str());
 
         ImGui::SameLine();
-        ImGui::Text("| RAM: %d KB", memory->getRamSizeKB());
+        ImGui::Text("%s", ramText.c_str());
+
+        ImGui::SameLine();
+        if (uiSnapshot.cassetteLoadedTape) {
+            ImGui::TextColored(ImVec4(0.95f, 0.75f, 0.25f, 1.0f),
+                               "%s", tapeText.c_str());
+        } else if (uiSnapshot.cassetteRecordedTape) {
+            ImGui::TextColored(ImVec4(0.95f, 0.75f, 0.25f, 1.0f),
+                               "%s", tapeText.c_str());
+        } else {
+            ImGui::Text("%s", tapeText.c_str());
+        }
+
+        if (!uiSnapshot.cassetteAudioAvailable) {
+            ImGui::SameLine();
+            ImGui::TextColored(ImVec4(1.0f, 0.45f, 0.45f, 1.0f), "%s", audioText.c_str());
+        }
 
         // État du clavier
-        if (memory->isKeyReady()) {
+        if (uiSnapshot.keyReady) {
             ImGui::SameLine();
             ImGui::TextColored(ImVec4(1.0f, 1.0f, 0.0f, 1.0f),
-                               "| KEY: '%c'", memory->getLastKey());
+                               "%s", keyText.c_str());
         }
     }
     ImGui::End();
@@ -455,7 +550,7 @@ void MainWindow_ImGui::renderAboutDialog()
     ImGui::SetNextWindowSizeConstraints(ImVec2(380, 0), ImVec2(500, FLT_MAX));
     ImGui::SetNextWindowSize(ImVec2(0, 0), ImGuiCond_Always);
     if (ImGui::Begin("About POM1", &showAbout, ImGuiWindowFlags_AlwaysAutoResize)) {
-        ImGui::TextWrapped("POM1 v1.0 - Apple 1 Emulator (Dear ImGui)");
+        ImGui::TextWrapped("POM1 v1.1 - Apple 1 Emulator (Dear ImGui)");
         ImGui::Separator();
 
         ImGui::TextWrapped("Copyright (C) 2000-2026 GPL3");
@@ -505,32 +600,32 @@ void MainWindow_ImGui::renderDebugDialog()
             
             ImGui::Text("Program Counter (PC):");
             ImGui::NextColumn();
-            ImGui::Text("0x%04X", cpu->getProgramCounter());
+            ImGui::Text("0x%04X", uiSnapshot.programCounter);
             ImGui::NextColumn();
             
             ImGui::Text("Accumulator (A):");
             ImGui::NextColumn();
-            ImGui::Text("0x%02X (%d)", cpu->getAccumulator(), cpu->getAccumulator());
+            ImGui::Text("0x%02X (%d)", uiSnapshot.accumulator, uiSnapshot.accumulator);
             ImGui::NextColumn();
             
             ImGui::Text("X Register:");
             ImGui::NextColumn();
-            ImGui::Text("0x%02X (%d)", cpu->getXRegister(), cpu->getXRegister());
+            ImGui::Text("0x%02X (%d)", uiSnapshot.xRegister, uiSnapshot.xRegister);
             ImGui::NextColumn();
             
             ImGui::Text("Y Register:");
             ImGui::NextColumn();
-            ImGui::Text("0x%02X (%d)", cpu->getYRegister(), cpu->getYRegister());
+            ImGui::Text("0x%02X (%d)", uiSnapshot.yRegister, uiSnapshot.yRegister);
             ImGui::NextColumn();
             
             ImGui::Text("Stack Pointer (SP):");
             ImGui::NextColumn();
-            ImGui::Text("0x%02X", cpu->getStackPointer());
+            ImGui::Text("0x%02X", uiSnapshot.stackPointer);
             ImGui::NextColumn();
             
             ImGui::Text("Status Register:");
             ImGui::NextColumn();
-            quint8 status = cpu->getStatusRegister();
+            quint8 status = uiSnapshot.statusRegister;
             ImGui::Text("0x%02X [%c%c%c%c%c%c%c%c]", status,
                        (status & 0x80) ? 'N' : 'n',  // Negative
                        (status & 0x40) ? 'V' : 'v',  // Overflow
@@ -564,7 +659,7 @@ void MainWindow_ImGui::renderDebugDialog()
             
             if (ImGui::Button("Reset")) {
                 stopCpu();
-                cpu->hardReset();
+                emulation->hardReset();
                 setStatusMessage("CPU reset", 2.0f);
             }
             
@@ -578,7 +673,7 @@ void MainWindow_ImGui::renderDebugDialog()
         
         // Désassemblage de l'instruction courante
         if (ImGui::CollapsingHeader("Current Instruction", ImGuiTreeNodeFlags_DefaultOpen)) {
-            quint16 pc = cpu->getProgramCounter();
+            quint16 pc = uiSnapshot.programCounter;
             int instrLen = 1;
             std::string disasm = disassemble(pc, instrLen);
 
@@ -588,7 +683,7 @@ void MainWindow_ImGui::renderDebugDialog()
             for (int i = 0; i < instrLen; i++) {
                 if (i > 0) rawBytes << " ";
                 rawBytes << std::hex << std::uppercase << std::setw(2) << std::setfill('0')
-                         << (int)memory->memRead(pc + i);
+                         << (int)uiSnapshot.memory[(pc + i) & 0xFFFF];
             }
             ImGui::Text("Bytes: %s", rawBytes.str().c_str());
             ImGui::Text("  %s", disasm.c_str());
@@ -596,14 +691,14 @@ void MainWindow_ImGui::renderDebugDialog()
         
         // Pile
         if (ImGui::CollapsingHeader("Stack", ImGuiTreeNodeFlags_DefaultOpen)) {
-            quint8 sp = cpu->getStackPointer();
+            quint8 sp = uiSnapshot.stackPointer;
             ImGui::Text("Stack Pointer: 0x01%02X", sp);
             
             ImGui::Text("Top 8 stack bytes:");
             ImGui::Columns(2, "StackColumns");
             for (int i = 0; i < 8; i++) {
                 quint16 addr = 0x0100 + ((sp + i + 1) & 0xFF);
-                quint8 value = memory->memRead(addr);
+                quint8 value = uiSnapshot.memory[addr];
                 ImGui::Text("0x01%02X:", (sp + i + 1) & 0xFF);
                 ImGui::NextColumn();
                 ImGui::Text("0x%02X", value);
@@ -621,12 +716,12 @@ void MainWindow_ImGui::renderDebugDialog()
             static int lastPC = -1;
             
             // Log des changements de PC
-            quint16 currentPC = cpu->getProgramCounter();
+            quint16 currentPC = uiSnapshot.programCounter;
             if (currentPC != lastPC && cpuRunning) {
                 std::stringstream ss;
                 ss << "PC: 0x" << std::hex << std::uppercase << currentPC 
                    << " - Opcode: 0x" << std::setfill('0') << std::setw(2) 
-                   << static_cast<int>(memory->memRead(currentPC));
+                   << static_cast<int>(uiSnapshot.memory[currentPC]);
                 debugLog.push_back(ss.str());
                 
                 // Garder seulement les 50 dernières entrées
@@ -663,7 +758,22 @@ void MainWindow_ImGui::renderScreenConfigDialog()
         ImGui::Text("Display Options");
         ImGui::Separator();
 
-        ImGui::Checkbox("Green Monitor (vintage style)", &screen->greenMonitor);
+        int renderMode = static_cast<int>(screen->characterRenderMode);
+        ImGui::Text("Character Rendering:");
+        ImGui::RadioButton("Apple-1 Charmap", &renderMode, static_cast<int>(Screen_ImGui::CharacterRenderMode::Apple1Charmap));
+        ImGui::SameLine();
+        ImGui::RadioButton("ASCII Host", &renderMode, static_cast<int>(Screen_ImGui::CharacterRenderMode::HostAscii));
+        screen->characterRenderMode = static_cast<Screen_ImGui::CharacterRenderMode>(renderMode);
+
+        int monitorMode = static_cast<int>(screen->monitorMode);
+        ImGui::Spacing();
+        ImGui::Text("Monitor Tint:");
+        ImGui::RadioButton("Green", &monitorMode, static_cast<int>(Screen_ImGui::MonitorMode::Green));
+        ImGui::SameLine();
+        ImGui::RadioButton("Brown", &monitorMode, static_cast<int>(Screen_ImGui::MonitorMode::Amber));
+        ImGui::SameLine();
+        ImGui::RadioButton("Monochrome", &monitorMode, static_cast<int>(Screen_ImGui::MonitorMode::Monochrome));
+        screen->monitorMode = static_cast<Screen_ImGui::MonitorMode>(monitorMode);
         ImGui::Checkbox("Cursor", &screen->showCursor);
 
         ImGui::Spacing();
@@ -675,7 +785,7 @@ void MainWindow_ImGui::renderScreenConfigDialog()
         ImGui::Separator();
         ImGui::Checkbox("Scanlines", &screen->crtEffect);
         if (screen->crtEffect) {
-            ImGui::SliderFloat("Scanline Intensity", &screen->crtScanlineAlpha, 0.0f, 0.8f, "%.2f");
+            ImGui::SliderFloat("Scanline Intensity", &screen->crtScanlineAlpha, 0.0f, 0.9f, "%.2f");
         }
 
         ImGui::Spacing();
@@ -717,12 +827,12 @@ void MainWindow_ImGui::renderMemoryConfigDialog()
 {
     ImGui::SetNextWindowSize(ImVec2(450, 400), ImGuiCond_FirstUseEver);
     if (ImGui::Begin("Memory Settings", &showMemoryConfig)) {
-        bool writeProtect = !memory->getWriteInRom();
+        bool writeProtect = !uiSnapshot.writeInRom;
 
         ImGui::Text("ROM Protection");
         ImGui::Separator();
         if (ImGui::Checkbox("Write-protect ROMs", &writeProtect)) {
-            memory->setWriteInRom(!writeProtect);
+            emulation->setWriteInRom(!writeProtect);
         }
 
         ImGui::Spacing();
@@ -730,24 +840,30 @@ void MainWindow_ImGui::renderMemoryConfigDialog()
         ImGui::Separator();
 
         if (ImGui::Button("Reload BASIC")) {
-            memory->setWriteInRom(true);
-            int result = memory->loadBasic();
-            memory->setWriteInRom(!writeProtect);
-            setStatusMessage(result == 0 ? "BASIC reloaded" : memory->getLastError(), 3.0f);
+            std::string error;
+            bool ok = emulation->reloadBasic(error);
+            if (!writeProtect) {
+                emulation->setWriteInRom(true);
+            }
+            setStatusMessage(ok ? "BASIC reloaded" : error, 3.0f);
         }
 
         if (ImGui::Button("Reload WOZ Monitor")) {
-            memory->setWriteInRom(true);
-            int result = memory->loadWozMonitor();
-            memory->setWriteInRom(!writeProtect);
-            setStatusMessage(result == 0 ? "WOZ Monitor reloaded" : memory->getLastError(), 3.0f);
+            std::string error;
+            bool ok = emulation->reloadWozMonitor(error);
+            if (!writeProtect) {
+                emulation->setWriteInRom(true);
+            }
+            setStatusMessage(ok ? "WOZ Monitor reloaded" : error, 3.0f);
         }
 
         if (ImGui::Button("Reload Krusader")) {
-            memory->setWriteInRom(true);
-            int result = memory->loadKrusader();
-            memory->setWriteInRom(!writeProtect);
-            setStatusMessage(result == 0 ? "Krusader reloaded" : memory->getLastError(), 3.0f);
+            std::string error;
+            bool ok = emulation->reloadKrusader(error);
+            if (!writeProtect) {
+                emulation->setWriteInRom(true);
+            }
+            setStatusMessage(ok ? "Krusader reloaded" : error, 3.0f);
         }
 
         ImGui::Spacing();
@@ -763,7 +879,7 @@ void MainWindow_ImGui::renderMemoryConfigDialog()
             ImGui::Separator();
 
             if (ImGui::Button("Yes", ImVec2(120, 0))) {
-                memory->resetMemory();
+                emulation->clearMemory();
                 setStatusMessage("Memory cleared", 2.0f);
                 ImGui::CloseCurrentPopup();
             }
@@ -885,24 +1001,18 @@ void MainWindow_ImGui::renderLoadDialog()
 
         ImGui::Spacing();
         if (ImGui::Button("Load", ImVec2(120, 0))) {
-            int result;
             quint16 addr = 0;
+            std::string error;
+            bool ok = false;
             if (loadDlg.fileType == 0) {
                 addr = (quint16)strtol(loadDlg.addressStr, nullptr, 16);
-                result = memory->loadBinary(loadDlg.filePath, addr);
+                ok = emulation->loadBinary(loadDlg.filePath, addr, error);
             } else {
-                result = memory->loadHexDump(loadDlg.filePath, addr);
+                ok = emulation->loadHexDump(loadDlg.filePath, addr, error);
                 snprintf(loadDlg.addressStr, sizeof(loadDlg.addressStr), "%04X", addr);
             }
-            if (result == 0) {
-                screen->clear();
-                bool prevWriteInRom = memory->getWriteInRom();
-                memory->setWriteInRom(true);
-                memory->memWrite(0xFFFC, addr & 0xFF);
-                memory->memWrite(0xFFFD, (addr >> 8) & 0xFF);
-                memory->setWriteInRom(prevWriteInRom);
-                cpu->hardReset();
-                cpu->start();
+            if (ok) {
+                emulation->copySnapshot(uiSnapshot);
                 cpuRunning = true;
                 stepMode = false;
                 std::stringstream ss;
@@ -911,7 +1021,7 @@ void MainWindow_ImGui::renderLoadDialog()
                 showLoadDialog = false;
                 loadDlg.reset();
             } else {
-                setStatusMessage("Error: unable to load file", 3.0f);
+                setStatusMessage(error.empty() ? "Error: unable to load file" : error, 3.0f);
             }
         }
         ImGui::SameLine();
@@ -919,6 +1029,152 @@ void MainWindow_ImGui::renderLoadDialog()
             showLoadDialog = false;
             loadDlg.reset();
         }
+    }
+    ImGui::End();
+}
+
+void MainWindow_ImGui::loadTape()
+{
+    showLoadTapeDialog = true;
+}
+
+void MainWindow_ImGui::renderLoadTapeDialog()
+{
+    ImGui::SetNextWindowSize(ImVec2(520, 220), ImGuiCond_FirstUseEver);
+    if (ImGui::Begin("Load Tape", &showLoadTapeDialog)) {
+        ImGui::TextWrapped("Load an Apple-1 cassette image. Supported formats: .aci (exact pulse dump) and .wav.");
+        ImGui::Spacing();
+        ImGui::Text("Tape file:");
+        ImGui::SetNextItemWidth(-1);
+        ImGui::InputText("##loadtapefile", loadTapeDlg.filePath, sizeof(loadTapeDlg.filePath));
+
+        if (uiSnapshot.cassetteLoadedTape) {
+            ImGui::Spacing();
+            ImGui::Text("Inserted tape: %s", uiSnapshot.cassetteLoadedTapePath.c_str());
+            ImGui::Text("Transitions: %zu", uiSnapshot.cassetteLoadedTransitionCount);
+        }
+
+        ImGui::Spacing();
+        if (ImGui::Button("Load Tape", ImVec2(120, 0))) {
+            std::string error;
+            if (emulation->loadTape(loadTapeDlg.filePath, error)) {
+                emulation->copySnapshot(uiSnapshot);
+                std::stringstream ss;
+                ss << "Tape loaded: " << uiSnapshot.cassetteLoadedTransitionCount << " transitions";
+                setStatusMessage(ss.str(), 3.0f);
+                showLoadTapeDialog = false;
+            } else {
+                setStatusMessage(error, 3.0f);
+            }
+        }
+        ImGui::SameLine();
+        if (ImGui::Button("Rewind", ImVec2(120, 0))) {
+            emulation->rewindTape();
+            emulation->copySnapshot(uiSnapshot);
+            setStatusMessage("Tape rewound", 2.0f);
+        }
+        ImGui::SameLine();
+        if (ImGui::Button("Cancel", ImVec2(120, 0))) {
+            showLoadTapeDialog = false;
+        }
+    }
+    ImGui::End();
+}
+
+void MainWindow_ImGui::renderCassetteControlWindow()
+{
+    ImGui::SetNextWindowSize(ImVec2(460, 280), ImGuiCond_FirstUseEver);
+    if (ImGui::Begin("Cassette Control", &showCassetteControl)) {
+        auto renderStateBadge = [](const char* label, const ImVec4& color) {
+            ImGui::TextColored(color, "%s", label);
+        };
+
+        ImGui::Text("Reader");
+        ImGui::Separator();
+
+        if (uiSnapshot.cassetteLoadedTape) {
+            ImGui::TextWrapped("Inserted tape: %s", uiSnapshot.cassetteLoadedTapePath.c_str());
+            ImGui::Text("Transitions: %zu", uiSnapshot.cassetteLoadedTransitionCount);
+            ImGui::Text("State:");
+            ImGui::SameLine();
+            renderStateBadge(
+                uiSnapshot.cassettePlaybackActive ? "READING" : "READY",
+                uiSnapshot.cassettePlaybackActive ? ImVec4(0.95f, 0.75f, 0.25f, 1.0f)
+                                                  : ImVec4(0.35f, 0.85f, 0.35f, 1.0f));
+        } else {
+            ImGui::Text("Inserted tape: none");
+            ImGui::Text("State:");
+            ImGui::SameLine();
+            renderStateBadge("EMPTY", ImVec4(0.70f, 0.70f, 0.70f, 1.0f));
+        }
+
+        ImGui::Spacing();
+        if (ImGui::Button("Load Tape", ImVec2(130, 0))) {
+            showLoadTapeDialog = true;
+        }
+        ImGui::SameLine();
+        if (ImGui::Button("Rewind", ImVec2(130, 0))) {
+            emulation->rewindTape();
+            emulation->copySnapshot(uiSnapshot);
+            setStatusMessage("Tape rewound", 2.0f);
+        }
+        ImGui::SameLine();
+        if (ImGui::Button("Eject", ImVec2(130, 0))) {
+            emulation->ejectTape();
+            emulation->copySnapshot(uiSnapshot);
+            setStatusMessage("Tape ejected", 2.0f);
+        }
+
+        ImGui::Spacing();
+        ImGui::Text("Recorder");
+        ImGui::Separator();
+        ImGui::Text("Live audio mode:");
+        bool stabilizedAudio = !uiSnapshot.cassetteHardwareAccurateLiveAudio;
+        if (ImGui::RadioButton("Real-time stabilized", stabilizedAudio)) {
+            emulation->setHardwareAccurateLiveAudio(false);
+            emulation->copySnapshot(uiSnapshot);
+        }
+        if (ImGui::IsItemHovered()) {
+            ImGui::SetTooltip("Stable GUI audio at a fixed sample rate.");
+        }
+        bool hardwareAccurateAudio = uiSnapshot.cassetteHardwareAccurateLiveAudio;
+        if (ImGui::RadioButton("Hardware faithful", hardwareAccurateAudio)) {
+            emulation->setHardwareAccurateLiveAudio(true);
+            emulation->copySnapshot(uiSnapshot);
+        }
+        if (ImGui::IsItemHovered()) {
+            ImGui::SetTooltip("Sound speed follows emulation speed like real hardware. Default at startup.");
+        }
+        ImGui::Spacing();
+        ImGui::Text("Recorder state:");
+        ImGui::SameLine();
+        if (uiSnapshot.cassetteRecordedTransitionCount > 0) {
+            renderStateBadge("RECORDED", ImVec4(0.95f, 0.35f, 0.35f, 1.0f));
+        } else {
+            renderStateBadge("IDLE", ImVec4(0.70f, 0.70f, 0.70f, 1.0f));
+        }
+        ImGui::Text("Captured transitions: %zu", uiSnapshot.cassetteRecordedTransitionCount);
+        ImGui::Text("Audio backend:");
+        ImGui::SameLine();
+        renderStateBadge(uiSnapshot.cassetteAudioAvailable ? "ACTIVE" : "UNAVAILABLE",
+                         uiSnapshot.cassetteAudioAvailable ? ImVec4(0.35f, 0.85f, 0.35f, 1.0f)
+                                                           : ImVec4(0.95f, 0.45f, 0.45f, 1.0f));
+        ImGui::Text("Live queue: %.1f ms", uiSnapshot.cassetteQueuedAudioSeconds * 1000.0);
+
+        ImGui::Spacing();
+        if (ImGui::Button("Save Tape", ImVec2(130, 0))) {
+            showSaveTapeDialog = true;
+        }
+        ImGui::SameLine();
+        if (ImGui::Button("Clear Capture", ImVec2(130, 0))) {
+            emulation->clearTapeCapture();
+            emulation->copySnapshot(uiSnapshot);
+            setStatusMessage("Cassette capture cleared", 2.0f);
+        }
+
+        ImGui::Spacing();
+        ImGui::Separator();
+        ImGui::TextWrapped("This window controls the Apple-1 cassette reader/recorder without changing the current audio rendering.");
     }
     ImGui::End();
 }
@@ -968,42 +1224,66 @@ void MainWindow_ImGui::renderSaveDialog()
         if (ImGui::Button("Save", ImVec2(120, 0)) && size > 0) {
             // Build path in software directory
             std::string path = filename;
-
-            std::ofstream file(path, saveFormat == 0 ? std::ios::binary : std::ios::out);
-            if (file.is_open()) {
-                if (saveFormat == 0) {
-                    // Binary format
-                    for (quint16 a = startAddr; a <= endAddr; ++a) {
-                        quint8 b = memory->memRead(a);
-                        file.write(reinterpret_cast<char*>(&b), 1);
-                        if (a == 0xFFFF) break;
-                    }
-                } else {
-                    // Woz Monitor hex dump format
-                    for (quint16 a = startAddr; a <= endAddr; a += 16) {
-                        file << std::hex << std::uppercase << std::setfill('0')
-                             << std::setw(4) << a << ":";
-                        int lineEnd = std::min((int)a + 16, (int)endAddr + 1);
-                        for (int i = a; i < lineEnd; ++i) {
-                            file << " " << std::setfill('0') << std::setw(2) << (int)memory->memRead((quint16)i);
-                        }
-                        file << "\n";
-                        if (a + 16 < a) break; // overflow guard
-                    }
-                }
-                file.close();
+            std::string error;
+            if (emulation->saveMemoryRange(path, startAddr, endAddr, saveFormat == 0, error)) {
                 std::stringstream ss;
                 ss << "Saved $" << std::hex << std::uppercase << startAddr
                    << "-$" << endAddr << " to " << path;
                 setStatusMessage(ss.str(), 3.0f);
                 showSaveDialog = false;
             } else {
-                setStatusMessage("Error: unable to write file", 3.0f);
+                setStatusMessage(error.empty() ? "Error: unable to write file" : error, 3.0f);
             }
         }
         ImGui::SameLine();
         if (ImGui::Button("Cancel", ImVec2(120, 0))) {
             showSaveDialog = false;
+        }
+    }
+    ImGui::End();
+}
+
+void MainWindow_ImGui::saveTape()
+{
+    showSaveTapeDialog = true;
+}
+
+void MainWindow_ImGui::renderSaveTapeDialog()
+{
+    ImGui::SetNextWindowSize(ImVec2(520, 240), ImGuiCond_FirstUseEver);
+    if (ImGui::Begin("Save Tape", &showSaveTapeDialog)) {
+        ImGui::TextWrapped("Save the cassette signal captured from accesses to the ACI output flip-flop.");
+        ImGui::Spacing();
+        ImGui::Text("Output file:");
+        ImGui::SetNextItemWidth(-1);
+        ImGui::InputText("##savetapefile", saveTapeDlg.filePath, sizeof(saveTapeDlg.filePath));
+
+        ImGui::Spacing();
+        ImGui::Text("Captured transitions: %zu", uiSnapshot.cassetteRecordedTransitionCount);
+        ImGui::Text("Audio backend: %s", uiSnapshot.cassetteAudioAvailable ? "active" : "unavailable");
+
+        ImGui::Spacing();
+        if (ImGui::Button("Save Tape", ImVec2(120, 0))) {
+            std::string error;
+            if (emulation->saveTape(saveTapeDlg.filePath, error)) {
+                emulation->copySnapshot(uiSnapshot);
+                std::stringstream ss;
+                ss << "Tape saved to " << saveTapeDlg.filePath;
+                setStatusMessage(ss.str(), 3.0f);
+                showSaveTapeDialog = false;
+            } else {
+                setStatusMessage(error, 3.0f);
+            }
+        }
+        ImGui::SameLine();
+        if (ImGui::Button("Clear Capture", ImVec2(120, 0))) {
+            emulation->clearTapeCapture();
+            emulation->copySnapshot(uiSnapshot);
+            setStatusMessage("Cassette capture cleared", 2.0f);
+        }
+        ImGui::SameLine();
+        if (ImGui::Button("Cancel", ImVec2(120, 0))) {
+            showSaveTapeDialog = false;
         }
     }
     ImGui::End();
@@ -1017,13 +1297,6 @@ void MainWindow_ImGui::pasteCode()
         return;
     }
 
-    // Cycles to run per character: enough for the CPU to read the key and echo it.
-    // At ~60 chars/sec on a 1 MHz CPU, one character takes ~16667 cycles to display.
-    // We use 2x that to leave margin for processing (WOZ Monitor read + echo loop).
-    const int CYCLES_PER_CHAR = memory->getTerminalSpeed() > 0
-        ? (2 * 1000000 / memory->getTerminalSpeed())
-        : 1000; // max speed: minimal delay
-
     const char* p = clipboard;
     int charCount = 0;
     const int MAX_PASTE_CHARS = 4096;
@@ -1031,9 +1304,7 @@ void MainWindow_ImGui::pasteCode()
         char c = *p;
         if (c == '\n') c = '\r';
         if (c == '\r' || (c >= 32 && c <= 126)) {
-            // setKeyPressed() already converts to uppercase
-            memory->setKeyPressed(c);
-            cpu->run(CYCLES_PER_CHAR);
+            emulation->queueKey(c);
             charCount++;
         }
         ++p;
@@ -1051,16 +1322,13 @@ void MainWindow_ImGui::quit()
 
 void MainWindow_ImGui::reset()
 {
-    cpu->softReset();
+    emulation->softReset();
     setStatusMessage("Soft reset done", 2.0f);
 }
 
 void MainWindow_ImGui::hardReset()
 {
-    cpu->hardReset();
-    memory->resetMemory();
-    memory->initMemory();
-    screen->clear();
+    emulation->hardReset();
     setStatusMessage("Hard reset done - Memory cleared", 2.0f);
 }
 
@@ -1086,7 +1354,7 @@ void MainWindow_ImGui::about()
 
 void MainWindow_ImGui::renderMemoryMapWindow()
 {
-    ImGui::SetNextWindowSize(ImVec2(340, 560), ImGuiCond_FirstUseEver);
+    ImGui::SetNextWindowSize(ImVec2(880, 580), ImGuiCond_FirstUseEver);
     if (!ImGui::Begin("Memory Map", &showMemoryMap)) {
         ImGui::End();
         return;
@@ -1106,7 +1374,9 @@ void MainWindow_ImGui::renderMemoryMapWindow()
         { 0x0200, 0x027F, IM_COL32(  0, 200, 255, 255), "Keyboard Buffer" },
         { 0x0280, 0x9FFF, IM_COL32( 80, 200,  80, 255), "User RAM" },
         { 0xA000, 0xBFFF, IM_COL32(200,  80, 200, 255), "Krusader ROM" },
-        { 0xC000, 0xCFFF, IM_COL32( 60,  60,  60, 255), "Unused" },
+        { 0xC000, 0xC0FF, IM_COL32(255, 140,  80, 255), "ACI I/O" },
+        { 0xC100, 0xC1FF, IM_COL32(255, 190,  80, 255), "ACI ROM" },
+        { 0xC200, 0xCFFF, IM_COL32( 60,  60,  60, 255), "Unused" },
         { 0xD000, 0xD0FF, IM_COL32(255,  80,  80, 255), "I/O (KBD/DSP)" },
         { 0xD100, 0xDFFF, IM_COL32( 60,  60,  60, 255), "Unused" },
         { 0xE000, 0xEFFF, IM_COL32(255, 255,  80, 255), "BASIC ROM" },
@@ -1115,57 +1385,37 @@ void MainWindow_ImGui::renderMemoryMapWindow()
     };
     int numRegions = sizeof(regions) / sizeof(regions[0]);
 
-    // --- Legend (Unused at the bottom) ---
-    ImGui::Text("Legend:");
-    ImGui::Separator();
-    ImU32 unusedColor = IM_COL32(60, 60, 60, 255);
-    for (int i = 0; i < numRegions; ++i) {
-        if (regions[i].color == unusedColor) continue;
-        ImVec2 p = ImGui::GetCursorScreenPos();
-        ImDrawList* dl = ImGui::GetWindowDrawList();
-        dl->AddRectFilled(p, ImVec2(p.x + 12, p.y + 12), regions[i].color);
-        dl->AddRect(p, ImVec2(p.x + 12, p.y + 12), IM_COL32(180, 180, 180, 255));
-        ImGui::Dummy(ImVec2(16, 14));
-        ImGui::SameLine();
-        ImGui::Text("$%04X-$%04X %s", regions[i].start, regions[i].end, regions[i].label);
-    }
-    // Unused entry last
-    {
-        ImVec2 p = ImGui::GetCursorScreenPos();
-        ImDrawList* dl = ImGui::GetWindowDrawList();
-        dl->AddRectFilled(p, ImVec2(p.x + 12, p.y + 12), unusedColor);
-        dl->AddRect(p, ImVec2(p.x + 12, p.y + 12), IM_COL32(180, 180, 180, 255));
-        ImGui::Dummy(ImVec2(16, 14));
-        ImGui::SameLine();
-        ImGui::Text("Unused");
-    }
-
-    ImGui::Spacing();
-    ImGui::Separator();
-    ImGui::Spacing();
-
-    // --- Visual memory map ---
-    // Each row = 256 bytes (one page), 256 rows total for 64KB
-    // Display as a grid: each pixel = 1 page (256 bytes)
-    ImGui::Text("Map (1 cell = 256 bytes):");
-    ImGui::Spacing();
-
+    // Grille 2×2 : ligne du haut = carte | légende ; ligne du bas = I/O | ACI + vecteurs
+    // (ACI et CPU vectors sous la ligne horizontale médiane de la fenêtre)
     const int COLS = 16;  // 16 columns x 16 rows = 256 pages = 64KB
     const int ROWS = 16;
-    float cellSize = 16.0f;
-    float spacing = 1.0f;
+    const float cellSize = 16.0f;
+    const float spacing = 1.0f;
+    const float gridW = COLS * (cellSize + spacing);
+    const float gridH = ROWS * (cellSize + spacing);
+    const float mapColW = gridW + 40.0f;
 
-    ImVec2 origin = ImGui::GetCursorScreenPos();
-    ImDrawList* drawList = ImGui::GetWindowDrawList();
+    const quint8* memPtr = uiSnapshot.memory.data();
+    const quint16 pc = uiSnapshot.programCounter;
+    const int pcPage = pc >> 8;
+    const quint8 sp = uiSnapshot.stackPointer;
+    const int spPage = 1; // stack is always page 1
 
-    const quint8* memPtr = memory->getMemoryPointer();
+    ImU32 unusedColor = IM_COL32(60, 60, 60, 255);
 
-    // PC marker
-    quint16 pc = cpu->getProgramCounter();
-    int pcPage = pc >> 8;
-    // SP marker
-    quint8 sp = cpu->getStackPointer();
-    int spPage = 1; // stack is always page 1
+    ImGuiTableFlags tableFlags = ImGuiTableFlags_BordersInnerH | ImGuiTableFlags_SizingFixedFit;
+    if (ImGui::BeginTable("MemoryMapGrid", 2, tableFlags)) {
+        ImGui::TableSetupColumn("left", ImGuiTableColumnFlags_WidthFixed, mapColW);
+        ImGui::TableSetupColumn("right", ImGuiTableColumnFlags_WidthStretch);
+
+        // --- Ligne 0 : carte | légende ---
+        ImGui::TableNextRow();
+        ImGui::TableSetColumnIndex(0);
+        ImGui::Text("Map (1 cell = 256 bytes):");
+        ImGui::Spacing();
+
+        const ImVec2 origin = ImGui::GetCursorScreenPos();
+        ImDrawList* drawList = ImGui::GetWindowDrawList();
 
     for (int row = 0; row < ROWS; ++row) {
         for (int col = 0; col < COLS; ++col) {
@@ -1222,6 +1472,10 @@ void MainWindow_ImGui::renderMemoryMapWindow()
                 ImVec2 mousePos = ImGui::GetMousePos();
                 if (mousePos.x >= p0.x && mousePos.x < p1.x &&
                     mousePos.y >= p0.y && mousePos.y < p1.y) {
+                    if (ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
+                        showMemoryViewer = true;
+                        memoryViewer->navigateToAddress(addr);
+                    }
                     ImGui::BeginTooltip();
                     ImGui::Text("Page $%02X : $%04X-$%04X", page, addr, addr + 0xFF);
                     for (int r = 0; r < numRegions; ++r) {
@@ -1238,7 +1492,7 @@ void MainWindow_ImGui::renderMemoryMapWindow()
     }
 
     // Address labels on the right: each row = 4KB
-    float rightMargin = origin.x + COLS * (cellSize + spacing) + 4;
+    const float rightMargin = origin.x + gridW + 4.0f;
     for (int row = 0; row < ROWS; ++row) {
         float y = origin.y + row * (cellSize + spacing) + 2;
         int kb = row * 4;
@@ -1247,29 +1501,56 @@ void MainWindow_ImGui::renderMemoryMapWindow()
         drawList->AddText(ImVec2(rightMargin, y), IM_COL32(150, 150, 150, 255), label);
     }
 
-    // Reserve space for the grid + right labels
-    ImGui::Dummy(ImVec2(COLS * (cellSize + spacing) + 40, ROWS * (cellSize + spacing)));
+        ImGui::Dummy(ImVec2(mapColW, gridH));
+        ImGui::Text("PC = $%04X  SP = $01%02X", pc, sp);
 
-    ImGui::Spacing();
-    ImGui::Text("PC = $%04X  SP = $01%02X", pc, sp);
+        ImGui::TableSetColumnIndex(1);
+        ImGui::Text("Legend:");
+        ImGui::Separator();
+        for (int i = 0; i < numRegions; ++i) {
+            if (regions[i].color == unusedColor) continue;
+            ImVec2 p = ImGui::GetCursorScreenPos();
+            ImDrawList* dl = ImGui::GetWindowDrawList();
+            dl->AddRectFilled(p, ImVec2(p.x + 12, p.y + 12), regions[i].color);
+            dl->AddRect(p, ImVec2(p.x + 12, p.y + 12), IM_COL32(180, 180, 180, 255));
+            ImGui::Dummy(ImVec2(16, 14));
+            ImGui::SameLine();
+            ImGui::Text("$%04X-$%04X %s", regions[i].start, regions[i].end, regions[i].label);
+        }
+        {
+            ImVec2 p = ImGui::GetCursorScreenPos();
+            ImDrawList* dl = ImGui::GetWindowDrawList();
+            dl->AddRectFilled(p, ImVec2(p.x + 12, p.y + 12), unusedColor);
+            dl->AddRect(p, ImVec2(p.x + 12, p.y + 12), IM_COL32(180, 180, 180, 255));
+            ImGui::Dummy(ImVec2(16, 14));
+            ImGui::SameLine();
+            ImGui::Text("Unused");
+        }
 
-    // Special addresses section
-    ImGui::Spacing();
-    ImGui::Separator();
-    ImGui::Spacing();
-    ImGui::Text("I/O Registers:");
-    ImGui::BulletText("$D010  KBD   - Keyboard data");
-    ImGui::BulletText("$D011  KBDCR - Keyboard control");
-    ImGui::BulletText("$D012  DSP   - Display output");
+        // --- Ligne 1 : I/O sous la carte | ACI + vecteurs sous la légende ---
+        ImGui::TableNextRow();
+        ImGui::TableSetColumnIndex(0);
+        ImGui::Text("I/O registers (address order):");
+        ImGui::BulletText("$C000  - ACI Cassette output");
+        ImGui::BulletText("$C081  TAPE  - ACI cassette input");
+        ImGui::BulletText("$D010  KBD   - Keyboard data");
+        ImGui::BulletText("$D011  KBDCR - Keyboard control");
+        ImGui::BulletText("$D012  DSP   - Display output");
 
-    ImGui::Spacing();
-    ImGui::Text("CPU Vectors:");
-    ImGui::BulletText("$FFFA/B  NMI   -> $%04X",
-        (int)memory->memRead(0xFFFA) | ((int)memory->memRead(0xFFFB) << 8));
-    ImGui::BulletText("$FFFC/D  RESET -> $%04X",
-        (int)memory->memRead(0xFFFC) | ((int)memory->memRead(0xFFFD) << 8));
-    ImGui::BulletText("$FFFE/F  IRQ   -> $%04X",
-        (int)memory->memRead(0xFFFE) | ((int)memory->memRead(0xFFFF) << 8));
+        ImGui::TableSetColumnIndex(1);
+        ImGui::Text("ACI ROM (not I/O):");
+        ImGui::BulletText("$C100  Entry - Woz ACI monitor");
+        ImGui::Spacing();
+        ImGui::Text("CPU vectors:");
+        ImGui::BulletText("$FFFA/B  NMI   -> $%04X",
+            (int)uiSnapshot.memory[0xFFFA] | ((int)uiSnapshot.memory[0xFFFB] << 8));
+        ImGui::BulletText("$FFFC/D  RESET -> $%04X",
+            (int)uiSnapshot.memory[0xFFFC] | ((int)uiSnapshot.memory[0xFFFD] << 8));
+        ImGui::BulletText("$FFFE/F  IRQ   -> $%04X",
+            (int)uiSnapshot.memory[0xFFFE] | ((int)uiSnapshot.memory[0xFFFF] << 8));
+
+        ImGui::EndTable();
+    }
 
     ImGui::End();
 }
@@ -1290,26 +1571,24 @@ void MainWindow_ImGui::updateStatus(float deltaTime)
     }
 }
 
-void MainWindow_ImGui::updateCpuExecution()
+void MainWindow_ImGui::updateCpuExecution(float deltaTime)
 {
-    if (cpuRunning && !stepMode) {
-        // Utiliser executionSpeed cycles par frame (configurable dans l'interface)
-        cpu->run(executionSpeed);
-    }
+    (void)deltaTime;
+    emulation->setExecutionSpeedCyclesPerFrame(executionSpeed);
 }
 
 void MainWindow_ImGui::startCpu()
 {
     cpuRunning = true;
     stepMode = false;
-    cpu->start();
+    emulation->startCpu();
     setStatusMessage("CPU started - Running", 2.0f);
 }
 
 void MainWindow_ImGui::stopCpu()
 {
     cpuRunning = false;
-    cpu->stop();
+    emulation->stopCpu();
     setStatusMessage("CPU stopped", 2.0f);
 }
 
@@ -1318,13 +1597,11 @@ void MainWindow_ImGui::stepCpu()
     // Arrêter l'exécution automatique et activer le mode pas à pas
     cpuRunning = false;
     stepMode = true;
-    cpu->stop();
-    
-    // Exécuter une seule instruction
-    cpu->step();
+    emulation->stepCpu();
+    emulation->copySnapshot(uiSnapshot);
     
     std::stringstream ss;
-    ss << "Step - PC: 0x" << std::hex << std::uppercase << cpu->getProgramCounter();
+    ss << "Step - PC: 0x" << std::hex << std::uppercase << uiSnapshot.programCounter;
     setStatusMessage(ss.str(), 2.0f);
 }
 
@@ -1338,24 +1615,24 @@ void MainWindow_ImGui::handleKeyboardInput()
     for (int i = 0; i < io.InputQueueCharacters.Size; i++) {
         ImWchar c = io.InputQueueCharacters[i];
         if (c >= 32 && c <= 126) {
-            memory->setKeyPressed((char)c);
+            emulation->queueKey((char)c);
         } else if (c == '\r' || c == '\n') {
-            memory->setKeyPressed('\r');
+            emulation->queueKey('\r');
         } else if (c == '\b' || c == 127) {
-            memory->setKeyPressed('\b');
+            emulation->queueKey('\b');
         }
     }
 
     if (ImGui::IsKeyPressed(ImGuiKey_Enter) || ImGui::IsKeyPressed(ImGuiKey_KeypadEnter)) {
-        memory->setKeyPressed('\r');
+        emulation->queueKey('\r');
     }
 
     if (ImGui::IsKeyPressed(ImGuiKey_Backspace)) {
-        memory->setKeyPressed('\b');
+        emulation->queueKey('\b');
     }
 
     if (ImGui::IsKeyPressed(ImGuiKey_Escape)) {
-        memory->setKeyPressed(27);
+        emulation->queueKey(27);
     }
 }
 
@@ -1475,10 +1752,10 @@ static const OpcodeInfo opcodeInfo[256] = {
 
 std::string MainWindow_ImGui::disassemble(quint16 pc, int& instrLen)
 {
-    quint8 opcode = memory->memRead(pc);
+    quint8 opcode = uiSnapshot.memory[pc];
     const OpcodeInfo& info = opcodeInfo[opcode];
-    quint8 lo = memory->memRead(pc + 1);
-    quint8 hi = memory->memRead(pc + 2);
+    quint8 lo = uiSnapshot.memory[(pc + 1) & 0xFFFF];
+    quint8 hi = uiSnapshot.memory[(pc + 2) & 0xFFFF];
     char buf[32];
 
     switch (info.mode) {
