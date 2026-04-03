@@ -14,6 +14,8 @@ file(GLOB IMGUI_SOURCES
 
 # Project sources
 set(SOURCES
+    CassetteDevice.cpp
+    EmulationController.cpp
     main_imgui.cpp
     MainWindow_ImGui.cpp
     M6502.cpp
@@ -23,6 +25,8 @@ set(SOURCES
 )
 
 set(HEADERS
+    CassetteDevice.h
+    EmulationController.h
     MainWindow_ImGui.h
     M6502.h
     Memory.h
@@ -37,6 +41,7 @@ add_executable(${PROJECT_NAME} ${SOURCES} ${HEADERS} ${IMGUI_SOURCES})
 target_include_directories(${PROJECT_NAME} PRIVATE
     ${IMGUI_DIR}
     ${IMGUI_DIR}/backends
+    ${CMAKE_CURRENT_SOURCE_DIR}
 )
 
 if(EMSCRIPTEN)

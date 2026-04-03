@@ -1091,7 +1091,8 @@ const M6502::OpcodeEntry M6502::opcodeTable[256] = {
 
 void M6502::executeOpcode(void)
 {
-    cycles = 0;
+    // Count the opcode fetch itself so per-instruction timing matches 6502 totals.
+    cycles = 1;
     unsigned char opcode = memory->memRead(programCounter++);
 
     const OpcodeEntry& entry = opcodeTable[opcode];
@@ -1142,6 +1143,9 @@ void M6502::step(void)
         handleNMI();
     
     executeOpcode();
+    if (memory != nullptr) {
+        memory->advanceCycles(cycles);
+    }
 }
 
 void M6502::run(int maxCycles)

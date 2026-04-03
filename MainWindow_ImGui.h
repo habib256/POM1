@@ -4,10 +4,10 @@
 #include <string>
 #include <vector>
 #include <memory>
+#include <cstring>
 #include <GLFW/glfw3.h>
-#include "Memory.h"
+#include "EmulationController.h"
 #include "MemoryViewer_ImGui.h"
-#include "M6502.h"
 #include "Screen_ImGui.h"
 
 class MainWindow_ImGui
@@ -23,10 +23,10 @@ public:
 
 private:
     // Pom1 Apple I Hardware
-    std::unique_ptr<M6502> cpu;
-    std::unique_ptr<Memory> memory;
+    std::unique_ptr<EmulationController> emulation;
     std::unique_ptr<Screen_ImGui> screen;
     std::unique_ptr<MemoryViewer_ImGui> memoryViewer;
+    EmulationSnapshot uiSnapshot;
     
     // Window reference for keyboard callbacks
     GLFWwindow* window = nullptr;
@@ -38,8 +38,11 @@ private:
     bool showScreenConfig = false;
     bool showMemoryConfig = false;
     bool showLoadDialog = false;
+    bool showLoadTapeDialog = false;
+    bool showCassetteControl = false;
     bool showMemoryMap = false;
     bool showSaveDialog = false;
+    bool showSaveTapeDialog = false;
     bool fullscreen = false;
     int windowedWidth = 1200;
     int windowedHeight = 800;
@@ -70,12 +73,17 @@ private:
     void renderScreenConfigDialog();
     void renderMemoryConfigDialog();
     void renderLoadDialog();
+    void renderLoadTapeDialog();
+    void renderCassetteControlWindow();
     void renderMemoryMapWindow();
     void renderSaveDialog();
+    void renderSaveTapeDialog();
 
     // Action functions
     void loadMemory();
     void saveMemory();
+    void loadTape();
+    void saveTape();
     void pasteCode();
     void quit();
     void reset();
@@ -89,7 +97,7 @@ private:
     void startCpu();
     void stopCpu();
     void stepCpu();
-    void updateCpuExecution();
+    void updateCpuExecution(float deltaTime);
     
     // Utility functions
     void setStatusMessage(const std::string& message, float duration = 3.0f);
@@ -119,6 +127,16 @@ private:
         }
     };
     LoadDialogState loadDlg;
+
+    struct TapeDialogState {
+        char filePath[512] = "cassette.aci";
+        void setDefaultPath(const char* path) {
+            strncpy(filePath, path, sizeof(filePath) - 1);
+            filePath[sizeof(filePath) - 1] = '\0';
+        }
+    };
+    TapeDialogState loadTapeDlg;
+    TapeDialogState saveTapeDlg;
 
     // Keyboard shortcuts — single source of truth for label + binding
     struct Shortcut {

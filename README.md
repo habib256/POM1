@@ -1,6 +1,6 @@
 <div align="center">
 
-# 🍎 POM1 v1.0 — Apple 1 Emulator
+# 🍎 POM1 v1.1 — Apple 1 Emulator
 
 **Experience the machine that started the personal computer revolution.**
 
@@ -24,7 +24,7 @@ or build it natively.
 
 ## ✨ Features
 
-🖥️ **Authentic Apple 1 Display** — 40×24 character grid, green phosphor or white mode, blinking `@` cursor, CRT scanline effect
+🖥️ **Authentic Apple 1 Display** — 40×24 character grid, `charmap.rom` bitmap or host ASCII, green / brown / monochrome CRT with scanlines and glow, blinking `@` cursor
 
 ⚙️ **Cycle-Accurate 6502 CPU** — All official opcodes, all addressing modes, adjustable clock (1 MHz / 2 MHz / Max)
 
@@ -33,6 +33,8 @@ or build it natively.
 🗺️ **Visual Memory Map** — Color-coded 64 KB overview with region legend, PC/SP indicators, and tooltips
 
 📂 **Program Loader** — Load binary files or Woz Monitor hex dumps with a built-in file browser
+
+📼 **Apple Cassette Interface (ACI)** — Woz ACI ROM at `$C100`, cassette input on `$C081`, output flip-flop on `$C000`, real-time audio, and tape import/export as `.aci` or `.wav`
 
 🐛 **Step Debugger** — Single-step execution, register inspection, disassembly, stack view, log console
 
@@ -152,6 +154,19 @@ vcpkg install glfw3:x64-windows
 
 ---
 
+## 📼 Cassette Interface
+
+The emulator now includes the **Apple Cassette Interface (ACI)**:
+
+- start the cassette monitor with `C100R`
+- load a tape image from **File > Load Tape**
+- export the last captured cassette signal from **File > Save Tape**
+- use `.aci` for exact pulse timings or `.wav` for an audio waveform
+
+This enables software that relies on the ACI output flip-flop, including sound demos such as **Twinkle Twinkle Little Star**.
+
+---
+
 ## 🎮 Software Library
 
 The `software/` directory ships with **30+ ready-to-run programs** — load them via **File > Load Memory**.
@@ -242,7 +257,7 @@ POM1/
 ├── MainWindow_ImGui.cpp/h   # 🎛️ App window, menus, CPU speed control
 ├── Screen_ImGui.cpp/h       # 🖥️ Apple 1 display (40×24, CRT effects)
 ├── MemoryViewer_ImGui.cpp/h # 🔍 Hex editor with search & navigation
-├── roms/                    # 📀 WozMonitor, BASIC, Krusader, charmap
+├── roms/                    # 📀 WozMonitor, BASIC, Krusader, ACI, charmap
 ├── software/                # 📂 Hex dump programs + assembly sources
 │   ├── games/               #   🎮 Games
 │   ├── demos/               #   🎨 Demos
@@ -262,12 +277,13 @@ POM1/
 
 | ROM | Size | Address | Origin |
 |-----|------|---------|--------|
+| 📼 **ACI** | 256 B | `$C100` | Woz Apple Cassette Interface monitor |
 | 👁️ **Woz Monitor** | 256 B | `$FF00` | Steve Wozniak's original system monitor |
 | 💻 **Apple BASIC** | 4 KB | `$E000` | Integer BASIC interpreter |
 | 🔧 **Krusader 1.3** | 8 KB | `$A000` | Ken Wessen's symbolic assembler |
-| 🔤 **Charmap** | 1 KB | — | Character generator table |
+| 🔤 **Charmap** | 1 KB | — | Character generator table used by the terminal renderer |
 
-All three main ROMs are loaded automatically at startup.
+The main firmware ROMs are loaded automatically at startup, and `charmap.rom` is used by the terminal renderer when available.
 
 ---
 
@@ -278,6 +294,9 @@ $0000-$00FF   Zero Page
 $0100-$01FF   Stack
 $0200-$9FFF   User RAM (programs load at $0280 or $0300)
 $A000-$BFFF   Krusader ROM (8 KB)
+$C000-$C0FF   Apple Cassette Interface I/O
+$C081         Tape input
+$C100-$C1FF   Woz ACI ROM
 $D010-$D012   I/O — Keyboard (KBD) & Display (DSP)
 $E000-$EFFF   Apple BASIC ROM (4 KB)
 $FF00-$FFFF   Woz Monitor ROM (256 B)

@@ -2,13 +2,163 @@
 #include "imgui.h"
 #include <cstring>
 #include <cmath>
+#include <algorithm>
+#include <array>
+#include <fstream>
+
+namespace {
+
+constexpr int kCharmapGlyphCount = 128;
+constexpr int kCharmapBytesPerGlyph = 8;
+constexpr int kCharmapVisibleRows = 7;
+constexpr int kCharmapVisibleCols = 5;
+
+}
 
 Screen_ImGui* Screen_ImGui::instance = nullptr;
 
 Screen_ImGui::Screen_ImGui()
 {
     instance = this;
+    loadCharmap();
     initializeScreen();
+}
+
+ImVec2 Screen_ImGui::computeApple1CellDimensions(ImVec2 charSize)
+{
+    const float cellHeight = charSize.y * kCellHeightFontScale;
+    const float cellWidth = cellHeight * (kApple1ViewportAspectRatio * static_cast<float>(kApple1Rows) /
+                                          static_cast<float>(kApple1Columns));
+    return ImVec2(cellWidth, cellHeight);
+}
+
+bool Screen_ImGui::loadCharmap()
+{
+    const std::string searchPaths[] = {
+        "charmap.rom",
+        "roms/charmap.rom",
+        "../roms/charmap.rom"
+    };
+
+    std::ifstream file;
+    for (const auto& path : searchPaths) {
+        file.open(path, std::ios::binary);
+        if (file.is_open()) {
+            break;
+        }
+    }
+
+    if (!file.is_open()) {
+        charmapLoaded = false;
+        charmapGlyphs.clear();
+        return false;
+    }
+
+    file.seekg(0, std::ios::end);
+    const std::streamsize fileSize = file.tellg();
+    file.seekg(0, std::ios::beg);
+
+    const std::streamsize expectedSize = kCharmapGlyphCount * kCharmapBytesPerGlyph;
+    if (fileSize < expectedSize) {
+        charmapLoaded = false;
+        charmapGlyphs.clear();
+        return false;
+    }
+
+    std::vector<unsigned char> bytes(static_cast<size_t>(expectedSize), 0);
+    file.read(reinterpret_cast<char*>(bytes.data()), expectedSize);
+    if (!file) {
+        charmapLoaded = false;
+        charmapGlyphs.clear();
+        return false;
+    }
+
+    charmapGlyphs.resize(kCharmapGlyphCount);
+    for (int glyphIndex = 0; glyphIndex < kCharmapGlyphCount; ++glyphIndex) {
+        std::copy_n(bytes.begin() + glyphIndex * kCharmapBytesPerGlyph,
+                    kCharmapBytesPerGlyph,
+                    charmapGlyphs[glyphIndex].begin());
+    }
+
+    charmapLoaded = true;
+    return true;
+}
+
+void Screen_ImGui::drawCharmapGlyph(ImDrawList* drawList, float x, float y, float cellWidth, float cellHeight,
+                                    unsigned char glyphIndex, ImU32 color, bool crispGlow) const
+{
+    if (!charmapLoaded || glyphIndex >= charmapGlyphs.size()) {
+        return;
+    }
+
+    // Avec kApple1ViewportAspectRatio, ~60%/72% donne des « pixels » 5×7 quasi carrés à l’écran
+    const float glyphAreaW = cellWidth * 0.60f;
+    const float glyphAreaH = cellHeight * 0.72f;
+    const float gapX = std::max(1.0f, glyphAreaW / 22.0f);
+    const float gapY = std::max(1.0f, glyphAreaH / 28.0f);
+    const float pixelW = std::max(1.0f, (glyphAreaW - gapX * (kCharmapVisibleCols - 1)) / kCharmapVisibleCols);
+    const float pixelH = std::max(1.0f, (glyphAreaH - gapY * (kCharmapVisibleRows - 1)) / kCharmapVisibleRows);
+    const float glyphW = pixelW * kCharmapVisibleCols + gapX * (kCharmapVisibleCols - 1);
+    const float glyphH = pixelH * kCharmapVisibleRows + gapY * (kCharmapVisibleRows - 1);
+    const float offsetX = x + (cellWidth - glyphW) * 0.5f;
+    const float offsetY = y + (cellHeight - glyphH) * 0.5f;
+    const float rounding = std::max(0.5f, std::min(pixelW, pixelH) * 0.22f);
+    float glowScaleX = 1.85f;
+    float glowScaleY = 0.22f;
+    float glowAlpha = 0.16f;
+    float glowMinX = 3.4f;
+    float glowMinY = 0.35f;
+    switch (monitorMode) {
+    case MonitorMode::Amber:
+        glowScaleX = 1.55f;
+        glowScaleY = 0.30f;
+        glowAlpha = 0.14f;
+        glowMinX = 2.8f;
+        glowMinY = 0.45f;
+        break;
+    case MonitorMode::Monochrome:
+        glowScaleX = 1.65f;
+        glowScaleY = 0.28f;
+        glowAlpha = 0.18f;
+        glowMinX = 2.8f;
+        glowMinY = 0.45f;
+        break;
+    case MonitorMode::Green:
+    default:
+        glowScaleX = 1.45f;
+        glowScaleY = 0.20f;
+        glowAlpha = 0.13f;
+        glowMinX = 2.4f;
+        glowMinY = 0.30f;
+        break;
+    }
+    if (crispGlow) {
+        glowAlpha *= 0.38f;
+    }
+    const float glowPadX = std::max(glowMinX, pixelW * glowScaleX);
+    const float glowPadY = std::max(glowMinY, pixelH * glowScaleY);
+    ImVec4 colorF = ImGui::ColorConvertU32ToFloat4(color);
+    ImVec4 glowF = colorF;
+    glowF.w *= glowAlpha;
+    const ImU32 glowColor = ImGui::ColorConvertFloat4ToU32(glowF);
+
+    const auto& glyph = charmapGlyphs[glyphIndex];
+    for (int row = 0; row < kCharmapVisibleRows; ++row) {
+        const unsigned char bits = glyph[row];
+        for (int col = 0; col < kCharmapVisibleCols; ++col) {
+            const unsigned char mask = static_cast<unsigned char>(1u << (col + 1));
+            if ((bits & mask) == 0) {
+                continue;
+            }
+
+            const float px = offsetX + col * (pixelW + gapX);
+            const float py = offsetY + row * (pixelH + gapY);
+            drawList->AddRectFilled(ImVec2(px - glowPadX, py - glowPadY),
+                                    ImVec2(px + pixelW + glowPadX, py + pixelH + glowPadY),
+                                    glowColor, rounding + glowPadY);
+            drawList->AddRectFilled(ImVec2(px, py), ImVec2(px + pixelW, py + pixelH), color, rounding);
+        }
+    }
 }
 
 void Screen_ImGui::initializeScreen()
@@ -21,7 +171,7 @@ void Screen_ImGui::initializeScreen()
     for (size_t i = 0; i < welcome.length() && startX + (int)i < SCREEN_WIDTH; ++i)
         screenBuffer[bufferIndex(0, startX + (int)i)] = welcome[i];
 
-    std::string version = "Version 1.0";
+    std::string version = "Version 1.1";
     startX = (SCREEN_WIDTH - (int)version.length()) / 2;
     for (size_t i = 0; i < version.length() && startX + (int)i < SCREEN_WIDTH; ++i)
         screenBuffer[bufferIndex(1, startX + (int)i)] = version[i];
@@ -31,14 +181,40 @@ void Screen_ImGui::initializeScreen()
     dirty = true;
 }
 
-void Screen_ImGui::drawCRTOverlay(float x0, float y0, float x1, float y1)
+void Screen_ImGui::drawCRTOverlay(float x0, float y0, float x1, float y1, bool charmapDisplay)
 {
     ImDrawList* dl = ImGui::GetWindowDrawList();
 
-    // Scanlines: 1 line out of 2
-    ImU32 scanColor = IM_COL32(0, 0, 0, (int)(crtScanlineAlpha * 255));
-    for (float py = y0; py < y1; py += 2.0f) {
-        dl->AddLine(ImVec2(x0, py), ImVec2(x1, py), scanColor, 1.0f);
+    ImVec4 phosphorTint;
+    switch (monitorMode) {
+    case MonitorMode::Amber:
+        phosphorTint = ImVec4(0.85f, 0.45f, 0.10f, 0.06f);
+        break;
+    case MonitorMode::Monochrome:
+        phosphorTint = ImVec4(1.0f, 1.0f, 1.0f, 0.06f);
+        break;
+    case MonitorMode::Green:
+    default:
+        phosphorTint = ImVec4(0.10f, 0.95f, 0.10f, 0.05f);
+        break;
+    }
+    if (charmapDisplay) {
+        phosphorTint.w *= 0.28f;
+    }
+
+    const ImU32 brightLineColor = ImGui::ColorConvertFloat4ToU32(phosphorTint);
+    const float dimLineMul = charmapDisplay ? 0.78f : 0.55f;
+    for (float py = y0; py < y1; py += 1.0f) {
+        const float lineAlpha = (static_cast<int>(py - y0) & 1) == 0 ? 1.0f : dimLineMul;
+        ImVec4 varied = ImGui::ColorConvertU32ToFloat4(brightLineColor);
+        varied.w *= lineAlpha;
+        dl->AddLine(ImVec2(x0, py), ImVec2(x1, py), ImGui::ColorConvertFloat4ToU32(varied), 1.0f);
+    }
+
+    const float scanAlpha = charmapDisplay ? crtScanlineAlpha * 0.55f : crtScanlineAlpha;
+    ImU32 scanColor = IM_COL32(0, 0, 0, (int)(scanAlpha * 255));
+    for (float py = y0 + 1.0f; py < y1; py += 2.0f) {
+        dl->AddLine(ImVec2(x0, py), ImVec2(x1, py), scanColor, 1.15f);
     }
 }
 
@@ -55,72 +231,125 @@ void Screen_ImGui::render()
     ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(0, 0));
     ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(8, 8));
 
+    const bool useCharmapRenderer = charmapLoaded &&
+        characterRenderMode == CharacterRenderMode::Apple1Charmap;
+
     ImVec4 textColor;
-    if (greenMonitor) {
-        textColor = ImVec4(0.0f, 1.0f, 0.0f, 1.0f);
-        ImGui::PushStyleColor(ImGuiCol_WindowBg, ImVec4(0.0f, 0.05f, 0.0f, 1.0f));
+    ImVec4 windowBg;
+    if (monitorMode == MonitorMode::Green) {
+        textColor = ImVec4(0.35f, 1.0f, 0.35f, 1.0f);
+        windowBg = ImVec4(0.0f, 0.05f, 0.0f, 1.0f);
+    } else if (monitorMode == MonitorMode::Amber) {
+        textColor = ImVec4(1.0f, 0.82f, 0.40f, 1.0f);
+        windowBg = ImVec4(0.08f, 0.03f, 0.0f, 1.0f);
     } else {
         textColor = ImVec4(1.0f, 1.0f, 1.0f, 1.0f);
-        ImGui::PushStyleColor(ImGuiCol_WindowBg, ImVec4(0.0f, 0.0f, 0.0f, 1.0f));
+        windowBg = ImVec4(0.0f, 0.0f, 0.0f, 1.0f);
     }
 
-    ImGui::PushFont(ImGui::GetIO().Fonts->Fonts[0]);
+    if (useCharmapRenderer) {
+        if (monitorMode == MonitorMode::Green) {
+            textColor = ImVec4(0.68f, 1.0f, 0.58f, 1.0f);
+            windowBg = ImVec4(0.0f, 0.0f, 0.0f, 1.0f);
+        } else if (monitorMode == MonitorMode::Amber) {
+            textColor = ImVec4(1.0f, 0.66f, 0.08f, 1.0f);
+            windowBg = ImVec4(0.02f, 0.006f, 0.0f, 1.0f);
+        } else {
+            textColor = ImVec4(1.0f, 1.0f, 1.0f, 1.0f);
+            windowBg = ImVec4(0.0f, 0.0f, 0.0f, 1.0f);
+        }
+    }
 
+    ImGui::PushStyleColor(ImGuiCol_WindowBg, windowBg);
+
+    ImGui::PushFont(ImGui::GetIO().Fonts->Fonts[0]);
     ImVec2 charSize = ImGui::CalcTextSize("M");
 
-    // Apple 1 character cells are wider than the glyph itself,
-    // adding visible spacing between characters for authentic look
-    float cellWidth = charSize.x * 1.4f;
-    float cellHeight = charSize.y * 1.3f;
+    const ImVec2 cellDim = computeApple1CellDimensions(charSize);
+    const float cellWidth = cellDim.x;
+    const float cellHeight = cellDim.y;
 
-    ImVec2 screenSize = ImVec2(cellWidth * SCREEN_WIDTH * scale, cellHeight * SCREEN_HEIGHT * scale);
+    // Taille « nominale » du raster (ratio Apple 1 fixe via computeApple1CellDimensions)
+    const float nomW = cellWidth * static_cast<float>(SCREEN_WIDTH) * scale;
+    const float nomH = cellHeight * static_cast<float>(SCREEN_HEIGHT) * scale;
 
-    ImVec2 windowSize = ImGui::GetWindowSize();
-    ImVec2 windowPos = ImGui::GetWindowPos();
+    // Zone dessinable sous la barre de titre (pas GetWindowSize, qui inclut la décoration)
+    ImVec2 avail = ImGui::GetContentRegionAvail();
+    // Laisse une marge horizontale : le raster ne s’étire pas sur toute la largeur utile
+    constexpr float kRasterHorizontalFill = 0.93f;
+    const float fitW = avail.x * kRasterHorizontalFill;
+    const float safeNomW = std::max(nomW, 1.0f);
+    const float safeNomH = std::max(nomH, 1.0f);
+    float layoutScale = 1.0f;
+    if (fitW > 1.0f && avail.y > 1.0f)
+        layoutScale = std::min(fitW / safeNomW, avail.y / safeNomH);
 
-    ImVec2 screenPos = ImVec2(
-        (windowSize.x - screenSize.x) * 0.5f,
-        (windowSize.y - screenSize.y) * 0.5f
-    );
+    const ImVec2 screenSize(nomW * layoutScale, nomH * layoutScale);
 
-    // Reserve space in the ImGui layout
-    ImGui::SetCursorPos(screenPos);
+    ImVec2 cursorPos = ImGui::GetCursorPos();
+    ImGui::SetCursorPos(ImVec2(
+        cursorPos.x + std::max(0.0f, (avail.x - screenSize.x) * 0.5f),
+        cursorPos.y + std::max(0.0f, (avail.y - screenSize.y) * 0.5f)));
     ImGui::Dummy(screenSize);
+    const ImVec2 rasterMin = ImGui::GetItemRectMin();
+
+    std::vector<char> renderBuffer;
+    int renderTopRow = 0;
+    int renderCursorX = 0;
+    int renderCursorY = 0;
+    {
+        std::lock_guard<std::mutex> lock(bufferMutex);
+        renderBuffer = screenBuffer;
+        renderTopRow = topRow;
+        renderCursorX = cursorX;
+        renderCursorY = cursorY;
+    }
+
+    auto renderBufferIndex = [&](int logicalY, int x) {
+        return ((renderTopRow + logicalY) % SCREEN_HEIGHT) * SCREEN_WIDTH + x;
+    };
 
     {
         ImDrawList* drawList = ImGui::GetWindowDrawList();
-        ImFont* font = ImGui::GetFont();
-        float fontSize = ImGui::GetFontSize() * scale;
         ImU32 col = ImGui::ColorConvertFloat4ToU32(textColor);
 
-        float scaledCellW = cellWidth * scale;
-        float scaledCellH = cellHeight * scale;
-        float charOffsetX = (scaledCellW - charSize.x * scale) * 0.5f;
-        float charOffsetY = (scaledCellH - charSize.y * scale) * 0.5f;
-
+        const float scaledCellW = cellWidth * scale * layoutScale;
+        const float scaledCellH = cellHeight * scale * layoutScale;
+        const float textScale = scale * layoutScale;
         for (int y = 0; y < SCREEN_HEIGHT; ++y) {
             for (int x = 0; x < SCREEN_WIDTH; ++x) {
-                char c = screenBuffer[bufferIndex(y, x)];
-                if (blinkOn && x == cursorX && y == cursorY) {
-                    c = '@';
+                unsigned char c = static_cast<unsigned char>(renderBuffer[renderBufferIndex(y, x)]);
+                if (blinkOn && x == renderCursorX && y == renderCursorY) {
+                    c = static_cast<unsigned char>('@');
                 }
-                if (c == 0 || c < 32) c = ' ';
-                if (c == ' ') continue;
 
-                float px = windowPos.x + screenPos.x + x * scaledCellW + charOffsetX;
-                float py = windowPos.y + screenPos.y + y * scaledCellH + charOffsetY;
+                const float px = rasterMin.x + static_cast<float>(x) * scaledCellW;
+                const float py = rasterMin.y + static_cast<float>(y) * scaledCellH;
 
-                char str[2] = { c, 0 };
-                drawList->AddText(font, fontSize, ImVec2(px, py), col, str);
+                if (useCharmapRenderer) {
+                    if (c == 0 && !blinkOn) {
+                        continue;
+                    }
+                    drawCharmapGlyph(drawList, px, py, scaledCellW, scaledCellH, c & 0x7F, col, true);
+                } else {
+                    if (c == 0) c = ' ';
+                    if (c == ' ') continue;
+
+                    const float charOffsetX = (scaledCellW - charSize.x * textScale) * 0.5f;
+                    const float charOffsetY = (scaledCellH - charSize.y * textScale) * 0.5f;
+                    char str[2] = { static_cast<char>(c), 0 };
+                    drawList->AddText(ImGui::GetFont(), ImGui::GetFontSize() * textScale,
+                                      ImVec2(px + charOffsetX, py + charOffsetY), col, str);
+                }
             }
         }
     }
 
     // Apply CRT effects on top
     if (crtEffect) {
-        ImVec2 absP0 = ImVec2(windowPos.x + screenPos.x, windowPos.y + screenPos.y);
-        ImVec2 absP1 = ImVec2(absP0.x + screenSize.x, absP0.y + screenSize.y);
-        drawCRTOverlay(absP0.x, absP0.y, absP1.x, absP1.y);
+        const ImVec2 absP0 = rasterMin;
+        const ImVec2 absP1 = ImVec2(rasterMin.x + screenSize.x, rasterMin.y + screenSize.y);
+        drawCRTOverlay(absP0.x, absP0.y, absP1.x, absP1.y, useCharmapRenderer);
     }
 
     ImGui::PopFont();
@@ -130,22 +359,35 @@ void Screen_ImGui::render()
 
 void Screen_ImGui::writeChar(char c)
 {
+    std::lock_guard<std::mutex> lock(bufferMutex);
+    writeCharUnlocked(c);
+}
+
+void Screen_ImGui::writeCharUnlocked(char c)
+{
     if (c == '\n' || c == '\r') {
-        newLine();
+        newLineUnlocked();
     } else if (c == '\b') {
         if (cursorX > 0) {
             cursorX--;
             screenBuffer[bufferIndex(cursorY, cursorX)] = ' ';
         }
-    } else if (c >= 32 && c <= 126) {
-        if (cursorX >= SCREEN_WIDTH) newLine();
-        screenBuffer[bufferIndex(cursorY, cursorX)] = c;
+    } else {
+        unsigned char glyphCode = static_cast<unsigned char>(c) & 0x7F;
+        if (cursorX >= SCREEN_WIDTH) newLineUnlocked();
+        screenBuffer[bufferIndex(cursorY, cursorX)] = static_cast<char>(glyphCode);
         cursorX++;
     }
     dirty = true;
 }
 
 void Screen_ImGui::clear()
+{
+    std::lock_guard<std::mutex> lock(bufferMutex);
+    clearUnlocked();
+}
+
+void Screen_ImGui::clearUnlocked()
 {
     std::fill(screenBuffer.begin(), screenBuffer.end(), ' ');
     topRow = 0;
@@ -156,12 +398,24 @@ void Screen_ImGui::clear()
 
 void Screen_ImGui::setCursorPosition(int x, int y)
 {
+    std::lock_guard<std::mutex> lock(bufferMutex);
+    setCursorPositionUnlocked(x, y);
+}
+
+void Screen_ImGui::setCursorPositionUnlocked(int x, int y)
+{
     cursorX = (x >= 0 && x < SCREEN_WIDTH) ? x : 0;
     cursorY = (y >= 0 && y < SCREEN_HEIGHT) ? y : 0;
     dirty = true;
 }
 
 void Screen_ImGui::scrollUp()
+{
+    std::lock_guard<std::mutex> lock(bufferMutex);
+    scrollUpUnlocked();
+}
+
+void Screen_ImGui::scrollUpUnlocked()
 {
     // Clear the row that is about to become the new bottom line
     int newBottomRow = topRow; // current top becomes the recycled bottom
@@ -173,10 +427,16 @@ void Screen_ImGui::scrollUp()
 
 void Screen_ImGui::newLine()
 {
+    std::lock_guard<std::mutex> lock(bufferMutex);
+    newLineUnlocked();
+}
+
+void Screen_ImGui::newLineUnlocked()
+{
     cursorX = 0;
     cursorY++;
     if (cursorY >= SCREEN_HEIGHT) {
-        scrollUp();
+        scrollUpUnlocked();
         cursorY = SCREEN_HEIGHT - 1;
     }
 }

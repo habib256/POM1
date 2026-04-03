@@ -6,7 +6,7 @@
 #include <cstring>
 
 MemoryViewer_ImGui::MemoryViewer_ImGui(Memory* mem)
-    : memory(mem), memPtr(mem->getMemoryPointer())
+    : memory(mem)
 {
     snapshot.resize(0x10000);
 }
@@ -14,15 +14,17 @@ MemoryViewer_ImGui::MemoryViewer_ImGui(Memory* mem)
 // Read a byte: live from raw pointer (no I/O side effects) or from snapshot
 quint8 MemoryViewer_ImGui::readByte(int address) const
 {
-    if (autoRefresh || !snapshotValid)
-        return memPtr[address & 0xFFFF];
+    if ((autoRefresh || !snapshotValid) && liveMemory && !liveMemory->empty())
+        return (*liveMemory)[address & 0xFFFF];
     return snapshot[address & 0xFFFF];
 }
 
 void MemoryViewer_ImGui::takeSnapshot()
 {
-    memcpy(snapshot.data(), memPtr, 0x10000);
-    snapshotValid = true;
+    if (liveMemory && liveMemory->size() >= 0x10000) {
+        std::copy(liveMemory->begin(), liveMemory->begin() + 0x10000, snapshot.begin());
+        snapshotValid = true;
+    }
 }
 
 void MemoryViewer_ImGui::render()
@@ -39,6 +41,24 @@ void MemoryViewer_ImGui::render()
     if (showEditPopup) {
         renderEditPopup();
     }
+}
+
+void MemoryViewer_ImGui::navigateToAddress(int address)
+{
+    jumpToAddress(address);
+}
+
+void MemoryViewer_ImGui::updateLiveMemory(const std::vector<quint8>& memoryImage)
+{
+    liveMemory = &memoryImage;
+    if (autoRefresh || !snapshotValid) {
+        takeSnapshot();
+    }
+}
+
+void MemoryViewer_ImGui::setWriteCallback(std::function<void(quint16, quint8)> callback)
+{
+    writeCallback = std::move(callback);
 }
 
 void MemoryViewer_ImGui::renderControls()
@@ -321,8 +341,15 @@ void MemoryViewer_ImGui::searchMemory()
         int from = (pass == 0) ? searchStart : 0;
         int to   = (pass == 0) ? limit : std::min(searchStart, limit);
         for (int addr = from; addr <= to; ++addr) {
-            if (memPtr[addr] == pattern[0]) {
-                if (patternLen == 1 || memcmp(memPtr + addr, pattern, patternLen) == 0) {
+            if (readByte(addr) == pattern[0]) {
+                bool matches = true;
+                for (int i = 1; i < patternLen; ++i) {
+                    if (readByte(addr + i) != pattern[i]) {
+                        matches = false;
+                        break;
+                    }
+                }
+                if (matches) {
                     searchAddress = addr;
                     return;
                 }
@@ -350,7 +377,7 @@ void MemoryViewer_ImGui::searchAsciiString()
 
     auto matchAt = [&](int addr) -> bool {
         for (int i = 0; i < searchLen; ++i) {
-            char c = (char)(memPtr[addr + i] & 0x7F);
+            char c = (char)(readByte(addr + i) & 0x7F);
             if (c >= 'a' && c <= 'z') c = c - 'a' + 'A';
             if (c != upperPattern[i]) return false;
         }
@@ -373,9 +400,16 @@ void MemoryViewer_ImGui::searchAsciiString()
 // Edit with undo support
 void MemoryViewer_ImGui::applyEdit(quint16 address, quint8 newValue)
 {
-    quint8 oldValue = memPtr[address];
+    quint8 oldValue = readByte(address);
     if (oldValue == newValue) return;
-    memory->memWrite(address, newValue);
+    if (writeCallback) {
+        writeCallback(address, newValue);
+    } else if (memory) {
+        memory->memWrite(address, newValue);
+    }
+    if (snapshotValid) {
+        snapshot[address] = newValue;
+    }
     undoStack.push_back({address, oldValue, newValue});
     redoStack.clear();
 }
@@ -385,7 +419,14 @@ void MemoryViewer_ImGui::undo()
     if (undoStack.empty()) return;
     EditRecord rec = undoStack.back();
     undoStack.pop_back();
-    memory->memWrite(rec.address, rec.oldValue);
+    if (writeCallback) {
+        writeCallback(rec.address, rec.oldValue);
+    } else if (memory) {
+        memory->memWrite(rec.address, rec.oldValue);
+    }
+    if (snapshotValid) {
+        snapshot[rec.address] = rec.oldValue;
+    }
     redoStack.push_back(rec);
     jumpToAddress(rec.address);
 }
@@ -395,7 +436,14 @@ void MemoryViewer_ImGui::redo()
     if (redoStack.empty()) return;
     EditRecord rec = redoStack.back();
     redoStack.pop_back();
-    memory->memWrite(rec.address, rec.newValue);
+    if (writeCallback) {
+        writeCallback(rec.address, rec.newValue);
+    } else if (memory) {
+        memory->memWrite(rec.address, rec.newValue);
+    }
+    if (snapshotValid) {
+        snapshot[rec.address] = rec.newValue;
+    }
     undoStack.push_back(rec);
     jumpToAddress(rec.address);
 }
@@ -413,7 +461,7 @@ void MemoryViewer_ImGui::renderEditPopup()
     }
 
     if (ImGui::BeginPopupModal("Edit Memory", nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
-        quint8 current = memPtr[editAddress];
+        quint8 current = readByte(editAddress);
         ImGui::Text("Address: 0x%04X", editAddress);
         ImGui::Text("Current value: 0x%02X (%d)", current, current);
 
@@ -464,13 +512,15 @@ bool MemoryViewer_ImGui::isROM(int address)
 {
     if (address >= 0xFF00) return true;
     if (address >= 0xE000 && address <= 0xEFFF) return true;
+    if (address >= 0xC100 && address <= 0xC1FF) return true;
     if (address >= 0xA000 && address <= 0xBFFF) return true;
     return false;
 }
 
 bool MemoryViewer_ImGui::isIO(int address)
 {
-    return (address >= 0xD010 && address <= 0xD013);
+    return ((address >= 0xC000 && address <= 0xC0FF) ||
+            (address >= 0xD010 && address <= 0xD013));
 }
 
 ImVec4 MemoryViewer_ImGui::getColorForAddress(int address)
@@ -486,6 +536,10 @@ ImVec4 MemoryViewer_ImGui::getColorForAddress(int address)
         return ImVec4(0.31f, 0.78f, 0.31f, 1.0f);   // User RAM - green
     if (address <= 0xBFFF)
         return ImVec4(0.78f, 0.31f, 0.78f, 1.0f);   // Krusader ROM - purple
+    if (address >= 0xC000 && address <= 0xC0FF)
+        return ImVec4(1.0f, 0.50f, 0.31f, 1.0f);    // Cassette I/O - orange/red
+    if (address >= 0xC100 && address <= 0xC1FF)
+        return ImVec4(1.0f, 0.70f, 0.31f, 1.0f);    // ACI ROM - amber
     if (address >= 0xD000 && address <= 0xD0FF)
         return ImVec4(1.0f, 0.31f, 0.31f, 1.0f);    // I/O (KBD/DSP) - red
     if (address >= 0xE000 && address <= 0xEFFF)
