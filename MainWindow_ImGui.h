@@ -6,6 +6,7 @@
 #include <memory>
 #include <cstring>
 #include <GLFW/glfw3.h>
+#include "POM1Build.h"
 #include "EmulationController.h"
 #include "MemoryViewer_ImGui.h"
 #include "Screen_ImGui.h"
@@ -21,6 +22,16 @@ public:
     void handleGlfwChar(unsigned int codepoint);
     void handleGlfwKey(int key, int scancode, int action, int mods);
 
+#if POM1_IS_WASM
+    /** Taille framebuffer/canvas pour le prochain tour de boucle (hors plein écran navigateur). */
+    void getWasmCanvasPixelSize(int& outW, int& outH) const
+    {
+        outW = wasmCanvasPixelW;
+        outH = wasmCanvasPixelH;
+    }
+    bool isWasmFullscreen() const { return fullscreen; }
+#endif
+
 private:
     // Pom1 Apple I Hardware
     std::unique_ptr<EmulationController> emulation;
@@ -30,6 +41,11 @@ private:
     
     // Window reference for keyboard callbacks
     GLFWwindow* window = nullptr;
+
+#if POM1_IS_WASM
+    int wasmCanvasPixelW = 1200;
+    int wasmCanvasPixelH = 800;
+#endif
 
     // Interface state
     bool showMemoryViewer = false;

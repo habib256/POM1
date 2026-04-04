@@ -143,24 +143,32 @@ int main(int argc, char* argv[])
         }
         glfwPollEvents();
 
-        // Sync taille canvas (CSS) ↔ buffer WebGL ; garde-fous si get_element_css_size renvoie 0
-        double cssW = 0.0;
-        double cssH = 0.0;
-        emscripten_get_element_css_size("#canvas", &cssW, &cssH);
-        int cssWi = (int)cssW;
-        int cssHi = (int)cssH;
-        if (cssWi < 1) {
-            cssWi = 1200;
+        // Taille canvas : hors plein écran = celle calculée dans MainWindow (Apple 1 + chrome) ;
+        // en plein écran = taille CSS du canvas (viewport navigateur).
+        int targetW = 0;
+        int targetH = 0;
+        if (c->mainWindow->isWasmFullscreen()) {
+            double cssW = 0.0;
+            double cssH = 0.0;
+            emscripten_get_element_css_size("#canvas", &cssW, &cssH);
+            targetW = (int)cssW;
+            targetH = (int)cssH;
+            if (targetW < 1) {
+                targetW = 1200;
+            }
+            if (targetH < 1) {
+                targetH = 800;
+            }
+        } else {
+            c->mainWindow->getWasmCanvasPixelSize(targetW, targetH);
         }
-        if (cssHi < 1) {
-            cssHi = 800;
-        }
+
         int bufW = 0;
         int bufH = 0;
         emscripten_get_canvas_element_size("#canvas", &bufW, &bufH);
-        if (bufW != cssWi || bufH != cssHi) {
-            emscripten_set_canvas_element_size("#canvas", cssWi, cssHi);
-            glfwSetWindowSize(c->window, cssWi, cssHi);
+        if (bufW != targetW || bufH != targetH) {
+            emscripten_set_canvas_element_size("#canvas", targetW, targetH);
+            glfwSetWindowSize(c->window, targetW, targetH);
         }
 
         ImGui_ImplOpenGL3_NewFrame();
@@ -171,8 +179,8 @@ int main(int argc, char* argv[])
         int fbH = 0;
         glfwGetFramebufferSize(c->window, &fbW, &fbH);
         if (fbW < 1 || fbH < 1) {
-            fbW = cssWi;
-            fbH = cssHi;
+            fbW = targetW;
+            fbH = targetH;
         }
         io.DisplaySize = ImVec2((float)fbW, (float)fbH);
 
