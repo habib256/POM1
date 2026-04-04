@@ -11,8 +11,12 @@
 #include <limits>
 #include <vector>
 
+#if POM1_IS_WASM
+#include <emscripten.h>
+#else
 #define MINIAUDIO_IMPLEMENTATION
 #include "third_party/miniaudio.h"
+#endif
 
 namespace {
 
@@ -75,6 +79,46 @@ CassetteDevice::~CassetteDevice()
     shutdownAudio();
 }
 
+void CassetteDevice::fillAudioBuffer(float* output, int frameCount)
+{
+    static constexpr float kFilterAlpha = 0.33f;
+    std::lock_guard<std::mutex> lock(audioMutex);
+    for (int i = 0; i < frameCount; ++i) {
+        float targetSample = 0.0f;
+        if (!audioQueue.empty()) {
+            targetSample = audioQueue.front().sampleValue;
+            if (audioQueue.front().remainingSamples > 0) {
+                audioQueue.front().remainingSamples--;
+            }
+            if (audioQueue.front().remainingSamples == 0) {
+                audioQueue.pop_front();
+            }
+        }
+        if (audioRampInSamplesRemaining > 0) {
+            const float ramp = 1.0f - (static_cast<float>(audioRampInSamplesRemaining) /
+                                       static_cast<float>(kAudioRampInSamples));
+            targetSample *= ramp;
+            audioRampInSamplesRemaining--;
+        }
+        audioPlaybackSample += (targetSample - audioPlaybackSample) * kFilterAlpha;
+        output[i] = audioPlaybackSample;
+    }
+}
+
+#if POM1_IS_WASM
+static CassetteDevice* g_wasmCassetteDevice = nullptr;
+
+extern "C" {
+EMSCRIPTEN_KEEPALIVE
+void pom1_fillAudioBuffer(float* buf, int frames)
+{
+    if (g_wasmCassetteDevice)
+        g_wasmCassetteDevice->fillAudioBuffer(buf, frames);
+    else
+        std::fill(buf, buf + frames, 0.0f);
+}
+}
+#else
 void CassetteDevice::audioDataCallback(ma_device* pDevice, void* pOutput, const void* /*pInput*/, uint32_t frameCount)
 {
     CassetteDevice* self = static_cast<CassetteDevice*>(pDevice->pUserData);
@@ -83,39 +127,37 @@ void CassetteDevice::audioDataCallback(ma_device* pDevice, void* pOutput, const 
         std::fill(output, output + frameCount, 0.0f);
         return;
     }
-
-    // A small low-pass makes the live ACI output much less harsh than a raw
-    // square wave while preserving the melody and timing.
-    static constexpr float kFilterAlpha = 0.33f;
-    std::lock_guard<std::mutex> lock(self->audioMutex);
-    for (uint32_t i = 0; i < frameCount; ++i) {
-        float targetSample = 0.0f;
-        if (!self->audioQueue.empty()) {
-            targetSample = self->audioQueue.front().sampleValue;
-            if (self->audioQueue.front().remainingSamples > 0) {
-                self->audioQueue.front().remainingSamples--;
-            }
-            if (self->audioQueue.front().remainingSamples == 0) {
-                self->audioQueue.pop_front();
-            }
-        }
-        if (self->audioRampInSamplesRemaining > 0) {
-            const float ramp = 1.0f - (static_cast<float>(self->audioRampInSamplesRemaining) /
-                                       static_cast<float>(kAudioRampInSamples));
-            targetSample *= ramp;
-            self->audioRampInSamplesRemaining--;
-        }
-        self->audioPlaybackSample += (targetSample - self->audioPlaybackSample) * kFilterAlpha;
-        output[i] = self->audioPlaybackSample;
-    }
+    self->fillAudioBuffer(output, static_cast<int>(frameCount));
 }
+#endif
 
 bool CassetteDevice::initAudio()
 {
 #if POM1_IS_WASM
-    // Pas de fil audio miniaudio sur le Web (pas de pthreads par défaut, AudioContext après geste utilisateur).
-    audioAvailable = false;
-    return false;
+    g_wasmCassetteDevice = this;
+
+    // Create an AudioContext + ScriptProcessorNode via JS.
+    // The AudioContext starts suspended — it will be resumed on the first user
+    // click or keypress (browser autoplay policy).
+    emscripten_run_script(
+        "var ctx = new (window.AudioContext || window.webkitAudioContext)({sampleRate: 44100});"
+        "var bufSize = 512;"
+        "var proc = ctx.createScriptProcessor(bufSize, 0, 1);"
+        "var heapBuf = Module._malloc(bufSize * 4);"
+        "proc.onaudioprocess = function(e) {"
+        "  Module._pom1_fillAudioBuffer(heapBuf, bufSize);"
+        "  var out = e.outputBuffer.getChannelData(0);"
+        "  out.set(Module.HEAPF32.subarray(heapBuf >> 2, (heapBuf >> 2) + bufSize));"
+        "};"
+        "proc.connect(ctx.destination);"
+        "window._pom1Audio = {ctx: ctx, proc: proc, buf: heapBuf};"
+        "var resume = function() { if (ctx.state === 'suspended') ctx.resume(); };"
+        "document.addEventListener('click', resume, {once: true});"
+        "document.addEventListener('keydown', resume, {once: true});"
+    );
+
+    audioAvailable = true;
+    return true;
 #else
     shutdownAudio();
 
@@ -175,11 +217,23 @@ void CassetteDevice::setLiveAudioTimebaseHz(uint32_t hz)
 
 void CassetteDevice::shutdownAudio()
 {
+#if POM1_IS_WASM
+    emscripten_run_script(
+        "if (window._pom1Audio) {"
+        "  window._pom1Audio.proc.disconnect();"
+        "  window._pom1Audio.ctx.close();"
+        "  Module._free(window._pom1Audio.buf);"
+        "  window._pom1Audio = null;"
+        "}"
+    );
+    g_wasmCassetteDevice = nullptr;
+#else
     if (audioDevice != nullptr) {
         ma_device_uninit(audioDevice);
         delete audioDevice;
         audioDevice = nullptr;
     }
+#endif
     audioAvailable = false;
 }
 
@@ -431,13 +485,13 @@ bool CassetteDevice::loadAciTape(const std::string& path)
 bool CassetteDevice::saveAciTape(const std::string& path) const
 {
     if (recordedDurations.empty()) {
-        const_cast<CassetteDevice*>(this)->lastError = "No cassette output has been recorded yet";
+        lastError = "No cassette output has been recorded yet";
         return false;
     }
 
     std::ofstream file(path, std::ios::binary);
     if (!file.is_open()) {
-        const_cast<CassetteDevice*>(this)->lastError = "Cannot write tape file: " + path;
+        lastError = "Cannot write tape file: " + path;
         return false;
     }
 
@@ -451,7 +505,7 @@ bool CassetteDevice::saveAciTape(const std::string& path) const
         writeLe32(file, duration);
     }
 
-    const_cast<CassetteDevice*>(this)->lastError.clear();
+    lastError.clear();
     return true;
 }
 
@@ -502,6 +556,10 @@ bool CassetteDevice::loadWavTape(const std::string& path)
 
     if (dataChunk == nullptr || channels == 0 || sampleRate == 0) {
         lastError = "WAV file is missing format or data chunks";
+        return false;
+    }
+    if (audioFormat != 1 && audioFormat != 3) {
+        lastError = "Unsupported WAV format (only PCM and float are supported)";
         return false;
     }
 
@@ -583,7 +641,7 @@ bool CassetteDevice::loadWavTape(const std::string& path)
 bool CassetteDevice::saveWavTape(const std::string& path) const
 {
     if (recordedDurations.empty()) {
-        const_cast<CassetteDevice*>(this)->lastError = "No cassette output has been recorded yet";
+        lastError = "No cassette output has been recorded yet";
         return false;
     }
 
@@ -600,12 +658,17 @@ bool CassetteDevice::saveWavTape(const std::string& path) const
 
     pcm.insert(pcm.end(), kAudioSampleRate / 10, level ? 14000 : -14000);
 
-    const uint32_t dataSize = static_cast<uint32_t>(pcm.size() * sizeof(int16_t));
+    const size_t dataSizeFull = pcm.size() * sizeof(int16_t);
+    if (dataSizeFull > UINT32_MAX - 36) {
+        lastError = "Recording too large to save as WAV";
+        return false;
+    }
+    const uint32_t dataSize = static_cast<uint32_t>(dataSizeFull);
     const uint32_t riffSize = 36 + dataSize;
 
     std::ofstream file(path, std::ios::binary);
     if (!file.is_open()) {
-        const_cast<CassetteDevice*>(this)->lastError = "Cannot write tape file: " + path;
+        lastError = "Cannot write tape file: " + path;
         return false;
     }
 
@@ -624,6 +687,6 @@ bool CassetteDevice::saveWavTape(const std::string& path) const
     writeLe32(file, dataSize);
     file.write(reinterpret_cast<const char*>(pcm.data()), static_cast<std::streamsize>(dataSize));
 
-    const_cast<CassetteDevice*>(this)->lastError.clear();
+    lastError.clear();
     return true;
 }

@@ -1,13 +1,17 @@
 #ifndef CASSETTEDEVICE_H
 #define CASSETTEDEVICE_H
 
+#include "POM1Build.h"
+
 #include <cstdint>
 #include <deque>
 #include <mutex>
 #include <string>
 #include <vector>
 
+#if !POM1_IS_WASM
 struct ma_device;
+#endif
 
 class CassetteDevice
 {
@@ -40,6 +44,8 @@ public:
     void setHardwareAccurateLiveAudio(bool enabled);
     void setLiveAudioTimebaseHz(uint32_t hz);
 
+    void fillAudioBuffer(float* output, int frameCount);
+
     size_t getLoadedTransitionCount() const { return loadedDurations.size(); }
     size_t getRecordedTransitionCount() const { return recordedDurations.size(); }
     const std::string& getLoadedTapePath() const { return loadedTapePath; }
@@ -70,12 +76,16 @@ private:
     void clearLiveAudioState();
 
 private:
+#if !POM1_IS_WASM
     ma_device* audioDevice = nullptr;
+#endif
     bool audioAvailable = false;
     bool hardwareAccurateLiveAudio = true;
     uint32_t liveAudioTimebaseHz = kRealtimeAudioTimebaseHz;
 
+#if !POM1_IS_WASM
     static void audioDataCallback(ma_device* pDevice, void* pOutput, const void* pInput, uint32_t frameCount);
+#endif
     struct AudioSegment {
         uint32_t remainingSamples;
         float sampleValue;
@@ -104,7 +114,7 @@ private:
     std::vector<uint32_t> loadedDurations;
     std::string loadedTapePath;
 
-    std::string lastError;
+    mutable std::string lastError;
 };
 
 #endif // CASSETTEDEVICE_H

@@ -589,30 +589,29 @@ void MainWindow_ImGui::renderStatusBar()
         ImGui::Text("%s", statusMessage.c_str());
 
         std::string cpuText = cpuRunning ? "RUNNING" : "STOPPED";
-        std::string speedText = (executionSpeed >= 1000000)
-            ? "| Max"
-            : [&]() {
-                char buf[32];
-                float mhz = executionSpeed * 60.0f / 1000000.0f;
-                snprintf(buf, sizeof(buf), "| %.1f MHz", mhz);
-                return std::string(buf);
-            }();
-        char ramBuf[32];
-        snprintf(ramBuf, sizeof(ramBuf), "| RAM: %d KB", uiSnapshot.ramSizeKB);
-        std::string ramText = ramBuf;
+        std::string speedText;
+        if (executionSpeed >= 1000000) {
+            speedText = "| Max";
+        } else {
+            std::ostringstream oss;
+            oss << "| " << std::fixed << std::setprecision(1)
+                << (executionSpeed * 60.0f / 1000000.0f) << " MHz";
+            speedText = oss.str();
+        }
+        std::ostringstream ramOss;
+        ramOss << "| RAM: " << uiSnapshot.ramSizeKB << " KB";
+        std::string ramText = ramOss.str();
 
         std::string tapeText;
         if (uiSnapshot.cassetteLoadedTape) {
-            char buf[64];
-            snprintf(buf, sizeof(buf), "| TAPE: %s (%zu tr)",
-                     uiSnapshot.cassettePlaybackActive ? "READ" : "READY",
-                     uiSnapshot.cassetteLoadedTransitionCount);
-            tapeText = buf;
+            std::ostringstream oss;
+            oss << "| TAPE: " << (uiSnapshot.cassettePlaybackActive ? "READ" : "READY")
+                << " (" << uiSnapshot.cassetteLoadedTransitionCount << " tr)";
+            tapeText = oss.str();
         } else if (uiSnapshot.cassetteRecordedTape) {
-            char buf[64];
-            snprintf(buf, sizeof(buf), "| TAPE OUT: %zu tr",
-                     uiSnapshot.cassetteRecordedTransitionCount);
-            tapeText = buf;
+            std::ostringstream oss;
+            oss << "| TAPE OUT: " << uiSnapshot.cassetteRecordedTransitionCount << " tr";
+            tapeText = oss.str();
         } else {
             tapeText = "| TAPE: empty";
         }
@@ -620,9 +619,9 @@ void MainWindow_ImGui::renderStatusBar()
         std::string audioText = !uiSnapshot.cassetteAudioAvailable ? "| AUDIO OFF" : "";
         std::string keyText;
         if (uiSnapshot.keyReady) {
-            char buf[24];
-            snprintf(buf, sizeof(buf), "| KEY: '%c'", uiSnapshot.lastKey);
-            keyText = buf;
+            std::ostringstream oss;
+            oss << "| KEY: '" << uiSnapshot.lastKey << "'";
+            keyText = oss.str();
         }
 
         const float spacing = ImGui::GetStyle().ItemSpacing.x;
