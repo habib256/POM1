@@ -430,7 +430,7 @@ void MainWindow_ImGui::renderToolbar()
                 // Load demo HGR image at $2000 if available
                 std::string demoPath;
                 for (const auto& dir : {"software/gen2", "../software/gen2", "../../software/gen2"}) {
-                    std::string p = std::string(dir) + "/N001.HGR.BIN";
+                    std::string p = std::string(dir) + "/GEN2.HGR.BIN";
                     if (std::filesystem::exists(p)) { demoPath = p; break; }
                 }
                 if (!demoPath.empty()) {
