@@ -1275,6 +1275,14 @@ void MainWindow_ImGui::renderLoadDialog()
                 cpuRunning = true;
                 stepMode = false;
                 std::string filename = std::filesystem::path(loadDlg.filePath).filename().string();
+                // Compute loaded program size for Memory Map region
+                loadedProgramName = filename;
+                loadedProgramStart = addr;
+                {
+                    std::ifstream fsize(loadDlg.filePath, std::ios::binary | std::ios::ate);
+                    size_t sz = fsize.good() ? static_cast<size_t>(fsize.tellg()) : 0;
+                    loadedProgramEnd = (sz > 0) ? static_cast<quint16>(addr + sz - 1) : addr;
+                }
                 std::stringstream ss;
                 ss << "Loaded " << filename << " at $" << std::hex << std::uppercase << addr;
                 setStatusMessage(ss.str(), 3.0f);
@@ -1633,12 +1641,23 @@ void MainWindow_ImGui::renderMemoryMapWindow()
         { 0x0100, 0x01FF, IM_COL32(255, 165,   0, 255), "Stack" },
         { 0x0200, 0x027F, IM_COL32(  0, 200, 255, 255), "Keyboard Buffer" },
     };
+    // Loaded program region label (static buffer for ImGui lifetime)
+    static char progLabel[64] = "";
+    const bool hasLoadedProg = !loadedProgramName.empty() && loadedProgramEnd > loadedProgramStart;
+    if (hasLoadedProg) {
+        snprintf(progLabel, sizeof(progLabel), "%s", loadedProgramName.c_str());
+    }
+
     if (graphicsCardEnabled) {
         regions.push_back({ 0x0280, 0x1FFF, IM_COL32( 80, 200,  80, 255), "User RAM" });
         regions.push_back({ 0x2000, 0x3FFF, IM_COL32(  0, 255, 200, 255), "GEN2 HGR Framebuffer" });
         regions.push_back({ 0x4000, 0x9FFF, IM_COL32( 80, 200,  80, 255), "User RAM" });
     } else {
         regions.push_back({ 0x0280, 0x9FFF, IM_COL32( 80, 200,  80, 255), "User RAM" });
+    }
+    if (hasLoadedProg) {
+        regions.push_back({ loadedProgramStart, loadedProgramEnd,
+                            IM_COL32(255, 220, 100, 255), progLabel });
     }
     std::vector<MemRegion> tail = {
         { 0xA000, 0xBFFF, IM_COL32(200,  80, 200, 255), "Krusader ROM" },
@@ -1691,12 +1710,11 @@ void MainWindow_ImGui::renderMemoryMapWindow()
             int page = row * COLS + col;
             quint16 addr = (quint16)(page << 8);
 
-            // Find region color
+            // Find region color (last match wins — most specific region)
             ImU32 baseColor = IM_COL32(40, 40, 40, 255);
             for (int r = 0; r < numRegions; ++r) {
                 if (addr >= regions[r].start && addr <= regions[r].end) {
                     baseColor = regions[r].color;
-                    break;
                 }
             }
 
@@ -1747,12 +1765,13 @@ void MainWindow_ImGui::renderMemoryMapWindow()
                     }
                     ImGui::BeginTooltip();
                     ImGui::Text("Page $%02X : $%04X-$%04X", page, addr, addr + 0xFF);
+                    const char* regionLabel = nullptr;
                     for (int r = 0; r < numRegions; ++r) {
                         if (addr >= regions[r].start && addr <= regions[r].end) {
-                            ImGui::Text("%s", regions[r].label);
-                            break;
+                            regionLabel = regions[r].label;
                         }
                     }
+                    if (regionLabel) ImGui::Text("%s", regionLabel);
                     if (page == pcPage) ImGui::Text("PC = $%04X", pc);
                     ImGui::EndTooltip();
                 }
@@ -1764,7 +1783,7 @@ void MainWindow_ImGui::renderMemoryMapWindow()
     const float rightMargin = origin.x + gridW + 4.0f;
     for (int row = 0; row < ROWS; ++row) {
         float y = origin.y + row * (cellSize + spacing) + 2;
-        int kb = row * 4;
+        int kb = (row + 1) * 4;
         char label[16];
         snprintf(label, sizeof(label), "%dK", kb);
         drawList->AddText(ImVec2(rightMargin, y), IM_COL32(150, 150, 150, 255), label);
