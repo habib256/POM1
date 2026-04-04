@@ -38,9 +38,6 @@ void MemoryViewer_ImGui::render()
         renderSearchDialog();
     }
 
-    if (showEditPopup) {
-        renderEditPopup();
-    }
 }
 
 void MemoryViewer_ImGui::navigateToAddress(int address)
@@ -223,13 +220,42 @@ void MemoryViewer_ImGui::renderHexView()
                 pushedColor = true;
             }
 
-            // Clickable hex value for editing
-            char selectableId[16];
-            snprintf(selectableId, sizeof(selectableId), "%02X##%04X", value, currentAddr);
-            if (ImGui::Selectable(selectableId, false, ImGuiSelectableFlags_None, ImVec2(cellW - ImGui::GetStyle().ItemSpacing.x, 0))) {
-                editAddress = currentAddr;
-                snprintf(editBuffer, sizeof(editBuffer), "%02X", value);
-                showEditPopup = true;
+            // Inline editing on double-click
+            if (editAddress == currentAddr) {
+                // Render inline InputText for editing
+                ImGui::SetNextItemWidth(cellW - ImGui::GetStyle().ItemSpacing.x);
+                if (!editFocusSet) {
+                    ImGui::SetKeyboardFocusHere();
+                    editFocusSet = true;
+                }
+                char inputId[16];
+                snprintf(inputId, sizeof(inputId), "##e%04X", currentAddr);
+                bool enterPressed = ImGui::InputText(inputId, editBuffer, sizeof(editBuffer),
+                    ImGuiInputTextFlags_CharsHexadecimal |
+                    ImGuiInputTextFlags_CharsUppercase |
+                    ImGuiInputTextFlags_EnterReturnsTrue |
+                    ImGuiInputTextFlags_AutoSelectAll);
+                if (enterPressed) {
+                    quint8 newValue = 0;
+                    if (sscanf(editBuffer, "%hhX", &newValue) == 1) {
+                        applyEdit(static_cast<quint16>(editAddress), newValue);
+                    }
+                    editAddress = -1;
+                } else if (ImGui::IsKeyPressed(ImGuiKey_Escape) ||
+                           (!ImGui::IsItemActive() && editFocusSet && ImGui::IsMouseClicked(0) && !ImGui::IsItemHovered())) {
+                    editAddress = -1;
+                }
+            } else {
+                // Normal display — double-click to edit
+                char selectableId[16];
+                snprintf(selectableId, sizeof(selectableId), "%02X##%04X", value, currentAddr);
+                if (ImGui::Selectable(selectableId, false, ImGuiSelectableFlags_AllowDoubleClick, ImVec2(cellW - ImGui::GetStyle().ItemSpacing.x, 0))) {
+                    if (ImGui::IsMouseDoubleClicked(0)) {
+                        editAddress = currentAddr;
+                        snprintf(editBuffer, sizeof(editBuffer), "%02X", value);
+                        editFocusSet = false;
+                    }
+                }
             }
 
             if (pushedColor) {
@@ -453,42 +479,7 @@ char MemoryViewer_ImGui::getPrintableChar(quint8 value)
     return (value >= 32 && value <= 126) ? static_cast<char>(value) : '.';
 }
 
-void MemoryViewer_ImGui::renderEditPopup()
-{
-    if (showEditPopup) {
-        ImGui::OpenPopup("Edit Memory");
-        showEditPopup = false;
-    }
-
-    if (ImGui::BeginPopupModal("Edit Memory", nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
-        quint8 current = readByte(editAddress);
-        ImGui::Text("Address: 0x%04X", editAddress);
-        ImGui::Text("Current value: 0x%02X (%d)", current, current);
-
-        ImGui::Spacing();
-        ImGui::Text("New value (hex):");
-        ImGui::SetNextItemWidth(60);
-        bool enterPressed = ImGui::InputText("##EditValue", editBuffer, sizeof(editBuffer),
-                                            ImGuiInputTextFlags_CharsHexadecimal |
-                                            ImGuiInputTextFlags_CharsUppercase |
-                                            ImGuiInputTextFlags_EnterReturnsTrue);
-
-        ImGui::Spacing();
-        if (ImGui::Button("Write##writeBtn", ImVec2(120, 0)) || enterPressed) {
-            quint8 newValue = 0;
-            if (sscanf(editBuffer, "%hhX", &newValue) == 1) {
-                applyEdit(editAddress, newValue);
-                ImGui::CloseCurrentPopup();
-            }
-        }
-        ImGui::SameLine();
-        if (ImGui::Button("Cancel##cancelBtn", ImVec2(120, 0))) {
-            ImGui::CloseCurrentPopup();
-        }
-
-        ImGui::EndPopup();
-    }
-}
+// renderEditPopup removed — editing is now inline via double-click
 
 void MemoryViewer_ImGui::handleNavigation()
 {

@@ -45,10 +45,10 @@ private:
     bool showSearch = false;
     bool searchAscii = false;
 
-    // Edit functionality — with undo/redo
-    bool showEditPopup = false;
+    // Edit functionality — inline double-click editing with undo/redo
     int editAddress = -1;
     char editBuffer[4] = {0};
+    bool editFocusSet = false;
 
     struct EditRecord {
         quint16 address;
@@ -68,7 +68,6 @@ private:
     void renderHexView();
     void renderControls();
     void renderSearchDialog();
-    void renderEditPopup();
     void jumpToAddress(int address);
     void searchMemory();
     void searchAsciiString();
