@@ -10,6 +10,7 @@
 #include "EmulationController.h"
 #include "MemoryViewer_ImGui.h"
 #include "Screen_ImGui.h"
+#include "GraphicsCard.h"
 
 class MainWindow_ImGui
 {
@@ -59,6 +60,8 @@ private:
     bool showMemoryMap = false;
     bool showSaveDialog = false;
     bool showSaveTapeDialog = false;
+    bool showGraphicsCard = false;
+    bool graphicsCardEnabled = false;
     bool fullscreen = false;
     int windowedWidth = 1200;
     int windowedHeight = 800;
@@ -94,6 +97,7 @@ private:
     void renderMemoryMapWindow();
     void renderSaveDialog();
     void renderSaveTapeDialog();
+    void renderGraphicsCardWindow();
 
     // Action functions
     void loadMemory();
@@ -153,6 +157,8 @@ private:
     };
     TapeDialogState loadTapeDlg;
     TapeDialogState saveTapeDlg;
+
+    GraphicsCard graphicsCard;
 
     // Keyboard shortcuts — single source of truth for label + binding
     struct Shortcut {

@@ -114,6 +114,7 @@ void MainWindow_ImGui::render()
     emulation->copySnapshot(uiSnapshot);
     cpuRunning = uiSnapshot.cpuRunning;
     memoryViewer->updateLiveMemory(uiSnapshot.memory);
+    memoryViewer->setGraphicsCardEnabled(graphicsCardEnabled);
 
 #if POM1_IS_WASM
     // Sync fullscreen flag with browser state (user may exit via Escape)
@@ -230,6 +231,7 @@ void MainWindow_ImGui::render()
     if (showCassetteControl) renderCassetteControlWindow();
     if (showSaveDialog) renderSaveDialog();
     if (showSaveTapeDialog) renderSaveTapeDialog();
+    if (graphicsCardEnabled && showGraphicsCard) renderGraphicsCardWindow();
 
     // Barre de statut
     renderStatusBar();
@@ -280,9 +282,6 @@ void MainWindow_ImGui::renderMenuBar()
             }
             if (ImGui::MenuItem("Save Tape")) {
                 saveTape();
-            }
-            if (ImGui::MenuItem("Cassette Control")) {
-                showCassetteControl = true;
             }
             ImGui::Separator();
             if (ImGui::MenuItem("Paste Code", shortcutLabel(GLFW_KEY_V, GLFW_MOD_CONTROL))) {
@@ -357,7 +356,17 @@ void MainWindow_ImGui::renderMenuBar()
             ImGui::Separator();
             ImGui::MenuItem("Memory Viewer", shortcutLabel(GLFW_KEY_F1), &showMemoryViewer);
             ImGui::MenuItem("Memory Map", shortcutLabel(GLFW_KEY_F2), &showMemoryMap);
-            ImGui::MenuItem("Debug Console", shortcutLabel(GLFW_KEY_F3), &showDebugger);
+            ImGui::EndMenu();
+        }
+
+        if (ImGui::BeginMenu("Hardware")) {
+            if (ImGui::MenuItem("Cassette Control")) {
+                showCassetteControl = true;
+            }
+            ImGui::Separator();
+            if (ImGui::MenuItem("GEN2 Graphics Card", nullptr, &graphicsCardEnabled)) {
+                if (graphicsCardEnabled) showGraphicsCard = true;
+            }
             ImGui::EndMenu();
         }
 
@@ -399,8 +408,50 @@ void MainWindow_ImGui::renderToolbar()
         if (ImGui::IsItemHovered()) ImGui::SetTooltip("Load (Ctrl+O)");
 
         ImGui::SameLine();
+        if (showCassetteControl)
+            ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.2f, 0.4f, 0.8f, 1.0f));
+        else
+            ImGui::PushStyleColor(ImGuiCol_Button, ImGui::GetStyle().Colors[ImGuiCol_Button]);
         if (ImGui::Button(ICON_FA_TAPE, btnSize)) showCassetteControl = !showCassetteControl;
+        ImGui::PopStyleColor();
         if (ImGui::IsItemHovered()) ImGui::SetTooltip("Cassette Control");
+
+        ImGui::SameLine();
+        if (graphicsCardEnabled && showGraphicsCard)
+            ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.2f, 0.4f, 0.8f, 1.0f));
+        else if (!graphicsCardEnabled)
+            ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.3f, 0.3f, 0.3f, 1.0f));
+        else
+            ImGui::PushStyleColor(ImGuiCol_Button, ImGui::GetStyle().Colors[ImGuiCol_Button]);
+        if (ImGui::Button(ICON_FA_TV, btnSize)) {
+            if (!graphicsCardEnabled) {
+                graphicsCardEnabled = true;
+                showGraphicsCard = true;
+                // Load demo HGR image at $2000 if available
+                std::string demoPath;
+                for (const auto& dir : {"software/gen2", "../software/gen2", "../../software/gen2"}) {
+                    std::string p = std::string(dir) + "/N001.HGR.BIN";
+                    if (std::filesystem::exists(p)) { demoPath = p; break; }
+                }
+                if (!demoPath.empty()) {
+                    std::string error;
+                    emulation->loadBinaryToRam(demoPath, 0x2000, error);
+                    setStatusMessage("GEN2 plugged - demo image loaded at $2000", 3.0f);
+                } else {
+                    setStatusMessage("GEN2 plugged", 2.0f);
+                }
+            } else {
+                showGraphicsCard = !showGraphicsCard;
+                if (!showGraphicsCard) {
+                    graphicsCardEnabled = false;
+                    setStatusMessage("GEN2 unplugged", 2.0f);
+                }
+            }
+        }
+        ImGui::PopStyleColor();
+        if (ImGui::IsItemHovered()) {
+            ImGui::SetTooltip(graphicsCardEnabled ? "GEN2 Color Output (click to unplug)" : "Plug GEN2 Graphics Card");
+        }
 
         // --- Séparateur ---
         ImGui::SameLine(0, 12);
@@ -742,6 +793,31 @@ void MainWindow_ImGui::renderAboutDialog()
             "  decades of shared knowledge.");
     }
     ImGui::End();
+}
+
+void MainWindow_ImGui::renderGraphicsCardWindow()
+{
+    const float pixelScale = 2.0f;
+    const float winW = GraphicsCard::kHiresWidth * pixelScale + 16;
+    const float winH = GraphicsCard::kHiresHeight * pixelScale + 36;
+    ImGui::SetNextWindowSize(ImVec2(winW, winH), ImGuiCond_FirstUseEver);
+    ImGui::PushStyleColor(ImGuiCol_WindowBg, IM_COL32(0, 0, 0, 255));
+    if (ImGui::Begin("GEN2 Apple1 HGR Color Screen by Uncle Bernie", &showGraphicsCard)) {
+        ImVec2 pos = ImGui::GetCursorScreenPos();
+        ImDrawList* drawList = ImGui::GetWindowDrawList();
+
+        // Fill background black
+        ImVec2 size(GraphicsCard::kHiresWidth * pixelScale,
+                    GraphicsCard::kHiresHeight * pixelScale);
+        drawList->AddRectFilled(pos, ImVec2(pos.x + size.x, pos.y + size.y),
+                                IM_COL32(0, 0, 0, 255));
+
+        graphicsCard.render(drawList, pos, pixelScale, uiSnapshot.memory.data());
+
+        ImGui::Dummy(size);
+    }
+    ImGui::End();
+    ImGui::PopStyleColor();
 }
 
 void MainWindow_ImGui::renderDebugDialog()
@@ -1116,7 +1192,7 @@ void MainWindow_ImGui::renderLoadDialog()
                             loadDlg.dirList.push_back(name);
                     } else if (entry.is_regular_file()) {
                         std::string ext = entry.path().extension().string();
-                        if (ext == ".txt" || ext == ".bin")
+                        if (ext == ".txt")
                             loadDlg.fileList.push_back(entry.path().filename().string());
                     }
                 }
@@ -1549,11 +1625,19 @@ void MainWindow_ImGui::renderMemoryMapWindow()
         const char* label;
     };
 
-    MemRegion regions[] = {
+    std::vector<MemRegion> regions = {
         { 0x0000, 0x00FF, IM_COL32(100, 100, 255, 255), "Zero Page" },
         { 0x0100, 0x01FF, IM_COL32(255, 165,   0, 255), "Stack" },
         { 0x0200, 0x027F, IM_COL32(  0, 200, 255, 255), "Keyboard Buffer" },
-        { 0x0280, 0x9FFF, IM_COL32( 80, 200,  80, 255), "User RAM" },
+    };
+    if (graphicsCardEnabled) {
+        regions.push_back({ 0x0280, 0x1FFF, IM_COL32( 80, 200,  80, 255), "User RAM" });
+        regions.push_back({ 0x2000, 0x3FFF, IM_COL32(  0, 255, 200, 255), "GEN2 HGR Framebuffer" });
+        regions.push_back({ 0x4000, 0x9FFF, IM_COL32( 80, 200,  80, 255), "User RAM" });
+    } else {
+        regions.push_back({ 0x0280, 0x9FFF, IM_COL32( 80, 200,  80, 255), "User RAM" });
+    }
+    std::vector<MemRegion> tail = {
         { 0xA000, 0xBFFF, IM_COL32(200,  80, 200, 255), "Krusader ROM" },
         { 0xC000, 0xC0FF, IM_COL32(255, 140,  80, 255), "ACI I/O" },
         { 0xC100, 0xC1FF, IM_COL32(255, 190,  80, 255), "ACI ROM" },
@@ -1564,7 +1648,8 @@ void MainWindow_ImGui::renderMemoryMapWindow()
         { 0xF000, 0xFEFF, IM_COL32( 60,  60,  60, 255), "Unused" },
         { 0xFF00, 0xFFFF, IM_COL32(  0, 200, 255, 255), "Woz Monitor ROM" },
     };
-    int numRegions = sizeof(regions) / sizeof(regions[0]);
+    regions.insert(regions.end(), tail.begin(), tail.end());
+    int numRegions = static_cast<int>(regions.size());
 
     // Grille 2×2 : ligne du haut = carte | légende ; ligne du bas = I/O | ACI + vecteurs
     // (ACI et CPU vectors sous la ligne horizontale médiane de la fenêtre)

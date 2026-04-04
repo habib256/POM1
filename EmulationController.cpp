@@ -147,6 +147,18 @@ void EmulationController::writeMemory(quint16 address, quint8 value)
     publishSnapshotLocked();
 }
 
+bool EmulationController::loadBinaryToRam(const std::string& path, quint16 address, std::string& error)
+{
+    std::lock_guard<std::mutex> lock(stateMutex);
+    int result = memory->loadBinary(path.c_str(), address);
+    if (result != 0) {
+        error = "Cannot load file";
+        return false;
+    }
+    publishSnapshotLocked();
+    return true;
+}
+
 bool EmulationController::loadHexDump(const std::string& path, quint16& startAddress, std::string& error)
 {
     stopCpu();
