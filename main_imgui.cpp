@@ -74,7 +74,13 @@ int main(int argc, char* argv[])
         return -1;
 
     glfwMakeContextCurrent(window);
-    glfwSwapInterval(1); // Enable vsync
+#if !POM1_IS_WASM
+    glfwSwapInterval(1); // Vsync (desktop)
+#else
+    // Sur Emscripten, glfwSwapInterval avant emscripten_set_main_loop_* provoque :
+    // « emscripten_set_main_loop_timing: ... main loop does not exist ».
+    // On applique l’intervalle dans le premier tick de la boucle (ci-dessous).
+#endif
 
     // Setup Dear ImGui context
     IMGUI_CHECKVERSION();
@@ -133,6 +139,12 @@ int main(int argc, char* argv[])
 
     emscripten_set_main_loop_arg([](void* arg) {
         LoopContext* c = static_cast<LoopContext*>(arg);
+        // Vsync : une fois la boucle principale enregistrée (évite set_main_loop_timing trop tôt).
+        if (static bool wasmVsync = false; !wasmVsync) {
+            wasmVsync = true;
+            glfwMakeContextCurrent(c->window);
+            glfwSwapInterval(1);
+        }
         // Efface le message Emscripten du type « Getting the system running » / spinner dès la 1ʳᵉ frame.
         if (static bool clearedWasmStatus = false; !clearedWasmStatus) {
             clearedWasmStatus = true;
