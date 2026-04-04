@@ -1,18 +1,16 @@
 # TODO
 
-## Charmap originale
+## Done (v1.1–v1.3)
 
-- [ ] Charger la ROM charmap originale (`charmap.rom`) pour le rendu des caractères
-- [ ] Remplacer le rendu texte ImGui par un rendu bitmap basé sur la charmap
-- [ ] Gérer les caractères inversés (bit 6) et le clignotement (bit 5)
-- [ ] Respecter la matrice 5x7 pixels de la charmap Apple 1
+- [x] Charmap ROM bitmap rendering (`charmap.rom`, 5×7 matrix, CRT glow)
+- [x] Apple Cassette Interface (ACI ROM at `$C100`, I/O at `$C000`/`$C081`, live audio, `.aci`/`.wav` import/export)
+- [x] Uncle Bernie's GEN2 Color Graphics Card (280×192 HIRES, NTSC artifact color, pixel glow)
+- [x] HGR Maze program for GEN2 (Recursive Backtracker, 19×11 cells)
+- [x] Memory Viewer inline double-click editing
+- [x] cc65 linker config for GEN2 (`apple1_gen2.cfg`)
 
-## Module Cassette (ACI — Apple Cassette Interface)
+## Open
 
-- [ ] Émuler l'ACI (Apple Cassette Interface) à l'adresse $C000-$C0FF
-- [ ] Implémenter les registres I/O cassette ($C100 pour la ROM ACI)
-- [ ] Supporter la commande de lecture (load depuis fichier audio/binaire)
-- [ ] Supporter la commande d'écriture (save vers fichier)
-- [ ] Émuler le format de données Kansas City Standard (300 baud)
-- [ ] Ajouter les entrées menu File > Load Tape / Save Tape
-- [ ] Supporter le format `.wav` ou un format binaire simplifié
+- [ ] **GEN2 higher-resolution maze**: 16-bit DFS with smaller pixel blocks (e.g., 34×23 cells). Non-byte-aligned rendering produces NTSC color artifacts instead of solid white walls — needs a rendering approach that works at sub-byte granularity.
+- [ ] **More GEN2 programs**: image viewers, drawing tools, additional demos for the 280×192 HIRES display.
+- [ ] **Native file dialog**: File loading/saving currently uses built-in file browsers instead of system file pickers.

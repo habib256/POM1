@@ -4,9 +4,9 @@
 
 **Experience the machine that started the personal computer revolution.**
 
-🎂 **Celebrating 50 years of Apple (1976–2026)** — POM1 v1.3 is released in honor of the 50th anniversary of Apple Computer, founded on 1976.
+🎂 **Celebrating 50 years of Apple (1976–2026)** — POM1 v1.3 is released in honor of the 50th anniversary of Apple Computer, founded on April 1, 1976.
 
-A faithful Apple 1 emulator built with Dear ImGui & OpenGL — fast, lightweight, and cross-platform. Now with Uncle Bernie's GEN2 Color Graphics Card support.
+A faithful Apple 1 emulator built with Dear ImGui & OpenGL — fast, lightweight, and cross-platform. Now with [Uncle Bernie's GEN2 Color Graphics Card](https://www.applefritter.com/content/uncle-bernies-gen2-color-graphics-card-apple-1) support.
 
 **Play it now in your browser** : 
 [![Play Online](https://img.shields.io/badge/Play%20Online-WebAssembly-blueviolet.svg)](https://habib256.github.io/POM1/build-wasm/pom1_imgui.html)
@@ -30,7 +30,7 @@ or build it natively.
 
 ⚙️ **Cycle-Accurate 6502 CPU** — All official opcodes, all addressing modes, adjustable clock (1 MHz / 2 MHz / Max)
 
-🔍 **Live Memory Editor** — Interactive hex viewer with color-coded regions, search, bookmarks, and real-time editing
+🔍 **Live Memory Editor** — Interactive hex viewer with color-coded regions, search, bookmarks, inline double-click editing, and undo/redo
 
 🗺️ **Visual Memory Map** — Color-coded 64 KB overview with region legend, PC/SP indicators, and tooltips
 
@@ -182,7 +182,8 @@ POM1 emulates [Uncle Bernie's GEN2 Color Graphics Card](https://www.applefritter
 - **Pixel glow effect** for a CRT-like appearance
 - Rendered in a dedicated **GEN2 Apple1 HGR Color Screen** window
 - Toggle via **Hardware > GEN2 Graphics Card** or the toolbar button
-- A demo HGR image (`software/gen2/N001.HGR.BIN`) is auto-loaded when the card is plugged in
+- A demo HGR image (`software/gen2/GEN2.HGR.BIN`) is auto-loaded when the card is plugged in
+- Includes **HGR Maze** — a Recursive Backtracker maze generator rendering directly into the framebuffer ([asm](software/gen2/HGR_Maze.asm))
 
 ---
 
@@ -220,6 +221,7 @@ Some programs also include their 6502 assembly source code (`.asm`) for study an
 | 🎨 **PasArt** | Parametric ASCII art generator |
 | 🍺 **99 Bottles of Beer** | Classic song countdown demo |
 | 🐱 **ASCII Cat** | ASCII art display |
+| 🎨 **HGR Maze** | GEN2 HIRES maze generator — Recursive Backtracker on 280×192 ([asm](software/gen2/HGR_Maze.asm)) |
 
 ### 💻 BASIC Programs
 
@@ -256,14 +258,19 @@ Some programs also include their 6502 assembly source code (`.asm`) for study an
 
 ## 🔧 Assembling Your Own Programs
 
-POM1 includes a linker config for [cc65](https://cc65.github.io/):
+POM1 includes linker configs for [cc65](https://cc65.github.io/):
 
 ```bash
+# Standard Apple 1 program
 ca65 -o build/program.o source.asm
 ld65 -C software/apple1.cfg -o build/program.bin build/program.o
+
+# GEN2 graphics program (reserves $2000-$3FFF for HGR framebuffer)
+ca65 -o build/program.o source.asm
+ld65 -C software/gen2/apple1_gen2.cfg -o build/program.bin build/program.o
 ```
 
-Load the binary via **File > Load Memory**, or type the start address + `R` in the Woz Monitor (e.g. `300R`).
+Load the binary via **File > Load Memory**, or type the start address + `R` in the Woz Monitor (e.g. `280R`).
 
 ---
 
@@ -285,7 +292,7 @@ POM1/
 │   ├── basic/               #   💻 BASIC programs
 │   ├── dev/                 #   🛠️ Dev tools
 │   ├── utils/               #   🧰 Utilities
-│   ├── gen2/                #   🎨 GEN2 HGR demo images
+│   ├── gen2/                #   🎨 GEN2 HGR images & programs
 │   └── tests/               #   🧪 Hardware test programs
 ├── build-wasm/              # 🌐 WebAssembly build output
 ├── software/apple1.cfg      # ⚙️ cc65 linker config
@@ -337,6 +344,7 @@ $FF00-$FFFF   Woz Monitor ROM (256 B)
 - **Lee Davison** — Enhanced BASIC
 - **Achim Breidenbach** — Sim6502
 - **Fabrice Frances** — Java Microtan Emulator
+- **Uncle Bernie** — [GEN2 Color Graphics Card](https://www.applefritter.com/content/uncle-bernies-gen2-color-graphics-card-apple-1) for Apple 1
 - **Tom Owad** — AppleFritter community & Apple 1 resources
 - **Steve Wozniak & Steve Jobs** — For creating the Apple 1 🍎
 

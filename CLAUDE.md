@@ -229,3 +229,5 @@ When bumping the version number, update **all** of these:
 ## Known Issues & TODOs
 
 1. **No native file dialog**: File loading/saving uses built-in file browsers instead of system file pickers.
+2. **GEN2 HGR Maze higher resolution**: The current HGR Maze uses 19×11 cells (7×8 pixel blocks). A higher-resolution version with 16-bit DFS and smaller blocks (e.g., 34×23 cells, 4×4 blocks) was attempted but produced visual artifacts due to NTSC artifact color rendering of non-byte-aligned pixel blocks. Needs a rendering approach that produces solid white walls at sub-byte granularity.
+3. **GEN2 programs in `software/gen2/`**: Only a demo image and the HGR Maze are included. More GEN2 programs could be added (e.g., image viewers, drawing tools, more demos).
