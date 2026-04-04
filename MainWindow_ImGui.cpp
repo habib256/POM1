@@ -321,6 +321,7 @@ void MainWindow_ImGui::renderMenuBar()
                 configMemory();
             }
             ImGui::Separator();
+#if !POM1_IS_WASM
             ImGui::Text("CPU Speed:");
             if (ImGui::RadioButton("1MHz", executionSpeed == 16667)) {
                 executionSpeed = 16667;
@@ -337,6 +338,7 @@ void MainWindow_ImGui::renderMenuBar()
                 emulation->setExecutionSpeedCyclesPerFrame(executionSpeed);
             }
             ImGui::Separator();
+#endif
             ImGui::Text("Terminal Speed (chars/sec):");
             static int termSpeed = 60;
             ImGui::SetNextItemWidth(150);
@@ -376,10 +378,12 @@ void MainWindow_ImGui::renderToolbar()
 
         ImVec4 activeColor(0.2f, 0.4f, 0.8f, 1.0f);
         ImVec2 btnSize(28, 24);
+#if !POM1_IS_WASM
         const float mhzBtnPadX = ImGui::GetStyle().FramePadding.x * 2.0f;
         const float mhzBtnW =
             std::max(ImGui::CalcTextSize("1MHz").x, ImGui::CalcTextSize("2MHz").x) + mhzBtnPadX;
         const ImVec2 mhzBtnSize(mhzBtnW, 24.0f);
+#endif
 
         // --- Chargement (premier) ---
         if (ImGui::Button(ICON_FA_FOLDER_OPEN, btnSize)) loadMemory();
@@ -429,7 +433,8 @@ void MainWindow_ImGui::renderToolbar()
         ImGui::SeparatorEx(ImGuiSeparatorFlags_Vertical);
         ImGui::SameLine(0, 12);
 
-        // --- Vitesse CPU (1MHz / 2MHz, appliqués tout de suite) ---
+#if !POM1_IS_WASM
+        // --- Vitesse CPU (1MHz / 2MHz / Max) — masqué en WASM (rythme imposé par le navigateur)
         {
             bool is1M = (executionSpeed == 16667);
             if (is1M) ImGui::PushStyleColor(ImGuiCol_Button, activeColor);
@@ -463,10 +468,10 @@ void MainWindow_ImGui::renderToolbar()
             if (ImGui::IsItemHovered()) ImGui::SetTooltip("Max");
         }
 
-        // --- Séparateur ---
         ImGui::SameLine(0, 12);
         ImGui::SeparatorEx(ImGuiSeparatorFlags_Vertical);
         ImGui::SameLine(0, 12);
+#endif
 
         // --- Fenêtres toggle ---
         {
@@ -789,9 +794,11 @@ void MainWindow_ImGui::renderDebugDialog()
                 setStatusMessage("CPU reset", 2.0f);
             }
             
+#if !POM1_IS_WASM
             ImGui::Spacing();
             ImGui::Text("Execution Speed:");
             ImGui::SliderInt("##Speed", &executionSpeed, 1, 10000, "%d cycles/frame");
+#endif
 
             ImGui::Spacing();
             ImGui::Text("Status: %s", cpuRunning ? "RUNNING" : "STOPPED");

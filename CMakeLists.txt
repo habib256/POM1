@@ -44,6 +44,15 @@ target_include_directories(${PROJECT_NAME} PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}
 )
 
+# ImDrawIdx 32 bits : imconfig.h le définit déjà ; le pré-include garantit imgui.cpp et tous les TUs
+# (évite WASM / CI avec caches ou chemins où imconfig semblait ignoré → assert 64k sommets).
+set(POM1_IMGUI_PREINCLUDE "${CMAKE_CURRENT_SOURCE_DIR}/POM1ImGuiPreinclude.h")
+if(MSVC)
+    target_compile_options(${PROJECT_NAME} PRIVATE "/FI${POM1_IMGUI_PREINCLUDE}")
+else()
+    target_compile_options(${PROJECT_NAME} PRIVATE -include "${POM1_IMGUI_PREINCLUDE}")
+endif()
+
 if(EMSCRIPTEN)
     # ── Emscripten / WebAssembly ──────────────────────────────────────
     # ImGui OpenGL3 : forcer le profil GLES3 / WebGL2 (sinon le loader « desktop » casse le rendu).
