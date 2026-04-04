@@ -3,6 +3,7 @@
 #include "imgui.h"
 #include "imgui_internal.h"
 #include "IconsFontAwesome6.h"
+#include <cmath>
 #include <iostream>
 #include <fstream>
 #include <sstream>
@@ -25,6 +26,22 @@ constexpr float kApple1ImGuiWinPadH = 46.0f;
 /** Marge OS autour de la zone utile (barre menu, dock, autres panneaux ImGui). */
 constexpr int kApple1GlfwExtraW = 22;
 constexpr int kApple1GlfwExtraH = 42;
+
+// Aligné sur renderToolbar / SetNextWindowPos « Apple 1 Screen » / renderStatusBar
+constexpr float kToolbarBandHeight = 34.0f;
+constexpr float kGapBelowToolbarBeforeApple1 = 5.0f;
+constexpr float kStatusBarBandHeight = 25.0f;
+/** Barre menu : GetFrameHeight() est parfois un peu bas (thème / police) ; évite de couper le bas sur WASM. */
+constexpr float kMainMenuBarHeightExtra = 6.0f;
+/** Bordures de fenêtre ImGui « Apple 1 Screen », arrondis, léger jeu. */
+constexpr float kApple1WindowDecorationSlop = 14.0f;
+
+/** Hauteur totale hors zone raster Apple 1 (menu + toolbar + trou + statut + marge). */
+static float apple1LayoutVerticalChrome()
+{
+    return ImGui::GetFrameHeight() + kMainMenuBarHeightExtra + kToolbarBandHeight +
+           kGapBelowToolbarBeforeApple1 + kStatusBarBandHeight + kApple1WindowDecorationSlop;
+}
 
 } // namespace
 
@@ -129,22 +146,24 @@ void MainWindow_ImGui::render()
         const ImVec2 cell = Screen_ImGui::computeApple1CellDimensions(charSize);
         float sw = cell.x * Screen_ImGui::kApple1Columns * screen->scale + kApple1ImGuiWinPadW;
         float sh = cell.y * Screen_ImGui::kApple1Rows * screen->scale + kApple1ImGuiWinPadH;
-        float toolbarBottom = ImGui::GetFrameHeight() + 34.0f;
-        ImGui::SetNextWindowPos(ImVec2(10, toolbarBottom + 5));
+        const float toolbarBottom = ImGui::GetFrameHeight() + kToolbarBandHeight;
+        ImGui::SetNextWindowPos(ImVec2(10, toolbarBottom + kGapBelowToolbarBeforeApple1));
         ImGui::SetNextWindowSize(ImVec2(sw, sh));
-        // Redimensionner la fenêtre GLFW
+        // Redimensionner la fenêtre GLFW (WASM : la boucle main_imgui applique la taille au canvas)
+#if !POM1_IS_WASM
         if (window) {
             int winW = (int)sw + kApple1GlfwExtraW;
-            int winH = (int)sh + (int)toolbarBottom + kApple1GlfwExtraH;
+            int winH = (int)std::ceil(sh + apple1LayoutVerticalChrome());
             glfwSetWindowSize(window, winW, winH);
         }
+#endif
         firstFrame = false;
     }
 
     // Resize Apple 1 screen window on fullscreen transitions
     if (fullscreen != wasFullscreen) {
         ImGuiIO& fsio = ImGui::GetIO();
-        float toolbarBottom = ImGui::GetFrameHeight() + 34.0f;
+        const float toolbarBottom = ImGui::GetFrameHeight() + kToolbarBandHeight;
         if (fullscreen) {
             // Fill the entire display
             ImGui::SetNextWindowPos(ImVec2(0, toolbarBottom));
@@ -157,7 +176,7 @@ void MainWindow_ImGui::render()
             const ImVec2 cell = Screen_ImGui::computeApple1CellDimensions(charSize);
             float sw = cell.x * Screen_ImGui::kApple1Columns * screen->scale + kApple1ImGuiWinPadW;
             float sh = cell.y * Screen_ImGui::kApple1Rows * screen->scale + kApple1ImGuiWinPadH;
-            ImGui::SetNextWindowPos(ImVec2(10, toolbarBottom + 5));
+            ImGui::SetNextWindowPos(ImVec2(10, toolbarBottom + kGapBelowToolbarBeforeApple1));
             ImGui::SetNextWindowSize(ImVec2(sw, sh));
         }
         wasFullscreen = fullscreen;
@@ -205,6 +224,32 @@ void MainWindow_ImGui::render()
 
     // Barre de statut
     renderStatusBar();
+
+#if POM1_IS_WASM
+    // Taille canvas Web : menu + toolbar + trou + fenêtre Apple 1 + barre de statut (+ marge).
+    {
+        ImGuiIO& wasmIo = ImGui::GetIO();
+        if (fullscreen) {
+            wasmCanvasPixelW = (int)wasmIo.DisplaySize.x;
+            wasmCanvasPixelH = (int)wasmIo.DisplaySize.y;
+        } else {
+            ImGui::PushFont(wasmIo.Fonts->Fonts[0]);
+            ImVec2 charSize = ImGui::CalcTextSize("M");
+            ImGui::PopFont();
+            const ImVec2 cell = Screen_ImGui::computeApple1CellDimensions(charSize);
+            float sw = cell.x * Screen_ImGui::kApple1Columns * screen->scale + kApple1ImGuiWinPadW;
+            float sh = cell.y * Screen_ImGui::kApple1Rows * screen->scale + kApple1ImGuiWinPadH;
+            wasmCanvasPixelW = (int)sw + kApple1GlfwExtraW;
+            wasmCanvasPixelH = (int)std::ceil(sh + apple1LayoutVerticalChrome());
+        }
+        if (wasmCanvasPixelW < 320) {
+            wasmCanvasPixelW = 320;
+        }
+        if (wasmCanvasPixelH < 240) {
+            wasmCanvasPixelH = 240;
+        }
+    }
+#endif
 
     // Après tous les widgets (barre d’outils, menus, débogueur) pour que la vitesse
     // soit poussée vers l’émulation dès le clic, pas au frame suivant.
@@ -317,7 +362,7 @@ void MainWindow_ImGui::renderToolbar()
 {
     ImGuiIO& io = ImGui::GetIO();
     float menuBarHeight = ImGui::GetFrameHeight();
-    float toolbarHeight = 34.0f;
+    float toolbarHeight = kToolbarBandHeight;
 
     ImGui::SetNextWindowPos(ImVec2(0, menuBarHeight));
     ImGui::SetNextWindowSize(ImVec2(io.DisplaySize.x, toolbarHeight));
