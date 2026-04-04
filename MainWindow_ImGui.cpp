@@ -11,6 +11,7 @@
 #include <vector>
 #include <filesystem>
 #include <algorithm>
+#include <array>
 #include <GLFW/glfw3.h>
 
 #if POM1_IS_WASM
@@ -1262,12 +1263,13 @@ void MainWindow_ImGui::renderLoadDialog()
         if (ImGui::Button("Load", ImVec2(120, 0))) {
             quint16 addr = 0;
             std::string error;
+            int bytesLoaded = 0;
             bool ok = false;
             if (loadDlg.fileType == 0) {
                 addr = (quint16)strtol(loadDlg.addressStr, nullptr, 16);
-                ok = emulation->loadBinary(loadDlg.filePath, addr, error);
+                ok = emulation->loadBinary(loadDlg.filePath, addr, error, &bytesLoaded);
             } else {
-                ok = emulation->loadHexDump(loadDlg.filePath, addr, error);
+                ok = emulation->loadHexDump(loadDlg.filePath, addr, error, &bytesLoaded);
                 snprintf(loadDlg.addressStr, sizeof(loadDlg.addressStr), "%04X", addr);
             }
             if (ok) {
@@ -1275,13 +1277,17 @@ void MainWindow_ImGui::renderLoadDialog()
                 cpuRunning = true;
                 stepMode = false;
                 std::string filename = std::filesystem::path(loadDlg.filePath).filename().string();
-                // Compute loaded program size for Memory Map region
-                loadedProgramName = filename;
-                loadedProgramStart = addr;
-                {
-                    std::ifstream fsize(loadDlg.filePath, std::ios::binary | std::ios::ate);
-                    size_t sz = fsize.good() ? static_cast<size_t>(fsize.tellg()) : 0;
-                    loadedProgramEnd = (sz > 0) ? static_cast<quint16>(addr + sz - 1) : addr;
+                // Track loaded program region for Memory Map
+                if (bytesLoaded > 0) {
+                    quint16 progEnd = static_cast<quint16>(addr + bytesLoaded - 1);
+                    // Remove any existing region that overlaps
+                    loadedPrograms.erase(
+                        std::remove_if(loadedPrograms.begin(), loadedPrograms.end(),
+                            [addr, progEnd](const LoadedProgram& p) {
+                                return !(p.end < addr || p.start > progEnd);
+                            }),
+                        loadedPrograms.end());
+                    loadedPrograms.push_back({filename, addr, progEnd});
                 }
                 std::stringstream ss;
                 ss << "Loaded " << filename << " at $" << std::hex << std::uppercase << addr;
@@ -1597,6 +1603,7 @@ void MainWindow_ImGui::reset()
 void MainWindow_ImGui::hardReset()
 {
     emulation->hardReset();
+    loadedPrograms.clear();
     setStatusMessage("Hard reset done - Memory cleared", 2.0f);
 }
 
@@ -1641,11 +1648,13 @@ void MainWindow_ImGui::renderMemoryMapWindow()
         { 0x0100, 0x01FF, IM_COL32(255, 165,   0, 255), "Stack" },
         { 0x0200, 0x027F, IM_COL32(  0, 200, 255, 255), "Keyboard Buffer" },
     };
-    // Loaded program region label (static buffer for ImGui lifetime)
-    static char progLabel[64] = "";
-    const bool hasLoadedProg = !loadedProgramName.empty() && loadedProgramEnd > loadedProgramStart;
-    if (hasLoadedProg) {
-        snprintf(progLabel, sizeof(progLabel), "%s", loadedProgramName.c_str());
+    // Loaded program regions (inserted before User RAM so they take priority)
+    static std::vector<std::array<char, 64>> progLabels;
+    progLabels.resize(loadedPrograms.size());
+    for (size_t i = 0; i < loadedPrograms.size(); ++i) {
+        snprintf(progLabels[i].data(), 64, "%s", loadedPrograms[i].name.c_str());
+        regions.push_back({ loadedPrograms[i].start, loadedPrograms[i].end,
+                            IM_COL32(100, 230, 100, 255), progLabels[i].data() });
     }
 
     if (graphicsCardEnabled) {
@@ -1654,10 +1663,6 @@ void MainWindow_ImGui::renderMemoryMapWindow()
         regions.push_back({ 0x4000, 0x9FFF, IM_COL32( 80, 200,  80, 255), "User RAM" });
     } else {
         regions.push_back({ 0x0280, 0x9FFF, IM_COL32( 80, 200,  80, 255), "User RAM" });
-    }
-    if (hasLoadedProg) {
-        regions.push_back({ loadedProgramStart, loadedProgramEnd,
-                            IM_COL32(255, 220, 100, 255), progLabel });
     }
     std::vector<MemRegion> tail = {
         { 0xA000, 0xBFFF, IM_COL32(200,  80, 200, 255), "Krusader ROM" },
@@ -1710,11 +1715,12 @@ void MainWindow_ImGui::renderMemoryMapWindow()
             int page = row * COLS + col;
             quint16 addr = (quint16)(page << 8);
 
-            // Find region color (last match wins — most specific region)
+            // Find region color (first match wins)
             ImU32 baseColor = IM_COL32(40, 40, 40, 255);
             for (int r = 0; r < numRegions; ++r) {
                 if (addr >= regions[r].start && addr <= regions[r].end) {
                     baseColor = regions[r].color;
+                    break;
                 }
             }
 
@@ -1729,11 +1735,10 @@ void MainWindow_ImGui::renderMemoryMapWindow()
                 }
             }
 
-            // Dim empty RAM pages
+            // Dim empty RAM pages to dark gray
             ImU32 cellColor = baseColor;
-            if (addr >= 0x0300 && addr <= 0x9FFF && !hasData) {
-                // Darken unused RAM
-                cellColor = IM_COL32(30, 60, 30, 255);
+            if (addr >= 0x0200 && addr <= 0x9FFF && !hasData) {
+                cellColor = IM_COL32(35, 35, 40, 255);
             }
 
             float x = origin.x + col * (cellSize + spacing);
@@ -1765,13 +1770,12 @@ void MainWindow_ImGui::renderMemoryMapWindow()
                     }
                     ImGui::BeginTooltip();
                     ImGui::Text("Page $%02X : $%04X-$%04X", page, addr, addr + 0xFF);
-                    const char* regionLabel = nullptr;
                     for (int r = 0; r < numRegions; ++r) {
                         if (addr >= regions[r].start && addr <= regions[r].end) {
-                            regionLabel = regions[r].label;
+                            ImGui::Text("%s", regions[r].label);
+                            break;
                         }
                     }
-                    if (regionLabel) ImGui::Text("%s", regionLabel);
                     if (page == pcPage) ImGui::Text("PC = $%04X", pc);
                     ImGui::EndTooltip();
                 }

@@ -51,8 +51,8 @@ public:
     int loadWozMonitor(void);
     int loadAciRom(void);
     void configureResetVectors(quint16 vectorAddress = 0xFF00);
-    int loadBinary(const char* filename, quint16 startAddress);
-    int loadHexDump(const char* filename, quint16 &startAddress);
+    int loadBinary(const char* filename, quint16 startAddress, int* bytesLoaded = nullptr);
+    int loadHexDump(const char* filename, quint16 &startAddress, int* bytesLoaded = nullptr);
 
     // Last ROM loading error (empty if no error)
     const std::string& getLastError() const { return lastError; }

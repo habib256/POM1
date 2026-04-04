@@ -180,8 +180,9 @@ int Memory::loadAciRom(void)
     return 0;
 }
 
-int Memory::loadBinary(const char* filename, quint16 startAddress)
+int Memory::loadBinary(const char* filename, quint16 startAddress, int* bytesLoaded)
 {
+    if (bytesLoaded) *bytesLoaded = 0;
     std::ifstream file(filename, std::ios::binary);
     if (!file.is_open()) {
         cout << "ERROR : Cannot open file: " << filename << endl;
@@ -205,12 +206,14 @@ int Memory::loadBinary(const char* filename, quint16 startAddress)
     for (size_t i = 0; i < fileContent.size(); ++i) {
         mem[startAddress + i] = (quint8)fileContent[i];
     }
+    if (bytesLoaded) *bytesLoaded = static_cast<int>(fileContent.size());
     cout << "Binary loaded to 0x" << std::hex << startAddress << " : " << std::dec << fileContent.size() << " Bytes" << endl;
     return 0;
 }
 
-int Memory::loadHexDump(const char* filename, quint16 &startAddress)
+int Memory::loadHexDump(const char* filename, quint16 &startAddress, int* bytesLoaded)
 {
+    if (bytesLoaded) *bytesLoaded = 0;
     std::ifstream file(filename);
     if (!file.is_open()) {
         cout << "ERROR : Cannot open file: " << filename << endl;
@@ -348,6 +351,7 @@ int Memory::loadHexDump(const char* filename, quint16 &startAddress)
     if (hasRunAddr)
         startAddress = runAddr;
 
+    if (bytesLoaded) *bytesLoaded = totalBytes;
     cout << "Hex dump loaded: " << std::dec << totalBytes << " bytes starting at 0x"
          << std::hex << startAddress << endl;
     return firstAddr && !hasRunAddr ? 1 : 0;
