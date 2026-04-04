@@ -206,6 +206,16 @@ The `build/`, `build-wasm/`, and `imgui/` directories are excluded from git via 
 - Dead code cleanup: removed legacy SDL stubs (saveState/loadState, setSpeed, synchronize, keyStickyCounter)
 - Renamed software directory from `soft-asm/` to `software/`
 
+## Version String Locations
+
+When bumping the version number, update **all** of these:
+- `main_imgui.cpp` — console output (line ~46) and GLFW window title (line ~72)
+- `MainWindow_ImGui.cpp` — About dialog
+- `Screen_ImGui.cpp` — Apple 1 welcome screen
+- `build-wasm/shell.html` — HTML `<title>` and `<h1>` banner (2 occurrences)
+- `README.md` — title and intro
+- `CLAUDE.md` — project overview and version history
+
 ## Known Issues & TODOs
 
 1. **No native file dialog**: File loading/saving uses built-in file browsers instead of system file pickers.
