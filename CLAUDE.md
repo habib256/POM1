@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-POM1 v1.1 is an Apple 1 emulator built with Dear ImGui. It emulates the MOS 6502 CPU and Apple 1 hardware including memory-mapped I/O, display, keyboard input, and the Apple Cassette Interface (ACI) with live audio and tape files. The UI is fully in English. Builds on Linux, macOS, Windows, and Web (Emscripten/WASM).
+POM1 v1.2 is an Apple 1 emulator built with Dear ImGui. It emulates the MOS 6502 CPU and Apple 1 hardware including memory-mapped I/O, display, keyboard input, and the Apple Cassette Interface (ACI) with live audio and tape files. The UI is fully in English. Builds on Linux, macOS, Windows, and Web (Emscripten/WASM).
 
 ## Build & Run Commands
 
@@ -53,7 +53,7 @@ ld65 -C software/apple1.cfg -o build/program.bin build/program.o
 
 ### Core Emulation Layer
 - **M6502.cpp/h**: Complete MOS 6502 CPU emulation with all opcodes, addressing modes, and cycle counting. Key types: `op` is `quint16` for proper 16-bit address handling in all addressing modes. `tmp` is `int` for carry/borrow detection via bit 8.
-- **Memory.cpp/h**: 64KB address space with ROM loading (with bounds checking), memory-mapped I/O (keyboard 0xD010/0xD011, display 0xD012), binary and hex dump file loading, save to file, and configurable terminal speed.
+- **Memory.cpp/h**: 64KB address space with ROM loading (with bounds checking), memory-mapped I/O (keyboard 0xD010/0xD011, display 0xD012) with PIA 6821 address aliasing (`$D0Fx`↔`$D01x`), binary and hex dump file loading (with inline comment stripping), save to file, and configurable terminal speed.
 
 ### UI Layer (ImGui-based)
 - **main_imgui.cpp**: GLFW/OpenGL3 initialization (GL 3.2 Core, GLSL 150) and main render loop with GLFW keyboard callbacks chained to ImGui. `GLFW_OPENGL_FORWARD_COMPAT` is macOS-only (`#ifdef __APPLE__`).
@@ -76,7 +76,7 @@ Contains Apple 1 programs in Woz Monitor hex dump format (.txt) organized in sub
 - **dev/**: Development tools — Woz Monitor, Enhanced BASIC, fig-FORTH
 - **tests/**: Hardware test programs — hex I/O, keyboard, terminal tests
 
-Programs can be loaded via File > Load Memory, which provides a file browser with folder navigation. Assembly source files (`.asm`) can be assembled with cc65.
+Programs can be loaded via File > Load Memory, which provides a file browser with folder navigation. Assembly source files (`.asm`) can be assembled with cc65. Most programs come from [apple1software.com](https://apple1software.com/), an outstanding archive of Apple 1 software, hardware documentation, and historical resources. [AppleFritter](https://applefritter.com/apple1/) is the community hub where much of the technical research, BASIC version history, and hardware knowledge originates.
 
 ## Key Implementation Details
 
@@ -84,6 +84,8 @@ Programs can be loaded via File > Load Memory, which provides a file browser wit
 - **0xD010 (KBD)**: Keyboard data register. Returns last key with bit 7 set. Reading clears the keyboard strobe (keyReady flag), matching PIA 6821 behavior.
 - **0xD011 (KBDCR)**: Keyboard control register. Bit 7 = 1 when key is ready.
 - **0xD012 (DSP)**: Display output register. Writing a character triggers the display callback. Reading returns bit 7 = 0 (display ready) after the terminal speed delay has elapsed, or bit 7 = 1 (busy) during the delay. The busy counter is clamped to 0 (never goes negative).
+
+**PIA 6821 address aliasing**: The real Apple 1 has incomplete address decoding on the PIA chip. Any address in `$D0xx` with the same low 2 bits maps to the same register: `$D0F0`↔`$D010` (KBD), `$D0F1`↔`$D011` (KBDCR), `$D0F2`↔`$D012` (DSP). This matters because the original (Pagetable) version of Apple BASIC uses `$D0F2` for display I/O, while the Briel/Replica 1 version uses `$D012`. POM1 normalizes all `$D0xx` addresses to `$D010-$D012` in `memRead`/`memWrite`, so both BASIC versions work.
 
 **Note**: Keyboard input is automatically converted to uppercase (Apple 1 convention).
 
@@ -104,7 +106,7 @@ The M6502 addressing mode functions (Abs, AbsX, AbsY, Ind, IndZeroX, IndZeroY, e
 ### Loading Programs
 Memory supports loading and saving:
 - `loadBinary(filename, startAddress)`: Raw binary loaded at specified address
-- `loadHexDump(filename, startAddress)`: Parses Woz Monitor hex format. Supports comment lines (`//`, `#`, `;`), continuation lines, `T` prefix (turbo), `X` marker, and `R` suffix (run address). Handles single-line files where data bytes merge with addresses (e.g., `ED0300:` is split into data `ED` + address `0300`).
+- `loadHexDump(filename, startAddress)`: Parses Woz Monitor hex format. Supports comment lines and inline comments (`//`, `#`, `;`), continuation lines, `T` prefix (turbo), `X` marker, and `R` suffix (run address). Handles single-line files where data bytes merge with addresses (e.g., `ED0300:` is split into data `ED` + address `0300`). Inline comments (e.g., `A9 00 // LDA #0`) are stripped to prevent hex letters in mnemonics from being parsed as data.
 - Save dialog: exports memory range as binary or Woz Monitor hex dump format.
 - Clipboard paste: feeds characters to Apple 1 keyboard (limited to 4096 chars).
 
@@ -139,9 +141,9 @@ Visual 16x16 grid (256 pages = 64KB) with color-coded regions, KB labels, PC/SP 
 0x0100-0x01FF  Stack
 0x0200-0x9FFF  User RAM (programs typically load at 0x0280 or 0x0300)
 0xA000-0xBFFF  Krusader ROM (8 KB)
-0xD010         KBD - Keyboard data register
-0xD011         KBDCR - Keyboard control register
-0xD012         DSP - Display output register
+0xD010         KBD - Keyboard data register    (aliases: $D0F0, $D030, etc.)
+0xD011         KBDCR - Keyboard control register (aliases: $D0F1, $D031, etc.)
+0xD012         DSP - Display output register   (aliases: $D0F2, $D032, etc.)
 0xE000-0xEFFF  Apple BASIC ROM (4 KB)
 0xFF00-0xFFFF  WOZ Monitor ROM (256 B)
   0xFFFA/B     NMI vector
@@ -174,11 +176,21 @@ The `build/`, `build-wasm/`, and `imgui/` directories are excluded from git via 
 
 ## Version History
 
+### v1.2 (April 2026) — 50th anniversary of Apple Computer
+- PIA 6821 address aliasing: `$D0Fx` mapped to `$D01x` — original (Pagetable) and Briel Apple BASIC versions both work
+- WASM Web Audio: ACI cassette live audio via ScriptProcessorNode (44.1 kHz, 512-sample buffer), auto-resume on first user gesture
+- Hex dump loader: inline comment stripping (`//`, `;`) fixes data corruption from mnemonic letters (e.g., `LDA`, `DEX`)
+- Display: increased character brightness and glow, greener phosphor in charmap mode, host-ASCII vertical alignment fix
+- Desktop fullscreen: Apple 1 screen now fills the display correctly
+- Memory Settings: added Reload ACI ROM button
+- Defaults: real-time stabilized audio (instead of hardware-faithful)
+- Bug fixes: WAV export overflow guard, WAV format early validation, `lastError` made `mutable`, dead code removal
+
 ### v1.1 (April 2026)
 - Apple Cassette Interface: ACI ROM at `$C100`, I/O at `$C000`/`$C081`, live audio (hardware-faithful or stabilized), load/save `.aci` and `.wav`, Cassette Control window
 - Terminal: bitmap rendering from `charmap.rom`, CRT scanlines/glow, green / brown / monochrome, optional host-ASCII mode; viewport aspect ~280:192; charmap contrast tuning
 - Emulation on a worker thread with UI snapshots; CPU speed (1 MHz / 2 MHz / Max) syncs immediately from toolbar and Settings
-- Memory Map: two-column layout (map + I/O under map, legend + ACI ROM / CPU vectors)
+- Memory Map: two-column layout (map + I/O under map, legend + CPU vectors)
 - Defaults: brown phosphor, cassette live audio hardware-faithful
 
 ### v1.0 (April 2026)

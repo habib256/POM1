@@ -139,6 +139,7 @@ void MainWindow_ImGui::render()
     // Au premier frame, dimensionner selon l'écran Apple 1 (40x24 * scale)
     static bool firstFrame = true;
     static bool wasFullscreen = false;
+    static int fullscreenResizePending = 0;
     if (firstFrame) {
         ImGui::PushFont(ImGui::GetIO().Fonts->Fonts[0]);
         ImVec2 charSize = ImGui::CalcTextSize("M");
@@ -165,9 +166,8 @@ void MainWindow_ImGui::render()
         ImGuiIO& fsio = ImGui::GetIO();
         const float toolbarBottom = ImGui::GetFrameHeight() + kToolbarBandHeight;
         if (fullscreen) {
-            // Fill the entire display
-            ImGui::SetNextWindowPos(ImVec2(0, toolbarBottom));
-            ImGui::SetNextWindowSize(ImVec2(fsio.DisplaySize.x, fsio.DisplaySize.y - toolbarBottom));
+            // Defer resize by 1 frame so GLFW has updated DisplaySize
+            fullscreenResizePending = 2;
         } else {
             // Restore to default Apple 1 size
             ImGui::PushFont(fsio.Fonts->Fonts[0]);
@@ -180,6 +180,15 @@ void MainWindow_ImGui::render()
             ImGui::SetNextWindowSize(ImVec2(sw, sh));
         }
         wasFullscreen = fullscreen;
+    }
+    if (fullscreenResizePending > 0) {
+        fullscreenResizePending--;
+        if (fullscreenResizePending == 0) {
+            ImGuiIO& fsio = ImGui::GetIO();
+            const float toolbarBottom = ImGui::GetFrameHeight() + kToolbarBandHeight;
+            ImGui::SetNextWindowPos(ImVec2(0, toolbarBottom));
+            ImGui::SetNextWindowSize(ImVec2(fsio.DisplaySize.x, fsio.DisplaySize.y - toolbarBottom));
+        }
     }
 
     ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(6.0f, 5.0f));
@@ -680,7 +689,7 @@ void MainWindow_ImGui::renderAboutDialog()
     ImGui::SetNextWindowSizeConstraints(ImVec2(380, 0), ImVec2(500, FLT_MAX));
     ImGui::SetNextWindowSize(ImVec2(0, 0), ImGuiCond_Always);
     if (ImGui::Begin("About POM1", &showAbout, ImGuiWindowFlags_AlwaysAutoResize)) {
-        ImGui::TextWrapped("POM1 v1.1 - Apple 1 Emulator (Dear ImGui)");
+        ImGui::TextWrapped("POM1 v1.2 - Apple 1 Emulator (Dear ImGui)");
         ImGui::Separator();
 
         ImGui::TextWrapped("Copyright (C) 2000-2026 GPL3");
@@ -710,9 +719,27 @@ void MainWindow_ImGui::renderAboutDialog()
         ImGui::Spacing();
         ImGui::Separator();
         ImGui::Spacing();
+        ImGui::TextWrapped("Emulation features:");
+        ImGui::BulletText("MOS 6502 CPU with cycle-accurate timing");
+        ImGui::BulletText("PIA 6821 with address aliasing ($D0Fx)");
+        ImGui::BulletText("Apple Cassette Interface (ACI) with live audio");
+        ImGui::BulletText("ACI live audio (44.1 kHz)");
+        ImGui::BulletText("All known Apple BASIC versions supported");
+
+        ImGui::Spacing();
+        ImGui::Separator();
+        ImGui::Spacing();
         ImGui::TextWrapped("Resources:");
         ImGui::BulletText("https://apple1software.com/");
+        ImGui::TextWrapped(
+            "  Comprehensive archive of Apple 1 software,\n"
+            "  hardware docs, and history. An invaluable\n"
+            "  resource for the Apple 1 community.");
         ImGui::BulletText("https://applefritter.com/apple1/");
+        ImGui::TextWrapped(
+            "  The heart of the Apple 1 community.\n"
+            "  Forums, technical discussions, and\n"
+            "  decades of shared knowledge.");
     }
     ImGui::End();
 }
@@ -1004,6 +1031,15 @@ void MainWindow_ImGui::renderMemoryConfigDialog()
                 emulation->setWriteInRom(true);
             }
             setStatusMessage(ok ? "Krusader reloaded" : error, 3.0f);
+        }
+
+        if (ImGui::Button("Reload ACI ROM")) {
+            std::string error;
+            bool ok = emulation->reloadAciRom(error);
+            if (!writeProtect) {
+                emulation->setWriteInRom(true);
+            }
+            setStatusMessage(ok ? "ACI ROM reloaded" : error, 3.0f);
         }
 
         ImGui::Spacing();
@@ -1670,17 +1706,20 @@ void MainWindow_ImGui::renderMemoryMapWindow()
         // --- Ligne 1 : I/O sous la carte | ACI + vecteurs sous la légende ---
         ImGui::TableNextRow();
         ImGui::TableSetColumnIndex(0);
-        ImGui::Text("I/O registers (address order):");
-        ImGui::BulletText("$C000  - ACI Cassette output");
-        ImGui::BulletText("$C081  TAPE  - ACI cassette input");
+        ImGui::Text("I/O registers (PIA 6821):");
+        ImGui::Spacing();
+        ImGui::TextColored(ImVec4(0.7f, 0.85f, 1.0f, 1.0f), "  Apple Cassette Interface");
+        ImGui::BulletText("$C000  OUT  - Tape output toggle");
+        ImGui::BulletText("$C081  IN   - Tape input read");
+        ImGui::Spacing();
+        ImGui::TextColored(ImVec4(0.7f, 0.85f, 1.0f, 1.0f), "  Keyboard & Display");
         ImGui::BulletText("$D010  KBD   - Keyboard data");
         ImGui::BulletText("$D011  KBDCR - Keyboard control");
         ImGui::BulletText("$D012  DSP   - Display output");
+        ImGui::TextColored(ImVec4(0.55f, 0.55f, 0.55f, 1.0f),
+            "  Aliases: $D0Fx = $D01x");
 
         ImGui::TableSetColumnIndex(1);
-        ImGui::Text("ACI ROM (not I/O):");
-        ImGui::BulletText("$C100  Entry - Woz ACI monitor");
-        ImGui::Spacing();
         ImGui::Text("CPU vectors:");
         ImGui::BulletText("$FFFA/B  NMI   -> $%04X",
             (int)uiSnapshot.memory[0xFFFA] | ((int)uiSnapshot.memory[0xFFFB] << 8));

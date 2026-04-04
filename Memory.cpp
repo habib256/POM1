@@ -222,7 +222,7 @@ int Memory::loadHexDump(const char* filename, quint16 &startAddress)
                          std::istreambuf_iterator<char>());
     file.close();
 
-    // Supprimer les lignes de commentaires (commençant par //, #, ;)
+    // Supprimer les commentaires (//, #, ;) — en début de ligne ou inline
     std::string cleaned;
     std::istringstream lineStream(content);
     std::string line;
@@ -232,6 +232,11 @@ int Memory::loadHexDump(const char* filename, quint16 &startAddress)
         char first = line[start];
         if (first == '#' || first == ';') continue;
         if (start + 1 < line.size() && first == '/' && line[start + 1] == '/') continue;
+        // Strip inline comments: truncate at first // or ;
+        size_t commentPos = line.find("//");
+        if (commentPos != std::string::npos) line = line.substr(0, commentPos);
+        commentPos = line.find(';');
+        if (commentPos != std::string::npos) line = line.substr(0, commentPos);
         cleaned += line;
     }
 
@@ -358,8 +363,16 @@ quint8 Memory::memRead(quint16 address)
         return cassetteDevice->toggleOutput();
     }
 
+    // PIA 6821 alias: le décodage d'adresse incomplet du vrai Apple 1 fait que
+    // $D0F0-$D0F3 sont des alias de $D010-$D013. Certaines versions de BASIC
+    // (Pagetable, originale) utilisent $D0F2 au lieu de $D012.
+    if ((address & 0xFF00) == 0xD000 && (address & 0x0F) <= 0x03
+        && address != 0xD010 && address != 0xD011 && address != 0xD012) {
+        address = 0xD010 | (address & 0x03);
+    }
+
     // Apple 1 Clavier : lecture de 0xD010 (KBD) et 0xD011 (KBDCR)
-    // Protocole Apple 1 : 
+    // Protocole Apple 1 :
     // - 0xD011 (KBDCR) : bit 7 = strobe (1 si touche prête). La lecture réinitialise le strobe.
     // - 0xD010 (KBD) : caractère avec bit 7 = 1 si prêt. Le caractère reste disponible jusqu'à nouvelle touche.
     if (address == 0xD010) {
@@ -392,6 +405,12 @@ quint8 Memory::memRead(quint16 address)
 
 void Memory::memWrite(quint16 address, quint8 value)
 {
+    // PIA 6821 alias (même normalisation que memRead)
+    if ((address & 0xFF00) == 0xD000 && (address & 0x0F) <= 0x03
+        && address != 0xD010 && address != 0xD011 && address != 0xD012) {
+        address = 0xD010 | (address & 0x03);
+    }
+
     // Protection ROM (si writeInRom est désactivé)
     if (!writeInRom) {
         // WOZ Monitor: 0xFF00-0xFFFF
