@@ -65,6 +65,7 @@ public:
 
     bool loadHexDump(const std::string& path, quint16& startAddress, std::string& error);
     bool loadBinary(const std::string& path, quint16 startAddress, std::string& error);
+    bool loadBinaryToRam(const std::string& path, quint16 address, std::string& error);
     bool saveMemoryRange(const std::string& path, quint16 startAddress, quint16 endAddress, bool binaryFormat, std::string& error);
 
     void setWriteInRom(bool enabled);

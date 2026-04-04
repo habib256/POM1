@@ -17,6 +17,7 @@ public:
     void navigateToAddress(int address);
     void updateLiveMemory(const std::vector<quint8>& memoryImage);
     void setWriteCallback(std::function<void(quint16, quint8)> callback);
+    void setGraphicsCardEnabled(bool enabled) { gen2Enabled = enabled; }
 
 private:
     Memory* memory;
@@ -30,6 +31,7 @@ private:
     bool showAscii = true;
     bool autoRefresh = false;
     bool colorizeRegions = true;
+    bool gen2Enabled = false;
 
     // Auto-refresh: snapshot taken when autoRefresh is off
     std::vector<quint8> snapshot;

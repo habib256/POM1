@@ -532,6 +532,8 @@ ImVec4 MemoryViewer_ImGui::getColorForAddress(int address)
         return ImVec4(1.0f, 0.65f, 0.0f, 1.0f);    // Stack - orange
     if (address <= 0x027F)
         return ImVec4(0.0f, 0.78f, 1.0f, 1.0f);     // Keyboard Buffer - cyan
+    if (gen2Enabled && address >= 0x2000 && address <= 0x3FFF)
+        return ImVec4(0.0f, 1.0f, 0.78f, 1.0f);     // GEN2 HGR Framebuffer - cyan/teal
     if (address <= 0x9FFF)
         return ImVec4(0.31f, 0.78f, 0.31f, 1.0f);   // User RAM - green
     if (address <= 0xBFFF)

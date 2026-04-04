@@ -16,6 +16,7 @@ file(GLOB IMGUI_SOURCES
 set(SOURCES
     CassetteDevice.cpp
     EmulationController.cpp
+    GraphicsCard.cpp
     main_imgui.cpp
     MainWindow_ImGui.cpp
     M6502.cpp
@@ -27,6 +28,7 @@ set(SOURCES
 set(HEADERS
     CassetteDevice.h
     EmulationController.h
+    GraphicsCard.h
     MainWindow_ImGui.h
     M6502.h
     Memory.h
