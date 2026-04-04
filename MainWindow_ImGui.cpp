@@ -740,7 +740,7 @@ void MainWindow_ImGui::renderAboutDialog()
     ImGui::SetNextWindowSizeConstraints(ImVec2(380, 0), ImVec2(500, FLT_MAX));
     ImGui::SetNextWindowSize(ImVec2(0, 0), ImGuiCond_Always);
     if (ImGui::Begin("About POM1", &showAbout, ImGuiWindowFlags_AlwaysAutoResize)) {
-        ImGui::TextWrapped("POM1 v1.2 - Apple 1 Emulator (Dear ImGui)");
+        ImGui::TextWrapped("POM1 v1.3 - Apple 1 Emulator (Dear ImGui)");
         ImGui::Separator();
 
         ImGui::TextWrapped("Copyright (C) 2000-2026 GPL3");
@@ -1274,8 +1274,9 @@ void MainWindow_ImGui::renderLoadDialog()
                 emulation->copySnapshot(uiSnapshot);
                 cpuRunning = true;
                 stepMode = false;
+                std::string filename = std::filesystem::path(loadDlg.filePath).filename().string();
                 std::stringstream ss;
-                ss << "Program started at 0x" << std::hex << std::uppercase << addr;
+                ss << "Loaded " << filename << " at $" << std::hex << std::uppercase << addr;
                 setStatusMessage(ss.str(), 3.0f);
                 showLoadDialog = false;
                 loadDlg.reset();

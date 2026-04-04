@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-POM1 v1.2 is an Apple 1 emulator built with Dear ImGui. It emulates the MOS 6502 CPU and Apple 1 hardware including memory-mapped I/O, display, keyboard input, the Apple Cassette Interface (ACI) with live audio and tape files, and Uncle Bernie's GEN2 Color Graphics Card (280×192 HIRES, NTSC artifact color). The UI is fully in English. Builds on Linux, macOS, Windows, and Web (Emscripten/WASM).
+POM1 v1.3 is an Apple 1 emulator built with Dear ImGui. It emulates the MOS 6502 CPU and Apple 1 hardware including memory-mapped I/O, display, keyboard input, the Apple Cassette Interface (ACI) with live audio and tape files, and Uncle Bernie's GEN2 Color Graphics Card (280×192 HIRES, NTSC artifact color). The UI is fully in English. Builds on Linux, macOS, Windows, and Web (Emscripten/WASM).
 
 ## Build & Run Commands
 
@@ -180,8 +180,13 @@ The `build/`, `build-wasm/`, and `imgui/` directories are excluded from git via 
 
 ## Version History
 
-### v1.2 (April 2026) — 50th anniversary of Apple Computer
+### v1.3 (April 2026) — Uncle Bernie's GEN2 Color Graphics Card
 - Uncle Bernie's GEN2 Color Graphics Card: 280×192 HIRES at `$2000-$3FFF`, NTSC artifact color (violet/green/blue/orange), pixel glow, Apple II-compatible scanline layout, toggle via Hardware menu or toolbar, demo image auto-load
+- HGR Maze program: Recursive Backtracker maze generator rendering directly into the GEN2 framebuffer (19×11 cells, 7×8 pixel blocks, byte-aligned white walls), with maze counter, CLD safety, and work RAM cleanup
+- Memory Viewer: inline hex editing on double-click (replaces modal popup)
+- cc65 linker config for GEN2 programs (`apple1_gen2.cfg`): reserves `$2000-$3FFF` for HGR framebuffer
+
+### v1.2 (April 2026) — 50th anniversary of Apple Computer
 - PIA 6821 address aliasing: `$D0Fx` mapped to `$D01x` — original (Pagetable) and Briel Apple BASIC versions both work
 - WASM Web Audio: ACI cassette live audio via ScriptProcessorNode (44.1 kHz, 512-sample buffer), auto-resume on first user gesture
 - Hex dump loader: inline comment stripping (`//`, `;`) fixes data corruption from mnemonic letters (e.g., `LDA`, `DEX`)

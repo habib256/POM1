@@ -1,10 +1,10 @@
 <div align="center">
 
-# 🍎 POM1 v1.2 — Apple 1 Emulator
+# 🍎 POM1 v1.3 — Apple 1 Emulator
 
 **Experience the machine that started the personal computer revolution.**
 
-🎂 **Celebrating 50 years of Apple (1976–2026)** — POM1 v1.2 is released in honor of the 50th anniversary of Apple Computer, founded on 1976.
+🎂 **Celebrating 50 years of Apple (1976–2026)** — POM1 v1.3 is released in honor of the 50th anniversary of Apple Computer, founded on 1976.
 
 A faithful Apple 1 emulator built with Dear ImGui & OpenGL — fast, lightweight, and cross-platform. Now with Uncle Bernie's GEN2 Color Graphics Card support.
 
