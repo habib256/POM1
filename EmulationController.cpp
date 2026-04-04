@@ -300,6 +300,20 @@ bool EmulationController::reloadKrusader(std::string& error)
     return result == 0;
 }
 
+bool EmulationController::reloadAciRom(std::string& error)
+{
+    std::lock_guard<std::mutex> lock(stateMutex);
+    bool prev = memory->getWriteInRom();
+    memory->setWriteInRom(true);
+    int result = memory->loadAciRom();
+    memory->setWriteInRom(prev);
+    if (result != 0) {
+        error = memory->getLastError();
+    }
+    publishSnapshotLocked();
+    return result == 0;
+}
+
 void EmulationController::clearMemory()
 {
     std::lock_guard<std::mutex> lock(stateMutex);

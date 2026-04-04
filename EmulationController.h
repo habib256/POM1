@@ -73,6 +73,7 @@ public:
     bool reloadBasic(std::string& error);
     bool reloadWozMonitor(std::string& error);
     bool reloadKrusader(std::string& error);
+    bool reloadAciRom(std::string& error);
     void clearMemory();
 
     bool loadTape(const std::string& path, std::string& error);

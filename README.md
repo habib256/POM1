@@ -1,8 +1,10 @@
 <div align="center">
 
-# 🍎 POM1 v1.1 — Apple 1 Emulator
+# 🍎 POM1 v1.2 — Apple 1 Emulator
 
 **Experience the machine that started the personal computer revolution.**
+
+🎂 **Celebrating 50 years of Apple (1976–2026)** — POM1 v1.2 is released in honor of the 50th anniversary of Apple Computer, founded on April 1, 1976.
 
 A faithful Apple 1 emulator built with Dear ImGui & OpenGL — fast, lightweight, and cross-platform.
 
@@ -32,9 +34,11 @@ or build it natively.
 
 🗺️ **Visual Memory Map** — Color-coded 64 KB overview with region legend, PC/SP indicators, and tooltips
 
-📂 **Program Loader** — Load binary files or Woz Monitor hex dumps with a built-in file browser
+📂 **Program Loader** — Load binary files or Woz Monitor hex dumps (with inline comment support) via a built-in file browser
 
-📼 **Apple Cassette Interface (ACI)** — Woz ACI ROM at `$C100`, cassette input on `$C081`, output flip-flop on `$C000`, real-time audio, and tape import/export as `.aci` or `.wav`
+📼 **Apple Cassette Interface (ACI)** — Woz ACI ROM at `$C100`, cassette input on `$C081`, output flip-flop on `$C000`, real-time audio (desktop & WebAssembly), and tape import/export as `.aci` or `.wav`
+
+🔌 **PIA 6821 Address Aliasing** — Full support for `$D0Fx` aliases, enabling all known Apple BASIC versions (original, Pagetable, Briel/Replica 1)
 
 🐛 **Step Debugger** — Single-step execution, register inspection, disassembly, stack view, log console
 
@@ -163,13 +167,14 @@ The emulator now includes the **Apple Cassette Interface (ACI)**:
 - export the last captured cassette signal from **File > Save Tape**
 - use `.aci` for exact pulse timings or `.wav` for an audio waveform
 
-This enables software that relies on the ACI output flip-flop, including sound demos such as **Twinkle Twinkle Little Star**.
+This enables software that relies on the ACI output flip-flop, including sound demos such as **Twinkle Twinkle Little Star**. Audio works on both desktop (via miniaudio) and in the browser (via Web Audio API).
 
 ---
 
 ## 🎮 Software Library
 
 The `software/` directory ships with **30+ ready-to-run programs** — load them via **File > Load Memory**.
+Most programs are sourced from [apple1software.com](https://apple1software.com/), the reference archive for Apple 1 software.
 Some programs also include their 6502 assembly source code (`.asm`) for study and modification.
 
 ### 🕹️ Games
@@ -297,7 +302,7 @@ $A000-$BFFF   Krusader ROM (8 KB)
 $C000-$C0FF   Apple Cassette Interface I/O
 $C081         Tape input
 $C100-$C1FF   Woz ACI ROM
-$D010-$D012   I/O — Keyboard (KBD) & Display (DSP)
+$D010-$D012   PIA 6821 — Keyboard (KBD) & Display (DSP)  (aliases: $D0Fx)
 $E000-$EFFF   Apple BASIC ROM (4 KB)
 $FF00-$FFFF   Woz Monitor ROM (256 B)
 ```
@@ -318,8 +323,8 @@ $FF00-$FFFF   Woz Monitor ROM (256 B)
 
 ## 🔗 Resources
 
-- [Apple 1 Software Collection](https://apple1software.com/)
-- [AppleFritter Apple 1 Forum](https://applefritter.com/apple1/)
+- [**apple1software.com**](https://apple1software.com/) — The definitive Apple 1 software archive. Meticulously curated collection of programs, hardware documentation, schematics, and historical research. Most of the software included in POM1 comes from this outstanding resource. An invaluable reference for anyone interested in the Apple 1.
+- [**AppleFritter**](https://applefritter.com/apple1/) — The heart of the Apple 1 community. Home to decades of technical discussions, hardware projects, BASIC version research, and first-hand accounts from original Apple 1 owners and builders. Many of the programs, patches, and discoveries documented here have directly shaped this emulator.
 - [POM1 Project Page](https://www.gistlabs.net/Apple1project/)
 
 ---

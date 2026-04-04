@@ -80,7 +80,7 @@ private:
     ma_device* audioDevice = nullptr;
 #endif
     bool audioAvailable = false;
-    bool hardwareAccurateLiveAudio = true;
+    bool hardwareAccurateLiveAudio = false;
     uint32_t liveAudioTimebaseHz = kRealtimeAudioTimebaseHz;
 
 #if !POM1_IS_WASM

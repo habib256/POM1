@@ -173,7 +173,7 @@ void Screen_ImGui::initializeScreen()
     for (size_t i = 0; i < welcome.length() && startX + (int)i < SCREEN_WIDTH; ++i)
         screenBuffer[bufferIndex(0, startX + (int)i)] = welcome[i];
 
-    std::string version = "Version 1.1";
+    std::string version = "Version 1.2";
     startX = (SCREEN_WIDTH - (int)version.length()) / 2;
     for (size_t i = 0; i < version.length() && startX + (int)i < SCREEN_WIDTH; ++i)
         screenBuffer[bufferIndex(1, startX + (int)i)] = version[i];
@@ -250,7 +250,7 @@ void Screen_ImGui::render()
 
     if (useCharmapRenderer) {
         if (monitorMode == MonitorMode::Green) {
-            textColor = ImVec4(0.90f, 1.0f, 0.85f, 1.0f);
+            textColor = ImVec4(0.45f, 1.0f, 0.45f, 1.0f);
             windowBg = ImVec4(0.0f, 0.0f, 0.0f, 1.0f);
         } else if (monitorMode == MonitorMode::Amber) {
             textColor = ImVec4(1.0f, 0.88f, 0.35f, 1.0f);
@@ -338,7 +338,7 @@ void Screen_ImGui::render()
 
                     const float hostTextScale = textScale * hostAsciiGlyphScale;
                     const float charOffsetX = (scaledCellW - charSize.x * hostTextScale) * 0.5f;
-                    const float charOffsetY = (scaledCellH - charSize.y * hostTextScale) * 0.5f;
+                    const float charOffsetY = (scaledCellH - charSize.y * hostTextScale) * 0.5f + scaledCellH * 0.08f;
                     char str[2] = { static_cast<char>(c), 0 };
                     drawList->AddText(ImGui::GetFont(), ImGui::GetFontSize() * hostTextScale,
                                       ImVec2(px + charOffsetX, py + charOffsetY), col, str);
