@@ -261,6 +261,28 @@ void Screen_ImGui::render()
         }
     }
 
+    // Apply brightness and contrast adjustments
+    // Contrast: scale color channels around 0.5 midpoint
+    // Brightness < 1: dim (multiply). Brightness > 1: bloom toward white (lerp to 1.0)
+    auto adjust = [&](float c) {
+        c = (c - 0.5f) * contrast + 0.5f;
+        if (brightness <= 1.0f)
+            c *= brightness;
+        else
+            c = c + (1.0f - c) * (brightness - 1.0f);
+        return c < 0.0f ? 0.0f : (c > 1.0f ? 1.0f : c);
+    };
+    textColor.x = adjust(textColor.x);
+    textColor.y = adjust(textColor.y);
+    textColor.z = adjust(textColor.z);
+    // Brighten background slightly when brightness > 1
+    if (brightness > 1.0f) {
+        float bgBoost = (brightness - 1.0f) * 0.05f;
+        windowBg.x = std::min(1.0f, windowBg.x + bgBoost);
+        windowBg.y = std::min(1.0f, windowBg.y + bgBoost);
+        windowBg.z = std::min(1.0f, windowBg.z + bgBoost);
+    }
+
     ImGui::PushStyleColor(ImGuiCol_WindowBg, windowBg);
 
     ImGui::PushFont(ImGui::GetIO().Fonts->Fonts[0]);

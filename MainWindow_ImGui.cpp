@@ -948,6 +948,11 @@ void MainWindow_ImGui::renderScreenConfigDialog()
         ImGui::SliderFloat("##Scale", &screen->scale, 0.5f, 4.0f, "%.1fx");
 
         ImGui::Spacing();
+        ImGui::Text("Image Adjustments:");
+        ImGui::SliderFloat("Brightness", &screen->brightness, 0.2f, 1.5f, "%.2f");
+        ImGui::SliderFloat("Contrast", &screen->contrast, 0.5f, 2.0f, "%.2f");
+
+        ImGui::Spacing();
         ImGui::Text("CRT Effect");
         ImGui::Separator();
         ImGui::Checkbox("Scanlines", &screen->crtEffect);
