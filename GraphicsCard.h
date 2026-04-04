@@ -34,6 +34,10 @@ public:
     static uint16_t scanlineAddress(int y);
 
 private:
+    // Resolve the NTSC artifact color for a given pixel.
+    ImU32 resolveColor(const quint8* memory, uint16_t lineAddr,
+                       int col, quint8 byte, int bit, int screenX, bool group2) const;
+
     // NTSC artifact colors
     static constexpr ImU32 kBlack  = IM_COL32(0, 0, 0, 255);
     static constexpr ImU32 kWhite  = IM_COL32(255, 255, 255, 255);
