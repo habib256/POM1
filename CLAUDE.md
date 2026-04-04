@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-POM1 v1.2 is an Apple 1 emulator built with Dear ImGui. It emulates the MOS 6502 CPU and Apple 1 hardware including memory-mapped I/O, display, keyboard input, and the Apple Cassette Interface (ACI) with live audio and tape files. The UI is fully in English. Builds on Linux, macOS, Windows, and Web (Emscripten/WASM).
+POM1 v1.2 is an Apple 1 emulator built with Dear ImGui. It emulates the MOS 6502 CPU and Apple 1 hardware including memory-mapped I/O, display, keyboard input, the Apple Cassette Interface (ACI) with live audio and tape files, and Uncle Bernie's GEN2 Color Graphics Card (280×192 HIRES, NTSC artifact color). The UI is fully in English. Builds on Linux, macOS, Windows, and Web (Emscripten/WASM).
 
 ## Build & Run Commands
 
@@ -60,6 +60,7 @@ ld65 -C software/apple1.cfg -o build/program.bin build/program.o
 - **MainWindow_ImGui.cpp/h**: Main application window with menu bar, toolbar with icon buttons, status bar, window management, CPU speed control (1/2/Max MHz), file loading/saving dialogs, clipboard paste, memory map window, and keyboard input handling.
 - **Screen_ImGui.cpp/h**: Apple 1 display emulation (40x24 character grid) with green/white monitor modes, `@` blinking cursor (timer uses `fmod` to avoid float overflow), scanline CRT effect, configurable text scale, and bitmap glyph rendering sourced from `roms/charmap.rom` when available.
 - **MemoryViewer_ImGui.cpp/h**: Interactive hex editor with color-coded regions (matching Memory Map colors), search (hex and ASCII), bookmarks, navigation shortcuts, and real-time editing.
+- **GraphicsCard.cpp/h**: [Uncle Bernie's GEN2 Color Graphics Card](https://www.applefritter.com/content/uncle-bernies-gen2-color-graphics-card-apple-1) emulation. Passively reads CPU RAM at `$2000-$3FFF` and renders a 280×192 HIRES image with NTSC artifact color (violet/green for group 1, blue/orange for group 2, white for adjacent pixels) in a separate ImGui window. Two-pass rendering: glow halos (semi-transparent rounded rects) then solid pixels on top. Apple II-compatible non-linear scanline memory layout (`scanlineAddress()`). Toggled via Hardware menu or toolbar button; auto-loads a demo HGR image from `software/gen2/` when plugged in.
 
 ### ROM Files (roms/)
 - **WozMonitor.rom** (256B @ 0xFF00): Wozniak's system monitor
@@ -75,6 +76,7 @@ Contains Apple 1 programs in Woz Monitor hex dump format (.txt) organized in sub
 - **demos/**: Demos — Game of Life, Maze (Sidewinder), Maze 2 (Recursive Backtracker), Mandelbrot, Cellular automaton, etc.
 - **dev/**: Development tools — Woz Monitor, Enhanced BASIC, fig-FORTH
 - **tests/**: Hardware test programs — hex I/O, keyboard, terminal tests
+- **gen2/**: GEN2 HGR demo images (raw 8 KB binary loaded at `$2000`)
 
 Programs can be loaded via File > Load Memory, which provides a file browser with folder navigation. Assembly source files (`.asm`) can be assembled with cc65. Most programs come from [apple1software.com](https://apple1software.com/), an outstanding archive of Apple 1 software, hardware documentation, and historical resources. [AppleFritter](https://applefritter.com/apple1/) is the community hub where much of the technical research, BASIC version history, and hardware knowledge originates.
 
@@ -139,7 +141,9 @@ Visual 16x16 grid (256 pages = 64KB) with color-coded regions, KB labels, PC/SP 
 ```
 0x0000-0x00FF  Zero page
 0x0100-0x01FF  Stack
-0x0200-0x9FFF  User RAM (programs typically load at 0x0280 or 0x0300)
+0x0200-0x1FFF  User RAM (programs typically load at 0x0280 or 0x0300)
+0x2000-0x3FFF  GEN2 HGR Framebuffer (8 KB — when card is plugged)
+0x4000-0x9FFF  User RAM
 0xA000-0xBFFF  Krusader ROM (8 KB)
 0xD010         KBD - Keyboard data register    (aliases: $D0F0, $D030, etc.)
 0xD011         KBDCR - Keyboard control register (aliases: $D0F1, $D031, etc.)
@@ -177,6 +181,7 @@ The `build/`, `build-wasm/`, and `imgui/` directories are excluded from git via 
 ## Version History
 
 ### v1.2 (April 2026) — 50th anniversary of Apple Computer
+- Uncle Bernie's GEN2 Color Graphics Card: 280×192 HIRES at `$2000-$3FFF`, NTSC artifact color (violet/green/blue/orange), pixel glow, Apple II-compatible scanline layout, toggle via Hardware menu or toolbar, demo image auto-load
 - PIA 6821 address aliasing: `$D0Fx` mapped to `$D01x` — original (Pagetable) and Briel Apple BASIC versions both work
 - WASM Web Audio: ACI cassette live audio via ScriptProcessorNode (44.1 kHz, 512-sample buffer), auto-resume on first user gesture
 - Hex dump loader: inline comment stripping (`//`, `;`) fixes data corruption from mnemonic letters (e.g., `LDA`, `DEX`)

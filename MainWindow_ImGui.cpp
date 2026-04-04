@@ -764,6 +764,7 @@ void MainWindow_ImGui::renderAboutDialog()
         ImGui::BulletText("Lee DAVISON (Enhanced BASIC)");
         ImGui::BulletText("Achim BREIDENBACH (Sim6502)");
         ImGui::BulletText("Fabrice FRANCES (Java Microtan Emulator)");
+        ImGui::BulletText("Uncle BERNIE (GEN2 Color Graphics Card)");
         ImGui::BulletText("Tom OWAD (Applefritter)");
         ImGui::BulletText("And All Apple 1 Community");
 
@@ -775,6 +776,7 @@ void MainWindow_ImGui::renderAboutDialog()
         ImGui::BulletText("PIA 6821 with address aliasing ($D0Fx)");
         ImGui::BulletText("Apple Cassette Interface (ACI) with live audio");
         ImGui::BulletText("ACI live audio (44.1 kHz)");
+        ImGui::BulletText("Uncle Bernie's GEN2 Color Graphics Card");
         ImGui::BulletText("All known Apple BASIC versions supported");
 
         ImGui::Spacing();
