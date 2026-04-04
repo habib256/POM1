@@ -6,7 +6,7 @@
 
 🎂 **Celebrating 50 years of Apple (1976–2026)** — POM1 v1.2 is released in honor of the 50th anniversary of Apple Computer, founded on April 1, 1976.
 
-A faithful Apple 1 emulator built with Dear ImGui & OpenGL — fast, lightweight, and cross-platform.
+A faithful Apple 1 emulator built with Dear ImGui & OpenGL — fast, lightweight, and cross-platform. Now with Uncle Bernie's GEN2 Color Graphics Card support.
 
 **Play it now in your browser** : 
 [![Play Online](https://img.shields.io/badge/Play%20Online-WebAssembly-blueviolet.svg)](https://habib256.github.io/POM1/build-wasm/pom1_imgui.html)
@@ -43,6 +43,8 @@ or build it natively.
 🐛 **Step Debugger** — Single-step execution, register inspection, disassembly, stack view, log console
 
 💾 **Memory Save/Export** — Save any memory range as binary or Woz Monitor hex dump
+
+🎨 **GEN2 Color Graphics Card** — [Uncle Bernie's HIRES color graphics card](https://www.applefritter.com/content/uncle-bernies-gen2-color-graphics-card-apple-1) — 280×192 resolution with NTSC artifact color (violet, green, blue, orange), pixel glow, rendered in a separate window from `$2000-$3FFF` RAM
 
 📋 **Clipboard Paste** — Paste code directly into the Apple 1 keyboard from your clipboard
 
@@ -171,6 +173,19 @@ This enables software that relies on the ACI output flip-flop, including sound d
 
 ---
 
+## 🎨 GEN2 Color Graphics Card
+
+POM1 emulates [Uncle Bernie's GEN2 Color Graphics Card](https://www.applefritter.com/content/uncle-bernies-gen2-color-graphics-card-apple-1), a HIRES color graphics card designed for the Apple 1 by Uncle Bernie (AppleFritter community).
+
+- **280×192 resolution** with Apple II-compatible HIRES memory layout at `$2000-$3FFF`
+- **NTSC artifact color** — violet, green, blue, orange, white, and black
+- **Pixel glow effect** for a CRT-like appearance
+- Rendered in a dedicated **GEN2 Apple1 HGR Color Screen** window
+- Toggle via **Hardware > GEN2 Graphics Card** or the toolbar button
+- A demo HGR image (`software/gen2/N001.HGR.BIN`) is auto-loaded when the card is plugged in
+
+---
+
 ## 🎮 Software Library
 
 The `software/` directory ships with **30+ ready-to-run programs** — load them via **File > Load Memory**.
@@ -261,6 +276,7 @@ POM1/
 ├── main_imgui.cpp           # 🪟 GLFW/OpenGL bootstrap
 ├── MainWindow_ImGui.cpp/h   # 🎛️ App window, menus, CPU speed control
 ├── Screen_ImGui.cpp/h       # 🖥️ Apple 1 display (40×24, CRT effects)
+├── GraphicsCard.cpp/h       # 🎨 GEN2 color graphics card (280×192 HIRES)
 ├── MemoryViewer_ImGui.cpp/h # 🔍 Hex editor with search & navigation
 ├── roms/                    # 📀 WozMonitor, BASIC, Krusader, ACI, charmap
 ├── software/                # 📂 Hex dump programs + assembly sources
@@ -269,6 +285,7 @@ POM1/
 │   ├── basic/               #   💻 BASIC programs
 │   ├── dev/                 #   🛠️ Dev tools
 │   ├── utils/               #   🧰 Utilities
+│   ├── gen2/                #   🎨 GEN2 HGR demo images
 │   └── tests/               #   🧪 Hardware test programs
 ├── build-wasm/              # 🌐 WebAssembly build output
 ├── software/apple1.cfg      # ⚙️ cc65 linker config
@@ -297,7 +314,9 @@ The main firmware ROMs are loaded automatically at startup, and `charmap.rom` is
 ```
 $0000-$00FF   Zero Page
 $0100-$01FF   Stack
-$0200-$9FFF   User RAM (programs load at $0280 or $0300)
+$0200-$1FFF   User RAM (programs load at $0280 or $0300)
+$2000-$3FFF   GEN2 HGR Framebuffer (8 KB — when card is plugged)
+$4000-$9FFF   User RAM
 $A000-$BFFF   Krusader ROM (8 KB)
 $C000-$C0FF   Apple Cassette Interface I/O
 $C081         Tape input
@@ -325,6 +344,7 @@ $FF00-$FFFF   Woz Monitor ROM (256 B)
 
 - [**apple1software.com**](https://apple1software.com/) — The definitive Apple 1 software archive. Meticulously curated collection of programs, hardware documentation, schematics, and historical research. Most of the software included in POM1 comes from this outstanding resource. An invaluable reference for anyone interested in the Apple 1.
 - [**AppleFritter**](https://applefritter.com/apple1/) — The heart of the Apple 1 community. Home to decades of technical discussions, hardware projects, BASIC version research, and first-hand accounts from original Apple 1 owners and builders. Many of the programs, patches, and discoveries documented here have directly shaped this emulator.
+- [**Uncle Bernie's GEN2 Color Graphics Card**](https://www.applefritter.com/content/uncle-bernies-gen2-color-graphics-card-apple-1) — The original hardware project by Uncle Bernie on AppleFritter. A 280×192 HIRES color graphics card for the Apple 1 using Apple II-compatible memory layout and NTSC artifact color encoding.
 - [POM1 Project Page](https://www.gistlabs.net/Apple1project/)
 
 ---
