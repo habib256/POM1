@@ -12,5 +12,5 @@
 ## Open
 
 - [ ] **GEN2 higher-resolution maze**: 16-bit DFS with smaller pixel blocks (e.g., 34×23 cells). Non-byte-aligned rendering produces NTSC color artifacts instead of solid white walls — needs a rendering approach that works at sub-byte granularity.
-- [ ] **More GEN2 programs**: image viewers, drawing tools, additional demos for the 280×192 HIRES display.
+- [ ] **More GEN2 programs**: image viewers, drawing tools, additional demos for the 280×192 HIRES display. (claude --resume 080eb60b-9589-49d2-a001-0f9610a49666)
 - [ ] **Native file dialog**: File loading/saving currently uses built-in file browsers instead of system file pickers.
