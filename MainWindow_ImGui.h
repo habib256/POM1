@@ -148,10 +148,13 @@ private:
     };
     LoadDialogState loadDlg;
 
-    // Loaded program region (shown in Memory Map)
-    std::string loadedProgramName;
-    quint16 loadedProgramStart = 0;
-    quint16 loadedProgramEnd = 0;
+    // Loaded program regions (shown in Memory Map)
+    struct LoadedProgram {
+        std::string name;
+        quint16 start;
+        quint16 end;
+    };
+    std::vector<LoadedProgram> loadedPrograms;
 
     struct TapeDialogState {
         char filePath[512] = "cassette.aci";

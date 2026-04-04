@@ -63,8 +63,8 @@ public:
     void queueKey(char key);
     void writeMemory(quint16 address, quint8 value);
 
-    bool loadHexDump(const std::string& path, quint16& startAddress, std::string& error);
-    bool loadBinary(const std::string& path, quint16 startAddress, std::string& error);
+    bool loadHexDump(const std::string& path, quint16& startAddress, std::string& error, int* bytesLoaded = nullptr);
+    bool loadBinary(const std::string& path, quint16 startAddress, std::string& error, int* bytesLoaded = nullptr);
     bool loadBinaryToRam(const std::string& path, quint16 address, std::string& error);
     bool saveMemoryRange(const std::string& path, quint16 startAddress, quint16 endAddress, bool binaryFormat, std::string& error);
 

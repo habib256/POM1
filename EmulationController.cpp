@@ -159,13 +159,13 @@ bool EmulationController::loadBinaryToRam(const std::string& path, quint16 addre
     return true;
 }
 
-bool EmulationController::loadHexDump(const std::string& path, quint16& startAddress, std::string& error)
+bool EmulationController::loadHexDump(const std::string& path, quint16& startAddress, std::string& error, int* bytesLoaded)
 {
     stopCpu();
     std::lock_guard<std::mutex> lock(stateMutex);
 
     quint16 addr = 0;
-    int result = memory->loadHexDump(path.c_str(), addr);
+    int result = memory->loadHexDump(path.c_str(), addr, bytesLoaded);
     if (result != 0) {
         error = "Error: unable to load file";
         publishSnapshotLocked();
@@ -190,12 +190,12 @@ bool EmulationController::loadHexDump(const std::string& path, quint16& startAdd
     return true;
 }
 
-bool EmulationController::loadBinary(const std::string& path, quint16 startAddress, std::string& error)
+bool EmulationController::loadBinary(const std::string& path, quint16 startAddress, std::string& error, int* bytesLoaded)
 {
     stopCpu();
     std::lock_guard<std::mutex> lock(stateMutex);
 
-    int result = memory->loadBinary(path.c_str(), startAddress);
+    int result = memory->loadBinary(path.c_str(), startAddress, bytesLoaded);
     if (result != 0) {
         error = "Error: unable to load file";
         publishSnapshotLocked();
