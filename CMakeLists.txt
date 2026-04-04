@@ -74,6 +74,8 @@ if(EMSCRIPTEN)
         "--preload-file ${PRELOAD_DIR}/fonts@fonts"
         "--preload-file ${PRELOAD_DIR}/software@software"
         "--shell-file ${SHELL_FILE}"
+        "-s EXPORTED_FUNCTIONS=['_main','_pom1_fillAudioBuffer','_malloc','_free']"
+        "-s EXPORTED_RUNTIME_METHODS=['ccall','HEAPF32']"
     )
     # Join list into a single space-separated string for linker flags
     list(JOIN EM_LINK_FLAGS " " EM_LINK_FLAGS_STR)

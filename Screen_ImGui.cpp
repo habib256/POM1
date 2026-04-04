@@ -114,14 +114,14 @@ void Screen_ImGui::drawCharmapGlyph(ImDrawList* drawList, float x, float y, floa
     case MonitorMode::Amber:
         glowScaleX = 1.55f;
         glowScaleY = 0.30f;
-        glowAlpha = 0.14f;
+        glowAlpha = 0.30f;
         glowMinX = 2.8f;
         glowMinY = 0.45f;
         break;
     case MonitorMode::Monochrome:
         glowScaleX = 1.65f;
         glowScaleY = 0.28f;
-        glowAlpha = 0.18f;
+        glowAlpha = 0.34f;
         glowMinX = 2.8f;
         glowMinY = 0.45f;
         break;
@@ -129,13 +129,13 @@ void Screen_ImGui::drawCharmapGlyph(ImDrawList* drawList, float x, float y, floa
     default:
         glowScaleX = 1.45f;
         glowScaleY = 0.20f;
-        glowAlpha = 0.13f;
+        glowAlpha = 0.28f;
         glowMinX = 2.4f;
         glowMinY = 0.30f;
         break;
     }
     if (crispGlow) {
-        glowAlpha *= 0.38f;
+        glowAlpha *= 0.45f;
     }
     const float glowPadX = std::max(glowMinX, pixelW * glowScaleX);
     const float glowPadY = std::max(glowMinY, pixelH * glowScaleY);
@@ -190,14 +190,14 @@ void Screen_ImGui::drawCRTOverlay(float x0, float y0, float x1, float y1, bool c
     ImVec4 phosphorTint;
     switch (monitorMode) {
     case MonitorMode::Amber:
-        phosphorTint = ImVec4(0.85f, 0.45f, 0.10f, 0.06f);
+        phosphorTint = ImVec4(0.85f, 0.45f, 0.10f, 0.12f);
         break;
     case MonitorMode::Monochrome:
-        phosphorTint = ImVec4(1.0f, 1.0f, 1.0f, 0.06f);
+        phosphorTint = ImVec4(1.0f, 1.0f, 1.0f, 0.12f);
         break;
     case MonitorMode::Green:
     default:
-        phosphorTint = ImVec4(0.10f, 0.95f, 0.10f, 0.05f);
+        phosphorTint = ImVec4(0.10f, 0.95f, 0.10f, 0.10f);
         break;
     }
     if (charmapDisplay) {
@@ -213,7 +213,7 @@ void Screen_ImGui::drawCRTOverlay(float x0, float y0, float x1, float y1, bool c
         dl->AddLine(ImVec2(x0, py), ImVec2(x1, py), ImGui::ColorConvertFloat4ToU32(varied), 1.0f);
     }
 
-    const float scanAlpha = charmapDisplay ? crtScanlineAlpha * 0.55f : crtScanlineAlpha;
+    const float scanAlpha = charmapDisplay ? crtScanlineAlpha * 0.25f : crtScanlineAlpha;
     ImU32 scanColor = IM_COL32(0, 0, 0, (int)(scanAlpha * 255));
     for (float py = y0 + 1.0f; py < y1; py += 2.0f) {
         dl->AddLine(ImVec2(x0, py), ImVec2(x1, py), scanColor, 1.15f);
@@ -227,7 +227,6 @@ void Screen_ImGui::render()
     blinkTimer = fmod(blinkTimer + dt, 2.0f);
     blinkOn = showCursor && (blinkTimer < 1.0f);
 
-    prevBlinkOn = blinkOn;
     dirty = false;
 
     ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(0, 0));
@@ -239,11 +238,11 @@ void Screen_ImGui::render()
     ImVec4 textColor;
     ImVec4 windowBg;
     if (monitorMode == MonitorMode::Green) {
-        textColor = ImVec4(0.35f, 1.0f, 0.35f, 1.0f);
-        windowBg = ImVec4(0.0f, 0.05f, 0.0f, 1.0f);
+        textColor = ImVec4(0.70f, 1.0f, 0.70f, 1.0f);
+        windowBg = ImVec4(0.0f, 0.02f, 0.0f, 1.0f);
     } else if (monitorMode == MonitorMode::Amber) {
-        textColor = ImVec4(1.0f, 0.82f, 0.40f, 1.0f);
-        windowBg = ImVec4(0.08f, 0.03f, 0.0f, 1.0f);
+        textColor = ImVec4(1.0f, 0.92f, 0.60f, 1.0f);
+        windowBg = ImVec4(0.04f, 0.015f, 0.0f, 1.0f);
     } else {
         textColor = ImVec4(1.0f, 1.0f, 1.0f, 1.0f);
         windowBg = ImVec4(0.0f, 0.0f, 0.0f, 1.0f);
@@ -251,11 +250,11 @@ void Screen_ImGui::render()
 
     if (useCharmapRenderer) {
         if (monitorMode == MonitorMode::Green) {
-            textColor = ImVec4(0.68f, 1.0f, 0.58f, 1.0f);
+            textColor = ImVec4(0.90f, 1.0f, 0.85f, 1.0f);
             windowBg = ImVec4(0.0f, 0.0f, 0.0f, 1.0f);
         } else if (monitorMode == MonitorMode::Amber) {
-            textColor = ImVec4(1.0f, 0.66f, 0.08f, 1.0f);
-            windowBg = ImVec4(0.02f, 0.006f, 0.0f, 1.0f);
+            textColor = ImVec4(1.0f, 0.88f, 0.35f, 1.0f);
+            windowBg = ImVec4(0.01f, 0.003f, 0.0f, 1.0f);
         } else {
             textColor = ImVec4(1.0f, 1.0f, 1.0f, 1.0f);
             windowBg = ImVec4(0.0f, 0.0f, 0.0f, 1.0f);

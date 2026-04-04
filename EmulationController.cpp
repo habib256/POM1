@@ -11,7 +11,13 @@ namespace {
 
 constexpr double kFramesPerSecond = 60.0;
 constexpr int kMaxSliceCycles = 12000;
+#if POM1_IS_WASM
+// WASM: emulation and audio share the main thread — need more lead time
+// to avoid queue starvation between frames.
+constexpr double kMaxLiveAudioLeadSeconds = 0.15;
+#else
 constexpr double kMaxLiveAudioLeadSeconds = 0.025;
+#endif
 
 } // namespace
 

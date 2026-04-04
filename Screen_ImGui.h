@@ -76,7 +76,6 @@ private:
 
     // Dirty tracking
     bool dirty = true;       // content changed since last render
-    bool prevBlinkOn = false; // previous blink state to detect cursor transitions
     mutable std::mutex bufferMutex;
     bool charmapLoaded = false;
     std::vector<std::array<unsigned char, 8>> charmapGlyphs;
