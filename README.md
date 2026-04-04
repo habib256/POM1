@@ -6,7 +6,8 @@
 
 🎂 **Celebrating 50 years of Apple (1976–2026)** — POM1 v1.3 is released in honor of the 50th anniversary of Apple Computer, founded on April 1, 1976.
 
-A faithful Apple 1 emulator built with Dear ImGui & OpenGL — fast, lightweight, and cross-platform. Now with [Uncle Bernie's GEN2 Color Graphics Card](https://www.applefritter.com/content/uncle-bernies-gen2-color-graphics-card-apple-1) support.
+A faithful Apple 1 emulator built with Dear ImGui & OpenGL — fast, lightweight, and cross-platform. 
+Now with [Uncle Bernie's GEN2 Color Graphics Card](https://www.applefritter.com/content/uncle-bernies-gen2-color-graphics-card-apple-1) support.
 
 **Play it now in your browser** : 
 [![Play Online](https://img.shields.io/badge/Play%20Online-WebAssembly-blueviolet.svg)](https://habib256.github.io/POM1/build-wasm/pom1_imgui.html)
