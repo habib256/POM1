@@ -54,7 +54,10 @@ constexpr quint8 kAciRom[0x100] = {
 
 Memory::Memory()
 {
+    audioDevice = std::make_unique<AudioDevice>();
     cassetteDevice = std::make_unique<CassetteDevice>();
+    cassetteDevice->setAudioAvailable(audioDevice->isAvailable());
+    audioDevice->addSource(cassetteDevice.get());
     tms9918 = std::make_unique<TMS9918>();
     sid = std::make_unique<SID>();
     initMemory();
@@ -511,6 +514,16 @@ int Memory::getTerminalSpeed() const
 {
     if (displayCharDelay <= 0) return 0;
     return 1000000 / displayCharDelay;
+}
+
+void Memory::setSIDEnabled(bool b)
+{
+    if (b == sidEnabled) return;
+    sidEnabled = b;
+    if (b)
+        audioDevice->addSource(sid.get());
+    else
+        audioDevice->removeSource(sid.get());
 }
 
 void Memory::advanceCycles(int cycles)

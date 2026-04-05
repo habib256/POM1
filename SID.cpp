@@ -348,7 +348,7 @@ void SID::clockADSR(int voiceIndex)
 
 // ─── Audio generation ───────────────────────────────────────────────────────
 
-void SID::generateSamples(float* output, int frameCount)
+void SID::fillAudioBuffer(float* output, int frameCount)
 {
     std::lock_guard<std::mutex> lock(sidMutex);
 

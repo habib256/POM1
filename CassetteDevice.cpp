@@ -1,5 +1,4 @@
 #include "CassetteDevice.h"
-#include "SID.h"
 #include "POM1Build.h"
 
 #include <algorithm>
@@ -11,13 +10,6 @@
 #include <iterator>
 #include <limits>
 #include <vector>
-
-#if POM1_IS_WASM
-#include <emscripten.h>
-#else
-#define MINIAUDIO_IMPLEMENTATION
-#include "third_party/miniaudio.h"
-#endif
 
 namespace {
 
@@ -71,13 +63,7 @@ std::string lowerExtension(const std::string& path)
 
 CassetteDevice::CassetteDevice()
 {
-    initAudio();
     reset();
-}
-
-CassetteDevice::~CassetteDevice()
-{
-    shutdownAudio();
 }
 
 void CassetteDevice::fillAudioBuffer(float* output, int frameCount)
@@ -104,110 +90,8 @@ void CassetteDevice::fillAudioBuffer(float* output, int frameCount)
         audioPlaybackSample += (targetSample - audioPlaybackSample) * kFilterAlpha;
         output[i] = audioPlaybackSample;
     }
-
-    // Mix P-LAB A1-SID audio if plugged
-    if (sidSource) {
-        float sidBuf[512];
-        int remaining = frameCount;
-        int offset = 0;
-        while (remaining > 0) {
-            int chunk = std::min(remaining, 512);
-            sidSource->generateSamples(sidBuf, chunk);
-            for (int i = 0; i < chunk; ++i)
-                output[offset + i] = std::max(-1.0f, std::min(1.0f,
-                    output[offset + i] + sidBuf[i]));
-            offset += chunk;
-            remaining -= chunk;
-        }
-    }
 }
 
-#if POM1_IS_WASM
-static CassetteDevice* g_wasmCassetteDevice = nullptr;
-
-extern "C" {
-EMSCRIPTEN_KEEPALIVE
-void pom1_fillAudioBuffer(float* buf, int frames)
-{
-    if (g_wasmCassetteDevice)
-        g_wasmCassetteDevice->fillAudioBuffer(buf, frames);
-    else
-        std::fill(buf, buf + frames, 0.0f);
-}
-}
-#else
-void CassetteDevice::audioDataCallback(ma_device* pDevice, void* pOutput, const void* /*pInput*/, uint32_t frameCount)
-{
-    CassetteDevice* self = static_cast<CassetteDevice*>(pDevice->pUserData);
-    float* output = static_cast<float*>(pOutput);
-    if (self == nullptr) {
-        std::fill(output, output + frameCount, 0.0f);
-        return;
-    }
-    self->fillAudioBuffer(output, static_cast<int>(frameCount));
-}
-#endif
-
-bool CassetteDevice::initAudio()
-{
-#if POM1_IS_WASM
-    g_wasmCassetteDevice = this;
-
-    // Create an AudioContext + ScriptProcessorNode via JS.
-    // The AudioContext starts suspended — it will be resumed on the first user
-    // click or keypress (browser autoplay policy).
-    emscripten_run_script(
-        "var ctx = new (window.AudioContext || window.webkitAudioContext)({sampleRate: 44100});"
-        "var bufSize = 512;"
-        "var proc = ctx.createScriptProcessor(bufSize, 0, 1);"
-        "var heapBuf = Module._malloc(bufSize * 4);"
-        "proc.onaudioprocess = function(e) {"
-        "  Module._pom1_fillAudioBuffer(heapBuf, bufSize);"
-        "  var out = e.outputBuffer.getChannelData(0);"
-        "  out.set(Module.HEAPF32.subarray(heapBuf >> 2, (heapBuf >> 2) + bufSize));"
-        "};"
-        "proc.connect(ctx.destination);"
-        "window._pom1Audio = {ctx: ctx, proc: proc, buf: heapBuf};"
-        "var resume = function() { if (ctx.state === 'suspended') ctx.resume(); };"
-        "document.addEventListener('click', resume, {once: true});"
-        "document.addEventListener('keydown', resume, {once: true});"
-    );
-
-    audioAvailable = true;
-    return true;
-#else
-    shutdownAudio();
-
-    ma_device_config config = ma_device_config_init(ma_device_type_playback);
-    config.playback.format = ma_format_f32;
-    config.playback.channels = 1;
-    config.sampleRate = kAudioSampleRate;
-    config.periodSizeInFrames = 256;
-    config.periods = 3;
-    config.performanceProfile = ma_performance_profile_low_latency;
-    config.dataCallback = &CassetteDevice::audioDataCallback;
-    config.pUserData = this;
-
-    audioDevice = new ma_device();
-    if (ma_device_init(nullptr, &config, audioDevice) != MA_SUCCESS) {
-        delete audioDevice;
-        audioDevice = nullptr;
-        audioAvailable = false;
-        return false;
-    }
-
-    if (ma_device_start(audioDevice) != MA_SUCCESS) {
-        ma_device_uninit(audioDevice);
-        delete audioDevice;
-        audioDevice = nullptr;
-        audioAvailable = false;
-        return false;
-    }
-
-    audioAvailable = true;
-    return true;
-#endif
-}
 
 double CassetteDevice::getQueuedAudioSeconds() const
 {
@@ -230,28 +114,6 @@ void CassetteDevice::setHardwareAccurateLiveAudio(bool enabled)
 void CassetteDevice::setLiveAudioTimebaseHz(uint32_t hz)
 {
     liveAudioTimebaseHz = std::max<uint32_t>(1, hz);
-}
-
-void CassetteDevice::shutdownAudio()
-{
-#if POM1_IS_WASM
-    emscripten_run_script(
-        "if (window._pom1Audio) {"
-        "  window._pom1Audio.proc.disconnect();"
-        "  window._pom1Audio.ctx.close();"
-        "  Module._free(window._pom1Audio.buf);"
-        "  window._pom1Audio = null;"
-        "}"
-    );
-    g_wasmCassetteDevice = nullptr;
-#else
-    if (audioDevice != nullptr) {
-        ma_device_uninit(audioDevice);
-        delete audioDevice;
-        audioDevice = nullptr;
-    }
-#endif
-    audioAvailable = false;
 }
 
 void CassetteDevice::resetPlaybackState()

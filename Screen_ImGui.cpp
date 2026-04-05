@@ -173,7 +173,7 @@ void Screen_ImGui::initializeScreen()
     for (size_t i = 0; i < welcome.length() && startX + (int)i < SCREEN_WIDTH; ++i)
         screenBuffer[bufferIndex(0, startX + (int)i)] = welcome[i];
 
-    std::string version = "Version 1.4";
+    std::string version = "Version 1.5";
     startX = (SCREEN_WIDTH - (int)version.length()) / 2;
     for (size_t i = 0; i < version.length() && startX + (int)i < SCREEN_WIDTH; ++i)
         screenBuffer[bufferIndex(1, startX + (int)i)] = version[i];

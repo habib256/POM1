@@ -2,6 +2,7 @@
 #define CASSETTEDEVICE_H
 
 #include "POM1Build.h"
+#include "AudioDevice.h"
 
 #include <cstdint>
 #include <deque>
@@ -9,20 +10,14 @@
 #include <string>
 #include <vector>
 
-#if !POM1_IS_WASM
-struct ma_device;
-#endif
-
-class SID;
-
-class CassetteDevice
+class CassetteDevice : public AudioSource
 {
 public:
     using quint8 = uint8_t;
     using quint16 = uint16_t;
 
     CassetteDevice();
-    ~CassetteDevice();
+    ~CassetteDevice() override = default;
 
     void reset();
     void advanceCycles(int cycles);
@@ -46,10 +41,11 @@ public:
     void setHardwareAccurateLiveAudio(bool enabled);
     void setLiveAudioTimebaseHz(uint32_t hz);
 
-    void fillAudioBuffer(float* output, int frameCount);
+    /// AudioSource interface — generates cassette audio samples.
+    void fillAudioBuffer(float* output, int frameCount) override;
 
-    // P-LAB A1-SID: set external SID audio source for mixing
-    void setSIDSource(SID* source) { sidSource = source; }
+    /// Called by AudioDevice after init to signal audio is available.
+    void setAudioAvailable(bool available) { audioAvailable = available; }
 
     size_t getLoadedTransitionCount() const { return loadedDurations.size(); }
     size_t getRecordedTransitionCount() const { return recordedDurations.size(); }
@@ -57,15 +53,10 @@ public:
     const std::string& getLastError() const { return lastError; }
 
 private:
-    // Live playback must stay aligned with the running emulation thread.
     static constexpr uint32_t kRealtimeAudioTimebaseHz = 1000000;
-    // Export/import stays calibrated slightly below raw CPU clock so generated
-    // WAV files match verified Apple-1 reference recordings better.
     static constexpr uint32_t kTapeFileTimebaseHz = 900000;
     static constexpr uint32_t kAudioSampleRate = 44100;
 
-    bool initAudio();
-    void shutdownAudio();
     void queueAudioSegment(uint32_t cycles, bool level);
     void advancePlayback(uint32_t cycles);
 
@@ -81,16 +72,10 @@ private:
     void clearLiveAudioState();
 
 private:
-#if !POM1_IS_WASM
-    ma_device* audioDevice = nullptr;
-#endif
     bool audioAvailable = false;
     bool hardwareAccurateLiveAudio = false;
     uint32_t liveAudioTimebaseHz = kRealtimeAudioTimebaseHz;
 
-#if !POM1_IS_WASM
-    static void audioDataCallback(ma_device* pDevice, void* pOutput, const void* pInput, uint32_t frameCount);
-#endif
     struct AudioSegment {
         uint32_t remainingSamples;
         float sampleValue;
@@ -120,8 +105,6 @@ private:
     std::string loadedTapePath;
 
     mutable std::string lastError;
-
-    SID* sidSource = nullptr;
 };
 
 #endif // CASSETTEDEVICE_H

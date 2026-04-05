@@ -18,6 +18,8 @@
 #ifndef SID_H
 #define SID_H
 
+#include "AudioDevice.h"
+
 #include <array>
 #include <cstdint>
 #include <mutex>
@@ -26,7 +28,7 @@
 /// I/O mapped at $C800-$CFFF (29 registers, address & 0x1F).
 /// 3 voices with triangle/sawtooth/pulse/noise oscillators,
 /// ADSR envelopes, programmable multimode filter, 4-bit master volume.
-class SID
+class SID : public AudioSource
 {
 public:
     static constexpr int kNumVoices    = 3;
@@ -45,8 +47,8 @@ public:
     void    writeRegister(uint8_t reg, uint8_t value);
     uint8_t readRegister(uint8_t reg);
 
-    // Audio generation — called from audio callback thread (CassetteDevice::fillAudioBuffer)
-    void generateSamples(float* output, int frameCount);
+    // AudioSource interface — generates SID audio samples.
+    void fillAudioBuffer(float* output, int frameCount) override;
 
     // Snapshot for UI (register display in memory map)
     struct Snapshot {

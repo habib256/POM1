@@ -405,10 +405,6 @@ void EmulationController::setSIDEnabled(bool enabled)
 {
     std::lock_guard<std::mutex> lock(stateMutex);
     memory->setSIDEnabled(enabled);
-    if (enabled)
-        memory->getCassetteDevice().setSIDSource(&memory->getSID());
-    else
-        memory->getCassetteDevice().setSIDSource(nullptr);
     publishSnapshotLocked();
 }
 
