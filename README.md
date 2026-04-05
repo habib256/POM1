@@ -37,7 +37,7 @@ or build it natively.
 
 📂 **Program Loader** — Load binary files or Woz Monitor hex dumps (with inline comment support) via a built-in file browser
 
-📼 **Apple Cassette Interface (ACI)** — Woz ACI ROM at `$C100`, cassette input on `$C081`, output flip-flop on `$C000`, real-time audio (desktop & WebAssembly), and tape import/export as `.aci` or `.wav`
+📼 **Apple Cassette Interface (ACI)** — Woz ACI ROM at `$C100`, cassette input on `$C081`, output flip-flop on `$C000`, real-time audio (desktop & WebAssembly), and tape import/export as `.aci` or `.wav` (see `software/cassettes/` for reference **`.ogg`** captures of original tapes — convert to **`.wav`** to load in the emulator)
 
 🔌 **PIA 6821 Address Aliasing** — Full support for `$D0Fx` aliases, enabling all known Apple BASIC versions (original, Pagetable, Briel/Replica 1)
 
@@ -183,8 +183,8 @@ POM1 emulates [Uncle Bernie's GEN2 Color Graphics Card](https://www.applefritter
 - **Pixel glow effect** for a CRT-like appearance
 - Rendered in a dedicated **GEN2 Apple1 HGR Color Screen** window
 - Toggle via **Hardware > GEN2 Graphics Card** or the toolbar button
-- A demo HGR image (`software/gen2/GEN2.HGR.BIN`) is auto-loaded when the card is plugged in
-- Includes **HGR Maze** — a Recursive Backtracker maze generator rendering directly into the framebuffer ([asm](software/gen2/HGR_Maze.asm))
+- A demo HGR image (`software/hgr/GEN2.HGR.BIN`) is auto-loaded when the card is plugged in
+- Includes **HGR Maze** — a Recursive Backtracker maze generator rendering directly into the framebuffer ([asm](software/hgr/HGR1_Maze.asm))
 
 ---
 
@@ -222,7 +222,7 @@ Some programs also include their 6502 assembly source code (`.asm`) for study an
 | 🎨 **PasArt** | Parametric ASCII art generator |
 | 🍺 **99 Bottles of Beer** | Classic song countdown demo |
 | 🐱 **ASCII Cat** | ASCII art display |
-| 🎨 **HGR Maze** | GEN2 HIRES maze generator — Recursive Backtracker on 280×192 ([asm](software/gen2/HGR_Maze.asm)) |
+| 🎨 **HGR Maze** | GEN2 HIRES maze generator — Recursive Backtracker on 280×192 ([asm](software/hgr/HGR1_Maze.asm)) |
 
 ### 💻 BASIC Programs
 
@@ -268,7 +268,7 @@ ld65 -C software/apple1.cfg -o build/program.bin build/program.o
 
 # GEN2 graphics program (reserves $2000-$3FFF for HGR framebuffer)
 ca65 -o build/program.o source.asm
-ld65 -C software/gen2/apple1_gen2.cfg -o build/program.bin build/program.o
+ld65 -C software/hgr/apple1_gen2.cfg -o build/program.bin build/program.o
 ```
 
 Load the binary via **File > Load Memory**, or type the start address + `R` in the Woz Monitor (e.g. `280R`).
@@ -293,7 +293,8 @@ POM1/
 │   ├── basic/               #   💻 BASIC programs
 │   ├── dev/                 #   🛠️ Dev tools
 │   ├── utils/               #   🧰 Utilities
-│   ├── gen2/                #   🎨 GEN2 HGR images & programs
+│   ├── hgr/                 #   🎨 GEN2 HGR images & programs
+│   ├── cassettes/           #   📼 Original-tape .ogg + short readme .txt (reference)
 │   └── tests/               #   🧪 Hardware test programs
 ├── build-wasm/              # 🌐 WebAssembly build output
 ├── software/apple1.cfg      # ⚙️ cc65 linker config

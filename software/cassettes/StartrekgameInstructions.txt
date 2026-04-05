@@ -1,0 +1,102 @@
+StarTrek 
+
+STARTREK is a game in which you must find and shoot down the "bad
+guys," the Klingons.
+
+RULES
+
+The galaxy is divided into 64 quadrants arranged in an 8x8
+grid; each quadrant is furt0her subdivided into 8x8 sectors.
+Your mission is to find and destroy the seven Klingon
+spaceships hiding somewhere in the galaxy; you are allotted 15
+stardates and have two starbases at which you can refuel. You
+are initially supplied with three photon torpedoes and 500
+units of energy. Your energy supply is used to (a) move you
+around the galaxy, (b) fire your phasers, and (c) protect the
+Enterprise via its deflection shields which are automatically
+activated by the on-board computer every time a Klingon fires
+at you.
+
+Each time you enter or maneuver within a quadrant containing
+a Klingon, he will shoot at you, and the amount of damage his
+phasers did to your shields will be indicated. Each time you
+shoot at him with either phasers or photon torpedoes and fail
+to destroy him, he will also return fire upon you.
+
+COMMANDS
+
+There are six commands available to you; they are numbered
+from 0 to 5:
+
+0 Moves the Enterprise. Computer responds with: "VECTOR ?",
+to which you must specify the number of sectors you want to
+move, both horizontally and vertically. A positive
+horizontal move is to the right, and a positive vertical
+move is up. These two vector commands must be separated by
+a comma; for example: -21,35 would move the Enterprise 21
+sectors to the left of its current position, and 35 sectors
+up.
+1 Short Range Sensor Scan. Prints the quadrant you are
+currently in, with the Enterprise represented by the
+symbols: <*> , Klingons represented by: +++ , starbases
+by: >!< , and stars by * .
+2 Long Range Sensor Scan. Displays a 3x3 array of "nearest
+neighbor" quadrants with the Enterprise's quadrant in the
+center. The scan is coded in the form: KBS, where K is the
+number of Klingons, B is the number of starbases, and S is
+the number of stars in the quadrant.
+3 Fire Phasers. The computer informs you as to how much total
+energy you have left, and then waits for you to to indicate
+how much of that energy you want to fire at the enemy.
+(Note: the closer you are the more effect your phasers will
+have, and conversely!)
+4 Fire Photon Torpedo. You have no control over the course of
+the torpedo; the on-board computer automatically aims at
+the enemy, taking care to avoid hitting any intervening
+stars or starbases. (Again, the closer you are, the better
+your chance of hitting the Klingon.)
+5 Library Computer. The library computer allows for the
+following two requests:
+REQUEST = Zero: Cumulative record of the results of
+all previous long-range sensor scans
+of the galaxy.
+REQUEST = Non-zero: Status Report
+
+EXPENDITURE OF SUPPLIES
+
+Moving from one quadrant to another uses up energy and one
+stardate. However, moving within a given quadrant uses up only
+energy.
+
+RELATIVE POSITIONS CHANGE WITH TIME
+
+Much can happen in a few stardates! Consequently, if you
+leave a quadrant and then later return, don't expect the
+Klingons, stars, etc to still be in the same relative positions
+that they were in when you left! The number of each will still
+be the same, but their positions will be different. This means
+that whenever you enter a new quadrant, you don't know just
+where the various objects will be; in fact don't be surprised
+if once in a while you collide with things!!!
+
+REPLENISHMENT OF SUPPLIES
+
+Docking at a starbase re-initializes your supply of photon
+torpedoes to 3, and your energy supply 500. Docking is
+accomplished by moving the Enterprise to any one of the four
+sectors immediately adjacent a starbase, above, below, left, or
+right.
+
+BATTLE RETREAT
+
+Firing zero units of phaser energy will return you to command
+mode. This allows you to retreat from battle.
+
+GALAXY CO-ORDINATE SYSTEM
+
+Quadrant 0,0 is the lower left hand quadrant of the galaxy,
+and quadrant 7,7 is the upper right. Likewise, sector 0,0 is in
+the lower left hand corner of the quadrant and 7,7 in the upper
+right. (Thus, the galaxy resembles a Cartesian co-ordinate
+system with the x-axis pointing to the right, and the y-axis
+pointing up.)

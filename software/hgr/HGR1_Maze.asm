@@ -5,13 +5,13 @@
 ; 19x11 cells → 280x192 HGR screen
 ; =============================================
 ; Assemble with cc65:
-;   ca65 -o build/HGR_Maze.o software/gen2/HGR_Maze.asm
-;   ld65 -C software/gen2/apple1_gen2.cfg -o build/HGR_Maze.bin build/HGR_Maze.o
+;   ca65 -o build/HGR1_Maze.o software/hgr/HGR1_Maze.asm
+;   ld65 -C software/hgr/apple1_gen2.cfg -o build/HGR1_Maze.bin build/HGR1_Maze.o
 ;
 ; The GEN2 linker config reserves $2000-$3FFF for the HGR
 ; framebuffer and places BSS (grid, stack) at $4000+.
 ;
-; In POM1: plug GEN2 card, File > Load Memory (HGR_Maze.txt)
+; In POM1: plug GEN2 card, File > Load Memory (HGR1_Maze.txt)
 ; then type 280R in Woz Monitor.
 ;
 ; Each grid unit maps to one HGR byte column (7 pixels wide)
