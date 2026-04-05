@@ -65,6 +65,7 @@ private:
     bool graphicsCardEnabled = false;
     bool showTMS9918 = false;
     bool tms9918Enabled = false;
+    bool sidEnabled = false;
     bool fullscreen = false;
     int windowedWidth = 1200;
     int windowedHeight = 800;

@@ -19,6 +19,7 @@ public:
     void setWriteCallback(std::function<void(quint16, quint8)> callback);
     void setGraphicsCardEnabled(bool enabled) { gen2Enabled = enabled; }
     void setTMS9918Enabled(bool enabled) { tms9918Enabled = enabled; }
+    void setSIDEnabled(bool enabled) { sidEnabled = enabled; }
 
 private:
     Memory* memory;
@@ -34,6 +35,7 @@ private:
     bool colorizeRegions = true;
     bool gen2Enabled = false;
     bool tms9918Enabled = false;
+    bool sidEnabled = false;
 
     // Auto-refresh: snapshot taken when autoRefresh is off
     std::vector<quint8> snapshot;

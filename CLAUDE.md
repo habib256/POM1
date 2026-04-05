@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-POM1 v1.4 is an Apple 1 emulator built with Dear ImGui. It emulates the MOS 6502 CPU and Apple 1 hardware including memory-mapped I/O, display, keyboard input, the Apple Cassette Interface (ACI) with live audio and tape files, and Uncle Bernie's GEN2 Color Graphics Card (280×192 HIRES, NTSC artifact color). The UI is fully in English. Builds on Linux, macOS, Windows, and Web (Emscripten/WASM).
+POM1 v1.5 is an Apple 1 emulator built with Dear ImGui. It emulates the MOS 6502 CPU and Apple 1 hardware including memory-mapped I/O, display, keyboard input, the Apple Cassette Interface (ACI) with live audio and tape files, Uncle Bernie's GEN2 Color Graphics Card (280×192 HIRES, NTSC artifact color), and the P-LAB A1-SID Sound Card (MOS 6581/8580 SID, 3-voice synthesis). The UI is fully in English. Builds on Linux, macOS, Windows, and Web (Emscripten/WASM).
 
 ## Build & Run Commands
 
@@ -63,6 +63,7 @@ ld65 -C software/apple1.cfg -o build/program.bin build/program.o
 - **MemoryViewer_ImGui.cpp/h**: Interactive hex editor with color-coded regions (matching Memory Map colors), search (hex and ASCII), bookmarks, navigation shortcuts, and real-time editing.
 - **GraphicsCard.cpp/h**: [Uncle Bernie's GEN2 Color Graphics Card](https://www.applefritter.com/content/uncle-bernies-gen2-color-graphics-card-apple-1) emulation. Passively reads CPU RAM at `$2000-$3FFF` and renders a 280×192 HIRES image with NTSC artifact color (violet/green for group 1, blue/orange for group 2, white for adjacent pixels) in a separate ImGui window. Two-pass rendering: glow halos (semi-transparent rounded rects) then solid pixels on top. Apple II-compatible non-linear scanline memory layout (`scanlineAddress()`). Toggled via Hardware menu or toolbar button; auto-loads a demo HGR image from `software/hgr/` when plugged in.
 - **TMS9918.cpp/h**: [P-LAB Apple-1 Graphic Card](https://p-l4b.github.io/graphic/) emulation. TMS9918A Video Display Processor with 16KB VRAM, I/O at `$CC00` (data) / `$CC01` (control/status). 256×192 resolution, 15 colors, 32 sprites. Supports Graphics I (32×24 tiles), Graphics II (full bitmap), Text (40×24), and Multicolor modes. Renders to a separate ImGui window. Compatible with the [apple1-videocard-lib](https://github.com/nippur72/apple1-videocard-lib) software library. Toggled via Hardware menu or toolbar button.
+- **SID.cpp/h**: [P-LAB A1-SID Sound Card](https://p-l4b.github.io/A1-SID/) emulation. MOS 6581/8580 SID chip with 3 voices (triangle, sawtooth, pulse, noise waveforms), ADSR envelopes with exponential decay, programmable state-variable filter (low-pass, band-pass, high-pass), 4-bit master volume. I/O at `$C800`-`$CFFF` (29 registers, address `& 0x1F`). Audio output mixed with the ACI cassette audio via CassetteDevice's audio pipeline (miniaudio on desktop, Web Audio on WASM). Coexists with TMS9918 at `$CC00`-`$CC01`. Toggled via Hardware menu or toolbar button.
 
 ### ROM Files (roms/)
 - **WozMonitor.rom** (256B @ 0xFF00): Wozniak's system monitor
@@ -80,6 +81,7 @@ Contains Apple 1 programs in Woz Monitor hex dump format (.txt) organized in sub
 - **tests/**: Hardware test programs — hex I/O, keyboard, terminal tests
 - **hgr/**: GEN2 HGR demo images (raw 8 KB binary loaded at `$2000`)
 - **tms9918/**: P-LAB TMS9918 programs — Tetris, demo suite, PicShow image viewer (KickC binaries loaded at `$0280`)
+- **sid/**: P-LAB A1-SID programs — Monty on the Run 3-voice SID tune player, SID sound test (C major scale)
 - **cassettes/**: Reference material for the Apple cassette library — short readme `.txt` files and **`.ogg`** captures of original tapes (preservation / listening). POM1’s **Cassette Control** loads **`.wav`** or **`.aci`** only; convert or re-encode to WAV if you want to feed those captures into the emulated ACI.
 
 Programs can be loaded via File > Load Memory, which provides a file browser with folder navigation. Assembly source files (`.asm`) can be assembled with cc65. Most programs come from [apple1software.com](https://apple1software.com/), an outstanding archive of Apple 1 software, hardware documentation, and historical resources. [AppleFritter](https://applefritter.com/apple1/) is the community hub where much of the technical research, BASIC version history, and hardware knowledge originates.
@@ -149,6 +151,7 @@ Visual 16x16 grid (256 pages = 64KB) with color-coded regions, KB labels, PC/SP 
 0x2000-0x3FFF  GEN2 HGR Framebuffer (8 KB — when card is plugged)
 0x4000-0x9FFF  User RAM
 0xA000-0xBFFF  Krusader ROM (8 KB)
+0xC800-0xCFFF  A1-SID I/O (29 registers, addr & 0x1F, when P-LAB SID is plugged)
 0xCC00         TMS9918 DATA - VRAM data port   (when P-LAB card is plugged)
 0xCC01         TMS9918 CTRL - Control/status    (when P-LAB card is plugged)
 0xD010         KBD - Keyboard data register    (aliases: $D0F0, $D030, etc.)
@@ -185,6 +188,13 @@ The setup script supports apt (Ubuntu/Debian), dnf (Fedora/CentOS), and pacman (
 The `build/`, `build-wasm/`, and `imgui/` directories are excluded from git via `.gitignore`.
 
 ## Version History
+
+### v1.5 (April 2026) — P-LAB A1-SID Sound Card
+- [P-LAB A1-SID Sound Card](https://p-l4b.github.io/A1-SID/) (MOS 6581/8580 SID): 3 voices, 4 waveforms (triangle/sawtooth/pulse/noise), ADSR envelopes with exponential decay, state-variable filter (LP/BP/HP), 4-bit master volume, I/O at `$C800`-`$CFFF`, toggle via Hardware menu or toolbar
+- SID audio mixed with ACI cassette audio through CassetteDevice's audio pipeline (miniaudio on desktop, Web Audio on WASM)
+- Coexists with TMS9918 at `$CC00`-`$CC01` (TMS9918 has priority at its addresses)
+- Bundled SID software: Monty on the Run 3-voice tune player, SID sound test (C major scale) — in `software/sid/`
+- Memory Map and Memory Viewer show A1-SID I/O region in purple when card is plugged
 
 ### v1.4 (April 2026) — P-LAB Apple-1 Graphic Card (TMS9918)
 - [P-LAB Apple-1 Graphic Card](https://p-l4b.github.io/graphic/) (TMS9918 VDP): 256×192, 15 colors, 32 sprites, I/O at `$CC00`/`$CC01`, Graphics I/II/Text/Multicolor modes, compatible with [apple1-videocard-lib](https://github.com/nippur72/apple1-videocard-lib), toggle via Hardware menu or toolbar

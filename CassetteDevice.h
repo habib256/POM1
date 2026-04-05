@@ -13,6 +13,8 @@
 struct ma_device;
 #endif
 
+class SID;
+
 class CassetteDevice
 {
 public:
@@ -45,6 +47,9 @@ public:
     void setLiveAudioTimebaseHz(uint32_t hz);
 
     void fillAudioBuffer(float* output, int frameCount);
+
+    // P-LAB A1-SID: set external SID audio source for mixing
+    void setSIDSource(SID* source) { sidSource = source; }
 
     size_t getLoadedTransitionCount() const { return loadedDurations.size(); }
     size_t getRecordedTransitionCount() const { return recordedDurations.size(); }
@@ -115,6 +120,8 @@ private:
     std::string loadedTapePath;
 
     mutable std::string lastError;
+
+    SID* sidSource = nullptr;
 };
 
 #endif // CASSETTEDEVICE_H

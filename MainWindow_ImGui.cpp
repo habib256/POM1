@@ -117,6 +117,7 @@ void MainWindow_ImGui::render()
     memoryViewer->updateLiveMemory(uiSnapshot.memory);
     memoryViewer->setGraphicsCardEnabled(graphicsCardEnabled);
     memoryViewer->setTMS9918Enabled(tms9918Enabled);
+    memoryViewer->setSIDEnabled(sidEnabled);
 
 #if POM1_IS_WASM
     // Sync fullscreen flag with browser state (user may exit via Escape)
@@ -376,6 +377,9 @@ void MainWindow_ImGui::renderMenuBar()
                 emulation->setTMS9918Enabled(tms9918Enabled);
                 if (tms9918Enabled) showTMS9918 = true;
             }
+            if (ImGui::MenuItem("P-LAB A1-SID Sound Card", nullptr, &sidEnabled)) {
+                emulation->setSIDEnabled(sidEnabled);
+            }
             ImGui::EndMenu();
         }
 
@@ -487,6 +491,20 @@ void MainWindow_ImGui::renderToolbar()
         ImGui::PopStyleColor();
         if (ImGui::IsItemHovered()) {
             ImGui::SetTooltip(tms9918Enabled ? "P-LAB TMS9918 Output (click to unplug)" : "Plug P-LAB Graphic Card (TMS9918)");
+        }
+
+        ImGui::SameLine();
+        ImGui::PushStyleColor(ImGuiCol_Button,
+            sidEnabled ? ImVec4(0.2f, 0.4f, 0.8f, 1.0f) : ImVec4(0.3f, 0.3f, 0.3f, 1.0f));
+        if (ImGui::Button(ICON_FA_MUSIC, btnSize)) {
+            sidEnabled = !sidEnabled;
+            emulation->setSIDEnabled(sidEnabled);
+            setStatusMessage(sidEnabled ? "P-LAB A1-SID plugged" : "P-LAB A1-SID unplugged", 2.0f);
+        }
+        ImGui::PopStyleColor();
+        if (ImGui::IsItemHovered()) {
+            ImGui::SetTooltip(sidEnabled ? "P-LAB A1-SID Sound Card (click to unplug)"
+                                         : "Plug P-LAB A1-SID Sound Card");
         }
 
         // --- Séparateur ---
@@ -1727,11 +1745,21 @@ void MainWindow_ImGui::renderMemoryMapWindow()
         { 0xA000, 0xBFFF, IM_COL32(200,  80, 200, 255), "Krusader ROM" },
         { 0xC000, 0xC0FF, IM_COL32(255, 140,  80, 255), "ACI I/O" },
         { 0xC100, 0xC1FF, IM_COL32(255, 190,  80, 255), "ACI ROM" },
-        { 0xC200, 0xCBFF, IM_COL32( 60,  60,  60, 255), "Unused" },
     };
-    if (tms9918Enabled) {
+    if (sidEnabled) {
+        tail.push_back({ 0xC200, 0xC7FF, IM_COL32( 60,  60,  60, 255), "Unused" });
+        tail.push_back({ 0xC800, 0xCBFF, IM_COL32(200, 100, 255, 255), "A1-SID I/O" });
+    } else {
+        tail.push_back({ 0xC200, 0xCBFF, IM_COL32( 60,  60,  60, 255), "Unused" });
+    }
+    if (tms9918Enabled && sidEnabled) {
+        tail.push_back({ 0xCC00, 0xCC01, IM_COL32(100, 200, 255, 255), "TMS9918 I/O" });
+        tail.push_back({ 0xCC02, 0xCFFF, IM_COL32(200, 100, 255, 255), "A1-SID I/O (mirror)" });
+    } else if (tms9918Enabled) {
         tail.push_back({ 0xCC00, 0xCC01, IM_COL32(100, 200, 255, 255), "TMS9918 I/O" });
         tail.push_back({ 0xCC02, 0xCFFF, IM_COL32( 60,  60,  60, 255), "Unused" });
+    } else if (sidEnabled) {
+        tail.push_back({ 0xCC00, 0xCFFF, IM_COL32(200, 100, 255, 255), "A1-SID I/O (mirror)" });
     } else {
         tail.push_back({ 0xCC00, 0xCFFF, IM_COL32( 60,  60,  60, 255), "Unused" });
     }
@@ -1907,6 +1935,15 @@ void MainWindow_ImGui::renderMemoryMapWindow()
             ImGui::TextColored(ImVec4(0.7f, 0.85f, 1.0f, 1.0f), "  P-LAB TMS9918 VDP");
             ImGui::BulletText("$CC00  DATA - VRAM data port");
             ImGui::BulletText("$CC01  CTRL - Control/status");
+        }
+        if (sidEnabled) {
+            ImGui::Spacing();
+            ImGui::TextColored(ImVec4(0.7f, 0.85f, 1.0f, 1.0f), "  P-LAB A1-SID Sound Card");
+            ImGui::BulletText("$C800-$C806  Voice 1 (freq, PW, ctrl, ADSR)");
+            ImGui::BulletText("$C807-$C80D  Voice 2");
+            ImGui::BulletText("$C80E-$C814  Voice 3");
+            ImGui::BulletText("$C815-$C818  Filter (cutoff, res, mode/vol)");
+            ImGui::BulletText("$C819-$C81C  Read-only (POT, OSC3, ENV3)");
         }
 
         ImGui::TableSetColumnIndex(1);
