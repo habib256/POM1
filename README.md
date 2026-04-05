@@ -1,13 +1,13 @@
 <div align="center">
 
-# 🍎 POM1 v1.3 — Apple 1 Emulator
+# 🍎 POM1 v1.4 — Apple 1 Emulator
 
 **Experience the machine that started the personal computer revolution.**
 
-🎂 **Celebrating 50 years of Apple (1976–2026)** — POM1 v1.3 is released in honor of the 50th anniversary of Apple Computer, founded on April 1, 1976.
+🎂 **Celebrating 50 years of Apple (1976–2026)** — POM1 v1.4 is released in honor of the 50th anniversary of Apple Computer, founded on April 1, 1976.
 
 A faithful Apple 1 emulator built with Dear ImGui & OpenGL — fast, lightweight, and cross-platform. 
-Now with [Uncle Bernie's GEN2 Color Graphics Card](https://www.applefritter.com/content/uncle-bernies-gen2-color-graphics-card-apple-1) support.
+Now with [P-LAB Apple-1 Graphic Card (TMS9918)](https://p-l4b.github.io/graphic/) and [Uncle Bernie's GEN2 Color Graphics Card](https://www.applefritter.com/content/uncle-bernies-gen2-color-graphics-card-apple-1) support.
 
 **Play it now in your browser** : 
 [![Play Online](https://img.shields.io/badge/Play%20Online-WebAssembly-blueviolet.svg)](https://habib256.github.io/POM1/build-wasm/pom1_imgui.html)
@@ -46,6 +46,8 @@ or build it natively.
 💾 **Memory Save/Export** — Save any memory range as binary or Woz Monitor hex dump
 
 🎨 **GEN2 Color Graphics Card** — [Uncle Bernie's HIRES color graphics card](https://www.applefritter.com/content/uncle-bernies-gen2-color-graphics-card-apple-1) — 280×192 resolution with NTSC artifact color (violet, green, blue, orange), pixel glow, rendered in a separate window from `$2000-$3FFF` RAM
+
+🖥️ **P-LAB Graphic Card (TMS9918)** — [P-LAB Apple-1 Graphic Card](https://p-l4b.github.io/graphic/) — TMS9918 VDP with 256×192 resolution, 15 colors, 32 sprites, 4 display modes (Graphics I/II, Text, Multicolor). Bundled with Tetris, demo suite, and PicShow image viewer
 
 📋 **Clipboard Paste** — Paste code directly into the Apple 1 keyboard from your clipboard
 
@@ -188,6 +190,28 @@ POM1 emulates [Uncle Bernie's GEN2 Color Graphics Card](https://www.applefritter
 
 ---
 
+## 🖥️ P-LAB Graphic Card (TMS9918)
+
+POM1 emulates the [P-LAB Apple-1 Graphic Card](https://p-l4b.github.io/graphic/), a TMS9918A Video Display Processor expansion for the Apple 1. The Apple 1 now has **two graphics cards**!
+
+- **256×192 resolution**, 15 colors + transparent, 32 hardware sprites
+- **4 display modes**: Graphics I (32×24 tiles), Graphics II (full bitmap), Text (40×24), Multicolor (64×48 blocks)
+- I/O at `$CC00` (data) / `$CC01` (control/status), 16 KB dedicated VRAM
+- Toggle via **Hardware > P-LAB Graphic Card (TMS9918)** or the toolbar button
+- Compatible with [nippur72's apple1-videocard-lib](https://github.com/nippur72/apple1-videocard-lib) (KickC library)
+
+### Bundled P-LAB software (`software/tms9918/`)
+
+| Program | Description |
+|---------|-------------|
+| 🎮 **Tetris** | Classic falling-blocks game with TMS9918 graphics |
+| 🖥️ **Demo** | TMS9918 demo suite — Screen 1 text, Screen 2 bitmap, sprites, interrupt test |
+| 🖼️ **PicShow** | Bitmap image viewer for TMS9918 |
+
+Load via **File > Load Memory**, select a `.bin` file — default load address is `$0280`.
+
+---
+
 ## 🎮 Software Library
 
 The `software/` directory ships with **30+ ready-to-run programs** — load them via **File > Load Memory**.
@@ -285,6 +309,7 @@ POM1/
 ├── MainWindow_ImGui.cpp/h   # 🎛️ App window, menus, CPU speed control
 ├── Screen_ImGui.cpp/h       # 🖥️ Apple 1 display (40×24, CRT effects)
 ├── GraphicsCard.cpp/h       # 🎨 GEN2 color graphics card (280×192 HIRES)
+├── TMS9918.cpp/h            # 🖥️ P-LAB TMS9918 VDP (256×192, 15 colors, sprites)
 ├── MemoryViewer_ImGui.cpp/h # 🔍 Hex editor with search & navigation
 ├── roms/                    # 📀 WozMonitor, BASIC, Krusader, ACI, charmap
 ├── software/                # 📂 Hex dump programs + assembly sources
@@ -294,6 +319,7 @@ POM1/
 │   ├── dev/                 #   🛠️ Dev tools
 │   ├── utils/               #   🧰 Utilities
 │   ├── hgr/                 #   🎨 GEN2 HGR images & programs
+│   ├── tms9918/             #   🖥️ P-LAB TMS9918 programs (Tetris, demos)
 │   ├── cassettes/           #   📼 Original-tape .ogg + short readme .txt (reference)
 │   └── tests/               #   🧪 Hardware test programs
 ├── build-wasm/              # 🌐 WebAssembly build output
@@ -330,6 +356,8 @@ $A000-$BFFF   Krusader ROM (8 KB)
 $C000-$C0FF   Apple Cassette Interface I/O
 $C081         Tape input
 $C100-$C1FF   Woz ACI ROM
+$CC00         TMS9918 DATA — VRAM data port (when P-LAB card is plugged)
+$CC01         TMS9918 CTRL — Control/status  (when P-LAB card is plugged)
 $D010-$D012   PIA 6821 — Keyboard (KBD) & Display (DSP)  (aliases: $D0Fx)
 $E000-$EFFF   Apple BASIC ROM (4 KB)
 $FF00-$FFFF   Woz Monitor ROM (256 B)
@@ -347,6 +375,8 @@ $FF00-$FFFF   Woz Monitor ROM (256 B)
 - **Achim Breidenbach** — Sim6502
 - **Fabrice Frances** — Java Microtan Emulator
 - **Uncle Bernie** — [GEN2 Color Graphics Card](https://www.applefritter.com/content/uncle-bernies-gen2-color-graphics-card-apple-1) for Apple 1
+- **P-LAB** — [Apple-1 Graphic Card](https://p-l4b.github.io/graphic/) (TMS9918 VDP expansion)
+- **Nippur72** — [apple1-videocard-lib](https://github.com/nippur72/apple1-videocard-lib) (KickC library, Tetris, demos for P-LAB card)
 - **Tom Owad** — AppleFritter community & Apple 1 resources
 - **Steve Wozniak & Steve Jobs** — For creating the Apple 1 🍎
 
@@ -355,6 +385,8 @@ $FF00-$FFFF   Woz Monitor ROM (256 B)
 - [**apple1software.com**](https://apple1software.com/) — The definitive Apple 1 software archive. Meticulously curated collection of programs, hardware documentation, schematics, and historical research. Most of the software included in POM1 comes from this outstanding resource. An invaluable reference for anyone interested in the Apple 1.
 - [**AppleFritter**](https://applefritter.com/apple1/) — The heart of the Apple 1 community. Home to decades of technical discussions, hardware projects, BASIC version research, and first-hand accounts from original Apple 1 owners and builders. Many of the programs, patches, and discoveries documented here have directly shaped this emulator.
 - [**Uncle Bernie's GEN2 Color Graphics Card**](https://www.applefritter.com/content/uncle-bernies-gen2-color-graphics-card-apple-1) — The original hardware project by Uncle Bernie on AppleFritter. A 280×192 HIRES color graphics card for the Apple 1 using Apple II-compatible memory layout and NTSC artifact color encoding.
+- [**P-LAB Apple-1 Graphic Card**](https://p-l4b.github.io/graphic/) — TMS9918 VDP expansion card for the Apple 1. Schematics, documentation, and CodeTank daughterboard.
+- [**apple1-videocard-lib**](https://github.com/nippur72/apple1-videocard-lib) — KickC C library and demos (Tetris, image viewer, etc.) for the P-LAB Graphic Card.
 - [POM1 Project Page](https://www.gistlabs.net/Apple1project/)
 
 ---
