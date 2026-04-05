@@ -24,6 +24,7 @@
 #include <string>
 #include <cstdint>
 #include <memory>
+#include "AudioDevice.h"
 #include "CassetteDevice.h"
 class SID;
 class TMS9918;
@@ -92,8 +93,11 @@ public:
     // P-LAB A1-SID Sound Card (MOS 6581/8580)
     SID& getSID() { return *sid; }
     const SID& getSID() const { return *sid; }
-    void setSIDEnabled(bool b) { sidEnabled = b; }
+    void setSIDEnabled(bool b);
     bool isSIDEnabled() const { return sidEnabled; }
+
+    // Central audio device (mixes CassetteDevice + SID)
+    AudioDevice& getAudioDevice() { return *audioDevice; }
 
 private:
     void (*displayCallback)(char) = nullptr;
@@ -120,6 +124,7 @@ private :
     std::unique_ptr<CassetteDevice> cassetteDevice;
     std::unique_ptr<TMS9918> tms9918;
     bool tms9918Enabled = false;
+    std::unique_ptr<AudioDevice> audioDevice;
     std::unique_ptr<SID> sid;
     bool sidEnabled = false;
 

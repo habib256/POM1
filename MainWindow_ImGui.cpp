@@ -794,7 +794,7 @@ void MainWindow_ImGui::renderAboutDialog()
     ImGui::SetNextWindowSizeConstraints(ImVec2(380, 0), ImVec2(500, FLT_MAX));
     ImGui::SetNextWindowSize(ImVec2(0, 0), ImGuiCond_Always);
     if (ImGui::Begin("About POM1", &showAbout, ImGuiWindowFlags_AlwaysAutoResize)) {
-        ImGui::TextWrapped("POM1 v1.4 - Apple 1 Emulator (Dear ImGui)");
+        ImGui::TextWrapped("POM1 v1.5 - Apple 1 Emulator (Dear ImGui)");
         ImGui::Separator();
 
         ImGui::TextWrapped("Copyright (C) 2000-2026 GPL3");
@@ -1338,6 +1338,31 @@ void MainWindow_ImGui::renderLoadDialog()
 
         ImGui::Spacing();
         if (ImGui::Button("Load", ImVec2(120, 0))) {
+            // Auto-enable hardware cards based on source directory
+            std::string loadPath(loadDlg.filePath);
+            if (loadPath.find("/sid/") != std::string::npos ||
+                loadPath.find("\\sid\\") != std::string::npos) {
+                if (!sidEnabled) {
+                    sidEnabled = true;
+                    emulation->setSIDEnabled(true);
+                    setStatusMessage("P-LAB A1-SID plugged", 2.0f);
+                }
+            } else if (loadPath.find("/hgr/") != std::string::npos ||
+                       loadPath.find("\\hgr\\") != std::string::npos) {
+                if (!graphicsCardEnabled) {
+                    graphicsCardEnabled = true;
+                    showGraphicsCard = true;
+                }
+            } else if (loadPath.find("/tms9918/") != std::string::npos ||
+                       loadPath.find("\\tms9918\\") != std::string::npos) {
+                if (!tms9918Enabled) {
+                    tms9918Enabled = true;
+                    showTMS9918 = true;
+                    emulation->setTMS9918Enabled(true);
+                    setStatusMessage("P-LAB TMS9918 plugged", 2.0f);
+                }
+            }
+
             quint16 addr = 0;
             std::string error;
             int bytesLoaded = 0;

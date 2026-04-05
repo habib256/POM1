@@ -1,13 +1,13 @@
 <div align="center">
 
-# 🍎 POM1 v1.4 — Apple 1 Emulator
+# 🍎 POM1 v1.5 — Apple 1 Emulator
 
 **Experience the machine that started the personal computer revolution.**
 
-🎂 **Celebrating 50 years of Apple (1976–2026)** — POM1 v1.4 is released in honor of the 50th anniversary of Apple Computer, founded on April 1, 1976.
+🎂 **Celebrating 50 years of Apple (1976–2026)** — POM1 v1.5 is released in honor of the 50th anniversary of Apple Computer, founded on April 1, 1976.
 
 A faithful Apple 1 emulator built with Dear ImGui & OpenGL — fast, lightweight, and cross-platform. 
-Now with [P-LAB Apple-1 Graphic Card (TMS9918)](https://p-l4b.github.io/graphic/) and [Uncle Bernie's GEN2 Color Graphics Card](https://www.applefritter.com/content/uncle-bernies-gen2-color-graphics-card-apple-1) support.
+Now with [P-LAB A1-SID Sound Card](https://p-l4b.github.io/A1-SID/), [P-LAB Apple-1 Graphic Card (TMS9918)](https://p-l4b.github.io/graphic/) and [Uncle Bernie's GEN2 Color Graphics Card](https://www.applefritter.com/content/uncle-bernies-gen2-color-graphics-card-apple-1) support.
 
 **Play it now in your browser** : 
 [![Play Online](https://img.shields.io/badge/Play%20Online-WebAssembly-blueviolet.svg)](https://habib256.github.io/POM1/build-wasm/pom1_imgui.html)
