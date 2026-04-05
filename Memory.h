@@ -25,6 +25,7 @@
 #include <cstdint>
 #include <memory>
 #include "CassetteDevice.h"
+class SID;
 class TMS9918;
 using namespace std;
 
@@ -88,6 +89,12 @@ public:
     void setTMS9918Enabled(bool b) { tms9918Enabled = b; }
     bool isTMS9918Enabled() const { return tms9918Enabled; }
 
+    // P-LAB A1-SID Sound Card (MOS 6581/8580)
+    SID& getSID() { return *sid; }
+    const SID& getSID() const { return *sid; }
+    void setSIDEnabled(bool b) { sidEnabled = b; }
+    bool isSIDEnabled() const { return sidEnabled; }
+
 private:
     void (*displayCallback)(char) = nullptr;
     
@@ -113,6 +120,8 @@ private :
     std::unique_ptr<CassetteDevice> cassetteDevice;
     std::unique_ptr<TMS9918> tms9918;
     bool tms9918Enabled = false;
+    std::unique_ptr<SID> sid;
+    bool sidEnabled = false;
 
 };
 

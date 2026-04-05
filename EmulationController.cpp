@@ -401,6 +401,23 @@ bool EmulationController::isTMS9918Enabled() const
     return memory->isTMS9918Enabled();
 }
 
+void EmulationController::setSIDEnabled(bool enabled)
+{
+    std::lock_guard<std::mutex> lock(stateMutex);
+    memory->setSIDEnabled(enabled);
+    if (enabled)
+        memory->getCassetteDevice().setSIDSource(&memory->getSID());
+    else
+        memory->getCassetteDevice().setSIDSource(nullptr);
+    publishSnapshotLocked();
+}
+
+bool EmulationController::isSIDEnabled() const
+{
+    std::lock_guard<std::mutex> lock(stateMutex);
+    return memory->isSIDEnabled();
+}
+
 void EmulationController::processQueuedKeysLocked()
 {
     std::queue<char> localKeys;
@@ -444,6 +461,7 @@ void EmulationController::publishSnapshotLocked()
     snapshot.cassetteLoadedTapePath = cassette.getLoadedTapePath();
 
     memory->getTMS9918().copySnapshot(snapshot.tms9918);
+    snapshot.sidEnabled = memory->isSIDEnabled();
 
     std::lock_guard<std::mutex> snapshotLock(snapshotMutex);
     latestSnapshot = std::move(snapshot);

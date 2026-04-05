@@ -1,4 +1,5 @@
 #include "CassetteDevice.h"
+#include "SID.h"
 #include "POM1Build.h"
 
 #include <algorithm>
@@ -102,6 +103,22 @@ void CassetteDevice::fillAudioBuffer(float* output, int frameCount)
         }
         audioPlaybackSample += (targetSample - audioPlaybackSample) * kFilterAlpha;
         output[i] = audioPlaybackSample;
+    }
+
+    // Mix P-LAB A1-SID audio if plugged
+    if (sidSource) {
+        float sidBuf[512];
+        int remaining = frameCount;
+        int offset = 0;
+        while (remaining > 0) {
+            int chunk = std::min(remaining, 512);
+            sidSource->generateSamples(sidBuf, chunk);
+            for (int i = 0; i < chunk; ++i)
+                output[offset + i] = std::max(-1.0f, std::min(1.0f,
+                    output[offset + i] + sidBuf[i]));
+            offset += chunk;
+            remaining -= chunk;
+        }
     }
 }
 

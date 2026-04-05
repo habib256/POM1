@@ -24,6 +24,7 @@
 #include <cmath>
 
 #include "Memory.h"
+#include "SID.h"
 #include "TMS9918.h"
 //#include "configuration.h"
 //#include "pia6820.h"
@@ -55,6 +56,7 @@ Memory::Memory()
 {
     cassetteDevice = std::make_unique<CassetteDevice>();
     tms9918 = std::make_unique<TMS9918>();
+    sid = std::make_unique<SID>();
     initMemory();
 }
 
@@ -72,6 +74,7 @@ void Memory::initMemory(){
     loadWozMonitor();
     cassetteDevice->reset();
     tms9918->reset();
+    sid->reset();
     configureResetVectors(0xFF00);
 
     setWriteInRom(0);
@@ -85,6 +88,7 @@ void Memory::resetMemory(void)
     }
     cassetteDevice->reset();
     tms9918->reset();
+    sid->reset();
 }
 
 void Memory::configureResetVectors(quint16 vectorAddress)
@@ -363,6 +367,14 @@ int Memory::loadHexDump(const char* filename, quint16 &startAddress, int* bytesL
 
 quint8 Memory::memRead(quint16 address)
 {
+    // P-LAB A1-SID I/O ($C800-$CFFF, register = address & 0x1F)
+    // TMS9918 has priority at $CC00-$CC01 when both cards are enabled
+    if (sidEnabled && address >= 0xC800 && address <= 0xCFFF) {
+        if (!(tms9918Enabled && (address == 0xCC00 || address == 0xCC01))) {
+            return sid->readRegister(address & 0x1F);
+        }
+    }
+
     // P-LAB TMS9918 I/O ($CC00 = data, $CC01 = control/status)
     if (tms9918Enabled) {
         if (address == 0xCC00) return tms9918->readData();
@@ -419,6 +431,15 @@ quint8 Memory::memRead(quint16 address)
 
 void Memory::memWrite(quint16 address, quint8 value)
 {
+    // P-LAB A1-SID I/O ($C800-$CFFF, register = address & 0x1F)
+    if (sidEnabled && address >= 0xC800 && address <= 0xCFFF) {
+        if (!(tms9918Enabled && (address == 0xCC00 || address == 0xCC01))) {
+            uint8_t reg = address & 0x1F;
+            if (reg <= 24) sid->writeRegister(reg, value);
+            return;
+        }
+    }
+
     // P-LAB TMS9918 I/O ($CC00 = data, $CC01 = control)
     if (tms9918Enabled) {
         if (address == 0xCC00) { tms9918->writeData(value); return; }

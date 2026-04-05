@@ -23,6 +23,7 @@ set(SOURCES
     Memory.cpp
     MemoryViewer_ImGui.cpp
     Screen_ImGui.cpp
+    SID.cpp
     TMS9918.cpp
 )
 
@@ -35,6 +36,7 @@ set(HEADERS
     Memory.h
     MemoryViewer_ImGui.h
     Screen_ImGui.h
+    SID.h
     TMS9918.h
 )
 
