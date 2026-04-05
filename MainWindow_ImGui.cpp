@@ -116,6 +116,7 @@ void MainWindow_ImGui::render()
     cpuRunning = uiSnapshot.cpuRunning;
     memoryViewer->updateLiveMemory(uiSnapshot.memory);
     memoryViewer->setGraphicsCardEnabled(graphicsCardEnabled);
+    memoryViewer->setTMS9918Enabled(tms9918Enabled);
 
 #if POM1_IS_WASM
     // Sync fullscreen flag with browser state (user may exit via Escape)
@@ -233,6 +234,7 @@ void MainWindow_ImGui::render()
     if (showSaveDialog) renderSaveDialog();
     if (showSaveTapeDialog) renderSaveTapeDialog();
     if (graphicsCardEnabled && showGraphicsCard) renderGraphicsCardWindow();
+    if (tms9918Enabled && showTMS9918) renderTMS9918Window();
 
     // Barre de statut
     renderStatusBar();
@@ -368,6 +370,10 @@ void MainWindow_ImGui::renderMenuBar()
             if (ImGui::MenuItem("GEN2 Graphics Card", nullptr, &graphicsCardEnabled)) {
                 if (graphicsCardEnabled) showGraphicsCard = true;
             }
+            if (ImGui::MenuItem("P-LAB Graphic Card (TMS9918)", nullptr, &tms9918Enabled)) {
+                emulation->setTMS9918Enabled(tms9918Enabled);
+                if (tms9918Enabled) showTMS9918 = true;
+            }
             ImGui::EndMenu();
         }
 
@@ -452,6 +458,33 @@ void MainWindow_ImGui::renderToolbar()
         ImGui::PopStyleColor();
         if (ImGui::IsItemHovered()) {
             ImGui::SetTooltip(graphicsCardEnabled ? "GEN2 Color Output (click to unplug)" : "Plug GEN2 Graphics Card");
+        }
+
+        ImGui::SameLine();
+        if (tms9918Enabled && showTMS9918)
+            ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.2f, 0.4f, 0.8f, 1.0f));
+        else if (!tms9918Enabled)
+            ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.3f, 0.3f, 0.3f, 1.0f));
+        else
+            ImGui::PushStyleColor(ImGuiCol_Button, ImGui::GetStyle().Colors[ImGuiCol_Button]);
+        if (ImGui::Button(ICON_FA_DISPLAY, btnSize)) {
+            if (!tms9918Enabled) {
+                tms9918Enabled = true;
+                showTMS9918 = true;
+                emulation->setTMS9918Enabled(true);
+                setStatusMessage("P-LAB TMS9918 plugged", 2.0f);
+            } else {
+                showTMS9918 = !showTMS9918;
+                if (!showTMS9918) {
+                    tms9918Enabled = false;
+                    emulation->setTMS9918Enabled(false);
+                    setStatusMessage("P-LAB TMS9918 unplugged", 2.0f);
+                }
+            }
+        }
+        ImGui::PopStyleColor();
+        if (ImGui::IsItemHovered()) {
+            ImGui::SetTooltip(tms9918Enabled ? "P-LAB TMS9918 Output (click to unplug)" : "Plug P-LAB Graphic Card (TMS9918)");
         }
 
         // --- Séparateur ---
@@ -816,6 +849,30 @@ void MainWindow_ImGui::renderGraphicsCardWindow()
                                 IM_COL32(0, 0, 0, 255));
 
         graphicsCard.render(drawList, pos, pixelScale, uiSnapshot.memory.data());
+
+        ImGui::Dummy(size);
+    }
+    ImGui::End();
+    ImGui::PopStyleColor();
+}
+
+void MainWindow_ImGui::renderTMS9918Window()
+{
+    const float pixelScale = 2.0f;
+    const float winW = TMS9918::kScreenWidth  * pixelScale + 16;
+    const float winH = TMS9918::kScreenHeight * pixelScale + 36;
+    ImGui::SetNextWindowSize(ImVec2(winW, winH), ImGuiCond_FirstUseEver);
+    ImGui::PushStyleColor(ImGuiCol_WindowBg, IM_COL32(0, 0, 0, 255));
+    if (ImGui::Begin("P-LAB Graphic Card (TMS9918)", &showTMS9918)) {
+        ImVec2 pos = ImGui::GetCursorScreenPos();
+        ImDrawList* drawList = ImGui::GetWindowDrawList();
+
+        ImVec2 size(TMS9918::kScreenWidth * pixelScale,
+                    TMS9918::kScreenHeight * pixelScale);
+        drawList->AddRectFilled(pos, ImVec2(pos.x + size.x, pos.y + size.y),
+                                IM_COL32(0, 0, 0, 255));
+
+        TMS9918::render(drawList, pos, pixelScale, uiSnapshot.tms9918);
 
         ImGui::Dummy(size);
     }
@@ -1195,7 +1252,7 @@ void MainWindow_ImGui::renderLoadDialog()
                             loadDlg.dirList.push_back(name);
                     } else if (entry.is_regular_file()) {
                         std::string ext = entry.path().extension().string();
-                        if (ext == ".txt")
+                        if (ext == ".txt" || ext == ".bin")
                             loadDlg.fileList.push_back(entry.path().filename().string());
                     }
                 }
@@ -1668,7 +1725,15 @@ void MainWindow_ImGui::renderMemoryMapWindow()
         { 0xA000, 0xBFFF, IM_COL32(200,  80, 200, 255), "Krusader ROM" },
         { 0xC000, 0xC0FF, IM_COL32(255, 140,  80, 255), "ACI I/O" },
         { 0xC100, 0xC1FF, IM_COL32(255, 190,  80, 255), "ACI ROM" },
-        { 0xC200, 0xCFFF, IM_COL32( 60,  60,  60, 255), "Unused" },
+        { 0xC200, 0xCBFF, IM_COL32( 60,  60,  60, 255), "Unused" },
+    };
+    if (tms9918Enabled) {
+        tail.push_back({ 0xCC00, 0xCC01, IM_COL32(100, 200, 255, 255), "TMS9918 I/O" });
+        tail.push_back({ 0xCC02, 0xCFFF, IM_COL32( 60,  60,  60, 255), "Unused" });
+    } else {
+        tail.push_back({ 0xCC00, 0xCFFF, IM_COL32( 60,  60,  60, 255), "Unused" });
+    }
+    std::vector<MemRegion> tail2 = {
         { 0xD000, 0xD0FF, IM_COL32(255,  80,  80, 255), "I/O (KBD/DSP)" },
         { 0xD100, 0xDFFF, IM_COL32( 60,  60,  60, 255), "Unused" },
         { 0xE000, 0xEFFF, IM_COL32(255, 255,  80, 255), "BASIC ROM" },
@@ -1676,6 +1741,7 @@ void MainWindow_ImGui::renderMemoryMapWindow()
         { 0xFF00, 0xFFFF, IM_COL32(  0, 200, 255, 255), "Woz Monitor ROM" },
     };
     regions.insert(regions.end(), tail.begin(), tail.end());
+    regions.insert(regions.end(), tail2.begin(), tail2.end());
     int numRegions = static_cast<int>(regions.size());
 
     // Grille 2×2 : ligne du haut = carte | légende ; ligne du bas = I/O | ACI + vecteurs
@@ -1834,6 +1900,12 @@ void MainWindow_ImGui::renderMemoryMapWindow()
         ImGui::BulletText("$D012  DSP   - Display output");
         ImGui::TextColored(ImVec4(0.55f, 0.55f, 0.55f, 1.0f),
             "  Aliases: $D0Fx = $D01x");
+        if (tms9918Enabled) {
+            ImGui::Spacing();
+            ImGui::TextColored(ImVec4(0.7f, 0.85f, 1.0f, 1.0f), "  P-LAB TMS9918 VDP");
+            ImGui::BulletText("$CC00  DATA - VRAM data port");
+            ImGui::BulletText("$CC01  CTRL - Control/status");
+        }
 
         ImGui::TableSetColumnIndex(1);
         ImGui::Text("CPU vectors:");

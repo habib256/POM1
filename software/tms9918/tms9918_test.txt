@@ -1,0 +1,21 @@
+// TMS9918 Test - Graphics I mode
+// Fills the screen with 'A' characters (white on black)
+//
+// 1. First enable the P-LAB card in Hardware menu
+// 2. Load this file with File > Load Memory
+// 3. The TMS9918 window should show a screen of 'A's
+//
+// How it works:
+//   - Initializes 8 VDP registers for Graphics I (Screen 1)
+//   - Writes 32 color entries (white foreground, black background)
+//   - Writes an 'A' glyph pattern at character $41
+//   - Fills the 768-byte name table with character $41
+//
+0300: A2 00 BD 60 03 8D 01 CC 8A 09 80 8D 01 CC E8 E0
+0310: 08 D0 EF A9 00 8D 01 CC A9 60 8D 01 CC A2 20 A9
+0320: F1 8D 00 CC CA D0 F8 A9 08 8D 01 CC A9 42 8D 01
+0330: CC A0 00 B9 68 03 8D 00 CC C8 C0 08 D0 F5 A9 00
+0340: 8D 01 CC A9 78 8D 01 CC A0 03 A2 00 A9 41 8D 00
+0350: CC CA D0 F8 88 D0 F3 4C 57 03 EA EA EA EA EA EA
+0360: 00 C0 0E 80 00 76 03 25 38 6C C6 C6 FE C6 C6 00
+0300R

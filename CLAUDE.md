@@ -62,6 +62,7 @@ ld65 -C software/apple1.cfg -o build/program.bin build/program.o
 - **Screen_ImGui.cpp/h**: Apple 1 display emulation (40x24 character grid) with green/white monitor modes, `@` blinking cursor (timer uses `fmod` to avoid float overflow), scanline CRT effect, configurable text scale, and bitmap glyph rendering sourced from `roms/charmap.rom` when available.
 - **MemoryViewer_ImGui.cpp/h**: Interactive hex editor with color-coded regions (matching Memory Map colors), search (hex and ASCII), bookmarks, navigation shortcuts, and real-time editing.
 - **GraphicsCard.cpp/h**: [Uncle Bernie's GEN2 Color Graphics Card](https://www.applefritter.com/content/uncle-bernies-gen2-color-graphics-card-apple-1) emulation. Passively reads CPU RAM at `$2000-$3FFF` and renders a 280×192 HIRES image with NTSC artifact color (violet/green for group 1, blue/orange for group 2, white for adjacent pixels) in a separate ImGui window. Two-pass rendering: glow halos (semi-transparent rounded rects) then solid pixels on top. Apple II-compatible non-linear scanline memory layout (`scanlineAddress()`). Toggled via Hardware menu or toolbar button; auto-loads a demo HGR image from `software/hgr/` when plugged in.
+- **TMS9918.cpp/h**: [P-LAB Apple-1 Graphic Card](https://p-l4b.github.io/graphic/) emulation. TMS9918A Video Display Processor with 16KB VRAM, I/O at `$CC00` (data) / `$CC01` (control/status). 256×192 resolution, 15 colors, 32 sprites. Supports Graphics I (32×24 tiles), Graphics II (full bitmap), Text (40×24), and Multicolor modes. Renders to a separate ImGui window. Compatible with the [apple1-videocard-lib](https://github.com/nippur72/apple1-videocard-lib) software library. Toggled via Hardware menu or toolbar button.
 
 ### ROM Files (roms/)
 - **WozMonitor.rom** (256B @ 0xFF00): Wozniak's system monitor
@@ -147,6 +148,8 @@ Visual 16x16 grid (256 pages = 64KB) with color-coded regions, KB labels, PC/SP 
 0x2000-0x3FFF  GEN2 HGR Framebuffer (8 KB — when card is plugged)
 0x4000-0x9FFF  User RAM
 0xA000-0xBFFF  Krusader ROM (8 KB)
+0xCC00         TMS9918 DATA - VRAM data port   (when P-LAB card is plugged)
+0xCC01         TMS9918 CTRL - Control/status    (when P-LAB card is plugged)
 0xD010         KBD - Keyboard data register    (aliases: $D0F0, $D030, etc.)
 0xD011         KBDCR - Keyboard control register (aliases: $D0F1, $D031, etc.)
 0xD012         DSP - Display output register   (aliases: $D0F2, $D032, etc.)
@@ -183,6 +186,7 @@ The `build/`, `build-wasm/`, and `imgui/` directories are excluded from git via 
 ## Version History
 
 ### v1.3 (April 2026) — Uncle Bernie's GEN2 Color Graphics Card
+- P-LAB Apple-1 Graphic Card (TMS9918 VDP): 256×192, 15 colors, 32 sprites, I/O at `$CC00`/`$CC01`, Graphics I/II/Text/Multicolor modes, compatible with [apple1-videocard-lib](https://github.com/nippur72/apple1-videocard-lib), toggle via Hardware menu or toolbar
 - Uncle Bernie's GEN2 Color Graphics Card: 280×192 HIRES at `$2000-$3FFF`, NTSC artifact color (violet/green/blue/orange), pixel glow, Apple II-compatible scanline layout, toggle via Hardware menu or toolbar, demo image auto-load
 - HGR Maze program: Recursive Backtracker maze generator rendering directly into the GEN2 framebuffer (19×11 cells, 7×8 pixel blocks, byte-aligned white walls), with maze counter, CLD safety, and work RAM cleanup
 - Memory Viewer: inline hex editing on double-click (replaces modal popup)

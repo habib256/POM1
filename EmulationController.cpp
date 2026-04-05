@@ -388,6 +388,19 @@ void EmulationController::setHardwareAccurateLiveAudio(bool enabled)
     publishSnapshotLocked();
 }
 
+void EmulationController::setTMS9918Enabled(bool enabled)
+{
+    std::lock_guard<std::mutex> lock(stateMutex);
+    memory->setTMS9918Enabled(enabled);
+    publishSnapshotLocked();
+}
+
+bool EmulationController::isTMS9918Enabled() const
+{
+    std::lock_guard<std::mutex> lock(stateMutex);
+    return memory->isTMS9918Enabled();
+}
+
 void EmulationController::processQueuedKeysLocked()
 {
     std::queue<char> localKeys;
@@ -429,6 +442,8 @@ void EmulationController::publishSnapshotLocked()
     snapshot.cassetteLoadedTransitionCount = cassette.getLoadedTransitionCount();
     snapshot.cassetteRecordedTransitionCount = cassette.getRecordedTransitionCount();
     snapshot.cassetteLoadedTapePath = cassette.getLoadedTapePath();
+
+    memory->getTMS9918().copySnapshot(snapshot.tms9918);
 
     std::lock_guard<std::mutex> snapshotLock(snapshotMutex);
     latestSnapshot = std::move(snapshot);

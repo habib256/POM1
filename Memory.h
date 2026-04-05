@@ -25,6 +25,7 @@
 #include <cstdint>
 #include <memory>
 #include "CassetteDevice.h"
+class TMS9918;
 using namespace std;
 
 // Remplacer quint8 par uint8_t et quint16 par uint16_t
@@ -81,6 +82,12 @@ public:
     CassetteDevice& getCassetteDevice() { return *cassetteDevice; }
     const CassetteDevice& getCassetteDevice() const { return *cassetteDevice; }
 
+    // P-LAB Graphic Card (TMS9918 VDP)
+    TMS9918& getTMS9918() { return *tms9918; }
+    const TMS9918& getTMS9918() const { return *tms9918; }
+    void setTMS9918Enabled(bool b) { tms9918Enabled = b; }
+    bool isTMS9918Enabled() const { return tms9918Enabled; }
+
 private:
     void (*displayCallback)(char) = nullptr;
     
@@ -104,6 +111,8 @@ private :
     bool writeInRom;
     std::string lastError;
     std::unique_ptr<CassetteDevice> cassetteDevice;
+    std::unique_ptr<TMS9918> tms9918;
+    bool tms9918Enabled = false;
 
 };
 

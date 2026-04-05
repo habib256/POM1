@@ -11,6 +11,7 @@
 #include "MemoryViewer_ImGui.h"
 #include "Screen_ImGui.h"
 #include "GraphicsCard.h"
+#include "TMS9918.h"
 
 class MainWindow_ImGui
 {
@@ -62,6 +63,8 @@ private:
     bool showSaveTapeDialog = false;
     bool showGraphicsCard = false;
     bool graphicsCardEnabled = false;
+    bool showTMS9918 = false;
+    bool tms9918Enabled = false;
     bool fullscreen = false;
     int windowedWidth = 1200;
     int windowedHeight = 800;
@@ -98,6 +101,7 @@ private:
     void renderSaveDialog();
     void renderSaveTapeDialog();
     void renderGraphicsCardWindow();
+    void renderTMS9918Window();
 
     // Action functions
     void loadMemory();
