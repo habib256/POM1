@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-POM1 v1.3 is an Apple 1 emulator built with Dear ImGui. It emulates the MOS 6502 CPU and Apple 1 hardware including memory-mapped I/O, display, keyboard input, the Apple Cassette Interface (ACI) with live audio and tape files, and Uncle Bernie's GEN2 Color Graphics Card (280×192 HIRES, NTSC artifact color). The UI is fully in English. Builds on Linux, macOS, Windows, and Web (Emscripten/WASM).
+POM1 v1.4 is an Apple 1 emulator built with Dear ImGui. It emulates the MOS 6502 CPU and Apple 1 hardware including memory-mapped I/O, display, keyboard input, the Apple Cassette Interface (ACI) with live audio and tape files, and Uncle Bernie's GEN2 Color Graphics Card (280×192 HIRES, NTSC artifact color). The UI is fully in English. Builds on Linux, macOS, Windows, and Web (Emscripten/WASM).
 
 ## Build & Run Commands
 
@@ -79,6 +79,7 @@ Contains Apple 1 programs in Woz Monitor hex dump format (.txt) organized in sub
 - **dev/**: Development tools — Woz Monitor, Enhanced BASIC, fig-FORTH
 - **tests/**: Hardware test programs — hex I/O, keyboard, terminal tests
 - **hgr/**: GEN2 HGR demo images (raw 8 KB binary loaded at `$2000`)
+- **tms9918/**: P-LAB TMS9918 programs — Tetris, demo suite, PicShow image viewer (KickC binaries loaded at `$0280`)
 - **cassettes/**: Reference material for the Apple cassette library — short readme `.txt` files and **`.ogg`** captures of original tapes (preservation / listening). POM1’s **Cassette Control** loads **`.wav`** or **`.aci`** only; convert or re-encode to WAV if you want to feed those captures into the emulated ACI.
 
 Programs can be loaded via File > Load Memory, which provides a file browser with folder navigation. Assembly source files (`.asm`) can be assembled with cc65. Most programs come from [apple1software.com](https://apple1software.com/), an outstanding archive of Apple 1 software, hardware documentation, and historical resources. [AppleFritter](https://applefritter.com/apple1/) is the community hub where much of the technical research, BASIC version history, and hardware knowledge originates.
@@ -185,8 +186,13 @@ The `build/`, `build-wasm/`, and `imgui/` directories are excluded from git via 
 
 ## Version History
 
+### v1.4 (April 2026) — P-LAB Apple-1 Graphic Card (TMS9918)
+- [P-LAB Apple-1 Graphic Card](https://p-l4b.github.io/graphic/) (TMS9918 VDP): 256×192, 15 colors, 32 sprites, I/O at `$CC00`/`$CC01`, Graphics I/II/Text/Multicolor modes, compatible with [apple1-videocard-lib](https://github.com/nippur72/apple1-videocard-lib), toggle via Hardware menu or toolbar
+- Bundled P-LAB software: TMS9918 demo suite (Screen 1, Screen 2, sprites, bitmap), Tetris, PicShow image viewer — pre-built binaries in `software/tms9918/`
+- File browser now shows `.bin` files alongside `.txt`
+- Default binary load address changed from `$0300` to `$0280` (KickC Apple 1 standard)
+
 ### v1.3 (April 2026) — Uncle Bernie's GEN2 Color Graphics Card
-- P-LAB Apple-1 Graphic Card (TMS9918 VDP): 256×192, 15 colors, 32 sprites, I/O at `$CC00`/`$CC01`, Graphics I/II/Text/Multicolor modes, compatible with [apple1-videocard-lib](https://github.com/nippur72/apple1-videocard-lib), toggle via Hardware menu or toolbar
 - Uncle Bernie's GEN2 Color Graphics Card: 280×192 HIRES at `$2000-$3FFF`, NTSC artifact color (violet/green/blue/orange), pixel glow, Apple II-compatible scanline layout, toggle via Hardware menu or toolbar, demo image auto-load
 - HGR Maze program: Recursive Backtracker maze generator rendering directly into the GEN2 framebuffer (19×11 cells, 7×8 pixel blocks, byte-aligned white walls), with maze counter, CLD safety, and work RAM cleanup
 - Memory Viewer: inline hex editing on double-click (replaces modal popup)
