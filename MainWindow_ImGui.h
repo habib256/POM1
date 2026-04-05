@@ -132,7 +132,7 @@ private:
     // Load dialog state (non-static, reset on open)
     struct LoadDialogState {
         char filePath[512] = "";
-        char addressStr[8] = "0300";
+        char addressStr[8] = "0280";
         int fileType = 1;
         std::vector<std::string> dirList;
         std::vector<std::string> fileList;
@@ -141,7 +141,7 @@ private:
         std::string currentDir;
         void reset() {
             filePath[0] = '\0';
-            snprintf(addressStr, sizeof(addressStr), "0300");
+            snprintf(addressStr, sizeof(addressStr), "0280");
             fileType = 1;
             dirList.clear();
             fileList.clear();
