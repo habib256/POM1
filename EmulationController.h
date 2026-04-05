@@ -17,6 +17,7 @@
 #include "M6502.h"
 #include "Memory.h"
 #include "Screen_ImGui.h"
+#include "TMS9918.h"
 
 struct EmulationSnapshot
 {
@@ -41,6 +42,7 @@ struct EmulationSnapshot
     size_t cassetteLoadedTransitionCount = 0;
     size_t cassetteRecordedTransitionCount = 0;
     std::string cassetteLoadedTapePath;
+    TMS9918::Snapshot tms9918;
 };
 
 class EmulationController
@@ -83,6 +85,10 @@ public:
     void ejectTape();
     void clearTapeCapture();
     void setHardwareAccurateLiveAudio(bool enabled);
+
+    // P-LAB TMS9918 Graphic Card
+    void setTMS9918Enabled(bool enabled);
+    bool isTMS9918Enabled() const;
 
     /// Web (Emscripten) : pas de std::thread — avancer l’émulation depuis la boucle principale.
     void pumpEmulationMainThread(double deltaSeconds);

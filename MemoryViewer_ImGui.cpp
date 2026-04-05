@@ -531,6 +531,8 @@ ImVec4 MemoryViewer_ImGui::getColorForAddress(int address)
         return ImVec4(0.78f, 0.31f, 0.78f, 1.0f);   // Krusader ROM - purple
     if (address >= 0xC000 && address <= 0xC0FF)
         return ImVec4(1.0f, 0.50f, 0.31f, 1.0f);    // Cassette I/O - orange/red
+    if (tms9918Enabled && address >= 0xCC00 && address <= 0xCC01)
+        return ImVec4(0.4f, 0.8f, 1.0f, 1.0f);      // TMS9918 I/O - light blue
     if (address >= 0xC100 && address <= 0xC1FF)
         return ImVec4(1.0f, 0.70f, 0.31f, 1.0f);    // ACI ROM - amber
     if (address >= 0xD000 && address <= 0xD0FF)

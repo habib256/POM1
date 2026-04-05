@@ -24,6 +24,7 @@
 #include <cmath>
 
 #include "Memory.h"
+#include "TMS9918.h"
 //#include "configuration.h"
 //#include "pia6820.h"
 
@@ -53,6 +54,7 @@ constexpr quint8 kAciRom[0x100] = {
 Memory::Memory()
 {
     cassetteDevice = std::make_unique<CassetteDevice>();
+    tms9918 = std::make_unique<TMS9918>();
     initMemory();
 }
 
@@ -69,8 +71,9 @@ void Memory::initMemory(){
     loadAciRom();
     loadWozMonitor();
     cassetteDevice->reset();
+    tms9918->reset();
     configureResetVectors(0xFF00);
-    
+
     setWriteInRom(0);
 }
 
@@ -81,6 +84,7 @@ void Memory::resetMemory(void)
         mem[i]=0;
     }
     cassetteDevice->reset();
+    tms9918->reset();
 }
 
 void Memory::configureResetVectors(quint16 vectorAddress)
@@ -359,6 +363,12 @@ int Memory::loadHexDump(const char* filename, quint16 &startAddress, int* bytesL
 
 quint8 Memory::memRead(quint16 address)
 {
+    // P-LAB TMS9918 I/O ($CC00 = data, $CC01 = control/status)
+    if (tms9918Enabled) {
+        if (address == 0xCC00) return tms9918->readData();
+        if (address == 0xCC01) return tms9918->readControl();
+    }
+
     if (address == 0xC081) {
         return cassetteDevice->readTapeInput();
     }
@@ -409,6 +419,12 @@ quint8 Memory::memRead(quint16 address)
 
 void Memory::memWrite(quint16 address, quint8 value)
 {
+    // P-LAB TMS9918 I/O ($CC00 = data, $CC01 = control)
+    if (tms9918Enabled) {
+        if (address == 0xCC00) { tms9918->writeData(value); return; }
+        if (address == 0xCC01) { tms9918->writeControl(value); return; }
+    }
+
     // PIA 6821 alias (même normalisation que memRead)
     if ((address & 0xFF00) == 0xD000 && (address & 0x0F) <= 0x03
         && address != 0xD010 && address != 0xD011 && address != 0xD012) {
@@ -482,6 +498,7 @@ void Memory::advanceCycles(int cycles)
         displayBusyCycles = std::max(0, displayBusyCycles - cycles);
     }
     cassetteDevice->advanceCycles(cycles);
+    if (tms9918Enabled) tms9918->advanceCycles(cycles);
 }
 
 
