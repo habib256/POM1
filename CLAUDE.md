@@ -36,12 +36,13 @@ Note: ROMs must be present next to the executable. The run scripts automatically
 
 ### Build WASM (requires Emscripten)
 ```bash
-source /path/to/emsdk/emsdk_env.sh
+source /path/to/emsdk/emsdk_env.sh   # e.g. ~/emsdk/emsdk_env.sh
 mkdir -p build-wasm && cd build-wasm
 emcmake cmake ..
-emmake make -j$(nproc)
-emrun pom1_imgui.html         # Test locally
+emmake make -j"$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 4)"
+emrun pom1_imgui.html                # Test locally (needs a local HTTP server on some setups)
 ```
+Outputs in `build-wasm/`: `pom1_imgui.html`, `pom1_imgui.js`, `pom1_imgui.wasm`, and `pom1_imgui.data` (packaged preload of `roms/`, `fonts/`, and full `software/` tree including `software/hgr/`). Rebuild WASM after changing those assets so the embedded file list stays in sync.
 
 ### Assembling programs (requires cc65)
 ```bash
@@ -60,7 +61,7 @@ ld65 -C software/apple1.cfg -o build/program.bin build/program.o
 - **MainWindow_ImGui.cpp/h**: Main application window with menu bar, toolbar with icon buttons, status bar, window management, CPU speed control (1/2/Max MHz), file loading/saving dialogs, clipboard paste, memory map window, and keyboard input handling.
 - **Screen_ImGui.cpp/h**: Apple 1 display emulation (40x24 character grid) with green/white monitor modes, `@` blinking cursor (timer uses `fmod` to avoid float overflow), scanline CRT effect, configurable text scale, and bitmap glyph rendering sourced from `roms/charmap.rom` when available.
 - **MemoryViewer_ImGui.cpp/h**: Interactive hex editor with color-coded regions (matching Memory Map colors), search (hex and ASCII), bookmarks, navigation shortcuts, and real-time editing.
-- **GraphicsCard.cpp/h**: [Uncle Bernie's GEN2 Color Graphics Card](https://www.applefritter.com/content/uncle-bernies-gen2-color-graphics-card-apple-1) emulation. Passively reads CPU RAM at `$2000-$3FFF` and renders a 280×192 HIRES image with NTSC artifact color (violet/green for group 1, blue/orange for group 2, white for adjacent pixels) in a separate ImGui window. Two-pass rendering: glow halos (semi-transparent rounded rects) then solid pixels on top. Apple II-compatible non-linear scanline memory layout (`scanlineAddress()`). Toggled via Hardware menu or toolbar button; auto-loads a demo HGR image from `software/gen2/` when plugged in.
+- **GraphicsCard.cpp/h**: [Uncle Bernie's GEN2 Color Graphics Card](https://www.applefritter.com/content/uncle-bernies-gen2-color-graphics-card-apple-1) emulation. Passively reads CPU RAM at `$2000-$3FFF` and renders a 280×192 HIRES image with NTSC artifact color (violet/green for group 1, blue/orange for group 2, white for adjacent pixels) in a separate ImGui window. Two-pass rendering: glow halos (semi-transparent rounded rects) then solid pixels on top. Apple II-compatible non-linear scanline memory layout (`scanlineAddress()`). Toggled via Hardware menu or toolbar button; auto-loads a demo HGR image from `software/hgr/` when plugged in.
 
 ### ROM Files (roms/)
 - **WozMonitor.rom** (256B @ 0xFF00): Wozniak's system monitor
@@ -76,7 +77,8 @@ Contains Apple 1 programs in Woz Monitor hex dump format (.txt) organized in sub
 - **demos/**: Demos — Game of Life, Maze (Sidewinder), Maze 2 (Recursive Backtracker), Mandelbrot, Cellular automaton, etc.
 - **dev/**: Development tools — Woz Monitor, Enhanced BASIC, fig-FORTH
 - **tests/**: Hardware test programs — hex I/O, keyboard, terminal tests
-- **gen2/**: GEN2 HGR demo images (raw 8 KB binary loaded at `$2000`)
+- **hgr/**: GEN2 HGR demo images (raw 8 KB binary loaded at `$2000`)
+- **cassettes/**: Reference material for the Apple cassette library — short readme `.txt` files and **`.ogg`** captures of original tapes (preservation / listening). POM1’s **Cassette Control** loads **`.wav`** or **`.aci`** only; convert or re-encode to WAV if you want to feed those captures into the emulated ACI.
 
 Programs can be loaded via File > Load Memory, which provides a file browser with folder navigation. Assembly source files (`.asm`) can be assembled with cc65. Most programs come from [apple1software.com](https://apple1software.com/), an outstanding archive of Apple 1 software, hardware documentation, and historical resources. [AppleFritter](https://applefritter.com/apple1/) is the community hub where much of the technical research, BASIC version history, and hardware knowledge originates.
 
@@ -184,7 +186,7 @@ The `build/`, `build-wasm/`, and `imgui/` directories are excluded from git via 
 - Uncle Bernie's GEN2 Color Graphics Card: 280×192 HIRES at `$2000-$3FFF`, NTSC artifact color (violet/green/blue/orange), pixel glow, Apple II-compatible scanline layout, toggle via Hardware menu or toolbar, demo image auto-load
 - HGR Maze program: Recursive Backtracker maze generator rendering directly into the GEN2 framebuffer (19×11 cells, 7×8 pixel blocks, byte-aligned white walls), with maze counter, CLD safety, and work RAM cleanup
 - Memory Viewer: inline hex editing on double-click (replaces modal popup)
-- cc65 linker config for GEN2 programs (`apple1_gen2.cfg`): reserves `$2000-$3FFF` for HGR framebuffer
+- cc65 linker config for GEN2 programs (`software/hgr/apple1_gen2.cfg`): reserves `$2000-$3FFF` for HGR framebuffer
 
 ### v1.2 (April 2026) — 50th anniversary of Apple Computer
 - PIA 6821 address aliasing: `$D0Fx` mapped to `$D01x` — original (Pagetable) and Briel Apple BASIC versions both work
@@ -230,4 +232,4 @@ When bumping the version number, update **all** of these:
 
 1. **No native file dialog**: File loading/saving uses built-in file browsers instead of system file pickers.
 2. **GEN2 HGR Maze higher resolution**: The current HGR Maze uses 19×11 cells (7×8 pixel blocks). A higher-resolution version with 16-bit DFS and smaller blocks (e.g., 34×23 cells, 4×4 blocks) was attempted but produced visual artifacts due to NTSC artifact color rendering of non-byte-aligned pixel blocks. Needs a rendering approach that produces solid white walls at sub-byte granularity.
-3. **GEN2 programs in `software/gen2/`**: Only a demo image and the HGR Maze are included. More GEN2 programs could be added (e.g., image viewers, drawing tools, more demos).
+3. **GEN2 programs in `software/hgr/`**: Only a demo image and the HGR Maze are included. More GEN2 programs could be added (e.g., image viewers, drawing tools, more demos).
