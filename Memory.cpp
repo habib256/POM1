@@ -72,7 +72,6 @@ void Memory::initMemory(){
         std::fill(mem.begin(), mem.end(), 0);
     }
     loadBasic();
-    loadKrusader();
     loadAciRom();
     loadWozMonitor();
     cassetteDevice->reset();
@@ -463,8 +462,6 @@ void Memory::memWrite(quint16 address, quint8 value)
         if (address >= 0xC100 && address <= 0xC1FF) return;
         // Apple BASIC: 0xE000-0xEFFF
         if (address >= 0xE000 && address <= 0xEFFF) return;
-        // Krusader: 0xA000-0xBFFF
-        if (address >= 0xA000 && address <= 0xBFFF) return;
     }
 
     if (address >= 0xC000 && address <= 0xC0FF && address != 0xC081) {

@@ -504,7 +504,6 @@ bool MemoryViewer_ImGui::isROM(int address)
     if (address >= 0xFF00) return true;
     if (address >= 0xE000 && address <= 0xEFFF) return true;
     if (address >= 0xC100 && address <= 0xC1FF) return true;
-    if (address >= 0xA000 && address <= 0xBFFF) return true;
     return false;
 }
 
@@ -528,7 +527,7 @@ ImVec4 MemoryViewer_ImGui::getColorForAddress(int address)
     if (address <= 0x9FFF)
         return ImVec4(0.31f, 0.78f, 0.31f, 1.0f);   // User RAM - green
     if (address <= 0xBFFF)
-        return ImVec4(0.78f, 0.31f, 0.78f, 1.0f);   // Krusader ROM - purple
+        return ImVec4(0.31f, 0.78f, 0.31f, 1.0f);   // User RAM - green
     if (address >= 0xC000 && address <= 0xC0FF)
         return ImVec4(1.0f, 0.50f, 0.31f, 1.0f);    // Cassette I/O - orange/red
     if (tms9918Enabled && address >= 0xCC00 && address <= 0xCC01)

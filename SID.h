@@ -35,9 +35,11 @@ public:
     static constexpr int kNumRegisters = 29;
 
     // Audio constants
-    static constexpr int    kSampleRate    = 44100;
-    static constexpr double kCpuClockHz    = 1000000.0;
-    static constexpr double kCyclesPerSample = kCpuClockHz / kSampleRate; // ~22.676
+    static constexpr int    kSampleRate      = 44100;
+    static constexpr int    kOversample      = 4;     // 4× oversampling for anti-aliasing
+    static constexpr int    kInternalRate     = kSampleRate * kOversample; // 176400 Hz
+    static constexpr double kCpuClockHz      = 1000000.0;
+    static constexpr double kCyclesPerSample  = kCpuClockHz / kInternalRate; // ~11.338
 
     SID();
 
@@ -68,11 +70,13 @@ private:
     struct Voice {
         uint32_t phaseAccumulator  = 0;   // 24-bit oscillator phase
         uint32_t prevPhaseAcc      = 0;   // previous value (for noise LFSR clocking)
+        double   phaseRemainder    = 0.0; // fractional phase increment accumulator
         uint32_t lfsr              = 0x7FFFF8; // 23-bit noise LFSR
+        float    lastWaveOutput    = 0.0f;    // for waveform-0 decay (anti-click)
 
         uint8_t  adsrLevel         = 0;   // 0-255 envelope output
         AdsrState adsrState        = ADSR_RELEASE;
-        int      adsrCounter       = 0;   // rate counter (CPU cycles)
+        double   adsrCycleAccum    = 0.0; // fractional cycle accumulator (precision)
         uint8_t  expCounter        = 0;   // exponential decay period counter
         bool     gateOn            = false;
     };
@@ -83,9 +87,19 @@ private:
     // Voice state
     Voice voices[kNumVoices];
 
-    // State-variable filter state
-    float filterLP = 0.0f;
-    float filterBP = 0.0f;
+    // Zero-Delay Feedback SVF filter state (trapezoidal integrators)
+    float filterIC1eq = 0.0f;   // BP integrator state
+    float filterIC2eq = 0.0f;   // LP integrator state
+
+    // DC blocker for digi playback (volume register trick)
+    float dcBlockPrev  = 0.0f;
+    float dcBlockInput = 0.0f;
+
+    // Output low-pass filter (~18 kHz rolloff, analog warmth)
+    float outputLP = 0.0f;
+
+    // Last bus value (returned when reading write-only registers)
+    uint8_t lastBusValue = 0;
 
     // Thread safety (register writes from emulation thread, audio from callback thread)
     mutable std::mutex sidMutex;

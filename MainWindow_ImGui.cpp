@@ -1767,7 +1767,7 @@ void MainWindow_ImGui::renderMemoryMapWindow()
         regions.push_back({ 0x0280, 0x9FFF, IM_COL32( 80, 200,  80, 255), "User RAM" });
     }
     std::vector<MemRegion> tail = {
-        { 0xA000, 0xBFFF, IM_COL32(200,  80, 200, 255), "Krusader ROM" },
+        { 0xA000, 0xBFFF, IM_COL32( 80, 200,  80, 255), "User RAM" },
         { 0xC000, 0xC0FF, IM_COL32(255, 140,  80, 255), "ACI I/O" },
         { 0xC100, 0xC1FF, IM_COL32(255, 190,  80, 255), "ACI ROM" },
     };

@@ -49,6 +49,8 @@ or build it natively.
 
 🖥️ **P-LAB Graphic Card (TMS9918)** — [P-LAB Apple-1 Graphic Card](https://p-l4b.github.io/graphic/) — TMS9918 VDP with 256×192 resolution, 15 colors, 32 sprites, 4 display modes (Graphics I/II, Text, Multicolor). Bundled with Tetris, demo suite, and PicShow image viewer
 
+🎵 **P-LAB A1-SID Sound Card** — [P-LAB A1-SID](https://p-l4b.github.io/A1-SID/) — MOS 6581/8580-style SID at `$C800`–`$CFFF`; mix with cassette audio. Convert C64 **`.sid`** (PSID/RSID) to Apple 1 binaries with [`tools/sid2apple1.py`](tools/sid2apple1.py) — see [P-LAB A1-SID Sound Card](#-p-lab-a1-sid-sound-card) below
+
 📋 **Clipboard Paste** — Paste code directly into the Apple 1 keyboard from your clipboard
 
 🎮 **30+ Programs Included** — Games, demos, BASIC programs, and dev tools ready to run out of the box
@@ -212,6 +214,54 @@ Load via **File > Load Memory**, select a `.bin` file — default load address i
 
 ---
 
+## 🎵 P-LAB A1-SID Sound Card
+
+POM1 emulates the [P-LAB A1-SID Sound Card](https://p-l4b.github.io/A1-SID/), a MOS 6581/8580 SID expansion for the Apple 1.
+
+- **I/O** at `$C800`–`$CFFF` (29 registers, effective address `& 0x1F`)
+- **3 voices** with waveforms, ADSR, and filter; audio is mixed in **AudioDevice** with the cassette path
+- Toggle via **Hardware > P-LAB A1-SID Sound Card** or the toolbar
+- Coexists with the **P-LAB TMS9918** card (SID at `$C8xx`, VDP at `$CC00` / `$CC01`)
+
+### SID converter
+
+[`tools/sid2apple1.py`](tools/sid2apple1.py) converts **PSID/RSID** files into Apple 1 **`.bin`** images intended for load address **`$0280`** (after loading, run **`280R`** in the Woz Monitor). Recent converter capabilities:
+
+| Feature | Description |
+|--------|-------------|
+| **SID remap** | Rewrites SID register accesses from **`$D400`** to **`$C800`**, including indirect pointer setups |
+| **C64 hardware** | Neutralizes incompatible touches (e.g. **CIA** timers, **VIC** raster) so many players run on the Apple 1 map |
+| **Bootstrap** | Wrapper prints **title/author**, calls **init** / **play**, delay loop tuned for **PAL vs NTSC** timing |
+| **IRQ-style players** | Simulated IRQ entry and **RTI** stub when the tune’s player expects interrupt context |
+| **`--song N`** | Select sub-tune (**1-based**; default follows the SID’s start song) |
+| **`--all-songs`** | Emit one **`.bin`** per sub-tune |
+| **`--hex`** | Also write a Woz Monitor **`.txt`** hex dump |
+| **`--batch dir outdir`** | Convert every **`.sid`** in a directory |
+
+```bash
+# Single tune → Apple 1 binary (default output: <name>.a1sid.bin)
+python3 tools/sid2apple1.py Music.sid
+
+# Chosen sub-tune, optional hex dump
+python3 tools/sid2apple1.py Music.sid out.bin --song 2 --hex
+
+# All sub-tunes into a folder
+python3 tools/sid2apple1.py Music.sid --all-songs ./out_sid/
+
+# Batch folder
+python3 tools/sid2apple1.py --batch /path/to/sids/ ./out_bins/
+```
+
+**Where to get `.sid` files:** the **[High Voltage SID Collection (HVSC)](https://www.exotica.org.uk/wiki/High_Voltage_SID_Collection)** — documented on Exotica — is the canonical large archive of Commodore 64 SID music used worldwide for preservation and playback. It is the usual source when batch-converting tunes for experimentation; always respect copyright and any license terms attached to individual files.
+
+### Bundled SID software (`software/sid/`)
+
+**`software/sid/`** ships **30 `.bin`** tunes ready for the A1-SID — classics from Rob Hubbard (Commando, Crazy Comets, Monty on the Run, International Karate…), Martin Galway (Arkanoid, Game Over, Combat School), Jeroen Tel (Cybernoid II, Myth), Ben Daglish (Blasteroids, Gauntlet, Pac-Mania…), and Chris Huelsbeck (Metro Dance, Wellenreiter, Hard'n'Heavy). Load via **File > Load Memory** at **`$0280`**, then **`280R`**.
+
+> **Known issue:** **Arkanoid** (Martin Galway) converts but does not play — Galway's multi-ISR raster-split player architecture is not yet fully supported by the converter's static ISR detection. **BMX Kidz** (Hubbard) also fails for similar reasons (computed ISR address).
+
+---
+
 ## 🎮 Software Library
 
 The `software/` directory ships with **30+ ready-to-run programs** — load them via **File > Load Memory**.
@@ -279,6 +329,10 @@ Some programs also include their 6502 assembly source code (`.asm`) for study an
 | ✍️ **Typewriter** | Text input and display tool |
 | 🎉 **Party** | Guest check-in management tool |
 
+### 🎵 SID music (A1-SID, `software/sid/`)
+
+Binary tunes for the [P-LAB A1-SID](https://p-l4b.github.io/A1-SID/) — load at **`$0280`**, enable the SID card, then **`280R`**. More tunes can be produced from **`.sid`** files using [`tools/sid2apple1.py`](tools/sid2apple1.py) (see [SID converter](#sid-converter)); source material is commonly drawn from the [HVSC](https://www.exotica.org.uk/wiki/High_Voltage_SID_Collection) archive.
+
 ---
 
 ## 🔧 Assembling Your Own Programs
@@ -310,7 +364,10 @@ POM1/
 ├── Screen_ImGui.cpp/h       # 🖥️ Apple 1 display (40×24, CRT effects)
 ├── GraphicsCard.cpp/h       # 🎨 GEN2 color graphics card (280×192 HIRES)
 ├── TMS9918.cpp/h            # 🖥️ P-LAB TMS9918 VDP (256×192, 15 colors, sprites)
+├── SID.cpp/h                # 🎵 P-LAB A1-SID (6581/8580-style synthesis)
 ├── MemoryViewer_ImGui.cpp/h # 🔍 Hex editor with search & navigation
+├── tools/
+│   └── sid2apple1.py        # 🎛️ C64 PSID/RSID → Apple 1 .bin for A1-SID
 ├── roms/                    # 📀 WozMonitor, BASIC, Krusader, ACI, charmap
 ├── software/                # 📂 Hex dump programs + assembly sources
 │   ├── games/               #   🎮 Games
@@ -320,6 +377,7 @@ POM1/
 │   ├── utils/               #   🧰 Utilities
 │   ├── hgr/                 #   🎨 GEN2 HGR images & programs
 │   ├── tms9918/             #   🖥️ P-LAB TMS9918 programs (Tetris, demos)
+│   ├── sid/                 #   🎵 A1-SID music (.bin)
 │   ├── cassettes/           #   📼 Original-tape .ogg + short readme .txt (reference)
 │   └── tests/               #   🧪 Hardware test programs
 ├── build-wasm/              # 🌐 WebAssembly build output
@@ -337,10 +395,10 @@ POM1/
 | 📼 **ACI** | 256 B | `$C100` | Woz Apple Cassette Interface monitor |
 | 👁️ **Woz Monitor** | 256 B | `$FF00` | Steve Wozniak's original system monitor |
 | 💻 **Apple BASIC** | 4 KB | `$E000` | Integer BASIC interpreter |
-| 🔧 **Krusader 1.3** | 8 KB | `$A000` | Ken Wessen's symbolic assembler |
+| 🔧 **Krusader 1.3** | 8 KB | `$A000` | Ken Wessen's symbolic assembler (not loaded by default — reload via Settings) |
 | 🔤 **Charmap** | 1 KB | — | Character generator table used by the terminal renderer |
 
-The main firmware ROMs are loaded automatically at startup, and `charmap.rom` is used by the terminal renderer when available.
+The main firmware ROMs (Woz Monitor, BASIC, ACI) are loaded automatically at startup. Krusader is **not** loaded by default to keep `$A000-$BFFF` free for SID tunes; reload it via **Settings > Reload Krusader** if needed.
 
 ---
 
@@ -351,13 +409,13 @@ $0000-$00FF   Zero Page
 $0100-$01FF   Stack
 $0200-$1FFF   User RAM (programs load at $0280 or $0300)
 $2000-$3FFF   GEN2 HGR Framebuffer (8 KB — when card is plugged)
-$4000-$9FFF   User RAM
-$A000-$BFFF   Krusader ROM (8 KB)
+$4000-$BFFF   User RAM (Krusader not loaded by default)
 $C000-$C0FF   Apple Cassette Interface I/O
 $C081         Tape input
 $C100-$C1FF   Woz ACI ROM
 $CC00         TMS9918 DATA — VRAM data port (when P-LAB card is plugged)
 $CC01         TMS9918 CTRL — Control/status  (when P-LAB card is plugged)
+$C800-$CFFF   A1-SID — SID registers (when P-LAB SID card is plugged; addr & $1F)
 $D010-$D012   PIA 6821 — Keyboard (KBD) & Display (DSP)  (aliases: $D0Fx)
 $E000-$EFFF   Apple BASIC ROM (4 KB)
 $FF00-$FFFF   Woz Monitor ROM (256 B)
@@ -375,7 +433,7 @@ $FF00-$FFFF   Woz Monitor ROM (256 B)
 - **Achim Breidenbach** — Sim6502
 - **Fabrice Frances** — Java Microtan Emulator
 - **Uncle Bernie** — [GEN2 Color Graphics Card](https://www.applefritter.com/content/uncle-bernies-gen2-color-graphics-card-apple-1) for Apple 1
-- **P-LAB** — [Apple-1 Graphic Card](https://p-l4b.github.io/graphic/) (TMS9918 VDP expansion)
+- **P-LAB** — [A1-SID Sound Card](https://p-l4b.github.io/A1-SID/) & [Apple-1 Graphic Card](https://p-l4b.github.io/graphic/) (TMS9918 VDP expansion)
 - **Nippur72** — [apple1-videocard-lib](https://github.com/nippur72/apple1-videocard-lib) (KickC library, Tetris, demos for P-LAB card)
 - **Tom Owad** — AppleFritter community & Apple 1 resources
 - **Steve Wozniak & Steve Jobs** — For creating the Apple 1 🍎
@@ -387,6 +445,7 @@ $FF00-$FFFF   Woz Monitor ROM (256 B)
 - [**Uncle Bernie's GEN2 Color Graphics Card**](https://www.applefritter.com/content/uncle-bernies-gen2-color-graphics-card-apple-1) — The original hardware project by Uncle Bernie on AppleFritter. A 280×192 HIRES color graphics card for the Apple 1 using Apple II-compatible memory layout and NTSC artifact color encoding.
 - [**P-LAB Apple-1 Graphic Card**](https://p-l4b.github.io/graphic/) — TMS9918 VDP expansion card for the Apple 1. Schematics, documentation, and CodeTank daughterboard.
 - [**apple1-videocard-lib**](https://github.com/nippur72/apple1-videocard-lib) — KickC C library and demos (Tetris, image viewer, etc.) for the P-LAB Graphic Card.
+- [**High Voltage SID Collection (HVSC)**](https://www.exotica.org.uk/wiki/High_Voltage_SID_Collection) — Exotica wiki page for HVSC, the major archive of Commodore 64 SID tunes; use with [`tools/sid2apple1.py`](tools/sid2apple1.py) to build Apple 1 binaries for the A1-SID (see [P-LAB A1-SID Sound Card](#-p-lab-a1-sid-sound-card)).
 - [POM1 Project Page](https://www.gistlabs.net/Apple1project/)
 
 ---

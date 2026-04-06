@@ -64,7 +64,7 @@ ld65 -C software/apple1.cfg -o build/program.bin build/program.o
 - **GraphicsCard.cpp/h**: [Uncle Bernie's GEN2 Color Graphics Card](https://www.applefritter.com/content/uncle-bernies-gen2-color-graphics-card-apple-1) emulation. Passively reads CPU RAM at `$2000-$3FFF` and renders a 280×192 HIRES image with NTSC artifact color (violet/green for group 1, blue/orange for group 2, white for adjacent pixels) in a separate ImGui window. Two-pass rendering: glow halos (semi-transparent rounded rects) then solid pixels on top. Apple II-compatible non-linear scanline memory layout (`scanlineAddress()`). Toggled via Hardware menu or toolbar button; auto-loads a demo HGR image from `software/hgr/` when plugged in.
 - **TMS9918.cpp/h**: [P-LAB Apple-1 Graphic Card](https://p-l4b.github.io/graphic/) emulation. TMS9918A Video Display Processor with 16KB VRAM, I/O at `$CC00` (data) / `$CC01` (control/status). 256×192 resolution, 15 colors, 32 sprites. Supports Graphics I (32×24 tiles), Graphics II (full bitmap), Text (40×24), and Multicolor modes. Renders to a separate ImGui window. Compatible with the [apple1-videocard-lib](https://github.com/nippur72/apple1-videocard-lib) software library. Toggled via Hardware menu or toolbar button.
 - **AudioDevice.cpp/h**: Central audio output device that owns the hardware (miniaudio on desktop, Web Audio ScriptProcessorNode on WASM). Defines the `AudioSource` interface (`fillAudioBuffer(float*, int)`). Mixes all registered `AudioSource` instances (CassetteDevice, SID) into a single mono float32 output at 44.1 kHz. Sources are added/removed dynamically via `addSource()`/`removeSource()`.
-- **SID.cpp/h**: [P-LAB A1-SID Sound Card](https://p-l4b.github.io/A1-SID/) emulation. MOS 6581/8580 SID chip with 3 voices (triangle, sawtooth, pulse, noise waveforms), ADSR envelopes with exponential decay, programmable state-variable filter (low-pass, band-pass, high-pass), 4-bit master volume. I/O at `$C800`-`$CFFF` (29 registers, address `& 0x1F`). Implements `AudioSource` — registered with `AudioDevice` when plugged. Coexists with TMS9918 at `$CC00`-`$CC01`. Toggled via Hardware menu or toolbar button.
+- **SID.cpp/h**: [P-LAB A1-SID Sound Card](https://p-l4b.github.io/A1-SID/) emulation. MOS 6581/8580 SID chip with 3 voices (triangle, sawtooth, pulse, noise waveforms), ADSR envelopes with exponential decay and delay bug, Zero-Delay Feedback SVF filter (Zavalishin trapezoidal topology) with 6581 non-linear cutoff curve and op-amp saturation, 4-bit master volume with digi playback DC offset. 4× oversampling at 176.4 kHz with triangular decimation, 18 kHz output lowpass. I/O at `$C800`-`$CFFF` (29 registers, address `& 0x1F`). Implements `AudioSource` — registered with `AudioDevice` when plugged. Coexists with TMS9918 at `$CC00`-`$CC01`. Toggled via Hardware menu or toolbar button.
 
 ### ROM Files (roms/)
 - **WozMonitor.rom** (256B @ 0xFF00): Wozniak's system monitor
@@ -82,7 +82,7 @@ Contains Apple 1 programs in Woz Monitor hex dump format (.txt) organized in sub
 - **tests/**: Hardware test programs — hex I/O, keyboard, terminal tests
 - **hgr/**: GEN2 HGR demo images (raw 8 KB binary loaded at `$2000`)
 - **tms9918/**: P-LAB TMS9918 programs — Tetris, demo suite, PicShow image viewer (KickC binaries loaded at `$0280`)
-- **sid/**: P-LAB A1-SID programs — Monty on the Run 3-voice SID tune player, SID sound test (C major scale)
+- **sid/**: P-LAB A1-SID programs — 30 SID tunes converted from HVSC `.sid` files via `tools/sid2apple1.py` (Rob Hubbard, Martin Galway, Jeroen Tel, Ben Daglish, Chris Huelsbeck). Includes IRQ-driven tunes (Arkanoid, Game Over, Combat School, Last V8, Myth). Binary `.bin` files loaded at `$0280`.
 - **cassettes/**: Reference material for the Apple cassette library — short readme `.txt` files and **`.ogg`** captures of original tapes (preservation / listening). POM1’s **Cassette Control** loads **`.wav`** or **`.aci`** only; convert or re-encode to WAV if you want to feed those captures into the emulated ACI.
 
 Programs can be loaded via File > Load Memory, which provides a file browser with folder navigation. Assembly source files (`.asm`) can be assembled with cc65. Most programs come from [apple1software.com](https://apple1software.com/), an outstanding archive of Apple 1 software, hardware documentation, and historical resources. [AppleFritter](https://applefritter.com/apple1/) is the community hub where much of the technical research, BASIC version history, and hardware knowledge originates.
@@ -150,8 +150,7 @@ Visual 16x16 grid (256 pages = 64KB) with color-coded regions, KB labels, PC/SP 
 0x0100-0x01FF  Stack
 0x0200-0x1FFF  User RAM (programs typically load at 0x0280 or 0x0300)
 0x2000-0x3FFF  GEN2 HGR Framebuffer (8 KB — when card is plugged)
-0x4000-0x9FFF  User RAM
-0xA000-0xBFFF  Krusader ROM (8 KB)
+0x4000-0xBFFF  User RAM (Krusader ROM no longer loaded by default)
 0xC800-0xCFFF  A1-SID I/O (29 registers, addr & 0x1F, when P-LAB SID is plugged)
 0xCC00         TMS9918 DATA - VRAM data port   (when P-LAB card is plugged)
 0xCC01         TMS9918 CTRL - Control/status    (when P-LAB card is plugged)
@@ -191,11 +190,15 @@ The `build/`, `build-wasm/`, and `imgui/` directories are excluded from git via 
 ## Version History
 
 ### v1.5 (April 2026) — P-LAB A1-SID Sound Card
-- [P-LAB A1-SID Sound Card](https://p-l4b.github.io/A1-SID/) (MOS 6581/8580 SID): 3 voices, 4 waveforms (triangle/sawtooth/pulse/noise), ADSR envelopes with exponential decay, state-variable filter (LP/BP/HP), 4-bit master volume, I/O at `$C800`-`$CFFF`, toggle via Hardware menu or toolbar
-- AudioDevice: central audio mixer extracted from CassetteDevice — owns the hardware (miniaudio / Web Audio), mixes registered `AudioSource` instances (CassetteDevice + SID). CassetteDevice and SID are independent audio sources
-- Coexists with TMS9918 at `$CC00`-`$CC01` (TMS9918 has priority at its addresses)
-- Bundled SID software: Monty on the Run 3-voice tune player, SID sound test (C major scale) — in `software/sid/`
+- [P-LAB A1-SID Sound Card](https://p-l4b.github.io/A1-SID/) (MOS 6581/8580 SID): 3 voices, 4 waveforms (triangle/sawtooth/pulse/noise), ADSR envelopes with exponential decay and 6581 delay bug, Zero-Delay Feedback SVF filter (Zavalishin trapezoidal) with non-linear 6581 cutoff curve and op-amp saturation (input + BP feedback via `tanh`), 4-bit master volume with digi playback DC offset, I/O at `$C800`-`$CFFF`, toggle via Hardware menu or toolbar
+- SID emulation quality: 4× oversampling (176.4 kHz) with triangular decimation [1,3,3,1]/8, fractional phase accumulator, correct noise LFSR bit extraction (bits 22/20/16/13/11/7/4/2), noise+waveform LFSR writeback, combined waveform low-bit pull-down, voice DC bias (+0.17), waveform-0 exponential decay (anti-click), PW extreme handling ($000/$FFF), 18 kHz output lowpass, DC blocker for digi, ADSR cycle accumulator clamped to max rate period
+- AudioDevice: central audio mixer extracted from CassetteDevice — owns the hardware (miniaudio / Web Audio), mixes registered `AudioSource` instances (CassetteDevice + SID)
+- `tools/sid2apple1.py`: converts C64 PSID/RSID `.sid` files to Apple 1 `.bin` — 7 patching passes (absolute SID $D4→$C8, immediate pointer setups, CIA timer reads, VIC $D0xx neutralization, SID data tables, IRQ vector/CIA writes, Kernal exit redirection), IRQ-driven ISR detection (`play=$0000`), wrapper with RTI stub for interrupt-context players, PAL/NTSC timing, title/author display, `--song N`, `--all-songs`, `--hex`, `--batch`
+- Bundled 30 SID tunes from HVSC (Rob Hubbard, Martin Galway, Jeroen Tel, Ben Daglish, Chris Huelsbeck) including 5 IRQ-driven (Arkanoid, Game Over, Combat School, Last V8, Myth) — in `software/sid/`
+- Krusader ROM no longer loaded at default — `$A000-$BFFF` is free User RAM (enables SID tunes loading in that range)
+- Auto-enable hardware cards when loading from `software/sid/`, `software/hgr/`, `software/tms9918/`
 - Memory Map and Memory Viewer show A1-SID I/O region in purple when card is plugged
+- Coexists with TMS9918 at `$CC00`-`$CC01` (TMS9918 has priority at its addresses)
 
 ### v1.4 (April 2026) — P-LAB Apple-1 Graphic Card (TMS9918)
 - [P-LAB Apple-1 Graphic Card](https://p-l4b.github.io/graphic/) (TMS9918 VDP): 256×192, 15 colors, 32 sprites, I/O at `$CC00`/`$CC01`, Graphics I/II/Text/Multicolor modes, compatible with [apple1-videocard-lib](https://github.com/nippur72/apple1-videocard-lib), toggle via Hardware menu or toolbar
@@ -254,3 +257,6 @@ When bumping the version number, update **all** of these:
 1. **No native file dialog**: File loading/saving uses built-in file browsers instead of system file pickers.
 2. **GEN2 HGR Maze higher resolution**: The current HGR Maze uses 19×11 cells (7×8 pixel blocks). A higher-resolution version with 16-bit DFS and smaller blocks (e.g., 34×23 cells, 4×4 blocks) was attempted but produced visual artifacts due to NTSC artifact color rendering of non-byte-aligned pixel blocks. Needs a rendering approach that produces solid white walls at sub-byte granularity.
 3. **GEN2 programs in `software/hgr/`**: Only a demo image and the HGR Maze are included. More GEN2 programs could be added (e.g., image viewers, drawing tools, more demos).
+4. **SID: Arkanoid (Martin Galway) does not play**: The IRQ ISR is detected at `$4086` and the conversion completes, but the tune remains silent at runtime. Galway's player uses a multi-ISR architecture with VIC raster splits that switches between ISR addresses during playback — the static ISR detection picks up only the first handler. Needs a more sophisticated approach (e.g., dynamic ISR tracing or multi-handler support).
+5. **SID: some IRQ-driven tunes may not work**: ISR detection relies on static pattern matching (`LDA #xx / STA $FFFE`). Players that compute the ISR address dynamically or use `JMP ($FFFE)` indirect vectors are not detected. BMX Kidz (Hubbard) is a known case.
+6. **SID converter: false-positive patching**: The byte-scan passes (VIC $D0xx, data tables) can occasionally NOP legitimate code or patch data that isn't a SID address. The `--batch` mode residual-$D4 warnings help identify these cases.
