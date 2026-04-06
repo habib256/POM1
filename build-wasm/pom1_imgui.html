@@ -3,84 +3,35 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta name="description" content="POM1 v1.7 — Apple 1 emulator in the browser (WebAssembly). ACI cassette, GEN2 HGR, P-LAB TMS9918, A1-SID, microSD card (preloaded sdcard/).">
+  <meta name="description" content="POM1 v1.7 — Apple 1 emulator in the browser (WebAssembly).">
   <title>POM1 v1.7 — Apple 1 Emulator</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
 
     body {
-      background: linear-gradient(165deg, #16162a 0%, #1a1a2e 45%, #12121c 100%);
-      color: #e4e4ea;
-      font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+      background: #000;
       display: flex;
       flex-direction: column;
       align-items: center;
+      justify-content: center;
       min-height: 100vh;
-    }
-
-    /* ── Header ── */
-    #header {
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      gap: 6px;
-      margin: 18px 16px 12px;
-      user-select: none;
-      text-align: center;
-    }
-    #header .row {
-      display: flex;
-      align-items: center;
-      gap: 14px;
-    }
-    #header .apple {
-      font-size: 2.2rem;
-      line-height: 1;
-    }
-    #header h1 {
-      font-size: 1.5rem;
-      font-weight: 600;
-      letter-spacing: 0.5px;
-    }
-    #header .tagline {
-      color: #8b8ba8;
-      font-weight: 400;
-      font-size: 0.82rem;
-      max-width: 42rem;
-      line-height: 1.45;
-    }
-    #header .tagline kbd {
-      font-family: ui-monospace, monospace;
-      font-size: 0.78em;
-      padding: 0.1em 0.35em;
-      border-radius: 4px;
-      background: rgba(255,255,255,0.08);
-      border: 1px solid rgba(255,255,255,0.12);
     }
 
     /* ── Canvas ── */
     #canvas-container {
-      border: 2px solid #3a3a55;
-      border-radius: 8px;
       overflow: hidden;
-      box-shadow:
-        0 4px 28px rgba(0,0,0,0.55),
-        0 0 0 1px rgba(100,200,140,0.06);
       background: #000;
       width: fit-content;
-      max-width: min(96vw, 1280px);
+      max-width: 100vw;
       height: fit-content;
-      max-height: min(92vh, 900px);
-      margin: 0 auto;
-      min-width: 320px;
-      min-height: 240px;
+      max-height: 100vh;
     }
     canvas.emscripten {
       display: block;
       width: auto;
       height: auto;
-      max-width: 100%;
-      max-height: min(92vh, 900px);
+      max-width: 100vw;
+      max-height: 100vh;
       cursor: default !important;
     }
 
@@ -89,9 +40,6 @@
     #canvas-container:-webkit-full-screen {
       width: 100vw;
       height: 100vh;
-      border: none;
-      border-radius: 0;
-      box-shadow: none;
     }
     #canvas-container:fullscreen canvas,
     #canvas-container:-webkit-full-screen canvas {
@@ -104,10 +52,10 @@
       display: flex;
       align-items: center;
       justify-content: center;
-      flex-wrap: wrap;
       gap: 10px;
-      margin: 8px 16px 18px;
+      margin: 8px;
       min-height: 22px;
+      font-family: system-ui, sans-serif;
       font-size: 0.8rem;
       color: #9a9ab5;
     }
@@ -121,30 +69,9 @@
       display: none;
     }
     @keyframes spin { to { transform: rotate(360deg); } }
-
-    /* ── Footer ── */
-    #footer {
-      margin-top: auto;
-      padding: 12px 16px 16px;
-      font-size: 0.7rem;
-      color: #5c5c72;
-      text-align: center;
-      line-height: 1.5;
-      max-width: 36rem;
-    }
   </style>
 </head>
 <body>
-
-  <div id="header">
-    <div class="row">
-      <div class="apple" aria-hidden="true">&#127822;</div>
-      <h1>POM1 v1.7</h1>
-    </div>
-    <p class="tagline">
-      Apple 1 emulator &mdash; WebAssembly / Emscripten. Preloaded assets: <kbd>roms/</kbd>, <kbd>fonts/</kbd>, <kbd>software/</kbd>, <kbd>sdcard/</kbd> (P-LAB microSD). Click the page once if cassette or SID audio is silent (browser autoplay policy).
-    </p>
-  </div>
 
   <div id="canvas-container">
     <canvas class="emscripten" id="canvas" oncontextmenu="event.preventDefault()" tabindex="-1"></canvas>
@@ -154,11 +81,6 @@
     <div class="spinner" id="spinner"></div>
     <span id="status">Loading...</span>
     <progress id="progress" value="0" max="100"></progress>
-  </div>
-
-  <div id="footer">
-    POM1 &copy; 2000&ndash;2026 Verhille Arnaud &mdash; GPL v3.
-    Hardware docs: P-LAB A1-SID, Graphic (TMS9918), microSD, Terminal Card, MODEM BBS; Uncle Bernie GEN2 (AppleFritter).
   </div>
 
   <script>
@@ -197,13 +119,15 @@
         }
         statusElement.innerHTML = text;
         spinnerElement.style.display = text ? 'block' : 'none';
+        if (!text && !m) document.getElementById('status-bar').style.display = 'none';
       },
 
       monitorRunDependencies: function(left) {
         this.totalDependencies = Math.max(this.totalDependencies, left);
         Module.setStatus(left
           ? 'Preparing… (' + (this.totalDependencies - left) + '/' + this.totalDependencies + ')'
-          : 'Ready.');
+          : '');
+        if (!left) document.getElementById('status-bar').style.display = 'none';
       },
       totalDependencies: 0
     };
