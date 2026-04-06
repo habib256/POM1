@@ -42,7 +42,21 @@ emcmake cmake ..
 emmake make -j"$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 4)"
 emrun pom1_imgui.html                # Test locally (needs a local HTTP server on some setups)
 ```
-Outputs in `build-wasm/`: `pom1_imgui.html`, `pom1_imgui.js`, `pom1_imgui.wasm`, and `pom1_imgui.data` (packaged preload of `roms/`, `fonts/`, and full `software/` tree including `software/hgr/`). Rebuild WASM after changing those assets so the embedded file list stays in sync.
+
+**Outputs** in `build-wasm/`: `pom1_imgui.html`, `pom1_imgui.js`, `pom1_imgui.wasm`, and `pom1_imgui.data`. The `.data` bundle is Emscripten’s **MEMFS** preload, produced by CMake `--preload-file` rules:
+
+| Host path (repo) | Mount in WASM VFS |
+|------------------|-------------------|
+| `roms/`          | `roms/`           |
+| `fonts/`         | `fonts/`          |
+| `software/`      | `software/`       |
+| **`sdcard/`**    | **`sdcard/`**     |
+
+**Rebuild WASM** after changing any file under those directories (or after editing `build-wasm/shell.html`) so `pom1_imgui.data` stays in sync.
+
+**WebAssembly and virtual SD card (`sdcard/`)**: On desktop, `Memory` constructor probes `sdcard`, `../sdcard`, and `../../sdcard` relative to the process working directory and calls `MicroSD::setSDCardPath()` when a directory exists. In the browser, the same tree is available because **`sdcard/` is preloaded** at the virtual path `sdcard/` (see table above). Enable **Hardware > P-LAB microSD Storage Card**, then run **`8000R`** to start the SD CARD OS — `DIR`, `LOAD`, `CD`, etc. operate on that embedded filesystem. The public WASM build cannot read the visitor’s local disk; only content baked into `pom1_imgui.data` is visible to the emulated card. To ship new files on the web, add them under **`sdcard/`** in the repository and rebuild WASM.
+
+Hardware reference: [P-LAB Apple-1 microSD Storage Card](https://p-l4b.github.io/sdcard/).
 
 ### Assembling programs (requires cc65)
 ```bash
@@ -90,6 +104,8 @@ Contains Apple 1 programs in Woz Monitor hex dump format (.txt) organized in sub
 
 ### Virtual SD Card (sdcard/)
 The `sdcard/` directory at the project root is the virtual microSD card content for the P-LAB microSD Storage Card emulation. Files placed here are accessible from the SD CARD OS shell (enter with `8000R`). Files use tagged naming: `NAME#TTAAAA` where `TT` is the file type (`06`=binary, `F1`=Integer BASIC, `F8`=AppleSoft BASIC) and `AAAA` is the hex load address. Example: `GAME#F10300` is a BASIC program loading at `$0300`.
+
+For **WebAssembly**, this directory is copied into the `.data` preload at the virtual path `sdcard/` — see **Build WASM** (table + notes) above.
 
 Programs can be loaded via File > Load Memory, which provides a file browser with folder navigation. Assembly source files (`.asm`) can be assembled with cc65. Most programs come from [apple1software.com](https://apple1software.com/), an outstanding archive of Apple 1 software, hardware documentation, and historical resources. [AppleFritter](https://applefritter.com/apple1/) is the community hub where much of the technical research, BASIC version history, and hardware knowledge originates.
 
@@ -201,6 +217,7 @@ The `build/`, `build-wasm/`, and `imgui/` directories are excluded from git via 
 ### v1.6 (April 2026) — P-LAB microSD Storage Card
 - [P-LAB Apple-1 microSD Storage Card](https://p-l4b.github.io/sdcard/) emulation: 65C22 VIA at `$A000`-`$A00F`, ATMEGA MCU protocol emulation, SD CARD OS ROM (8KB EEPROM) at `$8000`-`$9FFF`, DOS-like CLI with DIR/LS/CD/LOAD/SAVE/READ/WRITE/DEL/MKDIR/RMDIR/PWD/MOUNT commands
 - Virtual SD card maps host `sdcard/` directory as FAT32 filesystem — files placed there are accessible from the SD CARD OS shell (`8000R`)
+- **WebAssembly**: `CMakeLists.txt` preloads `sdcard/` into MEMFS (`--preload-file …/sdcard@sdcard`) alongside `roms/`, `fonts/`, and `software/` so the browser build sees the same virtual card tree as desktop
 - Tagged filename support (`NAME#TTAAAA`): file type (#06=binary, #F1=Integer BASIC, #F8=AppleSoft BASIC) and hex load address
 - Fuzzy filename matching for LOAD command (case-insensitive prefix match, sends full tagged filename to firmware)
 - VIA 65C22 handshake protocol: synchronous MCU emulation responds instantly within CPU write cycles — no busy-wait overhead

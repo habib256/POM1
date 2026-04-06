@@ -71,7 +71,7 @@ var ENVIRONMENT_IS_SHELL = !ENVIRONMENT_IS_WEB && !ENVIRONMENT_IS_NODE && !ENVIR
 
 // --pre-jses are emitted after the Module integration code, so that they can
 // refer to Module (if they choose; they can also define Module)
-// include: /var/folders/rr/935v6_790s9d0711dv99d16r0000gn/T/tmpo9n29kyo.js
+// include: /var/folders/rr/935v6_790s9d0711dv99d16r0000gn/T/tmpj6ehr987.js
 
   if (!Module['expectedDataFileDownloads']) Module['expectedDataFileDownloads'] = 0;
   Module['expectedDataFileDownloads']++;
@@ -161,6 +161,8 @@ var ENVIRONMENT_IS_SHELL = !ENVIRONMENT_IS_WEB && !ENVIRONMENT_IS_NODE && !ENVIR
       }
 Module['FS_createPath']("/", "fonts", true, true);
 Module['FS_createPath']("/", "roms", true, true);
+Module['FS_createPath']("/", "sdcard", true, true);
+Module['FS_createPath']("/sdcard", "APPLE1", true, true);
 Module['FS_createPath']("/", "software", true, true);
 Module['FS_createPath']("/software", "basic", true, true);
 Module['FS_createPath']("/software", "cassettes", true, true);
@@ -212,25 +214,25 @@ Module['FS_createPath']("/software", "utils", true, true);
     }
 
     }
-    loadPackage({"files": [{"filename": "/fonts/fa-solid-900.ttf", "start": 0, "end": 426112}, {"filename": "/roms/ACI.rom", "start": 426112, "end": 426368}, {"filename": "/roms/WozMonitor.rom", "start": 426368, "end": 426624}, {"filename": "/roms/basic.rom", "start": 426624, "end": 430720}, {"filename": "/roms/charmap.rom", "start": 430720, "end": 431744}, {"filename": "/roms/krusader-1.3.rom", "start": 431744, "end": 439936}, {"filename": "/software/.DS_Store", "start": 439936, "end": 448132}, {"filename": "/software/apple1.cfg", "start": 448132, "end": 448376}, {"filename": "/software/basic/.DS_Store", "start": 448376, "end": 454524}, {"filename": "/software/basic/blackjack.apl.txt", "start": 454524, "end": 461509}, {"filename": "/software/basic/dobble.apl.txt", "start": 461509, "end": 472894}, {"filename": "/software/basic/hamurabi.apl.txt", "start": 472894, "end": 483879}, {"filename": "/software/basic/lunar-lander-ascii-graphics.apl.txt", "start": 483879, "end": 494864}, {"filename": "/software/basic/mini-startrek.apl.txt", "start": 494864, "end": 505849}, {"filename": "/software/basic/resistor-calculator.apl.txt", "start": 505849, "end": 512834}, {"filename": "/software/basic/stopwatch.apl.txt", "start": 512834, "end": 519819}, {"filename": "/software/basic/twinkle.apl.txt", "start": 519819, "end": 526804}, {"filename": "/software/cassettes/APPLE30TH.ogg", "start": 526804, "end": 707099}, {"filename": "/software/cassettes/ASMmchess.ogg", "start": 707099, "end": 838479}, {"filename": "/software/cassettes/AceyDucey.ogg", "start": 838479, "end": 996518}, {"filename": "/software/cassettes/AppleiEnhancedCheckers.ogg", "start": 996518, "end": 1340954}, {"filename": "/software/cassettes/BASIC.ogg", "start": 1340954, "end": 1695269}, {"filename": "/software/cassettes/Blackjack.ogg", "start": 1695269, "end": 1856863}, {"filename": "/software/cassettes/Bowling.ogg", "start": 1856863, "end": 2051130}, {"filename": "/software/cassettes/Buzzword.ogg", "start": 2051130, "end": 2245268}, {"filename": "/software/cassettes/Craps.ogg", "start": 2245268, "end": 2441613}, {"filename": "/software/cassettes/DealOrNoDeal.ogg", "start": 2441613, "end": 3100407}, {"filename": "/software/cassettes/Football.ogg", "start": 3100407, "end": 3867481}, {"filename": "/software/cassettes/Hamurabi.ogg", "start": 3867481, "end": 4071885}, {"filename": "/software/cassettes/HiLo.ogg", "start": 4071885, "end": 4375634}, {"filename": "/software/cassettes/Life.ogg", "start": 4375634, "end": 4433015}, {"filename": "/software/cassettes/LunarLander.ogg", "start": 4433015, "end": 4640580}, {"filename": "/software/cassettes/LunarlanderasciiGraphics.ogg", "start": 4640580, "end": 4983746}, {"filename": "/software/cassettes/Mastermind.ogg", "start": 4983746, "end": 5102072}, {"filename": "/software/cassettes/Microchess.ogg", "start": 5102072, "end": 5231452}, {"filename": "/software/cassettes/Pasart.ogg", "start": 5231452, "end": 5293086}, {"filename": "/software/cassettes/Slots.ogg", "start": 5293086, "end": 5499369}, {"filename": "/software/cassettes/StarTrek.ogg", "start": 5499369, "end": 5851509}, {"filename": "/software/cassettes/StarTrek2003.ogg", "start": 5851509, "end": 6507879}, {"filename": "/software/cassettes/WordCross.ogg", "start": 6507879, "end": 6877037}, {"filename": "/software/cassettes/Wumpus.ogg", "start": 6877037, "end": 7259084}, {"filename": "/software/demos/30th.apl.txt", "start": 7259084, "end": 7269895}, {"filename": "/software/demos/beer.apl.txt", "start": 7269895, "end": 7270531}, {"filename": "/software/demos/cat.apl.txt", "start": 7270531, "end": 7272764}, {"filename": "/software/demos/cellular.apl.txt", "start": 7272764, "end": 7274516}, {"filename": "/software/demos/life.txt", "start": 7274516, "end": 7276184}, {"filename": "/software/demos/mandelbrot-65.apl.txt", "start": 7276184, "end": 7280367}, {"filename": "/software/demos/pasart.apl.txt", "start": 7280367, "end": 7282147}, {"filename": "/software/dev/ENHANCEDBASIC.txt", "start": 7282147, "end": 7314364}, {"filename": "/software/dev/WozMonitor.txt", "start": 7314364, "end": 7315383}, {"filename": "/software/dev/a1assembler.apl.txt", "start": 7315383, "end": 7328038}, {"filename": "/software/dev/apple1_basic-d.apl.txt", "start": 7328038, "end": 7340849}, {"filename": "/software/dev/basic-pagetable.apl.txt", "start": 7340849, "end": 7353660}, {"filename": "/software/dev/dis-assembler.apl.txt", "start": 7353660, "end": 7355159}, {"filename": "/software/dev/fig-fORTH110.txt", "start": 7355159, "end": 7375760}, {"filename": "/software/games/15-puzzle.apl.txt", "start": 7375760, "end": 7378890}, {"filename": "/software/games/2048.apl.txt", "start": 7378890, "end": 7385033}, {"filename": "/software/games/LittleTower-1.0.asm", "start": 7385033, "end": 7409833}, {"filename": "/software/games/LittleTower-1.0.txt", "start": 7409833, "end": 7430249}, {"filename": "/software/games/Maze2_Backtracker.asm", "start": 7430249, "end": 7444803}, {"filename": "/software/games/Maze2_Backtracker.txt", "start": 7444803, "end": 7448203}, {"filename": "/software/games/Maze_Sidewinder.asm", "start": 7448203, "end": 7461910}, {"filename": "/software/games/Maze_Sidewinder.txt", "start": 7461910, "end": 7464569}, {"filename": "/software/games/codebreaker.apl.txt", "start": 7464569, "end": 7470980}, {"filename": "/software/games/lunar-lander-text-only.apl.txt", "start": 7470980, "end": 7476370}, {"filename": "/software/games/mastermind.apl.txt", "start": 7476370, "end": 7476935}, {"filename": "/software/games/microchess.apl.txt", "start": 7476935, "end": 7483971}, {"filename": "/software/games/peg-solitaire.apl.txt", "start": 7483971, "end": 7486382}, {"filename": "/software/games/shut-the-box.apl.txt", "start": 7486382, "end": 7489593}, {"filename": "/software/games/worple.apl.txt", "start": 7489593, "end": 7500001}, {"filename": "/software/hgr/.DS_Store", "start": 7500001, "end": 7506149}, {"filename": "/software/hgr/GEN2.HGR.BIN", "start": 7506149, "end": 7514333}, {"filename": "/software/hgr/HGR1_Maze.asm", "start": 7514333, "end": 7526259}, {"filename": "/software/hgr/HGR1_Maze.txt", "start": 7526259, "end": 7529172}, {"filename": "/software/hgr/apple1_gen2.cfg", "start": 7529172, "end": 7529702}, {"filename": "/software/pom1.cfg", "start": 7529702, "end": 7529946}, {"filename": "/software/sid/.DS_Store", "start": 7529946, "end": 7536094}, {"filename": "/software/sid/Battle_of_Britain.bin", "start": 7536094, "end": 7572318}, {"filename": "/software/sid/Blasteroids.bin", "start": 7572318, "end": 7579384}, {"filename": "/software/sid/Bobby_Bearing.bin", "start": 7579384, "end": 7585865}, {"filename": "/software/sid/Chain_Reaction.bin", "start": 7585865, "end": 7590514}, {"filename": "/software/sid/Commando.bin", "start": 7590514, "end": 7614393}, {"filename": "/software/sid/Crazy_Comets.bin", "start": 7614393, "end": 7638601}, {"filename": "/software/sid/Gauntlet.bin", "start": 7638601, "end": 7648684}, {"filename": "/software/sid/Masters_of_the_Universe.bin", "start": 7648684, "end": 7681920}, {"filename": "/software/sid/Monty_on_the_Run.bin", "start": 7681920, "end": 7719616}, {"filename": "/software/sid/One_Man_and_his_Droid.bin", "start": 7719616, "end": 7727046}, {"filename": "/software/sid/Pac-Mania.bin", "start": 7727046, "end": 7754054}, {"filename": "/software/sid/Proteus.bin", "start": 7754054, "end": 7758950}, {"filename": "/software/sid/Wellenreiter.bin", "start": 7758950, "end": 7772336}, {"filename": "/software/tests/ASCII_hex_Terminal.txt", "start": 7772336, "end": 7772598}, {"filename": "/software/tests/ASCII_hex_keyboard.txt", "start": 7772598, "end": 7772820}, {"filename": "/software/tests/Getting_The_System_Running.txt", "start": 7772820, "end": 7773647}, {"filename": "/software/tests/Print_with_hex.txt", "start": 7773647, "end": 7774662}, {"filename": "/software/tms9918/demo.bin", "start": 7774662, "end": 7781028}, {"filename": "/software/tms9918/picshow.bin", "start": 7781028, "end": 7793856}, {"filename": "/software/tms9918/tetris.bin", "start": 7793856, "end": 7801164}, {"filename": "/software/tms9918/tms9918_test.txt", "start": 7801164, "end": 7802052}, {"filename": "/software/utils/party.apl.txt", "start": 7802052, "end": 7813729}, {"filename": "/software/utils/typewriter.apl.txt", "start": 7813729, "end": 7814449}], "remote_package_size": 7814449});
+    loadPackage({"files": [{"filename": "/fonts/fa-solid-900.ttf", "start": 0, "end": 426112}, {"filename": "/roms/ACI.rom", "start": 426112, "end": 426368}, {"filename": "/roms/WozMonitor.rom", "start": 426368, "end": 426624}, {"filename": "/roms/basic.rom", "start": 426624, "end": 430720}, {"filename": "/roms/charmap.rom", "start": 430720, "end": 431744}, {"filename": "/roms/krusader-1.3.rom", "start": 431744, "end": 439936}, {"filename": "/roms/sdcard.rom", "start": 439936, "end": 448113}, {"filename": "/sdcard/APPLE1/PIC#062000", "start": 448113, "end": 456305}, {"filename": "/sdcard/TEST#060300", "start": 456305, "end": 456313}, {"filename": "/software/.DS_Store", "start": 456313, "end": 464509}, {"filename": "/software/apple1.cfg", "start": 464509, "end": 464753}, {"filename": "/software/basic/.DS_Store", "start": 464753, "end": 470901}, {"filename": "/software/basic/blackjack.apl.txt", "start": 470901, "end": 477886}, {"filename": "/software/basic/dobble.apl.txt", "start": 477886, "end": 489271}, {"filename": "/software/basic/hamurabi.apl.txt", "start": 489271, "end": 500256}, {"filename": "/software/basic/lunar-lander-ascii-graphics.apl.txt", "start": 500256, "end": 511241}, {"filename": "/software/basic/mini-startrek.apl.txt", "start": 511241, "end": 522226}, {"filename": "/software/basic/resistor-calculator.apl.txt", "start": 522226, "end": 529211}, {"filename": "/software/basic/stopwatch.apl.txt", "start": 529211, "end": 536196}, {"filename": "/software/basic/twinkle.apl.txt", "start": 536196, "end": 543181}, {"filename": "/software/cassettes/APPLE30TH.ogg", "start": 543181, "end": 723476}, {"filename": "/software/cassettes/ASMmchess.ogg", "start": 723476, "end": 854856}, {"filename": "/software/cassettes/AceyDucey.ogg", "start": 854856, "end": 1012895}, {"filename": "/software/cassettes/AppleiEnhancedCheckers.ogg", "start": 1012895, "end": 1357331}, {"filename": "/software/cassettes/BASIC.ogg", "start": 1357331, "end": 1711646}, {"filename": "/software/cassettes/Blackjack.ogg", "start": 1711646, "end": 1873240}, {"filename": "/software/cassettes/Bowling.ogg", "start": 1873240, "end": 2067507}, {"filename": "/software/cassettes/Buzzword.ogg", "start": 2067507, "end": 2261645}, {"filename": "/software/cassettes/Craps.ogg", "start": 2261645, "end": 2457990}, {"filename": "/software/cassettes/DealOrNoDeal.ogg", "start": 2457990, "end": 3116784}, {"filename": "/software/cassettes/Football.ogg", "start": 3116784, "end": 3883858}, {"filename": "/software/cassettes/Hamurabi.ogg", "start": 3883858, "end": 4088262}, {"filename": "/software/cassettes/HiLo.ogg", "start": 4088262, "end": 4392011}, {"filename": "/software/cassettes/Life.ogg", "start": 4392011, "end": 4449392}, {"filename": "/software/cassettes/LunarLander.ogg", "start": 4449392, "end": 4656957}, {"filename": "/software/cassettes/LunarlanderasciiGraphics.ogg", "start": 4656957, "end": 5000123}, {"filename": "/software/cassettes/Mastermind.ogg", "start": 5000123, "end": 5118449}, {"filename": "/software/cassettes/Microchess.ogg", "start": 5118449, "end": 5247829}, {"filename": "/software/cassettes/Pasart.ogg", "start": 5247829, "end": 5309463}, {"filename": "/software/cassettes/Slots.ogg", "start": 5309463, "end": 5515746}, {"filename": "/software/cassettes/StarTrek.ogg", "start": 5515746, "end": 5867886}, {"filename": "/software/cassettes/StarTrek2003.ogg", "start": 5867886, "end": 6524256}, {"filename": "/software/cassettes/WordCross.ogg", "start": 6524256, "end": 6893414}, {"filename": "/software/cassettes/Wumpus.ogg", "start": 6893414, "end": 7275461}, {"filename": "/software/demos/30th.apl.txt", "start": 7275461, "end": 7286272}, {"filename": "/software/demos/beer.apl.txt", "start": 7286272, "end": 7286908}, {"filename": "/software/demos/cat.apl.txt", "start": 7286908, "end": 7289141}, {"filename": "/software/demos/cellular.apl.txt", "start": 7289141, "end": 7290893}, {"filename": "/software/demos/life.txt", "start": 7290893, "end": 7292561}, {"filename": "/software/demos/mandelbrot-65.apl.txt", "start": 7292561, "end": 7296744}, {"filename": "/software/demos/pasart.apl.txt", "start": 7296744, "end": 7298524}, {"filename": "/software/dev/ENHANCEDBASIC.txt", "start": 7298524, "end": 7330741}, {"filename": "/software/dev/WozMonitor.txt", "start": 7330741, "end": 7331760}, {"filename": "/software/dev/a1assembler.apl.txt", "start": 7331760, "end": 7344415}, {"filename": "/software/dev/apple1_basic-d.apl.txt", "start": 7344415, "end": 7357226}, {"filename": "/software/dev/basic-pagetable.apl.txt", "start": 7357226, "end": 7370037}, {"filename": "/software/dev/dis-assembler.apl.txt", "start": 7370037, "end": 7371536}, {"filename": "/software/dev/fig-fORTH110.txt", "start": 7371536, "end": 7392137}, {"filename": "/software/games/15-puzzle.apl.txt", "start": 7392137, "end": 7395267}, {"filename": "/software/games/2048.apl.txt", "start": 7395267, "end": 7401410}, {"filename": "/software/games/LittleTower-1.0.asm", "start": 7401410, "end": 7426210}, {"filename": "/software/games/LittleTower-1.0.txt", "start": 7426210, "end": 7446626}, {"filename": "/software/games/Maze2_Backtracker.asm", "start": 7446626, "end": 7461180}, {"filename": "/software/games/Maze2_Backtracker.txt", "start": 7461180, "end": 7464580}, {"filename": "/software/games/Maze_Sidewinder.asm", "start": 7464580, "end": 7478287}, {"filename": "/software/games/Maze_Sidewinder.txt", "start": 7478287, "end": 7480946}, {"filename": "/software/games/codebreaker.apl.txt", "start": 7480946, "end": 7487357}, {"filename": "/software/games/lunar-lander-text-only.apl.txt", "start": 7487357, "end": 7492747}, {"filename": "/software/games/mastermind.apl.txt", "start": 7492747, "end": 7493312}, {"filename": "/software/games/microchess.apl.txt", "start": 7493312, "end": 7500348}, {"filename": "/software/games/peg-solitaire.apl.txt", "start": 7500348, "end": 7502759}, {"filename": "/software/games/shut-the-box.apl.txt", "start": 7502759, "end": 7505970}, {"filename": "/software/games/worple.apl.txt", "start": 7505970, "end": 7516378}, {"filename": "/software/hgr/.DS_Store", "start": 7516378, "end": 7522526}, {"filename": "/software/hgr/GEN2.HGR.BIN", "start": 7522526, "end": 7530710}, {"filename": "/software/hgr/HGR1_Maze.asm", "start": 7530710, "end": 7542636}, {"filename": "/software/hgr/HGR1_Maze.txt", "start": 7542636, "end": 7545549}, {"filename": "/software/hgr/apple1_gen2.cfg", "start": 7545549, "end": 7546079}, {"filename": "/software/pom1.cfg", "start": 7546079, "end": 7546323}, {"filename": "/software/sid/.DS_Store", "start": 7546323, "end": 7552471}, {"filename": "/software/sid/Battle_of_Britain.bin", "start": 7552471, "end": 7588695}, {"filename": "/software/sid/Blasteroids.bin", "start": 7588695, "end": 7595761}, {"filename": "/software/sid/Bobby_Bearing.bin", "start": 7595761, "end": 7602242}, {"filename": "/software/sid/Chain_Reaction.bin", "start": 7602242, "end": 7606891}, {"filename": "/software/sid/Commando.bin", "start": 7606891, "end": 7630770}, {"filename": "/software/sid/Crazy_Comets.bin", "start": 7630770, "end": 7654978}, {"filename": "/software/sid/Gauntlet.bin", "start": 7654978, "end": 7665061}, {"filename": "/software/sid/Masters_of_the_Universe.bin", "start": 7665061, "end": 7698297}, {"filename": "/software/sid/Monty_on_the_Run.bin", "start": 7698297, "end": 7735993}, {"filename": "/software/sid/One_Man_and_his_Droid.bin", "start": 7735993, "end": 7743423}, {"filename": "/software/sid/Pac-Mania.bin", "start": 7743423, "end": 7770431}, {"filename": "/software/sid/Proteus.bin", "start": 7770431, "end": 7775327}, {"filename": "/software/sid/Wellenreiter.bin", "start": 7775327, "end": 7788713}, {"filename": "/software/tests/ASCII_hex_Terminal.txt", "start": 7788713, "end": 7788975}, {"filename": "/software/tests/ASCII_hex_keyboard.txt", "start": 7788975, "end": 7789197}, {"filename": "/software/tests/Getting_The_System_Running.txt", "start": 7789197, "end": 7790024}, {"filename": "/software/tests/Print_with_hex.txt", "start": 7790024, "end": 7791039}, {"filename": "/software/tms9918/demo.bin", "start": 7791039, "end": 7797405}, {"filename": "/software/tms9918/picshow.bin", "start": 7797405, "end": 7810233}, {"filename": "/software/tms9918/tetris.bin", "start": 7810233, "end": 7817541}, {"filename": "/software/tms9918/tms9918_test.txt", "start": 7817541, "end": 7818429}, {"filename": "/software/utils/party.apl.txt", "start": 7818429, "end": 7830106}, {"filename": "/software/utils/typewriter.apl.txt", "start": 7830106, "end": 7830826}], "remote_package_size": 7830826});
 
   })();
 
-// end include: /var/folders/rr/935v6_790s9d0711dv99d16r0000gn/T/tmpo9n29kyo.js
-// include: /var/folders/rr/935v6_790s9d0711dv99d16r0000gn/T/tmpvqz2dqk9.js
+// end include: /var/folders/rr/935v6_790s9d0711dv99d16r0000gn/T/tmpj6ehr987.js
+// include: /var/folders/rr/935v6_790s9d0711dv99d16r0000gn/T/tmprqv091q7.js
 
     // All the pre-js content up to here must remain later on, we need to run
     // it.
     if ((typeof ENVIRONMENT_IS_WASM_WORKER != 'undefined' && ENVIRONMENT_IS_WASM_WORKER) || (typeof ENVIRONMENT_IS_PTHREAD != 'undefined' && ENVIRONMENT_IS_PTHREAD) || (typeof ENVIRONMENT_IS_AUDIO_WORKLET != 'undefined' && ENVIRONMENT_IS_AUDIO_WORKLET)) Module['preRun'] = [];
     var necessaryPreJSTasks = Module['preRun'].slice();
-  // end include: /var/folders/rr/935v6_790s9d0711dv99d16r0000gn/T/tmpvqz2dqk9.js
-// include: /var/folders/rr/935v6_790s9d0711dv99d16r0000gn/T/tmpyonm9ej_.js
+  // end include: /var/folders/rr/935v6_790s9d0711dv99d16r0000gn/T/tmprqv091q7.js
+// include: /var/folders/rr/935v6_790s9d0711dv99d16r0000gn/T/tmpuoldziz0.js
 
     if (!Module['preRun']) throw 'Module.preRun should exist because file support used it; did a pre-js delete it?';
     necessaryPreJSTasks.forEach((task) => {
       if (Module['preRun'].indexOf(task) < 0) throw 'All preRun tasks that exist before user pre-js code should remain after; did you replace Module or modify Module.preRun?';
     });
-  // end include: /var/folders/rr/935v6_790s9d0711dv99d16r0000gn/T/tmpyonm9ej_.js
+  // end include: /var/folders/rr/935v6_790s9d0711dv99d16r0000gn/T/tmpuoldziz0.js
 
 
 var arguments_ = [];
@@ -4095,6 +4097,19 @@ var stringToUTF8Array = (str, heap, outIdx, maxBytesToWrite) => {
   }
   }
 
+  function ___syscall_mkdirat(dirfd, path, mode) {
+  try {
+  
+      path = SYSCALLS.getStr(path);
+      path = SYSCALLS.calculateAt(dirfd, path);
+      FS.mkdir(path, mode, 0);
+      return 0;
+    } catch (e) {
+    if (typeof FS == 'undefined' || !(e.name === 'ErrnoError')) throw e;
+    return -e.errno;
+  }
+  }
+
   function ___syscall_newfstatat(dirfd, path, buf, flags) {
   try {
   
@@ -4149,11 +4164,42 @@ var stringToUTF8Array = (str, heap, outIdx, maxBytesToWrite) => {
   }
   }
 
+  function ___syscall_rmdir(path) {
+  try {
+  
+      path = SYSCALLS.getStr(path);
+      FS.rmdir(path);
+      return 0;
+    } catch (e) {
+    if (typeof FS == 'undefined' || !(e.name === 'ErrnoError')) throw e;
+    return -e.errno;
+  }
+  }
+
   function ___syscall_stat64(path, buf) {
   try {
   
       path = SYSCALLS.getStr(path);
       return SYSCALLS.writeStat(buf, FS.stat(path));
+    } catch (e) {
+    if (typeof FS == 'undefined' || !(e.name === 'ErrnoError')) throw e;
+    return -e.errno;
+  }
+  }
+
+  function ___syscall_unlinkat(dirfd, path, flags) {
+  try {
+  
+      path = SYSCALLS.getStr(path);
+      path = SYSCALLS.calculateAt(dirfd, path);
+      if (!flags) {
+        FS.unlink(path);
+      } else if (flags === 512) {
+        FS.rmdir(path);
+      } else {
+        return -28;
+      }
+      return 0;
     } catch (e) {
     if (typeof FS == 'undefined' || !(e.name === 'ErrnoError')) throw e;
     return -e.errno;
@@ -4216,6 +4262,8 @@ var stringToUTF8Array = (str, heap, outIdx, maxBytesToWrite) => {
         stringToUTF8(summerName, std_name, 17);
       }
     };
+
+  var _emscripten_date_now = () => Date.now();
 
   var _emscripten_err = (str) => err(UTF8ToString(str));
 
@@ -8830,17 +8878,25 @@ var wasmImports = {
   /** @export */
   __syscall_lstat64: ___syscall_lstat64,
   /** @export */
+  __syscall_mkdirat: ___syscall_mkdirat,
+  /** @export */
   __syscall_newfstatat: ___syscall_newfstatat,
   /** @export */
   __syscall_openat: ___syscall_openat,
   /** @export */
   __syscall_readlinkat: ___syscall_readlinkat,
   /** @export */
+  __syscall_rmdir: ___syscall_rmdir,
+  /** @export */
   __syscall_stat64: ___syscall_stat64,
+  /** @export */
+  __syscall_unlinkat: ___syscall_unlinkat,
   /** @export */
   _abort_js: __abort_js,
   /** @export */
   _tzset_js: __tzset_js,
+  /** @export */
+  emscripten_date_now: _emscripten_date_now,
   /** @export */
   emscripten_err: _emscripten_err,
   /** @export */
