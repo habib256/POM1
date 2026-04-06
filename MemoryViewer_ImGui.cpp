@@ -504,11 +504,13 @@ bool MemoryViewer_ImGui::isROM(int address)
     if (address >= 0xFF00) return true;
     if (address >= 0xE000 && address <= 0xEFFF) return true;
     if (address >= 0xC100 && address <= 0xC1FF) return true;
+    if (microSDEnabled && address >= 0x8000 && address <= 0x9FFF) return true;
     return false;
 }
 
 bool MemoryViewer_ImGui::isIO(int address)
 {
+    if (microSDEnabled && address >= 0xA000 && address <= 0xA00F) return true;
     return ((address >= 0xC000 && address <= 0xC0FF) ||
             (address >= 0xD010 && address <= 0xD013));
 }
@@ -524,6 +526,10 @@ ImVec4 MemoryViewer_ImGui::getColorForAddress(int address)
         return ImVec4(0.0f, 0.78f, 1.0f, 1.0f);     // Keyboard Buffer - cyan
     if (gen2Enabled && address >= 0x2000 && address <= 0x3FFF)
         return ImVec4(0.0f, 1.0f, 0.78f, 1.0f);     // GEN2 HGR Framebuffer - cyan/teal
+    if (microSDEnabled && address >= 0x8000 && address <= 0x9FFF)
+        return ImVec4(1.0f, 0.78f, 0.31f, 1.0f);    // SD CARD OS ROM - amber
+    if (microSDEnabled && address >= 0xA000 && address <= 0xA00F)
+        return ImVec4(1.0f, 0.59f, 0.20f, 1.0f);    // VIA 65C22 I/O - dark orange
     if (address <= 0x9FFF)
         return ImVec4(0.31f, 0.78f, 0.31f, 1.0f);   // User RAM - green
     if (address <= 0xBFFF)

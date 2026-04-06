@@ -45,6 +45,7 @@ struct EmulationSnapshot
     std::string cassetteLoadedTapePath;
     TMS9918::Snapshot tms9918;
     bool sidEnabled = false;
+    bool microSDEnabled = false;
 };
 
 class EmulationController
@@ -95,6 +96,10 @@ public:
     // P-LAB A1-SID Sound Card
     void setSIDEnabled(bool enabled);
     bool isSIDEnabled() const;
+
+    // P-LAB microSD Storage Card
+    void setMicroSDEnabled(bool enabled);
+    bool isMicroSDEnabled() const;
 
     /// Web (Emscripten) : pas de std::thread — avancer l’émulation depuis la boucle principale.
     void pumpEmulationMainThread(double deltaSeconds);

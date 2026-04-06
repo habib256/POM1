@@ -118,6 +118,7 @@ void MainWindow_ImGui::render()
     memoryViewer->setGraphicsCardEnabled(graphicsCardEnabled);
     memoryViewer->setTMS9918Enabled(tms9918Enabled);
     memoryViewer->setSIDEnabled(sidEnabled);
+    memoryViewer->setMicroSDEnabled(microSDEnabled);
 
 #if POM1_IS_WASM
     // Sync fullscreen flag with browser state (user may exit via Escape)
@@ -380,6 +381,9 @@ void MainWindow_ImGui::renderMenuBar()
             if (ImGui::MenuItem("P-LAB A1-SID Sound Card", nullptr, &sidEnabled)) {
                 emulation->setSIDEnabled(sidEnabled);
             }
+            if (ImGui::MenuItem("P-LAB microSD Storage Card", nullptr, &microSDEnabled)) {
+                emulation->setMicroSDEnabled(microSDEnabled);
+            }
             ImGui::EndMenu();
         }
 
@@ -505,6 +509,21 @@ void MainWindow_ImGui::renderToolbar()
         if (ImGui::IsItemHovered()) {
             ImGui::SetTooltip(sidEnabled ? "P-LAB A1-SID Sound Card (click to unplug)"
                                          : "Plug P-LAB A1-SID Sound Card");
+        }
+
+        ImGui::SameLine();
+        ImGui::PushStyleColor(ImGuiCol_Button,
+            microSDEnabled ? ImVec4(0.2f, 0.4f, 0.8f, 1.0f) : ImVec4(0.3f, 0.3f, 0.3f, 1.0f));
+        if (ImGui::Button(ICON_FA_SD_CARD, btnSize)) {
+            microSDEnabled = !microSDEnabled;
+            emulation->setMicroSDEnabled(microSDEnabled);
+            setStatusMessage(microSDEnabled ? "P-LAB microSD Card plugged — type 8000R"
+                                            : "P-LAB microSD Card unplugged", 2.0f);
+        }
+        ImGui::PopStyleColor();
+        if (ImGui::IsItemHovered()) {
+            ImGui::SetTooltip(microSDEnabled ? "P-LAB microSD Storage Card (click to unplug)"
+                                             : "Plug P-LAB microSD Storage Card");
         }
 
         // --- Séparateur ---
@@ -1361,6 +1380,13 @@ void MainWindow_ImGui::renderLoadDialog()
                     emulation->setTMS9918Enabled(true);
                     setStatusMessage("P-LAB TMS9918 plugged", 2.0f);
                 }
+            } else if (loadPath.find("/sdcard/") != std::string::npos ||
+                       loadPath.find("\\sdcard\\") != std::string::npos) {
+                if (!microSDEnabled) {
+                    microSDEnabled = true;
+                    emulation->setMicroSDEnabled(true);
+                    setStatusMessage("P-LAB microSD Card plugged", 2.0f);
+                }
             }
 
             quint16 addr = 0;
@@ -1759,18 +1785,30 @@ void MainWindow_ImGui::renderMemoryMapWindow()
                             IM_COL32(100, 230, 100, 255), progLabels[i].data() });
     }
 
-    if (graphicsCardEnabled) {
+    if (graphicsCardEnabled && microSDEnabled) {
+        regions.push_back({ 0x0280, 0x1FFF, IM_COL32( 80, 200,  80, 255), "User RAM" });
+        regions.push_back({ 0x2000, 0x3FFF, IM_COL32(  0, 255, 200, 255), "GEN2 HGR Framebuffer" });
+        regions.push_back({ 0x4000, 0x7FFF, IM_COL32( 80, 200,  80, 255), "User RAM" });
+        regions.push_back({ 0x8000, 0x9FFF, IM_COL32(255, 200,  80, 255), "SD CARD OS ROM" });
+    } else if (graphicsCardEnabled) {
         regions.push_back({ 0x0280, 0x1FFF, IM_COL32( 80, 200,  80, 255), "User RAM" });
         regions.push_back({ 0x2000, 0x3FFF, IM_COL32(  0, 255, 200, 255), "GEN2 HGR Framebuffer" });
         regions.push_back({ 0x4000, 0x9FFF, IM_COL32( 80, 200,  80, 255), "User RAM" });
+    } else if (microSDEnabled) {
+        regions.push_back({ 0x0280, 0x7FFF, IM_COL32( 80, 200,  80, 255), "User RAM" });
+        regions.push_back({ 0x8000, 0x9FFF, IM_COL32(255, 200,  80, 255), "SD CARD OS ROM" });
     } else {
         regions.push_back({ 0x0280, 0x9FFF, IM_COL32( 80, 200,  80, 255), "User RAM" });
     }
-    std::vector<MemRegion> tail = {
-        { 0xA000, 0xBFFF, IM_COL32( 80, 200,  80, 255), "User RAM" },
-        { 0xC000, 0xC0FF, IM_COL32(255, 140,  80, 255), "ACI I/O" },
-        { 0xC100, 0xC1FF, IM_COL32(255, 190,  80, 255), "ACI ROM" },
-    };
+    std::vector<MemRegion> tail;
+    if (microSDEnabled) {
+        tail.push_back({ 0xA000, 0xA00F, IM_COL32(255, 150,  50, 255), "VIA 65C22 I/O" });
+        tail.push_back({ 0xA010, 0xBFFF, IM_COL32( 80, 200,  80, 255), "User RAM" });
+    } else {
+        tail.push_back({ 0xA000, 0xBFFF, IM_COL32( 80, 200,  80, 255), "User RAM" });
+    }
+    tail.push_back({ 0xC000, 0xC0FF, IM_COL32(255, 140,  80, 255), "ACI I/O" });
+    tail.push_back({ 0xC100, 0xC1FF, IM_COL32(255, 190,  80, 255), "ACI ROM" });
     if (sidEnabled) {
         tail.push_back({ 0xC200, 0xC7FF, IM_COL32( 60,  60,  60, 255), "Unused" });
         tail.push_back({ 0xC800, 0xCBFF, IM_COL32(200, 100, 255, 255), "A1-SID I/O" });
@@ -1847,7 +1885,11 @@ void MainWindow_ImGui::renderMemoryMapWindow()
 
             // Check if page has non-zero data (for RAM regions, show activity)
             bool hasData = false;
-            if (addr < 0xA000) { // Only check RAM area
+            bool isUserRam = (addr >= 0x0200 && addr <= 0xBFFF)
+                          && !(graphicsCardEnabled && addr >= 0x2000 && addr <= 0x3FFF)
+                          && !(microSDEnabled && addr >= 0x8000 && addr <= 0x9FFF)
+                          && !(microSDEnabled && addr >= 0xA000 && addr <= 0xA00F);
+            if (isUserRam) {
                 for (int b = 0; b < 256; ++b) {
                     if (memPtr[addr + b] != 0) {
                         hasData = true;
@@ -1856,10 +1898,13 @@ void MainWindow_ImGui::renderMemoryMapWindow()
                 }
             }
 
-            // Dim empty RAM pages to dark gray
+            // Empty RAM pages: dark green (available but unused)
+            // Used RAM pages: bright green (active data)
             ImU32 cellColor = baseColor;
-            if (addr >= 0x0200 && addr <= 0x9FFF && !hasData) {
-                cellColor = IM_COL32(35, 35, 40, 255);
+            if (isUserRam && !hasData) {
+                cellColor = IM_COL32(20, 60, 20, 255); // dark green — RAM available but empty
+            } else if (isUserRam && hasData) {
+                cellColor = IM_COL32(80, 220, 80, 255); // bright green — RAM in use
             }
 
             float x = origin.x + col * (cellSize + spacing);
@@ -1960,6 +2005,16 @@ void MainWindow_ImGui::renderMemoryMapWindow()
             ImGui::TextColored(ImVec4(0.7f, 0.85f, 1.0f, 1.0f), "  P-LAB TMS9918 VDP");
             ImGui::BulletText("$CC00  DATA - VRAM data port");
             ImGui::BulletText("$CC01  CTRL - Control/status");
+        }
+        if (microSDEnabled) {
+            ImGui::Spacing();
+            ImGui::TextColored(ImVec4(0.7f, 0.85f, 1.0f, 1.0f), "  P-LAB microSD Storage Card (65C22 VIA)");
+            ImGui::BulletText("$A000  PORTB - Control (bit0: CPU_STROBE, bit7: MCU_STROBE)");
+            ImGui::BulletText("$A001  PORTA - Data bus (bidirectional)");
+            ImGui::BulletText("$A003  DDRA  - Data Direction A");
+            ImGui::BulletText("$A004-$A005  Timer 1 Counter");
+            ImGui::BulletText("$A00D  IFR   - Interrupt Flags");
+            ImGui::BulletText("$8000-$9FFF  SD CARD OS ROM (8KB EEPROM)");
         }
         if (sidEnabled) {
             ImGui::Spacing();

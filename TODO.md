@@ -39,3 +39,4 @@ Reference hub: [P-Lab](https://p-l4b.github.io/). The Graphic Card and SID are d
 - [ ] **Apple-1 Wi-Fi modem** ([wifi](https://p-l4b.github.io/wifi/)): Bridge emulated serial to host TCP/Telnet or WebSocket.
 - [ ] **microSD storage card** ([sdcard](https://p-l4b.github.io/sdcard/)): Virtual disk (host directory or image).
 - [ ] **Misc programs reference (Angela / P-Lab)** ([angela](https://p-l4b.github.io/angela/)): Curated ports (Dobble, Oregon Trail, etc.).
+claude --resume "apple1-microsd-storage-implementation" 

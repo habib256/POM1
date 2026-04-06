@@ -414,6 +414,19 @@ bool EmulationController::isSIDEnabled() const
     return memory->isSIDEnabled();
 }
 
+void EmulationController::setMicroSDEnabled(bool enabled)
+{
+    std::lock_guard<std::mutex> lock(stateMutex);
+    memory->setMicroSDEnabled(enabled);
+    publishSnapshotLocked();
+}
+
+bool EmulationController::isMicroSDEnabled() const
+{
+    std::lock_guard<std::mutex> lock(stateMutex);
+    return memory->isMicroSDEnabled();
+}
+
 void EmulationController::processQueuedKeysLocked()
 {
     std::queue<char> localKeys;
@@ -458,6 +471,7 @@ void EmulationController::publishSnapshotLocked()
 
     memory->getTMS9918().copySnapshot(snapshot.tms9918);
     snapshot.sidEnabled = memory->isSIDEnabled();
+    snapshot.microSDEnabled = memory->isMicroSDEnabled();
 
     std::lock_guard<std::mutex> snapshotLock(snapshotMutex);
     latestSnapshot = std::move(snapshot);

@@ -26,6 +26,7 @@ set(SOURCES
     Screen_ImGui.cpp
     SID.cpp
     TMS9918.cpp
+    MicroSD.cpp
 )
 
 set(HEADERS
@@ -37,6 +38,7 @@ set(HEADERS
     M6502.h
     Memory.h
     MemoryViewer_ImGui.h
+    MicroSD.h
     Screen_ImGui.h
     SID.h
     TMS9918.h

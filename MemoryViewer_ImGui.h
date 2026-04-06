@@ -20,6 +20,7 @@ public:
     void setGraphicsCardEnabled(bool enabled) { gen2Enabled = enabled; }
     void setTMS9918Enabled(bool enabled) { tms9918Enabled = enabled; }
     void setSIDEnabled(bool enabled) { sidEnabled = enabled; }
+    void setMicroSDEnabled(bool enabled) { microSDEnabled = enabled; }
 
 private:
     Memory* memory;
@@ -36,6 +37,7 @@ private:
     bool gen2Enabled = false;
     bool tms9918Enabled = false;
     bool sidEnabled = false;
+    bool microSDEnabled = false;
 
     // Auto-refresh: snapshot taken when autoRefresh is off
     std::vector<quint8> snapshot;

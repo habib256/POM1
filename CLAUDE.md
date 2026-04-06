@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-POM1 v1.5 is an Apple 1 emulator built with Dear ImGui. It emulates the MOS 6502 CPU and Apple 1 hardware including memory-mapped I/O, display, keyboard input, the Apple Cassette Interface (ACI) with live audio and tape files, Uncle Bernie's GEN2 Color Graphics Card (280×192 HIRES, NTSC artifact color), and the P-LAB A1-SID Sound Card (MOS 6581/8580 SID, 3-voice synthesis). The UI is fully in English. Builds on Linux, macOS, Windows, and Web (Emscripten/WASM).
+POM1 v1.6 is an Apple 1 emulator built with Dear ImGui. It emulates the MOS 6502 CPU and Apple 1 hardware including memory-mapped I/O, display, keyboard input, the Apple Cassette Interface (ACI) with live audio and tape files, Uncle Bernie's GEN2 Color Graphics Card (280×192 HIRES, NTSC artifact color), the P-LAB A1-SID Sound Card (MOS 6581/8580 SID, 3-voice synthesis), and the P-LAB microSD Storage Card (65C22 VIA, FAT32 filesystem). The UI is fully in English. Builds on Linux, macOS, Windows, and Web (Emscripten/WASM).
 
 ## Build & Run Commands
 
@@ -66,11 +66,14 @@ ld65 -C software/apple1.cfg -o build/program.bin build/program.o
 - **AudioDevice.cpp/h**: Central audio output device that owns the hardware (miniaudio on desktop, Web Audio ScriptProcessorNode on WASM). Defines the `AudioSource` interface (`fillAudioBuffer(float*, int)`). Mixes all registered `AudioSource` instances (CassetteDevice, SID) into a single mono float32 output at 44.1 kHz. Sources are added/removed dynamically via `addSource()`/`removeSource()`.
 - **SID.cpp/h**: [P-LAB A1-SID Sound Card](https://p-l4b.github.io/A1-SID/) emulation. MOS 6581/8580 SID chip with 3 voices (triangle, sawtooth, pulse, noise waveforms), ADSR envelopes with exponential decay and delay bug, Zero-Delay Feedback SVF filter (Zavalishin trapezoidal topology) with 6581 non-linear cutoff curve and op-amp saturation, 4-bit master volume with digi playback DC offset. 4× oversampling at 176.4 kHz with triangular decimation, 18 kHz output lowpass. I/O at `$C800`-`$CFFF` (29 registers, address `& 0x1F`). Implements `AudioSource` — registered with `AudioDevice` when plugged. Coexists with TMS9918 at `$CC00`-`$CC01`. Toggled via Hardware menu or toolbar button.
 
+- **MicroSD.cpp/h**: [P-LAB Apple-1 microSD Storage Card](https://p-l4b.github.io/sdcard/) emulation. 65C22 VIA chip at `$A000`-`$A00F` bridging the 6502 CPU to an emulated ATMEGA MCU that performs filesystem operations. SD CARD OS ROM (8KB EEPROM) loaded at `$8000`-`$9FFF` provides a DOS-like CLI with commands: DIR, LS, CD, LOAD, SAVE, READ, WRITE, DEL, MKDIR, RMDIR, PWD, MOUNT. Handshake protocol via PORTB bit 0 (CPU_STROBE) / bit 7 (MCU_STROBE) with PORTA as bidirectional data bus. Maps host `sdcard/` directory as virtual FAT32 SD card. Tagged filenames (`NAME#TTAAAA`) encode file type and load address. Firmware source: [apple1-sdcard](https://github.com/nippur72/apple1-sdcard). Toggled via Hardware menu or toolbar button.
+
 ### ROM Files (roms/)
 - **WozMonitor.rom** (256B @ 0xFF00): Wozniak's system monitor
 - **basic.rom** (4KB @ 0xE000): Apple BASIC interpreter
 - **krusader-1.3.rom** (8KB @ 0xA000): Symbolic assembler
 - **charmap.rom** (1KB): Character map for display
+- **sdcard.rom** (8KB @ 0x8000): P-LAB SD CARD OS firmware (from [apple1-sdcard](https://github.com/nippur72/apple1-sdcard))
 
 The main firmware ROMs are loaded automatically at startup by `Memory::loadWozMonitor()`, `loadBasic()`, `loadKrusader()`, and `loadAciRom()`. The terminal renderer also uses `charmap.rom` when available.
 
@@ -84,6 +87,9 @@ Contains Apple 1 programs in Woz Monitor hex dump format (.txt) organized in sub
 - **tms9918/**: P-LAB TMS9918 programs — Tetris, demo suite, PicShow image viewer (KickC binaries loaded at `$0280`)
 - **sid/**: P-LAB A1-SID programs — 30 SID tunes converted from HVSC `.sid` files via `tools/sid2apple1.py` (Rob Hubbard, Martin Galway, Jeroen Tel, Ben Daglish, Chris Huelsbeck). Includes IRQ-driven tunes (Arkanoid, Game Over, Combat School, Last V8, Myth). Binary `.bin` files loaded at `$0280`.
 - **cassettes/**: Reference material for the Apple cassette library — short readme `.txt` files and **`.ogg`** captures of original tapes (preservation / listening). POM1’s **Cassette Control** loads **`.wav`** or **`.aci`** only; convert or re-encode to WAV if you want to feed those captures into the emulated ACI.
+
+### Virtual SD Card (sdcard/)
+The `sdcard/` directory at the project root is the virtual microSD card content for the P-LAB microSD Storage Card emulation. Files placed here are accessible from the SD CARD OS shell (enter with `8000R`). Files use tagged naming: `NAME#TTAAAA` where `TT` is the file type (`06`=binary, `F1`=Integer BASIC, `F8`=AppleSoft BASIC) and `AAAA` is the hex load address. Example: `GAME#F10300` is a BASIC program loading at `$0300`.
 
 Programs can be loaded via File > Load Memory, which provides a file browser with folder navigation. Assembly source files (`.asm`) can be assembled with cc65. Most programs come from [apple1software.com](https://apple1software.com/), an outstanding archive of Apple 1 software, hardware documentation, and historical resources. [AppleFritter](https://applefritter.com/apple1/) is the community hub where much of the technical research, BASIC version history, and hardware knowledge originates.
 
@@ -150,7 +156,10 @@ Visual 16x16 grid (256 pages = 64KB) with color-coded regions, KB labels, PC/SP 
 0x0100-0x01FF  Stack
 0x0200-0x1FFF  User RAM (programs typically load at 0x0280 or 0x0300)
 0x2000-0x3FFF  GEN2 HGR Framebuffer (8 KB — when card is plugged)
-0x4000-0xBFFF  User RAM (Krusader ROM no longer loaded by default)
+0x4000-0x7FFF  User RAM
+0x8000-0x9FFF  SD CARD OS ROM (8 KB EEPROM — when P-LAB microSD is plugged)
+0xA000-0xA00F  VIA 65C22 I/O (16 registers — when P-LAB microSD is plugged)
+0xA010-0xBFFF  User RAM
 0xC800-0xCFFF  A1-SID I/O (29 registers, addr & 0x1F, when P-LAB SID is plugged)
 0xCC00         TMS9918 DATA - VRAM data port   (when P-LAB card is plugged)
 0xCC01         TMS9918 CTRL - Control/status    (when P-LAB card is plugged)
@@ -188,6 +197,18 @@ The setup script supports apt (Ubuntu/Debian), dnf (Fedora/CentOS), and pacman (
 The `build/`, `build-wasm/`, and `imgui/` directories are excluded from git via `.gitignore`.
 
 ## Version History
+
+### v1.6 (April 2026) — P-LAB microSD Storage Card
+- [P-LAB Apple-1 microSD Storage Card](https://p-l4b.github.io/sdcard/) emulation: 65C22 VIA at `$A000`-`$A00F`, ATMEGA MCU protocol emulation, SD CARD OS ROM (8KB EEPROM) at `$8000`-`$9FFF`, DOS-like CLI with DIR/LS/CD/LOAD/SAVE/READ/WRITE/DEL/MKDIR/RMDIR/PWD/MOUNT commands
+- Virtual SD card maps host `sdcard/` directory as FAT32 filesystem — files placed there are accessible from the SD CARD OS shell (`8000R`)
+- Tagged filename support (`NAME#TTAAAA`): file type (#06=binary, #F1=Integer BASIC, #F8=AppleSoft BASIC) and hex load address
+- Fuzzy filename matching for LOAD command (case-insensitive prefix match)
+- VIA 65C22 handshake protocol: synchronous MCU emulation responds instantly within CPU write cycles — no busy-wait overhead
+- Timer 1 support for SD CARD OS timeout detection
+- Memory Map and Memory Viewer show SD CARD OS ROM (amber) and VIA I/O (orange) when card is plugged
+- Auto-enable when loading from `sdcard/` directory
+- Toggle via Hardware menu or toolbar button (SD card icon)
+- Firmware source: [apple1-sdcard](https://github.com/nippur72/apple1-sdcard) by Antonino Porcino
 
 ### v1.5 (April 2026) — P-LAB A1-SID Sound Card
 - [P-LAB A1-SID Sound Card](https://p-l4b.github.io/A1-SID/) (MOS 6581/8580 SID): 3 voices, 4 waveforms (triangle/sawtooth/pulse/noise), ADSR envelopes with exponential decay and 6581 delay bug, Zero-Delay Feedback SVF filter (Zavalishin trapezoidal) with non-linear 6581 cutoff curve and op-amp saturation (input + BP feedback via `tanh`), 4-bit master volume with digi playback DC offset, I/O at `$C800`-`$CFFF`, toggle via Hardware menu or toolbar

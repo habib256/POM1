@@ -28,6 +28,7 @@
 #include "CassetteDevice.h"
 class SID;
 class TMS9918;
+#include "MicroSD.h"
 using namespace std;
 
 // Remplacer quint8 par uint8_t et quint16 par uint16_t
@@ -96,6 +97,13 @@ public:
     void setSIDEnabled(bool b);
     bool isSIDEnabled() const { return sidEnabled; }
 
+    // P-LAB microSD Storage Card (65C22 VIA + MCU)
+    MicroSD& getMicroSD() { return *microSD; }
+    const MicroSD& getMicroSD() const { return *microSD; }
+    void setMicroSDEnabled(bool b);
+    bool isMicroSDEnabled() const { return microSDEnabled; }
+    int loadSDCardRom(void);
+
     // Central audio device (mixes CassetteDevice + SID)
     AudioDevice& getAudioDevice() { return *audioDevice; }
 
@@ -127,6 +135,8 @@ private :
     std::unique_ptr<AudioDevice> audioDevice;
     std::unique_ptr<SID> sid;
     bool sidEnabled = false;
+    std::unique_ptr<MicroSD> microSD;
+    bool microSDEnabled = false;
 
 };
 

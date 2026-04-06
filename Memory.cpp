@@ -26,6 +26,7 @@
 #include "Memory.h"
 #include "SID.h"
 #include "TMS9918.h"
+#include "MicroSD.h"
 //#include "configuration.h"
 //#include "pia6820.h"
 
@@ -60,6 +61,14 @@ Memory::Memory()
     audioDevice->addSource(cassetteDevice.get());
     tms9918 = std::make_unique<TMS9918>();
     sid = std::make_unique<SID>();
+    microSD = std::make_unique<MicroSD>();
+    // Set SD card path: try common locations relative to executable
+    for (const auto& dir : {"sdcard", "../sdcard", "../../sdcard"}) {
+        if (std::filesystem::is_directory(dir)) {
+            microSD->setSDCardPath(std::filesystem::canonical(dir).string());
+            break;
+        }
+    }
     initMemory();
 }
 
@@ -77,6 +86,7 @@ void Memory::initMemory(){
     cassetteDevice->reset();
     tms9918->reset();
     sid->reset();
+    microSD->reset();
     configureResetVectors(0xFF00);
 
     setWriteInRom(0);
@@ -91,6 +101,7 @@ void Memory::resetMemory(void)
     cassetteDevice->reset();
     tms9918->reset();
     sid->reset();
+    microSD->reset();
 }
 
 void Memory::configureResetVectors(quint16 vectorAddress)
@@ -369,6 +380,11 @@ int Memory::loadHexDump(const char* filename, quint16 &startAddress, int* bytesL
 
 quint8 Memory::memRead(quint16 address)
 {
+    // P-LAB microSD VIA 65C22 I/O ($A000-$A00F)
+    if (microSDEnabled && address >= 0xA000 && address <= 0xA00F) {
+        return microSD->readRegister(address);
+    }
+
     // P-LAB A1-SID I/O ($C800-$CFFF, register = address & 0x1F)
     // TMS9918 has priority at $CC00-$CC01 when both cards are enabled
     if (sidEnabled && address >= 0xC800 && address <= 0xCFFF) {
@@ -433,6 +449,12 @@ quint8 Memory::memRead(quint16 address)
 
 void Memory::memWrite(quint16 address, quint8 value)
 {
+    // P-LAB microSD VIA 65C22 I/O ($A000-$A00F)
+    if (microSDEnabled && address >= 0xA000 && address <= 0xA00F) {
+        microSD->writeRegister(address, value);
+        return;
+    }
+
     // P-LAB A1-SID I/O ($C800-$CFFF, register = address & 0x1F)
     if (sidEnabled && address >= 0xC800 && address <= 0xCFFF) {
         if (!(tms9918Enabled && (address == 0xCC00 || address == 0xCC01))) {
@@ -462,6 +484,8 @@ void Memory::memWrite(quint16 address, quint8 value)
         if (address >= 0xC100 && address <= 0xC1FF) return;
         // Apple BASIC: 0xE000-0xEFFF
         if (address >= 0xE000 && address <= 0xEFFF) return;
+        // SD CARD OS ROM: 0x8000-0x9FFF (when microSD card is plugged)
+        if (microSDEnabled && address >= 0x8000 && address <= 0x9FFF) return;
     }
 
     if (address >= 0xC000 && address <= 0xC0FF && address != 0xC081) {
@@ -523,6 +547,27 @@ void Memory::setSIDEnabled(bool b)
         audioDevice->removeSource(sid.get());
 }
 
+void Memory::setMicroSDEnabled(bool b)
+{
+    if (b == microSDEnabled) return;
+    microSDEnabled = b;
+    if (b) {
+        loadSDCardRom();
+    } else {
+        // Clear the ROM region (restore to RAM)
+        std::fill(mem.begin() + 0x8000, mem.begin() + 0xA000, 0);
+    }
+}
+
+int Memory::loadSDCardRom()
+{
+    bool prev = writeInRom;
+    writeInRom = true;
+    int ret = loadROM("sdcard.rom", 0x8000, 0x2000, "SD CARD OS");
+    writeInRom = prev;
+    return ret;
+}
+
 void Memory::advanceCycles(int cycles)
 {
     if (cycles > 0 && displayBusyCycles > 0) {
@@ -530,6 +575,7 @@ void Memory::advanceCycles(int cycles)
     }
     cassetteDevice->advanceCycles(cycles);
     if (tms9918Enabled) tms9918->advanceCycles(cycles);
+    if (microSDEnabled) microSD->advanceCycles(cycles);
 }
 
 
