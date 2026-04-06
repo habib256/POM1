@@ -427,6 +427,32 @@ bool EmulationController::isMicroSDEnabled() const
     return memory->isMicroSDEnabled();
 }
 
+void EmulationController::setWiFiModemEnabled(bool enabled)
+{
+    std::lock_guard<std::mutex> lock(stateMutex);
+    memory->setWiFiModemEnabled(enabled);
+    publishSnapshotLocked();
+}
+
+bool EmulationController::isWiFiModemEnabled() const
+{
+    std::lock_guard<std::mutex> lock(stateMutex);
+    return memory->isWiFiModemEnabled();
+}
+
+void EmulationController::setTerminalCardEnabled(bool enabled)
+{
+    std::lock_guard<std::mutex> lock(stateMutex);
+    memory->setTerminalCardEnabled(enabled);
+    publishSnapshotLocked();
+}
+
+bool EmulationController::isTerminalCardEnabled() const
+{
+    std::lock_guard<std::mutex> lock(stateMutex);
+    return memory->isTerminalCardEnabled();
+}
+
 void EmulationController::processQueuedKeysLocked()
 {
     std::queue<char> localKeys;
@@ -472,6 +498,14 @@ void EmulationController::publishSnapshotLocked()
     memory->getTMS9918().copySnapshot(snapshot.tms9918);
     snapshot.sidEnabled = memory->isSIDEnabled();
     snapshot.microSDEnabled = memory->isMicroSDEnabled();
+    snapshot.wifiModemEnabled = memory->isWiFiModemEnabled();
+    if (snapshot.wifiModemEnabled) {
+        memory->getWiFiModem().copySnapshot(snapshot.wifiModem);
+    }
+    snapshot.terminalCardEnabled = memory->isTerminalCardEnabled();
+    if (snapshot.terminalCardEnabled) {
+        memory->getTerminalCard().copySnapshot(snapshot.terminalCard);
+    }
 
     std::lock_guard<std::mutex> snapshotLock(snapshotMutex);
     latestSnapshot = std::move(snapshot);
@@ -508,6 +542,17 @@ void EmulationController::runEmulationSlice(double elapsedSeconds)
             cpu->run(cyclesToRun);
         }
         publishSnapshotLocked();
+    }
+
+    // Terminal Card: consume pending reset/clear OUTSIDE stateMutex
+    // to avoid deadlock (softReset acquires stateMutex internally)
+    if (memory->isTerminalCardEnabled()) {
+        if (memory->getTerminalCard().consumeResetPending()) {
+            softReset();
+        }
+        if (memory->getTerminalCard().consumeClearScreenPending()) {
+            if (screen) screen->clear();
+        }
     }
 }
 

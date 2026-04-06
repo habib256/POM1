@@ -1,4 +1,6 @@
 #include "MainWindow_ImGui.h"
+#include "WiFiModem.h"
+#include "TerminalCard.h"
 #include "POM1Build.h"
 #include "imgui.h"
 #include "imgui_internal.h"
@@ -42,6 +44,55 @@ static float apple1LayoutVerticalChrome()
 {
     return ImGui::GetFrameHeight() + kMainMenuBarHeightExtra + kToolbarBandHeight +
            kGapBelowToolbarBeforeApple1 + kStatusBarBandHeight + kApple1WindowDecorationSlop;
+}
+
+/** Icône cassette minimaliste : rectangle arrondi + 2 trous (bobines). */
+static void drawToolbarCassetteIcon(ImDrawList* dl, const ImVec2& rmin, const ImVec2& rmax)
+{
+    const float pad = 2.5f;
+    const ImVec2 a(rmin.x + pad, rmin.y + pad);
+    const ImVec2 b(rmax.x - pad, rmax.y - pad);
+    const float iw = b.x - a.x;
+    const float ih = b.y - a.y;
+
+    const ImU32 outline = IM_COL32(26, 26, 34, 255);
+    const ImU32 body = IM_COL32(228, 229, 236, 255);
+    const ImU32 hole = IM_COL32(72, 74, 86, 255);
+    const float round = 2.5f;
+
+    dl->AddRectFilled(a, b, body, round);
+    dl->AddRect(a, b, outline, round, 0, 1.15f);
+
+    const float cy = a.y + ih * 0.5f;
+    const float cxL = a.x + iw * 0.32f;
+    const float cxR = a.x + iw * 0.68f;
+    const float rad = std::clamp(std::min(iw, ih) * 0.15f, 2.0f, 4.5f);
+    dl->AddCircleFilled(ImVec2(cxL, cy), rad, hole);
+    dl->AddCircleFilled(ImVec2(cxR, cy), rad, hole);
+    dl->AddCircle(ImVec2(cxL, cy), rad, outline, 0, 0.9f);
+    dl->AddCircle(ImVec2(cxR, cy), rad, outline, 0, 0.9f);
+}
+
+/** Texte centré dans un bouton toolbar (BBS, HGR, …). */
+static void drawToolbarTextLabel(ImDrawList* dl, const ImVec2& rmin, const ImVec2& rmax, const char* t)
+{
+    ImFont* font = ImGui::GetFont();
+    if (!font || !t || !t[0])
+        return;
+    const float bh = rmax.y - rmin.y;
+    const float bw = rmax.x - rmin.x;
+    float fs = std::clamp(bh * 0.56f, 9.5f, 13.5f);
+    while (fs > 7.5f) {
+        const ImVec2 tsTry = font->CalcTextSizeA(fs, FLT_MAX, 0.0f, t);
+        if (tsTry.x <= bw - 2.0f && tsTry.y <= bh - 2.0f)
+            break;
+        fs -= 0.5f;
+    }
+    const ImVec2 ts = font->CalcTextSizeA(fs, FLT_MAX, 0.0f, t);
+    const ImVec2 pos(
+        rmin.x + (rmax.x - rmin.x - ts.x) * 0.5f,
+        rmin.y + (rmax.y - rmin.y - ts.y) * 0.5f - 0.5f);
+    dl->AddText(font, fs, pos, ImGui::GetColorU32(ImGuiCol_Text), t);
 }
 
 } // namespace
@@ -119,6 +170,8 @@ void MainWindow_ImGui::render()
     memoryViewer->setTMS9918Enabled(tms9918Enabled);
     memoryViewer->setSIDEnabled(sidEnabled);
     memoryViewer->setMicroSDEnabled(microSDEnabled);
+    memoryViewer->setWiFiModemEnabled(wifiModemEnabled);
+    memoryViewer->setTerminalCardEnabled(terminalCardEnabled);
 
 #if POM1_IS_WASM
     // Sync fullscreen flag with browser state (user may exit via Escape)
@@ -237,6 +290,8 @@ void MainWindow_ImGui::render()
     if (showSaveTapeDialog) renderSaveTapeDialog();
     if (graphicsCardEnabled && showGraphicsCard) renderGraphicsCardWindow();
     if (tms9918Enabled && showTMS9918) renderTMS9918Window();
+    if (wifiModemEnabled && showWiFiModem) renderWiFiModemWindow();
+    if (terminalCardEnabled && showTerminalCard) renderTerminalCardWindow();
 
     // Barre de statut
     renderStatusBar();
@@ -367,23 +422,33 @@ void MainWindow_ImGui::renderMenuBar()
         }
 
         if (ImGui::BeginMenu("Hardware")) {
-            if (ImGui::MenuItem("Cassette Control")) {
+            if (ImGui::MenuItem("ACI Cassette Control")) {
                 showCassetteControl = true;
             }
-            ImGui::Separator();
-            if (ImGui::MenuItem("GEN2 Graphics Card", nullptr, &graphicsCardEnabled)) {
+            if (ImGui::MenuItem("Bernie's GEN2 HGR Graphic Card", nullptr, &graphicsCardEnabled)) {
                 if (graphicsCardEnabled) showGraphicsCard = true;
+            }
+            ImGui::Separator();
+            if (ImGui::MenuItem("P-LAB microSD Storage Card", nullptr, &microSDEnabled)) {
+                emulation->setMicroSDEnabled(microSDEnabled);
+            }
+            if (ImGui::MenuItem("P-LAB A1-SID Sound Card", nullptr, &sidEnabled)) {
+                emulation->setSIDEnabled(sidEnabled);
             }
             if (ImGui::MenuItem("P-LAB Graphic Card (TMS9918)", nullptr, &tms9918Enabled)) {
                 emulation->setTMS9918Enabled(tms9918Enabled);
                 if (tms9918Enabled) showTMS9918 = true;
             }
-            if (ImGui::MenuItem("P-LAB A1-SID Sound Card", nullptr, &sidEnabled)) {
-                emulation->setSIDEnabled(sidEnabled);
+#if !POM1_IS_WASM
+            if (ImGui::MenuItem("P-LAB Terminal Card", nullptr, &terminalCardEnabled)) {
+                emulation->setTerminalCardEnabled(terminalCardEnabled);
+                if (terminalCardEnabled) showTerminalCard = true;
             }
-            if (ImGui::MenuItem("P-LAB microSD Storage Card", nullptr, &microSDEnabled)) {
-                emulation->setMicroSDEnabled(microSDEnabled);
+            if (ImGui::MenuItem("P-LAB MODEM BBS", nullptr, &wifiModemEnabled)) {
+                emulation->setWiFiModemEnabled(wifiModemEnabled);
+                if (wifiModemEnabled) showWiFiModem = true;
             }
+#endif
             ImGui::EndMenu();
         }
 
@@ -425,13 +490,44 @@ void MainWindow_ImGui::renderToolbar()
         if (ImGui::IsItemHovered()) ImGui::SetTooltip("Load (Ctrl+O)");
 
         ImGui::SameLine();
+        ImGui::PushStyleColor(ImGuiCol_Button,
+            microSDEnabled ? ImVec4(0.2f, 0.4f, 0.8f, 1.0f) : ImVec4(0.3f, 0.3f, 0.3f, 1.0f));
+        if (ImGui::Button(ICON_FA_SD_CARD, btnSize)) {
+            microSDEnabled = !microSDEnabled;
+            emulation->setMicroSDEnabled(microSDEnabled);
+            setStatusMessage(microSDEnabled ? "P-LAB microSD Card plugged — type 8000R"
+                                            : "P-LAB microSD Card unplugged", 2.0f);
+        }
+        ImGui::PopStyleColor();
+        if (ImGui::IsItemHovered()) {
+            ImGui::SetTooltip(microSDEnabled ? "P-LAB microSD Storage Card (click to unplug)"
+                                             : "Plug P-LAB microSD Storage Card");
+        }
+
+        ImGui::SameLine();
         if (showCassetteControl)
             ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.2f, 0.4f, 0.8f, 1.0f));
         else
             ImGui::PushStyleColor(ImGuiCol_Button, ImGui::GetStyle().Colors[ImGuiCol_Button]);
-        if (ImGui::Button(ICON_FA_TAPE, btnSize)) showCassetteControl = !showCassetteControl;
+        if (ImGui::Button("##cassetteToolbar", btnSize)) showCassetteControl = !showCassetteControl;
+        drawToolbarCassetteIcon(ImGui::GetWindowDrawList(),
+                                ImGui::GetItemRectMin(), ImGui::GetItemRectMax());
         ImGui::PopStyleColor();
         if (ImGui::IsItemHovered()) ImGui::SetTooltip("Cassette Control");
+
+        ImGui::SameLine();
+        ImGui::PushStyleColor(ImGuiCol_Button,
+            sidEnabled ? ImVec4(0.2f, 0.4f, 0.8f, 1.0f) : ImVec4(0.3f, 0.3f, 0.3f, 1.0f));
+        if (ImGui::Button(ICON_FA_MUSIC, btnSize)) {
+            sidEnabled = !sidEnabled;
+            emulation->setSIDEnabled(sidEnabled);
+            setStatusMessage(sidEnabled ? "P-LAB A1-SID plugged" : "P-LAB A1-SID unplugged", 2.0f);
+        }
+        ImGui::PopStyleColor();
+        if (ImGui::IsItemHovered()) {
+            ImGui::SetTooltip(sidEnabled ? "P-LAB A1-SID Sound Card (click to unplug)"
+                                         : "Plug P-LAB A1-SID Sound Card");
+        }
 
         ImGui::SameLine();
         if (graphicsCardEnabled && showGraphicsCard)
@@ -440,7 +536,7 @@ void MainWindow_ImGui::renderToolbar()
             ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.3f, 0.3f, 0.3f, 1.0f));
         else
             ImGui::PushStyleColor(ImGuiCol_Button, ImGui::GetStyle().Colors[ImGuiCol_Button]);
-        if (ImGui::Button(ICON_FA_TV, btnSize)) {
+        if (ImGui::Button("##hgrToolbar", btnSize)) {
             if (!graphicsCardEnabled) {
                 graphicsCardEnabled = true;
                 showGraphicsCard = true;
@@ -465,9 +561,11 @@ void MainWindow_ImGui::renderToolbar()
                 }
             }
         }
+        drawToolbarTextLabel(ImGui::GetWindowDrawList(),
+                               ImGui::GetItemRectMin(), ImGui::GetItemRectMax(), "HGR");
         ImGui::PopStyleColor();
         if (ImGui::IsItemHovered()) {
-            ImGui::SetTooltip(graphicsCardEnabled ? "GEN2 Color Output (click to unplug)" : "Plug GEN2 Graphics Card");
+            ImGui::SetTooltip(graphicsCardEnabled ? "Bernie's GEN2 HGR (click to unplug)" : "Plug Bernie's GEN2 HGR Graphic Card");
         }
 
         ImGui::SameLine();
@@ -497,33 +595,57 @@ void MainWindow_ImGui::renderToolbar()
             ImGui::SetTooltip(tms9918Enabled ? "P-LAB TMS9918 Output (click to unplug)" : "Plug P-LAB Graphic Card (TMS9918)");
         }
 
+#if !POM1_IS_WASM
+        // --- P-LAB Terminal Card ---
         ImGui::SameLine();
         ImGui::PushStyleColor(ImGuiCol_Button,
-            sidEnabled ? ImVec4(0.2f, 0.4f, 0.8f, 1.0f) : ImVec4(0.3f, 0.3f, 0.3f, 1.0f));
-        if (ImGui::Button(ICON_FA_MUSIC, btnSize)) {
-            sidEnabled = !sidEnabled;
-            emulation->setSIDEnabled(sidEnabled);
-            setStatusMessage(sidEnabled ? "P-LAB A1-SID plugged" : "P-LAB A1-SID unplugged", 2.0f);
+            terminalCardEnabled ? ImVec4(0.2f, 0.6f, 0.4f, 1.0f) : ImVec4(0.3f, 0.3f, 0.3f, 1.0f));
+        if (ImGui::Button(ICON_FA_TERMINAL, btnSize)) {
+            if (!terminalCardEnabled) {
+                terminalCardEnabled = true;
+                showTerminalCard = true;
+                emulation->setTerminalCardEnabled(true);
+                setStatusMessage("P-LAB Terminal Card plugged (telnet localhost 6502)", 3.0f);
+            } else {
+                showTerminalCard = !showTerminalCard;
+                if (!showTerminalCard) {
+                    terminalCardEnabled = false;
+                    emulation->setTerminalCardEnabled(false);
+                    setStatusMessage("P-LAB Terminal Card unplugged", 2.0f);
+                }
+            }
         }
         ImGui::PopStyleColor();
         if (ImGui::IsItemHovered()) {
-            ImGui::SetTooltip(sidEnabled ? "P-LAB A1-SID Sound Card (click to unplug)"
-                                         : "Plug P-LAB A1-SID Sound Card");
+            ImGui::SetTooltip(terminalCardEnabled ? "P-LAB Terminal Card (click to unplug)"
+                                                  : "Plug P-LAB Terminal Card");
         }
+#endif
 
         ImGui::SameLine();
         ImGui::PushStyleColor(ImGuiCol_Button,
-            microSDEnabled ? ImVec4(0.2f, 0.4f, 0.8f, 1.0f) : ImVec4(0.3f, 0.3f, 0.3f, 1.0f));
-        if (ImGui::Button(ICON_FA_SD_CARD, btnSize)) {
-            microSDEnabled = !microSDEnabled;
-            emulation->setMicroSDEnabled(microSDEnabled);
-            setStatusMessage(microSDEnabled ? "P-LAB microSD Card plugged — type 8000R"
-                                            : "P-LAB microSD Card unplugged", 2.0f);
+            wifiModemEnabled ? ImVec4(0.2f, 0.4f, 0.8f, 1.0f) : ImVec4(0.3f, 0.3f, 0.3f, 1.0f));
+        if (ImGui::Button("##bbsModemToolbar", btnSize)) {
+            if (!wifiModemEnabled) {
+                wifiModemEnabled = true;
+                showWiFiModem = true;
+                emulation->setWiFiModemEnabled(true);
+                setStatusMessage("P-LAB Wi-Fi Modem plugged", 2.0f);
+            } else {
+                showWiFiModem = !showWiFiModem;
+                if (!showWiFiModem) {
+                    wifiModemEnabled = false;
+                    emulation->setWiFiModemEnabled(false);
+                    setStatusMessage("P-LAB Wi-Fi Modem unplugged", 2.0f);
+                }
+            }
         }
+        drawToolbarTextLabel(ImGui::GetWindowDrawList(),
+                             ImGui::GetItemRectMin(), ImGui::GetItemRectMax(), "BBS");
         ImGui::PopStyleColor();
         if (ImGui::IsItemHovered()) {
-            ImGui::SetTooltip(microSDEnabled ? "P-LAB microSD Storage Card (click to unplug)"
-                                             : "Plug P-LAB microSD Storage Card");
+            ImGui::SetTooltip(wifiModemEnabled ? "P-LAB Wi-Fi Modem (click to unplug)"
+                                               : "Plug P-LAB Wi-Fi Modem");
         }
 
         // --- Séparateur ---
@@ -813,7 +935,7 @@ void MainWindow_ImGui::renderAboutDialog()
     ImGui::SetNextWindowSizeConstraints(ImVec2(380, 0), ImVec2(500, FLT_MAX));
     ImGui::SetNextWindowSize(ImVec2(0, 0), ImGuiCond_Always);
     if (ImGui::Begin("About POM1", &showAbout, ImGuiWindowFlags_AlwaysAutoResize)) {
-        ImGui::TextWrapped("POM1 v1.6 - Apple 1 Emulator (Dear ImGui)");
+        ImGui::TextWrapped("POM1 v1.7 - Apple 1 Emulator (Dear ImGui)");
         ImGui::Separator();
 
         ImGui::TextWrapped("Copyright (C) 2000-2026 GPL3");
@@ -837,7 +959,7 @@ void MainWindow_ImGui::renderAboutDialog()
         ImGui::BulletText("Lee DAVISON (Enhanced BASIC)");
         ImGui::BulletText("Achim BREIDENBACH (Sim6502)");
         ImGui::BulletText("Fabrice FRANCES (Java Microtan Emulator)");
-        ImGui::BulletText("Uncle BERNIE (GEN2 Color Graphics Card)");
+        ImGui::BulletText("Uncle BERNIE (Bernie's GEN2 HGR Graphic Card)");
         ImGui::BulletText("Tom OWAD (Applefritter)");
         ImGui::BulletText("And All Apple 1 Community");
 
@@ -849,7 +971,7 @@ void MainWindow_ImGui::renderAboutDialog()
         ImGui::BulletText("PIA 6821 with address aliasing ($D0Fx)");
         ImGui::BulletText("Apple Cassette Interface (ACI) with live audio");
         ImGui::BulletText("ACI live audio (44.1 kHz)");
-        ImGui::BulletText("Uncle Bernie's GEN2 Color Graphics Card");
+        ImGui::BulletText("Bernie's GEN2 HGR Graphic Card");
         ImGui::BulletText("All known Apple BASIC versions supported");
 
         ImGui::Spacing();
@@ -877,7 +999,7 @@ void MainWindow_ImGui::renderGraphicsCardWindow()
     const float winH = GraphicsCard::kHiresHeight * pixelScale + 36;
     ImGui::SetNextWindowSize(ImVec2(winW, winH), ImGuiCond_FirstUseEver);
     ImGui::PushStyleColor(ImGuiCol_WindowBg, IM_COL32(0, 0, 0, 255));
-    if (ImGui::Begin("GEN2 Apple1 HGR Color Screen by Uncle Bernie", &showGraphicsCard)) {
+    if (ImGui::Begin("Bernie's GEN2 HGR Graphic Card", &showGraphicsCard)) {
         ImVec2 pos = ImGui::GetCursorScreenPos();
         ImDrawList* drawList = ImGui::GetWindowDrawList();
 
@@ -917,6 +1039,111 @@ void MainWindow_ImGui::renderTMS9918Window()
     }
     ImGui::End();
     ImGui::PopStyleColor();
+}
+
+void MainWindow_ImGui::renderWiFiModemWindow()
+{
+    ImGui::SetNextWindowSize(ImVec2(340, 260), ImGuiCond_FirstUseEver);
+    if (ImGui::Begin("P-LAB Wi-Fi Modem", &showWiFiModem)) {
+        const auto& snap = uiSnapshot.wifiModem;
+
+        // Connection status
+        const char* stateStr = "Idle";
+        ImVec4 stateColor(0.5f, 0.5f, 0.5f, 1.0f);
+        if (snap.connected) {
+            stateStr = "Connected";
+            stateColor = ImVec4(0.2f, 0.9f, 0.2f, 1.0f);
+        } else if (snap.statusReg & 0x08) { // RDRF set but not connected = connecting
+            stateStr = "Connecting...";
+            stateColor = ImVec4(0.9f, 0.9f, 0.2f, 1.0f);
+        }
+
+        ImGui::TextColored(stateColor, "Status: %s", stateStr);
+
+        if (!snap.remoteHost.empty()) {
+            ImGui::Text("Remote: %s:%d", snap.remoteHost.c_str(), snap.remotePort);
+        }
+
+        ImGui::Separator();
+        ImGui::Text("Baud Rate: %d", snap.baudRate);
+        ImGui::Text("Echo: %s", snap.echoEnabled ? "ON" : "OFF");
+        ImGui::Text("Bytes Sent: %u", snap.bytesSent);
+        ImGui::Text("Bytes Received: %u", snap.bytesReceived);
+
+        ImGui::Separator();
+        ImGui::Text("ACIA Registers ($B000-$B003):");
+        ImGui::Text("  Status:  $%02X  [%s%s%s%s]",
+            snap.statusReg,
+            (snap.statusReg & 0x10) ? "TDRE " : "",
+            (snap.statusReg & 0x08) ? "RDRF " : "",
+            (snap.statusReg & 0x20) ? "DCD " : "",
+            (snap.statusReg & 0x40) ? "DSR " : "");
+        ImGui::Text("  Command: $%02X", snap.commandReg);
+        ImGui::Text("  Control: $%02X", snap.controlReg);
+
+        ImGui::Separator();
+        if (snap.connected) {
+            if (ImGui::Button("Disconnect")) {
+                // Queue ATH command by toggling the card off/on is too drastic.
+                // Instead let the user send ATH via the terminal.
+                ImGui::SetTooltip("Send +++ then ATH from the terminal");
+            }
+        }
+    }
+    ImGui::End();
+}
+
+void MainWindow_ImGui::renderTerminalCardWindow()
+{
+    ImGui::SetNextWindowSize(ImVec2(360, 280), ImGuiCond_FirstUseEver);
+    if (ImGui::Begin("P-LAB Terminal Card", &showTerminalCard)) {
+        const auto& snap = uiSnapshot.terminalCard;
+
+        // Server status
+        if (snap.serverListening) {
+            ImGui::TextColored(ImVec4(0.2f, 0.9f, 0.2f, 1.0f),
+                ICON_FA_SERVER " Listening on port %d", snap.listenPort);
+        } else {
+            ImGui::TextColored(ImVec4(0.9f, 0.2f, 0.2f, 1.0f),
+                ICON_FA_SERVER " Server not running");
+        }
+
+        // Client connection
+        if (snap.clientConnected) {
+            ImGui::TextColored(ImVec4(0.2f, 0.9f, 0.2f, 1.0f),
+                ICON_FA_PLUG " Connected: %s", snap.clientAddress.c_str());
+        } else {
+            ImGui::TextColored(ImVec4(0.5f, 0.5f, 0.5f, 1.0f),
+                ICON_FA_PLUG " No client connected");
+            ImGui::TextWrapped("Connect with: telnet localhost %d", snap.listenPort);
+        }
+
+        ImGui::Separator();
+
+        // Mode indicators
+        ImGui::Text("Modes:");
+        ImGui::BulletText("UC Outgoing (Ctrl-O): %s", snap.uppercaseOutgoing ? "ON" : "OFF");
+        ImGui::BulletText("UC Incoming (Ctrl-I): %s", snap.uppercaseIncoming ? "ON" : "OFF");
+        ImGui::BulletText("8-bit Mode  (Ctrl-T): %s", snap.eightBitMode ? "ON" : "OFF");
+
+        ImGui::Separator();
+
+        // Traffic stats
+        ImGui::Text("Bytes Sent:     %u", snap.bytesSent);
+        ImGui::Text("Bytes Received: %u", snap.bytesReceived);
+
+        ImGui::Separator();
+
+        // Control commands help
+        if (ImGui::CollapsingHeader("Control Commands")) {
+            ImGui::BulletText("Ctrl-L  Clear screen");
+            ImGui::BulletText("Ctrl-R  Reset Apple 1");
+            ImGui::BulletText("Ctrl-O  Toggle outgoing uppercase");
+            ImGui::BulletText("Ctrl-I  Toggle incoming uppercase");
+            ImGui::BulletText("Ctrl-T  Toggle 8-bit mode");
+        }
+    }
+    ImGui::End();
 }
 
 void MainWindow_ImGui::renderDebugDialog()
@@ -1387,6 +1614,14 @@ void MainWindow_ImGui::renderLoadDialog()
                     emulation->setMicroSDEnabled(true);
                     setStatusMessage("P-LAB microSD Card plugged", 2.0f);
                 }
+            } else if (loadPath.find("/wifi/") != std::string::npos ||
+                       loadPath.find("\\wifi\\") != std::string::npos) {
+                if (!wifiModemEnabled) {
+                    wifiModemEnabled = true;
+                    showWiFiModem = true;
+                    emulation->setWiFiModemEnabled(true);
+                    setStatusMessage("P-LAB Wi-Fi Modem plugged", 2.0f);
+                }
             }
 
             quint16 addr = 0;
@@ -1801,9 +2036,18 @@ void MainWindow_ImGui::renderMemoryMapWindow()
         regions.push_back({ 0x0280, 0x9FFF, IM_COL32( 80, 200,  80, 255), "User RAM" });
     }
     std::vector<MemRegion> tail;
-    if (microSDEnabled) {
+    if (microSDEnabled && wifiModemEnabled) {
+        tail.push_back({ 0xA000, 0xA00F, IM_COL32(255, 150,  50, 255), "VIA 65C22 I/O" });
+        tail.push_back({ 0xA010, 0xAFFF, IM_COL32( 80, 200,  80, 255), "User RAM" });
+        tail.push_back({ 0xB000, 0xB003, IM_COL32(  0, 200, 200, 255), "ACIA 65C51 I/O" });
+        tail.push_back({ 0xB004, 0xBFFF, IM_COL32( 80, 200,  80, 255), "User RAM" });
+    } else if (microSDEnabled) {
         tail.push_back({ 0xA000, 0xA00F, IM_COL32(255, 150,  50, 255), "VIA 65C22 I/O" });
         tail.push_back({ 0xA010, 0xBFFF, IM_COL32( 80, 200,  80, 255), "User RAM" });
+    } else if (wifiModemEnabled) {
+        tail.push_back({ 0xA000, 0xAFFF, IM_COL32( 80, 200,  80, 255), "User RAM" });
+        tail.push_back({ 0xB000, 0xB003, IM_COL32(  0, 200, 200, 255), "ACIA 65C51 I/O" });
+        tail.push_back({ 0xB004, 0xBFFF, IM_COL32( 80, 200,  80, 255), "User RAM" });
     } else {
         tail.push_back({ 0xA000, 0xBFFF, IM_COL32( 80, 200,  80, 255), "User RAM" });
     }
@@ -2024,6 +2268,21 @@ void MainWindow_ImGui::renderMemoryMapWindow()
             ImGui::BulletText("$C80E-$C814  Voice 3");
             ImGui::BulletText("$C815-$C818  Filter (cutoff, res, mode/vol)");
             ImGui::BulletText("$C819-$C81C  Read-only (POT, OSC3, ENV3)");
+        }
+        if (wifiModemEnabled) {
+            ImGui::Spacing();
+            ImGui::TextColored(ImVec4(0.7f, 0.85f, 1.0f, 1.0f), "  P-LAB Wi-Fi Modem (65C51 ACIA)");
+            ImGui::BulletText("$B000  DATA   - Serial data I/O");
+            ImGui::BulletText("$B001  STATUS - Flags (TDRE, RDRF, DCD)");
+            ImGui::BulletText("$B002  CMD    - Command (DTR, echo, RTS)");
+            ImGui::BulletText("$B003  CTRL   - Control (baud, word len)");
+        }
+        if (terminalCardEnabled) {
+            ImGui::Spacing();
+            ImGui::TextColored(ImVec4(0.7f, 0.85f, 1.0f, 1.0f), "  P-LAB Terminal Card (passive)");
+            ImGui::BulletText("Eavesdrops $D012 display writes");
+            ImGui::BulletText("Injects keys via $D010/$D011");
+            ImGui::BulletText("TCP server on localhost:6502");
         }
 
         ImGui::TableSetColumnIndex(1);

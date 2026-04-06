@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-POM1 v1.6 is an Apple 1 emulator built with Dear ImGui. It emulates the MOS 6502 CPU and Apple 1 hardware including memory-mapped I/O, display, keyboard input, the Apple Cassette Interface (ACI) with live audio and tape files, Uncle Bernie's GEN2 Color Graphics Card (280×192 HIRES, NTSC artifact color), the P-LAB A1-SID Sound Card (MOS 6581/8580 SID, 3-voice synthesis), and the P-LAB microSD Storage Card (65C22 VIA, FAT32 filesystem). The UI is fully in English. Builds on Linux, macOS, Windows, and Web (Emscripten/WASM).
+POM1 v1.7 is an Apple 1 emulator built with Dear ImGui. It emulates the MOS 6502 CPU and Apple 1 hardware including memory-mapped I/O, display, keyboard input, the Apple Cassette Interface (ACI) with live audio and tape files, Uncle Bernie's GEN2 Color Graphics Card (280×192 HIRES, NTSC artifact color), the P-LAB A1-SID Sound Card (MOS 6581/8580 SID, 3-voice synthesis), the P-LAB microSD Storage Card (65C22 VIA, FAT32 filesystem), the P-LAB MODEM BBS (65C51 ACIA, TCP/TELNET), and the P-LAB Terminal Card (TCP server for external terminal control). The UI is fully in English. Builds on Linux, macOS, Windows, and Web (Emscripten/WASM).
 
 ## Build & Run Commands
 
@@ -82,6 +82,10 @@ ld65 -C software/apple1.cfg -o build/program.bin build/program.o
 
 - **MicroSD.cpp/h**: [P-LAB Apple-1 microSD Storage Card](https://p-l4b.github.io/sdcard/) emulation. 65C22 VIA chip at `$A000`-`$A00F` bridging the 6502 CPU to an emulated ATMEGA MCU that performs filesystem operations. SD CARD OS ROM (8KB EEPROM) loaded at `$8000`-`$9FFF` provides a DOS-like CLI with commands: DIR, LS, CD, LOAD, SAVE, READ, WRITE, DEL, MKDIR, RMDIR, PWD, MOUNT. Handshake protocol via PORTB bit 0 (CPU_STROBE) / bit 7 (MCU_STROBE) with PORTA as bidirectional data bus. Maps host `sdcard/` directory as virtual FAT32 SD card. Tagged filenames (`NAME#TTAAAA`) encode file type and load address. Firmware source: [apple1-sdcard](https://github.com/nippur72/apple1-sdcard). Toggled via Hardware menu or toolbar button.
 
+- **WiFiModem.cpp/h**: [P-LAB Apple-1 Wi-Fi Modem](https://p-l4b.github.io/wifi/) emulation (menu: "P-LAB MODEM BBS"). 65C51 ACIA at `$B000`-`$B003` (4 registers: DATA, STATUS, COMMAND, CONTROL) with ESP8266 AT command interpreter. Hayes AT commands (AT, ATDT host:port, ATH, ATE0/ATE1, ATI, ATZ) with TELNET IAC protocol handling (WILL/WONT/DO/DONT negotiation, subnegotiation filtering). Non-blocking TCP socket client with baud rate simulation (50–19200 baud from W65C51N table). Escape sequence (+++) detection with 1-second guard time. Circular 4096-byte receive buffer with cycle-accurate delivery. Desktop only (`#if !POM1_IS_WASM`); WASM stubs return `NO CARRIER`. Toggled via Hardware menu or toolbar button.
+
+- **TerminalCard.cpp/h**: [P-LAB Apple-1 Terminal Card](https://p-l4b.github.io/terminal/) emulation. Passive bidirectional serial bridge — eavesdrops on `$D012` display writes and injects keystrokes into `$D010`/`$D011`. No new I/O addresses. Exposes a TCP server on `localhost:6502` — connect with `telnet localhost 6502` or any terminal emulator. Modes: 7-bit (default, CR→CRLF, filter non-printable, optional uppercase CTRL-O/CTRL-I) and 8-bit raw pass-through (CTRL-T). Control commands: CTRL-L (clear screen), CTRL-R (reset Apple 1). TELNET IAC negotiation handled (refuses all WILL/DO). Native Apple 1 screen continues working in parallel. `setKeyPressedRaw()` in Memory bypasses forced uppercase for lowercase/8-bit support. Pending reset/clear use `std::atomic<bool>` flags consumed outside `stateMutex` to avoid deadlock. Desktop only; WASM stubs. Toggled via Hardware menu or toolbar button. Bundled terminal program: `software/wifi/terminal.txt` (ACIA polling bridge, load at `$0280`).
+
 ### ROM Files (roms/)
 - **WozMonitor.rom** (256B @ 0xFF00): Wozniak's system monitor
 - **basic.rom** (4KB @ 0xE000): Apple BASIC interpreter
@@ -100,7 +104,7 @@ Contains Apple 1 programs in Woz Monitor hex dump format (.txt) organized in sub
 - **hgr/**: GEN2 HGR demo images (raw 8 KB binary loaded at `$2000`)
 - **tms9918/**: P-LAB TMS9918 programs — Tetris, demo suite, PicShow image viewer (KickC binaries loaded at `$0280`)
 - **sid/**: P-LAB A1-SID programs — 30 SID tunes converted from HVSC `.sid` files via `tools/sid2apple1.py` (Rob Hubbard, Martin Galway, Jeroen Tel, Ben Daglish, Chris Huelsbeck). Includes IRQ-driven tunes (Arkanoid, Game Over, Combat School, Last V8, Myth). Binary `.bin` files loaded at `$0280`.
-- **cassettes/**: Reference material for the Apple cassette library — short readme `.txt` files and **`.ogg`** captures of original tapes (preservation / listening). POM1’s **Cassette Control** loads **`.wav`** or **`.aci`** only; convert or re-encode to WAV if you want to feed those captures into the emulated ACI.
+- **wifi/**: P-LAB Wi-Fi Modem terminal program (`terminal.txt`) — ACIA polling bridge for BBS connections, load at `$0280`, run with `0280R`
 
 ### Virtual SD Card (sdcard/)
 The `sdcard/` directory at the project root is the virtual microSD card content for the P-LAB microSD Storage Card emulation. Files placed here are accessible from the SD CARD OS shell (enter with `8000R`). Files use tagged naming: `NAME#TTAAAA` where `TT` is the file type (`06`=binary, `F1`=Integer BASIC, `F8`=AppleSoft BASIC) and `AAAA` is the hex load address. Example: `GAME#F10300` is a BASIC program loading at `$0300`.
@@ -159,8 +163,12 @@ Visual 16x16 grid (256 pages = 64KB) with color-coded regions, KB labels, PC/SP 
 | Ctrl+V | Paste Code |
 | Ctrl+Q | Quit |
 
+### Cassettes directory (cassettes/)
+Reference material for the Apple cassette library — **`.ogg`** captures of original tapes (preservation / listening). POM1's **ACI Cassette Control** loads **`.wav`** or **`.aci`** only; convert or re-encode to WAV if you want to feed those captures into the emulated ACI.
+
 ### Additional Directories
 - **bios/**: Legacy BIOS/ROM files from the original POM1 project.
+- **cassettes/**: Original-tape `.ogg` captures (reference / preservation).
 - **fonts/**: Font Awesome icon font (fa-solid-900.ttf) used by the UI.
 - **doc/**: Documentation — Krusader 1.3 manual PDF, Apple 1 software reference, screenshot.
 - **IconsFontAwesome6.h**: Font Awesome 6 icon codepoints header.
@@ -175,7 +183,9 @@ Visual 16x16 grid (256 pages = 64KB) with color-coded regions, KB labels, PC/SP 
 0x4000-0x7FFF  User RAM
 0x8000-0x9FFF  SD CARD OS ROM (8 KB EEPROM — when P-LAB microSD is plugged)
 0xA000-0xA00F  VIA 65C22 I/O (16 registers — when P-LAB microSD is plugged)
-0xA010-0xBFFF  User RAM
+0xA010-0xAFFF  User RAM
+0xB000-0xB003  ACIA 65C51 I/O (4 registers — when P-LAB MODEM BBS is plugged)
+0xB004-0xBFFF  User RAM
 0xC800-0xCFFF  A1-SID I/O (29 registers, addr & 0x1F, when P-LAB SID is plugged)
 0xCC00         TMS9918 DATA - VRAM data port   (when P-LAB card is plugged)
 0xCC01         TMS9918 CTRL - Control/status    (when P-LAB card is plugged)
@@ -213,6 +223,27 @@ The setup script supports apt (Ubuntu/Debian), dnf (Fedora/CentOS), and pacman (
 The `build/`, `build-wasm/`, and `imgui/` directories are excluded from git via `.gitignore`.
 
 ## Version History
+
+### v1.7 (April 2026) — P-LAB MODEM BBS & Terminal Card
+- [P-LAB Apple-1 Wi-Fi Modem](https://p-l4b.github.io/wifi/) emulation: 65C51 ACIA at `$B000`-`$B003`, ESP8266 AT command interpreter, Hayes AT commands (AT, ATDT host:port, ATH, ATE, ATI, ATZ), TELNET IAC protocol handling, non-blocking TCP socket client, baud rate simulation (50–19200 baud), escape sequence (+++) with guard time, circular 4096-byte receive buffer
+- [P-LAB Apple-1 Terminal Card](https://p-l4b.github.io/terminal/) emulation: passive bidirectional serial bridge — TCP server on `localhost:6502` for external terminal control. Connect with `telnet localhost 6502` to control the entire Apple 1 (Woz Monitor, BASIC, programs) from any terminal emulator
+- Terminal Card modes: 7-bit (default, CR→CRLF, uppercase conversion CTRL-O/CTRL-I) and 8-bit raw pass-through (CTRL-T). Control commands: CTRL-L (clear screen), CTRL-R (reset Apple 1)
+- Native Apple 1 screen continues working in parallel with the Terminal Card
+- TELNET IAC negotiation: both WiFi Modem and Terminal Card refuse all WILL/DO with WONT/DONT, filter subnegotiation
+- `Memory::setKeyPressedRaw()`: new method bypassing forced uppercase conversion, used by Terminal Card for lowercase/8-bit support
+- Thread-safe pending reset/clear via `std::atomic<bool>` flags consumed outside `stateMutex` in `EmulationController::runEmulationSlice()` to avoid deadlock
+- Bundled ACIA terminal program (`software/wifi/terminal.txt`): polls ACIA `$B000`-`$B003` for keyboard↔modem bridge, load at `$0280`, run with `0280R`
+- Auto-enable Wi-Fi Modem when loading from `software/wifi/` directory
+- Wi-Fi Modem status window: connection state, baud rate, ACIA registers, traffic counters
+- Terminal Card status window: server/client state, modes, byte counters, control commands help
+- Memory Map info panel shows Wi-Fi Modem ACIA registers and Terminal Card passive eavesdrop info when enabled
+- Desktop only (`#if !POM1_IS_WASM`): Terminal Card menu/toolbar hidden in WASM builds; WiFi Modem stubs return `NO CARRIER`
+- Toggle via Hardware menu or toolbar buttons (WiFi icon / Terminal icon)
+- Toolbar icon order reorganized: Load, SD Card, Cassette, SID, HGR, TMS9918, Terminal, BBS
+- Hardware menu reorganized: ACI Cassette Control + Bernie's GEN2 (classics), then P-LAB cards grouped (microSD, SID, TMS9918, Terminal Card, MODEM BBS)
+- Wi-Fi Modem renamed to "P-LAB MODEM BBS" in Hardware menu
+- Cassette Control renamed to "ACI Cassette Control" in Hardware menu
+- Cassettes directory moved from `software/cassettes/` to `cassettes/` at project root (original-tape `.ogg` captures for reference/preservation)
 
 ### v1.6 (April 2026) — P-LAB microSD Storage Card
 - [P-LAB Apple-1 microSD Storage Card](https://p-l4b.github.io/sdcard/) emulation: 65C22 VIA at `$A000`-`$A00F`, ATMEGA MCU protocol emulation, SD CARD OS ROM (8KB EEPROM) at `$8000`-`$9FFF`, DOS-like CLI with DIR/LS/CD/LOAD/SAVE/READ/WRITE/DEL/MKDIR/RMDIR/PWD/MOUNT commands

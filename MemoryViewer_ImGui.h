@@ -21,6 +21,8 @@ public:
     void setTMS9918Enabled(bool enabled) { tms9918Enabled = enabled; }
     void setSIDEnabled(bool enabled) { sidEnabled = enabled; }
     void setMicroSDEnabled(bool enabled) { microSDEnabled = enabled; }
+    void setWiFiModemEnabled(bool enabled) { wifiModemEnabled = enabled; }
+    void setTerminalCardEnabled(bool enabled) { terminalCardEnabled = enabled; }
 
 private:
     Memory* memory;
@@ -38,6 +40,8 @@ private:
     bool tms9918Enabled = false;
     bool sidEnabled = false;
     bool microSDEnabled = false;
+    bool wifiModemEnabled = false;
+    bool terminalCardEnabled = false;
 
     // Auto-refresh: snapshot taken when autoRefresh is off
     std::vector<quint8> snapshot;

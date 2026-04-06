@@ -67,6 +67,10 @@ private:
     bool tms9918Enabled = false;
     bool sidEnabled = false;
     bool microSDEnabled = false;
+    bool wifiModemEnabled = false;
+    bool showWiFiModem = false;
+    bool terminalCardEnabled = false;
+    bool showTerminalCard = false;
     bool fullscreen = false;
     int windowedWidth = 1200;
     int windowedHeight = 800;
@@ -104,6 +108,8 @@ private:
     void renderSaveTapeDialog();
     void renderGraphicsCardWindow();
     void renderTMS9918Window();
+    void renderWiFiModemWindow();
+    void renderTerminalCardWindow();
 
     // Action functions
     void loadMemory();

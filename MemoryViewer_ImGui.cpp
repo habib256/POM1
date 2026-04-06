@@ -530,6 +530,8 @@ ImVec4 MemoryViewer_ImGui::getColorForAddress(int address)
         return ImVec4(1.0f, 0.78f, 0.31f, 1.0f);    // SD CARD OS ROM - amber
     if (microSDEnabled && address >= 0xA000 && address <= 0xA00F)
         return ImVec4(1.0f, 0.59f, 0.20f, 1.0f);    // VIA 65C22 I/O - dark orange
+    if (wifiModemEnabled && address >= 0xB000 && address <= 0xB003)
+        return ImVec4(0.0f, 0.78f, 0.78f, 1.0f);    // ACIA 65C51 I/O - teal
     if (address <= 0x9FFF)
         return ImVec4(0.31f, 0.78f, 0.31f, 1.0f);   // User RAM - green
     if (address <= 0xBFFF)

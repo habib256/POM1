@@ -19,6 +19,8 @@
 #include "Screen_ImGui.h"
 #include "SID.h"
 #include "TMS9918.h"
+#include "WiFiModem.h"
+#include "TerminalCard.h"
 
 struct EmulationSnapshot
 {
@@ -46,6 +48,10 @@ struct EmulationSnapshot
     TMS9918::Snapshot tms9918;
     bool sidEnabled = false;
     bool microSDEnabled = false;
+    bool wifiModemEnabled = false;
+    WiFiModem::Snapshot wifiModem;
+    bool terminalCardEnabled = false;
+    TerminalCard::Snapshot terminalCard;
 };
 
 class EmulationController
@@ -100,6 +106,14 @@ public:
     // P-LAB microSD Storage Card
     void setMicroSDEnabled(bool enabled);
     bool isMicroSDEnabled() const;
+
+    // P-LAB Apple-1 Wi-Fi Modem
+    void setWiFiModemEnabled(bool enabled);
+    bool isWiFiModemEnabled() const;
+
+    // P-LAB Apple-1 Terminal Card
+    void setTerminalCardEnabled(bool enabled);
+    bool isTerminalCardEnabled() const;
 
     /// Web (Emscripten) : pas de std::thread — avancer l’émulation depuis la boucle principale.
     void pumpEmulationMainThread(double deltaSeconds);

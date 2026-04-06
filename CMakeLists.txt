@@ -27,6 +27,8 @@ set(SOURCES
     SID.cpp
     TMS9918.cpp
     MicroSD.cpp
+    WiFiModem.cpp
+    TerminalCard.cpp
 )
 
 set(HEADERS
@@ -42,6 +44,8 @@ set(HEADERS
     Screen_ImGui.h
     SID.h
     TMS9918.h
+    WiFiModem.h
+    TerminalCard.h
 )
 
 # Create executable
@@ -129,7 +133,7 @@ else()
 
     # Windows-specific
     if(WIN32)
-        target_link_libraries(${PROJECT_NAME} opengl32)
+        target_link_libraries(${PROJECT_NAME} opengl32 ws2_32)
     endif()
 
     if(MSVC)

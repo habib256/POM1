@@ -1,13 +1,13 @@
 <div align="center">
 
-# 🍎 POM1 v1.6 — Apple 1 Emulator
+# 🍎 POM1 v1.7 — Apple 1 Emulator
 
 **Experience the machine that started the personal computer revolution.**
 
-🎂 **Celebrating 50 years of Apple (1976–2026)** — POM1 v1.6 is released in honor of the 50th anniversary of Apple Computer, founded on April 1, 1976.
+🎂 **Celebrating 50 years of Apple (1976–2026)** — POM1 v1.7 is released in honor of the 50th anniversary of Apple Computer, founded on April 1, 1976.
 
 A faithful Apple 1 emulator built with Dear ImGui & OpenGL — fast, lightweight, and cross-platform. 
-Now with [P-LAB microSD Storage Card](https://p-l4b.github.io/sdcard/), [P-LAB A1-SID Sound Card](https://p-l4b.github.io/A1-SID/), [P-LAB Apple-1 Graphic Card (TMS9918)](https://p-l4b.github.io/graphic/) and [Uncle Bernie's GEN2 Color Graphics Card](https://www.applefritter.com/content/uncle-bernies-gen2-color-graphics-card-apple-1) support.
+Now with [P-LAB Wi-Fi Modem](https://p-l4b.github.io/wifi/), [P-LAB Terminal Card](https://p-l4b.github.io/terminal/), [P-LAB microSD Storage Card](https://p-l4b.github.io/sdcard/), [P-LAB A1-SID Sound Card](https://p-l4b.github.io/A1-SID/), [P-LAB Apple-1 Graphic Card (TMS9918)](https://p-l4b.github.io/graphic/) and [Uncle Bernie's GEN2 Color Graphics Card](https://www.applefritter.com/content/uncle-bernies-gen2-color-graphics-card-apple-1) support.
 
 **Play it now in your browser** : 
 [![Play Online](https://img.shields.io/badge/Play%20Online-WebAssembly-blueviolet.svg)](https://habib256.github.io/POM1/build-wasm/pom1_imgui.html)
@@ -37,7 +37,7 @@ or build it natively.
 
 📂 **Program Loader** — Load binary files or Woz Monitor hex dumps (with inline comment support) via a built-in file browser
 
-📼 **Apple Cassette Interface (ACI)** — Woz ACI ROM at `$C100`, cassette input on `$C081`, output flip-flop on `$C000`, real-time audio (desktop & WebAssembly), and tape import/export as `.aci` or `.wav` (see `software/cassettes/` for reference **`.ogg`** captures of original tapes — convert to **`.wav`** to load in the emulator)
+📼 **Apple Cassette Interface (ACI)** — Woz ACI ROM at `$C100`, cassette input on `$C081`, output flip-flop on `$C000`, real-time audio (desktop & WebAssembly), and tape import/export as `.aci` or `.wav` (see `cassettes/` for reference **`.ogg`** captures of original tapes — convert to **`.wav`** to load in the emulator)
 
 🔌 **PIA 6821 Address Aliasing** — Full support for `$D0Fx` aliases, enabling all known Apple BASIC versions (original, Pagetable, Briel/Replica 1)
 
@@ -52,6 +52,10 @@ or build it natively.
 🎵 **P-LAB A1-SID Sound Card** — [P-LAB A1-SID](https://p-l4b.github.io/A1-SID/) — MOS 6581/8580-style SID at `$C800`–`$CFFF`; mix with cassette audio. Convert C64 **`.sid`** (PSID/RSID) to Apple 1 binaries with [`tools/sid2apple1.py`](tools/sid2apple1.py) — see [P-LAB A1-SID Sound Card](#-p-lab-a1-sid-sound-card) below
 
 💾 **P-LAB microSD Storage Card** — [P-LAB microSD](https://p-l4b.github.io/sdcard/) — 65C22 VIA at `$A000`–`$A00F`, SD CARD OS ROM at `$8000`–`$9FFF`, DOS-like CLI (DIR, LS, CD, LOAD, SAVE, READ, WRITE, DEL, MKDIR, RMDIR, PWD, MOUNT). Maps host `sdcard/` directory as virtual FAT32 SD card — see [P-LAB microSD Storage Card](#-p-lab-microsd-storage-card) below
+
+📡 **P-LAB MODEM BBS** — [P-LAB Wi-Fi Modem](https://p-l4b.github.io/wifi/) — 65C51 ACIA at `$B000`–`$B003`, Hayes AT commands (ATDT host:port for BBS), TELNET protocol, baud rate simulation (50–19200). Connect to real BBS servers over TCP — see [P-LAB MODEM BBS](#-p-lab-modem-bbs) below
+
+🖥️ **P-LAB Terminal Card** — [P-LAB Terminal Card](https://p-l4b.github.io/terminal/) — TCP server on `localhost:6502`. Control the Apple 1 from any external terminal (`telnet localhost 6502`). Works with Wi-Fi Modem for full ANSI BBS experience — see [P-LAB Terminal Card](#-p-lab-terminal-card) below
 
 📋 **Clipboard Paste** — Paste code directly into the Apple 1 keyboard from your clipboard
 
@@ -287,6 +291,56 @@ Firmware source: [apple1-sdcard](https://github.com/nippur72/apple1-sdcard) by A
 
 ---
 
+## 📡 P-LAB MODEM BBS
+
+POM1 emulates the [P-LAB Apple-1 Wi-Fi Modem](https://p-l4b.github.io/wifi/), a 65C51 ACIA + ESP8266 expansion that connects the Apple 1 to real BBS servers over TCP/TELNET.
+
+- **I/O** at `$B000`–`$B003` (DATA, STATUS, COMMAND, CONTROL registers)
+- **Hayes AT commands**: `AT`, `ATDT host:port`, `ATH`, `ATE0`/`ATE1`, `ATI`, `ATZ`
+- **TELNET protocol**: IAC negotiation (WILL/WONT/DO/DONT), subnegotiation filtering
+- **Baud rate simulation**: 50–19200 baud (W65C51N standard table)
+- **Escape sequence**: `+++` with 1-second guard time to return to command mode
+- Toggle via **Hardware > P-LAB MODEM BBS** or the toolbar button
+- Desktop only (no networking in WASM)
+
+### Connecting to a BBS
+
+1. Enable Wi-Fi Modem and Terminal Card (Hardware menu)
+2. Connect an external terminal: `telnet localhost 6502`
+3. Load the terminal program: **File > Load Memory** → `software/wifi/terminal.txt`
+4. In the Woz Monitor (prompt `\`), type `0280R` to start the ACIA bridge
+5. Test the modem: type `AT` — response: `OK`
+6. Connect to a BBS: `ATDT BBS.FOZZTEXX.COM:23`
+7. Disconnect: wait 1s, type `+++`, wait 1s, then `ATH`
+
+The Terminal Card provides full ANSI rendering in your terminal emulator — colors, cursor positioning, and screen clearing work natively.
+
+---
+
+## 🖥️ P-LAB Terminal Card
+
+POM1 emulates the [P-LAB Apple-1 Terminal Card](https://p-l4b.github.io/terminal/), a passive bidirectional serial bridge that connects the Apple 1 to an external terminal.
+
+- **TCP server** on `localhost:6502` — connect with `telnet localhost 6502` or any terminal emulator
+- **Passive device**: eavesdrops on `$D012` display writes, injects keystrokes into `$D010`/`$D011` — no new I/O addresses
+- **Native Apple 1 screen** continues working in parallel
+- **7-bit mode** (default): CR→CRLF, uppercase conversion (Ctrl-O outgoing, Ctrl-I incoming)
+- **8-bit mode** (Ctrl-T): raw pass-through for PETSCII/extended ASCII
+- **Control commands**: Ctrl-L (clear screen), Ctrl-R (reset Apple 1)
+- Toggle via **Hardware > P-LAB Terminal Card** or the toolbar button
+- Desktop only (no TCP server in WASM)
+
+### Quick start
+
+```bash
+# In POM1: enable Terminal Card via Hardware menu
+# In another terminal window:
+telnet localhost 6502
+# You now control the Apple 1 — Woz Monitor, BASIC, everything
+```
+
+---
+
 ## 🎮 Software Library
 
 The `software/` directory ships with **30+ ready-to-run programs** — load them via **File > Load Memory**.
@@ -391,6 +445,8 @@ POM1/
 ├── TMS9918.cpp/h            # 🖥️ P-LAB TMS9918 VDP (256×192, 15 colors, sprites)
 ├── SID.cpp/h                # 🎵 P-LAB A1-SID (6581/8580-style synthesis)
 ├── MicroSD.cpp/h            # 💾 P-LAB microSD Storage Card (65C22 VIA + MCU)
+├── WiFiModem.cpp/h          # 📡 P-LAB Wi-Fi Modem (65C51 ACIA + TCP/TELNET)
+├── TerminalCard.cpp/h       # 🖥️ P-LAB Terminal Card (TCP server, serial bridge)
 ├── MemoryViewer_ImGui.cpp/h # 🔍 Hex editor with search & navigation
 ├── tools/
 │   └── sid2apple1.py        # 🎛️ C64 PSID/RSID → Apple 1 .bin for A1-SID
@@ -405,8 +461,9 @@ POM1/
 │   ├── hgr/                 #   🎨 GEN2 HGR images & programs
 │   ├── tms9918/             #   🖥️ P-LAB TMS9918 programs (Tetris, demos)
 │   ├── sid/                 #   🎵 A1-SID music (.bin)
-│   ├── cassettes/           #   📼 Original-tape .ogg + short readme .txt (reference)
+│   ├── wifi/                #   📡 Wi-Fi Modem terminal program
 │   └── tests/               #   🧪 Hardware test programs
+├── cassettes/               # 📼 Original-tape .ogg captures (reference/preservation)
 ├── build-wasm/              # 🌐 WebAssembly build output
 ├── software/apple1.cfg      # ⚙️ cc65 linker config
 ├── setup_imgui.sh           # 📦 One-shot setup script
@@ -440,7 +497,9 @@ $2000-$3FFF   GEN2 HGR Framebuffer (8 KB — when card is plugged)
 $4000-$7FFF   User RAM
 $8000-$9FFF   SD CARD OS ROM (8 KB — when P-LAB microSD is plugged)
 $A000-$A00F   VIA 65C22 I/O (16 registers — when P-LAB microSD is plugged)
-$A010-$BFFF   User RAM
+$A010-$AFFF   User RAM
+$B000-$B003   ACIA 65C51 — MODEM BBS I/O (when P-LAB modem is plugged)
+$B004-$BFFF   User RAM
 $C000-$C0FF   Apple Cassette Interface I/O
 $C081         Tape input
 $C100-$C1FF   Woz ACI ROM
@@ -464,7 +523,7 @@ $FF00-$FFFF   Woz Monitor ROM (256 B)
 - **Achim Breidenbach** — Sim6502
 - **Fabrice Frances** — Java Microtan Emulator
 - **Uncle Bernie** — [GEN2 Color Graphics Card](https://www.applefritter.com/content/uncle-bernies-gen2-color-graphics-card-apple-1) for Apple 1
-- **P-LAB** — [A1-SID Sound Card](https://p-l4b.github.io/A1-SID/) & [Apple-1 Graphic Card](https://p-l4b.github.io/graphic/) (TMS9918 VDP expansion)
+- **P-LAB** — [microSD Storage Card](https://p-l4b.github.io/sdcard/), [A1-SID Sound Card](https://p-l4b.github.io/A1-SID/), [Apple-1 Graphic Card](https://p-l4b.github.io/graphic/) (TMS9918 VDP), [Terminal Card](https://p-l4b.github.io/terminal/), [MODEM BBS](https://p-l4b.github.io/wifi/)
 - **Nippur72 (Antonino Porcino)** — [apple1-videocard-lib](https://github.com/nippur72/apple1-videocard-lib) (KickC library, Tetris, demos for P-LAB card), [apple1-sdcard](https://github.com/nippur72/apple1-sdcard) (microSD firmware)
 - **Tom Owad** — AppleFritter community & Apple 1 resources
 - **Steve Wozniak & Steve Jobs** — For creating the Apple 1 🍎
@@ -477,6 +536,8 @@ $FF00-$FFFF   Woz Monitor ROM (256 B)
 - [**P-LAB Apple-1 Graphic Card**](https://p-l4b.github.io/graphic/) — TMS9918 VDP expansion card for the Apple 1. Schematics, documentation, and CodeTank daughterboard.
 - [**apple1-videocard-lib**](https://github.com/nippur72/apple1-videocard-lib) — KickC C library and demos (Tetris, image viewer, etc.) for the P-LAB Graphic Card.
 - [**P-LAB Apple-1 microSD Storage Card**](https://p-l4b.github.io/sdcard/) — SD card storage expansion. 65C22 VIA bridge, ATMEGA MCU, FAT32 filesystem. Firmware: [apple1-sdcard](https://github.com/nippur72/apple1-sdcard).
+- [**P-LAB Apple-1 Wi-Fi Modem**](https://p-l4b.github.io/wifi/) — 65C51 ACIA serial modem with ESP8266 Wi-Fi. Hayes AT commands, TCP/TELNET for BBS connections.
+- [**P-LAB Apple-1 Terminal Card**](https://p-l4b.github.io/terminal/) — USB serial terminal replacing native keyboard/display. ANSI pass-through, 8-bit support, fast terminal mode.
 - [**High Voltage SID Collection (HVSC)**](https://www.exotica.org.uk/wiki/High_Voltage_SID_Collection) — Exotica wiki page for HVSC, the major archive of Commodore 64 SID tunes; use with [`tools/sid2apple1.py`](tools/sid2apple1.py) to build Apple 1 binaries for the A1-SID (see [P-LAB A1-SID Sound Card](#-p-lab-a1-sid-sound-card)).
 - [POM1 Project Page](https://www.gistlabs.net/Apple1project/)
 

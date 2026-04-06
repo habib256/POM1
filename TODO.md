@@ -20,6 +20,14 @@
 - [x] **P-LAB microSD Storage Card**: 65C22 VIA at `$A000`-`$A00F`, ATMEGA MCU protocol, SD CARD OS ROM (8KB) at `$8000`-`$9FFF`, DIR/LS/CD/LOAD/SAVE/READ/WRITE/DEL/MKDIR/RMDIR/PWD/MOUNT
 - [x] Virtual SD card maps host `sdcard/` directory — tagged filenames (`NAME#TTAAAA`), fuzzy LOAD matching
 - [x] Protocol robustness: string buffer limit (256 B), write size limit (32 KB), DIR timeout (500K cycles), stale response auto-abort, conditional debug logging
+- [x] **P-LAB MODEM BBS** (Wi-Fi Modem): 65C51 ACIA at `$B000`-`$B003`, ESP8266 AT command interpreter, Hayes AT commands (ATDT host:port), TELNET IAC protocol, non-blocking TCP client, baud rate simulation (50–19200)
+- [x] **P-LAB Terminal Card**: passive bidirectional serial bridge, TCP server on `localhost:6502`, 7-bit/8-bit modes, CTRL-O/I/T/L/R control commands, TELNET IAC handling
+- [x] Bundled ACIA terminal program (`software/wifi/terminal.txt`) for keyboard↔modem bridge
+- [x] MODEM BBS + Terminal Card combo for BBS access with native ANSI rendering in external terminal
+- [x] `Memory::setKeyPressedRaw()` for lowercase/8-bit Terminal Card key injection
+- [x] Toolbar reorganized: Load, SD Card, Cassette, SID, HGR, TMS9918, Terminal, BBS
+- [x] Hardware menu reorganized: ACI Cassette Control + Bernie (classics) then P-LAB cards grouped (microSD, SID, TMS9918, Terminal, MODEM BBS)
+- [x] Cassettes moved from `software/cassettes/` to `cassettes/` at project root
 
 ## Open
 
@@ -39,6 +47,7 @@ Reference hub: [P-Lab](https://p-l4b.github.io/). The Graphic Card, SID, and mic
 - [x] **apple1-videocard-lib** — <https://github.com/nippur72/apple1-videocard-lib>: Pre-built binaries bundled in `software/tms9918/`.
 - [ ] **More P-LAB TMS9918 software**: Compile and bundle additional demos (anagram, graphs, life, hello-world) from apple1-videocard-lib. Requires KickC compiler.
 - [ ] **CodeTank daughterboard ROM**: Support the `apple1_jukebox` target (ROM at `$4000-$7FFF`) for programs stored on the CodeTank EEPROM.
-- [ ] **Apple-1 Wi-Fi modem** ([wifi](https://p-l4b.github.io/wifi/)): Bridge emulated serial to host TCP/Telnet or WebSocket.
+- [x] **Apple-1 MODEM BBS** ([wifi](https://p-l4b.github.io/wifi/)): 65C51 ACIA + TCP/TELNET — done in v1.7.
+- [x] **Apple-1 Terminal Card** ([terminal](https://p-l4b.github.io/terminal/)): TCP server serial bridge — done in v1.7.
 - [x] **P-LAB microSD Storage Card** ([sdcard](https://p-l4b.github.io/sdcard/)): 65C22 VIA + ATMEGA MCU protocol, virtual SD card via host `sdcard/` directory — done in v1.6.
 - [ ] **Misc programs reference (Angela / P-Lab)** ([angela](https://p-l4b.github.io/angela/)): Curated ports (Dobble, Oregon Trail, etc.).

@@ -27,6 +27,8 @@
 #include "SID.h"
 #include "TMS9918.h"
 #include "MicroSD.h"
+#include "WiFiModem.h"
+#include "TerminalCard.h"
 //#include "configuration.h"
 //#include "pia6820.h"
 
@@ -69,6 +71,12 @@ Memory::Memory()
             break;
         }
     }
+    wifiModem = std::make_unique<WiFiModem>();
+    terminalCard = std::make_unique<TerminalCard>();
+    terminalCard->setKeyInjector([this](char key, bool raw) {
+        if (raw) setKeyPressedRaw(key);
+        else setKeyPressed(key);
+    });
     initMemory();
 }
 
@@ -87,6 +95,8 @@ void Memory::initMemory(){
     tms9918->reset();
     sid->reset();
     microSD->reset();
+    wifiModem->reset();
+    terminalCard->reset();
     configureResetVectors(0xFF00);
 
     setWriteInRom(0);
@@ -102,6 +112,8 @@ void Memory::resetMemory(void)
     tms9918->reset();
     sid->reset();
     microSD->reset();
+    wifiModem->reset();
+    terminalCard->reset();
 }
 
 void Memory::configureResetVectors(quint16 vectorAddress)
@@ -399,6 +411,11 @@ quint8 Memory::memRead(quint16 address)
         if (address == 0xCC01) return tms9918->readControl();
     }
 
+    // P-LAB Wi-Fi Modem ACIA 65C51 ($B000-$B003)
+    if (wifiModemEnabled && address >= 0xB000 && address <= 0xB003) {
+        return wifiModem->readRegister(address);
+    }
+
     if (address == 0xC081) {
         return cassetteDevice->readTapeInput();
     }
@@ -470,6 +487,12 @@ void Memory::memWrite(quint16 address, quint8 value)
         if (address == 0xCC01) { tms9918->writeControl(value); return; }
     }
 
+    // P-LAB Wi-Fi Modem ACIA 65C51 ($B000-$B003)
+    if (wifiModemEnabled && address >= 0xB000 && address <= 0xB003) {
+        wifiModem->writeRegister(address, value);
+        return;
+    }
+
     // PIA 6821 alias (même normalisation que memRead)
     if ((address & 0xFF00) == 0xD000 && (address & 0x0F) <= 0x03
         && address != 0xD010 && address != 0xD011 && address != 0xD012) {
@@ -499,6 +522,10 @@ void Memory::memWrite(quint16 address, quint8 value)
         if (displayCallback) {
             displayCallback(displayChar);
         }
+        // Terminal Card: send the RAW value (before & 0x7F) for 8-bit mode support
+        if (terminalCardEnabled) {
+            terminalCard->onDisplayWrite(value);
+        }
     }
 
     mem[address] = value;
@@ -514,6 +541,19 @@ void Memory::setKeyPressed(char key)
     if (key >= 'a' && key <= 'z') {
         key = key - 'a' + 'A';
     }
+    char k = key & 0x7F;
+    if (!keyReady) {
+        lastKey = k;
+        keyReady = true;
+    } else {
+        keyBuffer.push(k);
+    }
+}
+
+void Memory::setKeyPressedRaw(char key)
+{
+    // Like setKeyPressed but WITHOUT forced uppercase conversion
+    // Used by Terminal Card for lowercase / 8-bit mode support
     char k = key & 0x7F;
     if (!keyReady) {
         lastKey = k;
@@ -578,6 +618,8 @@ void Memory::advanceCycles(int cycles)
     cassetteDevice->advanceCycles(cycles);
     if (tms9918Enabled) tms9918->advanceCycles(cycles);
     if (microSDEnabled) microSD->advanceCycles(cycles);
+    if (wifiModemEnabled) wifiModem->advanceCycles(cycles);
+    if (terminalCardEnabled) terminalCard->advanceCycles(cycles);
 }
 
 

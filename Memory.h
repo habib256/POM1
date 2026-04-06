@@ -28,6 +28,8 @@
 #include "CassetteDevice.h"
 class SID;
 class TMS9918;
+class WiFiModem;
+class TerminalCard;
 #include "MicroSD.h"
 using namespace std;
 
@@ -71,6 +73,7 @@ public:
     
     // Gestion du clavier Apple 1
     void setKeyPressed(char key);
+    void setKeyPressedRaw(char key);
     bool isKeyReady() const { return keyReady; }
     char getLastKey() const { return lastKey; }
 
@@ -103,6 +106,18 @@ public:
     void setMicroSDEnabled(bool b);
     bool isMicroSDEnabled() const { return microSDEnabled; }
     int loadSDCardRom(void);
+
+    // P-LAB Apple-1 Wi-Fi Modem (65C51 ACIA + ESP8266)
+    WiFiModem& getWiFiModem() { return *wifiModem; }
+    const WiFiModem& getWiFiModem() const { return *wifiModem; }
+    void setWiFiModemEnabled(bool b) { wifiModemEnabled = b; }
+    bool isWiFiModemEnabled() const { return wifiModemEnabled; }
+
+    // P-LAB Apple-1 Terminal Card (bidirectional serial bridge)
+    TerminalCard& getTerminalCard() { return *terminalCard; }
+    const TerminalCard& getTerminalCard() const { return *terminalCard; }
+    void setTerminalCardEnabled(bool b) { terminalCardEnabled = b; }
+    bool isTerminalCardEnabled() const { return terminalCardEnabled; }
 
     // Central audio device (mixes CassetteDevice + SID)
     AudioDevice& getAudioDevice() { return *audioDevice; }
@@ -137,6 +152,10 @@ private :
     bool sidEnabled = false;
     std::unique_ptr<MicroSD> microSD;
     bool microSDEnabled = false;
+    std::unique_ptr<WiFiModem> wifiModem;
+    bool wifiModemEnabled = false;
+    std::unique_ptr<TerminalCard> terminalCard;
+    bool terminalCardEnabled = false;
 
 };
 

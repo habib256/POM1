@@ -1,0 +1,37 @@
+// P-LAB Wi-Fi Modem Terminal for POM1
+// Polls ACIA 65C51 at $B000 for serial I/O
+// Load at $0280, run with 0280R
+//
+// Usage:
+//   1. Plug the Wi-Fi Modem (Hardware menu)
+//   2. Load this program and run 0280R
+//   3. Type AT commands:
+//      AT          - test modem (should reply OK)
+//      ATE1        - enable echo
+//      ATI         - modem info
+//      ATDT host:port - connect to BBS
+//        e.g. ATDT BBS.FOZZTEXX.COM:23
+//      ATH         - hang up
+//      +++         - escape to command mode (1s guard)
+//
+// ACIA registers:
+//   $B000 DATA   - Serial data I/O
+//   $B001 STATUS - bit3=RDRF (rx ready), bit4=TDRE (tx ready)
+//   $B002 CMD    - Command register
+//   $B003 CTRL   - Control register
+
+// INIT: configure ACIA for 9600 baud 8N1
+0280: A9 0B 8D 02 B0
+0285: A9 1E 8D 03 B0
+// LOOP: check keyboard for input
+028A: AD 11 D0 10 08
+// Key ready — read and send to ACIA
+028F: AD 10 D0 29 7F
+0294: 8D 00 B0
+// CHKRX: check ACIA status for received data
+0297: AD 01 B0 29 08
+029C: F0 EC
+// Data available — read and display
+029E: AD 00 B0 09 80
+02A3: 2C 12 D0 30 FB
+02A8: 8D 12 D0 4C 8A 02
