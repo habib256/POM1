@@ -36,6 +36,9 @@ public:
     void setSDCardPath(const std::string& path);
     const std::string& getSDCardPath() const { return sdCardRootPath; }
 
+    // Debug logging (disabled by default for performance)
+    bool debugEnabled = false;
+
 private:
     // --- MCU command IDs (match arduino.ino) ---
     static constexpr uint8_t CMD_READ   = 0;
@@ -53,6 +56,9 @@ private:
 
     static constexpr uint8_t OK_RESPONSE  = 0x00;
     static constexpr uint8_t ERR_RESPONSE = 0xFF;
+
+    static constexpr size_t  MAX_STRING_LEN  = 256;  // max filename/path length
+    static constexpr size_t  MAX_WRITE_SIZE  = 0x8000; // max file write (32 KB)
 
     // --- VIA 65C22 registers ---
     uint8_t portB;          // $A000 - Port B (bit 0: CPU_STROBE out, bit 7: MCU_STROBE in)
@@ -113,6 +119,10 @@ private:
     uint16_t writeExpectedLen;
     int writeLenBytesReceived;
     std::vector<uint8_t> writeDataBuffer;
+
+    // --- DIR timeout ---
+    int dirIdleCycles;              // cycles since last CPU interaction in DIR_WAIT_REQUEST
+    static constexpr int DIR_TIMEOUT_CYCLES = 500000; // ~0.5s at 1 MHz
 
     // --- Host filesystem ---
     std::string sdCardRootPath;

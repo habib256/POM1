@@ -117,7 +117,7 @@ void EmulationController::hardReset()
     cpu->start();
     runRequested.store(true);
     if (screen) {
-        screen->clear();
+        screen->resetDisplay(); // garbage screen → auto-clear → welcome
     }
     publishSnapshotLocked();
     wakeCv.notify_all();

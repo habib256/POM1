@@ -27,6 +27,7 @@ public:
     void render();
     void writeChar(char c);
     void clear();
+    void resetDisplay();     // garbage screen → auto-clear → welcome (cold boot / hard reset)
     void setCursorPosition(int x, int y);
 
     // Callback statique pour le CPU
@@ -76,6 +77,12 @@ private:
     float blinkTimer = 0.0f;
     bool blinkOn = false;
 
+    // Boot sequence: garbage → black → welcome (Signetics 2504 power-on simulation)
+    float garbageClearTimer = -1.0f;   // > 0 = garbage visible, counting down
+    float blackScreenTimer = -1.0f;    // > 0 = black screen, counting down
+    static constexpr float GARBAGE_DURATION = 0.18f;      // garbage before CLR
+    static constexpr float BLACK_SCREEN_DURATION = 0.30f;  // black before welcome
+
     // Dirty tracking
     bool dirty = true;       // content changed since last render
     mutable std::mutex bufferMutex;
@@ -95,6 +102,7 @@ private:
     void scrollUpUnlocked();
     void newLineUnlocked();
     void initializeScreen();
+    void autoClearAndWelcome();
     bool loadCharmap();
     void drawCharmapGlyph(ImDrawList* drawList, float x, float y, float cellWidth, float cellHeight,
                           unsigned char glyphIndex, ImU32 color, bool crispGlow) const;

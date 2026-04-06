@@ -813,7 +813,7 @@ void MainWindow_ImGui::renderAboutDialog()
     ImGui::SetNextWindowSizeConstraints(ImVec2(380, 0), ImVec2(500, FLT_MAX));
     ImGui::SetNextWindowSize(ImVec2(0, 0), ImGuiCond_Always);
     if (ImGui::Begin("About POM1", &showAbout, ImGuiWindowFlags_AlwaysAutoResize)) {
-        ImGui::TextWrapped("POM1 v1.5 - Apple 1 Emulator (Dear ImGui)");
+        ImGui::TextWrapped("POM1 v1.6 - Apple 1 Emulator (Dear ImGui)");
         ImGui::Separator();
 
         ImGui::TextWrapped("Copyright (C) 2000-2026 GPL3");

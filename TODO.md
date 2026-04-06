@@ -1,6 +1,6 @@
 # TODO
 
-## Done (v1.1–v1.5)
+## Done (v1.1–v1.6)
 
 - [x] P-LAB Apple-1 Graphic Card (TMS9918 VDP: 256×192, 15 colors, 32 sprites, Graphics I/II/Text/Multicolor, I/O at `$CC00`/`$CC01`)
 - [x] Bundled P-LAB software: Tetris, TMS9918 demo suite, PicShow image viewer (`software/tms9918/`)
@@ -17,6 +17,9 @@
 - [x] **30 bundled SID tunes** from HVSC (Hubbard, Galway, Tel, Daglish, Huelsbeck) including 5 IRQ-driven
 - [x] **Auto-enable hardware cards** when loading from `software/sid/`, `software/hgr/`, `software/tms9918/`
 - [x] Krusader ROM no longer loaded by default — `$A000-$BFFF` is free User RAM
+- [x] **P-LAB microSD Storage Card**: 65C22 VIA at `$A000`-`$A00F`, ATMEGA MCU protocol, SD CARD OS ROM (8KB) at `$8000`-`$9FFF`, DIR/LS/CD/LOAD/SAVE/READ/WRITE/DEL/MKDIR/RMDIR/PWD/MOUNT
+- [x] Virtual SD card maps host `sdcard/` directory — tagged filenames (`NAME#TTAAAA`), fuzzy LOAD matching
+- [x] Protocol robustness: string buffer limit (256 B), write size limit (32 KB), DIR timeout (500K cycles), stale response auto-abort, conditional debug logging
 
 ## Open
 
@@ -29,7 +32,7 @@
 
 ## Future extensions — P-Lab hardware & software ecosystem
 
-Reference hub: [P-Lab](https://p-l4b.github.io/). The Graphic Card and SID are done; other peripherals would need register maps and timing from the linked PDFs/schematics.
+Reference hub: [P-Lab](https://p-l4b.github.io/). The Graphic Card, SID, and microSD Storage Card are done; other peripherals would need register maps and timing from the linked PDFs/schematics.
 
 - [x] **P-Lab Apple-1 Graphic Card** ([graphic](https://p-l4b.github.io/graphic/)): TMS9918 VDP emulation — done in v1.4.
 - [x] **P-Lab A1-SID Sound Card** ([A1-SID](https://p-l4b.github.io/A1-SID/)): 6581/8580-style audio — done in v1.5.
@@ -37,6 +40,5 @@ Reference hub: [P-Lab](https://p-l4b.github.io/). The Graphic Card and SID are d
 - [ ] **More P-LAB TMS9918 software**: Compile and bundle additional demos (anagram, graphs, life, hello-world) from apple1-videocard-lib. Requires KickC compiler.
 - [ ] **CodeTank daughterboard ROM**: Support the `apple1_jukebox` target (ROM at `$4000-$7FFF`) for programs stored on the CodeTank EEPROM.
 - [ ] **Apple-1 Wi-Fi modem** ([wifi](https://p-l4b.github.io/wifi/)): Bridge emulated serial to host TCP/Telnet or WebSocket.
-- [ ] **microSD storage card** ([sdcard](https://p-l4b.github.io/sdcard/)): Virtual disk (host directory or image).
+- [x] **P-LAB microSD Storage Card** ([sdcard](https://p-l4b.github.io/sdcard/)): 65C22 VIA + ATMEGA MCU protocol, virtual SD card via host `sdcard/` directory — done in v1.6.
 - [ ] **Misc programs reference (Angela / P-Lab)** ([angela](https://p-l4b.github.io/angela/)): Curated ports (Dobble, Oregon Trail, etc.).
-claude --resume "apple1-microsd-storage-implementation" 

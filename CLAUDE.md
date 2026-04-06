@@ -202,9 +202,12 @@ The `build/`, `build-wasm/`, and `imgui/` directories are excluded from git via 
 - [P-LAB Apple-1 microSD Storage Card](https://p-l4b.github.io/sdcard/) emulation: 65C22 VIA at `$A000`-`$A00F`, ATMEGA MCU protocol emulation, SD CARD OS ROM (8KB EEPROM) at `$8000`-`$9FFF`, DOS-like CLI with DIR/LS/CD/LOAD/SAVE/READ/WRITE/DEL/MKDIR/RMDIR/PWD/MOUNT commands
 - Virtual SD card maps host `sdcard/` directory as FAT32 filesystem — files placed there are accessible from the SD CARD OS shell (`8000R`)
 - Tagged filename support (`NAME#TTAAAA`): file type (#06=binary, #F1=Integer BASIC, #F8=AppleSoft BASIC) and hex load address
-- Fuzzy filename matching for LOAD command (case-insensitive prefix match)
+- Fuzzy filename matching for LOAD command (case-insensitive prefix match, sends full tagged filename to firmware)
 - VIA 65C22 handshake protocol: synchronous MCU emulation responds instantly within CPU write cycles — no busy-wait overhead
-- Timer 1 support for SD CARD OS timeout detection
+- MCU response protocol verified against ATMEGA firmware source: CMD_PWD sends null-terminated path string, CMD_MOUNT sends null-terminated status string, DIR/LS entries prepended with OK_RESPONSE status byte, stale responses auto-aborted on new command
+- Timer 1 support for SD CARD OS timeout detection (free-running and one-shot modes)
+- Robustness: string buffer limit (256 bytes), write size limit (32 KB), DIR listing timeout (500K cycles), fallback ERR_RESPONSE on invalid dir entries, ROM region cleared before loading (handles 8177-byte ROM in 8192-byte space)
+- Debug logging conditional (`debugEnabled` flag, off by default for performance)
 - Memory Map and Memory Viewer show SD CARD OS ROM (amber) and VIA I/O (orange) when card is plugged
 - Auto-enable when loading from `sdcard/` directory
 - Toggle via Hardware menu or toolbar button (SD card icon)

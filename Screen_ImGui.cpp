@@ -2,6 +2,8 @@
 #include "imgui.h"
 #include <cstring>
 #include <cmath>
+#include <cstdlib>
+#include <ctime>
 #include <algorithm>
 #include <array>
 #include <fstream>
@@ -165,21 +167,58 @@ void Screen_ImGui::drawCharmapGlyph(ImDrawList* drawList, float x, float y, floa
 
 void Screen_ImGui::initializeScreen()
 {
-    screenBuffer.assign(BUFFER_SIZE, ' ');
+    // Simulate Signetics 2504 shift register power-on state:
+    // 1024 × 6-bit positions contain random data (960 visible as 40×24 grid).
+    // Each flip-flop adopts an arbitrary state dictated by thermal fluctuations
+    // and silicon manufacturing tolerances. Dynamic shift registers exhibit a
+    // capacitive pull-down bias: each bit has ~45% chance of being 1 (not 50%).
+    // This naturally produces more '@' (000000, all-zero, ~2.8%) and fewer '?'
+    // (111111, all-one, ~0.8%), matching observed real Apple-1 power-on behavior.
+    // The 64 glyphs follow the Signetics 2513 character generator ROM encoding.
+    static const char glyphs[] =
+        "@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_ !\"#$%&'()*+,-./0123456789:;<=>?";
+    std::srand(static_cast<unsigned>(std::time(nullptr)));
+    screenBuffer.resize(BUFFER_SIZE);
+    for (int i = 0; i < BUFFER_SIZE; ++i) {
+        // Generate 6-bit value with pull-down bias per flip-flop
+        int val = 0;
+        for (int bit = 0; bit < 6; ++bit) {
+            if (std::rand() % 100 < 45) // 45% chance each bit is 1
+                val |= (1 << bit);
+        }
+        screenBuffer[i] = glyphs[val];
+    }
+    topRow = 0;
+    cursorX = 0;
+    cursorY = 0;
+    garbageClearTimer = GARBAGE_DURATION;
+    blackScreenTimer = -1.0f;
+    dirty = true;
+}
+
+void Screen_ImGui::autoClearAndWelcome()
+{
+    // Simulate CLR button press: clear shift registers, then show welcome + prompt
+    std::lock_guard<std::mutex> lock(bufferMutex);
+    std::fill(screenBuffer.begin(), screenBuffer.end(), ' ');
     topRow = 0;
 
-    std::string welcome = "APPLE I - POM1 EMULATOR";
+    // Welcome text (unofficial POM1 banner)
+    std::string welcome = "APPLE I -- POM1 EMULATOR";
     int startX = (SCREEN_WIDTH - (int)welcome.length()) / 2;
     for (size_t i = 0; i < welcome.length() && startX + (int)i < SCREEN_WIDTH; ++i)
         screenBuffer[bufferIndex(0, startX + (int)i)] = welcome[i];
 
-    std::string version = "Version 1.5";
+    std::string version = "Version 1.6";
     startX = (SCREEN_WIDTH - (int)version.length()) / 2;
     for (size_t i = 0; i < version.length() && startX + (int)i < SCREEN_WIDTH; ++i)
         screenBuffer[bufferIndex(1, startX + (int)i)] = version[i];
 
+    // Woz Monitor prompt: the CPU already printed '\' during the garbage phase,
+    // but it was erased by the clear. Re-display it for the user.
+    screenBuffer[bufferIndex(3, 0)] = '\\';
     cursorX = 0;
-    cursorY = 3;
+    cursorY = 4;
     dirty = true;
 }
 
@@ -224,8 +263,29 @@ void Screen_ImGui::render()
 {
     // Update blink timer
     float dt = ImGui::GetIO().DeltaTime;
-    blinkTimer = fmod(blinkTimer + dt, 2.0f);
-    blinkOn = showCursor && (blinkTimer < 1.0f);
+    blinkTimer = fmod(blinkTimer + dt, 1.0f);    // ~1 Hz (real Apple-1 NE555 ≈ 2 Hz)
+    blinkOn = showCursor && (blinkTimer < 0.5f);
+
+    // Boot sequence: garbage → black screen → welcome
+    if (garbageClearTimer > 0.0f) {
+        garbageClearTimer -= dt;
+        if (garbageClearTimer <= 0.0f) {
+            garbageClearTimer = -1.0f;
+            // Phase 2: clear to black
+            {
+                std::lock_guard<std::mutex> lock(bufferMutex);
+                clearUnlocked();
+            }
+            blackScreenTimer = BLACK_SCREEN_DURATION;
+        }
+    } else if (blackScreenTimer > 0.0f) {
+        blackScreenTimer -= dt;
+        if (blackScreenTimer <= 0.0f) {
+            blackScreenTimer = -1.0f;
+            // Phase 3: show welcome + prompt
+            autoClearAndWelcome();
+        }
+    }
 
     dirty = false;
 
@@ -343,7 +403,7 @@ void Screen_ImGui::render()
             for (int x = 0; x < SCREEN_WIDTH; ++x) {
                 unsigned char c = static_cast<unsigned char>(renderBuffer[renderBufferIndex(y, x)]);
                 if (blinkOn && x == renderCursorX && y == renderCursorY) {
-                    c = static_cast<unsigned char>('@');
+                    c = '@'; // NE555 oscillator toggles bit 5 → space becomes '@' in Signetics 2513
                 }
 
                 const float px = rasterMin.x + static_cast<float>(x) * scaledCellW;
@@ -409,6 +469,11 @@ void Screen_ImGui::clear()
 {
     std::lock_guard<std::mutex> lock(bufferMutex);
     clearUnlocked();
+}
+
+void Screen_ImGui::resetDisplay()
+{
+    initializeScreen(); // garbage screen with auto-clear timer
 }
 
 void Screen_ImGui::clearUnlocked()

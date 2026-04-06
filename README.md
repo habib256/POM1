@@ -1,13 +1,13 @@
 <div align="center">
 
-# 🍎 POM1 v1.5 — Apple 1 Emulator
+# 🍎 POM1 v1.6 — Apple 1 Emulator
 
 **Experience the machine that started the personal computer revolution.**
 
-🎂 **Celebrating 50 years of Apple (1976–2026)** — POM1 v1.5 is released in honor of the 50th anniversary of Apple Computer, founded on April 1, 1976.
+🎂 **Celebrating 50 years of Apple (1976–2026)** — POM1 v1.6 is released in honor of the 50th anniversary of Apple Computer, founded on April 1, 1976.
 
 A faithful Apple 1 emulator built with Dear ImGui & OpenGL — fast, lightweight, and cross-platform. 
-Now with [P-LAB A1-SID Sound Card](https://p-l4b.github.io/A1-SID/), [P-LAB Apple-1 Graphic Card (TMS9918)](https://p-l4b.github.io/graphic/) and [Uncle Bernie's GEN2 Color Graphics Card](https://www.applefritter.com/content/uncle-bernies-gen2-color-graphics-card-apple-1) support.
+Now with [P-LAB microSD Storage Card](https://p-l4b.github.io/sdcard/), [P-LAB A1-SID Sound Card](https://p-l4b.github.io/A1-SID/), [P-LAB Apple-1 Graphic Card (TMS9918)](https://p-l4b.github.io/graphic/) and [Uncle Bernie's GEN2 Color Graphics Card](https://www.applefritter.com/content/uncle-bernies-gen2-color-graphics-card-apple-1) support.
 
 **Play it now in your browser** : 
 [![Play Online](https://img.shields.io/badge/Play%20Online-WebAssembly-blueviolet.svg)](https://habib256.github.io/POM1/build-wasm/pom1_imgui.html)
@@ -50,6 +50,8 @@ or build it natively.
 🖥️ **P-LAB Graphic Card (TMS9918)** — [P-LAB Apple-1 Graphic Card](https://p-l4b.github.io/graphic/) — TMS9918 VDP with 256×192 resolution, 15 colors, 32 sprites, 4 display modes (Graphics I/II, Text, Multicolor). Bundled with Tetris, demo suite, and PicShow image viewer
 
 🎵 **P-LAB A1-SID Sound Card** — [P-LAB A1-SID](https://p-l4b.github.io/A1-SID/) — MOS 6581/8580-style SID at `$C800`–`$CFFF`; mix with cassette audio. Convert C64 **`.sid`** (PSID/RSID) to Apple 1 binaries with [`tools/sid2apple1.py`](tools/sid2apple1.py) — see [P-LAB A1-SID Sound Card](#-p-lab-a1-sid-sound-card) below
+
+💾 **P-LAB microSD Storage Card** — [P-LAB microSD](https://p-l4b.github.io/sdcard/) — 65C22 VIA at `$A000`–`$A00F`, SD CARD OS ROM at `$8000`–`$9FFF`, DOS-like CLI (DIR, LS, CD, LOAD, SAVE, READ, WRITE, DEL, MKDIR, RMDIR, PWD, MOUNT). Maps host `sdcard/` directory as virtual FAT32 SD card — see [P-LAB microSD Storage Card](#-p-lab-microsd-storage-card) below
 
 📋 **Clipboard Paste** — Paste code directly into the Apple 1 keyboard from your clipboard
 
@@ -262,6 +264,29 @@ python3 tools/sid2apple1.py --batch /path/to/sids/ ./out_bins/
 
 ---
 
+## 💾 P-LAB microSD Storage Card
+
+POM1 emulates the [P-LAB Apple-1 microSD Storage Card](https://p-l4b.github.io/sdcard/), which adds a DOS-like file system interface to the Apple 1 via a 65C22 VIA chip and an ATMEGA microcontroller.
+
+- **I/O** at `$A000`–`$A00F` (16 VIA registers), **SD CARD OS ROM** at `$8000`–`$9FFF` (8 KB EEPROM)
+- **Virtual SD card** maps the host `sdcard/` directory (at repo root) as a FAT32 filesystem
+- **Tagged filenames** (`NAME#TTAAAA`): `#06` = binary, `#F1` = Integer BASIC, `#F8` = AppleSoft BASIC, `AAAA` = hex load address
+- **DOS-like shell** commands: `DIR`, `LS`, `CD`, `LOAD`, `SAVE`, `READ`, `WRITE`, `DEL`, `MKDIR`, `RMDIR`, `PWD`, `MOUNT`
+- **Fuzzy filename matching** for LOAD (case-insensitive prefix match)
+- Toggle via **Hardware > P-LAB microSD Storage Card** or the toolbar button
+- Enter the shell with `8000R` in the Woz Monitor
+
+### Quick start
+
+1. Place files in the `sdcard/` directory (use tagged names like `MYPROG#060300` for a binary loading at `$0300`)
+2. Enable the card via **Hardware** menu or toolbar
+3. Type `8000R` to enter SD CARD OS
+4. Use `DIR` to list files, `LOAD MYPROG` to load, then exit to Woz Monitor and `300R` to run
+
+Firmware source: [apple1-sdcard](https://github.com/nippur72/apple1-sdcard) by Antonino Porcino.
+
+---
+
 ## 🎮 Software Library
 
 The `software/` directory ships with **30+ ready-to-run programs** — load them via **File > Load Memory**.
@@ -365,10 +390,12 @@ POM1/
 ├── GraphicsCard.cpp/h       # 🎨 GEN2 color graphics card (280×192 HIRES)
 ├── TMS9918.cpp/h            # 🖥️ P-LAB TMS9918 VDP (256×192, 15 colors, sprites)
 ├── SID.cpp/h                # 🎵 P-LAB A1-SID (6581/8580-style synthesis)
+├── MicroSD.cpp/h            # 💾 P-LAB microSD Storage Card (65C22 VIA + MCU)
 ├── MemoryViewer_ImGui.cpp/h # 🔍 Hex editor with search & navigation
 ├── tools/
 │   └── sid2apple1.py        # 🎛️ C64 PSID/RSID → Apple 1 .bin for A1-SID
-├── roms/                    # 📀 WozMonitor, BASIC, Krusader, ACI, charmap
+├── roms/                    # 📀 WozMonitor, BASIC, Krusader, ACI, SD CARD OS, charmap
+├── sdcard/                  # 💾 Virtual SD card content (host directory)
 ├── software/                # 📂 Hex dump programs + assembly sources
 │   ├── games/               #   🎮 Games
 │   ├── demos/               #   🎨 Demos
@@ -396,9 +423,10 @@ POM1/
 | 👁️ **Woz Monitor** | 256 B | `$FF00` | Steve Wozniak's original system monitor |
 | 💻 **Apple BASIC** | 4 KB | `$E000` | Integer BASIC interpreter |
 | 🔧 **Krusader 1.3** | 8 KB | `$A000` | Ken Wessen's symbolic assembler (not loaded by default — reload via Settings) |
+| 💾 **SD CARD OS** | 8 KB | `$8000` | P-LAB microSD Storage Card firmware ([apple1-sdcard](https://github.com/nippur72/apple1-sdcard)) |
 | 🔤 **Charmap** | 1 KB | — | Character generator table used by the terminal renderer |
 
-The main firmware ROMs (Woz Monitor, BASIC, ACI) are loaded automatically at startup. Krusader is **not** loaded by default to keep `$A000-$BFFF` free for SID tunes; reload it via **Settings > Reload Krusader** if needed.
+The main firmware ROMs (Woz Monitor, BASIC, ACI) are loaded automatically at startup. SD CARD OS is loaded when the microSD card is enabled. Krusader is **not** loaded by default to keep `$A000-$BFFF` free for SID tunes; reload it via **Settings > Reload Krusader** if needed.
 
 ---
 
@@ -409,13 +437,16 @@ $0000-$00FF   Zero Page
 $0100-$01FF   Stack
 $0200-$1FFF   User RAM (programs load at $0280 or $0300)
 $2000-$3FFF   GEN2 HGR Framebuffer (8 KB — when card is plugged)
-$4000-$BFFF   User RAM (Krusader not loaded by default)
+$4000-$7FFF   User RAM
+$8000-$9FFF   SD CARD OS ROM (8 KB — when P-LAB microSD is plugged)
+$A000-$A00F   VIA 65C22 I/O (16 registers — when P-LAB microSD is plugged)
+$A010-$BFFF   User RAM
 $C000-$C0FF   Apple Cassette Interface I/O
 $C081         Tape input
 $C100-$C1FF   Woz ACI ROM
+$C800-$CFFF   A1-SID — SID registers (when P-LAB SID card is plugged; addr & $1F)
 $CC00         TMS9918 DATA — VRAM data port (when P-LAB card is plugged)
 $CC01         TMS9918 CTRL — Control/status  (when P-LAB card is plugged)
-$C800-$CFFF   A1-SID — SID registers (when P-LAB SID card is plugged; addr & $1F)
 $D010-$D012   PIA 6821 — Keyboard (KBD) & Display (DSP)  (aliases: $D0Fx)
 $E000-$EFFF   Apple BASIC ROM (4 KB)
 $FF00-$FFFF   Woz Monitor ROM (256 B)
@@ -434,7 +465,7 @@ $FF00-$FFFF   Woz Monitor ROM (256 B)
 - **Fabrice Frances** — Java Microtan Emulator
 - **Uncle Bernie** — [GEN2 Color Graphics Card](https://www.applefritter.com/content/uncle-bernies-gen2-color-graphics-card-apple-1) for Apple 1
 - **P-LAB** — [A1-SID Sound Card](https://p-l4b.github.io/A1-SID/) & [Apple-1 Graphic Card](https://p-l4b.github.io/graphic/) (TMS9918 VDP expansion)
-- **Nippur72** — [apple1-videocard-lib](https://github.com/nippur72/apple1-videocard-lib) (KickC library, Tetris, demos for P-LAB card)
+- **Nippur72 (Antonino Porcino)** — [apple1-videocard-lib](https://github.com/nippur72/apple1-videocard-lib) (KickC library, Tetris, demos for P-LAB card), [apple1-sdcard](https://github.com/nippur72/apple1-sdcard) (microSD firmware)
 - **Tom Owad** — AppleFritter community & Apple 1 resources
 - **Steve Wozniak & Steve Jobs** — For creating the Apple 1 🍎
 
@@ -445,6 +476,7 @@ $FF00-$FFFF   Woz Monitor ROM (256 B)
 - [**Uncle Bernie's GEN2 Color Graphics Card**](https://www.applefritter.com/content/uncle-bernies-gen2-color-graphics-card-apple-1) — The original hardware project by Uncle Bernie on AppleFritter. A 280×192 HIRES color graphics card for the Apple 1 using Apple II-compatible memory layout and NTSC artifact color encoding.
 - [**P-LAB Apple-1 Graphic Card**](https://p-l4b.github.io/graphic/) — TMS9918 VDP expansion card for the Apple 1. Schematics, documentation, and CodeTank daughterboard.
 - [**apple1-videocard-lib**](https://github.com/nippur72/apple1-videocard-lib) — KickC C library and demos (Tetris, image viewer, etc.) for the P-LAB Graphic Card.
+- [**P-LAB Apple-1 microSD Storage Card**](https://p-l4b.github.io/sdcard/) — SD card storage expansion. 65C22 VIA bridge, ATMEGA MCU, FAT32 filesystem. Firmware: [apple1-sdcard](https://github.com/nippur72/apple1-sdcard).
 - [**High Voltage SID Collection (HVSC)**](https://www.exotica.org.uk/wiki/High_Voltage_SID_Collection) — Exotica wiki page for HVSC, the major archive of Commodore 64 SID tunes; use with [`tools/sid2apple1.py`](tools/sid2apple1.py) to build Apple 1 binaries for the A1-SID (see [P-LAB A1-SID Sound Card](#-p-lab-a1-sid-sound-card)).
 - [POM1 Project Page](https://www.gistlabs.net/Apple1project/)
 

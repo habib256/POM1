@@ -61,6 +61,7 @@ void MicroSD::reset()
     writeExpectedLen = 0;
     writeLenBytesReceived = 0;
     writeDataBuffer.clear();
+    dirIdleCycles = 0;
     currentDirectory.clear();
 }
 
@@ -156,9 +157,17 @@ void MicroSD::writeRegister(uint16_t address, uint8_t value)
         // --- CPU_STROBE rising edge ---
         if (!prevCpuStrobe && cpuStrobeHigh) {
             if (ddrA == 0xFF) {
+                // Abort stale response if CPU starts a new command
+                if (mcuPhase == McuPhase::SENDING_RESPONSE) {
+                    if (debugEnabled) std::cout << "[SD] Aborting stale response, reset to IDLE" << std::endl;
+                    mcuPhase = McuPhase::IDLE;
+                    responseBuffer.clear();
+                    responseIndex = 0;
+                }
                 // CPU is SENDING a byte (Port A = output)
-                std::cout << "[SD] CPU->MCU byte: 0x" << std::hex << (int)portA
-                          << " phase=" << (int)mcuPhase << std::dec << std::endl;
+                if (debugEnabled)
+                    std::cout << "[SD] CPU->MCU byte: 0x" << std::hex << (int)portA
+                              << " phase=" << (int)mcuPhase << std::dec << std::endl;
                 handleByteFromCPU(portA);
                 mcuStrobeHigh = true; // acknowledge
             } else {
@@ -264,6 +273,15 @@ void MicroSD::writeRegister(uint16_t address, uint8_t value)
 
 void MicroSD::advanceCycles(int cycles)
 {
+    // DIR_WAIT_REQUEST timeout: if CPU stops interacting, auto-reset to IDLE
+    if (mcuPhase == McuPhase::DIR_WAIT_REQUEST) {
+        dirIdleCycles += cycles;
+        if (dirIdleCycles >= DIR_TIMEOUT_CYCLES) {
+            mcuPhase = McuPhase::IDLE;
+            dirIdleCycles = 0;
+        }
+    }
+
     if (!t1Running || cycles <= 0) return;
 
     int remaining = static_cast<int>(t1Counter) - cycles;
@@ -294,12 +312,14 @@ void MicroSD::prepareNextResponseByte()
         if (responseIndex < responseBuffer.size()) {
             portA = responseBuffer[responseIndex];
             mcuStrobeHigh = true; // data ready
-            std::cout << "[SD] MCU->CPU byte: 0x" << std::hex << (int)portA
-                      << " [" << responseIndex << "/" << responseBuffer.size() << "]"
-                      << std::dec << std::endl;
+            if (debugEnabled)
+                std::cout << "[SD] MCU->CPU byte: 0x" << std::hex << (int)portA
+                          << " [" << responseIndex << "/" << responseBuffer.size() << "]"
+                          << std::dec << std::endl;
         } else {
             // Response complete — transition to next phase
-            std::cout << "[SD] Response complete, next phase=" << (int)nextPhaseAfterResponse << std::endl;
+            if (debugEnabled)
+                std::cout << "[SD] Response complete, next phase=" << (int)nextPhaseAfterResponse << std::endl;
             mcuPhase = nextPhaseAfterResponse;
             nextPhaseAfterResponse = McuPhase::IDLE;
         }
@@ -366,12 +386,14 @@ void MicroSD::handleByteFromCPU(uint8_t byte)
             } else {
                 processCommand();
             }
-        } else {
+        } else if (stringBuffer.size() < MAX_STRING_LEN) {
             stringBuffer.push_back(static_cast<char>(byte));
         }
+        // silently drop bytes beyond MAX_STRING_LEN (truncate)
         break;
 
     case McuPhase::DIR_WAIT_REQUEST:
+        dirIdleCycles = 0; // CPU is interacting, reset timeout
         // CPU sends OK_RESPONSE (0x00) to request next entry, or anything else to abort
         if (byte == OK_RESPONSE) {
             if (dirEntryIndex < dirEntries.size()) {
@@ -396,6 +418,10 @@ void MicroSD::handleByteFromCPU(uint8_t byte)
             writeExpectedLen |= (static_cast<uint16_t>(byte) << 8); // hi byte
             writeLenBytesReceived = 2;
             writeDataBuffer.clear();
+            if (writeExpectedLen > MAX_WRITE_SIZE) {
+                sendError("FILE TOO LARGE");
+                break;
+            }
             writeDataBuffer.reserve(writeExpectedLen);
             if (writeExpectedLen == 0) {
                 // Empty file — write immediately
@@ -425,8 +451,9 @@ void MicroSD::handleByteFromCPU(uint8_t byte)
 
 void MicroSD::processCommand()
 {
-    std::cout << "[SD] processCommand: cmd=" << (int)currentCommand
-              << " arg=\"" << stringBuffer << "\"" << std::endl;
+    if (debugEnabled)
+        std::cout << "[SD] processCommand: cmd=" << (int)currentCommand
+                  << " arg=\"" << stringBuffer << "\"" << std::endl;
     switch (currentCommand) {
     case CMD_READ:
         cmdRead(stringBuffer, false);
@@ -471,7 +498,8 @@ void MicroSD::beginResponse(const std::vector<uint8_t>& data, McuPhase nextPhase
     responseIndex = 0;
     mcuPhase = McuPhase::SENDING_RESPONSE;
     nextPhaseAfterResponse = nextPhase;
-    std::cout << "[SD] beginResponse: " << data.size() << " bytes, nextPhase=" << (int)nextPhase << std::endl;
+    if (debugEnabled)
+        std::cout << "[SD] beginResponse: " << data.size() << " bytes, nextPhase=" << (int)nextPhase << std::endl;
 
     // Don't prepare the first byte here — it will be prepared when
     // the CPU switches to input mode (DDRA=0x00) or on falling edge
@@ -534,11 +562,17 @@ void MicroSD::cmdRead(const std::string& filename, bool fuzzy)
         return;
     }
 
-    // Build response: [OK, len_lo, len_hi, data...]
+    // Build response: [OK, (filename+\0 if LOAD), len_lo, len_hi, data...]
     uint16_t len = static_cast<uint16_t>(data.size());
     std::vector<uint8_t> resp;
     resp.reserve(3 + data.size());
     resp.push_back(OK_RESPONSE);
+    // LOAD (fuzzy): ATMEGA sends matched filename (with tag) as null-terminated string
+    if (fuzzy) {
+        for (char c : resolvedName)
+            resp.push_back(static_cast<uint8_t>(std::toupper(static_cast<unsigned char>(c))));
+        resp.push_back(0x00); // null terminator
+    }
     resp.push_back(static_cast<uint8_t>(len & 0xFF));        // lo
     resp.push_back(static_cast<uint8_t>((len >> 8) & 0xFF)); // hi
     resp.insert(resp.end(), data.begin(), data.end());
@@ -637,7 +671,11 @@ void MicroSD::cmdDir(const std::string& path, bool isLs)
 
 void MicroSD::prepareDirEntry(size_t index)
 {
-    if (index >= dirEntries.size()) return;
+    if (index >= dirEntries.size()) {
+        // Safety fallback: send ERR_RESPONSE to avoid hanging the CPU
+        beginResponse({ERR_RESPONSE}, McuPhase::IDLE);
+        return;
+    }
 
     const DirEntry& entry = dirEntries[index];
     std::string line;
@@ -688,7 +726,9 @@ void MicroSD::prepareDirEntry(size_t index)
     // Convert to uppercase (Apple 1 convention) and build response
     for (char& c : line) c = static_cast<char>(std::toupper(static_cast<unsigned char>(c)));
 
+    // ATMEGA sends OK_RESPONSE before each entry, ERR_RESPONSE when done
     std::vector<uint8_t> resp;
+    resp.push_back(OK_RESPONSE);
     for (char c : line) resp.push_back(static_cast<uint8_t>(c));
     resp.push_back('\r');
 
@@ -840,10 +880,10 @@ void MicroSD::cmdRmdir(const std::string& path)
 void MicroSD::cmdPwd()
 {
     std::string display = getCurrentDirDisplay();
+    // ATMEGA sends path as null-terminated string via send_string_to_cpu()
     std::vector<uint8_t> resp;
-    resp.push_back(OK_RESPONSE);
     for (char c : display) resp.push_back(static_cast<uint8_t>(c));
-    resp.push_back('\r');
+    resp.push_back(0x00); // null terminator
     beginResponse(resp, McuPhase::IDLE);
 }
 
@@ -854,7 +894,13 @@ void MicroSD::cmdPwd()
 void MicroSD::cmdMount()
 {
     currentDirectory.clear();
-    sendOK();
+    // ATMEGA sends "MOUNTING SDCARD...\rOK" via send_string_to_cpu()
+    const char* msg = "OK";
+    std::vector<uint8_t> resp;
+    for (const char* p = msg; *p; ++p)
+        resp.push_back(static_cast<uint8_t>(*p));
+    resp.push_back(0x00); // null terminator
+    beginResponse(resp, McuPhase::IDLE);
 }
 
 // ============================================================================

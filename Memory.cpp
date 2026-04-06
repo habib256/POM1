@@ -563,6 +563,8 @@ int Memory::loadSDCardRom()
 {
     bool prev = writeInRom;
     writeInRom = true;
+    // Clear region first — ROM file (8177 B) may not fill the full 8 KB space
+    std::fill(mem.begin() + 0x8000, mem.begin() + 0xA000, 0);
     int ret = loadROM("sdcard.rom", 0x8000, 0x2000, "SD CARD OS");
     writeInRom = prev;
     return ret;
