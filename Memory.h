@@ -30,6 +30,7 @@ class SID;
 class TMS9918;
 class WiFiModem;
 class TerminalCard;
+class A1IO_RTC;
 #include "MicroSD.h"
 using namespace std;
 
@@ -119,6 +120,12 @@ public:
     void setTerminalCardEnabled(bool b) { terminalCardEnabled = b; }
     bool isTerminalCardEnabled() const { return terminalCardEnabled; }
 
+    // P-LAB Apple-1 I/O Board & Real Time Clock (65C22 VIA + ATMEGA32 + DS3231)
+    A1IO_RTC& getA1IO_RTC() { return *a1ioRtc; }
+    const A1IO_RTC& getA1IO_RTC() const { return *a1ioRtc; }
+    void setA1IO_RTCEnabled(bool b) { a1ioRtcEnabled = b; }
+    bool isA1IO_RTCEnabled() const { return a1ioRtcEnabled; }
+
     // Central audio device (mixes CassetteDevice + SID)
     AudioDevice& getAudioDevice() { return *audioDevice; }
 
@@ -156,6 +163,8 @@ private :
     bool wifiModemEnabled = false;
     std::unique_ptr<TerminalCard> terminalCard;
     bool terminalCardEnabled = false;
+    std::unique_ptr<A1IO_RTC> a1ioRtc;
+    bool a1ioRtcEnabled = false;
 
 };
 

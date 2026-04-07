@@ -21,6 +21,7 @@
 #include "TMS9918.h"
 #include "WiFiModem.h"
 #include "TerminalCard.h"
+#include "A1IO_RTC.h"
 
 struct EmulationSnapshot
 {
@@ -52,6 +53,8 @@ struct EmulationSnapshot
     WiFiModem::Snapshot wifiModem;
     bool terminalCardEnabled = false;
     TerminalCard::Snapshot terminalCard;
+    bool a1ioRtcEnabled = false;
+    A1IO_RTC::Snapshot a1ioRtc;
 };
 
 class EmulationController
@@ -114,6 +117,10 @@ public:
     // P-LAB Apple-1 Terminal Card
     void setTerminalCardEnabled(bool enabled);
     bool isTerminalCardEnabled() const;
+
+    // P-LAB Apple-1 I/O Board & RTC
+    void setA1IO_RTCEnabled(bool enabled);
+    bool isA1IO_RTCEnabled() const;
 
     /// Web (Emscripten) : pas de std::thread — avancer l’émulation depuis la boucle principale.
     void pumpEmulationMainThread(double deltaSeconds);

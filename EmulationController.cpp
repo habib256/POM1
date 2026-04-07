@@ -453,6 +453,19 @@ bool EmulationController::isTerminalCardEnabled() const
     return memory->isTerminalCardEnabled();
 }
 
+void EmulationController::setA1IO_RTCEnabled(bool enabled)
+{
+    std::lock_guard<std::mutex> lock(stateMutex);
+    memory->setA1IO_RTCEnabled(enabled);
+    publishSnapshotLocked();
+}
+
+bool EmulationController::isA1IO_RTCEnabled() const
+{
+    std::lock_guard<std::mutex> lock(stateMutex);
+    return memory->isA1IO_RTCEnabled();
+}
+
 void EmulationController::processQueuedKeysLocked()
 {
     std::queue<char> localKeys;
@@ -505,6 +518,10 @@ void EmulationController::publishSnapshotLocked()
     snapshot.terminalCardEnabled = memory->isTerminalCardEnabled();
     if (snapshot.terminalCardEnabled) {
         memory->getTerminalCard().copySnapshot(snapshot.terminalCard);
+    }
+    snapshot.a1ioRtcEnabled = memory->isA1IO_RTCEnabled();
+    if (snapshot.a1ioRtcEnabled) {
+        memory->getA1IO_RTC().copySnapshot(snapshot.a1ioRtc);
     }
 
     std::lock_guard<std::mutex> snapshotLock(snapshotMutex);

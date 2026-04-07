@@ -292,6 +292,7 @@ void MainWindow_ImGui::render()
     if (tms9918Enabled && showTMS9918) renderTMS9918Window();
     if (wifiModemEnabled && showWiFiModem) renderWiFiModemWindow();
     if (terminalCardEnabled && showTerminalCard) renderTerminalCardWindow();
+    if (a1ioRtcEnabled && showA1IO_RTC) renderA1IO_RTCWindow();
 
     // Barre de statut
     renderStatusBar();
@@ -438,6 +439,10 @@ void MainWindow_ImGui::renderMenuBar()
             if (ImGui::MenuItem("P-LAB Graphic Card (TMS9918)", nullptr, &tms9918Enabled)) {
                 emulation->setTMS9918Enabled(tms9918Enabled);
                 if (tms9918Enabled) showTMS9918 = true;
+            }
+            if (ImGui::MenuItem("P-LAB I/O Board & RTC", nullptr, &a1ioRtcEnabled)) {
+                emulation->setA1IO_RTCEnabled(a1ioRtcEnabled);
+                if (a1ioRtcEnabled) showA1IO_RTC = true;
             }
 #if !POM1_IS_WASM
             if (ImGui::MenuItem("P-LAB Terminal Card", nullptr, &terminalCardEnabled)) {
@@ -593,6 +598,31 @@ void MainWindow_ImGui::renderToolbar()
         ImGui::PopStyleColor();
         if (ImGui::IsItemHovered()) {
             ImGui::SetTooltip(tms9918Enabled ? "P-LAB TMS9918 Output (click to unplug)" : "Plug P-LAB Graphic Card (TMS9918)");
+        }
+
+        // --- P-LAB I/O Board & RTC ---
+        ImGui::SameLine();
+        ImGui::PushStyleColor(ImGuiCol_Button,
+            a1ioRtcEnabled ? ImVec4(0.2f, 0.4f, 0.8f, 1.0f) : ImVec4(0.3f, 0.3f, 0.3f, 1.0f));
+        if (ImGui::Button(ICON_FA_CLOCK, btnSize)) {
+            if (!a1ioRtcEnabled) {
+                a1ioRtcEnabled = true;
+                showA1IO_RTC = true;
+                emulation->setA1IO_RTCEnabled(true);
+                setStatusMessage("P-LAB I/O Board & RTC plugged at $2000", 3.0f);
+            } else {
+                showA1IO_RTC = !showA1IO_RTC;
+                if (!showA1IO_RTC) {
+                    a1ioRtcEnabled = false;
+                    emulation->setA1IO_RTCEnabled(false);
+                    setStatusMessage("P-LAB I/O Board & RTC unplugged", 2.0f);
+                }
+            }
+        }
+        ImGui::PopStyleColor();
+        if (ImGui::IsItemHovered()) {
+            ImGui::SetTooltip(a1ioRtcEnabled ? "P-LAB I/O Board & RTC (click to unplug)"
+                                              : "Plug P-LAB I/O Board & RTC");
         }
 
 #if !POM1_IS_WASM
@@ -1141,6 +1171,85 @@ void MainWindow_ImGui::renderTerminalCardWindow()
             ImGui::BulletText("Ctrl-O  Toggle outgoing uppercase");
             ImGui::BulletText("Ctrl-I  Toggle incoming uppercase");
             ImGui::BulletText("Ctrl-T  Toggle 8-bit mode");
+        }
+    }
+    ImGui::End();
+}
+
+void MainWindow_ImGui::renderA1IO_RTCWindow()
+{
+    ImGui::SetNextWindowSize(ImVec2(380, 420), ImGuiCond_FirstUseEver);
+    if (ImGui::Begin("P-LAB I/O Board & RTC", &showA1IO_RTC)) {
+        const auto& snap = uiSnapshot.a1ioRtc;
+
+        // RTC Clock display
+        ImGui::TextColored(ImVec4(0.2f, 0.9f, 0.4f, 1.0f),
+            ICON_FA_CLOCK " %02d:%02d:%02d", snap.hour, snap.minute, snap.second);
+        ImGui::SameLine();
+        ImGui::Text("  %02d/%02d/20%02d", snap.day, snap.month, snap.year);
+
+        ImGui::Separator();
+
+        // Temperature
+        ImGui::Text("DS3231 Temp: %d C", snap.tempRTC);
+        if (snap.tempDS18B20 > 0 || snap.tempDS18B20dec > 0) {
+            ImGui::Text("DS18B20:     %d.%d C", snap.tempDS18B20, snap.tempDS18B20dec);
+        } else {
+            ImGui::TextColored(ImVec4(0.5f, 0.5f, 0.5f, 1.0f), "DS18B20:     (probe disabled)");
+        }
+
+        ImGui::Separator();
+
+        // Digital Outputs (16 bits)
+        if (ImGui::CollapsingHeader("Digital Outputs (16)", ImGuiTreeNodeFlags_DefaultOpen)) {
+            for (int i = 15; i >= 0; --i) {
+                bool on = (snap.digitalOutputs >> i) & 1;
+                ImGui::SameLine();
+                if (i == 7) { ImGui::SameLine(0, 8); } // gap between high/low byte
+                ImVec4 color = on ? ImVec4(0.2f, 0.9f, 0.2f, 1.0f) : ImVec4(0.3f, 0.3f, 0.3f, 1.0f);
+                ImGui::TextColored(color, "%d", on ? 1 : 0);
+            }
+            ImGui::Text("  Output: $%04X", snap.digitalOutputs);
+        }
+
+        // Analog Inputs (8 channels)
+        if (ImGui::CollapsingHeader("Analog Inputs (8)")) {
+            for (int i = 0; i < 8; ++i) {
+                ImGui::Text("  CH%d: %3d", i + 1, snap.analogInputs[i]);
+                ImGui::SameLine();
+                ImGui::PushID(i);
+                float val = static_cast<float>(snap.analogInputs[i]);
+                ImGui::ProgressBar(val / 255.0f, ImVec2(120, 14), "");
+                ImGui::PopID();
+            }
+        }
+
+        // Digital Inputs (4 channels)
+        if (ImGui::CollapsingHeader("Digital Inputs (4)")) {
+            for (int i = 0; i < 4; ++i) {
+                bool high = snap.digitalInputs[i] != 0;
+                ImGui::TextColored(
+                    high ? ImVec4(0.2f, 0.9f, 0.2f, 1.0f) : ImVec4(0.9f, 0.2f, 0.2f, 1.0f),
+                    "  D%d: %s", i + 1, high ? "HIGH" : "LOW");
+            }
+        }
+
+        ImGui::Separator();
+
+        // VIA info
+        ImGui::Text("VIA 65C22 at $2000-$200F");
+        ImGui::TextColored(ImVec4(0.5f, 0.5f, 0.5f, 1.0f),
+            "Broadcast reg: %d  Strobe: %s",
+            snap.currentRegister, snap.strobeActive ? "HIGH" : "LOW");
+
+        ImGui::Separator();
+        if (ImGui::CollapsingHeader("Register Map")) {
+            ImGui::BulletText("$2000  PORTB - Data bus (ATMEGA)");
+            ImGui::BulletText("$2001  PORTA - Addr/ctrl (strobe, RW)");
+            ImGui::BulletText("$2002  DDRB  - Data Direction B");
+            ImGui::BulletText("$2003  DDRA  - Data Direction A");
+            ImGui::BulletText("$200A  SR    - Shift Reg (16 outputs)");
+            ImGui::BulletText("$200B  ACR   - Aux Control Register");
         }
     }
     ImGui::End();
@@ -2020,20 +2129,24 @@ void MainWindow_ImGui::renderMemoryMapWindow()
                             IM_COL32(100, 230, 100, 255), progLabels[i].data() });
     }
 
-    if (graphicsCardEnabled && microSDEnabled) {
-        regions.push_back({ 0x0280, 0x1FFF, IM_COL32( 80, 200,  80, 255), "User RAM" });
-        regions.push_back({ 0x2000, 0x3FFF, IM_COL32(  0, 255, 200, 255), "GEN2 HGR Framebuffer" });
-        regions.push_back({ 0x4000, 0x7FFF, IM_COL32( 80, 200,  80, 255), "User RAM" });
-        regions.push_back({ 0x8000, 0x9FFF, IM_COL32(255, 200,  80, 255), "SD CARD OS ROM" });
+    // Build $0280-$9FFF region based on active cards
+    regions.push_back({ 0x0280, 0x1FFF, IM_COL32( 80, 200,  80, 255), "User RAM" });
+    if (a1ioRtcEnabled && graphicsCardEnabled) {
+        regions.push_back({ 0x2000, 0x200F, IM_COL32(255, 150,  50, 255), "IO_RTC VIA I/O" });
+        regions.push_back({ 0x2010, 0x3FFF, IM_COL32(  0, 255, 200, 255), "GEN2 HGR Framebuffer" });
+    } else if (a1ioRtcEnabled) {
+        regions.push_back({ 0x2000, 0x200F, IM_COL32(255, 150,  50, 255), "IO_RTC VIA I/O" });
+        regions.push_back({ 0x2010, 0x3FFF, IM_COL32( 80, 200,  80, 255), "User RAM" });
     } else if (graphicsCardEnabled) {
-        regions.push_back({ 0x0280, 0x1FFF, IM_COL32( 80, 200,  80, 255), "User RAM" });
         regions.push_back({ 0x2000, 0x3FFF, IM_COL32(  0, 255, 200, 255), "GEN2 HGR Framebuffer" });
-        regions.push_back({ 0x4000, 0x9FFF, IM_COL32( 80, 200,  80, 255), "User RAM" });
-    } else if (microSDEnabled) {
-        regions.push_back({ 0x0280, 0x7FFF, IM_COL32( 80, 200,  80, 255), "User RAM" });
+    } else {
+        regions.push_back({ 0x2000, 0x3FFF, IM_COL32( 80, 200,  80, 255), "User RAM" });
+    }
+    regions.push_back({ 0x4000, 0x7FFF, IM_COL32( 80, 200,  80, 255), "User RAM" });
+    if (microSDEnabled) {
         regions.push_back({ 0x8000, 0x9FFF, IM_COL32(255, 200,  80, 255), "SD CARD OS ROM" });
     } else {
-        regions.push_back({ 0x0280, 0x9FFF, IM_COL32( 80, 200,  80, 255), "User RAM" });
+        regions.push_back({ 0x8000, 0x9FFF, IM_COL32( 80, 200,  80, 255), "User RAM" });
     }
     std::vector<MemRegion> tail;
     if (microSDEnabled && wifiModemEnabled) {
@@ -2131,6 +2244,7 @@ void MainWindow_ImGui::renderMemoryMapWindow()
             bool hasData = false;
             bool isUserRam = (addr >= 0x0200 && addr <= 0xBFFF)
                           && !(graphicsCardEnabled && addr >= 0x2000 && addr <= 0x3FFF)
+                          && !(a1ioRtcEnabled && addr >= 0x2000 && addr <= 0x200F)
                           && !(microSDEnabled && addr >= 0x8000 && addr <= 0x9FFF)
                           && !(microSDEnabled && addr >= 0xA000 && addr <= 0xA00F);
             if (isUserRam) {
@@ -2283,6 +2397,15 @@ void MainWindow_ImGui::renderMemoryMapWindow()
             ImGui::BulletText("Eavesdrops $D012 display writes");
             ImGui::BulletText("Injects keys via $D010/$D011");
             ImGui::BulletText("TCP server on localhost:6502");
+        }
+        if (a1ioRtcEnabled) {
+            ImGui::Spacing();
+            ImGui::TextColored(ImVec4(0.7f, 0.85f, 1.0f, 1.0f), "  P-LAB I/O Board & RTC (65C22 VIA)");
+            ImGui::BulletText("$2000  PORTB - Data bus (ATMEGA)");
+            ImGui::BulletText("$2001  PORTA - Addr/ctrl/strobe");
+            ImGui::BulletText("$200A  SR    - Shift Reg (16 outputs)");
+            ImGui::BulletText("$200B  ACR   - Aux Control Register");
+            ImGui::BulletText("Regs 0-5: RTC  6: Temp  10-17: ADC  20-23: DIN");
         }
 
         ImGui::TableSetColumnIndex(1);

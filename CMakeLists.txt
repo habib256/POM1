@@ -14,6 +14,7 @@ file(GLOB IMGUI_SOURCES
 
 # Project sources
 set(SOURCES
+    A1IO_RTC.cpp
     AudioDevice.cpp
     CassetteDevice.cpp
     EmulationController.cpp
@@ -32,6 +33,7 @@ set(SOURCES
 )
 
 set(HEADERS
+    A1IO_RTC.h
     AudioDevice.h
     CassetteDevice.h
     EmulationController.h

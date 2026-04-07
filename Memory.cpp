@@ -29,6 +29,7 @@
 #include "MicroSD.h"
 #include "WiFiModem.h"
 #include "TerminalCard.h"
+#include "A1IO_RTC.h"
 //#include "configuration.h"
 //#include "pia6820.h"
 
@@ -73,6 +74,7 @@ Memory::Memory()
     }
     wifiModem = std::make_unique<WiFiModem>();
     terminalCard = std::make_unique<TerminalCard>();
+    a1ioRtc = std::make_unique<A1IO_RTC>();
     terminalCard->setKeyInjector([this](char key, bool raw) {
         if (raw) setKeyPressedRaw(key);
         else setKeyPressed(key);
@@ -97,6 +99,7 @@ void Memory::initMemory(){
     microSD->reset();
     wifiModem->reset();
     terminalCard->reset();
+    a1ioRtc->reset();
     configureResetVectors(0xFF00);
 
     setWriteInRom(0);
@@ -114,6 +117,7 @@ void Memory::resetMemory(void)
     microSD->reset();
     wifiModem->reset();
     terminalCard->reset();
+    a1ioRtc->reset();
 }
 
 void Memory::configureResetVectors(quint16 vectorAddress)
@@ -392,6 +396,11 @@ int Memory::loadHexDump(const char* filename, quint16 &startAddress, int* bytesL
 
 quint8 Memory::memRead(quint16 address)
 {
+    // P-LAB A1-IO_RTC VIA 65C22 I/O ($2000-$200F)
+    if (a1ioRtcEnabled && address >= 0x2000 && address <= 0x200F) {
+        return a1ioRtc->readRegister(address);
+    }
+
     // P-LAB microSD VIA 65C22 I/O ($A000-$A00F)
     if (microSDEnabled && address >= 0xA000 && address <= 0xA00F) {
         return microSD->readRegister(address);
@@ -466,6 +475,12 @@ quint8 Memory::memRead(quint16 address)
 
 void Memory::memWrite(quint16 address, quint8 value)
 {
+    // P-LAB A1-IO_RTC VIA 65C22 I/O ($2000-$200F)
+    if (a1ioRtcEnabled && address >= 0x2000 && address <= 0x200F) {
+        a1ioRtc->writeRegister(address, value);
+        return;
+    }
+
     // P-LAB microSD VIA 65C22 I/O ($A000-$A00F)
     if (microSDEnabled && address >= 0xA000 && address <= 0xA00F) {
         microSD->writeRegister(address, value);
@@ -620,6 +635,7 @@ void Memory::advanceCycles(int cycles)
     if (microSDEnabled) microSD->advanceCycles(cycles);
     if (wifiModemEnabled) wifiModem->advanceCycles(cycles);
     if (terminalCardEnabled) terminalCard->advanceCycles(cycles);
+    if (a1ioRtcEnabled) a1ioRtc->advanceCycles(cycles);
 }
 
 

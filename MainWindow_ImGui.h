@@ -71,6 +71,8 @@ private:
     bool showWiFiModem = false;
     bool terminalCardEnabled = false;
     bool showTerminalCard = false;
+    bool a1ioRtcEnabled = false;
+    bool showA1IO_RTC = false;
     bool fullscreen = false;
     int windowedWidth = 1200;
     int windowedHeight = 800;
@@ -110,6 +112,7 @@ private:
     void renderTMS9918Window();
     void renderWiFiModemWindow();
     void renderTerminalCardWindow();
+    void renderA1IO_RTCWindow();
 
     // Action functions
     void loadMemory();
