@@ -429,7 +429,10 @@ def generate_demo(sid_path, output_path):
     patches['render_jsr'] = len(code) + 1
     code += bytes([0x20, 0x00, 0x00])        # JSR render_2x
 
-    # ── Color the character (progressive palette) ────────────────────────
+    # ── Color the character (only every 3 frames for WASM perf) ─────────
+    code += bytes([0xA5, 0xE2])              # LDA frame_cnt
+    code += bytes([0xD0, 0x00])              # BNE skip_color (patched)
+    skip_color_bne = len(code) - 1
     code += bytes([0xA5, 0xE3])              # LDA pos_counter
     code += bytes([0x18, 0x65, 0xE0])        # CLC; ADC scroll_pos
     code += bytes([0x29, 0x07])              # AND #$07
@@ -439,6 +442,7 @@ def generate_demo(sid_path, output_path):
     code += bytes([0x85, 0xE6])              # STA $E6 (color byte)
     patches['color_jsr'] = len(code) + 1
     code += bytes([0x20, 0x00, 0x00])        # JSR color_2x
+    code[skip_color_bne] = (len(code) - (skip_color_bne + 1)) & 0xFF
 
     # ── Next position ────────────────────────────────────────────────────
     code += bytes([0xE6, 0xE3])              # INC pos_counter
@@ -465,16 +469,8 @@ def generate_demo(sid_path, output_path):
     code += bytes([0xA9, 0x00, 0x85, 0xE2])  # reset frame_cnt
     code += bytes([0xE6, 0xE0])  # INC scroll_pos (wraps at 256)
 
-    # Delay to maintain ~50Hz (rendering takes ~10ms, delay adds ~10ms)
-    B(0xA2, 0x04)               # LDX #$04 (4 — near-zero delay)
-    sd1 = len(code)
-    B(0xA0, 0x33)               # LDY #$33
-    sd2 = len(code)
-    B(0x88)                     # DEY
-    branch_back(0xD0, sd2)      # BNE
-    B(0xCA)                     # DEX
-    branch_back(0xD0, sd1)      # BNE
-
+    # No delay — rendering itself provides the frame timing.
+    # WASM performance: fewer idle cycles = faster music playback.
     code += bytes([0x4C, abs_addr(scroll_loop) & 0xFF,
                    (abs_addr(scroll_loop) >> 8) & 0xFF])
 
