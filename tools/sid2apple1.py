@@ -35,6 +35,27 @@ ROM_ZONES = [
 ]
 
 
+# 6502 instruction length table (shared by all patching passes)
+INST_LENGTHS = [0] * 256
+for _op in [0x00,0x08,0x0A,0x18,0x28,0x2A,0x38,0x40,0x48,0x4A,0x58,0x60,
+            0x68,0x6A,0x78,0x88,0x8A,0x98,0x9A,0xA8,0xAA,0xB8,0xBA,0xCA,
+            0xD8,0xE8,0xEA,0xF8]:
+    INST_LENGTHS[_op] = 1
+for _op in [0x01,0x05,0x06,0x09,0x10,0x11,0x15,0x16,0x21,0x24,0x25,0x26,
+            0x29,0x30,0x31,0x35,0x36,0x41,0x45,0x46,0x49,0x50,0x51,0x55,
+            0x56,0x61,0x65,0x66,0x69,0x70,0x71,0x75,0x76,0x81,0x84,0x85,
+            0x86,0x90,0x91,0x94,0x95,0x96,0xA0,0xA1,0xA2,0xA4,0xA5,0xA6,
+            0xA9,0xB0,0xB1,0xB4,0xB5,0xB6,0xC0,0xC1,0xC4,0xC5,0xC6,0xC9,
+            0xD0,0xD1,0xD5,0xD6,0xE0,0xE1,0xE4,0xE5,0xE6,0xE9,0xF0,0xF1,
+            0xF5,0xF6]:
+    INST_LENGTHS[_op] = 2
+for _op in [0x0D,0x0E,0x19,0x1D,0x1E,0x20,0x2C,0x2D,0x2E,0x39,0x3D,0x3E,
+            0x4C,0x4D,0x4E,0x59,0x5D,0x5E,0x6C,0x6D,0x6E,0x79,0x7D,0x7E,
+            0x8C,0x8D,0x8E,0x99,0x9D,0xAC,0xAD,0xAE,0xB9,0xBC,0xBD,0xBE,
+            0xCC,0xCD,0xCE,0xD9,0xDD,0xDE,0xEC,0xED,0xEE,0xF9,0xFD,0xFE]:
+    INST_LENGTHS[_op] = 3
+
+
 def apple1_str(text):
     """Convert ASCII text to Apple 1 high-bit characters (uppercase)."""
     return bytes([(c | 0x80) if c < 0x80 else c
@@ -110,6 +131,15 @@ def make_wrapper(init_addr, play_addr, song_number=0, name='', author='',
         # Normal: JSR play
         code += bytes([0x20, play_addr & 0xFF, (play_addr >> 8) & 0xFF])
 
+    # ── ESC key check: poll KBDCR, read key, compare ESC ────────────────
+    code += bytes([0xAD, 0x11, 0xD0])              # LDA $D011 (KBDCR)
+    code += bytes([0x10, 0x07])                    # BPL +7 (skip to no_key)
+    code += bytes([0xAD, 0x10, 0xD0])              # LDA $D010 (read key + clear)
+    code += bytes([0xC9, 0x9B])                    # CMP #$9B (ESC = $1B|$80)
+    stop_beq_offset = len(code)                    # save for patching BEQ target
+    code += bytes([0xF0, 0x00])                    # BEQ stop (patched below)
+    # no_key: fall through to delay loop
+
     # Delay loop
     code += bytes([0xA2, delay_outer])              # LDX #outer
     d1_offset = len(code)
@@ -121,6 +151,16 @@ def make_wrapper(init_addr, play_addr, song_number=0, name='', author='',
     code += bytes([0xD0, (d1_offset - (len(code) + 2)) & 0xFF])  # BNE @d1
     loop_abs = LOAD_ADDR + loop_offset
     code += bytes([0x4C, loop_abs & 0xFF, (loop_abs >> 8) & 0xFF])  # JMP loop
+
+    # ── Stop routine: silence SID and return to Woz Monitor ─────────────
+    stop_offset = len(code)
+    code[stop_beq_offset + 1] = (stop_offset - (stop_beq_offset + 2)) & 0xFF
+    code += bytes([0xA9, 0x00])                    # LDA #$00
+    code += bytes([0x8D, 0x04, 0xC8])              # STA $C804 (voice 1 ctrl off)
+    code += bytes([0x8D, 0x0B, 0xC8])              # STA $C80B (voice 2 ctrl off)
+    code += bytes([0x8D, 0x12, 0xC8])              # STA $C812 (voice 3 ctrl off)
+    code += bytes([0x8D, 0x18, 0xC8])              # STA $C818 (volume = 0)
+    code += bytes([0x4C, 0x00, 0xFF])              # JMP $FF00 (Woz Monitor)
 
     # ── RTI stub (for IRQ-driven: target for JMP $EA7E / $EA31 patches) ──
     rti_stub_addr = 0
@@ -140,12 +180,16 @@ def make_wrapper(init_addr, play_addr, song_number=0, name='', author='',
 
     text_data = bytearray()
     text_data += bytes([0x8D])                      # CR
+    text_data += apple1_str('APPLE1 P-LAB SID PLAYER')
+    text_data += bytes([0x8D, 0x8D])                # 2× CR
     text_data += apple1_str('NOW PLAYING:')
     text_data += bytes([0x8D])                      # CR
     text_data += apple1_str(name[:39])
     text_data += bytes([0x8D])                      # CR
     text_data += apple1_str('BY ')
     text_data += apple1_str(author[:36])
+    text_data += bytes([0x8D, 0x8D])                # 2× CR
+    text_data += apple1_str('ESC TO STOP')
     text_data += bytes([0x8D, 0x8D])                # 2× CR
     text_data += bytes([0x00])                      # end marker
     code += text_data
@@ -245,33 +289,12 @@ def patch_sid_absolute(data, old_base=0xD400, new_base=0xC800):
     new_hi = (new_base >> 8) & 0xFF
     max_lo = 0x1C
 
-    LENGTHS = [0] * 256
-    for op in [0x00,0x08,0x0A,0x18,0x28,0x2A,0x38,0x40,0x48,0x4A,0x58,0x60,
-               0x68,0x6A,0x78,0x88,0x8A,0x98,0x9A,0xA8,0xAA,0xB8,0xBA,0xCA,
-               0xD8,0xE8,0xEA,0xF8]:
-        LENGTHS[op] = 1
-    for op in [0x01,0x05,0x06,0x09,0x10,0x11,0x15,0x16,0x21,0x24,0x25,0x26,
-               0x29,0x30,0x31,0x35,0x36,0x41,0x45,0x46,0x49,0x50,0x51,0x55,
-               0x56,0x61,0x65,0x66,0x69,0x70,0x71,0x75,0x76,0x81,0x84,0x85,
-               0x86,0x90,0x91,0x94,0x95,0x96,0xA0,0xA1,0xA2,0xA4,0xA5,0xA6,
-               0xA9,0xB0,0xB1,0xB4,0xB5,0xB6,0xC0,0xC1,0xC4,0xC5,0xC6,0xC9,
-               0xD0,0xD1,0xD5,0xD6,0xE0,0xE1,0xE4,0xE5,0xE6,0xE9,0xF0,0xF1,
-               0xF5,0xF6]:
-        LENGTHS[op] = 2
-    for op in [0x0D,0x0E,0x19,0x1D,0x1E,0x20,0x2C,0x2D,0x2E,0x39,0x3D,0x3E,
-               0x4C,0x4D,0x4E,0x59,0x5D,0x5E,0x6C,0x6D,0x6E,0x79,0x7D,0x7E,
-               0x8C,0x8D,0x8E,0x99,0x9D,0xAC,0xAD,0xAE,0xB9,0xBC,0xBD,0xBE,
-               0xCC,0xCD,0xCE,0xD9,0xDD,0xDE,0xEC,0xED,0xEE,0xF9,0xFD,0xFE]:
-        LENGTHS[op] = 3
-
-    abs_opcodes = {op for op in range(256) if LENGTHS[op] == 3}
-
     patches = 0
     i = 0
     while i < len(result) - 2:
         opcode = result[i]
-        length = LENGTHS[opcode]
-        if length == 3 and opcode in abs_opcodes:
+        length = INST_LENGTHS[opcode]
+        if length == 3:
             lo = result[i + 1]
             hi = result[i + 2]
             if hi == old_hi and lo <= max_lo:
@@ -291,7 +314,8 @@ def patch_sid_immediates(data, old_hi=0xD4, new_hi=0xC8):
     Catches indirect pointer setups like: LDA #$D4 / STA ptr+1"""
     result = bytearray(data)
     imm_opcodes = {0xA9, 0xA2, 0xA0}   # LDA/LDX/LDY immediate
-    sta_opcodes = {0x85, 0x86, 0x8D, 0x8E, 0x95, 0x96, 0x99, 0x9D}  # STA/STX variants
+    # STA/STX variants + indirect: $81 STA ($xx,X), $91 STA ($xx),Y
+    sta_opcodes = {0x81, 0x85, 0x86, 0x8D, 0x8E, 0x91, 0x95, 0x96, 0x99, 0x9D}
     patches = 0
     for i in range(len(result) - 3):
         if result[i] in imm_opcodes and result[i + 1] == old_hi:
@@ -304,23 +328,46 @@ def patch_sid_immediates(data, old_hi=0xD4, new_hi=0xC8):
 
 def patch_c64_hardware(data):
     """Pass 3: Neutralize C64 hardware accesses that would crash on Apple 1.
-    - CIA1/CIA2 timer reads → LDA #$00 + NOP
-    - VIC raster compare loops → NOPed out"""
+    - CIA1/CIA2 register reads (LDA/LDX/LDY/BIT/CMP/CPX/CPY) → neutralized
+    - Instruction-aware walk to reduce false positives on data bytes."""
     result = bytearray(data)
+    NOP = 0xEA
     patches = 0
+
+    # CIA registers to neutralize (data ports, timers, interrupt/control)
+    cia_regs = {0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07,
+                0x0D, 0x0E, 0x0F}
+
+    # Read opcodes → replace with immediate #$00 + NOP
+    read_to_imm = {
+        0xAD: 0xA9,  # LDA abs → LDA #$00
+        0xAE: 0xA2,  # LDX abs → LDX #$00
+        0xAC: 0xA0,  # LDY abs → LDY #$00
+    }
+    # BIT/CMP/CPX/CPY → NOP×3 (preserves flags from preceding instruction)
+    nop3_ops = {0x2C, 0xCD, 0xEC, 0xCC}
 
     i = 0
     while i < len(result) - 2:
-        # LDA $DCxx or LDA $DDxx — CIA timer reads → LDA #$00 + NOP
-        if result[i] == 0xAD and i + 2 < len(result):
+        opcode = result[i]
+        length = INST_LENGTHS[opcode]
+        if length == 3:
             hi = result[i + 2]
             lo = result[i + 1]
-            if hi in (0xDC, 0xDD) and lo in (0x04, 0x05, 0x0D, 0x0E):
-                result[i] = 0xA9      # LDA #
-                result[i + 1] = 0x00  # $00
-                result[i + 2] = 0xEA  # NOP
-                patches += 1
-        i += 1
+            if hi in (0xDC, 0xDD) and lo in cia_regs:
+                if opcode in read_to_imm:
+                    result[i] = read_to_imm[opcode]
+                    result[i + 1] = 0x00
+                    result[i + 2] = NOP
+                    patches += 1
+                elif opcode in nop3_ops:
+                    result[i] = NOP; result[i + 1] = NOP; result[i + 2] = NOP
+                    patches += 1
+            i += 3
+        elif length >= 1:
+            i += length
+        else:
+            i += 1
 
     return bytes(result), patches
 
@@ -329,57 +376,82 @@ def patch_vic_accesses(data):
     """Pass 4: NOP out VIC-II register accesses ($D0xx).
     On Apple 1, all $D0xx addresses are aliased to PIA $D010-$D012 via
     incomplete address decoding. VIC writes (border color, IRQ mask, raster)
-    corrupt keyboard/display. VIC reads can cause infinite loops."""
+    corrupt keyboard/display. VIC reads can cause infinite loops.
+    Instruction-aware walk; handles absolute and indexed addressing modes."""
     result = bytearray(data)
     NOP = 0xEA
     patches = 0
+
+    # Writes → NOP×3 (absolute + indexed)
+    write_nop3 = {0x8D, 0x8E, 0x8C,    # STA/STX/STY abs
+                  0x9D, 0x99}            # STA abs,X / STA abs,Y
+
+    # Reads → immediate #$00 + NOP (absolute + indexed)
+    read_to_imm = {
+        0xAD: 0xA9,  # LDA abs   → LDA #$00
+        0xAE: 0xA2,  # LDX abs   → LDX #$00
+        0xAC: 0xA0,  # LDY abs   → LDY #$00
+        0xBD: 0xA9,  # LDA abs,X → LDA #$00
+        0xB9: 0xA9,  # LDA abs,Y → LDA #$00
+        0xBC: 0xA0,  # LDY abs,X → LDY #$00
+        0xBE: 0xA2,  # LDX abs,Y → LDX #$00
+    }
+
+    # Read-modify-write / BIT → NOP×3
+    rmw_nop3 = {0x2C,                   # BIT abs
+                0xEE, 0xCE,              # INC/DEC abs
+                0xFE, 0xDE}              # INC/DEC abs,X
+
     i = 0
     while i < len(result) - 2:
-        hi = result[i + 2]
-        if hi == 0xD0:
-            lo = result[i + 1]
-            op = result[i]
-            # STA/STX/STY $D0xx → NOP NOP NOP
-            if op in (0x8D, 0x8E, 0x8C):
-                result[i] = NOP; result[i+1] = NOP; result[i+2] = NOP
-                patches += 1
-                i += 3; continue
-            # LDA $D0xx → LDA #$00 + NOP  (AD→A9)
-            # LDX $D0xx → LDX #$00 + NOP  (AE→A2)
-            # LDY $D0xx → LDY #$00 + NOP  (AC→A0)
-            elif op == 0xAD:
-                result[i] = 0xA9; result[i+1] = 0x00; result[i+2] = NOP
-                patches += 1; i += 3; continue
-            elif op == 0xAE:
-                result[i] = 0xA2; result[i+1] = 0x00; result[i+2] = NOP
-                patches += 1; i += 3; continue
-            elif op == 0xAC:
-                result[i] = 0xA0; result[i+1] = 0x00; result[i+2] = NOP
-                patches += 1; i += 3; continue
-            # BIT $D0xx → NOP NOP NOP
-            elif op == 0x2C:
-                result[i] = NOP; result[i+1] = NOP; result[i+2] = NOP
-                patches += 1; i += 3; continue
-            # INC/DEC $D0xx → NOP NOP NOP
-            elif op in (0xEE, 0xCE):
-                result[i] = NOP; result[i+1] = NOP; result[i+2] = NOP
-                patches += 1; i += 3; continue
-        i += 1
+        opcode = result[i]
+        length = INST_LENGTHS[opcode]
+        if length == 3:
+            hi = result[i + 2]
+            if hi == 0xD0:
+                if opcode in write_nop3 or opcode in rmw_nop3:
+                    result[i] = NOP; result[i+1] = NOP; result[i+2] = NOP
+                    patches += 1
+                elif opcode in read_to_imm:
+                    result[i] = read_to_imm[opcode]
+                    result[i+1] = 0x00
+                    result[i+2] = NOP
+                    patches += 1
+            i += 3
+        elif length >= 1:
+            i += length
+        else:
+            i += 1
     return bytes(result), patches
 
 
 def patch_sid_data_tables(data, old_hi=0xD4, new_hi=0xC8):
     """Pass 5: Patch SID address high bytes in data tables.
     Catches patterns like .byte $00,$D4 / .byte $07,$D4 / .byte $0E,$D4
-    (voice base address pairs stored as lo/hi in data tables)."""
+    (voice base address pairs stored as lo/hi in data tables).
+    Requires at least 2 candidate pairs within 4 bytes to reduce false
+    positives — real SID tables always have multiple contiguous entries."""
     result = bytearray(data)
-    # SID voice base offsets commonly found in address tables
     sid_bases = {0x00, 0x07, 0x0E, 0x15}
     patches = 0
+
+    # First pass: identify candidate positions
+    candidates = []
     for i in range(len(result) - 1):
         if result[i + 1] == old_hi and result[i] in sid_bases:
-            result[i + 1] = new_hi
+            candidates.append(i)
+
+    # Second pass: only patch candidates that have a neighbor within 4 bytes
+    for idx, pos in enumerate(candidates):
+        has_neighbor = False
+        if idx > 0 and (pos - candidates[idx - 1]) <= 4:
+            has_neighbor = True
+        if idx < len(candidates) - 1 and (candidates[idx + 1] - pos) <= 4:
+            has_neighbor = True
+        if has_neighbor:
+            result[pos + 1] = new_hi
             patches += 1
+
     return bytes(result), patches
 
 
@@ -393,18 +465,24 @@ def detect_irq_handler(data, load_addr):
         (0xFE, 0xFF, 0xFF, 0xFF),   # Hardware IRQ: $FFFE/$FFFF
         (0x14, 0x15, 0x03, 0x03),   # Kernal IRQ:   $0314/$0315
     ]
+    # Load/store patterns: (load_imm_opcode, store_abs_opcode)
+    patterns = [
+        (0xA9, 0x8D),  # LDA #xx / STA abs
+        (0xA2, 0x8E),  # LDX #xx / STX abs
+        (0xA0, 0x8C),  # LDY #xx / STY abs
+    ]
     for lo_reg, hi_reg, lo_page, hi_page in vectors:
         isr_lo = isr_hi = None
         for i in range(len(data) - 4):
-            # LDA #xx / STA $xxxx  (A9 xx 8D lo page)
-            if (data[i] == 0xA9 and i + 4 < len(data)
-                    and data[i + 2] == 0x8D
-                    and data[i + 3] == lo_reg and data[i + 4] == lo_page):
-                isr_lo = data[i + 1]
-            if (data[i] == 0xA9 and i + 4 < len(data)
-                    and data[i + 2] == 0x8D
-                    and data[i + 3] == hi_reg and data[i + 4] == hi_page):
-                isr_hi = data[i + 1]
+            for load_op, store_op in patterns:
+                if (data[i] == load_op and i + 4 < len(data)
+                        and data[i + 2] == store_op
+                        and data[i + 3] == lo_reg and data[i + 4] == lo_page):
+                    isr_lo = data[i + 1]
+                if (data[i] == load_op and i + 4 < len(data)
+                        and data[i + 2] == store_op
+                        and data[i + 3] == hi_reg and data[i + 4] == hi_page):
+                    isr_hi = data[i + 1]
         if isr_lo is not None and isr_hi is not None:
             return (isr_hi << 8) | isr_lo
     return None
@@ -434,13 +512,21 @@ def patch_irq_vectors(data):
         (0x05, 0xDD),  # $DD05 CIA2 timer A hi
     ]
     patches = 0
-    for i in range(len(result) - 2):
-        if result[i] in (0x8D, 0x8E, 0x8C):  # STA/STX/STY absolute
+    i = 0
+    while i < len(result) - 2:
+        opcode = result[i]
+        length = INST_LENGTHS[opcode]
+        if length == 3 and opcode in (0x8D, 0x8E, 0x8C):  # STA/STX/STY abs
             for lo, hi in targets:
                 if result[i + 1] == lo and result[i + 2] == hi:
                     result[i] = NOP; result[i + 1] = NOP; result[i + 2] = NOP
                     patches += 1
                     break
+            i += 3
+        elif length >= 1:
+            i += length
+        else:
+            i += 1
     return bytes(result), patches
 
 
