@@ -105,6 +105,18 @@ for _nib in range(16):
             v |= (0xC0 >> (_b * 2))
     NIBBLE_DOUBLE.append(v)
 
+# Scroll color palette (8 colors cycling per character)
+SCROLL_COLORS = [
+    (LT_RED  << 4) | DK_BLUE,
+    (DK_YEL  << 4) | DK_BLUE,
+    (LT_YEL  << 4) | DK_BLUE,
+    (LT_GRN  << 4) | DK_BLUE,
+    (CYAN    << 4) | DK_BLUE,
+    (LT_BLUE << 4) | DK_BLUE,
+    (WHITE   << 4) | DK_BLUE,
+    (MAGENTA << 4) | DK_BLUE,
+]
+
 # Scroll text (256 bytes, wraps with low-byte naturally)
 SCROLL_RAW = (
     "   POM1 V1.7 * APPLE 1 EMULATOR BY VERHILLE ARNAUD"
@@ -365,6 +377,8 @@ def generate_demo(sid_path, output_path):
     branch_back(0x10, pi)        # BPL
 
     # ── 16. Scroller main loop ───────────────────────────────────────────
+    # Set $E7=$48 (pattern VRAM base for calc_and_set_vram)
+    B(0xA9, 0x48, 0x85, 0xE7)
     scroll_loop = len(code)
     code += bytes([0x20, play_addr & 0xFF, (play_addr >> 8) & 0xFF])  # JSR play
 
@@ -415,6 +429,17 @@ def generate_demo(sid_path, output_path):
     patches['render_jsr'] = len(code) + 1
     code += bytes([0x20, 0x00, 0x00])        # JSR render_2x
 
+    # ── Color the character (progressive palette) ────────────────────────
+    code += bytes([0xA5, 0xE3])              # LDA pos_counter
+    code += bytes([0x18, 0x65, 0xE0])        # CLC; ADC scroll_pos
+    code += bytes([0x29, 0x07])              # AND #$07
+    code += bytes([0xAA])                    # TAX
+    patches['scolors_ref'] = len(code) + 1
+    code += bytes([0xBD, 0x00, 0x00])        # LDA scroll_colors,X
+    code += bytes([0x85, 0xE6])              # STA $E6 (color byte)
+    patches['color_jsr'] = len(code) + 1
+    code += bytes([0x20, 0x00, 0x00])        # JSR color_2x
+
     # ── Next position ────────────────────────────────────────────────────
     code += bytes([0xE6, 0xE3])              # INC pos_counter
     code += bytes([0xA5, 0xE3, 0xC9, 0x10]) # CMP #16
@@ -428,7 +453,10 @@ def generate_demo(sid_path, output_path):
     code += bytes([0x4C, abs_addr(stop_off) & 0xFF,
                    (abs_addr(stop_off) >> 8) & 0xFF])  # JMP stop
 
-    # Advance phase every frame
+    # Advance phase every 2 frames (slower sine oscillation)
+    code += bytes([0xA5, 0xE2])  # LDA frame_cnt
+    code += bytes([0x29, 0x01])  # AND #$01
+    code += bytes([0xD0, 0x02])  # BNE +2 (skip INC on odd frames)
     code += bytes([0xE6, 0xE1])  # INC phase
     # Advance scroll every 6 frames (slower text scroll)
     code += bytes([0xE6, 0xE2])  # INC frame_cnt
@@ -438,7 +466,7 @@ def generate_demo(sid_path, output_path):
     code += bytes([0xE6, 0xE0])  # INC scroll_pos (wraps at 256)
 
     # Delay to maintain ~50Hz (rendering takes ~10ms, delay adds ~10ms)
-    B(0xA2, 0x18)               # LDX #$18 (24 — shorter delay, faster music)
+    B(0xA2, 0x04)               # LDX #$04 (4 — near-zero delay)
     sd1 = len(code)
     B(0xA0, 0x33)               # LDY #$33
     sd2 = len(code)
@@ -460,7 +488,7 @@ def generate_demo(sid_path, output_path):
     code += bytes([0x8D, TMS_CTRL & 0xFF, (TMS_CTRL >> 8) & 0xFF])
     code += bytes([0x98])                # TYA (restore name_val)
     code += bytes([0x4A, 0x4A, 0x4A, 0x4A, 0x4A])  # LSR×5 → hi offset
-    code += bytes([0x09, 0x48])          # ORA #$48 (base $08 + write $40)
+    code += bytes([0x05, 0xE7])          # ORA $E7 (base: $48=pattern, $68=color)
     code += bytes([0x8D, TMS_CTRL & 0xFF, (TMS_CTRL >> 8) & 0xFF])
     code += bytes([0x60])                # RTS
 
@@ -543,6 +571,34 @@ def generate_demo(sid_path, output_path):
     branch_back(0xD0, br)
     B(0x60)
 
+    # ── 19b. color_2x subroutine ────────────────────────────────────────
+    # Input: $E4=col, $E5=y_row, $E6=color byte
+    # Switches $E7 to $68 (color base), writes 4 tiles, restores $E7=$48
+    color_2x_addr = cur()
+    code[patches['color_jsr']] = color_2x_addr & 0xFF
+    code[patches['color_jsr'] + 1] = (color_2x_addr >> 8) & 0xFF
+    B(0xA9, 0x68, 0x85, 0xE7)   # LDA #$68; STA $E7 (color base)
+    # Top pair
+    B(0xA5, 0xE5)                # LDA y_row
+    B(0x20, calc_vram_addr & 0xFF, (calc_vram_addr >> 8) & 0xFF)
+    B(0xA5, 0xE6)                # LDA color
+    B(0xA0, 0x10)                # LDY #16
+    cc1 = len(code)
+    B(0x8D, TMS_DATA & 0xFF, (TMS_DATA >> 8) & 0xFF)
+    B(0x88)
+    branch_back(0xD0, cc1)
+    # Bottom pair
+    B(0xA5, 0xE5, 0x18, 0x69, 0x01)  # LDA y_row; CLC; ADC #1
+    B(0x20, calc_vram_addr & 0xFF, (calc_vram_addr >> 8) & 0xFF)
+    B(0xA5, 0xE6)
+    B(0xA0, 0x10)
+    cc2 = len(code)
+    B(0x8D, TMS_DATA & 0xFF, (TMS_DATA >> 8) & 0xFF)
+    B(0x88)
+    branch_back(0xD0, cc2)
+    B(0xA9, 0x48, 0x85, 0xE7)   # restore $E7=$48 (pattern base)
+    B(0x60)                      # RTS
+
     # ── 20. draw_chunks subroutine (for title screen) ────────────────────
     dc_addr = cur()
     code[patches['draw_jsr']] = dc_addr & 0xFF
@@ -601,6 +657,12 @@ def generate_demo(sid_path, output_path):
     code += bytes(SINE_TABLE)
     code[patches['sine_ref']] = sine_addr & 0xFF
     code[patches['sine_ref'] + 1] = (sine_addr >> 8) & 0xFF
+
+    # Scroll color palette (8 bytes)
+    scolors_addr = cur()
+    code += bytes(SCROLL_COLORS)
+    code[patches['scolors_ref']] = scolors_addr & 0xFF
+    code[patches['scolors_ref'] + 1] = (scolors_addr >> 8) & 0xFF
 
     # Scroll font (512 bytes)
     sfont_addr = cur()

@@ -71,7 +71,7 @@ var ENVIRONMENT_IS_SHELL = !ENVIRONMENT_IS_WEB && !ENVIRONMENT_IS_NODE && !ENVIR
 
 // --pre-jses are emitted after the Module integration code, so that they can
 // refer to Module (if they choose; they can also define Module)
-// include: /var/folders/rr/935v6_790s9d0711dv99d16r0000gn/T/tmpg7em1_vl.js
+// include: /var/folders/rr/935v6_790s9d0711dv99d16r0000gn/T/tmpwbvsfyw2.js
 
   if (!Module['expectedDataFileDownloads']) Module['expectedDataFileDownloads'] = 0;
   Module['expectedDataFileDownloads']++;
@@ -214,25 +214,25 @@ Module['FS_createPath']("/software", "utils", true, true);
     }
 
     }
-    loadPackage({"files": [{"filename": "/fonts/fa-solid-900.ttf", "start": 0, "end": 426112}, {"filename": "/roms/ACI.rom", "start": 426112, "end": 426368}, {"filename": "/roms/WozMonitor.rom", "start": 426368, "end": 426624}, {"filename": "/roms/basic.rom", "start": 426624, "end": 430720}, {"filename": "/roms/charmap.rom", "start": 430720, "end": 431744}, {"filename": "/roms/krusader-1.3.rom", "start": 431744, "end": 439936}, {"filename": "/roms/sdcard.rom", "start": 439936, "end": 448113}, {"filename": "/sdcard/HGR/N000#062000", "start": 448113, "end": 456305}, {"filename": "/sdcard/HGR/N001#062000", "start": 456305, "end": 464497}, {"filename": "/sdcard/HGR/N003#062000", "start": 464497, "end": 472689}, {"filename": "/sdcard/HGR/N009#062000", "start": 472689, "end": 480881}, {"filename": "/sdcard/HGR/N010#062000", "start": 480881, "end": 489073}, {"filename": "/sdcard/HGR/N011#062000", "start": 489073, "end": 497265}, {"filename": "/sdcard/HGR/PIC#062000", "start": 497265, "end": 505457}, {"filename": "/sdcard/TEST#060300", "start": 505457, "end": 505465}, {"filename": "/software/.DS_Store", "start": 505465, "end": 513661}, {"filename": "/software/apple1.cfg", "start": 513661, "end": 513905}, {"filename": "/software/basic/.DS_Store", "start": 513905, "end": 520053}, {"filename": "/software/basic/blackjack.apl.txt", "start": 520053, "end": 527038}, {"filename": "/software/basic/dobble.apl.txt", "start": 527038, "end": 538423}, {"filename": "/software/basic/hamurabi.apl.txt", "start": 538423, "end": 549408}, {"filename": "/software/basic/lunar-lander-ascii-graphics.apl.txt", "start": 549408, "end": 560393}, {"filename": "/software/basic/mini-startrek.apl.txt", "start": 560393, "end": 571378}, {"filename": "/software/basic/resistor-calculator.apl.txt", "start": 571378, "end": 578363}, {"filename": "/software/basic/stopwatch.apl.txt", "start": 578363, "end": 585348}, {"filename": "/software/basic/twinkle.apl.txt", "start": 585348, "end": 592333}, {"filename": "/software/demos/30th.apl.txt", "start": 592333, "end": 603144}, {"filename": "/software/demos/beer.apl.txt", "start": 603144, "end": 603780}, {"filename": "/software/demos/cat.apl.txt", "start": 603780, "end": 606013}, {"filename": "/software/demos/cellular.apl.txt", "start": 606013, "end": 607765}, {"filename": "/software/demos/life.txt", "start": 607765, "end": 609433}, {"filename": "/software/demos/mandelbrot-65.apl.txt", "start": 609433, "end": 613616}, {"filename": "/software/demos/pasart.apl.txt", "start": 613616, "end": 615396}, {"filename": "/software/dev/ENHANCEDBASIC.txt", "start": 615396, "end": 647613}, {"filename": "/software/dev/WozMonitor.txt", "start": 647613, "end": 648632}, {"filename": "/software/dev/a1assembler.apl.txt", "start": 648632, "end": 661287}, {"filename": "/software/dev/apple1_basic-d.apl.txt", "start": 661287, "end": 674098}, {"filename": "/software/dev/basic-pagetable.apl.txt", "start": 674098, "end": 686909}, {"filename": "/software/dev/dis-assembler.apl.txt", "start": 686909, "end": 688408}, {"filename": "/software/dev/fig-fORTH110.txt", "start": 688408, "end": 709009}, {"filename": "/software/games/15-puzzle.apl.txt", "start": 709009, "end": 712139}, {"filename": "/software/games/2048.apl.txt", "start": 712139, "end": 718282}, {"filename": "/software/games/LittleTower-1.0.asm", "start": 718282, "end": 743082}, {"filename": "/software/games/LittleTower-1.0.txt", "start": 743082, "end": 763498}, {"filename": "/software/games/Maze2_Backtracker.asm", "start": 763498, "end": 778052}, {"filename": "/software/games/Maze2_Backtracker.txt", "start": 778052, "end": 781452}, {"filename": "/software/games/Maze_Sidewinder.asm", "start": 781452, "end": 795159}, {"filename": "/software/games/Maze_Sidewinder.txt", "start": 795159, "end": 797818}, {"filename": "/software/games/codebreaker.apl.txt", "start": 797818, "end": 804229}, {"filename": "/software/games/lunar-lander-text-only.apl.txt", "start": 804229, "end": 809619}, {"filename": "/software/games/mastermind.apl.txt", "start": 809619, "end": 810184}, {"filename": "/software/games/microchess.apl.txt", "start": 810184, "end": 817220}, {"filename": "/software/games/peg-solitaire.apl.txt", "start": 817220, "end": 819631}, {"filename": "/software/games/shut-the-box.apl.txt", "start": 819631, "end": 822842}, {"filename": "/software/games/worple.apl.txt", "start": 822842, "end": 833250}, {"filename": "/software/hgr/.DS_Store", "start": 833250, "end": 839398}, {"filename": "/software/hgr/GEN2.HGR.BIN", "start": 839398, "end": 847582}, {"filename": "/software/hgr/HGR1_Maze.asm", "start": 847582, "end": 859508}, {"filename": "/software/hgr/HGR1_Maze.txt", "start": 859508, "end": 862421}, {"filename": "/software/hgr/apple1_gen2.cfg", "start": 862421, "end": 862951}, {"filename": "/software/net/ATmodem.txt", "start": 862951, "end": 864069}, {"filename": "/software/pom1.cfg", "start": 864069, "end": 864313}, {"filename": "/software/sid/.DS_Store", "start": 864313, "end": 870461}, {"filename": "/software/sid/Battle_of_Britain.bin", "start": 870461, "end": 906685}, {"filename": "/software/sid/Blasteroids.bin", "start": 906685, "end": 913751}, {"filename": "/software/sid/Bobby_Bearing.bin", "start": 913751, "end": 920232}, {"filename": "/software/sid/Chain_Reaction.bin", "start": 920232, "end": 924881}, {"filename": "/software/sid/Commando.bin", "start": 924881, "end": 948760}, {"filename": "/software/sid/Crazy_Comets.bin", "start": 948760, "end": 972968}, {"filename": "/software/sid/Gauntlet.bin", "start": 972968, "end": 983051}, {"filename": "/software/sid/Masters_of_the_Universe.bin", "start": 983051, "end": 1016287}, {"filename": "/software/sid/Monty_on_the_Run.bin", "start": 1016287, "end": 1053983}, {"filename": "/software/sid/One_Man_and_his_Droid.bin", "start": 1053983, "end": 1061413}, {"filename": "/software/sid/Pac-Mania.bin", "start": 1061413, "end": 1088421}, {"filename": "/software/sid/Proteus.bin", "start": 1088421, "end": 1093317}, {"filename": "/software/sid/Wellenreiter.bin", "start": 1093317, "end": 1106703}, {"filename": "/software/tests/ASCII_hex_Terminal.txt", "start": 1106703, "end": 1106965}, {"filename": "/software/tests/ASCII_hex_keyboard.txt", "start": 1106965, "end": 1107187}, {"filename": "/software/tests/Getting_The_System_Running.txt", "start": 1107187, "end": 1108014}, {"filename": "/software/tests/Print_with_hex.txt", "start": 1108014, "end": 1109029}, {"filename": "/software/tms9918/demo.bin", "start": 1109029, "end": 1115395}, {"filename": "/software/tms9918/picshow.bin", "start": 1115395, "end": 1128223}, {"filename": "/software/tms9918/tetris.bin", "start": 1128223, "end": 1135531}, {"filename": "/software/tms9918/tms9918_test.txt", "start": 1135531, "end": 1136419}, {"filename": "/software/utils/party.apl.txt", "start": 1136419, "end": 1148096}, {"filename": "/software/utils/typewriter.apl.txt", "start": 1148096, "end": 1148816}], "remote_package_size": 1148816});
+    loadPackage({"files": [{"filename": "/fonts/fa-solid-900.ttf", "start": 0, "end": 426112}, {"filename": "/roms/ACI.rom", "start": 426112, "end": 426368}, {"filename": "/roms/WozMonitor.rom", "start": 426368, "end": 426624}, {"filename": "/roms/basic.rom", "start": 426624, "end": 430720}, {"filename": "/roms/charmap.rom", "start": 430720, "end": 431744}, {"filename": "/roms/krusader-1.3.rom", "start": 431744, "end": 439936}, {"filename": "/roms/sdcard.rom", "start": 439936, "end": 448113}, {"filename": "/sdcard/HGR/N000#062000", "start": 448113, "end": 456305}, {"filename": "/sdcard/HGR/N001#062000", "start": 456305, "end": 464497}, {"filename": "/sdcard/HGR/N003#062000", "start": 464497, "end": 472689}, {"filename": "/sdcard/HGR/N009#062000", "start": 472689, "end": 480881}, {"filename": "/sdcard/HGR/N010#062000", "start": 480881, "end": 489073}, {"filename": "/sdcard/HGR/N011#062000", "start": 489073, "end": 497265}, {"filename": "/sdcard/HGR/PIC#062000", "start": 497265, "end": 505457}, {"filename": "/sdcard/TEST#060300", "start": 505457, "end": 505465}, {"filename": "/software/.DS_Store", "start": 505465, "end": 513661}, {"filename": "/software/apple1.cfg", "start": 513661, "end": 513905}, {"filename": "/software/basic/.DS_Store", "start": 513905, "end": 520053}, {"filename": "/software/basic/blackjack.apl.txt", "start": 520053, "end": 527038}, {"filename": "/software/basic/dobble.apl.txt", "start": 527038, "end": 538423}, {"filename": "/software/basic/hamurabi.apl.txt", "start": 538423, "end": 549408}, {"filename": "/software/basic/lunar-lander-ascii-graphics.apl.txt", "start": 549408, "end": 560393}, {"filename": "/software/basic/mini-startrek.apl.txt", "start": 560393, "end": 571378}, {"filename": "/software/basic/resistor-calculator.apl.txt", "start": 571378, "end": 578363}, {"filename": "/software/basic/stopwatch.apl.txt", "start": 578363, "end": 585348}, {"filename": "/software/basic/twinkle.apl.txt", "start": 585348, "end": 592333}, {"filename": "/software/demos/30th.apl.txt", "start": 592333, "end": 603144}, {"filename": "/software/demos/beer.apl.txt", "start": 603144, "end": 603780}, {"filename": "/software/demos/cat.apl.txt", "start": 603780, "end": 606013}, {"filename": "/software/demos/cellular.apl.txt", "start": 606013, "end": 607765}, {"filename": "/software/demos/life.txt", "start": 607765, "end": 609433}, {"filename": "/software/demos/mandelbrot-65.apl.txt", "start": 609433, "end": 613616}, {"filename": "/software/demos/pasart.apl.txt", "start": 613616, "end": 615396}, {"filename": "/software/dev/ENHANCEDBASIC.txt", "start": 615396, "end": 647613}, {"filename": "/software/dev/WozMonitor.txt", "start": 647613, "end": 648632}, {"filename": "/software/dev/a1assembler.apl.txt", "start": 648632, "end": 661287}, {"filename": "/software/dev/apple1_basic-d.apl.txt", "start": 661287, "end": 674098}, {"filename": "/software/dev/basic-pagetable.apl.txt", "start": 674098, "end": 686909}, {"filename": "/software/dev/dis-assembler.apl.txt", "start": 686909, "end": 688408}, {"filename": "/software/dev/fig-fORTH110.txt", "start": 688408, "end": 709009}, {"filename": "/software/games/15-puzzle.apl.txt", "start": 709009, "end": 712139}, {"filename": "/software/games/2048.apl.txt", "start": 712139, "end": 718282}, {"filename": "/software/games/LittleTower-1.0.asm", "start": 718282, "end": 743082}, {"filename": "/software/games/LittleTower-1.0.txt", "start": 743082, "end": 763498}, {"filename": "/software/games/Maze2_Backtracker.asm", "start": 763498, "end": 778052}, {"filename": "/software/games/Maze2_Backtracker.txt", "start": 778052, "end": 781452}, {"filename": "/software/games/Maze_Sidewinder.asm", "start": 781452, "end": 795159}, {"filename": "/software/games/Maze_Sidewinder.txt", "start": 795159, "end": 797818}, {"filename": "/software/games/codebreaker.apl.txt", "start": 797818, "end": 804229}, {"filename": "/software/games/lunar-lander-text-only.apl.txt", "start": 804229, "end": 809619}, {"filename": "/software/games/mastermind.apl.txt", "start": 809619, "end": 810184}, {"filename": "/software/games/microchess.apl.txt", "start": 810184, "end": 817220}, {"filename": "/software/games/peg-solitaire.apl.txt", "start": 817220, "end": 819631}, {"filename": "/software/games/shut-the-box.apl.txt", "start": 819631, "end": 822842}, {"filename": "/software/games/worple.apl.txt", "start": 822842, "end": 833250}, {"filename": "/software/hgr/.DS_Store", "start": 833250, "end": 839398}, {"filename": "/software/hgr/GEN2.HGR.BIN", "start": 839398, "end": 847582}, {"filename": "/software/hgr/HGR1_Maze.asm", "start": 847582, "end": 859508}, {"filename": "/software/hgr/HGR1_Maze.txt", "start": 859508, "end": 862421}, {"filename": "/software/hgr/apple1_gen2.cfg", "start": 862421, "end": 862951}, {"filename": "/software/net/ATmodem.txt", "start": 862951, "end": 864069}, {"filename": "/software/pom1.cfg", "start": 864069, "end": 864313}, {"filename": "/software/sid/.DS_Store", "start": 864313, "end": 870461}, {"filename": "/software/sid/Battle_of_Britain.bin", "start": 870461, "end": 906685}, {"filename": "/software/sid/Blasteroids.bin", "start": 906685, "end": 913751}, {"filename": "/software/sid/Bobby_Bearing.bin", "start": 913751, "end": 920232}, {"filename": "/software/sid/Chain_Reaction.bin", "start": 920232, "end": 924881}, {"filename": "/software/sid/Commando.bin", "start": 924881, "end": 948760}, {"filename": "/software/sid/Crazy_Comets.bin", "start": 948760, "end": 972968}, {"filename": "/software/sid/Gauntlet.bin", "start": 972968, "end": 983051}, {"filename": "/software/sid/Masters_of_the_Universe.bin", "start": 983051, "end": 1016287}, {"filename": "/software/sid/Monty_on_the_Run.bin", "start": 1016287, "end": 1053983}, {"filename": "/software/sid/One_Man_and_his_Droid.bin", "start": 1053983, "end": 1061413}, {"filename": "/software/sid/Pac-Mania.bin", "start": 1061413, "end": 1088421}, {"filename": "/software/sid/Proteus.bin", "start": 1088421, "end": 1093317}, {"filename": "/software/sid/Wellenreiter.bin", "start": 1093317, "end": 1106703}, {"filename": "/software/tests/ASCII_hex_Terminal.txt", "start": 1106703, "end": 1106965}, {"filename": "/software/tests/ASCII_hex_keyboard.txt", "start": 1106965, "end": 1107187}, {"filename": "/software/tests/Getting_The_System_Running.txt", "start": 1107187, "end": 1108014}, {"filename": "/software/tests/Print_with_hex.txt", "start": 1108014, "end": 1109029}, {"filename": "/software/tms9918/TMS_SID_Demo.bin", "start": 1109029, "end": 1116442}, {"filename": "/software/tms9918/demo.bin", "start": 1116442, "end": 1122808}, {"filename": "/software/tms9918/picshow.bin", "start": 1122808, "end": 1135636}, {"filename": "/software/tms9918/tetris.bin", "start": 1135636, "end": 1142944}, {"filename": "/software/tms9918/tms9918_test.txt", "start": 1142944, "end": 1143832}, {"filename": "/software/utils/party.apl.txt", "start": 1143832, "end": 1155509}, {"filename": "/software/utils/typewriter.apl.txt", "start": 1155509, "end": 1156229}], "remote_package_size": 1156229});
 
   })();
 
-// end include: /var/folders/rr/935v6_790s9d0711dv99d16r0000gn/T/tmpg7em1_vl.js
-// include: /var/folders/rr/935v6_790s9d0711dv99d16r0000gn/T/tmp23cofbok.js
+// end include: /var/folders/rr/935v6_790s9d0711dv99d16r0000gn/T/tmpwbvsfyw2.js
+// include: /var/folders/rr/935v6_790s9d0711dv99d16r0000gn/T/tmpq_20ok4h.js
 
     // All the pre-js content up to here must remain later on, we need to run
     // it.
     if ((typeof ENVIRONMENT_IS_WASM_WORKER != 'undefined' && ENVIRONMENT_IS_WASM_WORKER) || (typeof ENVIRONMENT_IS_PTHREAD != 'undefined' && ENVIRONMENT_IS_PTHREAD) || (typeof ENVIRONMENT_IS_AUDIO_WORKLET != 'undefined' && ENVIRONMENT_IS_AUDIO_WORKLET)) Module['preRun'] = [];
     var necessaryPreJSTasks = Module['preRun'].slice();
-  // end include: /var/folders/rr/935v6_790s9d0711dv99d16r0000gn/T/tmp23cofbok.js
-// include: /var/folders/rr/935v6_790s9d0711dv99d16r0000gn/T/tmp0m1t8l7v.js
+  // end include: /var/folders/rr/935v6_790s9d0711dv99d16r0000gn/T/tmpq_20ok4h.js
+// include: /var/folders/rr/935v6_790s9d0711dv99d16r0000gn/T/tmp5o9bvxgd.js
 
     if (!Module['preRun']) throw 'Module.preRun should exist because file support used it; did a pre-js delete it?';
     necessaryPreJSTasks.forEach((task) => {
       if (Module['preRun'].indexOf(task) < 0) throw 'All preRun tasks that exist before user pre-js code should remain after; did you replace Module or modify Module.preRun?';
     });
-  // end include: /var/folders/rr/935v6_790s9d0711dv99d16r0000gn/T/tmp0m1t8l7v.js
+  // end include: /var/folders/rr/935v6_790s9d0711dv99d16r0000gn/T/tmp5o9bvxgd.js
 
 
 var arguments_ = [];
@@ -4209,6 +4209,101 @@ var stringToUTF8Array = (str, heap, outIdx, maxBytesToWrite) => {
   var __abort_js = () =>
       abort('native code called abort()');
 
+  var isLeapYear = (year) => year%4 === 0 && (year%100 !== 0 || year%400 === 0);
+  
+  var MONTH_DAYS_LEAP_CUMULATIVE = [0,31,60,91,121,152,182,213,244,274,305,335];
+  
+  var MONTH_DAYS_REGULAR_CUMULATIVE = [0,31,59,90,120,151,181,212,243,273,304,334];
+  var ydayFromDate = (date) => {
+      var leap = isLeapYear(date.getFullYear());
+      var monthDaysCumulative = (leap ? MONTH_DAYS_LEAP_CUMULATIVE : MONTH_DAYS_REGULAR_CUMULATIVE);
+      var yday = monthDaysCumulative[date.getMonth()] + date.getDate() - 1; // -1 since it's days since Jan 1
+  
+      return yday;
+    };
+  
+  var INT53_MAX = 9007199254740992;
+  
+  var INT53_MIN = -9007199254740992;
+  var bigintToI53Checked = (num) => (num < INT53_MIN || num > INT53_MAX) ? NaN : Number(num);
+  function __localtime_js(time, tmPtr) {
+    time = bigintToI53Checked(time);
+  
+  
+      var date = new Date(time*1000);
+      HEAP32[((tmPtr)>>2)] = date.getSeconds();
+      HEAP32[(((tmPtr)+(4))>>2)] = date.getMinutes();
+      HEAP32[(((tmPtr)+(8))>>2)] = date.getHours();
+      HEAP32[(((tmPtr)+(12))>>2)] = date.getDate();
+      HEAP32[(((tmPtr)+(16))>>2)] = date.getMonth();
+      HEAP32[(((tmPtr)+(20))>>2)] = date.getFullYear()-1900;
+      HEAP32[(((tmPtr)+(24))>>2)] = date.getDay();
+  
+      var yday = ydayFromDate(date)|0;
+      HEAP32[(((tmPtr)+(28))>>2)] = yday;
+      HEAP32[(((tmPtr)+(36))>>2)] = -(date.getTimezoneOffset() * 60);
+  
+      // Attention: DST is in December in South, and some regions don't have DST at all.
+      var start = new Date(date.getFullYear(), 0, 1);
+      var summerOffset = new Date(date.getFullYear(), 6, 1).getTimezoneOffset();
+      var winterOffset = start.getTimezoneOffset();
+      var dst = (summerOffset != winterOffset && date.getTimezoneOffset() == Math.min(winterOffset, summerOffset))|0;
+      HEAP32[(((tmPtr)+(32))>>2)] = dst;
+    ;
+  }
+
+  
+  var __mktime_js = function(tmPtr) {
+  
+  var ret = (() => { 
+      var date = new Date(HEAP32[(((tmPtr)+(20))>>2)] + 1900,
+                          HEAP32[(((tmPtr)+(16))>>2)],
+                          HEAP32[(((tmPtr)+(12))>>2)],
+                          HEAP32[(((tmPtr)+(8))>>2)],
+                          HEAP32[(((tmPtr)+(4))>>2)],
+                          HEAP32[((tmPtr)>>2)],
+                          0);
+  
+      // There's an ambiguous hour when the time goes back; the tm_isdst field is
+      // used to disambiguate it.  Date() basically guesses, so we fix it up if it
+      // guessed wrong, or fill in tm_isdst with the guess if it's -1.
+      var dst = HEAP32[(((tmPtr)+(32))>>2)];
+      var guessedOffset = date.getTimezoneOffset();
+      var start = new Date(date.getFullYear(), 0, 1);
+      var summerOffset = new Date(date.getFullYear(), 6, 1).getTimezoneOffset();
+      var winterOffset = start.getTimezoneOffset();
+      var dstOffset = Math.min(winterOffset, summerOffset); // DST is in December in South
+      if (dst < 0) {
+        // Attention: some regions don't have DST at all.
+        HEAP32[(((tmPtr)+(32))>>2)] = Number(summerOffset != winterOffset && dstOffset == guessedOffset);
+      } else if ((dst > 0) != (dstOffset == guessedOffset)) {
+        var nonDstOffset = Math.max(winterOffset, summerOffset);
+        var trueOffset = dst > 0 ? dstOffset : nonDstOffset;
+        // Don't try setMinutes(date.getMinutes() + ...) -- it's messed up.
+        date.setTime(date.getTime() + (trueOffset - guessedOffset)*60000);
+      }
+  
+      HEAP32[(((tmPtr)+(24))>>2)] = date.getDay();
+      var yday = ydayFromDate(date)|0;
+      HEAP32[(((tmPtr)+(28))>>2)] = yday;
+      // To match expected behavior, update fields from date
+      HEAP32[((tmPtr)>>2)] = date.getSeconds();
+      HEAP32[(((tmPtr)+(4))>>2)] = date.getMinutes();
+      HEAP32[(((tmPtr)+(8))>>2)] = date.getHours();
+      HEAP32[(((tmPtr)+(12))>>2)] = date.getDate();
+      HEAP32[(((tmPtr)+(16))>>2)] = date.getMonth();
+      HEAP32[(((tmPtr)+(20))>>2)] = date.getYear();
+  
+      var timeMs = date.getTime();
+      if (isNaN(timeMs)) {
+        return -1;
+      }
+      // Return time in microseconds
+      return timeMs / 1000;
+     })();
+  return BigInt(ret);
+  };
+
   
   var __tzset_js = (timezone, daylight, std_name, dst_name) => {
       // TODO: Use (malleable) environment variables instead of system settings.
@@ -4263,7 +4358,37 @@ var stringToUTF8Array = (str, heap, outIdx, maxBytesToWrite) => {
       }
     };
 
+  var _emscripten_get_now = () => performance.now();
+  
   var _emscripten_date_now = () => Date.now();
+  
+  var nowIsMonotonic = 1;
+  
+  var checkWasiClock = (clock_id) => clock_id >= 0 && clock_id <= 3;
+  
+  function _clock_time_get(clk_id, ignored_precision, ptime) {
+    ignored_precision = bigintToI53Checked(ignored_precision);
+  
+  
+      if (!checkWasiClock(clk_id)) {
+        return 28;
+      }
+      var now;
+      // all wasi clocks but realtime are monotonic
+      if (clk_id === 0) {
+        now = _emscripten_date_now();
+      } else if (nowIsMonotonic) {
+        now = _emscripten_get_now();
+      } else {
+        return 52;
+      }
+      // "now" is in ms, and wasi times are in ns.
+      var nsec = Math.round(now * 1000 * 1000);
+      HEAP64[((ptime)>>3)] = BigInt(nsec);
+      return 0;
+    ;
+  }
+
 
   var _emscripten_err = (str) => err(UTF8ToString(str));
 
@@ -5048,7 +5173,6 @@ var stringToUTF8Array = (str, heap, outIdx, maxBytesToWrite) => {
   };
   
   
-  var _emscripten_get_now = () => performance.now();
   
   
     /**
@@ -5251,10 +5375,6 @@ var stringToUTF8Array = (str, heap, outIdx, maxBytesToWrite) => {
   }
 
   
-  var INT53_MAX = 9007199254740992;
-  
-  var INT53_MIN = -9007199254740992;
-  var bigintToI53Checked = (num) => (num < INT53_MIN || num > INT53_MAX) ? NaN : Number(num);
   function _fd_seek(fd, offset, whence, newOffset) {
     offset = bigintToI53Checked(offset);
   
@@ -8478,7 +8598,6 @@ if (Module['wasmBinary']) wasmBinary = Module['wasmBinary'];
   'jsStackTrace',
   'getCallstack',
   'convertPCtoSourceLocation',
-  'checkWasiClock',
   'wasiRightsToMuslOFlags',
   'wasiOFlagsToMuslOFlags',
   'setImmediateWrapped',
@@ -8494,8 +8613,6 @@ if (Module['wasmBinary']) wasmBinary = Module['wasmBinary'];
   'incrementUncaughtExceptionCount',
   'decrementUncaughtExceptionCount',
   'Browser_asyncPrepareDataCounter',
-  'isLeapYear',
-  'ydayFromDate',
   'arraySum',
   'addDays',
   'getSocketFromFD',
@@ -8614,6 +8731,7 @@ missingLibrarySymbols.forEach(missingLibrarySymbol)
   'UNWIND_CACHE',
   'ExitStatus',
   'getEnvStrings',
+  'checkWasiClock',
   'doReadv',
   'doWritev',
   'initRandomFill',
@@ -8638,6 +8756,8 @@ missingLibrarySymbols.forEach(missingLibrarySymbol)
   'MONTH_DAYS_LEAP',
   'MONTH_DAYS_REGULAR_CUMULATIVE',
   'MONTH_DAYS_LEAP_CUMULATIVE',
+  'isLeapYear',
+  'ydayFromDate',
   'SYSCALLS',
   'preloadPlugins',
   'FS_createPreloadedFile',
@@ -8894,7 +9014,13 @@ var wasmImports = {
   /** @export */
   _abort_js: __abort_js,
   /** @export */
+  _localtime_js: __localtime_js,
+  /** @export */
+  _mktime_js: __mktime_js,
+  /** @export */
   _tzset_js: __tzset_js,
+  /** @export */
+  clock_time_get: _clock_time_get,
   /** @export */
   emscripten_date_now: _emscripten_date_now,
   /** @export */
