@@ -28,6 +28,8 @@
 - [x] Toolbar reorganized: Load, SD Card, Cassette, SID, HGR, TMS9918, Terminal, BBS
 - [x] Hardware menu reorganized: ACI Cassette Control + Bernie (classics) then P-LAB cards grouped (microSD, SID, TMS9918, Terminal, MODEM BBS)
 - [x] Cassettes moved from `software/cassettes/` to `cassettes/` at project root
+- [x] **SID converter v2**: instruction-aware patching (shared `INST_LENGTHS`), expanded CIA/VIC/indirect opcodes, neighbor-pair data table filtering, ESC-to-stop player, "APPLE1 P-LAB SID PLAYER" banner
+- [x] **TMS9918+SID demo** (`tools/make_tms_sid_demo.py`): world's first Apple 1 TMS9918+SID combined program — Graphics II title screen + Streets of Rage 2 SID tune. Output: `software/tms9918/TMS_SID_Demo.bin`
 
 ## Open
 
