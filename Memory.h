@@ -158,7 +158,7 @@ private :
     std::unique_ptr<SID> sid;
     bool sidEnabled = false;
     std::unique_ptr<MicroSD> microSD;
-    bool microSDEnabled = false;
+    bool microSDEnabled = true;
     std::unique_ptr<WiFiModem> wifiModem;
     bool wifiModemEnabled = false;
     std::unique_ptr<TerminalCard> terminalCard;

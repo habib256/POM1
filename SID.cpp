@@ -64,6 +64,8 @@ void SID::reset()
     dcBlockInput = 0.0f;
     outputLP = 0.0f;
     lastBusValue = 0;
+    cachedFilterCutoff = 0xFFFF;
+    cachedResonance    = 0xFF;
 }
 
 // ─── Register access ────────────────────────────────────────────────────────
@@ -391,6 +393,18 @@ static inline float fastPow145(float x)
     return x * (0.42f + x * (0.78f - 0.20f * x));
 }
 
+// ─── Fast tanh approximation ─────────────────────────────────────────────────
+// Padé [3/2] rational approximation — clamp at ±3 where fastTanh(3) = 1.0 exactly
+// (3*(27+9)/(27+81) = 108/108 = 1), so the function is bounded in [-1,1] like real tanh.
+// Max error ~2% for |x| ≤ 2.5. Safe for ZDF filter feedback (no divergence).
+static inline float fastTanh(float x)
+{
+    if (x >  3.0f) return  1.0f;
+    if (x < -3.0f) return -1.0f;
+    float x2 = x * x;
+    return x * (27.0f + x2) / (27.0f + 9.0f * x2);
+}
+
 // ─── Audio generation ───────────────────────────────────────────────────────
 
 void SID::fillAudioBuffer(float* output, int frameCount)
@@ -431,23 +445,26 @@ void SID::fillAudioBuffer(float* output, int frameCount)
         bool voice3Off    = (modeVol & 0x80) != 0;
         float masterVolume = static_cast<float>(modeVol & 0x0F) / 15.0f;
 
-        // ── 6581 non-linear filter cutoff (computed once per output sample) ──
-        float fc = static_cast<float>(filterCutoff);
-        float cutoffHz;
-        if (fc < 192.0f) {
-            cutoffHz = 220.0f;  // 6581 minimum floor
-        } else {
-            float x = (fc - 192.0f) / (2047.0f - 192.0f);
-            cutoffHz = 220.0f + 12000.0f * fastPow145(x);
+        // ── 6581 non-linear filter cutoff + ZDF coefficients ────────────────
+        // Recomputed only when filter cutoff or resonance registers change.
+        if (filterCutoff != cachedFilterCutoff || resonance != cachedResonance) {
+            cachedFilterCutoff = filterCutoff;
+            cachedResonance    = resonance;
+            float fc = static_cast<float>(filterCutoff);
+            float cutoffHz;
+            if (fc < 192.0f) {
+                cutoffHz = 220.0f;  // 6581 minimum floor
+            } else {
+                float x = (fc - 192.0f) / (2047.0f - 192.0f);
+                cutoffHz = 220.0f + 12000.0f * fastPow145(x);
+            }
+            // ZDF SVF (Zavalishin trapezoidal topology)
+            cachedG = std::tan(kPi * cutoffHz / kInternalRateF);
+            cachedK = std::max(2.0f * (1.0f - static_cast<float>(resonance) / 16.0f), 0.04f);
+            cachedA1 = 1.0f / (1.0f + cachedG * (cachedG + cachedK));
+            cachedA2 = cachedG * cachedA1;
         }
-
-        // ── ZDF SVF coefficients (Zavalishin trapezoidal — no frequency warping) ──
-        float g = std::tan(kPi * cutoffHz / kInternalRateF);
-        // Resonance → damping: k=2 is no resonance, k→0 is self-oscillation
-        float k = 2.0f * (1.0f - static_cast<float>(resonance) / 16.0f);
-        k = std::max(k, 0.04f);  // allow near-self-oscillation
-        float a1 = 1.0f / (1.0f + g * (g + k));
-        float a2 = g * a1;
+        float g = cachedG, k = cachedK, a1 = cachedA1, a2 = cachedA2;
         float a3 = g * a2;
 
         // ── Digi DC offset (from volume register) ──
@@ -511,13 +528,13 @@ void SID::fillAudioBuffer(float* output, int frameCount)
             else unfilteredOutput += voice3Output;
 
             // 6581 filter input saturation (op-amp soft clipping)
-            filteredInput = std::tanh(filteredInput * 1.2f);
+            filteredInput = fastTanh(filteredInput * 1.2f);
 
             // ── Zero-Delay Feedback SVF (Zavalishin trapezoidal topology) ──
             // No frequency warping, stable at all frequencies, accurate self-oscillation.
             // BP feedback saturated via tanh for 6581 analog character.
             float v3 = filteredInput - filterIC2eq
-                       - k * std::tanh(filterIC1eq * 1.5f);
+                       - k * fastTanh(filterIC1eq * 1.5f);
             float hp = v3 * a1;
             float v1 = hp * g;
             float bp = v1 + filterIC1eq;

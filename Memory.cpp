@@ -93,6 +93,8 @@ void Memory::initMemory(){
     loadBasic();
     loadAciRom();
     loadWozMonitor();
+    loadSDCardRom();
+    microSDEnabled = true;
     cassetteDevice->reset();
     tms9918->reset();
     sid->reset();
@@ -522,8 +524,9 @@ void Memory::memWrite(quint16 address, quint8 value)
         if (address >= 0xC100 && address <= 0xC1FF) return;
         // Apple BASIC: 0xE000-0xEFFF
         if (address >= 0xE000 && address <= 0xEFFF) return;
-        // SD CARD OS ROM: 0x8000-0x9FFF (when microSD card is plugged)
-        if (microSDEnabled && address >= 0x8000 && address <= 0x9FFF) return;
+        // SD CARD OS ROM: 0x8000-0x9FFF is intentionally NOT write-protected.
+        // User programs (e.g. SID tunes) that load over this range must be able
+        // to write their own variables there at runtime.
     }
 
     if (address >= 0xC000 && address <= 0xC0FF && address != 0xC081) {

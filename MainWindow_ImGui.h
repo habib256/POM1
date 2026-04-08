@@ -66,7 +66,7 @@ private:
     bool showTMS9918 = false;
     bool tms9918Enabled = false;
     bool sidEnabled = false;
-    bool microSDEnabled = false;
+    bool microSDEnabled = true;
     bool wifiModemEnabled = false;
     bool showWiFiModem = false;
     bool terminalCardEnabled = false;

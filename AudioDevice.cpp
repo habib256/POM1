@@ -121,7 +121,7 @@ bool AudioDevice::initAudio()
 
     emscripten_run_script(
         "var ctx = new (window.AudioContext || window.webkitAudioContext)({sampleRate: 44100});"
-        "var bufSize = 512;"
+        "var bufSize = 2048;"
         "var proc = ctx.createScriptProcessor(bufSize, 0, 1);"
         "var heapBuf = Module._malloc(bufSize * 4);"
         "proc.onaudioprocess = function(e) {"

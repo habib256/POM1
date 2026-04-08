@@ -91,6 +91,14 @@ private:
     float filterIC1eq = 0.0f;   // BP integrator state
     float filterIC2eq = 0.0f;   // LP integrator state
 
+    // Cached ZDF coefficients — recomputed only when filter registers change
+    uint16_t cachedFilterCutoff = 0xFFFF;  // invalid sentinel
+    uint8_t  cachedResonance    = 0xFF;
+    float    cachedG  = 0.0f;
+    float    cachedK  = 2.0f;
+    float    cachedA1 = 1.0f;
+    float    cachedA2 = 0.0f;
+
     // DC blocker for digi playback (volume register trick)
     float dcBlockPrev  = 0.0f;
     float dcBlockInput = 0.0f;

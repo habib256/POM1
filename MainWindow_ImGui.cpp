@@ -1326,9 +1326,7 @@ void MainWindow_ImGui::renderDebugDialog()
             ImGui::SameLine();
             
             if (ImGui::Button("Reset")) {
-                stopCpu();
-                emulation->hardReset();
-                setStatusMessage("CPU reset", 2.0f);
+                hardReset();
             }
             
 #if !POM1_IS_WASM
@@ -2076,6 +2074,7 @@ void MainWindow_ImGui::hardReset()
 {
     emulation->hardReset();
     loadedPrograms.clear();
+    microSDEnabled = true;
     setStatusMessage("Hard reset done - Memory cleared", 2.0f);
 }
 

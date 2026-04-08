@@ -10,12 +10,17 @@
 namespace {
 
 constexpr double kFramesPerSecond = 60.0;
-constexpr int kMaxSliceCycles = 12000;
 #if POM1_IS_WASM
+// WASM: pumpEmulationMainThread is called once per frame from the main loop.
+// At 60 fps, 1 MHz needs ~16 667 cycles/frame and 2 MHz ~33 333 cycles/frame.
+// The desktop cap of 12 000 throttles WASM to 720 KHz — too slow for SID tunes.
+// Set the cap well above the 2 MHz frame budget so a single call consumes it all.
+constexpr int kMaxSliceCycles = 50000;
 // WASM: emulation and audio share the main thread — need more lead time
 // to avoid queue starvation between frames.
 constexpr double kMaxLiveAudioLeadSeconds = 0.15;
 #else
+constexpr int kMaxSliceCycles = 12000;
 constexpr double kMaxLiveAudioLeadSeconds = 0.025;
 #endif
 
@@ -538,6 +543,10 @@ void EmulationController::runEmulationSlice(double elapsedSeconds)
 
     const double cyclesPerSecond = static_cast<double>(cpf) * kFramesPerSecond;
     emulationCycleBudget += cyclesPerSecond * elapsedSeconds;
+
+    // Cap budget to 2 frames to prevent runaway accumulation (e.g. after a speed change).
+    const double maxBudget = cyclesPerSecond / kFramesPerSecond * 2.0;
+    if (emulationCycleBudget > maxBudget) emulationCycleBudget = maxBudget;
 
     int cyclesToRun = std::min(kMaxSliceCycles, static_cast<int>(emulationCycleBudget));
     if (cyclesToRun <= 0) {
