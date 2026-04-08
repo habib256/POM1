@@ -21,17 +21,20 @@
 
 #include "Memory.h"
 
-#define N 0x80
-#define V 0x40
-#define B 0x10
-#define D 0x08
-#define I 0x04
-#define Z 0x02
-#define C 0x01
-
 class M6502
 {
 public:
+    /// Bits du registre P (éviter #define N,C,I,… qui cassent les en-têtes Windows).
+    struct Status {
+        static constexpr quint8 N = 0x80;
+        static constexpr quint8 V = 0x40;
+        static constexpr quint8 B = 0x10;
+        static constexpr quint8 D = 0x08;
+        static constexpr quint8 I = 0x04;
+        static constexpr quint8 Z = 0x02;
+        static constexpr quint8 C = 0x01;
+    };
+
     M6502();
     M6502(Memory* mem);
 

@@ -18,13 +18,13 @@
 
 #include <iostream>
 #include <algorithm>
+#include <filesystem>
 #include <fstream>
 #include <sstream>
 #include <string>
 #include <cmath>
 
 #include "Memory.h"
-#include "SID.h"
 #include "TMS9918.h"
 #include "MicroSD.h"
 #include "WiFiModem.h"
@@ -63,7 +63,7 @@ Memory::Memory()
     cassetteDevice->setAudioAvailable(audioDevice->isAvailable());
     audioDevice->addSource(cassetteDevice.get());
     tms9918 = std::make_unique<TMS9918>();
-    sid = std::make_unique<SID>();
+    sid = std::make_unique<pom1::SID>();
     microSD = std::make_unique<MicroSD>();
     // Set SD card path: try common locations relative to executable
     for (const auto& dir : {"sdcard", "../sdcard", "../../sdcard"}) {
@@ -161,7 +161,7 @@ int Memory::loadROM(const char* filename, quint16 startAddress, size_t maxSize, 
 
     if (!file.is_open()) {
         lastError = std::string("Cannot find ROM file: ") + filename;
-        cout << "ERROR: " << lastError << endl;
+        std::cout << "ERROR: " << lastError << std::endl;
         return 1;
     }
 
@@ -172,7 +172,7 @@ int Memory::loadROM(const char* filename, quint16 startAddress, size_t maxSize, 
     if (fileSize > maxSize) {
         lastError = std::string(label) + " ROM too large (" + std::to_string(fileSize)
                   + " bytes, max " + std::to_string(maxSize) + ")";
-        cout << "ERROR: " << lastError << endl;
+        std::cout << "ERROR: " << lastError << std::endl;
         file.close();
         return 1;
     }
@@ -184,8 +184,8 @@ int Memory::loadROM(const char* filename, quint16 startAddress, size_t maxSize, 
     for (size_t i = 0; i < fileContent.size(); ++i) {
         mem[startAddress + i] = (quint8)fileContent[i];
     }
-    cout << label << " loaded to 0x" << std::hex << std::uppercase << startAddress
-         << ": " << std::dec << fileContent.size() << " bytes" << endl;
+    std::cout << label << " loaded to 0x" << std::hex << std::uppercase << startAddress
+         << ": " << std::dec << fileContent.size() << " bytes" << std::endl;
     return 0;
 }
 
@@ -214,8 +214,8 @@ int Memory::loadAciRom(void)
         mem[0xC100 + i] = kAciRom[i];
     }
     lastError.clear();
-    cout << "ACI ROM loaded from built-in fallback to 0xC100: "
-         << std::dec << sizeof(kAciRom) << " bytes" << endl;
+    std::cout << "ACI ROM loaded from built-in fallback to 0xC100: "
+         << std::dec << sizeof(kAciRom) << " bytes" << std::endl;
     return 0;
 }
 
@@ -224,7 +224,7 @@ int Memory::loadBinary(const char* filename, quint16 startAddress, int* bytesLoa
     if (bytesLoaded) *bytesLoaded = 0;
     std::ifstream file(filename, std::ios::binary);
     if (!file.is_open()) {
-        cout << "ERROR : Cannot open file: " << filename << endl;
+        std::cout << "ERROR : Cannot open file: " << filename << std::endl;
         return 1;
     }
 
@@ -233,7 +233,7 @@ int Memory::loadBinary(const char* filename, quint16 startAddress, int* bytesLoa
     file.seekg(0, std::ios::beg);
 
     if (startAddress + fileSize > 0x10000) {
-        cout << "ERROR : File too large for address 0x" << std::hex << startAddress << endl;
+        std::cout << "ERROR : File too large for address 0x" << std::hex << startAddress << std::endl;
         file.close();
         return 1;
     }
@@ -246,7 +246,7 @@ int Memory::loadBinary(const char* filename, quint16 startAddress, int* bytesLoa
         mem[startAddress + i] = (quint8)fileContent[i];
     }
     if (bytesLoaded) *bytesLoaded = static_cast<int>(fileContent.size());
-    cout << "Binary loaded to 0x" << std::hex << startAddress << " : " << std::dec << fileContent.size() << " Bytes" << endl;
+    std::cout << "Binary loaded to 0x" << std::hex << startAddress << " : " << std::dec << fileContent.size() << " Bytes" << std::endl;
     return 0;
 }
 
@@ -255,7 +255,7 @@ int Memory::loadHexDump(const char* filename, quint16 &startAddress, int* bytesL
     if (bytesLoaded) *bytesLoaded = 0;
     std::ifstream file(filename);
     if (!file.is_open()) {
-        cout << "ERROR : Cannot open file: " << filename << endl;
+        std::cout << "ERROR : Cannot open file: " << filename << std::endl;
         return 1;
     }
 
@@ -391,8 +391,8 @@ int Memory::loadHexDump(const char* filename, quint16 &startAddress, int* bytesL
         startAddress = runAddr;
 
     if (bytesLoaded) *bytesLoaded = totalBytes;
-    cout << "Hex dump loaded: " << std::dec << totalBytes << " bytes starting at 0x"
-         << std::hex << startAddress << endl;
+    std::cout << "Hex dump loaded: " << std::dec << totalBytes << " bytes starting at 0x"
+         << std::hex << startAddress << std::endl;
     return firstAddr && !hasRunAddr ? 1 : 0;
 }
 

@@ -26,13 +26,12 @@
 #include <memory>
 #include "AudioDevice.h"
 #include "CassetteDevice.h"
-class SID;
+#include "SID.h"
 class TMS9918;
 class WiFiModem;
 class TerminalCard;
 class A1IO_RTC;
 #include "MicroSD.h"
-using namespace std;
 
 // Remplacer quint8 par uint8_t et quint16 par uint16_t
 typedef uint8_t quint8;
@@ -96,8 +95,8 @@ public:
     bool isTMS9918Enabled() const { return tms9918Enabled; }
 
     // P-LAB A1-SID Sound Card (MOS 6581/8580)
-    SID& getSID() { return *sid; }
-    const SID& getSID() const { return *sid; }
+    pom1::SID& getSID() { return *sid; }
+    const pom1::SID& getSID() const { return *sid; }
     void setSIDEnabled(bool b);
     bool isSIDEnabled() const { return sidEnabled; }
 
@@ -135,7 +134,7 @@ private:
     // Clavier Apple 1 (0xD010 = KBD, 0xD011 = KBDCR)
     char lastKey = 0;
     bool keyReady = false;
-    queue<char> keyBuffer;
+    std::queue<char> keyBuffer;
 
     // Display Apple 1 (0xD012) - délai d'affichage
     int displayBusyCycles = 0;       // Cycles restants avant display ready
@@ -144,7 +143,7 @@ private:
 private :
 
     // Memory itself tab
-    vector <quint8> mem;
+    std::vector<quint8> mem;
 
 
 
@@ -155,7 +154,7 @@ private :
     std::unique_ptr<TMS9918> tms9918;
     bool tms9918Enabled = false;
     std::unique_ptr<AudioDevice> audioDevice;
-    std::unique_ptr<SID> sid;
+    std::unique_ptr<pom1::SID> sid;
     bool sidEnabled = false;
     std::unique_ptr<MicroSD> microSD;
     bool microSDEnabled = true;

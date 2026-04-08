@@ -11,6 +11,65 @@
 #if POM1_IS_WASM
 #include <emscripten.h>
 #include <emscripten/html5.h>
+#else
+#include <cstdio>
+#include <filesystem>
+#include <string>
+#if defined(_WIN32)
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#include <windows.h>
+#endif
+#endif
+
+#if !POM1_IS_WASM
+/// Cherche fa-solid-900.ttf : le chemin relatif « ../fonts » dépend du répertoire de travail ;
+/// sans ce fichier, ImGui affiche « ? » à la place des icônes Font Awesome.
+static std::string find_fa_solid_font_path()
+{
+    namespace fs = std::filesystem;
+    static const char kFile[] = "fa-solid-900.ttf";
+
+    auto try_path = [](const fs::path& p) -> std::string {
+        std::error_code ec;
+        if (fs::is_regular_file(p, ec))
+            return p.string();
+        return {};
+    };
+
+    static const char* const rel_candidates[] = {
+        "fonts/fa-solid-900.ttf",
+        "../fonts/fa-solid-900.ttf",
+        "../../fonts/fa-solid-900.ttf",
+        "../../../fonts/fa-solid-900.ttf",
+        "build/fonts/fa-solid-900.ttf",
+    };
+    for (const char* r : rel_candidates) {
+        std::string s = try_path(fs::path(r));
+        if (!s.empty())
+            return s;
+    }
+
+#if defined(_WIN32)
+    char buf[MAX_PATH];
+    DWORD n = GetModuleFileNameA(nullptr, buf, MAX_PATH);
+    if (n > 0 && n < MAX_PATH) {
+        fs::path exeDir = fs::path(buf).parent_path();
+        const fs::path next_to_exe[] = {
+            exeDir / "fonts" / kFile,
+            exeDir.parent_path() / "fonts" / kFile,
+            exeDir.parent_path().parent_path() / "fonts" / kFile,
+        };
+        for (const auto& p : next_to_exe) {
+            std::string s = try_path(p);
+            if (!s.empty())
+                return s;
+        }
+    }
+#endif
+    return {};
+}
 #endif
 
 static void glfw_error_callback(int error, const char* description)
@@ -104,10 +163,14 @@ int main(int argc, char* argv[])
 #if POM1_IS_WASM
     const char* fontPath = "fonts/fa-solid-900.ttf";
 #else
-    const char* fontPath = "../fonts/fa-solid-900.ttf";
+    std::string fontPathStorage = find_fa_solid_font_path();
+    const char* fontPath = fontPathStorage.empty() ? "../fonts/fa-solid-900.ttf" : fontPathStorage.c_str();
 #endif
     if (!io.Fonts->AddFontFromFileTTF(fontPath, 14.0f, &iconsConfig, iconsRanges)) {
-        fprintf(stderr, "Warning: Could not load icon font '%s' — toolbar icons will be missing\n", fontPath);
+        fprintf(stderr,
+                "Warning: Could not load icon font (tried '%s') — toolbar/menu icons show as '?'\n"
+                "  Install fonts next to the .exe (fonts\\fa-solid-900.ttf) or run from the repo with fonts/ present.\n",
+                fontPath);
     }
 
     // Setup Dear ImGui style

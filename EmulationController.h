@@ -17,7 +17,6 @@
 #include "M6502.h"
 #include "Memory.h"
 #include "Screen_ImGui.h"
-#include "SID.h"
 #include "TMS9918.h"
 #include "WiFiModem.h"
 #include "TerminalCard.h"

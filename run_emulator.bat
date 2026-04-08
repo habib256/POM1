@@ -36,11 +36,18 @@ for %%R in (basic.rom krusader-1.3.rom WozMonitor.rom charmap.rom) do (
     )
 )
 
-REM Copy fonts next to the executable if needed
-if not exist "%EXE_DIR%..\fonts" (
-    if exist "fonts" (
+REM Copy Font Awesome next to the .exe (main_imgui charge fonts\fa-solid-900.ttf depuis le dossier de l'exe)
+if exist "fonts" (
+    if not exist "%EXE_DIR%fonts\fa-solid-900.ttf" (
         echo Copying fonts...
-        xcopy /E /I /Q "fonts" "%EXE_DIR%..\fonts" >nul
+        xcopy /E /I /Q "fonts" "%EXE_DIR%fonts\" >nul
+    )
+)
+REM Ancien emplacement (build\fonts) pour compatibilite si le CWD est build\Release
+if not exist "build\fonts\fa-solid-900.ttf" (
+    if exist "fonts" (
+        if not exist "build\fonts" mkdir "build\fonts"
+        xcopy /E /I /Q "fonts" "build\fonts\" >nul
     )
 )
 

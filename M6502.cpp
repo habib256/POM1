@@ -38,7 +38,7 @@ M6502::M6502()
 M6502::M6502(Memory * mem)
 {
    statusRegister = 0x24;
-   statusRegister |= I; // Set interrupt disable flag
+   statusRegister |= M6502::Status::I; // Set interrupt disable flag
    IRQ = 0;
    NMI = 0;
    memory = mem;
@@ -90,7 +90,7 @@ void M6502::handleIRQ(void)
     pushProgramCounter();
   memory->memWrite((unsigned short)(0x100 + stackPointer), (unsigned char)((statusRegister & ~0x10) | 0x20));
 stackPointer--;
-statusRegister |= I;
+statusRegister |= M6502::Status::I;
 programCounter = memReadAbsolute(0xFFFE);
 cycles += 5;
 }
@@ -100,7 +100,7 @@ void M6502::handleNMI(void)
     pushProgramCounter();
     memory->memWrite((unsigned short)(0x100 + stackPointer), (unsigned char)((statusRegister & ~0x10) | 0x20));
     stackPointer--;
-    statusRegister |= I;
+    statusRegister |= M6502::Status::I;
     NMI = 0;
     programCounter = memReadAbsolute(0xFFFA);
     cycles += 5;
@@ -230,14 +230,14 @@ void M6502::WIndZeroY(void)
 void M6502::setStatusRegisterNZ(quint8 val)
 {
     if (val & 0x80)
-        statusRegister |= N;
+        statusRegister |= M6502::Status::N;
     else
-        statusRegister &= ~N;
+        statusRegister &= ~M6502::Status::N;
 
     if (!val)
-        statusRegister |= Z;
+        statusRegister |= M6502::Status::Z;
     else
-        statusRegister &= ~Z;
+        statusRegister &= ~M6502::Status::Z;
 }
 
 void M6502::LDA(void)
@@ -282,9 +282,9 @@ memory->memWrite(op, yRegister);
 void M6502::setFlagCarry(int val)
 {
     if (val & 0x100)
-        statusRegister |= C;
+        statusRegister |= M6502::Status::C;
     else
-        statusRegister &= ~C;
+        statusRegister &= ~M6502::Status::C;
 }
 
 void M6502::ADC(void)
@@ -292,46 +292,46 @@ void M6502::ADC(void)
  quint8 Op1 = accumulator, Op2 = memory->memRead(op);
     cycles++;
 
-    if (statusRegister & D)
+    if (statusRegister & M6502::Status::D)
     {
-    if (!((Op1 + Op2 + (statusRegister & C ? 1 : 0)) & 0xFF))
-       statusRegister |= Z;
+    if (!((Op1 + Op2 + (statusRegister & M6502::Status::C ? 1 : 0)) & 0xFF))
+       statusRegister |= M6502::Status::Z;
      else
-    statusRegister &= ~Z;
+    statusRegister &= ~M6502::Status::Z;
 
-   tmp = (Op1 & 0x0F) + (Op2 & 0x0F) + (statusRegister & C ? 1 : 0);
+   tmp = (Op1 & 0x0F) + (Op2 & 0x0F) + (statusRegister & M6502::Status::C ? 1 : 0);
         accumulator = tmp < 0x0A ? tmp : tmp + 6;
  tmp = (Op1 & 0xF0) + (Op2 & 0xF0) + (tmp & 0xF0);
 
         if (tmp & 0x80)
-            statusRegister |= N;
+            statusRegister |= M6502::Status::N;
         else
-            statusRegister &= ~N;
+            statusRegister &= ~M6502::Status::N;
 
  // V flag in BCD mode is undefined on NMOS 6502; this matches real hardware behavior
  if (((Op1 ^ tmp) & ~(Op1 ^ Op2)) & 0x80)
-      statusRegister |= V;
+      statusRegister |= M6502::Status::V;
  else
-    statusRegister &= ~V;
+    statusRegister &= ~M6502::Status::V;
 
         tmp = (accumulator & 0x0F) | (tmp < 0xA0 ? tmp : tmp + 0x60);
 
         if (tmp & 0x100)
-            statusRegister |= C;
+            statusRegister |= M6502::Status::C;
         else
-            statusRegister &= ~C;
+            statusRegister &= ~M6502::Status::C;
 
         accumulator = tmp & 0xFF;
     }
     else
     {
-      tmp = Op1 + Op2 + (statusRegister & C ? 1 : 0);
+      tmp = Op1 + Op2 + (statusRegister & M6502::Status::C ? 1 : 0);
         accumulator = tmp & 0xFF;
 
      if (((Op1 ^ accumulator) & ~(Op1 ^ Op2)) & 0x80)
-        statusRegister |= V;
+        statusRegister |= M6502::Status::V;
    else
-        statusRegister &= ~V;
+        statusRegister &= ~M6502::Status::V;
 
         setFlagCarry(tmp);
         setStatusRegisterNZ(accumulator);
@@ -341,9 +341,9 @@ void M6502::ADC(void)
 void M6502::setFlagBorrow(int val)
 {
     if (!(val & 0x100))
-        statusRegister |= C;
+        statusRegister |= M6502::Status::C;
     else
-        statusRegister &= ~C;
+        statusRegister &= ~M6502::Status::C;
 }
 
 void M6502::SBC(void)
@@ -351,26 +351,26 @@ void M6502::SBC(void)
 quint8 Op1 = accumulator, Op2 = memory->memRead(op);
     cycles++;
 
-    if (statusRegister & D)
+    if (statusRegister & M6502::Status::D)
     {
        // V flag in BCD mode is undefined on NMOS 6502; N/Z set from binary result
-       tmp = (Op1 & 0x0F) - (Op2 & 0x0F) - (statusRegister & C ? 0 : 1);
+       tmp = (Op1 & 0x0F) - (Op2 & 0x0F) - (statusRegister & M6502::Status::C ? 0 : 1);
         accumulator = !(tmp & 0x10) ? tmp : tmp - 6;
       tmp = (Op1 & 0xF0) - (Op2 & 0xF0) - (accumulator & 0x10);
         accumulator = (accumulator & 0x0F) | (!(tmp & 0x100) ? tmp : tmp - 0x60);
-     tmp = Op1 - Op2 - (statusRegister & C ? 0 : 1);
+     tmp = Op1 - Op2 - (statusRegister & M6502::Status::C ? 0 : 1);
         setFlagBorrow(tmp);
         setStatusRegisterNZ((quint8)tmp);
     }
     else
     {
-      tmp = Op1 - Op2 - (statusRegister & C ? 0 : 1);
+      tmp = Op1 - Op2 - (statusRegister & M6502::Status::C ? 0 : 1);
         accumulator = tmp & 0xFF;
 
       if (((Op1 ^ Op2) & (Op1 ^ accumulator)) & 0x80)
-            statusRegister |= V;
+            statusRegister |= M6502::Status::V;
        else
-            statusRegister &= ~V;
+            statusRegister &= ~M6502::Status::V;
 
         setFlagBorrow(tmp);
         setStatusRegisterNZ(accumulator);
@@ -427,9 +427,9 @@ void M6502::ASL(void)
     quint8 val = memory->memRead(op);
 
     if (val & 0x80)
-        statusRegister |= C;
+        statusRegister |= M6502::Status::C;
     else
-        statusRegister &= ~C;
+        statusRegister &= ~M6502::Status::C;
 
     val <<= 1;
     setStatusRegisterNZ(val);
@@ -450,9 +450,9 @@ void M6502::LSR(void)
     quint8 val = memory->memRead(op);
 
     if (val & 1)
-        statusRegister |= C;
+        statusRegister |= M6502::Status::C;
     else
-        statusRegister &= ~C;
+        statusRegister &= ~M6502::Status::C;
 
     val >>= 1;
     setStatusRegisterNZ(val);
@@ -463,9 +463,9 @@ void M6502::LSR(void)
 void M6502::LSR_A(void)
 {
     if (accumulator & 1)
-        statusRegister |= C;
+        statusRegister |= M6502::Status::C;
     else
-        statusRegister &= ~C;
+        statusRegister &= ~M6502::Status::C;
 
     accumulator >>= 1;
     setStatusRegisterNZ(accumulator);
@@ -475,12 +475,12 @@ void M6502::ROL(void)
 {
     quint8 val = memory->memRead(op);
     quint8 newCarry = val & 0x80;
-    val = (val << 1) | (statusRegister & C ? 1 : 0);
+    val = (val << 1) | (statusRegister & M6502::Status::C ? 1 : 0);
 
     if (newCarry)
-        statusRegister |= C;
+        statusRegister |= M6502::Status::C;
     else
-        statusRegister &= ~C;
+        statusRegister &= ~M6502::Status::C;
 
     setStatusRegisterNZ(val);
     memory->memWrite(op, val);
@@ -489,7 +489,7 @@ void M6502::ROL(void)
 
 void M6502::ROL_A(void)
 {
-    tmp = (accumulator << 1) | (statusRegister & C ? 1 : 0);
+    tmp = (accumulator << 1) | (statusRegister & M6502::Status::C ? 1 : 0);
     accumulator = tmp & 0xFF;
     setFlagCarry(tmp);
     setStatusRegisterNZ(accumulator);
@@ -499,12 +499,12 @@ void M6502::ROR(void)
 {
     quint8 val = memory->memRead(op);
     int newCarry = val & 1;
-    val = (val >> 1) | (statusRegister & C ? 0x80 : 0);
+    val = (val >> 1) | (statusRegister & M6502::Status::C ? 0x80 : 0);
 
     if (newCarry)
-        statusRegister |= C;
+        statusRegister |= M6502::Status::C;
     else
-        statusRegister &= ~C;
+        statusRegister &= ~M6502::Status::C;
 
     setStatusRegisterNZ(val);
     memory->memWrite(op, val);
@@ -513,12 +513,12 @@ void M6502::ROR(void)
 
 void M6502::ROR_A(void)
 {
-    tmp = accumulator | (statusRegister & C ? 0x100 : 0);
+    tmp = accumulator | (statusRegister & M6502::Status::C ? 0x100 : 0);
 
     if (accumulator & 1)
-        statusRegister |= C;
+        statusRegister |= M6502::Status::C;
     else
-        statusRegister &= ~C;
+        statusRegister &= ~M6502::Status::C;
 
     accumulator = tmp >> 1;
     setStatusRegisterNZ(accumulator);
@@ -571,19 +571,19 @@ void M6502::BIT(void)
     quint8 val = memory->memRead(op);
 
     if (val & 0x40)
-        statusRegister |= V;
+        statusRegister |= M6502::Status::V;
     else
-        statusRegister &= ~V;
+        statusRegister &= ~M6502::Status::V;
 
     if (val & 0x80)
-        statusRegister |= N;
+        statusRegister |= M6502::Status::N;
     else
-        statusRegister &= ~N;
+        statusRegister &= ~M6502::Status::N;
 
     if (!(val & accumulator))
-        statusRegister |= Z;
+        statusRegister |= M6502::Status::Z;
     else
-        statusRegister &= ~Z;
+        statusRegister &= ~M6502::Status::Z;
 
     cycles++;
 }
@@ -621,9 +621,9 @@ void M6502::BRK(void)
 {
     // BRK doit sauvegarder PC+1 (car le PC a déjà été incrémenté après la lecture de l'opcode)
     pushProgramCounter();
-    memory->memWrite((quint16)(0x100 + stackPointer), statusRegister | B | 0x20);
+    memory->memWrite((quint16)(0x100 + stackPointer), statusRegister | M6502::Status::B | 0x20);
     stackPointer--;
-    statusRegister |= I;
+    statusRegister |= M6502::Status::I;
     programCounter = memReadAbsolute(0xFFFE);
     cycles += 4;
 }
@@ -665,49 +665,49 @@ void M6502::branch(void)
 
 void M6502::BNE(void)
 {
-    if (!(statusRegister & Z))
+    if (!(statusRegister & M6502::Status::Z))
         branch();
 }
 
 void M6502::BEQ(void)
 {
-    if (statusRegister & Z)
+    if (statusRegister & M6502::Status::Z)
         branch();
 }
 
 void M6502::BVC(void)
 {
-    if (!(statusRegister & V))
+    if (!(statusRegister & M6502::Status::V))
         branch();
 }
 
 void M6502::BVS(void)
 {
-    if (statusRegister & V)
+    if (statusRegister & M6502::Status::V)
         branch();
 }
 
 void M6502::BCC(void)
 {
-    if (!(statusRegister & C))
+    if (!(statusRegister & M6502::Status::C))
         branch();
 }
 
 void M6502::BCS(void)
 {
-    if (statusRegister & C)
+    if (statusRegister & M6502::Status::C)
         branch();
 }
 
 void M6502::BPL(void)
 {
-    if (!(statusRegister & N))
+    if (!(statusRegister & M6502::Status::N))
         branch();
 }
 
 void M6502::BMI(void)
 {
-    if (statusRegister & N)
+    if (statusRegister & M6502::Status::N)
         branch();
 }
 
@@ -748,37 +748,37 @@ void M6502::TSX(void)
 
 void M6502::CLC(void)
 {
-    statusRegister &= ~C;
+    statusRegister &= ~M6502::Status::C;
 }
 
 void M6502::SEC(void)
 {
-    statusRegister |= C;
+    statusRegister |= M6502::Status::C;
 }
 
 void M6502::CLI(void)
 {
-    statusRegister &= ~I;
+    statusRegister &= ~M6502::Status::I;
 }
 
 void M6502::SEI(void)
 {
-    statusRegister |= I;
+    statusRegister |= M6502::Status::I;
 }
 
 void M6502::CLV(void)
 {
-    statusRegister &= ~V;
+    statusRegister &= ~M6502::Status::V;
 }
 
 void M6502::CLD(void)
 {
-    statusRegister &= ~D;
+    statusRegister &= ~M6502::Status::D;
 }
 
 void M6502::SED(void)
 {
-    statusRegister |= D;
+    statusRegister |= M6502::Status::D;
 }
 
 void M6502::NOP(void)
@@ -1104,7 +1104,7 @@ void M6502::executeOpcode(void)
 void M6502::hardReset(void)
 {
     statusRegister = 0x24;
-    statusRegister |= I;
+    statusRegister |= M6502::Status::I;
     stackPointer = 0xFF;
     accumulator = 0;
     xRegister = 0;
@@ -1120,7 +1120,7 @@ void M6502::hardReset(void)
 }
 void M6502::softReset(void)
 {
-    statusRegister |= I;
+    statusRegister |= M6502::Status::I;
     stackPointer = 0xFF;
     programCounter = memReadAbsolute(0xFFFC);
 }
@@ -1137,7 +1137,7 @@ void M6502::setNMI(void)
 
 void M6502::step(void)
 {
-    if (!(statusRegister & I) && IRQ)
+    if (!(statusRegister & M6502::Status::I) && IRQ)
         handleIRQ();
     if (NMI)
         handleNMI();

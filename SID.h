@@ -24,6 +24,8 @@
 #include <cstdint>
 #include <mutex>
 
+namespace pom1 {
+
 /// P-LAB A1-SID Sound Card — MOS 6581/8580 SID emulation.
 /// I/O mapped at $C800-$CFFF (29 registers, address & 0x1F).
 /// 3 voices with triangle/sawtooth/pulse/noise oscillators,
@@ -131,5 +133,7 @@ private:
     static const uint8_t kExpPeriodThreshold[6];
     static const uint8_t kExpPeriodValue[6];
 };
+
+} // namespace pom1
 
 #endif // SID_H

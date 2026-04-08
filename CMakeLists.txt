@@ -139,7 +139,13 @@ else()
     endif()
 
     if(MSVC)
-        target_compile_definitions(${PROJECT_NAME} PRIVATE _CRT_SECURE_NO_WARNINGS)
+        # NOMINMAX: évite que windows.h définisse min/max (casse std::min / std::max).
+        # WIN32_LEAN_AND_MEAN: réduit les en-têtes Windows (moins de collisions avec le code C++).
+        target_compile_definitions(${PROJECT_NAME} PRIVATE
+            _CRT_SECURE_NO_WARNINGS
+            NOMINMAX
+            WIN32_LEAN_AND_MEAN
+        )
         target_compile_options(${PROJECT_NAME} PRIVATE /utf-8)
     endif()
 

@@ -24,6 +24,8 @@
 #define M_PI 3.14159265358979323846
 #endif
 
+namespace pom1 {
+
 // ─── ADSR rate tables ───────────────────────────────────────────────────────
 // CPU cycles per envelope step.  Derived from the MOS 6581 datasheet timing.
 // Attack: time from 0→255 = rate * 255.
@@ -590,3 +592,5 @@ void SID::copySnapshot(Snapshot& out) const
     std::lock_guard<std::mutex> lock(sidMutex);
     out.regs = regs;
 }
+
+} // namespace pom1
