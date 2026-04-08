@@ -74,6 +74,14 @@ private:
     bool a1ioRtcEnabled = false;
     bool showA1IO_RTC = false;
     bool fullscreen = false;
+
+    // Machine preset layout: pending window repositioning
+    struct PendingWindowPlacement {
+        std::string name;
+        ImVec2 pos;
+        ImVec2 size; // (0,0) = don't change size
+    };
+    std::vector<PendingWindowPlacement> pendingLayout;
     int windowedWidth = 1200;
     int windowedHeight = 800;
     int windowedPosX = 100;
@@ -127,7 +135,9 @@ private:
     void configScreen();
     void configMemory();
     void about();
-    
+    void applyMachineConfig(int presetIndex);
+    void applyPendingLayout(const char* windowName);
+
     // CPU execution functions
     void startCpu();
     void stopCpu();

@@ -95,6 +95,70 @@ static void drawToolbarTextLabel(ImDrawList* dl, const ImVec2& rmin, const ImVec
     dl->AddText(font, fs, pos, ImGui::GetColorU32(ImGuiCol_Text), t);
 }
 
+struct MachineWindowPlacement {
+    const char* name;
+    ImVec2 pos;
+    ImVec2 size; // (0,0) = no size override
+};
+
+struct MachineConfig {
+    const char* name;
+    const char* description;
+    bool graphicsCard, microSD, sid, tms9918, a1ioRtc, wifiModem, terminalCard;
+    MachineWindowPlacement layout[8];
+    int layoutCount;
+};
+
+static const MachineConfig kMachinePresets[] = {
+    {
+        "Woz Apple 1 (1976)",
+        "Original bare board: 6502, 4KB RAM, PIA 6821, WOZ Monitor + BASIC. No expansion cards.",
+        false, false, false, false, false, false, false,
+        { {"Apple 1 Screen", {10,61}, {0,0}} }, 1
+    },
+    {
+        "Replica 1 (Briel)",
+        "Vince Briel's faithful modern recreation. Adds microSD for practical storage.",
+        false, true, false, false, false, false, false,
+        { {"Apple 1 Screen", {10,61}, {0,0}} }, 1
+    },
+    {
+        "Bernie's Apple 1",
+        "Uncle Bernie's GEN2 HGR 280x192 hi-res color graphics + microSD storage.",
+        true, true, false, false, false, false, false,
+        {
+            {"Apple 1 Screen",                 {10,  61}, {0,   0}},
+            {"Bernie's GEN2 HGR Graphic Card", {624, 61}, {576, 420}},
+        }, 2
+    },
+    {
+        "P-LAB Apple 1",
+        "Full P-LAB expansion: microSD, A1-SID sound, TMS9918 graphics, I/O & RTC, Wi-Fi modem, terminal.",
+        false, true, true, true, true, true, true,
+        {
+            {"Apple 1 Screen",               {10,  61},  {0,   0}},
+            {"P-LAB Graphic Card (TMS9918)", {640, 61},  {528, 420}},
+            {"P-LAB Wi-Fi Modem",            {640, 495}, {340, 260}},
+            {"P-LAB Terminal Card",          {10,  510}, {360, 280}},
+            {"P-LAB I/O Board & RTC",        {740, 495}, {380, 280}},
+        }, 5
+    },
+    {
+        "POM1 Full",
+        "All hardware enabled: every P-LAB card plus Uncle Bernie's GEN2 HGR graphic card.",
+        true, true, true, true, true, true, true,
+        {
+            {"Apple 1 Screen",                 {10,  61},  {0,   0}},
+            {"Bernie's GEN2 HGR Graphic Card", {624, 61},  {576, 420}},
+            {"P-LAB Graphic Card (TMS9918)",   {644, 81},  {528, 420}},
+            {"P-LAB Wi-Fi Modem",              {640, 495}, {340, 260}},
+            {"P-LAB Terminal Card",            {10,  510}, {360, 280}},
+            {"P-LAB I/O Board & RTC",          {740, 495}, {380, 280}},
+        }, 6
+    },
+};
+static constexpr int kMachinePresetCount = 5;
+
 } // namespace
 
 // Single source of truth: keyboard shortcuts with display labels
@@ -250,6 +314,7 @@ void MainWindow_ImGui::render()
     }
 
     ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(6.0f, 5.0f));
+    applyPendingLayout("Apple 1 Screen");
     ImGui::Begin("Apple 1 Screen");
     screen->render();
     ImGui::End();
@@ -423,6 +488,16 @@ void MainWindow_ImGui::renderMenuBar()
         }
 
         if (ImGui::BeginMenu("Hardware")) {
+            if (ImGui::BeginMenu("Machine Preset")) {
+                for (int i = 0; i < kMachinePresetCount; ++i) {
+                    if (ImGui::MenuItem(kMachinePresets[i].name))
+                        applyMachineConfig(i);
+                    if (ImGui::IsItemHovered())
+                        ImGui::SetTooltip("%s", kMachinePresets[i].description);
+                }
+                ImGui::EndMenu();
+            }
+            ImGui::Separator();
             if (ImGui::MenuItem("ACI Cassette Control")) {
                 showCassetteControl = true;
             }
@@ -1028,6 +1103,7 @@ void MainWindow_ImGui::renderGraphicsCardWindow()
     const float winW = GraphicsCard::kHiresWidth * pixelScale + 16;
     const float winH = GraphicsCard::kHiresHeight * pixelScale + 36;
     ImGui::SetNextWindowSize(ImVec2(winW, winH), ImGuiCond_FirstUseEver);
+    applyPendingLayout("Bernie's GEN2 HGR Graphic Card");
     ImGui::PushStyleColor(ImGuiCol_WindowBg, IM_COL32(0, 0, 0, 255));
     if (ImGui::Begin("Bernie's GEN2 HGR Graphic Card", &showGraphicsCard)) {
         ImVec2 pos = ImGui::GetCursorScreenPos();
@@ -1053,6 +1129,7 @@ void MainWindow_ImGui::renderTMS9918Window()
     const float winW = TMS9918::kScreenWidth  * pixelScale + 16;
     const float winH = TMS9918::kScreenHeight * pixelScale + 36;
     ImGui::SetNextWindowSize(ImVec2(winW, winH), ImGuiCond_FirstUseEver);
+    applyPendingLayout("P-LAB Graphic Card (TMS9918)");
     ImGui::PushStyleColor(ImGuiCol_WindowBg, IM_COL32(0, 0, 0, 255));
     if (ImGui::Begin("P-LAB Graphic Card (TMS9918)", &showTMS9918)) {
         ImVec2 pos = ImGui::GetCursorScreenPos();
@@ -1074,6 +1151,7 @@ void MainWindow_ImGui::renderTMS9918Window()
 void MainWindow_ImGui::renderWiFiModemWindow()
 {
     ImGui::SetNextWindowSize(ImVec2(340, 260), ImGuiCond_FirstUseEver);
+    applyPendingLayout("P-LAB Wi-Fi Modem");
     if (ImGui::Begin("P-LAB Wi-Fi Modem", &showWiFiModem)) {
         const auto& snap = uiSnapshot.wifiModem;
 
@@ -1126,6 +1204,7 @@ void MainWindow_ImGui::renderWiFiModemWindow()
 void MainWindow_ImGui::renderTerminalCardWindow()
 {
     ImGui::SetNextWindowSize(ImVec2(360, 280), ImGuiCond_FirstUseEver);
+    applyPendingLayout("P-LAB Terminal Card");
     if (ImGui::Begin("P-LAB Terminal Card", &showTerminalCard)) {
         const auto& snap = uiSnapshot.terminalCard;
 
@@ -1179,6 +1258,7 @@ void MainWindow_ImGui::renderTerminalCardWindow()
 void MainWindow_ImGui::renderA1IO_RTCWindow()
 {
     ImGui::SetNextWindowSize(ImVec2(380, 420), ImGuiCond_FirstUseEver);
+    applyPendingLayout("P-LAB I/O Board & RTC");
     if (ImGui::Begin("P-LAB I/O Board & RTC", &showA1IO_RTC)) {
         const auto& snap = uiSnapshot.a1ioRtc;
 
@@ -2096,6 +2176,62 @@ void MainWindow_ImGui::configMemory()
 void MainWindow_ImGui::about()
 {
     showAbout = true;
+}
+
+void MainWindow_ImGui::applyPendingLayout(const char* windowName)
+{
+    for (auto it = pendingLayout.begin(); it != pendingLayout.end(); ++it) {
+        if (it->name == windowName) {
+            ImGui::SetNextWindowPos(it->pos, ImGuiCond_Always);
+            if (it->size.x > 0.0f)
+                ImGui::SetNextWindowSize(it->size, ImGuiCond_Always);
+            pendingLayout.erase(it);
+            return;
+        }
+    }
+}
+
+void MainWindow_ImGui::applyMachineConfig(int presetIndex)
+{
+    if (presetIndex < 0 || presetIndex >= kMachinePresetCount) return;
+    const MachineConfig& cfg = kMachinePresets[presetIndex];
+
+    // Hardware flags
+    graphicsCardEnabled = cfg.graphicsCard;
+    showGraphicsCard    = cfg.graphicsCard;
+
+    microSDEnabled = cfg.microSD;
+    emulation->setMicroSDEnabled(cfg.microSD);
+
+    sidEnabled = cfg.sid;
+    emulation->setSIDEnabled(cfg.sid);
+
+    tms9918Enabled = cfg.tms9918;
+    emulation->setTMS9918Enabled(cfg.tms9918);
+    showTMS9918 = cfg.tms9918;
+
+    a1ioRtcEnabled = cfg.a1ioRtc;
+    emulation->setA1IO_RTCEnabled(cfg.a1ioRtc);
+    showA1IO_RTC = cfg.a1ioRtc;
+
+#if !POM1_IS_WASM
+    wifiModemEnabled = cfg.wifiModem;
+    emulation->setWiFiModemEnabled(cfg.wifiModem);
+    showWiFiModem = cfg.wifiModem;
+
+    terminalCardEnabled = cfg.terminalCard;
+    emulation->setTerminalCardEnabled(cfg.terminalCard);
+    showTerminalCard = cfg.terminalCard;
+#endif
+
+    // Populate pending layout positions
+    pendingLayout.clear();
+    for (int i = 0; i < cfg.layoutCount; i++) {
+        const auto& p = cfg.layout[i];
+        pendingLayout.push_back({p.name, p.pos, p.size});
+    }
+
+    setStatusMessage(std::string("Preset: ") + cfg.name, 3.0f);
 }
 
 void MainWindow_ImGui::renderMemoryMapWindow()
