@@ -57,6 +57,8 @@ or build it natively.
 
 🖥️ **P-LAB Terminal Card** — [P-LAB Terminal Card](https://p-l4b.github.io/terminal/) — TCP server on `localhost:6502`. Control the Apple 1 from any external terminal (`telnet localhost 6502`). Works with Wi-Fi Modem for full ANSI BBS experience — see [P-LAB Terminal Card](#-p-lab-terminal-card) below
 
+🖥️ **Machine Presets** — One-click hardware configurations: **Woz Apple 1 (1976)**, **Replica 1 (Briel)**, **Bernie's Apple 1**, **P-LAB Apple 1**, **POM1 Full** — each instantly enables the right cards and arranges windows into a sensible default layout
+
 📋 **Clipboard Paste** — Paste code directly into the Apple 1 keyboard from your clipboard
 
 🎮 **30+ Programs Included** — Games, demos, BASIC programs, and dev tools ready to run out of the box
@@ -338,6 +340,22 @@ POM1 emulates the [P-LAB Apple-1 Terminal Card](https://p-l4b.github.io/terminal
 telnet localhost 6502
 # You now control the Apple 1 — Woz Monitor, BASIC, everything
 ```
+
+---
+
+## 🖥️ Machine Presets
+
+**Hardware > Machine Preset** applies a named configuration in one click — enabling the right cards and snapping windows into a sensible default layout.
+
+| Preset | microSD | SID | TMS9918 | GEN2 HGR | WiFi | Terminal | RTC |
+|--------|:-------:|:---:|:-------:|:--------:|:----:|:--------:|:---:|
+| **Woz Apple 1 (1976)** | — | — | — | — | — | — | — |
+| **Replica 1 (Briel)** | ✓ | — | — | — | — | — | — |
+| **Bernie's Apple 1** | ✓ | — | — | ✓ | — | — | — |
+| **P-LAB Apple 1** | ✓ | ✓ | ✓ | — | ✓ | ✓ | ✓ |
+| **POM1 Full** | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+
+Each preset also repositions windows into a default layout: the Apple 1 screen anchors top-left, graphics cards open to the right, and status panels fill the bottom row. You can drag windows freely after applying a preset.
 
 ---
 

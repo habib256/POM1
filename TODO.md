@@ -30,6 +30,8 @@
 - [x] Cassettes moved from `software/cassettes/` to `cassettes/` at project root
 - [x] **SID converter v2**: instruction-aware patching (shared `INST_LENGTHS`), expanded CIA/VIC/indirect opcodes, neighbor-pair data table filtering, ESC-to-stop player, "APPLE1 P-LAB SID PLAYER" banner
 - [x] **TMS9918+SID demo** (`tools/make_tms_sid_demo.py`): world's first Apple 1 TMS9918+SID combined program — Graphics II title screen + Streets of Rage 2 SID tune. Output: `software/tms9918/TMS_SID_Demo.bin`
+- [x] **Machine Presets** (`Hardware > Machine Preset`): 5 named configurations (Woz Apple 1 1976, Replica 1 Briel, Bernie's Apple 1, P-LAB Apple 1, POM1 Full) — each enables the right cards and snaps windows into a default layout
+- [x] **Windows Packaging**: `package_windows_release.bat` creates a self-contained release archive; `packaging/windows/LISEZ-MOI.txt` French quick-start; MSVC compatibility fixes across M6502, Memory, SID, main_imgui
 
 ## Open
 
@@ -41,6 +43,41 @@
 - [ ] **GEN2 higher-resolution maze**: 16-bit DFS with smaller pixel blocks (e.g., 34×23 cells). Non-byte-aligned rendering produces NTSC color artifacts instead of solid white walls — needs a rendering approach that works at sub-byte granularity.
 - [ ] **More GEN2 programs**: image viewers, drawing tools, additional demos for the 280×192 HIRES display.
 - [ ] **Native file dialog**: File loading/saving currently uses built-in file browsers instead of system file pickers.
+
+## Technical debt & code quality (analysis April 2026)
+
+### Performance
+- [ ] **Snapshot memory copy 64 KB @ 60 Hz** (`EmulationController::publishSnapshotLocked()`): copie intégrale de la RAM sous `stateMutex` à chaque frame ≈ 3.8 MB/s inutile. → Double-buffer + swap atomique de pointeur, ou dirty-tracking des pages modifiées.
+- [ ] **Buffer audio stacké 512 frames** (`AudioDevice.cpp`): `float tmpBuf[512]` trop petit — callbacks audio peuvent demander jusqu'à 2048 frames ; samples au-delà tronqués silencieusement. → Buffer membre pré-alloué dimensionné dynamiquement.
+- [ ] **VRAM TMS9918 16 KB copiés à chaque frame** (`TMS9918::copySnapshot`): inutile quand le TMS9918 est inactif. → Dirty flag `vramDirty` ; copier uniquement sur changement.
+- [ ] **Snapshot UI — allocation de `std::vector<quint8>(0x10000)` à chaque frame** (`MainWindow_ImGui.cpp`): `EmulationSnapshot` copiée entièrement à 60 Hz. → Snapshot pré-alloué permanent + swap ; ne publier que les registres CPU + pointeur vers RAM.
+
+### Thread safety
+- [ ] **Race condition sur `runRequested`** (`EmulationController.cpp:565`): entre `.load()` et `cpu->run()`, `stopCpu()` peut être appelé sans être vu. → Capturer l'état sous mutex avant exécution de la tranche.
+- [ ] **Ordre d'acquisition implicite `stateMutex` → `keyMutex`** (`processQueuedKeysLocked()`): contrat non documenté, risque d'inversion future = deadlock. → Commenter `REQUIRES(stateMutex)` ou fusionner en file thread-safe unique.
+- [ ] **Pointeur statique `Screen_ImGui::instance` non-atomique** (`Screen_ImGui.cpp:21`): race si accès concurrent. → `std::atomic<Screen_ImGui*>` ou passage de `this` via contexte opaque.
+
+### Architecture
+- [ ] **God Object `Memory`** (`Memory.h/cpp`): 15+ `unique_ptr` de périphériques, autant de booléens, dispatch I/O inline. → Créer un `PeripheralBus` avec registry dynamique ; `Memory` gère uniquement l'espace d'adressage.
+- [ ] **`EmulationController` — SRP violé** (`EmulationController.h`): 50+ méthodes publiques couvrant CPU, ROMs, Snapshots, Keyboard, Tape I/O, reset… → Extraire `SaveStateManager`, `KeyboardController`, `RomLoader`.
+- [ ] **`MainWindow_ImGui.cpp` monolithique** (~2500 lignes): UI + Events + State + Config + Dialogs + Rendering dans une seule classe. → Classes séparées par dialog majeur ; presets machine en JSON/YAML externe.
+- [ ] **Callback statique `Screen_ImGui::displayCallback`** couple UI et émulation. → Interface `DisplayDevice` pure virtuelle injectée dans `Memory` ; `Screen_ImGui` l'implémente.
+
+### Réseau & périphériques
+- [ ] **`connect()` sans timeout** (`WiFiModem.cpp::connectToHost()`): sur réseau lent, le thread d'émulation se bloque indéfiniment. → Socket non-bloquant + `select()`/`poll()` avec timeout explicite.
+- [ ] **Buffer RX ACIA overrun silencieux** (`WiFiModem.cpp`, `TerminalCard.cpp`): données perdues non signalées, bit overrun de l'ACIA réel non émulé. → Implémenter le flag Receiver Overrun dans le registre STATUS.
+- [ ] **Sockets non wrappés en RAII** (`WiFiModem.cpp`, `TerminalCard.cpp`): exception entre `socket()` et `close()` → fuite de FD. → Classe `SocketHandle` avec destructeur RAII.
+
+### Qualité du code
+- [ ] **`sscanf` sans validation** (`MemoryViewer_ImGui.cpp:71,79,240`): vulnérable à un buffer mal formé. → Remplacer par `std::from_chars` (C++17, sans allocation, code d'erreur précis).
+- [ ] **`typedef` archaïque** (`Memory.h:37-38`): `typedef uint8_t quint8` → `using quint8 = uint8_t` (C++17).
+- [ ] **`std::cout`/`cerr` directs** (`Memory.cpp` et autres): impossible de filtrer par niveau ou rediriger vers l'UI de debug. → Interface `Logger` minimale injectée par dependency injection.
+- [ ] **`ma_device` alloué via `new`** (`AudioDevice.cpp:154`): moins robuste qu'un `unique_ptr<ma_device>`. → `std::make_unique<ma_device>` avec custom deleter.
+- [ ] **`stringBuffer` sans `reserve()`** (`MicroSD.cpp`): réallocations répétées lors de l'accumulation de réponses MCU. → `stringBuffer.reserve(256)` dans le constructeur.
+
+### Tests
+- [ ] **Aucun test unitaire**: aucun framework détecté. Les refactorings risquent de régresser l'émulation 6502 sans le savoir. → Intégrer les _6502 Functional Tests_ de Klaus Dormann comme premier smoke test ; ajouter GTest/Catch2.
+- [ ] **Parseurs non fuzzés**: `loadHexDump()`, `executeATCommand()` acceptent du contenu externe sans fuzzing. → Targets LibFuzzer intégrés au CMake (option `ENABLE_FUZZING`).
 
 ## Future extensions — P-Lab hardware & software ecosystem
 

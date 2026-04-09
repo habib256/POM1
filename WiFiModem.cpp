@@ -72,6 +72,7 @@ void WiFiModem::reset()
 
     telnetState = TelnetState::NORMAL;
     telnetVerb = 0;
+    lastByteWasCR = false;
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -625,8 +626,16 @@ void WiFiModem::processTelnetByte(uint8_t byte)
     switch (telnetState) {
     case TelnetState::NORMAL:
         if (byte == 0xFF) { // IAC
+            lastByteWasCR = false;
             telnetState = TelnetState::IAC;
-        } else if (byte != 0x00) { // skip NUL (TELNET CR-NUL)
+        } else if (byte == 0x00 && lastByteWasCR) {
+            // TELNET CR-NUL → literal CR already sent, drop the NUL
+            lastByteWasCR = false;
+        } else if (byte == 0x0A && lastByteWasCR) {
+            // TELNET CR-LF → Apple 1 only uses CR; drop the spurious LF
+            lastByteWasCR = false;
+        } else {
+            lastByteWasCR = (byte == 0x0D);
             enqueueRxByte(byte);
             bytesReceivedCount++;
         }

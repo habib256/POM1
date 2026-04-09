@@ -141,6 +141,7 @@ private:
     enum class TelnetState { NORMAL, IAC, WILL_WONT_DO_DONT, SB, SB_IAC };
     TelnetState telnetState = TelnetState::NORMAL;
     uint8_t telnetVerb = 0;
+    bool    lastByteWasCR = false; // CR+LF → CR stripping (Apple 1 uses CR only)
 
     // --- Thread safety ---
     mutable std::mutex modemMutex;

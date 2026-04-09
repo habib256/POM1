@@ -1802,7 +1802,9 @@ void MainWindow_ImGui::renderLoadDialog()
                     setStatusMessage("P-LAB microSD Card plugged", 2.0f);
                 }
             } else if (loadPath.find("/wifi/") != std::string::npos ||
-                       loadPath.find("\\wifi\\") != std::string::npos) {
+                       loadPath.find("\\wifi\\") != std::string::npos ||
+                       loadPath.find("/net/") != std::string::npos ||
+                       loadPath.find("\\net\\") != std::string::npos) {
                 if (!wifiModemEnabled) {
                     wifiModemEnabled = true;
                     showWiFiModem = true;
