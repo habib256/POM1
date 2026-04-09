@@ -246,7 +246,9 @@ int Memory::loadBinary(const char* filename, quint16 startAddress, int* bytesLoa
         mem[startAddress + i] = (quint8)fileContent[i];
     }
     if (bytesLoaded) *bytesLoaded = static_cast<int>(fileContent.size());
-    std::cout << "Binary loaded to 0x" << std::hex << startAddress << " : " << std::dec << fileContent.size() << " Bytes" << std::endl;
+    std::cout << "Binary loaded: " << std::filesystem::path(filename).filename().string()
+              << " (" << std::dec << fileContent.size() << " bytes at 0x"
+              << std::hex << startAddress << ")" << std::endl;
     return 0;
 }
 
@@ -391,8 +393,9 @@ int Memory::loadHexDump(const char* filename, quint16 &startAddress, int* bytesL
         startAddress = runAddr;
 
     if (bytesLoaded) *bytesLoaded = totalBytes;
-    std::cout << "Hex dump loaded: " << std::dec << totalBytes << " bytes starting at 0x"
-         << std::hex << startAddress << std::endl;
+    std::cout << "Hex dump loaded: " << std::filesystem::path(filename).filename().string()
+              << " (" << std::dec << totalBytes << " bytes starting at 0x"
+              << std::hex << startAddress << ")" << std::endl;
     return firstAddr && !hasRunAddr ? 1 : 0;
 }
 

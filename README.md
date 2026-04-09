@@ -37,31 +37,31 @@ or build it natively.
 
 📂 **Program Loader** — Load binary files or Woz Monitor hex dumps (with inline comment support) via a built-in file browser
 
-📼 **Apple Cassette Interface (ACI)** — Woz ACI ROM at `$C100`, cassette input on `$C081`, output flip-flop on `$C000`, real-time audio (desktop & WebAssembly), and tape import/export as `.aci` or `.wav` (see `cassettes/` for reference **`.ogg`** captures of original tapes — convert to **`.wav`** to load in the emulator)
+📼 **Apple Cassette Interface (ACI)** — Woz ACI ROM at `$C100`, real-time audio (desktop & WebAssembly), tape import/export as `.aci` or `.wav` — see [Cassette Interface](#-cassette-interface)
 
-🔌 **PIA 6821 Address Aliasing** — Full support for `$D0Fx` aliases, enabling all known Apple BASIC versions (original, Pagetable, Briel/Replica 1)
+🔌 **PIA 6821 Address Aliasing** — `$D0Fx` aliases enable both Pagetable and Briel/Replica 1 BASIC variants
 
 🐛 **Step Debugger** — Single-step execution, register inspection, disassembly, stack view, log console
 
 💾 **Memory Save/Export** — Save any memory range as binary or Woz Monitor hex dump
 
-🎨 **GEN2 Color Graphics Card** — [Uncle Bernie's HIRES color graphics card](https://www.applefritter.com/content/uncle-bernies-gen2-color-graphics-card-apple-1) — 280×192 resolution with NTSC artifact color (violet, green, blue, orange), pixel glow, rendered in a separate window from `$2000-$3FFF` RAM
+🎨 **GEN2 Color Graphics Card** — [Uncle Bernie's HIRES card](https://www.applefritter.com/content/uncle-bernies-gen2-color-graphics-card-apple-1) — 280×192 NTSC artifact color — see [GEN2](#-gen2-color-graphics-card)
 
-🖥️ **P-LAB Graphic Card (TMS9918)** — [P-LAB Apple-1 Graphic Card](https://p-l4b.github.io/graphic/) — TMS9918 VDP with 256×192 resolution, 15 colors, 32 sprites, 4 display modes (Graphics I/II, Text, Multicolor). Bundled with Tetris, demo suite, and PicShow image viewer
+🖥️ **P-LAB Graphic Card (TMS9918)** — [P-LAB TMS9918](https://p-l4b.github.io/graphic/) — 256×192, 15 colors, sprites, 4 modes — see [P-LAB Graphic Card](#-p-lab-graphic-card-tms9918)
 
-🎵 **P-LAB A1-SID Sound Card** — [P-LAB A1-SID](https://p-l4b.github.io/A1-SID/) — MOS 6581/8580-style SID at `$C800`–`$CFFF`; mix with cassette audio. Convert C64 **`.sid`** (PSID/RSID) to Apple 1 binaries with [`tools/sid2apple1.py`](tools/sid2apple1.py) — see [P-LAB A1-SID Sound Card](#-p-lab-a1-sid-sound-card) below
+🎵 **P-LAB A1-SID Sound Card** — [P-LAB A1-SID](https://p-l4b.github.io/A1-SID/) — MOS 6581/8580-style synthesis with C64 `.sid` converter — see [A1-SID](#-p-lab-a1-sid-sound-card)
 
-💾 **P-LAB microSD Storage Card** — [P-LAB microSD](https://p-l4b.github.io/sdcard/) — 65C22 VIA at `$A000`–`$A00F`, SD CARD OS ROM at `$8000`–`$9FFF`, DOS-like CLI (DIR, LS, CD, LOAD, SAVE, READ, WRITE, DEL, MKDIR, RMDIR, PWD, MOUNT). Maps host `sdcard/` directory as virtual FAT32 SD card — see [P-LAB microSD Storage Card](#-p-lab-microsd-storage-card) below
+💾 **P-LAB microSD Storage Card** — [P-LAB microSD](https://p-l4b.github.io/sdcard/) — virtual FAT32 SD card mapped to host `sdcard/` directory — see [microSD](#-p-lab-microsd-storage-card)
 
-📡 **P-LAB MODEM BBS** — [P-LAB Wi-Fi Modem](https://p-l4b.github.io/wifi/) — 65C51 ACIA at `$B000`–`$B003`, Hayes AT commands (ATDT host:port for BBS), TELNET protocol, baud rate simulation (50–19200). Connect to real BBS servers over TCP — see [P-LAB MODEM BBS](#-p-lab-modem-bbs) below
+📡 **P-LAB MODEM BBS** — [P-LAB Wi-Fi Modem](https://p-l4b.github.io/wifi/) — Hayes AT commands, TCP/TELNET to real BBS servers — see [MODEM BBS](#-p-lab-modem-bbs)
 
-🖥️ **P-LAB Terminal Card** — [P-LAB Terminal Card](https://p-l4b.github.io/terminal/) — TCP server on `localhost:6502`. Control the Apple 1 from any external terminal (`telnet localhost 6502`). Works with Wi-Fi Modem for full ANSI BBS experience — see [P-LAB Terminal Card](#-p-lab-terminal-card) below
+🖥️ **P-LAB Terminal Card** — [P-LAB Terminal Card](https://p-l4b.github.io/terminal/) — control the Apple 1 from any external terminal via `telnet localhost 6502` — see [Terminal Card](#-p-lab-terminal-card)
 
-🖥️ **Machine Presets** — One-click hardware configurations: **Woz Apple 1 (1976)**, **Replica 1 (Briel)**, **Bernie's Apple 1**, **P-LAB Apple 1**, **POM1 Full** — each instantly enables the right cards and arranges windows into a sensible default layout
+🖥️ **Machine Presets** — One-click hardware configurations (Woz, Replica 1, Bernie's, P-LAB, POM1 Full) — see [Machine Presets](#-machine-presets)
 
-📋 **Clipboard Paste** — Paste code directly into the Apple 1 keyboard from your clipboard
+📋 **Clipboard Paste** — Paste code directly into the Apple 1 keyboard
 
-🎮 **30+ Programs Included** — Games, demos, BASIC programs, and dev tools ready to run out of the box
+🎮 **30+ Programs Included** — Games, demos, BASIC programs, and dev tools ready to run
 
 ---
 
@@ -541,8 +541,8 @@ $FF00-$FFFF   Woz Monitor ROM (256 B)
 - **Achim Breidenbach** — Sim6502
 - **Fabrice Frances** — Java Microtan Emulator
 - **Uncle Bernie** — [GEN2 Color Graphics Card](https://www.applefritter.com/content/uncle-bernies-gen2-color-graphics-card-apple-1) for Apple 1
-- **P-LAB** — [microSD Storage Card](https://p-l4b.github.io/sdcard/), [A1-SID Sound Card](https://p-l4b.github.io/A1-SID/), [Apple-1 Graphic Card](https://p-l4b.github.io/graphic/) (TMS9918 VDP), [Terminal Card](https://p-l4b.github.io/terminal/), [MODEM BBS](https://p-l4b.github.io/wifi/)
-- **Nippur72 (Antonino Porcino)** — [apple1-videocard-lib](https://github.com/nippur72/apple1-videocard-lib) (KickC library, Tetris, demos for P-LAB card), [apple1-sdcard](https://github.com/nippur72/apple1-sdcard) (microSD firmware)
+- **Claudio Parmigiani ([P-LAB](https://p-l4b.github.io/))** — designer of the entire P-LAB Apple-1 expansion family: [microSD Storage Card](https://p-l4b.github.io/sdcard/), [A1-SID Sound Card](https://p-l4b.github.io/A1-SID/), [Apple-1 Graphic Card](https://p-l4b.github.io/graphic/) (TMS9918 VDP), [Terminal Card](https://p-l4b.github.io/terminal/), [MODEM BBS / Wi-Fi Modem](https://p-l4b.github.io/wifi/)
+- **Nippur72 (Antonino Porcino)** — [apple1-videocard-lib](https://github.com/nippur72/apple1-videocard-lib) (KickC library, Tetris, demos for the P-LAB Graphic Card), [apple1-sdcard](https://github.com/nippur72/apple1-sdcard) (microSD firmware)
 - **Tom Owad** — AppleFritter community & Apple 1 resources
 - **Steve Wozniak & Steve Jobs** — For creating the Apple 1 🍎
 

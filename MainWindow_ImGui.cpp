@@ -1037,62 +1037,48 @@ void MainWindow_ImGui::renderStatusBar()
 
 void MainWindow_ImGui::renderAboutDialog()
 {
-    ImGui::SetNextWindowSizeConstraints(ImVec2(380, 0), ImVec2(500, FLT_MAX));
-    ImGui::SetNextWindowSize(ImVec2(0, 0), ImGuiCond_Always);
+    ImGui::SetNextWindowSizeConstraints(ImVec2(520, 0), ImVec2(FLT_MAX, FLT_MAX));
     if (ImGui::Begin("About POM1", &showAbout, ImGuiWindowFlags_AlwaysAutoResize)) {
         ImGui::TextWrapped("POM1 v1.7 - Apple 1 Emulator (Dear ImGui)");
+        ImGui::TextWrapped("Celebrating 50 years of Apple (1976-2026)");
+        ImGui::TextWrapped("Copyright (C) 2000-2026 - GPL-3.0");
         ImGui::Separator();
 
-        ImGui::TextWrapped("Copyright (C) 2000-2026 GPL3");
         ImGui::Spacing();
+        ImGui::TextWrapped("Authors:");
+        ImGui::BulletText("Arnaud VERHILLE - original POM1 (Java, 2000) & Dear ImGui port (2026)");
+        ImGui::BulletText("Ken WESSEN - upgrades, 65C02 support (2006)");
+        ImGui::BulletText("Joe CROBAK - macOS Cocoa port");
+        ImGui::BulletText("John D. CORRADO - C/SDL port (2006-2014)");
 
-        ImGui::TextWrapped("Written by:");
-        ImGui::BulletText("Arnaud VERHILLE (2000-2026)");
-        ImGui::SameLine();
-        if (ImGui::SmallButton("gist974@gmail.com")) {
-            // Ouvrir email
-        }
-        ImGui::BulletText("Upgraded by Ken WESSEN (21/2/2006)");
-        ImGui::BulletText("MacOS Cocoa port by Joe CROBAK");
-        ImGui::BulletText("Ported to C/SDL by John D. CORRADO (2006-2014)");
-        ImGui::BulletText("Dear ImGui version by Arnaud VERHILLE (2026)");
+        ImGui::Spacing();
+        ImGui::TextWrapped("Hardware emulated:");
+        ImGui::BulletText("MOS 6502 CPU + PIA 6821 ($D0Fx aliasing)");
+        ImGui::BulletText("Apple Cassette Interface (ACI) - live audio + .aci/.wav I/O");
+        ImGui::BulletText("Uncle Bernie's GEN2 Color Graphics Card (280x192 HIRES)");
+        ImGui::BulletText("P-LAB Apple-1 Graphic Card (TMS9918 VDP, sprites)");
+        ImGui::BulletText("P-LAB A1-SID Sound Card (MOS 6581/8580)");
+        ImGui::BulletText("P-LAB microSD Storage Card (65C22 VIA + SD CARD OS)");
+        ImGui::BulletText("P-LAB MODEM BBS (65C51 ACIA + TCP/TELNET)");
+        ImGui::BulletText("P-LAB Terminal Card (TCP server on localhost:6502)");
 
         ImGui::Spacing();
         ImGui::TextWrapped("Thanks to:");
-        ImGui::BulletText("Steve WOZNIAK & Steve JOBS");
-        ImGui::BulletText("Vince BRIEL (Replica 1)");
-        ImGui::BulletText("Lee DAVISON (Enhanced BASIC)");
-        ImGui::BulletText("Achim BREIDENBACH (Sim6502)");
-        ImGui::BulletText("Fabrice FRANCES (Java Microtan Emulator)");
-        ImGui::BulletText("Uncle BERNIE (Bernie's GEN2 HGR Graphic Card)");
-        ImGui::BulletText("Tom OWAD (Applefritter)");
-        ImGui::BulletText("And All Apple 1 Community");
+        ImGui::BulletText("Steve WOZNIAK & Steve JOBS - for the Apple 1");
+        ImGui::BulletText("Claudio PARMIGIANI (P-LAB) - designer of the entire P-LAB Apple-1 expansion family");
+        ImGui::BulletText("Antonino PORCINO (Nippur72) - apple1-videocard-lib & apple1-sdcard firmware");
+        ImGui::BulletText("Uncle BERNIE - GEN2 Color Graphics Card");
+        ImGui::BulletText("Tom OWAD - AppleFritter community");
+        ImGui::BulletText("Vince BRIEL - Replica 1");
+        ImGui::BulletText("Lee DAVISON - Enhanced BASIC");
+        ImGui::BulletText("Achim BREIDENBACH - Sim6502");
+        ImGui::BulletText("Fabrice FRANCES - Java Microtan Emulator");
 
-        ImGui::Spacing();
-        ImGui::Separator();
-        ImGui::Spacing();
-        ImGui::TextWrapped("Emulation features:");
-        ImGui::BulletText("MOS 6502 CPU with cycle-accurate timing");
-        ImGui::BulletText("PIA 6821 with address aliasing ($D0Fx)");
-        ImGui::BulletText("Apple Cassette Interface (ACI) with live audio");
-        ImGui::BulletText("ACI live audio (44.1 kHz)");
-        ImGui::BulletText("Bernie's GEN2 HGR Graphic Card");
-        ImGui::BulletText("All known Apple BASIC versions supported");
-
-        ImGui::Spacing();
-        ImGui::Separator();
         ImGui::Spacing();
         ImGui::TextWrapped("Resources:");
-        ImGui::BulletText("https://apple1software.com/");
-        ImGui::TextWrapped(
-            "  Comprehensive archive of Apple 1 software,\n"
-            "  hardware docs, and history. An invaluable\n"
-            "  resource for the Apple 1 community.");
-        ImGui::BulletText("https://applefritter.com/apple1/");
-        ImGui::TextWrapped(
-            "  The heart of the Apple 1 community.\n"
-            "  Forums, technical discussions, and\n"
-            "  decades of shared knowledge.");
+        ImGui::BulletText("apple1software.com - Apple 1 software archive");
+        ImGui::BulletText("applefritter.com/apple1 - Apple 1 community hub");
+        ImGui::BulletText("p-l4b.github.io - P-LAB hardware reference");
     }
     ImGui::End();
 }
