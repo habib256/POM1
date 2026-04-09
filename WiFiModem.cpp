@@ -404,6 +404,12 @@ void WiFiModem::requestDisconnect()
 
 // ─────────────────────────────────────────────────────────────
 // Network operations
+//
+// Desktop builds use real BSD sockets (POSIX or Winsock).
+// WASM builds short-circuit to NO CARRIER: browsers cannot open raw TCP
+// sockets — Emscripten can only proxy through WebSockets, which BBSes don't
+// speak natively. Reaching a real BBS from the browser requires running a
+// WebSocket-to-TCP bridge such as `websockify` next to the user.
 // ─────────────────────────────────────────────────────────────
 
 #if !POM1_IS_WASM
@@ -604,13 +610,15 @@ void WiFiModem::updateConnection()
 #endif
 }
 
-#else // POM1_IS_WASM — no networking
+#else // POM1_IS_WASM — browsers cannot open raw TCP sockets
 
 void WiFiModem::sendToSocket(uint8_t) {}
 
 void WiFiModem::connectToHost(const std::string&, uint16_t)
 {
     enqueueRxString("\r\nNO CARRIER\r\n");
+    enqueueRxString("(WEB BUILD: BBS DIALING REQUIRES A LOCAL\r\n");
+    enqueueRxString(" WEBSOCKET-TO-TCP BRIDGE - SEE ABOUT BOX)\r\n");
 }
 
 void WiFiModem::disconnect()

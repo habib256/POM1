@@ -498,9 +498,7 @@ void MainWindow_ImGui::renderMenuBar()
                 ImGui::EndMenu();
             }
             ImGui::Separator();
-            if (ImGui::MenuItem("ACI Cassette Control")) {
-                showCassetteControl = true;
-            }
+            ImGui::MenuItem("Woz ACI Cassette Control", nullptr, &showCassetteControl);
             if (ImGui::MenuItem("Bernie's GEN2 HGR Graphic Card", nullptr, &graphicsCardEnabled)) {
                 if (graphicsCardEnabled) showGraphicsCard = true;
             }
@@ -520,15 +518,18 @@ void MainWindow_ImGui::renderMenuBar()
                 if (a1ioRtcEnabled) showA1IO_RTC = true;
             }
 #if !POM1_IS_WASM
+            // Terminal Card needs a real listening TCP socket — desktop only.
             if (ImGui::MenuItem("P-LAB Terminal Card", nullptr, &terminalCardEnabled)) {
                 emulation->setTerminalCardEnabled(terminalCardEnabled);
                 if (terminalCardEnabled) showTerminalCard = true;
             }
+#endif
+            // MODEM BBS works in the browser too via Emscripten's WebSocket
+            // socket emulation, so it stays available on every platform.
             if (ImGui::MenuItem("P-LAB MODEM BBS", nullptr, &wifiModemEnabled)) {
                 emulation->setWiFiModemEnabled(wifiModemEnabled);
                 if (wifiModemEnabled) showWiFiModem = true;
             }
-#endif
             ImGui::EndMenu();
         }
 
@@ -593,7 +594,7 @@ void MainWindow_ImGui::renderToolbar()
         drawToolbarCassetteIcon(ImGui::GetWindowDrawList(),
                                 ImGui::GetItemRectMin(), ImGui::GetItemRectMax());
         ImGui::PopStyleColor();
-        if (ImGui::IsItemHovered()) ImGui::SetTooltip("Cassette Control");
+        if (ImGui::IsItemHovered()) ImGui::SetTooltip("Woz ACI Cassette Control");
 
         ImGui::SameLine();
         ImGui::PushStyleColor(ImGuiCol_Button,
@@ -1136,9 +1137,22 @@ void MainWindow_ImGui::renderTMS9918Window()
 
 void MainWindow_ImGui::renderWiFiModemWindow()
 {
-    ImGui::SetNextWindowSize(ImVec2(340, 260), ImGuiCond_FirstUseEver);
+    ImGui::SetNextWindowSize(ImVec2(380, 320), ImGuiCond_FirstUseEver);
     applyPendingLayout("P-LAB Wi-Fi Modem");
     if (ImGui::Begin("P-LAB Wi-Fi Modem", &showWiFiModem)) {
+#if POM1_IS_WASM
+        // Browsers cannot open raw TCP sockets, so BBS dialing always returns
+        // NO CARRIER in the web build. Make this visible up front so the user
+        // doesn't think the modem is broken.
+        ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 0.85f, 0.4f, 1.0f));
+        ImGui::TextWrapped("Web build: BBS dialing is disabled.");
+        ImGui::PopStyleColor();
+        ImGui::TextWrapped("Browsers cannot open raw TCP sockets. To reach a BBS "
+                           "from this build you need a local WebSocket-to-TCP "
+                           "bridge (websockify). Use the desktop build for "
+                           "direct dialing.");
+        ImGui::Separator();
+#endif
         const auto& snap = uiSnapshot.wifiModem;
 
         // Connection status
@@ -1899,7 +1913,7 @@ void MainWindow_ImGui::renderLoadTapeDialog()
 void MainWindow_ImGui::renderCassetteControlWindow()
 {
     ImGui::SetNextWindowSize(ImVec2(460, 280), ImGuiCond_FirstUseEver);
-    if (ImGui::Begin("Cassette Control", &showCassetteControl)) {
+    if (ImGui::Begin("Woz ACI Cassette Control", &showCassetteControl)) {
         auto renderStateBadge = [](const char* label, const ImVec4& color) {
             ImGui::TextColored(color, "%s", label);
         };
@@ -2205,11 +2219,12 @@ void MainWindow_ImGui::applyMachineConfig(int presetIndex)
     emulation->setA1IO_RTCEnabled(cfg.a1ioRtc);
     showA1IO_RTC = cfg.a1ioRtc;
 
-#if !POM1_IS_WASM
     wifiModemEnabled = cfg.wifiModem;
     emulation->setWiFiModemEnabled(cfg.wifiModem);
     showWiFiModem = cfg.wifiModem;
 
+#if !POM1_IS_WASM
+    // Terminal Card requires a TCP server — desktop only.
     terminalCardEnabled = cfg.terminalCard;
     emulation->setTerminalCardEnabled(cfg.terminalCard);
     showTerminalCard = cfg.terminalCard;

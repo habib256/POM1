@@ -15,6 +15,8 @@
 #include <mutex>
 #include <string>
 
+// Networking on desktop only: WASM builds short-circuit to NO CARRIER because
+// browsers cannot open raw TCP sockets (see WiFiModem.cpp for the rationale).
 #if !POM1_IS_WASM
   #ifdef _WIN32
     #include <winsock2.h>
