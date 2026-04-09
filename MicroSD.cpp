@@ -767,15 +767,20 @@ void MicroSD::cmdDel(const std::string& filename)
 
 void MicroSD::cmdCd(const std::string& path)
 {
-    if (path.empty() || path == "/" || path == "\\") {
+    // Normalize backslashes to forward slashes so the rest of the function only
+    // has to think about one separator.
+    std::string normalized = path;
+    std::replace(normalized.begin(), normalized.end(), '\\', '/');
+
+    if (normalized.empty() || normalized == "/") {
         // Go to root
         currentDirectory.clear();
         sendOK();
         return;
     }
 
-    if (path == "..") {
-        // Go up one level
+    // Exact ".." → parent navigation (only form supported by the SD CARD OS firmware).
+    if (normalized == "..") {
         auto pos = currentDirectory.rfind('/');
         if (pos != std::string::npos) {
             currentDirectory = currentDirectory.substr(0, pos);
@@ -786,8 +791,38 @@ void MicroSD::cmdCd(const std::string& path)
         return;
     }
 
-    // Try as relative path first
-    std::string newDir = currentDirectory.empty() ? path : currentDirectory + "/" + path;
+    // Detect absolute path (leading '/'). Strip the slash; the remainder is
+    // measured from the SD card root, not from currentDirectory.
+    bool isAbsolute = (normalized.front() == '/');
+    if (isAbsolute) normalized.erase(normalized.begin());
+
+    // Strip a trailing slash so "FOO/" and "FOO" behave the same.
+    if (!normalized.empty() && normalized.back() == '/')
+        normalized.pop_back();
+
+    if (normalized.empty()) {
+        // It was just "/" — already handled above, but a defensive guard.
+        currentDirectory.clear();
+        sendOK();
+        return;
+    }
+
+    // Reject ".." inside compound paths (the SD CARD OS firmware doesn't accept
+    // "../FOO" or "FOO/../BAR" — only the bare ".." form, handled above).
+    if (normalized == ".." ||
+        normalized.compare(0, 3, "../") == 0 ||
+        normalized.find("/../") != std::string::npos ||
+        (normalized.size() >= 3 &&
+         normalized.compare(normalized.size() - 3, 3, "/..") == 0)) {
+        sendError("PATH NOT FOUND");
+        return;
+    }
+
+    // Build the candidate new directory (relative to root).
+    std::string newDir = isAbsolute
+        ? normalized
+        : (currentDirectory.empty() ? normalized : currentDirectory + "/" + normalized);
+
     std::string fullPath = (fs::path(sdCardRootPath) / newDir).string();
 
     std::error_code ec;
@@ -797,11 +832,25 @@ void MicroSD::cmdCd(const std::string& path)
         return;
     }
 
-    // Try fuzzy match (case-insensitive)
-    fs::path parentPath = resolveHostPath("");
+    // Fuzzy match (case-insensitive) on the LAST component of newDir.
+    // Earlier components must match exactly on disk; only the leaf is
+    // tolerated to match different casing (e.g. "/hgr" → "/HGR").
+    auto lastSlash = newDir.rfind('/');
+    std::string parentRel = (lastSlash == std::string::npos)
+        ? std::string()
+        : newDir.substr(0, lastSlash);
+    std::string leaf = (lastSlash == std::string::npos)
+        ? newDir
+        : newDir.substr(lastSlash + 1);
+
+    fs::path parentPath = parentRel.empty()
+        ? fs::path(sdCardRootPath)
+        : fs::path(sdCardRootPath) / parentRel;
+
     if (fs::exists(parentPath, ec) && fs::is_directory(parentPath, ec)) {
-        std::string upperPath;
-        for (char c : path) upperPath += static_cast<char>(std::toupper(static_cast<unsigned char>(c)));
+        std::string upperLeaf;
+        for (char c : leaf)
+            upperLeaf += static_cast<char>(std::toupper(static_cast<unsigned char>(c)));
 
         for (const auto& entry : fs::directory_iterator(parentPath, ec)) {
             if (!entry.is_directory(ec)) continue;
@@ -810,8 +859,10 @@ void MicroSD::cmdCd(const std::string& path)
             for (char c : entryName)
                 upperEntry += static_cast<char>(std::toupper(static_cast<unsigned char>(c)));
 
-            if (upperEntry == upperPath) {
-                currentDirectory = currentDirectory.empty() ? entryName : currentDirectory + "/" + entryName;
+            if (upperEntry == upperLeaf) {
+                currentDirectory = parentRel.empty()
+                    ? entryName
+                    : parentRel + "/" + entryName;
                 sendOK();
                 return;
             }

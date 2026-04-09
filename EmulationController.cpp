@@ -445,6 +445,20 @@ bool EmulationController::isWiFiModemEnabled() const
     return memory->isWiFiModemEnabled();
 }
 
+void EmulationController::wifiModemDisconnect()
+{
+    // No stateMutex needed: WiFiModem::requestDisconnect() takes its own modemMutex.
+    if (memory->isWiFiModemEnabled()) {
+        memory->getWiFiModem().requestDisconnect();
+    }
+}
+
+void EmulationController::wifiModemReset()
+{
+    // No stateMutex needed: WiFiModem::reset() takes its own modemMutex.
+    memory->getWiFiModem().reset();
+}
+
 void EmulationController::setTerminalCardEnabled(bool enabled)
 {
     std::lock_guard<std::mutex> lock(stateMutex);

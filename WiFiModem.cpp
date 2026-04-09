@@ -396,6 +396,12 @@ void WiFiModem::handleATH()
     mode = ModemMode::COMMAND;
 }
 
+void WiFiModem::requestDisconnect()
+{
+    std::lock_guard<std::mutex> lock(modemMutex);
+    handleATH();
+}
+
 // ─────────────────────────────────────────────────────────────
 // Network operations
 // ─────────────────────────────────────────────────────────────

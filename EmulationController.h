@@ -112,6 +112,8 @@ public:
     // P-LAB Apple-1 Wi-Fi Modem
     void setWiFiModemEnabled(bool enabled);
     bool isWiFiModemEnabled() const;
+    void wifiModemDisconnect();
+    void wifiModemReset();
 
     // P-LAB Apple-1 Terminal Card
     void setTerminalCardEnabled(bool enabled);

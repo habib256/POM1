@@ -301,7 +301,9 @@ void M6502::ADC(void)
 
    tmp = (Op1 & 0x0F) + (Op2 & 0x0F) + (statusRegister & M6502::Status::C ? 1 : 0);
         accumulator = tmp < 0x0A ? tmp : tmp + 6;
- tmp = (Op1 & 0xF0) + (Op2 & 0xF0) + (tmp & 0xF0);
+ // BCD low→high carry lives in bit 4 of the adjusted accumulator after the +6.
+ // Reading it from `tmp` instead drops the carry whenever the unadjusted sum is in $0A-$0F.
+ tmp = (Op1 & 0xF0) + (Op2 & 0xF0) + (accumulator & 0xF0);
 
         if (tmp & 0x80)
             statusRegister |= M6502::Status::N;

@@ -1192,9 +1192,7 @@ void MainWindow_ImGui::renderWiFiModemWindow()
         ImGui::Separator();
         if (snap.connected) {
             if (ImGui::Button("Disconnect")) {
-                // Queue ATH command by toggling the card off/on is too drastic.
-                // Instead let the user send ATH via the terminal.
-                ImGui::SetTooltip("Send +++ then ATH from the terminal");
+                emulation->wifiModemDisconnect();
             }
         }
     }
@@ -1810,6 +1808,11 @@ void MainWindow_ImGui::renderLoadDialog()
                     showWiFiModem = true;
                     emulation->setWiFiModemEnabled(true);
                     setStatusMessage("P-LAB Wi-Fi Modem plugged", 2.0f);
+                } else {
+                    // Reload from software/net/: drop any live BBS connection
+                    // and clear ACIA state so the new auto-dial program starts fresh.
+                    emulation->wifiModemReset();
+                    setStatusMessage("P-LAB Wi-Fi Modem reset", 2.0f);
                 }
             }
 

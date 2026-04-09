@@ -58,6 +58,10 @@ public:
     // Cycle counting for baud rate simulation and socket polling
     void advanceCycles(int cycles);
 
+    // UI-initiated disconnect — equivalent to the user typing +++ATH from the terminal.
+    // Thread-safe: takes the modem mutex internally so it can be called from the UI thread.
+    void requestDisconnect();
+
     // Snapshot for UI display
     struct Snapshot {
         uint8_t statusReg = 0;

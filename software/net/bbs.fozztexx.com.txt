@@ -1,0 +1,52 @@
+// P-LAB Wi-Fi Modem — Auto-dial bbs.fozztexx.com (Level 29)
+// Load at $0280, run with 0280R
+//
+// Retro-hardware oriented BBS.
+// On the first connection, the system lets you force a "Dumb Terminal"
+// user profile (strict ANSI disable) — recommended for the Apple 1.
+//
+// Initializes ACIA, sends ATDT BBS.FOZZTEXX.COM:23 automatically,
+// then drops into terminal loop (keyboard → ACIA, ACIA → display).
+//
+// ACIA registers:
+//   $B000 DATA   - Serial data I/O
+//   $B001 STATUS - bit3=RDRF (rx ready), bit4=TDRE (tx ready)
+//   $B002 CMD    - Command register
+//   $B003 CTRL   - Control register
+
+// INIT: configure ACIA — 9600 baud 8N1, DTR active, IRQ disabled
+0280: A9 0B 8D 02 B0
+0285: A9 1E 8D 03 B0
+
+// AUTO-DIAL: send "ATDT BBS.FOZZTEXX.COM:23\r\0" from $02BC
+028A: A2 00
+// SENDLOOP:
+028C: BD BC 02
+028F: F0 07         // BEQ -> terminal loop at $0298
+0291: 8D 00 B0      // STA $B000 (send byte to ACIA)
+0294: E8            // INX
+0295: 4C 8C 02      // JMP SENDLOOP
+
+// LOOP: check keyboard input
+0298: AD 11 D0      // LDA $D011 (KBDCR)
+029B: 10 08         // BPL CHKRX (no key)
+029D: AD 10 D0      // LDA $D010 (KBD)
+02A0: 29 7F         // AND #$7F (strip bit 7)
+02A2: 8D 00 B0      // STA $B000 (send to ACIA)
+// CHKRX: check ACIA for received byte
+02A5: AD 01 B0      // LDA $B001 (STATUS)
+02A8: 29 08         // AND #$08 (RDRF bit)
+02AA: F0 EC         // BEQ LOOP ($02AC - $14 = $0298)
+02AC: AD 00 B0      // LDA $B000 (read received byte)
+02AF: 09 80         // ORA #$80 (set bit 7 for Apple 1 display)
+// WAITDSP:
+02B1: 2C 12 D0      // BIT $D012
+02B4: 30 FB         // BMI WAITDSP ($02B6 - 5 = $02B1)
+02B6: 8D 12 D0      // STA $D012 (display char)
+02B9: 4C 98 02      // JMP LOOP
+
+// String: "ATDT BBS.FOZZTEXX.COM:23\r" + null terminator
+02BC: 41 54 44 54 20 42 42 53  // ATDT BBS
+02C4: 2E 46 4F 5A 5A 54 45 58  // .FOZZTEX
+02CC: 58 2E 43 4F 4D 3A 32 33  // X.COM:23
+02D4: 0D 00                     // CR NUL
