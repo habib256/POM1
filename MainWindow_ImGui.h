@@ -173,13 +173,15 @@ private:
     };
     LoadDialogState loadDlg;
 
-    // Loaded program regions (shown in Memory Map)
-    struct LoadedProgram {
+    // Loaded program/ROM regions (shown in Memory Map)
+    struct LoadedRegion {
         std::string name;
         quint16 start;
         quint16 end;
     };
-    std::vector<LoadedProgram> loadedPrograms;
+    std::vector<LoadedRegion> loadedPrograms;
+    std::vector<LoadedRegion> loadedRoms; // ROMs loaded by presets (BASIC, Krusader, etc.)
+    int presetRamKB = 32;                 // Usable RAM for current preset (display only)
 
     struct TapeDialogState {
         char filePath[512] = "cassette.aci";

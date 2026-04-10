@@ -27,7 +27,7 @@ REM Get the directory where the exe lives
 for %%F in ("%EXE%") do set EXE_DIR=%%~dpF
 
 REM Copy ROMs next to the executable if needed
-for %%R in (basic.rom krusader-1.3.rom WozMonitor.rom charmap.rom) do (
+for %%R in (basic.rom krusader-1.3.rom WozMonitor.rom charmap.rom applesoft-lite.rom) do (
     if not exist "%EXE_DIR%%%R" (
         if exist "roms\%%R" (
             echo Copying %%R...

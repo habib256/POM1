@@ -85,6 +85,7 @@ public:
     bool getWriteInRom() const;
     void setTerminalSpeed(int charsPerSecond);
     bool reloadBasic(std::string& error);
+    bool reloadApplesoftLite(std::string& error);
     bool reloadWozMonitor(std::string& error);
     bool reloadKrusader(std::string& error);
     bool reloadAciRom(std::string& error);

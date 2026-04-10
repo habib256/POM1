@@ -24,6 +24,9 @@ public:
     void setWiFiModemEnabled(bool enabled) { wifiModemEnabled = enabled; }
     void setTerminalCardEnabled(bool enabled) { terminalCardEnabled = enabled; }
 
+    struct RomRegion { quint16 start, end; };
+    void setLoadedRoms(const std::vector<RomRegion>& roms) { romRegions = roms; }
+
 private:
     Memory* memory;
     const std::vector<quint8>* liveMemory = nullptr;
@@ -42,6 +45,7 @@ private:
     bool microSDEnabled = false;
     bool wifiModemEnabled = false;
     bool terminalCardEnabled = false;
+    std::vector<RomRegion> romRegions;
 
     // Auto-refresh: snapshot taken when autoRefresh is off
     std::vector<quint8> snapshot;

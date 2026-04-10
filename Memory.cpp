@@ -195,6 +195,12 @@ int Memory::loadBasic(void)
     return loadROM("basic.rom", 0xE000, 0x1000, "BASIC");
 }
 
+int Memory::loadApplesoftLite(void)
+{
+    // Applesoft Lite: 8 KB ROM ($E000-$FFFF) — replaces both Integer BASIC and Woz Monitor.
+    return loadROM("applesoft-lite.rom", 0xE000, 0x2000, "Applesoft Lite");
+}
+
 int Memory::loadKrusader(void)
 {
     return loadROM("krusader-1.3.rom", 0xA000, 0x2000, "Krusader");

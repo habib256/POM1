@@ -155,10 +155,15 @@ struct MachineWindowPlacement {
     ImVec2 size; // (0,0) = no size override
 };
 
+enum class BasicType { Integer, ApplesoftLite };
+
 struct MachineConfig {
     const char* name;
     const char* description;
     bool graphicsCard, microSD, sid, tms9918, a1ioRtc, wifiModem, terminalCard;
+    bool krusader;
+    int ramKB;              // Usable RAM in kilobytes (8 = Woz original, 32 = Replica/P-LAB)
+    BasicType basicType;
     MachineWindowPlacement layout[8];
     int layoutCount;
 };
@@ -166,20 +171,23 @@ struct MachineConfig {
 static const MachineConfig kMachinePresets[] = {
     {
         "Woz Apple 1 (1976)",
-        "Original bare board: 6502, 4KB RAM, PIA 6821, WOZ Monitor + BASIC. No expansion cards.",
+        "Original bare board: 6502, 8 KB RAM, PIA 6821, Integer BASIC, WOZ Monitor. No expansion cards.",
         false, false, false, false, false, false, false,
+        false, 8, BasicType::Integer,
         { {"Apple 1 Screen", {10,61}, {0,0}} }, 1
     },
     {
         "Replica 1 (Briel)",
-        "Vince Briel's faithful modern recreation. Adds microSD for practical storage.",
-        false, true, false, false, false, false, false,
+        "Vince Briel's modern recreation: Applesoft Lite (floating-point BASIC), Krusader assembler, ACI cassette.",
+        false, false, false, false, false, false, false,
+        true, 32, BasicType::ApplesoftLite,
         { {"Apple 1 Screen", {10,61}, {0,0}} }, 1
     },
     {
         "Bernie's Apple 1",
-        "Uncle Bernie's GEN2 HGR 280x192 hi-res color graphics + microSD storage.",
-        true, true, false, false, false, false, false,
+        "Uncle Bernie's GEN2 280x192 HGR color graphics, Integer BASIC, ACI cassette.",
+        true, false, false, false, false, false, false,
+        false, 32, BasicType::Integer,
         {
             {"Apple 1 Screen",                 {10,  61}, {0,   0}},
             {"Bernie's GEN2 HGR Graphic Card", {624, 61}, {576, 420}},
@@ -187,8 +195,9 @@ static const MachineConfig kMachinePresets[] = {
     },
     {
         "P-LAB Apple 1",
-        "Full P-LAB expansion: microSD, A1-SID sound, TMS9918 graphics, I/O & RTC, Wi-Fi modem, terminal.",
+        "Full P-LAB expansion: Applesoft Lite, microSD, A1-SID sound, TMS9918 graphics, I/O & RTC, Wi-Fi modem, terminal.",
         false, true, true, true, true, true, true,
+        false, 32, BasicType::ApplesoftLite,
         {
             {"Apple 1 Screen",               {10,  61},  {0,   0}},
             {"P-LAB Graphic Card (TMS9918)", {640, 61},  {528, 420}},
@@ -198,20 +207,20 @@ static const MachineConfig kMachinePresets[] = {
         }, 5
     },
     {
-        "POM1 Full",
-        "All hardware enabled: every P-LAB card plus Uncle Bernie's GEN2 HGR graphic card.",
-        true, true, true, true, true, true, true,
+        "POM1",
+        "56 KB RAM, GEN2 HGR + all P-LAB cards (except I/O & RTC), Applesoft Lite.",
+        true, true, true, true, false, true, true,
+        false, 56, BasicType::ApplesoftLite,
         {
             {"Apple 1 Screen",                 {10,  61},  {0,   0}},
             {"Bernie's GEN2 HGR Graphic Card", {624, 61},  {576, 420}},
             {"P-LAB Graphic Card (TMS9918)",   {644, 81},  {528, 420}},
             {"P-LAB Wi-Fi Modem",              {640, 495}, {340, 260}},
             {"P-LAB Terminal Card",            {10,  510}, {360, 280}},
-            {"P-LAB I/O Board & RTC",          {740, 495}, {380, 280}},
-        }, 6
+        }, 5
     },
 };
-static constexpr int kMachinePresetCount = 5;
+static constexpr int kMachinePresetCount = static_cast<int>(sizeof(kMachinePresets) / sizeof(kMachinePresets[0]));
 
 } // namespace
 
@@ -244,6 +253,9 @@ const char* MainWindow_ImGui::shortcutLabel(int key, int mods)
 MainWindow_ImGui::MainWindow_ImGui()
 {
     createPom1();
+    // Default ROMs (overridden on first frame by the default preset)
+    loadedRoms.push_back({"Integer BASIC", 0xE000, 0xEFFF});
+    loadedRoms.push_back({"Woz Monitor", 0xFF00, 0xFFFF});
     setStatusMessage("Ready", 0.0f);
 }
 
@@ -290,6 +302,12 @@ void MainWindow_ImGui::render()
     memoryViewer->setMicroSDEnabled(microSDEnabled);
     memoryViewer->setWiFiModemEnabled(wifiModemEnabled);
     memoryViewer->setTerminalCardEnabled(terminalCardEnabled);
+    {
+        std::vector<MemoryViewer_ImGui::RomRegion> mvRoms;
+        for (const auto& r : loadedRoms)
+            mvRoms.push_back({r.start, r.end});
+        memoryViewer->setLoadedRoms(mvRoms);
+    }
 
 #if POM1_IS_WASM
     // Sync fullscreen flag with browser state (user may exit via Escape)
@@ -326,15 +344,16 @@ void MainWindow_ImGui::render()
         const float toolbarBottom = ImGui::GetFrameHeight() + kToolbarBandHeight;
         ImGui::SetNextWindowPos(ImVec2(10, toolbarBottom + kGapBelowToolbarBeforeApple1));
         ImGui::SetNextWindowSize(ImVec2(sw, sh));
-        // Redimensionner la fenêtre GLFW (WASM : la boucle main_imgui applique la taille au canvas)
+        // Resize GLFW window to fit the Apple 1 screen
 #if !POM1_IS_WASM
         if (window) {
-            int winW = (int)sw + kApple1GlfwExtraW;
-            int winH = (int)std::ceil(sh + apple1LayoutVerticalChrome());
-            glfwSetWindowSize(window, winW, winH);
+            glfwSetWindowSize(window, (int)sw + kApple1GlfwExtraW,
+                              (int)std::ceil(sh + apple1LayoutVerticalChrome()));
         }
 #endif
         firstFrame = false;
+        // Apply default preset now that ImGui is ready
+        applyMachineConfig(kMachinePresetCount - 1);
     }
 
     // Resize Apple 1 screen window on fullscreen transitions
@@ -986,7 +1005,7 @@ void MainWindow_ImGui::renderStatusBar()
             speedText = oss.str();
         }
         std::ostringstream ramOss;
-        ramOss << "| RAM: " << uiSnapshot.ramSizeKB << " KB";
+        ramOss << "| RAM: " << presetRamKB << " KB";
         std::string ramText = ramOss.str();
 
         std::string tapeText;
@@ -1641,26 +1660,43 @@ void MainWindow_ImGui::renderMemoryConfigDialog()
         if (ImGui::Button("Reload BASIC")) {
             std::string error;
             bool ok = emulation->reloadBasic(error);
-            if (!writeProtect) {
-                emulation->setWriteInRom(true);
+            if (!writeProtect) emulation->setWriteInRom(true);
+            if (ok) {
+                loadedRoms.erase(std::remove_if(loadedRoms.begin(), loadedRoms.end(),
+                    [](const LoadedRegion& r) { return r.start >= 0xE000 && r.end <= 0xFFFF; }), loadedRoms.end());
+                loadedRoms.push_back({"Integer BASIC", 0xE000, 0xEFFF});
+                loadedRoms.push_back({"Woz Monitor", 0xFF00, 0xFFFF});
             }
             setStatusMessage(ok ? "BASIC reloaded" : error, 3.0f);
+        }
+
+        if (ImGui::Button("Reload Applesoft Lite")) {
+            std::string error;
+            bool ok = emulation->reloadApplesoftLite(error);
+            if (!writeProtect) emulation->setWriteInRom(true);
+            if (ok) {
+                loadedRoms.erase(std::remove_if(loadedRoms.begin(), loadedRoms.end(),
+                    [](const LoadedRegion& r) { return r.start >= 0xE000 && r.end <= 0xFFFF; }), loadedRoms.end());
+                loadedRoms.push_back({"Applesoft Lite", 0xE000, 0xFFFF});
+            }
+            setStatusMessage(ok ? "Applesoft Lite reloaded" : error, 3.0f);
         }
 
         if (ImGui::Button("Reload WOZ Monitor")) {
             std::string error;
             bool ok = emulation->reloadWozMonitor(error);
-            if (!writeProtect) {
-                emulation->setWriteInRom(true);
-            }
+            if (!writeProtect) emulation->setWriteInRom(true);
             setStatusMessage(ok ? "WOZ Monitor reloaded" : error, 3.0f);
         }
 
         if (ImGui::Button("Reload Krusader")) {
             std::string error;
             bool ok = emulation->reloadKrusader(error);
-            if (!writeProtect) {
-                emulation->setWriteInRom(true);
+            if (!writeProtect) emulation->setWriteInRom(true);
+            if (ok) {
+                loadedRoms.erase(std::remove_if(loadedRoms.begin(), loadedRoms.end(),
+                    [](const LoadedRegion& r) { return r.start == 0xA000; }), loadedRoms.end());
+                loadedRoms.push_back({"Krusader", 0xA000, 0xBFFF});
             }
             setStatusMessage(ok ? "Krusader reloaded" : error, 3.0f);
         }
@@ -1878,7 +1914,7 @@ void MainWindow_ImGui::renderLoadDialog()
                     // Remove any existing region that overlaps
                     loadedPrograms.erase(
                         std::remove_if(loadedPrograms.begin(), loadedPrograms.end(),
-                            [addr, progEnd](const LoadedProgram& p) {
+                            [addr, progEnd](const LoadedRegion& p) {
                                 return !(p.end < addr || p.start > progEnd);
                             }),
                         loadedPrograms.end());
@@ -2199,6 +2235,9 @@ void MainWindow_ImGui::hardReset()
 {
     emulation->hardReset();
     loadedPrograms.clear();
+    loadedRoms.clear();
+    loadedRoms.push_back({"Integer BASIC", 0xE000, 0xEFFF});
+    loadedRoms.push_back({"Woz Monitor", 0xFF00, 0xFFFF});
     microSDEnabled = true;
 #if !POM1_IS_WASM
     terminalCardEnabled = true;
@@ -2246,9 +2285,17 @@ void MainWindow_ImGui::applyMachineConfig(int presetIndex)
     if (presetIndex < 0 || presetIndex >= kMachinePresetCount) return;
     const MachineConfig& cfg = kMachinePresets[presetIndex];
 
-    // Hardware flags
+    // Full hard reset: clear memory, reload default ROMs, reset all peripherals
+    emulation->hardReset();
+    loadedPrograms.clear();
+    loadedRoms.clear();
+
+    // RAM size for this preset (display only — the emulator always has 64 KB address space)
+    presetRamKB = cfg.ramKB;
+
+    // Hardware flags (enabled = plugged in, show = window open)
     graphicsCardEnabled = cfg.graphicsCard;
-    showGraphicsCard    = cfg.graphicsCard;
+    showGraphicsCard    = false;
 
     microSDEnabled = cfg.microSD;
     emulation->setMicroSDEnabled(cfg.microSD);
@@ -2258,22 +2305,47 @@ void MainWindow_ImGui::applyMachineConfig(int presetIndex)
 
     tms9918Enabled = cfg.tms9918;
     emulation->setTMS9918Enabled(cfg.tms9918);
-    showTMS9918 = cfg.tms9918;
+    showTMS9918 = false;
 
     a1ioRtcEnabled = cfg.a1ioRtc;
     emulation->setA1IO_RTCEnabled(cfg.a1ioRtc);
-    showA1IO_RTC = cfg.a1ioRtc;
+    showA1IO_RTC = false;
 
     wifiModemEnabled = cfg.wifiModem;
     emulation->setWiFiModemEnabled(cfg.wifiModem);
-    showWiFiModem = cfg.wifiModem;
+    showWiFiModem = false;
 
 #if !POM1_IS_WASM
     // Terminal Card requires a TCP server — desktop only.
     terminalCardEnabled = cfg.terminalCard;
     emulation->setTerminalCardEnabled(cfg.terminalCard);
-    showTerminalCard = cfg.terminalCard;
+    showTerminalCard = false;
 #endif
+
+    // Load the appropriate BASIC ROM for this preset and track in loadedRoms
+    {
+        std::string error;
+        bool ok = false;
+        if (cfg.basicType == BasicType::ApplesoftLite) {
+            ok = emulation->reloadApplesoftLite(error);
+            if (ok) loadedRoms.push_back({"Applesoft Lite", 0xE000, 0xFFFF});
+        } else {
+            ok = emulation->reloadBasic(error);
+            if (ok) loadedRoms.push_back({"Integer BASIC", 0xE000, 0xEFFF});
+            if (emulation->reloadWozMonitor(error))
+                loadedRoms.push_back({"Woz Monitor", 0xFF00, 0xFFFF});
+        }
+        if (!ok) {
+            setStatusMessage(error, 5.0f);
+        }
+    }
+
+    // Krusader assembler at $A000-$BFFF (mutually exclusive with microSD VIA at $A000)
+    if (cfg.krusader) {
+        std::string error;
+        if (emulation->reloadKrusader(error) == true)
+            loadedRoms.push_back({"Krusader", 0xA000, 0xBFFF});
+    }
 
     // Populate pending layout positions
     pendingLayout.clear();
@@ -2301,12 +2373,53 @@ void MainWindow_ImGui::renderMemoryMapWindow()
         const char* label;
     };
 
-    std::vector<MemRegion> regions = {
-        { 0x0000, 0x00FF, IM_COL32(100, 100, 255, 255), "Zero Page" },
-        { 0x0100, 0x01FF, IM_COL32(255, 165,   0, 255), "Stack" },
-        { 0x0200, 0x027F, IM_COL32(  0, 200, 255, 255), "Keyboard Buffer" },
-    };
-    // Loaded program regions (inserted before User RAM so they take priority)
+    const quint16 ramCeiling = (quint16)(presetRamKB * 1024);
+    const ImU32 ramColor   = IM_COL32( 80, 200,  80, 255);
+    const ImU32 unmapColor = IM_COL32( 40,  40,  40, 255);
+
+    // --- Layer 0: base (User RAM + Unmapped) ---
+    std::vector<MemRegion> regions;
+    if (ramCeiling > 0)
+        regions.push_back({ 0x0000, (quint16)(ramCeiling - 1), ramColor, "User RAM" });
+    if (ramCeiling <= 0xFFFF)
+        regions.push_back({ ramCeiling, 0xFFFF, unmapColor, "Unmapped" });
+
+    // --- Layer 1: CPU-reserved areas ---
+    regions.push_back({ 0x0000, 0x00FF, IM_COL32(100, 100, 255, 255), "Zero Page" });
+    regions.push_back({ 0x0100, 0x01FF, IM_COL32(255, 165,   0, 255), "Stack" });
+    regions.push_back({ 0x0200, 0x027F, IM_COL32(  0, 200, 255, 255), "Keyboard Buffer" });
+
+    // --- Layer 2: hardware cards / I/O / ROMs ---
+    if (graphicsCardEnabled)
+        regions.push_back({ 0x2000, 0x3FFF, IM_COL32(0, 255, 200, 255), "GEN2 HGR Framebuffer" });
+    if (a1ioRtcEnabled)
+        regions.push_back({ 0x2000, 0x200F, IM_COL32(255, 150, 50, 255), "IO_RTC VIA I/O" });
+    if (microSDEnabled)
+        regions.push_back({ 0x8000, 0x9FFF, IM_COL32(255, 200, 80, 255), "SD CARD OS ROM" });
+    if (microSDEnabled)
+        regions.push_back({ 0xA000, 0xA00F, IM_COL32(255, 150, 50, 255), "VIA 65C22 I/O" });
+    if (wifiModemEnabled)
+        regions.push_back({ 0xB000, 0xB003, IM_COL32(0, 200, 200, 255), "ACIA 65C51 I/O" });
+
+    regions.push_back({ 0xC000, 0xC0FF, IM_COL32(255, 140, 80, 255), "ACI I/O" });
+    regions.push_back({ 0xC100, 0xC1FF, IM_COL32(255, 190, 80, 255), "ACI ROM" });
+    if (sidEnabled)
+        regions.push_back({ 0xC800, 0xCFFF, IM_COL32(200, 100, 255, 255), "A1-SID I/O" });
+    if (tms9918Enabled)
+        regions.push_back({ 0xCC00, 0xCC01, IM_COL32(100, 200, 255, 255), "TMS9918 I/O" });
+
+    regions.push_back({ 0xD000, 0xD0FF, IM_COL32(255, 80, 80, 255), "I/O (KBD/DSP)" });
+
+    // --- Layer 3: loaded ROMs (BASIC/Applesoft Lite, Woz Monitor, Krusader) ---
+    static std::vector<std::array<char, 64>> romLabels;
+    romLabels.resize(loadedRoms.size());
+    for (size_t i = 0; i < loadedRoms.size(); ++i) {
+        snprintf(romLabels[i].data(), 64, "%s", loadedRoms[i].name.c_str());
+        regions.push_back({ loadedRoms[i].start, loadedRoms[i].end,
+                            IM_COL32(255, 255, 80, 255), romLabels[i].data() });
+    }
+
+    // --- Layer 4: loaded programs (top priority) ---
     static std::vector<std::array<char, 64>> progLabels;
     progLabels.resize(loadedPrograms.size());
     for (size_t i = 0; i < loadedPrograms.size(); ++i) {
@@ -2315,69 +2428,6 @@ void MainWindow_ImGui::renderMemoryMapWindow()
                             IM_COL32(100, 230, 100, 255), progLabels[i].data() });
     }
 
-    // Build $0280-$9FFF region based on active cards
-    regions.push_back({ 0x0280, 0x1FFF, IM_COL32( 80, 200,  80, 255), "User RAM" });
-    if (a1ioRtcEnabled && graphicsCardEnabled) {
-        regions.push_back({ 0x2000, 0x200F, IM_COL32(255, 150,  50, 255), "IO_RTC VIA I/O" });
-        regions.push_back({ 0x2010, 0x3FFF, IM_COL32(  0, 255, 200, 255), "GEN2 HGR Framebuffer" });
-    } else if (a1ioRtcEnabled) {
-        regions.push_back({ 0x2000, 0x200F, IM_COL32(255, 150,  50, 255), "IO_RTC VIA I/O" });
-        regions.push_back({ 0x2010, 0x3FFF, IM_COL32( 80, 200,  80, 255), "User RAM" });
-    } else if (graphicsCardEnabled) {
-        regions.push_back({ 0x2000, 0x3FFF, IM_COL32(  0, 255, 200, 255), "GEN2 HGR Framebuffer" });
-    } else {
-        regions.push_back({ 0x2000, 0x3FFF, IM_COL32( 80, 200,  80, 255), "User RAM" });
-    }
-    regions.push_back({ 0x4000, 0x7FFF, IM_COL32( 80, 200,  80, 255), "User RAM" });
-    if (microSDEnabled) {
-        regions.push_back({ 0x8000, 0x9FFF, IM_COL32(255, 200,  80, 255), "SD CARD OS ROM" });
-    } else {
-        regions.push_back({ 0x8000, 0x9FFF, IM_COL32( 80, 200,  80, 255), "User RAM" });
-    }
-    std::vector<MemRegion> tail;
-    if (microSDEnabled && wifiModemEnabled) {
-        tail.push_back({ 0xA000, 0xA00F, IM_COL32(255, 150,  50, 255), "VIA 65C22 I/O" });
-        tail.push_back({ 0xA010, 0xAFFF, IM_COL32( 80, 200,  80, 255), "User RAM" });
-        tail.push_back({ 0xB000, 0xB003, IM_COL32(  0, 200, 200, 255), "ACIA 65C51 I/O" });
-        tail.push_back({ 0xB004, 0xBFFF, IM_COL32( 80, 200,  80, 255), "User RAM" });
-    } else if (microSDEnabled) {
-        tail.push_back({ 0xA000, 0xA00F, IM_COL32(255, 150,  50, 255), "VIA 65C22 I/O" });
-        tail.push_back({ 0xA010, 0xBFFF, IM_COL32( 80, 200,  80, 255), "User RAM" });
-    } else if (wifiModemEnabled) {
-        tail.push_back({ 0xA000, 0xAFFF, IM_COL32( 80, 200,  80, 255), "User RAM" });
-        tail.push_back({ 0xB000, 0xB003, IM_COL32(  0, 200, 200, 255), "ACIA 65C51 I/O" });
-        tail.push_back({ 0xB004, 0xBFFF, IM_COL32( 80, 200,  80, 255), "User RAM" });
-    } else {
-        tail.push_back({ 0xA000, 0xBFFF, IM_COL32( 80, 200,  80, 255), "User RAM" });
-    }
-    tail.push_back({ 0xC000, 0xC0FF, IM_COL32(255, 140,  80, 255), "ACI I/O" });
-    tail.push_back({ 0xC100, 0xC1FF, IM_COL32(255, 190,  80, 255), "ACI ROM" });
-    if (sidEnabled) {
-        tail.push_back({ 0xC200, 0xC7FF, IM_COL32( 60,  60,  60, 255), "Unused" });
-        tail.push_back({ 0xC800, 0xCBFF, IM_COL32(200, 100, 255, 255), "A1-SID I/O" });
-    } else {
-        tail.push_back({ 0xC200, 0xCBFF, IM_COL32( 60,  60,  60, 255), "Unused" });
-    }
-    if (tms9918Enabled && sidEnabled) {
-        tail.push_back({ 0xCC00, 0xCC01, IM_COL32(100, 200, 255, 255), "TMS9918 I/O" });
-        tail.push_back({ 0xCC02, 0xCFFF, IM_COL32(200, 100, 255, 255), "A1-SID I/O (mirror)" });
-    } else if (tms9918Enabled) {
-        tail.push_back({ 0xCC00, 0xCC01, IM_COL32(100, 200, 255, 255), "TMS9918 I/O" });
-        tail.push_back({ 0xCC02, 0xCFFF, IM_COL32( 60,  60,  60, 255), "Unused" });
-    } else if (sidEnabled) {
-        tail.push_back({ 0xCC00, 0xCFFF, IM_COL32(200, 100, 255, 255), "A1-SID I/O (mirror)" });
-    } else {
-        tail.push_back({ 0xCC00, 0xCFFF, IM_COL32( 60,  60,  60, 255), "Unused" });
-    }
-    std::vector<MemRegion> tail2 = {
-        { 0xD000, 0xD0FF, IM_COL32(255,  80,  80, 255), "I/O (KBD/DSP)" },
-        { 0xD100, 0xDFFF, IM_COL32( 60,  60,  60, 255), "Unused" },
-        { 0xE000, 0xEFFF, IM_COL32(255, 255,  80, 255), "BASIC ROM" },
-        { 0xF000, 0xFEFF, IM_COL32( 60,  60,  60, 255), "Unused" },
-        { 0xFF00, 0xFFFF, IM_COL32(  0, 200, 255, 255), "Woz Monitor ROM" },
-    };
-    regions.insert(regions.end(), tail.begin(), tail.end());
-    regions.insert(regions.end(), tail2.begin(), tail2.end());
     int numRegions = static_cast<int>(regions.size());
 
     // Grille 2×2 : ligne du haut = carte | légende ; ligne du bas = I/O | ACI + vecteurs
@@ -2395,8 +2445,6 @@ void MainWindow_ImGui::renderMemoryMapWindow()
     const int pcPage = pc >> 8;
     const quint8 sp = uiSnapshot.stackPointer;
     const int spPage = 1; // stack is always page 1
-
-    ImU32 unusedColor = IM_COL32(60, 60, 60, 255);
 
     ImGuiTableFlags tableFlags = ImGuiTableFlags_BordersInnerH | ImGuiTableFlags_SizingFixedFit;
     if (ImGui::BeginTable("MemoryMapGrid", 2, tableFlags)) {
@@ -2417,22 +2465,18 @@ void MainWindow_ImGui::renderMemoryMapWindow()
             int page = row * COLS + col;
             quint16 addr = (quint16)(page << 8);
 
-            // Find region color (first match wins)
+            // Find region color (last match wins — layers override)
             ImU32 baseColor = IM_COL32(40, 40, 40, 255);
             for (int r = 0; r < numRegions; ++r) {
                 if (addr >= regions[r].start && addr <= regions[r].end) {
                     baseColor = regions[r].color;
-                    break;
                 }
             }
 
             // Check if page has non-zero data (for RAM regions, show activity)
+            // A page is User RAM only if no higher layer overrode the base RAM color
             bool hasData = false;
-            bool isUserRam = (addr >= 0x0200 && addr <= 0xBFFF)
-                          && !(graphicsCardEnabled && addr >= 0x2000 && addr <= 0x3FFF)
-                          && !(a1ioRtcEnabled && addr >= 0x2000 && addr <= 0x200F)
-                          && !(microSDEnabled && addr >= 0x8000 && addr <= 0x9FFF)
-                          && !(microSDEnabled && addr >= 0xA000 && addr <= 0xA00F);
+            bool isUserRam = (baseColor == ramColor);
             if (isUserRam) {
                 for (int b = 0; b < 256; ++b) {
                     if (memPtr[addr + b] != 0) {
@@ -2480,12 +2524,13 @@ void MainWindow_ImGui::renderMemoryMapWindow()
                     }
                     ImGui::BeginTooltip();
                     ImGui::Text("Page $%02X : $%04X-$%04X", page, addr, addr + 0xFF);
+                    // Last match wins (same as grid rendering)
+                    const char* tooltipLabel = nullptr;
                     for (int r = 0; r < numRegions; ++r) {
-                        if (addr >= regions[r].start && addr <= regions[r].end) {
-                            ImGui::Text("%s", regions[r].label);
-                            break;
-                        }
+                        if (addr >= regions[r].start && addr <= regions[r].end)
+                            tooltipLabel = regions[r].label;
                     }
+                    if (tooltipLabel) ImGui::Text("%s", tooltipLabel);
                     if (page == pcPage) ImGui::Text("PC = $%04X", pc);
                     ImGui::EndTooltip();
                 }
@@ -2509,8 +2554,18 @@ void MainWindow_ImGui::renderMemoryMapWindow()
         ImGui::TableSetColumnIndex(1);
         ImGui::Text("Legend:");
         ImGui::Separator();
-        for (int i = 0; i < numRegions; ++i) {
-            if (regions[i].color == unusedColor) continue;
+        // Skip layer 0 (User RAM / Unmapped base) — show from layer 1 onward,
+        // and deduplicate by label+color.
+        std::vector<std::pair<ImU32, const char*>> seen;
+        for (int i = 2; i < numRegions; ++i) {
+            if (regions[i].color == unmapColor) continue;
+            // Deduplicate
+            bool dup = false;
+            for (const auto& s : seen) {
+                if (s.first == regions[i].color && strcmp(s.second, regions[i].label) == 0) { dup = true; break; }
+            }
+            if (dup) continue;
+            seen.push_back({regions[i].color, regions[i].label});
             ImVec2 p = ImGui::GetCursorScreenPos();
             ImDrawList* dl = ImGui::GetWindowDrawList();
             dl->AddRectFilled(p, ImVec2(p.x + 12, p.y + 12), regions[i].color);
@@ -2519,14 +2574,24 @@ void MainWindow_ImGui::renderMemoryMapWindow()
             ImGui::SameLine();
             ImGui::Text("$%04X-$%04X %s", regions[i].start, regions[i].end, regions[i].label);
         }
+        // Always show User RAM and Unmapped at the end
         {
             ImVec2 p = ImGui::GetCursorScreenPos();
             ImDrawList* dl = ImGui::GetWindowDrawList();
-            dl->AddRectFilled(p, ImVec2(p.x + 12, p.y + 12), unusedColor);
+            dl->AddRectFilled(p, ImVec2(p.x + 12, p.y + 12), ramColor);
             dl->AddRect(p, ImVec2(p.x + 12, p.y + 12), IM_COL32(180, 180, 180, 255));
             ImGui::Dummy(ImVec2(16, 14));
             ImGui::SameLine();
-            ImGui::Text("Unused");
+            ImGui::Text("$0000-$%04X User RAM (%d KB)", ramCeiling - 1, presetRamKB);
+        }
+        {
+            ImVec2 p = ImGui::GetCursorScreenPos();
+            ImDrawList* dl = ImGui::GetWindowDrawList();
+            dl->AddRectFilled(p, ImVec2(p.x + 12, p.y + 12), unmapColor);
+            dl->AddRect(p, ImVec2(p.x + 12, p.y + 12), IM_COL32(180, 180, 180, 255));
+            ImGui::Dummy(ImVec2(16, 14));
+            ImGui::SameLine();
+            ImGui::Text("Unmapped");
         }
 
         // --- Ligne 1 : I/O sous la carte | ACI + vecteurs sous la légende ---

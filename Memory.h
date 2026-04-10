@@ -53,6 +53,7 @@ public:
     // Load Memory from file
     int loadROM(const char* filename, quint16 startAddress, size_t maxSize, const char* label);
     int loadBasic(void);
+    int loadApplesoftLite(void);
     int loadKrusader(void);
     int loadWozMonitor(void);
     int loadAciRom(void);

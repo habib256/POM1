@@ -546,9 +546,10 @@ ImVec4 MemoryViewer_ImGui::getColorForAddress(int address)
         return ImVec4(1.0f, 0.70f, 0.31f, 1.0f);    // ACI ROM - amber
     if (address >= 0xD000 && address <= 0xD0FF)
         return ImVec4(1.0f, 0.31f, 0.31f, 1.0f);    // I/O (KBD/DSP) - red
-    if (address >= 0xE000 && address <= 0xEFFF)
-        return ImVec4(1.0f, 1.0f, 0.31f, 1.0f);     // BASIC ROM - yellow
-    if (address >= 0xFF00)
-        return ImVec4(0.0f, 0.78f, 1.0f, 1.0f);     // Woz Monitor ROM - cyan
+    // Dynamic ROM regions (BASIC, Applesoft Lite, Krusader, Woz Monitor, etc.)
+    for (const auto& rom : romRegions) {
+        if (address >= rom.start && address <= rom.end)
+            return ImVec4(1.0f, 1.0f, 0.31f, 1.0f); // ROM - yellow
+    }
     return ImVec4(0.4f, 0.4f, 0.4f, 1.0f);          // Unused
 }
