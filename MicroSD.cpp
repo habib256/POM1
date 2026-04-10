@@ -63,7 +63,6 @@ void MicroSD::reset()
     writeDataBuffer.clear();
     dirIdleCycles = 0;
     testIdleCycles = 0;
-    testEchoCount = 0;
     currentDirectory.clear();
 }
 
@@ -213,6 +212,14 @@ void MicroSD::writeRegister(uint16_t address, uint8_t value)
 
     case 0x02: // DDRB
         ddrB = value;
+        // DDRB is only written during VIA initialization (ROM startup).
+        // If the MCU was stuck in TEST_ECHO (e.g. after a CPU soft reset),
+        // return to IDLE so the ROM can re-establish communication.
+        if (mcuPhase == McuPhase::TEST_ECHO) {
+            mcuPhase = McuPhase::IDLE;
+            responseBuffer.clear();
+            responseIndex = 0;
+        }
         break;
 
     case 0x03: // DDRA
@@ -385,10 +392,11 @@ void MicroSD::handleByteFromCPU(uint8_t byte)
             break;
 
         case CMD_TEST:
-            // TEST: the ROM sends one byte; the MCU echoes it back.
+            // TEST: the ROM sends bytes; the MCU echoes each XOR'd with 0xFF.
+            // The ROM displays '*' after each full 0x00-0xFF pass (256 bytes).
+            // The user presses ESC to exit; the idle timeout is a safety net.
             mcuPhase = McuPhase::TEST_ECHO;
             testIdleCycles = 0;
-            testEchoCount = 0;
             break;
 
         default:
@@ -398,18 +406,10 @@ void MicroSD::handleByteFromCPU(uint8_t byte)
         break;
 
     case McuPhase::TEST_ECHO:
-        // TEST: echo byte XOR'd with 0xFF (matches real ATMEGA firmware).
-        // The real MCU loops: while(!TIMEOUT) { recv; send(data^0xFF); }
-        // Limit to TEST_MAX_ECHOES (256 = one full 0x00-0xFF pass) to prevent
-        // infinite output at emulation speed. The real hardware is naturally
-        // limited by SPI/serial timing; we simulate that constraint here.
-        testEchoCount++;
-        if (testEchoCount >= TEST_MAX_ECHOES) {
-            // One full pass done — stop responding, ROM will detect timeout
-            mcuPhase = McuPhase::IDLE;
-        } else {
-            beginResponse({static_cast<uint8_t>(byte ^ 0xFF)}, McuPhase::TEST_ECHO);
-        }
+        // Echo byte XOR'd with 0xFF (matches real ATMEGA firmware).
+        // Reset idle timeout — CPU is actively exchanging bytes.
+        testIdleCycles = 0;
+        beginResponse({static_cast<uint8_t>(byte ^ 0xFF)}, McuPhase::TEST_ECHO);
         break;
 
     case McuPhase::RECEIVING_STRING:

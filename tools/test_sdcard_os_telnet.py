@@ -285,22 +285,28 @@ def phase1_readonly(sock: socket.socket, results: TestResults) -> None:
     results.check("1.8 LS HGR shows files", out, "8192")
 
     # 1.9 TEST — ROM sends bytes 0x00-0xFF to MCU, MCU echoes each XOR 0xFF.
-    # The MCU limits TEST to 256 echoes (one full pass), then stops responding.
-    # The ROM detects the timeout and prints the result.
+    # ROM displays '*' after each full pass of 256 bytes. User presses ESC to exit.
     sock.sendall(("TEST" + "\r").encode("ascii"))
-    time.sleep(0.5)
-    out = recv_avail(sock, total=6.0, idle=1.0)
-    vprint("TEST", out)
+    time.sleep(0.3)
+    out = recv_avail(sock, total=3.0, idle=0.3)
+    vprint("TEST start", out)
     results.check("1.9 TEST command starts", out, "TESTING")
-    results.check_not("1.9b TEST no transfer error", out, "TRANSFER ERROR")
-    # Drain any remaining TEST output and wait for the prompt
-    extra = recv_avail(sock, total=3.0, idle=1.0)
-    vprint("TEST drain", extra)
-    # If we're not back at the prompt, reset and re-enter SD CARD OS
+    # Wait for at least one '*' (one full 256-byte pass verified)
+    if "*" not in out:
+        out += recv_avail(sock, total=4.0, idle=0.5)
+    results.check("1.9b TEST shows verified pass", out, "*")
+    results.check_not("1.9c TEST no transfer error", out, "TRANSFER ERROR")
+    # Send ESC to exit the test loop cleanly (like real hardware)
+    send_ctrl(sock, 0x1B)  # ESC
+    time.sleep(0.3)
+    extra = recv_avail(sock, total=3.0, idle=0.5)
+    vprint("TEST after ESC", extra)
     combined = out + extra
+    # If not back at prompt, reset and re-enter SD CARD OS.
+    # Wait for MCU idle timeout (~0.5s) so TEST_ECHO clears before re-entry.
     if "/>" not in combined:
         send_ctrl(sock, CTRL_R)
-        time.sleep(0.5)
+        time.sleep(1.0)
         recv_avail(sock, total=2.0, idle=0.5)
         out = send_line(sock, "8000R", wait=0.5, read_t=4.0)
         vprint("TEST recovery", out)

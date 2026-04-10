@@ -123,11 +123,9 @@ private:
 
     // --- DIR / TEST timeout ---
     int dirIdleCycles;              // cycles since last CPU interaction in DIR_WAIT_REQUEST
-    int testIdleCycles;             // cycles elapsed since TEST_ECHO started
-    int testEchoCount;              // bytes echoed in current TEST session
+    int testIdleCycles;             // cycles idle since last TEST_ECHO byte
     static constexpr int DIR_TIMEOUT_CYCLES  = 500000;  // ~0.5s at 1 MHz
-    static constexpr int TEST_TIMEOUT_CYCLES = 500000;  // ~0.5s at 1 MHz (matches real ATMEGA)
-    static constexpr int TEST_MAX_ECHOES     = 256;     // one full 0x00-0xFF pass
+    static constexpr int TEST_TIMEOUT_CYCLES = 500000;  // ~0.5s at 1 MHz idle timeout
 
     // --- Host filesystem ---
     std::string sdCardRootPath;

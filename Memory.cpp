@@ -122,6 +122,7 @@ void Memory::resetMemory(void)
     a1ioRtc->reset();
 }
 
+
 void Memory::configureResetVectors(quint16 vectorAddress)
 {
     mem[0xFFFA] = static_cast<quint8>(vectorAddress & 0xFF);
