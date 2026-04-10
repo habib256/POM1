@@ -161,7 +161,7 @@ private :
     std::unique_ptr<WiFiModem> wifiModem;
     bool wifiModemEnabled = false;
     std::unique_ptr<TerminalCard> terminalCard;
-    bool terminalCardEnabled = false;
+    bool terminalCardEnabled = !POM1_IS_WASM;
     std::unique_ptr<A1IO_RTC> a1ioRtc;
     bool a1ioRtcEnabled = false;
 

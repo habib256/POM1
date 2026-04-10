@@ -91,6 +91,7 @@ private:
         DIR_WAIT_REQUEST,   // DIR: waiting for CPU to request next entry
         WRITE_RECV_LEN,     // WRITE: receiving 2-byte file length
         WRITE_RECV_DATA,    // WRITE: receiving file data bytes
+        TEST_ECHO,          // TEST: waiting for one byte to echo back
     };
 
     McuPhase mcuPhase;
@@ -120,9 +121,13 @@ private:
     int writeLenBytesReceived;
     std::vector<uint8_t> writeDataBuffer;
 
-    // --- DIR timeout ---
+    // --- DIR / TEST timeout ---
     int dirIdleCycles;              // cycles since last CPU interaction in DIR_WAIT_REQUEST
-    static constexpr int DIR_TIMEOUT_CYCLES = 500000; // ~0.5s at 1 MHz
+    int testIdleCycles;             // cycles elapsed since TEST_ECHO started
+    int testEchoCount;              // bytes echoed in current TEST session
+    static constexpr int DIR_TIMEOUT_CYCLES  = 500000;  // ~0.5s at 1 MHz
+    static constexpr int TEST_TIMEOUT_CYCLES = 500000;  // ~0.5s at 1 MHz (matches real ATMEGA)
+    static constexpr int TEST_MAX_ECHOES     = 256;     // one full 0x00-0xFF pass
 
     // --- Host filesystem ---
     std::string sdCardRootPath;

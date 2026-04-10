@@ -62,6 +62,8 @@ void MicroSD::reset()
     writeLenBytesReceived = 0;
     writeDataBuffer.clear();
     dirIdleCycles = 0;
+    testIdleCycles = 0;
+    testEchoCount = 0;
     currentDirectory.clear();
 }
 
@@ -157,10 +159,21 @@ void MicroSD::writeRegister(uint16_t address, uint8_t value)
         // --- CPU_STROBE rising edge ---
         if (!prevCpuStrobe && cpuStrobeHigh) {
             if (ddrA == 0xFF) {
-                // Abort stale response if CPU starts a new command
+                // CPU switched to output mode and is starting a new command.
+                // If we were sending a response, check whether it was fully
+                // delivered.  The ROM reads the last byte from PORTA then
+                // switches DDRA to output without formally ACK-ing, so we
+                // count a pending (loaded but un-ACKed) byte as delivered.
                 if (mcuPhase == McuPhase::SENDING_RESPONSE) {
-                    if (debugEnabled) std::cout << "[SD] Aborting stale response, reset to IDLE" << std::endl;
-                    mcuPhase = McuPhase::IDLE;
+                    size_t bytesDelivered = responseIndex + (mcuStrobeHigh ? 1 : 0);
+                    if (bytesDelivered >= responseBuffer.size()) {
+                        // Response was fully consumed — finalize normally
+                        mcuPhase = nextPhaseAfterResponse;
+                        nextPhaseAfterResponse = McuPhase::IDLE;
+                    } else {
+                        if (debugEnabled) std::cout << "[SD] Aborting stale response, reset to IDLE" << std::endl;
+                        mcuPhase = McuPhase::IDLE;
+                    }
                     responseBuffer.clear();
                     responseIndex = 0;
                 }
@@ -282,6 +295,16 @@ void MicroSD::advanceCycles(int cycles)
         }
     }
 
+    // TEST_ECHO timeout: the real ATMEGA loops while(!TIMEOUT), then exits
+    // to the main command handler.  Simulate that timeout here.
+    if (mcuPhase == McuPhase::TEST_ECHO) {
+        testIdleCycles += cycles;
+        if (testIdleCycles >= TEST_TIMEOUT_CYCLES) {
+            mcuPhase = McuPhase::IDLE;
+            testIdleCycles = 0;
+        }
+    }
+
     if (!t1Running || cycles <= 0) return;
 
     int remaining = static_cast<int>(t1Counter) - cycles;
@@ -362,9 +385,10 @@ void MicroSD::handleByteFromCPU(uint8_t byte)
             break;
 
         case CMD_TEST:
-            // Echo loopback: we'll receive the next byte and echo it
-            // But TEST sends a string — let's handle it as receiving string
-            mcuPhase = McuPhase::RECEIVING_STRING;
+            // TEST: the ROM sends one byte; the MCU echoes it back.
+            mcuPhase = McuPhase::TEST_ECHO;
+            testIdleCycles = 0;
+            testEchoCount = 0;
             break;
 
         default:
@@ -373,19 +397,25 @@ void MicroSD::handleByteFromCPU(uint8_t byte)
         }
         break;
 
+    case McuPhase::TEST_ECHO:
+        // TEST: echo byte XOR'd with 0xFF (matches real ATMEGA firmware).
+        // The real MCU loops: while(!TIMEOUT) { recv; send(data^0xFF); }
+        // Limit to TEST_MAX_ECHOES (256 = one full 0x00-0xFF pass) to prevent
+        // infinite output at emulation speed. The real hardware is naturally
+        // limited by SPI/serial timing; we simulate that constraint here.
+        testEchoCount++;
+        if (testEchoCount >= TEST_MAX_ECHOES) {
+            // One full pass done — stop responding, ROM will detect timeout
+            mcuPhase = McuPhase::IDLE;
+        } else {
+            beginResponse({static_cast<uint8_t>(byte ^ 0xFF)}, McuPhase::TEST_ECHO);
+        }
+        break;
+
     case McuPhase::RECEIVING_STRING:
         if (byte == 0x00) {
             // Null terminator — string complete
-            if (currentCommand == CMD_TEST) {
-                // TEST: echo the string back
-                std::vector<uint8_t> resp;
-                resp.push_back(OK_RESPONSE);
-                for (char c : stringBuffer) resp.push_back(static_cast<uint8_t>(c));
-                resp.push_back(0x00);
-                beginResponse(resp, McuPhase::IDLE);
-            } else {
-                processCommand();
-            }
+            processCommand();
         } else if (stringBuffer.size() < MAX_STRING_LEN) {
             stringBuffer.push_back(static_cast<char>(byte));
         }
@@ -967,8 +997,22 @@ void MicroSD::cmdMount()
 std::string MicroSD::resolveHostPath(const std::string& name) const
 {
     fs::path base(sdCardRootPath);
-    if (!currentDirectory.empty()) base /= currentDirectory;
-    if (!name.empty()) base /= name;
+
+    std::string cleanName = name;
+    // Strip leading slash — the SD CARD OS ROM uses absolute paths like
+    // "/HELP/SAVE.TXT" which must be relative to the SD card root, not
+    // the host filesystem root.  Without this, fs::path::operator/= would
+    // replace the entire base path, escaping the sandbox.
+    bool isAbsolute = !cleanName.empty() &&
+                      (cleanName.front() == '/' || cleanName.front() == '\\');
+    if (isAbsolute) {
+        cleanName.erase(0, 1);
+        // Absolute path on the SD card — ignore currentDirectory
+    } else if (!currentDirectory.empty()) {
+        base /= currentDirectory;
+    }
+
+    if (!cleanName.empty()) base /= cleanName;
 
     // Security: ensure resolved path stays within sdCardRootPath
     std::error_code ec;

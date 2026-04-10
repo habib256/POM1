@@ -95,6 +95,60 @@ static void drawToolbarTextLabel(ImDrawList* dl, const ImVec2& rmin, const ImVec
     dl->AddText(font, fs, pos, ImGui::GetColorU32(ImGuiCol_Text), t);
 }
 
+static constexpr int kMonitorTintCount = 3;
+
+static Screen_ImGui::MonitorMode monitorTintAdvance(Screen_ImGui::MonitorMode m)
+{
+    int n = (static_cast<int>(m) + 1) % kMonitorTintCount;
+    return static_cast<Screen_ImGui::MonitorMode>(n);
+}
+
+static ImVec4 monitorTintSwatchColor(Screen_ImGui::MonitorMode m)
+{
+    switch (m) {
+    case Screen_ImGui::MonitorMode::Green:
+        return ImVec4(0.12f, 0.78f, 0.28f, 1.0f);
+    case Screen_ImGui::MonitorMode::Amber:
+        return ImVec4(0.98f, 0.58f, 0.12f, 1.0f);
+    case Screen_ImGui::MonitorMode::Monochrome:
+    default:
+        return ImVec4(0.9f, 0.9f, 0.92f, 1.0f);
+    }
+}
+
+static const char* monitorTintLabel(Screen_ImGui::MonitorMode m)
+{
+    switch (m) {
+    case Screen_ImGui::MonitorMode::Green:
+        return "Green";
+    case Screen_ImGui::MonitorMode::Amber:
+        return "Brown";
+    case Screen_ImGui::MonitorMode::Monochrome:
+    default:
+        return "Monochrome";
+    }
+}
+
+/** Bouton teinte CRT : fond = couleur du phosphor actuel, clic → mode suivant. */
+static bool monitorTintCycleButton(const char* id, const ImVec2& size, Screen_ImGui* screen)
+{
+    const Screen_ImGui::MonitorMode mode = screen->monitorMode;
+    const ImVec4 base = monitorTintSwatchColor(mode);
+    const ImVec4 hov(std::min(1.0f, base.x * 1.14f + 0.03f), std::min(1.0f, base.y * 1.14f + 0.03f),
+                     std::min(1.0f, base.z * 1.14f + 0.03f), 1.0f);
+    const ImVec4 act(base.x * 0.82f, base.y * 0.82f, base.z * 0.82f, 1.0f);
+    ImGui::PushStyleColor(ImGuiCol_Button, base);
+    ImGui::PushStyleColor(ImGuiCol_ButtonHovered, hov);
+    ImGui::PushStyleColor(ImGuiCol_ButtonActive, act);
+    ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.0f, 0.0f, 0.0f, 0.0f));
+    const bool clicked = ImGui::Button(id, size);
+    ImGui::PopStyleColor(4);
+    if (clicked) {
+        screen->monitorMode = monitorTintAdvance(mode);
+    }
+    return clicked;
+}
+
 struct MachineWindowPlacement {
     const char* name;
     ImVec2 pos;
@@ -864,6 +918,17 @@ void MainWindow_ImGui::renderToolbar()
         ImGui::SeparatorEx(ImGuiSeparatorFlags_Vertical);
         ImGui::SameLine(0, 12);
 
+        // --- Monitor phosphor tint: one swatch, click cycles Green → Brown → Monochrome ---
+        {
+            const ImVec2 swatchSize(22.0f, 22.0f);
+            monitorTintCycleButton("##phosphor_cycle", swatchSize, screen.get());
+            if (ImGui::IsItemHovered()) {
+                ImGui::SetTooltip("%s phosphor — click to cycle tint", monitorTintLabel(screen->monitorMode));
+            }
+        }
+
+        ImGui::SameLine(0, 6);
+
         // --- Character mode: Font Awesome apple (charmap) / font (host) ---
         {
             const bool charm = (screen->characterRenderMode == Screen_ImGui::CharacterRenderMode::Apple1Charmap);
@@ -883,45 +948,6 @@ void MainWindow_ImGui::renderToolbar()
                     charm ? "Apple-1 charmap (bitmap ROM)\nClick — use host ASCII font"
                           : "Host ASCII font\nClick — use Apple-1 charmap");
             }
-        }
-
-        ImGui::SameLine(0, 6);
-
-        // --- Monitor phosphor tint (color swatches, no text) ---
-        {
-            const ImVec2 swatchSize(22.0f, 22.0f);
-            const ImVec4 borderSel(0.35f, 0.55f, 1.0f, 1.0f);
-            const ImVec4 borderIdle(0.0f, 0.0f, 0.0f, 0.5f);
-
-            auto swatch = [&](const char* id, bool selected, ImVec4 base, Screen_ImGui::MonitorMode mode,
-                              const char* tip) {
-                const ImVec4 hov(std::min(1.0f, base.x * 1.14f + 0.03f), std::min(1.0f, base.y * 1.14f + 0.03f),
-                                 std::min(1.0f, base.z * 1.14f + 0.03f), 1.0f);
-                const ImVec4 act(base.x * 0.82f, base.y * 0.82f, base.z * 0.82f, 1.0f);
-                ImGui::PushStyleColor(ImGuiCol_Button, base);
-                ImGui::PushStyleColor(ImGuiCol_ButtonHovered, hov);
-                ImGui::PushStyleColor(ImGuiCol_ButtonActive, act);
-                ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.0f, 0.0f, 0.0f, 0.0f));
-                ImGui::PushStyleVar(ImGuiStyleVar_FrameBorderSize, selected ? 2.5f : 1.0f);
-                ImGui::PushStyleColor(ImGuiCol_Border, selected ? borderSel : borderIdle);
-                if (ImGui::Button(id, swatchSize)) {
-                    screen->monitorMode = mode;
-                }
-                ImGui::PopStyleColor(5);
-                ImGui::PopStyleVar();
-                if (ImGui::IsItemHovered()) {
-                    ImGui::SetTooltip("%s", tip);
-                }
-            };
-
-            swatch("##phos_green", screen->monitorMode == Screen_ImGui::MonitorMode::Green,
-                   ImVec4(0.12f, 0.78f, 0.28f, 1.0f), Screen_ImGui::MonitorMode::Green, "Green phosphor");
-            ImGui::SameLine(0, 6);
-            swatch("##phos_amber", screen->monitorMode == Screen_ImGui::MonitorMode::Amber,
-                   ImVec4(0.98f, 0.58f, 0.12f, 1.0f), Screen_ImGui::MonitorMode::Amber, "Amber / brown phosphor");
-            ImGui::SameLine(0, 6);
-            swatch("##phos_mono", screen->monitorMode == Screen_ImGui::MonitorMode::Monochrome,
-                   ImVec4(0.9f, 0.9f, 0.92f, 1.0f), Screen_ImGui::MonitorMode::Monochrome, "Monochrome (white)");
         }
 
         // --- About button aligned to the right ---
@@ -1519,15 +1545,29 @@ void MainWindow_ImGui::renderScreenConfigDialog()
             ImGui::Unindent();
         }
 
-        int monitorMode = static_cast<int>(screen->monitorMode);
         ImGui::Spacing();
         ImGui::Text("Monitor Tint:");
-        ImGui::RadioButton("Green", &monitorMode, static_cast<int>(Screen_ImGui::MonitorMode::Green));
         ImGui::SameLine();
-        ImGui::RadioButton("Brown", &monitorMode, static_cast<int>(Screen_ImGui::MonitorMode::Amber));
-        ImGui::SameLine();
-        ImGui::RadioButton("Monochrome", &monitorMode, static_cast<int>(Screen_ImGui::MonitorMode::Monochrome));
-        screen->monitorMode = static_cast<Screen_ImGui::MonitorMode>(monitorMode);
+        {
+            const ImVec2 pad = ImGui::GetStyle().FramePadding;
+            float labelW = 0.0f;
+            for (int i = 0; i < kMonitorTintCount; ++i) {
+                const auto m = static_cast<Screen_ImGui::MonitorMode>(i);
+                labelW = std::max(labelW, ImGui::CalcTextSize(monitorTintLabel(m)).x);
+            }
+            const ImVec2 btnSize(labelW + pad.x * 2.0f + 8.0f, ImGui::GetFrameHeight());
+            monitorTintCycleButton("##display_phosphor_cycle", btnSize, screen.get());
+            const char* label = monitorTintLabel(screen->monitorMode);
+            if (ImGui::IsItemHovered()) {
+                ImGui::SetTooltip("%s — click for next tint (green, brown, monochrome)", label);
+            }
+            const ImVec2 ts = ImGui::CalcTextSize(label);
+            const ImVec2 p0 = ImGui::GetItemRectMin();
+            const ImVec2 p1 = ImGui::GetItemRectMax();
+            ImGui::GetWindowDrawList()->AddText(
+                ImVec2(p0.x + (p1.x - p0.x - ts.x) * 0.5f, p0.y + (p1.y - p0.y - ts.y) * 0.5f),
+                ImGui::GetColorU32(ImGuiCol_Text), label);
+        }
         ImGui::Checkbox("Cursor", &screen->showCursor);
 
         ImGui::Spacing();
@@ -2160,6 +2200,11 @@ void MainWindow_ImGui::hardReset()
     emulation->hardReset();
     loadedPrograms.clear();
     microSDEnabled = true;
+#if !POM1_IS_WASM
+    terminalCardEnabled = true;
+    emulation->setTerminalCardEnabled(true);
+    showTerminalCard = true;
+#endif
     setStatusMessage("Hard reset done - Memory cleared", 2.0f);
 }
 

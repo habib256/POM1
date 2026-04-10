@@ -69,8 +69,8 @@ private:
     bool microSDEnabled = true;
     bool wifiModemEnabled = false;
     bool showWiFiModem = false;
-    bool terminalCardEnabled = false;
-    bool showTerminalCard = false;
+    bool terminalCardEnabled = !POM1_IS_WASM;
+    bool showTerminalCard = !POM1_IS_WASM;
     bool a1ioRtcEnabled = false;
     bool showA1IO_RTC = false;
     bool fullscreen = false;
