@@ -212,7 +212,7 @@ int Memory::loadBasic(void)
 int Memory::loadApplesoftLite(void)
 {
     // Applesoft Lite: 8 KB ROM ($E000-$FFFF) — replaces both Integer BASIC and Woz Monitor.
-    return loadROM("applesoft-lite.rom", 0xE000, 0x2000, "Applesoft Lite");
+    return loadROM("applesoft-lite-cffa1.rom", 0xE000, 0x2000, "Applesoft Lite");
 }
 
 int Memory::loadKrusader(void)
