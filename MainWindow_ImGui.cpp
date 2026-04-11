@@ -187,19 +187,19 @@ static const MachineConfig kMachinePresets[] = {
     },
     {
         "Replica 1 + CFFA1",
-        "Replica 1 with CFFA1 CompactFlash storage and Applesoft Lite (floating-point BASIC).",
-        false, false, false, false, false, false, false,
+        "Replica 1 with CFFA1 CompactFlash storage, Applesoft Lite, Terminal Card.",
+        false, false, false, false, false, false, true,
         false, true, 32, BasicType::ApplesoftLite,
         { {"Apple 1 Screen", {10,61}, {0,0}} }, 1
     },
     {
-        "Bernie's Apple 1",
+        "Uncle Bernie's Apple 1",
         "Uncle Bernie's GEN2 280x192 HGR color graphics, Integer BASIC, ACI cassette.",
         true, false, false, false, false, false, false,
         false, false, 32, BasicType::Integer,
         {
             {"Apple 1 Screen",                 {10,  61}, {0,   0}},
-            {"Bernie's GEN2 HGR Graphic Card", {624, 61}, {576, 420}},
+            {"Uncle Bernie's GEN2 HGR Graphic Card", {624, 61}, {576, 420}},
         }, 2
     },
     {
@@ -222,7 +222,7 @@ static const MachineConfig kMachinePresets[] = {
         false, false, 56, BasicType::ApplesoftLite,
         {
             {"Apple 1 Screen",                 {10,  61},  {0,   0}},
-            {"Bernie's GEN2 HGR Graphic Card", {624, 61},  {576, 420}},
+            {"Uncle Bernie's GEN2 HGR Graphic Card", {624, 61},  {576, 420}},
             {"P-LAB Graphic Card (TMS9918)",   {644, 81},  {528, 420}},
             {"P-LAB Wi-Fi Modem",              {640, 495}, {340, 260}},
             {"P-LAB Terminal Card",            {10,  510}, {360, 280}},
@@ -362,7 +362,9 @@ void MainWindow_ImGui::render()
 #endif
         firstFrame = false;
         // Apply default preset now that ImGui is ready
-        applyMachineConfig(kMachinePresetCount - 1);
+        int idx = (defaultPresetIndex >= 0 && defaultPresetIndex < kMachinePresetCount)
+                  ? defaultPresetIndex : (kMachinePresetCount - 1);
+        applyMachineConfig(idx);
     }
 
     // Resize Apple 1 screen window on fullscreen transitions
@@ -581,7 +583,7 @@ void MainWindow_ImGui::renderMenuBar()
             }
             ImGui::Separator();
             ImGui::MenuItem("Woz ACI Cassette Control", nullptr, &showCassetteControl);
-            if (ImGui::MenuItem("Bernie's GEN2 HGR Graphic Card", nullptr, &graphicsCardEnabled)) {
+            if (ImGui::MenuItem("Uncle Bernie's GEN2 HGR Graphic Card", nullptr, &graphicsCardEnabled)) {
                 if (graphicsCardEnabled) showGraphicsCard = true;
             }
             ImGui::Separator();
@@ -663,6 +665,7 @@ void MainWindow_ImGui::renderToolbar()
         if (ImGui::Button(ICON_FA_SD_CARD, btnSize)) {
             microSDEnabled = !microSDEnabled;
             emulation->setMicroSDEnabled(microSDEnabled);
+            if (microSDEnabled) { cffa1Enabled = false; } // mutual exclusion
             setStatusMessage(microSDEnabled ? "P-LAB microSD Card plugged — type 8000R"
                                             : "P-LAB microSD Card unplugged", 2.0f);
         }
@@ -670,6 +673,22 @@ void MainWindow_ImGui::renderToolbar()
         if (ImGui::IsItemHovered()) {
             ImGui::SetTooltip(microSDEnabled ? "P-LAB microSD Storage Card (click to unplug)"
                                              : "Plug P-LAB microSD Storage Card");
+        }
+
+        ImGui::SameLine();
+        ImGui::PushStyleColor(ImGuiCol_Button,
+            cffa1Enabled ? ImVec4(0.2f, 0.4f, 0.8f, 1.0f) : ImVec4(0.3f, 0.3f, 0.3f, 1.0f));
+        if (ImGui::Button(ICON_FA_COMPACT_DISC, btnSize)) {
+            cffa1Enabled = !cffa1Enabled;
+            emulation->setCFFA1Enabled(cffa1Enabled);
+            if (cffa1Enabled) { microSDEnabled = false; } // mutual exclusion
+            setStatusMessage(cffa1Enabled ? "CFFA1 CompactFlash plugged — type 9006R"
+                                          : "CFFA1 CompactFlash unplugged", 2.0f);
+        }
+        ImGui::PopStyleColor();
+        if (ImGui::IsItemHovered()) {
+            ImGui::SetTooltip(cffa1Enabled ? "CFFA1 CompactFlash Card (click to unplug)"
+                                           : "Plug CFFA1 CompactFlash Card");
         }
 
         ImGui::SameLine();
@@ -733,7 +752,7 @@ void MainWindow_ImGui::renderToolbar()
                                ImGui::GetItemRectMin(), ImGui::GetItemRectMax(), "HGR");
         ImGui::PopStyleColor();
         if (ImGui::IsItemHovered()) {
-            ImGui::SetTooltip(graphicsCardEnabled ? "Bernie's GEN2 HGR (click to unplug)" : "Plug Bernie's GEN2 HGR Graphic Card");
+            ImGui::SetTooltip(graphicsCardEnabled ? "Bernie's GEN2 HGR (click to unplug)" : "Plug Uncle Bernie's GEN2 HGR Graphic Card");
         }
 
         ImGui::SameLine();
@@ -1149,9 +1168,9 @@ void MainWindow_ImGui::renderGraphicsCardWindow()
     const float winW = GraphicsCard::kHiresWidth * pixelScale + 16;
     const float winH = GraphicsCard::kHiresHeight * pixelScale + 36;
     ImGui::SetNextWindowSize(ImVec2(winW, winH), ImGuiCond_FirstUseEver);
-    applyPendingLayout("Bernie's GEN2 HGR Graphic Card");
+    applyPendingLayout("Uncle Bernie's GEN2 HGR Graphic Card");
     ImGui::PushStyleColor(ImGuiCol_WindowBg, IM_COL32(0, 0, 0, 255));
-    if (ImGui::Begin("Bernie's GEN2 HGR Graphic Card", &showGraphicsCard)) {
+    if (ImGui::Begin("Uncle Bernie's GEN2 HGR Graphic Card", &showGraphicsCard)) {
         ImVec2 pos = ImGui::GetCursorScreenPos();
         ImDrawList* drawList = ImGui::GetWindowDrawList();
 
@@ -2379,6 +2398,17 @@ void MainWindow_ImGui::applyMachineConfig(int presetIndex)
     }
 
     setStatusMessage(std::string("Preset: ") + cfg.name, 3.0f);
+}
+
+int MainWindow_ImGui::getPresetCount()
+{
+    return kMachinePresetCount;
+}
+
+const char* MainWindow_ImGui::getPresetName(int index)
+{
+    if (index < 0 || index >= kMachinePresetCount) return nullptr;
+    return kMachinePresets[index].name;
 }
 
 void MainWindow_ImGui::renderMemoryMapWindow()

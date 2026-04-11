@@ -103,7 +103,49 @@ static void glfw_key_callback(GLFWwindow* window, int key, int scancode, int act
 int main(int argc, char* argv[])
 {
     std::cout << "POM1 v1.7 - Apple 1 Emulator (Dear ImGui)" << std::endl;
-    
+
+    // Parse command-line arguments: --preset <name|index>  or  --list-presets
+    int requestedPreset = -1; // -1 = default (last preset)
+    for (int i = 1; i < argc; ++i) {
+        std::string arg(argv[i]);
+        if (arg == "--list-presets") {
+            int n = MainWindow_ImGui::getPresetCount();
+            std::cout << "Available machine presets:" << std::endl;
+            for (int p = 0; p < n; ++p) {
+                std::cout << "  " << p << ": " << MainWindow_ImGui::getPresetName(p) << std::endl;
+            }
+            return 0;
+        }
+        if ((arg == "--preset" || arg == "-p") && i + 1 < argc) {
+            std::string val(argv[++i]);
+            // Try as numeric index first
+            char* end = nullptr;
+            long idx = strtol(val.c_str(), &end, 10);
+            if (end != val.c_str() && *end == '\0') {
+                requestedPreset = static_cast<int>(idx);
+            } else {
+                // Match by name (case-insensitive substring)
+                int n = MainWindow_ImGui::getPresetCount();
+                for (int p = 0; p < n; ++p) {
+                    std::string pname(MainWindow_ImGui::getPresetName(p));
+                    // Convert both to lowercase for comparison
+                    std::string valLow = val, pnameLow = pname;
+                    for (auto& c : valLow)  c = std::tolower(c);
+                    for (auto& c : pnameLow) c = std::tolower(c);
+                    if (pnameLow.find(valLow) != std::string::npos) {
+                        requestedPreset = p;
+                        break;
+                    }
+                }
+                if (requestedPreset < 0) {
+                    std::cerr << "ERROR: Unknown preset '" << val << "'. Use --list-presets to see available presets." << std::endl;
+                    return 1;
+                }
+            }
+            std::cout << "Preset: " << MainWindow_ImGui::getPresetName(requestedPreset) << std::endl;
+        }
+    }
+
     // Setup GLFW
     glfwSetErrorCallback(glfw_error_callback);
     if (!glfwInit())
@@ -182,6 +224,8 @@ int main(int argc, char* argv[])
 
     // Create main application
     MainWindow_ImGui mainWindow;
+    if (requestedPreset >= 0)
+        mainWindow.setDefaultPresetIndex(requestedPreset);
     mainWindow.setWindow(window);
     glfwSetWindowUserPointer(window, &mainWindow);
 

@@ -21,6 +21,9 @@ public:
 
     void render();
     void setWindow(GLFWwindow* win) { window = win; }
+    static int getPresetCount();
+    static const char* getPresetName(int index);
+    void setDefaultPresetIndex(int index) { defaultPresetIndex = index; }
     void handleGlfwChar(unsigned int codepoint);
     void handleGlfwKey(int key, int scancode, int action, int mods);
 
@@ -183,6 +186,7 @@ private:
     std::vector<LoadedRegion> loadedPrograms;
     std::vector<LoadedRegion> loadedRoms; // ROMs loaded by presets (BASIC, Krusader, etc.)
     int presetRamKB = 32;                 // Usable RAM for current preset (display only)
+    int defaultPresetIndex = -1;          // -1 = last preset (POM1)
 
     struct TapeDialogState {
         char filePath[512] = "cassette.aci";
