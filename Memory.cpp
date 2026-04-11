@@ -650,10 +650,12 @@ void Memory::setSIDEnabled(bool b)
 {
     if (b == sidEnabled) return;
     sidEnabled = b;
-    if (b)
+    if (b) {
         audioDevice->addSource(sid.get());
-    else
+    } else {
         audioDevice->removeSource(sid.get());
+        sid->reset();
+    }
 }
 
 void Memory::setMicroSDEnabled(bool b)

@@ -46,6 +46,22 @@ static float apple1LayoutVerticalChrome()
            kGapBelowToolbarBeforeApple1 + kStatusBarBandHeight + kApple1WindowDecorationSlop;
 }
 
+/** Échelle par défaut des fenêtres HGR / TMS9918 au premier affichage. */
+constexpr float kVideoCardDefaultPixelScale = 2.0f;
+/** Plancher d’échelle : évite des pixels quasi invisibles ; la fenêtre peut défiler si besoin. */
+constexpr float kVideoCardMinPixelScale = 0.25f;
+
+/** Taille d’affichage (native × pixelScale), centrée dans avail ; ratio natif conservé. */
+static ImVec2 layoutFitVideoViewport(ImVec2 avail, float nativeW, float nativeH, float& pixelScaleOut)
+{
+    const float aw = std::max(avail.x, 1.0f);
+    const float ah = std::max(avail.y, 1.0f);
+    float ps = std::min(aw / nativeW, ah / nativeH);
+    ps = std::max(ps, kVideoCardMinPixelScale);
+    pixelScaleOut = ps;
+    return ImVec2(nativeW * ps, nativeH * ps);
+}
+
 /** Icône cassette minimaliste : rectangle arrondi + 2 trous (bobines). */
 static void drawToolbarCassetteIcon(ImDrawList* dl, const ImVec2& rmin, const ImVec2& rmax)
 {
@@ -1164,19 +1180,27 @@ void MainWindow_ImGui::renderAboutDialog()
 
 void MainWindow_ImGui::renderGraphicsCardWindow()
 {
-    const float pixelScale = 2.0f;
-    const float winW = GraphicsCard::kHiresWidth * pixelScale + 16;
-    const float winH = GraphicsCard::kHiresHeight * pixelScale + 36;
+    const float defPs = kVideoCardDefaultPixelScale;
+    const float winW = GraphicsCard::kHiresWidth * defPs + 16.0f;
+    const float winH = GraphicsCard::kHiresHeight * defPs + 36.0f;
     ImGui::SetNextWindowSize(ImVec2(winW, winH), ImGuiCond_FirstUseEver);
+    const float minWinW = GraphicsCard::kHiresWidth * kVideoCardMinPixelScale + 16.0f;
+    const float minWinH = GraphicsCard::kHiresHeight * kVideoCardMinPixelScale + 36.0f;
+    ImGui::SetNextWindowSizeConstraints(ImVec2(minWinW, minWinH), ImVec2(FLT_MAX, FLT_MAX));
     applyPendingLayout("Uncle Bernie's GEN2 HGR Graphic Card");
     ImGui::PushStyleColor(ImGuiCol_WindowBg, IM_COL32(0, 0, 0, 255));
     if (ImGui::Begin("Uncle Bernie's GEN2 HGR Graphic Card", &showGraphicsCard)) {
+        ImVec2 avail = ImGui::GetContentRegionAvail();
+        float pixelScale = defPs;
+        ImVec2 size = layoutFitVideoViewport(avail, static_cast<float>(GraphicsCard::kHiresWidth),
+                                             static_cast<float>(GraphicsCard::kHiresHeight), pixelScale);
+        ImVec2 cursorPos = ImGui::GetCursorPos();
+        ImGui::SetCursorPos(ImVec2(
+            cursorPos.x + std::max(0.0f, (avail.x - size.x) * 0.5f),
+            cursorPos.y + std::max(0.0f, (avail.y - size.y) * 0.5f)));
         ImVec2 pos = ImGui::GetCursorScreenPos();
         ImDrawList* drawList = ImGui::GetWindowDrawList();
 
-        // Fill background black
-        ImVec2 size(GraphicsCard::kHiresWidth * pixelScale,
-                    GraphicsCard::kHiresHeight * pixelScale);
         drawList->AddRectFilled(pos, ImVec2(pos.x + size.x, pos.y + size.y),
                                 IM_COL32(0, 0, 0, 255));
 
@@ -1190,18 +1214,27 @@ void MainWindow_ImGui::renderGraphicsCardWindow()
 
 void MainWindow_ImGui::renderTMS9918Window()
 {
-    const float pixelScale = 2.0f;
-    const float winW = TMS9918::kScreenWidth  * pixelScale + 16;
-    const float winH = TMS9918::kScreenHeight * pixelScale + 36;
+    const float defPs = kVideoCardDefaultPixelScale;
+    const float winW = TMS9918::kScreenWidth * defPs + 16.0f;
+    const float winH = TMS9918::kScreenHeight * defPs + 36.0f;
     ImGui::SetNextWindowSize(ImVec2(winW, winH), ImGuiCond_FirstUseEver);
+    const float minWinW = TMS9918::kScreenWidth * kVideoCardMinPixelScale + 16.0f;
+    const float minWinH = TMS9918::kScreenHeight * kVideoCardMinPixelScale + 36.0f;
+    ImGui::SetNextWindowSizeConstraints(ImVec2(minWinW, minWinH), ImVec2(FLT_MAX, FLT_MAX));
     applyPendingLayout("P-LAB Graphic Card (TMS9918)");
     ImGui::PushStyleColor(ImGuiCol_WindowBg, IM_COL32(0, 0, 0, 255));
     if (ImGui::Begin("P-LAB Graphic Card (TMS9918)", &showTMS9918)) {
+        ImVec2 avail = ImGui::GetContentRegionAvail();
+        float pixelScale = defPs;
+        ImVec2 size = layoutFitVideoViewport(avail, static_cast<float>(TMS9918::kScreenWidth),
+                                             static_cast<float>(TMS9918::kScreenHeight), pixelScale);
+        ImVec2 cursorPos = ImGui::GetCursorPos();
+        ImGui::SetCursorPos(ImVec2(
+            cursorPos.x + std::max(0.0f, (avail.x - size.x) * 0.5f),
+            cursorPos.y + std::max(0.0f, (avail.y - size.y) * 0.5f)));
         ImVec2 pos = ImGui::GetCursorScreenPos();
         ImDrawList* drawList = ImGui::GetWindowDrawList();
 
-        ImVec2 size(TMS9918::kScreenWidth * pixelScale,
-                    TMS9918::kScreenHeight * pixelScale);
         drawList->AddRectFilled(pos, ImVec2(pos.x + size.x, pos.y + size.y),
                                 IM_COL32(0, 0, 0, 255));
 
