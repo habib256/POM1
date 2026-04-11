@@ -7,7 +7,7 @@
 🎂 **Celebrating 50 years of Apple (1976–2026)** — POM1 v1.7 is released in honor of the 50th anniversary of Apple Computer, founded on April 1, 1976.
 
 A faithful Apple 1 emulator built with Dear ImGui & OpenGL — fast, lightweight, and cross-platform. 
-Now with [P-LAB Wi-Fi Modem](https://p-l4b.github.io/wifi/), [P-LAB Terminal Card](https://p-l4b.github.io/terminal/), [P-LAB microSD Storage Card](https://p-l4b.github.io/sdcard/), [P-LAB A1-SID Sound Card](https://p-l4b.github.io/A1-SID/), [P-LAB Apple-1 Graphic Card (TMS9918)](https://p-l4b.github.io/graphic/) and [Uncle Bernie's GEN2 Color Graphics Card](https://www.applefritter.com/content/uncle-bernies-gen2-color-graphics-card-apple-1) support.
+Now with [P-LAB Wi-Fi Modem](https://p-l4b.github.io/wifi/), [P-LAB Terminal Card](https://p-l4b.github.io/terminal/), [P-LAB microSD Storage Card](https://p-l4b.github.io/sdcard/), [P-LAB A1-SID Sound Card](https://p-l4b.github.io/A1-SID/), [P-LAB Apple-1 Graphic Card (TMS9918)](https://p-l4b.github.io/graphic/), [P-LAB I/O Board & RTC](https://p-l4b.github.io/A1-IO_RTC/), **CFFA1** CompactFlash storage (Rich Dreher design, ProDOS `.po` disk), **Applesoft Lite** (CFFA1 or P-LAB microSD layout), and [Uncle Bernie's GEN2 Color Graphics Card](https://www.applefritter.com/content/uncle-bernies-gen2-color-graphics-card-apple-1) support.
 
 **Play it now in your browser** : 
 [![Play Online](https://img.shields.io/badge/Play%20Online-WebAssembly-blueviolet.svg)](https://habib256.github.io/POM1/build-wasm/pom1_imgui.html)
@@ -53,15 +53,19 @@ or build it natively.
 
 💾 **P-LAB microSD Storage Card** — [P-LAB microSD](https://p-l4b.github.io/sdcard/) — virtual FAT32 SD card mapped to host `sdcard/` directory — see [microSD](#-p-lab-microsd-storage-card)
 
+💽 **CFFA1 CompactFlash Card** — Emulates the **CFFA1** interface (8 KB firmware ROM at `$9000`–`$AFDF`, ATA registers at `$AFE0`–`$AFFF`) with a host **ProDOS `.po`** disk image — mutually exclusive with the microSD card — see [CFFA1](#cffa1-compactflash-card)
+
+⏰ **P-LAB I/O Board & RTC** — [P-LAB A1-IO](https://p-l4b.github.io/A1-IO_RTC/) — 65C22 VIA at `$2000`–`$200F` bridging a DS3231 real-time clock, temperature, ADC, and digital I/O — see [I/O Board & RTC](#p-lab-io-board--rtc)
+
 📡 **P-LAB MODEM BBS** — [P-LAB Wi-Fi Modem](https://p-l4b.github.io/wifi/) — Hayes AT commands, TCP/TELNET to real BBS servers — see [MODEM BBS](#-p-lab-modem-bbs)
 
 🖥️ **P-LAB Terminal Card** — [P-LAB Terminal Card](https://p-l4b.github.io/terminal/) — control the Apple 1 from any external terminal via `telnet localhost 6502` — see [Terminal Card](#-p-lab-terminal-card)
 
-🖥️ **Machine Presets** — One-click hardware configurations (Woz, Replica 1, Bernie's, P-LAB, POM1 Full) — see [Machine Presets](#-machine-presets)
+🖥️ **Machine Presets** — One-click hardware configurations (Woz, Replica 1, Replica 1 + CFFA1, Uncle Bernie's, P-LAB, POM1) — see [Machine Presets](#-machine-presets)
 
 📋 **Clipboard Paste** — Paste code directly into the Apple 1 keyboard
 
-🎮 **30+ Programs Included** — Games, demos, BASIC programs, and dev tools ready to run
+🎮 **30+ Programs Included** — Games, demos, BASIC programs, dev tools, and expansion demos — many ready from `software/`
 
 ---
 
@@ -264,7 +268,7 @@ python3 tools/sid2apple1.py --batch /path/to/sids/ ./out_bins/
 
 ### Bundled SID software (`software/sid/`)
 
-**`software/sid/`** ships **30 `.bin`** tunes ready for the A1-SID — classics from Rob Hubbard (Commando, Crazy Comets, Monty on the Run, International Karate…), Martin Galway (Arkanoid, Game Over, Combat School), Jeroen Tel (Cybernoid II, Myth), Ben Daglish (Blasteroids, Gauntlet, Pac-Mania…), and Chris Huelsbeck (Metro Dance, Wellenreiter, Hard'n'Heavy). Load via **File > Load Memory** at **`$0280`**, then **`280R`**.
+**`software/sid/`** ships **over a dozen `.bin`** tunes ready for the A1-SID — including Hubbard, Tel, Daglish, and Huelsbeck titles (see the folder). Load via **File > Load Memory** at **`$0280`**, then **`280R`**. Assembly sources for **Claudio Parmigiani’s SID PIANO** (QWERTY/AZERTY) are included (`.asm` / Woz-style `.txt`); build with cc65 using `piano.cfg` if you want a playable **`piano.bin`**.
 
 > **Known issue:** **Arkanoid** (Martin Galway) converts but does not play — Galway's multi-ISR raster-split player architecture is not yet fully supported by the converter's static ISR detection. **BMX Kidz** (Hubbard) also fails for similar reasons (computed ISR address).
 
@@ -290,6 +294,35 @@ POM1 emulates the [P-LAB Apple-1 microSD Storage Card](https://p-l4b.github.io/s
 4. Use `DIR` to list files, `LOAD MYPROG` to load, then exit to Woz Monitor and `300R` to run
 
 Firmware source: [apple1-sdcard](https://github.com/nippur72/apple1-sdcard) by Antonino Porcino.
+
+### Applesoft Lite (P-LAB microSD)
+
+When **microSD** is enabled and **CFFA1** is off, presets that use Applesoft load **`applesoft-lite-microsd.rom`** at **`$6000`–`$7FFF`** ([P-LAB APPLESOFT-FT](https://p-l4b.github.io/terminal/APPLESOFT-FT.zip) — Fast Terminal + SD OS 1.2). Integer BASIC stays at **`$E000`**, Woz Monitor at **`$FF00`**. Cold start **`6000R`**, warm start **`6003R`**. You can also manage programs from the SD shell (`8000R`) with **`#F8`** tagged files and **`ASAVE` / `LOAD` / `RUN`**.
+
+---
+
+## 💽 CFFA1 CompactFlash Card
+
+POM1 emulates **Rich Dreher’s CFFA1** CompactFlash interface for the Apple 1: **8 KB firmware ROM** at **`$9000`–`$AFDF`** and **ATA/IDE-style registers** at **`$AFE0`–`$AFFF`**, backed by a host **ProDOS block device** (`.po` disk image). **CFFA1 and P-LAB microSD cannot both be enabled** — the emulator turns one off when you plug the other.
+
+- Toggle via **Hardware > CFFA1 CompactFlash Card** or the toolbar
+- With CFFA1 on, **Applesoft Lite** loads from **`applesoft-lite-cffa1.rom`** at **`$E000`–`$FFFF`** (includes Woz Monitor in that layout)
+- Enter the firmware menu with **`9006R`** in the Woz Monitor
+- Reload firmware or attach a disk image from the CFFA1 window / settings as documented in the app
+
+Reference: CFFA1 manual and firmware notes under `doc/CFFA1_cdromv1.1.zip` in the repo.
+
+---
+
+## ⏰ P-LAB I/O Board & RTC
+
+POM1 emulates the [P-LAB Apple-1 I/O Board & RTC](https://p-l4b.github.io/A1-IO_RTC/): a **65C22 VIA** at **`$2000`–`$200F`** talking to an emulated **ATMEGA32** + **DS3231** real-time clock.
+
+- **Registers 0–5**: RTC (hour, minute, second, day, month, year)  
+- **Register 6**: DS3231 temperature  
+- **Additional registers**: ADC and digital inputs (see in-app **Memory Map** tooltips when the card is enabled)
+- Toggle via **Hardware > P-LAB I/O Board & RTC** or the toolbar
+- **Note:** **`$2000`–`$3FFF`** is also the **GEN2 HGR framebuffer** when the GEN2 card is enabled — avoid enabling both on the same machine unless you know what you are doing
 
 ---
 
@@ -347,13 +380,14 @@ telnet localhost 6502
 
 **Hardware > Machine Preset** applies a named configuration in one click — enabling the right cards and snapping windows into a sensible default layout.
 
-| Preset | microSD | SID | TMS9918 | GEN2 HGR | WiFi | Terminal | RTC |
-|--------|:-------:|:---:|:-------:|:--------:|:----:|:--------:|:---:|
-| **Woz Apple 1 (1976)** | — | — | — | — | — | — | — |
-| **Replica 1 (Briel)** | ✓ | — | — | — | — | — | — |
-| **Bernie's Apple 1** | ✓ | — | — | ✓ | — | — | — |
-| **P-LAB Apple 1** | ✓ | ✓ | ✓ | — | ✓ | ✓ | ✓ |
-| **POM1 Full** | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| Preset | RAM | BASIC | Krusader | microSD | CFFA1 | SID | TMS9918 | GEN2 HGR | I/O & RTC | WiFi | Terminal |
+|--------|:---:|:-----:|:--------:|:-------:|:-----:|:---:|:-------:|:--------:|:---------:|:----:|:--------:|
+| **Woz Apple 1 (1976)** | 8 KB | Integer | — | — | — | — | — | — | — | — | — |
+| **Replica 1 (Briel)** | 32 KB | Integer | ✓ | — | — | — | — | — | — | — | — |
+| **Replica 1 + CFFA1** | 32 KB | Applesoft Lite | — | — | ✓ | — | — | — | — | — | ✓ |
+| **Uncle Bernie's Apple 1** | 32 KB | Integer | — | — | — | — | — | ✓ | — | — | — |
+| **P-LAB Apple 1** | 32 KB | Applesoft Lite | — | ✓ | — | ✓ | ✓ | — | ✓ | ✓ | ✓ |
+| **POM1** | 56 KB | Applesoft Lite | — | ✓ | — | ✓ | ✓ | ✓ | — | ✓ | ✓ |
 
 Each preset also repositions windows into a default layout: the Apple 1 screen anchors top-left, graphics cards open to the right, and status panels fill the bottom row. You can drag windows freely after applying a preset.
 
@@ -465,6 +499,8 @@ POM1/
 ├── MicroSD.cpp/h            # 💾 P-LAB microSD Storage Card (65C22 VIA + MCU)
 ├── WiFiModem.cpp/h          # 📡 P-LAB Wi-Fi Modem (65C51 ACIA + TCP/TELNET)
 ├── TerminalCard.cpp/h       # 🖥️ P-LAB Terminal Card (TCP server, serial bridge)
+├── A1IO_RTC.cpp/h           # ⏰ P-LAB I/O Board & RTC (65C22 VIA + DS3231)
+├── CFFA1.cpp/h              # 💽 CFFA1 CompactFlash (ROM + ProDOS .po)
 ├── MemoryViewer_ImGui.cpp/h # 🔍 Hex editor with search & navigation
 ├── tools/
 │   └── sid2apple1.py        # 🎛️ C64 PSID/RSID → Apple 1 .bin for A1-SID
@@ -497,11 +533,14 @@ POM1/
 | 📼 **ACI** | 256 B | `$C100` | Woz Apple Cassette Interface monitor |
 | 👁️ **Woz Monitor** | 256 B | `$FF00` | Steve Wozniak's original system monitor |
 | 💻 **Apple BASIC** | 4 KB | `$E000` | Integer BASIC interpreter |
-| 🔧 **Krusader 1.3** | 8 KB | `$A000` | Ken Wessen's symbolic assembler (not loaded by default — reload via Settings) |
+| 💿 **Applesoft Lite (CFFA1)** | 8 KB | `$E000`–`$FFFF` | Applesoft + Woz Monitor in CFFA1 memory map (`applesoft-lite-cffa1.rom`) |
+| 💿 **Applesoft Lite (microSD)** | 8 KB | `$6000`–`$7FFF` | P-LAB Fast Terminal / SD OS build (`applesoft-lite-microsd.rom`) |
+| 🔧 **Krusader 1.3** | 8 KB | `$A000` | Ken Wessen's symbolic assembler (Replica 1 preset — reload via **Settings** on other configs) |
 | 💾 **SD CARD OS** | 8 KB | `$8000` | P-LAB microSD Storage Card firmware ([apple1-sdcard](https://github.com/nippur72/apple1-sdcard)) |
+| 💽 **CFFA1 firmware** | ~8 KB | `$9000`–`$AFDF` | CFFA1 card ROM (`cffa1.rom`) |
 | 🔤 **Charmap** | 1 KB | — | Character generator table used by the terminal renderer |
 
-The main firmware ROMs (Woz Monitor, BASIC, ACI) are loaded automatically at startup. SD CARD OS is loaded when the microSD card is enabled. Krusader is **not** loaded by default to keep `$A000-$BFFF` free for SID tunes; reload it via **Settings > Reload Krusader** if needed.
+The main firmware ROMs (Woz Monitor, Integer BASIC, ACI) load at startup. **SD CARD OS** loads when the microSD card is enabled; **CFFA1** loads **`cffa1.rom`** and the matching **Applesoft Lite** image when that card is enabled. **Applesoft Lite (microSD)** loads at **`$6000`–`$7FFF`** only with microSD on and CFFA1 off. Krusader loads with the **Replica 1** preset or via **Settings > Reload Krusader** when `$A000` is not used by the microSD VIA.
 
 ---
 
@@ -511,11 +550,15 @@ The main firmware ROMs (Woz Monitor, BASIC, ACI) are loaded automatically at sta
 $0000-$00FF   Zero Page
 $0100-$01FF   Stack
 $0200-$1FFF   User RAM (programs load at $0280 or $0300)
-$2000-$3FFF   GEN2 HGR Framebuffer (8 KB — when card is plugged)
+$2000-$200F   P-LAB I/O Board & RTC — VIA 65C22 (when card is plugged; overlaps GEN2 HGR page)
+$2000-$3FFF   GEN2 HGR Framebuffer (8 KB — when GEN2 card is plugged)
 $4000-$7FFF   User RAM
+$6000-$7FFF   Applesoft Lite ROM (8 KB — P-LAB microSD + Applesoft layout only)
 $8000-$9FFF   SD CARD OS ROM (8 KB — when P-LAB microSD is plugged)
+$9000-$AFDF   CFFA1 firmware ROM (when CFFA1 is plugged)
+$AFE0-$AFFF   CFFA1 ATA/IDE registers (when CFFA1 is plugged)
 $A000-$A00F   VIA 65C22 I/O (16 registers — when P-LAB microSD is plugged)
-$A010-$AFFF   User RAM
+$A010-$AFFF   User RAM (Krusader may use $A000-$BFFF when microSD is off and it is loaded)
 $B000-$B003   ACIA 65C51 — MODEM BBS I/O (when P-LAB modem is plugged)
 $B004-$BFFF   User RAM
 $C000-$C0FF   Apple Cassette Interface I/O
@@ -525,9 +568,11 @@ $C800-$CFFF   A1-SID — SID registers (when P-LAB SID card is plugged; addr & $
 $CC00         TMS9918 DATA — VRAM data port (when P-LAB card is plugged)
 $CC01         TMS9918 CTRL — Control/status  (when P-LAB card is plugged)
 $D010-$D012   PIA 6821 — Keyboard (KBD) & Display (DSP)  (aliases: $D0Fx)
-$E000-$EFFF   Apple BASIC ROM (4 KB)
+$E000-$EFFF   Integer BASIC ROM (4 KB) — or Applesoft Lite region with CFFA1 layout
 $FF00-$FFFF   Woz Monitor ROM (256 B)
 ```
+
+The **POM1** machine preset (**56 KB** RAM) treats **`$0000`–`$DFFF`** as backed by RAM in the emulator (overlays from expansion cards and ROMs still win where decoded). Open the in-app **Memory Map** for the live layout.
 
 ---
 
@@ -541,7 +586,8 @@ $FF00-$FFFF   Woz Monitor ROM (256 B)
 - **Achim Breidenbach** — Sim6502
 - **Fabrice Frances** — Java Microtan Emulator
 - **Uncle Bernie** — [GEN2 Color Graphics Card](https://www.applefritter.com/content/uncle-bernies-gen2-color-graphics-card-apple-1) for Apple 1
-- **Claudio Parmigiani ([P-LAB](https://p-l4b.github.io/))** — designer of the entire P-LAB Apple-1 expansion family: [microSD Storage Card](https://p-l4b.github.io/sdcard/), [A1-SID Sound Card](https://p-l4b.github.io/A1-SID/), [Apple-1 Graphic Card](https://p-l4b.github.io/graphic/) (TMS9918 VDP), [Terminal Card](https://p-l4b.github.io/terminal/), [MODEM BBS / Wi-Fi Modem](https://p-l4b.github.io/wifi/)
+- **Claudio Parmigiani ([P-LAB](https://p-l4b.github.io/))** — designer of the entire P-LAB Apple-1 expansion family: [microSD Storage Card](https://p-l4b.github.io/sdcard/), [A1-SID Sound Card](https://p-l4b.github.io/A1-SID/), [Apple-1 Graphic Card](https://p-l4b.github.io/graphic/) (TMS9918 VDP), [I/O Board & RTC](https://p-l4b.github.io/A1-IO_RTC/), [Terminal Card](https://p-l4b.github.io/terminal/), [MODEM BBS / Wi-Fi Modem](https://p-l4b.github.io/wifi/)
+- **Rich Dreher** — **CFFA1** CompactFlash interface for Apple 1 (firmware / hardware design emulated here)
 - **Nippur72 (Antonino Porcino)** — [apple1-videocard-lib](https://github.com/nippur72/apple1-videocard-lib) (KickC library, Tetris, demos for the P-LAB Graphic Card), [apple1-sdcard](https://github.com/nippur72/apple1-sdcard) (microSD firmware)
 - **Tom Owad** — AppleFritter community & Apple 1 resources
 - **Steve Wozniak & Steve Jobs** — For creating the Apple 1 🍎
@@ -555,6 +601,7 @@ $FF00-$FFFF   Woz Monitor ROM (256 B)
 - [**apple1-videocard-lib**](https://github.com/nippur72/apple1-videocard-lib) — KickC C library and demos (Tetris, image viewer, etc.) for the P-LAB Graphic Card.
 - [**P-LAB Apple-1 microSD Storage Card**](https://p-l4b.github.io/sdcard/) — SD card storage expansion. 65C22 VIA bridge, ATMEGA MCU, FAT32 filesystem. Firmware: [apple1-sdcard](https://github.com/nippur72/apple1-sdcard).
 - [**P-LAB Apple-1 Wi-Fi Modem**](https://p-l4b.github.io/wifi/) — 65C51 ACIA serial modem with ESP8266 Wi-Fi. Hayes AT commands, TCP/TELNET for BBS connections.
+- [**P-LAB Apple-1 I/O Board & RTC**](https://p-l4b.github.io/A1-IO_RTC/) — 65C22 VIA, DS3231 RTC, ADC, and digital I/O expansion.
 - [**P-LAB Apple-1 Terminal Card**](https://p-l4b.github.io/terminal/) — USB serial terminal replacing native keyboard/display. ANSI pass-through, 8-bit support, fast terminal mode.
 - [**High Voltage SID Collection (HVSC)**](https://www.exotica.org.uk/wiki/High_Voltage_SID_Collection) — Exotica wiki page for HVSC, the major archive of Commodore 64 SID tunes; use with [`tools/sid2apple1.py`](tools/sid2apple1.py) to build Apple 1 binaries for the A1-SID (see [P-LAB A1-SID Sound Card](#-p-lab-a1-sid-sound-card)).
 - [POM1 Project Page](https://www.gistlabs.net/Apple1project/)
