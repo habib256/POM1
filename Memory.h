@@ -31,6 +31,7 @@ class TMS9918;
 class WiFiModem;
 class TerminalCard;
 class A1IO_RTC;
+#include "CFFA1.h"
 #include "MicroSD.h"
 
 // Remplacer quint8 par uint8_t et quint16 par uint16_t
@@ -108,6 +109,13 @@ public:
     bool isMicroSDEnabled() const { return microSDEnabled; }
     int loadSDCardRom(void);
 
+    // CFFA1 CompactFlash Interface (Rich Dreher)
+    CFFA1& getCFFA1() { return *cffa1; }
+    const CFFA1& getCFFA1() const { return *cffa1; }
+    void setCFFA1Enabled(bool b);
+    bool isCFFA1Enabled() const { return cffa1Enabled; }
+    int loadCFFA1Rom(void);
+
     // P-LAB Apple-1 Wi-Fi Modem (65C51 ACIA + ESP8266)
     WiFiModem& getWiFiModem() { return *wifiModem; }
     const WiFiModem& getWiFiModem() const { return *wifiModem; }
@@ -159,6 +167,8 @@ private :
     bool sidEnabled = false;
     std::unique_ptr<MicroSD> microSD;
     bool microSDEnabled = true;
+    std::unique_ptr<CFFA1> cffa1;
+    bool cffa1Enabled = false;
     std::unique_ptr<WiFiModem> wifiModem;
     bool wifiModemEnabled = false;
     std::unique_ptr<TerminalCard> terminalCard;

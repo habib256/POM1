@@ -446,6 +446,33 @@ bool EmulationController::isMicroSDEnabled() const
     return memory->isMicroSDEnabled();
 }
 
+void EmulationController::setCFFA1Enabled(bool enabled)
+{
+    std::lock_guard<std::mutex> lock(stateMutex);
+    memory->setCFFA1Enabled(enabled);
+    publishSnapshotLocked();
+}
+
+bool EmulationController::isCFFA1Enabled() const
+{
+    std::lock_guard<std::mutex> lock(stateMutex);
+    return memory->isCFFA1Enabled();
+}
+
+bool EmulationController::reloadCFFA1Rom(std::string& error)
+{
+    std::lock_guard<std::mutex> lock(stateMutex);
+    bool prev = memory->getWriteInRom();
+    memory->setWriteInRom(true);
+    int result = memory->loadCFFA1Rom();
+    memory->setWriteInRom(prev);
+    if (result != 0) {
+        error = memory->getLastError();
+    }
+    publishSnapshotLocked();
+    return result == 0;
+}
+
 void EmulationController::setWiFiModemEnabled(bool enabled)
 {
     std::lock_guard<std::mutex> lock(stateMutex);

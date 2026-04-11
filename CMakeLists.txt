@@ -28,6 +28,7 @@ set(SOURCES
     SID.cpp
     TMS9918.cpp
     MicroSD.cpp
+    CFFA1.cpp
     WiFiModem.cpp
     TerminalCard.cpp
 )

@@ -49,6 +49,7 @@ copy_rom "WozMonitor.rom"   && roms_found=$((roms_found + 1))
 copy_rom "charmap.rom" optional
 copy_rom "sdcard.rom" optional
 copy_rom "applesoft-lite.rom" optional
+copy_rom "cffa1.rom" optional
 
 echo "$roms_found/3 required ROM(s) found"
 echo ""

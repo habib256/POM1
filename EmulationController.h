@@ -110,6 +110,11 @@ public:
     void setMicroSDEnabled(bool enabled);
     bool isMicroSDEnabled() const;
 
+    // CFFA1 CompactFlash Interface
+    void setCFFA1Enabled(bool enabled);
+    bool isCFFA1Enabled() const;
+    bool reloadCFFA1Rom(std::string& error);
+
     // P-LAB Apple-1 Wi-Fi Modem
     void setWiFiModemEnabled(bool enabled);
     bool isWiFiModemEnabled() const;

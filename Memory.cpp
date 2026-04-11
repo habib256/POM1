@@ -30,6 +30,7 @@
 #include "WiFiModem.h"
 #include "TerminalCard.h"
 #include "A1IO_RTC.h"
+#include "CFFA1.h"
 //#include "configuration.h"
 //#include "pia6820.h"
 
@@ -75,6 +76,17 @@ Memory::Memory()
     wifiModem = std::make_unique<WiFiModem>();
     terminalCard = std::make_unique<TerminalCard>();
     a1ioRtc = std::make_unique<A1IO_RTC>();
+    cffa1 = std::make_unique<CFFA1>();
+    // Probe for CF card disk image
+    for (const auto& dir : {"cfcard", "../cfcard", "../../cfcard"}) {
+        if (std::filesystem::is_directory(dir)) {
+            auto imgPath = std::filesystem::canonical(dir).string() + "/cfcard.po";
+            if (std::filesystem::exists(imgPath)) {
+                cffa1->openDiskImage(imgPath);
+            }
+            break;
+        }
+    }
     terminalCard->setKeyInjector([this](char key, bool raw) {
         if (raw) setKeyPressedRaw(key);
         else setKeyPressed(key);
@@ -102,6 +114,7 @@ void Memory::initMemory(){
     wifiModem->reset();
     terminalCard->reset();
     a1ioRtc->reset();
+    cffa1->reset();
     configureResetVectors(0xFF00);
 
     setWriteInRom(0);
@@ -120,6 +133,7 @@ void Memory::resetMemory(void)
     wifiModem->reset();
     terminalCard->reset();
     a1ioRtc->reset();
+    cffa1->reset();
 }
 
 
@@ -413,6 +427,11 @@ quint8 Memory::memRead(quint16 address)
         return a1ioRtc->readRegister(address);
     }
 
+    // CFFA1 CompactFlash Interface ($9000-$AFFF)
+    if (cffa1Enabled && address >= 0x9000 && address <= 0xAFFF) {
+        return cffa1->readByte(address);
+    }
+
     // P-LAB microSD VIA 65C22 I/O ($A000-$A00F)
     if (microSDEnabled && address >= 0xA000 && address <= 0xA00F) {
         return microSD->readRegister(address);
@@ -491,6 +510,16 @@ void Memory::memWrite(quint16 address, quint8 value)
     if (a1ioRtcEnabled && address >= 0x2000 && address <= 0x200F) {
         a1ioRtc->writeRegister(address, value);
         return;
+    }
+
+    // CFFA1 CF registers ($AFE0-$AFFF) — write-only region
+    if (cffa1Enabled && address >= 0xAFE0 && address <= 0xAFFF) {
+        cffa1->writeByte(address, value);
+        return;
+    }
+    // CFFA1 ROM ($9000-$AFDF) — read-only, block writes
+    if (cffa1Enabled && address >= 0x9000 && address <= 0xAFDF) {
+        return; // ROM write blocked
     }
 
     // P-LAB microSD VIA 65C22 I/O ($A000-$A00F)
@@ -620,6 +649,8 @@ void Memory::setMicroSDEnabled(bool b)
     if (b == microSDEnabled) return;
     microSDEnabled = b;
     if (b) {
+        // Mutually exclusive with CFFA1
+        if (cffa1Enabled) setCFFA1Enabled(false);
         loadSDCardRom();
     } else {
         // Clear the ROM region (restore to RAM)
@@ -634,6 +665,36 @@ int Memory::loadSDCardRom()
     // Clear region first — ROM file (8177 B) may not fill the full 8 KB space
     std::fill(mem.begin() + 0x8000, mem.begin() + 0xA000, 0);
     int ret = loadROM("sdcard.rom", 0x8000, 0x2000, "SD CARD OS");
+    writeInRom = prev;
+    return ret;
+}
+
+void Memory::setCFFA1Enabled(bool b)
+{
+    if (b == cffa1Enabled) return;
+    cffa1Enabled = b;
+    if (b) {
+        // Mutually exclusive with microSD
+        if (microSDEnabled) setMicroSDEnabled(false);
+        loadCFFA1Rom();
+    } else {
+        // Clear the CFFA1 ROM region
+        std::fill(mem.begin() + 0x9000, mem.begin() + 0xB000, 0);
+    }
+}
+
+int Memory::loadCFFA1Rom()
+{
+    bool prev = writeInRom;
+    writeInRom = true;
+
+    // Load ROM file into the flat memory array (for code that reads mem[] directly)
+    int ret = loadROM("cffa1.rom", 0x9000, 0x2000, "CFFA1");
+    if (ret == 0) {
+        // Also load into the CFFA1 object's internal ROM buffer
+        cffa1->loadRom(mem.data() + 0x9000, CFFA1::kRomSize);
+    }
+
     writeInRom = prev;
     return ret;
 }

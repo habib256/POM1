@@ -162,6 +162,7 @@ struct MachineConfig {
     const char* description;
     bool graphicsCard, microSD, sid, tms9918, a1ioRtc, wifiModem, terminalCard;
     bool krusader;
+    bool cffa1;
     int ramKB;              // Usable RAM in kilobytes (8 = Woz original, 32 = Replica/P-LAB)
     BasicType basicType;
     MachineWindowPlacement layout[8];
@@ -169,25 +170,33 @@ struct MachineConfig {
 };
 
 static const MachineConfig kMachinePresets[] = {
+    //                                  GEN2  uSD  SID  TMS  RTC  WiFi Term Krus CFFA RAM  BASIC
     {
         "Woz Apple 1 (1976)",
         "Original bare board: 6502, 8 KB RAM, PIA 6821, Integer BASIC, WOZ Monitor. No expansion cards.",
         false, false, false, false, false, false, false,
-        false, 8, BasicType::Integer,
+        false, false, 8, BasicType::Integer,
         { {"Apple 1 Screen", {10,61}, {0,0}} }, 1
     },
     {
         "Replica 1 (Briel)",
-        "Vince Briel's modern recreation: Applesoft Lite (floating-point BASIC), Krusader assembler, ACI cassette.",
+        "Vince Briel's modern recreation: Integer BASIC, Krusader assembler, ACI cassette.",
         false, false, false, false, false, false, false,
-        true, 32, BasicType::ApplesoftLite,
+        true, false, 32, BasicType::Integer,
+        { {"Apple 1 Screen", {10,61}, {0,0}} }, 1
+    },
+    {
+        "Replica 1 + CFFA1",
+        "Replica 1 with CFFA1 CompactFlash storage and Applesoft Lite (floating-point BASIC).",
+        false, false, false, false, false, false, false,
+        false, true, 32, BasicType::ApplesoftLite,
         { {"Apple 1 Screen", {10,61}, {0,0}} }, 1
     },
     {
         "Bernie's Apple 1",
         "Uncle Bernie's GEN2 280x192 HGR color graphics, Integer BASIC, ACI cassette.",
         true, false, false, false, false, false, false,
-        false, 32, BasicType::Integer,
+        false, false, 32, BasicType::Integer,
         {
             {"Apple 1 Screen",                 {10,  61}, {0,   0}},
             {"Bernie's GEN2 HGR Graphic Card", {624, 61}, {576, 420}},
@@ -197,7 +206,7 @@ static const MachineConfig kMachinePresets[] = {
         "P-LAB Apple 1",
         "Full P-LAB expansion: Applesoft Lite, microSD, A1-SID sound, TMS9918 graphics, I/O & RTC, Wi-Fi modem, terminal.",
         false, true, true, true, true, true, true,
-        false, 32, BasicType::ApplesoftLite,
+        false, false, 32, BasicType::ApplesoftLite,
         {
             {"Apple 1 Screen",               {10,  61},  {0,   0}},
             {"P-LAB Graphic Card (TMS9918)", {640, 61},  {528, 420}},
@@ -210,7 +219,7 @@ static const MachineConfig kMachinePresets[] = {
         "POM1",
         "56 KB RAM, GEN2 HGR + all P-LAB cards (except I/O & RTC), Applesoft Lite.",
         true, true, true, true, false, true, true,
-        false, 56, BasicType::ApplesoftLite,
+        false, false, 56, BasicType::ApplesoftLite,
         {
             {"Apple 1 Screen",                 {10,  61},  {0,   0}},
             {"Bernie's GEN2 HGR Graphic Card", {624, 61},  {576, 420}},
@@ -578,6 +587,11 @@ void MainWindow_ImGui::renderMenuBar()
             ImGui::Separator();
             if (ImGui::MenuItem("P-LAB microSD Storage Card", nullptr, &microSDEnabled)) {
                 emulation->setMicroSDEnabled(microSDEnabled);
+                if (microSDEnabled) cffa1Enabled = false; // sync UI
+            }
+            if (ImGui::MenuItem("CFFA1 CompactFlash Card", nullptr, &cffa1Enabled)) {
+                emulation->setCFFA1Enabled(cffa1Enabled);
+                if (cffa1Enabled) microSDEnabled = false; // sync UI
             }
             if (ImGui::MenuItem("P-LAB A1-SID Sound Card", nullptr, &sidEnabled)) {
                 emulation->setSIDEnabled(sidEnabled);
@@ -2300,6 +2314,9 @@ void MainWindow_ImGui::applyMachineConfig(int presetIndex)
     microSDEnabled = cfg.microSD;
     emulation->setMicroSDEnabled(cfg.microSD);
 
+    cffa1Enabled = cfg.cffa1;
+    emulation->setCFFA1Enabled(cfg.cffa1);
+
     sidEnabled = cfg.sid;
     emulation->setSIDEnabled(cfg.sid);
 
@@ -2340,11 +2357,18 @@ void MainWindow_ImGui::applyMachineConfig(int presetIndex)
         }
     }
 
-    // Krusader assembler at $A000-$BFFF (mutually exclusive with microSD VIA at $A000)
+    // Krusader assembler at $A000-$BFFF (mutually exclusive with microSD/CFFA1)
     if (cfg.krusader) {
         std::string error;
         if (emulation->reloadKrusader(error) == true)
             loadedRoms.push_back({"Krusader", 0xA000, 0xBFFF});
+    }
+
+    // CFFA1 CompactFlash firmware at $9000-$AFFF
+    if (cfg.cffa1) {
+        std::string error;
+        if (emulation->reloadCFFA1Rom(error))
+            loadedRoms.push_back({"CFFA1 Firmware", 0x9000, 0xAFDF});
     }
 
     // Populate pending layout positions
@@ -2398,6 +2422,10 @@ void MainWindow_ImGui::renderMemoryMapWindow()
         regions.push_back({ 0x8000, 0x9FFF, IM_COL32(255, 200, 80, 255), "SD CARD OS ROM" });
     if (microSDEnabled)
         regions.push_back({ 0xA000, 0xA00F, IM_COL32(255, 150, 50, 255), "VIA 65C22 I/O" });
+    if (cffa1Enabled) {
+        regions.push_back({ 0x9000, 0xAFDF, IM_COL32(255, 200, 80, 255), "CFFA1 ROM" });
+        regions.push_back({ 0xAFE0, 0xAFFF, IM_COL32(255, 150, 50, 255), "CF Card I/O" });
+    }
     if (wifiModemEnabled)
         regions.push_back({ 0xB000, 0xB003, IM_COL32(0, 200, 200, 255), "ACIA 65C51 I/O" });
 

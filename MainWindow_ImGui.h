@@ -67,6 +67,7 @@ private:
     bool tms9918Enabled = false;
     bool sidEnabled = false;
     bool microSDEnabled = true;
+    bool cffa1Enabled = false;
     bool wifiModemEnabled = false;
     bool showWiFiModem = false;
     bool terminalCardEnabled = !POM1_IS_WASM;
