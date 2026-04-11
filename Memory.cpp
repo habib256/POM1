@@ -211,8 +211,19 @@ int Memory::loadBasic(void)
 
 int Memory::loadApplesoftLite(void)
 {
-    // Applesoft Lite: 8 KB ROM ($E000-$FFFF) — replaces both Integer BASIC and Woz Monitor.
-    return loadROM("applesoft-lite-cffa1.rom", 0xE000, 0x2000, "Applesoft Lite");
+    // CFFA1: txgx42/applesoft-lite + cffa1.s — 8 KB at $E000-$FFFF (includes Woz Monitor).
+    if (cffa1Enabled) {
+        return loadROM("applesoft-lite-cffa1.rom", 0xE000, 0x2000, "Applesoft Lite (CFFA1)");
+    }
+    // P-LAB microSD: APPLESOFT-FT.zip (Fast Terminal + SD OS 1.2) — 8 KB at $6000-$7FFF;
+    // Integer BASIC stays at $E000; Woz Monitor at $FF00. Cold/warm: 6000R / 6003R.
+    if (microSDEnabled) {
+        int ret = loadROM("applesoft-lite-microsd.rom", 0x6000, 0x2000, "Applesoft Lite (P-LAB microSD)");
+        if (ret != 0)
+            return ret;
+        return loadWozMonitor();
+    }
+    return loadROM("applesoft-lite-cffa1.rom", 0xE000, 0x2000, "Applesoft Lite (CFFA1)");
 }
 
 int Memory::loadKrusader(void)
@@ -464,10 +475,11 @@ quint8 Memory::memRead(quint16 address)
         return cassetteDevice->toggleOutput();
     }
 
-    // PIA 6821 alias: le décodage d'adresse incomplet du vrai Apple 1 fait que
-    // $D0F0-$D0F3 sont des alias de $D010-$D013. Certaines versions de BASIC
-    // (Pagetable, originale) utilisent $D0F2 au lieu de $D012.
-    if ((address & 0xFF00) == 0xD000 && (address & 0x0F) <= 0x03
+    // PIA 6821 alias: the Apple 1's 74154 decoder selects the PIA for the full
+    // $D000-$DFFF range (4 KB page). Only address lines A0-A1 reach the PIA:
+    //   bits 1:0 = 00 → $D010 (KBD), 01 → $D011 (KBDCR), 10 → $D012 (DSP)
+    // Pagetable BASIC uses $D0F2, P-LAB Fast Terminal uses $DF12, etc.
+    if ((address & 0xF000) == 0xD000
         && address != 0xD010 && address != 0xD011 && address != 0xD012) {
         address = 0xD010 | (address & 0x03);
     }
@@ -549,8 +561,8 @@ void Memory::memWrite(quint16 address, quint8 value)
         return;
     }
 
-    // PIA 6821 alias (même normalisation que memRead)
-    if ((address & 0xFF00) == 0xD000 && (address & 0x0F) <= 0x03
+    // PIA 6821 alias (same normalization as memRead — full $D000-$DFFF page)
+    if ((address & 0xF000) == 0xD000
         && address != 0xD010 && address != 0xD011 && address != 0xD012) {
         address = 0xD010 | (address & 0x03);
     }

@@ -1708,9 +1708,28 @@ void MainWindow_ImGui::renderMemoryConfigDialog()
             bool ok = emulation->reloadApplesoftLite(error);
             if (!writeProtect) emulation->setWriteInRom(true);
             if (ok) {
-                loadedRoms.erase(std::remove_if(loadedRoms.begin(), loadedRoms.end(),
-                    [](const LoadedRegion& r) { return r.start >= 0xE000 && r.end <= 0xFFFF; }), loadedRoms.end());
-                loadedRoms.push_back({"Applesoft Lite", 0xE000, 0xFFFF});
+                const bool plabSd = emulation->isMicroSDEnabled() && !emulation->isCFFA1Enabled();
+                if (plabSd) {
+                    loadedRoms.erase(std::remove_if(loadedRoms.begin(), loadedRoms.end(),
+                        [](const LoadedRegion& r) {
+                            if (r.name.find("Applesoft") != std::string::npos) return true;
+                            return r.start == 0x6000 && r.end == 0x7FFF;
+                        }), loadedRoms.end());
+                    loadedRoms.push_back({"Applesoft Lite (P-LAB microSD)", 0x6000, 0x7FFF});
+                    auto hasRange = [](const std::vector<LoadedRegion>& v, quint16 s, quint16 e) {
+                        for (const auto& r : v)
+                            if (r.start == s && r.end == e) return true;
+                        return false;
+                    };
+                    if (!hasRange(loadedRoms, 0xE000, 0xEFFF))
+                        loadedRoms.push_back({"Integer BASIC", 0xE000, 0xEFFF});
+                    if (!hasRange(loadedRoms, 0xFF00, 0xFFFF))
+                        loadedRoms.push_back({"Woz Monitor", 0xFF00, 0xFFFF});
+                } else {
+                    loadedRoms.erase(std::remove_if(loadedRoms.begin(), loadedRoms.end(),
+                        [](const LoadedRegion& r) { return r.start >= 0xE000 && r.end <= 0xFFFF; }), loadedRoms.end());
+                    loadedRoms.push_back({"Applesoft Lite (CFFA1)", 0xE000, 0xFFFF});
+                }
             }
             setStatusMessage(ok ? "Applesoft Lite reloaded" : error, 3.0f);
         }
@@ -2364,7 +2383,15 @@ void MainWindow_ImGui::applyMachineConfig(int presetIndex)
         bool ok = false;
         if (cfg.basicType == BasicType::ApplesoftLite) {
             ok = emulation->reloadApplesoftLite(error);
-            if (ok) loadedRoms.push_back({"Applesoft Lite", 0xE000, 0xFFFF});
+            if (ok) {
+                if (cfg.microSD && !cfg.cffa1) {
+                    loadedRoms.push_back({"Integer BASIC", 0xE000, 0xEFFF});
+                    loadedRoms.push_back({"Applesoft Lite (P-LAB microSD)", 0x6000, 0x7FFF});
+                    loadedRoms.push_back({"Woz Monitor", 0xFF00, 0xFFFF});
+                } else {
+                    loadedRoms.push_back({"Applesoft Lite (CFFA1)", 0xE000, 0xFFFF});
+                }
+            }
         } else {
             ok = emulation->reloadBasic(error);
             if (ok) loadedRoms.push_back({"Integer BASIC", 0xE000, 0xEFFF});
