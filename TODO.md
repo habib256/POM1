@@ -1,36 +1,55 @@
 # TODO
 
-This file tracks **open** work only. For shipped features, see git log
-or the version notes referenced in `README.md`.
+Open work only. For shipped features, see `git log` or the version notes
+referenced in `README.md`.
 
-## Open
+## Apple-1 ecosystem — hardware
 
-- [ ] **SID: Arkanoid (Galway) does not play** — ISR detected at `$4086` but tune is silent. Galway's multi-ISR raster-split architecture needs more than the converter's static ISR detection.
-- [ ] **SID: some IRQ-driven tunes still fail** — Players using computed or indirect ISR addresses (e.g. BMX Kidz) escape the LDA/LDX/LDY + STA/STX/STY pattern matcher.
-- [x] **SID: implement "PIANO" software** — Bundled as `software/sid/piano.bin` (1104 bytes, `$0600-$0A4F`) and `sdcard/PIANO#060600`. Load via SD CARD OS: `RUN PIANO` or direct: `0600R`. Keyboard: `Z X C V B N M ,` + sharps `S D G H J`; waveforms `O P T W`; octaves `1-8`; `*` Theremin. Source: `software/sid/piano.asm`.
-- [x] **Applesoft Lite P-LAB microSD variant** — Bundled as `roms/applesoft-lite-microsd.rom` (8192 B, SHA-256 `e50756f6…`): P-LAB [APPLESOFT-FT.zip](https://p-l4b.github.io/terminal/APPLESOFT-FT.zip) (*Fast Terminal patched APPLESOFT BASIC for SD OS 1.2*). `Memory::loadApplesoftLite()` loads it at `$6000-$7FFF` when microSD is on and CFFA1 is off; CFFA1 presets still use `applesoft-lite-cffa1.rom` at `$E000-$FFFF`. Cold/warm: `6000R` / `6003R`; persistence also via SD shell `8000R` → `ASAVE` / `LOAD` / `RUN` (`#F8` tags).
+### Storage & cassette
+
 - [ ] **Uncle Bernie's Improved ACI** — Emulate the ACI Extended firmware page at `$C500-$C5FF` (256 B, started with `C500R`). Adds EOR checksum verification (`R`/`W`), extended format with 8-byte header at `$07F8-$07FF` (`RX`/`WX`), and autostart (`<from>` == `<to>`). Compatible Apple II checksum. **Firmware is proprietary and unpublished** — Uncle Bernie stated on Applefritter: *"The improved firmware I wrote for it will never be published."* PROMs were distributed only with his physical IC kits (now sold out). **Action required:** contact Uncle Bernie via [Applefritter PM](https://www.applefritter.com/user/254186/track) to request cooperation; precedent: he offered to share docs with the HoneyCrisp emulator developer. POM1 already emulates his GEN2 HGR card, which is a good argument. Code-side when ROM obtained: load at `$C500`, update `CassetteDevice` for extended format (header + checksum). Ref: [Applefritter thread](https://www.applefritter.com/content/uncle-bernies-improved-apple-1-cassette-interface), [ACI improvements comparison](https://www.applefritter.com/content/which-aci-improvements-do-exist-and-work).
-- [x] **GEN2 higher-resolution maze** — Bundled as `software/hgr/HGR2_Maze.asm` and `HGR2_Maze.txt` (1323 bytes, `$0280-$07AA`). 34×23 cells (782 cells, 16-bit DFS) with 4×4 pixel blocks. Sub-byte rendering via lookup tables (`col_byte`, `col_mask1`, `col_mask2`) for non-byte-aligned HGR writes — all wall pixels have adjacent neighbors, resolving to solid white via NTSC artifact coloring. Grid at `$4000` (page-aligned), DFS stacks at `$4400`/`$4800`. Load via `280R`.
-- [ ] **More GEN2 programs** — image viewers, drawing tools, additional 280×192 HIRES demos.
-- [x] **GEN2 Sokoban** — Bundled as `software/hgr/HGR6_Sokoban.asm` and `HGR6_Sokoban.txt` (7399 bytes, 98% of 7552-byte budget, `$0280-$1F60`). Classic push-boxes puzzle with 20×12 grid of 14×16 byte-aligned tiles (7 tile types: floor/wall/target/box/box-on-target/player/player-on-target). Uses existing `hgr_lo/hgr_hi` tables from `hgr_tables.inc` for scanline addresses. State grid at `$4000` (240 bytes, one byte per cell). Delta rendering redraws only 2-4 affected tiles per move. **72 levels**: 3 teaching + Microban I #1..#65 and #67..#70 by David W. Skinner (2000) for progressive difficulty (Microban #66 skipped, too tall: 9×14). ASCII level format (`#.$@*+`). Startup prompts for keyboard layout (1=QWERTY WASD, 2=AZERTY ZQSD); up/left keys are parameterised in zero-page so only two comparisons change. Win condition: all targets show `TILE_BOX_TARGET` (rejects tile 2 and tile 6). Other controls: R reset, N next. Load via `280R`.
-- [x] **Text Sokoban** — Bundled as `software/games/Sokoban.asm` and `Sokoban.txt` (4054 bytes, `$0280-$1255`). Pure Apple 1 40×24 text version: same mechanics and state grid logic as the GEN2 port, but rendering is ASCII (`# . $ * @ +`). Per-frame output is minimal: blank line, 12 grid rows, blank line, footer `UP/DN/LT/RT R=RESET N=NEXT` — the terminal scrolls naturally between frames (no explicit clear, no repeated header). 47 levels: 3 teaching + Microban I #1..#44. Uses new `software/apple1_4k.cfg` (CODE `$0280`, size `$1000` = 4 KB) — a reusable mid-size config for text programs that need more than `apple1.cfg` but no HGR RAM. Same keyboard layout prompt (QWERTY WASD / AZERTY ZQSD). Load via `280R`.
-- [x] **TMS9918 Sokoban** — Bundled as `software/tms9918/TMS_Sokoban.asm` and `TMS_Sokoban.txt` (4552 bytes, `$0280-$1447`). P-LAB Apple-1 Graphic Card version: Graphics I mode, **full-screen 32×24** display with 16×16-pixel tiles (each Sokoban tile = a 2×2 block of 8×8 chars). 7 tile types, one per "colour group" (bases 0, 8, 16, 24, 32, 40, 48) so each tile type gets its own palette colour (grey wall, red target, yellow box, light-green box-on-target, light-blue player, medium-green player-on-target, transparent floor). Playfield enlarged from 20×12 to **16×12** tiles — all 47 packed Microban levels (widths ≤ 15) still fit; smaller levels are centred at runtime (init_level ignores stored 20-grid offsets and recomputes `row_off/col_off` from `NROWS/NCOLS`). Delta rendering: each move writes 4 char codes (TL, TR, BL, BR) at the right 2×2 name-table position. 47 levels (3 teaching + Microban I #1..#44). Apple 1 text screen carries title, layout prompt (QWERTY/AZERTY) and win messages. Requires the TMS9918 card to be enabled in the Hardware menu. Load via `280R`.
-- [x] **Connect 4 — three ports** — Two-player drop-piece game, 7×6 grid. Identical state/logic across modes (shared `drop_piece`, `check_win` scanning 4 directions via `check_4_at_x` with parameterised offset, XOR #3 player toggle). Controls: keys 1-7 drop into a column, R restarts. Pieces: "red" and "yellow". Three builds:
-    - **Text**: `software/games/Connect4.asm` + `Connect4.txt` (1016 bytes, `apple1.cfg`). 7×6 grid drawn with `|.|R|Y|` ASCII, one frame per move — terminal scrolls naturally.
-    - **HGR**: `software/hgr/HGR7_Connect4.asm` + `HGR7_Connect4.txt` (2003 bytes, `apple1_gen2.cfg`). 14×16 rounded-rectangle pieces in NTSC artefact colour (red→orange, yellow→green). Board centred at byte col 13, scanline 48. Delta-draw the newly dropped piece only.
-    - **TMS9918**: `software/tms9918/TMS_Connect4.asm` + `TMS_Connect4.txt` (1116 bytes, `apple1_gen2.cfg`). Graphics I mode; board of blue 8×8 slots (bg=4) with circular fg cut-outs centred at name-table (row 9, col 12). Three colour groups: black hole (empty), red (player 1), yellow (player 2) — same pattern bitmap reused across groups.
-- [x] **Sokoban — undo + stock-RAM memory layout** — shipped in all three variants (April 2026).
-    - **Shared refactor** — plumbing in `software/games/sokoban_common.inc`; RLE-compressed levels in `sokoban_levels.inc` (1..45) and `sokoban_levels_ext.inc` (46..72). Encoder: `tools/sokoban_rle.py`.
-    - **Segment layout** — `LEVELBUF` (type=zp, $0020-$009F, 128 B) and `STATEGRID` (type=bss, $0F00 for text or $1F00 for TMS/HGR) declared in three new linker configs under `software/games/` (`apple1_sok_4k.cfg`, `apple1_sok_8k.cfg`, `apple1_sok_hgr.cfg`). `.segment "LEVELBUF": zeropage` forces `zp,X` encoding for the RLE scratch buffer; STATEGRID stays `abs,X`.
-    - **Text variant** (`software/games/Sokoban.asm`, 3174 B) — runs on a **real Apple 1 stock 4 KB DRAM, no expansion cards**. 45 levels (3 teaching + Microban I #1..#42). 16×12 playfield (shrunk from 20×12 to fit STATE_GRID in the 4K footprint). Full undo + move counter in footer (`MV:NNN  U=UNDO R=RST N=NXT`).
-    - **TMS9918 variant** (`software/tms9918/TMS_Sokoban.asm`, 3856 B) — runs on Apple 1 stock 8 KB + TMS card. Same 45 levels, 16×12 playfield. Undo with delta redraw.
-    - **HGR/GEN2 variant** (`software/hgr/HGR6_Sokoban.asm`, 6197 B) — runs on Apple 1 + 8 KB + GEN2 card (framebuffer $2000-$3FFF). 72 levels, 20×12 playfield preserved. Undo with delta redraw.
-    - **Remaining work** (optional):
-        1. Display the moves counter in HGR/TMS variants — internally tracked but not shown (would require an Apple-1-text HUD line that refreshes without scrolling).
-        2. Microban #43, #44 dropped from text+TMS to hit the 3 200 B budget; add them back if we later shave ~60 B elsewhere.
-- [ ] **CodeTank daughterboard ROM** — support the `apple1_jukebox` target (ROM at `$4000-$7FFF`) for programs stored on the CodeTank EEPROM.
-- [ ] **Misc programs reference (Angela / P-Lab)** — curated ports (Dobble, Oregon Trail, etc.) from [angela](https://p-l4b.github.io/angela/).
-- [ ] **Native file dialog** — file loading/saving still uses the in-app browser instead of system file pickers.
+
+- [ ] **Uncle Bernie's Woz Machine floppy controller** — 5.25" Disk II-style floppy emulation for Apple-1. Major effort; do last. Replicates the Woz state machine (74LS299 shift register, 74LS259 soft-switches) plus the **Timing Fix Circuit** (GAL16V8) that absorbs Apple-1 DRAM-refresh cycle jitter so Wozniak's RWTS cycle-counting works despite the missing Q3 2 MHz clock. Needs: GCR track/sector emulation, `.dsk`/`.woz` image loading, soft-switch dispatch in `$C0Ex` range, asynchronous 74LS123-based drive clock. Parks at last in the pipeline — only worth it once we have original Apple-1 disk software to run (none known public as of now; would target ports/adaptations from the Apple II disk library).
+
+### Print & voice
+
+- [ ] **SWTPC PR-40 40-col printer** — Parallel-port matrix printer (5×7 dots, 40 col/line, 75 lpm). Render output to a scrolling "paper roll" window + append to a `.txt` file. Tiny effort, high nostalgia. Hooks into an 8-bit parallel output port (to be defined; closest existing socket is the Terminal Card TCP stream, which we can split).
+
+- [ ] **Briel Multi I/O Board — SpeakJet vocal synthesis** — The 6522/6551 portions of the Briel board duplicate what P-LAB MicroSD / Modem already expose. The unique value is the **SpeakJet** phoneme chip socket: route the UART byte stream through a TTS bridge (eSpeak or macOS `say`) to give the Apple-1 a synthetic voice. Implement as a separate optional peripheral so it can coexist with microSD.
+
+### Machine presets
+
+- [ ] **Stock Apple-1 4 KB preset** — The existing *"Woz Apple 1 (1976)"* preset (`MainWindow_ImGui.cpp:192`) is 8 KB RAM with all cards disabled, matching a "stock + ACI card" configuration. Add a tighter **"Apple-1 bare 4 K"** preset for the absolute original (July 1976, pre-ACI): `ramKB = 4`, all flags off, Integer BASIC. This is the authenticity target for the newly-relocated text Sokoban (runs in `$0280-$0FFF` with STATE_GRID at `$0F00`). Bonus: once added, wire `Memory` to return `$FF` on reads above `ramSize*1024` and drop writes, with a flagged one-line warning in the debug panel — so out-of-bounds access is visible instead of silently working.
+
+## Apple-1 ecosystem — software & loaders
+
+- [ ] **TurboType 57 600-baud loader** (Uncle Bernie, via 8BitFlux *Keyboard Serial Terminal*) — Extend `TerminalCard` with a "raw inject" mode. Flow: host sends `.TUR` hybrid file → small Wozmon-speed bootstrap (the `.APL` prefix) installs an in-RAM dropper that disables the Wozmon echo → payload streams direct to RAM at 57 600 baud with running CRC. Loads a 4 KB program in < 30 s vs. the ~2 400-baud ceiling of echo-limited Wozmon. POM1-side: a single "Fast load" menu action that parses `.TUR`, switches the Terminal Card to raw mode for the burst, asserts CRC, and surrenders control back to Wozmon.
+
+- [ ] **More GEN2 programs** — Image viewers, drawing tools, additional 280×192 HIRES demos.
+
+- [ ] **CodeTank daughterboard ROM** — Support the `apple1_jukebox` target (ROM at `$4000-$7FFF`) for programs stored on the CodeTank EEPROM.
+
+- [ ] **Misc programs reference (Angela / P-Lab)** — Curated ports (Dobble, Oregon Trail, etc.) from [angela](https://p-l4b.github.io/angela/).
+
+- [ ] **Wendell Sander's Star Trek (SPACWR)** — Extended 32 K Star Trek port by the Fairchild DRAM lead, demoed to Jobs autumn 1976. Hunt for the listing (Applefritter, Computer History Museum archives). If located, package as a `.txt` bootable on a new "Apple-1 + Sander 32 K" preset. Modification: VMA signal 2.2 kΩ || 100 pF (Sander's fix) — simulate by enabling the upper RAM bank cleanly (no authenticity quirks needed since we don't model bus analog behaviour).
+
+- [ ] **Sokoban follow-ups**
+    1. Display the moves counter in HGR/TMS variants — currently tracked internally but not shown. Would need an Apple-1 text HUD line that refreshes without scrolling the screen.
+    2. Re-add Microban #43 and #44 to the text/TMS variants if we later shave ~60 B of code (currently dropped to fit the 3 200 B stock-4K budget; both are preserved in the HGR 72-level set).
+
+## SID converter
+
+- [ ] **Arkanoid (Galway) does not play** — ISR detected at `$4086` but tune is silent. Galway's multi-ISR raster-split architecture needs more than the converter's static ISR detection.
+
+- [ ] **Some IRQ-driven tunes still fail** — Players using computed or indirect ISR addresses (e.g. BMX Kidz) escape the LDA/LDX/LDY + STA/STX/STY pattern matcher.
+
+## Visuals & UX
+
+- [ ] **Native file dialog** — File loading/saving still uses the in-app browser instead of system file pickers.
+
+- [ ] **Authentic CRT shift-register streaming** — Extension of the existing CRT scanline + phosphor overlay (`Screen_ImGui::drawCRTOverlay`): add an opt-in mode that simulates the 1976 Signetics 2519 timing — characters land at ~60 char/s instead of instantly, the hardware scroll visibly shifts the whole buffer one line at a time, and the display stays frozen during CPU bursts exactly like the original. Pair with the bare-4 K preset for a full-fidelity 1976 experience.
+
+- [ ] **In-app Apple-1 Hardware Reference** — New *Help > Hardware Reference* window housing the architectural digest (memory map, historical + modern peripherals, card addresses, assembly toolchain cheatsheet). Good home for the ecosystem notes currently scattered between `CLAUDE.md` and commit messages. Pure documentation; no emulation change.
 
 ## Technical debt & code quality (audit April 2026)
 
