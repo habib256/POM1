@@ -44,10 +44,11 @@ Outputs in `build-wasm/`: `pom1_imgui.{html,js,wasm,data}`. The `.data` bundle i
 | `fonts/`   | `fonts/`          |
 | `software/`| `software/`       |
 | `sdcard/`  | `sdcard/`         |
+| `cfcard/`  | `cfcard/`         |
 
 Rebuild WASM after any change under those directories (or after editing `build-wasm/shell.html`) so `pom1_imgui.data` stays in sync. The browser build can only see content baked into `pom1_imgui.data` — to ship new files on the web, add them under the relevant directory and rebuild.
 
-The desktop `Memory` constructor probes `sdcard`, `../sdcard`, `../../sdcard` relative to the process working directory and calls `MicroSD::setSDCardPath()` when a directory exists.
+The desktop `Memory` constructor probes `sdcard`, `../sdcard`, `../../sdcard` relative to the process working directory and calls `MicroSD::setSDCardPath()` when a directory exists. It probes `cfcard`, `../cfcard`, `../../cfcard` for `cfcard.po` and opens it with the CFFA1 emulation when present.
 
 ### Assembling programs (cc65)
 

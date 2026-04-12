@@ -92,6 +92,7 @@ if(EMSCRIPTEN)
         "--preload-file ${PRELOAD_DIR}/fonts@fonts"
         "--preload-file ${PRELOAD_DIR}/software@software"
         "--preload-file ${PRELOAD_DIR}/sdcard@sdcard"
+        "--preload-file ${PRELOAD_DIR}/cfcard@cfcard"
         "--shell-file ${SHELL_FILE}"
         "-s EXPORTED_FUNCTIONS=['_main','_pom1_fillAudioBuffer','_malloc','_free']"
         "-s EXPORTED_RUNTIME_METHODS=['ccall','HEAPF32']"

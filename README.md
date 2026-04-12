@@ -308,6 +308,7 @@ POM1 emulates **Rich Dreher’s CFFA1** CompactFlash interface for the Apple 1: 
 - Toggle via **Hardware > CFFA1 CompactFlash Card** or the toolbar
 - With CFFA1 on, **Applesoft Lite** loads from **`applesoft-lite-cffa1.rom`** at **`$E000`–`$FFFF`** (includes Woz Monitor in that layout)
 - Enter the firmware menu with **`9006R`** in the Woz Monitor
+- Default disk image: **`cfcard/cfcard.po`** next to the executable (or repo root); the WASM build preloads **`cfcard/`** like **`sdcard/`**
 - Reload firmware or attach a disk image from the CFFA1 window / settings as documented in the app
 
 Reference: CFFA1 manual and firmware notes under `doc/CFFA1_cdromv1.1.zip` in the repo.
@@ -507,6 +508,7 @@ POM1/
 │   └── sid2apple1.py        # 🎛️ C64 PSID/RSID → Apple 1 .bin for A1-SID
 ├── roms/                    # 📀 WozMonitor, BASIC, Krusader, ACI, SD CARD OS, charmap
 ├── sdcard/                  # 💾 Virtual SD card content (host directory)
+├── cfcard/                  # 💽 CFFA1 ProDOS disk (`cfcard.po`) — bundled for desktop & WASM
 ├── software/                # 📂 Hex dump programs + assembly sources
 │   ├── games/               #   🎮 Games
 │   ├── demos/               #   🎨 Demos

@@ -103,14 +103,14 @@ if exist "sdcard\" (
     echo AVERTISSEMENT: dossier sdcard\ absent — omis.
 )
 
-copy /Y "packaging\windows\LISEZ-MOI.txt" "%OUTDIR%\LISEZ-MOI.txt" >nul
-
-REM Lanceur : CWD = dossier du package pour chemins relatifs
-> "%OUTDIR%\Lancer POM1.bat" (
-    echo @echo off
-    echo cd /d "%%~dp0"
-    echo start "" "%%~dp0pom1_imgui.exe"
+if exist "cfcard\" (
+    echo Copie cfcard\ ...
+    xcopy /E /I /Q "cfcard" "%OUTDIR%\cfcard\" >nul
+) else (
+    echo AVERTISSEMENT: dossier cfcard\ absent — omis.
 )
+
+copy /Y "packaging\windows\README.txt" "%OUTDIR%\README.txt" >nul
 
 if not exist "dist" mkdir "dist"
 if exist "%ZIPPATH%" del /f /q "%ZIPPATH%"
