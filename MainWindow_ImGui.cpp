@@ -189,6 +189,13 @@ struct MachineConfig {
 static const MachineConfig kMachinePresets[] = {
     //                                  GEN2  uSD  SID  TMS  RTC  WiFi Term Krus CFFA RAM  BASIC
     {
+        "Apple-1 bare 4 K (July 1976)",
+        "Pre-ACI original: 6502, 4 KB RAM, PIA 6821, Integer BASIC, WOZ Monitor. No cassette, no expansion.",
+        false, false, false, false, false, false, false,
+        false, false, 4, BasicType::Integer,
+        { {"Apple 1 Screen", {10,61}, {0,0}} }, 1
+    },
+    {
         "Woz Apple 1 (1976)",
         "Original bare board: 6502, 8 KB RAM, PIA 6821, Integer BASIC, WOZ Monitor. No expansion cards.",
         false, false, false, false, false, false, false,
