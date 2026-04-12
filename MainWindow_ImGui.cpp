@@ -694,7 +694,7 @@ void MainWindow_ImGui::renderToolbar()
         ImGui::SameLine();
         ImGui::PushStyleColor(ImGuiCol_Button,
             cffa1Enabled ? ImVec4(0.2f, 0.4f, 0.8f, 1.0f) : ImVec4(0.3f, 0.3f, 0.3f, 1.0f));
-        if (ImGui::Button(ICON_FA_COMPACT_DISC, btnSize)) {
+        if (ImGui::Button(ICON_FA_HARD_DRIVE, btnSize)) {
             cffa1Enabled = !cffa1Enabled;
             emulation->setCFFA1Enabled(cffa1Enabled);
             if (cffa1Enabled) { microSDEnabled = false; } // mutual exclusion
