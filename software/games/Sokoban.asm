@@ -642,20 +642,20 @@ tile_char:
 
 ; --- Strings ---
 str_title:
-        .byte $0D, " SOKOBAN 4K  (A.V. 2026)", $0D
-        .byte " 45 LVL: MICROBAN BY SKINNER", $0D, 0
+        .byte $0D, " SOKOBAN 4K 45LV MICROBAN", $0D
+        .byte " V.ARNAUD 26  SKINNER", $0D, 0
 
 str_layout:
-        .byte $0D, " 1=QWERTY WASD  2=AZERTY ZQSD", $0D, 0
+        .byte $0D, " 1=QWERTY  2=AZERTY", $0D, 0
 
 str_moves_prefix:
         .byte $0D, " MV:", 0
 
 str_footer:
-        .byte "  U=UNDO R=RST N=NXT", $0D, 0
+        .byte " U R N", $0D, 0
 
 str_win:
-        .byte $0D, " WIN! ANY KEY", $0D, 0
+        .byte $0D, " WIN! KEY", $0D, 0
 
 ; --- Level data (RLE compressed) ---
 .include "sokoban_levels.inc"

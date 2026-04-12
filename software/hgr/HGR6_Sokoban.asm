@@ -56,6 +56,18 @@ STATE_GRID_LEN = 240
 .segment "LEVELBUF": zeropage
 LEVEL_BUF:  .res 128            ; zp,X addressing, max level is 117 B
 
+; --- Boot-time + title/help/HUD scratch (zp at $00A0, free after init) ---
+.segment "ZPSCRATCH": zeropage
+tbl_lo:          .res 1
+tbl_hi:          .res 1
+title_ix:        .res 1
+title_glyph:     .res 1
+title_col_start: .res 1
+title_scanline:  .res 1
+big_byte0:       .res 1
+big_byte1:       .res 1
+hud_base_sl:     .res 1
+
 .segment "STATEGRID"
 STATE_GRID: .res 240            ; abs,X addressing (20x12)
 
@@ -113,6 +125,11 @@ mul_res0 = had_push
 ; MAIN
 ; =============================================
 main:
+        ; Graphical splash on the GEN2 framebuffer (visible while the
+        ; Apple-1 text screen shows the credits + layout prompt).
+        JSR clear_hgr
+        JSR draw_title
+
         ; Title on Apple 1 screen
         LDA #<str_title
         LDX #>str_title
@@ -159,7 +176,6 @@ game_loop:
         STA had_push
         STA moves
         JSR draw_hud
-        JSR show_level
 
 move_loop:
         JSR wait_key
@@ -179,10 +195,21 @@ move_loop:
         BEQ key_next
         CMP #'U'
         BEQ key_undo
+        CMP #'H'
+        BEQ key_help
         JMP move_loop                   ; ignore unknown keys
 
 key_undo:
         JSR execute_undo
+        JMP move_loop
+
+key_help:
+        JSR draw_help
+        JSR wait_key                    ; any key dismisses
+        ; Repaint the playfield (clears help screen) and restore the HUD.
+        JSR clear_hgr
+        JSR render_all
+        JSR draw_hud
         JMP move_loop
 
 key_up:
@@ -229,10 +256,12 @@ do_move:
         CMP #$00
         BEQ move_loop_j                 ; not won yet
 
-        ; Level complete
+        ; Level complete — splash on the HGR screen, summary on the
+        ; Apple-1 text screen. wait_key holds both until any key.
         LDA #<str_win
         LDX #>str_win
         JSR print_str_ax
+        JSR draw_success
         JSR wait_key
 
 advance_level:
@@ -696,47 +725,25 @@ execute_undo:
         RTS
 
 ; =============================================
-; show_level: display "LEVEL NN" on Apple 1 (2-digit)
+; (show_level was removed — the on-screen "L:NN" in the bottom-right
+;  HGR HUD makes the Apple-1 text echo redundant.)
 ; =============================================
-show_level:
-        LDA #<str_level
-        LDX #>str_level
-        JSR print_str_ax
-        LDA level_idx
-        CLC
-        ADC #$01
-        LDX #$00
-@div:   CMP #$0A
-        BCC @ddone
-        SBC #$0A                        ; carry set from CMP
-        INX
-        JMP @div
-@ddone:
-        PHA                             ; save ones digit
-        TXA
-        ORA #'0'
-        ORA #$80
-        JSR ECHO                        ; tens digit
-        PLA
-        ORA #'0'
-        ORA #$80
-        JSR ECHO                        ; ones digit
-        LDA #$8D                        ; CR
-        JSR ECHO
-        RTS
-
-; =============================================
-; draw_hud: render "MV:NNN" into the HGR framebuffer at tile row 0,
-; cells 0-5 (top-left corner). Call after render_all and after any
-; change to `moves`. The HUD always wins over delta tile redraws
-; because both call sites trigger draw_hud after the tile updates.
+; draw_hud: render "MV:NNN" in the top-left (tile row 0, cells 0-5)
+; and "L:NN" in the bottom-right (tile row 11, cells 16-19). Called
+; on level load and after every change to `moves`; the bottom display
+; updates on every call but its value only changes when the level
+; changes, so the redundant writes are harmless.
 ; =============================================
 ; Glyph indices into hud_font (see data below):
 HUD_G_M  = 10
 HUD_G_V  = 11
 HUD_G_CL = 12
+HUD_G_L  = 22
 
 draw_hud:
+        ; --- Top-left: MV:NNN at scanline 0 ---
+        LDA #$00
+        STA hud_base_sl
         LDA #HUD_G_M
         LDX #$00
         JSR draw_hud_cell
@@ -776,29 +783,64 @@ draw_hud:
 
         ; Ones
         LDX #$05
+        JSR draw_hud_cell
+
+        ; --- Bottom-right: L:NN at tile row 11 (scanline 176) ---
+        LDA #176
+        STA hud_base_sl
+        LDA #HUD_G_L
+        LDX #$10                        ; cell 16
+        JSR draw_hud_cell
+        LDA #HUD_G_CL
+        LDX #$11
+        JSR draw_hud_cell
+
+        ; 2-digit level number (level_idx is 0-based; display 1-based)
+        LDA level_idx
+        CLC
+        ADC #$01
+        LDX #$00
+@lt10:  CMP #$0A
+        BCC @lt10d
+        SBC #$0A
+        INX
+        JMP @lt10
+@lt10d: PHA                             ; save ones
+        TXA
+        LDX #$12
+        JSR draw_hud_cell
+        PLA
+        LDX #$13
         JMP draw_hud_cell               ; tail-call
 
 ; =============================================
-; draw_hud_cell: write one 14x16 HUD cell (glyph in left byte, right
-; byte blank, bottom 8 scanlines blanked so the underlying tile top
-; row does not show through).
-; Input: A = glyph index (0..12), X = cell column (0..5)
+; draw_hud_cell: write one 14x16 HUD cell. Glyph in the left byte of
+; the cell, right byte blank; top 8 scanlines carry the glyph rows,
+; bottom 8 are blanked so the underlying tile doesn't poke through.
+; The cell's top scanline is `hud_base_sl` (set by caller: 0 for the
+; top HUD, 176 for the bottom HUD).
+; Input: A = glyph index, X = cell column (0..19)
 ; Clobbers: A, X, Y, temp, temp2, ptr_lo, ptr_hi
 ; =============================================
 draw_hud_cell:
-        STX temp                        ; temp = cell column (0..5)
+        STX temp                        ; temp = cell column
         ASL A
         ASL A
         ASL A                           ; A = glyph_idx * 8
         STA temp2                       ; temp2 = glyph base offset
-        LDX #$00                        ; X = scanline 0..15
+        LDX #$00                        ; X = scanline offset 0..15
 @sc:
-        LDA hgr_lo,X
+        ; abs_scanline = hud_base_sl + X
+        TXA
+        CLC
+        ADC hud_base_sl
+        TAY
+        LDA hgr_lo,Y
         STA ptr_lo
-        LDA hgr_hi,X
+        LDA hgr_hi,Y
         STA ptr_hi
 
-        ; Pick glyph byte (scanline 0..7) or blank (8..15)
+        ; Pick glyph byte (scanline offset 0..7) or blank (8..15)
         CPX #$08
         BCS @blank
         TXA
@@ -825,39 +867,470 @@ draw_hud_cell:
         BCC @sc
         RTS
 
+; (hud_base_sl lives in ZPSCRATCH — one byte in zp makes the
+;  draw_hud_cell inner loop slightly smaller.)
+
 ; =============================================
 ; HUD font: 13 glyphs x 8 scanlines = 104 bytes. Each byte spans one
 ; HGR scanline, bits 0-4 form a 5-pixel-wide glyph (bit 0 = leftmost
 ; pixel). Bit 7 = 0 so glyphs render in the GEN2 "violet/green" NTSC
 ; phase group. Index 10=M, 11=V, 12=':' ; indices 0..9 are digits 0..9.
 ; =============================================
+; "Beautiful Boot" fat-stroke font, derived from Michael Pohoreski's
+; Apple II HGR font tutorial (github.com/Michaelangel007/apple2_hgr_font_tutorial,
+; README §Fat Stroke Fonts / Beautiful Boot). Each glyph is 7x8 pixels,
+; one byte per scanline (bit 0 = leftmost pixel, Apple II HGR
+; convention). Strokes are ≥2 pixels wide, so adjacent-pixel pairs
+; render as solid white in NTSC artifact-colour mode (no violet/green
+; fringing on vertical strokes as with the previous thin font).
+;
+; Storage transform applied at import time:
+;   - source stored rows bottom-first → reversed so byte 0 = top row;
+;   - source had bit 7 set on every byte (phase bit) → masked to 0 to
+;     match the surrounding tile bitmaps' phase (group 1).
 hud_font:
-        ; 0
-        .byte $0E, $11, $11, $11, $11, $11, $0E, $00
-        ; 1
-        .byte $04, $06, $04, $04, $04, $04, $0E, $00
-        ; 2
-        .byte $0E, $11, $10, $08, $04, $02, $1F, $00
-        ; 3
-        .byte $0E, $11, $10, $0C, $10, $11, $0E, $00
-        ; 4
-        .byte $11, $11, $11, $1F, $10, $10, $10, $00
-        ; 5
-        .byte $1F, $01, $01, $0F, $10, $11, $0E, $00
-        ; 6
-        .byte $06, $01, $01, $0F, $11, $11, $0E, $00
-        ; 7
-        .byte $1F, $10, $08, $04, $02, $02, $02, $00
-        ; 8
-        .byte $0E, $11, $11, $0E, $11, $11, $0E, $00
-        ; 9
-        .byte $0E, $11, $11, $1E, $10, $10, $0C, $00
-        ; M
-        .byte $11, $1B, $15, $11, $11, $11, $11, $00
-        ; V
-        .byte $11, $11, $11, $11, $0A, $0A, $04, $00
-        ; :
-        .byte $00, $04, $00, $00, $04, $00, $00, $00
+        ; 0  (index 0)
+        .byte $1E, $33, $33, $33, $33, $33, $1E, $00
+        ; 1  (index 1)
+        .byte $0C, $0E, $0F, $0C, $0C, $0C, $3F, $00
+        ; 2  (index 2)
+        .byte $1E, $3F, $33, $38, $0E, $3F, $3F, $00
+        ; 3  (index 3)
+        .byte $1E, $3F, $30, $3E, $30, $3F, $1E, $00
+        ; 4  (index 4)
+        .byte $38, $3C, $36, $33, $3F, $30, $30, $00
+        ; 5  (index 5)
+        .byte $3F, $3F, $03, $1F, $30, $3F, $1E, $00
+        ; 6  (index 6)
+        .byte $1E, $3F, $03, $1F, $33, $3F, $1E, $00
+        ; 7  (index 7)
+        .byte $3F, $3F, $30, $18, $0C, $0C, $0C, $00
+        ; 8  (index 8)
+        .byte $1E, $3F, $33, $1E, $33, $3F, $1E, $00
+        ; 9  (index 9)
+        .byte $1E, $3F, $33, $3E, $30, $3F, $1E, $00
+        ; M  (index 10)
+        .byte $33, $3F, $33, $33, $33, $33, $33, $00
+        ; V  (index 11)
+        .byte $33, $33, $33, $33, $33, $1E, $0C, $00
+        ; :  (index 12)
+        .byte $00, $1C, $1C, $00, $00, $1C, $1C, $00
+        ; S  (index 13)
+        .byte $1E, $33, $03, $1E, $30, $33, $1E, $00
+        ; O  (index 14)
+        .byte $1E, $3F, $33, $33, $33, $3F, $1E, $00
+        ; K  (index 15)
+        .byte $33, $3B, $1F, $0F, $1F, $3B, $33, $00
+        ; B  (index 16)
+        .byte $1F, $3F, $33, $1F, $33, $3F, $1F, $00
+        ; A  (index 17)
+        .byte $1E, $3F, $33, $3F, $3F, $33, $33, $00
+        ; N  (index 18)
+        .byte $33, $33, $37, $3F, $3B, $33, $33, $00
+        ; P  (index 19)
+        .byte $1F, $3F, $33, $3F, $1F, $03, $03, $00
+        ; R  (index 20)
+        .byte $1F, $3F, $33, $3F, $1F, $3B, $33, $00
+        ; E  (index 21)
+        .byte $3F, $3F, $03, $1F, $03, $3F, $3F, $00
+        ; L  (index 22)
+        .byte $03, $03, $03, $03, $03, $3F, $3F, $00
+        ; space (index 23)
+        .byte $00, $00, $00, $00, $00, $00, $00, $00
+        ; G  (index 24)
+        .byte $1E, $3F, $03, $3B, $33, $3F, $1E, $00
+        ; H  (index 25)
+        .byte $33, $33, $33, $3F, $3F, $33, $33, $00
+        ; T  (index 26)
+        .byte $3F, $3F, $0C, $0C, $0C, $0C, $0C, $00
+        ; D  (index 27)
+        .byte $1F, $3F, $33, $33, $33, $3F, $1F, $00
+        ; Y  (index 28)
+        .byte $33, $33, $33, $1E, $0C, $0C, $0C, $00
+        ; I  (index 29)
+        .byte $3F, $3F, $0C, $0C, $0C, $3F, $3F, $00
+        ; U  (index 30)
+        .byte $33, $33, $33, $33, $33, $3F, $1E, $00
+        ; Q  (index 31)
+        .byte $1E, $3F, $23, $23, $2B, $13, $2E, $00
+        ; W  (index 32)
+        .byte $33, $33, $33, $33, $33, $3F, $33, $00
+        ; Z  (index 33)
+        .byte $3F, $3F, $18, $0C, $06, $3F, $3F, $00
+        ; C  (index 34)
+        .byte $1E, $3F, $33, $03, $33, $3F, $1E, $00
+        ; X  (index 35)
+        .byte $33, $33, $1E, $0C, $1E, $33, $33, $00
+        ; (  (index 36) — swapped vs raw bitmap: GEN2/bit0-left needs 37’s shape here
+        .byte $78, $7C, $7E, $0E, $7E, $7C, $78, $00
+        ; )  (index 37)
+        .byte $0F, $1F, $3F, $38, $3F, $1F, $0F, $00
+
+; --- 2x-scale doubling tables for draw_big_glyph ---
+; Each fat-font row byte's 7 pixels double to 14 HGR pixels.
+; byte 0 output is a function of glyph bits 0..3 (b0,b0,b1,b1,b2,b2,b3).
+; byte 1 output is a function of glyph bits 3..6 (b3,b4,b4,b5,b5,b6,b6).
+; (bit 3 straddles the two output bytes; both tables sample it.)
+double_lo:
+        .byte $00, $03, $0C, $0F, $30, $33, $3C, $3F
+        .byte $40, $43, $4C, $4F, $70, $73, $7C, $7F
+double_hi:
+        .byte $00, $01, $06, $07, $18, $19, $1E, $1F
+        .byte $60, $61, $66, $67, $78, $79, $7E, $7F
+
+; (big_byte0/big_byte1 also live in ZPSCRATCH.)
+
+; =============================================
+; Title / help / success screens — all table-driven.
+; Each table entry is 5 bytes: str_lo, str_hi, byte_col, scanline,
+; style ($00 = small, $01 = 2x big).
+; The table ends with $FF in the str_lo slot.
+; =============================================
+draw_title:
+        LDA #<title_table
+        STA tbl_lo
+        LDA #>title_table
+        STA tbl_hi
+        JMP draw_from_table
+
+draw_help:
+        JSR clear_hgr
+        LDA #<help_table
+        STA tbl_lo
+        LDA #>help_table
+        STA tbl_hi
+        JMP draw_from_table
+
+draw_success:
+        JSR clear_hgr
+        LDA #<success_table
+        STA tbl_lo
+        LDA #>success_table
+        STA tbl_hi
+        ; fall through into draw_from_table
+
+draw_from_table:
+@entry:
+        LDY #$00
+        LDA (tbl_lo),Y
+        CMP #$FF
+        BEQ @done
+        STA sptr_lo
+        INY
+        LDA (tbl_lo),Y
+        STA sptr_hi
+        INY
+        LDA (tbl_lo),Y
+        STA title_col_start
+        INY
+        LDA (tbl_lo),Y
+        STA title_scanline
+        INY
+        LDA (tbl_lo),Y                  ; style
+        BEQ @small
+        JSR draw_title_big_line
+        JMP @next
+@small:
+        JSR draw_title_line
+@next:
+        LDA tbl_lo
+        CLC
+        ADC #$05
+        STA tbl_lo
+        BCC @entry
+        INC tbl_hi
+        JMP @entry
+@done:
+        RTS
+
+; --- Screen tables (entries = str_lo, str_hi, byte_col, scanline, style) ---
+title_table:
+        .byte <title_sokoban, >title_sokoban, $0D, $08, $01    ; big
+        .byte <title_apple,   >title_apple,   $0D, $30, $00
+        .byte <title_card,    >title_card,    $03, $40, $00    ; "GEN2 UNCLE BERNIE"
+        .byte <title_author,  >title_author,  $02, $60, $00
+        ; SELECT KEYBOARD; blank $78-$8F; then 1 QWERTY (WASD) / 2 AZERTY (ZQSD)
+        .byte <title_kb_hint, >title_kb_hint, $05, $70, $00
+        .byte <title_qwerty,  >title_qwerty,  $05, $90, $00
+        .byte <title_azerty,  >title_azerty,  $05, $A0, $00
+        .byte <title_h_help,  >title_h_help,  $0E, $B8, $00    ; "H HELP" reminder
+        .byte $FF
+
+help_table:
+        .byte <help_big_title, >help_big_title, $10, $10, $01  ; big HELP
+        .byte <help_qwerty,    >help_qwerty,    $07, $30, $00
+        .byte <help_azerty,    >help_azerty,    $07, $40, $00
+        .byte <help_u,         >help_u,         $0E, $58, $00
+        .byte <help_r,         >help_r,         $0D, $68, $00
+        .byte <help_n,         >help_n,         $0E, $78, $00
+        .byte <help_h,         >help_h,         $0E, $88, $00
+        .byte <help_back,      >help_back,      $08, $A0, $00
+        .byte $FF
+
+success_table:
+        .byte <title_success,    >title_success,    $0D, 56, $01
+        .byte <title_press_key,  >title_press_key,  $09, 96, $00
+        .byte $FF
+
+; =============================================
+; draw_title_line: walk the string at (sptr_lo/hi), stamping each
+; glyph at byte_col = title_col_start + ix*2 on scanline
+; title_scanline. Terminated by $FF.
+; =============================================
+draw_title_line:
+        LDA #$00
+        STA title_ix
+@lp:
+        LDY title_ix
+        LDA (sptr_lo),Y
+        CMP #$FF
+        BEQ @done
+        STA title_glyph
+        TYA
+        ASL A
+        CLC
+        ADC title_col_start
+        TAX
+        LDA title_glyph
+        LDY title_scanline
+        JSR draw_title_glyph
+        INC title_ix
+        JMP @lp
+@done:
+        RTS
+
+; =============================================
+; draw_title_big_line: same iteration, 2x-scale glyphs (14 px wide,
+; 16 scanlines tall). Big-glyph cells are 2 byte cols wide and packed
+; back-to-back, so step = ix*2.
+; =============================================
+draw_title_big_line:
+        LDA #$00
+        STA title_ix
+@lp:
+        LDY title_ix
+        LDA (sptr_lo),Y
+        CMP #$FF
+        BEQ @done
+        STA title_glyph
+        TYA
+        ASL A                           ; *2 bytes per big glyph
+        CLC
+        ADC title_col_start
+        TAX
+        LDA title_glyph
+        LDY title_scanline
+        JSR draw_big_glyph
+        INC title_ix
+        JMP @lp
+@done:
+        RTS
+
+; set_hud_font_ptr: src_lo/hi = hud_font + (glyph_idx * 8), idx*8 in 16 bits.
+; Input: A = glyph index. Clobbers A, X. (Callers save their X in temp first.)
+; =============================================
+set_hud_font_ptr:
+        LDX #$00
+        STX src_hi
+        ASL A
+        ROL src_hi
+        ASL A
+        ROL src_hi
+        ASL A
+        ROL src_hi
+        CLC
+        ADC #<hud_font
+        STA src_lo
+        LDA src_hi
+        ADC #>hud_font
+        STA src_hi
+        RTS
+
+; =============================================
+; draw_big_glyph: render a glyph at 2x horizontal AND vertical scale
+; into the HGR framebuffer, using the fat-font data plus the
+; double_lo/double_hi lookup tables.
+;   Input : A = glyph index, X = byte_col (0..36), Y = start scanline.
+;   Output: 2 bytes wide × 16 scanlines tall.
+;   Clobbers: A, X, Y, temp, temp2, src_lo, src_hi, ptr_lo, ptr_hi,
+;             big_byte0, big_byte1 (scratch).
+; Font base = hud_font + (glyph_idx*8) with idx*8 in 16 bits (32*8=256),
+; then each row via (src_lo),Y — fixes W/Z/C/X and row fetches past $FF.
+; =============================================
+draw_big_glyph:
+        STX temp                        ; byte_col
+        STY temp2                       ; start_scanline
+        JSR set_hud_font_ptr
+        LDY #$00
+        STY title_glyph                 ; font row 0..7 in title_glyph
+@row:
+        LDY title_glyph
+        LDA (src_lo),Y
+        PHA
+
+        AND #$0F
+        TAX
+        LDA double_lo,X
+        STA big_byte0                   ; pixels 0-6 of doubled row
+
+        PLA
+        LSR A
+        LSR A
+        LSR A
+        AND #$0F
+        TAX
+        LDA double_hi,X
+        STA big_byte1                   ; pixels 7-13 of doubled row
+
+        ; Absolute scanline = temp2 + Y*2
+        TYA
+        ASL A
+        CLC
+        ADC temp2
+        TAX                             ; X = scanline
+
+        ; Two back-to-back scanlines get the same doubled pixels.
+        LDA hgr_lo,X
+        CLC
+        ADC temp
+        STA ptr_lo
+        LDA hgr_hi,X
+        ADC #$00
+        STA ptr_hi
+        LDY #$00
+        LDA big_byte0
+        STA (ptr_lo),Y
+        INY
+        LDA big_byte1
+        STA (ptr_lo),Y
+
+        INX                             ; next scanline
+        LDA hgr_lo,X
+        CLC
+        ADC temp
+        STA ptr_lo
+        LDA hgr_hi,X
+        ADC #$00
+        STA ptr_hi
+        LDY #$00
+        LDA big_byte0
+        STA (ptr_lo),Y
+        INY
+        LDA big_byte1
+        STA (ptr_lo),Y
+
+        LDY title_glyph
+        INY
+        STY title_glyph
+        CPY #$08
+        BCC @row
+        RTS
+
+; =============================================
+; draw_title_glyph: write 8 scanlines of one glyph into the HGR
+; framebuffer at (byte_col, start_scanline). Single byte wide (7
+; visible pixels). Assumes the background scanlines are already zero.
+; Input:  A = glyph index, X = byte_col (0..39), Y = start_scanline.
+; Clobbers: A, X, Y, temp, temp2, src_lo, src_hi, ptr_lo, ptr_hi,
+;           title_glyph (row temp, same contract as draw_big_glyph).
+; Reads font via (src_lo),Y; pointer from set_hud_font_ptr.
+; =============================================
+draw_title_glyph:
+        STX temp                        ; temp = byte_col
+        STY temp2                       ; temp2 = start_scanline
+        JSR set_hud_font_ptr
+        LDY #$00
+@sc:
+        STY title_glyph
+        LDA (src_lo),Y
+        PHA
+        LDY title_glyph
+        TYA
+        CLC
+        ADC temp2
+        TAX
+        LDA hgr_lo,X
+        CLC
+        ADC temp
+        STA ptr_lo
+        LDA hgr_hi,X
+        ADC #$00
+        STA ptr_hi
+        PLA
+        LDY #$00
+        STA (ptr_lo),Y
+        LDY title_glyph
+        INY
+        STY title_glyph
+        CPY #$08
+        BCC @sc
+        RTS
+
+; --- Title / help / success strings (glyph-index encoded, $FF terminated) ---
+; Glyph index table:
+;   0..9 = '0'..'9'
+;   10=M  11=V  12=:  13=S  14=O  15=K  16=B  17=A  18=N  19=P
+;   20=R  21=E  22=L  23=space  24=G  25=H  26=T  27=D  28=Y  29=I
+;   30=U  31=Q  32=W  33=Z  34=C  35=X  36=(  37=)
+title_kb_hint:
+        ; SELECT KEYBOARD (15 glyphs x 2 cols = 30; col 5 centres in 40)
+        .byte 13,21,22,21,34,26,23,15,21,28,16,14,17,20,27, $FF
+title_sokoban:
+        ; S  O  K  O  B  A  N
+        .byte 13,14,15,14,16,17,18, $FF
+title_apple:
+        ; A  P  P  L  E  _  1
+        .byte 17,19,19,22,21,23, 1, $FF
+title_card:
+        ; G  E  N  2  _  U  N  C  L  E  _  B  E  R  N  I  E
+        .byte 24,21,18, 2,23,30,18,34,22,21,23,16,21,20,18,29,21, $FF
+title_author:
+        ; B  Y  _  V  E  R  H  I  L  L  E  _  A  R  N  A  U  D
+        .byte 16,28,23,11,21,20,25,29,22,22,21,23,17,20,18,17,30,27, $FF
+title_qwerty:
+        ; 1  _  QWERTY  _  ( WASD )
+        .byte  1,23,31,32,21,20,26,28,23,36,32,17,13,27,37, $FF
+title_azerty:
+        ; 2  _  AZERTY  _  ( ZQSD )
+        .byte  2,23,17,33,21,20,26,28,23,36,33,31,13,27,37, $FF
+title_h_help:
+        ; H  _  H  E  L  P
+        .byte 25,23,25,21,22,19, $FF
+title_success:
+        ; S  U  C  C  E  S  S
+        .byte 13,30,34,34,21,13,13, $FF
+title_press_key:
+        ; P  R  E  S  S  _  A  _  K  E  Y
+        .byte 19,20,21,13,13,23,17,23,15,21,28, $FF
+
+; --- Help strings ---
+help_big_title:
+        ; H  E  L  P
+        .byte 25,21,22,19, $FF
+help_qwerty:
+        ; QWERTY  ( WASD )
+        .byte 31,32,21,20,26,28,23,36,32,17,13,27,37, $FF
+help_azerty:
+        ; AZERTY  ( ZQSD )
+        .byte 17,33,21,20,26,28,23,36,33,31,13,27,37, $FF
+help_u:
+        ; U  _  U  N  D  O
+        .byte 30,23,30,18,27,14, $FF
+help_r:
+        ; R  _  R  E  S  E  T
+        .byte 20,23,20,21,13,21,26, $FF
+help_n:
+        ; N  _  N  E  X  T
+        .byte 18,23,18,21,35,26, $FF
+help_h:
+        ; H  _  H  E  L  P
+        .byte 25,23,25,21,22,19, $FF
+help_back:
+        ; A  N  Y  _  K  E  Y  _  B  A  C  K
+        .byte 17,18,28,23,15,21,28,23,16,17,34,15, $FF
+
+; (title_ix/title_glyph/title_col_start/title_scanline now live in
+;  the ZPSCRATCH segment — see the .zeropage block up top.)
 
 ; =============================================
 ; Shared routines + tile-state tables
@@ -954,29 +1427,14 @@ level_ptrs_hi:
 
 ; --- Strings ---
 str_title:
-        .byte $0D, " * SOKOBAN * ", $0D
-        .byte " APPLE 1 + GEN2 COLOR CARD", $0D
-        .byte " PORT BY VERHILLE ARNAUD, 2026", $0D
-        .byte $0D
-        .byte " LEVELS 4-72: MICROBAN I", $0D
-        .byte " CLASSIC SET BY D.W. SKINNER", $0D
-        .byte $0D
-        .byte " PUSH ALL BOXES ONTO TARGETS.", $0D
-        .byte " BOXES CAN ONLY BE PUSHED --", $0D
-        .byte " NEVER PULLED! WATCH CORNERS!", $0D
-        .byte $0D
-        .byte " U=UNDO  R=RESET  N=NEXT", $0D, 0
+        .byte $0D, " SOKOBAN + GEN2 HGR", $0D
+        .byte " MICROBAN I 72LV  V.ARNAUD 26", $0D
+        .byte " PUSH BOXES ON TARGETS  U R N", $0D, 0
 
 str_layout:
-        .byte $0D, " KEYBOARD LAYOUT ?", $0D
-        .byte "  1 = QWERTY  (W/A/S/D)", $0D
-        .byte "  2 = AZERTY  (Z/Q/S/D)", $0D, 0
-
-str_level:
-        .byte $0D, " LEVEL ", 0
+        .byte $0D, " KEYBOARD: 1 QWERTY  2 AZERTY", $0D, 0
 
 str_win:
-        .byte $0D, " LEVEL CLEARED!", $0D
-        .byte " ANY KEY = NEXT LEVEL", 0
+        .byte $0D, " CLEARED! KEY=NEXT", $0D, 0
 
 .include "hgr_tables.inc"

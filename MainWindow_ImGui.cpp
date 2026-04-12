@@ -1243,6 +1243,11 @@ void MainWindow_ImGui::renderTMS9918Window()
         float pixelScale = defPs;
         ImVec2 size = layoutFitVideoViewport(avail, static_cast<float>(TMS9918::kScreenWidth),
                                              static_cast<float>(TMS9918::kScreenHeight), pixelScale);
+        // Integer scale keeps 8x8 name-table glyphs sharp; fractional ps makes
+        // AddRectFilled edges overlap and text (HELP, title) look doubled/blurred.
+        pixelScale = std::max(kVideoCardMinPixelScale, std::floor(pixelScale));
+        size = ImVec2(std::floor(TMS9918::kScreenWidth * pixelScale),
+                      std::floor(TMS9918::kScreenHeight * pixelScale));
         ImVec2 cursorPos = ImGui::GetCursorPos();
         ImGui::SetCursorPos(ImVec2(
             cursorPos.x + std::max(0.0f, (avail.x - size.x) * 0.5f),

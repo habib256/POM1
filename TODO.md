@@ -36,6 +36,7 @@ referenced in `README.md`.
 - [ ] **Sokoban follow-ups**
     1. ~~Display the moves counter in HGR/TMS variants~~ — done. Both variants now render an `MV:NNN` HUD directly into the graphics surface (HGR framebuffer top-left, TMS name-table row 0), refreshed after every move/undo so delta redraws don't stomp it.
     2. Re-add Microban #43 and #44 to the text/TMS variants if we later shave ~60 B of code (currently dropped to fit the 3 200 B stock-4K budget; both are preserved in the HGR 72-level set).
+    3. **Swap the HGR HUD/title font for a proper "fat stroke" HGR font.** Current `hud_font` in `software/hgr/HGR6_Sokoban.asm` is a hand-rolled 5×7 thin font: horizontal bars render white, vertical 1-pixel strokes render in NTSC artifact colour (violet on even columns, green on odd), so digits and letters shimmer and shift hue depending on their byte column. Michael Pohoreski's [apple2_hgr_font_tutorial](https://github.com/Michaelangel007/apple2_hgr_font_tutorial) documents a 7×8 fat-stroke HGR font (1 byte per scanline, 8 bytes per glyph — same storage budget as today) whose strokes are ≥ 2 pixels wide so every stroke reads as white. Plan: pull in the digit + `M V : S O K B A N P R E L space L` subset (~24 glyphs × 8 B = 192 B, matches current layout), verify licensing, and drop it in as a direct replacement — no logic change, just a font-data swap. Same idea could carry the same subset into a 16×16 big-title font for a more impressive splash screen.
 
 ## SID converter
 

@@ -99,6 +99,11 @@ moves:           .res 1 ; $1D  move counter (saturates at $FF)
 ; MAIN
 ; =============================================
 main:
+        ; Bring up the TMS9918 first so the graphical title is visible
+        ; while the Apple-1 text screen shows the credits + prompt.
+        JSR init_vdp
+        JSR draw_title_tms
+
         LDA #<str_title
         LDX #>str_title
         JSR print_str_ax
@@ -126,7 +131,6 @@ main:
         LDA #'Q'
         STA key_left_code
 @start:
-        JSR init_vdp                    ; set up TMS9918
         LDA #$00
         STA level_idx
 
@@ -156,10 +160,19 @@ move_loop:
         BEQ key_next
         CMP #'U'
         BEQ key_undo
+        CMP #'H'
+        BEQ key_help
         JMP move_loop
 
 key_undo:
         JSR execute_undo
+        JMP move_loop
+
+key_help:
+        JSR draw_help_tms
+        JSR wait_key
+        JSR render_all                  ; repaint the playfield
+        JSR draw_hud                    ; repaint the two-corner HUD
         JMP move_loop
 
 key_up:
@@ -200,10 +213,12 @@ do_move:
         CMP #$00
         BEQ move_loop_j
 
-        ; Victory
+        ; Victory — splash on the VDP, summary on the Apple-1 text
+        ; screen. wait_key holds the display until any key.
         LDA #<str_win
         LDX #>str_win
         JSR print_str_ax
+        JSR draw_success_tms
         JSR wait_key
 
 advance_level:
@@ -272,21 +287,30 @@ init_vdp:
         CPX #$07
         BNE @patloop
 
-        ; --- Upload HUD glyph patterns at VRAM $01C0 (chars 56..68) ---
+        ; --- Upload HUD + title glyph patterns at VRAM $01C0 ---
+        ; (chars 56..94 = 39 glyphs x 8 = 312 bytes; two blocks because
+        ; the loop counter is 8-bit.)
         LDA #$C0
         STA VDP_CTRL
         LDA #$41                        ; $01 | $40
         STA VDP_CTRL
         LDX #$00
-@hudpat:
+@hudpat1:
         LDA hud_patterns,X
         STA VDP_DATA
         INX
-        CPX #104                        ; 13 glyphs x 8 bytes
-        BCC @hudpat
+        BNE @hudpat1                    ; writes 256 bytes
+        LDX #$00
+@hudpat2:
+        LDA hud_patterns+256,X
+        STA VDP_DATA
+        INX
+        CPX #56                         ; remaining 312-256 = 56 bytes
+        BCC @hudpat2
 
-        ; --- Load 9 colour bytes at colour table $2000 (groups 0..8) ---
-        ; Groups 0..6 = tile colours. Groups 7..8 cover HUD chars 56..71.
+        ; --- Load 12 colour bytes at colour table $2000 (groups 0..11) ---
+        ; Groups 0..6 = tile colours. Groups 7..11 cover chars 56..95
+        ; (HUD + title letters, all white).
         LDA #$00
         STA VDP_CTRL
         LDA #$60                        ; $20 | $40 (write flag)
@@ -296,7 +320,7 @@ init_vdp:
         LDA tile_colors,X
         STA VDP_DATA
         INX
-        CPX #$09
+        CPX #$0C
         BNE @colloop
 
         ; --- Clear name table ($1800, 768 bytes = char 0 = blank floor) ---
@@ -768,15 +792,20 @@ execute_undo:
         RTS
 
 ; =============================================
-; draw_hud: render "MV:NNN" into the VDP name table at row 0 cols 0-5,
-; and clear the row below (row 1 cols 0-5, written as char 0 = floor)
-; so the bottom half of the underlying playfield tiles doesn't poke
+; draw_hud: render the two-corner HUD into the VDP name table.
+;   - Top-left  (row 0 cols 0-5)   : "MV:NNN"
+;   - Bottom-right (row 23 cols 28-31) : "L:NN"
+; Row 1 cols 0-5 and row 22 cols 28-31 are also cleared to char 0
+; (floor) so the "other half" of the 2x2 tile underneath doesn't poke
 ; through. Called after render_all and after every change to `moves`.
+; The L:NN value follows `level_idx+1` and is redundantly rewritten on
+; every move — cheap, keeps the logic flat.
 ; =============================================
 HUD_C_M   = 56
 HUD_C_V   = 57
 HUD_C_CL  = 58
 HUD_C_D0  = 59                          ; '0'..'9' at chars 59..68
+HUD_C_L   = 78                          ; 'L' glyph char (from title set)
 
 draw_hud:
         ; --- Row 0: "MV:HTU" at VRAM $1800 ---
@@ -830,10 +859,342 @@ draw_hud:
         STA VDP_CTRL
         LDX #$06
         LDA #$00
-@clr:   STA VDP_DATA
+@clr_tl:
+        STA VDP_DATA
         DEX
-        BNE @clr
+        BNE @clr_tl
+
+        ; --- Row 23 cols 28-31: "L:NN" at VRAM $1AFC ---
+        LDA #$FC
+        STA VDP_CTRL
+        LDA #$5A                        ; $1A | $40
+        STA VDP_CTRL
+        LDA #HUD_C_L
+        STA VDP_DATA
+        LDA #HUD_C_CL
+        STA VDP_DATA
+
+        ; level_idx is 0-based; display as 1-based 2-digit decimal.
+        LDA level_idx
+        CLC
+        ADC #$01
+        LDX #$00
+@lt10:  CMP #$0A
+        BCC @lt10d
+        SBC #$0A
+        INX
+        JMP @lt10
+@lt10d: STA temp                        ; ones remainder
+        TXA
+        CLC
+        ADC #HUD_C_D0
+        STA VDP_DATA                    ; tens
+        LDA temp
+        CLC
+        ADC #HUD_C_D0
+        STA VDP_DATA                    ; ones
+
+        ; --- Row 22 cols 28-31: blank to hide top-half of row-11 tiles ---
+        LDA #$DC
+        STA VDP_CTRL
+        LDA #$5A
+        STA VDP_CTRL
+        LDX #$04
+        LDA #$00
+@clr_br:
+        STA VDP_DATA
+        DEX
+        BNE @clr_br
         RTS
+
+; =============================================
+; draw_title_tms: splash screen shown at boot on the TMS9918 while
+; the Apple-1 text screen prints credits + layout prompt. Writes six
+; centred lines of info to the name table (SOKOBAN / APPLE 1 /
+; TMS9918 VDP / BY VERHILLE ARNAUD / keyboard hints). Each line is a
+; raw-char-code string; draw_title_tms_line sets the VRAM write
+; address then emits chars until $FF. The title is wiped by the first
+; render_all in game_loop (every cell rewritten with tile chars).
+; =============================================
+draw_title_tms:
+        ; "SOKOBAN" row 3 col 12 -> $186C
+        LDA #<title_sokoban_tms
+        STA sptr_lo
+        LDA #>title_sokoban_tms
+        STA sptr_hi
+        LDA #$6C
+        LDX #$58
+        JSR draw_title_tms_line
+
+        ; "APPLE 1" at row 7 col 12   -> $18EC
+        LDA #<title_apple_tms
+        STA sptr_lo
+        LDA #>title_apple_tms
+        STA sptr_hi
+        LDA #$EC
+        LDX #$58
+        JSR draw_title_tms_line
+
+        ; "TMS9918 VDP" at row 8 col 10 -> $190A
+        LDA #<title_card_tms
+        STA sptr_lo
+        LDA #>title_card_tms
+        STA sptr_hi
+        LDA #$0A
+        LDX #$59                        ; $19 | $40
+        JSR draw_title_tms_line
+
+        ; "BY VERHILLE ARNAUD" at row 11 col 7 -> $1967
+        LDA #<title_author_tms
+        STA sptr_lo
+        LDA #>title_author_tms
+        STA sptr_hi
+        LDA #$67
+        LDX #$59
+        JSR draw_title_tms_line
+
+        ; "SELECT KEYBOARD" row 12 col 8 -> $1988 (15 chars)
+        LDA #<title_select_kb_tms
+        STA sptr_lo
+        LDA #>title_select_kb_tms
+        STA sptr_hi
+        LDA #$88
+        LDX #$59
+        JSR draw_title_tms_line
+
+        ; "1 QWERTY (WASD)" row 15 col 8 -> $19E8
+        LDA #<title_qwerty_tms
+        STA sptr_lo
+        LDA #>title_qwerty_tms
+        STA sptr_hi
+        LDA #$E8
+        LDX #$59
+        JSR draw_title_tms_line
+
+        ; "2 AZERTY (ZQSD)" row 16 col 8 -> $1A08
+        LDA #<title_azerty_tms
+        STA sptr_lo
+        LDA #>title_azerty_tms
+        STA sptr_hi
+        LDA #$08
+        LDX #$5A
+        JSR draw_title_tms_line
+
+        ; "H HELP" row 20 col 12 -> $1A8C
+        LDA #<title_h_help_tms
+        STA sptr_lo
+        LDA #>title_h_help_tms
+        STA sptr_hi
+        LDA #$8C
+        LDX #$5A
+        JMP draw_title_tms_line         ; tail-call
+
+; =============================================
+; draw_help_tms: show a key reference in the name table. Clears then
+; lists every key the game responds to. Caller waits for any key to
+; dismiss and calls render_all + draw_hud to restore the playfield.
+; =============================================
+draw_help_tms:
+        ; Clear name table (3 × 256 bytes of char 0).
+        LDA #$00
+        STA VDP_CTRL
+        LDA #$58
+        STA VDP_CTRL
+        LDX #$03
+        LDA #$00
+@np:    LDY #$00
+@nb:    STA VDP_DATA
+        INY
+        BNE @nb
+        DEX
+        BNE @np
+
+        ; "HELP" row 3 col 14 -> $186E
+        LDA #<help_title_tms
+        STA sptr_lo
+        LDA #>help_title_tms
+        STA sptr_hi
+        LDA #$6E
+        LDX #$58
+        JSR draw_title_tms_line
+
+        ; "QWERTY (WASD)" row 6 col 10 -> $18CA (align with command rows)
+        LDA #<help_qwerty_tms
+        STA sptr_lo
+        LDA #>help_qwerty_tms
+        STA sptr_hi
+        LDA #$CA
+        LDX #$58
+        JSR draw_title_tms_line
+
+        ; "AZERTY (ZQSD)" row 7 col 10 -> $18EA
+        LDA #<help_azerty_tms
+        STA sptr_lo
+        LDA #>help_azerty_tms
+        STA sptr_hi
+        LDA #$EA
+        LDX #$58
+        JSR draw_title_tms_line
+
+        ; "U UNDO" row 10 col 10 (align with R/N/H — key in col 10, verb from 12)
+        LDA #<help_u_tms
+        STA sptr_lo
+        LDA #>help_u_tms
+        STA sptr_hi
+        LDA #$4A
+        LDX #$59
+        JSR draw_title_tms_line
+
+        ; "R RESET" row 11 col 10 -> $196A
+        LDA #<help_r_tms
+        STA sptr_lo
+        LDA #>help_r_tms
+        STA sptr_hi
+        LDA #$6A
+        LDX #$59
+        JSR draw_title_tms_line
+
+        ; "N NEXT" row 12 col 10 -> $198A
+        LDA #<help_n_tms
+        STA sptr_lo
+        LDA #>help_n_tms
+        STA sptr_hi
+        LDA #$8A
+        LDX #$59
+        JSR draw_title_tms_line
+
+        ; "H HELP" row 13 col 10 -> $19AA
+        LDA #<help_h_tms
+        STA sptr_lo
+        LDA #>help_h_tms
+        STA sptr_hi
+        LDA #$AA
+        LDX #$59
+        JSR draw_title_tms_line
+
+        ; "ANY KEY BACK" at row 20 col 10 -> $1A8A
+        LDA #<help_back_tms
+        STA sptr_lo
+        LDA #>help_back_tms
+        STA sptr_hi
+        LDA #$8A
+        LDX #$5A
+        JMP draw_title_tms_line         ; tail-call
+
+; draw_title_tms_line: program VRAM write addr (A = low, X = high|$40)
+; then emit raw char codes from (sptr_lo/hi) until $FF.
+draw_title_tms_line:
+        STA VDP_CTRL
+        STX VDP_CTRL
+        LDY #$00
+@lp:    LDA (sptr_lo),Y
+        CMP #$FF
+        BEQ @done
+        STA VDP_DATA
+        INY
+        JMP @lp
+@done:  RTS
+
+; =============================================
+; draw_success_tms: level-complete splash. Clears the whole name table
+; (768 char-0 cells = all black), then writes "SUCCESS" and
+; "PRESS A KEY" centred on rows 10 and 13. The next render_all in
+; game_loop rewrites the playfield.
+; =============================================
+draw_success_tms:
+        ; Clear name table — 3 × 256 bytes of char 0 at $1800.
+        LDA #$00
+        STA VDP_CTRL
+        LDA #$58                        ; $18 | $40
+        STA VDP_CTRL
+        LDX #$03
+        LDA #$00
+@np:    LDY #$00
+@nb:    STA VDP_DATA
+        INY
+        BNE @nb
+        DEX
+        BNE @np
+
+        ; "SUCCESS" row 10 col 12 -> $194C
+        LDA #<title_success_tms
+        STA sptr_lo
+        LDA #>title_success_tms
+        STA sptr_hi
+        LDA #$4C
+        LDX #$59                        ; $19 | $40
+        JSR draw_title_tms_line
+
+        ; "PRESS A KEY" row 13 col 10 -> $19AA
+        LDA #<title_press_key_tms
+        STA sptr_lo
+        LDA #>title_press_key_tms
+        STA sptr_hi
+        LDA #$AA
+        LDX #$59
+        JMP draw_title_tms_line         ; tail-call
+
+; --- TMS title strings (raw TMS char codes, $FF terminated) ---
+; Char assignments:
+;   56=M  57=V  58=:  59..68='0'..'9'  69=S  70=O  71=K  72=B  73=A
+;   74=N  75=P  76=R  77=E  78=L  79=space  80=G  81=H  82=T  83=D
+;   84=Y  85=I  86=U  87=Q  88=W  89=Z  90=C  91=X  92=F  93=(  94=)
+title_select_kb_tms:
+        ; SELECT KEYBOARD
+        .byte 69,77,78,77,90,82,79,71,77,84,72,70,73,76,83, $FF
+title_sokoban_tms:
+        ; S  O  K  O  B  A  N
+        .byte 69,70,71,70,72,73,74, $FF
+title_apple_tms:
+        ; A  P  P  L  E  _  1
+        .byte 73,75,75,78,77,79,60, $FF
+title_card_tms:
+        ; T  M  S  9  9  1  8  _  V  D  P
+        .byte 82,56,69,68,68,60,67,79,57,83,75, $FF
+title_author_tms:
+        ; B  Y  _  V  E  R  H  I  L  L  E  _  A  R  N  A  U  D
+        .byte 72,84,79,57,77,76,81,85,78,78,77,79,73,76,74,73,86,83, $FF
+title_qwerty_tms:
+        ; 1  _  QWERTY  _  ( WASD )
+        .byte 60,79,87,88,77,76,82,84,79,93,88,73,69,83,94, $FF
+title_azerty_tms:
+        ; 2  _  AZERTY  _  ( ZQSD )
+        .byte 61,79,73,89,77,76,82,84,79,93,89,87,69,83,94, $FF
+title_success_tms:
+        ; S  U  C  C  E  S  S
+        .byte 69,86,90,90,77,69,69, $FF
+title_press_key_tms:
+        ; P  R  E  S  S  _  A  _  K  E  Y
+        .byte 75,76,77,69,69,79,73,79,71,77,84, $FF
+title_h_help_tms:
+        ; H  _  H  E  L  P
+        .byte 81,79,81,77,78,75, $FF
+
+; --- Help-screen strings (TMS raw char codes) ---
+help_title_tms:
+        ; H  E  L  P
+        .byte 81,77,78,75, $FF
+help_qwerty_tms:
+        ; QWERTY  ( WASD )
+        .byte 87,88,77,76,82,84,79,93,88,73,69,83,94, $FF
+help_azerty_tms:
+        ; AZERTY  ( ZQSD )
+        .byte 73,89,77,76,82,84,79,93,89,87,69,83,94, $FF
+help_u_tms:
+        ; U  _  U  N  D  O
+        .byte 86,79,86,74,83,70, $FF
+help_r_tms:
+        ; R  _  R  E  S  E  T
+        .byte 76,79,76,77,69,77,82, $FF
+help_n_tms:
+        ; N  _  N  E  X  T
+        .byte 74,79,74,77,91,82, $FF
+help_h_tms:
+        ; H  _  H  E  L  P
+        .byte 81,79,81,77,78,75, $FF
+help_back_tms:
+        ; A  N  Y  _  K  E  Y  _  B  A  C  K
+        .byte 73,74,84,79,71,77,84,79,72,73,90,71, $FF
 
 ; =============================================
 ; Shared routines + tile-state tables
@@ -924,9 +1285,8 @@ tile_patterns:
         .byte $F8,$FC,$F3,$F3,$E0,$30,$30,$38   ; BR
 
 ; --- Tile colours (bg=black, fg = per tile type) ---
-; Entries 0..6 = tile types. Entries 7..8 colour the HUD glyphs that
-; live at chars 56..71 (covers both 8-char colour groups so one glyph
-; can straddle the group boundary without losing colour).
+; Entries 0..6 = tile types. Entries 7..9 colour the HUD + title glyphs
+; at chars 56..79 (three 8-char colour groups of white-on-black).
 tile_colors:
         .byte $11       ; Tile 0 floor         fg=1  black  (invisible)
         .byte $E1       ; Tile 1 wall          fg=14 grey
@@ -935,11 +1295,16 @@ tile_colors:
         .byte $31       ; Tile 4 box+target    fg=3  light green
         .byte $51       ; Tile 5 player        fg=5  light blue
         .byte $21       ; Tile 6 player+target fg=2  medium green
-        .byte $F1       ; Group 7 HUD chars 56-63  fg=15 white
-        .byte $F1       ; Group 8 HUD chars 64-71  fg=15 white
+        .byte $F1       ; Group 7  chars 56-63  fg=15 white
+        .byte $F1       ; Group 8  chars 64-71  fg=15 white
+        .byte $F1       ; Group 9  chars 72-79  fg=15 white
+        .byte $F1       ; Group 10 chars 80-87  fg=15 white
+        .byte $F1       ; Group 11 chars 88-95  fg=15 white
 
-; --- HUD glyph patterns (8x8, uploaded to VRAM $01C0 = chars 56..68) ---
+; --- HUD + title glyph patterns (8x8, uploaded to VRAM $01C0) ---
 ; 5-pixel-wide glyphs centred at columns 1..5 (MSB = leftmost pixel).
+; Chars 56..68 are the HUD set (MV: + digits); chars 69..79 add the
+; title letters S,O,K,B,A,N,P,R,E,L and one space glyph.
 hud_patterns:
         ; char 56 'M'
         .byte $44, $6C, $54, $44, $44, $44, $44, $00
@@ -967,28 +1332,70 @@ hud_patterns:
         .byte $38, $44, $44, $38, $44, $44, $38, $00
         ; char 68 '9'
         .byte $38, $44, $44, $3C, $04, $08, $30, $00
+        ; char 69 'S'
+        .byte $38, $44, $40, $38, $04, $44, $38, $00
+        ; char 70 'O' (distinct char from '0'; same silhouette)
+        .byte $38, $44, $44, $44, $44, $44, $38, $00
+        ; char 71 'K'
+        .byte $44, $48, $50, $60, $50, $48, $44, $00
+        ; char 72 'B'
+        .byte $78, $44, $44, $78, $44, $44, $78, $00
+        ; char 73 'A'
+        .byte $38, $44, $44, $7C, $44, $44, $44, $00
+        ; char 74 'N'
+        .byte $44, $64, $54, $4C, $44, $44, $44, $00
+        ; char 75 'P'
+        .byte $78, $44, $44, $78, $40, $40, $40, $00
+        ; char 76 'R'
+        .byte $78, $44, $44, $78, $50, $48, $44, $00
+        ; char 77 'E'
+        .byte $7C, $40, $40, $78, $40, $40, $7C, $00
+        ; char 78 'L'
+        .byte $40, $40, $40, $40, $40, $40, $7C, $00
+        ; char 79 ' ' (space)
+        .byte $00, $00, $00, $00, $00, $00, $00, $00
+        ; char 80 'G'
+        .byte $38, $44, $40, $4E, $44, $44, $38, $00
+        ; char 81 'H'
+        .byte $44, $44, $44, $7C, $44, $44, $44, $00
+        ; char 82 'T'
+        .byte $7C, $10, $10, $10, $10, $10, $10, $00
+        ; char 83 'D'
+        .byte $78, $44, $44, $44, $44, $44, $78, $00
+        ; char 84 'Y'
+        .byte $44, $44, $28, $10, $10, $10, $10, $00
+        ; char 85 'I'
+        .byte $38, $10, $10, $10, $10, $10, $38, $00
+        ; char 86 'U'
+        .byte $44, $44, $44, $44, $44, $44, $38, $00
+        ; char 87 'Q'
+        .byte $38, $44, $44, $44, $54, $48, $34, $00
+        ; char 88 'W'
+        .byte $44, $44, $44, $54, $54, $6C, $44, $00
+        ; char 89 'Z'
+        .byte $7C, $04, $08, $10, $20, $40, $7C, $00
+        ; char 90 'C'
+        .byte $38, $44, $40, $40, $40, $44, $38, $00
+        ; char 91 'X'
+        .byte $44, $44, $28, $10, $28, $44, $44, $00
+        ; char 92 'F'
+        .byte $7C, $40, $40, $78, $40, $40, $40, $00
+        ; char 93 '(' — standard 8x8, MSB=left (curve opens right)
+        .byte $38, $44, $40, $40, $40, $44, $38, $00
+        ; char 94 ')'
+        .byte $38, $44, $04, $04, $04, $44, $38, $00
 
 ; --- Strings (ASCII, high bit set by print_str_ax) ---
 str_title:
-        .byte $0D, " * SOKOBAN - TMS9918 *", $0D
-        .byte " APPLE 1 + P-LAB GRAPHIC CARD", $0D
-        .byte " PORT BY VERHILLE ARNAUD, 2026", $0D
-        .byte $0D
-        .byte " LEVELS 4-45: MICROBAN I", $0D
-        .byte " CLASSIC SET BY D.W. SKINNER", $0D
-        .byte $0D
-        .byte " PUSH ALL BOXES ONTO TARGETS.", $0D
-        .byte " BOXES CAN ONLY BE PUSHED!", $0D
-        .byte $0D
-        .byte " U=UNDO  R=RESET  N=NEXT", $0D, 0
+        .byte $0D, " SOKOBAN + TMS9918", $0D
+        .byte " MICROBAN I 45LV  V.ARNAUD 26", $0D
+        .byte " PUSH BOXES ON TARGETS  U R N", $0D, 0
 
 str_layout:
-        .byte $0D, " KEYBOARD LAYOUT ?", $0D
-        .byte "  1 = QWERTY  (W/A/S/D)", $0D
-        .byte "  2 = AZERTY  (Z/Q/S/D)", $0D, 0
+        .byte $0D, " KEYBOARD: 1 QWERTY  2 AZERTY", $0D, 0
 
 str_win:
-        .byte $0D, " LEVEL CLEARED! PRESS A KEY", $0D, 0
+        .byte $0D, " CLEARED! KEY=NEXT", $0D, 0
 
 ; --- Level data (RLE compressed, shared with text + HGR variants) ---
 .include "../games/sokoban_levels.inc"
