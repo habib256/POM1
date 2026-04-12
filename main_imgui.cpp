@@ -102,7 +102,7 @@ static void glfw_key_callback(GLFWwindow* window, int key, int scancode, int act
 
 int main(int argc, char* argv[])
 {
-    std::cout << "POM1 v1.7 - Apple 1 Emulator (Dear ImGui)" << std::endl;
+    std::cout << "POM1 v1.7.2 - Apple 1 Emulator (Dear ImGui)" << std::endl;
 
     // Parse command-line arguments: --preset <name|index>  or  --list-presets
     int requestedPreset = -1; // -1 = default (last preset)
@@ -170,7 +170,7 @@ int main(int argc, char* argv[])
 #endif
 
     // Create window
-    GLFWwindow* window = glfwCreateWindow(1200, 800, "POM1 v1.7 - Apple 1 Emulator", NULL, NULL);
+    GLFWwindow* window = glfwCreateWindow(1200, 800, "POM1 v1.7.2 - Apple 1 Emulator", NULL, NULL);
     if (window == NULL)
         return -1;
 

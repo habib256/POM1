@@ -3,6 +3,10 @@
 
 # Build output
 build/
+dist/
+
+# Fichiers binaires de release (copie locale avant upload GitHub Releases)
+releases/*.zip
 
 # WASM build — keep only the pom1_imgui.* output files and shell template
 build-wasm/*
