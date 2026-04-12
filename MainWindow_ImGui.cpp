@@ -559,12 +559,12 @@ void MainWindow_ImGui::renderMenuBar()
             ImGui::Separator();
 #if !POM1_IS_WASM
             ImGui::Text("CPU Speed:");
-            if (ImGui::RadioButton("1.02 MHz", executionSpeed == POM1_CPU_CYCLES_PER_FRAME_1X_60HZ)) {
+            if (ImGui::RadioButton("x1", executionSpeed == POM1_CPU_CYCLES_PER_FRAME_1X_60HZ)) {
                 executionSpeed = POM1_CPU_CYCLES_PER_FRAME_1X_60HZ;
                 emulation->setExecutionSpeedCyclesPerFrame(executionSpeed);
             }
             ImGui::SameLine();
-            if (ImGui::RadioButton("2.05 MHz", executionSpeed == POM1_CPU_CYCLES_PER_FRAME_2X_60HZ)) {
+            if (ImGui::RadioButton("x2", executionSpeed == POM1_CPU_CYCLES_PER_FRAME_2X_60HZ)) {
                 executionSpeed = POM1_CPU_CYCLES_PER_FRAME_2X_60HZ;
                 emulation->setExecutionSpeedCyclesPerFrame(executionSpeed);
             }
@@ -667,7 +667,7 @@ void MainWindow_ImGui::renderToolbar()
 #if !POM1_IS_WASM
         const float mhzBtnPadX = ImGui::GetStyle().FramePadding.x * 2.0f;
         const float mhzBtnW =
-            std::max(ImGui::CalcTextSize("1.02M").x, ImGui::CalcTextSize("2.05M").x) + mhzBtnPadX;
+            std::max(ImGui::CalcTextSize("x1").x, ImGui::CalcTextSize("x2").x) + mhzBtnPadX;
         const ImVec2 mhzBtnSize(mhzBtnW, 24.0f);
 #endif
 
@@ -917,30 +917,30 @@ void MainWindow_ImGui::renderToolbar()
         ImGui::SameLine(0, 12);
 
 #if !POM1_IS_WASM
-        // --- Vitesse CPU (1MHz / 2MHz / Max) — masqué en WASM (rythme imposé par le navigateur)
+        // --- Vitesse CPU (x1 / x2 / Max) — masqué en WASM (rythme imposé par le navigateur)
         {
             bool is1M = (executionSpeed == POM1_CPU_CYCLES_PER_FRAME_1X_60HZ);
             if (is1M) ImGui::PushStyleColor(ImGuiCol_Button, activeColor);
-            if (ImGui::Button("1.02M", mhzBtnSize)) {
+            if (ImGui::Button("x1", mhzBtnSize)) {
                 executionSpeed = POM1_CPU_CYCLES_PER_FRAME_1X_60HZ;
                 emulation->setExecutionSpeedCyclesPerFrame(executionSpeed);
             }
             if (is1M) ImGui::PopStyleColor();
             if (ImGui::IsItemHovered()) {
-                ImGui::SetTooltip("1.022727 MHz (~%d cycles/frame @ 60 Hz)", POM1_CPU_CYCLES_PER_FRAME_1X_60HZ);
+                ImGui::SetTooltip("x1 — 1.022727 MHz (~%d cycles/frame @ 60 Hz)", POM1_CPU_CYCLES_PER_FRAME_1X_60HZ);
             }
         }
         ImGui::SameLine();
         {
             bool is2M = (executionSpeed == POM1_CPU_CYCLES_PER_FRAME_2X_60HZ);
             if (is2M) ImGui::PushStyleColor(ImGuiCol_Button, activeColor);
-            if (ImGui::Button("2.05M", mhzBtnSize)) {
+            if (ImGui::Button("x2", mhzBtnSize)) {
                 executionSpeed = POM1_CPU_CYCLES_PER_FRAME_2X_60HZ;
                 emulation->setExecutionSpeedCyclesPerFrame(executionSpeed);
             }
             if (is2M) ImGui::PopStyleColor();
             if (ImGui::IsItemHovered()) {
-                ImGui::SetTooltip("~2.045 MHz (~%d cycles/frame @ 60 Hz)", POM1_CPU_CYCLES_PER_FRAME_2X_60HZ);
+                ImGui::SetTooltip("x2 — ~2.045 MHz (~%d cycles/frame @ 60 Hz)", POM1_CPU_CYCLES_PER_FRAME_2X_60HZ);
             }
         }
         ImGui::SameLine();

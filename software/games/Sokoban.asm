@@ -1,26 +1,20 @@
 ; =============================================
-; HGR SOKOBAN - GEN2 Color Graphics Card
+; SOKOBAN (text mode) for Apple 1
 ; VERHILLE Arnaud - 2026
-; Classic push-boxes puzzle game
+; Classic push-boxes puzzle
+; Levels 4-23 = Microban I by David W. Skinner
 ; =============================================
 ; Assemble with cc65:
-;   ca65 -o build/HGR6_Sokoban.o software/hgr/HGR6_Sokoban.asm
-;   ld65 -C software/hgr/apple1_gen2.cfg -o build/HGR6_Sokoban.bin build/HGR6_Sokoban.o
+;   ca65 -o build/Sokoban.o software/games/Sokoban.asm
+;   ld65 -C software/apple1.cfg -o build/Sokoban.bin build/Sokoban.o
 ;
-; Controls (uppercase — Apple 1 forces uppercase):
-;   W/S/A/D  - move up/down/left/right
-;   R        - reset current level
-;   N        - skip to next level
-;
-; 14x16 byte-aligned tiles, 20 cols x 12 rows playfield.
-; Uses hgr_lo/hgr_hi tables from hgr_tables.inc for scanline
-; addresses (handles Apple II interleave automatically).
-;
-; State grid at $4000 (one byte per tile cell, 240 cells total).
-; Delta rendering: each move only redraws 2-4 affected tiles.
-;
-; In POM1: plug GEN2 card, File > Load Memory (HGR6_Sokoban.txt),
+; Load in POM1 via File > Load Memory (Sokoban.txt),
 ; then type 280R in Woz Monitor.
+;
+; Classic Sokoban ASCII rendering on the 40x24 text display:
+;   #  wall       .  target        $  box
+;   *  box-on-target   @  player   +  player-on-target
+; 20x12 playfield, 23 levels.  No HGR required.
 ; =============================================
 
 ; --- Apple 1 I/O ---
@@ -31,7 +25,7 @@ KBDCR   = $D011
 ; --- Game constants ---
 NCOLS   = 20
 NROWS   = 12
-NUM_LEVELS = 72
+NUM_LEVELS = 47
 
 ; --- Tile types ---
 TILE_FLOOR         = 0
@@ -42,44 +36,34 @@ TILE_BOX_TARGET    = 4
 TILE_PLAYER        = 5
 TILE_PLAYER_TARGET = 6
 
-; --- State grid: 240 bytes at $4000 (page-aligned) ---
+; --- State grid: 240 bytes at $4000 (page-aligned, fits in one page + a bit) ---
 STATE_GRID = $4000
 
-; --- Zero page ---
+; --- Zero page (apple1.cfg gives $00-$22) ---
 .zeropage
-temp:        .res 1  ; $00
-temp2:       .res 1  ; $01
-ptr_lo:      .res 1  ; $02  HGR dest pointer (also used by hgr_tables.inc clear_hgr)
-ptr_hi:      .res 1  ; $03
-src_lo:      .res 1  ; $04  tile bitmap source pointer
-src_hi:      .res 1  ; $05
-sptr_lo:     .res 1  ; $06  scratch pointer (level data)
-sptr_hi:     .res 1  ; $07
-level_idx:   .res 1  ; $08
-player_row:  .res 1  ; $09
-player_col:  .res 1  ; $0A
-lvl_w:       .res 1  ; $0B
-lvl_h:       .res 1  ; $0C
-row_offset:  .res 1  ; $0D
-col_offset:  .res 1  ; $0E
-new_row:     .res 1  ; $0F
-new_col:     .res 1  ; $10
-box_row:     .res 1  ; $11
-box_col:     .res 1  ; $12
-dir_dy:      .res 1  ; $13  (signed: -1, 0, 1)
-dir_dx:      .res 1  ; $14
-draw_row:    .res 1  ; $15
-draw_col:    .res 1  ; $16
-str_lo:      .res 1  ; $17
-str_hi:      .res 1  ; $18
-; Variables required by hgr_tables.inc routines (declared even if unused)
-cur_x:       .res 1  ; $19
-cur_y:       .res 1  ; $1A
-mul_tmp:     .res 1  ; $1B
-mul_res0:    .res 1  ; $1C
-; Keyboard layout (set once at startup based on user choice)
-key_up_code:   .res 1  ; $1D  'W' (QWERTY) or 'Z' (AZERTY)
-key_left_code: .res 1  ; $1E  'A' (QWERTY) or 'Q' (AZERTY)
+temp:          .res 1   ; $00
+temp2:         .res 1   ; $01
+sptr_lo:       .res 1   ; $02
+sptr_hi:       .res 1   ; $03
+str_lo:        .res 1   ; $04
+str_hi:        .res 1   ; $05
+level_idx:     .res 1   ; $06
+player_row:    .res 1   ; $07
+player_col:    .res 1   ; $08
+lvl_w:         .res 1   ; $09
+lvl_h:         .res 1   ; $0A
+row_offset:    .res 1   ; $0B
+col_offset:    .res 1   ; $0C
+new_row:       .res 1   ; $0D
+new_col:       .res 1   ; $0E
+box_row:       .res 1   ; $0F
+box_col:       .res 1   ; $10
+dir_dy:        .res 1   ; $11  (signed -1, 0, 1)
+dir_dx:        .res 1   ; $12
+render_r:      .res 1   ; $13
+render_c:      .res 1   ; $14
+key_up_code:   .res 1   ; $15  'W' or 'Z'
+key_left_code: .res 1   ; $16  'A' or 'Q'
 
 ; --- Code at $0280 ---
 .code
@@ -88,57 +72,47 @@ key_left_code: .res 1  ; $1E  'A' (QWERTY) or 'Q' (AZERTY)
 ; MAIN
 ; =============================================
 main:
-        ; Title on Apple 1 screen
         LDA #<str_title
         LDX #>str_title
         JSR print_str_ax
 
-        ; Prompt for keyboard layout
+        ; Keyboard layout prompt
         LDA #<str_layout
         LDX #>str_layout
         JSR print_str_ax
-
 @layout_wait:
         JSR wait_key
         CMP #'1'
         BEQ @qwerty
         CMP #'2'
         BEQ @azerty
-        JMP @layout_wait                ; ignore other keys
-
+        JMP @layout_wait
 @qwerty:
         LDA #'W'
         STA key_up_code
         LDA #'A'
         STA key_left_code
-        JMP @layout_ok
-
+        JMP @start
 @azerty:
         LDA #'Z'
         STA key_up_code
         LDA #'Q'
         STA key_left_code
-
-@layout_ok:
-        ; Start at level 0
+@start:
         LDA #$00
         STA level_idx
 
 game_loop:
         JSR init_level
-        JSR clear_hgr
-        JSR render_all
-        JSR show_level
+        JSR render_screen
 
 move_loop:
         JSR wait_key
-        ; A = ASCII char, bit 7 stripped
-
-        CMP key_up_code                 ; W (QWERTY) or Z (AZERTY)
+        CMP key_up_code
         BEQ key_up
         CMP #'S'
         BEQ key_down
-        CMP key_left_code               ; A (QWERTY) or Q (AZERTY)
+        CMP key_left_code
         BEQ key_left
         CMP #'D'
         BEQ key_right
@@ -146,53 +120,49 @@ move_loop:
         BEQ key_reset
         CMP #'N'
         BEQ key_next
-        JMP move_loop                   ; ignore unknown keys
+        JMP move_loop
 
 key_up:
-        LDA #$FF                        ; dy = -1
+        LDA #$FF
         STA dir_dy
         LDA #$00
         STA dir_dx
         JMP do_move
-
 key_down:
         LDA #$01
         STA dir_dy
         LDA #$00
         STA dir_dx
         JMP do_move
-
 key_left:
         LDA #$00
         STA dir_dy
-        LDA #$FF                        ; dx = -1
+        LDA #$FF
         STA dir_dx
         JMP do_move
-
 key_right:
         LDA #$00
         STA dir_dy
         LDA #$01
         STA dir_dx
         JMP do_move
-
 key_reset:
         JMP game_loop
-
 key_next:
         JMP advance_level
 
 do_move:
         JSR execute_move
         CMP #$00
-        BEQ move_loop_j                 ; blocked, no move
+        BEQ move_loop_j
 
-        ; Check win condition
+        JSR render_screen
+
         JSR check_win
         CMP #$00
-        BEQ move_loop_j                 ; not won yet
+        BEQ move_loop_j
 
-        ; Level complete
+        ; Victory
         LDA #<str_win
         LDX #>str_win
         JSR print_str_ax
@@ -211,17 +181,15 @@ move_loop_j:
         JMP move_loop
 
 ; =============================================
-; init_level: parse level into state grid at $4000
+; init_level: parse level data into state grid
 ; =============================================
 init_level:
-        ; Point sptr at level data: levels[level_idx]
         LDX level_idx
         LDA level_ptrs_lo,X
         STA sptr_lo
         LDA level_ptrs_hi,X
         STA sptr_hi
 
-        ; Read 4-byte header: w, h, row_off, col_off
         LDY #$00
         LDA (sptr_lo),Y
         STA lvl_w
@@ -235,7 +203,6 @@ init_level:
         LDA (sptr_lo),Y
         STA col_offset
 
-        ; sptr += 4 (advance past header)
         CLC
         LDA sptr_lo
         ADC #$04
@@ -244,7 +211,7 @@ init_level:
         ADC #$00
         STA sptr_hi
 
-        ; Clear state grid: 240 bytes at $4000 = TILE_FLOOR
+        ; Clear 240-byte state grid
         LDY #$00
         TYA
 @clr:   STA STATE_GRID,Y
@@ -252,18 +219,16 @@ init_level:
         CPY #240
         BNE @clr
 
-        ; Parse level data
+        ; Parse ASCII data
         LDA #$00
-        STA temp                        ; temp = parse_row (0..lvl_h-1)
+        STA temp                        ; parse_row
 @rowlp:
-        LDY #$00                        ; Y = parse_col (0..lvl_w-1)
+        LDY #$00                        ; parse_col
 @collp:
-        ; Read ASCII char at (sptr)[Y]
         LDA (sptr_lo),Y
-        JSR ascii_to_tile               ; A = tile type
-        PHA                             ; save tile type
+        JSR ascii_to_tile
+        PHA
 
-        ; Record player position if player tile
         CMP #TILE_PLAYER
         BEQ @save_player
         CMP #TILE_PLAYER_TARGET
@@ -279,27 +244,26 @@ init_level:
         STA player_row
 @no_player:
 
-        ; cell_index = (temp+row_offset)*20 + (Y+col_offset)
         LDA temp
         CLC
         ADC row_offset
         TAX
         LDA row_x20,X
-        STA temp2                       ; temp2 = row * 20
+        STA temp2
         TYA
         CLC
         ADC col_offset
         CLC
         ADC temp2
-        TAX                             ; X = cell index
-        PLA                             ; restore tile type
+        TAX
+        PLA
         STA STATE_GRID,X
 
         INY
         CPY lvl_w
         BCC @collp
 
-        ; Row done: advance sptr by lvl_w
+        ; End of row: advance sptr by lvl_w
         CLC
         LDA sptr_lo
         ADC lvl_w
@@ -311,13 +275,12 @@ init_level:
         INC temp
         LDA temp
         CMP lvl_h
-        BCS @init_done
+        BCS @done
         JMP @rowlp
-@init_done:
-        RTS
+@done:  RTS
 
 ; =============================================
-; ascii_to_tile: map ASCII char to tile type
+; ascii_to_tile: convert Sokoban ASCII to tile type
 ; =============================================
 ascii_to_tile:
         CMP #'#'
@@ -354,109 +317,10 @@ ascii_to_tile:
         RTS
 
 ; =============================================
-; render_all: draw all 240 tiles
-; =============================================
-render_all:
-        LDA #$00
-        STA draw_row
-@rowlp: LDA #$00
-        STA draw_col
-@collp:
-        LDX draw_row
-        LDA row_x20,X
-        CLC
-        ADC draw_col
-        TAX
-        LDA STATE_GRID,X
-        JSR draw_tile
-        INC draw_col
-        LDA draw_col
-        CMP #NCOLS
-        BCC @collp
-        INC draw_row
-        LDA draw_row
-        CMP #NROWS
-        BCC @rowlp
-        RTS
-
-; =============================================
-; draw_tile: draw 14x16 tile at (draw_row, draw_col)
-; Input: A = tile type (0-6)
-; =============================================
-draw_tile:
-        ; src = tile_bitmaps + A * 32 (A max = 6, A*32 max = 192, fits in byte)
-        ASL A
-        ASL A
-        ASL A
-        ASL A
-        ASL A
-        CLC
-        ADC #<tile_bitmaps
-        STA src_lo
-        LDA #>tile_bitmaps
-        ADC #$00
-        STA src_hi
-
-        ; byte offset into HGR line = draw_col * 2
-        LDA draw_col
-        ASL A
-        STA temp                        ; temp = byte offset
-
-        ; start scanline = draw_row * 16
-        LDA draw_row
-        ASL A
-        ASL A
-        ASL A
-        ASL A
-        STA temp2                       ; temp2 = start scanline
-
-        ; Loop 16 scanlines
-        LDX #$00
-@scan:
-        ; y = temp2 + X
-        TXA
-        CLC
-        ADC temp2
-        TAY                             ; Y = scanline (0-191)
-
-        LDA hgr_lo,Y
-        CLC
-        ADC temp
-        STA ptr_lo
-        LDA hgr_hi,Y
-        ADC #$00                        ; + carry
-        STA ptr_hi
-
-        ; Copy 2 bytes from (src) to (ptr)
-        LDY #$00
-        LDA (src_lo),Y
-        STA (ptr_lo),Y
-        INY
-        LDA (src_lo),Y
-        STA (ptr_lo),Y
-
-        ; src += 2
-        CLC
-        LDA src_lo
-        ADC #$02
-        STA src_lo
-        BCC @no_sinc
-        INC src_hi
-@no_sinc:
-
-        INX
-        CPX #$10
-        BCC @scan
-        RTS
-
-; =============================================
-; execute_move: try to move player
-; Reads: player_row/col, dir_dy/dx
-; Returns: A=0 blocked, A!=0 moved
-; Updates state grid and redraws affected tiles (delta render)
+; execute_move: try to move player, A=0 blocked, A!=0 moved
+; Mutates state grid only (no rendering — caller calls render_screen).
 ; =============================================
 execute_move:
-        ; new = player + dir
         LDA player_row
         CLC
         ADC dir_dy
@@ -466,7 +330,6 @@ execute_move:
         ADC dir_dx
         STA new_col
 
-        ; Bounds check (treat as unsigned: wrap-around gives high value, caught by CMP)
         LDA new_row
         CMP #NROWS
         BCS @blk_tr
@@ -474,7 +337,6 @@ execute_move:
         CMP #NCOLS
         BCS @blk_tr
 
-        ; Get tile at new position
         LDX new_row
         LDA row_x20,X
         CLC
@@ -482,20 +344,18 @@ execute_move:
         TAX
         LDA STATE_GRID,X
 
-        ; Dispatch
         CMP #TILE_WALL
         BEQ @blk_tr
         CMP #TILE_BOX
         BEQ @try_push
         CMP #TILE_BOX_TARGET
         BEQ @try_push
-        JMP @simple_move                ; floor or target
+        JMP @simple_move
 
 @blk_tr:
         JMP @blocked
 
 @try_push:
-        ; box_dest = new + dir
         LDA new_row
         CLC
         ADC dir_dy
@@ -507,74 +367,57 @@ execute_move:
 
         LDA box_row
         CMP #NROWS
-        BCS @blk_tr
+        BCS @blocked
         LDA box_col
         CMP #NCOLS
-        BCS @blk_tr
+        BCS @blocked
 
-        ; Get tile at box destination
         LDX box_row
         LDA row_x20,X
         CLC
         ADC box_col
-        TAX                             ; X = box_dest cell index
+        TAX
         LDA STATE_GRID,X
 
         CMP #TILE_FLOOR
         BEQ @push_floor
         CMP #TILE_TARGET
         BEQ @push_target
-        JMP @blocked_bot
+        JMP @blocked
 
 @push_floor:
         LDA #TILE_BOX
         STA STATE_GRID,X
-        JMP @box_done
+        JMP @simple_move
 @push_target:
         LDA #TILE_BOX_TARGET
         STA STATE_GRID,X
-@box_done:
-        ; Redraw box destination tile
-        LDA box_row
-        STA draw_row
-        LDA box_col
-        STA draw_col
-        LDA STATE_GRID,X
-        JSR draw_tile
-        ; Fall through to simple move to move player onto new_pos (where box was)
+        ; Fall through
 
 @simple_move:
-        ; --- Leave old player cell ---
+        ; Leave player old cell
         LDX player_row
         LDA row_x20,X
         CLC
         ADC player_col
-        TAX                             ; X = old player cell index
+        TAX
         LDA STATE_GRID,X
-        JSR leave_tile                  ; A = 0 (floor) or 2 (target)
+        JSR leave_tile
         STA STATE_GRID,X
-        LDA player_row
-        STA draw_row
-        LDA player_col
-        STA draw_col
-        LDA STATE_GRID,X
-        JSR draw_tile
 
-        ; --- Enter new player cell ---
+        ; Enter new cell
         LDX new_row
         LDA row_x20,X
         CLC
         ADC new_col
-        TAX                             ; X = new cell index
+        TAX
         LDA STATE_GRID,X
 
-        ; If state at new_pos is box/box_target (push case), strip box first
         CMP #TILE_BOX
         BEQ @strip_floor
         CMP #TILE_BOX_TARGET
         BEQ @strip_target
         JMP @enter
-
 @strip_floor:
         LDA #TILE_FLOOR
         STA STATE_GRID,X
@@ -582,20 +425,11 @@ execute_move:
 @strip_target:
         LDA #TILE_TARGET
         STA STATE_GRID,X
-
 @enter:
         LDA STATE_GRID,X
-        JSR enter_player                ; A = 5 or 6
+        JSR enter_player
         STA STATE_GRID,X
 
-        LDA new_row
-        STA draw_row
-        LDA new_col
-        STA draw_col
-        LDA STATE_GRID,X
-        JSR draw_tile
-
-        ; Update player position
         LDA new_row
         STA player_row
         LDA new_col
@@ -603,41 +437,26 @@ execute_move:
 
         LDA #$01
         RTS
-
-@blocked_bot:
 @blocked:
         LDA #$00
         RTS
 
 ; =============================================
-; leave_tile: cell occupant (player/box) leaves
-; Input: A = current tile (3,4,5,6)
-; Returns: A = 0 or 2 (floor or target underneath)
-; IMPORTANT: preserves X (callers use X as cell index).
-;            Uses Y as scratch instead.
+; leave_tile / enter_player
+; Preserve X (caller uses X for cell index) — use Y for scratch.
 ; =============================================
 leave_tile:
         TAY
         LDA leave_tbl,Y
         RTS
-
-; =============================================
-; enter_player: player enters empty cell
-; Input: A = current tile (0 or 2)
-; Returns: A = 5 or 6
-; IMPORTANT: preserves X (callers use X as cell index).
-; =============================================
 enter_player:
         TAY
         LDA enter_player_tbl,Y
         RTS
 
 ; =============================================
-; check_win: all targets filled with boxes?
-; A target is "empty" if it still shows TILE_TARGET (2)
-; OR if the player is standing on it (TILE_PLAYER_TARGET = 6).
-; Both cases mean no box is on that target → not yet won.
-; Returns: A=1 win, A=0 not yet
+; check_win: A=1 if all targets filled with boxes
+; Target "empty" = tile 2 OR tile 6 (player standing on it).
 ; =============================================
 check_win:
         LDY #$00
@@ -655,39 +474,54 @@ check_win:
         RTS
 
 ; =============================================
-; show_level: display "LEVEL NN" on Apple 1 (2-digit)
+; render_screen: minimal frame
+;   blank line, 12 grid rows, blank line, footer text, blank line
+; The screen scrolls naturally between frames.
 ; =============================================
-show_level:
-        LDA #<str_level
-        LDX #>str_level
-        JSR print_str_ax
-        ; level_num = level_idx + 1
-        LDA level_idx
-        CLC
-        ADC #$01
-        ; Divide by 10 via repeated subtraction (X = tens, A = ones)
-        LDX #$00
-@div:   CMP #$0A
-        BCC @ddone
-        SBC #$0A                        ; carry set from CMP
-        INX
-        JMP @div
-@ddone:
-        PHA                             ; save ones digit
-        TXA
-        ORA #'0'
-        ORA #$80
-        JSR ECHO                        ; tens digit
-        PLA
-        ORA #'0'
-        ORA #$80
-        JSR ECHO                        ; ones digit
-        LDA #$8D                        ; CR
+render_screen:
+        ; Leading blank line
+        LDA #$8D
         JSR ECHO
+
+        ; Grid (12 rows x 20 cols)
+        LDA #$00
+        STA render_r
+@rowlp:
+        LDA #$00
+        STA render_c
+@collp:
+        ; cell = state[render_r*20 + render_c]
+        LDX render_r
+        LDA row_x20,X
+        CLC
+        ADC render_c
+        TAX
+        LDA STATE_GRID,X
+        TAY
+        LDA tile_char,Y
+        ORA #$80
+        JSR ECHO
+
+        INC render_c
+        LDA render_c
+        CMP #NCOLS
+        BCC @collp
+
+        LDA #$8D                        ; CR at end of row
+        JSR ECHO
+        INC render_r
+        LDA render_r
+        CMP #NROWS
+        BCC @rowlp
+
+        ; Blank line + footer text + CR (handled inside str_footer)
+        LDA #<str_footer
+        LDX #>str_footer
+        JSR print_str_ax
         RTS
 
 ; =============================================
-; wait_key: wait for keypress, return ASCII in A (bit 7 stripped)
+; wait_key: returns ASCII in A (bit 7 stripped)
 ; =============================================
 wait_key:
 @wk:    LDA KBDCR
@@ -716,75 +550,48 @@ print_str_ax:
 ; DATA
 ; =============================================
 
-; --- row * 20 for rows 0..11 ---
 row_x20:
         .byte   0,  20,  40,  60,  80, 100, 120, 140
         .byte 160, 180, 200, 220
 
-; --- Tile state transition tables ---
-; leave_tbl[current] = state after occupant leaves
-;   3 (box-floor)   -> 0 (floor)
-;   4 (box-target)  -> 2 (target)
-;   5 (player-flr)  -> 0
-;   6 (player-tgt)  -> 2
 leave_tbl:
         .byte 0, 1, 2, 0, 2, 0, 2
 
-; enter_player_tbl[current] = state after player enters
-;   0 (floor)  -> 5
-;   2 (target) -> 6
 enter_player_tbl:
         .byte 5, 0, 6, 0, 0, 0, 0
 
-; --- Tile bitmaps (7 tiles x 32 bytes = 224 bytes) ---
-; Each tile: 16 scanlines, 2 bytes per scanline
-tile_bitmaps:
-; Tile 0: FLOOR (all black)
-        .byte $00,$00, $00,$00, $00,$00, $00,$00
-        .byte $00,$00, $00,$00, $00,$00, $00,$00
-        .byte $00,$00, $00,$00, $00,$00, $00,$00
-        .byte $00,$00, $00,$00, $00,$00, $00,$00
-; Tile 1: WALL (all white via adjacent-pixel NTSC rule)
-        .byte $7F,$7F, $7F,$7F, $7F,$7F, $7F,$7F
-        .byte $7F,$7F, $7F,$7F, $7F,$7F, $7F,$7F
-        .byte $7F,$7F, $7F,$7F, $7F,$7F, $7F,$7F
-        .byte $7F,$7F, $7F,$7F, $7F,$7F, $7F,$7F
-; Tile 2: TARGET (4x4 white dot in center)
-; Center dot: bits 5,6 of byte 0 ($60) + bits 0,1 of byte 1 ($03)
-        .byte $00,$00, $00,$00, $00,$00, $00,$00
-        .byte $00,$00, $00,$00, $60,$03, $60,$03
-        .byte $60,$03, $60,$03, $00,$00, $00,$00
-        .byte $00,$00, $00,$00, $00,$00, $00,$00
-; Tile 3: BOX (outlined 10x12 rectangle, 2-px border)
-; Top/bottom: bits 2-6 byte0 ($7C) + bits 0-4 byte1 ($1F)
-; Sides:      bits 2,3 byte0 ($0C) + bits 3,4 byte1 ($18)
-        .byte $00,$00, $00,$00, $7C,$1F, $7C,$1F
-        .byte $0C,$18, $0C,$18, $0C,$18, $0C,$18
-        .byte $0C,$18, $0C,$18, $0C,$18, $0C,$18
-        .byte $7C,$1F, $7C,$1F, $00,$00, $00,$00
-; Tile 4: BOX ON TARGET (filled 10x12 rectangle)
-        .byte $00,$00, $00,$00, $7C,$1F, $7C,$1F
-        .byte $7C,$1F, $7C,$1F, $7C,$1F, $7C,$1F
-        .byte $7C,$1F, $7C,$1F, $7C,$1F, $7C,$1F
-        .byte $7C,$1F, $7C,$1F, $00,$00, $00,$00
-; Tile 5: PLAYER (plus/cross shape)
-; Vertical bar: cols 5-8 = $60,$03
-; Horizontal bar (rows 6-9): cols 2-11 = $7C,$1F
-        .byte $00,$00, $00,$00, $60,$03, $60,$03
-        .byte $60,$03, $60,$03, $7C,$1F, $7C,$1F
-        .byte $7C,$1F, $7C,$1F, $60,$03, $60,$03
-        .byte $60,$03, $60,$03, $00,$00, $00,$00
-; Tile 6: PLAYER ON TARGET (cross with extra "shoulders" rows 4,5,10,11)
-; $6C = $60 | $0C (vertical bar + side dots on left)
-; $1B = $03 | $18 (vertical bar + side dots on right)
-        .byte $00,$00, $00,$00, $60,$03, $60,$03
-        .byte $6C,$1B, $6C,$1B, $7C,$1F, $7C,$1F
-        .byte $7C,$1F, $7C,$1F, $6C,$1B, $6C,$1B
-        .byte $60,$03, $60,$03, $00,$00, $00,$00
+; ASCII representation of each tile type
+tile_char:
+        .byte ' ', '#', '.', '$', '*', '@', '+'
 
-; --- Levels ---
-; Format: 4-byte header (w, h, row_offset, col_offset) then w*h ASCII bytes
-; Sokoban chars: # wall, . target, $ box, @ player, * box-on-target, + player-on-target
+; --- Strings ---
+str_title:
+        .byte $0D, " * SOKOBAN - TEXT MODE *", $0D
+        .byte " APPLE 1  BY VERHILLE ARNAUD, 2026", $0D
+        .byte $0D
+        .byte " LEVELS 4-47: MICROBAN I", $0D
+        .byte " BY DAVID W. SKINNER (2000)", $0D
+        .byte $0D
+        .byte " PUSH ALL BOXES ($) ONTO", $0D
+        .byte " THE TARGETS (.).  BOXES", $0D
+        .byte " CAN ONLY BE PUSHED!", $0D
+        .byte $0D
+        .byte " R = RESET   N = NEXT LEVEL", $0D, 0
+
+str_layout:
+        .byte $0D, " KEYBOARD LAYOUT ?", $0D
+        .byte "  1 = QWERTY  (W/A/S/D)", $0D
+        .byte "  2 = AZERTY  (Z/Q/S/D)", $0D, 0
+
+str_footer:
+        .byte $0D
+        .byte " UP/DN/LT/RT   R=RESET  N=NEXT", $0D, 0
+
+str_win:
+        .byte $0D, " LEVEL CLEARED! PRESS A KEY", $0D, 0
+
+; --- Level data ---
+; Format: w, h, row_offset, col_offset, then w*h ASCII bytes
 
 ; Level 1: minimal teaching push (5x3)
 level1:
@@ -814,8 +621,7 @@ level3:
         .byte "#   @   #"
         .byte "#########"
 
-; --- Microban collection by David W. Skinner (classic 2000) ---
-; Levels 4-23 = Microban I #1..#20 (progressive difficulty)
+; --- Microban I #1..#20 by David W. Skinner ---
 
 ; Microban #1 (6x7) -> level4
 level4:
@@ -1048,6 +854,8 @@ level23:
         .byte "  #  ####"
         .byte "  #  #   "
         .byte "  ####   "
+
+; --- Microban I #21..#44 (text version extras up to 4K) ---
 
 ; Microban #21 (7x6) -> level24
 level24:
@@ -1317,305 +1125,6 @@ level47:
         .byte "#@$.#"
         .byte "#####"
 
-; Microban #45 (6x7) -> level48
-level48:
-        .byte 6, 7, 2, 7
-        .byte "######"
-        .byte "#... #"
-        .byte "#  $ #"
-        .byte "# #$##"
-        .byte "#  $ #"
-        .byte "#  @ #"
-        .byte "######"
-
-; Microban #46 (7x8) -> level49
-level49:
-        .byte 7, 8, 2, 6
-        .byte " ######"
-        .byte "##    #"
-        .byte "#  ## #"
-        .byte "# # $ #"
-        .byte "#  * .#"
-        .byte "## #@##"
-        .byte " #   # "
-        .byte " ##### "
-
-; Microban #47 (11x7) -> level50
-level50:
-        .byte 11, 7, 2, 4
-        .byte "  #######  "
-        .byte "###     #  "
-        .byte "# $ $   #  "
-        .byte "# ### #####"
-        .byte "# @ . .   #"
-        .byte "#   ###   #"
-        .byte "##### #####"
-
-; Microban #48 (8x8) -> level51
-level51:
-        .byte 8, 8, 2, 6
-        .byte "######  "
-        .byte "#  @ #  "
-        .byte "#  # ## "
-        .byte "# .#  ##"
-        .byte "# .$$$ #"
-        .byte "# .#   #"
-        .byte "####   #"
-        .byte "   #####"
-
-; Microban #49 (8x10) -> level52
-level52:
-        .byte 8, 10, 1, 6
-        .byte "######  "
-        .byte "# @  #  "
-        .byte "# $# #  "
-        .byte "# $  #  "
-        .byte "# $ ##  "
-        .byte "### ####"
-        .byte " #  #  #"
-        .byte " #...  #"
-        .byte " #     #"
-        .byte " #######"
-
-; Microban #50 (10x7) -> level53
-level53:
-        .byte 10, 7, 2, 5
-        .byte "  ####    "
-        .byte "###  #####"
-        .byte "#  $  @..#"
-        .byte "# $    # #"
-        .byte "### #### #"
-        .byte "  #      #"
-        .byte "  ########"
-
-; Microban #51 (8x7) -> level54
-level54:
-        .byte 8, 7, 2, 6
-        .byte "####    "
-        .byte "#  ###  "
-        .byte "#    ###"
-        .byte "#  $*@ #"
-        .byte "### .# #"
-        .byte "  #    #"
-        .byte "  ######"
-
-; Microban #52 (6x8) -> level55
-level55:
-        .byte 6, 8, 2, 7
-        .byte "  ####"
-        .byte "### @#"
-        .byte "#  $ #"
-        .byte "#  *.#"
-        .byte "#  *.#"
-        .byte "#  $ #"
-        .byte "###  #"
-        .byte "  ####"
-
-; Microban #53 (7x7) -> level56
-level56:
-        .byte 7, 7, 2, 6
-        .byte " ##### "
-        .byte "##. .##"
-        .byte "# * * #"
-        .byte "#  #  #"
-        .byte "# $ $ #"
-        .byte "## @ ##"
-        .byte " ##### "
-
-; Microban #54 (12x8) -> level57
-level57:
-        .byte 12, 8, 2, 4
-        .byte "      ######"
-        .byte "      #    #"
-        .byte "  ##### .  #"
-        .byte "###  ###.  #"
-        .byte "# $  $  . ##"
-        .byte "# @$$ # . # "
-        .byte "##    ##### "
-        .byte " ######     "
-
-; Microban #55 (10x8) -> level58
-level58:
-        .byte 10, 8, 2, 5
-        .byte "########  "
-        .byte "# @ #  #  "
-        .byte "#      #  "
-        .byte "#####$ #  "
-        .byte "    #  ###"
-        .byte " ## #$ ..#"
-        .byte " ## #  ###"
-        .byte "    ####  "
-
-; Microban #56 (7x6) -> level59
-level59:
-        .byte 7, 6, 3, 6
-        .byte "#####  "
-        .byte "#   ###"
-        .byte "#  $  #"
-        .byte "##* . #"
-        .byte " #   @#"
-        .byte " ######"
-
-; Microban #57 (8x9) -> level60
-level60:
-        .byte 8, 9, 1, 6
-        .byte "  ####  "
-        .byte "  #  #  "
-        .byte "  #@ #  "
-        .byte "  #  #  "
-        .byte "### ####"
-        .byte "#    * #"
-        .byte "#  $   #"
-        .byte "#####. #"
-        .byte "    ####"
-
-; Microban #58 (7x7) -> level61
-level61:
-        .byte 7, 7, 2, 6
-        .byte "####   "
-        .byte "#  ####"
-        .byte "#.*$  #"
-        .byte "# .$# #"
-        .byte "## @  #"
-        .byte " #   ##"
-        .byte " ##### "
-
-; Microban #59 (13x9) -> level62
-level62:
-        .byte 13, 9, 1, 3
-        .byte "############ "
-        .byte "#          # "
-        .byte "# ####### @##"
-        .byte "# #         #"
-        .byte "# #  $   #  #"
-        .byte "# $$ #####  #"
-        .byte "###  # # ...#"
-        .byte "  #### #    #"
-        .byte "       ######"
-
-; Microban #60 (10x10) -> level63
-level63:
-        .byte 10, 10, 1, 5
-        .byte " #########"
-        .byte " #       #"
-        .byte "##@##### #"
-        .byte "#  #   # #"
-        .byte "#  #   $.#"
-        .byte "#  ##$##.#"
-        .byte "##$##  #.#"
-        .byte "#   $  #.#"
-        .byte "#   #  ###"
-        .byte "########  "
-
-; Microban #61 (9x10) -> level64
-level64:
-        .byte 9, 10, 1, 5
-        .byte "######## "
-        .byte "#      # "
-        .byte "# #### # "
-        .byte "# #...@# "
-        .byte "# ###$###"
-        .byte "# #     #"
-        .byte "#  $$ $ #"
-        .byte "####   ##"
-        .byte "   #.### "
-        .byte "   ###   "
-
-; Microban #62 (13x6) -> level65
-level65:
-        .byte 13, 6, 3, 3
-        .byte "   ##########"
-        .byte "####    ##  #"
-        .byte "#  $$$....$@#"
-        .byte "#      ###  #"
-        .byte "#   #### ####"
-        .byte "#####        "
-
-; Microban #63 (19x6) -> level66
-level66:
-        .byte 19, 6, 3, 0
-        .byte "#####   ####       "
-        .byte "#   ##### .#       "
-        .byte "#       $  ########"
-        .byte "###  #### .$    @ #"
-        .byte "  #  #  #  ####   #"
-        .byte "  ####  ####  #####"
-
-; Microban #64 (10x9) -> level67
-level67:
-        .byte 10, 9, 1, 5
-        .byte " ######   "
-        .byte "##    #   "
-        .byte "#   $ #   "
-        .byte "#  $$ #   "
-        .byte "### .#####"
-        .byte "  ##.# @ #"
-        .byte "   #.  $ #"
-        .byte "   #. ####"
-        .byte "   ####   "
-
-; Microban #65 (9x9) -> level68
-level68:
-        .byte 9, 9, 1, 5
-        .byte "  ###### "
-        .byte "  #    # "
-        .byte "  #  $ # "
-        .byte " ####$ # "
-        .byte "## $ $ # "
-        .byte "#....# ##"
-        .byte "#     @ #"
-        .byte "##  #   #"
-        .byte " ########"
-
-; Microban #67 (7x8) -> level69
-level69:
-        .byte 7, 8, 2, 6
-        .byte "#####  "
-        .byte "#   ## "
-        .byte "# #  # "
-        .byte "#@$*.##"
-        .byte "##  . #"
-        .byte " # $# #"
-        .byte " ##   #"
-        .byte "  #####"
-
-; Microban #68 (10x7) -> level70
-level70:
-        .byte 10, 7, 2, 5
-        .byte " ####     "
-        .byte " #  ######"
-        .byte "##    $  #"
-        .byte "# .# $   #"
-        .byte "# .#$#####"
-        .byte "# .@ #    "
-        .byte "######    "
-
-; Microban #69 (11x8) -> level71
-level71:
-        .byte 11, 8, 2, 4
-        .byte "####  #### "
-        .byte "#  ####  # "
-        .byte "#  #  #  # "
-        .byte "#  #    $##"
-        .byte "#  . .#$  #"
-        .byte "#@ ## # $ #"
-        .byte "#   . #   #"
-        .byte "###########"
-
-; Microban #70 (8x10) -> level72
-level72:
-        .byte 8, 10, 1, 6
-        .byte "#####   "
-        .byte "# @ ####"
-        .byte "#      #"
-        .byte "# $ $$ #"
-        .byte "##$##  #"
-        .byte "#   ####"
-        .byte "# ..  # "
-        .byte "##..  # "
-        .byte " ###  # "
-        .byte "   #### "
-
 level_ptrs_lo:
         .byte <level1, <level2, <level3, <level4, <level5
         .byte <level6, <level7, <level8, <level9, <level10
@@ -1626,12 +1135,7 @@ level_ptrs_lo:
         .byte <level31, <level32, <level33, <level34, <level35
         .byte <level36, <level37, <level38, <level39, <level40
         .byte <level41, <level42, <level43, <level44, <level45
-        .byte <level46, <level47, <level48, <level49, <level50
-        .byte <level51, <level52, <level53, <level54, <level55
-        .byte <level56, <level57, <level58, <level59, <level60
-        .byte <level61, <level62, <level63, <level64, <level65
-        .byte <level66, <level67, <level68, <level69, <level70
-        .byte <level71, <level72
+        .byte <level46, <level47
 level_ptrs_hi:
         .byte >level1, >level2, >level3, >level4, >level5
         .byte >level6, >level7, >level8, >level9, >level10
@@ -1642,38 +1146,4 @@ level_ptrs_hi:
         .byte >level31, >level32, >level33, >level34, >level35
         .byte >level36, >level37, >level38, >level39, >level40
         .byte >level41, >level42, >level43, >level44, >level45
-        .byte >level46, >level47, >level48, >level49, >level50
-        .byte >level51, >level52, >level53, >level54, >level55
-        .byte >level56, >level57, >level58, >level59, >level60
-        .byte >level61, >level62, >level63, >level64, >level65
-        .byte >level66, >level67, >level68, >level69, >level70
-        .byte >level71, >level72
-
-; --- Strings (ASCII, bit 7 added by print_str_ax) ---
-str_title:
-        .byte $0D, " * SOKOBAN * ", $0D
-        .byte " APPLE 1 + GEN2 COLOR CARD", $0D
-        .byte " PORT BY VERHILLE ARNAUD, 2026", $0D
-        .byte $0D
-        .byte " LEVELS 4-72: MICROBAN I", $0D
-        .byte " CLASSIC SET BY D.W. SKINNER", $0D
-        .byte $0D
-        .byte " PUSH ALL BOXES ONTO TARGETS.", $0D
-        .byte " BOXES CAN ONLY BE PUSHED --", $0D
-        .byte " NEVER PULLED! WATCH CORNERS!", $0D
-        .byte $0D
-        .byte " R = RESET   N = NEXT LEVEL", $0D, 0
-
-str_layout:
-        .byte $0D, " KEYBOARD LAYOUT ?", $0D
-        .byte "  1 = QWERTY  (W/A/S/D)", $0D
-        .byte "  2 = AZERTY  (Z/Q/S/D)", $0D, 0
-
-str_level:
-        .byte $0D, " LEVEL ", 0
-
-str_win:
-        .byte $0D, " LEVEL CLEARED!", $0D
-        .byte " ANY KEY = NEXT LEVEL", 0
-
-.include "hgr_tables.inc"
+        .byte >level46, >level47

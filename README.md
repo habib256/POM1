@@ -492,7 +492,7 @@ POM1/
 ├── CpuClock.h               # ⏱️ CPU clock (1 022 727 Hz) + cycles/frame @ 60 Hz helpers
 ├── Memory.cpp/h             # 💾 64 KB address space, ROM loader, PIA I/O
 ├── main_imgui.cpp           # 🪟 GLFW/OpenGL bootstrap
-├── MainWindow_ImGui.cpp/h   # 🎛️ App window, menus, CPU speed (~1.02M / ~2.05M / Max)
+├── MainWindow_ImGui.cpp/h   # 🎛️ App window, menus, CPU speed (x1 / x2 / Max)
 ├── Screen_ImGui.cpp/h       # 🖥️ Apple 1 display (40×24, CRT effects)
 ├── GraphicsCard.cpp/h       # 🎨 GEN2 color graphics card (280×192 HIRES)
 ├── TMS9918.cpp/h            # 🖥️ P-LAB TMS9918 VDP (256×192, 15 colors, sprites)
