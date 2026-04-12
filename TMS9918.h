@@ -15,6 +15,7 @@
 
 #include <array>
 #include <cstdint>
+#include "CpuClock.h"
 #include "imgui.h"
 
 class TMS9918
@@ -74,7 +75,7 @@ private:
     uint8_t readAheadBuffer = 0;
     int frameCycleCounter   = 0;
 
-    static constexpr int kCyclesPerFrame = 16667; // ~60 Hz at 1 MHz
+    static constexpr int kCyclesPerFrame = POM1_CPU_CYCLES_PER_FRAME_1X_60HZ;
 };
 
 #endif // TMS9918_H

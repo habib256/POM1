@@ -6,6 +6,7 @@
 // https://p-l4b.github.io/terminal/
 
 #include "TerminalCard.h"
+#include "CpuClock.h"
 #include <cstring>
 #include <iostream>
 
@@ -116,7 +117,7 @@ void TerminalCard::advanceCycles(int cycles)
 {
     std::lock_guard<std::mutex> lock(cardMutex);
     pollCycleAccum += cycles;
-    if (pollCycleAccum < 1000) return;  // ~1ms at 1 MHz
+    if (pollCycleAccum < POM1_CPU_CYCLES_PER_MILLISECOND) return;
     pollCycleAccum = 0;
 
     acceptClient();

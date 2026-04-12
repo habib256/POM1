@@ -559,13 +559,13 @@ void MainWindow_ImGui::renderMenuBar()
             ImGui::Separator();
 #if !POM1_IS_WASM
             ImGui::Text("CPU Speed:");
-            if (ImGui::RadioButton("1MHz", executionSpeed == 16667)) {
-                executionSpeed = 16667;
+            if (ImGui::RadioButton("1.02 MHz", executionSpeed == POM1_CPU_CYCLES_PER_FRAME_1X_60HZ)) {
+                executionSpeed = POM1_CPU_CYCLES_PER_FRAME_1X_60HZ;
                 emulation->setExecutionSpeedCyclesPerFrame(executionSpeed);
             }
             ImGui::SameLine();
-            if (ImGui::RadioButton("2MHz", executionSpeed == 33333)) {
-                executionSpeed = 33333;
+            if (ImGui::RadioButton("2.05 MHz", executionSpeed == POM1_CPU_CYCLES_PER_FRAME_2X_60HZ)) {
+                executionSpeed = POM1_CPU_CYCLES_PER_FRAME_2X_60HZ;
                 emulation->setExecutionSpeedCyclesPerFrame(executionSpeed);
             }
             ImGui::SameLine();
@@ -667,7 +667,7 @@ void MainWindow_ImGui::renderToolbar()
 #if !POM1_IS_WASM
         const float mhzBtnPadX = ImGui::GetStyle().FramePadding.x * 2.0f;
         const float mhzBtnW =
-            std::max(ImGui::CalcTextSize("1MHz").x, ImGui::CalcTextSize("2MHz").x) + mhzBtnPadX;
+            std::max(ImGui::CalcTextSize("1.02M").x, ImGui::CalcTextSize("2.05M").x) + mhzBtnPadX;
         const ImVec2 mhzBtnSize(mhzBtnW, 24.0f);
 #endif
 
@@ -919,25 +919,29 @@ void MainWindow_ImGui::renderToolbar()
 #if !POM1_IS_WASM
         // --- Vitesse CPU (1MHz / 2MHz / Max) — masqué en WASM (rythme imposé par le navigateur)
         {
-            bool is1M = (executionSpeed == 16667);
+            bool is1M = (executionSpeed == POM1_CPU_CYCLES_PER_FRAME_1X_60HZ);
             if (is1M) ImGui::PushStyleColor(ImGuiCol_Button, activeColor);
-            if (ImGui::Button("1MHz", mhzBtnSize)) {
-                executionSpeed = 16667;
+            if (ImGui::Button("1.02M", mhzBtnSize)) {
+                executionSpeed = POM1_CPU_CYCLES_PER_FRAME_1X_60HZ;
                 emulation->setExecutionSpeedCyclesPerFrame(executionSpeed);
             }
             if (is1M) ImGui::PopStyleColor();
-            if (ImGui::IsItemHovered()) ImGui::SetTooltip("1MHz (~16667 cycles/frame @ 60 Hz)");
+            if (ImGui::IsItemHovered()) {
+                ImGui::SetTooltip("1.022727 MHz (~%d cycles/frame @ 60 Hz)", POM1_CPU_CYCLES_PER_FRAME_1X_60HZ);
+            }
         }
         ImGui::SameLine();
         {
-            bool is2M = (executionSpeed == 33333);
+            bool is2M = (executionSpeed == POM1_CPU_CYCLES_PER_FRAME_2X_60HZ);
             if (is2M) ImGui::PushStyleColor(ImGuiCol_Button, activeColor);
-            if (ImGui::Button("2MHz", mhzBtnSize)) {
-                executionSpeed = 33333;
+            if (ImGui::Button("2.05M", mhzBtnSize)) {
+                executionSpeed = POM1_CPU_CYCLES_PER_FRAME_2X_60HZ;
                 emulation->setExecutionSpeedCyclesPerFrame(executionSpeed);
             }
             if (is2M) ImGui::PopStyleColor();
-            if (ImGui::IsItemHovered()) ImGui::SetTooltip("2MHz (~33333 cycles/frame @ 60 Hz)");
+            if (ImGui::IsItemHovered()) {
+                ImGui::SetTooltip("~2.045 MHz (~%d cycles/frame @ 60 Hz)", POM1_CPU_CYCLES_PER_FRAME_2X_60HZ);
+            }
         }
         ImGui::SameLine();
         {
@@ -1049,8 +1053,8 @@ void MainWindow_ImGui::renderStatusBar()
             speedText = "| Max";
         } else {
             std::ostringstream oss;
-            oss << "| " << std::fixed << std::setprecision(1)
-                << (executionSpeed * 60.0f / 1000000.0f) << " MHz";
+            oss << "| " << std::fixed << std::setprecision(3)
+                << (executionSpeed * 60.0 / 1000000.0) << " MHz";
             speedText = oss.str();
         }
         std::ostringstream ramOss;

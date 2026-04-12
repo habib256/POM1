@@ -8,6 +8,8 @@
 #ifndef MICROSD_H
 #define MICROSD_H
 
+#include "CpuClock.h"
+
 #include <cstdint>
 #include <string>
 #include <vector>
@@ -124,8 +126,8 @@ private:
     // --- DIR / TEST timeout ---
     int dirIdleCycles;              // cycles since last CPU interaction in DIR_WAIT_REQUEST
     int testIdleCycles;             // cycles idle since last TEST_ECHO byte
-    static constexpr int DIR_TIMEOUT_CYCLES  = 500000;  // ~0.5s at 1 MHz
-    static constexpr int TEST_TIMEOUT_CYCLES = 500000;  // ~0.5s at 1 MHz idle timeout
+    static constexpr int DIR_TIMEOUT_CYCLES  = POM1_CPU_CLOCK_HZ / 2;
+    static constexpr int TEST_TIMEOUT_CYCLES = POM1_CPU_CLOCK_HZ / 2;
 
     // --- Host filesystem ---
     std::string sdCardRootPath;

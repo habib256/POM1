@@ -154,9 +154,9 @@ void WiFiModem::advanceCycles(int cycles)
         }
     }
 
-    // Poll socket periodically (~every 1000 cycles = 1ms at 1 MHz)
+    // Poll socket periodically (~1 ms at CPU clock)
     pollCycleAccum += cycles;
-    if (pollCycleAccum >= 1000) {
+    if (pollCycleAccum >= POM1_CPU_CYCLES_PER_MILLISECOND) {
         pollCycleAccum = 0;
         if (connState == ConnState::CONNECTED || connState == ConnState::CONNECTING) {
             updateConnection();
@@ -737,7 +737,7 @@ void WiFiModem::updateCyclesPerByte()
     // 8N1 = 10 bits per character (1 start + 8 data + 1 stop)
     int charsPerSec = baud / 10;
     if (charsPerSec <= 0) charsPerSec = 1;
-    cyclesPerByte = 1000000 / charsPerSec; // CPU cycles at 1 MHz
+    cyclesPerByte = POM1_CPU_CLOCK_HZ / charsPerSec;
 }
 
 // ─────────────────────────────────────────────────────────────

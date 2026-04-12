@@ -6,6 +6,7 @@
 #include <memory>
 #include <cstring>
 #include <GLFW/glfw3.h>
+#include "CpuClock.h"
 #include "POM1Build.h"
 #include "EmulationController.h"
 #include "MemoryViewer_ImGui.h"
@@ -94,7 +95,7 @@ private:
     // CPU execution state
     bool cpuRunning = false;
     bool stepMode = false;
-    int executionSpeed = 16667; // cycles par frame (~1MHz @ 60fps)
+    int executionSpeed = POM1_CPU_CYCLES_PER_FRAME_1X_60HZ; // ~1.022727 MHz @ 60 fps
     
     // Status
     std::string statusMessage;

@@ -1,6 +1,7 @@
 #ifndef CASSETTEDEVICE_H
 #define CASSETTEDEVICE_H
 
+#include "CpuClock.h"
 #include "POM1Build.h"
 #include "AudioDevice.h"
 
@@ -53,7 +54,7 @@ public:
     const std::string& getLastError() const { return lastError; }
 
 private:
-    static constexpr uint32_t kRealtimeAudioTimebaseHz = 1000000;
+    static constexpr uint32_t kRealtimeAudioTimebaseHz = static_cast<uint32_t>(POM1_CPU_CLOCK_HZ);
     static constexpr uint32_t kTapeFileTimebaseHz = 900000;
     static constexpr uint32_t kAudioSampleRate = 44100;
 

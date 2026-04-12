@@ -8,6 +8,7 @@
 #ifndef WIFIMODEM_H
 #define WIFIMODEM_H
 
+#include "CpuClock.h"
 #include "POM1Build.h"
 
 #include <array>
@@ -114,7 +115,7 @@ private:
     size_t rxCount = 0;
 
     // --- Baud rate emulation ---
-    int  cyclesPerByte = 1042;  // CPU cycles per char at current baud (default 9600)
+    int  cyclesPerByte = 1065;  // overwritten in reset() — ~9600 baud @ POM1_CPU_CLOCK_HZ
     int  rxCycleAccum  = 0;     // cycles until next rx byte loads into data register
     int  pollCycleAccum = 0;    // cycles until next socket poll
 
@@ -128,9 +129,9 @@ private:
 
     // --- Escape sequence (+++) detection ---
     int  escapeCount = 0;       // consecutive '+' chars received
-    int  escapeGuardCycles = 0; // guard time counter (1 second = 1M cycles at 1 MHz)
+    int  escapeGuardCycles = 0; // guard time counter (1 s = POM1_CPU_CLOCK_HZ cycles)
     bool escapeArmed = false;   // true after guard time before +++
-    static constexpr int ESCAPE_GUARD_CYCLES = 1000000; // 1 second at 1 MHz
+    static constexpr int ESCAPE_GUARD_CYCLES = POM1_CPU_CLOCK_HZ;
 
     // --- Connection state ---
     enum class ConnState { IDLE, CONNECTING, CONNECTED };

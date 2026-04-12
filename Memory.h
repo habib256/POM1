@@ -19,6 +19,8 @@
 #ifndef MEMORY_H
 #define MEMORY_H
 
+#include "CpuClock.h"
+
 #include <vector>
 #include <queue>
 #include <string>
@@ -147,7 +149,7 @@ private:
 
     // Display Apple 1 (0xD012) - délai d'affichage
     int displayBusyCycles = 0;       // Cycles restants avant display ready
-    int displayCharDelay = 16667;    // Cycles par caractère (1MHz / 60 chars/sec)
+    int displayCharDelay = POM1_CPU_CLOCK_HZ / 60;    // 60 chars/sec à l'horloge CPU nominale
 
 private :
 

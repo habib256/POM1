@@ -637,13 +637,13 @@ void Memory::setTerminalSpeed(int charsPerSec)
     if (charsPerSec <= 0)
         displayCharDelay = 0; // Pas de délai (vitesse max)
     else
-        displayCharDelay = 1000000 / charsPerSec; // Cycles à 1 MHz
+        displayCharDelay = POM1_CPU_CLOCK_HZ / charsPerSec;
 }
 
 int Memory::getTerminalSpeed() const
 {
     if (displayCharDelay <= 0) return 0;
-    return 1000000 / displayCharDelay;
+    return POM1_CPU_CLOCK_HZ / displayCharDelay;
 }
 
 void Memory::setSIDEnabled(bool b)

@@ -37,6 +37,7 @@ set(HEADERS
     A1IO_RTC.h
     AudioDevice.h
     CassetteDevice.h
+    CpuClock.h
     EmulationController.h
     GraphicsCard.h
     MainWindow_ImGui.h

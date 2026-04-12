@@ -29,7 +29,7 @@ or build it natively.
 
 🖥️ **Authentic Apple 1 Display** — 40×24 character grid, `charmap.rom` bitmap or host ASCII, green / brown / monochrome CRT with scanlines and glow, blinking `@` cursor
 
-⚙️ **Cycle-Accurate 6502 CPU** — All official opcodes, all addressing modes, adjustable clock (1 MHz / 2 MHz / Max)
+⚙️ **Cycle-Accurate 6502 CPU** — All official opcodes, all addressing modes, adjustable clock (~1.022727 MHz nominal / ~2.045 MHz / Max). Nominal rate matches NTSC-derived **1 022 727 Hz** (14.31818 MHz ÷ 14); see `CpuClock.h`.
 
 🔍 **Live Memory Editor** — Interactive hex viewer with color-coded regions, search, bookmarks, inline double-click editing, and undo/redo
 
@@ -489,9 +489,10 @@ Load the binary via **File > Load Memory**, or type the start address + `R` in t
 ```
 POM1/
 ├── M6502.cpp/h              # 🧠 MOS 6502 CPU — all opcodes, cycle counting
+├── CpuClock.h               # ⏱️ CPU clock (1 022 727 Hz) + cycles/frame @ 60 Hz helpers
 ├── Memory.cpp/h             # 💾 64 KB address space, ROM loader, PIA I/O
 ├── main_imgui.cpp           # 🪟 GLFW/OpenGL bootstrap
-├── MainWindow_ImGui.cpp/h   # 🎛️ App window, menus, CPU speed control
+├── MainWindow_ImGui.cpp/h   # 🎛️ App window, menus, CPU speed (~1.02M / ~2.05M / Max)
 ├── Screen_ImGui.cpp/h       # 🖥️ Apple 1 display (40×24, CRT effects)
 ├── GraphicsCard.cpp/h       # 🎨 GEN2 color graphics card (280×192 HIRES)
 ├── TMS9918.cpp/h            # 🖥️ P-LAB TMS9918 VDP (256×192, 15 colors, sprites)

@@ -9,6 +9,7 @@
 #include <string>
 #include <vector>
 
+#include "CpuClock.h"
 #include "POM1Build.h"
 #if !POM1_IS_WASM
 #include <thread>
@@ -161,7 +162,7 @@ private:
 #endif
     std::atomic<bool> terminateRequested { false };
     std::atomic<bool> runRequested { false };
-    std::atomic<int> executionSpeedCyclesPerFrame { 16667 };
+    std::atomic<int> executionSpeedCyclesPerFrame { POM1_CPU_CYCLES_PER_FRAME_1X_60HZ };
     /// Dernière vitesse utilisée pour le budget temps réel (réinitialise le budget si elle change).
     int cycleBudgetAnchorCpf = -1;
     /// Budget de cycles partagé entre le fil d’émulation (natif) et pumpEmulationMainThread (Web).

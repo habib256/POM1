@@ -19,6 +19,7 @@
 #define SID_H
 
 #include "AudioDevice.h"
+#include "CpuClock.h"
 
 #include <array>
 #include <cstdint>
@@ -40,7 +41,7 @@ public:
     static constexpr int    kSampleRate      = 44100;
     static constexpr int    kOversample      = 4;     // 4× oversampling for anti-aliasing
     static constexpr int    kInternalRate     = kSampleRate * kOversample; // 176400 Hz
-    static constexpr double kCpuClockHz      = 1000000.0;
+    static constexpr double kCpuClockHz      = static_cast<double>(POM1_CPU_CLOCK_HZ);
     static constexpr double kCyclesPerSample  = kCpuClockHz / kInternalRate; // ~11.338
 
     SID();

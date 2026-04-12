@@ -12,7 +12,7 @@ namespace {
 constexpr double kFramesPerSecond = 60.0;
 #if POM1_IS_WASM
 // WASM: pumpEmulationMainThread is called once per frame from the main loop.
-// At 60 fps, 1 MHz needs ~16 667 cycles/frame and 2 MHz ~33 333 cycles/frame.
+// At 60 fps, ~1.022727 MHz needs ~17 045 cycles/frame and ~2.045 MHz ~34 091 cycles/frame.
 // The desktop cap of 12 000 throttles WASM to 720 KHz — too slow for SID tunes.
 // Set the cap well above the 2 MHz frame budget so a single call consumes it all.
 constexpr int kMaxSliceCycles = 50000;
