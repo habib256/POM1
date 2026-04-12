@@ -31,7 +31,7 @@ VDP_DATA = $CC00
 VDP_CTRL = $CC01
 
 ; --- Game constants ---
-NCOLS   = 20
+NCOLS   = 16
 NROWS   = 12
 NUM_LEVELS = 47
 
@@ -214,9 +214,11 @@ init_vdp:
         ORA #$40                        ; write flag
         STA VDP_CTRL
 
-        ; src = tile_patterns + X*8
+        ; src = tile_patterns + X*32  (each tile is 4 glyphs x 8 bytes)
         TXA
         PHA
+        ASL A
+        ASL A
         ASL A
         ASL A
         ASL A
@@ -231,7 +233,7 @@ init_vdp:
 @pb:    LDA (src_lo),Y
         STA VDP_DATA
         INY
-        CPY #$08
+        CPY #$20                        ; 32 bytes per tile (4 glyphs)
         BCC @pb
 
         PLA
@@ -277,41 +279,23 @@ init_vdp:
         RTS
 
 ; =============================================
-; render_all: draw the 20x12 playfield into the name table
-; Playfield is centred at (row=6, col=6) of the 32x24 screen
-; VRAM addr of a cell = $1800 + (6+r)*32 + (6+c) = $18C6 + r*32 + c
+; render_all: draw the whole 16x12 playfield by calling draw_cell
+; Playfield fills the full 32x24 screen (each tile is 2x2 chars).
 ; =============================================
 render_all:
         LDA #$00
         STA draw_row
 @rowlp:
-        ; Set VRAM write addr to start of this playfield row
-        ;   addr_lo = row_x32_lo[r] + $C6
-        ;   addr_hi = row_x32_hi[r] + $18
-        LDX draw_row
-        CLC
-        LDA row_x32_lo,X
-        ADC #$C6
-        STA VDP_CTRL
-        LDA row_x32_hi,X
-        ADC #$18
-        ORA #$40
-        STA VDP_CTRL
-
-        ; Write 20 char codes for this row
         LDA #$00
         STA draw_col
 @collp:
         LDX draw_row
-        LDA row_x20,X
+        LDA row_x16,X
         CLC
         ADC draw_col
         TAX
         LDA STATE_GRID,X
-        ASL A
-        ASL A
-        ASL A                            ; char = tile * 8
-        STA VDP_DATA
+        JSR draw_cell
 
         INC draw_col
         LDA draw_col
@@ -325,36 +309,70 @@ render_all:
         RTS
 
 ; =============================================
-; draw_cell: update a single name-table cell
-; Input: A = tile type, draw_row, draw_col
+; draw_cell: draw one 16x16 Sokoban tile as a 2x2 name-table block
+; Input: A = tile type (0..6), draw_row, draw_col
+; Layout in name table: top-left at (draw_row*2, draw_col*2)
+;   VRAM addr of TL = $1800 + (draw_row*2)*32 + (draw_col*2)
+;                   = $1800 + draw_row*64 + draw_col*2
+; Each tile occupies 4 consecutive character codes (TL, TR, BL, BR),
+; starting at base = tile * 8 (so tiles live at chars 0, 8, 16, ..., 48).
 ; =============================================
 draw_cell:
-        PHA                             ; save tile type
+        ; base_char = tile * 8  (also the colour-group trick: chars 0, 8, ...)
+        ASL A
+        ASL A
+        ASL A
+        TAX                             ; X = base char code
 
-        ; VRAM addr = $18C6 + draw_row*32 + draw_col
-        LDX draw_row
-        CLC
-        LDA row_x32_lo,X
-        ADC draw_col
+        ; Compute name-table offset = draw_row*64 + draw_col*2
+        LDY draw_row
+        LDA row_x64_lo,Y
         STA temp
-        LDA row_x32_hi,X
+        LDA row_x64_hi,Y
+        STA temp2
+
+        LDA draw_col
+        ASL A
+        CLC
+        ADC temp
+        STA temp
+        LDA temp2
         ADC #$00
         STA temp2
 
-        CLC
+        ; --- Top name row: write TL, TR ---
         LDA temp
-        ADC #$C6
         STA VDP_CTRL
         LDA temp2
+        CLC
         ADC #$18
         ORA #$40
         STA VDP_CTRL
+        STX VDP_DATA                    ; TL = base+0
+        INX
+        STX VDP_DATA                    ; TR = base+1
+        INX
 
-        PLA
-        ASL A
-        ASL A
-        ASL A
-        STA VDP_DATA
+        ; Advance offset by 32 (next name row)
+        CLC
+        LDA temp
+        ADC #$20
+        STA temp
+        LDA temp2
+        ADC #$00
+        STA temp2
+
+        ; --- Bottom name row: write BL, BR ---
+        LDA temp
+        STA VDP_CTRL
+        LDA temp2
+        CLC
+        ADC #$18
+        ORA #$40
+        STA VDP_CTRL
+        STX VDP_DATA                    ; BL = base+2
+        INX
+        STX VDP_DATA                    ; BR = base+3
         RTS
 
 ; =============================================
@@ -373,13 +391,21 @@ init_level:
         INY
         LDA (sptr_lo),Y
         STA lvl_h
-        INY
-        LDA (sptr_lo),Y
+
+        ; Compute centered offsets for current 16x12 grid (stored header
+        ; offsets are for the old 20x12 grid — recompute here).
+        LDA #NROWS
+        SEC
+        SBC lvl_h
+        LSR A
         STA row_offset
-        INY
-        LDA (sptr_lo),Y
+        LDA #NCOLS
+        SEC
+        SBC lvl_w
+        LSR A
         STA col_offset
 
+        ; Skip the 4-byte header
         CLC
         LDA sptr_lo
         ADC #$04
@@ -393,7 +419,7 @@ init_level:
         TYA
 @clr:   STA STATE_GRID,Y
         INY
-        CPY #240
+        CPY #192
         BNE @clr
 
         ; Parse ASCII data row by row
@@ -425,7 +451,7 @@ init_level:
         CLC
         ADC row_offset
         TAX
-        LDA row_x20,X
+        LDA row_x16,X
         STA temp2
         TYA
         CLC
@@ -509,7 +535,7 @@ execute_move:
         BCS @blk_tr
 
         LDX new_row
-        LDA row_x20,X
+        LDA row_x16,X
         CLC
         ADC new_col
         TAX
@@ -544,7 +570,7 @@ execute_move:
         BCS @blk_tr
 
         LDX box_row
-        LDA row_x20,X
+        LDA row_x16,X
         CLC
         ADC box_col
         TAX
@@ -576,7 +602,7 @@ execute_move:
 @simple_move:
         ; Leave old player cell
         LDX player_row
-        LDA row_x20,X
+        LDA row_x16,X
         CLC
         ADC player_col
         TAX
@@ -593,7 +619,7 @@ execute_move:
 
         ; Enter new cell
         LDX new_row
-        LDA row_x20,X
+        LDA row_x16,X
         CLC
         ADC new_col
         TAX
@@ -657,7 +683,7 @@ check_win:
         CMP #TILE_PLAYER_TARGET
         BEQ @no
         INY
-        CPY #240
+        CPY #192
         BNE @loop
         LDA #$01
         RTS
@@ -710,18 +736,18 @@ tile_vram_lo:
 tile_vram_hi:
         .byte $00, $00, $00, $00, $01, $01, $01
 
-; --- row * 32 (name table row stride) for rows 0..11 ---
-row_x32_lo:
-        .byte $00, $20, $40, $60, $80, $A0, $C0, $E0
-        .byte $00, $20, $40, $60
-row_x32_hi:
-        .byte $00, $00, $00, $00, $00, $00, $00, $00
-        .byte $01, $01, $01, $01
+; --- row * 16 (state grid row stride) for rows 0..11 ---
+row_x16:
+        .byte   0,  16,  32,  48,  64,  80,  96, 112
+        .byte 128, 144, 160, 176
 
-; --- row * 20 (state grid row stride) for rows 0..11 ---
-row_x20:
-        .byte   0,  20,  40,  60,  80, 100, 120, 140
-        .byte 160, 180, 200, 220
+; --- row * 64 (name-table stride: each tile is 2 name rows) ---
+row_x64_lo:
+        .byte $00, $40, $80, $C0, $00, $40, $80, $C0
+        .byte $00, $40, $80, $C0
+row_x64_hi:
+        .byte $00, $00, $00, $00, $01, $01, $01, $01
+        .byte $02, $02, $02, $02
 
 ; --- Tile state transitions ---
 leave_tbl:
@@ -729,22 +755,87 @@ leave_tbl:
 enter_player_tbl:
         .byte 5, 0, 6, 0, 0, 0, 0
 
-; --- Tile patterns (7 x 8 bytes = 56 bytes) ---
+; --- Tile patterns (7 tiles x 32 bytes = 224 bytes) ---
+; Each tile is a 16x16 sprite split into 4 glyphs of 8x8:
+;   TL (rows 0-7,  left byte)   TR (rows 0-7,  right byte)
+;   BL (rows 8-15, left byte)   BR (rows 8-15, right byte)
+; Designed natively at 16x16 for more detail than a 2x scale-up.
 tile_patterns:
-        ; Tile 0 FLOOR: blank
-        .byte $00,$00,$00,$00,$00,$00,$00,$00
-        ; Tile 1 WALL: solid 8x8 (grey)
-        .byte $FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF
-        ; Tile 2 TARGET: 4x4 dot (red)
-        .byte $00,$00,$18,$3C,$3C,$18,$00,$00
-        ; Tile 3 BOX: outlined 6x6 (yellow)
-        .byte $00,$7E,$42,$42,$42,$42,$7E,$00
-        ; Tile 4 BOX-ON-TARGET: filled 6x6 (green)
-        .byte $00,$7E,$7E,$7E,$7E,$7E,$7E,$00
-        ; Tile 5 PLAYER: stick figure (blue)
-        .byte $00,$18,$18,$7E,$18,$18,$24,$42
-        ; Tile 6 PLAYER-ON-TARGET: same shape, different colour group
-        .byte $00,$18,$18,$7E,$18,$18,$24,$42
+        ; --- Tile 0 FLOOR: all black ---
+        .byte $00,$00,$00,$00,$00,$00,$00,$00   ; TL
+        .byte $00,$00,$00,$00,$00,$00,$00,$00   ; TR
+        .byte $00,$00,$00,$00,$00,$00,$00,$00   ; BL
+        .byte $00,$00,$00,$00,$00,$00,$00,$00   ; BR
+
+        ; --- Tile 1 WALL: fully solid (grey) ---
+        .byte $FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF   ; TL
+        .byte $FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF   ; TR
+        .byte $FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF   ; BL
+        .byte $FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF   ; BR
+
+        ; --- Tile 2 TARGET: 8x8 bullseye disc centred (red) ---
+        ;   rows 3-12 form a disc of radius ~4
+        .byte $00,$00,$00,$03,$07,$07,$0F,$0F   ; TL
+        .byte $00,$00,$00,$C0,$E0,$E0,$F0,$F0   ; TR
+        .byte $0F,$0F,$07,$07,$03,$00,$00,$00   ; BL
+        .byte $F0,$F0,$E0,$E0,$C0,$00,$00,$00   ; BR
+
+        ; --- Tile 3 BOX: wooden crate, 16x16 outline with X diagonal ---
+        ;   row 0   ################
+        ;   row 1   #..............#    outline
+        ;   row 2   #.X..........X.#    X diagonals start
+        ;   row 3   #..X........X..#
+        ;   row 4   #...X......X...#
+        ;   row 5   #....X....X....#
+        ;   row 6   #.....X..X.....#
+        ;   row 7   #......XX......#    X crosses in middle
+        ;   row 8   #......XX......#
+        ;   row 9   #.....X..X.....#
+        ;   row 10  #....X....X....#
+        ;   row 11  #...X......X...#
+        ;   row 12  #..X........X..#
+        ;   row 13  #.X..........X.#
+        ;   row 14  #..............#
+        ;   row 15  ################
+        .byte $FF,$80,$A0,$90,$88,$84,$82,$81   ; TL
+        .byte $FF,$01,$05,$09,$11,$21,$41,$81   ; TR
+        .byte $81,$82,$84,$88,$90,$A0,$80,$FF   ; BL
+        .byte $81,$41,$21,$11,$09,$05,$01,$FF   ; BR
+
+        ; --- Tile 4 BOX-ON-TARGET: solid 12x12 block centred (green) ---
+        ;   rows 0-1 blank, rows 2-13 solid cols 2-13, rows 14-15 blank
+        .byte $00,$00,$3F,$3F,$3F,$3F,$3F,$3F   ; TL
+        .byte $00,$00,$FC,$FC,$FC,$FC,$FC,$FC   ; TR
+        .byte $3F,$3F,$3F,$3F,$3F,$3F,$00,$00   ; BL
+        .byte $FC,$FC,$FC,$FC,$FC,$FC,$00,$00   ; BR
+
+        ; --- Tile 5 PLAYER: humanoid (blue) ---
+        ;   row 0   ......####......    head top
+        ;   row 1   .....######.....    head
+        ;   row 2   ....########....    wide head
+        ;   row 3   ....##....##....    eyes gap
+        ;   row 4   ....##....##....
+        ;   row 5   ....########....    face
+        ;   row 6   .....######.....    chin
+        ;   row 7   .......##.......    neck
+        ;   row 8   ...##########...    shoulders
+        ;   row 9   ..############..    upper arms
+        ;   row 10  ##..########..##    arms extending to edges (hands)
+        ;   row 11  ##..########..##
+        ;   row 12  .....######.....    waist
+        ;   row 13  ....##....##....    legs
+        ;   row 14  ....##....##....
+        ;   row 15  ...###....###...    feet
+        .byte $03,$07,$0F,$0C,$0C,$0F,$07,$01   ; TL
+        .byte $C0,$E0,$F0,$30,$30,$F0,$E0,$80   ; TR
+        .byte $1F,$3F,$CF,$CF,$07,$0C,$0C,$1C   ; BL
+        .byte $F8,$FC,$F3,$F3,$E0,$30,$30,$38   ; BR
+
+        ; --- Tile 6 PLAYER-ON-TARGET: same figure (colour group differs) ---
+        .byte $03,$07,$0F,$0C,$0C,$0F,$07,$01   ; TL
+        .byte $C0,$E0,$F0,$30,$30,$F0,$E0,$80   ; TR
+        .byte $1F,$3F,$CF,$CF,$07,$0C,$0C,$1C   ; BL
+        .byte $F8,$FC,$F3,$F3,$E0,$30,$30,$38   ; BR
 
 ; --- Tile colours (bg=black, fg = per tile type) ---
 tile_colors:

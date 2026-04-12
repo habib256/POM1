@@ -352,12 +352,15 @@ render_screen:
         ADC render_c
         TAX
         LDA GRID_BASE,X
-        TAY
+        TAY                     ; Y = tile index
+        ; Cell content is 3 chars wide to match "+---+" separator spacing:
+        ; leading space, char, trailing space, then '|'
+        LDA #$A0
+        JSR ECHO
         LDA tile_char,Y
         ORA #$80
         JSR ECHO
-        ; Separator space then '|'
-        LDA #$A0                ; ' ' with bit 7
+        LDA #$A0
         JSR ECHO
         LDA #$FC                ; '|' with bit 7 = $7C | $80
         JSR ECHO

@@ -767,20 +767,30 @@ tile_bitmaps:
         .byte $7C,$1F, $7C,$1F, $7C,$1F, $7C,$1F
         .byte $7C,$1F, $7C,$1F, $7C,$1F, $7C,$1F
         .byte $7C,$1F, $7C,$1F, $00,$00, $00,$00
-; Tile 5: PLAYER (plus/cross shape)
-; Vertical bar: cols 5-8 = $60,$03
-; Horizontal bar (rows 6-9): cols 2-11 = $7C,$1F
-        .byte $00,$00, $00,$00, $60,$03, $60,$03
-        .byte $60,$03, $60,$03, $7C,$1F, $7C,$1F
-        .byte $7C,$1F, $7C,$1F, $60,$03, $60,$03
-        .byte $60,$03, $60,$03, $00,$00, $00,$00
-; Tile 6: PLAYER ON TARGET (cross with extra "shoulders" rows 4,5,10,11)
-; $6C = $60 | $0C (vertical bar + side dots on left)
-; $1B = $03 | $18 (vertical bar + side dots on right)
-        .byte $00,$00, $00,$00, $60,$03, $60,$03
-        .byte $6C,$1B, $6C,$1B, $7C,$1F, $7C,$1F
-        .byte $7C,$1F, $7C,$1F, $6C,$1B, $6C,$1B
-        .byte $60,$03, $60,$03, $00,$00, $00,$00
+; Tile 5: PLAYER (little character — head, eyes, arms out, body, legs, feet)
+;   row 0  ....####....   head top (pixels 4-7)
+;   row 1  ...######...   head (pixels 3-8)
+;   row 2  ...##..##...   eyes (pixels 3,4, 7,8)
+;   row 3  ...######...   face
+;   row 4  ....####....   chin
+;   row 5  ..########..   shoulders (pixels 2-9)
+;   row 6  .##########.   arms out (pixels 1-10)
+;   row 7  ....####....   body
+;   row 8  ....####....   body
+;   row 9  ...######...   waist
+;   rows 10-12  ..##....##..   legs (pixels 2,3, 8,9)
+;   row 13 .###....###.   feet (pixels 1-3, 8-10)
+;   rows 14-15  blank
+        .byte $70,$01, $78,$03, $18,$03, $78,$03
+        .byte $70,$01, $7C,$07, $7E,$0F, $70,$01
+        .byte $70,$01, $78,$03, $0C,$06, $0C,$06
+        .byte $0C,$06, $0E,$0E, $00,$00, $00,$00
+; Tile 6: PLAYER ON TARGET — same character + a horizontal "target base"
+; line at row 14 revealing the target beneath the player's feet.
+        .byte $70,$01, $78,$03, $18,$03, $78,$03
+        .byte $70,$01, $7C,$07, $7E,$0F, $70,$01
+        .byte $70,$01, $78,$03, $0C,$06, $0C,$06
+        .byte $0C,$06, $0E,$0E, $7C,$1F, $00,$00
 
 ; --- Levels ---
 ; Format: 4-byte header (w, h, row_offset, col_offset) then w*h ASCII bytes
