@@ -158,6 +158,7 @@ game_loop:
         STA undo_avail
         STA had_push
         STA moves
+        JSR draw_hud
         JSR show_level
 
 move_loop:
@@ -583,6 +584,7 @@ execute_move:
         LDA #$FF
         STA moves
 @no_sat:
+        JSR draw_hud
 
         LDA #$01
         RTS
@@ -685,6 +687,7 @@ execute_undo:
         BEQ @no_dec
         DEC moves
 @no_dec:
+        JSR draw_hud
 
         ; Single-step undo only: clear the undo latch.
         LDA #$00
@@ -721,6 +724,140 @@ show_level:
         LDA #$8D                        ; CR
         JSR ECHO
         RTS
+
+; =============================================
+; draw_hud: render "MV:NNN" into the HGR framebuffer at tile row 0,
+; cells 0-5 (top-left corner). Call after render_all and after any
+; change to `moves`. The HUD always wins over delta tile redraws
+; because both call sites trigger draw_hud after the tile updates.
+; =============================================
+; Glyph indices into hud_font (see data below):
+HUD_G_M  = 10
+HUD_G_V  = 11
+HUD_G_CL = 12
+
+draw_hud:
+        LDA #HUD_G_M
+        LDX #$00
+        JSR draw_hud_cell
+        LDA #HUD_G_V
+        LDX #$01
+        JSR draw_hud_cell
+        LDA #HUD_G_CL
+        LDX #$02
+        JSR draw_hud_cell
+
+        ; Hundreds
+        LDA moves
+        LDX #$00
+@h100:  CMP #100
+        BCC @h100d
+        SBC #100
+        INX
+        JMP @h100
+@h100d: PHA                             ; save remainder
+        TXA
+        LDX #$03
+        JSR draw_hud_cell
+        PLA
+
+        ; Tens
+        LDX #$00
+@t10:   CMP #$0A
+        BCC @t10d
+        SBC #$0A
+        INX
+        JMP @t10
+@t10d:  PHA                             ; save ones remainder
+        TXA
+        LDX #$04
+        JSR draw_hud_cell
+        PLA
+
+        ; Ones
+        LDX #$05
+        JMP draw_hud_cell               ; tail-call
+
+; =============================================
+; draw_hud_cell: write one 14x16 HUD cell (glyph in left byte, right
+; byte blank, bottom 8 scanlines blanked so the underlying tile top
+; row does not show through).
+; Input: A = glyph index (0..12), X = cell column (0..5)
+; Clobbers: A, X, Y, temp, temp2, ptr_lo, ptr_hi
+; =============================================
+draw_hud_cell:
+        STX temp                        ; temp = cell column (0..5)
+        ASL A
+        ASL A
+        ASL A                           ; A = glyph_idx * 8
+        STA temp2                       ; temp2 = glyph base offset
+        LDX #$00                        ; X = scanline 0..15
+@sc:
+        LDA hgr_lo,X
+        STA ptr_lo
+        LDA hgr_hi,X
+        STA ptr_hi
+
+        ; Pick glyph byte (scanline 0..7) or blank (8..15)
+        CPX #$08
+        BCS @blank
+        TXA
+        CLC
+        ADC temp2
+        TAY
+        LDA hud_font,Y
+        JMP @write
+@blank:
+        LDA #$00
+@write:
+        PHA                             ; save byte to write
+        LDA temp
+        ASL A                           ; Y = cell_col * 2
+        TAY
+        PLA
+        STA (ptr_lo),Y                  ; left byte
+        INY
+        LDA #$00
+        STA (ptr_lo),Y                  ; right byte (always blank)
+
+        INX
+        CPX #$10
+        BCC @sc
+        RTS
+
+; =============================================
+; HUD font: 13 glyphs x 8 scanlines = 104 bytes. Each byte spans one
+; HGR scanline, bits 0-4 form a 5-pixel-wide glyph (bit 0 = leftmost
+; pixel). Bit 7 = 0 so glyphs render in the GEN2 "violet/green" NTSC
+; phase group. Index 10=M, 11=V, 12=':' ; indices 0..9 are digits 0..9.
+; =============================================
+hud_font:
+        ; 0
+        .byte $0E, $11, $11, $11, $11, $11, $0E, $00
+        ; 1
+        .byte $04, $06, $04, $04, $04, $04, $0E, $00
+        ; 2
+        .byte $0E, $11, $10, $08, $04, $02, $1F, $00
+        ; 3
+        .byte $0E, $11, $10, $0C, $10, $11, $0E, $00
+        ; 4
+        .byte $11, $11, $11, $1F, $10, $10, $10, $00
+        ; 5
+        .byte $1F, $01, $01, $0F, $10, $11, $0E, $00
+        ; 6
+        .byte $06, $01, $01, $0F, $11, $11, $0E, $00
+        ; 7
+        .byte $1F, $10, $08, $04, $02, $02, $02, $00
+        ; 8
+        .byte $0E, $11, $11, $0E, $11, $11, $0E, $00
+        ; 9
+        .byte $0E, $11, $11, $1E, $10, $10, $0C, $00
+        ; M
+        .byte $11, $1B, $15, $11, $11, $11, $11, $00
+        ; V
+        .byte $11, $11, $11, $11, $0A, $0A, $04, $00
+        ; :
+        .byte $00, $04, $00, $00, $04, $00, $00, $00
 
 ; =============================================
 ; Shared routines + tile-state tables

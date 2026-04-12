@@ -34,7 +34,7 @@ referenced in `README.md`.
 - [ ] **Wendell Sander's Star Trek (SPACWR)** — Extended 32 K Star Trek port by the Fairchild DRAM lead, demoed to Jobs autumn 1976. Hunt for the listing (Applefritter, Computer History Museum archives). If located, package as a `.txt` bootable on a new "Apple-1 + Sander 32 K" preset. Modification: VMA signal 2.2 kΩ || 100 pF (Sander's fix) — simulate by enabling the upper RAM bank cleanly (no authenticity quirks needed since we don't model bus analog behaviour).
 
 - [ ] **Sokoban follow-ups**
-    1. Display the moves counter in HGR/TMS variants — currently tracked internally but not shown. Would need an Apple-1 text HUD line that refreshes without scrolling the screen.
+    1. ~~Display the moves counter in HGR/TMS variants~~ — done. Both variants now render an `MV:NNN` HUD directly into the graphics surface (HGR framebuffer top-left, TMS name-table row 0), refreshed after every move/undo so delta redraws don't stomp it.
     2. Re-add Microban #43 and #44 to the text/TMS variants if we later shave ~60 B of code (currently dropped to fit the 3 200 B stock-4K budget; both are preserved in the HGR 72-level set).
 
 ## SID converter

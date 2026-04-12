@@ -138,6 +138,7 @@ game_loop:
         STA undo_avail
         STA had_push
         STA moves
+        JSR draw_hud
 
 move_loop:
         JSR wait_key
@@ -271,7 +272,21 @@ init_vdp:
         CPX #$07
         BNE @patloop
 
-        ; --- Load 7 colour bytes at colour table $2000 (groups 0..6) ---
+        ; --- Upload HUD glyph patterns at VRAM $01C0 (chars 56..68) ---
+        LDA #$C0
+        STA VDP_CTRL
+        LDA #$41                        ; $01 | $40
+        STA VDP_CTRL
+        LDX #$00
+@hudpat:
+        LDA hud_patterns,X
+        STA VDP_DATA
+        INX
+        CPX #104                        ; 13 glyphs x 8 bytes
+        BCC @hudpat
+
+        ; --- Load 9 colour bytes at colour table $2000 (groups 0..8) ---
+        ; Groups 0..6 = tile colours. Groups 7..8 cover HUD chars 56..71.
         LDA #$00
         STA VDP_CTRL
         LDA #$60                        ; $20 | $40 (write flag)
@@ -281,7 +296,7 @@ init_vdp:
         LDA tile_colors,X
         STA VDP_DATA
         INX
-        CPX #$07
+        CPX #$09
         BNE @colloop
 
         ; --- Clear name table ($1800, 768 bytes = char 0 = blank floor) ---
@@ -647,6 +662,7 @@ execute_move:
         LDA #$FF
         STA moves
 @no_sat:
+        JSR draw_hud
 
         LDA #$01
         RTS
@@ -744,10 +760,79 @@ execute_undo:
         BEQ @no_dec
         DEC moves
 @no_dec:
+        JSR draw_hud
 
         LDA #$00
         STA undo_avail
         STA had_push
+        RTS
+
+; =============================================
+; draw_hud: render "MV:NNN" into the VDP name table at row 0 cols 0-5,
+; and clear the row below (row 1 cols 0-5, written as char 0 = floor)
+; so the bottom half of the underlying playfield tiles doesn't poke
+; through. Called after render_all and after every change to `moves`.
+; =============================================
+HUD_C_M   = 56
+HUD_C_V   = 57
+HUD_C_CL  = 58
+HUD_C_D0  = 59                          ; '0'..'9' at chars 59..68
+
+draw_hud:
+        ; --- Row 0: "MV:HTU" at VRAM $1800 ---
+        LDA #$00
+        STA VDP_CTRL
+        LDA #$58                        ; $18 | $40
+        STA VDP_CTRL
+
+        LDA #HUD_C_M
+        STA VDP_DATA
+        LDA #HUD_C_V
+        STA VDP_DATA
+        LDA #HUD_C_CL
+        STA VDP_DATA
+
+        LDA moves
+        LDX #$00
+@h100:  CMP #100
+        BCC @h100d
+        SBC #100
+        INX
+        JMP @h100
+@h100d: STA temp                        ; remainder
+        TXA
+        CLC
+        ADC #HUD_C_D0
+        STA VDP_DATA                    ; hundreds char
+
+        LDA temp
+        LDX #$00
+@t10:   CMP #$0A
+        BCC @t10d
+        SBC #$0A
+        INX
+        JMP @t10
+@t10d:  STA temp                        ; ones remainder
+        TXA
+        CLC
+        ADC #HUD_C_D0
+        STA VDP_DATA                    ; tens char
+
+        LDA temp
+        CLC
+        ADC #HUD_C_D0
+        STA VDP_DATA                    ; ones char
+
+        ; --- Row 1 cols 0-5: blank floor (char 0) to hide underlying BL/BR ---
+        LDA #$20                        ; $1800 + 32 = $1820 low byte
+        STA VDP_CTRL
+        LDA #$58
+        STA VDP_CTRL
+        LDX #$06
+        LDA #$00
+@clr:   STA VDP_DATA
+        DEX
+        BNE @clr
         RTS
 
 ; =============================================
@@ -839,6 +924,9 @@ tile_patterns:
         .byte $F8,$FC,$F3,$F3,$E0,$30,$30,$38   ; BR
 
 ; --- Tile colours (bg=black, fg = per tile type) ---
+; Entries 0..6 = tile types. Entries 7..8 colour the HUD glyphs that
+; live at chars 56..71 (covers both 8-char colour groups so one glyph
+; can straddle the group boundary without losing colour).
 tile_colors:
         .byte $11       ; Tile 0 floor         fg=1  black  (invisible)
         .byte $E1       ; Tile 1 wall          fg=14 grey
@@ -847,6 +935,38 @@ tile_colors:
         .byte $31       ; Tile 4 box+target    fg=3  light green
         .byte $51       ; Tile 5 player        fg=5  light blue
         .byte $21       ; Tile 6 player+target fg=2  medium green
+        .byte $F1       ; Group 7 HUD chars 56-63  fg=15 white
+        .byte $F1       ; Group 8 HUD chars 64-71  fg=15 white
+
+; --- HUD glyph patterns (8x8, uploaded to VRAM $01C0 = chars 56..68) ---
+; 5-pixel-wide glyphs centred at columns 1..5 (MSB = leftmost pixel).
+hud_patterns:
+        ; char 56 'M'
+        .byte $44, $6C, $54, $44, $44, $44, $44, $00
+        ; char 57 'V'
+        .byte $44, $44, $44, $44, $28, $28, $10, $00
+        ; char 58 ':'
+        .byte $00, $00, $10, $00, $00, $10, $00, $00
+        ; char 59 '0'
+        .byte $38, $44, $44, $44, $44, $44, $38, $00
+        ; char 60 '1'
+        .byte $10, $30, $10, $10, $10, $10, $38, $00
+        ; char 61 '2'
+        .byte $38, $44, $04, $08, $10, $20, $7C, $00
+        ; char 62 '3'
+        .byte $38, $44, $04, $38, $04, $44, $38, $00
+        ; char 63 '4'
+        .byte $44, $44, $44, $7C, $04, $04, $04, $00
+        ; char 64 '5'
+        .byte $7C, $40, $40, $78, $04, $44, $38, $00
+        ; char 65 '6'
+        .byte $18, $20, $40, $78, $44, $44, $38, $00
+        ; char 66 '7'
+        .byte $7C, $04, $08, $10, $20, $20, $20, $00
+        ; char 67 '8'
+        .byte $38, $44, $44, $38, $44, $44, $38, $00
+        ; char 68 '9'
+        .byte $38, $44, $44, $3C, $04, $08, $30, $00
 
 ; --- Strings (ASCII, high bit set by print_str_ax) ---
 str_title:
