@@ -31,7 +31,7 @@ KBDCR   = $D011
 ; --- Game constants ---
 NCOLS   = 20
 NROWS   = 12
-NUM_LEVELS = 3
+NUM_LEVELS = 23
 
 ; --- Tile types ---
 TILE_FLOOR         = 0
@@ -620,18 +620,34 @@ check_win:
         RTS
 
 ; =============================================
-; show_level: display "LEVEL N" on Apple 1
+; show_level: display "LEVEL NN" on Apple 1 (2-digit)
 ; =============================================
 show_level:
         LDA #<str_level
         LDX #>str_level
         JSR print_str_ax
+        ; level_num = level_idx + 1
         LDA level_idx
         CLC
-        ADC #'1'
+        ADC #$01
+        ; Divide by 10 via repeated subtraction (X = tens, A = ones)
+        LDX #$00
+@div:   CMP #$0A
+        BCC @ddone
+        SBC #$0A                        ; carry set from CMP
+        INX
+        JMP @div
+@ddone:
+        PHA                             ; save ones digit
+        TXA
+        ORA #'0'
         ORA #$80
-        JSR ECHO
-        LDA #$8D                        ; CR (with bit 7)
+        JSR ECHO                        ; tens digit
+        PLA
+        ORA #'0'
+        ORA #$80
+        JSR ECHO                        ; ones digit
+        LDA #$8D                        ; CR
         JSR ECHO
         RTS
 
@@ -763,10 +779,253 @@ level3:
         .byte "#   @   #"
         .byte "#########"
 
+; --- Microban collection by David W. Skinner (classic 2000) ---
+; Levels 4-23 = Microban I #1..#20 (progressive difficulty)
+
+; Microban #1 (6x7) -> level4
+level4:
+        .byte 6, 7, 2, 7
+        .byte "####  "
+        .byte "# .#  "
+        .byte "#  ###"
+        .byte "#*@  #"
+        .byte "#  $ #"
+        .byte "#  ###"
+        .byte "####  "
+
+; Microban #2 (6x7) -> level5
+level5:
+        .byte 6, 7, 2, 7
+        .byte "######"
+        .byte "#    #"
+        .byte "# #@ #"
+        .byte "# $* #"
+        .byte "# .* #"
+        .byte "#    #"
+        .byte "######"
+
+; Microban #3 (9x6) -> level6
+level6:
+        .byte 9, 6, 3, 5
+        .byte "  ####   "
+        .byte "###  ####"
+        .byte "#     $ #"
+        .byte "# #  #$ #"
+        .byte "# . .#@ #"
+        .byte "#########"
+
+; Microban #4 (8x6) -> level7
+level7:
+        .byte 8, 6, 3, 6
+        .byte "########"
+        .byte "#      #"
+        .byte "# .**$@#"
+        .byte "#      #"
+        .byte "#####  #"
+        .byte "    ####"
+
+; Microban #5 (8x7) -> level8
+level8:
+        .byte 8, 7, 2, 6
+        .byte " #######"
+        .byte " #     #"
+        .byte " # .$. #"
+        .byte "## $@$ #"
+        .byte "#  .$. #"
+        .byte "#      #"
+        .byte "########"
+
+; Microban #6 (12x6) -> level9
+level9:
+        .byte 12, 6, 3, 4
+        .byte "###### #####"
+        .byte "#    ###   #"
+        .byte "# $$     #@#"
+        .byte "# $ #...   #"
+        .byte "#   ########"
+        .byte "#####       "
+
+; Microban #7 (7x8) -> level10
+level10:
+        .byte 7, 8, 2, 6
+        .byte "#######"
+        .byte "#     #"
+        .byte "# .$. #"
+        .byte "# $.$ #"
+        .byte "# .$. #"
+        .byte "# $.$ #"
+        .byte "#  @  #"
+        .byte "#######"
+
+; Microban #8 (8x12) -> level11
+level11:
+        .byte 8, 12, 0, 6
+        .byte "  ######"
+        .byte "  # ..@#"
+        .byte "  # $$ #"
+        .byte "  ## ###"
+        .byte "   # #  "
+        .byte "   # #  "
+        .byte "#### #  "
+        .byte "#    ## "
+        .byte "# #   # "
+        .byte "#   # # "
+        .byte "###   # "
+        .byte "  ##### "
+
+; Microban #9 (6x7) -> level12
+level12:
+        .byte 6, 7, 2, 7
+        .byte "##### "
+        .byte "#.  ##"
+        .byte "#@$$ #"
+        .byte "##   #"
+        .byte " ##  #"
+        .byte "  ##.#"
+        .byte "   ###"
+
+; Microban #10 (11x8) -> level13
+level13:
+        .byte 11, 8, 2, 4
+        .byte "      #####"
+        .byte "      #.  #"
+        .byte "      #.# #"
+        .byte "#######.# #"
+        .byte "# @ $ $ $ #"
+        .byte "# # # # ###"
+        .byte "#       #  "
+        .byte "#########  "
+
+; Microban #11 (9x8) -> level14
+level14:
+        .byte 9, 8, 2, 5
+        .byte "  ###### "
+        .byte "  #    # "
+        .byte "  # ##@##"
+        .byte "### # $ #"
+        .byte "# ..# $ #"
+        .byte "#       #"
+        .byte "#  ######"
+        .byte "####     "
+
+; Microban #12 (9x8) -> level15
+level15:
+        .byte 9, 8, 2, 5
+        .byte "#####    "
+        .byte "#   ##   "
+        .byte "# $  #   "
+        .byte "## $ ####"
+        .byte " ###@.  #"
+        .byte "  #  .# #"
+        .byte "  #     #"
+        .byte "  #######"
+
+; Microban #13 (7x9) -> level16
+level16:
+        .byte 7, 9, 1, 6
+        .byte "####   "
+        .byte "#. ##  "
+        .byte "#.@ #  "
+        .byte "#. $#  "
+        .byte "##$ ###"
+        .byte " # $  #"
+        .byte " #    #"
+        .byte " #  ###"
+        .byte " ####  "
+
+; Microban #14 (7x6) -> level17
+level17:
+        .byte 7, 6, 3, 6
+        .byte "#######"
+        .byte "#     #"
+        .byte "# # # #"
+        .byte "#. $*@#"
+        .byte "#   ###"
+        .byte "#####  "
+
+; Microban #15 (9x7) -> level18
+level18:
+        .byte 9, 7, 2, 5
+        .byte "     ### "
+        .byte "######@##"
+        .byte "#    .* #"
+        .byte "#   #   #"
+        .byte "#####$# #"
+        .byte "    #   #"
+        .byte "    #####"
+
+; Microban #16 (10x8) -> level19
+level19:
+        .byte 10, 8, 2, 5
+        .byte " ####     "
+        .byte " #  ####  "
+        .byte " #     ## "
+        .byte "## ##   # "
+        .byte "#. .# @$##"
+        .byte "#   # $$ #"
+        .byte "#  .#    #"
+        .byte "##########"
+
+; Microban #17 (6x7) -> level20
+level20:
+        .byte 6, 7, 2, 7
+        .byte "##### "
+        .byte "# @ # "
+        .byte "#...# "
+        .byte "#$$$##"
+        .byte "#    #"
+        .byte "#    #"
+        .byte "######"
+
+; Microban #18 (7x9) -> level21
+level21:
+        .byte 7, 9, 1, 6
+        .byte "#######"
+        .byte "#     #"
+        .byte "#. .  #"
+        .byte "# ## ##"
+        .byte "#  $ # "
+        .byte "###$ # "
+        .byte "  #@ # "
+        .byte "  #  # "
+        .byte "  #### "
+
+; Microban #19 (8x8) -> level22
+level22:
+        .byte 8, 8, 2, 6
+        .byte "########"
+        .byte "#   .. #"
+        .byte "#  @$$ #"
+        .byte "##### ##"
+        .byte "   #  # "
+        .byte "   #  # "
+        .byte "   #  # "
+        .byte "   #### "
+
+; Microban #20 (9x8) -> level23
+level23:
+        .byte 9, 8, 2, 5
+        .byte "#######  "
+        .byte "#     ###"
+        .byte "#  @$$..#"
+        .byte "#### ## #"
+        .byte "  #     #"
+        .byte "  #  ####"
+        .byte "  #  #   "
+        .byte "  ####   "
+
 level_ptrs_lo:
         .byte <level1, <level2, <level3
+        .byte <level4, <level5, <level6, <level7, <level8
+        .byte <level9, <level10, <level11, <level12, <level13
+        .byte <level14, <level15, <level16, <level17, <level18
+        .byte <level19, <level20, <level21, <level22, <level23
 level_ptrs_hi:
         .byte >level1, >level2, >level3
+        .byte >level4, >level5, >level6, >level7, >level8
+        .byte >level9, >level10, >level11, >level12, >level13
+        .byte >level14, >level15, >level16, >level17, >level18
+        .byte >level19, >level20, >level21, >level22, >level23
 
 ; --- Strings (ASCII, bit 7 added by print_str_ax) ---
 str_title:
