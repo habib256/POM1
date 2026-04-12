@@ -595,7 +595,6 @@ execute_move:
         LDA STATE_GRID,X
         JSR draw_tile
 
-        ; Update player position
         LDA new_row
         STA player_row
         LDA new_col
@@ -661,11 +660,9 @@ show_level:
         LDA #<str_level
         LDX #>str_level
         JSR print_str_ax
-        ; level_num = level_idx + 1
         LDA level_idx
         CLC
         ADC #$01
-        ; Divide by 10 via repeated subtraction (X = tens, A = ones)
         LDX #$00
 @div:   CMP #$0A
         BCC @ddone

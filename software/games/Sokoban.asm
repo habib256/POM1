@@ -64,6 +64,12 @@ render_r:      .res 1   ; $13
 render_c:      .res 1   ; $14
 key_up_code:   .res 1   ; $15  'W' or 'Z'
 key_left_code: .res 1   ; $16  'A' or 'Q'
+; --- Undo state + move counter ---
+prev_player_row: .res 1 ; $17  player_row before the last successful move
+prev_player_col: .res 1 ; $18
+undo_avail:    .res 1   ; $19  1 = execute_undo is valid, 0 = no move to undo
+had_push:      .res 1   ; $1A  1 = last move was a push (box needs undo too)
+moves:         .res 1   ; $1B  move counter (0..255, saturates at $FF for display)
 
 ; --- Code at $0280 ---
 .code
@@ -104,6 +110,11 @@ main:
 
 game_loop:
         JSR init_level
+        ; Reset undo state and move counter for the new level
+        LDA #$00
+        STA undo_avail
+        STA had_push
+        STA moves
         JSR render_screen
 
 move_loop:
@@ -120,6 +131,13 @@ move_loop:
         BEQ key_reset
         CMP #'N'
         BEQ key_next
+        CMP #'U'
+        BEQ key_undo
+        JMP move_loop
+
+key_undo:
+        JSR execute_undo
+        JSR render_screen
         JMP move_loop
 
 key_up:
@@ -350,6 +368,10 @@ execute_move:
         BEQ @try_push
         CMP #TILE_BOX_TARGET
         BEQ @try_push
+        ; Simple move (no push): clear had_push before proceeding
+        ; (push paths set had_push=1 themselves and JMP @simple_move)
+        LDA #$00
+        STA had_push
         JMP @simple_move
 
 @blk_tr:
@@ -367,10 +389,10 @@ execute_move:
 
         LDA box_row
         CMP #NROWS
-        BCS @blocked
+        BCS @blk_tr
         LDA box_col
         CMP #NCOLS
-        BCS @blocked
+        BCS @blk_tr
 
         LDX box_row
         LDA row_x20,X
@@ -388,10 +410,14 @@ execute_move:
 @push_floor:
         LDA #TILE_BOX
         STA STATE_GRID,X
+        LDA #$01
+        STA had_push
         JMP @simple_move
 @push_target:
         LDA #TILE_BOX_TARGET
         STA STATE_GRID,X
+        LDA #$01
+        STA had_push
         ; Fall through
 
 @simple_move:
@@ -430,15 +456,128 @@ execute_move:
         JSR enter_player
         STA STATE_GRID,X
 
+        ; Save undo state BEFORE overwriting player_row/col
+        ; (only reached on successful move; @blocked returns without touching undo state)
+        LDA player_row
+        STA prev_player_row
+        LDA player_col
+        STA prev_player_col
+        LDA #$01
+        STA undo_avail
+
         LDA new_row
         STA player_row
         LDA new_col
         STA player_col
 
+        ; Increment move counter (saturate at $FF)
+        INC moves
+        BNE @no_sat
+        LDA #$FF
+        STA moves
+@no_sat:
+
         LDA #$01
         RTS
 @blocked:
         LDA #$00
+        RTS
+
+; =============================================
+; execute_undo: reverse the last successful move
+; Uses prev_player_row/col, had_push, undo_avail. No-op if !undo_avail.
+; Modifies state grid only (caller calls render_screen).
+; =============================================
+execute_undo:
+        LDA undo_avail
+        BEQ @no_undo
+
+        ; If there was a push, pull the box back first.
+        ; Current box position = (player_row + dy, player_col + dx) where
+        ;   dy = player_row - prev_player_row, dx = player_col - prev_player_col
+        ; So box_row = 2*player_row - prev_player_row, etc.
+        LDA had_push
+        BEQ @skip_box
+
+        ; box_row/col = 2*player - prev_player
+        LDA player_row
+        ASL A
+        SEC
+        SBC prev_player_row
+        STA box_row
+        LDA player_col
+        ASL A
+        SEC
+        SBC prev_player_col
+        STA box_col
+
+        ; Remove box from box_row/col
+        LDX box_row
+        LDA row_x20,X
+        CLC
+        ADC box_col
+        TAX
+        LDA STATE_GRID,X
+        JSR leave_tile                  ; (3)→(0), (4)→(2)
+        STA STATE_GRID,X
+@skip_box:
+
+        ; Remove player from current position
+        LDX player_row
+        LDA row_x20,X
+        CLC
+        ADC player_col
+        TAX
+        LDA STATE_GRID,X
+        JSR leave_tile                  ; (5)→(0), (6)→(2)
+        STA STATE_GRID,X
+
+        ; If had_push, place a box at the current player cell (reverse the push)
+        LDA had_push
+        BEQ @skip_place_box
+        LDA STATE_GRID,X                ; X still = current player cell idx
+        JSR enter_as_box                ; (0)→(3), (2)→(4)
+        STA STATE_GRID,X
+@skip_place_box:
+
+        ; Put player back at prev_player position
+        LDX prev_player_row
+        LDA row_x20,X
+        CLC
+        ADC prev_player_col
+        TAX
+        LDA STATE_GRID,X
+        JSR enter_player                ; (0)→(5), (2)→(6)
+        STA STATE_GRID,X
+
+        ; Restore player coords
+        LDA prev_player_row
+        STA player_row
+        LDA prev_player_col
+        STA player_col
+
+        ; Decrement move counter (unless it's already 0)
+        LDA moves
+        BEQ @no_dec
+        DEC moves
+@no_dec:
+
+        ; Clear undo (only single-step undo supported)
+        LDA #$00
+        STA undo_avail
+        STA had_push
+
+@no_undo:
+        RTS
+
+; =============================================
+; enter_as_box: used by undo to put a box back
+; Input: A = 0 or 2 (floor or target). Output: A = 3 (box) or 4 (box-on-target)
+; Preserves X.
+; =============================================
+enter_as_box:
+        TAY
+        LDA enter_box_tbl,Y
         RTS
 
 ; =============================================
@@ -514,10 +653,52 @@ render_screen:
         CMP #NROWS
         BCC @rowlp
 
-        ; Blank line + footer text + CR (handled inside str_footer)
+        ; Blank line + "MOVES: NNN" + controls hint + CR
+        LDA #<str_moves_prefix
+        LDX #>str_moves_prefix
+        JSR print_str_ax
+        LDA moves
+        JSR print_3_digits
         LDA #<str_footer
         LDX #>str_footer
         JSR print_str_ax
+        RTS
+
+; =============================================
+; print_3_digits: print A as three decimal digits (000..255)
+; =============================================
+print_3_digits:
+        LDX #$00
+@h:     CMP #100
+        BCC @hd
+        SBC #100
+        INX
+        JMP @h
+@hd:
+        PHA
+        TXA
+        ORA #'0'
+        ORA #$80
+        JSR ECHO
+        PLA
+
+        LDX #$00
+@t:     CMP #10
+        BCC @td
+        SBC #10
+        INX
+        JMP @t
+@td:
+        PHA
+        TXA
+        ORA #'0'
+        ORA #$80
+        JSR ECHO
+        PLA
+
+        ORA #'0'
+        ORA #$80
+        JSR ECHO
         RTS
 
 ; =============================================
@@ -560,6 +741,12 @@ leave_tbl:
 enter_player_tbl:
         .byte 5, 0, 6, 0, 0, 0, 0
 
+; enter_box_tbl[state] = state with a box placed:
+;   0 (floor)  -> 3 (box on floor)
+;   2 (target) -> 4 (box on target)
+enter_box_tbl:
+        .byte 3, 0, 4, 0, 0, 0, 0
+
 ; ASCII representation of each tile type
 tile_char:
         .byte ' ', '#', '.', '$', '*', '@', '+'
@@ -583,9 +770,11 @@ str_layout:
         .byte "  1 = QWERTY  (W/A/S/D)", $0D
         .byte "  2 = AZERTY  (Z/Q/S/D)", $0D, 0
 
+str_moves_prefix:
+        .byte $0D, " MOVES: ", 0
+
 str_footer:
-        .byte $0D
-        .byte " UP/DN/LT/RT   R=RESET  N=NEXT", $0D, 0
+        .byte "   U=UNDO  R=RESET  N=NEXT", $0D, 0
 
 str_win:
         .byte $0D, " LEVEL CLEARED! PRESS A KEY", $0D, 0
