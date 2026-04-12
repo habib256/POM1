@@ -6,9 +6,12 @@
 ; =============================================
 ; Assemble with cc65:
 ;   ca65 -o build/Sokoban.o software/games/Sokoban.asm
-;   ld65 -C software/hgr/apple1_gen2.cfg -o build/Sokoban.bin build/Sokoban.o
-; (uses the GEN2 linker config for its 7552-byte CODE budget,
-;  even though no HGR card is required to run this text version.)
+;   ld65 -C software/games/apple1_sok_4k.cfg -o build/Sokoban.bin build/Sokoban.o
+;
+; Target: real Apple 1, stock 4 KB DRAM — no cards required.
+;   - LEVEL_BUF at $0020 (128 B, zero page)
+;   - STATE_GRID at $0F00 (192 B, 16x12) at the top of the 4 KB
+;   - code + data $0280-$0EFF (3 200 B)
 ;
 ; Load in POM1 via File > Load Memory (Sokoban.txt),
 ; then type 280R in Woz Monitor.
@@ -16,7 +19,7 @@
 ; Classic Sokoban ASCII rendering on the 40x24 text display:
 ;   #  wall       .  target        $  box
 ;   *  box-on-target   @  player   +  player-on-target
-; 20x12 playfield, 47 levels.  No HGR required.
+; 16x12 playfield (centred on the 40-col screen), 47 levels.
 ;
 ; Shared code lives in sokoban_common.inc and level data (RLE
 ; compressed) in sokoban_levels.inc.
@@ -28,9 +31,9 @@ KBD     = $D010
 KBDCR   = $D011
 
 ; --- Game constants ---
-NCOLS   = 20
+NCOLS   = 16
 NROWS   = 12
-NUM_LEVELS = 47
+NUM_LEVELS = 45                 ; 3 teaching + Microban I #1..#42
 
 ; --- Tile types ---
 TILE_FLOOR         = 0
@@ -42,10 +45,17 @@ TILE_PLAYER        = 5
 TILE_PLAYER_TARGET = 6
 
 ; --- Memory layout ---
-; 20x12 = 240 bytes of state at $4000, RLE scratch buffer just above.
-STATE_GRID     = $4000
-STATE_GRID_LEN = 240
-LEVEL_BUF      = $4100          ; 240-byte decompression scratch
+; STATE_GRID (192 B, 16x12) + LEVEL_BUF (128 B) are declared as linker
+; segments — see software/games/apple1_sok_4k.cfg. LEVEL_BUF is in zero
+; page for short `zp,X` encoding; STATE_GRID at $0F00 fits inside the
+; stock 4 KB memory of an unexpanded Apple 1.
+STATE_GRID_LEN = 192
+
+.segment "LEVELBUF": zeropage
+LEVEL_BUF:  .res 128            ; ZP → zp,X addressing
+
+.segment "STATEGRID"
+STATE_GRID: .res 192            ; BSS → abs,X addressing (16x12)
 
 ; --- Zero page (apple1.cfg gives $00-$22) ---
 .zeropage
@@ -207,18 +217,32 @@ move_loop_j:
         JMP move_loop
 
 ; =============================================
-; init_level: expand RLE level, then populate state grid at $4000
+; init_level: expand RLE level, then populate state grid at $0F00
 ; from LEVEL_BUF, applying row_offset / col_offset for centring.
+; The stored row_offset/col_offset (for a 20-col grid) are discarded
+; and recomputed for the 16x12 playfield.
 ; =============================================
 init_level:
         JSR load_level                  ; common: fills LEVEL_BUF, sets lvl_w/h + offsets
 
-        ; Clear 240-byte state grid
+        ; Recompute centring for the 16x12 text playfield
+        LDA #NROWS
+        SEC
+        SBC lvl_h
+        LSR A
+        STA row_offset
+        LDA #NCOLS
+        SEC
+        SBC lvl_w
+        LSR A
+        STA col_offset
+
+        ; Clear 192-byte state grid
         LDY #$00
         TYA
 @clr:   STA STATE_GRID,Y
         INY
-        CPY #240
+        CPY #192
         BNE @clr
 
         LDA #$00
@@ -251,7 +275,7 @@ init_level:
         CLC
         ADC row_offset
         TAX
-        LDA row_x20,X
+        LDA row_x16,X
         STA temp2
         TYA
         CLC
@@ -296,7 +320,7 @@ execute_move:
         BCS @blk_tr
 
         LDX new_row
-        LDA row_x20,X
+        LDA row_x16,X
         CLC
         ADC new_col
         TAX
@@ -335,7 +359,7 @@ execute_move:
         BCS @blk_tr
 
         LDX box_row
-        LDA row_x20,X
+        LDA row_x16,X
         CLC
         ADC box_col
         TAX
@@ -363,7 +387,7 @@ execute_move:
 @simple_move:
         ; Leave player old cell
         LDX player_row
-        LDA row_x20,X
+        LDA row_x16,X
         CLC
         ADC player_col
         TAX
@@ -373,7 +397,7 @@ execute_move:
 
         ; Enter new cell
         LDX new_row
-        LDA row_x20,X
+        LDA row_x16,X
         CLC
         ADC new_col
         TAX
@@ -453,7 +477,7 @@ execute_undo:
 
         ; Remove box from box_row/col
         LDX box_row
-        LDA row_x20,X
+        LDA row_x16,X
         CLC
         ADC box_col
         TAX
@@ -464,7 +488,7 @@ execute_undo:
 
         ; Remove player from current position
         LDX player_row
-        LDA row_x20,X
+        LDA row_x16,X
         CLC
         ADC player_col
         TAX
@@ -482,7 +506,7 @@ execute_undo:
 
         ; Put player back at prev_player position
         LDX prev_player_row
-        LDA row_x20,X
+        LDA row_x16,X
         CLC
         ADC prev_player_col
         TAX
@@ -529,7 +553,7 @@ render_screen:
 @collp:
         ; cell = state[render_r*20 + render_c]
         LDX render_r
-        LDA row_x20,X
+        LDA row_x16,X
         CLC
         ADC render_c
         TAX
@@ -608,9 +632,9 @@ print_3_digits:
 ; DATA
 ; =============================================
 
-row_x20:
-        .byte   0,  20,  40,  60,  80, 100, 120, 140
-        .byte 160, 180, 200, 220
+row_x16:
+        .byte   0,  16,  32,  48,  64,  80,  96, 112
+        .byte 128, 144, 160, 176
 
 ; ASCII representation of each tile type
 tile_char:
@@ -618,31 +642,20 @@ tile_char:
 
 ; --- Strings ---
 str_title:
-        .byte $0D, " * SOKOBAN - TEXT MODE *", $0D
-        .byte " APPLE 1  BY VERHILLE ARNAUD, 2026", $0D
-        .byte $0D
-        .byte " LEVELS 4-47: MICROBAN I", $0D
-        .byte " BY DAVID W. SKINNER (2000)", $0D
-        .byte $0D
-        .byte " PUSH ALL BOXES ($) ONTO", $0D
-        .byte " THE TARGETS (.).  BOXES", $0D
-        .byte " CAN ONLY BE PUSHED!", $0D
-        .byte $0D
-        .byte " R = RESET   N = NEXT LEVEL", $0D, 0
+        .byte $0D, " SOKOBAN 4K  (A.V. 2026)", $0D
+        .byte " 45 LVL: MICROBAN BY SKINNER", $0D, 0
 
 str_layout:
-        .byte $0D, " KEYBOARD LAYOUT ?", $0D
-        .byte "  1 = QWERTY  (W/A/S/D)", $0D
-        .byte "  2 = AZERTY  (Z/Q/S/D)", $0D, 0
+        .byte $0D, " 1=QWERTY WASD  2=AZERTY ZQSD", $0D, 0
 
 str_moves_prefix:
-        .byte $0D, " MOVES: ", 0
+        .byte $0D, " MV:", 0
 
 str_footer:
-        .byte "   U=UNDO  R=RESET  N=NEXT", $0D, 0
+        .byte "  U=UNDO R=RST N=NXT", $0D, 0
 
 str_win:
-        .byte $0D, " LEVEL CLEARED! PRESS A KEY", $0D, 0
+        .byte $0D, " WIN! ANY KEY", $0D, 0
 
 ; --- Level data (RLE compressed) ---
 .include "sokoban_levels.inc"
@@ -657,7 +670,6 @@ level_ptrs_lo:
         .byte <level31, <level32, <level33, <level34, <level35
         .byte <level36, <level37, <level38, <level39, <level40
         .byte <level41, <level42, <level43, <level44, <level45
-        .byte <level46, <level47
 level_ptrs_hi:
         .byte >level1, >level2, >level3, >level4, >level5
         .byte >level6, >level7, >level8, >level9, >level10
@@ -668,4 +680,3 @@ level_ptrs_hi:
         .byte >level31, >level32, >level33, >level34, >level35
         .byte >level36, >level37, >level38, >level39, >level40
         .byte >level41, >level42, >level43, >level44, >level45
-        .byte >level46, >level47

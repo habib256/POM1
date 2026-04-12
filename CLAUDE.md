@@ -55,6 +55,14 @@ The desktop `Memory` constructor probes `sdcard`, `../sdcard`, `../../sdcard` re
 ca65 -o build/program.o software/program.asm
 ld65 -C software/apple1.cfg -o build/program.bin build/program.o
 # GEN2 HGR programs use software/hgr/apple1_gen2.cfg (reserves $2000-$3FFF).
+# Sokoban variants target real Apple 1 hardware via three dedicated cfgs:
+#   software/games/apple1_sok_4k.cfg   stock 4K (text)
+#   software/games/apple1_sok_8k.cfg   stock 8K + TMS card (TMS variant)
+#   software/games/apple1_sok_hgr.cfg  8K + GEN2 card     (HGR variant)
+# They define a LEVELBUF segment (type=zp, $0020) for the RLE scratch buffer
+# and a STATEGRID segment (type=bss, $0F00 or $1F00) for the game state grid,
+# so neither touches the $4000 region. Use `.segment "LEVELBUF": zeropage`
+# in asm to force zp,X addressing on the buffer.
 ```
 
 ## Architecture

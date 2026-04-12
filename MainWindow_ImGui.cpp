@@ -5,6 +5,7 @@
 #include "imgui.h"
 #include "imgui_internal.h"
 #include "IconsFontAwesome6.h"
+#include <cstdio>
 #include <cmath>
 #include <iostream>
 #include <fstream>
@@ -590,10 +591,13 @@ void MainWindow_ImGui::renderMenuBar()
         if (ImGui::BeginMenu("Hardware")) {
             if (ImGui::BeginMenu("Machine Preset")) {
                 for (int i = 0; i < kMachinePresetCount; ++i) {
-                    if (ImGui::MenuItem(kMachinePresets[i].name))
+                    char ramLabel[24];
+                    std::snprintf(ramLabel, sizeof(ramLabel), "%d KB RAM", kMachinePresets[i].ramKB);
+                    if (ImGui::MenuItem(kMachinePresets[i].name, ramLabel))
                         applyMachineConfig(i);
                     if (ImGui::IsItemHovered())
-                        ImGui::SetTooltip("%s", kMachinePresets[i].description);
+                        ImGui::SetTooltip("%s\n(%d KB RAM preset; full 64 KB address space is always emulated.)",
+                                          kMachinePresets[i].description, kMachinePresets[i].ramKB);
                 }
                 ImGui::EndMenu();
             }

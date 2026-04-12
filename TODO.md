@@ -19,14 +19,15 @@ or the version notes referenced in `README.md`.
     - **Text**: `software/games/Connect4.asm` + `Connect4.txt` (1016 bytes, `apple1.cfg`). 7×6 grid drawn with `|.|R|Y|` ASCII, one frame per move — terminal scrolls naturally.
     - **HGR**: `software/hgr/HGR7_Connect4.asm` + `HGR7_Connect4.txt` (2003 bytes, `apple1_gen2.cfg`). 14×16 rounded-rectangle pieces in NTSC artefact colour (red→orange, yellow→green). Board centred at byte col 13, scanline 48. Delta-draw the newly dropped piece only.
     - **TMS9918**: `software/tms9918/TMS_Connect4.asm` + `TMS_Connect4.txt` (1116 bytes, `apple1_gen2.cfg`). Graphics I mode; board of blue 8×8 slots (bg=4) with circular fg cut-outs centred at name-table (row 9, col 12). Three colour groups: black hole (empty), red (player 1), yellow (player 2) — same pattern bitmap reused across groups.
-- [x] **Sokoban — undo + move counter** — shipped in all three variants (April 2026).
-    - **Shared refactor** — plumbing lives in `software/games/sokoban_common.inc` (ascii_to_tile, leave/enter/enter_as_box tables, check_win, wait_key, print_str_ax, and `load_level` which RLE-decodes into a 256-byte scratch buffer at `$4100`). Level data is RLE-compressed in `sokoban_levels.inc` (1..47) and `sokoban_levels_ext.inc` (48..72). The RLE encoder is `tools/sokoban_rle.py` (format: byte<$80 literal, byte>=$80 ⇒ (byte & $7F) copies of the next byte).
-    - **Text version** (`software/games/Sokoban.asm`, 3453 B): full undo + move counter in footer (`MOVES: NNN   U=UNDO  R=RESET  N=NEXT`).
-    - **HGR version** (`software/hgr/HGR6_Sokoban.asm`, 6200 B, 72 levels): undo with delta-redraw of the 2-3 affected tiles. Reclaimed the `cur_x/cur_y/mul_tmp/mul_res0` zero-page slots from unused `hgr_tables.inc` helpers; aliased them back so the include still assembles.
-    - **TMS9918 version** (`software/tms9918/TMS_Sokoban.asm`, 3929 B, 47 levels): same undo logic with TMS delta-redraw (4 char codes per tile via `draw_cell`).
-    - **Remaining work** (optional, not blocking):
-        1. **State grid relocation from `$4000`** — for the stock-RAM Apple 1 (text variant only). Pick an address in `$0000-$0FFF`, e.g. `$0E00-$0EEF`, so the text Sokoban runs without extended RAM. `LEVEL_BUF` would need to move (240-byte scratch).
-        2. **Display the moves counter in HGR/TMS variants.** Internally tracked but not shown — would need an Apple-1-text HUD line that refreshes without scrolling the screen.
+- [x] **Sokoban — undo + stock-RAM memory layout** — shipped in all three variants (April 2026).
+    - **Shared refactor** — plumbing in `software/games/sokoban_common.inc`; RLE-compressed levels in `sokoban_levels.inc` (1..45) and `sokoban_levels_ext.inc` (46..72). Encoder: `tools/sokoban_rle.py`.
+    - **Segment layout** — `LEVELBUF` (type=zp, $0020-$009F, 128 B) and `STATEGRID` (type=bss, $0F00 for text or $1F00 for TMS/HGR) declared in three new linker configs under `software/games/` (`apple1_sok_4k.cfg`, `apple1_sok_8k.cfg`, `apple1_sok_hgr.cfg`). `.segment "LEVELBUF": zeropage` forces `zp,X` encoding for the RLE scratch buffer; STATEGRID stays `abs,X`.
+    - **Text variant** (`software/games/Sokoban.asm`, 3174 B) — runs on a **real Apple 1 stock 4 KB DRAM, no expansion cards**. 45 levels (3 teaching + Microban I #1..#42). 16×12 playfield (shrunk from 20×12 to fit STATE_GRID in the 4K footprint). Full undo + move counter in footer (`MV:NNN  U=UNDO R=RST N=NXT`).
+    - **TMS9918 variant** (`software/tms9918/TMS_Sokoban.asm`, 3856 B) — runs on Apple 1 stock 8 KB + TMS card. Same 45 levels, 16×12 playfield. Undo with delta redraw.
+    - **HGR/GEN2 variant** (`software/hgr/HGR6_Sokoban.asm`, 6197 B) — runs on Apple 1 + 8 KB + GEN2 card (framebuffer $2000-$3FFF). 72 levels, 20×12 playfield preserved. Undo with delta redraw.
+    - **Remaining work** (optional):
+        1. Display the moves counter in HGR/TMS variants — internally tracked but not shown (would require an Apple-1-text HUD line that refreshes without scrolling).
+        2. Microban #43, #44 dropped from text+TMS to hit the 3 200 B budget; add them back if we later shave ~60 B elsewhere.
 - [ ] **CodeTank daughterboard ROM** — support the `apple1_jukebox` target (ROM at `$4000-$7FFF`) for programs stored on the CodeTank EEPROM.
 - [ ] **Misc programs reference (Angela / P-Lab)** — curated ports (Dobble, Oregon Trail, etc.) from [angela](https://p-l4b.github.io/angela/).
 - [ ] **Native file dialog** — file loading/saving still uses the in-app browser instead of system file pickers.

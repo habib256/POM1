@@ -6,7 +6,7 @@
 ; =============================================
 ; Assemble with cc65:
 ;   ca65 -o build/TMS_Sokoban.o software/tms9918/TMS_Sokoban.asm
-;   ld65 -C software/hgr/apple1_gen2.cfg -o build/TMS_Sokoban.bin build/TMS_Sokoban.o
+;   ld65 -C software/games/apple1_sok_8k.cfg -o build/TMS_Sokoban.bin build/TMS_Sokoban.o
 ;
 ; Load in POM1 via File > Load Memory (TMS_Sokoban.txt), then 280R.
 ; The TMS9918 card must be enabled (Hardware menu).
@@ -16,7 +16,9 @@
 ; their own "colour group" (chars 0, 8, 16, 24, 32, 40, 48) so
 ; they pick up their own palette colour.
 ;
-; State grid at $4000 (one byte per cell, 192 bytes for 16x12).
+; Target: real Apple 1 stock 8K + TMS9918 card.
+;   - STATE_GRID lives at $1F00 (192 B) via the STATEGRID segment.
+;   - LEVEL_BUF lives at $0020 (128 B in ZP) via the LEVELBUF segment.
 ; RLE-compressed level data: see sokoban_levels.inc.
 ; Shared routines: see sokoban_common.inc.
 ; =============================================
@@ -33,7 +35,7 @@ VDP_CTRL = $CC01
 ; --- Game constants ---
 NCOLS   = 16
 NROWS   = 12
-NUM_LEVELS = 47
+NUM_LEVELS = 45                 ; 3 teaching + Microban I #1..#42
 
 ; --- Tile types ---
 TILE_FLOOR         = 0
@@ -45,10 +47,16 @@ TILE_PLAYER        = 5
 TILE_PLAYER_TARGET = 6
 
 ; --- Memory layout ---
-; 16x12 = 192-byte state at $4000, 240-byte RLE scratch buffer just above.
-STATE_GRID     = $4000
+; STATE_GRID (192 B, 16x12) and LEVEL_BUF (128 B) are now declared as
+; linker segments below. STATE_GRID_LEN is consumed by check_win in
+; sokoban_common.inc.
 STATE_GRID_LEN = 192
-LEVEL_BUF      = $4100
+
+.segment "LEVELBUF": zeropage
+LEVEL_BUF:  .res 128            ; ZP segment → zp,X addressing
+
+.segment "STATEGRID"
+STATE_GRID: .res 192            ; BSS segment → abs,X addressing
 
 ; --- Zero page ---
 .zeropage
@@ -846,7 +854,7 @@ str_title:
         .byte " APPLE 1 + P-LAB GRAPHIC CARD", $0D
         .byte " PORT BY VERHILLE ARNAUD, 2026", $0D
         .byte $0D
-        .byte " LEVELS 4-47: MICROBAN I", $0D
+        .byte " LEVELS 4-45: MICROBAN I", $0D
         .byte " CLASSIC SET BY D.W. SKINNER", $0D
         .byte $0D
         .byte " PUSH ALL BOXES ONTO TARGETS.", $0D
@@ -875,7 +883,6 @@ level_ptrs_lo:
         .byte <level31, <level32, <level33, <level34, <level35
         .byte <level36, <level37, <level38, <level39, <level40
         .byte <level41, <level42, <level43, <level44, <level45
-        .byte <level46, <level47
 level_ptrs_hi:
         .byte >level1, >level2, >level3, >level4, >level5
         .byte >level6, >level7, >level8, >level9, >level10
@@ -886,4 +893,3 @@ level_ptrs_hi:
         .byte >level31, >level32, >level33, >level34, >level35
         .byte >level36, >level37, >level38, >level39, >level40
         .byte >level41, >level42, >level43, >level44, >level45
-        .byte >level46, >level47

@@ -5,7 +5,7 @@
 ; =============================================
 ; Assemble with cc65:
 ;   ca65 -o build/HGR6_Sokoban.o software/hgr/HGR6_Sokoban.asm
-;   ld65 -C software/hgr/apple1_gen2.cfg -o build/HGR6_Sokoban.bin build/HGR6_Sokoban.o
+;   ld65 -C software/games/apple1_sok_hgr.cfg -o build/HGR6_Sokoban.bin build/HGR6_Sokoban.o
 ;
 ; Controls (uppercase — Apple 1 forces uppercase):
 ;   W/S/A/D  - move up/down/left/right
@@ -47,9 +47,17 @@ TILE_PLAYER        = 5
 TILE_PLAYER_TARGET = 6
 
 ; --- Memory layout ---
-STATE_GRID     = $4000
+; STATE_GRID (240 B, 20x12) and LEVEL_BUF (128 B) live in linker-managed
+; segments — see software/games/apple1_sok_hgr.cfg for the addresses.
+; Target layout on real hardware: 8 KB main DRAM + GEN2 card (framebuffer
+; $2000-$3FFF). STATE_GRID at $1F00, LEVEL_BUF at $0020 (ZP).
 STATE_GRID_LEN = 240
-LEVEL_BUF      = $4100          ; 240-byte RLE decompression scratch
+
+.segment "LEVELBUF": zeropage
+LEVEL_BUF:  .res 128            ; zp,X addressing, max level is 117 B
+
+.segment "STATEGRID"
+STATE_GRID: .res 240            ; abs,X addressing (20x12)
 
 ; --- Zero page ---
 .zeropage
