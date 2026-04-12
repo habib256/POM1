@@ -19,6 +19,10 @@
 ; State grid at $4000 (one byte per tile cell, 240 cells total).
 ; Delta rendering: each move only redraws 2-4 affected tiles.
 ;
+; Level data is RLE compressed (sokoban_levels.inc +
+; sokoban_levels_ext.inc) and shared plumbing lives in
+; sokoban_common.inc.
+;
 ; In POM1: plug GEN2 card, File > Load Memory (HGR6_Sokoban.txt),
 ; then type 280R in Woz Monitor.
 ; =============================================
@@ -42,8 +46,10 @@ TILE_BOX_TARGET    = 4
 TILE_PLAYER        = 5
 TILE_PLAYER_TARGET = 6
 
-; --- State grid: 240 bytes at $4000 (page-aligned) ---
-STATE_GRID = $4000
+; --- Memory layout ---
+STATE_GRID     = $4000
+STATE_GRID_LEN = 240
+LEVEL_BUF      = $4100          ; 240-byte RLE decompression scratch
 
 ; --- Zero page ---
 .zeropage
@@ -72,14 +78,25 @@ draw_row:    .res 1  ; $15
 draw_col:    .res 1  ; $16
 str_lo:      .res 1  ; $17
 str_hi:      .res 1  ; $18
-; Variables required by hgr_tables.inc routines (declared even if unused)
-cur_x:       .res 1  ; $19
-cur_y:       .res 1  ; $1A
-mul_tmp:     .res 1  ; $1B
-mul_res0:    .res 1  ; $1C
+; Undo state (single-step). Sokoban never calls hgr_tables.inc's
+; plot_pixel, so the cur_x/cur_y/mul_tmp/mul_res0 slots it would need
+; are reclaimed here.
+prev_player_row: .res 1 ; $19
+prev_player_col: .res 1 ; $1A
+undo_avail:      .res 1 ; $1B  1 = execute_undo is valid, 0 = no move to undo
+had_push:        .res 1 ; $1C  1 = last move was a push (box needs undo too)
 ; Keyboard layout (set once at startup based on user choice)
 key_up_code:   .res 1  ; $1D  'W' (QWERTY) or 'Z' (AZERTY)
 key_left_code: .res 1  ; $1E  'A' (QWERTY) or 'Q' (AZERTY)
+moves:         .res 1  ; $1F  move counter (saturates at $FF, shown next to level #)
+
+; hgr_tables.inc references these for its (unused) plot_pixel routine —
+; alias them onto the undo bytes so the assembler resolves the symbols.
+; plot_pixel is never called, so the aliasing is harmless.
+cur_x    = prev_player_row
+cur_y    = prev_player_col
+mul_tmp  = undo_avail
+mul_res0 = had_push
 
 ; --- Code at $0280 ---
 .code
@@ -128,6 +145,11 @@ game_loop:
         JSR init_level
         JSR clear_hgr
         JSR render_all
+        ; Reset undo + move counter for the new level
+        LDA #$00
+        STA undo_avail
+        STA had_push
+        STA moves
         JSR show_level
 
 move_loop:
@@ -146,7 +168,13 @@ move_loop:
         BEQ key_reset
         CMP #'N'
         BEQ key_next
+        CMP #'U'
+        BEQ key_undo
         JMP move_loop                   ; ignore unknown keys
+
+key_undo:
+        JSR execute_undo
+        JMP move_loop
 
 key_up:
         LDA #$FF                        ; dy = -1
@@ -211,40 +239,12 @@ move_loop_j:
         JMP move_loop
 
 ; =============================================
-; init_level: parse level into state grid at $4000
+; init_level: RLE-expand level into state grid at $4000
 ; =============================================
 init_level:
-        ; Point sptr at level data: levels[level_idx]
-        LDX level_idx
-        LDA level_ptrs_lo,X
-        STA sptr_lo
-        LDA level_ptrs_hi,X
-        STA sptr_hi
+        JSR load_level                  ; fills LEVEL_BUF, sets lvl_w/h + offsets
 
-        ; Read 4-byte header: w, h, row_off, col_off
-        LDY #$00
-        LDA (sptr_lo),Y
-        STA lvl_w
-        INY
-        LDA (sptr_lo),Y
-        STA lvl_h
-        INY
-        LDA (sptr_lo),Y
-        STA row_offset
-        INY
-        LDA (sptr_lo),Y
-        STA col_offset
-
-        ; sptr += 4 (advance past header)
-        CLC
-        LDA sptr_lo
-        ADC #$04
-        STA sptr_lo
-        LDA sptr_hi
-        ADC #$00
-        STA sptr_hi
-
-        ; Clear state grid: 240 bytes at $4000 = TILE_FLOOR
+        ; Clear 240-byte state grid
         LDY #$00
         TYA
 @clr:   STA STATE_GRID,Y
@@ -252,18 +252,17 @@ init_level:
         CPY #240
         BNE @clr
 
-        ; Parse level data
         LDA #$00
-        STA temp                        ; temp = parse_row (0..lvl_h-1)
+        STA temp                        ; temp = parse_row
+        STA sptr_lo                     ; reuse sptr_lo as flat LEVEL_BUF index
 @rowlp:
-        LDY #$00                        ; Y = parse_col (0..lvl_w-1)
+        LDY #$00                        ; Y = parse_col
 @collp:
-        ; Read ASCII char at (sptr)[Y]
-        LDA (sptr_lo),Y
+        LDX sptr_lo
+        LDA LEVEL_BUF,X
         JSR ascii_to_tile               ; A = tile type
         PHA                             ; save tile type
 
-        ; Record player position if player tile
         CMP #TILE_PLAYER
         BEQ @save_player
         CMP #TILE_PLAYER_TARGET
@@ -295,18 +294,10 @@ init_level:
         PLA                             ; restore tile type
         STA STATE_GRID,X
 
+        INC sptr_lo
         INY
         CPY lvl_w
         BCC @collp
-
-        ; Row done: advance sptr by lvl_w
-        CLC
-        LDA sptr_lo
-        ADC lvl_w
-        STA sptr_lo
-        LDA sptr_hi
-        ADC #$00
-        STA sptr_hi
 
         INC temp
         LDA temp
@@ -314,43 +305,6 @@ init_level:
         BCS @init_done
         JMP @rowlp
 @init_done:
-        RTS
-
-; =============================================
-; ascii_to_tile: map ASCII char to tile type
-; =============================================
-ascii_to_tile:
-        CMP #'#'
-        BEQ @wall
-        CMP #'.'
-        BEQ @target
-        CMP #'$'
-        BEQ @box
-        CMP #'*'
-        BEQ @box_t
-        CMP #'@'
-        BEQ @player
-        CMP #'+'
-        BEQ @player_t
-        LDA #TILE_FLOOR
-        RTS
-@wall:
-        LDA #TILE_WALL
-        RTS
-@target:
-        LDA #TILE_TARGET
-        RTS
-@box:
-        LDA #TILE_BOX
-        RTS
-@box_t:
-        LDA #TILE_BOX_TARGET
-        RTS
-@player:
-        LDA #TILE_PLAYER
-        RTS
-@player_t:
-        LDA #TILE_PLAYER_TARGET
         RTS
 
 ; =============================================
@@ -489,6 +443,9 @@ execute_move:
         BEQ @try_push
         CMP #TILE_BOX_TARGET
         BEQ @try_push
+        ; Plain walk (no push): clear had_push; push paths set it to 1.
+        LDA #$00
+        STA had_push
         JMP @simple_move                ; floor or target
 
 @blk_tr:
@@ -529,10 +486,14 @@ execute_move:
 @push_floor:
         LDA #TILE_BOX
         STA STATE_GRID,X
+        LDA #$01
+        STA had_push
         JMP @box_done
 @push_target:
         LDA #TILE_BOX_TARGET
         STA STATE_GRID,X
+        LDA #$01
+        STA had_push
 @box_done:
         ; Redraw box destination tile
         LDA box_row
@@ -595,10 +556,25 @@ execute_move:
         LDA STATE_GRID,X
         JSR draw_tile
 
+        ; Save undo state BEFORE overwriting player_row/col
+        LDA player_row
+        STA prev_player_row
+        LDA player_col
+        STA prev_player_col
+        LDA #$01
+        STA undo_avail
+
         LDA new_row
         STA player_row
         LDA new_col
         STA player_col
+
+        ; Increment move counter (saturate at $FF)
+        INC moves
+        BNE @no_sat
+        LDA #$FF
+        STA moves
+@no_sat:
 
         LDA #$01
         RTS
@@ -609,48 +585,103 @@ execute_move:
         RTS
 
 ; =============================================
-; leave_tile: cell occupant (player/box) leaves
-; Input: A = current tile (3,4,5,6)
-; Returns: A = 0 or 2 (floor or target underneath)
-; IMPORTANT: preserves X (callers use X as cell index).
-;            Uses Y as scratch instead.
+; execute_undo: reverse the last successful move (single-step).
+; No-op if undo_avail = 0.
+; Updates the state grid AND delta-redraws the 2-3 affected tiles.
 ; =============================================
-leave_tile:
-        TAY
-        LDA leave_tbl,Y
+execute_undo:
+        LDA undo_avail
+        BNE @do_undo
         RTS
+@do_undo:
+        ; If last move was a push, the box sits at (player + dir) where
+        ; dir = player - prev_player. So box = 2*player - prev_player.
+        LDA had_push
+        BEQ @skip_box
 
-; =============================================
-; enter_player: player enters empty cell
-; Input: A = current tile (0 or 2)
-; Returns: A = 5 or 6
-; IMPORTANT: preserves X (callers use X as cell index).
-; =============================================
-enter_player:
-        TAY
-        LDA enter_player_tbl,Y
-        RTS
+        LDA player_row
+        ASL A
+        SEC
+        SBC prev_player_row
+        STA box_row
+        LDA player_col
+        ASL A
+        SEC
+        SBC prev_player_col
+        STA box_col
 
-; =============================================
-; check_win: all targets filled with boxes?
-; A target is "empty" if it still shows TILE_TARGET (2)
-; OR if the player is standing on it (TILE_PLAYER_TARGET = 6).
-; Both cases mean no box is on that target → not yet won.
-; Returns: A=1 win, A=0 not yet
-; =============================================
-check_win:
-        LDY #$00
-@loop:  LDA STATE_GRID,Y
-        CMP #TILE_TARGET
-        BEQ @no
-        CMP #TILE_PLAYER_TARGET
-        BEQ @no
-        INY
-        CPY #240
-        BNE @loop
-        LDA #$01
-        RTS
-@no:    LDA #$00
+        LDX box_row
+        LDA row_x20,X
+        CLC
+        ADC box_col
+        TAX
+        LDA STATE_GRID,X
+        JSR leave_tile                  ; box vacates: 3->0, 4->2
+        STA STATE_GRID,X
+        LDA box_row
+        STA draw_row
+        LDA box_col
+        STA draw_col
+        LDA STATE_GRID,X
+        JSR draw_tile
+@skip_box:
+
+        ; Remove player from its current cell
+        LDX player_row
+        LDA row_x20,X
+        CLC
+        ADC player_col
+        TAX
+        LDA STATE_GRID,X
+        JSR leave_tile                  ; player vacates: 5->0, 6->2
+        STA STATE_GRID,X
+
+        ; If had_push, drop a box back where the player was standing
+        LDA had_push
+        BEQ @draw_cur
+        LDA STATE_GRID,X                ; X = current player cell
+        JSR enter_as_box                ; 0->3, 2->4
+        STA STATE_GRID,X
+@draw_cur:
+        LDA player_row
+        STA draw_row
+        LDA player_col
+        STA draw_col
+        LDA STATE_GRID,X
+        JSR draw_tile
+
+        ; Put player back at prev_player
+        LDX prev_player_row
+        LDA row_x20,X
+        CLC
+        ADC prev_player_col
+        TAX
+        LDA STATE_GRID,X
+        JSR enter_player                ; 0->5, 2->6
+        STA STATE_GRID,X
+        LDA prev_player_row
+        STA draw_row
+        LDA prev_player_col
+        STA draw_col
+        LDA STATE_GRID,X
+        JSR draw_tile
+
+        ; Restore player coords
+        LDA prev_player_row
+        STA player_row
+        LDA prev_player_col
+        STA player_col
+
+        ; Decrement move counter (floor at 0)
+        LDA moves
+        BEQ @no_dec
+        DEC moves
+@no_dec:
+
+        ; Single-step undo only: clear the undo latch.
+        LDA #$00
+        STA undo_avail
+        STA had_push
         RTS
 
 ; =============================================
@@ -684,30 +715,9 @@ show_level:
         RTS
 
 ; =============================================
-; wait_key: wait for keypress, return ASCII in A (bit 7 stripped)
+; Shared routines + tile-state tables
 ; =============================================
-wait_key:
-@wk:    LDA KBDCR
-        BPL @wk
-        LDA KBD
-        AND #$7F
-        RTS
-
-; =============================================
-; print_str_ax: print null-terminated ASCII string
-; Input: A=lo, X=hi
-; =============================================
-print_str_ax:
-        STA str_lo
-        STX str_hi
-        LDY #$00
-@lp:    LDA (str_lo),Y
-        BEQ @dn
-        ORA #$80
-        JSR ECHO
-        INY
-        BNE @lp
-@dn:    RTS
+.include "../games/sokoban_common.inc"
 
 ; =============================================
 ; DATA
@@ -717,21 +727,6 @@ print_str_ax:
 row_x20:
         .byte   0,  20,  40,  60,  80, 100, 120, 140
         .byte 160, 180, 200, 220
-
-; --- Tile state transition tables ---
-; leave_tbl[current] = state after occupant leaves
-;   3 (box-floor)   -> 0 (floor)
-;   4 (box-target)  -> 2 (target)
-;   5 (player-flr)  -> 0
-;   6 (player-tgt)  -> 2
-leave_tbl:
-        .byte 0, 1, 2, 0, 2, 0, 2
-
-; enter_player_tbl[current] = state after player enters
-;   0 (floor)  -> 5
-;   2 (target) -> 6
-enter_player_tbl:
-        .byte 5, 0, 6, 0, 0, 0, 0
 
 ; --- Tile bitmaps (7 tiles x 32 bytes = 224 bytes) ---
 ; Each tile: 16 scanlines, 2 bytes per scanline
@@ -764,864 +759,20 @@ tile_bitmaps:
         .byte $7C,$1F, $7C,$1F, $7C,$1F, $7C,$1F
         .byte $7C,$1F, $7C,$1F, $7C,$1F, $7C,$1F
         .byte $7C,$1F, $7C,$1F, $00,$00, $00,$00
-; Tile 5: PLAYER (little character — head, eyes, arms out, body, legs, feet)
-;   row 0  ....####....   head top (pixels 4-7)
-;   row 1  ...######...   head (pixels 3-8)
-;   row 2  ...##..##...   eyes (pixels 3,4, 7,8)
-;   row 3  ...######...   face
-;   row 4  ....####....   chin
-;   row 5  ..########..   shoulders (pixels 2-9)
-;   row 6  .##########.   arms out (pixels 1-10)
-;   row 7  ....####....   body
-;   row 8  ....####....   body
-;   row 9  ...######...   waist
-;   rows 10-12  ..##....##..   legs (pixels 2,3, 8,9)
-;   row 13 .###....###.   feet (pixels 1-3, 8-10)
-;   rows 14-15  blank
+; Tile 5: PLAYER
         .byte $70,$01, $78,$03, $18,$03, $78,$03
         .byte $70,$01, $7C,$07, $7E,$0F, $70,$01
         .byte $70,$01, $78,$03, $0C,$06, $0C,$06
         .byte $0C,$06, $0E,$0E, $00,$00, $00,$00
-; Tile 6: PLAYER ON TARGET — same character + a horizontal "target base"
-; line at row 14 revealing the target beneath the player's feet.
+; Tile 6: PLAYER ON TARGET — same figure + target line at row 14
         .byte $70,$01, $78,$03, $18,$03, $78,$03
         .byte $70,$01, $7C,$07, $7E,$0F, $70,$01
         .byte $70,$01, $78,$03, $0C,$06, $0C,$06
         .byte $0C,$06, $0E,$0E, $7C,$1F, $00,$00
 
-; --- Levels ---
-; Format: 4-byte header (w, h, row_offset, col_offset) then w*h ASCII bytes
-; Sokoban chars: # wall, . target, $ box, @ player, * box-on-target, + player-on-target
-
-; Level 1: minimal teaching push (5x3)
-level1:
-        .byte 5, 3, 4, 7
-        .byte "#####"
-        .byte "#.$@#"
-        .byte "#####"
-
-; Level 2: up-then-left (7x6)
-level2:
-        .byte 7, 6, 3, 6
-        .byte "#######"
-        .byte "#.    #"
-        .byte "#  $  #"
-        .byte "#     #"
-        .byte "#  @  #"
-        .byte "#######"
-
-; Level 3: two boxes, two targets (9x7)
-level3:
-        .byte 9, 7, 2, 5
-        .byte "#########"
-        .byte "#.     .#"
-        .byte "#       #"
-        .byte "# $   $ #"
-        .byte "#       #"
-        .byte "#   @   #"
-        .byte "#########"
-
-; --- Microban collection by David W. Skinner (classic 2000) ---
-; Levels 4-23 = Microban I #1..#20 (progressive difficulty)
-
-; Microban #1 (6x7) -> level4
-level4:
-        .byte 6, 7, 2, 7
-        .byte "####  "
-        .byte "# .#  "
-        .byte "#  ###"
-        .byte "#*@  #"
-        .byte "#  $ #"
-        .byte "#  ###"
-        .byte "####  "
-
-; Microban #2 (6x7) -> level5
-level5:
-        .byte 6, 7, 2, 7
-        .byte "######"
-        .byte "#    #"
-        .byte "# #@ #"
-        .byte "# $* #"
-        .byte "# .* #"
-        .byte "#    #"
-        .byte "######"
-
-; Microban #3 (9x6) -> level6
-level6:
-        .byte 9, 6, 3, 5
-        .byte "  ####   "
-        .byte "###  ####"
-        .byte "#     $ #"
-        .byte "# #  #$ #"
-        .byte "# . .#@ #"
-        .byte "#########"
-
-; Microban #4 (8x6) -> level7
-level7:
-        .byte 8, 6, 3, 6
-        .byte "########"
-        .byte "#      #"
-        .byte "# .**$@#"
-        .byte "#      #"
-        .byte "#####  #"
-        .byte "    ####"
-
-; Microban #5 (8x7) -> level8
-level8:
-        .byte 8, 7, 2, 6
-        .byte " #######"
-        .byte " #     #"
-        .byte " # .$. #"
-        .byte "## $@$ #"
-        .byte "#  .$. #"
-        .byte "#      #"
-        .byte "########"
-
-; Microban #6 (12x6) -> level9
-level9:
-        .byte 12, 6, 3, 4
-        .byte "###### #####"
-        .byte "#    ###   #"
-        .byte "# $$     #@#"
-        .byte "# $ #...   #"
-        .byte "#   ########"
-        .byte "#####       "
-
-; Microban #7 (7x8) -> level10
-level10:
-        .byte 7, 8, 2, 6
-        .byte "#######"
-        .byte "#     #"
-        .byte "# .$. #"
-        .byte "# $.$ #"
-        .byte "# .$. #"
-        .byte "# $.$ #"
-        .byte "#  @  #"
-        .byte "#######"
-
-; Microban #8 (8x12) -> level11
-level11:
-        .byte 8, 12, 0, 6
-        .byte "  ######"
-        .byte "  # ..@#"
-        .byte "  # $$ #"
-        .byte "  ## ###"
-        .byte "   # #  "
-        .byte "   # #  "
-        .byte "#### #  "
-        .byte "#    ## "
-        .byte "# #   # "
-        .byte "#   # # "
-        .byte "###   # "
-        .byte "  ##### "
-
-; Microban #9 (6x7) -> level12
-level12:
-        .byte 6, 7, 2, 7
-        .byte "##### "
-        .byte "#.  ##"
-        .byte "#@$$ #"
-        .byte "##   #"
-        .byte " ##  #"
-        .byte "  ##.#"
-        .byte "   ###"
-
-; Microban #10 (11x8) -> level13
-level13:
-        .byte 11, 8, 2, 4
-        .byte "      #####"
-        .byte "      #.  #"
-        .byte "      #.# #"
-        .byte "#######.# #"
-        .byte "# @ $ $ $ #"
-        .byte "# # # # ###"
-        .byte "#       #  "
-        .byte "#########  "
-
-; Microban #11 (9x8) -> level14
-level14:
-        .byte 9, 8, 2, 5
-        .byte "  ###### "
-        .byte "  #    # "
-        .byte "  # ##@##"
-        .byte "### # $ #"
-        .byte "# ..# $ #"
-        .byte "#       #"
-        .byte "#  ######"
-        .byte "####     "
-
-; Microban #12 (9x8) -> level15
-level15:
-        .byte 9, 8, 2, 5
-        .byte "#####    "
-        .byte "#   ##   "
-        .byte "# $  #   "
-        .byte "## $ ####"
-        .byte " ###@.  #"
-        .byte "  #  .# #"
-        .byte "  #     #"
-        .byte "  #######"
-
-; Microban #13 (7x9) -> level16
-level16:
-        .byte 7, 9, 1, 6
-        .byte "####   "
-        .byte "#. ##  "
-        .byte "#.@ #  "
-        .byte "#. $#  "
-        .byte "##$ ###"
-        .byte " # $  #"
-        .byte " #    #"
-        .byte " #  ###"
-        .byte " ####  "
-
-; Microban #14 (7x6) -> level17
-level17:
-        .byte 7, 6, 3, 6
-        .byte "#######"
-        .byte "#     #"
-        .byte "# # # #"
-        .byte "#. $*@#"
-        .byte "#   ###"
-        .byte "#####  "
-
-; Microban #15 (9x7) -> level18
-level18:
-        .byte 9, 7, 2, 5
-        .byte "     ### "
-        .byte "######@##"
-        .byte "#    .* #"
-        .byte "#   #   #"
-        .byte "#####$# #"
-        .byte "    #   #"
-        .byte "    #####"
-
-; Microban #16 (10x8) -> level19
-level19:
-        .byte 10, 8, 2, 5
-        .byte " ####     "
-        .byte " #  ####  "
-        .byte " #     ## "
-        .byte "## ##   # "
-        .byte "#. .# @$##"
-        .byte "#   # $$ #"
-        .byte "#  .#    #"
-        .byte "##########"
-
-; Microban #17 (6x7) -> level20
-level20:
-        .byte 6, 7, 2, 7
-        .byte "##### "
-        .byte "# @ # "
-        .byte "#...# "
-        .byte "#$$$##"
-        .byte "#    #"
-        .byte "#    #"
-        .byte "######"
-
-; Microban #18 (7x9) -> level21
-level21:
-        .byte 7, 9, 1, 6
-        .byte "#######"
-        .byte "#     #"
-        .byte "#. .  #"
-        .byte "# ## ##"
-        .byte "#  $ # "
-        .byte "###$ # "
-        .byte "  #@ # "
-        .byte "  #  # "
-        .byte "  #### "
-
-; Microban #19 (8x8) -> level22
-level22:
-        .byte 8, 8, 2, 6
-        .byte "########"
-        .byte "#   .. #"
-        .byte "#  @$$ #"
-        .byte "##### ##"
-        .byte "   #  # "
-        .byte "   #  # "
-        .byte "   #  # "
-        .byte "   #### "
-
-; Microban #20 (9x8) -> level23
-level23:
-        .byte 9, 8, 2, 5
-        .byte "#######  "
-        .byte "#     ###"
-        .byte "#  @$$..#"
-        .byte "#### ## #"
-        .byte "  #     #"
-        .byte "  #  ####"
-        .byte "  #  #   "
-        .byte "  ####   "
-
-; Microban #21 (7x6) -> level24
-level24:
-        .byte 7, 6, 3, 6
-        .byte "####   "
-        .byte "#  ####"
-        .byte "# . . #"
-        .byte "# $$#@#"
-        .byte "##    #"
-        .byte " ######"
-
-; Microban #22 (7x9) -> level25
-level25:
-        .byte 7, 9, 1, 6
-        .byte "#####  "
-        .byte "#   ###"
-        .byte "#. .  #"
-        .byte "#   # #"
-        .byte "## #  #"
-        .byte " #@$$ #"
-        .byte " #    #"
-        .byte " #  ###"
-        .byte " ####  "
-
-; Microban #23 (7x7) -> level26
-level26:
-        .byte 7, 7, 2, 6
-        .byte "#######"
-        .byte "#  *  #"
-        .byte "#     #"
-        .byte "## # ##"
-        .byte " #$@.# "
-        .byte " #   # "
-        .byte " ##### "
-
-; Microban #24 (7x7) -> level27
-level27:
-        .byte 7, 7, 2, 6
-        .byte "# #####"
-        .byte "  #   #"
-        .byte "###$$@#"
-        .byte "#   ###"
-        .byte "#     #"
-        .byte "# . . #"
-        .byte "#######"
-
-; Microban #25 (7x7) -> level28
-level28:
-        .byte 7, 7, 2, 6
-        .byte " ####  "
-        .byte " #  ###"
-        .byte " # $$ #"
-        .byte "##... #"
-        .byte "#  @$ #"
-        .byte "#   ###"
-        .byte "#####  "
-
-; Microban #26 (6x8) -> level29
-level29:
-        .byte 6, 8, 2, 7
-        .byte " #####"
-        .byte " # @ #"
-        .byte " #   #"
-        .byte "###$ #"
-        .byte "# ...#"
-        .byte "# $$ #"
-        .byte "###  #"
-        .byte "  ####"
-
-; Microban #27 (7x7) -> level30
-level30:
-        .byte 7, 7, 2, 6
-        .byte "###### "
-        .byte "#   .# "
-        .byte "# ## ##"
-        .byte "#  $$@#"
-        .byte "# #   #"
-        .byte "#.  ###"
-        .byte "#####  "
-
-; Microban #28 (7x7) -> level31
-level31:
-        .byte 7, 7, 2, 6
-        .byte "#####  "
-        .byte "#   #  "
-        .byte "# @ #  "
-        .byte "# $$###"
-        .byte "##. . #"
-        .byte " #    #"
-        .byte " ######"
-
-; Microban #29 (11x9) -> level32
-level32:
-        .byte 11, 9, 1, 4
-        .byte "     ##### "
-        .byte "     #   ##"
-        .byte "     #    #"
-        .byte " ######   #"
-        .byte "##     #. #"
-        .byte "# $ $ @  ##"
-        .byte "# ######.# "
-        .byte "#        # "
-        .byte "########## "
-
-; Microban #30 (6x7) -> level33
-level33:
-        .byte 6, 7, 2, 7
-        .byte "####  "
-        .byte "#  ###"
-        .byte "# $$ #"
-        .byte "#... #"
-        .byte "# @$ #"
-        .byte "#   ##"
-        .byte "##### "
-
-; Microban #31 (7x7) -> level34
-level34:
-        .byte 7, 7, 2, 6
-        .byte "  #### "
-        .byte " ##  # "
-        .byte "##@$.##"
-        .byte "# $$  #"
-        .byte "# . . #"
-        .byte "###   #"
-        .byte "  #####"
-
-; Microban #32 (7x7) -> level35
-level35:
-        .byte 7, 7, 2, 6
-        .byte " ####  "
-        .byte "##  ###"
-        .byte "#     #"
-        .byte "#.**$@#"
-        .byte "#   ###"
-        .byte "##  #  "
-        .byte " ####  "
-
-; Microban #33 (7x7) -> level36
-level36:
-        .byte 7, 7, 2, 6
-        .byte "#######"
-        .byte "#. #  #"
-        .byte "#  $  #"
-        .byte "#. $#@#"
-        .byte "#  $  #"
-        .byte "#. #  #"
-        .byte "#######"
-
-; Microban #34 (9x6) -> level37
-level37:
-        .byte 9, 6, 3, 5
-        .byte "  ####   "
-        .byte "###  ####"
-        .byte "#       #"
-        .byte "#@$***. #"
-        .byte "#       #"
-        .byte "#########"
-
-; Microban #35 (6x10) -> level38
-level38:
-        .byte 6, 10, 1, 7
-        .byte " #### "
-        .byte "##  # "
-        .byte "#. $# "
-        .byte "#.$ # "
-        .byte "#.$ # "
-        .byte "#.$ # "
-        .byte "#. $##"
-        .byte "#   @#"
-        .byte "##   #"
-        .byte " #####"
-
-; Microban #36 (15x5) -> level39
-level39:
-        .byte 15, 5, 3, 2
-        .byte "####           "
-        .byte "#  ############"
-        .byte "# $ $ $ $ $ @ #"
-        .byte "# .....       #"
-        .byte "###############"
-
-; Microban #37 (9x8) -> level40
-level40:
-        .byte 9, 8, 2, 5
-        .byte "      ###"
-        .byte "##### #.#"
-        .byte "#   ###.#"
-        .byte "#   $ #.#"
-        .byte "# $  $  #"
-        .byte "#####@# #"
-        .byte "    #   #"
-        .byte "    #####"
-
-; Microban #38 (10x7) -> level41
-level41:
-        .byte 10, 7, 2, 5
-        .byte "##########"
-        .byte "#        #"
-        .byte "# ##.### #"
-        .byte "# # $$ . #"
-        .byte "# . @$## #"
-        .byte "#####    #"
-        .byte "    ######"
-
-; Microban #39 (10x9) -> level42
-level42:
-        .byte 10, 9, 1, 5
-        .byte "#####     "
-        .byte "#   ####  "
-        .byte "# # # .#  "
-        .byte "#    $ ###"
-        .byte "### #$.  #"
-        .byte "#   #@   #"
-        .byte "# # ######"
-        .byte "#   #     "
-        .byte "#####     "
-
-; Microban #40 (7x6) -> level43
-level43:
-        .byte 7, 6, 3, 6
-        .byte " ##### "
-        .byte " #   # "
-        .byte "##   ##"
-        .byte "# $$$ #"
-        .byte "# .+. #"
-        .byte "#######"
-
-; Microban #41 (8x6) -> level44
-level44:
-        .byte 8, 6, 3, 6
-        .byte "####### "
-        .byte "#     # "
-        .byte "#@$$$ ##"
-        .byte "#  #...#"
-        .byte "##    ##"
-        .byte " ###### "
-
-; Microban #42 (7x8) -> level45
-level45:
-        .byte 7, 8, 2, 6
-        .byte "   ####"
-        .byte "   #  #"
-        .byte "   #@ #"
-        .byte "####$.#"
-        .byte "#   $.#"
-        .byte "# # $.#"
-        .byte "#    ##"
-        .byte "###### "
-
-; Microban #43 (9x9) -> level46
-level46:
-        .byte 9, 9, 1, 5
-        .byte "     ####"
-        .byte "     # @#"
-        .byte "     #  #"
-        .byte "###### .#"
-        .byte "#   $  .#"
-        .byte "#  $$# .#"
-        .byte "#    ####"
-        .byte "###  #   "
-        .byte "  ####   "
-
-; Microban #44 (5x3) -> level47
-level47:
-        .byte 5, 3, 4, 7
-        .byte "#####"
-        .byte "#@$.#"
-        .byte "#####"
-
-; Microban #45 (6x7) -> level48
-level48:
-        .byte 6, 7, 2, 7
-        .byte "######"
-        .byte "#... #"
-        .byte "#  $ #"
-        .byte "# #$##"
-        .byte "#  $ #"
-        .byte "#  @ #"
-        .byte "######"
-
-; Microban #46 (7x8) -> level49
-level49:
-        .byte 7, 8, 2, 6
-        .byte " ######"
-        .byte "##    #"
-        .byte "#  ## #"
-        .byte "# # $ #"
-        .byte "#  * .#"
-        .byte "## #@##"
-        .byte " #   # "
-        .byte " ##### "
-
-; Microban #47 (11x7) -> level50
-level50:
-        .byte 11, 7, 2, 4
-        .byte "  #######  "
-        .byte "###     #  "
-        .byte "# $ $   #  "
-        .byte "# ### #####"
-        .byte "# @ . .   #"
-        .byte "#   ###   #"
-        .byte "##### #####"
-
-; Microban #48 (8x8) -> level51
-level51:
-        .byte 8, 8, 2, 6
-        .byte "######  "
-        .byte "#  @ #  "
-        .byte "#  # ## "
-        .byte "# .#  ##"
-        .byte "# .$$$ #"
-        .byte "# .#   #"
-        .byte "####   #"
-        .byte "   #####"
-
-; Microban #49 (8x10) -> level52
-level52:
-        .byte 8, 10, 1, 6
-        .byte "######  "
-        .byte "# @  #  "
-        .byte "# $# #  "
-        .byte "# $  #  "
-        .byte "# $ ##  "
-        .byte "### ####"
-        .byte " #  #  #"
-        .byte " #...  #"
-        .byte " #     #"
-        .byte " #######"
-
-; Microban #50 (10x7) -> level53
-level53:
-        .byte 10, 7, 2, 5
-        .byte "  ####    "
-        .byte "###  #####"
-        .byte "#  $  @..#"
-        .byte "# $    # #"
-        .byte "### #### #"
-        .byte "  #      #"
-        .byte "  ########"
-
-; Microban #51 (8x7) -> level54
-level54:
-        .byte 8, 7, 2, 6
-        .byte "####    "
-        .byte "#  ###  "
-        .byte "#    ###"
-        .byte "#  $*@ #"
-        .byte "### .# #"
-        .byte "  #    #"
-        .byte "  ######"
-
-; Microban #52 (6x8) -> level55
-level55:
-        .byte 6, 8, 2, 7
-        .byte "  ####"
-        .byte "### @#"
-        .byte "#  $ #"
-        .byte "#  *.#"
-        .byte "#  *.#"
-        .byte "#  $ #"
-        .byte "###  #"
-        .byte "  ####"
-
-; Microban #53 (7x7) -> level56
-level56:
-        .byte 7, 7, 2, 6
-        .byte " ##### "
-        .byte "##. .##"
-        .byte "# * * #"
-        .byte "#  #  #"
-        .byte "# $ $ #"
-        .byte "## @ ##"
-        .byte " ##### "
-
-; Microban #54 (12x8) -> level57
-level57:
-        .byte 12, 8, 2, 4
-        .byte "      ######"
-        .byte "      #    #"
-        .byte "  ##### .  #"
-        .byte "###  ###.  #"
-        .byte "# $  $  . ##"
-        .byte "# @$$ # . # "
-        .byte "##    ##### "
-        .byte " ######     "
-
-; Microban #55 (10x8) -> level58
-level58:
-        .byte 10, 8, 2, 5
-        .byte "########  "
-        .byte "# @ #  #  "
-        .byte "#      #  "
-        .byte "#####$ #  "
-        .byte "    #  ###"
-        .byte " ## #$ ..#"
-        .byte " ## #  ###"
-        .byte "    ####  "
-
-; Microban #56 (7x6) -> level59
-level59:
-        .byte 7, 6, 3, 6
-        .byte "#####  "
-        .byte "#   ###"
-        .byte "#  $  #"
-        .byte "##* . #"
-        .byte " #   @#"
-        .byte " ######"
-
-; Microban #57 (8x9) -> level60
-level60:
-        .byte 8, 9, 1, 6
-        .byte "  ####  "
-        .byte "  #  #  "
-        .byte "  #@ #  "
-        .byte "  #  #  "
-        .byte "### ####"
-        .byte "#    * #"
-        .byte "#  $   #"
-        .byte "#####. #"
-        .byte "    ####"
-
-; Microban #58 (7x7) -> level61
-level61:
-        .byte 7, 7, 2, 6
-        .byte "####   "
-        .byte "#  ####"
-        .byte "#.*$  #"
-        .byte "# .$# #"
-        .byte "## @  #"
-        .byte " #   ##"
-        .byte " ##### "
-
-; Microban #59 (13x9) -> level62
-level62:
-        .byte 13, 9, 1, 3
-        .byte "############ "
-        .byte "#          # "
-        .byte "# ####### @##"
-        .byte "# #         #"
-        .byte "# #  $   #  #"
-        .byte "# $$ #####  #"
-        .byte "###  # # ...#"
-        .byte "  #### #    #"
-        .byte "       ######"
-
-; Microban #60 (10x10) -> level63
-level63:
-        .byte 10, 10, 1, 5
-        .byte " #########"
-        .byte " #       #"
-        .byte "##@##### #"
-        .byte "#  #   # #"
-        .byte "#  #   $.#"
-        .byte "#  ##$##.#"
-        .byte "##$##  #.#"
-        .byte "#   $  #.#"
-        .byte "#   #  ###"
-        .byte "########  "
-
-; Microban #61 (9x10) -> level64
-level64:
-        .byte 9, 10, 1, 5
-        .byte "######## "
-        .byte "#      # "
-        .byte "# #### # "
-        .byte "# #...@# "
-        .byte "# ###$###"
-        .byte "# #     #"
-        .byte "#  $$ $ #"
-        .byte "####   ##"
-        .byte "   #.### "
-        .byte "   ###   "
-
-; Microban #62 (13x6) -> level65
-level65:
-        .byte 13, 6, 3, 3
-        .byte "   ##########"
-        .byte "####    ##  #"
-        .byte "#  $$$....$@#"
-        .byte "#      ###  #"
-        .byte "#   #### ####"
-        .byte "#####        "
-
-; Microban #63 (19x6) -> level66
-level66:
-        .byte 19, 6, 3, 0
-        .byte "#####   ####       "
-        .byte "#   ##### .#       "
-        .byte "#       $  ########"
-        .byte "###  #### .$    @ #"
-        .byte "  #  #  #  ####   #"
-        .byte "  ####  ####  #####"
-
-; Microban #64 (10x9) -> level67
-level67:
-        .byte 10, 9, 1, 5
-        .byte " ######   "
-        .byte "##    #   "
-        .byte "#   $ #   "
-        .byte "#  $$ #   "
-        .byte "### .#####"
-        .byte "  ##.# @ #"
-        .byte "   #.  $ #"
-        .byte "   #. ####"
-        .byte "   ####   "
-
-; Microban #65 (9x9) -> level68
-level68:
-        .byte 9, 9, 1, 5
-        .byte "  ###### "
-        .byte "  #    # "
-        .byte "  #  $ # "
-        .byte " ####$ # "
-        .byte "## $ $ # "
-        .byte "#....# ##"
-        .byte "#     @ #"
-        .byte "##  #   #"
-        .byte " ########"
-
-; Microban #67 (7x8) -> level69
-level69:
-        .byte 7, 8, 2, 6
-        .byte "#####  "
-        .byte "#   ## "
-        .byte "# #  # "
-        .byte "#@$*.##"
-        .byte "##  . #"
-        .byte " # $# #"
-        .byte " ##   #"
-        .byte "  #####"
-
-; Microban #68 (10x7) -> level70
-level70:
-        .byte 10, 7, 2, 5
-        .byte " ####     "
-        .byte " #  ######"
-        .byte "##    $  #"
-        .byte "# .# $   #"
-        .byte "# .#$#####"
-        .byte "# .@ #    "
-        .byte "######    "
-
-; Microban #69 (11x8) -> level71
-level71:
-        .byte 11, 8, 2, 4
-        .byte "####  #### "
-        .byte "#  ####  # "
-        .byte "#  #  #  # "
-        .byte "#  #    $##"
-        .byte "#  . .#$  #"
-        .byte "#@ ## # $ #"
-        .byte "#   . #   #"
-        .byte "###########"
-
-; Microban #70 (8x10) -> level72
-level72:
-        .byte 8, 10, 1, 6
-        .byte "#####   "
-        .byte "# @ ####"
-        .byte "#      #"
-        .byte "# $ $$ #"
-        .byte "##$##  #"
-        .byte "#   ####"
-        .byte "# ..  # "
-        .byte "##..  # "
-        .byte " ###  # "
-        .byte "   #### "
+; --- Level data (RLE compressed) ---
+.include "../games/sokoban_levels.inc"
+.include "../games/sokoban_levels_ext.inc"
 
 level_ptrs_lo:
         .byte <level1, <level2, <level3, <level4, <level5
@@ -1656,7 +807,7 @@ level_ptrs_hi:
         .byte >level66, >level67, >level68, >level69, >level70
         .byte >level71, >level72
 
-; --- Strings (ASCII, bit 7 added by print_str_ax) ---
+; --- Strings ---
 str_title:
         .byte $0D, " * SOKOBAN * ", $0D
         .byte " APPLE 1 + GEN2 COLOR CARD", $0D
@@ -1669,7 +820,7 @@ str_title:
         .byte " BOXES CAN ONLY BE PUSHED --", $0D
         .byte " NEVER PULLED! WATCH CORNERS!", $0D
         .byte $0D
-        .byte " R = RESET   N = NEXT LEVEL", $0D, 0
+        .byte " U=UNDO  R=RESET  N=NEXT", $0D, 0
 
 str_layout:
         .byte $0D, " KEYBOARD LAYOUT ?", $0D
