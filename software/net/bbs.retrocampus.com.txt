@@ -1,10 +1,17 @@
-// P-LAB Wi-Fi Modem — Auto-dial bbs.retrocampus.com
+// P-LAB Wi-Fi Modem — Auto-dial bbs.retrocampus.com (8-bit clean / ANSI colour)
 // Load at $0280, run with 0280R
 //
-// Initializes ACIA, sends ATDT BBS.RETROCAMPUS.COM:23 automatically,
-// then drops into terminal loop (keyboard → ACIA, ACIA → display).
+// Same as bbs.retrocampus.com.txt but with the `ORA #$80` at $02AF patched
+// to `NOP NOP` so bytes received from the BBS reach $D012 unchanged. The
+// Apple 1 display itself masks bit 7 on write (Memory::memWrite), so the
+// local screen still works; the difference shows up on the Terminal Card TCP
+// stream in 8-bit raw mode (Ctrl-T or ESC T), where ANSI colour escapes
+// (ESC [ … m) and UTF-8 box-drawing bytes now pass through intact.
 //
-// ACIA registers:
+// Usage from BBS menu: pick option "8- TELNET LINUX W/ECHO 80x24 (8086)"
+// once connected, switch Terminal Card to 8-bit mode, enjoy the colours.
+//
+// ACIA registers (unchanged):
 //   $B000 DATA   - Serial data I/O
 //   $B001 STATUS - bit3=RDRF (rx ready), bit4=TDRE (tx ready)
 //   $B002 CMD    - Command register
@@ -32,13 +39,13 @@
 // CHKRX: check ACIA for received byte
 02A5: AD 01 B0      // LDA $B001 (STATUS)
 02A8: 29 08         // AND #$08 (RDRF bit)
-02AA: F0 EC         // BEQ LOOP ($02AC - $14 = $0298)
+02AA: F0 EC         // BEQ LOOP
 02AC: AD 00 B0      // LDA $B000 (read received byte)
-02AF: 09 80         // ORA #$80 (set bit 7 for Apple 1 display)
+02AF: EA EA         // NOP NOP   (was ORA #$80 — patched: keep byte 8-bit clean)
 // WAITDSP:
 02B1: 2C 12 D0      // BIT $D012
-02B4: 30 FB         // BMI WAITDSP ($02B6 - 5 = $02B1)
-02B6: 8D 12 D0      // STA $D012 (display char)
+02B4: 30 FB         // BMI WAITDSP
+02B6: 8D 12 D0      // STA $D012 (display char, bit 7 stripped internally)
 02B9: 4C 98 02      // JMP LOOP
 
 // String: "ATDT BBS.RETROCAMPUS.COM:23\r" + null terminator

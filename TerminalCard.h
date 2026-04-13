@@ -9,6 +9,7 @@
 #define TERMINALCARD_H
 
 #include "POM1Build.h"
+#include "SocketHandle.h"
 
 #include <atomic>
 #include <cstdint>
@@ -16,26 +17,19 @@
 #include <mutex>
 #include <string>
 
+// SocketHandle.h already pulls the platform socket headers; desktop-only extras
+// (addrinfo, poll, fcntl) are added here.
 #if !POM1_IS_WASM
   #ifdef _WIN32
-    #include <winsock2.h>
     #include <ws2tcpip.h>
-    using TermSocketFd = SOCKET;
-    static constexpr TermSocketFd kTermInvalidSocket = INVALID_SOCKET;
   #else
     #include <sys/socket.h>
     #include <netinet/in.h>
     #include <arpa/inet.h>
     #include <netdb.h>
     #include <fcntl.h>
-    #include <unistd.h>
     #include <poll.h>
-    using TermSocketFd = int;
-    static constexpr TermSocketFd kTermInvalidSocket = -1;
   #endif
-#else
-  using TermSocketFd = int;
-  static constexpr TermSocketFd kTermInvalidSocket = -1;
 #endif
 
 /// P-LAB Apple-1 Terminal Card — bidirectional serial bridge.
@@ -88,10 +82,12 @@ private:
     bool uppercaseOutgoing = true;    // CTRL-O: ON by default (Apple 1 convention)
     bool uppercaseIncoming = false;   // CTRL-I: OFF by default
     bool eightBitMode = false;        // CTRL-T: OFF by default
+    /// 8-bit display: saw CR — emit CRLF when LF arrives or on next real char.
+    bool eightBitPendingCr = false;
 
     // Network — server socket + single client
-    TermSocketFd listenFd = kTermInvalidSocket;
-    TermSocketFd clientFd = kTermInvalidSocket;
+    SocketHandle listenFd;
+    SocketHandle clientFd;
     uint16_t listenPort = kDefaultPort;
     std::string clientAddress;
 
@@ -106,6 +102,11 @@ private:
     enum class TelnetState { NORMAL, IAC, VERB };
     TelnetState telnetState = TelnetState::NORMAL;
     uint8_t telnetVerb = 0;
+
+    // ESC-prefixed control alternates (workaround for macOS/BSD tty eating
+    // Ctrl-T/Ctrl-O/Ctrl-R). True once an 0x1B has been received and we're
+    // waiting for the next byte to decide intercept-vs-forward.
+    bool escapePending = false;
 
     // Thread safety
     mutable std::mutex cardMutex;

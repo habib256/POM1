@@ -48,6 +48,7 @@ set(HEADERS
     Screen_ImGui.h
     SID.h
     TMS9918.h
+    SocketHandle.h
     WiFiModem.h
     TerminalCard.h
 )

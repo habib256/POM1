@@ -429,7 +429,7 @@ void WiFiModem::requestDisconnect()
 
 void WiFiModem::sendToSocket(uint8_t byte)
 {
-    if (socketFd == kInvalidSocket) return;
+    if (!socketFd) return;
 
 #ifdef _WIN32
     char buf = static_cast<char>(byte);
@@ -444,10 +444,10 @@ void WiFiModem::sendToSocket(uint8_t byte)
 // Try to start a non-blocking connect() on an already-resolved address.
 // Returns true if the connect initiated successfully (socketFd live + connState=CONNECTING).
 // On failure, leaves socketFd invalid and emits NO CARRIER to the caller's discretion.
-static bool beginConnectFromResolved(WiFiModem::ResolvedAddr& res, SocketFd& socketFd)
+static bool beginConnectFromResolved(WiFiModem::ResolvedAddr& res, SocketHandle& socketFd)
 {
-    socketFd = socket(res.family, res.socktype, res.protocol);
-    if (socketFd == kInvalidSocket) return false;
+    socketFd.reset(::socket(res.family, res.socktype, res.protocol));
+    if (!socketFd) return false;
 
 #ifdef _WIN32
     u_long nbMode = 1;
@@ -462,14 +462,12 @@ static bool beginConnectFromResolved(WiFiModem::ResolvedAddr& res, SocketFd& soc
                        static_cast<int>(res.addrlen));
 #ifdef _WIN32
     if (rc == SOCKET_ERROR && WSAGetLastError() != WSAEWOULDBLOCK) {
-        closesocket(socketFd);
-        socketFd = kInvalidSocket;
+        socketFd.reset();
         return false;
     }
 #else
     if (rc < 0 && errno != EINPROGRESS) {
-        close(socketFd);
-        socketFd = kInvalidSocket;
+        socketFd.reset();
         return false;
     }
 #endif
@@ -539,14 +537,7 @@ void WiFiModem::connectToHost(const std::string& host, uint16_t port)
 
 void WiFiModem::disconnect()
 {
-    if (socketFd != kInvalidSocket) {
-#ifdef _WIN32
-        closesocket(socketFd);
-#else
-        close(socketFd);
-#endif
-        socketFd = kInvalidSocket;
-    }
+    socketFd.reset();
     // Abandon any pending DNS resolution. The detached worker completes on its
     // own and the shared promise is destroyed with its result discarded.
     dnsFuture = {};
@@ -607,7 +598,7 @@ void WiFiModem::updateConnection()
         return;
     }
 
-    if (socketFd == kInvalidSocket) return;
+    if (!socketFd) return;
 
 #ifdef _WIN32
     fd_set readSet, writeSet, errorSet;
@@ -729,7 +720,7 @@ void WiFiModem::connectToHost(const std::string&, uint16_t)
 void WiFiModem::disconnect()
 {
     connState = ConnState::IDLE;
-    socketFd = kInvalidSocket;
+    socketFd.reset();
 }
 
 void WiFiModem::updateConnection() {}
@@ -786,7 +777,7 @@ void WiFiModem::processTelnetByte(uint8_t byte)
             // Server says WILL or DO — we say DONT or WONT
             response[1] = (telnetVerb == 0xFB) ? 0xFE : 0xFC; // DONT or WONT
 #if !POM1_IS_WASM
-            if (socketFd != kInvalidSocket) {
+            if (socketFd) {
 #ifdef _WIN32
                 ::send(socketFd, reinterpret_cast<char*>(response), 3, 0);
 #else

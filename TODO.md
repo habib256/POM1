@@ -55,16 +55,13 @@ referenced in `README.md`.
 - [ ] **Snapshot RAM copy 64 KB @ 60 Hz** — `publishSnapshotLocked()` writes directly into `latestSnapshot` (no stack copy, no per-frame alloc) and skips the TMS9918 16 KB memcpy when the card is unplugged; the full 64 KB RAM `memcpy` still runs every frame under `stateMutex`. Further reduction would need page-level dirty tracking in `Memory::memWrite`. Likely not worth the complexity.
 
 ### Architecture
-- [ ] **`Memory` is a god object** — 15+ peripheral `unique_ptr`s, matching enable flags, inline I/O dispatch. → Extract a `PeripheralBus` with dynamic registry; `Memory` only manages the address space.
-- [ ] **`EmulationController` SRP violation** — 50+ public methods (CPU, ROMs, snapshots, keyboard, tape, reset…). → Split into `SaveStateManager`, `KeyboardController`, `RomLoader`.
-- [ ] **`MainWindow_ImGui.cpp` is monolithic** (~2500 lines) — UI + events + state + dialogs + rendering in one class. → Per-dialog classes; machine presets in external JSON/YAML.
+- [ ] **`Memory` is a god object** — owns 9 peripheral `unique_ptr`s + matching enable flags + inline I/O dispatch in `memRead`/`memWrite`. → Extract a `PeripheralBus` with dynamic registry; `Memory` only manages the address space.
+- [ ] **`EmulationController` SRP violation** — ~50 public methods (CPU, ROMs, snapshots, keyboard, tape, reset…). → Split into `SaveStateManager`, `KeyboardController`, `RomLoader`.
+- [ ] **`MainWindow_ImGui.cpp` is monolithic** (~3200 lines) — UI + events + state + dialogs + rendering in one class. → Per-dialog classes; machine presets in external JSON/YAML.
 - [ ] **Static `Screen_ImGui::displayCallback`** couples UI to emulation. → `DisplayDevice` interface injected into `Memory`; `Screen_ImGui` implements it.
 
-### Network & peripherals
-- [ ] **Sockets not RAII-wrapped** — an exception between `socket()` and `close()` leaks the FD. → `SocketHandle` class with destructor.
-
 ### Code quality
-- [ ] **Direct `std::cout`/`cerr`** — no level filtering, can't redirect to the debug UI. → Minimal `Logger` interface, dependency-injected.
+- [ ] **Diagnostic `std::cout` scattered across peripherals** (WiFiModem, TerminalCard, MicroSD, CFFA1): no level filtering, can't redirect to the debug UI. → Minimal `Logger` interface, dependency-injected.
 
 ### Tests
 - [ ] **No unit tests** — refactors risk regressing 6502 emulation silently. → Klaus Dormann's 6502 functional tests as the first smoke test; add GTest or Catch2.

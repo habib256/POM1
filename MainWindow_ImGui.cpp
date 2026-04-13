@@ -1456,11 +1456,18 @@ void MainWindow_ImGui::renderTerminalCardWindow()
 
         // Control commands help
         if (ImGui::CollapsingHeader("Control Commands")) {
-            ImGui::BulletText("Ctrl-L  Clear screen");
-            ImGui::BulletText("Ctrl-R  Reset Apple 1");
-            ImGui::BulletText("Ctrl-O  Toggle outgoing uppercase");
-            ImGui::BulletText("Ctrl-I  Toggle incoming uppercase");
-            ImGui::BulletText("Ctrl-T  Toggle 8-bit mode");
+            ImGui::BulletText("Ctrl-L  /  ESC L   Clear screen");
+            ImGui::BulletText("Ctrl-R  /  ESC R   Reset Apple 1");
+            ImGui::BulletText("Ctrl-O  /  ESC O   Toggle outgoing uppercase");
+            ImGui::BulletText("Ctrl-I  /  ESC I   Toggle incoming uppercase");
+            ImGui::BulletText("Ctrl-T  /  ESC T   Toggle 8-bit mode");
+            ImGui::Spacing();
+            ImGui::TextWrapped(
+                "macOS/BSD: the tty line discipline eats Ctrl-T (status), "
+                "Ctrl-O (discard) and Ctrl-R (rprnt) before telnet/nc can send "
+                "them. Use the ESC-prefixed alternates (ESC then the letter), "
+                "or disable the intercepts with 'stty status undef discard "
+                "undef rprnt undef' before connecting.");
         }
     }
     ImGui::End();

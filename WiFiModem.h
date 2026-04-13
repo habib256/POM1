@@ -10,6 +10,7 @@
 
 #include "CpuClock.h"
 #include "POM1Build.h"
+#include "SocketHandle.h"
 
 #include <array>
 #include <chrono>
@@ -20,26 +21,19 @@
 
 // Networking on desktop only: WASM builds short-circuit to NO CARRIER because
 // browsers cannot open raw TCP sockets (see WiFiModem.cpp for the rationale).
+// SocketHandle.h already pulls in the platform socket headers; additional
+// desktop-only bits (addrinfo, poll, fcntl) are brought in here.
 #if !POM1_IS_WASM
   #ifdef _WIN32
-    #include <winsock2.h>
     #include <ws2tcpip.h>
-    using SocketFd = SOCKET;
-    static constexpr SocketFd kInvalidSocket = INVALID_SOCKET;
   #else
     #include <sys/socket.h>
     #include <netinet/in.h>
     #include <arpa/inet.h>
     #include <netdb.h>
     #include <fcntl.h>
-    #include <unistd.h>
     #include <poll.h>
-    using SocketFd = int;
-    static constexpr SocketFd kInvalidSocket = -1;
   #endif
-#else
-  using SocketFd = int;
-  static constexpr SocketFd kInvalidSocket = -1;
 #endif
 
 /// P-LAB Apple-1 Wi-Fi Modem — 65C51 ACIA + ESP8266 modem emulation.
@@ -145,7 +139,7 @@ private:
     uint32_t    bytesReceivedCount = 0;
 
     // --- Network socket ---
-    SocketFd socketFd = kInvalidSocket;
+    SocketHandle socketFd;
 
 #if !POM1_IS_WASM
 public:
