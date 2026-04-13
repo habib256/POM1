@@ -1,5 +1,5 @@
 ; =============================================
-; HGR CP437 FONT SHOWCASE (hgr_cp437_gen2.inc)
+; HGR CP437 FONT SHOWCASE (HGR8_BBFont.inc)
 ; GEN2 Color Graphics Card
 ; VERHILLE Arnaud - 2026
 ; =============================================
@@ -106,10 +106,10 @@ draw_glyph_cell:
         ASL A
         ROL fph
         CLC
-        ADC #<hgr_cp437_gen2
+        ADC #<HGR8_BBFont
         STA fpl
         LDA fph
-        ADC #>hgr_cp437_gen2
+        ADC #>HGR8_BBFont
         STA fph
 
         LDX #$00
@@ -159,5 +159,5 @@ str_footer:
         .byte $0D
         .byte " CP437 IBM PC ORDER — ANY KEY", $0D, 0
 
-.include "hgr_cp437_gen2.inc"
+.include "HGR8_BBFont.inc"
 .include "hgr_tables.inc"

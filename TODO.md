@@ -27,6 +27,8 @@ referenced in `README.md`.
 
 - [ ] **More GEN2 programs** — Image viewers, drawing tools, additional 280×192 HIRES demos.
 
+- [ ] **Finaliser la font** [`software/hgr/HGR8_BBFont.inc`](software/hgr/HGR8_BBFont.inc) — Unifier le rendu BB (`fontbb.s`, `$20`–`$7F`) vs PNG (contrôles + étendu `$80`–`$FF`), documenter/regénérer depuis les sources (`fonts/fontbb.s`, `fonts/font_codepage_437_8x8.png`), affiner glyphes problématiques (NTSC / poids du trait), optionnellement intégrer un petit script dans `tools/`.
+
 - [ ] **CodeTank daughterboard ROM** — Support the `apple1_jukebox` target (ROM at `$4000-$7FFF`) for programs stored on the CodeTank EEPROM.
 
 - [ ] **Misc programs reference (Angela / P-Lab)** — Curated ports (Dobble, Oregon Trail, etc.) from [angela](https://p-l4b.github.io/angela/).

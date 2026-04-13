@@ -1,15 +1,15 @@
 ; =============================================================================
-; hgr_cp437_gen2.inc — CP437 linear table for GEN2 HGR (POM1)
+; HGR8_BBFont.inc — CP437 linear table for GEN2 HGR (POM1)
 ; =============================================================================
 ; $00-$1F, $80-$FF: fonts/font_codepage_437_8x8.png (7 cols, bit0=left).
 ; $20-$7F: fonts/fontbb.s (Beautiful Boot) — AND #$7F + reverse 8 rows
-;         (DrawChar / GEN2 convention, same as hgr_bbfont_gen2.inc).
+;         (DrawChar / GEN2 convention, same as HGR6_Sokoban_bbfont.inc).
 ; =============================================================================
 
-CP437_GEN2_BYTES_PER_GLYPH = 8
-CP437_GEN2_GLYPH_COUNT     = 256
+HGR8_BBFONT_BYTES_PER_GLYPH = 8
+HGR8_BBFONT_GLYPH_COUNT     = 256
 
-hgr_cp437_gen2:
+HGR8_BBFont:
         .byte $00,$00,$00,$00,$00,$00,$00,$00 ; $00 PNG
         .byte $7E,$01,$25,$01,$3D,$19,$01,$7E ; $01 PNG
         .byte $7E,$7F,$5B,$7F,$43,$67,$7F,$7E ; $02 PNG
@@ -267,4 +267,4 @@ hgr_cp437_gen2:
         .byte $00,$00,$3C,$3C,$3C,$3C,$00,$00 ; $FE PNG
         .byte $00,$00,$00,$00,$00,$00,$00,$00 ; $FF PNG
 
-.assert (* - hgr_cp437_gen2) = (CP437_GEN2_GLYPH_COUNT * CP437_GEN2_BYTES_PER_GLYPH), error
+.assert (* - HGR8_BBFont) = (HGR8_BBFONT_GLYPH_COUNT * HGR8_BBFONT_BYTES_PER_GLYPH), error

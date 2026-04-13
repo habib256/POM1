@@ -1,4 +1,4 @@
-// HGR CP437 showcase — hgr_cp437_gen2.inc (BB $20-$7F + PNG others)
+// HGR CP437 showcase — HGR8_BBFont.inc (BB $20-$7F + PNG others)
 // 3278 bytes — apple1_gen2.cfg — $0280, 280R — ends $0F4D
 0280: A9 31 A2 03 20 BB 02 20 B7 0B A9 00 85 06 A5 06
 0290: 29 0F 85 07 A5 06 4A 4A 4A 4A AA BD 21 03 85 03

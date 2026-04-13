@@ -871,8 +871,8 @@ draw_hud_cell:
 ;  draw_hud_cell inner loop slightly smaller.)
 
 ; --- HUD/title font: Beautiful Boot subset, GEN2 bit order (see include) ---
-.include "hgr_bbfont_gen2.inc"
-hud_font = hgr_bbfont_gen2
+.include "HGR6_Sokoban_bbfont.inc"
+hud_font = HGR6_Sokoban_bbfont
 
 ; --- 2x-scale doubling tables for draw_big_glyph ---
 ; Each fat-font row byte's 7 pixels double to 14 HGR pixels.
