@@ -398,6 +398,13 @@ void EmulationController::rewindTape()
     publishSnapshotLocked();
 }
 
+void EmulationController::playTape()
+{
+    std::lock_guard<std::mutex> lock(stateMutex);
+    memory->getCassetteDevice().playTape();
+    publishSnapshotLocked();
+}
+
 void EmulationController::ejectTape()
 {
     std::lock_guard<std::mutex> lock(stateMutex);

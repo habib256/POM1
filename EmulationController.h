@@ -101,6 +101,7 @@ public:
     bool loadTape(const std::string& path, std::string& error);
     bool saveTape(const std::string& path, std::string& error);
     void rewindTape();
+    void playTape();
     void ejectTape();
     void clearTapeCapture();
     void setHardwareAccurateLiveAudio(bool enabled);

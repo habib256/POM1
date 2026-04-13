@@ -269,6 +269,19 @@ void CassetteDevice::rewindTape()
     clearLiveAudioState();
 }
 
+void CassetteDevice::playTape()
+{
+    if (!loadedTapeReady || loadedDurations.empty()) {
+        return;
+    }
+    playbackArmed = false;
+    playbackActive = true;
+    playbackIndex = 0;
+    cyclesUntilInputToggle = 0;
+    inputLevel = loadedInitialLevel;
+    clearLiveAudioState();
+}
+
 void CassetteDevice::ejectTape()
 {
     loadedDurations.clear();

@@ -49,6 +49,7 @@ static float apple1LayoutVerticalChrome()
 
 /** Échelle par défaut des fenêtres HGR / TMS9918 au premier affichage. */
 constexpr float kVideoCardDefaultPixelScale = 2.0f;
+constexpr float kTMS9918DefaultPixelScale = 3.0f;
 /** Plancher d’échelle : évite des pixels quasi invisibles ; la fenêtre peut défiler si besoin. */
 constexpr float kVideoCardMinPixelScale = 0.25f;
 
@@ -233,7 +234,7 @@ static const MachineConfig kMachinePresets[] = {
         false, false, 32, BasicType::ApplesoftLite,
         {
             {"Apple 1 Screen",               {10,  61},  {0,   0}},
-            {"P-LAB Graphic Card (TMS9918)", {640, 61},  {528, 420}},
+            {"P-LAB Graphic Card (TMS9918)", {640, 61},  {784, 612}},
             {"P-LAB Wi-Fi Modem",            {640, 495}, {340, 260}},
             {"P-LAB Terminal Card",          {10,  510}, {360, 280}},
             {"P-LAB I/O Board & RTC",        {740, 495}, {380, 280}},
@@ -247,7 +248,7 @@ static const MachineConfig kMachinePresets[] = {
         {
             {"Apple 1 Screen",                 {10,  61},  {0,   0}},
             {"Uncle Bernie's GEN2 HGR Graphic Card", {624, 61},  {576, 420}},
-            {"P-LAB Graphic Card (TMS9918)",   {644, 81},  {528, 420}},
+            {"P-LAB Graphic Card (TMS9918)",   {644, 81},  {784, 612}},
             {"P-LAB Wi-Fi Modem",              {640, 495}, {340, 260}},
             {"P-LAB Terminal Card",            {10,  510}, {360, 280}},
         }, 5
@@ -1310,7 +1311,7 @@ void MainWindow_ImGui::renderGraphicsCardWindow()
 
 void MainWindow_ImGui::renderTMS9918Window()
 {
-    const float defPs = kVideoCardDefaultPixelScale;
+    const float defPs = kTMS9918DefaultPixelScale;
     const float winW = TMS9918::kScreenWidth * defPs + 16.0f;
     const float winH = TMS9918::kScreenHeight * defPs + 36.0f;
     ImGui::SetNextWindowSize(ImVec2(winW, winH), ImGuiCond_FirstUseEver);
@@ -2174,7 +2175,7 @@ void MainWindow_ImGui::renderLoadTapeDialog()
 
 void MainWindow_ImGui::renderCassetteControlWindow()
 {
-    ImGui::SetNextWindowSize(ImVec2(460, 280), ImGuiCond_FirstUseEver);
+    ImGui::SetNextWindowSize(ImVec2(460, 320), ImGuiCond_FirstUseEver);
     if (ImGui::Begin("Woz ACI Cassette Control", &showCassetteControl)) {
         auto renderStateBadge = [](const char* label, const ImVec4& color) {
             ImGui::TextColored(color, "%s", label);
@@ -2215,6 +2216,20 @@ void MainWindow_ImGui::renderCassetteControlWindow()
             emulation->copySnapshot(uiSnapshot);
             setStatusMessage("Tape ejected", 2.0f);
         }
+
+        ImGui::Spacing();
+        ImGui::BeginDisabled(!uiSnapshot.cassetteLoadedTape);
+        if (ImGui::Button("Play", ImVec2(-1, 0))) {
+            emulation->playTape();
+            emulation->copySnapshot(uiSnapshot);
+            setStatusMessage("Tape playback started", 2.0f);
+        }
+        if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled) && !uiSnapshot.cassetteLoadedTape) {
+            ImGui::SetTooltip("Load a tape first.");
+        } else if (ImGui::IsItemHovered()) {
+            ImGui::SetTooltip("Start reading from the beginning of the inserted tape (virtual tape runs with the CPU).");
+        }
+        ImGui::EndDisabled();
 
         ImGui::Spacing();
         ImGui::Text("Recorder");

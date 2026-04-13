@@ -30,6 +30,8 @@ public:
     bool saveTape(const std::string& path) const;
 
     void rewindTape();
+    /// Start loaded-tape playback from the beginning (virtual tape advances with CPU cycles).
+    void playTape();
     void ejectTape();
     void clearRecordedTape();
 
