@@ -34,9 +34,8 @@ referenced in `README.md`.
 - [ ] **Wendell Sander's Star Trek (SPACWR)** — Extended 32 K Star Trek port by the Fairchild DRAM lead, demoed to Jobs autumn 1976. Hunt for the listing (Applefritter, Computer History Museum archives). If located, package as a `.txt` bootable on a new "Apple-1 + Sander 32 K" preset. Modification: VMA signal 2.2 kΩ || 100 pF (Sander's fix) — simulate by enabling the upper RAM bank cleanly (no authenticity quirks needed since we don't model bus analog behaviour).
 
 - [ ] **Sokoban follow-ups**
-    1. ~~Display the moves counter in HGR/TMS variants~~ — done. Both variants now render an `MV:NNN` HUD directly into the graphics surface (HGR framebuffer top-left, TMS name-table row 0), refreshed after every move/undo so delta redraws don't stomp it.
-    2. Re-add Microban #43 and #44 to the text/TMS variants if we later shave ~60 B of code (currently dropped to fit the 3 200 B stock-4K budget; both are preserved in the HGR 72-level set).
-    3. **Swap the HGR HUD/title font for a proper "fat stroke" HGR font.** Current `hud_font` in `software/hgr/HGR6_Sokoban.asm` is a hand-rolled 5×7 thin font: horizontal bars render white, vertical 1-pixel strokes render in NTSC artifact colour (violet on even columns, green on odd), so digits and letters shimmer and shift hue depending on their byte column. Michael Pohoreski's [apple2_hgr_font_tutorial](https://github.com/Michaelangel007/apple2_hgr_font_tutorial) documents a 7×8 fat-stroke HGR font (1 byte per scanline, 8 bytes per glyph — same storage budget as today) whose strokes are ≥ 2 pixels wide so every stroke reads as white. Plan: pull in the digit + `M V : S O K B A N P R E L space L` subset (~24 glyphs × 8 B = 192 B, matches current layout), verify licensing, and drop it in as a direct replacement — no logic change, just a font-data swap. Same idea could carry the same subset into a 16×16 big-title font for a more impressive splash screen.
+    1. Re-add Microban #43 and #44 to the text/TMS variants if we later shave ~60 B of code (currently dropped to fit the 3 200 B stock-4K budget; both are preserved in the HGR 72-level set).
+    2. **Swap the HGR HUD/title font for a proper "fat stroke" HGR font.** Current `hud_font` in `software/hgr/HGR6_Sokoban.asm` is a hand-rolled 5×7 thin font: horizontal bars render white, vertical 1-pixel strokes render in NTSC artifact colour (violet on even columns, green on odd), so digits and letters shimmer and shift hue depending on their byte column. Michael Pohoreski's [apple2_hgr_font_tutorial](https://github.com/Michaelangel007/apple2_hgr_font_tutorial) documents a 7×8 fat-stroke HGR font (1 byte per scanline, 8 bytes per glyph — same storage budget as today) whose strokes are ≥ 2 pixels wide so every stroke reads as white. Plan: pull in the digit + `M V : S O K B A N P R E L space L` subset (~24 glyphs × 8 B = 192 B, matches current layout), verify licensing, and drop it in as a direct replacement — no logic change, just a font-data swap. Same idea could carry the same subset into a 16×16 big-title font for a more impressive splash screen.
 
 ## SID converter
 
@@ -50,16 +49,10 @@ referenced in `README.md`.
 
 - [ ] **Authentic CRT shift-register streaming** — Extension of the existing CRT scanline + phosphor overlay (`Screen_ImGui::drawCRTOverlay`): add an opt-in mode that simulates the 1976 Signetics 2519 timing — characters land at ~60 char/s instead of instantly, the hardware scroll visibly shifts the whole buffer one line at a time, and the display stays frozen during CPU bursts exactly like the original. Pair with the bare-4 K preset for a full-fidelity 1976 experience.
 
-- [ ] **In-app Apple-1 Hardware Reference** — New *Help > Hardware Reference* window housing the architectural digest (memory map, historical + modern peripherals, card addresses, assembly toolchain cheatsheet). Good home for the ecosystem notes currently scattered between `CLAUDE.md` and commit messages. Pure documentation; no emulation change.
-
 ## Technical debt & code quality (audit April 2026)
 
 ### Performance
-- [ ] **Snapshot RAM copy 64 KB @ 60 Hz** — `publishSnapshotLocked()` now writes directly into `latestSnapshot` (no stack copy, no per-frame alloc), but the 64 KB memcpy itself still runs every frame while the CPU holds `stateMutex`. Further reduction would need page-level dirty tracking in `Memory::memWrite`. Likely not worth the complexity — the cost is now ~1 memcpy, no alloc churn.
-
-### Thread safety
-- [ ] **Implicit lock order `stateMutex` → `keyMutex`** (`processQueuedKeysLocked()`) is undocumented; future inversion could deadlock. → Annotate `REQUIRES(stateMutex)` or merge into a single thread-safe queue.
-- [ ] **`Screen_ImGui::instance` is a non-atomic static pointer** (`Screen_ImGui.cpp:21`) — race on concurrent access. → `std::atomic<Screen_ImGui*>` or pass `this` via opaque context.
+- [ ] **Snapshot RAM copy 64 KB @ 60 Hz** — `publishSnapshotLocked()` writes directly into `latestSnapshot` (no stack copy, no per-frame alloc) and skips the TMS9918 16 KB memcpy when the card is unplugged; the full 64 KB RAM `memcpy` still runs every frame under `stateMutex`. Further reduction would need page-level dirty tracking in `Memory::memWrite`. Likely not worth the complexity.
 
 ### Architecture
 - [ ] **`Memory` is a god object** — 15+ peripheral `unique_ptr`s, matching enable flags, inline I/O dispatch. → Extract a `PeripheralBus` with dynamic registry; `Memory` only manages the address space.
@@ -71,11 +64,7 @@ referenced in `README.md`.
 - [ ] **Sockets not RAII-wrapped** — an exception between `socket()` and `close()` leaks the FD. → `SocketHandle` class with destructor.
 
 ### Code quality
-- [ ] **`sscanf` without validation** (`MemoryViewer_ImGui.cpp:71,79,240`) — vulnerable to malformed input. → `std::from_chars`.
-- [ ] **Archaic `typedef`** (`Memory.h:37-38`) — `typedef uint8_t quint8` → `using quint8 = uint8_t`.
 - [ ] **Direct `std::cout`/`cerr`** — no level filtering, can't redirect to the debug UI. → Minimal `Logger` interface, dependency-injected.
-- [ ] **`ma_device` allocated via `new`** (`AudioDevice.cpp:154`). → `std::unique_ptr<ma_device>` with custom deleter.
-- [ ] **`stringBuffer` without `reserve()`** (`MicroSD.cpp`) — repeated reallocations during MCU response accumulation. → `stringBuffer.reserve(256)` in the constructor.
 
 ### Tests
 - [ ] **No unit tests** — refactors risk regressing 6502 emulation silently. → Klaus Dormann's 6502 functional tests as the first smoke test; add GTest or Catch2.

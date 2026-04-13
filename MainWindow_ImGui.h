@@ -57,6 +57,7 @@ private:
     bool showMemoryViewer = false;
     bool showDebugger = false;
     bool showAbout = false;
+    bool showHardwareReference = false;
     bool showScreenConfig = false;
     bool showMemoryConfig = false;
     bool showLoadDialog = false;
@@ -112,6 +113,7 @@ private:
     
     // Dialog functions
     void renderAboutDialog();
+    void renderHardwareReferenceWindow();
     void renderDebugDialog();
     void renderScreenConfigDialog();
     void renderMemoryConfigDialog();

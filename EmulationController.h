@@ -57,6 +57,10 @@ struct EmulationSnapshot
     A1IO_RTC::Snapshot a1ioRtc;
 };
 
+// Mutex ordering: when both are needed, always lock stateMutex before keyMutex.
+// processQueuedKeysLocked() requires stateMutex to be held; it then takes keyMutex.
+// Never acquire stateMutex while holding keyMutex (e.g. do not call into the
+// controller from a path that holds keyMutex), or the emulation thread can deadlock.
 class EmulationController
 {
 public:

@@ -538,6 +538,7 @@ bool EmulationController::isA1IO_RTCEnabled() const
     return memory->isA1IO_RTCEnabled();
 }
 
+// Caller must hold stateMutex (see lock-order note on class EmulationController).
 void EmulationController::processQueuedKeysLocked()
 {
     std::queue<char> localKeys;

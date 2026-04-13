@@ -18,13 +18,20 @@ constexpr int kCharmapVisibleCols = 5;
 
 }
 
-Screen_ImGui* Screen_ImGui::instance = nullptr;
+std::atomic<Screen_ImGui*> Screen_ImGui::instance{nullptr};
 
 Screen_ImGui::Screen_ImGui()
 {
-    instance = this;
+    instance.store(this, std::memory_order_release);
     loadCharmap();
     initializeScreen();
+}
+
+Screen_ImGui::~Screen_ImGui()
+{
+    Screen_ImGui* expected = this;
+    (void)instance.compare_exchange_strong(
+        expected, nullptr, std::memory_order_acq_rel, std::memory_order_relaxed);
 }
 
 ImVec2 Screen_ImGui::computeApple1CellDimensions(ImVec2 charSize)
@@ -532,5 +539,6 @@ void Screen_ImGui::newLineUnlocked()
 
 void Screen_ImGui::displayCallback(char c)
 {
-    if (instance) instance->writeChar(c);
+    Screen_ImGui* s = instance.load(std::memory_order_acquire);
+    if (s) s->writeChar(c);
 }

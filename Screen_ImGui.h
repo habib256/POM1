@@ -1,6 +1,7 @@
 #ifndef SCREEN_IMGUI_H
 #define SCREEN_IMGUI_H
 
+#include <atomic>
 #include <vector>
 #include <string>
 #include <mutex>
@@ -22,7 +23,7 @@ public:
     };
 
     Screen_ImGui();
-    ~Screen_ImGui() = default;
+    ~Screen_ImGui();
 
     void render();
     void writeChar(char c);
@@ -32,7 +33,7 @@ public:
 
     // Callback statique pour le CPU
     static void displayCallback(char c);
-    static Screen_ImGui* instance;
+    static std::atomic<Screen_ImGui*> instance;
 
     /** Colonnes / lignes de la grille texte Apple 1 */
     static constexpr int kApple1Columns = 40;

@@ -357,16 +357,17 @@ void MemoryViewer_ImGui::searchMemory()
     quint8 pattern[128];
     int patternLen = 0;
     const char* p = searchBuffer;
-    while (*p && patternLen < 128) {
-        while (*p == ' ') p++;
-        if (!*p) break;
-        unsigned int val;
-        if (sscanf(p, "%2X", &val) != 1) break;
-        pattern[patternLen++] = (quint8)val;
-        // advance past the parsed hex chars
-        if (p[0] && p[1] && p[1] != ' ') p += 2;
-        else if (p[0]) p += 1;
-        while (*p && *p != ' ') p++;
+    const char* const bufEnd = searchBuffer + std::strlen(searchBuffer);
+    while (p < bufEnd && patternLen < 128) {
+        while (p < bufEnd && *p == ' ') p++;
+        if (p >= bufEnd) break;
+        unsigned val = 0;
+        const char* chunkEnd = p + 2 < bufEnd ? p + 2 : bufEnd;
+        auto [ptr, ec] = std::from_chars(p, chunkEnd, val, 16);
+        if (ec != std::errc{} || ptr == p) break;
+        pattern[patternLen++] = static_cast<quint8>(val);
+        p = ptr;
+        while (p < bufEnd && *p != ' ') p++;
     }
     if (patternLen == 0) return;
 
