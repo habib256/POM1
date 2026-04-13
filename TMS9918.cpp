@@ -51,6 +51,7 @@ void TMS9918::reset()
     vramAddr        = 0;
     readAheadBuffer = 0;
     frameCycleCounter = 0;
+    snapshotDirty   = true;
 }
 
 // --------------------------------------------------------------------------
@@ -62,6 +63,7 @@ void TMS9918::writeData(uint8_t value)
     vram[vramAddr & 0x3FFF] = value;
     readAheadBuffer = value;
     vramAddr = (vramAddr + 1) & 0x3FFF;
+    snapshotDirty = true;
 }
 
 uint8_t TMS9918::readData()
@@ -105,6 +107,7 @@ void TMS9918::writeControl(uint8_t value)
         // Write to register
         uint8_t regNum = value & 0x07;
         regs[regNum] = controlLatch;
+        snapshotDirty = true;             // register change alters rendering
     }
     // cmd == 0xC0 is undefined on TMS9918, ignored
 }
@@ -133,11 +136,17 @@ void TMS9918::advanceCycles(int cycles)
 // --------------------------------------------------------------------------
 // Snapshot
 // --------------------------------------------------------------------------
-void TMS9918::copySnapshot(Snapshot& out) const
+void TMS9918::copySnapshot(Snapshot& out)
 {
-    std::memcpy(out.vram.data(), vram.data(), vram.size());
-    std::memcpy(out.regs.data(), regs.data(), regs.size());
+    // Status register changes on every frame tick, so always mirror it.
     out.statusReg = statusReg;
+    // VRAM (16 KB) and register file only move when the card is actually
+    // touched by software — a dirty flag avoids a 16 KB memcpy on idle frames.
+    if (snapshotDirty) {
+        std::memcpy(out.vram.data(), vram.data(), vram.size());
+        std::memcpy(out.regs.data(), regs.data(), regs.size());
+        snapshotDirty = false;
+    }
 }
 
 // --------------------------------------------------------------------------

@@ -44,7 +44,7 @@ public:
 
     void reset();
 
-    void copySnapshot(Snapshot& out) const;
+    void copySnapshot(Snapshot& out);
 
     // Render from snapshot data (called on UI thread)
     static void render(ImDrawList* drawList, ImVec2 origin, float pixelScale,
@@ -74,6 +74,7 @@ private:
     uint16_t vramAddr       = 0;
     uint8_t readAheadBuffer = 0;
     int frameCycleCounter   = 0;
+    bool snapshotDirty = true;        // skip the 16 KB VRAM + regs copy when nothing changed since last publish
 
     static constexpr int kCyclesPerFrame = POM1_CPU_CYCLES_PER_FRAME_1X_60HZ;
 };

@@ -275,6 +275,18 @@ void EmulationController::setTerminalSpeed(int charsPerSecond)
     publishSnapshotLocked();
 }
 
+void EmulationController::setPresetRamKB(int kb)
+{
+    std::lock_guard<std::mutex> lock(stateMutex);
+    memory->setPresetRamKB(kb);
+}
+
+int EmulationController::getOutOfRangeAccessCount() const
+{
+    std::lock_guard<std::mutex> lock(stateMutex);
+    return memory->getOutOfRangeAccessCount();
+}
+
 bool EmulationController::reloadBasic(std::string& error)
 {
     std::lock_guard<std::mutex> lock(stateMutex);
@@ -542,9 +554,15 @@ void EmulationController::processQueuedKeysLocked()
 
 void EmulationController::publishSnapshotLocked()
 {
-    EmulationSnapshot snapshot;
+    // Publish directly into latestSnapshot: its memory vector is already sized
+    // to 64 KB, so a std::memcpy into the existing allocation replaces the old
+    // pattern (stack-construct a fresh EmulationSnapshot + move-assign), which
+    // allocated and freed 64 KB on every frame.
+    std::lock_guard<std::mutex> snapshotLock(snapshotMutex);
+    EmulationSnapshot& snapshot = latestSnapshot;
+
     const quint8* memPtr = memory->getMemoryPointer();
-    std::copy(memPtr, memPtr + 0x10000, snapshot.memory.begin());
+    std::memcpy(snapshot.memory.data(), memPtr, 0x10000);
     snapshot.programCounter = cpu->getProgramCounter();
     snapshot.accumulator = cpu->getAccumulator();
     snapshot.xRegister = cpu->getXRegister();
@@ -568,9 +586,13 @@ void EmulationController::publishSnapshotLocked()
     snapshot.cassetteRecordedTransitionCount = cassette.getRecordedTransitionCount();
     snapshot.cassetteLoadedTapePath = cassette.getLoadedTapePath();
 
-    memory->getTMS9918().copySnapshot(snapshot.tms9918);
     snapshot.sidEnabled = memory->isSIDEnabled();
     snapshot.microSDEnabled = memory->isMicroSDEnabled();
+    // TMS9918: skip entirely when the card is unplugged — UI doesn't render it,
+    // so stale snapshot contents are harmless and we save a 16 KB memcpy.
+    if (memory->isTMS9918Enabled()) {
+        memory->getTMS9918().copySnapshot(snapshot.tms9918);
+    }
     snapshot.wifiModemEnabled = memory->isWiFiModemEnabled();
     if (snapshot.wifiModemEnabled) {
         memory->getWiFiModem().copySnapshot(snapshot.wifiModem);
@@ -583,9 +605,6 @@ void EmulationController::publishSnapshotLocked()
     if (snapshot.a1ioRtcEnabled) {
         memory->getA1IO_RTC().copySnapshot(snapshot.a1ioRtc);
     }
-
-    std::lock_guard<std::mutex> snapshotLock(snapshotMutex);
-    latestSnapshot = std::move(snapshot);
 }
 
 void EmulationController::runEmulationSlice(double elapsedSeconds)

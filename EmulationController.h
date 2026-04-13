@@ -85,6 +85,8 @@ public:
     void setWriteInRom(bool enabled);
     bool getWriteInRom() const;
     void setTerminalSpeed(int charsPerSecond);
+    void setPresetRamKB(int kb);
+    int getOutOfRangeAccessCount() const;
     bool reloadBasic(std::string& error);
     bool reloadApplesoftLite(std::string& error);
     bool reloadWozMonitor(std::string& error);

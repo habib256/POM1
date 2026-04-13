@@ -3,6 +3,7 @@
 #include <sstream>
 #include <iomanip>
 #include <algorithm>
+#include <charconv>
 #include <cstring>
 
 MemoryViewer_ImGui::MemoryViewer_ImGui(Memory* mem)
@@ -65,19 +66,25 @@ void MemoryViewer_ImGui::renderControls()
     ImGui::SameLine();
 
     static char addressBuffer[8] = "0000";
+    auto parseHexAddress = [](const char* buf, unsigned& out) -> bool {
+        const char* end = buf + std::strlen(buf);
+        auto [p, ec] = std::from_chars(buf, end, out, 16);
+        return ec == std::errc{} && p == end;
+    };
+
     ImGui::SetNextItemWidth(80);
     if (ImGui::InputText("##Address", addressBuffer, sizeof(addressBuffer), ImGuiInputTextFlags_CharsHexadecimal | ImGuiInputTextFlags_CharsUppercase)) {
-        int addr = 0;
-        if (sscanf(addressBuffer, "%X", &addr) == 1) {
-            jumpToAddress(addr);
+        unsigned addr = 0;
+        if (parseHexAddress(addressBuffer, addr)) {
+            jumpToAddress(static_cast<int>(addr));
         }
     }
 
     ImGui::SameLine();
     if (ImGui::Button("Go##gotoAddr")) {
-        int addr = 0;
-        if (sscanf(addressBuffer, "%X", &addr) == 1) {
-            jumpToAddress(addr);
+        unsigned addr = 0;
+        if (parseHexAddress(addressBuffer, addr)) {
+            jumpToAddress(static_cast<int>(addr));
         }
     }
 
@@ -236,9 +243,13 @@ void MemoryViewer_ImGui::renderHexView()
                     ImGuiInputTextFlags_EnterReturnsTrue |
                     ImGuiInputTextFlags_AutoSelectAll);
                 if (enterPressed) {
-                    quint8 newValue = 0;
-                    if (sscanf(editBuffer, "%hhX", &newValue) == 1) {
-                        applyEdit(static_cast<quint16>(editAddress), newValue);
+                    unsigned parsed = 0;
+                    const char* begin = editBuffer;
+                    const char* end   = editBuffer + std::strlen(editBuffer);
+                    auto [p, ec] = std::from_chars(begin, end, parsed, 16);
+                    if (ec == std::errc{} && p == end && parsed <= 0xFF) {
+                        applyEdit(static_cast<quint16>(editAddress),
+                                  static_cast<quint8>(parsed));
                     }
                     editAddress = -1;
                 } else if (ImGui::IsKeyPressed(ImGuiKey_Escape) ||
@@ -532,6 +543,11 @@ ImVec4 MemoryViewer_ImGui::getColorForAddress(int address)
         return ImVec4(1.0f, 0.59f, 0.20f, 1.0f);    // VIA 65C22 I/O - dark orange
     if (wifiModemEnabled && address >= 0xB000 && address <= 0xB003)
         return ImVec4(0.0f, 0.78f, 0.78f, 1.0f);    // ACIA 65C51 I/O - teal
+    // Loaded ROM overlays (e.g. Applesoft Lite $6000-$7FFF) before generic RAM bands
+    for (const auto& rom : romRegions) {
+        if (address >= rom.start && address <= rom.end)
+            return ImVec4(1.0f, 1.0f, 0.31f, 1.0f); // ROM - yellow
+    }
     if (address <= 0x9FFF)
         return ImVec4(0.31f, 0.78f, 0.31f, 1.0f);   // User RAM - green
     if (address <= 0xBFFF)
@@ -546,10 +562,5 @@ ImVec4 MemoryViewer_ImGui::getColorForAddress(int address)
         return ImVec4(1.0f, 0.70f, 0.31f, 1.0f);    // ACI ROM - amber
     if (address >= 0xD000 && address <= 0xD0FF)
         return ImVec4(1.0f, 0.31f, 0.31f, 1.0f);    // I/O (KBD/DSP) - red
-    // Dynamic ROM regions (BASIC, Applesoft Lite, Krusader, Woz Monitor, etc.)
-    for (const auto& rom : romRegions) {
-        if (address >= rom.start && address <= rom.end)
-            return ImVec4(1.0f, 1.0f, 0.31f, 1.0f); // ROM - yellow
-    }
     return ImVec4(0.4f, 0.4f, 0.4f, 1.0f);          // Unused
 }

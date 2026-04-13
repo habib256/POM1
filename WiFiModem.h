@@ -12,7 +12,9 @@
 #include "POM1Build.h"
 
 #include <array>
+#include <chrono>
 #include <cstdint>
+#include <future>
 #include <mutex>
 #include <string>
 
@@ -106,6 +108,7 @@ private:
     uint8_t commandReg = 0;   // command register
     uint8_t controlReg = 0;   // control register
     bool    rdrfFlag   = false; // Receiver Data Register Full
+    bool    overrunFlag = false; // set when enqueueRxByte drops a byte; cleared on STATUS read
 
     // --- Receive circular buffer ---
     static constexpr size_t RX_BUFFER_SIZE = 4096;
@@ -134,7 +137,7 @@ private:
     static constexpr int ESCAPE_GUARD_CYCLES = POM1_CPU_CLOCK_HZ;
 
     // --- Connection state ---
-    enum class ConnState { IDLE, CONNECTING, CONNECTED };
+    enum class ConnState { IDLE, RESOLVING, CONNECTING, CONNECTED };
     ConnState connState = ConnState::IDLE;
     std::string remoteHost;
     uint16_t    remotePort = 0;
@@ -143,6 +146,27 @@ private:
 
     // --- Network socket ---
     SocketFd socketFd = kInvalidSocket;
+
+#if !POM1_IS_WASM
+public:
+    // Async DNS resolution: getaddrinfo() can block for seconds on slow
+    // networks, and must not stall the emulation thread (which holds
+    // stateMutex via Memory::memWrite). We resolve on a detached worker and
+    // poll the future from updateConnection().
+    struct ResolvedAddr {
+        bool ok = false;
+        int family = 0;
+        int socktype = 0;
+        int protocol = 0;
+        sockaddr_storage addr{};
+        socklen_t addrlen = 0;
+    };
+private:
+    std::future<ResolvedAddr> dnsFuture;
+    std::chrono::steady_clock::time_point connectStartTime{};
+    static constexpr std::chrono::seconds kDnsTimeout{5};
+    static constexpr std::chrono::seconds kTotalConnectTimeout{10};
+#endif
 
     // --- TELNET IAC state ---
     enum class TelnetState { NORMAL, IAC, WILL_WONT_DO_DONT, SB, SB_IAC };

@@ -1070,6 +1070,8 @@ void MainWindow_ImGui::renderStatusBar()
         }
         std::ostringstream ramOss;
         ramOss << "| RAM: " << presetRamKB << " KB";
+        const int oorCount = emulation->getOutOfRangeAccessCount();
+        if (oorCount > 0) ramOss << " (OOR:" << oorCount << ")";
         std::string ramText = ramOss.str();
 
         std::string tapeText;
@@ -2395,8 +2397,11 @@ void MainWindow_ImGui::applyMachineConfig(int presetIndex)
     loadedPrograms.clear();
     loadedRoms.clear();
 
-    // RAM size for this preset (display only — the emulator always has 64 KB address space)
+    // RAM size for this preset. The address space stays 64 KB; the value is
+    // forwarded to Memory so out-of-range accesses past ramKB*1024 can be
+    // flagged in the status bar without blocking the program.
     presetRamKB = cfg.ramKB;
+    emulation->setPresetRamKB(cfg.ramKB);
 
     // Hardware flags (enabled = plugged in, show = window open)
     graphicsCardEnabled = cfg.graphicsCard;

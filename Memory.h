@@ -26,6 +26,7 @@
 #include <string>
 #include <cstdint>
 #include <memory>
+#include <unordered_set>
 #include "AudioDevice.h"
 #include "CassetteDevice.h"
 #include "SID.h"
@@ -36,9 +37,8 @@ class A1IO_RTC;
 #include "CFFA1.h"
 #include "MicroSD.h"
 
-// Remplacer quint8 par uint8_t et quint16 par uint16_t
-typedef uint8_t quint8;
-typedef uint16_t quint16;
+using quint8  = uint8_t;
+using quint16 = uint16_t;
 
 class Memory
 {
@@ -52,6 +52,14 @@ public:
     void setWriteInRom(bool b);
     bool getWriteInRom(void);
     int getRamSizeKB(void) const { return ramSize; }
+
+    // Preset RAM size (KB). Address space stays 64 KB; this drives the
+    // out-of-range warning for user programs that reach beyond the preset's
+    // physical RAM. Default 64 (no warnings).
+    void setPresetRamKB(int kb);
+    int getPresetRamKB(void) const { return presetRamKB; }
+    int getOutOfRangeAccessCount(void) const { return oorAccessCount; }
+    void resetOutOfRangeAccessCount(void);
 
     // Load Memory from file
     int loadROM(const char* filename, quint16 startAddress, size_t maxSize, const char* label);
@@ -159,6 +167,10 @@ private :
 
 
     int ramSize; // in kilobytes
+    int presetRamKB = 64;             // user-visible RAM ceiling for OOR warnings
+    int oorAccessCount = 0;
+    std::unordered_set<uint32_t> oorWarned;  // key = (addr<<1)|isWrite; capped at 64
+    void checkOutOfRangeAccess(quint16 address, bool isWrite);
     bool writeInRom;
     std::string lastError;
     std::unique_ptr<CassetteDevice> cassetteDevice;

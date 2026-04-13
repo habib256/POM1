@@ -8,6 +8,8 @@
 #include "WiFiModem.h"
 #include <cstring>
 #include <iostream>
+#include <memory>
+#include <thread>
 
 #if !POM1_IS_WASM && defined(_WIN32)
   #pragma comment(lib, "ws2_32.lib")
@@ -49,6 +51,7 @@ void WiFiModem::reset()
     commandReg = 0;
     controlReg = 0x1E; // default: 9600 baud, 8N1
     rdrfFlag   = false;
+    overrunFlag = false;
 
     rxHead = rxTail = rxCount = 0;
 
@@ -100,10 +103,15 @@ uint8_t WiFiModem::readRegister(uint16_t address)
         status |= ST_TDRE;
         // RDRF: set when data register has a byte
         if (rdrfFlag) status |= ST_RDRF;
+        // OVERRUN: set when enqueueRxByte dropped a byte because the rx
+        // circular buffer was full. Per W65C51N, the flag latches until the
+        // status register is read.
+        if (overrunFlag) status |= ST_OVERRUN;
         // DCD: active low — bit 5 = 0 when connected, 1 when disconnected
         if (connState != ConnState::CONNECTED) status |= ST_DCD;
         // DSR: always active (low) — modem is always ready
         // (bit 6 = 0)
+        overrunFlag = false;
         return status;
     }
     case REG_COMMAND:
@@ -158,7 +166,9 @@ void WiFiModem::advanceCycles(int cycles)
     pollCycleAccum += cycles;
     if (pollCycleAccum >= POM1_CPU_CYCLES_PER_MILLISECOND) {
         pollCycleAccum = 0;
-        if (connState == ConnState::CONNECTED || connState == ConnState::CONNECTING) {
+        if (connState == ConnState::CONNECTED ||
+            connState == ConnState::CONNECTING ||
+            connState == ConnState::RESOLVING) {
             updateConnection();
         }
     }
@@ -193,7 +203,10 @@ void WiFiModem::advanceCycles(int cycles)
 
 void WiFiModem::enqueueRxByte(uint8_t byte)
 {
-    if (rxCount >= RX_BUFFER_SIZE) return; // drop if full
+    if (rxCount >= RX_BUFFER_SIZE) {
+        overrunFlag = true;
+        return;
+    }
     rxBuffer[rxHead] = byte;
     rxHead = (rxHead + 1) % RX_BUFFER_SIZE;
     rxCount++;
@@ -428,30 +441,14 @@ void WiFiModem::sendToSocket(uint8_t byte)
     bytesSentCount++;
 }
 
-void WiFiModem::connectToHost(const std::string& host, uint16_t port)
+// Try to start a non-blocking connect() on an already-resolved address.
+// Returns true if the connect initiated successfully (socketFd live + connState=CONNECTING).
+// On failure, leaves socketFd invalid and emits NO CARRIER to the caller's discretion.
+static bool beginConnectFromResolved(WiFiModem::ResolvedAddr& res, SocketFd& socketFd)
 {
-    // Resolve hostname
-    struct addrinfo hints{}, *result = nullptr;
-    hints.ai_family = AF_INET;
-    hints.ai_socktype = SOCK_STREAM;
+    socketFd = socket(res.family, res.socktype, res.protocol);
+    if (socketFd == kInvalidSocket) return false;
 
-    std::string portStr = std::to_string(port);
-    int rc = getaddrinfo(host.c_str(), portStr.c_str(), &hints, &result);
-    if (rc != 0 || !result) {
-        if (result) freeaddrinfo(result);
-        enqueueRxString("\r\nNO CARRIER\r\n");
-        return;
-    }
-
-    // Create socket
-    socketFd = socket(result->ai_family, result->ai_socktype, result->ai_protocol);
-    if (socketFd == kInvalidSocket) {
-        freeaddrinfo(result);
-        enqueueRxString("\r\nNO CARRIER\r\n");
-        return;
-    }
-
-    // Set non-blocking
 #ifdef _WIN32
     u_long nbMode = 1;
     ioctlsocket(socketFd, FIONBIO, &nbMode);
@@ -460,30 +457,84 @@ void WiFiModem::connectToHost(const std::string& host, uint16_t port)
     fcntl(socketFd, F_SETFL, flags | O_NONBLOCK);
 #endif
 
-    // Initiate connection
-    rc = ::connect(socketFd, result->ai_addr, static_cast<int>(result->ai_addrlen));
-    freeaddrinfo(result);
-
+    int rc = ::connect(socketFd,
+                       reinterpret_cast<sockaddr*>(&res.addr),
+                       static_cast<int>(res.addrlen));
 #ifdef _WIN32
     if (rc == SOCKET_ERROR && WSAGetLastError() != WSAEWOULDBLOCK) {
         closesocket(socketFd);
         socketFd = kInvalidSocket;
-        enqueueRxString("\r\nNO CARRIER\r\n");
-        return;
+        return false;
     }
 #else
     if (rc < 0 && errno != EINPROGRESS) {
         close(socketFd);
         socketFd = kInvalidSocket;
-        enqueueRxString("\r\nNO CARRIER\r\n");
-        return;
+        return false;
     }
 #endif
+    return true;
+}
 
-    connState = ConnState::CONNECTING;
+void WiFiModem::connectToHost(const std::string& host, uint16_t port)
+{
+    connectStartTime = std::chrono::steady_clock::now();
     telnetState = TelnetState::NORMAL;
+    std::string portStr = std::to_string(port);
 
-    std::cout << "WiFi Modem: connecting to " << host << ":" << port << std::endl;
+    // Fast path: the host is already a dotted-quad IPv4 address. AI_NUMERICHOST
+    // bypasses the resolver entirely, so no worker thread is needed.
+    {
+        struct addrinfo hints{}, *result = nullptr;
+        hints.ai_family = AF_INET;
+        hints.ai_socktype = SOCK_STREAM;
+        hints.ai_flags = AI_NUMERICHOST;
+        if (getaddrinfo(host.c_str(), portStr.c_str(), &hints, &result) == 0 && result) {
+            ResolvedAddr res;
+            res.ok = true;
+            res.family   = result->ai_family;
+            res.socktype = result->ai_socktype;
+            res.protocol = result->ai_protocol;
+            res.addrlen  = static_cast<socklen_t>(result->ai_addrlen);
+            std::memcpy(&res.addr, result->ai_addr, result->ai_addrlen);
+            freeaddrinfo(result);
+            if (beginConnectFromResolved(res, socketFd)) {
+                connState = ConnState::CONNECTING;
+                std::cout << "WiFi Modem: connecting to " << host << ":" << port << std::endl;
+            } else {
+                enqueueRxString("\r\nNO CARRIER\r\n");
+            }
+            return;
+        }
+    }
+
+    // Slow path: hostname needs DNS. Offload getaddrinfo() to a detached thread
+    // and poll the future from updateConnection(). The promise is held via
+    // shared_ptr so the modem can abandon the future on timeout without
+    // blocking — the thread completes on its own schedule and its result is
+    // simply discarded.
+    auto promise = std::make_shared<std::promise<ResolvedAddr>>();
+    dnsFuture = promise->get_future();
+    std::string hostCopy = host;
+    std::thread([hostCopy, portStr, promise]() mutable {
+        struct addrinfo h{}, *r = nullptr;
+        h.ai_family = AF_INET;
+        h.ai_socktype = SOCK_STREAM;
+        ResolvedAddr out;
+        if (getaddrinfo(hostCopy.c_str(), portStr.c_str(), &h, &r) == 0 && r) {
+            out.ok       = true;
+            out.family   = r->ai_family;
+            out.socktype = r->ai_socktype;
+            out.protocol = r->ai_protocol;
+            out.addrlen  = static_cast<socklen_t>(r->ai_addrlen);
+            std::memcpy(&out.addr, r->ai_addr, r->ai_addrlen);
+        }
+        if (r) freeaddrinfo(r);
+        promise->set_value(out);
+    }).detach();
+
+    connState = ConnState::RESOLVING;
+    std::cout << "WiFi Modem: resolving " << host << "..." << std::endl;
 }
 
 void WiFiModem::disconnect()
@@ -496,12 +547,66 @@ void WiFiModem::disconnect()
 #endif
         socketFd = kInvalidSocket;
     }
+    // Abandon any pending DNS resolution. The detached worker completes on its
+    // own and the shared promise is destroyed with its result discarded.
+    dnsFuture = {};
     connState = ConnState::IDLE;
     telnetState = TelnetState::NORMAL;
 }
 
 void WiFiModem::updateConnection()
 {
+    // Async DNS resolution in progress: poll the worker's future and respect
+    // the DNS timeout. Runs before the socketFd check because no socket
+    // exists yet while we're resolving.
+    if (connState == ConnState::RESOLVING) {
+        const auto now = std::chrono::steady_clock::now();
+        if (now - connectStartTime > kDnsTimeout) {
+            // Abandon the future — the detached worker still holds the
+            // promise's shared state and will set_value() on its own.
+            dnsFuture = {};
+            connState = ConnState::IDLE;
+            enqueueRxString("\r\nNO CARRIER\r\n");
+            mode = ModemMode::COMMAND;
+            std::cout << "WiFi Modem: DNS timeout for " << remoteHost << std::endl;
+            return;
+        }
+        if (dnsFuture.valid() &&
+            dnsFuture.wait_for(std::chrono::seconds(0)) == std::future_status::ready)
+        {
+            ResolvedAddr res = dnsFuture.get();
+            if (!res.ok) {
+                connState = ConnState::IDLE;
+                enqueueRxString("\r\nNO CARRIER\r\n");
+                mode = ModemMode::COMMAND;
+                return;
+            }
+            if (!beginConnectFromResolved(res, socketFd)) {
+                connState = ConnState::IDLE;
+                enqueueRxString("\r\nNO CARRIER\r\n");
+                mode = ModemMode::COMMAND;
+                return;
+            }
+            connState = ConnState::CONNECTING;
+            std::cout << "WiFi Modem: DNS resolved, connecting to "
+                      << remoteHost << ":" << remotePort << std::endl;
+            // fall through so we can immediately poll the new socket below
+        } else {
+            return;
+        }
+    }
+
+    // Overall connect budget: DNS + TCP handshake must complete within 10 s.
+    if (connState == ConnState::CONNECTING &&
+        std::chrono::steady_clock::now() - connectStartTime > kTotalConnectTimeout) {
+        disconnect();
+        enqueueRxString("\r\nNO CARRIER\r\n");
+        mode = ModemMode::COMMAND;
+        std::cout << "WiFi Modem: connect timeout for "
+                  << remoteHost << ":" << remotePort << std::endl;
+        return;
+    }
+
     if (socketFd == kInvalidSocket) return;
 
 #ifdef _WIN32

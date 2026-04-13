@@ -21,6 +21,7 @@
 #include "POM1Build.h"
 
 #include <cstdint>
+#include <memory>
 #include <mutex>
 #include <vector>
 
@@ -62,10 +63,12 @@ private:
 
     std::vector<AudioSource*> sources;
     mutable std::mutex sourcesMutex;
+    std::vector<float> tmpBuf;
     bool audioAvailable = false;
 
 #if !POM1_IS_WASM
-    ma_device* device = nullptr;
+    struct MaDeviceDeleter { void operator()(ma_device* d) const noexcept; };
+    std::unique_ptr<ma_device, MaDeviceDeleter> device;
     static void audioDataCallback(ma_device* pDevice, void* pOutput,
                                   const void* pInput, uint32_t frameCount);
 #endif

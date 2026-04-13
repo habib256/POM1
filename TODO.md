@@ -19,7 +19,7 @@ referenced in `README.md`.
 
 ### Machine presets
 
-- [ ] **Stock Apple-1 4 KB preset** — The existing *"Woz Apple 1 (1976)"* preset (`MainWindow_ImGui.cpp:192`) is 8 KB RAM with all cards disabled, matching a "stock + ACI card" configuration. Add a tighter **"Apple-1 bare 4 K"** preset for the absolute original (July 1976, pre-ACI): `ramKB = 4`, all flags off, Integer BASIC. This is the authenticity target for the newly-relocated text Sokoban (runs in `$0280-$0FFF` with STATE_GRID at `$0F00`). Bonus: once added, wire `Memory` to return `$FF` on reads above `ramSize*1024` and drop writes, with a flagged one-line warning in the debug panel — so out-of-bounds access is visible instead of silently working.
+- [ ] **Full bare-4K enforcement (optional)** — The *"Apple-1 bare 4 K (July 1976)"* preset exists and triggers an OOR warning (`Memory::checkOutOfRangeAccess`, status-bar `OOR:N` indicator) when a program touches RAM past the preset's `ramKB*1024`. A stricter "hardware-accurate" mode would actually enforce bounds (reads return `$FF`, writes dropped) instead of just warning. Only worth doing if a specific authenticity-test program needs it — today the warning alone is enough to flag out-of-RAM accesses.
 
 ## Apple-1 ecosystem — software & loaders
 
@@ -55,13 +55,9 @@ referenced in `README.md`.
 ## Technical debt & code quality (audit April 2026)
 
 ### Performance
-- [ ] **Snapshot RAM copy 64 KB @ 60 Hz** (`EmulationController::publishSnapshotLocked()`) — full RAM copy under `stateMutex` every frame, ≈ 3.8 MB/s wasted. → Double-buffer + atomic pointer swap, or page-level dirty tracking.
-- [ ] **`float tmpBuf[512]`** in `AudioDevice.cpp` — too small; audio callbacks can request up to 2048 frames and the excess is silently truncated. → Pre-allocated member buffer sized dynamically.
-- [ ] **TMS9918 VRAM 16 KB copied per frame** (`TMS9918::copySnapshot`) even when the card is disabled. → `vramDirty` flag, copy only on change.
-- [ ] **`std::vector<quint8>(0x10000)` allocated per frame** for `EmulationSnapshot` in `MainWindow_ImGui.cpp`. → Persistent pre-allocated snapshot, swap pointers, publish only CPU registers + RAM pointer.
+- [ ] **Snapshot RAM copy 64 KB @ 60 Hz** — `publishSnapshotLocked()` now writes directly into `latestSnapshot` (no stack copy, no per-frame alloc), but the 64 KB memcpy itself still runs every frame while the CPU holds `stateMutex`. Further reduction would need page-level dirty tracking in `Memory::memWrite`. Likely not worth the complexity — the cost is now ~1 memcpy, no alloc churn.
 
 ### Thread safety
-- [ ] **Race on `runRequested`** (`EmulationController.cpp:565`) between `.load()` and `cpu->run()`: a `stopCpu()` call can be missed. → Capture state under mutex before running the slice.
 - [ ] **Implicit lock order `stateMutex` → `keyMutex`** (`processQueuedKeysLocked()`) is undocumented; future inversion could deadlock. → Annotate `REQUIRES(stateMutex)` or merge into a single thread-safe queue.
 - [ ] **`Screen_ImGui::instance` is a non-atomic static pointer** (`Screen_ImGui.cpp:21`) — race on concurrent access. → `std::atomic<Screen_ImGui*>` or pass `this` via opaque context.
 
@@ -72,8 +68,6 @@ referenced in `README.md`.
 - [ ] **Static `Screen_ImGui::displayCallback`** couples UI to emulation. → `DisplayDevice` interface injected into `Memory`; `Screen_ImGui` implements it.
 
 ### Network & peripherals
-- [ ] **`connectToHost()` with no timeout** (`WiFiModem.cpp`) — slow networks can block the emulation thread indefinitely. → Non-blocking socket + `select()`/`poll()` with explicit timeout.
-- [ ] **Silent ACIA Rx overrun** (`WiFiModem.cpp`, `TerminalCard.cpp`) — overflowed bytes are dropped; the real ACIA's overrun bit is not emulated. → Set the Receiver Overrun flag in STATUS.
 - [ ] **Sockets not RAII-wrapped** — an exception between `socket()` and `close()` leaks the FD. → `SocketHandle` class with destructor.
 
 ### Code quality

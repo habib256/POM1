@@ -94,6 +94,37 @@ Memory::Memory()
     initMemory();
 }
 
+void Memory::setPresetRamKB(int kb)
+{
+    if (kb <= 0) kb = 64;
+    if (kb > 64) kb = 64;
+    presetRamKB = kb;
+    resetOutOfRangeAccessCount();
+}
+
+void Memory::resetOutOfRangeAccessCount(void)
+{
+    oorAccessCount = 0;
+    oorWarned.clear();
+}
+
+void Memory::checkOutOfRangeAccess(quint16 address, bool isWrite)
+{
+    // User-RAM ceiling: warn when a program touches RAM past the preset budget.
+    // Skip ROM/IO ($8000+) — those are handled earlier in the dispatch.
+    if (presetRamKB >= 64) return;
+    const quint16 ceiling = static_cast<quint16>(presetRamKB) * 1024;
+    if (address < ceiling || address >= 0x8000) return;
+    ++oorAccessCount;
+    if (oorWarned.size() >= 64) return;
+    uint32_t key = (static_cast<uint32_t>(address) << 1) | (isWrite ? 1u : 0u);
+    if (oorWarned.insert(key).second) {
+        std::cout << "[Memory] Out-of-range " << (isWrite ? "write to" : "read from")
+                  << " $" << std::hex << std::uppercase << address << std::dec
+                  << " (preset RAM: " << presetRamKB << " KB)" << std::endl;
+    }
+}
+
 void Memory::initMemory(){
     ramSize = 64;  // Ouaahh 64Kbytes !
     writeInRom = true;
@@ -512,7 +543,8 @@ quint8 Memory::memRead(quint16 address)
         quint8 result = keyReady ? 0x80 : 0x00;
         return result;
     }
-    
+
+    checkOutOfRangeAccess(address, false);
     return mem[address];
 }
 
@@ -597,6 +629,7 @@ void Memory::memWrite(quint16 address, quint8 value)
         }
     }
 
+    checkOutOfRangeAccess(address, true);
     mem[address] = value;
 }
 

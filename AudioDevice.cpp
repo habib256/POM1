@@ -33,23 +33,16 @@ void AudioDevice::mixSources(float* output, int frameCount)
 {
     std::memset(output, 0, static_cast<size_t>(frameCount) * sizeof(float));
 
-    float tmpBuf[512];
-
     std::lock_guard<std::mutex> lock(sourcesMutex);
+    if (static_cast<int>(tmpBuf.size()) < frameCount)
+        tmpBuf.resize(static_cast<size_t>(frameCount));
+
     for (AudioSource* src : sources) {
-        int remaining = frameCount;
-        int offset = 0;
-        while (remaining > 0) {
-            int chunk = std::min(remaining, 512);
-            src->fillAudioBuffer(tmpBuf, chunk);
-            for (int i = 0; i < chunk; ++i)
-                output[offset + i] += tmpBuf[i];
-            offset += chunk;
-            remaining -= chunk;
-        }
+        src->fillAudioBuffer(tmpBuf.data(), frameCount);
+        for (int i = 0; i < frameCount; ++i)
+            output[i] += tmpBuf[i];
     }
 
-    // Clamp to [-1, 1]
     for (int i = 0; i < frameCount; ++i)
         output[i] = std::max(-1.0f, std::min(1.0f, output[i]));
 }
@@ -151,22 +144,24 @@ bool AudioDevice::initAudio()
     config.dataCallback = &AudioDevice::audioDataCallback;
     config.pUserData = this;
 
-    device = new ma_device();
-    if (ma_device_init(nullptr, &config, device) != MA_SUCCESS) {
-        delete device;
-        device = nullptr;
+    // ma_device_init / _start / _uninit are paired APIs, so we manage the raw
+    // pointer manually during init and only hand it to unique_ptr once the
+    // device is fully live. That keeps the deleter's invariant intact
+    // (MaDeviceDeleter always calls ma_device_uninit + delete).
+    ma_device* raw = new ma_device();
+    if (ma_device_init(nullptr, &config, raw) != MA_SUCCESS) {
+        delete raw;
+        audioAvailable = false;
+        return false;
+    }
+    if (ma_device_start(raw) != MA_SUCCESS) {
+        ma_device_uninit(raw);
+        delete raw;
         audioAvailable = false;
         return false;
     }
 
-    if (ma_device_start(device) != MA_SUCCESS) {
-        ma_device_uninit(device);
-        delete device;
-        device = nullptr;
-        audioAvailable = false;
-        return false;
-    }
-
+    device.reset(raw);
     audioAvailable = true;
     return true;
 #endif
@@ -185,11 +180,16 @@ void AudioDevice::shutdownAudio()
     );
     g_wasmAudioDevice = nullptr;
 #else
-    if (device != nullptr) {
-        ma_device_uninit(device);
-        delete device;
-        device = nullptr;
-    }
+    device.reset();
 #endif
     audioAvailable = false;
 }
+
+#if !POM1_IS_WASM
+void AudioDevice::MaDeviceDeleter::operator()(ma_device* d) const noexcept
+{
+    if (!d) return;
+    ma_device_uninit(d);
+    delete d;
+}
+#endif

@@ -19,6 +19,7 @@ namespace fs = std::filesystem;
 
 MicroSD::MicroSD()
 {
+    stringBuffer.reserve(256);
     reset();
 }
 
