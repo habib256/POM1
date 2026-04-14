@@ -46,24 +46,20 @@ public:
 
     void copySnapshot(Snapshot& out);
 
-    // Render from snapshot data (called on UI thread)
-    static void render(ImDrawList* drawList, ImVec2 origin, float pixelScale,
-                       const Snapshot& snap);
+    // Render from snapshot into a 256×192 RGBA pixel buffer (kScreenWidth × kScreenHeight).
+    // IM_COL32 byte order matches GL_RGBA / GL_UNSIGNED_BYTE, so the buffer can be uploaded
+    // directly to an OpenGL texture for nearest-neighbour display at arbitrary window sizes.
+    static void renderToBuffer(uint32_t* pixels, const Snapshot& snap);
 
     static const ImU32 kPalette[16];
 
 private:
-    // Display mode helpers (operate on snapshot)
-    static void renderGraphicsI  (ImDrawList* dl, ImVec2 org, float ps, const Snapshot& s, ImU32 backdrop);
-    static void renderGraphicsII (ImDrawList* dl, ImVec2 org, float ps, const Snapshot& s, ImU32 backdrop);
-    static void renderText       (ImDrawList* dl, ImVec2 org, float ps, const Snapshot& s, ImU32 backdrop);
-    static void renderMulticolor (ImDrawList* dl, ImVec2 org, float ps, const Snapshot& s, ImU32 backdrop);
-    static void renderSprites    (ImDrawList* dl, ImVec2 org, float ps, const Snapshot& s);
-
-    static inline void drawPixel(ImDrawList* dl, float x, float y, float ps, ImU32 col)
-    {
-        dl->AddRectFilled(ImVec2(x, y), ImVec2(x + ps, y + ps), col);
-    }
+    // Display mode helpers — write into pixel buffer
+    static void renderGraphicsI  (uint32_t* pixels, const Snapshot& s, ImU32 backdrop);
+    static void renderGraphicsII (uint32_t* pixels, const Snapshot& s, ImU32 backdrop);
+    static void renderText       (uint32_t* pixels, const Snapshot& s, ImU32 backdrop);
+    static void renderMulticolor (uint32_t* pixels, const Snapshot& s, ImU32 backdrop);
+    static void renderSprites    (uint32_t* pixels, const Snapshot& s);
 
 private:
     std::array<uint8_t, 0x4000> vram{};

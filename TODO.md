@@ -45,6 +45,8 @@ referenced in `README.md`.
 
 - [ ] **Some IRQ-driven tunes still fail** — Players using computed or indirect ISR addresses (e.g. BMX Kidz) escape the LDA/LDX/LDY + STA/STX/STY pattern matcher.
 
+- [ ] **Réimplémentation complète du SID (cycle-accurate)** — Se baser sur la référence *cycle-accurate* `libsidplayfp` (C++), standard actuel (fork de sidplay2) optimisé pour la précision absolue, utilisé par la majorité des lecteurs audiophiles sous macOS et Linux. Repo: <https://github.com/libsidplayfp/libsidplayfp>. **Intérêt**: architecture C++ très modulaire, modélisation précise des “bugs” matériels du 6581 (ex: bug de filtre, DAC routing exploité pour jouer des samples PCM). **Point d’attention**: architecture potentiellement lourde si l’objectif est juste un header rapide à inclure, mais c’est la voie nécessaire pour un son authentique.
+
 ## Visuals & UX
 
 - [ ] **Native file dialog** — File loading/saving still uses the in-app browser instead of system file pickers.

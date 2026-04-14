@@ -150,60 +150,54 @@ void TMS9918::copySnapshot(Snapshot& out)
 }
 
 // --------------------------------------------------------------------------
-// Top-level render (dispatches to mode-specific renderer)
+// Top-level render — fills a kScreenWidth×kScreenHeight RGBA pixel buffer.
+// IM_COL32 byte order on little-endian is [R,G,B,A] which matches
+// GL_RGBA/GL_UNSIGNED_BYTE, so the buffer can be uploaded to an OpenGL
+// texture and displayed with nearest-neighbour filtering at any window size.
 // --------------------------------------------------------------------------
-void TMS9918::render(ImDrawList* drawList, ImVec2 origin, float pixelScale,
-                     const Snapshot& snap)
+void TMS9918::renderToBuffer(uint32_t* pixels, const Snapshot& snap)
 {
-    // Backdrop color = low nibble of register 7
     uint8_t backdropIdx = snap.regs[7] & 0x0F;
     ImU32 backdrop = (backdropIdx == 0) ? kPalette[1] : kPalette[backdropIdx];
 
-    // Fill entire area with backdrop
-    ImVec2 size(kScreenWidth * pixelScale, kScreenHeight * pixelScale);
-    drawList->AddRectFilled(origin, ImVec2(origin.x + size.x, origin.y + size.y), backdrop);
+    for (int i = 0; i < kScreenWidth * kScreenHeight; i++) pixels[i] = backdrop;
 
-    // Determine display mode from M1, M2, M3 bits
+    bool blank = (snap.regs[1] & 0x40) == 0;
+    if (blank) return;
+
     bool m1 = (snap.regs[1] & 0x10) != 0; // R1 bit 4
     bool m2 = (snap.regs[1] & 0x08) != 0; // R1 bit 3
     bool m3 = (snap.regs[0] & 0x02) != 0; // R0 bit 1
 
-    // Check blank bit — if screen is blanked, show only backdrop
-    bool blank = (snap.regs[1] & 0x40) == 0;
-    if (blank) return;
-
     if (!m1 && !m2 && !m3) {
-        renderGraphicsI(drawList, origin, pixelScale, snap, backdrop);
+        renderGraphicsI(pixels, snap, backdrop);
     } else if (!m1 && !m2 && m3) {
-        renderGraphicsII(drawList, origin, pixelScale, snap, backdrop);
+        renderGraphicsII(pixels, snap, backdrop);
     } else if (m1 && !m2 && !m3) {
-        renderText(drawList, origin, pixelScale, snap, backdrop);
+        renderText(pixels, snap, backdrop);
     } else if (!m1 && m2 && !m3) {
-        renderMulticolor(drawList, origin, pixelScale, snap, backdrop);
+        renderMulticolor(pixels, snap, backdrop);
     }
-    // else: undefined mode combination — show backdrop only
+    // else: undefined mode combination — backdrop only
 
-    // Render sprites (all modes except Text have sprites)
     if (!m1) {
-        renderSprites(drawList, origin, pixelScale, snap);
+        renderSprites(pixels, snap);
     }
 }
 
 // --------------------------------------------------------------------------
 // Graphics Mode I — 32x24 tiles, 256 patterns, 32 color groups
 // --------------------------------------------------------------------------
-void TMS9918::renderGraphicsI(ImDrawList* dl, ImVec2 org, float ps,
-                               const Snapshot& s, ImU32 backdrop)
+void TMS9918::renderGraphicsI(uint32_t* pixels, const Snapshot& s, ImU32 backdrop)
 {
-    uint16_t nameBase    = (uint16_t)(s.regs[2] & 0x0F) << 10;  // x 0x400
-    uint16_t colorBase   = (uint16_t) s.regs[3] << 6;            // x 0x40
-    uint16_t patternBase = (uint16_t)(s.regs[4] & 0x07) << 11;  // x 0x800
+    uint16_t nameBase    = (uint16_t)(s.regs[2] & 0x0F) << 10;
+    uint16_t colorBase   = (uint16_t) s.regs[3] << 6;
+    uint16_t patternBase = (uint16_t)(s.regs[4] & 0x07) << 11;
 
     for (int row = 0; row < 24; row++) {
         for (int col = 0; col < 32; col++) {
             uint8_t name = s.vram[(nameBase + row * 32 + col) & 0x3FFF];
 
-            // Color: 1 entry per 8 consecutive patterns
             uint8_t colorByte = s.vram[(colorBase + (name >> 3)) & 0x3FFF];
             uint8_t fgIdx = (colorByte >> 4) & 0x0F;
             uint8_t bgIdx =  colorByte       & 0x0F;
@@ -214,14 +208,11 @@ void TMS9918::renderGraphicsI(ImDrawList* dl, ImVec2 org, float ps,
 
             for (int line = 0; line < 8; line++) {
                 uint8_t pat = s.vram[(patAddr + line) & 0x3FFF];
-                float py = org.y + (row * 8 + line) * ps;
-
+                int py = row * 8 + line;
                 for (int bit = 0; bit < 8; bit++) {
                     ImU32 color = (pat & (0x80 >> bit)) ? fg : bg;
-                    if (color != backdrop) {
-                        float px = org.x + (col * 8 + bit) * ps;
-                        drawPixel(dl, px, py, ps, color);
-                    }
+                    if (color != backdrop)
+                        pixels[py * kScreenWidth + (col * 8 + bit)] = color;
                 }
             }
         }
@@ -231,54 +222,40 @@ void TMS9918::renderGraphicsI(ImDrawList* dl, ImVec2 org, float ps,
 // --------------------------------------------------------------------------
 // Graphics Mode II — full bitmap, per-row colors
 // --------------------------------------------------------------------------
-void TMS9918::renderGraphicsII(ImDrawList* dl, ImVec2 org, float ps,
-                                const Snapshot& s, ImU32 backdrop)
+void TMS9918::renderGraphicsII(uint32_t* pixels, const Snapshot& s, ImU32 backdrop)
 {
     uint16_t nameBase = (uint16_t)(s.regs[2] & 0x0F) << 10;
 
-    // In Graphics II, R3 and R4 use AND-masking for 3-section addressing.
-    // The 13-bit character offset (0-6143) is AND'd with a mask derived from
-    // the register. Bits above the masked field pass through, lower bits pass through.
-    //
-    // Color table: R3 bit 7 selects base (0x0000 or 0x2000).
-    //   R3 bits 6-0 mask bits 12-6 of the offset; bits 5-0 pass through.
-    uint16_t colorBase = (uint16_t)(s.regs[3] & 0x80) << 6;   // 0x0000 or 0x2000
-    uint16_t colorMask = ((uint16_t)(s.regs[3] & 0x7F) << 6) | 0x003F;
-
-    // Pattern table: R4 bit 2 selects base (0x0000 or 0x2000).
-    //   R4 bits 1-0 mask bits 12-11 of the offset; bits 10-0 pass through.
-    uint16_t patternBase = (uint16_t)(s.regs[4] & 0x04) << 11; // 0x0000 or 0x2000
+    uint16_t colorBase   = (uint16_t)(s.regs[3] & 0x80) << 6;
+    uint16_t colorMask   = ((uint16_t)(s.regs[3] & 0x7F) << 6) | 0x003F;
+    uint16_t patternBase = (uint16_t)(s.regs[4] & 0x04) << 11;
     uint16_t patternMask = ((uint16_t)(s.regs[4] & 0x03) << 11) | 0x07FF;
 
     for (int row = 0; row < 24; row++) {
-        int section = row / 8; // 0, 1, or 2
+        int section = row / 8;
         for (int col = 0; col < 32; col++) {
             uint8_t name = s.vram[(nameBase + row * 32 + col) & 0x3FFF];
 
-            // 13-bit offset within the section: (section * 256 + name) * 8
             uint16_t charOffset = (uint16_t)(section * 256 + name) * 8;
 
             for (int line = 0; line < 8; line++) {
-                uint16_t offset = charOffset + line;
+                uint16_t offset   = charOffset + line;
                 uint16_t patAddr  = patternBase + (offset & patternMask);
                 uint16_t colAddr  = colorBase   + (offset & colorMask);
 
-                uint8_t pat       = s.vram[patAddr  & 0x3FFF];
-                uint8_t colorByte = s.vram[colAddr  & 0x3FFF];
+                uint8_t pat       = s.vram[patAddr & 0x3FFF];
+                uint8_t colorByte = s.vram[colAddr & 0x3FFF];
 
                 uint8_t fgIdx = (colorByte >> 4) & 0x0F;
                 uint8_t bgIdx =  colorByte       & 0x0F;
                 ImU32 fg = (fgIdx == 0) ? backdrop : kPalette[fgIdx];
                 ImU32 bg = (bgIdx == 0) ? backdrop : kPalette[bgIdx];
 
-                float py = org.y + (row * 8 + line) * ps;
-
+                int py = row * 8 + line;
                 for (int bit = 0; bit < 8; bit++) {
                     ImU32 color = (pat & (0x80 >> bit)) ? fg : bg;
-                    if (color != backdrop) {
-                        float px = org.x + (col * 8 + bit) * ps;
-                        drawPixel(dl, px, py, ps, color);
-                    }
+                    if (color != backdrop)
+                        pixels[py * kScreenWidth + (col * 8 + bit)] = color;
                 }
             }
         }
@@ -288,8 +265,7 @@ void TMS9918::renderGraphicsII(ImDrawList* dl, ImVec2 org, float ps,
 // --------------------------------------------------------------------------
 // Text Mode — 40x24 characters, 6-pixel wide glyphs
 // --------------------------------------------------------------------------
-void TMS9918::renderText(ImDrawList* dl, ImVec2 org, float ps,
-                          const Snapshot& s, ImU32 backdrop)
+void TMS9918::renderText(uint32_t* pixels, const Snapshot& s, ImU32 backdrop)
 {
     uint16_t nameBase    = (uint16_t)(s.regs[2] & 0x0F) << 10;
     uint16_t patternBase = (uint16_t)(s.regs[4] & 0x07) << 11;
@@ -297,9 +273,7 @@ void TMS9918::renderText(ImDrawList* dl, ImVec2 org, float ps,
     uint8_t fgIdx = (s.regs[7] >> 4) & 0x0F;
     ImU32 fg = (fgIdx == 0) ? backdrop : kPalette[fgIdx];
 
-    // Text mode: 240 pixels wide centered in 256 (8-pixel border on each side)
-    float borderX = 8.0f * ps;
-
+    // Text mode: 240 pixels wide, centered in 256 (8-pixel border each side)
     for (int row = 0; row < 24; row++) {
         for (int col = 0; col < 40; col++) {
             uint8_t name = s.vram[(nameBase + row * 40 + col) & 0x3FFF];
@@ -307,14 +281,10 @@ void TMS9918::renderText(ImDrawList* dl, ImVec2 org, float ps,
 
             for (int line = 0; line < 8; line++) {
                 uint8_t pat = s.vram[(patAddr + line) & 0x3FFF];
-                float py = org.y + (row * 8 + line) * ps;
-
-                // Only top 6 bits are used in text mode
+                int py = row * 8 + line;
                 for (int bit = 0; bit < 6; bit++) {
-                    if (pat & (0x80 >> bit)) {
-                        float px = org.x + borderX + (col * 6 + bit) * ps;
-                        drawPixel(dl, px, py, ps, fg);
-                    }
+                    if (pat & (0x80 >> bit))
+                        pixels[py * kScreenWidth + (8 + col * 6 + bit)] = fg;
                 }
             }
         }
@@ -324,8 +294,7 @@ void TMS9918::renderText(ImDrawList* dl, ImVec2 org, float ps,
 // --------------------------------------------------------------------------
 // Multicolor Mode — 64x48 color blocks
 // --------------------------------------------------------------------------
-void TMS9918::renderMulticolor(ImDrawList* dl, ImVec2 org, float ps,
-                                const Snapshot& s, ImU32 backdrop)
+void TMS9918::renderMulticolor(uint32_t* pixels, const Snapshot& s, ImU32 backdrop)
 {
     uint16_t nameBase    = (uint16_t)(s.regs[2] & 0x0F) << 10;
     uint16_t patternBase = (uint16_t)(s.regs[4] & 0x07) << 11;
@@ -334,8 +303,6 @@ void TMS9918::renderMulticolor(ImDrawList* dl, ImVec2 org, float ps,
         for (int col = 0; col < 32; col++) {
             uint8_t name = s.vram[(nameBase + row * 32 + col) & 0x3FFF];
 
-            // In multicolor, each pattern has 8 bytes, each byte = 2 color nibbles
-            // The row within the pattern selects which pair of 2 lines
             int patRow = (row % 4) * 2;
             uint16_t patAddr = (patternBase + (uint16_t)name * 8 + patRow) & 0x3FFF;
 
@@ -344,27 +311,20 @@ void TMS9918::renderMulticolor(ImDrawList* dl, ImVec2 org, float ps,
                 uint8_t leftIdx  = (colorByte >> 4) & 0x0F;
                 uint8_t rightIdx =  colorByte       & 0x0F;
 
-                float py = org.y + (row * 8 + subRow * 4) * ps;
+                int baseY = row * 8 + subRow * 4;
+                int baseX = col * 8;
 
-                // Left 4x4 block
                 if (leftIdx != 0) {
                     ImU32 lc = kPalette[leftIdx];
-                    for (int dy = 0; dy < 4; dy++) {
-                        for (int dx = 0; dx < 4; dx++) {
-                            drawPixel(dl, org.x + (col * 8 + dx) * ps,
-                                      py + dy * ps, ps, lc);
-                        }
-                    }
+                    for (int dy = 0; dy < 4; dy++)
+                        for (int dx = 0; dx < 4; dx++)
+                            pixels[(baseY + dy) * kScreenWidth + (baseX + dx)] = lc;
                 }
-                // Right 4x4 block
                 if (rightIdx != 0) {
                     ImU32 rc = kPalette[rightIdx];
-                    for (int dy = 0; dy < 4; dy++) {
-                        for (int dx = 0; dx < 4; dx++) {
-                            drawPixel(dl, org.x + (col * 8 + 4 + dx) * ps,
-                                      py + dy * ps, ps, rc);
-                        }
-                    }
+                    for (int dy = 0; dy < 4; dy++)
+                        for (int dx = 0; dx < 4; dx++)
+                            pixels[(baseY + dy) * kScreenWidth + (baseX + 4 + dx)] = rc;
                 }
             }
         }
@@ -374,105 +334,76 @@ void TMS9918::renderMulticolor(ImDrawList* dl, ImVec2 org, float ps,
 // --------------------------------------------------------------------------
 // Sprites — up to 32, rendered with priority (sprite 0 on top)
 // --------------------------------------------------------------------------
-void TMS9918::renderSprites(ImDrawList* dl, ImVec2 org, float ps,
-                             const Snapshot& s)
+void TMS9918::renderSprites(uint32_t* pixels, const Snapshot& s)
 {
-    uint16_t sprAttrBase    = (uint16_t)(s.regs[5] & 0x7F) << 7;  // x 0x80
-    uint16_t sprPatternBase = (uint16_t)(s.regs[6] & 0x07) << 11; // x 0x800
+    uint16_t sprAttrBase    = (uint16_t)(s.regs[5] & 0x7F) << 7;
+    uint16_t sprPatternBase = (uint16_t)(s.regs[6] & 0x07) << 11;
 
-    bool doubleSize = (s.regs[1] & 0x02) != 0; // 16x16 if set
-    bool magnified  = (s.regs[1] & 0x01) != 0; // 2x magnification
+    bool doubleSize = (s.regs[1] & 0x02) != 0;
+    bool magnified  = (s.regs[1] & 0x01) != 0;
 
     int sprPixelSize = doubleSize ? 16 : 8;
     int mag = magnified ? 2 : 1;
-    int totalPixels = sprPixelSize * mag;
 
-    // Collect visible sprites (max 32, stop at Y=0xD0)
-    struct SpriteInfo {
-        int y, x;
-        uint8_t name;
-        uint8_t color;
-    };
+    struct SpriteInfo { int y, x; uint8_t name, color; };
     SpriteInfo sprites[32];
     int spriteCount = 0;
 
     for (int i = 0; i < 32; i++) {
         uint16_t attrAddr = (sprAttrBase + i * 4) & 0x3FFF;
         uint8_t yRaw = s.vram[attrAddr];
+        if (yRaw == 0xD0) break;
 
-        if (yRaw == 0xD0) break; // end-of-sprites marker
-
-        // TMS9918 Y is stored as displayed_Y - 1.  Values > 0xD0 wrap above the
-        // screen (allows sprites to scroll off the top edge smoothly).
         int y = (int)yRaw - ((yRaw > 0xD0) ? 256 : 0) + 1;
         int x = s.vram[(attrAddr + 1) & 0x3FFF];
         uint8_t name  = s.vram[(attrAddr + 2) & 0x3FFF];
         uint8_t color = s.vram[(attrAddr + 3) & 0x3FFF];
-
-        // Early clock bit shifts sprite left by 32 pixels
         if (color & 0x80) x -= 32;
-
         sprites[spriteCount++] = { y, x, name, (uint8_t)(color & 0x0F) };
     }
 
-    // Render sprites in reverse order (sprite 0 has highest priority, drawn last)
     for (int i = spriteCount - 1; i >= 0; i--) {
         const auto& spr = sprites[i];
-        if (spr.color == 0) continue; // transparent sprite
-
+        if (spr.color == 0) continue;
         ImU32 sprColor = kPalette[spr.color];
 
         uint8_t patName = spr.name;
-        if (doubleSize) patName &= 0xFC; // 16x16: lower 2 bits ignored
+        if (doubleSize) patName &= 0xFC;
 
         for (int row = 0; row < sprPixelSize; row++) {
             int screenY = spr.y + row * mag;
 
-            // Determine which pattern byte to read
-            uint8_t patByte;
             if (!doubleSize) {
-                // 8x8 sprite
                 uint16_t addr = (sprPatternBase + (uint16_t)patName * 8 + row) & 0x3FFF;
-                patByte = s.vram[addr];
-
+                uint8_t patByte = s.vram[addr];
                 for (int bit = 0; bit < 8; bit++) {
                     if (!(patByte & (0x80 >> bit))) continue;
                     int screenX = spr.x + bit * mag;
-
                     for (int my = 0; my < mag; my++) {
                         int sy = screenY + my;
                         if (sy < 0 || sy >= kScreenHeight) continue;
                         for (int mx = 0; mx < mag; mx++) {
                             int sx = screenX + mx;
                             if (sx < 0 || sx >= kScreenWidth) continue;
-                            drawPixel(dl, org.x + sx * ps, org.y + sy * ps, ps, sprColor);
+                            pixels[sy * kScreenWidth + sx] = sprColor;
                         }
                     }
                 }
             } else {
-                // 16x16 sprite: 4 quadrants stored as 4 consecutive 8-byte patterns
-                // Layout: top-left (name), bottom-left (name+1), top-right (name+2), bottom-right (name+3)
                 for (int half = 0; half < 2; half++) {
-                    int quadrant;
-                    if (row < 8) {
-                        quadrant = half * 2;      // top-left or top-right
-                    } else {
-                        quadrant = half * 2 + 1;  // bottom-left or bottom-right
-                    }
+                    int quadrant = (row < 8) ? half * 2 : half * 2 + 1;
                     uint16_t addr = (sprPatternBase + (uint16_t)(patName + quadrant) * 8 + (row % 8)) & 0x3FFF;
-                    patByte = s.vram[addr];
-
+                    uint8_t patByte = s.vram[addr];
                     for (int bit = 0; bit < 8; bit++) {
                         if (!(patByte & (0x80 >> bit))) continue;
                         int screenX = spr.x + (half * 8 + bit) * mag;
-
                         for (int my = 0; my < mag; my++) {
                             int sy = screenY + my;
                             if (sy < 0 || sy >= kScreenHeight) continue;
                             for (int mx = 0; mx < mag; mx++) {
                                 int sx = screenX + mx;
                                 if (sx < 0 || sx >= kScreenWidth) continue;
-                                drawPixel(dl, org.x + sx * ps, org.y + sy * ps, ps, sprColor);
+                                pixels[sy * kScreenWidth + sx] = sprColor;
                             }
                         }
                     }

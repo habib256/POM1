@@ -70,6 +70,8 @@ private:
     bool graphicsCardEnabled = false;
     bool showTMS9918 = false;
     bool tms9918Enabled = false;
+    GLuint tms9918Texture = 0;
+    std::array<uint32_t, TMS9918::kScreenWidth * TMS9918::kScreenHeight> tms9918PixelBuf{};
     bool sidEnabled = false;
     bool microSDEnabled = true;
     bool cffa1Enabled = false;

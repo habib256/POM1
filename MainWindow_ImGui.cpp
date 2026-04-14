@@ -321,6 +321,10 @@ void MainWindow_ImGui::createPom1()
 void MainWindow_ImGui::destroyPom1()
 {
     // Les unique_ptr se détruisent automatiquement
+    if (tms9918Texture) {
+        glDeleteTextures(1, &tms9918Texture);
+        tms9918Texture = 0;
+    }
 }
 
 void MainWindow_ImGui::render()
@@ -1311,6 +1315,28 @@ void MainWindow_ImGui::renderGraphicsCardWindow()
 
 void MainWindow_ImGui::renderTMS9918Window()
 {
+    // Lazy texture creation — nearest-neighbour GL_NEAREST so every window size
+    // gives a clean pixel-art result without the integer-scale black borders.
+    if (tms9918Texture == 0) {
+        glGenTextures(1, &tms9918Texture);
+        glBindTexture(GL_TEXTURE_2D, tms9918Texture);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA,
+                     TMS9918::kScreenWidth, TMS9918::kScreenHeight,
+                     0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
+    }
+
+    // Render into the CPU pixel buffer then upload to the GPU texture.
+    // IM_COL32 byte order [R,G,B,A] on little-endian matches GL_RGBA/GL_UNSIGNED_BYTE.
+    TMS9918::renderToBuffer(tms9918PixelBuf.data(), uiSnapshot.tms9918);
+    glBindTexture(GL_TEXTURE_2D, tms9918Texture);
+    glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0,
+                    TMS9918::kScreenWidth, TMS9918::kScreenHeight,
+                    GL_RGBA, GL_UNSIGNED_BYTE, tms9918PixelBuf.data());
+
     const float defPs = kTMS9918DefaultPixelScale;
     const float winW = TMS9918::kScreenWidth * defPs + 16.0f;
     const float winH = TMS9918::kScreenHeight * defPs + 36.0f;
@@ -1322,27 +1348,18 @@ void MainWindow_ImGui::renderTMS9918Window()
     ImGui::PushStyleColor(ImGuiCol_WindowBg, IM_COL32(0, 0, 0, 255));
     if (ImGui::Begin("P-LAB Graphic Card (TMS9918)", &showTMS9918)) {
         ImVec2 avail = ImGui::GetContentRegionAvail();
-        float pixelScale = defPs;
-        ImVec2 size = layoutFitVideoViewport(avail, static_cast<float>(TMS9918::kScreenWidth),
-                                             static_cast<float>(TMS9918::kScreenHeight), pixelScale);
-        // Integer scale keeps 8x8 name-table glyphs sharp; fractional ps makes
-        // AddRectFilled edges overlap and text (HELP, title) look doubled/blurred.
-        pixelScale = std::max(kVideoCardMinPixelScale, std::floor(pixelScale));
-        size = ImVec2(std::floor(TMS9918::kScreenWidth * pixelScale),
-                      std::floor(TMS9918::kScreenHeight * pixelScale));
-        ImVec2 cursorPos = ImGui::GetCursorPos();
+        float ps = std::min(avail.x / TMS9918::kScreenWidth,
+                            avail.y / TMS9918::kScreenHeight);
+        ps = std::max(ps, kVideoCardMinPixelScale);
+        ImVec2 size(std::floor(TMS9918::kScreenWidth  * ps),
+                    std::floor(TMS9918::kScreenHeight * ps));
+
+        ImVec2 cursor = ImGui::GetCursorPos();
         ImGui::SetCursorPos(ImVec2(
-            cursorPos.x + std::max(0.0f, (avail.x - size.x) * 0.5f),
-            cursorPos.y + std::max(0.0f, (avail.y - size.y) * 0.5f)));
-        ImVec2 pos = ImGui::GetCursorScreenPos();
-        ImDrawList* drawList = ImGui::GetWindowDrawList();
+            cursor.x + std::max(0.0f, (avail.x - size.x) * 0.5f),
+            cursor.y + std::max(0.0f, (avail.y - size.y) * 0.5f)));
 
-        drawList->AddRectFilled(pos, ImVec2(pos.x + size.x, pos.y + size.y),
-                                IM_COL32(0, 0, 0, 255));
-
-        TMS9918::render(drawList, pos, pixelScale, uiSnapshot.tms9918);
-
-        ImGui::Dummy(size);
+        ImGui::Image((ImTextureID)(GLuint64)tms9918Texture, size);
     }
     ImGui::End();
     ImGui::PopStyleColor();
