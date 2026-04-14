@@ -1,11 +1,13 @@
 ; =============================================================
-; Horloge P-LAB (A1-IO / DS3231) — date + heure, 40 colonnes, 5 s
+; RtcClock.asm — horloge P-LAB texte (référence)
+; Même logique que l’ancienne RtcBigClock « une ligne » : mois anglais,
+; 40 colonnes, pause 5 s. Voir RtcBigClock.asm pour la version « BIG ».
 ; =============================================================
-; Ligne centrée : JJ/MM/AAAA HH:MM:SS  (19 car.) dans 40 colonnes
-; Année = 20xx (registre 5 = années depuis 2000, cf. A1IO_RTC)
-; Registres virtuels : 0=h 1=min 2=s 3=jour 4=mois 5=an (depuis 2000)
-;
-; VIA : $2000 IRB, $2001 IRA (bit7 STROBE, bits0-4 = n° reg)
+; Horloge P-LAB (A1-IO / DS3231) — month names (English), 40 cols, 5 s
+; =============================================================
+; Ligne centrée : JJ MONTH YYYY HH:MM:SS  (longueur variable)
+; Mois : JANUARY … DECEMBER (ASCII majuscules)
+; Année 20xx (registre 5 = années depuis 2000)
 ;
 ;   ca65 -o build/RtcBigClock.o software/a1io_rtc/RtcBigClock.asm
 ;   ld65 -C software/apple1_4k.cfg -o build/RtcBigClock.bin build/RtcBigClock.o
@@ -18,9 +20,6 @@ VIA_IRB = $2000
 VIA_IRA = $2001
 
 COLS    = 40
-; (40 - 19) / 2 = 10, reste 11 à droite
-PADL_DT = 10
-PADR_DT = 11
 
 .segment "ZEROPAGE"
 needreg:    .res 1
@@ -38,10 +37,11 @@ dig4:       .res 1
 dig5:       .res 1
 dig_dy0:    .res 1
 dig_dy1:    .res 1
-dig_mn0:    .res 1
-dig_mn1:    .res 1
 dig_yr0:    .res 1
 dig_yr1:    .res 1
+line_len:   .res 1
+padl:       .res 1
+padr:       .res 1
 str_lo:     .res 1
 str_hi:     .res 1
 delay_i:    .res 1
@@ -92,18 +92,18 @@ main:
         STA rtc_s
 @sok:   LDA rtc_day
         BEQ @dfx
-        CMP #$20                  ; > 31
+        CMP #$20
         BCC @dok
 @dfx:   LDA #$01
 @dok:   STA rtc_day
         LDA rtc_mon
         BEQ @mfx
-        CMP #$0D                  ; > 12
+        CMP #$0D
         BCC @mnok
 @mfx:   LDA #$01
 @mnok:  STA rtc_mon
         LDA rtc_yr
-        CMP #$64                  ; > 99
+        CMP #$64
         BCC @yok
         LDA #$00
 @yok:   STA rtc_yr
@@ -148,16 +148,6 @@ main:
         JSR clamp9
         STA dig_dy1
 
-        LDA rtc_mon
-        JSR div10
-        PHA
-        TXA
-        JSR clamp9
-        STA dig_mn0
-        PLA
-        JSR clamp9
-        STA dig_mn1
-
         LDA rtc_yr
         JSR div10
         PHA
@@ -197,29 +187,100 @@ print_sep40:
         LDA #$BD
         JMP echo_a_x40
 
-; --- JJ/MM/AAAA HH:MM:SS sur 40 colonnes ---
-print_datetime40:
-        LDX #PADL_DT
-        LDA #$A0
-@lp:    JSR ECHO
+; line_len = 2 + 1 + Lmonth + 1 + 4 + 1 + 8 = 17 + Lmonth
+compute_line_len:
+        LDX rtc_mon
         DEX
-        BNE @lp
+        BMI @def
+        CPX #$0C
+        BCS @def
+        LDA month_lens,X
+        CLC
+        ADC #$11              ; +17
+        STA line_len
+        RTS
+@def:   LDA #$11
+        CLC
+        ADC #$07              ; January = 7
+        STA line_len
+        RTS
+
+compute_padding:
+        JSR compute_line_len
+        LDA #COLS
+        SEC
+        SBC line_len
+        PHA
+        LSR A
+        STA padl
+        PLA
+        SEC
+        SBC padl
+        STA padr
+        RTS
+
+print_spaces_padl:
+        LDX padl
+        BEQ @spxd
+        LDA #$A0
+@splp:  JSR ECHO
+        DEX
+        BNE @splp
+@spxd:  RTS
+
+print_spaces_padr:
+        LDX padr
+        BEQ @srxd
+        LDA #$A0
+@srlp:  JSR ECHO
+        DEX
+        BNE @srlp
+@srxd:  RTS
+
+print_month_name:
+        LDX rtc_mon
+        DEX
+        BMI @bad
+        CPX #$0C
+        BCS @bad
+        LDA month_lo,X
+        STA str_lo
+        LDA month_hi,X
+        STA str_hi
+        LDY #$00
+@pm:    LDA (str_lo),Y
+        BEQ @px
+        ORA #$80
+        JSR ECHO
+        INY
+        BNE @pm
+@px:    RTS
+@bad:   LDA #<m_jan
+        STA str_lo
+        LDA #>m_jan
+        STA str_hi
+        LDY #$00
+        BEQ @pm                 ; toujours — afficher JANUARY
+
+; --- DD MONTH YYYY HH:MM:SS centré sur 40 colonnes ---
+print_datetime40:
+        JSR compute_padding
+        JSR print_spaces_padl
 
         LDA dig_dy0
         JSR echo_digit
         LDA dig_dy1
         JSR echo_digit
-        LDA #$AF                ; '/' | $80
+        LDA #$A0
         JSR ECHO
-        LDA dig_mn0
-        JSR echo_digit
-        LDA dig_mn1
-        JSR echo_digit
-        LDA #$AF
+
+        JSR print_month_name
+
+        LDA #$A0
         JSR ECHO
-        LDA #$B2                ; '2' — milliers / centaines (20xx)
+        LDA #$B2
         JSR ECHO
-        LDA #$B0                ; '0'
+        LDA #$B0
         JSR ECHO
         LDA dig_yr0
         JSR echo_digit
@@ -245,12 +306,7 @@ print_datetime40:
         LDA dig5
         JSR echo_digit
 
-        LDX #PADR_DT
-        LDA #$A0
-@rp:    JSR ECHO
-        DEX
-        BNE @rp
-        RTS
+        JMP print_spaces_padr
 
 echo_digit:
         ORA #$B0
@@ -319,9 +375,33 @@ poll_key_quit:
 @no:    CLC
         RTS
 
+; Longueurs : January..December
+month_lens:
+        .byte 7, 8, 5, 5, 3, 4, 4, 6, 9, 7, 8, 8
+
+month_lo:
+        .byte <m_jan,<m_fev,<m_mar,<m_avr,<m_mai,<m_juin
+        .byte <m_juil,<m_aou,<m_sep,<m_oct,<m_nov,<m_dec
+month_hi:
+        .byte >m_jan,>m_fev,>m_mar,>m_avr,>m_mai,>m_juin
+        .byte >m_juil,>m_aou,>m_sep,>m_oct,>m_nov,>m_dec
+
+m_jan:  .asciiz "JANUARY"
+m_fev:  .asciiz "FEBRUARY"
+m_mar:  .asciiz "MARCH"
+m_avr:  .asciiz "APRIL"
+m_mai:  .asciiz "MAY"
+m_juin: .asciiz "JUNE"
+m_juil: .asciiz "JULY"
+m_aou:  .asciiz "AUGUST"
+m_sep:  .asciiz "SEPTEMBER"
+m_oct:  .asciiz "OCTOBER"
+m_nov:  .asciiz "NOVEMBER"
+m_dec:  .asciiz "DECEMBER"
+
 msg_title:
         .byte $8D
-        .asciiz "=== P-LAB RTC  date + heure  (40 cols) ==="
+        .asciiz "=== P-LAB RTC  English month names ==="
         .byte $8D
         .asciiz "  Touche : quitter"
         .byte $8D, $8D, $00
