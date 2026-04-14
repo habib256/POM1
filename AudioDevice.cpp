@@ -16,6 +16,7 @@
 // Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 #include "AudioDevice.h"
+#include "Logger.h"
 
 #include <algorithm>
 #include <cstring>
@@ -160,6 +161,16 @@ bool AudioDevice::initAudio()
         audioAvailable = false;
         return false;
     }
+
+    // Capture the sample rate that miniaudio actually negotiated with the
+    // OS device. When it differs from kSampleRate (e.g. macOS Apple
+    // Silicon often ends up at 48 kHz), cycle-accurate sources like SID
+    // must use this value to avoid tempo drift.
+    actualSampleRate = raw->sampleRate;
+    pom1::log().info("Audio",
+        std::string("miniaudio device: requested ") + std::to_string(kSampleRate) +
+        " Hz, got " + std::to_string(actualSampleRate) + " Hz" +
+        (actualSampleRate == kSampleRate ? "" : " (rate mismatch — sources will use the actual rate)"));
 
     device.reset(raw);
     audioAvailable = true;

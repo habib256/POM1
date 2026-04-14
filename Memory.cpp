@@ -64,7 +64,10 @@ Memory::Memory()
     cassetteDevice->setAudioAvailable(audioDevice->isAvailable());
     audioDevice->addSource(cassetteDevice.get());
     tms9918 = std::make_unique<TMS9918>();
-    sid = std::make_unique<pom1::SID>();
+    // Pass the audio device's actual sample rate (44.1 kHz requested but
+    // miniaudio may negotiate 48 kHz on Apple Silicon, etc.) so libresidfp
+    // produces samples at the rate the OS will consume them.
+    sid = std::make_unique<pom1::SID>(static_cast<int>(audioDevice->getActualSampleRate()));
     microSD = std::make_unique<MicroSD>();
     // Set SD card path: try common locations relative to executable
     for (const auto& dir : {"sdcard", "../sdcard", "../../sdcard"}) {
@@ -824,6 +827,11 @@ void Memory::advanceCycles(int cycles)
     if (wifiModemEnabled) wifiModem->advanceCycles(cycles);
     if (terminalCardEnabled) terminalCard->advanceCycles(cycles);
     if (a1ioRtcEnabled) a1ioRtc->advanceCycles(cycles);
+    // SID is driven by the *emulated* CPU clock, not by the audio device.
+    // Without this call, libresidfp would produce samples at wallclock
+    // 44.1 kHz independent of executionSpeed, decoupling music tempo from
+    // CPU speed (Max mode → way too fast, WASM frame drop → too slow).
+    if (sidEnabled) sid->advanceCycles(cycles);
 }
 
 

@@ -150,6 +150,18 @@ void MainWindow_ImGui::renderMenuBar()
             if (ImGui::MenuItem("P-LAB A1-SID Sound Card", nullptr, &sidEnabled)) {
                 emulation->setSIDEnabled(sidEnabled);
             }
+            if (ImGui::BeginMenu("A1-SID chip model")) {
+                const bool is6581 = (uiSnapshot.sidChipModel == pom1::SID::ChipModel::MOS6581);
+                if (ImGui::MenuItem("MOS 6581 (vintage, non-linear filter)", nullptr, is6581)) {
+                    emulation->setSIDChipModel(pom1::SID::ChipModel::MOS6581);
+                    setStatusMessage("A1-SID: MOS 6581 selected", 2.0f);
+                }
+                if (ImGui::MenuItem("CSG 8580 (cleaner revision)", nullptr, !is6581)) {
+                    emulation->setSIDChipModel(pom1::SID::ChipModel::MOS8580);
+                    setStatusMessage("A1-SID: CSG 8580 selected", 2.0f);
+                }
+                ImGui::EndMenu();
+            }
             if (ImGui::MenuItem("P-LAB Graphic Card (TMS9918)", nullptr, &tms9918Enabled)) {
                 emulation->setTMS9918Enabled(tms9918Enabled);
                 if (tms9918Enabled) showTMS9918 = true;

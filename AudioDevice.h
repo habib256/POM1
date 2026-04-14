@@ -54,6 +54,15 @@ public:
 
     bool isAvailable() const { return audioAvailable; }
 
+    /// Returns the actual sample rate negotiated with the OS audio device
+    /// (miniaudio may pick a different native rate than `kSampleRate` if
+    /// the hardware doesn't support 44.1 kHz natively, e.g. macOS Apple
+    /// Silicon often runs the built-in output at 48 kHz). Sources that
+    /// generate cycle-synchronous audio (SID) must use this rate so their
+    /// production matches what the OS consumes — otherwise music tempo
+    /// drifts by the rate ratio. WASM always returns kSampleRate.
+    uint32_t getActualSampleRate() const { return actualSampleRate; }
+
     /// Called from the audio callback — mixes all sources into output.
     void mixSources(float* output, int frameCount);
 
@@ -65,6 +74,7 @@ private:
     mutable std::mutex sourcesMutex;
     std::vector<float> tmpBuf;
     bool audioAvailable = false;
+    uint32_t actualSampleRate = kSampleRate;
 
 #if !POM1_IS_WASM
     struct MaDeviceDeleter { void operator()(ma_device* d) const noexcept; };

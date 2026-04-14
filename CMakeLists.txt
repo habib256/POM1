@@ -4,6 +4,10 @@ project(pom1_imgui)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
+# Vendored libresidfp (cycle-accurate SID emulation, GPL-2.0). See
+# third_party/libresidfp/CMakeLists.txt for the source list.
+add_subdirectory(third_party/libresidfp)
+
 # ImGui
 set(IMGUI_DIR ${CMAKE_CURRENT_SOURCE_DIR}/imgui)
 file(GLOB IMGUI_SOURCES
@@ -85,6 +89,11 @@ target_include_directories(${PROJECT_NAME} PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}
 )
 
+# libresidfp (vendored, third_party/libresidfp). PUBLIC include dir on the
+# static lib propagates ${SRC_DIR}/third_party/libresidfp/src to consumers,
+# so SID.cpp can include "residfp/residfp_defs.h" and the upstream SID.h.
+target_link_libraries(${PROJECT_NAME} libresidfp_static)
+
 # ImDrawIdx 32 bits : imconfig.h le définit déjà ; le pré-include garantit imgui.cpp et tous les TUs
 # (évite WASM / CI avec caches ou chemins où imconfig semblait ignoré → assert 64k sommets).
 set(POM1_IMGUI_PREINCLUDE "${CMAKE_CURRENT_SOURCE_DIR}/POM1ImGuiPreinclude.h")
@@ -111,6 +120,11 @@ if(EMSCRIPTEN)
         "-s MIN_WEBGL_VERSION=2"
         "-s ALLOW_MEMORY_GROWTH=1"
         "-s WASM=1"
+        # libresidfp constructs its filter-model lookup tables on the stack
+        # at first SID instantiation; the Emscripten default of 64 KB
+        # overflows. 4 MB matches the upstream Emscripten pre-3.1.27 default
+        # and is plenty for our cold-start init.
+        "-s STACK_SIZE=4194304"
         "--preload-file ${PRELOAD_DIR}/roms@roms"
         "--preload-file ${PRELOAD_DIR}/fonts@fonts"
         "--preload-file ${PRELOAD_DIR}/software@software"

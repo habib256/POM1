@@ -16,6 +16,7 @@
 #include <vector>
 
 #include "M6502.h"
+#include "SID.h"
 #include "TMS9918.h"
 #include "WiFiModem.h"
 #include "TerminalCard.h"
@@ -47,6 +48,7 @@ struct EmulationSnapshot
     std::string cassetteLoadedTapePath;
     TMS9918::Snapshot tms9918;
     bool sidEnabled = false;
+    pom1::SID::ChipModel sidChipModel = pom1::SID::ChipModel::MOS6581;
     bool microSDEnabled = false;
     bool wifiModemEnabled = false;
     WiFiModem::Snapshot wifiModem;

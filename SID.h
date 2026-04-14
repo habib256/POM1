@@ -6,14 +6,14 @@
 // as published by the Free Software Foundation; either version 2
 // of the License, or (at your option) any later version.
 //
-// This program is distributed in the hope that it will be useful,
-// but WITHOUT ANY WARRANTY; without even the implied warranty of
-// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-// GNU General Public License for more details.
+// SID — P-LAB A1-SID Sound Card. MOS 6581 / CSG 8580 emulation, wrapping
+// libresidfp (cycle-accurate, GPL-2.0+, vendored under third_party/libresidfp).
+// I/O at $C800-$CFFF (29 registers, address & 0x1F).
 //
-// You should have received a copy of the GNU General Public License
-// along with this program; if not, write to the Free Software
-// Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+// Public API kept compatible with the previous in-house engine so Memory,
+// PeripheralBus, AudioDevice and the snapshot/UI integrations don't change.
+// What's new: setChipModel(MOS6581/CSG8580) selectable from the Hardware
+// menu (the physical A1-SID card accepts either chip in its socket).
 
 #ifndef SID_H
 #define SID_H
@@ -22,117 +22,103 @@
 #include "CpuClock.h"
 
 #include <array>
+#include <atomic>
 #include <cstdint>
+#include <memory>
 #include <mutex>
+
+namespace reSIDfp { class SID; }
 
 namespace pom1 {
 
-/// P-LAB A1-SID Sound Card — MOS 6581/8580 SID emulation.
-/// I/O mapped at $C800-$CFFF (29 registers, address & 0x1F).
-/// 3 voices with triangle/sawtooth/pulse/noise oscillators,
-/// ADSR envelopes, programmable multimode filter, 4-bit master volume.
 class SID : public AudioSource
 {
 public:
-    static constexpr int kNumVoices    = 3;
     static constexpr int kNumRegisters = 29;
+    static constexpr int kSampleRate   = 44100;
 
-    // Audio constants
-    static constexpr int    kSampleRate      = 44100;
-    static constexpr int    kOversample      = 4;     // 4× oversampling for anti-aliasing
-    static constexpr int    kInternalRate     = kSampleRate * kOversample; // 176400 Hz
-    static constexpr double kCpuClockHz      = static_cast<double>(POM1_CPU_CLOCK_HZ);
-    static constexpr double kCyclesPerSample  = kCpuClockHz / kInternalRate; // ~11.338
+    enum class ChipModel : uint8_t {
+        MOS6581 = 0,   ///< Vintage 6581 with non-linear filter
+        MOS8580 = 1,   ///< Cleaner CSG 8580 revision (mapped to libresidfp CSG8580)
+    };
 
-    SID();
+    /// `outputSampleRate` is the actual rate the audio device runs at
+    /// (`AudioDevice::getActualSampleRate()`). libresidfp is configured
+    /// with this rate so that one second of emulated CPU cycles produces
+    /// exactly one second's worth of samples — keeping the music tempo
+    /// in lockstep with the audio device's wallclock consumption.
+    /// Defaults to kSampleRate (44.1 kHz) when unspecified.
+    explicit SID(int outputSampleRate = kSampleRate);
+    ~SID() override;
 
     void reset();
 
-    // I/O interface — called from Memory::memRead / memWrite
+    /// I/O — called from PeripheralBus dispatch. `reg` is in [0, 28].
     void    writeRegister(uint8_t reg, uint8_t value);
     uint8_t readRegister(uint8_t reg);
 
-    // AudioSource interface — generates SID audio samples.
+    /// Cycle tick — called from Memory::advanceCycles after each CPU slice.
+    /// Drives libresidfp's clock at the *emulated* CPU rate (so the music
+    /// tempo follows the emulation speed, not the audio device sample rate).
+    /// Produced samples are pushed into an internal ring buffer that the
+    /// audio callback drains.
+    void advanceCycles(int cycles);
+
+    /// AudioSource — called from the audio callback thread. Mono float32
+    /// samples in [-1, +1] at 44.1 kHz. Drains the ring buffer; outputs
+    /// silence on underrun (audio thread faster than emulation).
     void fillAudioBuffer(float* output, int frameCount) override;
 
-    // Snapshot for UI (register display in memory map)
+    /// Hot-swap chip model. Internally rebuilds libresidfp's filter chain
+    /// (the 6581 and 8580 use entirely different filter models).
+    void      setChipModel(ChipModel m);
+    ChipModel getChipModel() const { return currentModel; }
+
     struct Snapshot {
         std::array<uint8_t, kNumRegisters> regs{};
+        ChipModel chipModel = ChipModel::MOS6581;
     };
     void copySnapshot(Snapshot& out) const;
 
 private:
-    // ADSR envelope states
-    enum AdsrState : uint8_t {
-        ADSR_ATTACK  = 0,
-        ADSR_DECAY   = 1,
-        ADSR_SUSTAIN = 2,
-        ADSR_RELEASE = 3
-    };
+    /// libresidfp::SID::clock(cycles, buf) writes one short per produced
+    /// sample. At 1.022 MHz / 44.1 kHz the ratio is ~23 cycles per sample,
+    /// so 4096 cycles -> ~178 samples max; 8192 staging shorts is plenty.
+    static constexpr int kStagingShorts = 8192;
 
-    struct Voice {
-        uint32_t phaseAccumulator  = 0;   // 24-bit oscillator phase
-        uint32_t prevPhaseAcc      = 0;   // previous value (for noise LFSR clocking)
-        double   phaseRemainder    = 0.0; // fractional phase increment accumulator
-        uint32_t lfsr              = 0x7FFFF8; // 23-bit noise LFSR
-        float    lastWaveOutput    = 0.0f;    // for waveform-0 decay (anti-click)
+    /// Cap cycles per chip->clock() call so the staging buffer never
+    /// overflows. 4096 cycles ≈ 178 samples max @ 44.1 kHz.
+    static constexpr int kMaxCyclesPerBatch = 4096;
 
-        uint8_t  adsrLevel         = 0;   // 0-255 envelope output
-        AdsrState adsrState        = ADSR_RELEASE;
-        double   adsrCycleAccum    = 0.0; // fractional cycle accumulator (precision)
-        uint8_t  expCounter        = 0;   // exponential decay period counter
-        bool     gateOn            = false;
-    };
+    /// Ring buffer between the emulation thread (producer, advanceCycles)
+    /// and the audio thread (consumer, fillAudioBuffer). 16384 samples ≈
+    /// 370 ms at 44.1 kHz — enough to absorb audio jitter without adding
+    /// noticeable latency. SPSC semantics: producer mutates head only,
+    /// consumer mutates tail only.
+    static constexpr size_t kRingCapacity = 16384;
 
-    // Register file
-    std::array<uint8_t, kNumRegisters> regs{};
+    std::unique_ptr<reSIDfp::SID> chip;
+    ChipModel currentModel = ChipModel::MOS6581;
+    int outputRate = kSampleRate;
 
-    // Voice state
-    Voice voices[kNumVoices];
+    /// Shadow of the last value written to each register. libresidfp does
+    /// not expose its internal register file (intentional — see header
+    /// comment in residfp/SID.h about write-only registers and bus fade),
+    /// so we track writes ourselves to populate Snapshot::regs for the UI.
+    std::array<uint8_t, kNumRegisters> shadowRegs{};
 
-    // Zero-Delay Feedback SVF filter state (trapezoidal integrators)
-    float filterIC1eq = 0.0f;   // BP integrator state
-    float filterIC2eq = 0.0f;   // LP integrator state
+    /// Sample ring (float). Atomic head/tail for lock-free SPSC access.
+    std::array<float, kRingCapacity> ringBuf{};
+    std::atomic<size_t> ringHead{0};
+    std::atomic<size_t> ringTail{0};
 
-    // Cached ZDF coefficients — recomputed only when filter registers change
-    uint16_t cachedFilterCutoff = 0xFFFF;  // invalid sentinel
-    uint8_t  cachedResonance    = 0xFF;
-    float    cachedG  = 0.0f;
-    float    cachedK  = 2.0f;
-    float    cachedA1 = 1.0f;
-    float    cachedA2 = 0.0f;
+    /// Serialises register writes / chip->clock() / setChipModel(). The
+    /// audio thread (fillAudioBuffer) does NOT take this mutex — it only
+    /// reads from the ring via atomic head/tail, so chip->clock() in
+    /// advanceCycles can run unblocked.
+    mutable std::mutex chipMutex;
 
-    // DC blocker for digi playback (volume register trick)
-    float dcBlockPrev  = 0.0f;
-    float dcBlockInput = 0.0f;
-
-    // Output low-pass filter (~18 kHz rolloff, analog warmth)
-    float outputLP = 0.0f;
-
-    // Last bus value (returned when reading write-only registers)
-    uint8_t lastBusValue = 0;
-
-    // Thread safety (register writes from emulation thread, audio from callback thread)
-    mutable std::mutex sidMutex;
-
-    // Helpers
-    uint16_t getFrequency(int voice) const;
-    uint16_t getPulseWidth(int voice) const;
-    uint8_t  getControl(int voice) const;
-    uint8_t  getAttackDecay(int voice) const;
-    uint8_t  getSustainRelease(int voice) const;
-
-    float    computeWaveform(int voiceIndex);
-    void     clockADSR(int voiceIndex);
-    void     clockNoiseLFSR(Voice& v);
-
-    // ADSR rate tables (CPU cycles per envelope step)
-    static const int kAttackRate[16];
-    static const int kDecayReleaseRate[16];
-
-    // Exponential decay period thresholds
-    static const uint8_t kExpPeriodThreshold[6];
-    static const uint8_t kExpPeriodValue[6];
+    void rebuildChip(ChipModel m);
 };
 
 } // namespace pom1

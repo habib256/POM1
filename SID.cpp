@@ -1,596 +1,152 @@
 // Pom1 Apple 1 Emulator
 // Copyright (C) 2000-2026 Verhille Arnaud
-//
-// This program is free software; you can redistribute it and/or
-// modify it under the terms of the GNU General Public License
-// as published by the Free Software Foundation; either version 2
-// of the License, or (at your option) any later version.
-//
-// This program is distributed in the hope that it will be useful,
-// but WITHOUT ANY WARRANTY; without even the implied warranty of
-// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-// GNU General Public License for more details.
-//
-// You should have received a copy of the GNU General Public License
-// along with this program; if not, write to the Free Software
-// Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 #include "SID.h"
-#include <algorithm>
-#include <cmath>
-#include <cstring>
+#include "Logger.h"
 
-#ifndef M_PI
-#define M_PI 3.14159265358979323846
-#endif
+// Pull in the vendored libresidfp upstream class. The libresidfp include
+// directory (PUBLIC on the libresidfp_static target) puts its own SID.h
+// on the include path under the same name as ours; we go through the
+// residfp aggregate header to disambiguate.
+#include "residfp/residfp_defs.h"
+// The libresidfp upstream SID.h lives under the libresidfp_static target's
+// PUBLIC include dir (third_party/libresidfp/src). Including it here by
+// quoted name would re-include this file (same basename); use the relative
+// path to disambiguate.
+#include "../third_party/libresidfp/src/SID.h"
+
+#include <algorithm>
+#include <cstring>
 
 namespace pom1 {
 
-// ─── ADSR rate tables ───────────────────────────────────────────────────────
-// CPU cycles per envelope step.  Derived from the MOS 6581 datasheet timing.
-// Attack: time from 0→255 = rate * 255.
-// Decay/Release: time from 255→0 = rate * 255 (before exponential scaling).
+namespace {
+constexpr double kCpuClockHz = static_cast<double>(POM1_CPU_CLOCK_HZ);
 
-const int SID::kAttackRate[16] = {
-    9, 32, 63, 95, 149, 220, 267, 313,
-    392, 977, 1954, 3126, 3907, 11720, 19532, 31251
-};
-
-const int SID::kDecayReleaseRate[16] = {
-    9, 32, 63, 95, 149, 220, 267, 313,
-    392, 977, 1954, 3126, 3907, 11720, 19532, 31251
-};
-
-// Exponential decay thresholds: the real SID slows down the decay/release
-// rate at lower envelope levels, producing a more natural sound.
-const uint8_t SID::kExpPeriodThreshold[6] = { 93, 54, 26, 14, 6, 0 };
-const uint8_t SID::kExpPeriodValue[6]     = {  1,  2,  4,  8, 16, 30 };
-
-// ─── Constructor / Reset ────────────────────────────────────────────────────
-
-SID::SID()
+reSIDfp::ChipModel toUpstream(SID::ChipModel m)
 {
-    reset();
+    return (m == SID::ChipModel::MOS6581) ? reSIDfp::MOS6581 : reSIDfp::CSG8580;
+}
+} // namespace
+
+SID::SID(int outputSampleRate)
+    : outputRate(outputSampleRate)
+{
+    rebuildChip(currentModel);
+    pom1::log().info("SID",
+        std::string("libresidfp engine initialised (MOS6581 @ ") +
+        std::to_string(outputRate) + " Hz)");
+}
+
+SID::~SID() = default;
+
+void SID::rebuildChip(ChipModel m)
+{
+    // Caller must hold chipMutex (or guarantee no concurrent access — true
+    // during construction). libresidfp's setChipModel can throw SIDError
+    // if a filter model fails to initialise; we let it propagate (it would
+    // indicate a corrupt vendored data table, i.e. a build problem).
+    chip = std::make_unique<reSIDfp::SID>();
+    chip->setChipModel(toUpstream(m));
+    chip->setSamplingParameters(kCpuClockHz, reSIDfp::DECIMATE,
+                                static_cast<double>(outputRate));
+    chip->reset();
+    currentModel = m;
 }
 
 void SID::reset()
 {
-    std::lock_guard<std::mutex> lock(sidMutex);
-    regs.fill(0);
-    for (int i = 0; i < kNumVoices; ++i) {
-        voices[i] = Voice{};
-    }
-    filterIC1eq = 0.0f;
-    filterIC2eq = 0.0f;
-    dcBlockPrev = 0.0f;
-    dcBlockInput = 0.0f;
-    outputLP = 0.0f;
-    lastBusValue = 0;
-    cachedFilterCutoff = 0xFFFF;
-    cachedResonance    = 0xFF;
+    std::lock_guard<std::mutex> lock(chipMutex);
+    chip->reset();
+    shadowRegs.fill(0);
+    // Drain the ring so a leftover tail of samples from the previous program
+    // doesn't bleed into the new one. ringHead is producer-owned, so we
+    // also reset the tail to head atomically (only safe if no audio cb runs
+    // concurrently — which is OK at reset time, the worst case is one
+    // glitch frame).
+    const size_t h = ringHead.load(std::memory_order_relaxed);
+    ringTail.store(h, std::memory_order_release);
 }
-
-// ─── Register access ────────────────────────────────────────────────────────
 
 void SID::writeRegister(uint8_t reg, uint8_t value)
 {
     if (reg >= kNumRegisters) return;
-    // Registers 25-28 are read-only
-    if (reg >= 25) return;
-
-    std::lock_guard<std::mutex> lock(sidMutex);
-    regs[reg] = value;
-    lastBusValue = value;
-
-    // Detect gate transitions for each voice's control register (offsets 4, 11, 18)
-    for (int v = 0; v < kNumVoices; ++v) {
-        uint8_t ctrlReg = static_cast<uint8_t>(v * 7 + 4);
-        if (reg == ctrlReg) {
-            bool newGate = (value & 0x01) != 0;
-            Voice& voice = voices[v];
-            if (newGate && !voice.gateOn) {
-                // Gate ON: start attack
-                voice.adsrState = ADSR_ATTACK;
-                // ADSR delay bug: do NOT reset adsrCycleAccum — the rate counter
-                // continues from its current position (real 6581 behavior)
-                voice.expCounter = 0;
-            } else if (!newGate && voice.gateOn) {
-                // Gate OFF: start release
-                voice.adsrState = ADSR_RELEASE;
-                // Same: no reset of the cycle accumulator
-                voice.expCounter = 0;
-            }
-            voice.gateOn = newGate;
-        }
-    }
+    std::lock_guard<std::mutex> lock(chipMutex);
+    shadowRegs[reg] = value;
+    chip->write(reg, value);
 }
 
 uint8_t SID::readRegister(uint8_t reg)
 {
     if (reg >= kNumRegisters) return 0;
+    std::lock_guard<std::mutex> lock(chipMutex);
+    return chip->read(reg);
+}
 
-    std::lock_guard<std::mutex> lock(sidMutex);
+void SID::advanceCycles(int cycles)
+{
+    if (cycles <= 0) return;
 
-    switch (reg) {
-        case 25: return 0;   // POTX — no paddles
-        case 26: return 0;   // POTY — no paddles
-        case 27: {
-            // OSC3 — upper 8 bits of voice 3 oscillator
-            uint32_t acc = voices[2].phaseAccumulator;
-            uint8_t ctrl = getControl(2);
-            if (ctrl & 0x80) {
-                // Noise: return upper 8 bits of LFSR
-                return static_cast<uint8_t>((voices[2].lfsr >> 15) & 0xFF);
+    std::lock_guard<std::mutex> lock(chipMutex);
+
+    short staging[kStagingShorts];
+    int remaining = cycles;
+    while (remaining > 0) {
+        const int batch = std::min(remaining, kMaxCyclesPerBatch);
+        const int produced = chip->clock(static_cast<unsigned int>(batch), staging);
+        remaining -= batch;
+
+        for (int i = 0; i < produced; ++i) {
+            const float sample = static_cast<float>(staging[i]) * (1.0f / 32768.0f);
+
+            const size_t head = ringHead.load(std::memory_order_relaxed);
+            const size_t next = (head + 1) % kRingCapacity;
+
+            if (next == ringTail.load(std::memory_order_acquire)) {
+                size_t tail = ringTail.load(std::memory_order_relaxed);
+                ringTail.store((tail + 1) % kRingCapacity, std::memory_order_release);
             }
-            return static_cast<uint8_t>((acc >> 16) & 0xFF);
-        }
-        case 28:
-            // ENV3 — voice 3 envelope level
-            return voices[2].adsrLevel;
-        default:
-            // Write-only registers: return last bus value (real 6581 behavior)
-            return lastBusValue;
-    }
-}
 
-// ─── Helpers: register decoding ─────────────────────────────────────────────
-
-uint16_t SID::getFrequency(int voice) const
-{
-    int base = voice * 7;
-    return static_cast<uint16_t>(regs[base]) |
-           (static_cast<uint16_t>(regs[base + 1]) << 8);
-}
-
-uint16_t SID::getPulseWidth(int voice) const
-{
-    int base = voice * 7;
-    return (static_cast<uint16_t>(regs[base + 2]) |
-           (static_cast<uint16_t>(regs[base + 3] & 0x0F) << 8));
-}
-
-uint8_t SID::getControl(int voice) const
-{
-    return regs[voice * 7 + 4];
-}
-
-uint8_t SID::getAttackDecay(int voice) const
-{
-    return regs[voice * 7 + 5];
-}
-
-uint8_t SID::getSustainRelease(int voice) const
-{
-    return regs[voice * 7 + 6];
-}
-
-// ─── Noise LFSR ─────────────────────────────────────────────────────────────
-
-void SID::clockNoiseLFSR(Voice& v)
-{
-    // 23-bit LFSR: feedback = bit 22 XOR bit 17
-    uint32_t bit22 = (v.lfsr >> 22) & 1;
-    uint32_t bit17 = (v.lfsr >> 17) & 1;
-    uint32_t feedback = bit22 ^ bit17;
-    v.lfsr = ((v.lfsr << 1) | feedback) & 0x7FFFFF;
-}
-
-// ─── Waveform computation ───────────────────────────────────────────────────
-
-float SID::computeWaveform(int voiceIndex)
-{
-    Voice& v = voices[voiceIndex];
-    uint8_t ctrl = getControl(voiceIndex);
-
-    // TEST bit: reset oscillator and force LFSR to all-ones (real 6581)
-    if (ctrl & 0x08) {
-        v.phaseAccumulator = 0;
-        v.lfsr = 0x7FFFFF;
-        return 0.0f;
-    }
-
-    uint32_t acc = v.phaseAccumulator;
-    uint16_t pw = getPulseWidth(voiceIndex);
-
-    // Waveform bits
-    bool triangle = (ctrl & 0x10) != 0;
-    bool sawtooth = (ctrl & 0x20) != 0;
-    bool pulse    = (ctrl & 0x40) != 0;
-    bool noise    = (ctrl & 0x80) != 0;
-
-    // No waveform selected: decay last output toward 0 (anti-click)
-    if (!triangle && !sawtooth && !pulse && !noise) {
-        v.lastWaveOutput *= 0.992f;  // exponential decay ~1ms at internal rate
-        return v.lastWaveOutput;
-    }
-
-    // Compute individual waveform outputs as 12-bit unsigned values (0-4095)
-    uint16_t triOut = 0, sawOut = 0, pulOut = 0, noiOut = 0;
-    bool hasOutput = false;
-
-    if (sawtooth) {
-        sawOut = static_cast<uint16_t>((acc >> 12) & 0xFFF);
-        hasOutput = true;
-    }
-
-    if (triangle) {
-        uint32_t triAcc = acc;
-        // Ring modulation: XOR with previous voice's bit 23
-        if (ctrl & 0x04) {
-            int prevVoice = (voiceIndex + kNumVoices - 1) % kNumVoices;
-            if (voices[prevVoice].phaseAccumulator & 0x800000)
-                triAcc ^= 0x800000;
-        }
-        // Fold: if bit 23 is set, invert upper 12 bits
-        uint16_t raw = static_cast<uint16_t>((triAcc >> 11) & 0xFFF);
-        if (triAcc & 0x800000)
-            raw ^= 0xFFF;
-        triOut = raw;
-        hasOutput = true;
-    }
-
-    if (pulse) {
-        // Phase 3.5 — handle PW extremes: $000 = constant low, $FFF = constant high (DC)
-        if (pw == 0) {
-            pulOut = 0x000;
-        } else if (pw >= 0xFFF) {
-            pulOut = 0xFFF;
-        } else {
-            uint16_t accUpper = static_cast<uint16_t>((acc >> 12) & 0xFFF);
-            pulOut = (accUpper >= pw) ? 0xFFF : 0x000;
-        }
-        hasOutput = true;
-    }
-
-    if (noise) {
-        // Étape 4 — extract noise bits from correct LFSR positions (real 6581)
-        // Output bits 7..0 ← LFSR bits 22, 20, 16, 13, 11, 7, 4, 2
-        uint8_t noiseBits = static_cast<uint8_t>(
-            ((v.lfsr & (1 << 22)) >> 15) |
-            ((v.lfsr & (1 << 20)) >> 14) |
-            ((v.lfsr & (1 << 16)) >> 11) |
-            ((v.lfsr & (1 << 13)) >>  9) |
-            ((v.lfsr & (1 << 11)) >>  8) |
-            ((v.lfsr & (1 <<  7)) >>  5) |
-            ((v.lfsr & (1 <<  4)) >>  3) |
-            ((v.lfsr & (1 <<  2)) >>  2));
-        noiOut = static_cast<uint16_t>(noiseBits) << 4;
-        hasOutput = true;
-    }
-
-    if (!hasOutput) return 0.0f;
-
-    // Combine waveforms via AND (real SID behavior)
-    uint16_t combined = 0xFFF;
-    int waveCount = 0;
-    if (triangle) { combined &= triOut; waveCount++; }
-    if (sawtooth) { combined &= sawOut; waveCount++; }
-    if (pulse)    { combined &= pulOut; waveCount++; }
-    if (noise)    { combined &= noiOut; waveCount++; }
-
-    // Combined waveform low-bit pull-down (6581 analog leakage)
-    if (waveCount > 1) {
-        combined &= 0xFF0;
-    }
-
-    // Noise + waveform LFSR writeback (6581 behavior)
-    // When noise is combined with another waveform, the AND result bits
-    // are written back into the LFSR, gradually locking it up to silence.
-    if (noise && waveCount > 1) {
-        uint8_t outBits = static_cast<uint8_t>((combined >> 4) & 0xFF);
-        auto writeBit = [&](int lfsrBit, int outBit) {
-            if (outBits & (1 << outBit))
-                v.lfsr |= (1u << lfsrBit);
-            else
-                v.lfsr &= ~(1u << lfsrBit);
-        };
-        writeBit(22, 7); writeBit(20, 6); writeBit(16, 5); writeBit(13, 4);
-        writeBit(11, 3); writeBit(7, 2);  writeBit(4, 1);  writeBit(2, 0);
-    }
-
-    // Convert 12-bit unsigned (0-4095) to float (-1.0 to +1.0)
-    float result = (static_cast<float>(combined) / 2047.5f) - 1.0f;
-    v.lastWaveOutput = result;
-    return result;
-}
-
-// ─── ADSR envelope ──────────────────────────────────────────────────────────
-
-void SID::clockADSR(int voiceIndex)
-{
-    Voice& v = voices[voiceIndex];
-    uint8_t ad = getAttackDecay(voiceIndex);
-    uint8_t sr = getSustainRelease(voiceIndex);
-
-    uint8_t attackIdx  = (ad >> 4) & 0x0F;
-    uint8_t decayIdx   = ad & 0x0F;
-    uint8_t sustainLvl = ((sr >> 4) & 0x0F) * 17; // 0-15 → 0-255
-    uint8_t releaseIdx = sr & 0x0F;
-
-    // Fractional cycle accumulator — add exact cycles per internal sample.
-    // Clamp to max rate period (31251) to prevent runaway processing:
-    // the real 6581's 15-bit rate counter can't accumulate more than one period.
-    v.adsrCycleAccum += kCyclesPerSample;
-    if (v.adsrCycleAccum > 31252.0)
-        v.adsrCycleAccum = 31252.0;
-
-    switch (v.adsrState) {
-        case ADSR_ATTACK: {
-            double rate = static_cast<double>(kAttackRate[attackIdx]);
-            while (v.adsrCycleAccum >= rate) {
-                v.adsrCycleAccum -= rate;
-                if (v.adsrLevel < 255) {
-                    v.adsrLevel++;
-                }
-                if (v.adsrLevel >= 255) {
-                    v.adsrLevel = 255;
-                    v.adsrState = ADSR_DECAY;
-                    v.adsrCycleAccum = 0.0;
-                    v.expCounter = 0;
-                    break;
-                }
-            }
-            break;
-        }
-        case ADSR_DECAY: {
-            double rate = static_cast<double>(kDecayReleaseRate[decayIdx]);
-            while (v.adsrCycleAccum >= rate) {
-                v.adsrCycleAccum -= rate;
-                // Recalculate exponential period every step (threshold-crossing accuracy)
-                uint8_t expPeriod = 1;
-                for (int i = 0; i < 6; ++i) {
-                    if (v.adsrLevel >= kExpPeriodThreshold[i]) {
-                        expPeriod = kExpPeriodValue[i]; break;
-                    }
-                }
-                v.expCounter++;
-                if (v.expCounter >= expPeriod) {
-                    v.expCounter = 0;
-                    if (v.adsrLevel > sustainLvl) {
-                        v.adsrLevel--;
-                    }
-                }
-                if (v.adsrLevel <= sustainLvl) {
-                    v.adsrLevel = sustainLvl;
-                    v.adsrState = ADSR_SUSTAIN;
-                    break;
-                }
-            }
-            break;
-        }
-        case ADSR_SUSTAIN:
-            // Étape 6 — real SID holds the current level without forcing it.
-            // The level was set by the decay phase and doesn't change while gate=ON.
-            break;
-
-        case ADSR_RELEASE: {
-            double rate = static_cast<double>(kDecayReleaseRate[releaseIdx]);
-            while (v.adsrCycleAccum >= rate) {
-                v.adsrCycleAccum -= rate;
-                // Recalculate exponential period every step
-                uint8_t expPeriod = 1;
-                for (int i = 0; i < 6; ++i) {
-                    if (v.adsrLevel >= kExpPeriodThreshold[i]) {
-                        expPeriod = kExpPeriodValue[i]; break;
-                    }
-                }
-                v.expCounter++;
-                if (v.expCounter >= expPeriod) {
-                    v.expCounter = 0;
-                    if (v.adsrLevel > 0) {
-                        v.adsrLevel--;
-                    }
-                }
-                if (v.adsrLevel == 0) break;
-            }
-            break;
+            ringBuf[head] = sample;
+            ringHead.store(next, std::memory_order_release);
         }
     }
 }
-
-// ─── Fast approximation of pow(x, 1.45) on [0,1] ───────────────────────────
-// Cubic polynomial fit — max error ~0.5% vs std::pow
-static inline float fastPow145(float x)
-{
-    return x * (0.42f + x * (0.78f - 0.20f * x));
-}
-
-// ─── Fast tanh approximation ─────────────────────────────────────────────────
-// Padé [3/2] rational approximation — clamp at ±3 where fastTanh(3) = 1.0 exactly
-// (3*(27+9)/(27+81) = 108/108 = 1), so the function is bounded in [-1,1] like real tanh.
-// Max error ~2% for |x| ≤ 2.5. Safe for ZDF filter feedback (no divergence).
-static inline float fastTanh(float x)
-{
-    if (x >  3.0f) return  1.0f;
-    if (x < -3.0f) return -1.0f;
-    float x2 = x * x;
-    return x * (27.0f + x2) / (27.0f + 9.0f * x2);
-}
-
-// ─── Audio generation ───────────────────────────────────────────────────────
 
 void SID::fillAudioBuffer(float* output, int frameCount)
 {
-    std::lock_guard<std::mutex> lock(sidMutex);
+    if (!output || frameCount <= 0) return;
 
-    static constexpr float kPi = static_cast<float>(M_PI);
-    static constexpr float kInternalRateF = static_cast<float>(kInternalRate);
-
-    // DC blocker coefficient (~20 Hz high-pass for digi DC removal)
-    static constexpr float kDcAlpha =
-        1.0f - (2.0f * kPi * 20.0f / static_cast<float>(kSampleRate));
-
-    // Triangular decimation weights [1,3,3,1]/8
-    static constexpr float kDecimWeights[4] = { 0.125f, 0.375f, 0.375f, 0.125f };
-
-    // Output low-pass coefficient (~18 kHz analog warmth)
-    static constexpr float kLpAlpha = 0.717f;
-
-    for (int s = 0; s < frameCount; ++s) {
-
-        // ── Read registers ONCE per output sample (hoisted from OS loop) ──
-        uint16_t filterCutoff = (static_cast<uint16_t>(regs[21]) & 0x07) |
-                                (static_cast<uint16_t>(regs[22]) << 3);
-        uint8_t resFilt = regs[23];
-        uint8_t modeVol = regs[24];
-
-        uint8_t resonance = (resFilt >> 4) & 0x0F;
-        bool filtVoice[3] = {
-            (resFilt & 0x01) != 0,
-            (resFilt & 0x02) != 0,
-            (resFilt & 0x04) != 0
-        };
-
-        bool modeLowPass  = (modeVol & 0x10) != 0;
-        bool modeBandPass = (modeVol & 0x20) != 0;
-        bool modeHighPass = (modeVol & 0x40) != 0;
-        bool voice3Off    = (modeVol & 0x80) != 0;
-        float masterVolume = static_cast<float>(modeVol & 0x0F) / 15.0f;
-
-        // ── 6581 non-linear filter cutoff + ZDF coefficients ────────────────
-        // Recomputed only when filter cutoff or resonance registers change.
-        if (filterCutoff != cachedFilterCutoff || resonance != cachedResonance) {
-            cachedFilterCutoff = filterCutoff;
-            cachedResonance    = resonance;
-            float fc = static_cast<float>(filterCutoff);
-            float cutoffHz;
-            if (fc < 192.0f) {
-                cutoffHz = 220.0f;  // 6581 minimum floor
-            } else {
-                float x = (fc - 192.0f) / (2047.0f - 192.0f);
-                cutoffHz = 220.0f + 12000.0f * fastPow145(x);
-            }
-            // ZDF SVF (Zavalishin trapezoidal topology)
-            cachedG = std::tan(kPi * cutoffHz / kInternalRateF);
-            cachedK = std::max(2.0f * (1.0f - static_cast<float>(resonance) / 16.0f), 0.04f);
-            cachedA1 = 1.0f / (1.0f + cachedG * (cachedG + cachedK));
-            cachedA2 = cachedG * cachedA1;
+    for (int i = 0; i < frameCount; ++i) {
+        const size_t tail = ringTail.load(std::memory_order_relaxed);
+        if (tail == ringHead.load(std::memory_order_acquire)) {
+            output[i] = 0.0f;
+        } else {
+            output[i] = ringBuf[tail];
+            ringTail.store((tail + 1) % kRingCapacity, std::memory_order_release);
         }
-        float g = cachedG, k = cachedK, a1 = cachedA1, a2 = cachedA2;
-        float a3 = g * a2;
-
-        // ── Digi DC offset (from volume register) ──
-        float dcOffset = (static_cast<float>(modeVol & 0x0F) - 7.5f) / 15.0f;
-
-        // ── 4× oversampling ─────────────────────────────────────────────
-        float oversampleBuf[kOversample];
-
-        for (int os = 0; os < kOversample; ++os) {
-
-            // ── Voices ──────────────────────────────────────────────────
-            float voiceOut[kNumVoices];
-
-            for (int v = 0; v < kNumVoices; ++v) {
-                Voice& voice = voices[v];
-                uint16_t freq = getFrequency(v);
-                uint8_t ctrl = getControl(v);
-
-                voice.prevPhaseAcc = voice.phaseAccumulator;
-
-                // Fractional phase accumulator (prevents frequency drift)
-                double exactInc = static_cast<double>(freq) * kCyclesPerSample
-                                  + voice.phaseRemainder;
-                uint32_t intInc = static_cast<uint32_t>(exactInc);
-                voice.phaseRemainder = exactInc - static_cast<double>(intInc);
-                voice.phaseAccumulator = (voice.phaseAccumulator + intInc) & 0xFFFFFF;
-
-                // SYNC: reset when previous voice's bit 23 transitions 0→1
-                if (ctrl & 0x02) {
-                    int prevV = (v + kNumVoices - 1) % kNumVoices;
-                    Voice& prev = voices[prevV];
-                    if (!(prev.prevPhaseAcc & 0x800000) &&
-                        (prev.phaseAccumulator & 0x800000)) {
-                        voice.phaseAccumulator = 0;
-                    }
-                }
-
-                // Noise LFSR clock on bit 19 transition 0→1
-                if (!(voice.prevPhaseAcc & 0x080000) &&
-                    (voice.phaseAccumulator & 0x080000)) {
-                    clockNoiseLFSR(voice);
-                }
-
-                float waveform = computeWaveform(v);
-                waveform += 0.17f;  // 6581 voice DC bias (asymmetric distortion)
-                clockADSR(v);
-                voiceOut[v] = waveform * (static_cast<float>(voice.adsrLevel) / 255.0f);
-            }
-
-            // ── Mix voices into filtered / unfiltered paths ─────────────
-            float voice3Output = voice3Off ? 0.0f : voiceOut[2];
-
-            float filteredInput = 0.0f;
-            float unfilteredOutput = 0.0f;
-
-            if (filtVoice[0]) filteredInput += voiceOut[0];
-            else unfilteredOutput += voiceOut[0];
-            if (filtVoice[1]) filteredInput += voiceOut[1];
-            else unfilteredOutput += voiceOut[1];
-            if (filtVoice[2]) filteredInput += voice3Output;
-            else unfilteredOutput += voice3Output;
-
-            // 6581 filter input saturation (op-amp soft clipping)
-            filteredInput = fastTanh(filteredInput * 1.2f);
-
-            // ── Zero-Delay Feedback SVF (Zavalishin trapezoidal topology) ──
-            // No frequency warping, stable at all frequencies, accurate self-oscillation.
-            // BP feedback saturated via tanh for 6581 analog character.
-            float v3 = filteredInput - filterIC2eq
-                       - k * fastTanh(filterIC1eq * 1.5f);
-            float hp = v3 * a1;
-            float v1 = hp * g;
-            float bp = v1 + filterIC1eq;
-            filterIC1eq = v1 + bp;
-            float v2 = bp * g;
-            float lp = v2 + filterIC2eq;
-            filterIC2eq = v2 + lp;
-
-            // Safety clamp: prevent filter state divergence (NaN/infinity)
-            if (filterIC1eq > 10.0f) filterIC1eq = 10.0f;
-            else if (filterIC1eq < -10.0f) filterIC1eq = -10.0f;
-            if (filterIC2eq > 10.0f) filterIC2eq = 10.0f;
-            else if (filterIC2eq < -10.0f) filterIC2eq = -10.0f;
-
-            float filteredOutput = 0.0f;
-            if (modeLowPass)  filteredOutput += lp;
-            if (modeBandPass) filteredOutput += bp;
-            if (modeHighPass) filteredOutput += hp;
-
-            // No filter mode: pass through unfiltered
-            if (!modeLowPass && !modeBandPass && !modeHighPass) {
-                unfilteredOutput += filteredInput;
-            }
-
-            float internalSample = (filteredOutput + unfilteredOutput) * masterVolume
-                                   + dcOffset * 0.06f;
-
-            oversampleBuf[os] = internalSample;
-
-        } // end oversampling loop
-
-        // ── Decimation: triangular filter [1,3,3,1]/8 ──────────────────
-        float rawSample = 0.0f;
-        for (int i = 0; i < kOversample; ++i)
-            rawSample += oversampleBuf[i] * kDecimWeights[i];
-
-        // ── Output low-pass ~18 kHz (analog warmth) ────────────────────
-        outputLP += kLpAlpha * (rawSample - outputLP);
-
-        // ── DC blocker (removes digi DC, passes AC audio) ───────────────
-        float dcBlockOut = outputLP - dcBlockInput + kDcAlpha * dcBlockPrev;
-        dcBlockInput = outputLP;
-        dcBlockPrev = dcBlockOut;
-
-        output[s] = dcBlockOut * 0.4f;
     }
 }
 
-// ─── Snapshot ───────────────────────────────────────────────────────────────
+void SID::setChipModel(ChipModel m)
+{
+    if (m == currentModel) return;
+    std::lock_guard<std::mutex> lock(chipMutex);
+    rebuildChip(m);
+    // Restore last-written register state so a music program in flight
+    // doesn't go silent on chip swap.
+    for (uint8_t r = 0; r < kNumRegisters; ++r) {
+        chip->write(r, shadowRegs[r]);
+    }
+    pom1::log().info("SID", std::string("chip model -> ") +
+                     (m == ChipModel::MOS6581 ? "MOS6581" : "CSG8580"));
+}
 
 void SID::copySnapshot(Snapshot& out) const
 {
-    std::lock_guard<std::mutex> lock(sidMutex);
-    out.regs = regs;
+    std::lock_guard<std::mutex> lock(chipMutex);
+    out.regs = shadowRegs;
+    out.chipModel = currentModel;
 }
 
 } // namespace pom1

@@ -44,6 +44,7 @@ void SnapshotPublisher::publish(Memory& mem, const M6502& cpu, bool cpuRunning)
     snapshot.cassetteLoadedTapePath            = cassette.getLoadedTapePath();
 
     snapshot.sidEnabled     = mem.isSIDEnabled();
+    snapshot.sidChipModel   = mem.getSID().getChipModel();
     snapshot.microSDEnabled = mem.isMicroSDEnabled();
     // TMS9918: skip when the card is unplugged — the UI doesn't render it so
     // stale snapshot contents are harmless and we save a 16 KB memcpy.

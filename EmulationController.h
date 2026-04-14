@@ -82,6 +82,7 @@ public:
     // P-LAB A1-SID Sound Card
     void setSIDEnabled(bool enabled);
     bool isSIDEnabled() const;
+    void setSIDChipModel(pom1::SID::ChipModel m);
 
     // P-LAB microSD Storage Card
     void setMicroSDEnabled(bool enabled);

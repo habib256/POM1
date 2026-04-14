@@ -32,13 +32,13 @@ Open work only. For shipped features, see `git log` or the version notes in `REA
     1. Re-add Microban #43 and #44 to the text/TMS variants if we shave ~60 B (currently dropped to fit the 3 200 B stock-4K budget; both preserved in the HGR 72-level set).
     2. Swap the HGR HUD/title font for a "fat stroke" HGR font. Current `hud_font` (`software/hgr/HGR6_Sokoban.asm`) is a 5×7 thin font: horizontal bars render white, vertical 1-pixel strokes shimmer in NTSC artifact colour. [Pohoreski's apple2_hgr_font_tutorial](https://github.com/Michaelangel007/apple2_hgr_font_tutorial) documents a 7×8 fat-stroke font (1 byte/scanline, same storage budget) where every stroke is ≥ 2 pixels wide → reads as white. Pull in the digit + `M V : S O K B A N P R E L space L` subset (~24 glyphs × 8 B = 192 B), verify licensing, swap as a direct replacement (no logic change). Same idea could feed a 16×16 big-title splash font.
 
-## SID converter
+## SID converter (`tools/sid2apple1.py`)
 
-- [ ] **Arkanoid (Galway) silent** — ISR detected at `$4086` but tune is silent. Galway's multi-ISR raster-split architecture exceeds the converter's static ISR detection.
+The converter is now the only bottleneck — the SID chip itself is cycle-accurate libresidfp since v1.8.
 
-- [ ] **IRQ-driven tunes still failing** — players using computed/indirect ISR addresses (e.g. BMX Kidz) escape the LDA/LDX/LDY + STA/STX/STY pattern matcher.
-
-- [ ] **Cycle-accurate SID rewrite** — base on `libsidplayfp` (C++, fork of sidplay2, audiophile-grade). Repo: <https://github.com/libsidplayfp/libsidplayfp>. Architecture is modular and models 6581 hardware bugs precisely (filter bug, DAC routing for PCM samples). Risk: heavy if we just want a header-only include, but it's the path to authentic sound.
+- [ ] **Arkanoid (Galway) silent** — ISR detected at `$4086` but tune is silent. Galway's multi-ISR raster-split player exceeds the converter's static ISR detection.
+- [ ] **IRQ-driven tunes with computed ISR addresses** — e.g. BMX Kidz (Hubbard). Players that build the ISR vector dynamically escape the LDA/LDX/LDY + STA/STX/STY pattern matcher.
+- [ ] **PSID `flags` field ignored** — `pal = (speed_bit == 0)` (line ~597) confuses the PSID *speed* bit (vsync vs CIA timer) with the *video standard* (PAL vs NTSC, encoded in the `flags` word at offset `0x76`, bits 2–3). The `delay_outer` table (`0x4E` PAL / `0x41` NTSC) keys off the wrong bit, so some tunes get the wrong tempo on the Apple-1 (NTSC-clocked) target. Read `flags` directly and key the delay off bit 3.
 
 ## Visuals & UX
 

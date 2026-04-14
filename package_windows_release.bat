@@ -30,7 +30,7 @@ if not exist "roms\WozMonitor.rom" (
 )
 
 set "OUTDIR=dist\POM1-Windows"
-set "ZIPNAME=POM1-Windows-v1.7.2.zip"
+set "ZIPNAME=POM1-Windows-v1.8.0.zip"
 set "ZIPPATH=dist\%ZIPNAME%"
 
 if exist "%OUTDIR%" rd /s /q "%OUTDIR%"

@@ -48,7 +48,13 @@ public:
     
     // Nouvelles méthodes pour l'exécution et l'affichage
     void step(void);  // Exécuter une instruction
-    void run(int cycles); // Exécuter plusieurs cycles
+    /// Run until at least `maxCycles` 6502 cycles have elapsed (or `stop()`
+    /// is called). Per-instruction granularity means we typically overshoot
+    /// by 1-6 cycles; the actual cycle count is returned so callers pacing
+    /// against a wallclock budget can deduct what was really consumed
+    /// (otherwise the overshoot accumulates and the CPU runs faster than
+    /// the nominal POM1_CPU_CLOCK_HZ rate).
+    int run(int maxCycles);
     bool isRunning(void) const { return running; }
     
     // Accesseurs pour les registres (pour le débogueur)

@@ -426,6 +426,13 @@ void EmulationController::setSIDEnabled(bool enabled)
     publisher.publish(*memory, *cpu, runRequested.load());
 }
 
+void EmulationController::setSIDChipModel(pom1::SID::ChipModel m)
+{
+    std::lock_guard<std::mutex> lock(stateMutex);
+    memory->getSID().setChipModel(m);
+    publisher.publish(*memory, *cpu, runRequested.load());
+}
+
 bool EmulationController::isSIDEnabled() const
 {
     std::lock_guard<std::mutex> lock(stateMutex);
@@ -549,9 +556,9 @@ void EmulationController::runEmulationSlice(double elapsedSeconds)
         // Re-vérifier sous le mutex : stopCpu()/step peut avoir eu lieu après le test du haut de boucle.
         // Sinon cpu->start() annule cpu->stop() et une tranche entière s'exécute entre deux F7.
         if (runRequested.load()) {
-            emulationCycleBudget -= static_cast<double>(cyclesToRun);
             cpu->start();
-            cpu->run(cyclesToRun);
+            const int actualCycles = cpu->run(cyclesToRun);
+            emulationCycleBudget -= static_cast<double>(actualCycles);
         }
         publisher.publish(*memory, *cpu, runRequested.load());
     }

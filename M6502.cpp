@@ -1150,15 +1150,16 @@ void M6502::step(void)
     }
 }
 
-void M6502::run(int maxCycles)
+int M6502::run(int maxCycles)
 {
     int cyclesExecuted = 0;
     running = 1;
-    
+
     while (running && cyclesExecuted < maxCycles) {
         step();
         cyclesExecuted += cycles;
     }
+    return cyclesExecuted;
 }
 
 void M6502::start(void)
