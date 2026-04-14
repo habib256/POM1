@@ -31,6 +31,20 @@ set(SOURCES
     CFFA1.cpp
     WiFiModem.cpp
     TerminalCard.cpp
+    RomLoader.cpp
+    KeyboardController.cpp
+    SnapshotPublisher.cpp
+    PeripheralBus.cpp
+    Disassembler6502.cpp
+    MainWindow_Layout.cpp
+    MainWindow_Presets.cpp
+    MainWindow_Menu.cpp
+    MainWindow_Dialogs.cpp
+    MainWindow_HardwareWindows.cpp
+    MainWindow_FileDialogs.cpp
+    MainWindow_DebugWindows.cpp
+    MainWindow_Keyboard.cpp
+    Logger.cpp
 )
 
 set(HEADERS
@@ -51,6 +65,14 @@ set(HEADERS
     SocketHandle.h
     WiFiModem.h
     TerminalCard.h
+    RomLoader.h
+    KeyboardController.h
+    SnapshotPublisher.h
+    EmulationSnapshot.h
+    PeripheralBus.h
+    Disassembler6502.h
+    MainWindow_Internal.h
+    Logger.h
 )
 
 # Create executable

@@ -16,7 +16,6 @@
 // along with this program; if not, write to the Free Software
 // Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
-#include <iostream>
 #include <algorithm>
 #include <filesystem>
 #include <fstream>
@@ -25,6 +24,7 @@
 #include <cmath>
 
 #include "Memory.h"
+#include "Logger.h"
 #include "TMS9918.h"
 #include "MicroSD.h"
 #include "WiFiModem.h"
@@ -91,7 +91,103 @@ Memory::Memory()
         if (raw) setKeyPressedRaw(key);
         else setKeyPressed(key);
     });
+
+    // Register peripherals on the bus. Each entry starts disabled; enable()
+    // is flipped by setXxxEnabled. Priority 0 for non-overlapping peripherals;
+    // TMS9918 later uses a higher priority to win at $CC00/$CC01 vs SID.
+    a1ioRtcBusHandle = bus.registerHandle(
+        "A1IO_RTC", {0x2000, 0x200F}, /*priority*/ 0,
+        [this](uint16_t a) { return a1ioRtc->readRegister(a); },
+        [this](uint16_t a, uint8_t v) { a1ioRtc->writeRegister(a, v); });
+    bus.setEnabled(a1ioRtcBusHandle, a1ioRtcEnabled);
+
+    // CFFA1: registered before MicroSD so that at overlapping addresses
+    // ($A000-$A00F) CFFA1 wins (matches the original inline dispatch order).
+    // The presets make the two cards mutually exclusive anyway.
+    //  - $9000-$AFDF: firmware ROM — read returns ROM byte; writes are silently
+    //    swallowed by the bus (no write handler → bus consumes the access).
+    //  - $AFE0-$AFFF: ATA/IDE register window — full read/write.
+    cffa1RomBusHandle = bus.registerHandle(
+        "CFFA1_ROM", {0x9000, 0xAFDF}, /*priority*/ 0,
+        [this](uint16_t a) { return cffa1->readByte(a); },
+        // Explicit no-op write handler: ROM swallows writes (returns true
+        // from tryWrite, blocking the fall-through to raw mem[]).
+        [](uint16_t, uint8_t) { /* CFFA1 firmware ROM is read-only */ });
+    bus.setEnabled(cffa1RomBusHandle, cffa1Enabled);
+
+    cffa1RegBusHandle = bus.registerHandle(
+        "CFFA1_REG", {0xAFE0, 0xAFFF}, /*priority*/ 0,
+        [this](uint16_t a) { return cffa1->readByte(a); },
+        [this](uint16_t a, uint8_t v) { cffa1->writeByte(a, v); });
+    bus.setEnabled(cffa1RegBusHandle, cffa1Enabled);
+
+    microSDBusHandle = bus.registerHandle(
+        "microSD", {0xA000, 0xA00F}, /*priority*/ 0,
+        [this](uint16_t a) { return microSD->readRegister(a); },
+        [this](uint16_t a, uint8_t v) { microSD->writeRegister(a, v); });
+    bus.setEnabled(microSDBusHandle, microSDEnabled);
+
+    wifiModemBusHandle = bus.registerHandle(
+        "WiFiModem", {0xB000, 0xB003}, /*priority*/ 0,
+        [this](uint16_t a) { return wifiModem->readRegister(a); },
+        [this](uint16_t a, uint8_t v) { wifiModem->writeRegister(a, v); });
+    bus.setEnabled(wifiModemBusHandle, wifiModemEnabled);
+
+    // SID gets the whole $C800-$CFFF range at priority 0; TMS9918 overrides
+    // $CC00/$CC01 at priority 10 so when both cards are enabled the VDP wins
+    // those two addresses (matches the original inline dispatch).
+    // SID's register window is 32 regs (addr & 0x1F); only regs 0-24 are writable.
+    sidBusHandle = bus.registerHandle(
+        "SID", {0xC800, 0xCFFF}, /*priority*/ 0,
+        [this](uint16_t a) { return sid->readRegister(a & 0x1F); },
+        [this](uint16_t a, uint8_t v) {
+            uint8_t reg = a & 0x1F;
+            if (reg <= 24) sid->writeRegister(reg, v);
+        });
+    bus.setEnabled(sidBusHandle, sidEnabled);
+
+    tms9918BusHandle = bus.registerHandle(
+        "TMS9918", {0xCC00, 0xCC01}, /*priority*/ 10,
+        [this](uint16_t a) {
+            return (a == 0xCC00) ? tms9918->readData() : tms9918->readControl();
+        },
+        [this](uint16_t a, uint8_t v) {
+            if (a == 0xCC00) tms9918->writeData(v);
+            else tms9918->writeControl(v);
+        });
+    bus.setEnabled(tms9918BusHandle, tms9918Enabled);
+
+    // Apple-1 Cassette Interface — always plugged on a 1976 board, so the
+    // bus entries stay enabled. READ-only on the bus: the write toggle stays
+    // inline in memWrite() because it's a sniffer (the byte must still land
+    // in mem[] after the side effect, which the bus model doesn't express).
+    cassetteToggleBusHandle = bus.registerHandle(
+        "ACI_toggle", {0xC000, 0xC0FF}, /*priority*/ 0,
+        [this](uint16_t /*a*/) { return cassetteDevice->toggleOutput(); },
+        /*onWrite=*/ {});
+    bus.setEnabled(cassetteToggleBusHandle, true);
+
+    // $C081 specifically returns the tape input. Higher priority than the
+    // generic toggle range so it wins for that one address.
+    cassetteInputBusHandle = bus.registerHandle(
+        "ACI_input", {0xC081, 0xC081}, /*priority*/ 5,
+        [this](uint16_t /*a*/) { return cassetteDevice->readTapeInput(); },
+        /*onWrite=*/ {});
+    bus.setEnabled(cassetteInputBusHandle, true);
+
     initMemory();
+}
+
+void Memory::setTMS9918Enabled(bool b)
+{
+    tms9918Enabled = b;
+    bus.setEnabled(tms9918BusHandle, b);
+}
+
+void Memory::setA1IO_RTCEnabled(bool b)
+{
+    a1ioRtcEnabled = b;
+    bus.setEnabled(a1ioRtcBusHandle, b);
 }
 
 void Memory::setPresetRamKB(int kb)
@@ -119,9 +215,11 @@ void Memory::checkOutOfRangeAccess(quint16 address, bool isWrite)
     if (oorWarned.size() >= 64) return;
     uint32_t key = (static_cast<uint32_t>(address) << 1) | (isWrite ? 1u : 0u);
     if (oorWarned.insert(key).second) {
-        std::cout << "[Memory] Out-of-range " << (isWrite ? "write to" : "read from")
-                  << " $" << std::hex << std::uppercase << address << std::dec
-                  << " (preset RAM: " << presetRamKB << " KB)" << std::endl;
+        std::ostringstream oss;
+        oss << "Out-of-range " << (isWrite ? "write to" : "read from")
+            << " $" << std::hex << std::uppercase << address << std::dec
+            << " (preset RAM: " << presetRamKB << " KB)";
+        pom1::log().warn("Mem", oss.str());
     }
 }
 
@@ -207,7 +305,7 @@ int Memory::loadROM(const char* filename, quint16 startAddress, size_t maxSize, 
 
     if (!file.is_open()) {
         lastError = std::string("Cannot find ROM file: ") + filename;
-        std::cout << "ERROR: " << lastError << std::endl;
+        pom1::log().error("Mem", lastError);
         return 1;
     }
 
@@ -218,7 +316,7 @@ int Memory::loadROM(const char* filename, quint16 startAddress, size_t maxSize, 
     if (fileSize > maxSize) {
         lastError = std::string(label) + " ROM too large (" + std::to_string(fileSize)
                   + " bytes, max " + std::to_string(maxSize) + ")";
-        std::cout << "ERROR: " << lastError << std::endl;
+        pom1::log().error("Mem", lastError);
         file.close();
         return 1;
     }
@@ -230,8 +328,12 @@ int Memory::loadROM(const char* filename, quint16 startAddress, size_t maxSize, 
     for (size_t i = 0; i < fileContent.size(); ++i) {
         mem[startAddress + i] = (quint8)fileContent[i];
     }
-    std::cout << label << " loaded to 0x" << std::hex << std::uppercase << startAddress
-         << ": " << std::dec << fileContent.size() << " bytes" << std::endl;
+    {
+        std::ostringstream oss;
+        oss << label << " loaded to 0x" << std::hex << std::uppercase << startAddress
+            << ": " << std::dec << fileContent.size() << " bytes";
+        pom1::log().info("Mem", oss.str());
+    }
     return 0;
 }
 
@@ -277,8 +379,8 @@ int Memory::loadAciRom(void)
         mem[0xC100 + i] = kAciRom[i];
     }
     lastError.clear();
-    std::cout << "ACI ROM loaded from built-in fallback to 0xC100: "
-         << std::dec << sizeof(kAciRom) << " bytes" << std::endl;
+    pom1::log().info("Mem", "ACI ROM loaded from built-in fallback to 0xC100: " +
+                            std::to_string(sizeof(kAciRom)) + " bytes");
     return 0;
 }
 
@@ -287,7 +389,7 @@ int Memory::loadBinary(const char* filename, quint16 startAddress, int* bytesLoa
     if (bytesLoaded) *bytesLoaded = 0;
     std::ifstream file(filename, std::ios::binary);
     if (!file.is_open()) {
-        std::cout << "ERROR : Cannot open file: " << filename << std::endl;
+        pom1::log().error("Mem", std::string("Cannot open file: ") + filename);
         return 1;
     }
 
@@ -296,7 +398,9 @@ int Memory::loadBinary(const char* filename, quint16 startAddress, int* bytesLoa
     file.seekg(0, std::ios::beg);
 
     if (startAddress + fileSize > 0x10000) {
-        std::cout << "ERROR : File too large for address 0x" << std::hex << startAddress << std::endl;
+        std::ostringstream oss;
+        oss << "File too large for address 0x" << std::hex << startAddress;
+        pom1::log().error("Mem", oss.str());
         file.close();
         return 1;
     }
@@ -309,9 +413,13 @@ int Memory::loadBinary(const char* filename, quint16 startAddress, int* bytesLoa
         mem[startAddress + i] = (quint8)fileContent[i];
     }
     if (bytesLoaded) *bytesLoaded = static_cast<int>(fileContent.size());
-    std::cout << "Binary loaded: " << std::filesystem::path(filename).filename().string()
-              << " (" << std::dec << fileContent.size() << " bytes at 0x"
-              << std::hex << startAddress << ")" << std::endl;
+    {
+        std::ostringstream oss;
+        oss << "Binary loaded: " << std::filesystem::path(filename).filename().string()
+            << " (" << std::dec << fileContent.size() << " bytes at 0x"
+            << std::hex << startAddress << ")";
+        pom1::log().info("Mem", oss.str());
+    }
     return 0;
 }
 
@@ -320,7 +428,7 @@ int Memory::loadHexDump(const char* filename, quint16 &startAddress, int* bytesL
     if (bytesLoaded) *bytesLoaded = 0;
     std::ifstream file(filename);
     if (!file.is_open()) {
-        std::cout << "ERROR : Cannot open file: " << filename << std::endl;
+        pom1::log().error("Mem", std::string("Cannot open file: ") + filename);
         return 1;
     }
 
@@ -456,55 +564,25 @@ int Memory::loadHexDump(const char* filename, quint16 &startAddress, int* bytesL
         startAddress = runAddr;
 
     if (bytesLoaded) *bytesLoaded = totalBytes;
-    std::cout << "Hex dump loaded: " << std::filesystem::path(filename).filename().string()
-              << " (" << std::dec << totalBytes << " bytes starting at 0x"
-              << std::hex << startAddress << ")" << std::endl;
+    {
+        std::ostringstream oss;
+        oss << "Hex dump loaded: " << std::filesystem::path(filename).filename().string()
+            << " (" << std::dec << totalBytes << " bytes starting at 0x"
+            << std::hex << startAddress << ")";
+        pom1::log().info("Mem", oss.str());
+    }
     return firstAddr && !hasRunAddr ? 1 : 0;
 }
 
 quint8 Memory::memRead(quint16 address)
 {
-    // P-LAB A1-IO_RTC VIA 65C22 I/O ($2000-$200F)
-    if (a1ioRtcEnabled && address >= 0x2000 && address <= 0x200F) {
-        return a1ioRtc->readRegister(address);
-    }
-
-    // CFFA1 CompactFlash Interface ($9000-$AFFF)
-    if (cffa1Enabled && address >= 0x9000 && address <= 0xAFFF) {
-        return cffa1->readByte(address);
-    }
-
-    // P-LAB microSD VIA 65C22 I/O ($A000-$A00F)
-    if (microSDEnabled && address >= 0xA000 && address <= 0xA00F) {
-        return microSD->readRegister(address);
-    }
-
-    // P-LAB A1-SID I/O ($C800-$CFFF, register = address & 0x1F)
-    // TMS9918 has priority at $CC00-$CC01 when both cards are enabled
-    if (sidEnabled && address >= 0xC800 && address <= 0xCFFF) {
-        if (!(tms9918Enabled && (address == 0xCC00 || address == 0xCC01))) {
-            return sid->readRegister(address & 0x1F);
-        }
-    }
-
-    // P-LAB TMS9918 I/O ($CC00 = data, $CC01 = control/status)
-    if (tms9918Enabled) {
-        if (address == 0xCC00) return tms9918->readData();
-        if (address == 0xCC01) return tms9918->readControl();
-    }
-
-    // P-LAB Wi-Fi Modem ACIA 65C51 ($B000-$B003)
-    if (wifiModemEnabled && address >= 0xB000 && address <= 0xB003) {
-        return wifiModem->readRegister(address);
-    }
-
-    if (address == 0xC081) {
-        return cassetteDevice->readTapeInput();
-    }
-
-    if (address >= 0xC000 && address <= 0xC0FF) {
-        return cassetteDevice->toggleOutput();
-    }
+    // Memory-mapped peripherals (A1IO_RTC, CFFA1, microSD, WiFiModem, SID,
+    // TMS9918, Cassette read) live on the PeripheralBus. The remaining
+    // logic below handles the Apple-1 core that's not really a peripheral:
+    // PIA 6821 ($D010-$D012 with $D0xx aliasing), strict-OOR enforcement,
+    // and the raw 64 KB backing array.
+    uint8_t busValue;
+    if (bus.tryRead(address, busValue)) return busValue;
 
     // PIA 6821 alias: the Apple 1's 74154 decoder selects the PIA for the full
     // $D000-$DFFF range (4 KB page). Only address lines A0-A1 reach the PIA:
@@ -545,53 +623,22 @@ quint8 Memory::memRead(quint16 address)
     }
 
     checkOutOfRangeAccess(address, false);
+    // Strict enforcement: unmapped RAM on a real 1976 4 K Apple-1 floats on
+    // the bus; the ROMs that follow at $C1xx/$E0xx/$FFxx are handled above.
+    // Return $FF as a safe stand-in for "nothing driving the bus".
+    if (oorStrictMode && presetRamKB < 64) {
+        const quint16 ceiling = static_cast<quint16>(presetRamKB) * 1024;
+        if (address >= ceiling && address < 0x8000) {
+            return 0xFF;
+        }
+    }
     return mem[address];
 }
 
 void Memory::memWrite(quint16 address, quint8 value)
 {
-    // P-LAB A1-IO_RTC VIA 65C22 I/O ($2000-$200F)
-    if (a1ioRtcEnabled && address >= 0x2000 && address <= 0x200F) {
-        a1ioRtc->writeRegister(address, value);
-        return;
-    }
-
-    // CFFA1 CF registers ($AFE0-$AFFF) — write-only region
-    if (cffa1Enabled && address >= 0xAFE0 && address <= 0xAFFF) {
-        cffa1->writeByte(address, value);
-        return;
-    }
-    // CFFA1 ROM ($9000-$AFDF) — read-only, block writes
-    if (cffa1Enabled && address >= 0x9000 && address <= 0xAFDF) {
-        return; // ROM write blocked
-    }
-
-    // P-LAB microSD VIA 65C22 I/O ($A000-$A00F)
-    if (microSDEnabled && address >= 0xA000 && address <= 0xA00F) {
-        microSD->writeRegister(address, value);
-        return;
-    }
-
-    // P-LAB A1-SID I/O ($C800-$CFFF, register = address & 0x1F)
-    if (sidEnabled && address >= 0xC800 && address <= 0xCFFF) {
-        if (!(tms9918Enabled && (address == 0xCC00 || address == 0xCC01))) {
-            uint8_t reg = address & 0x1F;
-            if (reg <= 24) sid->writeRegister(reg, value);
-            return;
-        }
-    }
-
-    // P-LAB TMS9918 I/O ($CC00 = data, $CC01 = control)
-    if (tms9918Enabled) {
-        if (address == 0xCC00) { tms9918->writeData(value); return; }
-        if (address == 0xCC01) { tms9918->writeControl(value); return; }
-    }
-
-    // P-LAB Wi-Fi Modem ACIA 65C51 ($B000-$B003)
-    if (wifiModemEnabled && address >= 0xB000 && address <= 0xB003) {
-        wifiModem->writeRegister(address, value);
-        return;
-    }
+    // Peripheral bus first — same rationale as memRead().
+    if (bus.tryWrite(address, value)) return;
 
     // PIA 6821 alias (same normalization as memRead — full $D000-$DFFF page)
     if ((address & 0xF000) == 0xD000
@@ -630,6 +677,15 @@ void Memory::memWrite(quint16 address, quint8 value)
     }
 
     checkOutOfRangeAccess(address, true);
+    // Strict enforcement: drop writes to unmapped RAM so programs that stray
+    // past the preset's physical RAM ceiling can't silently corrupt the
+    // backing array and then read back their own garbage.
+    if (oorStrictMode && presetRamKB < 64) {
+        const quint16 ceiling = static_cast<quint16>(presetRamKB) * 1024;
+        if (address >= ceiling && address < 0x8000) {
+            return;
+        }
+    }
     mem[address] = value;
 }
 
@@ -683,6 +739,7 @@ void Memory::setSIDEnabled(bool b)
 {
     if (b == sidEnabled) return;
     sidEnabled = b;
+    bus.setEnabled(sidBusHandle, b);
     if (b) {
         audioDevice->addSource(sid.get());
     } else {
@@ -695,6 +752,7 @@ void Memory::setMicroSDEnabled(bool b)
 {
     if (b == microSDEnabled) return;
     microSDEnabled = b;
+    bus.setEnabled(microSDBusHandle, b);
     if (b) {
         // Mutually exclusive with CFFA1
         if (cffa1Enabled) setCFFA1Enabled(false);
@@ -703,6 +761,13 @@ void Memory::setMicroSDEnabled(bool b)
         // Clear the ROM region (restore to RAM)
         std::fill(mem.begin() + 0x8000, mem.begin() + 0xA000, 0);
     }
+}
+
+void Memory::setWiFiModemEnabled(bool b)
+{
+    if (b == wifiModemEnabled) return;
+    wifiModemEnabled = b;
+    bus.setEnabled(wifiModemBusHandle, b);
 }
 
 int Memory::loadSDCardRom()
@@ -720,6 +785,8 @@ void Memory::setCFFA1Enabled(bool b)
 {
     if (b == cffa1Enabled) return;
     cffa1Enabled = b;
+    bus.setEnabled(cffa1RomBusHandle, b);
+    bus.setEnabled(cffa1RegBusHandle, b);
     if (b) {
         // Mutually exclusive with microSD
         if (microSDEnabled) setMicroSDEnabled(false);

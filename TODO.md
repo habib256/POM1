@@ -1,72 +1,59 @@
 # TODO
 
-Open work only. For shipped features, see `git log` or the version notes
-referenced in `README.md`.
+Open work only. For shipped features, see `git log` or the version notes in `README.md`.
 
 ## Apple-1 ecosystem — hardware
 
 ### Storage & cassette
+- [ ] **Uncle Bernie's Improved ACI** — emulate the ACI Extended firmware page at `$C500-$C5FF` (256 B, started with `C500R`): EOR checksum (`R`/`W`), extended format with 8-byte header at `$07F8-$07FF` (`RX`/`WX`), and autostart (`<from>` == `<to>`). **Firmware is unpublished** — Uncle Bernie stated on Applefritter it will never be released, PROMs were distributed only with his physical IC kits (sold out). **Action**: contact him via [Applefritter PM](https://www.applefritter.com/user/254186/track) (precedent: he shared docs with the HoneyCrisp emulator dev). Code-side once obtained: load at `$C500`, update `CassetteDevice` for header + checksum. Refs: [Applefritter thread](https://www.applefritter.com/content/uncle-bernies-improved-apple-1-cassette-interface), [comparison](https://www.applefritter.com/content/which-aci-improvements-do-exist-and-work).
 
-- [ ] **Uncle Bernie's Improved ACI** — Emulate the ACI Extended firmware page at `$C500-$C5FF` (256 B, started with `C500R`). Adds EOR checksum verification (`R`/`W`), extended format with 8-byte header at `$07F8-$07FF` (`RX`/`WX`), and autostart (`<from>` == `<to>`). Compatible Apple II checksum. **Firmware is proprietary and unpublished** — Uncle Bernie stated on Applefritter: *"The improved firmware I wrote for it will never be published."* PROMs were distributed only with his physical IC kits (now sold out). **Action required:** contact Uncle Bernie via [Applefritter PM](https://www.applefritter.com/user/254186/track) to request cooperation; precedent: he offered to share docs with the HoneyCrisp emulator developer. POM1 already emulates his GEN2 HGR card, which is a good argument. Code-side when ROM obtained: load at `$C500`, update `CassetteDevice` for extended format (header + checksum). Ref: [Applefritter thread](https://www.applefritter.com/content/uncle-bernies-improved-apple-1-cassette-interface), [ACI improvements comparison](https://www.applefritter.com/content/which-aci-improvements-do-exist-and-work).
-
-- [ ] **Uncle Bernie's Woz Machine floppy controller** — 5.25" Disk II-style floppy emulation for Apple-1. Major effort; do last. Replicates the Woz state machine (74LS299 shift register, 74LS259 soft-switches) plus the **Timing Fix Circuit** (GAL16V8) that absorbs Apple-1 DRAM-refresh cycle jitter so Wozniak's RWTS cycle-counting works despite the missing Q3 2 MHz clock. Needs: GCR track/sector emulation, `.dsk`/`.woz` image loading, soft-switch dispatch in `$C0Ex` range, asynchronous 74LS123-based drive clock. Parks at last in the pipeline — only worth it once we have original Apple-1 disk software to run (none known public as of now; would target ports/adaptations from the Apple II disk library).
+- [ ] **Uncle Bernie's Woz Machine floppy** — 5.25" Disk II-style emulation: Woz state machine (74LS299 + 74LS259), Timing Fix Circuit (GAL16V8) absorbing Apple-1 DRAM-refresh jitter so RWTS cycle-counting works without a Q3 2 MHz clock. Needs GCR track/sector emulation, `.dsk`/`.woz` loading, soft-switch dispatch in `$C0Ex`, async 74LS123 drive clock. Major effort, do last — only worth it once original Apple-1 disk software surfaces.
 
 ### Print & voice
+- [ ] **SWTPC PR-40 40-col printer** — parallel-port matrix printer (5×7, 40 col/line, 75 lpm). Render output to a scrolling "paper roll" window + append to `.txt`. Tiny effort, high nostalgia. Hooks into an 8-bit parallel output port (closest existing socket: split off the Terminal Card TCP stream).
 
-- [ ] **SWTPC PR-40 40-col printer** — Parallel-port matrix printer (5×7 dots, 40 col/line, 75 lpm). Render output to a scrolling "paper roll" window + append to a `.txt` file. Tiny effort, high nostalgia. Hooks into an 8-bit parallel output port (to be defined; closest existing socket is the Terminal Card TCP stream, which we can split).
+- [ ] **Briel Multi I/O Board — SpeakJet** — the 6522/6551 portions duplicate microSD/MODEM. Unique value: route the UART byte stream through a TTS bridge (eSpeak or macOS `say`) to give the Apple-1 a synthetic voice. Implement as a separate optional peripheral so it can coexist with microSD.
 
-- [ ] **Briel Multi I/O Board — SpeakJet vocal synthesis** — The 6522/6551 portions of the Briel board duplicate what P-LAB MicroSD / Modem already expose. The unique value is the **SpeakJet** phoneme chip socket: route the UART byte stream through a TTS bridge (eSpeak or macOS `say`) to give the Apple-1 a synthetic voice. Implement as a separate optional peripheral so it can coexist with microSD.
+## Apple-1 software & loaders
 
-### Machine presets
+- [ ] **TurboType 57 600-baud loader** (Uncle Bernie, via 8BitFlux *Keyboard Serial Terminal*) — extend `TerminalCard` with a "raw inject" mode. Flow: host sends `.TUR` hybrid → small Wozmon-speed bootstrap (`.APL` prefix) installs an in-RAM dropper that disables Wozmon echo → payload streams direct to RAM at 57 600 baud with running CRC. Loads 4 KB in < 30 s vs. the ~2 400-baud ceiling of echo-limited Wozmon. POM1-side: a single "Fast load" menu action that parses `.TUR`, switches the Terminal Card to raw mode for the burst, asserts CRC, surrenders back to Wozmon.
 
-- [ ] **Full bare-4K enforcement (optional)** — The *"Apple-1 bare 4 K (July 1976)"* preset exists and triggers an OOR warning (`Memory::checkOutOfRangeAccess`, status-bar `OOR:N` indicator) when a program touches RAM past the preset's `ramKB*1024`. A stricter "hardware-accurate" mode would actually enforce bounds (reads return `$FF`, writes dropped) instead of just warning. Only worth doing if a specific authenticity-test program needs it — today the warning alone is enough to flag out-of-RAM accesses.
+- [ ] **More GEN2 programs** — image viewers, drawing tools, additional 280×192 HIRES demos.
 
-## Apple-1 ecosystem — software & loaders
+- [ ] **Finalise [`software/hgr/HGR8_BBFont.inc`](software/hgr/HGR8_BBFont.inc)** — unify BB rendering (`fontbb.s`, `$20`–`$7F`) vs PNG (controls + extended `$80`–`$FF`), document/regenerate from sources (`fonts/fontbb.s`, `fonts/font_codepage_437_8x8.png`), refine problematic glyphs (NTSC / stroke weight). Optionally add a generator script under `tools/`.
 
-- [ ] **TurboType 57 600-baud loader** (Uncle Bernie, via 8BitFlux *Keyboard Serial Terminal*) — Extend `TerminalCard` with a "raw inject" mode. Flow: host sends `.TUR` hybrid file → small Wozmon-speed bootstrap (the `.APL` prefix) installs an in-RAM dropper that disables the Wozmon echo → payload streams direct to RAM at 57 600 baud with running CRC. Loads a 4 KB program in < 30 s vs. the ~2 400-baud ceiling of echo-limited Wozmon. POM1-side: a single "Fast load" menu action that parses `.TUR`, switches the Terminal Card to raw mode for the burst, asserts CRC, and surrenders control back to Wozmon.
+- [ ] **CodeTank daughterboard ROM** — support the `apple1_jukebox` target (ROM at `$4000-$7FFF`) for programs stored on the CodeTank EEPROM.
 
-- [ ] **More GEN2 programs** — Image viewers, drawing tools, additional 280×192 HIRES demos.
+- [ ] **Misc programs (Angela / P-Lab)** — curated ports (Dobble, Oregon Trail, etc.) from [angela](https://p-l4b.github.io/angela/).
 
-- [ ] **Finaliser la font** [`software/hgr/HGR8_BBFont.inc`](software/hgr/HGR8_BBFont.inc) — Unifier le rendu BB (`fontbb.s`, `$20`–`$7F`) vs PNG (contrôles + étendu `$80`–`$FF`), documenter/regénérer depuis les sources (`fonts/fontbb.s`, `fonts/font_codepage_437_8x8.png`), affiner glyphes problématiques (NTSC / poids du trait), optionnellement intégrer un petit script dans `tools/`.
-
-- [ ] **CodeTank daughterboard ROM** — Support the `apple1_jukebox` target (ROM at `$4000-$7FFF`) for programs stored on the CodeTank EEPROM.
-
-- [ ] **Misc programs reference (Angela / P-Lab)** — Curated ports (Dobble, Oregon Trail, etc.) from [angela](https://p-l4b.github.io/angela/).
-
-- [ ] **Wendell Sander's Star Trek (SPACWR)** — Extended 32 K Star Trek port by the Fairchild DRAM lead, demoed to Jobs autumn 1976. Hunt for the listing (Applefritter, Computer History Museum archives). If located, package as a `.txt` bootable on a new "Apple-1 + Sander 32 K" preset. Modification: VMA signal 2.2 kΩ || 100 pF (Sander's fix) — simulate by enabling the upper RAM bank cleanly (no authenticity quirks needed since we don't model bus analog behaviour).
+- [ ] **Wendell Sander's Star Trek (SPACWR)** — extended 32 K Star Trek port by the Fairchild DRAM lead, demoed to Jobs autumn 1976. Hunt the listing (Applefritter, CHM archives). If located: package as bootable `.txt` on a new "Apple-1 + Sander 32 K" preset. Sander's VMA fix (2.2 kΩ ‖ 100 pF) — simulate by enabling the upper RAM bank cleanly (no analog modelling needed).
 
 - [ ] **Sokoban follow-ups**
-    1. Re-add Microban #43 and #44 to the text/TMS variants if we later shave ~60 B of code (currently dropped to fit the 3 200 B stock-4K budget; both are preserved in the HGR 72-level set).
-    2. **Swap the HGR HUD/title font for a proper "fat stroke" HGR font.** Current `hud_font` in `software/hgr/HGR6_Sokoban.asm` is a hand-rolled 5×7 thin font: horizontal bars render white, vertical 1-pixel strokes render in NTSC artifact colour (violet on even columns, green on odd), so digits and letters shimmer and shift hue depending on their byte column. Michael Pohoreski's [apple2_hgr_font_tutorial](https://github.com/Michaelangel007/apple2_hgr_font_tutorial) documents a 7×8 fat-stroke HGR font (1 byte per scanline, 8 bytes per glyph — same storage budget as today) whose strokes are ≥ 2 pixels wide so every stroke reads as white. Plan: pull in the digit + `M V : S O K B A N P R E L space L` subset (~24 glyphs × 8 B = 192 B, matches current layout), verify licensing, and drop it in as a direct replacement — no logic change, just a font-data swap. Same idea could carry the same subset into a 16×16 big-title font for a more impressive splash screen.
+    1. Re-add Microban #43 and #44 to the text/TMS variants if we shave ~60 B (currently dropped to fit the 3 200 B stock-4K budget; both preserved in the HGR 72-level set).
+    2. Swap the HGR HUD/title font for a "fat stroke" HGR font. Current `hud_font` (`software/hgr/HGR6_Sokoban.asm`) is a 5×7 thin font: horizontal bars render white, vertical 1-pixel strokes shimmer in NTSC artifact colour. [Pohoreski's apple2_hgr_font_tutorial](https://github.com/Michaelangel007/apple2_hgr_font_tutorial) documents a 7×8 fat-stroke font (1 byte/scanline, same storage budget) where every stroke is ≥ 2 pixels wide → reads as white. Pull in the digit + `M V : S O K B A N P R E L space L` subset (~24 glyphs × 8 B = 192 B), verify licensing, swap as a direct replacement (no logic change). Same idea could feed a 16×16 big-title splash font.
 
 ## SID converter
 
-- [ ] **Arkanoid (Galway) does not play** — ISR detected at `$4086` but tune is silent. Galway's multi-ISR raster-split architecture needs more than the converter's static ISR detection.
+- [ ] **Arkanoid (Galway) silent** — ISR detected at `$4086` but tune is silent. Galway's multi-ISR raster-split architecture exceeds the converter's static ISR detection.
 
-- [ ] **Some IRQ-driven tunes still fail** — Players using computed or indirect ISR addresses (e.g. BMX Kidz) escape the LDA/LDX/LDY + STA/STX/STY pattern matcher.
+- [ ] **IRQ-driven tunes still failing** — players using computed/indirect ISR addresses (e.g. BMX Kidz) escape the LDA/LDX/LDY + STA/STX/STY pattern matcher.
 
-- [ ] **Réimplémentation complète du SID (cycle-accurate)** — Se baser sur la référence *cycle-accurate* `libsidplayfp` (C++), standard actuel (fork de sidplay2) optimisé pour la précision absolue, utilisé par la majorité des lecteurs audiophiles sous macOS et Linux. Repo: <https://github.com/libsidplayfp/libsidplayfp>. **Intérêt**: architecture C++ très modulaire, modélisation précise des “bugs” matériels du 6581 (ex: bug de filtre, DAC routing exploité pour jouer des samples PCM). **Point d’attention**: architecture potentiellement lourde si l’objectif est juste un header rapide à inclure, mais c’est la voie nécessaire pour un son authentique.
+- [ ] **Cycle-accurate SID rewrite** — base on `libsidplayfp` (C++, fork of sidplay2, audiophile-grade). Repo: <https://github.com/libsidplayfp/libsidplayfp>. Architecture is modular and models 6581 hardware bugs precisely (filter bug, DAC routing for PCM samples). Risk: heavy if we just want a header-only include, but it's the path to authentic sound.
 
 ## Visuals & UX
 
-- [ ] **Native file dialog** — File loading/saving still uses the in-app browser instead of system file pickers.
+- [ ] **Native file dialog** — load/save still uses the in-app browser instead of system pickers.
 
-- [ ] **Authentic CRT shift-register streaming** — Extension of the existing CRT scanline + phosphor overlay (`Screen_ImGui::drawCRTOverlay`): add an opt-in mode that simulates the 1976 Signetics 2519 timing — characters land at ~60 char/s instead of instantly, the hardware scroll visibly shifts the whole buffer one line at a time, and the display stays frozen during CPU bursts exactly like the original. Pair with the bare-4 K preset for a full-fidelity 1976 experience.
+- [ ] **Authentic CRT shift-register streaming** — extend `Screen_ImGui::drawCRTOverlay` with an opt-in mode simulating 1976 Signetics 2519 timing: characters land at ~60 char/s instead of instantly, hardware scroll visibly shifts the buffer one line at a time, display freezes during CPU bursts. Pair with the bare-4K preset for full 1976 fidelity.
 
-## Technical debt & code quality (audit April 2026)
+## Technical debt & code quality
 
 ### Performance
-- [ ] **Snapshot RAM copy 64 KB @ 60 Hz** — `publishSnapshotLocked()` writes directly into `latestSnapshot` (no stack copy, no per-frame alloc) and skips the TMS9918 16 KB memcpy when the card is unplugged; the full 64 KB RAM `memcpy` still runs every frame under `stateMutex`. Further reduction would need page-level dirty tracking in `Memory::memWrite`. Likely not worth the complexity.
+- [ ] **64 KB RAM `memcpy` @ 60 Hz** — `SnapshotPublisher::publish()` already skips the TMS9918 16 KB copy when unplugged but the full 64 KB RAM copy still runs every frame under `stateMutex`. Further reduction needs page-level dirty tracking in `Memory::memWrite`. Likely not worth the complexity.
 
 ### Architecture
-- [ ] **`Memory` is a god object** — owns 9 peripheral `unique_ptr`s + matching enable flags + inline I/O dispatch in `memRead`/`memWrite`. → Extract a `PeripheralBus` with dynamic registry; `Memory` only manages the address space.
-- [ ] **`EmulationController` SRP violation** — ~50 public methods (CPU, ROMs, snapshots, keyboard, tape, reset…). → Split into `SaveStateManager`, `KeyboardController`, `RomLoader`.
-- [ ] **`MainWindow_ImGui.cpp` is monolithic** (~3200 lines) — UI + events + state + dialogs + rendering in one class. → Per-dialog classes; machine presets in external JSON/YAML.
 - [ ] **Static `Screen_ImGui::displayCallback`** couples UI to emulation. → `DisplayDevice` interface injected into `Memory`; `Screen_ImGui` implements it.
 
-### Code quality
-- [ ] **Diagnostic `std::cout` scattered across peripherals** (WiFiModem, TerminalCard, MicroSD, CFFA1): no level filtering, can't redirect to the debug UI. → Minimal `Logger` interface, dependency-injected.
-
 ### Tests
-- [ ] **No unit tests** — refactors risk regressing 6502 emulation silently. → Klaus Dormann's 6502 functional tests as the first smoke test; add GTest or Catch2.
-- [ ] **Parsers not fuzzed** — `loadHexDump()` and `executeATCommand()` accept external input untested. → LibFuzzer targets via a CMake option (`ENABLE_FUZZING`).
+- [ ] **No unit tests** — refactors risk silently regressing 6502 emulation. → Klaus Dormann's 6502 functional tests as first smoke test; add GTest or Catch2.
+- [ ] **Parsers not fuzzed** — `loadHexDump()` and `executeATCommand()` accept untested external input. → LibFuzzer targets via a CMake option (`ENABLE_FUZZING`).

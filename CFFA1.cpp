@@ -3,7 +3,7 @@
 // a ProDOS .po disk image via LBA block reads/writes.
 
 #include "CFFA1.h"
-#include <iostream>
+#include "Logger.h"
 #include <cstring>
 #include <algorithm>
 
@@ -46,7 +46,7 @@ bool CFFA1::openDiskImage(const std::string& path)
     diskImagePath = path;
     diskFile.open(path, std::ios::in | std::ios::out | std::ios::binary);
     if (!diskFile.is_open()) {
-        std::cout << "[CFFA1] Cannot open disk image: " << path << std::endl;
+        pom1::log().warn("CF", "Cannot open disk image: " + path);
         ataStatus = 0x00; // no device
         return false;
     }
@@ -56,8 +56,8 @@ bool CFFA1::openDiskImage(const std::string& path)
     diskFile.seekg(0, std::ios::beg);
     diskSizeBlocks = static_cast<uint32_t>(fileSize / 512);
     ataStatus = kStatusDRDY | kStatusDSC;
-    std::cout << "[CFFA1] Disk image: " << path << " (" << diskSizeBlocks << " blocks, "
-              << (diskSizeBlocks / 2) << " KB)" << std::endl;
+    pom1::log().info("CF", "Disk image: " + path + " (" + std::to_string(diskSizeBlocks) +
+                           " blocks, " + std::to_string(diskSizeBlocks / 2) + " KB)");
     return true;
 }
 

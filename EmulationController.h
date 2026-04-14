@@ -4,10 +4,9 @@
 #include <atomic>
 #include <condition_variable>
 #include <cstdint>
+#include <memory>
 #include <mutex>
-#include <queue>
 #include <string>
-#include <vector>
 
 #include "CpuClock.h"
 #include "POM1Build.h"
@@ -15,52 +14,20 @@
 #include <thread>
 #endif
 
+#include "EmulationSnapshot.h"
+#include "KeyboardController.h"
 #include "M6502.h"
 #include "Memory.h"
 #include "Screen_ImGui.h"
-#include "TMS9918.h"
-#include "WiFiModem.h"
-#include "TerminalCard.h"
-#include "A1IO_RTC.h"
+#include "SnapshotPublisher.h"
 
-struct EmulationSnapshot
-{
-    std::vector<quint8> memory = std::vector<quint8>(0x10000, 0);
-    quint16 programCounter = 0;
-    quint8 accumulator = 0;
-    quint8 xRegister = 0;
-    quint8 yRegister = 0;
-    quint8 stackPointer = 0;
-    quint8 statusRegister = 0;
-    bool cpuRunning = false;
-    bool keyReady = false;
-    char lastKey = 0;
-    bool writeInRom = false;
-    int ramSizeKB = 0;
-    bool cassetteLoadedTape = false;
-    bool cassetteRecordedTape = false;
-    bool cassettePlaybackActive = false;
-    bool cassetteAudioAvailable = false;
-    bool cassetteHardwareAccurateLiveAudio = true;
-    double cassetteQueuedAudioSeconds = 0.0;
-    size_t cassetteLoadedTransitionCount = 0;
-    size_t cassetteRecordedTransitionCount = 0;
-    std::string cassetteLoadedTapePath;
-    TMS9918::Snapshot tms9918;
-    bool sidEnabled = false;
-    bool microSDEnabled = false;
-    bool wifiModemEnabled = false;
-    WiFiModem::Snapshot wifiModem;
-    bool terminalCardEnabled = false;
-    TerminalCard::Snapshot terminalCard;
-    bool a1ioRtcEnabled = false;
-    A1IO_RTC::Snapshot a1ioRtc;
-};
-
-// Mutex ordering: when both are needed, always lock stateMutex before keyMutex.
-// processQueuedKeysLocked() requires stateMutex to be held; it then takes keyMutex.
-// Never acquire stateMutex while holding keyMutex (e.g. do not call into the
-// controller from a path that holds keyMutex), or the emulation thread can deadlock.
+// Mutex ordering: stateMutex > keyboard's internal keyMutex > publisher's
+// internal snapshotMutex. publisher.publish() is invoked while holding
+// stateMutex; it then takes snapshotMutex internally. keyboard.drainTo() is
+// also invoked under stateMutex; KeyboardController takes its own keyMutex
+// via swap-out before calling setKeyPressed() with keyMutex released.
+// Never acquire stateMutex while holding a nested mutex, or the emulation
+// thread can deadlock.
 class EmulationController
 {
 public:
@@ -91,6 +58,8 @@ public:
     void setTerminalSpeed(int charsPerSecond);
     void setPresetRamKB(int kb);
     int getOutOfRangeAccessCount() const;
+    void setOutOfRangeStrictMode(bool enable);
+    bool isOutOfRangeStrictMode() const;
     bool reloadBasic(std::string& error);
     bool reloadApplesoftLite(std::string& error);
     bool reloadWozMonitor(std::string& error);
@@ -146,22 +115,22 @@ private:
 private:
     void emulationLoop();
     void runEmulationSlice(double elapsedSeconds);
-    void publishSnapshotLocked();
-    void processQueuedKeysLocked();
 
 private:
     Screen_ImGui* screen = nullptr;
     std::unique_ptr<Memory> memory;
     std::unique_ptr<M6502> cpu;
 
+    // Declared before emulationThread so their destructors run AFTER the
+    // thread is joined in ~EmulationController — the emulation slice reads
+    // and writes both `keyboard` (via drainTo) and `publisher` (via publish).
+    KeyboardController keyboard;
+    SnapshotPublisher publisher;
+
     mutable std::mutex stateMutex;
-    mutable std::mutex snapshotMutex;
-    mutable std::mutex keyMutex;
     std::condition_variable wakeCv;
     std::mutex wakeMutex;
 
-    std::queue<char> queuedKeys;
-    EmulationSnapshot latestSnapshot;
     quint16 preferredSoftResetVector = kDefaultResetVector;
 
 #if !POM1_IS_WASM

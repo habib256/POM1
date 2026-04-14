@@ -7,7 +7,7 @@
 // Firmware source: https://github.com/nippur72/apple1-sdcard
 
 #include "MicroSD.h"
-#include <iostream>
+#include "Logger.h"
 #include <fstream>
 #include <filesystem>
 #include <algorithm>
@@ -70,7 +70,7 @@ void MicroSD::reset()
 void MicroSD::setSDCardPath(const std::string& path)
 {
     sdCardRootPath = path;
-    std::cout << "[SD] SD card path set to: " << path << std::endl;
+    pom1::log().info("SD", "SD card path set to: " + path);
 }
 
 // ============================================================================
@@ -171,16 +171,19 @@ void MicroSD::writeRegister(uint16_t address, uint8_t value)
                         mcuPhase = nextPhaseAfterResponse;
                         nextPhaseAfterResponse = McuPhase::IDLE;
                     } else {
-                        if (debugEnabled) std::cout << "[SD] Aborting stale response, reset to IDLE" << std::endl;
+                        if (debugEnabled) pom1::log().debug("SD", "Aborting stale response, reset to IDLE");
                         mcuPhase = McuPhase::IDLE;
                     }
                     responseBuffer.clear();
                     responseIndex = 0;
                 }
                 // CPU is SENDING a byte (Port A = output)
-                if (debugEnabled)
-                    std::cout << "[SD] CPU->MCU byte: 0x" << std::hex << (int)portA
-                              << " phase=" << (int)mcuPhase << std::dec << std::endl;
+                if (debugEnabled) {
+                    std::ostringstream oss;
+                    oss << "CPU->MCU byte: 0x" << std::hex << (int)portA
+                        << " phase=" << std::dec << (int)mcuPhase;
+                    pom1::log().debug("SD", oss.str());
+                }
                 handleByteFromCPU(portA);
                 mcuStrobeHigh = true; // acknowledge
             } else {
@@ -343,14 +346,17 @@ void MicroSD::prepareNextResponseByte()
         if (responseIndex < responseBuffer.size()) {
             portA = responseBuffer[responseIndex];
             mcuStrobeHigh = true; // data ready
-            if (debugEnabled)
-                std::cout << "[SD] MCU->CPU byte: 0x" << std::hex << (int)portA
-                          << " [" << responseIndex << "/" << responseBuffer.size() << "]"
-                          << std::dec << std::endl;
+            if (debugEnabled) {
+                std::ostringstream oss;
+                oss << "MCU->CPU byte: 0x" << std::hex << (int)portA
+                    << std::dec << " [" << responseIndex << "/" << responseBuffer.size() << "]";
+                pom1::log().debug("SD", oss.str());
+            }
         } else {
             // Response complete — transition to next phase
             if (debugEnabled)
-                std::cout << "[SD] Response complete, next phase=" << (int)nextPhaseAfterResponse << std::endl;
+                pom1::log().debug("SD", "Response complete, next phase=" +
+                                        std::to_string((int)nextPhaseAfterResponse));
             mcuPhase = nextPhaseAfterResponse;
             nextPhaseAfterResponse = McuPhase::IDLE;
         }
@@ -483,8 +489,8 @@ void MicroSD::handleByteFromCPU(uint8_t byte)
 void MicroSD::processCommand()
 {
     if (debugEnabled)
-        std::cout << "[SD] processCommand: cmd=" << (int)currentCommand
-                  << " arg=\"" << stringBuffer << "\"" << std::endl;
+        pom1::log().debug("SD", "processCommand: cmd=" + std::to_string((int)currentCommand) +
+                                " arg=\"" + stringBuffer + "\"");
     switch (currentCommand) {
     case CMD_READ:
         cmdRead(stringBuffer, false);
@@ -530,7 +536,8 @@ void MicroSD::beginResponse(const std::vector<uint8_t>& data, McuPhase nextPhase
     mcuPhase = McuPhase::SENDING_RESPONSE;
     nextPhaseAfterResponse = nextPhase;
     if (debugEnabled)
-        std::cout << "[SD] beginResponse: " << data.size() << " bytes, nextPhase=" << (int)nextPhase << std::endl;
+        pom1::log().debug("SD", "beginResponse: " + std::to_string(data.size()) +
+                                " bytes, nextPhase=" + std::to_string((int)nextPhase));
 
     // Don't prepare the first byte here — it will be prepared when
     // the CPU switches to input mode (DDRA=0x00) or on falling edge

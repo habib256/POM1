@@ -6,8 +6,8 @@
 // https://p-l4b.github.io/wifi/
 
 #include "WiFiModem.h"
+#include "Logger.h"
 #include <cstring>
-#include <iostream>
 #include <memory>
 #include <thread>
 
@@ -498,7 +498,7 @@ void WiFiModem::connectToHost(const std::string& host, uint16_t port)
             freeaddrinfo(result);
             if (beginConnectFromResolved(res, socketFd)) {
                 connState = ConnState::CONNECTING;
-                std::cout << "WiFi Modem: connecting to " << host << ":" << port << std::endl;
+                pom1::log().info("WiFi", "connecting to " + host + ":" + std::to_string(port));
             } else {
                 enqueueRxString("\r\nNO CARRIER\r\n");
             }
@@ -532,7 +532,7 @@ void WiFiModem::connectToHost(const std::string& host, uint16_t port)
     }).detach();
 
     connState = ConnState::RESOLVING;
-    std::cout << "WiFi Modem: resolving " << host << "..." << std::endl;
+    pom1::log().info("WiFi", "resolving " + host + "...");
 }
 
 void WiFiModem::disconnect()
@@ -559,7 +559,7 @@ void WiFiModem::updateConnection()
             connState = ConnState::IDLE;
             enqueueRxString("\r\nNO CARRIER\r\n");
             mode = ModemMode::COMMAND;
-            std::cout << "WiFi Modem: DNS timeout for " << remoteHost << std::endl;
+            pom1::log().warn("WiFi", "DNS timeout for " + remoteHost);
             return;
         }
         if (dnsFuture.valid() &&
@@ -579,8 +579,8 @@ void WiFiModem::updateConnection()
                 return;
             }
             connState = ConnState::CONNECTING;
-            std::cout << "WiFi Modem: DNS resolved, connecting to "
-                      << remoteHost << ":" << remotePort << std::endl;
+            pom1::log().info("WiFi", "DNS resolved, connecting to " +
+                             remoteHost + ":" + std::to_string(remotePort));
             // fall through so we can immediately poll the new socket below
         } else {
             return;
@@ -593,8 +593,8 @@ void WiFiModem::updateConnection()
         disconnect();
         enqueueRxString("\r\nNO CARRIER\r\n");
         mode = ModemMode::COMMAND;
-        std::cout << "WiFi Modem: connect timeout for "
-                  << remoteHost << ":" << remotePort << std::endl;
+        pom1::log().warn("WiFi", "connect timeout for " +
+                         remoteHost + ":" + std::to_string(remotePort));
         return;
     }
 
@@ -635,7 +635,7 @@ void WiFiModem::updateConnection()
         int baud = decodeBaudRate();
         std::string connectMsg = "\r\nCONNECT " + std::to_string(baud) + "\r\n";
         enqueueRxString(connectMsg.c_str());
-        std::cout << "WiFi Modem: connected to " << remoteHost << ":" << remotePort << std::endl;
+        pom1::log().info("WiFi", "connected to " + remoteHost + ":" + std::to_string(remotePort));
     }
 
     // Read incoming data
@@ -686,7 +686,7 @@ void WiFiModem::updateConnection()
         int baud = decodeBaudRate();
         std::string connectMsg = "\r\nCONNECT " + std::to_string(baud) + "\r\n";
         enqueueRxString(connectMsg.c_str());
-        std::cout << "WiFi Modem: connected to " << remoteHost << ":" << remotePort << std::endl;
+        pom1::log().info("WiFi", "connected to " + remoteHost + ":" + std::to_string(remotePort));
     }
 
     // Read incoming data

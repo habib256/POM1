@@ -7,6 +7,7 @@
 #include "imgui_impl_opengl3.h"
 #include "MainWindow_ImGui.h"
 #include "IconsFontAwesome6.h"
+#include "Logger.h"
 
 #if POM1_IS_WASM
 #include <emscripten.h>
@@ -102,7 +103,10 @@ static void glfw_key_callback(GLFWwindow* window, int key, int scancode, int act
 
 int main(int argc, char* argv[])
 {
-    std::cout << "POM1 v1.7.2 - Apple 1 Emulator (Dear ImGui)" << std::endl;
+    // Install the Tee(stream + ring) logger so every subsystem message lands
+    // both in stdout/stderr and in the ring buffer the debug console reads.
+    pom1::initDefaultTeeLogger();
+    pom1::log().info("POM1", "v1.7.2 - Apple 1 Emulator (Dear ImGui)");
 
     // Parse command-line arguments: --preset <name|index>  or  --list-presets
     int requestedPreset = -1; // -1 = default (last preset)
@@ -138,11 +142,12 @@ int main(int argc, char* argv[])
                     }
                 }
                 if (requestedPreset < 0) {
-                    std::cerr << "ERROR: Unknown preset '" << val << "'. Use --list-presets to see available presets." << std::endl;
+                    pom1::log().error("POM1", "Unknown preset '" + val +
+                                              "'. Use --list-presets to see available presets.");
                     return 1;
                 }
             }
-            std::cout << "Preset: " << MainWindow_ImGui::getPresetName(requestedPreset) << std::endl;
+            pom1::log().info("POM1", std::string("Preset: ") + MainWindow_ImGui::getPresetName(requestedPreset));
         }
     }
 

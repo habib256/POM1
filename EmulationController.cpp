@@ -1,5 +1,6 @@
 #include "EmulationController.h"
 #include "POM1Build.h"
+#include "RomLoader.h"
 
 #include <algorithm>
 #include <chrono>
@@ -40,7 +41,7 @@ EmulationController::EmulationController(Screen_ImGui* screenWidget)
         memory->configureResetVectors(kDefaultResetVector);
         cpu->hardReset();
         cpu->start();
-        publishSnapshotLocked();
+        publisher.publish(*memory, *cpu, runRequested.load());
     }
 
     runRequested.store(true);
@@ -62,8 +63,7 @@ EmulationController::~EmulationController()
 
 void EmulationController::copySnapshot(EmulationSnapshot& out) const
 {
-    std::lock_guard<std::mutex> lock(snapshotMutex);
-    out = latestSnapshot;
+    publisher.copyTo(out);
 }
 
 void EmulationController::setExecutionSpeedCyclesPerFrame(int cyclesPerFrame)
@@ -82,7 +82,7 @@ void EmulationController::startCpu()
     {
         std::lock_guard<std::mutex> lock(stateMutex);
         cpu->start();
-        publishSnapshotLocked();
+        publisher.publish(*memory, *cpu, runRequested.load());
     }
     wakeCv.notify_all();
 }
@@ -93,7 +93,7 @@ void EmulationController::stopCpu()
     {
         std::lock_guard<std::mutex> lock(stateMutex);
         cpu->stop();
-        publishSnapshotLocked();
+        publisher.publish(*memory, *cpu, runRequested.load());
     }
     wakeCv.notify_all();
 }
@@ -106,7 +106,7 @@ void EmulationController::softReset()
     cpu->softReset();
     cpu->start();
     runRequested.store(true);
-    publishSnapshotLocked();
+    publisher.publish(*memory, *cpu, runRequested.load());
     wakeCv.notify_all();
 }
 
@@ -124,7 +124,7 @@ void EmulationController::hardReset()
     if (screen) {
         screen->resetDisplay(); // garbage screen → auto-clear → welcome
     }
-    publishSnapshotLocked();
+    publisher.publish(*memory, *cpu, runRequested.load());
     wakeCv.notify_all();
 }
 
@@ -133,15 +133,12 @@ void EmulationController::stepCpu()
     stopCpu();
     std::lock_guard<std::mutex> lock(stateMutex);
     cpu->step();
-    publishSnapshotLocked();
+    publisher.publish(*memory, *cpu, runRequested.load());
 }
 
 void EmulationController::queueKey(char key)
 {
-    {
-        std::lock_guard<std::mutex> lock(keyMutex);
-        queuedKeys.push(key);
-    }
+    keyboard.queueKey(key);
     wakeCv.notify_all();
 }
 
@@ -149,7 +146,7 @@ void EmulationController::writeMemory(quint16 address, quint8 value)
 {
     std::lock_guard<std::mutex> lock(stateMutex);
     memory->memWrite(address, value);
-    publishSnapshotLocked();
+    publisher.publish(*memory, *cpu, runRequested.load());
 }
 
 bool EmulationController::loadBinaryToRam(const std::string& path, quint16 address, std::string& error)
@@ -160,7 +157,7 @@ bool EmulationController::loadBinaryToRam(const std::string& path, quint16 addre
         error = "Cannot load file";
         return false;
     }
-    publishSnapshotLocked();
+    publisher.publish(*memory, *cpu, runRequested.load());
     return true;
 }
 
@@ -173,7 +170,7 @@ bool EmulationController::loadHexDump(const std::string& path, quint16& startAdd
     int result = memory->loadHexDump(path.c_str(), addr, bytesLoaded);
     if (result != 0) {
         error = "Error: unable to load file";
-        publishSnapshotLocked();
+        publisher.publish(*memory, *cpu, runRequested.load());
         return false;
     }
 
@@ -190,7 +187,7 @@ bool EmulationController::loadHexDump(const std::string& path, quint16& startAdd
     cpu->start();
     runRequested.store(true);
     startAddress = addr;
-    publishSnapshotLocked();
+    publisher.publish(*memory, *cpu, runRequested.load());
     wakeCv.notify_all();
     return true;
 }
@@ -203,7 +200,7 @@ bool EmulationController::loadBinary(const std::string& path, quint16 startAddre
     int result = memory->loadBinary(path.c_str(), startAddress, bytesLoaded);
     if (result != 0) {
         error = "Error: unable to load file";
-        publishSnapshotLocked();
+        publisher.publish(*memory, *cpu, runRequested.load());
         return false;
     }
 
@@ -219,7 +216,7 @@ bool EmulationController::loadBinary(const std::string& path, quint16 startAddre
     cpu->hardReset();
     cpu->start();
     runRequested.store(true);
-    publishSnapshotLocked();
+    publisher.publish(*memory, *cpu, runRequested.load());
     wakeCv.notify_all();
     return true;
 }
@@ -259,7 +256,7 @@ void EmulationController::setWriteInRom(bool enabled)
 {
     std::lock_guard<std::mutex> lock(stateMutex);
     memory->setWriteInRom(enabled);
-    publishSnapshotLocked();
+    publisher.publish(*memory, *cpu, runRequested.load());
 }
 
 bool EmulationController::getWriteInRom() const
@@ -272,7 +269,7 @@ void EmulationController::setTerminalSpeed(int charsPerSecond)
 {
     std::lock_guard<std::mutex> lock(stateMutex);
     memory->setTerminalSpeed(charsPerSecond);
-    publishSnapshotLocked();
+    publisher.publish(*memory, *cpu, runRequested.load());
 }
 
 void EmulationController::setPresetRamKB(int kb)
@@ -287,74 +284,57 @@ int EmulationController::getOutOfRangeAccessCount() const
     return memory->getOutOfRangeAccessCount();
 }
 
+void EmulationController::setOutOfRangeStrictMode(bool enable)
+{
+    std::lock_guard<std::mutex> lock(stateMutex);
+    memory->setOutOfRangeStrictMode(enable);
+    publisher.publish(*memory, *cpu, runRequested.load());
+}
+
+bool EmulationController::isOutOfRangeStrictMode() const
+{
+    std::lock_guard<std::mutex> lock(stateMutex);
+    return memory->isOutOfRangeStrictMode();
+}
+
 bool EmulationController::reloadBasic(std::string& error)
 {
     std::lock_guard<std::mutex> lock(stateMutex);
-    bool prev = memory->getWriteInRom();
-    memory->setWriteInRom(true);
-    int result = memory->loadBasic();
-    memory->setWriteInRom(prev);
-    if (result != 0) {
-        error = memory->getLastError();
-    }
-    publishSnapshotLocked();
-    return result == 0;
+    bool ok = RomLoader::reloadBasic(*memory, error);
+    publisher.publish(*memory, *cpu, runRequested.load());
+    return ok;
 }
 
 bool EmulationController::reloadApplesoftLite(std::string& error)
 {
     std::lock_guard<std::mutex> lock(stateMutex);
-    bool prev = memory->getWriteInRom();
-    memory->setWriteInRom(true);
-    int result = memory->loadApplesoftLite();
-    memory->setWriteInRom(prev);
-    if (result != 0) {
-        error = memory->getLastError();
-    }
-    publishSnapshotLocked();
-    return result == 0;
+    bool ok = RomLoader::reloadApplesoftLite(*memory, error);
+    publisher.publish(*memory, *cpu, runRequested.load());
+    return ok;
 }
 
 bool EmulationController::reloadWozMonitor(std::string& error)
 {
     std::lock_guard<std::mutex> lock(stateMutex);
-    bool prev = memory->getWriteInRom();
-    memory->setWriteInRom(true);
-    int result = memory->loadWozMonitor();
-    memory->setWriteInRom(prev);
-    if (result != 0) {
-        error = memory->getLastError();
-    }
-    publishSnapshotLocked();
-    return result == 0;
+    bool ok = RomLoader::reloadWozMonitor(*memory, error);
+    publisher.publish(*memory, *cpu, runRequested.load());
+    return ok;
 }
 
 bool EmulationController::reloadKrusader(std::string& error)
 {
     std::lock_guard<std::mutex> lock(stateMutex);
-    bool prev = memory->getWriteInRom();
-    memory->setWriteInRom(true);
-    int result = memory->loadKrusader();
-    memory->setWriteInRom(prev);
-    if (result != 0) {
-        error = memory->getLastError();
-    }
-    publishSnapshotLocked();
-    return result == 0;
+    bool ok = RomLoader::reloadKrusader(*memory, error);
+    publisher.publish(*memory, *cpu, runRequested.load());
+    return ok;
 }
 
 bool EmulationController::reloadAciRom(std::string& error)
 {
     std::lock_guard<std::mutex> lock(stateMutex);
-    bool prev = memory->getWriteInRom();
-    memory->setWriteInRom(true);
-    int result = memory->loadAciRom();
-    memory->setWriteInRom(prev);
-    if (result != 0) {
-        error = memory->getLastError();
-    }
-    publishSnapshotLocked();
-    return result == 0;
+    bool ok = RomLoader::reloadAciRom(*memory, error);
+    publisher.publish(*memory, *cpu, runRequested.load());
+    return ok;
 }
 
 void EmulationController::clearMemory()
@@ -363,7 +343,7 @@ void EmulationController::clearMemory()
     memory->resetMemory();
     preferredSoftResetVector = kDefaultResetVector;
     memory->configureResetVectors(kDefaultResetVector);
-    publishSnapshotLocked();
+    publisher.publish(*memory, *cpu, runRequested.load());
 }
 
 bool EmulationController::loadTape(const std::string& path, std::string& error)
@@ -371,11 +351,11 @@ bool EmulationController::loadTape(const std::string& path, std::string& error)
     std::lock_guard<std::mutex> lock(stateMutex);
     if (!memory->getCassetteDevice().loadTape(path)) {
         error = memory->getCassetteDevice().getLastError();
-        publishSnapshotLocked();
+        publisher.publish(*memory, *cpu, runRequested.load());
         return false;
     }
     memory->getCassetteDevice().rewindTape();
-    publishSnapshotLocked();
+    publisher.publish(*memory, *cpu, runRequested.load());
     return true;
 }
 
@@ -384,10 +364,10 @@ bool EmulationController::saveTape(const std::string& path, std::string& error)
     std::lock_guard<std::mutex> lock(stateMutex);
     if (!memory->getCassetteDevice().saveTape(path)) {
         error = memory->getCassetteDevice().getLastError();
-        publishSnapshotLocked();
+        publisher.publish(*memory, *cpu, runRequested.load());
         return false;
     }
-    publishSnapshotLocked();
+    publisher.publish(*memory, *cpu, runRequested.load());
     return true;
 }
 
@@ -395,42 +375,42 @@ void EmulationController::rewindTape()
 {
     std::lock_guard<std::mutex> lock(stateMutex);
     memory->getCassetteDevice().rewindTape();
-    publishSnapshotLocked();
+    publisher.publish(*memory, *cpu, runRequested.load());
 }
 
 void EmulationController::playTape()
 {
     std::lock_guard<std::mutex> lock(stateMutex);
     memory->getCassetteDevice().playTape();
-    publishSnapshotLocked();
+    publisher.publish(*memory, *cpu, runRequested.load());
 }
 
 void EmulationController::ejectTape()
 {
     std::lock_guard<std::mutex> lock(stateMutex);
     memory->getCassetteDevice().ejectTape();
-    publishSnapshotLocked();
+    publisher.publish(*memory, *cpu, runRequested.load());
 }
 
 void EmulationController::clearTapeCapture()
 {
     std::lock_guard<std::mutex> lock(stateMutex);
     memory->getCassetteDevice().clearRecordedTape();
-    publishSnapshotLocked();
+    publisher.publish(*memory, *cpu, runRequested.load());
 }
 
 void EmulationController::setHardwareAccurateLiveAudio(bool enabled)
 {
     std::lock_guard<std::mutex> lock(stateMutex);
     memory->getCassetteDevice().setHardwareAccurateLiveAudio(enabled);
-    publishSnapshotLocked();
+    publisher.publish(*memory, *cpu, runRequested.load());
 }
 
 void EmulationController::setTMS9918Enabled(bool enabled)
 {
     std::lock_guard<std::mutex> lock(stateMutex);
     memory->setTMS9918Enabled(enabled);
-    publishSnapshotLocked();
+    publisher.publish(*memory, *cpu, runRequested.load());
 }
 
 bool EmulationController::isTMS9918Enabled() const
@@ -443,7 +423,7 @@ void EmulationController::setSIDEnabled(bool enabled)
 {
     std::lock_guard<std::mutex> lock(stateMutex);
     memory->setSIDEnabled(enabled);
-    publishSnapshotLocked();
+    publisher.publish(*memory, *cpu, runRequested.load());
 }
 
 bool EmulationController::isSIDEnabled() const
@@ -456,7 +436,7 @@ void EmulationController::setMicroSDEnabled(bool enabled)
 {
     std::lock_guard<std::mutex> lock(stateMutex);
     memory->setMicroSDEnabled(enabled);
-    publishSnapshotLocked();
+    publisher.publish(*memory, *cpu, runRequested.load());
 }
 
 bool EmulationController::isMicroSDEnabled() const
@@ -469,7 +449,7 @@ void EmulationController::setCFFA1Enabled(bool enabled)
 {
     std::lock_guard<std::mutex> lock(stateMutex);
     memory->setCFFA1Enabled(enabled);
-    publishSnapshotLocked();
+    publisher.publish(*memory, *cpu, runRequested.load());
 }
 
 bool EmulationController::isCFFA1Enabled() const
@@ -481,22 +461,16 @@ bool EmulationController::isCFFA1Enabled() const
 bool EmulationController::reloadCFFA1Rom(std::string& error)
 {
     std::lock_guard<std::mutex> lock(stateMutex);
-    bool prev = memory->getWriteInRom();
-    memory->setWriteInRom(true);
-    int result = memory->loadCFFA1Rom();
-    memory->setWriteInRom(prev);
-    if (result != 0) {
-        error = memory->getLastError();
-    }
-    publishSnapshotLocked();
-    return result == 0;
+    bool ok = RomLoader::reloadCFFA1Rom(*memory, error);
+    publisher.publish(*memory, *cpu, runRequested.load());
+    return ok;
 }
 
 void EmulationController::setWiFiModemEnabled(bool enabled)
 {
     std::lock_guard<std::mutex> lock(stateMutex);
     memory->setWiFiModemEnabled(enabled);
-    publishSnapshotLocked();
+    publisher.publish(*memory, *cpu, runRequested.load());
 }
 
 bool EmulationController::isWiFiModemEnabled() const
@@ -523,7 +497,7 @@ void EmulationController::setTerminalCardEnabled(bool enabled)
 {
     std::lock_guard<std::mutex> lock(stateMutex);
     memory->setTerminalCardEnabled(enabled);
-    publishSnapshotLocked();
+    publisher.publish(*memory, *cpu, runRequested.load());
 }
 
 bool EmulationController::isTerminalCardEnabled() const
@@ -536,83 +510,13 @@ void EmulationController::setA1IO_RTCEnabled(bool enabled)
 {
     std::lock_guard<std::mutex> lock(stateMutex);
     memory->setA1IO_RTCEnabled(enabled);
-    publishSnapshotLocked();
+    publisher.publish(*memory, *cpu, runRequested.load());
 }
 
 bool EmulationController::isA1IO_RTCEnabled() const
 {
     std::lock_guard<std::mutex> lock(stateMutex);
     return memory->isA1IO_RTCEnabled();
-}
-
-// Caller must hold stateMutex (see lock-order note on class EmulationController).
-void EmulationController::processQueuedKeysLocked()
-{
-    std::queue<char> localKeys;
-    {
-        std::lock_guard<std::mutex> lock(keyMutex);
-        std::swap(localKeys, queuedKeys);
-    }
-
-    while (!localKeys.empty()) {
-        memory->setKeyPressed(localKeys.front());
-        localKeys.pop();
-    }
-}
-
-void EmulationController::publishSnapshotLocked()
-{
-    // Publish directly into latestSnapshot: its memory vector is already sized
-    // to 64 KB, so a std::memcpy into the existing allocation replaces the old
-    // pattern (stack-construct a fresh EmulationSnapshot + move-assign), which
-    // allocated and freed 64 KB on every frame.
-    std::lock_guard<std::mutex> snapshotLock(snapshotMutex);
-    EmulationSnapshot& snapshot = latestSnapshot;
-
-    const quint8* memPtr = memory->getMemoryPointer();
-    std::memcpy(snapshot.memory.data(), memPtr, 0x10000);
-    snapshot.programCounter = cpu->getProgramCounter();
-    snapshot.accumulator = cpu->getAccumulator();
-    snapshot.xRegister = cpu->getXRegister();
-    snapshot.yRegister = cpu->getYRegister();
-    snapshot.stackPointer = cpu->getStackPointer();
-    snapshot.statusRegister = cpu->getStatusRegister();
-    snapshot.cpuRunning = runRequested.load();
-    snapshot.keyReady = memory->isKeyReady();
-    snapshot.lastKey = memory->getLastKey();
-    snapshot.writeInRom = memory->getWriteInRom();
-    snapshot.ramSizeKB = memory->getRamSizeKB();
-
-    CassetteDevice& cassette = memory->getCassetteDevice();
-    snapshot.cassetteLoadedTape = cassette.hasLoadedTape();
-    snapshot.cassetteRecordedTape = cassette.hasRecordedTape();
-    snapshot.cassettePlaybackActive = cassette.isPlaybackActive();
-    snapshot.cassetteAudioAvailable = cassette.isAudioAvailable();
-    snapshot.cassetteHardwareAccurateLiveAudio = cassette.isHardwareAccurateLiveAudio();
-    snapshot.cassetteQueuedAudioSeconds = cassette.getQueuedAudioSeconds();
-    snapshot.cassetteLoadedTransitionCount = cassette.getLoadedTransitionCount();
-    snapshot.cassetteRecordedTransitionCount = cassette.getRecordedTransitionCount();
-    snapshot.cassetteLoadedTapePath = cassette.getLoadedTapePath();
-
-    snapshot.sidEnabled = memory->isSIDEnabled();
-    snapshot.microSDEnabled = memory->isMicroSDEnabled();
-    // TMS9918: skip entirely when the card is unplugged — UI doesn't render it,
-    // so stale snapshot contents are harmless and we save a 16 KB memcpy.
-    if (memory->isTMS9918Enabled()) {
-        memory->getTMS9918().copySnapshot(snapshot.tms9918);
-    }
-    snapshot.wifiModemEnabled = memory->isWiFiModemEnabled();
-    if (snapshot.wifiModemEnabled) {
-        memory->getWiFiModem().copySnapshot(snapshot.wifiModem);
-    }
-    snapshot.terminalCardEnabled = memory->isTerminalCardEnabled();
-    if (snapshot.terminalCardEnabled) {
-        memory->getTerminalCard().copySnapshot(snapshot.terminalCard);
-    }
-    snapshot.a1ioRtcEnabled = memory->isA1IO_RTCEnabled();
-    if (snapshot.a1ioRtcEnabled) {
-        memory->getA1IO_RTC().copySnapshot(snapshot.a1ioRtc);
-    }
 }
 
 void EmulationController::runEmulationSlice(double elapsedSeconds)
@@ -641,7 +545,7 @@ void EmulationController::runEmulationSlice(double elapsedSeconds)
     {
         std::lock_guard<std::mutex> lock(stateMutex);
         memory->getCassetteDevice().setLiveAudioTimebaseHz(static_cast<uint32_t>(std::max(1.0, cyclesPerSecond)));
-        processQueuedKeysLocked();
+        keyboard.drainTo(*memory);
         // Re-vérifier sous le mutex : stopCpu()/step peut avoir eu lieu après le test du haut de boucle.
         // Sinon cpu->start() annule cpu->stop() et une tranche entière s'exécute entre deux F7.
         if (runRequested.load()) {
@@ -649,7 +553,7 @@ void EmulationController::runEmulationSlice(double elapsedSeconds)
             cpu->start();
             cpu->run(cyclesToRun);
         }
-        publishSnapshotLocked();
+        publisher.publish(*memory, *cpu, runRequested.load());
     }
 
     // Terminal Card: consume pending reset/clear OUTSIDE stateMutex

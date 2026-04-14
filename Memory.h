@@ -20,6 +20,7 @@
 #define MEMORY_H
 
 #include "CpuClock.h"
+#include "PeripheralBus.h"
 
 #include <vector>
 #include <queue>
@@ -60,6 +61,14 @@ public:
     int getPresetRamKB(void) const { return presetRamKB; }
     int getOutOfRangeAccessCount(void) const { return oorAccessCount; }
     void resetOutOfRangeAccessCount(void);
+
+    // Strict out-of-range enforcement. When enabled AND presetRamKB < 64,
+    // reads from [ramKB*1024, 0x8000) return $FF and writes are dropped —
+    // matching a real Apple-1 with no RAM board in that region. The OOR
+    // counter still increments so you can see activity in the status bar.
+    // No effect when presetRamKB >= 64.
+    void setOutOfRangeStrictMode(bool enable) { oorStrictMode = enable; }
+    bool isOutOfRangeStrictMode(void) const { return oorStrictMode; }
 
     // Load Memory from file
     int loadROM(const char* filename, quint16 startAddress, size_t maxSize, const char* label);
@@ -103,7 +112,7 @@ public:
     // P-LAB Graphic Card (TMS9918 VDP)
     TMS9918& getTMS9918() { return *tms9918; }
     const TMS9918& getTMS9918() const { return *tms9918; }
-    void setTMS9918Enabled(bool b) { tms9918Enabled = b; }
+    void setTMS9918Enabled(bool b);
     bool isTMS9918Enabled() const { return tms9918Enabled; }
 
     // P-LAB A1-SID Sound Card (MOS 6581/8580)
@@ -129,7 +138,7 @@ public:
     // P-LAB Apple-1 Wi-Fi Modem (65C51 ACIA + ESP8266)
     WiFiModem& getWiFiModem() { return *wifiModem; }
     const WiFiModem& getWiFiModem() const { return *wifiModem; }
-    void setWiFiModemEnabled(bool b) { wifiModemEnabled = b; }
+    void setWiFiModemEnabled(bool b);
     bool isWiFiModemEnabled() const { return wifiModemEnabled; }
 
     // P-LAB Apple-1 Terminal Card (bidirectional serial bridge)
@@ -141,7 +150,7 @@ public:
     // P-LAB Apple-1 I/O Board & Real Time Clock (65C22 VIA + ATMEGA32 + DS3231)
     A1IO_RTC& getA1IO_RTC() { return *a1ioRtc; }
     const A1IO_RTC& getA1IO_RTC() const { return *a1ioRtc; }
-    void setA1IO_RTCEnabled(bool b) { a1ioRtcEnabled = b; }
+    void setA1IO_RTCEnabled(bool b);
     bool isA1IO_RTCEnabled() const { return a1ioRtcEnabled; }
 
     // Central audio device (mixes CassetteDevice + SID)
@@ -169,6 +178,7 @@ private :
     int ramSize; // in kilobytes
     int presetRamKB = 64;             // user-visible RAM ceiling for OOR warnings
     int oorAccessCount = 0;
+    bool oorStrictMode = false;       // true: enforce bounds (reads→$FF, writes dropped)
     std::unordered_set<uint32_t> oorWarned;  // key = (addr<<1)|isWrite; capped at 64
     void checkOutOfRangeAccess(quint16 address, bool isWrite);
     bool writeInRom;
@@ -189,6 +199,21 @@ private :
     bool terminalCardEnabled = !POM1_IS_WASM;
     std::unique_ptr<A1IO_RTC> a1ioRtc;
     bool a1ioRtcEnabled = false;
+
+    // PeripheralBus — central dispatch for memory-mapped I/O. Each peripheral
+    // registers a range + read/write handler; memRead/memWrite delegate to
+    // `bus.tryRead`/`bus.tryWrite` instead of inline per-device branches.
+    // `*Handle` fields identify the bus entries so enable/disable can flip them.
+    PeripheralBus bus;
+    PeripheralBus::Handle a1ioRtcBusHandle = -1;
+    PeripheralBus::Handle cffa1RomBusHandle = -1;    // $9000-$AFDF read, writes swallowed
+    PeripheralBus::Handle cffa1RegBusHandle = -1;    // $AFE0-$AFFF read+write
+    PeripheralBus::Handle microSDBusHandle = -1;     // $A000-$A00F (overridden by CFFA1 when both enabled; but the presets are mutually exclusive)
+    PeripheralBus::Handle wifiModemBusHandle = -1;   // $B000-$B003
+    PeripheralBus::Handle sidBusHandle = -1;         // $C800-$CFFF, priority 0
+    PeripheralBus::Handle tms9918BusHandle = -1;     // $CC00/$CC01, priority 10 (wins over SID)
+    PeripheralBus::Handle cassetteToggleBusHandle = -1; // $C000-$C0FF read = toggle output
+    PeripheralBus::Handle cassetteInputBusHandle  = -1; // $C081 read = tape input (priority 1, wins over toggle)
 
 };
 

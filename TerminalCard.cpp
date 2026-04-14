@@ -7,8 +7,8 @@
 
 #include "TerminalCard.h"
 #include "CpuClock.h"
+#include "Logger.h"
 #include <cstring>
-#include <iostream>
 
 namespace {
 // TELNET protocol constants (RFC 854 / RFC 857 / RFC 858).
@@ -376,7 +376,7 @@ void TerminalCard::startServer()
 
     listenFd.reset(::socket(AF_INET, SOCK_STREAM, 0));
     if (!listenFd) {
-        std::cout << "Terminal Card: failed to create socket" << std::endl;
+        pom1::log().error("Term", "failed to create socket");
         return;
     }
 
@@ -396,14 +396,14 @@ void TerminalCard::startServer()
     addr.sin_port = htons(listenPort);
 
     if (bind(listenFd, reinterpret_cast<struct sockaddr*>(&addr), sizeof(addr)) < 0) {
-        std::cout << "Terminal Card: failed to bind port " << listenPort
-                  << " (already in use?)" << std::endl;
+        pom1::log().warn("Term", "failed to bind port " + std::to_string(listenPort) +
+                         " (already in use?)");
         listenFd.reset();
         return;
     }
 
     if (listen(listenFd, 1) < 0) {
-        std::cout << "Terminal Card: listen failed" << std::endl;
+        pom1::log().error("Term", "listen failed");
         listenFd.reset();
         return;
     }
@@ -417,7 +417,7 @@ void TerminalCard::startServer()
     fcntl(listenFd, F_SETFL, flags | O_NONBLOCK);
 #endif
 
-    std::cout << "Terminal Card: listening on localhost:" << listenPort << std::endl;
+    pom1::log().info("Term", "listening on localhost:" + std::to_string(listenPort));
 }
 
 void TerminalCard::stopServer()
@@ -487,7 +487,7 @@ void TerminalCard::acceptClient()
     const char* welcome = "\r\nPOM1 - P-LAB Terminal Card\r\n\r\n";
     sendToClient(reinterpret_cast<const uint8_t*>(welcome), strlen(welcome));
 
-    std::cout << "Terminal Card: client connected from " << clientAddress << std::endl;
+    pom1::log().info("Term", "client connected from " + clientAddress);
 }
 
 void TerminalCard::disconnectClient()
@@ -495,7 +495,7 @@ void TerminalCard::disconnectClient()
     if (clientFd) {
         clientFd.reset();
         clientAddress.clear();
-        std::cout << "Terminal Card: client disconnected" << std::endl;
+        pom1::log().info("Term", "client disconnected");
     }
 }
 
