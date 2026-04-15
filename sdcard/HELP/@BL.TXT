@@ -1,0 +1,8 @@
+Syntax:
+@BL FILENAME
+
+Reads from disc the INTEGER BASIC file
+called FILENAME and loads it into 
+memory.
+Widcards such as % and * are allowed.
+

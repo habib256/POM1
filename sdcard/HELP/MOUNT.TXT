@@ -1,3 +1,5 @@
-SYNTAX:
+Syntax:
 MOUNT
-FORCE THE REMOUNT OF THE FILESYSTEM OF THE MEMORY CARD.
+
+force the reading of the SD card after
+a device change.

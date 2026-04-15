@@ -1,0 +1,10 @@
+Syntax:
+@BR FILENAME
+
+Reads the INTEGER BASIC file called
+FILENAME from disk, loads it into
+memory and executes it. The BASIC 
+interpreter must already be present in
+memory. The use of wildcards such as %
+and * is permitted.
+

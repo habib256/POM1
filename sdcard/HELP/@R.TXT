@@ -1,0 +1,11 @@
+Syntax:
+@R FILENAME [stardaddress]
+
+Reads the FILENAME binary file from 
+disk, loads it into memory from the 
+startaddress and then executes it. If 
+the address is omitted, loading will 
+take place from the location contained
+in the file itself. The use of 
+wildcards such as % and * for the 
+filename is permitted.

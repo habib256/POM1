@@ -1,0 +1,11 @@
+Syntax:
+@DIR [filter]
+@$ [filter]
+
+Display the directory of the disk.
+If filter is specified, only files 
+matching the filter will be shown. 
+Wildcards * and % are admitted.
+Press any key to stop the file listing
+and return to continue it. Press ESC
+to return to the command prompt.

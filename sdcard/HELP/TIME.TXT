@@ -1,4 +1,6 @@
-SYNTAX:
-TIME [VALUE]
-SET OR DISPLAY THE INTERNAL TIMEOUT VALUE USED IN
-THE I/O OPERATIONS WITH THE SD CARD.
+Syntax:
+TIME value
+
+Set the internal timeout value used in
+the I/O operations with the SD cards.
+-- TESTING ONLY ---

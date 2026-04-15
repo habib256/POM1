@@ -1,4 +1,6 @@
-SYNTAX:
+Syntax:
 BAS
-PRINTS LOMEM AND HIMEM POINTERS FROM THE BASIC
-PROGRAM CURRENTLY LOADED IN MEMORY.
+
+Prints LOMEM and HIMEM pointers from
+the BASIC program currently loaded in
+memory.

@@ -1,0 +1,8 @@
+Syntax:
+@S FILENAME startaddress endaddress
+
+Writes to disk a binary file called 
+FILENAME with the contents of the 
+memory from the startaddress to the 
+endaddress.
+

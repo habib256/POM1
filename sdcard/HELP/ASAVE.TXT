@@ -1,5 +1,7 @@
-SYNTAX:
-ASAVE FILENAME
-SAVES AN APPLESOFT BASIC LITE FILE TO THE SD CARD.
-THE PROGRAM CURRENTLY LOADED IN MEMORY WILL BE CREATED
-WITH THE CORRESPONDING #F8 TAG.
+syntax:
+ASAVE filename
+
+Saves a AppleSoft BASIC lite file to
+the SD card. The program currently 
+loaded in memory will be created with 
+the corresponding #F8 tag.

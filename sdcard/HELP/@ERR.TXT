@@ -1,0 +1,10 @@
+Syntax:
+@ERR
+
+Reads the drive error channel and
+reports:
+- error number
+- error name
+- trace
+- block
+

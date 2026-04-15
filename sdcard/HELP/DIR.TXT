@@ -1,4 +1,16 @@
-SYNTAX:
-DIR [PATH]
-LISTS THE FILES FROM THE SPECIFIED DIRECTORY, OR
-FROM THE CURRENT DIRECTORY IF NO PATH IS GIVEN.
+Syntax for SD-CARD:
+DIR [path]
+
+syntax for IEC Drive:
+@DIR [filter]
+@$ [filter]
+
+Lists the files from the specified
+directory, or from the current
+directory if no path is given.
+For IEC, files matching the filter
+will be shown. Wildcards * and % are
+admitted.
+Press any key to stop the file listing
+and return to continue it. Press ESC
+to return to the command prompt.

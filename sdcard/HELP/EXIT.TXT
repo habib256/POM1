@@ -1,3 +1,4 @@
-SYNTAX:
+Syntax:
 EXIT
-EXITS SD CARD OS AND RETURNS TO THE WOZ MONITOR.
+
+Exits to the WOZ monitor.

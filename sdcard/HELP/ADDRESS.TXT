@@ -1,0 +1,15 @@
+Syntax:
+ADDRESS_R
+
+Runs the program loaded at the 
+specified memory address. Useful 
+addresses:
+6000R AppleSoft BASIC cold start 
+(needed at least once).
+6003R AppleSoft BASIC warm start 
+(it does not destroy the BASIC program
+in RAM).
+E000R Integer BASIC cold start.
+EFECR Integer BASIC "RUN" command (can 
+be used as a warm entry point).
+8000R SD card OS command prompt.

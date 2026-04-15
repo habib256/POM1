@@ -1,4 +1,6 @@
-SYNTAX:
-RMDIR PATH
-REMOVES THE SPECIFIED DIRECTORY. THE DIRECTORY MUST
-BE EMPTY.
+Syntax:
+RMDIR path
+
+Removes the specified directory. 
+The directory to remove must be empty
+(no files or directories within).

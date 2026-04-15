@@ -1,3 +1,5 @@
-SYNTAX:
+Syntax:
 PWD
-PRINTS THE CURRENT WORKING DIRECTORY.
+
+Prints on the screen the current working
+directory.

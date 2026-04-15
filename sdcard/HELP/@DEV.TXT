@@ -1,0 +1,1 @@
+Syntax:@DEV [device]Show or change the number of the IECdevice you want to use.The default is 8.The setting is kept after a RESET ofthe computer.

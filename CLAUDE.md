@@ -156,7 +156,8 @@ $0100-$01FF  Stack
 $0200-$1FFF  User RAM (programs typically load at $0280 or $0300)
 $2000-$200F  A1-IO RTC VIA 65C22 (when the A1-IO Board is plugged — mutually exclusive with GEN2 below)
 $2000-$3FFF  GEN2 HGR framebuffer (8 KB — when Uncle Bernie's GEN2 card is plugged)
-$4000-$7FFF  User RAM
+$4000-$5FFF  User RAM
+$6000-$7FFF  Applesoft Lite SD ROM (8 KB — loaded at $6000 by the Applesoft+microSD preset; `roms/applesoft-lite-microsd.rom` = Claudio Parmigiani's SD1.3 build, aligned with the SD1.3 `sdcard.rom` firmware. Cold start via `6000R` in the Woz Monitor.)
 $8000-$9FFF  SD CARD OS ROM (8 KB — when P-LAB microSD is plugged)
 $9000-$AFDF  CFFA1 firmware ROM (~8 KB — when CFFA1 is plugged; shadows microSD ROM + BASIC low page)
 $A000-$A00F  VIA 65C22 I/O (when P-LAB microSD is plugged)

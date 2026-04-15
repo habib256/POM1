@@ -1,0 +1,7 @@
+Syntax:
+@CMD COMMAND
+
+Sends the specified COMMAND to the
+Drive, via channel #15, the opening
+and closing of which is handled 
+directly by SD OS.

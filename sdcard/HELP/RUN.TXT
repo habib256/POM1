@@ -1,5 +1,8 @@
-SYNTAX:
-RUN FILENAME
-SAME AS LOAD BUT RUNS THE FILE AFTER LOADING IT.
-BINARY FILES ARE EXECUTED AT THE STARTING ADDRESS
-SPECIFIED IN THE FILE NAME TAG.
+Syntax:
+RUN filename
+
+Same as LOAD but runs the file after
+loading it. Binary files are exectuted
+at the starting address specified in
+the file name tag; BASIC files are RUN
+from the BASIC interpreter.

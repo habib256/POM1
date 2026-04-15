@@ -461,15 +461,28 @@ void Screen_ImGui::writeCharUnlocked(char c)
     if (garbageClearTimer > 0.0f || blackScreenTimer > 0.0f) {
         return;
     }
-    if (c == '\n' || c == '\r') {
+    // Real Apple-1 display (Signetics 2513 char ROM + 74LS-based counter logic):
+    //   $8D (CR) — hardware newline. $8A (LF) — no glyph, no cursor action: silently
+    //   dropped. Same for other control codes ($01-$1F minus CR). Treating LF as a
+    //   newline here would double-count every CRLF pair emitted by the microSD ROM
+    //   when it prints file contents (observed: extra blank line after HELP output,
+    //   confirmed against Claudio Parmigiani's real Apple-1 photo 2026-04-15).
+    if (c == '\r') {
         newLineUnlocked();
     } else if (c == '\b') {
         if (cursorX > 0) {
             cursorX--;
             screenBuffer[bufferIndex(cursorY, cursorX)] = ' ';
         }
-    } else {
+    } else if (static_cast<unsigned char>(c) >= 0x20) {
         unsigned char glyphCode = static_cast<unsigned char>(c) & 0x7F;
+        // Apple-1 display fold: the Signetics 2513 char ROM has only 64 glyphs
+        // addressable via 6 bits. The Woz schematic drops bit 5 whenever bit 6
+        // is set, so $60-$7F fold down to $40-$5F — lowercase letters render as
+        // uppercase, {|}~DEL as [\]^_. Confirmed against Claudio Parmigiani's
+        // real Apple-1 photo 2026-04-15 of HELP LS (source file LS.TXT is mixed
+        // case but the real display shows all caps).
+        if (glyphCode & 0x40) glyphCode &= 0xDF;
         if (cursorX >= SCREEN_WIDTH) newLineUnlocked();
         screenBuffer[bufferIndex(cursorY, cursorX)] = static_cast<char>(glyphCode);
         cursorX++;

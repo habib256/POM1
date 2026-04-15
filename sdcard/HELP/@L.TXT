@@ -1,0 +1,11 @@
+Syntax:
+@L FILENAME [startaddress]
+
+Reads the FILENAME binary file from
+disk and loads it into memory starting
+from startaddress. It startaddress is
+omitted the program will be loaded to
+its default location, stored in the
+file itself.
+The use of wildcards * and % is
+allowed.

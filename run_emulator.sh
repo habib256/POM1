@@ -28,7 +28,14 @@ roms_found=0
 copy_rom() {
     local name="$1"
     local optional="$2"
-    if [ -f "build/$name" ]; then
+    # Always sync when roms/ is newer than (or missing from) build/ — avoids
+    # the stale-copy trap where a ROM edit in roms/ is masked by an older
+    # identically-named file already sitting in build/.
+    if [ -f "roms/$name" ] && [ "roms/$name" -nt "build/$name" ]; then
+        cp "roms/$name" "build/"
+        echo "  OK   $name copied ($(filesize "build/$name") bytes)"
+        return 0
+    elif [ -f "build/$name" ]; then
         echo "  OK   $name ($(filesize "build/$name") bytes)"
         return 0
     elif [ -f "roms/$name" ]; then

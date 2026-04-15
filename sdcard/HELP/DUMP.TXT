@@ -1,5 +1,10 @@
-SYNTAX:
-DUMP FILENAME [START] [END]
-READS THE SPECIFIED BINARY FILE FROM THE SD CARD AND
-PRINTS IT IN HEXADECIMAL FORMAT. START AND END ARE
-OPTIONAL AND PRINT A SMALLER PORTION OF THE FILE.
+Syntax:
+DUMP filename [start] [end]
+
+Reads the specified binary file from
+the SD card and prints it on the screen
+in hexadecimal format. start and end
+are optional and are used to print a
+smaller portion of the file. Press any
+key to stop the printing and return to
+the command prompt.

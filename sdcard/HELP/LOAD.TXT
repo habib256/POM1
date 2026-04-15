@@ -1,5 +1,8 @@
-SYNTAX:
-LOAD FILENAME
-LOADS A TAGGED FILE FROM THE SD CARD. FILENAME CAN
-BE PARTIALLY GIVEN, THE FIRST MATCHING FILE WILL
-BE LOADED.
+Syntax:
+LOAD filename
+
+Loads a file from the SD card. filename
+refers to a "tagged file name"
+described above. For convenience,
+filename can be partially given, the
+first matching file will be loaded.

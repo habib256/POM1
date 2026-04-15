@@ -1,8 +1,12 @@
-SYNTAX:
-SAVE FILENAME [START] [END]
-SAVES A FILE TO THE SD CARD. IF START AND END ARE
-SPECIFIED, A BINARY FILE WITH TAG #06 WILL BE CREATED
-WITH THE MEMORY CONTENT FROM THE ADDRESS RANGE START-END
-(INCLUDED). IF START AND END ARE NOT SPECIFIED, THE
-BASIC PROGRAM CURRENTLY LOADED IN MEMORY WILL BE CREATED
-WITH THE CORRESPONDING #F1 TAG.
+Syntax:
+SAVE filename [start] [end]
+
+Saves a file to the SD card. If start
+and end are specified, a binary file
+with tag #06 will be created with the
+memory content from the address range
+start-end (included). If start and
+end are not specified, the BASIC
+program currently loaded in memory
+will be created with the
+corresponding #F1 tag.
