@@ -2,8 +2,6 @@
 #include "imgui.h"
 #include <cstring>
 #include <cmath>
-#include <cstdlib>
-#include <ctime>
 #include <algorithm>
 #include <array>
 #include <fstream>
@@ -174,30 +172,21 @@ void Screen_ImGui::drawCharmapGlyph(ImDrawList* drawList, float x, float y, floa
 
 void Screen_ImGui::initializeScreen()
 {
-    // Simulate Signetics 2504 shift register power-on state:
-    // 1024 × 6-bit positions contain random data (960 visible as 40×24 grid).
-    // Each flip-flop adopts an arbitrary state dictated by thermal fluctuations
-    // and silicon manufacturing tolerances. Dynamic shift registers exhibit a
-    // capacitive pull-down bias: each bit has ~45% chance of being 1 (not 50%).
-    // This naturally produces more '@' (000000, all-zero, ~2.8%) and fewer '?'
-    // (111111, all-one, ~0.8%), matching observed real Apple-1 power-on behavior.
-    // The 64 glyphs follow the Signetics 2513 character generator ROM encoding.
-    static const char glyphs[] =
-        "@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_ !\"#$%&'()*+,-./0123456789:;<=>?";
-    std::srand(static_cast<unsigned>(std::time(nullptr)));
+    // Real Apple-1 power-on screen pattern — empirical observation by
+    // Claudio Parmigiani (P-LAB, long-time Original Apple-1 restorer):
+    // the Signetics 2504 dynamic shift registers always settle into the
+    // same alternating state, producing "_@_@_@..." on every line with
+    // all '@' glyphs blinking in phase at the NE555 cursor rate until
+    // CLRSCR wipes the registers. Never random — always this exact
+    // pattern on every real machine he's worked on since 2010.
     screenBuffer.resize(BUFFER_SIZE);
-    for (int i = 0; i < BUFFER_SIZE; ++i) {
-        // Generate 6-bit value with pull-down bias per flip-flop
-        int val = 0;
-        for (int bit = 0; bit < 6; ++bit) {
-            if (std::rand() % 100 < 45) // 45% chance each bit is 1
-                val |= (1 << bit);
-        }
-        screenBuffer[i] = glyphs[val];
-    }
     topRow = 0;
     cursorX = 0;
     cursorY = 0;
+    for (int i = 0; i < BUFFER_SIZE; ++i) {
+        const int col = i % SCREEN_WIDTH;
+        screenBuffer[i] = (col & 1) ? '@' : '_';
+    }
     garbageClearTimer = GARBAGE_DURATION;
     blackScreenTimer = -1.0f;
     dirty = true;
@@ -406,11 +395,19 @@ void Screen_ImGui::render()
         const float scaledCellW = cellWidth * scale * layoutScale;
         const float scaledCellH = cellHeight * scale * layoutScale;
         const float textScale = scale * layoutScale;
+        // During the power-on pattern phase, every '@' blinks in phase with the
+        // cursor clock (shift-register initial state described by C. Parmigiani).
+        // The cursor itself is not yet active — CLRSCR hasn't wiped the registers
+        // to place the lonely '@' at (0,0), so suppress the per-cell cursor override.
+        const bool inPowerOnPhase = (garbageClearTimer > 0.0f);
         for (int y = 0; y < SCREEN_HEIGHT; ++y) {
             for (int x = 0; x < SCREEN_WIDTH; ++x) {
                 unsigned char c = static_cast<unsigned char>(renderBuffer[renderBufferIndex(y, x)]);
-                if (blinkOn && x == renderCursorX && y == renderCursorY) {
+                if (!inPowerOnPhase && blinkOn && x == renderCursorX && y == renderCursorY) {
                     c = '@'; // NE555 oscillator toggles bit 5 → space becomes '@' in Signetics 2513
+                }
+                if (inPowerOnPhase && !blinkOn && c == '@') {
+                    c = ' ';
                 }
 
                 const float px = rasterMin.x + static_cast<float>(x) * scaledCellW;
@@ -456,6 +453,14 @@ void Screen_ImGui::writeChar(char c)
 
 void Screen_ImGui::writeCharUnlocked(char c)
 {
+    // During the power-on pattern and CLRSCR phases, the real Apple-1 shift
+    // registers are not yet accepting CPU output (the 6502 hasn't been reset
+    // or is still stabilising). Drop anything the CPU prints so it cannot
+    // overwrite the "_@_@_@..." pattern or the lonely blinking '@'. The '\'
+    // of the Woz Monitor prompt is re-injected at the welcome phase.
+    if (garbageClearTimer > 0.0f || blackScreenTimer > 0.0f) {
+        return;
+    }
     if (c == '\n' || c == '\r') {
         newLineUnlocked();
     } else if (c == '\b') {

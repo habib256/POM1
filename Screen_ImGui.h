@@ -78,11 +78,13 @@ private:
     float blinkTimer = 0.0f;
     bool blinkOn = false;
 
-    // Boot sequence: garbage → black → welcome (Signetics 2504 power-on simulation)
-    float garbageClearTimer = -1.0f;   // > 0 = garbage visible, counting down
-    float blackScreenTimer = -1.0f;    // > 0 = black screen, counting down
-    static constexpr float GARBAGE_DURATION = 0.18f;      // garbage before CLR
-    static constexpr float BLACK_SCREEN_DURATION = 0.30f;  // black before welcome
+    // Boot sequence: power-on pattern → CLRSCR (lonely blinking '@') → RESET + welcome.
+    // Blink period is ~1 s (NE555 @ ~1 Hz), so each phase must last long enough for
+    // at least one full on→off→on cycle to be visible.
+    float garbageClearTimer = -1.0f;   // > 0 = "_@_@_@..." pattern visible, counting down
+    float blackScreenTimer = -1.0f;    // > 0 = single blinking '@' at (0,0), counting down
+    static constexpr float GARBAGE_DURATION = 1.5f;       // ~1.5 blinks of the _@_@ pattern
+    static constexpr float BLACK_SCREEN_DURATION = 1.5f;  // ~1.5 blinks of the solitary '@'
 
     // Dirty tracking
     bool dirty = true;       // content changed since last render

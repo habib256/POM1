@@ -280,6 +280,7 @@ void MainWindow_ImGui::reset()
 void MainWindow_ImGui::hardReset()
 {
     emulation->hardReset();
+    if (screen) screen->resetDisplay(); // replay shift-register power-on pattern
     loadedPrograms.clear();
     loadedRoms.clear();
     loadedRoms.push_back({"Integer BASIC", 0xE000, 0xEFFF});
