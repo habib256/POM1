@@ -66,6 +66,30 @@ def send_ctrl(sock: socket.socket, byte: int) -> None:
     sock.sendall(bytes([byte & 0xFF]))
 
 
+def drain_until_cffa1_prompt(sock: socket.socket, timeout: float = 30.0) -> str:
+    """Read output from CFFA1, auto-dismissing the `[ SPACE/CR OR ESC ]`
+    pagination prompt with ESC, until the `CFFA1> ` menu prompt returns or
+    the timeout expires. Returns everything read. Needed after long dumps
+    (CATALOG, block-read B command) that paginate every 20 lines and wait
+    for user input — otherwise the next test command lands inside the
+    paginator and the CFFA1 menu reads it as a pagination continuation."""
+    end = time.time() + timeout
+    buf = ""
+    while time.time() < end:
+        chunk = recv_avail(sock, total=2.0, idle=0.4)
+        if chunk:
+            buf += chunk
+        if "[ SPACE/CR OR ESC ]" in buf[-64:]:
+            sock.sendall(b"\x1b")  # ESC
+            time.sleep(0.3)
+            continue
+        if buf.endswith("CFFA1> "):
+            return buf
+        if not chunk:
+            return buf
+    return buf
+
+
 def enter_cffa1_menu(sock: socket.socket) -> str:
     """Reset Apple 1 and enter CFFA1 menu (9006R). Returns captured output."""
     send_ctrl(sock, CTRL_R)
@@ -253,15 +277,20 @@ def phase3_block_io(sock: socket.socket, results: TestResults) -> None:
     """Phase 3: Block-level I/O."""
     print("\nPhase 3: Block I/O")
 
-    # 3.1 B = Read Block 0 (boot block)
+    # 3.1 B = Read Block 0 (boot block). A full 512-byte block prints as
+    # 64 hex lines, which triggers the CFFA1 paginator every 20 lines.
+    # drain_until_cffa1_prompt auto-sends ESC at each pagination prompt so
+    # the test leaves the menu in a clean state for the next command.
     send_char(sock, "B", wait=0.4)
-    out = send_line(sock, "0", wait=0.5, read_t=5.0)
+    sock.sendall(b"0\r")
+    out = drain_until_cffa1_prompt(sock, timeout=20.0)
     vprint("read block 0", out)
     results.check_not("3.1 Read block 0 no error", out, "ERROR")
 
     # 3.2 B = Read Block 2 (volume directory)
     send_char(sock, "B", wait=0.4)
-    out = send_line(sock, "2", wait=0.5, read_t=5.0)
+    sock.sendall(b"2\r")
+    out = drain_until_cffa1_prompt(sock, timeout=20.0)
     vprint("read block 2", out)
     results.check_not("3.2 Read block 2 no error", out, "ERROR")
 
@@ -270,21 +299,20 @@ def phase4_quit(sock: socket.socket, results: TestResults) -> None:
     """Phase 4: Exit CFFA1 menu."""
     print("\nPhase 4: Quit")
 
-    # Flush any pending pagination from previous phase (ESC exits pagination)
-    send_ctrl(sock, 0x1B)  # ESC
-    time.sleep(0.5)
-    recv_avail(sock, total=2.0, idle=0.3)
+    # Phase 3 now uses drain_until_cffa1_prompt, so we enter Phase 4 already
+    # at a clean `CFFA1> ` prompt — no flushing needed.
 
-    # 4.1 Q = Quit to Woz Monitor
-    out = send_line(sock, "Q", wait=0.5, read_t=3.0)
+    # 4.1 Q = Quit to Woz Monitor. The CFFA1 echoes 'Q', exits its menu loop,
+    # the Woz Monitor then emits CR + '\' as its prompt.
+    out = send_line(sock, "Q", wait=1.0, read_t=4.0)
     vprint("quit", out)
-    # After Q, we should be back at the Woz Monitor (\ prompt)
     results.check("4.1 Quit returns to monitor", out, "\\")
 
-    # 4.2 Verify we can type Woz Monitor commands
+    # 4.2 Verify we can type Woz Monitor commands. Reading $FF00 dumps a
+    # byte from the Woz Monitor ROM; the monitor echoes the address before
+    # the value, so 'FF00' must appear on the line.
     out = send_line(sock, "FF00", wait=0.3, read_t=3.0)
     vprint("monitor FF00", out)
-    # Should show FF00: followed by hex data (Woz Monitor ROM)
     results.check("4.2 Monitor command works", out, "FF00")
 
 

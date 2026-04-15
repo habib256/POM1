@@ -86,6 +86,16 @@ def prepare_test_data() -> None:
     with open(os.path.join(notempty, "KEEP.TXT"), "w") as f:
         f.write("KEEP\r\n")
 
+    # HGR sub-directory with tagged binary fixtures. The sdcard ships now comes
+    # directly from Claudio Parmigiani's real card and has a different layout;
+    # we create our own HGR here so the test is self-contained regardless of
+    # upstream sdcard reorganisations. 8 KB each, tagged to load at $2000.
+    hgrdir = os.path.join(SDCARD_PATH, "HGR")
+    os.makedirs(hgrdir, exist_ok=True)
+    for name in ("N000#062000", "PIC#062000"):
+        with open(os.path.join(hgrdir, name), "wb") as f:
+            f.write(b"\xAA" * 8192)
+
     print("Test data ready.")
 
 
@@ -97,7 +107,7 @@ def cleanup_test_data() -> None:
         p = os.path.join(SDCARD_PATH, name)
         if os.path.exists(p):
             os.remove(p)
-    for d in ("TESTDIR", "EMPTYDIR", "NOTEMPTY", "NEWDIR", "TEMPDIR", "MDTEST"):
+    for d in ("TESTDIR", "EMPTYDIR", "NOTEMPTY", "NEWDIR", "TEMPDIR", "MDTEST", "HGR"):
         p = os.path.join(SDCARD_PATH, d)
         if os.path.isdir(p):
             shutil.rmtree(p)

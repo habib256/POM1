@@ -325,6 +325,72 @@ def main():
         check("9.1 Monitor still responsive after RUN", out, "FF00")
 
         # ============================================================
+        # STEP 11: Native Applesoft SAVE/LOAD (from BASIC prompt)
+        # ============================================================
+        # Applesoft Lite SD1.3 integrates SAVE/LOAD commands that call the
+        # SD CARD OS directly, without going through 8000R first. Syntax is
+        # `SAVE "NAME"` and `LOAD "NAME"` — quoted string literal, unlike
+        # the CFFA1 variant which uses unquoted names. The firmware echoes
+        # "SAVING\n<NAME>#F80801\n$hhhh-$hhhh (NN BYTES)\nOK" on success.
+        print("\nStep 11: Native Applesoft SAVE/LOAD from BASIC prompt")
+        send_ctrl(sock, CTRL_R)
+        time.sleep(0.9)
+        recv_avail(sock, total=2.0)
+        out = send_line(sock, "6000R", wait=0.5, read_t=3.0)
+        check("11.1 Applesoft cold start", out, "]")
+
+        send_line(sock, "NEW", read_t=2.0)
+        send_line(sock, '10 PRINT "NATIVE MSD"', read_t=2.0)
+        send_line(sock, '20 PRINT 7 * 6', read_t=2.0)
+        send_line(sock, '30 END', read_t=2.0)
+
+        out = send_line(sock, 'SAVE "NATIVE"', wait=1.5, read_t=5.0)
+        print(f"    [BASIC SAVE] {out[-300:]!r}")
+        check("11.2 SAVE reports SAVING", out, "SAVING")
+        check("11.3 SAVE writes tagged name", out, "NATIVE#F80801")
+        check_not("11.4 SAVE no error", out, "ERR")
+
+        # Host-side: verify the file really landed on disk
+        native_path = os.path.join(SDCARD_PATH, "NATIVE#F80801")
+        if os.path.exists(native_path):
+            passed += 1
+            size = os.path.getsize(native_path)
+            print(f"  [PASS] 11.5 File NATIVE#F80801 exists ({size} bytes)")
+        else:
+            failed += 1
+            print(f"  [FAIL] 11.5 File NATIVE#F80801 not found on host")
+
+        # NEW wipes the in-memory program
+        send_line(sock, "NEW", read_t=2.0)
+        out = send_line(sock, "LIST", read_t=3.0)
+        check_not("11.6 Cleared after NEW", out, "NATIVE MSD")
+
+        out = send_line(sock, 'LOAD "NATIVE"', wait=1.5, read_t=5.0)
+        print(f"    [BASIC LOAD] {out[-300:]!r}")
+        check("11.7 LOAD finds file", out, "FOUND NATIVE#F80801")
+        check("11.8 LOAD reports LOADING", out, "LOADING")
+        check_not("11.9 LOAD no error", out, "ERR")
+
+        out = send_line(sock, "LIST", read_t=4.0)
+        print(f"    [LIST after LOAD] {out[-300:]!r}")
+        check("11.10 Loaded line 10", out, "NATIVE MSD")
+        check("11.11 Loaded line 20", out, "7 * 6")
+        check("11.12 Loaded line 30", out, "END")
+
+        out = send_line(sock, "RUN", read_t=4.0)
+        print(f"    [RUN] {out[-200:]!r}")
+        check("11.13 RUN prints line 10", out, "NATIVE MSD")
+        check("11.14 RUN computes 7*6", out, "42")
+
+        # Cleanup NATIVE#F80801
+        if os.path.exists(native_path):
+            try:
+                os.remove(native_path)
+                print(f"    Cleaned up NATIVE#F80801")
+            except OSError as e:
+                print(f"    WARN: could not remove {native_path}: {e}")
+
+        # ============================================================
         # CLEANUP: Delete test file
         # ============================================================
         print("\nCleanup: Delete test file")

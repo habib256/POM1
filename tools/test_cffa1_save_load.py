@@ -232,16 +232,64 @@ def main():
         print(f"    [RUN] {out[-200:]!r}")
         check("6.1 RUN prints output", out, "APPLE1 FOREVER")
 
-        # === Cleanup: delete test file ===
-        print("\nCleanup: Delete test file")
+        # === STEP 8: Native Applesoft SAVE/LOAD (from BASIC prompt) ===
+        # Applesoft Lite CFFA1 integrates SAVE/LOAD commands that call the
+        # firmware directly, without going through the 9006R menu. Syntax is
+        # `SAVE NAME` and `LOAD NAME` — unquoted (quotes return "40 BAD NAME").
+        print("\nStep 8: Native Applesoft SAVE/LOAD from BASIC prompt")
+        send_ctrl(sock, CTRL_R)
+        time.sleep(0.9)
+        recv_avail(sock, total=2.0)
+        out = send_line(sock, "E000R", wait=0.5, read_t=3.0)
+        check("8.1 Applesoft restarted", out, "]")
+
+        send_line(sock, "NEW", read_t=2.0)
+        send_line(sock, '10 PRINT "NATIVE CFFA1"', read_t=2.0)
+        send_line(sock, '20 PRINT 3 * 4', read_t=2.0)
+        send_line(sock, '30 END', read_t=2.0)
+
+        out = send_line(sock, "SAVE NATIVE", wait=1.0, read_t=5.0)
+        print(f"    [BASIC SAVE] {out[-200:]!r}")
+        check_not("8.2 SAVE NATIVE no error", out, "ERR")
+        check_not("8.2b SAVE NATIVE no BAD", out, "BAD")
+
+        # NEW wipes the program so we can prove LOAD restores it
+        send_line(sock, "NEW", read_t=2.0)
+        out = send_line(sock, "LIST", read_t=3.0)
+        check_not("8.3 Cleared after NEW", out, "NATIVE CFFA1")
+
+        out = send_line(sock, "LOAD NATIVE", wait=1.5, read_t=5.0)
+        print(f"    [BASIC LOAD] {out[-200:]!r}")
+        check_not("8.4 LOAD NATIVE no error", out, "ERR")
+        check_not("8.4b LOAD NATIVE not NOT FOUND", out, "NOT FOUND")
+
+        out = send_line(sock, "LIST", read_t=4.0)
+        print(f"    [LIST after LOAD] {out[-300:]!r}")
+        check("8.5 Loaded line 10", out, "NATIVE CFFA1")
+        check("8.6 Loaded line 20", out, "3 * 4")
+        check("8.7 Loaded line 30", out, "END")
+
+        out = send_line(sock, "RUN", read_t=4.0)
+        print(f"    [RUN] {out[-200:]!r}")
+        check("8.8 Loaded program prints", out, "NATIVE CFFA1")
+        check("8.9 Loaded program computes", out, "12")
+
+        # === Cleanup: delete test files (SAVETEST + NATIVE) ===
+        print("\nCleanup: Delete test files")
         send_ctrl(sock, CTRL_R)
         time.sleep(0.9)
         recv_avail(sock, total=2.0)
         send_line(sock, "9006R", wait=0.5, read_t=4.0)
+
         send_char(sock, "D", wait=0.5)
         out = send_line(sock, "SAVETEST", wait=0.5, read_t=4.0)
-        print(f"    [delete] {out[-200:]!r}")
-        check_not("7.1 Delete no error", out, "NOT FOUND")
+        print(f"    [delete SAVETEST] {out[-150:]!r}")
+        check_not("9.1 Delete SAVETEST no error", out, "NOT FOUND")
+
+        send_char(sock, "D", wait=0.5)
+        out = send_line(sock, "NATIVE", wait=0.5, read_t=4.0)
+        print(f"    [delete NATIVE] {out[-150:]!r}")
+        check_not("9.2 Delete NATIVE no error", out, "NOT FOUND")
 
     except Exception as e:
         print(f"\nERROR: {e}")
