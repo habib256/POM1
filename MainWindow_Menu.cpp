@@ -134,6 +134,11 @@ void MainWindow_ImGui::renderMenuBar()
                 ImGui::EndMenu();
             }
             ImGui::Separator();
+            ImGui::MenuItem("Keyboard autorepeat", nullptr, &keyboardAutorepeat);
+            if (ImGui::IsItemHovered())
+                ImGui::SetTooltip("Off (default): matches a real TTL keyboard — holding a key asserts STROBE once.\n"
+                                  "On: OS autorepeat reaches the Apple 1 (useful when using POM1 as a terminal).");
+            ImGui::Separator();
             ImGui::MenuItem("Woz ACI Cassette Control", nullptr, &showCassetteControl);
             if (ImGui::MenuItem("Uncle Bernie's GEN2 HGR Graphic Card", nullptr, &graphicsCardEnabled)) {
                 if (graphicsCardEnabled) showGraphicsCard = true;

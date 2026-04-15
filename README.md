@@ -1,10 +1,10 @@
 <div align="center">
 
-# 🍎 POM1 v1.8.0 — Apple 1 Emulator
+# 🍎 POM1 v1.8.1 — Apple 1 Emulator
 
 **Experience the machine that started the personal computer revolution.**
 
-🎂 **Celebrating 50 years of Apple (1976–2026)** — POM1 v1.8.0 ships a cycle-accurate **libresidfp** SID engine with hot-swappable 6581/8580 chip variants, in honor of the 50th anniversary of Apple Computer, founded on April 1, 1976.
+🎂 **Celebrating 50 years of Apple (1976–2026)** — POM1 v1.8.1 ships a cycle-accurate **libresidfp** SID engine with hot-swappable 6581/8580 chip variants, and a TTL-faithful keyboard (no autorepeat by default, toggle in the Hardware menu) in honor of the 50th anniversary of Apple Computer, founded on April 1, 1976.
 
 A faithful Apple 1 emulator built with Dear ImGui & OpenGL — fast, lightweight, and cross-platform. 
 Now with [P-LAB Wi-Fi Modem](https://p-l4b.github.io/wifi/), [P-LAB Terminal Card](https://p-l4b.github.io/terminal/), [P-LAB microSD Storage Card](https://p-l4b.github.io/sdcard/), [P-LAB A1-SID Sound Card](https://p-l4b.github.io/A1-SID/), [P-LAB Apple-1 Graphic Card (TMS9918)](https://p-l4b.github.io/graphic/), [P-LAB I/O Board & RTC](https://p-l4b.github.io/A1-IO_RTC/), **CFFA1** CompactFlash storage (Rich Dreher design, ProDOS `.po` disk), **Applesoft Lite** (CFFA1 or P-LAB microSD layout), and [Uncle Bernie's GEN2 Color Graphics Card](https://www.applefritter.com/content/uncle-bernies-gen2-color-graphics-card-apple-1) support.

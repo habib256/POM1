@@ -35,42 +35,18 @@ const char* MainWindow_ImGui::shortcutLabel(int key, int mods)
     }
     return nullptr;
 }
-void MainWindow_ImGui::handleKeyboardInput()
-{
-    ImGuiIO& io = ImGui::GetIO();
-
-    // Ne pas envoyer les touches à l'Apple 1 quand un widget ImGui a le focus
-    if (io.WantTextInput) return;
-
-    for (int i = 0; i < io.InputQueueCharacters.Size; i++) {
-        ImWchar c = io.InputQueueCharacters[i];
-        if (c >= 32 && c <= 126) {
-            emulation->queueKey((char)c);
-        } else if (c == '\r' || c == '\n') {
-            emulation->queueKey('\r');
-        } else if (c == '\b' || c == 127) {
-            emulation->queueKey('\b');
-        }
-    }
-
-    if (ImGui::IsKeyPressed(ImGuiKey_Enter) || ImGui::IsKeyPressed(ImGuiKey_KeypadEnter)) {
-        emulation->queueKey('\r');
-    }
-
-    if (ImGui::IsKeyPressed(ImGuiKey_Backspace)) {
-        emulation->queueKey('\b');
-    }
-
-    if (ImGui::IsKeyPressed(ImGuiKey_Escape)) {
-        emulation->queueKey(27);
-    }
-}
-
 void MainWindow_ImGui::handleGlfwChar(unsigned int codepoint)
 {
-    // Les caractères sont traités par handleKeyboardInput() via InputQueueCharacters.
-    // Ne pas envoyer ici pour éviter les doublons vers l'Apple 1.
-    (void)codepoint;
+    // GLFW delivers key(PRESS|REPEAT) → char for the same event; handleGlfwKey
+    // has just tagged nextCharIsRepeat. Consume it here.
+    const bool isRepeat = nextCharIsRepeat;
+    nextCharIsRepeat = false;
+
+    if (ImGui::GetIO().WantTextInput) return;
+    if (isRepeat && !keyboardAutorepeat) return;
+    if (codepoint >= 32 && codepoint <= 126) {
+        emulation->queueKey((char)codepoint);
+    }
 }
 
 void MainWindow_ImGui::handleGlfwKey(int key, int scancode, int action, int mods)
@@ -79,28 +55,45 @@ void MainWindow_ImGui::handleGlfwKey(int key, int scancode, int action, int mods
     if (action == GLFW_RELEASE) {
         return;
     }
-    // GLFW ne renvoie qu'un seul PRESS au début ; les pas suivants pendant un maintien sont des REPEAT.
-    if (action == GLFW_REPEAT && key != GLFW_KEY_F7) {
-        return;
-    }
+
+    // Tag the next char callback (same physical event) so it knows whether this
+    // is a fresh press or an OS autorepeat. Reset if this key produces no char.
+    nextCharIsRepeat = (action == GLFW_REPEAT);
 
     int activeMods = mods & (GLFW_MOD_CONTROL | GLFW_MOD_SHIFT | GLFW_MOD_ALT | GLFW_MOD_SUPER);
 
-    for (int i = 0; i < shortcutCount; i++) {
-        if (shortcuts[i].key != key || shortcuts[i].mods != activeMods)
-            continue;
+    // Shortcuts: PRESS-only except F7 (CPU single-step allowed to repeat).
+    if (action == GLFW_PRESS || (action == GLFW_REPEAT && key == GLFW_KEY_F7)) {
+        for (int i = 0; i < shortcutCount; i++) {
+            if (shortcuts[i].key != key || shortcuts[i].mods != activeMods)
+                continue;
 
-        if (shortcuts[i].action) {
-            (this->*shortcuts[i].action)();
-        } else if (key == GLFW_KEY_F6) {
-            cpuRunning ? stopCpu() : startCpu();
-        } else if (key == GLFW_KEY_F1) {
-            showMemoryViewer = !showMemoryViewer;
-        } else if (key == GLFW_KEY_F2) {
-            showMemoryMap = !showMemoryMap;
-        } else if (key == GLFW_KEY_F3) {
-            showDebugger = !showDebugger;
+            if (shortcuts[i].action) {
+                (this->*shortcuts[i].action)();
+            } else if (key == GLFW_KEY_F6) {
+                cpuRunning ? stopCpu() : startCpu();
+            } else if (key == GLFW_KEY_F1) {
+                showMemoryViewer = !showMemoryViewer;
+            } else if (key == GLFW_KEY_F2) {
+                showMemoryMap = !showMemoryMap;
+            } else if (key == GLFW_KEY_F3) {
+                showDebugger = !showDebugger;
+            }
+            return;
         }
-        return;
+    }
+
+    // Non-printable Apple-1 keys (Enter / Backspace / Escape) do not produce a
+    // char callback, so queue them here — gated on autorepeat for REPEAT events.
+    if (ImGui::GetIO().WantTextInput) return;
+    const bool fire = (action == GLFW_PRESS) || (action == GLFW_REPEAT && keyboardAutorepeat);
+    if (!fire) return;
+
+    if (key == GLFW_KEY_ENTER || key == GLFW_KEY_KP_ENTER) {
+        emulation->queueKey('\r');
+    } else if (key == GLFW_KEY_BACKSPACE) {
+        emulation->queueKey('\b');
+    } else if (key == GLFW_KEY_ESCAPE) {
+        emulation->queueKey(27);
     }
 }

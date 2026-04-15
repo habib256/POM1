@@ -8,9 +8,10 @@ dist/
 # Fichiers binaires de release (copie locale avant upload GitHub Releases)
 releases/*.zip
 
-# WASM build — keep only the pom1_imgui.* output files and shell template
+# WASM build
+# Keep only the HTML shell template under version control.
+# The generated outputs (pom1_imgui.{html,js,wasm,data}) can exceed GitHub's 100MB limit.
 build-wasm/*
-!build-wasm/pom1_imgui.*
 !build-wasm/shell.html
 
 # Dear ImGui library (downloaded by setup_imgui.sh)

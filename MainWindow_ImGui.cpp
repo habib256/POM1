@@ -107,9 +107,6 @@ void MainWindow_ImGui::render()
     }
 #endif
 
-    // Gérer les entrées clavier
-    handleKeyboardInput();
-
     // Fenêtre principale avec menu
     if (ImGui::BeginMainMenuBar()) {
         renderMenuBar();

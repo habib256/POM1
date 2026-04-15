@@ -83,6 +83,10 @@ private:
     bool showA1IO_RTC = false;
     bool fullscreen = false;
 
+    // Keyboard input
+    bool keyboardAutorepeat = false;  // default off: TTL keyboard has no repeat
+    bool nextCharIsRepeat = false;    // set by handleGlfwKey, consumed by handleGlfwChar
+
     // Machine preset layout: pending window repositioning
     struct PendingWindowPlacement {
         std::string name;
@@ -156,7 +160,6 @@ private:
     // Utility functions
     void setStatusMessage(const std::string& message, float duration = 3.0f);
     void updateStatus(float deltaTime);
-    void handleKeyboardInput();
     std::string disassemble(quint16 pc, int& instrLen);
 
     // Load dialog state (non-static, reset on open)
