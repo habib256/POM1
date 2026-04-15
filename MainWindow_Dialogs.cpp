@@ -80,48 +80,48 @@ void MainWindow_ImGui::renderAboutDialog()
 namespace {
 
 static const char kHardwareReferenceText[] = R"hwref(
-Apple-1 / POM1 — Hardware reference (summary)
+Apple-1 / POM1 - Hardware reference (summary)
 
 CPU
   MOS 6502 @ ~1.022727 MHz (POM1_CPU_CLOCK_HZ, 14.31818 MHz ÷ 14). Use the CPU menu for Stop, Run, Step, and reset.
 
 PIA 6821 (keyboard & display)
-  $D010  KBD   — last key, bit 7 set; read clears strobe
-  $D011  KBDCR — bit 7 = key ready
-  $D012  DSP   — write sends a character to the emulated display; read reflects terminal-speed busy/ready
-  Incomplete decode: any $D0xx uses address & 3 → $D010–$D012 (Pagetable / Briel BASIC compatible).
+  $D010  KBD   - last key, bit 7 set; read clears strobe
+  $D011  KBDCR - bit 7 = key ready
+  $D012  DSP   - write sends a character to the emulated display; read reflects terminal-speed busy/ready
+  Incomplete decode: any $D0xx uses address & 3 -> $D010-$D012 (Pagetable / Briel BASIC compatible).
   Keyboard is uppercased by default; the Terminal Card can inject raw 8-bit keys.
 
 Memory map (64 KB always present; machine presets only warn on out-of-range RAM access)
-  $0000–$00FF  Zero page
-  $0100–$01FF  Stack
-  $0200–$1FFF  RAM (programs often load at $0280 or $0300)
-  $2000–$200F  P-LAB I/O Board & RTC (when enabled; overlays this RAM slice)
-  $2000–$3FFF  GEN2 HGR framebuffer (8 KB, when Uncle Bernie GEN2 card is enabled)
-  $4000–$7FFF  RAM
-  $8000–$9FFF  SD CARD OS ROM (8 KB, microSD card)
-  $9000–$AFFF  CFFA1 ROM + registers (when CFFA1 enabled; do not enable together with microSD)
-  $A000–$A00F  65C22 VIA (microSD card)
-  $A010–$AFFF  RAM
-  $B000–$B003  65C51 ACIA (MODEM BBS)
-  $B004–$BFFF  RAM
-  $C000–$C0FF  Apple Cassette Interface ($C081 input, $C000 output latch)
-  $C100–$C1FF  Woz ACI ROM
-  $C800–$CFFF  A1-SID (29 registers, address & $1F, when enabled)
+  $0000-$00FF  Zero page
+  $0100-$01FF  Stack
+  $0200-$1FFF  RAM (programs often load at $0280 or $0300)
+  $2000-$200F  P-LAB I/O Board & RTC (when enabled; overlays this RAM slice)
+  $2000-$3FFF  GEN2 HGR framebuffer (8 KB, when Uncle Bernie GEN2 card is enabled)
+  $4000-$7FFF  RAM
+  $8000-$9FFF  SD CARD OS ROM (8 KB, microSD card)
+  $9000-$AFFF  CFFA1 ROM + registers (when CFFA1 enabled; do not enable together with microSD)
+  $A000-$A00F  65C22 VIA (microSD card)
+  $A010-$AFFF  RAM
+  $B000-$B003  65C51 ACIA (MODEM BBS)
+  $B004-$BFFF  RAM
+  $C000-$C0FF  Apple Cassette Interface ($C081 input, $C000 output latch)
+  $C100-$C1FF  Woz ACI ROM
+  $C800-$CFFF  A1-SID (29 registers, address & $1F, when enabled)
   $CC00 / $CC01  TMS9918 data / control (when enabled; wins over SID at these two addresses)
-  $D010–$D012  See PIA above ($D0xx aliases)
-  $E000–$EFFF  Apple BASIC ROM (4 KB), or Applesoft Lite region when CFFA1 preset loads replacement
-  $FF00–$FFFF  Woz Monitor (256 B) + vectors at $FFFA–$FFFF
+  $D010-$D012  See PIA above ($D0xx aliases)
+  $E000-$EFFF  Apple BASIC ROM (4 KB), or Applesoft Lite region when CFFA1 preset loads replacement
+  $FF00-$FFFF  Woz Monitor (256 B) + vectors at $FFFA-$FFFF
 
 Expansion cards (menu Hardware)
-  Uncle Bernie GEN2 — passive 280×192 HIRES read of $2000–$3FFF, NTSC-style artifact colour
-  P-LAB TMS9918 — 16 KB VRAM, $CC00/$CC01
-  P-LAB A1-SID — MOS 6581/8580, $C800–$CFFF (& $1F)
-  P-LAB microSD — VIA $A000–$A00F, firmware ROM $8000–$9FFF, host folder sdcard/
-  CFFA1 — ROM/I/O $9000–$AFFF, disk image cfcard/cfcard.po when present
-  P-LAB MODEM BBS — ACIA $B000–$B003, Hayes/TCP (desktop + WASM)
-  P-LAB Terminal Card — listens on localhost:6502, bridges $D010/$D011/$D012 (desktop only)
-  P-LAB I/O & RTC — registers $2000–$200F
+  Uncle Bernie GEN2 - passive 280x192 HIRES read of $2000-$3FFF, NTSC-style artifact colour
+  P-LAB TMS9918 - 16 KB VRAM, $CC00/$CC01
+  P-LAB A1-SID - MOS 6581/8580, $C800-$CFFF (& $1F)
+  P-LAB microSD - VIA $A000-$A00F, firmware ROM $8000-$9FFF, host folder sdcard/
+  CFFA1 - ROM/I/O $9000-$AFFF, disk image cfcard/cfcard.po when present
+  P-LAB MODEM BBS - ACIA $B000-$B003, Hayes/TCP (desktop + WASM)
+  P-LAB Terminal Card - listens on localhost:6502, bridges $D010/$D011/$D012 (desktop only)
+  P-LAB I/O & RTC - registers $2000-$200F
 
 Assembling with cc65 (examples)
   ca65 -o build/program.o software/program.asm
@@ -189,7 +189,7 @@ void MainWindow_ImGui::renderScreenConfigDialog()
             monitorTintCycleButton("##display_phosphor_cycle", btnSize, screen.get());
             const char* label = monitorTintLabel(screen->monitorMode);
             if (ImGui::IsItemHovered()) {
-                ImGui::SetTooltip("%s — click for next tint (green, brown, monochrome)", label);
+                ImGui::SetTooltip("%s - click for next tint (green, brown, monochrome)", label);
             }
             const ImVec2 ts = ImGui::CalcTextSize(label);
             const ImVec2 p0 = ImGui::GetItemRectMin();

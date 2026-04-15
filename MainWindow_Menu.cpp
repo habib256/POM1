@@ -136,7 +136,7 @@ void MainWindow_ImGui::renderMenuBar()
             ImGui::Separator();
             ImGui::MenuItem("Keyboard autorepeat", nullptr, &keyboardAutorepeat);
             if (ImGui::IsItemHovered())
-                ImGui::SetTooltip("Off (default): matches a real TTL keyboard — holding a key asserts STROBE once.\n"
+                ImGui::SetTooltip("Off (default): matches a real TTL keyboard - holding a key asserts STROBE once.\n"
                                   "On: OS autorepeat reaches the Apple 1 (useful when using POM1 as a terminal).");
             ImGui::Separator();
             ImGui::MenuItem("Woz ACI Cassette Control", nullptr, &showCassetteControl);
@@ -236,7 +236,7 @@ void MainWindow_ImGui::renderToolbar()
             microSDEnabled = !microSDEnabled;
             emulation->setMicroSDEnabled(microSDEnabled);
             if (microSDEnabled) { cffa1Enabled = false; } // mutual exclusion
-            setStatusMessage(microSDEnabled ? "P-LAB microSD Card plugged — type 8000R"
+            setStatusMessage(microSDEnabled ? "P-LAB microSD Card plugged - type 8000R"
                                             : "P-LAB microSD Card unplugged", 2.0f);
         }
         ImGui::PopStyleColor();
@@ -252,7 +252,7 @@ void MainWindow_ImGui::renderToolbar()
             cffa1Enabled = !cffa1Enabled;
             emulation->setCFFA1Enabled(cffa1Enabled);
             if (cffa1Enabled) { microSDEnabled = false; } // mutual exclusion
-            setStatusMessage(cffa1Enabled ? "CFFA1 CompactFlash plugged — type 9006R"
+            setStatusMessage(cffa1Enabled ? "CFFA1 CompactFlash plugged - type 9006R"
                                           : "CFFA1 CompactFlash unplugged", 2.0f);
         }
         ImGui::PopStyleColor();
@@ -471,7 +471,7 @@ void MainWindow_ImGui::renderToolbar()
         ImGui::SameLine(0, 12);
 
 #if !POM1_IS_WASM
-        // --- Vitesse CPU (x1 / x2 / Max) — masqué en WASM (rythme imposé par le navigateur)
+        // --- Vitesse CPU (x1 / x2 / Max) - masqué en WASM (rythme imposé par le navigateur)
         {
             bool is1M = (executionSpeed == POM1_CPU_CYCLES_PER_FRAME_1X_60HZ);
             if (is1M) ImGui::PushStyleColor(ImGuiCol_Button, activeColor);
@@ -481,7 +481,7 @@ void MainWindow_ImGui::renderToolbar()
             }
             if (is1M) ImGui::PopStyleColor();
             if (ImGui::IsItemHovered()) {
-                ImGui::SetTooltip("x1 — 1.022727 MHz (~%d cycles/frame @ 60 Hz)", POM1_CPU_CYCLES_PER_FRAME_1X_60HZ);
+                ImGui::SetTooltip("x1 - 1.022727 MHz (~%d cycles/frame @ 60 Hz)", POM1_CPU_CYCLES_PER_FRAME_1X_60HZ);
             }
         }
         ImGui::SameLine();
@@ -494,7 +494,7 @@ void MainWindow_ImGui::renderToolbar()
             }
             if (is2M) ImGui::PopStyleColor();
             if (ImGui::IsItemHovered()) {
-                ImGui::SetTooltip("x2 — ~2.045 MHz (~%d cycles/frame @ 60 Hz)", POM1_CPU_CYCLES_PER_FRAME_2X_60HZ);
+                ImGui::SetTooltip("x2 - ~2.045 MHz (~%d cycles/frame @ 60 Hz)", POM1_CPU_CYCLES_PER_FRAME_2X_60HZ);
             }
         }
         ImGui::SameLine();
@@ -549,7 +549,7 @@ void MainWindow_ImGui::renderToolbar()
             const ImVec2 swatchSize(22.0f, 22.0f);
             monitorTintCycleButton("##phosphor_cycle", swatchSize, screen.get());
             if (ImGui::IsItemHovered()) {
-                ImGui::SetTooltip("%s phosphor — click to cycle tint", monitorTintLabel(screen->monitorMode));
+                ImGui::SetTooltip("%s phosphor - click to cycle tint", monitorTintLabel(screen->monitorMode));
             }
         }
 
@@ -571,8 +571,8 @@ void MainWindow_ImGui::renderToolbar()
             }
             if (ImGui::IsItemHovered()) {
                 ImGui::SetTooltip(
-                    charm ? "Apple-1 charmap (bitmap ROM)\nClick — use host ASCII font"
-                          : "Host ASCII font\nClick — use Apple-1 charmap");
+                    charm ? "Apple-1 charmap (bitmap ROM)\nClick - use host ASCII font"
+                          : "Host ASCII font\nClick - use Apple-1 charmap");
             }
         }
 

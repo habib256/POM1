@@ -215,7 +215,7 @@ int main(int argc, char* argv[])
 #endif
     if (!io.Fonts->AddFontFromFileTTF(fontPath, 14.0f, &iconsConfig, iconsRanges)) {
         fprintf(stderr,
-                "Warning: Could not load icon font (tried '%s') — toolbar/menu icons show as '?'\n"
+                "Warning: Could not load icon font (tried '%s') - toolbar/menu icons show as '?'\n"
                 "  Install fonts next to the .exe (fonts\\fa-solid-900.ttf) or run from the repo with fonts/ present.\n",
                 fontPath);
     }
@@ -240,7 +240,7 @@ int main(int argc, char* argv[])
 
     // Main loop
 #if POM1_IS_WASM
-    // Emscripten: browser controls the loop — pass a callback
+    // Emscripten: browser controls the loop - pass a callback
     struct LoopContext {
         GLFWwindow* window;
         MainWindow_ImGui* mainWindow;
