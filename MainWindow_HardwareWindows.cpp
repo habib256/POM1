@@ -20,8 +20,13 @@
 // calls (glGenTextures / glBindTexture / glTexImage2D / glTexSubImage2D).
 // Including GLFW pulls in the platform GL headers on both desktop and WASM.
 #include <GLFW/glfw3.h>
+// MSVC + stock Win32 GL headers often omit these (they live in extension headers).
+#ifndef GL_CLAMP_TO_EDGE
+#define GL_CLAMP_TO_EDGE 0x812F
+#endif
 
 #include <algorithm>
+#include <cstdint>
 #include <cmath>
 #include <cstdio>
 #include <string>
@@ -110,7 +115,7 @@ void MainWindow_ImGui::renderTMS9918Window()
             cursor.x + std::max(0.0f, (avail.x - size.x) * 0.5f),
             cursor.y + std::max(0.0f, (avail.y - size.y) * 0.5f)));
 
-        ImGui::Image((ImTextureID)(GLuint64)tms9918Texture, size);
+        ImGui::Image((ImTextureID)(uintptr_t)tms9918Texture, size);
     }
     ImGui::End();
     ImGui::PopStyleColor();

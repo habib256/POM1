@@ -3,6 +3,10 @@ project(pom1_imgui)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
+# MSVC reports __cplusplus as 199711L unless this is set; libresidfp checks it.
+if(MSVC)
+    add_compile_options(/Zc:__cplusplus)
+endif()
 
 # Vendored libresidfp (cycle-accurate SID emulation, GPL-2.0). See
 # third_party/libresidfp/CMakeLists.txt for the source list.
