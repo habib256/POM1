@@ -357,7 +357,7 @@ void Screen_ImGui::autoClearAndWelcome()
     dirty = true;
 }
 
-void Screen_ImGui::drawCRTOverlay(float x0, float y0, float x1, float y1, bool charmapDisplay)
+void Screen_ImGui::drawCRTBackdrop(float x0, float y0, float x1, float y1, bool charmapDisplay)
 {
     ImDrawList* dl = ImGui::GetWindowDrawList();
 
@@ -386,8 +386,20 @@ void Screen_ImGui::drawCRTOverlay(float x0, float y0, float x1, float y1, bool c
         varied.w *= lineAlpha;
         dl->AddLine(ImVec2(x0, py), ImVec2(x1, py), ImGui::ColorConvertFloat4ToU32(varied), 1.0f);
     }
+}
 
-    const float scanAlpha = charmapDisplay ? crtScanlineAlpha * 0.25f : crtScanlineAlpha;
+void Screen_ImGui::drawCRTScanlines(float x0, float y0, float x1, float y1, bool charmapDisplay)
+{
+    ImDrawList* dl = ImGui::GetWindowDrawList();
+
+    // Scanlines are drawn on top of glyphs — reduce alpha so they show through
+    // the text as a CRT artifact without forming hard dark bars that bisect
+    // characters (the bug that previously led us to hide the whole overlay).
+    // The atlas glyph halos have lower effective alpha than the pre-c6f86b2
+    // per-pixel cascade, so a gentler scanline keeps characters readable while
+    // still letting the scanline pattern read across the whole raster.
+    const float scanAlpha = charmapDisplay ? crtScanlineAlpha * 0.18f
+                                           : crtScanlineAlpha * 0.55f;
     ImU32 scanColor = IM_COL32(0, 0, 0, (int)(scanAlpha * 255));
     for (float py = y0 + 1.0f; py < y1; py += 2.0f) {
         dl->AddLine(ImVec2(x0, py), ImVec2(x1, py), scanColor, 1.15f);
@@ -534,18 +546,16 @@ void Screen_ImGui::render()
         buildGlyphAtlas();
     }
 
-    // CRT overlay (phosphor bands + dark scanlines) is drawn FIRST so the
-    // glyphs then render on top of it. Previously this was drawn after the
-    // glyph pass and the dark scanlines cut visibly through each glyph, which
-    // became more obvious once glyphs moved from per-pixel rects to the pre-
-    // baked atlas (halos have a lower effective alpha than the solid per-
-    // pixel cascade used to). With the overlay underneath, the atlas glyph
-    // covers the scanlines at the character position while the effect stays
-    // visible in the gaps between characters and lines.
+    // CRT pass 1/2 — phosphor-band backdrop. Drawn BEFORE the glyph pass so
+    // the alternating tinted lines never cut across a character. The dark
+    // scanlines are now a separate pass below, drawn AFTER the glyphs with a
+    // reduced alpha so the CRT effect stays visible over the text (as on a
+    // real CRT) without reintroducing the hard dark bars that used to bisect
+    // every glyph when the whole overlay sat on top.
     if (crtEffect) {
         const ImVec2 absP0 = rasterMin;
         const ImVec2 absP1 = ImVec2(rasterMin.x + screenSize.x, rasterMin.y + screenSize.y);
-        drawCRTOverlay(absP0.x, absP0.y, absP1.x, absP1.y, useCharmapRenderer);
+        drawCRTBackdrop(absP0.x, absP0.y, absP1.x, absP1.y, useCharmapRenderer);
     }
 
     {
@@ -618,7 +628,14 @@ void Screen_ImGui::render()
         }
     }
 
-    // CRT overlay was already drawn before the glyph pass above.
+    // CRT pass 2/2 — dark scanlines on top of the glyphs. Reduced alpha
+    // (drawCRTScanlines) keeps the scanline pattern visible across the text
+    // without the hard bisecting bars that the pre-split version produced.
+    if (crtEffect) {
+        const ImVec2 absP0 = rasterMin;
+        const ImVec2 absP1 = ImVec2(rasterMin.x + screenSize.x, rasterMin.y + screenSize.y);
+        drawCRTScanlines(absP0.x, absP0.y, absP1.x, absP1.y, useCharmapRenderer);
+    }
 
     ImGui::PopFont();
     ImGui::PopStyleColor(1);
