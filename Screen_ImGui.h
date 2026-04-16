@@ -59,7 +59,7 @@ public:
     /** Multiplicateur de la taille de police en mode Host ASCII uniquement. */
     float hostAsciiGlyphScale = 1.5f;
     bool crtEffect = true;
-    float crtScanlineAlpha = 0.50f;
+    float crtScanlineAlpha = 0.30f;
     float brightness = 1.0f;    // 0.0 = black, 1.0 = default, 2.0 = max
     float contrast = 1.0f;      // 0.5 = washed out, 1.0 = default, 2.0 = high contrast
 
