@@ -37,6 +37,30 @@ using namespace pom1::mainwindow::detail;
 
 void MainWindow_ImGui::renderGraphicsCardWindow()
 {
+    // Lazy texture creation — same nearest-neighbour treatment as TMS9918 so
+    // arbitrary window sizes still produce crisp pixel art.
+    if (graphicsCardTexture == 0) {
+        glGenTextures(1, &graphicsCardTexture);
+        glBindTexture(GL_TEXTURE_2D, graphicsCardTexture);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA,
+                     GraphicsCard::kHiresWidth, GraphicsCard::kHiresHeight,
+                     0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
+    }
+
+    // Per-scanline dirty hashing inside rasterizeToBuffer() means an idle
+    // framebuffer costs ~7.7 KB of memory hashing and zero pixel writes.
+    // The GL upload is skipped when nothing changed.
+    if (graphicsCard.rasterizeToBuffer(uiSnapshot.memory.data())) {
+        glBindTexture(GL_TEXTURE_2D, graphicsCardTexture);
+        glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0,
+                        GraphicsCard::kHiresWidth, GraphicsCard::kHiresHeight,
+                        GL_RGBA, GL_UNSIGNED_BYTE, graphicsCard.pixels());
+    }
+
     const float defPs = kVideoCardDefaultPixelScale;
     const float winW = GraphicsCard::kHiresWidth * defPs + 16.0f;
     const float winH = GraphicsCard::kHiresHeight * defPs + 36.0f;
@@ -55,15 +79,8 @@ void MainWindow_ImGui::renderGraphicsCardWindow()
         ImGui::SetCursorPos(ImVec2(
             cursorPos.x + std::max(0.0f, (avail.x - size.x) * 0.5f),
             cursorPos.y + std::max(0.0f, (avail.y - size.y) * 0.5f)));
-        ImVec2 pos = ImGui::GetCursorScreenPos();
-        ImDrawList* drawList = ImGui::GetWindowDrawList();
 
-        drawList->AddRectFilled(pos, ImVec2(pos.x + size.x, pos.y + size.y),
-                                IM_COL32(0, 0, 0, 255));
-
-        graphicsCard.render(drawList, pos, pixelScale, uiSnapshot.memory.data());
-
-        ImGui::Dummy(size);
+        ImGui::Image((ImTextureID)(uintptr_t)graphicsCardTexture, size);
     }
     ImGui::End();
     ImGui::PopStyleColor();

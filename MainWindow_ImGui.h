@@ -68,6 +68,7 @@ private:
     bool showSaveTapeDialog = false;
     bool showGraphicsCard = false;
     bool graphicsCardEnabled = false;
+    GLuint graphicsCardTexture = 0;
     bool showTMS9918 = false;
     bool tms9918Enabled = false;
     GLuint tms9918Texture = 0;

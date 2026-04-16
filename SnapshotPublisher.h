@@ -32,6 +32,12 @@ public:
 private:
     mutable std::mutex snapshotMutex;
     EmulationSnapshot latestSnapshot;
+    // Last value of Memory::getMemoryDirtyCounter() that was published; used
+    // to skip the 64 KB std::memcpy when the CPU is sitting in a Wozmon
+    // polling loop with no writes. Initialised to a sentinel that can't
+    // match the live counter (which starts at 1 and only goes up), so the
+    // very first publish always copies.
+    uint64_t lastPublishedDirtyCounter = 0;
 };
 
 #endif // SNAPSHOTPUBLISHER_H

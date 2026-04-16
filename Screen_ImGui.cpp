@@ -6,6 +6,14 @@
 #include <array>
 #include <fstream>
 
+// GL texture handle for the glyph atlas. Same convention as
+// MainWindow_HardwareWindows.cpp: include GLFW for the platform GL headers
+// and patch up the constants Win32's stock GL.h misses.
+#include <GLFW/glfw3.h>
+#ifndef GL_CLAMP_TO_EDGE
+#define GL_CLAMP_TO_EDGE 0x812F
+#endif
+
 namespace {
 
 constexpr int kCharmapGlyphCount = 128;
@@ -27,9 +35,140 @@ Screen_ImGui::Screen_ImGui()
 
 Screen_ImGui::~Screen_ImGui()
 {
+    destroyGlyphAtlas();
     Screen_ImGui* expected = this;
     (void)instance.compare_exchange_strong(
         expected, nullptr, std::memory_order_acq_rel, std::memory_order_relaxed);
+}
+
+void Screen_ImGui::destroyGlyphAtlas()
+{
+    if (glyphAtlasTexture != 0) {
+        GLuint tex = static_cast<GLuint>(glyphAtlasTexture);
+        glDeleteTextures(1, &tex);
+        glyphAtlasTexture = 0;
+        glyphAtlasUploaded = false;
+    }
+}
+
+void Screen_ImGui::buildGlyphAtlas()
+{
+    // Pre-rasterise every charmap glyph into one RGBA texture. The pixel
+    // layout per cell follows drawCharmapGlyph()'s reference geometry exactly
+    // (5 columns × 8 rows of "fat" pixels with a soft horizontal halo around
+    // each one), so an AddImage of the cell looks visually identical to the
+    // per-pixel rect cascade. Glyphs are baked white; per-mode colour comes
+    // from the AddImage(col) tint, so we don't need a per-mode atlas.
+    if (!charmapLoaded) return;
+
+    // Match the reference geometry computed inside drawCharmapGlyph() but
+    // for a fixed cell of kAtlasCellW × kAtlasCellH. The constants below are
+    // copied verbatim from drawCharmapGlyph() so visual proportions match;
+    // any future tweak to that function should be mirrored here.
+    const float cellW = static_cast<float>(kAtlasCellW);
+    const float cellH = static_cast<float>(kAtlasCellH);
+    const float glyphAreaW = cellW * 0.60f;
+    const float glyphAreaH = cellH * 0.72f;
+    const float gapX = std::max(1.0f, glyphAreaW / 22.0f);
+    const float gapY = std::max(1.0f, glyphAreaH / 28.0f);
+    const float pixelW = std::max(1.0f, (glyphAreaW - gapX * (kCharmapVisibleCols - 1)) / kCharmapVisibleCols);
+    const float pixelH = std::max(1.0f, (glyphAreaH - gapY * (kCharmapVisibleRows - 1)) / kCharmapVisibleRows);
+    const float glyphW = pixelW * kCharmapVisibleCols + gapX * (kCharmapVisibleCols - 1);
+    const float glyphH = pixelH * kCharmapVisibleRows + gapY * (kCharmapVisibleRows - 1);
+    const float offsetX = (cellW - glyphW) * 0.5f;
+    const float offsetY = (cellH - glyphH) * 0.5f;
+
+    // We bake a "neutral" glow alpha (~0.16) — the average across the three
+    // monitor modes. Per-mode glow nuance is sacrificed for the perf win.
+    constexpr float bakedGlowScaleX = 1.55f;
+    constexpr float bakedGlowScaleY = 0.25f;
+    constexpr float bakedGlowAlpha  = 0.16f * 0.45f;  // crispGlow scaling
+    constexpr float bakedGlowMinX   = 2.8f;
+    constexpr float bakedGlowMinY   = 0.40f;
+    const float glowPadX = std::max(bakedGlowMinX, pixelW * bakedGlowScaleX);
+    const float glowPadY = std::max(bakedGlowMinY, pixelH * bakedGlowScaleY);
+
+    // Texture buffer (RGBA, white tinted later by AddImage). max-blend rather
+    // than additive so overlapping halos don't blow out alpha.
+    std::vector<uint32_t> tex(static_cast<size_t>(kAtlasTexW) * kAtlasTexH, 0);
+
+    auto stamp = [&](int x0, int y0, int x1, int y1, uint8_t alpha) {
+        if (x0 < 0) x0 = 0;
+        if (y0 < 0) y0 = 0;
+        if (x1 > kAtlasTexW) x1 = kAtlasTexW;
+        if (y1 > kAtlasTexH) y1 = kAtlasTexH;
+        for (int yy = y0; yy < y1; ++yy) {
+            uint32_t* row = tex.data() + static_cast<size_t>(yy) * kAtlasTexW;
+            for (int xx = x0; xx < x1; ++xx) {
+                uint32_t cur = row[xx];
+                uint8_t curA = static_cast<uint8_t>((cur >> IM_COL32_A_SHIFT) & 0xFF);
+                if (alpha > curA) {
+                    row[xx] = IM_COL32(255, 255, 255, alpha);
+                }
+            }
+        }
+    };
+
+    const uint8_t glowAlpha8 = static_cast<uint8_t>(std::min(255.0f, std::round(bakedGlowAlpha * 255.0f)));
+
+    for (int g = 0; g < 128; ++g) {
+        const int cellCol = g % kAtlasCols;
+        const int cellRow = g / kAtlasCols;
+        const float baseX = static_cast<float>(cellCol * kAtlasCellW);
+        const float baseY = static_cast<float>(cellRow * kAtlasCellH);
+
+        // The charmap.rom only ships 128 glyphs but charmapGlyphs may have
+        // been resized to less if the file was short; bound check defensively.
+        bool empty = true;
+        if (g < static_cast<int>(charmapGlyphs.size())) {
+            const auto& glyph = charmapGlyphs[g];
+            for (int row = 0; row < kCharmapVisibleRows; ++row) {
+                const unsigned char bits = glyph[row];
+                for (int col = 0; col < kCharmapVisibleCols; ++col) {
+                    const unsigned char mask = static_cast<unsigned char>(1u << (col + 1));
+                    if ((bits & mask) == 0) continue;
+                    empty = false;
+                    const float px = baseX + offsetX + col * (pixelW + gapX);
+                    const float py = baseY + offsetY + row * (pixelH + gapY);
+                    // Glow halo first…
+                    if (glowAlpha8 > 0) {
+                        stamp(static_cast<int>(std::floor(px - glowPadX)),
+                              static_cast<int>(std::floor(py - glowPadY)),
+                              static_cast<int>(std::ceil (px + pixelW + glowPadX)),
+                              static_cast<int>(std::ceil (py + pixelH + glowPadY)),
+                              glowAlpha8);
+                    }
+                    // …then the solid pixel on top.
+                    stamp(static_cast<int>(std::floor(px)),
+                          static_cast<int>(std::floor(py)),
+                          static_cast<int>(std::ceil (px + pixelW)),
+                          static_cast<int>(std::ceil (py + pixelH)),
+                          255);
+                }
+            }
+        }
+        glyphIsEmpty[static_cast<size_t>(g)] = empty;
+    }
+
+    // Lazy GL allocation. Linear filtering is fine — the atlas already encodes
+    // a soft halo, and the per-cell scaling is large enough that point sampling
+    // would look chunky.
+    if (glyphAtlasTexture == 0) {
+        GLuint tx = 0;
+        glGenTextures(1, &tx);
+        glyphAtlasTexture = static_cast<unsigned int>(tx);
+        glBindTexture(GL_TEXTURE_2D, tx);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, kAtlasTexW, kAtlasTexH, 0,
+                     GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
+    }
+    glBindTexture(GL_TEXTURE_2D, static_cast<GLuint>(glyphAtlasTexture));
+    glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, kAtlasTexW, kAtlasTexH,
+                    GL_RGBA, GL_UNSIGNED_BYTE, tex.data());
+    glyphAtlasUploaded = true;
 }
 
 ImVec2 Screen_ImGui::computeApple1CellDimensions(ImVec2 charSize)
@@ -388,6 +527,13 @@ void Screen_ImGui::render()
         return ((renderTopRow + logicalY) % SCREEN_HEIGHT) * SCREEN_WIDTH + x;
     };
 
+    // Lazy-build the glyph atlas the first frame the charmap renderer is used.
+    // GL context is guaranteed to exist by the time render() runs (the GLFW
+    // window was created before MainWindow_ImGui::createPom1).
+    if (useCharmapRenderer && !glyphAtlasUploaded) {
+        buildGlyphAtlas();
+    }
+
     {
         ImDrawList* drawList = ImGui::GetWindowDrawList();
         ImU32 col = ImGui::ColorConvertFloat4ToU32(textColor);
@@ -395,6 +541,10 @@ void Screen_ImGui::render()
         const float scaledCellW = cellWidth * scale * layoutScale;
         const float scaledCellH = cellHeight * scale * layoutScale;
         const float textScale = scale * layoutScale;
+        // Atlas UV step: each glyph occupies one cell of a 16×8 grid.
+        const float uStep = 1.0f / static_cast<float>(kAtlasCols);
+        const float vStep = 1.0f / static_cast<float>(kAtlasRows);
+        const ImTextureID atlasTex = (ImTextureID)(uintptr_t)glyphAtlasTexture;
         // During the power-on pattern phase, every '@' blinks in phase with the
         // cursor clock (shift-register initial state described by C. Parmigiani).
         // The cursor itself is not yet active — CLRSCR hasn't wiped the registers
@@ -417,7 +567,28 @@ void Screen_ImGui::render()
                     if (c == 0 && !blinkOn) {
                         continue;
                     }
-                    drawCharmapGlyph(drawList, px, py, scaledCellW, scaledCellH, c & 0x7F, col, true);
+                    const unsigned char glyph = static_cast<unsigned char>(c & 0x7F);
+                    // Fast skip for visually-empty glyphs (space, '\0', etc.) —
+                    // saves the AddImage and downstream vertex fill.
+                    if (glyphAtlasUploaded && glyphIsEmpty[glyph]) {
+                        continue;
+                    }
+                    if (glyphAtlasUploaded) {
+                        const float u0 = (glyph % kAtlasCols) * uStep;
+                        const float v0 = (glyph / kAtlasCols) * vStep;
+                        drawList->AddImage(
+                            atlasTex,
+                            ImVec2(px, py),
+                            ImVec2(px + scaledCellW, py + scaledCellH),
+                            ImVec2(u0, v0),
+                            ImVec2(u0 + uStep, v0 + vStep),
+                            col);
+                    } else {
+                        // Atlas couldn't be built (charmap.rom missing / GL not
+                        // ready); fall back to the per-pixel cascade so the
+                        // screen still renders something.
+                        drawCharmapGlyph(drawList, px, py, scaledCellW, scaledCellH, glyph, col, true);
+                    }
                 } else {
                     if (c == 0) c = ' ';
                     if (c == ' ') continue;

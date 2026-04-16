@@ -2,6 +2,7 @@
 #define GRAPHICSCARD_H
 
 #include "imgui.h"
+#include <array>
 #include <cstdint>
 
 /**
@@ -14,6 +15,12 @@
  *
  * The Apple II HIRES memory layout and NTSC artifact color encoding
  * are used, as the GEN2 card is Apple II compatible by design.
+ *
+ * Performance: rasterizeToBuffer() fills a 280×192 RGBA pixel buffer
+ * in software. A per-scanline 32-bit hash skips redrawing rows whose
+ * 40 framebuffer bytes are unchanged since the last call. The caller
+ * uploads the buffer to a GL texture (one ImGui::Image draw call per
+ * frame) instead of emitting ~100 k AddRectFilled per frame.
  */
 class GraphicsCard
 {
@@ -25,18 +32,37 @@ public:
     static constexpr uint16_t kHiresBase = 0x2000;
     static constexpr int kHiresSize = 0x2000; // 8 KB
 
-    // Render the HIRES framebuffer into the current ImGui window's DrawList.
+    GraphicsCard();
+
+    // Rasterize the HIRES framebuffer into the internal RGBA pixel buffer.
+    // Per-scanline hashing means rows that didn't change skip the inner loop.
+    // Returns true if any pixel changed since the previous call (caller can
+    // skip the GL upload otherwise; harmless to ignore).
     // memory must point to the full 64 KB address space.
-    void render(ImDrawList* drawList, ImVec2 origin, float pixelScale,
-                const quint8* memory) const;
+    bool rasterizeToBuffer(const quint8* memory);
+
+    // RGBA pixel buffer, kHiresWidth × kHiresHeight, byte order matches
+    // GL_RGBA + GL_UNSIGNED_BYTE on little-endian (same convention as TMS9918).
+    const uint32_t* pixels() const { return pixelBuf.data(); }
+
+    // Force a full re-rasterization on the next call (used after toggling the
+    // card off/on so a stale buffer doesn't survive).
+    void invalidate();
 
     // Compute the address of a HIRES scanline (Apple II non-linear layout).
     static uint16_t scanlineAddress(int y);
 
 private:
     // Resolve the NTSC artifact color for a given pixel.
-    ImU32 resolveColor(const quint8* memory, uint16_t lineAddr,
-                       int col, quint8 byte, int bit, int screenX, bool group2) const;
+    static ImU32 resolveColor(const quint8* memory, uint16_t lineAddr,
+                              int col, quint8 byte, int bit, int screenX, bool group2);
+
+    void rasterizeLine(int y, const quint8* memory);
+
+    // 32-bit FNV-1a digest of the 40 framebuffer bytes for each scanline.
+    // 0xFFFFFFFF means "force redraw on next call" (used by invalidate()).
+    std::array<uint32_t, kHiresHeight> lineHash{};
+    std::array<uint32_t, kHiresWidth * kHiresHeight> pixelBuf{};
 
     // NTSC artifact colors
     static constexpr ImU32 kBlack  = IM_COL32(0, 0, 0, 255);

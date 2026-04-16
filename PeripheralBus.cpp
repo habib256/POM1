@@ -4,12 +4,15 @@
 #include "PeripheralBus.h"
 
 #include <algorithm>
+#include <cassert>
 #include <utility>
 
 PeripheralBus::Handle PeripheralBus::registerHandle(std::string name, Range range,
                                                     int priority,
                                                     ReadFn onRead, WriteFn onWrite)
 {
+    assert(entries.size() < static_cast<size_t>(kMaxEntries) &&
+           "PeripheralBus::EntryMask only supports 16 entries; widen the type.");
     Handle h = static_cast<Handle>(entries.size());
     entries.push_back(Entry{
         std::move(name),
@@ -21,6 +24,7 @@ PeripheralBus::Handle PeripheralBus::registerHandle(std::string name, Range rang
         std::move(onWrite),
     });
     sortEntries();
+    rebuildPageMask();
     // sortEntries() reorders the vector so `h` (an index into the old layout)
     // is no longer meaningful. We return the entry's stable insertionIndex
     // instead; setEnabled/isEnabled match on that.
@@ -31,7 +35,10 @@ void PeripheralBus::setEnabled(Handle handle, bool enabled)
 {
     for (auto& e : entries) {
         if (e.insertionIndex == handle) {
-            e.enabled = enabled;
+            if (e.enabled != enabled) {
+                e.enabled = enabled;
+                rebuildPageMask();
+            }
             return;
         }
     }
@@ -45,9 +52,19 @@ bool PeripheralBus::isEnabled(Handle handle) const
     return false;
 }
 
-bool PeripheralBus::tryRead(uint16_t address, uint8_t& valueOut) const
+bool PeripheralBus::tryReadSlow(uint16_t address, uint8_t& valueOut, EntryMask mask) const
 {
-    for (const auto& e : entries) {
+    // Iterate only the entries flagged in the page bitmap, in priority order
+    // (entries are pre-sorted, so lower index = higher priority).
+    while (mask) {
+        // Portable count-trailing-zeros (loop is fine here — at most a handful
+        // of iterations per call, and the bus has ≤ 16 entries).
+        int idx = 0;
+        EntryMask probe = mask;
+        while ((probe & 1u) == 0) { probe >>= 1; ++idx; }
+        mask &= static_cast<EntryMask>(mask - 1);
+
+        const Entry& e = entries[static_cast<size_t>(idx)];
         if (!e.enabled) continue;
         if (!e.range.contains(address)) continue;
         if (e.onRead) {
@@ -55,16 +72,22 @@ bool PeripheralBus::tryRead(uint16_t address, uint8_t& valueOut) const
             return true;
         }
         // Write-only entry: treat the read as consumed so it falls through
-        // to raw RAM below (mirrors the original "no early return" behaviour
-        // for CFFA1's write-only register window).
+        // to raw RAM (mirrors the original "no early return" behaviour for
+        // CFFA1's write-only register window).
         return false;
     }
     return false;
 }
 
-bool PeripheralBus::tryWrite(uint16_t address, uint8_t value) const
+bool PeripheralBus::tryWriteSlow(uint16_t address, uint8_t value, EntryMask mask) const
 {
-    for (const auto& e : entries) {
+    while (mask) {
+        int idx = 0;
+        EntryMask probe = mask;
+        while ((probe & 1u) == 0) { probe >>= 1; ++idx; }
+        mask &= static_cast<EntryMask>(mask - 1);
+
+        const Entry& e = entries[static_cast<size_t>(idx)];
         if (!e.enabled) continue;
         if (!e.range.contains(address)) continue;
         if (e.onWrite) {
@@ -87,4 +110,21 @@ void PeripheralBus::sortEntries()
             if (a.priority != b.priority) return a.priority > b.priority;
             return a.insertionIndex < b.insertionIndex;
         });
+}
+
+void PeripheralBus::rebuildPageMask()
+{
+    pageMask.fill(0);
+    for (size_t idx = 0; idx < entries.size(); ++idx) {
+        const Entry& e = entries[idx];
+        // Disabled entries stay in the map: setEnabled() flips the flag and
+        // rebuilds, which is rare. The runtime `if (!e.enabled) continue;`
+        // inside the slow path keeps semantics identical to a full scan.
+        const int firstPage = e.range.low >> 8;
+        const int lastPage  = e.range.high >> 8;
+        const EntryMask bit = static_cast<EntryMask>(1u << idx);
+        for (int p = firstPage; p <= lastPage; ++p) {
+            pageMask[static_cast<size_t>(p)] |= bit;
+        }
+    }
 }

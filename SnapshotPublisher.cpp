@@ -17,8 +17,18 @@ void SnapshotPublisher::publish(Memory& mem, const M6502& cpu, bool cpuRunning)
     std::lock_guard<std::mutex> lock(snapshotMutex);
     EmulationSnapshot& snapshot = latestSnapshot;
 
-    const quint8* memPtr = mem.getMemoryPointer();
-    std::memcpy(snapshot.memory.data(), memPtr, 0x10000);
+    // Only memcpy the 64 KB RAM image when something actually changed since
+    // the last publish. Idle Wozmon loops poll $D011/$D012 (PIA, lives in the
+    // bus dispatch — no mem[] write) so the dirty counter sits still and the
+    // snapshot data on the consumer side stays fresh from the previous copy.
+    // CPU register / peripheral snapshots below always update because they're
+    // tiny and may change without RAM mutation (e.g. PC advances, key flags).
+    const uint64_t dirty = mem.getMemoryDirtyCounter();
+    if (dirty != lastPublishedDirtyCounter) {
+        const quint8* memPtr = mem.getMemoryPointer();
+        std::memcpy(snapshot.memory.data(), memPtr, 0x10000);
+        lastPublishedDirtyCounter = dirty;
+    }
     snapshot.programCounter = cpu.getProgramCounter();
     snapshot.accumulator    = cpu.getAccumulator();
     snapshot.xRegister      = cpu.getXRegister();
