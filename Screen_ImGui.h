@@ -92,6 +92,28 @@ private:
     bool charmapLoaded = false;
     std::vector<std::array<unsigned char, 8>> charmapGlyphs;
 
+    // Glyph atlas — pre-baked GL texture holding all 128 charmap glyphs in a
+    // 16×8 grid. Each cell is rasterised once with the full glow-halo / solid
+    // pixel pattern (matches the original drawCharmapGlyph pixel art); render()
+    // then emits one AddImage per visible cell instead of ~80 AddRectFilled,
+    // collapsing the screen pass from ~76 k draw primitives to ≤ 960. Atlas
+    // is white-on-transparent so the per-mode tint applied via AddImage(col)
+    // gives the right Green/Amber/Monochrome look without re-baking. The atlas
+    // is rebuilt only when the charmap reloads.
+    static constexpr int kAtlasCellW = 32;
+    static constexpr int kAtlasCellH = 40;
+    static constexpr int kAtlasCols = 16;
+    static constexpr int kAtlasRows = 8;   // 16 × 8 = 128 glyphs
+    static constexpr int kAtlasTexW = kAtlasCellW * kAtlasCols;
+    static constexpr int kAtlasTexH = kAtlasCellH * kAtlasRows;
+    unsigned int glyphAtlasTexture = 0;     // GLuint, kept opaque to avoid GL.h in this header
+    bool glyphAtlasUploaded = false;
+    // Per-glyph empty flag (true = all bits zero, no draw needed at the cell).
+    // Lets render() skip e.g. the space character without an AddImage.
+    std::array<bool, 128> glyphIsEmpty{};
+    void buildGlyphAtlas();
+    void destroyGlyphAtlas();
+
     // Map logical row (0..23) to buffer index accounting for circular offset
     int bufferIndex(int logicalY, int x) const {
         return ((topRow + logicalY) % SCREEN_HEIGHT) * SCREEN_WIDTH + x;

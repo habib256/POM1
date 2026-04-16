@@ -77,6 +77,10 @@ void MainWindow_ImGui::destroyPom1()
         glDeleteTextures(1, &tms9918Texture);
         tms9918Texture = 0;
     }
+    if (graphicsCardTexture) {
+        glDeleteTextures(1, &graphicsCardTexture);
+        graphicsCardTexture = 0;
+    }
 }
 
 void MainWindow_ImGui::render()

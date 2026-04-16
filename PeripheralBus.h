@@ -17,6 +17,7 @@
 #ifndef PERIPHERALBUS_H
 #define PERIPHERALBUS_H
 
+#include <array>
 #include <cstdint>
 #include <functional>
 #include <string>
@@ -52,10 +53,30 @@ public:
     /// is free to treat that as "pass-through" or to block it (Memory treats
     /// it as "consumed" for a read-only ROM range to match the original
     /// inline behaviour — see how CFFA1 is registered in Memory::ctor).
-    bool tryRead(uint16_t address, uint8_t& valueOut) const;
-    bool tryWrite(uint16_t address, uint8_t value) const;
+    ///
+    /// Hot-path: a 256-entry page map (indexed by `address >> 8`) carries a
+    /// bitmask of which `entries[]` overlap that page. Pages with no
+    /// peripheral (the vast majority of the 64 KB address space) bypass the
+    /// scan entirely. Inlined into the header so memRead/memWrite get the
+    /// fast bypass without a function call.
+    bool tryRead(uint16_t address, uint8_t& valueOut) const {
+        EntryMask mask = pageMask[address >> 8];
+        if (!mask) return false;
+        return tryReadSlow(address, valueOut, mask);
+    }
+    bool tryWrite(uint16_t address, uint8_t value) const {
+        EntryMask mask = pageMask[address >> 8];
+        if (!mask) return false;
+        return tryWriteSlow(address, value, mask);
+    }
 
 private:
+    // Bitmap of which entries overlap a given page. Two bytes covers up to
+    // 16 peripherals; the bus currently has ~10. Static_assert in .cpp guards
+    // against overflow if a future card pushes us past 16.
+    using EntryMask = uint16_t;
+    static constexpr int kMaxEntries = 16;
+
     struct Entry {
         std::string name;
         Range range;
@@ -66,13 +87,16 @@ private:
         WriteFn onWrite;
     };
 
-    // Entries are kept sorted so dispatch is a single linear scan that stops
-    // on the first enabled match. The list is small (≤ 10 entries), so a
-    // fancier structure (page map, interval tree) would not pay off.
+    // Entries are kept sorted by priority. The page map is rebuilt whenever
+    // the entry layout changes (registerHandle/setEnabled).
     std::vector<Entry> entries;
+    std::array<EntryMask, 256> pageMask{};
     int nextInsertionIndex = 0;
 
     void sortEntries();
+    void rebuildPageMask();
+    bool tryReadSlow(uint16_t address, uint8_t& valueOut, EntryMask mask) const;
+    bool tryWriteSlow(uint16_t address, uint8_t value, EntryMask mask) const;
 };
 
 #endif // PERIPHERALBUS_H

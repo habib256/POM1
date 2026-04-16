@@ -8,6 +8,22 @@ if(MSVC)
     add_compile_options(/Zc:__cplusplus)
 endif()
 
+# Default to Release if the user didn't pick a config (single-config generators
+# only — multi-config like VS / Xcode pick at build time and ignore this).
+if(NOT CMAKE_CONFIGURATION_TYPES AND NOT CMAKE_BUILD_TYPE)
+    set(CMAKE_BUILD_TYPE Release CACHE STRING "Build type" FORCE)
+    set_property(CACHE CMAKE_BUILD_TYPE PROPERTY STRINGS
+                 Debug Release RelWithDebInfo MinSizeRel)
+endif()
+
+# Link-time optimization. Lets the compiler inline Memory::memRead/memWrite
+# and the M6502 addressing-mode helpers across TUs, which the per-instruction
+# 6502 dispatch hits ~1 M times/sec. Skipped on Debug to keep build times
+# tolerable, and gated behind CheckIPOSupported so toolchains that don't
+# support IPO (e.g. some Emscripten variants) don't fail the configure step.
+include(CheckIPOSupported)
+check_ipo_supported(RESULT POM1_IPO_SUPPORTED OUTPUT POM1_IPO_ERROR)
+
 # Vendored libresidfp (cycle-accurate SID emulation, GPL-2.0). See
 # third_party/libresidfp/CMakeLists.txt for the source list.
 add_subdirectory(third_party/libresidfp)
@@ -85,6 +101,19 @@ set(HEADERS
 
 # Create executable
 add_executable(${PROJECT_NAME} ${SOURCES} ${HEADERS} ${IMGUI_SOURCES})
+
+if(POM1_IPO_SUPPORTED)
+    # Enable IPO/LTO only for non-Debug configs. CMake handles the right flag
+    # per compiler (-flto for gcc/clang, /GL + /LTCG for MSVC).
+    set_property(TARGET ${PROJECT_NAME} PROPERTY
+                 INTERPROCEDURAL_OPTIMIZATION_RELEASE        TRUE)
+    set_property(TARGET ${PROJECT_NAME} PROPERTY
+                 INTERPROCEDURAL_OPTIMIZATION_RELWITHDEBINFO TRUE)
+    set_property(TARGET ${PROJECT_NAME} PROPERTY
+                 INTERPROCEDURAL_OPTIMIZATION_MINSIZEREL     TRUE)
+else()
+    message(STATUS "IPO/LTO not supported by this toolchain: ${POM1_IPO_ERROR}")
+endif()
 
 # Include directories
 target_include_directories(${PROJECT_NAME} PRIVATE

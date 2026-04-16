@@ -1,6 +1,20 @@
 #include "GraphicsCard.h"
 #include <algorithm>
 
+GraphicsCard::GraphicsCard()
+{
+    invalidate();
+}
+
+void GraphicsCard::invalidate()
+{
+    // Mark every line dirty so the next rasterize pass repaints the whole
+    // buffer. The pixel buffer itself is left zeroed (default-constructed),
+    // matching the "card just powered on, framebuffer is whatever junk
+    // happens to be in $2000" semantics — the next call will overwrite it.
+    lineHash.fill(0xFFFFFFFFu);
+}
+
 uint16_t GraphicsCard::scanlineAddress(int y)
 {
     // Apple II HIRES non-linear memory layout:
@@ -16,7 +30,7 @@ uint16_t GraphicsCard::scanlineAddress(int y)
 }
 
 ImU32 GraphicsCard::resolveColor(const quint8* memory, uint16_t lineAddr,
-                                 int col, quint8 byte, int bit, int screenX, bool group2) const
+                                 int col, quint8 byte, int bit, int screenX, bool group2)
 {
     bool prevOn = false;
     bool nextOn = false;
@@ -46,70 +60,52 @@ ImU32 GraphicsCard::resolveColor(const quint8* memory, uint16_t lineAddr,
     return even ? kBlue : kOrange;
 }
 
-void GraphicsCard::render(ImDrawList* drawList, ImVec2 origin, float pixelScale,
-                          const quint8* memory) const
+void GraphicsCard::rasterizeLine(int y, const quint8* memory)
 {
-    // Glow parameters
-    const float glowAlpha = 0.18f;
-    const float glowPadX = std::max(1.5f, pixelScale * 0.9f);
-    const float glowPadY = std::max(1.5f, pixelScale * 0.9f);
-    const float rounding = std::max(0.5f, pixelScale * 0.22f);
+    const uint16_t lineAddr = scanlineAddress(y);
+    uint32_t* row = pixelBuf.data() + static_cast<size_t>(y) * kHiresWidth;
 
-    // First pass: draw glow behind all lit pixels
-    for (int y = 0; y < kHiresHeight; ++y) {
-        const uint16_t lineAddr = scanlineAddress(y);
-        const float py = origin.y + y * pixelScale;
+    int screenX = 0;
+    for (int col = 0; col < 40; ++col) {
+        const quint8 byte = memory[lineAddr + col];
+        const bool group2 = (byte & 0x80) != 0;
 
-        int screenX = 0;
-        for (int col = 0; col < 40; ++col) {
-            const quint8 byte = memory[lineAddr + col];
-            const bool group2 = (byte & 0x80) != 0;
-
-            for (int bit = 0; bit < 7; ++bit) {
-                const bool on = (byte & (1 << bit)) != 0;
-
-                if (on) {
-                    ImU32 color = resolveColor(memory, lineAddr, col, byte, bit, screenX, group2);
-                    ImVec4 colorF = ImGui::ColorConvertU32ToFloat4(color);
-                    colorF.w *= glowAlpha;
-                    ImU32 glowColor = ImGui::ColorConvertFloat4ToU32(colorF);
-
-                    const float px = origin.x + screenX * pixelScale;
-                    drawList->AddRectFilled(
-                        ImVec2(px - glowPadX, py - glowPadY),
-                        ImVec2(px + pixelScale + glowPadX, py + pixelScale + glowPadY),
-                        glowColor, rounding + glowPadY);
-                }
-
-                ++screenX;
+        for (int bit = 0; bit < 7; ++bit) {
+            const bool on = (byte & (1 << bit)) != 0;
+            if (on) {
+                row[screenX] = resolveColor(memory, lineAddr, col, byte, bit, screenX, group2);
+            } else {
+                row[screenX] = kBlack;
             }
+            ++screenX;
         }
     }
+}
 
-    // Second pass: draw solid pixels on top
+bool GraphicsCard::rasterizeToBuffer(const quint8* memory)
+{
+    bool anyChanged = false;
     for (int y = 0; y < kHiresHeight; ++y) {
+        // FNV-1a over the 40 framebuffer bytes for this scanline.
+        // We also fold in the previous and next scanline's first/last bytes
+        // because resolveColor() looks at lineAddr ± 1 for artifact-colour
+        // continuation; without that, a write to col 39 of line N could
+        // leave line N's hash unchanged even though col 0 of line N+1 (no,
+        // resolveColor only looks within the same line — neighbours are
+        // *within* the row). Single-row hash is sufficient.
         const uint16_t lineAddr = scanlineAddress(y);
-        const float py = origin.y + y * pixelScale;
+        const quint8* src = memory + lineAddr;
+        uint32_t h = 0x811C9DC5u; // FNV-1a offset basis
+        for (int i = 0; i < 40; ++i) {
+            h ^= src[i];
+            h *= 0x01000193u;
+        }
 
-        int screenX = 0;
-        for (int col = 0; col < 40; ++col) {
-            const quint8 byte = memory[lineAddr + col];
-            const bool group2 = (byte & 0x80) != 0;
-
-            for (int bit = 0; bit < 7; ++bit) {
-                const bool on = (byte & (1 << bit)) != 0;
-
-                if (on) {
-                    ImU32 color = resolveColor(memory, lineAddr, col, byte, bit, screenX, group2);
-                    const float px = origin.x + screenX * pixelScale;
-                    drawList->AddRectFilled(
-                        ImVec2(px, py),
-                        ImVec2(px + pixelScale, py + pixelScale),
-                        color, rounding);
-                }
-
-                ++screenX;
-            }
+        if (h != lineHash[y]) {
+            lineHash[y] = h;
+            rasterizeLine(y, memory);
+            anyChanged = true;
         }
     }
+    return anyChanged;
 }
