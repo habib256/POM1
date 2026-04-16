@@ -399,13 +399,20 @@ void Screen_ImGui::drawCRTScanlines(float x0, float y0, float x1, float y1, bool
     // bands, because the pattern was finer than the eye could resolve at
     // typical window sizes. Tying the period to scaledCellH keeps the band
     // count constant regardless of zoom.
+    //
+    // Bands are drawn as filled rects (not AddLine) because ImGui's
+    // anti-aliased line renderer on the Emscripten WebGL2 / GL-ES3 backend
+    // clamps fractional thicknesses down, producing near-invisible bands
+    // where the desktop OpenGL3 backend renders them cleanly. AddRectFilled
+    // emits a plain triangle pair with solid coverage on both backends.
     (void)charmapDisplay;
     const float period = std::max(2.0f, scaledCellH / 8.0f);
     const float thickness = std::max(1.0f, period * 0.5f);
     const float scanAlpha = crtScanlineAlpha;
-    ImU32 scanColor = IM_COL32(0, 0, 0, (int)(scanAlpha * 255));
+    const ImU32 scanColor = IM_COL32(0, 0, 0, (int)(scanAlpha * 255));
+    const float halfT = thickness * 0.5f;
     for (float py = y0 + period * 0.5f; py < y1; py += period) {
-        dl->AddLine(ImVec2(x0, py), ImVec2(x1, py), scanColor, thickness);
+        dl->AddRectFilled(ImVec2(x0, py - halfT), ImVec2(x1, py + halfT), scanColor);
     }
 }
 
