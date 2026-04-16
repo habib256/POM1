@@ -131,7 +131,14 @@ private:
     bool loadCharmap();
     void drawCharmapGlyph(ImDrawList* drawList, float x, float y, float cellWidth, float cellHeight,
                           unsigned char glyphIndex, ImU32 color, bool crispGlow) const;
-    void drawCRTOverlay(float x0, float y0, float x1, float y1, bool charmapDisplay);
+    // CRT overlay is rendered in two passes: the phosphor band backdrop is drawn
+    // *before* the glyph pass so it does not bisect characters, and the dark
+    // scanlines are drawn *after* the glyph pass so they stay visible over the
+    // text (matching the look of a real CRT where scanlines show through
+    // everything). Splitting the two passes is what restores the on-text CRT
+    // effect without reintroducing the hard dark bars that used to cut glyphs.
+    void drawCRTBackdrop(float x0, float y0, float x1, float y1, bool charmapDisplay);
+    void drawCRTScanlines(float x0, float y0, float x1, float y1, bool charmapDisplay);
 };
 
 #endif // SCREEN_IMGUI_H
