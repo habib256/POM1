@@ -1,6 +1,62 @@
 #include "GraphicsCard.h"
-#include <algorithm>
+#include <array>
 #include <cstring>
+
+namespace {
+
+// 7 pixels (uint32 RGBA) per (colParity, byte) combination → 14 KB total.
+// colParity selects which absolute screenX-parity the byte starts on, which
+// in turn selects violet/blue (even) vs green/orange (odd) for an isolated
+// lit pixel. Inter-byte white-bleed is handled separately at the 39 seams.
+using HgrPixelRow = std::array<uint32_t, 7>;
+using HgrPixelTable = std::array<HgrPixelRow, 512>;
+
+// NTSC artifact colors (Apple II HIRES palette).
+constexpr uint32_t kBlack  = IM_COL32(0, 0, 0, 255);
+constexpr uint32_t kWhite  = IM_COL32(255, 255, 255, 255);
+constexpr uint32_t kViolet = IM_COL32(148, 33, 246, 255);   // group 1, even screenX
+constexpr uint32_t kGreen  = IM_COL32(20, 245, 60, 255);    // group 1, odd screenX
+constexpr uint32_t kBlue   = IM_COL32(20, 207, 253, 255);   // group 2, even screenX
+constexpr uint32_t kOrange = IM_COL32(255, 106, 60, 255);   // group 2, odd screenX
+
+// Resolve one pixel assuming the byte is isolated: bit 0 has no left
+// neighbour (would-be byte-1 bit 6 is treated as off), bit 6 has no right
+// neighbour (would-be byte+1 bit 0 is treated as off). The seam pass in
+// rasterizeLine corrects the two affected pixels when the actual neighbour
+// is on.
+constexpr uint32_t computeIsolatedPixel(int byte, int bit, int colParity)
+{
+    const bool on = (byte & (1 << bit)) != 0;
+    if (!on) return kBlack;
+
+    const bool prevOn = (bit > 0) && ((byte & (1 << (bit - 1))) != 0);
+    const bool nextOn = (bit < 6) && ((byte & (1 << (bit + 1))) != 0);
+    if (prevOn || nextOn) return kWhite;
+
+    const bool group2 = (byte & 0x80) != 0;
+    const bool even = ((colParity + bit) & 1) == 0;
+    if (!group2) return even ? kViolet : kGreen;
+    return even ? kBlue : kOrange;
+}
+
+const HgrPixelTable& hgrPixelTable()
+{
+    static const HgrPixelTable table = []{
+        HgrPixelTable t{};
+        for (int parity = 0; parity < 2; ++parity) {
+            for (int byte = 0; byte < 256; ++byte) {
+                for (int bit = 0; bit < 7; ++bit) {
+                    t[(parity << 8) | byte][bit] =
+                        computeIsolatedPixel(byte, bit, parity);
+                }
+            }
+        }
+        return t;
+    }();
+    return table;
+}
+
+} // namespace
 
 GraphicsCard::GraphicsCard()
 {
@@ -30,55 +86,30 @@ uint16_t GraphicsCard::scanlineAddress(int y)
          + static_cast<uint16_t>(line) * 0x400;
 }
 
-ImU32 GraphicsCard::resolveColor(const quint8* memory, uint16_t lineAddr,
-                                 int col, quint8 byte, int bit, int screenX, bool group2)
-{
-    bool prevOn = false;
-    bool nextOn = false;
-
-    if (screenX > 0) {
-        if (bit > 0) {
-            prevOn = (byte & (1 << (bit - 1))) != 0;
-        } else if (col > 0) {
-            prevOn = (memory[lineAddr + col - 1] & (1 << 6)) != 0;
-        }
-    }
-    if (screenX < kHiresWidth - 1) {
-        if (bit < 6) {
-            nextOn = (byte & (1 << (bit + 1))) != 0;
-        } else if (col < 39) {
-            nextOn = (memory[lineAddr + col + 1] & 1) != 0;
-        }
-    }
-
-    if (prevOn || nextOn) {
-        return kWhite;
-    }
-    bool even = (screenX % 2) == 0;
-    if (!group2) {
-        return even ? kViolet : kGreen;
-    }
-    return even ? kBlue : kOrange;
-}
-
 void GraphicsCard::rasterizeLine(int y, const quint8* memory)
 {
     const uint16_t lineAddr = scanlineAddress(y);
     uint32_t* row = pixelBuf.data() + static_cast<size_t>(y) * kHiresWidth;
+    const auto& table = hgrPixelTable();
 
-    int screenX = 0;
     for (int col = 0; col < 40; ++col) {
         const quint8 byte = memory[lineAddr + col];
-        const bool group2 = (byte & 0x80) != 0;
+        const int parity = col & 1;
+        const HgrPixelRow& pix = table[(parity << 8) | byte];
+        std::memcpy(row + col * 7, pix.data(), sizeof(HgrPixelRow));
+    }
 
-        for (int bit = 0; bit < 7; ++bit) {
-            const bool on = (byte & (1 << bit)) != 0;
-            if (on) {
-                row[screenX] = resolveColor(memory, lineAddr, col, byte, bit, screenX, group2);
-            } else {
-                row[screenX] = kBlack;
-            }
-            ++screenX;
+    // White-bleed across the 39 inter-byte seams: when bit 6 of the current
+    // byte and bit 0 of the next byte are both lit, both pixels turn white.
+    // The LUT was built assuming no external neighbour, so the only case it
+    // gets wrong is precisely this both-on seam — patch it here.
+    for (int col = 0; col < 39; ++col) {
+        const quint8 cur = memory[lineAddr + col];
+        const quint8 nxt = memory[lineAddr + col + 1];
+        if ((cur & 0x40) && (nxt & 0x01)) {
+            uint32_t* seam = row + col * 7 + 6;
+            seam[0] = kWhite;
+            seam[1] = kWhite;
         }
     }
 }

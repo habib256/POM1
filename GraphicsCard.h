@@ -55,10 +55,6 @@ public:
     static uint16_t scanlineAddress(int y);
 
 private:
-    // Resolve the NTSC artifact color for a given pixel.
-    static ImU32 resolveColor(const quint8* memory, uint16_t lineAddr,
-                              int col, quint8 byte, int bit, int screenX, bool group2);
-
     void rasterizeLine(int y, const quint8* memory);
 
     // Cached copy of the previous frame's 40 framebuffer bytes per scanline.
@@ -68,16 +64,6 @@ private:
     std::array<std::array<uint8_t, 40>, kHiresHeight> lineCopy{};
     bool invalidateNext = true;
     std::array<uint32_t, kHiresWidth * kHiresHeight> pixelBuf{};
-
-    // NTSC artifact colors
-    static constexpr ImU32 kBlack  = IM_COL32(0, 0, 0, 255);
-    static constexpr ImU32 kWhite  = IM_COL32(255, 255, 255, 255);
-    // Group 1 (bit 7 = 0): violet / green
-    static constexpr ImU32 kViolet = IM_COL32(148, 33, 246, 255);
-    static constexpr ImU32 kGreen  = IM_COL32(20, 245, 60, 255);
-    // Group 2 (bit 7 = 1): orange / blue
-    static constexpr ImU32 kOrange = IM_COL32(255, 106, 60, 255);
-    static constexpr ImU32 kBlue   = IM_COL32(20, 207, 253, 255);
 };
 
 #endif // GRAPHICSCARD_H

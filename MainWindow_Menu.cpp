@@ -435,28 +435,6 @@ void MainWindow_ImGui::renderToolbar()
         ImGui::SeparatorEx(ImGuiSeparatorFlags_Vertical);
         ImGui::SameLine(0, 12);
 
-        // --- Contrôles CPU ---
-        if (cpuRunning) {
-            ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.6f, 0.1f, 0.1f, 1.0f));
-            if (ImGui::Button(ICON_FA_STOP, btnSize)) stopCpu();
-            ImGui::PopStyleColor();
-            if (ImGui::IsItemHovered()) ImGui::SetTooltip("Stop (F6)");
-        } else {
-            ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.1f, 0.5f, 0.1f, 1.0f));
-            if (ImGui::Button(ICON_FA_PLAY, btnSize)) startCpu();
-            ImGui::PopStyleColor();
-            if (ImGui::IsItemHovered()) ImGui::SetTooltip("Run (F6)");
-        }
-
-        ImGui::SameLine();
-        if (ImGui::Button(ICON_FA_FORWARD_STEP, btnSize)) stepCpu();
-        if (ImGui::IsItemHovered()) ImGui::SetTooltip("Step (F7)");
-
-        // --- Séparateur ---
-        ImGui::SameLine(0, 12);
-        ImGui::SeparatorEx(ImGuiSeparatorFlags_Vertical);
-        ImGui::SameLine(0, 12);
-
         // --- Resets groupés ---
         if (ImGui::Button(ICON_FA_ARROW_ROTATE_LEFT, btnSize)) reset();
         if (ImGui::IsItemHovered()) ImGui::SetTooltip("Soft Reset (F5)");

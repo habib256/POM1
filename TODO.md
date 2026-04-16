@@ -57,12 +57,6 @@ Open work only. For shipped features, see `git log` or the version notes in `REA
 
 ---
 
-## Performance
-
-- [ ] **HGR `rasterizeLine` : LUT byte → 7 pixels** `[S · solid]` — `GraphicsCard.cpp:63-84` bit-tests 280 times per dirty scanline. A `uint32_t kHgrPixels[512][7]` indexed by `(byte | group2<<8)` returns the 7 artifact colours in one load. Boundary correction (white bleeding) stays as explicit logic at the 39 inter-byte frontiers. ~2-3× speedup on dirty lines, 14 KB table, no behavioural change.
-
----
-
 ## Technical debt & code quality
 
 ### Build 
