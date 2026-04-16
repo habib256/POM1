@@ -44,8 +44,15 @@ public:
      * La hauteur de cellule suit la police ; la largeur est dérivée pour respecter ce ratio.
      */
     static constexpr float kApple1ViewportAspectRatio = 280.0f / 192.0f;
-    /** Strictement inférieur à 1 : resserre la largeur du raster et de la fenêtre, hauteur inchangée. */
-    static constexpr float kApple1RasterWidthScale = 0.92f;
+    /**
+     * Compensation pour la résolution horizontale sur-échantillonnée de l'Apple 1 :
+     * le dot clock est 7.159 MHz (280 dots par ligne) alors qu'une ligne NTSC active ne
+     * contient que ~377 dots utiles — la zone texte n'occupe donc que ~75 % de la largeur
+     * du moniteur 4:3, contre ~80 % de la hauteur. Résultat : le rectangle de texte réel
+     * affiché par un Apple 1 sur un moniteur 4:3 fait ≈ 1.25:1, pas 1.46:1 (ratio pixel).
+     * 0.86 donne un ratio final de 1.254:1, proche de la géométrie physique.
+     */
+    static constexpr float kApple1RasterWidthScale = 0.86f;
     static constexpr float kCellHeightFontScale = 1.3f;
 
     /** À appeler avec CalcTextSize("M") de la même police que render() (Fonts[0]). */
