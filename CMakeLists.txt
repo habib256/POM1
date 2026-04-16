@@ -96,6 +96,7 @@ set(HEADERS
     EmulationSnapshot.h
     PeripheralBus.h
     Disassembler6502.h
+    DisplayDevice.h
     MainWindow_Internal.h
     Logger.h
 )

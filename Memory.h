@@ -20,6 +20,7 @@
 #define MEMORY_H
 
 #include "CpuClock.h"
+#include "DisplayDevice.h"
 #include "PeripheralBus.h"
 
 #include <vector>
@@ -120,8 +121,12 @@ public:
         for (int p = first; p <= last; ++p) dirtyPages.set(static_cast<std::size_t>(p));
     }
 
-    // Callback pour l'affichage Apple 1
-    void setDisplayCallback(void (*callback)(char));
+    // Apple 1 display sink (PIA 6821 $D012 output). Non-owning — the caller
+    // keeps the DisplayDevice alive for Memory's lifetime (typically the
+    // Screen_ImGui attached via EmulationController, or a test fake).
+    // A null device means writes are silently dropped.
+    void setDisplayDevice(DisplayDevice* device) { displayDevice = device; }
+    DisplayDevice* getDisplayDevice() const { return displayDevice; }
     
     // Gestion du clavier Apple 1
     void setKeyPressed(char key);
@@ -188,7 +193,7 @@ public:
     AudioDevice& getAudioDevice() { return *audioDevice; }
 
 private:
-    void (*displayCallback)(char) = nullptr;
+    DisplayDevice* displayDevice = nullptr;     // non-owning; injected by EmulationController
     
     // Clavier Apple 1 (0xD010 = KBD, 0xD011 = KBDCR)
     char lastKey = 0;

@@ -693,8 +693,8 @@ void Memory::memWrite(quint16 address, quint8 value)
     if (address == 0xD012) {
         char displayChar = (char)(value & 0x7F);
         displayBusyCycles = displayCharDelay; // Simuler le délai du terminal
-        if (displayCallback) {
-            displayCallback(displayChar);
+        if (displayDevice) {
+            displayDevice->onChar(displayChar);
         }
         // Terminal Card: send the RAW value (before & 0x7F) for 8-bit mode support
         if (terminalCardEnabled) {
@@ -714,11 +714,6 @@ void Memory::memWrite(quint16 address, quint8 value)
     }
     mem[address] = value;
     dirtyPages.set(static_cast<std::size_t>(address >> 8));
-}
-
-void Memory::setDisplayCallback(void (*callback)(char))
-{
-    displayCallback = callback;
 }
 
 void Memory::setKeyPressed(char key)

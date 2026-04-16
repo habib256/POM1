@@ -24,11 +24,8 @@ constexpr int kCharmapVisibleCols = 5;
 
 }
 
-std::atomic<Screen_ImGui*> Screen_ImGui::instance{nullptr};
-
 Screen_ImGui::Screen_ImGui()
 {
-    instance.store(this, std::memory_order_release);
     loadCharmap();
     initializeScreen();
 }
@@ -36,9 +33,6 @@ Screen_ImGui::Screen_ImGui()
 Screen_ImGui::~Screen_ImGui()
 {
     destroyGlyphAtlas();
-    Screen_ImGui* expected = this;
-    (void)instance.compare_exchange_strong(
-        expected, nullptr, std::memory_order_acq_rel, std::memory_order_relaxed);
 }
 
 void Screen_ImGui::destroyGlyphAtlas()
@@ -388,31 +382,37 @@ void Screen_ImGui::drawCRTBackdrop(float x0, float y0, float x1, float y1, bool 
     }
 }
 
-void Screen_ImGui::drawCRTScanlines(float x0, float y0, float x1, float y1, bool charmapDisplay, float scaledCellH)
+void Screen_ImGui::drawCRTScanlines(float x0, float y0, float x1, float y1, bool charmapDisplay)
 {
     ImDrawList* dl = ImGui::GetWindowDrawList();
 
-    // One dark band per emulated raster line: 8 raster lines per char cell
-    // (24 rows × 8 = 192 scanlines over the full frame, matching the Apple 1
-    // NTSC display). Fixing the period to 2 physical pixels — as an earlier
-    // version did — produced a uniformly-dimmed screen instead of visible
-    // bands, because the pattern was finer than the eye could resolve at
-    // typical window sizes. Tying the period to scaledCellH keeps the band
-    // count constant regardless of zoom.
+    // Dense CRT scanline mesh: one 1-pixel dark row every 2 display pixels.
     //
-    // Bands are drawn as filled rects (not AddLine) because ImGui's
-    // anti-aliased line renderer on the Emscripten WebGL2 / GL-ES3 backend
-    // clamps fractional thicknesses down, producing near-invisible bands
-    // where the desktop OpenGL3 backend renders them cleanly. AddRectFilled
-    // emits a plain triangle pair with solid coverage on both backends.
+    // Implementation: AddRectFilled at integer Y coordinates, NOT AddLine.
+    // ImGui's anti-aliased line rasterizer (used by AddLine on both macOS
+    // OpenGL 3.2 and WASM WebGL2/GL-ES3) attenuates a sub-2-px thick line by
+    // the coverage factor of each touched display pixel, so `thickness 1.15,
+    // alpha 0.30` ends up with an effective opacity around 0.05–0.10 —
+    // visually indistinguishable from no scanlines. Drawing a 1-px tall
+    // solid rect at an integer Y skips the AA path entirely and hits the
+    // display pixel at the full slider alpha on both backends.
+    //
+    // Integer coords also anchor each dark row to an exact display pixel so
+    // the pattern does not drift under the glyphs when the window is
+    // resized — resizing only adds / removes full-pixel rows at the bottom
+    // of the raster, never shifts existing rows sub-pixel.
+    //
+    // All rects share the white-pixel ImGui fallback texture, so ImGui
+    // batches the whole pattern into a single GL draw call (~400 quads for a
+    // 800-px raster height, fully GPU-bound).
     (void)charmapDisplay;
-    const float period = std::max(2.0f, scaledCellH / 8.0f);
-    const float thickness = std::max(1.0f, period * 0.5f);
-    const float scanAlpha = crtScanlineAlpha;
-    const ImU32 scanColor = IM_COL32(0, 0, 0, (int)(scanAlpha * 255));
-    const float halfT = thickness * 0.5f;
-    for (float py = y0 + period * 0.5f; py < y1; py += period) {
-        dl->AddRectFilled(ImVec2(x0, py - halfT), ImVec2(x1, py + halfT), scanColor);
+    const ImU32 scanColor = IM_COL32(0, 0, 0, (int)(crtScanlineAlpha * 255));
+    const int iy0 = static_cast<int>(std::floor(y0));
+    const int iy1 = static_cast<int>(std::ceil(y1));
+    for (int py = iy0 + 1; py < iy1; py += 2) {
+        dl->AddRectFilled(ImVec2(x0, static_cast<float>(py)),
+                          ImVec2(x1, static_cast<float>(py) + 1.0f),
+                          scanColor);
     }
 }
 
@@ -677,8 +677,7 @@ void Screen_ImGui::render()
     if (crtEffect) {
         const ImVec2 absP0 = rasterMin;
         const ImVec2 absP1 = ImVec2(rasterMin.x + screenSize.x, rasterMin.y + screenSize.y);
-        const float cellHScaled = cellHeight * scale * layoutScale;
-        drawCRTScanlines(absP0.x, absP0.y, absP1.x, absP1.y, useCharmapRenderer, cellHScaled);
+        drawCRTScanlines(absP0.x, absP0.y, absP1.x, absP1.y, useCharmapRenderer);
     }
 
     ImGui::PopFont();
@@ -796,8 +795,3 @@ void Screen_ImGui::newLineUnlocked()
     }
 }
 
-void Screen_ImGui::displayCallback(char c)
-{
-    Screen_ImGui* s = instance.load(std::memory_order_acquire);
-    if (s) s->writeChar(c);
-}

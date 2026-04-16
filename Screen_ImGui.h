@@ -1,14 +1,14 @@
 #ifndef SCREEN_IMGUI_H
 #define SCREEN_IMGUI_H
 
-#include <atomic>
 #include <vector>
 #include <string>
 #include <mutex>
 #include <array>
 #include "imgui.h"
+#include "DisplayDevice.h"
 
-class Screen_ImGui
+class Screen_ImGui : public DisplayDevice
 {
 public:
     enum class CharacterRenderMode {
@@ -23,7 +23,7 @@ public:
     };
 
     Screen_ImGui();
-    ~Screen_ImGui();
+    ~Screen_ImGui() override;
 
     void render();
     void writeChar(char c);
@@ -31,9 +31,8 @@ public:
     void resetDisplay();     // garbage screen → auto-clear → welcome (cold boot / hard reset)
     void setCursorPosition(int x, int y);
 
-    // Callback statique pour le CPU
-    static void displayCallback(char c);
-    static std::atomic<Screen_ImGui*> instance;
+    // DisplayDevice interface — Memory calls this on every $D012 write.
+    void onChar(char c) override { writeChar(c); }
 
     /** Colonnes / lignes de la grille texte Apple 1 */
     static constexpr int kApple1Columns = 40;
@@ -66,7 +65,7 @@ public:
     /** Multiplicateur de la taille de police en mode Host ASCII uniquement. */
     float hostAsciiGlyphScale = 1.5f;
     bool crtEffect = true;
-    float crtScanlineAlpha = 0.30f;
+    float crtScanlineAlpha = 0.50f;
     float brightness = 1.0f;    // 0.0 = black, 1.0 = default, 2.0 = max
     float contrast = 1.0f;      // 0.5 = washed out, 1.0 = default, 2.0 = high contrast
 
@@ -155,7 +154,7 @@ private:
     // everything). Splitting the two passes is what restores the on-text CRT
     // effect without reintroducing the hard dark bars that used to cut glyphs.
     void drawCRTBackdrop(float x0, float y0, float x1, float y1, bool charmapDisplay);
-    void drawCRTScanlines(float x0, float y0, float x1, float y1, bool charmapDisplay, float scaledCellH);
+    void drawCRTScanlines(float x0, float y0, float x1, float y1, bool charmapDisplay);
 };
 
 #endif // SCREEN_IMGUI_H

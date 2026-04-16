@@ -41,8 +41,7 @@ EmulationController::EmulationController(Screen_ImGui* screenWidget)
     memory = std::make_unique<Memory>();
     cpu = std::make_unique<M6502>(memory.get());
 
-    memory->setDisplayCallback(Screen_ImGui::displayCallback);
-    cpu->setDisplayCallback(Screen_ImGui::displayCallback);
+    memory->setDisplayDevice(screen);
 
     {
         std::lock_guard<PriorityMutex> lock(stateMutex);

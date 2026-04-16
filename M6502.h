@@ -70,11 +70,7 @@ public:
     /// directly into $0400).
     void setProgramCounter(quint16 pc) { programCounter = pc; }
 
-    // Callback pour l'affichage (Apple 1 utilise 0xD012)
-    void setDisplayCallback(void (*callback)(char));
-    
 private:
-    void (*displayCallback)(char) = nullptr;
 
 
 private :

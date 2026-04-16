@@ -1185,8 +1185,3 @@ void M6502::stop(void)
     running = 0;
 }
 
-void M6502::setDisplayCallback(void (*callback)(char))
-{
-    displayCallback = callback;
-}
-
