@@ -96,6 +96,7 @@ struct MachineConfig {
     bool graphicsCard, microSD, sid, tms9918, a1ioRtc, wifiModem, terminalCard;
     bool krusader;
     bool cffa1;
+    bool aci;                   // Apple Cassette Interface (false = pre-ACI bare 4K)
     int  ramKB;                 // Usable RAM in kilobytes (8 = Woz original, 32 = Replica/P-LAB)
     BasicType basicType;
     MachineWindowPlacement layout[8];

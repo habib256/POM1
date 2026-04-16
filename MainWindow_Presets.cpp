@@ -18,40 +18,40 @@
 namespace pom1::mainwindow::detail {
 
 const MachineConfig kMachinePresets[] = {
-    //                                  GEN2  uSD  SID  TMS  RTC  WiFi Term Krus CFFA RAM  BASIC
+    //                                  GEN2  uSD  SID  TMS  RTC  WiFi Term Krus CFFA ACI  RAM  BASIC
     {
         "Apple-1 bare 4 K (July 1976)",
         "Pre-ACI original: 6502, 4 KB RAM, PIA 6821, Integer BASIC, WOZ Monitor. No cassette, no expansion.",
         false, false, false, false, false, false, false,
-        false, false, 4, BasicType::Integer,
+        false, false, false, 4, BasicType::Integer,
         { {"Apple 1 Screen", {10,61}, {0,0}} }, 1
     },
     {
         "Woz Apple 1 (1976)",
         "Original bare board: 6502, 8 KB RAM, PIA 6821, Integer BASIC, WOZ Monitor. No expansion cards.",
         false, false, false, false, false, false, false,
-        false, false, 8, BasicType::Integer,
+        false, false, true, 8, BasicType::Integer,
         { {"Apple 1 Screen", {10,61}, {0,0}} }, 1
     },
     {
         "Replica 1 (Briel)",
         "Vince Briel's modern recreation: Integer BASIC, Krusader assembler, ACI cassette.",
         false, false, false, false, false, false, false,
-        true, false, 32, BasicType::Integer,
+        true, false, true, 32, BasicType::Integer,
         { {"Apple 1 Screen", {10,61}, {0,0}} }, 1
     },
     {
         "Replica 1 + CFFA1",
         "Replica 1 with CFFA1 CompactFlash storage, Applesoft Lite, Terminal Card.",
         false, false, false, false, false, false, true,
-        false, true, 32, BasicType::ApplesoftLite,
+        false, true, true, 32, BasicType::ApplesoftLite,
         { {"Apple 1 Screen", {10,61}, {0,0}} }, 1
     },
     {
         "Uncle Bernie's Apple 1",
         "Uncle Bernie's GEN2 280x192 HGR color graphics, Integer BASIC, ACI cassette.",
         true, false, false, false, false, false, false,
-        false, false, 32, BasicType::Integer,
+        false, false, true, 32, BasicType::Integer,
         {
             {"Apple 1 Screen",                 {10,  61}, {0,   0}},
             {"Uncle Bernie's GEN2 HGR Graphic Card", {624, 61}, {576, 420}},
@@ -61,7 +61,7 @@ const MachineConfig kMachinePresets[] = {
         "P-LAB Apple 1",
         "Full P-LAB expansion: Applesoft Lite, microSD, A1-SID sound, TMS9918 graphics, I/O & RTC, Wi-Fi modem, terminal.",
         false, true, true, true, true, true, true,
-        false, false, 32, BasicType::ApplesoftLite,
+        false, false, true, 32, BasicType::ApplesoftLite,
         {
             {"Apple 1 Screen",               {10,  61},  {0,   0}},
             {"P-LAB Graphic Card (TMS9918)", {640, 61},  {784, 612}},
@@ -74,7 +74,7 @@ const MachineConfig kMachinePresets[] = {
         "POM1 Apple 1 Fantasy Computer",
         "56 KB RAM, Applesoft Lite, microSD + A1-SID + Wi-Fi modem + Terminal Card. Graphic cards off by default.",
         false, true, true, false, false, true, true,
-        false, false, 56, BasicType::ApplesoftLite,
+        false, false, true, 56, BasicType::ApplesoftLite,
         {
             {"Apple 1 Screen",        {10,  61},  {0,   0}},
             {"P-LAB Wi-Fi Modem",     {640, 495}, {340, 260}},
@@ -123,6 +123,9 @@ void MainWindow_ImGui::applyMachineConfig(int presetIndex)
     // flagged in the status bar without blocking the program.
     presetRamKB = cfg.ramKB;
     emulation->setPresetRamKB(cfg.ramKB);
+
+    // Apple Cassette Interface — unplugged only for the bare-4K preset.
+    emulation->setACIEnabled(cfg.aci);
 
     // Hardware flags (enabled = plugged in, show = window open)
     graphicsCardEnabled = cfg.graphicsCard;

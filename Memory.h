@@ -144,6 +144,12 @@ public:
     // Apple Cassette Interface (ACI)
     CassetteDevice& getCassetteDevice() { return *cassetteDevice; }
     const CassetteDevice& getCassetteDevice() const { return *cassetteDevice; }
+    // Plug/unplug the ACI. When disabled: $C000-$C0FF bus handlers are off,
+    // the $C000-$C0FF write sniffer (toggleOutput) is suppressed, and the
+    // $C100-$C1FF ROM is zeroed so reads return 0 — matches a bare Apple-1
+    // with no cassette interface wired to the expansion connector.
+    void setACIEnabled(bool b);
+    bool isACIEnabled() const { return aciEnabled; }
 
     // P-LAB Graphic Card (TMS9918 VDP)
     TMS9918& getTMS9918() { return *tms9918; }
@@ -228,6 +234,7 @@ private :
     bool writeInRom;
     std::string lastError;
     std::unique_ptr<CassetteDevice> cassetteDevice;
+    bool aciEnabled = true;           // false on a bare-4K Apple-1 (pre-ACI)
     std::unique_ptr<TMS9918> tms9918;
     bool tms9918Enabled = false;
     std::unique_ptr<AudioDevice> audioDevice;

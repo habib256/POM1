@@ -160,15 +160,16 @@ Memory::Memory()
         });
     bus.setEnabled(tms9918BusHandle, tms9918Enabled);
 
-    // Apple-1 Cassette Interface — always plugged on a 1976 board, so the
-    // bus entries stay enabled. READ-only on the bus: the write toggle stays
-    // inline in memWrite() because it's a sniffer (the byte must still land
-    // in mem[] after the side effect, which the bus model doesn't express).
+    // Apple-1 Cassette Interface — plugged on most boards, but the bare 4K
+    // preset unplugs it via setACIEnabled(false). READ-only on the bus: the
+    // write toggle stays inline in memWrite() because it's a sniffer (the
+    // byte must still land in mem[] after the side effect, which the bus
+    // model doesn't express).
     cassetteToggleBusHandle = bus.registerHandle(
         "ACI_toggle", {0xC000, 0xC0FF}, /*priority*/ 0,
         [this](uint16_t /*a*/) { return cassetteDevice->toggleOutput(); },
         /*onWrite=*/ {});
-    bus.setEnabled(cassetteToggleBusHandle, true);
+    bus.setEnabled(cassetteToggleBusHandle, aciEnabled);
 
     // $C081 specifically returns the tape input. Higher priority than the
     // generic toggle range so it wins for that one address.
@@ -176,7 +177,7 @@ Memory::Memory()
         "ACI_input", {0xC081, 0xC081}, /*priority*/ 5,
         [this](uint16_t /*a*/) { return cassetteDevice->readTapeInput(); },
         /*onWrite=*/ {});
-    bus.setEnabled(cassetteInputBusHandle, true);
+    bus.setEnabled(cassetteInputBusHandle, aciEnabled);
 
     initMemory();
 }
@@ -185,6 +186,20 @@ void Memory::setTMS9918Enabled(bool b)
 {
     tms9918Enabled = b;
     bus.setEnabled(tms9918BusHandle, b);
+}
+
+void Memory::setACIEnabled(bool b)
+{
+    if (aciEnabled == b) return;
+    aciEnabled = b;
+    bus.setEnabled(cassetteToggleBusHandle, b);
+    bus.setEnabled(cassetteInputBusHandle, b);
+    if (b) {
+        loadAciRom();
+    } else {
+        std::fill_n(mem.begin() + 0xC100, 0x100, static_cast<quint8>(0));
+        markPagesDirty(0xC100, 0x100);
+    }
 }
 
 void Memory::setA1IO_RTCEnabled(bool b)
@@ -236,7 +251,7 @@ void Memory::initMemory(){
     }
     markAllPagesDirty();
     loadBasic();
-    loadAciRom();
+    if (aciEnabled) loadAciRom();
     loadWozMonitor();
     loadSDCardRom();
     microSDEnabled = true;
@@ -685,7 +700,7 @@ void Memory::memWrite(quint16 address, quint8 value)
         // to write their own variables there at runtime.
     }
 
-    if (address >= 0xC000 && address <= 0xC0FF && address != 0xC081) {
+    if (aciEnabled && address >= 0xC000 && address <= 0xC0FF && address != 0xC081) {
         cassetteDevice->toggleOutput();
     }
 

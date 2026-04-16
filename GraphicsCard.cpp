@@ -142,11 +142,11 @@ void GraphicsCard::applyGlow()
 {
     // Horizontal-only additive glow. Each lit lateral neighbour contributes
     // kGlowHNum/kGlowHDen of its colour into the current black pixel,
-    // summed and clamped per channel. 1/2 per neighbour → a single-edge
-    // halo at 50 % brightness, and a black pixel sandwiched between two
-    // identical lits is fully restored to the source colour.
-    constexpr int kGlowHNum = 1;
-    constexpr int kGlowHDen = 2;
+    // summed and clamped per channel. 9/20 per neighbour → a single-edge
+    // halo at 45 % brightness, and a black pixel sandwiched between two
+    // identical lits is filled to 90 % of the source colour.
+    constexpr int kGlowHNum = 9;
+    constexpr int kGlowHDen = 20;
 
     for (int y = 0; y < kHiresHeight; ++y) {
         const uint32_t* rowCur = rawPixelBuf.data() + static_cast<size_t>(y) * kHiresWidth;

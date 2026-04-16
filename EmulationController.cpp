@@ -426,6 +426,19 @@ bool EmulationController::isTMS9918Enabled() const
     return memory->isTMS9918Enabled();
 }
 
+void EmulationController::setACIEnabled(bool enabled)
+{
+    std::lock_guard<PriorityMutex> lock(stateMutex);
+    memory->setACIEnabled(enabled);
+    publisher.publish(*memory, *cpu, runRequested.load());
+}
+
+bool EmulationController::isACIEnabled() const
+{
+    std::lock_guard<PriorityMutex> lock(stateMutex);
+    return memory->isACIEnabled();
+}
+
 void EmulationController::setSIDEnabled(bool enabled)
 {
     std::lock_guard<PriorityMutex> lock(stateMutex);

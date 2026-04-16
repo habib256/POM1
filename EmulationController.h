@@ -100,6 +100,10 @@ public:
     void clearTapeCapture();
     void setHardwareAccurateLiveAudio(bool enabled);
 
+    // Apple Cassette Interface — unplug for the bare-4K preset.
+    void setACIEnabled(bool enabled);
+    bool isACIEnabled() const;
+
     // P-LAB TMS9918 Graphic Card
     void setTMS9918Enabled(bool enabled);
     bool isTMS9918Enabled() const;
