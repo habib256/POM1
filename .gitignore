@@ -19,6 +19,10 @@ imgui/
 # ImGui layout state
 imgui.ini
 
+# clangd / other tool caches (local preprocessing index — machine-specific)
+.cache/
+compile_commands.json
+
 # IDE / Editor
 .vscode/
 .idea/
