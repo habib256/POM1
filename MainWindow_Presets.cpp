@@ -71,17 +71,15 @@ const MachineConfig kMachinePresets[] = {
         }, 5
     },
     {
-        "POM1",
-        "56 KB RAM, GEN2 HGR + all P-LAB cards (except I/O & RTC), Applesoft Lite.",
-        true, true, true, true, false, true, true,
+        "POM1 Apple 1 Fantasy Computer",
+        "56 KB RAM, Applesoft Lite, microSD + A1-SID + Wi-Fi modem + Terminal Card. Graphic cards off by default.",
+        false, true, true, false, false, true, true,
         false, false, 56, BasicType::ApplesoftLite,
         {
-            {"Apple 1 Screen",                 {10,  61},  {0,   0}},
-            {"Uncle Bernie's GEN2 HGR Graphic Card", {624, 61},  {576, 420}},
-            {"P-LAB Graphic Card (TMS9918)",   {644, 81},  {784, 612}},
-            {"P-LAB Wi-Fi Modem",              {640, 495}, {340, 260}},
-            {"P-LAB Terminal Card",            {10,  510}, {360, 280}},
-        }, 5
+            {"Apple 1 Screen",        {10,  61},  {0,   0}},
+            {"P-LAB Wi-Fi Modem",     {640, 495}, {340, 260}},
+            {"P-LAB Terminal Card",   {10,  510}, {360, 280}},
+        }, 3
     },
 };
 

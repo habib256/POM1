@@ -1,7 +1,6 @@
 #ifndef GRAPHICSCARD_H
 #define GRAPHICSCARD_H
 
-#include "imgui.h"
 #include <array>
 #include <cstdint>
 
@@ -56,6 +55,14 @@ public:
 
 private:
     void rasterizeLine(int y, const quint8* memory);
+    // Horizontal additive glow applied to black pixels only — loose stand-in
+    // for NTSC chroma bandwidth smear. Each lit left/right neighbour
+    // contributes a fraction of its colour (see kGlowHNum/Den) summed into
+    // the black pixel and clamped per channel. Lit pixels pass through
+    // unchanged so the artifact-colour LUT and inter-byte white-bleed seam
+    // remain authoritative. Runs over the full buffer whenever any scanline
+    // was re-rasterized.
+    void applyGlow();
 
     // Cached copy of the previous frame's 40 framebuffer bytes per scanline.
     // rasterizeToBuffer() memcmp's the current scanline against this and only
@@ -63,6 +70,9 @@ private:
     // one full repaint (used after invalidate()) before the diff kicks in.
     std::array<std::array<uint8_t, 40>, kHiresHeight> lineCopy{};
     bool invalidateNext = true;
+    // rawPixelBuf is the LUT-rasterized output before the vertical glow pass;
+    // pixelBuf is the final buffer returned by pixels() with glow applied.
+    std::array<uint32_t, kHiresWidth * kHiresHeight> rawPixelBuf{};
     std::array<uint32_t, kHiresWidth * kHiresHeight> pixelBuf{};
 };
 

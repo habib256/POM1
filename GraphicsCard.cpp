@@ -1,4 +1,5 @@
 #include "GraphicsCard.h"
+#include "imgui.h"
 #include <array>
 #include <cstring>
 
@@ -89,7 +90,7 @@ uint16_t GraphicsCard::scanlineAddress(int y)
 void GraphicsCard::rasterizeLine(int y, const quint8* memory)
 {
     const uint16_t lineAddr = scanlineAddress(y);
-    uint32_t* row = pixelBuf.data() + static_cast<size_t>(y) * kHiresWidth;
+    uint32_t* row = rawPixelBuf.data() + static_cast<size_t>(y) * kHiresWidth;
     const auto& table = hgrPixelTable();
 
     for (int col = 0; col < 40; ++col) {
@@ -133,5 +134,44 @@ bool GraphicsCard::rasterizeToBuffer(const quint8* memory)
             anyChanged = true;
         }
     }
+    if (anyChanged) applyGlow();
     return anyChanged;
+}
+
+void GraphicsCard::applyGlow()
+{
+    // Horizontal-only additive glow. Each lit lateral neighbour contributes
+    // kGlowHNum/kGlowHDen of its colour into the current black pixel,
+    // summed and clamped per channel. 1/2 per neighbour → a single-edge
+    // halo at 50 % brightness, and a black pixel sandwiched between two
+    // identical lits is fully restored to the source colour.
+    constexpr int kGlowHNum = 1;
+    constexpr int kGlowHDen = 2;
+
+    for (int y = 0; y < kHiresHeight; ++y) {
+        const uint32_t* rowCur = rawPixelBuf.data() + static_cast<size_t>(y) * kHiresWidth;
+        uint32_t* outRow = pixelBuf.data() + static_cast<size_t>(y) * kHiresWidth;
+
+        for (int x = 0; x < kHiresWidth; ++x) {
+            const uint32_t c = rowCur[x];
+            if ((c & 0x00FFFFFFu) != 0) {
+                outRow[x] = c;
+                continue;
+            }
+            const uint32_t L = (x > 0)               ? rowCur[x - 1] : 0u;
+            const uint32_t R = (x + 1 < kHiresWidth) ? rowCur[x + 1] : 0u;
+
+            const int sr = static_cast<int>(L & 0xFFu)         + static_cast<int>(R & 0xFFu);
+            const int sg = static_cast<int>((L >> 8) & 0xFFu)  + static_cast<int>((R >> 8) & 0xFFu);
+            const int sb = static_cast<int>((L >> 16) & 0xFFu) + static_cast<int>((R >> 16) & 0xFFu);
+
+            int r = (sr * kGlowHNum) / kGlowHDen;
+            int g = (sg * kGlowHNum) / kGlowHDen;
+            int b = (sb * kGlowHNum) / kGlowHDen;
+            if (r > 255) r = 255;
+            if (g > 255) g = 255;
+            if (b > 255) b = 255;
+            outRow[x] = IM_COL32(r, g, b, 255);
+        }
+    }
 }
