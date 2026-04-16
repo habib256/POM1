@@ -783,6 +783,15 @@ void MicroSD::cmdDel(const std::string& filename)
 
     std::error_code ec;
     if (!fs::exists(filePath, ec)) {
+        // DIR returns display names (tags stripped), so the SD CARD OS may pass
+        // "PIC" when the file on disk is "PIC#062000". Retry via fuzzy match.
+        std::string matched = fuzzyMatchFilename(filename);
+        if (!matched.empty()) {
+            filePath = resolveHostPath(matched);
+        }
+    }
+
+    if (!fs::exists(filePath, ec)) {
         sendError("FILE NOT FOUND");
         return;
     }

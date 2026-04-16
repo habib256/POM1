@@ -96,6 +96,11 @@ def prepare_test_data() -> None:
         with open(os.path.join(hgrdir, name), "wb") as f:
             f.write(b"\xAA" * 8192)
 
+    # Tagged fixture for the DEL-by-display-name regression test (4.10b).
+    # On disk: DELTAG#060280; user types `DEL DELTAG` (display name only).
+    with open(os.path.join(hgrdir, "DELTAG#060280"), "wb") as f:
+        f.write(b"\x00" * 16)
+
     print("Test data ready.")
 
 
@@ -607,6 +612,18 @@ def phase4_file_write(sock: socket.socket, results: TestResults) -> None:
     out = send_line(sock, "DEL HGR")
     vprint("DEL HGR", out)
     results.check("4.10 DEL directory error", out, "IS A DIRECTORY")
+
+    # 4.10b DEL by display name on a tagged file (regression: cmdDel used to
+    # require an exact filename match, so `DEL PIC` failed when the file on
+    # disk was `PIC#062000`. Now falls back to fuzzyMatchFilename like LOAD.)
+    deltag_path = os.path.join(SDCARD_PATH, "HGR", "DELTAG#060280")
+    results.check_host_exists("4.10b fixture present", deltag_path, True)
+    send_line(sock, "CD HGR")
+    out = send_line(sock, "DEL DELTAG")
+    vprint("DEL DELTAG (fuzzy)", out)
+    results.check_not("4.10b DEL fuzzy no error", out, "FILE NOT FOUND")
+    results.check_host_exists("4.10c DELTAG#060280 removed", deltag_path, False)
+    send_line(sock, "CD /")
 
     # 4.11 WRITE via Woz Monitor
     # Exit to Woz Monitor, write data, come back
