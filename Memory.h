@@ -76,6 +76,9 @@ public:
     // Load Memory from file
     int loadROM(const char* filename, quint16 startAddress, size_t maxSize, const char* label);
     int loadBasic(void);
+    // Zero the $E000-$EFFF BASIC ROM region — matches a pre-October-1976
+    // bare Apple-1 that shipped with no BASIC cassette.
+    void unloadBasic(void);
     int loadApplesoftLite(void);
     int loadKrusader(void);
     int loadWozMonitor(void);

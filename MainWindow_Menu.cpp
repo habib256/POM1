@@ -121,25 +121,16 @@ void MainWindow_ImGui::renderMenuBar()
         }
 
         if (ImGui::BeginMenu("Hardware")) {
-            if (ImGui::BeginMenu("Machine Preset")) {
-                for (int i = 0; i < kMachinePresetCount; ++i) {
-                    char ramLabel[24];
-                    std::snprintf(ramLabel, sizeof(ramLabel), "%d KB RAM", kMachinePresets[i].ramKB);
-                    if (ImGui::MenuItem(kMachinePresets[i].name, ramLabel))
-                        applyMachineConfig(i);
-                    if (ImGui::IsItemHovered())
-                        ImGui::SetTooltip("%s\n(%d KB RAM preset; full 64 KB address space is always emulated.)",
-                                          kMachinePresets[i].description, kMachinePresets[i].ramKB);
-                }
-                ImGui::EndMenu();
-            }
-            ImGui::Separator();
             ImGui::MenuItem("Keyboard autorepeat", nullptr, &keyboardAutorepeat);
             if (ImGui::IsItemHovered())
                 ImGui::SetTooltip("Off (default): matches a real TTL keyboard - holding a key asserts STROBE once.\n"
                                   "On: OS autorepeat reaches the Apple 1 (useful when using POM1 as a terminal).");
             ImGui::Separator();
-            ImGui::MenuItem("Woz ACI Cassette Control", nullptr, &showCassetteControl);
+            if (ImGui::MenuItem("Woz ACI Cassette Interface", nullptr, &aciEnabled)) {
+                emulation->setACIEnabled(aciEnabled);
+                setStatusMessage(aciEnabled ? "Woz ACI plugged" : "Woz ACI unplugged", 2.0f);
+            }
+            ImGui::MenuItem("Cassette Player", nullptr, &showCassetteControl);
             if (ImGui::MenuItem("Uncle Bernie's GEN2 HGR Graphic Card", nullptr, &graphicsCardEnabled)) {
                 if (graphicsCardEnabled) showGraphicsCard = true;
             }
@@ -176,17 +167,37 @@ void MainWindow_ImGui::renderMenuBar()
                 if (a1ioRtcEnabled) showA1IO_RTC = true;
             }
 #if !POM1_IS_WASM
-            // Terminal Card needs a real listening TCP socket — desktop only.
             if (ImGui::MenuItem("P-LAB Terminal Card", nullptr, &terminalCardEnabled)) {
                 emulation->setTerminalCardEnabled(terminalCardEnabled);
                 if (terminalCardEnabled) showTerminalCard = true;
             }
 #endif
-            // MODEM BBS works in the browser too via Emscripten's WebSocket
-            // socket emulation, so it stays available on every platform.
             if (ImGui::MenuItem("P-LAB MODEM BBS", nullptr, &wifiModemEnabled)) {
                 emulation->setWiFiModemEnabled(wifiModemEnabled);
                 if (wifiModemEnabled) showWiFiModem = true;
+            }
+            ImGui::Separator();
+            if (ImGui::BeginMenu("Machine Preset")) {
+                auto presetItem = [&](int i) {
+                    char ramLabel[24];
+                    std::snprintf(ramLabel, sizeof(ramLabel), "%d KB RAM", kMachinePresets[i].ramKB);
+                    if (ImGui::MenuItem(kMachinePresets[i].name, ramLabel))
+                        applyMachineConfig(i);
+                };
+                presetItem(0);   // Bare Apple-1
+                presetItem(1);   // Apple-1 with ACI & Integer BASIC
+                ImGui::Separator();
+                presetItem(2);   // Replica-1 with ACI, Krusader
+                presetItem(3);   // Replica-1 with CFFA1
+                ImGui::Separator();
+                for (int i = 4; i <= 8; ++i)
+                    presetItem(i);
+                ImGui::Separator();
+                presetItem(9);   // Uncle Bernie's
+                ImGui::Separator();
+                presetItem(10);  // P-LAB Multiplexing Fantasy
+                presetItem(11);  // POM1 Multiplexing Fantasy
+                ImGui::EndMenu();
             }
             ImGui::EndMenu();
         }
@@ -262,15 +273,20 @@ void MainWindow_ImGui::renderToolbar()
         }
 
         ImGui::SameLine();
-        if (showCassetteControl)
-            ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.2f, 0.4f, 0.8f, 1.0f));
-        else
-            ImGui::PushStyleColor(ImGuiCol_Button, ImGui::GetStyle().Colors[ImGuiCol_Button]);
-        if (ImGui::Button("##cassetteToolbar", btnSize)) showCassetteControl = !showCassetteControl;
+        ImGui::PushStyleColor(ImGuiCol_Button,
+            aciEnabled ? ImVec4(0.2f, 0.4f, 0.8f, 1.0f) : ImVec4(0.3f, 0.3f, 0.3f, 1.0f));
+        if (ImGui::Button("##cassetteToolbar", btnSize)) {
+            aciEnabled = !aciEnabled;
+            emulation->setACIEnabled(aciEnabled);
+            setStatusMessage(aciEnabled ? "Woz ACI plugged" : "Woz ACI unplugged", 2.0f);
+        }
         drawToolbarCassetteIcon(ImGui::GetWindowDrawList(),
                                 ImGui::GetItemRectMin(), ImGui::GetItemRectMax());
         ImGui::PopStyleColor();
-        if (ImGui::IsItemHovered()) ImGui::SetTooltip("Woz ACI Cassette Control");
+        if (ImGui::IsItemHovered()) {
+            ImGui::SetTooltip(aciEnabled ? "Woz ACI Cassette Interface (click to unplug)"
+                                         : "Plug Woz ACI Cassette Interface");
+        }
 
         ImGui::SameLine();
         ImGui::PushStyleColor(ImGuiCol_Button,

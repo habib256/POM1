@@ -29,6 +29,7 @@ public:
     void writeChar(char c);
     void clear();
     void resetDisplay();     // garbage screen → auto-clear → welcome (cold boot / hard reset)
+    void setShowBanner(bool show) { showBanner = show; }
     void setCursorPosition(int x, int y);
 
     // DisplayDevice interface — Memory calls this on every $D012 write.
@@ -87,6 +88,7 @@ private:
     // Boot sequence: power-on pattern → CLRSCR (lonely blinking '@') → RESET + welcome.
     // Blink period is ~1 s (NE555 @ ~1 Hz), so each phase must last long enough for
     // at least one full on→off→on cycle to be visible.
+    bool showBanner = true;            // show POM1 banner on boot (only for POM1 Fantasy preset)
     float garbageClearTimer = -1.0f;   // > 0 = "_@_@_@..." pattern visible, counting down
     float blackScreenTimer = -1.0f;    // > 0 = single blinking '@' at (0,0), counting down
     static constexpr float GARBAGE_DURATION = 1.5f;       // ~1.5 blinks of the _@_@ pattern

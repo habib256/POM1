@@ -102,6 +102,7 @@ void MainWindow_ImGui::render()
         memoryViewer->setMicroSDEnabled(microSDEnabled);
         memoryViewer->setWiFiModemEnabled(wifiModemEnabled);
         memoryViewer->setTerminalCardEnabled(terminalCardEnabled);
+        memoryViewer->setACIEnabled(aciEnabled);
     }
     if (showMemoryViewer) {
         std::vector<MemoryViewer_ImGui::RomRegion> mvRoms;
@@ -155,6 +156,10 @@ void MainWindow_ImGui::render()
         int idx = (defaultPresetIndex >= 0 && defaultPresetIndex < kMachinePresetCount)
                   ? defaultPresetIndex : (kMachinePresetCount - 1);
         applyMachineConfig(idx);
+        if (terminalCardOverride) {
+            terminalCardEnabled = true;
+            emulation->setTerminalCardEnabled(true);
+        }
     }
 
     // Resize Apple 1 screen window on fullscreen transitions

@@ -20,48 +20,96 @@ namespace pom1::mainwindow::detail {
 const MachineConfig kMachinePresets[] = {
     //                                  GEN2  uSD  SID  TMS  RTC  WiFi Term Krus CFFA ACI  RAM  BASIC
     {
-        "Apple-1 bare 4 K (July 1976)",
-        "Pre-ACI original: 6502, 4 KB RAM, PIA 6821, Integer BASIC, WOZ Monitor. No cassette, no expansion.",
+        "Bare Apple-1 (July 1976)",
+        "Pre-ACI original: 6502, 4 KB RAM, PIA 6821, WOZ Monitor.",
         false, false, false, false, false, false, false,
-        false, false, false, 4, BasicType::Integer,
+        false, false, false, 4, BasicType::None,
         { {"Apple 1 Screen", {10,61}, {0,0}} }, 1
     },
     {
-        "Woz Apple 1 (1976)",
-        "Original bare board: 6502, 8 KB RAM, PIA 6821, Integer BASIC, WOZ Monitor. No expansion cards.",
+        "Apple-1 with ACI & Integer BASIC (October 1976)",
+        "Original bare board with the ACI cassette expansion card: 6502, 8 KB RAM, PIA 6821, Integer BASIC, WOZ Monitor.",
         false, false, false, false, false, false, false,
         false, false, true, 8, BasicType::Integer,
         { {"Apple 1 Screen", {10,61}, {0,0}} }, 1
     },
     {
-        "Replica 1 (Briel)",
+        "Replica-1 with ACI, Krusader & Integer BASIC (Briel 2003)",
         "Vince Briel's modern recreation: Integer BASIC, Krusader assembler, ACI cassette.",
         false, false, false, false, false, false, false,
         true, false, true, 32, BasicType::Integer,
         { {"Apple 1 Screen", {10,61}, {0,0}} }, 1
     },
     {
-        "Replica 1 + CFFA1",
-        "Replica 1 with CFFA1 CompactFlash storage, Applesoft Lite, Terminal Card.",
-        false, false, false, false, false, false, true,
-        false, true, true, 32, BasicType::ApplesoftLite,
+        "Replica-1 with CFFA1 & Applesoft Lite (Dreher 2007)",
+        "Replica 1 with CFFA1 CompactFlash storage, Applesoft Lite.",
+        false, false, false, false, false, false, false,
+        false, true, false, 32, BasicType::ApplesoftLite,
         { {"Apple 1 Screen", {10,61}, {0,0}} }, 1
     },
     {
-        "Uncle Bernie's Apple 1",
-        "Uncle Bernie's GEN2 280x192 HGR color graphics, Integer BASIC, ACI cassette.",
+        "P-LAB Apple-1 with microSD & Applesoft Lite (April 2022)",
+        "P-LAB microSD Storage Card, Applesoft Lite.",
+        false, true, false, false, false, false, false,
+        false, false, false, 32, BasicType::ApplesoftLite,
+        {
+            {"Apple 1 Screen", {10, 61}, {0, 0}},
+        }, 1
+    },
+    {   //                                  GEN2  uSD  SID  TMS  RTC  WiFi Term Krus CFFA ACI
+        "P-LAB Apple-1 with A1-SID Sound Card",
+        "P-LAB A1-SID Sound Card (MOS 6581/8580), Integer BASIC.",
+        false, false, true, false, false, false, false,
+        false, false, false, 32, BasicType::Integer,
+        {
+            {"Apple 1 Screen", {10, 61}, {0, 0}},
+        }, 1
+    },
+    {   //                                  GEN2  uSD  SID  TMS  RTC  WiFi Term Krus CFFA ACI
+        "P-LAB Apple-1 with TMS9918 Graphic Card",
+        "P-LAB Graphic Card (TMS9918A VDP), Integer BASIC.",
+        false, false, false, true, false, false, false,
+        false, false, false, 32, BasicType::Integer,
+        {
+            {"Apple 1 Screen",               {10,  61}, {0,   0}},
+            {"P-LAB Graphic Card (TMS9918)", {640, 61}, {784, 612}},
+        }, 2
+    },
+    {   //                                  GEN2  uSD  SID  TMS  RTC  WiFi Term Krus CFFA ACI
+        "P-LAB Apple-1 with I/O Board & RTC",
+        "P-LAB A1-IO Board & RTC (DS3231, DS18B20, analog/digital I/O), Integer BASIC.",
+        false, false, false, false, true, false, false,
+        false, false, false, 32, BasicType::Integer,
+        {
+            {"Apple 1 Screen",        {10,  61},  {0,   0}},
+            {"P-LAB I/O Board & RTC", {640, 61},  {380, 280}},
+        }, 2
+    },
+    {   //                                  GEN2  uSD  SID  TMS  RTC  WiFi Term Krus CFFA ACI
+        "P-LAB Apple-1 with Wi-Fi Modem BBS",
+        "P-LAB MODEM BBS (65C51 ACIA, ESP8266 AT, TCP/TELNET), Integer BASIC.",
+        false, false, false, false, false, true, false,
+        false, false, false, 32, BasicType::Integer,
+        {
+            {"Apple 1 Screen",    {10,  61},  {0,   0}},
+            {"P-LAB Wi-Fi Modem", {640, 61},  {340, 260}},
+        }, 2
+    },
+    {
+        "Uncle Bernie's Apple-1 with GEN2 HGR Color (April 2026)",
+        "Uncle Bernie's GEN2 280x192 HGR color graphics, Integer BASIC.",
         true, false, false, false, false, false, false,
-        false, false, true, 32, BasicType::Integer,
+        false, false, false, 32, BasicType::Integer,
         {
             {"Apple 1 Screen",                 {10,  61}, {0,   0}},
             {"Uncle Bernie's GEN2 HGR Graphic Card", {624, 61}, {576, 420}},
         }, 2
     },
-    {
-        "P-LAB Apple 1",
-        "Full P-LAB expansion: Applesoft Lite, microSD, A1-SID sound, TMS9918 graphics, I/O & RTC, Wi-Fi modem, terminal.",
+    {   //                                  GEN2  uSD  SID  TMS  RTC  WiFi Term Krus CFFA ACI
+        "P-LAB Apple-1 Multiplexing Fantasy",
+        "All P-LAB expansion cards: microSD, A1-SID, TMS9918, I/O & RTC, Wi-Fi modem, Terminal Card.",
         false, true, true, true, true, true, true,
-        false, false, true, 32, BasicType::ApplesoftLite,
+        false, false, false, 64, BasicType::ApplesoftLite,
         {
             {"Apple 1 Screen",               {10,  61},  {0,   0}},
             {"P-LAB Graphic Card (TMS9918)", {640, 61},  {784, 612}},
@@ -71,10 +119,10 @@ const MachineConfig kMachinePresets[] = {
         }, 5
     },
     {
-        "POM1 Apple 1 Fantasy Computer",
-        "56 KB RAM, Applesoft Lite, microSD + A1-SID + Wi-Fi modem + Terminal Card. Graphic cards off by default.",
+        "POM1 Apple-1 Multiplexing Fantasy (2026)",
+        "64 KB RAM, Applesoft Lite, microSD + A1-SID + Wi-Fi modem + Terminal Card. Graphic cards off by default.",
         false, true, true, false, false, true, true,
-        false, false, true, 56, BasicType::ApplesoftLite,
+        false, false, true, 64, BasicType::ApplesoftLite,
         {
             {"Apple 1 Screen",        {10,  61},  {0,   0}},
             {"P-LAB Wi-Fi Modem",     {640, 495}, {340, 260}},
@@ -113,6 +161,9 @@ void MainWindow_ImGui::applyMachineConfig(int presetIndex)
     if (presetIndex < 0 || presetIndex >= kMachinePresetCount) return;
     const MachineConfig& cfg = kMachinePresets[presetIndex];
 
+    // Show POM1 banner only for the last preset (POM1 Fantasy)
+    screen->setShowBanner(presetIndex == kMachinePresetCount - 1);
+
     // Full hard reset: clear memory, reload default ROMs, reset all peripherals
     emulation->hardReset();
     loadedPrograms.clear();
@@ -125,6 +176,7 @@ void MainWindow_ImGui::applyMachineConfig(int presetIndex)
     emulation->setPresetRamKB(cfg.ramKB);
 
     // Apple Cassette Interface — unplugged only for the bare-4K preset.
+    aciEnabled = cfg.aci;
     emulation->setACIEnabled(cfg.aci);
 
     // Hardware flags (enabled = plugged in, show = window open)
@@ -174,11 +226,16 @@ void MainWindow_ImGui::applyMachineConfig(int presetIndex)
                     loadedRoms.push_back({"Applesoft Lite (CFFA1)", 0xE000, 0xFFFF});
                 }
             }
-        } else {
+        } else if (cfg.basicType == BasicType::Integer) {
             ok = emulation->reloadBasic(error);
             if (ok) loadedRoms.push_back({"Integer BASIC", 0xE000, 0xEFFF});
             if (emulation->reloadWozMonitor(error))
                 loadedRoms.push_back({"Woz Monitor", 0xFF00, 0xFFFF});
+        } else {
+            // BasicType::None — pre-October-1976 bare Apple-1 has only the Woz Monitor.
+            emulation->unloadBasic();
+            ok = emulation->reloadWozMonitor(error);
+            if (ok) loadedRoms.push_back({"Woz Monitor", 0xFF00, 0xFFFF});
         }
         if (!ok) {
             setStatusMessage(error, 5.0f);

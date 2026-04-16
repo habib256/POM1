@@ -107,10 +107,15 @@ int main(int argc, char* argv[])
     pom1::initDefaultTeeLogger();
     pom1::log().info("POM1", "v1.8.1 - Apple 1 Emulator (Dear ImGui)");
 
-    // Parse command-line arguments: --preset <name|index>  or  --list-presets
+    // Parse command-line arguments
     int requestedPreset = -1; // -1 = default (last preset)
+    bool terminalCardOverride = false;
     for (int i = 1; i < argc; ++i) {
         std::string arg(argv[i]);
+        if (arg == "--terminal") {
+            terminalCardOverride = true;
+            continue;
+        }
         if (arg == "--list-presets") {
             int n = MainWindow_ImGui::getPresetCount();
             std::cout << "Available machine presets:" << std::endl;
@@ -230,6 +235,8 @@ int main(int argc, char* argv[])
     MainWindow_ImGui mainWindow;
     if (requestedPreset >= 0)
         mainWindow.setDefaultPresetIndex(requestedPreset);
+    if (terminalCardOverride)
+        mainWindow.setTerminalCardOverride(true);
     mainWindow.setWindow(window);
     glfwSetWindowUserPointer(window, &mainWindow);
 

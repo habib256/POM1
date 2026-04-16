@@ -25,6 +25,7 @@ public:
     static int getPresetCount();
     static const char* getPresetName(int index);
     void setDefaultPresetIndex(int index) { defaultPresetIndex = index; }
+    void setTerminalCardOverride(bool enable) { terminalCardOverride = enable; }
     void handleGlfwChar(unsigned int codepoint);
     void handleGlfwKey(int key, int scancode, int action, int mods);
 
@@ -62,6 +63,7 @@ private:
     bool showMemoryConfig = false;
     bool showLoadDialog = false;
     bool showLoadTapeDialog = false;
+    bool aciEnabled = true;   // Woz ACI cassette interface plugged (default on)
     bool showCassetteControl = false;
     bool showMemoryMap = false;
     bool showSaveDialog = false;
@@ -196,6 +198,7 @@ private:
     std::vector<LoadedRegion> loadedRoms; // ROMs loaded by presets (BASIC, Krusader, etc.)
     int presetRamKB = 32;                 // Usable RAM for current preset (display only)
     int defaultPresetIndex = -1;          // -1 = last preset (POM1)
+    bool terminalCardOverride = false;    // --terminal: enable Terminal Card on top of any preset
 
     struct TapeDialogState {
         char filePath[512] = "cassette.aci";

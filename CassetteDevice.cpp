@@ -197,6 +197,10 @@ void CassetteDevice::advancePlayback(uint32_t cycles)
         }
 
         remaining -= cyclesUntilInputToggle;
+        // The full segment at the current level has been consumed → queue it
+        // so the cassette player is audible independently of the ACI (the ACI
+        // only digitises $C081; the speaker output belongs to the tape deck).
+        queueAudioSegment(loadedDurations[playbackIndex - 1], inputLevel);
         cyclesUntilInputToggle = 0;
         inputLevel = !inputLevel;
 

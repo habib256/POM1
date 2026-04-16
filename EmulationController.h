@@ -86,6 +86,7 @@ public:
     void setOutOfRangeStrictMode(bool enable);
     bool isOutOfRangeStrictMode() const;
     bool reloadBasic(std::string& error);
+    void unloadBasic();
     bool reloadApplesoftLite(std::string& error);
     bool reloadWozMonitor(std::string& error);
     bool reloadKrusader(std::string& error);

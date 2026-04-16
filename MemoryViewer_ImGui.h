@@ -23,6 +23,7 @@ public:
     void setMicroSDEnabled(bool enabled) { microSDEnabled = enabled; }
     void setWiFiModemEnabled(bool enabled) { wifiModemEnabled = enabled; }
     void setTerminalCardEnabled(bool enabled) { terminalCardEnabled = enabled; }
+    void setACIEnabled(bool enabled) { aciEnabled = enabled; }
 
     struct RomRegion { quint16 start, end; };
     void setLoadedRoms(const std::vector<RomRegion>& roms) { romRegions = roms; }
@@ -45,6 +46,7 @@ private:
     bool microSDEnabled = false;
     bool wifiModemEnabled = false;
     bool terminalCardEnabled = false;
+    bool aciEnabled = true;
     std::vector<RomRegion> romRegions;
 
     // Auto-refresh: snapshot taken when autoRefresh is off

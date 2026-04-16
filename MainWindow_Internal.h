@@ -88,7 +88,7 @@ struct MachineWindowPlacement {
     ImVec2 size;  // (0,0) = no size override
 };
 
-enum class BasicType { Integer, ApplesoftLite };
+enum class BasicType { None, Integer, ApplesoftLite };
 
 struct MachineConfig {
     const char* name;

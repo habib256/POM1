@@ -364,6 +364,12 @@ int Memory::loadBasic(void)
     return loadROM("basic.rom", 0xE000, 0x1000, "BASIC");
 }
 
+void Memory::unloadBasic(void)
+{
+    std::fill_n(mem.begin() + 0xE000, 0x1000, static_cast<quint8>(0));
+    markPagesDirty(0xE000, 0x1000);
+}
+
 int Memory::loadApplesoftLite(void)
 {
     // CFFA1: txgx42/applesoft-lite + cffa1.s — 8 KB at $E000-$FFFF (includes Woz Monitor).

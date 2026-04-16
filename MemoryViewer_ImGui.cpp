@@ -531,7 +531,7 @@ bool MemoryViewer_ImGui::isROM(int address)
 {
     if (address >= 0xFF00) return true;
     if (address >= 0xE000 && address <= 0xEFFF) return true;
-    if (address >= 0xC100 && address <= 0xC1FF) return true;
+    if (aciEnabled && address >= 0xC100 && address <= 0xC1FF) return true;
     if (microSDEnabled && address >= 0x8000 && address <= 0x9FFF) return true;
     return false;
 }
@@ -539,7 +539,7 @@ bool MemoryViewer_ImGui::isROM(int address)
 bool MemoryViewer_ImGui::isIO(int address)
 {
     if (microSDEnabled && address >= 0xA000 && address <= 0xA00F) return true;
-    return ((address >= 0xC000 && address <= 0xC0FF) ||
+    return ((aciEnabled && address >= 0xC000 && address <= 0xC0FF) ||
             (address >= 0xD010 && address <= 0xD013));
 }
 
@@ -569,13 +569,13 @@ ImVec4 MemoryViewer_ImGui::getColorForAddress(int address)
         return ImVec4(0.31f, 0.78f, 0.31f, 1.0f);   // User RAM - green
     if (address <= 0xBFFF)
         return ImVec4(0.31f, 0.78f, 0.31f, 1.0f);   // User RAM - green
-    if (address >= 0xC000 && address <= 0xC0FF)
+    if (aciEnabled && address >= 0xC000 && address <= 0xC0FF)
         return ImVec4(1.0f, 0.50f, 0.31f, 1.0f);    // Cassette I/O - orange/red
     if (tms9918Enabled && address >= 0xCC00 && address <= 0xCC01)
         return ImVec4(0.4f, 0.8f, 1.0f, 1.0f);      // TMS9918 I/O - light blue
     if (sidEnabled && address >= 0xC800 && address <= 0xCFFF)
         return ImVec4(0.78f, 0.39f, 1.0f, 1.0f);    // A1-SID I/O - purple
-    if (address >= 0xC100 && address <= 0xC1FF)
+    if (aciEnabled && address >= 0xC100 && address <= 0xC1FF)
         return ImVec4(1.0f, 0.70f, 0.31f, 1.0f);    // ACI ROM - amber
     if (address >= 0xD000 && address <= 0xD0FF)
         return ImVec4(1.0f, 0.31f, 0.31f, 1.0f);    // I/O (KBD/DSP) - red

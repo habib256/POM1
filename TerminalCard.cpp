@@ -253,6 +253,7 @@ void TerminalCard::processIncomingByte(uint8_t byte)
         case 'O': case 'o': return 15; // Ctrl-O
         case 'L': case 'l': return 12; // Ctrl-L
         case 'R': case 'r': return 18; // Ctrl-R
+        case 'H': case 'h': return 8;  // Ctrl-H (hard reset)
         case 'I': case 'i': return 9;  // Ctrl-I
         default:            return 0;
         }
@@ -289,10 +290,11 @@ void TerminalCard::processIncomingByte(uint8_t byte)
     // want every remaining byte (including Ctrl-L/R/O/I) to reach the Apple 1.
     if (!eightBitMode) {
         switch (byte) {
+        case 8:   // CTRL-H: Hard reset Apple 1
         case 9:   // CTRL-I: Toggle incoming uppercase
         case 12:  // CTRL-L: Clear screen
         case 15:  // CTRL-O: Toggle outgoing uppercase
-        case 18:  // CTRL-R: Reset Apple 1
+        case 18:  // CTRL-R: Reset Apple 1 (warm)
             handleControlCommand(byte);
             return;
         }
@@ -329,9 +331,20 @@ void TerminalCard::handleControlCommand(uint8_t byte)
         clearScreenPending.store(true);
         break;
     }
-    case 18: // CTRL-R: Reset Apple 1
-        // Request reset (consumed by EmulationController outside stateMutex)
+    case 18: // CTRL-R: Warm reset Apple 1
         resetPending.store(true);
+        {
+            const char* msg = "\r\n[WARM RESET]\r\n";
+            sendToClient(reinterpret_cast<const uint8_t*>(msg), strlen(msg));
+        }
+        break;
+
+    case 8: // CTRL-H: Hard reset Apple 1
+        hardResetPending.store(true);
+        {
+            const char* msg = "\r\n[HARD RESET]\r\n";
+            sendToClient(reinterpret_cast<const uint8_t*>(msg), strlen(msg));
+        }
         break;
 
     case 15: // CTRL-O: Toggle outgoing uppercase (terminal → Apple 1)
@@ -483,8 +496,17 @@ void TerminalCard::acceptClient()
     };
     sendToClient(kInitialNegotiation, sizeof(kInitialNegotiation));
 
-    // Send welcome message
-    const char* welcome = "\r\nPOM1 - P-LAB Terminal Card\r\n\r\n";
+    // Send welcome message with available commands
+    const char* welcome =
+        "\r\nPOM1 - P-LAB Terminal Card\r\n"
+        "\r\n"
+        "  Ctrl-R / ESC R  Warm reset\r\n"
+        "  Ctrl-H / ESC H  Hard reset (clear RAM, reload ROMs)\r\n"
+        "  Ctrl-L / ESC L  Clear screen\r\n"
+        "  Ctrl-O / ESC O  Toggle uppercase output\r\n"
+        "  Ctrl-I / ESC I  Toggle uppercase input\r\n"
+        "  Ctrl-T / ESC T  Toggle 8-bit raw mode\r\n"
+        "\r\n";
     sendToClient(reinterpret_cast<const uint8_t*>(welcome), strlen(welcome));
 
     pom1::log().info("Term", "client connected from " + clientAddress);

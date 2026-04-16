@@ -59,8 +59,10 @@ public:
 
     // Thread-safe pending flags for actions that can't run inside advanceCycles
     std::atomic<bool> resetPending{false};
+    std::atomic<bool> hardResetPending{false};
     std::atomic<bool> clearScreenPending{false};
     bool consumeResetPending() { return resetPending.exchange(false); }
+    bool consumeHardResetPending() { return hardResetPending.exchange(false); }
     bool consumeClearScreenPending() { return clearScreenPending.exchange(false); }
 
     // Snapshot for UI display (thread-safe)

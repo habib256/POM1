@@ -200,16 +200,21 @@ void MainWindow_ImGui::renderMemoryMapWindow()
         const char* label;
     };
 
-    const quint16 ramCeiling = (quint16)(presetRamKB * 1024);
+    const uint32_t ramCeiling32 = static_cast<uint32_t>(presetRamKB) * 1024;
+    const bool fullRam = (ramCeiling32 >= 0x10000);
     const ImU32 ramColor   = IM_COL32( 80, 200,  80, 255);
     const ImU32 unmapColor = IM_COL32( 40,  40,  40, 255);
 
     // --- Layer 0: base (User RAM + Unmapped) ---
     std::vector<MemRegion> regions;
-    if (ramCeiling > 0)
-        regions.push_back({ 0x0000, (quint16)(ramCeiling - 1), ramColor, "User RAM" });
-    if (ramCeiling <= 0xFFFF)
-        regions.push_back({ ramCeiling, 0xFFFF, unmapColor, "Unmapped" });
+    if (fullRam) {
+        regions.push_back({ 0x0000, 0xFFFF, ramColor, "User RAM" });
+    } else {
+        quint16 ramTop = static_cast<quint16>(ramCeiling32);
+        if (ramTop > 0)
+            regions.push_back({ 0x0000, (quint16)(ramTop - 1), ramColor, "User RAM" });
+        regions.push_back({ ramTop, 0xFFFF, unmapColor, "Unmapped" });
+    }
 
     // --- Layer 1: CPU-reserved areas ---
     regions.push_back({ 0x0000, 0x00FF, IM_COL32(100, 100, 255, 255), "Zero Page" });
@@ -232,8 +237,10 @@ void MainWindow_ImGui::renderMemoryMapWindow()
     if (wifiModemEnabled)
         regions.push_back({ 0xB000, 0xB003, IM_COL32(0, 200, 200, 255), "ACIA 65C51 I/O" });
 
-    regions.push_back({ 0xC000, 0xC0FF, IM_COL32(255, 140, 80, 255), "ACI I/O" });
-    regions.push_back({ 0xC100, 0xC1FF, IM_COL32(255, 190, 80, 255), "ACI ROM" });
+    if (aciEnabled) {
+        regions.push_back({ 0xC000, 0xC0FF, IM_COL32(255, 140, 80, 255), "ACI I/O" });
+        regions.push_back({ 0xC100, 0xC1FF, IM_COL32(255, 190, 80, 255), "ACI ROM" });
+    }
     if (sidEnabled)
         regions.push_back({ 0xC800, 0xCFFF, IM_COL32(200, 100, 255, 255), "A1-SID I/O" });
     if (tms9918Enabled)
@@ -413,9 +420,12 @@ void MainWindow_ImGui::renderMemoryMapWindow()
             dl->AddRect(p, ImVec2(p.x + 12, p.y + 12), IM_COL32(180, 180, 180, 255));
             ImGui::Dummy(ImVec2(16, 14));
             ImGui::SameLine();
-            ImGui::Text("$0000-$%04X User RAM (%d KB)", ramCeiling - 1, presetRamKB);
+            if (fullRam)
+                ImGui::Text("$0000-$FFFF User RAM (64 KB)");
+            else
+                ImGui::Text("$0000-$%04X User RAM (%d KB)", (uint32_t)(ramCeiling32 - 1), presetRamKB);
         }
-        {
+        if (!fullRam) {
             ImVec2 p = ImGui::GetCursorScreenPos();
             ImDrawList* dl = ImGui::GetWindowDrawList();
             dl->AddRectFilled(p, ImVec2(p.x + 12, p.y + 12), unmapColor);
@@ -429,10 +439,12 @@ void MainWindow_ImGui::renderMemoryMapWindow()
         ImGui::TableNextRow();
         ImGui::TableSetColumnIndex(0);
         ImGui::Text("I/O registers (PIA 6821):");
-        ImGui::Spacing();
-        ImGui::TextColored(ImVec4(0.7f, 0.85f, 1.0f, 1.0f), "  Apple Cassette Interface");
-        ImGui::BulletText("$C000  OUT  - Tape output toggle");
-        ImGui::BulletText("$C081  IN   - Tape input read");
+        if (aciEnabled) {
+            ImGui::Spacing();
+            ImGui::TextColored(ImVec4(0.7f, 0.85f, 1.0f, 1.0f), "  Apple Cassette Interface");
+            ImGui::BulletText("$C000  OUT  - Tape output toggle");
+            ImGui::BulletText("$C081  IN   - Tape input read");
+        }
         ImGui::Spacing();
         ImGui::TextColored(ImVec4(0.7f, 0.85f, 1.0f, 1.0f), "  Keyboard & Display");
         ImGui::BulletText("$D010  KBD   - Keyboard data");

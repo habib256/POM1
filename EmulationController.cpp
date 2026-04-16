@@ -312,6 +312,13 @@ bool EmulationController::reloadBasic(std::string& error)
     return ok;
 }
 
+void EmulationController::unloadBasic()
+{
+    std::lock_guard<PriorityMutex> lock(stateMutex);
+    memory->unloadBasic();
+    publisher.publish(*memory, *cpu, runRequested.load());
+}
+
 bool EmulationController::reloadApplesoftLite(std::string& error)
 {
     std::lock_guard<PriorityMutex> lock(stateMutex);
@@ -586,7 +593,9 @@ void EmulationController::runEmulationSlice(double elapsedSeconds)
     // Terminal Card: consume pending reset/clear OUTSIDE stateMutex
     // to avoid deadlock (softReset acquires stateMutex internally)
     if (memory->isTerminalCardEnabled()) {
-        if (memory->getTerminalCard().consumeResetPending()) {
+        if (memory->getTerminalCard().consumeHardResetPending()) {
+            hardReset();
+        } else if (memory->getTerminalCard().consumeResetPending()) {
             softReset();
         }
         if (memory->getTerminalCard().consumeClearScreenPending()) {

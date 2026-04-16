@@ -327,27 +327,29 @@ void Screen_ImGui::initializeScreen()
 
 void Screen_ImGui::autoClearAndWelcome()
 {
-    // Simulate CLR button press: clear shift registers, then show welcome + prompt
     std::lock_guard<std::mutex> lock(bufferMutex);
     std::fill(screenBuffer.begin(), screenBuffer.end(), ' ');
     topRow = 0;
 
-    // Welcome text (unofficial POM1 banner)
-    std::string welcome = "APPLE I -- POM1 EMULATOR";
-    int startX = (SCREEN_WIDTH - (int)welcome.length()) / 2;
-    for (size_t i = 0; i < welcome.length() && startX + (int)i < SCREEN_WIDTH; ++i)
-        screenBuffer[bufferIndex(0, startX + (int)i)] = welcome[i];
+    if (showBanner) {
+        std::string welcome = "APPLE I -- POM1 EMULATOR";
+        int startX = (SCREEN_WIDTH - (int)welcome.length()) / 2;
+        for (size_t i = 0; i < welcome.length() && startX + (int)i < SCREEN_WIDTH; ++i)
+            screenBuffer[bufferIndex(0, startX + (int)i)] = welcome[i];
 
-    std::string version = "Version 1.8.1";
-    startX = (SCREEN_WIDTH - (int)version.length()) / 2;
-    for (size_t i = 0; i < version.length() && startX + (int)i < SCREEN_WIDTH; ++i)
-        screenBuffer[bufferIndex(1, startX + (int)i)] = version[i];
+        std::string version = "Version 1.8.1";
+        startX = (SCREEN_WIDTH - (int)version.length()) / 2;
+        for (size_t i = 0; i < version.length() && startX + (int)i < SCREEN_WIDTH; ++i)
+            screenBuffer[bufferIndex(1, startX + (int)i)] = version[i];
 
-    // Woz Monitor prompt: the CPU already printed '\' during the garbage phase,
-    // but it was erased by the clear. Re-display it for the user.
-    screenBuffer[bufferIndex(3, 0)] = '\\';
-    cursorX = 0;
-    cursorY = 4;
+        screenBuffer[bufferIndex(3, 0)] = '\\';
+        cursorX = 0;
+        cursorY = 4;
+    } else {
+        screenBuffer[bufferIndex(0, 0)] = '\\';
+        cursorX = 0;
+        cursorY = 1;
+    }
     dirty = true;
 }
 
