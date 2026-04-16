@@ -394,13 +394,12 @@ void Screen_ImGui::drawCRTScanlines(float x0, float y0, float x1, float y1, bool
 
     // Scanlines are drawn ON TOP of glyphs so the dark horizontal lines visibly
     // cut through the characters — this is the intended CRT look (vintage low-
-    // resolution raster artefact). The earlier attempt to soften this alpha to
-    // avoid bisecting characters was a misread of the original bug report; the
-    // user wants the hard scanline bars preserved. Alpha matches the pre-d80d6b6
-    // values: crtScanlineAlpha × 0.25 in charmap mode (glyph halo is softer so
-    // the raw slider value would dominate), crtScanlineAlpha straight in host
-    // ASCII mode.
-    const float scanAlpha = charmapDisplay ? crtScanlineAlpha * 0.25f : crtScanlineAlpha;
+    // resolution raster artefact). Both render modes use the full alpha from
+    // the crtScanlineAlpha slider; the older × 0.25 multiplier for charmap mode
+    // was making the bars nearly invisible (effective alpha ≈ 0.125 at the
+    // default 0.50 slider value) and hiding the effect the user wants.
+    (void)charmapDisplay;
+    const float scanAlpha = crtScanlineAlpha;
     ImU32 scanColor = IM_COL32(0, 0, 0, (int)(scanAlpha * 255));
     for (float py = y0 + 1.0f; py < y1; py += 2.0f) {
         dl->AddLine(ImVec2(x0, py), ImVec2(x1, py), scanColor, 1.15f);
