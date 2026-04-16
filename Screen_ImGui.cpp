@@ -534,6 +534,20 @@ void Screen_ImGui::render()
         buildGlyphAtlas();
     }
 
+    // CRT overlay (phosphor bands + dark scanlines) is drawn FIRST so the
+    // glyphs then render on top of it. Previously this was drawn after the
+    // glyph pass and the dark scanlines cut visibly through each glyph, which
+    // became more obvious once glyphs moved from per-pixel rects to the pre-
+    // baked atlas (halos have a lower effective alpha than the solid per-
+    // pixel cascade used to). With the overlay underneath, the atlas glyph
+    // covers the scanlines at the character position while the effect stays
+    // visible in the gaps between characters and lines.
+    if (crtEffect) {
+        const ImVec2 absP0 = rasterMin;
+        const ImVec2 absP1 = ImVec2(rasterMin.x + screenSize.x, rasterMin.y + screenSize.y);
+        drawCRTOverlay(absP0.x, absP0.y, absP1.x, absP1.y, useCharmapRenderer);
+    }
+
     {
         ImDrawList* drawList = ImGui::GetWindowDrawList();
         ImU32 col = ImGui::ColorConvertFloat4ToU32(textColor);
@@ -604,12 +618,7 @@ void Screen_ImGui::render()
         }
     }
 
-    // Apply CRT effects on top
-    if (crtEffect) {
-        const ImVec2 absP0 = rasterMin;
-        const ImVec2 absP1 = ImVec2(rasterMin.x + screenSize.x, rasterMin.y + screenSize.y);
-        drawCRTOverlay(absP0.x, absP0.y, absP1.x, absP1.y, useCharmapRenderer);
-    }
+    // CRT overlay was already drawn before the glyph pass above.
 
     ImGui::PopFont();
     ImGui::PopStyleColor(1);

@@ -72,6 +72,7 @@ cr_step_hi: .res 1          ; $1F
 ; MAIN
 ; =============================================
 main:
+        CLD                 ; ensure binary arithmetic (in case BASIC left D=1)
         LDA #$FF            ; so the first "next view" wraps to 0 (FULL)
         STA view_index
         LDA #<str_title
