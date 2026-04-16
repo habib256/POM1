@@ -14,8 +14,6 @@ Open work only. For shipped features, see `git log` or the version notes in `REA
     4. **Lecture/Enregistrement “réels”**: implémenter une vraie gestion lecture & enregistrement (vitesse, latence, niveaux/thresholds, erreurs optionnelles), et le mapping vers l’interface cassette/ACI côté Apple-1.
     5. **CI + interchange Apple-1**: permettre à POM1 de **lire des fichiers audio originaux** (WAV/AIFF) via la CI (décodage vers flux cassette), et **d’en créer** à partir de nouveaux programmes (encodage audio) afin de générer des “cassettes” partageables que d’autres peuvent charger via la CI sur un Apple-1 original.
 
-- [ ] **microSD shell HELP whitelist — NOT REPRODUCIBLE on current main (2026-04-15)** — Claudio Parmigiani reported that `HELP <arg>` in POM1 serves any `/HELP/*.TXT` file regardless of whether `<arg>` is a recognised command. Reproduction attempted via `telnet localhost 6502` → `8000R` with a bait `/HELP/FREETEXT.TXT` planted on the card; the ROM already rejects: `HELP FREETEXT` → `?UNKNOWN COMMAND "FREETEXT"`, `HELP FREETEXT.TXT` → `?UNKNOWN COMMAND "FREETEXT.TXT"`, `HELP BOGUS` → `?UNKNOWN COMMAND "BOGUS"`. Whitelisted-but-missing case `HELP ?` returns `FILE NOT FOUND`. The whitelist lives in `roms/sdcard.rom` and matches the `sdcard/HELP/COMMANDS.TXT` list. Likely Claudio was testing an earlier POM1 build (pre-v1.8?) with a different ROM. **Action**: reply to Claudio with the test transcript, ask which POM1 version he saw the bug on, and whether the current ROM (`*** SD CARD OS 1.3`) matches what his physical cards run.
-
 - [ ] **Uncle Bernie's Woz Machine floppy** — 5.25" Disk II-style emulation: Woz state machine (74LS299 + 74LS259), Timing Fix Circuit (GAL16V8) absorbing Apple-1 DRAM-refresh jitter so RWTS cycle-counting works without a Q3 2 MHz clock. Needs GCR track/sector emulation, `.dsk`/`.woz` loading, soft-switch dispatch in `$C0Ex`, async 74LS123 drive clock. Major effort, do last — only worth it once original Apple-1 disk software surfaces.
 
 ### Print & voice
@@ -32,7 +30,7 @@ Open work only. For shipped features, see `git log` or the version notes in `REA
 
 - [ ] **More GEN2 programs** — image viewers, drawing tools, additional 280×192 HIRES demos.
 
-- [ ] **Finalise [`software/hgr/HGR8_BBFont.inc`](software/hgr/HGR8_BBFont.inc)** — unify BB rendering (`fontbb.s`, `$20`–`$7F`) vs PNG (controls + extended `$80`–`$FF`), document/regenerate from sources (`fonts/fontbb.s`, `fonts/font_codepage_437_8x8.png`), refine problematic glyphs (NTSC / stroke weight). Optionally add a generator script under `tools/`.
+- [ ] **Generator script for [`software/hgr/HGR8_BBFont.inc`](software/hgr/HGR8_BBFont.inc)** — the unified table (`$20`–`$7F` from `fontbb.s`, controls + `$80`–`$FF` from `font_codepage_437_8x8.png`) now ships, but the build is still by-hand. Add a script under `tools/` that regenerates the `.inc` from both sources, so future glyph refinements (NTSC artifact-sensitive columns, stroke weight) are reproducible.
 
 - [ ] **CodeTank daughterboard ROM** — support the `apple1_jukebox` target (ROM at `$4000-$7FFF`) for programs stored on the CodeTank EEPROM.
 
@@ -64,7 +62,7 @@ The converter is now the only bottleneck — the SID chip itself is cycle-accura
 ## Technical debt & code quality
 
 ### Performance
-- [ ] **64 KB RAM `memcpy` @ 60 Hz** — `SnapshotPublisher::publish()` already skips the TMS9918 16 KB copy when unplugged but the full 64 KB RAM copy still runs every frame under `stateMutex`. Further reduction needs page-level dirty tracking in `Memory::memWrite`. Likely not worth the complexity.
+- [ ] **64 KB RAM `memcpy` per dirty tick** — `SnapshotPublisher::publish()` now skips the 64 KB copy when `Memory::getMemoryDirtyCounter()` is unchanged (idle Wozmon = no copy) and also skips TMS9918's 16 KB when unplugged. Remaining cost: any running program bumps the counter every write, so the 64 KB copy still runs every frame during execution. Further reduction would require page-level dirty tracking in `Memory::memWrite`. Likely not worth the complexity.
 
 ### Architecture
 - [ ] **Static `Screen_ImGui::displayCallback`** couples UI to emulation. → `DisplayDevice` interface injected into `Memory`; `Screen_ImGui` implements it.

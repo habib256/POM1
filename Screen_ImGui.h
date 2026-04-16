@@ -138,7 +138,7 @@ private:
     // everything). Splitting the two passes is what restores the on-text CRT
     // effect without reintroducing the hard dark bars that used to cut glyphs.
     void drawCRTBackdrop(float x0, float y0, float x1, float y1, bool charmapDisplay);
-    void drawCRTScanlines(float x0, float y0, float x1, float y1, bool charmapDisplay);
+    void drawCRTScanlines(float x0, float y0, float x1, float y1, bool charmapDisplay, float scaledCellH);
 };
 
 #endif // SCREEN_IMGUI_H

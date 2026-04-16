@@ -3,6 +3,7 @@ project(pom1_imgui)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 # MSVC reports __cplusplus as 199711L unless this is set; libresidfp checks it.
 if(MSVC)
     add_compile_options(/Zc:__cplusplus)
@@ -245,6 +246,9 @@ else()
             "-framework IOKit"
             "-framework CoreVideo"
         )
+        # Apple deprecated the whole OpenGL API in 10.14 but it still works.
+        # The compiler prints this exact hint — silence the noise repo-wide.
+        target_compile_definitions(${PROJECT_NAME} PRIVATE GL_SILENCE_DEPRECATION)
     endif()
 
     # Windows-specific

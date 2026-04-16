@@ -65,7 +65,7 @@ or build it natively.
 
 📋 **Clipboard Paste** — Paste code directly into the Apple 1 keyboard
 
-🎮 **30+ Programs Included** — Games, demos, BASIC programs, dev tools, and expansion demos — many ready from `software/`
+🎮 **60+ Programs Included** — Games, demos, BASIC programs, dev tools, and expansion demos — many ready from `software/`
 
 ---
 
@@ -174,6 +174,7 @@ vcpkg install glfw3:x64-windows
 | `Ctrl+O` | Load program |
 | `Ctrl+S` | Save memory |
 | `Ctrl+V` | Paste code |
+| `Ctrl+Q` | Quit |
 
 ---
 
@@ -344,7 +345,7 @@ POM1 emulates the [P-LAB Apple-1 Wi-Fi Modem](https://p-l4b.github.io/wifi/), a 
 
 1. Enable Wi-Fi Modem and Terminal Card (Hardware menu)
 2. Connect an external terminal: `telnet localhost 6502`
-3. Load the terminal program: **File > Load Memory** → `software/wifi/terminal.txt`
+3. Load the terminal program: **File > Load Memory** → `software/net/ATmodem.txt`
 4. In the Woz Monitor (prompt `\`), type `0280R` to start the ACIA bridge
 5. Test the modem: type `AT` — response: `OK`
 6. Connect to a BBS: `ATDT BBS.FOZZTEXX.COM:23`
@@ -384,6 +385,7 @@ telnet localhost 6502
 
 | Preset | RAM | BASIC | Krusader | microSD | CFFA1 | SID | TMS9918 | GEN2 HGR | I/O & RTC | WiFi | Terminal |
 |--------|:---:|:-----:|:--------:|:-------:|:-----:|:---:|:-------:|:--------:|:---------:|:----:|:--------:|
+| **Apple-1 bare 4 K (July 1976)** | 4 KB | Integer | — | — | — | — | — | — | — | — | — |
 | **Woz Apple 1 (1976)** | 8 KB | Integer | — | — | — | — | — | — | — | — | — |
 | **Replica 1 (Briel)** | 32 KB | Integer | ✓ | — | — | — | — | — | — | — | — |
 | **Replica 1 + CFFA1** | 32 KB | Applesoft Lite | — | — | ✓ | — | — | — | — | — | ✓ |
@@ -391,13 +393,15 @@ telnet localhost 6502
 | **P-LAB Apple 1** | 32 KB | Applesoft Lite | — | ✓ | — | ✓ | ✓ | — | ✓ | ✓ | ✓ |
 | **POM1** | 56 KB | Applesoft Lite | — | ✓ | — | ✓ | ✓ | ✓ | — | ✓ | ✓ |
 
+The **bare 4 K** preset is the pre-ACI July-1976 shipping configuration (no cassette, no expansion — the first ~150 Apple 1 units left the bench this way).
+
 Each preset also repositions windows into a default layout: the Apple 1 screen anchors top-left, graphics cards open to the right, and status panels fill the bottom row. You can drag windows freely after applying a preset.
 
 ---
 
 ## 🎮 Software Library
 
-The `software/` directory ships with **30+ ready-to-run programs** — load them via **File > Load Memory**.
+The `software/` directory ships with **60+ ready-to-run programs** — load them via **File > Load Memory**.
 Most programs are sourced from [apple1software.com](https://apple1software.com/), the reference archive for Apple 1 software.
 Some programs also include their 6502 assembly source code (`.asm`) for study and modification.
 
@@ -441,7 +445,6 @@ Some programs also include their 6502 assembly source code (`.asm`) for study an
 | 🃏 **Blackjack** | Classic card game |
 | 🌙 **Lunar Lander (Graphics)** | Lunar Lander with ASCII graphics |
 | 🏛️ **Hamurabi** | Rule ancient Sumeria — classic strategy game |
-| 🎯 **Dobble** | Spot-it card matching game |
 | ⏱️ **Stopwatch** | Real-time clock and stopwatch |
 | 🔧 **Resistor Calculator** | 4-band resistor color code calculator |
 
@@ -493,33 +496,48 @@ POM1/
 ├── M6502.cpp/h              # 🧠 MOS 6502 CPU — all opcodes, cycle counting
 ├── CpuClock.h               # ⏱️ CPU clock (1 022 727 Hz) + cycles/frame @ 60 Hz helpers
 ├── Memory.cpp/h             # 💾 64 KB address space, ROM loader, PIA I/O
+├── PeripheralBus.cpp/h      # 🚌 Central I/O dispatch table for memory-mapped cards
+├── EmulationController.*    # 🔄 Emulation thread, step/run/reset, hardware toggles
+├── SnapshotPublisher.*      # 📸 Lock-free snapshot slot published to UI
+├── KeyboardController.*     # ⌨️  Thread-safe key queue
+├── RomLoader.cpp/h          # 📀 ROM load/reload helpers
+├── Disassembler6502.cpp/h   # 🔬 Standalone 6502 disassembler
+├── Logger.cpp/h             # 📝 Leveled logger + UI ring-buffer sink
 ├── main_imgui.cpp           # 🪟 GLFW/OpenGL bootstrap
-├── MainWindow_ImGui.cpp/h   # 🎛️ App window, menus, CPU speed (x1 / x2 / Max)
+├── MainWindow_*.cpp         # 🎛️ App window split across 9 TUs (ImGui, Layout,
+│                            #    Presets, Menu, Dialogs, HardwareWindows,
+│                            #    FileDialogs, DebugWindows, Keyboard)
 ├── Screen_ImGui.cpp/h       # 🖥️ Apple 1 display (40×24, CRT effects)
 ├── GraphicsCard.cpp/h       # 🎨 GEN2 color graphics card (280×192 HIRES)
 ├── TMS9918.cpp/h            # 🖥️ P-LAB TMS9918 VDP (256×192, 15 colors, sprites)
-├── SID.cpp/h                # 🎵 P-LAB A1-SID (6581/8580-style synthesis)
+├── SID.cpp/h                # 🎵 P-LAB A1-SID (libresidfp 6581/8580 engine)
+├── AudioDevice.cpp/h        # 🔊 miniaudio/Web Audio output, mixes SID + cassette
+├── CassetteDevice.cpp/h     # 📼 Apple Cassette Interface (Woz ACI ROM + audio)
 ├── MicroSD.cpp/h            # 💾 P-LAB microSD Storage Card (65C22 VIA + MCU)
 ├── WiFiModem.cpp/h          # 📡 P-LAB Wi-Fi Modem (65C51 ACIA + TCP/TELNET)
 ├── TerminalCard.cpp/h       # 🖥️ P-LAB Terminal Card (TCP server, serial bridge)
 ├── A1IO_RTC.cpp/h           # ⏰ P-LAB I/O Board & RTC (65C22 VIA + DS3231)
 ├── CFFA1.cpp/h              # 💽 CFFA1 CompactFlash (ROM + ProDOS .po)
 ├── MemoryViewer_ImGui.cpp/h # 🔍 Hex editor with search & navigation
+├── third_party/libresidfp/  # 🎹 Vendored cycle-accurate SID engine (GPL-2.0+)
 ├── tools/
 │   └── sid2apple1.py        # 🎛️ C64 PSID/RSID → Apple 1 .bin for A1-SID
-├── roms/                    # 📀 WozMonitor, BASIC, Krusader, ACI, SD CARD OS, charmap
+├── roms/                    # 📀 WozMonitor, BASIC, Applesoft Lite (×2), Krusader,
+│                            #    ACI, SD CARD OS, CFFA1, charmap
 ├── sdcard/                  # 💾 Virtual SD card content (host directory)
 ├── cfcard/                  # 💽 CFFA1 ProDOS disk (`cfcard.po`) — bundled for desktop & WASM
 ├── software/                # 📂 Hex dump programs + assembly sources
-│   ├── games/               #   🎮 Games
+│   ├── games/               #   🎮 Games (chess, Sokoban, Connect4, mazes, …)
 │   ├── demos/               #   🎨 Demos
 │   ├── basic/               #   💻 BASIC programs
-│   ├── dev/                 #   🛠️ Dev tools
+│   ├── applesoft/           #   💿 Applesoft Lite programs (DUEL, VOID, SIGNAL)
+│   ├── dev/                 #   🛠️ Dev tools (assembler, disassembler, FORTH)
 │   ├── utils/               #   🧰 Utilities
-│   ├── hgr/                 #   🎨 GEN2 HGR images & programs
-│   ├── tms9918/             #   🖥️ P-LAB TMS9918 programs (Tetris, demos)
-│   ├── sid/                 #   🎵 A1-SID music (.bin)
-│   ├── wifi/                #   📡 Wi-Fi Modem terminal program
+│   ├── hgr/                 #   🎨 GEN2 HGR programs (10 HIRES demos/games)
+│   ├── tms9918/             #   🖥️ P-LAB TMS9918 programs (Tetris, demos, games)
+│   ├── sid/                 #   🎵 A1-SID music (.bin, 13+ tunes)
+│   ├── net/                 #   📡 Wi-Fi Modem / BBS configs (ATmodem + BBS lists)
+│   ├── a1io_rtc/            #   ⏰ I/O Board & RTC demos (clock)
 │   └── tests/               #   🧪 Hardware test programs
 ├── cassettes/               # 📼 Original-tape .ogg captures (reference/preservation)
 ├── build-wasm/              # 🌐 WebAssembly build output

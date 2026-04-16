@@ -26,6 +26,8 @@ cmake --build . --config Release                # Windows (MSVC)
 
 ROMs must be next to the executable; the run scripts handle the copy.
 
+`CMAKE_EXPORT_COMPILE_COMMANDS` is on — `cmake ..` writes `build/compile_commands.json` for clangd. A symlink at the repo root points to it, so no IDE-side config is needed.
+
 ### WASM build (Emscripten)
 
 ```bash
@@ -77,9 +79,9 @@ Each `.cpp/.h` pair owns one concern. The descriptions below cover only what isn
 - **PeripheralBus.h/cpp** — central I/O dispatch table. Each peripheral registers `(name, range, priority, onRead, onWrite)` at `Memory` ctor; `tryRead`/`tryWrite` linearly scan the (small) priority-sorted list. TMS9918 wins over SID at `$CC00/$CC01` via priority 10. Empty `onWrite` = pass-through (let raw RAM handle it); explicit no-op `onWrite` = block (CFFA1 ROM). Cassette write toggle stays inline in `Memory::memWrite` because it's a sniffer (the byte must still land in `mem[]`).
 
 ### Emulation orchestration
-- **EmulationController.cpp/h** — façade owning the M6502 + Memory + emulation thread. Public API exposes ~45 methods (CPU control, ROM reload, snapshot, hardware enable/disable, keyboard, tape) but most logic delegates to focused components below. Mutex order: **`stateMutex` > `keyboard.keyMutex` > `publisher.snapshotMutex`**. The native build runs an `emulationThread` consuming `runEmulationSlice()`; WASM has no thread — `pumpEmulationMainThread()` advances from the main loop.
+- **EmulationController.cpp/h** — façade owning the M6502 + Memory + emulation thread. Public API exposes ~55 methods (CPU control, ROM reload, snapshot, hardware enable/disable, keyboard, tape) but most logic delegates to focused components below. Mutex order: **`stateMutex` > `keyboard.keyMutex` > `publisher.snapshotMutex`**. The native build runs an `emulationThread` consuming `runEmulationSlice()`; WASM has no thread — `pumpEmulationMainThread()` advances from the main loop.
 - **EmulationSnapshot.h** — UI-ready immutable picture of the emulator state (memory, CPU registers, peripheral snapshots, OOR flag). Sized once at startup so `SnapshotPublisher::publish()` does an in-place memcpy into `latestSnapshot.memory.data()`, avoiding 64 KB alloc/free per frame.
-- **SnapshotPublisher.h/cpp** — single-producer/single-consumer slot for `EmulationSnapshot`. `publish(Memory&, M6502&, bool)` runs under stateMutex; it then takes its own `snapshotMutex` to serialize the UI-thread `copyTo()`.
+- **SnapshotPublisher.h/cpp** — single-producer/single-consumer slot for `EmulationSnapshot`. `publish(Memory&, M6502&, bool)` runs under stateMutex and takes its own `snapshotMutex` to serialize the UI-thread `copyTo()`. The 64 KB RAM memcpy is skipped when `Memory::getMemoryDirtyCounter()` matches `lastPublishedDirtyCounter` — idle Wozmon (PIA polling only, no `mem[]` writes) leaves the counter untouched, so the snapshot stays fresh from the previous copy for free. TMS9918's 16 KB copy is similarly skipped when the card is unplugged.
 - **KeyboardController.h/cpp** — thread-safe key queue. `queueKey()` is UI-thread-safe; `drainTo(Memory&)` runs under stateMutex from the emulation slice and uses a `std::swap` to release `keyMutex` before calling `Memory::setKeyPressed()`.
 - **RomLoader.h/cpp** — six static helpers (`reloadBasic/ApplesoftLite/WozMonitor/Krusader/AciRom/CFFA1Rom`) factoring the toggle-`writeInRom` + `Memory::loadXxx()` + restore pattern.
 - **Disassembler6502.h/cpp** — standalone `pom1::disassemble6502(mem, pc, instrLen)` used by the debug console. 256-entry opcode table + addressing-mode formatter, no UI dependency.
@@ -99,7 +101,7 @@ Each `.cpp/.h` pair owns one concern. The descriptions below cover only what isn
   - `MainWindow_Keyboard.cpp` — `shortcuts[]` table + `handleGlfw{Char,Key}`. Keys flow directly from the GLFW callbacks to the Apple 1 — no per-frame `InputQueueCharacters` scrape. A press vs. autorepeat distinction comes from `action == GLFW_PRESS` vs `GLFW_REPEAT`: `handleGlfwKey` tags `nextCharIsRepeat` which the immediately-following `handleGlfwChar` consumes. When Hardware → "Keyboard autorepeat" is off (default, matches TTL keyboards with no repeat circuitry), REPEAT events are dropped for printable chars and Enter/Backspace/Escape; PRESS always fires. F7 (single-step) is the only shortcut that honours REPEAT regardless, for hold-to-step behaviour.
   
   **`applyMachineConfig(int)`** sets all hardware flags atomically, populates `pendingLayout`; `applyPendingLayout(const char*)` runs before each hardware window's `Begin()` to reposition with `ImGuiCond_Always`. Auto-enable hardware cards by source directory of a loaded file (`software/sid/`, `software/hgr/`, `software/tms9918/`, `software/wifi/`, `software/net/`, `sdcard/`); reloading from `software/net/` calls `wifiModemReset()` to drop any live connection.
-- **Screen_ImGui.cpp/h** — 40×24 character grid. Two `characterRenderMode` modes (Apple1Charmap = bitmap glyphs from `roms/charmap.rom`; HostAscii = ImGui font). Three `monitorMode` tints (Green/Brown/Monochrome). Blinking `@` cursor (`fmod` to avoid float overflow), CRT scanline overlay (`drawCRTOverlay`), brightness/contrast.
+- **Screen_ImGui.cpp/h** — 40×24 character grid. Two `characterRenderMode` modes (Apple1Charmap = bitmap glyphs from `roms/charmap.rom`; HostAscii = ImGui font). Three `monitorMode` tints (Green/Amber/Monochrome). Blinking `@` cursor (`fmod` to avoid float overflow), brightness/contrast. CRT effect is a two-pass overlay: `drawCRTBackdrop()` draws phosphor-band tint **before** glyphs (so it doesn't bisect characters); `drawCRTScanlines()` draws dark raster bands **after** glyphs at one band per emulated raster line (period = `scaledCellH / 8` → 192 bands across the full frame regardless of zoom).
 - **MemoryViewer_ImGui.cpp/h** — Hex editor with color-coded regions, search, bookmarks, inline double-click editing.
 
 ### Peripherals
@@ -191,6 +193,6 @@ When bumping the version number, update **all** of these:
 - `main_imgui.cpp` — console output and GLFW window title
 - `MainWindow_Dialogs.cpp` — About dialog
 - `Screen_ImGui.cpp` — Apple 1 welcome screen
-- `build-wasm/shell.html` — HTML `<title>` and `<h1>` banner (2 occurrences)
+- `build-wasm/shell.html` — `<meta description>`, `<title>`, and `<h1>` banner (3 occurrences)
 - `README.md` — title and intro
 - `package_windows_release.bat` — release ZIP filename
