@@ -23,6 +23,13 @@ imgui.ini
 .cache/
 compile_commands.json
 
+# Python bytecode / test caches (tools/ contains scripts run ad-hoc)
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
 # IDE / Editor
 .vscode/
 .idea/
