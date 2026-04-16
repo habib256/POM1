@@ -89,6 +89,15 @@ public:
     void memWrite(quint16 address, quint8 value);
     const quint8* getMemoryPointer() const { return mem.data(); }
 
+    /// Monotonic counter incremented every time the 64 KB backing array
+    /// changes (CPU writes that land in mem[], ROM loads, hard resets, …).
+    /// SnapshotPublisher uses this to skip the 64 KB memcpy when no write
+    /// has happened since the last publish — i.e. when the CPU is idle in
+    /// a Wozmon polling loop, the snapshot bandwidth drops to zero. The
+    /// counter wraps around naturally; publish only cares about equality
+    /// with its last-seen value.
+    uint64_t getMemoryDirtyCounter() const { return memDirtyCounter; }
+
     // Callback pour l'affichage Apple 1
     void setDisplayCallback(void (*callback)(char));
     
@@ -172,6 +181,13 @@ private :
 
     // Memory itself tab
     std::vector<quint8> mem;
+
+    // Bumped every time mem[] is mutated. Hot-path increment is one ADD
+    // inside memWrite (after the early-return / strict-OOR drops). Bulk
+    // operations (loadROM, init/reset, region clears) bump it once at the
+    // end. Read by SnapshotPublisher to skip the per-frame 64 KB memcpy
+    // when nothing changed.
+    uint64_t memDirtyCounter = 1;
 
 
 

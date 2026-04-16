@@ -147,17 +147,56 @@ if(EMSCRIPTEN)
     # Preload assets into the virtual filesystem.
     set(PRELOAD_DIR ${CMAKE_CURRENT_SOURCE_DIR})
     set(SHELL_FILE ${CMAKE_CURRENT_SOURCE_DIR}/build-wasm/shell.html)
+
+    # Stack-size linker flag was renamed in Emscripten 3.1.27 (TOTAL_STACK
+    # → STACK_SIZE). Both spellings are accepted on their respective
+    # versions, but the wrong one is a hard error. Probe emcc's version
+    # so older Debian/Ubuntu packages (e.g. 3.1.6) keep working alongside
+    # an emsdk install of 3.1.50+.
+    execute_process(COMMAND ${CMAKE_CXX_COMPILER} --version
+                    OUTPUT_VARIABLE POM1_EMCC_VERSION_RAW
+                    ERROR_QUIET OUTPUT_STRIP_TRAILING_WHITESPACE)
+    string(REGEX MATCH "[0-9]+\\.[0-9]+\\.[0-9]+" POM1_EMCC_VERSION "${POM1_EMCC_VERSION_RAW}")
+    if(POM1_EMCC_VERSION AND POM1_EMCC_VERSION VERSION_GREATER_EQUAL "3.1.27")
+        set(POM1_STACK_FLAG "-s STACK_SIZE=4194304")
+    else()
+        set(POM1_STACK_FLAG "-s TOTAL_STACK=4194304")
+    endif()
+    message(STATUS "POM1: emcc ${POM1_EMCC_VERSION} -> ${POM1_STACK_FLAG}")
+
+    # Older Emscripten (the Debian/Ubuntu 3.1.6 package, in particular)
+    # silently renames `int main(int,char**)` to `__main_argc_argv`. We
+    # still need `_main` in EXPORTED_FUNCTIONS so the linker keeps main
+    # (and everything it transitively pulls in) alive, but the post-link
+    # `_main` symbol check then errors out as `[-Wundefined] [-Werror]`.
+    # Downgrade that to a warning on older toolchains; main still runs
+    # correctly because emcc generates the JS shim from the renamed
+    # symbol regardless. Newer toolchains keep `_main` for back-compat
+    # and don't need the relaxation.
+    set(POM1_MAIN_EXPORT "_main,")
+    if(POM1_EMCC_VERSION AND POM1_EMCC_VERSION VERSION_LESS "3.1.30")
+        set(POM1_UNDEFINED_FLAG "-Wno-error=undefined")
+    else()
+        set(POM1_UNDEFINED_FLAG "")
+    endif()
+
     set(EM_LINK_FLAGS
         "-s USE_GLFW=3"
         "-s MAX_WEBGL_VERSION=2"
         "-s MIN_WEBGL_VERSION=2"
         "-s ALLOW_MEMORY_GROWTH=1"
         "-s WASM=1"
+        # The Debian/Ubuntu emscripten 3.1.6 package has a buggy htmlmin
+        # invocation (`['htmlmin', opts, ...]` where `opts` is itself a
+        # list — TypeError at link time). Skip the minify step; the few
+        # KB it would shave aren't worth the toolchain dependency.
+        "-s MINIFY_HTML=0"
+        "${POM1_UNDEFINED_FLAG}"
         # libresidfp constructs its filter-model lookup tables on the stack
         # at first SID instantiation; the Emscripten default of 64 KB
         # overflows. 4 MB matches the upstream Emscripten pre-3.1.27 default
         # and is plenty for our cold-start init.
-        "-s STACK_SIZE=4194304"
+        "${POM1_STACK_FLAG}"
         "--preload-file ${PRELOAD_DIR}/roms@roms"
         "--preload-file ${PRELOAD_DIR}/fonts@fonts"
         "--preload-file ${PRELOAD_DIR}/software@software"
@@ -166,7 +205,7 @@ if(EMSCRIPTEN)
         # cfcard/ are desktop-only extras (would bloat the data bundle by >140 MB).
         "--preload-file ${PRELOAD_DIR}/cfcard/cfcard.po@cfcard/cfcard.po"
         "--shell-file ${SHELL_FILE}"
-        "-s EXPORTED_FUNCTIONS=['_main','_pom1_fillAudioBuffer','_malloc','_free']"
+        "-s EXPORTED_FUNCTIONS=[${POM1_MAIN_EXPORT}_pom1_fillAudioBuffer,_malloc,_free]"
         "-s EXPORTED_RUNTIME_METHODS=['ccall','HEAPF32']"
     )
     # Join list into a single space-separated string for linker flags

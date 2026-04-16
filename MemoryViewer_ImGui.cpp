@@ -49,9 +49,16 @@ void MemoryViewer_ImGui::navigateToAddress(int address)
 void MemoryViewer_ImGui::updateLiveMemory(const std::vector<quint8>& memoryImage)
 {
     liveMemory = &memoryImage;
-    if (autoRefresh || !snapshotValid) {
-        takeSnapshot();
-    }
+    // Deliberately no per-frame snapshot copy. readByte() already reads
+    // straight from liveMemory whenever autoRefresh is on or the snapshot
+    // has never been taken (line ~18 of this file), so the only callers
+    // that need a snapshot copy are explicit user actions: toggling
+    // autoRefresh off, clicking Refresh, or jumpToAddress() in frozen
+    // mode. Each of those calls takeSnapshot() itself, so this hot path
+    // (hit every UI frame from MainWindow_ImGui::render) stays free of
+    // the 64 KB std::copy that previously ran whenever autoRefresh was
+    // enabled — pure dead work, since readByte under autoRefresh reads
+    // liveMemory directly anyway.
 }
 
 void MemoryViewer_ImGui::setWriteCallback(std::function<void(quint16, quint8)> callback)

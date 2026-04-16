@@ -89,15 +89,23 @@ void MainWindow_ImGui::render()
     updateStatus(deltaTime);
     emulation->copySnapshot(uiSnapshot);
     cpuRunning = uiSnapshot.cpuRunning;
-    memoryViewer->updateLiveMemory(uiSnapshot.memory);
-    memoryViewer->setGraphicsCardEnabled(graphicsCardEnabled);
-    memoryViewer->setTMS9918Enabled(tms9918Enabled);
-    memoryViewer->setSIDEnabled(sidEnabled);
-    memoryViewer->setMicroSDEnabled(microSDEnabled);
-    memoryViewer->setWiFiModemEnabled(wifiModemEnabled);
-    memoryViewer->setTerminalCardEnabled(terminalCardEnabled);
-    {
+    // MemoryViewer setters are only consumed by render(), so don't bother
+    // wiring them when the window is closed. The pointer hand-off in
+    // updateLiveMemory() is cheap, but skipping the whole block keeps the
+    // hot frame path tighter (and matches the fast-path mindset of the
+    // perf passes — no work for invisible widgets).
+    if (showMemoryViewer) {
+        memoryViewer->updateLiveMemory(uiSnapshot.memory);
+        memoryViewer->setGraphicsCardEnabled(graphicsCardEnabled);
+        memoryViewer->setTMS9918Enabled(tms9918Enabled);
+        memoryViewer->setSIDEnabled(sidEnabled);
+        memoryViewer->setMicroSDEnabled(microSDEnabled);
+        memoryViewer->setWiFiModemEnabled(wifiModemEnabled);
+        memoryViewer->setTerminalCardEnabled(terminalCardEnabled);
+    }
+    if (showMemoryViewer) {
         std::vector<MemoryViewer_ImGui::RomRegion> mvRoms;
+        mvRoms.reserve(loadedRoms.size());
         for (const auto& r : loadedRoms)
             mvRoms.push_back({r.start, r.end});
         memoryViewer->setLoadedRoms(mvRoms);
