@@ -64,7 +64,12 @@ public:
     quint8 getStatusRegister(void) const { return statusRegister; }
     quint8 getStackPointer(void) const { return stackPointer; }
     quint16 getProgramCounter(void) const { return programCounter; }
-    
+    /// Jump the PC to an arbitrary address without going through RESET.
+    /// Used by the Klaus Dormann functional test harness (the test binary
+    /// sets its reset vector to an error trap and expects callers to jump
+    /// directly into $0400).
+    void setProgramCounter(quint16 pc) { programCounter = pc; }
+
     // Callback pour l'affichage (Apple 1 utilise 0xD012)
     void setDisplayCallback(void (*callback)(char));
     

@@ -599,7 +599,13 @@ memory->memWrite((quint16)(0x100 + stackPointer), accumulator);
 
 void M6502::PHP(void)
 {
- memory->memWrite((quint16)(0x100 + stackPointer), statusRegister);
+    // PHP pushes P with the B flag (bit 4) and the "always-1" unused bit
+    // (bit 5) both set. These two bits don't physically exist as flags in
+    // the CPU — they're synthesised only when the status byte is pushed to
+    // the stack by PHP or BRK. IRQ/NMI handlers push bit 5 set and bit 4
+    // cleared instead; see handleIRQ / handleNMI.
+    memory->memWrite((quint16)(0x100 + stackPointer),
+                     statusRegister | M6502::Status::B | 0x20);
     stackPointer--;
     cycles++;
 }
@@ -621,7 +627,14 @@ void M6502::PLP(void)
 
 void M6502::BRK(void)
 {
-    // BRK doit sauvegarder PC+1 (car le PC a déjà été incrémenté après la lecture de l'opcode)
+    // BRK is a 2-byte instruction: the $00 opcode plus a "signature" byte
+    // (officially unused, sometimes used for software vectoring). The CPU
+    // already incremented PC once after fetching the opcode, so PC now
+    // points at the signature byte. The return address pushed to the stack
+    // must skip *past* the signature byte, hence the extra ++ here.
+    // Missing this offset makes RTI from a BRK handler return to the
+    // signature byte (which the CPU then tries to execute as an opcode).
+    programCounter++;
     pushProgramCounter();
     memory->memWrite((quint16)(0x100 + stackPointer), statusRegister | M6502::Status::B | 0x20);
     stackPointer--;

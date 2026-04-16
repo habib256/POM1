@@ -90,6 +90,16 @@ public:
     //quint8 memReadAbsolute(quint16 adr);
     void memWrite(quint16 address, quint8 value);
     const quint8* getMemoryPointer() const { return mem.data(); }
+    quint8* getMemoryPointerMutable() { return mem.data(); }
+
+    /// Flip the full 64 KB address space into a "flat RAM" mode: memRead /
+    /// memWrite skip the PeripheralBus, PIA 6821 aliasing, strict-OOR, ROM
+    /// write protection, and cassette sniffer — every access is a plain
+    /// mem[addr] load or store. Used exclusively by the Klaus Dormann 6502
+    /// functional test, which expects the whole 64 KB to behave as RAM.
+    /// Must NOT be enabled in normal emulation; no safety checks remain.
+    void setTestMode(bool enabled) { testMode = enabled; }
+    bool isTestMode() const { return testMode; }
 
     /// Page-level dirty bitmap: bit p is set if the 256-byte page starting
     /// at $pp00 has been written since the last clearDirtyPages(). memWrite
@@ -200,6 +210,7 @@ private :
     // bitmap. Initial state is all-zero — the Memory ctor's ROM loads will
     // mark the affected pages dirty so the very first snapshot is complete.
     std::bitset<256> dirtyPages{};
+    bool testMode = false;            // see setTestMode() — flat-RAM mode for unit tests
 
 
 

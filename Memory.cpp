@@ -589,6 +589,10 @@ int Memory::loadHexDump(const char* filename, quint16 &startAddress, int* bytesL
 
 quint8 Memory::memRead(quint16 address)
 {
+    // Test mode: flat 64 KB RAM, no side effects (Klaus Dormann functional
+    // test expects the whole address space to behave as RAM).
+    if (testMode) return mem[address];
+
     // Memory-mapped peripherals (A1IO_RTC, CFFA1, microSD, WiFiModem, SID,
     // TMS9918, Cassette read) live on the PeripheralBus. The remaining
     // logic below handles the Apple-1 core that's not really a peripheral:
@@ -650,6 +654,15 @@ quint8 Memory::memRead(quint16 address)
 
 void Memory::memWrite(quint16 address, quint8 value)
 {
+    // Test mode: flat 64 KB RAM, no ROM protection, no peripheral side
+    // effects. Keep the dirty-page bit accurate in case a test ever checks
+    // the snapshot publisher.
+    if (testMode) {
+        mem[address] = value;
+        dirtyPages.set(static_cast<std::size_t>(address >> 8));
+        return;
+    }
+
     // Peripheral bus first — same rationale as memRead().
     if (bus.tryWrite(address, value)) return;
 

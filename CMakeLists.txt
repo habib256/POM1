@@ -271,4 +271,12 @@ else()
     if(NOT glfw3_FOUND)
         target_compile_options(${PROJECT_NAME} PRIVATE ${GLFW3_CFLAGS_OTHER})
     endif()
+
+    # Tests — native-only (Emscripten runs in the browser, ctest on host).
+    # Opt-out via -DPOM1_ENABLE_TESTS=OFF.
+    option(POM1_ENABLE_TESTS "Build POM1 smoke tests (Klaus 6502 functional)" ON)
+    if(POM1_ENABLE_TESTS)
+        enable_testing()
+        add_subdirectory(tests)
+    endif()
 endif()

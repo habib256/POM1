@@ -117,12 +117,18 @@ SCROLL_COLORS = [
     (MAGENTA << 4) | DK_BLUE,
 ]
 
-# Scroll text (256 bytes, wraps with low-byte naturally)
+# Scroll text (256 bytes, wraps with low-byte naturally).
+# NOTE: hard 256 char ceiling — trailing spaces are swallowed by the wrap.
+# Attribution-focused: each hardware contributor gets a standalone credit.
 SCROLL_RAW = (
-    "   POM1 V1.7.2 * APPLE 1 EMULATOR BY VERHILLE ARNAUD"
-    " * TMS9918 GRAPHICS + A1-SID AUDIO + MICROSD + MODEM BBS + TERMINAL"
-    " * MADE POSSIBLE BY P-LAB HARDWARE FROM NIPPUR72"
-    " * THANKS: STEVE WOZNIAK - APPLEFRITTER - HVSC - DJ SPACE - ROB HUBBARD   "
+    "   POM1 V1.8.1 BY VERHILLE ARNAUD"
+    " * CELEBRATING 50 YEARS OF APPLE 1976-2026"
+    " * CYCLE-ACCURATE 6502 + LIBRESIDFP SID"
+    " * P-LAB CARDS: CLAUDIO PARMIGIANI"
+    " * GEN2 HGR: UNCLE BERNIE"
+    " * CFFA1: RICH DREHER"
+    " * SDCARD FW: NIPPUR72"
+    " * THANKS WOZ + APPLEFRITTER + HVSC   "
 )
 SCROLL_TEXT = (SCROLL_RAW + " " * 256)[:256]
 
@@ -716,7 +722,7 @@ def main():
     default_sid = os.path.join(os.path.dirname(__file__), '..',
         'C64Music', 'MUSICIANS', 'D', 'DJ_Space', 'Streets_of_Rage_2.sid')
     default_out = os.path.join(os.path.dirname(__file__), '..',
-        'software', 'tms9918', 'TMS_SID_Demo.bin')
+        'software', 'tms9918', 'TMS_SID_POM1_Demo.bin')
     sid_path = sys.argv[1] if len(sys.argv) > 1 else default_sid
     output_path = sys.argv[2] if len(sys.argv) > 2 else default_out
     if not os.path.exists(sid_path):

@@ -86,7 +86,7 @@ The converter is now the only bottleneck — the SID chip itself is cycle-accura
 
 ## Performance
 
-- [ ] **M6502 : dispatch `switch` monolithique** `[M · solid]` — biggest remaining CPU lever (~15-25 % in MAX speed). Current `(this->*entry.addrMode)()` + `(this->*entry.operation)()` = two indirect member-pointer calls per instruction that LTO can't devirtualise through `const OpcodeEntry&`. Replace with a large `switch (opcode)` in `run()` with bodies inlined, freeing LTO to fuse each case with its `memRead`. Requires re-checking Klaus Dormann 6502 functional tests after — hence depends on the Tests item below.
+- [ ] **M6502 : dispatch `switch` monolithique** `[M · solid]` — biggest remaining CPU lever (~15-25 % in MAX speed). Current `(this->*entry.addrMode)()` + `(this->*entry.operation)()` = two indirect member-pointer calls per instruction that LTO can't devirtualise through `const OpcodeEntry&`. Replace with a large `switch (opcode)` in `run()` with bodies inlined, freeing LTO to fuse each case with its `memRead`. Validate against `ctest` (Klaus 6502 functional test now gate this refactor — any flag/cycle regression will fail in < 2 s).
 
 - [ ] **HGR `rasterizeLine` : LUT byte → 7 pixels** `[S · solid]` — `GraphicsCard.cpp:63-84` bit-tests 280 times per dirty scanline. A `uint32_t kHgrPixels[512][7]` indexed by `(byte | group2<<8)` returns the 7 artifact colours in one load. Boundary correction (white bleeding) stays as explicit logic at the 39 inter-byte frontiers. ~2-3× speedup on dirty lines, 14 KB table, no behavioural change.
 
@@ -102,7 +102,20 @@ The converter is now the only bottleneck — the SID chip itself is cycle-accura
 
 ### Tests
 
-- [ ] **No unit tests** `[L · critical]` — refactors risk silently regressing 6502 emulation. First step: integrate [Klaus Dormann's 6502 functional tests](https://github.com/Klaus2m5/6502_65C02_functional_tests) as a smoke-test target (`ctest`). Then add GTest or Catch2 for targeted coverage (Memory bus dispatch, KeyboardController drain, SID ring buffer, Disassembler6502 opcode table). **Prerequisite for the M6502 switch-dispatch refactor** — otherwise a subtle flag-bit regression could ship undetected.
+<!-- ✓ Klaus Dormann 6502 functional test + PeripheralBus dispatch smoke
+     test landed via `ctest` (see `tests/`). M6502 core + bus dispatch are
+     now pinned. Two real bugs surfaced and were fixed on first run:
+     `PHP` wasn't setting bits 4+5 in the pushed status byte; `BRK` pushed
+     PC+1 instead of PC+2 (missing the signature-byte skip). -->
+
+- [ ] **Extend unit-test coverage beyond CPU + bus** `[M · solid]` — Klaus pins M6502 opcode/flag correctness end-to-end; the PeripheralBus smoke test pins priority ordering, enable/disable, and sniffer pass-through. The paths most likely to regress next are:
+    - **SID ring buffer (SPSC)** — concurrency between emulation and audio threads; needs 2-thread test, `std::thread` + `std::atomic` validation. Bugs here manifest as intermittent audio crackles — impossible to reproduce without a dedicated test.
+    - **`Memory::dirtyPages` coverage** — verify every `memWrite` path sets the correct page bit (bulk loaders, cassette sniffer fall-through, testMode fast-path).
+    - **`loadHexDump` parser edge cases** — inline comments, merged `data:addr` forms, `T`/`X`/`R` prefixes.
+    - **`executeATCommand` state machine** — Hayes AT sequence (`ATDT host:port`, `+++`, `ATH`) including TELNET IAC filtering.
+    - **`KeyboardController` drain semantics** — `queueKey()` from UI thread + `drainTo()` under stateMutex, lock-order invariant.
+
+    GTest or Catch2 would give the infra (parametrized cases, concurrency helpers, better failure messages), but plain `add_executable` + `assert()` works for single-threaded cases — see `tests/peripheral_bus_smoke_test.cpp` for the pattern. Add the framework only when the SID ring buffer test lands (that one genuinely needs thread orchestration).
 
 - [ ] **Parsers not fuzzed** `[M · solid]` — `loadHexDump()` and `WiFiModem::executeATCommand()` accept untested external input. LibFuzzer targets via a CMake option (`ENABLE_FUZZING`); both are self-contained parsers, easy to wrap.
 
