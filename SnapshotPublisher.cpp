@@ -17,17 +17,29 @@ void SnapshotPublisher::publish(Memory& mem, const M6502& cpu, bool cpuRunning)
     std::lock_guard<std::mutex> lock(snapshotMutex);
     EmulationSnapshot& snapshot = latestSnapshot;
 
-    // Only memcpy the 64 KB RAM image when something actually changed since
-    // the last publish. Idle Wozmon loops poll $D011/$D012 (PIA, lives in the
-    // bus dispatch — no mem[] write) so the dirty counter sits still and the
-    // snapshot data on the consumer side stays fresh from the previous copy.
-    // CPU register / peripheral snapshots below always update because they're
-    // tiny and may change without RAM mutation (e.g. PC advances, key flags).
-    const uint64_t dirty = mem.getMemoryDirtyCounter();
-    if (dirty != lastPublishedDirtyCounter) {
+    // Page-level dirty copy: Memory::memWrite sets one bit per touched page
+    // (256 B). We walk the bitmap and memcpy only the dirty pages into the
+    // snapshot's RAM mirror, then clear the bitmap so the next publish starts
+    // fresh. Contiguous runs are collapsed into a single memcpy — typical
+    // programs touch a handful of contiguous pages per frame (zero page,
+    // stack, one or two program pages), so this is usually 1-3 memcpys of
+    // a few hundred bytes each instead of a flat 64 KB copy. Idle Wozmon
+    // (PIA polling only, no mem[] writes) has `anyDirtyPage() == false` and
+    // the snapshot data stays fresh from the previous copy for free.
+    if (mem.anyDirtyPage()) {
+        const auto& pages = mem.getDirtyPages();
         const quint8* memPtr = mem.getMemoryPointer();
-        std::memcpy(snapshot.memory.data(), memPtr, 0x10000);
-        lastPublishedDirtyCounter = dirty;
+        quint8* dstPtr = snapshot.memory.data();
+        int p = 0;
+        while (p < 256) {
+            if (!pages.test(static_cast<std::size_t>(p))) { ++p; continue; }
+            const int runStart = p;
+            while (p < 256 && pages.test(static_cast<std::size_t>(p))) ++p;
+            const std::size_t offset = static_cast<std::size_t>(runStart) << 8;
+            const std::size_t length = static_cast<std::size_t>(p - runStart) << 8;
+            std::memcpy(dstPtr + offset, memPtr + offset, length);
+        }
+        mem.clearDirtyPages();
     }
     snapshot.programCounter = cpu.getProgramCounter();
     snapshot.accumulator    = cpu.getAccumulator();

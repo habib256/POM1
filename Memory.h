@@ -28,6 +28,8 @@
 #include <cstdint>
 #include <memory>
 #include <unordered_set>
+#include <bitset>
+#include <cstddef>
 #include "AudioDevice.h"
 #include "CassetteDevice.h"
 #include "SID.h"
@@ -89,14 +91,24 @@ public:
     void memWrite(quint16 address, quint8 value);
     const quint8* getMemoryPointer() const { return mem.data(); }
 
-    /// Monotonic counter incremented every time the 64 KB backing array
-    /// changes (CPU writes that land in mem[], ROM loads, hard resets, …).
-    /// SnapshotPublisher uses this to skip the 64 KB memcpy when no write
-    /// has happened since the last publish — i.e. when the CPU is idle in
-    /// a Wozmon polling loop, the snapshot bandwidth drops to zero. The
-    /// counter wraps around naturally; publish only cares about equality
-    /// with its last-seen value.
-    uint64_t getMemoryDirtyCounter() const { return memDirtyCounter; }
+    /// Page-level dirty bitmap: bit p is set if the 256-byte page starting
+    /// at $pp00 has been written since the last clearDirtyPages(). memWrite
+    /// sets exactly one bit; bulk loaders (ROM reloads, hard resets) mark
+    /// ranges via markPagesDirty() / markAllPagesDirty(). SnapshotPublisher
+    /// walks the bitmap and memcpy's only the dirty pages — a typical
+    /// running program touches ~4-8 pages per frame, so the snapshot cost
+    /// goes from 64 KB/frame to ~1-2 KB/frame.
+    const std::bitset<256>& getDirtyPages() const { return dirtyPages; }
+    bool anyDirtyPage() const { return dirtyPages.any(); }
+    void clearDirtyPages() { dirtyPages.reset(); }
+    void markAllPagesDirty() { dirtyPages.set(); }
+    void markPagesDirty(uint16_t addr, std::size_t length) {
+        if (length == 0) return;
+        const int first = addr >> 8;
+        const std::size_t lastByte = static_cast<std::size_t>(addr) + length - 1;
+        const int last = static_cast<int>(std::min<std::size_t>(lastByte >> 8, 255));
+        for (int p = first; p <= last; ++p) dirtyPages.set(static_cast<std::size_t>(p));
+    }
 
     // Callback pour l'affichage Apple 1
     void setDisplayCallback(void (*callback)(char));
@@ -182,12 +194,12 @@ private :
     // Memory itself tab
     std::vector<quint8> mem;
 
-    // Bumped every time mem[] is mutated. Hot-path increment is one ADD
-    // inside memWrite (after the early-return / strict-OOR drops). Bulk
-    // operations (loadROM, init/reset, region clears) bump it once at the
-    // end. Read by SnapshotPublisher to skip the per-frame 64 KB memcpy
-    // when nothing changed.
-    uint64_t memDirtyCounter = 1;
+    // Page-level dirty bitmap (256 pages × 256 bytes = 64 KB). memWrite
+    // sets one bit; bulk loaders mark ranges via markPagesDirty(). Consumed
+    // by SnapshotPublisher, which copies only the set pages and resets the
+    // bitmap. Initial state is all-zero — the Memory ctor's ROM loads will
+    // mark the affected pages dirty so the very first snapshot is complete.
+    std::bitset<256> dirtyPages{};
 
 
 

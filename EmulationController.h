@@ -28,6 +28,31 @@
 // via swap-out before calling setKeyPressed() with keyMutex released.
 // Never acquire stateMutex while holding a nested mutex, or the emulation
 // thread can deadlock.
+
+/// std::mutex wrapper that exposes a waiter count. In MAX speed the
+/// emulation thread reacquires stateMutex within nanoseconds of releasing
+/// it; most schedulers then re-grant it to the same thread even when the
+/// UI thread has been waiting. `waiters > 0` signals "someone else is
+/// trying to get in" — the emulation loop checks this after each slice
+/// and yields when true, so the UI can make progress on stateMutex-heavy
+/// frames. Acts like std::mutex otherwise: BasicLockable, usable with
+/// std::lock_guard<PriorityMutex>.
+class PriorityMutex {
+public:
+    void lock() {
+        waiters_.fetch_add(1, std::memory_order_relaxed);
+        mtx_.lock();
+        waiters_.fetch_sub(1, std::memory_order_relaxed);
+    }
+    void unlock() { mtx_.unlock(); }
+    bool hasWaiters() const {
+        return waiters_.load(std::memory_order_relaxed) > 0;
+    }
+private:
+    std::mutex mtx_;
+    std::atomic<int> waiters_{0};
+};
+
 class EmulationController
 {
 public:
@@ -128,7 +153,7 @@ private:
     KeyboardController keyboard;
     SnapshotPublisher publisher;
 
-    mutable std::mutex stateMutex;
+    mutable PriorityMutex stateMutex;
     std::condition_variable wakeCv;
     std::mutex wakeMutex;
 

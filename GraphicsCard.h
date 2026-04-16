@@ -17,8 +17,10 @@
  * are used, as the GEN2 card is Apple II compatible by design.
  *
  * Performance: rasterizeToBuffer() fills a 280×192 RGBA pixel buffer
- * in software. A per-scanline 32-bit hash skips redrawing rows whose
- * 40 framebuffer bytes are unchanged since the last call. The caller
+ * in software. Per-scanline memcmp against a cached copy of the previous
+ * frame's 40 framebuffer bytes skips redrawing rows that didn't change.
+ * memcmp on 40 bytes is auto-vectorised (NEON/AVX) down to a handful of
+ * cycles — much cheaper than the FNV-1a hash it replaced. The caller
  * uploads the buffer to a GL texture (one ImGui::Image draw call per
  * frame) instead of emitting ~100 k AddRectFilled per frame.
  */
@@ -59,9 +61,12 @@ private:
 
     void rasterizeLine(int y, const quint8* memory);
 
-    // 32-bit FNV-1a digest of the 40 framebuffer bytes for each scanline.
-    // 0xFFFFFFFF means "force redraw on next call" (used by invalidate()).
-    std::array<uint32_t, kHiresHeight> lineHash{};
+    // Cached copy of the previous frame's 40 framebuffer bytes per scanline.
+    // rasterizeToBuffer() memcmp's the current scanline against this and only
+    // re-rasters on mismatch, then refreshes the copy. `invalidateNext` forces
+    // one full repaint (used after invalidate()) before the diff kicks in.
+    std::array<std::array<uint8_t, 40>, kHiresHeight> lineCopy{};
+    bool invalidateNext = true;
     std::array<uint32_t, kHiresWidth * kHiresHeight> pixelBuf{};
 
     // NTSC artifact colors

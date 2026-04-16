@@ -205,13 +205,21 @@ void MemoryViewer_ImGui::renderHexView()
 
     ImGui::Separator();
 
-    // Hex data
-    for (int row = 0; row < displayRows; ++row) {
-        int address = startAddress + (row * bytesPerRow);
-        if (address > 0xFFFF) break;
+    // Hex data — ImGuiListClipper skips rendering of rows scrolled outside
+    // the child window's viewport. Each row has ~80 ImGui calls (per-cell
+    // Selectable + PushStyleColor), so at displayRows=64 the clipped-out
+    // rows used to burn ~5 000 widget operations for nothing. Clipper brings
+    // per-frame cost back down to what's actually visible.
+    const int maxRowsAddressable = (0x10000 - startAddress + bytesPerRow - 1) / bytesPerRow;
+    const int totalRows = std::max(0, std::min(displayRows, maxRowsAddressable));
+    ImGuiListClipper clipper;
+    clipper.Begin(totalRows);
+    while (clipper.Step()) {
+        for (int row = clipper.DisplayStart; row < clipper.DisplayEnd; ++row) {
+            int address = startAddress + (row * bytesPerRow);
 
-        // Row address
-        ImGui::Text("0x%04X", address);
+            // Row address
+            ImGui::Text("0x%04X", address);
 
         // Hex bytes
         char asciiLine[33]; // max bytesPerRow=32 + null
@@ -291,7 +299,8 @@ void MemoryViewer_ImGui::renderHexView()
             ImGui::SameLine(hexStartX + bytesPerRow * cellW + ImGui::GetStyle().ItemSpacing.x);
             ImGui::Text("%s", asciiLine);
         }
-    }
+        }   // end for (row)
+    }       // end while (clipper.Step())
 
     ImGui::EndChild();
 }

@@ -577,55 +577,88 @@ void Screen_ImGui::render()
         // The cursor itself is not yet active — CLRSCR hasn't wiped the registers
         // to place the lonely '@' at (0,0), so suppress the per-cell cursor override.
         const bool inPowerOnPhase = (garbageClearTimer > 0.0f);
+
+        // Build the "effective" character grid (apply cursor override + power-on
+        // pattern) — this is what would have been drawn by the straightforward
+        // 40×24 loop. Comparing this against last frame tells us whether we can
+        // re-use the cached visibleCells list.
+        std::array<char, 40 * 24> effective{};
         for (int y = 0; y < SCREEN_HEIGHT; ++y) {
             for (int x = 0; x < SCREEN_WIDTH; ++x) {
                 unsigned char c = static_cast<unsigned char>(renderBuffer[renderBufferIndex(y, x)]);
                 if (!inPowerOnPhase && blinkOn && x == renderCursorX && y == renderCursorY) {
-                    c = '@'; // NE555 oscillator toggles bit 5 → space becomes '@' in Signetics 2513
+                    c = '@';
                 }
                 if (inPowerOnPhase && !blinkOn && c == '@') {
                     c = ' ';
                 }
+                effective[y * SCREEN_WIDTH + x] = static_cast<char>(c);
+            }
+        }
 
-                const float px = rasterMin.x + static_cast<float>(x) * scaledCellW;
-                const float py = rasterMin.y + static_cast<float>(y) * scaledCellH;
+        if (useCharmapRenderer && glyphAtlasUploaded) {
+            // Rebuild the visibleCells list only when the grid content actually
+            // changed. Idle Wozmon prompts or paused BASIC keep the cache
+            // valid for many consecutive frames — the render loop then only
+            // walks the non-space cells.
+            if (!visibleCellsValid || effective != lastEffectiveGrid) {
+                visibleCells.clear();
+                for (int y = 0; y < SCREEN_HEIGHT; ++y) {
+                    for (int x = 0; x < SCREEN_WIDTH; ++x) {
+                        const unsigned char c = static_cast<unsigned char>(effective[y * SCREEN_WIDTH + x]);
+                        if (c == 0) continue;
+                        const unsigned char glyph = static_cast<unsigned char>(c & 0x7F);
+                        if (glyphIsEmpty[glyph]) continue;
+                        visibleCells.push_back({
+                            static_cast<uint16_t>(x),
+                            static_cast<uint16_t>(y),
+                            glyph
+                        });
+                    }
+                }
+                lastEffectiveGrid = effective;
+                visibleCellsValid = true;
+            }
 
-                if (useCharmapRenderer) {
-                    if (c == 0 && !blinkOn) {
-                        continue;
-                    }
-                    const unsigned char glyph = static_cast<unsigned char>(c & 0x7F);
-                    // Fast skip for visually-empty glyphs (space, '\0', etc.) —
-                    // saves the AddImage and downstream vertex fill.
-                    if (glyphAtlasUploaded && glyphIsEmpty[glyph]) {
-                        continue;
-                    }
-                    if (glyphAtlasUploaded) {
-                        const float u0 = (glyph % kAtlasCols) * uStep;
-                        const float v0 = (glyph / kAtlasCols) * vStep;
-                        drawList->AddImage(
-                            atlasTex,
-                            ImVec2(px, py),
-                            ImVec2(px + scaledCellW, py + scaledCellH),
-                            ImVec2(u0, v0),
-                            ImVec2(u0 + uStep, v0 + vStep),
-                            col);
-                    } else {
-                        // Atlas couldn't be built (charmap.rom missing / GL not
-                        // ready); fall back to the per-pixel cascade so the
-                        // screen still renders something.
+            for (const auto& cell : visibleCells) {
+                const float px = rasterMin.x + static_cast<float>(cell.x) * scaledCellW;
+                const float py = rasterMin.y + static_cast<float>(cell.y) * scaledCellH;
+                const int atlasCol = cell.glyph % kAtlasCols;
+                const int atlasRow = cell.glyph / kAtlasCols;
+                const float u0 = atlasCol * uStep;
+                const float v0 = atlasRow * vStep;
+                drawList->AddImage(
+                    atlasTex,
+                    ImVec2(px, py),
+                    ImVec2(px + scaledCellW, py + scaledCellH),
+                    ImVec2(u0, v0),
+                    ImVec2(u0 + uStep, v0 + vStep),
+                    col);
+            }
+        } else {
+            // Fallback paths: atlas not ready yet, or HostAscii mode. Each
+            // is rare (HostAscii is a debug convenience) and doesn't justify
+            // its own cache, so we walk the grid linearly.
+            visibleCellsValid = false; // force rebuild when atlas arrives
+            for (int y = 0; y < SCREEN_HEIGHT; ++y) {
+                for (int x = 0; x < SCREEN_WIDTH; ++x) {
+                    unsigned char c = static_cast<unsigned char>(effective[y * SCREEN_WIDTH + x]);
+                    const float px = rasterMin.x + static_cast<float>(x) * scaledCellW;
+                    const float py = rasterMin.y + static_cast<float>(y) * scaledCellH;
+                    if (useCharmapRenderer) {
+                        if (c == 0) continue;
+                        const unsigned char glyph = static_cast<unsigned char>(c & 0x7F);
                         drawCharmapGlyph(drawList, px, py, scaledCellW, scaledCellH, glyph, col, true);
+                    } else {
+                        if (c == 0) c = ' ';
+                        if (c == ' ') continue;
+                        const float hostTextScale = textScale * hostAsciiGlyphScale;
+                        const float charOffsetX = (scaledCellW - charSize.x * hostTextScale) * 0.5f;
+                        const float charOffsetY = (scaledCellH - charSize.y * hostTextScale) * 0.5f + scaledCellH * 0.08f;
+                        char str[2] = { static_cast<char>(c), 0 };
+                        drawList->AddText(ImGui::GetFont(), ImGui::GetFontSize() * hostTextScale,
+                                          ImVec2(px + charOffsetX, py + charOffsetY), col, str);
                     }
-                } else {
-                    if (c == 0) c = ' ';
-                    if (c == ' ') continue;
-
-                    const float hostTextScale = textScale * hostAsciiGlyphScale;
-                    const float charOffsetX = (scaledCellW - charSize.x * hostTextScale) * 0.5f;
-                    const float charOffsetY = (scaledCellH - charSize.y * hostTextScale) * 0.5f + scaledCellH * 0.08f;
-                    char str[2] = { static_cast<char>(c), 0 };
-                    drawList->AddText(ImGui::GetFont(), ImGui::GetFontSize() * hostTextScale,
-                                      ImVec2(px + charOffsetX, py + charOffsetY), col, str);
                 }
             }
         }

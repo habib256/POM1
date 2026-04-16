@@ -234,7 +234,7 @@ void Memory::initMemory(){
     } else {
         std::fill(mem.begin(), mem.end(), 0);
     }
-    ++memDirtyCounter;
+    markAllPagesDirty();
     loadBasic();
     loadAciRom();
     loadWozMonitor();
@@ -259,7 +259,7 @@ void Memory::resetMemory(void)
     {
         mem[i]=0;
     }
-    ++memDirtyCounter;
+    markAllPagesDirty();
     cassetteDevice->reset();
     tms9918->reset();
     sid->reset();
@@ -279,7 +279,7 @@ void Memory::configureResetVectors(quint16 vectorAddress)
     mem[0xFFFD] = static_cast<quint8>((vectorAddress >> 8) & 0xFF);
     mem[0xFFFE] = static_cast<quint8>(vectorAddress & 0xFF);
     mem[0xFFFF] = static_cast<quint8>((vectorAddress >> 8) & 0xFF);
-    ++memDirtyCounter;
+    markPagesDirty(0xFFFA, 6);
 }
 
 void Memory::setWriteInRom(bool b)
@@ -334,7 +334,7 @@ int Memory::loadROM(const char* filename, quint16 startAddress, size_t maxSize, 
     for (size_t i = 0; i < fileContent.size(); ++i) {
         mem[startAddress + i] = (quint8)fileContent[i];
     }
-    ++memDirtyCounter;
+    markPagesDirty(startAddress, fileContent.size());
     {
         std::ostringstream oss;
         oss << label << " loaded to 0x" << std::hex << std::uppercase << startAddress
@@ -385,7 +385,7 @@ int Memory::loadAciRom(void)
     for (size_t i = 0; i < sizeof(kAciRom); ++i) {
         mem[0xC100 + i] = kAciRom[i];
     }
-    ++memDirtyCounter;
+    markPagesDirty(0xC100, sizeof(kAciRom));
     lastError.clear();
     pom1::log().info("Mem", "ACI ROM loaded from built-in fallback to 0xC100: " +
                             std::to_string(sizeof(kAciRom)) + " bytes");
@@ -420,7 +420,7 @@ int Memory::loadBinary(const char* filename, quint16 startAddress, int* bytesLoa
     for (size_t i = 0; i < fileContent.size(); ++i) {
         mem[startAddress + i] = (quint8)fileContent[i];
     }
-    ++memDirtyCounter;
+    markPagesDirty(startAddress, fileContent.size());
     if (bytesLoaded) *bytesLoaded = static_cast<int>(fileContent.size());
     {
         std::ostringstream oss;
@@ -573,7 +573,10 @@ int Memory::loadHexDump(const char* filename, quint16 &startAddress, int* bytesL
         startAddress = runAddr;
 
     if (bytesLoaded) *bytesLoaded = totalBytes;
-    if (totalBytes > 0) ++memDirtyCounter;
+    // Hex dumps scatter writes across arbitrary pages via currentAddr; the
+    // precise range isn't tracked here, so fall back to "everything might
+    // have changed". Hex-dump loading is a user action (rare), not a hot path.
+    if (totalBytes > 0) markAllPagesDirty();
     {
         std::ostringstream oss;
         oss << "Hex dump loaded: " << std::filesystem::path(filename).filename().string()
@@ -697,7 +700,7 @@ void Memory::memWrite(quint16 address, quint8 value)
         }
     }
     mem[address] = value;
-    ++memDirtyCounter;
+    dirtyPages.set(static_cast<std::size_t>(address >> 8));
 }
 
 void Memory::setDisplayCallback(void (*callback)(char))
@@ -771,7 +774,7 @@ void Memory::setMicroSDEnabled(bool b)
     } else {
         // Clear the ROM region (restore to RAM)
         std::fill(mem.begin() + 0x8000, mem.begin() + 0xA000, 0);
-        ++memDirtyCounter;
+        markPagesDirty(0x8000, 0x2000);
     }
 }
 
@@ -789,7 +792,7 @@ int Memory::loadSDCardRom()
     // Clear region first — ROM file (8177 B) may not fill the full 8 KB space
     std::fill(mem.begin() + 0x8000, mem.begin() + 0xA000, 0);
     int ret = loadROM("sdcard.rom", 0x8000, 0x2000, "SD CARD OS");
-    ++memDirtyCounter;
+    markPagesDirty(0x8000, 0x2000);
     writeInRom = prev;
     return ret;
 }
@@ -807,7 +810,7 @@ void Memory::setCFFA1Enabled(bool b)
     } else {
         // Clear the CFFA1 ROM region
         std::fill(mem.begin() + 0x9000, mem.begin() + 0xB000, 0);
-        ++memDirtyCounter;
+        markPagesDirty(0x9000, 0x2000);
     }
 }
 

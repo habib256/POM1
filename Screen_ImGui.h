@@ -121,6 +121,16 @@ private:
     void buildGlyphAtlas();
     void destroyGlyphAtlas();
 
+    // Cached list of on-screen non-empty glyphs. render() rebuilds it only when
+    // the effective character grid (screenBuffer + cursor override + power-on
+    // phase) changes between frames; otherwise the per-frame loop just walks
+    // this vector and emits ~100-200 AddImage calls instead of scanning all
+    // 40×24 = 960 cells (most of which are space in typical Apple-1 output).
+    struct VisibleCell { uint16_t x; uint16_t y; unsigned char glyph; };
+    std::vector<VisibleCell> visibleCells;
+    std::array<char, 40 * 24> lastEffectiveGrid{};
+    bool visibleCellsValid = false;
+
     // Map logical row (0..23) to buffer index accounting for circular offset
     int bufferIndex(int logicalY, int x) const {
         return ((topRow + logicalY) % SCREEN_HEIGHT) * SCREEN_WIDTH + x;

@@ -1,5 +1,6 @@
 #include "GraphicsCard.h"
 #include <algorithm>
+#include <cstring>
 
 GraphicsCard::GraphicsCard()
 {
@@ -12,7 +13,7 @@ void GraphicsCard::invalidate()
     // buffer. The pixel buffer itself is left zeroed (default-constructed),
     // matching the "card just powered on, framebuffer is whatever junk
     // happens to be in $2000" semantics — the next call will overwrite it.
-    lineHash.fill(0xFFFFFFFFu);
+    invalidateNext = true;
 }
 
 uint16_t GraphicsCard::scanlineAddress(int y)
@@ -84,25 +85,19 @@ void GraphicsCard::rasterizeLine(int y, const quint8* memory)
 
 bool GraphicsCard::rasterizeToBuffer(const quint8* memory)
 {
+    // Plain memcmp against the per-line 40-byte cache from the previous frame.
+    // resolveColor() only inspects neighbours within the same row, so a row's
+    // pixels are fully determined by its 40 framebuffer bytes — a byte-for-
+    // byte compare is both correct and the cheapest diff available (the
+    // compiler + libc vectorise 40-byte memcmp to a couple of SIMD loads).
+    const bool forceAll = invalidateNext;
+    invalidateNext = false;
     bool anyChanged = false;
     for (int y = 0; y < kHiresHeight; ++y) {
-        // FNV-1a over the 40 framebuffer bytes for this scanline.
-        // We also fold in the previous and next scanline's first/last bytes
-        // because resolveColor() looks at lineAddr ± 1 for artifact-colour
-        // continuation; without that, a write to col 39 of line N could
-        // leave line N's hash unchanged even though col 0 of line N+1 (no,
-        // resolveColor only looks within the same line — neighbours are
-        // *within* the row). Single-row hash is sufficient.
         const uint16_t lineAddr = scanlineAddress(y);
         const quint8* src = memory + lineAddr;
-        uint32_t h = 0x811C9DC5u; // FNV-1a offset basis
-        for (int i = 0; i < 40; ++i) {
-            h ^= src[i];
-            h *= 0x01000193u;
-        }
-
-        if (h != lineHash[y]) {
-            lineHash[y] = h;
+        if (forceAll || std::memcmp(src, lineCopy[y].data(), 40) != 0) {
+            std::memcpy(lineCopy[y].data(), src, 40);
             rasterizeLine(y, memory);
             anyChanged = true;
         }

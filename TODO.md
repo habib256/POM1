@@ -62,7 +62,10 @@ The converter is now the only bottleneck — the SID chip itself is cycle-accura
 ## Technical debt & code quality
 
 ### Performance
-- [ ] **64 KB RAM `memcpy` per dirty tick** — `SnapshotPublisher::publish()` now skips the 64 KB copy when `Memory::getMemoryDirtyCounter()` is unchanged (idle Wozmon = no copy) and also skips TMS9918's 16 KB when unplugged. Remaining cost: any running program bumps the counter every write, so the 64 KB copy still runs every frame during execution. Further reduction would require page-level dirty tracking in `Memory::memWrite`. Likely not worth the complexity.
+<!-- Resolved: page-level dirty tracking landed. `Memory::memWrite` sets a bit
+     per 256 B page in `dirtyPages`; SnapshotPublisher copies only dirty runs
+     → ~1-2 KB/frame during execution instead of 64 KB. See CLAUDE.md. -->
+
 
 ### Architecture
 - [ ] **Static `Screen_ImGui::displayCallback`** couples UI to emulation. → `DisplayDevice` interface injected into `Memory`; `Screen_ImGui` implements it.
