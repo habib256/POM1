@@ -245,12 +245,14 @@ void MainWindow_ImGui::render()
 
     // Dialogues
     if (showAbout) renderAboutDialog();
+    if (showSpecialThanks) renderSpecialThanksWindow();
     if (showHardwareReference) renderHardwareReferenceWindow();
     if (showScreenConfig) renderScreenConfigDialog();
     if (showMemoryConfig) renderMemoryConfigDialog();
     if (showLoadDialog) renderLoadDialog();
     if (showLoadTapeDialog) renderLoadTapeDialog();
     if (showCassetteControl) renderCassetteControlWindow();
+    if (showCassetteDeck) renderCassetteDeckWindow();
     if (showSaveDialog) renderSaveDialog();
     if (showSaveTapeDialog) renderSaveTapeDialog();
     if (graphicsCardEnabled && showGraphicsCard) renderGraphicsCardWindow();
@@ -315,6 +317,7 @@ void MainWindow_ImGui::hardReset()
 {
     emulation->hardReset();
     if (screen) screen->resetDisplay(); // replay shift-register power-on pattern
+    cassetteDeck.reset();
     loadedPrograms.clear();
     loadedRoms.clear();
     loadedRoms.push_back({"Integer BASIC", 0xE000, 0xEFFF});

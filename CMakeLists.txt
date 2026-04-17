@@ -42,6 +42,7 @@ set(SOURCES
     A1IO_RTC.cpp
     AudioDevice.cpp
     CassetteDevice.cpp
+    CassetteDeck_ImGui.cpp
     EmulationController.cpp
     GraphicsCard.cpp
     main_imgui.cpp
@@ -76,6 +77,7 @@ set(HEADERS
     A1IO_RTC.h
     AudioDevice.h
     CassetteDevice.h
+    CassetteDeck_ImGui.h
     CpuClock.h
     EmulationController.h
     GraphicsCard.h

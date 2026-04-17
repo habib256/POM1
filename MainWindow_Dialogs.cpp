@@ -1,7 +1,7 @@
 // Pom1 Apple 1 Emulator
 // Copyright (C) 2000-2026 Verhille Arnaud
 //
-// MainWindow_Dialogs.cpp — modal-style dialogs and reference windows that
+// MainWindow_Dialogs.cpp - modal-style dialogs and reference windows that
 // don't fit cleanly into Hardware/Debug/File buckets: About, Hardware
 // Reference, Display Settings, Memory Settings.
 
@@ -41,6 +41,9 @@
 
 #define STB_IMAGE_IMPLEMENTATION
 #include "third_party/stb/stb_image.h"
+
+// Dear ImGui default font atlas: avoid Unicode en/em dash (U+2013/U+2014) in on-screen
+// strings here - they show as "?". Use ASCII '-' for dashes in dialog/window text.
 
 namespace {
 using namespace pom1::mainwindow::detail;
@@ -154,6 +157,7 @@ void MainWindow_ImGui::renderAboutDialog()
     if (ImGui::Begin("About POM1", &showAbout, ImGuiWindowFlags_AlwaysAutoResize)) {
         ImGui::TextWrapped("POM1 v1.8.1 - Apple 1 Emulator (Dear ImGui)");
         ImGui::TextWrapped("Celebrating 50 years of Apple (1976-2026)");
+        ImGui::TextWrapped("Author: Arnaud VERHILLE - original POM1 (Java, 2000); Dear ImGui port (2026)");
         ImGui::TextWrapped("Copyright (C) 2000-2026 - GPL-3.0");
         ImGui::Separator();
 
@@ -168,14 +172,35 @@ void MainWindow_ImGui::renderAboutDialog()
         }
 
         ImGui::Spacing();
-        ImGui::TextWrapped("Authors:");
-        ImGui::BulletText("Arnaud VERHILLE - original POM1 (Java, 2000) & Dear ImGui port (2026)");
+        ImGui::TextWrapped("Resources:");
+        ImGui::BulletText("apple1software.com - Apple 1 software archive");
+        ImGui::BulletText("applefritter.com/apple1 - Apple 1 community hub");
+        ImGui::BulletText("p-l4b.github.io - P-LAB hardware reference");
+    }
+    ImGui::End();
+}
+
+void MainWindow_ImGui::renderSpecialThanksWindow()
+{
+    ImGuiIO& io = ImGui::GetIO();
+    ImGui::SetNextWindowSize(ImVec2(560.0f, io.DisplaySize.y * 0.58f), ImGuiCond_FirstUseEver);
+    ImGui::SetNextWindowPos(ImVec2(io.DisplaySize.x * 0.22f, io.DisplaySize.y * 0.12f), ImGuiCond_FirstUseEver);
+    if (ImGui::Begin("Special Thanks to", &showSpecialThanks)) {
+        ImGui::TextWrapped(
+            "Contributors to earlier POM1 ports and everyone who helped make this emulation possible.");
+        ImGui::Separator();
+        ImGui::BeginChild("special_thanks_scroll", ImVec2(0, 0), true);
+        ImGui::TextWrapped("Ports of POM1");
+        ImGui::Spacing();
         ImGui::BulletText("Ken WESSEN - upgrades, 65C02 support (2006)");
         ImGui::BulletText("Joe CROBAK - macOS Cocoa port");
         ImGui::BulletText("John D. CORRADO - C/SDL port (2006-2014)");
 
         ImGui::Spacing();
-        ImGui::TextWrapped("Thanks to:");
+        ImGui::Separator();
+        ImGui::Spacing();
+        ImGui::TextWrapped("Special thanks to");
+        ImGui::Spacing();
         ImGui::BulletText("Steve WOZNIAK & Steve JOBS - for the Apple 1");
         ImGui::BulletText("Claudio PARMIGIANI (P-LAB) - designer of the entire P-LAB Apple-1 expansion family");
         ImGui::BulletText("Antonino PORCINO (Nippur72) - apple1-videocard-lib & apple1-sdcard firmware");
@@ -185,12 +210,7 @@ void MainWindow_ImGui::renderAboutDialog()
         ImGui::BulletText("Lee DAVISON - Enhanced BASIC");
         ImGui::BulletText("Achim BREIDENBACH - Sim6502");
         ImGui::BulletText("Fabrice FRANCES - Java Microtan Emulator");
-
-        ImGui::Spacing();
-        ImGui::TextWrapped("Resources:");
-        ImGui::BulletText("apple1software.com - Apple 1 software archive");
-        ImGui::BulletText("applefritter.com/apple1 - Apple 1 community hub");
-        ImGui::BulletText("p-l4b.github.io - P-LAB hardware reference");
+        ImGui::EndChild();
     }
     ImGui::End();
 }
@@ -244,7 +264,7 @@ Expansion cards (menu Hardware)
 Assembling with cc65 (examples)
   ca65 -o build/program.o software/program.asm
   ld65 -C software/apple1.cfg -o build/program.bin build/program.o
-  GEN2 programs: software/hgr/apple1_gen2.cfg (reserves $2000–$3FFF)
+  GEN2 programs: software/hgr/apple1_gen2.cfg (reserves $2000-$3FFF)
 
 Full feature list, ROM table, and shortcuts: README.md in the repository.
 )hwref";

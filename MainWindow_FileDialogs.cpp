@@ -266,6 +266,24 @@ void MainWindow_ImGui::renderLoadTapeDialog()
     ImGui::End();
 }
 
+void MainWindow_ImGui::renderCassetteDeckWindow()
+{
+    const float dt = ImGui::GetIO().DeltaTime;
+    auto result = cassetteDeck.render("Apple-1 Cassette Deck",
+                                      showCassetteDeck,
+                                      emulation.get(),
+                                      uiSnapshot,
+                                      dt);
+    if (!result.statusMessage.empty()) {
+        setStatusMessage(result.statusMessage, 2.5f);
+        // Refresh the snapshot after transport actions so the deck reflects
+        // the device's new state immediately (e.g. cassettePlaybackActive).
+        emulation->copySnapshot(uiSnapshot);
+    }
+    if (result.requestLoadDialog) showLoadTapeDialog = true;
+    if (result.requestSaveDialog) showSaveTapeDialog = true;
+}
+
 void MainWindow_ImGui::renderCassetteControlWindow()
 {
     ImGui::SetNextWindowSize(ImVec2(460, 320), ImGuiCond_FirstUseEver);

@@ -36,7 +36,10 @@ void MainWindow_ImGui::renderMenuBar()
                 saveMemory();
             }
             ImGui::Separator();
-            ImGui::MenuItem("Cassette Player", nullptr, &showCassetteControl);
+            ImGui::MenuItem("Cassette Deck", nullptr, &showCassetteDeck);
+            if (ImGui::IsItemHovered())
+                ImGui::SetTooltip("Realistic procedural cassette deck.\nPiano keys, mechanical counter, live transport.");
+            ImGui::MenuItem("Cassette Controls (classic)", nullptr, &showCassetteControl);
             ImGui::Separator();
             if (ImGui::MenuItem("Paste Code", shortcutLabel(GLFW_KEY_V, GLFW_MOD_CONTROL))) {
                 pasteCode();
@@ -217,6 +220,10 @@ void MainWindow_ImGui::renderMenuBar()
 
         if (ImGui::BeginMenu("Help")) {
             ImGui::MenuItem("Hardware Reference", nullptr, &showHardwareReference);
+            if (ImGui::BeginMenu("Special Thanks to")) {
+                ImGui::MenuItem("Ports & acknowledgements", nullptr, &showSpecialThanks);
+                ImGui::EndMenu();
+            }
             if (ImGui::MenuItem("About")) {
                 about();
             }

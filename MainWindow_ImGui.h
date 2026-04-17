@@ -13,6 +13,7 @@
 #include "Screen_ImGui.h"
 #include "GraphicsCard.h"
 #include "TMS9918.h"
+#include "CassetteDeck_ImGui.h"
 
 class MainWindow_ImGui
 {
@@ -58,13 +59,15 @@ private:
     bool showMemoryViewer = false;
     bool showDebugger = false;
     bool showAbout = false;
+    bool showSpecialThanks = false;
     bool showHardwareReference = false;
     bool showScreenConfig = false;
     bool showMemoryConfig = false;
     bool showLoadDialog = false;
     bool showLoadTapeDialog = false;
     bool aciEnabled = true;   // Woz ACI cassette interface plugged (default on)
-    bool showCassetteControl = false;
+    bool showCassetteControl = false;  // Legacy utilitarian controls
+    bool showCassetteDeck = false;     // Realistic procedural cassette deck
     bool showMemoryMap = false;
     bool showSaveDialog = false;
     bool showSaveTapeDialog = false;
@@ -128,6 +131,7 @@ private:
     // Dialog functions
     void renderAboutDialog();
     void ensureAboutPhotoTexture();
+    void renderSpecialThanksWindow();
     void renderHardwareReferenceWindow();
     void renderDebugDialog();
     void renderScreenConfigDialog();
@@ -135,6 +139,7 @@ private:
     void renderLoadDialog();
     void renderLoadTapeDialog();
     void renderCassetteControlWindow();
+    void renderCassetteDeckWindow();
     void renderMemoryMapWindow();
     void renderSaveDialog();
     void renderSaveTapeDialog();
@@ -241,6 +246,7 @@ private:
     TapeDialogState saveTapeDlg;
 
     GraphicsCard graphicsCard;
+    pom1::CassetteDeck_ImGui cassetteDeck;
 
     // Keyboard shortcuts — single source of truth for label + binding
     struct Shortcut {
