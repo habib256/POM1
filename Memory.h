@@ -159,6 +159,16 @@ public:
     void setACIEnabled(bool b);
     bool isACIEnabled() const { return aciEnabled; }
 
+    // Cassette audio source registration on the audio mixer. Separate from
+    // setACIEnabled() because the audio output (speaker you hear) belongs
+    // to the tape deck itself, not the $C000/$C081 cassette interface
+    // hooks. Deferred at boot the same way the SID is: a card added to
+    // the mixer before the CPU has run any cycle stays silent on the
+    // first playback. Idempotent.
+    void activateCassetteAudioSource();
+    void deactivateCassetteAudioSource();
+    bool isCassetteAudioActive() const { return cassetteAudioActive; }
+
     // P-LAB Graphic Card (TMS9918 VDP)
     TMS9918& getTMS9918() { return *tms9918; }
     const TMS9918& getTMS9918() const { return *tms9918; }
@@ -250,7 +260,14 @@ private :
     bool writeInRom;
     std::string lastError;
     std::unique_ptr<CassetteDevice> cassetteDevice;
-    bool aciEnabled = true;           // false on a bare-4K Apple-1 (pre-ACI)
+    // All expansion cards start UNPLUGGED. MainWindow::applyMachineConfig
+    // re-plugs them 15 frames after the CPU has been running — plugging a
+    // card (especially audio-source cards like SID and the cassette deck)
+    // before the CPU has issued any cycle produces silent / broken cards
+    // that only recover when the user toggles them manually. See the
+    // pendingCardEnableFrames rationale in MainWindow_ImGui.h.
+    bool aciEnabled = false;
+    bool cassetteAudioActive = false;
     std::unique_ptr<TMS9918> tms9918;
     bool tms9918Enabled = false;
     // NOTE on destruction order: AudioDevice must outlive every AudioSource
@@ -265,13 +282,13 @@ private :
     bool sidSpecialEditionEnabled = false;
     std::unique_ptr<AudioDevice> audioDevice;
     std::unique_ptr<MicroSD> microSD;
-    bool microSDEnabled = true;
+    bool microSDEnabled = false;
     std::unique_ptr<CFFA1> cffa1;
     bool cffa1Enabled = false;
     std::unique_ptr<WiFiModem> wifiModem;
     bool wifiModemEnabled = false;
     std::unique_ptr<TerminalCard> terminalCard;
-    bool terminalCardEnabled = !POM1_IS_WASM;
+    bool terminalCardEnabled = false;
     std::unique_ptr<A1IO_RTC> a1ioRtc;
     bool a1ioRtcEnabled = false;
 

@@ -220,10 +220,8 @@ void MainWindow_ImGui::renderMenuBar()
 
         if (ImGui::BeginMenu("Help")) {
             ImGui::MenuItem("Hardware Reference", nullptr, &showHardwareReference);
-            if (ImGui::BeginMenu("Special Thanks to")) {
-                ImGui::MenuItem("Ports & acknowledgements", nullptr, &showSpecialThanks);
-                ImGui::EndMenu();
-            }
+            ImGui::MenuItem("Software Reference", nullptr, &showSoftwareReference);
+            ImGui::MenuItem("Ports & acknowledgements", nullptr, &showSpecialThanks);
             if (ImGui::MenuItem("About")) {
                 about();
             }

@@ -69,7 +69,12 @@ Memory::Memory()
     cassetteDevice = std::make_unique<CassetteDevice>();
     cassetteDevice->setAudioAvailable(audioDevice->isAvailable());
     cassetteDevice->setAudioOutputSampleRate(actualRate);
-    audioDevice->addSource(cassetteDevice.get());
+    // NOTE: no addSource here. The cassette is registered on the mixer
+    // via activateCassetteAudioSource() which MainWindow calls 15 frames
+    // after the CPU starts, matching the SID deferred-plug rule. Adding
+    // the source here (before the CPU has run) was producing silent
+    // first-tape playback — same symptom as the early SID boot-silence.
+    // See pendingCardEnableFrames in MainWindow_ImGui.h.
     tms9918 = std::make_unique<TMS9918>();
     sid = std::make_unique<pom1::SID>(static_cast<int>(actualRate));
     microSD = std::make_unique<MicroSD>();
@@ -224,6 +229,20 @@ void Memory::setACIEnabled(bool b)
     }
 }
 
+void Memory::activateCassetteAudioSource()
+{
+    if (cassetteAudioActive) return;
+    audioDevice->addSource(cassetteDevice.get());
+    cassetteAudioActive = true;
+}
+
+void Memory::deactivateCassetteAudioSource()
+{
+    if (!cassetteAudioActive) return;
+    audioDevice->removeSource(cassetteDevice.get());
+    cassetteAudioActive = false;
+}
+
 void Memory::setA1IO_RTCEnabled(bool b)
 {
     a1ioRtcEnabled = b;
@@ -276,7 +295,9 @@ void Memory::initMemory(){
     if (aciEnabled) loadAciRom();
     loadWozMonitor();
     loadSDCardRom();
-    microSDEnabled = true;
+    // microSDEnabled stays false here — MainWindow's applyMachineConfig
+    // is the single source of truth for which cards are plugged, and it
+    // defers every plug by 15 frames after CPU startup.
     cassetteDevice->reset();
     tms9918->reset();
     // resetChip() (not full reset()) — when the SID is registered as an

@@ -187,16 +187,29 @@ void MainWindow_ImGui::applyMachineConfig(int presetIndex)
     // Show POM1 banner only for the last preset (POM1 Fantasy)
     screen->setShowBanner(presetIndex == kMachinePresetCount - 1);
 
-    // Unplug both SID variants up front — cleans any lingering state from
-    // the previous preset (source off the mixer, chip + ring fully reset).
-    // The ACTUAL re-plug is deferred below via pendingSidEnableFrames so
-    // the SID starts a few frames after the CPU has been running: plugging
-    // the SID in the same frame as the preset apply catches the chip
-    // before it can pick up audible writes, and the first tune loaded
-    // stays silent until the user manually toggles the card. Deferring
-    // the plug past the frame lets the CPU settle and fixes that.
+    // Unplug EVERY expansion card up front — cleans any lingering state
+    // from the previous preset (sources off the mixer, chips + rings
+    // fully reset, TCP listeners closed, bus handles disabled). The
+    // actual re-plug is deferred below via pendingCardEnableFrames so
+    // each card starts ~15 frames after the CPU has been running: when
+    // cards are re-plugged in the same frame as applyMachineConfig, the
+    // peripherals latch onto the mixer / bus before the CPU has issued
+    // any cycle and can miss their first register writes (silent SID,
+    // silent cassette playback, dead WiFi modem etc.) until a manual
+    // toggle. Deferring past a few thousand CPU cycles fixes that
+    // uniformly for every card.
     emulation->setSIDEnabled(false);
     emulation->setSIDSpecialEditionEnabled(false);
+    emulation->setACIEnabled(false);
+    emulation->deactivateCassetteAudioSource();
+    emulation->setMicroSDEnabled(false);
+    emulation->setCFFA1Enabled(false);
+    emulation->setTMS9918Enabled(false);
+    emulation->setA1IO_RTCEnabled(false);
+    emulation->setWiFiModemEnabled(false);
+#if !POM1_IS_WASM
+    emulation->setTerminalCardEnabled(false);
+#endif
 
     // Skip the full hard reset on the very first invocation — at that
     // point Memory::Memory() has just run initMemory() (default ROMs +
@@ -219,50 +232,49 @@ void MainWindow_ImGui::applyMachineConfig(int presetIndex)
     presetRamKB = cfg.ramKB;
     emulation->setPresetRamKB(cfg.ramKB);
 
-    // Apple Cassette Interface — unplugged only for the bare-4K preset.
-    aciEnabled = cfg.aci;
-    emulation->setACIEnabled(cfg.aci);
-
-    // Hardware flags (enabled = plugged in, show = window open)
-    graphicsCardEnabled = cfg.graphicsCard;
-    showGraphicsCard    = false;
-
-    microSDEnabled = cfg.microSD;
-    emulation->setMicroSDEnabled(cfg.microSD);
-
-    cffa1Enabled = cfg.cffa1;
-    emulation->setCFFA1Enabled(cfg.cffa1);
-
-    // SID plug is deferred: setSIDEnabled(false) ran in the unplug block
-    // above; the actual plug (if the preset wants the card) fires a few
-    // frames later from render() via pendingSidEnableFrames. See the
-    // comment on that field in MainWindow_ImGui.h for the rationale.
-    // Both SID variants share the same deferred-plug slot — they can't be
-    // plugged together (one chip, mutually exclusive MachineConfig fields).
-    sidEnabled = cfg.sid;
+    // UI flags reflect the preset's target state immediately (the menu
+    // checkmarks and toolbar chips are driven by these). The actual
+    // peripheral plug is queued below via pendingXxxEnable and fires
+    // kCardEnableDeferFrames frames later from render() once the CPU
+    // has been executing for ~200 ms.
+    aciEnabled               = cfg.aci;
+    graphicsCardEnabled      = cfg.graphicsCard;
+    showGraphicsCard         = false;
+    microSDEnabled           = cfg.microSD;
+    cffa1Enabled             = cfg.cffa1;
+    sidEnabled               = cfg.sid;
     sidSpecialEditionEnabled = cfg.sidSpecialEdition;
-    pendingSidEnable = cfg.sid;
-    pendingSidSEEnable = cfg.sidSpecialEdition;
-    pendingSidEnableFrames = (cfg.sid || cfg.sidSpecialEdition) ? kSidEnableDeferFrames : 0;
-
-    tms9918Enabled = cfg.tms9918;
-    emulation->setTMS9918Enabled(cfg.tms9918);
-    showTMS9918 = false;
-
-    a1ioRtcEnabled = cfg.a1ioRtc;
-    emulation->setA1IO_RTCEnabled(cfg.a1ioRtc);
-    showA1IO_RTC = false;
-
-    wifiModemEnabled = cfg.wifiModem;
-    emulation->setWiFiModemEnabled(cfg.wifiModem);
-    showWiFiModem = false;
-
+    tms9918Enabled           = cfg.tms9918;
+    showTMS9918              = false;
+    a1ioRtcEnabled           = cfg.a1ioRtc;
+    showA1IO_RTC             = false;
+    wifiModemEnabled         = cfg.wifiModem;
+    showWiFiModem            = false;
 #if !POM1_IS_WASM
-    // Terminal Card requires a TCP server — desktop only.
-    terminalCardEnabled = cfg.terminalCard;
-    emulation->setTerminalCardEnabled(cfg.terminalCard);
-    showTerminalCard = false;
+    terminalCardEnabled      = cfg.terminalCard;
+    showTerminalCard         = false;
 #endif
+
+    // Stash deferred plug intents. Every card that needs to be on for
+    // this preset is queued here; the single pendingCardEnableFrames
+    // counter below drives them all. Cassette audio source is always
+    // re-plugged — CassetteDevice exists independently of the ACI and
+    // produces the audible tape output through the mixer.
+    pendingAciEnable            = cfg.aci;
+    pendingMicroSDEnable        = cfg.microSD;
+    pendingCffa1Enable          = cfg.cffa1;
+    pendingSidEnable            = cfg.sid;
+    pendingSidSEEnable          = cfg.sidSpecialEdition;
+    pendingTms9918Enable        = cfg.tms9918;
+    pendingA1ioRtcEnable        = cfg.a1ioRtc;
+    pendingWifiModemEnable      = cfg.wifiModem;
+#if !POM1_IS_WASM
+    pendingTerminalCardEnable   = cfg.terminalCard;
+#else
+    pendingTerminalCardEnable   = false;
+#endif
+    pendingCassetteAudioActive  = true;
+    pendingCardEnableFrames     = kCardEnableDeferFrames;
 
     // Load the appropriate BASIC ROM for this preset and track in loadedRoms
     {

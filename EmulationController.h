@@ -108,6 +108,14 @@ public:
     void setACIEnabled(bool enabled);
     bool isACIEnabled() const;
 
+    // CassetteDevice audio source registration on the mixer. Separate
+    // from the ACI plug because the audible playback belongs to the tape
+    // deck, not the $C000/$C081 hooks. Deferred by MainWindow 15 frames
+    // after CPU startup — adding the source before the CPU has run
+    // reproduces the SID boot-silence bug on tapes.
+    void activateCassetteAudioSource();
+    void deactivateCassetteAudioSource();
+
     // P-LAB TMS9918 Graphic Card
     void setTMS9918Enabled(bool enabled);
     bool isTMS9918Enabled() const;

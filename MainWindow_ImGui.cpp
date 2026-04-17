@@ -97,16 +97,26 @@ void MainWindow_ImGui::render()
     emulation->copySnapshot(uiSnapshot);
     cpuRunning = uiSnapshot.cpuRunning;
 
-    // Deferred A1-SID plug (see MainWindow_ImGui.h for rationale). When
-    // applyMachineConfig() wants the SID plugged in, it stashes the
-    // desired state here and counts down in frames so the CPU gets a
-    // head start on register init before the chip joins the mixer. The
-    // prototype ($C800) and A1-AUDIO Special Edition ($CC00) are mutually
-    // exclusive at the preset level but share the same defer slot.
-    if (pendingSidEnableFrames > 0) {
-        if (--pendingSidEnableFrames == 0) {
-            if (pendingSidEnable)   emulation->setSIDEnabled(true);
-            if (pendingSidSEEnable) emulation->setSIDSpecialEditionEnabled(true);
+    // Deferred expansion-card plug (see MainWindow_ImGui.h for the full
+    // rationale). Every card is unplugged up front in applyMachineConfig
+    // (or at boot) and re-plugged here after the CPU has run ~200 ms —
+    // plugging a card before the CPU has issued any cycle reliably
+    // produced silent / broken cards that only recovered on a manual
+    // toggle. The two SID variants share one slot (mutually exclusive
+    // by preset). The cassette deck's audio source is registered here
+    // too for the same reason (silent first-tape playback).
+    if (pendingCardEnableFrames > 0) {
+        if (--pendingCardEnableFrames == 0) {
+            if (pendingCassetteAudioActive)  emulation->activateCassetteAudioSource();
+            if (pendingAciEnable)            emulation->setACIEnabled(true);
+            if (pendingMicroSDEnable)        emulation->setMicroSDEnabled(true);
+            if (pendingCffa1Enable)          emulation->setCFFA1Enabled(true);
+            if (pendingSidEnable)            emulation->setSIDEnabled(true);
+            if (pendingSidSEEnable)          emulation->setSIDSpecialEditionEnabled(true);
+            if (pendingTms9918Enable)        emulation->setTMS9918Enabled(true);
+            if (pendingA1ioRtcEnable)        emulation->setA1IO_RTCEnabled(true);
+            if (pendingTerminalCardEnable)   emulation->setTerminalCardEnabled(true);
+            if (pendingWifiModemEnable)      emulation->setWiFiModemEnabled(true);
         }
     }
     // MemoryViewer setters are only consumed by render(), so don't bother
@@ -247,6 +257,7 @@ void MainWindow_ImGui::render()
     if (showAbout) renderAboutDialog();
     if (showSpecialThanks) renderSpecialThanksWindow();
     if (showHardwareReference) renderHardwareReferenceWindow();
+    if (showSoftwareReference) renderSoftwareReferenceWindow();
     if (showScreenConfig) renderScreenConfigDialog();
     if (showMemoryConfig) renderMemoryConfigDialog();
     if (showLoadDialog) renderLoadDialog();

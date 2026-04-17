@@ -185,7 +185,7 @@ void MainWindow_ImGui::renderSpecialThanksWindow()
     ImGuiIO& io = ImGui::GetIO();
     ImGui::SetNextWindowSize(ImVec2(560.0f, io.DisplaySize.y * 0.58f), ImGuiCond_FirstUseEver);
     ImGui::SetNextWindowPos(ImVec2(io.DisplaySize.x * 0.22f, io.DisplaySize.y * 0.12f), ImGuiCond_FirstUseEver);
-    if (ImGui::Begin("Special Thanks to", &showSpecialThanks)) {
+    if (ImGui::Begin("Ports & acknowledgements", &showSpecialThanks)) {
         ImGui::TextWrapped(
             "Contributors to earlier POM1 ports and everyone who helped make this emulation possible.");
         ImGui::Separator();
@@ -217,76 +217,367 @@ void MainWindow_ImGui::renderSpecialThanksWindow()
 
 namespace {
 
-static const char kHardwareReferenceText[] = R"hwref(
-Apple-1 / POM1 - Hardware reference (summary)
+// Small helpers so each hardware section reads as a short paragraph + a
+// bullet list of particularities without repeating ImGui boilerplate.
+static void hwHeading(const char* title)
+{
+    ImGui::TextColored(ImVec4(0.85f, 0.85f, 0.45f, 1.0f), "%s", title);
+}
 
-CPU
-  MOS 6502 @ ~1.022727 MHz (POM1_CPU_CLOCK_HZ, 14.31818 MHz ÷ 14). Use the CPU menu for Stop, Run, Step, and reset.
-
-PIA 6821 (keyboard & display)
-  $D010  KBD   - last key, bit 7 set; read clears strobe
-  $D011  KBDCR - bit 7 = key ready
-  $D012  DSP   - write sends a character to the emulated display; read reflects terminal-speed busy/ready
-  Incomplete decode: any $D0xx uses address & 3 -> $D010-$D012 (Pagetable / Briel BASIC compatible).
-  Keyboard is uppercased by default; the Terminal Card can inject raw 8-bit keys.
-
-Memory map (64 KB always present; machine presets only warn on out-of-range RAM access)
-  $0000-$00FF  Zero page
-  $0100-$01FF  Stack
-  $0200-$1FFF  RAM (programs often load at $0280 or $0300)
-  $2000-$200F  P-LAB I/O Board & RTC (when enabled; overlays this RAM slice)
-  $2000-$3FFF  GEN2 HGR framebuffer (8 KB, when Uncle Bernie GEN2 card is enabled)
-  $4000-$7FFF  RAM
-  $8000-$9FFF  SD CARD OS ROM (8 KB, microSD card)
-  $9000-$AFFF  CFFA1 ROM + registers (when CFFA1 enabled; do not enable together with microSD)
-  $A000-$A00F  65C22 VIA (microSD card)
-  $A010-$AFFF  RAM
-  $B000-$B003  65C51 ACIA (MODEM BBS)
-  $B004-$BFFF  RAM
-  $C000-$C0FF  Apple Cassette Interface ($C081 input, $C000 output latch)
-  $C100-$C1FF  Woz ACI ROM
-  $C800-$CFFF  A1-SID (29 registers, address & $1F, when enabled)
-  $CC00 / $CC01  TMS9918 data / control (when enabled; wins over SID at these two addresses)
-  $D010-$D012  See PIA above ($D0xx aliases)
-  $E000-$EFFF  Apple BASIC ROM (4 KB), or Applesoft Lite region when CFFA1 preset loads replacement
-  $FF00-$FFFF  Woz Monitor (256 B) + vectors at $FFFA-$FFFF
-
-Expansion cards (menu Hardware)
-  Uncle Bernie GEN2 - passive 280x192 HIRES read of $2000-$3FFF, NTSC-style artifact colour
-  P-LAB TMS9918 - 16 KB VRAM, $CC00/$CC01
-  P-LAB A1-SID - MOS 6581/8580, $C800-$CFFF (& $1F)
-  P-LAB microSD - VIA $A000-$A00F, firmware ROM $8000-$9FFF, host folder sdcard/
-  CFFA1 - ROM/I/O $9000-$AFFF, disk image cfcard/cfcard.po when present
-  P-LAB MODEM BBS - ACIA $B000-$B003, Hayes/TCP (desktop + WASM)
-  P-LAB Terminal Card - listens on localhost:6502, bridges $D010/$D011/$D012 (desktop only)
-  P-LAB I/O & RTC - registers $2000-$200F
-
-Assembling with cc65 (examples)
-  ca65 -o build/program.o software/program.asm
-  ld65 -C software/apple1.cfg -o build/program.bin build/program.o
-  GEN2 programs: software/hgr/apple1_gen2.cfg (reserves $2000-$3FFF)
-
-Full feature list, ROM table, and shortcuts: README.md in the repository.
-)hwref";
+static void hwKeyValue(const char* key, const char* value)
+{
+    ImGui::Bullet();
+    ImGui::TextColored(ImVec4(0.70f, 0.80f, 1.0f, 1.0f), "%s", key);
+    ImGui::SameLine();
+    ImGui::TextWrapped("%s", value);
+}
 
 } // namespace
 
 void MainWindow_ImGui::renderHardwareReferenceWindow()
 {
     ImGuiIO& io = ImGui::GetIO();
-    ImGui::SetNextWindowSize(ImVec2(io.DisplaySize.x * 0.55f, io.DisplaySize.y * 0.72f), ImGuiCond_FirstUseEver);
-    ImGui::SetNextWindowPos(ImVec2(io.DisplaySize.x * 0.22f, io.DisplaySize.y * 0.08f), ImGuiCond_FirstUseEver);
+    ImGui::SetNextWindowSize(ImVec2(io.DisplaySize.x * 0.55f, io.DisplaySize.y * 0.78f), ImGuiCond_FirstUseEver);
+    ImGui::SetNextWindowPos(ImVec2(io.DisplaySize.x * 0.22f, io.DisplaySize.y * 0.06f), ImGuiCond_FirstUseEver);
     if (ImGui::Begin("Hardware Reference", &showHardwareReference)) {
         ImGui::TextWrapped(
-            "Condensed map and I/O summary for POM1. See README.md and CLAUDE.md for build notes and architecture.");
+            "Apple-1 base hardware and every expansion card POM1 can emulate. "
+            "Each entry lists where it sits in the memory map, what it does, "
+            "and the quirks you need to know about. See README.md and CLAUDE.md "
+            "for build notes and deeper architecture.");
         ImGui::Separator();
-        const char* textEnd = kHardwareReferenceText + std::strlen(kHardwareReferenceText);
-        ImGui::BeginChild("hwref_scroll", ImVec2(0, 0), true, ImGuiWindowFlags_HorizontalScrollbar);
-        ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(4, 2));
-        ImGui::PushFont(io.Fonts->Fonts[0]);
-        ImGui::TextUnformatted(kHardwareReferenceText, textEnd);
-        ImGui::PopFont();
-        ImGui::PopStyleVar();
+
+        ImGui::BeginChild("hwref_scroll", ImVec2(0, 0), true);
+
+        // ---- Core: CPU ------------------------------------------------
+        if (ImGui::CollapsingHeader("MOS 6502 CPU", ImGuiTreeNodeFlags_DefaultOpen)) {
+            ImGui::TextWrapped(
+                "Original Apple-1 CPU: 8-bit, little-endian, 56 documented opcodes, no BCD "
+                "on the NES variant but full BCD support here (the 6502 functional test runs "
+                "green). The CPU menu controls Run, Stop, Step and both resets.");
+            hwHeading("Particularities");
+            hwKeyValue("Clock:", "1.022727 MHz nominal (14.31818 MHz / 14). x1 / x2 / Max speeds selectable.");
+            hwKeyValue("Reset:", "Vector at $FFFC-$FFFD (Woz Monitor = $FF00). Hard reset also wipes RAM.");
+            hwKeyValue("IRQ/NMI:", "Vectors at $FFFE/$FFFA. Only the ACIA (Wi-Fi Modem) and the cassette ISR use IRQ by default.");
+            hwKeyValue("Debug:", "Single-step (F7) and a live disassembly window (F3) expose PC/A/X/Y/SP/P.");
+        }
+
+        // ---- Core: PIA 6821 (keyboard + display) ----------------------
+        if (ImGui::CollapsingHeader("PIA 6821 - Keyboard & Display", ImGuiTreeNodeFlags_DefaultOpen)) {
+            ImGui::TextWrapped(
+                "Motorola peripheral interface chip that wires the ASCII keyboard and the "
+                "terminal video board to the 6502. POM1 emulates the original Apple-1 "
+                "incomplete decoding so every $D0xx address folds back to $D010-$D013.");
+            hwHeading("Registers");
+            hwKeyValue("$D010 KBD:", "Last key, bit 7 forced to 1. A read clears the keyboard strobe.");
+            hwKeyValue("$D011 KBDCR:", "Bit 7 = 1 when a key is ready.");
+            hwKeyValue("$D012 DSP:", "Write sends a character to the 40x24 display. Read returns bit 7 = 0 when the terminal-speed delay has drained.");
+            hwHeading("Particularities");
+            hwKeyValue("Aliasing:", "Any $D0xx address (e.g. $D0F2) maps to one of the three registers - both BASIC variants rely on this.");
+            hwKeyValue("Uppercase:", "Keystrokes are force-uppercased by default, matching the real TTL keyboard. The Terminal Card injects raw 8-bit keys to bypass this.");
+            hwKeyValue("Autorepeat:", "Off by default (Settings menu): real Apple-1 keyboards have no repeat circuitry. F7 always honours hold-to-step.");
+        }
+
+        // ---- Memory map overview -------------------------------------
+        if (ImGui::CollapsingHeader("Memory Map (64 KB)")) {
+            const float memMapHeight = ImGui::GetTextLineHeightWithSpacing() * 20.0f + 8.0f;
+            ImGui::BeginChild("hwref_memmap", ImVec2(0, memMapHeight),
+                              false, ImGuiWindowFlags_HorizontalScrollbar);
+            ImGui::PushFont(io.Fonts->Fonts[0]);
+            ImGui::TextUnformatted(
+                "$0000-$00FF  Zero page\n"
+                "$0100-$01FF  Stack\n"
+                "$0200-$1FFF  User RAM (programs load at $0280 or $0300 by default)\n"
+                "$2000-$200F  A1-IO VIA 65C22 (when A1-IO & RTC is plugged)\n"
+                "$2000-$3FFF  GEN2 HGR framebuffer (8 KB - when GEN2 HGR is plugged)\n"
+                "$4000-$5FFF  User RAM\n"
+                "$6000-$7FFF  Applesoft Lite SD ROM (microSD preset only)\n"
+                "$8000-$9FFF  SD CARD OS ROM (microSD)\n"
+                "$9000-$AFDF  CFFA1 firmware ROM (when CFFA1 plugged)\n"
+                "$A000-$A00F  microSD VIA 65C22\n"
+                "$AFE0-$AFFF  CFFA1 ATA/IDE registers\n"
+                "$B000-$B003  MODEM BBS ACIA 65C51\n"
+                "$C000-$C0FF  Apple Cassette Interface ($C081 in, $C000 out)\n"
+                "$C100-$C1FF  Woz ACI ROM\n"
+                "$C800-$CFFF  A1-SID (29 registers, mirrored every 32)\n"
+                "$CC00/$CC01  TMS9918 DATA/CTRL (wins over SID)\n"
+                "$D010-$D012  PIA (aliased across $D000-$D0FF)\n"
+                "$E000-$EFFF  Apple Integer BASIC ROM\n"
+                "$FF00-$FFFF  Woz Monitor + vectors");
+            ImGui::PopFont();
+            ImGui::EndChild();
+        }
+
+        ImGui::Separator();
+        ImGui::TextColored(ImVec4(0.70f, 0.85f, 0.70f, 1.0f), "Expansion cards");
+
+        // ---- Woz ACI -------------------------------------------------
+        if (ImGui::CollapsingHeader("Woz ACI - Apple Cassette Interface")) {
+            ImGui::TextWrapped(
+                "Steve Wozniak's original cassette tape board. Plays and records audio to "
+                "the Apple-1 through a simple flip-flop and an input comparator. POM1 "
+                "streams cassette audio through the shared 44.1 kHz mixer, so you hear the "
+                "modem chirps while a tape is loading.");
+            hwHeading("Particularities");
+            hwKeyValue("I/O:", "$C000 output flip-flop (bit 7), $C081 tape input.");
+            hwKeyValue("ROM:", "256 B Woz ACI firmware at $C100-$C1FF - entry point C100R in the Woz Monitor.");
+            hwKeyValue("Files:", "Loads raw binary, .aci dumps, and .wav captures.");
+            hwKeyValue("UI:", "File -> Cassette Deck (realistic piano-key transport) or Cassette Controls (classic).");
+        }
+
+        // ---- GEN2 HGR -----------------------------------------------
+        if (ImGui::CollapsingHeader("Uncle Bernie's GEN2 HGR Graphic Card")) {
+            ImGui::TextWrapped(
+                "280x192 HIRES video card from applefritter designer Uncle Bernie. Passive "
+                "frame-buffer: it just paints whatever lives in RAM at $2000-$3FFF, with "
+                "the same non-linear scanline mapping as the Apple II HGR page.");
+            hwHeading("Particularities");
+            hwKeyValue("Framebuffer:", "8 KB at $2000-$3FFF (mutually exclusive with A1-IO & RTC that uses $2000-$200F).");
+            hwKeyValue("Colour:", "NTSC artifact colour - violet/green (group 1) and blue/orange (group 2) with white between.");
+            hwKeyValue("Tooling:", "cc65 config software/hgr/apple1_gen2.cfg reserves the framebuffer.");
+            hwKeyValue("Demo:", "Clicking HGR in the toolbar auto-loads software/hgr/GEN2.HGR.BIN if available.");
+        }
+
+        // ---- A1-SID (prototype) --------------------------------------
+        if (ImGui::CollapsingHeader("P-LAB A1-SID Sound Card")) {
+            ImGui::TextWrapped(
+                "Claudio Parmigiani's P-LAB sound card: a real MOS 6581 / CSG 8580 SID chip "
+                "driven by a small AVR controller. POM1 uses libresidfp for cycle-accurate "
+                "synthesis and honours the chip-model switch (6581 vs 8580) live.");
+            hwHeading("Particularities");
+            hwKeyValue("I/O:", "$C800-$CFFF, 29 registers, address AND $1F (mirrored 64 times).");
+            hwKeyValue("Chip model:", "Settings menu -> A1-SID chip model (6581 vintage non-linear filter, or 8580 cleaner revision).");
+            hwKeyValue("Audio:", "Cycle-driven synthesis on the emulation thread, lock-free ring buffer to the audio callback.");
+            hwKeyValue("Library:", "software/sid/ - .sid / .psid tunes auto-enable the card on load.");
+        }
+
+        // ---- A1-AUDIO Special Edition --------------------------------
+        if (ImGui::CollapsingHeader("A1-AUDIO Special Edition (SID @ $CC00)")) {
+            ImGui::TextWrapped(
+                "Ten-unit limited run of Claudio Parmigiani's SID card with a different "
+                "register window. Same MOS 6581 / 8580 silicon as the prototype, but "
+                "decoded at $CC00-$CC1F to avoid the $C800 I/O overlap.");
+            hwHeading("Particularities");
+            hwKeyValue("I/O:", "$CC00-$CC1F (29 registers).");
+            hwKeyValue("Exclusive with:", "Prototype A1-SID (shared silicon) and TMS9918 (same $CC00 address).");
+            hwKeyValue("Use:", "Plug from the Hardware menu - auto-unplugs any conflicting card.");
+        }
+
+        // ---- TMS9918 -------------------------------------------------
+        if (ImGui::CollapsingHeader("P-LAB Graphic Card (TMS9918)")) {
+            ImGui::TextWrapped(
+                "TMS9918A Video Display Processor - the same chip as the ColecoVision and "
+                "MSX1. Sprites, tile maps, 16 KB of private VRAM, nothing shared with "
+                "main RAM. Wins the arbitration against A1-SID at $CC00/$CC01.");
+            hwHeading("Particularities");
+            hwKeyValue("I/O:", "$CC00 data port, $CC01 control port.");
+            hwKeyValue("VRAM:", "16 KB dedicated, indirect addressing through the chip.");
+            hwKeyValue("Library:", "Compatible with nippur72/apple1-videocard-lib (software/tms9918/).");
+            hwKeyValue("Mutually exclusive:", "A1-AUDIO Special Edition (same $CC00 register window).");
+        }
+
+        // ---- microSD -------------------------------------------------
+        if (ImGui::CollapsingHeader("P-LAB microSD Storage Card")) {
+            ImGui::TextWrapped(
+                "65C22 VIA + ATMEGA bridge turning a microSD card into a virtual FAT32 "
+                "filesystem visible from the Apple-1. Host side POM1 maps the sdcard/ "
+                "folder as the emulated volume.");
+            hwHeading("Particularities");
+            hwKeyValue("I/O:", "$A000-$A00F (VIA) + firmware ROM at $8000-$9FFF (8 KB).");
+            hwKeyValue("Handshake:", "PORTB bit 0 = CPU_STROBE, bit 7 = MCU_STROBE, PORTA = data.");
+            hwKeyValue("Filenames:", "Tagged as NAME#TTAAAA to carry type + load address.");
+            hwKeyValue("Firmware:", "nippur72/apple1-sdcard. Cold start: type 8000R.");
+            hwKeyValue("Mutually exclusive:", "CFFA1 (shares $9000-$9FFF).");
+        }
+
+        // ---- CFFA1 ---------------------------------------------------
+        if (ImGui::CollapsingHeader("CFFA1 CompactFlash Interface")) {
+            ImGui::TextWrapped(
+                "Rich Dreher's classic CompactFlash board for Apple-1. POM1 emulates an "
+                "8 KB firmware ROM and just enough of the ATA/IDE register set (READ SECTOR, "
+                "WRITE SECTOR, SET FEATURE) to run the firmware and ProDOS disk images.");
+            hwHeading("Particularities");
+            hwKeyValue("ROM:", "$9000-$AFDF (ID bytes $CF/$FA at $AFDC/$AFDD). Entry: 9006R.");
+            hwKeyValue("Registers:", "$AFE0-$AFFF. A4 is undecoded, so $AFE0 mirrors $AFF0.");
+            hwKeyValue("Disk image:", "cfcard/cfcard.po (ProDOS). Auto-mounted at boot when present.");
+            hwKeyValue("Pairs with:", "Applesoft Lite (CFFA1) at $E000-$FFFF via the preset.");
+            hwKeyValue("Mutually exclusive:", "microSD card.");
+        }
+
+        // ---- MODEM BBS -----------------------------------------------
+        if (ImGui::CollapsingHeader("P-LAB MODEM BBS")) {
+            ImGui::TextWrapped(
+                "65C51 ACIA paired with a Hayes / TELNET AT command interpreter that dials "
+                "real TCP hosts. Designed for dial-up-style BBS traffic (telehack, "
+                "particles.kpaul.frl, level29.cc and friends).");
+            hwHeading("Particularities");
+            hwKeyValue("I/O:", "$B000-$B003 (ACIA 65C51).");
+            hwKeyValue("AT commands:", "ATDT host:port, ATH, ATE0/1, ATI, ATZ, +++ guard (1 s).");
+            hwKeyValue("Baud rates:", "50-19200 simulated; TELNET IAC negotiation filtered and CR+LF collapsed to CR.");
+            hwKeyValue("Platforms:", "Desktop and WASM (WASM uses browser sockets via Emscripten).");
+        }
+
+        // ---- Terminal Card ------------------------------------------
+        if (ImGui::CollapsingHeader("P-LAB Terminal Card (desktop only)")) {
+            ImGui::TextWrapped(
+                "Bidirectional TCP bridge over localhost:6502. Any terminal emulator "
+                "(telnet, minicom, PuTTY) becomes an Apple-1 teletype: eavesdrops on "
+                "$D012 writes to stream the display and injects bytes back into the PIA.");
+            hwHeading("Particularities");
+            hwKeyValue("Port:", "IPv4 loopback 127.0.0.1:6502 (IPv6 ::1 refused - fall-through to v4 is automatic).");
+            hwKeyValue("Modes:", "7-bit with CR->CRLF (default), or raw 8-bit via Ctrl-T / ESC T.");
+            hwKeyValue("Controls:", "Ctrl-L clear, Ctrl-R reset. ESC-prefixed alternates (ESC L/R/O/I) for macOS/BSD.");
+            hwKeyValue("TELNET:", "Sends IAC WILL ECHO + WILL/DO SUPPRESS-GO-AHEAD on accept (character-at-a-time mode).");
+            hwKeyValue("Unavailable on WASM:", "requires raw sockets.");
+        }
+
+        // ---- I/O & RTC -----------------------------------------------
+        if (ImGui::CollapsingHeader("P-LAB I/O Board & RTC")) {
+            ImGui::TextWrapped(
+                "General-purpose I/O board: a 65C22 VIA bridges the 6502 to an emulated "
+                "ATMEGA32 that drives a DS3231 real-time clock (date/time + internal "
+                "temperature), a DS18B20 thermal probe, 8 analog inputs, 4 digital inputs, "
+                "and a 16-bit shift-register digital output.");
+            hwHeading("Particularities");
+            hwKeyValue("I/O:", "$2000-$200F. Broadcast protocol: 24 registers pumped on a 100-cycle period with PORTB STROBE handshake.");
+            hwKeyValue("Mutually exclusive:", "Uncle Bernie GEN2 (both want $2000-$3FFF region).");
+            hwKeyValue("Reference:", "p-l4b.github.io/A1-IO_RTC/");
+        }
+
+        ImGui::EndChild();
+    }
+    ImGui::End();
+}
+
+namespace {
+
+static const char kSoftwareReferenceCc65Cmd[] =
+    "# Assembly\n"
+    "ca65 -o build/program.o software/program.asm\n"
+    "\n"
+    "# Link with an Apple-1 config\n"
+    "ld65 -C software/apple1.cfg       -o build/program.bin build/program.o\n"
+    "ld65 -C software/apple1_4k.cfg    -o build/program.bin build/program.o\n"
+    "ld65 -C software/hgr/apple1_gen2.cfg -o build/program.bin build/program.o\n"
+    "ld65 -C software/pom1.cfg         -o build/program.bin build/program.o\n"
+    "\n"
+    "# Sokoban (real-hardware variants)\n"
+    "ld65 -C software/games/apple1_sok_4k.cfg  -o build/sok.bin build/sok.o  # stock 4K (text)\n"
+    "ld65 -C software/games/apple1_sok_8k.cfg  -o build/sok.bin build/sok.o  # TMS9918 variant\n"
+    "ld65 -C software/games/apple1_sok_hgr.cfg -o build/sok.bin build/sok.o  # GEN2 HGR variant\n";
+
+} // namespace
+
+void MainWindow_ImGui::renderSoftwareReferenceWindow()
+{
+    ImGuiIO& io = ImGui::GetIO();
+    ImGui::SetNextWindowSize(ImVec2(io.DisplaySize.x * 0.55f, io.DisplaySize.y * 0.72f), ImGuiCond_FirstUseEver);
+    ImGui::SetNextWindowPos(ImVec2(io.DisplaySize.x * 0.20f, io.DisplaySize.y * 0.08f), ImGuiCond_FirstUseEver);
+    if (ImGui::Begin("Software Reference", &showSoftwareReference)) {
+        ImGui::TextWrapped(
+            "How to feed programs into POM1: Woz Monitor commands, file formats, "
+            "BASIC variants, and the cc65 toolchain for writing your own 6502 code.");
+        ImGui::Separator();
+
+        ImGui::BeginChild("swref_scroll", ImVec2(0, 0), true);
+
+        if (ImGui::CollapsingHeader("Woz Monitor", ImGuiTreeNodeFlags_DefaultOpen)) {
+            ImGui::TextWrapped(
+                "The 256-byte ROM at $FF00-$FFFF is the interactive monitor. It is always "
+                "loaded and is the default reset vector.");
+            hwHeading("Commands");
+            hwKeyValue("aaaa:", "Show the byte at aaaa (e.g. 0280).");
+            hwKeyValue("aaaa.bbbb:", "Show the range aaaa to bbbb.");
+            hwKeyValue("aaaa: dd dd ...:", "Store the given bytes starting at aaaa.");
+            hwKeyValue("aaaaR:", "Run the program at aaaa (e.g. E000R for BASIC).");
+            hwKeyValue("Reset:", "F5 soft reset jumps back to the Woz prompt without wiping RAM.");
+        }
+
+        if (ImGui::CollapsingHeader("BASIC variants", ImGuiTreeNodeFlags_DefaultOpen)) {
+            ImGui::TextWrapped(
+                "Three BASICs can occupy the upper ROM region depending on the preset.");
+            hwHeading("Choices");
+            hwKeyValue("Integer BASIC:", "$E000-$EFFF (4 KB). Original Apple-1 BASIC. Cold start: E000R.");
+            hwKeyValue("Applesoft Lite (CFFA1):", "$E000-$FFFF. Ships with the CFFA1 preset, covers the full ROM range.");
+            hwKeyValue("Applesoft Lite (microSD):", "$6000-$7FFF. SD1.3 build aligned with the SD1.3 sdcard.rom firmware. Cold start: 6000R.");
+            hwKeyValue("Loader:", "Settings -> Memory Options to swap them at runtime.");
+        }
+
+        if (ImGui::CollapsingHeader("Loading programs")) {
+            ImGui::TextWrapped(
+                "POM1 reads two program formats, plus clipboard paste.");
+            hwHeading("Formats");
+            hwKeyValue("Raw .bin:", "Binary image loaded at the address you pick in the Load dialog.");
+            hwKeyValue("Woz hex dump (.txt):", "Apple-1 standard format. Supports comments (// # ;), continuation lines, T (turbo), R (run address) suffix.");
+            hwKeyValue("Paste Code (Ctrl+V):", "Feeds the clipboard through the keyboard (up to 4096 chars) - perfect for pasting Woz hex listings.");
+            hwHeading("Auto-plug on load");
+            ImGui::TextWrapped(
+                "The Load dialog auto-enables the matching card when you open a file "
+                "from software/sid/, software/hgr/, software/tms9918/, software/wifi/, "
+                "software/net/ or sdcard/. Loading from software/net/ also drops any "
+                "live Wi-Fi modem connection.");
+        }
+
+        if (ImGui::CollapsingHeader("Cassette tapes")) {
+            ImGui::TextWrapped(
+                "The Woz ACI accepts three cassette formats through File -> Cassette Deck / "
+                "Cassette Controls.");
+            hwHeading("Formats");
+            hwKeyValue(".aci / .bin:", "Raw transition dumps.");
+            hwKeyValue(".wav:", "Real captures. Decoded by the ACI comparator.");
+            hwKeyValue("Load routine:", "C100R to start the Woz ACI driver, then aaaa.bbbbR (read) or W (write).");
+        }
+
+        if (ImGui::CollapsingHeader("Disk images")) {
+            hwHeading("microSD");
+            hwKeyValue("Mount point:", "host folder sdcard/ (or ../sdcard, ../../sdcard auto-probed).");
+            hwKeyValue("Filename tags:", "NAME#TTAAAA encodes ProDOS type + load address.");
+            hwKeyValue("Entry:", "8000R to jump into the SD CARD OS firmware.");
+            hwHeading("CFFA1");
+            hwKeyValue("Image:", "cfcard/cfcard.po (ProDOS). Probed up three parent dirs at boot.");
+            hwKeyValue("Entry:", "9006R - lands in the CFFA1 firmware.");
+        }
+
+        if (ImGui::CollapsingHeader("Writing 6502 with cc65", ImGuiTreeNodeFlags_DefaultOpen)) {
+            ImGui::TextWrapped(
+                "POM1 ships with cc65 linker configs for every usable layout. Assemble with "
+                "ca65, link with ld65, then convert the .bin to Woz hex dump (the Load "
+                "dialog also accepts raw .bin).");
+            const float cmdHeight = ImGui::GetTextLineHeightWithSpacing() * 12.0f + 8.0f;
+            ImGui::BeginChild("swref_cc65_cmd", ImVec2(0, cmdHeight),
+                              false, ImGuiWindowFlags_HorizontalScrollbar);
+            ImGui::PushFont(io.Fonts->Fonts[0]);
+            ImGui::TextUnformatted(kSoftwareReferenceCc65Cmd);
+            ImGui::PopFont();
+            ImGui::EndChild();
+            hwHeading("Linker configs");
+            hwKeyValue("software/apple1.cfg:", "$0280-$0F7F (3328 B). Small text-only games.");
+            hwKeyValue("software/apple1_4k.cfg:", "$0280-$127F (4 KB). Medium text games, no HGR RAM.");
+            hwKeyValue("software/hgr/apple1_gen2.cfg:", "$0280-$1FFF (7552 B). HGR programs; reserves $2000-$3FFF.");
+            hwKeyValue("software/pom1.cfg:", "$0300-$9FFF (~40 KB). Large programs, different base.");
+            hwHeading("Sokoban-specific (real Apple-1)");
+            hwKeyValue("apple1_sok_4k.cfg:", "Stock 4K - text variant. LEVELBUF in zero page, STATEGRID in bss at $0F00.");
+            hwKeyValue("apple1_sok_8k.cfg:", "Stock 8K + TMS9918. STATEGRID moved to $1F00.");
+            hwKeyValue("apple1_sok_hgr.cfg:", "8K + GEN2 HGR. Same discipline but HGR framebuffer reserved.");
+            hwHeading("Tips");
+            hwKeyValue("Zero page buffers:", "Declare with .segment \"LEVELBUF\": zeropage to force zp,X addressing.");
+            hwKeyValue("PIA bit 7:", "ORA #$80 before JSR ECHO for DSP, AND #$7F after reading KBD.");
+            hwKeyValue("Uppercase:", "Real keyboard forces uppercase - only compare against uppercase literals.");
+            hwKeyValue("Deeper guide:", "doc/Programming_Apple1_ASM.md (modes texte / HGR / TMS9918, Sokoban porting notes).");
+        }
+
+        if (ImGui::CollapsingHeader("Software library on disk")) {
+            hwKeyValue("software/:", "Assembled programs, BASIC listings, demos, SID tunes, HGR/TMS9918 art.");
+            hwKeyValue("software/games/:", "Sokoban variants, Maze2 Backtracker, Connect 4 (all three modes).");
+            hwKeyValue("software/hgr/:", "GEN2 demos (GEN2.HGR.BIN auto-loaded by the toolbar shortcut).");
+            hwKeyValue("software/sid/:", "SID/PSID tunes. Dropping one enables the A1-SID card.");
+            hwKeyValue("software/tms9918/:", "Video card library demos.");
+            hwKeyValue("software/net/:", "Modem / telnet programs. Loading one resets the modem connection.");
+            hwKeyValue("sdcard/:", "Virtual microSD volume (FAT32 mapping).");
+            hwKeyValue("cfcard/cfcard.po:", "ProDOS disk image for the CFFA1.");
+            hwKeyValue("External:", "apple1software.com, applefritter.com/apple1.");
+        }
+
         ImGui::EndChild();
     }
     ImGui::End();

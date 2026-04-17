@@ -61,6 +61,7 @@ private:
     bool showAbout = false;
     bool showSpecialThanks = false;
     bool showHardwareReference = false;
+    bool showSoftwareReference = false;
     bool showScreenConfig = false;
     bool showMemoryConfig = false;
     bool showLoadDialog = false;
@@ -133,6 +134,7 @@ private:
     void ensureAboutPhotoTexture();
     void renderSpecialThanksWindow();
     void renderHardwareReferenceWindow();
+    void renderSoftwareReferenceWindow();
     void renderDebugDialog();
     void renderScreenConfigDialog();
     void renderMemoryConfigDialog();
@@ -220,20 +222,30 @@ private:
     // boot. Flipped to true by the first applyMachineConfig().
     bool presetAppliedOnce = false;
 
-    // Deferred A1-SID plug: applyMachineConfig() unplugs the SID up front
-    // (clean chip + ring reset) and stashes the preset's desired state
-    // here; the actual re-plug fires a few frames later from render()
-    // when pendingSidEnableFrames decrements to zero. Plugging the SID
-    // in the same frame as the preset apply was producing silence on the
-    // first tune loaded after boot — the chip was added to the audio
-    // mixer before the CPU had time to settle, and would stay silent
-    // until the user manually toggled the card. Deferring by a handful
-    // of frames (~200 ms at 50 fps) lets the CPU run a few thousand
-    // cycles first and fixes that.
-    static constexpr int kSidEnableDeferFrames = 15;
-    int pendingSidEnableFrames = 0;
+    // Deferred expansion-card plug. Every card — audio sources (SID,
+    // cassette deck), memory-mapped peripherals (ACI, microSD, CFFA1,
+    // TMS9918, A1-IO/RTC, Terminal, Wi-Fi) — is unplugged up front when
+    // applyMachineConfig() runs (also on first boot) and re-plugged
+    // N frames later from render(). The problem the defer fixes was
+    // first observed on the SID: a card added to the audio mixer or
+    // peripheral bus before the CPU has run any cycle stays silent /
+    // broken until the user toggles it manually — the CPU hasn't had
+    // time to settle its registers before the card latched onto the
+    // mixer, and the card's state machine misses the first writes.
+    // Waiting ~15 frames (~200 ms at 50 fps) lets the CPU run a few
+    // thousand cycles first and fixes that uniformly for every card.
+    static constexpr int kCardEnableDeferFrames = 15;
+    int  pendingCardEnableFrames = 0;
     bool pendingSidEnable = false;
     bool pendingSidSEEnable = false;
+    bool pendingAciEnable = false;
+    bool pendingMicroSDEnable = false;
+    bool pendingCffa1Enable = false;
+    bool pendingTms9918Enable = false;
+    bool pendingA1ioRtcEnable = false;
+    bool pendingTerminalCardEnable = false;
+    bool pendingWifiModemEnable = false;
+    bool pendingCassetteAudioActive = false;
 
     struct TapeDialogState {
         char filePath[512] = "cassette.aci";

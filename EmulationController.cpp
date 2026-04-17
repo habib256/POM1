@@ -484,6 +484,18 @@ void EmulationController::setSIDEnabled(bool enabled)
     publisher.publish(*memory, *cpu, runRequested.load());
 }
 
+void EmulationController::activateCassetteAudioSource()
+{
+    std::lock_guard<PriorityMutex> lock(stateMutex);
+    memory->activateCassetteAudioSource();
+}
+
+void EmulationController::deactivateCassetteAudioSource()
+{
+    std::lock_guard<PriorityMutex> lock(stateMutex);
+    memory->deactivateCassetteAudioSource();
+}
+
 void EmulationController::setSIDSpecialEditionEnabled(bool enabled)
 {
     std::lock_guard<PriorityMutex> lock(stateMutex);
