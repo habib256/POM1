@@ -240,9 +240,16 @@ private :
     bool aciEnabled = true;           // false on a bare-4K Apple-1 (pre-ACI)
     std::unique_ptr<TMS9918> tms9918;
     bool tms9918Enabled = false;
-    std::unique_ptr<AudioDevice> audioDevice;
+    // NOTE on destruction order: AudioDevice must outlive every AudioSource
+    // it may be draining (CassetteDevice, SID). C++ destroys members in
+    // reverse declaration order, so sources must be declared BEFORE
+    // audioDevice to be destroyed AFTER it. CassetteDevice (declared above)
+    // already satisfies this; `sid` must be declared here — NOT after
+    // `audioDevice` — or a UAF window opens between ~sid and
+    // ~audioDevice (which is what stops the miniaudio callback).
     std::unique_ptr<pom1::SID> sid;
     bool sidEnabled = false;
+    std::unique_ptr<AudioDevice> audioDevice;
     std::unique_ptr<MicroSD> microSD;
     bool microSDEnabled = true;
     std::unique_ptr<CFFA1> cffa1;

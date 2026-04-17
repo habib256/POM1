@@ -89,6 +89,16 @@ void MainWindow_ImGui::render()
     updateStatus(deltaTime);
     emulation->copySnapshot(uiSnapshot);
     cpuRunning = uiSnapshot.cpuRunning;
+
+    // Deferred A1-SID plug (see MainWindow_ImGui.h for rationale). When
+    // applyMachineConfig() wants the SID plugged in, it stashes the
+    // desired state here and counts down in frames so the CPU gets a
+    // head start on register init before the chip joins the mixer.
+    if (pendingSidEnableFrames > 0) {
+        if (--pendingSidEnableFrames == 0 && pendingSidEnable) {
+            emulation->setSIDEnabled(true);
+        }
+    }
     // MemoryViewer setters are only consumed by render(), so don't bother
     // wiring them when the window is closed. The pointer hand-off in
     // updateLiveMemory() is cheap, but skipping the whole block keeps the

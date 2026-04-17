@@ -51,7 +51,25 @@ public:
     explicit SID(int outputSampleRate = kSampleRate);
     ~SID() override;
 
+    /// Full reset: chip state + shadowRegs + sample ring. The ring reset
+    /// writes `ringTail`, which is normally owned by the audio-callback
+    /// consumer, so this call is ONLY safe when the SID is not currently
+    /// registered in `AudioDevice::sources` (e.g. called right after
+    /// `removeSource` in setSIDEnabled(false)). Calling it while the
+    /// audio thread can still execute `fillAudioBuffer` creates a data
+    /// race on `ringTail` with visible audio glitches. For hardReset
+    /// paths where the SID stays in `sources`, use `resetChip()` instead
+    /// and let the ring drain naturally through the audio callback.
     void reset();
+
+    /// Chip-only reset: `chip->reset()` + clear shadowRegs. Does NOT
+    /// touch the sample ring — safe to call while the SID is registered
+    /// as an audio source. Any residual samples in the ring drain
+    /// through `fillAudioBuffer` in at most ~370 ms (ring capacity /
+    /// sample rate), and once `chip->reset()` returns, newly produced
+    /// samples are silence, so the transition is a short tail of the
+    /// previous program fading to silence — no race, no pop.
+    void resetChip();
 
     /// I/O — called from PeripheralBus dispatch. `reg` is in [0, 28].
     void    writeRegister(uint8_t reg, uint8_t value);

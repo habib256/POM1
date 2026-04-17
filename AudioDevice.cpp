@@ -113,23 +113,53 @@ bool AudioDevice::initAudio()
 #if POM1_IS_WASM
     g_wasmAudioDevice = this;
 
+    // Build the AudioContext + ScriptProcessorNode. The JS sets
+    // window._pom1Audio to the handle on success, or to null on failure
+    // (no AudioContext, allocator failure, etc.). We read the outcome back
+    // via emscripten_run_script_int below — that returns ctx.sampleRate
+    // (may differ from 44100: Firefox/Safari often force the device rate,
+    // and the SID must be configured against the *actual* consumer rate or
+    // the music tempo drifts).
     emscripten_run_script(
-        "var ctx = new (window.AudioContext || window.webkitAudioContext)({sampleRate: 44100});"
-        "var bufSize = 2048;"
-        "var proc = ctx.createScriptProcessor(bufSize, 0, 1);"
-        "var heapBuf = Module._malloc(bufSize * 4);"
-        "proc.onaudioprocess = function(e) {"
-        "  Module._pom1_fillAudioBuffer(heapBuf, bufSize);"
-        "  var out = e.outputBuffer.getChannelData(0);"
-        "  out.set(Module.HEAPF32.subarray(heapBuf >> 2, (heapBuf >> 2) + bufSize));"
-        "};"
-        "proc.connect(ctx.destination);"
-        "window._pom1Audio = {ctx: ctx, proc: proc, buf: heapBuf};"
-        "var resume = function() { if (ctx.state === 'suspended') ctx.resume(); };"
-        "document.addEventListener('click', resume, {once: true});"
-        "document.addEventListener('keydown', resume, {once: true});"
+        "try {"
+        "  var AC = window.AudioContext || window.webkitAudioContext;"
+        "  if (!AC) { window._pom1Audio = null; }"
+        "  else {"
+        "    var ctx = new AC({sampleRate: 44100});"
+        "    var bufSize = 2048;"
+        "    var proc = ctx.createScriptProcessor(bufSize, 0, 1);"
+        "    var heapBuf = Module._malloc(bufSize * 4);"
+        "    if (!heapBuf) { ctx.close(); window._pom1Audio = null; }"
+        "    else {"
+        "      proc.onaudioprocess = function(e) {"
+        "        Module._pom1_fillAudioBuffer(heapBuf, bufSize);"
+        "        var out = e.outputBuffer.getChannelData(0);"
+        "        out.set(Module.HEAPF32.subarray(heapBuf >> 2, (heapBuf >> 2) + bufSize));"
+        "      };"
+        "      proc.connect(ctx.destination);"
+        "      window._pom1Audio = {ctx: ctx, proc: proc, buf: heapBuf};"
+        "      var resume = function() { if (ctx.state === 'suspended') ctx.resume(); };"
+        "      document.addEventListener('click', resume, {once: true});"
+        "      document.addEventListener('keydown', resume, {once: true});"
+        "    }"
+        "  }"
+        "} catch (ex) { window._pom1Audio = null; }"
     );
 
+    const int actualRate = emscripten_run_script_int(
+        "(window._pom1Audio && window._pom1Audio.ctx) ? (window._pom1Audio.ctx.sampleRate | 0) : -1"
+    );
+
+    if (actualRate <= 0) {
+        g_wasmAudioDevice = nullptr;
+        audioAvailable = false;
+        return false;
+    }
+    actualSampleRate = static_cast<uint32_t>(actualRate);
+    pom1::log().info("Audio",
+        std::string("WebAudio context: requested ") + std::to_string(kSampleRate) +
+        " Hz, got " + std::to_string(actualSampleRate) + " Hz" +
+        (actualSampleRate == kSampleRate ? "" : " (browser-negotiated rate — sources will use the actual rate)"));
     audioAvailable = true;
     return true;
 #else
@@ -191,9 +221,20 @@ void AudioDevice::shutdownAudio()
     );
     g_wasmAudioDevice = nullptr;
 #else
+    // device.reset() -> MaDeviceDeleter -> ma_device_uninit synchronously
+    // drains the callback, so by the time we clear `sources` no audio
+    // thread is racing against us.
     device.reset();
 #endif
     audioAvailable = false;
+    // Drop all registered AudioSource pointers. The caller (or a later
+    // initAudio()) is responsible for re-adding them; leaving stale raw
+    // pointers here would cause UAF if sources have been destroyed in the
+    // meantime and initAudio() is later called again.
+    {
+        std::lock_guard<std::mutex> lock(sourcesMutex);
+        sources.clear();
+    }
 }
 
 #if !POM1_IS_WASM

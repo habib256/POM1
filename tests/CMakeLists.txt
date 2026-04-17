@@ -87,3 +87,24 @@ target_include_directories(test_peripheral_bus PRIVATE ${CMAKE_SOURCE_DIR})
 add_test(NAME peripheral_bus_smoke
          COMMAND test_peripheral_bus)
 set_tests_properties(peripheral_bus_smoke PROPERTIES TIMEOUT 5)
+
+# -- SID audio production smoke test ------------------------------------------
+# Needs the full Memory+peripheral core to exercise the PeripheralBus path.
+add_executable(test_sid_audio
+    sid_audio_smoke_test.cpp
+    ${POM1_TEST_CORE_SOURCES}
+)
+target_include_directories(test_sid_audio PRIVATE
+    ${CMAKE_SOURCE_DIR}
+    ${CMAKE_SOURCE_DIR}/imgui
+)
+target_link_libraries(test_sid_audio PRIVATE libresidfp_static)
+if(APPLE)
+    target_compile_definitions(test_sid_audio PRIVATE GL_SILENCE_DEPRECATION)
+endif()
+if(WIN32)
+    target_link_libraries(test_sid_audio PRIVATE ws2_32)
+endif()
+
+add_test(NAME sid_audio_smoke COMMAND test_sid_audio)
+set_tests_properties(sid_audio_smoke PROPERTIES TIMEOUT 10)

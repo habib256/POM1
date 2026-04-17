@@ -121,6 +121,18 @@ void EmulationController::hardReset()
 {
     stopCpu();
     std::lock_guard<PriorityMutex> lock(stateMutex);
+
+    // Explicitly unplug the A1-SID card across the hardReset window:
+    // setSIDEnabled(false) removes the SID from the audio mixer's source
+    // list and disables its bus handler. The memory reset below is then
+    // free to wipe RAM and reload ROMs without any risk of the audio
+    // thread observing the SID mid-reset (no race on the sample ring,
+    // no ghost callback reading a chip in reset). setSIDEnabled(true)
+    // at the end re-plugs the card exactly as if the user had just
+    // slotted it — clean addSource, fresh bus handler enable.
+    const bool sidWasPlugged = memory->isSIDEnabled();
+    if (sidWasPlugged) memory->setSIDEnabled(false);
+
     memory->resetMemory();
     memory->initMemory();
     preferredSoftResetVector = kDefaultResetVector;
@@ -128,6 +140,9 @@ void EmulationController::hardReset()
     cpu->hardReset();
     cpu->start();
     runRequested.store(true);
+
+    if (sidWasPlugged) memory->setSIDEnabled(true);
+
     if (screen) {
         screen->resetDisplay(); // garbage screen → auto-clear → welcome
     }

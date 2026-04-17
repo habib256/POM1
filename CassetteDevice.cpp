@@ -100,7 +100,7 @@ double CassetteDevice::getQueuedAudioSeconds() const
     for (const auto& segment : audioQueue) {
         queuedSamples += segment.remainingSamples;
     }
-    return static_cast<double>(queuedSamples) / static_cast<double>(kAudioSampleRate);
+    return static_cast<double>(queuedSamples) / static_cast<double>(audioOutputSampleRate);
 }
 
 void CassetteDevice::setHardwareAccurateLiveAudio(bool enabled)
@@ -153,7 +153,7 @@ void CassetteDevice::queueAudioSegment(uint32_t cycles, bool level)
 
     const uint32_t liveTimebaseHz = hardwareAccurateLiveAudio ? liveAudioTimebaseHz : kRealtimeAudioTimebaseHz;
     const double totalSamples = audioSampleRemainder +
-        (static_cast<double>(cycles) * static_cast<double>(kAudioSampleRate) / static_cast<double>(liveTimebaseHz));
+        (static_cast<double>(cycles) * static_cast<double>(audioOutputSampleRate) / static_cast<double>(liveTimebaseHz));
     const uint32_t sampleCount = static_cast<uint32_t>(totalSamples);
     audioSampleRemainder = totalSamples - static_cast<double>(sampleCount);
 
@@ -545,14 +545,14 @@ bool CassetteDevice::saveWavTape(const std::string& path) const
     bool level = recordedInitialLevel;
     for (uint32_t duration : recordedDurations) {
         const uint32_t sampleCount = std::max<uint32_t>(1, static_cast<uint32_t>(
-            std::llround(static_cast<double>(duration) * static_cast<double>(kAudioSampleRate) /
+            std::llround(static_cast<double>(duration) * static_cast<double>(kWavFileSampleRate) /
                          static_cast<double>(kTapeFileTimebaseHz))));
         const int16_t sample = level ? 14000 : -14000;
         pcm.insert(pcm.end(), sampleCount, sample);
         level = !level;
     }
 
-    pcm.insert(pcm.end(), kAudioSampleRate / 10, level ? 14000 : -14000);
+    pcm.insert(pcm.end(), kWavFileSampleRate / 10, level ? 14000 : -14000);
 
     const size_t dataSizeFull = pcm.size() * sizeof(int16_t);
     if (dataSizeFull > UINT32_MAX - 36) {
@@ -575,8 +575,8 @@ bool CassetteDevice::saveWavTape(const std::string& path) const
     writeLe32(file, 16);
     writeLe16(file, 1);
     writeLe16(file, 1);
-    writeLe32(file, kAudioSampleRate);
-    writeLe32(file, kAudioSampleRate * sizeof(int16_t));
+    writeLe32(file, kWavFileSampleRate);
+    writeLe32(file, kWavFileSampleRate * sizeof(int16_t));
     writeLe16(file, sizeof(int16_t));
     writeLe16(file, 16);
     file.write("data", 4);

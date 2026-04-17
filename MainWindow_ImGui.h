@@ -199,6 +199,29 @@ private:
     int presetRamKB = 32;                 // Usable RAM for current preset (display only)
     int defaultPresetIndex = -1;          // -1 = last preset (POM1)
     bool terminalCardOverride = false;    // --terminal: enable Terminal Card on top of any preset
+    // applyMachineConfig() normally triggers emulation->hardReset() to wipe
+    // RAM + reload default ROMs + reset every peripheral. But at boot the
+    // first applyMachineConfig call runs RIGHT AFTER createPom1(), where
+    // Memory::Memory()'s own initMemory() has already done all of that —
+    // doing it again would load BASIC/WOZ/ACI/SD ROMs twice and start the
+    // TerminalCard TCP server three times. Track whether we've already
+    // applied a preset once so we can skip the redundant hardReset on
+    // boot. Flipped to true by the first applyMachineConfig().
+    bool presetAppliedOnce = false;
+
+    // Deferred A1-SID plug: applyMachineConfig() unplugs the SID up front
+    // (clean chip + ring reset) and stashes the preset's desired state
+    // here; the actual re-plug fires a few frames later from render()
+    // when pendingSidEnableFrames decrements to zero. Plugging the SID
+    // in the same frame as the preset apply was producing silence on the
+    // first tune loaded after boot — the chip was added to the audio
+    // mixer before the CPU had time to settle, and would stay silent
+    // until the user manually toggled the card. Deferring by a handful
+    // of frames (~200 ms at 50 fps) lets the CPU run a few thousand
+    // cycles first and fixes that.
+    static constexpr int kSidEnableDeferFrames = 15;
+    int pendingSidEnableFrames = 0;
+    bool pendingSidEnable = false;
 
     struct TapeDialogState {
         char filePath[512] = "cassette.aci";

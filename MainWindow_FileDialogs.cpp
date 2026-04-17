@@ -125,17 +125,17 @@ void MainWindow_ImGui::renderLoadDialog()
 
         ImGui::Spacing();
         if (ImGui::Button("Load", ImVec2(120, 0))) {
-            // Auto-enable hardware cards based on source directory
+            // Auto-enable hardware cards based on source directory.
+            // NB: A1-SID is intentionally NOT auto-plugged from /software/sid/.
+            // Auto-plug interacts badly with the SID's audio-mixer + bus state
+            // machine when re-loading a tune across hardReset (the UI flag and
+            // Memory state can end up out of sync, leaving the card plugged
+            // but silent). SID programs rely on the preset "P-LAB Apple-1
+            // with A1-SID Sound Card" (or any preset with `sid=true`) to
+            // plug the card; load dialogs no longer mutate SID state.
             std::string loadPath(loadDlg.filePath);
-            if (loadPath.find("/sid/") != std::string::npos ||
-                loadPath.find("\\sid\\") != std::string::npos) {
-                if (!sidEnabled) {
-                    sidEnabled = true;
-                    emulation->setSIDEnabled(true);
-                    setStatusMessage("P-LAB A1-SID plugged", 2.0f);
-                }
-            } else if (loadPath.find("/hgr/") != std::string::npos ||
-                       loadPath.find("\\hgr\\") != std::string::npos) {
+            if (loadPath.find("/hgr/") != std::string::npos ||
+                loadPath.find("\\hgr\\") != std::string::npos) {
                 if (!graphicsCardEnabled) {
                     graphicsCardEnabled = true;
                     showGraphicsCard = true;

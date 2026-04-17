@@ -164,8 +164,28 @@ void MainWindow_ImGui::applyMachineConfig(int presetIndex)
     // Show POM1 banner only for the last preset (POM1 Fantasy)
     screen->setShowBanner(presetIndex == kMachinePresetCount - 1);
 
-    // Full hard reset: clear memory, reload default ROMs, reset all peripherals
-    emulation->hardReset();
+    // Unplug the SID up front — cleans any lingering state from the
+    // previous preset (source off the mixer, chip + ring fully reset).
+    // The ACTUAL re-plug is deferred below via pendingSidEnableFrames so
+    // the SID starts a few frames after the CPU has been running: plugging
+    // the SID in the same frame as the preset apply catches the chip
+    // before it can pick up audible writes, and the first tune loaded
+    // stays silent until the user manually toggles the card. Deferring
+    // the plug past the frame lets the CPU settle and fixes that.
+    emulation->setSIDEnabled(false);
+
+    // Skip the full hard reset on the very first invocation — at that
+    // point Memory::Memory() has just run initMemory() (default ROMs +
+    // peripheral resets) so hardReset() would redo the exact same work
+    // (double BASIC/WOZ/ACI/SD loads, multiple TerminalCard re-listens).
+    // From the second call onward (preset switch, user action) the
+    // hardReset is mandatory: we need to wipe RAM, reload default ROMs,
+    // and reset every peripheral before applying the new preset.
+    if (presetAppliedOnce) {
+        emulation->hardReset();
+    } else {
+        presetAppliedOnce = true;
+    }
     loadedPrograms.clear();
     loadedRoms.clear();
 
@@ -189,8 +209,13 @@ void MainWindow_ImGui::applyMachineConfig(int presetIndex)
     cffa1Enabled = cfg.cffa1;
     emulation->setCFFA1Enabled(cfg.cffa1);
 
+    // SID plug is deferred: setSIDEnabled(false) ran in the unplug block
+    // above; the actual plug (if the preset wants the card) fires a few
+    // frames later from render() via pendingSidEnableFrames. See the
+    // comment on that field in MainWindow_ImGui.h for the rationale.
     sidEnabled = cfg.sid;
-    emulation->setSIDEnabled(cfg.sid);
+    pendingSidEnable = cfg.sid;
+    pendingSidEnableFrames = cfg.sid ? kSidEnableDeferFrames : 0;
 
     tms9918Enabled = cfg.tms9918;
     emulation->setTMS9918Enabled(cfg.tms9918);

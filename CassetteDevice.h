@@ -5,6 +5,7 @@
 #include "POM1Build.h"
 #include "AudioDevice.h"
 
+#include <algorithm>
 #include <cstdint>
 #include <deque>
 #include <mutex>
@@ -50,6 +51,13 @@ public:
     /// Called by AudioDevice after init to signal audio is available.
     void setAudioAvailable(bool available) { audioAvailable = available; }
 
+    /// Actual rate of the audio device (may differ from 44.1 kHz — miniaudio
+    /// often negotiates 48 kHz on Apple Silicon; the browser AudioContext
+    /// can ignore the requested rate entirely). Must be set after the
+    /// AudioDevice has negotiated its rate, otherwise live cassette
+    /// playback runs at the wrong speed by the rate ratio.
+    void setAudioOutputSampleRate(uint32_t hz) { audioOutputSampleRate = std::max<uint32_t>(1, hz); }
+
     size_t getLoadedTransitionCount() const { return loadedDurations.size(); }
     size_t getRecordedTransitionCount() const { return recordedDurations.size(); }
     const std::string& getLoadedTapePath() const { return loadedTapePath; }
@@ -58,7 +66,10 @@ public:
 private:
     static constexpr uint32_t kRealtimeAudioTimebaseHz = static_cast<uint32_t>(POM1_CPU_CLOCK_HZ);
     static constexpr uint32_t kTapeFileTimebaseHz = 900000;
-    static constexpr uint32_t kAudioSampleRate = 44100;
+    /// Sample rate written into saved .wav files — independent of the live
+    /// audio device's rate so saved tapes stay portable regardless of the
+    /// host's native rate.
+    static constexpr uint32_t kWavFileSampleRate = 44100;
 
     void queueAudioSegment(uint32_t cycles, bool level);
     void advancePlayback(uint32_t cycles);
@@ -78,6 +89,10 @@ private:
     bool audioAvailable = false;
     bool hardwareAccurateLiveAudio = false;
     uint32_t liveAudioTimebaseHz = kRealtimeAudioTimebaseHz;
+    /// Live output sample rate (set by AudioDevice after negotiation).
+    /// Defaults to kWavFileSampleRate so existing callers still work before
+    /// the real rate is known.
+    uint32_t audioOutputSampleRate = kWavFileSampleRate;
 
     struct AudioSegment {
         uint32_t remainingSamples;

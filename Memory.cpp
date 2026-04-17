@@ -60,14 +60,18 @@ constexpr quint8 kAciRom[0x100] = {
 Memory::Memory()
 {
     audioDevice = std::make_unique<AudioDevice>();
+    // Pass the audio device's actual sample rate (44.1 kHz requested but
+    // miniaudio may negotiate 48 kHz on Apple Silicon, and the browser
+    // AudioContext may also force a different rate on WASM) so both
+    // cassette and SID produce samples at the rate the OS will consume
+    // them — otherwise their tempo drifts by the rate ratio.
+    const uint32_t actualRate = audioDevice->getActualSampleRate();
     cassetteDevice = std::make_unique<CassetteDevice>();
     cassetteDevice->setAudioAvailable(audioDevice->isAvailable());
+    cassetteDevice->setAudioOutputSampleRate(actualRate);
     audioDevice->addSource(cassetteDevice.get());
     tms9918 = std::make_unique<TMS9918>();
-    // Pass the audio device's actual sample rate (44.1 kHz requested but
-    // miniaudio may negotiate 48 kHz on Apple Silicon, etc.) so libresidfp
-    // produces samples at the rate the OS will consume them.
-    sid = std::make_unique<pom1::SID>(static_cast<int>(audioDevice->getActualSampleRate()));
+    sid = std::make_unique<pom1::SID>(static_cast<int>(actualRate));
     microSD = std::make_unique<MicroSD>();
     // Set SD card path: try common locations relative to executable
     for (const auto& dir : {"sdcard", "../sdcard", "../../sdcard"}) {
@@ -257,7 +261,11 @@ void Memory::initMemory(){
     microSDEnabled = true;
     cassetteDevice->reset();
     tms9918->reset();
-    sid->reset();
+    // resetChip() (not full reset()) — when the SID is registered as an
+    // audio source, touching ringTail here would race with the audio
+    // callback's SPSC drain. Residual samples drain naturally via
+    // fillAudioBuffer in a few ms of tail audio.
+    sid->resetChip();
     microSD->reset();
     wifiModem->reset();
     terminalCard->reset();
@@ -277,7 +285,9 @@ void Memory::resetMemory(void)
     markAllPagesDirty();
     cassetteDevice->reset();
     tms9918->reset();
-    sid->reset();
+    // See initMemory() — resetChip() avoids the ringTail race when the
+    // SID stays registered as an audio source across hardReset.
+    sid->resetChip();
     microSD->reset();
     wifiModem->reset();
     terminalCard->reset();
@@ -781,13 +791,24 @@ int Memory::getTerminalSpeed() const
 void Memory::setSIDEnabled(bool b)
 {
     if (b == sidEnabled) return;
-    sidEnabled = b;
-    bus.setEnabled(sidBusHandle, b);
     if (b) {
+        // Attach the audio sink BEFORE the emulation starts producing samples
+        // (sidEnabled gates advanceCycles). Otherwise the first slice pushes
+        // into an undrained ring and the audio callback plays catch-up.
         audioDevice->addSource(sid.get());
+        sidEnabled = true;
+        bus.setEnabled(sidBusHandle, true);
+        pom1::log().info("SID-EN", "plugged (source added, bus on)");
     } else {
+        // Stop production first, then detach the audio sink. This guarantees
+        // no advanceCycles() call can land between the removeSource and the
+        // sidEnabled flip (which would push samples into a ring no one
+        // drains).
+        sidEnabled = false;
+        bus.setEnabled(sidBusHandle, false);
         audioDevice->removeSource(sid.get());
         sid->reset();
+        pom1::log().info("SID-EN", "unplugged (bus off, source removed, chip+ring reset)");
     }
 }
 
