@@ -143,14 +143,14 @@ void MainWindow_ImGui::renderMenuBar()
             if (ImGui::MenuItem("Uncle Bernie's GEN2 HGR Graphic Card", nullptr, &graphicsCardEnabled)) {
                 if (graphicsCardEnabled) showGraphicsCard = true;
             }
+            if (ImGui::MenuItem("CFFA1 CompactFlash Card", nullptr, &cffa1Enabled)) {
+                emulation->setCFFA1Enabled(cffa1Enabled);
+                if (cffa1Enabled) microSDEnabled = false; // sync UI
+            }
             ImGui::Separator();
             if (ImGui::MenuItem("P-LAB microSD Storage Card", nullptr, &microSDEnabled)) {
                 emulation->setMicroSDEnabled(microSDEnabled);
                 if (microSDEnabled) cffa1Enabled = false; // sync UI
-            }
-            if (ImGui::MenuItem("CFFA1 CompactFlash Card", nullptr, &cffa1Enabled)) {
-                emulation->setCFFA1Enabled(cffa1Enabled);
-                if (cffa1Enabled) microSDEnabled = false; // sync UI
             }
             if (ImGui::MenuItem("P-LAB A1-SID Sound Card (SID @ $C800)", nullptr, &sidEnabled)) {
                 emulation->setSIDEnabled(sidEnabled);

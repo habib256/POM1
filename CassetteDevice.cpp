@@ -1,6 +1,13 @@
 #include "CassetteDevice.h"
 #include "POM1Build.h"
 
+// miniaudio is compiled via AudioDevice.cpp (MINIAUDIO_IMPLEMENTATION lives
+// there). We only need the function prototypes for the decoder API; no
+// implementation define here. On WASM the AudioDevice TU defines
+// MA_NO_DEVICE_IO before the implementation include so decoders are still
+// compiled in without the backend layer.
+#include "third_party/miniaudio.h"
+
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
@@ -327,6 +334,9 @@ bool CassetteDevice::loadTape(const std::string& path)
     if (ext == ".wav") {
         return loadWavTape(path);
     }
+    if (ext == ".mp3" || ext == ".ogg" || ext == ".flac") {
+        return loadMiniaudioTape(path);
+    }
     return loadAciTape(path);
 }
 
@@ -492,31 +502,49 @@ bool CassetteDevice::loadWavTape(const std::string& path)
         samples.push_back(mixed / static_cast<float>(channels));
     }
 
-    if (samples.empty()) {
-        lastError = "WAV file does not contain audio samples";
+    std::vector<uint32_t> durations;
+    bool initialLevel = false;
+    if (!pcmToDurations(samples, sampleRate, durations, initialLevel, lastError)) {
+        return false;
+    }
+    return loadPlaybackDurations(std::move(durations), initialLevel, path);
+}
+
+bool CassetteDevice::pcmToDurations(const std::vector<float>& mono,
+                                    uint32_t sampleRate,
+                                    std::vector<uint32_t>& outDurations,
+                                    bool& outInitialLevel,
+                                    std::string& outErr)
+{
+    outDurations.clear();
+    if (mono.empty()) {
+        outErr = "Audio file does not contain samples";
+        return false;
+    }
+    if (sampleRate == 0) {
+        outErr = "Audio file has an invalid sample rate";
         return false;
     }
 
     static constexpr float kThreshold = 0.02f;
     size_t firstActive = 0;
-    while (firstActive < samples.size() && std::fabs(samples[firstActive]) < kThreshold) {
+    while (firstActive < mono.size() && std::fabs(mono[firstActive]) < kThreshold) {
         ++firstActive;
     }
-    if (firstActive == samples.size()) {
-        lastError = "WAV file does not contain a detectable cassette signal";
+    if (firstActive == mono.size()) {
+        outErr = "Audio file does not contain a detectable cassette signal";
         return false;
     }
 
-    bool level = samples[firstActive] >= 0.0f;
-    bool currentLevel = level;
+    outInitialLevel = mono[firstActive] >= 0.0f;
+    bool currentLevel = outInitialLevel;
     size_t lastTransition = firstActive;
-    std::vector<uint32_t> durations;
 
-    for (size_t i = firstActive + 1; i < samples.size(); ++i) {
+    for (size_t i = firstActive + 1; i < mono.size(); ++i) {
         bool newLevel = currentLevel;
-        if (samples[i] >= kThreshold) {
+        if (mono[i] >= kThreshold) {
             newLevel = true;
-        } else if (samples[i] <= -kThreshold) {
+        } else if (mono[i] <= -kThreshold) {
             newLevel = false;
         }
 
@@ -525,13 +553,64 @@ bool CassetteDevice::loadWavTape(const std::string& path)
             const uint32_t cycles = std::max<uint32_t>(1, static_cast<uint32_t>(
                 std::llround(static_cast<double>(deltaSamples) * static_cast<double>(kTapeFileTimebaseHz) /
                              static_cast<double>(sampleRate))));
-            durations.push_back(cycles);
+            outDurations.push_back(cycles);
             currentLevel = newLevel;
             lastTransition = i;
         }
     }
+    return true;
+}
 
-    return loadPlaybackDurations(std::move(durations), level, path);
+bool CassetteDevice::loadMiniaudioTape(const std::string& path)
+{
+    // 30-minute cap — real Apple-1 tapes are minutes long; anything
+    // longer is almost certainly a wrong file. Prevents accidental
+    // 2-hour podcast loads from chewing memory.
+    static constexpr uint64_t kMaxFrames = 30ull * 60ull * 96000ull;
+
+    // Decode straight to mono float32 so pcmToDurations gets the exact
+    // format it expects. sampleRate=0 in the config means "keep source rate".
+    ma_decoder_config cfg = ma_decoder_config_init(ma_format_f32, 1, 0);
+    ma_decoder decoder;
+    if (ma_decoder_init_file(path.c_str(), &cfg, &decoder) != MA_SUCCESS) {
+        lastError = "Cannot decode audio file: " + path;
+        return false;
+    }
+
+    const uint32_t sampleRate = decoder.outputSampleRate;
+    if (sampleRate == 0) {
+        ma_decoder_uninit(&decoder);
+        lastError = "Decoded audio reports an invalid sample rate";
+        return false;
+    }
+
+    // Ogg Vorbis often reports 0 total frames; we stream in chunks
+    // instead of pre-allocating. 4096 frames ≈ 93 ms at 44.1 kHz.
+    std::vector<float> samples;
+    constexpr size_t kChunkFrames = 4096;
+    float chunk[kChunkFrames];
+    uint64_t totalFrames = 0;
+    while (totalFrames < kMaxFrames) {
+        ma_uint64 framesRead = 0;
+        const ma_result r = ma_decoder_read_pcm_frames(&decoder, chunk, kChunkFrames, &framesRead);
+        if (framesRead == 0) break;
+        samples.insert(samples.end(), chunk, chunk + framesRead);
+        totalFrames += framesRead;
+        if (r != MA_SUCCESS) break;  // EOF or error — we consumed what we could
+    }
+    ma_decoder_uninit(&decoder);
+
+    if (totalFrames >= kMaxFrames) {
+        lastError = "Audio file exceeds 30-minute tape limit";
+        return false;
+    }
+
+    std::vector<uint32_t> durations;
+    bool initialLevel = false;
+    if (!pcmToDurations(samples, sampleRate, durations, initialLevel, lastError)) {
+        return false;
+    }
+    return loadPlaybackDurations(std::move(durations), initialLevel, path);
 }
 
 bool CassetteDevice::saveWavTape(const std::string& path) const

@@ -23,10 +23,37 @@
 
 #if POM1_IS_WASM
 #include <emscripten.h>
-#else
+// WebAudio handles device I/O via JS; we still want miniaudio's decoder
+// API (ma_decoder / dr_mp3 / stb_vorbis / dr_flac) compiled in so
+// CassetteDevice can accept .mp3/.ogg/.flac tapes in the browser build
+// too — MA_NO_DEVICE_IO strips the backend layer while keeping the
+// format decoders.
+#define MA_NO_DEVICE_IO
+#endif
+// Ogg Vorbis via stb_vorbis. miniaudio's Vorbis backend activates when
+// STB_VORBIS_INCLUDE_STB_VORBIS_H is defined — including the .c file
+// before miniaudio.h defines that guard and drops the decoder into this
+// TU. stb_vorbis raises benign signed/unsigned comparison warnings
+// under -Wall; silence them locally so the rest of the project keeps
+// its warning profile intact.
+#ifdef __clang__
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wall"
+#pragma clang diagnostic ignored "-Wextra"
+#elif defined(__GNUC__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wall"
+#pragma GCC diagnostic ignored "-Wextra"
+#endif
+#include "third_party/stb_vorbis.c"
+#ifdef __clang__
+#pragma clang diagnostic pop
+#elif defined(__GNUC__)
+#pragma GCC diagnostic pop
+#endif
+
 #define MINIAUDIO_IMPLEMENTATION
 #include "third_party/miniaudio.h"
-#endif
 
 // ─── Mixing ─────────────────────────────────────────────────────────────────
 

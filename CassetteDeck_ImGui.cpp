@@ -12,6 +12,7 @@
 
 #include "EmulationController.h"
 #include "EmulationSnapshot.h"
+#include "IconsFontAwesome6.h"
 
 #include "imgui.h"
 
@@ -27,8 +28,11 @@ namespace {
 // Design canvas size — every geometric constant in this file is expressed
 // in these units; scaled to screen pixels at render time.
 // ---------------------------------------------------------------------------
-constexpr float kDesignW = 480.0f;
-constexpr float kDesignH = 660.0f;
+// Portrait proportions closer to the Panasonic Slim Line reference:
+// narrower than the original 480 × 660 to read as "tall, compact deck"
+// instead of "wide block" when the window is resized modestly.
+constexpr float kDesignW = 378.0f;
+constexpr float kDesignH = 640.0f;
 
 // ---------------------------------------------------------------------------
 // Palette — matte-black consumer tape deck, late 80s / early 90s look.
@@ -70,24 +74,29 @@ constexpr ImU32 kHubMid         = IM_COL32( 40,  42,  48, 255);
 // Layout in design coordinates (x0,y0,x1,y1 — inclusive rects).
 // ---------------------------------------------------------------------------
 struct Rect { float x0, y0, x1, y1; };
-constexpr Rect kGrilleR     {  12.0f,  14.0f, 468.0f, 252.0f };
-constexpr Rect kCounterBarR {  12.0f, 262.0f, 468.0f, 322.0f };
-constexpr Rect kSlimLineR   { 388.0f, 280.0f, 456.0f, 308.0f };
-constexpr Rect kCounterWinR { 200.0f, 276.0f, 278.0f, 310.0f };
-constexpr Rect kCassetteR   {  24.0f, 332.0f, 456.0f, 504.0f };
-constexpr Rect kBrandR      {  20.0f, 514.0f, 460.0f, 544.0f };
-constexpr Rect kLabelsR     {  30.0f, 548.0f, 450.0f, 568.0f };
+constexpr Rect kGrilleR     {   9.0f,  14.0f, 369.0f, 240.0f };
+constexpr Rect kCounterBarR {   9.0f, 250.0f, 369.0f, 306.0f };
+constexpr Rect kBrandBadgeR { 306.0f, 266.0f, 360.0f, 292.0f };
+constexpr Rect kCounterWinR { 148.0f, 262.0f, 212.0f, 296.0f };
+constexpr Rect kRecLedR     { 288.0f, 270.0f, 300.0f, 288.0f };
+constexpr Rect kCassetteR   {  18.0f, 316.0f, 360.0f, 478.0f };
+constexpr Rect kBrandR      {  14.0f, 488.0f, 364.0f, 516.0f };
+constexpr Rect kLabelsR     {  18.0f, 520.0f, 360.0f, 538.0f };
 
-constexpr float kKeyW      = 60.0f;
-constexpr float kKeyH      = 70.0f;
+constexpr float kKeyW      = 47.0f;
+constexpr float kKeyH      = 64.0f;
 constexpr float kKeyRadius = 5.0f;
-constexpr float kKeysTop   = 574.0f;
-constexpr float kKeyCenterXs[6] = { 60.0f, 132.0f, 204.0f, 276.0f, 348.0f, 420.0f };
+constexpr float kKeysTop   = 544.0f;
+constexpr float kKeyCenterXs[6] = { 44.0f, 102.0f, 160.0f, 218.0f, 276.0f, 334.0f };
 
-constexpr float kMicSwitchX0 = 6.0f;
-constexpr float kMicSwitchY0 = 588.0f;
-constexpr float kMicSwitchW  = 18.0f;
-constexpr float kMicSwitchH  = 50.0f;
+// Horizontal MIC switch in the counter bar, to the LEFT of the COUNTER
+// window. Slot runs left→right; the knob slides along X (off = left,
+// on = right). Centred on the bar's vertical midline (y=278) with the
+// "MIC" label sitting just below in the gap before the cassette window.
+constexpr float kMicSwitchX0 = 14.0f;
+constexpr float kMicSwitchY0 = 272.0f;
+constexpr float kMicSwitchW  = 46.0f;
+constexpr float kMicSwitchH  = 13.0f;
 
 constexpr float kCounterResetW = 10.0f;  // little silver button next to counter window
 
@@ -181,7 +190,10 @@ void drawPauseGlyph(ImDrawList* dl, ImVec2 p0, float s, float cx, float cy, floa
 
 // Filled circle (REC).
 void drawRecGlyph(ImDrawList* dl, ImVec2 p0, float s, float cx, float cy, float h, ImU32 col) {
-    dl->AddCircleFilled(P(p0, s, cx, cy), S(s, h * 0.78f), col, 24);
+    // Slightly smaller than the other glyphs — a solid circle reads as
+    // larger than a triangle/square of the same bounding size, so we
+    // pull it in to match visual weight.
+    dl->AddCircleFilled(P(p0, s, cx, cy), S(s, h * 0.62f), col, 24);
 }
 
 } // namespace
@@ -235,7 +247,55 @@ CassetteDeck_ImGui::render(const char* title,
         transport_ = Transport::Stopped;
     }
 
-    // Compute scale to fit available content region while preserving aspect.
+    // Header row — three big square icon buttons above the deck. Font
+    // Awesome glyphs pumped up via a temporary window font scale so the
+    // icons look chunky and centred inside the 56×56 squares.
+    constexpr float kActionBtnSize = 56.0f;
+    constexpr float kActionIconScale = 2.0f;
+    const ImVec2 actionSize(kActionBtnSize, kActionBtnSize);
+    ImGui::SetWindowFontScale(kActionIconScale);
+    if (ImGui::Button(ICON_FA_FOLDER_OPEN "##DeckLoad", actionSize)) {
+        out.requestLoadDialog = true;
+    }
+    ImGui::SetWindowFontScale(1.0f);
+    if (ImGui::IsItemHovered()) ImGui::SetTooltip("Load tape (ACI / WAV / MP3 / OGG / FLAC)");
+
+    ImGui::SameLine();
+    ImGui::SetWindowFontScale(kActionIconScale);
+    if (ImGui::Button(ICON_FA_FLOPPY_DISK "##DeckSave", actionSize)) {
+        out.requestSaveDialog = true;
+    }
+    ImGui::SetWindowFontScale(1.0f);
+    if (ImGui::IsItemHovered()) ImGui::SetTooltip("Save captured tape (ACI / WAV)");
+
+    ImGui::SameLine();
+    ImGui::BeginDisabled(snap.cassetteRecordedTransitionCount == 0);
+    ImGui::SetWindowFontScale(kActionIconScale);
+    if (ImGui::Button(ICON_FA_ERASER "##DeckClear", actionSize)) {
+        if (emulation) emulation->clearTapeCapture();
+        out.statusMessage = "Cassette capture cleared";
+    }
+    ImGui::SetWindowFontScale(1.0f);
+    ImGui::EndDisabled();
+    if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) {
+        ImGui::SetTooltip(snap.cassetteRecordedTransitionCount == 0
+            ? "Clear capture (nothing recorded yet)"
+            : "Clear captured output");
+    }
+
+    // Compact live status line under the buttons.
+    char headerInfo[256];
+    std::snprintf(headerInfo, sizeof(headerInfo),
+                  "in %zu tr  |  out %zu tr  |  audio %s",
+                  snap.cassetteLoadedTransitionCount,
+                  snap.cassetteRecordedTransitionCount,
+                  snap.cassetteAudioAvailable ? "active" : "off");
+    ImGui::TextDisabled("%s", headerInfo);
+    ImGui::Separator();
+
+    // Compute scale to fit the remaining content region while preserving
+    // aspect. The header above has advanced the cursor, so the deck gets
+    // whatever is left under it.
     const ImVec2 avail = ImGui::GetContentRegionAvail();
     const float sx = avail.x / kDesignW;
     const float sy = avail.y / kDesignH;
@@ -249,7 +309,7 @@ CassetteDeck_ImGui::render(const char* title,
         origin.x + (avail.x - canvasW) * 0.5f,
         origin.y + (avail.y - canvasH) * 0.5f);
 
-    // Reserve canvas for layout (cursor advances for items after this block).
+    // Reserve canvas so downstream ImGui items (none, here) still flow.
     ImGui::Dummy(ImVec2(avail.x, avail.y));
 
     ImDrawList* dl = ImGui::GetWindowDrawList();
@@ -323,39 +383,6 @@ CassetteDeck_ImGui::render(const char* title,
 
     // MIC switch (decorative: sets hardware-accurate live audio mode).
     drawMicSwitch(dl, p0, s, "##DeckMicSwitch");
-
-    // Footer actions beneath the chassis: Load Tape / Save Tape buttons.
-    // Placed as regular ImGui buttons below the deck canvas so they don't
-    // disrupt the mechanical look. They are the only path to file dialogs
-    // in Phase 1.
-    ImGui::Spacing();
-    ImGui::Separator();
-    if (ImGui::Button("Load tape…", ImVec2(120, 0))) {
-        out.requestLoadDialog = true;
-    }
-    ImGui::SameLine();
-    if (ImGui::Button("Save tape…", ImVec2(120, 0))) {
-        out.requestSaveDialog = true;
-    }
-    ImGui::SameLine();
-    ImGui::BeginDisabled(snap.cassetteRecordedTransitionCount == 0);
-    if (ImGui::Button("Clear capture", ImVec2(120, 0))) {
-        if (emulation) emulation->clearTapeCapture();
-        out.statusMessage = "Cassette capture cleared";
-    }
-    ImGui::EndDisabled();
-    ImGui::SameLine();
-    ImGui::TextDisabled(" ");
-    ImGui::SameLine();
-    // Compact live status near the footer, for feedback the chassis does
-    // not show (transition counts, audio backend state).
-    char footer[256];
-    std::snprintf(footer, sizeof(footer),
-                  "in %zu tr · out %zu tr · audio %s",
-                  snap.cassetteLoadedTransitionCount,
-                  snap.cassetteRecordedTransitionCount,
-                  snap.cassetteAudioAvailable ? "active" : "off");
-    ImGui::TextDisabled("%s", footer);
 
     ImGui::End();
     return out;
@@ -432,18 +459,19 @@ void CassetteDeck_ImGui::drawSpeakerGrille(ImDrawList* dl, ImVec2 p0, float s) c
 
 void CassetteDeck_ImGui::drawSlimLineBadge(ImDrawList* dl, ImVec2 p0, float s) const
 {
-    const Rect r = kSlimLineR;
+    const Rect r = kBrandBadgeR;
     const ImVec2 a = P(p0, s, r.x0, r.y0);
     const ImVec2 b = P(p0, s, r.x1, r.y1);
     dl->AddRect(a, b, kBadgeBorder, S(s, 2.0f), 0, std::max(1.0f, S(s, 0.9f)));
-    drawCenteredText(dl, p0, s, r, 10.0f, kBadgeText, "Slim Line");
+    drawCenteredText(dl, p0, s, r, 12.0f, kBadgeText, "POM1");
 }
 
 void CassetteDeck_ImGui::drawCounter(ImDrawList* dl, ImVec2 p0, float s,
                                      const char* resetId, bool& resetClicked)
 {
-    // "COUNTER" label to the left of the window.
-    drawText(dl, p0, s, 150.0f, 286.0f, 9.0f, kLabelTextDim, "COUNTER");
+    // "COUNTER" label to the left of the window (aligned on the window's
+    // vertical centre).
+    drawText(dl, p0, s, 98.0f, 273.0f, 9.0f, kLabelTextDim, "COUNTER");
 
     // Window housing.
     const Rect r = kCounterWinR;
@@ -453,7 +481,9 @@ void CassetteDeck_ImGui::drawCounter(ImDrawList* dl, ImVec2 p0, float s,
     dl->AddRectFilled(a, b, kCounterBg, round);
     dl->AddRect(a, b, kCounterRim, round, 0, std::max(1.0f, S(s, 0.9f)));
 
-    // Digits — 3 big numerals centered. Use a slightly bigger font.
+    // Digits — 3 big numerals centered, no phantom backplate (the 7-seg
+    // "888 behind digits" trick only works with a real segment font; with
+    // a proportional font it overlays the real digits and muddies them).
     char digits[8];
     std::snprintf(digits, sizeof(digits), "%03u", counter_ % 1000);
     ImFont* font = ImGui::GetFont();
@@ -463,9 +493,12 @@ void CassetteDeck_ImGui::drawCounter(ImDrawList* dl, ImVec2 p0, float s,
         const ImVec2 pos(
             a.x + ((b.x - a.x) - sz.x) * 0.5f,
             a.y + ((b.y - a.y) - sz.y) * 0.5f - S(s, 0.5f));
-        // Dim "off" background segments — a softer backplate for the active digits.
-        // Draw a faint "888" behind so inactive strokes glow low.
-        dl->AddText(font, fs, pos, kCounterDigitDim, "888");
+        // Soft glow underneath (one-pixel offset in each axis, low alpha)
+        // evokes an LCD bleed/backlight without touching digit sharpness.
+        const ImU32 glow = IM_COL32(226, 158, 56, 40);
+        const float off = std::max(1.0f, S(s, 0.8f));
+        dl->AddText(font, fs, ImVec2(pos.x + off, pos.y), glow, digits);
+        dl->AddText(font, fs, ImVec2(pos.x - off, pos.y), glow, digits);
         dl->AddText(font, fs, pos, kCounterDigit, digits);
     }
 
@@ -487,6 +520,23 @@ void CassetteDeck_ImGui::drawCounter(ImDrawList* dl, ImVec2 p0, float s,
     dl->AddRectFilled(bp0, bp1, col, S(s, 1.5f));
     dl->AddRect(bp0, bp1, IM_COL32(20,20,22,255), S(s, 1.5f), 0, 1.0f);
     if (hov) ImGui::SetTooltip("Reset tape counter");
+
+    // REC LED — small round lamp just right of the reset button. Lit red
+    // while transport is Recording, otherwise a dim burgundy (off state).
+    const Rect lr = kRecLedR;
+    const ImVec2 lc = P(p0, s, (lr.x0 + lr.x1) * 0.5f, (lr.y0 + lr.y1) * 0.5f);
+    const float lrad = S(s, (lr.y1 - lr.y0) * 0.45f);
+    const bool recActive = (transport_ == Transport::Recording && !paused_);
+    if (recActive) {
+        // Soft outer bloom before the core dot for a glow feel.
+        dl->AddCircleFilled(lc, lrad * 1.6f, IM_COL32(232, 56, 44, 40), 22);
+        dl->AddCircleFilled(lc, lrad,        IM_COL32(232, 56, 44, 255), 22);
+    } else {
+        dl->AddCircleFilled(lc, lrad, IM_COL32(48, 14, 12, 255), 18);
+    }
+    dl->AddCircle(lc, lrad, IM_COL32(8, 8, 10, 255), 22, std::max(1.0f, S(s, 0.8f)));
+    // Tiny "REC" label under the LED.
+    drawText(dl, p0, s, lr.x0 - 3.0f, lr.y1 + 1.0f, 7.0f, kLabelTextDim, "REC");
 }
 
 void CassetteDeck_ImGui::drawCassetteWindow(ImDrawList* dl, ImVec2 p0, float s,
@@ -551,17 +601,34 @@ void CassetteDeck_ImGui::drawCassetteWindow(ImDrawList* dl, ImVec2 p0, float s,
             dl->AddCircleFilled(P(p0, s, hx, hubY), S(s, hubR * 0.55f), kHubDark, 18);
         }
     } else {
-        // Empty: soft "NO TAPE" hint.
+        // Empty: soft "NO TAPE" hint. ASCII-only — ImGui default font has
+        // no em-dash glyph and renders it as a replacement char.
         drawCenteredText(dl, p0, s, r, 12.0f, IM_COL32(100, 100, 108, 200),
-                         "NO TAPE — Load tape below");
+                         "NO TAPE - Load tape below");
     }
 
-    // AC/BATTERY · FULL AUTO STOP label near the bottom of the door,
-    // white text on the glass like the real sticker.
+    // Glass pane — semi-transparent dark overlay drawn AFTER the cassette
+    // so the compartment reads as "cassette seen through tinted plastic
+    // door" instead of "cassette sitting in front of a dark wall".
+    // Opacity kept low (≈16 %) so the label and hubs stay readable; the
+    // overlay is skipped when the compartment is empty — nothing to tint
+    // behind the glass there, the void should read as a true hollow.
+    if (snap.cassetteLoadedTape) {
+        dl->AddRectFilled(a, b, IM_COL32(0, 0, 0, 42), round);
+        // Subtle inner highlight along the top edge to suggest curved
+        // plastic + a tiny bottom shadow for the same reason.
+        dl->AddRectFilledMultiColor(
+            a, ImVec2(b.x, a.y + S(s, 14.0f)),
+            IM_COL32(255, 255, 255, 14), IM_COL32(255, 255, 255, 14),
+            IM_COL32(255, 255, 255, 0),  IM_COL32(255, 255, 255, 0));
+    }
+
+    // AC/BATTERY FULL AUTO STOP label — silkscreened on the glass surface.
+    // Drawn AFTER the tint so it sits ON the outer face, not behind it.
     drawCenteredText(dl, p0, s,
                      Rect{ r.x0, r.y1 - 18.0f, r.x1, r.y1 - 4.0f },
                      9.0f, IM_COL32(220, 220, 224, 220),
-                     "AC/BATTERY · FULL AUTO STOP");
+                     "AC/BATTERY  FULL AUTO STOP");
 
     // A faint reflection stripe across the top of the glass.
     const ImVec2 ra = P(p0, s, r.x0 + 4.0f, r.y0 + 2.0f);
@@ -703,20 +770,23 @@ void CassetteDeck_ImGui::drawMicSwitch(ImDrawList* dl, ImVec2 p0, float s,
     dl->AddRectFilled(a, b, IM_COL32(10, 10, 12, 255), round);
     dl->AddRect(a, b, kButtonEdge, round, 0, 1.0f);
 
-    // Slider knob positioned by state.
-    const float knobH = 14.0f;
-    const float knobY = micSwitch_ ? y0 + 4.0f : y1 - 4.0f - knobH;
-    const ImVec2 ka = P(p0, s, x0 + 2.0f, knobY);
-    const ImVec2 kb = P(p0, s, x1 - 2.0f, knobY + knobH);
+    // Horizontal switch: knob is a vertical bar sliding along X. Flip
+    // left = off, right = on, matching the "MIC / LINE" reading order.
+    const float knobW = 14.0f;
+    const float knobX = micSwitch_ ? x1 - 4.0f - knobW : x0 + 4.0f;
+    const ImVec2 ka = P(p0, s, knobX,           y0 + 2.0f);
+    const ImVec2 kb = P(p0, s, knobX + knobW,   y1 - 2.0f);
     dl->AddRectFilled(ka, kb,
                       micSwitch_ ? IM_COL32(198, 200, 204, 255)
                                  : IM_COL32(150, 152, 156, 255),
                       S(s, 1.5f));
     dl->AddRect(ka, kb, IM_COL32(60, 60, 64, 255), S(s, 1.5f), 0, 1.0f);
 
-    // "MIC" label just below the switch.
+    // "MIC" label beneath the switch, in the thin chassis band between
+    // the counter bar (ends at y=306) and the cassette compartment
+    // (starts at y=316).
     drawCenteredText(dl, p0, s,
-                     Rect{ x0 - 4.0f, y1 + 2.0f, x1 + 4.0f, y1 + 14.0f },
+                     Rect{ x0 - 2.0f, y1 + 2.0f, x1 + 2.0f, y1 + 14.0f },
                      7.5f, kLabelTextDim, "MIC");
 
     if (hov) {

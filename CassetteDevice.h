@@ -78,6 +78,21 @@ private:
     bool saveAciTape(const std::string& path) const;
     bool loadWavTape(const std::string& path);
     bool saveWavTape(const std::string& path) const;
+    // Decodes MP3 / Ogg Vorbis / FLAC via miniaudio's ma_decoder, feeds
+    // the resulting mono PCM into pcmToDurations, and commits via
+    // loadPlaybackDurations. Returns false with lastError set on any
+    // decoder failure or empty/too-long input.
+    bool loadMiniaudioTape(const std::string& path);
+
+    // Shared PCM → transition durations core (zero-crossing with
+    // hysteresis + 900 kHz tape-file timebase). Extracted from
+    // loadWavTape so both WAV and miniaudio paths hit the same math —
+    // single source of truth for the threshold and timebase rounding.
+    static bool pcmToDurations(const std::vector<float>& mono,
+                               uint32_t sampleRate,
+                               std::vector<uint32_t>& outDurations,
+                               bool& outInitialLevel,
+                               std::string& outErr);
 
     bool loadPlaybackDurations(std::vector<uint32_t> durations, bool initialLevel, const std::string& path);
 
