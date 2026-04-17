@@ -86,6 +86,14 @@ copy /Y "!GLFW_DLL_SRC!" "%OUTDIR%\glfw3.dll" >nul || (
 echo Copie fonts\ ...
 xcopy /E /I /Q "fonts" "%OUTDIR%\fonts\" >nul || exit /b 1
 
+if not exist "pic\schlumberger-2-apple-1.jpg" (
+    echo ERREUR: pic\schlumberger-2-apple-1.jpg introuvable ^(photo About^).
+    rd /s /q "%OUTDIR%"
+    exit /b 1
+)
+echo Copie pic\ ...
+xcopy /E /I /Q "pic" "%OUTDIR%\pic\" >nul || exit /b 1
+
 echo Copie roms\ ...
 xcopy /E /I /Q "roms" "%OUTDIR%\roms\" >nul || exit /b 1
 

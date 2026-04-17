@@ -43,6 +43,7 @@ Outputs in `build-wasm/`: `pom1_imgui.{html,js,wasm,data}`. The `.data` bundle i
 | Host path | Mount in WASM VFS |
 |-----------|-------------------|
 | `roms/`    | `roms/`           |
+| `pic/`     | `pic/`            |
 | `fonts/`   | `fonts/`          |
 | `software/`| `software/`       |
 | `sdcard/`  | `sdcard/`         |

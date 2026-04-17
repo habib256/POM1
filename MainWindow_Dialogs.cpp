@@ -8,11 +8,14 @@
 #include "MainWindow_ImGui.h"
 #include "MainWindow_Internal.h"
 #include "POM1Build.h"
+#include "Logger.h"
 
 #include "imgui.h"
 
-#if !POM1_IS_WASM
+// OpenGL texture upload (desktop + Emscripten): GLFW pulls in the platform GL headers.
 #include <GLFW/glfw3.h>
+#ifndef GL_CLAMP_TO_EDGE
+#define GL_CLAMP_TO_EDGE 0x812F
 #endif
 
 #if POM1_IS_WASM
@@ -20,23 +23,149 @@
 #include <emscripten/html5.h>
 #endif
 
+#if !POM1_IS_WASM
+#include <filesystem>
+#if defined(_WIN32)
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#include <windows.h>
+#endif
+#endif
+
 #include <algorithm>
+#include <cstdint>
 #include <cstring>
 #include <string>
 #include <vector>
 
+#define STB_IMAGE_IMPLEMENTATION
+#include "third_party/stb/stb_image.h"
+
 namespace {
 using namespace pom1::mainwindow::detail;
+
+static const char kAboutPhotoFile[] = "schlumberger-2-apple-1.jpg";
+
+/** Chemin vers la photo About (WASM : bundle pic/ via --preload-file). */
+static std::string find_about_photo_jpeg_path()
+{
+#if POM1_IS_WASM
+    (void)kAboutPhotoFile;
+    return std::string("pic/schlumberger-2-apple-1.jpg");
+#else
+    namespace fs = std::filesystem;
+
+    auto try_path = [](const fs::path& p) -> std::string {
+        std::error_code ec;
+        if (fs::is_regular_file(p, ec))
+            return p.string();
+        return {};
+    };
+
+    static const char* const rel_candidates[] = {
+        "pic/schlumberger-2-apple-1.jpg",
+        "../pic/schlumberger-2-apple-1.jpg",
+        "../../pic/schlumberger-2-apple-1.jpg",
+        "../../../pic/schlumberger-2-apple-1.jpg",
+    };
+    for (const char* r : rel_candidates) {
+        std::string s = try_path(fs::path(r));
+        if (!s.empty())
+            return s;
+    }
+
+#if defined(_WIN32)
+    char buf[MAX_PATH];
+    DWORD n = GetModuleFileNameA(nullptr, buf, MAX_PATH);
+    if (n > 0 && n < MAX_PATH) {
+        fs::path exeDir = fs::path(buf).parent_path();
+        const fs::path next_to_exe[] = {
+            exeDir / "pic" / kAboutPhotoFile,
+            exeDir.parent_path() / "pic" / kAboutPhotoFile,
+            exeDir.parent_path().parent_path() / "pic" / kAboutPhotoFile,
+        };
+        for (const auto& p : next_to_exe) {
+            std::string s = try_path(p);
+            if (!s.empty())
+                return s;
+        }
+    }
+#endif
+    return {};
+#endif
+}
+
+} // namespace
+
+void MainWindow_ImGui::ensureAboutPhotoTexture()
+{
+    if (aboutPhotoTexture != 0 || aboutPhotoLoadTried)
+        return;
+    aboutPhotoLoadTried = true;
+
+    const std::string path = find_about_photo_jpeg_path();
+    if (path.empty()) {
+        pom1::log().warn("About", "Apple-1 photo not found (expected pic/schlumberger-2-apple-1.jpg)");
+        return;
+    }
+
+    int w = 0;
+    int h = 0;
+    int channels = 0;
+    unsigned char* pixels = stbi_load(path.c_str(), &w, &h, &channels, 4);
+    if (!pixels || w <= 0 || h <= 0) {
+        if (pixels)
+            stbi_image_free(pixels);
+        pom1::log().warn("About", "Could not decode About photo: " + path);
+        return;
+    }
+
+    GLuint tex = 0;
+    glGenTextures(1, &tex);
+    glBindTexture(GL_TEXTURE_2D, tex);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, w, h, 0, GL_RGBA, GL_UNSIGNED_BYTE, pixels);
+    glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
+    stbi_image_free(pixels);
+
+    aboutPhotoTexture = tex;
+    aboutPhotoWidth = w;
+    aboutPhotoHeight = h;
 }
 
 void MainWindow_ImGui::renderAboutDialog()
 {
-    ImGui::SetNextWindowSizeConstraints(ImVec2(520, 0), ImVec2(FLT_MAX, FLT_MAX));
+    ensureAboutPhotoTexture();
+
+    float minWinW = 520.0f;
+    if (aboutPhotoTexture != 0 && aboutPhotoWidth > 0) {
+        const ImGuiStyle& st = ImGui::GetStyle();
+        const float horizontalChrome = st.WindowPadding.x * 2.0f + st.ScrollbarSize + 4.0f;
+        minWinW = std::max(minWinW,
+                           std::min(1400.0f, static_cast<float>(aboutPhotoWidth) + horizontalChrome));
+    }
+    ImGui::SetNextWindowSizeConstraints(ImVec2(minWinW, 0), ImVec2(FLT_MAX, FLT_MAX));
+
     if (ImGui::Begin("About POM1", &showAbout, ImGuiWindowFlags_AlwaysAutoResize)) {
         ImGui::TextWrapped("POM1 v1.8.1 - Apple 1 Emulator (Dear ImGui)");
         ImGui::TextWrapped("Celebrating 50 years of Apple (1976-2026)");
         ImGui::TextWrapped("Copyright (C) 2000-2026 - GPL-3.0");
         ImGui::Separator();
+
+        if (aboutPhotoTexture != 0 && aboutPhotoWidth > 0 && aboutPhotoHeight > 0) {
+            const float availW = ImGui::GetContentRegionAvail().x;
+            const float iw = static_cast<float>(aboutPhotoWidth);
+            const float ih = static_cast<float>(aboutPhotoHeight);
+            const float scale = std::min(1.0f, availW / iw);
+            const ImVec2 imgSize(iw * scale, ih * scale);
+            ImGui::Image((ImTextureID)(uintptr_t)aboutPhotoTexture, imgSize);
+            ImGui::Spacing();
+        }
 
         ImGui::Spacing();
         ImGui::TextWrapped("Authors:");
@@ -44,17 +173,6 @@ void MainWindow_ImGui::renderAboutDialog()
         ImGui::BulletText("Ken WESSEN - upgrades, 65C02 support (2006)");
         ImGui::BulletText("Joe CROBAK - macOS Cocoa port");
         ImGui::BulletText("John D. CORRADO - C/SDL port (2006-2014)");
-
-        ImGui::Spacing();
-        ImGui::TextWrapped("Hardware emulated:");
-        ImGui::BulletText("MOS 6502 CPU + PIA 6821 ($D0Fx aliasing)");
-        ImGui::BulletText("Apple Cassette Interface (ACI) - live audio + .aci/.wav I/O");
-        ImGui::BulletText("Uncle Bernie's GEN2 Color Graphics Card (280x192 HIRES)");
-        ImGui::BulletText("P-LAB Apple-1 Graphic Card (TMS9918 VDP, sprites)");
-        ImGui::BulletText("P-LAB A1-SID Sound Card (MOS 6581/8580)");
-        ImGui::BulletText("P-LAB microSD Storage Card (65C22 VIA + SD CARD OS)");
-        ImGui::BulletText("P-LAB MODEM BBS (65C51 ACIA + TCP/TELNET)");
-        ImGui::BulletText("P-LAB Terminal Card (TCP server on localhost:6502)");
 
         ImGui::Spacing();
         ImGui::TextWrapped("Thanks to:");

@@ -11,6 +11,7 @@ Contents
 pom1_imgui.exe   Main program
 glfw3.dll        GLFW (OpenGL window)
 fonts/           Font Awesome (toolbar icons)
+pic/             About dialog photo (schlumberger-2-apple-1.jpg)
 roms/            Apple 1 and expansion ROMs
 software/        Sample programs — File > Load Memory
 sdcard/          Host folder for the P-LAB microSD card (virtual FAT32)

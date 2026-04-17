@@ -81,6 +81,13 @@ void MainWindow_ImGui::destroyPom1()
         glDeleteTextures(1, &graphicsCardTexture);
         graphicsCardTexture = 0;
     }
+    if (aboutPhotoTexture) {
+        glDeleteTextures(1, &aboutPhotoTexture);
+        aboutPhotoTexture = 0;
+        aboutPhotoWidth = 0;
+        aboutPhotoHeight = 0;
+    }
+    aboutPhotoLoadTried = false;
 }
 
 void MainWindow_ImGui::render()

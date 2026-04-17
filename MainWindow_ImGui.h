@@ -71,6 +71,10 @@ private:
     bool showGraphicsCard = false;
     bool graphicsCardEnabled = false;
     GLuint graphicsCardTexture = 0;
+    GLuint aboutPhotoTexture = 0;
+    int aboutPhotoWidth = 0;
+    int aboutPhotoHeight = 0;
+    bool aboutPhotoLoadTried = false;
     bool showTMS9918 = false;
     bool tms9918Enabled = false;
     GLuint tms9918Texture = 0;
@@ -123,6 +127,7 @@ private:
     
     // Dialog functions
     void renderAboutDialog();
+    void ensureAboutPhotoTexture();
     void renderHardwareReferenceWindow();
     void renderDebugDialog();
     void renderScreenConfigDialog();

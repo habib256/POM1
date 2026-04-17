@@ -200,6 +200,7 @@ if(EMSCRIPTEN)
         # and is plenty for our cold-start init.
         "${POM1_STACK_FLAG}"
         "--preload-file ${PRELOAD_DIR}/roms@roms"
+        "--preload-file ${PRELOAD_DIR}/pic@pic"
         "--preload-file ${PRELOAD_DIR}/fonts@fonts"
         "--preload-file ${PRELOAD_DIR}/software@software"
         "--preload-file ${PRELOAD_DIR}/sdcard@sdcard"
