@@ -342,6 +342,22 @@ bool EmulationController::reloadApplesoftLite(std::string& error)
     return ok;
 }
 
+bool EmulationController::reloadApplesoftLiteCFFA1(std::string& error)
+{
+    std::lock_guard<PriorityMutex> lock(stateMutex);
+    bool ok = RomLoader::reloadApplesoftLiteCFFA1(*memory, error);
+    publisher.publish(*memory, *cpu, runRequested.load());
+    return ok;
+}
+
+bool EmulationController::reloadApplesoftLiteSDCard(std::string& error)
+{
+    std::lock_guard<PriorityMutex> lock(stateMutex);
+    bool ok = RomLoader::reloadApplesoftLiteSDCard(*memory, error);
+    publisher.publish(*memory, *cpu, runRequested.load());
+    return ok;
+}
+
 bool EmulationController::reloadWozMonitor(std::string& error)
 {
     std::lock_guard<PriorityMutex> lock(stateMutex);
@@ -468,6 +484,19 @@ void EmulationController::setSIDEnabled(bool enabled)
     publisher.publish(*memory, *cpu, runRequested.load());
 }
 
+void EmulationController::setSIDSpecialEditionEnabled(bool enabled)
+{
+    std::lock_guard<PriorityMutex> lock(stateMutex);
+    memory->setSIDSpecialEditionEnabled(enabled);
+    publisher.publish(*memory, *cpu, runRequested.load());
+}
+
+bool EmulationController::isSIDSpecialEditionEnabled() const
+{
+    std::lock_guard<PriorityMutex> lock(stateMutex);
+    return memory->isSIDSpecialEditionEnabled();
+}
+
 void EmulationController::setSIDChipModel(pom1::SID::ChipModel m)
 {
     std::lock_guard<PriorityMutex> lock(stateMutex);
@@ -511,6 +540,14 @@ bool EmulationController::reloadCFFA1Rom(std::string& error)
 {
     std::lock_guard<PriorityMutex> lock(stateMutex);
     bool ok = RomLoader::reloadCFFA1Rom(*memory, error);
+    publisher.publish(*memory, *cpu, runRequested.load());
+    return ok;
+}
+
+bool EmulationController::reloadSDCardRom(std::string& error)
+{
+    std::lock_guard<PriorityMutex> lock(stateMutex);
+    bool ok = RomLoader::reloadSDCardRom(*memory, error);
     publisher.publish(*memory, *cpu, runRequested.load());
     return ok;
 }

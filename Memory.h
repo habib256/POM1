@@ -80,6 +80,11 @@ public:
     // bare Apple-1 that shipped with no BASIC cassette.
     void unloadBasic(void);
     int loadApplesoftLite(void);
+    // Explicit variants — let the user pick which flavour to re-flash regardless
+    // of which card is plugged. The auto-dispatching loadApplesoftLite()
+    // above is what applyMachineConfig() uses for preset loading.
+    int loadApplesoftLiteCFFA1(void);
+    int loadApplesoftLiteSDCard(void);
     int loadKrusader(void);
     int loadWozMonitor(void);
     int loadAciRom(void);
@@ -164,6 +169,14 @@ public:
     pom1::SID& getSID() { return *sid; }
     const pom1::SID& getSID() const { return *sid; }
     void setSIDEnabled(bool b);
+    // Claudio Parmigiani's A1-AUDIO Special Edition — same MOS chip but
+    // register window mapped at $CC00-$CC1F instead of the prototype's
+    // $C800-$CFFF. Mutually exclusive with the TMS9918 Graphic Card (they
+    // share the same $CC00/$CC01 addresses). Internally the two variants
+    // share the single `sid` instance; enabling one auto-disables the
+    // other to keep the hardware invariants clean.
+    void setSIDSpecialEditionEnabled(bool b);
+    bool isSIDSpecialEditionEnabled() const { return sidSpecialEditionEnabled; }
     bool isSIDEnabled() const { return sidEnabled; }
 
     // P-LAB microSD Storage Card (65C22 VIA + MCU)
@@ -249,6 +262,7 @@ private :
     // ~audioDevice (which is what stops the miniaudio callback).
     std::unique_ptr<pom1::SID> sid;
     bool sidEnabled = false;
+    bool sidSpecialEditionEnabled = false;
     std::unique_ptr<AudioDevice> audioDevice;
     std::unique_ptr<MicroSD> microSD;
     bool microSDEnabled = true;
@@ -272,6 +286,7 @@ private :
     PeripheralBus::Handle microSDBusHandle = -1;     // $A000-$A00F (overridden by CFFA1 when both enabled; but the presets are mutually exclusive)
     PeripheralBus::Handle wifiModemBusHandle = -1;   // $B000-$B003
     PeripheralBus::Handle sidBusHandle = -1;         // $C800-$CFFF, priority 0
+    PeripheralBus::Handle sidSEBusHandle = -1;       // A1-AUDIO SE: $CC00-$CC1F, priority 0 (shares sid instance)
     PeripheralBus::Handle tms9918BusHandle = -1;     // $CC00/$CC01, priority 10 (wins over SID)
     PeripheralBus::Handle cassetteToggleBusHandle = -1; // $C000-$C0FF read = toggle output
     PeripheralBus::Handle cassetteInputBusHandle  = -1; // $C081 read = tape input (priority 1, wins over toggle)

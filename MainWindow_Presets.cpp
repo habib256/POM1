@@ -18,12 +18,13 @@
 namespace pom1::mainwindow::detail {
 
 const MachineConfig kMachinePresets[] = {
-    //                                  GEN2  uSD  SID  TMS  RTC  WiFi Term Krus CFFA ACI  RAM  BASIC
+    //                                  GEN2  uSD  SID  TMS  RTC  WiFi Term Krus CFFA ACI  RAM  BASIC              SID-SE
     {
         "Bare Apple-1 (July 1976)",
         "Pre-ACI original: 6502, 4 KB RAM, PIA 6821, WOZ Monitor.",
         false, false, false, false, false, false, false,
         false, false, false, 4, BasicType::None,
+        /*sidSE*/ false,
         { {"Apple 1 Screen", {10,61}, {0,0}} }, 1
     },
     {
@@ -31,6 +32,7 @@ const MachineConfig kMachinePresets[] = {
         "Original bare board with the ACI cassette expansion card: 6502, 8 KB RAM, PIA 6821, Integer BASIC, WOZ Monitor.",
         false, false, false, false, false, false, false,
         false, false, true, 8, BasicType::Integer,
+        /*sidSE*/ false,
         { {"Apple 1 Screen", {10,61}, {0,0}} }, 1
     },
     {
@@ -38,6 +40,7 @@ const MachineConfig kMachinePresets[] = {
         "Vince Briel's modern recreation: Integer BASIC, Krusader assembler, ACI cassette.",
         false, false, false, false, false, false, false,
         true, false, true, 32, BasicType::Integer,
+        /*sidSE*/ false,
         { {"Apple 1 Screen", {10,61}, {0,0}} }, 1
     },
     {
@@ -45,6 +48,7 @@ const MachineConfig kMachinePresets[] = {
         "Replica 1 with CFFA1 CompactFlash storage, Applesoft Lite.",
         false, false, false, false, false, false, false,
         false, true, false, 32, BasicType::ApplesoftLite,
+        /*sidSE*/ false,
         { {"Apple 1 Screen", {10,61}, {0,0}} }, 1
     },
     {
@@ -52,15 +56,28 @@ const MachineConfig kMachinePresets[] = {
         "P-LAB microSD Storage Card, Applesoft Lite.",
         false, true, false, false, false, false, false,
         false, false, false, 32, BasicType::ApplesoftLite,
+        /*sidSE*/ false,
         {
             {"Apple 1 Screen", {10, 61}, {0, 0}},
         }, 1
     },
     {   //                                  GEN2  uSD  SID  TMS  RTC  WiFi Term Krus CFFA ACI
-        "P-LAB Apple-1 with A1-SID Sound Card",
-        "P-LAB A1-SID Sound Card (MOS 6581/8580), Integer BASIC.",
+        "P-LAB Apple-1 with A1-SID Sound Card ($C800-$CFFF)",
+        "P-LAB A1-SID Sound Card (MOS 6581/8580), Integer BASIC. Registers at $C800-$CFFF.",
         false, false, true, false, false, false, false,
         false, false, false, 32, BasicType::Integer,
+        /*sidSE*/ false,
+        {
+            {"Apple 1 Screen", {10, 61}, {0, 0}},
+        }, 1
+    },
+    {   //                                  GEN2  uSD  SID  TMS  RTC  WiFi Term Krus CFFA ACI
+        "P-LAB Apple-1 with A1-AUDIO Special Edition ($CC00-$CC1F)",
+        "Claudio Parmigiani's A1-AUDIO Special Edition (10 units): MOS 6581/8580 at $CC00-$CC1F. "
+        "Mutually exclusive with TMS9918 (same $CC00/$CC01 window).",
+        false, false, false, false, false, false, false,
+        false, false, false, 32, BasicType::Integer,
+        /*sidSE*/ true,
         {
             {"Apple 1 Screen", {10, 61}, {0, 0}},
         }, 1
@@ -70,6 +87,7 @@ const MachineConfig kMachinePresets[] = {
         "P-LAB Graphic Card (TMS9918A VDP), Integer BASIC.",
         false, false, false, true, false, false, false,
         false, false, false, 32, BasicType::Integer,
+        /*sidSE*/ false,
         {
             {"Apple 1 Screen",               {10,  61}, {0,   0}},
             {"P-LAB Graphic Card (TMS9918)", {640, 61}, {784, 612}},
@@ -80,6 +98,7 @@ const MachineConfig kMachinePresets[] = {
         "P-LAB A1-IO Board & RTC (DS3231, DS18B20, analog/digital I/O), Integer BASIC.",
         false, false, false, false, true, false, false,
         false, false, false, 32, BasicType::Integer,
+        /*sidSE*/ false,
         {
             {"Apple 1 Screen",        {10,  61},  {0,   0}},
             {"P-LAB I/O Board & RTC", {640, 61},  {380, 280}},
@@ -90,6 +109,7 @@ const MachineConfig kMachinePresets[] = {
         "P-LAB MODEM BBS (65C51 ACIA, ESP8266 AT, TCP/TELNET), Integer BASIC.",
         false, false, false, false, false, true, false,
         false, false, false, 32, BasicType::Integer,
+        /*sidSE*/ false,
         {
             {"Apple 1 Screen",    {10,  61},  {0,   0}},
             {"P-LAB Wi-Fi Modem", {640, 61},  {340, 260}},
@@ -100,6 +120,7 @@ const MachineConfig kMachinePresets[] = {
         "Uncle Bernie's GEN2 280x192 HGR color graphics, Integer BASIC.",
         true, false, false, false, false, false, false,
         false, false, false, 32, BasicType::Integer,
+        /*sidSE*/ false,
         {
             {"Apple 1 Screen",                 {10,  61}, {0,   0}},
             {"Uncle Bernie's GEN2 HGR Graphic Card", {624, 61}, {576, 420}},
@@ -110,6 +131,7 @@ const MachineConfig kMachinePresets[] = {
         "All P-LAB expansion cards: microSD, A1-SID, TMS9918, I/O & RTC, Wi-Fi modem, Terminal Card.",
         false, true, true, true, true, true, true,
         false, false, false, 64, BasicType::ApplesoftLite,
+        /*sidSE*/ false,
         {
             {"Apple 1 Screen",               {10,  61},  {0,   0}},
             {"P-LAB Graphic Card (TMS9918)", {640, 61},  {784, 612}},
@@ -123,6 +145,7 @@ const MachineConfig kMachinePresets[] = {
         "64 KB RAM, Applesoft Lite, microSD + A1-SID + Wi-Fi modem + Terminal Card. Graphic cards off by default.",
         false, true, true, false, false, true, true,
         false, false, true, 64, BasicType::ApplesoftLite,
+        /*sidSE*/ false,
         {
             {"Apple 1 Screen",        {10,  61},  {0,   0}},
             {"P-LAB Wi-Fi Modem",     {640, 495}, {340, 260}},
@@ -164,8 +187,8 @@ void MainWindow_ImGui::applyMachineConfig(int presetIndex)
     // Show POM1 banner only for the last preset (POM1 Fantasy)
     screen->setShowBanner(presetIndex == kMachinePresetCount - 1);
 
-    // Unplug the SID up front — cleans any lingering state from the
-    // previous preset (source off the mixer, chip + ring fully reset).
+    // Unplug both SID variants up front — cleans any lingering state from
+    // the previous preset (source off the mixer, chip + ring fully reset).
     // The ACTUAL re-plug is deferred below via pendingSidEnableFrames so
     // the SID starts a few frames after the CPU has been running: plugging
     // the SID in the same frame as the preset apply catches the chip
@@ -173,6 +196,7 @@ void MainWindow_ImGui::applyMachineConfig(int presetIndex)
     // stays silent until the user manually toggles the card. Deferring
     // the plug past the frame lets the CPU settle and fixes that.
     emulation->setSIDEnabled(false);
+    emulation->setSIDSpecialEditionEnabled(false);
 
     // Skip the full hard reset on the very first invocation — at that
     // point Memory::Memory() has just run initMemory() (default ROMs +
@@ -213,9 +237,13 @@ void MainWindow_ImGui::applyMachineConfig(int presetIndex)
     // above; the actual plug (if the preset wants the card) fires a few
     // frames later from render() via pendingSidEnableFrames. See the
     // comment on that field in MainWindow_ImGui.h for the rationale.
+    // Both SID variants share the same deferred-plug slot — they can't be
+    // plugged together (one chip, mutually exclusive MachineConfig fields).
     sidEnabled = cfg.sid;
+    sidSpecialEditionEnabled = cfg.sidSpecialEdition;
     pendingSidEnable = cfg.sid;
-    pendingSidEnableFrames = cfg.sid ? kSidEnableDeferFrames : 0;
+    pendingSidSEEnable = cfg.sidSpecialEdition;
+    pendingSidEnableFrames = (cfg.sid || cfg.sidSpecialEdition) ? kSidEnableDeferFrames : 0;
 
     tms9918Enabled = cfg.tms9918;
     emulation->setTMS9918Enabled(cfg.tms9918);

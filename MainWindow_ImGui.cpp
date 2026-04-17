@@ -93,10 +93,13 @@ void MainWindow_ImGui::render()
     // Deferred A1-SID plug (see MainWindow_ImGui.h for rationale). When
     // applyMachineConfig() wants the SID plugged in, it stashes the
     // desired state here and counts down in frames so the CPU gets a
-    // head start on register init before the chip joins the mixer.
+    // head start on register init before the chip joins the mixer. The
+    // prototype ($C800) and A1-AUDIO Special Edition ($CC00) are mutually
+    // exclusive at the preset level but share the same defer slot.
     if (pendingSidEnableFrames > 0) {
-        if (--pendingSidEnableFrames == 0 && pendingSidEnable) {
-            emulation->setSIDEnabled(true);
+        if (--pendingSidEnableFrames == 0) {
+            if (pendingSidEnable)   emulation->setSIDEnabled(true);
+            if (pendingSidSEEnable) emulation->setSIDSpecialEditionEnabled(true);
         }
     }
     // MemoryViewer setters are only consumed by render(), so don't bother

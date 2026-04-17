@@ -18,12 +18,15 @@ class RomLoader
 public:
     // Pre: caller holds the mutex protecting `mem`.
     // Returns true on success; on failure, writes Memory::getLastError() into `error`.
-    static bool reloadBasic         (Memory& mem, std::string& error);
-    static bool reloadApplesoftLite (Memory& mem, std::string& error);
-    static bool reloadWozMonitor    (Memory& mem, std::string& error);
-    static bool reloadKrusader      (Memory& mem, std::string& error);
-    static bool reloadAciRom        (Memory& mem, std::string& error);
-    static bool reloadCFFA1Rom      (Memory& mem, std::string& error);
+    static bool reloadBasic              (Memory& mem, std::string& error);
+    static bool reloadApplesoftLite      (Memory& mem, std::string& error);
+    static bool reloadApplesoftLiteCFFA1 (Memory& mem, std::string& error);
+    static bool reloadApplesoftLiteSDCard(Memory& mem, std::string& error);
+    static bool reloadWozMonitor         (Memory& mem, std::string& error);
+    static bool reloadKrusader           (Memory& mem, std::string& error);
+    static bool reloadAciRom             (Memory& mem, std::string& error);
+    static bool reloadCFFA1Rom           (Memory& mem, std::string& error);
+    static bool reloadSDCardRom          (Memory& mem, std::string& error);
 };
 
 #endif // ROMLOADER_H

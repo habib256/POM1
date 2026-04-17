@@ -201,10 +201,6 @@ void MainWindow_ImGui::renderScreenConfigDialog()
         ImGui::Checkbox("Cursor", &screen->showCursor);
 
         ImGui::Spacing();
-        ImGui::Text("Display Scale:");
-        ImGui::SliderFloat("##Scale", &screen->scale, 0.5f, 4.0f, "%.1fx");
-
-        ImGui::Spacing();
         ImGui::Text("Image Adjustments:");
         ImGui::SliderFloat("Brightness", &screen->brightness, 0.2f, 1.5f, "%.2f");
         ImGui::SliderFloat("Contrast", &screen->contrast, 0.5f, 2.0f, "%.2f");
@@ -268,7 +264,13 @@ void MainWindow_ImGui::renderMemoryConfigDialog()
         ImGui::Text("ROM Loading");
         ImGui::Separator();
 
-        if (ImGui::Button("Reload BASIC")) {
+        auto hasRange = [](const std::vector<LoadedRegion>& v, quint16 s, quint16 e) {
+            for (const auto& r : v)
+                if (r.start == s && r.end == e) return true;
+            return false;
+        };
+
+        if (ImGui::Button("Load BASIC  [$E000-$EFFF + Woz $FF00-$FFFF]")) {
             std::string error;
             bool ok = emulation->reloadBasic(error);
             if (!writeProtect) emulation->setWriteInRom(true);
@@ -278,48 +280,48 @@ void MainWindow_ImGui::renderMemoryConfigDialog()
                 loadedRoms.push_back({"Integer BASIC", 0xE000, 0xEFFF});
                 loadedRoms.push_back({"Woz Monitor", 0xFF00, 0xFFFF});
             }
-            setStatusMessage(ok ? "BASIC reloaded" : error, 3.0f);
+            setStatusMessage(ok ? "BASIC loaded" : error, 3.0f);
         }
 
-        if (ImGui::Button("Reload Applesoft Lite")) {
+        if (ImGui::Button("Load Applesoft Lite (CFFA1)  [$E000-$FFFF]")) {
             std::string error;
-            bool ok = emulation->reloadApplesoftLite(error);
+            bool ok = emulation->reloadApplesoftLiteCFFA1(error);
             if (!writeProtect) emulation->setWriteInRom(true);
             if (ok) {
-                const bool plabSd = emulation->isMicroSDEnabled() && !emulation->isCFFA1Enabled();
-                if (plabSd) {
-                    loadedRoms.erase(std::remove_if(loadedRoms.begin(), loadedRoms.end(),
-                        [](const LoadedRegion& r) {
-                            if (r.name.find("Applesoft") != std::string::npos) return true;
-                            return r.start == 0x6000 && r.end == 0x7FFF;
-                        }), loadedRoms.end());
-                    loadedRoms.push_back({"Applesoft Lite (P-LAB microSD)", 0x6000, 0x7FFF});
-                    auto hasRange = [](const std::vector<LoadedRegion>& v, quint16 s, quint16 e) {
-                        for (const auto& r : v)
-                            if (r.start == s && r.end == e) return true;
-                        return false;
-                    };
-                    if (!hasRange(loadedRoms, 0xE000, 0xEFFF))
-                        loadedRoms.push_back({"Integer BASIC", 0xE000, 0xEFFF});
-                    if (!hasRange(loadedRoms, 0xFF00, 0xFFFF))
-                        loadedRoms.push_back({"Woz Monitor", 0xFF00, 0xFFFF});
-                } else {
-                    loadedRoms.erase(std::remove_if(loadedRoms.begin(), loadedRoms.end(),
-                        [](const LoadedRegion& r) { return r.start >= 0xE000 && r.end <= 0xFFFF; }), loadedRoms.end());
-                    loadedRoms.push_back({"Applesoft Lite (CFFA1)", 0xE000, 0xFFFF});
-                }
+                loadedRoms.erase(std::remove_if(loadedRoms.begin(), loadedRoms.end(),
+                    [](const LoadedRegion& r) { return r.start >= 0xE000 && r.end <= 0xFFFF; }), loadedRoms.end());
+                loadedRoms.push_back({"Applesoft Lite (CFFA1)", 0xE000, 0xFFFF});
             }
-            setStatusMessage(ok ? "Applesoft Lite reloaded" : error, 3.0f);
+            setStatusMessage(ok ? "Applesoft Lite (CFFA1) loaded" : error, 3.0f);
         }
 
-        if (ImGui::Button("Reload WOZ Monitor")) {
+        if (ImGui::Button("Load Applesoft Lite (microSD)  [$6000-$7FFF + Woz $FF00-$FFFF]")) {
+            std::string error;
+            bool ok = emulation->reloadApplesoftLiteSDCard(error);
+            if (!writeProtect) emulation->setWriteInRom(true);
+            if (ok) {
+                loadedRoms.erase(std::remove_if(loadedRoms.begin(), loadedRoms.end(),
+                    [](const LoadedRegion& r) {
+                        if (r.name.find("Applesoft") != std::string::npos) return true;
+                        return r.start == 0x6000 && r.end == 0x7FFF;
+                    }), loadedRoms.end());
+                loadedRoms.push_back({"Applesoft Lite (P-LAB microSD)", 0x6000, 0x7FFF});
+                if (!hasRange(loadedRoms, 0xE000, 0xEFFF))
+                    loadedRoms.push_back({"Integer BASIC", 0xE000, 0xEFFF});
+                if (!hasRange(loadedRoms, 0xFF00, 0xFFFF))
+                    loadedRoms.push_back({"Woz Monitor", 0xFF00, 0xFFFF});
+            }
+            setStatusMessage(ok ? "Applesoft Lite (microSD) loaded" : error, 3.0f);
+        }
+
+        if (ImGui::Button("Load WOZ Monitor  [$FF00-$FFFF]")) {
             std::string error;
             bool ok = emulation->reloadWozMonitor(error);
             if (!writeProtect) emulation->setWriteInRom(true);
-            setStatusMessage(ok ? "WOZ Monitor reloaded" : error, 3.0f);
+            setStatusMessage(ok ? "WOZ Monitor loaded" : error, 3.0f);
         }
 
-        if (ImGui::Button("Reload Krusader")) {
+        if (ImGui::Button("Load Krusader  [$A000-$BFFF]")) {
             std::string error;
             bool ok = emulation->reloadKrusader(error);
             if (!writeProtect) emulation->setWriteInRom(true);
@@ -328,16 +330,32 @@ void MainWindow_ImGui::renderMemoryConfigDialog()
                     [](const LoadedRegion& r) { return r.start == 0xA000; }), loadedRoms.end());
                 loadedRoms.push_back({"Krusader", 0xA000, 0xBFFF});
             }
-            setStatusMessage(ok ? "Krusader reloaded" : error, 3.0f);
+            setStatusMessage(ok ? "Krusader loaded" : error, 3.0f);
         }
 
-        if (ImGui::Button("Reload ACI ROM")) {
+        if (ImGui::Button("Load ACI ROM  [$C100-$C1FF]")) {
             std::string error;
             bool ok = emulation->reloadAciRom(error);
-            if (!writeProtect) {
-                emulation->setWriteInRom(true);
-            }
-            setStatusMessage(ok ? "ACI ROM reloaded" : error, 3.0f);
+            if (!writeProtect) emulation->setWriteInRom(true);
+            setStatusMessage(ok ? "ACI ROM loaded" : error, 3.0f);
+        }
+
+        if (ImGui::Button("Load SD Card OS  [$8000-$9FFF]")) {
+            std::string error;
+            bool ok = emulation->reloadSDCardRom(error);
+            if (!writeProtect) emulation->setWriteInRom(true);
+            if (ok && !hasRange(loadedRoms, 0x8000, 0x9FFF))
+                loadedRoms.push_back({"SD Card OS", 0x8000, 0x9FFF});
+            setStatusMessage(ok ? "SD Card OS loaded" : error, 3.0f);
+        }
+
+        if (ImGui::Button("Load CFFA1 Firmware  [$9000-$AFDF]")) {
+            std::string error;
+            bool ok = emulation->reloadCFFA1Rom(error);
+            if (!writeProtect) emulation->setWriteInRom(true);
+            if (ok && !hasRange(loadedRoms, 0x9000, 0xAFDF))
+                loadedRoms.push_back({"CFFA1 Firmware", 0x9000, 0xAFDF});
+            setStatusMessage(ok ? "CFFA1 Firmware loaded" : error, 3.0f);
         }
 
         ImGui::Spacing();

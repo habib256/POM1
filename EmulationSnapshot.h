@@ -48,6 +48,7 @@ struct EmulationSnapshot
     std::string cassetteLoadedTapePath;
     TMS9918::Snapshot tms9918;
     bool sidEnabled = false;
+    bool sidSpecialEditionEnabled = false;
     pom1::SID::ChipModel sidChipModel = pom1::SID::ChipModel::MOS6581;
     bool microSDEnabled = false;
     bool wifiModemEnabled = false;

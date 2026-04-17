@@ -99,6 +99,12 @@ struct MachineConfig {
     bool aci;                   // Apple Cassette Interface (false = pre-ACI bare 4K)
     int  ramKB;                 // Usable RAM in kilobytes (8 = Woz original, 32 = Replica/P-LAB)
     BasicType basicType;
+    // A1-AUDIO Special Edition: Claudio Parmigiani's 10-unit A1-AUDIO card
+    // (https://p-l4b.github.io/A1-AUDIO/). Same MOS 6581/8580 chip as the
+    // prototype A1-SID, but the register window lives at $CC00-$CC1F instead
+    // of $C800-$CFFF. Collides with TMS9918 at $CC00/$CC01 — the preset
+    // layer enforces mutual exclusivity with `tms9918`.
+    bool sidSpecialEdition;
     MachineWindowPlacement layout[8];
     int layoutCount;
 };

@@ -82,18 +82,6 @@ void SID::writeRegister(uint8_t reg, uint8_t value)
     std::lock_guard<std::mutex> lock(chipMutex);
     shadowRegs[reg] = value;
     chip->write(reg, value);
-
-    // TEMP DEBUG: report the first 8 register writes per session so we can
-    // confirm the bus is routing to SID. Remove once the "first SID program
-    // after boot stays silent" bug is pinned down.
-    static std::atomic<int> writeCount{0};
-    const int n = 1 + writeCount.fetch_add(1, std::memory_order_relaxed);
-    if (n <= 8) {
-        pom1::log().info("SID-WR",
-            "#" + std::to_string(n) +
-            " reg=$" + std::to_string(static_cast<int>(reg)) +
-            " val=$" + std::to_string(static_cast<int>(value)));
-    }
 }
 
 uint8_t SID::readRegister(uint8_t reg)
@@ -111,14 +99,10 @@ void SID::advanceCycles(int cycles)
 
     short staging[kStagingShorts];
     int remaining = cycles;
-    // TEMP DEBUG: count produced samples, report every ~16k samples.
-    static std::atomic<uint64_t> totalProduced{0};
-    int producedThisCall = 0;
     while (remaining > 0) {
         const int batch = std::min(remaining, kMaxCyclesPerBatch);
         const int produced = chip->clock(static_cast<unsigned int>(batch), staging);
         remaining -= batch;
-        producedThisCall += produced;
 
         for (int i = 0; i < produced; ++i) {
             const float sample = static_cast<float>(staging[i]) * (1.0f / 32768.0f);
@@ -135,25 +119,12 @@ void SID::advanceCycles(int cycles)
             ringHead.store(next, std::memory_order_release);
         }
     }
-    // TEMP DEBUG
-    if (producedThisCall > 0) {
-        const uint64_t total = producedThisCall +
-            totalProduced.fetch_add(static_cast<uint64_t>(producedThisCall),
-                                    std::memory_order_relaxed);
-        // Log at 1st sample, then every 16k
-        if (total < 2 || (total / 16384) != ((total - static_cast<uint64_t>(producedThisCall)) / 16384)) {
-            pom1::log().info("SID-PROD",
-                "total=" + std::to_string(total) +
-                " thisCall=" + std::to_string(producedThisCall));
-        }
-    }
 }
 
 void SID::fillAudioBuffer(float* output, int frameCount)
 {
     if (!output || frameCount <= 0) return;
 
-    int drained = 0;
     for (int i = 0; i < frameCount; ++i) {
         const size_t tail = ringTail.load(std::memory_order_relaxed);
         if (tail == ringHead.load(std::memory_order_acquire)) {
@@ -161,23 +132,7 @@ void SID::fillAudioBuffer(float* output, int frameCount)
         } else {
             output[i] = ringBuf[tail];
             ringTail.store((tail + 1) % kRingCapacity, std::memory_order_release);
-            ++drained;
         }
-    }
-    // TEMP DEBUG: print drain stats every ~256 callbacks.
-    static std::atomic<uint64_t> cbCount{0};
-    static std::atomic<uint64_t> totalDrained{0};
-    const uint64_t n = 1 + cbCount.fetch_add(1, std::memory_order_relaxed);
-    totalDrained.fetch_add(static_cast<uint64_t>(drained), std::memory_order_relaxed);
-    if ((n & 0xFF) == 0) {
-        const size_t head = ringHead.load(std::memory_order_relaxed);
-        const size_t tail = ringTail.load(std::memory_order_relaxed);
-        const size_t used = (head + kRingCapacity - tail) % kRingCapacity;
-        pom1::log().info("SID-DRAIN",
-            "cb=" + std::to_string(n) +
-            " totalDrained=" + std::to_string(totalDrained.load()) +
-            " last=" + std::to_string(drained) +
-            " ringUsed=" + std::to_string(used));
     }
 }
 

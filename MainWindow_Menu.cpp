@@ -36,12 +36,7 @@ void MainWindow_ImGui::renderMenuBar()
                 saveMemory();
             }
             ImGui::Separator();
-            if (ImGui::MenuItem("Load Tape")) {
-                loadTape();
-            }
-            if (ImGui::MenuItem("Save Tape")) {
-                saveTape();
-            }
+            ImGui::MenuItem("Cassette Player", nullptr, &showCassetteControl);
             ImGui::Separator();
             if (ImGui::MenuItem("Paste Code", shortcutLabel(GLFW_KEY_V, GLFW_MOD_CONTROL))) {
                 pasteCode();
@@ -56,6 +51,24 @@ void MainWindow_ImGui::renderMenuBar()
         }
 
         if (ImGui::BeginMenu("CPU")) {
+#if !POM1_IS_WASM
+            ImGui::Text("CPU Speed:");
+            if (ImGui::RadioButton("x1", executionSpeed == POM1_CPU_CYCLES_PER_FRAME_1X_60HZ)) {
+                executionSpeed = POM1_CPU_CYCLES_PER_FRAME_1X_60HZ;
+                emulation->setExecutionSpeedCyclesPerFrame(executionSpeed);
+            }
+            ImGui::SameLine();
+            if (ImGui::RadioButton("x2", executionSpeed == POM1_CPU_CYCLES_PER_FRAME_2X_60HZ)) {
+                executionSpeed = POM1_CPU_CYCLES_PER_FRAME_2X_60HZ;
+                emulation->setExecutionSpeedCyclesPerFrame(executionSpeed);
+            }
+            ImGui::SameLine();
+            if (ImGui::RadioButton("Max", executionSpeed == 1000000)) {
+                executionSpeed = 1000000;
+                emulation->setExecutionSpeedCyclesPerFrame(executionSpeed);
+            }
+            ImGui::Separator();
+#endif
             if (cpuRunning) {
                 if (ImGui::MenuItem("Stop", shortcutLabel(GLFW_KEY_F6))) {
                     stopCpu();
@@ -86,66 +99,24 @@ void MainWindow_ImGui::renderMenuBar()
             if (ImGui::MenuItem("Display Options")) {
                 configScreen();
             }
-            if (ImGui::MenuItem("Memory Options")) {
-                configMemory();
-            }
             ImGui::Separator();
-#if !POM1_IS_WASM
-            ImGui::Text("CPU Speed:");
-            if (ImGui::RadioButton("x1", executionSpeed == POM1_CPU_CYCLES_PER_FRAME_1X_60HZ)) {
-                executionSpeed = POM1_CPU_CYCLES_PER_FRAME_1X_60HZ;
-                emulation->setExecutionSpeedCyclesPerFrame(executionSpeed);
-            }
-            ImGui::SameLine();
-            if (ImGui::RadioButton("x2", executionSpeed == POM1_CPU_CYCLES_PER_FRAME_2X_60HZ)) {
-                executionSpeed = POM1_CPU_CYCLES_PER_FRAME_2X_60HZ;
-                emulation->setExecutionSpeedCyclesPerFrame(executionSpeed);
-            }
-            ImGui::SameLine();
-            if (ImGui::RadioButton("Max", executionSpeed == 1000000)) {
-                executionSpeed = 1000000;
-                emulation->setExecutionSpeedCyclesPerFrame(executionSpeed);
-            }
-            ImGui::Separator();
-#endif
             ImGui::Text("Terminal Speed (chars/sec):");
             static int termSpeed = 60;
             ImGui::SetNextItemWidth(150);
             if (ImGui::SliderInt("##termspeed", &termSpeed, 0, 2000, termSpeed == 0 ? "Max" : "%d c/s")) {
                 emulation->setTerminalSpeed(termSpeed);
             }
-            ImGui::Separator();
-            ImGui::MenuItem("Memory Viewer", shortcutLabel(GLFW_KEY_F1), &showMemoryViewer);
-            ImGui::MenuItem("Memory Map", shortcutLabel(GLFW_KEY_F2), &showMemoryMap);
-            ImGui::EndMenu();
-        }
-
-        if (ImGui::BeginMenu("Hardware")) {
             ImGui::MenuItem("Keyboard autorepeat", nullptr, &keyboardAutorepeat);
             if (ImGui::IsItemHovered())
                 ImGui::SetTooltip("Off (default): matches a real TTL keyboard - holding a key asserts STROBE once.\n"
                                   "On: OS autorepeat reaches the Apple 1 (useful when using POM1 as a terminal).");
             ImGui::Separator();
-            if (ImGui::MenuItem("Woz ACI Cassette Interface", nullptr, &aciEnabled)) {
-                emulation->setACIEnabled(aciEnabled);
-                setStatusMessage(aciEnabled ? "Woz ACI plugged" : "Woz ACI unplugged", 2.0f);
-            }
-            ImGui::MenuItem("Cassette Player", nullptr, &showCassetteControl);
-            if (ImGui::MenuItem("Uncle Bernie's GEN2 HGR Graphic Card", nullptr, &graphicsCardEnabled)) {
-                if (graphicsCardEnabled) showGraphicsCard = true;
+            ImGui::MenuItem("Memory Viewer", shortcutLabel(GLFW_KEY_F1), &showMemoryViewer);
+            ImGui::MenuItem("Memory Map", shortcutLabel(GLFW_KEY_F2), &showMemoryMap);
+            if (ImGui::MenuItem("Memory Options")) {
+                configMemory();
             }
             ImGui::Separator();
-            if (ImGui::MenuItem("P-LAB microSD Storage Card", nullptr, &microSDEnabled)) {
-                emulation->setMicroSDEnabled(microSDEnabled);
-                if (microSDEnabled) cffa1Enabled = false; // sync UI
-            }
-            if (ImGui::MenuItem("CFFA1 CompactFlash Card", nullptr, &cffa1Enabled)) {
-                emulation->setCFFA1Enabled(cffa1Enabled);
-                if (cffa1Enabled) microSDEnabled = false; // sync UI
-            }
-            if (ImGui::MenuItem("P-LAB A1-SID Sound Card", nullptr, &sidEnabled)) {
-                emulation->setSIDEnabled(sidEnabled);
-            }
             if (ImGui::BeginMenu("A1-SID chip model")) {
                 const bool is6581 = (uiSnapshot.sidChipModel == pom1::SID::ChipModel::MOS6581);
                 if (ImGui::MenuItem("MOS 6581 (vintage, non-linear filter)", nullptr, is6581)) {
@@ -158,9 +129,50 @@ void MainWindow_ImGui::renderMenuBar()
                 }
                 ImGui::EndMenu();
             }
+            ImGui::EndMenu();
+        }
+
+        if (ImGui::BeginMenu("Hardware")) {
+            if (ImGui::MenuItem("Woz ACI Cassette Interface", nullptr, &aciEnabled)) {
+                emulation->setACIEnabled(aciEnabled);
+                setStatusMessage(aciEnabled ? "Woz ACI plugged" : "Woz ACI unplugged", 2.0f);
+            }
+            if (ImGui::MenuItem("Uncle Bernie's GEN2 HGR Graphic Card", nullptr, &graphicsCardEnabled)) {
+                if (graphicsCardEnabled) showGraphicsCard = true;
+            }
+            ImGui::Separator();
+            if (ImGui::MenuItem("P-LAB microSD Storage Card", nullptr, &microSDEnabled)) {
+                emulation->setMicroSDEnabled(microSDEnabled);
+                if (microSDEnabled) cffa1Enabled = false; // sync UI
+            }
+            if (ImGui::MenuItem("CFFA1 CompactFlash Card", nullptr, &cffa1Enabled)) {
+                emulation->setCFFA1Enabled(cffa1Enabled);
+                if (cffa1Enabled) microSDEnabled = false; // sync UI
+            }
+            if (ImGui::MenuItem("P-LAB A1-SID Sound Card (SID @ $C800)", nullptr, &sidEnabled)) {
+                emulation->setSIDEnabled(sidEnabled);
+                // Prototype and SE share the same MOS chip — plugging one
+                // auto-unplugs the other on the backend; mirror that here.
+                if (sidEnabled) sidSpecialEditionEnabled = false;
+            }
+            if (ImGui::MenuItem("A1-AUDIO Special Edition (SID @ $CC00)", nullptr, &sidSpecialEditionEnabled)) {
+                emulation->setSIDSpecialEditionEnabled(sidSpecialEditionEnabled);
+                if (sidSpecialEditionEnabled) {
+                    // Mutually exclusive with the prototype SID and with TMS9918.
+                    sidEnabled = false;
+                    tms9918Enabled = false;
+                }
+            }
+            if (ImGui::IsItemHovered())
+                ImGui::SetTooltip("Claudio Parmigiani's 10-unit A1-AUDIO Special Edition.\n"
+                                  "Same MOS 6581/8580 as the prototype, register window at $CC00-$CC1F.\n"
+                                  "Mutually exclusive with P-LAB Graphic Card (TMS9918).");
             if (ImGui::MenuItem("P-LAB Graphic Card (TMS9918)", nullptr, &tms9918Enabled)) {
                 emulation->setTMS9918Enabled(tms9918Enabled);
-                if (tms9918Enabled) showTMS9918 = true;
+                if (tms9918Enabled) {
+                    showTMS9918 = true;
+                    sidSpecialEditionEnabled = false; // mutually exclusive
+                }
             }
             if (ImGui::MenuItem("P-LAB I/O Board & RTC", nullptr, &a1ioRtcEnabled)) {
                 emulation->setA1IO_RTCEnabled(a1ioRtcEnabled);
@@ -179,7 +191,7 @@ void MainWindow_ImGui::renderMenuBar()
             ImGui::EndMenu();
         }
 
-        if (ImGui::BeginMenu("Machine Preset")) {
+        if (ImGui::BeginMenu("Presets")) {
             auto presetItem = [&](int i) {
                 char ramLabel[24];
                 std::snprintf(ramLabel, sizeof(ramLabel), "%d KB RAM", kMachinePresets[i].ramKB);
@@ -192,13 +204,14 @@ void MainWindow_ImGui::renderMenuBar()
             presetItem(2);   // Replica-1 with ACI, Krusader
             presetItem(3);   // Replica-1 with CFFA1
             ImGui::Separator();
-            for (int i = 4; i <= 8; ++i)
-                presetItem(i);
+            // All P-LAB expansion cards grouped together
+            for (int i = 4; i <= 9; ++i)
+                presetItem(i);               // microSD, A1-SID, A1-AUDIO SE, TMS9918, I/O+RTC, Wi-Fi
+            presetItem(11);                  // P-LAB Multiplexing Fantasy
             ImGui::Separator();
-            presetItem(9);   // Uncle Bernie's
+            presetItem(10);                  // Uncle Bernie's GEN2 HGR
             ImGui::Separator();
-            presetItem(10);  // P-LAB Multiplexing Fantasy
-            presetItem(11);  // POM1 Multiplexing Fantasy
+            presetItem(12);                  // POM1 Multiplexing Fantasy
             ImGui::EndMenu();
         }
 

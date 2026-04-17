@@ -76,6 +76,7 @@ private:
     GLuint tms9918Texture = 0;
     std::array<uint32_t, TMS9918::kScreenWidth * TMS9918::kScreenHeight> tms9918PixelBuf{};
     bool sidEnabled = false;
+    bool sidSpecialEditionEnabled = false;
     bool microSDEnabled = true;
     bool cffa1Enabled = false;
     bool wifiModemEnabled = false;
@@ -222,6 +223,7 @@ private:
     static constexpr int kSidEnableDeferFrames = 15;
     int pendingSidEnableFrames = 0;
     bool pendingSidEnable = false;
+    bool pendingSidSEEnable = false;
 
     struct TapeDialogState {
         char filePath[512] = "cassette.aci";

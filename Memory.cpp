@@ -153,6 +153,21 @@ Memory::Memory()
         });
     bus.setEnabled(sidBusHandle, sidEnabled);
 
+    // A1-AUDIO Special Edition — same MOS 6581/8580 chip, register window
+    // relocated to $CC00-$CC1F (32 regs, internal decode is `addr & 0x1F`).
+    // Collides with TMS9918 at $CC00/$CC01 — mutually exclusive at the
+    // preset/UI layer. Routes to the same `sid` instance so the chip
+    // model, ring buffer, and SID UI window stay shared between the two
+    // variants (only one can be plugged at a time).
+    sidSEBusHandle = bus.registerHandle(
+        "SID_SE", {0xCC00, 0xCC1F}, /*priority*/ 0,
+        [this](uint16_t a) { return sid->readRegister(a & 0x1F); },
+        [this](uint16_t a, uint8_t v) {
+            uint8_t reg = a & 0x1F;
+            if (reg <= 24) sid->writeRegister(reg, v);
+        });
+    bus.setEnabled(sidSEBusHandle, sidSpecialEditionEnabled);
+
     tms9918BusHandle = bus.registerHandle(
         "TMS9918", {0xCC00, 0xCC01}, /*priority*/ 10,
         [this](uint16_t a) {
@@ -188,6 +203,9 @@ Memory::Memory()
 
 void Memory::setTMS9918Enabled(bool b)
 {
+    // TMS9918 and A1-AUDIO Special Edition both live at $CC00/$CC01 — plugging
+    // the VDP evicts the SE card so the bus dispatch stays unambiguous.
+    if (b && sidSpecialEditionEnabled) setSIDSpecialEditionEnabled(false);
     tms9918Enabled = b;
     bus.setEnabled(tms9918BusHandle, b);
 }
@@ -384,17 +402,30 @@ int Memory::loadApplesoftLite(void)
 {
     // CFFA1: txgx42/applesoft-lite + cffa1.s — 8 KB at $E000-$FFFF (includes Woz Monitor).
     if (cffa1Enabled) {
-        return loadROM("applesoft-lite-cffa1.rom", 0xE000, 0x2000, "Applesoft Lite (CFFA1)");
+        return loadApplesoftLiteCFFA1();
     }
     // P-LAB microSD: APPLESOFT-FT.zip (Fast Terminal + SD OS 1.2) — 8 KB at $6000-$7FFF;
     // Integer BASIC stays at $E000; Woz Monitor at $FF00. Cold/warm: 6000R / 6003R.
     if (microSDEnabled) {
-        int ret = loadROM("applesoft-lite-microsd.rom", 0x6000, 0x2000, "Applesoft Lite (P-LAB microSD)");
-        if (ret != 0)
-            return ret;
-        return loadWozMonitor();
+        return loadApplesoftLiteSDCard();
     }
+    return loadApplesoftLiteCFFA1();
+}
+
+int Memory::loadApplesoftLiteCFFA1(void)
+{
     return loadROM("applesoft-lite-cffa1.rom", 0xE000, 0x2000, "Applesoft Lite (CFFA1)");
+}
+
+int Memory::loadApplesoftLiteSDCard(void)
+{
+    int ret = loadROM("applesoft-lite-microsd.rom", 0x6000, 0x2000, "Applesoft Lite (P-LAB microSD)");
+    if (ret != 0) return ret;
+    // The microSD build keeps Integer BASIC at $E000 and requires Woz Monitor
+    // at $FF00 for the SD OS to link to — reload it so the user gets the
+    // full working stack even if they loaded the variant manually on a
+    // CFFA1-flavoured layout.
+    return loadWozMonitor();
 }
 
 int Memory::loadKrusader(void)
@@ -792,13 +823,15 @@ void Memory::setSIDEnabled(bool b)
 {
     if (b == sidEnabled) return;
     if (b) {
+        // Prototype and Special Edition share the same `sid` instance —
+        // only one can be plugged at a time.
+        if (sidSpecialEditionEnabled) setSIDSpecialEditionEnabled(false);
         // Attach the audio sink BEFORE the emulation starts producing samples
         // (sidEnabled gates advanceCycles). Otherwise the first slice pushes
         // into an undrained ring and the audio callback plays catch-up.
         audioDevice->addSource(sid.get());
         sidEnabled = true;
         bus.setEnabled(sidBusHandle, true);
-        pom1::log().info("SID-EN", "plugged (source added, bus on)");
     } else {
         // Stop production first, then detach the audio sink. This guarantees
         // no advanceCycles() call can land between the removeSource and the
@@ -808,7 +841,28 @@ void Memory::setSIDEnabled(bool b)
         bus.setEnabled(sidBusHandle, false);
         audioDevice->removeSource(sid.get());
         sid->reset();
-        pom1::log().info("SID-EN", "unplugged (bus off, source removed, chip+ring reset)");
+    }
+}
+
+void Memory::setSIDSpecialEditionEnabled(bool b)
+{
+    if (b == sidSpecialEditionEnabled) return;
+    if (b) {
+        // Special Edition at $CC00-$CC1F collides with TMS9918's $CC00/$CC01
+        // window — unplug the VDP first to keep the bus dispatch unambiguous.
+        if (tms9918Enabled) setTMS9918Enabled(false);
+        // Shares the single `sid` instance with the prototype. If the
+        // prototype variant was plugged, unplug it first — real hardware
+        // can only have one A1-SID card at a time (same socket, same chip).
+        if (sidEnabled) setSIDEnabled(false);
+        audioDevice->addSource(sid.get());
+        sidSpecialEditionEnabled = true;
+        bus.setEnabled(sidSEBusHandle, true);
+    } else {
+        sidSpecialEditionEnabled = false;
+        bus.setEnabled(sidSEBusHandle, false);
+        audioDevice->removeSource(sid.get());
+        sid->reset();
     }
 }
 
@@ -895,7 +949,7 @@ void Memory::advanceCycles(int cycles)
     // Without this call, libresidfp would produce samples at wallclock
     // 44.1 kHz independent of executionSpeed, decoupling music tempo from
     // CPU speed (Max mode → way too fast, WASM frame drop → too slow).
-    if (sidEnabled) sid->advanceCycles(cycles);
+    if (sidEnabled || sidSpecialEditionEnabled) sid->advanceCycles(cycles);
 }
 
 

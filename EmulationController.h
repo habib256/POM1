@@ -88,9 +88,12 @@ public:
     bool reloadBasic(std::string& error);
     void unloadBasic();
     bool reloadApplesoftLite(std::string& error);
+    bool reloadApplesoftLiteCFFA1(std::string& error);
+    bool reloadApplesoftLiteSDCard(std::string& error);
     bool reloadWozMonitor(std::string& error);
     bool reloadKrusader(std::string& error);
     bool reloadAciRom(std::string& error);
+    bool reloadSDCardRom(std::string& error);
     void clearMemory();
 
     bool loadTape(const std::string& path, std::string& error);
@@ -112,6 +115,8 @@ public:
     // P-LAB A1-SID Sound Card
     void setSIDEnabled(bool enabled);
     bool isSIDEnabled() const;
+    void setSIDSpecialEditionEnabled(bool enabled);
+    bool isSIDSpecialEditionEnabled() const;
     void setSIDChipModel(pom1::SID::ChipModel m);
 
     // P-LAB microSD Storage Card

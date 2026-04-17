@@ -66,6 +66,7 @@ void SnapshotPublisher::publish(Memory& mem, const M6502& cpu, bool cpuRunning)
     snapshot.cassetteLoadedTapePath            = cassette.getLoadedTapePath();
 
     snapshot.sidEnabled     = mem.isSIDEnabled();
+    snapshot.sidSpecialEditionEnabled = mem.isSIDSpecialEditionEnabled();
     snapshot.sidChipModel   = mem.getSID().getChipModel();
     snapshot.microSDEnabled = mem.isMicroSDEnabled();
     // TMS9918: skip when the card is unplugged — the UI doesn't render it so
