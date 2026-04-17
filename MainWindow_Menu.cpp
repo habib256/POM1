@@ -176,29 +176,29 @@ void MainWindow_ImGui::renderMenuBar()
                 emulation->setWiFiModemEnabled(wifiModemEnabled);
                 if (wifiModemEnabled) showWiFiModem = true;
             }
+            ImGui::EndMenu();
+        }
+
+        if (ImGui::BeginMenu("Machine Preset")) {
+            auto presetItem = [&](int i) {
+                char ramLabel[24];
+                std::snprintf(ramLabel, sizeof(ramLabel), "%d KB RAM", kMachinePresets[i].ramKB);
+                if (ImGui::MenuItem(kMachinePresets[i].name, ramLabel))
+                    applyMachineConfig(i);
+            };
+            presetItem(0);   // Bare Apple-1
+            presetItem(1);   // Apple-1 with ACI & Integer BASIC
             ImGui::Separator();
-            if (ImGui::BeginMenu("Machine Preset")) {
-                auto presetItem = [&](int i) {
-                    char ramLabel[24];
-                    std::snprintf(ramLabel, sizeof(ramLabel), "%d KB RAM", kMachinePresets[i].ramKB);
-                    if (ImGui::MenuItem(kMachinePresets[i].name, ramLabel))
-                        applyMachineConfig(i);
-                };
-                presetItem(0);   // Bare Apple-1
-                presetItem(1);   // Apple-1 with ACI & Integer BASIC
-                ImGui::Separator();
-                presetItem(2);   // Replica-1 with ACI, Krusader
-                presetItem(3);   // Replica-1 with CFFA1
-                ImGui::Separator();
-                for (int i = 4; i <= 8; ++i)
-                    presetItem(i);
-                ImGui::Separator();
-                presetItem(9);   // Uncle Bernie's
-                ImGui::Separator();
-                presetItem(10);  // P-LAB Multiplexing Fantasy
-                presetItem(11);  // POM1 Multiplexing Fantasy
-                ImGui::EndMenu();
-            }
+            presetItem(2);   // Replica-1 with ACI, Krusader
+            presetItem(3);   // Replica-1 with CFFA1
+            ImGui::Separator();
+            for (int i = 4; i <= 8; ++i)
+                presetItem(i);
+            ImGui::Separator();
+            presetItem(9);   // Uncle Bernie's
+            ImGui::Separator();
+            presetItem(10);  // P-LAB Multiplexing Fantasy
+            presetItem(11);  // POM1 Multiplexing Fantasy
             ImGui::EndMenu();
         }
 
