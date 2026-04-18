@@ -85,7 +85,16 @@ void dumpHex(const uint8_t* data, int len)
 
 int main(int argc, char** argv)
 {
-    // Default: BASIC.ogg into $E000-$EFFF, expect Integer BASIC signature.
+    // Default: BASIC.ogg into $0300-$037F, expect the first 3 bytes of
+    // Integer BASIC (`4C B0 E2` = JMP $E2B0). The target is deliberately
+    // NOT $E000: basic.rom is pre-seeded there at boot and, even though
+    // the test memsets the region to 0 before the load, having the
+    // destination coincide with a ROM that contains the exact expected
+    // bytes made the test conceptually unsound — any future bug that
+    // skipped the ACI READ entirely could still "pass" if the memset
+    // somehow got reverted. Loading into plain $0300 RAM removes that
+    // ambiguity: the signature can only appear there via the ACI pipeline.
+    //
     // Optional override: argv[2] = load-from hex, argv[3] = load-to hex,
     //                    argv[4] = three-byte expected signature in hex
     //                              ("4C B0 E2") or empty to just assert
@@ -93,13 +102,13 @@ int main(int argc, char** argv)
     if (argc < 2) {
         std::fprintf(stderr,
             "usage: %s <tape.ogg|wav> [load_from_hex] [load_to_hex] [signature_hex]\n"
-            "  defaults: load_from=E000  load_to=EFFF  signature=4CB0E2\n",
+            "  defaults: load_from=0300  load_to=037F  signature=4CB0E2\n",
             argv[0]);
         return 2;
     }
     const std::string tapePath = argv[1];
-    const uint16_t loadFrom = (argc > 2) ? static_cast<uint16_t>(std::stoul(argv[2], nullptr, 16)) : 0xE000;
-    const uint16_t loadTo   = (argc > 3) ? static_cast<uint16_t>(std::stoul(argv[3], nullptr, 16)) : 0xEFFF;
+    const uint16_t loadFrom = (argc > 2) ? static_cast<uint16_t>(std::stoul(argv[2], nullptr, 16)) : 0x0300;
+    const uint16_t loadTo   = (argc > 3) ? static_cast<uint16_t>(std::stoul(argv[3], nullptr, 16)) : 0x037F;
     // Signature = 0..3 expected bytes (printed as 6-hex-digit string with no
     // separator, e.g. "4CB0E2"). Empty disables the strict check.
     const std::string sig = (argc > 4) ? std::string(argv[4]) : std::string("4CB0E2");
@@ -116,6 +125,44 @@ int main(int argc, char** argv)
 
     DisplayCapture display;
     memory.setDisplayDevice(&display);
+
+    // ---- B1 regression: loadTape() must refuse when the ACI is unplugged ----
+    // Before the fix, a non-.aci audio file would silently fall through
+    // to loadAudioStream(): loadedTapeReady=true, loadedDurations empty,
+    // audioStreamMode=true. After re-enabling the ACI, the ROM would poll
+    // $C081 forever on a flat input. Assert the loud-failure contract:
+    // returns false, lastError is populated, and the device stays empty.
+    //
+    // B1 only applies to ambiguous audio extensions. `.aci` is explicit
+    // pulse data and loadAciTape() runs regardless of aciActive, so we
+    // hardcode cassettes/BASIC.ogg here instead of whatever argv[1] is —
+    // lets the rest of this test take a `.aci` path as input for other
+    // round-trip checks without breaking the B1 gate.
+    {
+        CassetteDevice& t = memory.getCassetteDevice();
+        assert(!memory.isACIEnabled() && "fresh Memory should have ACI off");
+        const std::string b1Path = "cassettes/BASIC.ogg";
+        if (t.loadTape(b1Path)) {
+            std::fprintf(stderr,
+                "FAIL: loadTape(.ogg) returned true with ACI disabled — "
+                "the silent audio-stream fallback is back.\n");
+            return 1;
+        }
+        if (t.getLastError().empty()) {
+            std::fprintf(stderr,
+                "FAIL: loadTape() returned false but lastError is empty. "
+                "The caller needs a diagnosable reason.\n");
+            return 1;
+        }
+        if (t.hasLoadedTape()) {
+            std::fprintf(stderr,
+                "FAIL: loadTape() refused but loadedTapeReady is true — "
+                "zombie state.\n");
+            return 1;
+        }
+        std::printf("B1 OK: loadTape refused with ACI off: %s\n",
+                    t.getLastError().c_str());
+    }
 
     // Plug the ACI (loads roms/ACI.rom at $C100 + enables $C000/$C081 bus
     // handlers) and mark the cassette device as "ACI active" so the
@@ -143,11 +190,15 @@ int main(int argc, char** argv)
                 loadedTransitions, tapePath.c_str());
     assert(loadedTransitions > 1000 && "pulse extraction produced almost nothing");
 
-    // Arm + start playback. The cassette advances its internal cursor on
-    // every Memory::advanceCycles call (invoked from M6502::step), so we
-    // just need the CPU to execute and the tape will stream beneath it.
+    // Arm the tape. Under B6 (play-on-first-read), playTape() doesn't
+    // activate playback — it arms the deck. The first LDA $C081 issued
+    // by the ACI ROM flips the armed bit to active inside
+    // readTapeInput(); from there advancePlayback consumes pulses on
+    // every Memory::advanceCycles call, so the tape streams beneath
+    // the CPU without burning anything while Wozmon waits for input.
     tape.playTape();
-    assert(tape.isPlaybackActive());
+    assert(tape.hasLoadedTape());
+    assert(!tape.isPlaybackActive() && "B6: PLAY must arm, not activate");
 
     // Prime the keyboard buffer with the Wozmon/ACI command sequence. The
     // ACI ROM reads $D010/$D011 in a tight poll loop; each setKeyPressed
@@ -327,6 +378,104 @@ int main(int argc, char** argv)
             return 1;
         }
     }
+
+    // ---- B3 regression: playTape() on an exhausted tape must rewind ----
+    // Before the fix, once playbackIndex reached loadedDurations.size(),
+    // a fresh playTape() would arm the tape but the first $C081 read
+    // would find the index out-of-range and immediately fall off the end
+    // again — silently stuck at EOF until a manual rewindTape().
+    //
+    // Under B6 (play-on-first-read), advanceCycles alone doesn't consume
+    // anything — the tape must be polled via readTapeInput() to
+    // activate. We also have to poll more often than the 500 ms
+    // leader-rewind guard fires, otherwise the very next readTapeInput
+    // after a long quiet slice snaps playbackIndex back to 0 and we
+    // never reach EOF. 250k cycles ≈ 244 ms at 1.022 MHz — safely under
+    // the guard, and a 100 M cycle budget easily spans the remaining
+    // tape (~76 k transitions ≈ 76 M cycles).
+    auto driveToEof = [&]() {
+        for (int i = 0; i < 400; ++i) {
+            (void)tape.readTapeInput();
+            tape.advanceCycles(250'000);
+            if (!tape.isPlaybackActive() && !tape.isRewinding()) {
+                return true;
+            }
+        }
+        return false;
+    };
+    if (!driveToEof()) {
+        std::fprintf(stderr,
+            "FAIL (B3 precondition): couldn't exhaust the tape — "
+            "advanceCycles is not consuming durations as expected.\n");
+        return 1;
+    }
+    tape.playTape();
+    // B6: PLAY arms; first poll activates.
+    if (tape.isPlaybackActive()) {
+        std::fprintf(stderr,
+            "FAIL (B6): playTape() activated immediately — should arm only.\n");
+        return 1;
+    }
+    (void)tape.readTapeInput();  // arm→active transition
+    if (!tape.isPlaybackActive()) {
+        std::fprintf(stderr,
+            "FAIL (B3): readTapeInput() after playTape on exhausted tape "
+            "did not re-activate playback. The stopped-deck rewind is missing.\n");
+        return 1;
+    }
+    // Consume a small slice; without the B3 rewind, the out-of-range
+    // index would flip playbackActive=false on the next advancePlayback.
+    tape.advanceCycles(100'000);
+    if (!tape.isPlaybackActive()) {
+        std::fprintf(stderr,
+            "FAIL (B3): playTape() on exhausted tape activated briefly "
+            "then died — the out-of-range playbackIndex was not rewound.\n");
+        return 1;
+    }
+    std::puts("B3 OK: playTape() on exhausted tape rewound and resumed.");
+
+    // ---- B7 regression: rewindTape() on mid-tape enters progressive REW ----
+    // After PLAY re-armed the tape, consume a chunk so playbackIndex > 0,
+    // then call rewindTape(). Expected: isRewinding() flips true AND
+    // playback halts, but the index is NOT instantly 0 — advancing a
+    // small slice must keep isRewinding() true until enough emulated
+    // time has passed. Eventually REW completes, isRewinding() goes
+    // false, tape is armed at the leader again.
+    tape.advanceCycles(5'000'000);   // consume pulses (active=true from B3 above)
+    if (!tape.isPlaybackActive()) {
+        std::fprintf(stderr,
+            "FAIL (B7 precondition): tape exhausted again too fast — "
+            "can't test mid-tape REW.\n");
+        return 1;
+    }
+    tape.rewindTape();
+    if (!tape.isRewinding()) {
+        std::fprintf(stderr,
+            "FAIL (B7): rewindTape() on mid-tape didn't enter rewinding "
+            "state — progressive REW is missing.\n");
+        return 1;
+    }
+    if (tape.isPlaybackActive()) {
+        std::fprintf(stderr,
+            "FAIL (B7): REW engaged but playbackActive is still true — "
+            "playback should halt while winding back.\n");
+        return 1;
+    }
+    // Let REW complete. A 30 s tape winds back at ~20× play speed →
+    // ~1.5 s of emulated time ≈ 1.5 M cycles. Budget 50 M cycles to be
+    // safe even if the tape is longer or the slice granularity adds
+    // overhead.
+    for (int i = 0; i < 5 && tape.isRewinding(); ++i) {
+        tape.advanceCycles(50'000'000);
+    }
+    if (tape.isRewinding()) {
+        std::fprintf(stderr,
+            "FAIL (B7): REW did not complete after 250 M cycles — "
+            "advanceRewind is stuck.\n");
+        return 1;
+    }
+    std::puts("B7 OK: rewindTape() walked the tape back progressively "
+              "and completed.");
 
     std::puts("ACI tape loading smoke test: OK");
     return 0;

@@ -233,9 +233,14 @@ CassetteDeck_ImGui::render(const char* title,
     syncWithSnapshot(snap);
     advanceCounter(deltaSeconds, snap);
 
-    // Auto-release REW/FF after a short interval.
+    // Auto-release REW/FF after a short interval — but not while the
+    // pulse-mode device is still physically rewinding. Progressive REW
+    // can take longer than kWindDurationSeconds on long tapes, so we
+    // keep the visual latch pinned as long as the device reports
+    // rewinding. Once isRewinding() flips false, the normal timeout
+    // takes over and drops us back to Stopped on the next frame.
     if ((transport_ == Transport::Rewinding || transport_ == Transport::FastForwarding)
-         && wallClock_ >= rewEndsAt_) {
+         && wallClock_ >= rewEndsAt_ && !snap.cassetteRewinding) {
         transport_ = Transport::Stopped;
     }
 
@@ -823,10 +828,13 @@ std::string CassetteDeck_ImGui::onPlay(EmulationController* emu,
 }
 
 std::string CassetteDeck_ImGui::onRewind(EmulationController* emu,
-                                         const EmulationSnapshot& /*snap*/)
+                                         const EmulationSnapshot& snap)
 {
-    // Full rewind to 0 in both modes. rewindTape() also halts playback —
-    // next PLAY resumes from the start, which is what we want after REW.
+    // Stream mode: ma_decoder_seek is instant, same as before. Pulse
+    // mode: rewindTape() now enters a progressive REW state that walks
+    // playbackIndex backward at ~20× play speed. The Rewinding latch
+    // stays pinned until the device clears isRewinding() — handled in
+    // the auto-release block in render().
     if (emu) {
         emu->pauseTape(false);
         emu->rewindTape();
@@ -834,6 +842,9 @@ std::string CassetteDeck_ImGui::onRewind(EmulationController* emu,
     transport_ = Transport::Rewinding;
     paused_    = false;
     rewEndsAt_ = wallClock_ + kWindDurationSeconds;
+    if (!snap.cassetteAudioStreamMode) {
+        return "Cassette: REW - tape rewinding...";
+    }
     return "Cassette: REW - tape rewound to start";
 }
 

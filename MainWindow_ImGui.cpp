@@ -124,6 +124,26 @@ void MainWindow_ImGui::render()
         if (--pendingCardEnableFrames == 0) {
             if (pendingCassetteAudioActive)  emulation->activateCassetteAudioSource();
             if (pendingAciEnable)            emulation->setACIEnabled(true);
+            // --tape: preload the cassette AFTER the ACI plug-in above, not
+            // before. loadTape() checks CassetteDevice::aciActive to pick the
+            // pulse path vs the audio-stream path — if --tape ran in first-
+            // frame (before this deferred enable), aciActive was still false,
+            // the file fell into audio-stream mode (loadedDurations stayed
+            // empty, loadedTapeReady got set to true), and the ACI ROM's
+            // READ loop spun forever polling a silent tape input. Doing it
+            // here keeps the card-deferral invariant intact for the ACI too.
+            if (pendingAciEnable && !initialTapePath.empty()) {
+                std::string err;
+                if (emulation->loadTape(initialTapePath, err)) {
+                    emulation->playTape();
+                    pom1::log().info("POM1",
+                        std::string("Preloaded cassette: ") + initialTapePath);
+                } else {
+                    pom1::log().error("POM1",
+                        std::string("Failed to preload cassette '") +
+                        initialTapePath + "': " + err);
+                }
+            }
             if (pendingMicroSDEnable)        emulation->setMicroSDEnabled(true);
             if (pendingCffa1Enable)          emulation->setCFFA1Enabled(true);
             if (pendingSidEnable)            emulation->setSIDEnabled(true);
@@ -215,21 +235,10 @@ void MainWindow_ImGui::render()
             executionSpeed = 1000000;
             emulation->setExecutionSpeedCyclesPerFrame(executionSpeed);
         }
-        // --tape: preload the cassette now that the preset has registered the
-        // ACI card. Failures are logged but non-fatal — the emulator still
-        // comes up and the user can load another tape through the UI.
-        if (!initialTapePath.empty()) {
-            std::string err;
-            if (emulation->loadTape(initialTapePath, err)) {
-                emulation->playTape();
-                pom1::log().info("POM1",
-                    std::string("Preloaded cassette: ") + initialTapePath);
-            } else {
-                pom1::log().error("POM1",
-                    std::string("Failed to preload cassette '") + initialTapePath +
-                    "': " + err);
-            }
-        }
+        // --tape preload is done later, inside the deferred-card-enable
+        // handler, so that setACIEnabled(true) has actually flipped
+        // CassetteDevice::aciActive before loadTape() decides between
+        // pulse mode and audio-stream mode. See that block for details.
     }
 
     // Resize Apple 1 screen window on fullscreen transitions

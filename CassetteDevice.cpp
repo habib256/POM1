@@ -185,6 +185,13 @@ void CassetteDevice::resetPlaybackState()
     playbackIndex = 0;
     cyclesUntilInputToggle = 0;
     inputLevel = loadedInitialLevel;
+    // Any in-flight REW is implicitly cancelled: the whole point of
+    // resetPlaybackState is that the tape is back at index 0. Leaving
+    // rewinding=true from a previous REW would cause advanceRewind to
+    // clamp to "already at start" on its next call anyway, but clearing
+    // here keeps the invariant observable from the outside.
+    rewinding = false;
+    rewCarryCycles = 0;
     // Reset the "last $C081 read" stamp to current cycle so the leader-
     // rewind check in readTapeInput doesn't fire on the very first poll
     // after a fresh load/rewind.
@@ -297,6 +304,13 @@ void CassetteDevice::queueAudioSegment(uint32_t cycles, bool level)
 
 void CassetteDevice::advancePlayback(uint32_t cycles)
 {
+    // Progressive rewind takes the whole slice budget while engaged —
+    // the tape isn't playing, it's walking backward. advanceRewind does
+    // its own pause check and its own EOF-at-start handling.
+    if (rewinding) {
+        advanceRewind(cycles);
+        return;
+    }
     // `cycles` is the slice budget in CPU cycles. `loadedDurations[i]` is
     // also a CPU-cycle count (kTapeFileTimebaseHz == POM1_CPU_CLOCK_HZ),
     // so we can subtract one from the other directly without any unit
@@ -336,6 +350,45 @@ void CassetteDevice::advancePlayback(uint32_t cycles)
             playbackActive = false;
         }
     }
+}
+
+void CassetteDevice::advanceRewind(uint32_t cycles)
+{
+    // PAUSE during REW freezes the motor (matches a real deck's pause-
+    // while-rewinding lockout).
+    if (playbackPaused.load(std::memory_order_acquire)) {
+        return;
+    }
+    if (!loadedTapeReady || loadedDurations.empty() || playbackIndex == 0) {
+        // Nothing left to wind back — land clean.
+        rewinding = false;
+        rewCarryCycles = 0;
+        resetPlaybackState();
+        return;
+    }
+
+    // Spend the REW budget in units of forward-segment cycle-durations:
+    // each whole segment consumed decrements playbackIndex by 1 and
+    // flips inputLevel (forward playback toggles between segments; REW
+    // is the temporal inverse). Partial-segment surplus carries into
+    // the next slice via rewCarryCycles so we don't lose fractional
+    // progress when slices don't align with segment boundaries.
+    uint64_t budget = static_cast<uint64_t>(cycles) * kRewSpeedFactor + rewCarryCycles;
+    while (playbackIndex > 0) {
+        const uint32_t segDur = std::max<uint32_t>(1, loadedDurations[playbackIndex - 1]);
+        if (budget < segDur) {
+            rewCarryCycles = budget;
+            return;
+        }
+        budget -= segDur;
+        --playbackIndex;
+        inputLevel = !inputLevel;
+    }
+    // Index reached 0 — REW complete. Rearm at the leader so the next
+    // PLAY (or the next $C081 poll under B6, once that lands) starts
+    // from the beginning. resetPlaybackState clears `rewinding` too.
+    resetPlaybackState();
+    clearLiveAudioState();
 }
 
 void CassetteDevice::advanceCycles(int cycles)
@@ -383,8 +436,28 @@ CassetteDevice::quint8 CassetteDevice::toggleOutput()
     return outputLevel ? 0x80 : 0x00;
 }
 
+void CassetteDevice::armPlaybackAtStart()
+{
+    playbackIndex = 0;
+    cyclesUntilInputToggle = 0;
+    inputLevel = loadedInitialLevel;
+    playbackActive = loadedTapeReady && !loadedDurations.empty();
+    playbackArmed = false;
+    clearLiveAudioState();
+}
+
 CassetteDevice::quint8 CassetteDevice::readTapeInput()
 {
+    // During progressive REW, the ACI sees a frozen tape input: the
+    // signal reflects whatever `inputLevel` was at the moment REW was
+    // last stepped (advanceRewind flips it on each consumed segment).
+    // We don't update lastTapeInputCycle — the next post-REW read will
+    // see a fresh stamp set by resetPlaybackState() when REW completes,
+    // so the leader-rewind guard stays dormant across the REW window
+    // regardless of how long REW took.
+    if (rewinding) {
+        return inputLevel ? 0x80 : 0x00;
+    }
     // Leader-preservation: if nothing has polled $C081 for a while, the
     // user was almost certainly typing Wozmon commands (Wozmon reads
     // $D010/$D011, never touches the cassette input) while the tape was
@@ -398,24 +471,13 @@ CassetteDevice::quint8 CassetteDevice::readTapeInput()
     // 500 ms gap is well above any inter-poll interval of the READ
     // routine (which polls at microsecond scale).
     constexpr uint64_t kLeaderRewindGapCycles = POM1_CPU_CLOCK_HZ / 2;  // 500 ms
-    if (loadedTapeReady && !loadedDurations.empty() && playbackIndex > 0 &&
-        (currentCycle - lastTapeInputCycle) > kLeaderRewindGapCycles) {
-        playbackIndex = 0;
-        cyclesUntilInputToggle = 0;
-        inputLevel = loadedInitialLevel;
-        playbackActive = true;    // re-enable in case the tape had run to EOF
-        playbackArmed  = false;
-        clearLiveAudioState();
+    const bool leaderRewind =
+        loadedTapeReady && !loadedDurations.empty() && playbackIndex > 0 &&
+        (currentCycle - lastTapeInputCycle) > kLeaderRewindGapCycles;
+    if (leaderRewind || playbackArmed) {
+        armPlaybackAtStart();
     }
     lastTapeInputCycle = currentCycle;
-
-    if (playbackArmed) {
-        playbackArmed = false;
-        playbackActive = loadedTapeReady && !loadedDurations.empty();
-        playbackIndex = 0;
-        cyclesUntilInputToggle = 0;
-        inputLevel = loadedInitialLevel;
-    }
     return inputLevel ? 0x80 : 0x00;
 }
 
@@ -431,7 +493,22 @@ void CassetteDevice::rewindTape()
         clearLiveAudioState();
         return;
     }
-    resetPlaybackState();
+    // Pulse mode: simulate a physical deck rewinding. If the tape is
+    // already at the leader (or there's nothing to wind back), snap to
+    // a clean armed-at-start state — no reason to animate zero travel.
+    // Otherwise enter the "rewinding" state and let advanceRewind walk
+    // playbackIndex back over emulated time at kRewSpeedFactor× play
+    // speed. The audio queue stays silent for the duration (head-lift
+    // analogy); isRewinding() lets the UI paint a REW-in-progress state.
+    if (!loadedTapeReady || loadedDurations.empty() || playbackIndex == 0) {
+        resetPlaybackState();
+        clearLiveAudioState();
+        return;
+    }
+    rewinding = true;
+    rewCarryCycles = 0;
+    playbackActive = false;
+    playbackArmed  = false;
     clearLiveAudioState();
 }
 
@@ -449,9 +526,21 @@ void CassetteDevice::playTape()
         return;
     }
     if (loadedDurations.empty()) return;
-    playbackArmed = false;
-    playbackActive = true;
-    // Resume from the current index/level (rewindTape resets these).
+    // B6 — play-on-first-read: pulse-mode PLAY arms the deck but does
+    // NOT start consuming durations. The tape only begins advancing
+    // when the ACI ROM polls $C081 for the first time (readTapeInput's
+    // armed→active transition). Without this, advancePlayback burned
+    // through the full tape on every CPU slice regardless of whether
+    // the ROM was actually reading — a 30 s tape disappeared in <1 s
+    // at --cpu-max while the user was still typing "C100R" at Wozmon.
+    // Leader-rewind papered over the symptom inside a 500 ms window;
+    // this removes the coupling entirely.
+    //
+    // Stopped-deck rewind (B3): ALWAYS seek back to the leader on PLAY.
+    // No mid-tape resume — the ACI READ routine always wants to see the
+    // sync leader first. resetPlaybackState arms, zeroes the index,
+    // stamps lastTapeInputCycle, and clears the REW flags.
+    resetPlaybackState();
     clearLiveAudioState();
 }
 
@@ -459,6 +548,11 @@ void CassetteDevice::stopTape()
 {
     playbackActive = false;
     playbackArmed = false;
+    // STOP cancels an in-flight REW — the user pressed STOP, the motor
+    // halts wherever the index currently is. They'll have to press REW
+    // again to resume winding back.
+    rewinding = false;
+    rewCarryCycles = 0;
     cyclesUntilInputToggle = 0;
     clearLiveAudioState();
 }
@@ -521,9 +615,16 @@ bool CassetteDevice::loadTape(const std::string& path)
         return loadMiniaudioTape(path);
     }
 
-    // ACI unplugged: treat the cassette as a plain audio player. No length
-    // cap — ma_decoder streams from disk.
-    return loadAudioStream(path);
+    // ACI unplugged: refuse rather than silently fall through to audio-
+    // stream mode. The silent downgrade produced a zombie state
+    // (loadedTapeReady=true, loadedDurations empty) that made the ACI ROM
+    // poll $C081 forever after a later setACIEnabled() — the exact bug
+    // the --tape preload deferral was added for. Callers that genuinely
+    // want to play a music file need an explicit audio-stream entry
+    // point; loadTape() is reserved for program tapes.
+    lastError = "Cassette Interface (ACI) is not plugged — plug the ACI "
+                "card before loading a program tape.";
+    return false;
 }
 
 bool CassetteDevice::saveTape(const std::string& path) const

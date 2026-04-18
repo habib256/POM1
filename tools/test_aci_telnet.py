@@ -253,27 +253,34 @@ def scenario_load() -> None:
         time.sleep(0.8)
         recv_avail(sock, total=1.5)
 
-        # Zero $E000 before the READ so a bad load is visibly zero instead of
-        # succeeding because of the pre-seeded basic.rom.
-        poke_bytes(sock, 0xE000, bytes(8))
-        pre = peek_range(sock, 0xE000, 0xE002, read_t=3.0)
-        check("A.1 $E000 cleared pre-load",
-              pre == b"\x00\x00\x00", f"first 3 = {pre.hex(' ')}")
+        # $E000 holds basic.rom at boot — "$4C B0 E2" happens to be BASIC's
+        # own signature, so a peek AFTER a no-op read would false-positive.
+        # Plant 16 $FF sentinels there instead: they differ from BASIC's
+        # content, from zero, and from anything the tape legitimately stores.
+        # A successful ACI READ overwrites them with the tape's "$4C B0 E2".
+        poke_bytes(sock, 0xE000, bytes([0xFF] * 16))
+        pre = peek_range(sock, 0xE000, 0xE00F, read_t=3.0)
+        check("A.1 $E000 seeded with $FF sentinels",
+              pre == bytes([0xFF] * 16),
+              f"first 16 = {pre.hex(' ')}")
 
         # C100R jumps into the ACI ROM; E000.EFFFR asks it to read the tape.
-        # ACI parses both lines via its own getline+echo loop; once READ
-        # starts the CPU is busy consuming tape pulses and won't touch the
-        # PIA keyboard buffer, so everything we send from here onwards
-        # queues up for Wozmon to eat after ACI jumps back to $FF1A.
+        # While the READ runs (CPU busy consuming pulses), nothing reads the
+        # PIA keyboard buffer, so anything we push queues up for Wozmon to
+        # eat once ACI jumps back to $FF1A.
         send_line(sock, "C100R", wait=0.4, read_t=2.5)
         send_line(sock, "E000.EFFFR", wait=0.3, read_t=1.5)
 
-        # Poll the signature. At --cpu-max a 30 s tape loads in 1-3 s
-        # wallclock, but allow 30 s so a slow CI host doesn't false-fail.
-        sig = wait_for_tape_load(sock, 0xE000, BASIC_SIG[0], deadline_s=30.0)
-        if sig == BASIC_SIG[:1]:
-            # One-byte match — do a full 3-byte peek for the signature assertion.
-            sig = peek_range(sock, 0xE000, 0xE002, read_t=3.0)
+        # Poll for the signature. BASIC.ogg loads in ~10 s wallclock at
+        # --cpu-max; 45 s budget is conservative.
+        sig = b"\xff" * 3
+        deadline = time.time() + 45.0
+        while time.time() < deadline:
+            time.sleep(1.5)
+            peek16 = peek_range(sock, 0xE000, 0xE00F, read_t=4.0)
+            if peek16[:3] == BASIC_SIG:
+                sig = peek16[:3]
+                break
         check("A.2 Integer BASIC signature at $E000",
               sig == BASIC_SIG, f"got {sig.hex(' ')}, expected 4C B0 E2")
 
@@ -319,10 +326,15 @@ def scenario_save_then_roundtrip(keep_tape: bool = False) -> None:
         send_line(sock, "C100R", wait=0.4, read_t=2.5)
         send_line(sock, f"{TEST_FROM:04X}.{TEST_TO:04X}W", wait=0.3, read_t=1.5)
 
-        # ACI WRITE at --cpu-max takes ~1 s wallclock for 64 bytes. Wait
-        # comfortably longer so the entire capture (including the trailing
-        # sync tone) lands in recordedDurations before SIGTERM fires.
-        time.sleep(4.0)
+        # ACI WRITE for 64 bytes takes ~15 s of emulated time (leader +
+        # data + trailer). At --cpu-max under the live GLFW+Term+publisher
+        # stack, that's ~5-10 s of wallclock — not the "~1 s" the previous
+        # comment claimed, which would SIGTERM the process mid-write and
+        # produce a truncated .aci (scenario C's pre-fix failure mode:
+        # saved 8075 transitions vs the 17354 a complete write needs, no
+        # data pulses reach the file). 15 s gives comfortable headroom;
+        # scenario C has been observed to pass consistently at this value.
+        time.sleep(15.0)
         sock.close()
     finally:
         # SIGTERM triggers ~MainWindow_ImGui -> saveTape() -> on-disk .aci.

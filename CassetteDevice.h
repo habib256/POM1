@@ -59,6 +59,10 @@ public:
     bool hasLoadedTape() const { return loadedTapeReady; }
     bool hasRecordedTape() const { return !recordedDurations.empty(); }
     bool isPlaybackActive() const { return playbackActive; }
+    /// True while rewindTape() is physically walking playbackIndex back
+    /// to 0. Pulse mode only — stream mode's ma_decoder seek is instant.
+    /// Cleared the moment REW reaches index 0 (armed-at-start state).
+    bool isRewinding() const { return rewinding; }
     bool isAudioAvailable() const { return audioAvailable; }
     bool isHardwareAccurateLiveAudio() const { return hardwareAccurateLiveAudio; }
     double getQueuedAudioSeconds() const;
@@ -121,6 +125,17 @@ private:
 
     void queueAudioSegment(uint32_t cycles, bool level);
     void advancePlayback(uint32_t cycles);
+    // Pulse-mode progressive rewind. Walks playbackIndex down toward 0
+    // at kRewSpeedFactor× play speed. Called from advancePlayback while
+    // `rewinding` is true. When index reaches 0 the tape re-arms at the
+    // leader (resetPlaybackState).
+    void advanceRewind(uint32_t cycles);
+    // How much faster the tape winds back than it plays forward. 20×
+    // makes a ~30 s tape rewind in ~1.5 s of emulated time — close to
+    // CassetteDeck_ImGui's kWindDurationSeconds visual latch at 1×. At
+    // --cpu-max the operation still races, which is consistent with the
+    // rest of the emulator's "emulated time" semantics.
+    static constexpr uint32_t kRewSpeedFactor = 20;
 
     bool loadAciTape(const std::string& path);
     bool saveAciTape(const std::string& path) const;
@@ -153,6 +168,12 @@ private:
     void resetPlaybackState();
     void beginRecordingIfNeeded();
     void clearLiveAudioState();
+    // Seek playback to the start of the loaded pulse stream and activate
+    // it. Shared by readTapeInput's leader-rewind guard and its armed→
+    // active transition — both branches need the exact same side effects,
+    // and having them as one helper removes the foot-gun of one branch
+    // evolving away from the other.
+    void armPlaybackAtStart();
 
 private:
     bool audioAvailable = false;
@@ -193,6 +214,23 @@ private:
     bool playbackActive = false;
     uint64_t cyclesUntilInputToggle = 0;
     size_t playbackIndex = 0;
+    // Progressive-rewind state (pulse mode). `rewinding` is set by
+    // rewindTape() when playbackIndex > 0 and cleared when REW reaches 0
+    // or the tape is stopped/ejected. `rewCarryCycles` holds the
+    // fractional REW budget carried over from a slice that couldn't
+    // consume the next segment whole — accumulates across slices.
+    bool rewinding = false;
+    uint64_t rewCarryCycles = 0;
+    // Threading invariant: loadedDurations is written by the UI thread
+    // (loadTape / ejectTape → loadPlaybackDurations) and read by the CPU
+    // thread (advancePlayback). Both sides run under
+    // EmulationController::stateMutex, so the std::move assignment and
+    // the indexed read cannot overlap. The AUDIO thread's
+    // fillAudioBuffer() must NOT touch this vector — it only consumes
+    // the decoupled audioQueue under audioMutex. Keep this boundary: a
+    // future refactor that lets the audio callback read durations
+    // directly needs either a stateMutex lock (deadlock-prone on the
+    // realtime thread) or an immutable snapshot handed off atomically.
     std::vector<uint32_t> loadedDurations;
     std::string loadedTapePath;
 
