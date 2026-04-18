@@ -158,6 +158,24 @@ void EmulationController::stepCpu()
     publisher.publish(*memory, *cpu, runRequested.load());
 }
 
+void EmulationController::setCpuBrkTraceEnabled(bool enabled)
+{
+    std::lock_guard<PriorityMutex> lock(stateMutex);
+    cpu->setDebugBrkTrace(enabled);
+}
+
+bool EmulationController::isCpuBrkTraceEnabled() const
+{
+    // Read-only access to a bool; safe without the state mutex.
+    return cpu->getDebugBrkTrace();
+}
+
+void EmulationController::dumpCpuPcTrace(const char* tag)
+{
+    std::lock_guard<PriorityMutex> lock(stateMutex);
+    cpu->dumpPcTrace(tag);
+}
+
 void EmulationController::queueKey(char key)
 {
     keyboard.queueKey(key);

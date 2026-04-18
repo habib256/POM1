@@ -70,6 +70,13 @@ public:
     void hardReset();
     void stepCpu();
 
+    // Debug: toggle the M6502 BRK trace (CPU state + stack + recent
+    // control-flow transfers, logged at WARN on every BRK). Off by default.
+    void setCpuBrkTraceEnabled(bool enabled);
+    bool isCpuBrkTraceEnabled() const;
+    // Debug: dump the CPU's PC ring buffer to the log on demand.
+    void dumpCpuPcTrace(const char* tag);
+
     void queueKey(char key);
     void writeMemory(quint16 address, quint8 value);
 

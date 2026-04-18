@@ -70,6 +70,23 @@ int main() {
     assert(!bus.tryWrite(0xC050, 0xAA));
     assert(sniffer_read_hits == 0);
 
-    std::puts("PeripheralBus smoke test: all 5 invariants OK");
+    // 6. High-priority handle correctness — regression for the bug where
+    //    registerHandle returned entries.back().insertionIndex AFTER sort:
+    //    a priority-20 entry was moved to the front by sortEntries(), so
+    //    back() was some unrelated lower-priority entry. The returned
+    //    handle pointed at the wrong entry and setEnabled/isEnabled flipped
+    //    the wrong one, leaving the real entry stuck at enabled=true (this
+    //    made the Juke-Box shadow $4000-$BFFF with $FF even when its UI
+    //    flag said "off"). Minimal repro: register high-prio handler, try
+    //    to disable it, verify it actually stops firing.
+    bool hi_called = false;
+    auto hi_h = bus.registerHandle("HI", {0x4000, 0x4FFF}, /*priority*/ 20,
+        [&](uint16_t) { hi_called = true; return uint8_t{0x77}; }, {});
+    bus.setEnabled(hi_h, false);
+    assert(!bus.isEnabled(hi_h));          // the REAL HI entry, not a neighbour
+    assert(!bus.tryRead(0x4000, v));        // disabled → no dispatch
+    assert(!hi_called);
+
+    std::puts("PeripheralBus smoke test: all 6 invariants OK");
     return 0;
 }

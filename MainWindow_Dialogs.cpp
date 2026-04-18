@@ -155,7 +155,7 @@ void MainWindow_ImGui::renderAboutDialog()
     ImGui::SetNextWindowSizeConstraints(ImVec2(minWinW, 0), ImVec2(FLT_MAX, FLT_MAX));
 
     if (ImGui::Begin("About POM1", &showAbout, ImGuiWindowFlags_AlwaysAutoResize)) {
-        ImGui::TextWrapped("POM1 v1.8.1 - Apple 1 Emulator (Dear ImGui)");
+        ImGui::TextWrapped("POM1 v1.8.5 - Apple 1 Emulator (Dear ImGui)");
         ImGui::TextWrapped("Celebrating 50 years of Apple (1976-2026)");
         ImGui::TextWrapped("Author: Arnaud VERHILLE - original POM1 (Java, 2000); Dear ImGui port (2026)");
         ImGui::TextWrapped("Copyright (C) 2000-2026 - GPL-3.0");

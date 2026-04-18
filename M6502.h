@@ -45,6 +45,12 @@ public:
     void setIRQ(int state);
     void setNMI(void);
     void dumpPcTrace(const char* tag);
+
+    /// Debug: when true, BRK logs a full CPU+stack dump + recent control-flow
+    /// trace + bus state on every execution. Off by default. The `dumpPcTrace`
+    /// ring buffer is always live (cheap) and can be dumped on demand.
+    void setDebugBrkTrace(bool enabled) { debugBrkTrace = enabled; }
+    bool getDebugBrkTrace() const { return debugBrkTrace; }
     quint16 memReadAbsolute(quint16 adr);
     
     // Nouvelles méthodes pour l'exécution et l'affichage
@@ -78,6 +84,7 @@ private :
 
     Memory *memory;
 
+    bool debugBrkTrace = false;   // see setDebugBrkTrace()
     quint8 accumulator, xRegister, yRegister, statusRegister, stackPointer;
     int IRQ, NMI;
     quint16 programCounter;

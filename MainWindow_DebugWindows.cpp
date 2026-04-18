@@ -156,6 +156,26 @@ void MainWindow_ImGui::renderDebugDialog()
             if (ImGui::Button("Clear Log")) {
                 pom1::uiRingBuffer().clear();
             }
+            ImGui::SameLine();
+            bool brkTrace = emulation->isCpuBrkTraceEnabled();
+            if (ImGui::Checkbox("BRK trace", &brkTrace)) {
+                emulation->setCpuBrkTraceEnabled(brkTrace);
+            }
+            if (ImGui::IsItemHovered()) {
+                ImGui::SetTooltip(
+                    "When on, every BRK opcode logs CPU state, stack, recent\n"
+                    "control-flow transfers, and bus state at WARN level.\n"
+                    "Helpful to diagnose unexpected resets (BRK → Woz Monitor).");
+            }
+            ImGui::SameLine();
+            if (ImGui::Button("Dump PC trace")) {
+                emulation->dumpCpuPcTrace("manual PC trace");
+            }
+            if (ImGui::IsItemHovered()) {
+                ImGui::SetTooltip(
+                    "Dump the CPU's ring buffer of recent non-sequential PC\n"
+                    "transitions (JMP/JSR/RTS/branch/IRQ) to the log right now.");
+            }
 
             ImGui::BeginChild("SystemLog", ImVec2(0, 220), true,
                               ImGuiWindowFlags_HorizontalScrollbar);

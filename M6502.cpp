@@ -630,10 +630,12 @@ void M6502::PLP(void)
 
 void M6502::BRK(void)
 {
-    // Temporary diagnostic — trace BRK origin to diagnose unexpected resets.
-    // programCounter here still points at the byte AFTER the $00 opcode (the
-    // signature byte). The actual BRK opcode is at PC-1.
-    {
+    // Optional diagnostic — dumps CPU state + recent control-flow transfers
+    // when BRK fires. Off by default; enable via setDebugBrkTrace(true) from
+    // the UI/debug console when you need to trace an unexpected reset loop.
+    // programCounter here still points at the byte AFTER the $00 opcode, so
+    // the BRK opcode itself is at PC-1.
+    if (debugBrkTrace) {
         std::ostringstream oss;
         oss << std::hex << std::uppercase << std::setfill('0');
         oss << "BRK PC=$" << std::setw(4) << static_cast<int>(programCounter - 1)
@@ -642,7 +644,6 @@ void M6502::BRK(void)
             << " Y=" << std::setw(2) << static_cast<int>(yRegister)
             << " SP=" << std::setw(2) << static_cast<int>(stackPointer)
             << " stack(next 6):";
-        // Show the 6 bytes at top of stack (where RTS/RTI would pull from).
         for (int i = 1; i <= 6; ++i) {
             uint8_t sp = static_cast<uint8_t>(stackPointer + i);
             oss << " " << std::setw(2)
@@ -650,63 +651,6 @@ void M6502::BRK(void)
         }
         pom1::log().warn("CPU", oss.str());
         dumpPcTrace("BRK trace");
-        // Dump the bytes at the walk zone ($BFF0-$C00F) so we can see what
-        // 1-byte opcodes the CPU actually executed just before the BRK.
-        {
-            std::ostringstream bytes;
-            bytes << std::hex << std::uppercase << std::setfill('0')
-                  << "mem $BFF0-$C00F:";
-            for (int a = 0xBFF0; a <= 0xC00F; ++a) {
-                bytes << " " << std::setw(2)
-                      << static_cast<int>(memory->memRead(static_cast<uint16_t>(a)));
-            }
-            pom1::log().warn("CPU", bytes.str());
-        }
-        // Also dump the tune's entry-point area so we can see what the CPU is
-        // *really* seeing at $6100 vs what the file says.
-        {
-            std::ostringstream bytes;
-            bytes << std::hex << std::uppercase << std::setfill('0')
-                  << "mem $6100-$610F:";
-            for (int a = 0x6100; a <= 0x610F; ++a) {
-                bytes << " " << std::setw(2)
-                      << static_cast<int>(memory->memRead(static_cast<uint16_t>(a)));
-            }
-            pom1::log().warn("CPU", bytes.str());
-        }
-        // And $5000-$500F (first JMP target).
-        {
-            std::ostringstream bytes;
-            bytes << std::hex << std::uppercase << std::setfill('0')
-                  << "mem $5000-$500F (via memRead):";
-            for (int a = 0x5000; a <= 0x500F; ++a) {
-                bytes << " " << std::setw(2)
-                      << static_cast<int>(memory->memRead(static_cast<uint16_t>(a)));
-            }
-            pom1::log().warn("CPU", bytes.str());
-        }
-        // Now compare with RAW mem[] (bypasses the peripheral bus). If this
-        // disagrees with memRead, some bus handler is shadowing the RAM.
-        {
-            const quint8* raw = memory->getMemoryPointer();
-            std::ostringstream bytes;
-            bytes << std::hex << std::uppercase << std::setfill('0')
-                  << "raw $5000-$500F  (bypass bus):";
-            for (int a = 0x5000; a <= 0x500F; ++a) {
-                bytes << " " << std::setw(2) << static_cast<int>(raw[a]);
-            }
-            pom1::log().warn("CPU", bytes.str());
-        }
-        {
-            const quint8* raw = memory->getMemoryPointer();
-            std::ostringstream bytes;
-            bytes << std::hex << std::uppercase << std::setfill('0')
-                  << "raw $6100-$610F (bypass bus):";
-            for (int a = 0x6100; a <= 0x610F; ++a) {
-                bytes << " " << std::setw(2) << static_cast<int>(raw[a]);
-            }
-            pom1::log().warn("CPU", bytes.str());
-        }
         pom1::log().warn("CPU", "bus state:" + memory->busStateSummary());
     }
     // BRK is a 2-byte instruction: the $00 opcode plus a "signature" byte
