@@ -33,10 +33,6 @@ Open work only. For shipped features, see `git log` or the version notes in `REA
 - [ ] **SWTPC PR-40 40-col printer** `[S · nice]` — parallel-port matrix printer (5×7, 40 col/line, 75 lpm). Render output to a scrolling "paper roll" window + append to `.txt`. Tiny effort, high nostalgia. Hooks into an 8-bit parallel output port (closest existing socket: split off the Terminal Card TCP stream).
 - [ ] **Briel Multi I/O Board — SpeakJet** `[M · nice]` — the 6522/6551 portions duplicate microSD/MODEM. Unique value: route the UART byte stream through a TTS bridge (eSpeak or macOS `say`) to give the Apple-1 a synthetic voice. Implement as a separate optional peripheral so it can coexist with microSD.
 
-### Sound
-
-- [ ] **A1-AUDIO Special Edition — SID base $CC00** `[S · solid]` — Claudio Parmigiani's 10-unit Special Edition card ([A1-AUDIO](https://p-l4b.github.io/A1-AUDIO/)) moves the SID base from the prototype's `$C800`to`$CC00` — entirely collides with TMS9918 (`$CC00/$CC01`), so the two become mutually exclusive like GEN2 ↔ A1-IO RTC. Add a `baseAddress` parameter to `SID::SID()` (internal `addr & 0x1F` decode stays), register the `PeripheralBus` range dynamically in `Memory.cpp:139-146` at the chosen base, introduce a new "Apple-1 + A1-AUDIO SE" preset in `MainWindow_Presets.cpp` that auto-disables TMS9918, surface the base read-only in the SID hardware window (`MainWindow_HardwareWindows.cpp`), and update the memory map in `CLAUDE.md`. Regression: the 66 cycle-accurate SID tunes must still work at default `$C800`.
-
 ---
 
 ## Apple-1 software & loaders

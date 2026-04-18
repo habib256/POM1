@@ -275,13 +275,43 @@ CassetteDeck_ImGui::render(const char* title,
             : "Clear captured output");
     }
 
+    // VOL- / VOL+ — half-height buttons stacked vertically so they take
+    // the same horizontal slot as one transport button. 0.10 step = 10
+    // percent per click; range clamped [0, 2] in CassetteDevice::setVolume.
+    ImGui::SameLine();
+    constexpr float kVolBtnW = kActionBtnSize;
+    constexpr float kVolBtnH = (kActionBtnSize - 4.0f) * 0.5f;  // 4 px gap between the two
+    const ImVec2 volSize(kVolBtnW, kVolBtnH);
+    const float volStep = 0.10f;
+    ImGui::BeginGroup();
+    ImGui::SetWindowFontScale(kActionIconScale * 0.7f);
+    if (ImGui::Button(ICON_FA_VOLUME_HIGH "##DeckVolUp", volSize)) {
+        if (emulation) emulation->setCassetteVolume(snap.cassetteVolume + volStep);
+        char msg[64];
+        std::snprintf(msg, sizeof(msg), "Cassette volume: %d%%",
+                      static_cast<int>(std::round((snap.cassetteVolume + volStep) * 100.0f)));
+        out.statusMessage = msg;
+    }
+    ImGui::SetWindowFontScale(1.0f);
+    if (ImGui::IsItemHovered()) ImGui::SetTooltip("Volume + 10%%");
+    if (ImGui::Button(ICON_FA_VOLUME_LOW "##DeckVolDown", volSize)) {
+        if (emulation) emulation->setCassetteVolume(snap.cassetteVolume - volStep);
+        char msg[64];
+        std::snprintf(msg, sizeof(msg), "Cassette volume: %d%%",
+                      static_cast<int>(std::round(std::max(0.0f, snap.cassetteVolume - volStep) * 100.0f)));
+        out.statusMessage = msg;
+    }
+    if (ImGui::IsItemHovered()) ImGui::SetTooltip("Volume - 10%%");
+    ImGui::EndGroup();
+
     // Compact live status line under the buttons.
     char headerInfo[256];
     std::snprintf(headerInfo, sizeof(headerInfo),
-                  "in %zu tr  |  out %zu tr  |  audio %s",
+                  "in %zu tr  |  out %zu tr  |  audio %s  |  vol %d%%",
                   snap.cassetteLoadedTransitionCount,
                   snap.cassetteRecordedTransitionCount,
-                  snap.cassetteAudioAvailable ? "active" : "off");
+                  snap.cassetteAudioAvailable ? "active" : "off",
+                  static_cast<int>(std::round(snap.cassetteVolume * 100.0f)));
     ImGui::TextDisabled("%s", headerInfo);
     ImGui::Separator();
 

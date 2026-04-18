@@ -113,6 +113,7 @@ public:
     void ejectTape();
     void clearTapeCapture();
     void setHardwareAccurateLiveAudio(bool enabled);
+    void setCassetteVolume(float volume);
 
     // Apple Cassette Interface — unplug for the bare-4K preset.
     void setACIEnabled(bool enabled);

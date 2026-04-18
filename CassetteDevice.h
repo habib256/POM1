@@ -78,6 +78,13 @@ public:
     /// playback runs at the wrong speed by the rate ratio.
     void setAudioOutputSampleRate(uint32_t hz) { audioOutputSampleRate = std::max<uint32_t>(1, hz); }
 
+    /// Cassette playback volume multiplier in [0, 2]. Applied to the final
+    /// audio sample (ACI pulse mode AND audio-stream mode). UI thread sets,
+    /// audio thread reads — std::atomic<float> with relaxed memory order is
+    /// fine: a single-frame stale value is inaudible.
+    void  setVolume(float v);
+    float getVolume() const { return volume.load(std::memory_order_relaxed); }
+
     /// Tells the device whether the Apple Cassette Interface (ACI) card is
     /// currently plugged. Loading a tape while ACI is active uses the
     /// pulse/zero-crossing path so the CPU can read program data from
@@ -98,7 +105,15 @@ public:
 
 private:
     static constexpr uint32_t kRealtimeAudioTimebaseHz = static_cast<uint32_t>(POM1_CPU_CLOCK_HZ);
-    static constexpr uint32_t kTapeFileTimebaseHz = 900000;
+    // Tape-file durations are stored in CPU-cycle units so they feed
+    // advancePlayback() and saveWavTape() without unit conversion. Aligning
+    // the constant on POM1_CPU_CLOCK_HZ also makes WAV exports round-trip
+    // correctly against real Apple-1 hardware: a 770 Hz sync tone now lands
+    // on the right number of cycles instead of being ~13 % off (the
+    // pre-fix 900 kHz constant scaled every duration to ~88 % of its CPU-
+    // cycle equivalent, pushing the "1" half-period dangerously close to
+    // the Woz READBIT threshold and breaking OGG cassette loads).
+    static constexpr uint32_t kTapeFileTimebaseHz = static_cast<uint32_t>(POM1_CPU_CLOCK_HZ);
     /// Sample rate written into saved .wav files — independent of the live
     /// audio device's rate so saved tapes stay portable regardless of the
     /// host's native rate.
@@ -180,6 +195,9 @@ private:
     // loaded tape is treated as pulse data (ACI plugged) or as a direct
     // audio stream (ACI unplugged).
     bool aciActive = false;
+
+    // Cassette volume multiplier — see setVolume(). 1.0 = no change.
+    std::atomic<float> volume{1.0f};
 
     // Deck PAUSE — toggled by the UI via EmulationController::pauseTape().
     // Audio thread reads it every buffer; CPU-side advancePlayback checks

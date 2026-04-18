@@ -50,6 +50,7 @@ struct EmulationSnapshot
     double cassettePlaybackTotalSeconds = 0.0;
     size_t cassetteLoadedTransitionCount = 0;
     size_t cassetteRecordedTransitionCount = 0;
+    float  cassetteVolume = 1.0f;
     std::string cassetteLoadedTapePath;
     TMS9918::Snapshot tms9918;
     bool sidEnabled = false;

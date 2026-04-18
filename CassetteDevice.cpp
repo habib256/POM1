@@ -96,9 +96,10 @@ void CassetteDevice::fillAudioBuffer(float* output, int frameCount)
         // Headroom so the file doesn't clip when mixed with SID / live
         // cassette output. -3 dB is enough for typical speech/music.
         constexpr float kStreamGain = 0.71f;
+        const float vol = volume.load(std::memory_order_relaxed);
         const int consumed = static_cast<int>(framesRead);
         for (int i = 0; i < consumed; ++i) {
-            output[i] *= kStreamGain;
+            output[i] *= kStreamGain * vol;
             if (audioRampInSamplesRemaining > 0) {
                 const float ramp = 1.0f - (static_cast<float>(audioRampInSamplesRemaining) /
                                            static_cast<float>(kAudioRampInSamples));
@@ -123,6 +124,7 @@ void CassetteDevice::fillAudioBuffer(float* output, int frameCount)
         audioPlaybackSample = 0.0f;
         return;
     }
+    const float vol = volume.load(std::memory_order_relaxed);
     for (int i = 0; i < frameCount; ++i) {
         float targetSample = 0.0f;
         if (!audioQueue.empty()) {
@@ -141,7 +143,7 @@ void CassetteDevice::fillAudioBuffer(float* output, int frameCount)
             audioRampInSamplesRemaining--;
         }
         audioPlaybackSample += (targetSample - audioPlaybackSample) * kFilterAlpha;
-        output[i] = audioPlaybackSample;
+        output[i] = audioPlaybackSample * vol;
     }
 }
 
@@ -167,6 +169,13 @@ void CassetteDevice::setHardwareAccurateLiveAudio(bool enabled)
 void CassetteDevice::setLiveAudioTimebaseHz(uint32_t hz)
 {
     liveAudioTimebaseHz = std::max<uint32_t>(1, hz);
+}
+
+void CassetteDevice::setVolume(float v)
+{
+    if (v < 0.0f) v = 0.0f;
+    if (v > 2.0f) v = 2.0f;
+    volume.store(v, std::memory_order_relaxed);
 }
 
 void CassetteDevice::resetPlaybackState()
@@ -284,6 +293,11 @@ void CassetteDevice::queueAudioSegment(uint32_t cycles, bool level)
 
 void CassetteDevice::advancePlayback(uint32_t cycles)
 {
+    // `cycles` is the slice budget in CPU cycles. `loadedDurations[i]` is
+    // also a CPU-cycle count (kTapeFileTimebaseHz == POM1_CPU_CLOCK_HZ),
+    // so we can subtract one from the other directly without any unit
+    // conversion. Keep that invariant in mind when changing the tape file
+    // format or the timebase constant.
     if (!playbackActive || loadedDurations.empty() || cycles == 0) {
         return;
     }
@@ -660,6 +674,10 @@ bool CassetteDevice::pcmToDurations(const std::vector<float>& mono,
                                     bool& outInitialLevel,
                                     std::string& outErr)
 {
+    // Output is in CPU-cycle units (kTapeFileTimebaseHz == POM1_CPU_CLOCK_HZ).
+    // advancePlayback() consumes the resulting durations directly as CPU
+    // cycles, and saveWavTape() rebuilds the WAV at kWavFileSampleRate
+    // using the same constant — both paths stay symmetric.
     outDurations.clear();
     if (mono.empty()) {
         outErr = "Audio file does not contain samples";

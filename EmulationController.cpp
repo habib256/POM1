@@ -490,6 +490,15 @@ void EmulationController::setHardwareAccurateLiveAudio(bool enabled)
     publisher.publish(*memory, *cpu, runRequested.load());
 }
 
+void EmulationController::setCassetteVolume(float volume)
+{
+    // No stateMutex: CassetteDevice::setVolume() only writes to a
+    // std::atomic<float> that the audio thread reads with relaxed memory
+    // order. Skipping the mutex keeps the +/- buttons instant even when
+    // the emulation thread is burning cycles at MAX speed.
+    memory->getCassetteDevice().setVolume(volume);
+}
+
 void EmulationController::setTMS9918Enabled(bool enabled)
 {
     std::lock_guard<PriorityMutex> lock(stateMutex);
