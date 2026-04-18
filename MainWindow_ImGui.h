@@ -28,6 +28,16 @@ public:
     static const char* getPresetName(int index);
     void setDefaultPresetIndex(int index) { defaultPresetIndex = index; }
     void setTerminalCardOverride(bool enable) { terminalCardOverride = enable; }
+    // Preload a cassette file right after the initial preset applies, and/or
+    // dump the deck's recording into `path` on clean shutdown. Both are
+    // no-ops when empty. Used by --tape / --save-tape for scripted runs
+    // where there is no UI to click through the file dialogs.
+    void setInitialTapePath(std::string path) { initialTapePath = std::move(path); }
+    void setSaveTapePath(std::string path)    { saveTapePath    = std::move(path); }
+    // --cpu-max: boot with executionSpeed pinned at 1 000 000 cycles/frame
+    // (MAX button in the UI). Scripted runs that drive the ACI through
+    // telnet otherwise wait ~30 s of wallclock per tape at the 1× default.
+    void setCpuMaxSpeedOnBoot(bool enable) { cpuMaxSpeedOnBoot = enable; }
     void handleGlfwChar(unsigned int codepoint);
     void handleGlfwKey(int key, int scancode, int action, int mods);
 
@@ -217,6 +227,9 @@ private:
     int presetRamKB = 32;                 // Usable RAM for current preset (display only)
     int defaultPresetIndex = -1;          // -1 = last preset (POM1)
     bool terminalCardOverride = false;    // --terminal: enable Terminal Card on top of any preset
+    std::string initialTapePath;          // --tape: preload this file after the first-frame preset applies
+    std::string saveTapePath;             // --save-tape: dump the deck's recording on clean shutdown
+    bool cpuMaxSpeedOnBoot = false;       // --cpu-max: pin executionSpeed to MAX (1e6) on first frame
     // applyMachineConfig() normally triggers emulation->hardReset() to wipe
     // RAM + reload default ROMs + reset every peripheral. But at boot the
     // first applyMachineConfig call runs RIGHT AFTER createPom1(), where

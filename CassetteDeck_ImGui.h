@@ -62,6 +62,12 @@ private:
     float     hubAngle_  = 0.0f;             // reserved for Phase 2 hub animation
     double    rewEndsAt_ = 0.0;              // wall-clock time when REW/FF auto-releases
     double    wallClock_ = 0.0;              // accumulated deltaSeconds
+    // Volume state is tracked locally (not read from the snapshot) so rapid
+    // clicks on +/- accumulate deterministically. The snapshot is only used
+    // on the first frame to seed volumeSynced_; subsequent clicks update
+    // volume_ directly and push it to the device through setCassetteVolume.
+    float     volume_       = 1.0f;
+    bool      volumeSynced_ = false;
 
     void drawChassis      (ImDrawList* dl, ImVec2 p0, float s) const;
     void drawSlimLineBadge(ImDrawList* dl, ImVec2 p0, float s) const;

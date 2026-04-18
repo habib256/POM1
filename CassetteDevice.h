@@ -185,6 +185,11 @@ private:
     bool loadedInitialLevel = false;
     bool loadedTapeReady = false;
     bool playbackArmed = false;
+    // CPU cycle of the most recent $C081 read. Used to detect a large gap
+    // (the user was typing Wozmon commands during which nothing polls the
+    // tape input): the next $C081 read rewinds the tape to the start so
+    // the ACI READ routine sees the leader intact.
+    uint64_t lastTapeInputCycle = 0;
     bool playbackActive = false;
     uint64_t cyclesUntilInputToggle = 0;
     size_t playbackIndex = 0;

@@ -185,6 +185,10 @@ void CassetteDevice::resetPlaybackState()
     playbackIndex = 0;
     cyclesUntilInputToggle = 0;
     inputLevel = loadedInitialLevel;
+    // Reset the "last $C081 read" stamp to current cycle so the leader-
+    // rewind check in readTapeInput doesn't fire on the very first poll
+    // after a fresh load/rewind.
+    lastTapeInputCycle = currentCycle;
 }
 
 void CassetteDevice::clearLiveAudioState()
@@ -381,6 +385,30 @@ CassetteDevice::quint8 CassetteDevice::toggleOutput()
 
 CassetteDevice::quint8 CassetteDevice::readTapeInput()
 {
+    // Leader-preservation: if nothing has polled $C081 for a while, the
+    // user was almost certainly typing Wozmon commands (Wozmon reads
+    // $D010/$D011, never touches the cassette input) while the tape was
+    // freewheeling through pulses or even running all the way to the end.
+    // Rewind + reactivate so the ACI READ routine — which just started
+    // polling us — sees the leader from the start and can synchronize.
+    // Without this:
+    //   * At 1× CPU speed, ~10 s of typing eats through the leader.
+    //   * At MAX speed, a 30 s tape finishes in <1 s of wallclock typing;
+    //     playbackActive goes false and the tape would be stuck at EOF.
+    // 500 ms gap is well above any inter-poll interval of the READ
+    // routine (which polls at microsecond scale).
+    constexpr uint64_t kLeaderRewindGapCycles = POM1_CPU_CLOCK_HZ / 2;  // 500 ms
+    if (loadedTapeReady && !loadedDurations.empty() && playbackIndex > 0 &&
+        (currentCycle - lastTapeInputCycle) > kLeaderRewindGapCycles) {
+        playbackIndex = 0;
+        cyclesUntilInputToggle = 0;
+        inputLevel = loadedInitialLevel;
+        playbackActive = true;    // re-enable in case the tape had run to EOF
+        playbackArmed  = false;
+        clearLiveAudioState();
+    }
+    lastTapeInputCycle = currentCycle;
+
     if (playbackArmed) {
         playbackArmed = false;
         playbackActive = loadedTapeReady && !loadedDurations.empty();

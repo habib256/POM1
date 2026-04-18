@@ -12,6 +12,7 @@
 #include <emscripten.h>
 #include <emscripten/html5.h>
 #else
+#include <csignal>
 #include <cstdio>
 #include <filesystem>
 #include <string>
@@ -21,6 +22,18 @@
 #endif
 #include <windows.h>
 #endif
+#endif
+
+#if !POM1_IS_WASM
+// SIGINT/SIGTERM hand-off so --save-tape can fire on `kill <pid>` (the
+// telnet test scripts need this — they have no way to close the GLFW
+// window remotely). The handler asks the main loop to exit cleanly so
+// ~MainWindow_ImGui runs and the saveTape() path is reached.
+static GLFWwindow* g_signalWindow = nullptr;
+static void pom1_signal_handler(int)
+{
+    if (g_signalWindow) glfwSetWindowShouldClose(g_signalWindow, 1);
+}
 #endif
 
 #if !POM1_IS_WASM
@@ -110,10 +123,25 @@ int main(int argc, char* argv[])
     // Parse command-line arguments
     int requestedPreset = -1; // -1 = default (last preset)
     bool terminalCardOverride = false;
+    std::string initialTapePath;
+    std::string saveTapePath;
+    bool cpuMaxSpeedOnBoot = false;
     for (int i = 1; i < argc; ++i) {
         std::string arg(argv[i]);
         if (arg == "--terminal") {
             terminalCardOverride = true;
+            continue;
+        }
+        if (arg == "--tape" && i + 1 < argc) {
+            initialTapePath = argv[++i];
+            continue;
+        }
+        if (arg == "--save-tape" && i + 1 < argc) {
+            saveTapePath = argv[++i];
+            continue;
+        }
+        if (arg == "--cpu-max") {
+            cpuMaxSpeedOnBoot = true;
             continue;
         }
         if (arg == "--list-presets") {
@@ -237,7 +265,22 @@ int main(int argc, char* argv[])
         mainWindow.setDefaultPresetIndex(requestedPreset);
     if (terminalCardOverride)
         mainWindow.setTerminalCardOverride(true);
+    if (!initialTapePath.empty())
+        mainWindow.setInitialTapePath(initialTapePath);
+    if (!saveTapePath.empty())
+        mainWindow.setSaveTapePath(saveTapePath);
+    if (cpuMaxSpeedOnBoot)
+        mainWindow.setCpuMaxSpeedOnBoot(true);
     mainWindow.setWindow(window);
+
+#if !POM1_IS_WASM
+    // Route SIGINT/SIGTERM into a "please close the window" request so the
+    // destructor path (→ --save-tape dump) runs instead of std::terminate'ing
+    // the process mid-flight.
+    g_signalWindow = window;
+    std::signal(SIGINT,  pom1_signal_handler);
+    std::signal(SIGTERM, pom1_signal_handler);
+#endif
     glfwSetWindowUserPointer(window, &mainWindow);
 
     // Installer nos callbacks GLFW APRÈS ImGui pour les chaîner

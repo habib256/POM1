@@ -252,6 +252,28 @@ CassetteDeck_ImGui::render(const char* title,
     ImGui::SetWindowFontScale(1.0f);
     if (ImGui::IsItemHovered()) ImGui::SetTooltip("Load tape (ACI / WAV / MP3 / OGG / FLAC)");
 
+    // New (blank) cassette — ejects whatever's loaded AND clears any captured
+    // output so the user gets a truly fresh tape, ready to record. Sits
+    // right after Load since "file" ← → "fresh tape" are the two ways a
+    // deck gets a cassette.
+    ImGui::SameLine();
+    ImGui::SetWindowFontScale(kActionIconScale);
+    if (ImGui::Button(ICON_FA_FILE_CIRCLE_PLUS "##DeckNew", actionSize)) {
+        if (emulation) {
+            emulation->ejectTape();
+            emulation->clearTapeCapture();
+        }
+        transport_ = Transport::Stopped;
+        paused_    = false;
+        counter_   = 0;
+        counterAccum_ = 0.0;
+        out.statusMessage = "Nouvelle cassette (vide)";
+    }
+    ImGui::SetWindowFontScale(1.0f);
+    if (ImGui::IsItemHovered())
+        ImGui::SetTooltip("Nouvelle cassette vierge\n"
+                          "(ejecte la cassette courante + efface l'enregistrement)");
+
     ImGui::SameLine();
     ImGui::SetWindowFontScale(kActionIconScale);
     if (ImGui::Button(ICON_FA_FLOPPY_DISK "##DeckSave", actionSize)) {
@@ -278,27 +300,40 @@ CassetteDeck_ImGui::render(const char* title,
     // VOL- / VOL+ — half-height buttons stacked vertically so they take
     // the same horizontal slot as one transport button. 0.10 step = 10
     // percent per click; range clamped [0, 2] in CassetteDevice::setVolume.
+    // volume_ is local state so rapid clicks accumulate deterministically
+    // (the snapshot path has round-trip latency: click → setCassetteVolume
+    // → audio-thread reads atomic → emulation-thread publishes → UI reads
+    // snapshot. If the user double-clicks before a publish, two clicks
+    // would both read the stale snapshot value and effectively collapse
+    // into one. Reading/writing volume_ bypasses that loop.)
+    if (!volumeSynced_) {
+        volume_ = snap.cassetteVolume;
+        volumeSynced_ = true;
+    }
     ImGui::SameLine();
     constexpr float kVolBtnW = kActionBtnSize;
     constexpr float kVolBtnH = (kActionBtnSize - 4.0f) * 0.5f;  // 4 px gap between the two
     const ImVec2 volSize(kVolBtnW, kVolBtnH);
-    const float volStep = 0.10f;
+    constexpr float kVolStep = 0.10f;
+    constexpr float kVolMax  = 2.0f;
     ImGui::BeginGroup();
     ImGui::SetWindowFontScale(kActionIconScale * 0.7f);
     if (ImGui::Button(ICON_FA_VOLUME_HIGH "##DeckVolUp", volSize)) {
-        if (emulation) emulation->setCassetteVolume(snap.cassetteVolume + volStep);
+        volume_ = std::min(kVolMax, volume_ + kVolStep);
+        if (emulation) emulation->setCassetteVolume(volume_);
         char msg[64];
         std::snprintf(msg, sizeof(msg), "Cassette volume: %d%%",
-                      static_cast<int>(std::round((snap.cassetteVolume + volStep) * 100.0f)));
+                      static_cast<int>(std::round(volume_ * 100.0f)));
         out.statusMessage = msg;
     }
     ImGui::SetWindowFontScale(1.0f);
     if (ImGui::IsItemHovered()) ImGui::SetTooltip("Volume + 10%%");
     if (ImGui::Button(ICON_FA_VOLUME_LOW "##DeckVolDown", volSize)) {
-        if (emulation) emulation->setCassetteVolume(snap.cassetteVolume - volStep);
+        volume_ = std::max(0.0f, volume_ - kVolStep);
+        if (emulation) emulation->setCassetteVolume(volume_);
         char msg[64];
         std::snprintf(msg, sizeof(msg), "Cassette volume: %d%%",
-                      static_cast<int>(std::round(std::max(0.0f, snap.cassetteVolume - volStep) * 100.0f)));
+                      static_cast<int>(std::round(volume_ * 100.0f)));
         out.statusMessage = msg;
     }
     if (ImGui::IsItemHovered()) ImGui::SetTooltip("Volume - 10%%");
@@ -311,7 +346,7 @@ CassetteDeck_ImGui::render(const char* title,
                   snap.cassetteLoadedTransitionCount,
                   snap.cassetteRecordedTransitionCount,
                   snap.cassetteAudioAvailable ? "active" : "off",
-                  static_cast<int>(std::round(snap.cassetteVolume * 100.0f)));
+                  static_cast<int>(std::round(volume_ * 100.0f)));
     ImGui::TextDisabled("%s", headerInfo);
     ImGui::Separator();
 

@@ -47,6 +47,21 @@ MainWindow_ImGui::MainWindow_ImGui()
 
 MainWindow_ImGui::~MainWindow_ImGui()
 {
+    // --save-tape: flush the deck's capture BEFORE destroyPom1 tears the
+    // emulation controller down — saveTape touches the cassette through
+    // the EmulationController mutex, which the destroyed EmulationController
+    // no longer guards.
+    if (!saveTapePath.empty() && emulation) {
+        std::string err;
+        if (emulation->saveTape(saveTapePath, err)) {
+            pom1::log().info("POM1",
+                std::string("Saved cassette capture to ") + saveTapePath);
+        } else {
+            pom1::log().error("POM1",
+                std::string("Failed to save cassette capture to '") +
+                saveTapePath + "': " + err);
+        }
+    }
     destroyPom1();
 }
 
@@ -195,6 +210,25 @@ void MainWindow_ImGui::render()
         if (terminalCardOverride) {
             terminalCardEnabled = true;
             emulation->setTerminalCardEnabled(true);
+        }
+        if (cpuMaxSpeedOnBoot) {
+            executionSpeed = 1000000;
+            emulation->setExecutionSpeedCyclesPerFrame(executionSpeed);
+        }
+        // --tape: preload the cassette now that the preset has registered the
+        // ACI card. Failures are logged but non-fatal — the emulator still
+        // comes up and the user can load another tape through the UI.
+        if (!initialTapePath.empty()) {
+            std::string err;
+            if (emulation->loadTape(initialTapePath, err)) {
+                emulation->playTape();
+                pom1::log().info("POM1",
+                    std::string("Preloaded cassette: ") + initialTapePath);
+            } else {
+                pom1::log().error("POM1",
+                    std::string("Failed to preload cassette '") + initialTapePath +
+                    "': " + err);
+            }
         }
     }
 
