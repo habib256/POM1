@@ -256,10 +256,16 @@ private:
 
     struct TapeDialogState {
         char filePath[512] = "cassette.aci";
+        std::vector<std::string> dirList;
+        std::vector<std::string> fileList;
+        bool filesScanned = false;
+        std::string cassettesRoot;
+        std::string currentDir;
         void setDefaultPath(const char* path) {
             strncpy(filePath, path, sizeof(filePath) - 1);
             filePath[sizeof(filePath) - 1] = '\0';
         }
+        void rescan() { filesScanned = false; }
     };
     TapeDialogState loadTapeDlg;
     TapeDialogState saveTapeDlg;

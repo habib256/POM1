@@ -171,9 +171,9 @@ const MachineConfig kMachinePresets[] = {
     },
     {
         "POM1 Apple-1 Multiplexing Fantasy (2026)",
-        "64 KB RAM, Applesoft Lite, microSD + A1-SID + Wi-Fi modem + Terminal Card. Graphic cards off by default.",
+        "64 KB RAM, Applesoft Lite, microSD + A1-SID + Wi-Fi modem + Terminal Card. Graphic cards off by default. ACI unplugged so the cassette deck acts as a plain audio player.",
         false, true, true, false, false, true, true,
-        false, false, true, 64, BasicType::ApplesoftLite,
+        false, false, false, 64, BasicType::ApplesoftLite,
         /*sidSE*/ false,
         /*jukeBox*/ false, JukeBox::Jumper::RAM16_ROM32,
         {

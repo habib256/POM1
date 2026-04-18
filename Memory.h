@@ -101,6 +101,8 @@ public:
     void memWrite(quint16 address, quint8 value);
     const quint8* getMemoryPointer() const { return mem.data(); }
     quint8* getMemoryPointerMutable() { return mem.data(); }
+    // Debug: diagnostic string summarising which bus handlers are enabled.
+    std::string busStateSummary() const;
 
     /// Flip the full 64 KB address space into a "flat RAM" mode: memRead /
     /// memWrite skip the PeripheralBus, PIA 6821 aliasing, strict-OOR, ROM

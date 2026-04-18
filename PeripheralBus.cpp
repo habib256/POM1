@@ -13,22 +13,27 @@ PeripheralBus::Handle PeripheralBus::registerHandle(std::string name, Range rang
 {
     assert(entries.size() < static_cast<size_t>(kMaxEntries) &&
            "PeripheralBus::EntryMask only supports 16 entries; widen the type.");
-    Handle h = static_cast<Handle>(entries.size());
+    // Capture the insertion index for the new entry BEFORE sorting. After
+    // sortEntries() the vector is reordered by priority, so `entries.back()`
+    // is NOT guaranteed to be the one we just pushed — higher-priority
+    // entries (e.g. Juke-Box at priority 20) get moved to the front, leaving
+    // some unrelated priority-0 entry at the back. Returning that stranger's
+    // insertionIndex means setEnabled/isEnabled later operate on the wrong
+    // handle, and the entry we actually registered stays enabled by default
+    // (shadowing the address range it claims).
+    const Handle newHandle = nextInsertionIndex++;
     entries.push_back(Entry{
         std::move(name),
         range,
         priority,
-        nextInsertionIndex++,
+        newHandle,
         true,
         std::move(onRead),
         std::move(onWrite),
     });
     sortEntries();
     rebuildPageMask();
-    // sortEntries() reorders the vector so `h` (an index into the old layout)
-    // is no longer meaningful. We return the entry's stable insertionIndex
-    // instead; setEnabled/isEnabled match on that.
-    return entries.back().insertionIndex;
+    return newHandle;
 }
 
 void PeripheralBus::setEnabled(Handle handle, bool enabled)

@@ -32,7 +32,7 @@ namespace {
 // narrower than the original 480 × 660 to read as "tall, compact deck"
 // instead of "wide block" when the window is resized modestly.
 constexpr float kDesignW = 378.0f;
-constexpr float kDesignH = 640.0f;
+constexpr float kDesignH = 404.0f;
 
 // ---------------------------------------------------------------------------
 // Palette — matte-black consumer tape deck, late 80s / early 90s look.
@@ -40,10 +40,6 @@ constexpr float kDesignH = 640.0f;
 constexpr ImU32 kChassis        = IM_COL32( 24,  24,  28, 255);
 constexpr ImU32 kChassisEdgeLo  = IM_COL32(  6,   6,   8, 255);
 constexpr ImU32 kChassisEdgeHi  = IM_COL32( 56,  56,  62, 255);
-constexpr ImU32 kGrilleBg       = IM_COL32( 18,  18,  22, 255);
-constexpr ImU32 kSlatLight      = IM_COL32(186, 188, 192, 255);
-constexpr ImU32 kSlatShadow     = IM_COL32( 96,  98, 104, 255);
-constexpr ImU32 kSlatGap        = IM_COL32( 10,  10,  12, 255);
 constexpr ImU32 kGlassDark      = IM_COL32(  8,   8,  12, 235);
 constexpr ImU32 kGlassReflect   = IM_COL32(255, 255, 255,  18);
 constexpr ImU32 kGlassEdgeDark  = IM_COL32(  0,   0,   0, 255);
@@ -74,29 +70,25 @@ constexpr ImU32 kHubMid         = IM_COL32( 40,  42,  48, 255);
 // Layout in design coordinates (x0,y0,x1,y1 — inclusive rects).
 // ---------------------------------------------------------------------------
 struct Rect { float x0, y0, x1, y1; };
-constexpr Rect kGrilleR     {   9.0f,  14.0f, 369.0f, 240.0f };
-constexpr Rect kCounterBarR {   9.0f, 250.0f, 369.0f, 306.0f };
-constexpr Rect kBrandBadgeR { 306.0f, 266.0f, 360.0f, 292.0f };
-constexpr Rect kCounterWinR { 148.0f, 262.0f, 212.0f, 296.0f };
-constexpr Rect kRecLedR     { 288.0f, 270.0f, 300.0f, 288.0f };
-constexpr Rect kCassetteR   {  18.0f, 316.0f, 360.0f, 478.0f };
-constexpr Rect kBrandR      {  14.0f, 488.0f, 364.0f, 516.0f };
-constexpr Rect kLabelsR     {  18.0f, 520.0f, 360.0f, 538.0f };
+// Speaker grille removed — it was decorative-only and ate ~230 px of vertical
+// space. Everything below shifts up by 236 px to keep the counter/cassette/keys
+// sitting on the same deck.
+constexpr Rect kCounterBarR {   9.0f,  14.0f, 369.0f,  70.0f };
+constexpr Rect kBrandBadgeR { 306.0f,  30.0f, 360.0f,  56.0f };
+constexpr Rect kCounterWinR { 148.0f,  26.0f, 212.0f,  60.0f };
+// REC LED — sits in the counter bar where the MIC switch used to live, on
+// the LEFT of the COUNTER window. Larger than the previous tiny lamp since
+// we have the whole MIC footprint to work with.
+constexpr Rect kRecLedR     {  22.0f,  22.0f,  46.0f,  46.0f };
+constexpr Rect kCassetteR   {  18.0f,  80.0f, 360.0f, 242.0f };
+constexpr Rect kBrandR      {  14.0f, 252.0f, 364.0f, 280.0f };
+constexpr Rect kLabelsR     {  18.0f, 284.0f, 360.0f, 302.0f };
 
 constexpr float kKeyW      = 47.0f;
 constexpr float kKeyH      = 64.0f;
 constexpr float kKeyRadius = 5.0f;
-constexpr float kKeysTop   = 544.0f;
+constexpr float kKeysTop   = 308.0f;
 constexpr float kKeyCenterXs[6] = { 44.0f, 102.0f, 160.0f, 218.0f, 276.0f, 334.0f };
-
-// Horizontal MIC switch in the counter bar, to the LEFT of the COUNTER
-// window. Slot runs left→right; the knob slides along X (off = left,
-// on = right). Centred on the bar's vertical midline (y=278) with the
-// "MIC" label sitting just below in the gap before the cassette window.
-constexpr float kMicSwitchX0 = 14.0f;
-constexpr float kMicSwitchY0 = 272.0f;
-constexpr float kMicSwitchW  = 46.0f;
-constexpr float kMicSwitchH  = 13.0f;
 
 constexpr float kCounterResetW = 10.0f;  // little silver button next to counter window
 
@@ -239,7 +231,7 @@ CassetteDeck_ImGui::render(const char* title,
 
     wallClock_ += std::max(0.0f, deltaSeconds);
     syncWithSnapshot(snap);
-    advanceCounter(deltaSeconds);
+    advanceCounter(deltaSeconds, snap);
 
     // Auto-release REW/FF after a short interval.
     if ((transport_ == Transport::Rewinding || transport_ == Transport::FastForwarding)
@@ -315,7 +307,6 @@ CassetteDeck_ImGui::render(const char* title,
     ImDrawList* dl = ImGui::GetWindowDrawList();
 
     drawChassis(dl, p0, s);
-    drawSpeakerGrille(dl, p0, s);
 
     // Counter bar content: slim line badge, counter window, tiny reset button.
     drawSlimLineBadge(dl, p0, s);
@@ -335,7 +326,6 @@ CassetteDeck_ImGui::render(const char* title,
     // for visual engagement to make sense, but the real mechanical keys
     // latch regardless. Keep press action live; device calls themselves
     // no-op when there's nothing loaded.
-    const bool hasTape = snap.cassetteLoadedTape;
 
     // REC
     if (drawPianoKey(dl, p0, s, kKeyCenterXs[0], kKeysTop + kKeyH * 0.5f,
@@ -349,40 +339,58 @@ CassetteDeck_ImGui::render(const char* title,
         std::string msg = onPlay(emulation, snap);
         if (!msg.empty()) out.statusMessage = std::move(msg);
     }
-    // REW
+    // REW — click triggers the transport action (full rewind in ACI mode,
+    // start-of-scrub in stream mode); holding continues to seek backward
+    // at ~30× while the mouse stays pressed.
+    bool rewHeld = false;
     if (drawPianoKey(dl, p0, s, kKeyCenterXs[2], kKeysTop + kKeyH * 0.5f,
-                     "##DeckKeyRew", "rew", rewKeyEngaged(), false)) {
+                     "##DeckKeyRew", "rew", rewKeyEngaged(), false, &rewHeld)) {
         std::string msg = onRewind(emulation, snap);
         if (!msg.empty()) out.statusMessage = std::move(msg);
     }
-    // FF
+    if (rewHeld && snap.cassetteAudioStreamMode && snap.cassetteLoadedTape) {
+        constexpr double kScrubSpeedX = 30.0;
+        if (emulation) {
+            emulation->stopTape();  // silence audio while scrubbing
+            emulation->seekTapeRelative(-static_cast<double>(deltaSeconds) * kScrubSpeedX);
+        }
+        transport_ = Transport::Rewinding;
+        paused_    = false;
+        rewEndsAt_ = wallClock_ + 0.25;  // refreshed each frame while held
+    }
+
+    // FF — mirror of REW with forward seek.
+    bool ffHeld = false;
     if (drawPianoKey(dl, p0, s, kKeyCenterXs[3], kKeysTop + kKeyH * 0.5f,
-                     "##DeckKeyFF", "ff", ffKeyEngaged(), false)) {
+                     "##DeckKeyFF", "ff", ffKeyEngaged(), false, &ffHeld)) {
         std::string msg = onFForward(emulation, snap);
         if (!msg.empty()) out.statusMessage = std::move(msg);
     }
-    // STOP / EJECT — single-press STOP; double-click (or click while Stopped) ejects.
+    if (ffHeld && snap.cassetteAudioStreamMode && snap.cassetteLoadedTape) {
+        constexpr double kScrubSpeedX = 30.0;
+        if (emulation) {
+            emulation->stopTape();
+            emulation->seekTapeRelative(+static_cast<double>(deltaSeconds) * kScrubSpeedX);
+        }
+        transport_ = Transport::FastForwarding;
+        paused_    = false;
+        rewEndsAt_ = wallClock_ + 0.25;
+    }
+    // STOP — always just stops. Eject lives on its own control (header
+    // Clear/Cassette-Control window) to avoid the surprising second-click
+    // eject users hit when re-tapping STOP to confirm the tape halted.
     const bool stopDisabled = false;
     if (drawPianoKey(dl, p0, s, kKeyCenterXs[4], kKeysTop + kKeyH * 0.5f,
                      "##DeckKeyStop", "stop", stopKeyEngaged(), stopDisabled)) {
-        // If already Stopped and a tape is loaded, this press means EJECT.
-        std::string msg;
-        if (transport_ == Transport::Stopped && !paused_ && hasTape) {
-            msg = onEject(emulation, snap);
-        } else {
-            msg = onStop(emulation);
-        }
+        std::string msg = onStop(emulation);
         if (!msg.empty()) out.statusMessage = std::move(msg);
     }
     // PAUSE
     if (drawPianoKey(dl, p0, s, kKeyCenterXs[5], kKeysTop + kKeyH * 0.5f,
                      "##DeckKeyPause", "pause", pauseKeyEngaged(), false)) {
-        std::string msg = onPause();
+        std::string msg = onPause(emulation);
         if (!msg.empty()) out.statusMessage = std::move(msg);
     }
-
-    // MIC switch (decorative: sets hardware-accurate live audio mode).
-    drawMicSwitch(dl, p0, s, "##DeckMicSwitch");
 
     ImGui::End();
     return out;
@@ -411,52 +419,6 @@ void CassetteDeck_ImGui::drawChassis(ImDrawList* dl, ImVec2 p0, float s) const
                 kChassisEdgeLo, r * 0.85f, 0, S(s, 1.0f));
 }
 
-void CassetteDeck_ImGui::drawSpeakerGrille(ImDrawList* dl, ImVec2 p0, float s) const
-{
-    const Rect r = kGrilleR;
-    const ImVec2 a = P(p0, s, r.x0, r.y0);
-    const ImVec2 b = P(p0, s, r.x1, r.y1);
-    const float round = S(s, 6.0f);
-
-    // Recessed bed behind the slats.
-    dl->AddRectFilled(a, b, kGrilleBg, round);
-    // Inner shadow ring.
-    dl->AddRect(ImVec2(a.x + S(s, 1.0f), a.y + S(s, 1.0f)),
-                ImVec2(b.x - S(s, 1.0f), b.y - S(s, 1.0f)),
-                kSlatGap, round, 0, S(s, 1.0f));
-
-    // Horizontal slats. Slat height in design units ≈ 2.4; gap ≈ 3.2.
-    // Keeping gap > slat thickness gives the "brushed metal between dark
-    // gaps" look rather than the opposite.
-    const float slatStep   = 5.6f;
-    const float slatHeight = 2.4f;
-    const float innerPadX  = 8.0f;
-    const float innerPadY  = 10.0f;
-    const float y0 = r.y0 + innerPadY;
-    const float y1 = r.y1 - innerPadY;
-    for (float y = y0; y + slatHeight <= y1; y += slatStep) {
-        const ImVec2 p = P(p0, s, r.x0 + innerPadX, y);
-        const ImVec2 q = P(p0, s, r.x1 - innerPadX, y + slatHeight);
-        // Main slat — brushed highlight then thin shadow underneath for
-        // depth. Integer pixel snapping on Y keeps rows consistent at any
-        // scale (same trick as Screen_ImGui's CRT scanlines).
-        ImVec2 ps(p.x, std::floor(p.y) + 0.5f);
-        ImVec2 qs(q.x, std::floor(q.y) + 0.5f);
-        dl->AddRectFilled(ps, qs, kSlatLight);
-        const float shY = std::floor(q.y) + 0.5f;
-        dl->AddRectFilled(ImVec2(p.x, shY),
-                          ImVec2(q.x, shY + std::max(1.0f, S(s, 0.9f))),
-                          kSlatShadow);
-    }
-
-    // Subtle inner vignette — darker stripe mid-grille for depth.
-    const ImVec2 va = P(p0, s, r.x0 + 10.0f, r.y0 + (r.y1 - r.y0) * 0.5f - 8.0f);
-    const ImVec2 vb = P(p0, s, r.x1 - 10.0f, r.y0 + (r.y1 - r.y0) * 0.5f + 8.0f);
-    dl->AddRectFilledMultiColor(va, vb,
-                                IM_COL32(0,0,0,32), IM_COL32(0,0,0,32),
-                                IM_COL32(0,0,0, 0), IM_COL32(0,0,0, 0));
-}
-
 void CassetteDeck_ImGui::drawSlimLineBadge(ImDrawList* dl, ImVec2 p0, float s) const
 {
     const Rect r = kBrandBadgeR;
@@ -471,7 +433,7 @@ void CassetteDeck_ImGui::drawCounter(ImDrawList* dl, ImVec2 p0, float s,
 {
     // "COUNTER" label to the left of the window (aligned on the window's
     // vertical centre).
-    drawText(dl, p0, s, 98.0f, 273.0f, 9.0f, kLabelTextDim, "COUNTER");
+    drawText(dl, p0, s, 98.0f, 37.0f, 9.0f, kLabelTextDim, "COUNTER");
 
     // Window housing.
     const Rect r = kCounterWinR;
@@ -535,8 +497,12 @@ void CassetteDeck_ImGui::drawCounter(ImDrawList* dl, ImVec2 p0, float s,
         dl->AddCircleFilled(lc, lrad, IM_COL32(48, 14, 12, 255), 18);
     }
     dl->AddCircle(lc, lrad, IM_COL32(8, 8, 10, 255), 22, std::max(1.0f, S(s, 0.8f)));
-    // Tiny "REC" label under the LED.
-    drawText(dl, p0, s, lr.x0 - 3.0f, lr.y1 + 1.0f, 7.0f, kLabelTextDim, "REC");
+    // "REC" label tucked right under the LED (lr.y1 = 290) so the two read
+    // as one unit — previously it sat in the chassis band at y=307 and
+    // read as disconnected from the lamp.
+    drawCenteredText(dl, p0, s,
+                     Rect{ lr.x0 - 2.0f, lr.y1 + 0.5f, lr.x1 + 2.0f, lr.y1 + 10.5f },
+                     8.5f, kLabelTextDim, "REC");
 }
 
 void CassetteDeck_ImGui::drawCassetteWindow(ImDrawList* dl, ImVec2 p0, float s,
@@ -580,25 +546,27 @@ void CassetteDeck_ImGui::drawCassetteWindow(ImDrawList* dl, ImVec2 p0, float s,
         std::string name = snap.cassetteLoadedTapePath;
         const size_t slash = name.find_last_of("/\\");
         if (slash != std::string::npos) name = name.substr(slash + 1);
-        if (name.size() > 28) name = name.substr(0, 27) + "…";
-        drawText(dl, p0, s, labelR.x0 + 4.0f, labelR.y0 + 4.0f, 10.0f,
+        // ASCII-only truncation marker — ImGui's default font has no glyph
+        // for U+2026 (…) and renders it as "?", so we use three ASCII dots.
+        if (name.size() > 24) name = name.substr(0, 23) + "...";
+        drawText(dl, p0, s, labelR.x0 + 4.0f, labelR.y0 + 4.0f, 22.0f,
                  IM_COL32(40, 40, 44, 255), name.c_str());
 
         // Transition count — a stand-in for Phase 2 metadata (LOAD/RUN).
         char detail[96];
         std::snprintf(detail, sizeof(detail), "transitions: %zu",
                       snap.cassetteLoadedTransitionCount);
-        drawText(dl, p0, s, labelR.x0 + 4.0f, labelR.y0 + 22.0f, 9.0f,
+        drawText(dl, p0, s, labelR.x0 + 4.0f, labelR.y0 + 38.0f, 17.0f,
                  IM_COL32(96, 96, 100, 255), detail);
 
         // Two hubs (left and right) — static for Phase 1. Phase 2 rotates them.
-        const float hubY = r.y0 + (r.y1 - r.y0) * 0.78f;
-        const float hubR = 14.0f;
+        const float hubY = r.y0 + (r.y1 - r.y0) * 0.68f;
+        const float hubR = 19.0f;
         for (int i = 0; i < 2; ++i) {
             const float hx = (i == 0 ? r.x0 + (r.x1 - r.x0) * 0.28f
                                      : r.x0 + (r.x1 - r.x0) * 0.72f);
-            dl->AddCircleFilled(P(p0, s, hx, hubY), S(s, hubR), kHubMid, 24);
-            dl->AddCircleFilled(P(p0, s, hx, hubY), S(s, hubR * 0.55f), kHubDark, 18);
+            dl->AddCircleFilled(P(p0, s, hx, hubY), S(s, hubR), kHubMid, 28);
+            dl->AddCircleFilled(P(p0, s, hx, hubY), S(s, hubR * 0.55f), kHubDark, 20);
         }
     } else {
         // Empty: soft "NO TAPE" hint. ASCII-only — ImGui default font has
@@ -626,7 +594,7 @@ void CassetteDeck_ImGui::drawCassetteWindow(ImDrawList* dl, ImVec2 p0, float s,
     // AC/BATTERY FULL AUTO STOP label — silkscreened on the glass surface.
     // Drawn AFTER the tint so it sits ON the outer face, not behind it.
     drawCenteredText(dl, p0, s,
-                     Rect{ r.x0, r.y1 - 18.0f, r.x1, r.y1 - 4.0f },
+                     Rect{ r.x0, r.y1 - 12.0f, r.x1, r.y1 + 2.0f },
                      9.0f, IM_COL32(220, 220, 224, 220),
                      "AC/BATTERY  FULL AUTO STOP");
 
@@ -646,7 +614,7 @@ void CassetteDeck_ImGui::drawBrandStrip(ImDrawList* dl, ImVec2 p0, float s) cons
     dl->AddRectFilled(a, b, kBrandStrip, S(s, 2.0f));
     dl->AddRect(a, b, kBrandStripEdge, S(s, 2.0f), 0, 1.0f);
     // Centred wordmark.
-    drawCenteredText(dl, p0, s, r, 14.0f, kBrandText, "POM1 · CASSETTE DECK");
+    drawCenteredText(dl, p0, s, r, 14.0f, kBrandText, "POM1 - CASSETTE DECK");
 }
 
 void CassetteDeck_ImGui::drawButtonLabels(ImDrawList* dl, ImVec2 p0, float s) const
@@ -675,7 +643,8 @@ void CassetteDeck_ImGui::drawButtonLabels(ImDrawList* dl, ImVec2 p0, float s) co
 
 bool CassetteDeck_ImGui::drawPianoKey(ImDrawList* dl, ImVec2 p0, float s,
                                       float cx, float cy, const char* id,
-                                      const char* glyph, bool engaged, bool disabled)
+                                      const char* glyph, bool engaged, bool disabled,
+                                      bool* heldOut)
 {
     const float hw = kKeyW * 0.5f;
     const float hh = kKeyH * 0.5f;
@@ -746,52 +715,8 @@ bool CassetteDeck_ImGui::drawPianoKey(ImDrawList* dl, ImVec2 p0, float s,
         drawPauseGlyph(dl, p0, s, gx, gy, gh, col);
     }
 
+    if (heldOut) *heldOut = active && !disabled;
     return clicked && !disabled;
-}
-
-void CassetteDeck_ImGui::drawMicSwitch(ImDrawList* dl, ImVec2 p0, float s,
-                                       const char* id)
-{
-    const float x0 = kMicSwitchX0;
-    const float y0 = kMicSwitchY0;
-    const float x1 = x0 + kMicSwitchW;
-    const float y1 = y0 + kMicSwitchH;
-    const ImVec2 a = P(p0, s, x0, y0);
-    const ImVec2 b = P(p0, s, x1, y1);
-    const float round = S(s, 2.0f);
-
-    ImGui::SetCursorScreenPos(a);
-    ImGui::InvisibleButton(id, ImVec2(b.x - a.x, b.y - a.y));
-    const bool hov     = ImGui::IsItemHovered();
-    const bool clicked = ImGui::IsItemClicked();
-    if (clicked) micSwitch_ = !micSwitch_;
-
-    // Body — recessed track.
-    dl->AddRectFilled(a, b, IM_COL32(10, 10, 12, 255), round);
-    dl->AddRect(a, b, kButtonEdge, round, 0, 1.0f);
-
-    // Horizontal switch: knob is a vertical bar sliding along X. Flip
-    // left = off, right = on, matching the "MIC / LINE" reading order.
-    const float knobW = 14.0f;
-    const float knobX = micSwitch_ ? x1 - 4.0f - knobW : x0 + 4.0f;
-    const ImVec2 ka = P(p0, s, knobX,           y0 + 2.0f);
-    const ImVec2 kb = P(p0, s, knobX + knobW,   y1 - 2.0f);
-    dl->AddRectFilled(ka, kb,
-                      micSwitch_ ? IM_COL32(198, 200, 204, 255)
-                                 : IM_COL32(150, 152, 156, 255),
-                      S(s, 1.5f));
-    dl->AddRect(ka, kb, IM_COL32(60, 60, 64, 255), S(s, 1.5f), 0, 1.0f);
-
-    // "MIC" label beneath the switch, in the thin chassis band between
-    // the counter bar (ends at y=306) and the cassette compartment
-    // (starts at y=316).
-    drawCenteredText(dl, p0, s,
-                     Rect{ x0 - 2.0f, y1 + 2.0f, x1 + 2.0f, y1 + 14.0f },
-                     7.5f, kLabelTextDim, "MIC");
-
-    if (hov) {
-        ImGui::SetTooltip("MIC / LINE selector (decorative)");
-    }
 }
 
 // ---------------------------------------------------------------------------
@@ -829,44 +754,59 @@ std::string CassetteDeck_ImGui::onPlay(EmulationController* emu,
     transport_ = Transport::Playing;
     paused_    = false;
     rewEndsAt_ = 0.0;
-    return "Cassette: PLAY — tape rolling";
+    return "Cassette: PLAY - tape rolling";
 }
 
 std::string CassetteDeck_ImGui::onRewind(EmulationController* emu,
                                          const EmulationSnapshot& /*snap*/)
 {
-    if (emu) emu->rewindTape();
+    // Full rewind to 0 in both modes. rewindTape() also halts playback —
+    // next PLAY resumes from the start, which is what we want after REW.
+    if (emu) {
+        emu->pauseTape(false);
+        emu->rewindTape();
+    }
     transport_ = Transport::Rewinding;
     paused_    = false;
     rewEndsAt_ = wallClock_ + kWindDurationSeconds;
-    return "Cassette: REW — tape rewound to start";
+    return "Cassette: REW - tape rewound to start";
 }
 
-std::string CassetteDeck_ImGui::onFForward(EmulationController* /*emu*/,
-                                           const EmulationSnapshot& /*snap*/)
+std::string CassetteDeck_ImGui::onFForward(EmulationController* emu,
+                                           const EmulationSnapshot& snap)
 {
-    // No real FF target in virtual tape — latch visually for feedback.
+    if (emu) emu->pauseTape(false);
+    if (snap.cassetteAudioStreamMode && snap.cassetteLoadedTape) {
+        if (emu) emu->seekTapeRelative(+5.0);
+        transport_ = Transport::FastForwarding;
+        paused_    = false;
+        rewEndsAt_ = wallClock_ + kWindDurationSeconds;
+        return "Cassette: FF +5s";
+    }
+    // No real FF target for pulse data — latch visually only.
     transport_ = Transport::FastForwarding;
     paused_    = false;
     rewEndsAt_ = wallClock_ + kWindDurationSeconds;
-    return "Cassette: FF (virtual tape has no seek — decorative)";
+    return "Cassette: FF (virtual tape has no seek - decorative)";
 }
 
-std::string CassetteDeck_ImGui::onStop(EmulationController* /*emu*/)
+std::string CassetteDeck_ImGui::onStop(EmulationController* emu)
 {
+    if (emu) emu->stopTape();
     transport_ = Transport::Stopped;
     paused_    = false;
     rewEndsAt_ = 0.0;
     return "Cassette: STOP";
 }
 
-std::string CassetteDeck_ImGui::onPause()
+std::string CassetteDeck_ImGui::onPause(EmulationController* emu)
 {
     // PAUSE only latches when Playing or Recording (real mechanical rule).
     if (transport_ != Transport::Playing && transport_ != Transport::Recording) {
         return {};
     }
     paused_ = !paused_;
+    if (emu) emu->pauseTape(paused_);
     return paused_ ? "Cassette: PAUSE" : "Cassette: resume";
 }
 
@@ -879,16 +819,31 @@ std::string CassetteDeck_ImGui::onEject(EmulationController* emu,
     if (emu) emu->ejectTape();
     transport_ = Transport::Stopped;
     paused_    = false;
-    return "Cassette: EJECT — tape removed";
+    return "Cassette: EJECT - tape removed";
 }
 
 // ---------------------------------------------------------------------------
 // Counter / sync
 // ---------------------------------------------------------------------------
 
-void CassetteDeck_ImGui::advanceCounter(float deltaSeconds)
+void CassetteDeck_ImGui::advanceCounter(float deltaSeconds,
+                                        const EmulationSnapshot& snap)
 {
     if (deltaSeconds <= 0.0f) return;
+
+    // Stream mode: counter mirrors the actual audio cursor. Freezes in
+    // PAUSE (position stops advancing), jumps on FF/REW (snapshot reflects
+    // the seek on the next publish), resets naturally when PLAY restarts
+    // from the beginning. Wallclock path below only runs in ACI pulse mode
+    // where there is no measurable position to derive from.
+    if (snap.cassetteAudioStreamMode && snap.cassetteLoadedTape) {
+        const double ticks = snap.cassettePlaybackPositionSeconds / kCounterPlaySecPerTick;
+        counter_ = static_cast<uint32_t>(ticks) % 1000;
+        counterAccum_ = 0.0;
+        hubAngle_ = std::fmod(hubAngle_ + deltaSeconds * 4.0f, 6.2831853f);
+        return;
+    }
+
     double secPerTick = 0.0;
     switch (transport_) {
         case Transport::Playing:
@@ -916,8 +871,6 @@ void CassetteDeck_ImGui::advanceCounter(float deltaSeconds)
         }
         counterAccum_ -= ticks;
     }
-    // Hub rotation (reserved for Phase 2 — advance a phase angle so we
-    // are ready to draw it later without another timing pipeline).
     hubAngle_ = std::fmod(hubAngle_ + deltaSeconds * 4.0f, 6.2831853f);
 }
 

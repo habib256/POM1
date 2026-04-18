@@ -225,11 +225,102 @@ void MainWindow_ImGui::loadTape()
 
 void MainWindow_ImGui::renderLoadTapeDialog()
 {
-    ImGui::SetNextWindowSize(ImVec2(520, 220), ImGuiCond_FirstUseEver);
+    ImGui::SetNextWindowSize(ImVec2(560, 440), ImGuiCond_FirstUseEver);
     if (ImGui::Begin("Load Tape", &showLoadTapeDialog)) {
-        ImGui::TextWrapped("Load an Apple-1 cassette image. Supported formats: .aci (exact pulse dump) and .wav.");
+        ImGui::TextWrapped("Load an Apple-1 cassette image or audio tape. Supported formats: "
+                           ".aci (exact pulse dump), .wav, .ogg, .mp3, .flac.");
+
+        if (!loadTapeDlg.filesScanned) {
+            if (loadTapeDlg.cassettesRoot.empty()) {
+                const char* probes[] = {"cassettes", "../cassettes", "../../cassettes"};
+                for (const char* d : probes) {
+                    if (std::filesystem::is_directory(d)) {
+                        loadTapeDlg.cassettesRoot = std::filesystem::canonical(d).string();
+                        loadTapeDlg.currentDir = loadTapeDlg.cassettesRoot;
+                        break;
+                    }
+                }
+            }
+            loadTapeDlg.dirList.clear();
+            loadTapeDlg.fileList.clear();
+            if (!loadTapeDlg.currentDir.empty() && std::filesystem::is_directory(loadTapeDlg.currentDir)) {
+                for (const auto& entry : std::filesystem::directory_iterator(loadTapeDlg.currentDir)) {
+                    if (entry.is_directory()) {
+                        std::string name = entry.path().filename().string();
+                        if (!name.empty() && name[0] != '.')
+                            loadTapeDlg.dirList.push_back(name);
+                    } else if (entry.is_regular_file()) {
+                        std::string ext = entry.path().extension().string();
+                        std::transform(ext.begin(), ext.end(), ext.begin(),
+                                       [](unsigned char c) { return std::tolower(c); });
+                        if (ext == ".aci" || ext == ".wav" || ext == ".ogg" ||
+                            ext == ".mp3" || ext == ".flac")
+                            loadTapeDlg.fileList.push_back(entry.path().filename().string());
+                    }
+                }
+                std::sort(loadTapeDlg.dirList.begin(), loadTapeDlg.dirList.end());
+                std::sort(loadTapeDlg.fileList.begin(), loadTapeDlg.fileList.end());
+            }
+            loadTapeDlg.filesScanned = true;
+        }
+
         ImGui::Spacing();
-        ImGui::Text("Tape file:");
+        if (loadTapeDlg.cassettesRoot.empty()) {
+            ImGui::TextColored(ImVec4(0.95f, 0.55f, 0.35f, 1.0f),
+                               "cassettes/ directory not found next to the executable.");
+        } else {
+            std::string displayPath = "cassettes/";
+            if (loadTapeDlg.currentDir.size() > loadTapeDlg.cassettesRoot.size())
+                displayPath += loadTapeDlg.currentDir.substr(loadTapeDlg.cassettesRoot.size() + 1) + "/";
+            ImGui::Text("%s", displayPath.c_str());
+        }
+
+        ImGui::BeginChild("TapeFileList", ImVec2(-1, 200), true);
+
+        if (!loadTapeDlg.cassettesRoot.empty() &&
+            loadTapeDlg.currentDir != loadTapeDlg.cassettesRoot) {
+            if (ImGui::Selectable(".. /", false)) {
+                loadTapeDlg.currentDir =
+                    std::filesystem::path(loadTapeDlg.currentDir).parent_path().string();
+                loadTapeDlg.rescan();
+            }
+        }
+
+        for (const auto& d : loadTapeDlg.dirList) {
+            std::string label = d + "/";
+            if (ImGui::Selectable(label.c_str(), false)) {
+                loadTapeDlg.currentDir =
+                    (std::filesystem::path(loadTapeDlg.currentDir) / d).string();
+                loadTapeDlg.rescan();
+            }
+        }
+
+        for (const auto& f : loadTapeDlg.fileList) {
+            bool selected = (std::filesystem::path(loadTapeDlg.filePath).filename().string() == f);
+            if (ImGui::Selectable(f.c_str(), selected, ImGuiSelectableFlags_AllowDoubleClick)) {
+                std::string fullPath =
+                    (std::filesystem::path(loadTapeDlg.currentDir) / f).string();
+                strncpy(loadTapeDlg.filePath, fullPath.c_str(), sizeof(loadTapeDlg.filePath) - 1);
+                loadTapeDlg.filePath[sizeof(loadTapeDlg.filePath) - 1] = '\0';
+                if (ImGui::IsMouseDoubleClicked(0)) {
+                    std::string error;
+                    if (emulation->loadTape(loadTapeDlg.filePath, error)) {
+                        emulation->copySnapshot(uiSnapshot);
+                        std::stringstream ss;
+                        ss << "Tape loaded: "
+                           << uiSnapshot.cassetteLoadedTransitionCount << " transitions";
+                        setStatusMessage(ss.str(), 3.0f);
+                        showLoadTapeDialog = false;
+                    } else {
+                        setStatusMessage(error, 3.0f);
+                    }
+                }
+            }
+        }
+        ImGui::EndChild();
+
+        ImGui::Separator();
+        ImGui::Text("Selected file:");
         ImGui::SetNextItemWidth(-1);
         ImGui::InputText("##loadtapefile", loadTapeDlg.filePath, sizeof(loadTapeDlg.filePath));
 
@@ -259,7 +350,11 @@ void MainWindow_ImGui::renderLoadTapeDialog()
             setStatusMessage("Tape rewound", 2.0f);
         }
         ImGui::SameLine();
-        if (ImGui::Button("Cancel", ImVec2(120, 0))) {
+        if (ImGui::Button("Refresh", ImVec2(120, 0))) {
+            loadTapeDlg.rescan();
+        }
+        ImGui::SameLine();
+        if (ImGui::Button("Cancel", ImVec2(100, 0))) {
             showLoadTapeDialog = false;
         }
     }

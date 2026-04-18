@@ -60,7 +60,11 @@ void SnapshotPublisher::publish(Memory& mem, const M6502& cpu, bool cpuRunning)
     snapshot.cassettePlaybackActive            = cassette.isPlaybackActive();
     snapshot.cassetteAudioAvailable            = cassette.isAudioAvailable();
     snapshot.cassetteHardwareAccurateLiveAudio = cassette.isHardwareAccurateLiveAudio();
+    snapshot.cassettePlaybackPaused            = cassette.isPlaybackPaused();
+    snapshot.cassetteAudioStreamMode           = cassette.isAudioStreamMode();
     snapshot.cassetteQueuedAudioSeconds        = cassette.getQueuedAudioSeconds();
+    snapshot.cassettePlaybackPositionSeconds   = cassette.getPlaybackPositionSeconds();
+    snapshot.cassettePlaybackTotalSeconds      = cassette.getPlaybackTotalSeconds();
     snapshot.cassetteLoadedTransitionCount     = cassette.getLoadedTransitionCount();
     snapshot.cassetteRecordedTransitionCount   = cassette.getRecordedTransitionCount();
     snapshot.cassetteLoadedTapePath            = cassette.getLoadedTapePath();

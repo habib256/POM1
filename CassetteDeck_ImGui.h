@@ -60,12 +60,10 @@ private:
     uint32_t  counter_   = 0;                // 0..999, mechanical rollover
     double    counterAccum_ = 0.0;           // fractional "revolutions"
     float     hubAngle_  = 0.0f;             // reserved for Phase 2 hub animation
-    bool      micSwitch_ = false;            // decorative slider state
     double    rewEndsAt_ = 0.0;              // wall-clock time when REW/FF auto-releases
     double    wallClock_ = 0.0;              // accumulated deltaSeconds
 
     void drawChassis      (ImDrawList* dl, ImVec2 p0, float s) const;
-    void drawSpeakerGrille(ImDrawList* dl, ImVec2 p0, float s) const;
     void drawSlimLineBadge(ImDrawList* dl, ImVec2 p0, float s) const;
     void drawCounter      (ImDrawList* dl, ImVec2 p0, float s,
                            const char* resetId, bool& resetClicked);
@@ -75,9 +73,8 @@ private:
     void drawButtonLabels (ImDrawList* dl, ImVec2 p0, float s) const;
     bool drawPianoKey     (ImDrawList* dl, ImVec2 p0, float s,
                            float cx, float cy, const char* id,
-                           const char* glyph, bool engaged, bool disabled);
-    void drawMicSwitch    (ImDrawList* dl, ImVec2 p0, float s,
-                           const char* id);
+                           const char* glyph, bool engaged, bool disabled,
+                           bool* heldOut = nullptr);
 
     // Transport transitions. Each returns a human-readable status line
     // (empty = no message).
@@ -86,7 +83,7 @@ private:
     std::string onRewind (EmulationController* emu, const EmulationSnapshot& snap);
     std::string onFForward(EmulationController* emu, const EmulationSnapshot& snap);
     std::string onStop   (EmulationController* emu);
-    std::string onPause  ();
+    std::string onPause  (EmulationController* emu);
     std::string onEject  (EmulationController* emu, const EmulationSnapshot& snap);
 
     bool playKeyEngaged() const {
@@ -98,7 +95,7 @@ private:
     bool stopKeyEngaged() const { return transport_ == Transport::Stopped && !paused_; }
     bool pauseKeyEngaged() const { return paused_; }
 
-    void advanceCounter(float deltaSeconds);
+    void advanceCounter(float deltaSeconds, const EmulationSnapshot& snap);
     void syncWithSnapshot(const EmulationSnapshot& snap);
 };
 

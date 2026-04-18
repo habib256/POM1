@@ -44,6 +44,7 @@ public:
     void hardReset(void);
     void setIRQ(int state);
     void setNMI(void);
+    void dumpPcTrace(const char* tag);
     quint16 memReadAbsolute(quint16 adr);
     
     // Nouvelles méthodes pour l'exécution et l'affichage

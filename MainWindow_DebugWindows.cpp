@@ -265,6 +265,8 @@ void MainWindow_ImGui::renderMemoryMapWindow()
     }
     if (sidEnabled)
         regions.push_back({ 0xC800, 0xCFFF, IM_COL32(200, 100, 255, 255), "A1-SID I/O" });
+    if (sidSpecialEditionEnabled)
+        regions.push_back({ 0xCC00, 0xCC1F, IM_COL32(200, 100, 255, 255), "A1-AUDIO Special Edition I/O" });
     if (tms9918Enabled)
         regions.push_back({ 0xCC00, 0xCC01, IM_COL32(100, 200, 255, 255), "TMS9918 I/O" });
 
@@ -498,6 +500,15 @@ void MainWindow_ImGui::renderMemoryMapWindow()
             ImGui::BulletText("$C80E-$C814  Voice 3");
             ImGui::BulletText("$C815-$C818  Filter (cutoff, res, mode/vol)");
             ImGui::BulletText("$C819-$C81C  Read-only (POT, OSC3, ENV3)");
+        }
+        if (sidSpecialEditionEnabled) {
+            ImGui::Spacing();
+            ImGui::TextColored(ImVec4(0.7f, 0.85f, 1.0f, 1.0f), "  P-LAB A1-AUDIO Special Edition");
+            ImGui::BulletText("$CC00-$CC06  Voice 1 (freq, PW, ctrl, ADSR)");
+            ImGui::BulletText("$CC07-$CC0D  Voice 2");
+            ImGui::BulletText("$CC0E-$CC14  Voice 3");
+            ImGui::BulletText("$CC15-$CC18  Filter (cutoff, res, mode/vol)");
+            ImGui::BulletText("$CC19-$CC1C  Read-only (POT, OSC3, ENV3)");
         }
         if (wifiModemEnabled) {
             ImGui::Spacing();

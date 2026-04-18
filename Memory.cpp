@@ -70,6 +70,7 @@ Memory::Memory()
     cassetteDevice = std::make_unique<CassetteDevice>();
     cassetteDevice->setAudioAvailable(audioDevice->isAvailable());
     cassetteDevice->setAudioOutputSampleRate(actualRate);
+    cassetteDevice->setAciActive(aciEnabled);
     // NOTE: no addSource here. The cassette is registered on the mixer
     // via activateCassetteAudioSource() which MainWindow calls 15 frames
     // after the CPU starts, matching the SID deferred-plug rule. Adding
@@ -243,6 +244,10 @@ void Memory::setACIEnabled(bool b)
     aciEnabled = b;
     bus.setEnabled(cassetteToggleBusHandle, b);
     bus.setEnabled(cassetteInputBusHandle, b);
+    // Let the cassette device know so future loadTape() calls pick the
+    // right mode: pulses while ACI is plugged, raw-audio streaming once
+    // the card is out.
+    if (cassetteDevice) cassetteDevice->setAciActive(b);
     if (b) {
         loadAciRom();
     } else {
@@ -378,6 +383,30 @@ void Memory::setWriteInRom(bool b)
 bool Memory::getWriteInRom(void)
 {
     return writeInRom;
+}
+
+std::string Memory::busStateSummary() const
+{
+    std::ostringstream oss;
+    auto tag = [&](const char* n, PeripheralBus::Handle h) {
+        oss << " " << n << "=" << (bus.isEnabled(h) ? "ON" : "off");
+    };
+    tag("a1ioRtc",   a1ioRtcBusHandle);
+    tag("cffa1ROM",  cffa1RomBusHandle);
+    tag("cffa1REG",  cffa1RegBusHandle);
+    tag("microSD",   microSDBusHandle);
+    tag("wifi",      wifiModemBusHandle);
+    tag("SID",       sidBusHandle);
+    tag("SID_SE",    sidSEBusHandle);
+    tag("TMS9918",   tms9918BusHandle);
+    tag("ACIToggle", cassetteToggleBusHandle);
+    tag("ACIInput",  cassetteInputBusHandle);
+    tag("JukeBox32", jukeBox32BusHandle);
+    tag("JukeBox16", jukeBox16BusHandle);
+    oss << " | presetRamKB=" << presetRamKB
+        << " oorStrict=" << (oorStrictMode ? "ON" : "off")
+        << " writeInRom=" << (writeInRom ? "1" : "0");
+    return oss.str();
 }
 
 int Memory::loadROM(const char* filename, quint16 startAddress, size_t maxSize, const char* label)
@@ -781,19 +810,21 @@ void Memory::memWrite(quint16 address, quint8 value)
 
     // Protection ROM (si writeInRom est désactivé)
     if (!writeInRom) {
-        // WOZ Monitor: 0xFF00-0xFFFF
+        // WOZ Monitor: 0xFF00-0xFFFF — real 256-byte bipolar PROM on the
+        // motherboard, physically unwriteable.
         if (address >= 0xFF00) return;
-        // ACI ROM: 0xC100-0xC1FF
+        // ACI ROM: 0xC100-0xC1FF — real 256-byte PROM on the ACI card.
         if (address >= 0xC100 && address <= 0xC1FF) return;
-        // Apple BASIC: 0xE000-0xEFFF -- RAM (not ROM) when the Juke-Box is
-        // plugged. On real hardware the Juke-Box card replaces the BASIC ROM
-        // chip with user RAM at that range so the Program Manager's L)OAD
-        // command can copy BASIC from the EEPROM into $E000. Keep the
-        // write-protect for every other configuration.
-        if (!jukeBoxEnabled && address >= 0xE000 && address <= 0xEFFF) return;
-        // SD CARD OS ROM: 0x8000-0x9FFF is intentionally NOT write-protected.
-        // User programs (e.g. SID tunes) that load over this range must be able
-        // to write their own variables there at runtime.
+        // $E000-$EFFF is RAM on a real Apple 1: Apple BASIC is distributed
+        // on cassette and loaded into RAM there by the Woz Monitor
+        // (`E000.EFFR`). POM1 pre-seeds the RAM from basic.rom at boot so
+        // the user doesn't have to re-load on every start, but writes must
+        // land like real hardware — a BASIC program writing zero-page
+        // pointers into its own code segment or a user patching the
+        // interpreter from the Monitor both worked on the original board.
+        // SD CARD OS ROM: 0x8000-0x9FFF is intentionally NOT write-protected
+        // either — user programs (e.g. SID tunes) load over this range and
+        // must be able to write their own variables there at runtime.
     }
 
     if (aciEnabled && address >= 0xC000 && address <= 0xC0FF && address != 0xC081) {

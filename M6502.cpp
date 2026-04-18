@@ -17,6 +17,9 @@
 // Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 #include "M6502.h"
+#include "Logger.h"
+#include <sstream>
+#include <iomanip>
 
 
 M6502::M6502()
@@ -627,6 +630,85 @@ void M6502::PLP(void)
 
 void M6502::BRK(void)
 {
+    // Temporary diagnostic — trace BRK origin to diagnose unexpected resets.
+    // programCounter here still points at the byte AFTER the $00 opcode (the
+    // signature byte). The actual BRK opcode is at PC-1.
+    {
+        std::ostringstream oss;
+        oss << std::hex << std::uppercase << std::setfill('0');
+        oss << "BRK PC=$" << std::setw(4) << static_cast<int>(programCounter - 1)
+            << " A=" << std::setw(2) << static_cast<int>(accumulator)
+            << " X=" << std::setw(2) << static_cast<int>(xRegister)
+            << " Y=" << std::setw(2) << static_cast<int>(yRegister)
+            << " SP=" << std::setw(2) << static_cast<int>(stackPointer)
+            << " stack(next 6):";
+        // Show the 6 bytes at top of stack (where RTS/RTI would pull from).
+        for (int i = 1; i <= 6; ++i) {
+            uint8_t sp = static_cast<uint8_t>(stackPointer + i);
+            oss << " " << std::setw(2)
+                << static_cast<int>(memory->memRead(0x100 + sp));
+        }
+        pom1::log().warn("CPU", oss.str());
+        dumpPcTrace("BRK trace");
+        // Dump the bytes at the walk zone ($BFF0-$C00F) so we can see what
+        // 1-byte opcodes the CPU actually executed just before the BRK.
+        {
+            std::ostringstream bytes;
+            bytes << std::hex << std::uppercase << std::setfill('0')
+                  << "mem $BFF0-$C00F:";
+            for (int a = 0xBFF0; a <= 0xC00F; ++a) {
+                bytes << " " << std::setw(2)
+                      << static_cast<int>(memory->memRead(static_cast<uint16_t>(a)));
+            }
+            pom1::log().warn("CPU", bytes.str());
+        }
+        // Also dump the tune's entry-point area so we can see what the CPU is
+        // *really* seeing at $6100 vs what the file says.
+        {
+            std::ostringstream bytes;
+            bytes << std::hex << std::uppercase << std::setfill('0')
+                  << "mem $6100-$610F:";
+            for (int a = 0x6100; a <= 0x610F; ++a) {
+                bytes << " " << std::setw(2)
+                      << static_cast<int>(memory->memRead(static_cast<uint16_t>(a)));
+            }
+            pom1::log().warn("CPU", bytes.str());
+        }
+        // And $5000-$500F (first JMP target).
+        {
+            std::ostringstream bytes;
+            bytes << std::hex << std::uppercase << std::setfill('0')
+                  << "mem $5000-$500F (via memRead):";
+            for (int a = 0x5000; a <= 0x500F; ++a) {
+                bytes << " " << std::setw(2)
+                      << static_cast<int>(memory->memRead(static_cast<uint16_t>(a)));
+            }
+            pom1::log().warn("CPU", bytes.str());
+        }
+        // Now compare with RAW mem[] (bypasses the peripheral bus). If this
+        // disagrees with memRead, some bus handler is shadowing the RAM.
+        {
+            const quint8* raw = memory->getMemoryPointer();
+            std::ostringstream bytes;
+            bytes << std::hex << std::uppercase << std::setfill('0')
+                  << "raw $5000-$500F  (bypass bus):";
+            for (int a = 0x5000; a <= 0x500F; ++a) {
+                bytes << " " << std::setw(2) << static_cast<int>(raw[a]);
+            }
+            pom1::log().warn("CPU", bytes.str());
+        }
+        {
+            const quint8* raw = memory->getMemoryPointer();
+            std::ostringstream bytes;
+            bytes << std::hex << std::uppercase << std::setfill('0')
+                  << "raw $6100-$610F (bypass bus):";
+            for (int a = 0x6100; a <= 0x610F; ++a) {
+                bytes << " " << std::setw(2) << static_cast<int>(raw[a]);
+            }
+            pom1::log().warn("CPU", bytes.str());
+        }
+        pom1::log().warn("CPU", "bus state:" + memory->busStateSummary());
+    }
     // BRK is a 2-byte instruction: the $00 opcode plus a "signature" byte
     // (officially unused, sometimes used for software vectoring). The CPU
     // already incremented PC once after fetching the opcode, so PC now
@@ -1104,16 +1186,59 @@ const M6502::OpcodeEntry M6502::opcodeTable[256] = {
     /* 0xFF */ {&M6502::Unoff,     nullptr},
 };
 
+// Temporary diagnostic — ring buffer of the last N non-sequential PC
+// transitions (JMP/JSR/RTS/branch/IRQ). Sequential walks are collapsed into a
+// single slot that records the *first* PC of the run, so the dump shows the
+// 24 most recent control-flow transfers leading up to a BRK.
+namespace {
+constexpr int kPcTraceSize = 24;
+struct PcEdge {
+    uint16_t from;   // PC of the last instruction before the transfer
+    uint16_t to;     // PC landed on after the transfer
+};
+PcEdge   g_pcTrace[kPcTraceSize] = {};
+int      g_pcTraceIdx = 0;
+uint16_t g_prevPc = 0;
+bool     g_prevValid = false;
+}
 void M6502::executeOpcode(void)
 {
     // Count the opcode fetch itself so per-instruction timing matches 6502 totals.
     cycles = 1;
+    // Detect non-sequential PC transitions. "Sequential" = new PC is within a
+    // few bytes of the previous instruction's start (covers 1..3 byte opcodes
+    // plus taken short branches within the same page). Anything else is a
+    // control-flow event worth recording.
+    if (g_prevValid) {
+        int delta = static_cast<int>(programCounter) - static_cast<int>(g_prevPc);
+        if (delta < 0 || delta > 3) {
+            g_pcTrace[g_pcTraceIdx] = {g_prevPc, programCounter};
+            g_pcTraceIdx = (g_pcTraceIdx + 1) % kPcTraceSize;
+        }
+    }
+    g_prevPc = programCounter;
+    g_prevValid = true;
+
     unsigned char opcode = memory->memRead(programCounter++);
 
     const OpcodeEntry& entry = opcodeTable[opcode];
     (this->*entry.addrMode)();
     if (entry.operation)
         (this->*entry.operation)();
+}
+
+void M6502::dumpPcTrace(const char* tag)
+{
+    std::ostringstream oss;
+    oss << std::hex << std::uppercase << std::setfill('0') << tag << " (from->to):";
+    for (int i = 0; i < kPcTraceSize; ++i) {
+        int idx = (g_pcTraceIdx + i) % kPcTraceSize;
+        const PcEdge& e = g_pcTrace[idx];
+        if (e.from == 0 && e.to == 0) continue;
+        oss << " $" << std::setw(4) << static_cast<int>(e.from)
+            << "->$" << std::setw(4) << static_cast<int>(e.to);
+    }
+    pom1::log().warn("CPU", oss.str());
 }
 
 void M6502::hardReset(void)

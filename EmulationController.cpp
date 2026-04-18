@@ -430,6 +430,27 @@ void EmulationController::playTape()
     publisher.publish(*memory, *cpu, runRequested.load());
 }
 
+void EmulationController::stopTape()
+{
+    std::lock_guard<PriorityMutex> lock(stateMutex);
+    memory->getCassetteDevice().stopTape();
+    publisher.publish(*memory, *cpu, runRequested.load());
+}
+
+void EmulationController::pauseTape(bool paused)
+{
+    std::lock_guard<PriorityMutex> lock(stateMutex);
+    memory->getCassetteDevice().setPlaybackPaused(paused);
+    publisher.publish(*memory, *cpu, runRequested.load());
+}
+
+void EmulationController::seekTapeRelative(double deltaSeconds)
+{
+    std::lock_guard<PriorityMutex> lock(stateMutex);
+    memory->getCassetteDevice().seekRelativeSeconds(deltaSeconds);
+    publisher.publish(*memory, *cpu, runRequested.load());
+}
+
 void EmulationController::ejectTape()
 {
     std::lock_guard<PriorityMutex> lock(stateMutex);

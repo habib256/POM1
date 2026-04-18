@@ -4,8 +4,10 @@
 #include "CpuClock.h"
 #include "POM1Build.h"
 #include "AudioDevice.h"
+#include "third_party/miniaudio.h"
 
 #include <algorithm>
+#include <atomic>
 #include <cstdint>
 #include <deque>
 #include <mutex>
@@ -33,8 +35,26 @@ public:
     void rewindTape();
     /// Start loaded-tape playback from the beginning (virtual tape advances with CPU cycles).
     void playTape();
+    /// Halt playback without resetting position or ejecting. Calling playTape()
+    /// afterwards restarts from the beginning (playback position is not a
+    /// first-class concept in the ACI pulse model).
+    void stopTape();
     void ejectTape();
     void clearRecordedTape();
+
+    /// Freeze/unfreeze playback. Silences the audio output and halts pulse
+    /// advance (ACI mode) or frame consumption (stream mode). Resume resets
+    /// the ramp-in to avoid a click on un-pause.
+    void setPlaybackPaused(bool paused);
+    bool isPlaybackPaused() const { return playbackPaused.load(std::memory_order_relaxed); }
+
+    /// Stream-mode only seek (no-op in ACI pulse mode). Clamps at [0, total-1].
+    void seekRelativeSeconds(double deltaSeconds);
+
+    /// Stream-mode only: current cursor / total length in seconds. Both
+    /// return 0 in ACI pulse mode (pulses have no wall-clock position).
+    double getPlaybackPositionSeconds() const;
+    double getPlaybackTotalSeconds() const;
 
     bool hasLoadedTape() const { return loadedTapeReady; }
     bool hasRecordedTape() const { return !recordedDurations.empty(); }
@@ -58,7 +78,20 @@ public:
     /// playback runs at the wrong speed by the rate ratio.
     void setAudioOutputSampleRate(uint32_t hz) { audioOutputSampleRate = std::max<uint32_t>(1, hz); }
 
-    size_t getLoadedTransitionCount() const { return loadedDurations.size(); }
+    /// Tells the device whether the Apple Cassette Interface (ACI) card is
+    /// currently plugged. Loading a tape while ACI is active uses the
+    /// pulse/zero-crossing path so the CPU can read program data from
+    /// $C081; with ACI unplugged, the device switches to a direct audio
+    /// streaming path that plays the file as-is (mp3/ogg/flac/wav) with no
+    /// length or pulse-extraction limit — the cassette becomes a simple
+    /// audio player. The mode is latched at load time; toggling ACI
+    /// afterwards does not re-mode an already-loaded tape.
+    void setAciActive(bool active) { aciActive = active; }
+
+    size_t getLoadedTransitionCount() const {
+        return audioStreamMode ? static_cast<size_t>(audioStreamTotalFrames) : loadedDurations.size();
+    }
+    bool isAudioStreamMode() const { return audioStreamMode; }
     size_t getRecordedTransitionCount() const { return recordedDurations.size(); }
     const std::string& getLoadedTapePath() const { return loadedTapePath; }
     const std::string& getLastError() const { return lastError; }
@@ -83,6 +116,12 @@ private:
     // loadPlaybackDurations. Returns false with lastError set on any
     // decoder failure or empty/too-long input.
     bool loadMiniaudioTape(const std::string& path);
+    // Opens the file as a live-streaming audio source — no pulse
+    // extraction, no length cap. The decoder is kept alive until the tape
+    // is ejected; the audio callback pulls mono float32 frames directly
+    // at the device's output sample rate (miniaudio resamples internally).
+    bool loadAudioStream(const std::string& path);
+    void closeAudioStream();
 
     // Shared PCM → transition durations core (zero-crossing with
     // hysteresis + 900 kHz tape-file timebase). Extracted from
@@ -136,6 +175,28 @@ private:
     size_t playbackIndex = 0;
     std::vector<uint32_t> loadedDurations;
     std::string loadedTapePath;
+
+    // ACI-card state mirrored from Memory — determines whether a newly
+    // loaded tape is treated as pulse data (ACI plugged) or as a direct
+    // audio stream (ACI unplugged).
+    bool aciActive = false;
+
+    // Deck PAUSE — toggled by the UI via EmulationController::pauseTape().
+    // Audio thread reads it every buffer; CPU-side advancePlayback checks
+    // it too, so pause truly freezes both modes.
+    std::atomic<bool> playbackPaused{false};
+
+    // Direct audio streaming state. When audioStreamMode is true, playback
+    // reads PCM frames from audioDecoder in fillAudioBuffer instead of
+    // synthesising square waves from loadedDurations. Protected by
+    // audioStreamMutex because the audio callback competes with UI-thread
+    // load/eject/seek calls.
+    mutable std::mutex audioStreamMutex;
+    bool audioStreamMode = false;
+    bool audioStreamDecoderOpen = false;
+    ma_decoder audioStreamDecoder{};
+    uint64_t audioStreamCursor = 0;       // frames consumed so far
+    uint64_t audioStreamTotalFrames = 0;  // reported by decoder; 0 if unknown
 
     mutable std::string lastError;
 };

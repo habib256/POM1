@@ -100,6 +100,9 @@ public:
     bool saveTape(const std::string& path, std::string& error);
     void rewindTape();
     void playTape();
+    void stopTape();
+    void pauseTape(bool paused);
+    void seekTapeRelative(double deltaSeconds);
     void ejectTape();
     void clearTapeCapture();
     void setHardwareAccurateLiveAudio(bool enabled);

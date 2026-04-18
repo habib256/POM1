@@ -43,7 +43,11 @@ struct EmulationSnapshot
     bool cassettePlaybackActive = false;
     bool cassetteAudioAvailable = false;
     bool cassetteHardwareAccurateLiveAudio = true;
+    bool cassettePlaybackPaused = false;
+    bool cassetteAudioStreamMode = false;
     double cassetteQueuedAudioSeconds = 0.0;
+    double cassettePlaybackPositionSeconds = 0.0;
+    double cassettePlaybackTotalSeconds = 0.0;
     size_t cassetteLoadedTransitionCount = 0;
     size_t cassetteRecordedTransitionCount = 0;
     std::string cassetteLoadedTapePath;

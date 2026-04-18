@@ -373,6 +373,86 @@ def phase6_load_basic_interpreter(sock: socket.socket, results: TestResults) -> 
     results.check("6.4 RUN prints JBOXOK", out, "JBOXOK")
 
 
+def phase7b_canonical_basic_flow(sock: socket.socket, results: TestResults) -> None:
+    """Phase 7b: Canonical BASIC-program flow per manual section 5.5.
+    LA (BASIC interpreter) + L<id on a BAS entry> + B + LIST should show the
+    bundled BASIC program -- not hit '*** BAD BRANCH ERR' nor produce an
+    empty listing. STARTREK (entry E, BAS) is used as the reference program
+    because it's long enough to guarantee a visible listing."""
+    print("\nPhase 7b: Canonical LA + L<BAS> + B + LIST flow")
+
+    # Hard reset so we don't inherit garbage state from earlier phases.
+    send_ctrl(sock, CTRL_R)
+    time.sleep(1.0)
+    recv_avail(sock, total=2.0)
+    out = send_and_drain(sock, "BD00R", "&", timeout=6.0)
+    vprint("BD00R", out)
+    results.check("7b.1 PM re-entered", out, "&")
+
+    # LA -- load Apple Integer BASIC interpreter from the Juke-Box EEPROM.
+    out = send_and_drain(sock, "LA", "&", timeout=6.0)
+    vprint("LA", out)
+    results.check("7b.2 LA (BASIC) returns OK", out, "OK")
+
+    # LE -- STARTREK is a BAS program; this must set up BASIC's pointers so
+    # the subsequent LIST has real content to render.
+    out = send_and_drain(sock, "LE", "&", timeout=6.0)
+    vprint("LE", out)
+    results.check("7b.3 LE (STARTREK, BAS) returns OK", out, "OK")
+    results.check_not("7b.4 LE no '!'", out, "!")
+
+    # B -- enter BASIC via E2B3 (warm start, non-destructive: keeps the
+    # STARTREK program and its pointers intact).
+    sock.sendall(b"B\r")
+    time.sleep(0.8)
+    out = recv_avail(sock, total=2.0, idle=0.4)
+    sock.sendall(b"\r")
+    out += recv_avail(sock, total=2.0, idle=0.4)
+    vprint("B", out)
+    results.check("7b.5 BASIC '>' prompt after B", out, ">")
+
+    # LIST -- must produce a non-empty listing. Integer BASIC paginates every
+    # 20 lines or so; we drain long enough to capture something meaningful
+    # then stop. The test does NOT require the full program -- just that
+    # LIST starts dumping lines before the next prompt.
+    sock.sendall(b"LIST\r")
+    time.sleep(0.5)
+    out = recv_avail(sock, total=8.0, idle=0.6)
+    vprint("LIST", out)
+    results.check_not("7b.6 LIST has no BAD BRANCH ERR", out, "BAD BRANCH")
+    results.check_not("7b.7 LIST has no SYNTAX ERR",     out, "SYNTAX")
+
+    # Empty-listing sanity: the command echo itself is ~7 bytes ("LIST\r\n").
+    # A real program produces at minimum a couple of hundred bytes of output.
+    listing_body = out.upper().split("LIST", 1)[-1] if "LIST" in out.upper() else out
+    body_len = len(listing_body.strip())
+    if body_len > 120:
+        results.passed.append(f"7b.8 LIST body has content ({body_len} bytes)")
+        print(f"  [PASS] 7b.8 LIST body has content ({body_len} bytes)")
+    else:
+        results.failed.append((
+            "7b.8 LIST body has content",
+            f"only {body_len} bytes after LIST echo"))
+        print(f"  [FAIL] 7b.8 LIST body too short ({body_len} bytes)")
+
+    # Typical Integer BASIC listings contain at least one line number at the
+    # start of a line. Look for a digit followed by space (the canonical
+    # line-number-then-statement shape).
+    import re
+    has_line_num = bool(re.search(r"\n\s*\d+\s", out))
+    if has_line_num:
+        results.passed.append("7b.9 LIST shows a numbered line")
+        print("  [PASS] 7b.9 LIST shows a numbered line")
+    else:
+        results.failed.append((
+            "7b.9 LIST numbered line",
+            "no '\\d+ ' pattern in LIST output"))
+        print("  [FAIL] 7b.9 LIST shows no numbered line")
+
+    # Drain any remaining LIST output so the next test starts clean.
+    drain_to_prompt(sock, ">", timeout=15.0)
+
+
 def phase7_load_basic_prog_without_la(sock: socket.socket, results: TestResults) -> None:
     """Phase 7: Regression -- load a BASIC program (L<id>) WITHOUT LA first,
     then B. The manual says this 'will not work and will hang the computer'
@@ -447,6 +527,7 @@ def main() -> int:
         phase5_load_machine_code(sock, results)
         phase6_load_basic_interpreter(sock, results)
         phase7_load_basic_prog_without_la(sock, results)
+        phase7b_canonical_basic_flow(sock, results)
 
     except Exception as e:
         print(f"\nERROR: {e}")
