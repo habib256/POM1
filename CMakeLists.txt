@@ -55,6 +55,7 @@ set(SOURCES
     TMS9918.cpp
     MicroSD.cpp
     CFFA1.cpp
+    JukeBox.cpp
     WiFiModem.cpp
     TerminalCard.cpp
     RomLoader.cpp
@@ -86,6 +87,7 @@ set(HEADERS
     Memory.h
     MemoryViewer_ImGui.h
     MicroSD.h
+    JukeBox.h
     Screen_ImGui.h
     SID.h
     TMS9918.h

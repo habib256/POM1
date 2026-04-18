@@ -86,6 +86,12 @@ void SnapshotPublisher::publish(Memory& mem, const M6502& cpu, bool cpuRunning)
     if (snapshot.a1ioRtcEnabled) {
         mem.getA1IO_RTC().copySnapshot(snapshot.a1ioRtc);
     }
+    snapshot.jukeBoxEnabled = mem.isJukeBoxEnabled();
+    // Always copy the Juke-Box snapshot — it's tiny (a path string + a
+    // handful of flags) and the Hardware window wants to display the
+    // current jumper/firmware state even when the card is "unplugged"
+    // but loaded in the UI.
+    mem.getJukeBox().copySnapshot(snapshot.jukeBox);
 }
 
 void SnapshotPublisher::copyTo(EmulationSnapshot& out) const

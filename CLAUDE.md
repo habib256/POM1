@@ -4,7 +4,7 @@ Guidance for Claude Code working in this repository.
 
 ## Project Overview
 
-POM1 is an Apple 1 emulator built with Dear ImGui. It emulates the MOS 6502 CPU and the original Apple 1 hardware (display, keyboard, ACI cassette), plus a stack of expansion cards: Uncle Bernie's GEN2 Color Graphics Card (HIRES, NTSC artifact color), the P-LAB A1-SID Sound Card (MOS 6581/8580), the P-LAB Apple-1 Graphic Card (TMS9918 VDP), the P-LAB microSD Storage Card (65C22 VIA + ATMEGA), the P-LAB MODEM BBS (65C51 ACIA + TCP/TELNET), the P-LAB Terminal Card (TCP server), the P-LAB A1-IO Board & RTC (65C22 VIA + ATMEGA32 + DS3231), and the CFFA1 CompactFlash Interface (Rich Dreher, ATA/IDE + ProDOS `.po` image). UI is in English. Builds on Linux, macOS, Windows, and Web (Emscripten/WASM).
+POM1 is an Apple 1 emulator built with Dear ImGui. It emulates the MOS 6502 CPU and the original Apple 1 hardware (display, keyboard, ACI cassette), plus a stack of expansion cards: Uncle Bernie's GEN2 Color Graphics Card (HIRES, NTSC artifact color), the P-LAB A1-SID Sound Card (MOS 6581/8580), the P-LAB Apple-1 Graphic Card (TMS9918 VDP), the P-LAB microSD Storage Card (65C22 VIA + ATMEGA), the P-LAB MODEM BBS (65C51 ACIA + TCP/TELNET), the P-LAB Terminal Card (TCP server), the P-LAB A1-IO Board & RTC (65C22 VIA + ATMEGA32 + DS3231), the CFFA1 CompactFlash Interface (Rich Dreher, ATA/IDE + ProDOS `.po` image), and the P-LAB Apple-1 Juke-Box (Claudio Parmigiani, memory-mapped EEPROM program library). UI is in English. Builds on Linux, macOS, Windows, and Web (Emscripten/WASM).
 
 User-facing feature list, install instructions, ROM table, keyboard shortcuts, screenshots, and the software library all live in **`README.md`**. Open work and tech debt live in **`TODO.md`**. Past releases are in `git log`.
 
@@ -27,6 +27,26 @@ cmake --build . --config Release                # Windows (MSVC)
 ROMs must be next to the executable; the run scripts handle the copy.
 
 `CMAKE_EXPORT_COMPILE_COMMANDS` is on — `cmake ..` writes `build/compile_commands.json` for clangd. A symlink at the repo root points to it, so no IDE-side config is needed.
+
+### CLI flags for headless / automated runs
+
+`pom1_imgui` accepts three command-line flags, parsed in `main_imgui.cpp:110-156`. They let you pick a machine configuration and enable the Terminal Card up front — essential for launching the emulator in the background and driving it from `tools/test_*_telnet.py` scripts without clicking through the UI:
+
+| Flag | Effect |
+|------|--------|
+| `--list-presets` | Print `index: name` for every preset in `kMachinePresets[]` and exit (0) |
+| `--preset <N\|name>` / `-p <N\|name>` | Select preset by numeric index or case-insensitive substring match on the name. Used by `MainWindow_ImGui::setDefaultPresetIndex` and applied on the first render frame |
+| `--terminal` | Force-enable the Terminal Card on top of whatever the preset defines. Calls `setTerminalCardOverride(true)` → `setTerminalCardEnabled(true)` after the preset applies |
+
+Typical telnet-test workflow from `build/`:
+
+```bash
+./pom1_imgui --list-presets                      # find the index you want
+./pom1_imgui --preset 11 --terminal &            # Juke-Box alone + Terminal Card on :6502
+sleep 3 && python3 ../tools/test_jukebox_telnet.py   # drive it
+```
+
+Preset name matching is a substring, so `--preset "juke-box alone"` works, but `--preset "juke-box"` lands on the *first* match (the ACI variant at index 10). Use numeric index when precision matters.
 
 ### WASM build (Emscripten)
 
@@ -120,6 +140,7 @@ Each `.cpp/.h` pair owns one concern. The descriptions below cover only what isn
   - `FilterModelConfig{6581,8580}.cpp` carry a small POM1 patch that runs the 4–6 lookup-table builders **sequentially** under `__EMSCRIPTEN__ && !__EMSCRIPTEN_PTHREADS__`. Upstream parallelises with `std::thread`, which throws `system_error 138 "thread constructor failed"` in single-threaded WASM. The sequential path adds ~50 ms to cold start but stays under 100 ms.
 - **MicroSD.cpp/h** — P-LAB microSD Storage Card. 65C22 VIA at `$A000-$A00F` bridging the CPU to an emulated ATMEGA MCU. SD CARD OS ROM (8 KB EEPROM) at `$8000-$9FFF`. Handshake: PORTB bit 0 = CPU_STROBE, bit 7 = MCU_STROBE, PORTA = bidirectional data bus. Maps host `sdcard/` as virtual FAT32. Tagged filenames `NAME#TTAAAA` encode type + load address. Firmware: [apple1-sdcard](https://github.com/nippur72/apple1-sdcard).
 - **CFFA1.cpp/h** — Rich Dreher's CompactFlash Interface for Apple-1. 8 KB firmware ROM at `$9000-$AFDF` (with ID bytes `$CF`/`$FA` at `$AFDC`/`$AFDD`), ATA/IDE registers at `$AFE0-$AFFF` (A4 not decoded → `$AFE0` mirrors `$AFF0`). Backs a ProDOS `.po` disk image; emulates READ/WRITE SECTOR + SET FEATURE only (everything else the firmware actually uses). Desktop auto-mount: the `Memory` constructor probes `cfcard/cfcard.po` up three directories. Registered as two PeripheralBus entries: read-only ROM + read/write registers.
+- **JukeBox.cpp/h** — P-LAB Apple-1 Juke-Box (Claudio Parmigiani). Memory-mapped 32 kB EEPROM (28c256) wired at `$4000-$BFFF` (RAM-16/ROM-32 jumper) or `$8000-$BFFF` (RAM-32/ROM-16 jumper). The firmware **Program Manager** at `$BD00` exposes an `&` prompt for selecting programs bundled into the ROM; the **Save Program** at `$B800` writes BASIC / binary programs back to the EEPROM when the RW jumper is on. v1 models only the 28c256 single-page case — multi-page 29c020/29c040 bank switching (`P0..PF` / `S0..S1`) is not modelled because the MMIO bank-select register address isn't documented on P-LAB's public site. Registered as TWO disjoint `PeripheralBus` handles at priority 20 (`$4000-$BFFF` and `$8000-$BFFF`); exactly one is enabled at a time, flipped by `setJukeBoxJumper()`. Mutually exclusive with CFFA1, microSD, Krusader, and the Wi-Fi Modem (they sit inside the Juke-Box's address window). Firmware signature: byte at file offset `$7D00` = `$A5` (LDA zp — first byte of the Program Manager per the EEPROM RW manual screenshot `BD00: A5`). Missing signature → Hardware window warns the user. Firmware blob built via P-LAB's freely-distributed EPROM_CREATOR (`2-packer.sh`) and installed as `roms/jukebox.rom`.
 - **A1IO_RTC.cpp/h** — P-LAB A1-IO Board & RTC. 65C22 VIA at `$2000-$200F` (⚠ overlaps the GEN2 HGR framebuffer — the two cards are mutually exclusive at the preset level) bridging to an emulated ATMEGA32 that drives a DS3231 RTC (date/time + internal temperature), a DS18B20 probe, 8 analog inputs, 4 digital inputs, and a 16-bit shift-register digital output. Broadcast protocol: 24 registers pumped on a 100-cycle period with PORTB STROBE handshake. Board reference: [A1-IO_RTC](https://p-l4b.github.io/A1-IO_RTC/).
 - **WiFiModem.cpp/h** — P-LAB MODEM BBS. 65C51 ACIA at `$B000-$B003`, ESP8266 AT command interpreter, Hayes AT (AT, ATDT host:port, ATH, ATE0/1, ATI, ATZ), TELNET IAC (WILL/WONT/DO/DONT, subnegotiation filter, CR+LF→CR strip), non-blocking TCP, baud-rate simulation 50–19200, `+++` escape with 1 s guard (`POM1_CPU_CLOCK_HZ` cycles), 4096-byte circular Rx buffer. Public `requestDisconnect()` is the UI-thread-safe entry point (calls `handleATH()` under `modemMutex`). Desktop only (`#if !POM1_IS_WASM`); WASM stubs return `NO CARRIER`.
 - **TerminalCard.cpp/h** — P-LAB Terminal Card. Passive bidirectional bridge: eavesdrops on `$D012` writes (sniffer hook in `Memory::memWrite`), injects keystrokes into `$D010`/`$D011`. TCP server bound to IPv4 loopback on port 6502 (IPv6 `::1` connections refused — `telnet localhost` falls back to `127.0.0.1` cleanly). 7-bit (CR→CRLF, optional uppercase via Ctrl-O/I) and 8-bit raw (Ctrl-T) modes; control: Ctrl-L clear, Ctrl-R reset. Ctrl-T fires even in 8-bit mode (otherwise no way back to 7-bit). Each control has an **ESC-prefixed alternate** (ESC T/O/L/R/I) — needed on macOS/BSD where the tty line discipline eats `Ctrl-T` (status), `Ctrl-O` (discard) and `Ctrl-R` (rprnt) before telnet can send them. The alternate state is `escapePending`; unrecognised ESC-sequences forward the held ESC and fall through so ANSI escape codes still reach the Apple 1. On accept, sends proactive `IAC WILL ECHO` + `IAC WILL SUPPRESS-GO-AHEAD` + `IAC DO SUPPRESS-GO-AHEAD` to flip the client into character-at-a-time mode. Pending reset/clear use `std::atomic<bool>` flags consumed outside `stateMutex` to avoid deadlock with `EmulationController::runEmulationSlice()`. Desktop only.
@@ -160,8 +181,10 @@ $0100-$01FF  Stack
 $0200-$1FFF  User RAM (programs typically load at $0280 or $0300)
 $2000-$200F  A1-IO RTC VIA 65C22 (when the A1-IO Board is plugged — mutually exclusive with GEN2 below)
 $2000-$3FFF  GEN2 HGR framebuffer (8 KB — when Uncle Bernie's GEN2 card is plugged)
-$4000-$5FFF  User RAM
+$4000-$BFFF  Juke-Box ROM window (32 KB — when P-LAB Juke-Box is plugged, RAM-16/ROM-32 jumper)
+$4000-$5FFF  User RAM (otherwise)
 $6000-$7FFF  Applesoft Lite SD ROM (8 KB — loaded at $6000 by the Applesoft+microSD preset; `roms/applesoft-lite-microsd.rom` = Claudio Parmigiani's SD1.3 build, aligned with the SD1.3 `sdcard.rom` firmware. Cold start via `6000R` in the Woz Monitor.)
+$8000-$BFFF  Juke-Box ROM window (16 KB upper-half — when Juke-Box RAM-32/ROM-16 jumper is selected)
 $8000-$9FFF  SD CARD OS ROM (8 KB — when P-LAB microSD is plugged)
 $9000-$AFDF  CFFA1 firmware ROM (~8 KB — when CFFA1 is plugged; shadows microSD ROM + BASIC low page)
 $A000-$A00F  VIA 65C22 I/O (when P-LAB microSD is plugged)

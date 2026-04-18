@@ -148,6 +148,26 @@ void MainWindow_ImGui::renderMenuBar()
                 if (cffa1Enabled) microSDEnabled = false; // sync UI
             }
             ImGui::Separator();
+            if (ImGui::MenuItem("P-LAB Apple-1 Juke-Box", nullptr, &jukeBoxEnabled)) {
+                // Juke-Box occupies $4000-$BFFF (or $8000-$BFFF) — evict any
+                // card that shares the window so the UI flags reflect reality.
+                if (jukeBoxEnabled) {
+                    emulation->setJukeBoxJumper(jukeBoxJumper);
+                    cffa1Enabled = false;
+                    microSDEnabled = false;
+                    wifiModemEnabled = false;
+                    showJukeBox = true;
+                }
+                emulation->setJukeBoxEnabled(jukeBoxEnabled);
+                setStatusMessage(jukeBoxEnabled
+                    ? "P-LAB Juke-Box plugged - type BD00R for Program Manager"
+                    : "P-LAB Juke-Box unplugged", 3.0f);
+            }
+            if (ImGui::IsItemHovered())
+                ImGui::SetTooltip("Claudio Parmigiani's Apple-1 Juke-Box (28c256 EEPROM).\n"
+                                  "Memory-mapped ROM library at $4000-$BFFF (or $8000-$BFFF).\n"
+                                  "Program Manager at $BD00: type BD00R from the Woz Monitor.\n"
+                                  "Mutually exclusive with CFFA1, microSD and Wi-Fi Modem.");
             if (ImGui::MenuItem("P-LAB microSD Storage Card", nullptr, &microSDEnabled)) {
                 emulation->setMicroSDEnabled(microSDEnabled);
                 if (microSDEnabled) cffa1Enabled = false; // sync UI
@@ -201,20 +221,25 @@ void MainWindow_ImGui::renderMenuBar()
                 if (ImGui::MenuItem(kMachinePresets[i].name, ramLabel))
                     applyMachineConfig(i);
             };
-            presetItem(0);   // Bare Apple-1
+            presetItem(0);   // Bare Apple-1 (July 1976)
             presetItem(1);   // Apple-1 with ACI & Integer BASIC
             ImGui::Separator();
-            presetItem(2);   // Replica-1 with ACI, Krusader
-            presetItem(3);   // Replica-1 with CFFA1
+            presetItem(2);   // Replica-1 with ACI, Krusader (Briel)
+            presetItem(3);   // Replica-1 with CFFA1 & Applesoft Lite (Dreher)
             ImGui::Separator();
-            // All P-LAB expansion cards grouped together
-            for (int i = 4; i <= 9; ++i)
-                presetItem(i);               // microSD, A1-SID, A1-AUDIO SE, TMS9918, I/O+RTC, Wi-Fi
-            presetItem(11);                  // P-LAB Multiplexing Fantasy
+            // All P-LAB presets grouped together (indices 4..12)
+            presetItem(4);   // P-LAB microSD + Applesoft Lite
+            presetItem(5);   // P-LAB A1-SID
+            presetItem(6);   // P-LAB A1-AUDIO Special Edition
+            presetItem(7);   // P-LAB TMS9918
+            presetItem(8);   // P-LAB I/O Board & RTC
+            presetItem(9);   // P-LAB Wi-Fi Modem BBS
+            presetItem(10);  // P-LAB Juke-Box (16 kB RAM)
+            presetItem(11);  // P-LAB Multiplexing Fantasy
             ImGui::Separator();
-            presetItem(10);                  // Uncle Bernie's GEN2 HGR
+            presetItem(12);  // Uncle Bernie's GEN2 HGR Color
             ImGui::Separator();
-            presetItem(12);                  // POM1 Multiplexing Fantasy
+            presetItem(13);  // POM1 Multiplexing Fantasy (last -> banner)
             ImGui::EndMenu();
         }
 
@@ -292,6 +317,33 @@ void MainWindow_ImGui::renderToolbar()
 
         ImGui::SameLine();
         ImGui::PushStyleColor(ImGuiCol_Button,
+            jukeBoxEnabled ? ImVec4(0.2f, 0.4f, 0.8f, 1.0f) : ImVec4(0.3f, 0.3f, 0.3f, 1.0f));
+        if (ImGui::Button("##jukeBoxToolbar", btnSize)) {
+            jukeBoxEnabled = !jukeBoxEnabled;
+            if (jukeBoxEnabled) {
+                // Juke-Box occupies $4000-$BFFF / $8000-$BFFF — evict any card
+                // sharing the window so the UI flags reflect reality.
+                cffa1Enabled = false;
+                microSDEnabled = false;
+                wifiModemEnabled = false;
+                emulation->setJukeBoxJumper(jukeBoxJumper);
+                showJukeBox = true;
+            }
+            emulation->setJukeBoxEnabled(jukeBoxEnabled);
+            setStatusMessage(jukeBoxEnabled
+                ? "P-LAB Juke-Box plugged - type BD00R for Program Manager"
+                : "P-LAB Juke-Box unplugged", 3.0f);
+        }
+        drawToolbarDipChipIcon(ImGui::GetWindowDrawList(),
+                               ImGui::GetItemRectMin(), ImGui::GetItemRectMax());
+        ImGui::PopStyleColor();
+        if (ImGui::IsItemHovered()) {
+            ImGui::SetTooltip(jukeBoxEnabled ? "P-LAB Apple-1 Juke-Box (click to unplug)"
+                                             : "Plug P-LAB Apple-1 Juke-Box");
+        }
+
+        ImGui::SameLine();
+        ImGui::PushStyleColor(ImGuiCol_Button,
             aciEnabled ? ImVec4(0.2f, 0.4f, 0.8f, 1.0f) : ImVec4(0.3f, 0.3f, 0.3f, 1.0f));
         if (ImGui::Button("##cassetteToolbar", btnSize)) {
             aciEnabled = !aciEnabled;
@@ -318,6 +370,33 @@ void MainWindow_ImGui::renderToolbar()
         if (ImGui::IsItemHovered()) {
             ImGui::SetTooltip(sidEnabled ? "P-LAB A1-SID Sound Card (click to unplug)"
                                          : "Plug P-LAB A1-SID Sound Card");
+        }
+
+        ImGui::SameLine();
+        if (tms9918Enabled && showTMS9918)
+            ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.2f, 0.4f, 0.8f, 1.0f));
+        else if (!tms9918Enabled)
+            ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.3f, 0.3f, 0.3f, 1.0f));
+        else
+            ImGui::PushStyleColor(ImGuiCol_Button, ImGui::GetStyle().Colors[ImGuiCol_Button]);
+        if (ImGui::Button(ICON_FA_DISPLAY, btnSize)) {
+            if (!tms9918Enabled) {
+                tms9918Enabled = true;
+                showTMS9918 = true;
+                emulation->setTMS9918Enabled(true);
+                setStatusMessage("P-LAB TMS9918 plugged", 2.0f);
+            } else {
+                showTMS9918 = !showTMS9918;
+                if (!showTMS9918) {
+                    tms9918Enabled = false;
+                    emulation->setTMS9918Enabled(false);
+                    setStatusMessage("P-LAB TMS9918 unplugged", 2.0f);
+                }
+            }
+        }
+        ImGui::PopStyleColor();
+        if (ImGui::IsItemHovered()) {
+            ImGui::SetTooltip(tms9918Enabled ? "P-LAB TMS9918 Output (click to unplug)" : "Plug P-LAB Graphic Card (TMS9918)");
         }
 
         ImGui::SameLine();
@@ -357,33 +436,6 @@ void MainWindow_ImGui::renderToolbar()
         ImGui::PopStyleColor();
         if (ImGui::IsItemHovered()) {
             ImGui::SetTooltip(graphicsCardEnabled ? "Bernie's GEN2 HGR (click to unplug)" : "Plug Uncle Bernie's GEN2 HGR Graphic Card");
-        }
-
-        ImGui::SameLine();
-        if (tms9918Enabled && showTMS9918)
-            ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.2f, 0.4f, 0.8f, 1.0f));
-        else if (!tms9918Enabled)
-            ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.3f, 0.3f, 0.3f, 1.0f));
-        else
-            ImGui::PushStyleColor(ImGuiCol_Button, ImGui::GetStyle().Colors[ImGuiCol_Button]);
-        if (ImGui::Button(ICON_FA_DISPLAY, btnSize)) {
-            if (!tms9918Enabled) {
-                tms9918Enabled = true;
-                showTMS9918 = true;
-                emulation->setTMS9918Enabled(true);
-                setStatusMessage("P-LAB TMS9918 plugged", 2.0f);
-            } else {
-                showTMS9918 = !showTMS9918;
-                if (!showTMS9918) {
-                    tms9918Enabled = false;
-                    emulation->setTMS9918Enabled(false);
-                    setStatusMessage("P-LAB TMS9918 unplugged", 2.0f);
-                }
-            }
-        }
-        ImGui::PopStyleColor();
-        if (ImGui::IsItemHovered()) {
-            ImGui::SetTooltip(tms9918Enabled ? "P-LAB TMS9918 Output (click to unplug)" : "Plug P-LAB Graphic Card (TMS9918)");
         }
 
         // --- P-LAB I/O Board & RTC ---

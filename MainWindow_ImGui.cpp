@@ -117,6 +117,12 @@ void MainWindow_ImGui::render()
             if (pendingA1ioRtcEnable)        emulation->setA1IO_RTCEnabled(true);
             if (pendingTerminalCardEnable)   emulation->setTerminalCardEnabled(true);
             if (pendingWifiModemEnable)      emulation->setWiFiModemEnabled(true);
+            if (pendingJukeBoxEnable) {
+                // Jumper has to be set BEFORE enabling the card — setJukeBoxEnabled
+                // enables exactly the bus window that matches the jumper at plug time.
+                emulation->setJukeBoxJumper(pendingJukeBoxJumper);
+                emulation->setJukeBoxEnabled(true);
+            }
         }
     }
     // MemoryViewer setters are only consumed by render(), so don't bother
@@ -271,6 +277,7 @@ void MainWindow_ImGui::render()
     if (wifiModemEnabled && showWiFiModem) renderWiFiModemWindow();
     if (terminalCardEnabled && showTerminalCard) renderTerminalCardWindow();
     if (a1ioRtcEnabled && showA1IO_RTC) renderA1IO_RTCWindow();
+    if (jukeBoxEnabled && showJukeBox) renderJukeBoxWindow();
 
     // Barre de statut
     renderStatusBar();

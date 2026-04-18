@@ -564,6 +564,53 @@ bool EmulationController::reloadSDCardRom(std::string& error)
     return ok;
 }
 
+void EmulationController::setJukeBoxEnabled(bool enabled)
+{
+    std::lock_guard<PriorityMutex> lock(stateMutex);
+    memory->setJukeBoxEnabled(enabled);
+    publisher.publish(*memory, *cpu, runRequested.load());
+}
+
+bool EmulationController::isJukeBoxEnabled() const
+{
+    std::lock_guard<PriorityMutex> lock(stateMutex);
+    return memory->isJukeBoxEnabled();
+}
+
+void EmulationController::setJukeBoxJumper(JukeBox::Jumper jumper)
+{
+    std::lock_guard<PriorityMutex> lock(stateMutex);
+    memory->setJukeBoxJumper(jumper);
+    publisher.publish(*memory, *cpu, runRequested.load());
+}
+
+JukeBox::Jumper EmulationController::getJukeBoxJumper() const
+{
+    std::lock_guard<PriorityMutex> lock(stateMutex);
+    return memory->getJukeBoxJumper();
+}
+
+void EmulationController::setJukeBoxWritable(bool writable)
+{
+    std::lock_guard<PriorityMutex> lock(stateMutex);
+    memory->setJukeBoxWritable(writable);
+    publisher.publish(*memory, *cpu, runRequested.load());
+}
+
+bool EmulationController::isJukeBoxWritable() const
+{
+    std::lock_guard<PriorityMutex> lock(stateMutex);
+    return memory->isJukeBoxWritable();
+}
+
+bool EmulationController::reloadJukeBoxRom(std::string& error)
+{
+    std::lock_guard<PriorityMutex> lock(stateMutex);
+    bool ok = RomLoader::reloadJukeBoxRom(*memory, error);
+    publisher.publish(*memory, *cpu, runRequested.load());
+    return ok;
+}
+
 void EmulationController::setWiFiModemEnabled(bool enabled)
 {
     std::lock_guard<PriorityMutex> lock(stateMutex);

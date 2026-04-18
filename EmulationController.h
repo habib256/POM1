@@ -136,6 +136,15 @@ public:
     bool isCFFA1Enabled() const;
     bool reloadCFFA1Rom(std::string& error);
 
+    // P-LAB Apple-1 Juke-Box
+    void setJukeBoxEnabled(bool enabled);
+    bool isJukeBoxEnabled() const;
+    void setJukeBoxJumper(JukeBox::Jumper jumper);
+    JukeBox::Jumper getJukeBoxJumper() const;
+    void setJukeBoxWritable(bool writable);
+    bool isJukeBoxWritable() const;
+    bool reloadJukeBoxRom(std::string& error);
+
     // P-LAB Apple-1 Wi-Fi Modem
     void setWiFiModemEnabled(bool enabled);
     bool isWiFiModemEnabled() const;

@@ -39,6 +39,7 @@ class WiFiModem;
 class TerminalCard;
 class A1IO_RTC;
 #include "CFFA1.h"
+#include "JukeBox.h"
 #include "MicroSD.h"
 
 using quint8  = uint8_t;
@@ -203,6 +204,26 @@ public:
     bool isCFFA1Enabled() const { return cffa1Enabled; }
     int loadCFFA1Rom(void);
 
+    // P-LAB Apple-1 Juke-Box (Claudio Parmigiani) — memory-mapped 32 kB EEPROM
+    // with a runtime jumper for the RAM/ROM split. Mutually exclusive with
+    // CFFA1, microSD, Krusader, and the Wi-Fi Modem (shared address windows).
+    JukeBox& getJukeBox() { return *jukeBox; }
+    const JukeBox& getJukeBox() const { return *jukeBox; }
+    void setJukeBoxEnabled(bool b);
+    bool isJukeBoxEnabled() const { return jukeBoxEnabled; }
+    // Jumper position (runtime-toggleable). Changing it disables the active
+    // PeripheralBus range and enables the other one — addresses between
+    // $4000-$7FFF and $8000-$BFFF swap between RAM and ROM.
+    void setJukeBoxJumper(JukeBox::Jumper j);
+    JukeBox::Jumper getJukeBoxJumper() const { return jukeBox->getJumper(); }
+    // EEPROM RW jumper. No bus change; writable only controls whether writes
+    // in the ROM window land in the ROM buffer (and on disk).
+    void setJukeBoxWritable(bool w);
+    bool isJukeBoxWritable() const { return jukeBox->isWritable(); }
+    // Load a Juke-Box ROM file (up to 32 kB) from disk. `error` is populated
+    // on failure.
+    int loadJukeBoxRom(void);  // default path: roms/jukebox.rom
+
     // P-LAB Apple-1 Wi-Fi Modem (65C51 ACIA + ESP8266)
     WiFiModem& getWiFiModem() { return *wifiModem; }
     const WiFiModem& getWiFiModem() const { return *wifiModem; }
@@ -285,6 +306,8 @@ private :
     bool microSDEnabled = false;
     std::unique_ptr<CFFA1> cffa1;
     bool cffa1Enabled = false;
+    std::unique_ptr<JukeBox> jukeBox;
+    bool jukeBoxEnabled = false;
     std::unique_ptr<WiFiModem> wifiModem;
     bool wifiModemEnabled = false;
     std::unique_ptr<TerminalCard> terminalCard;
@@ -307,6 +330,12 @@ private :
     PeripheralBus::Handle tms9918BusHandle = -1;     // $CC00/$CC01, priority 10 (wins over SID)
     PeripheralBus::Handle cassetteToggleBusHandle = -1; // $C000-$C0FF read = toggle output
     PeripheralBus::Handle cassetteInputBusHandle  = -1; // $C081 read = tape input (priority 1, wins over toggle)
+    // Juke-Box: two disjoint windows — one per jumper position. At most one
+    // is enabled at a time. Priority 20 so the card wins over any other
+    // peripheral that might have been registered in the same range (the
+    // Juke-Box physically replaces any card at $4000-$BFFF on the real bus).
+    PeripheralBus::Handle jukeBox32BusHandle = -1;   // RAM-16/ROM-32: $4000-$BFFF
+    PeripheralBus::Handle jukeBox16BusHandle = -1;   // RAM-32/ROM-16: $8000-$BFFF
 
 };
 

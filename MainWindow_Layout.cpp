@@ -57,6 +57,40 @@ void drawToolbarCassetteIcon(ImDrawList* dl, const ImVec2& rmin, const ImVec2& r
     dl->AddCircle(ImVec2(cxR, cy), rad, outline, 0, 0.9f);
 }
 
+void drawToolbarDipChipIcon(ImDrawList* dl, const ImVec2& rmin, const ImVec2& rmax)
+{
+    // Minimal DIP silhouette: a plain black rectangle body with white pin
+    // stubs along the top and bottom edges. Vertical orientation — the
+    // body runs tall, pins go up and down (like a 28c256 seen from above
+    // on a rotated board).
+    const float pad = 3.0f;
+    const ImVec2 a(rmin.x + pad, rmin.y + pad);
+    const ImVec2 b(rmax.x - pad, rmax.y - pad);
+
+    const ImU32 body = IM_COL32(0, 0, 0, 255);
+    const ImU32 pin  = IM_COL32(255, 255, 255, 255);
+
+    // Body occupies the central 70 % vertically so pins are visible above
+    // and below.
+    const float bodyTop    = a.y + (b.y - a.y) * 0.18f;
+    const float bodyBottom = b.y - (b.y - a.y) * 0.18f;
+    dl->AddRectFilled(ImVec2(a.x, bodyTop), ImVec2(b.x, bodyBottom), body);
+
+    // 5 pins along each horizontal edge. Short vertical stubs in white.
+    const int kPins = 5;
+    const float pinThick = 1.6f;
+    const float pinLen   = (bodyTop - a.y) * 0.5f;
+    const float span = b.x - a.x;
+    for (int i = 0; i < kPins; ++i) {
+        const float t  = (i + 0.5f) / static_cast<float>(kPins);
+        const float px = a.x + span * t;
+        // top pin (goes from body-top up to icon-top)
+        dl->AddLine(ImVec2(px, bodyTop), ImVec2(px, bodyTop - pinLen), pin, pinThick);
+        // bottom pin (goes from body-bottom down to icon-bottom)
+        dl->AddLine(ImVec2(px, bodyBottom), ImVec2(px, bodyBottom + pinLen), pin, pinThick);
+    }
+}
+
 void drawToolbarTextLabel(ImDrawList* dl, const ImVec2& rmin, const ImVec2& rmax, const char* t)
 {
     ImFont* font = ImGui::GetFont();

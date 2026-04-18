@@ -25,6 +25,7 @@ const MachineConfig kMachinePresets[] = {
         false, false, false, false, false, false, false,
         false, false, false, 4, BasicType::None,
         /*sidSE*/ false,
+        /*jukeBox*/ false, JukeBox::Jumper::RAM16_ROM32,
         { {"Apple 1 Screen", {10,61}, {0,0}} }, 1
     },
     {
@@ -33,6 +34,7 @@ const MachineConfig kMachinePresets[] = {
         false, false, false, false, false, false, false,
         false, false, true, 8, BasicType::Integer,
         /*sidSE*/ false,
+        /*jukeBox*/ false, JukeBox::Jumper::RAM16_ROM32,
         { {"Apple 1 Screen", {10,61}, {0,0}} }, 1
     },
     {
@@ -41,6 +43,7 @@ const MachineConfig kMachinePresets[] = {
         false, false, false, false, false, false, false,
         true, false, true, 32, BasicType::Integer,
         /*sidSE*/ false,
+        /*jukeBox*/ false, JukeBox::Jumper::RAM16_ROM32,
         { {"Apple 1 Screen", {10,61}, {0,0}} }, 1
     },
     {
@@ -49,6 +52,7 @@ const MachineConfig kMachinePresets[] = {
         false, false, false, false, false, false, false,
         false, true, false, 32, BasicType::ApplesoftLite,
         /*sidSE*/ false,
+        /*jukeBox*/ false, JukeBox::Jumper::RAM16_ROM32,
         { {"Apple 1 Screen", {10,61}, {0,0}} }, 1
     },
     {
@@ -57,6 +61,7 @@ const MachineConfig kMachinePresets[] = {
         false, true, false, false, false, false, false,
         false, false, false, 32, BasicType::ApplesoftLite,
         /*sidSE*/ false,
+        /*jukeBox*/ false, JukeBox::Jumper::RAM16_ROM32,
         {
             {"Apple 1 Screen", {10, 61}, {0, 0}},
         }, 1
@@ -67,6 +72,7 @@ const MachineConfig kMachinePresets[] = {
         false, false, true, false, false, false, false,
         false, false, false, 32, BasicType::Integer,
         /*sidSE*/ false,
+        /*jukeBox*/ false, JukeBox::Jumper::RAM16_ROM32,
         {
             {"Apple 1 Screen", {10, 61}, {0, 0}},
         }, 1
@@ -78,6 +84,7 @@ const MachineConfig kMachinePresets[] = {
         false, false, false, false, false, false, false,
         false, false, false, 32, BasicType::Integer,
         /*sidSE*/ true,
+        /*jukeBox*/ false, JukeBox::Jumper::RAM16_ROM32,
         {
             {"Apple 1 Screen", {10, 61}, {0, 0}},
         }, 1
@@ -88,6 +95,7 @@ const MachineConfig kMachinePresets[] = {
         false, false, false, true, false, false, false,
         false, false, false, 32, BasicType::Integer,
         /*sidSE*/ false,
+        /*jukeBox*/ false, JukeBox::Jumper::RAM16_ROM32,
         {
             {"Apple 1 Screen",               {10,  61}, {0,   0}},
             {"P-LAB Graphic Card (TMS9918)", {640, 61}, {784, 612}},
@@ -99,6 +107,7 @@ const MachineConfig kMachinePresets[] = {
         false, false, false, false, true, false, false,
         false, false, false, 32, BasicType::Integer,
         /*sidSE*/ false,
+        /*jukeBox*/ false, JukeBox::Jumper::RAM16_ROM32,
         {
             {"Apple 1 Screen",        {10,  61},  {0,   0}},
             {"P-LAB I/O Board & RTC", {640, 61},  {380, 280}},
@@ -110,20 +119,27 @@ const MachineConfig kMachinePresets[] = {
         false, false, false, false, false, true, false,
         false, false, false, 32, BasicType::Integer,
         /*sidSE*/ false,
+        /*jukeBox*/ false, JukeBox::Jumper::RAM16_ROM32,
         {
             {"Apple 1 Screen",    {10,  61},  {0,   0}},
             {"P-LAB Wi-Fi Modem", {640, 61},  {340, 260}},
         }, 2
     },
-    {
-        "Uncle Bernie's Apple-1 with GEN2 HGR Color (April 2026)",
-        "Uncle Bernie's GEN2 280x192 HGR color graphics, Integer BASIC.",
-        true, false, false, false, false, false, false,
-        false, false, false, 32, BasicType::Integer,
+    {   //                                  GEN2  uSD  SID  TMS  RTC  WiFi Term Krus CFFA ACI
+        "P-LAB Apple-1 with Juke-Box (16 kB RAM)",
+        "Minimal Juke-Box configuration: 32 kB EEPROM ROM library at $4000-$BFFF, "
+        "16 kB contiguous RAM, no ACI cassette. The Juke-Box's EEPROM replaces "
+        "tape loading entirely. Type BD00R from the Woz Monitor to launch the "
+        "Program Manager (& prompt). Apple Integer BASIC is pre-loaded at "
+        "$E000 so L<letter> on a BASIC program followed by B works directly; "
+        "the LA command still reloads BASIC from the EEPROM if needed.",
+        false, false, false, false, false, false, false,
+        false, false, /*aci*/ false, /*ramKB*/ 16, BasicType::Integer,
         /*sidSE*/ false,
+        /*jukeBox*/ true, JukeBox::Jumper::RAM16_ROM32,
         {
-            {"Apple 1 Screen",                 {10,  61}, {0,   0}},
-            {"Uncle Bernie's GEN2 HGR Graphic Card", {624, 61}, {576, 420}},
+            {"Apple 1 Screen",    {10,  61}, {0,   0}},
+            {"P-LAB Juke-Box",    {640, 61}, {360, 260}},
         }, 2
     },
     {   //                                  GEN2  uSD  SID  TMS  RTC  WiFi Term Krus CFFA ACI
@@ -132,6 +148,7 @@ const MachineConfig kMachinePresets[] = {
         false, true, true, true, true, true, true,
         false, false, false, 64, BasicType::ApplesoftLite,
         /*sidSE*/ false,
+        /*jukeBox*/ false, JukeBox::Jumper::RAM16_ROM32,
         {
             {"Apple 1 Screen",               {10,  61},  {0,   0}},
             {"P-LAB Graphic Card (TMS9918)", {640, 61},  {784, 612}},
@@ -141,11 +158,24 @@ const MachineConfig kMachinePresets[] = {
         }, 5
     },
     {
+        "Uncle Bernie's Apple-1 with GEN2 HGR Color (April 2026)",
+        "Uncle Bernie's GEN2 280x192 HGR color graphics, Integer BASIC.",
+        true, false, false, false, false, false, false,
+        false, false, false, 32, BasicType::Integer,
+        /*sidSE*/ false,
+        /*jukeBox*/ false, JukeBox::Jumper::RAM16_ROM32,
+        {
+            {"Apple 1 Screen",                 {10,  61}, {0,   0}},
+            {"Uncle Bernie's GEN2 HGR Graphic Card", {624, 61}, {576, 420}},
+        }, 2
+    },
+    {
         "POM1 Apple-1 Multiplexing Fantasy (2026)",
         "64 KB RAM, Applesoft Lite, microSD + A1-SID + Wi-Fi modem + Terminal Card. Graphic cards off by default.",
         false, true, true, false, false, true, true,
         false, false, true, 64, BasicType::ApplesoftLite,
         /*sidSE*/ false,
+        /*jukeBox*/ false, JukeBox::Jumper::RAM16_ROM32,
         {
             {"Apple 1 Screen",        {10,  61},  {0,   0}},
             {"P-LAB Wi-Fi Modem",     {640, 495}, {340, 260}},
@@ -207,6 +237,7 @@ void MainWindow_ImGui::applyMachineConfig(int presetIndex)
     emulation->setTMS9918Enabled(false);
     emulation->setA1IO_RTCEnabled(false);
     emulation->setWiFiModemEnabled(false);
+    emulation->setJukeBoxEnabled(false);
 #if !POM1_IS_WASM
     emulation->setTerminalCardEnabled(false);
 #endif
@@ -250,6 +281,9 @@ void MainWindow_ImGui::applyMachineConfig(int presetIndex)
     showA1IO_RTC             = false;
     wifiModemEnabled         = cfg.wifiModem;
     showWiFiModem            = false;
+    jukeBoxEnabled           = cfg.jukeBox;
+    jukeBoxJumper            = cfg.jukeBoxJumper;
+    showJukeBox              = false;
 #if !POM1_IS_WASM
     terminalCardEnabled      = cfg.terminalCard;
     showTerminalCard         = false;
@@ -268,6 +302,8 @@ void MainWindow_ImGui::applyMachineConfig(int presetIndex)
     pendingTms9918Enable        = cfg.tms9918;
     pendingA1ioRtcEnable        = cfg.a1ioRtc;
     pendingWifiModemEnable      = cfg.wifiModem;
+    pendingJukeBoxEnable        = cfg.jukeBox;
+    pendingJukeBoxJumper        = cfg.jukeBoxJumper;
 #if !POM1_IS_WASM
     pendingTerminalCardEnable   = cfg.terminalCard;
 #else

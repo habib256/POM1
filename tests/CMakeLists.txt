@@ -43,6 +43,7 @@ set(POM1_TEST_CORE_SOURCES
     ${CMAKE_SOURCE_DIR}/TerminalCard.cpp
     ${CMAKE_SOURCE_DIR}/A1IO_RTC.cpp
     ${CMAKE_SOURCE_DIR}/CFFA1.cpp
+    ${CMAKE_SOURCE_DIR}/JukeBox.cpp
 )
 
 add_executable(test_klaus_6502

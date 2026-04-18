@@ -21,6 +21,7 @@
 #include "WiFiModem.h"
 #include "TerminalCard.h"
 #include "A1IO_RTC.h"
+#include "JukeBox.h"
 
 struct EmulationSnapshot
 {
@@ -57,6 +58,8 @@ struct EmulationSnapshot
     TerminalCard::Snapshot terminalCard;
     bool a1ioRtcEnabled = false;
     A1IO_RTC::Snapshot a1ioRtc;
+    bool jukeBoxEnabled = false;
+    JukeBox::Snapshot jukeBox;
 };
 
 #endif // EMULATIONSNAPSHOT_H

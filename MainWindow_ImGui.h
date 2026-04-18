@@ -9,6 +9,7 @@
 #include "CpuClock.h"
 #include "POM1Build.h"
 #include "EmulationController.h"
+#include "JukeBox.h"
 #include "MemoryViewer_ImGui.h"
 #include "Screen_ImGui.h"
 #include "GraphicsCard.h"
@@ -93,6 +94,9 @@ private:
     bool showTerminalCard = !POM1_IS_WASM;
     bool a1ioRtcEnabled = false;
     bool showA1IO_RTC = false;
+    bool jukeBoxEnabled = false;
+    bool showJukeBox = false;
+    JukeBox::Jumper jukeBoxJumper = JukeBox::Jumper::RAM16_ROM32;
     bool fullscreen = false;
 
     // Keyboard input
@@ -150,6 +154,7 @@ private:
     void renderWiFiModemWindow();
     void renderTerminalCardWindow();
     void renderA1IO_RTCWindow();
+    void renderJukeBoxWindow();
 
     // Action functions
     void loadMemory();
@@ -245,6 +250,8 @@ private:
     bool pendingA1ioRtcEnable = false;
     bool pendingTerminalCardEnable = false;
     bool pendingWifiModemEnable = false;
+    bool pendingJukeBoxEnable = false;
+    JukeBox::Jumper pendingJukeBoxJumper = JukeBox::Jumper::RAM16_ROM32;
     bool pendingCassetteAudioActive = false;
 
     struct TapeDialogState {

@@ -31,6 +31,7 @@
 #include "TerminalCard.h"
 #include "A1IO_RTC.h"
 #include "CFFA1.h"
+#include "JukeBox.h"
 //#include "configuration.h"
 //#include "pia6820.h"
 
@@ -99,6 +100,7 @@ Memory::Memory()
             break;
         }
     }
+    jukeBox = std::make_unique<JukeBox>();
     terminalCard->setKeyInjector([this](char key, bool raw) {
         if (raw) setKeyPressedRaw(key);
         else setKeyPressed(key);
@@ -202,6 +204,26 @@ Memory::Memory()
         [this](uint16_t /*a*/) { return cassetteDevice->readTapeInput(); },
         /*onWrite=*/ {});
     bus.setEnabled(cassetteInputBusHandle, aciEnabled);
+
+    // P-LAB Juke-Box: two disjoint ranges, one per jumper position. Only one
+    // is ever enabled at a time (setJukeBoxJumper flips them). Priority 20
+    // so the card wins the full window against any other peripheral that
+    // happened to register lower-priority handlers inside it (CFFA1 at
+    // $9000-$AFDF, microSD at $A000-$A00F, Wi-Fi Modem at $B000-$B003).
+    // Real-hardware-wise those cards are mutually exclusive with the
+    // Juke-Box, and setJukeBoxEnabled() unplugs them defensively; the
+    // priority guard is belt-and-suspenders.
+    jukeBox32BusHandle = bus.registerHandle(
+        "JukeBox_ROM32", {0x4000, 0xBFFF}, /*priority*/ 20,
+        [this](uint16_t a) { return jukeBox->readByte(a); },
+        [this](uint16_t a, uint8_t v) { jukeBox->writeByte(a, v); });
+    bus.setEnabled(jukeBox32BusHandle, false);
+
+    jukeBox16BusHandle = bus.registerHandle(
+        "JukeBox_ROM16", {0x8000, 0xBFFF}, /*priority*/ 20,
+        [this](uint16_t a) { return jukeBox->readByte(a); },
+        [this](uint16_t a, uint8_t v) { jukeBox->writeByte(a, v); });
+    bus.setEnabled(jukeBox16BusHandle, false);
 
     initMemory();
 }
@@ -310,6 +332,7 @@ void Memory::initMemory(){
     terminalCard->reset();
     a1ioRtc->reset();
     cffa1->reset();
+    jukeBox->reset();
     configureResetVectors(0xFF00);
 
     setWriteInRom(0);
@@ -332,6 +355,7 @@ void Memory::resetMemory(void)
     terminalCard->reset();
     a1ioRtc->reset();
     cffa1->reset();
+    jukeBox->reset();
 }
 
 
@@ -761,8 +785,12 @@ void Memory::memWrite(quint16 address, quint8 value)
         if (address >= 0xFF00) return;
         // ACI ROM: 0xC100-0xC1FF
         if (address >= 0xC100 && address <= 0xC1FF) return;
-        // Apple BASIC: 0xE000-0xEFFF
-        if (address >= 0xE000 && address <= 0xEFFF) return;
+        // Apple BASIC: 0xE000-0xEFFF -- RAM (not ROM) when the Juke-Box is
+        // plugged. On real hardware the Juke-Box card replaces the BASIC ROM
+        // chip with user RAM at that range so the Program Manager's L)OAD
+        // command can copy BASIC from the EEPROM into $E000. Keep the
+        // write-protect for every other configuration.
+        if (!jukeBoxEnabled && address >= 0xE000 && address <= 0xEFFF) return;
         // SD CARD OS ROM: 0x8000-0x9FFF is intentionally NOT write-protected.
         // User programs (e.g. SID tunes) that load over this range must be able
         // to write their own variables there at runtime.
@@ -893,8 +921,9 @@ void Memory::setMicroSDEnabled(bool b)
     microSDEnabled = b;
     bus.setEnabled(microSDBusHandle, b);
     if (b) {
-        // Mutually exclusive with CFFA1
+        // Mutually exclusive with CFFA1 and Juke-Box (shared $8000-$9FFF window)
         if (cffa1Enabled) setCFFA1Enabled(false);
+        if (jukeBoxEnabled) setJukeBoxEnabled(false);
         loadSDCardRom();
     } else {
         // Clear the ROM region (restore to RAM)
@@ -908,6 +937,8 @@ void Memory::setWiFiModemEnabled(bool b)
     if (b == wifiModemEnabled) return;
     wifiModemEnabled = b;
     bus.setEnabled(wifiModemBusHandle, b);
+    // Juke-Box covers $B000-$B003 when plugged — evict on plug-in.
+    if (b && jukeBoxEnabled) setJukeBoxEnabled(false);
 }
 
 int Memory::loadSDCardRom()
@@ -929,8 +960,9 @@ void Memory::setCFFA1Enabled(bool b)
     bus.setEnabled(cffa1RomBusHandle, b);
     bus.setEnabled(cffa1RegBusHandle, b);
     if (b) {
-        // Mutually exclusive with microSD
+        // Mutually exclusive with microSD and Juke-Box (shared $9000-$AFDF window)
         if (microSDEnabled) setMicroSDEnabled(false);
+        if (jukeBoxEnabled) setJukeBoxEnabled(false);
         loadCFFA1Rom();
     } else {
         // Clear the CFFA1 ROM region
@@ -953,6 +985,66 @@ int Memory::loadCFFA1Rom()
 
     writeInRom = prev;
     return ret;
+}
+
+void Memory::setJukeBoxEnabled(bool b)
+{
+    if (b == jukeBoxEnabled) return;
+    jukeBoxEnabled = b;
+    if (b) {
+        // Juke-Box monopolises either $4000-$BFFF or $8000-$BFFF (depending
+        // on the jumper). Evict every other card that sits inside that
+        // window so bus dispatch stays unambiguous and the user can't get
+        // confused by stale state from a previous preset.
+        if (cffa1Enabled) setCFFA1Enabled(false);
+        if (microSDEnabled) setMicroSDEnabled(false);
+        if (wifiModemEnabled) setWiFiModemEnabled(false);
+        loadJukeBoxRom();
+        const bool use32 = (jukeBox->getJumper() == JukeBox::Jumper::RAM16_ROM32);
+        bus.setEnabled(jukeBox32BusHandle, use32);
+        bus.setEnabled(jukeBox16BusHandle, !use32);
+    } else {
+        bus.setEnabled(jukeBox32BusHandle, false);
+        bus.setEnabled(jukeBox16BusHandle, false);
+    }
+}
+
+void Memory::setJukeBoxJumper(JukeBox::Jumper j)
+{
+    if (jukeBox->getJumper() == j) return;
+    jukeBox->setJumper(j);
+    if (!jukeBoxEnabled) return; // bus handles stay off; jumper just noted
+    const bool use32 = (j == JukeBox::Jumper::RAM16_ROM32);
+    bus.setEnabled(jukeBox32BusHandle, use32);
+    bus.setEnabled(jukeBox16BusHandle, !use32);
+}
+
+void Memory::setJukeBoxWritable(bool w)
+{
+    jukeBox->setWritable(w);
+}
+
+int Memory::loadJukeBoxRom(void)
+{
+    lastError.clear();
+    const char* candidates[] = {
+        "jukebox.rom",
+        "roms/jukebox.rom",
+        "../roms/jukebox.rom",
+        "../../roms/jukebox.rom",
+    };
+    for (const char* p : candidates) {
+        std::string error;
+        if (jukeBox->loadRomFile(p, error)) {
+            return 0;
+        }
+    }
+    // No ROM on disk — leave the card "installed but blank" (all $FF). The
+    // Hardware window will show "firmware missing"; the user can still
+    // drop in a ROM through the Memory Options dialog later.
+    lastError = "Juke-Box ROM not found (expected roms/jukebox.rom)";
+    pom1::log().warn("Mem", lastError);
+    return 1;
 }
 
 void Memory::advanceCycles(int cycles)

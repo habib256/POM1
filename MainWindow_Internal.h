@@ -11,6 +11,7 @@
 #define MAINWINDOW_INTERNAL_H
 
 #include "imgui.h"
+#include "JukeBox.h"
 #include "Screen_ImGui.h"
 
 namespace pom1::mainwindow::detail {
@@ -61,6 +62,10 @@ ImVec2 layoutFitVideoViewport(ImVec2 avail, float nativeW, float nativeH, float&
 /// Minimalist toolbar cassette icon (rounded rect + 2 reel holes).
 void drawToolbarCassetteIcon(ImDrawList* dl, const ImVec2& rmin, const ImVec2& rmax);
 
+/// Toolbar DIP chip icon for the Juke-Box card: plain black rectangle with
+/// white pin stubs above and below. Vertical orientation.
+void drawToolbarDipChipIcon(ImDrawList* dl, const ImVec2& rmin, const ImVec2& rmax);
+
 /// Centred text label for toolbar buttons (BBS, HGR, etc.).
 void drawToolbarTextLabel(ImDrawList* dl, const ImVec2& rmin, const ImVec2& rmax, const char* text);
 
@@ -105,6 +110,13 @@ struct MachineConfig {
     // of $C800-$CFFF. Collides with TMS9918 at $CC00/$CC01 — the preset
     // layer enforces mutual exclusivity with `tms9918`.
     bool sidSpecialEdition;
+    // P-LAB Apple-1 Juke-Box (Claudio Parmigiani). When true, the preset
+    // plugs the Juke-Box card at $4000-$BFFF or $8000-$BFFF (per `jukeBoxJumper`)
+    // and loads `roms/jukebox.rom` as the storage content. Mutually
+    // exclusive with CFFA1, microSD, Krusader, and the Wi-Fi Modem —
+    // the preset layer enforces that.
+    bool jukeBox;
+    JukeBox::Jumper jukeBoxJumper;
     MachineWindowPlacement layout[8];
     int layoutCount;
 };

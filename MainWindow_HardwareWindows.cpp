@@ -342,3 +342,118 @@ void MainWindow_ImGui::renderA1IO_RTCWindow()
     }
     ImGui::End();
 }
+
+void MainWindow_ImGui::renderJukeBoxWindow()
+{
+    ImGui::SetNextWindowSize(ImVec2(420, 360), ImGuiCond_FirstUseEver);
+    applyPendingLayout("P-LAB Juke-Box");
+    if (ImGui::Begin("P-LAB Juke-Box", &showJukeBox)) {
+        const auto& snap = uiSnapshot.jukeBox;
+
+        // Firmware signature row — the one check that tells the user whether
+        // the loaded ROM will actually respond to BD00R.
+        if (snap.firmwarePresent) {
+            ImGui::TextColored(ImVec4(0.2f, 0.9f, 0.2f, 1.0f),
+                ICON_FA_CIRCLE_CHECK " Program Manager signature at $BD00: FOUND");
+        } else {
+            ImGui::TextColored(ImVec4(0.95f, 0.55f, 0.25f, 1.0f),
+                ICON_FA_TRIANGLE_EXCLAMATION " Program Manager signature at $BD00: MISSING");
+            ImGui::TextWrapped(
+                "Load a Juke-Box ROM built with P-LAB's EPROM_CREATOR "
+                "(2-packer.sh) as roms/jukebox.rom. Without it the card "
+                "is installed but BD00R hangs.");
+        }
+
+        ImGui::Separator();
+
+        // ROM file info
+        ImGui::Text("ROM file:");
+        ImGui::SameLine();
+        if (snap.romPath.empty()) {
+            ImGui::TextColored(ImVec4(0.7f, 0.7f, 0.7f, 1.0f), "(none)");
+        } else {
+            ImGui::TextWrapped("%s", snap.romPath.c_str());
+        }
+        ImGui::Text("Size: %zu bytes (%.1f kB)",
+                    snap.romSize, static_cast<double>(snap.romSize) / 1024.0);
+
+        if (ImGui::Button("Reload ROM")) {
+            std::string error;
+            if (emulation->reloadJukeBoxRom(error)) {
+                setStatusMessage("Juke-Box ROM reloaded", 2.0f);
+            } else {
+                setStatusMessage(error, 4.0f);
+            }
+        }
+
+        ImGui::Separator();
+
+        // Jumper toggle — changing this swaps the ROM window + RAM ceiling.
+        ImGui::Text("RAM / ROM jumper:");
+        int jumperInt = static_cast<int>(snap.jumper);
+        if (ImGui::RadioButton("32 kB RAM / 16 kB ROM  ($8000-$BFFF)",
+                               &jumperInt, static_cast<int>(JukeBox::Jumper::RAM32_ROM16))) {
+            jukeBoxJumper = JukeBox::Jumper::RAM32_ROM16;
+            emulation->setJukeBoxJumper(jukeBoxJumper);
+            emulation->setPresetRamKB(32);
+            presetRamKB = 32;
+            setStatusMessage("Juke-Box jumper: 32 kB RAM / 16 kB ROM", 2.0f);
+        }
+        if (ImGui::RadioButton("16 kB RAM / 32 kB ROM  ($4000-$BFFF)",
+                               &jumperInt, static_cast<int>(JukeBox::Jumper::RAM16_ROM32))) {
+            jukeBoxJumper = JukeBox::Jumper::RAM16_ROM32;
+            emulation->setJukeBoxJumper(jukeBoxJumper);
+            emulation->setPresetRamKB(16);
+            presetRamKB = 16;
+            setStatusMessage("Juke-Box jumper: 16 kB RAM / 32 kB ROM", 2.0f);
+        }
+        ImGui::TextColored(ImVec4(0.7f, 0.7f, 0.7f, 1.0f),
+            "Real hardware needs power-off to move the jumper - POM1 hot-swaps.");
+
+        ImGui::Separator();
+
+        // EEPROM RW jumper
+        bool writable = snap.writable;
+        if (ImGui::Checkbox("EEPROM write-enable (28xxx RW jumper)", &writable)) {
+            emulation->setJukeBoxWritable(writable);
+            setStatusMessage(writable
+                ? "Juke-Box EEPROM: write-enabled (writes persist to jukebox.rom)"
+                : "Juke-Box EEPROM: read-only", 3.0f);
+        }
+        ImGui::TextColored(ImVec4(0.7f, 0.7f, 0.7f, 1.0f),
+            "When on, writes in the ROM window update the jukebox.rom file.");
+
+        ImGui::Separator();
+
+        if (ImGui::CollapsingHeader("Usage")) {
+            ImGui::BulletText("BD00R   Launch the Program Manager (& prompt)");
+            ImGui::BulletText("H       Help - list all Program Manager commands");
+            ImGui::BulletText("D       Directory of programs on the current page");
+            ImGui::BulletText("L<X>    Load program tagged with letter X");
+            ImGui::BulletText("B       Enter BASIC (non-destructive, via E2B3R)");
+            ImGui::BulletText("X       Exit Program Manager back to Woz Monitor");
+            ImGui::Spacing();
+            ImGui::TextWrapped(
+                "Save-Program (B800R, # prompt): W = write RAM range to EEPROM, "
+                "S = save current BASIC program, L = back to Program Manager, "
+                "X = exit to Woz Monitor. Requires EEPROM write-enable on.");
+        }
+
+        if (ImGui::CollapsingHeader("Memory Map")) {
+            if (snap.jumper == JukeBox::Jumper::RAM16_ROM32) {
+                ImGui::BulletText("$0000-$3FFF  RAM (16 kB contiguous)");
+                ImGui::BulletText("$4000-$4FFF  BASIC blob (copied to $E000 by LC)");
+                ImGui::BulletText("$5000-$AFFF  Programs (Blocks 0-6)");
+                ImGui::BulletText("$B000-$B7FF  Block 0 / Reserved");
+                ImGui::BulletText("$B800-$BFFF  Save Program ($B800), Program Manager ($BD00)");
+                ImGui::BulletText("$E000-$EFFF  RAM (BASIC interpreter lands here)");
+            } else {
+                ImGui::BulletText("$0000-$7FFF  RAM (32 kB contiguous)");
+                ImGui::BulletText("$8000-$BFFF  ROM window (upper 16 kB of file)");
+                ImGui::BulletText("$BD00        Program Manager (firmware entry)");
+                ImGui::BulletText("$E000-$EFFF  RAM (BASIC interpreter lands here)");
+            }
+        }
+    }
+    ImGui::End();
+}

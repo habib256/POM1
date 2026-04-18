@@ -390,6 +390,24 @@ void MainWindow_ImGui::renderHardwareReferenceWindow()
             hwKeyValue("Mutually exclusive:", "CFFA1 (shares $9000-$9FFF).");
         }
 
+        // ---- Juke-Box -----------------------------------------------
+        if (ImGui::CollapsingHeader("P-LAB Apple-1 Juke-Box")) {
+            ImGui::TextWrapped(
+                "Claudio Parmigiani's software Juke-Box: a storage ROM card "
+                "(16 kB to 512 kB EPROM / EEPROM / FLASH) that replaces cassette "
+                "loads with an instant menu. The Program Manager lives at "
+                "$BD00 in the ROM and exposes an '&' prompt with H / D / L / P / "
+                "S / B / X commands. Requires the Woz ACI config and auto-disables "
+                "CFFA1, microSD, and the Wi-Fi Modem (they share its address window).");
+            hwHeading("Particularities");
+            hwKeyValue("ROM window:", "$4000-$BFFF (32 kB) or $8000-$BFFF (16 kB), selected by the RAM/ROM jumper. POM1 toggles this live.");
+            hwKeyValue("RAM expansion:", "Jumper also changes the user-RAM ceiling - 16 kB ($0000-$3FFF) or 32 kB ($0000-$7FFF).");
+            hwKeyValue("Program Manager:", "BD00R from the Woz Monitor. First byte is $A5 (LDA zp) - POM1 uses it as a firmware-present signature.");
+            hwKeyValue("ROM file:", "roms/jukebox.rom. Build with P-LAB's EPROM_CREATOR (2-packer.sh). See Software Reference.");
+            hwKeyValue("EEPROM RW:", "Checkbox in the Juke-Box hardware window. When on, writes in the ROM window persist to jukebox.rom.");
+            hwKeyValue("v1 scope:", "28c256 single-page only. Multi-page 29c020/29c040 (P0..PF) and 16 kB sub-page (S0/S1) deferred to v2.");
+        }
+
         // ---- CFFA1 ---------------------------------------------------
         if (ImGui::CollapsingHeader("CFFA1 CompactFlash Interface")) {
             ImGui::TextWrapped(
@@ -564,6 +582,27 @@ void MainWindow_ImGui::renderSoftwareReferenceWindow()
             hwKeyValue("PIA bit 7:", "ORA #$80 before JSR ECHO for DSP, AND #$7F after reading KBD.");
             hwKeyValue("Uppercase:", "Real keyboard forces uppercase - only compare against uppercase literals.");
             hwKeyValue("Deeper guide:", "doc/Programming_Apple1_ASM.md (modes texte / HGR / TMS9918, Sokoban porting notes).");
+        }
+
+        if (ImGui::CollapsingHeader("Building a Juke-Box ROM (P-LAB EPROM_CREATOR)")) {
+            ImGui::TextWrapped(
+                "The P-LAB Juke-Box card wants a 32 kB (28c256) or larger ROM "
+                "image. P-LAB ships a free bash script pack that builds one "
+                "from source programs - it embeds the Program Manager + "
+                "Save Program + the BASIC interpreter automatically.");
+            hwHeading("Workflow");
+            hwKeyValue("Get the scripts:", "Download EPROM_CREATOR.zip from https://p-l4b.github.io/jukebox/ (bc, xxd, ascii2binary required).");
+            hwKeyValue("Name format:", "Name#TypeStartaddress  -  Type 06 = binary, F1 = BASIC. Example: STARTREK#F10300.");
+            hwKeyValue("Strip:", "./1-stripper.sh  (removes padding from source .bin/.pat files).");
+            hwKeyValue("Pack:", "./2-packer.sh  (bundles into 16 kB or 32 kB MYROM_N.BIN output files).");
+            hwKeyValue("Install:", "Copy MYROM_0.BIN to roms/jukebox.rom (next to the executable or in ../roms).");
+            hwKeyValue("Launch:", "Select the 'P-LAB Apple-1 with Juke-Box' preset (or plug the card from Hardware menu), then type BD00R in the Woz Monitor.");
+            hwHeading("Notes");
+            ImGui::TextWrapped(
+                "The packer doesn't bundle programs itself; you bring the .bin "
+                "files. Any 32 kB blob without the Program Manager signature "
+                "($A5 at offset $7D00) will be flagged in the Juke-Box hardware "
+                "window - the card still maps, but BD00R hangs.");
         }
 
         if (ImGui::CollapsingHeader("Software library on disk")) {

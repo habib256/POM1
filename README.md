@@ -95,6 +95,28 @@ cd ..
 run_emulator.bat                    REM copies ROMs & launches the emulator
 ```
 
+### 🎛️ Command-line flags
+
+`pom1_imgui` accepts a small set of CLI flags that let you pick a machine preset and turn on the Terminal Card right from the shell — useful for headless / scripted runs (e.g. driving the emulator from the Python telnet tests under `tools/test_*_telnet.py`).
+
+| Flag | Effect |
+|------|--------|
+| `--list-presets` | Print every preset as `index: name` and exit. Handy to find the numeric index before launching. |
+| `--preset <N\|name>` (or `-p`) | Start with the preset selected by numeric index, or by a case-insensitive substring of its name. |
+| `--terminal` | Enable the Terminal Card on top of whatever the preset defines. The card listens on `127.0.0.1:6502`. Desktop-only. |
+
+```bash
+# List everything that's available
+./pom1_imgui --list-presets
+
+# Launch the Juke-Box preset + Terminal Card, then drive it from telnet
+./pom1_imgui --preset 10 --terminal &
+python3 tools/test_jukebox_telnet.py
+
+# Name-based selection (first case-insensitive substring match wins)
+./pom1_imgui --preset "A1-SID" --terminal
+```
+
 ### 🌐 Web Version (WebAssembly)
 
 **Play directly in your browser:** [https://habib256.github.io/POM1/build-wasm/pom1_imgui.html](https://habib256.github.io/POM1/build-wasm/pom1_imgui.html)
@@ -381,19 +403,28 @@ telnet localhost 6502
 
 ## 🖥️ Machine Presets
 
-**Hardware > Machine Preset** applies a named configuration in one click — enabling the right cards and snapping windows into a sensible default layout.
+**Presets menu** applies a named configuration in one click — enabling the right cards and snapping windows into a sensible default layout. Indices match the `--preset N` CLI flag.
 
-| Preset | RAM | BASIC | Krusader | microSD | CFFA1 | SID | TMS9918 | GEN2 HGR | I/O & RTC | WiFi | Terminal |
-|--------|:---:|:-----:|:--------:|:-------:|:-----:|:---:|:-------:|:--------:|:---------:|:----:|:--------:|
-| **Apple-1 bare 4 K (July 1976)** | 4 KB | Integer | — | — | — | — | — | — | — | — | — |
-| **Woz Apple 1 (1976)** | 8 KB | Integer | — | — | — | — | — | — | — | — | — |
-| **Replica 1 (Briel)** | 32 KB | Integer | ✓ | — | — | — | — | — | — | — | — |
-| **Replica 1 + CFFA1** | 32 KB | Applesoft Lite | — | — | ✓ | — | — | — | — | — | ✓ |
-| **Uncle Bernie's Apple 1** | 32 KB | Integer | — | — | — | — | — | ✓ | — | — | — |
-| **P-LAB Apple 1** | 32 KB | Applesoft Lite | — | ✓ | — | ✓ | ✓ | — | ✓ | ✓ | ✓ |
-| **POM1** | 56 KB | Applesoft Lite | — | ✓ | — | ✓ | ✓ | ✓ | — | ✓ | ✓ |
+| # | Preset | RAM | BASIC | ACI | Krusader | CFFA1 | microSD | SID | SID SE | TMS9918 | I/O & RTC | WiFi | Terminal | Juke-Box | GEN2 HGR |
+|---|--------|:---:|:-----:|:---:|:--------:|:-----:|:-------:|:---:|:------:|:-------:|:---------:|:----:|:--------:|:--------:|:--------:|
+| 0 | **Bare Apple-1 (July 1976)** | 4 KB | — | — | — | — | — | — | — | — | — | — | — | — | — |
+| 1 | **Apple-1 with ACI & Integer BASIC (Oct 1976)** | 8 KB | Integer | ✓ | — | — | — | — | — | — | — | — | — | — | — |
+| 2 | **Replica-1 with ACI, Krusader (Briel 2003)** | 32 KB | Integer | ✓ | ✓ | — | — | — | — | — | — | — | — | — | — |
+| 3 | **Replica-1 with CFFA1 & Applesoft Lite (Dreher 2007)** | 32 KB | Applesoft Lite | — | — | ✓ | — | — | — | — | — | — | — | — | — |
+| 4 | **P-LAB microSD & Applesoft Lite (Apr 2022)** | 32 KB | Applesoft Lite | — | — | — | ✓ | — | — | — | — | — | — | — | — |
+| 5 | **P-LAB A1-SID Sound Card ($C800-$CFFF)** | 32 KB | Integer | — | — | — | — | ✓ | — | — | — | — | — | — | — |
+| 6 | **P-LAB A1-AUDIO Special Edition ($CC00-$CC1F)** | 32 KB | Integer | — | — | — | — | — | ✓ | — | — | — | — | — | — |
+| 7 | **P-LAB TMS9918 Graphic Card** | 32 KB | Integer | — | — | — | — | — | — | ✓ | — | — | — | — | — |
+| 8 | **P-LAB I/O Board & RTC** | 32 KB | Integer | — | — | — | — | — | — | — | ✓ | — | — | — | — |
+| 9 | **P-LAB Wi-Fi Modem BBS** | 32 KB | Integer | — | — | — | — | — | — | — | — | ✓ | — | — | — |
+| 10 | **P-LAB Juke-Box (16 kB RAM)** | 16 KB | via Juke-Box | — | — | — | — | — | — | — | — | — | — | ✓ | — |
+| 11 | **P-LAB Multiplexing Fantasy** | 64 KB | Applesoft Lite | — | — | — | ✓ | ✓ | — | ✓ | ✓ | ✓ | ✓ | — | — |
+| 12 | **Uncle Bernie's GEN2 HGR Color (Apr 2026)** | 32 KB | Integer | — | — | — | — | — | — | — | — | — | — | — | ✓ |
+| 13 | **POM1 Multiplexing Fantasy (2026)** | 64 KB | Applesoft Lite | ✓ | — | — | ✓ | ✓ | — | — | — | ✓ | ✓ | — | — |
 
-The **bare 4 K** preset is the pre-ACI July-1976 shipping configuration (no cassette, no expansion — the first ~150 Apple 1 units left the bench this way).
+- **Bare Apple-1 (0)** — pre-ACI July-1976 shipping configuration (no cassette, no expansion — the first ~150 Apple 1 units left the bench this way).
+- **Juke-Box preset (10)** — `BasicType::None`: the Juke-Box EEPROM provides BASIC through the Program Manager at `$BD00`. ACI is dropped since the EEPROM replaces cassette loading.
+- **POM1 Multiplexing Fantasy (13)** — default preset, shows the POM1 banner on the Apple 1 screen.
 
 Each preset also repositions windows into a default layout: the Apple 1 screen anchors top-left, graphics cards open to the right, and status panels fill the bottom row. You can drag windows freely after applying a preset.
 

@@ -27,6 +27,7 @@ public:
     static bool reloadAciRom             (Memory& mem, std::string& error);
     static bool reloadCFFA1Rom           (Memory& mem, std::string& error);
     static bool reloadSDCardRom          (Memory& mem, std::string& error);
+    static bool reloadJukeBoxRom         (Memory& mem, std::string& error);
 };
 
 #endif // ROMLOADER_H
