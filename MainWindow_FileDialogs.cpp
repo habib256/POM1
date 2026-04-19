@@ -472,10 +472,35 @@ void MainWindow_ImGui::renderCassetteControlWindow()
             }
             ImGui::Text("State:");
             ImGui::SameLine();
-            renderStateBadge(
-                uiSnapshot.cassettePlaybackActive ? "READING" : "READY",
-                uiSnapshot.cassettePlaybackActive ? ImVec4(0.95f, 0.75f, 0.25f, 1.0f)
-                                                  : ImVec4(0.35f, 0.85f, 0.35f, 1.0f));
+            // State semantics differ per mode:
+            //   Stream mode:  PLAYING (audio thread pulling PCM frames) vs READY.
+            //                 The ARMED latch is pulse-only (B6 play-on-first-
+            //                 read); it has no meaning when the file is played
+            //                 as raw audio, so we hide it entirely.
+            //   Pulse  mode:  PLAYING (advancePlayback is consuming durations),
+            //                 ARMED (Play pressed, waiting for the ACI ROM to
+            //                 poll $C081 for the first time — B6 latch), or
+            //                 READY (stopped / leader).
+            if (uiSnapshot.cassetteAudioStreamMode) {
+                renderStateBadge(
+                    uiSnapshot.cassettePlaybackActive ? "PLAYING" : "READY",
+                    uiSnapshot.cassettePlaybackActive ? ImVec4(0.95f, 0.75f, 0.25f, 1.0f)
+                                                      : ImVec4(0.35f, 0.85f, 0.35f, 1.0f));
+            } else if (uiSnapshot.cassettePlaybackActive) {
+                renderStateBadge("READING", ImVec4(0.95f, 0.75f, 0.25f, 1.0f));
+            } else if (uiSnapshot.cassettePlaybackArmed) {
+                renderStateBadge("ARMED (waiting for $C081 read)",
+                                 ImVec4(0.95f, 0.55f, 0.25f, 1.0f));
+                if (ImGui::IsItemHovered()) {
+                    ImGui::SetTooltip(
+                        "The deck is loaded and Play is engaged, but the tape\n"
+                        "is not advancing yet — B6 play-on-first-read. It will\n"
+                        "start the moment the ACI ROM polls $C081 (e.g. after\n"
+                        "`C100R` in the Woz Monitor runs the READ routine).");
+                }
+            } else {
+                renderStateBadge("READY", ImVec4(0.35f, 0.85f, 0.35f, 1.0f));
+            }
         } else {
             ImGui::Text("Inserted tape: none");
             ImGui::Text("ACI card:");
