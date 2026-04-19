@@ -240,23 +240,14 @@ private:
     // Speaker-side PROGRAM TAPE cursor (audioMutex-protected). Advances
     // from fillAudioBuffer at POM1_CPU_CLOCK_HZ / outputSampleRate cycles
     // per output sample so playback pace matches a real Apple-1 deck
-    // regardless of emulated CPU speed / whether the ACI polls yet.
+    // regardless of emulated CPU speed / whether the ACI polls yet. The
+    // speaker deliberately runs decoupled from the ACI decoder: on a real
+    // Apple 1 the tape keeps turning while the ROM chews bits, and it
+    // keeps turning after the ROM returns to Wozmon too.
     bool speakerPlaybackActive = false;
     size_t speakerIndex = 0;
     bool speakerLevel = false;
     double speakerCyclesRemaining = 0.0;
-    // Lock-free mirror of `playbackIndex` for the audio thread. Written by
-    // `advancePlayback` (CPU thread) and read by `fillAudioBuffer` (audio
-    // thread). Used to gate the speaker so it doesn't race ahead of the
-    // ACI decoder: the real ACI ROM has per-bit processing overhead that
-    // makes the 6502-side decode slightly slower than the pure pulse
-    // duration, so a speaker driven by wallclock audio clock alone would
-    // finish a tape before the ACI reports EOF. Keeping `speakerIndex <=
-    // aciProgressIndex` holds the audio in sync with the decoded data.
-    // `aciEofReached` flips true when the ACI runs off the end of
-    // `loadedDurations` so the speaker can stop in the same frame.
-    std::atomic<size_t> aciProgressIndex{0};
-    std::atomic<bool>   aciEofReached{false};
 
     // Mechanical "clunk" that fires when the deck mode transitions
     // (NoTape ↔ ProgramTape ↔ AudioStream). Pre-synthesised into

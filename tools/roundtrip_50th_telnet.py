@@ -8,7 +8,7 @@ Flow:
      /tmp/50th.wav`.
   2. Telnet in, hard-reset, paste `software/demos/50th.apl.txt` (minus
      its trailing `000280R` auto-run line) so the program sits in RAM.
-  3. Drive the ACI monitor: `C100R` then `0280.0BFFW` to record the
+  3. Drive the ACI monitor: `C100R` then `0280.0FFFW` to record the
      program onto tape. Wait for the Wozmon `\\` prompt to return.
   4. SIGTERM pom1_imgui so `~MainWindow_ImGui` flushes `--save-tape` to
      `/tmp/50th.wav`.
@@ -16,7 +16,7 @@ Flow:
      `ffmpeg -c:a libvorbis -q:a 4`.
   6. Launch a fresh pom1_imgui with `--tape cassettes/50TH.ogg`
      (auto-arms PLAY, the new ARMED banner is visible until step 8).
-  7. Telnet in, hard-reset, drive `C100R` then `0280.0BFFR` to load the
+  7. Telnet in, hard-reset, drive `C100R` then `0280.0FFFR` to load the
      program back into RAM.
   8. `280R` to run the demo. The Apple 1 screen starts the animation;
      leave POM1 running.
@@ -50,7 +50,7 @@ PORT = 6502
 CTRL_R = 18
 ACI_PRESET = 1                    # "Apple-1 with ACI & Integer BASIC"
 PROG_FROM = 0x0280
-PROG_TO   = 0x0BFF                # margin past the last data line in 50th.apl.txt
+PROG_TO   = 0x0FFF                # covers the full 50th demo (3456 bytes spanning $0280-$0FFF — running past $0BFF is what made the earlier roundtrips crash mid-animation after the Macintosh frame)
 WOZMON_PROMPT = "\\"              # Woz Monitor prompt character
 VERBOSE = False
 
@@ -348,11 +348,11 @@ def phase_play(ogg_path: Path, *, auto_run: bool = True) -> subprocess.Popen:
     recv_avail(sock, total=1.5)
 
     # Clear target range so a failed load shows up as zeros.
-    print("  clearing $0280-$0BFF…")
+    print(f"  clearing ${PROG_FROM:04X}-${PROG_TO:04X}…")
     poke_bytes(sock, PROG_FROM, bytes(PROG_TO - PROG_FROM + 1),
                chunk=32, wait=0.03)
 
-    print("  starting ACI READ $0280.$0BFFR…")
+    print(f"  starting ACI READ ${PROG_FROM:04X}.${PROG_TO:04X}R…")
     send_line(sock, "C100R", wait=0.4, read_t=2.0)
     send_line(sock, f"{PROG_FROM:04X}.{PROG_TO:04X}R",
               wait=0.3, read_t=1.0)

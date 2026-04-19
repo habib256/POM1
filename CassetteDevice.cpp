@@ -146,7 +146,10 @@ void CassetteDevice::fillAudioBuffer(float* output, int frameCount)
         // Playback (PROGRAM TAPE, speaker-driven): square wave walked from
         // loadedDurations at wallclock pace. Takes priority over the
         // recording-feedback queue — you can't both play a loaded tape and
-        // record onto it simultaneously on a real deck either.
+        // record onto it simultaneously on a real deck either. The speaker
+        // runs independently of the ACI decoder on purpose: on a real
+        // Apple 1 the tape keeps spinning while the ROM chews on bits,
+        // and it keeps spinning after the ROM returns to Wozmon too.
         float targetSample = 0.0f;
         if (speakerPlaybackActive) {
             targetSample = speakerLevel ? 0.22f : -0.22f;
