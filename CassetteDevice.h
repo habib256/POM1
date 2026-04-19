@@ -245,6 +245,18 @@ private:
     size_t speakerIndex = 0;
     bool speakerLevel = false;
     double speakerCyclesRemaining = 0.0;
+    // Lock-free mirror of `playbackIndex` for the audio thread. Written by
+    // `advancePlayback` (CPU thread) and read by `fillAudioBuffer` (audio
+    // thread). Used to gate the speaker so it doesn't race ahead of the
+    // ACI decoder: the real ACI ROM has per-bit processing overhead that
+    // makes the 6502-side decode slightly slower than the pure pulse
+    // duration, so a speaker driven by wallclock audio clock alone would
+    // finish a tape before the ACI reports EOF. Keeping `speakerIndex <=
+    // aciProgressIndex` holds the audio in sync with the decoded data.
+    // `aciEofReached` flips true when the ACI runs off the end of
+    // `loadedDurations` so the speaker can stop in the same frame.
+    std::atomic<size_t> aciProgressIndex{0};
+    std::atomic<bool>   aciEofReached{false};
 
     // Mechanical "clunk" that fires when the deck mode transitions
     // (NoTape ↔ ProgramTape ↔ AudioStream). Pre-synthesised into
