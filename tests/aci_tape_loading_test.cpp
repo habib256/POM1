@@ -199,6 +199,12 @@ int main(int argc, char** argv)
     tape.playTape();
     assert(tape.hasLoadedTape());
     assert(!tape.isPlaybackActive() && "B6: PLAY must arm, not activate");
+    // Arming must be externally observable so UI code can distinguish
+    // "armed, about to play" from "EOF, finished" — both leave
+    // isPlaybackActive() == false but only the former should keep the
+    // UI's transport latched at Playing (CassetteDeck_ImGui skips its
+    // auto-return-to-Stopped guard when cassettePlaybackArmed is true).
+    assert(tape.isPlaybackArmed() && "B6: PLAY must leave the deck armed");
 
     // Prime the keyboard buffer with the Wozmon/ACI command sequence. The
     // ACI ROM reads $D010/$D011 in a tight poll loop; each setKeyPressed

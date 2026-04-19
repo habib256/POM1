@@ -41,6 +41,7 @@ struct EmulationSnapshot
     bool cassetteLoadedTape = false;
     bool cassetteRecordedTape = false;
     bool cassettePlaybackActive = false;
+    bool cassettePlaybackArmed = false;
     bool cassetteRewinding = false;
     bool cassetteAudioAvailable = false;
     bool cassetteHardwareAccurateLiveAudio = true;

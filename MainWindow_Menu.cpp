@@ -151,17 +151,37 @@ void MainWindow_ImGui::renderMenuBar()
             if (ImGui::MenuItem("P-LAB Apple-1 Juke-Box", nullptr, &jukeBoxEnabled)) {
                 // Juke-Box occupies $4000-$BFFF (or $8000-$BFFF) — evict any
                 // card that shares the window so the UI flags reflect reality.
+                std::string jbMsg;
                 if (jukeBoxEnabled) {
-                    emulation->setJukeBoxJumper(jukeBoxJumper);
                     cffa1Enabled = false;
                     microSDEnabled = false;
                     wifiModemEnabled = false;
+                    // Preserve Applesoft Lite SD at $6000-$7FFF by auto-
+                    // selecting the RAM-32/ROM-16 jumper ($8000-$BFFF window)
+                    // — see the toolbar click handler above for the full
+                    // rationale.
+                    const bool applesoftSDLoaded = std::any_of(
+                        loadedRoms.begin(), loadedRoms.end(),
+                        [](const LoadedRegion& r) {
+                            return r.start == 0x6000 && r.end == 0x7FFF;
+                        });
+                    if (applesoftSDLoaded &&
+                        jukeBoxJumper == JukeBox::Jumper::RAM16_ROM32) {
+                        jukeBoxJumper = JukeBox::Jumper::RAM32_ROM16;
+                        jbMsg = "P-LAB Juke-Box plugged (jumper: RAM-32/ROM-16 "
+                                "to preserve Applesoft Lite at $6000-$7FFF) "
+                                "- type BD00R for Program Manager";
+                    } else {
+                        jbMsg = "P-LAB Juke-Box plugged "
+                                "- type BD00R for Program Manager";
+                    }
+                    emulation->setJukeBoxJumper(jukeBoxJumper);
                     showJukeBox = true;
+                } else {
+                    jbMsg = "P-LAB Juke-Box unplugged";
                 }
                 emulation->setJukeBoxEnabled(jukeBoxEnabled);
-                setStatusMessage(jukeBoxEnabled
-                    ? "P-LAB Juke-Box plugged - type BD00R for Program Manager"
-                    : "P-LAB Juke-Box unplugged", 3.0f);
+                setStatusMessage(jbMsg, 3.0f);
             }
             if (ImGui::IsItemHovered())
                 ImGui::SetTooltip("Claudio Parmigiani's Apple-1 Juke-Box (28c256 EEPROM).\n"
@@ -320,19 +340,43 @@ void MainWindow_ImGui::renderToolbar()
             jukeBoxEnabled ? ImVec4(0.2f, 0.4f, 0.8f, 1.0f) : ImVec4(0.3f, 0.3f, 0.3f, 1.0f));
         if (ImGui::Button("##jukeBoxToolbar", btnSize)) {
             jukeBoxEnabled = !jukeBoxEnabled;
+            std::string jbMsg;
             if (jukeBoxEnabled) {
                 // Juke-Box occupies $4000-$BFFF / $8000-$BFFF — evict any card
                 // sharing the window so the UI flags reflect reality.
                 cffa1Enabled = false;
                 microSDEnabled = false;
                 wifiModemEnabled = false;
+                // If Applesoft Lite SD is currently loaded at $6000-$7FFF and
+                // the user would plug the Juke-Box in RAM-16/ROM-32 mode, its
+                // $4000-$BFFF window would shadow Applesoft and the user
+                // would silently lose BASIC access. Force RAM-32/ROM-16
+                // instead — its $8000-$BFFF window leaves $6000-$7FFF clear.
+                // The jumper can still be changed later in the Juke-Box
+                // Hardware window if the user wants the full 32 kB ROM
+                // region active.
+                const bool applesoftSDLoaded = std::any_of(
+                    loadedRoms.begin(), loadedRoms.end(),
+                    [](const LoadedRegion& r) {
+                        return r.start == 0x6000 && r.end == 0x7FFF;
+                    });
+                if (applesoftSDLoaded &&
+                    jukeBoxJumper == JukeBox::Jumper::RAM16_ROM32) {
+                    jukeBoxJumper = JukeBox::Jumper::RAM32_ROM16;
+                    jbMsg = "P-LAB Juke-Box plugged (jumper: RAM-32/ROM-16 "
+                            "to preserve Applesoft Lite at $6000-$7FFF) "
+                            "- type BD00R for Program Manager";
+                } else {
+                    jbMsg = "P-LAB Juke-Box plugged "
+                            "- type BD00R for Program Manager";
+                }
                 emulation->setJukeBoxJumper(jukeBoxJumper);
                 showJukeBox = true;
+            } else {
+                jbMsg = "P-LAB Juke-Box unplugged";
             }
             emulation->setJukeBoxEnabled(jukeBoxEnabled);
-            setStatusMessage(jukeBoxEnabled
-                ? "P-LAB Juke-Box plugged - type BD00R for Program Manager"
-                : "P-LAB Juke-Box unplugged", 3.0f);
+            setStatusMessage(jbMsg, 3.0f);
         }
         drawToolbarDipChipIcon(ImGui::GetWindowDrawList(),
                                ImGui::GetItemRectMin(), ImGui::GetItemRectMax());

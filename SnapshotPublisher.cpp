@@ -58,6 +58,7 @@ void SnapshotPublisher::publish(Memory& mem, const M6502& cpu, bool cpuRunning)
     snapshot.cassetteLoadedTape                = cassette.hasLoadedTape();
     snapshot.cassetteRecordedTape              = cassette.hasRecordedTape();
     snapshot.cassettePlaybackActive            = cassette.isPlaybackActive();
+    snapshot.cassettePlaybackArmed             = cassette.isPlaybackArmed();
     snapshot.cassetteRewinding                 = cassette.isRewinding();
     snapshot.cassetteAudioAvailable            = cassette.isAudioAvailable();
     snapshot.cassetteHardwareAccurateLiveAudio = cassette.isHardwareAccurateLiveAudio();

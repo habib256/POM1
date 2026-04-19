@@ -59,6 +59,11 @@ public:
     bool hasLoadedTape() const { return loadedTapeReady; }
     bool hasRecordedTape() const { return !recordedDurations.empty(); }
     bool isPlaybackActive() const { return playbackActive; }
+    /// True when PLAY has been pressed but no $C081 poll has arrived yet
+    /// (B6 play-on-first-read). To a UI observing the deck, armed looks
+    /// like "playing, waiting for the ACI ROM to start reading" — if the
+    /// UI conflates armed with EOF it'll auto-stop immediately after PLAY.
+    bool isPlaybackArmed() const { return playbackArmed; }
     /// True while rewindTape() is physically walking playbackIndex back
     /// to 0. Pulse mode only — stream mode's ma_decoder seek is instant.
     /// Cleared the moment REW reaches index 0 (armed-at-start state).

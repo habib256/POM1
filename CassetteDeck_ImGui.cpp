@@ -954,8 +954,14 @@ void CassetteDeck_ImGui::syncWithSnapshot(const EmulationSnapshot& snap)
 {
     // If the device reports playback ended (tape read through), drop the
     // latch back to Stopped. The device auto-stops at the end of the
-    // loaded pulse train.
+    // loaded pulse train. Under B6 (play-on-first-read) the deck sits
+    // armed-but-inactive between PLAY and the first $C081 poll; that
+    // state looks identical to "finished" from a raw playbackActive
+    // flag, so we have to explicitly exclude it — otherwise the very
+    // next frame after the user clicks PLAY flips the transport back to
+    // Stopped and the cassette appears broken.
     if (transport_ == Transport::Playing && !snap.cassettePlaybackActive
+        && !snap.cassettePlaybackArmed && !snap.cassetteRewinding
         && snap.cassetteLoadedTape) {
         // Was playing, device says idle: tape finished or stopped externally.
         // Only auto-return to Stopped if we actually had been rolling for
