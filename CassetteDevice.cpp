@@ -114,6 +114,20 @@ void CassetteDevice::fillAudioBuffer(float* output, int frameCount)
                 playbackActive = false;
             }
         }
+        // Mix the mode-transition clunk on top of the stream output too —
+        // the click has to be heard when a NoTape → AudioStream transition
+        // fires (the decoder hasn't started streaming samples yet, so the
+        // raw output is all zeros without this).
+        {
+            std::lock_guard<std::mutex> lock(audioMutex);
+            if (clickCursor < clickBuffer.size()) {
+                const int mix = std::min<int>(frameCount,
+                    static_cast<int>(clickBuffer.size() - clickCursor));
+                for (int i = 0; i < mix; ++i) {
+                    output[i] += clickBuffer[clickCursor++] * vol;
+                }
+            }
+        }
         return;
     }
 
@@ -125,9 +139,31 @@ void CassetteDevice::fillAudioBuffer(float* output, int frameCount)
         return;
     }
     const float vol = volume.load(std::memory_order_relaxed);
+    const double cpuCyclesPerSample =
+        static_cast<double>(POM1_CPU_CLOCK_HZ) /
+        static_cast<double>(std::max<uint32_t>(1, audioOutputSampleRate));
     for (int i = 0; i < frameCount; ++i) {
+        // Playback (PROGRAM TAPE, speaker-driven): square wave walked from
+        // loadedDurations at wallclock pace. Takes priority over the
+        // recording-feedback queue — you can't both play a loaded tape and
+        // record onto it simultaneously on a real deck either.
         float targetSample = 0.0f;
-        if (!audioQueue.empty()) {
+        if (speakerPlaybackActive) {
+            targetSample = speakerLevel ? 0.22f : -0.22f;
+            speakerCyclesRemaining -= cpuCyclesPerSample;
+            while (speakerCyclesRemaining <= 0.0 && speakerPlaybackActive) {
+                speakerLevel = !speakerLevel;
+                ++speakerIndex;
+                if (speakerIndex >= loadedDurations.size()) {
+                    speakerPlaybackActive = false;
+                    break;
+                }
+                speakerCyclesRemaining += static_cast<double>(loadedDurations[speakerIndex]);
+            }
+        } else if (!audioQueue.empty()) {
+            // Recording-feedback path: CPU-side toggleOutput() pushes the
+            // bytes the Apple-1 is writing to $C000. Gives the user live
+            // modulation audio while dumping to tape.
             targetSample = audioQueue.front().sampleValue;
             if (audioQueue.front().remainingSamples > 0) {
                 audioQueue.front().remainingSamples--;
@@ -143,7 +179,13 @@ void CassetteDevice::fillAudioBuffer(float* output, int frameCount)
             audioRampInSamplesRemaining--;
         }
         audioPlaybackSample += (targetSample - audioPlaybackSample) * kFilterAlpha;
-        output[i] = audioPlaybackSample * vol;
+        float s = audioPlaybackSample * vol;
+        // Mechanical clunk — mixed on top of whatever else is playing so
+        // the mode-transition feedback is audible with or without a tape.
+        if (clickCursor < clickBuffer.size()) {
+            s += clickBuffer[clickCursor++] * vol;
+        }
+        output[i] = s;
     }
 }
 
@@ -207,6 +249,70 @@ void CassetteDevice::clearLiveAudioState()
     audioQueue.clear();
 }
 
+void CassetteDevice::startSpeakerAtLeader()
+{
+    std::lock_guard<std::mutex> lock(audioMutex);
+    if (loadedDurations.empty()) {
+        speakerPlaybackActive = false;
+        return;
+    }
+    speakerPlaybackActive = true;
+    speakerIndex = 0;
+    speakerLevel = loadedInitialLevel;
+    speakerCyclesRemaining = static_cast<double>(loadedDurations[0]);
+    audioPlaybackSample = 0.0f;
+    audioRampInSamplesRemaining = kAudioRampInSamples;
+    audioQueue.clear();
+}
+
+void CassetteDevice::stopSpeaker()
+{
+    std::lock_guard<std::mutex> lock(audioMutex);
+    speakerPlaybackActive = false;
+    speakerIndex = 0;
+    speakerCyclesRemaining = 0.0;
+    audioSampleRemainder = 0.0;
+    audioPlaybackSample = 0.0f;
+    audioRampInSamplesRemaining = kAudioRampInSamples;
+    audioQueue.clear();
+}
+
+void CassetteDevice::playMechanicalClick()
+{
+    // ~70 ms damped thud + noise burst, synthesised into a buffer that
+    // fillAudioBuffer mixes on top of the current deck output. Sits
+    // above any speaker / recording audio so the user hears it even
+    // while a tape is playing. Cheap enough (≈ 3 kB at 48 kHz) that we
+    // can rebuild it every event without caching per sample rate.
+    std::lock_guard<std::mutex> lock(audioMutex);
+    const uint32_t rate = std::max<uint32_t>(1, audioOutputSampleRate);
+    const uint32_t durSamples = rate / 14;  // ≈71 ms
+    clickBuffer.assign(durSamples, 0.0f);
+    uint32_t lcg = 0xC7E5A5B7u;
+    constexpr float kTwoPi = 6.28318530718f;
+    for (uint32_t i = 0; i < durSamples; ++i) {
+        const float t = static_cast<float>(i) / static_cast<float>(rate);
+        // Fast attack (<3 ms), then exponential decay.
+        const float attack = std::min(1.0f, t * 400.0f);
+        const float decay = std::exp(-t * 30.0f);
+        lcg = lcg * 1664525u + 1013904223u;
+        const float noise = (static_cast<float>(static_cast<int32_t>(lcg)) / 2147483648.0f);
+        // ~95 Hz body resonance + mid-frequency "tick" + noise tail.
+        const float thud = std::sin(kTwoPi * 95.0f * t);
+        const float tick = std::sin(kTwoPi * 1300.0f * t) * std::exp(-t * 120.0f);
+        clickBuffer[i] = (0.45f * thud + 0.30f * tick + 0.25f * noise) * attack * decay * 0.35f;
+    }
+    clickCursor = 0;
+}
+
+void CassetteDevice::fireClickIfModeChanged()
+{
+    const DeckMode m = getDeckMode();
+    if (m == lastDeckMode) return;
+    lastDeckMode = m;
+    playMechanicalClick();
+}
+
 void CassetteDevice::reset()
 {
     currentCycle = 0;
@@ -216,7 +322,7 @@ void CassetteDevice::reset()
     recordedDurations.clear();
     playbackPaused.store(false, std::memory_order_release);
     resetPlaybackState();
-    clearLiveAudioState();
+    stopSpeaker();
 }
 
 void CassetteDevice::setPlaybackPaused(bool paused)
@@ -339,10 +445,12 @@ void CassetteDevice::advancePlayback(uint32_t cycles)
         }
 
         remaining -= cyclesUntilInputToggle;
-        // The full segment at the current level has been consumed → queue it
-        // so the cassette player is audible independently of the ACI (the ACI
-        // only digitises $C081; the speaker output belongs to the tape deck).
-        queueAudioSegment(loadedDurations[playbackIndex - 1], inputLevel);
+        // Audible speaker output used to be queued from here, which tied
+        // playback pitch to the emulated CPU speed and silenced the deck
+        // whenever the ACI ROM wasn't polling. The deck speaker is now
+        // driven directly by fillAudioBuffer from `loadedDurations` at
+        // wallclock pace (see startSpeakerAtLeader) — this loop only
+        // needs to feed the ACI's `inputLevel`.
         cyclesUntilInputToggle = 0;
         inputLevel = !inputLevel;
 
@@ -502,14 +610,14 @@ void CassetteDevice::rewindTape()
     // analogy); isRewinding() lets the UI paint a REW-in-progress state.
     if (!loadedTapeReady || loadedDurations.empty() || playbackIndex == 0) {
         resetPlaybackState();
-        clearLiveAudioState();
+        stopSpeaker();
         return;
     }
     rewinding = true;
     rewCarryCycles = 0;
     playbackActive = false;
     playbackArmed  = false;
-    clearLiveAudioState();
+    stopSpeaker();
 }
 
 void CassetteDevice::playTape()
@@ -527,21 +635,27 @@ void CassetteDevice::playTape()
     }
     if (loadedDurations.empty()) return;
     // B6 — play-on-first-read: pulse-mode PLAY arms the deck but does
-    // NOT start consuming durations. The tape only begins advancing
-    // when the ACI ROM polls $C081 for the first time (readTapeInput's
-    // armed→active transition). Without this, advancePlayback burned
-    // through the full tape on every CPU slice regardless of whether
-    // the ROM was actually reading — a 30 s tape disappeared in <1 s
-    // at --cpu-max while the user was still typing "C100R" at Wozmon.
-    // Leader-rewind papered over the symptom inside a 500 ms window;
-    // this removes the coupling entirely.
+    // NOT start consuming durations (CPU-side). The tape only begins
+    // advancing toward the ACI when the ROM polls $C081 for the first
+    // time (readTapeInput's armed→active transition). Without this,
+    // advancePlayback burned through the full tape on every CPU slice
+    // regardless of whether the ROM was actually reading — a 30 s tape
+    // disappeared in <1 s at --cpu-max while the user was still typing
+    // "C100R" at Wozmon. Leader-rewind papered over the symptom inside
+    // a 500 ms window; this removes the coupling entirely.
     //
     // Stopped-deck rewind (B3): ALWAYS seek back to the leader on PLAY.
     // No mid-tape resume — the ACI READ routine always wants to see the
     // sync leader first. resetPlaybackState arms, zeroes the index,
     // stamps lastTapeInputCycle, and clears the REW flags.
+    //
+    // Speaker path is a separate concern: we start the audible square
+    // wave immediately on PLAY, at wallclock pace, so the deck sounds
+    // like a real cassette player the moment the user hits PLAY — and
+    // stays at real speed regardless of CPU slider position. The ACI
+    // arm-and-wait-for-poll behaviour above is untouched.
     resetPlaybackState();
-    clearLiveAudioState();
+    startSpeakerAtLeader();
 }
 
 void CassetteDevice::stopTape()
@@ -554,31 +668,45 @@ void CassetteDevice::stopTape()
     rewinding = false;
     rewCarryCycles = 0;
     cyclesUntilInputToggle = 0;
-    clearLiveAudioState();
+    stopSpeaker();
 }
 
 void CassetteDevice::ejectTape()
 {
     closeAudioStream();
+    // Halt the audio-thread speaker cursor BEFORE mutating
+    // loadedDurations — stopSpeaker takes audioMutex, so any in-flight
+    // fillAudioBuffer call completes before we touch the vector and no
+    // subsequent call can race us (speakerPlaybackActive is false).
+    stopSpeaker();
     audioStreamMode = false;
     loadedDurations.clear();
     loadedTapePath.clear();
     loadedTapeReady = false;
     loadedInitialLevel = false;
     resetPlaybackState();
-    clearLiveAudioState();
+    fireClickIfModeChanged();
 }
 
 void CassetteDevice::setAciActive(bool active)
 {
     const bool wasActive = aciActive;
     aciActive = active;
+    if (wasActive == active) return;
     // Plugging the ACI while a stream-mode tape is loaded would leave the
     // ACI ROM polling $C081 forever (the stream path has no pulse
     // transitions, so inputLevel stays flat). Eject the tape so the ROM
     // sees an empty deck and the user can load a proper program tape.
     if (!wasActive && active && audioStreamMode) {
         ejectTape();
+        return;  // ejectTape already fired the mode-change clunk
+    }
+    // ACI toggled while a tape is in — mode didn't necessarily change
+    // (pulse stays pulse on unplug; stream stays stream on plug-out), but
+    // the physical act of plugging/unplugging the card is exactly the
+    // kind of deck event the user asked for feedback on.
+    if (loadedTapeReady) {
+        playMechanicalClick();
     }
 }
 
@@ -597,12 +725,19 @@ bool CassetteDevice::loadPlaybackDurations(std::vector<uint32_t> durations, bool
         return false;
     }
 
+    // Halt speaker + drop its cursor BEFORE replacing the durations
+    // vector — stopSpeaker takes audioMutex so any in-flight audio
+    // callback completes first, and speakerPlaybackActive=false keeps
+    // subsequent callbacks from touching loadedDurations while we
+    // reassign.
+    stopSpeaker();
     loadedDurations = std::move(durations);
     loadedInitialLevel = initialLevel;
     loadedTapePath = path;
     loadedTapeReady = true;
+    audioStreamMode = false;
     resetPlaybackState();
-    clearLiveAudioState();
+    fireClickIfModeChanged();
     lastError.clear();
     return true;
 }
@@ -894,7 +1029,10 @@ bool CassetteDevice::loadAudioStream(const std::string& path)
     playbackArmed     = false;
     playbackActive    = false;
     loadedInitialLevel = false;
-    clearLiveAudioState();
+    // Entering stream mode — if a pulse tape was previously loaded and its
+    // speaker cursor is still active, stop it before the next callback.
+    stopSpeaker();
+    fireClickIfModeChanged();
     lastError.clear();
     return true;
 }

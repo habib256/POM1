@@ -353,6 +353,32 @@ CassetteDeck_ImGui::render(const char* title,
                   snap.cassetteAudioAvailable ? "active" : "off",
                   static_cast<int>(std::round(volume_ * 100.0f)));
     ImGui::TextDisabled("%s", headerInfo);
+
+    // Big deck-mode readout — same information the small "PROGRAM TAPE"
+    // stencil on the cassette label carries, surfaced up here so it's
+    // legible at a glance. CassetteDevice fires a mechanical clunk on
+    // every transition between these states (including eject / load of a
+    // different kind, and ACI plug/unplug while a tape is in).
+    const char* modeLabel;
+    ImVec4 modeColor;
+    if (!snap.cassetteLoadedTape) {
+        modeLabel = "NO TAPE";
+        modeColor = ImVec4(0.58f, 0.58f, 0.62f, 1.0f);
+    } else if (snap.cassetteAudioStreamMode) {
+        modeLabel = "AUDIO STREAM";
+        modeColor = ImVec4(0.20f, 0.55f, 0.80f, 1.0f);
+    } else {
+        modeLabel = "PROGRAM TAPE";
+        modeColor = ImVec4(0.85f, 0.55f, 0.15f, 1.0f);
+    }
+    constexpr float kModeScale = 1.6f;
+    ImGui::SetWindowFontScale(kModeScale);
+    const ImVec2 modeSize = ImGui::CalcTextSize(modeLabel);
+    const float availW = ImGui::GetContentRegionAvail().x;
+    ImGui::SetCursorPosX(ImGui::GetCursorPosX() + std::max(0.0f, (availW - modeSize.x) * 0.5f));
+    ImGui::TextColored(modeColor, "%s", modeLabel);
+    ImGui::SetWindowFontScale(1.0f);
+
     ImGui::Separator();
 
     // Compute scale to fit the remaining content region while preserving

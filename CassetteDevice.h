@@ -20,6 +20,15 @@ public:
     using quint8 = uint8_t;
     using quint16 = uint16_t;
 
+    /// Logical deck mode surfaced to the UI. Derived from whether a tape
+    /// is loaded and which playback path it's on — the deck UI shows this
+    /// as a big label, and a mechanical "clunk" fires on every transition.
+    enum class DeckMode { NoTape, ProgramTape, AudioStream };
+    DeckMode getDeckMode() const {
+        if (!loadedTapeReady) return DeckMode::NoTape;
+        return audioStreamMode ? DeckMode::AudioStream : DeckMode::ProgramTape;
+    }
+
     CassetteDevice();
     ~CassetteDevice() override = default;
 
@@ -132,6 +141,15 @@ private:
     static constexpr uint32_t kWavFileSampleRate = 44100;
 
     void queueAudioSegment(uint32_t cycles, bool level);
+    // PROGRAM TAPE speaker playback — walks `loadedDurations` at wallclock
+    // pace directly from fillAudioBuffer(), so the deck speaker is audible
+    // the moment PLAY is pressed regardless of whether the ACI ROM has
+    // started polling $C081, and regardless of how fast the emulated CPU
+    // is running. The CPU-side advancePlayback() still drives the ACI
+    // input (`inputLevel`), but the audible square wave now comes from
+    // this decoupled cursor.
+    void startSpeakerAtLeader();
+    void stopSpeaker();
     void advancePlayback(uint32_t cycles);
     // Pulse-mode progressive rewind. Walks playbackIndex down toward 0
     // at kRewSpeedFactor× play speed. Called from advancePlayback while
@@ -201,6 +219,30 @@ private:
     std::deque<AudioSegment> audioQueue;
     float audioPlaybackSample = 0.0f;
     uint32_t audioRampInSamplesRemaining = 0;
+
+    // Speaker-side PROGRAM TAPE cursor (audioMutex-protected). Advances
+    // from fillAudioBuffer at POM1_CPU_CLOCK_HZ / outputSampleRate cycles
+    // per output sample so playback pace matches a real Apple-1 deck
+    // regardless of emulated CPU speed / whether the ACI polls yet.
+    bool speakerPlaybackActive = false;
+    size_t speakerIndex = 0;
+    bool speakerLevel = false;
+    double speakerCyclesRemaining = 0.0;
+
+    // Mechanical "clunk" that fires when the deck mode transitions
+    // (NoTape ↔ ProgramTape ↔ AudioStream). Pre-synthesised into
+    // clickBuffer once per event, then mixed on top of whatever the
+    // speaker/queue paths are producing so it's audible even with no
+    // tape loaded. audioMutex-protected.
+    std::vector<float> clickBuffer;
+    size_t clickCursor = 0;
+    DeckMode lastDeckMode = DeckMode::NoTape;
+
+    void playMechanicalClick();
+    // Called after any state change that might flip the deck mode.
+    // Self-edge transitions don't fire (loading a second .aci while the
+    // first is in, etc.); only a real mode flip does.
+    void fireClickIfModeChanged();
 
     uint64_t currentCycle = 0;
     double audioSampleRemainder = 0.0;

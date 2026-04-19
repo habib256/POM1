@@ -507,29 +507,29 @@ y_limit:       .byte 0
 ;  # Name         cr range            ci range            flags iter shft
 ;  0 FULL VIEW    [-2.000, +0.695]    [-1.200, +1.191]    sym   16   0
 ;  1 WEST AREA    [-1.750, -0.246]    [-0.750, +0.750]    sym   16   0
-;  2 SEAHORSE     [-0.850, -0.655]    [-0.094, +0.094]    sym   32   1
+;  2 SEAHORSE     [-0.800, -0.644]    [-0.281, +0.281]    sym   64   2
 ;  3 MINI-MANDEL  [-1.800, -1.702]    [-0.047, +0.047]    sym   32   1
 ;  4 ELEPHANT     [+0.220, +0.337]    [-0.047, +0.047]    sym   32   1
 ;  5 NORTH SHORE  [-0.500, -0.002]    [+0.500, +1.016]    asym  32   1
 ; =============================================
 view_cr_min_lo:
-        .byte $00, $00, $66, $33, $85, $00
+        .byte $00, $00, $33, $33, $85, $00
 view_cr_min_hi:
-        .byte $E0, $E4, $F2, $E3, $03, $F8
+        .byte $E0, $E4, $F3, $E3, $03, $F8
 view_ci_min_lo:
         .byte $CD, $00, $80, $40, $40, $00
 view_ci_min_hi:
-        .byte $EC, $F4, $FE, $FF, $FF, $08
+        .byte $EC, $F4, $FB, $FF, $FF, $08
 view_cr_step_lo:
-        .byte $14, $9A, $14, $0A, $0C, $33
+        .byte $14, $9A, $10, $0A, $0C, $33
 view_cr_step_hi:
         .byte $01, $00, $00, $00, $00, $00
 view_ci_step:
-        .byte $33, $20, $04, $02, $02, $0B
+        .byte $33, $20, $0C, $02, $02, $0B
 view_max_iter:
-        .byte $10, $10, $20, $20, $20, $20   ; 16 or 32
+        .byte $10, $10, $40, $20, $20, $20   ; 16, 32 or 64
 view_iter_shift:
-        .byte $00, $00, $01, $01, $01, $01   ; LSR count on escape
+        .byte $00, $00, $02, $01, $01, $01   ; LSR count on escape
 view_flags_tab:
         .byte $01, $01, $01, $01, $01, $00   ; bit 0 = symmetric
 
