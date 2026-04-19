@@ -244,11 +244,12 @@ CassetteDeck_ImGui::render(const char* title,
         transport_ = Transport::Stopped;
     }
 
-    // Header row — three big square icon buttons above the deck. Font
-    // Awesome glyphs pumped up via a temporary window font scale so the
-    // icons look chunky and centred inside the 56×56 squares.
-    constexpr float kActionBtnSize = 56.0f;
-    constexpr float kActionIconScale = 2.0f;
+    // Header row — six compact icon buttons above the deck. Font
+    // Awesome glyphs scaled up just enough to read clearly inside the
+    // 38×38 squares; a narrower header row leaves more vertical room
+    // for the chassis / piano keys below.
+    constexpr float kActionBtnSize = 38.0f;
+    constexpr float kActionIconScale = 1.45f;
     const ImVec2 actionSize(kActionBtnSize, kActionBtnSize);
     ImGui::SetWindowFontScale(kActionIconScale);
     if (ImGui::Button(ICON_FA_FOLDER_OPEN "##DeckLoad", actionSize)) {
@@ -468,7 +469,23 @@ CassetteDeck_ImGui::render(const char* title,
     // Counter bar content: slim line badge, counter window, tiny reset button.
     drawSlimLineBadge(dl, p0, s);
     bool counterResetClicked = false;
-    drawCounter(dl, p0, s, "##CounterReset", counterResetClicked, armedWaiting);
+    // Pick the counter-bar lamp mode. Priority: recording > armed >
+    // active reading > off. `armedWaiting` is already pulse-mode-gated
+    // above; `playbackActive` means the ACI ROM has polled $C081 at
+    // least once and pulses are flowing through the tape head into
+    // memory — that's the "DATA" regime the user asked to see.
+    LampMode lampMode = LampMode::Off;
+    if (transport_ == Transport::Recording && !paused_) {
+        lampMode = LampMode::Rec;
+    } else if (armedWaiting) {
+        lampMode = LampMode::Armed;
+    } else if (snap.cassettePlaybackActive
+               && snap.cassetteLoadedTape
+               && !snap.cassetteAudioStreamMode
+               && !paused_) {
+        lampMode = LampMode::Data;
+    }
+    drawCounter(dl, p0, s, "##CounterReset", counterResetClicked, lampMode);
     if (counterResetClicked) {
         counter_ = 0;
         counterAccum_ = 0.0;
@@ -587,7 +604,7 @@ void CassetteDeck_ImGui::drawSlimLineBadge(ImDrawList* dl, ImVec2 p0, float s) c
 
 void CassetteDeck_ImGui::drawCounter(ImDrawList* dl, ImVec2 p0, float s,
                                      const char* resetId, bool& resetClicked,
-                                     bool armedWaiting)
+                                     LampMode lamp)
 {
     // "COUNTER" label to the left of the window (aligned on the window's
     // vertical centre).
@@ -641,36 +658,57 @@ void CassetteDeck_ImGui::drawCounter(ImDrawList* dl, ImVec2 p0, float s,
     dl->AddRect(bp0, bp1, IM_COL32(20,20,22,255), S(s, 1.5f), 0, 1.0f);
     if (hov) ImGui::SetTooltip("Reset tape counter");
 
-    // REC / CUE LED — small round lamp just right of the reset button.
-    // Three states:
-    //   Recording  → solid red with glow (mechanical "recording" indicator)
-    //   Armed      → pulsing amber; the tape is locked and ready, waiting
-    //                for the Apple-1's ACI ROM (started by `C100R`) to poll
-    //                $C081. Signals "prépared lock, about to trigger".
-    //   Otherwise  → dim burgundy (off state)
-    // The label flips REC -> CUE while armed so the pulse reads as "ready
-    // / waiting", not "about to record".
+    // Transport lamp — four states:
+    //   Rec    → solid red  (recording to tape)
+    //   Armed  → amber pulse (PLAY pressed, waiting for the ACI ROM to
+    //            poll $C081 — the "ARMED — waiting for C100R" banner)
+    //   Data   → solid green (ACI is actively consuming pulses; bytes
+    //            are being clocked into RAM — the indicator the user
+    //            wants to watch during a load)
+    //   Off    → dim burgundy (stopped / EOF / paused)
+    // Label flips REC/CUE/DATA/REC to match the mode.
     const Rect lr = kRecLedR;
     const ImVec2 lc = P(p0, s, (lr.x0 + lr.x1) * 0.5f, (lr.y0 + lr.y1) * 0.5f);
     const float lrad = S(s, (lr.y1 - lr.y0) * 0.45f);
-    const bool recActive = (transport_ == Transport::Recording && !paused_);
-    if (recActive) {
-        // Soft outer bloom before the core dot for a glow feel.
-        dl->AddCircleFilled(lc, lrad * 1.6f, IM_COL32(232, 56, 44, 40), 22);
-        dl->AddCircleFilled(lc, lrad,        IM_COL32(232, 56, 44, 255), 22);
-    } else if (armedWaiting) {
-        const float pulse = 0.55f + 0.45f * std::sin(static_cast<float>(wallClock_) * 7.5f);
-        const ImU32 coreA = (ImU32)std::clamp((int)(255.0f * pulse), 60, 255);
-        const ImU32 bloomA = (ImU32)std::clamp((int)(60.0f * pulse), 12, 60);
-        dl->AddCircleFilled(lc, lrad * 1.6f, IM_COL32(240, 178, 32, bloomA), 22);
-        dl->AddCircleFilled(lc, lrad,        IM_COL32(240, 178, 32, coreA), 22);
-    } else {
-        dl->AddCircleFilled(lc, lrad, IM_COL32(48, 14, 12, 255), 18);
+    const char* lampLabel = "REC";
+    ImU32 lampOutline = IM_COL32(8, 8, 10, 255);
+    switch (lamp) {
+        case LampMode::Rec: {
+            dl->AddCircleFilled(lc, lrad * 1.6f, IM_COL32(232, 56, 44, 40), 22);
+            dl->AddCircleFilled(lc, lrad,        IM_COL32(232, 56, 44, 255), 22);
+            lampLabel = "REC";
+            break;
+        }
+        case LampMode::Armed: {
+            const float pulse = 0.55f + 0.45f * std::sin(static_cast<float>(wallClock_) * 7.5f);
+            const ImU32 coreA  = (ImU32)std::clamp((int)(255.0f * pulse), 60, 255);
+            const ImU32 bloomA = (ImU32)std::clamp((int)(60.0f * pulse), 12, 60);
+            dl->AddCircleFilled(lc, lrad * 1.6f, IM_COL32(240, 178, 32, bloomA), 22);
+            dl->AddCircleFilled(lc, lrad,        IM_COL32(240, 178, 32, coreA), 22);
+            lampLabel = "CUE";
+            break;
+        }
+        case LampMode::Data: {
+            // Gentle breathing so the green reads as "data flowing"
+            // rather than a frozen indicator. Alpha stays high enough to
+            // be obvious even at a glance.
+            const float pulse = 0.70f + 0.30f * std::sin(static_cast<float>(wallClock_) * 14.0f);
+            const ImU32 coreA  = (ImU32)std::clamp((int)(255.0f * pulse), 150, 255);
+            dl->AddCircleFilled(lc, lrad * 1.6f, IM_COL32(48, 210, 96, 55), 22);
+            dl->AddCircleFilled(lc, lrad,        IM_COL32(48, 210, 96, coreA), 22);
+            lampLabel = "DATA";
+            break;
+        }
+        case LampMode::Off:
+        default:
+            dl->AddCircleFilled(lc, lrad, IM_COL32(48, 14, 12, 255), 18);
+            lampLabel = "REC";
+            break;
     }
-    dl->AddCircle(lc, lrad, IM_COL32(8, 8, 10, 255), 22, std::max(1.0f, S(s, 0.8f)));
+    dl->AddCircle(lc, lrad, lampOutline, 22, std::max(1.0f, S(s, 0.8f)));
     drawCenteredText(dl, p0, s,
-                     Rect{ lr.x0 - 2.0f, lr.y1 + 0.5f, lr.x1 + 2.0f, lr.y1 + 10.5f },
-                     8.5f, kLabelTextDim, armedWaiting ? "CUE" : "REC");
+                     Rect{ lr.x0 - 4.0f, lr.y1 + 0.5f, lr.x1 + 4.0f, lr.y1 + 10.5f },
+                     8.5f, kLabelTextDim, lampLabel);
 }
 
 void CassetteDeck_ImGui::drawCassetteWindow(ImDrawList* dl, ImVec2 p0, float s,
@@ -1065,6 +1103,12 @@ void CassetteDeck_ImGui::advanceCounter(float deltaSeconds,
         case Transport::Playing:
         case Transport::Recording:
             if (paused_) return;
+            // Armed = PLAY pressed but the ACI ROM hasn't polled $C081
+            // yet. In that window the deck is silent and the counter
+            // stays frozen to match the "ARMED — waiting for C100R"
+            // banner. As soon as the first poll arrives, armed → active
+            // and the counter starts ticking on the next frame.
+            if (snap.cassettePlaybackArmed && !snap.cassetteAudioStreamMode) return;
             secPerTick = kCounterPlaySecPerTick;
             break;
         case Transport::Rewinding:

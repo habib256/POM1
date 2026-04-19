@@ -802,12 +802,29 @@ void EmulationController::emulationLoop()
             continue;
         }
 
+        // Faster-than-2× speeds (MAX mode, driven by the UI or --cpu-max)
+        // must bypass the live-audio-lead throttle: the live audio queue
+        // is filled by CPU cycles and drained by the audio callback at
+        // 44.1 kHz wallclock, so any emulation speed above real time
+        // grows the queue faster than it drains and would otherwise park
+        // the emulation thread in the 1 ms sleep below indefinitely —
+        // that's why `--cpu-max` previously behaved like 1×. Instead we
+        // drop live audio altogether in that regime (the user won't hear
+        // useful sound at 60× speed anyway) and keep the CPU running
+        // flat out.
+        const int cpfSnapshot = executionSpeedCyclesPerFrame.load();
+        const bool maxSpeed = cpfSnapshot > POM1_CPU_CYCLES_PER_FRAME_2X_60HZ;
         double queuedAudioSeconds = 0.0;
         {
             std::lock_guard<PriorityMutex> lock(stateMutex);
-            queuedAudioSeconds = memory->getCassetteDevice().getQueuedAudioSeconds();
+            auto& cass = memory->getCassetteDevice();
+            if (maxSpeed) {
+                cass.dropLiveAudio();
+            } else {
+                queuedAudioSeconds = cass.getQueuedAudioSeconds();
+            }
         }
-        if (queuedAudioSeconds > kMaxLiveAudioLeadSeconds) {
+        if (!maxSpeed && queuedAudioSeconds > kMaxLiveAudioLeadSeconds) {
             std::this_thread::sleep_for(std::chrono::milliseconds(1));
             lastTick = clock::now();
             continue;

@@ -362,7 +362,11 @@ void Memory::resetMemory(void)
         mem[i]=0;
     }
     markAllPagesDirty();
-    cassetteDevice->reset();
+    // Apple-1 hard reset — zero only the bits of the ACI that are
+    // electrically tied to the reset line (output flip-flop, CPU cycle
+    // counter). The tape / transport / recording state is mechanical
+    // and must survive a host reset.
+    cassetteDevice->resetApple1Side();
     tms9918->reset();
     // See initMemory() — resetChip() avoids the ringTail race when the
     // SID stays registered as an audio source across hardReset.

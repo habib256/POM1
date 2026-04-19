@@ -222,7 +222,15 @@ void CassetteDevice::setVolume(float v)
 
 void CassetteDevice::resetPlaybackState()
 {
-    playbackArmed = loadedTapeReady && !loadedDurations.empty();
+    // Always leave the deck DISARMED after a playback-state reset. Arming
+    // is the user's responsibility — it must come from an explicit PLAY
+    // (piano key in the UI, or `playTape()` call in tests). Previously
+    // this routine auto-armed whenever `loadedTapeReady && !empty`, which
+    // meant simply inserting a cassette while the ACI was plugged caused
+    // the deck to silently latch into "waiting for C100R" without the user
+    // ever pressing PLAY — surprising behaviour for anyone used to a real
+    // tape deck where loading a cassette just opens the compartment.
+    playbackArmed = false;
     playbackActive = false;
     playbackIndex = 0;
     cyclesUntilInputToggle = 0;
@@ -247,6 +255,11 @@ void CassetteDevice::clearLiveAudioState()
     audioPlaybackSample = 0.0f;
     audioRampInSamplesRemaining = kAudioRampInSamples;
     audioQueue.clear();
+}
+
+void CassetteDevice::dropLiveAudio()
+{
+    clearLiveAudioState();
 }
 
 void CassetteDevice::startSpeakerAtLeader()
@@ -323,6 +336,20 @@ void CassetteDevice::reset()
     playbackPaused.store(false, std::memory_order_release);
     resetPlaybackState();
     stopSpeaker();
+}
+
+void CassetteDevice::resetApple1Side()
+{
+    // Only touch fields that the Apple 1 hardware reset line would
+    // physically clobber: the output flip-flop latched off $C000, and
+    // the CPU-cycle timebase we share with the 6502 core (which the
+    // hard reset also zeroes). Everything else is mechanical state
+    // inside the deck and must survive a host reset — a real tape
+    // doesn't rewind and the capstan doesn't stop just because the
+    // Apple 1 got power-cycled.
+    currentCycle = 0;
+    outputLevel = false;
+    lastOutputToggleCycle = 0;
 }
 
 void CassetteDevice::setPlaybackPaused(bool paused)
@@ -549,9 +576,19 @@ void CassetteDevice::armPlaybackAtStart()
     playbackIndex = 0;
     cyclesUntilInputToggle = 0;
     inputLevel = loadedInitialLevel;
-    playbackActive = loadedTapeReady && !loadedDurations.empty();
+    const bool becameActive = loadedTapeReady && !loadedDurations.empty();
+    playbackActive = becameActive;
     playbackArmed = false;
     clearLiveAudioState();
+    // Start the audible square-wave the moment the armed → active
+    // transition fires (first $C081 poll from the ACI ROM). Up to this
+    // point PLAY has only *declared* the intent to play: the deck is
+    // silent, the counter is frozen, and the fenêtre UI sits under the
+    // pulsing "ARMED — waiting for C100R" banner. That matches the
+    // mental model the user expects — PLAY alone does not make sound.
+    if (becameActive) {
+        startSpeakerAtLeader();
+    }
 }
 
 CassetteDevice::quint8 CassetteDevice::readTapeInput()
@@ -646,16 +683,18 @@ void CassetteDevice::playTape()
     //
     // Stopped-deck rewind (B3): ALWAYS seek back to the leader on PLAY.
     // No mid-tape resume — the ACI READ routine always wants to see the
-    // sync leader first. resetPlaybackState arms, zeroes the index,
-    // stamps lastTapeInputCycle, and clears the REW flags.
+    // sync leader first. resetPlaybackState zeroes the index, stamps
+    // lastTapeInputCycle, clears the REW flags, and leaves the deck
+    // DISARMED — we then explicitly arm it because this path is PLAY.
     //
-    // Speaker path is a separate concern: we start the audible square
-    // wave immediately on PLAY, at wallclock pace, so the deck sounds
-    // like a real cassette player the moment the user hits PLAY — and
-    // stays at real speed regardless of CPU slider position. The ACI
-    // arm-and-wait-for-poll behaviour above is untouched.
+    // Silence-while-armed: the speaker is NOT started here. PLAY only
+    // declares the intent to play; the capstan stays quiet and the
+    // counter stays frozen until the ACI ROM issues its first $C081
+    // poll (the armed → active transition in `armPlaybackAtStart()`).
+    // This keeps PLAY from "launching" playback in a way that contradicts
+    // the ARMED banner.
     resetPlaybackState();
-    startSpeakerAtLeader();
+    playbackArmed = true;
 }
 
 void CassetteDevice::stopTape()

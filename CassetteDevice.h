@@ -32,7 +32,17 @@ public:
     CassetteDevice();
     ~CassetteDevice() override = default;
 
+    /// Full reset of every cassette-side state (loaded tape preserved,
+    /// recording and playback progress WIPED). Called at construction
+    /// only — the Apple 1 hard-reset path uses `resetApple1Side()` so
+    /// the tape doesn't rewind itself when the user resets the computer
+    /// (a real deck keeps playing regardless of the host's power state).
     void reset();
+    /// Reset only the bits of the ACI that are actually wired to the
+    /// Apple 1's hardware reset line: the `$C000` output flip-flop and
+    /// the CPU-cycle timebase. Loaded tape, playback position, recording
+    /// buffer, speaker loop, paused flag and rewinding flag all survive.
+    void resetApple1Side();
     void advanceCycles(int cycles);
 
     quint8 readTapeInput();
@@ -82,6 +92,13 @@ public:
     double getQueuedAudioSeconds() const;
     void setHardwareAccurateLiveAudio(bool enabled);
     void setLiveAudioTimebaseHz(uint32_t hz);
+
+    /// Drop any pending live-audio samples (the queue recording feedback
+    /// for `$C000` toggles). Used by the emulation loop when we're
+    /// running faster than real time — letting the queue grow at 60×
+    /// drain rate would otherwise park the emulation thread in its
+    /// audio-lead throttle and defeat `--cpu-max`.
+    void dropLiveAudio();
 
     /// AudioSource interface — generates cassette audio samples.
     void fillAudioBuffer(float* output, int frameCount) override;

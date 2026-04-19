@@ -88,9 +88,15 @@ private:
 
     void drawChassis      (ImDrawList* dl, ImVec2 p0, float s) const;
     void drawSlimLineBadge(ImDrawList* dl, ImVec2 p0, float s) const;
+    /// Three-state transport lamp (the round LED in the counter bar, on
+    /// the left of the COUNTER window). Off when the deck is idle; lit
+    /// amber-pulsed while armed waiting for C100R (labelled `CUE`); lit
+    /// green-solid while the ACI is actively consuming pulses (labelled
+    /// `DATA`); lit red-solid while recording (labelled `REC`).
+    enum class LampMode { Off, Armed, Data, Rec };
     void drawCounter      (ImDrawList* dl, ImVec2 p0, float s,
                            const char* resetId, bool& resetClicked,
-                           bool armedWaiting);
+                           LampMode lamp);
     void drawCassetteWindow(ImDrawList* dl, ImVec2 p0, float s,
                             const EmulationSnapshot& snap) const;
     void drawBrandStrip   (ImDrawList* dl, ImVec2 p0, float s) const;

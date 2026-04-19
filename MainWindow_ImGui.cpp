@@ -421,7 +421,11 @@ void MainWindow_ImGui::hardReset()
 {
     emulation->hardReset();
     if (screen) screen->resetDisplay(); // replay shift-register power-on pattern
-    cassetteDeck.reset();
+    // The cassette deck is an external peripheral — a hard reset of the
+    // Apple 1 does not touch its transport state, counter, volume, loaded
+    // tape, or in-flight recording. Matches how a real tape player would
+    // keep playing / staying at its position while you power-cycle the
+    // computer it's plugged into.
     loadedPrograms.clear();
     loadedRoms.clear();
     loadedRoms.push_back({"Integer BASIC", 0xE000, 0xEFFF});
