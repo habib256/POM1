@@ -353,8 +353,14 @@ CassetteDeck_ImGui::render(const char* title,
     // volume. CassetteDevice has no dedicated mute flag; we just push 0 and
     // remember the level so unmuting restores it. When engaged, the button
     // is drawn in red to signal "silenced".
+    //
+    // Snapshot the muted state BEFORE the button call so the pop matches
+    // the push: a click inside Button() flips `muted_`, so reading it
+    // again after Button() would unbalance Push/Pop and trigger ImGui
+    // assertion spam "Calling PopStyleColor() too many times".
     ImGui::SameLine();
-    if (muted_) {
+    const bool muteStylePushed = muted_;
+    if (muteStylePushed) {
         ImGui::PushStyleColor(ImGuiCol_Button,
                               (ImVec4)ImColor(0.75f, 0.18f, 0.18f, 1.0f));
         ImGui::PushStyleColor(ImGuiCol_ButtonHovered,
@@ -381,7 +387,7 @@ CassetteDeck_ImGui::render(const char* title,
         }
     }
     ImGui::SetWindowFontScale(1.0f);
-    if (muted_) ImGui::PopStyleColor(3);
+    if (muteStylePushed) ImGui::PopStyleColor(3);
     if (ImGui::IsItemHovered())
         ImGui::SetTooltip(muted_ ? "Unmute cassette" : "Mute cassette");
 

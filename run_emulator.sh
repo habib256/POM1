@@ -53,11 +53,20 @@ copy_rom() {
 copy_rom "basic.rom"        && roms_found=$((roms_found + 1))
 copy_rom "krusader-1.3.rom" && roms_found=$((roms_found + 1))
 copy_rom "WozMonitor.rom"   && roms_found=$((roms_found + 1))
+# POM1's ACI.rom carries a bit-7-aware patch (EOR #$B0 at $C148 instead
+# of the canonical EOR #$30) — $D010 reads return the char with bit 7
+# latched, so the hex parser has to absorb that bit. A stale canonical
+# ACI.rom in build/ would silently restart the ACI parser at $C100 on
+# every input char (symptom: `*` prompt returns after any `<from>.<to>R`
+# command, tape read never starts). Always sync from roms/ to prevent
+# the stale-copy trap.
+copy_rom "ACI.rom"          && roms_found=$((roms_found + 1))
 copy_rom "charmap.rom" optional
 copy_rom "sdcard.rom" optional
 copy_rom "applesoft-lite-cffa1.rom" optional
 copy_rom "applesoft-lite-microsd.rom" optional
 copy_rom "cffa1.rom" optional
+copy_rom "jukebox.rom" optional
 
 echo "$roms_found/3 required ROM(s) found"
 echo ""
