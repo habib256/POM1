@@ -45,6 +45,23 @@ MainWindow_ImGui::MainWindow_ImGui()
     setStatusMessage("Ready", 0.0f);
 }
 
+void MainWindow_ImGui::evictMemoryMapRegionsForJukeBox()
+{
+    constexpr quint16 kWinLo = 0x4000;
+    constexpr quint16 kWinHi = 0xBFFF;
+    auto overlaps = [](quint16 s, quint16 e) {
+        return s <= kWinHi && e >= kWinLo;
+    };
+    loadedRoms.erase(
+        std::remove_if(loadedRoms.begin(), loadedRoms.end(),
+            [&](const LoadedRegion& r) { return overlaps(r.start, r.end); }),
+        loadedRoms.end());
+    loadedPrograms.erase(
+        std::remove_if(loadedPrograms.begin(), loadedPrograms.end(),
+            [&](const LoadedRegion& r) { return overlaps(r.start, r.end); }),
+        loadedPrograms.end());
+}
+
 MainWindow_ImGui::~MainWindow_ImGui()
 {
     // --save-tape: flush the deck's capture BEFORE destroyPom1 tears the
@@ -103,6 +120,13 @@ void MainWindow_ImGui::destroyPom1()
         aboutPhotoHeight = 0;
     }
     aboutPhotoLoadTried = false;
+    if (apple50LogoTexture) {
+        glDeleteTextures(1, &apple50LogoTexture);
+        apple50LogoTexture = 0;
+        apple50LogoWidth = 0;
+        apple50LogoHeight = 0;
+    }
+    apple50LogoLoadTried = false;
 }
 
 void MainWindow_ImGui::render()
@@ -124,18 +148,20 @@ void MainWindow_ImGui::render()
         if (--pendingCardEnableFrames == 0) {
             if (pendingCassetteAudioActive)  emulation->activateCassetteAudioSource();
             if (pendingAciEnable)            emulation->setACIEnabled(true);
-            // --tape: preload the cassette AFTER the ACI plug-in above, not
-            // before. loadTape() checks CassetteDevice::aciActive to pick the
-            // pulse path vs the audio-stream path — if --tape ran in first-
-            // frame (before this deferred enable), aciActive was still false,
-            // the file fell into audio-stream mode (loadedDurations stayed
-            // empty, loadedTapeReady got set to true), and the ACI ROM's
-            // READ loop spun forever polling a silent tape input. Doing it
-            // here keeps the card-deferral invariant intact for the ACI too.
-            if (pendingAciEnable && !initialTapePath.empty()) {
+            // Preload the cassette AFTER the ACI plug-in above, not before.
+            // loadTape() checks CassetteDevice::aciActive to pick the pulse
+            // path (ACI plugged → program tape) vs the audio-stream path
+            // (ACI unplugged → raw playback). Running this before the
+            // deferred ACI enable would lock every preload into audio-
+            // stream mode regardless of preset. No longer gated on
+            // pendingAciEnable: audio-stream mode is a first-class path
+            // now, and the default bundled WOZ_talk.mp3 needs to load
+            // even on ACI-less presets. --tape auto-plays as before;
+            // the default bundled tape just loads (user-driven Play).
+            if (!initialTapePath.empty()) {
                 std::string err;
                 if (emulation->loadTape(initialTapePath, err)) {
-                    emulation->playTape();
+                    if (initialTapeAutoPlay) emulation->playTape();
                     pom1::log().info("POM1",
                         std::string("Preloaded cassette: ") + initialTapePath);
                 } else {
@@ -155,6 +181,7 @@ void MainWindow_ImGui::render()
             if (pendingJukeBoxEnable) {
                 // Jumper has to be set BEFORE enabling the card — setJukeBoxEnabled
                 // enables exactly the bus window that matches the jumper at plug time.
+                evictMemoryMapRegionsForJukeBox();
                 emulation->setJukeBoxJumper(pendingJukeBoxJumper);
                 emulation->setJukeBoxEnabled(true);
             }

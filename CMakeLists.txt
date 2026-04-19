@@ -211,6 +211,9 @@ if(EMSCRIPTEN)
         # Only preload cfcard.po in the WASM bundle — the other .po images in
         # cfcard/ are desktop-only extras (would bloat the data bundle by >140 MB).
         "--preload-file ${PRELOAD_DIR}/cfcard/cfcard.po@cfcard/cfcard.po"
+        # Bundled demo cassette (Woz talking) — auto-loads into the cassette
+        # deck so the WASM build has something to play out of the box.
+        "--preload-file ${PRELOAD_DIR}/cassettes/bundled@cassettes/bundled"
         "--shell-file ${SHELL_FILE}"
         "-s EXPORTED_FUNCTIONS=[${POM1_MAIN_EXPORT}_pom1_fillAudioBuffer,_malloc,_free]"
         "-s EXPORTED_RUNTIME_METHODS=['ccall','HEAPF32']"

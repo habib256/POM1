@@ -264,6 +264,10 @@ private :
     // Memory itself tab
     std::vector<quint8> mem;
 
+    // Copy Juke-Box EEPROM into mem[] for the active ROM window (and clear
+    // $4000-$7FFF in RAM32/ROM16 mode) so the flat array matches the bus.
+    void applyJukeBoxFlatMemoryMirror();
+
     // Page-level dirty bitmap (256 pages × 256 bytes = 64 KB). memWrite
     // sets one bit; bulk loaders mark ranges via markPagesDirty(). Consumed
     // by SnapshotPublisher, which copies only the set pages and resets the

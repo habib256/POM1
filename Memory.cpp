@@ -17,6 +17,7 @@
 // Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 #include <algorithm>
+#include <cstring>
 #include <filesystem>
 #include <fstream>
 #include <sstream>
@@ -1029,6 +1030,23 @@ int Memory::loadCFFA1Rom()
     return ret;
 }
 
+void Memory::applyJukeBoxFlatMemoryMirror()
+{
+    if (!jukeBoxEnabled) return;
+    const uint8_t* rom = jukeBox->getRomPointer();
+    if (jukeBox->getJumper() == JukeBox::Jumper::RAM16_ROM32) {
+        std::memcpy(mem.data() + 0x4000, rom, 0x8000);
+        markPagesDirty(0x4000, 0x8000);
+    } else {
+        // RAM32/ROM16: EEPROM only maps at $8000-$BFFF; clear $4000-$7FFF so
+        // stale expansion-ROM images (e.g. Applesoft at $6000) do not linger
+        // in the RAM half of the address space.
+        std::memset(mem.data() + 0x4000, 0, 0x4000);
+        std::memcpy(mem.data() + 0x8000, rom + 0x4000, 0x4000);
+        markPagesDirty(0x4000, 0x8000);
+    }
+}
+
 void Memory::setJukeBoxEnabled(bool b)
 {
     if (b == jukeBoxEnabled) return;
@@ -1045,6 +1063,7 @@ void Memory::setJukeBoxEnabled(bool b)
         const bool use32 = (jukeBox->getJumper() == JukeBox::Jumper::RAM16_ROM32);
         bus.setEnabled(jukeBox32BusHandle, use32);
         bus.setEnabled(jukeBox16BusHandle, !use32);
+        applyJukeBoxFlatMemoryMirror();
     } else {
         bus.setEnabled(jukeBox32BusHandle, false);
         bus.setEnabled(jukeBox16BusHandle, false);
@@ -1059,6 +1078,7 @@ void Memory::setJukeBoxJumper(JukeBox::Jumper j)
     const bool use32 = (j == JukeBox::Jumper::RAM16_ROM32);
     bus.setEnabled(jukeBox32BusHandle, use32);
     bus.setEnabled(jukeBox16BusHandle, !use32);
+    applyJukeBoxFlatMemoryMirror();
 }
 
 void Memory::setJukeBoxWritable(bool w)
@@ -1078,6 +1098,8 @@ int Memory::loadJukeBoxRom(void)
     for (const char* p : candidates) {
         std::string error;
         if (jukeBox->loadRomFile(p, error)) {
+            if (jukeBoxEnabled)
+                applyJukeBoxFlatMemoryMirror();
             return 0;
         }
     }

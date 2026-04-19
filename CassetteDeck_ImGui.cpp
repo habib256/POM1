@@ -612,22 +612,64 @@ void CassetteDeck_ImGui::drawCassetteWindow(ImDrawList* dl, ImVec2 p0, float s,
         dl->AddRectFilled(la2, lb2, IM_COL32(244, 242, 232, 255), S(s, 2.0f));
         dl->AddRect(la2, lb2, IM_COL32(150, 148, 136, 255), S(s, 2.0f), 0, 1.0f);
 
+        // Optional artwork on the right (Apple 50th Anniversary logo).
+        // Painted first so text below draws above if regions overlap, and
+        // so we can carve out a text-safe rectangle by shrinking labelR.x1.
+        float textRightLimit = labelR.x1 - 4.0f;
+        if (labelLogoTex_ && labelLogoW_ > 0 && labelLogoH_ > 0) {
+            const float logoPad = 4.0f;
+            const float logoH = (labelR.y1 - labelR.y0) - 2.0f * logoPad;
+            const float logoW = logoH *
+                (static_cast<float>(labelLogoW_) / static_cast<float>(labelLogoH_));
+            const Rect logoR {
+                labelR.x1 - logoPad - logoW, labelR.y0 + logoPad,
+                labelR.x1 - logoPad,         labelR.y1 - logoPad
+            };
+            dl->AddImage(labelLogoTex_,
+                         P(p0, s, logoR.x0, logoR.y0),
+                         P(p0, s, logoR.x1, logoR.y1));
+            textRightLimit = logoR.x0 - 6.0f;
+        }
+
         // Filename (tape title) — extract basename from the full path.
+        // Truncate to fit in the text-safe width (accounts for logo space).
         std::string name = snap.cassetteLoadedTapePath;
         const size_t slash = name.find_last_of("/\\");
         if (slash != std::string::npos) name = name.substr(slash + 1);
+        const float textAvail = textRightLimit - (labelR.x0 + 4.0f);
+        // Rough glyph width at 22 px ≈ 11 px per char with the default font.
+        const size_t maxChars = std::max<size_t>(6, static_cast<size_t>(textAvail / 11.0f));
         // ASCII-only truncation marker — ImGui's default font has no glyph
         // for U+2026 (…) and renders it as "?", so we use three ASCII dots.
-        if (name.size() > 24) name = name.substr(0, 23) + "...";
+        if (name.size() > maxChars) name = name.substr(0, maxChars - 3) + "...";
         drawText(dl, p0, s, labelR.x0 + 4.0f, labelR.y0 + 4.0f, 22.0f,
                  IM_COL32(40, 40, 44, 255), name.c_str());
 
-        // Transition count — a stand-in for Phase 2 metadata (LOAD/RUN).
+        // Mode line + mode-specific detail (transitions for pulse-program
+        // tapes, duration for audio-stream tapes). Makes it obvious which
+        // of the deck's two playback paths is driving the inserted tape.
         char detail[96];
-        std::snprintf(detail, sizeof(detail), "transitions: %zu",
-                      snap.cassetteLoadedTransitionCount);
-        drawText(dl, p0, s, labelR.x0 + 4.0f, labelR.y0 + 38.0f, 17.0f,
-                 IM_COL32(96, 96, 100, 255), detail);
+        if (snap.cassetteAudioStreamMode) {
+            drawText(dl, p0, s, labelR.x0 + 4.0f, labelR.y0 + 32.0f, 13.0f,
+                     IM_COL32(50, 120, 160, 255), "AUDIO STREAM");
+            const double total = snap.cassettePlaybackTotalSeconds;
+            if (total > 0.0) {
+                std::snprintf(detail, sizeof(detail), "%d:%02d",
+                              static_cast<int>(total) / 60,
+                              static_cast<int>(total) % 60);
+            } else {
+                std::snprintf(detail, sizeof(detail), "streaming");
+            }
+            drawText(dl, p0, s, labelR.x0 + 4.0f, labelR.y0 + 50.0f, 15.0f,
+                     IM_COL32(96, 96, 100, 255), detail);
+        } else {
+            drawText(dl, p0, s, labelR.x0 + 4.0f, labelR.y0 + 32.0f, 13.0f,
+                     IM_COL32(170, 110, 30, 255), "PROGRAM TAPE");
+            std::snprintf(detail, sizeof(detail), "%zu transitions",
+                          snap.cassetteLoadedTransitionCount);
+            drawText(dl, p0, s, labelR.x0 + 4.0f, labelR.y0 + 50.0f, 15.0f,
+                     IM_COL32(96, 96, 100, 255), detail);
+        }
 
         // Two hubs (left and right) — static for Phase 1. Phase 2 rotates them.
         const float hubY = r.y0 + (r.y1 - r.y0) * 0.68f;

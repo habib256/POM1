@@ -101,8 +101,11 @@ public:
     /// streaming path that plays the file as-is (mp3/ogg/flac/wav) with no
     /// length or pulse-extraction limit — the cassette becomes a simple
     /// audio player. The mode is latched at load time; toggling ACI
-    /// afterwards does not re-mode an already-loaded tape.
-    void setAciActive(bool active) { aciActive = active; }
+    /// afterwards does not re-mode an already-loaded tape. Transitioning
+    /// from unplugged → plugged while a stream-mode tape is loaded evicts
+    /// it (prevents the ACI ROM from polling $C081 forever against a flat
+    /// input that carries no transitions).
+    void setAciActive(bool active);
 
     size_t getLoadedTransitionCount() const {
         return audioStreamMode ? static_cast<size_t>(audioStreamTotalFrames) : loadedDurations.size();

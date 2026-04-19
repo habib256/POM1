@@ -49,6 +49,55 @@ namespace {
 using namespace pom1::mainwindow::detail;
 
 static const char kAboutPhotoFile[] = "schlumberger-2-apple-1.jpg";
+static const char kApple50LogoFile[] = "50_Anniv_Apple.png";
+
+/** Generic cwd + exe-relative probe for files expected under pic/. */
+static std::string find_pic_file_path(const char* relBasename)
+{
+#if POM1_IS_WASM
+    return std::string("pic/") + relBasename;
+#else
+    namespace fs = std::filesystem;
+
+    auto try_path = [](const fs::path& p) -> std::string {
+        std::error_code ec;
+        if (fs::is_regular_file(p, ec))
+            return p.string();
+        return {};
+    };
+
+    const std::string rel_paths[] = {
+        std::string("pic/") + relBasename,
+        std::string("../pic/") + relBasename,
+        std::string("../../pic/") + relBasename,
+        std::string("../../../pic/") + relBasename,
+    };
+    for (const std::string& r : rel_paths) {
+        std::string s = try_path(fs::path(r));
+        if (!s.empty())
+            return s;
+    }
+
+#if defined(_WIN32)
+    char buf[MAX_PATH];
+    DWORD n = GetModuleFileNameA(nullptr, buf, MAX_PATH);
+    if (n > 0 && n < MAX_PATH) {
+        fs::path exeDir = fs::path(buf).parent_path();
+        const fs::path next_to_exe[] = {
+            exeDir / "pic" / relBasename,
+            exeDir.parent_path() / "pic" / relBasename,
+            exeDir.parent_path().parent_path() / "pic" / relBasename,
+        };
+        for (const auto& p : next_to_exe) {
+            std::string s = try_path(p);
+            if (!s.empty())
+                return s;
+        }
+    }
+#endif
+    return {};
+#endif
+}
 
 /** Chemin vers la photo About (WASM : bundle pic/ via --preload-file). */
 static std::string find_about_photo_jpeg_path()
@@ -139,6 +188,44 @@ void MainWindow_ImGui::ensureAboutPhotoTexture()
     aboutPhotoTexture = tex;
     aboutPhotoWidth = w;
     aboutPhotoHeight = h;
+}
+
+void MainWindow_ImGui::ensureApple50LogoTexture()
+{
+    if (apple50LogoTexture != 0 || apple50LogoLoadTried)
+        return;
+    apple50LogoLoadTried = true;
+
+    const std::string path = find_pic_file_path(kApple50LogoFile);
+    if (path.empty()) {
+        pom1::log().warn("CassetteDeck",
+            std::string("Apple 50th logo not found (expected pic/") + kApple50LogoFile + ")");
+        return;
+    }
+
+    int w = 0, h = 0, channels = 0;
+    unsigned char* pixels = stbi_load(path.c_str(), &w, &h, &channels, 4);
+    if (!pixels || w <= 0 || h <= 0) {
+        if (pixels) stbi_image_free(pixels);
+        pom1::log().warn("CassetteDeck", "Could not decode Apple 50th logo: " + path);
+        return;
+    }
+
+    GLuint tex = 0;
+    glGenTextures(1, &tex);
+    glBindTexture(GL_TEXTURE_2D, tex);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, w, h, 0, GL_RGBA, GL_UNSIGNED_BYTE, pixels);
+    glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
+    stbi_image_free(pixels);
+
+    apple50LogoTexture = tex;
+    apple50LogoWidth = w;
+    apple50LogoHeight = h;
 }
 
 void MainWindow_ImGui::renderAboutDialog()

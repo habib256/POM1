@@ -183,6 +183,25 @@ int main(int argc, char* argv[])
         }
     }
 
+    // Default bundled cassette: preload cassettes/bundled/WOZ_talk.mp3 when
+    // --tape was not supplied. Probes the same cwd-relative locations as
+    // the in-app file browser (build/ vs repo-root launches). Not auto-
+    // played — the user presses Play when they want Woz to speak.
+    bool initialTapeAutoPlay = !initialTapePath.empty();
+    if (initialTapePath.empty()) {
+        const char* probes[] = {
+            "cassettes/bundled/WOZ_talk.mp3",
+            "../cassettes/bundled/WOZ_talk.mp3",
+            "../../cassettes/bundled/WOZ_talk.mp3",
+        };
+        for (const char* p : probes) {
+            if (std::filesystem::exists(p)) {
+                initialTapePath = p;
+                break;
+            }
+        }
+    }
+
     // Setup GLFW
     glfwSetErrorCallback(glfw_error_callback);
     if (!glfwInit())
@@ -265,8 +284,10 @@ int main(int argc, char* argv[])
         mainWindow.setDefaultPresetIndex(requestedPreset);
     if (terminalCardOverride)
         mainWindow.setTerminalCardOverride(true);
-    if (!initialTapePath.empty())
+    if (!initialTapePath.empty()) {
         mainWindow.setInitialTapePath(initialTapePath);
+        mainWindow.setInitialTapeAutoPlay(initialTapeAutoPlay);
+    }
     if (!saveTapePath.empty())
         mainWindow.setSaveTapePath(saveTapePath);
     if (cpuMaxSpeedOnBoot)

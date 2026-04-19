@@ -41,6 +41,19 @@ void SnapshotPublisher::publish(Memory& mem, const M6502& cpu, bool cpuRunning)
         }
         mem.clearDirtyPages();
     }
+    // Juke-Box reads come from the EEPROM buffer, not mem[]; mirror the
+    // active ROM window into the snapshot every frame so the Memory Map and
+    // hex viewer match the CPU (including after EEPROM writes in RW mode).
+    if (mem.isJukeBoxEnabled()) {
+        const JukeBox& jb = mem.getJukeBox();
+        const uint8_t* rom = jb.getRomPointer();
+        quint8* dst = snapshot.memory.data();
+        if (jb.getJumper() == JukeBox::Jumper::RAM16_ROM32) {
+            std::memcpy(dst + 0x4000, rom, 0x8000);
+        } else {
+            std::memcpy(dst + 0x8000, rom + 0x4000, 0x4000);
+        }
+    }
     snapshot.programCounter = cpu.getProgramCounter();
     snapshot.accumulator    = cpu.getAccumulator();
     snapshot.xRegister      = cpu.getXRegister();

@@ -126,42 +126,50 @@ int main(int argc, char** argv)
     DisplayCapture display;
     memory.setDisplayDevice(&display);
 
-    // ---- B1 regression: loadTape() must refuse when the ACI is unplugged ----
-    // Before the fix, a non-.aci audio file would silently fall through
-    // to loadAudioStream(): loadedTapeReady=true, loadedDurations empty,
-    // audioStreamMode=true. After re-enabling the ACI, the ROM would poll
-    // $C081 forever on a flat input. Assert the loud-failure contract:
-    // returns false, lastError is populated, and the device stays empty.
+    // ---- B1 regression: loadTape() with ACI off enters AUDIO STREAM ----
+    // Contract (post-fix): loading an audio file (wav/ogg/mp3/flac) while
+    // the ACI is unplugged succeeds in audio-stream mode so the cassette
+    // deck acts as a simple audio player. The zombie-state hazard (a
+    // stream-mode tape still loaded when the ACI gets plugged back in
+    // would make the ROM poll $C081 forever on a flat input) is guarded
+    // at the setACIEnabled → setAciActive boundary: plugging the ACI
+    // evicts any stream-mode tape. Verify both halves here.
     //
-    // B1 only applies to ambiguous audio extensions. `.aci` is explicit
-    // pulse data and loadAciTape() runs regardless of aciActive, so we
-    // hardcode cassettes/BASIC.ogg here instead of whatever argv[1] is —
-    // lets the rest of this test take a `.aci` path as input for other
-    // round-trip checks without breaking the B1 gate.
+    // .aci is explicit pulse data and loadAciTape() runs regardless of
+    // aciActive, so we hardcode cassettes/BASIC.ogg instead of whatever
+    // argv[1] is — lets the rest of this test take a `.aci` path as
+    // input for other round-trip checks without breaking the B1 gate.
     {
         CassetteDevice& t = memory.getCassetteDevice();
         assert(!memory.isACIEnabled() && "fresh Memory should have ACI off");
         const std::string b1Path = "cassettes/BASIC.ogg";
-        if (t.loadTape(b1Path)) {
+        if (!t.loadTape(b1Path)) {
             std::fprintf(stderr,
-                "FAIL: loadTape(.ogg) returned true with ACI disabled — "
-                "the silent audio-stream fallback is back.\n");
+                "FAIL: loadTape(.ogg) returned false with ACI off — "
+                "audio-stream fallback is broken: %s\n",
+                t.getLastError().c_str());
             return 1;
         }
-        if (t.getLastError().empty()) {
+        if (!t.isAudioStreamMode() || !t.hasLoadedTape()) {
             std::fprintf(stderr,
-                "FAIL: loadTape() returned false but lastError is empty. "
-                "The caller needs a diagnosable reason.\n");
+                "FAIL: loadTape(.ogg) succeeded but isAudioStreamMode=%d "
+                "hasLoadedTape=%d — expected true/true.\n",
+                t.isAudioStreamMode() ? 1 : 0,
+                t.hasLoadedTape() ? 1 : 0);
             return 1;
         }
-        if (t.hasLoadedTape()) {
+        std::printf("B1 OK: loadTape entered audio-stream mode with ACI off\n");
+
+        // Zombie-state guard: plugging the ACI must evict the stream tape.
+        memory.setACIEnabled(true);
+        if (t.hasLoadedTape() || t.isAudioStreamMode()) {
             std::fprintf(stderr,
-                "FAIL: loadTape() refused but loadedTapeReady is true — "
-                "zombie state.\n");
+                "FAIL: setACIEnabled(true) did not evict the stream tape — "
+                "ACI ROM would poll $C081 forever on a flat input.\n");
             return 1;
         }
-        std::printf("B1 OK: loadTape refused with ACI off: %s\n",
-                    t.getLastError().c_str());
+        std::printf("B1 OK: setACIEnabled(true) evicted the stream tape\n");
+        memory.setACIEnabled(false);
     }
 
     // Plug the ACI (loads roms/ACI.rom at $C100 + enables $C000/$C081 bus

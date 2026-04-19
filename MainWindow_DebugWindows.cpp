@@ -257,28 +257,6 @@ void MainWindow_ImGui::renderMemoryMapWindow()
     if (wifiModemEnabled)
         regions.push_back({ 0xB000, 0xB003, IM_COL32(0, 200, 200, 255), "ACIA 65C51 I/O" });
 
-    // P-LAB Juke-Box: the EEPROM is split into three logical zones, shown in
-    // graded shades of violet so they read as "same card" but distinguishable.
-    //   - deep violet   : user ROM programs (the bulk, $4000 or $8000 .. $BBFF)
-    //   - medium violet : PAT directory ($BC00-$BCFF) -- the 15-byte entries
-    //                     patched by the EPROM creator scripts; the Program
-    //                     Manager reads them to build the D)IR listing.
-    //   - bright violet : Program Manager firmware ($BD00-$BFFF, starts with
-    //                     signature $A5).
-    if (jukeBoxEnabled) {
-        const ImU32 jbRomPrograms = IM_COL32(120,  80, 180, 255); // deep violet
-        const ImU32 jbRomPat      = IM_COL32(180, 130, 220, 255); // medium violet
-        const ImU32 jbProgMgr     = IM_COL32(230, 180, 255, 255); // bright lavender
-        const quint16 romStart = (jukeBoxJumper == JukeBox::Jumper::RAM16_ROM32)
-                                 ? 0x4000 : 0x8000;
-        const char* programsLabel = (jukeBoxJumper == JukeBox::Jumper::RAM16_ROM32)
-            ? "Juke-Box ROM - programs (32 kB)"
-            : "Juke-Box ROM - programs (16 kB)";
-        regions.push_back({ romStart, 0xBBFF, jbRomPrograms, programsLabel });
-        regions.push_back({ 0xBC00,   0xBCFF, jbRomPat,      "Juke-Box PAT (directory)" });
-        regions.push_back({ 0xBD00,   0xBFFF, jbProgMgr,     "Juke-Box Program Manager" });
-    }
-
     if (aciEnabled) {
         regions.push_back({ 0xC000, 0xC0FF, IM_COL32(255, 140, 80, 255), "ACI I/O" });
         regions.push_back({ 0xC100, 0xC1FF, IM_COL32(255, 190, 80, 255), "ACI ROM" });
@@ -299,6 +277,22 @@ void MainWindow_ImGui::renderMemoryMapWindow()
         snprintf(romLabels[i].data(), 64, "%s", loadedRoms[i].name.c_str());
         regions.push_back({ loadedRoms[i].start, loadedRoms[i].end,
                             IM_COL32(255, 255, 80, 255), romLabels[i].data() });
+    }
+
+    // P-LAB Juke-Box: drawn after preset ROM labels so violet wins on overlap.
+    // EEPROM is split into three logical zones (graded violet shades).
+    if (jukeBoxEnabled) {
+        const ImU32 jbRomPrograms = IM_COL32(120,  80, 180, 255); // deep violet
+        const ImU32 jbRomPat      = IM_COL32(180, 130, 220, 255); // medium violet
+        const ImU32 jbProgMgr     = IM_COL32(230, 180, 255, 255); // bright lavender
+        const quint16 romStart = (jukeBoxJumper == JukeBox::Jumper::RAM16_ROM32)
+                                 ? 0x4000 : 0x8000;
+        const char* programsLabel = (jukeBoxJumper == JukeBox::Jumper::RAM16_ROM32)
+            ? "Juke-Box ROM - programs (32 kB)"
+            : "Juke-Box ROM - programs (16 kB)";
+        regions.push_back({ romStart, 0xBBFF, jbRomPrograms, programsLabel });
+        regions.push_back({ 0xBC00,   0xBCFF, jbRomPat,      "Juke-Box PAT (directory)" });
+        regions.push_back({ 0xBD00,   0xBFFF, jbProgMgr,     "Juke-Box Program Manager" });
     }
 
     // --- Layer 4: loaded programs (top priority) ---

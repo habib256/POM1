@@ -364,6 +364,9 @@ void MainWindow_ImGui::applyMachineConfig(int presetIndex)
         pendingLayout.push_back({p.name, p.pos, p.size});
     }
 
+    if (cfg.jukeBox)
+        evictMemoryMapRegionsForJukeBox();
+
     setStatusMessage(std::string("Preset: ") + cfg.name, 3.0f);
 }
 

@@ -15,7 +15,6 @@
 
 #include <GLFW/glfw3.h>
 
-#include <algorithm>
 #include <cstdio>
 #include <filesystem>
 #include <iomanip>
@@ -156,25 +155,9 @@ void MainWindow_ImGui::renderMenuBar()
                     cffa1Enabled = false;
                     microSDEnabled = false;
                     wifiModemEnabled = false;
-                    // Preserve Applesoft Lite SD at $6000-$7FFF by auto-
-                    // selecting the RAM-32/ROM-16 jumper ($8000-$BFFF window)
-                    // — see the toolbar click handler above for the full
-                    // rationale.
-                    const bool applesoftSDLoaded = std::any_of(
-                        loadedRoms.begin(), loadedRoms.end(),
-                        [](const LoadedRegion& r) {
-                            return r.start == 0x6000 && r.end == 0x7FFF;
-                        });
-                    if (applesoftSDLoaded &&
-                        jukeBoxJumper == JukeBox::Jumper::RAM16_ROM32) {
-                        jukeBoxJumper = JukeBox::Jumper::RAM32_ROM16;
-                        jbMsg = "P-LAB Juke-Box plugged (jumper: RAM-32/ROM-16 "
-                                "to preserve Applesoft Lite at $6000-$7FFF) "
-                                "- type BD00R for Program Manager";
-                    } else {
-                        jbMsg = "P-LAB Juke-Box plugged "
-                                "- type BD00R for Program Manager";
-                    }
+                    evictMemoryMapRegionsForJukeBox();
+                    jbMsg = "P-LAB Juke-Box plugged "
+                            "- type BD00R for Program Manager";
                     emulation->setJukeBoxJumper(jukeBoxJumper);
                     showJukeBox = true;
                 } else {
@@ -347,29 +330,9 @@ void MainWindow_ImGui::renderToolbar()
                 cffa1Enabled = false;
                 microSDEnabled = false;
                 wifiModemEnabled = false;
-                // If Applesoft Lite SD is currently loaded at $6000-$7FFF and
-                // the user would plug the Juke-Box in RAM-16/ROM-32 mode, its
-                // $4000-$BFFF window would shadow Applesoft and the user
-                // would silently lose BASIC access. Force RAM-32/ROM-16
-                // instead — its $8000-$BFFF window leaves $6000-$7FFF clear.
-                // The jumper can still be changed later in the Juke-Box
-                // Hardware window if the user wants the full 32 kB ROM
-                // region active.
-                const bool applesoftSDLoaded = std::any_of(
-                    loadedRoms.begin(), loadedRoms.end(),
-                    [](const LoadedRegion& r) {
-                        return r.start == 0x6000 && r.end == 0x7FFF;
-                    });
-                if (applesoftSDLoaded &&
-                    jukeBoxJumper == JukeBox::Jumper::RAM16_ROM32) {
-                    jukeBoxJumper = JukeBox::Jumper::RAM32_ROM16;
-                    jbMsg = "P-LAB Juke-Box plugged (jumper: RAM-32/ROM-16 "
-                            "to preserve Applesoft Lite at $6000-$7FFF) "
-                            "- type BD00R for Program Manager";
-                } else {
-                    jbMsg = "P-LAB Juke-Box plugged "
-                            "- type BD00R for Program Manager";
-                }
+                evictMemoryMapRegionsForJukeBox();
+                jbMsg = "P-LAB Juke-Box plugged "
+                        "- type BD00R for Program Manager";
                 emulation->setJukeBoxJumper(jukeBoxJumper);
                 showJukeBox = true;
             } else {

@@ -569,6 +569,19 @@ void CassetteDevice::ejectTape()
     clearLiveAudioState();
 }
 
+void CassetteDevice::setAciActive(bool active)
+{
+    const bool wasActive = aciActive;
+    aciActive = active;
+    // Plugging the ACI while a stream-mode tape is loaded would leave the
+    // ACI ROM polling $C081 forever (the stream path has no pulse
+    // transitions, so inputLevel stays flat). Eject the tape so the ROM
+    // sees an empty deck and the user can load a proper program tape.
+    if (!wasActive && active && audioStreamMode) {
+        ejectTape();
+    }
+}
+
 void CassetteDevice::clearRecordedTape()
 {
     recordedDurations.clear();
@@ -615,15 +628,16 @@ bool CassetteDevice::loadTape(const std::string& path)
         return loadMiniaudioTape(path);
     }
 
-    // ACI unplugged: refuse rather than silently fall through to audio-
-    // stream mode. The silent downgrade produced a zombie state
-    // (loadedTapeReady=true, loadedDurations empty) that made the ACI ROM
-    // poll $C081 forever after a later setACIEnabled() — the exact bug
-    // the --tape preload deferral was added for. Callers that genuinely
-    // want to play a music file need an explicit audio-stream entry
-    // point; loadTape() is reserved for program tapes.
-    lastError = "Cassette Interface (ACI) is not plugged — plug the ACI "
-                "card before loading a program tape.";
+    // ACI unplugged: audio formats become raw playback through the deck
+    // speaker (AUDIO STREAM mode). The zombie-state bug that motivated
+    // the former refusal is prevented at the setACIEnabled() boundary —
+    // toggling the ACI back on evicts any loaded tape — so entering
+    // audio-stream mode here is safe.
+    if (ext == ".wav" || ext == ".ogg" || ext == ".mp3" || ext == ".flac") {
+        return loadAudioStream(path);
+    }
+
+    lastError = "Unsupported tape extension (expected .aci/.wav/.ogg/.mp3/.flac).";
     return false;
 }
 

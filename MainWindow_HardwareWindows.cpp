@@ -394,6 +394,8 @@ void MainWindow_ImGui::renderJukeBoxWindow()
         if (ImGui::RadioButton("32 kB RAM / 16 kB ROM  ($8000-$BFFF)",
                                &jumperInt, static_cast<int>(JukeBox::Jumper::RAM32_ROM16))) {
             jukeBoxJumper = JukeBox::Jumper::RAM32_ROM16;
+            if (jukeBoxEnabled)
+                evictMemoryMapRegionsForJukeBox();
             emulation->setJukeBoxJumper(jukeBoxJumper);
             emulation->setPresetRamKB(32);
             presetRamKB = 32;
@@ -402,6 +404,8 @@ void MainWindow_ImGui::renderJukeBoxWindow()
         if (ImGui::RadioButton("16 kB RAM / 32 kB ROM  ($4000-$BFFF)",
                                &jumperInt, static_cast<int>(JukeBox::Jumper::RAM16_ROM32))) {
             jukeBoxJumper = JukeBox::Jumper::RAM16_ROM32;
+            if (jukeBoxEnabled)
+                evictMemoryMapRegionsForJukeBox();
             emulation->setJukeBoxJumper(jukeBoxJumper);
             emulation->setPresetRamKB(16);
             presetRamKB = 16;

@@ -33,6 +33,7 @@ public:
     // no-ops when empty. Used by --tape / --save-tape for scripted runs
     // where there is no UI to click through the file dialogs.
     void setInitialTapePath(std::string path) { initialTapePath = std::move(path); }
+    void setInitialTapeAutoPlay(bool play)    { initialTapeAutoPlay = play; }
     void setSaveTapePath(std::string path)    { saveTapePath    = std::move(path); }
     // --cpu-max: boot with executionSpeed pinned at 1 000 000 cycles/frame
     // (MAX button in the UI). Scripted runs that drive the ACI through
@@ -90,6 +91,10 @@ private:
     int aboutPhotoWidth = 0;
     int aboutPhotoHeight = 0;
     bool aboutPhotoLoadTried = false;
+    GLuint apple50LogoTexture = 0;
+    int apple50LogoWidth = 0;
+    int apple50LogoHeight = 0;
+    bool apple50LogoLoadTried = false;
     bool showTMS9918 = false;
     bool tms9918Enabled = false;
     GLuint tms9918Texture = 0;
@@ -146,6 +151,7 @@ private:
     // Dialog functions
     void renderAboutDialog();
     void ensureAboutPhotoTexture();
+    void ensureApple50LogoTexture();
     void renderSpecialThanksWindow();
     void renderHardwareReferenceWindow();
     void renderSoftwareReferenceWindow();
@@ -189,6 +195,9 @@ private:
     void updateCpuExecution(float deltaTime);
     
     // Utility functions
+    /// Remove loaded ROM/program regions that overlap the Juke-Box expansion
+    /// window ($4000-$BFFF) so the Memory Map matches the card.
+    void evictMemoryMapRegionsForJukeBox();
     void setStatusMessage(const std::string& message, float duration = 3.0f);
     void updateStatus(float deltaTime);
     std::string disassemble(quint16 pc, int& instrLen);
@@ -228,6 +237,7 @@ private:
     int defaultPresetIndex = -1;          // -1 = last preset (POM1)
     bool terminalCardOverride = false;    // --terminal: enable Terminal Card on top of any preset
     std::string initialTapePath;          // --tape: preload this file after the first-frame preset applies
+    bool initialTapeAutoPlay = false;     // --tape presses PLAY; default bundled cassette only loads, waiting for the user
     std::string saveTapePath;             // --save-tape: dump the deck's recording on clean shutdown
     bool cpuMaxSpeedOnBoot = false;       // --cpu-max: pin executionSpeed to MAX (1e6) on first frame
     // applyMachineConfig() normally triggers emulation->hardReset() to wipe

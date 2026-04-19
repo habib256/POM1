@@ -54,6 +54,16 @@ public:
     /// Reset the deck state (STOP, counter → 000). Call on hard reset.
     void reset();
 
+    /// Optional artwork painted on the right side of the cassette label.
+    /// The owner loads the texture (stb_image → GL) and forwards it here;
+    /// the deck only knows how to blit it. Aspect ratio is preserved.
+    /// Pass `tex=0` to hide the logo.
+    void setLabelLogo(ImTextureID tex, int w, int h) {
+        labelLogoTex_ = tex;
+        labelLogoW_ = w;
+        labelLogoH_ = h;
+    }
+
 private:
     Transport transport_ = Transport::Stopped;
     bool      paused_    = false;            // valid only during Play/Record
@@ -68,6 +78,9 @@ private:
     // volume_ directly and push it to the device through setCassetteVolume.
     float     volume_       = 1.0f;
     bool      volumeSynced_ = false;
+    ImTextureID labelLogoTex_ = (ImTextureID)0;
+    int         labelLogoW_ = 0;
+    int         labelLogoH_ = 0;
 
     void drawChassis      (ImDrawList* dl, ImVec2 p0, float s) const;
     void drawSlimLineBadge(ImDrawList* dl, ImVec2 p0, float s) const;

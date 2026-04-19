@@ -327,7 +327,53 @@ void MainWindow_ImGui::renderLoadTapeDialog()
         if (uiSnapshot.cassetteLoadedTape) {
             ImGui::Spacing();
             ImGui::Text("Inserted tape: %s", uiSnapshot.cassetteLoadedTapePath.c_str());
-            ImGui::Text("Transitions: %zu", uiSnapshot.cassetteLoadedTransitionCount);
+            if (uiSnapshot.cassetteAudioStreamMode) {
+                ImGui::Text("Mode:");
+                ImGui::SameLine();
+                ImGui::TextColored(ImVec4(0.45f, 0.85f, 0.95f, 1.0f),
+                                   "AUDIO STREAM (direct playback)");
+                const double total = uiSnapshot.cassettePlaybackTotalSeconds;
+                if (total > 0.0) {
+                    ImGui::Text("Duration: %d:%02d",
+                                static_cast<int>(total) / 60,
+                                static_cast<int>(total) % 60);
+                } else {
+                    ImGui::Text("Duration: unknown (streaming decoder)");
+                }
+            } else {
+                ImGui::Text("Mode:");
+                ImGui::SameLine();
+                ImGui::TextColored(ImVec4(0.95f, 0.75f, 0.25f, 1.0f),
+                                   "PROGRAM TAPE (ACI pulse decode)");
+                ImGui::Text("Transitions: %zu", uiSnapshot.cassetteLoadedTransitionCount);
+            }
+        }
+
+        ImGui::Spacing();
+        // Preflight: derive which mode the next Load will produce from the
+        // selected file extension + the live ACI plug state. Makes the
+        // two-mode split discoverable before the user commits.
+        {
+            std::string sel = loadTapeDlg.filePath;
+            std::string selExt = std::filesystem::path(sel).extension().string();
+            std::transform(selExt.begin(), selExt.end(), selExt.begin(),
+                           [](unsigned char c) { return std::tolower(c); });
+            const bool isAci   = (selExt == ".aci");
+            const bool isAudio = (selExt == ".wav" || selExt == ".ogg" ||
+                                  selExt == ".mp3" || selExt == ".flac");
+            if (isAci) {
+                ImGui::TextColored(ImVec4(0.95f, 0.75f, 0.25f, 1.0f),
+                    "Next load: PROGRAM TAPE (pulse). Needs ACI plugged to play.");
+            } else if (isAudio && aciEnabled) {
+                ImGui::TextColored(ImVec4(0.95f, 0.75f, 0.25f, 1.0f),
+                    "Next load: PROGRAM TAPE — ACI decodes pulses from audio (30-min cap).");
+            } else if (isAudio && !aciEnabled) {
+                ImGui::TextColored(ImVec4(0.45f, 0.85f, 0.95f, 1.0f),
+                    "Next load: AUDIO STREAM — raw playback through the deck speaker.");
+            } else if (!sel.empty()) {
+                ImGui::TextColored(ImVec4(0.95f, 0.55f, 0.35f, 1.0f),
+                    "Unsupported extension. Expected .aci/.wav/.ogg/.mp3/.flac.");
+            }
         }
 
         ImGui::Spacing();
@@ -363,6 +409,11 @@ void MainWindow_ImGui::renderLoadTapeDialog()
 
 void MainWindow_ImGui::renderCassetteDeckWindow()
 {
+    ensureApple50LogoTexture();
+    cassetteDeck.setLabelLogo(
+        static_cast<ImTextureID>(apple50LogoTexture),
+        apple50LogoWidth, apple50LogoHeight);
+
     const float dt = ImGui::GetIO().DeltaTime;
     auto result = cassetteDeck.render("Apple-1 Cassette Deck",
                                       showCassetteDeck,
@@ -387,12 +438,38 @@ void MainWindow_ImGui::renderCassetteControlWindow()
             ImGui::TextColored(color, "%s", label);
         };
 
+        ImGui::TextWrapped(
+            "Two modes share this deck. PROGRAM TAPE decodes audio into ACI "
+            "pulses at $C081 so the Woz ROM at $C100 can load Apple-1 "
+            "programs — selected automatically when the ACI card is plugged "
+            "at load time. AUDIO STREAM plays the file as raw sound through "
+            "the deck speaker — selected when the ACI is unplugged.");
+        ImGui::Separator();
+        ImGui::Spacing();
+
         ImGui::Text("Reader");
         ImGui::Separator();
 
         if (uiSnapshot.cassetteLoadedTape) {
             ImGui::TextWrapped("Inserted tape: %s", uiSnapshot.cassetteLoadedTapePath.c_str());
-            ImGui::Text("Transitions: %zu", uiSnapshot.cassetteLoadedTransitionCount);
+            ImGui::Text("Mode:");
+            ImGui::SameLine();
+            if (uiSnapshot.cassetteAudioStreamMode) {
+                renderStateBadge("AUDIO STREAM (direct playback)",
+                                 ImVec4(0.45f, 0.85f, 0.95f, 1.0f));
+                const double total = uiSnapshot.cassettePlaybackTotalSeconds;
+                if (total > 0.0) {
+                    ImGui::Text("Duration: %d:%02d",
+                                static_cast<int>(total) / 60,
+                                static_cast<int>(total) % 60);
+                } else {
+                    ImGui::Text("Duration: unknown");
+                }
+            } else {
+                renderStateBadge("PROGRAM TAPE (ACI pulse decode)",
+                                 ImVec4(0.95f, 0.75f, 0.25f, 1.0f));
+                ImGui::Text("Transitions: %zu", uiSnapshot.cassetteLoadedTransitionCount);
+            }
             ImGui::Text("State:");
             ImGui::SameLine();
             renderStateBadge(
@@ -401,6 +478,12 @@ void MainWindow_ImGui::renderCassetteControlWindow()
                                                   : ImVec4(0.35f, 0.85f, 0.35f, 1.0f));
         } else {
             ImGui::Text("Inserted tape: none");
+            ImGui::Text("ACI card:");
+            ImGui::SameLine();
+            renderStateBadge(aciEnabled ? "PLUGGED (next load → program tape)"
+                                        : "UNPLUGGED (next load → audio stream)",
+                             aciEnabled ? ImVec4(0.95f, 0.75f, 0.25f, 1.0f)
+                                        : ImVec4(0.45f, 0.85f, 0.95f, 1.0f));
             ImGui::Text("State:");
             ImGui::SameLine();
             renderStateBadge("EMPTY", ImVec4(0.70f, 0.70f, 0.70f, 1.0f));
