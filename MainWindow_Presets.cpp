@@ -13,7 +13,9 @@
 
 #include "imgui.h"
 
+#include <algorithm>
 #include <string>
+#include <string_view>
 
 namespace pom1::mainwindow::detail {
 
@@ -171,20 +173,40 @@ const MachineConfig kMachinePresets[] = {
     },
     {
         "POM1 Apple-1 Multiplexing Fantasy (2026)",
-        "64 KB RAM, Applesoft Lite, microSD + A1-SID + Wi-Fi modem + Terminal Card. Graphic cards off by default. ACI unplugged so the cassette deck acts as a plain audio player.",
+        "64 KB RAM, Applesoft Lite, microSD + A1-SID + Wi-Fi modem + Terminal Card. Graphic cards off by default. ACI unplugged so the cassette deck acts as a plain audio player. Boots with the Cassette Deck + Welcome panels already open to the right of the Apple 1 screen; your layout customisations are persisted to imgui.ini.",
         false, true, true, false, false, true, true,
         false, false, false, 64, BasicType::ApplesoftLite,
         /*sidSE*/ false,
         /*jukeBox*/ false, JukeBox::Jumper::RAM16_ROM32,
         {
-            {"Apple 1 Screen",        {10,  61},  {0,   0}},
-            {"P-LAB Wi-Fi Modem",     {640, 495}, {340, 260}},
-            {"P-LAB Terminal Card",   {10,  510}, {360, 280}},
+            // Positions / sizes mirror the canonical POM1 imgui.ini so the
+            // first launch (no saved layout) snaps to the shipped screenshot.
+            {"Apple 1 Screen",         {10,  61},  {843, 701}},
+            {"Apple-1 Cassette Deck",  {859, 59},  {371, 527}},
+            {"Welcome",                {858, 592}, {375, 167}},
         }, 3
     },
 };
 
 const int kMachinePresetCount = static_cast<int>(sizeof(kMachinePresets) / sizeof(kMachinePresets[0]));
+
+ImVec2 computePresetLayoutExtent(const MachineConfig& cfg, ImVec2 appleScreenFallbackSize)
+{
+    ImVec2 extent(0.0f, 0.0f);
+    for (int i = 0; i < cfg.layoutCount; ++i) {
+        const auto& p = cfg.layout[i];
+        float w = p.size.x;
+        float h = p.size.y;
+        if ((w <= 0.0f || h <= 0.0f) && std::string_view(p.name) == "Apple 1 Screen") {
+            if (w <= 0.0f) w = appleScreenFallbackSize.x;
+            if (h <= 0.0f) h = appleScreenFallbackSize.y;
+        }
+        if (w <= 0.0f || h <= 0.0f) continue;
+        extent.x = std::max(extent.x, p.pos.x + w);
+        extent.y = std::max(extent.y, p.pos.y + h);
+    }
+    return extent;
+}
 
 } // namespace pom1::mainwindow::detail
 
@@ -198,11 +220,17 @@ using namespace pom1::mainwindow::detail;
 
 void MainWindow_ImGui::applyPendingLayout(const char* windowName)
 {
+    // Use FirstUseEver so preset-driven positions only apply when the
+    // window has no saved state in imgui.ini yet. After the first boot the
+    // user's drags/resizes are persisted by ImGui and take precedence on
+    // subsequent launches (deleting imgui.ini restores the preset layout).
+    // Within a session, the condition also means that re-applying the same
+    // preset leaves the user's customisations intact.
     for (auto it = pendingLayout.begin(); it != pendingLayout.end(); ++it) {
         if (it->name == windowName) {
-            ImGui::SetNextWindowPos(it->pos, ImGuiCond_Always);
+            ImGui::SetNextWindowPos(it->pos, ImGuiCond_FirstUseEver);
             if (it->size.x > 0.0f)
-                ImGui::SetNextWindowSize(it->size, ImGuiCond_Always);
+                ImGui::SetNextWindowSize(it->size, ImGuiCond_FirstUseEver);
             pendingLayout.erase(it);
             return;
         }
@@ -288,6 +316,16 @@ void MainWindow_ImGui::applyMachineConfig(int presetIndex)
     terminalCardEnabled      = cfg.terminalCard;
     showTerminalCard         = false;
 #endif
+
+    // The default POM1 preset (last in the list) boots with the procedural
+    // cassette deck and the Welcome panel already open to match the
+    // canonical screenshot layout. Any other preset starts with these
+    // auxiliary windows closed — the user opens them from the File / Help
+    // menus when wanted. The Welcome panel only "greets" on that preset;
+    // the user can still reopen it from Help > Welcome at any time.
+    const bool isDefaultPreset = (presetIndex == kMachinePresetCount - 1);
+    showCassetteDeck = isDefaultPreset;
+    showWelcome      = isDefaultPreset;
 
     // Stash deferred plug intents. Every card that needs to be on for
     // this preset is queued here; the single pendingCardEnableFrames

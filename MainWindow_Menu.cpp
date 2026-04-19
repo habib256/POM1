@@ -247,6 +247,7 @@ void MainWindow_ImGui::renderMenuBar()
         }
 
         if (ImGui::BeginMenu("Help")) {
+            ImGui::MenuItem("Welcome", nullptr, &showWelcome);
             ImGui::MenuItem("Hardware Reference", nullptr, &showHardwareReference);
             ImGui::MenuItem("Software Reference", nullptr, &showSoftwareReference);
             ImGui::MenuItem("Ports & acknowledgements", nullptr, &showSpecialThanks);

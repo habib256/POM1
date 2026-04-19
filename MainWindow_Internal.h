@@ -124,6 +124,15 @@ struct MachineConfig {
 extern const MachineConfig kMachinePresets[];
 extern const int kMachinePresetCount;
 
+/// Compute the axis-aligned bounding box (in ImGui screen coordinates)
+/// that encloses every sized placement in `cfg.layout`. Entries whose size
+/// is (0, 0) — "no size override" — contribute only their position and a
+/// fallback extent picked by the caller. Returns (0, 0) when the layout
+/// has no sized entries. Used by the first-frame GLFW window sizer so the
+/// OS window grows to contain the preset's panels.
+ImVec2 computePresetLayoutExtent(const MachineConfig& cfg,
+                                 ImVec2 appleScreenFallbackSize);
+
 } // namespace pom1::mainwindow::detail
 
 #endif // MAINWINDOW_INTERNAL_H

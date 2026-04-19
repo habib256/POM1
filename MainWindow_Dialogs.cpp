@@ -326,6 +326,7 @@ void MainWindow_ImGui::renderHardwareReferenceWindow()
     ImGuiIO& io = ImGui::GetIO();
     ImGui::SetNextWindowSize(ImVec2(io.DisplaySize.x * 0.55f, io.DisplaySize.y * 0.78f), ImGuiCond_FirstUseEver);
     ImGui::SetNextWindowPos(ImVec2(io.DisplaySize.x * 0.22f, io.DisplaySize.y * 0.06f), ImGuiCond_FirstUseEver);
+    applyPendingLayout("Hardware Reference");
     if (ImGui::Begin("Hardware Reference", &showHardwareReference)) {
         ImGui::TextWrapped(
             "Apple-1 base hardware and every expansion card POM1 can emulate. "
@@ -572,6 +573,37 @@ static const char kSoftwareReferenceCc65Cmd[] =
     "ld65 -C software/games/apple1_sok_hgr.cfg -o build/sok.bin build/sok.o  # GEN2 HGR variant\n";
 
 } // namespace
+
+void MainWindow_ImGui::renderWelcomeWindow()
+{
+    ImGuiIO& io = ImGui::GetIO();
+    ImGui::SetNextWindowSize(ImVec2(406, 170), ImGuiCond_FirstUseEver);
+    ImGui::SetNextWindowPos(ImVec2(io.DisplaySize.x * 0.5f - 200.0f,
+                                    io.DisplaySize.y * 0.5f - 80.0f),
+                            ImGuiCond_FirstUseEver);
+    applyPendingLayout("Welcome");
+    if (ImGui::Begin("Welcome", &showWelcome)) {
+        ImGui::TextUnformatted("Bienvenue dans POM1 -- Welcome!");
+        ImGui::Separator();
+        ImGui::TextWrapped(
+            "POM1 is a faithful Apple 1 emulator celebrating 50 years of "
+            "Apple (1976-2026). The cassette deck to the right is your tape "
+            "drive: press Play to hear Steve Wozniak speak on the preloaded "
+            "WOZ_talk tape, or load your own .aci / .wav / .mp3 / .ogg file.");
+        ImGui::Spacing();
+        ImGui::TextWrapped(
+            "Type on the Apple 1 keyboard: hit Return after Reset to enter "
+            "the Woz Monitor, then E000R for Applesoft BASIC. File > Load "
+            "Memory pulls programs from software/. Pick another machine "
+            "configuration from the Presets menu.");
+        ImGui::Spacing();
+        ImGui::TextWrapped(
+            "Drag, resize and close any window; your layout is saved to "
+            "imgui.ini and restored on next launch. See Help > Hardware "
+            "Reference / Software Reference for deeper details.");
+    }
+    ImGui::End();
+}
 
 void MainWindow_ImGui::renderSoftwareReferenceWindow()
 {

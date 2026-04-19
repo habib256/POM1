@@ -414,6 +414,7 @@ void MainWindow_ImGui::renderCassetteDeckWindow()
         static_cast<ImTextureID>(apple50LogoTexture),
         apple50LogoWidth, apple50LogoHeight);
 
+    applyPendingLayout("Apple-1 Cassette Deck");
     const float dt = ImGui::GetIO().DeltaTime;
     auto result = cassetteDeck.render("Apple-1 Cassette Deck",
                                       showCassetteDeck,

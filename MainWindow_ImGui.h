@@ -74,6 +74,7 @@ private:
     bool showSpecialThanks = false;
     bool showHardwareReference = false;
     bool showSoftwareReference = false;
+    bool showWelcome = false;  // First-boot greeting panel next to the Apple 1 screen
     bool showScreenConfig = false;
     bool showMemoryConfig = false;
     bool showLoadDialog = false;
@@ -155,6 +156,7 @@ private:
     void renderSpecialThanksWindow();
     void renderHardwareReferenceWindow();
     void renderSoftwareReferenceWindow();
+    void renderWelcomeWindow();
     void renderDebugDialog();
     void renderScreenConfigDialog();
     void renderMemoryConfigDialog();

@@ -37,7 +37,9 @@ or build it natively.
 
 📂 **Program Loader** — Load binary files or Woz Monitor hex dumps (with inline comment support) via a built-in file browser
 
-📼 **Apple Cassette Interface (ACI)** — Woz ACI ROM at `$C100`, real-time audio (desktop & WebAssembly), tape import/export as `.aci` or `.wav` — see [Cassette Interface](#-cassette-interface)
+📼 **Apple Cassette Interface (ACI)** — Woz ACI ROM at `$C100`, real-time audio (desktop & WebAssembly), tape import/export as `.aci` / `.wav` / `.mp3` / `.ogg` — see [Cassette Interface](#-cassette-interface)
+
+🎛️ **Procedural Cassette Deck** — Realistic piano-key transport (PLAY/REC/REW/FF/STOP/PAUSE/EJECT), mechanical counter, spinning hubs, volume knob — drawn entirely with ImDrawList, no texture asset required
 
 🔌 **PIA 6821 Address Aliasing** — `$D0Fx` aliases enable both Pagetable and Briel/Replica 1 BASIC variants
 
@@ -61,7 +63,9 @@ or build it natively.
 
 🖥️ **P-LAB Terminal Card** — [P-LAB Terminal Card](https://p-l4b.github.io/terminal/) — control the Apple 1 from any external terminal via `telnet localhost 6502` — see [Terminal Card](#-p-lab-terminal-card)
 
-🖥️ **Machine Presets** — One-click hardware configurations (Woz, Replica 1, Replica 1 + CFFA1, Uncle Bernie's, P-LAB, POM1) — see [Machine Presets](#-machine-presets)
+💿 **P-LAB Apple-1 Juke-Box** — Claudio Parmigiani's memory-mapped 32 kB EEPROM program library ($4000–$BFFF or $8000–$BFFF per jumper). Program Manager at `BD00R`, Save Program at `B800R` — see [Juke-Box](#-p-lab-apple-1-juke-box)
+
+🖥️ **Machine Presets** — 14 one-click hardware configurations from Bare Apple-1 (July 1976) to POM1 Multiplexing Fantasy — see [Machine Presets](#-machine-presets)
 
 📋 **Clipboard Paste** — Paste code directly into the Apple 1 keyboard
 
@@ -97,13 +101,16 @@ run_emulator.bat                    REM copies ROMs & launches the emulator
 
 ### 🎛️ Command-line flags
 
-`pom1_imgui` accepts a small set of CLI flags that let you pick a machine preset and turn on the Terminal Card right from the shell — useful for headless / scripted runs (e.g. driving the emulator from the Python telnet tests under `tools/test_*_telnet.py`).
+`pom1_imgui` accepts a small set of CLI flags — useful for headless / scripted runs (e.g. the Python telnet tests under `tools/test_*_telnet.py`).
 
 | Flag | Effect |
 |------|--------|
-| `--list-presets` | Print every preset as `index: name` and exit. Handy to find the numeric index before launching. |
-| `--preset <N\|name>` (or `-p`) | Start with the preset selected by numeric index, or by a case-insensitive substring of its name. |
-| `--terminal` | Enable the Terminal Card on top of whatever the preset defines. The card listens on `127.0.0.1:6502`. Desktop-only. |
+| `--list-presets` | Print every preset as `index: name` and exit. |
+| `--preset <N\|name>` (or `-p`) | Start with the preset selected by numeric index, or by a case-insensitive substring of its name (first match wins). |
+| `--terminal` | Enable the Terminal Card on top of whatever the preset defines. Listens on `127.0.0.1:6502`. Desktop-only. |
+| `--tape <path>` | Preload a cassette file after the preset applies and **auto-press Play**. Accepts `.aci`, `.wav`, `.mp3`, `.ogg`. If omitted, `cassettes/bundled/WOZ_talk.mp3` loads silently — press Play to hear Woz. |
+| `--save-tape <path>` | Dump the cassette deck's recording to this path on clean shutdown. `SIGINT` / `SIGTERM` trigger the same path (useful for `kill <pid>` from test scripts). |
+| `--cpu-max` | Pin CPU to 1 000 000 cycles / frame on boot (same as the MAX button). Scripted ACI runs would otherwise wait ~30 s per tape at 1×. |
 
 ```bash
 # List everything that's available
@@ -115,6 +122,11 @@ python3 tools/test_jukebox_telnet.py
 
 # Name-based selection (first case-insensitive substring match wins)
 ./pom1_imgui --preset "A1-SID" --terminal
+
+# Record a tape under script control, then kill cleanly
+./pom1_imgui --preset 2 --terminal --save-tape /tmp/out.wav --cpu-max &
+# ... drive via telnet ...
+kill "$!"                     # triggers --save-tape dump
 ```
 
 ### 🌐 Web Version (WebAssembly)
@@ -202,14 +214,20 @@ vcpkg install glfw3:x64-windows
 
 ## 📼 Cassette Interface
 
-The emulator now includes the **Apple Cassette Interface (ACI)**:
+The emulator includes the **Apple Cassette Interface (ACI)** plus a realistic-looking procedural **Cassette Deck** window.
 
+**ACI loader** (the actual emulation):
 - start the cassette monitor with `C100R`
-- load a tape image from **File > Load Tape**
-- export the last captured cassette signal from **File > Save Tape**
-- use `.aci` for exact pulse timings or `.wav` for an audio waveform
+- load a tape image from **File > Load Tape** — `.aci` (raw pulse-duration capture), `.wav`, `.mp3`, or `.ogg` (the last two are decoded and resampled via miniaudio)
+- export the last captured cassette signal from **File > Save Tape** as `.aci` or `.wav`
+- enables software that relies on the ACI output flip-flop, including sound demos such as **Twinkle Twinkle Little Star**
+- audio works on both desktop (via miniaudio) and in the browser (via Web Audio API)
 
-This enables software that relies on the ACI output flip-flop, including sound demos such as **Twinkle Twinkle Little Star**. Audio works on both desktop (via miniaudio) and in the browser (via Web Audio API).
+**Cassette Deck** (UI on top of the ACI):
+- **Hardware > Cassette Deck** opens the widget — piano-key transport (STOP / PLAY / REC / REW / FF / PAUSE / EJECT) with real interlock semantics (REC alone = REC+PLAY, PAUSE only latches on Play/Rec, STOP releases everything)
+- Mechanical counter 000–999 with rollover, spinning hubs, integrated volume knob, and a brand strip featuring the Apple 50th-anniversary logo
+- Purely visual / control layer — all transitions forward to the ACI layer above, no separate emulation state
+- `--tape <path>` on the command line preloads a tape and auto-presses Play; `--save-tape <path>` dumps the recording on clean shutdown
 
 ---
 
@@ -401,6 +419,20 @@ telnet localhost 6502
 
 ---
 
+## 💿 P-LAB Apple-1 Juke-Box
+
+POM1 emulates Claudio Parmigiani's [P-LAB Apple-1 Juke-Box](https://p-l4b.github.io/): a memory-mapped 32 kB EEPROM (28c256) acting as a program library bundled right into the Apple 1's address space. No cassette, no SD card — cold-plug loading.
+
+- **Memory window**: `$4000–$BFFF` (RAM-16 / ROM-32 jumper) or `$8000–$BFFF` (RAM-32 / ROM-16 jumper) — switch from the Juke-Box window
+- **Program Manager** at `$BD00` — type `BD00R` in Woz Monitor to get the `&` prompt and pick a bundled program
+- **Save Program** at `$B800` — `B800R` writes the program currently in RAM back to the EEPROM (requires the RW jumper)
+- Mutually exclusive with **CFFA1**, **microSD**, **Krusader**, and the **Wi-Fi Modem** — all live inside the Juke-Box address window
+- Integer BASIC at `$E000` is still available so `L<letter>` followed by `B` loads a BASIC program and hands it straight to the interpreter
+- Firmware: `roms/jukebox.rom`. Build your own from the scripts under `doc/JUKEBOX_ROM_CREATOR/` (prefer `build_jukebox_rom.py` — signature byte at offset `$7D00` must be `$A5`)
+- v1 models the single-page 28c256 case. Multi-page 29c020 / 29c040 bank switching (`P0..PF` / `S0..S1`) is not modelled — the MMIO bank-select register address isn't documented on P-LAB's public site yet.
+
+---
+
 ## 🖥️ Machine Presets
 
 **Presets menu** applies a named configuration in one click — enabling the right cards and snapping windows into a sensible default layout. Indices match the `--preset N` CLI flag.
@@ -417,13 +449,13 @@ telnet localhost 6502
 | 7 | **P-LAB TMS9918 Graphic Card** | 32 KB | Integer | — | — | — | — | — | — | ✓ | — | — | — | — | — |
 | 8 | **P-LAB I/O Board & RTC** | 32 KB | Integer | — | — | — | — | — | — | — | ✓ | — | — | — | — |
 | 9 | **P-LAB Wi-Fi Modem BBS** | 32 KB | Integer | — | — | — | — | — | — | — | — | ✓ | — | — | — |
-| 10 | **P-LAB Juke-Box (16 kB RAM)** | 16 KB | via Juke-Box | — | — | — | — | — | — | — | — | — | — | ✓ | — |
+| 10 | **P-LAB Juke-Box (16 kB RAM)** | 16 KB | Integer + Juke-Box | — | — | — | — | — | — | — | — | — | — | ✓ | — |
 | 11 | **P-LAB Multiplexing Fantasy** | 64 KB | Applesoft Lite | — | — | — | ✓ | ✓ | — | ✓ | ✓ | ✓ | ✓ | — | — |
 | 12 | **Uncle Bernie's GEN2 HGR Color (Apr 2026)** | 32 KB | Integer | — | — | — | — | — | — | — | — | — | — | — | ✓ |
 | 13 | **POM1 Multiplexing Fantasy (2026)** | 64 KB | Applesoft Lite | ✓ | — | — | ✓ | ✓ | — | — | — | ✓ | ✓ | — | — |
 
 - **Bare Apple-1 (0)** — pre-ACI July-1976 shipping configuration (no cassette, no expansion — the first ~150 Apple 1 units left the bench this way).
-- **Juke-Box preset (10)** — `BasicType::None`: the Juke-Box EEPROM provides BASIC through the Program Manager at `$BD00`. ACI is dropped since the EEPROM replaces cassette loading.
+- **Juke-Box preset (10)** — Integer BASIC pre-loaded at `$E000`; the Juke-Box EEPROM exposes its program library through the Program Manager at `$BD00` (`BD00R` from Woz Monitor, `&` prompt). ACI dropped — the EEPROM replaces cassette loading. `L<letter>` then `B` loads and runs a BASIC program directly.
 - **POM1 Multiplexing Fantasy (13)** — default preset, shows the POM1 banner on the Apple 1 screen.
 
 Each preset also repositions windows into a default layout: the Apple 1 screen anchors top-left, graphics cards open to the right, and status panels fill the bottom row. You can drag windows freely after applying a preset.
@@ -549,12 +581,16 @@ POM1/
 ├── TerminalCard.cpp/h       # 🖥️ P-LAB Terminal Card (TCP server, serial bridge)
 ├── A1IO_RTC.cpp/h           # ⏰ P-LAB I/O Board & RTC (65C22 VIA + DS3231)
 ├── CFFA1.cpp/h              # 💽 CFFA1 CompactFlash (ROM + ProDOS .po)
+├── JukeBox.cpp/h            # 💿 P-LAB Apple-1 Juke-Box (32 kB EEPROM library)
+├── CassetteDeck_ImGui.cpp/h # 🎛️ Procedural cassette deck widget (piano keys, hubs)
 ├── MemoryViewer_ImGui.cpp/h # 🔍 Hex editor with search & navigation
 ├── third_party/libresidfp/  # 🎹 Vendored cycle-accurate SID engine (GPL-2.0+)
+├── third_party/miniaudio.h  # 🔊 Single-header audio + decoder (MP3/OGG/WAV)
 ├── tools/
-│   └── sid2apple1.py        # 🎛️ C64 PSID/RSID → Apple 1 .bin for A1-SID
+│   ├── sid2apple1.py        # 🎛️ C64 PSID/RSID → Apple 1 .bin for A1-SID
+│   └── test_*_telnet.py     # 🧪 Headless integration tests (driven via --terminal)
 ├── roms/                    # 📀 WozMonitor, BASIC, Applesoft Lite (×2), Krusader,
-│                            #    ACI, SD CARD OS, CFFA1, charmap
+│                            #    ACI, SD CARD OS, CFFA1, Juke-Box, charmap
 ├── sdcard/                  # 💾 Virtual SD card content (host directory)
 ├── cfcard/                  # 💽 CFFA1 ProDOS disk (`cfcard.po`) — bundled for desktop & WASM
 ├── software/                # 📂 Hex dump programs + assembly sources
@@ -591,9 +627,10 @@ POM1/
 | 🔧 **Krusader 1.3** | 8 KB | `$A000` | Ken Wessen's symbolic assembler (Replica 1 preset — reload via **Settings** on other configs) |
 | 💾 **SD CARD OS** | 8 KB | `$8000` | P-LAB microSD Storage Card firmware ([apple1-sdcard](https://github.com/nippur72/apple1-sdcard)) |
 | 💽 **CFFA1 firmware** | ~8 KB | `$9000`–`$AFDF` | CFFA1 card ROM (`cffa1.rom`) |
+| 💿 **Juke-Box EEPROM** | 32 KB | `$4000`–`$BFFF` or `$8000`–`$BFFF` | P-LAB Apple-1 Juke-Box (`jukebox.rom`, signature `$A5` at file offset `$7D00`) |
 | 🔤 **Charmap** | 1 KB | — | Character generator table used by the terminal renderer |
 
-The main firmware ROMs (Woz Monitor, Integer BASIC, ACI) load at startup. **SD CARD OS** loads when the microSD card is enabled; **CFFA1** loads **`cffa1.rom`** and the matching **Applesoft Lite** image when that card is enabled. **Applesoft Lite (microSD)** loads at **`$6000`–`$7FFF`** only with microSD on and CFFA1 off. Krusader loads with the **Replica 1** preset or via **Settings > Reload Krusader** when `$A000` is not used by the microSD VIA.
+The main firmware ROMs (Woz Monitor, Integer BASIC, ACI) load at startup. **SD CARD OS** loads when the microSD card is enabled; **CFFA1** loads **`cffa1.rom`** and the matching **Applesoft Lite** image when that card is enabled. **Applesoft Lite (microSD)** loads at **`$6000`–`$7FFF`** only with microSD on and CFFA1 off. Krusader loads with the **Replica 1** preset or via **Settings > Reload Krusader** when `$A000` is not used by the microSD VIA. **Juke-Box EEPROM** replaces the microSD / CFFA1 / Krusader / Wi-Fi region when the Juke-Box is plugged.
 
 ---
 
@@ -605,8 +642,10 @@ $0100-$01FF   Stack
 $0200-$1FFF   User RAM (programs load at $0280 or $0300)
 $2000-$200F   P-LAB I/O Board & RTC — VIA 65C22 (when card is plugged; overlaps GEN2 HGR page)
 $2000-$3FFF   GEN2 HGR Framebuffer (8 KB — when GEN2 card is plugged)
-$4000-$7FFF   User RAM
+$4000-$BFFF   Juke-Box EEPROM window (32 KB — RAM-16/ROM-32 jumper)
+$4000-$7FFF   User RAM (otherwise)
 $6000-$7FFF   Applesoft Lite ROM (8 KB — P-LAB microSD + Applesoft layout only)
+$8000-$BFFF   Juke-Box EEPROM window (16 KB upper half — RAM-32/ROM-16 jumper)
 $8000-$9FFF   SD CARD OS ROM (8 KB — when P-LAB microSD is plugged)
 $9000-$AFDF   CFFA1 firmware ROM (when CFFA1 is plugged)
 $AFE0-$AFFF   CFFA1 ATA/IDE registers (when CFFA1 is plugged)

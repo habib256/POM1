@@ -324,6 +324,9 @@ CassetteDeck_ImGui::render(const char* title,
     ImGui::BeginGroup();
     ImGui::SetWindowFontScale(kActionIconScale * 0.7f);
     if (ImGui::Button(ICON_FA_VOLUME_HIGH "##DeckVolUp", volSize)) {
+        // Touching the volume slider implicitly unmutes — otherwise the
+        // mute lamp would lie about the current state.
+        muted_  = false;
         volume_ = std::min(kVolMax, volume_ + kVolStep);
         if (emulation) emulation->setCassetteVolume(volume_);
         char msg[64];
@@ -334,6 +337,7 @@ CassetteDeck_ImGui::render(const char* title,
     ImGui::SetWindowFontScale(1.0f);
     if (ImGui::IsItemHovered()) ImGui::SetTooltip("Volume + 10%%");
     if (ImGui::Button(ICON_FA_VOLUME_LOW "##DeckVolDown", volSize)) {
+        muted_  = false;
         volume_ = std::max(0.0f, volume_ - kVolStep);
         if (emulation) emulation->setCassetteVolume(volume_);
         char msg[64];
@@ -343,6 +347,42 @@ CassetteDeck_ImGui::render(const char* title,
     }
     if (ImGui::IsItemHovered()) ImGui::SetTooltip("Volume - 10%%");
     ImGui::EndGroup();
+
+    // MUTE — toggles the cassette audio source between 0 and the pre-mute
+    // volume. CassetteDevice has no dedicated mute flag; we just push 0 and
+    // remember the level so unmuting restores it. When engaged, the button
+    // is drawn in red to signal "silenced".
+    ImGui::SameLine();
+    if (muted_) {
+        ImGui::PushStyleColor(ImGuiCol_Button,
+                              (ImVec4)ImColor(0.75f, 0.18f, 0.18f, 1.0f));
+        ImGui::PushStyleColor(ImGuiCol_ButtonHovered,
+                              (ImVec4)ImColor(0.88f, 0.25f, 0.22f, 1.0f));
+        ImGui::PushStyleColor(ImGuiCol_ButtonActive,
+                              (ImVec4)ImColor(0.62f, 0.14f, 0.14f, 1.0f));
+    }
+    ImGui::SetWindowFontScale(kActionIconScale);
+    if (ImGui::Button(ICON_FA_VOLUME_XMARK "##DeckMute", actionSize)) {
+        if (muted_) {
+            muted_  = false;
+            volume_ = preMuteVolume_;
+            if (emulation) emulation->setCassetteVolume(volume_);
+            char msg[64];
+            std::snprintf(msg, sizeof(msg), "Cassette unmuted (%d%%)",
+                          static_cast<int>(std::round(volume_ * 100.0f)));
+            out.statusMessage = msg;
+        } else {
+            preMuteVolume_ = volume_;
+            muted_  = true;
+            volume_ = 0.0f;
+            if (emulation) emulation->setCassetteVolume(0.0f);
+            out.statusMessage = "Cassette muted";
+        }
+    }
+    ImGui::SetWindowFontScale(1.0f);
+    if (muted_) ImGui::PopStyleColor(3);
+    if (ImGui::IsItemHovered())
+        ImGui::SetTooltip(muted_ ? "Unmute cassette" : "Mute cassette");
 
     // Compact live status line under the buttons.
     char headerInfo[256];
@@ -379,6 +419,27 @@ CassetteDeck_ImGui::render(const char* title,
     ImGui::TextColored(modeColor, "%s", modeLabel);
     ImGui::SetWindowFontScale(1.0f);
 
+    // Armed banner — surfaces the CassetteDevice::playbackArmed flag so the
+    // user knows the tape is loaded, the capstan is "locked", and the Apple-1
+    // still needs to be told to read (typically by typing `C100R` in the Woz
+    // Monitor). As soon as the ACI ROM polls $C081 the flag drops and the
+    // banner disappears. Stream-mode tapes start playing immediately, so the
+    // armed state never lingers there — skip the banner.
+    const bool armedWaiting = snap.cassetteLoadedTape
+                              && snap.cassettePlaybackArmed
+                              && !snap.cassetteAudioStreamMode;
+    if (armedWaiting) {
+        // Pulse alpha at ~1.2 Hz so the banner breathes without being
+        // distracting. wallClock_ is already frame-accumulated in seconds.
+        const float pulse = 0.55f + 0.45f * std::sin(static_cast<float>(wallClock_) * 7.5f);
+        const ImVec4 armedColor(0.95f, 0.28f, 0.22f, pulse);
+        const char* kArmedText = "ARMED - waiting for C100R";
+        const ImVec2 armedSize = ImGui::CalcTextSize(kArmedText);
+        ImGui::SetCursorPosX(ImGui::GetCursorPosX()
+                             + std::max(0.0f, (availW - armedSize.x) * 0.5f));
+        ImGui::TextColored(armedColor, "%s", kArmedText);
+    }
+
     ImGui::Separator();
 
     // Compute scale to fit the remaining content region while preserving
@@ -407,7 +468,7 @@ CassetteDeck_ImGui::render(const char* title,
     // Counter bar content: slim line badge, counter window, tiny reset button.
     drawSlimLineBadge(dl, p0, s);
     bool counterResetClicked = false;
-    drawCounter(dl, p0, s, "##CounterReset", counterResetClicked);
+    drawCounter(dl, p0, s, "##CounterReset", counterResetClicked, armedWaiting);
     if (counterResetClicked) {
         counter_ = 0;
         counterAccum_ = 0.0;
@@ -525,7 +586,8 @@ void CassetteDeck_ImGui::drawSlimLineBadge(ImDrawList* dl, ImVec2 p0, float s) c
 }
 
 void CassetteDeck_ImGui::drawCounter(ImDrawList* dl, ImVec2 p0, float s,
-                                     const char* resetId, bool& resetClicked)
+                                     const char* resetId, bool& resetClicked,
+                                     bool armedWaiting)
 {
     // "COUNTER" label to the left of the window (aligned on the window's
     // vertical centre).
@@ -579,8 +641,15 @@ void CassetteDeck_ImGui::drawCounter(ImDrawList* dl, ImVec2 p0, float s,
     dl->AddRect(bp0, bp1, IM_COL32(20,20,22,255), S(s, 1.5f), 0, 1.0f);
     if (hov) ImGui::SetTooltip("Reset tape counter");
 
-    // REC LED — small round lamp just right of the reset button. Lit red
-    // while transport is Recording, otherwise a dim burgundy (off state).
+    // REC / CUE LED — small round lamp just right of the reset button.
+    // Three states:
+    //   Recording  → solid red with glow (mechanical "recording" indicator)
+    //   Armed      → pulsing amber; the tape is locked and ready, waiting
+    //                for the Apple-1's ACI ROM (started by `C100R`) to poll
+    //                $C081. Signals "prépared lock, about to trigger".
+    //   Otherwise  → dim burgundy (off state)
+    // The label flips REC -> CUE while armed so the pulse reads as "ready
+    // / waiting", not "about to record".
     const Rect lr = kRecLedR;
     const ImVec2 lc = P(p0, s, (lr.x0 + lr.x1) * 0.5f, (lr.y0 + lr.y1) * 0.5f);
     const float lrad = S(s, (lr.y1 - lr.y0) * 0.45f);
@@ -589,16 +658,19 @@ void CassetteDeck_ImGui::drawCounter(ImDrawList* dl, ImVec2 p0, float s,
         // Soft outer bloom before the core dot for a glow feel.
         dl->AddCircleFilled(lc, lrad * 1.6f, IM_COL32(232, 56, 44, 40), 22);
         dl->AddCircleFilled(lc, lrad,        IM_COL32(232, 56, 44, 255), 22);
+    } else if (armedWaiting) {
+        const float pulse = 0.55f + 0.45f * std::sin(static_cast<float>(wallClock_) * 7.5f);
+        const ImU32 coreA = (ImU32)std::clamp((int)(255.0f * pulse), 60, 255);
+        const ImU32 bloomA = (ImU32)std::clamp((int)(60.0f * pulse), 12, 60);
+        dl->AddCircleFilled(lc, lrad * 1.6f, IM_COL32(240, 178, 32, bloomA), 22);
+        dl->AddCircleFilled(lc, lrad,        IM_COL32(240, 178, 32, coreA), 22);
     } else {
         dl->AddCircleFilled(lc, lrad, IM_COL32(48, 14, 12, 255), 18);
     }
     dl->AddCircle(lc, lrad, IM_COL32(8, 8, 10, 255), 22, std::max(1.0f, S(s, 0.8f)));
-    // "REC" label tucked right under the LED (lr.y1 = 290) so the two read
-    // as one unit — previously it sat in the chassis band at y=307 and
-    // read as disconnected from the lamp.
     drawCenteredText(dl, p0, s,
                      Rect{ lr.x0 - 2.0f, lr.y1 + 0.5f, lr.x1 + 2.0f, lr.y1 + 10.5f },
-                     8.5f, kLabelTextDim, "REC");
+                     8.5f, kLabelTextDim, armedWaiting ? "CUE" : "REC");
 }
 
 void CassetteDeck_ImGui::drawCassetteWindow(ImDrawList* dl, ImVec2 p0, float s,

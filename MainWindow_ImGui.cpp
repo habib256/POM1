@@ -240,20 +240,35 @@ void MainWindow_ImGui::render()
         float sw = cell.x * Screen_ImGui::kApple1Columns * screen->scale + kApple1ImGuiWinPadW;
         float sh = cell.y * Screen_ImGui::kApple1Rows * screen->scale + kApple1ImGuiWinPadH;
         const float toolbarBottom = ImGui::GetFrameHeight() + kToolbarBandHeight;
-        ImGui::SetNextWindowPos(ImVec2(10, toolbarBottom + kGapBelowToolbarBeforeApple1));
-        ImGui::SetNextWindowSize(ImVec2(sw, sh));
-        // Resize GLFW window to fit the Apple 1 screen
-#if !POM1_IS_WASM
-        if (window) {
-            glfwSetWindowSize(window, (int)sw + kApple1GlfwExtraW,
-                              (int)std::ceil(sh + apple1LayoutVerticalChrome()));
-        }
-#endif
+        ImGui::SetNextWindowPos(ImVec2(10, toolbarBottom + kGapBelowToolbarBeforeApple1),
+                                ImGuiCond_FirstUseEver);
+        ImGui::SetNextWindowSize(ImVec2(sw, sh), ImGuiCond_FirstUseEver);
         firstFrame = false;
+
         // Apply default preset now that ImGui is ready
         int idx = (defaultPresetIndex >= 0 && defaultPresetIndex < kMachinePresetCount)
                   ? defaultPresetIndex : (kMachinePresetCount - 1);
         applyMachineConfig(idx);
+
+        // Resize GLFW window: if the active preset declares a multi-window
+        // layout (cassette deck, welcome, expansion panels…) we grow the OS
+        // window to contain everything shown by the preset. Otherwise we
+        // fall back to the historical "just fit the Apple 1 screen" size.
+#if !POM1_IS_WASM
+        if (window) {
+            const ImVec2 extent = computePresetLayoutExtent(
+                kMachinePresets[idx], ImVec2(sw, sh));
+            const float rightPad  = 10.0f;
+            const float bottomPad = kStatusBarBandHeight + kApple1WindowDecorationSlop;
+            int glfwW = (int)sw + kApple1GlfwExtraW;
+            int glfwH = (int)std::ceil(sh + apple1LayoutVerticalChrome());
+            if (extent.x > 0.0f && extent.y > 0.0f) {
+                glfwW = std::max(glfwW, (int)std::ceil(extent.x + rightPad));
+                glfwH = std::max(glfwH, (int)std::ceil(extent.y + bottomPad));
+            }
+            glfwSetWindowSize(window, glfwW, glfwH);
+        }
+#endif
         if (terminalCardOverride) {
             terminalCardEnabled = true;
             emulation->setTerminalCardEnabled(true);
@@ -334,6 +349,7 @@ void MainWindow_ImGui::render()
     if (showSpecialThanks) renderSpecialThanksWindow();
     if (showHardwareReference) renderHardwareReferenceWindow();
     if (showSoftwareReference) renderSoftwareReferenceWindow();
+    if (showWelcome) renderWelcomeWindow();
     if (showScreenConfig) renderScreenConfigDialog();
     if (showMemoryConfig) renderMemoryConfigDialog();
     if (showLoadDialog) renderLoadDialog();

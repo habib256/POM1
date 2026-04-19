@@ -78,6 +78,10 @@ private:
     // volume_ directly and push it to the device through setCassetteVolume.
     float     volume_       = 1.0f;
     bool      volumeSynced_ = false;
+    // Mute is a UI-layer convenience: no dedicated CassetteDevice mute flag.
+    // Muting pushes volume 0 to the device; unmuting restores `preMuteVolume_`.
+    bool      muted_          = false;
+    float     preMuteVolume_  = 1.0f;
     ImTextureID labelLogoTex_ = (ImTextureID)0;
     int         labelLogoW_ = 0;
     int         labelLogoH_ = 0;
@@ -85,7 +89,8 @@ private:
     void drawChassis      (ImDrawList* dl, ImVec2 p0, float s) const;
     void drawSlimLineBadge(ImDrawList* dl, ImVec2 p0, float s) const;
     void drawCounter      (ImDrawList* dl, ImVec2 p0, float s,
-                           const char* resetId, bool& resetClicked);
+                           const char* resetId, bool& resetClicked,
+                           bool armedWaiting);
     void drawCassetteWindow(ImDrawList* dl, ImVec2 p0, float s,
                             const EmulationSnapshot& snap) const;
     void drawBrandStrip   (ImDrawList* dl, ImVec2 p0, float s) const;
