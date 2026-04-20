@@ -158,6 +158,13 @@ int main(int argc, char* argv[])
             char* end = nullptr;
             long idx = strtol(val.c_str(), &end, 10);
             if (end != val.c_str() && *end == '\0') {
+                int presetCount = MainWindow_ImGui::getPresetCount();
+                if (idx < 0 || idx >= presetCount) {
+                    pom1::log().error("POM1", "Preset index " + val + " out of range [0, " +
+                                              std::to_string(presetCount - 1) +
+                                              "]. Use --list-presets to see available presets.");
+                    return 1;
+                }
                 requestedPreset = static_cast<int>(idx);
             } else {
                 // Match by name (case-insensitive substring)

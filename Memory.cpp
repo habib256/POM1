@@ -620,6 +620,7 @@ int Memory::loadHexDump(const char* filename, quint16 &startAddress, int* bytesL
     bool firstAddr = true;
     bool hasRunAddr = false;
     int totalBytes = 0;
+    int oddDigitsDropped = 0;
     size_t i = 0;
 
     auto isHex = [](char c) { return std::isxdigit((unsigned char)c); };
@@ -667,6 +668,7 @@ int Memory::loadHexDump(const char* filename, quint16 &startAddress, int* bytesL
                 // Handle merged data+run: e.g. "FFE2B3R" = data FF, run E2B3
                 if (hexStr.size() > 4) {
                     size_t dataLen = hexStr.size() - 4;
+                    if (dataLen % 2 != 0) oddDigitsDropped++;
                     for (size_t j = 0; j + 1 < dataLen; j += 2) {
                         quint8 val = (hexVal(hexStr[j]) << 4) | hexVal(hexStr[j + 1]);
                         if (currentAddr < 0x10000) {
@@ -686,6 +688,7 @@ int Memory::loadHexDump(const char* filename, quint16 &startAddress, int* bytesL
                 // Handle merged data+address: e.g. "ED0300:" = data ED, address 0300
                 if (hexStr.size() > 4) {
                     size_t dataLen = hexStr.size() - 4;
+                    if (dataLen % 2 != 0) oddDigitsDropped++;
                     for (size_t j = 0; j + 1 < dataLen; j += 2) {
                         quint8 val = (hexVal(hexStr[j]) << 4) | hexVal(hexStr[j + 1]);
                         if (currentAddr < 0x10000) {
@@ -704,7 +707,10 @@ int Memory::loadHexDump(const char* filename, quint16 &startAddress, int* bytesL
                 continue;
             }
 
-            // Data bytes — parse in pairs
+            // Data bytes — parse in pairs. A lone trailing nibble would
+            // otherwise be silently dropped, so track it for the summary
+            // warning below — masks real bugs in hand-edited dumps.
+            if (hexStr.size() % 2 != 0) oddDigitsDropped++;
             for (size_t j = 0; j + 1 < hexStr.size(); j += 2) {
                 quint8 val = (hexVal(hexStr[j]) << 4) | hexVal(hexStr[j + 1]);
                 if (currentAddr < 0x10000) {
@@ -734,6 +740,14 @@ int Memory::loadHexDump(const char* filename, quint16 &startAddress, int* bytesL
             << " (" << std::dec << totalBytes << " bytes starting at 0x"
             << std::hex << startAddress << ")";
         pom1::log().info("Mem", oss.str());
+    }
+    if (oddDigitsDropped > 0) {
+        std::ostringstream oss;
+        oss << "Hex dump " << std::filesystem::path(filename).filename().string()
+            << ": " << std::dec << oddDigitsDropped
+            << " odd-length hex run(s) detected — trailing nibble(s) dropped. "
+            << "Check the source for a truncated byte.";
+        pom1::log().warn("Mem", oss.str());
     }
     return firstAddr && !hasRunAddr ? 1 : 0;
 }
