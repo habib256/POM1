@@ -510,11 +510,16 @@ int Memory::loadApplesoftLiteSDCard(void)
 {
     int ret = loadROM("applesoft-lite-microsd.rom", 0x6000, 0x2000, "Applesoft Lite (P-LAB microSD)");
     if (ret != 0) return ret;
-    // The microSD build keeps Integer BASIC at $E000 and requires Woz Monitor
-    // at $FF00 for the SD OS to link to — reload it so the user gets the
-    // full working stack even if they loaded the variant manually on a
-    // CFFA1-flavoured layout.
-    return loadWozMonitor();
+    // The microSD build requires Woz Monitor at $FF00 for the SD OS to link
+    // to. Reload it only when it was overwritten (typical case: user just
+    // switched away from a CFFA1-flavoured Applesoft that spans $E000-$FFFF
+    // and clobbered $FF00). Signature check: Woz Monitor begins with D8 58
+    // (CLD / CLI). Skip the disk read when the ROM is still in place — this
+    // keeps boot I/O to a minimum.
+    if (mem[0xFF00] != 0xD8 || mem[0xFF01] != 0x58) {
+        return loadWozMonitor();
+    }
+    return 0;
 }
 
 int Memory::loadKrusader(void)
@@ -984,7 +989,14 @@ void Memory::setMicroSDEnabled(bool b)
         // Mutually exclusive with CFFA1 and Juke-Box (shared $8000-$9FFF window)
         if (cffa1Enabled) setCFFA1Enabled(false);
         if (jukeBoxEnabled) setJukeBoxEnabled(false);
-        loadSDCardRom();
+        // Reload only when the ROM window is empty (first plug after it was
+        // cleared by a previous disable, or after CFFA1 / Juke-Box overwrote
+        // $8000). initMemory() pre-loads the SD CARD OS for the default
+        // single-plug boot path, so a redundant disk read is avoided.
+        // Signature check: sdcard.rom begins with A9 00 (LDA #$00).
+        if (mem[0x8000] != 0xA9 || mem[0x8001] != 0x00) {
+            loadSDCardRom();
+        }
     } else {
         // Clear the ROM region (restore to RAM)
         std::fill(mem.begin() + 0x8000, mem.begin() + 0xA000, 0);
