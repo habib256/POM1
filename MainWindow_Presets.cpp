@@ -182,8 +182,8 @@ const MachineConfig kMachinePresets[] = {
             // Positions / sizes mirror the canonical POM1 imgui.ini so the
             // first launch (no saved layout) snaps to the shipped screenshot.
             {"Apple 1 Screen",         {10,  61},  {843, 701}},
-            {"Welcome",                {858, 61},  {337, 223}},
-            {"Apple-1 Cassette Deck",  {858, 288}, {338, 475}},
+            {"Welcome",                {858, 61},  {338, 223}},
+            {"Apple-1 Cassette Deck",  {858, 288}, {338, 476}},
         }, 3
     },
 };
@@ -355,13 +355,23 @@ void MainWindow_ImGui::applyMachineConfig(int presetIndex)
         std::string error;
         bool ok = false;
         if (cfg.basicType == BasicType::ApplesoftLite) {
-            ok = emulation->reloadApplesoftLite(error);
-            if (ok) {
-                if (cfg.microSD && !cfg.cffa1) {
+            // Pick the variant from the preset config, not from Memory's
+            // current peripheral state. Card plugs are deferred by
+            // kCardEnableDeferFrames, so at this point microSDEnabled /
+            // cffa1Enabled are still false — calling the generic
+            // reloadApplesoftLite() would dispatch to the CFFA1 variant
+            // ($E000-$FFFF) and clobber Integer BASIC + Woz Monitor even
+            // when the preset wanted the microSD variant at $6000.
+            if (cfg.microSD && !cfg.cffa1) {
+                ok = emulation->reloadApplesoftLiteSDCard(error);
+                if (ok) {
                     loadedRoms.push_back({"Integer BASIC", 0xE000, 0xEFFF});
                     loadedRoms.push_back({"Applesoft Lite (P-LAB microSD)", 0x6000, 0x7FFF});
                     loadedRoms.push_back({"Woz Monitor", 0xFF00, 0xFFFF});
-                } else {
+                }
+            } else {
+                ok = emulation->reloadApplesoftLiteCFFA1(error);
+                if (ok) {
                     loadedRoms.push_back({"Applesoft Lite (CFFA1)", 0xE000, 0xFFFF});
                 }
             }

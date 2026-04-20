@@ -190,16 +190,16 @@ int main(int argc, char* argv[])
         }
     }
 
-    // Default bundled cassette: preload cassettes/bundled/WOZ_talk.mp3 when
-    // --tape was not supplied. Probes the same cwd-relative locations as
-    // the in-app file browser (build/ vs repo-root launches). Not auto-
-    // played — the user presses Play when they want Woz to speak.
+    // Default bundled cassette: preload cassettes/WOZ_talk.mp3 when --tape
+    // was not supplied. Probes the same cwd-relative locations as the
+    // in-app file browser (build/ vs repo-root launches). Not auto-played
+    // — the user presses Play when they want Woz to speak.
     bool initialTapeAutoPlay = !initialTapePath.empty();
     if (initialTapePath.empty()) {
         const char* probes[] = {
-            "cassettes/bundled/WOZ_talk.mp3",
-            "../cassettes/bundled/WOZ_talk.mp3",
-            "../../cassettes/bundled/WOZ_talk.mp3",
+            "cassettes/WOZ_talk.mp3",
+            "../cassettes/WOZ_talk.mp3",
+            "../../cassettes/WOZ_talk.mp3",
         };
         for (const char* p : probes) {
             if (std::filesystem::exists(p)) {

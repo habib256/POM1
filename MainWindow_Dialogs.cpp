@@ -583,6 +583,7 @@ void MainWindow_ImGui::renderWelcomeWindow()
                             ImGuiCond_FirstUseEver);
     applyPendingLayout("Welcome");
     if (ImGui::Begin("Welcome", &showWelcome)) {
+        // ── Header ──────────────────────────────────────────────────
         ImGui::TextUnformatted("Bienvenue dans POM1 -- Welcome!");
         ImGui::Separator();
         ImGui::TextWrapped(
@@ -593,16 +594,62 @@ void MainWindow_ImGui::renderWelcomeWindow()
         ImGui::BulletText("6000R    Applesoft Lite");
         ImGui::BulletText("8000R    SD Card OS (microSD)");
         ImGui::BulletText("C100R    ACI cassette (load/save)");
+
+        // ── Cassette deck ───────────────────────────────────────────
+        ImGui::Separator();
+        ImGui::TextUnformatted("Cassette deck");
+        ImGui::TextWrapped(
+            "ACI plugged: Apple 1 program tapes only (pulse mode, "
+            ".aci / .wav / audio rips of real tapes). ACI unplugged: "
+            "plays any audio file (mp3/ogg/wav/flac) straight through "
+            "the mixer. Press Play to hear Wozniak on the preloaded "
+            "WOZ_talk tape. If the tapeinfo.txt entry gives a load "
+            "range, the jaquette tells you what to type in Woz "
+            "(e.g. 'Type 0280.0FFFR').");
+
+        // ── microSD ─────────────────────────────────────────────────
+        ImGui::Separator();
+        ImGui::TextUnformatted("microSD card");
+        ImGui::TextWrapped(
+            "The default preset ships the P-LAB microSD Storage Card "
+            "plugged in. The host folder sdcard/ is exposed as a "
+            "virtual FAT32 volume.");
+        ImGui::Spacing();
+        ImGui::BulletText("8000R   Launch the SD Card OS");
+        ImGui::BulletText("D       Directory listing");
+        ImGui::BulletText("L<X>    Load the file tagged with letter X");
+        ImGui::BulletText("B       Enter BASIC after a LOAD");
         ImGui::Spacing();
         ImGui::TextWrapped(
-            "Cassette deck: ACI plugged = Apple 1 program "
-            "tapes only. ACI unplugged = any audio file "
-            "(mp3/ogg/wav/flac). Press Play to hear Wozniak "
-            "on the preloaded WOZ_talk tape.");
+            "Drop files into sdcard/ using the tagged filename format "
+            "NAME#TTAAAA -- TT is the file type, AAAA the load "
+            "address (hex). Example: ACEYDUCEY#f10800 loads at $0800. "
+            "Browse sdcard/PLAB/ for a ready-made library (games, "
+            "languages, utilities).");
+
+        // ── BASIC variants ──────────────────────────────────────────
+        ImGui::Separator();
+        ImGui::TextUnformatted("BASIC variants");
+        ImGui::TextWrapped(
+            "Integer BASIC ($E000-$EFFF, 4 KB): Steve Wozniak's 1976 "
+            "original. Hand-written in SWEET-16 / 6502. Integer-only "
+            "math (-32767..+32767), no strings beyond PRINT, no "
+            "floating-point. Tiny and fast. Cold start: E000R.");
         ImGui::Spacing();
+        ImGui::TextWrapped(
+            "Applesoft Lite ($6000-$7FFF with microSD, $E000-$FFFF "
+            "with CFFA1): cut-down port of Applesoft (Microsoft 6502 "
+            "BASIC). Adds floating-point, strings, trig (SIN/COS/...), "
+            "multi-letter variables, PRINT USING. Slower than Integer "
+            "BASIC but much more expressive. Cold start: 6000R "
+            "(microSD build) or E000R (CFFA1 build).");
+
+        // ── Footer ──────────────────────────────────────────────────
+        ImGui::Separator();
         ImGui::TextWrapped(
             "File > Load Memory for programs. "
-            "Presets menu for other configurations.");
+            "Presets menu for other configurations. "
+            "Help > Hardware / Software Reference for the full manual.");
     }
     ImGui::End();
 }

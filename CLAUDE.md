@@ -37,7 +37,7 @@ ROMs must be next to the executable; the run scripts handle the copy.
 | `--list-presets` | Print `index: name` for every preset in `kMachinePresets[]` and exit (0) |
 | `--preset <N\|name>` / `-p <N\|name>` | Select preset by numeric index or case-insensitive substring match. Applied on the first render frame |
 | `--terminal` | Force-enable the Terminal Card on top of the preset (binds `127.0.0.1:6502`) |
-| `--tape <path>` | Preload a cassette file right after the preset applies, and **auto-press Play**. If omitted, `cassettes/bundled/WOZ_talk.mp3` is probed and loaded silently (user must press Play). |
+| `--tape <path>` | Preload a cassette file right after the preset applies, and **auto-press Play**. If omitted, `cassettes/WOZ_talk.mp3` is probed and loaded silently (user must press Play). |
 | `--save-tape <path>` | Dump the cassette deck's recording to this path on clean shutdown. Works with `SIGINT`/`SIGTERM` — the signal handler asks the main loop to close the window so `~MainWindow_ImGui` runs. |
 | `--cpu-max` | Pin `executionSpeed` to 1 000 000 cycles/frame on boot (the MAX button). Scripted ACI tests would otherwise wait ~30 s of wallclock per tape at 1×. |
 

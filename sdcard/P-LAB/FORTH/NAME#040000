@@ -1,6 +1,0 @@
- DFB &1
- DCI &2
- IFEQ >*+3
- LST ON
- FAIL 2,'PFA=xxFF'
- FIN

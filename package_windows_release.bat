@@ -118,11 +118,11 @@ if exist "cfcard\" (
     echo AVERTISSEMENT: dossier cfcard\ absent — omis.
 )
 
-if exist "cassettes\bundled\" (
-    echo Copie cassettes\bundled\ ...
-    xcopy /E /I /Q "cassettes\bundled" "%OUTDIR%\cassettes\bundled\" >nul
+if exist "cassettes\" (
+    echo Copie cassettes\ ...
+    xcopy /E /I /Q "cassettes" "%OUTDIR%\cassettes\" >nul
 ) else (
-    echo AVERTISSEMENT: dossier cassettes\bundled\ absent — omis.
+    echo AVERTISSEMENT: dossier cassettes\ absent — omis.
 )
 
 copy /Y "packaging\windows\README.txt" "%OUTDIR%\README.txt" >nul

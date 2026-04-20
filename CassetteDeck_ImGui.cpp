@@ -214,10 +214,10 @@ CassetteDeck_ImGui::render(const char* title,
     FrameResult out;
     if (!open) return out;
 
-    // Scaled initial window size big enough to show the deck without
-    // squeezing. Resize-friendly (user can enlarge; we scale uniformly).
-    ImGui::SetNextWindowSize(ImVec2(kDesignW + 28.0f, kDesignH + 40.0f),
-                             ImGuiCond_FirstUseEver);
+    // Minimum size so the deck stays legible; the initial size is driven
+    // by the caller (preset layout in applyPendingLayout, or the user's
+    // saved imgui.ini state) so the window honors the shipped preset
+    // dimensions rather than a widget-local default.
     ImGui::SetNextWindowSizeConstraints(
         ImVec2(kDesignW * 0.55f + 28.0f, kDesignH * 0.55f + 40.0f),
         ImVec2(FLT_MAX, FLT_MAX));
@@ -794,13 +794,22 @@ void CassetteDeck_ImGui::drawCassetteWindow(ImDrawList* dl, ImVec2 p0, float s,
         if (snap.cassetteAudioStreamMode) {
             drawText(dl, p0, s, labelR.x0 + 4.0f, labelR.y0 + 32.0f, 13.0f,
                      IM_COL32(50, 120, 160, 255), "AUDIO STREAM");
-            const double total = snap.cassettePlaybackTotalSeconds;
-            if (total > 0.0) {
-                std::snprintf(detail, sizeof(detail), "%d:%02d",
-                              static_cast<int>(total) / 60,
-                              static_cast<int>(total) % 60);
+            // When a tapeinfo.txt entry pairs this audio file with an Apple-1
+            // load range (e.g. APPLE50TH.ogg = 0280.0FFF), promote it to the
+            // ready-to-type Woz Monitor command so the user knows exactly
+            // what to key in. Otherwise fall back to playback duration.
+            if (!snap.cassetteLoadInfo.empty()) {
+                std::snprintf(detail, sizeof(detail), "Type %sR",
+                              snap.cassetteLoadInfo.c_str());
             } else {
-                std::snprintf(detail, sizeof(detail), "streaming");
+                const double total = snap.cassettePlaybackTotalSeconds;
+                if (total > 0.0) {
+                    std::snprintf(detail, sizeof(detail), "%d:%02d",
+                                  static_cast<int>(total) / 60,
+                                  static_cast<int>(total) % 60);
+                } else {
+                    std::snprintf(detail, sizeof(detail), "streaming");
+                }
             }
             drawText(dl, p0, s, labelR.x0 + 4.0f, labelR.y0 + 50.0f, 15.0f,
                      IM_COL32(96, 96, 100, 255), detail);
@@ -808,7 +817,7 @@ void CassetteDeck_ImGui::drawCassetteWindow(ImDrawList* dl, ImVec2 p0, float s,
             drawText(dl, p0, s, labelR.x0 + 4.0f, labelR.y0 + 32.0f, 13.0f,
                      IM_COL32(170, 110, 30, 255), "PROGRAM TAPE");
             if (!snap.cassetteLoadInfo.empty()) {
-                std::snprintf(detail, sizeof(detail), "%s",
+                std::snprintf(detail, sizeof(detail), "Type %sR",
                               snap.cassetteLoadInfo.c_str());
             } else {
                 std::snprintf(detail, sizeof(detail), "%zu transitions",

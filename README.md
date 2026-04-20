@@ -108,7 +108,7 @@ run_emulator.bat                    REM copies ROMs & launches the emulator
 | `--list-presets` | Print every preset as `index: name` and exit. |
 | `--preset <N\|name>` (or `-p`) | Start with the preset selected by numeric index, or by a case-insensitive substring of its name (first match wins). |
 | `--terminal` | Enable the Terminal Card on top of whatever the preset defines. Listens on `127.0.0.1:6502`. Desktop-only. |
-| `--tape <path>` | Preload a cassette file after the preset applies and **auto-press Play**. Accepts `.aci`, `.wav`, `.mp3`, `.ogg`. If omitted, `cassettes/bundled/WOZ_talk.mp3` loads silently — press Play to hear Woz. |
+| `--tape <path>` | Preload a cassette file after the preset applies and **auto-press Play**. Accepts `.aci`, `.wav`, `.mp3`, `.ogg`. If omitted, `cassettes/WOZ_talk.mp3` loads silently — press Play to hear Woz. |
 | `--save-tape <path>` | Dump the cassette deck's recording to this path on clean shutdown. `SIGINT` / `SIGTERM` trigger the same path (useful for `kill <pid>` from test scripts). |
 | `--cpu-max` | Pin CPU to 1 000 000 cycles / frame on boot (same as the MAX button). Scripted ACI runs would otherwise wait ~30 s per tape at 1×. |
 
