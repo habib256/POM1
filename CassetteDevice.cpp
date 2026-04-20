@@ -686,20 +686,16 @@ void CassetteDevice::setAciActive(bool active)
     const bool wasActive = aciActive;
     aciActive = active;
     if (wasActive == active) return;
-    // Plugging the ACI while a stream-mode tape is loaded would leave the
-    // ACI ROM polling $C081 forever (the stream path has no pulse
-    // transitions, so inputLevel stays flat). Eject the tape so the ROM
-    // sees an empty deck and the user can load a proper program tape.
-    if (!wasActive && active && audioStreamMode) {
+    // Any tape in the deck is ejected on ACI toggle:
+    //  - Plugging the ACI while a stream-mode tape is loaded would leave
+    //    the ROM polling $C081 forever (no pulse transitions).
+    //  - Unplugging the ACI while a program tape is loaded leaves a
+    //    pulse-mode tape that can no longer be read by the ROM.
+    // In both cases the cleanest UX is to eject so the user reloads a
+    // tape that matches the new card state.
+    if (loadedTapeReady) {
         ejectTape();
         return;  // ejectTape already fired the mode-change clunk
-    }
-    // ACI toggled while a tape is in — mode didn't necessarily change
-    // (pulse stays pulse on unplug; stream stays stream on plug-out), but
-    // the physical act of plugging/unplugging the card is exactly the
-    // kind of deck event the user asked for feedback on.
-    if (loadedTapeReady) {
-        playMechanicalClick();
     }
 }
 

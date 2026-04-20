@@ -182,8 +182,8 @@ const MachineConfig kMachinePresets[] = {
             // Positions / sizes mirror the canonical POM1 imgui.ini so the
             // first launch (no saved layout) snaps to the shipped screenshot.
             {"Apple 1 Screen",         {10,  61},  {843, 701}},
-            {"Apple-1 Cassette Deck",  {859, 59},  {371, 527}},
-            {"Welcome",                {858, 592}, {375, 167}},
+            {"Apple-1 Cassette Deck",  {859, 59},  {355, 494}},
+            {"Welcome",                {858, 557}, {359, 203}},
         }, 3
     },
 };

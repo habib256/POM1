@@ -586,21 +586,23 @@ void MainWindow_ImGui::renderWelcomeWindow()
         ImGui::TextUnformatted("Bienvenue dans POM1 -- Welcome!");
         ImGui::Separator();
         ImGui::TextWrapped(
-            "POM1 is a faithful Apple 1 emulator celebrating 50 years of "
-            "Apple (1976-2026). The cassette deck to the right is your tape "
-            "drive: press Play to hear Steve Wozniak speak on the preloaded "
-            "WOZ_talk tape, or load your own .aci / .wav / .mp3 / .ogg file.");
+            "Apple 1 emulator -- 50 years of Apple (1976-2026).");
+        ImGui::Spacing();
+        ImGui::TextUnformatted("Quick start (type in the Woz Monitor):");
+        ImGui::BulletText("E000R    Integer BASIC");
+        ImGui::BulletText("6000R    Applesoft Lite");
+        ImGui::BulletText("8000R    SD Card OS (microSD)");
+        ImGui::BulletText("C100R    ACI cassette (load/save)");
         ImGui::Spacing();
         ImGui::TextWrapped(
-            "Type on the Apple 1 keyboard: hit Return after Reset to enter "
-            "the Woz Monitor, then E000R for Applesoft BASIC. File > Load "
-            "Memory pulls programs from software/. Pick another machine "
-            "configuration from the Presets menu.");
+            "Cassette deck: ACI plugged = Apple 1 program "
+            "tapes only. ACI unplugged = any audio file "
+            "(mp3/ogg/wav/flac). Press Play to hear Wozniak "
+            "on the preloaded WOZ_talk tape.");
         ImGui::Spacing();
         ImGui::TextWrapped(
-            "Drag, resize and close any window; your layout is saved to "
-            "imgui.ini and restored on next launch. See Help > Hardware "
-            "Reference / Software Reference for deeper details.");
+            "File > Load Memory for programs. "
+            "Presets menu for other configurations.");
     }
     ImGui::End();
 }
