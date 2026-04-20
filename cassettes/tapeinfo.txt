@@ -1,0 +1,39 @@
+# Apple 1 Cassette Library — load info
+# Format: filename = load address or command
+# Shown on the cassette label so the user knows what to type.
+#
+# ACI load:   type the range in Woz Monitor, then C100R
+# BASIC load: start Integer BASIC (E000R), then type LOAD
+
+# Integer BASIC ROM
+BASIC.ogg = E000.EFFF
+
+# BASIC programs (E000R first, then LOAD at the > prompt)
+AceyDucey.ogg = E000R > LOAD
+AppleiEnhancedCheckers.ogg = E000R > LOAD
+Blackjack.ogg = E000R > LOAD
+Bowling.ogg = E000R > LOAD
+Buzzword.ogg = E000R > LOAD
+Craps.ogg = E000R > LOAD
+DealOrNoDeal.ogg = E000R > LOAD
+Football.ogg = E000R > LOAD
+Hamurabi.ogg = E000R > LOAD
+HiLo.ogg = E000R > LOAD
+LunarLander.ogg = E000R > LOAD
+LunarlanderasciiGraphics.ogg = E000R > LOAD
+Mastermind.ogg = E000R > LOAD
+Slots.ogg = E000R > LOAD
+StarTrek.ogg = E000R > LOAD
+StarTrek2003.ogg = E000R > LOAD
+WordCross.ogg = E000R > LOAD
+Wumpus.ogg = E000R > LOAD
+
+# Machine code (ACI load at specified range)
+Microchess.ogg = 0300.03FF
+ASMmchess.ogg = 0300.03FF
+Life.ogg = 0280.02FF
+Pasart.ogg = 0280.02FF
+
+# Demos
+APPLE30TH.ogg = 0280.0FFF
+APPLE50TH.ogg = 0280.0FFF

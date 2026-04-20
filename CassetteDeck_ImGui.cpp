@@ -807,8 +807,13 @@ void CassetteDeck_ImGui::drawCassetteWindow(ImDrawList* dl, ImVec2 p0, float s,
         } else {
             drawText(dl, p0, s, labelR.x0 + 4.0f, labelR.y0 + 32.0f, 13.0f,
                      IM_COL32(170, 110, 30, 255), "PROGRAM TAPE");
-            std::snprintf(detail, sizeof(detail), "%zu transitions",
-                          snap.cassetteLoadedTransitionCount);
+            if (!snap.cassetteLoadInfo.empty()) {
+                std::snprintf(detail, sizeof(detail), "%s",
+                              snap.cassetteLoadInfo.c_str());
+            } else {
+                std::snprintf(detail, sizeof(detail), "%zu transitions",
+                              snap.cassetteLoadedTransitionCount);
+            }
             drawText(dl, p0, s, labelR.x0 + 4.0f, labelR.y0 + 50.0f, 15.0f,
                      IM_COL32(96, 96, 100, 255), detail);
         }

@@ -139,6 +139,11 @@ public:
     bool isAudioStreamMode() const { return audioStreamMode; }
     size_t getRecordedTransitionCount() const { return recordedDurations.size(); }
     const std::string& getLoadedTapePath() const { return loadedTapePath; }
+    /// Human-readable load info read from a companion tapeinfo.txt file
+    /// sitting next to the tape (e.g. "E000.EFFF" or "BASIC > LOAD").
+    /// Empty when no metadata was found — the UI falls back to the
+    /// transition count in that case.
+    const std::string& getLoadInfo() const { return loadInfo; }
     const std::string& getLastError() const { return lastError; }
 
 private:
@@ -283,6 +288,13 @@ private:
     // consumes the audioQueue under audioMutex.
     std::vector<uint32_t> loadedDurations;
     std::string loadedTapePath;
+    // Load info read from tapeinfo.txt next to the tape file. Shown on
+    // the cassette label so the user knows what to type in Woz Monitor.
+    std::string loadInfo;
+
+    // Look up loadInfo from a tapeinfo.txt companion file sitting in the
+    // same directory as `path`. Format: one "basename = info" per line.
+    static std::string lookupTapeInfo(const std::string& path);
 
     // ACI-card state mirrored from Memory — determines whether a newly
     // loaded tape is treated as pulse data (ACI plugged) or as a direct

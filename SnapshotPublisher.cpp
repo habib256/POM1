@@ -84,6 +84,7 @@ void SnapshotPublisher::publish(Memory& mem, const M6502& cpu, bool cpuRunning)
     snapshot.cassetteRecordedTransitionCount   = cassette.getRecordedTransitionCount();
     snapshot.cassetteVolume                    = cassette.getVolume();
     snapshot.cassetteLoadedTapePath            = cassette.getLoadedTapePath();
+    snapshot.cassetteLoadInfo                  = cassette.getLoadInfo();
 
     snapshot.sidEnabled     = mem.isSIDEnabled();
     snapshot.sidSpecialEditionEnabled = mem.isSIDSpecialEditionEnabled();

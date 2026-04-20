@@ -68,6 +68,34 @@ std::string lowerExtension(const std::string& path)
 
 } // namespace
 
+std::string CassetteDevice::lookupTapeInfo(const std::string& path)
+{
+    namespace fs = std::filesystem;
+    const fs::path tapePath(path);
+    const fs::path dir = tapePath.parent_path();
+    if (dir.empty()) return {};
+
+    const fs::path infoFile = dir / "tapeinfo.txt";
+    std::ifstream file(infoFile);
+    if (!file.is_open()) return {};
+
+    const std::string baseName = tapePath.filename().string();
+    std::string line;
+    while (std::getline(file, line)) {
+        // Skip comments and blank lines.
+        if (line.empty() || line[0] == '#') continue;
+        const auto eq = line.find('=');
+        if (eq == std::string::npos) continue;
+        // Trim key and value.
+        std::string key = line.substr(0, eq);
+        std::string val = line.substr(eq + 1);
+        while (!key.empty() && key.back() == ' ') key.pop_back();
+        while (!val.empty() && val.front() == ' ') val.erase(val.begin());
+        if (key == baseName) return val;
+    }
+    return {};
+}
+
 CassetteDevice::CassetteDevice()
 {
     reset();
@@ -675,6 +703,7 @@ void CassetteDevice::ejectTape()
     audioStreamMode = false;
     loadedDurations.clear();
     loadedTapePath.clear();
+    loadInfo.clear();
     loadedTapeReady = false;
     loadedInitialLevel = false;
     resetPlaybackState();
@@ -731,6 +760,7 @@ bool CassetteDevice::loadPlaybackDurations(std::vector<uint32_t> durations, bool
 bool CassetteDevice::loadTape(const std::string& path)
 {
     const std::string ext = lowerExtension(path);
+    loadInfo = lookupTapeInfo(path);
 
     // .aci is always pulse data — there is no audio stream to decode.
     if (ext == ".aci") {
