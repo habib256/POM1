@@ -5142,7 +5142,11 @@ static int8 channel_position[7][6] =
    { L, C, R, L, R },
    { L, C, R, L, R, C },
 };
-
+/* POM1: L/C/R cassent winnt.h (champs de bits) quand miniaudio inclut Windows
+ * après ce .c dans AudioDevice.cpp — les macros ne servent qu'à l'init ci-dessus. */
+#undef L
+#undef C
+#undef R
 
 #ifndef STB_VORBIS_NO_FAST_SCALED_FLOAT
    typedef union {

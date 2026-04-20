@@ -667,12 +667,12 @@ void MainWindow_ImGui::renderWelcomeWindow()
                          ImVec2(iconDisplay, iconDisplay));
             ImGui::SameLine();
             ImGui::BeginGroup();
-            ImGui::TextUnformatted("Bienvenue dans POM1");
+            ImGui::TextUnformatted("Bienvenue in POM1");
             ImGui::TextWrapped(
                 "Apple 1 emulator -- 50 years of Apple (1976-2026).");
             ImGui::EndGroup();
         } else {
-            ImGui::TextUnformatted("Bienvenue dans POM1");
+            ImGui::TextUnformatted("Bienvenue in POM1");
             ImGui::TextWrapped(
                 "Apple 1 emulator -- 50 years of Apple (1976-2026).");
         }
