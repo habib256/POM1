@@ -535,6 +535,21 @@ void MainWindow_ImGui::renderHardwareReferenceWindow()
             hwKeyValue("Filenames:", "Tagged as NAME#TTAAAA to carry type + load address.");
             hwKeyValue("Firmware:", "nippur72/apple1-sdcard. Cold start: type 8000R.");
             hwKeyValue("Mutually exclusive:", "CFFA1 (shares $9000-$9FFF).");
+            hwHeading("Commands");
+            hwKeyValue("D / DIR:", "List current directory (long format, with sizes and load addresses).");
+            hwKeyValue("LS:", "List current directory (short format, names only).");
+            hwKeyValue("PWD:", "Print current working directory.");
+            hwKeyValue("CD <dir>:", "Change directory. Supports `..`, absolute `/PATH`, relative names, and fuzzy leaf match.");
+            hwKeyValue("LOAD <name>:", "Read a tagged file into RAM at the address encoded in its filename (fuzzy, case-insensitive prefix match).");
+            hwKeyValue("SAVE / WRITE:", "Write a memory range to a tagged file in the current directory.");
+            hwKeyValue("DEL <name>:", "Delete a file in the current directory.");
+            hwKeyValue("MKDIR / RMDIR:", "Create / remove a sub-directory, in the current directory.");
+            hwKeyValue("MOUNT:", "Reset to the SD card root.");
+            ImGui::TextWrapped(
+                "Important: every name-accepting command (LOAD, DEL, SAVE, READ, "
+                "WRITE, MKDIR, RMDIR) resolves relative to the current working "
+                "directory -- there is NO recursive search. Use CD <dir> to "
+                "navigate before invoking them. Example: CD MCODE then LOAD YUM.");
         }
 
         // ---- Juke-Box -----------------------------------------------
@@ -689,25 +704,30 @@ void MainWindow_ImGui::renderWelcomeWindow()
             "plugged in. The host folder sdcard/ is exposed as a "
             "virtual FAT32 volume.");
         ImGui::Spacing();
-        ImGui::BulletText("8000R   Launch the SD Card OS");
-        ImGui::BulletText("D       Directory listing");
-        ImGui::BulletText("L<X>    Load the file tagged with letter X");
-        ImGui::BulletText("B       Enter BASIC after a LOAD");
+        ImGui::BulletText("8000R         Launch the SD Card OS");
+        ImGui::BulletText("DIR / LS        List the current directory");
+        ImGui::BulletText("CD <dir>      Enter a sub-directory (e.g. CD MCODE)");
+        ImGui::BulletText("CD ..         Go back up one level");
+        ImGui::BulletText("LOAD <name>   Load a file from the CURRENT dir (no recursion)");
+        ImGui::BulletText("DEL <name>    Delete a file from the CURRENT dir");
+        ImGui::Spacing();
+        ImGui::TextWrapped(
+            "The shipped library lives in sub-directories (sdcard/PLAB/ASOFT, "
+            "/BASIC, /MCODE, ...). LOAD / DEL only search the current dir -- "
+            "use CD to enter a sub-directory first. Example: CD MCODE then "
+            "LOAD YUM.");
         ImGui::Spacing();
         ImGui::TextWrapped(
             "Drop files into sdcard/ using the tagged filename format "
             "NAME#TTAAAA -- TT is the file type, AAAA the load "
-            "address (hex). Example: ACEYDUCEY#f10800 loads at $0800. "
-            "Browse sdcard/PLAB/ for a ready-made library (games, "
-            "languages, utilities).");
+            "address (hex). Example: ACEYDUCEY#f10800 loads at $0800.");
 
         // ── BASIC variants ──────────────────────────────────────────
         ImGui::Separator();
         ImGui::TextUnformatted("BASIC variants");
         ImGui::TextWrapped(
             "Integer BASIC ($E000-$EFFF, 4 KB): Steve Wozniak's 1976 "
-            "original. Hand-written in SWEET-16 / 6502. Integer-only "
-            "math (-32767..+32767), no strings beyond PRINT, no "
+            "Math (-32767..+32767), no strings beyond PRINT, no "
             "floating-point. Tiny and fast. Cold start: E000R.");
         ImGui::Spacing();
         ImGui::TextWrapped(

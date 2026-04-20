@@ -49,6 +49,12 @@ Typical telnet-test workflow from `build/`:
 sleep 3 && python3 ../tools/test_jukebox_telnet.py       # drive it
 ```
 
+Some telnet tests (e.g. `tools/test_sdcard_subdir_navigation_telnet.py`, which pins the "LOAD / DEL / READ / WRITE / MKDIR / RMDIR only search the current directory — use `CD <dir>` first" invariant of the SD CARD OS) launch and kill POM1 themselves — run them from the repo root:
+
+```bash
+python3 tools/test_sdcard_subdir_navigation_telnet.py
+```
+
 Preset name matching is a substring; the **first** case-insensitive hit wins. Use the numeric index when precision matters.
 
 ### WASM build (Emscripten)
