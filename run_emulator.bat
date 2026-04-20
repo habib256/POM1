@@ -4,9 +4,9 @@ echo ============================================
 
 REM Find the executable (MSVC puts it in Release/ or Debug/, other generators in build/)
 set EXE=
-if exist "build\Release\pom1_imgui.exe" set EXE=build\Release\pom1_imgui.exe
-if exist "build\Debug\pom1_imgui.exe" if "%EXE%"=="" set EXE=build\Debug\pom1_imgui.exe
-if exist "build\pom1_imgui.exe" if "%EXE%"=="" set EXE=build\pom1_imgui.exe
+if exist "build\Release\POM1.exe" set EXE=build\Release\POM1.exe
+if exist "build\Debug\POM1.exe" if "%EXE%"=="" set EXE=build\Debug\POM1.exe
+if exist "build\POM1.exe" if "%EXE%"=="" set EXE=build\POM1.exe
 
 if "%EXE%"=="" (
     echo Emulator not found. Building...
@@ -14,12 +14,12 @@ if "%EXE%"=="" (
     cd build
     cmake .. && cmake --build . --config Release
     cd ..
-    if exist "build\Release\pom1_imgui.exe" set EXE=build\Release\pom1_imgui.exe
-    if exist "build\pom1_imgui.exe" if "%EXE%"=="" set EXE=build\pom1_imgui.exe
+    if exist "build\Release\POM1.exe" set EXE=build\Release\POM1.exe
+    if exist "build\POM1.exe" if "%EXE%"=="" set EXE=build\POM1.exe
 )
 
 if "%EXE%"=="" (
-    echo ERROR: Build failed. Could not find pom1_imgui.exe
+    echo ERROR: Build failed. Could not find POM1.exe
     exit /b 1
 )
 

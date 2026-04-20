@@ -21,7 +21,7 @@ cmake --build . --config Release                # Windows (MSVC)
 
 # Run
 ./run_emulator.sh                               # copies ROMs from roms/ if needed
-./pom1_imgui                                    # or directly from build/
+./POM1                                    # or directly from build/
 ```
 
 ROMs must be next to the executable; the run scripts handle the copy.
@@ -30,7 +30,7 @@ ROMs must be next to the executable; the run scripts handle the copy.
 
 ### CLI flags for headless / automated runs
 
-`pom1_imgui` parses its CLI in `main_imgui.cpp` (top of `main`). Flags exist so scripts under `tools/test_*_telnet.py` can drive the emulator in the background:
+`POM1` parses its CLI in `main_imgui.cpp` (top of `main`). Flags exist so scripts under `tools/test_*_telnet.py` can drive the emulator in the background:
 
 | Flag | Effect |
 |------|--------|
@@ -44,8 +44,8 @@ ROMs must be next to the executable; the run scripts handle the copy.
 Typical telnet-test workflow from `build/`:
 
 ```bash
-./pom1_imgui --list-presets                              # find the index you want
-./pom1_imgui --preset 10 --terminal &                    # Juke-Box + Terminal Card on :6502
+./POM1 --list-presets                              # find the index you want
+./POM1 --preset 10 --terminal &                    # Juke-Box + Terminal Card on :6502
 sleep 3 && python3 ../tools/test_jukebox_telnet.py       # drive it
 ```
 
@@ -58,10 +58,10 @@ source /path/to/emsdk/emsdk_env.sh
 mkdir -p build-wasm && cd build-wasm
 emcmake cmake ..
 emmake make -j"$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 4)"
-emrun pom1_imgui.html
+emrun POM1.html
 ```
 
-Outputs in `build-wasm/`: `pom1_imgui.{html,js,wasm,data}`. The `.data` bundle is Emscripten **MEMFS** preload (CMake `--preload-file` rules):
+Outputs in `build-wasm/`: `POM1.{html,js,wasm,data}`. The `.data` bundle is Emscripten **MEMFS** preload (CMake `--preload-file` rules):
 
 | Host path | Mount in WASM VFS |
 |-----------|-------------------|
@@ -72,7 +72,7 @@ Outputs in `build-wasm/`: `pom1_imgui.{html,js,wasm,data}`. The `.data` bundle i
 | `sdcard/`  | `sdcard/`         |
 | `cfcard/`  | `cfcard/`         |
 
-Rebuild WASM after any change under those directories (or after editing `build-wasm/shell.html`) so `pom1_imgui.data` stays in sync. The browser build can only see content baked into `pom1_imgui.data` — to ship new files on the web, add them under the relevant directory and rebuild.
+Rebuild WASM after any change under those directories (or after editing `build-wasm/shell.html`) so `POM1.data` stays in sync. The browser build can only see content baked into `POM1.data` — to ship new files on the web, add them under the relevant directory and rebuild.
 
 The desktop `Memory` constructor probes `sdcard`, `../sdcard`, `../../sdcard` relative to the process working directory and calls `MicroSD::setSDCardPath()` when a directory exists. It probes `cfcard`, `../cfcard`, `../../cfcard` for `cfcard.po` and opens it with the CFFA1 emulation when present.
 

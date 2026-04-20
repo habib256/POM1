@@ -108,6 +108,11 @@ set(HEADERS
 # Create executable
 add_executable(${PROJECT_NAME} ${SOURCES} ${HEADERS} ${IMGUI_SOURCES})
 
+# Final artefact is branded "POM1" (POM1, POM1.exe on Windows,
+# POM1.{html,js,wasm,data} for the Emscripten build). The CMake target
+# keeps its internal `pom1_imgui` name for build-script stability.
+set_target_properties(${PROJECT_NAME} PROPERTIES OUTPUT_NAME "POM1")
+
 if(POM1_IPO_SUPPORTED)
     # Enable IPO/LTO only for non-Debug configs. CMake handles the right flag
     # per compiler (-flto for gcc/clang, /GL + /LTCG for MSVC).
@@ -229,6 +234,19 @@ if(EMSCRIPTEN)
     )
     # Compile flags needed for the GLFW port header resolution
     target_compile_options(${PROJECT_NAME} PRIVATE "SHELL:-s USE_GLFW=3")
+
+    # Copy pic/icon.png next to the .html so the favicon in shell.html
+    # resolves when the page is served (emrun, nginx, github-pages, ...).
+    # The MEMFS copy inside pom1_imgui.data is not reachable by the browser's
+    # favicon loader, so we ship an HTTP-accessible twin.
+    add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E make_directory
+            "$<TARGET_FILE_DIR:${PROJECT_NAME}>/pic"
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            "${PRELOAD_DIR}/pic/icon.png"
+            "$<TARGET_FILE_DIR:${PROJECT_NAME}>/pic/icon.png"
+        VERBATIM
+    )
 
 else()
     # ── Native build (Linux / macOS / Windows) ────────────────────────

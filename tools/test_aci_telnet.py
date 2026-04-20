@@ -5,7 +5,7 @@ Terminal Card (telnet).
 
 Unlike tests/aci_tape_loading_test.cpp / tests/aci_tape_saving_test.cpp
 which drive the M6502 directly against a headless Memory, this script
-exercises the *real* pom1_imgui binary the user runs — the Apple 1
+exercises the *real* POM1 binary the user runs — the Apple 1
 keyboard/display, the Terminal Card TCP server, EmulationController's
 mutex stack, the snapshot publisher, GLFW's main loop. If one of those
 layers breaks the tape path, the headless tests stay green and this
@@ -23,12 +23,12 @@ Scenarios:
               bytes round-trip byte-for-byte.
 
 Requirements:
-  - pom1_imgui built in build/
+  - POM1 built in build/
   - roms/ACI.rom + roms/basic.rom present (both included in the repo)
   - cassettes/BASIC.ogg present
   - No other process holding TCP port 6502
 
-The script launches and kills pom1_imgui itself — no manual setup.
+The script launches and kills POM1 itself — no manual setup.
 
 Usage:
   python3 tools/test_aci_telnet.py [--verbose] [--keep-tape]
@@ -67,7 +67,7 @@ failed = 0
 
 
 # ---------------------------------------------------------------------------
-# pom1_imgui process helpers
+# POM1 process helpers
 # ---------------------------------------------------------------------------
 
 def repo_root() -> Path:
@@ -75,14 +75,14 @@ def repo_root() -> Path:
 
 
 def pom1_bin() -> Path:
-    p = repo_root() / "build" / "pom1_imgui"
+    p = repo_root() / "build" / "POM1"
     if not p.exists():
-        sys.exit(f"ERROR: {p} not found — build pom1_imgui first (cd build && make pom1_imgui)")
+        sys.exit(f"ERROR: {p} not found — build POM1 first (cd build && make POM1)")
     return p
 
 
 def launch_pom1(extra_args: list[str], log_path: Path) -> subprocess.Popen:
-    """Launch pom1_imgui in the background with --preset 1 --terminal --cpu-max.
+    """Launch POM1 in the background with --preset 1 --terminal --cpu-max.
     Returns the Popen once the Terminal Card is listening on PORT (verified by
     actually opening a TCP connection — the log message order is not
     reliable enough on slower boxes). --cpu-max is critical: at the default
@@ -99,7 +99,7 @@ def launch_pom1(extra_args: list[str], log_path: Path) -> subprocess.Popen:
     deadline = time.time() + 8.0
     while time.time() < deadline:
         if proc.poll() is not None:
-            sys.exit(f"ERROR: pom1_imgui exited early (code {proc.returncode}); see {log_path}")
+            sys.exit(f"ERROR: POM1 exited early (code {proc.returncode}); see {log_path}")
         try:
             with socket.create_connection((HOST, PORT), timeout=0.3):
                 time.sleep(0.5)  # let the ACI preset finish plugging + auto-load

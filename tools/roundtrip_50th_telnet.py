@@ -4,17 +4,17 @@ roundtrip_50th_telnet.py — End-to-end ACI round-trip of the 50th-birthday
 demo driven entirely through the Terminal Card.
 
 Flow:
-  1. Launch pom1_imgui with `--preset 1 --terminal --cpu-max --save-tape
+  1. Launch POM1 with `--preset 1 --terminal --cpu-max --save-tape
      /tmp/50th.wav`.
   2. Telnet in, hard-reset, paste `software/demos/50th.apl.txt` (minus
      its trailing `000280R` auto-run line) so the program sits in RAM.
   3. Drive the ACI monitor: `C100R` then `0280.0FFFW` to record the
      program onto tape. Wait for the Wozmon `\\` prompt to return.
-  4. SIGTERM pom1_imgui so `~MainWindow_ImGui` flushes `--save-tape` to
+  4. SIGTERM POM1 so `~MainWindow_ImGui` flushes `--save-tape` to
      `/tmp/50th.wav`.
   5. Transcode `/tmp/50th.wav` to `cassettes/50TH.ogg` with
      `ffmpeg -c:a libvorbis -q:a 4`.
-  6. Launch a fresh pom1_imgui with `--tape cassettes/50TH.ogg`
+  6. Launch a fresh POM1 with `--tape cassettes/50TH.ogg`
      (auto-arms PLAY, the new ARMED banner is visible until step 8).
   7. Telnet in, hard-reset, drive `C100R` then `0280.0FFFR` to load the
      program back into RAM.
@@ -26,7 +26,7 @@ Usage:
                                           [--skip-run]
 
 Requires:
-  - build/pom1_imgui built
+  - build/POM1 built
   - ffmpeg with libvorbis in PATH
   - software/demos/50th.apl.txt
   - TCP port 6502 free
@@ -64,10 +64,10 @@ def repo_root() -> Path:
 
 
 def pom1_bin() -> Path:
-    p = repo_root() / "build" / "pom1_imgui"
+    p = repo_root() / "build" / "POM1"
     if not p.exists():
-        sys.exit(f"ERROR: {p} not found — build pom1_imgui first "
-                 "(cd build && make pom1_imgui)")
+        sys.exit(f"ERROR: {p} not found — build POM1 first "
+                 "(cd build && make POM1)")
     return p
 
 
@@ -83,7 +83,7 @@ def launch_pom1(extra: list[str], log_path: Path) -> subprocess.Popen:
     deadline = time.time() + 10.0
     while time.time() < deadline:
         if proc.poll() is not None:
-            sys.exit(f"ERROR: pom1_imgui exited early (code {proc.returncode}); "
+            sys.exit(f"ERROR: POM1 exited early (code {proc.returncode}); "
                      f"see {log_path}")
         try:
             with socket.create_connection((HOST, PORT), timeout=0.3):

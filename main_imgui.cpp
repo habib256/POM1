@@ -7,6 +7,7 @@
 #include "MainWindow_ImGui.h"
 #include "IconsFontAwesome6.h"
 #include "Logger.h"
+#include "third_party/stb/stb_image.h"
 
 #if POM1_IS_WASM
 #include <emscripten.h>
@@ -37,6 +38,56 @@ static void pom1_signal_handler(int)
 #endif
 
 #if !POM1_IS_WASM
+#if !defined(__APPLE__)
+/// Probe for pic/icon.png under the usual cwd-relative + exe-relative spots
+/// so the GLFW window icon works regardless of where the binary is launched
+/// from (build/, repo root, packaged Windows release …). macOS takes its
+/// icon from the .app bundle, not GLFW — the helper is compiled out there.
+static std::string find_app_icon_path()
+{
+    namespace fs = std::filesystem;
+    static const char kFile[] = "icon.png";
+
+    auto try_path = [](const fs::path& p) -> std::string {
+        std::error_code ec;
+        if (fs::is_regular_file(p, ec))
+            return p.string();
+        return {};
+    };
+
+    static const char* const rel_candidates[] = {
+        "pic/icon.png",
+        "../pic/icon.png",
+        "../../pic/icon.png",
+        "../../../pic/icon.png",
+    };
+    for (const char* r : rel_candidates) {
+        std::string s = try_path(fs::path(r));
+        if (!s.empty())
+            return s;
+    }
+
+#if defined(_WIN32)
+    char buf[MAX_PATH];
+    DWORD n = GetModuleFileNameA(nullptr, buf, MAX_PATH);
+    if (n > 0 && n < MAX_PATH) {
+        fs::path exeDir = fs::path(buf).parent_path();
+        const fs::path next_to_exe[] = {
+            exeDir / "pic" / kFile,
+            exeDir.parent_path() / "pic" / kFile,
+            exeDir.parent_path().parent_path() / "pic" / kFile,
+        };
+        for (const auto& p : next_to_exe) {
+            std::string s = try_path(p);
+            if (!s.empty())
+                return s;
+        }
+    }
+#endif
+    return {};
+}
+#endif  // !defined(__APPLE__)
+
 /// Cherche fa-solid-900.ttf : le chemin relatif « ../fonts » dépend du répertoire de travail ;
 /// sans ce fichier, ImGui affiche « ? » à la place des icônes Font Awesome.
 static std::string find_fa_solid_font_path()
@@ -236,6 +287,30 @@ int main(int argc, char* argv[])
     GLFWwindow* window = glfwCreateWindow(1274, 801, "POM1 v1.8.5 - Apple 1 Emulator", NULL, NULL);
     if (window == NULL)
         return -1;
+
+#if !POM1_IS_WASM && !defined(__APPLE__)
+    // OS window icon from pic/icon.png — no-op silently if the asset can't
+    // be found (developer build without the pic/ tree, e.g.). Skipped on
+    // macOS: GLFW emits "Regular windows do not have icons on macOS" — the
+    // OS pulls the icon from the .app bundle / Info.plist instead.
+    {
+        const std::string iconPath = find_app_icon_path();
+        if (!iconPath.empty()) {
+            int iw = 0, ih = 0, ic = 0;
+            unsigned char* pixels = stbi_load(iconPath.c_str(), &iw, &ih, &ic, 4);
+            if (pixels && iw > 0 && ih > 0) {
+                GLFWimage img;
+                img.width = iw;
+                img.height = ih;
+                img.pixels = pixels;
+                glfwSetWindowIcon(window, 1, &img);
+                stbi_image_free(pixels);
+            } else if (pixels) {
+                stbi_image_free(pixels);
+            }
+        }
+    }
+#endif
 
     glfwMakeContextCurrent(window);
 #if !POM1_IS_WASM

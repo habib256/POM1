@@ -96,6 +96,10 @@ private:
     int apple50LogoWidth = 0;
     int apple50LogoHeight = 0;
     bool apple50LogoLoadTried = false;
+    GLuint appIconTexture = 0;
+    int appIconWidth = 0;
+    int appIconHeight = 0;
+    bool appIconLoadTried = false;
     bool showTMS9918 = false;
     bool tms9918Enabled = false;
     GLuint tms9918Texture = 0;
@@ -153,6 +157,7 @@ private:
     void renderAboutDialog();
     void ensureAboutPhotoTexture();
     void ensureApple50LogoTexture();
+    void ensureAppIconTexture();
     void renderSpecialThanksWindow();
     void renderHardwareReferenceWindow();
     void renderSoftwareReferenceWindow();

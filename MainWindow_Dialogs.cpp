@@ -50,6 +50,7 @@ using namespace pom1::mainwindow::detail;
 
 static const char kAboutPhotoFile[] = "schlumberger-2-apple-1.jpg";
 static const char kApple50LogoFile[] = "50_Anniv_Apple.png";
+static const char kAppIconFile[] = "icon.png";
 
 /** Generic cwd + exe-relative probe for files expected under pic/. */
 static std::string find_pic_file_path(const char* relBasename)
@@ -190,6 +191,44 @@ void MainWindow_ImGui::ensureAboutPhotoTexture()
     aboutPhotoHeight = h;
 }
 
+void MainWindow_ImGui::ensureAppIconTexture()
+{
+    if (appIconTexture != 0 || appIconLoadTried)
+        return;
+    appIconLoadTried = true;
+
+    const std::string path = find_pic_file_path(kAppIconFile);
+    if (path.empty()) {
+        pom1::log().warn("Icon",
+            std::string("App icon not found (expected pic/") + kAppIconFile + ")");
+        return;
+    }
+
+    int w = 0, h = 0, channels = 0;
+    unsigned char* pixels = stbi_load(path.c_str(), &w, &h, &channels, 4);
+    if (!pixels || w <= 0 || h <= 0) {
+        if (pixels) stbi_image_free(pixels);
+        pom1::log().warn("Icon", "Could not decode app icon: " + path);
+        return;
+    }
+
+    GLuint tex = 0;
+    glGenTextures(1, &tex);
+    glBindTexture(GL_TEXTURE_2D, tex);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, w, h, 0, GL_RGBA, GL_UNSIGNED_BYTE, pixels);
+    glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
+    stbi_image_free(pixels);
+
+    appIconTexture = tex;
+    appIconWidth = w;
+    appIconHeight = h;
+}
+
 void MainWindow_ImGui::ensureApple50LogoTexture()
 {
     if (apple50LogoTexture != 0 || apple50LogoLoadTried)
@@ -231,6 +270,7 @@ void MainWindow_ImGui::ensureApple50LogoTexture()
 void MainWindow_ImGui::renderAboutDialog()
 {
     ensureAboutPhotoTexture();
+    ensureAppIconTexture();
 
     float minWinW = 520.0f;
     if (aboutPhotoTexture != 0 && aboutPhotoWidth > 0) {
@@ -242,10 +282,29 @@ void MainWindow_ImGui::renderAboutDialog()
     ImGui::SetNextWindowSizeConstraints(ImVec2(minWinW, 0), ImVec2(FLT_MAX, FLT_MAX));
 
     if (ImGui::Begin("About POM1", &showAbout, ImGuiWindowFlags_AlwaysAutoResize)) {
-        ImGui::TextWrapped("POM1 v1.8.5 - Apple 1 Emulator (Dear ImGui)");
-        ImGui::TextWrapped("Celebrating 50 years of Apple (1976-2026)");
-        ImGui::TextWrapped("Author: Arnaud VERHILLE - original POM1 (Java, 2000); Dear ImGui port (2026)");
-        ImGui::TextWrapped("Copyright (C) 2000-2026 - GPL-3.0");
+        // Icon flush-left, header text block flows to its right (no wasted
+        // whitespace above the title). Fallback to plain text when the icon
+        // asset is missing.
+        if (appIconTexture != 0 && appIconWidth > 0 && appIconHeight > 0) {
+            const float iconDisplay = 128.0f;
+            ImGui::Image((ImTextureID)(uintptr_t)appIconTexture,
+                         ImVec2(iconDisplay, iconDisplay));
+            ImGui::SameLine();
+            ImGui::BeginGroup();
+            ImGui::TextUnformatted("POM1 v1.8.5 - Apple 1 Emulator (Dear ImGui)");
+            ImGui::TextUnformatted("Celebrating 50 years of Apple (1976-2026)");
+            ImGui::TextUnformatted("Author: Arnaud VERHILLE");
+            ImGui::TextUnformatted("original POM1 (Java, 2000)");
+            ImGui::TextUnformatted("POM1 Dear ImGui port (2026)");
+            ImGui::TextUnformatted("Copyright (C) 2000-2026 - GPL-3.0");
+            ImGui::EndGroup();
+        } else {
+            ImGui::TextWrapped("POM1 v1.8.5 - Apple 1 Emulator (Dear ImGui)");
+            ImGui::TextWrapped("Celebrating 50 years of Apple (1976-2026)");
+            ImGui::TextUnformatted("Author: Arnaud VERHILLE");
+            ImGui::TextUnformatted("original POM1 (Java, 2000)");
+            ImGui::TextUnformatted("POM1 Dear ImGui port (2026)");ImGui::TextWrapped("Copyright (C) 2000-2026 - GPL-3.0");
+        }
         ImGui::Separator();
 
         if (aboutPhotoTexture != 0 && aboutPhotoWidth > 0 && aboutPhotoHeight > 0) {
@@ -581,13 +640,28 @@ void MainWindow_ImGui::renderWelcomeWindow()
     ImGui::SetNextWindowPos(ImVec2(io.DisplaySize.x * 0.5f - 200.0f,
                                     io.DisplaySize.y * 0.5f - 80.0f),
                             ImGuiCond_FirstUseEver);
+    ensureAppIconTexture();
     applyPendingLayout("Welcome");
     if (ImGui::Begin("Welcome", &showWelcome)) {
         // ── Header ──────────────────────────────────────────────────
-        ImGui::TextUnformatted("Bienvenue dans POM1 -- Welcome!");
+        // Icon flush-left (64 px, half the About badge) with greeting and
+        // tagline flowing to its right so the top of the panel stays dense.
+        if (appIconTexture != 0 && appIconWidth > 0 && appIconHeight > 0) {
+            const float iconDisplay = 64.0f;
+            ImGui::Image((ImTextureID)(uintptr_t)appIconTexture,
+                         ImVec2(iconDisplay, iconDisplay));
+            ImGui::SameLine();
+            ImGui::BeginGroup();
+            ImGui::TextUnformatted("Bienvenue dans POM1");
+            ImGui::TextWrapped(
+                "Apple 1 emulator -- 50 years of Apple (1976-2026).");
+            ImGui::EndGroup();
+        } else {
+            ImGui::TextUnformatted("Bienvenue dans POM1");
+            ImGui::TextWrapped(
+                "Apple 1 emulator -- 50 years of Apple (1976-2026).");
+        }
         ImGui::Separator();
-        ImGui::TextWrapped(
-            "Apple 1 emulator -- 50 years of Apple (1976-2026).");
         ImGui::Spacing();
         ImGui::TextUnformatted("Quick start (type in the Woz Monitor):");
         ImGui::BulletText("E000R    Integer BASIC");

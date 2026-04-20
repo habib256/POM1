@@ -127,6 +127,13 @@ void MainWindow_ImGui::destroyPom1()
         apple50LogoHeight = 0;
     }
     apple50LogoLoadTried = false;
+    if (appIconTexture) {
+        glDeleteTextures(1, &appIconTexture);
+        appIconTexture = 0;
+        appIconWidth = 0;
+        appIconHeight = 0;
+    }
+    appIconLoadTried = false;
 }
 
 void MainWindow_ImGui::render()

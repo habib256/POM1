@@ -15,7 +15,7 @@ Scenario (P-LAB preset: microSD + Applesoft Lite at $6000):
   8. Cleanup: delete the test file
 
 Pre-requisites:
-  ./pom1_imgui --preset p-lab
+  ./POM1 --preset p-lab
 """
 from __future__ import annotations
 
@@ -156,7 +156,7 @@ def main():
         sock = socket.create_connection((HOST, PORT), timeout=5)
     except (ConnectionRefusedError, OSError) as e:
         print(f"\nERROR: Cannot connect to {HOST}:{PORT}: {e}")
-        print("Start POM1 with: ./pom1_imgui --preset p-lab")
+        print("Start POM1 with: ./POM1 --preset p-lab")
         return 1
 
     sock.settimeout(10)

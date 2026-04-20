@@ -1,6 +1,6 @@
 # libresidfp vendored for POM1 — minimal CMake build of the SID emulation
 # engine. Upstream uses autotools; we replace it with a small static library
-# target (`libresidfp_static`) that POM1 links into pom1_imgui.
+# target (`libresidfp_static`) that POM1 links into the main executable.
 #
 # Disabled vs upstream:
 #   - SIMD (mmx/sse/avx)         — pure scalar, works on arm64 + WASM

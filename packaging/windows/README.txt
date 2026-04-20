@@ -37,7 +37,7 @@ Apple-1 to a full "P-LAB Multiplexing Fantasy" with every card plugged.
 
 Quick start
 -----------
-Run pom1_imgui.exe from this folder (do not move the exe alone).
+Run POM1.exe from this folder (do not move the exe alone).
 Keep glfw3.dll next to the exe - it is required to start the app.
 
 Use the Hardware menu (or toolbar) to enable expansion cards, the Presets
@@ -47,7 +47,7 @@ open any program from software\.
 
 Command-line flags
 ------------------
-pom1_imgui.exe accepts a few flags for scripted / headless runs:
+POM1.exe accepts a few flags for scripted / headless runs:
 
   --list-presets             Print every preset as "index: name" and exit
   --preset <N|name> / -p     Select a preset by numeric index or by
@@ -72,7 +72,7 @@ Keyboard shortcuts
 
 Contents
 --------
-  pom1_imgui.exe        Main program
+  POM1.exe        Main program
   glfw3.dll             GLFW (OpenGL window)
   fonts\                Font Awesome (toolbar icons)
   pic\                  About dialog photo (schlumberger-2-apple-1.jpg)

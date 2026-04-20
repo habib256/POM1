@@ -10,7 +10,7 @@ A faithful Apple 1 emulator built with Dear ImGui & OpenGL — fast, lightweight
 Now with [P-LAB Wi-Fi Modem](https://p-l4b.github.io/wifi/), [P-LAB Terminal Card](https://p-l4b.github.io/terminal/), [P-LAB microSD Storage Card](https://p-l4b.github.io/sdcard/), [P-LAB A1-SID Sound Card](https://p-l4b.github.io/A1-SID/), [P-LAB Apple-1 Graphic Card (TMS9918)](https://p-l4b.github.io/graphic/), [P-LAB I/O Board & RTC](https://p-l4b.github.io/A1-IO_RTC/), **CFFA1** CompactFlash storage (Rich Dreher design, ProDOS `.po` disk), **Applesoft Lite** (CFFA1 or P-LAB microSD layout), and [Uncle Bernie's GEN2 Color Graphics Card](https://www.applefritter.com/content/uncle-bernies-gen2-color-graphics-card-apple-1) support.
 
 **Play it now in your browser** : 
-[![Play Online](https://img.shields.io/badge/Play%20Online-WebAssembly-blueviolet.svg)](https://habib256.github.io/POM1/build-wasm/pom1_imgui.html)
+[![Play Online](https://img.shields.io/badge/Play%20Online-WebAssembly-blueviolet.svg)](https://habib256.github.io/POM1/build-wasm/POM1.html)
 
 or build it natively.
 
@@ -101,7 +101,7 @@ run_emulator.bat                    REM copies ROMs & launches the emulator
 
 ### 🎛️ Command-line flags
 
-`pom1_imgui` accepts a small set of CLI flags — useful for headless / scripted runs (e.g. the Python telnet tests under `tools/test_*_telnet.py`).
+`POM1` accepts a small set of CLI flags — useful for headless / scripted runs (e.g. the Python telnet tests under `tools/test_*_telnet.py`).
 
 | Flag | Effect |
 |------|--------|
@@ -114,24 +114,24 @@ run_emulator.bat                    REM copies ROMs & launches the emulator
 
 ```bash
 # List everything that's available
-./pom1_imgui --list-presets
+./POM1 --list-presets
 
 # Launch the Juke-Box preset + Terminal Card, then drive it from telnet
-./pom1_imgui --preset 10 --terminal &
+./POM1 --preset 10 --terminal &
 python3 tools/test_jukebox_telnet.py
 
 # Name-based selection (first case-insensitive substring match wins)
-./pom1_imgui --preset "A1-SID" --terminal
+./POM1 --preset "A1-SID" --terminal
 
 # Record a tape under script control, then kill cleanly
-./pom1_imgui --preset 2 --terminal --save-tape /tmp/out.wav --cpu-max &
+./POM1 --preset 2 --terminal --save-tape /tmp/out.wav --cpu-max &
 # ... drive via telnet ...
 kill "$!"                     # triggers --save-tape dump
 ```
 
 ### 🌐 Web Version (WebAssembly)
 
-**Play directly in your browser:** [https://habib256.github.io/POM1/build-wasm/pom1_imgui.html](https://habib256.github.io/POM1/build-wasm/pom1_imgui.html)
+**Play directly in your browser:** [https://habib256.github.io/POM1/build-wasm/POM1.html](https://habib256.github.io/POM1/build-wasm/POM1.html)
 
 To build the WASM version yourself:
 
@@ -147,7 +147,7 @@ emcmake cmake ..
 emmake make -j$(nproc)
 
 # Test locally
-emrun pom1_imgui.html
+emrun POM1.html
 ```
 
 ### 📦 Manual dependency install

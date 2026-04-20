@@ -12,7 +12,7 @@ Scenario:
   7. Entrer dans BASIC, LIST pour verifier que le programme est intact
 
 Pre-requis:
-  ./pom1_imgui --preset cffa1
+  ./POM1 --preset cffa1
 """
 from __future__ import annotations
 

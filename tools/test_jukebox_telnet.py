@@ -6,7 +6,7 @@ Pre-requis :
   - POM1 en cours d'execution avec le preset "P-LAB Apple-1 with Juke-Box (16 kB RAM)"
     + Terminal Card active (--terminal en CLI ou Hardware menu)
   - Le Terminal Card ecoute sur localhost:6502
-  - Lancement CLI recommande :  ./pom1_imgui --preset 10 --terminal &
+  - Lancement CLI recommande :  ./POM1 --preset 10 --terminal &
   - La ROM roms/jukebox.rom generee par tools/../doc/JUKEBOX_ROM_CREATOR/build_jukebox_rom.py
 
 Le test suit le manuel officiel P-LAB Apple-1 Juke-Box v1.09 :

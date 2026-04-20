@@ -1,0 +1,237 @@
+<!doctype html>
+<html lang="en-us">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="POM1 v1.8.5 — Apple 1 emulator in the browser (WebAssembly). MOS 6502, ACI cassette, GEN2 HGR, P-LAB TMS9918, A1-SID (cycle-accurate libresidfp 6581/8580), microSD.">
+  <meta name="author" content="Arnaud Verhille">
+  <title>POM1 v1.8.5 — Apple 1 Emulator</title>
+  <link rel="icon" type="image/png" href="pic/icon.png">
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --pom1-bg: #000;
+      --pom1-text: #cfd0e8;
+      --pom1-muted: #8a8aa8;
+      --pom1-accent: #8fdf9f;
+      --pom1-link: #6fb8ff;
+      --pom1-rule: #1f1f33;
+    }
+
+    html, body { background: var(--pom1-bg); color: var(--pom1-text); }
+
+    body {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      min-height: 100vh;
+      font-family: system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      padding: 16px 12px 24px;
+      gap: 12px;
+    }
+
+    a { color: var(--pom1-link); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+
+    /* ── Header ── */
+    header.pom1-header {
+      width: 100%;
+      max-width: 960px;
+      text-align: center;
+      padding-bottom: 8px;
+      border-bottom: 1px solid var(--pom1-rule);
+    }
+    header.pom1-header h1 {
+      font-size: 1.5rem;
+      font-weight: 600;
+      letter-spacing: 0.5px;
+      color: var(--pom1-accent);
+    }
+    header.pom1-header h1 .apple { font-size: 1.1em; vertical-align: -2px; }
+    header.pom1-header .tagline {
+      font-size: 0.85rem;
+      color: var(--pom1-muted);
+      margin-top: 4px;
+    }
+    header.pom1-header .tagline strong { color: var(--pom1-text); font-weight: 600; }
+
+    /* ── Canvas ── */
+    #canvas-container {
+      overflow: hidden;
+      background: #000;
+      width: fit-content;
+      max-width: 100vw;
+      height: fit-content;
+      max-height: calc(100vh - 180px);
+      box-shadow: 0 0 24px rgba(143, 223, 159, 0.08);
+      border-radius: 4px;
+    }
+    canvas.emscripten {
+      display: block;
+      width: auto;
+      height: auto;
+      max-width: 100vw;
+      max-height: calc(100vh - 180px);
+      cursor: default !important;
+    }
+
+    /* ── Fullscreen ── */
+    #canvas-container:fullscreen,
+    #canvas-container:-webkit-full-screen {
+      width: 100vw;
+      height: 100vh;
+      max-height: 100vh;
+      border-radius: 0;
+      box-shadow: none;
+    }
+    #canvas-container:fullscreen canvas,
+    #canvas-container:-webkit-full-screen canvas {
+      width: 100%;
+      height: 100%;
+      max-height: 100vh;
+    }
+
+    /* ── Status / Progress ── */
+    #status-bar {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      min-height: 22px;
+      font-size: 0.8rem;
+      color: var(--pom1-muted);
+    }
+    #progress { width: 200px; height: 12px; display: none; accent-color: var(--pom1-accent); }
+    .spinner {
+      width: 18px; height: 18px;
+      border: 3px solid #3a3a55;
+      border-top-color: var(--pom1-accent);
+      border-radius: 50%;
+      animation: spin 0.75s linear infinite;
+      display: none;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ── Footer ── */
+    footer.pom1-footer {
+      width: 100%;
+      max-width: 960px;
+      text-align: center;
+      font-size: 0.78rem;
+      color: var(--pom1-muted);
+      padding-top: 8px;
+      border-top: 1px solid var(--pom1-rule);
+      line-height: 1.6;
+    }
+    footer.pom1-footer .row { margin: 2px 0; }
+    footer.pom1-footer .sep { color: #444; padding: 0 6px; }
+
+    @media (max-width: 600px) {
+      header.pom1-header h1 { font-size: 1.2rem; }
+      header.pom1-header .tagline { font-size: 0.75rem; }
+      footer.pom1-footer { font-size: 0.7rem; }
+    }
+  </style>
+</head>
+<body>
+
+  <header class="pom1-header">
+    <h1><span class="apple">🍎</span> POM1 v1.8.5 — Apple 1 Emulator</h1>
+    <div class="tagline">
+      by <strong>Arnaud Verhille</strong> ·
+      Celebrating 50 years of Apple (1976–2026) ·
+      <a href="https://github.com/habib256/POM1" target="_blank" rel="noopener">GitHub</a>
+    </div>
+  </header>
+
+  <div id="canvas-container">
+    <canvas class="emscripten" id="canvas" oncontextmenu="event.preventDefault()" tabindex="-1"></canvas>
+  </div>
+
+  <div id="status-bar">
+    <div class="spinner" id="spinner"></div>
+    <span id="status">Loading...</span>
+    <progress id="progress" value="0" max="100"></progress>
+  </div>
+
+  <footer class="pom1-footer">
+    <div class="row">
+      MOS 6502 · Apple Cassette Interface · Bernie's GEN2 HGR ·
+      P-LAB TMS9918 · P-LAB A1-SID · P-LAB microSD · P-LAB MODEM BBS
+    </div>
+    <div class="row">
+      Hardware by <a href="https://p-l4b.github.io/" target="_blank" rel="noopener">Claudio Parmigiani (P-LAB)</a>
+      <span class="sep">·</span>
+      GEN2 by Uncle Bernie
+      <span class="sep">·</span>
+      Firmware &amp; KickC libs by <a href="https://github.com/nippur72" target="_blank" rel="noopener">Antonino Porcino (Nippur72)</a>
+    </div>
+    <div class="row">
+      © 2000–2026 Arnaud Verhille · GPL-3.0 ·
+      Apple 1 software archive: <a href="https://apple1software.com/" target="_blank" rel="noopener">apple1software.com</a> ·
+      <a href="https://applefritter.com/apple1/" target="_blank" rel="noopener">AppleFritter</a>
+    </div>
+    <div class="row" style="margin-top:6px; color:#666;">
+      Note: P-LAB MODEM BBS dialing and the P-LAB Terminal Card require raw TCP and are desktop-only in this build.
+    </div>
+  </footer>
+
+  <script>
+    var statusElement  = document.getElementById('status');
+    var progressElement = document.getElementById('progress');
+    var spinnerElement  = document.getElementById('spinner');
+
+    var Module = {
+      canvas: (function() { return document.getElementById('canvas'); })(),
+
+      print: function(text) {
+        if (arguments.length > 1) text = Array.prototype.slice.call(arguments).join(' ');
+        console.log(text);
+      },
+      printErr: function(text) {
+        if (arguments.length > 1) text = Array.prototype.slice.call(arguments).join(' ');
+        console.warn(text);
+      },
+
+      setStatus: function(text) {
+        if (!Module.setStatus.last) Module.setStatus.last = { time: Date.now(), text: '' };
+        if (text === Module.setStatus.last.text) return;
+        var m = text.match(/([^(]+)\((\d+(\.\d+)?)\/(\d+)\)/);
+        var now = Date.now();
+        if (m && now - Module.setStatus.last.time < 30) return;
+        Module.setStatus.last.time = now;
+        Module.setStatus.last.text = text;
+
+        if (m) {
+          progressElement.value = parseInt(m[2]) * 100;
+          progressElement.max = parseInt(m[4]) * 100;
+          progressElement.style.display = 'inline';
+          text = m[1];
+        } else {
+          progressElement.style.display = 'none';
+        }
+        statusElement.innerHTML = text;
+        spinnerElement.style.display = text ? 'block' : 'none';
+        if (!text && !m) document.getElementById('status-bar').style.display = 'none';
+      },
+
+      monitorRunDependencies: function(left) {
+        this.totalDependencies = Math.max(this.totalDependencies, left);
+        Module.setStatus(left
+          ? 'Preparing… (' + (this.totalDependencies - left) + '/' + this.totalDependencies + ')'
+          : '');
+        if (!left) document.getElementById('status-bar').style.display = 'none';
+      },
+      totalDependencies: 0
+    };
+
+    Module.setStatus('Downloading…');
+    window.onerror = function() {
+      Module.setStatus('Error — see browser console');
+      spinnerElement.style.display = 'none';
+    };
+  </script>
+  <script async type="text/javascript" src="POM1.js"></script>
+</body>
+</html>

@@ -9,7 +9,7 @@ filesize() {
 }
 
 # Build if needed
-if [ ! -f "build/pom1_imgui" ]; then
+if [ ! -f "build/POM1" ]; then
     echo "Emulator not built. Compiling..."
     mkdir -p build
     cd build
@@ -74,4 +74,4 @@ echo ""
 # Launch
 echo "Starting emulator..."
 cd build
-./pom1_imgui
+./POM1

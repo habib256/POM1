@@ -8,12 +8,12 @@ echo ============================================
 echo.
 
 set "EXE="
-if exist "build\Release\pom1_imgui.exe" set "EXE=build\Release\pom1_imgui.exe"
-if exist "build\Debug\pom1_imgui.exe" if not defined EXE set "EXE=build\Debug\pom1_imgui.exe"
-if exist "build\pom1_imgui.exe" if not defined EXE set "EXE=build\pom1_imgui.exe"
+if exist "build\Release\POM1.exe" set "EXE=build\Release\POM1.exe"
+if exist "build\Debug\POM1.exe" if not defined EXE set "EXE=build\Debug\POM1.exe"
+if exist "build\POM1.exe" if not defined EXE set "EXE=build\POM1.exe"
 
 if not defined EXE (
-    echo ERREUR: pom1_imgui.exe introuvable. Compilez en Release :
+    echo ERREUR: POM1.exe introuvable. Compilez en Release :
     echo   cd build
     echo   cmake --build . --config Release
     exit /b 1
@@ -37,7 +37,7 @@ if exist "%OUTDIR%" rd /s /q "%OUTDIR%"
 mkdir "%OUTDIR%" || exit /b 1
 
 echo Copie de l'executable...
-copy /Y "%EXE%" "%OUTDIR%\pom1_imgui.exe" >nul || exit /b 1
+copy /Y "%EXE%" "%OUTDIR%\POM1.exe" >nul || exit /b 1
 
 REM GLFW via vcpkg (triplet dynamique) : glfw3.dll doit etre a cote de l'exe
 set "GLFW_DLL_SRC="
