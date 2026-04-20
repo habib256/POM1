@@ -233,7 +233,7 @@ int main(int argc, char* argv[])
 #endif
 
     // Create window
-    GLFWwindow* window = glfwCreateWindow(1200, 800, "POM1 v1.8.5 - Apple 1 Emulator", NULL, NULL);
+    GLFWwindow* window = glfwCreateWindow(1274, 801, "POM1 v1.8.5 - Apple 1 Emulator", NULL, NULL);
     if (window == NULL)
         return -1;
 
