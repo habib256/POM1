@@ -538,7 +538,7 @@ void MainWindow_ImGui::renderHardwareReferenceWindow()
             hwHeading("Commands");
             hwKeyValue("D / DIR:", "List current directory (long format, with sizes and load addresses).");
             hwKeyValue("LS:", "List current directory (short format, names only).");
-            hwKeyValue("PWD:", "Print current working directory.");
+            hwKeyValue("PWD:", "Print current working directory (the prompt itself already shows it - e.g. /PLAB> means currentDirectory = PLAB).");
             hwKeyValue("CD <dir>:", "Change directory. Supports `..`, absolute `/PATH`, relative names, and fuzzy leaf match.");
             hwKeyValue("LOAD <name>:", "Read a tagged file into RAM at the address encoded in its filename (fuzzy, case-insensitive prefix match).");
             hwKeyValue("SAVE / WRITE:", "Write a memory range to a tagged file in the current directory.");
@@ -712,8 +712,10 @@ void MainWindow_ImGui::renderWelcomeWindow()
         ImGui::BulletText("DEL <name>    Delete a file from the CURRENT dir");
         ImGui::Spacing();
         ImGui::TextWrapped(
-            "The shipped library lives in sub-directories (sdcard/PLAB/ASOFT, "
-            "/BASIC, /MCODE, ...). LOAD / DEL only search the current dir -- "
+            "The prompt shows the current directory (e.g. /PLAB> means you "
+            "are in /PLAB). The shipped library lives in sub-directories "
+            "(sdcard/PLAB/ASOFT, /BASIC, /MCODE, ...). LOAD / DEL only "
+            "search the current dir -- "
             "use CD to enter a sub-directory first. Example: CD MCODE then "
             "LOAD YUM.");
         ImGui::Spacing();
