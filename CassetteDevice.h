@@ -158,15 +158,10 @@ private:
     static constexpr uint32_t kWavFileSampleRate = 44100;
 
     void queueAudioSegment(uint32_t cycles, bool level);
-    // PROGRAM TAPE speaker playback — walks `loadedDurations` at wallclock
-    // pace directly from fillAudioBuffer(), so the deck speaker is audible
-    // the moment PLAY is pressed regardless of whether the ACI ROM has
-    // started polling $C081, and regardless of how fast the emulated CPU
-    // is running. The CPU-side advancePlayback() still drives the ACI
-    // input (`inputLevel`), but the audible square wave now comes from
-    // this decoupled cursor.
-    void startSpeakerAtLeader();
-    void stopSpeaker();
+    // Stop pulse-mode audio: clears the audioQueue so the audio callback
+    // goes silent. Called from stop/eject/rewind/load paths that need to
+    // halt audible output before mutating playback state.
+    void stopPulseAudio();
     void advancePlayback(uint32_t cycles);
     // Pulse-mode progressive rewind. Walks playbackIndex down toward 0
     // at kRewSpeedFactor× play speed. Called from advancePlayback while
@@ -237,18 +232,6 @@ private:
     float audioPlaybackSample = 0.0f;
     uint32_t audioRampInSamplesRemaining = 0;
 
-    // Speaker-side PROGRAM TAPE cursor (audioMutex-protected). Advances
-    // from fillAudioBuffer at POM1_CPU_CLOCK_HZ / outputSampleRate cycles
-    // per output sample so playback pace matches a real Apple-1 deck
-    // regardless of emulated CPU speed / whether the ACI polls yet. The
-    // speaker deliberately runs decoupled from the ACI decoder: on a real
-    // Apple 1 the tape keeps turning while the ROM chews bits, and it
-    // keeps turning after the ROM returns to Wozmon too.
-    bool speakerPlaybackActive = false;
-    size_t speakerIndex = 0;
-    bool speakerLevel = false;
-    double speakerCyclesRemaining = 0.0;
-
     // Mechanical "clunk" that fires when the deck mode transitions
     // (NoTape ↔ ProgramTape ↔ AudioStream). Pre-synthesised into
     // clickBuffer once per event, then mixed on top of whatever the
@@ -293,14 +276,11 @@ private:
     uint64_t rewCarryCycles = 0;
     // Threading invariant: loadedDurations is written by the UI thread
     // (loadTape / ejectTape → loadPlaybackDurations) and read by the CPU
-    // thread (advancePlayback). Both sides run under
-    // EmulationController::stateMutex, so the std::move assignment and
-    // the indexed read cannot overlap. The AUDIO thread's
-    // fillAudioBuffer() must NOT touch this vector — it only consumes
-    // the decoupled audioQueue under audioMutex. Keep this boundary: a
-    // future refactor that lets the audio callback read durations
-    // directly needs either a stateMutex lock (deadlock-prone on the
-    // realtime thread) or an immutable snapshot handed off atomically.
+    // thread (advancePlayback, which also queues audio segments from it).
+    // Both sides run under EmulationController::stateMutex, so the
+    // std::move assignment and the indexed read cannot overlap. The AUDIO
+    // thread's fillAudioBuffer() must NOT touch this vector — it only
+    // consumes the audioQueue under audioMutex.
     std::vector<uint32_t> loadedDurations;
     std::string loadedTapePath;
 

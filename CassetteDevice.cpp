@@ -139,34 +139,13 @@ void CassetteDevice::fillAudioBuffer(float* output, int frameCount)
         return;
     }
     const float vol = volume.load(std::memory_order_relaxed);
-    const double cpuCyclesPerSample =
-        static_cast<double>(POM1_CPU_CLOCK_HZ) /
-        static_cast<double>(std::max<uint32_t>(1, audioOutputSampleRate));
     for (int i = 0; i < frameCount; ++i) {
-        // Playback (PROGRAM TAPE, speaker-driven): square wave walked from
-        // loadedDurations at wallclock pace. Takes priority over the
-        // recording-feedback queue — you can't both play a loaded tape and
-        // record onto it simultaneously on a real deck either. The speaker
-        // runs independently of the ACI decoder on purpose: on a real
-        // Apple 1 the tape keeps spinning while the ROM chews on bits,
-        // and it keeps spinning after the ROM returns to Wozmon too.
+        // Pulse-mode audio: CPU-side advancePlayback() and toggleOutput()
+        // push segments into audioQueue at the emulated CPU's pace, so
+        // the deck speaker stays locked to the 6502 cycle count.  This
+        // covers both program-tape playback and recording feedback.
         float targetSample = 0.0f;
-        if (speakerPlaybackActive) {
-            targetSample = speakerLevel ? 0.22f : -0.22f;
-            speakerCyclesRemaining -= cpuCyclesPerSample;
-            while (speakerCyclesRemaining <= 0.0 && speakerPlaybackActive) {
-                speakerLevel = !speakerLevel;
-                ++speakerIndex;
-                if (speakerIndex >= loadedDurations.size()) {
-                    speakerPlaybackActive = false;
-                    break;
-                }
-                speakerCyclesRemaining += static_cast<double>(loadedDurations[speakerIndex]);
-            }
-        } else if (!audioQueue.empty()) {
-            // Recording-feedback path: CPU-side toggleOutput() pushes the
-            // bytes the Apple-1 is writing to $C000. Gives the user live
-            // modulation audio while dumping to tape.
+        if (!audioQueue.empty()) {
             targetSample = audioQueue.front().sampleValue;
             if (audioQueue.front().remainingSamples > 0) {
                 audioQueue.front().remainingSamples--;
@@ -265,32 +244,9 @@ void CassetteDevice::dropLiveAudio()
     clearLiveAudioState();
 }
 
-void CassetteDevice::startSpeakerAtLeader()
+void CassetteDevice::stopPulseAudio()
 {
-    std::lock_guard<std::mutex> lock(audioMutex);
-    if (loadedDurations.empty()) {
-        speakerPlaybackActive = false;
-        return;
-    }
-    speakerPlaybackActive = true;
-    speakerIndex = 0;
-    speakerLevel = loadedInitialLevel;
-    speakerCyclesRemaining = static_cast<double>(loadedDurations[0]);
-    audioPlaybackSample = 0.0f;
-    audioRampInSamplesRemaining = kAudioRampInSamples;
-    audioQueue.clear();
-}
-
-void CassetteDevice::stopSpeaker()
-{
-    std::lock_guard<std::mutex> lock(audioMutex);
-    speakerPlaybackActive = false;
-    speakerIndex = 0;
-    speakerCyclesRemaining = 0.0;
-    audioSampleRemainder = 0.0;
-    audioPlaybackSample = 0.0f;
-    audioRampInSamplesRemaining = kAudioRampInSamples;
-    audioQueue.clear();
+    clearLiveAudioState();
 }
 
 void CassetteDevice::playMechanicalClick()
@@ -338,7 +294,7 @@ void CassetteDevice::reset()
     recordedDurations.clear();
     playbackPaused.store(false, std::memory_order_release);
     resetPlaybackState();
-    stopSpeaker();
+    stopPulseAudio();
 }
 
 void CassetteDevice::resetApple1Side()
@@ -475,12 +431,13 @@ void CassetteDevice::advancePlayback(uint32_t cycles)
         }
 
         remaining -= cyclesUntilInputToggle;
-        // Audible speaker output used to be queued from here, which tied
-        // playback pitch to the emulated CPU speed and silenced the deck
-        // whenever the ACI ROM wasn't polling. The deck speaker is now
-        // driven directly by fillAudioBuffer from `loadedDurations` at
-        // wallclock pace (see startSpeakerAtLeader) — this loop only
-        // needs to feed the ACI's `inputLevel`.
+        // Queue audio at the current inputLevel (before toggle) for the
+        // segment that was just fully consumed. The audio callback drains
+        // the queue at the hardware sample rate, so the deck speaker
+        // stays locked to the 6502 cycle count.
+        queueAudioSegment(
+            std::max<uint32_t>(1, loadedDurations[playbackIndex - 1]),
+            inputLevel);
         cyclesUntilInputToggle = 0;
         inputLevel = !inputLevel;
 
@@ -583,15 +540,10 @@ void CassetteDevice::armPlaybackAtStart()
     playbackActive = becameActive;
     playbackArmed = false;
     clearLiveAudioState();
-    // Start the audible square-wave the moment the armed → active
-    // transition fires (first $C081 poll from the ACI ROM). Up to this
-    // point PLAY has only *declared* the intent to play: the deck is
-    // silent, the counter is frozen, and the fenêtre UI sits under the
-    // pulsing "ARMED — waiting for C100R" banner. That matches the
-    // mental model the user expects — PLAY alone does not make sound.
-    if (becameActive) {
-        startSpeakerAtLeader();
-    }
+    // The audio queue was cleared by clearLiveAudioState() above.
+    // advancePlayback() will start pushing segments into the queue as
+    // the CPU consumes pulse durations — the deck speaker stays silent
+    // until the ACI ROM actually polls $C081 and drives the tape forward.
 }
 
 CassetteDevice::quint8 CassetteDevice::readTapeInput()
@@ -650,14 +602,14 @@ void CassetteDevice::rewindTape()
     // analogy); isRewinding() lets the UI paint a REW-in-progress state.
     if (!loadedTapeReady || loadedDurations.empty() || playbackIndex == 0) {
         resetPlaybackState();
-        stopSpeaker();
+        stopPulseAudio();
         return;
     }
     rewinding = true;
     rewCarryCycles = 0;
     playbackActive = false;
     playbackArmed  = false;
-    stopSpeaker();
+    stopPulseAudio();
 }
 
 void CassetteDevice::playTape()
@@ -710,17 +662,16 @@ void CassetteDevice::stopTape()
     rewinding = false;
     rewCarryCycles = 0;
     cyclesUntilInputToggle = 0;
-    stopSpeaker();
+    stopPulseAudio();
 }
 
 void CassetteDevice::ejectTape()
 {
     closeAudioStream();
-    // Halt the audio-thread speaker cursor BEFORE mutating
-    // loadedDurations — stopSpeaker takes audioMutex, so any in-flight
-    // fillAudioBuffer call completes before we touch the vector and no
-    // subsequent call can race us (speakerPlaybackActive is false).
-    stopSpeaker();
+    // Clear the audio queue before mutating loadedDurations. The audio
+    // thread never touches loadedDurations (it only drains audioQueue),
+    // so there is no data race, but flushing avoids stale samples.
+    stopPulseAudio();
     audioStreamMode = false;
     loadedDurations.clear();
     loadedTapePath.clear();
@@ -767,12 +718,9 @@ bool CassetteDevice::loadPlaybackDurations(std::vector<uint32_t> durations, bool
         return false;
     }
 
-    // Halt speaker + drop its cursor BEFORE replacing the durations
-    // vector — stopSpeaker takes audioMutex so any in-flight audio
-    // callback completes first, and speakerPlaybackActive=false keeps
-    // subsequent callbacks from touching loadedDurations while we
-    // reassign.
-    stopSpeaker();
+    // Flush the audio queue before replacing the durations vector.
+    // The audio thread never touches loadedDurations directly.
+    stopPulseAudio();
     loadedDurations = std::move(durations);
     loadedInitialLevel = initialLevel;
     loadedTapePath = path;
@@ -1071,9 +1019,8 @@ bool CassetteDevice::loadAudioStream(const std::string& path)
     playbackArmed     = false;
     playbackActive    = false;
     loadedInitialLevel = false;
-    // Entering stream mode — if a pulse tape was previously loaded and its
-    // speaker cursor is still active, stop it before the next callback.
-    stopSpeaker();
+    // Entering stream mode — flush any pending pulse-mode audio segments.
+    stopPulseAudio();
     fireClickIfModeChanged();
     lastError.clear();
     return true;
