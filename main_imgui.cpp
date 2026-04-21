@@ -332,7 +332,8 @@ int main(int argc, char* argv[])
     // Charger les polices
     ImFontConfig fontConfig;
     fontConfig.SizePixels = 15.0f;
-    io.Fonts->AddFontDefault(&fontConfig);
+    ImFont* defaultFont = io.Fonts->AddFontDefault(&fontConfig);
+    if (defaultFont) defaultFont->FallbackChar = (ImWchar)' ';
 
     // Fusionner la police d'icônes FontAwesome
     ImFontConfig iconsConfig;

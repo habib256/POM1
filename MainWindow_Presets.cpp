@@ -19,6 +19,18 @@
 
 namespace pom1::mainwindow::detail {
 
+// Parmigiani's golden rule — "one board at a time".
+// Claudio PARMIGIANI (P-LAB) insists that on real Apple-1 hardware you plug
+// ONE P-LAB expansion card at a time, never several. The 6502 bus has no
+// arbitration and many cards overlap address windows by design (SID vs.
+// TMS9918 at $CC00, A1-IO vs. GEN2 HGR at $2000-$200F, Juke-Box claiming
+// $4000-$BFFF, etc.). The two "Multiplexing Fantasy" entries below plug
+// several P-LAB cards simultaneously on purpose — the name "Fantasy" flags
+// that these are emulator-only configurations that cannot exist on real
+// silicon. Every other preset respects the golden rule; mutual-exclusion
+// logic in applyMachineConfig / setXxxEnabled mirrors real bus conflicts
+// (SID ↔ SID-SE, TMS9918 ↔ SID-SE, GEN2 ↔ A1-IO, Juke-Box ↔ CFFA1/microSD/
+// Krusader/Wi-Fi Modem). See CLAUDE.md for the rationale.
 const MachineConfig kMachinePresets[] = {
     //                                  GEN2  uSD  SID  TMS  RTC  WiFi Term Krus CFFA ACI  RAM  BASIC              SID-SE
     {
@@ -146,7 +158,11 @@ const MachineConfig kMachinePresets[] = {
     },
     {   //                                  GEN2  uSD  SID  TMS  RTC  WiFi Term Krus CFFA ACI
         "P-LAB Apple-1 Multiplexing Fantasy",
-        "All P-LAB expansion cards: microSD, A1-SID, TMS9918, I/O & RTC, Wi-Fi modem, Terminal Card.",
+        "Emulator-only fantasy: plugs microSD, A1-SID, TMS9918, I/O & RTC, Wi-Fi modem, "
+        "and Terminal Card all at once. Violates Claudio Parmigiani's golden rule "
+        "\"one board at a time\" - impossible on real Apple-1 silicon (the 6502 bus has "
+        "no arbitration, and several of these cards share overlapping address windows). "
+        "Provided for convenience only.",
         false, true, true, true, true, true, true,
         false, false, false, 64, BasicType::ApplesoftLite,
         /*sidSE*/ false,
@@ -173,7 +189,11 @@ const MachineConfig kMachinePresets[] = {
     },
     {
         "POM1 Apple-1 Multiplexing Fantasy (2026)",
-        "64 KB RAM, Applesoft Lite, microSD + A1-SID + Wi-Fi modem + Terminal Card. Graphic cards off by default. ACI unplugged so the cassette deck acts as a plain audio player. Boots with the Cassette Deck + Welcome panels already open to the right of the Apple 1 screen; your layout customisations are persisted to imgui.ini.",
+        "Emulator-only fantasy (violates Parmigiani's golden rule \"one board at a time\"): "
+        "64 KB RAM, Applesoft Lite, microSD + A1-SID + Wi-Fi modem + Terminal Card. "
+        "Graphic cards off by default. ACI unplugged so the cassette deck acts as a plain "
+        "audio player. Boots with the Cassette Deck + Welcome panels already open to the "
+        "right of the Apple 1 screen; your layout customisations are persisted to imgui.ini.",
         false, true, true, false, false, true, true,
         false, false, false, 64, BasicType::ApplesoftLite,
         /*sidSE*/ false,

@@ -267,6 +267,17 @@ void MainWindow_ImGui::ensureApple50LogoTexture()
     apple50LogoHeight = h;
 }
 
+namespace {
+// Bullet followed by auto-wrapping text so long bullet items fold at the
+// window edge instead of clipping. Replaces ImGui::BulletText for every
+// Help-window bullet (Notes sections, quick-start, acknowledgements...).
+static void bulletWrapped(const char* text)
+{
+    ImGui::Bullet();
+    ImGui::TextWrapped("%s", text);
+}
+} // namespace
+
 void MainWindow_ImGui::renderAboutDialog()
 {
     ensureAboutPhotoTexture();
@@ -291,19 +302,20 @@ void MainWindow_ImGui::renderAboutDialog()
                          ImVec2(iconDisplay, iconDisplay));
             ImGui::SameLine();
             ImGui::BeginGroup();
-            ImGui::TextUnformatted("POM1 v1.8.5 - Apple 1 Emulator (Dear ImGui)");
-            ImGui::TextUnformatted("Celebrating 50 years of Apple (1976-2026)");
-            ImGui::TextUnformatted("Author: Arnaud VERHILLE");
-            ImGui::TextUnformatted("original POM1 (Java, 2000)");
-            ImGui::TextUnformatted("POM1 Dear ImGui port (2026)");
-            ImGui::TextUnformatted("Copyright (C) 2000-2026 - GPL-3.0");
+            ImGui::TextWrapped("POM1 v1.8.5 - Apple 1 Emulator (Dear ImGui)");
+            ImGui::TextWrapped("Celebrating 50 years of Apple (1976-2026)");
+            ImGui::TextWrapped("Author: Arnaud VERHILLE");
+            ImGui::TextWrapped("original POM1 (Java, 2000)");
+            ImGui::TextWrapped("POM1 Dear ImGui port (2026)");
+            ImGui::TextWrapped("Copyright (C) 2000-2026 - GPL-3.0");
             ImGui::EndGroup();
         } else {
             ImGui::TextWrapped("POM1 v1.8.5 - Apple 1 Emulator (Dear ImGui)");
             ImGui::TextWrapped("Celebrating 50 years of Apple (1976-2026)");
-            ImGui::TextUnformatted("Author: Arnaud VERHILLE");
-            ImGui::TextUnformatted("original POM1 (Java, 2000)");
-            ImGui::TextUnformatted("POM1 Dear ImGui port (2026)");ImGui::TextWrapped("Copyright (C) 2000-2026 - GPL-3.0");
+            ImGui::TextWrapped("Author: Arnaud VERHILLE");
+            ImGui::TextWrapped("original POM1 (Java, 2000)");
+            ImGui::TextWrapped("POM1 Dear ImGui port (2026)");
+            ImGui::TextWrapped("Copyright (C) 2000-2026 - GPL-3.0");
         }
         ImGui::Separator();
 
@@ -319,9 +331,9 @@ void MainWindow_ImGui::renderAboutDialog()
 
         ImGui::Spacing();
         ImGui::TextWrapped("Resources:");
-        ImGui::BulletText("apple1software.com - Apple 1 software archive");
-        ImGui::BulletText("applefritter.com/apple1 - Apple 1 community hub");
-        ImGui::BulletText("p-l4b.github.io - P-LAB hardware reference");
+        bulletWrapped("apple1software.com - Apple 1 software archive");
+        bulletWrapped("applefritter.com/apple1 - Apple 1 community hub");
+        bulletWrapped("p-l4b.github.io - P-LAB hardware reference");
     }
     ImGui::End();
 }
@@ -338,24 +350,33 @@ void MainWindow_ImGui::renderSpecialThanksWindow()
         ImGui::BeginChild("special_thanks_scroll", ImVec2(0, 0), true);
         ImGui::TextWrapped("Ports of POM1");
         ImGui::Spacing();
-        ImGui::BulletText("Ken WESSEN - upgrades, 65C02 support (2006)");
-        ImGui::BulletText("Joe CROBAK - macOS Cocoa port");
-        ImGui::BulletText("John D. CORRADO - C/SDL port (2006-2014)");
+        bulletWrapped("Ken WESSEN - upgrades, 65C02 support (2006)");
+        bulletWrapped("Joe CROBAK - macOS Cocoa port");
+        bulletWrapped("John D. CORRADO - C/SDL port (2006-2014)");
 
         ImGui::Spacing();
         ImGui::Separator();
         ImGui::Spacing();
         ImGui::TextWrapped("Special thanks to");
         ImGui::Spacing();
-        ImGui::BulletText("Steve WOZNIAK & Steve JOBS - for the Apple 1");
-        ImGui::BulletText("Claudio PARMIGIANI (P-LAB) - designer of the entire P-LAB Apple-1 expansion family");
-        ImGui::BulletText("Antonino PORCINO (Nippur72) - apple1-videocard-lib & apple1-sdcard firmware");
-        ImGui::BulletText("Uncle BERNIE - GEN2 Color Graphics Card");
-        ImGui::BulletText("Tom OWAD - AppleFritter community");
-        ImGui::BulletText("Vince BRIEL - Replica 1");
-        ImGui::BulletText("Lee DAVISON - Enhanced BASIC");
-        ImGui::BulletText("Achim BREIDENBACH - Sim6502");
-        ImGui::BulletText("Fabrice FRANCES - Java Microtan Emulator");
+        bulletWrapped("Steve WOZNIAK & Steve JOBS - for the Apple 1");
+        bulletWrapped("Claudio PARMIGIANI (P-LAB) - designer of the entire P-LAB Apple-1 expansion family");
+        ImGui::Indent();
+        ImGui::TextWrapped(
+            "Golden rule: \"one board at a time\". Real Apple-1 hardware takes "
+            "ONE P-LAB card at a time, never several - the 6502 bus has no "
+            "arbitration and several cards overlap address windows by design. "
+            "POM1's \"Multiplexing Fantasy\" presets intentionally break the "
+            "rule; the name is a literal warning that the configuration "
+            "cannot exist on real silicon.");
+        ImGui::Unindent();
+        bulletWrapped("Antonino PORCINO (Nippur72) - apple1-videocard-lib & apple1-sdcard firmware");
+        bulletWrapped("Uncle BERNIE - GEN2 Color Graphics Card");
+        bulletWrapped("Tom OWAD - AppleFritter community");
+        bulletWrapped("Vince BRIEL - Replica 1");
+        bulletWrapped("Lee DAVISON - Enhanced BASIC");
+        bulletWrapped("Achim BREIDENBACH - Sim6502");
+        bulletWrapped("Fabrice FRANCES - Java Microtan Emulator");
         ImGui::EndChild();
     }
     ImGui::End();
@@ -406,6 +427,21 @@ void MainWindow_ImGui::renderHardwareReferenceWindow()
             "Each entry lists where it sits in the memory map, what it does, "
             "and the quirks you need to know about. See README.md and CLAUDE.md "
             "for build notes and deeper architecture.");
+        ImGui::Spacing();
+        ImGui::TextColored(ImVec4(0.95f, 0.80f, 0.50f, 1.0f),
+                           "Parmigiani's golden rule: \"one board at a time\"");
+        ImGui::TextWrapped(
+            "Claudio PARMIGIANI (P-LAB), designer of the P-LAB Apple-1 expansion "
+            "family, insists: on real Apple-1 hardware you plug ONE P-LAB card at "
+            "a time - never several simultaneously. The 6502 bus has no "
+            "arbitration and many cards deliberately share address windows "
+            "(A1-SID vs. TMS9918 at $CC00, A1-IO vs. GEN2 HGR at $2000, "
+            "Juke-Box claiming $4000-$BFFF, ...). Plugging two at once is "
+            "physically impossible on real silicon. POM1 lets you break the rule "
+            "in the \"Multiplexing Fantasy\" presets for convenience, but the "
+            "name is literal - that configuration is a fantasy, not a buildable "
+            "machine. Every other preset honours the rule; mutual-exclusion "
+            "checkboxes in the Hardware menu mirror real bus conflicts.");
         ImGui::Separator();
 
         ImGui::BeginChild("hwref_scroll", ImVec2(0, 0), true);
@@ -1045,26 +1081,26 @@ void MainWindow_ImGui::renderWelcomeWindow()
                          ImVec2(iconDisplay, iconDisplay));
             ImGui::SameLine();
             ImGui::BeginGroup();
-            ImGui::TextUnformatted("Bienvenue in POM1");
+            ImGui::TextWrapped("Bienvenue in POM1");
             ImGui::TextWrapped(
                 "Apple 1 emulator -- 50 years of Apple (1976-2026).");
             ImGui::EndGroup();
         } else {
-            ImGui::TextUnformatted("Bienvenue in POM1");
+            ImGui::TextWrapped("Bienvenue in POM1");
             ImGui::TextWrapped(
                 "Apple 1 emulator -- 50 years of Apple (1976-2026).");
         }
         ImGui::Separator();
         ImGui::Spacing();
-        ImGui::TextUnformatted("Quick start (type in the Woz Monitor):");
-        ImGui::BulletText("E000R    Integer BASIC");
-        ImGui::BulletText("6000R    Applesoft Lite");
-        ImGui::BulletText("8000R    SD Card OS (microSD)");
-        ImGui::BulletText("C100R    ACI cassette (load/save)");
+        ImGui::TextWrapped("Quick start (type in the Woz Monitor):");
+        bulletWrapped("E000R    Integer BASIC");
+        bulletWrapped("6000R    Applesoft Lite");
+        bulletWrapped("8000R    SD Card OS (microSD)");
+        bulletWrapped("C100R    ACI cassette (load/save)");
 
         // ── Cassette deck ───────────────────────────────────────────
         ImGui::Separator();
-        ImGui::TextUnformatted("Cassette deck");
+        ImGui::TextWrapped("Cassette deck");
         ImGui::TextWrapped(
             "ACI plugged: Apple 1 program tapes only (pulse mode, "
             ".aci / .wav / audio rips of real tapes). ACI unplugged: "
@@ -1076,18 +1112,18 @@ void MainWindow_ImGui::renderWelcomeWindow()
 
         // ── microSD ─────────────────────────────────────────────────
         ImGui::Separator();
-        ImGui::TextUnformatted("microSD card");
+        ImGui::TextWrapped("microSD card");
         ImGui::TextWrapped(
             "The default preset ships the P-LAB microSD Storage Card "
             "plugged in. The host folder sdcard/ is exposed as a "
             "virtual FAT32 volume.");
         ImGui::Spacing();
-        ImGui::BulletText("8000R         Launch the SD Card OS");
-        ImGui::BulletText("DIR / LS        List the current directory");
-        ImGui::BulletText("CD <dir>      Enter a sub-directory (e.g. CD MCODE)");
-        ImGui::BulletText("CD ..         Go back up one level");
-        ImGui::BulletText("LOAD <name>   Load a file from the CURRENT dir (no recursion)");
-        ImGui::BulletText("DEL <name>    Delete a file from the CURRENT dir");
+        bulletWrapped("8000R         Launch the SD Card OS");
+        bulletWrapped("DIR / LS        List the current directory");
+        bulletWrapped("CD <dir>      Enter a sub-directory (e.g. CD MCODE)");
+        bulletWrapped("CD ..         Go back up one level");
+        bulletWrapped("LOAD <name>   Load a file from the CURRENT dir (no recursion)");
+        bulletWrapped("DEL <name>    Delete a file from the CURRENT dir");
         ImGui::Spacing();
         ImGui::TextWrapped(
             "The prompt shows the current directory (e.g. /PLAB> means you "
@@ -1104,7 +1140,7 @@ void MainWindow_ImGui::renderWelcomeWindow()
 
         // ── BASIC variants ──────────────────────────────────────────
         ImGui::Separator();
-        ImGui::TextUnformatted("BASIC variants");
+        ImGui::TextWrapped("BASIC variants");
         ImGui::TextWrapped(
             "Integer BASIC ($E000-$EFFF, 4 KB): Steve Wozniak's 1976 "
             "Math (-32767..+32767), no strings beyond PRINT, no "
@@ -1588,10 +1624,10 @@ void MainWindow_ImGui::renderTutorialIntegerBasicWindow()
         ImGui::Spacing();
         ImGui::Separator();
         ImGui::TextColored(ImVec4(0.90f, 0.70f, 0.60f, 1.0f), "Notes");
-        ImGui::BulletText("Integers only: -32767..32767. No SIN, no strings, no FOR step.");
-        ImGui::BulletText("POKE / PEEK use signed 16-bit values. $C800 is -14336, $E000 is -8192.");
-        ImGui::BulletText("PRINT chains with commas (tab) or semicolons (concatenate).");
-        ImGui::BulletText("See doc/Preliminary_Apple_Basic_Users_Manual.pdf for the full reference.");
+        bulletWrapped("Integers only: -32767..32767. No SIN, no strings, no FOR step.");
+        bulletWrapped("POKE / PEEK use signed 16-bit values. $C800 is -14336, $E000 is -8192.");
+        bulletWrapped("PRINT chains with commas (tab) or semicolons (concatenate).");
+        bulletWrapped("See doc/Preliminary_Apple_Basic_Users_Manual.pdf for the full reference.");
         ImGui::EndChild();
     }
     ImGui::End();
@@ -1611,8 +1647,8 @@ void MainWindow_ImGui::renderTutorialApplesoftWindow()
             "loaded at a different address.");
         ImGui::BeginChild("tut_asf_scroll", ImVec2(0, 0), true);
         tutStep(1, "Pick the right preset");
-        ImGui::BulletText("Preset #4 'P-LAB microSD & Applesoft Lite' - Applesoft at $6000-$7FFF.");
-        ImGui::BulletText("Preset #3 'Replica-1 with CFFA1 & Applesoft Lite' - Applesoft at $E000-$FFFF (includes Woz Monitor).");
+        bulletWrapped("Preset #4 'P-LAB microSD & Applesoft Lite' - Applesoft at $6000-$7FFF.");
+        bulletWrapped("Preset #3 'Replica-1 with CFFA1 & Applesoft Lite' - Applesoft at $E000-$FFFF (includes Woz Monitor).");
 
         tutStep(2, "Cold-start Applesoft");
         ImGui::TextWrapped("From the Woz Monitor '\\' prompt:");
@@ -1661,9 +1697,9 @@ void MainWindow_ImGui::renderTutorialApplesoftWindow()
         ImGui::Spacing();
         ImGui::Separator();
         ImGui::TextColored(ImVec4(0.90f, 0.70f, 0.60f, 1.0f), "Notes");
-        ImGui::BulletText("Line editor: Ctrl-H (Backspace) deletes the last character typed.");
-        ImGui::BulletText("No HGR / HCOLOR - the GEN2 HGR card is addressed directly via POKE.");
-        ImGui::BulletText("See tutorial 'microSD: load and save programs' for full ASAVE / LOAD / RUN workflow.");
+        bulletWrapped("Line editor: Ctrl-H (Backspace) deletes the last character typed.");
+        bulletWrapped("No HGR / HCOLOR - the GEN2 HGR card is addressed directly via POKE.");
+        bulletWrapped("See tutorial 'microSD: load and save programs' for full ASAVE / LOAD / RUN workflow.");
         ImGui::EndChild();
     }
     ImGui::End();
@@ -1737,11 +1773,11 @@ void MainWindow_ImGui::renderTutorialMicroSDWindow()
         ImGui::Spacing();
         ImGui::Separator();
         ImGui::TextColored(ImVec4(0.90f, 0.70f, 0.60f, 1.0f), "Notes");
-        ImGui::BulletText("Backspace = '_' (underscore). Real keyboards have no real backspace key.");
-        ImGui::BulletText("Tagged filenames: NAME#TTAAAA where TT is type (#06/#F1/#F8) and AAAA is the hex load address.");
-        ImGui::BulletText("'D' alone and 'L' alone are NOT commands - you must type DIR and LOAD.");
-        ImGui::BulletText("ESC aborts a long DIR; any other key pauses, ENTER resumes.");
-        ImGui::BulletText("See Hardware Reference > microSD for the full command set and error codes.");
+        bulletWrapped("Backspace = '_' (underscore). Real keyboards have no real backspace key.");
+        bulletWrapped("Tagged filenames: NAME#TTAAAA where TT is type (#06/#F1/#F8) and AAAA is the hex load address.");
+        bulletWrapped("'D' alone and 'L' alone are NOT commands - you must type DIR and LOAD.");
+        bulletWrapped("ESC aborts a long DIR; any other key pauses, ENTER resumes.");
+        bulletWrapped("See Hardware Reference > microSD for the full command set and error codes.");
         ImGui::EndChild();
     }
     ImGui::End();
@@ -1810,10 +1846,10 @@ void MainWindow_ImGui::renderTutorialCassetteWindow()
         ImGui::Spacing();
         ImGui::Separator();
         ImGui::TextColored(ImVec4(0.90f, 0.70f, 0.60f, 1.0f), "Notes");
-        ImGui::BulletText("C100R is needed BEFORE EACH operation - the ACI returns to Wozmon after each read/write.");
-        ImGui::BulletText("Multi-range: 'A.BW C.DW' writes two segments. On read, use matching address increments.");
-        ImGui::BulletText("~1500 baud average (FSK: 1 kHz = '1' bit, 2 kHz = '0' bit).");
-        ImGui::BulletText("See Hardware Reference > Woz ACI for the full protocol and deck transport.");
+        bulletWrapped("C100R is needed BEFORE EACH operation - the ACI returns to Wozmon after each read/write.");
+        bulletWrapped("Multi-range: 'A.BW C.DW' writes two segments. On read, use matching address increments.");
+        bulletWrapped("~1500 baud average (FSK: 1 kHz = '1' bit, 2 kHz = '0' bit).");
+        bulletWrapped("See Hardware Reference > Woz ACI for the full protocol and deck transport.");
         ImGui::EndChild();
     }
     ImGui::End();
@@ -1880,11 +1916,11 @@ void MainWindow_ImGui::renderTutorialModemBBSWindow()
         ImGui::Spacing();
         ImGui::Separator();
         ImGui::TextColored(ImVec4(0.90f, 0.70f, 0.60f, 1.0f), "Notes");
-        ImGui::BulletText("ATZ resets the modem (echo ON, 9600 baud).");
-        ImGui::BulletText("ATE0 / ATE1 disable / enable command-mode echo.");
-        ImGui::BulletText("No 'ATO' to resume a paused session - dial again with ATDT for a fresh socket.");
-        ImGui::BulletText("TELNET IAC negotiations are filtered; CR+LF from the wire collapses to CR.");
-        ImGui::BulletText("See Hardware Reference > MODEM BBS for the full AT command set and baud table.");
+        bulletWrapped("ATZ resets the modem (echo ON, 9600 baud).");
+        bulletWrapped("ATE0 / ATE1 disable / enable command-mode echo.");
+        bulletWrapped("No 'ATO' to resume a paused session - dial again with ATDT for a fresh socket.");
+        bulletWrapped("TELNET IAC negotiations are filtered; CR+LF from the wire collapses to CR.");
+        bulletWrapped("See Hardware Reference > MODEM BBS for the full AT command set and baud table.");
         ImGui::EndChild();
     }
     ImGui::End();
