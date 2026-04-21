@@ -470,6 +470,83 @@ void MainWindow_ImGui::renderHardwareReferenceWindow()
             hwKeyValue("ROM:", "256 B Woz ACI firmware at $C100-$C1FF - entry point C100R in the Woz Monitor.");
             hwKeyValue("Files:", "Loads raw binary, .aci dumps, and .wav captures.");
             hwKeyValue("UI:", "File -> Cassette Deck (realistic piano-key transport) or Cassette Controls (classic).");
+            hwHeading("How it works");
+            ImGui::TextWrapped(
+                "The ACI is a single flip-flop: each time the CPU reads $C081 "
+                "the output on 'TO TAPE' toggles, turning a bit pattern into a "
+                "square wave. The firmware at $C100 encodes each data bit as "
+                "one full cycle: 1 kHz for a '1', 2 kHz for a '0'. With an "
+                "average bit mix this gives ~1500 baud. No clock signal is "
+                "recorded: timing lives entirely in software. A 10-second "
+                "header of all-ones is prepended automatically to every write, "
+                "so you can start the tape first and leave the clear leader "
+                "time to pass.");
+            hwHeading("Commands (type in the Woz Monitor '\\' prompt)");
+            hwKeyValue("C100R",
+                "Jumps to the ACI firmware. The firmware echoes '*' followed by "
+                "CR and then waits for your address line. You must run C100R "
+                "ONCE before any tape operation; the next command you type "
+                "will be parsed by the ACI itself instead of the Woz Monitor. "
+                "When the operation finishes the ACI returns control to the "
+                "Woz Monitor ('\\' prompt), so you need a fresh C100R for each "
+                "subsequent tape read or write.");
+            hwKeyValue("<from>.<to>R",
+                "READ the tape block spanning hex addresses <from>..<to> (both "
+                "inclusive) into RAM. The tape MUST already be moving when you "
+                "press RETURN - start PLAY on the deck first, then type the "
+                "command, then hit RETURN within ~5 seconds so the firmware "
+                "can latch onto the header tone. Example: 0280.0FFFR loads a "
+                "3.5 kB program into $0280-$0FFF. Spaces inside the address "
+                "line are ignored.");
+            hwKeyValue("<from>.<to>W",
+                "WRITE the RAM range <from>..<to> to tape. Press REC on the "
+                "deck (REC+PLAY latch together on real hardware and on our "
+                "deck widget), type the command, hit RETURN. Example: "
+                "0280.0FFFW records $0280-$0FFF. Export the captured audio "
+                "to .aci / .wav via File > Save Tape.");
+            hwKeyValue("Multiple ranges",
+                "A.BW C.DW or A.BR C.DR - write / read two segments in one "
+                "shot, each preceded by its own 10-second header. On READ, "
+                "the two ranges must have the SAME length increments (not the "
+                "same absolute addresses) as when they were written. Example: "
+                "0280.02FFW 0400.047FW  then later  0500.057FR 0600.067FR "
+                "(both 128-byte ranges either way).");
+            hwKeyValue("Invalid input",
+                "If the address line contains illegal characters or no "
+                "addresses, pressing RETURN silently drops back to the Woz "
+                "Monitor without doing any tape I/O. A successful read prints "
+                "'\\' then returns to the monitor; a read error prints nothing "
+                "special - trust your ears + the deck counter.");
+            ImGui::TextWrapped(
+                "Pedagogy note: the suffixes R and W look like the Woz "
+                "Monitor's own 'run at address' shortcut, but after C100R the "
+                "ACI firmware owns the input line until it finishes parsing. "
+                "Typing <from>.<to>R without a prior C100R simply runs the "
+                "CPU at <from> and crashes into whatever is there.");
+            ImGui::Spacing();
+            hwHeading("Cassette Deck transport (File > Cassette Deck)");
+            hwKeyValue("PLAY:", "Arm playback. Required before typing <from>.<to>R.");
+            hwKeyValue("REC:",
+                "Arm recording. Pressing REC alone auto-latches PLAY too "
+                "(real mechanical interlock). Required before <from>.<to>W.");
+            hwKeyValue("STOP:",
+                "Release every transport key and rewind the playback cursor to start.");
+            hwKeyValue("PAUSE:",
+                "Freeze the current position without resetting. Only latches "
+                "while PLAY or REC is on; STOP releases it.");
+            hwKeyValue("REW / FF:",
+                "Rewind / fast-forward. Releases PLAY - press PLAY again to resume reading.");
+            hwKeyValue("EJECT:", "Only available when the deck is Stopped. Unloads the tape.");
+            hwKeyValue("VOLUME:",
+                "Mixes the tape audio into the master output so you hear the "
+                "chirps during load. On real hardware Woz recommends setting "
+                "level so the ACI LED 'just fully lights' - too low and the "
+                "comparator misses bits, too high and the signal clips.");
+            ImGui::TextWrapped(
+                "The jaquette prints \"Type <from>.<to>R\" whenever "
+                "cassettes/tapeinfo.txt has a 'filename = load-range' entry "
+                "for the loaded tape - so you can read the label, press PLAY, "
+                "C100R, and type the command shown.");
         }
 
         // ---- GEN2 HGR -----------------------------------------------
@@ -528,46 +605,244 @@ void MainWindow_ImGui::renderHardwareReferenceWindow()
             ImGui::TextWrapped(
                 "65C22 VIA + ATMEGA bridge turning a microSD card into a virtual FAT32 "
                 "filesystem visible from the Apple-1. Host side POM1 maps the sdcard/ "
-                "folder as the emulated volume.");
+                "folder as the emulated volume. The text-based interface looks like an "
+                "MS-DOS / Linux shell.");
             hwHeading("Particularities");
-            hwKeyValue("I/O:", "$A000-$A00F (VIA) + firmware ROM at $8000-$9FFF (8 KB).");
+            hwKeyValue("I/O:", "$A000-$A00F (VIA) + firmware ROM at $8000-$9FFF (8 kB EEPROM).");
             hwKeyValue("Handshake:", "PORTB bit 0 = CPU_STROBE, bit 7 = MCU_STROBE, PORTA = data.");
-            hwKeyValue("Filenames:", "Tagged as NAME#TTAAAA to carry type + load address.");
-            hwKeyValue("Firmware:", "nippur72/apple1-sdcard. Cold start: type 8000R.");
+            hwKeyValue("Firmware:", "nippur72/apple1-sdcard, shipped as SD CARD OS 1.3 in roms/sdcard.rom.");
+            hwKeyValue("Cold start:", "Type 8000R in the Woz Monitor -> banner '*** SD CARD OS 1.3' then '/>' prompt.");
             hwKeyValue("Mutually exclusive:", "CFFA1 (shares $9000-$9FFF).");
-            hwHeading("Commands");
-            hwKeyValue("D / DIR:", "List current directory (long format, with sizes and load addresses).");
-            hwKeyValue("LS:", "List current directory (short format, names only).");
-            hwKeyValue("PWD:", "Print current working directory (the prompt itself already shows it - e.g. /PLAB> means currentDirectory = PLAB).");
-            hwKeyValue("CD <dir>:", "Change directory. Supports `..`, absolute `/PATH`, relative names, and fuzzy leaf match.");
-            hwKeyValue("LOAD <name>:", "Read a tagged file into RAM at the address encoded in its filename (fuzzy, case-insensitive prefix match).");
-            hwKeyValue("SAVE / WRITE:", "Write a memory range to a tagged file in the current directory.");
-            hwKeyValue("DEL <name>:", "Delete a file in the current directory.");
-            hwKeyValue("MKDIR / RMDIR:", "Create / remove a sub-directory, in the current directory.");
-            hwKeyValue("MOUNT:", "Reset to the SD card root.");
+            hwHeading("Prompt & line editing");
+            hwKeyValue("Prompt:", "'/>' at root, '/FOLDER>' after CD (the path itself IS the prompt - no need for PWD).");
+            hwKeyValue("Backspace:", "Press '_' (underscore) to erase the last character typed - real keyboards have no Backspace. May not work on every keyboard.");
+            hwKeyValue("Long listings:", "Press any key (except ESC) to pause a DIR / LS / TYPE / DUMP. Press ENTER to resume, ESC to abort.");
+            hwKeyValue("Case:", "Commands are UPPERCASE only (Apple-1 keyboard is upper-only). All hex arguments are in hex without $ prefix.");
+            hwHeading("Tagged filenames (NAME#TTAAAA)");
             ImGui::TextWrapped(
-                "Important: every name-accepting command (LOAD, DEL, SAVE, READ, "
-                "WRITE, MKDIR, RMDIR) resolves relative to the current working "
-                "directory -- there is NO recursive search. Use CD <dir> to "
-                "navigate before invoking them. Example: CD MCODE then LOAD YUM.");
+                "On disk, files carry a tag after '#': two hex digits for the type, "
+                "four hex digits for the load address. POM1 reads the tag to know "
+                "where to place the bytes.\n"
+                "  #06 = plain binary (e.g. BASIC#06E000  -> binary loaded at $E000)\n"
+                "  #F1 = Integer BASIC program (e.g. STARTREK#F10300  -> $0300)\n"
+                "  #F8 = AppleSoft BASIC Lite program (tag 'ASB')\n"
+                "LOAD and RUN accept a partial name (fuzzy prefix match) - the "
+                "firmware picks the first file whose name starts with what you typed. "
+                "DEL / RM, in contrast, require the FULL real filename including the "
+                "#TTAAAA tag.");
+            hwHeading("Help commands");
+            hwKeyValue("?",
+                "Prints the list of commands in one block. Same as HELP with no "
+                "argument.");
+            hwKeyValue("HELP [cmd]",
+                "Without argument: same as '?'. With a command name: prints the "
+                "detailed syntax of that command. Example: HELP SAVE");
+            hwHeading("Directory & navigation");
+            hwKeyValue("DIR [path]",
+                "Long listing of the given directory (current one if omitted). "
+                "Each entry shows display-name, size, type, load address. "
+                "Note: 'D' alone is NOT a command - you must type DIR.");
+            hwKeyValue("LS [path]",
+                "Short + faster listing: real tagged filenames only (no size/type "
+                "decoding). 'L' alone is NOT a command - you must type LS.");
+            hwKeyValue("CD <path>",
+                "Change directory. Accepts absolute '/PATH', relative 'SUB', "
+                "parent '..' and fuzzy leaf matching (case-insensitive prefix).");
+            hwKeyValue("PWD", "Print the current working directory (the prompt already shows it).");
+            hwKeyValue("MKDIR <path> / MD <path>", "Create a sub-directory.");
+            hwKeyValue("RMDIR <path> / RD <path>", "Remove a sub-directory (must be empty).");
+            hwKeyValue("MOUNT",
+                "Force a remount of the SD filesystem. Use after swapping cards "
+                "physically, or when POM1's sdcard/ directory was edited from the "
+                "host side while the OS was already running.");
+            hwHeading("Load, run, save");
+            hwKeyValue("LOAD <name>",
+                "Read a tagged file into RAM at the address encoded in its "
+                "#AAAA tag. Prints 'FOUND <realname>' / 'LOADING' / load-range "
+                "confirmation / 'OK'.");
+            hwKeyValue("RUN <name>",
+                "Same as LOAD but also executes after loading - binaries start at "
+                "the tag address, BASIC programs are RUN from the interpreter.");
+            hwKeyValue("READ <name> <startaddr>",
+                "Raw binary read to the given RAM address. Ignores any #TTAAAA tag "
+                "on the file - you supply the load address yourself.");
+            hwKeyValue("SAVE <name> [<start> <end>]",
+                "Without start/end: saves the currently-loaded INTEGER BASIC "
+                "program with tag #F1 and the current LOMEM/HIMEM. "
+                "With start/end: writes the given RAM range as a tag-#06 binary.");
+            hwKeyValue("ASAVE <name>",
+                "AppleSoft BASIC variant of SAVE - writes the program currently in "
+                "RAM with tag #F8. Use ASAVE from AppleSoft, SAVE from Integer BASIC.");
+            hwKeyValue("WRITE <name> <start> <end>",
+                "Raw binary write of the given RAM range. No type tag is added "
+                "automatically.");
+            hwKeyValue("DEL <name> / RM <name>",
+                "Delete a file. REQUIRES the real on-disk filename including the "
+                "#TTAAAA tag (use LS to see it), not the pretty DIR name.");
+            hwHeading("Inspection & BASIC helpers");
+            hwKeyValue("TYPE <name>",
+                "Prints the given ASCII file to the screen. Any key pauses, ESC "
+                "aborts.");
+            hwKeyValue("DUMP <name> [<start> <end>]",
+                "Hex dump of a binary file. Optional start/end limit the range. "
+                "Any key pauses, ESC aborts.");
+            hwKeyValue("BAS",
+                "Print LOMEM and HIMEM of the BASIC program currently in RAM. "
+                "Handy after a LOAD to confirm the program fits.");
+            hwHeading("Maintenance");
+            hwKeyValue("TIME [value]",
+                "Set / read the internal I/O timeout used when talking to the SD "
+                "card. Printed as 'TIMEOUT MAX: $xx CURR: $xx'. Only touch if you "
+                "see ?I/O ERROR regularly.");
+            hwKeyValue("TEST", "Internal self-test of the SD CARD OS firmware.");
+            hwKeyValue("EXIT",
+                "Return to the Woz Monitor ('\\' prompt). Same as pressing RESET "
+                "but without dropping RAM.");
+            hwKeyValue("<addr>R",
+                "Runs at the given address - it's not an SD command, it's the Woz "
+                "Monitor 'R' suffix honoured transparently. Useful shortcuts: "
+                "E000R cold-start Integer BASIC, E2B3R warm re-entry, "
+                "6000R cold-start AppleSoft, 6003R warm re-entry, "
+                "EFECR re-RUN the last Integer BASIC program.");
+            hwHeading("Error messages");
+            hwKeyValue("?UNKNOWN COMMAND \"X\"", "The word before the first space didn't match any command.");
+            hwKeyValue("?MISSING COMMAND / ?MISSING FILENAME / ?BAD ARGUMENT", "Parser recognised the verb but the arguments are missing or malformed.");
+            hwKeyValue("?BAD ADDRESS", "A hex address argument couldn't be parsed (missing, > 4 digits, or non-hex).");
+            hwKeyValue("?FILE NOT FOUND", "No file in the current directory matches (even with fuzzy prefix).");
+            hwKeyValue("?INVALID FILE NAME TAG #", "File on disk has a malformed #TTAAAA suffix.");
+            hwKeyValue("?I/O ERROR", "SD card communication failed. Exit with RESET, re-enter with 8000R, optionally raise TIME.");
+            hwKeyValue("?NO BASIC PROGRAM / ?NOT A BASIC FILE", "SAVE needs a program in RAM; LOAD / RUN got a non-BASIC file for a BASIC command.");
+            ImGui::Spacing();
+            ImGui::TextWrapped(
+                "Invariant: every name-accepting command (LOAD / RUN / READ / SAVE "
+                "/ ASAVE / WRITE / DEL / RM / TYPE / DUMP) resolves relative to "
+                "the CURRENT working directory only - there is NO recursive "
+                "search. Use CD to navigate before invoking them. Example: "
+                "CD MCODE then LOAD YUM. This is regression-pinned by "
+                "tools/test_sdcard_subdir_navigation_telnet.py.");
         }
 
         // ---- Juke-Box -----------------------------------------------
         if (ImGui::CollapsingHeader("P-LAB Apple-1 Juke-Box")) {
             ImGui::TextWrapped(
-                "Claudio Parmigiani's software Juke-Box: a storage ROM card "
-                "(16 kB to 512 kB EPROM / EEPROM / FLASH) that replaces cassette "
-                "loads with an instant menu. The Program Manager lives at "
-                "$BD00 in the ROM and exposes an '&' prompt with H / D / L / P / "
-                "S / B / X commands. Requires the Woz ACI config and auto-disables "
-                "CFFA1, microSD, and the Wi-Fi Modem (they share its address window).");
+                "Claudio Parmigiani's software Juke-Box (v1.09): a storage ROM "
+                "card (16 kB to 512 kB EPROM / EEPROM / FLASH) that replaces "
+                "cassette loads with an instant menu. The Program Manager lives "
+                "at $BD00 and exposes an '&' prompt. A second program at $B800 "
+                "(shipped on the 28c256 RW variant) offers EEPROM writing. "
+                "Requires the 'with ACI' Apple-1 configuration and auto-disables "
+                "CFFA1, microSD and the Wi-Fi Modem because it claims "
+                "$4000-$BFFF entirely.");
             hwHeading("Particularities");
-            hwKeyValue("ROM window:", "$4000-$BFFF (32 kB) or $8000-$BFFF (16 kB), selected by the RAM/ROM jumper. POM1 toggles this live.");
-            hwKeyValue("RAM expansion:", "Jumper also changes the user-RAM ceiling - 16 kB ($0000-$3FFF) or 32 kB ($0000-$7FFF).");
-            hwKeyValue("Program Manager:", "BD00R from the Woz Monitor. First byte is $A5 (LDA zp) - POM1 uses it as a firmware-present signature.");
-            hwKeyValue("ROM file:", "roms/jukebox.rom. Build with P-LAB's EPROM_CREATOR (2-packer.sh). See Software Reference.");
-            hwKeyValue("EEPROM RW:", "Checkbox in the Juke-Box hardware window. When on, writes in the ROM window persist to jukebox.rom.");
-            hwKeyValue("v1 scope:", "28c256 single-page only. Multi-page 29c020/29c040 (P0..PF) and 16 kB sub-page (S0/S1) deferred to v2.");
+            hwKeyValue("ROM window:", "$4000-$BFFF (32 kB physical) or $8000-$BFFF (16 kB physical), selected by the RAM/ROM jumper. POM1 toggles this live.");
+            hwKeyValue("RAM expansion:", "Same jumper changes the user-RAM ceiling - 16 kB ($0000-$3FFF) if ROM=32, or 32 kB ($0000-$7FFF) if ROM=16.");
+            hwKeyValue("Logical mapping:", "A 32 kB physical page can be addressed as one 32 kB page, or two 16 kB sub-pages selected with S0 / S1 inside the Program Manager. 16 kB sub-pages are needed when a program has to load above $3FFF.");
+            hwKeyValue("Pages:", "Up to 16 pages (0-F) of 32 kB each on multi-Mbit FLASH (29c020 = 256 kB = 8 pages, 29c040 = 512 kB = 16 pages). LEDs on the card show the current page in binary.");
+            hwKeyValue("Programs per page:", "Up to 17 (letters A through Q), including the BASIC interpreter itself if you store it.");
+            hwKeyValue("Entry point:", "BD00R in the Woz Monitor. First byte is $A5 (LDA zp, the opcode that opens the prompt loop); POM1 checks this as a firmware-present signature.");
+            hwKeyValue("ROM file:", "roms/jukebox.rom. Build via doc/JUKEBOX_ROM_CREATOR/build_jukebox_rom.py (P-LAB's own 2-packer.sh produces a subtly different layout).");
+            hwKeyValue("EEPROM RW jumper:", "Hardware window checkbox. ON = writes through $4000-$BFFF persist to jukebox.rom (needed for the Save-Program sub-menu). OFF = read-only.");
+            hwKeyValue("v1 scope:", "POM1 models the 28c256 single 32 kB page correctly. Multi-page banking (P0..PF across big FLASH) requires the bank-select MMIO address, which P-LAB has not published yet.");
+            hwHeading("Program Manager at $BD00 ('&' prompt)");
+            ImGui::TextWrapped(
+                "P-LAB notation writes each command as its initial in bold, e.g. "
+                "'D)IR', 'L)OAD'. Those single letters ARE the official command "
+                "names - they are not abbreviations for a longer word. The only "
+                "exception is EXIT, spelled X.");
+            hwKeyValue("H",
+                "Help screen - prints the six-line command summary. Run this "
+                "first to confirm the firmware is alive.");
+            hwKeyValue("D",
+                "Directory of the current page. Each line is 'letter NAME $start-$end "
+                "[BAS]'. NAME is up to 8 characters; $start is the load address; "
+                "$end is the first free byte after the program; 'BAS' flags an "
+                "Integer BASIC program (load the BASIC interpreter first). "
+                "Prints 'OK' when done.");
+            hwKeyValue("L<letter>",
+                "Load the program identified by <letter> (A..Q on the current page) "
+                "into RAM. Replies 'OK'. No space between L and the letter. "
+                "Example: LC loads entry C. LN on a page that stops at F is "
+                "silently ignored.");
+            hwKeyValue("P<0-F>",
+                "Select page 0..F of a multi-Mbit ROM. Each digit is one hex nibble. "
+                "The PAGE LEDs show the selection in binary. Example: P2. "
+                "Required if you split your ROM across multiple 32 kB pages.");
+            hwKeyValue("S<0|1>",
+                "Set the 16 kB sub-page in 16 kB-logical mode. S0 maps the lower "
+                "16 kB of the physical 32 kB page, S1 the upper 16 kB. The '16 k' "
+                "LED confirms S1. Only meaningful when the ROM MAP jumper is on "
+                "16 kB.");
+            hwKeyValue("B",
+                "Enter Integer BASIC via its warm-start $E2B3. Equivalent to "
+                "X followed by E2B3R - non-destructive, the BASIC program you "
+                "just loaded survives. Prompt becomes '>'.\n"
+                "WARNING: B on an empty / un-initialised BASIC state HANGS the "
+                "computer (E2B3 assumes BASIC pointers exist). If that happens, "
+                "hit RESET and cold-start BASIC with E000R before trying again.");
+            hwKeyValue("X", "Exit to the Woz Monitor ('\\' prompt).");
+            hwKeyValue("Any other key",
+                "Prints a '!' and re-prompts. Loading a non-existent letter "
+                "(e.g. LN on a 6-entry page) is silently ignored - no error.");
+            ImGui::Spacing();
+            hwHeading("Save-Program sub-menu at $B800 ('#' prompt, RW jumper ON only)");
+            ImGui::TextWrapped(
+                "Shipped with the 28c256 RW EEPROM variant. The EEPROM is mapped "
+                "as seven blocks: Block 1..6 are 4 kB each ($4000-$9FFF), Block 0 "
+                "is a 2 kB mini-block at $B000-$B7FF. $B800-$BFFF hosts the Save "
+                "Program itself and the Program Manager (reserved). $E000-$EFFF "
+                "is reserved for the Integer BASIC interpreter.");
+            hwKeyValue("S (Save BASIC)",
+                "Save the currently-loaded Integer BASIC program. Prompts:\n"
+                "  SAVE BASIC TO BLOCK:  -> type 1..6 (0 is too small for BASIC)\n"
+                "  WITH NAME:            -> up to 8 chars then ENTER\n"
+                "The default range saved is $0280-$0FFF (3456 bytes + BASIC "
+                "pointers). A sequence of up to 16 dots tracks progress (one per "
+                "256 B written); writing 4 kB takes ~25 seconds. Returns to '#'.");
+            hwKeyValue("W (Write memory)",
+                "Save 4 kB of RAM starting from an arbitrary address. Prompts:\n"
+                "  SAVE MEMORY FROM: $   -> 4 hex digits (consolidates on 4th key)\n"
+                "  WITH NAME:            -> up to 8 chars then ENTER\n"
+                "  TO BLOCK:             -> 0..6 (Block 0 = 2 kB OK for small ML)\n"
+                "Same dot progress as S. Useful for ML routines - the reloaded "
+                "block has no BAS tag and must be started with a plain <addr>R.");
+            hwKeyValue("L (Loader)",
+                "Launch the Program Manager directly (not echoed). The '&' prompt "
+                "appears immediately. L does NOT 'leave' the sub-menu - it hands "
+                "off to the Program Manager.");
+            hwKeyValue("X (eXit)", "Return to the Woz Monitor.");
+            hwKeyValue("Any other key",
+                "Prints the mini-help 'W/S/L/X?' and waits for a valid letter.");
+            ImGui::Spacing();
+            hwHeading("Save-Program caveats");
+            ImGui::TextWrapped(
+                "* There is NO undo. Rewriting a block overwrites the previous "
+                "content for good.\n"
+                "* No key cancels during name / address entry. If you mistype, "
+                "the only escape is hardware RESET.\n"
+                "* RW jumper ON means ALL of $4000-$BFFF is writeable. A stray "
+                "Woz Monitor write (say XXXX: YY) can corrupt BASIC or the "
+                "Program Manager itself. Keep the jumper OFF unless actively "
+                "saving.\n"
+                "* A BASIC program > 4 kB must be split: S for $0280-$0FFF "
+                "(first block), then W from $1000 onwards (second block). "
+                "Remember to set HIMEM before writing.\n"
+                "* EEPROM is rated tens of thousands of rewrites per cell and "
+                "~10 years retention. Make backups regularly.");
+            ImGui::Spacing();
+            hwHeading("Save-Program copy API (advanced)");
+            ImGui::TextWrapped(
+                "After the first B800R, a bidirectional memory-copy routine is "
+                "installed at $023A-$027F (in the keyboard-buffer tail). It "
+                "works both ways - RAM<->EEPROM - based on six Zero-Page "
+                "pointers:\n"
+                "  $40-$41 = source address (little-endian)\n"
+                "  $42-$43 = destination address (little-endian)\n"
+                "  $44-$45 = number of bytes\n"
+                "Example: 40: 80 02 00 A0 00 02  then 23AR  copies 512 bytes "
+                "from $0280 to $A000. The routine may leave a few stray chars "
+                "on screen or hang at the end - press RESET, the copy itself is "
+                "reliable. Programs saved this way are invisible to the Program "
+                "Manager's directory.");
         }
 
         // ---- CFFA1 ---------------------------------------------------
@@ -587,14 +862,103 @@ void MainWindow_ImGui::renderHardwareReferenceWindow()
         // ---- MODEM BBS -----------------------------------------------
         if (ImGui::CollapsingHeader("P-LAB MODEM BBS")) {
             ImGui::TextWrapped(
-                "65C51 ACIA paired with a Hayes / TELNET AT command interpreter that dials "
-                "real TCP hosts. Designed for dial-up-style BBS traffic (telehack, "
-                "particles.kpaul.frl, level29.cc and friends).");
+                "WDC 65C51 ACIA + ESP8266 on real hardware; POM1 replaces the "
+                "ESP with a native Hayes/TELNET interpreter that dials real TCP "
+                "hosts on your network. Designed for dial-up-style BBS traffic - "
+                "try bbs.fozztexx.com:23 (Level29), particles.kpaul.frl, "
+                "telehack.com, or any other Telnet BBS.");
             hwHeading("Particularities");
-            hwKeyValue("I/O:", "$B000-$B003 (ACIA 65C51).");
-            hwKeyValue("AT commands:", "ATDT host:port, ATH, ATE0/1, ATI, ATZ, +++ guard (1 s).");
-            hwKeyValue("Baud rates:", "50-19200 simulated; TELNET IAC negotiation filtered and CR+LF collapsed to CR.");
-            hwKeyValue("Platforms:", "Desktop and WASM (WASM uses browser sockets via Emscripten).");
+            hwKeyValue("I/O:", "$B000-$B003 (65C51 ACIA, contiguous 4 bytes).");
+            hwKeyValue("Modes:", "COMMAND (AT commands processed locally) and DATA (bytes streamed to/from the TCP socket). Transitions are explicit - see +++ and ATDT below.");
+            hwKeyValue("TELNET:", "IAC negotiation is absorbed by POM1 (DO/DONT/WILL/WONT filtered out); incoming CR+LF collapses to CR so Wozmon-style line handling works.");
+            hwKeyValue("Rx ring:", "4096-byte circular buffer on the Wi-Fi side; overflow drops oldest bytes. Delivery to $B000 is rate-limited to the baud selected in CONTROL.");
+            hwKeyValue("+++ guard:", "Requires 1 s of silence on EITHER side of the three '+' chars. A stream of '+' mid-conversation is NOT swallowed.");
+            hwKeyValue("Platforms:", "Desktop only. WASM stubs accept AT commands but every ATDT immediately returns NO CARRIER (browsers have no raw-TCP socket).");
+            hwHeading("Register map ($B000-$B003)");
+            hwKeyValue("$B000 DATA:",
+                "Read: next byte from the Rx ring (clears RDRF until another "
+                "byte arrives). Write in COMMAND mode: feeds the AT parser "
+                "line-by-line. Write in DATA mode: sent to the remote host "
+                "(unless consumed by the +++ escape sequence).");
+            hwKeyValue("$B001 STATUS:",
+                "Read-only status byte.\n"
+                "  Bit 3 (RDRF) = 1 when a byte is waiting in the Rx ring.\n"
+                "  Bit 4 (TDRE) = always 1 (reflects the W65C51N hardware bug: "
+                "TDRE never actually clears, so software does not poll it).\n"
+                "  Bit 5 (DCD)  = 0 while a TCP connection is live, 1 while "
+                "idle or hung up.\n"
+                "  Bit 6 (DSR)  = 0 (not asserted).");
+            hwKeyValue("$B002 COMMAND:",
+                "Control flags (DTR, parity, echo). POM1 honours a DTR drop "
+                "(bit 0 -> 0) as a hang-up request, matching real modems.");
+            hwKeyValue("$B003 CONTROL:",
+                "Baud selector in bits 0-3 (see table below). Reset value "
+                "after ATZ = $1E (8N1, 9600 baud).");
+            ImGui::Spacing();
+            hwHeading("AT commands (Hayes subset, case-insensitive)");
+            ImGui::TextWrapped(
+                "Commands are parsed one line at a time, terminated by CR. "
+                "Responses are framed '\\r\\n<TEXT>\\r\\n'. An unknown AT "
+                "suffix returns '\\r\\nERROR\\r\\n'. Whitespace inside the "
+                "line is trimmed for ATDT but otherwise significant.");
+            hwKeyValue("AT",
+                "Ping - replies OK. Use this to check the ACIA driver is wired.");
+            hwKeyValue("ATDT <host>[:<port>]",
+                "Dial a TCP host. Default port is 23 (TELNET). On success "
+                "the modem replies 'CONNECT <baud>' (e.g. CONNECT 9600) and "
+                "enters DATA mode; every subsequent $B000 write goes straight "
+                "to the socket. On DNS / connect failure: 'NO CARRIER'. "
+                "Example: ATDT bbs.fozztexx.com:6400");
+            hwKeyValue("ATH / ATH0",
+                "Hang up. Connected -> closes the socket and replies NO CARRIER. "
+                "Idle -> replies OK. Always drops back to COMMAND mode.");
+            hwKeyValue("ATE0 / ATE1",
+                "Disable / enable command-mode local echo. ATE1 is the default "
+                "(modem echoes typed chars back into the Rx ring).");
+            hwKeyValue("ATI / ATI0",
+                "Identify. Three lines: 'P-LAB APPLE-1 WI-FI MODEM' / "
+                "'POM1 EMULATION V1.0' / 'OK'.");
+            hwKeyValue("ATZ",
+                "Soft reset: hangs up if needed, re-enables echo, restores "
+                "CONTROL to $1E (9600 baud). Replies OK.");
+            hwKeyValue("ATS<digit>",
+                "S-register write - accepted with OK but not functionally "
+                "honoured. Included so legacy modem init strings ('ATS0=0' "
+                "etc.) do not trip the ERROR path.");
+            hwKeyValue("+++ (in DATA mode)",
+                "Type three '+' characters back to back with NO other byte "
+                "between them, then wait 1 second of silence. The modem "
+                "replies OK and switches back to COMMAND mode WITHOUT hanging "
+                "up. The socket stays open but no data flows until you dial "
+                "again or hang up. There is no Hayes 'ATO' to resume - the "
+                "only way back is a new ATDT to the same host (which opens a "
+                "fresh socket) or ATH to disconnect cleanly.");
+            hwKeyValue("Anything else",
+                "Replies '\\r\\nERROR\\r\\n' - the parser rejects it.");
+            ImGui::Spacing();
+            hwHeading("Baud rates (CONTROL bits 0-3)");
+            ImGui::TextWrapped(
+                "0: 9600 (16x clock)   1: 50      2: 75      3: 109\n"
+                "4: 134                5: 150     6: 300     7: 600\n"
+                "8: 1200               9: 1800    A: 2400    B: 3600\n"
+                "C: 4800               D: 7200    E: 9600 (ATZ default)\n"
+                "F: 19200\n"
+                "POM1 throttles Rx delivery to the selected baud - handy when "
+                "a BBS menu scrolls too fast at LAN speeds. Tx is not "
+                "throttled (the remote host does not care what baud rate the "
+                "Apple-1 thinks it is using).");
+            ImGui::Spacing();
+            hwHeading("Typical BBS session");
+            ImGui::TextWrapped(
+                "(Once the ATmodem ACIA driver is loaded at $0280 - see the "
+                "Software Reference for the hex dump.)\n"
+                "  0280R                        ; start the ACIA bridge\n"
+                "  AT                           ; -> OK\n"
+                "  ATDT bbs.fozztexx.com:6400   ; -> CONNECT 9600\n"
+                "  (interact with the BBS: login, read messages, ...)\n"
+                "  +++                          ; wait 1 s of silence\n"
+                "                               ; -> OK  (back in COMMAND mode)\n"
+                "  ATH                          ; -> NO CARRIER");
         }
 
         // ---- Terminal Card ------------------------------------------
