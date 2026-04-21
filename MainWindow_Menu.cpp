@@ -248,6 +248,19 @@ void MainWindow_ImGui::renderMenuBar()
 
         if (ImGui::BeginMenu("Help")) {
             ImGui::MenuItem("Welcome", nullptr, &showWelcome);
+            if (ImGui::BeginMenu("Tutorials")) {
+                ImGui::MenuItem("Integer BASIC: write your first program",
+                                nullptr, &showTutorialIntegerBasic);
+                ImGui::MenuItem("Applesoft Lite: write your first program",
+                                nullptr, &showTutorialApplesoft);
+                ImGui::MenuItem("microSD: load and save programs",
+                                nullptr, &showTutorialMicroSD);
+                ImGui::MenuItem("Cassette (ACI): load a program from tape",
+                                nullptr, &showTutorialCassette);
+                ImGui::MenuItem("Wi-Fi Modem: connect to a telnet BBS",
+                                nullptr, &showTutorialModemBBS);
+                ImGui::EndMenu();
+            }
             ImGui::MenuItem("Hardware Reference", nullptr, &showHardwareReference);
             ImGui::MenuItem("Software Reference", nullptr, &showSoftwareReference);
             ImGui::MenuItem("Ports & acknowledgements", nullptr, &showSpecialThanks);

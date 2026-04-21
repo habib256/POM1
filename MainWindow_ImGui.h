@@ -75,6 +75,12 @@ private:
     bool showHardwareReference = false;
     bool showSoftwareReference = false;
     bool showWelcome = false;  // First-boot greeting panel next to the Apple 1 screen
+    // Tutorials (Help > Tutorials). Each opens its own non-blocking window.
+    bool showTutorialIntegerBasic = false;
+    bool showTutorialApplesoft = false;
+    bool showTutorialMicroSD = false;
+    bool showTutorialCassette = false;
+    bool showTutorialModemBBS = false;
     bool showScreenConfig = false;
     bool showMemoryConfig = false;
     bool showLoadDialog = false;
@@ -162,6 +168,11 @@ private:
     void renderHardwareReferenceWindow();
     void renderSoftwareReferenceWindow();
     void renderWelcomeWindow();
+    void renderTutorialIntegerBasicWindow();
+    void renderTutorialApplesoftWindow();
+    void renderTutorialMicroSDWindow();
+    void renderTutorialCassetteWindow();
+    void renderTutorialModemBBSWindow();
     void renderDebugDialog();
     void renderScreenConfigDialog();
     void renderMemoryConfigDialog();
