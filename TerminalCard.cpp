@@ -587,11 +587,19 @@ void TerminalCard::sendToClient(const uint8_t* data, size_t len)
     if (!clientFd || len == 0) return;
 
 #ifdef _WIN32
-    ::send(clientFd, reinterpret_cast<const char*>(data), static_cast<int>(len), 0);
+    const int sent = ::send(clientFd, reinterpret_cast<const char*>(data),
+                            static_cast<int>(len), 0);
 #else
-    ::send(clientFd, data, len, MSG_NOSIGNAL);
+    const ssize_t sent = ::send(clientFd, data, len, MSG_NOSIGNAL);
 #endif
-    bytesSentCount += static_cast<uint32_t>(len);
+    if (sent <= 0) {
+        // Half-open / closed / EPIPE — the peer is gone or the kernel dropped
+        // the connection. Drop the socket now so we stop buffering writes into
+        // a dead pipe; the next poll would see POLLHUP anyway.
+        disconnectClient();
+        return;
+    }
+    bytesSentCount += static_cast<uint32_t>(sent);
 }
 
 #else // POM1_IS_WASM — no networking

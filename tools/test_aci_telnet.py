@@ -12,9 +12,10 @@ layers breaks the tape path, the headless tests stay green and this
 one goes red.
 
 Scenarios:
-  A. LOAD   — preload cassettes/BASIC.ogg via --tape, drive the ACI ROM
-              in READ mode (`C100R` then `E000.EFFFR`), Wozmon-peek $E000
-              and assert the Integer BASIC signature `4C B0 E2`.
+  A. LOAD   — preload cassettes/APPLE50TH.ogg via --tape, drive the ACI ROM
+              in READ mode (`C100R` then `0300.037FR`), Wozmon-peek $0300
+              and assert the APPLE50TH demo signature `A9 FF 48`
+              (LDA #$FF / PHA).
   B. SAVE   — plant a known pattern at $0300-$033F via Wozmon poke, drive
               the ACI ROM in WRITE mode (`0300.033FW`), SIGTERM the
               emulator so --save-tape flushes the capture to disk.
@@ -25,7 +26,7 @@ Scenarios:
 Requirements:
   - POM1 built in build/
   - roms/ACI.rom + roms/basic.rom present (both included in the repo)
-  - cassettes/BASIC.ogg present
+  - cassettes/APPLE50TH.ogg present
   - No other process holding TCP port 6502
 
 The script launches and kills POM1 itself — no manual setup.
@@ -58,8 +59,10 @@ TEST_TO   = 0x033F
 TEST_LEN  = TEST_TO - TEST_FROM + 1
 TEST_PATTERN = bytes(((0xA5 ^ (i * 37)) & 0xFF) for i in range(TEST_LEN))
 
-# Integer BASIC signature at $E000 in cassettes/BASIC.ogg.
-BASIC_SIG = bytes([0x4C, 0xB0, 0xE2])
+# APPLE50TH demo signature at $0280 (LDA #$FF / PHA) in cassettes/APPLE50TH.ogg.
+APPLE50TH_SIG = bytes([0xA9, 0xFF, 0x48])
+APPLE50TH_FROM = 0x0280
+APPLE50TH_TO   = 0x0FFF
 
 VERBOSE = False
 passed = 0
@@ -235,11 +238,12 @@ def wait_for_tape_load(sock: socket.socket, probe_addr: int,
 
 
 def scenario_load() -> None:
-    """A: preload BASIC.ogg, drive ACI READ via telnet, verify signature."""
-    print("\n=== Scenario A: LOAD (cassettes/BASIC.ogg -> $E000) ===")
-    tape = repo_root() / "cassettes" / "BASIC.ogg"
+    """A: preload APPLE50TH.ogg, drive ACI READ via telnet, verify signature."""
+    print(f"\n=== Scenario A: LOAD "
+          f"(cassettes/APPLE50TH.ogg -> ${APPLE50TH_FROM:04X}) ===")
+    tape = repo_root() / "cassettes" / "APPLE50TH.ogg"
     if not tape.exists():
-        check("A.0 BASIC.ogg present", False, f"not found at {tape}")
+        check("A.0 APPLE50TH.ogg present", False, f"not found at {tape}")
         return
     log = repo_root() / "build" / "pom1_telnet_load.log"
     proc = launch_pom1(["--tape", str(tape)], log)
@@ -253,36 +257,38 @@ def scenario_load() -> None:
         time.sleep(0.8)
         recv_avail(sock, total=1.5)
 
-        # $E000 holds basic.rom at boot — "$4C B0 E2" happens to be BASIC's
-        # own signature, so a peek AFTER a no-op read would false-positive.
-        # Plant 16 $FF sentinels there instead: they differ from BASIC's
-        # content, from zero, and from anything the tape legitimately stores.
-        # A successful ACI READ overwrites them with the tape's "$4C B0 E2".
-        poke_bytes(sock, 0xE000, bytes([0xFF] * 16))
-        pre = peek_range(sock, 0xE000, 0xE00F, read_t=3.0)
-        check("A.1 $E000 seeded with $FF sentinels",
-              pre == bytes([0xFF] * 16),
+        # Plant $55 sentinels at the load address — they differ from every
+        # byte of the expected signature (A9 FF 48), so a no-op ACI READ
+        # would leave all three visibly wrong rather than partially matching.
+        sentinel = bytes([0x55] * 16)
+        poke_bytes(sock, APPLE50TH_FROM, sentinel)
+        pre = peek_range(sock, APPLE50TH_FROM, APPLE50TH_FROM + 15, read_t=3.0)
+        check(f"A.1 ${APPLE50TH_FROM:04X} seeded with $55 sentinels",
+              pre == sentinel,
               f"first 16 = {pre.hex(' ')}")
 
-        # C100R jumps into the ACI ROM; E000.EFFFR asks it to read the tape.
+        # C100R jumps into the ACI ROM; <from>.<to>R asks it to read the tape.
         # While the READ runs (CPU busy consuming pulses), nothing reads the
         # PIA keyboard buffer, so anything we push queues up for Wozmon to
         # eat once ACI jumps back to $FF1A.
         send_line(sock, "C100R", wait=0.4, read_t=2.5)
-        send_line(sock, "E000.EFFFR", wait=0.3, read_t=1.5)
+        send_line(sock, f"{APPLE50TH_FROM:04X}.{APPLE50TH_TO:04X}R",
+                  wait=0.3, read_t=1.5)
 
-        # Poll for the signature. BASIC.ogg loads in ~10 s wallclock at
+        # Poll for the signature. APPLE50TH.ogg loads in ~10 s wallclock at
         # --cpu-max; 45 s budget is conservative.
-        sig = b"\xff" * 3
+        sig = b"\x55" * 3
         deadline = time.time() + 45.0
         while time.time() < deadline:
             time.sleep(1.5)
-            peek16 = peek_range(sock, 0xE000, 0xE00F, read_t=4.0)
-            if peek16[:3] == BASIC_SIG:
+            peek16 = peek_range(sock, APPLE50TH_FROM,
+                                APPLE50TH_FROM + 15, read_t=4.0)
+            if peek16[:3] == APPLE50TH_SIG:
                 sig = peek16[:3]
                 break
-        check("A.2 Integer BASIC signature at $E000",
-              sig == BASIC_SIG, f"got {sig.hex(' ')}, expected 4C B0 E2")
+        check(f"A.2 APPLE50TH signature at ${APPLE50TH_FROM:04X}",
+              sig == APPLE50TH_SIG,
+              f"got {sig.hex(' ')}, expected A9 FF 48")
 
         sock.close()
     finally:

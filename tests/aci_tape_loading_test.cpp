@@ -1,10 +1,10 @@
 // ACI tape loading smoke test.
 //
-// End-to-end: feed the real cassettes/BASIC.ogg through CassetteDevice,
+// End-to-end: feed the real cassettes/APPLE50TH.ogg through CassetteDevice,
 // invoke the Woz ACI ROM at $C100 exactly the way the user does on the
-// real machine (`C100R` then `E000.EFFFR<CR>`), and assert that the
-// canonical Apple-1 Integer BASIC signature (`4C B0 E2`) lands at $E000
-// after loading.
+// real machine (`C100R` then `0280.0FFFR<CR>`), and assert that the first
+// three bytes of the APPLE50TH demo payload (`A9 FF 48` — LDA #$FF / PHA)
+// land at $0280 (the demo's natural load address — see tapeinfo.txt).
 //
 // This is THE regression gate for any change to:
 //   - CassetteDevice's pulse extraction (pcmToDurations, zero-crossing
@@ -14,7 +14,7 @@
 //     cycle-sensitive)
 //   - Any peripheral bus ordering that could shadow $C000-$C0FF
 //
-// argv[1] = absolute path to BASIC.ogg (passed from CMake via CASSETTE_OGG).
+// argv[1] = absolute path to the .ogg cassette (passed from CMake).
 
 #include "Memory.h"
 // Memory holds unique_ptrs to these (forward-declared in Memory.h); destructor
@@ -85,33 +85,30 @@ void dumpHex(const uint8_t* data, int len)
 
 int main(int argc, char** argv)
 {
-    // Default: BASIC.ogg into $0300-$037F, expect the first 3 bytes of
-    // Integer BASIC (`4C B0 E2` = JMP $E2B0). The target is deliberately
-    // NOT $E000: basic.rom is pre-seeded there at boot and, even though
-    // the test memsets the region to 0 before the load, having the
-    // destination coincide with a ROM that contains the exact expected
-    // bytes made the test conceptually unsound — any future bug that
-    // skipped the ACI READ entirely could still "pass" if the memset
-    // somehow got reverted. Loading into plain $0300 RAM removes that
-    // ambiguity: the signature can only appear there via the ACI pipeline.
+    // Default: APPLE50TH.ogg into $0280-$0FFF (the demo's natural load
+    // range — see cassettes/tapeinfo.txt), expect the first 3 bytes of the
+    // demo (`A9 FF 48` = LDA #$FF / PHA). The destination is plain Apple 1
+    // RAM, the test memsets it to zero before the ACI READ, and the
+    // signature comes from the tape's pulse stream — so the bytes can
+    // only appear via the full pulse-extraction → ACI ROM pipeline.
     //
     // Optional override: argv[2] = load-from hex, argv[3] = load-to hex,
     //                    argv[4] = three-byte expected signature in hex
-    //                              ("4C B0 E2") or empty to just assert
+    //                              ("A9FF48") or empty to just assert
     //                              that *something* loaded.
     if (argc < 2) {
         std::fprintf(stderr,
             "usage: %s <tape.ogg|wav> [load_from_hex] [load_to_hex] [signature_hex]\n"
-            "  defaults: load_from=0300  load_to=037F  signature=4CB0E2\n",
+            "  defaults: load_from=0280  load_to=0FFF  signature=A9FF48\n",
             argv[0]);
         return 2;
     }
     const std::string tapePath = argv[1];
-    const uint16_t loadFrom = (argc > 2) ? static_cast<uint16_t>(std::stoul(argv[2], nullptr, 16)) : 0x0300;
-    const uint16_t loadTo   = (argc > 3) ? static_cast<uint16_t>(std::stoul(argv[3], nullptr, 16)) : 0x037F;
+    const uint16_t loadFrom = (argc > 2) ? static_cast<uint16_t>(std::stoul(argv[2], nullptr, 16)) : 0x0280;
+    const uint16_t loadTo   = (argc > 3) ? static_cast<uint16_t>(std::stoul(argv[3], nullptr, 16)) : 0x0FFF;
     // Signature = 0..3 expected bytes (printed as 6-hex-digit string with no
-    // separator, e.g. "4CB0E2"). Empty disables the strict check.
-    const std::string sig = (argc > 4) ? std::string(argv[4]) : std::string("4CB0E2");
+    // separator, e.g. "A9FF48"). Empty disables the strict check.
+    const std::string sig = (argc > 4) ? std::string(argv[4]) : std::string("A9FF48");
     uint8_t sigBytes[3] = {0, 0, 0};
     int sigLen = 0;
     for (size_t i = 0; i + 1 < sig.size() && sigLen < 3; i += 2) {
@@ -136,13 +133,13 @@ int main(int argc, char** argv)
     // evicts any stream-mode tape. Verify both halves here.
     //
     // .aci is explicit pulse data and loadAciTape() runs regardless of
-    // aciActive, so we hardcode cassettes/BASIC.ogg instead of whatever
+    // aciActive, so we hardcode cassettes/APPLE50TH.ogg instead of whatever
     // argv[1] is — lets the rest of this test take a `.aci` path as
     // input for other round-trip checks without breaking the B1 gate.
     {
         CassetteDevice& t = memory.getCassetteDevice();
         assert(!memory.isACIEnabled() && "fresh Memory should have ACI off");
-        const std::string b1Path = "cassettes/BASIC.ogg";
+        const std::string b1Path = "cassettes/APPLE50TH.ogg";
         if (!t.loadTape(b1Path)) {
             std::fprintf(stderr,
                 "FAIL: loadTape(.ogg) returned false with ACI off — "
@@ -236,10 +233,10 @@ int main(int argc, char** argv)
     cpu.setProgramCounter(0xFF1F);
     cpu.start();
 
-    // Budget: BASIC.ogg is ~30 s of tape at nominal 1200 baud for ~4 KB of
-    // payload. A 200 M cycle budget = ~200 s of emulated wallclock — enough
-    // even if the capture has a long pre-roll leader or if the extractor
-    // slightly under-resolves transitions.
+    // Budget: APPLE50TH.ogg is ~40 s of tape at nominal 1200 baud for
+    // ~3.5 KB of payload. A 200 M cycle budget = ~200 s of emulated
+    // wallclock — enough even if the capture has a long pre-roll leader
+    // or if the extractor slightly under-resolves transitions.
     constexpr int kCycleSlice = 50000;
     constexpr int64_t kCycleBudget = 200'000'000LL;
     int64_t cyclesConsumed = 0;

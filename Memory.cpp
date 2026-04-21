@@ -448,9 +448,17 @@ int Memory::loadROM(const char* filename, quint16 startAddress, size_t maxSize, 
     }
 
     file.seekg(0, std::ios::end);
-    size_t fileSize = file.tellg();
+    const std::streamoff rawSize = file.tellg();
     file.seekg(0, std::ios::beg);
 
+    if (rawSize < 0) {
+        lastError = std::string(label) + " ROM: cannot determine file size";
+        pom1::log().error("Mem", lastError);
+        file.close();
+        return 1;
+    }
+
+    const size_t fileSize = static_cast<size_t>(rawSize);
     if (fileSize > maxSize) {
         lastError = std::string(label) + " ROM too large (" + std::to_string(fileSize)
                   + " bytes, max " + std::to_string(maxSize) + ")";
@@ -461,7 +469,14 @@ int Memory::loadROM(const char* filename, quint16 startAddress, size_t maxSize, 
 
     std::vector<char> fileContent(fileSize);
     file.read(fileContent.data(), fileSize);
+    const std::streamsize got = file.gcount();
     file.close();
+    if (static_cast<size_t>(got) != fileSize) {
+        lastError = std::string(label) + " ROM: short read ("
+                  + std::to_string(got) + "/" + std::to_string(fileSize) + " bytes)";
+        pom1::log().error("Mem", lastError);
+        return 1;
+    }
 
     for (size_t i = 0; i < fileContent.size(); ++i) {
         mem[startAddress + i] = (quint8)fileContent[i];

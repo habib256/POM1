@@ -111,10 +111,11 @@ add_test(NAME sid_audio_smoke COMMAND test_sid_audio)
 set_tests_properties(sid_audio_smoke PROPERTIES TIMEOUT 10)
 
 # -- ACI tape loading smoke test ----------------------------------------------
-# Runs the full pulse-extraction → ACI ROM → RAM pipeline on cassettes/BASIC.ogg
-# and asserts the Integer BASIC signature (4C B0 E2) ends up at $E000. Gate for
-# any change to pulse extraction timing, ACI ROM emulation, or keyboard input
-# wiring. Also validates the kTapeFileTimebaseHz = POM1_CPU_CLOCK_HZ invariant.
+# Runs the full pulse-extraction → ACI ROM → RAM pipeline on cassettes/APPLE50TH.ogg
+# and asserts the demo's first three bytes (A9 FF 48 = LDA #$FF / PHA) end up
+# at $0280 (the tape's natural load address — see cassettes/tapeinfo.txt).
+# Gate for any change to pulse extraction timing, ACI ROM emulation, or
+# keyboard input wiring. Also validates kTapeFileTimebaseHz = POM1_CPU_CLOCK_HZ.
 add_executable(test_aci_tape_loading
     aci_tape_loading_test.cpp
     ${POM1_TEST_CORE_SOURCES}
@@ -131,11 +132,13 @@ if(WIN32)
     target_link_libraries(test_aci_tape_loading PRIVATE ws2_32)
 endif()
 
-# The test needs the BASIC.ogg capture + a roms/ directory (for ACI.rom +
+# The test needs the APPLE50TH.ogg capture + a roms/ directory (for ACI.rom +
 # basic.rom — Memory::initMemory() hits them at construction). Run from the
 # source root so both are resolvable with the usual probe paths.
 add_test(NAME aci_tape_loading
-         COMMAND test_aci_tape_loading "${CMAKE_SOURCE_DIR}/cassettes/BASIC.ogg"
+         COMMAND test_aci_tape_loading
+                 "${CMAKE_SOURCE_DIR}/cassettes/APPLE50TH.ogg"
+                 0280 0FFF A9FF48
          WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
 set_tests_properties(aci_tape_loading PROPERTIES TIMEOUT 30)
 

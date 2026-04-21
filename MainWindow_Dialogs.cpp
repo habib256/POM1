@@ -428,20 +428,6 @@ void MainWindow_ImGui::renderHardwareReferenceWindow()
             "and the quirks you need to know about. See README.md and CLAUDE.md "
             "for build notes and deeper architecture.");
         ImGui::Spacing();
-        ImGui::TextColored(ImVec4(0.95f, 0.80f, 0.50f, 1.0f),
-                           "Parmigiani's golden rule: \"one board at a time\"");
-        ImGui::TextWrapped(
-            "Claudio PARMIGIANI (P-LAB), designer of the P-LAB Apple-1 expansion "
-            "family, insists: on real Apple-1 hardware you plug ONE P-LAB card at "
-            "a time - never several simultaneously. The 6502 bus has no "
-            "arbitration and many cards deliberately share address windows "
-            "(A1-SID vs. TMS9918 at $CC00, A1-IO vs. GEN2 HGR at $2000, "
-            "Juke-Box claiming $4000-$BFFF, ...). Plugging two at once is "
-            "physically impossible on real silicon. POM1 lets you break the rule "
-            "in the \"Multiplexing Fantasy\" presets for convenience, but the "
-            "name is literal - that configuration is a fantasy, not a buildable "
-            "machine. Every other preset honours the rule; mutual-exclusion "
-            "checkboxes in the Hardware menu mirror real bus conflicts.");
         ImGui::Separator();
 
         ImGui::BeginChild("hwref_scroll", ImVec2(0, 0), true);
@@ -507,6 +493,8 @@ void MainWindow_ImGui::renderHardwareReferenceWindow()
 
         ImGui::Separator();
         ImGui::TextColored(ImVec4(0.70f, 0.85f, 0.70f, 1.0f), "Expansion cards");
+        ImGui::TextColored(ImVec4(0.95f, 0.80f, 0.50f, 1.0f),
+                           "Parmigiani's golden rule: \"one board at a time\"");
 
         // ---- Woz ACI -------------------------------------------------
         if (ImGui::CollapsingHeader("Woz ACI - Apple Cassette Interface")) {
