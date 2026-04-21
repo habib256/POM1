@@ -340,22 +340,22 @@ Claudio Parmigiani's [P-LAB Juke-Box](https://p-l4b.github.io/) — memory-mappe
 
 **Presets menu** applies a one-click configuration — enabling the right cards and snapping windows into a sensible layout. Indices match `--preset N`.
 
-| # | Preset | RAM | BASIC | ACI | Krusader | CFFA1 | microSD | SID | SID SE | TMS9918 | I/O & RTC | WiFi | Terminal | Juke-Box | GEN2 HGR |
-|---|--------|:---:|:-----:|:---:|:--------:|:-----:|:-------:|:---:|:------:|:-------:|:---------:|:----:|:--------:|:--------:|:--------:|
-| 0 | **Bare Apple-1 (July 1976)** | 4 KB | — | — | — | — | — | — | — | — | — | — | — | — | — |
-| 1 | **Apple-1 with ACI & Integer BASIC (Oct 1976)** | 8 KB | Integer | ✓ | — | — | — | — | — | — | — | — | — | — | — |
-| 2 | **Replica-1 with ACI, Krusader (Briel 2003)** | 32 KB | Integer | ✓ | ✓ | — | — | — | — | — | — | — | — | — | — |
-| 3 | **Replica-1 with CFFA1 & Applesoft Lite (Dreher 2007)** | 32 KB | Applesoft Lite | — | — | ✓ | — | — | — | — | — | — | — | — | — |
-| 4 | **P-LAB microSD & Applesoft Lite (Apr 2022)** | 32 KB | Applesoft Lite | — | — | — | ✓ | — | — | — | — | — | — | — | — |
-| 5 | **P-LAB A1-SID Sound Card ($C800-$CFFF)** | 32 KB | Integer | — | — | — | — | ✓ | — | — | — | — | — | — | — |
-| 6 | **P-LAB A1-AUDIO Special Edition ($CC00-$CC1F)** | 32 KB | Integer | — | — | — | — | — | ✓ | — | — | — | — | — | — |
-| 7 | **P-LAB TMS9918 Graphic Card** | 32 KB | Integer | — | — | — | — | — | — | ✓ | — | — | — | — | — |
-| 8 | **P-LAB I/O Board & RTC** | 32 KB | Integer | — | — | — | — | — | — | — | ✓ | — | — | — | — |
-| 9 | **P-LAB Wi-Fi Modem BBS** | 32 KB | Integer | — | — | — | — | — | — | — | — | ✓ | — | — | — |
-| 10 | **P-LAB Juke-Box (16 kB RAM)** | 16 KB | Integer + Juke-Box | — | — | — | — | — | — | — | — | — | — | ✓ | — |
-| 11 | **P-LAB Multiplexing Fantasy** | 64 KB | Applesoft Lite | — | — | — | ✓ | ✓ | — | ✓ | ✓ | ✓ | ✓ | — | — |
-| 12 | **Uncle Bernie's GEN2 HGR Color (Apr 2026)** | 32 KB | Integer | — | — | — | — | — | — | — | — | — | — | — | ✓ |
-| 13 | **POM1 Multiplexing Fantasy (2026)** | 64 KB | Applesoft Lite | ✓ | — | — | ✓ | ✓ | — | — | — | ✓ | ✓ | — | — |
+| # | Preset | RAM | BASIC | Expansion cards |
+|:-:|:-------|:---:|:------|:----------------|
+| 0 | **Bare Apple-1 (July 1976)** | 4 KB | — | — |
+| 1 | **Apple-1 with ACI & Integer BASIC (Oct 1976)** | 8 KB | Integer | ACI |
+| 2 | **Replica-1 with ACI, Krusader (Briel 2003)** | 32 KB | Integer | ACI, Krusader |
+| 3 | **Replica-1 with CFFA1 & Applesoft Lite (Dreher 2007)** | 32 KB | Applesoft Lite | CFFA1 |
+| 4 | **P-LAB microSD & Applesoft Lite (Apr 2022)** | 32 KB | Applesoft Lite | microSD |
+| 5 | **P-LAB A1-SID Sound Card ($C800-$CFFF)** | 32 KB | Integer | A1-SID |
+| 6 | **P-LAB A1-AUDIO Special Edition ($CC00-$CC1F)** | 32 KB | Integer | A1-AUDIO SE |
+| 7 | **P-LAB TMS9918 Graphic Card** | 32 KB | Integer | TMS9918 |
+| 8 | **P-LAB I/O Board & RTC** | 32 KB | Integer | I/O & RTC |
+| 9 | **P-LAB Wi-Fi Modem BBS** | 32 KB | Integer | Wi-Fi Modem |
+| 10 | **P-LAB Juke-Box (16 kB RAM)** | 16 KB | Integer + Juke-Box | Juke-Box |
+| 11 | **P-LAB Multiplexing Fantasy** | 64 KB | Applesoft Lite | microSD, A1-SID, TMS9918, I/O & RTC, Wi-Fi, Terminal |
+| 12 | **Uncle Bernie's GEN2 HGR Color (Apr 2026)** | 32 KB | Integer | GEN2 HGR |
+| 13 | **POM1 Multiplexing Fantasy (2026)** | 64 KB | Applesoft Lite | ACI, microSD, A1-SID, Wi-Fi, Terminal |
 
 - **Bare (0)** — pre-ACI July-1976 shipping configuration (first ~150 units left the bench this way).
 - **Juke-Box (10)** — Integer BASIC at `$E000`, EEPROM library via the Program Manager at `$BD00`; ACI dropped (EEPROM replaces cassette).
