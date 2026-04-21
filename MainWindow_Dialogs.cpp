@@ -378,6 +378,20 @@ static void hwKeyValue(const char* key, const char* value)
     ImGui::TextWrapped("%s", value);
 }
 
+// Tutorial helpers - numbered step heading + monospace command block.
+static void tutStep(int n, const char* title)
+{
+    ImGui::Spacing();
+    ImGui::TextColored(ImVec4(0.85f, 0.85f, 0.45f, 1.0f), "%d. %s", n, title);
+}
+
+static void tutCode(const char* code)
+{
+    ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.85f, 0.95f, 0.70f, 1.0f));
+    ImGui::TextUnformatted(code);
+    ImGui::PopStyleColor();
+}
+
 } // namespace
 
 void MainWindow_ImGui::renderHardwareReferenceWindow()
@@ -1506,6 +1520,372 @@ void MainWindow_ImGui::renderMemoryConfigDialog()
         if (ImGui::Button("Close")) {
             showMemoryConfig = false;
         }
+    }
+    ImGui::End();
+}
+
+// ---------------------------------------------------------------------------
+// Tutorial windows (Help > Tutorials)
+//
+// Each tutorial is a non-blocking window the user can keep open next to the
+// Apple-1 screen. Layout: short intro + numbered steps + notes. Code blocks
+// are monospace-green (tutCode) so the reader knows exactly what to type.
+// ---------------------------------------------------------------------------
+
+void MainWindow_ImGui::renderTutorialIntegerBasicWindow()
+{
+    ImGuiIO& io = ImGui::GetIO();
+    ImGui::SetNextWindowSize(ImVec2(460.0f, 460.0f), ImGuiCond_FirstUseEver);
+    ImGui::SetNextWindowPos(ImVec2(io.DisplaySize.x * 0.15f, io.DisplaySize.y * 0.10f),
+                            ImGuiCond_FirstUseEver);
+    if (ImGui::Begin("Tutorial: Integer BASIC", &showTutorialIntegerBasic)) {
+        ImGui::TextWrapped(
+            "Apple-1 Integer BASIC is Wozniak's original handwritten BASIC "
+            "(4 kB at $E000). 16-bit signed integers only, no floats, no "
+            "strings other than PRINT literals. Perfect for learning the "
+            "machine and for tight little games.");
+        ImGui::BeginChild("tut_int_scroll", ImVec2(0, 0), true);
+        tutStep(1, "Pick a preset that includes Integer BASIC");
+        ImGui::TextWrapped(
+            "Presets menu > any of #1, #2, #5..#13 (anything except the "
+            "Applesoft-only microSD preset #4 and CFFA1 preset #3). "
+            "Preset #1 'Apple-1 with ACI & Integer BASIC' is the "
+            "historical default.");
+
+        tutStep(2, "Cold-start BASIC from the Woz Monitor");
+        ImGui::TextWrapped(
+            "At the '\\' prompt, type:");
+        tutCode("E000R");
+        ImGui::TextWrapped(
+            "The banner is just '>' on a fresh line - Integer BASIC is "
+            "famously terse. You are now at the BASIC prompt.");
+
+        tutStep(3, "Type a program line by line");
+        tutCode(
+            "10 PRINT \"HELLO FROM POM1\"\n"
+            "20 FOR I=1 TO 5\n"
+            "30 PRINT I, I*I\n"
+            "40 NEXT I\n"
+            "50 END");
+        ImGui::TextWrapped(
+            "ENTER after each line stores it. Type a line number alone "
+            "(e.g. '20') to delete that line.");
+
+        tutStep(4, "Inspect and run");
+        tutCode(
+            "LIST        (show program)\n"
+            "RUN         (execute)\n"
+            "NEW         (wipe and start over)");
+
+        tutStep(5, "Return to the Woz Monitor and come back");
+        ImGui::TextWrapped(
+            "Press F5 (Soft Reset) to drop back to the '\\' prompt. "
+            "Your program survives. Re-enter BASIC WITHOUT wiping it:");
+        tutCode("E2B3R        (warm entry, non-destructive)");
+        ImGui::TextWrapped(
+            "E000R instead would cold-start and erase your work.");
+
+        ImGui::Spacing();
+        ImGui::Separator();
+        ImGui::TextColored(ImVec4(0.90f, 0.70f, 0.60f, 1.0f), "Notes");
+        ImGui::BulletText("Integers only: -32767..32767. No SIN, no strings, no FOR step.");
+        ImGui::BulletText("POKE / PEEK use signed 16-bit values. $C800 is -14336, $E000 is -8192.");
+        ImGui::BulletText("PRINT chains with commas (tab) or semicolons (concatenate).");
+        ImGui::BulletText("See doc/Preliminary_Apple_Basic_Users_Manual.pdf for the full reference.");
+        ImGui::EndChild();
+    }
+    ImGui::End();
+}
+
+void MainWindow_ImGui::renderTutorialApplesoftWindow()
+{
+    ImGuiIO& io = ImGui::GetIO();
+    ImGui::SetNextWindowSize(ImVec2(460.0f, 460.0f), ImGuiCond_FirstUseEver);
+    ImGui::SetNextWindowPos(ImVec2(io.DisplaySize.x * 0.17f, io.DisplaySize.y * 0.12f),
+                            ImGuiCond_FirstUseEver);
+    if (ImGui::Begin("Tutorial: Applesoft Lite", &showTutorialApplesoft)) {
+        ImGui::TextWrapped(
+            "Applesoft Lite is a cut-down Apple II Applesoft BASIC "
+            "(floating point, strings, FN/DEF, matrices) ported to the "
+            "Apple-1 by Mike Willegal and P-LAB. Two build variants, each "
+            "loaded at a different address.");
+        ImGui::BeginChild("tut_asf_scroll", ImVec2(0, 0), true);
+        tutStep(1, "Pick the right preset");
+        ImGui::BulletText("Preset #4 'P-LAB microSD & Applesoft Lite' - Applesoft at $6000-$7FFF.");
+        ImGui::BulletText("Preset #3 'Replica-1 with CFFA1 & Applesoft Lite' - Applesoft at $E000-$FFFF (includes Woz Monitor).");
+
+        tutStep(2, "Cold-start Applesoft");
+        ImGui::TextWrapped("From the Woz Monitor '\\' prompt:");
+        tutCode(
+            "6000R        (microSD variant, preset #4)\n"
+            "E000R        (CFFA1 variant, preset #3)");
+        ImGui::TextWrapped(
+            "The banner ends with ']' on a new line - that is the "
+            "Applesoft prompt. Integer BASIC stays untouched at $E000 "
+            "in the microSD variant.");
+
+        tutStep(3, "Write a floating-point program");
+        tutCode(
+            "10 PRINT \"SQR(2) = \"; SQR(2)\n"
+            "20 FOR A=0 TO 6.28 STEP 0.5\n"
+            "30 PRINT A; \"  \"; SIN(A)\n"
+            "40 NEXT\n"
+            "50 END");
+        ImGui::TextWrapped(
+            "Applesoft understands SIN, COS, SQR, EXP, LOG, ATN, RND and "
+            "full floating-point arithmetic. Strings with A$ = \"TEXT\" also "
+            "work.");
+
+        tutStep(4, "LIST and RUN");
+        tutCode(
+            "LIST\n"
+            "RUN");
+
+        tutStep(5, "Warm re-entry (keep your program)");
+        tutCode(
+            "6003R        (microSD warm entry)\n"
+            "E003R        (CFFA1 warm entry)");
+        ImGui::TextWrapped(
+            "Warm entry skips the welcome banner and preserves your "
+            "code. A fresh 6000R / E000R would erase it.");
+
+        tutStep(6, "Save to microSD");
+        ImGui::TextWrapped(
+            "While in Applesoft, drop to the SD CARD OS via RESET + 8000R, "
+            "then from the '/>' prompt:");
+        tutCode("ASAVE MYPROG");
+        ImGui::TextWrapped(
+            "ASAVE tags the file with #F8 (Applesoft). The regular SAVE "
+            "command is for Integer BASIC only - do NOT mix them.");
+
+        ImGui::Spacing();
+        ImGui::Separator();
+        ImGui::TextColored(ImVec4(0.90f, 0.70f, 0.60f, 1.0f), "Notes");
+        ImGui::BulletText("Line editor: Ctrl-H (Backspace) deletes the last character typed.");
+        ImGui::BulletText("No HGR / HCOLOR - the GEN2 HGR card is addressed directly via POKE.");
+        ImGui::BulletText("See tutorial 'microSD: load and save programs' for full ASAVE / LOAD / RUN workflow.");
+        ImGui::EndChild();
+    }
+    ImGui::End();
+}
+
+void MainWindow_ImGui::renderTutorialMicroSDWindow()
+{
+    ImGuiIO& io = ImGui::GetIO();
+    ImGui::SetNextWindowSize(ImVec2(480.0f, 480.0f), ImGuiCond_FirstUseEver);
+    ImGui::SetNextWindowPos(ImVec2(io.DisplaySize.x * 0.19f, io.DisplaySize.y * 0.14f),
+                            ImGuiCond_FirstUseEver);
+    if (ImGui::Begin("Tutorial: microSD", &showTutorialMicroSD)) {
+        ImGui::TextWrapped(
+            "P-LAB microSD card mounts the host sdcard/ directory as a "
+            "virtual FAT32 volume. The on-card firmware is SD CARD OS 1.3 "
+            "- a DOS / Linux-ish shell with DIR, CD, LOAD, SAVE, DEL.");
+        ImGui::BeginChild("tut_sd_scroll", ImVec2(0, 0), true);
+        tutStep(1, "Pick the microSD preset");
+        ImGui::TextWrapped(
+            "Presets menu > #4 'P-LAB microSD & Applesoft Lite'. Or any "
+            "preset where the microSD box is ticked in the Hardware menu.");
+
+        tutStep(2, "Launch the shell");
+        ImGui::TextWrapped("From the Woz Monitor '\\' prompt:");
+        tutCode("8000R");
+        ImGui::TextWrapped(
+            "Banner: '*** SD CARD OS 1.3' followed by the '/>' prompt "
+            "(the path is the prompt - no need for PWD).");
+
+        tutStep(3, "Browse the card");
+        tutCode(
+            "DIR         (long listing: name, size, type, load addr)\n"
+            "LS          (short listing: real tagged filenames)\n"
+            "CD BASIC    (enter sub-directory)\n"
+            "CD ..       (back up)\n"
+            "CD /        (back to root)");
+        ImGui::TextWrapped(
+            "All name-accepting commands work ONLY on the current "
+            "directory - there is no recursive search. CD first, then "
+            "LOAD / DEL / SAVE.");
+
+        tutStep(4, "Load and run a program");
+        tutCode(
+            "CD BASIC\n"
+            "LOAD STARTR            (fuzzy prefix match)");
+        ImGui::TextWrapped(
+            "The firmware prints 'FOUND STARTREK#F10300', loads the "
+            "bytes at $0300, and prints 'OK'. You can now RUN it:");
+        tutCode("RUN STARTR             (same match, LOAD + execute)");
+
+        tutStep(5, "Save a BASIC program");
+        ImGui::TextWrapped(
+            "Back to Integer BASIC, write a tiny program, RESET, 8000R, "
+            "then:");
+        tutCode(
+            "SAVE MYPROG            (Integer BASIC, tag #F1)\n"
+            "ASAVE MYPROG           (Applesoft Lite, tag #F8)");
+        ImGui::TextWrapped(
+            "Default save range for BASIC = LOMEM..HIMEM. For a binary "
+            "dump, add the range:");
+        tutCode("SAVE DATA 0800 0FFF    (#06 binary file at $0800)");
+
+        tutStep(6, "Delete, make directories, exit");
+        tutCode(
+            "LS                     (note the full tagged name)\n"
+            "DEL MYPROG#F10800      (DEL needs the REAL filename with #tag)\n"
+            "MKDIR NEWDIR           (also: MD NEWDIR)\n"
+            "RMDIR NEWDIR           (must be empty; also: RD)\n"
+            "EXIT                   (back to Woz Monitor)");
+
+        ImGui::Spacing();
+        ImGui::Separator();
+        ImGui::TextColored(ImVec4(0.90f, 0.70f, 0.60f, 1.0f), "Notes");
+        ImGui::BulletText("Backspace = '_' (underscore). Real keyboards have no real backspace key.");
+        ImGui::BulletText("Tagged filenames: NAME#TTAAAA where TT is type (#06/#F1/#F8) and AAAA is the hex load address.");
+        ImGui::BulletText("'D' alone and 'L' alone are NOT commands - you must type DIR and LOAD.");
+        ImGui::BulletText("ESC aborts a long DIR; any other key pauses, ENTER resumes.");
+        ImGui::BulletText("See Hardware Reference > microSD for the full command set and error codes.");
+        ImGui::EndChild();
+    }
+    ImGui::End();
+}
+
+void MainWindow_ImGui::renderTutorialCassetteWindow()
+{
+    ImGuiIO& io = ImGui::GetIO();
+    ImGui::SetNextWindowSize(ImVec2(460.0f, 460.0f), ImGuiCond_FirstUseEver);
+    ImGui::SetNextWindowPos(ImVec2(io.DisplaySize.x * 0.21f, io.DisplaySize.y * 0.16f),
+                            ImGuiCond_FirstUseEver);
+    if (ImGui::Begin("Tutorial: Cassette (ACI)", &showTutorialCassette)) {
+        ImGui::TextWrapped(
+            "Wozniak's 256-byte Apple Cassette Interface loads / saves "
+            "programs as audio. POM1 streams the audio through a "
+            "procedural deck widget with realistic piano-key transport.");
+        ImGui::BeginChild("tut_aci_scroll", ImVec2(0, 0), true);
+        tutStep(1, "Pick a preset with the ACI");
+        ImGui::TextWrapped(
+            "Presets menu > #1 'Apple-1 with ACI & Integer BASIC' or "
+            "#13 'POM1 Multiplexing Fantasy' (the default). The ACI ROM "
+            "is at $C100-$C1FF, I/O at $C000 / $C081.");
+
+        tutStep(2, "Open the deck and load a tape");
+        ImGui::TextWrapped(
+            "File menu > Cassette Deck to open the procedural deck. File "
+            "> Load Tape... to pick an .aci / .wav / .mp3 / .ogg. "
+            "cassettes/WOZ_talk.mp3 is auto-loaded by default.");
+        ImGui::TextWrapped(
+            "If the tape has a sidecar entry in cassettes/tapeinfo.txt, "
+            "the jaquette prints the Wozmon command to type (e.g. "
+            "\"Type 0280.0FFFR\"). That is your read range.");
+
+        tutStep(3, "Arm PLAY before typing the command");
+        ImGui::TextWrapped(
+            "Click PLAY on the deck FIRST. You will hear the tape "
+            "moving.");
+
+        tutStep(4, "Enter the ACI firmware");
+        ImGui::TextWrapped("At the Woz Monitor '\\' prompt:");
+        tutCode("C100R");
+        ImGui::TextWrapped(
+            "The ACI echoes '*' + CR and waits for your address line.");
+
+        tutStep(5, "Type the read range and press RETURN");
+        tutCode("0280.0FFFR");
+        ImGui::TextWrapped(
+            "RETURN must be pressed within ~5 seconds of pressing PLAY "
+            "so the firmware locks onto the 10-second header tone. "
+            "Spaces are ignored; illegal chars drop you back to Wozmon.");
+
+        tutStep(6, "Wait for the load to finish");
+        ImGui::TextWrapped(
+            "When done, the ACI prints '\\' and returns to the Woz "
+            "Monitor. Run the loaded program:");
+        tutCode("0280R");
+
+        tutStep(7, "Record a tape");
+        tutCode(
+            "(click REC on the deck - this latches PLAY too)\n"
+            "C100R\n"
+            "0280.0FFFW");
+        ImGui::TextWrapped(
+            "Export the capture to .aci or .wav via File > Save Tape.");
+
+        ImGui::Spacing();
+        ImGui::Separator();
+        ImGui::TextColored(ImVec4(0.90f, 0.70f, 0.60f, 1.0f), "Notes");
+        ImGui::BulletText("C100R is needed BEFORE EACH operation - the ACI returns to Wozmon after each read/write.");
+        ImGui::BulletText("Multi-range: 'A.BW C.DW' writes two segments. On read, use matching address increments.");
+        ImGui::BulletText("~1500 baud average (FSK: 1 kHz = '1' bit, 2 kHz = '0' bit).");
+        ImGui::BulletText("See Hardware Reference > Woz ACI for the full protocol and deck transport.");
+        ImGui::EndChild();
+    }
+    ImGui::End();
+}
+
+void MainWindow_ImGui::renderTutorialModemBBSWindow()
+{
+    ImGuiIO& io = ImGui::GetIO();
+    ImGui::SetNextWindowSize(ImVec2(470.0f, 470.0f), ImGuiCond_FirstUseEver);
+    ImGui::SetNextWindowPos(ImVec2(io.DisplaySize.x * 0.23f, io.DisplaySize.y * 0.18f),
+                            ImGuiCond_FirstUseEver);
+    if (ImGui::Begin("Tutorial: Wi-Fi Modem BBS", &showTutorialModemBBS)) {
+        ImGui::TextWrapped(
+            "The P-LAB Wi-Fi Modem is a 65C51 ACIA + ESP8266 pair. POM1 "
+            "replaces the ESP with a native Hayes/TELNET interpreter - "
+            "you dial real TCP hosts with ATDT and chat with BBSes like "
+            "it is 1985. Desktop only (WASM has no raw sockets).");
+        ImGui::BeginChild("tut_modem_scroll", ImVec2(0, 0), true);
+        tutStep(1, "Pick the Wi-Fi Modem preset");
+        ImGui::TextWrapped(
+            "Presets menu > #9 'P-LAB Wi-Fi Modem BBS'. The ACIA sits at "
+            "$B000-$B003.");
+
+        tutStep(2, "Load the ATmodem ACIA driver");
+        ImGui::TextWrapped(
+            "File > Load Memory > software/net/ATmodem.txt. It auto-"
+            "loads at $0280 (the standard Apple-1 scratch area). Alternatively "
+            "paste the hex dump via File > Paste Code.");
+
+        tutStep(3, "Start the driver");
+        ImGui::TextWrapped("From the Woz Monitor '\\' prompt:");
+        tutCode("0280R");
+        ImGui::TextWrapped(
+            "Nothing visible happens - ATmodem installs the ACIA bridge "
+            "in the background. You are still at the Woz Monitor but "
+            "typing now goes through the modem.");
+
+        tutStep(4, "Ping the modem");
+        tutCode("AT");
+        ImGui::TextWrapped("Reply: 'OK'. The ACIA is wired.");
+
+        tutStep(5, "Dial a BBS");
+        tutCode(
+            "ATDT BBS.FOZZTEXX.COM:6400   (Level29 BBS)\n"
+            "ATDT TELEHACK.COM            (default port 23)\n"
+            "ATDT PARTICLES.KPAUL.FRL");
+        ImGui::TextWrapped(
+            "Reply on success: 'CONNECT 9600'. On failure: "
+            "'NO CARRIER'. You are now in DATA mode - bytes you type "
+            "go to the remote host.");
+
+        tutStep(6, "Escape back to COMMAND mode");
+        tutCode("+++");
+        ImGui::TextWrapped(
+            "Type three '+' chars BACK TO BACK, then wait 1 second of "
+            "silence. The modem replies 'OK' and drops to COMMAND mode "
+            "WITHOUT hanging up. The socket stays open but data is "
+            "paused.");
+
+        tutStep(7, "Disconnect");
+        tutCode("ATH");
+        ImGui::TextWrapped("Reply: 'NO CARRIER'. Socket closed.");
+
+        ImGui::Spacing();
+        ImGui::Separator();
+        ImGui::TextColored(ImVec4(0.90f, 0.70f, 0.60f, 1.0f), "Notes");
+        ImGui::BulletText("ATZ resets the modem (echo ON, 9600 baud).");
+        ImGui::BulletText("ATE0 / ATE1 disable / enable command-mode echo.");
+        ImGui::BulletText("No 'ATO' to resume a paused session - dial again with ATDT for a fresh socket.");
+        ImGui::BulletText("TELNET IAC negotiations are filtered; CR+LF from the wire collapses to CR.");
+        ImGui::BulletText("See Hardware Reference > MODEM BBS for the full AT command set and baud table.");
+        ImGui::EndChild();
     }
     ImGui::End();
 }

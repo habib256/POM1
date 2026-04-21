@@ -357,6 +357,11 @@ void MainWindow_ImGui::render()
     if (showHardwareReference) renderHardwareReferenceWindow();
     if (showSoftwareReference) renderSoftwareReferenceWindow();
     if (showWelcome) renderWelcomeWindow();
+    if (showTutorialIntegerBasic) renderTutorialIntegerBasicWindow();
+    if (showTutorialApplesoft) renderTutorialApplesoftWindow();
+    if (showTutorialMicroSD) renderTutorialMicroSDWindow();
+    if (showTutorialCassette) renderTutorialCassetteWindow();
+    if (showTutorialModemBBS) renderTutorialModemBBSWindow();
     if (showScreenConfig) renderScreenConfigDialog();
     if (showMemoryConfig) renderMemoryConfigDialog();
     if (showLoadDialog) renderLoadDialog();
