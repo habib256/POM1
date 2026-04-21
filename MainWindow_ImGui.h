@@ -1,6 +1,7 @@
 #ifndef MAINWINDOW_IMGUI_H
 #define MAINWINDOW_IMGUI_H
 
+#include <optional>
 #include <string>
 #include <vector>
 #include <memory>
@@ -15,6 +16,8 @@
 #include "GraphicsCard.h"
 #include "TMS9918.h"
 #include "CassetteDeck_ImGui.h"
+#include "CliDispatcher.h"
+#include "SID.h"
 
 class MainWindow_ImGui
 {
@@ -39,6 +42,25 @@ public:
     // (MAX button in the UI). Scripted runs that drive the ACI through
     // telnet otherwise wait ~30 s of wallclock per tape at the 1× default.
     void setCpuMaxSpeedOnBoot(bool enable) { cpuMaxSpeedOnBoot = enable; }
+    // --speed N: override executionSpeed in cycles/frame on the first
+    // rendered frame. Loses to --cpu-max when both are set (the
+    // constants order: --cpu-max > --speed > preset default).
+    void setInitialExecutionSpeed(int cyclesPerFrame) { initialExecutionSpeed = cyclesPerFrame; }
+    // CLI --enable / --disable — list of (card, enable) pairs applied as
+    // preset overrides inside the first-frame block of render(), right after
+    // applyMachineConfig(). The overrides go through the existing pendingXxx
+    // deferred-plug rails so the 15-frame delay still applies.
+    void setCardOverrides(std::vector<pom1::CliCardOverride> overrides)
+    { cardOverrides = std::move(overrides); }
+    // CLI --sid-chip / --jukebox-jumper — set before the deferred plug fires
+    // so the card latches onto the chosen model/jumper instead of the preset
+    // default.
+    void setSidChipOverride(pom1::SID::ChipModel m) { sidChipOverride = m; }
+    void setJukeBoxJumperOverride(JukeBox::Jumper j) { jukeBoxJumperOverride = j; }
+    // CLI phase-C verbs. Applied once, the frame after pendingCardEnableFrames
+    // reaches zero (the same frame the deferred plug commits).
+    void setDeferredCliActions(std::vector<pom1::CliAction> actions)
+    { deferredCliActions = std::move(actions); }
     void handleGlfwChar(unsigned int codepoint);
     void handleGlfwKey(int key, int scancode, int action, int mods);
 
@@ -258,6 +280,12 @@ private:
     bool initialTapeAutoPlay = false;     // --tape presses PLAY; default bundled cassette only loads, waiting for the user
     std::string saveTapePath;             // --save-tape: dump the deck's recording on clean shutdown
     bool cpuMaxSpeedOnBoot = false;       // --cpu-max: pin executionSpeed to MAX (1e6) on first frame
+    std::optional<int> initialExecutionSpeed;              // --speed N (cycles/frame)
+    std::vector<pom1::CliCardOverride> cardOverrides;      // --enable / --disable
+    std::optional<pom1::SID::ChipModel>       sidChipOverride;    // --sid-chip
+    std::optional<JukeBox::Jumper>      jukeBoxJumperOverride; // --jukebox-jumper
+    std::vector<pom1::CliAction>        deferredCliActions; // phase-C queue
+    bool deferredCliActionsConsumed = false;
     // applyMachineConfig() normally triggers emulation->hardReset() to wipe
     // RAM + reload default ROMs + reset every peripheral. But at boot the
     // first applyMachineConfig call runs RIGHT AFTER createPom1(), where

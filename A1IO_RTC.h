@@ -9,6 +9,7 @@
 #define A1IO_RTC_H
 
 #include <cstdint>
+#include <ctime>
 #include <array>
 
 class A1IO_RTC
@@ -54,6 +55,14 @@ public:
     // Configurable analog/digital inputs (for UI sliders / external control)
     void setAnalogInput(int channel, uint8_t value);
     void setDigitalInput(int channel, uint8_t value);
+
+    // Freeze the RTC to a specific wall-clock instant (seconds since epoch).
+    // Used by the CLI `--rtc-freeze` verb so scripted runs get a deterministic
+    // clock. Internally sets rtcOffsetSeconds = target - host_now; the RTC
+    // then continues ticking from that anchor at host-clock rate (it does not
+    // actually stop — "freeze" is a misnomer inherited from the CLI verb, but
+    // for short scripted runs the drift is under 1 s).
+    void setOverrideTime(std::time_t target);
 
 private:
     // --- VIA 65C22 registers ---

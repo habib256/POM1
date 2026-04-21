@@ -18,16 +18,38 @@ cd build && cmake .. && make # build → build/POM1
 
 Windows uses `setup_imgui.bat` + vcpkg + `cmake --build . --config Release`. `CMAKE_EXPORT_COMPILE_COMMANDS` is on (build/compile_commands.json symlinked from repo root; clangd picks it up automatically).
 
-### CLI flags (parsed in `main_imgui.cpp` top of `main`)
+### CLI flags (parsed in `CliDispatcher.cpp`, invoked from `main_imgui.cpp`)
 
-| Flag | Effect |
-|------|--------|
-| `--list-presets` | Print `index: name` for every entry in `kMachinePresets[]` and exit. |
-| `--preset <N\|name>` / `-p` | Select a preset by index or case-insensitive substring (first match). Applied on first render frame. |
-| `--terminal` | Force-enable the Terminal Card on top of the preset (binds `127.0.0.1:6502`). |
-| `--tape <path>` | Preload a tape + auto-press Play. Default probe when omitted: `cassettes/WOZ_talk.mp3` (silent-loaded). |
-| `--save-tape <path>` | Dump the deck's capture on clean shutdown. `SIGINT`/`SIGTERM` route through `glfwSetWindowShouldClose(1)` so `~MainWindow_ImGui` runs. |
-| `--cpu-max` | Pin `executionSpeed` to 1 000 000 cycles/frame on boot (MAX button). Scripted ACI tests need this. |
+Every GUI-reachable runtime action has a corresponding flag. The dispatcher separates verbs into three phases — **A** boot-time (consumed before the GLFW window opens or on the first rendered frame), **B** first-frame preset overrides (fire next to `terminalCardOverride`/`cpuMaxSpeedOnBoot`), **C** deferred, fire once the 15-frame card plug-in completes. Phase-C verbs execute in the order they appear on the command line; one `--load 0300:foo.bin --run 0300 --paste keys.txt` chain composes the obvious way.
+
+| Flag | Phase | Effect |
+|------|-------|--------|
+| `--list-presets` | A | Print `index: name` for every entry in `kMachinePresets[]` and exit. |
+| `--preset <N\|name>` / `-p` | A | Select a preset by index or case-insensitive substring (first match). |
+| `--terminal` | A | Force-enable the Terminal Card on top of the preset (binds `127.0.0.1:6502`). |
+| `--tape <path>` | A | Preload a tape + auto-press Play. Default probe when omitted: `cassettes/WOZ_talk.mp3` (silent-loaded). |
+| `--save-tape <path>` | A | Dump the deck's capture on clean shutdown. `SIGINT`/`SIGTERM` route through `glfwSetWindowShouldClose(1)` so `~MainWindow_ImGui` runs. |
+| `--save-tape-format <aci\|wav>` | A | Append the extension to `--save-tape` when the path has none. `.aci`/`.wav` already present wins; `CassetteDevice::saveTape()` always picks format by extension. |
+| `--cpu-max` | A | Pin `executionSpeed` to 1 000 000 cycles/frame on boot (MAX button). Scripted ACI tests need this. |
+| `--speed <cycles/frame>` | B | Override `executionSpeed` on the first frame. 17045 = 1×, 34091 = 2×. `--cpu-max` beats `--speed`. |
+| `--enable <card>[,<card>…]` / `--disable <card>[,<card>…]` | B | Rewrite the preset's deferred plug list. Valid names: `aci, sid, sid-se, microsd, tms9918, a1io-rtc, hgr, cffa1, krusader, wifi, terminal, jukebox` (plus a few aliases — see `kCardNames` in `CliDispatcher.cpp`). Mutual-exclusion invariants (SID↔SID-SE, TMS9918↔SID-SE, …) are enforced by the override consumer alongside existing UI rules. `--disable krusader` is a no-op (ROM unload requires a hard reset — switch to a Krusader-less preset instead). |
+| `--sid-chip <6581\|8580>` | B | Switch the A1-SID / A1-AUDIO Special Edition chip model before the deferred plug fires. libresidfp replays the last register state on the new chip. |
+| `--jukebox-jumper <ram16\|ram32>` | B | Pick the Juke-Box RAM/ROM split (`RAM16_ROM32` → ROM at $4000-$BFFF, `RAM32_ROM16` → ROM at $8000-$BFFF). |
+| `--trace-brk` | C | Enable the M6502 BRK register/stack/trace dump (`EmulationController::setCpuBrkTraceEnabled(true)`). |
+| `--load <addr>:<path>` | C | Load a raw binary at the given address, rewrite reset vector, `hardReset` + `start`. Addresses accept hex (`0300`, `0x0300`, `$0300`) or decimal ≥ 5 digits. Repeatable. |
+| `--run <addr>` | C | Jump the CPU to `addr` without loading anything — `EmulationController::jumpTo()` stops, rewrites reset vector, hard-resets, re-starts. Combine with `--load`: `--load A:x.bin --run A`. |
+| `--paste <file>` | C | Feed up to 4096 characters from `<file>` into the Apple 1 keyboard queue, same filter as the clipboard paste (`\n`→CR, printable ASCII only). |
+| `--step <N>` | C | Step the CPU `N` instructions after the deferred plug. Useful with `--trace-brk` for scripted inspection. |
+| `--play` / `--rec` / `--rewind` | C | Cassette deck transport. `--rec` arms recording without waiting for a first `$C000` toggle (new `CassetteDevice::armRecording()` wrapper). |
+| `--sd-mkdir <path>` | C | `create_directories(sdcard_root/<path>)`. Paths escaping the sdcard root are rejected. Works on any preset (the microSD host root is probed by `Memory`'s ctor independently of whether the card is plugged). |
+| `--sd-put <host>:<guest>` | C | Copy `<host>` into `sdcard_root/<guest>`, creating parent dirs. Used for fixture seeding without the Wozmon round-trip. |
+| `--sd-get <guest>:<host>` | C | Reverse of `--sd-put`: `sdcard_root/<guest>` → `<host>`. |
+| `--rtc-freeze "YYYY-MM-DD HH:MM:SS"` | C | Set `A1IO_RTC::rtcOffsetSeconds` so the virtual clock reads the supplied time. The RTC continues ticking at host-clock rate — fine for sub-minute scripted runs. |
+| `--break <addr>` | — | **Reserved**. Exits with an error: `M6502` has no breakpoint infrastructure yet. Use `--step` + `--trace-brk` instead. |
+
+`--enable`/`--disable` are applied after `--terminal` so an explicit `--disable terminal` overrides `--terminal`. Case-insensitive; the card list accepts a comma-separated CSV and can be repeated.
+
+Malformed verbs log `[CLI] ERROR: …` via the shared logger and exit **1** before GLFW opens — matches the pre-existing behaviour of the `--preset` out-of-range check.
 
 Typical telnet workflow:
 

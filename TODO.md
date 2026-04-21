@@ -66,17 +66,7 @@ Not blocked externally — spec is public and the code change is tractable — b
 - [ ] **ImGui Metal backend on macOS** `[L · nice]` — OpenGL is deprecated since macOS 10.14 (currently silenced via `GL_SILENCE_DEPRECATION`). `imgui_impl_metal.mm` + `imgui_impl_osx.mm` are drop-in; scope is porting the handful of raw GL calls in `Screen_ImGui.cpp` / `MainWindow_HardwareWindows.cpp` (glyph atlas, TMS9918 texture, HGR texture) to MTLTexture.
 - [ ] **External `presets.json`** `[S · nice]` — `MainWindow_Presets.cpp` already flags itself as the migration target. Move `kMachinePresets[]` to JSON under `doc/` (or next to the executable) so users add presets without recompiling. Loader in `MainWindow_Presets.cpp`, keep the C++ table as fallback.
 - [ ] **Terminal Card — `Ctrl-K` hand-over to host keyboard** `[S · nice]` — match the 8BitFlux toggle: a `Ctrl-K` byte suspends `$D010` / `$D011` injection until `Ctrl-T` re-attaches. Useful once a script has bootstrapped a program and the user wants to play without dropping the session. Hook: add `injectionSuspended` next to `escapePending` / `eightBitMode` in `TerminalCard.cpp`, skip the keyboard queue while set.
-- [ ] **Agent-facing CLI verbs** `[M · solid]` — today `main_imgui.cpp` exposes only six flags (`--preset`, `--terminal`, `--tape`, `--save-tape`, `--cpu-max`, `--list-presets`). An AI agent wanting to drive the emulator end-to-end still has to click through menus or script over telnet + keystrokes. Extend the CLI so **every runtime action** exposed in the Hardware / File / CPU menus is reachable from flags applied at boot:
-  - Card toggles: `--enable sid,microsd,tms9918,...` / `--disable ...`
-  - ROM / program load: `--load <addr>:<path>`, `--run <addr>`, `--paste <file>` (same path as Ctrl-V paste)
-  - CPU control: `--speed <cycles-per-frame>`, `--step <N>`, `--break <addr>`, `--trace-brk`
-  - Cassette deck: `--play`, `--rec`, `--rewind`, `--save-tape-format <aci|wav>`
-  - microSD shell bypass: `--sd-mkdir`, `--sd-put host:guest`, `--sd-get guest:host` (avoid the Wozmon round-trip when seeding test fixtures)
-  - SID: `--sid-chip 6581|8580`
-  - Juke-Box: `--jukebox-jumper ram16|ram32`
-  - A1-IO RTC: `--rtc-freeze YYYY-MM-DD HH:MM:SS` (deterministic test clock)
-
-  Scope: `main_imgui.cpp` (parser) + a new `CliDispatcher` TU that maps verbs → existing `EmulationController` methods, documented grammar in `APPLE1DEV.md` / `CLAUDE.md`. Keep backwards-compatible with the six existing flags.
+- [ ] **CLI breakpoints (`--break <addr>`)** `[S · deferred]` — the agent-facing CLI dispatcher (see `CliDispatcher.cpp` / `CLAUDE.md`) landed without `--break` because `M6502` has no breakpoint infrastructure today. Add a small PC-matched halt in `M6502::run()` (early-return when `programCounter == breakpoint`), a `setBreakpoint(quint16)`/`clearBreakpoint()` pair, plumb through `EmulationController`, then flip the stub in `CliDispatcher.cpp` (currently errors out) into a real `CliAction::Kind::Break`. Keep the overhead off the hot path — a single compare-and-branch in the instruction-dispatch loop behind a `breakpointActive` flag.
 
 - [ ] **Snapshot save / load (save-state)** `[M · solid]` — `--snapshot-save <path>` / `--snapshot-load <path>` serialising `EmulationSnapshot` + every peripheral's internal state (SID register file + filter, TMS9918 VRAM + regs, microSD fs cursor, modem connection, cassette deck transport + tape offset, CFFA1 disk offset, Juke-Box bank). Enables deterministic replay, reloadable test fixtures, one-click bug reports, and is the storage format the scriptable IPC below will share. Design the on-disk format versioned so future peripheral additions don't invalidate old snapshots.
 

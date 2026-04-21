@@ -4,6 +4,7 @@
 #include "imgui.h"
 #include "imgui_impl_glfw.h"
 #include "imgui_impl_opengl3.h"
+#include "CliDispatcher.h"
 #include "MainWindow_ImGui.h"
 #include "IconsFontAwesome6.h"
 #include "Logger.h"
@@ -171,82 +172,22 @@ int main(int argc, char* argv[])
     pom1::initDefaultTeeLogger();
     pom1::log().info("POM1", "v1.8.5 - Apple 1 Emulator (Dear ImGui)");
 
-    // Parse command-line arguments
-    int requestedPreset = -1; // -1 = default (last preset)
-    bool terminalCardOverride = false;
-    std::string initialTapePath;
-    std::string saveTapePath;
-    bool cpuMaxSpeedOnBoot = false;
-    for (int i = 1; i < argc; ++i) {
-        std::string arg(argv[i]);
-        if (arg == "--terminal") {
-            terminalCardOverride = true;
-            continue;
-        }
-        if (arg == "--tape" && i + 1 < argc) {
-            initialTapePath = argv[++i];
-            continue;
-        }
-        if (arg == "--save-tape" && i + 1 < argc) {
-            saveTapePath = argv[++i];
-            continue;
-        }
-        if (arg == "--cpu-max") {
-            cpuMaxSpeedOnBoot = true;
-            continue;
-        }
-        if (arg == "--list-presets") {
-            int n = MainWindow_ImGui::getPresetCount();
-            std::cout << "Available machine presets:" << std::endl;
-            for (int p = 0; p < n; ++p) {
-                std::cout << "  " << p << ": " << MainWindow_ImGui::getPresetName(p) << std::endl;
-            }
-            return 0;
-        }
-        if ((arg == "--preset" || arg == "-p") && i + 1 < argc) {
-            std::string val(argv[++i]);
-            // Try as numeric index first
-            char* end = nullptr;
-            long idx = strtol(val.c_str(), &end, 10);
-            if (end != val.c_str() && *end == '\0') {
-                int presetCount = MainWindow_ImGui::getPresetCount();
-                if (idx < 0 || idx >= presetCount) {
-                    pom1::log().error("POM1", "Preset index " + val + " out of range [0, " +
-                                              std::to_string(presetCount - 1) +
-                                              "]. Use --list-presets to see available presets.");
-                    return 1;
-                }
-                requestedPreset = static_cast<int>(idx);
-            } else {
-                // Match by name (case-insensitive substring)
-                int n = MainWindow_ImGui::getPresetCount();
-                for (int p = 0; p < n; ++p) {
-                    std::string pname(MainWindow_ImGui::getPresetName(p));
-                    // Convert both to lowercase for comparison
-                    std::string valLow = val, pnameLow = pname;
-                    for (auto& c : valLow)  c = std::tolower(c);
-                    for (auto& c : pnameLow) c = std::tolower(c);
-                    if (pnameLow.find(valLow) != std::string::npos) {
-                        requestedPreset = p;
-                        break;
-                    }
-                }
-                if (requestedPreset < 0) {
-                    pom1::log().error("POM1", "Unknown preset '" + val +
-                                              "'. Use --list-presets to see available presets.");
-                    return 1;
-                }
-            }
-            pom1::log().info("POM1", std::string("Preset: ") + MainWindow_ImGui::getPresetName(requestedPreset));
-        }
-    }
+    // Parse command-line arguments via the CLI dispatcher. The dispatcher
+    // owns every verb — boot-time (preset, card overrides, cassette paths,
+    // CPU speed) AND post-deferred-plug verbs (program load, --paste,
+    // --rec, --sd-*, --rtc-freeze, etc.). `listPresetsSeen` is true when the
+    // dispatcher printed the preset table; in that case main exits 0.
+    bool listPresetsSeen = false;
+    auto parsedPlan = pom1::parseCli(argc, argv, listPresetsSeen);
+    if (listPresetsSeen) return 0;
+    if (!parsedPlan) return 1;
+    pom1::CliPlan plan = std::move(*parsedPlan);
 
     // Default bundled cassette: preload cassettes/WOZ_talk.mp3 when --tape
     // was not supplied. Probes the same cwd-relative locations as the
     // in-app file browser (build/ vs repo-root launches). Not auto-played
     // — the user presses Play when they want Woz to speak.
-    bool initialTapeAutoPlay = !initialTapePath.empty();
-    if (initialTapePath.empty()) {
+    if (plan.initialTapePath.empty()) {
         const char* probes[] = {
             "cassettes/WOZ_talk.mp3",
             "../cassettes/WOZ_talk.mp3",
@@ -254,10 +195,17 @@ int main(int argc, char* argv[])
         };
         for (const char* p : probes) {
             if (std::filesystem::exists(p)) {
-                initialTapePath = p;
+                plan.initialTapePath = p;
                 break;
             }
         }
+        // Default bundled cassette loads silently; only --tape auto-plays.
+        plan.initialTapeAutoPlay = false;
+    }
+
+    // --save-tape-format: append .aci/.wav only if the path has no extension.
+    if (!plan.saveTapePath.empty()) {
+        plan.saveTapePath = pom1::resolveSaveTapePath(plan.saveTapePath, plan.saveTapeFormat);
     }
 
     // Setup GLFW
@@ -363,18 +311,28 @@ int main(int argc, char* argv[])
 
     // Create main application
     MainWindow_ImGui mainWindow;
-    if (requestedPreset >= 0)
-        mainWindow.setDefaultPresetIndex(requestedPreset);
-    if (terminalCardOverride)
+    if (plan.presetIndex >= 0)
+        mainWindow.setDefaultPresetIndex(plan.presetIndex);
+    if (plan.terminalOverride)
         mainWindow.setTerminalCardOverride(true);
-    if (!initialTapePath.empty()) {
-        mainWindow.setInitialTapePath(initialTapePath);
-        mainWindow.setInitialTapeAutoPlay(initialTapeAutoPlay);
+    if (!plan.initialTapePath.empty()) {
+        mainWindow.setInitialTapePath(plan.initialTapePath);
+        mainWindow.setInitialTapeAutoPlay(plan.initialTapeAutoPlay);
     }
-    if (!saveTapePath.empty())
-        mainWindow.setSaveTapePath(saveTapePath);
-    if (cpuMaxSpeedOnBoot)
+    if (!plan.saveTapePath.empty())
+        mainWindow.setSaveTapePath(plan.saveTapePath);
+    if (plan.cpuMax)
         mainWindow.setCpuMaxSpeedOnBoot(true);
+    if (plan.executionSpeed)
+        mainWindow.setInitialExecutionSpeed(*plan.executionSpeed);
+    if (!plan.cardOverrides.empty())
+        mainWindow.setCardOverrides(std::move(plan.cardOverrides));
+    if (plan.sidChipOverride)
+        mainWindow.setSidChipOverride(*plan.sidChipOverride);
+    if (plan.jukeBoxJumperOverride)
+        mainWindow.setJukeBoxJumperOverride(*plan.jukeBoxJumperOverride);
+    if (!plan.deferredActions.empty())
+        mainWindow.setDeferredCliActions(std::move(plan.deferredActions));
     mainWindow.setWindow(window);
 
 #if !POM1_IS_WASM

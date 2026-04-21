@@ -1,0 +1,139 @@
+// Pom1 Apple 1 Emulator
+// Copyright (C) 2000-2026 Verhille Arnaud
+//
+// CliDispatcher — parses the agent-facing POM1 command line into a CliPlan.
+// The plan separates verbs into two phases: (A) flags consumed before the
+// ImGui window is created (preset, card overrides, SID chip, Juke-Box jumper,
+// tape paths, speed), and (C) deferred verbs that must run after the preset
+// fully applied and all expansion cards finished their 15-frame deferred
+// plug-in (program load, --run, --paste, cassette transport, --step,
+// microSD host bypass, --rtc-freeze, --trace-brk).
+//
+// Phase-B work (consuming the phase-A overrides on the first rendered frame)
+// lives inside MainWindow_ImGui::render() next to the existing
+// terminalCardOverride / cpuMaxSpeedOnBoot path.
+//
+// The dispatcher keeps zero GUI dependencies so it can be unit-tested with
+// just a Memory + EmulationController later.
+
+#ifndef CLI_DISPATCHER_H
+#define CLI_DISPATCHER_H
+
+#include "JukeBox.h"
+#include "SID.h"
+
+#include <cstdint>
+#include <ctime>
+#include <optional>
+#include <string>
+#include <vector>
+
+class EmulationController;
+class MainWindow_ImGui;
+
+namespace pom1 {
+
+enum class CliCard : uint8_t {
+    Aci,
+    Sid,
+    SidSE,
+    MicroSD,
+    Tms9918,
+    A1IoRtc,
+    Hgr,
+    Cffa1,
+    Krusader,      // toggles the Krusader ROM via RomLoader
+    WifiModem,
+    TerminalCard,
+    JukeBox,
+};
+
+/// One deferred action consumed by the Phase-C runner after the
+/// pendingCardEnableFrames deferred-plug timer expires. Fields are interpreted
+/// per-Kind; only the ones listed in the comment are meaningful for a given
+/// Kind, the others stay default-initialised.
+struct CliAction {
+    enum class Kind {
+        Load,          // addressI + pathS : loadBinary(pathS, addressI)
+        Run,           // addressI         : jumpTo(addressI)
+        Paste,         // pathS            : feed file contents as keystrokes
+        Step,          // countI           : stepCpu() countI times
+        TraceBrk,      // (no args)        : setCpuBrkTraceEnabled(true)
+        Play,          // (no args)        : playTape()
+        Rec,           // (no args)        : armCassetteRecord()
+        Rewind,        // (no args)        : rewindTape()
+        SdMkdir,       // pathS            : create_directories(sdroot/pathS)
+        SdPut,         // hostS : guestS   : copy host → sdroot/guest
+        SdGet,         // guestS : hostS   : copy sdroot/guest → host
+        RtcFreeze,     // timeT            : setRtcOverrideTime(timeT)
+    };
+
+    Kind kind;
+    int          addressI = 0;   // Load / Run
+    int          countI   = 0;   // Step
+    std::string  pathS;          // Load / Paste / SdMkdir / SdPut (host) / SdGet (guest)
+    std::string  pathS2;         // SdPut (guest) / SdGet (host)
+    std::time_t  timeT = 0;      // RtcFreeze
+};
+
+/// Card + enable/disable pair built from `--enable` / `--disable` lists.
+struct CliCardOverride {
+    CliCard card;
+    bool    enable;
+};
+
+/// Tape save-format hint. NoHint keeps the current extension-based autodetect
+/// in CassetteDevice::saveTape(); Aci/Wav force the listed extension when the
+/// save path has no recognisable extension of its own.
+enum class CliSaveTapeFormat { NoHint, Aci, Wav };
+
+struct CliPlan {
+    // Phase-A — consumed by main() before MainWindow_ImGui construction or on
+    // the first render frame.
+    int                                presetIndex = -1;   // -1 = default
+    bool                               terminalOverride = false;
+    bool                               cpuMax = false;
+    std::optional<int>                 executionSpeed;     // cycles/frame
+    std::string                        initialTapePath;
+    bool                               initialTapeAutoPlay = false;
+    std::string                        saveTapePath;
+    CliSaveTapeFormat                  saveTapeFormat = CliSaveTapeFormat::NoHint;
+    std::vector<CliCardOverride>       cardOverrides;
+    std::optional<pom1::SID::ChipModel>      sidChipOverride;
+    std::optional<JukeBox::Jumper>     jukeBoxJumperOverride;
+
+    // Phase-C — consumed after the card deferred-plug timer fires.
+    std::vector<CliAction>             deferredActions;
+};
+
+/// Parse argv.
+///
+/// Returns:
+///   * `std::nullopt` if an error message has already been logged and main()
+///     should exit with status != 0. The function also handles `--list-presets`
+///     internally: it prints the preset table and returns nullopt (signalling
+///     "clean exit" — main() returns 0 in that case, keyed off `listPresetsOut`).
+///   * A populated CliPlan otherwise.
+///
+/// `listPresetsOut` is set to true iff `--list-presets` was seen (so the caller
+/// can decide to exit 0 without building a window). Unknown flags are logged
+/// and cause nullopt.
+std::optional<CliPlan> parseCli(int argc, char* argv[], bool& listPresetsOut);
+
+/// Run every phase-C action in `plan.deferredActions`, in order. Safe to call
+/// once the CPU has been running long enough for the deferred card plug to
+/// have fired (MainWindow_ImGui invokes this from render() after
+/// pendingCardEnableFrames reaches zero). Errors are logged; the first fatal
+/// error short-circuits the rest of the deferred list.
+void runDeferredActions(const std::vector<CliAction>& actions,
+                        EmulationController&         emu);
+
+/// Build a probable save-tape path honouring `--save-tape-format` when
+/// `--save-tape` was given a path without a recognisable extension. Applied by
+/// main_imgui.cpp before `mainWindow.setSaveTapePath()` so the rest of the
+/// code keeps the "filename extension decides format" invariant.
+std::string resolveSaveTapePath(const std::string& path, CliSaveTapeFormat hint);
+
+} // namespace pom1
+
+#endif // CLI_DISPATCHER_H

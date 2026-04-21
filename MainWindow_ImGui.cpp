@@ -1,5 +1,6 @@
 #include "MainWindow_ImGui.h"
 #include "MainWindow_Internal.h"
+#include "CliDispatcher.h"
 #include "WiFiModem.h"
 #include "TerminalCard.h"
 #include "POM1Build.h"
@@ -192,6 +193,17 @@ void MainWindow_ImGui::render()
                 emulation->setJukeBoxJumper(pendingJukeBoxJumper);
                 emulation->setJukeBoxEnabled(true);
             }
+            // CLI phase-C: run deferred verbs right after the preset's cards
+            // are fully plugged. Gated on the one-shot flag so a later
+            // pendingCardEnableFrames cycle (e.g. user switches preset) does
+            // not re-execute the CLI batch.
+            if (!deferredCliActionsConsumed) {
+                deferredCliActionsConsumed = true;
+                if (!deferredCliActions.empty()) {
+                    pom1::runDeferredActions(deferredCliActions, *emulation);
+                    deferredCliActions.clear();
+                }
+            }
         }
     }
     // MemoryViewer setters are only consumed by render(), so don't bother
@@ -279,6 +291,78 @@ void MainWindow_ImGui::render()
         if (terminalCardOverride) {
             terminalCardEnabled = true;
             emulation->setTerminalCardEnabled(true);
+        }
+        // CLI --enable / --disable: rewrite the pendingXxxEnable flags the
+        // deferred plug consumes. Also update the UI-facing bool so the
+        // toolbar chip and menu checkmark match the override before the
+        // plug actually fires. Applied after applyMachineConfig + the
+        // --terminal override so explicit --disable terminal can still
+        // override --terminal when both are set.
+        for (const auto& o : cardOverrides) {
+            switch (o.card) {
+                case pom1::CliCard::Aci:
+                    aciEnabled = o.enable; pendingAciEnable = o.enable; break;
+                case pom1::CliCard::Sid:
+                    sidEnabled = o.enable; pendingSidEnable = o.enable;
+                    if (o.enable) { sidSpecialEditionEnabled = false; pendingSidSEEnable = false; }
+                    break;
+                case pom1::CliCard::SidSE:
+                    sidSpecialEditionEnabled = o.enable; pendingSidSEEnable = o.enable;
+                    if (o.enable) { sidEnabled = false; pendingSidEnable = false;
+                                    tms9918Enabled = false; pendingTms9918Enable = false; }
+                    break;
+                case pom1::CliCard::MicroSD:
+                    microSDEnabled = o.enable; pendingMicroSDEnable = o.enable; break;
+                case pom1::CliCard::Tms9918:
+                    tms9918Enabled = o.enable; pendingTms9918Enable = o.enable;
+                    if (o.enable) { sidSpecialEditionEnabled = false; pendingSidSEEnable = false; }
+                    break;
+                case pom1::CliCard::A1IoRtc:
+                    a1ioRtcEnabled = o.enable; pendingA1ioRtcEnable = o.enable; break;
+                case pom1::CliCard::Hgr:
+                    graphicsCardEnabled = o.enable; break;   // passive; no pending flag
+                case pom1::CliCard::Cffa1:
+                    cffa1Enabled = o.enable; pendingCffa1Enable = o.enable; break;
+                case pom1::CliCard::Krusader: {
+                    // Krusader is a ROM image, not a peripheral. Loading it
+                    // is supported (reloadKrusader); unloading would require
+                    // a hard reset to clear the ROM window — skipped, the
+                    // user should pick a preset that doesn't include it.
+                    if (o.enable) {
+                        std::string err;
+                        if (emulation->reloadKrusader(err))
+                            loadedRoms.push_back({"Krusader", 0xA000, 0xBFFF});
+                    } else {
+                        pom1::log().warn("CLI",
+                            "--disable krusader: ROM unload not supported — pick a "
+                            "preset without Krusader instead.");
+                    }
+                    break;
+                }
+                case pom1::CliCard::WifiModem:
+                    wifiModemEnabled = o.enable; pendingWifiModemEnable = o.enable; break;
+                case pom1::CliCard::TerminalCard:
+#if !POM1_IS_WASM
+                    terminalCardEnabled = o.enable; pendingTerminalCardEnable = o.enable;
+                    if (!o.enable) emulation->setTerminalCardEnabled(false);
+#endif
+                    break;
+                case pom1::CliCard::JukeBox:
+                    jukeBoxEnabled = o.enable; pendingJukeBoxEnable = o.enable; break;
+            }
+        }
+        if (sidChipOverride) {
+            // Applied directly: libresidfp accepts a chip-model swap at any
+            // time and will replay the last register state onto the new chip.
+            emulation->setSIDChipModel(*sidChipOverride);
+        }
+        if (jukeBoxJumperOverride) {
+            jukeBoxJumper        = *jukeBoxJumperOverride;
+            pendingJukeBoxJumper = *jukeBoxJumperOverride;
+        }
+        if (initialExecutionSpeed) {
+            executionSpeed = *initialExecutionSpeed;
+            emulation->setExecutionSpeedCyclesPerFrame(executionSpeed);
         }
         if (cpuMaxSpeedOnBoot) {
             executionSpeed = 1000000;

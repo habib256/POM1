@@ -146,6 +146,12 @@ public:
     const std::string& getLoadInfo() const { return loadInfo; }
     const std::string& getLastError() const { return lastError; }
 
+    // Arm recording without requiring a CPU $C000 toggle. The deck's REC
+    // button and the CLI `--rec` verb both use this so a scripted run can
+    // capture output that the program emits as soon as it reaches the ACI
+    // without having to inject a first toggle by hand.
+    void armRecording() { beginRecordingIfNeeded(); }
+
 private:
     static constexpr uint32_t kRealtimeAudioTimebaseHz = static_cast<uint32_t>(POM1_CPU_CLOCK_HZ);
     // Tape-file durations are stored in CPU-cycle units so they feed

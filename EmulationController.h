@@ -4,6 +4,7 @@
 #include <atomic>
 #include <condition_variable>
 #include <cstdint>
+#include <ctime>
 #include <memory>
 #include <mutex>
 #include <string>
@@ -114,6 +115,10 @@ public:
     void clearTapeCapture();
     void setHardwareAccurateLiveAudio(bool enabled);
     void setCassetteVolume(float volume);
+    // Arm recording on the tape deck without waiting for the first CPU
+    // $C000 toggle. Used by the cassette deck's REC key and the CLI
+    // `--rec` verb.
+    void armCassetteRecord();
 
     // Apple Cassette Interface — unplug for the bare-4K preset.
     void setACIEnabled(bool enabled);
@@ -141,6 +146,13 @@ public:
     // P-LAB microSD Storage Card
     void setMicroSDEnabled(bool enabled);
     bool isMicroSDEnabled() const;
+    // Host filesystem root the microSD card maps onto. The desktop `Memory`
+    // ctor probes `sdcard/`, `../sdcard`, `../../sdcard` and records the
+    // first match; this getter returns that probed absolute path (empty
+    // when no sdcard tree was found or on WASM). Used by the CLI
+    // `--sd-mkdir` / `--sd-put` / `--sd-get` bypass verbs so host-side
+    // fixture seeding operates on the same directory the emulator serves.
+    std::string getMicroSDRootPath() const;
 
     // CFFA1 CompactFlash Interface
     void setCFFA1Enabled(bool enabled);
@@ -169,6 +181,18 @@ public:
     // P-LAB Apple-1 I/O Board & RTC
     void setA1IO_RTCEnabled(bool enabled);
     bool isA1IO_RTCEnabled() const;
+    // Freeze the A1-IO RTC to a wall-clock instant (seconds since epoch).
+    // Used by `--rtc-freeze` for deterministic scripted runs. No-op when the
+    // card isn't plugged (the offset still latches on A1IO_RTC so subsequent
+    // enables pick it up).
+    void setRtcOverrideTime(std::time_t target);
+
+    // Jump the CPU to an arbitrary address (stop, rewrite reset vector,
+    // hardReset, start). Used by `--run addr` when no binary was loaded at
+    // that address — for a `--load addr:path --run addr` pair the
+    // loadBinary path already handles reset, so `--run` is only required in
+    // the naked form.
+    void jumpTo(quint16 address);
 
     /// Web (Emscripten) : pas de std::thread — avancer l’émulation depuis la boucle principale.
     void pumpEmulationMainThread(double deltaSeconds);

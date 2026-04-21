@@ -410,3 +410,11 @@ void A1IO_RTC::setDigitalInput(int channel, uint8_t value)
         digitalInputs[channel] = value ? 1 : 0;
     }
 }
+
+void A1IO_RTC::setOverrideTime(std::time_t target)
+{
+    const auto nowSys = std::chrono::system_clock::now();
+    const std::time_t hostNow = std::chrono::system_clock::to_time_t(nowSys);
+    rtcOffsetSeconds = static_cast<int>(target - hostNow);
+    updateVirtualRegisters();
+}

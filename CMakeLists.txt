@@ -43,6 +43,7 @@ set(SOURCES
     AudioDevice.cpp
     CassetteDevice.cpp
     CassetteDeck_ImGui.cpp
+    CliDispatcher.cpp
     EmulationController.cpp
     GraphicsCard.cpp
     main_imgui.cpp
@@ -79,6 +80,7 @@ set(HEADERS
     AudioDevice.h
     CassetteDevice.h
     CassetteDeck_ImGui.h
+    CliDispatcher.h
     CpuClock.h
     EmulationController.h
     GraphicsCard.h

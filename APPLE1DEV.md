@@ -326,6 +326,24 @@ Full working example: `tools/test_sdcard_subdir_navigation_telnet.py`.
 ### Test via the built-in ctest
 For emulation-level invariants (CPU, bus, SID audio, ACI tape round-trip), add a C++ test in `tests/`. Template: `tests/peripheral_bus_smoke_test.cpp` — `<cassert>` + `add_test` in `tests/CMakeLists.txt`, no test framework needed.
 
+### Agent-facing CLI — drive POM1 from flags alone
+
+The full verb table (phases + syntax) lives in `CLAUDE.md` (*CLI flags*). One-liners for the most common scripted flows:
+
+| Goal | Command |
+|---|---|
+| Pick preset 4 (microSD + Applesoft Lite), enable Terminal, pin at MAX | `./POM1 --preset 4 --terminal --cpu-max` |
+| Load binary at `$0300` and jump to it, then paste keystrokes | `./POM1 --preset 1 --terminal --load 0300:prog.bin --run 0300 --paste keys.txt` |
+| Swap a preset's cards: GEN2 off, A1-SID on, 8580 chip, 2× speed | `./POM1 --preset 12 --disable hgr --enable sid --sid-chip 8580 --speed 34091` |
+| Seed a microSD fixture without typing `SAVE` through Wozmon | `./POM1 --preset 4 --sd-mkdir BASIC --sd-put host/PROG#F80801:BASIC/PROG#F80801` |
+| Freeze the RTC to midnight 2000-01-01 for a deterministic test | `./POM1 --preset 8 --rtc-freeze "2000-01-01 00:00:00"` |
+| Capture a SID tune into a `.wav` | `./POM1 --preset 5 --rec --save-tape /tmp/out --save-tape-format wav` |
+| Step 10 instructions at boot with BRK trace for debugging | `./POM1 --preset 0 --trace-brk --step 10` |
+
+Repeating flags stack in CLI order — `--load A:x.bin --load B:y.bin --run A` loads both files and jumps to A. The dispatcher rejects unknown flags and misformed arguments before opening the window, so agent scripts can read `exit=1` instead of inspecting logs.
+
+Note on phasing: card-plug overrides (`--enable` / `--disable` / `--sid-chip` / `--jukebox-jumper`) land **before** the emulator's 15-frame deferred plug fires, so they're clean — the card latches onto the chosen model/jumper on first activation. Verbs that need a plugged card (`--paste`, `--play`, `--rec`, `--sd-*`, `--rtc-freeze`) run **after** the defer timer, so they always see the fully-initialised bus.
+
 ---
 
 ## 11. Common gotchas — quick list

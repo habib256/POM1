@@ -499,6 +499,13 @@ void EmulationController::setCassetteVolume(float volume)
     memory->getCassetteDevice().setVolume(volume);
 }
 
+void EmulationController::armCassetteRecord()
+{
+    std::lock_guard<PriorityMutex> lock(stateMutex);
+    memory->getCassetteDevice().armRecording();
+    publisher.publish(*memory, *cpu, runRequested.load());
+}
+
 void EmulationController::setTMS9918Enabled(bool enabled)
 {
     std::lock_guard<PriorityMutex> lock(stateMutex);
@@ -581,6 +588,12 @@ bool EmulationController::isMicroSDEnabled() const
 {
     std::lock_guard<PriorityMutex> lock(stateMutex);
     return memory->isMicroSDEnabled();
+}
+
+std::string EmulationController::getMicroSDRootPath() const
+{
+    std::lock_guard<PriorityMutex> lock(stateMutex);
+    return memory->getMicroSD().getSDCardPath();
 }
 
 void EmulationController::setCFFA1Enabled(bool enabled)
@@ -710,6 +723,28 @@ bool EmulationController::isA1IO_RTCEnabled() const
 {
     std::lock_guard<PriorityMutex> lock(stateMutex);
     return memory->isA1IO_RTCEnabled();
+}
+
+void EmulationController::setRtcOverrideTime(std::time_t target)
+{
+    std::lock_guard<PriorityMutex> lock(stateMutex);
+    memory->getA1IO_RTC().setOverrideTime(target);
+}
+
+void EmulationController::jumpTo(quint16 address)
+{
+    stopCpu();
+    std::lock_guard<PriorityMutex> lock(stateMutex);
+    bool prevWriteInRom = memory->getWriteInRom();
+    memory->setWriteInRom(true);
+    memory->configureResetVectors(address);
+    memory->setWriteInRom(prevWriteInRom);
+    preferredSoftResetVector = address;
+    cpu->hardReset();
+    cpu->start();
+    runRequested.store(true);
+    publisher.publish(*memory, *cpu, runRequested.load());
+    wakeCv.notify_all();
 }
 
 void EmulationController::runEmulationSlice(double elapsedSeconds)
