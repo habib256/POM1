@@ -470,6 +470,44 @@ void MainWindow_ImGui::renderHardwareReferenceWindow()
             hwKeyValue("ROM:", "256 B Woz ACI firmware at $C100-$C1FF - entry point C100R in the Woz Monitor.");
             hwKeyValue("Files:", "Loads raw binary, .aci dumps, and .wav captures.");
             hwKeyValue("UI:", "File -> Cassette Deck (realistic piano-key transport) or Cassette Controls (classic).");
+            hwHeading("Commands (type in the Woz Monitor \\ prompt)");
+            hwKeyValue("C100R",
+                "One-time bootstrap: runs the 256-byte Woz ACI firmware at $C100. "
+                "Prints nothing - the \\ prompt simply returns. Do this once per "
+                "session; the ROM then intercepts the R / W suffixes described below.");
+            hwKeyValue("<from>.<to>R",
+                "READ a tape block into RAM between the two hex addresses (inclusive). "
+                "Press PLAY on the deck FIRST, then type the command and hit Return. "
+                "Example: 0280.0FFFR loads a 3.5 KB program from the tape into $0280-$0FFF.");
+            hwKeyValue("<from>.<to>W",
+                "WRITE a RAM range to the tape. Press REC on the deck (arms REC+PLAY "
+                "automatically), type the command, hit Return. Example: 0280.0FFFW "
+                "records $0280-$0FFF onto the tape. Export afterwards via File > Save Tape.");
+            ImGui::TextWrapped(
+                "Pedagogy note: the R and W suffixes look like Wozmon's own "
+                "'run at address' command, but once C100R has been executed the "
+                "ACI firmware hooks them to mean 'read tape' / 'write tape'. "
+                "Typing <from>.<to>R without having run C100R first just jumps "
+                "the CPU to <from> and crashes into whatever is there.");
+            ImGui::Spacing();
+            hwHeading("Cassette Deck transport (File > Cassette Deck)");
+            hwKeyValue("PLAY:", "Arm the tape for reading. Required before <from>.<to>R.");
+            hwKeyValue("REC:",
+                "Arm for writing. Pressing REC alone auto-latches PLAY too "
+                "(real mechanical interlock).");
+            hwKeyValue("STOP:",
+                "Release every transport key and rewind the playback cursor to start.");
+            hwKeyValue("PAUSE:",
+                "Freeze the current position without resetting. Only latches while "
+                "PLAY or REC is on; STOP releases it.");
+            hwKeyValue("REW / FF:",
+                "Rewind / fast-forward. Releases PLAY - press PLAY again to resume reading.");
+            hwKeyValue("EJECT:",
+                "Only available when the deck is Stopped. Unloads the tape.");
+            ImGui::TextWrapped(
+                "The jaquette prints \"Type <from>.<to>R\" whenever cassettes/tapeinfo.txt "
+                "has a 'filename = load-range' entry for the loaded tape - so you can "
+                "just read the label, press PLAY, and type the command shown.");
         }
 
         // ---- GEN2 HGR -----------------------------------------------
@@ -558,8 +596,9 @@ void MainWindow_ImGui::renderHardwareReferenceWindow()
                 "Claudio Parmigiani's software Juke-Box: a storage ROM card "
                 "(16 kB to 512 kB EPROM / EEPROM / FLASH) that replaces cassette "
                 "loads with an instant menu. The Program Manager lives at "
-                "$BD00 in the ROM and exposes an '&' prompt with H / D / L / P / "
-                "S / B / X commands. Requires the Woz ACI config and auto-disables "
+                "$BD00 in the ROM and exposes an '&' prompt (H / D / L / P / B / X); "
+                "a separate Save-Program sub-menu at $B800 adds W / S / L. "
+                "Requires the Woz ACI config and auto-disables "
                 "CFFA1, microSD, and the Wi-Fi Modem (they share its address window).");
             hwHeading("Particularities");
             hwKeyValue("ROM window:", "$4000-$BFFF (32 kB) or $8000-$BFFF (16 kB), selected by the RAM/ROM jumper. POM1 toggles this live.");
@@ -568,6 +607,41 @@ void MainWindow_ImGui::renderHardwareReferenceWindow()
             hwKeyValue("ROM file:", "roms/jukebox.rom. Build with P-LAB's EPROM_CREATOR (2-packer.sh). See Software Reference.");
             hwKeyValue("EEPROM RW:", "Checkbox in the Juke-Box hardware window. When on, writes in the ROM window persist to jukebox.rom.");
             hwKeyValue("v1 scope:", "28c256 single-page only. Multi-page 29c020/29c040 (P0..PF) and 16 kB sub-page (S0/S1) deferred to v2.");
+            hwHeading("Program Manager commands (BD00R - '&' prompt)");
+            hwKeyValue("H", "Help screen - lists every command below. Run this first.");
+            hwKeyValue("D",
+                "Directory: prints the programs on the current page as 'letter. NAME "
+                "$load..$end' (BAS tag for Integer BASIC entries). Up to 16 programs "
+                "per 32 kB page.");
+            hwKeyValue("L<letter>",
+                "Load the program tagged with <letter> (A-P) into RAM. Example: "
+                "LA loads program A, LE loads program E. No space between L and the letter.");
+            hwKeyValue("P<0-F>",
+                "Page select - switch between pages 0-F of a multi-page EEPROM. "
+                "v1 models the 28c256 single-page case only, so pages 1-F mirror page 0.");
+            hwKeyValue("B",
+                "Drop into Integer BASIC via the warm-start entry $E2B3. "
+                "Non-destructive: a BASIC program already in RAM is preserved.");
+            hwKeyValue("X", "Exit to the Woz Monitor ('\\' prompt).");
+            hwKeyValue("(anything else)",
+                "Invalid command - the firmware prints '!' and re-prompts.");
+            ImGui::Spacing();
+            hwHeading("Save-Program sub-menu (B800R - '#' prompt, RW jumper ON only)");
+            hwKeyValue("W",
+                "Write a RAM range to the EEPROM. You are prompted for from/to in "
+                "Wozmon dot notation (e.g. 0800.0FFF). Requires the EEPROM RW checkbox "
+                "in the Juke-Box hardware window.");
+            hwKeyValue("S",
+                "Save the currently-loaded BASIC program (BASIC edit mode must be active).");
+            hwKeyValue("L",
+                "Leave the sub-menu and return to the Program Manager '&' prompt.");
+            ImGui::TextWrapped(
+                "Pedagogy note: the Program Manager ($BD00) is always visible in "
+                "both jumper configurations because its file offset ($7D00) falls "
+                "inside the 16 kB upper window that stays mapped when RAM-32/ROM-16 "
+                "is selected. Signature byte = $A5 (the 'LDA zp' opcode that opens "
+                "the prompt loop) - POM1 checks it at plug-in time and warns if "
+                "your roms/jukebox.rom does not start with the Program Manager.");
         }
 
         // ---- CFFA1 ---------------------------------------------------
@@ -592,9 +666,60 @@ void MainWindow_ImGui::renderHardwareReferenceWindow()
                 "particles.kpaul.frl, level29.cc and friends).");
             hwHeading("Particularities");
             hwKeyValue("I/O:", "$B000-$B003 (ACIA 65C51).");
-            hwKeyValue("AT commands:", "ATDT host:port, ATH, ATE0/1, ATI, ATZ, +++ guard (1 s).");
-            hwKeyValue("Baud rates:", "50-19200 simulated; TELNET IAC negotiation filtered and CR+LF collapsed to CR.");
+            hwKeyValue("TELNET:", "IAC negotiation filtered; CR+LF collapsed to CR on the wire.");
             hwKeyValue("Platforms:", "Desktop and WASM (WASM uses browser sockets via Emscripten).");
+            hwHeading("Register map ($B000-$B003)");
+            hwKeyValue("$B000 DATA:",
+                "Read = next byte from the Rx ring. Write = send byte (raw or +++ escape).");
+            hwKeyValue("$B001 STATUS:",
+                "Bit 3 = RDRF (receive data register full, = 1 when a byte is waiting). "
+                "Bit 4 = TDRE (always 1 per the W65C51N bug). "
+                "Bit 5 = DCD (0 when a TCP connection is up, 1 when idle).");
+            hwKeyValue("$B002 COMMAND:",
+                "Control flags (DTR, parity, echo). POM1 honours DTR-drop disconnect.");
+            hwKeyValue("$B003 CONTROL:", "Baud rate selector in bits 0-3 (see table).");
+            ImGui::Spacing();
+            hwHeading("AT commands (Hayes subset, case-insensitive)");
+            hwKeyValue("AT",
+                "Ping - the modem replies OK. Use this to check the ACIA is wired.");
+            hwKeyValue("ATDT <host>[:<port>]",
+                "Dial a TCP host. Default port 23 (TELNET). Reply: CONNECT <baud> on "
+                "success, NO CARRIER on failure. Enters DATA mode. "
+                "Example: ATDT bbs.fozztexx.com:23");
+            hwKeyValue("ATH / ATH0",
+                "Hang up. If connected, replies NO CARRIER and closes the socket; "
+                "otherwise OK. Returns to COMMAND mode.");
+            hwKeyValue("ATE0 / ATE1", "Local echo off / on (on by default).");
+            hwKeyValue("ATI / ATI0",
+                "Identify. Prints 'P-LAB APPLE-1 WI-FI MODEM / POM1 EMULATION V1.0 / OK'.");
+            hwKeyValue("ATZ",
+                "Soft reset: hangs up if needed, turns echo on, restores control "
+                "register to 0x1E (9600 baud). Replies OK.");
+            hwKeyValue("ATS<digit>",
+                "S-register set - accepted and acknowledged with OK but not "
+                "functionally wired. Safe to include in legacy modem init strings.");
+            hwKeyValue("+++ (in DATA mode)",
+                "Type three '+' characters with NO other byte between them, then wait "
+                "1 second of silence. Replies OK and switches back to COMMAND mode "
+                "without hanging up. Anything else and the '+'s are forwarded "
+                "verbatim to the remote host.");
+            ImGui::Spacing();
+            hwHeading("Baud rates (CONTROL bits 0-3)");
+            ImGui::TextWrapped(
+                "50, 75, 109, 134, 150, 300, 600, 1200, 1800, 2400, 3600, "
+                "4800, 7200, 9600 (default, encoding 0xE), 19200. POM1 throttles "
+                "the Rx delivery to simulate the selected baud - useful when a "
+                "BBS menu scrolls too fast at LAN speeds.");
+            ImGui::Spacing();
+            ImGui::TextWrapped(
+                "Typical BBS session (once the ATmodem ACIA driver is running, "
+                "see Software Reference for how to load it at $0280):\n"
+                "  0280R                       ; start the ACIA bridge\n"
+                "  AT                          ; -> OK\n"
+                "  ATDT bbs.fozztexx.com:23    ; -> CONNECT 9600\n"
+                "  ... (chat with the BBS) ...\n"
+                "  +++                         ; wait 1 s, silent -> OK\n"
+                "  ATH                         ; -> NO CARRIER");
         }
 
         // ---- Terminal Card ------------------------------------------
