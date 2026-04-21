@@ -1,46 +1,49 @@
 ; =============================================
-; HGR ORBITAL POOL - gravitational billiards
-; GEN2 Color Graphics Card - POM1 / Apple 1
-; 32x24 cell grid (7x8 px cells), 3 levels, 1-3 wells
+; TMS ORBITAL POOL - gravitational billiards
+; P-LAB TMS9918 Graphic Card - POM1 / Apple 1
+; 32x24 cell grid (native 8x8 char cells), 3 levels, 1-3 wells
 ;
-; Keyboard:
+; Keyboard (identical to the HGR port):
 ;   A / Z    -> angle - / + (16 directions, wraps)
 ;   S / X    -> power - / + (1..7)
 ;   SPACE    -> fire
-;   R        -> reset shot / retry (result state: same level)
-;   N        -> next level (result state: advances on WIN, retries on LOSE)
+;   R        -> reset shot / retry
+;   N        -> next level (WIN) or retry (LOSE)
 ;   ESC      -> exit to Woz Monitor
-;
-; Gameplay:
-;   Launch the ball from the left cell, land it in the target hole on
-;   the right. Gravity wells bend the trajectory. Hitting a wall OR a
-;   well ends the shot as a LOSE. Reaching the target cell is a WIN.
 ;
 ; =============================================
 ; Assemble:
-;   ca65 -o build/HGR_OrbitalPool.o software/hgr/HGR_OrbitalPool.asm
+;   ca65 -o build/TMS_OrbitalPool.o software/tms9918/TMS_OrbitalPool.asm
 ;   ld65 -C software/hgr/apple1_gen2.cfg \
-;        -o build/HGR_OrbitalPool.bin build/HGR_OrbitalPool.o
+;        -o build/TMS_OrbitalPool.bin build/TMS_OrbitalPool.o
 ;
 ; Or just:
-;   python3 software/hgr/emit_HGR_OrbitalPool_txt.py
+;   python3 software/tms9918/emit_TMS_OrbitalPool_txt.py
 ;
-; Run in POM1: plug GEN2 (auto-enabled when loading from software/hgr/),
-; File > Load Memory HGR_OrbitalPool.txt, then 280R in the Woz Monitor.
+; Run in POM1: plug TMS9918 (auto-enabled when loading from
+; software/tms9918/), File > Load Memory TMS_OrbitalPool.txt,
+; then 280R in the Woz Monitor.
 ;
 ; Memory footprint:
-;   $0280-~$1000  code + LUTs + level data (output file)
-;   $1800-$1813   game state (non-critical, NOT in output file)
-;   $2000-$3FFF   HGR framebuffer (GEN2 reads this)
+;   $0280-~$0800  code + LUTs + level data (output file)
+;   $4000-$4013   game state (non-critical, NOT in output file)
+;   VRAM on card  pattern / name / color tables
 ;
-; Physics: 16-bit 8.8 fixed-point position/velocity. Per well per step,
-; gravity delta is (dx * pull_lut[d2]) >> 4 with d2 = dx*dx + dy*dy.
-; pull_lut[d2] ~= 1024 / d2^1.5, saturated to 255.
+; Rendering: 6 glyphs uploaded at boot to VRAM $0000 (chars 0..5).
+; Each "tile" draw writes ONE byte (char code) at name-table offset
+; $1800 + row*32 + col. No framebuffer poking, no scanline LUT.
+;
+; Physics identical to HGR port: 16-bit 8.8 fixed-point position/
+; velocity, per-well delta = sign(dx) * (|dx|*pull_lut[d2]) >> 4.
 ; =============================================
 
 ; ----- Apple 1 I/O -----
 KBDCR   = $D011
 KBD     = $D010
+
+; ----- TMS9918 MMIO -----
+VDP_DATA = $CC00
+VDP_CTRL = $CC01
 
 ; ----- Keys (Apple 1: upper-case ASCII with bit 7 set) -----
 KEY_ESC   = $9B
@@ -53,10 +56,8 @@ KEY_N     = $CE
 KEY_SPACE = $A0
 
 ; ----- Geometry -----
-GRID_W    = 32             ; interior cell columns
-GRID_H    = 24             ; interior cell rows
-MARGIN    = 4              ; HGR byte columns before first grid column
-                           ; (4 + 32 = 36 bytes used out of 40; 2 empty on each side)
+GRID_W    = 32
+GRID_H    = 24
 
 ; ----- States -----
 ST_AIM    = 0
@@ -67,65 +68,72 @@ ST_LOSE   = 3
 ; ----- Levels -----
 NUM_LEVELS = 3
 MAX_WELLS  = 3
-LEVEL_STRIDE = 11          ; bytes per level record (see level_0)
+
+; ----- Char codes (glyphs uploaded at init) -----
+CHR_EMPTY  = 0
+CHR_BALL   = 1
+CHR_WELL   = 2
+CHR_TARGET = 3
+CHR_TRAIL  = 4
+CHR_AIM    = 5
 
 ; ----- Runtime RAM (absolute; NOT in output file) -----
-state         := $1800
-lvl_idx       := $1801
-aim_angle     := $1802
-aim_power     := $1803
-frame_cnt_lo  := $1804
-frame_cnt_hi  := $1805
-num_wells     := $1806
-wells_x       := $1807     ; 3 bytes
-wells_y       := $180A     ; 3 bytes
-target_x      := $180D
-target_y      := $180E
-ball_start_x  := $180F
-ball_start_y  := $1810
-prev_px       := $1811
-prev_py       := $1812
-exit_flag     := $1813
-ball_pixel_x  := $1814     ; ball pixel column 0..223
-ball_pixel_y  := $1815     ; ball pixel row 0..191
+state         := $4000
+lvl_idx       := $4001
+aim_angle     := $4002
+aim_power     := $4003
+frame_cnt_lo  := $4004
+frame_cnt_hi  := $4005
+num_wells     := $4006
+wells_x       := $4007     ; 3 bytes
+wells_y       := $400A     ; 3 bytes
+target_x      := $400D
+target_y      := $400E
+ball_start_x  := $400F
+ball_start_y  := $4010
+prev_px       := $4011
+prev_py       := $4012
+exit_flag     := $4013
+ball_pixel_x  := $4014     ; shared between sprite + trail
+ball_pixel_y  := $4015
+trail_slot    := $4016     ; ring buffer index 1..31
 
 ; ----- Zero page -----
 .zeropage
           .res 2            ; $00-$01 reserved
-hgr_lo:   .res 1            ; $02
-hgr_hi:   .res 1
-tile_lo:  .res 1            ; $04 pointer to 8-byte tile bitmap
-tile_hi:  .res 1
-px_hi:    .res 1            ; $06 ball position 8.8 (hi = cell column)
+cell_col: .res 1            ; $02 cell column for draw_cell
+cell_row: .res 1
+lvl_lo:   .res 1            ; $04 level loader pointer
+lvl_hi:   .res 1
+px_hi:    .res 1            ; $06
 px_lo:    .res 1
-py_hi:    .res 1            ; $08
+py_hi:    .res 1
 py_lo:    .res 1
-vx_hi:    .res 1            ; $0A ball velocity 8.8 signed
+vx_hi:    .res 1            ; $0A
 vx_lo:    .res 1
-vy_hi:    .res 1            ; $0C
+vy_hi:    .res 1
 vy_lo:    .res 1
-mul_a:    .res 1            ; $0E multiply scratch
+mul_a:    .res 1            ; $0E
 mul_b:    .res 1
 mul_hi:   .res 1
 mul_lo:   .res 1
-tile_col: .res 1            ; $12 HGR byte column for draw_tile
-sl_idx:   .res 1            ; $13 scanline index 0..191
-tmp:      .res 1            ; $14
+cell_char: .res 1           ; $12 char code for draw_cell
+tmp:      .res 1
 tmp2:     .res 1
-adx:      .res 1            ; $16 gravity workspace
+adx:      .res 1            ; $15
 ady:      .res 1
-sign_dx:  .res 1            ; $18 0 = positive, $FF = negative
+sign_dx:  .res 1
 sign_dy:  .res 1
-pull:     .res 1            ; $1A
+pull:     .res 1
 d_sq_lo:  .res 1
 d_sq_hi:  .res 1
-well_i:   .res 1            ; $1D
-          .res 2            ; $1E-$1F free
+well_i:   .res 1            ; $1C
+          .res 3            ; free
 
 .code
 
 ; =============================================
-; MAIN: boot + state-machine driver
+; MAIN
 ; =============================================
 main:
         LDA #0
@@ -134,14 +142,15 @@ main:
         STA exit_flag
         LDA #4
         STA aim_power
+        JSR init_vdp
         JSR load_level
         JSR reset_shot
-        LDA KBD                 ; swallow stale key from POM1 boot
+        LDA KBD                 ; swallow stale key
 
 main_loop:
         LDA exit_flag
         BEQ @cont
-        RTS                     ; back to Woz Monitor
+        RTS
 @cont:
         LDA state
         CMP #ST_AIM
@@ -158,7 +167,7 @@ main_loop:
         JMP main_loop
 
 ; =============================================
-; reset_shot: ball at start, velocity 0, state = AIM
+; reset_shot
 ; =============================================
 reset_shot:
         LDA ball_start_x
@@ -178,11 +187,13 @@ reset_shot:
         STA frame_cnt_hi
         LDA #ST_AIM
         STA state
+        JSR clear_trail_sprites
+        JSR compute_ball_pixel
+        JSR move_ball_sprite
         RTS
 
 ; =============================================
-; handle_aim: render scene (with aim tip), wait key,
-; dispatch.
+; handle_aim
 ; =============================================
 handle_aim:
         JSR render_scene
@@ -231,8 +242,7 @@ handle_aim:
         RTS
 
 ; =============================================
-; fire: compute initial velocity, state = FLIGHT,
-; redraw scene without aim tip.
+; fire
 ; =============================================
 fire:
         JSR compute_initial_velocity
@@ -243,15 +253,13 @@ fire:
         LDA py_hi
         STA prev_py
         JSR render_scene
-        ; Stamp the starting pixel so the trail begins at ball_start
+        ; Drop the first trail dot at the launch position
         JSR compute_ball_pixel
-        JSR plot_pixel
+        JSR stamp_trail_sprite
         RTS
 
 ; =============================================
-; handle_flight: one frame of flight simulation.
-; Stamp trail at prev cell, step physics, collide,
-; draw ball at new cell, delay.
+; handle_flight
 ; =============================================
 handle_flight:
         JSR apply_gravity
@@ -266,13 +274,13 @@ handle_flight:
         CMP #ST_FLIGHT
         BNE @post
 
-        ; Sub-pixel: convert 8.8 cell position to pixel, OR one bit in HGR
+        ; Sub-pixel: compute pixel coord once, move ball, drop trail dot
         JSR compute_ball_pixel
-        JSR plot_pixel
+        JSR move_ball_sprite
+        JSR stamp_trail_sprite
 
         JSR delay
 
-        ; Allow ESC abort during flight
         LDA KBDCR
         BPL @post
         LDA KBD
@@ -283,10 +291,7 @@ handle_flight:
         RTS
 
 ; =============================================
-; handle_result: wait key, dispatch.
-;   ESC -> exit
-;   N   -> next level (WIN) or retry (LOSE)
-;   any -> retry same level
+; handle_result
 ; =============================================
 handle_result:
         JSR wait_key
@@ -312,62 +317,41 @@ handle_result:
         RTS
 
 ; =============================================
-; render_scene: full clear, wells, target, ball,
-; and aim tip (only when state == ST_AIM).
+; render_scene
 ; =============================================
 render_scene:
-        JSR clear_hgr
+        JSR clear_name_table
 
-        ; Draw wells
         LDX #0
 @wloop:
         CPX num_wells
         BEQ @done_wells
         STX well_i
         LDA wells_x,X
-        STA tile_col
+        STA cell_col
         LDA wells_y,X
-        STA tmp2
-        LDA #<tile_well
-        STA tile_lo
-        LDA #>tile_well
-        STA tile_hi
-        JSR draw_tile_at
+        STA cell_row
+        LDA #CHR_WELL
+        STA cell_char
+        JSR draw_cell
         LDX well_i
         INX
         JMP @wloop
 @done_wells:
 
-        ; Draw target
         LDA target_x
-        STA tile_col
+        STA cell_col
         LDA target_y
-        STA tmp2
-        LDA #<tile_target
-        STA tile_lo
-        LDA #>tile_target
-        STA tile_hi
-        JSR draw_tile_at
+        STA cell_row
+        LDA #CHR_TARGET
+        STA cell_char
+        JSR draw_cell
 
-        ; Draw ball at current position
-        LDA px_hi
-        CMP #GRID_W
-        BCS @no_ball
-        LDA py_hi
-        CMP #GRID_H
-        BCS @no_ball
-        LDA px_hi
-        STA tile_col
-        LDA py_hi
-        STA tmp2
-        LDA #<tile_ball
-        STA tile_lo
-        LDA #>tile_ball
-        STA tile_hi
-        JSR draw_tile_at
-@no_ball:
+        ; Ball is rendered via hardware sprite; refresh its position here
+        ; so it survives the name-table clear at the top of render_scene.
+        JSR compute_ball_pixel
+        JSR move_ball_sprite
 
-        ; Aim tip only in ST_AIM
         LDA state
         CMP #ST_AIM
         BNE @done
@@ -376,8 +360,7 @@ render_scene:
         RTS
 
 ; =============================================
-; draw_aim_tip: compute aim tick at ball + dir*power/32,
-; draw tile_aim_tip there if inside grid.
+; draw_aim_tip
 ; =============================================
 draw_aim_tip:
         LDX aim_angle
@@ -385,13 +368,13 @@ draw_aim_tip:
         STA mul_a
         LDA aim_power
         STA mul_b
-        JSR smult_8x8           ; mul_hi:mul_lo = dx*power (signed 16)
+        JSR smult_8x8
         LDX #5
-        JSR asr_16_x            ; /32
+        JSR asr_16_x
         LDA mul_lo
         CLC
         ADC ball_start_x
-        STA tile_col
+        STA cell_col
 
         LDX aim_angle
         LDA dy_table,X
@@ -404,147 +387,252 @@ draw_aim_tip:
         LDA mul_lo
         CLC
         ADC ball_start_y
-        STA tmp2
+        STA cell_row
 
-        LDA tile_col
+        LDA cell_col
         CMP #GRID_W
         BCS @off
-        LDA tmp2
+        LDA cell_row
         CMP #GRID_H
         BCS @off
-        LDA #<tile_aim
-        STA tile_lo
-        LDA #>tile_aim
-        STA tile_hi
-        JSR draw_tile_at
+        LDA #CHR_AIM
+        STA cell_char
+        JSR draw_cell
 @off:
         RTS
 
 ; =============================================
-; draw_tile_at: draw 8-row tile at cell (tile_col, tmp2).
-; tile_col is cell column (0..31) -> HGR byte col+MARGIN.
-; tmp2 is cell row (0..23) -> HGR scanline = row*8.
-; tile_lo/hi points to 8-byte bitmap.
+; draw_cell: write cell_char at cell (cell_col, cell_row)
+; via VDP name table ($1800 + row*32 + col).
 ; =============================================
-draw_tile_at:
-        LDA tile_col
+draw_cell:
+        ; tmp:tmp2 = row * 32
+        LDA cell_row
+        STA tmp                 ; low byte seed
+        LDA #0
+        STA tmp2                ; high byte seed
+        LDX #5
+@sh:
+        ASL tmp
+        ROL tmp2
+        DEX
+        BNE @sh
+
+        ; + col (8-bit, propagates carry into tmp2)
+        LDA tmp
         CLC
-        ADC #MARGIN
-        STA tile_col            ; reuse: now holds HGR byte column
-
+        ADC cell_col
+        STA tmp
         LDA tmp2
-        ASL
-        ASL
-        ASL                     ; row * 8
-        STA sl_idx
+        ADC #0
+        STA tmp2
 
-        LDY #0                  ; tile byte index
-@sl_loop:
-        STY tmp
-        LDX sl_idx
-        LDA hgr_lo_tbl,X
-        STA hgr_lo
-        LDA hgr_hi_tbl,X
-        STA hgr_hi
-        LDY tmp
-        LDA (tile_lo),Y
-        LDY tile_col
-        STA (hgr_lo),Y
-        LDY tmp
-        INY
-        INC sl_idx
-        CPY #8
-        BNE @sl_loop
+        ; + $1800 base (only high byte adds $18)
+        LDA tmp2
+        CLC
+        ADC #$18
+        STA tmp2
+
+        ; Write VDP address: low first, then (high | $40) = write
+        LDA tmp
+        STA VDP_CTRL
+        LDA tmp2
+        ORA #$40
+        STA VDP_CTRL
+
+        LDA cell_char
+        STA VDP_DATA
         RTS
 
 ; =============================================
-; compute_ball_pixel: 8.8 cell position -> pixel coords
-;   ball_pixel_x = px_hi*7 + (px_lo*7) >> 8     (range 0..223)
-;   ball_pixel_y = py_hi*8 + py_lo >> 5         (range 0..191)
-; Destroys mul_a, mul_b, mul_hi, mul_lo, tmp.
+; compute_ball_pixel: derive sub-pixel coords from 8.8 position.
+;   ball_pixel_x = px_hi*8 + (px_lo >> 5)   (range 0..255)
+;   ball_pixel_y = py_hi*8 + (py_lo >> 5)   (range 0..191)
 ; =============================================
 compute_ball_pixel:
         LDA px_hi
+        ASL
+        ASL
+        ASL
         STA tmp
-        ASL
-        ASL
-        ASL                     ; * 8
-        SEC
-        SBC tmp                 ; * 7
-        STA ball_pixel_x
-
         LDA px_lo
-        STA mul_a
-        LDA #7
-        STA mul_b
-        JSR umult_8x8           ; mul_hi = (px_lo * 7) >> 8
-        LDA ball_pixel_x
-        CLC
-        ADC mul_hi
+        LSR
+        LSR
+        LSR
+        LSR
+        LSR
+        ORA tmp
         STA ball_pixel_x
 
         LDA py_hi
         ASL
         ASL
-        ASL                     ; py_hi * 8
-        STA ball_pixel_y
+        ASL
+        STA tmp
         LDA py_lo
         LSR
         LSR
         LSR
         LSR
-        LSR                     ; py_lo / 32
-        ORA ball_pixel_y
+        LSR
+        ORA tmp
         STA ball_pixel_y
         RTS
 
 ; =============================================
-; plot_pixel: OR a single pixel at (ball_pixel_x, ball_pixel_y)
-; into the HGR framebuffer. Does NOT clear previous pixels.
+; move_ball_sprite: sprite 0 = ball, read from ball_pixel_x/y.
+; Sprite 0: pattern 0, color 15 (white). TMS Y byte = scanline-1.
 ; =============================================
-plot_pixel:
-        LDX ball_pixel_x
-        LDA div7_lut,X
-        STA tmp                 ; tmp = byte column
-        LDA mod7_lut,X
-        TAX
-        LDA bit_mask_lut,X
-        STA tmp2                ; tmp2 = bit pattern
+move_ball_sprite:
+        LDA #$00
+        STA VDP_CTRL
+        LDA #$5B                ; $1B | $40 (VDP write at $1B00)
+        STA VDP_CTRL
 
-        LDY ball_pixel_y
-        LDA hgr_lo_tbl,Y
-        STA hgr_lo
-        LDA hgr_hi_tbl,Y
-        STA hgr_hi
-
-        LDY tmp
-        LDA (hgr_lo),Y
-        ORA tmp2
-        STA (hgr_lo),Y
+        LDA ball_pixel_y
+        SEC
+        SBC #1
+        STA VDP_DATA            ; Y
+        LDA ball_pixel_x
+        STA VDP_DATA            ; X
+        LDA #0
+        STA VDP_DATA            ; pattern 0 = ball
+        LDA #$0F
+        STA VDP_DATA            ; color 15
         RTS
 
 ; =============================================
-; clear_hgr: zero $2000-$3FFF (8 KB)
+; stamp_trail_sprite: drop a trail dot sprite at ball pos.
+; Ring-buffers sprites 1..31; each frame overwrites the next slot.
 ; =============================================
-clear_hgr:
-        LDA #$00
-        STA hgr_lo
-        LDA #$20
-        STA hgr_hi
-        LDY #0
-        LDA #0
+stamp_trail_sprite:
+        ; VDP addr = $1B00 + trail_slot * 4  (low byte, high byte stays $1B)
+        LDA trail_slot
+        ASL
+        ASL                     ; *4 (trail_slot <= 31, result <= 124)
+        STA VDP_CTRL
+        LDA #$5B                ; $1B | $40
+        STA VDP_CTRL
+
+        LDA ball_pixel_y
+        SEC
+        SBC #1
+        STA VDP_DATA            ; Y
+        LDA ball_pixel_x
+        STA VDP_DATA            ; X
+        LDA #1
+        STA VDP_DATA            ; pattern 1 = trail dot
+        LDA #$0F
+        STA VDP_DATA            ; color 15
+
+        INC trail_slot
+        LDA trail_slot
+        CMP #32
+        BCC @done
+        LDA #1
+        STA trail_slot
+@done:
+        RTS
+
+; =============================================
+; clear_trail_sprites: hide all 31 trail sprites (Y=$D1, off-screen)
+; and reset trail_slot = 1.
+; =============================================
+clear_trail_sprites:
+        LDA #$04                ; $1B04 = sprite 1 start
+        STA VDP_CTRL
+        LDA #$5B
+        STA VDP_CTRL
+        LDX #31
 @lp:
-        STA (hgr_lo),Y
+        LDA #$D1                ; Y off-screen (not $D0 which terminates list)
+        STA VDP_DATA
+        LDA #$00
+        STA VDP_DATA            ; X
+        LDA #$01
+        STA VDP_DATA            ; pattern 1
+        LDA #$0F
+        STA VDP_DATA            ; color
+        DEX
+        BNE @lp
+        LDA #1
+        STA trail_slot
+        RTS
+
+; =============================================
+; init_vdp: set up Graphics I, upload 6 glyphs at VRAM $0000,
+; set colour group 0 = green on black, upload ball sprite pattern
+; at VRAM $3800, terminate sprite list at sprite 1.
+; =============================================
+init_vdp:
+        LDX #0
+@regs:
+        LDA vdp_regs,X
+        STA VDP_CTRL
+        TXA
+        ORA #$80
+        STA VDP_CTRL
+        INX
+        CPX #8
+        BNE @regs
+
+        ; Pattern table at $0000 (6 glyphs × 8 bytes = 48 bytes)
+        LDA #$00
+        STA VDP_CTRL
+        LDA #$40                ; $00 | $40 = write to $0000
+        STA VDP_CTRL
+        LDX #0
+@ptn:
+        LDA glyph_data,X
+        STA VDP_DATA
+        INX
+        CPX #48
+        BNE @ptn
+
+        ; Colour table at VRAM $2000, group 0 only (chars 0-7 green on black)
+        LDA #$00
+        STA VDP_CTRL
+        LDA #$60                ; $20 | $40
+        STA VDP_CTRL
+        LDA #$21                ; fg=2 green, bg=1 black
+        STA VDP_DATA
+
+        ; Sprite pattern table at VRAM $3800 - upload 16 bytes:
+        ; pattern 0 = ball (8 bytes), pattern 1 = trail dot (8 bytes)
+        LDA #$00
+        STA VDP_CTRL
+        LDA #$78                ; $38 | $40
+        STA VDP_CTRL
+        LDX #0
+@spr:
+        LDA ball_sprite,X
+        STA VDP_DATA
+        INX
+        CPX #16
+        BNE @spr
+        RTS
+
+; =============================================
+; clear_name_table: fill 768 name-table bytes with CHR_EMPTY
+; =============================================
+clear_name_table:
+        LDA #$00
+        STA VDP_CTRL
+        LDA #$58                ; $18 | $40
+        STA VDP_CTRL
+        LDX #3                  ; 3 pages
+        LDY #0
+        LDA #CHR_EMPTY
+@lp:
+        STA VDP_DATA
         INY
         BNE @lp
-        INC hgr_hi
-        LDX hgr_hi
-        CPX #$40
+        DEX
         BNE @lp
         RTS
 
 ; =============================================
-; apply_velocity: (px,py) += (vx,vy) as 16-bit signed
+; apply_velocity
 ; =============================================
 apply_velocity:
         CLC
@@ -564,11 +652,9 @@ apply_velocity:
         RTS
 
 ; =============================================
-; check_collision: updates state if WIN/LOSE/timeout.
-; px_hi/py_hi are the ball's integer cell (8.8 high byte).
+; check_collision
 ; =============================================
 check_collision:
-        ; Wall (out of grid). px_hi signed-negative OR >= GRID_W.
         LDA px_hi
         BMI @lose
         CMP #GRID_W
@@ -620,9 +706,8 @@ check_collision:
         INC frame_cnt_hi
 @ok:
         LDA frame_cnt_hi
-        CMP #2                  ; ~512 frames @ 15 FPS = 34 s
+        CMP #2
         BCC @done
-        ; fall through to lose
 @lose:
         LDA #ST_LOSE
         STA state
@@ -634,13 +719,7 @@ check_collision:
         RTS
 
 ; =============================================
-; apply_gravity: for each well, add gravity delta to (vx,vy).
-;   dx = wells_x[i] - px_hi (signed)
-;   dy = wells_y[i] - py_hi
-;   d2 = dx*dx + dy*dy (16-bit), clamp to 255 -> 0 pull otherwise
-;   pull = pull_lut[d2]
-;   vx += sign(dx) * (|dx| * pull) >> 4
-;   vy += sign(dy) * (|dy| * pull) >> 4
+; apply_gravity
 ; =============================================
 apply_gravity:
         LDA #0
@@ -653,21 +732,19 @@ apply_gravity:
 @body:
         LDX well_i
 
-        ; dx = wells_x[X] - px_hi  (signed)
         LDA wells_x,X
         SEC
         SBC px_hi
-        LDY #0                  ; sign = 0 (positive)
+        LDY #0
         BPL @adx_ok
         EOR #$FF
         CLC
         ADC #1
-        LDY #$FF                ; sign = negative
+        LDY #$FF
 @adx_ok:
         STA adx
         STY sign_dx
 
-        ; dy = wells_y[X] - py_hi  (signed)
         LDA wells_y,X
         SEC
         SBC py_hi
@@ -681,7 +758,6 @@ apply_gravity:
         STA ady
         STY sign_dy
 
-        ; d2 = adx*adx + ady*ady  (16-bit)
         LDA adx
         STA mul_a
         STA mul_b
@@ -703,28 +779,24 @@ apply_gravity:
         ADC d_sq_hi
         STA d_sq_hi
 
-        ; If d2 hi > 0, well is too far - skip
         LDA d_sq_hi
         BEQ @close
         JMP @next
-
 @close:
         LDX d_sq_lo
         LDA pull_lut,X
         STA pull
         BNE @apply
-        JMP @next               ; pull == 0, skip
+        JMP @next
 @apply:
-        ; vx delta = sign_dx * (adx * pull) >> 4
         LDA adx
         STA mul_a
         LDA pull
         STA mul_b
-        JSR umult_8x8           ; mul_hi:mul_lo = adx*pull
+        JSR umult_8x8
         LDX #4
-        JSR lsr_16_x            ; unsigned shift right 4
+        JSR lsr_16_x
 
-        ; Apply sign
         LDA sign_dx
         BEQ @vxadd
         SEC
@@ -743,7 +815,6 @@ apply_gravity:
         ADC mul_hi
         STA vx_hi
 
-        ; vy delta = sign_dy * (ady * pull) >> 4
         LDA ady
         STA mul_a
         LDA pull
@@ -775,8 +846,7 @@ apply_gravity:
         JMP @wloop
 
 ; =============================================
-; compute_initial_velocity: vx = dx_table[angle]*power/4,
-; vy = dy_table[angle]*power/4  (signed 8.8 values)
+; compute_initial_velocity
 ; =============================================
 compute_initial_velocity:
         LDX aim_angle
@@ -807,8 +877,8 @@ compute_initial_velocity:
         RTS
 
 ; =============================================
-; umult_8x8: unsigned mul_a * mul_b -> mul_hi:mul_lo
-; Destroys mul_b (shifted out).
+; umult_8x8 / smult_8x8 / asr_16_x / lsr_16_x
+; (identical to HGR port)
 ; =============================================
 umult_8x8:
         LDA #0
@@ -832,13 +902,9 @@ umult_8x8:
         BNE @lp
         RTS
 
-; =============================================
-; smult_8x8: signed mul_a * mul_b -> mul_hi:mul_lo (signed 16)
-; Destroys mul_a, mul_b. Uses tmp as sign accumulator.
-; =============================================
 smult_8x8:
         LDA #0
-        STA tmp                 ; sign accumulator (parity of negations)
+        STA tmp
         LDA mul_a
         BPL @a_pos
         EOR #$FF
@@ -862,7 +928,6 @@ smult_8x8:
         JSR umult_8x8
         LDA tmp
         BEQ @pos
-        ; Negate 16-bit
         SEC
         LDA #0
         SBC mul_lo
@@ -873,22 +938,16 @@ smult_8x8:
 @pos:
         RTS
 
-; =============================================
-; asr_16_x: arithmetic right shift mul_hi:mul_lo by X
-; =============================================
 asr_16_x:
 @lp:
         LDA mul_hi
-        CMP #$80                ; C = 1 if mul_hi >= $80 (negative)
+        CMP #$80
         ROR mul_hi
         ROR mul_lo
         DEX
         BNE @lp
         RTS
 
-; =============================================
-; lsr_16_x: logical right shift mul_hi:mul_lo by X
-; =============================================
 lsr_16_x:
 @lp:
         LSR mul_hi
@@ -898,7 +957,7 @@ lsr_16_x:
         RTS
 
 ; =============================================
-; wait_key: block until a key is ready, return in A.
+; wait_key / delay
 ; =============================================
 wait_key:
         LDA KBDCR
@@ -906,9 +965,6 @@ wait_key:
         LDA KBD
         RTS
 
-; =============================================
-; delay: ~60-70 ms busy wait at 1 MHz
-; =============================================
 delay:
         LDX #50
 @o:
@@ -921,30 +977,22 @@ delay:
         RTS
 
 ; =============================================
-; load_level: copy level record to live vars.
-; Level record layout (LEVEL_STRIDE = 11):
-;   [0]  num_wells
-;   [1..3] wells_x[3] (padded)
-;   [4..6] wells_y[3]
-;   [7]  target_x
-;   [8]  target_y
-;   [9]  ball_start_x
-;   [10] ball_start_y
+; load_level
 ; =============================================
 load_level:
         LDX lvl_idx
         LDA levels_lo,X
-        STA tile_lo
+        STA lvl_lo
         LDA levels_hi,X
-        STA tile_hi
+        STA lvl_hi
 
         LDY #0
-        LDA (tile_lo),Y
+        LDA (lvl_lo),Y
         STA num_wells
 
         LDY #1
         LDX #0
-@wx:    LDA (tile_lo),Y
+@wx:    LDA (lvl_lo),Y
         STA wells_x,X
         INY
         INX
@@ -952,23 +1000,23 @@ load_level:
         BNE @wx
 
         LDX #0
-@wy:    LDA (tile_lo),Y
+@wy:    LDA (lvl_lo),Y
         STA wells_y,X
         INY
         INX
         CPX #3
         BNE @wy
 
-        LDA (tile_lo),Y
+        LDA (lvl_lo),Y
         STA target_x
         INY
-        LDA (tile_lo),Y
+        LDA (lvl_lo),Y
         STA target_y
         INY
-        LDA (tile_lo),Y
+        LDA (lvl_lo),Y
         STA ball_start_x
         INY
-        LDA (tile_lo),Y
+        LDA (lvl_lo),Y
         STA ball_start_y
         RTS
 
@@ -976,33 +1024,34 @@ load_level:
 ; DATA
 ; =============================================
 
-; ---- Tile bitmaps (7 px wide, 8 px tall; bit 0 = leftmost pixel, bit 7 = color group / 0 here) ----
+; ---- VDP register values (Graphics I, 16K, screen on, no int) ----
+vdp_regs:
+        .byte $00, $C0, $06, $80, $00, $36, $07, $01
 
-; Ball: filled 3x3 blob, centered
-tile_ball:
-        .byte $00, $00, $1C, $1C, $1C, $00, $00, $00
+; ---- Glyph bitmaps (8 bytes per char, bit 7 = leftmost pixel) ----
+; Chars 0..5: empty, ball, well, target, trail, aim tip
+glyph_data:
+        ; 0: empty
+        .byte $00, $00, $00, $00, $00, $00, $00, $00
+        ; 1: ball (3x3 filled centered at cols 3-5, rows 2-4)
+        .byte $00, $00, $38, $38, $38, $00, $00, $00
+        ; 2: well (star/asterisk)
+        .byte $00, $10, $54, $38, $7C, $38, $54, $10
+        ; 3: target (hollow ring)
+        .byte $00, $38, $44, $44, $44, $38, $00, $00
+        ; 4: trail (single dot near center)
+        .byte $00, $00, $00, $10, $00, $00, $00, $00
+        ; 5: aim tip (3 pixels horizontal)
+        .byte $00, $38, $00, $00, $00, $00, $00, $00
 
-; Well: 5x3 cross with 3x3 center
-tile_well:
-        .byte $00, $08, $1C, $3E, $3E, $1C, $08, $00
-
-; Target: hollow ring
-tile_target:
-        .byte $00, $1C, $22, $22, $22, $1C, $00, $00
-
-; Trail: single center dot (dim marker)
-tile_trail:
-        .byte $00, $00, $00, $08, $00, $00, $00, $00
-
-; Aim tip: 3 pixels horizontal at row 2
-tile_aim:
-        .byte $00, $1C, $00, $00, $00, $00, $00, $00
+; ---- Sprite patterns (uploaded to VRAM $3800) ----
+; Pattern 0 = ball (filled 8x8 circle)
+; Pattern 1 = trail dot (tiny 2x2 square centered)
+ball_sprite:
+        .byte $18, $3C, $7E, $FF, $FF, $7E, $3C, $18
+        .byte $00, $00, $00, $18, $18, $00, $00, $00
 
 ; ---- Angle tables (32 directions, CCW from East, values scaled to ~64) ----
-; angle 0  = East (+X)
-; angle 8  = North (-Y, screen Y grows downward)
-; angle 16 = West (-X)
-; angle 24 = South (+Y)
 dx_table:
         .byte  64,  63,  59,  53,  45,  36,  24,  12
         .byte   0, <-12, <-24, <-36, <-45, <-53, <-59, <-63
@@ -1014,8 +1063,7 @@ dy_table:
         .byte   0,  12,  24,  36,  45,  53,  59,  63
         .byte  64,  63,  59,  53,  45,  36,  24,  12
 
-; ---- Gravity LUT: pull_lut[d2] ~= clamp(round(1024 / d2^1.5), 0, 255) ----
-; d2 = 0 reserved (ball inside well). Beyond d2~161, pull rounds to 0.
+; ---- Gravity LUT (identical to HGR port) ----
 pull_lut:
         .byte   0, 255, 255, 197, 128,  92,  70,  55,  45,  38,  32,  28,  25,  22,  20,  18
         .byte  16,  15,  13,  12,  11,  11,  10,   9,   9,   8,   8,   7,   7,   7,   6,   6
@@ -1028,18 +1076,14 @@ pull_lut:
         .byte   1,   1,   1,   1,   1,   1,   1,   1,   1,   1,   1,   1,   1,   1,   1,   1
         .byte   1,   1,   1,   1,   1,   1,   1,   1,   1,   1,   1,   1,   1,   1,   1,   1
         .byte   1,   1
-        .res 94, 0              ; d2 = 162..255 -> pull = 0
+        .res 94, 0
 
-; ---- Levels ----
-; Each: num_wells, wells_x[3], wells_y[3], target_x, target_y, ball_start_x, ball_start_y
-; Padding bytes in unused well slots are ignored (num_wells gates loop).
-
+; ---- Levels (identical to HGR port) ----
 levels_lo:
         .byte <level_0, <level_1, <level_2
 levels_hi:
         .byte >level_0, >level_1, >level_2
 
-; Level 0 - Deflection: one well centered, direct line is captured.
 level_0:
         .byte 1
         .byte 16,  0,  0
@@ -1047,7 +1091,6 @@ level_0:
         .byte 28, 12
         .byte  2, 12
 
-; Level 1 - Slingshot: two wells diagonally offset.
 level_1:
         .byte 2
         .byte 12, 22,  0
@@ -1055,36 +1098,9 @@ level_1:
         .byte 29,  4
         .byte  2, 20
 
-; Level 2 - Zigzag: three wells alternating.
 level_2:
         .byte 3
         .byte 10, 18, 24
         .byte  6, 18,  6
         .byte 29, 12
         .byte  2, 12
-
-; ---- Pixel-column division / modulo LUTs (for sub-pixel ball plot) ----
-; HGR has 7 pixels per byte; pixel_x in 0..223 maps to byte_col, bit_idx.
-div7_lut:
-        .repeat 224, I
-            .byte I / 7
-        .endrepeat
-mod7_lut:
-        .repeat 224, I
-            .byte I - (I / 7) * 7
-        .endrepeat
-; Bit masks for each of 7 pixel positions (bit 0 = leftmost, bit 6 = rightmost).
-; Bit 7 of HGR byte is the color-group flag and stays 0 here.
-bit_mask_lut:
-        .byte $01, $02, $04, $08, $10, $20, $40
-
-; ---- HGR scanline base address LUT (Apple II interleaved, 192 rows) ----
-;   addr[y] = $2000 + (y mod 8)*$0400 + ((y/8) mod 8)*$80 + (y/64)*$28
-hgr_lo_tbl:
-        .repeat 192, YS
-            .byte <($2000 + ((YS .MOD 8) * $0400) + (((YS / 8) .MOD 8) * $80) + ((YS / 64) * $28))
-        .endrepeat
-hgr_hi_tbl:
-        .repeat 192, YS
-            .byte >($2000 + ((YS .MOD 8) * $0400) + (((YS / 8) .MOD 8) * $80) + ((YS / 64) * $28))
-        .endrepeat
