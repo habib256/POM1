@@ -87,8 +87,7 @@ Not blocked externally — spec is public and the code change is tractable — b
 ## Testing & CI
 
 - [ ] **GitHub Actions CI (`ctest` matrix)** `[S · solid]` — `ctest` runs in ~10 s and the five native tests are stable. A nightly + on-PR workflow building Linux / macOS / Windows (build + `ctest`) plus a WASM job (`emcmake`, no tests) would catch portability breakage before merge. Zero runtime cost for the project; the main effort is pinning toolchain versions and mirroring `setup_imgui.{sh,bat}`.
-- [ ] **Multiplexing Fantasy preset smoke tests** `[S · solid]` — presets #12 and #14 deliberately break Parmigiani's "one board at a time" rule by enabling overlapping cards (SID ↔ TMS9918 at `$CC00/$CC01`, GEN2 ↔ A1-IO at `$2000`, …). Add a `ctest` target that applies each preset, runs ~1 M CPU cycles, asserts no OOR strikes and every enabled peripheral's snapshot looks live. Protects the two "fantasy" presets from silent regression when bus-priority or eviction rules change.
-- [ ] **Hex-dump loader fuzz harness** `[S · solid]` — `fb8c9bb` recently fixed an odd-length crash in `loadHexDump`; the parser handles comment lines, inline separators (`//` / `#` / `;`), continuation lines, `T` / `X` / `R` markers. Surface is small enough for libFuzzer: wrap the existing loader in a `LLVMFuzzerTestOneInput`, run nightly. Pre-empts the next regression without paying ongoing maintenance.
-- [ ] **TSan / ASan opt-in builds** `[M · solid]` — the threading model (stateMutex + PriorityMutex + SPSC SID ring + snapshot publisher + keyboard queue + Terminal Card atomics) is classic TOCTOU territory. Add `-DPOM1_SANITIZERS=thread|address` to CMake (sanitize all non-vendored TUs; libresidfp + miniaudio stay clean). Run on a nightly CI job. Caught bugs go straight into the `ctest` suite.
-- [ ] **Telnet tests — opt-in `ctest` integration** `[S · nice]` — wire `tools/test_*_telnet.py` into `ctest` behind `-DPOM1_ENABLE_TELNET_TESTS=ON` (off by default: needs a free TCP port and ~3 s boot per test). Would cover `test_sdcard_subdir_navigation_telnet.py` and `test_aci_telnet.py` at minimum.
-- [ ] **`CHANGELOG.md` generator** `[S · nice]` — the TODO promises shipped features live in `git log`, but downstream users don't read the log. A tiny script (`tools/gen_changelog.sh` → `git log --merges --pretty=format:...`) that produces a rolling `CHANGELOG.md` per release tag gets the benefit without an ongoing hand-curated file.
+
+
+
+
