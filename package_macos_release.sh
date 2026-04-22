@@ -1,22 +1,25 @@
 #!/usr/bin/env bash
 # POM1 — macOS release packager.
 #
-# Builds (if needed), assembles a distribution folder with POM1.app + sibling
-# data directories, and zips it for distribution.
+# Builds (if needed), copies every data dir into POM1.app/Contents/MacOS/
+# next to the binary so the .app is fully self-contained, then wraps the
+# bundle in a DMG with a drag-to-/Applications shortcut.
 #
-# Output: dist/POM1-macOS-v<VERSION>.zip   + dist/POM1-macOS/ (staging)
+# Output: dist/POM1-macOS-v<VERSION>.dmg  + dist/POM1.app (staging)
 #
-# Pairs with package_windows_release.bat; the layout mirrors the Windows ZIP
-# (sibling data dirs next to the executable) so users can drop the release
-# anywhere on disk and double-click.
+# Layout convention: data dirs live *inside* the bundle at Contents/MacOS/.
+# main_imgui.cpp's pom1_macos_chdir_to_distribution_root() chdir's there at
+# startup so every cwd-relative probe (roms/, fonts/, sdcard/, cfcard/,
+# pic/, cassettes/) resolves without the user having to keep sibling dirs.
 
 set -euo pipefail
 
 cd "$(dirname "$0")"
 
 VERSION="1.8.5"
-OUTDIR="dist/POM1-macOS"
-ZIPPATH="dist/POM1-macOS-v${VERSION}.zip"
+STAGING="dist/POM1.app"
+DMG_STAGE="dist/dmg-staging"
+DMGPATH="dist/POM1-macOS-v${VERSION}.dmg"
 
 echo "============================================"
 echo " POM1 — macOS distribution package (v${VERSION})"
@@ -33,64 +36,72 @@ fi
 [[ -x "$APP/Contents/MacOS/POM1" ]] || { echo "ERROR: inner binary missing."; exit 1; }
 
 # ---------- 2. Preflight: mandatory assets -----------------------------------
-for f in roms/WozMonitor.rom roms/basic.rom roms/ACI.rom \
+for f in roms/WozMonitor.rom roms/basic.rom roms/ACI.rom roms/charmap.rom \
          fonts/fa-solid-900.ttf pic/icon.png; do
     [[ -f "$f" ]] || { echo "ERROR: $f missing."; exit 1; }
 done
 
-# ---------- 3. Stage the distribution folder ---------------------------------
-echo "==> Staging $OUTDIR"
-rm -rf "$OUTDIR"
-mkdir -p "$OUTDIR"
+# ---------- 3. Stage POM1.app with data inside Contents/MacOS/ ---------------
+echo "==> Staging $STAGING"
+rm -rf "$STAGING"
+mkdir -p "$(dirname "$STAGING")"
+ditto "$APP" "$STAGING"   # icon, Info.plist, inner binary
 
-# The .app itself (self-contained: icon, Info.plist, inner binary).
-ditto "$APP" "$OUTDIR/POM1.app"
+DATA_ROOT="$STAGING/Contents/MacOS"
 
-# Data dirs — sibling to POM1.app, resolved by the exe-relative chdir at
-# boot. Same layout as the Windows release.
-cp -R roms      "$OUTDIR/roms"
-cp -R fonts     "$OUTDIR/fonts"
-cp -R software  "$OUTDIR/software"
-cp -R cassettes "$OUTDIR/cassettes"
-cp -R pic       "$OUTDIR/pic"
+cp -R roms      "$DATA_ROOT/roms"
+cp -R fonts     "$DATA_ROOT/fonts"
+cp -R software  "$DATA_ROOT/software"
+cp -R cassettes "$DATA_ROOT/cassettes"
+cp -R pic       "$DATA_ROOT/pic"
 
-# sdcard + cfcard are user-writable by the emulator — duplicate, not link.
-cp -R sdcard    "$OUTDIR/sdcard"
-mkdir -p        "$OUTDIR/cfcard"
-[[ -f cfcard/cfcard.po ]] && cp cfcard/cfcard.po "$OUTDIR/cfcard/"
+# sdcard + cfcard are user-writable by the emulator. macOS blocks writes
+# inside /Applications for non-admin users, so the .app only works for
+# persistent saves when left somewhere writable (Desktop, ~/Applications,
+# Downloads). Read-only play always works. See README section below.
+cp -R sdcard    "$DATA_ROOT/sdcard"
+mkdir -p        "$DATA_ROOT/cfcard"
+[[ -f cfcard/cfcard.po ]] && cp cfcard/cfcard.po "$DATA_ROOT/cfcard/"
 
-# ---------- 4. README for the end user ---------------------------------------
-cat > "$OUTDIR/README.txt" <<EOF
+# ---------- 4. DMG staging: POM1.app + /Applications shortcut + README -------
+echo "==> Preparing DMG staging in $DMG_STAGE"
+rm -rf "$DMG_STAGE"
+mkdir -p "$DMG_STAGE"
+# Move (not copy) the staged .app into the DMG staging folder — the user
+# only cares about the final .dmg, and a stray dist/POM1.app alongside it
+# would be confusing. ditto preserves bundle attributes cleanly.
+ditto "$STAGING" "$DMG_STAGE/POM1.app"
+# Drag-to-/Applications shortcut, the canonical macOS installer gesture.
+ln -s /Applications "$DMG_STAGE/Applications"
+# README the user sees right on the DMG window.
+cat > "$DMG_STAGE/README.txt" <<EOF
 POM1 — Apple 1 Emulator (macOS), version ${VERSION}
 =====================================================
 
-Launch: double-click POM1.app.
+Install: drag POM1.app onto the Applications shortcut in this window.
 
-The app is unsigned. macOS Gatekeeper blocks unsigned apps on first run:
+The app is fully self-contained — every ROM, program, cassette, and SD
+card image lives inside the bundle.
+
+The app is unsigned. On first run, macOS Gatekeeper blocks it:
 
    1. Right-click POM1.app → Open → Open (confirm the warning).
       -- or --
    2. System Settings → Privacy & Security → scroll to the blocked-app
       notice → "Open Anyway" → confirm.
 
-After one successful launch Gatekeeper remembers the decision.
+After one successful launch, Gatekeeper remembers the decision.
 
-Contents of this folder:
+Persistent saves (microSD SAVE / LOAD, CFFA1 writes)
+----------------------------------------------------
+These write inside POM1.app/Contents/MacOS/{sdcard,cfcard}/. macOS blocks
+writes under /Applications for non-admin users. For persistent saves,
+keep POM1.app somewhere writable:
+   ~/Applications/      (user-local, no admin needed)
+   ~/Desktop/
+   ~/Downloads/
 
-   POM1.app            The emulator (.app bundle with icon + Info.plist).
-   roms/               Apple 1 ROMs: WOZ Monitor, Integer BASIC, ACI,
-                       Applesoft Lite (x2), Krusader, SD CARD OS, CFFA1,
-                       Juke-Box, charmap.
-   fonts/              Font Awesome 6 (toolbar glyphs).
-   software/           60+ ready-to-run programs (games, BASIC, dev tools,
-                       A1-SID tunes, HGR / TMS9918 / GT-6144 / a1io_rtc demos).
-   cassettes/          Original-tape captures (default WOZ_talk.mp3).
-   sdcard/             Virtual microSD content — writable by the emulator.
-   cfcard/             CFFA1 ProDOS disk image.
-   pic/                App icon + About photo.
-
-The .app looks for these dirs as siblings. Keep the folder together; don't
-extract just POM1.app on its own.
+Read-only play (games, demos, tapes) works from /Applications regardless.
 
 Credits + full docs: https://github.com/habib256/POM1
 Play in your browser: https://habib256.github.io/POM1/build-wasm/POM1.html
@@ -98,14 +109,25 @@ Play in your browser: https://habib256.github.io/POM1/build-wasm/POM1.html
 License: GPL-3.0.
 EOF
 
-# ---------- 5. ZIP it --------------------------------------------------------
-echo "==> Zipping $ZIPPATH"
-rm -f "$ZIPPATH"
-( cd dist && zip -qr "POM1-macOS-v${VERSION}.zip" "POM1-macOS" )
+# ---------- 5. DMG ------------------------------------------------------------
+echo "==> Building $DMGPATH"
+rm -f "$DMGPATH"
+# UDZO = zlib-compressed read-only image, the standard macOS distribution
+# format. Volume name matches the product for a clean Finder display.
+hdiutil create -quiet \
+    -volname "POM1 v${VERSION}" \
+    -srcfolder "$DMG_STAGE" \
+    -ov \
+    -format UDZO \
+    "$DMGPATH"
 
-SIZE="$(du -h "$ZIPPATH" | cut -f1)"
+# Staging is consumed by hdiutil — clean up so `dist/` only carries the
+# build artefacts (POM1.app raw staging + the final DMG).
+rm -rf "$DMG_STAGE"
+
+SIZE="$(du -h "$DMGPATH" | cut -f1)"
 echo ""
 echo "============================================"
-echo "  Done: $ZIPPATH ($SIZE)"
-echo "  Staging: $OUTDIR/"
+echo "  Done: $DMGPATH ($SIZE)"
+echo "  Staging bundle: $STAGING/"
 echo "============================================"

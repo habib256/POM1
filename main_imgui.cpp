@@ -172,12 +172,14 @@ static void glfw_key_callback(GLFWwindow* window, int key, int scancode, int act
 /// POM1.app bundles the binary at Contents/MacOS/POM1. When launched from
 /// Finder the cwd is `/`, so every cwd-relative data probe (roms/, fonts/,
 /// sdcard/, cfcard/, pic/, cassettes/) fails. Resolve the real binary path
-/// via _NSGetExecutablePath, walk up to the directory containing POM1.app,
-/// and chdir there — iff that directory looks like a POM1 distribution
-/// (has either `roms/` or `fonts/` sibling). That way Finder double-click
-/// works when the user drops the distribution folder anywhere, and the
-/// `build/POM1 → POM1.app/Contents/MacOS/POM1` symlink keeps working from
-/// the repo (cwd is already `build/`, which has fonts/ + roms/ copied).
+/// via _NSGetExecutablePath and chdir to the first of these that looks like
+/// a POM1 distribution (has either `roms/` or `fonts/`):
+///   1. Contents/MacOS/ — binary's own directory. Packaged release puts
+///      data dirs here, next to the executable, so POM1.app is fully
+///      self-contained and droppable into /Applications as a single unit.
+///   2. The .app bundle's parent directory. Dev flow: `build/POM1` is a
+///      symlink to `build/POM1.app/Contents/MacOS/POM1`; the ROMs and
+///      fonts are copied into `build/` (run_emulator.sh, CMake POST_BUILD).
 static void pom1_macos_chdir_to_distribution_root()
 {
     namespace fs = std::filesystem;
@@ -187,13 +189,26 @@ static void pom1_macos_chdir_to_distribution_root()
     std::error_code ec;
     fs::path exe = fs::canonical(buf, ec);
     if (ec) return;
-    // exe = …/POM1.app/Contents/MacOS/POM1 → parent.parent.parent.parent = …/
-    fs::path bundleParent = exe.parent_path().parent_path()
-                               .parent_path().parent_path();
-    if (!fs::is_directory(bundleParent / "roms", ec) &&
-        !fs::is_directory(bundleParent / "fonts", ec))
-        return;  // doesn't look like a POM1 distribution — leave cwd alone.
-    fs::current_path(bundleParent, ec);
+
+    auto looksLikePom1Dist = [&](const fs::path& d) {
+        std::error_code e;
+        return fs::is_directory(d / "roms", e) ||
+               fs::is_directory(d / "fonts", e);
+    };
+
+    // Candidate 1: binary's own directory (Contents/MacOS/, packaged release).
+    fs::path macOSDir = exe.parent_path();
+    // Candidate 2: .app bundle's parent (…/POM1.app/../, dev flow w/ build/).
+    fs::path bundleParent = macOSDir.parent_path()
+                                    .parent_path()
+                                    .parent_path();
+
+    for (const fs::path& cand : { macOSDir, bundleParent }) {
+        if (looksLikePom1Dist(cand)) {
+            fs::current_path(cand, ec);
+            return;
+        }
+    }
 }
 #endif
 
