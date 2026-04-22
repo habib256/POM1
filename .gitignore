@@ -17,8 +17,9 @@ build-wasm/*
 # Dear ImGui library (downloaded by setup_imgui.sh)
 imgui/
 
-# ImGui layout state
+# ImGui layout state (legacy global + per-preset directory)
 imgui.ini
+ini/
 
 # clangd / other tool caches (local preprocessing index — machine-specific)
 .cache/

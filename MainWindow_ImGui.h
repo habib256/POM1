@@ -65,6 +65,19 @@ public:
     void handleGlfwChar(unsigned int codepoint);
     void handleGlfwKey(int key, int scancode, int action, int mods);
 
+    // Per-preset window-layout persistence. Each preset has its own ImGui
+    // ini file + GLFW OS-window size file under ini/. savePresetLayout()
+    // writes the current ImGui state and window size for the given preset
+    // index; loadPresetLayout() reads them back (ImGui's own load parses
+    // window positions/sizes). Called from applyMachineConfig() on every
+    // preset switch, and from the main loop on clean shutdown so the
+    // user's last layout survives across sessions. Public because
+    // main_imgui.cpp's cleanup path must call savePresetLayout() before
+    // ImGui::DestroyContext().
+    void savePresetLayout(int presetIndex) const;
+    bool loadPresetLayout(int presetIndex);  // returns true if a file was found
+    int  getActivePresetIndex() const { return activePresetIndex; }
+
 #if POM1_IS_WASM
     /** Taille framebuffer/canvas pour le prochain tour de boucle (hors plein écran navigateur). */
     void getWasmCanvasPixelSize(int& outW, int& outH) const
@@ -104,6 +117,16 @@ private:
     bool showTutorialMicroSD = false;
     bool showTutorialCassette = false;
     bool showTutorialModemBBS = false;
+    bool showTutorialGT6144 = false;          // SWTPC GT-6144 Graphic Terminal
+    bool showTutorialPR40 = false;            // SWTPC PR-40 Printer
+    bool showTutorialTMS9918 = false;         // P-LAB TMS9918 Graphic Card
+    bool showTutorialA1IORTC = false;         // P-LAB A1-IO & RTC
+    bool showTutorialSID = false;             // A1-SID / A1-AUDIO SE
+    bool showTutorialGEN2HGR = false;         // Uncle Bernie's GEN2 HGR
+    bool showTutorialCFFA1 = false;           // CFFA1 CompactFlash
+    bool showTutorialJukeBox = false;         // P-LAB Juke-Box
+    bool showTutorialTerminalCard = false;    // P-LAB Terminal Card (desktop)
+    bool showTutorialKrusader = false;        // Briel Replica-1 Krusader assembler
     bool showScreenConfig = false;
     bool showMemoryConfig = false;
     bool showLoadDialog = false;
@@ -202,6 +225,16 @@ private:
     void renderTutorialMicroSDWindow();
     void renderTutorialCassetteWindow();
     void renderTutorialModemBBSWindow();
+    void renderTutorialGT6144Window();
+    void renderTutorialPR40Window();
+    void renderTutorialTMS9918Window();
+    void renderTutorialA1IORTCWindow();
+    void renderTutorialSIDWindow();
+    void renderTutorialGEN2HGRWindow();
+    void renderTutorialCFFA1Window();
+    void renderTutorialJukeBoxWindow();
+    void renderTutorialTerminalCardWindow();
+    void renderTutorialKrusaderWindow();
     void renderDebugDialog();
     void renderScreenConfigDialog();
     void renderMemoryConfigDialog();
@@ -304,6 +337,10 @@ private:
     // applied a preset once so we can skip the redundant hardReset on
     // boot. Flipped to true by the first applyMachineConfig().
     bool presetAppliedOnce = false;
+    // Tracks which preset's ini file is currently loaded. -1 = none loaded
+    // yet. On every applyMachineConfig() call we first save this preset's
+    // layout (if != -1) before swapping in the new one.
+    int  activePresetIndex = -1;
 
     // Deferred expansion-card plug. Every card — audio sources (SID,
     // cassette deck), memory-mapped peripherals (ACI, microSD, CFFA1,

@@ -1652,6 +1652,7 @@ void MainWindow_ImGui::renderTutorialIntegerBasicWindow()
     ImGui::SetNextWindowSize(ImVec2(460.0f, 460.0f), ImGuiCond_FirstUseEver);
     ImGui::SetNextWindowPos(ImVec2(io.DisplaySize.x * 0.15f, io.DisplaySize.y * 0.10f),
                             ImGuiCond_FirstUseEver);
+    applyPendingLayout("Tutorial: Integer BASIC");
     if (ImGui::Begin("Tutorial: Integer BASIC", &showTutorialIntegerBasic)) {
         ImGui::TextWrapped(
             "Apple-1 Integer BASIC is Wozniak's original handwritten BASIC "
@@ -1717,6 +1718,7 @@ void MainWindow_ImGui::renderTutorialApplesoftWindow()
     ImGui::SetNextWindowSize(ImVec2(460.0f, 460.0f), ImGuiCond_FirstUseEver);
     ImGui::SetNextWindowPos(ImVec2(io.DisplaySize.x * 0.17f, io.DisplaySize.y * 0.12f),
                             ImGuiCond_FirstUseEver);
+    applyPendingLayout("Tutorial: Applesoft Lite");
     if (ImGui::Begin("Tutorial: Applesoft Lite", &showTutorialApplesoft)) {
         ImGui::TextWrapped(
             "Applesoft Lite is a cut-down Apple II Applesoft BASIC "
@@ -1789,6 +1791,7 @@ void MainWindow_ImGui::renderTutorialMicroSDWindow()
     ImGui::SetNextWindowSize(ImVec2(480.0f, 480.0f), ImGuiCond_FirstUseEver);
     ImGui::SetNextWindowPos(ImVec2(io.DisplaySize.x * 0.19f, io.DisplaySize.y * 0.14f),
                             ImGuiCond_FirstUseEver);
+    applyPendingLayout("Tutorial: microSD");
     if (ImGui::Begin("Tutorial: microSD", &showTutorialMicroSD)) {
         ImGui::TextWrapped(
             "P-LAB microSD card mounts the host sdcard/ directory as a "
@@ -1867,6 +1870,7 @@ void MainWindow_ImGui::renderTutorialCassetteWindow()
     ImGui::SetNextWindowSize(ImVec2(460.0f, 460.0f), ImGuiCond_FirstUseEver);
     ImGui::SetNextWindowPos(ImVec2(io.DisplaySize.x * 0.21f, io.DisplaySize.y * 0.16f),
                             ImGuiCond_FirstUseEver);
+    applyPendingLayout("Tutorial: Cassette (ACI)");
     if (ImGui::Begin("Tutorial: Cassette (ACI)", &showTutorialCassette)) {
         ImGui::TextWrapped(
             "Wozniak's 256-byte Apple Cassette Interface loads / saves "
@@ -1939,6 +1943,7 @@ void MainWindow_ImGui::renderTutorialModemBBSWindow()
     ImGui::SetNextWindowSize(ImVec2(470.0f, 470.0f), ImGuiCond_FirstUseEver);
     ImGui::SetNextWindowPos(ImVec2(io.DisplaySize.x * 0.23f, io.DisplaySize.y * 0.18f),
                             ImGuiCond_FirstUseEver);
+    applyPendingLayout("Tutorial: Wi-Fi Modem BBS");
     if (ImGui::Begin("Tutorial: Wi-Fi Modem BBS", &showTutorialModemBBS)) {
         ImGui::TextWrapped(
             "The P-LAB Wi-Fi Modem is a 65C51 ACIA + ESP8266 pair. POM1 "
@@ -1999,6 +2004,607 @@ void MainWindow_ImGui::renderTutorialModemBBSWindow()
         bulletWrapped("No 'ATO' to resume a paused session - dial again with ATDT for a fresh socket.");
         bulletWrapped("TELNET IAC negotiations are filtered; CR+LF from the wire collapses to CR.");
         bulletWrapped("See Hardware Reference > MODEM BBS for the full AT command set and baud table.");
+        ImGui::EndChild();
+    }
+    ImGui::End();
+}
+
+// ---------------------------------------------------------------------------
+// Tutorials for the remaining POM1 peripherals. Each follows the same
+// structure as the ACI / Modem tutorials: intro paragraph, numbered steps
+// with code blocks, notes bullets at the end. Intent is a 5-minute
+// walkthrough covering the essentials — the Hardware Reference window
+// has the full protocol for each card.
+// ---------------------------------------------------------------------------
+
+void MainWindow_ImGui::renderTutorialGT6144Window()
+{
+    ImGuiIO& io = ImGui::GetIO();
+    ImGui::SetNextWindowSize(ImVec2(480.0f, 480.0f), ImGuiCond_FirstUseEver);
+    ImGui::SetNextWindowPos(ImVec2(io.DisplaySize.x * 0.22f, io.DisplaySize.y * 0.17f),
+                            ImGuiCond_FirstUseEver);
+    applyPendingLayout("Tutorial: SWTPC GT-6144");
+    if (ImGui::Begin("Tutorial: SWTPC GT-6144", &showTutorialGT6144)) {
+        ImGui::TextWrapped(
+            "The GT-6144 (SWTPC, 1976, $98.50) was the FIRST commercial "
+            "Apple-1 graphics card. Woz wired it through the expansion "
+            "slot in Interface Age, Oct 1976. It is a write-only 64x96 "
+            "monochrome framebuffer on 6x Intel 2102 SRAM, driven by a "
+            "single byte poked to $D00A.");
+        ImGui::BeginChild("tut_gt_scroll", ImVec2(0, 0), true);
+
+        tutStep(1, "Pick a preset with the GT-6144");
+        ImGui::TextWrapped(
+            "Presets > #2 'Apple-1 + SWTPC GT-6144 (1976)' — Apple 1 "
+            "Screen on the left, the GT-6144 CRT panel on the right. Or "
+            "plug the card manually via Hardware > SWTPC GT-6144 Graphic "
+            "Terminal (1976).");
+
+        tutStep(2, "Clear the SRAM noise");
+        ImGui::TextWrapped(
+            "On plug-in the 6x 2102 chips come up with random bits (real "
+            "hardware \"rectangles aleatoires\"). Any real program first "
+            "clears the screen — see `CLEAR_GT` in "
+            "software/gt-6144/GT1_Hello.asm for the 6144-byte OFF sweep.");
+
+        tutStep(3, "Write a pixel from Integer BASIC");
+        tutCode("POKE -12278, 90\nPOKE -12278, 150");
+        ImGui::TextWrapped(
+            "$D00A = 53258 (signed -12278). 90 = 64 + 26 -> latch X=26, "
+            "mode=ON. 150 = 128 + 22 -> commit Y=22. Two POKEs draw one "
+            "pixel at (26, 22).");
+
+        tutStep(4, "The 4-phase command protocol");
+        ImGui::TextWrapped(
+            "Each byte written to $D00A advances a 4-phase state machine:");
+        tutCode(
+            "0..63   : latch X = byte,    pixel OFF\n"
+            "64..127 : latch X = byte-64, pixel ON\n"
+            "128..223: commit Y = byte-128 with latched X + state\n"
+            "224..255: control (0=INVERTED 1=NORMAL 4=UNBLANK 5=BLANK)");
+
+        tutStep(5, "Load the Life demo");
+        ImGui::TextWrapped(
+            "File > Load Memory > software/gt-6144/GT1_Life.txt (hex "
+            "dump). In Wozmon:");
+        tutCode("300R");
+        ImGui::TextWrapped(
+            "R-pentomino evolves in the GT-6144 window. Press any key to "
+            "return to the Woz Monitor. Run with --cpu-max for a fluid "
+            "tempo (~150 ms/gen).");
+
+        ImGui::Spacing();
+        ImGui::Separator();
+        ImGui::TextColored(ImVec4(0.90f, 0.70f, 0.60f, 1.0f), "Notes");
+        bulletWrapped("Display aspect: the 64x96 matrix feeds a 4:3 CRT, so pixels render as 2:1 horizontal rectangles (SWTPC docs call them \"petits rectangles\"). The POM1 window aspect-locks to 4:3 as you drag.");
+        bulletWrapped("Write-only card: $D00A reads fall through to the PIA alias — no read-back on real hardware.");
+        bulletWrapped("Control opcodes 224/232/240/248 all mean INVERTED (bits 3-4 are don't-cares).");
+        bulletWrapped("See Hardware Reference > SWTPC GT-6144 Graphic Terminal (1976) for the full protocol.");
+        ImGui::EndChild();
+    }
+    ImGui::End();
+}
+
+void MainWindow_ImGui::renderTutorialPR40Window()
+{
+    ImGuiIO& io = ImGui::GetIO();
+    ImGui::SetNextWindowSize(ImVec2(470.0f, 460.0f), ImGuiCond_FirstUseEver);
+    ImGui::SetNextWindowPos(ImVec2(io.DisplaySize.x * 0.23f, io.DisplaySize.y * 0.17f),
+                            ImGuiCond_FirstUseEver);
+    applyPendingLayout("Tutorial: SWTPC PR-40 Printer");
+    if (ImGui::Begin("Tutorial: SWTPC PR-40 Printer", &showTutorialPR40)) {
+        ImGui::TextWrapped(
+            "Steve Jobs' 1976 Interface Age hack: wire the SWTPC PR-40 "
+            "40-column dot-matrix printer to PIA 6821 Port B so the "
+            "Apple-1 treats it as a transparent display sniffer. Any "
+            "character the Woz Monitor prints is spooled to paper too.");
+        ImGui::BeginChild("tut_pr40_scroll", ImVec2(0, 0), true);
+
+        tutStep(1, "Plug the card");
+        ImGui::TextWrapped(
+            "Hardware > SWTPC PR-40 Printer (Jobs 1976), or tap the "
+            "printer icon on the toolbar. The card window shows a BUSY "
+            "indicator, a 40-char FIFO progress bar, and a live paper roll.");
+
+        tutStep(2, "Choose a DPDT switch mode");
+        ImGui::TextWrapped(
+            "Three positions (Jobs' original 2 + community 3-pos mod):");
+        bulletWrapped("Off - printer disconnected; video /RDA alone drives PB7.");
+        bulletWrapped("Mixed - PB7 = video busy OR printer busy. Jobs' original wiring.");
+        bulletWrapped("Print Only - PB7 = printer busy alone (bypass /RDA; CPU floods FIFO up to 1 MHz).");
+
+        tutStep(3, "Type anything");
+        ImGui::TextWrapped(
+            "Every character you type at the Wozmon / BASIC prompt is "
+            "sniffed on the $D012 write path — the PR-40 FIFO fills, and "
+            "every CR ($0D) or 40-char-full event triggers a ~0.8 s "
+            "mechanical print cycle (PB7 goes HIGH -> Woz Monitor's BMI "
+            "loop at $FFEF stalls the CPU naturally).");
+
+        tutStep(4, "Read the paper roll");
+        ImGui::TextWrapped(
+            "The Hardware > PR-40 window ribbon shows every line printed "
+            "this session (auto-scrolls to the newest line). Text wraps "
+            "if the window is narrower than 40 columns.");
+
+        tutStep(5, "Export the output");
+        ImGui::TextWrapped(
+            "Two buttons under the ribbon:");
+        bulletWrapped("Copy to clipboard - the full roll joined by '\\n'.");
+        bulletWrapped("Save to pr40_paper.txt - the status bar shows the absolute path.");
+
+        ImGui::Spacing();
+        ImGui::Separator();
+        ImGui::TextColored(ImVec4(0.90f, 0.70f, 0.60f, 1.0f), "Notes");
+        bulletWrapped("64-character ASCII uppercase subset ($20-$5F). Lowercase auto-folded to uppercase; non-printables dropped.");
+        bulletWrapped("~0.8 s per mechanical cycle = POM1_CPU_CLOCK_HZ * 4 / 5 emulated cycles.");
+        bulletWrapped("Same expansion-connector slot as the ACI and the GT-6144 (all three Oct-1976 peripherals).");
+        bulletWrapped("See Hardware Reference > SWTPC PR-40 Printer (Jobs 1976) for the full PIA wiring.");
+        ImGui::EndChild();
+    }
+    ImGui::End();
+}
+
+void MainWindow_ImGui::renderTutorialTMS9918Window()
+{
+    ImGuiIO& io = ImGui::GetIO();
+    ImGui::SetNextWindowSize(ImVec2(470.0f, 460.0f), ImGuiCond_FirstUseEver);
+    ImGui::SetNextWindowPos(ImVec2(io.DisplaySize.x * 0.22f, io.DisplaySize.y * 0.17f),
+                            ImGuiCond_FirstUseEver);
+    applyPendingLayout("Tutorial: P-LAB TMS9918");
+    if (ImGui::Begin("Tutorial: P-LAB TMS9918", &showTutorialTMS9918)) {
+        ImGui::TextWrapped(
+            "The P-LAB Graphic Card drops a TMS9918A VDP (ColecoVision / "
+            "MSX1 silicon) onto the Apple-1 expansion slot. 16 KB private "
+            "VRAM, sprites, tile maps — accessed through two I/O ports.");
+        ImGui::BeginChild("tut_tms_scroll", ImVec2(0, 0), true);
+
+        tutStep(1, "Pick a preset with the TMS9918");
+        ImGui::TextWrapped(
+            "Presets > #8 'P-LAB Apple-1 with TMS9918 Graphic Card', or "
+            "plug Hardware > P-LAB Graphic Card (TMS9918).");
+
+        tutStep(2, "Know the two I/O ports");
+        tutCode(
+            "$CC00 VDP_DATA  (read / write VRAM byte, auto-increments)\n"
+            "$CC01 VDP_CTRL  (control: addr hi + setup commands)");
+        ImGui::TextWrapped(
+            "TMS9918 wins bus arbitration at $CC00/$CC01 over an A1-SID "
+            "(priority=10). An A1-AUDIO Special Edition (same $CC00 "
+            "window) is mutually exclusive.");
+
+        tutStep(3, "Load a demo");
+        ImGui::TextWrapped(
+            "File > Load Memory from software/tms9918/ — POM1 "
+            "auto-plugs the card when a file comes from that directory "
+            "(see MainWindow_FileDialogs heuristics).");
+        tutCode("software/tms9918/TMS_Life.txt  -> 280R");
+
+        tutStep(4, "Write VRAM");
+        ImGui::TextWrapped(
+            "Classic sequence: write addr-low + (addr-hi | $40) to $CC01, "
+            "then stream bytes to $CC00 — the VDP auto-increments. The "
+            "nippur72/apple1-videocard-lib repo has BASIC + 6502 drivers "
+            "for all TMS9918 modes (Graphics I / II, Multicolor, Text).");
+
+        tutStep(5, "Read the output window");
+        ImGui::TextWrapped(
+            "Hardware > P-LAB Graphic Card (TMS9918) opens a 256x192 "
+            "RGBA panel re-uploaded every frame via glTexSubImage2D.");
+
+        ImGui::Spacing();
+        ImGui::Separator();
+        ImGui::TextColored(ImVec4(0.90f, 0.70f, 0.60f, 1.0f), "Notes");
+        bulletWrapped("16 KB of VRAM is INDEPENDENT of the 6502's 64 KB address space.");
+        bulletWrapped("Mutually exclusive with the A1-AUDIO SE (shared $CC00 window).");
+        bulletWrapped("VDP status register clears on read — read once at start of vblank.");
+        bulletWrapped("See Hardware Reference > P-LAB Graphic Card (TMS9918) for port details.");
+        ImGui::EndChild();
+    }
+    ImGui::End();
+}
+
+void MainWindow_ImGui::renderTutorialA1IORTCWindow()
+{
+    ImGuiIO& io = ImGui::GetIO();
+    ImGui::SetNextWindowSize(ImVec2(470.0f, 460.0f), ImGuiCond_FirstUseEver);
+    ImGui::SetNextWindowPos(ImVec2(io.DisplaySize.x * 0.23f, io.DisplaySize.y * 0.17f),
+                            ImGuiCond_FirstUseEver);
+    applyPendingLayout("Tutorial: P-LAB A1-IO & RTC");
+    if (ImGui::Begin("Tutorial: P-LAB A1-IO & RTC", &showTutorialA1IORTC)) {
+        ImGui::TextWrapped(
+            "A 65C22 VIA at $2000-$200F bridging an emulated ATMEGA32 "
+            "that fans out to a DS3231 RTC, DS18B20 temperature probe, "
+            "8 analog inputs, 4 digital inputs, and a 16-bit shift-register "
+            "digital output.");
+        ImGui::BeginChild("tut_a1io_scroll", ImVec2(0, 0), true);
+
+        tutStep(1, "Pick the preset");
+        ImGui::TextWrapped(
+            "Presets > #9 'P-LAB Apple-1 with I/O Board & RTC', or "
+            "Hardware > P-LAB I/O Board & RTC.");
+
+        tutStep(2, "Understand the broadcast protocol");
+        ImGui::TextWrapped(
+            "The firmware pumps 24 status registers on a 100-cycle period "
+            "over PORTA with PORTB STROBE handshake. You READ the 24-byte "
+            "frame at memory-mapped slots; the firmware handles refresh.");
+
+        tutStep(3, "Read the time");
+        ImGui::TextWrapped(
+            "The card's RTC keeps ticking in real time. Use --rtc-freeze "
+            "\"YYYY-MM-DD HH:MM:SS\" to pin the emulated clock for "
+            "scripted runs (time continues ticking at host rate — good "
+            "for sub-minute tests).");
+        tutCode("./POM1 --preset 9 --rtc-freeze \"1976-07-10 12:00:00\"");
+
+        tutStep(4, "Analog / digital inputs");
+        ImGui::TextWrapped(
+            "The A1-IO card window shows the 8 analog channel readings "
+            "and the 4 digital input pin states, live.");
+
+        tutStep(5, "Mutual exclusion with GEN2 HGR");
+        ImGui::TextWrapped(
+            "The VIA's $2000-$200F overlaps the GEN2 HGR framebuffer "
+            "($2000-$3FFF). POM1 enforces the one-card rule at the "
+            "preset level — plugging A1-IO auto-unplugs GEN2 and vice "
+            "versa.");
+
+        ImGui::Spacing();
+        ImGui::Separator();
+        ImGui::TextColored(ImVec4(0.90f, 0.70f, 0.60f, 1.0f), "Notes");
+        bulletWrapped("The broadcast registers are cached — reads never stall the CPU.");
+        bulletWrapped("16-bit shift-register output at the end of the register map (latched from Apple-1 writes).");
+        bulletWrapped("See Hardware Reference > P-LAB I/O Board & RTC for the full register list.");
+        ImGui::EndChild();
+    }
+    ImGui::End();
+}
+
+void MainWindow_ImGui::renderTutorialSIDWindow()
+{
+    ImGuiIO& io = ImGui::GetIO();
+    ImGui::SetNextWindowSize(ImVec2(470.0f, 480.0f), ImGuiCond_FirstUseEver);
+    ImGui::SetNextWindowPos(ImVec2(io.DisplaySize.x * 0.22f, io.DisplaySize.y * 0.17f),
+                            ImGuiCond_FirstUseEver);
+    applyPendingLayout("Tutorial: A1-SID / A1-AUDIO SE");
+    if (ImGui::Begin("Tutorial: A1-SID / A1-AUDIO SE", &showTutorialSID)) {
+        ImGui::TextWrapped(
+            "Claudio Parmigiani's A1-SID wires a real MOS 6581 / CSG 8580 "
+            "SID to the Apple-1 bus. POM1 synthesises with libresidfp, "
+            "cycle-accurate, switchable between the 6581 and 8580 chip "
+            "models at runtime.");
+        ImGui::BeginChild("tut_sid_scroll", ImVec2(0, 0), true);
+
+        tutStep(1, "Pick a preset with the SID");
+        bulletWrapped("#6 P-LAB A1-SID - register window $C800-$CFFF (classic).");
+        bulletWrapped("#7 P-LAB A1-AUDIO Special Edition - 10-unit limited run, same silicon, register window $CC00-$CC1F (excludes the TMS9918).");
+
+        tutStep(2, "Swap the chip model");
+        ImGui::TextWrapped(
+            "Settings > A1-SID chip model: MOS 6581 (vintage non-linear "
+            "filter, warm) or CSG 8580 (cleaner revision). libresidfp "
+            "replays the last register state on the new chip so you "
+            "hear the timbre difference live.");
+
+        tutStep(3, "Poke some notes from BASIC");
+        tutCode(
+            "10 FOR I=0 TO 24: POKE 51200+I, 0: NEXT   REM clear\n"
+            "20 POKE 51224, 15                         REM volume\n"
+            "30 POKE 51200, 213 : POKE 51201, 33       REM freq\n"
+            "40 POKE 51205, 9 : POKE 51206, 0          REM A/D, S/R\n"
+            "50 POKE 51204, 33                         REM triangle gate");
+        ImGui::TextWrapped(
+            "51200 = $C800 (A1-SID). For the Special Edition at $CC00, "
+            "use base 52224 instead (and watch for TMS9918 mutex).");
+
+        tutStep(4, "Load a SID tune");
+        ImGui::TextWrapped(
+            "File > Load Memory > software/sid/ picks up the POM1 SID "
+            "driver. tools/sid2apple1.py and tools/midi2apple1sid.py "
+            "package .sid / .mid files into Apple-1-loadable blobs.");
+
+        tutStep(5, "Listen");
+        ImGui::TextWrapped(
+            "Audio streams through the shared miniaudio mixer "
+            "(44.1 kHz, usually). Volume slider on the Cassette Deck "
+            "blends both cassette and SID into the master.");
+
+        ImGui::Spacing();
+        ImGui::Separator();
+        ImGui::TextColored(ImVec4(0.90f, 0.70f, 0.60f, 1.0f), "Notes");
+        bulletWrapped("A1-SID (proto) and A1-AUDIO SE share the same MOS chip socket - plugging one unplugs the other.");
+        bulletWrapped("Cycle-accurate: SID tempo tracks emulated CPU cycles, so --cpu-max makes tunes play FAST.");
+        bulletWrapped("Register window is 32-byte mirrored (addr & 0x1F).");
+        bulletWrapped("See Hardware Reference > P-LAB A1-SID Sound Card for the full register map.");
+        ImGui::EndChild();
+    }
+    ImGui::End();
+}
+
+void MainWindow_ImGui::renderTutorialGEN2HGRWindow()
+{
+    ImGuiIO& io = ImGui::GetIO();
+    ImGui::SetNextWindowSize(ImVec2(470.0f, 460.0f), ImGuiCond_FirstUseEver);
+    ImGui::SetNextWindowPos(ImVec2(io.DisplaySize.x * 0.22f, io.DisplaySize.y * 0.17f),
+                            ImGuiCond_FirstUseEver);
+    applyPendingLayout("Tutorial: Uncle Bernie's GEN2 HGR");
+    if (ImGui::Begin("Tutorial: Uncle Bernie's GEN2 HGR", &showTutorialGEN2HGR)) {
+        ImGui::TextWrapped(
+            "Uncle Bernie's GEN2 card is a 280x192 HIRES framebuffer "
+            "with NTSC artifact colour — basically Apple II HGR on the "
+            "Apple 1 expansion slot. Passively reads RAM $2000-$3FFF.");
+        ImGui::BeginChild("tut_gen2_scroll", ImVec2(0, 0), true);
+
+        tutStep(1, "Pick the preset");
+        ImGui::TextWrapped(
+            "Presets > #13 'Uncle Bernie's Apple-1 with GEN2 HGR Color'. "
+            "The preset opens the HGR window to the right of the Apple 1 "
+            "screen.");
+
+        tutStep(2, "Write pixels");
+        ImGui::TextWrapped(
+            "Whatever lives in $2000-$3FFF IS the framebuffer. The "
+            "scanline layout is the non-linear Apple II HGR mapping — "
+            "`scanlineAddress()` in GraphicsCard.cpp maps (y) -> offset.");
+
+        tutStep(3, "Colour rules");
+        ImGui::TextWrapped(
+            "NTSC artifact colour: bit 7 of each byte picks the palette "
+            "group (clear = violet/green, set = blue/orange). White "
+            "between, based on adjacent-column parity.");
+
+        tutStep(4, "Try the demo");
+        ImGui::TextWrapped(
+            "Clicking the toolbar HGR button auto-loads "
+            "software/hgr/GEN2.HGR.BIN if present. To build a new demo:");
+        tutCode(
+            "ca65 -o build/MyHgr.o software/hgr/MyHgr.asm\n"
+            "ld65 -C software/hgr/apple1_gen2.cfg \\\n"
+            "     -o build/MyHgr.bin build/MyHgr.o");
+        ImGui::TextWrapped(
+            "`software/hgr/apple1_gen2.cfg` reserves $2000-$3FFF so your "
+            "code and framebuffer never collide.");
+
+        ImGui::Spacing();
+        ImGui::Separator();
+        ImGui::TextColored(ImVec4(0.90f, 0.70f, 0.60f, 1.0f), "Notes");
+        bulletWrapped("Mutually exclusive with A1-IO & RTC (A1-IO's VIA lives at $2000-$200F, inside the GEN2 framebuffer).");
+        bulletWrapped("GEN2 is purely passive: no I/O port. Zero CPU overhead beyond RAM writes.");
+        bulletWrapped("Rendering uses a 14 KB LUT for byte -> 7-pixel blits, plus a second-pass fixup at inter-byte seams.");
+        bulletWrapped("See Hardware Reference > Uncle Bernie's GEN2 HGR Graphic Card for the full scanline map.");
+        ImGui::EndChild();
+    }
+    ImGui::End();
+}
+
+void MainWindow_ImGui::renderTutorialCFFA1Window()
+{
+    ImGuiIO& io = ImGui::GetIO();
+    ImGui::SetNextWindowSize(ImVec2(470.0f, 460.0f), ImGuiCond_FirstUseEver);
+    ImGui::SetNextWindowPos(ImVec2(io.DisplaySize.x * 0.23f, io.DisplaySize.y * 0.17f),
+                            ImGuiCond_FirstUseEver);
+    applyPendingLayout("Tutorial: CFFA1 CompactFlash");
+    if (ImGui::Begin("Tutorial: CFFA1 CompactFlash", &showTutorialCFFA1)) {
+        ImGui::TextWrapped(
+            "Rich Dreher's CFFA1 card (2007) puts an ATA/IDE CompactFlash "
+            "controller on the Apple-1 bus. POM1 auto-mounts "
+            "cfcard/cfcard.po — a standard ProDOS 8 MB volume — on boot.");
+        ImGui::BeginChild("tut_cffa1_scroll", ImVec2(0, 0), true);
+
+        tutStep(1, "Pick the preset");
+        ImGui::TextWrapped(
+            "Presets > #4 'Replica-1 with CFFA1 & Applesoft Lite "
+            "(Dreher 2007)'. Applesoft Lite loads at $E000-$FFFF (CFFA1 "
+            "flavour).");
+
+        tutStep(2, "Boot the firmware");
+        ImGui::TextWrapped(
+            "Wozmon prompt:");
+        tutCode("9006R");
+        ImGui::TextWrapped(
+            "CFFA1 firmware prints a menu: LOAD / SAVE / CAT / FORMAT.");
+
+        tutStep(3, "Load a program");
+        ImGui::TextWrapped(
+            "From the CFFA1 menu, press L and type the filename. The "
+            "firmware handles ProDOS directories and block layout.");
+
+        tutStep(4, "I/O map");
+        tutCode(
+            "$9000-$AFDF  firmware ROM (8 KB)\n"
+            "$AFDC-$AFDD  card ID $CF / $FA\n"
+            "$AFE0-$AFFF  ATA/IDE registers (A4 undecoded)");
+        ImGui::TextWrapped(
+            "Only READ SECTOR, WRITE SECTOR, and SET FEATURE are "
+            "emulated — the firmware never issues anything else.");
+
+        ImGui::Spacing();
+        ImGui::Separator();
+        ImGui::TextColored(ImVec4(0.90f, 0.70f, 0.60f, 1.0f), "Notes");
+        bulletWrapped("cfcard/cfcard.po is probed in cfcard/, ../cfcard/, ../../cfcard/ so POM1 finds it from any cwd.");
+        bulletWrapped("Mutually exclusive with microSD and Juke-Box (shared $9000-$AFFF window).");
+        bulletWrapped("The .po image can be opened/edited with any ProDOS tool (CiderPress, AppleCommander).");
+        bulletWrapped("See Hardware Reference > CFFA1 CompactFlash Interface for the full register set.");
+        ImGui::EndChild();
+    }
+    ImGui::End();
+}
+
+void MainWindow_ImGui::renderTutorialJukeBoxWindow()
+{
+    ImGuiIO& io = ImGui::GetIO();
+    ImGui::SetNextWindowSize(ImVec2(480.0f, 460.0f), ImGuiCond_FirstUseEver);
+    ImGui::SetNextWindowPos(ImVec2(io.DisplaySize.x * 0.22f, io.DisplaySize.y * 0.17f),
+                            ImGuiCond_FirstUseEver);
+    applyPendingLayout("Tutorial: P-LAB Juke-Box");
+    if (ImGui::Begin("Tutorial: P-LAB Juke-Box", &showTutorialJukeBox)) {
+        ImGui::TextWrapped(
+            "Claudio Parmigiani's Apple-1 Juke-Box: a 28c256 EEPROM at "
+            "$4000-$BFFF (or $8000-$BFFF on the other jumper) with an "
+            "in-ROM Program Manager at $BD00. Replaces cassette loading "
+            "entirely for the stored programs.");
+        ImGui::BeginChild("tut_jk_scroll", ImVec2(0, 0), true);
+
+        tutStep(1, "Pick the preset");
+        ImGui::TextWrapped(
+            "Presets > #11 'P-LAB Apple-1 with Juke-Box (16 kB RAM)'. "
+            "The preset opens the Juke-Box window with the current RAM / "
+            "ROM jumper setting.");
+
+        tutStep(2, "Launch the Program Manager");
+        tutCode("BD00R");
+        ImGui::TextWrapped(
+            "The Program Manager prints '&' as its prompt. This is the "
+            "Juke-Box's own command shell — it runs inside the EEPROM "
+            "ROM.");
+
+        tutStep(3, "Catalog + load");
+        ImGui::TextWrapped(
+            "Type `C` at the '&' prompt to list programs. Then `L<letter>` "
+            "to load a program by its single-letter tag. `B` runs Apple "
+            "Integer BASIC, `LA` reloads BASIC from the EEPROM.");
+
+        tutStep(4, "Save RAM -> EEPROM");
+        ImGui::TextWrapped(
+            "From Wozmon:");
+        tutCode("B800R");
+        ImGui::TextWrapped(
+            "The Save Program routine writes your current RAM contents "
+            "back to the EEPROM — but ONLY if the simulated RW jumper is "
+            "on. Check the Juke-Box window for the jumper toggle.");
+
+        tutStep(5, "Flip the jumper");
+        ImGui::TextWrapped(
+            "Two configurations:");
+        bulletWrapped("RAM-16 / ROM-32: ROM at $4000-$BFFF (Juke-Box owns the whole expansion space).");
+        bulletWrapped("RAM-32 / ROM-16: ROM at $8000-$BFFF only (16 kB of extra RAM at $4000).");
+
+        ImGui::Spacing();
+        ImGui::Separator();
+        ImGui::TextColored(ImVec4(0.90f, 0.70f, 0.60f, 1.0f), "Notes");
+        bulletWrapped("Mutually exclusive with CFFA1, microSD, Krusader, and Wi-Fi Modem (all inside the $4000-$BFFF window).");
+        bulletWrapped("Firmware signature: byte at EEPROM offset $7D00 must be $A5 (first byte of the Program Manager).");
+        bulletWrapped("Build roms/jukebox.rom via doc/JUKEBOX_ROM_CREATOR/build_jukebox_rom.py — P-LAB's 2-packer.sh makes subtly different layouts.");
+        bulletWrapped("See Hardware Reference > P-LAB Apple-1 Juke-Box for the EEPROM map.");
+        ImGui::EndChild();
+    }
+    ImGui::End();
+}
+
+void MainWindow_ImGui::renderTutorialTerminalCardWindow()
+{
+    ImGuiIO& io = ImGui::GetIO();
+    ImGui::SetNextWindowSize(ImVec2(480.0f, 460.0f), ImGuiCond_FirstUseEver);
+    ImGui::SetNextWindowPos(ImVec2(io.DisplaySize.x * 0.23f, io.DisplaySize.y * 0.17f),
+                            ImGuiCond_FirstUseEver);
+    applyPendingLayout("Tutorial: P-LAB Terminal Card");
+    if (ImGui::Begin("Tutorial: P-LAB Terminal Card", &showTutorialTerminalCard)) {
+        ImGui::TextWrapped(
+            "The Terminal Card turns POM1 into a TCP server: point a "
+            "telnet client at localhost:6502 and you drive the Apple-1 "
+            "from your terminal. Passive bridge — no CPU overhead, no "
+            "new ROM. Desktop only (WASM has no raw sockets).");
+        ImGui::BeginChild("tut_term_scroll", ImVec2(0, 0), true);
+
+        tutStep(1, "Plug the card");
+        ImGui::TextWrapped(
+            "Hardware > P-LAB Terminal Card, or launch with --terminal "
+            "(forces it on top of any preset).");
+
+        tutStep(2, "Connect a client");
+        tutCode("telnet localhost 6502");
+        ImGui::TextWrapped(
+            "POM1 sends IAC WILL ECHO + IAC WILL SUPPRESS-GO-AHEAD on "
+            "accept so the client flips to character-at-a-time mode. "
+            "IPv6 ::1 is refused — `telnet localhost` falls back to "
+            "127.0.0.1 automatically.");
+
+        tutStep(3, "Control keys");
+        ImGui::TextWrapped(
+            "Each has an ESC-prefixed alternate for tty line disciplines "
+            "that eat Ctrl-T / Ctrl-O / Ctrl-R before telnet sees them.");
+        bulletWrapped("Ctrl-T / ESC T - toggle 8-bit raw mode.");
+        bulletWrapped("Ctrl-O / ESC O - toggle uppercase output.");
+        bulletWrapped("Ctrl-I / ESC I - toggle uppercase input.");
+        bulletWrapped("Ctrl-L / ESC L - clear the Apple-1 screen.");
+        bulletWrapped("Ctrl-R / ESC R - warm reset.");
+        bulletWrapped("Ctrl-H / ESC H - hard reset (wipes RAM, reloads ROMs).");
+
+        tutStep(4, "Scripted use");
+        ImGui::TextWrapped(
+            "Python test scripts under tools/test_*_telnet.py use this "
+            "card to drive ACI / microSD / Juke-Box programs without "
+            "manual keypresses.");
+
+        ImGui::Spacing();
+        ImGui::Separator();
+        ImGui::TextColored(ImVec4(0.90f, 0.70f, 0.60f, 1.0f), "Notes");
+        bulletWrapped("7-bit mode: CR->CRLF translation + forced uppercase (default). 8-bit raw bypasses both (for ANSI terminal apps).");
+        bulletWrapped("Composes with every other card - pure sniffer on $D012, no bus conflicts.");
+        bulletWrapped("See Hardware Reference > P-LAB Terminal Card for the full control reference.");
+        ImGui::EndChild();
+    }
+    ImGui::End();
+}
+
+void MainWindow_ImGui::renderTutorialKrusaderWindow()
+{
+    ImGuiIO& io = ImGui::GetIO();
+    ImGui::SetNextWindowSize(ImVec2(480.0f, 460.0f), ImGuiCond_FirstUseEver);
+    ImGui::SetNextWindowPos(ImVec2(io.DisplaySize.x * 0.22f, io.DisplaySize.y * 0.17f),
+                            ImGuiCond_FirstUseEver);
+    applyPendingLayout("Tutorial: Krusader");
+    if (ImGui::Begin("Tutorial: Krusader", &showTutorialKrusader)) {
+        ImGui::TextWrapped(
+            "Krusader is Ken WESSEN's 6502 mini-assembler + disassembler "
+            "+ mini-debugger, rolled into an 8 KB ROM at $A000-$BFFF on "
+            "Vince Briel's Replica-1. POM1 ships the v1.3 ROM; preset #3 "
+            "loads it next to Integer BASIC.");
+        ImGui::BeginChild("tut_krus_scroll", ImVec2(0, 0), true);
+
+        tutStep(1, "Enter Krusader");
+        ImGui::TextWrapped("From the Woz Monitor '\\' prompt:");
+        tutCode("F000R");
+        ImGui::TextWrapped(
+            "Krusader's '!' prompt appears. Type '?' for the command "
+            "summary.");
+
+        tutStep(2, "Assemble a tiny program");
+        ImGui::TextWrapped("Krusader takes standard 6502 mnemonics:");
+        tutCode(
+            "A300         <-- assemble starting at $0300\n"
+            "LDA #$01\n"
+            "STA $D012    <-- write to Apple 1 display\n"
+            "RTS\n"
+            "<blank line exits the assembler>");
+
+        tutStep(3, "Disassemble what you wrote");
+        tutCode("L300");
+        ImGui::TextWrapped(
+            "Krusader lists the assembled bytes back as mnemonics. "
+            "Handy for verifying a hex paste or reverse-engineering a "
+            "binary you just loaded from tape.");
+
+        tutStep(4, "Single-step a routine");
+        tutCode(
+            "M300        <-- mini-monitor / step mode\n"
+            "<space>     <-- single-step one instruction\n"
+            "G           <-- go / continue");
+        ImGui::TextWrapped(
+            "The monitor prints A/X/Y/S/P + the opcode at PC before "
+            "each step. ESC returns to the '!' prompt.");
+
+        tutStep(5, "Exit");
+        tutCode("^C           <-- back to Krusader '!' prompt\nQ            <-- Krusader -> Woz Monitor");
+
+        ImGui::Spacing();
+        ImGui::Separator();
+        ImGui::TextColored(ImVec4(0.90f, 0.70f, 0.60f, 1.0f), "Notes");
+        bulletWrapped("Krusader lives in 8 KB ROM at $A000-$BFFF — mutually exclusive with CFFA1, microSD and Juke-Box (same bus window).");
+        bulletWrapped("Integer BASIC ($E000) and Krusader ($A000) coexist — switch between them with E000R / F000R.");
+        bulletWrapped("`--disable krusader` is a no-op at runtime: ROM unload needs a hard reset. Use a Krusader-less preset instead.");
+        bulletWrapped("v1.3 is the shipped ROM; v1.5 adds more 65C02 opcodes if you patch the ROM manually.");
         ImGui::EndChild();
     }
     ImGui::End();

@@ -280,16 +280,45 @@ void MainWindow_ImGui::renderMenuBar()
         if (ImGui::BeginMenu("Help")) {
             ImGui::MenuItem("Welcome", nullptr, &showWelcome);
             if (ImGui::BeginMenu("Tutorials")) {
+                // Software / getting started
                 ImGui::MenuItem("Integer BASIC: write your first program",
                                 nullptr, &showTutorialIntegerBasic);
                 ImGui::MenuItem("Applesoft Lite: write your first program",
                                 nullptr, &showTutorialApplesoft);
-                ImGui::MenuItem("microSD: load and save programs",
-                                nullptr, &showTutorialMicroSD);
+                ImGui::MenuItem("Krusader: assemble + disassemble + step",
+                                nullptr, &showTutorialKrusader);
+                ImGui::Separator();
+                // 1976-era hardware
                 ImGui::MenuItem("Cassette (ACI): load a program from tape",
                                 nullptr, &showTutorialCassette);
+                ImGui::MenuItem("SWTPC GT-6144: first commercial graphics card",
+                                nullptr, &showTutorialGT6144);
+                ImGui::MenuItem("SWTPC PR-40: Jobs' 40-column printer",
+                                nullptr, &showTutorialPR40);
+                ImGui::Separator();
+                // Community hardware
+                ImGui::MenuItem("Uncle Bernie's GEN2 HGR: NTSC color graphics",
+                                nullptr, &showTutorialGEN2HGR);
+                ImGui::MenuItem("CFFA1: ProDOS CompactFlash storage",
+                                nullptr, &showTutorialCFFA1);
+                ImGui::Separator();
+                // P-LAB family
+                ImGui::MenuItem("microSD: load and save programs",
+                                nullptr, &showTutorialMicroSD);
+                ImGui::MenuItem("A1-SID / A1-AUDIO SE: MOS 6581 / 8580 sound",
+                                nullptr, &showTutorialSID);
+                ImGui::MenuItem("P-LAB TMS9918: VDP graphics + sprites",
+                                nullptr, &showTutorialTMS9918);
+                ImGui::MenuItem("P-LAB I/O Board & RTC: DS3231 / analog I/O",
+                                nullptr, &showTutorialA1IORTC);
+                ImGui::MenuItem("P-LAB Juke-Box: EEPROM program library",
+                                nullptr, &showTutorialJukeBox);
                 ImGui::MenuItem("Wi-Fi Modem: connect to a telnet BBS",
                                 nullptr, &showTutorialModemBBS);
+#if !POM1_IS_WASM
+                ImGui::MenuItem("P-LAB Terminal Card: drive POM1 via telnet",
+                                nullptr, &showTutorialTerminalCard);
+#endif
                 ImGui::EndMenu();
             }
             ImGui::MenuItem("Hardware Reference", nullptr, &showHardwareReference);

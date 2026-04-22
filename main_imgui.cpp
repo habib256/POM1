@@ -276,6 +276,24 @@ int main(int argc, char* argv[])
     // NE PAS activer NavEnableKeyboard - le clavier est pour l'Apple 1, pas pour ImGui!
     // io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
     // io.ConfigFlags |= ImGuiConfigFlags_DockingEnable; // Disponible seulement dans la branche docking
+    // Disable ImGui's automatic imgui.ini load/save. POM1 manages per-preset
+    // ini files under ini/imgui_preset_NN.ini manually via
+    // MainWindow_ImGui::savePresetLayout / loadPresetLayout — called on
+    // every applyMachineConfig and on clean shutdown.
+    io.IniFilename = nullptr;
+#if !POM1_IS_WASM
+    // Create the per-preset ini directory up front so the first preset
+    // load/save doesn't race the lazy path and so users can see the folder
+    // exists before they start dragging windows around.
+    {
+        std::error_code ec;
+        std::filesystem::create_directories("ini", ec);
+        if (ec) {
+            pom1::log().warn("POM1",
+                "could not create ini/: " + ec.message());
+        }
+    }
+#endif
 
     // Charger les polices
     ImFontConfig fontConfig;
@@ -457,7 +475,11 @@ int main(int argc, char* argv[])
         glfwSwapBuffers(window);
     }
 
-    // Cleanup
+    // Cleanup — save the active preset's ini BEFORE DestroyContext() so
+    // ImGui still has its window-position state available to write.
+    if (mainWindow.getActivePresetIndex() >= 0) {
+        mainWindow.savePresetLayout(mainWindow.getActivePresetIndex());
+    }
     ImGui_ImplOpenGL3_Shutdown();
     ImGui_ImplGlfw_Shutdown();
     ImGui::DestroyContext();

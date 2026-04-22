@@ -10,10 +10,19 @@
 #include "MainWindow_ImGui.h"
 #include "MainWindow_Internal.h"
 #include "POM1Build.h"
+#include "Logger.h"
 
 #include "imgui.h"
+#include "imgui_internal.h"
+
+#if !POM1_IS_WASM
+#include <GLFW/glfw3.h>
+#endif
 
 #include <algorithm>
+#include <cstdio>
+#include <filesystem>
+#include <fstream>
 #include <string>
 #include <string_view>
 
@@ -31,6 +40,24 @@ namespace pom1::mainwindow::detail {
 // logic in applyMachineConfig / setXxxEnabled mirrors real bus conflicts
 // (SID ↔ SID-SE, TMS9918 ↔ SID-SE, GEN2 ↔ A1-IO, Juke-Box ↔ CFFA1/microSD/
 // Krusader/Wi-Fi Modem). See CLAUDE.md for the rationale.
+// Layout design notes:
+//   - Every preset uses the same canonical POM1 Fantasy frame:
+//         Apple 1 Screen at (10, 61) size (843, 701)  ← LEFT column
+//         Right column: x=858, width=338, y range 61..764
+//         Resulting GLFW window: 1206 × 807 (matches preset 14).
+//   - Right column is split top/bottom for every preset. The TOP slot
+//     (y=61, height≈223) carries the tutorial most relevant to the
+//     preset; the BOTTOM slot (y=288, height≈476) carries the
+//     peripheral's own visualisation panel (or a second useful window
+//     if the card has no dedicated panel: CFFA1, microSD, SID).
+//   - Preset 14 (POM1 Multiplexing Fantasy) is the shipped "default"
+//     preset — its layout MUST stay byte-identical to the canonical
+//     imgui.ini screenshot reference (the README mentions it). Don't
+//     touch. Every other preset mirrors its geometry.
+//   - Preset 12 (P-LAB Multiplexing Fantasy) is the only exception
+//     that departs from the tutorial+peripheral template: it's the
+//     "everything plugged" fantasy and stacks 3 peripherals in the
+//     right column instead of a tutorial.
 const MachineConfig kMachinePresets[] = {
     //                                  GEN2  uSD  SID  TMS  RTC  WiFi Term Krus CFFA ACI  RAM  BASIC              SID-SE
     {
@@ -42,7 +69,11 @@ const MachineConfig kMachinePresets[] = {
         /*sidSE*/ false,
         /*jukeBox*/ false, JukeBox::Jumper::RAM16_ROM32,
         /*gt6144*/ false,
-        { {"Apple 1 Screen", {10,61}, {0,0}} }, 1
+        // Nothing in the right column — the bare 1976 machine is the
+        // minimalist preset; the Welcome panel would be a distraction.
+        {
+            {"Apple 1 Screen", {10, 61}, {843, 701}},
+        }, 1
     },
     {
         "Apple-1 with ACI & Integer BASIC (October 1976)",
@@ -53,7 +84,11 @@ const MachineConfig kMachinePresets[] = {
         /*sidSE*/ false,
         /*jukeBox*/ false, JukeBox::Jumper::RAM16_ROM32,
         /*gt6144*/ false,
-        { {"Apple 1 Screen", {10,61}, {0,0}} }, 1
+        {
+            {"Apple 1 Screen",           {10,  61},  {843, 701}},
+            {"Tutorial: Cassette (ACI)", {858, 61},  {338, 223}},
+            {"Apple-1 Cassette Deck",    {858, 288}, {338, 476}},
+        }, 3
     },
     {
         "Apple-1 + SWTPC GT-6144 Graphic Terminal (1976)",
@@ -72,11 +107,12 @@ const MachineConfig kMachinePresets[] = {
         /*jukeBox*/ false, JukeBox::Jumper::RAM16_ROM32,
         /*gt6144*/ true,
         {
-            {"Apple 1 Screen",                    {10,  61}, {0,   0}},
-            // 656 x 516 = 4:3 raster (640x480) + ImGui chrome, matches the
-            // stock TV / composite monitor the 64x96 matrix was designed for.
-            {"SWTPC GT-6144 Graphic Terminal",    {640, 61}, {656, 516}},
-        }, 2
+            {"Apple 1 Screen",                 {10,  61},  {843, 701}},
+            {"Tutorial: SWTPC GT-6144",        {858, 61},  {338, 223}},
+            // 4:3 content lives inside whatever size we give the window;
+            // GL_NEAREST stretches the 64x96 texture horizontally 2x.
+            {"SWTPC GT-6144 Graphic Terminal", {858, 288}, {338, 476}},
+        }, 3
     },
     {
         "Replica-1 with ACI, Krusader & Integer BASIC (Briel 2003)",
@@ -87,7 +123,11 @@ const MachineConfig kMachinePresets[] = {
         /*sidSE*/ false,
         /*jukeBox*/ false, JukeBox::Jumper::RAM16_ROM32,
         /*gt6144*/ false,
-        { {"Apple 1 Screen", {10,61}, {0,0}} }, 1
+        {
+            {"Apple 1 Screen",        {10,  61},  {843, 701}},
+            {"Tutorial: Krusader",    {858, 61},  {338, 223}},
+            {"Apple-1 Cassette Deck", {858, 288}, {338, 476}},
+        }, 3
     },
     {
         "Replica-1 with CFFA1 & Applesoft Lite (Dreher 2007)",
@@ -98,7 +138,14 @@ const MachineConfig kMachinePresets[] = {
         /*sidSE*/ false,
         /*jukeBox*/ false, JukeBox::Jumper::RAM16_ROM32,
         /*gt6144*/ false,
-        { {"Apple 1 Screen", {10,61}, {0,0}} }, 1
+        {
+            // CFFA1 has no dedicated window (transparent storage); pair
+            // the storage tutorial with the BASIC tutorial since the
+            // preset boots Applesoft Lite by default.
+            {"Apple 1 Screen",                {10,  61},  {843, 701}},
+            {"Tutorial: CFFA1 CompactFlash",  {858, 61},  {338, 223}},
+            {"Tutorial: Applesoft Lite",           {858, 288}, {338, 476}},
+        }, 3
     },
     {
         "P-LAB Apple-1 with microSD & Applesoft Lite (April 2022)",
@@ -110,8 +157,13 @@ const MachineConfig kMachinePresets[] = {
         /*jukeBox*/ false, JukeBox::Jumper::RAM16_ROM32,
         /*gt6144*/ false,
         {
-            {"Apple 1 Screen", {10, 61}, {0, 0}},
-        }, 1
+            // microSD is also transparent storage — no dedicated panel.
+            // Show both the storage tutorial and the Applesoft one since
+            // the microSD preset boots into Applesoft Lite.
+            {"Apple 1 Screen",        {10,  61},  {843, 701}},
+            {"Tutorial: microSD",     {858, 61},  {338, 223}},
+            {"Tutorial: Applesoft Lite",   {858, 288}, {338, 476}},
+        }, 3
     },
     {   //                                  GEN2  uSD  SID  TMS  RTC  WiFi Term Krus CFFA ACI
         "P-LAB Apple-1 with A1-SID Sound Card ($C800-$CFFF)",
@@ -123,8 +175,12 @@ const MachineConfig kMachinePresets[] = {
         /*jukeBox*/ false, JukeBox::Jumper::RAM16_ROM32,
         /*gt6144*/ false,
         {
-            {"Apple 1 Screen", {10, 61}, {0, 0}},
-        }, 1
+            // A1-SID has no dedicated window (audio-only). Tutorial fills
+            // the right column full height so there's room for the full
+            // register-poke example.
+            {"Apple 1 Screen",                  {10,  61}, {843, 701}},
+            {"Tutorial: A1-SID / A1-AUDIO SE", {858, 61}, {338, 703}},
+        }, 2
     },
     {   //                                  GEN2  uSD  SID  TMS  RTC  WiFi Term Krus CFFA ACI
         "P-LAB Apple-1 with A1-AUDIO Special Edition ($CC00-$CC1F)",
@@ -137,8 +193,9 @@ const MachineConfig kMachinePresets[] = {
         /*jukeBox*/ false, JukeBox::Jumper::RAM16_ROM32,
         /*gt6144*/ false,
         {
-            {"Apple 1 Screen", {10, 61}, {0, 0}},
-        }, 1
+            {"Apple 1 Screen",                 {10,  61}, {843, 701}},
+            {"Tutorial: A1-SID / A1-AUDIO SE", {858, 61}, {338, 703}},
+        }, 2
     },
     {   //                                  GEN2  uSD  SID  TMS  RTC  WiFi Term Krus CFFA ACI
         "P-LAB Apple-1 with TMS9918 Graphic Card",
@@ -150,9 +207,10 @@ const MachineConfig kMachinePresets[] = {
         /*jukeBox*/ false, JukeBox::Jumper::RAM16_ROM32,
         /*gt6144*/ false,
         {
-            {"Apple 1 Screen",               {10,  61}, {0,   0}},
-            {"P-LAB Graphic Card (TMS9918)", {640, 61}, {784, 612}},
-        }, 2
+            {"Apple 1 Screen",               {10,  61},  {843, 701}},
+            {"Tutorial: P-LAB TMS9918",      {858, 61},  {338, 223}},
+            {"P-LAB Graphic Card (TMS9918)", {858, 288}, {338, 476}},
+        }, 3
     },
     {   //                                  GEN2  uSD  SID  TMS  RTC  WiFi Term Krus CFFA ACI
         "P-LAB Apple-1 with I/O Board & RTC",
@@ -164,9 +222,10 @@ const MachineConfig kMachinePresets[] = {
         /*jukeBox*/ false, JukeBox::Jumper::RAM16_ROM32,
         /*gt6144*/ false,
         {
-            {"Apple 1 Screen",        {10,  61},  {0,   0}},
-            {"P-LAB I/O Board & RTC", {640, 61},  {380, 280}},
-        }, 2
+            {"Apple 1 Screen",             {10,  61},  {843, 701}},
+            {"Tutorial: P-LAB A1-IO & RTC", {858, 61},  {338, 223}},
+            {"P-LAB I/O Board & RTC",      {858, 288}, {338, 476}},
+        }, 3
     },
     {   //                                  GEN2  uSD  SID  TMS  RTC  WiFi Term Krus CFFA ACI
         "P-LAB Apple-1 with Wi-Fi Modem BBS",
@@ -178,9 +237,10 @@ const MachineConfig kMachinePresets[] = {
         /*jukeBox*/ false, JukeBox::Jumper::RAM16_ROM32,
         /*gt6144*/ false,
         {
-            {"Apple 1 Screen",    {10,  61},  {0,   0}},
-            {"P-LAB Wi-Fi Modem", {640, 61},  {340, 260}},
-        }, 2
+            {"Apple 1 Screen",             {10,  61},  {843, 701}},
+            {"Tutorial: Wi-Fi Modem BBS",  {858, 61},  {338, 223}},
+            {"P-LAB Wi-Fi Modem",          {858, 288}, {338, 476}},
+        }, 3
     },
     {   //                                  GEN2  uSD  SID  TMS  RTC  WiFi Term Krus CFFA ACI
         "P-LAB Apple-1 with Juke-Box (16 kB RAM)",
@@ -197,9 +257,10 @@ const MachineConfig kMachinePresets[] = {
         /*jukeBox*/ true, JukeBox::Jumper::RAM16_ROM32,
         /*gt6144*/ false,
         {
-            {"Apple 1 Screen",    {10,  61}, {0,   0}},
-            {"P-LAB Juke-Box",    {640, 61}, {360, 260}},
-        }, 2
+            {"Apple 1 Screen",           {10,  61},  {843, 701}},
+            {"Tutorial: P-LAB Juke-Box", {858, 61},  {338, 223}},
+            {"P-LAB Juke-Box",           {858, 288}, {338, 476}},
+        }, 3
     },
     {   //                                  GEN2  uSD  SID  TMS  RTC  WiFi Term Krus CFFA ACI
         "P-LAB Apple-1 Multiplexing Fantasy",
@@ -215,12 +276,15 @@ const MachineConfig kMachinePresets[] = {
         /*jukeBox*/ false, JukeBox::Jumper::RAM16_ROM32,
         /*gt6144*/ false,
         {
-            {"Apple 1 Screen",               {10,  61},  {0,   0}},
-            {"P-LAB Graphic Card (TMS9918)", {640, 61},  {784, 612}},
-            {"P-LAB Wi-Fi Modem",            {640, 495}, {340, 260}},
-            {"P-LAB Terminal Card",          {10,  510}, {360, 280}},
-            {"P-LAB I/O Board & RTC",        {740, 495}, {380, 280}},
-        }, 5
+            // P-LAB Fantasy departs from the tutorial+peripheral template:
+            // the right column stacks three cards so the user can see
+            // TMS9918 + Modem + I/O at once. Terminal Card + PR-40 stay
+            // plugged but hidden (open via the Hardware menu if needed).
+            {"Apple 1 Screen",               {10,  61},  {843, 701}},
+            {"P-LAB Graphic Card (TMS9918)", {858, 61},  {338, 340}},
+            {"P-LAB Wi-Fi Modem",            {858, 406}, {338, 160}},
+            {"P-LAB I/O Board & RTC",        {858, 571}, {338, 193}},
+        }, 4
     },
     {
         "Uncle Bernie's Apple-1 with GEN2 HGR Color (April 2026)",
@@ -232,9 +296,10 @@ const MachineConfig kMachinePresets[] = {
         /*jukeBox*/ false, JukeBox::Jumper::RAM16_ROM32,
         /*gt6144*/ false,
         {
-            {"Apple 1 Screen",                 {10,  61}, {0,   0}},
-            {"Uncle Bernie's GEN2 HGR Graphic Card", {624, 61}, {576, 420}},
-        }, 2
+            {"Apple 1 Screen",                       {10,  61},  {843, 701}},
+            {"Tutorial: Uncle Bernie's GEN2 HGR",    {858, 61},  {338, 223}},
+            {"Uncle Bernie's GEN2 HGR Graphic Card", {858, 288}, {338, 476}},
+        }, 3
     },
     {
         "POM1 Apple-1 Multiplexing Fantasy (2026)",
@@ -314,6 +379,61 @@ void MainWindow_ImGui::applyMachineConfig(int presetIndex)
     if (presetIndex < 0 || presetIndex >= kMachinePresetCount) return;
     const MachineConfig& cfg = kMachinePresets[presetIndex];
 
+    // Save the OUTGOING preset's layout (ImGui window positions + GLFW
+    // window size) before we swap anything. Skipped on boot (activePreset
+    // is -1) and on self-reapply (same index — nothing to migrate).
+    if (activePresetIndex >= 0 && activePresetIndex != presetIndex) {
+        savePresetLayout(activePresetIndex);
+    }
+
+    // Reset transient UI state (dialogs, tutorial windows, help viewers,
+    // Memory Viewer / Debugger / Memory Map, card windows) so windows
+    // that were open under the outgoing preset don't stay open under
+    // the incoming one — the incoming preset's layout table is the sole
+    // source of truth for what's visible. Each `showXxx` is then
+    // re-enabled by the layout-driven auto-show loop further below, if
+    // the new preset declares that panel.
+    showAbout                = false;
+    showSpecialThanks        = false;
+    showHardwareReference    = false;
+    showSoftwareReference    = false;
+    showWelcome              = false;
+    showTutorialIntegerBasic = false;
+    showTutorialApplesoft    = false;
+    showTutorialMicroSD      = false;
+    showTutorialCassette     = false;
+    showTutorialModemBBS     = false;
+    showTutorialGT6144       = false;
+    showTutorialPR40         = false;
+    showTutorialTMS9918      = false;
+    showTutorialA1IORTC      = false;
+    showTutorialSID          = false;
+    showTutorialGEN2HGR      = false;
+    showTutorialCFFA1        = false;
+    showTutorialJukeBox      = false;
+    showTutorialTerminalCard = false;
+    showTutorialKrusader     = false;
+    showScreenConfig         = false;
+    showMemoryConfig         = false;
+    showLoadDialog           = false;
+    showLoadTapeDialog       = false;
+    showCassetteControl      = false;
+    showCassetteDeck         = false;
+    showMemoryMap            = false;
+    // showMemoryViewer / showDebugger are kept across switches — they're
+    // debug tools that users actively work with, not preset-bound panels.
+
+    // Clear ImGui's accumulated window settings before loading the
+    // incoming preset's ini. Without this, each per-preset ini grows on
+    // every save to include every window ever seen across any preset
+    // (TMS9918 entries end up in the Bare Apple-1 ini, etc.) because
+    // LoadIniSettingsFromDisk merges into an already-populated settings
+    // store. Clearing first guarantees each ini contains only the
+    // windows that actually live in its preset.
+    if (ImGuiContext* ctx = ImGui::GetCurrentContext()) {
+        ctx->SettingsWindows.clear();
+    }
+
     // Show POM1 banner only for the last preset (POM1 Fantasy)
     screen->setShowBanner(presetIndex == kMachinePresetCount - 1);
 
@@ -391,19 +511,55 @@ void MainWindow_ImGui::applyMachineConfig(int presetIndex)
     showTerminalCard         = false;
 #endif
     pr40Enabled              = cfg.pr40Printer;
-    showPR40                 = cfg.pr40Printer;
+    showPR40                 = false;
     gt6144Enabled            = cfg.gt6144;
-    showGT6144               = cfg.gt6144;
+    showGT6144               = false;
+    showCassetteDeck         = false;
+    showWelcome              = false;
 
-    // The default POM1 preset (last in the list) boots with the procedural
-    // cassette deck and the Welcome panel already open to match the
-    // canonical screenshot layout. Any other preset starts with these
-    // auxiliary windows closed — the user opens them from the File / Help
-    // menus when wanted. The Welcome panel only "greets" on that preset;
-    // the user can still reopen it from Help > Welcome at any time.
-    const bool isDefaultPreset = (presetIndex == kMachinePresetCount - 1);
-    showCassetteDeck = isDefaultPreset;
-    showWelcome      = isDefaultPreset;
+    // Layout-driven auto-show: every panel named in the preset's layout
+    // table opens on load. This replaces the old per-flag "show on preset
+    // apply" rules (hardcoded showCassetteDeck / showWelcome for the
+    // default POM1 preset, and the cfg.pr40Printer / cfg.gt6144 shortcuts
+    // used previously). Keeping the decision in the layout table means
+    // every preset can independently declare which panels to open, and
+    // POM1 Fantasy — whose layout lists "Apple 1 Screen" + "Welcome" +
+    // "Apple-1 Cassette Deck" — still boots with the same three windows
+    // as before.
+    for (int i = 0; i < cfg.layoutCount; ++i) {
+        const std::string_view n = cfg.layout[i].name;
+        // Peripheral / auxiliary windows
+        if      (n == "Uncle Bernie's GEN2 HGR Graphic Card") showGraphicsCard = true;
+        else if (n == "P-LAB Graphic Card (TMS9918)")         showTMS9918      = true;
+        else if (n == "P-LAB I/O Board & RTC")                showA1IO_RTC     = true;
+        else if (n == "P-LAB Wi-Fi Modem")                    showWiFiModem    = true;
+        else if (n == "P-LAB Juke-Box")                       showJukeBox      = true;
+#if !POM1_IS_WASM
+        else if (n == "P-LAB Terminal Card")                  showTerminalCard = true;
+#endif
+        else if (n == "SWTPC PR-40 Printer")                  showPR40         = true;
+        else if (n == "SWTPC GT-6144 Graphic Terminal")       showGT6144       = true;
+        else if (n == "Apple-1 Cassette Deck")                showCassetteDeck = true;
+        else if (n == "Welcome")                              showWelcome      = true;
+        // Tutorial windows — names MUST match the titles used in
+        // renderTutorialXxxWindow() calls (MainWindow_Dialogs.cpp).
+        else if (n == "Tutorial: Integer BASIC")              showTutorialIntegerBasic = true;
+        else if (n == "Tutorial: Applesoft Lite")                  showTutorialApplesoft    = true;
+        else if (n == "Tutorial: microSD")                    showTutorialMicroSD      = true;
+        else if (n == "Tutorial: Cassette (ACI)")             showTutorialCassette     = true;
+        else if (n == "Tutorial: Wi-Fi Modem BBS")            showTutorialModemBBS     = true;
+        else if (n == "Tutorial: SWTPC GT-6144")              showTutorialGT6144       = true;
+        else if (n == "Tutorial: SWTPC PR-40 Printer")        showTutorialPR40         = true;
+        else if (n == "Tutorial: P-LAB TMS9918")              showTutorialTMS9918      = true;
+        else if (n == "Tutorial: P-LAB A1-IO & RTC")          showTutorialA1IORTC      = true;
+        else if (n == "Tutorial: A1-SID / A1-AUDIO SE")       showTutorialSID          = true;
+        else if (n == "Tutorial: Uncle Bernie's GEN2 HGR")    showTutorialGEN2HGR      = true;
+        else if (n == "Tutorial: CFFA1 CompactFlash")         showTutorialCFFA1        = true;
+        else if (n == "Tutorial: P-LAB Juke-Box")             showTutorialJukeBox      = true;
+        else if (n == "Tutorial: P-LAB Terminal Card")        showTutorialTerminalCard = true;
+        else if (n == "Tutorial: Krusader")                   showTutorialKrusader     = true;
+        // "Apple 1 Screen" is always visible and has no show flag.
+    }
 
     // Stash deferred plug intents. Every card that needs to be on for
     // this preset is queued here; the single pendingCardEnableFrames
@@ -485,7 +641,9 @@ void MainWindow_ImGui::applyMachineConfig(int presetIndex)
             loadedRoms.push_back({"CFFA1 Firmware", 0x9000, 0xAFDF});
     }
 
-    // Populate pending layout positions
+    // Populate pending layout positions. These are `FirstUseEver` hints
+    // applied in applyPendingLayout(); they only take effect for windows
+    // that don't already have an entry in the loaded ini file below.
     pendingLayout.clear();
     for (int i = 0; i < cfg.layoutCount; i++) {
         const auto& p = cfg.layout[i];
@@ -495,6 +653,40 @@ void MainWindow_ImGui::applyMachineConfig(int presetIndex)
     if (cfg.jukeBox)
         evictMemoryMapRegionsForJukeBox();
 
+    // Try loading the INCOMING preset's saved layout. When found, ImGui
+    // merges the file's window states into the live context — windows that
+    // were positioned by hand in a previous session snap back. When no file
+    // exists (first time this preset is used), the pendingLayout defaults
+    // above provide the initial arrangement and the GLFW OS window is
+    // sized to contain it via computePresetLayoutExtent.
+    const bool layoutLoaded = loadPresetLayout(presetIndex);
+#if !POM1_IS_WASM
+    if (!layoutLoaded && window) {
+        // No saved size — derive a default OS-window bounding box from the
+        // preset's layout table. Needs a fallback extent for the Apple 1
+        // screen itself (whose default size depends on font metrics).
+        ImGui::PushFont(ImGui::GetIO().Fonts->Fonts[0]);
+        const ImVec2 charSize = ImGui::CalcTextSize("M");
+        ImGui::PopFont();
+        const ImVec2 cell = Screen_ImGui::computeApple1CellDimensions(charSize);
+        const float sw = cell.x * Screen_ImGui::kApple1Columns * screen->scale
+                         + kApple1ImGuiWinPadW;
+        const float sh = cell.y * Screen_ImGui::kApple1Rows * screen->scale
+                         + kApple1ImGuiWinPadH;
+        const ImVec2 extent = computePresetLayoutExtent(cfg, ImVec2(sw, sh));
+        const float rightPad  = 10.0f;
+        const float bottomPad = kStatusBarBandHeight + kApple1WindowDecorationSlop;
+        int glfwW = static_cast<int>(sw) + kApple1GlfwExtraW;
+        int glfwH = static_cast<int>(std::ceil(sh + apple1LayoutVerticalChrome()));
+        if (extent.x > 0.0f && extent.y > 0.0f) {
+            glfwW = std::max(glfwW, static_cast<int>(std::ceil(extent.x + rightPad)));
+            glfwH = std::max(glfwH, static_cast<int>(std::ceil(extent.y + bottomPad)));
+        }
+        glfwSetWindowSize(window, glfwW, glfwH);
+    }
+#endif
+
+    activePresetIndex = presetIndex;
     setStatusMessage(std::string("Preset: ") + cfg.name, 3.0f);
 }
 
@@ -507,4 +699,87 @@ const char* MainWindow_ImGui::getPresetName(int index)
 {
     if (index < 0 || index >= kMachinePresetCount) return nullptr;
     return kMachinePresets[index].name;
+}
+
+// ---------------------------------------------------------------------------
+// Per-preset layout persistence — each preset index has its own ini file in
+// ini/imgui_preset_NN.ini (ImGui-managed window positions/sizes) plus a
+// sidecar ini/preset_NN.size (text "W H" for the GLFW OS window). Swapping
+// presets saves the outgoing profile's layout and loads the incoming one.
+// The directory is created on demand the first time a save occurs.
+// ---------------------------------------------------------------------------
+
+namespace {
+
+std::string iniPathForPreset(int idx)
+{
+    char buf[48];
+    std::snprintf(buf, sizeof(buf), "ini/imgui_preset_%02d.ini", idx);
+    return std::string(buf);
+}
+
+std::string sizePathForPreset(int idx)
+{
+    char buf[48];
+    std::snprintf(buf, sizeof(buf), "ini/preset_%02d.size", idx);
+    return std::string(buf);
+}
+
+bool loadSizeFile(int idx, int& w, int& h)
+{
+    std::ifstream f(sizePathForPreset(idx));
+    return bool(f && (f >> w >> h)) && w > 0 && h > 0;
+}
+
+bool saveSizeFile(int idx, int w, int h)
+{
+    std::error_code ec;
+    std::filesystem::create_directories("ini", ec);
+    std::ofstream f(sizePathForPreset(idx));
+    if (!f) return false;
+    f << w << ' ' << h << '\n';
+    return bool(f);
+}
+
+} // namespace
+
+void MainWindow_ImGui::savePresetLayout(int idx) const
+{
+    if (idx < 0 || idx >= kMachinePresetCount) return;
+    std::error_code ec;
+    std::filesystem::create_directories("ini", ec);
+    if (ec) {
+        pom1::log().warn("Layout",
+            "create_directories(ini) failed: " + ec.message());
+        return;
+    }
+    const std::string iniPath = iniPathForPreset(idx);
+    ImGui::SaveIniSettingsToDisk(iniPath.c_str());
+    pom1::log().debug("Layout",
+        "Saved preset " + std::to_string(idx) + " → " + iniPath);
+#if !POM1_IS_WASM
+    if (window) {
+        int w = 0, h = 0;
+        glfwGetWindowSize(window, &w, &h);
+        if (w > 0 && h > 0) saveSizeFile(idx, w, h);
+    }
+#endif
+}
+
+bool MainWindow_ImGui::loadPresetLayout(int idx)
+{
+    if (idx < 0 || idx >= kMachinePresetCount) return false;
+    const std::string path = iniPathForPreset(idx);
+    std::error_code ec;
+    if (!std::filesystem::exists(path, ec)) return false;
+    ImGui::LoadIniSettingsFromDisk(path.c_str());
+#if !POM1_IS_WASM
+    if (window) {
+        int w = 0, h = 0;
+        if (loadSizeFile(idx, w, h)) {
+            glfwSetWindowSize(window, w, h);
+        }
+    }
+#endif
+    return true;
 }

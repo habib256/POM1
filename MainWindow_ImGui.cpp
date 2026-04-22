@@ -270,30 +270,14 @@ void MainWindow_ImGui::render()
         ImGui::SetNextWindowSize(ImVec2(sw, sh), ImGuiCond_FirstUseEver);
         firstFrame = false;
 
-        // Apply default preset now that ImGui is ready
+        // Apply default preset now that ImGui is ready. applyMachineConfig
+        // now handles the GLFW OS-window resize itself — either restoring
+        // the saved size from ini/preset_NN.size (if the user has run this
+        // preset before) or computing a default from the preset's layout
+        // extent. See MainWindow_Presets.cpp.
         int idx = (defaultPresetIndex >= 0 && defaultPresetIndex < kMachinePresetCount)
                   ? defaultPresetIndex : (kMachinePresetCount - 1);
         applyMachineConfig(idx);
-
-        // Resize GLFW window: if the active preset declares a multi-window
-        // layout (cassette deck, welcome, expansion panels…) we grow the OS
-        // window to contain everything shown by the preset. Otherwise we
-        // fall back to the historical "just fit the Apple 1 screen" size.
-#if !POM1_IS_WASM
-        if (window) {
-            const ImVec2 extent = computePresetLayoutExtent(
-                kMachinePresets[idx], ImVec2(sw, sh));
-            const float rightPad  = 10.0f;
-            const float bottomPad = kStatusBarBandHeight + kApple1WindowDecorationSlop;
-            int glfwW = (int)sw + kApple1GlfwExtraW;
-            int glfwH = (int)std::ceil(sh + apple1LayoutVerticalChrome());
-            if (extent.x > 0.0f && extent.y > 0.0f) {
-                glfwW = std::max(glfwW, (int)std::ceil(extent.x + rightPad));
-                glfwH = std::max(glfwH, (int)std::ceil(extent.y + bottomPad));
-            }
-            glfwSetWindowSize(window, glfwW, glfwH);
-        }
-#endif
         if (terminalCardOverride) {
             terminalCardEnabled = true;
             emulation->setTerminalCardEnabled(true);
@@ -460,6 +444,16 @@ void MainWindow_ImGui::render()
     if (showTutorialMicroSD) renderTutorialMicroSDWindow();
     if (showTutorialCassette) renderTutorialCassetteWindow();
     if (showTutorialModemBBS) renderTutorialModemBBSWindow();
+    if (showTutorialGT6144) renderTutorialGT6144Window();
+    if (showTutorialPR40) renderTutorialPR40Window();
+    if (showTutorialTMS9918) renderTutorialTMS9918Window();
+    if (showTutorialA1IORTC) renderTutorialA1IORTCWindow();
+    if (showTutorialSID) renderTutorialSIDWindow();
+    if (showTutorialGEN2HGR) renderTutorialGEN2HGRWindow();
+    if (showTutorialCFFA1) renderTutorialCFFA1Window();
+    if (showTutorialJukeBox) renderTutorialJukeBoxWindow();
+    if (showTutorialTerminalCard) renderTutorialTerminalCardWindow();
+    if (showTutorialKrusader) renderTutorialKrusaderWindow();
     if (showScreenConfig) renderScreenConfigDialog();
     if (showMemoryConfig) renderMemoryConfigDialog();
     if (showLoadDialog) renderLoadDialog();
