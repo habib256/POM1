@@ -73,21 +73,22 @@ mkdir -p        "$DATA_ROOT/cfcard"
 echo "==> Preparing DMG staging in $DMG_STAGE"
 rm -rf "$DMG_STAGE"
 mkdir -p "$DMG_STAGE"
-# Move (not copy) the staged .app into the DMG staging folder — the user
-# only cares about the final .dmg, and a stray dist/POM1.app alongside it
-# would be confusing. ditto preserves bundle attributes cleanly.
+# ditto preserves bundle attributes cleanly — matters for codesign later.
 ditto "$STAGING" "$DMG_STAGE/POM1.app"
 # Drag-to-/Applications shortcut, the canonical macOS installer gesture.
 ln -s /Applications "$DMG_STAGE/Applications"
+
+# Volume icon: same .icns as the app, shown on the mounted DMG in Finder
+# and on the .dmg file itself. The hidden `.VolumeIcon.icns` + SetFile -c
+# dance is the documented pattern (no supported alternative in Monterey+).
+cp packaging/macos/POM1.icns "$DMG_STAGE/.VolumeIcon.icns"
+
 # README the user sees right on the DMG window.
 cat > "$DMG_STAGE/README.txt" <<EOF
 POM1 — Apple 1 Emulator (macOS), version ${VERSION}
 =====================================================
 
 Install: drag POM1.app onto the Applications shortcut in this window.
-
-The app is fully self-contained — every ROM, program, cassette, and SD
-card image lives inside the bundle.
 
 The app is unsigned. On first run, macOS Gatekeeper blocks it:
 
@@ -98,16 +99,27 @@ The app is unsigned. On first run, macOS Gatekeeper blocks it:
 
 After one successful launch, Gatekeeper remembers the decision.
 
-Persistent saves (microSD SAVE / LOAD, CFFA1 writes)
-----------------------------------------------------
-These write inside POM1.app/Contents/MacOS/{sdcard,cfcard}/. macOS blocks
-writes under /Applications for non-admin users. For persistent saves,
-keep POM1.app somewhere writable:
-   ~/Applications/      (user-local, no admin needed)
-   ~/Desktop/
-   ~/Downloads/
+Where your saves live
+---------------------
+On first launch POM1 creates:
 
-Read-only play (games, demos, tapes) works from /Applications regardless.
+   ~/Library/Application Support/POM1/
+
+with the bundled ROMs / fonts / software / demos / cassettes as read-only
+symlinks back into POM1.app, plus real sdcard/, cfcard/, and ini/ folders
+where your work is kept:
+
+   sdcard/     Applesoft SAVE / microSD writes
+   cfcard/     CFFA1 disk writes (cfcard.po)
+   ini/        Per-preset window layouts
+
+These survive app updates. Install or uninstall POM1.app however you want
+(dragging anywhere on disk is fine, including /Applications); your data
+stays safe in ~/Library/Application Support/POM1/.
+
+To fully uninstall:
+   Trash POM1.app
+   rm -rf ~/Library/Application\ Support/POM1
 
 Credits + full docs: https://github.com/habib256/POM1
 Play in your browser: https://habib256.github.io/POM1/build-wasm/POM1.html
@@ -115,20 +127,40 @@ Play in your browser: https://habib256.github.io/POM1/build-wasm/POM1.html
 License: GPL-3.0.
 EOF
 
-# ---------- 5. DMG ------------------------------------------------------------
-echo "==> Building $DMGPATH"
+# ---------- 5. DMG build (two-pass: writable image → set icon attr → UDZO) ----
+# We write a scratch UDRW (read-write) image first so we can flip the
+# custom-volume-icon attribute bit on the mounted volume (SetFile -c icnC),
+# then convert to a compressed read-only UDZO for distribution. Doing this
+# directly on a -format UDZO fails because the image is read-only at that
+# point; -format UDRW + attach + SetFile + detach + convert is the
+# standard hdiutil dance for custom DMG icons.
+echo "==> Building $DMGPATH (with custom volume icon)"
 rm -f "$DMGPATH"
-# UDZO = zlib-compressed read-only image, the standard macOS distribution
-# format. Volume name matches the product for a clean Finder display.
+SCRATCH="dist/POM1-scratch.dmg"
+rm -f "$SCRATCH"
+
 hdiutil create -quiet \
     -volname "POM1 v${VERSION}" \
     -srcfolder "$DMG_STAGE" \
+    -format UDRW \
     -ov \
-    -format UDZO \
-    "$DMGPATH"
+    "$SCRATCH"
 
-# Staging is consumed by hdiutil — clean up so `dist/` only carries the
-# build artefacts (POM1.app raw staging + the final DMG).
+# Attach, set the custom-icon volume attribute, detach. `SetFile` lives in
+# /usr/bin since the command-line tools were installed (Xcode or CLT).
+MOUNT="$(hdiutil attach -nobrowse -readwrite -noverify -noautoopen "$SCRATCH" | \
+         awk -F '\t' '/Apple_HFS/ {print $3}')"
+if [[ -n "$MOUNT" && -e "$MOUNT/.VolumeIcon.icns" ]]; then
+    SetFile -a C "$MOUNT" 2>/dev/null || true
+fi
+hdiutil detach -quiet "$MOUNT"
+
+# Convert to the final compressed, read-only UDZO distributable.
+hdiutil convert -quiet -format UDZO -o "$DMGPATH" "$SCRATCH"
+rm -f "$SCRATCH"
+
+# Staging is consumed — clean up so `dist/` only carries the final DMG
+# and the raw .app (useful for ad-hoc debugging of the unbundled build).
 rm -rf "$DMG_STAGE"
 
 SIZE="$(du -h "$DMGPATH" | cut -f1)"
