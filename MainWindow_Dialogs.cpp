@@ -1662,8 +1662,8 @@ void MainWindow_ImGui::renderTutorialIntegerBasicWindow()
         ImGui::BeginChild("tut_int_scroll", ImVec2(0, 0), true);
         tutStep(1, "Pick a preset that includes Integer BASIC");
         ImGui::TextWrapped(
-            "Presets menu > any of #1, #2, #5..#13 (anything except the "
-            "Applesoft-only microSD preset #4 and CFFA1 preset #3). "
+            "Presets menu > any preset except the Applesoft-Lite ones "
+            "(#4 CFFA1, #5 microSD, #12 P-LAB Fantasy, #14 POM1 Fantasy). "
             "Preset #1 'Apple-1 with ACI & Integer BASIC' is the "
             "historical default.");
 
@@ -1727,14 +1727,14 @@ void MainWindow_ImGui::renderTutorialApplesoftWindow()
             "loaded at a different address.");
         ImGui::BeginChild("tut_asf_scroll", ImVec2(0, 0), true);
         tutStep(1, "Pick the right preset");
-        bulletWrapped("Preset #4 'P-LAB microSD & Applesoft Lite' - Applesoft at $6000-$7FFF.");
-        bulletWrapped("Preset #3 'Replica-1 with CFFA1 & Applesoft Lite' - Applesoft at $E000-$FFFF (includes Woz Monitor).");
+        bulletWrapped("Preset #5 'P-LAB microSD & Applesoft Lite' - Applesoft at $6000-$7FFF.");
+        bulletWrapped("Preset #4 'Replica-1 with CFFA1 & Applesoft Lite' - Applesoft at $E000-$FFFF (includes Woz Monitor).");
 
         tutStep(2, "Cold-start Applesoft");
         ImGui::TextWrapped("From the Woz Monitor '\\' prompt:");
         tutCode(
-            "6000R        (microSD variant, preset #4)\n"
-            "E000R        (CFFA1 variant, preset #3)");
+            "6000R        (microSD variant, preset #5)\n"
+            "E000R        (CFFA1 variant, preset #4)");
         ImGui::TextWrapped(
             "The banner ends with ']' on a new line - that is the "
             "Applesoft prompt. Integer BASIC stays untouched at $E000 "

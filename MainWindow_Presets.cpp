@@ -51,9 +51,11 @@ namespace pom1::mainwindow::detail {
 //     peripheral's own visualisation panel (or a second useful window
 //     if the card has no dedicated panel: CFFA1, microSD, SID).
 //   - Preset 14 (POM1 Multiplexing Fantasy) is the shipped "default"
-//     preset — its layout MUST stay byte-identical to the canonical
-//     imgui.ini screenshot reference (the README mentions it). Don't
-//     touch. Every other preset mirrors its geometry.
+//     preset — its layout MUST stay byte-identical to the shipped
+//     screenshot reference (the README mentions it). Don't touch.
+//     Every other preset mirrors its geometry. First-time use writes
+//     ini/imgui_preset_14.ini + ini/preset_14.size; subsequent launches
+//     load from there.
 //   - Preset 12 (P-LAB Multiplexing Fantasy) is the only exception
 //     that departs from the tutorial+peripheral template: it's the
 //     "everything plugged" fantasy and stacks 3 peripherals in the
@@ -308,7 +310,8 @@ const MachineConfig kMachinePresets[] = {
         "Graphic cards and the PR-40 printer off by default — plug them from the toolbar. "
         "ACI unplugged so the cassette deck acts as a plain audio player. Boots with the "
         "Cassette Deck + Welcome panels already open to the right of the Apple 1 screen; "
-        "your layout customisations are persisted to imgui.ini.",
+        "your layout customisations persist under ini/imgui_preset_14.ini "
+        "(plus ini/preset_14.size for the OS window frame).",
         false, true, true, false, false, true, true,
         /*pr40*/ false,
         false, false, false, 64, BasicType::ApplesoftLite,
@@ -316,8 +319,9 @@ const MachineConfig kMachinePresets[] = {
         /*jukeBox*/ false, JukeBox::Jumper::RAM16_ROM32,
         /*gt6144*/ false,
         {
-            // Positions / sizes mirror the canonical POM1 imgui.ini so the
-            // first launch (no saved layout) snaps to the shipped screenshot.
+            // Positions / sizes match the shipped POM1 Fantasy screenshot
+            // so the first launch (no saved ini/imgui_preset_14.ini yet)
+            // snaps straight to that layout.
             {"Apple 1 Screen",         {10,  61},  {843, 701}},
             {"Welcome",                {858, 61},  {338, 223}},
             {"Apple-1 Cassette Deck",  {858, 288}, {338, 476}},
@@ -358,9 +362,11 @@ using namespace pom1::mainwindow::detail;
 void MainWindow_ImGui::applyPendingLayout(const char* windowName)
 {
     // Use FirstUseEver so preset-driven positions only apply when the
-    // window has no saved state in imgui.ini yet. After the first boot the
-    // user's drags/resizes are persisted by ImGui and take precedence on
-    // subsequent launches (deleting imgui.ini restores the preset layout).
+    // window has no saved state in the active preset's ini yet (see
+    // savePresetLayout / loadPresetLayout for the ini/imgui_preset_NN.ini
+    // + ini/preset_NN.size sidecar pair). After the first boot the user's
+    // drags/resizes are persisted there and take precedence on subsequent
+    // loads of the same preset (delete that file to restore the default).
     // Within a session, the condition also means that re-applying the same
     // preset leaves the user's customisations intact.
     for (auto it = pendingLayout.begin(); it != pendingLayout.end(); ++it) {

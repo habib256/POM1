@@ -31,14 +31,15 @@ Built with Dear ImGui & OpenGL — fast, lightweight, and cross-platform (Linux,
 
 **Expansion cards**
 - 📼 **ACI cassette** with procedural deck widget — `.aci` / `.wav` / `.mp3` / `.ogg`, smart jaquette from `tapeinfo.txt`
-- 🎨 Two graphics cards — [Uncle Bernie's GEN2](https://www.applefritter.com/content/uncle-bernies-gen2-color-graphics-card-apple-1) (280×192 NTSC artifact colour) and [P-LAB TMS9918](https://p-l4b.github.io/graphic/) (256×192 + sprites)
+- 🎨 Three graphics cards — [Uncle Bernie's GEN2](https://www.applefritter.com/content/uncle-bernies-gen2-color-graphics-card-apple-1) (280×192 NTSC artifact colour), [P-LAB TMS9918](https://p-l4b.github.io/graphic/) (256×192 + sprites), and **SWTPC GT-6144** (1976, 64×96 mono — *first commercial Apple-1 graphics card*)
+- 🖨️ **SWTPC PR-40** 40-column printer (Jobs' Oct-76 *Interface Age* mod) — 40-char FIFO, ~0.8 s mechanical cycle, scrollable paper roll
 - 🎵 [P-LAB A1-SID](https://p-l4b.github.io/A1-SID/) — libresidfp 6581/8580, C64 `.sid` converter
 - 💾 Storage — [P-LAB microSD](https://p-l4b.github.io/sdcard/) (virtual FAT32), **CFFA1** CompactFlash (ProDOS `.po`), [P-LAB Juke-Box](https://p-l4b.github.io/) (32 KB EEPROM library)
 - 📡 Networking — [P-LAB Wi-Fi Modem](https://p-l4b.github.io/wifi/) (Hayes AT + TCP/TELNET), [P-LAB Terminal Card](https://p-l4b.github.io/terminal/) (`telnet localhost 6502`)
 - ⏰ [P-LAB I/O Board & RTC](https://p-l4b.github.io/A1-IO_RTC/) — DS3231 + ADC + digital I/O
 
 **Out of the box**
-- 🖥️ **14 one-click machine presets** from *Bare Apple-1 (July 1976)* to *POM1 Multiplexing Fantasy (2026)*
+- 🖥️ **15 one-click machine presets** from *Bare Apple-1 (July 1976)* to *POM1 Multiplexing Fantasy (2026)*
 - 🎮 **60+ programs** shipped in `software/` — games, demos, BASIC, dev tools, A1-SID tunes, TMS9918 demos
 
 ---
@@ -101,7 +102,7 @@ emrun POM1.html
 
 ```bash
 ./POM1 --list-presets
-./POM1 --preset 10 --terminal &    # Juke-Box + Terminal on :6502
+./POM1 --preset 11 --terminal &    # Juke-Box + Terminal on :6502
 python3 tools/test_jukebox_telnet.py
 ./POM1 --preset "A1-SID" --terminal
 ./POM1 --preset 2 --terminal --save-tape /tmp/out.wav --cpu-max &
@@ -178,7 +179,16 @@ vcpkg install glfw3:x64-windows
 
 ## 🎨 Graphics Cards
 
-POM1 emulates two independent Apple 1 graphics expansion cards. Enable either (or both, mutually-exclusive addresses aside) from the **Hardware** menu or the toolbar.
+POM1 emulates three independent Apple 1 graphics expansion cards. Enable from the **Hardware** menu or the toolbar (respect each card's bus-window exclusions — see the in-app Hardware Reference).
+
+### SWTPC GT-6144 Graphic Terminal *(1976)*
+
+Southwest Technical Products' GT-6144 — the **first commercial graphics card for the Apple 1** ($98.50), demoed by Woz in *Interface Age*.
+
+- **64×96** monochrome framebuffer on 6× Intel 2102 SRAM, write-only I/O at `$D00A` (PIA A3 chip-select)
+- 4-phase command protocol over a single port; visible SRAM power-on noise (bistable "petits rectangles") on every plug-in
+- No bus overlap with other POM1 peripherals — composes freely
+- `software/gt-6144/` ships Game-of-Life + demos
 
 ### Uncle Bernie's GEN2 Color Graphics Card
 
@@ -322,6 +332,18 @@ telnet localhost 6502     # after enabling the card — you now drive Wozmon, BA
 
 ---
 
+## 🖨️ SWTPC PR-40 Printer *(Jobs 1976)*
+
+Steve Jobs' October-1976 *Interface Age* hack: tee the SWTPC PR-40 40-column matrix printer off PIA Port B so **every character sent to the Apple 1 display is also printed**.
+
+- **No MMIO** — a third sniffer on `$D012` writes, after the display callback and Terminal Card
+- **40-char FIFO**, flushed on `CR` (`$0D`) or when full; each flush arms a ~0.8 s mechanical cycle (`818 182` CPU cycles)
+- **DPDT switch** in the Hardware window: *Off* / *Mixed* (Jobs' 2-pos: PB7 = video-busy OR printer-busy, CPU stalls for either) / *PrintOnly* (community 3-pos: PB7 = printer-busy alone; flood the FIFO at 1 MHz)
+- Scrollable paper roll with Save-to-`.txt` and tear-off page
+- Full-tape invariants pinned by `pr40_printer_smoke` (PB7 wiring, FIFO/CR flush, mechanical stall duration)
+
+---
+
 ## 💿 P-LAB Apple-1 Juke-Box
 
 Claudio Parmigiani's [P-LAB Juke-Box](https://p-l4b.github.io/) — memory-mapped 32 KB EEPROM (28c256) acting as an in-address-space program library. No cassette, no SD card.
@@ -344,24 +366,25 @@ Claudio Parmigiani's [P-LAB Juke-Box](https://p-l4b.github.io/) — memory-mappe
 |:-:|:-------|:---:|:------|:----------------|
 | 0 | **Bare Apple-1 (July 1976)** | 4 KB | — | — |
 | 1 | **Apple-1 with ACI & Integer BASIC (Oct 1976)** | 8 KB | Integer | ACI |
-| 2 | **Replica-1 with ACI, Krusader (Briel 2003)** | 32 KB | Integer | ACI, Krusader |
-| 3 | **Replica-1 with CFFA1 & Applesoft Lite (Dreher 2007)** | 32 KB | Applesoft Lite | CFFA1 |
-| 4 | **P-LAB microSD & Applesoft Lite (Apr 2022)** | 32 KB | Applesoft Lite | microSD |
-| 5 | **P-LAB A1-SID Sound Card ($C800-$CFFF)** | 32 KB | Integer | A1-SID |
-| 6 | **P-LAB A1-AUDIO Special Edition ($CC00-$CC1F)** | 32 KB | Integer | A1-AUDIO SE |
-| 7 | **P-LAB TMS9918 Graphic Card** | 32 KB | Integer | TMS9918 |
-| 8 | **P-LAB I/O Board & RTC** | 32 KB | Integer | I/O & RTC |
-| 9 | **P-LAB Wi-Fi Modem BBS** | 32 KB | Integer | Wi-Fi Modem |
-| 10 | **P-LAB Juke-Box (16 kB RAM)** | 16 KB | Integer + Juke-Box | Juke-Box |
-| 11 | **P-LAB Multiplexing Fantasy** | 64 KB | Applesoft Lite | microSD, A1-SID, TMS9918, I/O & RTC, Wi-Fi, Terminal |
-| 12 | **Uncle Bernie's GEN2 HGR Color (Apr 2026)** | 32 KB | Integer | GEN2 HGR |
-| 13 | **POM1 Multiplexing Fantasy (2026)** | 64 KB | Applesoft Lite | ACI, microSD, A1-SID, Wi-Fi, Terminal |
+| 2 | **Apple-1 + SWTPC GT-6144 (1976)** | 8 KB | Integer | ACI, GT-6144 |
+| 3 | **Replica-1 with ACI, Krusader (Briel 2003)** | 32 KB | Integer | ACI, Krusader |
+| 4 | **Replica-1 with CFFA1 & Applesoft Lite (Dreher 2007)** | 32 KB | Applesoft Lite | CFFA1 |
+| 5 | **P-LAB microSD & Applesoft Lite (Apr 2022)** | 32 KB | Applesoft Lite | microSD |
+| 6 | **P-LAB A1-SID Sound Card ($C800-$CFFF)** | 32 KB | Integer | A1-SID |
+| 7 | **P-LAB A1-AUDIO Special Edition ($CC00-$CC1F)** | 32 KB | Integer | A1-AUDIO SE |
+| 8 | **P-LAB TMS9918 Graphic Card** | 32 KB | Integer | TMS9918 |
+| 9 | **P-LAB I/O Board & RTC** | 32 KB | Integer | I/O & RTC |
+| 10 | **P-LAB Wi-Fi Modem BBS** | 32 KB | Integer | Wi-Fi Modem |
+| 11 | **P-LAB Juke-Box (16 kB RAM)** | 16 KB | Integer + Juke-Box | Juke-Box |
+| 12 | **P-LAB Multiplexing Fantasy** | 64 KB | Applesoft Lite | microSD, A1-SID, TMS9918, I/O & RTC, Wi-Fi, Terminal, PR-40 |
+| 13 | **Uncle Bernie's GEN2 HGR Color (Apr 2026)** | 32 KB | Integer | GEN2 HGR |
+| 14 | **POM1 Multiplexing Fantasy (2026)** | 64 KB | Applesoft Lite | microSD, A1-SID, Wi-Fi, Terminal |
 
 - **Bare (0)** — pre-ACI July-1976 shipping configuration (first ~150 units left the bench this way).
-- **Juke-Box (10)** — Integer BASIC at `$E000`, EEPROM library via the Program Manager at `$BD00`; ACI dropped (EEPROM replaces cassette).
-- **POM1 Fantasy (13)** — **default preset**, shows the POM1 banner on the Apple 1 screen, opens Welcome + Cassette Deck to the right.
+- **Juke-Box (11)** — Integer BASIC at `$E000`, EEPROM library via the Program Manager at `$BD00`; ACI dropped (EEPROM replaces cassette).
+- **POM1 Fantasy (14)** — **default preset**, shows the POM1 banner on the Apple 1 screen, opens Welcome + Cassette Deck to the right.
 
-Each preset repositions windows into a default layout (Apple 1 Screen top-left, expansion panels to the right, status at the bottom). Drag freely afterwards — your changes persist in `imgui.ini`.
+Each preset repositions windows into a default layout (Apple 1 Screen top-left, expansion panels to the right, status at the bottom). Drag freely afterwards — per-preset layouts persist under `ini/imgui_preset_NN.ini` (plus an `ini/preset_NN.size` sidecar for the OS window frame), so switching presets saves/restores each profile independently.
 
 ---
 
@@ -450,12 +473,14 @@ POM1/
 ├── MemoryViewer_ImGui.cpp/h # Hex editor with search & navigation
 ├── CassetteDevice.cpp/h     # Apple Cassette Interface (Woz ACI + audio)
 ├── GraphicsCard.cpp/h       # GEN2 color graphics card (280×192 HIRES)
+├── GT6144.cpp/h             # SWTPC GT-6144 (64×96 mono, 1976)
 ├── TMS9918.cpp/h            # P-LAB TMS9918 VDP
 ├── SID.cpp/h                # P-LAB A1-SID (libresidfp)
 ├── AudioDevice.cpp/h        # miniaudio / Web Audio output, SID + cassette mixer
 ├── MicroSD.cpp/h            # P-LAB microSD Storage Card (65C22 + MCU)
 ├── CFFA1.cpp/h              # CFFA1 CompactFlash (ROM + ProDOS .po)
 ├── JukeBox.cpp/h            # P-LAB Apple-1 Juke-Box (32 KB EEPROM library)
+├── PR40Printer.cpp/h        # SWTPC PR-40 printer ($D012 sniffer, Jobs 1976)
 ├── WiFiModem.cpp/h          # P-LAB Wi-Fi Modem (65C51 ACIA + TCP/TELNET)
 ├── TerminalCard.cpp/h       # P-LAB Terminal Card (TCP server + serial bridge)
 ├── A1IO_RTC.cpp/h           # P-LAB I/O Board & RTC (65C22 + DS3231)
@@ -522,7 +547,8 @@ $B004-$BFFF   User RAM
 $C000-$C0FF   Apple Cassette Interface I/O  ($C081 tape input)
 $C100-$C1FF   Woz ACI ROM
 $C800-$CFFF   A1-SID registers (addr & $1F)
-$CC00 / $CC01 TMS9918 DATA / CTRL
+$CC00 / $CC01 TMS9918 DATA / CTRL (also A1-AUDIO SE window $CC00-$CC1F)
+$D00A         SWTPC GT-6144 command port (write-only)
 $D010-$D012   PIA 6821 — Keyboard (KBD) & Display (DSP), aliases $D0Fx
 $E000-$EFFF   Integer BASIC ROM (or Applesoft Lite in the CFFA1 layout)
 $FF00-$FFFF   Woz Monitor ROM

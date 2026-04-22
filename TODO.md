@@ -26,11 +26,9 @@ Not blocked externally — spec is public and the code change is tractable — b
 ## Peripherals
 
 - [ ] **ACI header + checksum on the jaquette** `[S · nice]` — `tapeinfo.txt` already drives the *"Type 0280.0FFFR"* label. Still missing: parse the raw `.aci` pulse-capture header (from / to / checksum) in `CassetteDevice::loadAciTape()` and surface it for tapes without a sidecar entry.
-- [ ] **SWTPC PR-40 40-col printer** `[S · nice]` — parallel matrix printer (5×7, 40 col / line, 75 lpm). Scroll the output into a "paper roll" window and append to a `.txt`. Attach on an 8-bit parallel output port (cheapest socket: tee off the Terminal Card TCP stream).
 - [ ] **Briel Multi I/O Board — SpeakJet** `[M · nice]` — the 6522 / 6551 blocks duplicate microSD / MODEM; the unique value is piping the UART byte stream through a TTS bridge (eSpeak, macOS `say`) to give the Apple-1 a voice. Ship as a separate optional peripheral so it coexists with microSD.
 - [ ] **P-LAB IEC Card** `[M · solid]` — Commodore IEC serial bus card for the Apple-1 by Claudio Parmigiani: lets the Apple-1 talk to C64-era peripherals (1541 floppy, printer, …). Spec: https://p-l4b.github.io/iec/ . Investigate the register window, handshake, and what firmware ships on the card; honour Parmigiani's "one board at a time" rule for mutual exclusions. Backing store likely via a host `.d64` image + a small IEC state machine (ATN/CLK/DATA). New preset + Hardware Reference entry.
 - [ ] **flowenol apple1-serial bootloader** `[S · solid]` — https://github.com/flowenol/apple1-serial — serial-port bootloader / terminal for the Apple-1 (complements TurboType / 8BitFlux Terminal). Evaluate whether it pipes through the existing Terminal Card or needs its own ACIA variant; likely a text-format loader entry on top of the current `Memory::loadHexDump` / paste pipeline.
-- [ ] **A1-IO & RTC auto-plug on `software/a1io_rtc/` load** `[S · solid]` — the directory-match heuristic in `MainWindow_FileDialogs.cpp` already auto-enables the matching card when the user picks a file under `software/sid/`, `software/hgr/`, `software/tms9918/`, `software/net/` or `sdcard/`. `software/a1io_rtc/` is missing from that list — add the branch that flips `a1ioRtcEnabled = true` + queues the deferred plug (same 15-frame pattern as the other cards) so the clock demo Just Works after a File > Load Memory. **⚠ mutually-exclusive with GEN2 HGR** at `$2000-$3FFF` — if GEN2 is currently on, evict it before plugging A1-IO.
 
 ---
 
@@ -54,10 +52,10 @@ Not blocked externally — spec is public and the code change is tractable — b
 
 ## Packaging & distribution
 
-- [ ] **Native OS icon bundling** `[S · nice]` — `pic/icon.png` drives every in-app surface (About 128 px, Welcome 64 px, GLFW window, WASM favicon) but the packaged OS containers still use the default icon. Three independent platforms:
-  1. **macOS `.app` bundle** `[S · nice]` — `Info.plist` + `icon.icns` (`sips` + `iconutil`). Also fixes the Dock/Finder icon, since `glfwSetWindowIcon` is a no-op on macOS.
-  2. **Windows `.rc` embed** `[S · nice]` — generate `packaging/windows/POM1.ico`, reference it from a `.rc` file, embed via `add_executable(${PROJECT_NAME} … POM1.rc)`.
-  3. **Linux `.desktop` + hicolor** `[S · nice]` — drop a `.desktop` file + `hicolor/128x128/apps/POM1.png` in the release tarball.
+- [ ] **Native OS icon bundling** `[S · nice]` — `pic/icon.png` drives every in-app surface (About 128 px, Welcome 64 px, GLFW window, WASM favicon) but the packaged OS containers still use the default icon. Three independent platforms (any ship order):
+  1. **macOS `.app` bundle** — `Info.plist` + `icon.icns` (`sips` + `iconutil`). Also fixes the Dock/Finder icon, since `glfwSetWindowIcon` is a no-op on macOS.
+  2. **Windows `.rc` embed** — generate `packaging/windows/POM1.ico`, reference it from a `.rc` file, embed via `add_executable(${PROJECT_NAME} … POM1.rc)`.
+  3. **Linux `.desktop` + hicolor** — drop a `.desktop` file + `hicolor/128x128/apps/POM1.png` in the release tarball.
 
 ---
 
@@ -66,18 +64,12 @@ Not blocked externally — spec is public and the code change is tractable — b
 - [ ] **ImGui Metal backend on macOS** `[L · nice]` — OpenGL is deprecated since macOS 10.14 (currently silenced via `GL_SILENCE_DEPRECATION`). `imgui_impl_metal.mm` + `imgui_impl_osx.mm` are drop-in; scope is porting the handful of raw GL calls in `Screen_ImGui.cpp` / `MainWindow_HardwareWindows.cpp` (glyph atlas, TMS9918 texture, HGR texture) to MTLTexture.
 - [ ] **External `presets.json`** `[S · nice]` — `MainWindow_Presets.cpp` already flags itself as the migration target. Move `kMachinePresets[]` to JSON under `doc/` (or next to the executable) so users add presets without recompiling. Loader in `MainWindow_Presets.cpp`, keep the C++ table as fallback.
 - [ ] **Terminal Card — `Ctrl-K` hand-over to host keyboard** `[S · nice]` — match the 8BitFlux toggle: a `Ctrl-K` byte suspends `$D010` / `$D011` injection until `Ctrl-T` re-attaches. Useful once a script has bootstrapped a program and the user wants to play without dropping the session. Hook: add `injectionSuspended` next to `escapePending` / `eightBitMode` in `TerminalCard.cpp`, skip the keyboard queue while set.
-- [ ] **CLI breakpoints (`--break <addr>`)** `[S · deferred]` — the agent-facing CLI dispatcher (see `CliDispatcher.cpp` / `CLAUDE.md`) landed without `--break` because `M6502` has no breakpoint infrastructure today. Add a small PC-matched halt in `M6502::run()` (early-return when `programCounter == breakpoint`), a `setBreakpoint(quint16)`/`clearBreakpoint()` pair, plumb through `EmulationController`, then flip the stub in `CliDispatcher.cpp` (currently errors out) into a real `CliAction::Kind::Break`. Keep the overhead off the hot path — a single compare-and-branch in the instruction-dispatch loop behind a `breakpointActive` flag.
-
+- [ ] **CLI breakpoints (`--break <addr>`)** `[S · solid]` — the agent-facing CLI dispatcher (see `CliDispatcher.cpp` / `CLAUDE.md`) landed without `--break` because `M6502` has no breakpoint infrastructure today. Add a small PC-matched halt in `M6502::run()` (early-return when `programCounter == breakpoint`), a `setBreakpoint(quint16)`/`clearBreakpoint()` pair, plumb through `EmulationController`, then flip the stub in `CliDispatcher.cpp` (currently errors out) into a real `CliAction::Kind::Break`. Keep the overhead off the hot path — a single compare-and-branch in the instruction-dispatch loop behind a `breakpointActive` flag.
 - [ ] **Snapshot save / load (save-state)** `[M · solid]` — `--snapshot-save <path>` / `--snapshot-load <path>` serialising `EmulationSnapshot` + every peripheral's internal state (SID register file + filter, TMS9918 VRAM + regs, microSD fs cursor, modem connection, cassette deck transport + tape offset, CFFA1 disk offset, Juke-Box bank). Enables deterministic replay, reloadable test fixtures, one-click bug reports, and is the storage format the scriptable IPC below will share. Design the on-disk format versioned so future peripheral additions don't invalidate old snapshots.
-
 - [ ] **Scriptable runtime IPC** `[M · nice]` — `--cmd-fd <N>` (or Unix socket) that reads line-delimited commands *while the emulator is running* — same verbs as the CLI flags above, but for stateful sequences (e.g. *"load BASIC, type a listing, save to SD, reset, hard-reset, verify via telnet"*). Telnet on `:6502` already carries keystrokes + display text; this channel carries control verbs without polluting the Apple-1 keyboard stream. Depends on the CLI-verb and snapshot work above.
 
 ---
 
 ## Testing & CI
 
-- [ ] **GitHub Actions CI (`ctest` matrix)** `[S · solid]` — `ctest` runs in ~10 s and the five native tests are stable. A nightly + on-PR workflow building Linux / macOS / Windows (build + `ctest`) plus a WASM job (`emcmake`, no tests) would catch portability breakage before merge. Zero runtime cost for the project; the main effort is pinning toolchain versions and mirroring `setup_imgui.{sh,bat}`.
-
-
-
-
+- [ ] **GitHub Actions CI (`ctest` matrix)** `[S · solid]` — `ctest` runs in ~5 s and all seven native tests are stable. A nightly + on-PR workflow building Linux / macOS / Windows (build + `ctest`) plus a WASM job (`emcmake`, no tests) would catch portability breakage before merge. Zero runtime cost for the project; the main effort is pinning toolchain versions and mirroring `setup_imgui.{sh,bat}`.

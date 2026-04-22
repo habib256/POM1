@@ -106,6 +106,15 @@ Framebuffer at **`$2000-$3FFF`** (8 KB, non-linear Apple II scanline layout). 7 
 ### TMS9918 (256×192, P-LAB Graphic Card)
 I/O at `$CC00` (data) + `$CC01` (control). VRAM **is separate from main RAM** (16 KB, accessed only by I/O). Graphics I mode = 32×24 character cells, 8×8 px. Key VRAM layout: pattern table `$0000`, name table `$1800`, colour table `$2000` (**one colour byte per group of 8 chars** — exploit this for multi-colour tile games by placing each tile type at char `0, 8, 16, …`). **Must disable sprites** on init (write `$D0` to the first sprite-Y byte `$1B00`) or garbage appears. **Full TMS9918 reference: `doc/Programming_Apple1_ASM.md` §6.**
 
+### SWTPC GT-6144 (64×96 mono, 1976 — first commercial Apple-1 graphics card)
+**Write-only** I/O at `$D00A` — a 4-phase FSM on a single byte:
+- `byte 0..63`  → latch X + pixel **OFF** (clear pixel)
+- `byte 64..127` → latch X + pixel **ON**
+- `byte 128..223` → commit **Y** using latched X + state (actual plot happens here)
+- `byte 224..255` → control opcode (`byte & 0x07`: 0 = invert display, 1 = normal, 4 = unblank, 5 = blank)
+
+No read-back, no framebuffer in main RAM (lives on 6× Intel 2102 SRAM). To plot `(x,y)` with pixel ON: `STA $D00A` with `x|64`, then `y|128`. Inversion and blanking affect the video path only — the SRAM is untouched. Power-on state is visible bistable SRAM noise ("petits rectangles") — clear the framebuffer before drawing. Example: `software/gt-6144/GT1_Hello.asm` and `GT1_Life.asm`. Linker config: `software/gt-6144/gt6144.cfg`.
+
 ---
 
 ## 5. Integer BASIC — text-mode, integer only
@@ -249,15 +258,19 @@ ATH                           ; hang up
 
 24-register broadcast pumped on a 100-cycle period with PORTB STROBE. Regs 0-5 = RTC (H/M/S/D/M/Y). Reg 6 = DS3231 die temperature. ADC + digital in/out follow. `software/a1io_rtc/` has a clock demo.
 
+### SWTPC PR-40 Printer (no MMIO — `$D012` sniffer, Jobs 1976)
+
+Passive: every byte you `STA $D012` (with bit 7 set, per normal display rules) also lands in the PR-40's 40-char FIFO. `CR` (`$8D`) or a full FIFO flushes one line to paper; each flush arms a **~0.8 s mechanical cycle** that holds PB7 high. In *Mixed* switch mode the CPU naturally stalls at Wozmon's `BIT $D012 / BMI` loop; in *PrintOnly* mode you can flood the FIFO at 1 MHz (PB7 ignores the video /RDA). Nothing special to do from asm — just write as usual. UI shows the paper roll; tear-off saves to `.txt`.
+
 ---
 
 ## 9. Deployment — how the program reaches the user
 
 Four distribution channels, pick based on what the user asked:
 
-1. **Memory load (default for dev iteration)** — ship `.apl.txt` or `.bin`, user does **File > Load Memory**, then `280R` (or whatever the start address is). Auto-enables the matching card if the file lives under `software/sid/`, `software/hgr/`, `software/tms9918/`, `software/net/`, or `sdcard/` — see `MainWindow_FileDialogs.cpp`.
+1. **Memory load (default for dev iteration)** — ship `.apl.txt` or `.bin`, user does **File > Load Memory**, then `280R` (or whatever the start address is). Auto-enables the matching card if the file lives under `software/hgr/`, `software/tms9918/`, `software/net/` (or `/wifi/`), `software/a1io_rtc/`, `software/gt-6144/`, or `sdcard/` — see `MainWindow_FileDialogs.cpp`. **`software/sid/` is intentionally NOT in the list** (SID auto-plug desyncs the audio mixer across hardReset) — SID programs rely on a preset with `sid=true`.
 2. **microSD tagged file** — drop `NAME#TTAAAA` into `sdcard/` (optionally under a sub-directory that users `CD` into first). Persistent across sessions, works in the WASM build too (preloaded into the MEMFS bundle).
-3. **Juke-Box ROM bundle** — rebuild `roms/jukebox.rom` with your program baked in, ship alongside the emulator; user picks preset #10, types `BD00R`, picks the program from the `&` prompt.
+3. **Juke-Box ROM bundle** — rebuild `roms/jukebox.rom` with your program baked in, ship alongside the emulator; user picks preset #11, types `BD00R`, picks the program from the `&` prompt.
 4. **Cassette tape** — dump the capture to `.aci` / `.wav` / `.mp3` / `.ogg`, drop into `cassettes/`. Add a matching entry to `cassettes/tapeinfo.txt` (`filename = load-range`, e.g. `MYPROG.ogg = 0280.04FF`) so the deck's jaquette prints *"Type 0280.04FFR"* for the user. Works in both pulse mode (ACI plugged) and audio-stream mode (ACI unplugged, firmware-less playback).
 
 **Applesoft programs**: `SAVE "NAME"` from the Applesoft prompt writes `sdcard/NAME#F80801` directly. No manual dump step.
@@ -269,7 +282,7 @@ Four distribution channels, pick based on what the user asked:
 ### Manual path
 
 1. Build (`ca65` + `ld65` + the `.bin` → `.txt` one-liner above).
-2. Launch POM1 with the right preset: `./POM1 --preset 4 --terminal --cpu-max` (preset 4 = P-LAB microSD + Applesoft Lite, `--terminal` enables the `:6502` TCP bridge, `--cpu-max` pins the CPU at 1 MHz emulated so loads don't take 30 s of wallclock).
+2. Launch POM1 with the right preset: `./POM1 --preset 5 --terminal --cpu-max` (preset 5 = P-LAB microSD + Applesoft Lite, `--terminal` enables the `:6502` TCP bridge, `--cpu-max` pins the CPU at 1 MHz emulated so loads don't take 30 s of wallclock).
 3. **File > Load Memory** → pick the `.txt`. Or use `--tape <path>` to auto-preload.
 4. In the Woz Monitor, type `<start>R`.
 
@@ -306,7 +319,7 @@ def send_line(sock, cmd, wait=0.3, read_t=4.0):
 
 # 1. launch POM1
 proc = subprocess.Popen(
-    [str(REPO_ROOT / "build" / "POM1"), "--preset", "4", "--terminal", "--cpu-max"],
+    [str(REPO_ROOT / "build" / "POM1"), "--preset", "5", "--terminal", "--cpu-max"],
     stdout=open("/tmp/pom1.log", "w"), stderr=subprocess.STDOUT, start_new_session=True)
 time.sleep(3.0)   # boot + 15-frame card defer
 
@@ -332,12 +345,12 @@ The full verb table (phases + syntax) lives in `CLAUDE.md` (*CLI flags*). One-li
 
 | Goal | Command |
 |---|---|
-| Pick preset 4 (microSD + Applesoft Lite), enable Terminal, pin at MAX | `./POM1 --preset 4 --terminal --cpu-max` |
+| Pick preset 5 (microSD + Applesoft Lite), enable Terminal, pin at MAX | `./POM1 --preset 5 --terminal --cpu-max` |
 | Load binary at `$0300` and jump to it, then paste keystrokes | `./POM1 --preset 1 --terminal --load 0300:prog.bin --run 0300 --paste keys.txt` |
-| Swap a preset's cards: GEN2 off, A1-SID on, 8580 chip, 2× speed | `./POM1 --preset 12 --disable hgr --enable sid --sid-chip 8580 --speed 34091` |
-| Seed a microSD fixture without typing `SAVE` through Wozmon | `./POM1 --preset 4 --sd-mkdir BASIC --sd-put host/PROG#F80801:BASIC/PROG#F80801` |
-| Freeze the RTC to midnight 2000-01-01 for a deterministic test | `./POM1 --preset 8 --rtc-freeze "2000-01-01 00:00:00"` |
-| Capture a SID tune into a `.wav` | `./POM1 --preset 5 --rec --save-tape /tmp/out --save-tape-format wav` |
+| Swap a preset's cards: GEN2 off, A1-SID on, 8580 chip, 2× speed | `./POM1 --preset 13 --disable hgr --enable sid --sid-chip 8580 --speed 34091` |
+| Seed a microSD fixture without typing `SAVE` through Wozmon | `./POM1 --preset 5 --sd-mkdir BASIC --sd-put host/PROG#F80801:BASIC/PROG#F80801` |
+| Freeze the RTC to midnight 2000-01-01 for a deterministic test | `./POM1 --preset 9 --rtc-freeze "2000-01-01 00:00:00"` |
+| Capture a SID tune into a `.wav` | `./POM1 --preset 6 --rec --save-tape /tmp/out --save-tape-format wav` |
 | Step 10 instructions at boot with BRK trace for debugging | `./POM1 --preset 0 --trace-brk --step 10` |
 
 Repeating flags stack in CLI order — `--load A:x.bin --load B:y.bin --run A` loads both files and jumps to A. The dispatcher rejects unknown flags and misformed arguments before opening the window, so agent scripts can read `exit=1` instead of inspecting logs.
