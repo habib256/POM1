@@ -50,15 +50,6 @@ Not blocked externally — spec is public and the code change is tractable — b
 
 ---
 
-## Packaging & distribution
-
-- [ ] **Native OS icon bundling** `[S · nice]` — `pic/icon.png` drives every in-app surface (About 128 px, Welcome 64 px, GLFW window, WASM favicon) but the packaged OS containers still use the default icon. Three independent platforms (any ship order):
-  1. **macOS `.app` bundle** — `Info.plist` + `icon.icns` (`sips` + `iconutil`). Also fixes the Dock/Finder icon, since `glfwSetWindowIcon` is a no-op on macOS.
-  2. **Windows `.rc` embed** — generate `packaging/windows/POM1.ico`, reference it from a `.rc` file, embed via `add_executable(${PROJECT_NAME} … POM1.rc)`.
-  3. **Linux `.desktop` + hicolor** — drop a `.desktop` file + `hicolor/128x128/apps/POM1.png` in the release tarball.
-
----
-
 ## Technical debt & code quality
 
 - [ ] **ImGui Metal backend on macOS** `[L · nice]` — OpenGL is deprecated since macOS 10.14 (currently silenced via `GL_SILENCE_DEPRECATION`). `imgui_impl_metal.mm` + `imgui_impl_osx.mm` are drop-in; scope is porting the handful of raw GL calls in `Screen_ImGui.cpp` / `MainWindow_HardwareWindows.cpp` (glyph atlas, TMS9918 texture, HGR texture) to MTLTexture.

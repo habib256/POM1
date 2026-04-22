@@ -1,0 +1,13 @@
+[Desktop Entry]
+Type=Application
+Version=1.5
+Name=POM1
+GenericName=Apple 1 Emulator
+Comment=Dear ImGui emulator of the 1976 Apple 1 with 6502, ACI cassette, and a full stack of expansion cards.
+Exec=POM1
+Icon=POM1
+Terminal=false
+Categories=Game;Emulator;
+Keywords=apple1;6502;emulator;retro;
+StartupNotify=true
+StartupWMClass=POM1

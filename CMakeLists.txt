@@ -111,8 +111,34 @@ set(HEADERS
     Logger.h
 )
 
-# Create executable
-add_executable(${PROJECT_NAME} ${SOURCES} ${HEADERS} ${IMGUI_SOURCES})
+# Platform-native icon resources — baked into the target so POM1.exe / POM1.app
+# carry the icon without any external install step. Native build only; WASM
+# uses pic/icon.png directly as an HTTP-served <link rel="icon"> target.
+# Sources regenerated from pic/icon.png via packaging/regen_icons.sh.
+set(POM1_NATIVE_ICON_SOURCES "")
+if(NOT EMSCRIPTEN)
+    if(APPLE)
+        list(APPEND POM1_NATIVE_ICON_SOURCES
+             "${CMAKE_CURRENT_SOURCE_DIR}/packaging/macos/POM1.icns")
+    elseif(WIN32)
+        list(APPEND POM1_NATIVE_ICON_SOURCES
+             "${CMAKE_CURRENT_SOURCE_DIR}/packaging/windows/POM1.rc")
+    endif()
+endif()
+
+# Create executable. MACOSX_BUNDLE makes CMake wrap the binary in POM1.app so
+# the Dock / Finder / ⌘-Tab pick up the icon from Info.plist (glfwSetWindowIcon
+# is a no-op on macOS). A POST_BUILD symlink below keeps `build/POM1` working
+# for run_emulator.sh + the telnet tests + ctest callers.
+if(APPLE AND NOT EMSCRIPTEN)
+    add_executable(${PROJECT_NAME} MACOSX_BUNDLE
+                   ${SOURCES} ${HEADERS} ${IMGUI_SOURCES}
+                   ${POM1_NATIVE_ICON_SOURCES})
+else()
+    add_executable(${PROJECT_NAME}
+                   ${SOURCES} ${HEADERS} ${IMGUI_SOURCES}
+                   ${POM1_NATIVE_ICON_SOURCES})
+endif()
 
 # Final artefact is branded "POM1" (POM1, POM1.exe on Windows,
 # POM1.{html,js,wasm,data} for the Emscripten build). The CMake target
@@ -283,6 +309,33 @@ else()
         # Apple deprecated the whole OpenGL API in 10.14 but it still works.
         # The compiler prints this exact hint — silence the noise repo-wide.
         target_compile_definitions(${PROJECT_NAME} PRIVATE GL_SILENCE_DEPRECATION)
+
+        # Bundle metadata. POM1.icns lives in Contents/Resources/ via
+        # MACOSX_PACKAGE_LOCATION; Info.plist is configured from the
+        # packaging/ template so CFBundle* substitutions stay in one place.
+        set_source_files_properties(
+            "${CMAKE_CURRENT_SOURCE_DIR}/packaging/macos/POM1.icns"
+            PROPERTIES MACOSX_PACKAGE_LOCATION "Resources")
+        set_target_properties(${PROJECT_NAME} PROPERTIES
+            MACOSX_BUNDLE_BUNDLE_NAME           "POM1"
+            MACOSX_BUNDLE_EXECUTABLE_NAME       "POM1"
+            MACOSX_BUNDLE_GUI_IDENTIFIER        "net.gistlabs.pom1"
+            MACOSX_BUNDLE_ICON_FILE             "POM1.icns"
+            MACOSX_BUNDLE_BUNDLE_VERSION        "1.8.5"
+            MACOSX_BUNDLE_SHORT_VERSION_STRING  "1.8.5"
+            MACOSX_BUNDLE_COPYRIGHT             "Copyright © 2000-2026 Verhille Arnaud. GPL-3.0."
+            MACOSX_BUNDLE_INFO_PLIST
+                "${CMAKE_CURRENT_SOURCE_DIR}/packaging/macos/Info.plist.in"
+        )
+
+        # Keep build/POM1 usable — run_emulator.sh, telnet tests, and ctest
+        # all invoke build/POM1 directly. MACOSX_BUNDLE moves the real binary
+        # to POM1.app/Contents/MacOS/POM1, so drop a symlink at the old path.
+        add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E create_symlink
+                "POM1.app/Contents/MacOS/POM1"
+                "$<TARGET_BUNDLE_DIR:${PROJECT_NAME}>/../POM1"
+            VERBATIM)
     endif()
 
     # Windows-specific

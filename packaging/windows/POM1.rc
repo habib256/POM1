@@ -1,0 +1,7 @@
+// POM1 Windows resource script — embeds the application icon into POM1.exe.
+// Picked up automatically by CMake (rc.exe on MSVC, windres on MinGW) when
+// this .rc is listed as a target source.
+//
+// Regenerate POM1.ico from pic/icon.png via packaging/regen_icons.sh.
+
+IDI_ICON1 ICON "POM1.ico"
