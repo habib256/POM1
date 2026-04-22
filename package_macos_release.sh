@@ -1,16 +1,18 @@
 #!/usr/bin/env bash
 # POM1 — macOS release packager.
 #
-# Builds (if needed), copies every data dir into POM1.app/Contents/MacOS/
-# next to the binary so the .app is fully self-contained, then wraps the
-# bundle in a DMG with a drag-to-/Applications shortcut.
+# Builds (if needed), copies every data dir into POM1.app/Contents/Resources/
+# (Apple-canonical location), and wraps the signed-friendly bundle in a DMG
+# with a drag-to-/Applications shortcut + custom volume icon.
 #
 # Output: dist/POM1-macOS-v<VERSION>.dmg  + dist/POM1.app (staging)
 #
-# Layout convention: data dirs live *inside* the bundle at Contents/MacOS/.
-# main_imgui.cpp's pom1_macos_chdir_to_distribution_root() chdir's there at
-# startup so every cwd-relative probe (roms/, fonts/, sdcard/, cfcard/,
-# pic/, cassettes/) resolves without the user having to keep sibling dirs.
+# Layout: read-only assets (roms/, fonts/, software/, pic/, cassettes/, plus
+# sdcard/ + cfcard/ seeds) live at Contents/Resources/. At startup the app's
+# pom1_macos_provision_user_data_dir() helper creates
+# ~/Library/Application Support/POM1/ with symlinks into the bundle for the
+# read-only dirs and seeded real dirs for sdcard / cfcard / ini, then chdirs
+# there. Existing cwd-relative probes all resolve through that layout.
 
 set -euo pipefail
 
@@ -41,13 +43,17 @@ for f in roms/WozMonitor.rom roms/basic.rom roms/ACI.rom roms/charmap.rom \
     [[ -f "$f" ]] || { echo "ERROR: $f missing."; exit 1; }
 done
 
-# ---------- 3. Stage POM1.app with data inside Contents/MacOS/ ---------------
+# ---------- 3. Stage POM1.app with data at Contents/Resources/ ---------------
 echo "==> Staging $STAGING"
 rm -rf "$STAGING"
 mkdir -p "$(dirname "$STAGING")"
 ditto "$APP" "$STAGING"   # icon, Info.plist, inner binary
 
-DATA_ROOT="$STAGING/Contents/MacOS"
+# Apple convention: bundled data = read-only under Contents/Resources/.
+# User-writable state (sdcard saves, cfcard writes, per-preset layouts)
+# gets provisioned under ~/Library/Application Support/POM1/ at startup
+# — see pom1_macos_provision_user_data_dir() in main_imgui.cpp.
+DATA_ROOT="$STAGING/Contents/Resources"
 
 cp -R roms      "$DATA_ROOT/roms"
 cp -R fonts     "$DATA_ROOT/fonts"
@@ -55,10 +61,10 @@ cp -R software  "$DATA_ROOT/software"
 cp -R cassettes "$DATA_ROOT/cassettes"
 cp -R pic       "$DATA_ROOT/pic"
 
-# sdcard + cfcard are user-writable by the emulator. macOS blocks writes
-# inside /Applications for non-admin users, so the .app only works for
-# persistent saves when left somewhere writable (Desktop, ~/Applications,
-# Downloads). Read-only play always works. See README section below.
+# sdcard + cfcard ship as *seeds* — the first-launch provisioner copies
+# them into ~/Library/Application Support/POM1/ and subsequent writes
+# land there, leaving the bundle untouched (signed-friendly + /Applications
+# install friendly + translocation-safe).
 cp -R sdcard    "$DATA_ROOT/sdcard"
 mkdir -p        "$DATA_ROOT/cfcard"
 [[ -f cfcard/cfcard.po ]] && cp cfcard/cfcard.po "$DATA_ROOT/cfcard/"

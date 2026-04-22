@@ -169,46 +169,104 @@ static void glfw_key_callback(GLFWwindow* window, int key, int scancode, int act
 }
 
 #if !POM1_IS_WASM && defined(__APPLE__)
-/// POM1.app bundles the binary at Contents/MacOS/POM1. When launched from
-/// Finder the cwd is `/`, so every cwd-relative data probe (roms/, fonts/,
-/// sdcard/, cfcard/, pic/, cassettes/) fails. Resolve the real binary path
-/// via _NSGetExecutablePath and chdir to the first of these that looks like
-/// a POM1 distribution (has either `roms/` or `fonts/`):
-///   1. Contents/MacOS/ — binary's own directory. Packaged release puts
-///      data dirs here, next to the executable, so POM1.app is fully
-///      self-contained and droppable into /Applications as a single unit.
-///   2. The .app bundle's parent directory. Dev flow: `build/POM1` is a
-///      symlink to `build/POM1.app/Contents/MacOS/POM1`; the ROMs and
-///      fonts are copied into `build/` (run_emulator.sh, CMake POST_BUILD).
-static void pom1_macos_chdir_to_distribution_root()
+/// Provision `~/Library/Application Support/POM1/` on first launch, refresh
+/// it on every subsequent launch, and chdir there. This is the Apple-canonical
+/// split for app data:
+///
+///   Bundle/Contents/Resources/{roms,fonts,software,pic,cassettes,sdcard,cfcard}
+///       read-only bytes shipped with the app, signed + notarized-friendly.
+///
+///   ~/Library/Application Support/POM1/
+///       {roms,fonts,software,pic,cassettes}  → symlinks into the bundle
+///       sdcard/, cfcard/, ini/               → real dirs, user-writable,
+///                                              seeded from the bundle once
+///
+/// chdir'ing here lets every existing cwd-relative probe (Memory ROM loader,
+/// font probe, preset ini save/load, File > Load Memory defaults, cassette
+/// tape-info lookup, …) resolve correctly without any per-call-site changes.
+///
+/// Dev flow: `build/POM1.app` has no Contents/Resources/roms (data is in
+/// `build/` thanks to run_emulator.sh). Falls back to the .app's parent dir,
+/// same as the original helper.
+static void pom1_macos_provision_user_data_dir()
 {
     namespace fs = std::filesystem;
+    std::error_code ec;
+
+    // ---- Locate the bundle's Resources dir ---------------------------------
     char buf[PATH_MAX];
     uint32_t n = sizeof(buf);
     if (_NSGetExecutablePath(buf, &n) != 0) return;
-    std::error_code ec;
     fs::path exe = fs::canonical(buf, ec);
     if (ec) return;
+    // exe = <Bundle>/Contents/MacOS/POM1 → <Bundle>/Contents/Resources/
+    fs::path resourcesDir = exe.parent_path().parent_path() / "Resources";
 
-    auto looksLikePom1Dist = [&](const fs::path& d) {
-        std::error_code e;
-        return fs::is_directory(d / "roms", e) ||
-               fs::is_directory(d / "fonts", e);
+    // ---- Dev fallback: no Resources/roms → chdir to the .app's parent dir,
+    //      where run_emulator.sh copies ROMs + fonts for `build/POM1` use.
+    if (!fs::is_directory(resourcesDir / "roms", ec)) {
+        fs::path bundleParent = exe.parent_path()  // Contents/MacOS
+                                   .parent_path()  // Contents
+                                   .parent_path()  // POM1.app
+                                   .parent_path(); // ../
+        if (fs::is_directory(bundleParent / "roms", ec) ||
+            fs::is_directory(bundleParent / "fonts", ec)) {
+            fs::current_path(bundleParent, ec);
+        }
+        return;
+    }
+
+    // ---- Compute ~/Library/Application Support/POM1/ -----------------------
+    const char* home = std::getenv("HOME");
+    if (!home || !*home) return;
+    fs::path userDataDir = fs::path(home) / "Library"
+                                          / "Application Support" / "POM1";
+    fs::create_directories(userDataDir, ec);
+    if (ec) return;
+
+    // ---- Re-link every read-only dir to the current bundle's Resources -----
+    // Translocation + /Applications moves give a fresh bundle path each run,
+    // so the symlinks have to be refreshed on every launch. Detect staleness
+    // by comparing read_symlink target to the expected one.
+    static constexpr const char* kReadOnlyDirs[] = {
+        "roms", "fonts", "software", "pic", "cassettes"
     };
+    for (const char* name : kReadOnlyDirs) {
+        fs::path link   = userDataDir / name;
+        fs::path target = resourcesDir / name;
+        if (!fs::is_directory(target, ec)) continue;  // missing in bundle; skip
 
-    // Candidate 1: binary's own directory (Contents/MacOS/, packaged release).
-    fs::path macOSDir = exe.parent_path();
-    // Candidate 2: .app bundle's parent (…/POM1.app/../, dev flow w/ build/).
-    fs::path bundleParent = macOSDir.parent_path()
-                                    .parent_path()
-                                    .parent_path();
-
-    for (const fs::path& cand : { macOSDir, bundleParent }) {
-        if (looksLikePom1Dist(cand)) {
-            fs::current_path(cand, ec);
-            return;
+        bool recreate = true;
+        if (fs::is_symlink(link, ec)) {
+            std::error_code e;
+            if (fs::read_symlink(link, e) == target && !e) recreate = false;
+        }
+        if (recreate) {
+            std::error_code e;
+            fs::remove(link, e);
+            fs::create_symlink(target, link, e);
         }
     }
+
+    // ---- Seed writable dirs on first launch --------------------------------
+    // Never overwrite existing user data — only copy when the destination dir
+    // doesn't exist at all.
+    static constexpr const char* kWritableDirs[] = { "sdcard", "cfcard" };
+    for (const char* name : kWritableDirs) {
+        fs::path dst = userDataDir / name;
+        if (fs::exists(dst, ec)) continue;
+        fs::path src = resourcesDir / name;
+        if (!fs::is_directory(src, ec)) {
+            fs::create_directories(dst, ec);
+            continue;
+        }
+        std::error_code e;
+        fs::copy(src, dst, fs::copy_options::recursive, e);
+    }
+    fs::create_directory(userDataDir / "ini", ec);
+
+    // ---- Finally, chdir so every cwd-relative probe resolves here ----------
+    fs::current_path(userDataDir, ec);
 }
 #endif
 
@@ -220,7 +278,7 @@ int main(int argc, char* argv[])
     pom1::log().info("POM1", "v1.8.5 - Apple 1 Emulator (Dear ImGui)");
 
 #if !POM1_IS_WASM && defined(__APPLE__)
-    pom1_macos_chdir_to_distribution_root();
+    pom1_macos_provision_user_data_dir();
 #endif
 
     // Parse command-line arguments via the CLI dispatcher. The dispatcher
