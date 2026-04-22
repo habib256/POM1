@@ -24,6 +24,9 @@
 #endif
 #include <windows.h>
 #endif
+#if defined(__APPLE__)
+#include <mach-o/dyld.h>
+#endif
 #endif
 
 #if !POM1_IS_WASM
@@ -165,12 +168,45 @@ static void glfw_key_callback(GLFWwindow* window, int key, int scancode, int act
     }
 }
 
+#if !POM1_IS_WASM && defined(__APPLE__)
+/// POM1.app bundles the binary at Contents/MacOS/POM1. When launched from
+/// Finder the cwd is `/`, so every cwd-relative data probe (roms/, fonts/,
+/// sdcard/, cfcard/, pic/, cassettes/) fails. Resolve the real binary path
+/// via _NSGetExecutablePath, walk up to the directory containing POM1.app,
+/// and chdir there — iff that directory looks like a POM1 distribution
+/// (has either `roms/` or `fonts/` sibling). That way Finder double-click
+/// works when the user drops the distribution folder anywhere, and the
+/// `build/POM1 → POM1.app/Contents/MacOS/POM1` symlink keeps working from
+/// the repo (cwd is already `build/`, which has fonts/ + roms/ copied).
+static void pom1_macos_chdir_to_distribution_root()
+{
+    namespace fs = std::filesystem;
+    char buf[PATH_MAX];
+    uint32_t n = sizeof(buf);
+    if (_NSGetExecutablePath(buf, &n) != 0) return;
+    std::error_code ec;
+    fs::path exe = fs::canonical(buf, ec);
+    if (ec) return;
+    // exe = …/POM1.app/Contents/MacOS/POM1 → parent.parent.parent.parent = …/
+    fs::path bundleParent = exe.parent_path().parent_path()
+                               .parent_path().parent_path();
+    if (!fs::is_directory(bundleParent / "roms", ec) &&
+        !fs::is_directory(bundleParent / "fonts", ec))
+        return;  // doesn't look like a POM1 distribution — leave cwd alone.
+    fs::current_path(bundleParent, ec);
+}
+#endif
+
 int main(int argc, char* argv[])
 {
     // Install the Tee(stream + ring) logger so every subsystem message lands
     // both in stdout/stderr and in the ring buffer the debug console reads.
     pom1::initDefaultTeeLogger();
     pom1::log().info("POM1", "v1.8.5 - Apple 1 Emulator (Dear ImGui)");
+
+#if !POM1_IS_WASM && defined(__APPLE__)
+    pom1_macos_chdir_to_distribution_root();
+#endif
 
     // Parse command-line arguments via the CLI dispatcher. The dispatcher
     // owns every verb — boot-time (preset, card overrides, cassette paths,
