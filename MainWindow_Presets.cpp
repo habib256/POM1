@@ -59,13 +59,15 @@ const MachineConfig kMachinePresets[] = {
         "Apple-1 + SWTPC GT-6144 Graphic Terminal (1976)",
         "First commercial Apple-1 graphics card: Southwest Technical Products' GT-6144 "
         "(1976, $98.50). Standalone 64x96 monochrome framebuffer on 6x Intel 2102 SRAM "
-        "chips, write-only I/O port at $D00A. Boots with Integer BASIC + ACI cassette. "
-        "Power-on state is visible SRAM bistable noise; programs clear the framebuffer "
-        "before drawing. See the Hardware Reference window and the top comment of "
-        "GT6144.h for the 4-phase command protocol.",
+        "chips, write-only I/O port at $D00A. Boots on the October-1976 Apple-1 "
+        "footprint (8 KB RAM + ACI + Integer BASIC), which is the machine Woz used "
+        "when demonstrating the GT-6144 in Interface Age. Power-on framebuffer state "
+        "is visible SRAM bistable noise; programs clear it before drawing. See the "
+        "Hardware Reference window and the top comment of GT6144.h for the 4-phase "
+        "command protocol.",
         false, false, false, false, false, false, false,
         /*pr40*/ false,
-        false, false, /*aci*/ true, /*ramKB*/ 32, BasicType::Integer,
+        false, false, /*aci*/ true, /*ramKB*/ 8, BasicType::Integer,
         /*sidSE*/ false,
         /*jukeBox*/ false, JukeBox::Jumper::RAM16_ROM32,
         /*gt6144*/ true,
