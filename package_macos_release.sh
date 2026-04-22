@@ -146,14 +146,19 @@ hdiutil create -quiet \
     -ov \
     "$SCRATCH"
 
-# Attach, set the custom-icon volume attribute, detach. `SetFile` lives in
-# /usr/bin since the command-line tools were installed (Xcode or CLT).
-MOUNT="$(hdiutil attach -nobrowse -readwrite -noverify -noautoopen "$SCRATCH" | \
-         awk -F '\t' '/Apple_HFS/ {print $3}')"
+# Attach, set the custom-icon volume attribute, detach. SetFile lives in
+# /usr/bin (Command Line Tools). hdiutil's output format is tab-separated
+# "devnode \t partition-type \t mountpoint"; the mountpoint only appears
+# on the actual Volumes line (the GUID-scheme + partition lines above are
+# empty in the third column). Filter for `/Volumes/` and grab the trailing
+# run — APFS vs HFS doesn't matter since we only care about the mount.
+ATTACH_OUT="$(hdiutil attach -nobrowse -readwrite -noverify \
+                              -noautoopen "$SCRATCH")"
+MOUNT="$(echo "$ATTACH_OUT" | awk -F '\t' '$3 ~ /^\/Volumes\// {print $3}' | tail -1)"
 if [[ -n "$MOUNT" && -e "$MOUNT/.VolumeIcon.icns" ]]; then
     SetFile -a C "$MOUNT" 2>/dev/null || true
 fi
-hdiutil detach -quiet "$MOUNT"
+[[ -n "$MOUNT" ]] && hdiutil detach -quiet "$MOUNT" || true
 
 # Convert to the final compressed, read-only UDZO distributable.
 hdiutil convert -quiet -format UDZO -o "$DMGPATH" "$SCRATCH"
