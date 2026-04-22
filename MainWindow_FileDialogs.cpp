@@ -170,6 +170,24 @@ void MainWindow_ImGui::renderLoadDialog()
                     emulation->wifiModemReset();
                     setStatusMessage("P-LAB Wi-Fi Modem reset", 2.0f);
                 }
+            } else if (loadPath.find("/a1io_rtc/") != std::string::npos ||
+                       loadPath.find("\\a1io_rtc\\") != std::string::npos) {
+                if (!a1ioRtcEnabled) {
+                    a1ioRtcEnabled = true;
+                    showA1IO_RTC = true;
+                    emulation->setA1IO_RTCEnabled(true);
+                    setStatusMessage("P-LAB I/O Board & RTC plugged", 2.0f);
+                }
+            } else if (loadPath.find("/gt-6144/") != std::string::npos ||
+                       loadPath.find("\\gt-6144\\") != std::string::npos ||
+                       loadPath.find("/GT-6144/") != std::string::npos ||
+                       loadPath.find("\\GT-6144\\") != std::string::npos) {
+                if (!gt6144Enabled) {
+                    gt6144Enabled = true;
+                    showGT6144 = true;
+                    emulation->setGT6144Enabled(true);
+                    setStatusMessage("SWTPC GT-6144 plugged (64x96 framebuffer at $D00A)", 3.0f);
+                }
             }
 
             quint16 addr = 0;

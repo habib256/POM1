@@ -135,10 +135,38 @@ void MainWindow_ImGui::renderMenuBar()
         }
 
         if (ImGui::BeginMenu("Hardware")) {
-            if (ImGui::MenuItem("Woz ACI Cassette Interface", nullptr, &aciEnabled)) {
+            // --- 1976: original-era expansions ------------------------------
+            if (ImGui::MenuItem("Woz ACI Cassette Interface (1976)", nullptr, &aciEnabled)) {
                 emulation->setACIEnabled(aciEnabled);
                 setStatusMessage(aciEnabled ? "Woz ACI plugged" : "Woz ACI unplugged", 2.0f);
             }
+            if (ImGui::MenuItem("SWTPC GT-6144 Graphic Terminal (1976)", nullptr, &gt6144Enabled)) {
+                emulation->setGT6144Enabled(gt6144Enabled);
+                if (gt6144Enabled) showGT6144 = true;
+                setStatusMessage(gt6144Enabled
+                    ? "SWTPC GT-6144 plugged (64x96 framebuffer at $D00A)"
+                    : "SWTPC GT-6144 unplugged", 3.0f);
+            }
+            if (ImGui::IsItemHovered())
+                ImGui::SetTooltip("Southwest Technical Products, 1976 ($98.50).\n"
+                                  "First commercial Apple-1 graphics card: write-only 64x96\n"
+                                  "monochrome framebuffer on 6x Intel 2102 SRAM, I/O at $D00A.\n"
+                                  "Power-on contents are visible SRAM bistable noise.");
+            if (ImGui::MenuItem("SWTPC PR-40 Printer (Jobs 1976)", nullptr, &pr40Enabled)) {
+                emulation->setPR40Enabled(pr40Enabled);
+                if (pr40Enabled) showPR40 = true;
+                setStatusMessage(pr40Enabled
+                    ? "SWTPC PR-40 plugged (Jobs' $D012 sniff, DPDT to PB7)"
+                    : "SWTPC PR-40 unplugged", 3.0f);
+            }
+            if (ImGui::IsItemHovered())
+                ImGui::SetTooltip("Steve Jobs, Interface Age Oct. 1976.\n"
+                                  "Passive sniff on $D012. DPDT switch (Off/Mixed/Print Only)\n"
+                                  "in the card window feeds PB7 so the Woz Monitor's BMI loop\n"
+                                  "stalls during the ~0.8 s mechanical print cycle.");
+
+            ImGui::Separator();
+            // --- Community hardware (non-P-LAB) ----------------------------
             if (ImGui::MenuItem("Uncle Bernie's GEN2 HGR Graphic Card", nullptr, &graphicsCardEnabled)) {
                 if (graphicsCardEnabled) showGraphicsCard = true;
             }
@@ -146,7 +174,9 @@ void MainWindow_ImGui::renderMenuBar()
                 emulation->setCFFA1Enabled(cffa1Enabled);
                 if (cffa1Enabled) microSDEnabled = false; // sync UI
             }
+
             ImGui::Separator();
+            // --- P-LAB family ----------------------------------------------
             if (ImGui::MenuItem("P-LAB Apple-1 Juke-Box", nullptr, &jukeBoxEnabled)) {
                 // Juke-Box occupies $4000-$BFFF (or $8000-$BFFF) — evict any
                 // card that shares the window so the UI flags reflect reality.
@@ -225,24 +255,25 @@ void MainWindow_ImGui::renderMenuBar()
                     applyMachineConfig(i);
             };
             presetItem(0);   // Bare Apple-1 (July 1976)
-            presetItem(1);   // Apple-1 with ACI & Integer BASIC
+            presetItem(1);   // Apple-1 with ACI & Integer BASIC (Oct 1976)
+            presetItem(2);   // Apple-1 + SWTPC GT-6144 Graphic Terminal (1976)
             ImGui::Separator();
-            presetItem(2);   // Replica-1 with ACI, Krusader (Briel)
-            presetItem(3);   // Replica-1 with CFFA1 & Applesoft Lite (Dreher)
+            presetItem(3);   // Replica-1 with ACI, Krusader (Briel)
+            presetItem(4);   // Replica-1 with CFFA1 & Applesoft Lite (Dreher)
             ImGui::Separator();
-            // All P-LAB presets grouped together (indices 4..12)
-            presetItem(4);   // P-LAB microSD + Applesoft Lite
-            presetItem(5);   // P-LAB A1-SID
-            presetItem(6);   // P-LAB A1-AUDIO Special Edition
-            presetItem(7);   // P-LAB TMS9918
-            presetItem(8);   // P-LAB I/O Board & RTC
-            presetItem(9);   // P-LAB Wi-Fi Modem BBS
-            presetItem(10);  // P-LAB Juke-Box (16 kB RAM)
-            presetItem(11);  // P-LAB Multiplexing Fantasy
+            // All P-LAB presets grouped together (indices 5..12)
+            presetItem(5);   // P-LAB microSD + Applesoft Lite
+            presetItem(6);   // P-LAB A1-SID
+            presetItem(7);   // P-LAB A1-AUDIO Special Edition
+            presetItem(8);   // P-LAB TMS9918
+            presetItem(9);   // P-LAB I/O Board & RTC
+            presetItem(10);  // P-LAB Wi-Fi Modem BBS
+            presetItem(11);  // P-LAB Juke-Box (16 kB RAM)
+            presetItem(12);  // P-LAB Multiplexing Fantasy
             ImGui::Separator();
-            presetItem(12);  // Uncle Bernie's GEN2 HGR Color
+            presetItem(13);  // Uncle Bernie's GEN2 HGR Color
             ImGui::Separator();
-            presetItem(13);  // POM1 Multiplexing Fantasy (last -> banner)
+            presetItem(14);  // POM1 Multiplexing Fantasy (last -> banner)
             ImGui::EndMenu();
         }
 
@@ -400,7 +431,7 @@ void MainWindow_ImGui::renderToolbar()
             ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.3f, 0.3f, 0.3f, 1.0f));
         else
             ImGui::PushStyleColor(ImGuiCol_Button, ImGui::GetStyle().Colors[ImGuiCol_Button]);
-        if (ImGui::Button(ICON_FA_DISPLAY, btnSize)) {
+        if (ImGui::Button(ICON_FA_TV, btnSize)) {
             if (!tms9918Enabled) {
                 tms9918Enabled = true;
                 showTMS9918 = true;
@@ -457,6 +488,35 @@ void MainWindow_ImGui::renderToolbar()
         ImGui::PopStyleColor();
         if (ImGui::IsItemHovered()) {
             ImGui::SetTooltip(graphicsCardEnabled ? "Bernie's GEN2 HGR (click to unplug)" : "Plug Uncle Bernie's GEN2 HGR Graphic Card");
+        }
+
+        // --- SWTPC GT-6144 Graphic Terminal (1976) ---
+        ImGui::SameLine();
+        if (gt6144Enabled && showGT6144)
+            ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.2f, 0.4f, 0.8f, 1.0f));
+        else if (!gt6144Enabled)
+            ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.3f, 0.3f, 0.3f, 1.0f));
+        else
+            ImGui::PushStyleColor(ImGuiCol_Button, ImGui::GetStyle().Colors[ImGuiCol_Button]);
+        if (ImGui::Button(ICON_FA_TABLE_CELLS, btnSize)) {
+            if (!gt6144Enabled) {
+                gt6144Enabled = true;
+                showGT6144 = true;
+                emulation->setGT6144Enabled(true);
+                setStatusMessage("SWTPC GT-6144 plugged (64x96 framebuffer at $D00A)", 3.0f);
+            } else {
+                showGT6144 = !showGT6144;
+                if (!showGT6144) {
+                    gt6144Enabled = false;
+                    emulation->setGT6144Enabled(false);
+                    setStatusMessage("SWTPC GT-6144 unplugged", 2.0f);
+                }
+            }
+        }
+        ImGui::PopStyleColor();
+        if (ImGui::IsItemHovered()) {
+            ImGui::SetTooltip(gt6144Enabled ? "SWTPC GT-6144 Graphic Terminal (click to unplug)"
+                                            : "Plug SWTPC GT-6144 Graphic Terminal (1976)");
         }
 
         // --- P-LAB I/O Board & RTC ---
@@ -535,6 +595,35 @@ void MainWindow_ImGui::renderToolbar()
         if (ImGui::IsItemHovered()) {
             ImGui::SetTooltip(wifiModemEnabled ? "P-LAB Wi-Fi Modem (click to unplug)"
                                                : "Plug P-LAB Wi-Fi Modem");
+        }
+
+        // --- SWTPC PR-40 Printer (Jobs 1976) ---
+        ImGui::SameLine();
+        if (pr40Enabled && showPR40)
+            ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.2f, 0.4f, 0.8f, 1.0f));
+        else if (!pr40Enabled)
+            ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.3f, 0.3f, 0.3f, 1.0f));
+        else
+            ImGui::PushStyleColor(ImGuiCol_Button, ImGui::GetStyle().Colors[ImGuiCol_Button]);
+        if (ImGui::Button(ICON_FA_PRINT, btnSize)) {
+            if (!pr40Enabled) {
+                pr40Enabled = true;
+                showPR40 = true;
+                emulation->setPR40Enabled(true);
+                setStatusMessage("SWTPC PR-40 plugged (Jobs' $D012 sniff, DPDT to PB7)", 3.0f);
+            } else {
+                showPR40 = !showPR40;
+                if (!showPR40) {
+                    pr40Enabled = false;
+                    emulation->setPR40Enabled(false);
+                    setStatusMessage("SWTPC PR-40 unplugged", 2.0f);
+                }
+            }
+        }
+        ImGui::PopStyleColor();
+        if (ImGui::IsItemHovered()) {
+            ImGui::SetTooltip(pr40Enabled ? "SWTPC PR-40 Printer (click to unplug)"
+                                          : "Plug SWTPC PR-40 Printer (Jobs 1976)");
         }
 
         // --- Séparateur ---

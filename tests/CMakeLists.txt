@@ -44,6 +44,8 @@ set(POM1_TEST_CORE_SOURCES
     ${CMAKE_SOURCE_DIR}/A1IO_RTC.cpp
     ${CMAKE_SOURCE_DIR}/CFFA1.cpp
     ${CMAKE_SOURCE_DIR}/JukeBox.cpp
+    ${CMAKE_SOURCE_DIR}/PR40Printer.cpp
+    ${CMAKE_SOURCE_DIR}/GT6144.cpp
 )
 
 add_executable(test_klaus_6502
@@ -168,3 +170,41 @@ add_test(NAME aci_tape_saving
          COMMAND test_aci_tape_saving
          WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
 set_tests_properties(aci_tape_saving PROPERTIES TIMEOUT 60)
+
+# -- SWTPC PR-40 printer smoke test -------------------------------------------
+# Pins the Steve Jobs 1976 Interface Age hack: $D012 sniff → FIFO → mechanical
+# cycle → NAND-inverted Data Accepted routed to PB7 via the DPDT switch. No
+# CPU needed; the test drives Memory::memWrite($D012) directly.
+add_executable(test_pr40_printer
+    pr40_printer_smoke_test.cpp
+    ${POM1_TEST_CORE_SOURCES}
+)
+target_include_directories(test_pr40_printer PRIVATE
+    ${CMAKE_SOURCE_DIR}
+    ${CMAKE_SOURCE_DIR}/imgui
+)
+target_link_libraries(test_pr40_printer PRIVATE libresidfp_static)
+if(APPLE)
+    target_compile_definitions(test_pr40_printer PRIVATE GL_SILENCE_DEPRECATION)
+endif()
+if(WIN32)
+    target_link_libraries(test_pr40_printer PRIVATE ws2_32)
+endif()
+
+add_test(NAME pr40_printer_smoke COMMAND test_pr40_printer)
+set_tests_properties(pr40_printer_smoke PROPERTIES TIMEOUT 5)
+
+# -- SWTPC GT-6144 graphic terminal smoke test --------------------------------
+# Self-contained: only GT6144 + PeripheralBus. Exercises the 4-phase FSM,
+# the control-opcode don't-care bits (224 aliases to 240, etc.), the
+# framebuffer-preserved-on-inversion invariant from the hardware docs, and
+# the power-on random SRAM seeding.
+add_executable(test_gt6144
+    gt6144_smoke_test.cpp
+    ${CMAKE_SOURCE_DIR}/GT6144.cpp
+    ${CMAKE_SOURCE_DIR}/PeripheralBus.cpp
+)
+target_include_directories(test_gt6144 PRIVATE ${CMAKE_SOURCE_DIR})
+
+add_test(NAME gt6144_smoke COMMAND test_gt6144)
+set_tests_properties(gt6144_smoke PROPERTIES TIMEOUT 5)

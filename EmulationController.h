@@ -181,6 +181,18 @@ public:
     // P-LAB Apple-1 I/O Board & RTC
     void setA1IO_RTCEnabled(bool enabled);
     bool isA1IO_RTCEnabled() const;
+
+    // SWTPC PR-40 printer (Steve Jobs' Oct. 1976 Interface Age hack)
+    void setPR40Enabled(bool enabled);
+    bool isPR40Enabled() const;
+    void setPR40SwitchMode(int mode);      // 0=Off 1=Mixed 2=PrintOnly
+    int  getPR40SwitchMode() const;
+    bool savePR40PaperRoll(const std::string& path, std::string& error) const;
+    void clearPR40Paper();
+
+    // SWTPC GT-6144 Graphic Terminal (1976) — write-only 64x96 framebuffer at $D00A.
+    void setGT6144Enabled(bool enabled);
+    bool isGT6144Enabled() const;
     // Freeze the A1-IO RTC to a wall-clock instant (seconds since epoch).
     // Used by `--rtc-freeze` for deterministic scripted runs. No-op when the
     // card isn't plugged (the offset still latches on A1IO_RTC so subsequent

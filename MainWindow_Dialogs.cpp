@@ -484,6 +484,7 @@ void MainWindow_ImGui::renderHardwareReferenceWindow()
                 "$C100-$C1FF  Woz ACI ROM\n"
                 "$C800-$CFFF  A1-SID (29 registers, mirrored every 32)\n"
                 "$CC00/$CC01  TMS9918 DATA/CTRL (wins over SID)\n"
+                "$D00A        SWTPC GT-6144 command port (write-only)\n"
                 "$D010-$D012  PIA (aliased across $D000-$D0FF)\n"
                 "$E000-$EFFF  Apple Integer BASIC ROM\n"
                 "$FF00-$FFFF  Woz Monitor + vectors");
@@ -585,6 +586,95 @@ void MainWindow_ImGui::renderHardwareReferenceWindow()
                 "cassettes/tapeinfo.txt has a 'filename = load-range' entry "
                 "for the loaded tape - so you can read the label, press PLAY, "
                 "C100R, and type the command shown.");
+        }
+
+        // ---- SWTPC GT-6144 (1976) -----------------------------------
+        if (ImGui::CollapsingHeader("SWTPC GT-6144 Graphic Terminal (1976)")) {
+            ImGui::TextWrapped(
+                "Southwest Technical Products' $98.50 graphic terminal - the FIRST "
+                "commercial Apple-1 graphics card. Originally sold for the SWTPC 6800 "
+                "kit; Woz described the Apple-1 adaptation in Interface Age, October 1976. "
+                "Standalone 64x96 monochrome framebuffer on 6x Intel 2102 bistable SRAM "
+                "chips, fed to a stock 4:3 CRT (TV set or composite monitor).");
+            hwHeading("Particularities");
+            hwKeyValue("I/O:", "$D00A, WRITE-ONLY (single command port, no read-back on real hardware).");
+            hwKeyValue("Decoding:", "PIA A3 chip-select on the Apple-1 expansion slot - A3=0 selects the GT-6144, A0/A1 select the PIA at $D010-$D013.");
+            hwKeyValue("Display aspect:", "64x96 logical matrix (2:3) rendered on a 4:3 CRT - each logical pixel is a 2:1 horizontal rectangle. SWTPC docs describe the pixels as \"petits rectangles\".");
+            hwKeyValue("Power-on:", "SRAM bistable noise (\"rectangles aleatoires\" in the French manual). Programs clear the framebuffer before drawing.");
+            hwKeyValue("Mutex:", "None - no bus overlap with other POM1 cards, composes freely.");
+            hwHeading("4-phase command protocol");
+            ImGui::TextWrapped(
+                "Each byte written to $D00A advances one state of a 4-phase FSM. "
+                "Two successive writes draw one pixel (or clear it); a third commits "
+                "the Y coordinate. The high bits of the byte pick the phase:");
+            hwKeyValue("0..63 (0x00-0x3F):",  "Latch X coordinate (low 6 bits); pixel state = OFF.");
+            hwKeyValue("64..127 (0x40-0x7F):", "Latch X coordinate (low 6 bits); pixel state = ON.");
+            hwKeyValue("128..223 (0x80-0xDF):", "COMMIT: plot (latched X, Y = low 7 bits & 0x5F) with the latched pixel state.");
+            hwKeyValue("224..255 (0xE0-0xFF):", "Control opcode (bits 3-4 are don't-cares, bits 0-2 pick the mode).");
+            hwHeading("Control opcodes ($E0-$FF, low 3 bits)");
+            hwKeyValue("0 INVERTED:", "Invert video at the output stage (framebuffer untouched).");
+            hwKeyValue("1 NORMAL:",   "Normal video (default).");
+            hwKeyValue("4 UNBLANK:",  "Unblank the screen.");
+            hwKeyValue("5 BLANK:",    "Blank the screen (framebuffer untouched).");
+            hwKeyValue("2, 3:",       "CT-1024 character mixing (no-op on standalone GT-6144).");
+            hwKeyValue("6:",          "Reserved.");
+            hwKeyValue("7:",          "NORMAL alias.");
+            ImGui::TextWrapped(
+                "Because bits 3-4 are don't-cares, opcodes $E0 / $E8 / $F0 / $F8 all "
+                "decode as INVERTED. Inversion and blanking live in the video output "
+                "path - the SRAM contents are never modified, matching the analog XOR "
+                "on the real card.");
+            hwHeading("Example (Integer BASIC)");
+            ImGui::TextWrapped(
+                "POKE -12278, N writes to $D00A (-12278 mod 65536 = $D00A). "
+                "POKE -12278, 90 latches X = 26 (= 90 - 64) with state ON; "
+                "POKE -12278, 150 commits at Y = 22 (= 150 & 0x5F) - "
+                "plotting a single pixel at (26, 22). Clear the screen first with a "
+                "256-iteration blank loop, or a batch of $00..$3F then $80..$DF writes.");
+            hwHeading("Window controls");
+            hwKeyValue("Aspect-lock:",
+                "The Hardware -> GT-6144 window stays 4:3 as you drag any edge - chrome-compensated so the raster itself is exactly 4:3, not the window frame.");
+            hwKeyValue("Nearest-neighbour:",
+                "GL_NEAREST upscale so pixels stay crisp; the 2x horizontal stretch happens at blit time (texture is still uploaded at native 64x96).");
+            hwKeyValue("Toolbar icon:",
+                "ICON_FA_TABLE_CELLS (grid of cells - evokes the 64x96 pixel matrix).");
+        }
+
+        // ---- SWTPC PR-40 (Jobs 1976) -------------------------------
+        if (ImGui::CollapsingHeader("SWTPC PR-40 Printer (Jobs 1976)")) {
+            ImGui::TextWrapped(
+                "Steve Jobs' printer hack for the Apple-1, published in Interface Age, "
+                "October 1976 (same issue as Woz's ACI + GT-6144 writeups). The PR-40 "
+                "is a 40-column dot-matrix printer; Jobs wired it to PIA 6821 Port B "
+                "so the Apple-1 treats it as a transparent sniffer on the display. "
+                "POM1 models the sniff + the DPDT switch that routes \"Data Accepted\" "
+                "through a free NAND gate (IC15) to PB7, stalling the Woz Monitor's "
+                "$FFEF BIT $D012 / BMI loop during the ~0.8 s mechanical cycle.");
+            hwHeading("Particularities");
+            hwKeyValue("I/O:", "$D012 sniff (third hook after DisplayDevice::onChar and TerminalCard::onDisplayWrite).");
+            hwKeyValue("FIFO:", "40-char line buffer; flushes on CR ($0D) or when full (real-hardware behaviour).");
+            hwKeyValue("Mech cycle:", "~0.8 s at 1.022727 MHz - POM1_CPU_CLOCK_HZ * 4 / 5 = 818,182 cycles.");
+            hwKeyValue("Character set:", "64-char ASCII uppercase subset ($20-$5F). Lowercase auto-folded to uppercase; non-printables dropped.");
+            hwKeyValue("Mutex:", "None - no bus overlap, composes with any preset.");
+            hwHeading("DPDT switch (Jobs' original 2-pos + community 3-pos mod)");
+            hwKeyValue("Off:",
+                "Printer disconnected from PB7. Only the video's 60 Hz /RDA drives bit 7 of the DSP status (stock Apple-1 behaviour).");
+            hwKeyValue("Mixed (Jobs 1976):",
+                "PB7 = video_busy OR printer_busy. The Woz Monitor's BMI loop stalls for EITHER - so printing pauses CPU display output exactly like the real CRT does. This is what Jobs' article describes.");
+            hwKeyValue("Print Only (community 3-pos mod):",
+                "PB7 = printer_busy alone, isolated from the video /RDA. The CPU can flood the FIFO at up to 1 MHz without waiting on the 60 Hz refresh - useful for benchmarks and long print runs.");
+            hwHeading("Paper roll (Hardware window)");
+            hwKeyValue("Content:", "Full session history (all lines since the last \"Tear off page\"). Text wraps on narrow windows.");
+            hwKeyValue("Tear off page:", "Clears the roll (increments the torn-pages counter).");
+            hwKeyValue("Copy to clipboard:", "Concatenates every line with '\\n' and pushes it to the system clipboard.");
+            hwKeyValue("Save to pr40_paper.txt:",
+                "Writes the full roll to pr40_paper.txt in the current working directory. The status bar shows the absolute path - convenient when launched from build/ via run_emulator.sh.");
+            ImGui::TextWrapped(
+                "Historical note: the PR-40 + GT-6144 + ACI all plug into the same "
+                "44-pin Apple-1 edge connector exposing the address/data bus and the "
+                "PIA chip-select. On real hardware only one card sits there at a time "
+                "(Parmigiani's golden rule) - POM1 lets them coexist because none of "
+                "these three overlap another's address window.");
         }
 
         // ---- GEN2 HGR -----------------------------------------------

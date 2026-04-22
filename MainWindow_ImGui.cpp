@@ -114,6 +114,10 @@ void MainWindow_ImGui::destroyPom1()
         glDeleteTextures(1, &graphicsCardTexture);
         graphicsCardTexture = 0;
     }
+    if (gt6144Texture) {
+        glDeleteTextures(1, &gt6144Texture);
+        gt6144Texture = 0;
+    }
     if (aboutPhotoTexture) {
         glDeleteTextures(1, &aboutPhotoTexture);
         aboutPhotoTexture = 0;
@@ -185,6 +189,8 @@ void MainWindow_ImGui::render()
             if (pendingTms9918Enable)        emulation->setTMS9918Enabled(true);
             if (pendingA1ioRtcEnable)        emulation->setA1IO_RTCEnabled(true);
             if (pendingTerminalCardEnable)   emulation->setTerminalCardEnabled(true);
+            if (pendingPr40Enable)           emulation->setPR40Enabled(true);
+            if (pendingGT6144Enable)         emulation->setGT6144Enabled(true);
             if (pendingWifiModemEnable)      emulation->setWiFiModemEnabled(true);
             if (pendingJukeBoxEnable) {
                 // Jumper has to be set BEFORE enabling the card — setJukeBoxEnabled
@@ -349,6 +355,14 @@ void MainWindow_ImGui::render()
                     break;
                 case pom1::CliCard::JukeBox:
                     jukeBoxEnabled = o.enable; pendingJukeBoxEnable = o.enable; break;
+                case pom1::CliCard::Pr40:
+                    pr40Enabled = o.enable; pendingPr40Enable = o.enable;
+                    if (!o.enable) emulation->setPR40Enabled(false);
+                    break;
+                case pom1::CliCard::GT6144:
+                    gt6144Enabled = o.enable; pendingGT6144Enable = o.enable;
+                    if (!o.enable) emulation->setGT6144Enabled(false);
+                    break;
             }
         }
         if (sidChipOverride) {
@@ -456,8 +470,10 @@ void MainWindow_ImGui::render()
     if (showSaveTapeDialog) renderSaveTapeDialog();
     if (graphicsCardEnabled && showGraphicsCard) renderGraphicsCardWindow();
     if (tms9918Enabled && showTMS9918) renderTMS9918Window();
+    if (gt6144Enabled && showGT6144) renderGT6144Window();
     if (wifiModemEnabled && showWiFiModem) renderWiFiModemWindow();
     if (terminalCardEnabled && showTerminalCard) renderTerminalCardWindow();
+    if (pr40Enabled && showPR40) renderPR40Window();
     if (a1ioRtcEnabled && showA1IO_RTC) renderA1IO_RTCWindow();
     if (jukeBoxEnabled && showJukeBox) renderJukeBoxWindow();
 
@@ -575,7 +591,14 @@ void MainWindow_ImGui::about()
 void MainWindow_ImGui::setStatusMessage(const std::string& message, float duration)
 {
     statusMessage = message;
-    statusTimer = duration;
+    // Per-call-site durations (2-3 s typical) decayed too fast to read while
+    // the user was still focused on the action that produced the message.
+    // A single multiplier keeps every call site honest without a sweep.
+    // `duration == 0.0f` means "persistent" — the `duration > 0` gate in
+    // updateStatus only advances the timer for positive values, so the
+    // multiplier can't accidentally shorten the sticky "Ready" default.
+    constexpr float kStatusDurationMultiplier = 2.5f;
+    statusTimer = duration * kStatusDurationMultiplier;
 }
 
 void MainWindow_ImGui::updateStatus(float deltaTime)

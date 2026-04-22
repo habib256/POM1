@@ -46,6 +46,8 @@ enum class CliCard : uint8_t {
     WifiModem,
     TerminalCard,
     JukeBox,
+    Pr40,          // SWTPC PR-40 printer (Jobs 1976 Interface Age hack)
+    GT6144,        // SWTPC GT-6144 graphic terminal (1976)
 };
 
 /// One deferred action consumed by the Phase-C runner after the

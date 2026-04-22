@@ -16,6 +16,7 @@
 #include "TMS9918.h"
 #include "TerminalCard.h"
 #include "WiFiModem.h"
+#include "PR40Printer.h"
 #include "CpuClock.h"
 
 #include <algorithm>

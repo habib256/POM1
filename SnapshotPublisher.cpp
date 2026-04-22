@@ -113,6 +113,20 @@ void SnapshotPublisher::publish(Memory& mem, const M6502& cpu, bool cpuRunning)
     // current jumper/firmware state even when the card is "unplugged"
     // but loaded in the UI.
     mem.getJukeBox().copySnapshot(snapshot.jukeBox);
+
+    // PR-40 printer: always copy the snapshot so the UI can show recent
+    // paper contents (and switch mode) even if the card is momentarily
+    // unplugged via the menu — matches the Juke-Box pattern above.
+    snapshot.pr40Enabled = mem.isPR40Enabled();
+    mem.getPR40().copySnapshot(snapshot.pr40);
+
+    // SWTPC GT-6144: skip the 768-byte framebuffer copy when the card is
+    // unplugged (same rationale as TMS9918). Snapshot lingers at whatever
+    // the UI last saw, which is harmless since the window is hidden.
+    snapshot.gt6144Enabled = mem.isGT6144Enabled();
+    if (snapshot.gt6144Enabled) {
+        mem.getGT6144().copySnapshot(snapshot.gt6144);
+    }
 }
 
 void SnapshotPublisher::copyTo(EmulationSnapshot& out) const

@@ -31,7 +31,9 @@
 #include "WiFiModem.h"
 #include "TerminalCard.h"
 #include "A1IO_RTC.h"
+#include "PR40Printer.h"
 #include "CFFA1.h"
+#include "GT6144.h"
 #include "JukeBox.h"
 //#include "configuration.h"
 //#include "pia6820.h"
@@ -100,6 +102,8 @@ Memory::Memory()
     }
     wifiModem = std::make_unique<WiFiModem>();
     terminalCard = std::make_unique<TerminalCard>();
+    pr40Printer = std::make_unique<PR40Printer>();
+    gt6144 = std::make_unique<GT6144>();
     a1ioRtc = std::make_unique<A1IO_RTC>();
     cffa1 = std::make_unique<CFFA1>();
     // Probe for CF card disk image
@@ -237,6 +241,18 @@ Memory::Memory()
         [this](uint16_t a, uint8_t v) { jukeBox->writeByte(a, v); });
     bus.setEnabled(jukeBox16BusHandle, false);
 
+    // SWTPC GT-6144 graphic terminal — write-only at $D00A. memWrite runs
+    // bus.tryWrite BEFORE the $D0xx PIA-alias normalisation, so priority 0
+    // is enough for the bus to intercept the byte before the keyboard-port
+    // mirror rewrites the address. Reads are left unhandled (empty onRead)
+    // so they fall through to the PIA-alias path — matches real hardware,
+    // which has no read-back on this port.
+    gt6144BusHandle = bus.registerHandle(
+        "GT6144", {0xD00A, 0xD00A}, /*priority*/ 0,
+        /*onRead=*/ {},
+        [this](uint16_t /*a*/, uint8_t v) { gt6144->writeCommand(v); });
+    bus.setEnabled(gt6144BusHandle, gt6144Enabled);
+
     initMemory();
 }
 
@@ -285,6 +301,15 @@ void Memory::setA1IO_RTCEnabled(bool b)
 {
     a1ioRtcEnabled = b;
     bus.setEnabled(a1ioRtcBusHandle, b);
+}
+
+void Memory::setGT6144Enabled(bool b)
+{
+    // Replugging the card reseeds the framebuffer so the user sees the
+    // Intel 2102 bistable power-on noise each time, matching the real card.
+    if (b && !gt6144Enabled) gt6144->reset();
+    gt6144Enabled = b;
+    bus.setEnabled(gt6144BusHandle, b);
 }
 
 void Memory::setPresetRamKB(int kb)
@@ -349,6 +374,7 @@ void Memory::initMemory(){
     a1ioRtc->reset();
     cffa1->reset();
     jukeBox->reset();
+    gt6144->reset();
     configureResetVectors(0xFF00);
 
     setWriteInRom(0);
@@ -376,6 +402,7 @@ void Memory::resetMemory(void)
     a1ioRtc->reset();
     cffa1->reset();
     jukeBox->reset();
+    gt6144->reset();
 }
 
 
@@ -815,10 +842,23 @@ quint8 Memory::memRead(quint16 address)
         // Display port: bit 7 = busy flag. Le compteur displayBusyCycles décrémente dans
         // advanceCycles() (cycles 6502 réels) pour que le mode Step avance comme RUN
         // (boucle BIT $D012 / BMI du Woz ~0xFFEF).
-        if (displayBusyCycles > 0) {
-            return mem[address] | 0x80; // busy
+        //
+        // SWTPC PR-40 co-opts the same PB7 via Steve Jobs' DPDT switch
+        // (Interface Age, Oct. 1976):
+        //   Off        → PB7 reflects the video busy alone.
+        //   Mixed      → OR of video + printer busy (2-position mod).
+        //   PrintOnly  → printer busy alone (3-position community mod,
+        //                isolates PB7 from the video's 60 Hz /RDA so the
+        //                CPU can flood the FIFO at 1 MHz).
+        bool busy;
+        if (pr40Enabled && pr40Printer->getMode() == PR40Printer::SwitchMode::PrintOnly) {
+            busy = pr40Printer->isMechBusy();
+        } else {
+            busy = (displayBusyCycles > 0) ||
+                   (pr40Enabled && pr40Printer->isMechBusy());
         }
-        return mem[address] & 0x7F; // ready
+        if (busy) return mem[address] | 0x80;
+        return mem[address] & 0x7F;
     } else if (address == 0xD011) {
         quint8 result = keyReady ? 0x80 : 0x00;
         return result;
@@ -890,6 +930,12 @@ void Memory::memWrite(quint16 address, quint8 value)
         // Terminal Card: send the RAW value (before & 0x7F) for 8-bit mode support
         if (terminalCardEnabled) {
             terminalCard->onDisplayWrite(value);
+        }
+        // SWTPC PR-40 printer (Steve Jobs 1976 hack): third passive sniff on
+        // the same PIA port B. The printer's DPDT switch mode gates whether
+        // it also drives the DSP busy flag back to the CPU (see memRead).
+        if (pr40Enabled) {
+            pr40Printer->onDisplayWrite(value);
         }
     }
 
@@ -1166,6 +1212,7 @@ void Memory::advanceCycles(int cycles)
     if (wifiModemEnabled) wifiModem->advanceCycles(cycles);
     if (terminalCardEnabled) terminalCard->advanceCycles(cycles);
     if (a1ioRtcEnabled) a1ioRtc->advanceCycles(cycles);
+    if (pr40Enabled) pr40Printer->advanceCycles(cycles);
     // SID is driven by the *emulated* CPU clock, not by the audio device.
     // Without this call, libresidfp would produce samples at wallclock
     // 44.1 kHz independent of executionSpeed, decoupling music tempo from

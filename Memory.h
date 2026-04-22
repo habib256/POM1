@@ -38,7 +38,9 @@ class TMS9918;
 class WiFiModem;
 class TerminalCard;
 class A1IO_RTC;
+class PR40Printer;
 #include "CFFA1.h"
+#include "GT6144.h"
 #include "JukeBox.h"
 #include "MicroSD.h"
 
@@ -244,6 +246,22 @@ public:
     void setA1IO_RTCEnabled(bool b);
     bool isA1IO_RTCEnabled() const { return a1ioRtcEnabled; }
 
+    // SWTPC PR-40 Printer (Steve Jobs' Oct. 1976 Interface Age hack)
+    // Passive $D012 sniffer, no MMIO. See PR40Printer.h and
+    // Memory::memRead(0xD012) for the busy-OR merge that implements the
+    // DPDT switch wiring.
+    PR40Printer& getPR40() { return *pr40Printer; }
+    const PR40Printer& getPR40() const { return *pr40Printer; }
+    void setPR40Enabled(bool b) { pr40Enabled = b; }
+    bool isPR40Enabled() const { return pr40Enabled; }
+
+    // SWTPC GT-6144 Graphic Terminal (1976) — write-only 64x96 monochrome
+    // framebuffer at $D00A. See GT6144.h for the FSM and hardware notes.
+    GT6144& getGT6144() { return *gt6144; }
+    const GT6144& getGT6144() const { return *gt6144; }
+    void setGT6144Enabled(bool b);
+    bool isGT6144Enabled() const { return gt6144Enabled; }
+
     // Central audio device (mixes CassetteDevice + SID)
     AudioDevice& getAudioDevice() { return *audioDevice; }
 
@@ -320,6 +338,10 @@ private :
     bool terminalCardEnabled = false;
     std::unique_ptr<A1IO_RTC> a1ioRtc;
     bool a1ioRtcEnabled = false;
+    std::unique_ptr<PR40Printer> pr40Printer;
+    bool pr40Enabled = false;
+    std::unique_ptr<GT6144> gt6144;
+    bool gt6144Enabled = false;
 
     // PeripheralBus — central dispatch for memory-mapped I/O. Each peripheral
     // registers a range + read/write handler; memRead/memWrite delegate to
@@ -342,6 +364,7 @@ private :
     // Juke-Box physically replaces any card at $4000-$BFFF on the real bus).
     PeripheralBus::Handle jukeBox32BusHandle = -1;   // RAM-16/ROM-32: $4000-$BFFF
     PeripheralBus::Handle jukeBox16BusHandle = -1;   // RAM-32/ROM-16: $8000-$BFFF
+    PeripheralBus::Handle gt6144BusHandle    = -1;   // SWTPC GT-6144: $D00A, write-only
 
 };
 

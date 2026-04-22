@@ -37,45 +37,76 @@ const MachineConfig kMachinePresets[] = {
         "Bare Apple-1 (July 1976)",
         "Pre-ACI original: 6502, 4 KB RAM, PIA 6821, WOZ Monitor.",
         false, false, false, false, false, false, false,
+        /*pr40*/ false,
         false, false, false, 4, BasicType::None,
         /*sidSE*/ false,
         /*jukeBox*/ false, JukeBox::Jumper::RAM16_ROM32,
+        /*gt6144*/ false,
         { {"Apple 1 Screen", {10,61}, {0,0}} }, 1
     },
     {
         "Apple-1 with ACI & Integer BASIC (October 1976)",
         "Original bare board with the ACI cassette expansion card: 6502, 8 KB RAM, PIA 6821, Integer BASIC, WOZ Monitor.",
         false, false, false, false, false, false, false,
+        /*pr40*/ false,
         false, false, true, 8, BasicType::Integer,
         /*sidSE*/ false,
         /*jukeBox*/ false, JukeBox::Jumper::RAM16_ROM32,
+        /*gt6144*/ false,
         { {"Apple 1 Screen", {10,61}, {0,0}} }, 1
+    },
+    {
+        "Apple-1 + SWTPC GT-6144 Graphic Terminal (1976)",
+        "First commercial Apple-1 graphics card: Southwest Technical Products' GT-6144 "
+        "(1976, $98.50). Standalone 64x96 monochrome framebuffer on 6x Intel 2102 SRAM "
+        "chips, write-only I/O port at $D00A. Boots with Integer BASIC + ACI cassette. "
+        "Power-on state is visible SRAM bistable noise; programs clear the framebuffer "
+        "before drawing. See the Hardware Reference window and the top comment of "
+        "GT6144.h for the 4-phase command protocol.",
+        false, false, false, false, false, false, false,
+        /*pr40*/ false,
+        false, false, /*aci*/ true, /*ramKB*/ 32, BasicType::Integer,
+        /*sidSE*/ false,
+        /*jukeBox*/ false, JukeBox::Jumper::RAM16_ROM32,
+        /*gt6144*/ true,
+        {
+            {"Apple 1 Screen",                    {10,  61}, {0,   0}},
+            // 656 x 516 = 4:3 raster (640x480) + ImGui chrome, matches the
+            // stock TV / composite monitor the 64x96 matrix was designed for.
+            {"SWTPC GT-6144 Graphic Terminal",    {640, 61}, {656, 516}},
+        }, 2
     },
     {
         "Replica-1 with ACI, Krusader & Integer BASIC (Briel 2003)",
         "Vince Briel's modern recreation: Integer BASIC, Krusader assembler, ACI cassette.",
         false, false, false, false, false, false, false,
+        /*pr40*/ false,
         true, false, true, 32, BasicType::Integer,
         /*sidSE*/ false,
         /*jukeBox*/ false, JukeBox::Jumper::RAM16_ROM32,
+        /*gt6144*/ false,
         { {"Apple 1 Screen", {10,61}, {0,0}} }, 1
     },
     {
         "Replica-1 with CFFA1 & Applesoft Lite (Dreher 2007)",
         "Replica 1 with CFFA1 CompactFlash storage, Applesoft Lite.",
         false, false, false, false, false, false, false,
+        /*pr40*/ false,
         false, true, false, 32, BasicType::ApplesoftLite,
         /*sidSE*/ false,
         /*jukeBox*/ false, JukeBox::Jumper::RAM16_ROM32,
+        /*gt6144*/ false,
         { {"Apple 1 Screen", {10,61}, {0,0}} }, 1
     },
     {
         "P-LAB Apple-1 with microSD & Applesoft Lite (April 2022)",
         "P-LAB microSD Storage Card, Applesoft Lite.",
         false, true, false, false, false, false, false,
+        /*pr40*/ false,
         false, false, false, 32, BasicType::ApplesoftLite,
         /*sidSE*/ false,
         /*jukeBox*/ false, JukeBox::Jumper::RAM16_ROM32,
+        /*gt6144*/ false,
         {
             {"Apple 1 Screen", {10, 61}, {0, 0}},
         }, 1
@@ -84,9 +115,11 @@ const MachineConfig kMachinePresets[] = {
         "P-LAB Apple-1 with A1-SID Sound Card ($C800-$CFFF)",
         "P-LAB A1-SID Sound Card (MOS 6581/8580), Integer BASIC. Registers at $C800-$CFFF.",
         false, false, true, false, false, false, false,
+        /*pr40*/ false,
         false, false, false, 32, BasicType::Integer,
         /*sidSE*/ false,
         /*jukeBox*/ false, JukeBox::Jumper::RAM16_ROM32,
+        /*gt6144*/ false,
         {
             {"Apple 1 Screen", {10, 61}, {0, 0}},
         }, 1
@@ -96,9 +129,11 @@ const MachineConfig kMachinePresets[] = {
         "Claudio Parmigiani's A1-AUDIO Special Edition (10 units): MOS 6581/8580 at $CC00-$CC1F. "
         "Mutually exclusive with TMS9918 (same $CC00/$CC01 window).",
         false, false, false, false, false, false, false,
+        /*pr40*/ false,
         false, false, false, 32, BasicType::Integer,
         /*sidSE*/ true,
         /*jukeBox*/ false, JukeBox::Jumper::RAM16_ROM32,
+        /*gt6144*/ false,
         {
             {"Apple 1 Screen", {10, 61}, {0, 0}},
         }, 1
@@ -107,9 +142,11 @@ const MachineConfig kMachinePresets[] = {
         "P-LAB Apple-1 with TMS9918 Graphic Card",
         "P-LAB Graphic Card (TMS9918A VDP), Integer BASIC.",
         false, false, false, true, false, false, false,
+        /*pr40*/ false,
         false, false, false, 32, BasicType::Integer,
         /*sidSE*/ false,
         /*jukeBox*/ false, JukeBox::Jumper::RAM16_ROM32,
+        /*gt6144*/ false,
         {
             {"Apple 1 Screen",               {10,  61}, {0,   0}},
             {"P-LAB Graphic Card (TMS9918)", {640, 61}, {784, 612}},
@@ -119,9 +156,11 @@ const MachineConfig kMachinePresets[] = {
         "P-LAB Apple-1 with I/O Board & RTC",
         "P-LAB A1-IO Board & RTC (DS3231, DS18B20, analog/digital I/O), Integer BASIC.",
         false, false, false, false, true, false, false,
+        /*pr40*/ false,
         false, false, false, 32, BasicType::Integer,
         /*sidSE*/ false,
         /*jukeBox*/ false, JukeBox::Jumper::RAM16_ROM32,
+        /*gt6144*/ false,
         {
             {"Apple 1 Screen",        {10,  61},  {0,   0}},
             {"P-LAB I/O Board & RTC", {640, 61},  {380, 280}},
@@ -131,9 +170,11 @@ const MachineConfig kMachinePresets[] = {
         "P-LAB Apple-1 with Wi-Fi Modem BBS",
         "P-LAB MODEM BBS (65C51 ACIA, ESP8266 AT, TCP/TELNET), Integer BASIC.",
         false, false, false, false, false, true, false,
+        /*pr40*/ false,
         false, false, false, 32, BasicType::Integer,
         /*sidSE*/ false,
         /*jukeBox*/ false, JukeBox::Jumper::RAM16_ROM32,
+        /*gt6144*/ false,
         {
             {"Apple 1 Screen",    {10,  61},  {0,   0}},
             {"P-LAB Wi-Fi Modem", {640, 61},  {340, 260}},
@@ -148,9 +189,11 @@ const MachineConfig kMachinePresets[] = {
         "$E000 so L<letter> on a BASIC program followed by B works directly; "
         "the LA command still reloads BASIC from the EEPROM if needed.",
         false, false, false, false, false, false, false,
+        /*pr40*/ false,
         false, false, /*aci*/ false, /*ramKB*/ 16, BasicType::Integer,
         /*sidSE*/ false,
         /*jukeBox*/ true, JukeBox::Jumper::RAM16_ROM32,
+        /*gt6144*/ false,
         {
             {"Apple 1 Screen",    {10,  61}, {0,   0}},
             {"P-LAB Juke-Box",    {640, 61}, {360, 260}},
@@ -164,9 +207,11 @@ const MachineConfig kMachinePresets[] = {
         "no arbitration, and several of these cards share overlapping address windows). "
         "Provided for convenience only.",
         false, true, true, true, true, true, true,
+        /*pr40*/ true,
         false, false, false, 64, BasicType::ApplesoftLite,
         /*sidSE*/ false,
         /*jukeBox*/ false, JukeBox::Jumper::RAM16_ROM32,
+        /*gt6144*/ false,
         {
             {"Apple 1 Screen",               {10,  61},  {0,   0}},
             {"P-LAB Graphic Card (TMS9918)", {640, 61},  {784, 612}},
@@ -179,9 +224,11 @@ const MachineConfig kMachinePresets[] = {
         "Uncle Bernie's Apple-1 with GEN2 HGR Color (April 2026)",
         "Uncle Bernie's GEN2 280x192 HGR color graphics, Integer BASIC.",
         true, false, false, false, false, false, false,
+        /*pr40*/ false,
         false, false, false, 32, BasicType::Integer,
         /*sidSE*/ false,
         /*jukeBox*/ false, JukeBox::Jumper::RAM16_ROM32,
+        /*gt6144*/ false,
         {
             {"Apple 1 Screen",                 {10,  61}, {0,   0}},
             {"Uncle Bernie's GEN2 HGR Graphic Card", {624, 61}, {576, 420}},
@@ -191,13 +238,16 @@ const MachineConfig kMachinePresets[] = {
         "POM1 Apple-1 Multiplexing Fantasy (2026)",
         "Emulator-only fantasy (violates Parmigiani's golden rule \"one board at a time\"): "
         "64 KB RAM, Applesoft Lite, microSD + A1-SID + Wi-Fi modem + Terminal Card. "
-        "Graphic cards off by default. ACI unplugged so the cassette deck acts as a plain "
-        "audio player. Boots with the Cassette Deck + Welcome panels already open to the "
-        "right of the Apple 1 screen; your layout customisations are persisted to imgui.ini.",
+        "Graphic cards and the PR-40 printer off by default — plug them from the toolbar. "
+        "ACI unplugged so the cassette deck acts as a plain audio player. Boots with the "
+        "Cassette Deck + Welcome panels already open to the right of the Apple 1 screen; "
+        "your layout customisations are persisted to imgui.ini.",
         false, true, true, false, false, true, true,
+        /*pr40*/ false,
         false, false, false, 64, BasicType::ApplesoftLite,
         /*sidSE*/ false,
         /*jukeBox*/ false, JukeBox::Jumper::RAM16_ROM32,
+        /*gt6144*/ false,
         {
             // Positions / sizes mirror the canonical POM1 imgui.ini so the
             // first launch (no saved layout) snaps to the shipped screenshot.
@@ -286,6 +336,8 @@ void MainWindow_ImGui::applyMachineConfig(int presetIndex)
     emulation->setA1IO_RTCEnabled(false);
     emulation->setWiFiModemEnabled(false);
     emulation->setJukeBoxEnabled(false);
+    emulation->setPR40Enabled(false);
+    emulation->setGT6144Enabled(false);
 #if !POM1_IS_WASM
     emulation->setTerminalCardEnabled(false);
 #endif
@@ -336,6 +388,10 @@ void MainWindow_ImGui::applyMachineConfig(int presetIndex)
     terminalCardEnabled      = cfg.terminalCard;
     showTerminalCard         = false;
 #endif
+    pr40Enabled              = cfg.pr40Printer;
+    showPR40                 = cfg.pr40Printer;
+    gt6144Enabled            = cfg.gt6144;
+    showGT6144               = cfg.gt6144;
 
     // The default POM1 preset (last in the list) boots with the procedural
     // cassette deck and the Welcome panel already open to match the
@@ -367,6 +423,8 @@ void MainWindow_ImGui::applyMachineConfig(int presetIndex)
 #else
     pendingTerminalCardEnable   = false;
 #endif
+    pendingPr40Enable           = cfg.pr40Printer;
+    pendingGT6144Enable         = cfg.gt6144;
     pendingCassetteAudioActive  = true;
     pendingCardEnableFrames     = kCardEnableDeferFrames;
 

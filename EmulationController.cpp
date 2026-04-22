@@ -1,5 +1,6 @@
 #include "EmulationController.h"
 #include "POM1Build.h"
+#include "PR40Printer.h"
 #include "RomLoader.h"
 
 #include <algorithm>
@@ -712,6 +713,52 @@ bool EmulationController::isTerminalCardEnabled() const
     return memory->isTerminalCardEnabled();
 }
 
+void EmulationController::setPR40Enabled(bool enabled)
+{
+    std::lock_guard<PriorityMutex> lock(stateMutex);
+    memory->setPR40Enabled(enabled);
+    publisher.publish(*memory, *cpu, runRequested.load());
+}
+
+bool EmulationController::isPR40Enabled() const
+{
+    std::lock_guard<PriorityMutex> lock(stateMutex);
+    return memory->isPR40Enabled();
+}
+
+void EmulationController::setPR40SwitchMode(int mode)
+{
+    PR40Printer::SwitchMode m = PR40Printer::SwitchMode::Mixed;
+    switch (mode) {
+        case 0: m = PR40Printer::SwitchMode::Off;       break;
+        case 1: m = PR40Printer::SwitchMode::Mixed;     break;
+        case 2: m = PR40Printer::SwitchMode::PrintOnly; break;
+        default: return;
+    }
+    std::lock_guard<PriorityMutex> lock(stateMutex);
+    memory->getPR40().setMode(m);
+    publisher.publish(*memory, *cpu, runRequested.load());
+}
+
+int EmulationController::getPR40SwitchMode() const
+{
+    std::lock_guard<PriorityMutex> lock(stateMutex);
+    return static_cast<int>(memory->getPR40().getMode());
+}
+
+bool EmulationController::savePR40PaperRoll(const std::string& path, std::string& error) const
+{
+    std::lock_guard<PriorityMutex> lock(stateMutex);
+    return memory->getPR40().savePaperRoll(path, error);
+}
+
+void EmulationController::clearPR40Paper()
+{
+    std::lock_guard<PriorityMutex> lock(stateMutex);
+    memory->getPR40().tearOffPage();
+    publisher.publish(*memory, *cpu, runRequested.load());
+}
+
 void EmulationController::setA1IO_RTCEnabled(bool enabled)
 {
     std::lock_guard<PriorityMutex> lock(stateMutex);
@@ -723,6 +770,19 @@ bool EmulationController::isA1IO_RTCEnabled() const
 {
     std::lock_guard<PriorityMutex> lock(stateMutex);
     return memory->isA1IO_RTCEnabled();
+}
+
+void EmulationController::setGT6144Enabled(bool enabled)
+{
+    std::lock_guard<PriorityMutex> lock(stateMutex);
+    memory->setGT6144Enabled(enabled);
+    publisher.publish(*memory, *cpu, runRequested.load());
+}
+
+bool EmulationController::isGT6144Enabled() const
+{
+    std::lock_guard<PriorityMutex> lock(stateMutex);
+    return memory->isGT6144Enabled();
 }
 
 void EmulationController::setRtcOverrideTime(std::time_t target)

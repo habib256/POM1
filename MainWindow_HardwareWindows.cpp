@@ -12,6 +12,7 @@
 #include "POM1Build.h"
 #include "WiFiModem.h"
 #include "TerminalCard.h"
+#include "PR40Printer.h"
 
 #include "imgui.h"
 #include "IconsFontAwesome6.h"
@@ -29,6 +30,7 @@
 #include <cstdint>
 #include <cmath>
 #include <cstdio>
+#include <filesystem>
 #include <string>
 
 namespace {
@@ -133,6 +135,94 @@ void MainWindow_ImGui::renderTMS9918Window()
             cursor.y + std::max(0.0f, (avail.y - size.y) * 0.5f)));
 
         ImGui::Image((ImTextureID)(uintptr_t)tms9918Texture, size);
+    }
+    ImGui::End();
+    ImGui::PopStyleColor();
+}
+
+namespace {
+// Lock the GT-6144 window to a 4:3 *content* area when the user drags.
+// ImGui's callback only knows the total window rect, so we subtract the chrome
+// (title bar + padding) before enforcing the ratio and add it back. The axis
+// with the larger drag delta wins — that way dragging width resizes height and
+// vice-versa, instead of one axis being silently pinned.
+void GT6144_WindowAspectLock(ImGuiSizeCallbackData* data)
+{
+    constexpr float kChromeW = 16.0f;
+    constexpr float kChromeH = 36.0f;
+    const float dW = std::fabs(data->DesiredSize.x - data->CurrentSize.x);
+    const float dH = std::fabs(data->DesiredSize.y - data->CurrentSize.y);
+    if (dW >= dH) {
+        const float content = std::max(1.0f, data->DesiredSize.x - kChromeW);
+        data->DesiredSize.y = content * 3.0f / 4.0f + kChromeH;
+    } else {
+        const float content = std::max(1.0f, data->DesiredSize.y - kChromeH);
+        data->DesiredSize.x = content * 4.0f / 3.0f + kChromeW;
+    }
+}
+} // namespace
+
+void MainWindow_ImGui::renderGT6144Window()
+{
+    // Lazy texture creation — 64x96 monochrome framebuffer rendered through
+    // the same GL_NEAREST pipeline as GEN2 HGR / TMS9918 for crisp pixel art
+    // at arbitrary window sizes.
+    if (gt6144Texture == 0) {
+        glGenTextures(1, &gt6144Texture);
+        glBindTexture(GL_TEXTURE_2D, gt6144Texture);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA,
+                     GT6144::kWidth, GT6144::kHeight,
+                     0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
+    }
+
+    GT6144::renderToBuffer(gt6144PixelBuf.data(), uiSnapshot.gt6144);
+    glBindTexture(GL_TEXTURE_2D, gt6144Texture);
+    glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0,
+                    GT6144::kWidth, GT6144::kHeight,
+                    GL_RGBA, GL_UNSIGNED_BYTE, gt6144PixelBuf.data());
+
+    // Aspect correction: the GT-6144 sent its 64x96 logical matrix to a
+    // stock 4:3 CRT (TV or composite monitor), so the visible pixels were
+    // "petits rectangles" horizontally stretched — SWTPC's own documentation
+    // describes them that way. The horizontal stretch factor needed to map
+    // a 2:3 matrix (64:96) onto a 4:3 raster is exactly (4/3)/(2/3) = 2,
+    // which makes each logical pixel render as a 2:1 rectangle (twice as
+    // wide as it is tall). The uploaded texture remains native 64x96;
+    // GL_NEAREST stretches it horizontally at blit time.
+    constexpr float kGT6144AspectStretchX = 2.0f;
+    const float displayAspectW = GT6144::kWidth  * kGT6144AspectStretchX; // 128
+    const float displayAspectH = static_cast<float>(GT6144::kHeight);     // 96
+    // Default to pixel-height scale 5 → 640x480 raster area + ImGui chrome.
+    constexpr float kGT6144DefaultPixelScale = 5.0f;
+    const float defPs = kGT6144DefaultPixelScale;
+    const float winW = displayAspectW * defPs + 16.0f;
+    const float winH = displayAspectH * defPs + 36.0f;
+    ImGui::SetNextWindowSize(ImVec2(winW, winH), ImGuiCond_FirstUseEver);
+    const float minWinW = displayAspectW * kVideoCardMinPixelScale + 16.0f;
+    const float minWinH = displayAspectH * kVideoCardMinPixelScale + 36.0f;
+    // The custom callback locks the content area to 4:3 as the user drags;
+    // the min/max rectangles stay permissive on both axes since the callback
+    // picks which axis is authoritative per frame.
+    ImGui::SetNextWindowSizeConstraints(ImVec2(minWinW, minWinH),
+                                        ImVec2(FLT_MAX, FLT_MAX),
+                                        GT6144_WindowAspectLock);
+    applyPendingLayout("SWTPC GT-6144 Graphic Terminal");
+    ImGui::PushStyleColor(ImGuiCol_WindowBg, IM_COL32(0, 0, 0, 255));
+    if (ImGui::Begin("SWTPC GT-6144 Graphic Terminal", &showGT6144)) {
+        ImVec2 avail = ImGui::GetContentRegionAvail();
+        float pixelScale = defPs;
+        ImVec2 size = layoutFitVideoViewport(avail, displayAspectW,
+                                             displayAspectH, pixelScale);
+        ImVec2 cursorPos = ImGui::GetCursorPos();
+        ImGui::SetCursorPos(ImVec2(
+            cursorPos.x + std::max(0.0f, (avail.x - size.x) * 0.5f),
+            cursorPos.y + std::max(0.0f, (avail.y - size.y) * 0.5f)));
+
+        ImGui::Image((ImTextureID)(uintptr_t)gt6144Texture, size);
     }
     ImGui::End();
     ImGui::PopStyleColor();
@@ -338,6 +428,122 @@ void MainWindow_ImGui::renderA1IO_RTCWindow()
             ImGui::BulletText("$2003  DDRA  - Data Direction A");
             ImGui::BulletText("$200A  SR    - Shift Reg (16 outputs)");
             ImGui::BulletText("$200B  ACR   - Aux Control Register");
+        }
+    }
+    ImGui::End();
+}
+
+void MainWindow_ImGui::renderPR40Window()
+{
+    ImGui::SetNextWindowSize(ImVec2(440, 620), ImGuiCond_FirstUseEver);
+    applyPendingLayout("SWTPC PR-40 Printer");
+    if (ImGui::Begin("SWTPC PR-40 Printer", &showPR40)) {
+        const auto& snap = uiSnapshot.pr40;
+
+        // Status
+        if (snap.busy) {
+            ImGui::TextColored(ImVec4(0.95f, 0.55f, 0.25f, 1.0f),
+                ICON_FA_PRINT " BUSY (printing ~0.8 s mechanical cycle)");
+        } else {
+            ImGui::TextColored(ImVec4(0.4f, 0.8f, 0.4f, 1.0f),
+                ICON_FA_PRINT " IDLE - ready to receive");
+        }
+        ImGui::Text("FIFO: %d / %d", snap.fifoLevel, PR40Printer::kFifoCapacity);
+        ImGui::SameLine();
+        ImGui::ProgressBar(static_cast<float>(snap.fifoLevel) /
+                           static_cast<float>(PR40Printer::kFifoCapacity),
+                           ImVec2(140, 12), "");
+        ImGui::Text("Characters: %d    Lines: %d    Pages torn: %d",
+                    snap.charactersPrinted, snap.linesPrinted, snap.pagesTornOff);
+
+        ImGui::Separator();
+
+        // DPDT switch
+        ImGui::Text("DPDT switch (Jobs 1976 / 3-position community mod):");
+        int mode = static_cast<int>(snap.mode);
+        if (ImGui::RadioButton("Off##pr40mode", mode == 0)) {
+            emulation->setPR40SwitchMode(0);
+            setStatusMessage("PR-40: switch OFF - printer disconnected from PIA", 2.0f);
+        }
+        ImGui::SameLine();
+        if (ImGui::RadioButton("Mixed##pr40mode", mode == 1)) {
+            emulation->setPR40SwitchMode(1);
+            setStatusMessage("PR-40: Mixed mode - video + printer busy OR-merged on PB7", 2.0f);
+        }
+        ImGui::SameLine();
+        if (ImGui::RadioButton("Print Only##pr40mode", mode == 2)) {
+            emulation->setPR40SwitchMode(2);
+            setStatusMessage("PR-40: Print Only - PB7 bypasses video /RDA", 2.0f);
+        }
+        ImGui::TextColored(ImVec4(0.6f, 0.6f, 0.6f, 1.0f),
+            "Mixed = Jobs' original 2-pos wiring.  Print Only = later 3-pos mod.");
+
+        ImGui::Separator();
+
+        // Paper roll — full session history. ImGuiListClipper keeps the
+        // per-frame TextUnformatted call count bounded to what's visible even
+        // when the roll has thousands of lines.
+        ImGui::Text("Paper roll (3 7/8\" continuous, 40 col — %d line%s this session):",
+                    static_cast<int>(snap.recentLines.size()),
+                    snap.recentLines.size() == 1 ? "" : "s");
+        ImGui::BeginChild("##pr40paper", ImVec2(0, 420), true);
+        {
+            // Wrap at the child's right edge so narrow ribbon widths don't
+            // truncate printed lines (replaces the prior horizontal scrollbar).
+            // ListClipper can't be used here — wrapping makes per-line height
+            // non-uniform. For a typical PR-40 session (a few hundred lines
+            // of ≤40 chars) rendering everything is well under a millisecond.
+            ImGui::PushTextWrapPos(0.0f);
+            for (const auto& line : snap.recentLines) {
+                ImGui::TextUnformatted(line.c_str());
+            }
+            ImGui::PopTextWrapPos();
+            // Auto-scroll when the user is at (or near) the bottom, so new
+            // lines paid-out by the printer stay visible without yanking
+            // scrollback when the user is reading old lines.
+            if (ImGui::GetScrollY() >= ImGui::GetScrollMaxY() - 1.0f) {
+                ImGui::SetScrollHereY(1.0f);
+            }
+        }
+        ImGui::EndChild();
+
+        if (ImGui::Button("Tear off page")) {
+            emulation->clearPR40Paper();
+            setStatusMessage("PR-40: page torn off", 2.0f);
+        }
+        ImGui::SameLine();
+        if (ImGui::Button("Copy to clipboard")) {
+            std::string all;
+            // Rough reservation: 41 chars/line (40 + '\n'). Avoids reallocs
+            // on long rolls.
+            all.reserve(snap.recentLines.size() * 41);
+            for (const auto& line : snap.recentLines) {
+                all += line;
+                all += '\n';
+            }
+            ImGui::SetClipboardText(all.c_str());
+            char msg[96];
+            std::snprintf(msg, sizeof(msg),
+                          "PR-40: %d line%s copied to clipboard",
+                          static_cast<int>(snap.recentLines.size()),
+                          snap.recentLines.size() == 1 ? "" : "s");
+            setStatusMessage(msg, 2.5f);
+        }
+        ImGui::SameLine();
+        // Save path resolves to the absolute cwd-relative location so the
+        // user can actually find the file (was a status-message usability
+        // bug: "saved to pr40_paper.txt" with no hint that cwd = build/).
+        if (ImGui::Button("Save to pr40_paper.txt")) {
+            std::error_code ec;
+            const std::filesystem::path rel("pr40_paper.txt");
+            const std::filesystem::path abs = std::filesystem::absolute(rel, ec);
+            const std::string path = ec ? rel.string() : abs.string();
+            std::string err;
+            if (emulation->savePR40PaperRoll(path, err)) {
+                setStatusMessage("PR-40: paper roll saved to " + path, 4.0f);
+            } else {
+                setStatusMessage(std::string("PR-40 save failed: ") + err, 4.0f);
+            }
         }
     }
     ImGui::End();

@@ -59,6 +59,8 @@ set(SOURCES
     JukeBox.cpp
     WiFiModem.cpp
     TerminalCard.cpp
+    PR40Printer.cpp
+    GT6144.cpp
     RomLoader.cpp
     KeyboardController.cpp
     SnapshotPublisher.cpp
@@ -96,6 +98,8 @@ set(HEADERS
     SocketHandle.h
     WiFiModem.h
     TerminalCard.h
+    PR40Printer.h
+    GT6144.h
     RomLoader.h
     KeyboardController.h
     SnapshotPublisher.h

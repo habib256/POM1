@@ -15,6 +15,7 @@
 #include "Screen_ImGui.h"
 #include "GraphicsCard.h"
 #include "TMS9918.h"
+#include "GT6144.h"
 #include "CassetteDeck_ImGui.h"
 #include "CliDispatcher.h"
 #include "SID.h"
@@ -132,6 +133,10 @@ private:
     bool tms9918Enabled = false;
     GLuint tms9918Texture = 0;
     std::array<uint32_t, TMS9918::kScreenWidth * TMS9918::kScreenHeight> tms9918PixelBuf{};
+    bool showGT6144 = false;
+    bool gt6144Enabled = false;
+    GLuint gt6144Texture = 0;
+    std::array<uint32_t, GT6144::kWidth * GT6144::kHeight> gt6144PixelBuf{};
     bool sidEnabled = false;
     bool sidSpecialEditionEnabled = false;
     bool microSDEnabled = true;
@@ -140,6 +145,8 @@ private:
     bool showWiFiModem = false;
     bool terminalCardEnabled = !POM1_IS_WASM;
     bool showTerminalCard = !POM1_IS_WASM;
+    bool pr40Enabled = false;
+    bool showPR40 = false;
     bool a1ioRtcEnabled = false;
     bool showA1IO_RTC = false;
     bool jukeBoxEnabled = false;
@@ -207,10 +214,12 @@ private:
     void renderSaveTapeDialog();
     void renderGraphicsCardWindow();
     void renderTMS9918Window();
+    void renderGT6144Window();
     void renderWiFiModemWindow();
     void renderTerminalCardWindow();
     void renderA1IO_RTCWindow();
     void renderJukeBoxWindow();
+    void renderPR40Window();
 
     // Action functions
     void loadMemory();
@@ -318,6 +327,8 @@ private:
     bool pendingTms9918Enable = false;
     bool pendingA1ioRtcEnable = false;
     bool pendingTerminalCardEnable = false;
+    bool pendingPr40Enable = false;
+    bool pendingGT6144Enable = false;
     bool pendingWifiModemEnable = false;
     bool pendingJukeBoxEnable = false;
     JukeBox::Jumper pendingJukeBoxJumper = JukeBox::Jumper::RAM16_ROM32;

@@ -132,6 +132,10 @@ constexpr CardNameEntry kCardNames[] = {
     {"modem",        CliCard::WifiModem},
     {"terminal",     CliCard::TerminalCard},
     {"jukebox",      CliCard::JukeBox},
+    {"pr40",         CliCard::Pr40},
+    {"printer",      CliCard::Pr40},
+    {"gt6144",       CliCard::GT6144},
+    {"swtpc",        CliCard::GT6144},
 };
 
 bool parseCard(const std::string& raw, CliCard& out)
@@ -167,7 +171,7 @@ bool addCardsFromCsv(const std::string& csv, bool enable, std::vector<CliCardOve
         CliCard c;
         if (!parseCard(n, c)) {
             pom1::log().error("CLI", "Unknown card name '" + n + "'. Valid: "
-                "aci,sid,sid-se,microsd,tms9918,a1io-rtc,hgr,cffa1,krusader,wifi,terminal,jukebox");
+                "aci,sid,sid-se,microsd,tms9918,a1io-rtc,hgr,cffa1,krusader,wifi,terminal,jukebox,pr40");
             return false;
         }
         out.push_back({c, enable});

@@ -99,6 +99,7 @@ struct MachineConfig {
     const char* name;
     const char* description;
     bool graphicsCard, microSD, sid, tms9918, a1ioRtc, wifiModem, terminalCard;
+    bool pr40Printer;   // SWTPC PR-40 (Jobs Oct. 1976 Interface Age hack)
     bool krusader;
     bool cffa1;
     bool aci;                   // Apple Cassette Interface (false = pre-ACI bare 4K)
@@ -117,6 +118,9 @@ struct MachineConfig {
     // the preset layer enforces that.
     bool jukeBox;
     JukeBox::Jumper jukeBoxJumper;
+    // SWTPC GT-6144 Graphic Terminal (1976) — write-only 64x96 mono framebuffer
+    // at $D00A. No bus conflicts with other cards at that address.
+    bool gt6144;
     MachineWindowPlacement layout[8];
     int layoutCount;
 };
