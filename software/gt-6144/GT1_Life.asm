@@ -3,456 +3,418 @@
 ; SWTPC GT-6144 Graphic Terminal (1976, $D00A)
 ; VERHILLE Arnaud - 2026
 ; =============================================
-; 64x96 bit-packed cell grid. Seeded with an R-pentomino near the
-; centre — evolves for about 1100 generations and stabilises into a
-; mix of blinkers, blocks, gliders, and a beehive or two.
+; 40x60 cell grid, centered on the 64x96 GT-6144 matrix, byte-per-cell
+; storage with a ghost border (so neighbour counting skips the bounds
+; check) and a B3/S23 rule LUT. Display writes only the cells that
+; change from one generation to the next, using a 2-buffer flip so the
+; previous frame IS the comparison baseline — the classic trick the
+; HGR/TMS versions use, ported to the GT-6144's write-only framebuffer.
 ;
-; Memory:
-;   GRID_A = $1000 (768 bytes, what's currently on the GT-6144 screen)
-;   GRID_B = $1400 (768 bytes, next generation being computed)
-;   Row N lives at GRID_X + N * 8 (8 bytes per row, 8 cells per byte,
-;   bit 0 = leftmost cell of the byte).
+; Why this version is fast (prior bit-packed version was NOT):
+;   - 1 byte per cell: neighbour count is a CLC + 7 chained ADC
+;     (p0/p1/p2),Y — the max possible sum is 8 so no intermediate carry
+;     handling is needed. ~12 cycles per neighbour instead of ~100 in
+;     the bit-packed version that had to bounds-check + shift + mask.
+;   - Ghost border (rows 0/61, cols 0/41 stay 0 forever) → no
+;     per-neighbour bounds check.
+;   - row_ofs[r] = r * ROW_SIZ precomputed → no runtime multiply.
+;   - rule_lut[count*2 + alive] → one LDA, no branches per cell.
+;   - Pointer swap (src/dst) each gen → no inter-frame copy.
 ;
-; Loop (the key optimisation — only CHANGED pixels are emitted):
-;   DISPLAY_DELTA : for every byte where GRID_A != GRID_B, walk the
-;                   diff bits and emit a single latch-X + commit-Y
-;                   pair per changed cell (using GRID_B's new state).
-;                   Copies GRID_B → GRID_A in the same sweep. Untouched
-;                   bytes skip the entire bit loop.
-;   STEP          : compute GRID_B = next_gen(GRID_A) using the usual
-;                   B3/S23 rules. Clears GRID_B up front so we only
-;                   SET bits for live cells.
-;   Key poll      : any key → return to the Woz Monitor.
+; Display (DISPLAY_DELTA):
+;   - Walk src & dst in parallel: if the byte differs, emit one
+;     latch-X + commit-Y pair per changed cell using dst's new value.
+;     Late-stage Life rarely changes more than a few dozen cells per
+;     generation, so GT-6144 traffic stays well under 200 $D00A pokes
+;     per frame (vs. 4800 if we naively repainted everything).
 ;
-; Why the delta matters: a naive full repaint is 6144 cells × 2 writes
-; = 12288 $D00A pokes per frame. With deltas the typical late-evolution
-; Life board only changes a few dozen cells per gen, so we emit well
-; under 200 pokes. At 1 MHz the animation becomes flicker-free and the
-; perceived speed jumps roughly 10×.
+; Memory footprint (fits the 8 KB Apple-1+GT-6144 preset):
+;   $0000-$001F     zero page (ca65-allocated)
+;   $0300-~$0900    code + tables (this .bin file)
+;   $0A00-$142B     grid_a (42 * 62 = 2604 bytes, ghost-bordered)
+;   $1500-$1F2B     grid_b (same layout)
+;   -> ends at $1F2B, under the 8 KB ceiling at $1FFF.
 ;
-; Initial paint trick: CLEAR_GT leaves the screen all-OFF. GRID_A is
-; zeroed to match. SEED writes the R-pentomino into GRID_B (NOT A), so
-; the very first DISPLAY_DELTA naturally paints the seed as "changes".
-; No separate full-redraw path is needed.
+; Cell layout:
+;   cell (r, c), r in 1..60, c in 1..40
+;   byte = grid[r*42 + c]   (0 = dead, 1 = alive)
+;   ghost border at r = 0/61 and c = 0/41 stays 0 → dead edges.
 ;
-; Performance envelope (STEP dominates):
-;   STEP ≈ 7.4 M cycles/gen (~7 s at 1 MHz, ~150 ms at --cpu-max).
-;   DISPLAY_DELTA ≈ 3 k cycles + ~60 cycles per changed cell.
-;   Run with --cpu-max for a fluid animation.
+; Display mapping:
+;   The 40x60 grid is centered on the 64x96 GT-6144 matrix:
+;     gt_col = (c - 1) + 12   (so cell col 1..40 → x 12..51)
+;     gt_row = (r - 1) + 18   (so cell row 1..60 → y 18..77)
+;
+; Keyboard:
+;   Any key → return to the Woz Monitor.
 ;
 ; Assemble:
-;   ca65 -o build/GT1_Life.o software/gt-6144/GT1_Life.asm
+;   ca65 -o build/GT1_Life.o  software/gt-6144/GT1_Life.asm
 ;   ld65 -C software/gt-6144/gt6144.cfg -o build/GT1_Life.bin build/GT1_Life.o
 ;
-; Load + run (Wozmon):
-;   300: <paste hex>
-;   300R
-;
-; Preset: ./POM1 --preset 2 --cpu-max
+; Preset: ./POM1 --preset 2 --cpu-max --load 0300:build/GT1_Life.bin --run 0300
 ; =============================================
 
-GT_PORT   = $D00A
-KBD       = $D010
-KBDCR     = $D011
+; ----- Apple 1 I/O -----
+KBDCR    = $D011
+KBD      = $D010
+GT_PORT  = $D00A
 ; Woz Monitor GETLINE entry that prints '\' + CR (real prompt). $FF1F
-; would skip the '\' and look like a reboot — see GT1_Hello.asm.
-WOZMON    = $FF1A
+; would skip the '\' — see GT1_Hello.asm for the trap rationale.
+WOZMON   = $FF1A
 
-GRID_A    = $1000      ; current-on-screen generation
-GRID_B    = $1400      ; next generation being computed
+; ----- Geometry -----
+ROW_SIZ  = 42              ; 40 interior cols + 2 ghost
+N_ROWS   = 60              ; interior rows
+N_COLS   = 40              ; interior cols
+COL_OFS  = 12              ; GT-6144 x of cell col 1 (centred: 12+40+12 = 64)
+ROW_OFS  = 18              ; GT-6144 y of cell row 1 (centred: 18+60+18 = 96)
 
-; Zero-page scratch
-OROW      = $10        ; STEP outer row 0..95
-OCOL      = $11        ; STEP outer col 0..63  — reused as OROW_BASE in DELTA
-ROW       = $12        ; GET_CELL arg (signed; $FF = out-of-bounds)
-COL       = $13        ; GET_CELL arg
-NCNT      = $14        ; STEP neighbour count — reused as DIFF in DELTA
-CENTER    = $15        ; STEP center-cell state — reused as DRAW_ROW in DELTA
-NB_IDX    = $16        ; STEP neighbour index — reused as TMP2 in DRAW_BITS
-RP_LO     = $17        ; grid byte pointer, low
-RP_HI     = $18        ; grid byte pointer, high
-TMP       = $19        ; scratch (row*8 low byte during address math)
-NEW_B     = $1A        ; DELTA: new byte value (for ON/OFF decision per bit)
-X_BASE    = $1B        ; DELTA: leftmost col of the current byte (0..56)
-Y_SAVE    = $1C        ; DRAW_BITS: save Y across the bit loop
+; ----- Grid buffers -----
+grid_a  := $0A00
+grid_b  := $1500
 
-    .org $0300
+; ----- Zero page -----
+.zeropage
+            .res 2          ; $00-$01 reserved
+src_lo:     .res 1
+src_hi:     .res 1
+dst_lo:     .res 1
+dst_hi:     .res 1
+p0_lo:      .res 1          ; row r-1 (source read)
+p0_hi:      .res 1
+p1_lo:      .res 1          ; row r
+p1_hi:      .res 1
+p2_lo:      .res 1          ; row r+1
+p2_hi:      .res 1
+dstp_lo:    .res 1          ; row r (dst write)
+dstp_hi:    .res 1
+sp_lo:      .res 1          ; render_delta: src row r
+sp_hi:      .res 1
+dp_lo:      .res 1          ; render_delta: dst row r
+dp_hi:      .res 1
+row_i:      .res 1
+col_i:      .res 1
+n_cnt:      .res 1          ; neighbour count
+n_alive:    .res 1          ; centre cell value (0/1)
+tmp:        .res 1          ; scratch
+
+.code
 
 ; =============================================
 ; MAIN
 ; =============================================
-START:
-    jsr CLEAR_GT        ; wipe the Intel 2102 bistable power-on noise
-    jsr ZERO_GRIDS      ; both A and B zero (A matches the blank screen)
-    jsr SEED_B          ; drop the R-pentomino into GRID_B
+main:
+        jsr clear_gt            ; wipe the Intel 2102 bistable noise
+        jsr clear_grids         ; both grids zero (grid_a matches blank screen)
+        jsr seed_into_b         ; R-pentomino into grid_b; first render paints it
 
-MAIN:
-    jsr DISPLAY_DELTA   ; emit pixels for (A ^ B) bits, then A := B
-    jsr STEP            ; GRID_B = next_gen(GRID_A)
-    lda KBDCR
-    bpl MAIN            ; bit 7 clear => no key, keep evolving
-    lda KBD             ; consume strobe
-    jmp WOZMON
+        ; src = grid_a (on-screen, blank), dst = grid_b (seeded)
+        lda #<grid_a
+        sta src_lo
+        lda #>grid_a
+        sta src_hi
+        lda #<grid_b
+        sta dst_lo
+        lda #>grid_b
+        sta dst_hi
+
+gen_loop:
+        jsr render_delta        ; emit (src XOR dst) using dst values
+        lda KBDCR
+        bpl @no_key
+        lda KBD                 ; consume key
+        jmp WOZMON              ; clean return, GT-6144 image stays on screen
+@no_key:
+        ; Swap src <-> dst so next compute_next reads the new state
+        lda src_lo
+        ldx dst_lo
+        stx src_lo
+        sta dst_lo
+        lda src_hi
+        ldx dst_hi
+        stx src_hi
+        sta dst_hi
+        jsr compute_next        ; src (now the just-rendered state) → dst
+        jmp gen_loop
 
 ; =============================================
-; CLEAR_GT — paint every pixel OFF (64x96 OFF-latch + Y-commit pairs).
-; Called once at boot to mask the Intel 2102 SRAM power-on noise.
+; clear_gt — paint every pixel OFF (64x96 OFF-latch + Y-commit pairs)
 ; =============================================
-CLEAR_GT:
-    ldx #0
+clear_gt:
+        ldx #0
 @xl:
-    stx GT_PORT         ; X < 64 => latch X, mode=OFF
-    ldy #128
+        stx GT_PORT             ; X<64 → latch X, mode=OFF
+        ldy #128
 @yl:
-    sty GT_PORT         ; commit pixel (X, Y-128) OFF
-    iny
-    cpy #224
-    bne @yl
-    inx
-    cpx #64
-    bne @xl
-    rts
+        sty GT_PORT             ; commit pixel (X, Y-128) OFF
+        iny
+        cpy #224
+        bne @yl
+        inx
+        cpx #64
+        bne @xl
+        rts
 
 ; =============================================
-; ZERO_GRIDS — wipe both 768-byte buffers (rounded to 3 pages each).
+; clear_grids — zero both grid_a and grid_b (2604 bytes each).
+; Uses a fall-through tail-call so the inner helper is reached twice.
 ; =============================================
-ZERO_GRIDS:
-    lda #0
-    ldy #0
-@l:
-    sta GRID_A,y
-    sta GRID_A+$100,y
-    sta GRID_A+$200,y
-    sta GRID_B,y
-    sta GRID_B+$100,y
-    sta GRID_B+$200,y
-    iny
-    bne @l
-    rts
+clear_grids:
+        lda #<grid_a
+        sta p0_lo
+        lda #>grid_a
+        sta p0_hi
+        jsr clear_2604
+        lda #<grid_b
+        sta p0_lo
+        lda #>grid_b
+        sta p0_hi
+        ; fall through
+clear_2604:
+        lda #0
+        ldy #0
+        ldx #10             ; 10 full pages = 2560 bytes
+@full:
+        sta (p0_lo),y
+        iny
+        bne @full
+        inc p0_hi
+        dex
+        bne @full
+        ldy #44             ; 44 more (10*256 + 44 = 2604)
+@tail:
+        dey
+        sta (p0_lo),y
+        bne @tail
+        rts
 
 ; =============================================
-; SEED_B — R-pentomino placed with its bounding box around
-; (row=46..48, col=31..33). Shape:
-;       . # #       (46,32) (46,33)
-;       # # .       (47,31) (47,32)
-;       . # .       (48,32)
-; The seed is written into GRID_B so the first DISPLAY_DELTA paints
-; it as a set of changes-from-blank.
+; seed_into_b — write the R-pentomino into grid_b (NOT grid_a).
+; Placement: cells (r, c) = (30, 20), (30, 21), (31, 19), (31, 20),
+; (32, 20). Shape:
+;       . # #
+;       # # .
+;       . # .
+; Centering: rows 30..32 in 1..60, cols 19..21 in 1..40.
 ; =============================================
-SEED_B:
-    lda #$03            ; (46,32) bit0 + (46,33) bit1
-    sta GRID_B+46*8+4
-    lda #$80            ; (47,31) bit7
-    sta GRID_B+47*8+3
-    lda #$01            ; (47,32) bit0
-    sta GRID_B+47*8+4
-    lda #$01            ; (48,32) bit0
-    sta GRID_B+48*8+4
-    rts
+seed_into_b:
+        ; row 30 → r*42 = 1260 = $04EC, +c
+        ; grid_b + $04EC = $1500 + $04EC = $19EC
+        lda #1                  ; (30,20)
+        sta $19EC + 20
+        sta $19EC + 21          ; (30,21)
+        ; row 31 → 31*42 = 1302 = $0516; grid_b + $0516 = $1A16
+        sta $1A16 + 19          ; (31,19)
+        sta $1A16 + 20          ; (31,20)
+        ; row 32 → 32*42 = 1344 = $0540; grid_b + $0540 = $1A40
+        sta $1A40 + 20          ; (32,20)
+        rts
 
 ; =============================================
-; DISPLAY_DELTA — stream the delta between GRID_A and GRID_B to the
-; GT-6144, and fold the new state into GRID_A so next frame's compare
-; is free.
+; compute_next — one generation, src → dst, B3/S23 rules.
+; Rows 1..60, cols 1..40. Ghost border never written so it stays 0.
 ;
-; Walk structure: 3 page-sized loops (Y 0..255), one per 32-row band.
-; For each byte:
-;   new = GRID_B[idx]
-;   diff = GRID_A[idx] XOR new
-;   if diff != 0: DRAW_BITS (emit pixels for the 1-bits)
-;   GRID_A[idx] = new
-; The `eor` + `beq` fast-path skips the bit loop for unchanged bytes —
-; which is ~98% of them on a settled Life board.
+; Neighbour count: 8 cells, each 0/1; max sum = 8; no inter-ADC CLC
+; needed. Result indexed into rule_lut as count*2 + alive.
 ; =============================================
-DISPLAY_DELTA:
-    lda #0
-    sta OCOL            ; OROW_BASE = 0 (page 0 covers rows 0..31)
-    ldy #0
-@p0:
-    lda GRID_B,y
-    sta NEW_B
-    eor GRID_A,y        ; A = diff
-    beq @p0_skip
-    sta NCNT            ; stash diff (reuse NCNT as DIFF)
-    jsr DRAW_BITS
-@p0_skip:
-    lda NEW_B
-    sta GRID_A,y
-    iny
-    bne @p0
-
-    lda #32
-    sta OCOL            ; page 1 covers rows 32..63
-    ldy #0
-@p1:
-    lda GRID_B+$100,y
-    sta NEW_B
-    eor GRID_A+$100,y
-    beq @p1_skip
-    sta NCNT
-    jsr DRAW_BITS
-@p1_skip:
-    lda NEW_B
-    sta GRID_A+$100,y
-    iny
-    bne @p1
-
-    lda #64
-    sta OCOL            ; page 2 covers rows 64..95
-    ldy #0
-@p2:
-    lda GRID_B+$200,y
-    sta NEW_B
-    eor GRID_A+$200,y
-    beq @p2_skip
-    sta NCNT
-    jsr DRAW_BITS
-@p2_skip:
-    lda NEW_B
-    sta GRID_A+$200,y
-    iny
-    bne @p2
-    rts
-
-; =============================================
-; DRAW_BITS — walk the 8 bits of NCNT (DIFF) and emit one latch-X +
-; commit-Y pair per set bit. Called from DISPLAY_DELTA.
-;   Y         = in-page offset (row_in_page*8 + byte_col)
-;   OCOL      = OROW_BASE (0 / 32 / 64 for pages 0/1/2)
-;   NCNT      = diff byte (which bits changed)
-;   NEW_B     = new byte (ON/OFF decision for each changed bit)
-; Preserves Y for the caller's page walk.
-; =============================================
-DRAW_BITS:
-    sty Y_SAVE
-    ; DRAW_ROW = (Y >> 3) + OROW_BASE
-    tya
-    lsr a
-    lsr a
-    lsr a
-    clc
-    adc OCOL            ; + OROW_BASE
-    sta CENTER          ; (reused as DRAW_ROW in this routine)
-    ; X_BASE = (Y & 7) << 3
-    tya
-    and #$07
-    asl a
-    asl a
-    asl a
-    sta X_BASE
-    ldx #0              ; bit index 0..7
-@bit:
-    lda BIT_MASK,x
-    and NCNT
-    beq @skip
-    ; This cell changed — decide ON vs OFF from the new byte.
-    lda BIT_MASK,x
-    and NEW_B
-    beq @off
-    ; ON: latch X (col) with bit 6 set → mode=ON
-    lda X_BASE
-    stx NB_IDX          ; (reused as TMP2 — save X across the add)
-    clc
-    adc NB_IDX
-    ora #$40
-    jmp @emit
-@off:
-    ; OFF: latch X (col) with bit 6 clear → mode=OFF
-    lda X_BASE
-    stx NB_IDX
-    clc
-    adc NB_IDX
-@emit:
-    sta GT_PORT
-    lda CENTER          ; DRAW_ROW
-    ora #$80            ; commit Y (128..223 range)
-    sta GT_PORT
-@skip:
-    inx
-    cpx #8
-    bne @bit
-    ldy Y_SAVE
-    rts
-
-; =============================================
-; STEP — compute GRID_B = next_gen(GRID_A) under Conway's B3/S23.
-; For every (OROW, OCOL), count alive neighbours via GET_CELL. Edges
-; are treated as permanently dead (GET_CELL's bounds check). GRID_B
-; is cleared first so SET_LIVE only has to OR in bits.
-; =============================================
-STEP:
-    ; Clear GRID_B (3 pages)
-    lda #0
-    ldy #0
-@czl:
-    sta GRID_B,y
-    sta GRID_B+$100,y
-    sta GRID_B+$200,y
-    iny
-    bne @czl
-
-    lda #0
-    sta OROW
+compute_next:
+        lda #1
+        sta row_i
 @row_loop:
-    lda #0
-    sta OCOL
+        ; p0 = src + row_ofs[row_i - 1]
+        ldx row_i
+        dex
+        lda src_lo
+        clc
+        adc row_ofs_lo,x
+        sta p0_lo
+        lda src_hi
+        adc row_ofs_hi,x
+        sta p0_hi
+
+        ; p1 = src + row_ofs[row_i]
+        inx
+        lda src_lo
+        clc
+        adc row_ofs_lo,x
+        sta p1_lo
+        lda src_hi
+        adc row_ofs_hi,x
+        sta p1_hi
+
+        ; p2 = src + row_ofs[row_i + 1]
+        inx
+        lda src_lo
+        clc
+        adc row_ofs_lo,x
+        sta p2_lo
+        lda src_hi
+        adc row_ofs_hi,x
+        sta p2_hi
+
+        ; dstp = dst + row_ofs[row_i]
+        ldx row_i
+        lda dst_lo
+        clc
+        adc row_ofs_lo,x
+        sta dstp_lo
+        lda dst_hi
+        adc row_ofs_hi,x
+        sta dstp_hi
+
+        lda #1
+        sta col_i
 @col_loop:
-    lda #0
-    sta NCNT
-    ldx #0              ; neighbour-delta index 0..7
-@nb_loop:
-    lda OROW
-    clc
-    adc DROW,x          ; DROW entry is signed byte ($FF = -1)
-    sta ROW
-    lda OCOL
-    clc
-    adc DCOL,x
-    sta COL
-    stx NB_IDX
-    jsr GET_CELL
-    ldx NB_IDX
-    clc
-    adc NCNT
-    sta NCNT
-    inx
-    cpx #8
-    bne @nb_loop
+        ; 8-neighbour sum (no intermediate carry: cells are 0/1, max 8).
+        ldy col_i
+        dey                     ; Y = c-1
+        clc
+        lda (p0_lo),y           ; p0[c-1]
+        iny
+        adc (p0_lo),y           ; + p0[c]
+        iny
+        adc (p0_lo),y           ; + p0[c+1]
+        dey
+        dey
+        adc (p1_lo),y           ; + p1[c-1]
+        iny
+        iny
+        adc (p1_lo),y           ; + p1[c+1]   (skip center)
+        dey
+        dey
+        adc (p2_lo),y           ; + p2[c-1]
+        iny
+        adc (p2_lo),y           ; + p2[c]
+        iny
+        adc (p2_lo),y           ; + p2[c+1]
+        sta n_cnt
 
-    ; Read the centre cell's current state
-    lda OROW
-    sta ROW
-    lda OCOL
-    sta COL
-    jsr GET_CELL
-    sta CENTER
+        ldy col_i
+        lda (p1_lo),y           ; centre cell
+        sta n_alive
 
-    ; Life rules (B3/S23)
-    lda CENTER
-    beq @dead_rule
-    ; alive: count in [2, 3] survives
-    lda NCNT
-    cmp #2
-    beq @set_live
-    cmp #3
-    beq @set_live
-    jmp @next
-@dead_rule:
-    ; dead: count == 3 → born
-    lda NCNT
-    cmp #3
-    bne @next
-@set_live:
-    ; GRID_B[OROW][OCOL] |= bit
-    lda #0
-    sta RP_HI
-    lda OROW
-    asl a
-    rol RP_HI
-    asl a
-    rol RP_HI
-    asl a
-    rol RP_HI
-    sta TMP             ; row*8 low byte
-    lda OCOL
-    lsr a
-    lsr a
-    lsr a               ; byte_col = OCOL >> 3
-    clc
-    adc TMP
-    sta RP_LO
-    lda RP_HI
-    adc #0
-    sta RP_HI
-    clc
-    lda RP_LO
-    adc #<GRID_B
-    sta RP_LO
-    lda RP_HI
-    adc #>GRID_B
-    sta RP_HI
-    lda OCOL
-    and #$07
-    tax
-    lda BIT_MASK,x
-    ldy #0
-    ora (RP_LO),y
-    sta (RP_LO),y
-@next:
-    inc OCOL
-    lda OCOL
-    cmp #64
-    beq @next_row
-    jmp @col_loop
-@next_row:
-    inc OROW
-    lda OROW
-    cmp #96
-    beq @done
-    jmp @row_loop
+        ; next = rule_lut[count*2 + alive]
+        lda n_cnt
+        asl
+        ora n_alive
+        tay
+        lda rule_lut,y
+
+        ldy col_i
+        sta (dstp_lo),y
+
+        inc col_i
+        lda col_i
+        cmp #(N_COLS + 1)       ; = 41
+        bne @col_loop
+
+        inc row_i
+        lda row_i
+        cmp #(N_ROWS + 1)       ; = 61
+        beq @done
+        jmp @row_loop           ; long branch (body > 128 bytes)
 @done:
-    rts
+        rts
 
 ; =============================================
-; GET_CELL — returns A = 1 if cell (ROW, COL) in GRID_A is alive, else
-; A = 0. ROW or COL = $FF (signed -1) falls into the bounds check.
+; render_delta — walk src and dst in lockstep. For every cell where
+; they differ, emit one latch-X + commit-Y pair on the GT-6144 using
+; dst's new value. Typical per-frame traffic: tens to low hundreds of
+; $D00A writes (vs. 4800 for a full repaint).
+;
+; Hot path per cell is ~15 cycles when src == dst (LDA-CMP-BEQ chain),
+; ~40 cycles when they differ (decide ON/OFF, emit 2 bytes to GT_PORT).
 ; =============================================
-GET_CELL:
-    lda ROW
-    cmp #96
-    bcs @dead           ; ROW >= 96 (or $FF) => dead
-    lda COL
-    cmp #64
-    bcs @dead           ; COL >= 64 (or $FF) => dead
-    ; addr = GRID_A + ROW*8 + (COL>>3)
-    lda #0
-    sta RP_HI
-    lda ROW
-    asl a
-    rol RP_HI
-    asl a
-    rol RP_HI
-    asl a
-    rol RP_HI
-    sta TMP
-    lda COL
-    lsr a
-    lsr a
-    lsr a
-    clc
-    adc TMP
-    sta RP_LO
-    lda RP_HI
-    adc #0
-    sta RP_HI
-    clc
-    lda RP_LO
-    adc #<GRID_A
-    sta RP_LO
-    lda RP_HI
-    adc #>GRID_A
-    sta RP_HI
-    lda COL
-    and #$07
-    tax
-    lda BIT_MASK,x
-    ldy #0
-    and (RP_LO),y
-    beq @dead
-    lda #1
-    rts
-@dead:
-    lda #0
-    rts
+render_delta:
+        lda #1
+        sta row_i
+@row_loop:
+        ; sp = src + row_ofs[row_i]
+        ldx row_i
+        lda src_lo
+        clc
+        adc row_ofs_lo,x
+        sta sp_lo
+        lda src_hi
+        adc row_ofs_hi,x
+        sta sp_hi
+
+        ; dp = dst + row_ofs[row_i]
+        lda dst_lo
+        clc
+        adc row_ofs_lo,x
+        sta dp_lo
+        lda dst_hi
+        adc row_ofs_hi,x
+        sta dp_hi
+
+        ; gt_row = row_i - 1 + ROW_OFS (pre-OR'd with $80 since that's
+        ; what the GT-6144 commit-Y phase wants)
+        lda row_i
+        clc
+        adc #(ROW_OFS - 1) | $80
+        sta tmp                 ; tmp = commit-Y byte for this row
+
+        ldy #1
+@col_loop:
+        lda (dp_lo),y           ; new
+        cmp (sp_lo),y           ; vs old
+        beq @skip               ; unchanged → no $D00A writes
+        ; Changed. A still holds the new value (CMP doesn't modify A).
+        ; Decide ON vs OFF based on new == 0 (dead) vs non-zero (alive).
+        cmp #0
+        beq @emit_off
+        ; Alive: latch X with bit 6 set → mode=ON, X = Y - 1 + COL_OFS
+        tya
+        clc
+        adc #(COL_OFS - 1) | $40
+        sta GT_PORT
+        jmp @commit
+@emit_off:
+        ; Dead: latch X with bit 6 clear → mode=OFF
+        tya
+        clc
+        adc #(COL_OFS - 1)
+        sta GT_PORT
+@commit:
+        lda tmp                 ; commit-Y byte (row | $80)
+        sta GT_PORT
+@skip:
+        iny
+        cpy #(N_COLS + 1)       ; = 41
+        bne @col_loop
+
+        inc row_i
+        lda row_i
+        cmp #(N_ROWS + 1)       ; = 61
+        beq @done
+        jmp @row_loop           ; long branch
+@done:
+        rts
 
 ; =============================================
-; Tables
+; DATA
 ; =============================================
-; Bit 0 (leftmost cell in byte) at index 0, bit 7 (rightmost) at 7.
-BIT_MASK: .byte $01, $02, $04, $08, $10, $20, $40, $80
 
-; Neighbour deltas (dr, dc). $FF = signed -1; 6502 ADC treats these
-; as unsigned bytes, and out-of-range values fall into GET_CELL's
-; bounds check (ROW/COL == $FF reads as >= 96/64 → dead).
-DROW: .byte $FF, $FF, $FF, $00, $00, $01, $01, $01
-DCOL: .byte $FF, $00, $01, $FF, $01, $FF, $00, $01
+; B3/S23 rule LUT. index = count*2 + alive ; count 0..8, alive 0/1.
+rule_lut:
+        .byte 0, 0              ; count=0: under-pop
+        .byte 0, 0              ; count=1: under-pop
+        .byte 0, 1              ; count=2:            alive SURVIVES
+        .byte 1, 1              ; count=3: BIRTH      SURVIVES
+        .byte 0, 0              ; count=4: over-pop
+        .byte 0, 0              ; count=5
+        .byte 0, 0              ; count=6
+        .byte 0, 0              ; count=7
+        .byte 0, 0              ; count=8
+
+; row_ofs[r] = r * 42  (0 <= r <= 61)
+row_ofs_lo:
+        .repeat 62, I
+            .byte <(I * ROW_SIZ)
+        .endrepeat
+row_ofs_hi:
+        .repeat 62, I
+            .byte >(I * ROW_SIZ)
+        .endrepeat
