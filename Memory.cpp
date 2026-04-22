@@ -920,12 +920,22 @@ void Memory::memWrite(quint16 address, quint8 value)
         cassetteDevice->toggleOutput();
     }
 
-    // Apple 1 Display : écriture vers 0xD012 (PIA 6821)
+    // Apple 1 Display : écriture vers 0xD012 (PIA 6821).
+    // Real hardware only latches a glyph into the 74LS164 shift register when
+    // PB7 = 1 (the data-strobe bit). Writes with bit 7 clear are PIA handshake
+    // / DDR setup writes — most visibly the WOZ Monitor reset sequence at
+    // $FF02 (`LDY #$7F / STY $D012`) which zeroes the output flip-flop. Without
+    // the bit-7 gate, that $7F lands on screen as a spurious '_' before the
+    // '\' prompt on every soft reset. The PR-40 already filters $7F via its
+    // printable-range check; the Terminal Card honours bit 7 via 7-bit mode's
+    // non-printable filter, and passes through raw bytes only in 8-bit mode
+    // where the user opted into raw pass-through.
     if (address == 0xD012) {
-        char displayChar = (char)(value & 0x7F);
-        displayBusyCycles = displayCharDelay; // Simuler le délai du terminal
-        if (displayDevice) {
-            displayDevice->onChar(displayChar);
+        if (value & 0x80) {
+            displayBusyCycles = displayCharDelay; // Simuler le délai du terminal
+            if (displayDevice) {
+                displayDevice->onChar(static_cast<char>(value & 0x7F));
+            }
         }
         // Terminal Card: send the RAW value (before & 0x7F) for 8-bit mode support
         if (terminalCardEnabled) {
