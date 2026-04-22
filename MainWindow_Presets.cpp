@@ -682,6 +682,19 @@ void MainWindow_ImGui::applyMachineConfig(int presetIndex)
             glfwW = std::max(glfwW, static_cast<int>(std::ceil(extent.x + rightPad)));
             glfwH = std::max(glfwH, static_cast<int>(std::ceil(extent.y + bottomPad)));
         }
+        // Every preset boots with at least POM1 Fantasy's canonical frame
+        // (1206 x 807 = Apple 1 Screen 843x701 + right column 338 wide +
+        // chrome), so switching between presets never shrinks the OS
+        // window. Presets whose layout naturally demands more keep the
+        // extent-driven size above. The minimum is computed from the
+        // last preset in the array (POM1 Fantasy) so the canonical
+        // reference stays tied to the preset table.
+        const ImVec2 fantasyExtent = computePresetLayoutExtent(
+            kMachinePresets[kMachinePresetCount - 1], ImVec2(sw, sh));
+        if (fantasyExtent.x > 0.0f && fantasyExtent.y > 0.0f) {
+            glfwW = std::max(glfwW, static_cast<int>(std::ceil(fantasyExtent.x + rightPad)));
+            glfwH = std::max(glfwH, static_cast<int>(std::ceil(fantasyExtent.y + bottomPad)));
+        }
         glfwSetWindowSize(window, glfwW, glfwH);
     }
 #endif
