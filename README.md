@@ -1,6 +1,6 @@
 <div align="center">
 
-# 🍎 POM1 v1.8.5 — Apple 1 Emulator
+# 🍎 POM1 v1.8.6 — Apple 1 Emulator
 
 **Experience the machine that started the personal computer revolution.**
 
