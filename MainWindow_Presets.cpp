@@ -78,8 +78,8 @@ const MachineConfig kMachinePresets[] = {
         // previously empty right column.
         {
             {"Apple 1 Screen",                  {10,  61},  {843, 701}},
-            {"Woz & Jobs (1976)",               {858, 61},  {338, 450}},
-            {"Apple-1 Demo Session (1976)",     {858, 517}, {338, 245}},
+            {"Woz & Jobs (1976)",               {859, 61},  {337, 497}},
+            {"Apple-1 Demo Session (1976)",     {858, 516}, {338, 245}},
         }, 3
     },
     {
@@ -115,10 +115,10 @@ const MachineConfig kMachinePresets[] = {
         /*gt6144*/ true,
         {
             {"Apple 1 Screen",                 {10,  61},  {843, 701}},
-            {"Tutorial: SWTPC GT-6144",        {858, 61},  {338, 223}},
             // 4:3 content lives inside whatever size we give the window;
             // GL_NEAREST stretches the 64x96 texture horizontally 2x.
-            {"SWTPC GT-6144 Graphic Terminal", {858, 288}, {338, 476}},
+            {"SWTPC GT-6144 Graphic Terminal", {856, 58},  {338, 277}},
+            {"Tutorial: SWTPC GT-6144",        {856, 337}, {339, 425}},
         }, 3
     },
     {
@@ -150,8 +150,8 @@ const MachineConfig kMachinePresets[] = {
             // the storage tutorial with the BASIC tutorial since the
             // preset boots Applesoft Lite by default.
             {"Apple 1 Screen",                {10,  61},  {843, 701}},
-            {"Tutorial: CFFA1 CompactFlash",  {858, 61},  {338, 223}},
-            {"Tutorial: Applesoft Lite",           {858, 288}, {338, 476}},
+            {"Tutorial: CFFA1 CompactFlash",  {858, 61},  {338, 299}},
+            {"Tutorial: Applesoft Lite",      {858, 364}, {338, 400}},
         }, 3
     },
     {
@@ -167,9 +167,9 @@ const MachineConfig kMachinePresets[] = {
             // microSD is also transparent storage — no dedicated panel.
             // Show both the storage tutorial and the Applesoft one since
             // the microSD preset boots into Applesoft Lite.
-            {"Apple 1 Screen",        {10,  61},  {843, 701}},
-            {"Tutorial: microSD",     {858, 61},  {338, 223}},
-            {"Tutorial: Applesoft Lite",   {858, 288}, {338, 476}},
+            {"Apple 1 Screen",           {10,  61},  {843, 701}},
+            {"Tutorial: microSD",        {858, 61},  {338, 327}},
+            {"Tutorial: Applesoft Lite", {858, 389}, {338, 375}},
         }, 3
     },
     {   //                                  GEN2  uSD  SID  TMS  RTC  WiFi Term Krus CFFA ACI
@@ -215,8 +215,8 @@ const MachineConfig kMachinePresets[] = {
         /*gt6144*/ false,
         {
             {"Apple 1 Screen",               {10,  61},  {843, 701}},
-            {"Tutorial: P-LAB TMS9918",      {858, 61},  {338, 223}},
-            {"P-LAB Graphic Card (TMS9918)", {858, 288}, {338, 476}},
+            {"P-LAB Graphic Card (TMS9918)", {857, 61},  {344, 286}},
+            {"Tutorial: P-LAB TMS9918",      {859, 353}, {340, 408}},
         }, 3
     },
     {   //                                  GEN2  uSD  SID  TMS  RTC  WiFi Term Krus CFFA ACI
@@ -229,9 +229,9 @@ const MachineConfig kMachinePresets[] = {
         /*jukeBox*/ false, JukeBox::Jumper::RAM16_ROM32,
         /*gt6144*/ false,
         {
-            {"Apple 1 Screen",             {10,  61},  {843, 701}},
-            {"Tutorial: P-LAB A1-IO & RTC", {858, 61},  {338, 223}},
-            {"P-LAB I/O Board & RTC",      {858, 288}, {338, 476}},
+            {"Apple 1 Screen",              {10,  61},  {843, 701}},
+            {"P-LAB I/O Board & RTC",       {858, 61},  {340, 268}},
+            {"Tutorial: P-LAB A1-IO & RTC", {859, 332}, {340, 431}},
         }, 3
     },
     {   //                                  GEN2  uSD  SID  TMS  RTC  WiFi Term Krus CFFA ACI
@@ -244,9 +244,9 @@ const MachineConfig kMachinePresets[] = {
         /*jukeBox*/ false, JukeBox::Jumper::RAM16_ROM32,
         /*gt6144*/ false,
         {
-            {"Apple 1 Screen",             {10,  61},  {843, 701}},
-            {"Tutorial: Wi-Fi Modem BBS",  {858, 61},  {338, 223}},
-            {"P-LAB Wi-Fi Modem",          {858, 288}, {338, 476}},
+            {"Apple 1 Screen",            {10,  61},  {843, 701}},
+            {"P-LAB Wi-Fi Modem",         {858, 61},  {339, 238}},
+            {"Tutorial: Wi-Fi Modem BBS", {858, 303}, {344, 459}},
         }, 3
     },
     {   //                                  GEN2  uSD  SID  TMS  RTC  WiFi Term Krus CFFA ACI
@@ -265,8 +265,8 @@ const MachineConfig kMachinePresets[] = {
         /*gt6144*/ false,
         {
             {"Apple 1 Screen",           {10,  61},  {843, 701}},
-            {"Tutorial: P-LAB Juke-Box", {858, 61},  {338, 223}},
-            {"P-LAB Juke-Box",           {858, 288}, {338, 476}},
+            {"P-LAB Juke-Box",           {857, 61},  {344, 321}},
+            {"Tutorial: P-LAB Juke-Box", {857, 386}, {345, 378}},
         }, 3
     },
     {   //                                  GEN2  uSD  SID  TMS  RTC  WiFi Term Krus CFFA ACI
@@ -289,16 +289,17 @@ const MachineConfig kMachinePresets[] = {
             // but hidden (open via the Hardware menu if needed). PR-40
             // is intentionally unplugged in every default preset — plug
             // it from the toolbar when needed.
-            {"Apple 1 Screen",                          {10,   61},  {843, 701}},
-            {"P-LAB Graphic Card (TMS9918)",            {858,  61},  {338, 340}},
-            {"P-LAB Wi-Fi Modem",                       {858,  406}, {338, 160}},
-            {"P-LAB I/O Board & RTC",                   {858,  571}, {338, 193}},
-            // Tribute to Claudio Parmigiani's P-LAB: 990x659 landscape
-            // photo from La Repubblica Torino (12 October 2016) of the
-            // Torino lab team with three restored Apple-1 boards on the
-            // workbench. Placed in a fourth rightmost column so the
-            // Fantasy preset's GLFW window grows to fit it.
-            {"Three Apple-1s in the Torino Lab (2016)", {1204, 61},  {450, 310}},
+            {"Apple 1 Screen",                          {10,  61},  {843, 701}},
+            // Right column packs four peripheral windows + the Torino
+            // lab tribute photo. The I/O Board & RTC opens as a thin
+            // status strip, the TMS9918 card viewer takes the bulk of
+            // the top half, the Wi-Fi Modem sits between the VDP and
+            // the photo of Claudio Parmigiani's P-LAB team with three
+            // restored Apple-1s (La Repubblica Torino, 12 October 2016).
+            {"P-LAB I/O Board & RTC",                   {856, 60},  {346, 55}},
+            {"P-LAB Graphic Card (TMS9918)",            {856, 121}, {347, 286}},
+            {"P-LAB Wi-Fi Modem",                       {856, 412}, {346, 90}},
+            {"Three Apple-1s in the Torino Lab (2016)", {858, 508}, {344, 254}},
         }, 5
     },
     {
@@ -312,8 +313,8 @@ const MachineConfig kMachinePresets[] = {
         /*gt6144*/ false,
         {
             {"Apple 1 Screen",                       {10,  61},  {843, 701}},
-            {"Tutorial: Uncle Bernie's GEN2 HGR",    {858, 61},  {338, 223}},
-            {"Uncle Bernie's GEN2 HGR Graphic Card", {858, 288}, {338, 476}},
+            {"Uncle Bernie's GEN2 HGR Graphic Card", {858, 60},  {338, 264}},
+            {"Tutorial: Uncle Bernie's GEN2 HGR",    {858, 329}, {339, 432}},
         }, 3
     },
     {
