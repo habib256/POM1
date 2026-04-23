@@ -153,13 +153,13 @@ void MainWindow_ImGui::destroyPom1()
         wozJobsRectPhotoHeight = 0;
     }
     wozJobsRectPhotoLoadTried = false;
-    if (torinoLabPhotoTexture) {
-        glDeleteTextures(1, &torinoLabPhotoTexture);
-        torinoLabPhotoTexture = 0;
-        torinoLabPhotoWidth = 0;
-        torinoLabPhotoHeight = 0;
+    if (tmsBoardPhotoTexture) {
+        glDeleteTextures(1, &tmsBoardPhotoTexture);
+        tmsBoardPhotoTexture = 0;
+        tmsBoardPhotoWidth = 0;
+        tmsBoardPhotoHeight = 0;
     }
-    torinoLabPhotoLoadTried = false;
+    tmsBoardPhotoLoadTried = false;
 }
 
 // Fire every deferred card plug queued by applyMachineConfig() immediately,
@@ -508,7 +508,7 @@ void MainWindow_ImGui::render()
     if (showTutorialKrusader) renderTutorialKrusaderWindow();
     if (showWozJobsPhoto) renderWozJobsPhotoWindow();
     if (showWozJobsRectPhoto) renderWozJobsRectPhotoWindow();
-    if (showTorinoLabPhoto) renderTorinoLabPhotoWindow();
+    if (showTmsBoardPhoto) renderTmsBoardPhotoWindow();
     if (showScreenConfig) renderScreenConfigDialog();
     if (showMemoryConfig) renderMemoryConfigDialog();
     if (showLoadDialog) renderLoadDialog();

@@ -289,18 +289,17 @@ const MachineConfig kMachinePresets[] = {
             // but hidden (open via the Hardware menu if needed). PR-40
             // is intentionally unplugged in every default preset — plug
             // it from the toolbar when needed.
-            {"Apple 1 Screen",                          {10,  61},  {843, 701}},
-            // Right column packs four peripheral windows + the Torino
-            // lab tribute photo. The I/O Board & RTC opens as a thin
-            // status strip, the TMS9918 card viewer takes the bulk of
-            // the top half, the Wi-Fi Modem sits between the VDP and
-            // the photo of Claudio Parmigiani's P-LAB team with three
-            // restored Apple-1s (La Repubblica Torino, 12 October 2016).
-            {"P-LAB I/O Board & RTC",                   {856, 60},  {346, 55}},
-            {"P-LAB Graphic Card (TMS9918)",            {856, 121}, {347, 286}},
-            {"P-LAB Wi-Fi Modem",                       {856, 412}, {346, 90}},
-            {"Three Apple-1s in the Torino Lab (2016)", {858, 508}, {344, 254}},
-        }, 5
+            {"Apple 1 Screen",                 {11,  60},  {843, 701}},
+            // Right column: live TMS9918 framebuffer viewer on top,
+            // static P-LAB TMS9918 PCB photo beneath. The I/O Board &
+            // RTC and Wi-Fi Modem cards are still plugged (cfg.a1ioRtc
+            // / cfg.wifiModem) so their state updates at runtime, but
+            // their windows stay closed by default — the user can open
+            // them from the Hardware menu when needed. Positions below
+            // match the ini the user has been iterating on.
+            {"P-LAB Graphic Card (TMS9918)",   {861, 72},  {344, 286}},
+            {"P-LAB TMS9918 Card (Photo)",     {862, 393}, {342, 354}},
+        }, 3
     },
     {
         "Uncle Bernie's Apple-1 with GEN2 HGR Color (April 2026)",
@@ -435,7 +434,7 @@ void MainWindow_ImGui::applyMachineConfig(int presetIndex)
     showTutorialKrusader     = false;
     showWozJobsPhoto         = false;
     showWozJobsRectPhoto     = false;
-    showTorinoLabPhoto       = false;
+    showTmsBoardPhoto        = false;
     showScreenConfig         = false;
     showMemoryConfig         = false;
     showLoadDialog           = false;
@@ -571,7 +570,7 @@ void MainWindow_ImGui::applyMachineConfig(int presetIndex)
         else if (n == "Welcome")                              showWelcome      = true;
         else if (n == "Woz & Jobs (1976)")                    showWozJobsPhoto = true;
         else if (n == "Apple-1 Demo Session (1976)")          showWozJobsRectPhoto = true;
-        else if (n == "Three Apple-1s in the Torino Lab (2016)") showTorinoLabPhoto = true;
+        else if (n == "P-LAB TMS9918 Card (Photo)")           showTmsBoardPhoto = true;
         // Tutorial windows — names MUST match the titles used in
         // renderTutorialXxxWindow() calls (MainWindow_Dialogs.cpp).
         else if (n == "Tutorial: Integer BASIC")              showTutorialIntegerBasic = true;

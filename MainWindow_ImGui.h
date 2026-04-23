@@ -162,11 +162,11 @@ private:
     int wozJobsRectPhotoHeight = 0;
     bool wozJobsRectPhotoLoadTried = false;
     bool showWozJobsRectPhoto = false;
-    GLuint torinoLabPhotoTexture = 0;
-    int torinoLabPhotoWidth = 0;
-    int torinoLabPhotoHeight = 0;
-    bool torinoLabPhotoLoadTried = false;
-    bool showTorinoLabPhoto = false;
+    GLuint tmsBoardPhotoTexture = 0;
+    int tmsBoardPhotoWidth = 0;
+    int tmsBoardPhotoHeight = 0;
+    bool tmsBoardPhotoLoadTried = false;
+    bool showTmsBoardPhoto = false;
     bool showTMS9918 = false;
     bool tms9918Enabled = false;
     GLuint tms9918Texture = 0;
@@ -235,8 +235,8 @@ private:
     void renderWozJobsPhotoWindow();
     void ensureWozJobsRectPhotoTexture();
     void renderWozJobsRectPhotoWindow();
-    void ensureTorinoLabPhotoTexture();
-    void renderTorinoLabPhotoWindow();
+    void ensureTmsBoardPhotoTexture();
+    void renderTmsBoardPhotoWindow();
     void renderSpecialThanksWindow();
     void renderHardwareReferenceWindow();
     void renderSoftwareReferenceWindow();

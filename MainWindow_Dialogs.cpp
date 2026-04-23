@@ -53,7 +53,7 @@ static const char kApple50LogoFile[] = "50_Anniv_Apple.png";
 static const char kAppIconFile[] = "icon.png";
 static const char kWozJobsPhotoFile[] = "woz_jobs_apple1.jpg";
 static const char kWozJobsRectPhotoFile[] = "woz_jobs_apple1-rect.jpg";
-static const char kTorinoLabPhotoFile[] = "Laboratorio_di_Torino.jpg";
+static const char kTmsBoardPhotoFile[] = "PLAB_tms9918.png";
 
 /** Generic cwd + exe-relative probe for files expected under pic/. */
 static std::string find_pic_file_path(const char* relBasename)
@@ -402,16 +402,16 @@ void MainWindow_ImGui::renderWozJobsRectPhotoWindow()
     ImGui::End();
 }
 
-void MainWindow_ImGui::ensureTorinoLabPhotoTexture()
+void MainWindow_ImGui::ensureTmsBoardPhotoTexture()
 {
-    if (torinoLabPhotoTexture != 0 || torinoLabPhotoLoadTried)
+    if (tmsBoardPhotoTexture != 0 || tmsBoardPhotoLoadTried)
         return;
-    torinoLabPhotoLoadTried = true;
+    tmsBoardPhotoLoadTried = true;
 
-    const std::string path = find_pic_file_path(kTorinoLabPhotoFile);
+    const std::string path = find_pic_file_path(kTmsBoardPhotoFile);
     if (path.empty()) {
         pom1::log().warn("Images",
-            std::string("Torino lab photo not found (expected pic/") + kTorinoLabPhotoFile + ")");
+            std::string("P-LAB TMS9918 board photo not found (expected pic/") + kTmsBoardPhotoFile + ")");
         return;
     }
 
@@ -419,7 +419,7 @@ void MainWindow_ImGui::ensureTorinoLabPhotoTexture()
     unsigned char* pixels = stbi_load(path.c_str(), &w, &h, &channels, 4);
     if (!pixels || w <= 0 || h <= 0) {
         if (pixels) stbi_image_free(pixels);
-        pom1::log().warn("Images", "Could not decode Torino lab photo: " + path);
+        pom1::log().warn("Images", "Could not decode P-LAB TMS9918 board photo: " + path);
         return;
     }
 
@@ -435,26 +435,27 @@ void MainWindow_ImGui::ensureTorinoLabPhotoTexture()
     glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
     stbi_image_free(pixels);
 
-    torinoLabPhotoTexture = tex;
-    torinoLabPhotoWidth = w;
-    torinoLabPhotoHeight = h;
+    tmsBoardPhotoTexture = tex;
+    tmsBoardPhotoWidth = w;
+    tmsBoardPhotoHeight = h;
 }
 
-void MainWindow_ImGui::renderTorinoLabPhotoWindow()
+void MainWindow_ImGui::renderTmsBoardPhotoWindow()
 {
-    ensureTorinoLabPhotoTexture();
+    ensureTmsBoardPhotoTexture();
 
-    // Source: La Repubblica Torino, 12 October 2016 — "Ecco i tre Apple-1
-    // riavviati nel laboratorio di Torino". Photo of Claudio Parmigiani's
-    // P-LAB team with three restored Apple-1 boards on the workbench.
-    applyPendingLayout("Three Apple-1s in the Torino Lab (2016)");
-    ImGui::SetNextWindowSizeConstraints(ImVec2(220, 170), ImVec2(FLT_MAX, FLT_MAX));
-    if (ImGui::Begin("Three Apple-1s in the Torino Lab (2016)", &showTorinoLabPhoto)) {
-        if (torinoLabPhotoTexture != 0 && torinoLabPhotoWidth > 0 && torinoLabPhotoHeight > 0) {
-            drawFittedCenteredImage(torinoLabPhotoTexture, torinoLabPhotoWidth, torinoLabPhotoHeight);
+    // Photo of Claudio Parmigiani's P-LAB TMS9918 Graphic Card — the
+    // physical companion to the "P-LAB Graphic Card (TMS9918)" viewer
+    // window (which renders the live VDP framebuffer). The title
+    // explicitly calls out "(Photo)" to distinguish the two.
+    applyPendingLayout("P-LAB TMS9918 Card (Photo)");
+    ImGui::SetNextWindowSizeConstraints(ImVec2(200, 200), ImVec2(FLT_MAX, FLT_MAX));
+    if (ImGui::Begin("P-LAB TMS9918 Card (Photo)", &showTmsBoardPhoto)) {
+        if (tmsBoardPhotoTexture != 0 && tmsBoardPhotoWidth > 0 && tmsBoardPhotoHeight > 0) {
+            drawFittedCenteredImage(tmsBoardPhotoTexture, tmsBoardPhotoWidth, tmsBoardPhotoHeight);
         } else {
             ImGui::TextWrapped(
-                "Torino lab photo not found (expected pic/%s).", kTorinoLabPhotoFile);
+                "P-LAB TMS9918 board photo not found (expected pic/%s).", kTmsBoardPhotoFile);
         }
     }
     ImGui::End();
