@@ -125,6 +125,15 @@ void MainWindow_ImGui::renderLoadDialog()
 
         ImGui::Spacing();
         if (ImGui::Button("Load", ImVec2(120, 0))) {
+            // Force-fire any deferred preset plug-in first. applyMachineConfig
+            // queues card enables on a 15-frame countdown (~200 ms) to work
+            // around the silent-card-on-boot bug; if the user hits Load
+            // inside that window the new program's reset vector fires before
+            // the preset's cards reach the Memory bus, and early writes to
+            // e.g. $CC00/$CC01 vanish into RAM. Draining pending plugs here
+            // closes the race without changing the boot-time behaviour.
+            finalizePendingCardPlugs();
+
             // Auto-enable hardware cards based on source directory.
             // NB: A1-SID is intentionally NOT auto-plugged from /software/sid/.
             // Auto-plug interacts badly with the SID's audio-mixer + bus state

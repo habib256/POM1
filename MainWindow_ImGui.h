@@ -289,6 +289,7 @@ private:
     void configMemory();
     void about();
     void applyMachineConfig(int presetIndex);
+    void finalizePendingCardPlugs();
     void applyPendingLayout(const char* windowName);
 
     // CPU execution functions

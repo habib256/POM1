@@ -924,14 +924,21 @@ void Memory::memWrite(quint16 address, quint8 value)
     // Real hardware only latches a glyph into the 74LS164 shift register when
     // PB7 = 1 (the data-strobe bit). Writes with bit 7 clear are PIA handshake
     // / DDR setup writes — most visibly the WOZ Monitor reset sequence at
-    // $FF02 (`LDY #$7F / STY $D012`) which zeroes the output flip-flop. Without
-    // the bit-7 gate, that $7F lands on screen as a spurious '_' before the
-    // '\' prompt on every soft reset. The PR-40 already filters $7F via its
-    // printable-range check; the Terminal Card honours bit 7 via 7-bit mode's
-    // non-printable filter, and passes through raw bytes only in 8-bit mode
-    // where the user opted into raw pass-through.
+    // $FF02 (`LDY #$7F / STY $D012`) which sets the port-B DDR and would
+    // otherwise paint a spurious '_' on every soft reset.
+    //
+    // POM1 however has been historically permissive: emulator-era demos
+    // (e.g. software/tms9918/demo.bin, whose startup banner uses the WOZ
+    // Monitor ECHO routine with plain ASCII in the accumulator — bit 7
+    // clear) print correctly on POM1 even though a real Apple-1 would keep
+    // the 74LS164 silent. Breaking that compatibility regresses every
+    // legacy program that predates the bit-7-strobe convention, so instead
+    // of gating on bit 7 we narrowly filter the single raw-$7F write the
+    // WOZ reset sequence emits. Any program that genuinely wants a '_'
+    // glyph asks for $DF via ECHO (`value & 0x7F` still yields $5F — the
+    // underscore slot in the Apple-1 character ROM) and is unaffected.
     if (address == 0xD012) {
-        if (value & 0x80) {
+        if (value != 0x7F) {
             displayBusyCycles = displayCharDelay; // Simuler le délai du terminal
             if (displayDevice) {
                 displayDevice->onChar(static_cast<char>(value & 0x7F));

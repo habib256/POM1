@@ -162,6 +162,88 @@ void MainWindow_ImGui::destroyPom1()
     torinoLabPhotoLoadTried = false;
 }
 
+// Fire every deferred card plug queued by applyMachineConfig() immediately,
+// regardless of how many frames remain on pendingCardEnableFrames. Callers
+// use this to close the race window where a user action (File → Load, CLI
+// deferred verbs) would otherwise kick off a program before the target
+// preset's cards reached the Memory bus. The render path calls it from the
+// normal frame countdown above; load paths (renderLoadDialog) call it up
+// front so the CPU never jumps to code that touches an unplugged card.
+// Safe on repeat: every setter is idempotent at "true", pending* flags are
+// cleared on exit so a subsequent frame-countdown finalize is a no-op.
+void MainWindow_ImGui::finalizePendingCardPlugs()
+{
+    pendingCardEnableFrames = 0;
+    const bool runCassettePreload = pendingCassetteAudioActive;
+    if (pendingCassetteAudioActive)  emulation->activateCassetteAudioSource();
+    if (pendingAciEnable)            emulation->setACIEnabled(true);
+    // Preload the cassette AFTER the ACI plug-in above, not before.
+    // loadTape() checks CassetteDevice::aciActive to pick the pulse path
+    // (ACI plugged → program tape) vs the audio-stream path (ACI unplugged
+    // → raw playback). Running this before the deferred ACI enable would
+    // lock every preload into audio-stream mode regardless of preset. No
+    // longer gated on pendingAciEnable: audio-stream mode is a first-class
+    // path now, and the default bundled WOZ_talk.mp3 needs to load even on
+    // ACI-less presets. --tape auto-plays as before; the default bundled
+    // tape just loads (user-driven Play). Gated on pendingCassetteAudioActive
+    // so that calling finalize mid-session (e.g. from File → Load) does not
+    // reload the tape when no preset switch is in flight.
+    if (runCassettePreload && !initialTapePath.empty()) {
+        std::string err;
+        if (emulation->loadTape(initialTapePath, err)) {
+            if (initialTapeAutoPlay) emulation->playTape();
+            pom1::log().info("POM1",
+                std::string("Preloaded cassette: ") + initialTapePath);
+        } else {
+            pom1::log().error("POM1",
+                std::string("Failed to preload cassette '") +
+                initialTapePath + "': " + err);
+        }
+    }
+    if (pendingMicroSDEnable)        emulation->setMicroSDEnabled(true);
+    if (pendingCffa1Enable)          emulation->setCFFA1Enabled(true);
+    if (pendingSidEnable)            emulation->setSIDEnabled(true);
+    if (pendingSidSEEnable)          emulation->setSIDSpecialEditionEnabled(true);
+    if (pendingTms9918Enable)        emulation->setTMS9918Enabled(true);
+    if (pendingA1ioRtcEnable)        emulation->setA1IO_RTCEnabled(true);
+    if (pendingTerminalCardEnable)   emulation->setTerminalCardEnabled(true);
+    if (pendingPr40Enable)           emulation->setPR40Enabled(true);
+    if (pendingGT6144Enable)         emulation->setGT6144Enabled(true);
+    if (pendingWifiModemEnable)      emulation->setWiFiModemEnabled(true);
+    if (pendingJukeBoxEnable) {
+        // Jumper has to be set BEFORE enabling the card — setJukeBoxEnabled
+        // enables exactly the bus window that matches the jumper at plug time.
+        evictMemoryMapRegionsForJukeBox();
+        emulation->setJukeBoxJumper(pendingJukeBoxJumper);
+        emulation->setJukeBoxEnabled(true);
+    }
+    pendingCassetteAudioActive = false;
+    pendingAciEnable           = false;
+    pendingMicroSDEnable       = false;
+    pendingCffa1Enable         = false;
+    pendingSidEnable           = false;
+    pendingSidSEEnable         = false;
+    pendingTms9918Enable       = false;
+    pendingA1ioRtcEnable       = false;
+    pendingTerminalCardEnable  = false;
+    pendingPr40Enable          = false;
+    pendingGT6144Enable        = false;
+    pendingWifiModemEnable     = false;
+    pendingJukeBoxEnable       = false;
+
+    // CLI phase-C: run deferred verbs right after the preset's cards are
+    // fully plugged. Gated on the one-shot flag so a later
+    // pendingCardEnableFrames cycle (e.g. user switches preset) does not
+    // re-execute the CLI batch.
+    if (!deferredCliActionsConsumed) {
+        deferredCliActionsConsumed = true;
+        if (!deferredCliActions.empty()) {
+            pom1::runDeferredActions(deferredCliActions, *emulation);
+            deferredCliActions.clear();
+        }
+    }
+}
+
 void MainWindow_ImGui::render()
 {
     float deltaTime = ImGui::GetIO().DeltaTime;
@@ -179,58 +261,7 @@ void MainWindow_ImGui::render()
     // too for the same reason (silent first-tape playback).
     if (pendingCardEnableFrames > 0) {
         if (--pendingCardEnableFrames == 0) {
-            if (pendingCassetteAudioActive)  emulation->activateCassetteAudioSource();
-            if (pendingAciEnable)            emulation->setACIEnabled(true);
-            // Preload the cassette AFTER the ACI plug-in above, not before.
-            // loadTape() checks CassetteDevice::aciActive to pick the pulse
-            // path (ACI plugged → program tape) vs the audio-stream path
-            // (ACI unplugged → raw playback). Running this before the
-            // deferred ACI enable would lock every preload into audio-
-            // stream mode regardless of preset. No longer gated on
-            // pendingAciEnable: audio-stream mode is a first-class path
-            // now, and the default bundled WOZ_talk.mp3 needs to load
-            // even on ACI-less presets. --tape auto-plays as before;
-            // the default bundled tape just loads (user-driven Play).
-            if (!initialTapePath.empty()) {
-                std::string err;
-                if (emulation->loadTape(initialTapePath, err)) {
-                    if (initialTapeAutoPlay) emulation->playTape();
-                    pom1::log().info("POM1",
-                        std::string("Preloaded cassette: ") + initialTapePath);
-                } else {
-                    pom1::log().error("POM1",
-                        std::string("Failed to preload cassette '") +
-                        initialTapePath + "': " + err);
-                }
-            }
-            if (pendingMicroSDEnable)        emulation->setMicroSDEnabled(true);
-            if (pendingCffa1Enable)          emulation->setCFFA1Enabled(true);
-            if (pendingSidEnable)            emulation->setSIDEnabled(true);
-            if (pendingSidSEEnable)          emulation->setSIDSpecialEditionEnabled(true);
-            if (pendingTms9918Enable)        emulation->setTMS9918Enabled(true);
-            if (pendingA1ioRtcEnable)        emulation->setA1IO_RTCEnabled(true);
-            if (pendingTerminalCardEnable)   emulation->setTerminalCardEnabled(true);
-            if (pendingPr40Enable)           emulation->setPR40Enabled(true);
-            if (pendingGT6144Enable)         emulation->setGT6144Enabled(true);
-            if (pendingWifiModemEnable)      emulation->setWiFiModemEnabled(true);
-            if (pendingJukeBoxEnable) {
-                // Jumper has to be set BEFORE enabling the card — setJukeBoxEnabled
-                // enables exactly the bus window that matches the jumper at plug time.
-                evictMemoryMapRegionsForJukeBox();
-                emulation->setJukeBoxJumper(pendingJukeBoxJumper);
-                emulation->setJukeBoxEnabled(true);
-            }
-            // CLI phase-C: run deferred verbs right after the preset's cards
-            // are fully plugged. Gated on the one-shot flag so a later
-            // pendingCardEnableFrames cycle (e.g. user switches preset) does
-            // not re-execute the CLI batch.
-            if (!deferredCliActionsConsumed) {
-                deferredCliActionsConsumed = true;
-                if (!deferredCliActions.empty()) {
-                    pom1::runDeferredActions(deferredCliActions, *emulation);
-                    deferredCliActions.clear();
-                }
-            }
+            finalizePendingCardPlugs();
         }
     }
     // MemoryViewer setters are only consumed by render(), so don't bother
