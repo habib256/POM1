@@ -222,7 +222,7 @@ $FF00-$FFFF  Woz Monitor ROM + vectors (NMI/Reset/IRQ at $FFFA-$FFFF)
 
 - **CMake** — `find_package(glfw3 CONFIG)` first (vcpkg, Homebrew), falls back to `pkg_check_modules` (apt/dnf/pacman).
 - **Windows** — Visual Studio C++ workload + CMake + Git + vcpkg. MSVC: `/utf-8`, `_CRT_SECURE_NO_WARNINGS`. `package_windows_release.bat` builds the standalone release archive.
-- **macOS** — links Cocoa + IOKit + CoreVideo. `GLFW_OPENGL_FORWARD_COMPAT` macOS-only. Window icon is a no-op (OS pulls from `.app` bundle).
+- **macOS** — links Cocoa + IOKit + CoreVideo. `GLFW_OPENGL_FORWARD_COMPAT` macOS-only. Window icon is a no-op (OS pulls from `.app` bundle). **Data-path split for the packaged release**: `package_macos_release.sh` puts read-only assets (`roms/`, `fonts/`, `software/`, `pic/`, `cassettes/`, and `sdcard/`/`cfcard/` seeds) in `POM1.app/Contents/Resources/`; at startup `pom1_macos_provision_user_data_dir()` in `main_imgui.cpp` creates `~/Library/Application Support/POM1/` with symlinks into the bundle for the read-only dirs + seeded real dirs for `sdcard/` / `cfcard/` / `ini/`, then chdirs there. Symlinks refresh every launch so Gatekeeper App Translocation + `/Applications` drag-installs both work. Dev flow (`build/POM1` symlink) falls back to the bundle-parent chdir when `Contents/Resources/roms` is absent. DMG carries `.VolumeIcon.icns` + `SetFile -a C` for the Finder volume icon.
 - **Linux** — `setup_imgui.sh` supports apt, dnf, pacman.
 
 `build/`, `build-wasm/`, `imgui/` gitignored.

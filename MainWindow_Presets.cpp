@@ -434,11 +434,16 @@ void MainWindow_ImGui::applyMachineConfig(int presetIndex)
     // every save to include every window ever seen across any preset
     // (TMS9918 entries end up in the Bare Apple-1 ini, etc.) because
     // LoadIniSettingsFromDisk merges into an already-populated settings
-    // store. Clearing first guarantees each ini contains only the
-    // windows that actually live in its preset.
-    if (ImGuiContext* ctx = ImGui::GetCurrentContext()) {
-        ctx->SettingsWindows.clear();
-    }
+    // store.
+    //
+    // Use ImGui::ClearIniSettings() rather than SettingsWindows.clear()
+    // directly: the public API also resets each ImGuiWindow's
+    // SettingsOffset back to -1. Clearing just the chunk stream leaves
+    // live windows pointing at freed memory (ImVector::clear frees the
+    // buffer), and FindWindowSettingsByWindow follows the stale offset
+    // via ptr_from_offset on the next save/read — segfault on the second
+    // preset switch.
+    ImGui::ClearIniSettings();
 
     // Show POM1 banner only for the last preset (POM1 Fantasy)
     screen->setShowBanner(presetIndex == kMachinePresetCount - 1);

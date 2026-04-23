@@ -9,6 +9,7 @@ dist/
 releases/*.zip
 
 # WASM build — keep only the POM1.* output files and shell template
+build-debug
 build-wasm/*
 !build-wasm/POM1.*
 !build-wasm/shell.html
