@@ -323,6 +323,12 @@ void MainWindow_ImGui::renderMenuBar()
             }
             ImGui::MenuItem("Hardware Reference", nullptr, &showHardwareReference);
             ImGui::MenuItem("Software Reference", nullptr, &showSoftwareReference);
+            if (ImGui::BeginMenu("Photos")) {
+                ImGui::MenuItem("Woz & Jobs (1976)", nullptr, &showWozJobsPhoto);
+                ImGui::MenuItem("Apple-1 Demo Session (1976)", nullptr, &showWozJobsRectPhoto);
+                ImGui::MenuItem("Three Apple-1s in the Torino Lab (2016)", nullptr, &showTorinoLabPhoto);
+                ImGui::EndMenu();
+            }
             ImGui::MenuItem("Ports & acknowledgements", nullptr, &showSpecialThanks);
             if (ImGui::MenuItem("About")) {
                 about();

@@ -51,6 +51,9 @@ using namespace pom1::mainwindow::detail;
 static const char kAboutPhotoFile[] = "schlumberger-2-apple-1.jpg";
 static const char kApple50LogoFile[] = "50_Anniv_Apple.png";
 static const char kAppIconFile[] = "icon.png";
+static const char kWozJobsPhotoFile[] = "woz_jobs_apple1.jpg";
+static const char kWozJobsRectPhotoFile[] = "woz_jobs_apple1-rect.jpg";
+static const char kTorinoLabPhotoFile[] = "Laboratorio_di_Torino.jpg";
 
 /** Generic cwd + exe-relative probe for files expected under pic/. */
 static std::string find_pic_file_path(const char* relBasename)
@@ -265,6 +268,196 @@ void MainWindow_ImGui::ensureApple50LogoTexture()
     apple50LogoTexture = tex;
     apple50LogoWidth = w;
     apple50LogoHeight = h;
+}
+
+void MainWindow_ImGui::ensureWozJobsPhotoTexture()
+{
+    if (wozJobsPhotoTexture != 0 || wozJobsPhotoLoadTried)
+        return;
+    wozJobsPhotoLoadTried = true;
+
+    const std::string path = find_pic_file_path(kWozJobsPhotoFile);
+    if (path.empty()) {
+        pom1::log().warn("Images",
+            std::string("Woz & Jobs photo not found (expected pic/") + kWozJobsPhotoFile + ")");
+        return;
+    }
+
+    int w = 0, h = 0, channels = 0;
+    unsigned char* pixels = stbi_load(path.c_str(), &w, &h, &channels, 4);
+    if (!pixels || w <= 0 || h <= 0) {
+        if (pixels) stbi_image_free(pixels);
+        pom1::log().warn("Images", "Could not decode Woz & Jobs photo: " + path);
+        return;
+    }
+
+    GLuint tex = 0;
+    glGenTextures(1, &tex);
+    glBindTexture(GL_TEXTURE_2D, tex);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, w, h, 0, GL_RGBA, GL_UNSIGNED_BYTE, pixels);
+    glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
+    stbi_image_free(pixels);
+
+    wozJobsPhotoTexture = tex;
+    wozJobsPhotoWidth = w;
+    wozJobsPhotoHeight = h;
+}
+
+void MainWindow_ImGui::ensureWozJobsRectPhotoTexture()
+{
+    if (wozJobsRectPhotoTexture != 0 || wozJobsRectPhotoLoadTried)
+        return;
+    wozJobsRectPhotoLoadTried = true;
+
+    const std::string path = find_pic_file_path(kWozJobsRectPhotoFile);
+    if (path.empty()) {
+        pom1::log().warn("Images",
+            std::string("Woz & Jobs (rect) photo not found (expected pic/") + kWozJobsRectPhotoFile + ")");
+        return;
+    }
+
+    int w = 0, h = 0, channels = 0;
+    unsigned char* pixels = stbi_load(path.c_str(), &w, &h, &channels, 4);
+    if (!pixels || w <= 0 || h <= 0) {
+        if (pixels) stbi_image_free(pixels);
+        pom1::log().warn("Images", "Could not decode Woz & Jobs (rect) photo: " + path);
+        return;
+    }
+
+    GLuint tex = 0;
+    glGenTextures(1, &tex);
+    glBindTexture(GL_TEXTURE_2D, tex);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, w, h, 0, GL_RGBA, GL_UNSIGNED_BYTE, pixels);
+    glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
+    stbi_image_free(pixels);
+
+    wozJobsRectPhotoTexture = tex;
+    wozJobsRectPhotoWidth = w;
+    wozJobsRectPhotoHeight = h;
+}
+
+// Shared fit-centre helper — takes a texture + dimensions and paints it
+// centred inside the current content region, scaled to fit while keeping
+// aspect ratio. Both Image-panel windows render identically; the only
+// differences are texture identity and the "not found" message.
+namespace {
+void drawFittedCenteredImage(GLuint tex, int texW, int texH)
+{
+    const ImVec2 avail = ImGui::GetContentRegionAvail();
+    const float iw = static_cast<float>(texW);
+    const float ih = static_cast<float>(texH);
+    const float scale = std::min(avail.x / iw, avail.y / ih);
+    const float dw = std::max(1.0f, iw * scale);
+    const float dh = std::max(1.0f, ih * scale);
+    const float offX = std::max(0.0f, (avail.x - dw) * 0.5f);
+    if (offX > 0.0f) {
+        ImGui::Dummy(ImVec2(offX, 0.0f));
+        ImGui::SameLine(0.0f, 0.0f);
+    }
+    ImGui::Image((ImTextureID)(uintptr_t)tex, ImVec2(dw, dh));
+}
+} // namespace
+
+void MainWindow_ImGui::renderWozJobsPhotoWindow()
+{
+    ensureWozJobsPhotoTexture();
+
+    applyPendingLayout("Woz & Jobs (1976)");
+    ImGui::SetNextWindowSizeConstraints(ImVec2(180, 220), ImVec2(FLT_MAX, FLT_MAX));
+    if (ImGui::Begin("Woz & Jobs (1976)", &showWozJobsPhoto)) {
+        if (wozJobsPhotoTexture != 0 && wozJobsPhotoWidth > 0 && wozJobsPhotoHeight > 0) {
+            drawFittedCenteredImage(wozJobsPhotoTexture, wozJobsPhotoWidth, wozJobsPhotoHeight);
+        } else {
+            ImGui::TextWrapped(
+                "Woz & Jobs photo not found (expected pic/%s).", kWozJobsPhotoFile);
+        }
+    }
+    ImGui::End();
+}
+
+void MainWindow_ImGui::renderWozJobsRectPhotoWindow()
+{
+    ensureWozJobsRectPhotoTexture();
+
+    applyPendingLayout("Apple-1 Demo Session (1976)");
+    ImGui::SetNextWindowSizeConstraints(ImVec2(180, 140), ImVec2(FLT_MAX, FLT_MAX));
+    if (ImGui::Begin("Apple-1 Demo Session (1976)", &showWozJobsRectPhoto)) {
+        if (wozJobsRectPhotoTexture != 0 && wozJobsRectPhotoWidth > 0 && wozJobsRectPhotoHeight > 0) {
+            drawFittedCenteredImage(wozJobsRectPhotoTexture, wozJobsRectPhotoWidth, wozJobsRectPhotoHeight);
+        } else {
+            ImGui::TextWrapped(
+                "Apple-1 Demo Session photo not found (expected pic/%s).", kWozJobsRectPhotoFile);
+        }
+    }
+    ImGui::End();
+}
+
+void MainWindow_ImGui::ensureTorinoLabPhotoTexture()
+{
+    if (torinoLabPhotoTexture != 0 || torinoLabPhotoLoadTried)
+        return;
+    torinoLabPhotoLoadTried = true;
+
+    const std::string path = find_pic_file_path(kTorinoLabPhotoFile);
+    if (path.empty()) {
+        pom1::log().warn("Images",
+            std::string("Torino lab photo not found (expected pic/") + kTorinoLabPhotoFile + ")");
+        return;
+    }
+
+    int w = 0, h = 0, channels = 0;
+    unsigned char* pixels = stbi_load(path.c_str(), &w, &h, &channels, 4);
+    if (!pixels || w <= 0 || h <= 0) {
+        if (pixels) stbi_image_free(pixels);
+        pom1::log().warn("Images", "Could not decode Torino lab photo: " + path);
+        return;
+    }
+
+    GLuint tex = 0;
+    glGenTextures(1, &tex);
+    glBindTexture(GL_TEXTURE_2D, tex);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, w, h, 0, GL_RGBA, GL_UNSIGNED_BYTE, pixels);
+    glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
+    stbi_image_free(pixels);
+
+    torinoLabPhotoTexture = tex;
+    torinoLabPhotoWidth = w;
+    torinoLabPhotoHeight = h;
+}
+
+void MainWindow_ImGui::renderTorinoLabPhotoWindow()
+{
+    ensureTorinoLabPhotoTexture();
+
+    // Source: La Repubblica Torino, 12 October 2016 — "Ecco i tre Apple-1
+    // riavviati nel laboratorio di Torino". Photo of Claudio Parmigiani's
+    // P-LAB team with three restored Apple-1 boards on the workbench.
+    applyPendingLayout("Three Apple-1s in the Torino Lab (2016)");
+    ImGui::SetNextWindowSizeConstraints(ImVec2(220, 170), ImVec2(FLT_MAX, FLT_MAX));
+    if (ImGui::Begin("Three Apple-1s in the Torino Lab (2016)", &showTorinoLabPhoto)) {
+        if (torinoLabPhotoTexture != 0 && torinoLabPhotoWidth > 0 && torinoLabPhotoHeight > 0) {
+            drawFittedCenteredImage(torinoLabPhotoTexture, torinoLabPhotoWidth, torinoLabPhotoHeight);
+        } else {
+            ImGui::TextWrapped(
+                "Torino lab photo not found (expected pic/%s).", kTorinoLabPhotoFile);
+        }
+    }
+    ImGui::End();
 }
 
 namespace {

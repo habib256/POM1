@@ -71,11 +71,16 @@ const MachineConfig kMachinePresets[] = {
         /*sidSE*/ false,
         /*jukeBox*/ false, JukeBox::Jumper::RAM16_ROM32,
         /*gt6144*/ false,
-        // Nothing in the right column — the bare 1976 machine is the
-        // minimalist preset; the Welcome panel would be a distraction.
+        // Right column carries two 1976-era photos of Woz + Jobs with
+        // the Apple-1 — the portrait (standing Woz, seated Jobs) on
+        // top and the landscape demo-session shot below. Fitting
+        // companion to the bare July-1976 machine, replacing the
+        // previously empty right column.
         {
-            {"Apple 1 Screen", {10, 61}, {843, 701}},
-        }, 1
+            {"Apple 1 Screen",                  {10,  61},  {843, 701}},
+            {"Woz & Jobs (1976)",               {858, 61},  {338, 450}},
+            {"Apple-1 Demo Session (1976)",     {858, 517}, {338, 245}},
+        }, 3
     },
     {
         "Apple-1 with ACI & Integer BASIC (October 1976)",
@@ -272,7 +277,7 @@ const MachineConfig kMachinePresets[] = {
         "no arbitration, and several of these cards share overlapping address windows). "
         "Provided for convenience only.",
         false, true, true, true, true, true, true,
-        /*pr40*/ true,
+        /*pr40*/ false,
         false, false, false, 64, BasicType::ApplesoftLite,
         /*sidSE*/ false,
         /*jukeBox*/ false, JukeBox::Jumper::RAM16_ROM32,
@@ -280,13 +285,21 @@ const MachineConfig kMachinePresets[] = {
         {
             // P-LAB Fantasy departs from the tutorial+peripheral template:
             // the right column stacks three cards so the user can see
-            // TMS9918 + Modem + I/O at once. Terminal Card + PR-40 stay
-            // plugged but hidden (open via the Hardware menu if needed).
-            {"Apple 1 Screen",               {10,  61},  {843, 701}},
-            {"P-LAB Graphic Card (TMS9918)", {858, 61},  {338, 340}},
-            {"P-LAB Wi-Fi Modem",            {858, 406}, {338, 160}},
-            {"P-LAB I/O Board & RTC",        {858, 571}, {338, 193}},
-        }, 4
+            // TMS9918 + Modem + I/O at once. Terminal Card stays plugged
+            // but hidden (open via the Hardware menu if needed). PR-40
+            // is intentionally unplugged in every default preset — plug
+            // it from the toolbar when needed.
+            {"Apple 1 Screen",                          {10,   61},  {843, 701}},
+            {"P-LAB Graphic Card (TMS9918)",            {858,  61},  {338, 340}},
+            {"P-LAB Wi-Fi Modem",                       {858,  406}, {338, 160}},
+            {"P-LAB I/O Board & RTC",                   {858,  571}, {338, 193}},
+            // Tribute to Claudio Parmigiani's P-LAB: 990x659 landscape
+            // photo from La Repubblica Torino (12 October 2016) of the
+            // Torino lab team with three restored Apple-1 boards on the
+            // workbench. Placed in a fourth rightmost column so the
+            // Fantasy preset's GLFW window grows to fit it.
+            {"Three Apple-1s in the Torino Lab (2016)", {1204, 61},  {450, 310}},
+        }, 5
     },
     {
         "Uncle Bernie's Apple-1 with GEN2 HGR Color (April 2026)",
@@ -419,6 +432,9 @@ void MainWindow_ImGui::applyMachineConfig(int presetIndex)
     showTutorialJukeBox      = false;
     showTutorialTerminalCard = false;
     showTutorialKrusader     = false;
+    showWozJobsPhoto         = false;
+    showWozJobsRectPhoto     = false;
+    showTorinoLabPhoto       = false;
     showScreenConfig         = false;
     showMemoryConfig         = false;
     showLoadDialog           = false;
@@ -552,6 +568,9 @@ void MainWindow_ImGui::applyMachineConfig(int presetIndex)
         else if (n == "SWTPC GT-6144 Graphic Terminal")       showGT6144       = true;
         else if (n == "Apple-1 Cassette Deck")                showCassetteDeck = true;
         else if (n == "Welcome")                              showWelcome      = true;
+        else if (n == "Woz & Jobs (1976)")                    showWozJobsPhoto = true;
+        else if (n == "Apple-1 Demo Session (1976)")          showWozJobsRectPhoto = true;
+        else if (n == "Three Apple-1s in the Torino Lab (2016)") showTorinoLabPhoto = true;
         // Tutorial windows — names MUST match the titles used in
         // renderTutorialXxxWindow() calls (MainWindow_Dialogs.cpp).
         else if (n == "Tutorial: Integer BASIC")              showTutorialIntegerBasic = true;

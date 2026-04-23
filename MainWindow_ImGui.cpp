@@ -139,6 +139,27 @@ void MainWindow_ImGui::destroyPom1()
         appIconHeight = 0;
     }
     appIconLoadTried = false;
+    if (wozJobsPhotoTexture) {
+        glDeleteTextures(1, &wozJobsPhotoTexture);
+        wozJobsPhotoTexture = 0;
+        wozJobsPhotoWidth = 0;
+        wozJobsPhotoHeight = 0;
+    }
+    wozJobsPhotoLoadTried = false;
+    if (wozJobsRectPhotoTexture) {
+        glDeleteTextures(1, &wozJobsRectPhotoTexture);
+        wozJobsRectPhotoTexture = 0;
+        wozJobsRectPhotoWidth = 0;
+        wozJobsRectPhotoHeight = 0;
+    }
+    wozJobsRectPhotoLoadTried = false;
+    if (torinoLabPhotoTexture) {
+        glDeleteTextures(1, &torinoLabPhotoTexture);
+        torinoLabPhotoTexture = 0;
+        torinoLabPhotoWidth = 0;
+        torinoLabPhotoHeight = 0;
+    }
+    torinoLabPhotoLoadTried = false;
 }
 
 void MainWindow_ImGui::render()
@@ -454,6 +475,9 @@ void MainWindow_ImGui::render()
     if (showTutorialJukeBox) renderTutorialJukeBoxWindow();
     if (showTutorialTerminalCard) renderTutorialTerminalCardWindow();
     if (showTutorialKrusader) renderTutorialKrusaderWindow();
+    if (showWozJobsPhoto) renderWozJobsPhotoWindow();
+    if (showWozJobsRectPhoto) renderWozJobsRectPhotoWindow();
+    if (showTorinoLabPhoto) renderTorinoLabPhotoWindow();
     if (showScreenConfig) renderScreenConfigDialog();
     if (showMemoryConfig) renderMemoryConfigDialog();
     if (showLoadDialog) renderLoadDialog();
