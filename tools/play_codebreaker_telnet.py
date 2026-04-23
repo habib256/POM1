@@ -35,7 +35,7 @@ Stratégie du bot :
     secret (fixe, cf. MY_SECRET) et on répond *toujours* la vérité —
     mentir déclenche NO POSSIBLE SOLUTION / YOU CHEATED.
 
-Flux observé (capture réelle POM1 v1.8.5) :
+Flux observé (capture réelle POM1 v1.8.6) :
       0 <-                              (ROOKIE)
       LEVEL: 0, ROUNDS: 6, LETTERS: A...F
       ...pub Uncle Bernie...

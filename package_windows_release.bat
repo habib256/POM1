@@ -7,6 +7,28 @@ echo  POM1 — Package Windows pour distribution
 echo ============================================
 echo.
 
+REM ---------------------------------------------------------------------------
+REM Optional Authenticode signing
+REM
+REM This packager can sign the produced binaries if you provide a code-signing
+REM certificate via environment variables. No secrets are stored in the repo.
+REM
+REM Modes:
+REM   1) PFX file:
+REM      set POM1_CODESIGN_PFX=C:\path\to\cert.pfx
+REM      set POM1_CODESIGN_PFX_PASSWORD=yourPassword
+REM
+REM   2) Certificate in Windows cert store (recommended for EV tokens):
+REM      set POM1_CODESIGN_SHA1=THUMBPRINTWITHOUTSPACES
+REM
+REM Optional:
+REM   set POM1_CODESIGN_TIMESTAMP_URL=http://timestamp.digicert.com
+REM   set POM1_CODESIGN_DESC=POM1 Apple 1 Emulator
+REM   set POM1_CODESIGN_URL=https://github.com/gistarcade/POM1
+REM
+REM If none is set, packaging proceeds unsigned (SmartScreen may warn).
+REM ---------------------------------------------------------------------------
+
 set "EXE="
 if exist "build\Release\POM1.exe" set "EXE=build\Release\POM1.exe"
 if exist "build\Debug\POM1.exe" if not defined EXE set "EXE=build\Debug\POM1.exe"
@@ -81,6 +103,77 @@ copy /Y "!GLFW_DLL_SRC!" "%OUTDIR%\glfw3.dll" >nul || (
     echo ERREUR: copie de glfw3.dll echouee.
     rd /s /q "%OUTDIR%"
     exit /b 1
+)
+
+REM ---- Optional signing (POM1.exe + glfw3.dll) -------------------------------
+set "SIGNTOOL="
+for /f "usebackq delims=" %%S in (`where signtool 2^>nul`) do (
+    if not defined SIGNTOOL set "SIGNTOOL=%%S"
+)
+if not defined SIGNTOOL (
+    REM Common Windows Kits fallback (best-effort)
+    if exist "%ProgramFiles(x86)%\Windows Kits\10\bin\x64\signtool.exe" set "SIGNTOOL=%ProgramFiles(x86)%\Windows Kits\10\bin\x64\signtool.exe"
+)
+
+set "TSURL=%POM1_CODESIGN_TIMESTAMP_URL%"
+if not defined TSURL set "TSURL=http://timestamp.digicert.com"
+
+set "SIGNDESC=%POM1_CODESIGN_DESC%"
+if not defined SIGNDESC set "SIGNDESC=POM1 - Apple 1 Emulator"
+
+set "SIGNURL=%POM1_CODESIGN_URL%"
+if not defined SIGNURL set "SIGNURL=https://github.com/gistarcade/POM1"
+
+set "DO_SIGN=0"
+if defined POM1_CODESIGN_PFX set "DO_SIGN=1"
+if defined POM1_CODESIGN_SHA1 set "DO_SIGN=1"
+
+if "!DO_SIGN!"=="1" (
+    if not defined SIGNTOOL (
+        echo AVERTISSEMENT: signature demandee mais signtool.exe introuvable. Packaging non signe.
+    ) else (
+        echo.
+        echo Signature Authenticode...
+
+        set "SIGNARGS=/fd SHA256 /td SHA256 /tr !TSURL! /d "!SIGNDESC!" /du "!SIGNURL!""
+        set "CERTARGS="
+        if defined POM1_CODESIGN_PFX (
+            if not exist "!POM1_CODESIGN_PFX!" (
+                echo ERREUR: POM1_CODESIGN_PFX pointe vers un fichier inexistant: !POM1_CODESIGN_PFX!
+                rd /s /q "%OUTDIR%"
+                exit /b 1
+            )
+            set "CERTARGS=/f "!POM1_CODESIGN_PFX!""
+            if defined POM1_CODESIGN_PFX_PASSWORD (
+                set "CERTARGS=!CERTARGS! /p "!POM1_CODESIGN_PFX_PASSWORD!""
+            )
+        ) else if defined POM1_CODESIGN_SHA1 (
+            set "CERTARGS=/sha1 !POM1_CODESIGN_SHA1!"
+        )
+
+        "%SIGNTOOL%" sign !SIGNARGS! !CERTARGS! "%OUTDIR%\POM1.exe" || (
+            echo ERREUR: echec signature POM1.exe
+            rd /s /q "%OUTDIR%"
+            exit /b 1
+        )
+        "%SIGNTOOL%" sign !SIGNARGS! !CERTARGS! "%OUTDIR%\glfw3.dll" || (
+            echo ERREUR: echec signature glfw3.dll
+            rd /s /q "%OUTDIR%"
+            exit /b 1
+        )
+
+        "%SIGNTOOL%" verify /pa /q "%OUTDIR%\POM1.exe" || (
+            echo ERREUR: verification signature POM1.exe echouee
+            rd /s /q "%OUTDIR%"
+            exit /b 1
+        )
+        "%SIGNTOOL%" verify /pa /q "%OUTDIR%\glfw3.dll" || (
+            echo ERREUR: verification signature glfw3.dll echouee
+            rd /s /q "%OUTDIR%"
+            exit /b 1
+        )
+        echo Signature OK.
+    )
 )
 
 echo Copie fonts\ ...

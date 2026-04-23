@@ -517,7 +517,8 @@ bool resolveGuestPath(const std::filesystem::path& root,
     std::filesystem::path lex = p.lexically_normal();
     auto rel = std::filesystem::relative(lex, root, ec);
     if (ec || rel.empty() || rel.native()[0] == '.' /* ../… or ./… */) {
-        if (!rel.empty() && rel.native().rfind("..", 0) == 0) {
+        const auto dotdot = std::filesystem::path("..").native();
+        if (!rel.empty() && rel.native().rfind(dotdot, 0) == 0) {
             pom1::log().error("CLI", "microSD path '" + guest + "' escapes the sdcard root");
             return false;
         }

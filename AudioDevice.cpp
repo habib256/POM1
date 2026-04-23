@@ -52,8 +52,29 @@
 #pragma GCC diagnostic pop
 #endif
 
+#if defined(_WIN32)
+// miniaudio includes <windows.h> on Windows, which defines min/max macros unless
+// NOMINMAX is set. Those macros break std::min/std::max calls in this TU and in
+// any test target that compiles it.
+#  ifndef WIN32_LEAN_AND_MEAN
+#    define WIN32_LEAN_AND_MEAN
+#  endif
+#  ifndef NOMINMAX
+#    define NOMINMAX
+#  endif
+#endif
+
 #define MINIAUDIO_IMPLEMENTATION
 #include "third_party/miniaudio.h"
+
+#if defined(_WIN32)
+#  ifdef min
+#    undef min
+#  endif
+#  ifdef max
+#    undef max
+#  endif
+#endif
 
 // ─── Mixing ─────────────────────────────────────────────────────────────────
 
