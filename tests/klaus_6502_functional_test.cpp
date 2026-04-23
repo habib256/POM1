@@ -27,6 +27,7 @@
 #include "PR40Printer.h"
 
 #include <chrono>
+#include <cstring>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
