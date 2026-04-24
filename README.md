@@ -8,16 +8,27 @@
 
 Built with Dear ImGui & OpenGL — fast, lightweight, and cross-platform (Linux, macOS, Windows, Web).
 
-**Play it now in your browser:** 
-[![Play Online](https://img.shields.io/badge/Play%20Online-WebAssembly-blueviolet.svg)](https://habib256.github.io/POM1/build-wasm/POM1.html)
+[![Play Online](https://img.shields.io/badge/▶%20Play%20Online-WebAssembly-blueviolet?style=for-the-badge)](https://habib256.github.io/POM1/build-wasm/POM1.html)
 
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](LICENSE)
 [![Platform](https://img.shields.io/badge/Platform-Linux%20%7C%20macOS%20%7C%20Windows%20%7C%20Web-lightgrey.svg)](#-quick-start)
 [![C++](https://img.shields.io/badge/C%2B%2B-17-orange.svg)](#)
+[![15 presets](https://img.shields.io/badge/Presets-15-success.svg)](#%EF%B8%8F-machine-presets)
+[![Programs](https://img.shields.io/badge/Software-60%2B_programs-yellowgreen.svg)](#-software-library)
 
 ![POM1 Screenshot](doc/screenshot.png)
 
 </div>
+
+---
+
+### 📑 Table of Contents
+
+**Get started** · [Features](#-features) · [Quick Start](#-quick-start) · [Controls](#%EF%B8%8F-keyboard-shortcuts) · [Presets](#%EF%B8%8F-machine-presets) · [Software Library](#-software-library)
+
+**Expansion cards** · [Cassette](#-cassette-interface-aci) · [Graphics](#-graphics) · [Audio — A1-SID](#-audio--p-lab-a1-sid) · [Storage](#-storage--microsd--cffa1--juke-box) · [Connectivity](#-connectivity--wi-fi-modem--terminal-card) · [Printer](#%EF%B8%8F-swtpc-pr-40-printer-jobs-1976) · [I/O & RTC](#-p-lab-io-board--rtc)
+
+**Build your own** · [cc65 toolchain](#-assembling-your-own-programs) · [Reference](#-reference) · [Credits](#-credits)
 
 ---
 
@@ -29,7 +40,7 @@ Built with Dear ImGui & OpenGL — fast, lightweight, and cross-platform (Linux,
 - ⌨️ Paste-code, load/save memory, step debugger with register inspection, disassembly, stack view
 - 🔍 Live **memory editor** + visual **memory map** (PC / SP indicators, I/O tooltips)
 
-**Expansion cards**
+**Expansion cards — from 1976 to 2026**
 - 📼 **ACI cassette** with procedural deck widget — `.aci` / `.wav` / `.mp3` / `.ogg`, smart jaquette from `tapeinfo.txt`
 - 🎨 Three graphics cards — [Uncle Bernie's GEN2](https://www.applefritter.com/content/uncle-bernies-gen2-color-graphics-card-apple-1) (280×192 NTSC artifact colour), [P-LAB TMS9918](https://p-l4b.github.io/graphic/) (256×192 + sprites), and **SWTPC GT-6144** (1976, 64×96 mono — *first commercial Apple-1 graphics card*)
 - 🖨️ **SWTPC PR-40** 40-column printer (Jobs' Oct-76 *Interface Age* mod) — 40-char FIFO, ~0.8 s mechanical cycle, scrollable paper roll
@@ -74,7 +85,7 @@ run_emulator.bat                    REM copies ROMs & launches the emulator
 
 **Play directly:** [https://habib256.github.io/POM1/build-wasm/POM1.html](https://habib256.github.io/POM1/build-wasm/POM1.html)
 
-Build it yourself:
+<details><summary>Build it yourself</summary>
 
 ```bash
 # One-time Emscripten install
@@ -86,6 +97,7 @@ cd POM1 && mkdir -p build-wasm && cd build-wasm
 emcmake cmake .. && emmake make -j$(nproc)
 emrun POM1.html
 ```
+</details>
 
 ### 🎛️ Command-line flags
 
@@ -160,7 +172,91 @@ vcpkg install glfw3:x64-windows
 
 ---
 
-## 📼 Cassette Interface
+## 🖥️ Machine Presets
+
+**Presets menu** applies a one-click configuration — enabling the right cards and snapping windows into a sensible layout. Indices match `--preset N`.
+
+| # | Preset | RAM | BASIC | Expansion cards |
+|:-:|:-------|:---:|:------|:----------------|
+| 0 | **Bare Apple-1 (July 1976)** | 4 KB | — | — |
+| 1 | **Apple-1 with ACI & Integer BASIC (Oct 1976)** | 8 KB | Integer | ACI |
+| 2 | **Apple-1 + SWTPC GT-6144 (1976)** | 8 KB | Integer | ACI, GT-6144 |
+| 3 | **Replica-1 with ACI, Krusader (Briel 2003)** | 32 KB | Integer | ACI, Krusader |
+| 4 | **Replica-1 with CFFA1 & Applesoft Lite (Dreher 2007)** | 32 KB | Applesoft Lite | CFFA1 |
+| 5 | **P-LAB microSD & Applesoft Lite (Apr 2022)** | 32 KB | Applesoft Lite | microSD |
+| 6 | **P-LAB A1-SID Sound Card ($C800-$CFFF)** | 32 KB | Integer | A1-SID |
+| 7 | **P-LAB A1-AUDIO Special Edition ($CC00-$CC1F)** | 32 KB | Integer | A1-AUDIO SE |
+| 8 | **P-LAB TMS9918 Graphic Card** | 32 KB | Integer | TMS9918 |
+| 9 | **P-LAB I/O Board & RTC** | 32 KB | Integer | I/O & RTC |
+| 10 | **P-LAB Wi-Fi Modem BBS** | 32 KB | Integer | Wi-Fi Modem |
+| 11 | **P-LAB Juke-Box (16 kB RAM)** | 16 KB | Integer + Juke-Box | Juke-Box |
+| 12 | **P-LAB Multiplexing Fantasy** | 64 KB | Applesoft Lite | microSD, A1-SID, TMS9918, I/O & RTC, Wi-Fi, Terminal, PR-40 |
+| 13 | **Uncle Bernie's GEN2 HGR Color (Apr 2026)** | 32 KB | Integer | GEN2 HGR |
+| 14 | **POM1 Multiplexing Fantasy (2026)** ⭐ | 64 KB | Applesoft Lite | microSD, A1-SID, Wi-Fi, Terminal |
+
+⭐ **default preset** — opens Welcome + Cassette Deck, shows the POM1 banner on the Apple 1 screen.
+
+Drag windows freely afterwards — per-preset layouts persist under `ini/imgui_preset_NN.ini` (plus an `ini/preset_NN.size` sidecar for the OS window frame), so switching presets saves/restores each profile independently.
+
+> **Bare (0)** is the pre-ACI July-1976 shipping configuration — the first ~150 units left Woz's bench this way.
+> **Juke-Box (11)** drops ACI because the EEPROM replaces cassette loading.
+
+---
+
+## 🎮 Software Library
+
+`software/` ships **60+ ready-to-run programs** — load via **File > Load Memory**. Most come from [apple1software.com](https://apple1software.com/), the reference archive. Many include `.asm` source for study / modification.
+
+<details open><summary><b>🕹️ Games & demos</b></summary>
+
+| Program | Description |
+|---------|-------------|
+| ♟️ **Microchess** | Peter Jennings' chess engine — first commercial microcomputer game |
+| 🏰 **LittleTower** | Text adventure ([asm](software/games/LittleTower-1.0.asm)) |
+| 🌙 **Lunar Lander** | Pilot your lander safely to the surface |
+| 🔢 **2048** | Sliding-tile puzzle |
+| 🔐 **Codebreaker** / 🧠 **Mastermind** | Code-breaking logic games |
+| 📝 **Worple** / 🧩 **15-Puzzle** / 🔵 **Peg Solitaire** / 🎲 **Shut the Box** | Word / sliding / board games |
+| 🧬 **Game of Life** | Conway's cellular automaton |
+| 🌀 **Maze** / **Maze 2** | Sidewinder ([asm](software/games/Maze_Sidewinder.asm)) and Recursive Backtracker ([asm](software/games/Maze2_Backtracker.asm)) generators |
+| 🎨 **HGR Maze** | GEN2 HIRES maze generator — 280×192 ([asm](software/hgr/HGR1_Maze.asm)) |
+| 🌌 **Mandelbrot** / 📊 **Cellular** / 🎨 **PasArt** | Fractal, 1D CA, parametric ASCII art |
+| 🎂 **30th** / 🐱 **ASCII Cat** / 🍺 **99 Bottles** | Classic demos |
+</details>
+
+<details><summary><b>💻 BASIC programs</b> <i>(load Enhanced BASIC first with <code>E000R</code>)</i></summary>
+
+| Program | Description |
+|---------|-------------|
+| 🚀 **Star Trek** | Mini Star Trek strategy game |
+| 🃏 **Blackjack** | Classic card game |
+| 🏛️ **Hamurabi** | Rule ancient Sumeria — classic strategy |
+| 🌙 **Lunar Lander (Graphics)** / ⏱️ **Stopwatch** / 🔧 **Resistor Calculator** | BASIC utilities |
+</details>
+
+<details><summary><b>🛠️ Dev tools & utilities</b></summary>
+
+| Program | Description |
+|---------|-------------|
+| 👁️ **Woz Monitor** | Steve Wozniak's original system monitor |
+| 💻 **Enhanced BASIC** | Extended BASIC with extra commands |
+| 📘 **fig-FORTH** | FORTH interpreter |
+| 🔬 **Disassembler** / 🔨 **A1 Assembler** | 6502 disassembler + in-memory assembler |
+| ✍️ **Typewriter** / 🎉 **Party** | Text input & guest check-in |
+</details>
+
+<details><summary><b>🎵 A1-SID music</b> (<code>software/sid/</code>)</summary>
+
+Binary tunes for the [P-LAB A1-SID](https://p-l4b.github.io/A1-SID/) — load at `$0280`, enable the SID card, then `280R`. Add your own from the [HVSC](https://www.exotica.org.uk/wiki/High_Voltage_SID_Collection) archive via [`tools/sid2apple1.py`](tools/sid2apple1.py) (see [SID converter](#sid-converter)).
+</details>
+
+---
+
+# 🔌 Expansion Cards — Deep Dive
+
+---
+
+## 📼 Cassette Interface (ACI)
 
 **Apple Cassette Interface (ACI)** — Woz ACI ROM at `$C100`, real-time audio on desktop & WebAssembly.
 
@@ -177,7 +273,7 @@ vcpkg install glfw3:x64-windows
 
 ---
 
-## 🎨 Graphics Cards
+## 🎨 Graphics
 
 POM1 emulates three independent Apple 1 graphics expansion cards. Enable from the **Hardware** menu or the toolbar (respect each card's bus-window exclusions — see the in-app Hardware Reference).
 
@@ -209,7 +305,7 @@ Southwest Technical Products' GT-6144 — the **first commercial graphics card f
 
 ---
 
-## 🎵 P-LAB A1-SID Sound Card
+## 🎵 Audio — P-LAB A1-SID
 
 [P-LAB A1-SID](https://p-l4b.github.io/A1-SID/), driven by **[libresidfp](https://github.com/libsidplayfp/libsidplayfp)** (vendored under `third_party/libresidfp/`).
 
@@ -242,13 +338,15 @@ python3 tools/sid2apple1.py --batch /path/to/sids/ ./out_bins/
 
 Source material: the **[High Voltage SID Collection (HVSC)](https://www.exotica.org.uk/wiki/High_Voltage_SID_Collection)** is the canonical archive — respect per-file copyright.
 
-`software/sid/` ships a dozen ready-to-run tunes (Hubbard, Tel, Daglish, Huelsbeck…). Load at `$0280`, enable the SID card, then `280R`. Claudio Parmigiani's **SID PIANO** source is included (QWERTY/AZERTY, `.asm` + Woz-style `.txt`, build with `piano.cfg`).
+`software/sid/` ships a dozen ready-to-run tunes (Hubbard, Tel, Daglish, Huelsbeck…). Claudio Parmigiani's **SID PIANO** source is included (QWERTY/AZERTY, `.asm` + Woz-style `.txt`, build with `piano.cfg`).
 
 > **Converter limits:** **Arkanoid** (Galway) and **BMX Kidz** (Hubbard) stay silent — Galway's multi-ISR raster-split and Hubbard's computed ISR addresses escape `sid2apple1.py`'s static ISR detection. The SID chip emulation is fine; the converter is the bottleneck.
 
 ---
 
-## 💾 P-LAB microSD Storage Card
+## 💾 Storage — microSD / CFFA1 / Juke-Box
+
+### P-LAB microSD Storage Card
 
 [P-LAB microSD](https://p-l4b.github.io/sdcard/) — DOS-like file system over a 65C22 VIA + emulated ATMEGA MCU.
 
@@ -257,23 +355,18 @@ Source material: the **[High Voltage SID Collection (HVSC)](https://www.exotica.
 - **Tagged filenames** `NAME#TTAAAA`: `#06` binary, `#F1` Integer BASIC, `#F8` Applesoft, `AAAA` hex load address
 - **Shell commands** — `DIR` / `LS`, `CD <dir>` / `CD ..` (only navigation primitive), `LOAD <name>`, `SAVE`, `READ`, `WRITE`, `DEL <name>`, `MKDIR`, `RMDIR`, `PWD`, `MOUNT`
 - `LOAD` uses **fuzzy case-insensitive prefix match** — **within the current directory only, no recursion**. Use `CD <dir>` to navigate before `LOAD` / `DEL` / `SAVE` on a file that lives deeper in the tree
-- The **prompt shows the current directory** — `/PLAB>` means `currentDirectory = PLAB`, `/PLAB/MCODE>` means you're one level deeper — no guessing where `LOAD` will look
+- The **prompt shows the current directory** — `/PLAB>` means `currentDirectory = PLAB`, `/PLAB/MCODE>` one level deeper — no guessing where `LOAD` will look
 
-### Quick start
+**Quick start**
 
 1. Drop files into `sdcard/` with tagged names (e.g. `MYPROG#060300` = binary at `$0300`), or use the shipped library under `sdcard/PLAB/` — games in `MCODE/`, BASIC in `BASIC/`, Applesoft in `ASOFT/`, …
 2. Enable the card (**Hardware** menu or toolbar), type `8000R` — the prompt lands at `/>`
 3. `DIR` lists the current dir; for the shipped library type `CD PLAB`, then `CD MCODE`, `DIR`
 4. `LOAD YUM` reads at the tagged address, exit to Woz Monitor, `300R` to run
-5. **Regression-pinned**: `tools/test_sdcard_subdir_navigation_telnet.py` auto-launches POM1 and exercises the "CD before LOAD / DEL" invariant end-to-end
 
-### Applesoft Lite (P-LAB microSD layout)
+**Applesoft Lite (P-LAB microSD layout)** — with **microSD on + CFFA1 off**, Applesoft presets load `applesoft-lite-microsd.rom` at `$6000-$7FFF` ([P-LAB APPLESOFT-FT](https://p-l4b.github.io/terminal/APPLESOFT-FT.zip)). Integer BASIC stays at `$E000`, Woz Monitor at `$FF00`. Cold start `6000R`, warm start `6003R`.
 
-With **microSD on + CFFA1 off**, Applesoft-preset machines load `applesoft-lite-microsd.rom` at `$6000-$7FFF` ([P-LAB APPLESOFT-FT](https://p-l4b.github.io/terminal/APPLESOFT-FT.zip), Fast Terminal + SD OS 1.2). Integer BASIC stays at `$E000`, Woz Monitor at `$FF00`. Cold start `6000R`, warm start `6003R`. Manage programs from the SD shell (`8000R`) via `#F8` tagged files and `ASAVE` / `LOAD` / `RUN`.
-
----
-
-## 💽 CFFA1 CompactFlash Card
+### CFFA1 CompactFlash Card
 
 **Rich Dreher's CFFA1** — 8 KB firmware ROM at `$9000-$AFDF`, ATA/IDE registers at `$AFE0-$AFFF`, backed by a host **ProDOS `.po`** block device. **Mutually exclusive with microSD** (shared `$9000` region).
 
@@ -283,20 +376,23 @@ With **microSD on + CFFA1 off**, Applesoft-preset machines load `applesoft-lite-
 - Default disk: `cfcard/cfcard.po` next to the executable (or repo root); the WASM build preloads `cfcard/` like `sdcard/`
 - Reference: `doc/CFFA1_cdromv1.1.zip` in the repo
 
+### P-LAB Apple-1 Juke-Box
+
+Claudio Parmigiani's [P-LAB Juke-Box](https://p-l4b.github.io/) — memory-mapped 32 KB EEPROM (28c256) acting as an in-address-space program library. No cassette, no SD card.
+
+- **ROM window**: `$4000-$BFFF` (RAM-16 / ROM-32 jumper) or `$8000-$BFFF` (RAM-32 / ROM-16 jumper) — toggle from the Juke-Box window
+- **Program Manager** at `$BD00` — `BD00R` → `&` prompt → `H / D / L<X> / P<0-F> / B / X`
+- **Save Program** at `$B800` — `B800R` writes current RAM back to the EEPROM (requires RW jumper)
+- Mutually exclusive with CFFA1, microSD, Krusader, Wi-Fi Modem (all live inside the Juke-Box address window)
+- Integer BASIC at `$E000` stays available — `L<letter>` then `B` loads a BASIC program and hands it to the interpreter
+- Firmware: `roms/jukebox.rom`; rebuild with `doc/JUKEBOX_ROM_CREATOR/build_jukebox_rom.py` (signature byte at file offset `$7D00` must be `$A5`)
+- v1 models the single-page 28c256. Multi-page 29c020 / 29c040 (`P0..PF` / `S0..S1`) pending public MMIO documentation.
+
 ---
 
-## ⏰ P-LAB I/O Board & RTC
+## 🌐 Connectivity — Wi-Fi Modem & Terminal Card
 
-[P-LAB Apple-1 I/O Board & RTC](https://p-l4b.github.io/A1-IO_RTC/) — 65C22 VIA at `$2000-$200F` bridging an emulated ATMEGA32 + DS3231.
-
-- **Registers 0–5**: RTC (hour / minute / second / day / month / year)
-- **Register 6**: DS3231 temperature
-- Additional registers: ADC + digital inputs — see the in-app Memory Map tooltips
-- **⚠ Overlap**: `$2000-$3FFF` is also the GEN2 HGR framebuffer — don't enable both cards on the same machine
-
----
-
-## 📡 P-LAB MODEM BBS
+### P-LAB MODEM BBS (Wi-Fi Modem)
 
 [P-LAB Wi-Fi Modem](https://p-l4b.github.io/wifi/) — 65C51 ACIA + ESP8266, real BBS servers over TCP/TELNET. Desktop only (no networking in WASM).
 
@@ -304,7 +400,7 @@ With **microSD on + CFFA1 off**, Applesoft-preset machines load `applesoft-lite-
 - **Hayes AT**: `AT`, `ATDT host:port`, `ATH`, `ATE0/ATE1`, `ATI`, `ATZ`; `+++` with 1 s guard
 - Baud-rate simulation 50–19200 (W65C51N table); TELNET IAC negotiation (WILL/WONT/DO/DONT)
 
-### Connecting to a BBS
+**Connecting to a BBS**
 
 1. Enable **Wi-Fi Modem** + **Terminal Card** (Hardware menu)
 2. External terminal: `telnet localhost 6502`
@@ -314,9 +410,7 @@ With **microSD on + CFFA1 off**, Applesoft-preset machines load `applesoft-lite-
 
 Full ANSI rendering (colours, cursor positioning, screen clearing) works natively in the external terminal.
 
----
-
-## 🖥️ P-LAB Terminal Card
+### P-LAB Terminal Card
 
 [P-LAB Terminal Card](https://p-l4b.github.io/terminal/) — passive bidirectional serial bridge. Desktop only.
 
@@ -344,92 +438,14 @@ Steve Jobs' October-1976 *Interface Age* hack: tee the SWTPC PR-40 40-column mat
 
 ---
 
-## 💿 P-LAB Apple-1 Juke-Box
+## ⏰ P-LAB I/O Board & RTC
 
-Claudio Parmigiani's [P-LAB Juke-Box](https://p-l4b.github.io/) — memory-mapped 32 KB EEPROM (28c256) acting as an in-address-space program library. No cassette, no SD card.
+[P-LAB Apple-1 I/O Board & RTC](https://p-l4b.github.io/A1-IO_RTC/) — 65C22 VIA at `$2000-$200F` bridging an emulated ATMEGA32 + DS3231.
 
-- **ROM window**: `$4000-$BFFF` (RAM-16 / ROM-32 jumper) or `$8000-$BFFF` (RAM-32 / ROM-16 jumper) — toggle from the Juke-Box window
-- **Program Manager** at `$BD00` — `BD00R` → `&` prompt → `H / D / L<X> / P<0-F> / B / X`
-- **Save Program** at `$B800` — `B800R` writes current RAM back to the EEPROM (requires RW jumper)
-- Mutually exclusive with CFFA1, microSD, Krusader, Wi-Fi Modem (all live inside the Juke-Box address window)
-- Integer BASIC at `$E000` stays available — `L<letter>` then `B` loads a BASIC program and hands it to the interpreter
-- Firmware: `roms/jukebox.rom`; rebuild with `doc/JUKEBOX_ROM_CREATOR/build_jukebox_rom.py` (signature byte at file offset `$7D00` must be `$A5`)
-- v1 models the single-page 28c256. Multi-page 29c020 / 29c040 (`P0..PF` / `S0..S1`) pending public MMIO documentation.
-
----
-
-## 🖥️ Machine Presets
-
-**Presets menu** applies a one-click configuration — enabling the right cards and snapping windows into a sensible layout. Indices match `--preset N`.
-
-| # | Preset | RAM | BASIC | Expansion cards |
-|:-:|:-------|:---:|:------|:----------------|
-| 0 | **Bare Apple-1 (July 1976)** | 4 KB | — | — |
-| 1 | **Apple-1 with ACI & Integer BASIC (Oct 1976)** | 8 KB | Integer | ACI |
-| 2 | **Apple-1 + SWTPC GT-6144 (1976)** | 8 KB | Integer | ACI, GT-6144 |
-| 3 | **Replica-1 with ACI, Krusader (Briel 2003)** | 32 KB | Integer | ACI, Krusader |
-| 4 | **Replica-1 with CFFA1 & Applesoft Lite (Dreher 2007)** | 32 KB | Applesoft Lite | CFFA1 |
-| 5 | **P-LAB microSD & Applesoft Lite (Apr 2022)** | 32 KB | Applesoft Lite | microSD |
-| 6 | **P-LAB A1-SID Sound Card ($C800-$CFFF)** | 32 KB | Integer | A1-SID |
-| 7 | **P-LAB A1-AUDIO Special Edition ($CC00-$CC1F)** | 32 KB | Integer | A1-AUDIO SE |
-| 8 | **P-LAB TMS9918 Graphic Card** | 32 KB | Integer | TMS9918 |
-| 9 | **P-LAB I/O Board & RTC** | 32 KB | Integer | I/O & RTC |
-| 10 | **P-LAB Wi-Fi Modem BBS** | 32 KB | Integer | Wi-Fi Modem |
-| 11 | **P-LAB Juke-Box (16 kB RAM)** | 16 KB | Integer + Juke-Box | Juke-Box |
-| 12 | **P-LAB Multiplexing Fantasy** | 64 KB | Applesoft Lite | microSD, A1-SID, TMS9918, I/O & RTC, Wi-Fi, Terminal, PR-40 |
-| 13 | **Uncle Bernie's GEN2 HGR Color (Apr 2026)** | 32 KB | Integer | GEN2 HGR |
-| 14 | **POM1 Multiplexing Fantasy (2026)** | 64 KB | Applesoft Lite | microSD, A1-SID, Wi-Fi, Terminal |
-
-- **Bare (0)** — pre-ACI July-1976 shipping configuration (first ~150 units left the bench this way).
-- **Juke-Box (11)** — Integer BASIC at `$E000`, EEPROM library via the Program Manager at `$BD00`; ACI dropped (EEPROM replaces cassette).
-- **POM1 Fantasy (14)** — **default preset**, shows the POM1 banner on the Apple 1 screen, opens Welcome + Cassette Deck to the right.
-
-Each preset repositions windows into a default layout (Apple 1 Screen top-left, expansion panels to the right, status at the bottom). Drag freely afterwards — per-preset layouts persist under `ini/imgui_preset_NN.ini` (plus an `ini/preset_NN.size` sidecar for the OS window frame), so switching presets saves/restores each profile independently.
-
----
-
-## 🎮 Software Library
-
-`software/` ships **60+ ready-to-run programs** — load via **File > Load Memory**. Most come from [apple1software.com](https://apple1software.com/), the reference archive. Many include `.asm` source for study / modification.
-
-### 🕹️ Games & demos
-
-| Program | Description |
-|---------|-------------|
-| ♟️ **Microchess** | Peter Jennings' chess engine — first commercial microcomputer game |
-| 🏰 **LittleTower** | Text adventure ([asm](software/games/LittleTower-1.0.asm)) |
-| 🌙 **Lunar Lander** | Pilot your lander safely to the surface |
-| 🔢 **2048** | Sliding-tile puzzle |
-| 🔐 **Codebreaker** / 🧠 **Mastermind** | Code-breaking logic games |
-| 📝 **Worple** / 🧩 **15-Puzzle** / 🔵 **Peg Solitaire** / 🎲 **Shut the Box** | Word / sliding / board games |
-| 🧬 **Game of Life** | Conway's cellular automaton |
-| 🌀 **Maze** / **Maze 2** | Sidewinder ([asm](software/games/Maze_Sidewinder.asm)) and Recursive Backtracker ([asm](software/games/Maze2_Backtracker.asm)) generators |
-| 🎨 **HGR Maze** | GEN2 HIRES maze generator — 280×192 ([asm](software/hgr/HGR1_Maze.asm)) |
-| 🌌 **Mandelbrot** / 📊 **Cellular** / 🎨 **PasArt** | Fractal, 1D CA, parametric ASCII art |
-| 🎂 **30th** / 🐱 **ASCII Cat** / 🍺 **99 Bottles** | Classic demos |
-
-### 💻 BASIC programs *(load Enhanced BASIC first with `E000R`)*
-
-| Program | Description |
-|---------|-------------|
-| 🚀 **Star Trek** | Mini Star Trek strategy game |
-| 🃏 **Blackjack** | Classic card game |
-| 🏛️ **Hamurabi** | Rule ancient Sumeria — classic strategy |
-| 🌙 **Lunar Lander (Graphics)** / ⏱️ **Stopwatch** / 🔧 **Resistor Calculator** | BASIC utilities |
-
-### 🛠️ Dev tools & utilities
-
-| Program | Description |
-|---------|-------------|
-| 👁️ **Woz Monitor** | Steve Wozniak's original system monitor |
-| 💻 **Enhanced BASIC** | Extended BASIC with extra commands |
-| 📘 **fig-FORTH** | FORTH interpreter |
-| 🔬 **Disassembler** / 🔨 **A1 Assembler** | 6502 disassembler + in-memory assembler |
-| ✍️ **Typewriter** / 🎉 **Party** | Text input & guest check-in |
-
-### 🎵 A1-SID music (`software/sid/`)
-
-Binary tunes for the [P-LAB A1-SID](https://p-l4b.github.io/A1-SID/) — load at `$0280`, enable the SID card, then `280R`. Add your own from the [HVSC](https://www.exotica.org.uk/wiki/High_Voltage_SID_Collection) archive via [`tools/sid2apple1.py`](tools/sid2apple1.py) (see [SID converter](#sid-converter)).
+- **Registers 0–5**: RTC (hour / minute / second / day / month / year)
+- **Register 6**: DS3231 temperature
+- Additional registers: ADC + digital inputs — see the in-app Memory Map tooltips
+- **⚠ Overlap**: `$2000-$3FFF` is also the GEN2 HGR framebuffer — don't enable both cards on the same machine
 
 ---
 
@@ -450,7 +466,9 @@ Load via **File > Load Memory**, or type the start address + `R` in Wozmon (e.g.
 
 ---
 
-## 🗂️ Project Layout
+## 📚 Reference
+
+<details><summary><b>🗂️ Project layout</b></summary>
 
 ```
 POM1/
@@ -503,10 +521,9 @@ POM1/
 ├── setup_imgui.sh           # One-shot setup
 └── run_emulator.sh          # Build check + ROM copy + launch
 ```
+</details>
 
----
-
-## 📀 ROMs
+<details><summary><b>📀 ROMs</b></summary>
 
 | ROM | Size | Address | Origin |
 |-----|------|---------|--------|
@@ -521,11 +538,10 @@ POM1/
 | 💿 **Juke-Box EEPROM** | 32 KB | `$4000-$BFFF` or `$8000-$BFFF` | P-LAB Juke-Box — `jukebox.rom` (signature `$A5` at file offset `$7D00`) |
 | 🔤 **Charmap** | 1 KB | — | Character generator table |
 
-Woz Monitor, Integer BASIC and the ACI ROM load at startup. Card-specific ROMs load when the matching card is enabled (SD CARD OS with microSD, CFFA1 firmware with CFFA1, Krusader with the Replica 1 preset, Juke-Box EEPROM with preset #10).
+Woz Monitor, Integer BASIC and the ACI ROM load at startup. Card-specific ROMs load when the matching card is enabled.
+</details>
 
----
-
-## 🗺️ Memory Map
+<details><summary><b>🗺️ Memory map</b></summary>
 
 ```
 $0000-$00FF   Zero Page
@@ -555,6 +571,7 @@ $FF00-$FFFF   Woz Monitor ROM
 ```
 
 The **POM1** preset ships with **64 KB** of user RAM; overlays from expansion cards and ROMs still win where they decode. Open the in-app **Memory Map** for the live layout.
+</details>
 
 ---
 
