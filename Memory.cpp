@@ -241,6 +241,20 @@ Memory::Memory()
         [this](uint16_t a, uint8_t v) { jukeBox->writeByte(a, v); });
     bus.setEnabled(jukeBox16BusHandle, false);
 
+    // Juke-Box Px/Sx bank-select latch at $CA00. Write-only; reads fall
+    // through to RAM/SID ($CA00 sits inside the SID window $C800-$CFFF,
+    // which is why setJukeBoxEnabled() evicts SID + SID SE). Priority 15
+    // so it wins against SID (priority 0) as belt-and-suspenders — normal
+    // operation keeps SID unplugged while Juke-Box is on.
+    jukeBoxBankRegBusHandle = bus.registerHandle(
+        "JukeBox_BankReg", {0xCA00, 0xCA00}, /*priority*/ 15,
+        /*onRead=*/ {},
+        [this](uint16_t /*a*/, uint8_t v) {
+            jukeBox->writeBankRegister(v);
+            applyJukeBoxFlatMemoryMirror();
+        });
+    bus.setEnabled(jukeBoxBankRegBusHandle, false);
+
     // SWTPC GT-6144 graphic terminal — write-only at $D00A. memWrite runs
     // bus.tryWrite BEFORE the $D0xx PIA-alias normalisation, so priority 0
     // is enough for the bus to intercept the byte before the keyboard-port
@@ -374,6 +388,11 @@ void Memory::initMemory(){
     a1ioRtc->reset();
     cffa1->reset();
     jukeBox->reset();
+    // Re-seat zero-page $3F to the Juke-Box boot page so the PM's first
+    // instruction stays self-consistent after a hard reset (see
+    // setJukeBoxEnabled for the reasoning — real multi-page P-LAB ROMs
+    // don't need this, but POM1 tolerates partial ROMs).
+    if (jukeBoxEnabled) mem[0x003F] = jukeBox->getBootPage();
     gt6144->reset();
     configureResetVectors(0xFF00);
 
@@ -402,6 +421,7 @@ void Memory::resetMemory(void)
     a1ioRtc->reset();
     cffa1->reset();
     jukeBox->reset();
+    if (jukeBoxEnabled) mem[0x003F] = jukeBox->getBootPage();
     gt6144->reset();
 }
 
@@ -445,6 +465,7 @@ std::string Memory::busStateSummary() const
     tag("ACIInput",  cassetteInputBusHandle);
     tag("JukeBox32", jukeBox32BusHandle);
     tag("JukeBox16", jukeBox16BusHandle);
+    tag("JukeBoxBankReg", jukeBoxBankRegBusHandle);
     oss << " | presetRamKB=" << presetRamKB
         << " oorStrict=" << (oorStrictMode ? "ON" : "off")
         << " writeInRom=" << (writeInRom ? "1" : "0");
@@ -1018,6 +1039,9 @@ void Memory::setSIDEnabled(bool b)
         // Prototype and Special Edition share the same `sid` instance —
         // only one can be plugged at a time.
         if (sidSpecialEditionEnabled) setSIDSpecialEditionEnabled(false);
+        // Juke-Box bank-select latch lives at $CA00, inside the SID window
+        // $C800-$CFFF — the two cards cannot coexist.
+        if (jukeBoxEnabled) setJukeBoxEnabled(false);
         // Attach the audio sink BEFORE the emulation starts producing samples
         // (sidEnabled gates advanceCycles). Otherwise the first slice pushes
         // into an undrained ring and the audio callback plays catch-up.
@@ -1047,6 +1071,8 @@ void Memory::setSIDSpecialEditionEnabled(bool b)
         // prototype variant was plugged, unplug it first — real hardware
         // can only have one A1-SID card at a time (same socket, same chip).
         if (sidEnabled) setSIDEnabled(false);
+        // SE at $CC00-$CC1F is disjoint from the Juke-Box bank latch
+        // ($CA00) so the two can coexist — no eviction needed.
         audioDevice->addSource(sid.get());
         sidSpecialEditionEnabled = true;
         bus.setEnabled(sidSEBusHandle, true);
@@ -1140,16 +1166,37 @@ int Memory::loadCFFA1Rom()
 void Memory::applyJukeBoxFlatMemoryMirror()
 {
     if (!jukeBoxEnabled) return;
-    const uint8_t* rom = jukeBox->getRomPointer();
+    // Mirror the currently-banked page into the flat RAM shadow so the
+    // memory viewer / snapshot pipeline sees ROM content at the right
+    // address. The bus handler always serves CPU reads via
+    // jukeBox->readByte() directly, so the mirror is purely cosmetic
+    // and must be refreshed whenever the bank register at $CA00 changes.
+    const uint8_t* romBuf  = jukeBox->getRomPointer();
+    const size_t   romSize = jukeBox->getRomBufferSize();
+    const size_t   pageOff = static_cast<size_t>(jukeBox->getCurrentPage())
+                             * JukeBox::kPageSize;
     if (jukeBox->getJumper() == JukeBox::Jumper::RAM16_ROM32) {
-        std::memcpy(mem.data() + 0x4000, rom, 0x8000);
-        markPagesDirty(0x4000, 0x8000);
+        // Full 32 kB page visible at $4000-$BFFF.
+        if (pageOff + JukeBox::kPageSize <= romSize) {
+            std::memcpy(mem.data() + 0x4000, romBuf + pageOff, JukeBox::kPageSize);
+        } else {
+            std::memset(mem.data() + 0x4000, 0xFF, JukeBox::kPageSize);
+        }
+        markPagesDirty(0x4000, JukeBox::kPageSize);
     } else {
-        // RAM32/ROM16: EEPROM only maps at $8000-$BFFF; clear $4000-$7FFF so
-        // stale expansion-ROM images (e.g. Applesoft at $6000) do not linger
-        // in the RAM half of the address space.
+        // RAM32/ROM16: only 16 kB visible at $8000-$BFFF; Sx picks upper
+        // or lower half of the current 32 kB page. Clear $4000-$7FFF so
+        // stale expansion-ROM images (e.g. Applesoft at $6000) don't
+        // linger in the RAM half of the address space.
         std::memset(mem.data() + 0x4000, 0, 0x4000);
-        std::memcpy(mem.data() + 0x8000, rom + 0x4000, 0x4000);
+        const size_t subOff = static_cast<size_t>(jukeBox->getCurrentSubPage())
+                              * JukeBox::kSubPageSize;
+        const size_t srcOff = pageOff + subOff;
+        if (srcOff + JukeBox::kSubPageSize <= romSize) {
+            std::memcpy(mem.data() + 0x8000, romBuf + srcOff, JukeBox::kSubPageSize);
+        } else {
+            std::memset(mem.data() + 0x8000, 0xFF, JukeBox::kSubPageSize);
+        }
         markPagesDirty(0x4000, 0x8000);
     }
 }
@@ -1159,21 +1206,35 @@ void Memory::setJukeBoxEnabled(bool b)
     if (b == jukeBoxEnabled) return;
     jukeBoxEnabled = b;
     if (b) {
-        // Juke-Box monopolises either $4000-$BFFF or $8000-$BFFF (depending
-        // on the jumper). Evict every other card that sits inside that
-        // window so bus dispatch stays unambiguous and the user can't get
-        // confused by stale state from a previous preset.
+        // Juke-Box monopolises $4000-$BFFF (ROM window) and $CA00 (bank
+        // latch). Evict every other card that sits inside $4000-$CFFF so
+        // bus dispatch stays unambiguous and the user can't get confused
+        // by stale state from a previous preset. A1-SID and A1-AUDIO SE
+        // are new to the eviction list — they share $CA00 with the Px/Sx
+        // bank register.
         if (cffa1Enabled) setCFFA1Enabled(false);
         if (microSDEnabled) setMicroSDEnabled(false);
         if (wifiModemEnabled) setWiFiModemEnabled(false);
+        if (sidEnabled) setSIDEnabled(false);
+        // A1-AUDIO SE at $CC00-$CC1F is disjoint from the Juke-Box bank
+        // latch ($CA00) — do NOT evict; the two can coexist.
         loadJukeBoxRom();
         const bool use32 = (jukeBox->getJumper() == JukeBox::Jumper::RAM16_ROM32);
         bus.setEnabled(jukeBox32BusHandle, use32);
         bus.setEnabled(jukeBox16BusHandle, !use32);
+        bus.setEnabled(jukeBoxBankRegBusHandle, true);
+        // Seed zero-page $3F to match the boot page so the PM's first
+        // instruction ($BD00: LDA $3F / STA $CA00) is a no-op instead of
+        // bank-switching to page 0 (where the shipped ROM has game data
+        // rather than firmware). Real-world P-LAB ROMs put a PM copy in
+        // every page so this wouldn't matter; POM1 tolerates partial ROMs.
+        mem[0x003F] = jukeBox->getBootPage();
+        markPagesDirty(0x0000, 0x0100);
         applyJukeBoxFlatMemoryMirror();
     } else {
         bus.setEnabled(jukeBox32BusHandle, false);
         bus.setEnabled(jukeBox16BusHandle, false);
+        bus.setEnabled(jukeBoxBankRegBusHandle, false);
     }
 }
 
@@ -1191,6 +1252,16 @@ void Memory::setJukeBoxJumper(JukeBox::Jumper j)
 void Memory::setJukeBoxWritable(bool w)
 {
     jukeBox->setWritable(w);
+}
+
+void Memory::setJukeBoxChipMode(JukeBox::ChipMode m)
+{
+    if (jukeBox->getChipMode() == m) return;
+    jukeBox->setChipMode(m);
+    if (jukeBoxEnabled) {
+        loadJukeBoxRom();
+        applyJukeBoxFlatMemoryMirror();
+    }
 }
 
 int Memory::loadJukeBoxRom(void)

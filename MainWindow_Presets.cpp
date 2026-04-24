@@ -69,7 +69,7 @@ const MachineConfig kMachinePresets[] = {
         /*pr40*/ false,
         false, false, false, 4, BasicType::None,
         /*sidSE*/ false,
-        /*jukeBox*/ false, JukeBox::Jumper::RAM16_ROM32,
+        /*jukeBox*/ false, JukeBox::Jumper::RAM16_ROM32, JukeBox::ChipMode::Flash,
         /*gt6144*/ false,
         // Right column carries two 1976-era photos of Woz + Jobs with
         // the Apple-1 — the portrait (standing Woz, seated Jobs) on
@@ -89,7 +89,7 @@ const MachineConfig kMachinePresets[] = {
         /*pr40*/ false,
         false, false, true, 8, BasicType::Integer,
         /*sidSE*/ false,
-        /*jukeBox*/ false, JukeBox::Jumper::RAM16_ROM32,
+        /*jukeBox*/ false, JukeBox::Jumper::RAM16_ROM32, JukeBox::ChipMode::Flash,
         /*gt6144*/ false,
         {
             {"Apple 1 Screen",           {10,  61},  {843, 701}},
@@ -111,7 +111,7 @@ const MachineConfig kMachinePresets[] = {
         /*pr40*/ false,
         false, false, /*aci*/ true, /*ramKB*/ 8, BasicType::Integer,
         /*sidSE*/ false,
-        /*jukeBox*/ false, JukeBox::Jumper::RAM16_ROM32,
+        /*jukeBox*/ false, JukeBox::Jumper::RAM16_ROM32, JukeBox::ChipMode::Flash,
         /*gt6144*/ true,
         {
             {"Apple 1 Screen",                 {10,  61},  {843, 701}},
@@ -128,7 +128,7 @@ const MachineConfig kMachinePresets[] = {
         /*pr40*/ false,
         true, false, true, 32, BasicType::Integer,
         /*sidSE*/ false,
-        /*jukeBox*/ false, JukeBox::Jumper::RAM16_ROM32,
+        /*jukeBox*/ false, JukeBox::Jumper::RAM16_ROM32, JukeBox::ChipMode::Flash,
         /*gt6144*/ false,
         {
             {"Apple 1 Screen",        {10,  61},  {843, 701}},
@@ -143,7 +143,7 @@ const MachineConfig kMachinePresets[] = {
         /*pr40*/ false,
         false, true, false, 32, BasicType::ApplesoftLite,
         /*sidSE*/ false,
-        /*jukeBox*/ false, JukeBox::Jumper::RAM16_ROM32,
+        /*jukeBox*/ false, JukeBox::Jumper::RAM16_ROM32, JukeBox::ChipMode::Flash,
         /*gt6144*/ false,
         {
             // CFFA1 has no dedicated window (transparent storage); pair
@@ -161,7 +161,7 @@ const MachineConfig kMachinePresets[] = {
         /*pr40*/ false,
         false, false, false, 32, BasicType::ApplesoftLite,
         /*sidSE*/ false,
-        /*jukeBox*/ false, JukeBox::Jumper::RAM16_ROM32,
+        /*jukeBox*/ false, JukeBox::Jumper::RAM16_ROM32, JukeBox::ChipMode::Flash,
         /*gt6144*/ false,
         {
             // microSD is also transparent storage — no dedicated panel.
@@ -179,7 +179,7 @@ const MachineConfig kMachinePresets[] = {
         /*pr40*/ false,
         false, false, false, 32, BasicType::Integer,
         /*sidSE*/ false,
-        /*jukeBox*/ false, JukeBox::Jumper::RAM16_ROM32,
+        /*jukeBox*/ false, JukeBox::Jumper::RAM16_ROM32, JukeBox::ChipMode::Flash,
         /*gt6144*/ false,
         {
             // A1-SID has no dedicated window (audio-only). Tutorial fills
@@ -197,7 +197,7 @@ const MachineConfig kMachinePresets[] = {
         /*pr40*/ false,
         false, false, false, 32, BasicType::Integer,
         /*sidSE*/ true,
-        /*jukeBox*/ false, JukeBox::Jumper::RAM16_ROM32,
+        /*jukeBox*/ false, JukeBox::Jumper::RAM16_ROM32, JukeBox::ChipMode::Flash,
         /*gt6144*/ false,
         {
             {"Apple 1 Screen",                 {10,  61}, {843, 701}},
@@ -211,7 +211,7 @@ const MachineConfig kMachinePresets[] = {
         /*pr40*/ false,
         false, false, false, 32, BasicType::Integer,
         /*sidSE*/ false,
-        /*jukeBox*/ false, JukeBox::Jumper::RAM16_ROM32,
+        /*jukeBox*/ false, JukeBox::Jumper::RAM16_ROM32, JukeBox::ChipMode::Flash,
         /*gt6144*/ false,
         {
             {"Apple 1 Screen",               {10,  61},  {843, 701}},
@@ -226,7 +226,7 @@ const MachineConfig kMachinePresets[] = {
         /*pr40*/ false,
         false, false, false, 32, BasicType::Integer,
         /*sidSE*/ false,
-        /*jukeBox*/ false, JukeBox::Jumper::RAM16_ROM32,
+        /*jukeBox*/ false, JukeBox::Jumper::RAM16_ROM32, JukeBox::ChipMode::Flash,
         /*gt6144*/ false,
         {
             {"Apple 1 Screen",              {10,  61},  {843, 701}},
@@ -241,7 +241,7 @@ const MachineConfig kMachinePresets[] = {
         /*pr40*/ false,
         false, false, false, 32, BasicType::Integer,
         /*sidSE*/ false,
-        /*jukeBox*/ false, JukeBox::Jumper::RAM16_ROM32,
+        /*jukeBox*/ false, JukeBox::Jumper::RAM16_ROM32, JukeBox::ChipMode::Flash,
         /*gt6144*/ false,
         {
             {"Apple 1 Screen",            {10,  61},  {843, 701}},
@@ -261,7 +261,7 @@ const MachineConfig kMachinePresets[] = {
         /*pr40*/ false,
         false, false, /*aci*/ false, /*ramKB*/ 16, BasicType::Integer,
         /*sidSE*/ false,
-        /*jukeBox*/ true, JukeBox::Jumper::RAM16_ROM32,
+        /*jukeBox*/ true, JukeBox::Jumper::RAM16_ROM32, JukeBox::ChipMode::Flash,
         /*gt6144*/ false,
         {
             {"Apple 1 Screen",           {10,  61},  {843, 701}},
@@ -280,7 +280,7 @@ const MachineConfig kMachinePresets[] = {
         /*pr40*/ false,
         false, false, false, 64, BasicType::ApplesoftLite,
         /*sidSE*/ false,
-        /*jukeBox*/ false, JukeBox::Jumper::RAM16_ROM32,
+        /*jukeBox*/ false, JukeBox::Jumper::RAM16_ROM32, JukeBox::ChipMode::Flash,
         /*gt6144*/ false,
         {
             // P-LAB Fantasy departs from the tutorial+peripheral template:
@@ -308,7 +308,7 @@ const MachineConfig kMachinePresets[] = {
         /*pr40*/ false,
         false, false, false, 32, BasicType::Integer,
         /*sidSE*/ false,
-        /*jukeBox*/ false, JukeBox::Jumper::RAM16_ROM32,
+        /*jukeBox*/ false, JukeBox::Jumper::RAM16_ROM32, JukeBox::ChipMode::Flash,
         /*gt6144*/ false,
         {
             {"Apple 1 Screen",                       {10,  61},  {843, 701}},
@@ -329,7 +329,7 @@ const MachineConfig kMachinePresets[] = {
         /*pr40*/ false,
         false, false, false, 64, BasicType::ApplesoftLite,
         /*sidSE*/ false,
-        /*jukeBox*/ false, JukeBox::Jumper::RAM16_ROM32,
+        /*jukeBox*/ false, JukeBox::Jumper::RAM16_ROM32, JukeBox::ChipMode::Flash,
         /*gt6144*/ false,
         {
             // Positions / sizes match the shipped POM1 Fantasy screenshot
@@ -532,6 +532,7 @@ void MainWindow_ImGui::applyMachineConfig(int presetIndex)
     showWiFiModem            = false;
     jukeBoxEnabled           = cfg.jukeBox;
     jukeBoxJumper            = cfg.jukeBoxJumper;
+    jukeBoxChipMode          = cfg.jukeBoxChipMode;
     showJukeBox              = false;
 #if !POM1_IS_WASM
     terminalCardEnabled      = cfg.terminalCard;
@@ -606,6 +607,7 @@ void MainWindow_ImGui::applyMachineConfig(int presetIndex)
     pendingWifiModemEnable      = cfg.wifiModem;
     pendingJukeBoxEnable        = cfg.jukeBox;
     pendingJukeBoxJumper        = cfg.jukeBoxJumper;
+    pendingJukeBoxChipMode      = cfg.jukeBoxChipMode;
 #if !POM1_IS_WASM
     pendingTerminalCardEnable   = cfg.terminalCard;
 #else

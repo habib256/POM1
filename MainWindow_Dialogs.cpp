@@ -564,6 +564,7 @@ void MainWindow_ImGui::renderSpecialThanksWindow()
             "rule; the name is a literal warning that the configuration "
             "cannot exist on real silicon.");
         ImGui::Unindent();
+        bulletWrapped("Jacopo ROSSELLI (P-LAB) - co-designer of the Apple-1 Juke-Box card");
         bulletWrapped("Antonino PORCINO (Nippur72) - apple1-videocard-lib & apple1-sdcard firmware");
         bulletWrapped("Uncle BERNIE - GEN2 Color Graphics Card");
         bulletWrapped("Tom OWAD - AppleFritter community");
@@ -1047,14 +1048,15 @@ void MainWindow_ImGui::renderHardwareReferenceWindow()
         // ---- Juke-Box -----------------------------------------------
         if (ImGui::CollapsingHeader("P-LAB Apple-1 Juke-Box")) {
             ImGui::TextWrapped(
-                "Claudio Parmigiani's software Juke-Box (v1.09): a storage ROM "
-                "card (16 kB to 512 kB EPROM / EEPROM / FLASH) that replaces "
-                "cassette loads with an instant menu. The Program Manager lives "
-                "at $BD00 and exposes an '&' prompt. A second program at $B800 "
-                "(shipped on the 28c256 RW variant) offers EEPROM writing. "
-                "Requires the 'with ACI' Apple-1 configuration and auto-disables "
-                "CFFA1, microSD and the Wi-Fi Modem because it claims "
-                "$4000-$BFFF entirely.");
+                "Claudio Parmigiani and Jacopo Rosselli's software Juke-Box "
+                "(P-LAB v1.09): a storage ROM card (16 kB to 512 kB EPROM / "
+                "EEPROM / FLASH) that replaces cassette loads with an instant "
+                "menu. The Program Manager lives at $BD00 and exposes an '&' "
+                "prompt. A second program at $B800 (shipped on the 28c256 RW "
+                "variant) offers EEPROM writing. Requires the 'with ACI' "
+                "Apple-1 configuration and auto-disables CFFA1, microSD, "
+                "Wi-Fi Modem and A1-SID because it claims $4000-$BFFF for the "
+                "ROM window and $CA00 for the Px/Sx bank-select latch.");
             hwHeading("Particularities");
             hwKeyValue("ROM window:", "$4000-$BFFF (32 kB physical) or $8000-$BFFF (16 kB physical), selected by the RAM/ROM jumper. POM1 toggles this live.");
             hwKeyValue("RAM expansion:", "Same jumper changes the user-RAM ceiling - 16 kB ($0000-$3FFF) if ROM=32, or 32 kB ($0000-$7FFF) if ROM=16.");
@@ -1064,7 +1066,8 @@ void MainWindow_ImGui::renderHardwareReferenceWindow()
             hwKeyValue("Entry point:", "BD00R in the Woz Monitor. First byte is $A5 (LDA zp, the opcode that opens the prompt loop); POM1 checks this as a firmware-present signature.");
             hwKeyValue("ROM file:", "roms/jukebox.rom. Build via doc/JUKEBOX_ROM_CREATOR/build_jukebox_rom.py (P-LAB's own 2-packer.sh produces a subtly different layout).");
             hwKeyValue("EEPROM RW jumper:", "Hardware window checkbox. ON = writes through $4000-$BFFF persist to jukebox.rom (needed for the Save-Program sub-menu). OFF = read-only.");
-            hwKeyValue("v1 scope:", "POM1 models the 28c256 single 32 kB page correctly. Multi-page banking (P0..PF across big FLASH) requires the bank-select MMIO address, which P-LAB has not published yet.");
+            hwKeyValue("Bank latch:", "$CA00 is the Px/Sx bank-select register (write-only). Bits 0-3 carry the page number (P0..PF); bit 4 is the 16 kB sub-page (S0/S1). POM1 picks the lowest page carrying the $A5 firmware signature at boot so BD00R always lands at '&'.");
+            hwKeyValue("Chip mode:", "Hardware window radio: Flash (paged, read-only, 16 kB..512 kB) or EEPROM 28c256 (32 kB, single page, writable via the RW jumper). Switching the radio is equivalent to physically swapping the chip on the card.");
             hwHeading("Program Manager at $BD00 ('&' prompt)");
             ImGui::TextWrapped(
                 "P-LAB notation writes each command as its initial in bold, e.g. "
@@ -2634,9 +2637,11 @@ void MainWindow_ImGui::renderTutorialJukeBoxWindow()
     applyPendingLayout("Tutorial: P-LAB Juke-Box");
     if (ImGui::Begin("Tutorial: P-LAB Juke-Box", &showTutorialJukeBox)) {
         ImGui::TextWrapped(
-            "Claudio Parmigiani's Apple-1 Juke-Box: a 28c256 EEPROM at "
-            "$4000-$BFFF (or $8000-$BFFF on the other jumper) with an "
-            "in-ROM Program Manager at $BD00. Replaces cassette loading "
+            "Claudio Parmigiani and Jacopo Rosselli's Apple-1 Juke-Box: a "
+            "paged flash ROM (16 kB..512 kB) or a 28c256 EEPROM at "
+            "$4000-$BFFF (or $8000-$BFFF on the other jumper), with an "
+            "in-ROM Program Manager at $BD00 and a write-only bank-select "
+            "latch at $CA00 (Px / Sx commands). Replaces cassette loading "
             "entirely for the stored programs.");
         ImGui::BeginChild("tut_jk_scroll", ImVec2(0, 0), true);
 
@@ -2659,16 +2664,27 @@ void MainWindow_ImGui::renderTutorialJukeBoxWindow()
             "to load a program by its single-letter tag. `B` runs Apple "
             "Integer BASIC, `LA` reloads BASIC from the EEPROM.");
 
-        tutStep(4, "Save RAM -> EEPROM");
+        tutStep(4, "Switch flash banks (Px)");
         ImGui::TextWrapped(
-            "From Wozmon:");
+            "The paged flash holds multiple 32 kB banks. At the '&' prompt:");
+        tutCode("P2");
+        ImGui::TextWrapped(
+            "writes $02 to the $CA00 latch and makes bank 2 visible. `D` "
+            "re-lists the new page. `S0` / `S1` pick the lower / upper "
+            "16 kB half when the ROM MAP jumper is on 16 kB logical.");
+
+        tutStep(5, "Save RAM -> EEPROM (28c256 chip only)");
+        ImGui::TextWrapped(
+            "Flip the Juke-Box chip radio to 'EEPROM 28c256', reload the "
+            "ROM, enable the RW jumper, then from Wozmon:");
         tutCode("B800R");
         ImGui::TextWrapped(
             "The Save Program routine writes your current RAM contents "
-            "back to the EEPROM — but ONLY if the simulated RW jumper is "
-            "on. Check the Juke-Box window for the jumper toggle.");
+            "back to the EEPROM — but ONLY if the RW jumper is on. Flash "
+            "mode ignores writes (real flash needs erase + program command "
+            "sequences that POM1 does not emulate).");
 
-        tutStep(5, "Flip the jumper");
+        tutStep(6, "Flip the jumper");
         ImGui::TextWrapped(
             "Two configurations:");
         bulletWrapped("RAM-16 / ROM-32: ROM at $4000-$BFFF (Juke-Box owns the whole expansion space).");
@@ -2677,10 +2693,10 @@ void MainWindow_ImGui::renderTutorialJukeBoxWindow()
         ImGui::Spacing();
         ImGui::Separator();
         ImGui::TextColored(ImVec4(0.90f, 0.70f, 0.60f, 1.0f), "Notes");
-        bulletWrapped("Mutually exclusive with CFFA1, microSD, Krusader, and Wi-Fi Modem (all inside the $4000-$BFFF window).");
-        bulletWrapped("Firmware signature: byte at EEPROM offset $7D00 must be $A5 (first byte of the Program Manager).");
+        bulletWrapped("Mutually exclusive with CFFA1, microSD, Krusader, Wi-Fi Modem and A1-SID (all inside $4000-$CFFF).");
+        bulletWrapped("Firmware signature: at least one page must have $A5 at offset $7D00 (first byte of the Program Manager). POM1 picks the lowest matching page as the default boot page.");
         bulletWrapped("Build roms/jukebox.rom via doc/JUKEBOX_ROM_CREATOR/build_jukebox_rom.py — P-LAB's 2-packer.sh makes subtly different layouts.");
-        bulletWrapped("See Hardware Reference > P-LAB Apple-1 Juke-Box for the EEPROM map.");
+        bulletWrapped("See Hardware Reference > P-LAB Apple-1 Juke-Box for the bank latch + memory map.");
         ImGui::EndChild();
     }
     ImGui::End();

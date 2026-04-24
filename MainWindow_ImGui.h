@@ -58,6 +58,7 @@ public:
     // default.
     void setSidChipOverride(pom1::SID::ChipModel m) { sidChipOverride = m; }
     void setJukeBoxJumperOverride(JukeBox::Jumper j) { jukeBoxJumperOverride = j; }
+    void setJukeBoxChipModeOverride(JukeBox::ChipMode m) { jukeBoxChipModeOverride = m; }
     // CLI phase-C verbs. Applied once, the frame after pendingCardEnableFrames
     // reaches zero (the same frame the deferred plug commits).
     void setDeferredCliActions(std::vector<pom1::CliAction> actions)
@@ -190,6 +191,7 @@ private:
     bool jukeBoxEnabled = false;
     bool showJukeBox = false;
     JukeBox::Jumper jukeBoxJumper = JukeBox::Jumper::RAM16_ROM32;
+    JukeBox::ChipMode jukeBoxChipMode = JukeBox::ChipMode::Flash;
     bool fullscreen = false;
 
     // Keyboard input
@@ -347,7 +349,8 @@ private:
     std::optional<int> initialExecutionSpeed;              // --speed N (cycles/frame)
     std::vector<pom1::CliCardOverride> cardOverrides;      // --enable / --disable
     std::optional<pom1::SID::ChipModel>       sidChipOverride;    // --sid-chip
-    std::optional<JukeBox::Jumper>      jukeBoxJumperOverride; // --jukebox-jumper
+    std::optional<JukeBox::Jumper>      jukeBoxJumperOverride;   // --jukebox-jumper
+    std::optional<JukeBox::ChipMode>    jukeBoxChipModeOverride; // --jukebox-chip
     std::vector<pom1::CliAction>        deferredCliActions; // phase-C queue
     bool deferredCliActionsConsumed = false;
     // applyMachineConfig() normally triggers emulation->hardReset() to wipe
@@ -391,6 +394,7 @@ private:
     bool pendingWifiModemEnable = false;
     bool pendingJukeBoxEnable = false;
     JukeBox::Jumper pendingJukeBoxJumper = JukeBox::Jumper::RAM16_ROM32;
+    JukeBox::ChipMode pendingJukeBoxChipMode = JukeBox::ChipMode::Flash;
     bool pendingCassetteAudioActive = false;
 
     struct TapeDialogState {

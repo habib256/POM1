@@ -1,135 +1,202 @@
 // POM1 Apple 1 Emulator - P-LAB Apple-1 Juke-Box
 //
-// Claudio Parmigiani's Apple-1 Juke-Box: a storage ROM card (EPROM / EEPROM /
-// FLASH, 16 kB to 512 kB) that replaces cassette loads with an instant menu
-// of bundled programs + BASIC + the Program Manager firmware. POM1 v1
-// models the default shipping configuration: a single 32 kB EEPROM (28c256)
-// wired directly to the address bus at $4000-$BFFF, with a runtime-toggleable
-// jumper that alternates between:
+// Claudio Parmigiani and Jacopo Rosselli's Apple-1 Juke-Box (P-LAB, 2020-26):
+// a storage ROM card that replaces cassette loads with an instant menu of
+// bundled programs + BASIC + the Program Manager firmware. The card accepts
+// two physically distinct chip variants:
 //
-//   - RAM 16 kB / ROM 32 kB: ROM window $4000-$BFFF, full 32 kB visible.
-//     User RAM capped at $3FFF (16 kB).
-//   - RAM 32 kB / ROM 16 kB: ROM window $8000-$BFFF, only upper 16 kB of
-//     the file visible. User RAM extends to $7FFF (32 kB).
+//   - FLASH mode (default): paged read-only memory, 16 kB to 512 kB
+//     (27c128..27c020, 29c020, 29c040, 39sf040). Divided into 32 kB pages;
+//     the `Px` command (x in 0..F) writes the page number to a write-only
+//     latch at $CA00 which drives the flash chip's high address lines.
+//     Up to 16 pages x 32 kB = 512 kB addressable. With ROM MAP 16 kB
+//     logical jumper the `Sx` command (x in 0..1) additionally selects
+//     upper/lower 16 kB half of the current 32 kB page, via bit 4 of $CA00.
 //
-// Multi-page 29c020/29c040/39sf040 support (P0..PF command) is NOT modelled:
-// the MMIO bank-select register address isn't documented on P-LAB's public
-// page. Same for the 16 kB logical mapping S0/S1 sub-page toggle.
+//   - EEPROM mode: a 32 kB 28c256 swapped in for save-capable single-page
+//     operation. Writes from the Save Program at $B800 persist to the
+//     backing file. Only one page; Px/Sx are no-ops. Real hardware takes
+//     ~25 s to save 4 kB (we flush synchronously, no delay modelled).
 //
-// The Program Manager sits at a fixed offset inside the ROM file:
-//   $BD00 = file offset $7D00 (both in RAM-16/ROM-32 and in RAM-32/ROM-16
-//   because the upper half of the file is what's visible in the 16 kB
-//   window). Its first byte is $A5 (LDA zp) -- used as a firmware-present
-//   signature so the Hardware window can warn if the user loads a blank
-//   or non-firmware blob.
+// Physical jumper selects where the ROM window sits on the Apple-1 bus:
 //
-// Build a ROM with P-LAB's freely-distributed EPROM_CREATOR script pack
-// (`1-stripper.sh` + `2-packer.sh`). The packer auto-embeds the Program
-// Manager + Save Program + the BASIC interpreter; the user only supplies
-// programs to bundle. Drop the resulting MYROM_0.BIN in as `roms/jukebox.rom`.
+//   - RAM16/ROM32: window $4000-$BFFF (full 32 kB page visible).
+//     User RAM capped at $3FFF.
+//   - RAM32/ROM16: window $8000-$BFFF (upper or lower 16 kB half only,
+//     selected by the Sx sub-page bit). User RAM extends to $7FFF.
+//
+// The Program Manager sits at file offset $7D00 within each page. Its
+// first byte is $A5 (LDA zp); we use that as the firmware-present signature
+// and scan all pages at plug-in to pick the lowest page with a valid
+// signature as the default boot page. Guarantees BD00R drops the user at
+// the `&' prompt on any well-formed ROM, even if the ROM builder left some
+// pages without the Program Manager (as happens with build_jukebox_rom.py).
+//
+// Build roms/jukebox.rom via doc/JUKEBOX_ROM_CREATOR/build_jukebox_rom.py
+// (Python, deterministic). P-LAB's 2-packer.sh is the original but depends
+// on GNU-only tools.
 
 #ifndef POM1_JUKEBOX_H
 #define POM1_JUKEBOX_H
 
-#include <array>
 #include <cstdint>
 #include <string>
+#include <vector>
 
 class JukeBox {
 public:
-    // Jumper position: which part of the 32 kB ROM file is visible in the
+    // Jumper position: which part of a 32 kB page is visible in the
     // CPU address space, and how much contiguous RAM the Apple-1 sees.
     enum class Jumper : uint8_t {
-        RAM16_ROM32 = 0,  // ROM window $4000-$BFFF (32 kB), RAM up to $3FFF
-        RAM32_ROM16 = 1,  // ROM window $8000-$BFFF (16 kB), RAM up to $7FFF
+        RAM16_ROM32 = 0,  // Window $4000-$BFFF (32 kB), RAM up to $3FFF
+        RAM32_ROM16 = 1,  // Window $8000-$BFFF (16 kB), RAM up to $7FFF
     };
 
-    static constexpr size_t   kRomFileSize            = 0x8000;   // 32 kB
-    static constexpr uint16_t kRom32Base              = 0x4000;
-    static constexpr uint16_t kRom32End               = 0xBFFF;
-    static constexpr uint16_t kRom16Base              = 0x8000;
-    static constexpr uint16_t kRom16End               = 0xBFFF;
-    static constexpr uint16_t kProgramManagerAddr     = 0xBD00;
-    static constexpr uint16_t kProgramManagerOffset   = 0x7D00;   // file offset
-    static constexpr uint16_t kSaveProgramAddr        = 0xB800;
-    static constexpr uint16_t kSaveProgramOffset      = 0x7800;
-    // Expected first byte of the Program Manager (LDA zp). The RW manual
-    // shows "BD00: A5" right after BD00R — we use that as the firmware
-    // signature.
+    // Physical chip socketed on the card. Per Parmigiani/Rosselli you
+    // physically swap between one and the other; POM1 exposes it as a
+    // user-selectable mode because the emulator has no socket.
+    enum class ChipMode : uint8_t {
+        Flash       = 0,  // Paged read-only, 16 kB to 512 kB (default).
+        EEPROM28C256 = 1, // Single-page 32 kB 28c256, writable.
+    };
+
+    static constexpr size_t   kPageSize              = 0x8000;   // 32 kB
+    static constexpr size_t   kSubPageSize           = 0x4000;   // 16 kB
+    static constexpr size_t   kMinRomFileSize        = 0x4000;   // 16 kB
+    static constexpr size_t   kMaxRomFileSize        = 0x80000;  // 512 kB
+    static constexpr size_t   kEepromFileSize        = 0x8000;   // 32 kB
+
+    static constexpr uint16_t kRom32Base             = 0x4000;
+    static constexpr uint16_t kRom32End              = 0xBFFF;
+    static constexpr uint16_t kRom16Base             = 0x8000;
+    static constexpr uint16_t kRom16End              = 0xBFFF;
+    static constexpr uint16_t kBankRegisterAddr      = 0xCA00;   // Px / Sx latch
+    static constexpr uint16_t kProgramManagerAddr    = 0xBD00;
+    static constexpr uint16_t kProgramManagerOffset  = 0x7D00;   // within a page
+    static constexpr uint16_t kSaveProgramAddr       = 0xB800;
+    static constexpr uint16_t kSaveProgramOffset     = 0x7800;
+    // First byte of the Program Manager (LDA zp). Per the RW manual the
+    // signon prints "BD00: A5" right after BD00R.
     static constexpr uint8_t  kProgramManagerSignature = 0xA5;
 
     JukeBox();
 
-    // Reset any write-back state. The ROM image itself stays loaded —
-    // matches how a real EEPROM keeps its contents across a reset.
+    // Reset any transient state. Does NOT wipe the ROM buffer or reset
+    // romPath — matches real flash / EEPROM keeping contents across reset.
+    // Does re-derive the default boot page (the CPU latch at $CA00 powers
+    // up in an undefined state on the real card; we re-seat to a known-good
+    // page so BD00R works immediately on hard reset).
     void reset();
 
-    // Memory interface. Dispatch for the current jumper position is done
-    // inside readByte/writeByte; Memory registers two PeripheralBus entries
-    // (one per jumper window) and enables exactly one at a time.
+    // Memory interface. Dispatched by PeripheralBus; the two address-space
+    // handles (RAM16/ROM32 window + RAM32/ROM16 window) are registered by
+    // Memory::setJukeBoxEnabled() and exactly one is active at a time.
     uint8_t readByte(uint16_t address) const;
     void    writeByte(uint16_t address, uint8_t value);
 
-    // Load a ROM file (up to 32 kB) from disk. Shorter files are accepted
-    // and padded with $FF (matches a blank EPROM). `error` is populated on
-    // failure; the previous ROM contents are left untouched.
+    // Bank-select latch at $CA00. Write-only on real hardware; POM1 returns
+    // $FF on read since the Program Manager never reads it back (no
+    // `AD 00 CA` in the disassembled firmware). Bits 0-3 = Px page, bit 4
+    // = Sx sub-page; upper bits ignored.
+    void writeBankRegister(uint8_t value);
+
+    uint8_t getBankRegister() const { return bankRegister; }
+    uint8_t getCurrentPage() const;      // 0..pageCount-1 (wraps for undersized ROMs)
+    uint8_t getCurrentSubPage() const;   // 0 (lower) or 1 (upper)
+
+    // Load a ROM file from disk. Accepts 16 kB..512 kB for Flash mode,
+    // exactly 32 kB for EEPROM mode. Shorter flash files are padded with
+    // $FF up to the nearest page boundary. `error` is populated on failure;
+    // previous contents are preserved on error. Picks default boot page
+    // on success.
     bool loadRomFile(const std::string& path, std::string& error);
 
-    // Fill the ROM buffer with $FF. Clears romPath and romSize. Used when
-    // the user unplugs the card or wants to start from a blank slate.
+    // Empty the ROM buffer. Drops romPath and pageCount. For EEPROM mode
+    // this prepares an empty 32 kB slate; for Flash mode we start with a
+    // single $FF page so the card is "installed but blank".
     void clearRom();
 
-    // Firmware-present heuristic: byte at file offset $7D00 equals $A5
-    // (opcode LDA zp — first byte of the Program Manager per the RW manual
-    // signon "BD00: A5"). Returns false for a blank EPROM ($FF everywhere)
-    // or an arbitrary binary that happens to fit in 32 kB.
+    // Firmware-present scan: returns true iff at least one page carries
+    // `$A5` at file offset $7D00 within the page.
     bool hasFirmware() const;
+
+    // True if the given page (0..15) has the Program Manager signature.
+    // Out-of-range pages return false.
+    bool pageHasFirmware(uint8_t page) const;
+
+    // Lowest page index that passes `pageHasFirmware`, or 0 if none.
+    uint8_t getBootPage() const { return bootPage; }
+
+    // Re-scan the ROM for firmware pages and seat the bank register on
+    // the lowest match. Called by loadRomFile() and reset(). Returns true
+    // if a firmware page was found.
+    bool pickDefaultBootPage();
 
     Jumper getJumper() const { return jumper; }
     void   setJumper(Jumper j) { jumper = j; }
 
-    // EEPROM write-protect jumper. When false, writes in the ROM window
-    // are silently dropped (matches a real EPROM or an EEPROM in RO).
-    // When true, writes land in the rom buffer and are persisted to the
-    // backing file if one was loaded.
+    ChipMode getChipMode() const { return chipMode; }
+    void     setChipMode(ChipMode m);
+
+    // EEPROM write-protect jumper. Only meaningful in EEPROM mode. When
+    // false, writes in the ROM window are silently dropped. When true and
+    // chipMode == EEPROM28C256, writes land in the rom buffer and are
+    // persisted to the backing file. In Flash mode writes are always
+    // dropped regardless of this flag (real flash needs erase + program
+    // command sequences, not modelled).
     bool   isWritable() const { return writable; }
     void   setWritable(bool w) { writable = w; }
 
     const std::string& getRomPath() const { return romPath; }
     size_t             getRomSize() const { return romSize; }
+    uint8_t            getPageCount() const { return pageCount; }
 
-    // Direct access to the ROM buffer for bulk operations (snapshot dumps,
-    // hex viewer). Always 32 kB — check `getRomSize()` for the actual
-    // loaded content length if you need to distinguish loaded from padded.
+    // Direct access to the ROM buffer. Size is `rom.size()` = at least
+    // `kPageSize`, up to `kMaxRomFileSize`. Used by the Memory Viewer
+    // and snapshot dumps.
     const uint8_t* getRomPointer() const { return rom.data(); }
+    size_t         getRomBufferSize() const { return rom.size(); }
 
     struct Snapshot {
         std::string romPath;
         size_t      romSize         = 0;
+        uint8_t     pageCount       = 0;
+        uint8_t     bankRegister    = 0;
+        uint8_t     currentPage     = 0;
+        uint8_t     currentSubPage  = 0;
+        uint8_t     bootPage        = 0;
         Jumper      jumper          = Jumper::RAM16_ROM32;
+        ChipMode    chipMode        = ChipMode::Flash;
         bool        writable        = false;
         bool        firmwarePresent = false;
     };
     void copySnapshot(Snapshot& out) const;
 
 private:
-    // Convert a CPU address (inside the current ROM window) to a ROM file
-    // offset. Only called when the PeripheralBus has already routed the
-    // access to us, so the address is guaranteed to be in range.
-    uint16_t fileOffsetForAddress(uint16_t address) const;
+    // Convert a CPU address (inside the current ROM window) to an offset
+    // into the `rom` buffer, honouring the current page + sub-page and the
+    // physical jumper position. PeripheralBus has already routed the
+    // access to us, so the address is guaranteed to sit inside the window.
+    size_t fileOffsetForAddress(uint16_t address) const;
 
-    // Persist the ROM buffer to `romPath`. No-op if the path is empty.
-    // Called after every write in writable mode — simple and correct.
-    // The 28c256 takes ~25 s to save 4 KB on real hardware; POM1 just
-    // flushes synchronously (the plan explicitly does not model the
-    // EEPROM write timing).
+    // Persist the full rom buffer to `romPath` (EEPROM mode only). No-op
+    // if romPath is empty. Called after every successful EEPROM write.
     void flushRomToFile() const;
 
-    std::array<uint8_t, kRomFileSize> rom{};
-    Jumper      jumper   = Jumper::RAM16_ROM32;
-    bool        writable = false;
+    // Initialise the buffer for Flash mode (single blank page, $FF filled).
+    void initBlankFlash();
+    // Initialise the buffer for EEPROM mode (32 kB, $FF filled).
+    void initBlankEeprom();
+
+    std::vector<uint8_t> rom;
+    Jumper      jumper        = Jumper::RAM16_ROM32;
+    ChipMode    chipMode      = ChipMode::Flash;
+    bool        writable      = false;
+    uint8_t     bankRegister  = 0;    // $CA00 latch value
+    uint8_t     pageCount     = 0;    // rom.size() / kPageSize
+    uint8_t     bootPage      = 0;    // chosen by pickDefaultBootPage
     std::string romPath;
-    size_t      romSize  = 0;
+    size_t      romSize       = 0;    // original loaded file size (pre-pad)
 };
 
 #endif // POM1_JUKEBOX_H

@@ -164,6 +164,8 @@ public:
     bool isJukeBoxEnabled() const;
     void setJukeBoxJumper(JukeBox::Jumper jumper);
     JukeBox::Jumper getJukeBoxJumper() const;
+    void setJukeBoxChipMode(JukeBox::ChipMode mode);
+    JukeBox::ChipMode getJukeBoxChipMode() const;
     void setJukeBoxWritable(bool writable);
     bool isJukeBoxWritable() const;
     bool reloadJukeBoxRom(std::string& error);

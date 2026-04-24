@@ -458,6 +458,8 @@ int main(int argc, char* argv[])
         mainWindow.setSidChipOverride(*plan.sidChipOverride);
     if (plan.jukeBoxJumperOverride)
         mainWindow.setJukeBoxJumperOverride(*plan.jukeBoxJumperOverride);
+    if (plan.jukeBoxChipModeOverride)
+        mainWindow.setJukeBoxChipModeOverride(*plan.jukeBoxChipModeOverride);
     if (!plan.deferredActions.empty())
         mainWindow.setDeferredCliActions(std::move(plan.deferredActions));
     mainWindow.setWindow(window);

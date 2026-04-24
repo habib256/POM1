@@ -211,9 +211,11 @@ void MainWindow_ImGui::finalizePendingCardPlugs()
     if (pendingGT6144Enable)         emulation->setGT6144Enabled(true);
     if (pendingWifiModemEnable)      emulation->setWiFiModemEnabled(true);
     if (pendingJukeBoxEnable) {
-        // Jumper has to be set BEFORE enabling the card — setJukeBoxEnabled
-        // enables exactly the bus window that matches the jumper at plug time.
+        // Chip mode + jumper have to be set BEFORE enabling the card —
+        // setJukeBoxEnabled latches the ROM window and reloads the ROM
+        // based on the chip mode at plug time.
         evictMemoryMapRegionsForJukeBox();
+        emulation->setJukeBoxChipMode(pendingJukeBoxChipMode);
         emulation->setJukeBoxJumper(pendingJukeBoxJumper);
         emulation->setJukeBoxEnabled(true);
     }
@@ -409,6 +411,10 @@ void MainWindow_ImGui::render()
         if (jukeBoxJumperOverride) {
             jukeBoxJumper        = *jukeBoxJumperOverride;
             pendingJukeBoxJumper = *jukeBoxJumperOverride;
+        }
+        if (jukeBoxChipModeOverride) {
+            jukeBoxChipMode        = *jukeBoxChipModeOverride;
+            pendingJukeBoxChipMode = *jukeBoxChipModeOverride;
         }
         if (initialExecutionSpeed) {
             executionSpeed = *initialExecutionSpeed;

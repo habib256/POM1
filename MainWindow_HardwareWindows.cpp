@@ -561,13 +561,42 @@ void MainWindow_ImGui::renderJukeBoxWindow()
         if (snap.firmwarePresent) {
             ImGui::TextColored(ImVec4(0.2f, 0.9f, 0.2f, 1.0f),
                 ICON_FA_CIRCLE_CHECK " Program Manager signature at $BD00: FOUND");
+            ImGui::Text("Boot page: %u", static_cast<unsigned>(snap.bootPage));
         } else {
             ImGui::TextColored(ImVec4(0.95f, 0.55f, 0.25f, 1.0f),
                 ICON_FA_TRIANGLE_EXCLAMATION " Program Manager signature at $BD00: MISSING");
             ImGui::TextWrapped(
                 "Load a Juke-Box ROM built with P-LAB's EPROM_CREATOR "
-                "(2-packer.sh) as roms/jukebox.rom. Without it the card "
-                "is installed but BD00R hangs.");
+                "(2-packer.sh or build_jukebox_rom.py) as roms/jukebox.rom. "
+                "Without it the card is installed but BD00R hangs.");
+        }
+
+        // Current bank-register state — live because the firmware drives it
+        // through $CA00 writes on every Px / Sx command.
+        if (snap.pageCount > 1) {
+            ImGui::Text("Current page: %u / %u    Sub-page: %u ($CA00 = $%02X)",
+                        static_cast<unsigned>(snap.currentPage),
+                        static_cast<unsigned>(snap.pageCount) - 1,
+                        static_cast<unsigned>(snap.currentSubPage),
+                        static_cast<unsigned>(snap.bankRegister));
+        }
+
+        ImGui::Separator();
+
+        // Chip mode — which physical chip is socketed.
+        ImGui::Text("Physical chip:");
+        int modeInt = static_cast<int>(snap.chipMode);
+        if (ImGui::RadioButton("Flash (paged, 16 kB..512 kB, read-only)",
+                               &modeInt, static_cast<int>(JukeBox::ChipMode::Flash))) {
+            jukeBoxChipMode = JukeBox::ChipMode::Flash;
+            emulation->setJukeBoxChipMode(JukeBox::ChipMode::Flash);
+            setStatusMessage("Juke-Box chip: Flash (paged, read-only)", 2.0f);
+        }
+        if (ImGui::RadioButton("EEPROM 28c256 (32 kB, writable with RW jumper)",
+                               &modeInt, static_cast<int>(JukeBox::ChipMode::EEPROM28C256))) {
+            jukeBoxChipMode = JukeBox::ChipMode::EEPROM28C256;
+            emulation->setJukeBoxChipMode(JukeBox::ChipMode::EEPROM28C256);
+            setStatusMessage("Juke-Box chip: EEPROM 28c256 (writable)", 2.0f);
         }
 
         ImGui::Separator();
@@ -580,8 +609,11 @@ void MainWindow_ImGui::renderJukeBoxWindow()
         } else {
             ImGui::TextWrapped("%s", snap.romPath.c_str());
         }
-        ImGui::Text("Size: %zu bytes (%.1f kB)",
-                    snap.romSize, static_cast<double>(snap.romSize) / 1024.0);
+        ImGui::Text("Size: %zu bytes (%.1f kB, %u page%s of 32 kB)",
+                    snap.romSize,
+                    static_cast<double>(snap.romSize) / 1024.0,
+                    static_cast<unsigned>(snap.pageCount),
+                    snap.pageCount == 1 ? "" : "s");
 
         if (ImGui::Button("Reload ROM")) {
             std::string error;
@@ -622,16 +654,21 @@ void MainWindow_ImGui::renderJukeBoxWindow()
 
         ImGui::Separator();
 
-        // EEPROM RW jumper
-        bool writable = snap.writable;
-        if (ImGui::Checkbox("EEPROM write-enable (28xxx RW jumper)", &writable)) {
-            emulation->setJukeBoxWritable(writable);
-            setStatusMessage(writable
-                ? "Juke-Box EEPROM: write-enabled (writes persist to jukebox.rom)"
-                : "Juke-Box EEPROM: read-only", 3.0f);
+        // EEPROM RW jumper — only meaningful when the 28c256 is socketed.
+        if (snap.chipMode == JukeBox::ChipMode::EEPROM28C256) {
+            bool writable = snap.writable;
+            if (ImGui::Checkbox("EEPROM write-enable (28xxx RW jumper)", &writable)) {
+                emulation->setJukeBoxWritable(writable);
+                setStatusMessage(writable
+                    ? "Juke-Box EEPROM: write-enabled (writes persist to jukebox.rom)"
+                    : "Juke-Box EEPROM: read-only", 3.0f);
+            }
+            ImGui::TextColored(ImVec4(0.7f, 0.7f, 0.7f, 1.0f),
+                "When on, writes in the ROM window update the jukebox.rom file.");
+        } else {
+            ImGui::TextColored(ImVec4(0.7f, 0.7f, 0.7f, 1.0f),
+                "Flash is read-only - switch to EEPROM 28c256 to use the RW jumper.");
         }
-        ImGui::TextColored(ImVec4(0.7f, 0.7f, 0.7f, 1.0f),
-            "When on, writes in the ROM window update the jukebox.rom file.");
 
         ImGui::Separator();
 
@@ -640,13 +677,16 @@ void MainWindow_ImGui::renderJukeBoxWindow()
             ImGui::BulletText("H       Help - list all Program Manager commands");
             ImGui::BulletText("D       Directory of programs on the current page");
             ImGui::BulletText("L<X>    Load program tagged with letter X");
+            ImGui::BulletText("P<0-F>  Switch flash bank (writes to $CA00)");
+            ImGui::BulletText("S<0|1>  Pick lower/upper 16 kB sub-page (16 kB logical mapping)");
             ImGui::BulletText("B       Enter BASIC (non-destructive, via E2B3R)");
             ImGui::BulletText("X       Exit Program Manager back to Woz Monitor");
             ImGui::Spacing();
             ImGui::TextWrapped(
                 "Save-Program (B800R, # prompt): W = write RAM range to EEPROM, "
                 "S = save current BASIC program, L = back to Program Manager, "
-                "X = exit to Woz Monitor. Requires EEPROM write-enable on.");
+                "X = exit to Woz Monitor. Requires EEPROM 28c256 chip mode "
+                "with the RW jumper on.");
         }
 
         if (ImGui::CollapsingHeader("Memory Map")) {

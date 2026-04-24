@@ -208,9 +208,11 @@ public:
     bool isCFFA1Enabled() const { return cffa1Enabled; }
     int loadCFFA1Rom(void);
 
-    // P-LAB Apple-1 Juke-Box (Claudio Parmigiani) — memory-mapped 32 kB EEPROM
-    // with a runtime jumper for the RAM/ROM split. Mutually exclusive with
-    // CFFA1, microSD, Krusader, and the Wi-Fi Modem (shared address windows).
+    // P-LAB Apple-1 Juke-Box (Claudio Parmigiani & Jacopo Rosselli) —
+    // memory-mapped flash or 28c256 EEPROM with a runtime jumper for the
+    // RAM/ROM split and a Px/Sx bank-select latch at $CA00. Mutually
+    // exclusive with CFFA1, microSD, Krusader, Wi-Fi Modem, A1-SID and
+    // A1-AUDIO SE (all share the $4000-$CFFF address window).
     JukeBox& getJukeBox() { return *jukeBox; }
     const JukeBox& getJukeBox() const { return *jukeBox; }
     void setJukeBoxEnabled(bool b);
@@ -221,11 +223,17 @@ public:
     void setJukeBoxJumper(JukeBox::Jumper j);
     JukeBox::Jumper getJukeBoxJumper() const { return jukeBox->getJumper(); }
     // EEPROM RW jumper. No bus change; writable only controls whether writes
-    // in the ROM window land in the ROM buffer (and on disk).
+    // in the ROM window land in the ROM buffer (and on disk). Ignored in
+    // Flash chip mode (flash is always read-only in POM1).
     void setJukeBoxWritable(bool w);
     bool isJukeBoxWritable() const { return jukeBox->isWritable(); }
-    // Load a Juke-Box ROM file (up to 32 kB) from disk. `error` is populated
-    // on failure.
+    // Physical chip selection — Flash (paged, 16 kB..512 kB) or 28c256
+    // EEPROM (single-page, writable). Switching modes clears the ROM
+    // buffer; a subsequent loadJukeBoxRom() picks a fresh image.
+    void setJukeBoxChipMode(JukeBox::ChipMode m);
+    JukeBox::ChipMode getJukeBoxChipMode() const { return jukeBox->getChipMode(); }
+    // Load a Juke-Box ROM file (up to 512 kB in flash mode, exactly 32 kB
+    // in EEPROM mode). Populates `lastError` on failure.
     int loadJukeBoxRom(void);  // default path: roms/jukebox.rom
 
     // P-LAB Apple-1 Wi-Fi Modem (65C51 ACIA + ESP8266)
@@ -364,6 +372,7 @@ private :
     // Juke-Box physically replaces any card at $4000-$BFFF on the real bus).
     PeripheralBus::Handle jukeBox32BusHandle = -1;   // RAM-16/ROM-32: $4000-$BFFF
     PeripheralBus::Handle jukeBox16BusHandle = -1;   // RAM-32/ROM-16: $8000-$BFFF
+    PeripheralBus::Handle jukeBoxBankRegBusHandle = -1; // Px/Sx latch at $CA00
     PeripheralBus::Handle gt6144BusHandle    = -1;   // SWTPC GT-6144: $D00A, write-only
 
 };

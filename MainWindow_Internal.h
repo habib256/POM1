@@ -111,13 +111,15 @@ struct MachineConfig {
     // of $C800-$CFFF. Collides with TMS9918 at $CC00/$CC01 — the preset
     // layer enforces mutual exclusivity with `tms9918`.
     bool sidSpecialEdition;
-    // P-LAB Apple-1 Juke-Box (Claudio Parmigiani). When true, the preset
-    // plugs the Juke-Box card at $4000-$BFFF or $8000-$BFFF (per `jukeBoxJumper`)
-    // and loads `roms/jukebox.rom` as the storage content. Mutually
-    // exclusive with CFFA1, microSD, Krusader, and the Wi-Fi Modem —
-    // the preset layer enforces that.
+    // P-LAB Apple-1 Juke-Box (Claudio Parmigiani & Jacopo Rosselli). When
+    // true, the preset plugs the Juke-Box card at $4000-$BFFF or
+    // $8000-$BFFF (per `jukeBoxJumper`), loads `roms/jukebox.rom` with the
+    // chip-mode stored in `jukeBoxChipMode`, and claims the Px/Sx bank
+    // latch at $CA00. Mutually exclusive with CFFA1, microSD, Krusader,
+    // Wi-Fi Modem and A1-SID — the preset layer enforces that.
     bool jukeBox;
     JukeBox::Jumper jukeBoxJumper;
+    JukeBox::ChipMode jukeBoxChipMode;
     // SWTPC GT-6144 Graphic Terminal (1976) — write-only 64x96 mono framebuffer
     // at $D00A. No bus conflicts with other cards at that address.
     bool gt6144;

@@ -208,3 +208,20 @@ target_include_directories(test_gt6144 PRIVATE ${CMAKE_SOURCE_DIR})
 
 add_test(NAME gt6144_smoke COMMAND test_gt6144)
 set_tests_properties(gt6144_smoke PROPERTIES TIMEOUT 5)
+
+# -- P-LAB Juke-Box paged-flash smoke test ------------------------------------
+# Self-contained: JukeBox + Logger only. Loads the shipped 256 kB
+# roms/jukebox.rom, verifies the 8-page layout, picks the default boot page
+# via the $A5 signature scan, exercises the $CA00 bank-select latch (Px) and
+# bit-4 sub-page (Sx), and confirms flash writes are dropped while EEPROM
+# mode rejects oversized files.
+add_executable(test_jukebox_paged_rom
+    jukebox_paged_rom_smoke_test.cpp
+    ${CMAKE_SOURCE_DIR}/JukeBox.cpp
+    ${CMAKE_SOURCE_DIR}/Logger.cpp
+)
+target_include_directories(test_jukebox_paged_rom PRIVATE ${CMAKE_SOURCE_DIR})
+
+add_test(NAME jukebox_paged_rom_smoke
+         COMMAND test_jukebox_paged_rom "${CMAKE_SOURCE_DIR}/roms/jukebox.rom")
+set_tests_properties(jukebox_paged_rom_smoke PROPERTIES TIMEOUT 5)

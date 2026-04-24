@@ -652,6 +652,19 @@ JukeBox::Jumper EmulationController::getJukeBoxJumper() const
     return memory->getJukeBoxJumper();
 }
 
+void EmulationController::setJukeBoxChipMode(JukeBox::ChipMode mode)
+{
+    std::lock_guard<PriorityMutex> lock(stateMutex);
+    memory->setJukeBoxChipMode(mode);
+    publisher.publish(*memory, *cpu, runRequested.load());
+}
+
+JukeBox::ChipMode EmulationController::getJukeBoxChipMode() const
+{
+    std::lock_guard<PriorityMutex> lock(stateMutex);
+    return memory->getJukeBoxChipMode();
+}
+
 void EmulationController::setJukeBoxWritable(bool writable)
 {
     std::lock_guard<PriorityMutex> lock(stateMutex);

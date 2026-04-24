@@ -35,6 +35,7 @@ Every GUI-reachable action has a flag. Three phases: **A** boot-time (before GLF
 | `--enable <card>[,…]` / `--disable <card>[,…]` | B | Rewrite deferred plug list. Names: `aci, sid, sid-se, microsd, tms9918, a1io-rtc, hgr, cffa1, krusader, wifi, terminal, jukebox, pr40, gt6144` (aliases in `kCardNames`). Mutual-exclusion (SID↔SID-SE, TMS9918↔SID-SE, …) enforced at override. `--disable krusader` is a no-op (ROM unload needs hard reset). |
 | `--sid-chip <6581\|8580>` | B | Swap A1-SID / SE chip model; libresidfp replays last register state. |
 | `--jukebox-jumper <ram16\|ram32>` | B | `RAM16_ROM32` → ROM `$4000-$BFFF`; `RAM32_ROM16` → ROM `$8000-$BFFF`. |
+| `--jukebox-chip <flash\|eeprom>` | B | Physical chip: paged Flash (default, read-only) or 28c256 EEPROM (writable single page). Swap triggers a ROM reload. |
 | `--trace-brk` | C | Enable M6502 BRK reg/stack/trace dump. |
 | `--load <addr>:<path>` | C | Load raw binary, rewrite reset vector, `hardReset` + `start`. Addresses: hex (`0300`, `0x0300`, `$0300`) or decimal ≥ 5 digits. Repeatable. |
 | `--run <addr>` | C | `EmulationController::jumpTo()` — stops, rewrites reset vector, hard-resets, restarts. |
@@ -91,7 +92,7 @@ Each `.cpp/.h` pair owns one concern. Only non-obvious bits are called out.
 
 Claudio PARMIGIANI, designer of the P-LAB Apple-1 family, states **"one board at a time"**: on real hardware exactly ONE P-LAB card is plugged at any given moment. The 6502 bus has no arbitration, and many P-LAB cards deliberately overlap address windows (A1-SID `$C800-$CFFF` vs TMS9918 `$CC00/$CC01`; A1-IO RTC `$2000-$200F` vs GEN2 HGR `$2000-$3FFF`; Juke-Box claims `$4000-$BFFF` entirely).
 
-POM1 **breaks this rule on purpose** in the "Multiplexing Fantasy" presets (#12, #14) — literally a *fantasy*, not a buildable machine. The mutual-exclusion rules elsewhere (SID↔SID-SE, TMS9918↔SID-SE, GEN2↔A1-IO, Juke-Box↔{CFFA1, microSD, Krusader, Wi-Fi Modem}) mirror real bus conflicts. When adding a card, honour the rule and document any intentional coexistence as a POM1-only liberty.
+POM1 **breaks this rule on purpose** in the "Multiplexing Fantasy" presets (#12, #14) — literally a *fantasy*, not a buildable machine. The mutual-exclusion rules elsewhere (SID↔SID-SE, TMS9918↔SID-SE, GEN2↔A1-IO, Juke-Box↔{CFFA1, microSD, Krusader, Wi-Fi Modem, SID}) mirror real bus conflicts. When adding a card, honour the rule and document any intentional coexistence as a POM1-only liberty.
 
 ### Core
 
@@ -144,7 +145,7 @@ POM1 **breaks this rule on purpose** in the "Multiplexing Fantasy" presets (#12,
   - Filter-model builders run **sequentially** under `__EMSCRIPTEN__ && !__EMSCRIPTEN_PTHREADS__`. Upstream parallelises with `std::thread`, which throws `system_error 138 "thread constructor failed"` in single-threaded WASM. Sequential adds ~50 ms to cold start (under 100 ms total).
 - **MicroSD** — P-LAB microSD. 65C22 VIA at `$A000-$A00F` bridging emulated ATMEGA. SD CARD OS ROM (8 KB) at `$8000-$9FFF`. Handshake: PORTB bit 0 = CPU_STROBE, bit 7 = MCU_STROBE, PORTA = data. Host `sdcard/` as virtual FAT32; tagged filenames `NAME#TTAAAA` encode type + load address. Commands: `cmdRead`/`cmdLoad` (strict + fuzzy prefix), `cmdWrite`, `cmdDir`/`cmdLs`, `cmdCd` (only nav op — `..`, absolute `/PATH`, relative, fuzzy leaf), `cmdDel`, `cmdMkdir`, `cmdRmdir`, `cmdPwd`, `cmdMount`. **All name-accepting commands resolve against `currentDirectory` only — no recursive search.** `getCurrentDirDisplay()` returns `"/" + currentDirectory`; Wozmon prompt (`/PLAB>`, `/PLAB/MCODE>`) literally is the cwd. Regression-pinned by `tools/test_sdcard_subdir_navigation_telnet.py`.
 - **CFFA1** — Rich Dreher's CompactFlash. 8 KB ROM `$9000-$AFDF` (ID bytes `CF`/`FA` at `$AFDC`/`$AFDD`), ATA/IDE regs `$AFE0-$AFFF` (A4 not decoded → `$AFE0` mirrors `$AFF0`). Backs a ProDOS `.po`; emulates READ/WRITE SECTOR + SET FEATURE only (everything the firmware uses). Desktop auto-mount probes `cfcard/cfcard.po` up three dirs. Two bus entries: read-only ROM + r/w regs.
-- **JukeBox** — P-LAB Juke-Box. 32 KB EEPROM (28c256) at `$4000-$BFFF` (RAM-16/ROM-32) or `$8000-$BFFF` (RAM-32/ROM-16). Program Manager at `$BD00` (`&` prompt); Save Program at `$B800` writes RAM→EEPROM when RW jumper on. v1 models the single-page 28c256 only. TWO disjoint bus handles at priority 20 (`$4000-$BFFF` + `$8000-$BFFF`); exactly one enabled, flipped by `setJukeBoxJumper()`. Mutex with CFFA1, microSD, Krusader, Wi-Fi Modem. Firmware signature: byte at file offset `$7D00` = `$A5` (first byte of Program Manager per EEPROM RW manual `BD00: A5`). Build `roms/jukebox.rom` via `doc/JUKEBOX_ROM_CREATOR/build_jukebox_rom.py` (P-LAB's `2-packer.sh` produces subtly different layouts — prefer the Python script).
+- **JukeBox** — P-LAB Juke-Box (Claudio Parmigiani & Jacopo Rosselli). Two chip modes selectable at runtime: **Flash** (paged read-only, 16 KB–512 KB; default) and **EEPROM 28c256** (32 KB single-page, writable). ROM window at `$4000-$BFFF` (RAM-16/ROM-32 jumper) or `$8000-$BFFF` (RAM-32/ROM-16). Program Manager at `$BD00` (`&` prompt); Save Program at `$B800` writes RAM→EEPROM in EEPROM mode when RW jumper on (flash mode drops writes — real flash needs erase+program sequences, not modelled). **Bank-select latch at `$CA00`** (write-only, confirmed by 5 `STA $CA00` sites in the PM disassembly): bits 0–3 = `Px` page (wraps to `pageCount - 1`), bit 4 = `Sx` sub-page (upper/lower 16 KB of the current page, only meaningful in RAM32/ROM16 window). THREE bus handles at priority 20 for ROM windows + priority 15 for `$CA00`; exactly one ROM handle enabled at a time, flipped by `setJukeBoxJumper()`. **Mutex with CFFA1, microSD, Krusader, Wi-Fi Modem, A1-SID** (all share `$4000-$CFFF`). A1-AUDIO SE at `$CC00-$CC1F` is disjoint from `$CA00` so it coexists. **Boot page** picked at load: lowest page with `$A5` at file offset `$7D00` (first byte of Program Manager per `BD00: A5`). `reset()` re-seats the bank register on the boot page so `BD00R` always works. Build `roms/jukebox.rom` via `doc/JUKEBOX_ROM_CREATOR/build_jukebox_rom.py`; P-LAB's `2-packer.sh` produces subtly different layouts. Invariants pinned by `jukebox_paged_rom_smoke`.
 - **A1IO_RTC** — P-LAB A1-IO & RTC. 65C22 VIA at `$2000-$200F` (⚠ overlaps GEN2 HGR — mutex at preset level). Emulated ATMEGA32 drives DS3231 (date/time + temp), DS18B20, 8 analog + 4 digital inputs, 16-bit shift-register digital out. Broadcast protocol: 24 regs pumped on 100-cycle period with PORTB STROBE handshake.
 - **WiFiModem** — P-LAB MODEM BBS. 65C51 ACIA at `$B000-$B003`, ESP8266 AT interpreter, Hayes AT (`AT` / `ATDT host:port` / `ATH` / `ATE0/1` / `ATI` / `ATZ`), TELNET IAC filtering + `CR LF→CR` strip, non-blocking TCP, baud 50-19200, `+++` with 1 s guard, 4096 B circular Rx. `requestDisconnect()` is the UI-safe entry (calls `handleATH()` under `modemMutex`). Desktop only; WASM stubs return `NO CARRIER`.
 - **TerminalCard** — passive bridge: sniffs `$D012` writes (hook in `memWrite`), injects keys into `$D010`/`$D011`. TCP server on IPv4 loopback :6502 (IPv6 `::1` refused — `telnet localhost` falls back to `127.0.0.1`). Modes: 7-bit (CR→CRLF, optional uppercase via Ctrl-O/I) and 8-bit raw (Ctrl-T, fires in either mode). Controls: Ctrl-L clear, Ctrl-R reset; each has an **ESC-prefixed alternate** (ESC T/O/L/R/I) for tty line disciplines that eat Ctrl-T/O/R. Unknown ESC sequences forward the ESC so ANSI still reaches the Apple 1. On accept: `IAC WILL ECHO` + `IAC WILL SUPPRESS-GO-AHEAD` + `IAC DO SUPPRESS-GO-AHEAD` flips the client to character-at-a-time. Pending reset/clear use `std::atomic<bool>` consumed **outside** `stateMutex` to avoid deadlock with `runEmulationSlice()`. Desktop only.
@@ -193,10 +194,10 @@ $0100-$01FF  Stack
 $0200-$1FFF  User RAM (programs typically load at $0280 or $0300)
 $2000-$200F  A1-IO RTC VIA 65C22 (mutex with GEN2 below)
 $2000-$3FFF  GEN2 HGR framebuffer (8 KB)
-$4000-$BFFF  Juke-Box ROM (32 KB, RAM-16/ROM-32 jumper)
+$4000-$BFFF  Juke-Box ROM window (32 KB of current flash page, RAM-16/ROM-32 jumper; up to 512 KB total paged via $CA00)
 $4000-$5FFF  User RAM (otherwise)
 $6000-$7FFF  Applesoft Lite SD ROM — `applesoft-lite-microsd.rom` (microSD preset, cold-start `6000R`)
-$8000-$BFFF  Juke-Box ROM (16 KB upper, RAM-32/ROM-16 jumper)
+$8000-$BFFF  Juke-Box ROM window (upper or lower 16 KB of current page, RAM-32/ROM-16 jumper; Sx bit 4 of $CA00 picks half)
 $8000-$9FFF  SD CARD OS ROM (P-LAB microSD)
 $9000-$AFDF  CFFA1 firmware ROM (shadows microSD ROM + BASIC low page)
 $A000-$A00F  microSD VIA 65C22
@@ -207,6 +208,7 @@ $B004-$BFFF  User RAM
 $C000-$C0FF  ACI I/O ($C081 tape input, $C000 output flip-flop)
 $C100-$C1FF  Woz ACI ROM
 $C800-$CFFF  A1-SID (29 regs, `& 0x1F`)
+$CA00        Juke-Box Px/Sx bank-select latch (write-only; mutex with SID)
 $CC00-$CC1F  A1-AUDIO SE (same chip, window relocated; excludes TMS9918)
 $CC00/$CC01  TMS9918 DATA / CTRL (wins over A1-SID; SE evicts TMS9918)
 $D00A        SWTPC GT-6144 command port (write-only; bus wins over PIA alias)
@@ -231,7 +233,7 @@ $FF00-$FFFF  Woz Monitor ROM + vectors (NMI/Reset/IRQ at $FFFA-$FFFF)
 `ctest` targets from `tests/CMakeLists.txt` (native-only, opt-out via `-DPOM1_ENABLE_TESTS=OFF`). Run from `build/`:
 
 ```bash
-ctest                                    # all seven (~5 s)
+ctest                                    # all eight (~5 s)
 ctest --output-on-failure                # stdout/stderr on regression
 ctest -R klaus -V                        # single test, verbose
 ```
@@ -243,6 +245,7 @@ ctest -R klaus -V                        # single test, verbose
 - **`aci_tape_saving`** — drives ACI WRITE (Wozmon `<from>.<to>W`), saves `.aci` and `.wav`, reloads each in fresh `Memory`, asserts byte-for-byte. Catches regressions in `toggleOutput()`, `saveAciTape`/`saveWavTape`, `kTapeFileTimebaseHz` ↔ `kWavFileSampleRate` round-trip math.
 - **`pr40_printer_smoke`** — pins PR-40 DPDT switch wiring to PB7 (`$D012` read busy-OR merge), 40-char FIFO + CR flush, ~0.8 s mechanical stall (`POM1_CPU_CLOCK_HZ * 4 / 5` cycles).
 - **`gt6144_smoke`** — self-contained (only `GT6144` + `PeripheralBus`). Pins 4-phase FSM, pixel commit math (`(26, 22)` from `POKE -12278, 90 / 150`), control-opcode alias matrix (`224/232/240/248` all mean INVERTED), "inversion doesn't touch SRAM" invariant, and the visible SRAM power-on noise (two fresh cards must not have byte-identical framebuffers).
+- **`jukebox_paged_rom_smoke`** — self-contained (`JukeBox` + `Logger`). Loads the shipped 256 KB `roms/jukebox.rom`, asserts 8 pages, verifies the lowest-page-with-$A5 boot-page picker, exercises `$CA00` bank-select (Px) and bit-4 sub-page (Sx) in both jumper modes, confirms flash writes are dropped, and rejects oversized files in EEPROM mode.
 
 New invariant tests follow `tests/peripheral_bus_smoke_test.cpp` — `<cassert>` + `add_test` suffices; GTest/Catch2 only once multi-threaded tests land.
 

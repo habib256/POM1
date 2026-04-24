@@ -337,6 +337,14 @@ std::optional<CliPlan> parseCli(int argc, char* argv[], bool& listPresetsOut)
             else { logAndFail("--jukebox-jumper expects ram16 or ram32"); return std::nullopt; }
             continue;
         }
+        if (arg == "--jukebox-chip") {
+            if (!needArg(i, "--jukebox-chip")) return std::nullopt;
+            const std::string v = toLower(argv[++i]);
+            if      (v == "flash") plan.jukeBoxChipModeOverride = JukeBox::ChipMode::Flash;
+            else if (v == "eeprom" || v == "28c256") plan.jukeBoxChipModeOverride = JukeBox::ChipMode::EEPROM28C256;
+            else { logAndFail("--jukebox-chip expects flash or eeprom"); return std::nullopt; }
+            continue;
+        }
 
         // -----------------------------------------------------------------
         // Phase-C flags — queued, run after the card deferred-plug fires.

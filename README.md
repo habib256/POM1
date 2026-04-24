@@ -45,7 +45,7 @@ Built with Dear ImGui & OpenGL — fast, lightweight, and cross-platform (Linux,
 - 🎨 Three graphics cards — [Uncle Bernie's GEN2](https://www.applefritter.com/content/uncle-bernies-gen2-color-graphics-card-apple-1) (280×192 NTSC artifact colour), [P-LAB TMS9918](https://p-l4b.github.io/graphic/) (256×192 + sprites), and **SWTPC GT-6144** (1976, 64×96 mono — *first commercial Apple-1 graphics card*)
 - 🖨️ **SWTPC PR-40** 40-column printer (Jobs' Oct-76 *Interface Age* mod) — 40-char FIFO, ~0.8 s mechanical cycle, scrollable paper roll
 - 🎵 [P-LAB A1-SID](https://p-l4b.github.io/A1-SID/) — libresidfp 6581/8580, C64 `.sid` converter
-- 💾 Storage — [P-LAB microSD](https://p-l4b.github.io/sdcard/) (virtual FAT32), **CFFA1** CompactFlash (ProDOS `.po`), [P-LAB Juke-Box](https://p-l4b.github.io/) (32 KB EEPROM library)
+- 💾 Storage — [P-LAB microSD](https://p-l4b.github.io/sdcard/) (virtual FAT32), **CFFA1** CompactFlash (ProDOS `.po`), [P-LAB Juke-Box](https://p-l4b.github.io/jukebox/) (16 KB–512 KB paged flash library + optional 32 KB 28c256 writable variant)
 - 📡 Networking — [P-LAB Wi-Fi Modem](https://p-l4b.github.io/wifi/) (Hayes AT + TCP/TELNET), [P-LAB Terminal Card](https://p-l4b.github.io/terminal/) (`telnet localhost 6502`)
 - ⏰ [P-LAB I/O Board & RTC](https://p-l4b.github.io/A1-IO_RTC/) — DS3231 + ADC + digital I/O
 
@@ -199,7 +199,7 @@ vcpkg install glfw3:x64-windows
 Drag windows freely afterwards — per-preset layouts persist under `ini/imgui_preset_NN.ini` (plus an `ini/preset_NN.size` sidecar for the OS window frame), so switching presets saves/restores each profile independently.
 
 > **Bare (0)** is the pre-ACI July-1976 shipping configuration — the first ~150 units left Woz's bench this way.
-> **Juke-Box (11)** drops ACI because the EEPROM replaces cassette loading.
+> **Juke-Box (11)** drops ACI because the paged flash replaces cassette loading.
 
 ---
 
@@ -378,15 +378,20 @@ Source material: the **[High Voltage SID Collection (HVSC)](https://www.exotica.
 
 ### P-LAB Apple-1 Juke-Box
 
-Claudio Parmigiani's [P-LAB Juke-Box](https://p-l4b.github.io/) — memory-mapped 32 KB EEPROM (28c256) acting as an in-address-space program library. No cassette, no SD card.
+Claudio Parmigiani and Jacopo Rosselli's [P-LAB Juke-Box](https://p-l4b.github.io/jukebox/) — memory-mapped flash library acting as an in-address-space program menu. No cassette, no SD card. Two chip variants, selectable in the Hardware window:
+
+- **Flash** (default) — paged read-only, 16 KB to 512 KB (27c128/256/512, 27c020, 29c020, 29c040, 39sf040). Each 32 KB page bundles programs + a copy of the Program Manager at `$BD00`. Up to 16 pages for 512 KB chips.
+- **EEPROM 28c256** — 32 KB single-page, writable via the RW jumper. Enables the Save Program flow (`B800R`) documented in [Jukebox_v1.09_RW_ENG_OL.pdf](doc/Jukebox_v1.09_RW_ENG_OL.pdf).
+
+Addressing
 
 - **ROM window**: `$4000-$BFFF` (RAM-16 / ROM-32 jumper) or `$8000-$BFFF` (RAM-32 / ROM-16 jumper) — toggle from the Juke-Box window
-- **Program Manager** at `$BD00` — `BD00R` → `&` prompt → `H / D / L<X> / P<0-F> / B / X`
-- **Save Program** at `$B800` — `B800R` writes current RAM back to the EEPROM (requires RW jumper)
-- Mutually exclusive with CFFA1, microSD, Krusader, Wi-Fi Modem (all live inside the Juke-Box address window)
+- **Bank-select latch**: `$CA00` (write-only). Bits 0-3 = `Px` page, bit 4 = `Sx` 16 KB sub-page. POM1 picks the lowest page containing the Program Manager signature `$A5` at file offset `$7D00` as the default boot page so `BD00R` always works on hard reset.
+- **Program Manager** at `$BD00` — `BD00R` → `&` prompt → `H / D / L<X> / P<0-F> / S<0|1> / B / X`
+- **Save Program** at `$B800` — `B800R` writes current RAM back to the 28c256 EEPROM (needs EEPROM chip mode + RW jumper). Flash mode ignores writes.
+- Mutually exclusive with CFFA1, microSD, Krusader, Wi-Fi Modem and A1-SID (all inside `$4000-$CFFF`). A1-AUDIO SE at `$CC00-$CC1F` coexists — `$CA00` is disjoint.
 - Integer BASIC at `$E000` stays available — `L<letter>` then `B` loads a BASIC program and hands it to the interpreter
-- Firmware: `roms/jukebox.rom`; rebuild with `doc/JUKEBOX_ROM_CREATOR/build_jukebox_rom.py` (signature byte at file offset `$7D00` must be `$A5`)
-- v1 models the single-page 28c256. Multi-page 29c020 / 29c040 (`P0..PF` / `S0..S1`) pending public MMIO documentation.
+- Firmware: `roms/jukebox.rom`; rebuild with [`doc/JUKEBOX_ROM_CREATOR/build_jukebox_rom.py`](doc/JUKEBOX_ROM_CREATOR/build_jukebox_rom.py) or P-LAB's `2-packer.sh`. Invariants pinned by `jukebox_paged_rom_smoke`.
 
 ---
 
@@ -497,7 +502,7 @@ POM1/
 ├── AudioDevice.cpp/h        # miniaudio / Web Audio output, SID + cassette mixer
 ├── MicroSD.cpp/h            # P-LAB microSD Storage Card (65C22 + MCU)
 ├── CFFA1.cpp/h              # CFFA1 CompactFlash (ROM + ProDOS .po)
-├── JukeBox.cpp/h            # P-LAB Apple-1 Juke-Box (32 KB EEPROM library)
+├── JukeBox.cpp/h            # P-LAB Apple-1 Juke-Box (paged flash 16-512 KB + 28c256 EEPROM)
 ├── PR40Printer.cpp/h        # SWTPC PR-40 printer ($D012 sniffer, Jobs 1976)
 ├── WiFiModem.cpp/h          # P-LAB Wi-Fi Modem (65C51 ACIA + TCP/TELNET)
 ├── TerminalCard.cpp/h       # P-LAB Terminal Card (TCP server + serial bridge)
@@ -535,7 +540,7 @@ POM1/
 | 🔧 **Krusader 1.3** | 8 KB | `$A000` | Ken Wessen's symbolic assembler (Replica 1 preset) |
 | 💾 **SD CARD OS** | 8 KB | `$8000` | P-LAB microSD firmware ([apple1-sdcard](https://github.com/nippur72/apple1-sdcard)) |
 | 💽 **CFFA1 firmware** | ~8 KB | `$9000-$AFDF` | CFFA1 card ROM — `cffa1.rom` |
-| 💿 **Juke-Box EEPROM** | 32 KB | `$4000-$BFFF` or `$8000-$BFFF` | P-LAB Juke-Box — `jukebox.rom` (signature `$A5` at file offset `$7D00`) |
+| 💿 **Juke-Box flash / EEPROM** | 16–512 KB | `$4000-$BFFF` or `$8000-$BFFF` | P-LAB Juke-Box — `jukebox.rom` (Px/Sx bank-select at `$CA00`; signature `$A5` at file offset `$7D00` within each firmware page) |
 | 🔤 **Charmap** | 1 KB | — | Character generator table |
 
 Woz Monitor, Integer BASIC and the ACI ROM load at startup. Card-specific ROMs load when the matching card is enabled.
@@ -549,10 +554,10 @@ $0100-$01FF   Stack
 $0200-$1FFF   User RAM (programs load at $0280 or $0300)
 $2000-$200F   P-LAB I/O Board & RTC — VIA 65C22 (overlaps GEN2 HGR page)
 $2000-$3FFF   GEN2 HGR Framebuffer (8 KB)
-$4000-$BFFF   Juke-Box EEPROM window (32 KB, RAM-16/ROM-32 jumper)
+$4000-$BFFF   Juke-Box ROM window (current 32 KB page, RAM-16/ROM-32 jumper; up to 512 KB total paged via $CA00)
 $4000-$7FFF   User RAM (otherwise)
 $6000-$7FFF   Applesoft Lite ROM (P-LAB microSD + Applesoft layout only)
-$8000-$BFFF   Juke-Box EEPROM window (16 KB upper half, RAM-32/ROM-16)
+$8000-$BFFF   Juke-Box ROM window (upper or lower 16 KB of current page via Sx, RAM-32/ROM-16)
 $8000-$9FFF   SD CARD OS ROM (P-LAB microSD)
 $9000-$AFDF   CFFA1 firmware ROM (with CFFA1)
 $AFE0-$AFFF   CFFA1 ATA/IDE registers
@@ -585,7 +590,8 @@ The **POM1** preset ships with **64 KB** of user RAM; overlays from expansion ca
 - **Achim Breidenbach** — Sim6502
 - **Fabrice Frances** — Java Microtan Emulator
 - **Uncle Bernie** — [GEN2 Color Graphics Card](https://www.applefritter.com/content/uncle-bernies-gen2-color-graphics-card-apple-1)
-- **Claudio Parmigiani ([P-LAB](https://p-l4b.github.io/))** — the entire P-LAB Apple-1 expansion family: [microSD](https://p-l4b.github.io/sdcard/), [A1-SID](https://p-l4b.github.io/A1-SID/), [Graphic Card (TMS9918)](https://p-l4b.github.io/graphic/), [I/O Board & RTC](https://p-l4b.github.io/A1-IO_RTC/), [Terminal Card](https://p-l4b.github.io/terminal/), [Wi-Fi Modem](https://p-l4b.github.io/wifi/)
+- **Claudio Parmigiani ([P-LAB](https://p-l4b.github.io/))** — the entire P-LAB Apple-1 expansion family: [microSD](https://p-l4b.github.io/sdcard/), [A1-SID](https://p-l4b.github.io/A1-SID/), [Graphic Card (TMS9918)](https://p-l4b.github.io/graphic/), [I/O Board & RTC](https://p-l4b.github.io/A1-IO_RTC/), [Terminal Card](https://p-l4b.github.io/terminal/), [Wi-Fi Modem](https://p-l4b.github.io/wifi/), [Juke-Box](https://p-l4b.github.io/jukebox/)
+- **Jacopo Rosselli (P-LAB)** — co-designer of the Apple-1 [Juke-Box](https://p-l4b.github.io/jukebox/) card
 - **Rich Dreher** — **CFFA1** CompactFlash interface (firmware / hardware design emulated here)
 - **Nippur72 (Antonino Porcino)** — [apple1-videocard-lib](https://github.com/nippur72/apple1-videocard-lib) (KickC, Tetris, demos) + [apple1-sdcard](https://github.com/nippur72/apple1-sdcard) firmware
 - **Tom Owad** — AppleFritter community & Apple 1 resources

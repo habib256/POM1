@@ -103,6 +103,7 @@ struct CliPlan {
     std::vector<CliCardOverride>       cardOverrides;
     std::optional<pom1::SID::ChipModel>      sidChipOverride;
     std::optional<JukeBox::Jumper>     jukeBoxJumperOverride;
+    std::optional<JukeBox::ChipMode>   jukeBoxChipModeOverride;
 
     // Phase-C — consumed after the card deferred-plug timer fires.
     std::vector<CliAction>             deferredActions;
