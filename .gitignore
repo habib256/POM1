@@ -5,6 +5,10 @@
 build/
 dist/
 
+# CTest runtime artefacts (written by `ctest` under build/, but also spilled
+# into the repo root by some IDE integrations)
+Testing/
+
 # Fichiers binaires de release (copie locale avant upload GitHub Releases)
 releases/*.zip
 
