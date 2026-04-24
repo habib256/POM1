@@ -51,13 +51,19 @@ int main() {
     // --- 2. Draw a white pixel at (26, 22). Research §6.2 example. ---
     {
         GT6144 gt;
+        // Clear neighbours first (random power-on SRAM may have them set).
+        gt.writeCommand(25);   // latch X=25, mode=OFF
+        gt.writeCommand(150);  // 128 + 22 → commit Y=22
+        gt.writeCommand(27);   // latch X=27, mode=OFF
+        gt.writeCommand(150);  // 128 + 22 → commit Y=22
+        // Now draw the target pixel.
         gt.writeCommand(90);   // 64 + 26 → latch X=26, mode=ON
         gt.writeCommand(150);  // 128 + 22 → commit Y=22
 
         GT6144::Snapshot s;
         gt.copySnapshot(s);
         assert(pixel(s, 26, 22));
-        // Explicit sanity-check: neighbours untouched.
+        // Neighbours must remain off — ON at X=26 must not bleed.
         assert(!pixel(s, 25, 22));
         assert(!pixel(s, 27, 22));
     }
@@ -126,6 +132,9 @@ int main() {
     // --- 7. renderToBuffer: blanked → solid black; inverted swaps palette. ---
     {
         GT6144 gt;
+        // Clear neighbour (1, 0) first — random power-on SRAM may have it lit.
+        gt.writeCommand(1);        // latch X=1, mode=OFF
+        gt.writeCommand(128 + 0);  // commit Y=0
         // Paint (0, 0) white.
         gt.writeCommand(0 + 64);
         gt.writeCommand(128 + 0);

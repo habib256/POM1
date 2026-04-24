@@ -23,6 +23,13 @@
 
 namespace {
 using namespace pom1::mainwindow::detail;
+
+void showHardwareTooltip(const char* text)
+{
+    if (ImGui::IsItemHovered()) {
+        ImGui::SetTooltip("%s", text);
+    }
+}
 }
 
 void MainWindow_ImGui::renderMenuBar()
@@ -114,7 +121,8 @@ void MainWindow_ImGui::renderMenuBar()
                                   "On: OS autorepeat reaches the Apple 1 (useful when using POM1 as a terminal).");
             ImGui::Separator();
             ImGui::MenuItem("Memory Viewer", shortcutLabel(GLFW_KEY_F1), &showMemoryViewer);
-            ImGui::MenuItem("Memory Map", shortcutLabel(GLFW_KEY_F2), &showMemoryMap);
+            ImGui::MenuItem("Memory Map Grid", shortcutLabel(GLFW_KEY_F2), &showMemoryMapGrid);
+            ImGui::MenuItem("Memory Map Bar", nullptr, &showMemoryBar);
             if (ImGui::MenuItem("Memory Options")) {
                 configMemory();
             }
@@ -170,10 +178,23 @@ void MainWindow_ImGui::renderMenuBar()
             if (ImGui::MenuItem("Uncle Bernie's GEN2 HGR Graphic Card", nullptr, &graphicsCardEnabled)) {
                 if (graphicsCardEnabled) showGraphicsCard = true;
             }
+            showHardwareTooltip(
+                "Uncle Bernie's GEN2 HGR Graphic Card\n"
+                "Framebuffer: $2000-$3FFF.\n\n"
+                "Hardware conflict: P-LAB I/O Board & RTC also decodes $2000-$200F.\n"
+                "A real Apple-1 bus has no arbitration, so use one of these cards at a time.");
             if (ImGui::MenuItem("CFFA1 CompactFlash Card", nullptr, &cffa1Enabled)) {
                 emulation->setCFFA1Enabled(cffa1Enabled);
-                if (cffa1Enabled) microSDEnabled = false; // sync UI
+                if (cffa1Enabled) {
+                    microSDEnabled = false; // sync UI
+                    jukeBoxEnabled = false;
+                }
             }
+            showHardwareTooltip(
+                "CFFA1 CompactFlash Card\n"
+                "ROM/register window: $9000-$AFFF.\n\n"
+                "Plugging it unplugs microSD and Juke-Box, because their ROM\n"
+                "windows overlap the CFFA1 firmware/register area.");
 
             ImGui::Separator();
             // --- P-LAB family ----------------------------------------------
@@ -185,6 +206,7 @@ void MainWindow_ImGui::renderMenuBar()
                     cffa1Enabled = false;
                     microSDEnabled = false;
                     wifiModemEnabled = false;
+                    sidEnabled = false;
                     evictMemoryMapRegionsForJukeBox();
                     jbMsg = "P-LAB Juke-Box plugged "
                             "- type BD00R for Program Manager";
@@ -196,21 +218,38 @@ void MainWindow_ImGui::renderMenuBar()
                 emulation->setJukeBoxEnabled(jukeBoxEnabled);
                 setStatusMessage(jbMsg, 3.0f);
             }
-            if (ImGui::IsItemHovered())
-                ImGui::SetTooltip("Claudio Parmigiani's Apple-1 Juke-Box (28c256 EEPROM).\n"
-                                  "Memory-mapped ROM library at $4000-$BFFF (or $8000-$BFFF).\n"
-                                  "Program Manager at $BD00: type BD00R from the Woz Monitor.\n"
-                                  "Mutually exclusive with CFFA1, microSD and Wi-Fi Modem.");
+            showHardwareTooltip(
+                "Claudio Parmigiani's Apple-1 Juke-Box (28c256 EEPROM)\n"
+                "ROM window: $4000-$BFFF or $8000-$BFFF. Bank latch: $CA00.\n"
+                "Program Manager at $BD00: type BD00R from the Woz Monitor.\n\n"
+                "Plugging it unplugs CFFA1, microSD, Wi-Fi Modem, and A1-SID.\n"
+                "A1-AUDIO SE can coexist: it lives at $CC00-$CC1F, outside $CA00.");
             if (ImGui::MenuItem("P-LAB microSD Storage Card", nullptr, &microSDEnabled)) {
                 emulation->setMicroSDEnabled(microSDEnabled);
-                if (microSDEnabled) cffa1Enabled = false; // sync UI
+                if (microSDEnabled) {
+                    cffa1Enabled = false; // sync UI
+                    jukeBoxEnabled = false;
+                }
             }
+            showHardwareTooltip(
+                "P-LAB microSD Storage Card\n"
+                "ROM/VIA window: $8000-$9FFF and $A000-$A00F.\n\n"
+                "Plugging it unplugs CFFA1 and Juke-Box, because their ROM\n"
+                "windows overlap the microSD firmware area.");
             if (ImGui::MenuItem("P-LAB A1-SID Sound Card (SID @ $C800)", nullptr, &sidEnabled)) {
                 emulation->setSIDEnabled(sidEnabled);
                 // Prototype and SE share the same MOS chip — plugging one
                 // auto-unplugs the other on the backend; mirror that here.
-                if (sidEnabled) sidSpecialEditionEnabled = false;
+                if (sidEnabled) {
+                    sidSpecialEditionEnabled = false;
+                    jukeBoxEnabled = false;
+                }
             }
+            showHardwareTooltip(
+                "P-LAB A1-SID Sound Card\n"
+                "SID registers: $C800-$CFFF.\n\n"
+                "Plugging it unplugs A1-AUDIO SE (same SID chip) and Juke-Box\n"
+                "($CA00 bank latch sits inside the SID window).");
             if (ImGui::MenuItem("A1-AUDIO Special Edition (SID @ $CC00)", nullptr, &sidSpecialEditionEnabled)) {
                 emulation->setSIDSpecialEditionEnabled(sidSpecialEditionEnabled);
                 if (sidSpecialEditionEnabled) {
@@ -219,10 +258,11 @@ void MainWindow_ImGui::renderMenuBar()
                     tms9918Enabled = false;
                 }
             }
-            if (ImGui::IsItemHovered())
-                ImGui::SetTooltip("Claudio Parmigiani's 10-unit A1-AUDIO Special Edition.\n"
-                                  "Same MOS 6581/8580 as the prototype, register window at $CC00-$CC1F.\n"
-                                  "Mutually exclusive with P-LAB Graphic Card (TMS9918).");
+            showHardwareTooltip(
+                "Claudio Parmigiani's 10-unit A1-AUDIO Special Edition\n"
+                "SID registers: $CC00-$CC1F.\n\n"
+                "Plugging it unplugs A1-SID (same SID chip) and TMS9918\n"
+                "($CC00/$CC01 overlap). Juke-Box can coexist.");
             if (ImGui::MenuItem("P-LAB Graphic Card (TMS9918)", nullptr, &tms9918Enabled)) {
                 emulation->setTMS9918Enabled(tms9918Enabled);
                 if (tms9918Enabled) {
@@ -230,10 +270,20 @@ void MainWindow_ImGui::renderMenuBar()
                     sidSpecialEditionEnabled = false; // mutually exclusive
                 }
             }
+            showHardwareTooltip(
+                "P-LAB Graphic Card (TMS9918)\n"
+                "VDP ports: $CC00/$CC01.\n\n"
+                "Plugging it unplugs A1-AUDIO SE, because the two cards share\n"
+                "the $CC00 control/data window.");
             if (ImGui::MenuItem("P-LAB I/O Board & RTC", nullptr, &a1ioRtcEnabled)) {
                 emulation->setA1IO_RTCEnabled(a1ioRtcEnabled);
                 if (a1ioRtcEnabled) showA1IO_RTC = true;
             }
+            showHardwareTooltip(
+                "P-LAB I/O Board & RTC\n"
+                "VIA window: $2000-$200F.\n\n"
+                "Hardware conflict: Uncle Bernie's GEN2 HGR uses $2000-$3FFF.\n"
+                "A real Apple-1 bus has no arbitration, so use one of these cards at a time.");
 #if !POM1_IS_WASM
             if (ImGui::MenuItem("P-LAB Terminal Card", nullptr, &terminalCardEnabled)) {
                 emulation->setTerminalCardEnabled(terminalCardEnabled);
@@ -242,8 +292,16 @@ void MainWindow_ImGui::renderMenuBar()
 #endif
             if (ImGui::MenuItem("P-LAB MODEM BBS", nullptr, &wifiModemEnabled)) {
                 emulation->setWiFiModemEnabled(wifiModemEnabled);
-                if (wifiModemEnabled) showWiFiModem = true;
+                if (wifiModemEnabled) {
+                    showWiFiModem = true;
+                    jukeBoxEnabled = false;
+                }
             }
+            showHardwareTooltip(
+                "P-LAB MODEM BBS\n"
+                "ACIA window: $B000-$B003.\n\n"
+                "Plugging it unplugs Juke-Box when the Juke-Box ROM covers\n"
+                "$B000-$B003.");
             ImGui::EndMenu();
         }
 
@@ -372,15 +430,18 @@ void MainWindow_ImGui::renderToolbar()
         if (ImGui::Button(ICON_FA_SD_CARD, btnSize)) {
             microSDEnabled = !microSDEnabled;
             emulation->setMicroSDEnabled(microSDEnabled);
-            if (microSDEnabled) { cffa1Enabled = false; } // mutual exclusion
+            if (microSDEnabled) {
+                cffa1Enabled = false; // mutual exclusion
+                jukeBoxEnabled = false;
+            }
             setStatusMessage(microSDEnabled ? "P-LAB microSD Card plugged - type 8000R"
                                             : "P-LAB microSD Card unplugged", 2.0f);
         }
         ImGui::PopStyleColor();
-        if (ImGui::IsItemHovered()) {
-            ImGui::SetTooltip(microSDEnabled ? "P-LAB microSD Storage Card (click to unplug)"
-                                             : "Plug P-LAB microSD Storage Card");
-        }
+        showHardwareTooltip(
+            "P-LAB microSD Storage Card\n"
+            "ROM/VIA window: $8000-$9FFF and $A000-$A00F.\n\n"
+            "Click toggles the card. Plugging it unplugs CFFA1 and Juke-Box.");
 
         ImGui::SameLine();
         ImGui::PushStyleColor(ImGuiCol_Button,
@@ -388,15 +449,18 @@ void MainWindow_ImGui::renderToolbar()
         if (ImGui::Button(ICON_FA_HARD_DRIVE, btnSize)) {
             cffa1Enabled = !cffa1Enabled;
             emulation->setCFFA1Enabled(cffa1Enabled);
-            if (cffa1Enabled) { microSDEnabled = false; } // mutual exclusion
+            if (cffa1Enabled) {
+                microSDEnabled = false; // mutual exclusion
+                jukeBoxEnabled = false;
+            }
             setStatusMessage(cffa1Enabled ? "CFFA1 CompactFlash plugged - type 9006R"
                                           : "CFFA1 CompactFlash unplugged", 2.0f);
         }
         ImGui::PopStyleColor();
-        if (ImGui::IsItemHovered()) {
-            ImGui::SetTooltip(cffa1Enabled ? "CFFA1 CompactFlash Card (click to unplug)"
-                                           : "Plug CFFA1 CompactFlash Card");
-        }
+        showHardwareTooltip(
+            "CFFA1 CompactFlash Card\n"
+            "ROM/register window: $9000-$AFFF.\n\n"
+            "Click toggles the card. Plugging it unplugs microSD and Juke-Box.");
 
         ImGui::SameLine();
         ImGui::PushStyleColor(ImGuiCol_Button,
@@ -410,6 +474,7 @@ void MainWindow_ImGui::renderToolbar()
                 cffa1Enabled = false;
                 microSDEnabled = false;
                 wifiModemEnabled = false;
+                sidEnabled = false;
                 evictMemoryMapRegionsForJukeBox();
                 jbMsg = "P-LAB Juke-Box plugged "
                         "- type BD00R for Program Manager";
@@ -424,10 +489,11 @@ void MainWindow_ImGui::renderToolbar()
         drawToolbarDipChipIcon(ImGui::GetWindowDrawList(),
                                ImGui::GetItemRectMin(), ImGui::GetItemRectMax());
         ImGui::PopStyleColor();
-        if (ImGui::IsItemHovered()) {
-            ImGui::SetTooltip(jukeBoxEnabled ? "P-LAB Apple-1 Juke-Box (click to unplug)"
-                                             : "Plug P-LAB Apple-1 Juke-Box");
-        }
+        showHardwareTooltip(
+            "P-LAB Apple-1 Juke-Box\n"
+            "ROM window: $4000-$BFFF or $8000-$BFFF. Bank latch: $CA00.\n\n"
+            "Click toggles the card. Plugging it unplugs CFFA1, microSD,\n"
+            "Wi-Fi Modem, and A1-SID. A1-AUDIO SE can coexist.");
 
         ImGui::SameLine();
         ImGui::PushStyleColor(ImGuiCol_Button,
@@ -451,13 +517,17 @@ void MainWindow_ImGui::renderToolbar()
         if (ImGui::Button(ICON_FA_MUSIC, btnSize)) {
             sidEnabled = !sidEnabled;
             emulation->setSIDEnabled(sidEnabled);
+            if (sidEnabled) {
+                sidSpecialEditionEnabled = false;
+                jukeBoxEnabled = false;
+            }
             setStatusMessage(sidEnabled ? "P-LAB A1-SID plugged" : "P-LAB A1-SID unplugged", 2.0f);
         }
         ImGui::PopStyleColor();
-        if (ImGui::IsItemHovered()) {
-            ImGui::SetTooltip(sidEnabled ? "P-LAB A1-SID Sound Card (click to unplug)"
-                                         : "Plug P-LAB A1-SID Sound Card");
-        }
+        showHardwareTooltip(
+            "P-LAB A1-SID Sound Card\n"
+            "SID registers: $C800-$CFFF.\n\n"
+            "Click toggles the card. Plugging it unplugs A1-AUDIO SE and Juke-Box.");
 
         ImGui::SameLine();
         if (tms9918Enabled && showTMS9918)
@@ -471,6 +541,7 @@ void MainWindow_ImGui::renderToolbar()
                 tms9918Enabled = true;
                 showTMS9918 = true;
                 emulation->setTMS9918Enabled(true);
+                sidSpecialEditionEnabled = false;
                 setStatusMessage("P-LAB TMS9918 plugged", 2.0f);
             } else {
                 showTMS9918 = !showTMS9918;
@@ -482,9 +553,10 @@ void MainWindow_ImGui::renderToolbar()
             }
         }
         ImGui::PopStyleColor();
-        if (ImGui::IsItemHovered()) {
-            ImGui::SetTooltip(tms9918Enabled ? "P-LAB TMS9918 Output (click to unplug)" : "Plug P-LAB Graphic Card (TMS9918)");
-        }
+        showHardwareTooltip(
+            "P-LAB Graphic Card (TMS9918)\n"
+            "VDP ports: $CC00/$CC01.\n\n"
+            "Click toggles the output window/card. Plugging it unplugs A1-AUDIO SE.");
 
         ImGui::SameLine();
         if (graphicsCardEnabled && showGraphicsCard)
@@ -521,9 +593,11 @@ void MainWindow_ImGui::renderToolbar()
         drawToolbarTextLabel(ImGui::GetWindowDrawList(),
                                ImGui::GetItemRectMin(), ImGui::GetItemRectMax(), "HGR");
         ImGui::PopStyleColor();
-        if (ImGui::IsItemHovered()) {
-            ImGui::SetTooltip(graphicsCardEnabled ? "Bernie's GEN2 HGR (click to unplug)" : "Plug Uncle Bernie's GEN2 HGR Graphic Card");
-        }
+        showHardwareTooltip(
+            "Uncle Bernie's GEN2 HGR Graphic Card\n"
+            "Framebuffer: $2000-$3FFF.\n\n"
+            "Hardware conflict with P-LAB I/O Board & RTC ($2000-$200F).\n"
+            "Use one of these cards at a time on real hardware.");
 
         // --- SWTPC GT-6144 Graphic Terminal (1976) ---
         ImGui::SameLine();
@@ -574,10 +648,11 @@ void MainWindow_ImGui::renderToolbar()
             }
         }
         ImGui::PopStyleColor();
-        if (ImGui::IsItemHovered()) {
-            ImGui::SetTooltip(a1ioRtcEnabled ? "P-LAB I/O Board & RTC (click to unplug)"
-                                              : "Plug P-LAB I/O Board & RTC");
-        }
+        showHardwareTooltip(
+            "P-LAB I/O Board & RTC\n"
+            "VIA window: $2000-$200F.\n\n"
+            "Hardware conflict with GEN2 HGR ($2000-$3FFF).\n"
+            "Use one of these cards at a time on real hardware.");
 
 #if !POM1_IS_WASM
         // --- P-LAB Terminal Card ---
@@ -614,6 +689,7 @@ void MainWindow_ImGui::renderToolbar()
                 wifiModemEnabled = true;
                 showWiFiModem = true;
                 emulation->setWiFiModemEnabled(true);
+                jukeBoxEnabled = false;
                 setStatusMessage("P-LAB Wi-Fi Modem plugged", 2.0f);
             } else {
                 showWiFiModem = !showWiFiModem;
@@ -627,10 +703,11 @@ void MainWindow_ImGui::renderToolbar()
         drawToolbarTextLabel(ImGui::GetWindowDrawList(),
                              ImGui::GetItemRectMin(), ImGui::GetItemRectMax(), "BBS");
         ImGui::PopStyleColor();
-        if (ImGui::IsItemHovered()) {
-            ImGui::SetTooltip(wifiModemEnabled ? "P-LAB Wi-Fi Modem (click to unplug)"
-                                               : "Plug P-LAB Wi-Fi Modem");
-        }
+        showHardwareTooltip(
+            "P-LAB MODEM BBS\n"
+            "ACIA window: $B000-$B003.\n\n"
+            "Click toggles the card. Plugging it unplugs Juke-Box when its ROM\n"
+            "covers $B000-$B003.");
 
         // --- SWTPC PR-40 Printer (Jobs 1976) ---
         ImGui::SameLine();
@@ -741,11 +818,19 @@ void MainWindow_ImGui::renderToolbar()
         }
         ImGui::SameLine();
         {
-            bool map = showMemoryMap;
+            bool map = showMemoryMapGrid;
             if (map) ImGui::PushStyleColor(ImGuiCol_Button, activeColor);
-            if (ImGui::Button(ICON_FA_MAP, btnSize)) showMemoryMap = !showMemoryMap;
+            if (ImGui::Button(ICON_FA_MAP, btnSize)) showMemoryMapGrid = !showMemoryMapGrid;
             if (map) ImGui::PopStyleColor();
-            if (ImGui::IsItemHovered()) ImGui::SetTooltip("Memory Map");
+            if (ImGui::IsItemHovered()) ImGui::SetTooltip("Memory Map Grid");
+        }
+        ImGui::SameLine();
+        {
+            bool bar = showMemoryBar;
+            if (bar) ImGui::PushStyleColor(ImGuiCol_Button, activeColor);
+            if (ImGui::Button(ICON_FA_CHART_BAR, btnSize)) showMemoryBar = !showMemoryBar;
+            if (bar) ImGui::PopStyleColor();
+            if (ImGui::IsItemHovered()) ImGui::SetTooltip("Memory Map Bar");
         }
 
         // --- Séparateur ---

@@ -2,6 +2,8 @@
 #define MEMORYVIEWER_IMGUI_H
 
 #include "Memory.h"
+#include "JukeBox.h"
+#include "Disassembler6502.h"
 #include "imgui.h"
 #include <functional>
 #include <vector>
@@ -16,6 +18,12 @@ public:
     void render();
     void navigateToAddress(int address);
     void updateLiveMemory(const std::vector<quint8>& memoryImage);
+
+    struct ViewportRange { int startAddress, endAddress; };
+    ViewportRange getViewportRange() const {
+        int end = startAddress + bytesPerRow * displayRows;
+        return { startAddress, end > 0x10000 ? 0x10000 : end };
+    }
     void setWriteCallback(std::function<void(quint16, quint8)> callback);
     void setGraphicsCardEnabled(bool enabled) { gen2Enabled = enabled; }
     void setTMS9918Enabled(bool enabled) { tms9918Enabled = enabled; }
@@ -24,6 +32,12 @@ public:
     void setWiFiModemEnabled(bool enabled) { wifiModemEnabled = enabled; }
     void setTerminalCardEnabled(bool enabled) { terminalCardEnabled = enabled; }
     void setACIEnabled(bool enabled) { aciEnabled = enabled; }
+    void setJukeBoxEnabled(bool enabled) { jukeBoxEnabled = enabled; }
+    void setJukeBoxState(uint8_t page, uint8_t subPage, uint8_t pgCount,
+                         JukeBox::Jumper jmp, JukeBox::ChipMode chip) {
+        jbCurrentPage = page; jbCurrentSubPage = subPage;
+        jbPageCount = pgCount; jbJumper = jmp; jbChipMode = chip;
+    }
 
     struct RomRegion { quint16 start, end; };
     void setLoadedRoms(const std::vector<RomRegion>& roms) { romRegions = roms; }
@@ -38,6 +52,8 @@ private:
     int bytesPerRow = 16;
     int displayRows = 32;
     bool showAscii = true;
+    bool showDisasm = false;
+    bool showChanges = true;
     bool autoRefresh = false;
     bool colorizeRegions = true;
     bool gen2Enabled = false;
@@ -47,6 +63,12 @@ private:
     bool wifiModemEnabled = false;
     bool terminalCardEnabled = false;
     bool aciEnabled = true;
+    bool jukeBoxEnabled = false;
+    uint8_t jbCurrentPage = 0;
+    uint8_t jbCurrentSubPage = 0;
+    uint8_t jbPageCount = 0;
+    JukeBox::Jumper jbJumper = JukeBox::Jumper::RAM16_ROM32;
+    JukeBox::ChipMode jbChipMode = JukeBox::ChipMode::Flash;
     std::vector<RomRegion> romRegions;
 
     // Auto-refresh: snapshot taken when autoRefresh is off
@@ -54,6 +76,14 @@ private:
     bool snapshotValid = false;
     void takeSnapshot();
     quint8 readByte(int address) const;
+    const uint8_t* getMemoryPointer() const;
+
+    // Change highlighting: per-byte frame counter tracking last modification
+    std::vector<quint8> prevMemory;
+    std::vector<uint32_t> changeFrame;
+    uint32_t frameCounter = 0;
+    static constexpr uint32_t kChangeFadeFrames = 45; // ~0.75 s at 60 fps
+    void detectChanges();
 
     // Search functionality
     char searchBuffer[256] = {0};
@@ -82,6 +112,8 @@ private:
 
     // Utility functions
     void renderHexView();
+    void renderDisasmView();
+    void renderRegionBanner();
     void renderControls();
     void renderSearchDialog();
     void jumpToAddress(int address);
@@ -92,6 +124,7 @@ private:
     // Helper functions
     char getPrintableChar(quint8 value);
     ImVec4 getColorForAddress(int address);
+    const char* getRegionName(int address) const;
     bool isROM(int address);
     bool isIO(int address);
 };

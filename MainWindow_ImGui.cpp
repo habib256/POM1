@@ -280,6 +280,15 @@ void MainWindow_ImGui::render()
         memoryViewer->setWiFiModemEnabled(wifiModemEnabled);
         memoryViewer->setTerminalCardEnabled(terminalCardEnabled);
         memoryViewer->setACIEnabled(aciEnabled);
+        memoryViewer->setJukeBoxEnabled(jukeBoxEnabled);
+        if (jukeBoxEnabled) {
+            memoryViewer->setJukeBoxState(
+                uiSnapshot.jukeBox.currentPage,
+                uiSnapshot.jukeBox.currentSubPage,
+                uiSnapshot.jukeBox.pageCount,
+                uiSnapshot.jukeBox.jumper,
+                uiSnapshot.jukeBox.chipMode);
+        }
     }
     if (showMemoryViewer) {
         std::vector<MemoryViewer_ImGui::RomRegion> mvRoms;
@@ -489,7 +498,8 @@ void MainWindow_ImGui::render()
     }
 
     // Carte mémoire
-    if (showMemoryMap) renderMemoryMapWindow();
+    if (showMemoryMapGrid) renderMemoryMapGridWindow();
+    if (showMemoryBar) renderMemoryBarWindow();
 
     // Dialogues
     if (showAbout) renderAboutDialog();

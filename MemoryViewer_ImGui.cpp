@@ -10,6 +10,8 @@ MemoryViewer_ImGui::MemoryViewer_ImGui(Memory* mem)
     : memory(mem)
 {
     snapshot.resize(0x10000);
+    prevMemory.resize(0x10000, 0);
+    changeFrame.resize(0x10000, 0);
 }
 
 // Read a byte: live from raw pointer (no I/O side effects) or from snapshot
@@ -28,17 +30,43 @@ void MemoryViewer_ImGui::takeSnapshot()
     }
 }
 
+const uint8_t* MemoryViewer_ImGui::getMemoryPointer() const
+{
+    if ((autoRefresh || !snapshotValid) && liveMemory && !liveMemory->empty())
+        return liveMemory->data();
+    return snapshot.data();
+}
+
+void MemoryViewer_ImGui::detectChanges()
+{
+    const uint8_t* mem = getMemoryPointer();
+    if (!mem) return;
+    ++frameCounter;
+    for (int i = 0; i < 0x10000; ++i) {
+        if (mem[i] != prevMemory[i]) {
+            changeFrame[i] = frameCounter;
+            prevMemory[i] = mem[i];
+        }
+    }
+}
+
 void MemoryViewer_ImGui::render()
 {
+    if (showChanges)
+        detectChanges();
+
     handleNavigation();
     renderControls();
     ImGui::Separator();
-    renderHexView();
+    renderRegionBanner();
+    if (showDisasm)
+        renderDisasmView();
+    else
+        renderHexView();
 
     if (showSearch) {
         renderSearchDialog();
     }
-
 }
 
 void MemoryViewer_ImGui::navigateToAddress(int address)
@@ -142,6 +170,12 @@ void MemoryViewer_ImGui::renderControls()
     ImGui::SameLine();
     ImGui::Checkbox("Colorize", &colorizeRegions);
 
+    ImGui::SameLine();
+    ImGui::Checkbox("Changes", &showChanges);
+
+    ImGui::SameLine();
+    ImGui::Checkbox("Disasm", &showDisasm);
+
     // Quick shortcuts
     ImGui::Spacing();
     ImGui::Text("Shortcuts:");
@@ -231,6 +265,21 @@ void MemoryViewer_ImGui::renderHexView()
             quint8 value = readByte(currentAddr);
 
             ImGui::SameLine(hexStartX + col * cellW);
+
+            // Change highlight: orange background flash for recently modified bytes
+            if (showChanges && frameCounter > 0) {
+                uint32_t age = frameCounter - changeFrame[currentAddr];
+                if (age < kChangeFadeFrames) {
+                    float alpha = 1.0f - static_cast<float>(age) / kChangeFadeFrames;
+                    ImVec2 cellPos = ImGui::GetCursorScreenPos();
+                    float cellH = ImGui::GetTextLineHeight();
+                    float cellWPx = cellW - ImGui::GetStyle().ItemSpacing.x;
+                    ImGui::GetWindowDrawList()->AddRectFilled(
+                        cellPos,
+                        ImVec2(cellPos.x + cellWPx, cellPos.y + cellH),
+                        IM_COL32(255, 120, 40, static_cast<int>(alpha * 160)));
+                }
+            }
 
             // Color by memory region
             bool pushedColor = false;
@@ -502,6 +551,130 @@ void MemoryViewer_ImGui::redo()
     jumpToAddress(rec.address);
 }
 
+// --- Region context banner ---------------------------------------------------
+
+const char* MemoryViewer_ImGui::getRegionName(int address) const
+{
+    if (address <= 0x00FF) return "Zero Page";
+    if (address <= 0x01FF) return "Stack";
+    if (address <= 0x027F) return "Keyboard Buffer";
+    if (gen2Enabled && address >= 0x2000 && address <= 0x3FFF) return "GEN2 HGR Framebuffer";
+    if (jukeBoxEnabled) {
+        int romStart = (jbJumper == JukeBox::Jumper::RAM16_ROM32) ? 0x4000 : 0x8000;
+        if (address >= 0xBD00 && address <= 0xBFFF) return "Juke-Box Program Manager";
+        if (address >= 0xBC00 && address <= 0xBCFF) return "Juke-Box PAT (directory)";
+        if (address >= romStart && address <= 0xBBFF) return "Juke-Box ROM";
+    }
+    if (microSDEnabled && address >= 0x8000 && address <= 0x9FFF) return "SD CARD OS ROM";
+    if (microSDEnabled && address >= 0xA000 && address <= 0xA00F) return "microSD VIA 65C22";
+    if (wifiModemEnabled && address >= 0xB000 && address <= 0xB003) return "Wi-Fi Modem ACIA";
+    for (const auto& rom : romRegions) {
+        if (address >= rom.start && address <= rom.end) return "Loaded ROM";
+    }
+    if (aciEnabled && address >= 0xC000 && address <= 0xC0FF) return "ACI I/O";
+    if (aciEnabled && address >= 0xC100 && address <= 0xC1FF) return "ACI ROM";
+    if (sidEnabled && address >= 0xC800 && address <= 0xCFFF) return "A1-SID";
+    if (tms9918Enabled && address >= 0xCC00 && address <= 0xCC01) return "TMS9918 VDP";
+    if (address >= 0xD000 && address <= 0xD0FF) return "I/O (KBD/DSP)";
+    if (address >= 0xE000 && address <= 0xEFFF) return "Integer BASIC ROM";
+    if (address >= 0xFF00) return "Woz Monitor ROM";
+    return "User RAM";
+}
+
+void MemoryViewer_ImGui::renderRegionBanner()
+{
+    const char* regionName = getRegionName(startAddress);
+    ImVec4 regionColor = colorizeRegions ? getColorForAddress(startAddress)
+                                         : ImVec4(0.7f, 0.7f, 0.7f, 1.0f);
+
+    // Build info string with JukeBox bank details when applicable
+    char banner[128];
+    if (jukeBoxEnabled) {
+        int romStart = (jbJumper == JukeBox::Jumper::RAM16_ROM32) ? 0x4000 : 0x8000;
+        if (startAddress >= romStart && startAddress <= 0xBFFF) {
+            if (jbJumper == JukeBox::Jumper::RAM16_ROM32)
+                snprintf(banner, sizeof(banner), "%s  P%u of %u", regionName, jbCurrentPage, jbPageCount);
+            else
+                snprintf(banner, sizeof(banner), "%s  P%u:S%u of %u", regionName, jbCurrentPage, jbCurrentSubPage, jbPageCount);
+        } else {
+            snprintf(banner, sizeof(banner), "%s", regionName);
+        }
+    } else {
+        snprintf(banner, sizeof(banner), "%s", regionName);
+    }
+
+    ImGui::PushStyleColor(ImGuiCol_Text, regionColor);
+    ImGui::Text("--- %s ---", banner);
+    ImGui::PopStyleColor();
+}
+
+// --- Disassembly view --------------------------------------------------------
+
+void MemoryViewer_ImGui::renderDisasmView()
+{
+    ImGui::BeginChild("DisasmView", ImVec2(0, 0), true);
+
+    const uint8_t* mem = getMemoryPointer();
+    if (!mem) { ImGui::EndChild(); return; }
+
+    // Column widths
+    float addrW = ImGui::CalcTextSize("$0000  ").x;
+    float bytesColW = ImGui::CalcTextSize("00 00 00  ").x;
+    float mnemonicX = addrW + bytesColW;
+
+    // Header
+    ImGui::Text("Address");
+    ImGui::SameLine(addrW);
+    ImGui::Text("Bytes");
+    ImGui::SameLine(mnemonicX);
+    ImGui::Text("Instruction");
+    ImGui::Separator();
+
+    int pc = startAddress;
+    for (int i = 0; i < displayRows && pc <= 0xFFFF; ++i) {
+        int instrLen = 1;
+        std::string mnemonic = pom1::disassemble6502(mem, static_cast<uint16_t>(pc), instrLen);
+
+        // Change highlight background for the instruction's first byte
+        if (showChanges && frameCounter > 0) {
+            uint32_t age = frameCounter - changeFrame[pc];
+            if (age < kChangeFadeFrames) {
+                float alpha = 1.0f - static_cast<float>(age) / kChangeFadeFrames;
+                ImVec2 pos = ImGui::GetCursorScreenPos();
+                float rowH = ImGui::GetTextLineHeight();
+                float rowW = ImGui::GetContentRegionAvail().x;
+                ImGui::GetWindowDrawList()->AddRectFilled(
+                    pos, ImVec2(pos.x + rowW, pos.y + rowH),
+                    IM_COL32(255, 120, 40, static_cast<int>(alpha * 100)));
+            }
+        }
+
+        // Address
+        if (colorizeRegions) {
+            ImGui::TextColored(getColorForAddress(pc), "$%04X", pc);
+        } else {
+            ImGui::Text("$%04X", pc);
+        }
+
+        // Hex bytes (padded to 9 chars for alignment: "XX XX XX ")
+        ImGui::SameLine(addrW);
+        char hexStr[10] = "         ";
+        for (int b = 0; b < instrLen && b < 3; ++b) {
+            snprintf(hexStr + b * 3, 4, "%02X ", readByte(pc + b));
+        }
+        hexStr[9] = '\0';
+        ImGui::TextDisabled("%s", hexStr);
+
+        // Mnemonic
+        ImGui::SameLine(mnemonicX);
+        ImGui::Text("%s", mnemonic.c_str());
+
+        pc += instrLen;
+    }
+
+    ImGui::EndChild();
+}
+
 char MemoryViewer_ImGui::getPrintableChar(quint8 value)
 {
     return (value >= 32 && value <= 126) ? static_cast<char>(value) : '.';
@@ -564,6 +737,17 @@ ImVec4 MemoryViewer_ImGui::getColorForAddress(int address)
     for (const auto& rom : romRegions) {
         if (address >= rom.start && address <= rom.end)
             return ImVec4(1.0f, 1.0f, 0.31f, 1.0f); // ROM - yellow
+    }
+    // P-LAB Juke-Box ROM window (violet shades matching Memory Map)
+    if (jukeBoxEnabled) {
+        const int romStart = (jbJumper == JukeBox::Jumper::RAM16_ROM32) ? 0x4000 : 0x8000;
+        if (address >= romStart && address <= 0xBFFF) {
+            if (address >= 0xBD00)
+                return ImVec4(0.90f, 0.71f, 1.0f, 1.0f);  // Program Manager - bright lavender
+            if (address >= 0xBC00)
+                return ImVec4(0.71f, 0.51f, 0.86f, 1.0f);  // PAT directory - medium violet
+            return ImVec4(0.47f, 0.31f, 0.71f, 1.0f);      // Programs - deep violet
+        }
     }
     if (address <= 0x9FFF)
         return ImVec4(0.31f, 0.78f, 0.31f, 1.0f);   // User RAM - green

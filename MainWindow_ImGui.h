@@ -135,7 +135,8 @@ private:
     bool aciEnabled = true;   // Woz ACI cassette interface plugged (default on)
     bool showCassetteControl = false;  // Legacy utilitarian controls
     bool showCassetteDeck = false;     // Realistic procedural cassette deck
-    bool showMemoryMap = false;
+    bool showMemoryMapGrid = false;
+    bool showMemoryBar = false;
     bool showSaveDialog = false;
     bool showSaveTapeDialog = false;
     bool showGraphicsCard = false;
@@ -265,7 +266,10 @@ private:
     void renderLoadTapeDialog();
     void renderCassetteControlWindow();
     void renderCassetteDeckWindow();
-    void renderMemoryMapWindow();
+    struct MemRegion { quint16 start, end; ImU32 color; const char* label; };
+    std::vector<MemRegion> buildMemoryRegions();
+    void renderMemoryMapGridWindow();
+    void renderMemoryBarWindow();
     void renderSaveDialog();
     void renderSaveTapeDialog();
     void renderGraphicsCardWindow();

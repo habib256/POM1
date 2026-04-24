@@ -29,11 +29,12 @@ Sections are ordered by actionability: implementable work first, externally-bloc
 ## 🎨 Visuals & UX
 
 - [ ] **Native file dialog** `[M · solid]` — the in-app browser stays in the way. Drop in `nfd` (NativeFileDialog) or `tinyfiledialogs` — header-light, MIT, cross-platform.
-- [ ] **Hardware menu mutual-exclusion tooltips** `[S · nice]` — toggling cards silently evicts others per the "one board at a time" rule (SID ↔ A1-AUDIO SE, TMS9918 ↔ A1-AUDIO SE, GEN2 HGR ↔ A1-IO RTC, Juke-Box ↔ {CFFA1, microSD, Krusader, Wi-Fi Modem, A1-SID}). The UI performs the evict but doesn't forewarn — add an ImGui tooltip on each checkbox listing the cards it will unplug and the overlapping bus window.
+- [x] **Hardware menu / toolbar mutual-exclusion tooltips** `[S · nice]` — toggling cards silently evicts others per the "one board at a time" rule (SID ↔ A1-AUDIO SE, TMS9918 ↔ A1-AUDIO SE, GEN2 HGR ↔ A1-IO RTC, Juke-Box ↔ {CFFA1, microSD, Krusader, Wi-Fi Modem, A1-SID}). The UI performs the evict but doesn't forewarn — add an ImGui tooltip on each menu item / toolbar button listing the cards it will unplug, the overlapping bus window, and why the combination is not hardware-realistic.
 - [ ] **HiDPI font scaling on Linux** `[S · nice]` — ImGui font scaling on 4K X11/Wayland displays currently requires the user to tweak `ImGui::GetIO().FontGlobalScale` manually. Auto-detect monitor DPI on first window creation (`glfwGetMonitorContentScale`, GLFW 3.3+) and scale the default font; keep a Hardware → Display setting to override.
 - [ ] **1976 CRT fidelity (opt-in)** `[M · nice]` — two sub-effects under the existing CRT toggle, default off. The streaming sub-effect is period-accurate; the noise sub-effect is pure cosmetic polish.
   1. **Shift-register streaming** `[S · nice]` (Signetics 2519 timing): characters land ~60 / s, hardware scroll shifts the buffer one line at a time, display freezes during CPU bursts. Pair with the bare-4K preset.
   2. **Shift-register dot noise** `[S · nice]` (2504 / 2513 clock): periodic static pattern, **not random** — ~40 × 3 sub-cells per char, 1-px horizontal phase drift row-to-row, last row shorter. New `drawShiftRegisterNoise()` after the backdrop pass, deterministic nested loop, `alpha ≈ crtScanlineAlpha * 0.25`, tinted with `phosphorTint`.
+- [ ] **Shared video texture layer** `[M · solid]` — `Screen_ImGui.cpp` and `MainWindow_HardwareWindows.cpp` still own raw OpenGL texture lifecycles directly (glyph atlas, GEN2 HGR, TMS9918, GT-6144). Factor a tiny backend-neutral texture helper for create/update/destroy + filtering mode (`GL_NEAREST` pixel cards, `GL_LINEAR` glyph atlas) so visual windows share one upload path and the future Metal backend only ports one abstraction.
 
 ---
 

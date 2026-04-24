@@ -22,7 +22,7 @@ const MainWindow_ImGui::Shortcut MainWindow_ImGui::shortcuts[] = {
     { GLFW_KEY_F6, 0,                "F6",       nullptr }, // toggle start/stop
     { GLFW_KEY_F7, 0,                "F7",       &MainWindow_ImGui::stepCpu },
     { GLFW_KEY_F1, 0,                "F1",       nullptr }, // toggle showMemoryViewer
-    { GLFW_KEY_F2, 0,                "F2",       nullptr }, // toggle showMemoryMap
+    { GLFW_KEY_F2, 0,                "F2",       nullptr }, // toggle showMemoryMapGrid
     { GLFW_KEY_F3, 0,                "F3",       nullptr }, // toggle showDebugger
 };
 const int MainWindow_ImGui::shortcutCount = sizeof(shortcuts) / sizeof(shortcuts[0]);
@@ -75,7 +75,7 @@ void MainWindow_ImGui::handleGlfwKey(int key, int scancode, int action, int mods
             } else if (key == GLFW_KEY_F1) {
                 showMemoryViewer = !showMemoryViewer;
             } else if (key == GLFW_KEY_F2) {
-                showMemoryMap = !showMemoryMap;
+                showMemoryMapGrid = !showMemoryMapGrid;
             } else if (key == GLFW_KEY_F3) {
                 showDebugger = !showDebugger;
             }

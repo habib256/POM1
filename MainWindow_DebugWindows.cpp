@@ -204,29 +204,16 @@ void MainWindow_ImGui::renderDebugDialog()
     }
     ImGui::End();
 }
-void MainWindow_ImGui::renderMemoryMapWindow()
+std::vector<MainWindow_ImGui::MemRegion> MainWindow_ImGui::buildMemoryRegions()
 {
-    ImGui::SetNextWindowSize(ImVec2(880, 580), ImGuiCond_FirstUseEver);
-    if (!ImGui::Begin("Memory Map", &showMemoryMap)) {
-        ImGui::End();
-        return;
-    }
-
-    // Memory regions with colors
-    struct MemRegion {
-        quint16 start;
-        quint16 end; // inclusive
-        ImU32 color;
-        const char* label;
-    };
-
     const uint32_t ramCeiling32 = static_cast<uint32_t>(presetRamKB) * 1024;
     const bool fullRam = (ramCeiling32 >= 0x10000);
     const ImU32 ramColor   = IM_COL32( 80, 200,  80, 255);
     const ImU32 unmapColor = IM_COL32( 40,  40,  40, 255);
 
-    // --- Layer 0: base (User RAM + Unmapped) ---
     std::vector<MemRegion> regions;
+
+    // --- Layer 0: base (User RAM + Unmapped) ---
     if (fullRam) {
         regions.push_back({ 0x0000, 0xFFFF, ramColor, "User RAM" });
     } else {
@@ -280,19 +267,32 @@ void MainWindow_ImGui::renderMemoryMapWindow()
     }
 
     // P-LAB Juke-Box: drawn after preset ROM labels so violet wins on overlap.
-    // EEPROM is split into three logical zones (graded violet shades).
+    static char jbProgramsLabel[80];
+    static char jbPatLabel[64];
+    static char jbPmLabel[64];
     if (jukeBoxEnabled) {
-        const ImU32 jbRomPrograms = IM_COL32(120,  80, 180, 255); // deep violet
-        const ImU32 jbRomPat      = IM_COL32(180, 130, 220, 255); // medium violet
-        const ImU32 jbProgMgr     = IM_COL32(230, 180, 255, 255); // bright lavender
-        const quint16 romStart = (jukeBoxJumper == JukeBox::Jumper::RAM16_ROM32)
+        const ImU32 jbRomPrograms = IM_COL32(120,  80, 180, 255);
+        const ImU32 jbRomPat      = IM_COL32(180, 130, 220, 255);
+        const ImU32 jbProgMgr     = IM_COL32(230, 180, 255, 255);
+        const auto& jb = uiSnapshot.jukeBox;
+        const quint16 romStart = (jb.jumper == JukeBox::Jumper::RAM16_ROM32)
                                  ? 0x4000 : 0x8000;
-        const char* programsLabel = (jukeBoxJumper == JukeBox::Jumper::RAM16_ROM32)
-            ? "Juke-Box ROM - programs (32 kB)"
-            : "Juke-Box ROM - programs (16 kB)";
-        regions.push_back({ romStart, 0xBBFF, jbRomPrograms, programsLabel });
-        regions.push_back({ 0xBC00,   0xBCFF, jbRomPat,      "Juke-Box PAT (directory)" });
-        regions.push_back({ 0xBD00,   0xBFFF, jbProgMgr,     "Juke-Box Program Manager" });
+        if (jb.jumper == JukeBox::Jumper::RAM16_ROM32) {
+            snprintf(jbProgramsLabel, sizeof(jbProgramsLabel),
+                     "Juke-Box ROM P%u (32 kB, %s)",
+                     jb.currentPage,
+                     jb.chipMode == JukeBox::ChipMode::Flash ? "Flash" : "EEPROM");
+        } else {
+            snprintf(jbProgramsLabel, sizeof(jbProgramsLabel),
+                     "Juke-Box ROM P%u:S%u (16 kB, %s)",
+                     jb.currentPage, jb.currentSubPage,
+                     jb.chipMode == JukeBox::ChipMode::Flash ? "Flash" : "EEPROM");
+        }
+        snprintf(jbPatLabel, sizeof(jbPatLabel), "Juke-Box PAT P%u", jb.currentPage);
+        snprintf(jbPmLabel, sizeof(jbPmLabel), "Juke-Box Program Manager P%u", jb.currentPage);
+        regions.push_back({ romStart, 0xBBFF, jbRomPrograms, jbProgramsLabel });
+        regions.push_back({ 0xBC00,   0xBCFF, jbRomPat,      jbPatLabel });
+        regions.push_back({ 0xBD00,   0xBFFF, jbProgMgr,     jbPmLabel });
     }
 
     // --- Layer 4: loaded programs (top priority) ---
@@ -304,7 +304,24 @@ void MainWindow_ImGui::renderMemoryMapWindow()
                             IM_COL32(100, 230, 100, 255), progLabels[i].data() });
     }
 
+    return regions;
+}
+
+void MainWindow_ImGui::renderMemoryMapGridWindow()
+{
+    ImGui::SetNextWindowSize(ImVec2(880, 580), ImGuiCond_FirstUseEver);
+    if (!ImGui::Begin("Memory Map Grid", &showMemoryMapGrid)) {
+        ImGui::End();
+        return;
+    }
+
+    auto regions = buildMemoryRegions();
     int numRegions = static_cast<int>(regions.size());
+
+    const uint32_t ramCeiling32 = static_cast<uint32_t>(presetRamKB) * 1024;
+    const bool fullRam = (ramCeiling32 >= 0x10000);
+    const ImU32 ramColor   = IM_COL32( 80, 200,  80, 255);
+    const ImU32 unmapColor = IM_COL32( 40,  40,  40, 255);
 
     // Grille 2×2 : ligne du haut = carte | légende ; ligne du bas = I/O | ACI + vecteurs
     // (ACI et CPU vectors sous la ligne horizontale médiane de la fenêtre)
@@ -549,14 +566,28 @@ void MainWindow_ImGui::renderMemoryMapWindow()
             ImGui::BulletText("Regs 0-5: RTC  6: Temp  10-17: ADC  20-23: DIN");
         }
         if (jukeBoxEnabled) {
+            const auto& jb = uiSnapshot.jukeBox;
             ImGui::Spacing();
-            ImGui::TextColored(ImVec4(0.7f, 0.85f, 1.0f, 1.0f), "  P-LAB Juke-Box (28c256 EEPROM)");
-            if (jukeBoxJumper == JukeBox::Jumper::RAM16_ROM32) {
+            ImGui::TextColored(ImVec4(0.7f, 0.85f, 1.0f, 1.0f),
+                "  P-LAB Juke-Box (%s)",
+                jb.chipMode == JukeBox::ChipMode::Flash ? "Flash" : "EEPROM 28c256");
+            if (jb.jumper == JukeBox::Jumper::RAM16_ROM32) {
                 ImGui::BulletText("$4000-$BFFF  ROM window (32 kB, RAM16/ROM32)");
             } else {
                 ImGui::BulletText("$8000-$BFFF  ROM window (16 kB, RAM32/ROM16)");
             }
-            ImGui::BulletText("$B800  Save Program  (needs RW jumper)");
+            ImGui::BulletText("$CA00  Bank-select latch = $%02X", jb.bankRegister);
+            if (jb.jumper == JukeBox::Jumper::RAM16_ROM32) {
+                ImGui::BulletText("       Page P%u of %u", jb.currentPage, jb.pageCount);
+            } else {
+                ImGui::BulletText("       Page P%u:S%u of %u",
+                    jb.currentPage, jb.currentSubPage, jb.pageCount);
+            }
+            if (jb.firmwarePresent)
+                ImGui::BulletText("       Boot page: P%u", jb.bootPage);
+            ImGui::BulletText("$B800  Save Program  %s",
+                (jb.chipMode == JukeBox::ChipMode::EEPROM28C256 && jb.writable)
+                    ? "(RW enabled)" : "(read-only)");
             ImGui::BulletText("$BD00  Program Manager (signature $A5 / LDA zp)");
             ImGui::TextColored(ImVec4(0.55f, 0.55f, 0.55f, 1.0f),
                 "  BD00R from Woz -> &prompt. H, D, L<id>, P<0-F>, B, X");
@@ -574,5 +605,344 @@ void MainWindow_ImGui::renderMemoryMapWindow()
         ImGui::EndTable();
     }
 
+    ImGui::End();
+}
+
+void MainWindow_ImGui::renderMemoryBarWindow()
+{
+    ImGui::SetNextWindowSize(ImVec2(240, 520), ImGuiCond_FirstUseEver);
+    if (!ImGui::Begin("Memory Map Bar", &showMemoryBar)) {
+        ImGui::End();
+        return;
+    }
+
+    auto regions = buildMemoryRegions();
+    int numRegions = static_cast<int>(regions.size());
+
+    const ImU32 ramColor   = IM_COL32( 80, 200,  80, 255);
+    const quint8* memPtr = uiSnapshot.memory.data();
+    const quint16 pc = uiSnapshot.programCounter;
+
+    // --- Flatten regions at page granularity (256 pages, last-match-wins) ---
+    struct FlatRegion {
+        quint16 start, end;  // inclusive
+        ImU32 color;
+        const char* label;
+    };
+
+    struct PageInfo {
+        ImU32 color;
+        const char* label;
+    };
+    PageInfo pageMap[256];
+
+    for (int page = 0; page < 256; ++page) {
+        quint16 addr = static_cast<quint16>(page << 8);
+        ImU32 color = IM_COL32(40, 40, 40, 255);
+        const char* label = "Unmapped";
+        for (int r = 0; r < numRegions; ++r) {
+            if (addr >= regions[r].start && addr <= regions[r].end) {
+                color = regions[r].color;
+                label = regions[r].label;
+            }
+        }
+        // User RAM heatmap: scan 256 bytes for non-zero data
+        if (color == ramColor) {
+            bool hasData = false;
+            for (int b = 0; b < 256; ++b) {
+                if (memPtr[addr + b] != 0) { hasData = true; break; }
+            }
+            color = hasData ? IM_COL32(80, 220, 80, 255) : IM_COL32(20, 60, 20, 255);
+        }
+        pageMap[page] = { color, label };
+    }
+
+    // Merge consecutive pages with same color+label into flat spans
+    std::vector<FlatRegion> flat;
+    flat.reserve(32);
+    flat.push_back({ 0x0000, 0x00FF, pageMap[0].color, pageMap[0].label });
+    for (int page = 1; page < 256; ++page) {
+        auto& prev = flat.back();
+        if (pageMap[page].color == prev.color && pageMap[page].label == prev.label) {
+            prev.end = static_cast<quint16>((page << 8) | 0xFF);
+        } else {
+            flat.push_back({
+                static_cast<quint16>(page << 8),
+                static_cast<quint16>((page << 8) | 0xFF),
+                pageMap[page].color,
+                pageMap[page].label
+            });
+        }
+    }
+
+    // --- Layout constants ---
+    const float gutterW = 42.0f;
+    const float barW = 48.0f;
+    const float labelGap = 10.0f;
+    const float textH = ImGui::GetTextLineHeight();
+    const float minRegionH = textH + 4.0f;  // every region tall enough for its name
+    const ImVec2 origin = ImGui::GetCursorScreenPos();
+    const float barX = origin.x + gutterW;
+    ImDrawList* dl = ImGui::GetWindowDrawList();
+
+    // --- Compute Y positions with minimum height per region ---
+    // First pass: compute natural (proportional) height, clamp to minRegionH
+    const float availH = std::max(100.0f, ImGui::GetContentRegionAvail().y - 4.0f);
+    std::vector<float> regionH(flat.size());
+    float totalNatural = 0.0f;
+    float totalClamped = 0.0f;
+    for (size_t i = 0; i < flat.size(); ++i) {
+        float natural = (static_cast<float>(flat[i].end - flat[i].start + 1) / 65536.0f) * availH;
+        regionH[i] = std::max(natural, minRegionH);
+        totalNatural += natural;
+        totalClamped += regionH[i];
+    }
+    // Scale large regions down so everything fits within availH if clamping expanded the total
+    const float barHeight = std::max(availH, totalClamped);
+    if (totalClamped > availH) {
+        float excess = totalClamped - availH;
+        // Shrink only regions that are bigger than minRegionH, proportionally
+        float shrinkable = 0.0f;
+        for (size_t i = 0; i < flat.size(); ++i)
+            if (regionH[i] > minRegionH) shrinkable += (regionH[i] - minRegionH);
+        if (shrinkable > 0.0f) {
+            float ratio = std::min(1.0f, excess / shrinkable);
+            for (size_t i = 0; i < flat.size(); ++i) {
+                if (regionH[i] > minRegionH) {
+                    float give = (regionH[i] - minRegionH) * ratio;
+                    regionH[i] -= give;
+                }
+            }
+        }
+    }
+    // Second pass: accumulate Y positions
+    std::vector<float> regionY0(flat.size()), regionY1(flat.size());
+    float curY = origin.y;
+    for (size_t i = 0; i < flat.size(); ++i) {
+        regionY0[i] = curY;
+        regionY1[i] = curY + regionH[i];
+        curY += regionH[i];
+    }
+    const float totalBarH = curY - origin.y;
+
+    // addrToY: interpolate within the distorted region layout
+    auto addrToY = [&](uint32_t addr) -> float {
+        for (size_t i = 0; i < flat.size(); ++i) {
+            uint32_t rStart = flat[i].start;
+            uint32_t rEnd   = static_cast<uint32_t>(flat[i].end) + 1;
+            if (addr >= rStart && addr < rEnd) {
+                float t = static_cast<float>(addr - rStart) / static_cast<float>(rEnd - rStart);
+                return regionY0[i] + t * (regionY1[i] - regionY0[i]);
+            }
+        }
+        return regionY1.back();
+    };
+
+    // Helper: lighten/darken a color for 3D bevel effect
+    auto lighten = [](ImU32 c, int amount) -> ImU32 {
+        int r = std::min(255, (int)((c >>  0) & 0xFF) + amount);
+        int g = std::min(255, (int)((c >>  8) & 0xFF) + amount);
+        int b = std::min(255, (int)((c >> 16) & 0xFF) + amount);
+        int a = (c >> 24) & 0xFF;
+        return IM_COL32(r, g, b, a);
+    };
+    auto darken = [](ImU32 c, int amount) -> ImU32 {
+        int r = std::max(0, (int)((c >>  0) & 0xFF) - amount);
+        int g = std::max(0, (int)((c >>  8) & 0xFF) - amount);
+        int b = std::max(0, (int)((c >> 16) & 0xFF) - amount);
+        int a = (c >> 24) & 0xFF;
+        return IM_COL32(r, g, b, a);
+    };
+
+    // --- Outer frame ---
+    dl->AddRect(ImVec2(barX - 1, origin.y - 1),
+                ImVec2(barX + barW + 1, origin.y + totalBarH + 1),
+                IM_COL32(80, 80, 80, 255), 2.0f, 0, 1.0f);
+
+    // --- Draw flat regions with 3D bevel ---
+    for (size_t ri = 0; ri < flat.size(); ++ri) {
+        const auto& fr = flat[ri];
+        float y0 = regionY0[ri];
+        float y1 = regionY1[ri];
+        float h = y1 - y0;
+
+        // Main fill
+        dl->AddRectFilled(ImVec2(barX, y0), ImVec2(barX + barW, y1), fr.color);
+
+        // Subtle 3D bevel
+        if (h > 4.0f) {
+            dl->AddLine(ImVec2(barX, y0 + 0.5f), ImVec2(barX + barW, y0 + 0.5f),
+                        lighten(fr.color, 40), 1.0f);
+            dl->AddLine(ImVec2(barX, y1 - 0.5f), ImVec2(barX + barW, y1 - 0.5f),
+                        darken(fr.color, 40), 1.0f);
+        }
+
+        // Region separator
+        dl->AddLine(ImVec2(barX, y1), ImVec2(barX + barW, y1),
+                    IM_COL32(30, 30, 30, 200), 1.0f);
+
+        // --- Labels: always show name (minimum height guarantees room) ---
+        uint32_t sizeBytes = static_cast<uint32_t>(fr.end) - fr.start + 1;
+        char labelBuf[128];
+        if (sizeBytes >= 1024)
+            snprintf(labelBuf, sizeof(labelBuf), "%s (%u KB)", fr.label, (unsigned)(sizeBytes / 1024));
+        else
+            snprintf(labelBuf, sizeof(labelBuf), "%s (%u B)", fr.label, (unsigned)sizeBytes);
+
+        float labelY = (y0 + y1) * 0.5f - textH * 0.5f;
+        dl->AddText(ImVec2(barX + barW + labelGap, labelY),
+                    IM_COL32(220, 220, 220, 255), labelBuf);
+
+        // Address range underneath (only if enough room for two lines)
+        if (h > textH * 2.0f + 6.0f) {
+            char addrBuf[24];
+            snprintf(addrBuf, sizeof(addrBuf), "$%04X-$%04X", fr.start, fr.end);
+            dl->AddText(ImVec2(barX + barW + labelGap, labelY + textH + 1),
+                        IM_COL32(130, 130, 130, 255), addrBuf);
+        }
+    }
+
+    // --- Address labels in gutter ---
+    // $0000 at top, $FFFF at bottom are always drawn. Intermediate 8 KB
+    // marks are only drawn when they don't overlap with each other or
+    // with the fixed $0000/$FFFF labels.
+    {
+        const float topLabelY  = origin.y - 1;
+        const float botLabelY  = origin.y + totalBarH - textH + 1;
+        dl->AddText(ImVec2(origin.x, topLabelY),
+                    IM_COL32(180, 180, 180, 255), "$0000");
+        dl->AddText(ImVec2(origin.x, botLabelY),
+                    IM_COL32(180, 180, 180, 255), "$FFFF");
+
+        const float minSpacing = textH + 2.0f;
+        float lastLabelY = topLabelY;  // tracks the bottom of the last drawn label
+
+        for (int kb = 8; kb < 64; kb += 8) {
+            uint32_t addr = static_cast<uint32_t>(kb) * 1024;
+            float y = addrToY(addr);
+            // Tick line across bar (always drawn)
+            dl->AddLine(ImVec2(barX, y), ImVec2(barX + barW, y),
+                        IM_COL32(255, 255, 255, 20), 1.0f);
+            // Label only if enough room above and below
+            float labelY = y - textH * 0.5f;
+            if (labelY - lastLabelY >= minSpacing && botLabelY - labelY >= minSpacing) {
+                char tick[8];
+                snprintf(tick, sizeof(tick), "$%04X", static_cast<uint16_t>(addr));
+                float tw = ImGui::CalcTextSize(tick).x;
+                dl->AddText(ImVec2(barX - tw - 4, labelY),
+                            IM_COL32(100, 100, 100, 255), tick);
+                lastLabelY = labelY;
+            }
+        }
+    }
+
+    // --- PC indicator: white arrow + label ---
+    {
+        float pcY = addrToY(pc);
+        float sz = 6.0f;
+        // Arrow
+        dl->AddTriangleFilled(
+            ImVec2(barX - sz - 3, pcY - sz),
+            ImVec2(barX - 3, pcY),
+            ImVec2(barX - sz - 3, pcY + sz),
+            IM_COL32(255, 255, 255, 255));
+        // Dashed line across bar
+        dl->AddLine(ImVec2(barX, pcY), ImVec2(barX + barW, pcY),
+                    IM_COL32(255, 255, 255, 120), 1.0f);
+        // "PC" label
+        char pcLabel[16];
+        snprintf(pcLabel, sizeof(pcLabel), "PC $%04X", pc);
+        float labelW = ImGui::CalcTextSize(pcLabel).x;
+        dl->AddRectFilled(
+            ImVec2(barX - sz - 5 - labelW - 2, pcY - sz - 1),
+            ImVec2(barX - sz - 3, pcY - sz + ImGui::GetTextLineHeight()),
+            IM_COL32(40, 40, 50, 220), 2.0f);
+        dl->AddText(ImVec2(barX - sz - 4 - labelW, pcY - sz),
+                    IM_COL32(255, 255, 255, 255), pcLabel);
+    }
+
+    // --- Viewport sync overlay ---
+    if (showMemoryViewer && memoryViewer) {
+        auto vp = memoryViewer->getViewportRange();
+        float vpY0 = addrToY(vp.startAddress);
+        float vpY1 = addrToY(vp.endAddress);
+        if (vpY1 - vpY0 < 4.0f) vpY1 = vpY0 + 4.0f;
+        // Bracket lines on left and right
+        dl->AddRectFilled(ImVec2(barX, vpY0), ImVec2(barX + barW, vpY1),
+                          IM_COL32(255, 255, 255, 35));
+        dl->AddRect(ImVec2(barX, vpY0), ImVec2(barX + barW, vpY1),
+                    IM_COL32(255, 255, 255, 200), 0.0f, 0, 1.5f);
+        // Small bracket wings
+        float wingW = 4.0f;
+        dl->AddLine(ImVec2(barX - wingW, vpY0), ImVec2(barX, vpY0),
+                    IM_COL32(255, 255, 255, 200), 1.5f);
+        dl->AddLine(ImVec2(barX - wingW, vpY1), ImVec2(barX, vpY1),
+                    IM_COL32(255, 255, 255, 200), 1.5f);
+        dl->AddLine(ImVec2(barX + barW, vpY0), ImVec2(barX + barW + wingW, vpY0),
+                    IM_COL32(255, 255, 255, 200), 1.5f);
+        dl->AddLine(ImVec2(barX + barW, vpY1), ImVec2(barX + barW + wingW, vpY1),
+                    IM_COL32(255, 255, 255, 200), 1.5f);
+    }
+
+    // --- Tooltip + click-to-navigate ---
+    if (ImGui::IsWindowHovered(ImGuiHoveredFlags_AllowWhenBlockedByPopup)) {
+        ImVec2 mouse = ImGui::GetMousePos();
+        if (mouse.x >= barX && mouse.x < barX + barW &&
+            mouse.y >= origin.y && mouse.y < origin.y + totalBarH) {
+            // Reverse-map Y → address through distorted region layout
+            uint32_t hoverAddr = 0xFFFF;
+            const char* regionLabel = "Unknown";
+            quint16 regionStart = 0, regionEnd = 0;
+            for (size_t i = 0; i < flat.size(); ++i) {
+                if (mouse.y >= regionY0[i] && mouse.y < regionY1[i]) {
+                    float t = (mouse.y - regionY0[i]) / (regionY1[i] - regionY0[i]);
+                    uint32_t span = static_cast<uint32_t>(flat[i].end) - flat[i].start + 1;
+                    hoverAddr = flat[i].start + static_cast<uint32_t>(t * span);
+                    if (hoverAddr > 0xFFFF) hoverAddr = 0xFFFF;
+                    regionLabel = flat[i].label;
+                    regionStart = flat[i].start;
+                    regionEnd = flat[i].end;
+                    break;
+                }
+            }
+
+            // Hover highlight line across the bar
+            dl->AddLine(ImVec2(barX, mouse.y), ImVec2(barX + barW, mouse.y),
+                        IM_COL32(255, 255, 255, 100), 1.0f);
+
+            ImGui::BeginTooltip();
+            ImGui::TextColored(ImVec4(1.0f, 1.0f, 0.6f, 1.0f), "$%04X",
+                               static_cast<uint16_t>(hoverAddr));
+            ImGui::Text("%s", regionLabel);
+            uint32_t sz = static_cast<uint32_t>(regionEnd) - regionStart + 1;
+            if (sz >= 1024)
+                ImGui::TextDisabled("$%04X-$%04X (%u KB)", regionStart, regionEnd, (unsigned)(sz / 1024));
+            else
+                ImGui::TextDisabled("$%04X-$%04X (%u B)", regionStart, regionEnd, (unsigned)sz);
+            // JukeBox bank info
+            if (jukeBoxEnabled) {
+                const auto& jb = uiSnapshot.jukeBox;
+                int romStart = (jb.jumper == JukeBox::Jumper::RAM16_ROM32) ? 0x4000 : 0x8000;
+                if (static_cast<int>(hoverAddr) >= romStart && hoverAddr <= 0xBFFF) {
+                    ImGui::Separator();
+                    if (jb.jumper == JukeBox::Jumper::RAM16_ROM32)
+                        ImGui::Text("Page P%u of %u (%s)", jb.currentPage, jb.pageCount,
+                            jb.chipMode == JukeBox::ChipMode::Flash ? "Flash" : "EEPROM");
+                    else
+                        ImGui::Text("Page P%u:S%u of %u (%s)", jb.currentPage, jb.currentSubPage,
+                            jb.pageCount,
+                            jb.chipMode == JukeBox::ChipMode::Flash ? "Flash" : "EEPROM");
+                }
+            }
+            ImGui::EndTooltip();
+
+            if (ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
+                showMemoryViewer = true;
+                memoryViewer->navigateToAddress(static_cast<int>(hoverAddr));
+            }
+        }
+    }
+
+    ImGui::Dummy(ImVec2(gutterW + barW + labelGap + 180.0f, totalBarH));
     ImGui::End();
 }

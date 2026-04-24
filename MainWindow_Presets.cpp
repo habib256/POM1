@@ -406,7 +406,7 @@ void MainWindow_ImGui::applyMachineConfig(int presetIndex)
     }
 
     // Reset transient UI state (dialogs, tutorial windows, help viewers,
-    // Memory Viewer / Debugger / Memory Map, card windows) so windows
+    // Memory Viewer / Debugger / Memory Map Grid, card windows) so windows
     // that were open under the outgoing preset don't stay open under
     // the incoming one — the incoming preset's layout table is the sole
     // source of truth for what's visible. Each `showXxx` is then
@@ -441,7 +441,8 @@ void MainWindow_ImGui::applyMachineConfig(int presetIndex)
     showLoadTapeDialog       = false;
     showCassetteControl      = false;
     showCassetteDeck         = false;
-    showMemoryMap            = false;
+    showMemoryMapGrid        = false;
+    showMemoryBar            = false;
     // showMemoryViewer / showDebugger are kept across switches — they're
     // debug tools that users actively work with, not preset-bound panels.
 
