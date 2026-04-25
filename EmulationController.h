@@ -182,6 +182,10 @@ public:
     // P-LAB Apple-1 Terminal Card
     void setTerminalCardEnabled(bool enabled);
     bool isTerminalCardEnabled() const;
+    /// Render-loop accessor. Returns null when the card is disabled. The
+    /// returned reference is owned by Memory and outlives any single frame;
+    /// callers must not retain it across hardReset() / preset switch.
+    class TerminalCard* getTerminalCardIfEnabled();
 
     // P-LAB Apple-1 I/O Board & RTC
     void setA1IO_RTCEnabled(bool enabled);

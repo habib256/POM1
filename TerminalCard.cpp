@@ -167,6 +167,32 @@ void TerminalCard::advanceCycles(int cycles)
 
     acceptClient();
     pollClient();
+
+    // Drain any screenshot result string posted by the main render thread.
+    // Pull under the dedicated mutex (released immediately) then emit while
+    // still holding cardMutex — sendToClient relies on that convention.
+    std::string toEmit;
+    {
+        std::lock_guard<std::mutex> sslock(screenshotResultMutex);
+        if (!screenshotResultPending.empty()) {
+            toEmit.swap(screenshotResultPending);
+        }
+    }
+    if (!toEmit.empty()) {
+        sendToClient(reinterpret_cast<const uint8_t*>(toEmit.data()), toEmit.size());
+    }
+}
+
+void TerminalCard::setScreenshotResult(const std::string& absPath, bool ok)
+{
+    std::string msg;
+    if (ok) {
+        msg = "\r\n[SCREENSHOT: " + absPath + "]\r\n";
+    } else {
+        msg = "\r\n[SCREENSHOT FAILED: " + absPath + "]\r\n";
+    }
+    std::lock_guard<std::mutex> lock(screenshotResultMutex);
+    screenshotResultPending = std::move(msg);
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -255,6 +281,7 @@ void TerminalCard::processIncomingByte(uint8_t byte)
         case 'R': case 'r': return 18; // Ctrl-R
         case 'H': case 'h': return 8;  // Ctrl-H (hard reset)
         case 'I': case 'i': return 9;  // Ctrl-I
+        case 'S': case 's': return 19; // Ctrl-S (screenshot)
         default:            return 0;
         }
     };
@@ -295,6 +322,7 @@ void TerminalCard::processIncomingByte(uint8_t byte)
         case 12:  // CTRL-L: Clear screen
         case 15:  // CTRL-O: Toggle outgoing uppercase
         case 18:  // CTRL-R: Reset Apple 1 (warm)
+        case 19:  // CTRL-S: Screenshot of full ImGui framebuffer
             handleControlCommand(byte);
             return;
         }
@@ -361,6 +389,14 @@ void TerminalCard::handleControlCommand(uint8_t byte)
         {
             const char* msg = uppercaseIncoming ?
                 "\r\n[UC IN: ON]\r\n" : "\r\n[UC IN: OFF]\r\n";
+            sendToClient(reinterpret_cast<const uint8_t*>(msg), strlen(msg));
+        }
+        break;
+
+    case 19: // CTRL-S: Screenshot — main thread captures glReadPixels post-render
+        screenshotPending.store(true);
+        {
+            const char* msg = "\r\n[SCREENSHOT REQUESTED]\r\n";
             sendToClient(reinterpret_cast<const uint8_t*>(msg), strlen(msg));
         }
         break;

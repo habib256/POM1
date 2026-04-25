@@ -79,6 +79,12 @@ public:
     bool loadPresetLayout(int presetIndex);  // returns true if a file was found
     int  getActivePresetIndex() const { return activePresetIndex; }
 
+    /// Render-loop accessor — main_imgui.cpp uses this to poll the Terminal
+    /// Card's screenshot-pending flag right after RenderDrawData and write
+    /// the PNG before SwapBuffers. Returns null only during the first-frame
+    /// window before the controller has been constructed.
+    EmulationController* getEmulationController() { return emulation.get(); }
+
 #if POM1_IS_WASM
     /** Taille framebuffer/canvas pour le prochain tour de boucle (hors plein écran navigateur). */
     void getWasmCanvasPixelSize(int& outW, int& outH) const

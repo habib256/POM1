@@ -747,6 +747,15 @@ bool EmulationController::isTerminalCardEnabled() const
     return memory->isTerminalCardEnabled();
 }
 
+TerminalCard* EmulationController::getTerminalCardIfEnabled()
+{
+    // No stateMutex: the card itself owns its own atomics + mutex, and the
+    // render thread must not contend with the long-held emulation lock.
+    if (!memory) return nullptr;
+    if (!memory->isTerminalCardEnabled()) return nullptr;
+    return &memory->getTerminalCard();
+}
+
 void EmulationController::setPR40Enabled(bool enabled)
 {
     std::lock_guard<PriorityMutex> lock(stateMutex);

@@ -10,14 +10,27 @@
 #include "Logger.h"
 #include "third_party/stb/stb_image.h"
 
+#if !POM1_IS_WASM
+// Telnet-triggered screenshot path: ESC S in TerminalCard arms a flag, the
+// render loop captures the back-buffer with glReadPixels and emits the PNG
+// via stb_image_write so an LLM piloting POM1 over telnet can read all
+// rendered screens (Apple 1 text, GraphicsCard, TMS9918, GT6144, dialogs).
+#include "TerminalCard.h"
+#define STB_IMAGE_WRITE_IMPLEMENTATION
+#include "third_party/stb/stb_image_write.h"
+#endif
+
 #if POM1_IS_WASM
 #include <emscripten.h>
 #include <emscripten/html5.h>
 #else
 #include <csignal>
 #include <cstdio>
+#include <cstring>
 #include <filesystem>
 #include <string>
+#include <system_error>
+#include <vector>
 #if defined(_WIN32)
 #ifndef WIN32_LEAN_AND_MEAN
 #define WIN32_LEAN_AND_MEAN
@@ -137,6 +150,58 @@ static std::string find_fa_solid_font_path()
     }
 #endif
     return {};
+}
+
+/// Read the entire back-buffer with glReadPixels and write a top-down PNG
+/// at `screenshots/pom1_latest.png`. Called from the render loop *after*
+/// ImGui_ImplOpenGL3_RenderDrawData() and *before* glfwSwapBuffers() so the
+/// framebuffer holds the fully-rendered frame (every visible window, not
+/// just the active graphics card). Posts the absolute path back to
+/// TerminalCard so the telnet client gets the resolved location.
+static void capture_screenshot_to_png(int fbW, int fbH, TerminalCard& card)
+{
+    namespace fs = std::filesystem;
+    const char* relPath = "screenshots/pom1_latest.png";
+
+    if (fbW < 1 || fbH < 1) {
+        card.setScreenshotResult("framebuffer size is zero", false);
+        return;
+    }
+
+    std::error_code ec;
+    fs::create_directories("screenshots", ec);
+    // Don't bail on EEXIST; only bail if the directory genuinely cannot be
+    // ensured. create_directories returns false-without-error when the dir
+    // already exists, which is fine.
+    if (ec) {
+        card.setScreenshotResult(std::string("mkdir failed: ") + ec.message(), false);
+        return;
+    }
+
+    std::vector<uint8_t> buf(static_cast<size_t>(fbW) * fbH * 4);
+    glPixelStorei(GL_PACK_ALIGNMENT, 1);
+    glReadPixels(0, 0, fbW, fbH, GL_RGBA, GL_UNSIGNED_BYTE, buf.data());
+
+    // Y-flip in place: glReadPixels gives bottom-up, PNG wants top-down.
+    const size_t rowBytes = static_cast<size_t>(fbW) * 4;
+    std::vector<uint8_t> rowTmp(rowBytes);
+    for (int y = 0; y < fbH / 2; ++y) {
+        uint8_t* top = buf.data() + static_cast<size_t>(y) * rowBytes;
+        uint8_t* bot = buf.data() + static_cast<size_t>(fbH - 1 - y) * rowBytes;
+        std::memcpy(rowTmp.data(), top, rowBytes);
+        std::memcpy(top, bot, rowBytes);
+        std::memcpy(bot, rowTmp.data(), rowBytes);
+    }
+
+    const int rc = stbi_write_png(relPath, fbW, fbH, 4, buf.data(),
+                                  static_cast<int>(rowBytes));
+    if (rc == 0) {
+        card.setScreenshotResult("stbi_write_png failed (check cwd write permissions)", false);
+        return;
+    }
+
+    fs::path absPath = fs::absolute(relPath, ec);
+    card.setScreenshotResult(ec ? std::string(relPath) : absPath.string(), true);
 }
 #endif
 
@@ -582,6 +647,14 @@ int main(int argc, char* argv[])
         glClearColor(0.45f, 0.55f, 0.60f, 1.00f);
         glClear(GL_COLOR_BUFFER_BIT);
         ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+
+        if (auto* card = mainWindow.getEmulationController()
+                ? mainWindow.getEmulationController()->getTerminalCardIfEnabled()
+                : nullptr) {
+            if (card->consumeScreenshotPending()) {
+                capture_screenshot_to_png(display_w, display_h, *card);
+            }
+        }
 
         glfwSwapBuffers(window);
     }

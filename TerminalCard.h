@@ -61,9 +61,17 @@ public:
     std::atomic<bool> resetPending{false};
     std::atomic<bool> hardResetPending{false};
     std::atomic<bool> clearScreenPending{false};
+    std::atomic<bool> screenshotPending{false};
     bool consumeResetPending() { return resetPending.exchange(false); }
     bool consumeHardResetPending() { return hardResetPending.exchange(false); }
     bool consumeClearScreenPending() { return clearScreenPending.exchange(false); }
+    bool consumeScreenshotPending() { return screenshotPending.exchange(false); }
+
+    /// Posted by the main render thread once the PNG file has been written
+    /// (or an attempt has failed). The string is drained from advanceCycles
+    /// and emitted to the telnet client so the LLM that triggered ESC S
+    /// receives the absolute path on the same connection.
+    void setScreenshotResult(const std::string& absPath, bool ok);
 
     // Snapshot for UI display (thread-safe)
     struct Snapshot {
@@ -112,6 +120,12 @@ private:
 
     // Thread safety
     mutable std::mutex cardMutex;
+
+    // Screenshot result queue (filled by main render thread, drained by
+    // advanceCycles). Separate mutex so the main thread never blocks on the
+    // long-held cardMutex during socket I/O.
+    std::mutex screenshotResultMutex;
+    std::string screenshotResultPending;
 
     // Callback
     KeyInjector keyInjector;

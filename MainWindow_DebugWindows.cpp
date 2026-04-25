@@ -1153,16 +1153,6 @@ void MainWindow_ImGui::renderMemoryBarHorizontalWindow()
                     IM_COL32(30, 30, 30, 200), 1.0f);
     }
 
-    // --- Top axis: $0000 left, $FFFF right ---
-    dl->AddText(ImVec2(origin.x, origin.y),
-                IM_COL32(180, 180, 180, 255), "$0000");
-    {
-        const char* end = "$FFFF";
-        float tw = ImGui::CalcTextSize(end).x;
-        dl->AddText(ImVec2(origin.x + totalBarW - tw, origin.y),
-                    IM_COL32(180, 180, 180, 255), end);
-    }
-
     auto addrToX1 = [&](uint32_t addr) -> float {
         for (size_t i = 0; i < flat.size(); ++i) {
             uint32_t rStart = flat[i].start;
@@ -1174,6 +1164,64 @@ void MainWindow_ImGui::renderMemoryBarHorizontalWindow()
         }
         return regionX1.back();
     };
+
+    // --- Top axis: $0000 left, $FFFF right + intermediate 8 KB ticks ---
+    {
+        const float endX = origin.x + totalBarW;
+        const float startTextW = ImGui::CalcTextSize("$0000").x;
+        const float endTextW   = ImGui::CalcTextSize("$FFFF").x;
+        // $0000
+        dl->AddText(ImVec2(origin.x, origin.y),
+                    IM_COL32(180, 180, 180, 255), "$0000");
+        // $FFFF
+        dl->AddText(ImVec2(endX - endTextW, origin.y),
+                    IM_COL32(180, 180, 180, 255), "$FFFF");
+
+        // Intermediate ticks at 8 KB boundaries. Skip a label if it would
+        // collide with its neighbours or the corner labels.
+        const float minSpacing = 6.0f;
+        float lastLabelRight = origin.x + startTextW + minSpacing;
+        const float endLabelLeft = endX - endTextW - minSpacing;
+        for (int kb = 8; kb < 64; kb += 8) {
+            uint32_t addr = static_cast<uint32_t>(kb) * 1024;
+            float x = addrToX1(addr);
+            // Tick: thin vertical line through the bar, very faint
+            dl->AddLine(ImVec2(x, barY0), ImVec2(x, barY1),
+                        IM_COL32(255, 255, 255, 28), 1.0f);
+            // Label "$XXXX" centered above the bar, only if it fits
+            char tick[8];
+            snprintf(tick, sizeof(tick), "$%04X", static_cast<uint16_t>(addr));
+            float tw = ImGui::CalcTextSize(tick).x;
+            float lx = x - tw * 0.5f;
+            if (lx >= lastLabelRight && (lx + tw) <= endLabelLeft) {
+                dl->AddText(ImVec2(lx, origin.y),
+                            IM_COL32(110, 110, 110, 255), tick);
+                lastLabelRight = lx + tw + minSpacing;
+            }
+        }
+    }
+
+    // --- Inline region labels: name centred in each bar segment when room ---
+    auto luminance = [](ImU32 c) -> int {
+        int r = (c >>  0) & 0xFF;
+        int g = (c >>  8) & 0xFF;
+        int b = (c >> 16) & 0xFF;
+        return (r * 299 + g * 587 + b * 114) / 1000;  // BT.601
+    };
+    for (size_t ri = 0; ri < flat.size(); ++ri) {
+        const auto& fr = flat[ri];
+        const float w = regionW[ri];
+        if (w < 28.0f) continue;  // tiny region: rely on tooltip
+        const char* lbl = fr.label;
+        float tw = ImGui::CalcTextSize(lbl).x;
+        if (tw + 6.0f > w) continue;  // label wouldn't fit: skip
+        const float cx = (regionX0[ri] + regionX1[ri]) * 0.5f - tw * 0.5f;
+        const float cy = (barY0 + barY1) * 0.5f - textH * 0.5f;
+        const ImU32 fg = (luminance(fr.color) >= 128)
+                          ? IM_COL32(20, 20, 20, 255)
+                          : IM_COL32(235, 235, 235, 255);
+        dl->AddText(ImVec2(cx, cy), fg, lbl);
+    }
 
     // --- PC indicator: triangle below the bar pointing up + label centered ---
     {
@@ -1198,6 +1246,28 @@ void MainWindow_ImGui::renderMemoryBarHorizontalWindow()
             IM_COL32(40, 40, 50, 220), 2.0f);
         dl->AddText(ImVec2(lx, ly),
                     IM_COL32(255, 255, 255, 255), pcLabel);
+    }
+
+    // --- Memory Viewer viewport overlay ---
+    if (showMemoryViewer && memoryViewer) {
+        auto vp = memoryViewer->getViewportRange();
+        float vpX0 = addrToX1(vp.startAddress);
+        float vpX1 = addrToX1(vp.endAddress);
+        if (vpX1 - vpX0 < 4.0f) vpX1 = vpX0 + 4.0f;
+        dl->AddRectFilled(ImVec2(vpX0, barY0), ImVec2(vpX1, barY1),
+                          IM_COL32(255, 255, 255, 35));
+        dl->AddRect(ImVec2(vpX0, barY0), ImVec2(vpX1, barY1),
+                    IM_COL32(255, 255, 255, 200), 0.0f, 0, 1.5f);
+        // Bracket wings on top and bottom
+        const float wingH = 4.0f;
+        dl->AddLine(ImVec2(vpX0, barY0 - wingH), ImVec2(vpX0, barY0),
+                    IM_COL32(255, 255, 255, 200), 1.5f);
+        dl->AddLine(ImVec2(vpX1, barY0 - wingH), ImVec2(vpX1, barY0),
+                    IM_COL32(255, 255, 255, 200), 1.5f);
+        dl->AddLine(ImVec2(vpX0, barY1), ImVec2(vpX0, barY1 + wingH),
+                    IM_COL32(255, 255, 255, 200), 1.5f);
+        dl->AddLine(ImVec2(vpX1, barY1), ImVec2(vpX1, barY1 + wingH),
+                    IM_COL32(255, 255, 255, 200), 1.5f);
     }
 
     // --- Tooltip + click-to-navigate ---
