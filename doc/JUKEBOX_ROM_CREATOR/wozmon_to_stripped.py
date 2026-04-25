@@ -75,9 +75,11 @@ def parse_wozmon(path: pathlib.Path) -> tuple[int, bytes]:
 
 
 def make_pat(name8: str, load_addr: int, length: int, type_byte: int = 0xFE) -> bytes:
+    """Dashes in the basename are pad chars; mirror 1-stripper.sh and convert
+    them to spaces before writing the PAT NAME field."""
     if len(name8) > 8:
         raise SystemExit(f"error: name '{name8}' is {len(name8)} chars, max 8")
-    name_padded = name8.upper().ljust(8, " ").encode("ascii")
+    name_padded = name8.upper().replace("-", " ").ljust(8, " ").encode("ascii")
     return bytes([type_byte]) + name_padded + bytes([
         0xFF, 0xFF,
         load_addr & 0xFF, (load_addr >> 8) & 0xFF,

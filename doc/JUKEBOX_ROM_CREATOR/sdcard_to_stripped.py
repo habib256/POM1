@@ -38,10 +38,15 @@ def parse_tag(filename: str) -> tuple[str, int]:
 
 
 def make_pat(name8: str, load_addr: int, length: int, type_byte: int = 0xFE) -> bytes:
-    """Build the 15-byte PAT entry for the JukeBox firmware."""
+    """Build the 15-byte PAT entry for the JukeBox firmware.
+
+    Dashes in the basename are pad characters (used in filenames so they reach
+    8 chars); the firmware shows them as spaces. Mirrors 1-stripper.sh which
+    runs `sed 's/-/ /g'` on the name before writing it into the PAT.
+    """
     if len(name8) > 8:
         raise ValueError(f"name '{name8}' is {len(name8)} chars, max 8")
-    name_padded = name8.upper().ljust(8, " ").encode("ascii")
+    name_padded = name8.upper().replace("-", " ").ljust(8, " ").encode("ascii")
     return bytes([type_byte]) + name_padded + bytes([
         0xFF, 0xFF,                    # EPROM_ADDR placeholder (build_jukebox_rom patches)
         load_addr & 0xFF, (load_addr >> 8) & 0xFF,  # LOAD_ADDR LE
