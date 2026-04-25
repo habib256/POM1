@@ -169,6 +169,9 @@ public:
     void setJukeBoxWritable(bool writable);
     bool isJukeBoxWritable() const;
     bool reloadJukeBoxRom(std::string& error);
+    void setJukeBoxBankRegister(uint8_t value);
+    bool copyJukeBoxPage(uint8_t fromPage, uint8_t toPage, std::string& error);
+    bool saveJukeBoxRom(const std::string& path, std::string& error);
 
     // P-LAB Apple-1 Wi-Fi Modem
     void setWiFiModemEnabled(bool enabled);

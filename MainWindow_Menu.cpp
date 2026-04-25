@@ -123,6 +123,7 @@ void MainWindow_ImGui::renderMenuBar()
             ImGui::MenuItem("Memory Viewer", shortcutLabel(GLFW_KEY_F1), &showMemoryViewer);
             ImGui::MenuItem("Memory Map Grid", shortcutLabel(GLFW_KEY_F2), &showMemoryMapGrid);
             ImGui::MenuItem("Memory Map Bar", nullptr, &showMemoryBar);
+            ImGui::MenuItem("Memory Map Bar (Horizontal)", nullptr, &showMemoryBarH);
             if (ImGui::MenuItem("Memory Options")) {
                 configMemory();
             }

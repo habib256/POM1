@@ -610,7 +610,7 @@ void MainWindow_ImGui::renderMemoryMapGridWindow()
 
 void MainWindow_ImGui::renderMemoryBarWindow()
 {
-    ImGui::SetNextWindowSize(ImVec2(240, 520), ImGuiCond_FirstUseEver);
+    ImGui::SetNextWindowSize(ImVec2(420, 520), ImGuiCond_FirstUseEver);
     if (!ImGui::Begin("Memory Map Bar", &showMemoryBar)) {
         ImGui::End();
         return;
@@ -678,12 +678,30 @@ void MainWindow_ImGui::renderMemoryBarWindow()
     // --- Layout constants ---
     const float gutterW = 42.0f;
     const float barW = 48.0f;
+    const float bar2W = 18.0f;    // narrow true-scale bar (after labels)
     const float labelGap = 10.0f;
     const float textH = ImGui::GetTextLineHeight();
     const float minRegionH = textH + 4.0f;  // every region tall enough for its name
     const ImVec2 origin = ImGui::GetCursorScreenPos();
     const float barX = origin.x + gutterW;
     ImDrawList* dl = ImGui::GetWindowDrawList();
+
+    // Max label width across all flat regions (label line + address sub-line)
+    float maxLabelW = 0.0f;
+    for (const auto& fr : flat) {
+        uint32_t sizeBytes = static_cast<uint32_t>(fr.end) - fr.start + 1;
+        char labelBuf[128];
+        if (sizeBytes >= 1024)
+            snprintf(labelBuf, sizeof(labelBuf), "%s (%u KB)", fr.label, (unsigned)(sizeBytes / 1024));
+        else
+            snprintf(labelBuf, sizeof(labelBuf), "%s (%u B)", fr.label, (unsigned)sizeBytes);
+        float w = ImGui::CalcTextSize(labelBuf).x;
+        char addrBuf[24];
+        snprintf(addrBuf, sizeof(addrBuf), "$%04X-$%04X", fr.start, fr.end);
+        w = std::max(w, ImGui::CalcTextSize(addrBuf).x);
+        if (w > maxLabelW) maxLabelW = w;
+    }
+    const float bar2X = barX + barW + labelGap + maxLabelW + labelGap;
 
     // --- Compute Y positions with minimum height per region ---
     // First pass: compute natural (proportional) height, clamp to minRegionH
@@ -725,6 +743,18 @@ void MainWindow_ImGui::renderMemoryBarWindow()
     }
     const float totalBarH = curY - origin.y;
 
+    // --- Bar 2: true proportional Y positions (no min clamping) ---
+    std::vector<float> region2Y0(flat.size()), region2Y1(flat.size());
+    {
+        float cur2Y = origin.y;
+        for (size_t i = 0; i < flat.size(); ++i) {
+            float h = (static_cast<float>(flat[i].end - flat[i].start + 1) / 65536.0f) * totalBarH;
+            region2Y0[i] = cur2Y;
+            region2Y1[i] = cur2Y + h;
+            cur2Y += h;
+        }
+    }
+
     // addrToY: interpolate within the distorted region layout
     auto addrToY = [&](uint32_t addr) -> float {
         for (size_t i = 0; i < flat.size(); ++i) {
@@ -736,6 +766,18 @@ void MainWindow_ImGui::renderMemoryBarWindow()
             }
         }
         return regionY1.back();
+    };
+    // addrToY2: interpolate within the proportional (true-scale) bar 2 layout
+    auto addrToY2 = [&](uint32_t addr) -> float {
+        for (size_t i = 0; i < flat.size(); ++i) {
+            uint32_t rStart = flat[i].start;
+            uint32_t rEnd   = static_cast<uint32_t>(flat[i].end) + 1;
+            if (addr >= rStart && addr < rEnd) {
+                float t = static_cast<float>(addr - rStart) / static_cast<float>(rEnd - rStart);
+                return region2Y0[i] + t * (region2Y1[i] - region2Y0[i]);
+            }
+        }
+        return region2Y1.back();
     };
 
     // Helper: lighten/darken a color for 3D bevel effect
@@ -754,9 +796,12 @@ void MainWindow_ImGui::renderMemoryBarWindow()
         return IM_COL32(r, g, b, a);
     };
 
-    // --- Outer frame ---
+    // --- Outer frames ---
     dl->AddRect(ImVec2(barX - 1, origin.y - 1),
                 ImVec2(barX + barW + 1, origin.y + totalBarH + 1),
+                IM_COL32(80, 80, 80, 255), 2.0f, 0, 1.0f);
+    dl->AddRect(ImVec2(bar2X - 1, origin.y - 1),
+                ImVec2(bar2X + bar2W + 1, origin.y + totalBarH + 1),
                 IM_COL32(80, 80, 80, 255), 2.0f, 0, 1.0f);
 
     // --- Draw flat regions with 3D bevel ---
@@ -780,6 +825,15 @@ void MainWindow_ImGui::renderMemoryBarWindow()
         // Region separator
         dl->AddLine(ImVec2(barX, y1), ImVec2(barX + barW, y1),
                     IM_COL32(30, 30, 30, 200), 1.0f);
+
+        // --- Bar 2: true proportional fill (same colour, after labels) ---
+        float y0p = region2Y0[ri];
+        float y1p = region2Y1[ri];
+        dl->AddRectFilled(ImVec2(bar2X, y0p), ImVec2(bar2X + bar2W, y1p), fr.color);
+        if (y1p - y0p > 1.5f) {
+            dl->AddLine(ImVec2(bar2X, y1p), ImVec2(bar2X + bar2W, y1p),
+                        IM_COL32(30, 30, 30, 200), 1.0f);
+        }
 
         // --- Labels: always show name (minimum height guarantees room) ---
         uint32_t sizeBytes = static_cast<uint32_t>(fr.end) - fr.start + 1;
@@ -814,6 +868,15 @@ void MainWindow_ImGui::renderMemoryBarWindow()
         dl->AddText(ImVec2(origin.x, botLabelY),
                     IM_COL32(180, 180, 180, 255), "$FFFF");
 
+        // Bar 2 is a true 1:1 proportional scale — annotate as "%" on its left
+        auto drawRightAligned = [&](const char* s, float rx, float y, ImU32 col) {
+            float tw = ImGui::CalcTextSize(s).x;
+            dl->AddText(ImVec2(rx - tw, y), col, s);
+        };
+        const float bar2LabelX = bar2X - 4.0f;
+        drawRightAligned("0%",   bar2LabelX, origin.y,                      IM_COL32(180, 180, 180, 255));
+        drawRightAligned("100%", bar2LabelX, origin.y + totalBarH - textH,  IM_COL32(180, 180, 180, 255));
+
         const float minSpacing = textH + 2.0f;
         float lastLabelY = topLabelY;  // tracks the bottom of the last drawn label
 
@@ -836,28 +899,29 @@ void MainWindow_ImGui::renderMemoryBarWindow()
         }
     }
 
-    // --- PC indicator: white arrow + label ---
+    // --- PC indicator on bar 2: white arrow + label ---
     {
-        float pcY = addrToY(pc);
+        float pcY = addrToY2(pc);
         float sz = 6.0f;
-        // Arrow
+        // Arrow on the right side, pointing left into bar 2
         dl->AddTriangleFilled(
-            ImVec2(barX - sz - 3, pcY - sz),
-            ImVec2(barX - 3, pcY),
-            ImVec2(barX - sz - 3, pcY + sz),
+            ImVec2(bar2X + bar2W + 3 + sz, pcY - sz),
+            ImVec2(bar2X + bar2W + 3,      pcY),
+            ImVec2(bar2X + bar2W + 3 + sz, pcY + sz),
             IM_COL32(255, 255, 255, 255));
-        // Dashed line across bar
-        dl->AddLine(ImVec2(barX, pcY), ImVec2(barX + barW, pcY),
+        // Marker line across bar 2
+        dl->AddLine(ImVec2(bar2X, pcY), ImVec2(bar2X + bar2W, pcY),
                     IM_COL32(255, 255, 255, 120), 1.0f);
-        // "PC" label
+        // "PC $XXXX" label to the right of the arrow
         char pcLabel[16];
         snprintf(pcLabel, sizeof(pcLabel), "PC $%04X", pc);
         float labelW = ImGui::CalcTextSize(pcLabel).x;
+        float lx = bar2X + bar2W + 5 + sz;
         dl->AddRectFilled(
-            ImVec2(barX - sz - 5 - labelW - 2, pcY - sz - 1),
-            ImVec2(barX - sz - 3, pcY - sz + ImGui::GetTextLineHeight()),
+            ImVec2(lx - 2, pcY - sz - 1),
+            ImVec2(lx + labelW + 2, pcY - sz + ImGui::GetTextLineHeight()),
             IM_COL32(40, 40, 50, 220), 2.0f);
-        dl->AddText(ImVec2(barX - sz - 4 - labelW, pcY - sz),
+        dl->AddText(ImVec2(lx, pcY - sz),
                     IM_COL32(255, 255, 255, 255), pcLabel);
     }
 
@@ -943,6 +1007,243 @@ void MainWindow_ImGui::renderMemoryBarWindow()
         }
     }
 
-    ImGui::Dummy(ImVec2(gutterW + barW + labelGap + 180.0f, totalBarH));
+    // Right margin holds the PC arrow + "PC $XXXX" label past the bar 2 edge.
+    const float pcLabelW = ImGui::CalcTextSize("PC $FFFF").x;
+    const float rightMargin = 5.0f + 6.0f /*arrow sz*/ + pcLabelW + 6.0f;
+    ImGui::Dummy(ImVec2(gutterW + barW + labelGap + maxLabelW + labelGap + bar2W + rightMargin, totalBarH));
+    ImGui::End();
+}
+
+void MainWindow_ImGui::renderMemoryBarHorizontalWindow()
+{
+    ImGui::SetNextWindowSize(ImVec2(720, 78), ImGuiCond_FirstUseEver);
+    if (!ImGui::Begin("Memory Map Bar (Horizontal)", &showMemoryBarH)) {
+        ImGui::End();
+        return;
+    }
+
+    auto regions = buildMemoryRegions();
+    int numRegions = static_cast<int>(regions.size());
+
+    const ImU32 ramColor   = IM_COL32( 80, 200,  80, 255);
+    const quint8* memPtr = uiSnapshot.memory.data();
+    const quint16 pc = uiSnapshot.programCounter;
+
+    struct FlatRegion {
+        quint16 start, end;
+        ImU32 color;
+        const char* label;
+    };
+    struct PageInfo { ImU32 color; const char* label; };
+    PageInfo pageMap[256];
+
+    for (int page = 0; page < 256; ++page) {
+        quint16 addr = static_cast<quint16>(page << 8);
+        ImU32 color = IM_COL32(40, 40, 40, 255);
+        const char* label = "Unmapped";
+        for (int r = 0; r < numRegions; ++r) {
+            if (addr >= regions[r].start && addr <= regions[r].end) {
+                color = regions[r].color;
+                label = regions[r].label;
+            }
+        }
+        if (color == ramColor) {
+            bool hasData = false;
+            for (int b = 0; b < 256; ++b) {
+                if (memPtr[addr + b] != 0) { hasData = true; break; }
+            }
+            color = hasData ? IM_COL32(80, 220, 80, 255) : IM_COL32(20, 60, 20, 255);
+        }
+        pageMap[page] = { color, label };
+    }
+
+    std::vector<FlatRegion> flat;
+    flat.reserve(32);
+    flat.push_back({ 0x0000, 0x00FF, pageMap[0].color, pageMap[0].label });
+    for (int page = 1; page < 256; ++page) {
+        auto& prev = flat.back();
+        if (pageMap[page].color == prev.color && pageMap[page].label == prev.label) {
+            prev.end = static_cast<quint16>((page << 8) | 0xFF);
+        } else {
+            flat.push_back({
+                static_cast<quint16>(page << 8),
+                static_cast<quint16>((page << 8) | 0xFF),
+                pageMap[page].color,
+                pageMap[page].label
+            });
+        }
+    }
+
+    // --- Layout: very wide, very short ---
+    const float textH = ImGui::GetTextLineHeight();
+    const float topAxisH = textH + 2.0f;       // "$0000"   "$FFFF" row
+    const float bar1H = 26.0f;                 // distorted (with min-width per region)
+    const float minRegionW = 3.0f;             // every region at least 3 px wide so it's visible
+    const ImVec2 origin = ImGui::GetCursorScreenPos();
+
+    const ImVec2 avail = ImGui::GetContentRegionAvail();
+    const float availW = std::max(120.0f, avail.x - 4.0f);
+    ImDrawList* dl = ImGui::GetWindowDrawList();
+
+    const float barY0 = origin.y + topAxisH;
+    const float barY1 = barY0 + bar1H;
+
+    // --- Distorted widths (min-width per region, rescale if overflow) ---
+    std::vector<float> regionW(flat.size());
+    float totalClamped = 0.0f;
+    for (size_t i = 0; i < flat.size(); ++i) {
+        float natural = (static_cast<float>(flat[i].end - flat[i].start + 1) / 65536.0f) * availW;
+        regionW[i] = std::max(natural, minRegionW);
+        totalClamped += regionW[i];
+    }
+    if (totalClamped > availW) {
+        float excess = totalClamped - availW;
+        float shrinkable = 0.0f;
+        for (size_t i = 0; i < flat.size(); ++i)
+            if (regionW[i] > minRegionW) shrinkable += (regionW[i] - minRegionW);
+        if (shrinkable > 0.0f) {
+            float ratio = std::min(1.0f, excess / shrinkable);
+            for (size_t i = 0; i < flat.size(); ++i) {
+                if (regionW[i] > minRegionW) regionW[i] -= (regionW[i] - minRegionW) * ratio;
+            }
+        }
+    }
+    std::vector<float> regionX0(flat.size()), regionX1(flat.size());
+    {
+        float curX = origin.x;
+        for (size_t i = 0; i < flat.size(); ++i) {
+            regionX0[i] = curX;
+            regionX1[i] = curX + regionW[i];
+            curX += regionW[i];
+        }
+    }
+    const float totalBarW = regionX1.empty() ? 0.0f : (regionX1.back() - origin.x);
+
+    auto darken = [](ImU32 c, int amount) -> ImU32 {
+        int r = std::max(0, (int)((c >>  0) & 0xFF) - amount);
+        int g = std::max(0, (int)((c >>  8) & 0xFF) - amount);
+        int b = std::max(0, (int)((c >> 16) & 0xFF) - amount);
+        int a = (c >> 24) & 0xFF;
+        return IM_COL32(r, g, b, a);
+    };
+    auto lighten = [](ImU32 c, int amount) -> ImU32 {
+        int r = std::min(255, (int)((c >>  0) & 0xFF) + amount);
+        int g = std::min(255, (int)((c >>  8) & 0xFF) + amount);
+        int b = std::min(255, (int)((c >> 16) & 0xFF) + amount);
+        int a = (c >> 24) & 0xFF;
+        return IM_COL32(r, g, b, a);
+    };
+
+    // --- Outer frame ---
+    dl->AddRect(ImVec2(origin.x - 1, barY0 - 1),
+                ImVec2(origin.x + totalBarW + 1, barY1 + 1),
+                IM_COL32(80, 80, 80, 255), 2.0f, 0, 1.0f);
+
+    // --- Render the bar ---
+    for (size_t ri = 0; ri < flat.size(); ++ri) {
+        const auto& fr = flat[ri];
+        dl->AddRectFilled(ImVec2(regionX0[ri], barY0), ImVec2(regionX1[ri], barY1), fr.color);
+        if (regionW[ri] > 4.0f) {
+            dl->AddLine(ImVec2(regionX0[ri] + 0.5f, barY0), ImVec2(regionX0[ri] + 0.5f, barY1),
+                        lighten(fr.color, 40), 1.0f);
+            dl->AddLine(ImVec2(regionX1[ri] - 0.5f, barY0), ImVec2(regionX1[ri] - 0.5f, barY1),
+                        darken(fr.color, 40), 1.0f);
+        }
+        dl->AddLine(ImVec2(regionX1[ri], barY0), ImVec2(regionX1[ri], barY1),
+                    IM_COL32(30, 30, 30, 200), 1.0f);
+    }
+
+    // --- Top axis: $0000 left, $FFFF right ---
+    dl->AddText(ImVec2(origin.x, origin.y),
+                IM_COL32(180, 180, 180, 255), "$0000");
+    {
+        const char* end = "$FFFF";
+        float tw = ImGui::CalcTextSize(end).x;
+        dl->AddText(ImVec2(origin.x + totalBarW - tw, origin.y),
+                    IM_COL32(180, 180, 180, 255), end);
+    }
+
+    auto addrToX1 = [&](uint32_t addr) -> float {
+        for (size_t i = 0; i < flat.size(); ++i) {
+            uint32_t rStart = flat[i].start;
+            uint32_t rEnd   = static_cast<uint32_t>(flat[i].end) + 1;
+            if (addr >= rStart && addr < rEnd) {
+                float t = static_cast<float>(addr - rStart) / static_cast<float>(rEnd - rStart);
+                return regionX0[i] + t * (regionX1[i] - regionX0[i]);
+            }
+        }
+        return regionX1.back();
+    };
+
+    // --- PC indicator: triangle below the bar pointing up + label centered ---
+    {
+        float pcX = addrToX1(pc);
+        float sz = 5.0f;
+        float ay = barY1 + 1.0f;
+        dl->AddTriangleFilled(
+            ImVec2(pcX - sz, ay + sz),
+            ImVec2(pcX + sz, ay + sz),
+            ImVec2(pcX,      ay),
+            IM_COL32(255, 255, 255, 255));
+        char pcLabel[16];
+        snprintf(pcLabel, sizeof(pcLabel), "PC $%04X", pc);
+        float lw = ImGui::CalcTextSize(pcLabel).x;
+        float lx = pcX - lw * 0.5f;
+        if (lx < origin.x) lx = origin.x;
+        if (lx + lw > origin.x + totalBarW) lx = origin.x + totalBarW - lw;
+        float ly = barY1 + sz + 4.0f;
+        dl->AddRectFilled(
+            ImVec2(lx - 2, ly - 1),
+            ImVec2(lx + lw + 2, ly + ImGui::GetTextLineHeight()),
+            IM_COL32(40, 40, 50, 220), 2.0f);
+        dl->AddText(ImVec2(lx, ly),
+                    IM_COL32(255, 255, 255, 255), pcLabel);
+    }
+
+    // --- Tooltip + click-to-navigate ---
+    if (ImGui::IsWindowHovered(ImGuiHoveredFlags_AllowWhenBlockedByPopup)) {
+        ImVec2 mouse = ImGui::GetMousePos();
+        if (mouse.y >= barY0 && mouse.y < barY1 &&
+            mouse.x >= origin.x && mouse.x < origin.x + totalBarW) {
+            uint32_t hoverAddr = 0xFFFF;
+            const char* regionLabel = "Unknown";
+            quint16 regionStart = 0, regionEnd = 0;
+            for (size_t i = 0; i < flat.size(); ++i) {
+                if (mouse.x >= regionX0[i] && mouse.x < regionX1[i]) {
+                    float t = (mouse.x - regionX0[i]) / (regionX1[i] - regionX0[i]);
+                    uint32_t span = static_cast<uint32_t>(flat[i].end) - flat[i].start + 1;
+                    hoverAddr = flat[i].start + static_cast<uint32_t>(t * span);
+                    if (hoverAddr > 0xFFFF) hoverAddr = 0xFFFF;
+                    regionLabel = flat[i].label;
+                    regionStart = flat[i].start;
+                    regionEnd = flat[i].end;
+                    break;
+                }
+            }
+            // Vertical hover line through bar 1
+            dl->AddLine(ImVec2(mouse.x, barY0), ImVec2(mouse.x, barY1),
+                        IM_COL32(255, 255, 255, 100), 1.0f);
+
+            ImGui::BeginTooltip();
+            ImGui::TextColored(ImVec4(1.0f, 1.0f, 0.6f, 1.0f), "$%04X",
+                               static_cast<uint16_t>(hoverAddr));
+            ImGui::Text("%s", regionLabel);
+            uint32_t sz = static_cast<uint32_t>(regionEnd) - regionStart + 1;
+            if (sz >= 1024)
+                ImGui::TextDisabled("$%04X-$%04X (%u KB)", regionStart, regionEnd, (unsigned)(sz / 1024));
+            else
+                ImGui::TextDisabled("$%04X-$%04X (%u B)", regionStart, regionEnd, (unsigned)sz);
+            ImGui::EndTooltip();
+
+            if (ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
+                showMemoryViewer = true;
+                memoryViewer->navigateToAddress(static_cast<int>(hoverAddr));
+            }
+        }
+    }
+
+    // Reserve total layout space (top axis + bar + PC arrow + label).
+    float totalH = topAxisH + bar1H + 6.0f + textH + 4.0f;
+    ImGui::Dummy(ImVec2(totalBarW, totalH));
     ImGui::End();
 }

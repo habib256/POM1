@@ -137,6 +137,7 @@ private:
     bool showCassetteDeck = false;     // Realistic procedural cassette deck
     bool showMemoryMapGrid = false;
     bool showMemoryBar = false;
+    bool showMemoryBarH = false;  // wide-short horizontal variant
     bool showSaveDialog = false;
     bool showSaveTapeDialog = false;
     bool showGraphicsCard = false;
@@ -270,6 +271,7 @@ private:
     std::vector<MemRegion> buildMemoryRegions();
     void renderMemoryMapGridWindow();
     void renderMemoryBarWindow();
+    void renderMemoryBarHorizontalWindow();
     void renderSaveDialog();
     void renderSaveTapeDialog();
     void renderGraphicsCardWindow();

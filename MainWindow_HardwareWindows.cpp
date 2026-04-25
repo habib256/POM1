@@ -579,6 +579,87 @@ void MainWindow_ImGui::renderJukeBoxWindow()
                         static_cast<unsigned>(snap.pageCount) - 1,
                         static_cast<unsigned>(snap.currentSubPage),
                         static_cast<unsigned>(snap.bankRegister));
+
+            // --- Page navigator: directly write the $CA00 bank latch ---
+            // Equivalent to the Program Manager's `Px` / `Sx` commands but
+            // available without entering the firmware. The Program Manager
+            // can still rewrite $CA00 on its next command.
+            int curPage = static_cast<int>(snap.currentPage);
+            int subPage = static_cast<int>(snap.currentSubPage);
+
+            ImGui::PushItemWidth(80);
+            if (ImGui::ArrowButton("##jb_page_prev", ImGuiDir_Left) && curPage > 0) {
+                uint8_t v = static_cast<uint8_t>((subPage << 4) | (curPage - 1));
+                emulation->setJukeBoxBankRegister(v);
+            }
+            ImGui::SameLine();
+            if (ImGui::SliderInt("##jb_page", &curPage, 0, snap.pageCount - 1, "Page %u")) {
+                uint8_t v = static_cast<uint8_t>((subPage << 4) | (curPage & 0x0F));
+                emulation->setJukeBoxBankRegister(v);
+            }
+            ImGui::SameLine();
+            if (ImGui::ArrowButton("##jb_page_next", ImGuiDir_Right)
+                && curPage < snap.pageCount - 1) {
+                uint8_t v = static_cast<uint8_t>((subPage << 4) | (curPage + 1));
+                emulation->setJukeBoxBankRegister(v);
+            }
+            ImGui::PopItemWidth();
+
+            // Sub-page toggle is meaningful only with the 16 kB ROM window.
+            if (snap.jumper == JukeBox::Jumper::RAM32_ROM16) {
+                ImGui::SameLine();
+                bool sx = (subPage == 1);
+                if (ImGui::Checkbox("Sx (upper 16 kB)", &sx)) {
+                    uint8_t v = static_cast<uint8_t>(((sx ? 1 : 0) << 4) | (curPage & 0x0F));
+                    emulation->setJukeBoxBankRegister(v);
+                }
+            }
+
+            // --- Page editor: copy one 32 kB page over another ---
+            // Authoring helper. Real flash needs an external programmer;
+            // POM1 mutates the in-memory ROM buffer. Use "Save ROM to file"
+            // below to persist the edits to roms/jukebox.rom.
+            static int s_copyFrom = 0;
+            static int s_copyTo   = 0;
+            if (s_copyFrom >= snap.pageCount) s_copyFrom = 0;
+            if (s_copyTo   >= snap.pageCount) s_copyTo   = 0;
+
+            ImGui::PushItemWidth(70);
+            ImGui::SliderInt("##jb_copy_from", &s_copyFrom, 0, snap.pageCount - 1, "From P%u");
+            ImGui::SameLine();
+            ImGui::TextDisabled(ICON_FA_ARROW_RIGHT);
+            ImGui::SameLine();
+            ImGui::SliderInt("##jb_copy_to", &s_copyTo, 0, snap.pageCount - 1, "To P%u");
+            ImGui::PopItemWidth();
+            ImGui::SameLine();
+            const bool copyAllowed = (s_copyFrom != s_copyTo);
+            ImGui::BeginDisabled(!copyAllowed);
+            if (ImGui::Button("Copy page")) {
+                std::string error;
+                if (emulation->copyJukeBoxPage(static_cast<uint8_t>(s_copyFrom),
+                                               static_cast<uint8_t>(s_copyTo), error)) {
+                    char msg[96];
+                    snprintf(msg, sizeof(msg),
+                             "Juke-Box: copied page %d -> %d (RAM only — Save ROM to persist)",
+                             s_copyFrom, s_copyTo);
+                    setStatusMessage(msg, 4.0f);
+                } else {
+                    setStatusMessage("Juke-Box page copy failed: " + error, 4.0f);
+                }
+            }
+            ImGui::EndDisabled();
+
+            ImGui::SameLine();
+            ImGui::BeginDisabled(snap.romPath.empty());
+            if (ImGui::Button("Save ROM to file")) {
+                std::string error;
+                if (emulation->saveJukeBoxRom("", error)) {
+                    setStatusMessage("Juke-Box ROM saved: " + snap.romPath, 3.0f);
+                } else {
+                    setStatusMessage("Juke-Box ROM save failed: " + error, 4.0f);
+                }
+            }
+            ImGui::EndDisabled();
         }
 
         ImGui::Separator();

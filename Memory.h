@@ -235,6 +235,16 @@ public:
     // Load a Juke-Box ROM file (up to 512 kB in flash mode, exactly 32 kB
     // in EEPROM mode). Populates `lastError` on failure.
     int loadJukeBoxRom(void);  // default path: roms/jukebox.rom
+    // UI-driven page navigation: write the bank-select latch ($CA00) and
+    // refresh the flat ROM mirror so the CPU sees the new page immediately.
+    void setJukeBoxBankRegister(uint8_t value);
+    // Duplicate one 32 kB page over another in the in-memory ROM buffer
+    // and refresh the mirror. Authoring helper — RAM-only until the user
+    // calls saveJukeBoxRom().
+    bool copyJukeBoxPage(uint8_t fromPage, uint8_t toPage, std::string& error);
+    // Persist the current in-memory ROM buffer back to disk (defaults to
+    // the path the buffer was loaded from).
+    bool saveJukeBoxRom(const std::string& path, std::string& error) const;
 
     // P-LAB Apple-1 Wi-Fi Modem (65C51 ACIA + ESP8266)
     WiFiModem& getWiFiModem() { return *wifiModem; }

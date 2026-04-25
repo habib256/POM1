@@ -104,6 +104,17 @@ public:
     uint8_t getCurrentPage() const;      // 0..pageCount-1 (wraps for undersized ROMs)
     uint8_t getCurrentSubPage() const;   // 0 (lower) or 1 (upper)
 
+    // Duplicate one 32 kB page over another inside the in-memory ROM buffer.
+    // POM1-only authoring helper — real flash needs erase+program sequences
+    // and a dedicated programmer; the EEPROM 28c256 has only one page so
+    // this returns false there. Changes are RAM-only until the user saves
+    // the ROM back to disk.
+    bool copyPage(uint8_t fromPage, uint8_t toPage, std::string& error);
+
+    // Persist the current in-memory ROM buffer back to `path` (or `romPath`
+    // when `path` is empty). Used by the UI to commit page-copy edits.
+    bool saveRomFile(const std::string& path, std::string& error) const;
+
     // Load a ROM file from disk. Accepts 16 kB..512 kB for Flash mode,
     // exactly 32 kB for EEPROM mode. Shorter flash files are padded with
     // $FF up to the nearest page boundary. `error` is populated on failure;

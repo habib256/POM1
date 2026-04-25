@@ -443,6 +443,7 @@ void MainWindow_ImGui::applyMachineConfig(int presetIndex)
     showCassetteDeck         = false;
     showMemoryMapGrid        = false;
     showMemoryBar            = false;
+    showMemoryBarH           = false;
     // showMemoryViewer / showDebugger are kept across switches — they're
     // debug tools that users actively work with, not preset-bound panels.
 

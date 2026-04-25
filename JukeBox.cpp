@@ -6,6 +6,7 @@
 
 #include "Logger.h"
 
+#include <cstring>
 #include <fstream>
 
 namespace {
@@ -230,6 +231,55 @@ void JukeBox::flushRomToFile() const
     }
     out.write(reinterpret_cast<const char*>(rom.data()),
               static_cast<std::streamsize>(rom.size()));
+}
+
+bool JukeBox::copyPage(uint8_t fromPage, uint8_t toPage, std::string& error)
+{
+    if (chipMode != ChipMode::Flash) {
+        error = "Page copy is a flash-mode operation (EEPROM has only one page).";
+        return false;
+    }
+    if (pageCount <= 1) {
+        error = "ROM has only one page — nothing to copy.";
+        return false;
+    }
+    if (fromPage >= pageCount || toPage >= pageCount) {
+        error = "Page index out of range.";
+        return false;
+    }
+    if (fromPage == toPage) {
+        error = "Source and destination pages are identical.";
+        return false;
+    }
+    const size_t fromOff = static_cast<size_t>(fromPage) * kPageSize;
+    const size_t toOff   = static_cast<size_t>(toPage)   * kPageSize;
+    if (fromOff + kPageSize > rom.size() || toOff + kPageSize > rom.size()) {
+        error = "ROM buffer too small for page copy.";
+        return false;
+    }
+    std::memmove(rom.data() + toOff, rom.data() + fromOff, kPageSize);
+    return true;
+}
+
+bool JukeBox::saveRomFile(const std::string& path, std::string& error) const
+{
+    const std::string& target = path.empty() ? romPath : path;
+    if (target.empty()) {
+        error = "No ROM file path set.";
+        return false;
+    }
+    std::ofstream out(target, std::ios::binary | std::ios::trunc);
+    if (!out.is_open()) {
+        error = "Cannot open " + target + " for writing.";
+        return false;
+    }
+    out.write(reinterpret_cast<const char*>(rom.data()),
+              static_cast<std::streamsize>(rom.size()));
+    if (!out.good()) {
+        error = "Write to " + target + " failed.";
+        return false;
+    }
+    return true;
 }
 
 void JukeBox::copySnapshot(Snapshot& out) const

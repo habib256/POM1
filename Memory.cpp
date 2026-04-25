@@ -1289,6 +1289,27 @@ int Memory::loadJukeBoxRom(void)
     return 1;
 }
 
+void Memory::setJukeBoxBankRegister(uint8_t value)
+{
+    jukeBox->writeBankRegister(value);
+    if (jukeBoxEnabled)
+        applyJukeBoxFlatMemoryMirror();
+}
+
+bool Memory::copyJukeBoxPage(uint8_t fromPage, uint8_t toPage, std::string& error)
+{
+    if (!jukeBox->copyPage(fromPage, toPage, error))
+        return false;
+    if (jukeBoxEnabled)
+        applyJukeBoxFlatMemoryMirror();
+    return true;
+}
+
+bool Memory::saveJukeBoxRom(const std::string& path, std::string& error) const
+{
+    return jukeBox->saveRomFile(path, error);
+}
+
 void Memory::advanceCycles(int cycles)
 {
     if (cycles > 0 && displayBusyCycles > 0) {

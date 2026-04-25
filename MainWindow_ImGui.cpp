@@ -500,6 +500,7 @@ void MainWindow_ImGui::render()
     // Carte mémoire
     if (showMemoryMapGrid) renderMemoryMapGridWindow();
     if (showMemoryBar) renderMemoryBarWindow();
+    if (showMemoryBarH) renderMemoryBarHorizontalWindow();
 
     // Dialogues
     if (showAbout) renderAboutDialog();

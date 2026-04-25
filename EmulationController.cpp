@@ -686,6 +686,27 @@ bool EmulationController::reloadJukeBoxRom(std::string& error)
     return ok;
 }
 
+void EmulationController::setJukeBoxBankRegister(uint8_t value)
+{
+    std::lock_guard<PriorityMutex> lock(stateMutex);
+    memory->setJukeBoxBankRegister(value);
+    publisher.publish(*memory, *cpu, runRequested.load());
+}
+
+bool EmulationController::copyJukeBoxPage(uint8_t fromPage, uint8_t toPage, std::string& error)
+{
+    std::lock_guard<PriorityMutex> lock(stateMutex);
+    bool ok = memory->copyJukeBoxPage(fromPage, toPage, error);
+    if (ok) publisher.publish(*memory, *cpu, runRequested.load());
+    return ok;
+}
+
+bool EmulationController::saveJukeBoxRom(const std::string& path, std::string& error)
+{
+    std::lock_guard<PriorityMutex> lock(stateMutex);
+    return memory->saveJukeBoxRom(path, error);
+}
+
 void EmulationController::setWiFiModemEnabled(bool enabled)
 {
     std::lock_guard<PriorityMutex> lock(stateMutex);
