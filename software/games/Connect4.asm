@@ -25,7 +25,12 @@ TILE_EMPTY  = 0
 TILE_RED    = 1
 TILE_YELLOW = 2
 
-GRID_BASE = $4000
+; Grid storage. Must sit in RAM that is available under EVERY supported
+; preset, including the Juke-Box (RAM16/ROM32 maps $4000-$BFFF as ROM, so
+; the original $4000 vanished into the JukeBox firmware). $0F00 lives in
+; the 4 kB stock Apple-1 RAM, well above the program code ($0280..~$067D),
+; and stays RAM regardless of which expansion card is plugged.
+GRID_BASE = $0F00
 
 ; --- Zero page ---
 .zeropage
