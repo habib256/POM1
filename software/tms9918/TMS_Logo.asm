@@ -43,7 +43,7 @@ WOZ_RST  = $FF1F
 
 LINE_MAX = 60
 MAX_VARS = 6
-MAX_PROCS     = 4
+MAX_PROCS     = 8
 PROC_SLOT     = 64        ; bytes per procedure slot (4 name + 1 len + 59 body)
 PROC_BODY_MAX = 59
 
@@ -122,7 +122,7 @@ lfsr_hi:    .res 1
 ;   byte  4    : body length (0..PROC_BODY_MAX)
 ;   bytes 5-31 : body characters (raw line_buf bytes between TO NAME and END)
 .segment "PROCBSS"
-proc_table:    .res 256
+proc_table:    .res 512      ; MAX_PROCS (8) x PROC_SLOT (64) = 512
 proc_save_buf: .res 60       ; saved line_buf during proc invocation
 proc_save_idx: .res 1        ; saved line_idx
 
@@ -208,6 +208,7 @@ help_msg:
         .byte "_        : BACKSPACE INPUT", $0D
         .byte "ALIASES  : FORWARD BACK RIGHT LEFT", $0D
         .byte "  PENUP PENDOWN CLEARSCREEN", $0D
+        .byte "DEMO     : RUN BUILT-IN SLIDESHOW", $0D
         .byte "HELP     : THIS LIST", $0D
         .byte "BYE      : EXIT TO MONITOR", $0D
         .byte 0
@@ -533,6 +534,7 @@ parse_dec_arg:
         RTS
 @rmod:  STA tmp               ; tmp = N
         LDA lfsr_lo
+        EOR lfsr_hi           ; mix halves for better dispersion
 @rsub:  CMP tmp
         BCC @rdone
         SEC
@@ -656,6 +658,95 @@ cmd_help:
         INC mptr_hi
         JMP @l
 @done:  RTS
+
+; cmd_demo: built-in slideshow that runs each demo line through
+;   parse_and_exec. Each line lives in CODE (read-only) and is copied
+;   into line_buf to be tokenised. Lines are CR-terminated; $00 marks
+;   the end of the script. After the script ends, line_buf is zeroed
+;   and line_idx set to 0 so the outer parse_and_exec sees CR and stops.
+cmd_demo:
+        LDA #<demo_script
+        STA mptr_lo
+        LDA #>demo_script
+        STA mptr_hi
+@nxt:   LDY #0
+        LDA (mptr_lo),Y
+        BEQ @done             ; $00 -> end of script
+@cp:    LDA (mptr_lo),Y
+        STA line_buf,Y
+        INY
+        CMP #$0D
+        BNE @cp
+        ; advance script pointer past consumed bytes (Y = bytes copied)
+        TYA
+        CLC
+        ADC mptr_lo
+        STA mptr_lo
+        BCC @nc
+        INC mptr_hi
+@nc:    ; run the line. parse_and_exec clobbers mptr_lo:hi via find_mnem,
+        ; so save/restore the demo script pointer around the call.
+        LDA mptr_lo
+        PHA
+        LDA mptr_hi
+        PHA
+        LDA #0
+        STA line_idx
+        STA cmd_status
+        JSR parse_and_exec
+        PLA
+        STA mptr_hi
+        PLA
+        STA mptr_lo
+        JMP @nxt
+@done:  ; terminate outer line_buf so the caller's parse_and_exec @loop
+        ; sees a CR and exits cleanly.
+        LDA #$0D
+        STA line_buf
+        LDA #0
+        STA line_idx
+        RTS
+
+; demo_script: 8-program slideshow. Single-word PRINT labels (no spaces)
+;   because PRINT stops at first space.
+demo_script:
+        .byte "PRINT ", $22, "DEMO", $0D
+        .byte "WAIT 1", $0D
+        .byte "CS", $0D
+        .byte "PRINT ", $22, "SQUARE", $0D
+        .byte "REPEAT 4 [FD 60 TR 90]", $0D
+        .byte "WAIT 2", $0D
+        .byte "CS", $0D
+        .byte "PRINT ", $22, "STAR", $0D
+        .byte "REPEAT 5 [FD 80 TR 144]", $0D
+        .byte "WAIT 2", $0D
+        .byte "CS", $0D
+        .byte "PRINT ", $22, "CIRCLE", $0D
+        .byte "REPEAT 36 [FD 5 TR 10]", $0D
+        .byte "WAIT 2", $0D
+        .byte "CS", $0D
+        .byte "PRINT ", $22, "SUN", $0D
+        .byte "REPEAT 18 [FD 60 BK 60 TR 20]", $0D
+        .byte "WAIT 2", $0D
+        .byte "CS", $0D
+        .byte "PRINT ", $22, "ROSETTE", $0D
+        .byte "REPEAT 12 [REPEAT 6 [FD 25 TR 60] TR 30]", $0D
+        .byte "WAIT 3", $0D
+        .byte "CS", $0D
+        .byte "PRINT ", $22, "RANDOM", $0D
+        .byte "REPEAT 80 [FD RANDOM 20 TR RANDOM 90]", $0D
+        .byte "WAIT 3", $0D
+        .byte "CS", $0D
+        .byte "PRINT ", $22, "ROSACE", $0D
+        .byte "REPEAT 10 [REPEAT 5 [FD 30 TR 144] TR 36]", $0D
+        .byte "WAIT 3", $0D
+        .byte "CS", $0D
+        .byte "PRINT ", $22, "RAYS", $0D
+        .byte "REPEAT 24 [FD 70 BK 70 TR 15]", $0D
+        .byte "WAIT 2", $0D
+        .byte "CS", $0D
+        .byte "PRINT ", $22, "END", $0D
+        .byte 0
 
 ; cmd_make: parses "[\"]NAME VALUE", stores VALUE in var_table[NAME].
 ;   value can be a literal decimal or a :OTHER-NAME reference.
@@ -1016,15 +1107,13 @@ proc_invoke:
         STA line_idx
         RTS
 
-; roll_lfsr: advance the 16-bit Galois LFSR (taps 0xB400 = $b400).
-;   On exit lfsr_lo:lfsr_hi has been updated. Clobbers A only.
+; roll_lfsr: advance the 16-bit Galois LFSR (taps $B400 -> bits 16,14,13,11).
+;   Standard right-shift Galois variant: shift the 16-bit value right by 1;
+;   if the bit shifted out (= old bit 0 of lfsr_lo) was 1, XOR taps into hi.
 roll_lfsr:
-        LDA lfsr_lo
-        LSR
-        ROL lfsr_hi          ; carry from old bit 0 -> bit 0 of hi
-        STA lfsr_lo
-        ; if old bit 0 was 1, XOR taps into hi byte
-        BCC @done
+        LSR lfsr_hi          ; bit 0 of lfsr_hi -> C
+        ROR lfsr_lo          ; lfsr_lo: C -> bit 7, bit 0 -> C (the shifted-out bit)
+        BCC @done            ; if shifted-out bit was 0, no XOR
         LDA lfsr_hi
         EOR #$B4
         STA lfsr_hi
@@ -1849,10 +1938,23 @@ xor_turtle:
         STA plot_mode
         RTS
 
-; draw_turtle: if turtle_visible == 0, compute verts + XOR-draw, set flag.
+; draw_turtle: if turtle_visible == 0 AND turtle fits on screen, draw + flag.
+;   Skips draw if tx/ty too close to an edge (vertices would wrap and produce
+;   garbage Bresenham segments). Margin = 9 (max tip extension).
 draw_turtle:
         LDA turtle_visible
         BNE @done
+        ; bounds check: tx in [9..246], ty in [9..182]
+        LDA tx_lo
+        CMP #9
+        BCC @done
+        CMP #247
+        BCS @done
+        LDA ty_lo
+        CMP #9
+        BCC @done
+        CMP #183
+        BCS @done
         JSR compute_turtle_verts
         JSR xor_turtle
         LDA #1
@@ -2147,6 +2249,8 @@ mnem_tab:
         .word cmd_wait
         .byte "PRIN", 'P'         ; PRINT (custom flag, special-cased)
         .word cmd_print
+        .byte "DEMO", 0           ; built-in slideshow
+        .word cmd_demo
         ; --- MIT-LOGO long-form aliases ---
         ; Each entry uses the first 4 letters of the long name; find_mnem
         ; consumes any trailing letters automatically.
