@@ -17,7 +17,14 @@
 // rendered screens (Apple 1 text, GraphicsCard, TMS9918, GT6144, dialogs).
 #include "TerminalCard.h"
 #define STB_IMAGE_WRITE_IMPLEMENTATION
+#if defined(__clang__) || defined(__GNUC__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+#endif
 #include "third_party/stb/stb_image_write.h"
+#if defined(__clang__) || defined(__GNUC__)
+#pragma GCC diagnostic pop
+#endif
 #endif
 
 #if POM1_IS_WASM
