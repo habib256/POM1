@@ -40,6 +40,7 @@ class TerminalCard;
 class A1IO_RTC;
 class PR40Printer;
 #include "CFFA1.h"
+#include "CodeTank.h"
 #include "GT6144.h"
 #include "JukeBox.h"
 #include "MicroSD.h"
@@ -208,11 +209,12 @@ public:
     bool isCFFA1Enabled() const { return cffa1Enabled; }
     int loadCFFA1Rom(void);
 
-    // P-LAB Apple-1 Juke-Box (Claudio Parmigiani & Jacopo Rosselli) —
+    // P-LAB Apple-1 Juke-Box (Claudio Parmigiani & Jacopo Rosselli):
     // memory-mapped flash or 28c256 EEPROM with a runtime jumper for the
     // RAM/ROM split and a Px/Sx bank-select latch at $CA00. Mutually
     // exclusive with CFFA1, microSD, Krusader, Wi-Fi Modem, A1-SID and
-    // A1-AUDIO SE (all share the $4000-$CFFF address window).
+    // CodeTank in its RAM16/ROM32 jumper position (all share the
+    // $4000-$CFFF address window).
     JukeBox& getJukeBox() { return *jukeBox; }
     const JukeBox& getJukeBox() const { return *jukeBox; }
     void setJukeBoxEnabled(bool b);
@@ -245,6 +247,23 @@ public:
     // Persist the current in-memory ROM buffer back to disk (defaults to
     // the path the buffer was loaded from).
     bool saveJukeBoxRom(const std::string& path, std::string& error) const;
+
+    // P-LAB CodeTank (formerly bundled inside the Juke-Box). Standalone ROM
+    // card carrying a 32 kB 28c256 with a board jumper that picks lower or
+    // upper 16 kB; the selected half is mapped at $4000-$7FFF. Designed to
+    // pair with the TMS9918 Graphic Card so games shipped on a CodeTank ROM
+    // can run on a real Apple-1 + P-LAB stack without depending on the
+    // cassette deck or microSD. Mutually exclusive with the Juke-Box and
+    // any other card claiming $4000-$7FFF.
+    CodeTank& getCodeTank() { return *codeTank; }
+    const CodeTank& getCodeTank() const { return *codeTank; }
+    void setCodeTankEnabled(bool b);
+    bool isCodeTankEnabled() const { return codeTankEnabled; }
+    void setCodeTankJumper(CodeTank::Jumper j);
+    CodeTank::Jumper getCodeTankJumper() const { return codeTank->getJumper(); }
+    // Hot-load a 32 kB CodeTank ROM by path (used by the CodeTank Library
+    // window). Empty path falls back to the default probe candidates.
+    int loadCodeTankRom(const std::string& path = std::string());
 
     // P-LAB Apple-1 Wi-Fi Modem (65C51 ACIA + ESP8266)
     WiFiModem& getWiFiModem() { return *wifiModem; }
@@ -303,6 +322,11 @@ private :
     // Copy Juke-Box EEPROM into mem[] for the active ROM window (and clear
     // $4000-$7FFF in RAM32/ROM16 mode) so the flat array matches the bus.
     void applyJukeBoxFlatMemoryMirror();
+    // Copy the CodeTank's selected 16 kB half into mem[$4000-$7FFF] so the
+    // flat-memory shadow / Memory Viewer / snapshot reflect the bank wired
+    // by the board jumper. PeripheralBus serves CPU reads via codeTank->
+    // readByte() directly, so the mirror is purely cosmetic.
+    void applyCodeTankFlatMemoryMirror();
 
     // Page-level dirty bitmap (256 pages × 256 bytes = 64 KB). memWrite
     // sets one bit; bulk loaders mark ranges via markPagesDirty(). Consumed
@@ -350,6 +374,8 @@ private :
     bool cffa1Enabled = false;
     std::unique_ptr<JukeBox> jukeBox;
     bool jukeBoxEnabled = false;
+    std::unique_ptr<CodeTank> codeTank;
+    bool codeTankEnabled = false;
     std::unique_ptr<WiFiModem> wifiModem;
     bool wifiModemEnabled = false;
     std::unique_ptr<TerminalCard> terminalCard;
@@ -376,13 +402,16 @@ private :
     PeripheralBus::Handle tms9918BusHandle = -1;     // $CC00/$CC01, priority 10 (wins over SID)
     PeripheralBus::Handle cassetteToggleBusHandle = -1; // $C000-$C0FF read = toggle output
     PeripheralBus::Handle cassetteInputBusHandle  = -1; // $C081 read = tape input (priority 1, wins over toggle)
-    // Juke-Box: two disjoint windows — one per jumper position. At most one
-    // is enabled at a time. Priority 20 so the card wins over any other
-    // peripheral that might have been registered in the same range (the
-    // Juke-Box physically replaces any card at $4000-$BFFF on the real bus).
+    // Juke-Box ROM windows. Two disjoint windows (one per RAM/ROM jumper);
+    // at most one is enabled at a time. Priority 20 so the card wins over
+    // overlapping peripherals.
     PeripheralBus::Handle jukeBox32BusHandle = -1;   // RAM-16/ROM-32: $4000-$BFFF
     PeripheralBus::Handle jukeBox16BusHandle = -1;   // RAM-32/ROM-16: $8000-$BFFF
     PeripheralBus::Handle jukeBoxBankRegBusHandle = -1; // Px/Sx latch at $CA00
+    // CodeTank ROM window — fixed $4000-$7FFF, jumper selects which 16 kB
+    // half of the 28c256 is wired into the bus. Priority 20 to win against
+    // overlapping peripherals (no $CA00 latch — CodeTank has no paging).
+    PeripheralBus::Handle codeTankBusHandle = -1;
     PeripheralBus::Handle gt6144BusHandle    = -1;   // SWTPC GT-6144: $D00A, write-only
 
 };

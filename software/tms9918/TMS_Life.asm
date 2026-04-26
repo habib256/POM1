@@ -5,8 +5,14 @@
 ; B3/S23 rules, dead borders
 ;
 ; Keyboard:
-;   ANY KEY   -> cycle to next pattern (wraps)
-;   ESC ($1B) -> exit to Woz Monitor
+;   K (or any other key)  -> cycle to next pattern (wraps)
+;   SPACE                 -> pause / resume the simulation
+;   .  (period)           -> single-step one generation (when paused)
+;   R                     -> reseed the current pattern (restart from gen 0)
+;   ESC                   -> exit to Woz Monitor
+;
+; Pattern names + transitions (RUN / PAUSE / STEP / RESEED) are echoed
+; on the Apple-1 text screen via the Woz Monitor ECHO routine.
 ;
 ; Patterns shipped (wrap after last):
 ;   0 Pulsar              (period-3 oscillator, 13x13)
@@ -15,6 +21,10 @@
 ;   3 Acorn               (7-cell methuselah, chaotic growth)
 ;   4 R-pentomino         (5-cell methuselah, grandfather of chaos)
 ;   5 Spaceship Parade    (two LWSS + a glider crossing the grid)
+;   6 Glider              (single 5-cell SE spaceship, period 4)
+;   7 Bunnies             (7-cell methuselah, R. Wainwright 1971)
+;   8 Pi-heptomino        (7-cell methuselah, dense ash)
+;   9 Oscillator Zoo      (Blinker + Toad + Beacon + a Block still life)
 ; =============================================
 ; Assemble:
 ;   ca65 -o build/TMS_Life.o software/tms9918/TMS_Life.asm
@@ -28,11 +38,18 @@
 ; software/tms9918/), File > Load Memory TMS_Life.txt, then 280R in
 ; the Woz Monitor. Tap any key to change pattern, ESC to exit.
 ;
-; Memory footprint:
-;   $0280-~$0700  code + pattern tables (output file)
-;   $4000-$4373   grid_a       (884 B, zeroed at boot)
-;   $4400-$4773   grid_b       (884 B, zeroed at boot)
+; Memory footprint (8 KB Apple-1 + TMS9918 minimum):
+;   $0280-~$0790  code + pattern tables + HUD strings (output file)
+;   $1000-$1373   grid_a       (884 B, zeroed at boot)
+;   $1400-$1773   grid_b       (884 B, zeroed at boot)
 ;   VRAM on card  pattern/name/color tables (not main bus)
+;
+; Grids deliberately live BELOW $2000 so they sit in the bare Apple-1
+; RAM area regardless of what's plugged at $4000+. Earlier revisions
+; put them at $4000/$4400, but that collides with the P-LAB CodeTank
+; ROM window when both Life and a CodeTank cart are loaded on the same
+; preset (CodeTank ROM eats the writes -> grids stay frozen at ROM
+; bytes -> render() feeds garbage chars to the TMS9918).
 ;
 ; Cell layout:       cell (r, c), r in 1..24, c in 1..32
 ;                    byte = grid[r*34 + c]   (0 = dead, 1 = alive)
@@ -47,6 +64,7 @@
 ; ----- Apple 1 I/O -----
 KBDCR   = $D011
 KBD     = $D010
+ECHO    = $FFEF             ; Woz Monitor character output ($D012 with busy wait)
 
 ; ----- TMS9918 MMIO -----
 VDP_DATA = $CC00
@@ -57,15 +75,22 @@ ROW_SIZ   = 34              ; 32 interior cells + 2 ghost columns
 N_ROWS    = 24              ; interior rows
 N_COLS    = 32              ; interior cols
 
-; ----- Keys -----
-KEY_ESC   = $9B             ; Apple 1 ESC (bit 7 set)
+; ----- Keys (Apple 1 KBD has bit 7 always set) -----
+KEY_ESC   = $9B             ; ESC                  (1B | 80)
+KEY_SPACE = $A0             ; SPACE - pause toggle (20 | 80)
+KEY_DOT   = $AE             ; '.'   - single step  (2E | 80)
+KEY_R     = $D2             ; 'R'   - reseed       (52 | 80)
 
 ; ----- Pattern catalog -----
-NUM_PATTERNS = 6
+NUM_PATTERNS = 10
 
 ; ----- Runtime RAM (absolute, NOT in the output file) -----
-grid_a  := $4000
-grid_b  := $4400
+; Grids must avoid the CodeTank ROM window ($4000-$7FFF when a CodeTank
+; cart is plugged) and the GEN2 HGR framebuffer ($2000-$3FFF when GEN2
+; is plugged). $1000/$1400 sits above the program (~$0790) and below
+; both expansion windows, so it's safe on every TMS9918-capable preset.
+grid_a  := $1000
+grid_b  := $1400
 
 ; ----- Zero page -----
 .zeropage
@@ -90,28 +115,39 @@ tmp:        .res 1          ; scratch
 pat_idx:    .res 1          ; current pattern index (0..NUM_PATTERNS-1)
 pat_lo:     .res 1          ; cursor into active pattern table
 pat_hi:     .res 1
+paused:     .res 1          ; $00 = running, $FF = paused
+str_p_lo:   .res 1          ; print_str cursor (lo)
+str_p_hi:   .res 1          ; print_str cursor (hi)
 
 .code
 
 ; =============================================
-; MAIN: boot, then infinite render/step loop
+; MAIN: boot, then infinite render/step loop.
+;
+; The HUD prints on the Apple-1 text screen (KBD/$D012 via ECHO):
+;   - title + control reminder once at boot
+;   - pattern name on every switch / reseed
+;   - "PAUSE", "RUN", "STEP" tags on transport actions
+; The TMS9918 raster is dedicated to the simulation.
 ; =============================================
 main:
         LDA #0
         STA pat_idx
+        STA paused          ; start running
         JSR init_vdp
         JSR clear_grids
         JSR init_pattern
+        JSR reset_grids_ptr
         LDA KBD             ; swallow any stale key from POM1 boot
 
-        LDA #<grid_a
-        STA src_lo
-        LDA #>grid_a
-        STA src_hi
-        LDA #<grid_b
-        STA dst_lo
-        LDA #>grid_b
-        STA dst_hi
+        ; Boot-time HUD on the Apple-1 text screen.
+        LDA #<str_title
+        LDX #>str_title
+        JSR print_str
+        LDA #<str_help
+        LDX #>str_help
+        JSR print_str
+        JSR print_pattern_name
 
 gen_loop:
         JSR render
@@ -119,14 +155,78 @@ gen_loop:
         BPL @no_key
         LDA KBD             ; consume key
         CMP #KEY_ESC
-        BEQ @exit
-        JSR next_pattern    ; any other key -> cycle
+        BEQ @done
+        JSR dispatch_key    ; SPACE / . / R / next-pattern
         JMP gen_loop
-@exit:
-        RTS
 @no_key:
+        LDA paused
+        BNE gen_loop        ; paused: just keep rendering, no compute
+        JSR step_one_gen
+        JMP gen_loop
+@done:
+        RTS
+
+; =============================================
+; dispatch_key: map A (a key with bit 7 set) onto a transport
+; action. Anything not recognised cycles to the next pattern,
+; preserving the original "any-key advances" feel.
+; =============================================
+dispatch_key:
+        CMP #KEY_SPACE
+        BEQ @toggle_pause
+        CMP #KEY_DOT
+        BEQ @single_step
+        CMP #KEY_R
+        BEQ @reseed
+        ; default: cycle to next pattern.
+        JSR next_pattern
+        ; coming out of pause: a pattern change re-seeds, so it makes
+        ; sense to leave the user in the running state.
+        LDA #0
+        STA paused
+        JSR print_pattern_name
+        RTS
+
+@toggle_pause:
+        LDA paused
+        EOR #$FF
+        STA paused
+        BNE @say_pause
+        LDA #<str_run
+        LDX #>str_run
+        JMP print_str
+@say_pause:
+        LDA #<str_pause
+        LDX #>str_pause
+        JMP print_str
+
+@single_step:
+        ; Only meaningful while paused — a no-op while running.
+        LDA paused
+        BEQ @ret
+        JSR step_one_gen
+        LDA #<str_step
+        LDX #>str_step
+        JMP print_str
+@ret:
+        RTS
+
+@reseed:
+        JSR clear_grids
+        JSR init_pattern
+        JSR reset_grids_ptr
+        LDA #<str_reseed
+        LDX #>str_reseed
+        JSR print_str
+        JMP print_pattern_name
+
+; =============================================
+; step_one_gen: compute_next then swap src <-> dst.
+; Factored out so dispatch_key (single-step) and gen_loop
+; (free-run) share the same code path.
+; =============================================
+step_one_gen:
         JSR compute_next
-        ; swap src <-> dst (single byte each, via A and X)
         LDA src_lo
         LDX dst_lo
         STX src_lo
@@ -135,7 +235,22 @@ gen_loop:
         LDX dst_hi
         STX src_hi
         STA dst_hi
-        JMP gen_loop
+        RTS
+
+; =============================================
+; reset_grids_ptr: src=grid_a, dst=grid_b. Called after
+; clear_grids+init_pattern so the next render shows grid_a.
+; =============================================
+reset_grids_ptr:
+        LDA #<grid_a
+        STA src_lo
+        LDA #>grid_a
+        STA src_hi
+        LDA #<grid_b
+        STA dst_lo
+        LDA #>grid_b
+        STA dst_hi
+        RTS
 
 ; =============================================
 ; next_pattern: advance pat_idx (with wrap), clear
@@ -152,15 +267,46 @@ next_pattern:
 @ok:
         JSR clear_grids
         JSR init_pattern
-        LDA #<grid_a
-        STA src_lo
-        LDA #>grid_a
-        STA src_hi
-        LDA #<grid_b
-        STA dst_lo
-        LDA #>grid_b
-        STA dst_hi
-        RTS
+        JMP reset_grids_ptr
+
+; =============================================
+; print_str: A/X = pointer to NUL-terminated ASCII (low/high).
+; Each byte is OR'd with $80 before being sent through ECHO so
+; the Apple-1 display latches it. Use $0D for CR (becomes $8D).
+; Clobbers A, X, Y. Re-entrant-safe through ZP cursor.
+; =============================================
+print_str:
+        STA str_p_lo
+        STX str_p_hi
+        LDY #0
+@loop:  LDA (str_p_lo),Y
+        BEQ @done
+        ORA #$80
+        JSR ECHO
+        INY
+        BNE @loop
+        ; If we ever printed >256 bytes we'd need to bump str_p_hi;
+        ; nothing in the HUD strings is that long, so this is a NOP
+        ; safety net rather than a real overflow path.
+        INC str_p_hi
+        JMP @loop
+@done:  RTS
+
+; =============================================
+; print_pattern_name: print "> <name>\r" for the current pat_idx.
+; =============================================
+print_pattern_name:
+        LDA #<str_arrow
+        LDX #>str_arrow
+        JSR print_str
+        LDX pat_idx
+        LDA pattern_names_lo,X
+        STA str_p_lo
+        LDA pattern_names_hi,X
+        STA str_p_hi
+        LDA str_p_lo
+        LDX str_p_hi
+        JMP print_str
 
 ; =============================================
 ; init_vdp: set up Graphics I mode, upload the two
@@ -486,9 +632,47 @@ rule_lut:
 patterns_lo:
         .byte <pattern_pulsar,  <pattern_pentadeca, <pattern_diehard
         .byte <pattern_acorn,   <pattern_rpent,     <pattern_parade
+        .byte <pattern_glider,  <pattern_bunnies,   <pattern_pi
+        .byte <pattern_zoo
 patterns_hi:
         .byte >pattern_pulsar,  >pattern_pentadeca, >pattern_diehard
         .byte >pattern_acorn,   >pattern_rpent,     >pattern_parade
+        .byte >pattern_glider,  >pattern_bunnies,   >pattern_pi
+        .byte >pattern_zoo
+
+; Pattern names — NUL-terminated ASCII, terminated with $0D (CR).
+; print_str ORs $80 into each byte before sending to ECHO.
+pattern_names_lo:
+        .byte <name_pulsar,  <name_pentadeca, <name_diehard
+        .byte <name_acorn,   <name_rpent,     <name_parade
+        .byte <name_glider,  <name_bunnies,   <name_pi
+        .byte <name_zoo
+pattern_names_hi:
+        .byte >name_pulsar,  >name_pentadeca, >name_diehard
+        .byte >name_acorn,   >name_rpent,     >name_parade
+        .byte >name_glider,  >name_bunnies,   >name_pi
+        .byte >name_zoo
+
+name_pulsar:    .byte "PULSAR", $0D, 0
+name_pentadeca: .byte "PENTADECATHLON", $0D, 0
+name_diehard:   .byte "DIE HARD", $0D, 0
+name_acorn:     .byte "ACORN", $0D, 0
+name_rpent:     .byte "R-PENTOMINO", $0D, 0
+name_parade:    .byte "SPACESHIP PARADE", $0D, 0
+name_glider:    .byte "GLIDER", $0D, 0
+name_bunnies:   .byte "BUNNIES", $0D, 0
+name_pi:        .byte "PI-HEPTOMINO", $0D, 0
+name_zoo:       .byte "OSCILLATOR ZOO", $0D, 0
+
+; HUD chrome — printed once at boot + on transport actions.
+str_title:  .byte "TMS LIFE 32X24  B3/S23", $0D, 0
+str_help:   .byte "K=NEXT SPACE=PAUSE .=STEP R=RESEED ESC=QUIT"
+            .byte $0D, $0D, 0
+str_arrow:  .byte "> ", 0           ; followed by pattern name
+str_pause:  .byte "PAUSE", $0D, 0
+str_run:    .byte "RUN", $0D, 0
+str_step:   .byte "STEP", $0D, 0
+str_reseed: .byte "RESEED ", 0      ; followed by pattern name on its own line
 
 ; Pattern 0 — Pulsar. Period-3 oscillator, 13x13 bounding box,
 ; centered on (12, 16). Top-left at (6, 10), bottom-right at (18, 22).
@@ -555,6 +739,71 @@ pattern_parade:
         .byte 17, 26,  17, 30
         .byte 18, 26
         .byte 19, 27,  19, 30
+        .byte $FF
+
+; Pattern 6 — Glider. Single 5-cell SE-bound spaceship, period 4
+; (translates one cell SE every 4 generations). Placed top-left so
+; it has the whole grid to cross before hitting the dead borders.
+;
+;   . X .
+;   . . X
+;   X X X
+pattern_glider:
+        .byte  5,  6
+        .byte  6,  7
+        .byte  7,  5,   7,  6,   7,  7
+        .byte $FF
+
+; Pattern 7 — Bunnies. 7-cell methuselah by Robert Wainwright (1971).
+; Stabilises into a "diehard"-shaped configuration after thousands
+; of generations on an infinite plane; on the 32x24 dead-bordered
+; grid it churns chaotically before the activity hits a wall.
+;
+;   X . . . . . X .
+;   . . . . . . X .
+;   . . . . . X . X
+;   X . X . . . . .
+pattern_bunnies:
+        .byte 10, 12,  10, 18
+        .byte 11, 18
+        .byte 12, 17,  12, 19
+        .byte 13, 12,  13, 14
+        .byte $FF
+
+; Pattern 8 — Pi-heptomino. 7-cell methuselah, dense ash after
+; ~173 generations. Shape:
+;
+;   X X X
+;   X . X
+;   X . X
+pattern_pi:
+        .byte 12, 16,  12, 17,  12, 18
+        .byte 13, 16,            13, 18
+        .byte 14, 16,            14, 18
+        .byte $FF
+
+; Pattern 9 — Oscillator Zoo. Three classic period-2 oscillators
+; plus a Block (still life) so the user can see the difference
+; between something that breathes and something that doesn't.
+;
+;   Blinker  (period 2)  rows 5,         cols 5-7
+;   Toad     (period 2)  rows 10-11,     cols 4-7
+;   Beacon   (period 2)  rows 15-18,     cols 5-8
+;   Block    (still life) rows 5-6,       cols 25-26
+pattern_zoo:
+        ; Blinker
+        .byte  5,  5,   5,  6,   5,  7
+        ; Toad
+        .byte 10,  5,  10,  6,  10,  7
+        .byte 11,  4,  11,  5,  11,  6
+        ; Beacon (two 2x2 blocks diagonally)
+        .byte 15,  5,  15,  6
+        .byte 16,  5,  16,  6
+        .byte 17,  7,  17,  8
+        .byte 18,  7,  18,  8
+        ; Block (control: never moves, never blinks)
+        .byte  5, 25,   5, 26
+        .byte  6, 25,   6, 26
         .byte $FF
 
 ; row_ofs[r] = r * 34  (0 <= r <= 25)

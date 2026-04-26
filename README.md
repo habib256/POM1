@@ -186,7 +186,7 @@ vcpkg install glfw3:x64-windows
 | 5 | **P-LAB microSD & Applesoft Lite (Apr 2022)** | 32 KB | Applesoft Lite | microSD |
 | 6 | **P-LAB A1-SID Sound Card ($C800-$CFFF)** | 32 KB | Integer | A1-SID |
 | 7 | **P-LAB A1-AUDIO Special Edition ($CC00-$CC1F)** | 32 KB | Integer | A1-AUDIO SE |
-| 8 | **P-LAB TMS9918 Graphic Card** | 32 KB | Integer | TMS9918 |
+| 8 | **P-LAB TMS9918 Graphic Card** | 16 KB | Integer + CodeTank | TMS9918, CodeTank |
 | 9 | **P-LAB I/O Board & RTC** | 32 KB | Integer | I/O & RTC |
 | 10 | **P-LAB Wi-Fi Modem BBS** | 32 KB | Integer | Wi-Fi Modem |
 | 11 | **P-LAB Juke-Box (16 kB RAM)** | 16 KB | Integer + Juke-Box | Juke-Box |
@@ -378,20 +378,22 @@ Source material: the **[High Voltage SID Collection (HVSC)](https://www.exotica.
 
 ### P-LAB Apple-1 Juke-Box
 
-Claudio Parmigiani and Jacopo Rosselli's [P-LAB Juke-Box](https://p-l4b.github.io/jukebox/) — memory-mapped flash library acting as an in-address-space program menu. No cassette, no SD card. Two chip variants, selectable in the Hardware window:
+Claudio Parmigiani and Jacopo Rosselli's [P-LAB Juke-Box](https://p-l4b.github.io/jukebox/) — memory-mapped flash library acting as an in-address-space program menu. No cassette, no SD card. The same Hardware window also models the simpler CodeTank 28c256 daughterboard.
 
 - **Flash** (default) — paged read-only, 16 KB to 512 KB (27c128/256/512, 27c020, 29c020, 29c040, 39sf040). Each 32 KB page bundles programs + a copy of the Program Manager at `$BD00`. Up to 16 pages for 512 KB chips.
 - **EEPROM 28c256** — 32 KB single-page, writable via the RW jumper. Enables the Save Program flow (`B800R`) documented in [Jukebox_v1.09_RW_ENG_OL.pdf](doc/Jukebox_v1.09_RW_ENG_OL.pdf).
+- **CodeTank 28c256** — fixed 16 KB decode at `$4000-$7FFF`; the board jumper selects lower or upper half of the 32 KB chip, giving two 16 KB programs without swapping EEPROMs. It has its own `CT` hardware toolbar button.
 
 Addressing
 
 - **ROM window**: `$4000-$BFFF` (RAM-16 / ROM-32 jumper) or `$8000-$BFFF` (RAM-32 / ROM-16 jumper) — toggle from the Juke-Box window
 - **Bank-select latch**: `$CA00` (write-only). Bits 0-3 = `Px` page, bit 4 = `Sx` 16 KB sub-page. POM1 picks the lowest page containing the Program Manager signature `$A5` at file offset `$7D00` as the default boot page so `BD00R` always works on hard reset.
+- **CodeTank addressing**: `$4000-$7FFF` only, no `$CA00` latch; the lower/upper 16 KB jumper is exposed in the same window.
 - **Program Manager** at `$BD00` — `BD00R` → `&` prompt → `H / D / L<X> / P<0-F> / S<0|1> / B / X`
 - **Save Program** at `$B800` — `B800R` writes current RAM back to the 28c256 EEPROM (needs EEPROM chip mode + RW jumper). Flash mode ignores writes.
 - Mutually exclusive with CFFA1, microSD, Krusader, Wi-Fi Modem and A1-SID (all inside `$4000-$CFFF`). A1-AUDIO SE at `$CC00-$CC1F` coexists — `$CA00` is disjoint.
 - Integer BASIC at `$E000` stays available — `L<letter>` then `B` loads a BASIC program and hands it to the interpreter
-- Firmware: `roms/jukebox.rom`; rebuild with [`doc/JUKEBOX_ROM_CREATOR/build_jukebox_rom.py`](doc/JUKEBOX_ROM_CREATOR/build_jukebox_rom.py) or P-LAB's `2-packer.sh`. Invariants pinned by `jukebox_paged_rom_smoke`.
+- Firmware/images: `roms/jukebox.rom` for Juke-Box and `roms/codetank.rom` for CodeTank. On desktop, CodeTank first probes `/home/gistarcade/Téléchargements/28c256_Final.bin`, then falls back to the repo ROM. Rebuild Juke-Box with [`doc/JUKEBOX_ROM_CREATOR/build_jukebox_rom.py`](doc/JUKEBOX_ROM_CREATOR/build_jukebox_rom.py) or P-LAB's `2-packer.sh`. Invariants pinned by `jukebox_paged_rom_smoke`.
 
 ---
 

@@ -132,6 +132,7 @@ constexpr CardNameEntry kCardNames[] = {
     {"modem",        CliCard::WifiModem},
     {"terminal",     CliCard::TerminalCard},
     {"jukebox",      CliCard::JukeBox},
+    {"codetank",     CliCard::CodeTank},
     {"pr40",         CliCard::Pr40},
     {"printer",      CliCard::Pr40},
     {"gt6144",       CliCard::GT6144},
@@ -171,7 +172,7 @@ bool addCardsFromCsv(const std::string& csv, bool enable, std::vector<CliCardOve
         CliCard c;
         if (!parseCard(n, c)) {
             pom1::log().error("CLI", "Unknown card name '" + n + "'. Valid: "
-                "aci,sid,sid-se,microsd,tms9918,a1io-rtc,hgr,cffa1,krusader,wifi,terminal,jukebox,pr40");
+                "aci,sid,sid-se,microsd,tms9918,a1io-rtc,hgr,cffa1,krusader,wifi,terminal,jukebox,codetank,pr40");
             return false;
         }
         out.push_back({c, enable});
@@ -343,6 +344,19 @@ std::optional<CliPlan> parseCli(int argc, char* argv[], bool& listPresetsOut)
             if      (v == "flash") plan.jukeBoxChipModeOverride = JukeBox::ChipMode::Flash;
             else if (v == "eeprom" || v == "28c256") plan.jukeBoxChipModeOverride = JukeBox::ChipMode::EEPROM28C256;
             else { logAndFail("--jukebox-chip expects flash or eeprom"); return std::nullopt; }
+            continue;
+        }
+        if (arg == "--codetank-jumper") {
+            if (!needArg(i, "--codetank-jumper")) return std::nullopt;
+            const std::string v = toLower(argv[++i]);
+            if      (v == "lower" || v == "lower16") plan.codeTankJumperOverride = CodeTank::Jumper::Lower16;
+            else if (v == "upper" || v == "upper16") plan.codeTankJumperOverride = CodeTank::Jumper::Upper16;
+            else { logAndFail("--codetank-jumper expects lower or upper"); return std::nullopt; }
+            continue;
+        }
+        if (arg == "--codetank-rom") {
+            if (!needArg(i, "--codetank-rom")) return std::nullopt;
+            plan.codeTankRomPath = argv[++i];
             continue;
         }
 

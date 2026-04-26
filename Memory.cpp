@@ -117,6 +117,7 @@ Memory::Memory()
         }
     }
     jukeBox = std::make_unique<JukeBox>();
+    codeTank = std::make_unique<CodeTank>();
     terminalCard->setKeyInjector([this](char key, bool raw) {
         if (raw) setKeyPressedRaw(key);
         else setKeyPressed(key);
@@ -221,14 +222,13 @@ Memory::Memory()
         /*onWrite=*/ {});
     bus.setEnabled(cassetteInputBusHandle, aciEnabled);
 
-    // P-LAB Juke-Box: two disjoint ranges, one per jumper position. Only one
-    // is ever enabled at a time (setJukeBoxJumper flips them). Priority 20
-    // so the card wins the full window against any other peripheral that
-    // happened to register lower-priority handlers inside it (CFFA1 at
-    // $9000-$AFDF, microSD at $A000-$A00F, Wi-Fi Modem at $B000-$B003).
-    // Real-hardware-wise those cards are mutually exclusive with the
-    // Juke-Box, and setJukeBoxEnabled() unplugs them defensively; the
-    // priority guard is belt-and-suspenders.
+    // P-LAB Juke-Box: only one of the two ROM windows is ever enabled at a
+    // time (chosen by the RAM/ROM jumper). Priority 20 so the card wins the
+    // full window against any other peripheral that happened to register
+    // lower-priority handlers inside it (CFFA1 at $9000-$AFDF, microSD at
+    // $A000-$A00F, Wi-Fi Modem at $B000-$B003). Real-hardware-wise those
+    // cards are mutually exclusive with the Juke-Box, and setJukeBoxEnabled()
+    // unplugs them defensively; the priority guard is belt-and-suspenders.
     jukeBox32BusHandle = bus.registerHandle(
         "JukeBox_ROM32", {0x4000, 0xBFFF}, /*priority*/ 20,
         [this](uint16_t a) { return jukeBox->readByte(a); },
@@ -254,6 +254,17 @@ Memory::Memory()
             applyJukeBoxFlatMemoryMirror();
         });
     bus.setEnabled(jukeBoxBankRegBusHandle, false);
+
+    // P-LAB CodeTank: fixed 16 kB ROM window at $4000-$7FFF, jumper selects
+    // which 16 kB half of the 32 kB 28c256 is visible. No $CA00 latch.
+    // Priority 20 to win over the Juke-Box's $4000-$BFFF window when the
+    // user tries to plug both — the Memory layer enforces single-card use,
+    // but the priority is belt-and-suspenders.
+    codeTankBusHandle = bus.registerHandle(
+        "CodeTank", {CodeTank::kBase, CodeTank::kEnd}, /*priority*/ 20,
+        [this](uint16_t a) { return codeTank->readByte(a); },
+        [this](uint16_t a, uint8_t v) { codeTank->writeByte(a, v); });
+    bus.setEnabled(codeTankBusHandle, false);
 
     // SWTPC GT-6144 graphic terminal — write-only at $D00A. memWrite runs
     // bus.tryWrite BEFORE the $D0xx PIA-alias normalisation, so priority 0
@@ -388,6 +399,7 @@ void Memory::initMemory(){
     a1ioRtc->reset();
     cffa1->reset();
     jukeBox->reset();
+    codeTank->reset();
     // Re-seat zero-page $3F to the Juke-Box boot page so the PM's first
     // instruction stays self-consistent after a hard reset (see
     // setJukeBoxEnabled for the reasoning — real multi-page P-LAB ROMs
@@ -421,6 +433,7 @@ void Memory::resetMemory(void)
     a1ioRtc->reset();
     cffa1->reset();
     jukeBox->reset();
+    codeTank->reset();
     if (jukeBoxEnabled) mem[0x003F] = jukeBox->getBootPage();
     gt6144->reset();
 }
@@ -466,6 +479,7 @@ std::string Memory::busStateSummary() const
     tag("JukeBox32", jukeBox32BusHandle);
     tag("JukeBox16", jukeBox16BusHandle);
     tag("JukeBoxBankReg", jukeBoxBankRegBusHandle);
+    tag("CodeTank", codeTankBusHandle);
     oss << " | presetRamKB=" << presetRamKB
         << " oorStrict=" << (oorStrictMode ? "ON" : "off")
         << " writeInRom=" << (writeInRom ? "1" : "0");
@@ -1210,8 +1224,9 @@ void Memory::setJukeBoxEnabled(bool b)
         // latch). Evict every other card that sits inside $4000-$CFFF so
         // bus dispatch stays unambiguous and the user can't get confused
         // by stale state from a previous preset. A1-SID and A1-AUDIO SE
-        // are new to the eviction list — they share $CA00 with the Px/Sx
-        // bank register.
+        // are on the eviction list — they share $CA00 with the Px/Sx
+        // bank register. CodeTank's $4000-$7FFF window also collides.
+        if (codeTankEnabled) setCodeTankEnabled(false);
         if (cffa1Enabled) setCFFA1Enabled(false);
         if (microSDEnabled) setMicroSDEnabled(false);
         if (wifiModemEnabled) setWiFiModemEnabled(false);
@@ -1220,8 +1235,9 @@ void Memory::setJukeBoxEnabled(bool b)
         // latch ($CA00) — do NOT evict; the two can coexist.
         loadJukeBoxRom();
         const bool use32 = (jukeBox->getJumper() == JukeBox::Jumper::RAM16_ROM32);
+        const bool use16 = (jukeBox->getJumper() == JukeBox::Jumper::RAM32_ROM16);
         bus.setEnabled(jukeBox32BusHandle, use32);
-        bus.setEnabled(jukeBox16BusHandle, !use32);
+        bus.setEnabled(jukeBox16BusHandle, use16);
         bus.setEnabled(jukeBoxBankRegBusHandle, true);
         // Seed zero-page $3F to match the boot page so the PM's first
         // instruction ($BD00: LDA $3F / STA $CA00) is a no-op instead of
@@ -1244,8 +1260,9 @@ void Memory::setJukeBoxJumper(JukeBox::Jumper j)
     jukeBox->setJumper(j);
     if (!jukeBoxEnabled) return; // bus handles stay off; jumper just noted
     const bool use32 = (j == JukeBox::Jumper::RAM16_ROM32);
+    const bool use16 = (j == JukeBox::Jumper::RAM32_ROM16);
     bus.setEnabled(jukeBox32BusHandle, use32);
-    bus.setEnabled(jukeBox16BusHandle, !use32);
+    bus.setEnabled(jukeBox16BusHandle, use16);
     applyJukeBoxFlatMemoryMirror();
 }
 
@@ -1260,6 +1277,10 @@ void Memory::setJukeBoxChipMode(JukeBox::ChipMode m)
     jukeBox->setChipMode(m);
     if (jukeBoxEnabled) {
         loadJukeBoxRom();
+        const bool use32 = (jukeBox->getJumper() == JukeBox::Jumper::RAM16_ROM32);
+        const bool use16 = (jukeBox->getJumper() == JukeBox::Jumper::RAM32_ROM16);
+        bus.setEnabled(jukeBox32BusHandle, use32);
+        bus.setEnabled(jukeBox16BusHandle, use16);
         applyJukeBoxFlatMemoryMirror();
     }
 }
@@ -1268,10 +1289,7 @@ int Memory::loadJukeBoxRom(void)
 {
     lastError.clear();
     const char* candidates[] = {
-        "jukebox.rom",
-        "roms/jukebox.rom",
-        "../roms/jukebox.rom",
-        "../../roms/jukebox.rom",
+        "jukebox.rom", "roms/jukebox.rom", "../roms/jukebox.rom", "../../roms/jukebox.rom",
     };
     for (const char* p : candidates) {
         std::string error;
@@ -1285,6 +1303,85 @@ int Memory::loadJukeBoxRom(void)
     // Hardware window will show "firmware missing"; the user can still
     // drop in a ROM through the Memory Options dialog later.
     lastError = "Juke-Box ROM not found (expected roms/jukebox.rom)";
+    pom1::log().warn("Mem", lastError);
+    return 1;
+}
+
+void Memory::applyCodeTankFlatMemoryMirror()
+{
+    if (!codeTankEnabled) return;
+    const uint8_t* romBuf = codeTank->getRomPointer();
+    const size_t   romSize = codeTank->getRomSize();
+    const size_t halfOff = (codeTank->getJumper() == CodeTank::Jumper::Upper16)
+                           ? CodeTank::kHalfSize : 0u;
+    if (halfOff + CodeTank::kHalfSize <= romSize) {
+        std::memcpy(mem.data() + CodeTank::kBase,
+                    romBuf + halfOff,
+                    CodeTank::kHalfSize);
+    } else {
+        std::memset(mem.data() + CodeTank::kBase, 0xFF, CodeTank::kHalfSize);
+    }
+    markPagesDirty(CodeTank::kBase, CodeTank::kHalfSize);
+}
+
+void Memory::setCodeTankEnabled(bool b)
+{
+    if (b == codeTankEnabled) return;
+    codeTankEnabled = b;
+    if (b) {
+        // CodeTank's $4000-$7FFF window collides with the Juke-Box's
+        // $4000-$BFFF / $4000-$7FFF half. Keep one ROM card plugged at a
+        // time — matches Parmigiani's "one board" rule.
+        if (jukeBoxEnabled) setJukeBoxEnabled(false);
+        // Probe for a default ROM image when the user hasn't loaded one
+        // explicitly through the CodeTank Library. The same probe paths
+        // the previous Juke-Box CodeTank chip mode used.
+        if (!codeTank->hasRom()) {
+            loadCodeTankRom();
+        }
+        bus.setEnabled(codeTankBusHandle, true);
+        applyCodeTankFlatMemoryMirror();
+    } else {
+        bus.setEnabled(codeTankBusHandle, false);
+        // Clear the mirrored ROM bytes so the Memory Viewer doesn't keep
+        // showing stale ROM contents at $4000-$7FFF after unplug.
+        std::fill_n(mem.begin() + CodeTank::kBase, CodeTank::kHalfSize, static_cast<quint8>(0));
+        markPagesDirty(CodeTank::kBase, CodeTank::kHalfSize);
+    }
+}
+
+void Memory::setCodeTankJumper(CodeTank::Jumper j)
+{
+    if (codeTank->getJumper() == j) return;
+    codeTank->setJumper(j);
+    if (codeTankEnabled) applyCodeTankFlatMemoryMirror();
+}
+
+int Memory::loadCodeTankRom(const std::string& path)
+{
+    lastError.clear();
+    if (!path.empty()) {
+        std::string error;
+        if (codeTank->loadRomFile(path, error)) {
+            if (codeTankEnabled) applyCodeTankFlatMemoryMirror();
+            return 0;
+        }
+        lastError = error;
+        pom1::log().warn("Mem", lastError);
+        return 1;
+    }
+    const char* candidates[] = {
+        "/home/gistarcade/T\303\251l\303\251chargements/28c256_Final.bin",
+        "codetank.rom", "roms/codetank.rom", "../roms/codetank.rom", "../../roms/codetank.rom",
+    };
+    for (const char* p : candidates) {
+        std::string error;
+        if (codeTank->loadRomFile(p, error)) {
+            if (codeTankEnabled) applyCodeTankFlatMemoryMirror();
+            return 0;
+        }
+    }
+    lastError = "CodeTank ROM not found (expected roms/codetank.rom)";
     pom1::log().warn("Mem", lastError);
     return 1;
 }

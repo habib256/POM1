@@ -11,6 +11,7 @@
 #define MAINWINDOW_INTERNAL_H
 
 #include "imgui.h"
+#include "CodeTank.h"
 #include "JukeBox.h"
 #include "Screen_ImGui.h"
 
@@ -120,6 +121,16 @@ struct MachineConfig {
     bool jukeBox;
     JukeBox::Jumper jukeBoxJumper;
     JukeBox::ChipMode jukeBoxChipMode;
+    // P-LAB CodeTank — standalone 28c256 ROM card at $4000-$7FFF. Pairs with
+    // the TMS9918 graphic card on real silicon (the two cards do not collide
+    // and a CodeTank ROM can ship a TMS9918 game). Mutually exclusive with
+    // the Juke-Box (overlapping ROM window).
+    bool codeTank;
+    CodeTank::Jumper codeTankJumper;
+    // Optional — when non-empty, the named ROM file is loaded into the
+    // CodeTank card on plug. Empty falls back to the default probe path
+    // (roms/codetank.rom).
+    const char* codeTankRomPath;
     // SWTPC GT-6144 Graphic Terminal (1976) — write-only 64x96 mono framebuffer
     // at $D00A. No bus conflicts with other cards at that address.
     bool gt6144;

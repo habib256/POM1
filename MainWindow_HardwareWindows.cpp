@@ -30,8 +30,12 @@
 #include <cstdint>
 #include <cmath>
 #include <cstdio>
+#include <cstring>
 #include <filesystem>
+#include <fstream>
+#include <iterator>
 #include <string>
+#include <vector>
 
 namespace {
 using namespace pom1::mainwindow::detail;
@@ -552,8 +556,9 @@ void MainWindow_ImGui::renderPR40Window()
 void MainWindow_ImGui::renderJukeBoxWindow()
 {
     ImGui::SetNextWindowSize(ImVec2(420, 360), ImGuiCond_FirstUseEver);
-    applyPendingLayout("P-LAB Juke-Box");
-    if (ImGui::Begin("P-LAB Juke-Box", &showJukeBox)) {
+    const char* windowTitle = "P-LAB Juke-Box";
+    applyPendingLayout(windowTitle);
+    if (ImGui::Begin(windowTitle, &showJukeBox)) {
         const auto& snap = uiSnapshot.jukeBox;
 
         // Firmware signature row — the one check that tells the user whether
@@ -707,9 +712,9 @@ void MainWindow_ImGui::renderJukeBoxWindow()
 
         ImGui::Separator();
 
+        int jumperInt = static_cast<int>(snap.jumper);
         // Jumper toggle — changing this swaps the ROM window + RAM ceiling.
         ImGui::Text("RAM / ROM jumper:");
-        int jumperInt = static_cast<int>(snap.jumper);
         if (ImGui::RadioButton("32 kB RAM / 16 kB ROM  ($8000-$BFFF)",
                                &jumperInt, static_cast<int>(JukeBox::Jumper::RAM32_ROM16))) {
             jukeBoxJumper = JukeBox::Jumper::RAM32_ROM16;
@@ -785,6 +790,272 @@ void MainWindow_ImGui::renderJukeBoxWindow()
                 ImGui::BulletText("$E000-$EFFF  RAM (BASIC interpreter lands here)");
             }
         }
+    }
+    ImGui::End();
+}
+
+void MainWindow_ImGui::renderCodeTankWindow()
+{
+    ImGui::SetNextWindowSize(ImVec2(380, 260), ImGuiCond_FirstUseEver);
+    applyPendingLayout("P-LAB CodeTank");
+    if (ImGui::Begin("P-LAB CodeTank", &showCodeTank)) {
+        const auto& snap = uiSnapshot.codeTank;
+        ImGui::TextColored(ImVec4(0.2f, 0.9f, 0.2f, 1.0f),
+            ICON_FA_CIRCLE_CHECK " Fixed ROM window: $4000-$7FFF (16 kB)");
+        ImGui::Text("Selected half: %s 16 kB",
+                    snap.jumper == CodeTank::Jumper::Upper16 ? "upper" : "lower");
+        ImGui::TextWrapped(
+            "Standalone P-LAB ROM card built around a single 32 kB 28c256. "
+            "The board jumper picks which 16 kB half is wired into "
+            "$4000-$7FFF; the other half stays available by flipping the "
+            "jumper. No Program Manager, no bank latch.");
+
+        ImGui::Separator();
+        ImGui::Text("ROM file:");
+        ImGui::SameLine();
+        if (snap.romPath.empty()) {
+            ImGui::TextColored(ImVec4(0.7f, 0.7f, 0.7f, 1.0f),
+                "(blank 28c256 — open the CodeTank Library to load one)");
+        } else {
+            ImGui::TextWrapped("%s", snap.romPath.c_str());
+        }
+        ImGui::Text("Size: %zu bytes (two 16 kB banks)", snap.romSize);
+
+        if (ImGui::Button("Open CodeTank Library...")) {
+            showCodeTankLibrary = true;
+        }
+
+        ImGui::Separator();
+
+        int jumperInt = static_cast<int>(snap.jumper);
+        ImGui::Text("Board jumper:");
+        if (ImGui::RadioButton("Lower 16 kB of 28c256  ($4000-$7FFF)",
+                               &jumperInt, static_cast<int>(CodeTank::Jumper::Lower16))) {
+            codeTankJumper = CodeTank::Jumper::Lower16;
+            emulation->setCodeTankJumper(codeTankJumper);
+            setStatusMessage("CodeTank jumper: lower 16 kB", 2.0f);
+        }
+        if (ImGui::RadioButton("Upper 16 kB of 28c256  ($4000-$7FFF)",
+                               &jumperInt, static_cast<int>(CodeTank::Jumper::Upper16))) {
+            codeTankJumper = CodeTank::Jumper::Upper16;
+            emulation->setCodeTankJumper(codeTankJumper);
+            setStatusMessage("CodeTank jumper: upper 16 kB", 2.0f);
+        }
+        ImGui::TextColored(ImVec4(0.7f, 0.7f, 0.7f, 1.0f),
+            "Real hardware needs power-off to move the jumper - POM1 hot-swaps.");
+
+        if (ImGui::CollapsingHeader("Memory Map")) {
+            ImGui::BulletText("$0000-$3FFF  RAM (16 kB contiguous)");
+            ImGui::BulletText("$4000-$7FFF  CodeTank ROM window (selected 16 kB half)");
+            ImGui::BulletText("$CC00/$CC01  TMS9918 ports (coexists with CodeTank)");
+            ImGui::BulletText("$E000-$EFFF  Integer BASIC ROM");
+            ImGui::BulletText("$FF00-$FFFF  Woz Monitor");
+        }
+    }
+    ImGui::End();
+}
+
+namespace {
+
+// Search a list of candidate parents for a `codetank/` library directory.
+// Mirrors the multi-cwd probe used elsewhere (build/, repo root, packaged
+// macOS bundle). Returns the first directory that exists, or an empty path.
+std::filesystem::path resolveCodeTankLibraryRoot()
+{
+    namespace fs = std::filesystem;
+    const char* parents[] = { "roms", "../roms", "../../roms" };
+    for (const char* p : parents) {
+        fs::path candidate = fs::path(p) / "codetank";
+        std::error_code ec;
+        if (fs::is_directory(candidate, ec)) return candidate;
+    }
+    // Fall back to the parent dir of the legacy single-file path so the
+    // user always sees `codetank.rom` even before the directory exists.
+    for (const char* p : parents) {
+        std::error_code ec;
+        if (std::filesystem::is_directory(p, ec)) return std::filesystem::path(p);
+    }
+    return {};
+}
+
+struct CodeTankLibraryEntry {
+    std::filesystem::path path;
+    std::string           filename;     // display name (no parent dirs)
+    std::uintmax_t        size = 0;     // bytes; 32768 is the only valid size
+    std::string           description;  // sidecar .txt contents (if any), trimmed
+    bool                  mirrored = false; // lower 16 kB == upper 16 kB
+};
+
+std::vector<CodeTankLibraryEntry> scanCodeTankLibrary()
+{
+    namespace fs = std::filesystem;
+    std::vector<CodeTankLibraryEntry> out;
+    fs::path root = resolveCodeTankLibraryRoot();
+    if (root.empty()) return out;
+    std::error_code ec;
+    // The "library" is every .rom / .bin under roms/codetank/ plus the
+    // legacy roms/codetank.rom (single-file shipped with POM1). Both ends
+    // up in the same `out` vector deduplicated by absolute path.
+    auto pushCandidate = [&](const fs::path& p) {
+        if (!fs::is_regular_file(p, ec)) return;
+        const auto sz = fs::file_size(p, ec);
+        if (ec || sz != 0x8000u) return;   // CodeTank ROMs are exactly 32 kB
+        const fs::path canon = fs::weakly_canonical(p, ec);
+        for (const auto& existing : out) {
+            std::error_code ec2;
+            if (fs::weakly_canonical(existing.path, ec2) == canon) return;
+        }
+        CodeTankLibraryEntry e;
+        e.path     = p;
+        e.filename = p.filename().string();
+        e.size     = sz;
+        // Mirror detection: a 32 kB ROM whose two 16 kB halves are byte-
+        // identical carries the same content under either jumper position
+        // (typical of `--layout=menu` ROMs). The library shows one button.
+        std::ifstream rf(p, std::ios::binary);
+        if (rf) {
+            std::vector<char> data(0x8000);
+            rf.read(data.data(), data.size());
+            if (rf.gcount() == static_cast<std::streamsize>(data.size())) {
+                e.mirrored = std::memcmp(data.data(),
+                                         data.data() + 0x4000, 0x4000) == 0;
+            }
+        }
+        // Optional sidecar description: same name, ".txt" extension.
+        fs::path sidecar = p; sidecar.replace_extension(".txt");
+        if (fs::is_regular_file(sidecar, ec)) {
+            std::ifstream f(sidecar);
+            std::string buf((std::istreambuf_iterator<char>(f)),
+                            std::istreambuf_iterator<char>());
+            // Trim trailing whitespace / newlines so the UI wraps cleanly.
+            while (!buf.empty() && (buf.back() == '\n' || buf.back() == '\r'
+                                    || buf.back() == ' ' || buf.back() == '\t'))
+                buf.pop_back();
+            e.description = std::move(buf);
+        }
+        out.push_back(std::move(e));
+    };
+
+    // Walk roms/codetank/ if it exists.
+    if (fs::is_directory(root, ec) && root.filename() == "codetank") {
+        for (const auto& entry : fs::directory_iterator(root, ec)) {
+            const auto& p = entry.path();
+            const auto ext = p.extension().string();
+            if (ext == ".rom" || ext == ".bin") pushCandidate(p);
+        }
+    }
+    // Always offer the shipped roms/codetank.rom (one parent up when root
+    // is roms/codetank, or `root/codetank.rom` if root is the roms/ dir
+    // because no `codetank/` subdirectory exists).
+    fs::path legacy = (root.filename() == "codetank")
+                      ? root.parent_path() / "codetank.rom"
+                      : root / "codetank.rom";
+    pushCandidate(legacy);
+    std::sort(out.begin(), out.end(),
+              [](const CodeTankLibraryEntry& a, const CodeTankLibraryEntry& b) {
+                  return a.filename < b.filename;
+              });
+    return out;
+}
+
+} // namespace
+
+void MainWindow_ImGui::renderCodeTankLibraryWindow()
+{
+    ImGui::SetNextWindowSize(ImVec2(480, 360), ImGuiCond_FirstUseEver);
+    if (ImGui::Begin("P-LAB CodeTank Library", &showCodeTankLibrary)) {
+        // Cache the scan across frames; refresh on the Refresh button. Static
+        // is fine here: this window only ever runs on the UI thread.
+        static std::vector<CodeTankLibraryEntry> entries;
+        static bool firstScan = true;
+        if (firstScan) {
+            entries = scanCodeTankLibrary();
+            firstScan = false;
+        }
+        if (ImGui::SmallButton("Refresh")) {
+            entries = scanCodeTankLibrary();
+        }
+        ImGui::SameLine();
+        ImGui::TextDisabled("roms/codetank/  (drop 32 kB .rom files here)");
+
+        ImGui::Separator();
+
+        // Currently-loaded ROM (highlighted in green).
+        const std::string& currentRom = uiSnapshot.codeTank.romPath;
+
+        ImGui::BeginChild("##codetank_lib_scroll",
+                          ImVec2(0, -ImGui::GetFrameHeightWithSpacing() - 8.0f));
+        if (entries.empty()) {
+            ImGui::TextColored(ImVec4(0.95f, 0.55f, 0.25f, 1.0f),
+                ICON_FA_TRIANGLE_EXCLAMATION " No 32 kB ROMs in roms/codetank/.");
+        } else {
+            // Reused by both Load buttons below — keeps state side-effects in
+            // one place so adding a new ROM type doesn't drift.
+            auto plug = [&](const CodeTankLibraryEntry& e, CodeTank::Jumper j,
+                            const char* halfTag) {
+                std::string err;
+                if (!emulation->loadCodeTankRom(e.path.string(), err)) {
+                    setStatusMessage("CodeTank load failed: " + err, 5.0f);
+                    return;
+                }
+                codeTankJumper = j;
+                emulation->setCodeTankJumper(codeTankJumper);
+                if (jukeBoxEnabled) {
+                    jukeBoxEnabled = false;
+                    emulation->setJukeBoxEnabled(false);
+                }
+                if (!codeTankEnabled) {
+                    codeTankEnabled = true;
+                    emulation->setCodeTankEnabled(true);
+                }
+                showCodeTank = true;
+                setStatusMessage(std::string("CodeTank: ") + e.filename + halfTag,
+                                 3.0f);
+            };
+
+            for (size_t i = 0; i < entries.size(); ++i) {
+                const auto& e = entries[i];
+                const bool isActive = (currentRom == e.path.string());
+                ImGui::PushID(static_cast<int>(i));
+                if (isActive) {
+                    ImGui::PushStyleColor(ImGuiCol_Text,
+                                          ImVec4(0.4f, 0.95f, 0.4f, 1.0f));
+                    ImGui::Text(ICON_FA_PLAY " %s", e.filename.c_str());
+                    ImGui::PopStyleColor();
+                } else {
+                    ImGui::TextUnformatted(e.filename.c_str());
+                }
+                if (!e.description.empty()) {
+                    ImGui::Indent();
+                    ImGui::TextWrapped("%s", e.description.c_str());
+                    ImGui::Unindent();
+                }
+                if (e.mirrored) {
+                    // Both halves identical (typical of menu-layout ROMs):
+                    // one Load button is enough.
+                    if (ImGui::Button("Load")) plug(e, CodeTank::Jumper::Lower16, "");
+                } else {
+                    if (ImGui::Button("Load Lower")) plug(e, CodeTank::Jumper::Lower16, " (lower)");
+                    ImGui::SameLine();
+                    if (ImGui::Button("Load Upper")) plug(e, CodeTank::Jumper::Upper16, " (upper)");
+                }
+                ImGui::Separator();
+                ImGui::PopID();
+            }
+        }
+        ImGui::EndChild();
+
+        ImGui::Separator();
+        if (codeTankEnabled) {
+            if (ImGui::Button("Unplug CodeTank")) {
+                emulation->setCodeTankEnabled(false);
+                codeTankEnabled = false;
+                setStatusMessage("CodeTank unplugged", 2.0f);
+            }
+            ImGui::SameLine();
+        }
+        ImGui::TextColored(ImVec4(0.7f, 0.7f, 0.7f, 1.0f),
+            "CodeTank window: $4000-$7FFF. Coexists with TMS9918 ($CC00/$CC01).");
     }
     ImGui::End();
 }

@@ -22,6 +22,7 @@
 #include "TerminalCard.h"
 #include "A1IO_RTC.h"
 #include "JukeBox.h"
+#include "CodeTank.h"
 #include "PR40Printer.h"
 #include "GT6144.h"
 
@@ -70,6 +71,8 @@ struct EmulationSnapshot
     A1IO_RTC::Snapshot a1ioRtc;
     bool jukeBoxEnabled = false;
     JukeBox::Snapshot jukeBox;
+    bool codeTankEnabled = false;
+    CodeTank::Snapshot codeTank;
     bool pr40Enabled = false;
     PR40Printer::Snapshot pr40;
     bool gt6144Enabled = false;

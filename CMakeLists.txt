@@ -57,6 +57,7 @@ set(SOURCES
     MicroSD.cpp
     CFFA1.cpp
     JukeBox.cpp
+    CodeTank.cpp
     WiFiModem.cpp
     TerminalCard.cpp
     PR40Printer.cpp
@@ -92,6 +93,7 @@ set(HEADERS
     MemoryViewer_ImGui.h
     MicroSD.h
     JukeBox.h
+    CodeTank.h
     Screen_ImGui.h
     SID.h
     TMS9918.h

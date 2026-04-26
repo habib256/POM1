@@ -34,6 +34,44 @@ void showHardwareTooltip(const char* text)
 
 void MainWindow_ImGui::renderMenuBar()
 {
+        auto plugJukeBoxFromUi = [&]() {
+            jukeBoxChipMode = JukeBox::ChipMode::Flash;
+            cffa1Enabled = false;
+            microSDEnabled = false;
+            wifiModemEnabled = false;
+            sidEnabled = false;
+            codeTankEnabled = false;
+            emulation->setCodeTankEnabled(false);
+            evictMemoryMapRegionsForJukeBox();
+            emulation->setJukeBoxChipMode(jukeBoxChipMode);
+            emulation->setJukeBoxJumper(jukeBoxJumper);
+            emulation->setJukeBoxEnabled(true);
+            jukeBoxEnabled = true;
+            showJukeBox = true;
+            setStatusMessage("P-LAB Juke-Box plugged - type BD00R for Program Manager", 3.0f);
+        };
+        auto unplugJukeBoxFromUi = [&]() {
+            emulation->setJukeBoxEnabled(false);
+            jukeBoxEnabled = false;
+            setStatusMessage("P-LAB Juke-Box unplugged", 2.0f);
+        };
+        auto plugCodeTankFromUi = [&]() {
+            // CodeTank only owns $4000-$7FFF; the only required eviction is
+            // the Juke-Box (which can claim the same window).
+            jukeBoxEnabled = false;
+            emulation->setJukeBoxEnabled(false);
+            emulation->setCodeTankJumper(codeTankJumper);
+            emulation->setCodeTankEnabled(true);
+            codeTankEnabled = true;
+            showCodeTank = true;
+            setStatusMessage("P-LAB CodeTank plugged: 28c256 at $4000-$7FFF", 3.0f);
+        };
+        auto unplugCodeTankFromUi = [&]() {
+            emulation->setCodeTankEnabled(false);
+            codeTankEnabled = false;
+            setStatusMessage("P-LAB CodeTank unplugged", 2.0f);
+        };
+
         if (ImGui::BeginMenu("File")) {
             if (ImGui::MenuItem("Load Memory", shortcutLabel(GLFW_KEY_O, GLFW_MOD_CONTROL))) {
                 loadMemory();
@@ -199,32 +237,36 @@ void MainWindow_ImGui::renderMenuBar()
 
             ImGui::Separator();
             // --- P-LAB family ----------------------------------------------
-            if (ImGui::MenuItem("P-LAB Apple-1 Juke-Box", nullptr, &jukeBoxEnabled)) {
-                // Juke-Box occupies $4000-$BFFF (or $8000-$BFFF) — evict any
-                // card that shares the window so the UI flags reflect reality.
-                std::string jbMsg;
-                if (jukeBoxEnabled) {
-                    cffa1Enabled = false;
-                    microSDEnabled = false;
-                    wifiModemEnabled = false;
-                    sidEnabled = false;
-                    evictMemoryMapRegionsForJukeBox();
-                    jbMsg = "P-LAB Juke-Box plugged "
-                            "- type BD00R for Program Manager";
-                    emulation->setJukeBoxJumper(jukeBoxJumper);
-                    showJukeBox = true;
-                } else {
-                    jbMsg = "P-LAB Juke-Box unplugged";
-                }
-                emulation->setJukeBoxEnabled(jukeBoxEnabled);
-                setStatusMessage(jbMsg, 3.0f);
+            if (ImGui::MenuItem("P-LAB Apple-1 Juke-Box", nullptr, jukeBoxEnabled)) {
+                if (jukeBoxEnabled) unplugJukeBoxFromUi();
+                else plugJukeBoxFromUi();
             }
             showHardwareTooltip(
-                "Claudio Parmigiani's Apple-1 Juke-Box (28c256 EEPROM)\n"
+                "P-LAB Apple-1 Juke-Box\n"
                 "ROM window: $4000-$BFFF or $8000-$BFFF. Bank latch: $CA00.\n"
                 "Program Manager at $BD00: type BD00R from the Woz Monitor.\n\n"
-                "Plugging it unplugs CFFA1, microSD, Wi-Fi Modem, and A1-SID.\n"
+                "Plugging it unplugs CodeTank, CFFA1, microSD, Wi-Fi Modem, and A1-SID.\n"
                 "A1-AUDIO SE can coexist: it lives at $CC00-$CC1F, outside $CA00.");
+            if (ImGui::MenuItem("P-LAB CodeTank (28c256 ROM, pairs with TMS9918)",
+                                nullptr, codeTankEnabled)) {
+                if (codeTankEnabled) unplugCodeTankFromUi();
+                else plugCodeTankFromUi();
+            }
+            showHardwareTooltip(
+                "P-LAB CodeTank 28c256 ROM\n"
+                "Fixed ROM window: $4000-$7FFF.\n"
+                "The board jumper selects lower or upper 16 kB of the 32 kB EEPROM.\n\n"
+                "Designed to ship TMS9918 games on real silicon - the CodeTank window\n"
+                "($4000-$7FFF) does not collide with TMS9918 ($CC00/$CC01), so the two\n"
+                "cards coexist freely. Plugging unplugs the Juke-Box (overlapping ROM\n"
+                "window).");
+            if (ImGui::MenuItem("P-LAB CodeTank Library...", nullptr, &showCodeTankLibrary)) {
+                if (showCodeTankLibrary) setStatusMessage("CodeTank Library opened", 2.0f);
+            }
+            showHardwareTooltip(
+                "Browse the available 32 kB CodeTank ROM images in roms/codetank/.\n"
+                "Each ROM holds two 16 kB banks - pick which one to wire into\n"
+                "$4000-$7FFF and the CodeTank card plugs itself.");
             if (ImGui::MenuItem("P-LAB microSD Storage Card", nullptr, &microSDEnabled)) {
                 emulation->setMicroSDEnabled(microSDEnabled);
                 if (microSDEnabled) {
@@ -414,6 +456,41 @@ void MainWindow_ImGui::renderToolbar()
 
         ImVec4 activeColor(0.2f, 0.4f, 0.8f, 1.0f);
         ImVec2 btnSize(28, 24);
+        auto plugJukeBoxFromToolbar = [&]() {
+            jukeBoxChipMode = JukeBox::ChipMode::Flash;
+            cffa1Enabled = false;
+            microSDEnabled = false;
+            wifiModemEnabled = false;
+            sidEnabled = false;
+            codeTankEnabled = false;
+            emulation->setCodeTankEnabled(false);
+            evictMemoryMapRegionsForJukeBox();
+            emulation->setJukeBoxChipMode(jukeBoxChipMode);
+            emulation->setJukeBoxJumper(jukeBoxJumper);
+            emulation->setJukeBoxEnabled(true);
+            jukeBoxEnabled = true;
+            showJukeBox = true;
+            setStatusMessage("P-LAB Juke-Box plugged - type BD00R for Program Manager", 3.0f);
+        };
+        auto unplugJukeBoxFromToolbar = [&]() {
+            emulation->setJukeBoxEnabled(false);
+            jukeBoxEnabled = false;
+            setStatusMessage("P-LAB Juke-Box unplugged", 2.0f);
+        };
+        auto plugCodeTankFromToolbar = [&]() {
+            jukeBoxEnabled = false;
+            emulation->setJukeBoxEnabled(false);
+            emulation->setCodeTankJumper(codeTankJumper);
+            emulation->setCodeTankEnabled(true);
+            codeTankEnabled = true;
+            showCodeTank = true;
+            setStatusMessage("P-LAB CodeTank plugged: 28c256 at $4000-$7FFF", 3.0f);
+        };
+        auto unplugCodeTankFromToolbar = [&]() {
+            emulation->setCodeTankEnabled(false);
+            codeTankEnabled = false;
+            setStatusMessage("P-LAB CodeTank unplugged", 2.0f);
+        };
 #if !POM1_IS_WASM
         const float mhzBtnPadX = ImGui::GetStyle().FramePadding.x * 2.0f;
         const float mhzBtnW =
@@ -467,25 +544,8 @@ void MainWindow_ImGui::renderToolbar()
         ImGui::PushStyleColor(ImGuiCol_Button,
             jukeBoxEnabled ? ImVec4(0.2f, 0.4f, 0.8f, 1.0f) : ImVec4(0.3f, 0.3f, 0.3f, 1.0f));
         if (ImGui::Button("##jukeBoxToolbar", btnSize)) {
-            jukeBoxEnabled = !jukeBoxEnabled;
-            std::string jbMsg;
-            if (jukeBoxEnabled) {
-                // Juke-Box occupies $4000-$BFFF / $8000-$BFFF — evict any card
-                // sharing the window so the UI flags reflect reality.
-                cffa1Enabled = false;
-                microSDEnabled = false;
-                wifiModemEnabled = false;
-                sidEnabled = false;
-                evictMemoryMapRegionsForJukeBox();
-                jbMsg = "P-LAB Juke-Box plugged "
-                        "- type BD00R for Program Manager";
-                emulation->setJukeBoxJumper(jukeBoxJumper);
-                showJukeBox = true;
-            } else {
-                jbMsg = "P-LAB Juke-Box unplugged";
-            }
-            emulation->setJukeBoxEnabled(jukeBoxEnabled);
-            setStatusMessage(jbMsg, 3.0f);
+            if (jukeBoxEnabled) unplugJukeBoxFromToolbar();
+            else plugJukeBoxFromToolbar();
         }
         drawToolbarDipChipIcon(ImGui::GetWindowDrawList(),
                                ImGui::GetItemRectMin(), ImGui::GetItemRectMax());
@@ -493,8 +553,24 @@ void MainWindow_ImGui::renderToolbar()
         showHardwareTooltip(
             "P-LAB Apple-1 Juke-Box\n"
             "ROM window: $4000-$BFFF or $8000-$BFFF. Bank latch: $CA00.\n\n"
-            "Click toggles the card. Plugging it unplugs CFFA1, microSD,\n"
-            "Wi-Fi Modem, and A1-SID. A1-AUDIO SE can coexist.");
+            "Click toggles the Juke-Box card. Plugging it unplugs CodeTank,\n"
+            "CFFA1, microSD, Wi-Fi Modem, and A1-SID. A1-AUDIO SE can coexist.");
+
+        ImGui::SameLine();
+        ImGui::PushStyleColor(ImGuiCol_Button,
+            codeTankEnabled ? ImVec4(0.2f, 0.4f, 0.8f, 1.0f) : ImVec4(0.3f, 0.3f, 0.3f, 1.0f));
+        if (ImGui::Button("CT", btnSize)) {
+            if (codeTankEnabled) unplugCodeTankFromToolbar();
+            else plugCodeTankFromToolbar();
+        }
+        ImGui::PopStyleColor();
+        showHardwareTooltip(
+            "P-LAB CodeTank 28c256 ROM\n"
+            "Fixed ROM window: $4000-$7FFF. Pairs with the TMS9918 graphic card -\n"
+            "the two cards do not collide and a CodeTank ROM can ship a TMS9918\n"
+            "game that runs unchanged on real Apple-1 silicon.\n\n"
+            "Click toggles CodeTank. Plugging it unplugs the Juke-Box.\n"
+            "Use Hardware -> P-LAB CodeTank Library to pick which ROM to load.");
 
         ImGui::SameLine();
         ImGui::PushStyleColor(ImGuiCol_Button,

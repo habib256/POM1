@@ -2,6 +2,7 @@
 #define MEMORYVIEWER_IMGUI_H
 
 #include "Memory.h"
+#include "CodeTank.h"
 #include "JukeBox.h"
 #include "Disassembler6502.h"
 #include "imgui.h"
@@ -38,6 +39,8 @@ public:
         jbCurrentPage = page; jbCurrentSubPage = subPage;
         jbPageCount = pgCount; jbJumper = jmp; jbChipMode = chip;
     }
+    void setCodeTankEnabled(bool enabled) { codeTankEnabled = enabled; }
+    void setCodeTankJumper(CodeTank::Jumper j) { codeTankJumper = j; }
 
     struct RomRegion { quint16 start, end; };
     void setLoadedRoms(const std::vector<RomRegion>& roms) { romRegions = roms; }
@@ -69,6 +72,8 @@ private:
     uint8_t jbPageCount = 0;
     JukeBox::Jumper jbJumper = JukeBox::Jumper::RAM16_ROM32;
     JukeBox::ChipMode jbChipMode = JukeBox::ChipMode::Flash;
+    bool codeTankEnabled = false;
+    CodeTank::Jumper codeTankJumper = CodeTank::Jumper::Lower16;
     std::vector<RomRegion> romRegions;
 
     // Auto-refresh: snapshot taken when autoRefresh is off

@@ -173,6 +173,14 @@ public:
     bool copyJukeBoxPage(uint8_t fromPage, uint8_t toPage, std::string& error);
     bool saveJukeBoxRom(const std::string& path, std::string& error);
 
+    // P-LAB CodeTank — fixed 16 kB ROM window at $4000-$7FFF, jumper picks
+    // which 16 kB half of the 28c256 is wired in.
+    void setCodeTankEnabled(bool enabled);
+    bool isCodeTankEnabled() const;
+    void setCodeTankJumper(CodeTank::Jumper jumper);
+    CodeTank::Jumper getCodeTankJumper() const;
+    bool loadCodeTankRom(const std::string& path, std::string& error);
+
     // P-LAB Apple-1 Wi-Fi Modem
     void setWiFiModemEnabled(bool enabled);
     bool isWiFiModemEnabled() const;

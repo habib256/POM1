@@ -707,6 +707,44 @@ bool EmulationController::saveJukeBoxRom(const std::string& path, std::string& e
     return memory->saveJukeBoxRom(path, error);
 }
 
+void EmulationController::setCodeTankEnabled(bool enabled)
+{
+    std::lock_guard<PriorityMutex> lock(stateMutex);
+    memory->setCodeTankEnabled(enabled);
+    publisher.publish(*memory, *cpu, runRequested.load());
+}
+
+bool EmulationController::isCodeTankEnabled() const
+{
+    std::lock_guard<PriorityMutex> lock(stateMutex);
+    return memory->isCodeTankEnabled();
+}
+
+void EmulationController::setCodeTankJumper(CodeTank::Jumper jumper)
+{
+    std::lock_guard<PriorityMutex> lock(stateMutex);
+    memory->setCodeTankJumper(jumper);
+    publisher.publish(*memory, *cpu, runRequested.load());
+}
+
+CodeTank::Jumper EmulationController::getCodeTankJumper() const
+{
+    std::lock_guard<PriorityMutex> lock(stateMutex);
+    return memory->getCodeTankJumper();
+}
+
+bool EmulationController::loadCodeTankRom(const std::string& path, std::string& error)
+{
+    std::lock_guard<PriorityMutex> lock(stateMutex);
+    int rc = memory->loadCodeTankRom(path);
+    if (rc != 0) {
+        error = memory->getLastError();
+        return false;
+    }
+    publisher.publish(*memory, *cpu, runRequested.load());
+    return true;
+}
+
 void EmulationController::setWiFiModemEnabled(bool enabled)
 {
     std::lock_guard<PriorityMutex> lock(stateMutex);

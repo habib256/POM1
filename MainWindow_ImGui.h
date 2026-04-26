@@ -10,6 +10,7 @@
 #include "CpuClock.h"
 #include "POM1Build.h"
 #include "EmulationController.h"
+#include "CodeTank.h"
 #include "JukeBox.h"
 #include "MemoryViewer_ImGui.h"
 #include "Screen_ImGui.h"
@@ -59,6 +60,8 @@ public:
     void setSidChipOverride(pom1::SID::ChipModel m) { sidChipOverride = m; }
     void setJukeBoxJumperOverride(JukeBox::Jumper j) { jukeBoxJumperOverride = j; }
     void setJukeBoxChipModeOverride(JukeBox::ChipMode m) { jukeBoxChipModeOverride = m; }
+    void setCodeTankJumperOverride(CodeTank::Jumper j) { codeTankJumperOverride = j; }
+    void setCodeTankRomPathOverride(std::string p) { codeTankRomPathOverride = std::move(p); }
     // CLI phase-C verbs. Applied once, the frame after pendingCardEnableFrames
     // reaches zero (the same frame the deferred plug commits).
     void setDeferredCliActions(std::vector<pom1::CliAction> actions)
@@ -200,6 +203,10 @@ private:
     bool showJukeBox = false;
     JukeBox::Jumper jukeBoxJumper = JukeBox::Jumper::RAM16_ROM32;
     JukeBox::ChipMode jukeBoxChipMode = JukeBox::ChipMode::Flash;
+    bool codeTankEnabled = false;
+    bool showCodeTank = false;
+    bool showCodeTankLibrary = false;
+    CodeTank::Jumper codeTankJumper = CodeTank::Jumper::Lower16;
     bool fullscreen = false;
 
     // Keyboard input
@@ -287,6 +294,8 @@ private:
     void renderTerminalCardWindow();
     void renderA1IO_RTCWindow();
     void renderJukeBoxWindow();
+    void renderCodeTankWindow();
+    void renderCodeTankLibraryWindow();
     void renderPR40Window();
 
     // Action functions
@@ -363,6 +372,8 @@ private:
     std::optional<pom1::SID::ChipModel>       sidChipOverride;    // --sid-chip
     std::optional<JukeBox::Jumper>      jukeBoxJumperOverride;   // --jukebox-jumper
     std::optional<JukeBox::ChipMode>    jukeBoxChipModeOverride; // --jukebox-chip
+    std::optional<CodeTank::Jumper>     codeTankJumperOverride;  // --codetank-jumper
+    std::string                         codeTankRomPathOverride; // --codetank-rom
     std::vector<pom1::CliAction>        deferredCliActions; // phase-C queue
     bool deferredCliActionsConsumed = false;
     // applyMachineConfig() normally triggers emulation->hardReset() to wipe
@@ -407,6 +418,9 @@ private:
     bool pendingJukeBoxEnable = false;
     JukeBox::Jumper pendingJukeBoxJumper = JukeBox::Jumper::RAM16_ROM32;
     JukeBox::ChipMode pendingJukeBoxChipMode = JukeBox::ChipMode::Flash;
+    bool pendingCodeTankEnable = false;
+    CodeTank::Jumper pendingCodeTankJumper = CodeTank::Jumper::Lower16;
+    std::string pendingCodeTankRomPath;
     bool pendingCassetteAudioActive = false;
 
     struct TapeDialogState {

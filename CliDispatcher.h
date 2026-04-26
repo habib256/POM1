@@ -19,6 +19,7 @@
 #ifndef CLI_DISPATCHER_H
 #define CLI_DISPATCHER_H
 
+#include "CodeTank.h"
 #include "JukeBox.h"
 #include "SID.h"
 
@@ -46,6 +47,7 @@ enum class CliCard : uint8_t {
     WifiModem,
     TerminalCard,
     JukeBox,
+    CodeTank,      // P-LAB CodeTank standalone 28c256 ROM card ($4000-$7FFF)
     Pr40,          // SWTPC PR-40 printer (Jobs 1976 Interface Age hack)
     GT6144,        // SWTPC GT-6144 graphic terminal (1976)
 };
@@ -104,6 +106,8 @@ struct CliPlan {
     std::optional<pom1::SID::ChipModel>      sidChipOverride;
     std::optional<JukeBox::Jumper>     jukeBoxJumperOverride;
     std::optional<JukeBox::ChipMode>   jukeBoxChipModeOverride;
+    std::optional<CodeTank::Jumper>    codeTankJumperOverride;
+    std::string                        codeTankRomPath;
 
     // Phase-C — consumed after the card deferred-plug timer fires.
     std::vector<CliAction>             deferredActions;

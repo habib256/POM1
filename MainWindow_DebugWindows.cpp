@@ -270,6 +270,14 @@ std::vector<MainWindow_ImGui::MemRegion> MainWindow_ImGui::buildMemoryRegions()
     static char jbProgramsLabel[80];
     static char jbPatLabel[64];
     static char jbPmLabel[64];
+    if (uiSnapshot.codeTankEnabled) {
+        const ImU32 ctRom = IM_COL32(120, 80, 180, 255);
+        snprintf(jbProgramsLabel, sizeof(jbProgramsLabel),
+                 "CodeTank ROM %s 16 kB",
+                 uiSnapshot.codeTank.jumper == CodeTank::Jumper::Upper16
+                 ? "upper" : "lower");
+        regions.push_back({ 0x4000, 0x7FFF, ctRom, jbProgramsLabel });
+    }
     if (jukeBoxEnabled) {
         const ImU32 jbRomPrograms = IM_COL32(120,  80, 180, 255);
         const ImU32 jbRomPat      = IM_COL32(180, 130, 220, 255);
@@ -564,6 +572,15 @@ void MainWindow_ImGui::renderMemoryMapGridWindow()
             ImGui::BulletText("$200A  SR    - Shift Reg (16 outputs)");
             ImGui::BulletText("$200B  ACR   - Aux Control Register");
             ImGui::BulletText("Regs 0-5: RTC  6: Temp  10-17: ADC  20-23: DIN");
+        }
+        if (uiSnapshot.codeTankEnabled) {
+            const auto& ct = uiSnapshot.codeTank;
+            ImGui::Spacing();
+            ImGui::TextColored(ImVec4(0.7f, 0.85f, 1.0f, 1.0f),
+                "  CodeTank 28c256");
+            ImGui::BulletText("$4000-$7FFF  ROM window (%s 16 kB half)",
+                ct.jumper == CodeTank::Jumper::Upper16 ? "upper" : "lower");
+            ImGui::BulletText("       No $CA00 latch; selection is the board jumper");
         }
         if (jukeBoxEnabled) {
             const auto& jb = uiSnapshot.jukeBox;
@@ -983,8 +1000,14 @@ void MainWindow_ImGui::renderMemoryBarWindow()
                 ImGui::TextDisabled("$%04X-$%04X (%u KB)", regionStart, regionEnd, (unsigned)(sz / 1024));
             else
                 ImGui::TextDisabled("$%04X-$%04X (%u B)", regionStart, regionEnd, (unsigned)sz);
-            // JukeBox bank info
-            if (jukeBoxEnabled) {
+            // CodeTank/JukeBox bank info
+            if (uiSnapshot.codeTankEnabled
+                && hoverAddr >= 0x4000 && hoverAddr <= 0x7FFF) {
+                ImGui::Separator();
+                ImGui::Text("CodeTank %s 16 kB half",
+                            uiSnapshot.codeTank.jumper == CodeTank::Jumper::Upper16
+                            ? "upper" : "lower");
+            } else if (jukeBoxEnabled) {
                 const auto& jb = uiSnapshot.jukeBox;
                 int romStart = (jb.jumper == JukeBox::Jumper::RAM16_ROM32) ? 0x4000 : 0x8000;
                 if (static_cast<int>(hoverAddr) >= romStart && hoverAddr <= 0xBFFF) {

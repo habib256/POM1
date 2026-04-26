@@ -219,6 +219,22 @@ void MainWindow_ImGui::finalizePendingCardPlugs()
         emulation->setJukeBoxJumper(pendingJukeBoxJumper);
         emulation->setJukeBoxEnabled(true);
     }
+    if (pendingCodeTankEnable) {
+        // Set the jumper FIRST so the bus enable picks the right half on
+        // the very first dispatch. CodeTank also probes default ROM paths
+        // on plug if no explicit ROM was loaded — the override below lets
+        // --codetank-rom replace that default before the card latches.
+        emulation->setCodeTankJumper(pendingCodeTankJumper);
+        if (!pendingCodeTankRomPath.empty()) {
+            std::string err;
+            if (!emulation->loadCodeTankRom(pendingCodeTankRomPath, err)) {
+                pom1::log().warn("CodeTank",
+                    "--codetank-rom load failed: " + err);
+            }
+            pendingCodeTankRomPath.clear();
+        }
+        emulation->setCodeTankEnabled(true);
+    }
     pendingCassetteAudioActive = false;
     pendingAciEnable           = false;
     pendingMicroSDEnable       = false;
@@ -232,6 +248,7 @@ void MainWindow_ImGui::finalizePendingCardPlugs()
     pendingGT6144Enable        = false;
     pendingWifiModemEnable     = false;
     pendingJukeBoxEnable       = false;
+    pendingCodeTankEnable      = false;
 
     // CLI phase-C: run deferred verbs right after the preset's cards are
     // fully plugged. Gated on the one-shot flag so a later
@@ -289,6 +306,8 @@ void MainWindow_ImGui::render()
                 uiSnapshot.jukeBox.jumper,
                 uiSnapshot.jukeBox.chipMode);
         }
+        memoryViewer->setCodeTankEnabled(codeTankEnabled);
+        memoryViewer->setCodeTankJumper(uiSnapshot.codeTank.jumper);
     }
     if (showMemoryViewer) {
         std::vector<MemoryViewer_ImGui::RomRegion> mvRoms;
@@ -401,7 +420,13 @@ void MainWindow_ImGui::render()
 #endif
                     break;
                 case pom1::CliCard::JukeBox:
-                    jukeBoxEnabled = o.enable; pendingJukeBoxEnable = o.enable; break;
+                    jukeBoxEnabled = o.enable; pendingJukeBoxEnable = o.enable;
+                    if (o.enable) { codeTankEnabled = false; pendingCodeTankEnable = false; }
+                    break;
+                case pom1::CliCard::CodeTank:
+                    codeTankEnabled = o.enable; pendingCodeTankEnable = o.enable;
+                    if (o.enable) { jukeBoxEnabled = false; pendingJukeBoxEnable = false; }
+                    break;
                 case pom1::CliCard::Pr40:
                     pr40Enabled = o.enable; pendingPr40Enable = o.enable;
                     if (!o.enable) emulation->setPR40Enabled(false);
@@ -424,6 +449,14 @@ void MainWindow_ImGui::render()
         if (jukeBoxChipModeOverride) {
             jukeBoxChipMode        = *jukeBoxChipModeOverride;
             pendingJukeBoxChipMode = *jukeBoxChipModeOverride;
+        }
+        if (codeTankJumperOverride) {
+            codeTankJumper        = *codeTankJumperOverride;
+            pendingCodeTankJumper = *codeTankJumperOverride;
+        }
+        if (!codeTankRomPathOverride.empty()) {
+            pendingCodeTankRomPath = codeTankRomPathOverride;
+            codeTankRomPathOverride.clear();
         }
         if (initialExecutionSpeed) {
             executionSpeed = *initialExecutionSpeed;
@@ -542,6 +575,8 @@ void MainWindow_ImGui::render()
     if (pr40Enabled && showPR40) renderPR40Window();
     if (a1ioRtcEnabled && showA1IO_RTC) renderA1IO_RTCWindow();
     if (jukeBoxEnabled && showJukeBox) renderJukeBoxWindow();
+    if (codeTankEnabled && showCodeTank) renderCodeTankWindow();
+    if (showCodeTankLibrary) renderCodeTankLibraryWindow();
 
     // Barre de statut
     renderStatusBar();

@@ -44,6 +44,7 @@ set(POM1_TEST_CORE_SOURCES
     ${CMAKE_SOURCE_DIR}/A1IO_RTC.cpp
     ${CMAKE_SOURCE_DIR}/CFFA1.cpp
     ${CMAKE_SOURCE_DIR}/JukeBox.cpp
+    ${CMAKE_SOURCE_DIR}/CodeTank.cpp
     ${CMAKE_SOURCE_DIR}/PR40Printer.cpp
     ${CMAKE_SOURCE_DIR}/GT6144.cpp
 )
@@ -214,7 +215,8 @@ set_tests_properties(gt6144_smoke PROPERTIES TIMEOUT 5)
 # roms/jukebox.rom, verifies the 8-page layout, picks the default boot page
 # via the $A5 signature scan, exercises the $CA00 bank-select latch (Px) and
 # bit-4 sub-page (Sx), and confirms flash writes are dropped while EEPROM
-# mode rejects oversized files.
+# mode rejects oversized files. Also pins CodeTank's fixed $4000-$7FFF
+# 16 kB window and lower/upper 28c256 jumper.
 add_executable(test_jukebox_paged_rom
     jukebox_paged_rom_smoke_test.cpp
     ${CMAKE_SOURCE_DIR}/JukeBox.cpp
@@ -223,5 +225,23 @@ add_executable(test_jukebox_paged_rom
 target_include_directories(test_jukebox_paged_rom PRIVATE ${CMAKE_SOURCE_DIR})
 
 add_test(NAME jukebox_paged_rom_smoke
-         COMMAND test_jukebox_paged_rom "${CMAKE_SOURCE_DIR}/roms/jukebox.rom")
+         COMMAND test_jukebox_paged_rom
+                 "${CMAKE_SOURCE_DIR}/roms/jukebox.rom")
 set_tests_properties(jukebox_paged_rom_smoke PROPERTIES TIMEOUT 5)
+
+# -- P-LAB CodeTank smoke test ------------------------------------------------
+# Self-contained: CodeTank + Logger. Pins the fixed 16 kB window at $4000-$7FFF,
+# lower/upper jumper offset math, the "writes are dropped" invariant, and the
+# oversized-file rejection contract.
+add_executable(test_codetank
+    codetank_smoke_test.cpp
+    ${CMAKE_SOURCE_DIR}/CodeTank.cpp
+    ${CMAKE_SOURCE_DIR}/Logger.cpp
+)
+target_include_directories(test_codetank PRIVATE ${CMAKE_SOURCE_DIR})
+
+add_test(NAME codetank_smoke
+         COMMAND test_codetank
+                 "${CMAKE_SOURCE_DIR}/roms/codetank.rom"
+                 "${CMAKE_SOURCE_DIR}/roms/jukebox.rom")
+set_tests_properties(codetank_smoke PROPERTIES TIMEOUT 5)

@@ -47,12 +47,32 @@ void SnapshotPublisher::publish(Memory& mem, const M6502& cpu, bool cpuRunning)
     if (mem.isJukeBoxEnabled()) {
         const JukeBox& jb = mem.getJukeBox();
         const uint8_t* rom = jb.getRomPointer();
+        const size_t romSize = jb.getRomBufferSize();
         quint8* dst = snapshot.memory.data();
+        const size_t pageOff = static_cast<size_t>(jb.getCurrentPage())
+                               * JukeBox::kPageSize;
         if (jb.getJumper() == JukeBox::Jumper::RAM16_ROM32) {
-            std::memcpy(dst + 0x4000, rom, 0x8000);
+            if (pageOff + JukeBox::kPageSize <= romSize)
+                std::memcpy(dst + 0x4000, rom + pageOff, JukeBox::kPageSize);
         } else {
-            std::memcpy(dst + 0x8000, rom + 0x4000, 0x4000);
+            const size_t subOff = static_cast<size_t>(jb.getCurrentSubPage())
+                                  * JukeBox::kSubPageSize;
+            if (pageOff + subOff + JukeBox::kSubPageSize <= romSize)
+                std::memcpy(dst + 0x8000, rom + pageOff + subOff, JukeBox::kSubPageSize);
         }
+    }
+    // Same idea for CodeTank — the bus serves reads directly from the
+    // CodeTank ROM buffer, so mirror the wired-in 16 kB half into the
+    // snapshot for the Memory Viewer.
+    if (mem.isCodeTankEnabled()) {
+        const CodeTank& ct = mem.getCodeTank();
+        const uint8_t* rom = ct.getRomPointer();
+        const size_t romSize = ct.getRomSize();
+        const size_t halfOff = (ct.getJumper() == CodeTank::Jumper::Upper16)
+                               ? CodeTank::kHalfSize : 0u;
+        if (halfOff + CodeTank::kHalfSize <= romSize)
+            std::memcpy(snapshot.memory.data() + CodeTank::kBase,
+                        rom + halfOff, CodeTank::kHalfSize);
     }
     snapshot.programCounter = cpu.getProgramCounter();
     snapshot.accumulator    = cpu.getAccumulator();
@@ -113,6 +133,8 @@ void SnapshotPublisher::publish(Memory& mem, const M6502& cpu, bool cpuRunning)
     // current jumper/firmware state even when the card is "unplugged"
     // but loaded in the UI.
     mem.getJukeBox().copySnapshot(snapshot.jukeBox);
+    snapshot.codeTankEnabled = mem.isCodeTankEnabled();
+    mem.getCodeTank().copySnapshot(snapshot.codeTank);
 
     // PR-40 printer: always copy the snapshot so the UI can show recent
     // paper contents (and switch mode) even if the card is momentarily

@@ -525,6 +525,10 @@ int main(int argc, char* argv[])
         mainWindow.setJukeBoxJumperOverride(*plan.jukeBoxJumperOverride);
     if (plan.jukeBoxChipModeOverride)
         mainWindow.setJukeBoxChipModeOverride(*plan.jukeBoxChipModeOverride);
+    if (plan.codeTankJumperOverride)
+        mainWindow.setCodeTankJumperOverride(*plan.codeTankJumperOverride);
+    if (!plan.codeTankRomPath.empty())
+        mainWindow.setCodeTankRomPathOverride(plan.codeTankRomPath);
     if (!plan.deferredActions.empty())
         mainWindow.setDeferredCliActions(std::move(plan.deferredActions));
     mainWindow.setWindow(window);

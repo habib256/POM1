@@ -70,6 +70,7 @@ const MachineConfig kMachinePresets[] = {
         false, false, false, 4, BasicType::None,
         /*sidSE*/ false,
         /*jukeBox*/ false, JukeBox::Jumper::RAM16_ROM32, JukeBox::ChipMode::Flash,
+        /*codeTank*/ false, CodeTank::Jumper::Lower16, /*codeTankRom*/ nullptr,
         /*gt6144*/ false,
         // Right column carries two 1976-era photos of Woz + Jobs with
         // the Apple-1 — the portrait (standing Woz, seated Jobs) on
@@ -90,6 +91,7 @@ const MachineConfig kMachinePresets[] = {
         false, false, true, 8, BasicType::Integer,
         /*sidSE*/ false,
         /*jukeBox*/ false, JukeBox::Jumper::RAM16_ROM32, JukeBox::ChipMode::Flash,
+        /*codeTank*/ false, CodeTank::Jumper::Lower16, /*codeTankRom*/ nullptr,
         /*gt6144*/ false,
         {
             {"Apple 1 Screen",           {10,  61},  {843, 701}},
@@ -112,6 +114,7 @@ const MachineConfig kMachinePresets[] = {
         false, false, /*aci*/ true, /*ramKB*/ 8, BasicType::Integer,
         /*sidSE*/ false,
         /*jukeBox*/ false, JukeBox::Jumper::RAM16_ROM32, JukeBox::ChipMode::Flash,
+        /*codeTank*/ false, CodeTank::Jumper::Lower16, /*codeTankRom*/ nullptr,
         /*gt6144*/ true,
         {
             {"Apple 1 Screen",                 {10,  61},  {843, 701}},
@@ -129,6 +132,7 @@ const MachineConfig kMachinePresets[] = {
         true, false, true, 32, BasicType::Integer,
         /*sidSE*/ false,
         /*jukeBox*/ false, JukeBox::Jumper::RAM16_ROM32, JukeBox::ChipMode::Flash,
+        /*codeTank*/ false, CodeTank::Jumper::Lower16, /*codeTankRom*/ nullptr,
         /*gt6144*/ false,
         {
             {"Apple 1 Screen",        {10,  61},  {843, 701}},
@@ -144,6 +148,7 @@ const MachineConfig kMachinePresets[] = {
         false, true, false, 32, BasicType::ApplesoftLite,
         /*sidSE*/ false,
         /*jukeBox*/ false, JukeBox::Jumper::RAM16_ROM32, JukeBox::ChipMode::Flash,
+        /*codeTank*/ false, CodeTank::Jumper::Lower16, /*codeTankRom*/ nullptr,
         /*gt6144*/ false,
         {
             // CFFA1 has no dedicated window (transparent storage); pair
@@ -162,6 +167,7 @@ const MachineConfig kMachinePresets[] = {
         false, false, false, 32, BasicType::ApplesoftLite,
         /*sidSE*/ false,
         /*jukeBox*/ false, JukeBox::Jumper::RAM16_ROM32, JukeBox::ChipMode::Flash,
+        /*codeTank*/ false, CodeTank::Jumper::Lower16, /*codeTankRom*/ nullptr,
         /*gt6144*/ false,
         {
             // microSD is also transparent storage — no dedicated panel.
@@ -180,6 +186,7 @@ const MachineConfig kMachinePresets[] = {
         false, false, false, 32, BasicType::Integer,
         /*sidSE*/ false,
         /*jukeBox*/ false, JukeBox::Jumper::RAM16_ROM32, JukeBox::ChipMode::Flash,
+        /*codeTank*/ false, CodeTank::Jumper::Lower16, /*codeTankRom*/ nullptr,
         /*gt6144*/ false,
         {
             // A1-SID has no dedicated window (audio-only). Tutorial fills
@@ -198,6 +205,7 @@ const MachineConfig kMachinePresets[] = {
         false, false, false, 32, BasicType::Integer,
         /*sidSE*/ true,
         /*jukeBox*/ false, JukeBox::Jumper::RAM16_ROM32, JukeBox::ChipMode::Flash,
+        /*codeTank*/ false, CodeTank::Jumper::Lower16, /*codeTankRom*/ nullptr,
         /*gt6144*/ false,
         {
             {"Apple 1 Screen",                 {10,  61}, {843, 701}},
@@ -205,19 +213,24 @@ const MachineConfig kMachinePresets[] = {
         }, 2
     },
     {   //                                  GEN2  uSD  SID  TMS  RTC  WiFi Term Krus CFFA ACI
-        "P-LAB Apple-1 with TMS9918 Graphic Card",
-        "P-LAB Graphic Card (TMS9918A VDP), Integer BASIC.",
+        "P-LAB Apple-1 with TMS9918 + CodeTank",
+        "P-LAB Graphic Card (TMS9918A VDP) + CodeTank 28c256 ROM (galaga_sokoban_menu.rom) "
+        "at $4000-$7FFF, Integer BASIC. Type 4000R from the Woz Monitor to enter the "
+        "CodeTank game menu (1 = Galaga, 2 = Sokoban).",
         false, false, false, true, false, false, false,
         /*pr40*/ false,
-        false, false, false, 32, BasicType::Integer,
+        false, false, false, 16, BasicType::Integer,
         /*sidSE*/ false,
         /*jukeBox*/ false, JukeBox::Jumper::RAM16_ROM32, JukeBox::ChipMode::Flash,
+        /*codeTank*/ true, CodeTank::Jumper::Lower16,
+        /*codeTankRom*/ "roms/codetank/galaga_sokoban_menu.rom",
         /*gt6144*/ false,
         {
             {"Apple 1 Screen",               {10,  61},  {843, 701}},
             {"P-LAB Graphic Card (TMS9918)", {857, 61},  {344, 286}},
-            {"Tutorial: P-LAB TMS9918",      {859, 353}, {340, 408}},
-        }, 3
+            {"P-LAB CodeTank",               {857, 353}, {344, 195}},
+            {"Tutorial: P-LAB TMS9918",      {859, 553}, {340, 211}},
+        }, 4
     },
     {   //                                  GEN2  uSD  SID  TMS  RTC  WiFi Term Krus CFFA ACI
         "P-LAB Apple-1 with I/O Board & RTC",
@@ -227,6 +240,7 @@ const MachineConfig kMachinePresets[] = {
         false, false, false, 32, BasicType::Integer,
         /*sidSE*/ false,
         /*jukeBox*/ false, JukeBox::Jumper::RAM16_ROM32, JukeBox::ChipMode::Flash,
+        /*codeTank*/ false, CodeTank::Jumper::Lower16, /*codeTankRom*/ nullptr,
         /*gt6144*/ false,
         {
             {"Apple 1 Screen",              {10,  61},  {843, 701}},
@@ -242,6 +256,7 @@ const MachineConfig kMachinePresets[] = {
         false, false, false, 32, BasicType::Integer,
         /*sidSE*/ false,
         /*jukeBox*/ false, JukeBox::Jumper::RAM16_ROM32, JukeBox::ChipMode::Flash,
+        /*codeTank*/ false, CodeTank::Jumper::Lower16, /*codeTankRom*/ nullptr,
         /*gt6144*/ false,
         {
             {"Apple 1 Screen",            {10,  61},  {843, 701}},
@@ -262,6 +277,7 @@ const MachineConfig kMachinePresets[] = {
         false, false, /*aci*/ false, /*ramKB*/ 16, BasicType::Integer,
         /*sidSE*/ false,
         /*jukeBox*/ true, JukeBox::Jumper::RAM16_ROM32, JukeBox::ChipMode::Flash,
+        /*codeTank*/ false, CodeTank::Jumper::Lower16, /*codeTankRom*/ nullptr,
         /*gt6144*/ false,
         {
             {"Apple 1 Screen",           {10,  61},  {843, 701}},
@@ -281,6 +297,7 @@ const MachineConfig kMachinePresets[] = {
         false, false, false, 64, BasicType::ApplesoftLite,
         /*sidSE*/ false,
         /*jukeBox*/ false, JukeBox::Jumper::RAM16_ROM32, JukeBox::ChipMode::Flash,
+        /*codeTank*/ false, CodeTank::Jumper::Lower16, /*codeTankRom*/ nullptr,
         /*gt6144*/ false,
         {
             // P-LAB Fantasy departs from the tutorial+peripheral template:
@@ -309,6 +326,7 @@ const MachineConfig kMachinePresets[] = {
         false, false, false, 32, BasicType::Integer,
         /*sidSE*/ false,
         /*jukeBox*/ false, JukeBox::Jumper::RAM16_ROM32, JukeBox::ChipMode::Flash,
+        /*codeTank*/ false, CodeTank::Jumper::Lower16, /*codeTankRom*/ nullptr,
         /*gt6144*/ false,
         {
             {"Apple 1 Screen",                       {10,  61},  {843, 701}},
@@ -330,6 +348,7 @@ const MachineConfig kMachinePresets[] = {
         false, false, false, 64, BasicType::ApplesoftLite,
         /*sidSE*/ false,
         /*jukeBox*/ false, JukeBox::Jumper::RAM16_ROM32, JukeBox::ChipMode::Flash,
+        /*codeTank*/ false, CodeTank::Jumper::Lower16, /*codeTankRom*/ nullptr,
         /*gt6144*/ false,
         {
             // Positions / sizes match the shipped POM1 Fantasy screenshot
@@ -487,6 +506,7 @@ void MainWindow_ImGui::applyMachineConfig(int presetIndex)
     emulation->setA1IO_RTCEnabled(false);
     emulation->setWiFiModemEnabled(false);
     emulation->setJukeBoxEnabled(false);
+    emulation->setCodeTankEnabled(false);
     emulation->setPR40Enabled(false);
     emulation->setGT6144Enabled(false);
 #if !POM1_IS_WASM
@@ -536,6 +556,9 @@ void MainWindow_ImGui::applyMachineConfig(int presetIndex)
     jukeBoxJumper            = cfg.jukeBoxJumper;
     jukeBoxChipMode          = cfg.jukeBoxChipMode;
     showJukeBox              = false;
+    codeTankEnabled          = cfg.codeTank;
+    codeTankJumper           = cfg.codeTankJumper;
+    showCodeTank             = false;
 #if !POM1_IS_WASM
     terminalCardEnabled      = cfg.terminalCard;
     showTerminalCard         = false;
@@ -564,6 +587,7 @@ void MainWindow_ImGui::applyMachineConfig(int presetIndex)
         else if (n == "P-LAB I/O Board & RTC")                showA1IO_RTC     = true;
         else if (n == "P-LAB Wi-Fi Modem")                    showWiFiModem    = true;
         else if (n == "P-LAB Juke-Box")                       showJukeBox      = true;
+        else if (n == "P-LAB CodeTank")                       showCodeTank     = true;
 #if !POM1_IS_WASM
         else if (n == "P-LAB Terminal Card")                  showTerminalCard = true;
 #endif
@@ -610,6 +634,9 @@ void MainWindow_ImGui::applyMachineConfig(int presetIndex)
     pendingJukeBoxEnable        = cfg.jukeBox;
     pendingJukeBoxJumper        = cfg.jukeBoxJumper;
     pendingJukeBoxChipMode      = cfg.jukeBoxChipMode;
+    pendingCodeTankEnable       = cfg.codeTank;
+    pendingCodeTankJumper       = cfg.codeTankJumper;
+    pendingCodeTankRomPath      = (cfg.codeTankRomPath ? cfg.codeTankRomPath : std::string());
 #if !POM1_IS_WASM
     pendingTerminalCardEnable   = cfg.terminalCard;
 #else

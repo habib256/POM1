@@ -559,6 +559,7 @@ const char* MemoryViewer_ImGui::getRegionName(int address) const
     if (address <= 0x01FF) return "Stack";
     if (address <= 0x027F) return "Keyboard Buffer";
     if (gen2Enabled && address >= 0x2000 && address <= 0x3FFF) return "GEN2 HGR Framebuffer";
+    if (codeTankEnabled && address >= 0x4000 && address <= 0x7FFF) return "CodeTank ROM";
     if (jukeBoxEnabled) {
         int romStart = (jbJumper == JukeBox::Jumper::RAM16_ROM32) ? 0x4000 : 0x8000;
         if (address >= 0xBD00 && address <= 0xBFFF) return "Juke-Box Program Manager";
@@ -587,9 +588,12 @@ void MemoryViewer_ImGui::renderRegionBanner()
     ImVec4 regionColor = colorizeRegions ? getColorForAddress(startAddress)
                                          : ImVec4(0.7f, 0.7f, 0.7f, 1.0f);
 
-    // Build info string with JukeBox bank details when applicable
+    // Build info string with JukeBox bank / CodeTank half details when applicable
     char banner[128];
-    if (jukeBoxEnabled) {
+    if (codeTankEnabled && startAddress >= 0x4000 && startAddress <= 0x7FFF) {
+        snprintf(banner, sizeof(banner), "%s  %s 16 kB", regionName,
+                 codeTankJumper == CodeTank::Jumper::Upper16 ? "upper" : "lower");
+    } else if (jukeBoxEnabled) {
         int romStart = (jbJumper == JukeBox::Jumper::RAM16_ROM32) ? 0x4000 : 0x8000;
         if (startAddress >= romStart && startAddress <= 0xBFFF) {
             if (jbJumper == JukeBox::Jumper::RAM16_ROM32)
@@ -738,6 +742,9 @@ ImVec4 MemoryViewer_ImGui::getColorForAddress(int address)
         if (address >= rom.start && address <= rom.end)
             return ImVec4(1.0f, 1.0f, 0.31f, 1.0f); // ROM - yellow
     }
+    // P-LAB CodeTank ROM window (deep violet, matches Memory Map)
+    if (codeTankEnabled && address >= 0x4000 && address <= 0x7FFF)
+        return ImVec4(0.47f, 0.31f, 0.71f, 1.0f);
     // P-LAB Juke-Box ROM window (violet shades matching Memory Map)
     if (jukeBoxEnabled) {
         const int romStart = (jbJumper == JukeBox::Jumper::RAM16_ROM32) ? 0x4000 : 0x8000;

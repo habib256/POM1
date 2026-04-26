@@ -18,6 +18,10 @@
 //     backing file. Only one page; Px/Sx are no-ops. Real hardware takes
 //     ~25 s to save 4 kB (we flush synchronously, no delay modelled).
 //
+// The CodeTank daughterboard variant (fixed 16 kB window at $4000) lives in
+// CodeTank.h/.cpp now — it shares no state with the Juke-Box and is plugged
+// independently from the Hardware menu.
+//
 // Physical jumper selects where the ROM window sits on the Apple-1 bus:
 //
 //   - RAM16/ROM32: window $4000-$BFFF (full 32 kB page visible).
@@ -45,18 +49,18 @@
 
 class JukeBox {
 public:
-    // Jumper position: which part of a 32 kB page is visible in the
-    // CPU address space, and how much contiguous RAM the Apple-1 sees.
+    // Jumper position: which part of a 32 kB page is visible in the CPU
+    // address space.
     enum class Jumper : uint8_t {
-        RAM16_ROM32 = 0,  // Window $4000-$BFFF (32 kB), RAM up to $3FFF
-        RAM32_ROM16 = 1,  // Window $8000-$BFFF (16 kB), RAM up to $7FFF
+        RAM16_ROM32 = 0,  // $4000-$BFFF (32 kB), RAM to $3FFF
+        RAM32_ROM16 = 1,  // $8000-$BFFF (16 kB), RAM to $7FFF
     };
 
     // Physical chip socketed on the card. Per Parmigiani/Rosselli you
     // physically swap between one and the other; POM1 exposes it as a
     // user-selectable mode because the emulator has no socket.
     enum class ChipMode : uint8_t {
-        Flash       = 0,  // Paged read-only, 16 kB to 512 kB (default).
+        Flash        = 0, // Paged read-only, 16 kB to 512 kB (default).
         EEPROM28C256 = 1, // Single-page 32 kB 28c256, writable.
     };
 
@@ -115,11 +119,10 @@ public:
     // when `path` is empty). Used by the UI to commit page-copy edits.
     bool saveRomFile(const std::string& path, std::string& error) const;
 
-    // Load a ROM file from disk. Accepts 16 kB..512 kB for Flash mode,
-    // exactly 32 kB for EEPROM mode. Shorter flash files are padded with
-    // $FF up to the nearest page boundary. `error` is populated on failure;
-    // previous contents are preserved on error. Picks default boot page
-    // on success.
+    // Load a ROM file from disk. Accepts 16 kB..512 kB for Flash mode, exactly
+    // 32 kB for EEPROM mode. Shorter flash files are padded with $FF up to
+    // the nearest page boundary. `error` is populated on failure; previous
+    // contents are preserved on error. Picks default boot page on success.
     bool loadRomFile(const std::string& path, std::string& error);
 
     // Empty the ROM buffer. Drops romPath and pageCount. For EEPROM mode
