@@ -1370,9 +1370,19 @@ int Memory::loadCodeTankRom(const std::string& path)
         pom1::log().warn("Mem", lastError);
         return 1;
     }
+    // Default probe order. The shipped 5-game menu ROM
+    // (`galaga_sokoban_menu.rom`, built by tools/build_codetank_rom.py)
+    // wins so plugging the CodeTank from the toolbar/Hardware menu drops
+    // the user straight into the Galaga/Sokoban/Snake/Life selector. The
+    // `roms/codetank/`-rooted variants and the legacy single-file
+    // `roms/codetank.rom` stay as fallbacks.
     const char* candidates[] = {
+        "roms/codetank/galaga_sokoban_menu.rom",
+        "../roms/codetank/galaga_sokoban_menu.rom",
+        "../../roms/codetank/galaga_sokoban_menu.rom",
         "/home/gistarcade/T\303\251l\303\251chargements/28c256_Final.bin",
-        "codetank.rom", "roms/codetank.rom", "../roms/codetank.rom", "../../roms/codetank.rom",
+        "codetank.rom",
+        "roms/codetank.rom", "../roms/codetank.rom", "../../roms/codetank.rom",
     };
     for (const char* p : candidates) {
         std::string error;
@@ -1381,7 +1391,8 @@ int Memory::loadCodeTankRom(const std::string& path)
             return 0;
         }
     }
-    lastError = "CodeTank ROM not found (expected roms/codetank.rom)";
+    lastError = "CodeTank ROM not found "
+                "(expected roms/codetank/galaga_sokoban_menu.rom)";
     pom1::log().warn("Mem", lastError);
     return 1;
 }

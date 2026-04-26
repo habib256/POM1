@@ -1,1 +1,0 @@
-Legacy fallback (page 0 + page 1 of jukebox.rom). 4000R after picking a half.
