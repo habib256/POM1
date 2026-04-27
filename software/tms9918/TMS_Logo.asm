@@ -43,9 +43,14 @@ WOZ_RST  = $FF1F
 
 LINE_MAX = 60
 MAX_VARS = 6
-MAX_PROCS     = 8
-PROC_SLOT     = 64        ; bytes per procedure slot (4 name + 1 len + 59 body)
-PROC_BODY_MAX = 59
+MAX_PROCS         = 8
+PROC_SLOT         = 128   ; V1.5 slot: 4 name + 1 nparams + 8 (2x4) param names + 1 body_len + 114 body
+PROC_BODY_MAX     = 114
+MAX_PARAMS        = 2
+PROC_NPARAMS_OFF  = 4     ; slot offset of n_params byte
+PROC_PARAMS_OFF   = 5     ; slot offset of param-names block (8 bytes = 2 names of 4)
+PROC_BODYLEN_OFF  = 13    ; slot offset of body-length byte
+PROC_BODY_OFF     = 14    ; slot offset of first body char
 
 ; --- Zero page (matches TMS_Maze3D conventions for the line/plot block) ---
 .segment "ZEROPAGE"
@@ -122,9 +127,26 @@ lfsr_hi:    .res 1
 ;   byte  4    : body length (0..PROC_BODY_MAX)
 ;   bytes 5-31 : body characters (raw line_buf bytes between TO NAME and END)
 .segment "PROCBSS"
-proc_table:    .res 512      ; MAX_PROCS (8) x PROC_SLOT (64) = 512
+proc_table:    .res 1024     ; MAX_PROCS (8) x PROC_SLOT (128) = 1024
 proc_save_buf: .res 60       ; saved line_buf during proc invocation
 proc_save_idx: .res 1        ; saved line_idx
+; V1.5 procedure parameters -- 2 named slots layered on top of var_table.
+; var_lookup checks these first, so :SIZE in a proc body resolves to its
+; param even if a global named SIZE also exists. After RTS we restore
+; values via PHA/PLA on the 6502 stack (caller's stack frame).
+param_slot0_name:  .res 4
+param_slot0_value: .res 2
+param_slot1_name:  .res 4
+param_slot1_value: .res 2
+n_params_active:   .res 1    ; 0..MAX_PARAMS, valid params currently live
+in_proc_save:      .res 1    ; 1 if proc_save_buf currently holds an outer line_buf
+def_mode:          .res 1    ; 0 = REPL, 1 = currently collecting body lines for a new proc
+cur_proc_lo:       .res 1    ; -> current proc slot during definition
+cur_proc_hi:       .res 1
+proc_body_cursor:  .res 1    ; proc_invoke: cursor into slot body across line_loop
+proc_body_total:   .res 1    ; proc_invoke: total body_len
+err_save_lo:       .res 1    ; print_err: outer mptr_lo around the message walk
+err_save_hi:       .res 1
 
 ; ============================================================================
 .segment "CODE"
@@ -145,6 +167,9 @@ main:
         STA turtle_visible
         STA n_vars
         STA n_procs
+        STA n_params_active
+        STA in_proc_save
+        STA def_mode
         ; LFSR seed -- non-zero
         LDA #$AC
         STA lfsr_lo
@@ -154,6 +179,11 @@ main:
 repl:
         JSR new_prompt
         JSR read_line
+        LDA def_mode
+        BEQ @do_parse
+        JSR proc_collect_line
+        JMP repl
+@do_parse:
         LDA #0
         STA line_idx
         STA cmd_status
@@ -177,7 +207,16 @@ print_banner:
 new_prompt:
         ; no leading CR -- the previous OK / err / read_line echo already
         ; ended with a CR, so we'd just produce a blank line.
-        LDA #'?'
+        LDA def_mode
+        BEQ @std
+        LDA #'>'
+        ORA #$80
+        JSR ECHO
+        LDA #' '
+        ORA #$80
+        JSR ECHO
+        RTS
+@std:   LDA #'?'
         ORA #$80
         JSR ECHO
         LDA #' '
@@ -190,7 +229,7 @@ banner_msg:
         .byte 0
 
 help_msg:
-        .byte $0D, "APPLE-1 LOGO V1.2 (TMS9918)", $0D
+        .byte $0D, "APPLE-1 LOGO V1.5 (TMS9918)", $0D
         .byte "FD/BK N  : FORWARD/BACK N PIX", $0D
         .byte "TR/TL N  : TURN RIGHT/LEFT", $0D
         .byte "PU PD    : PEN UP / DOWN", $0D
@@ -200,8 +239,8 @@ help_msg:
         .byte "REPEAT N [ ... ] : LOOP", $0D
         .byte "MAKE NAME N : SET VAR=N", $0D
         .byte ":NAME    : USE VAR IN ARGS", $0D
-        .byte "TO NAME ... END : DEF PROC", $0D
-        .byte "NAME     : INVOKE PROC", $0D
+        .byte "TO N :A :B ... END : DEF PROC", $0D
+        .byte "NAME [A B]  : INVOKE PROC", $0D
         .byte "RANDOM N : RANDOM 0..N-1 IN ARG", $0D
         .byte "WAIT N   : PAUSE ~N SECONDS", $0D
         .byte "PRINT ", $22, "WORD / PRINT N", $0D
@@ -322,14 +361,8 @@ parse_and_exec:
         JSR mark_ok
         JSR proc_invoke
         JMP @loop
-@err:   LDA #2
-        STA cmd_status
-        LDA #'?'
-        ORA #$80
-        JSR ECHO
-        LDA #$0D
-        ORA #$80
-        JSR ECHO
+@err:   LDA #ERR_UNK_CMD
+        JSR print_err
         ; abort rest of line
 @skip:  LDX line_idx
         LDA line_buf,X
@@ -368,6 +401,75 @@ print_status:
         ORA #$80
         JSR ECHO
 @done:  RTS
+
+; ============================================================================
+; SYNTAXERR -- print "? <message>\r" and set cmd_status = 2.
+;   Input: A = error code (0..6)
+; ============================================================================
+ERR_UNK_CMD  = 0
+ERR_UNK_VAR  = 1
+ERR_FULL     = 2
+ERR_BAD_NAME = 3
+ERR_NO_RB    = 4
+ERR_NO_END   = 5
+ERR_BAD_ARG  = 6
+
+print_err:
+        ; Save mptr around the message walk -- callers (parse_dec_arg @nf,
+        ; @try_proc @err) leave the dispatcher's JMP-(mptr_lo) handler ptr
+        ; in mptr; clobbering it would jump through the err message bytes.
+        PHA                       ; preserve err code
+        LDA mptr_lo
+        STA err_save_lo
+        LDA mptr_hi
+        STA err_save_hi
+        PLA
+        ASL                       ; A = code * 2 (table is 2 bytes per entry)
+        TAX
+        LDA err_table,X
+        STA mptr_lo
+        LDA err_table+1,X
+        STA mptr_hi
+        LDA #'?'
+        ORA #$80
+        JSR ECHO
+        LDA #' '
+        ORA #$80
+        JSR ECHO
+        LDY #0
+@l:     LDA (mptr_lo),Y
+        BEQ @end
+        ORA #$80
+        JSR ECHO
+        INY
+        BNE @l
+@end:   LDA #$0D
+        ORA #$80
+        JSR ECHO
+        LDA #2
+        STA cmd_status
+        LDA err_save_lo
+        STA mptr_lo
+        LDA err_save_hi
+        STA mptr_hi
+        RTS
+
+err_table:
+        .word err_msg_unk_cmd
+        .word err_msg_unk_var
+        .word err_msg_full
+        .word err_msg_bad_name
+        .word err_msg_no_rb
+        .word err_msg_no_end
+        .word err_msg_bad_arg
+
+err_msg_unk_cmd:  .byte "UNK CMD",  0
+err_msg_unk_var:  .byte "UNK VAR",  0
+err_msg_full:     .byte "FULL",     0
+err_msg_bad_name: .byte "BAD NAME", 0
+err_msg_no_rb:    .byte "NO ]",     0
+err_msg_no_end:   .byte "NO END",   0
+err_msg_bad_arg:  .byte "BAD ARG",  0
 
 ; ============================================================================
 ; skip_spaces: advance line_idx over space / comma / tab.
@@ -572,14 +674,11 @@ parse_dec_arg:
         STA mptr_hi
         PLA
         STA mptr_lo
-        LDA #2
-        STA cmd_status
         LDA #0
         STA arg_lo
         STA arg_hi
-        LDA #'?'
-        ORA #$80
-        JSR ECHO
+        LDA #ERR_UNK_VAR
+        JSR print_err
         RTS
 @dec:   LDA #0
         STA arg_lo
@@ -741,9 +840,16 @@ demo_script:
         .byte "REPEAT 10 [REPEAT 5 [FD 30 TR 144] TR 36]", $0D
         .byte "WAIT 3", $0D
         .byte "CS", $0D
-        .byte "PRINT ", $22, "RAYS", $0D
-        .byte "REPEAT 24 [FD 70 BK 70 TR 15]", $0D
-        .byte "WAIT 2", $0D
+        .byte "PRINT ", $22, "SPIRAL", $0D
+        ; V1.5 spiral -- inlined since multi-line TO bodies aren't reachable
+        ; from cmd_demo (it bypasses the REPL loop). Square spiral with TR 90,
+        ; FD growing by 4. Replaced with the recursive `spiral :size :angle`
+        ; once V2.0 lands arithmetic + IF + recursion.
+        .byte "FD 4 TR 90 FD 8 TR 90 FD 12 TR 90 FD 16 TR 90", $0D
+        .byte "FD 20 TR 90 FD 24 TR 90 FD 28 TR 90 FD 32 TR 90", $0D
+        .byte "FD 36 TR 90 FD 40 TR 90 FD 44 TR 90 FD 48 TR 90", $0D
+        .byte "FD 52 TR 90 FD 56 TR 90 FD 60 TR 90 FD 64 TR 90", $0D
+        .byte "WAIT 3", $0D
         .byte "CS", $0D
         .byte "PRINT ", $22, "END", $0D
         .byte 0
@@ -812,15 +918,11 @@ cmd_make:
         STA (mptr_lo),Y
         INC n_vars
         RTS
-@bad:
-@full:  LDA #2
-        STA cmd_status
-        LDA #'?'
-        ORA #$80
-        JSR ECHO
-        LDA #$0D
-        ORA #$80
-        JSR ECHO
+@bad:   LDA #ERR_BAD_NAME
+        JSR print_err
+        RTS
+@full:  LDA #ERR_FULL
+        JSR print_err
         RTS
 
 ; read_var_name: read up to 4 letters at line_buf,line_idx into mnem_buf,
@@ -854,165 +956,168 @@ read_var_name:
         JMP @padl
 @ret:   RTS
 
-; cmd_to: TO NAME ... END   --- single-line user procedure definition.
-;   Reads NAME, then captures everything between NAME and the END keyword
-;   into a fixed-size proc_table slot. Single-line bodies only.
+; cmd_to: TO NAME [:p1 [:p2]]    -- start multi-line procedure definition.
+;   Allocates/reuses a slot, writes name + nparams + param names + body_len=0,
+;   sets cur_proc_lo:hi -> slot start and def_mode = 1. The REPL then routes
+;   each subsequent line through proc_collect_line until the user types END.
 cmd_to:
         JSR skip_spaces
-        JSR read_var_name     ; mnem_buf <- name
+        JSR read_var_name        ; mnem_buf <- proc name
         LDA mnem_buf
         CMP #' '
-        BNE @ok_name
-        JMP @bad
-@ok_name:
-        ; preserve dest name across the body scan (which calls read_var_name)
-        LDA mnem_buf
-        PHA
-        LDA mnem_buf+1
-        PHA
-        LDA mnem_buf+2
-        PHA
-        LDA mnem_buf+3
-        PHA
-        ; skip space(s) after the name; body starts here
-        JSR skip_spaces
-        LDA line_idx
-        STA arg_lo            ; arg_lo = body_start (line_buf index)
-        ; --- scan forward for "END" surrounded by space/CR ---
-        ; nx_save_lo = current scan X. We look for E,N,D as 3 consecutive
-        ; uppercase letters preceded by space and followed by space/CR.
-        LDA line_idx
-        STA nx_save_lo
-@scan:  LDX nx_save_lo
-        LDA line_buf,X
-        AND #$7F
-        CMP #$0D
-        BNE @not_eol
-        JMP @bad_pop          ; no END before EOL
-@not_eol:
-        ; check for E
-        CMP #'E'
-        BNE @next
-        ; need 'N' next
-        INX
-        LDA line_buf,X
-        AND #$7F
-        CMP #'N'
-        BNE @next
-        INX
-        LDA line_buf,X
-        AND #$7F
-        CMP #'D'
-        BNE @next
-        ; check terminator (space or CR)
-        INX
-        LDA line_buf,X
-        AND #$7F
-        CMP #' '
-        BEQ @found
-        CMP #$0D
-        BEQ @found
-@next:  INC nx_save_lo
-        JMP @scan
-@found: ; nx_save_lo currently points at 'E'. body_end = nx_save_lo (exclusive).
-        ; advance line_idx past END (3 chars beyond start of E)
-        ; arg_hi = body_end
-        LDA nx_save_lo
-        STA arg_hi
-        CLC
-        ADC #3
-        STA line_idx          ; line_idx now after "END"
-        ; restore dest name (mnem_buf was clobbered by scan? no, scan didn't
-        ; touch it -- but read_var_name might have, on second thought no)
-        PLA
-        STA mnem_buf+3
-        PLA
-        STA mnem_buf+2
-        PLA
-        STA mnem_buf+1
-        PLA
-        STA mnem_buf
-        ; --- compute body_len = arg_hi - arg_lo  (clamp to PROC_BODY_MAX) ---
-        SEC
-        LDA arg_hi
-        SBC arg_lo
-        ; trim trailing space(s)
-        TAX                   ; X = body_len candidate
-@trim:  CPX #0
-        BEQ @len_ok
-        DEX
-        LDA arg_lo
-        STX tmp
-        CLC
-        ADC tmp
-        TAY
-        LDA line_buf,Y
-        AND #$7F
-        CMP #' '
-        BEQ @trim_more
-        ; not space -> stop. body_len = X+1
-        INX
-        JMP @len_ok
-@trim_more:
-        JMP @trim
-@len_ok:
-        ; X = trimmed body_len
-        CPX #PROC_BODY_MAX+1
-        BCC @len_fits
-        LDX #PROC_BODY_MAX
-@len_fits:
-        STX tmp               ; tmp = body_len
-        ; --- look up name; update or append ---
-        JSR find_proc_slot    ; -> mptr_lo:hi = slot, C=0 if existing, C=1 if new
-        BCC @write
-        ; new: check space
+        BEQ @bad_name
+        ; --- find or allocate slot ---
+        JSR find_proc_slot       ; -> mptr_lo:hi = slot, C=0 if existing
+        BCC @use_slot
         LDA n_procs
         CMP #MAX_PROCS
-        BCS @bad
+        BCS @full
         INC n_procs
-@write: ; write name (4 bytes) at slot+0..3
+@use_slot:
+        ; remember slot for proc_collect_line
+        LDA mptr_lo
+        STA cur_proc_lo
+        LDA mptr_hi
+        STA cur_proc_hi
+        ; write 4-byte name at slot+0..3
         LDY #0
 @cn:    LDA mnem_buf,Y
         STA (mptr_lo),Y
         INY
         CPY #4
         BNE @cn
-        ; write body length at slot+4 (Y=4 here)
+        ; --- parse :p1 :p2 (max MAX_PARAMS) ---
+        ; Use tmp as the parm counter -- skip_spaces / read_var_name clobber X
+        ; and Y, so a register-only counter would be lost across each call.
+        LDA #0
+        STA tmp
+@parm:  JSR skip_spaces
+        LDY line_idx
+        LDA line_buf,Y
+        AND #$7F
+        CMP #':'
+        BNE @parms_done
+        INC line_idx             ; consume ':'
+        JSR read_var_name        ; mnem_buf <- param name
+        LDA mnem_buf
+        CMP #' '
+        BEQ @parms_done          ; ':' alone -> stop (defensive)
+        ; slot offset = PROC_PARAMS_OFF + tmp*4
         LDA tmp
-        STA (mptr_lo),Y
-        ; advance mptr_lo:hi by 5 -> points at body start
+        ASL
+        ASL
         CLC
-        LDA mptr_lo
-        ADC #5
-        STA mptr_lo
-        BCC @aiok
-        INC mptr_hi
-@aiok:  ; copy body: for Y in 0..tmp-1: body[Y] = line_buf[arg_lo + Y]
-        LDY #0
-@cb:    CPY tmp
-        BEQ @done
-        TYA
-        CLC
-        ADC arg_lo
-        TAX
-        LDA line_buf,X
+        ADC #PROC_PARAMS_OFF
+        TAY
+        LDA mnem_buf
         STA (mptr_lo),Y
         INY
-        JMP @cb
-@done:  RTS
-@bad_pop:
-        PLA
-        PLA
-        PLA
-        PLA
-@bad:   LDA #2
+        LDA mnem_buf+1
+        STA (mptr_lo),Y
+        INY
+        LDA mnem_buf+2
+        STA (mptr_lo),Y
+        INY
+        LDA mnem_buf+3
+        STA (mptr_lo),Y
+        INC tmp
+        LDA tmp
+        CMP #MAX_PARAMS
+        BNE @parm
+@parms_done:
+        ; store nparams at slot+4
+        LDY #PROC_NPARAMS_OFF
+        LDA tmp
+        STA (mptr_lo),Y
+        ; init body_len = 0 at slot+13
+        LDY #PROC_BODYLEN_OFF
+        LDA #0
+        STA (mptr_lo),Y
+        ; engage definition mode
+        LDA #1
+        STA def_mode
+        RTS
+@bad_name:
+        LDA #ERR_BAD_NAME
+        JSR print_err
+        RTS
+@full:
+        LDA #ERR_FULL
+        JSR print_err
+        RTS
+
+; proc_collect_line: called by REPL when def_mode = 1. Inspects line_buf:
+;   - "END" (followed by space or CR) -> finalise, def_mode = 0, OK.
+;   - anything else                   -> append the whole line (incl. CR) to
+;                                        the slot body. Overflow -> ERR_FULL
+;                                        and abort the definition.
+proc_collect_line:
+        LDA #0
+        STA line_idx
+        JSR skip_spaces
+        LDX line_idx
+        LDA line_buf,X
+        AND #$7F
+        CMP #'E'
+        BNE @append
+        LDA line_buf+1,X
+        AND #$7F
+        CMP #'N'
+        BNE @append
+        LDA line_buf+2,X
+        AND #$7F
+        CMP #'D'
+        BNE @append
+        LDA line_buf+3,X
+        AND #$7F
+        CMP #$0D
+        BEQ @end_proc
+        CMP #' '
+        BNE @append
+@end_proc:
+        LDA #0
+        STA def_mode
+        ; print "OK" so the user knows the definition closed
+        LDA #1
         STA cmd_status
-        LDA #'?'
-        ORA #$80
-        JSR ECHO
-        LDA #$0D
-        ORA #$80
-        JSR ECHO
+        JSR print_status
+        RTS
+@append:
+        LDA cur_proc_lo
+        STA mptr_lo
+        LDA cur_proc_hi
+        STA mptr_hi
+        LDY #PROC_BODYLEN_OFF
+        LDA (mptr_lo),Y
+        STA tmp                  ; tmp = current body_len
+        LDX #0                   ; X = line_buf cursor
+@al:    LDA tmp
+        CMP #PROC_BODY_MAX
+        BCS @overflow
+        ; slot offset = PROC_BODY_OFF + body_len
+        CLC
+        ADC #PROC_BODY_OFF
+        TAY
+        LDA line_buf,X
+        STA (mptr_lo),Y
+        INC tmp
+        LDA line_buf,X
+        AND #$7F
+        CMP #$0D
+        BEQ @done
+        INX
+        CPX #LINE_MAX
+        BCS @done                ; safety -- shouldn't happen
+        JMP @al
+@done:  LDY #PROC_BODYLEN_OFF
+        LDA tmp
+        STA (mptr_lo),Y
+        RTS
+@overflow:
+        LDA #ERR_FULL
+        JSR print_err
+        LDA #0
+        STA def_mode
         RTS
 
 ; find_proc_slot: locate slot for mnem_buf in proc_table.
@@ -1060,13 +1165,130 @@ find_proc:
 @miss:  SEC
         RTS
 
-; proc_invoke: save the caller's line_buf + line_idx, copy the proc body
-;   into line_buf, recursively parse_and_exec, then restore line_buf
-;   and line_idx so the caller's outer parse keeps working.
-;   This lets `REPEAT N [PROC ...]` re-read its body each iteration.
-;   Note: only ONE level of proc nesting is supported (no proc-calls-proc).
+; proc_invoke (V1.5): bind params, then run a (possibly multi-line) body.
+;   On entry: mptr_lo:hi -> slot start, line_idx points just past the proc
+;   name in the OUTER line_buf (find_proc updated it).
+;
+;   Steps:
+;     1. Refuse nested invocation (in_proc_save already set) -> ERR_FULL.
+;     2. Push outer param state (n_params_active + 2 x (name+value)) on the
+;        6502 stack so we can restore on return.
+;     3. Read nparams from slot. Parse N decimal args from the OUTER line
+;        (so :OUTER_VAR still resolves under the OUTER param state).
+;     4. Copy param names from the slot, values from the parsed args, into
+;        param_slotN. Activate them by setting n_params_active = nparams.
+;     5. Save the outer line_buf to proc_save_buf, walk the body one
+;        CR-terminated line at a time through parse_and_exec.
+;     6. Restore line_buf + line_idx, pop the outer param state, clear
+;        in_proc_save.
 proc_invoke:
-        ; --- save line_buf to proc_save_buf ---
+        LDA in_proc_save
+        BEQ @ok_to_call
+        ; nested call -- not supported in V1.5 (V1.6 will add recursion)
+        LDA #ERR_FULL
+        JSR print_err
+        RTS
+@ok_to_call:
+        ; --- 1. push outer param state (13 bytes) ---
+        LDA n_params_active
+        PHA
+        LDA param_slot0_name
+        PHA
+        LDA param_slot0_name+1
+        PHA
+        LDA param_slot0_name+2
+        PHA
+        LDA param_slot0_name+3
+        PHA
+        LDA param_slot0_value
+        PHA
+        LDA param_slot0_value+1
+        PHA
+        LDA param_slot1_name
+        PHA
+        LDA param_slot1_name+1
+        PHA
+        LDA param_slot1_name+2
+        PHA
+        LDA param_slot1_name+3
+        PHA
+        LDA param_slot1_value
+        PHA
+        LDA param_slot1_value+1
+        PHA
+        ; --- 2. read nparams from slot ---
+        LDY #PROC_NPARAMS_OFF
+        LDA (mptr_lo),Y
+        STA tmp                  ; tmp = nparams (0..MAX_PARAMS)
+        ; --- 3. parse arg(s) under OUTER scope ---
+        ; Latch param0 value into nx_save_lo:hi, param1 in arg_lo:hi.
+        LDA tmp
+        BEQ @args_done
+        ; preserve mptr_lo:hi across parse_dec_arg (it may call var_lookup)
+        LDA mptr_lo
+        PHA
+        LDA mptr_hi
+        PHA
+        JSR parse_dec_arg
+        PLA
+        STA mptr_hi
+        PLA
+        STA mptr_lo
+        LDA arg_lo
+        STA proc_body_cursor     ; reuse as scratch -- param 0 lo
+        LDA arg_hi
+        STA proc_body_total      ; reuse as scratch -- param 0 hi
+        LDA tmp
+        CMP #2
+        BCC @args_done
+        LDA mptr_lo
+        PHA
+        LDA mptr_hi
+        PHA
+        JSR parse_dec_arg
+        PLA
+        STA mptr_hi
+        PLA
+        STA mptr_lo
+        ; param 1 value already in arg_lo:arg_hi
+@args_done:
+        ; --- 4. bind names + values into param slots ---
+        LDA tmp
+        BEQ @bind_done
+        ; copy slot+5..8 -> param_slot0_name
+        LDY #PROC_PARAMS_OFF
+        LDX #0
+@cn0:   LDA (mptr_lo),Y
+        STA param_slot0_name,X
+        INY
+        INX
+        CPX #4
+        BNE @cn0
+        LDA proc_body_cursor     ; latched param-0 lo
+        STA param_slot0_value
+        LDA proc_body_total      ; latched param-0 hi
+        STA param_slot0_value+1
+        LDA tmp
+        CMP #2
+        BCC @bind_done
+        LDY #(PROC_PARAMS_OFF+4)
+        LDX #0
+@cn1:   LDA (mptr_lo),Y
+        STA param_slot1_name,X
+        INY
+        INX
+        CPX #4
+        BNE @cn1
+        LDA arg_lo
+        STA param_slot1_value
+        LDA arg_hi
+        STA param_slot1_value+1
+@bind_done:
+        LDA tmp
+        STA n_params_active
+        ; --- 5. save outer line_buf, walk body line by line ---
+        LDA #1
+        STA in_proc_save
         LDX #0
 @sv:    LDA line_buf,X
         STA proc_save_buf,X
@@ -1075,28 +1297,53 @@ proc_invoke:
         BNE @sv
         LDA line_idx
         STA proc_save_idx
-        ; --- copy proc body to line_buf ---
-        LDY #4
-        LDA (mptr_lo),Y       ; A = body length
-        STA tmp               ; tmp = len
-        LDX #0
-@cp:    CPX tmp
-        BEQ @term
-        TXA
-        CLC
-        ADC #5                ; offset 5+X in slot
+        ; total body length + cursor (survive across body parse_and_exec)
+        LDY #PROC_BODYLEN_OFF
+        LDA (mptr_lo),Y
+        STA proc_body_total
+        LDA #0
+        STA proc_body_cursor
+@line_loop:
+        LDA proc_body_cursor
+        CMP proc_body_total
+        BCS @body_done
+        ; copy [body_cursor..next CR] from slot into line_buf[0..]
+        LDX #0                   ; X = line_buf cursor
+@cp:    LDA proc_body_cursor
+        CMP proc_body_total
+        BCC @cp_ok
+        ; ran out without CR -- emit one and bail
+        LDA #$0D
+        STA line_buf,X
+        JMP @run
+@cp_ok: CLC
+        ADC #PROC_BODY_OFF
         TAY
         LDA (mptr_lo),Y
         STA line_buf,X
+        INC proc_body_cursor
         INX
-        JMP @cp
-@term:  LDA #$0D
-        STA line_buf,X
-        LDA #0
+        CPX #LINE_MAX
+        BCS @run                 ; safety
+        LDA line_buf-1,X         ; the byte we just stored
+        AND #$7F
+        CMP #$0D
+        BNE @cp
+@run:   LDA #0
         STA line_idx
-        ; --- run the body ---
+        ; preserve mptr (slot ptr) across recursive parse_and_exec
+        LDA mptr_lo
+        PHA
+        LDA mptr_hi
+        PHA
         JSR parse_and_exec
-        ; --- restore line_buf + line_idx ---
+        PLA
+        STA mptr_hi
+        PLA
+        STA mptr_lo
+        JMP @line_loop
+@body_done:
+        ; --- 6. restore outer line_buf + line_idx ---
         LDX #0
 @rs:    LDA proc_save_buf,X
         STA line_buf,X
@@ -1105,6 +1352,35 @@ proc_invoke:
         BNE @rs
         LDA proc_save_idx
         STA line_idx
+        LDA #0
+        STA in_proc_save
+        ; --- pop outer param state (LIFO) ---
+        PLA
+        STA param_slot1_value+1
+        PLA
+        STA param_slot1_value
+        PLA
+        STA param_slot1_name+3
+        PLA
+        STA param_slot1_name+2
+        PLA
+        STA param_slot1_name+1
+        PLA
+        STA param_slot1_name
+        PLA
+        STA param_slot0_value+1
+        PLA
+        STA param_slot0_value
+        PLA
+        STA param_slot0_name+3
+        PLA
+        STA param_slot0_name+2
+        PLA
+        STA param_slot0_name+1
+        PLA
+        STA param_slot0_name
+        PLA
+        STA n_params_active
         RTS
 
 ; roll_lfsr: advance the 16-bit Galois LFSR (taps $B400 -> bits 16,14,13,11).
@@ -1215,10 +1491,46 @@ cmd_wait:
         BNE @outer
 @done:  RTS
 
-; var_lookup: search mnem_buf in var_table.
-;   On match: C=0, mptr_lo:hi -> matched slot.
-;   On miss : C=1, mptr_lo:hi -> next free slot (one past last entry).
+; var_lookup: search mnem_buf, params first then var_table.
+;   On match: C=0, mptr_lo:hi -> matched slot (4 byte name + 2 byte value).
+;   On miss : C=1, mptr_lo:hi -> next free var_table slot.
+;   Param slots are laid out (name 4 + value 2) just like var_table entries
+;   so callers can read value via LDY #4 / LDA (mptr_lo),Y unchanged.
 var_lookup:
+        LDA n_params_active
+        BEQ @globals
+        ; --- check param 0 ---
+        LDY #0
+@p0c:   LDA param_slot0_name,Y
+        CMP mnem_buf,Y
+        BNE @try_p1
+        INY
+        CPY #4
+        BNE @p0c
+        LDA #<param_slot0_name
+        STA mptr_lo
+        LDA #>param_slot0_name
+        STA mptr_hi
+        CLC
+        RTS
+@try_p1:
+        LDA n_params_active
+        CMP #2
+        BCC @globals
+        LDY #0
+@p1c:   LDA param_slot1_name,Y
+        CMP mnem_buf,Y
+        BNE @globals
+        INY
+        CPY #4
+        BNE @p1c
+        LDA #<param_slot1_name
+        STA mptr_lo
+        LDA #>param_slot1_name
+        STA mptr_hi
+        CLC
+        RTS
+@globals:
         LDA #<var_table
         STA mptr_lo
         LDA #>var_table
@@ -1743,14 +2055,8 @@ cmd_repeat:
         ADC #1
         STA line_idx
         RTS
-@bad:   LDA #2
-        STA cmd_status
-        LDA #'?'
-        ORA #$80
-        JSR ECHO
-        LDA #$0D
-        ORA #$80
-        JSR ECHO
+@bad:   LDA #ERR_NO_RB
+        JSR print_err
         ; skip rest of line
 @b2:    LDX line_idx
         LDA line_buf,X
