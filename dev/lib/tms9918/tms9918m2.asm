@@ -1,0 +1,303 @@
+; ============================================================================
+; tms9918.asm -- TMS9918 Mode-2 (bitmap, 256x192) driver for Apple-1 + P-LAB
+;                Graphic Card. Reusable across LOGO / Maze3D / future games.
+;
+; Public symbols:
+;   init_vdp_g2     -- 8 registers + linear name table + colour table
+;   clear_bitmap    -- zero the 6144 B pattern table at $0000
+;   disable_sprites -- write Y=$D0 to sprite #0 attribute (chip stops scan)
+;   vdp_set_write   -- prep VRAM auto-increment write at pix_addr_lo:hi
+;   vdp_set_read    -- prep VRAM read at pix_addr_lo:hi
+;   calc_pix_addr   -- (pix_x, pix_y) -> pix_addr_lo:hi  (no mask)
+;   plot_set        -- plot at (pix_x, pix_y), OR or XOR per plot_mode
+;   line_xy         -- Bresenham (ln_x0,y0)->(ln_x1,y1), 16-bit signed err
+;
+; Owns ZP slots: pix_x, pix_y, pix_addr_lo, pix_addr_hi, pix_mask, pix_byte,
+;                ln_x0, ln_y0, ln_x1, ln_y1, ln_dx, ln_dy, ln_sx, ln_sy,
+;                ln_err, ln_err_hi.   (16 bytes total)
+;
+; Imports (caller must define):
+;   tmp                 -- 1 ZP scratch byte (used inside calc_pix_addr,
+;                          line_xy 2*err computation).
+;   tmp2                -- 1 ZP scratch byte (line_xy 2*err high byte).
+;   plot_mode           -- 1 BSS byte: 0 = OR, 1 = XOR.
+; ============================================================================
+
+.include "apple1.inc"
+.include "tms9918.inc"
+
+; --- exported ZP slots -----------------------------------------------------
+.exportzp pix_x, pix_y, pix_addr_lo, pix_addr_hi, pix_mask, pix_byte
+.exportzp ln_x0, ln_y0, ln_x1, ln_y1, ln_dx, ln_dy, ln_sx, ln_sy
+.exportzp ln_err, ln_err_hi
+
+; --- imports ---------------------------------------------------------------
+.importzp tmp, tmp2
+.import   plot_mode
+
+; --- exported routines -----------------------------------------------------
+.export init_vdp_g2, clear_bitmap, disable_sprites
+.export vdp_set_write, vdp_set_read, calc_pix_addr, plot_set, line_xy
+
+; --- ZP layout for VDP / line ops ------------------------------------------
+.segment "ZEROPAGE"
+pix_x:        .res 1
+pix_y:        .res 1
+pix_addr_lo:  .res 1
+pix_addr_hi:  .res 1
+pix_mask:     .res 1
+pix_byte:     .res 1
+ln_x0:        .res 1
+ln_y0:        .res 1
+ln_x1:        .res 1
+ln_y1:        .res 1
+ln_dx:        .res 1
+ln_dy:        .res 1
+ln_sx:        .res 1
+ln_sy:        .res 1
+ln_err:       .res 1
+ln_err_hi:    .res 1
+
+; ============================================================================
+.segment "CODE"
+; ============================================================================
+
+; init_vdp_g2: 8 registers + linear name table + colour table = $F1.
+init_vdp_g2:
+        LDX #0
+@rg:    LDA vdp2_regs,X
+        STA VDP_CTRL
+        TXA
+        ORA #$80
+        STA VDP_CTRL
+        INX
+        CPX #8
+        BNE @rg
+        ; --- write linear name table at $3800 ---
+        LDA #$00
+        STA VDP_CTRL
+        LDA #$78
+        STA VDP_CTRL
+        LDX #3
+@th:    LDY #0
+@nm:    TYA
+        STA VDP_DATA
+        INY
+        BNE @nm
+        DEX
+        BNE @th
+        ; --- color table: $F1 everywhere ($2000-$37FF, 6144 bytes) ---
+        LDA #$00
+        STA VDP_CTRL
+        LDA #$60
+        STA VDP_CTRL
+        LDX #24
+        LDY #0
+@cl:    LDA #$F1
+        STA VDP_DATA
+        INY
+        BNE @cl
+        DEX
+        BNE @cl
+        RTS
+
+vdp2_regs:
+        .byte $02, $C0, $0E, $FF, $03, $76, $03, $F1
+
+; clear_bitmap: zero the 6144-byte pattern table at $0000.
+clear_bitmap:
+        LDA #$00
+        STA VDP_CTRL
+        LDA #$40
+        STA VDP_CTRL
+        LDX #24
+        LDY #0
+@lp:    LDA #$00
+        STA VDP_DATA
+        INY
+        BNE @lp
+        DEX
+        BNE @lp
+        RTS
+
+; disable_sprites: write Y=$D0 to sprite #0 attribute (chip stops scanning).
+disable_sprites:
+        LDA #$00
+        STA VDP_CTRL
+        LDA #$3B | $40
+        STA VDP_CTRL
+        LDA #$D0
+        STA VDP_DATA
+        RTS
+
+vdp_set_write:
+        LDA pix_addr_lo
+        STA VDP_CTRL
+        LDA pix_addr_hi
+        ORA #$40
+        STA VDP_CTRL
+        RTS
+
+vdp_set_read:
+        LDA pix_addr_lo
+        STA VDP_CTRL
+        LDA pix_addr_hi
+        STA VDP_CTRL
+        RTS
+
+calc_pix_addr:
+        LDA pix_x
+        AND #$F8
+        STA tmp
+        LDA pix_y
+        AND #$07
+        ORA tmp
+        STA pix_addr_lo
+        LDA pix_y
+        LSR
+        LSR
+        LSR
+        STA pix_addr_hi
+        RTS
+
+plot_set:
+        LDA pix_y
+        CMP #192
+        BCS @done
+        JSR calc_pix_addr
+        LDA pix_x
+        AND #$07
+        TAX
+        LDA bitmask,X
+        STA pix_mask
+        JSR vdp_set_read
+        LDA VDP_DATA
+        LDX plot_mode
+        BNE @xor
+        ORA pix_mask
+        JMP @write
+@xor:   EOR pix_mask
+@write: STA pix_byte
+        JSR vdp_set_write
+        LDA pix_byte
+        STA VDP_DATA
+@done:  RTS
+
+bitmask:
+        .byte $80, $40, $20, $10, $08, $04, $02, $01
+
+; line_xy: Bresenham, 16-bit signed err. Inputs ln_x0/y0/x1/y1 (8-bit pixels).
+;          dx, dy are 8-bit unsigned magnitudes (always 0..255 on screen).
+;          err = dx - dy held in ln_err:ln_err_hi (16-bit signed two's complement).
+;          Each iteration tests 2*err vs -dy and dx, both as 16-bit signed.
+line_xy:
+        ; --- compute dx, sx ---
+        SEC
+        LDA ln_x1
+        SBC ln_x0
+        BCS @sxp
+        EOR #$FF
+        CLC
+        ADC #1
+        STA ln_dx
+        LDA #$FF
+        STA ln_sx
+        JMP @dy
+@sxp:   STA ln_dx
+        LDA #$01
+        STA ln_sx
+@dy:    ; --- compute dy, sy ---
+        SEC
+        LDA ln_y1
+        SBC ln_y0
+        BCS @syp
+        EOR #$FF
+        CLC
+        ADC #1
+        STA ln_dy
+        LDA #$FF
+        STA ln_sy
+        JMP @init
+@syp:   STA ln_dy
+        LDA #$01
+        STA ln_sy
+@init:  ; --- err = dx - dy (16-bit signed; dx,dy are unsigned 0..255) ---
+        SEC
+        LDA ln_dx
+        SBC ln_dy
+        STA ln_err
+        LDA #0
+        SBC #0                ; sign-extend the borrow into err_hi
+        STA ln_err_hi
+        ; --- copy current point to pix_x/y ---
+        LDA ln_x0
+        STA pix_x
+        LDA ln_y0
+        STA pix_y
+
+@step:  JSR plot_set
+        LDA ln_x0
+        CMP ln_x1
+        BNE @do
+        LDA ln_y0
+        CMP ln_y1
+        BEQ @end
+@do:    ; --- compute 2*err in tmp:tmp2 (preserve ln_err for the per-axis updates) ---
+        LDA ln_err
+        STA tmp
+        LDA ln_err_hi
+        STA tmp2
+        ASL tmp
+        ROL tmp2
+        ; --- test 1: step x if 2*err >= -dy  i.e. (2*err + dy) >= 0 ---
+        ;   tmp:tmp2 + (dy zero-extended)  -> sign byte in A
+        CLC
+        LDA tmp
+        ADC ln_dy
+        LDA tmp2
+        ADC #0
+        BMI @no_x             ; sum < 0 -> skip x
+        ; err -= dy   (16-bit signed: dy is unsigned, so subtract dy_lo with carry)
+        SEC
+        LDA ln_err
+        SBC ln_dy
+        STA ln_err
+        LDA ln_err_hi
+        SBC #0
+        STA ln_err_hi
+        ; x0 += sx
+        LDA ln_sx
+        BPL @sxp2
+        DEC ln_x0
+        JMP @after_x
+@sxp2:  INC ln_x0
+@after_x:
+        LDA ln_x0
+        STA pix_x
+
+@no_x:  ; --- test 2: step y if 2*err < dx  i.e. (2*err - dx) < 0 ---
+        SEC
+        LDA tmp
+        SBC ln_dx
+        LDA tmp2
+        SBC #0
+        BPL @no_y             ; diff >= 0 -> skip y
+        ; err += dx
+        CLC
+        LDA ln_err
+        ADC ln_dx
+        STA ln_err
+        LDA ln_err_hi
+        ADC #0
+        STA ln_err_hi
+        ; y0 += sy
+        LDA ln_sy
+        BPL @syp2
+        DEC ln_y0
+        JMP @after_y
+@syp2:  INC ln_y0
+@after_y:
+        LDA ln_y0
+        STA pix_y
+@no_y:  JMP @step
+@end:   RTS

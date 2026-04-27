@@ -40,31 +40,13 @@ plot_pixel:
         RTS
 
 ; =============================================
-; UMUL8: unsigned 8×8 → 16-bit multiply
-; Input: A = multiplicand, X = multiplier
-; Output: A = low byte, X = high byte
-; Standard 6502 shift-and-add (ref: 6502.org)
+; umul8 (8x8 -> 16-bit unsigned multiply) used to live here. It moved to
+; `dev/lib/m6502/multiply.asm` so projects that don't need multiply
+; (HGR2_Sierpinski, HGR3_TestCard) no longer pay for the two ZP slots
+; mul_tmp / mul_res0. Projects that DO use umul8 should add:
+;     .include "multiply.asm"
+; alongside this file (with -I ../../lib/m6502 in their Makefile).
 ; =============================================
-umul8:
-        STA mul_tmp
-        STX mul_res0
-        LDA #$00
-        LDX #8
-        LSR mul_res0        ; extract first multiplier bit
-@uml:   BCC @noad
-        CLC
-        ADC mul_tmp
-@noad:  ROR A               ; shift result high byte
-        ROR mul_res0        ; shift result low + next multiplier bit → carry
-        DEX
-        BNE @uml
-        TAX                 ; X = high byte
-        LDA mul_res0        ; A = low byte
-        RTS
-
-; Zero page for umul8 (declare in your program if using umul8 directly):
-;   mul_tmp:  .res 1
-;   mul_res0: .res 1
 
 ; =============================================
 ; CLEAR HGR: zero out $2000-$3FFF (8 KB)

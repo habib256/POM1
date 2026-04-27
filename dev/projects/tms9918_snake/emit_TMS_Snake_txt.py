@@ -4,13 +4,16 @@ import pathlib
 import subprocess
 import sys
 
-ROOT = pathlib.Path(__file__).resolve().parents[2]
+PROJ = pathlib.Path(__file__).resolve().parent
+ROOT = PROJ.parents[2]
+LIB_APPLE1 = ROOT / "dev" / "lib" / "apple1"
+LIB_M6502 = ROOT / "dev" / "lib" / "m6502"
 TMS = ROOT / "software" / "tms9918"
 BUILD = ROOT / "build"
-ASM = TMS / "TMS_Snake.asm"
+ASM = PROJ / "TMS_Snake.asm"
 OBJ = BUILD / "TMS_Snake.o"
 BIN = BUILD / "TMS_Snake.bin"
-CFG = TMS / "apple1_snake.cfg"
+CFG = PROJ / "apple1_snake.cfg"
 OUT = TMS / "TMS_Snake.txt"
 
 START = 0x280
@@ -19,7 +22,13 @@ START = 0x280
 def main() -> int:
     BUILD.mkdir(parents=True, exist_ok=True)
     subprocess.run(
-        ["ca65", "-I", str(TMS), "-o", str(OBJ), str(ASM)],
+        [
+            "ca65",
+            "-I", str(LIB_APPLE1),
+            "-I", str(LIB_M6502),
+            "-o", str(OBJ),
+            str(ASM),
+        ],
         check=True,
         cwd=str(ROOT),
     )

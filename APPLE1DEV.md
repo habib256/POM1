@@ -98,10 +98,10 @@ wait_key:
 ## 4. Display modes — one-paragraph each (then go to the ASM doc)
 
 ### Text 40×24 (default)
-Append-only terminal. No cursor addressing. To "refresh" just reprint the frame — the scroll does the work. Minimum viable game frame ≈ 12 rows × 20 chars + footer = fits in 24 lines easily. Use `ECHO` at `$FFEF` with `ORA #$80`. See `software/games/Sokoban.asm`.
+Append-only terminal. No cursor addressing. To "refresh" just reprint the frame — the scroll does the work. Minimum viable game frame ≈ 12 rows × 20 chars + footer = fits in 24 lines easily. Use `ECHO` at `$FFEF` with `ORA #$80`. See `dev/projects/games_sokoban/Sokoban.asm`.
 
 ### GEN2 HGR (280×192, Uncle Bernie)
-Framebuffer at **`$2000-$3FFF`** (8 KB, non-linear Apple II scanline layout). 7 px/byte; **bit 7 selects the NTSC group** (not a pixel). Isolated lit pixel = colour (violet/green/blue/orange depending on group + screenX parity). **Adjacent lit pixels = white.** Use `software/hgr/hgr_tables.inc` for `plot_pixel`, `clear_hgr`, and the scanline address tables. For walls / tiles, prefer byte-aligned widths (7/14/21/28 px); for other widths use the sub-byte-mask LUT (`reference_subbyte_rendering.md` + `software/hgr/HGR2_Maze.asm`). **Full HGR reference: `doc/Programming_Apple1_ASM.md` §5.**
+Framebuffer at **`$2000-$3FFF`** (8 KB, non-linear Apple II scanline layout). 7 px/byte; **bit 7 selects the NTSC group** (not a pixel). Isolated lit pixel = colour (violet/green/blue/orange depending on group + screenX parity). **Adjacent lit pixels = white.** Use `dev/lib/hgr/hgr_tables.inc` for `plot_pixel`, `clear_hgr`, and the scanline address tables. For walls / tiles, prefer byte-aligned widths (7/14/21/28 px); for other widths use the sub-byte-mask LUT (`reference_subbyte_rendering.md` + `dev/projects/hgr_maze/HGR_Maze.asm`). **Full HGR reference: `doc/Programming_Apple1_ASM.md` §5.**
 
 ### TMS9918 (256×192, P-LAB Graphic Card)
 I/O at `$CC00` (data) + `$CC01` (control). VRAM **is separate from main RAM** (16 KB, accessed only by I/O). Graphics I mode = 32×24 character cells, 8×8 px. Key VRAM layout: pattern table `$0000`, name table `$1800`, colour table `$2000` (**one colour byte per group of 8 chars** — exploit this for multi-colour tile games by placing each tile type at char `0, 8, 16, …`). **Must disable sprites** on init (write `$D0` to the first sprite-Y byte `$1B00`) or garbage appears. **Full TMS9918 reference: `doc/Programming_Apple1_ASM.md` §6.**
@@ -113,7 +113,7 @@ I/O at `$CC00` (data) + `$CC01` (control). VRAM **is separate from main RAM** (1
 - `byte 128..223` → commit **Y** using latched X + state (actual plot happens here)
 - `byte 224..255` → control opcode (`byte & 0x07`: 0 = invert display, 1 = normal, 4 = unblank, 5 = blank)
 
-No read-back, no framebuffer in main RAM (lives on 6× Intel 2102 SRAM). To plot `(x,y)` with pixel ON: `STA $D00A` with `x|64`, then `y|128`. Inversion and blanking affect the video path only — the SRAM is untouched. Power-on state is visible bistable SRAM noise ("petits rectangles") — clear the framebuffer before drawing. Example: `software/gt-6144/GT1_Hello.asm` and `GT1_Life.asm`. Linker config: `software/gt-6144/gt6144.cfg`.
+No read-back, no framebuffer in main RAM (lives on 6× Intel 2102 SRAM). To plot `(x,y)` with pixel ON: `STA $D00A` with `x|64`, then `y|128`. Inversion and blanking affect the video path only — the SRAM is untouched. Power-on state is visible bistable SRAM noise ("petits rectangles") — clear the framebuffer before drawing. Example: `dev/projects/gt6144_hello/GT1_Hello.asm` and `dev/projects/gt6144_life/GT1_Life.asm`. Linker config: `dev/projects/gt6144_hello/gt6144.cfg`.
 
 ---
 
@@ -190,7 +190,7 @@ Global: `$C818` volume+filter-mode, `$C815-$C817` filter cutoff+resonance, `$C81
         STA $C804
 ```
 
-Reference: `software/sid/Claudio_PARMIGIANI_SID_PIANO_AZERTY.asm` (register definitions at the top, real-time keyboard-driven playback loop).
+Reference: `dev/projects/sid_piano/Claudio_PARMIGIANI_SID_PIANO_AZERTY.asm` (register definitions at the top, real-time keyboard-driven playback loop).
 
 **From Applesoft**: `POKE &HC818,16 : POKE &HC805,8 : POKE &HC804,65`. Quick and dirty.
 
@@ -384,17 +384,17 @@ When writing something new, start by copying a known-good example:
 
 | Want to build… | Copy from… |
 |---|---|
-| Text-mode game with ASCII tiles | `software/games/Sokoban.asm` + `software/games/sokoban_common.inc` |
+| Text-mode game with ASCII tiles | `dev/projects/games_sokoban/Sokoban.asm` + `dev/lib/sokoban/sokoban_common.inc` |
 | Text-mode BASIC program | `software/basic/mini-startrek.apl.txt` (hex format), or write fresh Applesoft |
-| HGR pixel plotter | `software/hgr/HGR4_Mandelbrot.asm` + `software/hgr/hgr_tables.inc` |
-| HGR byte-aligned tile game | `software/hgr/HGR6_Sokoban.asm` (14-px-wide tiles) |
-| HGR sub-byte tiles (≠ 7-px) | `software/hgr/HGR2_Maze.asm` (4-px walls) + `reference_subbyte_rendering.md` |
-| TMS9918 game with multi-colour tiles | `software/tms9918/TMS_Sokoban.asm` (colour-group trick — 7 tile types × 8 chars) |
-| TMS9918 full-screen board | `software/tms9918/TMS_Connect4.asm` (32×32 px pieces) |
-| SID tune (direct register play) | `software/sid/Claudio_PARMIGIANI_SID_PIANO_AZERTY.asm` |
+| HGR pixel plotter | `dev/projects/hgr4_mandelbrot/HGR4_Mandelbrot.asm` + `dev/lib/hgr/hgr_tables.inc` |
+| HGR byte-aligned tile game | `dev/projects/hgr6_sokoban/HGR6_Sokoban.asm` (14-px-wide tiles) |
+| HGR sub-byte tiles (≠ 7-px) | `dev/projects/hgr_maze/HGR_Maze.asm` (4-px walls) + `reference_subbyte_rendering.md` |
+| TMS9918 game with multi-colour tiles | `dev/projects/tms9918_sokoban/TMS_Sokoban.asm` (colour-group trick — 7 tile types × 8 chars) |
+| TMS9918 full-screen board | `dev/projects/tms9918_connect4/TMS_Connect4.asm` (32×32 px pieces) |
+| SID tune (direct register play) | `dev/projects/sid_piano/Claudio_PARMIGIANI_SID_PIANO_AZERTY.asm` |
 | SID tune (C64 conversion) | `python3 tools/sid2apple1.py Music.sid` |
-| Shared ASM helpers across modes | `software/games/sokoban_common.inc` (pure-logic routines with mode-neutral API) |
-| New linker config | `software/apple1.cfg` (3 328 B) or `software/apple1_4k.cfg` (4 096 B) or `software/hgr/apple1_gen2.cfg` (7 552 B, reserves HGR framebuffer) |
+| Shared ASM helpers across modes | `dev/lib/sokoban/sokoban_common.inc` (pure-logic routines with mode-neutral API) |
+| New linker config | `dev/cc65/apple1.cfg` (3 328 B) or `dev/cc65/apple1_4k.cfg` (4 096 B) or `dev/cc65/apple1_gen2.cfg` (7 552 B, reserves HGR framebuffer) |
 
 ---
 

@@ -292,16 +292,8 @@ waitkey:
 ; SUBROUTINES
 ; ======================================================
 
-; === RANDOM: 16-bit Galois LFSR ===
-random:
-        LDA prng_lo
-        ASL A
-        ROL prng_hi
-        BCC @nofeedback
-        EOR #$2D                ; tap polynomial
-@nofeedback:
-        STA prng_lo
-        RTS
+; === RANDOM — promoted to dev/lib/m6502/prng.asm (Tier 2.2 mutualization) ===
+.include "prng8.asm"
 
 ; === HASHCR: print '#' then CR ===
 hashcr:
@@ -320,20 +312,11 @@ clearscr:
         BNE @loop
         RTS
 
-; === PRINT_STR_AX: print null-terminated ASCII string ===
-; Input: A = string addr low, X = string addr high
-; Characters are OR'd with $80 for Apple 1 display
-print_str_ax:
-        STA str_lo
-        STX str_hi
-        LDY #$00
-@loop:  LDA (str_lo),Y
-        BEQ @done
-        ORA #$80               ; set high bit
-        JSR ECHO
-        INY
-        BNE @loop              ; max 256 chars per string
-@done:  RTS
+; === print_str_ax — promoted to dev/lib/apple1/print.asm (Tier 2 mutualization). ===
+; ZP-tight project: alias the lib's ZP slot pair to our existing str_lo/str_hi.
+print_ptr_lo = str_lo
+print_ptr_hi = str_hi
+.include "print.asm"
 
 ; ======================================================
 ; TITLE SCREEN (fills 24 lines)

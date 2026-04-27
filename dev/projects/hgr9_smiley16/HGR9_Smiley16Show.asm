@@ -136,17 +136,8 @@ smiley_off_lo:
 smiley_off_hi:
         .byte 0, 0, 0, 1, 1, 2
 
-print_str_ax:
-        STA ptr_lo
-        STX ptr_hi
-        LDY #$00
-@lp:    LDA (ptr_lo),Y
-        BEQ @dn
-        ORA #$80
-        JSR ECHO
-        INY
-        BNE @lp
-@dn:    RTS
+; print_str_ax — promoted to dev/lib/apple1/print.asm (Tier 2 mutualization).
+.include "print.asm"
 
 str_title:
         .byte $0D
@@ -159,3 +150,4 @@ str_footer:
 
 .include "smiley.inc"
 .include "hgr_tables.inc"
+.include "multiply.asm"

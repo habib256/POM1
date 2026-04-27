@@ -73,6 +73,7 @@ set(SOURCES
     MainWindow_Dialogs.cpp
     MainWindow_HardwareWindows.cpp
     MainWindow_FileDialogs.cpp
+    MainWindow_DevFiles.cpp
     MainWindow_DebugWindows.cpp
     MainWindow_Keyboard.cpp
     Logger.cpp
@@ -246,6 +247,7 @@ if(EMSCRIPTEN)
         "--preload-file ${PRELOAD_DIR}/pic@pic"
         "--preload-file ${PRELOAD_DIR}/fonts@fonts"
         "--preload-file ${PRELOAD_DIR}/software@software"
+        "--preload-file ${PRELOAD_DIR}/dev@dev"
         "--preload-file ${PRELOAD_DIR}/sdcard@sdcard"
         # Only preload cfcard.po in the WASM bundle — the other .po images in
         # cfcard/ are desktop-only extras (would bloat the data bundle by >140 MB).

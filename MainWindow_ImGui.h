@@ -207,6 +207,7 @@ private:
     bool showCodeTank = false;
     bool showCodeTankLibrary = false;
     CodeTank::Jumper codeTankJumper = CodeTank::Jumper::Lower16;
+    bool showDevFilesWindow = false;     // Dev > Source Browser
     bool fullscreen = false;
 
     // Keyboard input
@@ -296,6 +297,7 @@ private:
     void renderJukeBoxWindow();
     void renderCodeTankWindow();
     void renderCodeTankLibraryWindow();
+    void renderDevFilesWindow();
     void renderPR40Window();
 
     // Action functions

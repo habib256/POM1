@@ -77,19 +77,9 @@ fill_test_card:
         RTS
 
 ; =============================================
-; Print null-terminated string (A=lo, X=hi)
+; print_str_ax — promoted to dev/lib/apple1/print.asm (Tier 2 mutualization).
 ; =============================================
-print_str_ax:
-        STA ptr_lo
-        STX ptr_hi
-        LDY #$00
-@lp:    LDA (ptr_lo),Y
-        BEQ @dn
-        ORA #$80
-        JSR ECHO
-        INY
-        BNE @lp
-@dn:    RTS
+.include "print.asm"
 
 ; =============================================
 ; DATA: 40-byte color bar pattern

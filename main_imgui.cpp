@@ -245,11 +245,11 @@ static void glfw_key_callback(GLFWwindow* window, int key, int scancode, int act
 /// it on every subsequent launch, and chdir there. This is the Apple-canonical
 /// split for app data:
 ///
-///   Bundle/Contents/Resources/{roms,fonts,software,pic,cassettes,sdcard,cfcard}
+///   Bundle/Contents/Resources/{roms,fonts,software,dev,pic,cassettes,sdcard,cfcard}
 ///       read-only bytes shipped with the app, signed + notarized-friendly.
 ///
 ///   ~/Library/Application Support/POM1/
-///       {roms,fonts,software,pic,cassettes}  → symlinks into the bundle
+///       {roms,fonts,software,dev,pic,cassettes}  → symlinks into the bundle
 ///       sdcard/, cfcard/, ini/               → real dirs, user-writable,
 ///                                              seeded from the bundle once
 ///
@@ -301,7 +301,7 @@ static void pom1_macos_provision_user_data_dir()
     // so the symlinks have to be refreshed on every launch. Detect staleness
     // by comparing read_symlink target to the expected one.
     static constexpr const char* kReadOnlyDirs[] = {
-        "roms", "fonts", "software", "pic", "cassettes"
+        "roms", "fonts", "software", "dev", "pic", "cassettes"
     };
     for (const char* name : kReadOnlyDirs) {
         fs::path link   = userDataDir / name;

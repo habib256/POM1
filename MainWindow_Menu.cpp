@@ -378,6 +378,13 @@ void MainWindow_ImGui::renderMenuBar()
             ImGui::EndMenu();
         }
 
+        if (ImGui::BeginMenu("Dev")) {
+            ImGui::MenuItem("Source Browser", nullptr, &showDevFilesWindow);
+            ImGui::Separator();
+            ImGui::TextDisabled("Browse dev/ - ASM sources, libraries, READMEs");
+            ImGui::EndMenu();
+        }
+
         if (ImGui::BeginMenu("Help")) {
             ImGui::MenuItem("Welcome", nullptr, &showWelcome);
             if (ImGui::BeginMenu("Tutorials")) {

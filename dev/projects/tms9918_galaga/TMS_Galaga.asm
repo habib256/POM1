@@ -303,6 +303,20 @@ player_dir:     .res 1
 ; --- Pending fire (one-shot per SPACE press) ---
 pend_fire:      .res 1
 
+; --- Score digit scratch (5 digits MSB-first) ---
+; MUST live in RAM. Previously declared with `.res 5` inside the .code
+; segment, which silently breaks the CodeTank ROM build: the score adds
+; correctly to score_lo/score_hi but score_to_digits' STAs write into
+; ROM and the HUD always shows zero. ZP costs 5 bytes; saved 2 below by
+; aliasing print_ptr_lo/hi onto the unused str_lo/str_hi pair.
+score_digits:    .res 5
+
+; print.asm uses print_ptr_lo/hi (2 ZP bytes). Alias them onto the
+; unused str_lo/str_hi pair declared above so the include's `.ifndef`
+; guard skips the fresh reservation. Net: 0 extra bytes for the printer.
+print_ptr_lo = str_lo
+print_ptr_hi = str_hi
+
 ; =============================================
 ; CODE
 ; =============================================
@@ -4020,18 +4034,9 @@ handle_key:
 
 
 ; =============================================
-; prng16: 16-bit Galois LFSR, polynomial $B400.
+; prng16 — promoted to dev/lib/m6502/prng.asm (Tier 2.2 mutualization).
 ; =============================================
-prng16:
-        LSR seed_hi
-        ROR seed_lo
-        BCC @done
-        LDA seed_hi
-        EOR #$B4
-        STA seed_hi
-@done:
-        LDA seed_lo
-        RTS
+.include "prng16.asm"
 
 
 ; =============================================
@@ -4044,17 +4049,8 @@ wait_key:
         AND #$7F
         RTS
 
-print_str_ax:
-        STA str_lo
-        STX str_hi
-        LDY #$00
-@lp:    LDA (str_lo),Y
-        BEQ @dn
-        ORA #$80
-        JSR ECHO
-        INY
-        BNE @lp
-@dn:    RTS
+; print_str_ax — promoted to dev/lib/apple1/print.asm (Tier 2 mutualization).
+.include "print.asm"
 
 
 ; =============================================
@@ -4134,9 +4130,8 @@ wave_form_ticks: .byte   5,   5,   4,   4,   3,   3,   3   ; W1-7
 score_div_lo: .byte $10, $E8, $64, $0A
 score_div_hi: .byte $27, $03, $00, $00
 ; 10000=$2710  1000=$03E8  100=$0064  10=$000A
-
-; Score digit scratch (5 digits MSB-first)
-score_digits:    .res 5
+; (score_digits scratch moved to .zeropage above so writes land in RAM
+;  on the CodeTank ROM build -- otherwise the HUD freezes at 0.)
 
 ; --- Sprite pattern data (6 sprites * 32 bytes = 192 bytes) ---
 ; Each sprite: TL(8) BL(8) TR(8) BR(8) -- the TMS 16x16 quadrant order.

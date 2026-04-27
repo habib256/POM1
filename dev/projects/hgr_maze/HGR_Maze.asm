@@ -658,28 +658,11 @@ dfs_loop:
 ; SUBROUTINES
 ; =============================================
 
-; 16-bit Galois LFSR
-random:
-        LDA prng_lo
-        ASL A
-        ROL prng_hi
-        BCC @nf
-        EOR #$2D
-@nf:    STA prng_lo
-        RTS
+; random — promoted to dev/lib/m6502/prng8.asm (Tier 2.2 mutualization).
+.include "prng8.asm"
 
-; Print null-terminated ASCII string (A=lo, X=hi)
-print_str_ax:
-        STA ptr_lo
-        STX ptr_hi
-        LDY #$00
-@lp:    LDA (ptr_lo),Y
-        BEQ @dn
-        ORA #$80
-        JSR ECHO
-        INY
-        BNE @lp
-@dn:    RTS
+; print_str_ax — promoted to dev/lib/apple1/print.asm (Tier 2 mutualization).
+.include "print.asm"
 
 ; =============================================
 ; DATA TABLES

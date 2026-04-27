@@ -218,8 +218,8 @@ Drag windows freely afterwards — per-preset layouts persist under `ini/imgui_p
 | 🔐 **Codebreaker** / 🧠 **Mastermind** | Code-breaking logic games |
 | 📝 **Worple** / 🧩 **15-Puzzle** / 🔵 **Peg Solitaire** / 🎲 **Shut the Box** | Word / sliding / board games |
 | 🧬 **Game of Life** | Conway's cellular automaton |
-| 🌀 **Maze** / **Maze 2** | Sidewinder ([asm](software/games/Maze_Sidewinder.asm)) and Recursive Backtracker ([asm](software/games/Maze2_Backtracker.asm)) generators |
-| 🎨 **HGR Maze** | GEN2 HIRES maze generator — 280×192 ([asm](software/hgr/HGR1_Maze.asm)) |
+| 🌀 **Maze** / **Maze 2** | Sidewinder ([asm](dev/projects/games_maze/Maze_Sidewinder.asm)) and Recursive Backtracker ([asm](dev/projects/games_maze/Maze2_Backtracker.asm)) generators |
+| 🎨 **HGR Maze** | GEN2 HIRES maze generator — 280×192 ([asm](dev/projects/hgr_maze/HGR_Maze.asm)) |
 | 🌌 **Mandelbrot** / 📊 **Cellular** / 🎨 **PasArt** | Fractal, 1D CA, parametric ASCII art |
 | 🎂 **30th** / 🐱 **ASCII Cat** / 🍺 **99 Bottles** | Classic demos |
 </details>
@@ -292,7 +292,7 @@ Southwest Technical Products' GT-6144 — the **first commercial graphics card f
 
 - **280×192** HIRES with Apple II-compatible memory layout at `$2000-$3FFF`
 - **NTSC artifact color** — violet, green, blue, orange, white, black — plus pixel-glow effect
-- Demo `software/hgr/GEN2.HGR.BIN` auto-loads; includes **HGR Maze** (Recursive Backtracker — [asm](software/hgr/HGR1_Maze.asm))
+- Demo `software/hgr/GEN2.HGR.BIN` auto-loads; includes **HGR Maze** (Recursive Backtracker — [asm](dev/projects/hgr_maze/HGR_Maze.asm))
 
 ### P-LAB Graphic Card (TMS9918)
 
@@ -463,10 +463,10 @@ POM1 ships linker configs for [cc65](https://cc65.github.io/):
 ```bash
 # Standard Apple 1 program
 ca65 -o build/program.o source.asm
-ld65 -C software/apple1.cfg -o build/program.bin build/program.o
+ld65 -C dev/cc65/apple1.cfg -o build/program.bin build/program.o
 
 # GEN2 graphics program (reserves $2000-$3FFF for the HGR framebuffer)
-ld65 -C software/hgr/apple1_gen2.cfg -o build/program.bin build/program.o
+ld65 -C dev/cc65/apple1_gen2.cfg -o build/program.bin build/program.o
 ```
 
 Load via **File > Load Memory**, or type the start address + `R` in Wozmon (e.g. `280R`).

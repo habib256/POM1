@@ -1,0 +1,1 @@
+TMS9918: lower jumper = games menu (Galaga/Sokoban/Snake/Life). Upper jumper = upper menu at 4000R (1=Tetris, 2=LOGO V1.8).

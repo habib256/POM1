@@ -68,24 +68,32 @@ TETRIS_LOADER_OFFSET   = 0x0000     # bank+$0000 = CPU $4000
 TETRIS_PAYLOAD_OFFSET  = 0x0080     # bank+$0080 = CPU $4080
 TETRIS_LOADER_SLOT     = TETRIS_PAYLOAD_OFFSET - TETRIS_LOADER_OFFSET  # 128 B
 
-# Linker configs.
-MENU_CFG          = TMS / "apple1_codetank_menu.cfg"
-GALAGA_BANK_CFG   = TMS / "apple1_galaga_codetank_bank.cfg"
-SOKOBAN_BANK_CFG  = TMS / "apple1_sokoban_codetank_bank.cfg"
-SNAKE_BANK_CFG    = TMS / "apple1_snake_codetank_bank.cfg"
-LIFE_BANK_CFG     = TMS / "apple1_life_codetank_bank.cfg"
-TETRIS_LOADER_CFG = TMS / "apple1_tetris_loader.cfg"
-GALAGA_SPLIT_CFG  = TMS / "apple1_galaga_codetank.cfg"
-SOKOBAN_SPLIT_CFG = TMS / "apple1_sokoban_codetank.cfg"
+# Sources moved from software/tms9918/ to dev/projects/<name>/ during the
+# 2026-04 dev/ reorg. Each project now owns its own .asm + .cfg files;
+# the runtime artifacts (tetris.bin, *.bin/.txt outputs) still live under
+# software/tms9918/.
+DEV = ROOT / "dev" / "projects"
 
-# Sources.
-MENU_ASM          = TMS / "codetank_menu.asm"
-GALAGA_ASM        = TMS / "TMS_Galaga.asm"
-SOKOBAN_ASM       = TMS / "TMS_Sokoban.asm"
-SNAKE_ASM         = TMS / "TMS_Snake.asm"
-LIFE_ASM          = TMS / "TMS_Life.asm"
-TETRIS_LOADER_ASM = TMS / "tetris_loader.asm"
+MENU_ASM          = DEV / "tms9918_codetank_menu" / "codetank_menu.asm"
+MENU_CFG          = DEV / "tms9918_codetank_menu" / "apple1_codetank_menu.cfg"
+GALAGA_ASM        = DEV / "tms9918_galaga"        / "TMS_Galaga.asm"
+GALAGA_BANK_CFG   = DEV / "tms9918_galaga"        / "apple1_galaga_codetank_bank.cfg"
+GALAGA_SPLIT_CFG  = DEV / "tms9918_galaga"        / "apple1_galaga_codetank.cfg"
+SOKOBAN_ASM       = DEV / "tms9918_sokoban"       / "TMS_Sokoban.asm"
+SOKOBAN_BANK_CFG  = DEV / "tms9918_sokoban"       / "apple1_sokoban_codetank_bank.cfg"
+SOKOBAN_SPLIT_CFG = DEV / "tms9918_sokoban"       / "apple1_sokoban_codetank.cfg"
+SNAKE_ASM         = DEV / "tms9918_snake"         / "TMS_Snake.asm"
+SNAKE_BANK_CFG    = DEV / "tms9918_snake"         / "apple1_snake_codetank_bank.cfg"
+LIFE_ASM          = DEV / "tms9918_life"          / "TMS_Life.asm"
+LIFE_BANK_CFG     = DEV / "tms9918_life"          / "apple1_life_codetank_bank.cfg"
+TETRIS_LOADER_ASM = DEV / "tms9918_tetris_loader" / "tetris_loader.asm"
+TETRIS_LOADER_CFG = DEV / "tms9918_tetris_loader" / "apple1_tetris_loader.cfg"
 TETRIS_BIN        = TMS / "tetris.bin"
+LIB_APPLE1        = ROOT / "dev" / "lib" / "apple1"
+LIB_M6502         = ROOT / "dev" / "lib" / "m6502"
+LIB_TMS           = ROOT / "dev" / "lib" / "tms9918"
+LIB_SOKOBAN       = ROOT / "dev" / "lib" / "sokoban"
+LIB_HGR           = ROOT / "dev" / "lib" / "hgr"
 
 
 def need(tool: str) -> None:
@@ -98,12 +106,25 @@ def need(tool: str) -> None:
 
 def assemble(asm: pathlib.Path, cfg: pathlib.Path, name: str,
              max_size: int) -> bytes:
-    """Run ca65 + ld65 against `cfg`, return the assembled bytes."""
+    """Run ca65 + ld65 against `cfg`, return the assembled bytes.
+
+    Adds dev/lib/{apple1,m6502,tms9918} to the include path so projects
+    that .include shared lib helpers (print.asm, prng16.asm, etc.) link
+    cleanly. The asm file's own directory is also exposed so a project's
+    private .inc files (sprite tables, level data) keep working.
+    """
     BUILD.mkdir(parents=True, exist_ok=True)
     obj = BUILD / f"{name}.o"
     binp = BUILD / f"{name}.bin"
     subprocess.run(
-        ["ca65", "-I", str(TMS), "-o", str(obj), str(asm)],
+        ["ca65",
+         "-I", str(LIB_APPLE1),
+         "-I", str(LIB_M6502),
+         "-I", str(LIB_TMS),
+         "-I", str(LIB_SOKOBAN),
+         "-I", str(LIB_HGR),
+         "-I", str(asm.parent),
+         "-o", str(obj), str(asm)],
         check=True, cwd=str(ROOT),
     )
     subprocess.run(

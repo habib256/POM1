@@ -871,7 +871,7 @@ draw_hud_cell:
 ;  draw_hud_cell inner loop slightly smaller.)
 
 ; --- HUD/title font: Beautiful Boot subset, GEN2 bit order (see include) ---
-.include "HGR6_Sokoban_bbfont.inc"
+.include "bbfont_subset.inc"
 hud_font = HGR6_Sokoban_bbfont
 
 ; --- 2x-scale doubling tables for draw_big_glyph ---
@@ -1243,7 +1243,7 @@ help_back:
 ; =============================================
 ; Shared routines + tile-state tables
 ; =============================================
-.include "../games/sokoban_common.inc"
+.include "sokoban_common.inc"
 
 ; =============================================
 ; DATA
@@ -1297,8 +1297,8 @@ tile_bitmaps:
         .byte $0C,$06, $0E,$0E, $7C,$1F, $00,$00
 
 ; --- Level data (RLE compressed) ---
-.include "../games/sokoban_levels.inc"
-.include "../games/sokoban_levels_ext.inc"
+.include "sokoban_levels.inc"
+.include "sokoban_levels_ext.inc"
 
 level_ptrs_lo:
         .byte <level1, <level2, <level3, <level4, <level5
@@ -1346,3 +1346,4 @@ str_win:
         .byte $0D, " CLEARED! KEY=NEXT", $0D, 0
 
 .include "hgr_tables.inc"
+.include "multiply.asm"

@@ -412,19 +412,9 @@ wait_key:
         RTS
 
 ; =============================================
-; print_str_ax
+; print_str_ax — promoted to dev/lib/apple1/print.asm (Tier 2 mutualization).
 ; =============================================
-print_str_ax:
-        STA str_lo
-        STX str_hi
-        LDY #$00
-@lp:    LDA (str_lo),Y
-        BEQ @dn
-        ORA #$80
-        JSR ECHO
-        INY
-        BNE @lp
-@dn:    RTS
+.include "print.asm"
 
 ; =============================================
 ; DATA

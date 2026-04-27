@@ -78,18 +78,8 @@ main:
         LDA KBD
         RTS
 
-; --- Print null-terminated string (A=lo, X=hi) ---
-print_str_ax:
-        STA ptr_lo
-        STX ptr_hi
-        LDY #$00
-@lp:    LDA (ptr_lo),Y
-        BEQ @dn
-        ORA #$80
-        JSR ECHO
-        INY
-        BNE @lp
-@dn:    RTS
+; --- print_str_ax — promoted to dev/lib/apple1/print.asm (Tier 2 mutualization). ---
+.include "print.asm"
 
 ; --- Draw one glyph: A = CP437 index 0..255, X = column 0..15, cur_y = top ---
 draw_glyph_cell:
@@ -159,5 +149,6 @@ str_footer:
         .byte $0D
         .byte " CP437 IBM PC ORDER — ANY KEY", $0D, 0
 
-.include "HGR8_BBFont.inc"
+.include "bbfont_cp437.inc"
 .include "hgr_tables.inc"
+.include "multiply.asm"

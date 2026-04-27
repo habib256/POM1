@@ -577,6 +577,7 @@ void MainWindow_ImGui::render()
     if (jukeBoxEnabled && showJukeBox) renderJukeBoxWindow();
     if (codeTankEnabled && showCodeTank) renderCodeTankWindow();
     if (showCodeTankLibrary) renderCodeTankLibraryWindow();
+    if (showDevFilesWindow) renderDevFilesWindow();
 
     // Barre de statut
     renderStatusBar();

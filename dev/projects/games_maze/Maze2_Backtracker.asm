@@ -422,16 +422,8 @@ dfs_loop:
 ; SUBROUTINES
 ; ======================================================
 
-; === RANDOM: 16-bit Galois LFSR ===
-random:
-        LDA prng_lo
-        ASL A
-        ROL prng_hi
-        BCC @nofeedback
-        EOR #$2D
-@nofeedback:
-        STA prng_lo
-        RTS
+; === random — promoted to dev/lib/m6502/prng8.asm (Tier 2.2 mutualization) ===
+.include "prng8.asm"
 
 ; === HASHCR: print '#' then CR ===
 hashcr:
@@ -450,18 +442,8 @@ clearscr:
         BNE @loop
         RTS
 
-; === PRINT_STR_AX: print null-terminated ASCII string ===
-print_str_ax:
-        STA str_lo
-        STX str_hi
-        LDY #$00
-@loop:  LDA (str_lo),Y
-        BEQ @done
-        ORA #$80
-        JSR ECHO
-        INY
-        BNE @loop
-@done:  RTS
+; === print_str_ax — promoted to dev/lib/apple1/print.asm (Tier 2 mutualization). ===
+.include "print.asm"
 
 ; ======================================================
 ; TITLE SCREEN (fills 24 lines)

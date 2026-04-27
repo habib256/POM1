@@ -1199,7 +1199,7 @@ help_back_tms:
 ; =============================================
 ; Shared routines + tile-state tables
 ; =============================================
-.include "../games/sokoban_common.inc"
+.include "sokoban_common.inc"
 
 ; =============================================
 ; DATA
@@ -1398,7 +1398,7 @@ str_win:
         .byte $0D, " CLEARED! KEY=NEXT", $0D, 0
 
 ; --- Level data (RLE compressed, shared with text + HGR variants) ---
-.include "../games/sokoban_levels.inc"
+.include "sokoban_levels.inc"
 
 level_ptrs_lo:
         .byte <level1, <level2, <level3, <level4, <level5

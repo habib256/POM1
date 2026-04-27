@@ -4,6 +4,8 @@ Architecture / invariants / gotchas for the **emulator side** of POM1. User-faci
 
 For **Apple 1 software** (games, BASIC, SID tunes, microSD shell tools) see **`APPLE1DEV.md`** → `doc/Programming_Apple1_ASM.md` (Arnaud's 6502/cc65/HGR/TMS9918 deep-dive).
 
+For **6502 ASM sources** of every Apple-1 program shipped with POM1 see **`dev/`** (`dev/lib/{apple1,m6502,tms9918,hgr,sokoban}/` reusable libraries, `dev/projects/<name>/` per-program README + Makefile + sources, `dev/cc65/` shared linker configs). Browseable from inside POM1 via **Dev → Source Browser**. Compiled artifacts (`.bin` / `.txt` Woz hex) stay under `software/<dir>/` — that is what POM1 actually loads.
+
 ## Project Overview
 
 Apple 1 emulator (Dear ImGui) of the MOS 6502 + core (display, keyboard, ACI cassette) + expansion cards: Uncle Bernie's GEN2 HGR, P-LAB A1-SID (6581/8580), P-LAB TMS9918, P-LAB microSD (65C22+ATMEGA), P-LAB MODEM BBS (65C51+TCP), P-LAB Terminal Card, P-LAB A1-IO & RTC (65C22+ATMEGA32+DS3231), Rich Dreher's CFFA1 (ATA/IDE+ProDOS), P-LAB Juke-Box, P-LAB CodeTank (28c256 ROM card paired with TMS9918), SWTPC GT-6144 (1976 — first commercial Apple-1 graphics card, 64×96 mono), SWTPC PR-40 (1976 — Jobs' 40-column printer, *Interface Age* Oct-76 mod). English UI. Linux / macOS / Windows / Web (Emscripten).
@@ -78,13 +80,28 @@ Desktop `Memory` ctor probes `sdcard`, `../sdcard`, `../../sdcard` (cwd-relative
 
 ### Assembling programs (cc65)
 
+Sources live in `dev/`. Per-project Makefiles call `ca65` + `ld65` and (for most projects) a `python3 emit_*_txt.py` post-step that lands the `.bin` and Woz-hex `.txt` under `software/<original_dir>/` — POM1's runtime canonical home. See `dev/README.md`.
+
 | Config | Purpose |
 |--------|---------|
-| `software/apple1.cfg` | Standard Apple 1 (text, no framebuffer) |
-| `software/hgr/apple1_gen2.cfg` | GEN2 HGR — reserves `$2000-$3FFF` |
-| `software/games/apple1_sok_{4k,8k,hgr}.cfg` | Sokoban (stock 4K / 8K+TMS / 8K+GEN2) |
+| `dev/cc65/apple1.cfg` | Standard Apple 1 (text, no framebuffer) |
+| `dev/cc65/apple1_gen2.cfg` | GEN2 HGR — reserves `$2000-$3FFF` |
+| `dev/projects/games_sokoban/apple1_sok_{4k,8k,hgr}.cfg` | Sokoban (stock 4K / 8K+TMS / 8K+GEN2) |
 
 Sokoban configs define `LEVELBUF` (zp `$0020`) and `STATEGRID` (bss `$0F00`/`$1F00`). Use `.segment "LEVELBUF": zeropage` to force `zp,X` addressing.
+
+**Reusable libraries** under `dev/lib/`:
+- `dev/lib/apple1/apple1.inc` — Wozmon + PIA equates (every Apple-1 program).
+- `dev/lib/m6502/math.asm` — fixed-point trig, LFSR RNG, decimal print.
+- `dev/lib/tms9918/{tms9918.inc,tms9918m2.asm}` — VDP equates + Mode-2 driver.
+- `dev/lib/hgr/{hgr_tables.inc,smiley.inc}` — GEN2 HGR data tables.
+- `dev/lib/sokoban/sokoban_*.inc` — shared Sokoban level data.
+
+Per-project Makefiles pass `-I ../../lib/<lib>` to `ca65` so projects use `.include "apple1.inc"` etc. without relative-path noise.
+
+### Browsing dev/ from inside POM1
+
+The **Dev > Source Browser** menu (inserted just before Help) opens a read-only two-pane view of `dev/`. Implementation in `MainWindow_DevFiles.cpp:renderDevFilesWindow()` mirrors the CodeTank Library window: scan once at first open, lazy file load on selection, Refresh button, substring filter. Probes `dev/`, `../dev/`, `../../dev/` like Memory's `sdcard` probe. Bundled in macOS `.app/Contents/Resources/dev/` (symlinked into `~/Library/Application Support/POM1/dev` by `pom1_macos_provision_user_data_dir()`), in the Windows release ZIP next to `software/`, and in the WASM MEMFS preload (`--preload-file dev@dev`).
 
 ## Architecture
 

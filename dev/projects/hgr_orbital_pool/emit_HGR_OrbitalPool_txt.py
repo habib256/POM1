@@ -4,13 +4,16 @@ import pathlib
 import subprocess
 import sys
 
-ROOT = pathlib.Path(__file__).resolve().parents[2]
+PROJ = pathlib.Path(__file__).resolve().parent
+ROOT = PROJ.parents[2]
+LIB_APPLE1 = ROOT / "dev" / "lib" / "apple1"
 HGR = ROOT / "software" / "hgr"
 BUILD = ROOT / "build"
-ASM = HGR / "HGR_OrbitalPool.asm"
+ASM = PROJ / "HGR_OrbitalPool.asm"
 OBJ = BUILD / "HGR_OrbitalPool.o"
 BIN = BUILD / "HGR_OrbitalPool.bin"
 OUT = HGR / "HGR_OrbitalPool.txt"
+CFG = ROOT / "dev" / "cc65" / "apple1_gen2.cfg"
 
 START = 0x280
 
@@ -18,17 +21,20 @@ START = 0x280
 def main() -> int:
     BUILD.mkdir(parents=True, exist_ok=True)
     subprocess.run(
-        ["ca65", "-I", str(HGR), "-o", str(OBJ), str(ASM)],
+        [
+            "ca65",
+            "-I", str(LIB_APPLE1),
+            "-o", str(OBJ),
+            str(ASM),
+        ],
         check=True,
         cwd=str(ROOT),
     )
     subprocess.run(
         [
             "ld65",
-            "-C",
-            str(HGR / "apple1_gen2.cfg"),
-            "-o",
-            str(BIN),
+            "-C", str(CFG),
+            "-o", str(BIN),
             str(OBJ),
         ],
         check=True,

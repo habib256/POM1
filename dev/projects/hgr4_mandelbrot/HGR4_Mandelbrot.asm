@@ -473,19 +473,13 @@ color_odd:
         .byte  $55,  $0A,  $0A,  $08,  $08,  $04,  $02,  $01,  $00
 
 ; =============================================
-; PRINT null-terminated string (bit-7 set via ORA)
+; print_str_ax — promoted to dev/lib/apple1/print.asm (Tier 2 mutualization).
 ; =============================================
-print_str_ax:
-        STA ptr_lo
-        STX ptr_hi
-        LDY #$00
-@lp:    LDA (ptr_lo),Y
-        BEQ @dn
-        ORA #$80
-        JSR ECHO
-        INY
-        BNE @lp
-@dn:    RTS
+; ZP-tight project: alias the lib's ZP slot pair to our existing ptr_lo/ptr_hi
+; (ptr is also used by hgr_tables.inc but only across non-overlapping calls).
+print_ptr_lo = ptr_lo
+print_ptr_hi = ptr_hi
+.include "print.asm"
 
 ; =============================================
 ; RUNTIME VARIABLES (stored in code memory, writable)
@@ -571,3 +565,4 @@ name_north:    .byte "NORTH SHORE", 0
 ; HGR TABLES
 ; =============================================
 .include "hgr_tables.inc"
+.include "multiply.asm"

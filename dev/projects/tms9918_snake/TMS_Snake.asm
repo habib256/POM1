@@ -616,19 +616,9 @@ spawn_food:
 
 
 ; =============================================
-; prng16: 16-bit Galois LFSR, polynomial $B400 (taps 16, 14, 13, 11).
-; Mutates seed_lo/seed_hi, returns A = seed_lo.
+; prng16 — promoted to dev/lib/m6502/prng.asm (Tier 2.2 mutualization).
 ; =============================================
-prng16:
-        LSR seed_hi
-        ROR seed_lo
-        BCC @done
-        LDA seed_hi
-        EOR #$B4
-        STA seed_hi
-@done:
-        LDA seed_lo
-        RTS
+.include "prng16.asm"
 
 
 ; =============================================
@@ -1011,17 +1001,11 @@ wait_key:
         AND #$7F
         RTS
 
-print_str_ax:
-        STA str_lo
-        STX str_hi
-        LDY #$00
-@lp:    LDA (str_lo),Y
-        BEQ @dn
-        ORA #$80
-        JSR ECHO
-        INY
-        BNE @lp
-@dn:    RTS
+; print_str_ax — promoted to dev/lib/apple1/print.asm (Tier 2 mutualization).
+; ZP-tight project: alias the lib's ZP slot pair to our existing str_lo/str_hi.
+print_ptr_lo = str_lo
+print_ptr_hi = str_hi
+.include "print.asm"
 
 
 ; =============================================

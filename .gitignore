@@ -31,6 +31,9 @@ ini/
 .cache/
 compile_commands.json
 
+# cc65 build intermediates (per-project Makefiles produce .o next to the .asm)
+dev/projects/*/*.o
+
 # Python bytecode / test caches (tools/ contains scripts run ad-hoc)
 __pycache__/
 *.py[cod]
@@ -41,6 +44,7 @@ __pycache__/
 # IDE / Editor
 .vscode/
 .idea/
+.obsidian/
 *.swp
 *.swo
 *~
