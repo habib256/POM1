@@ -139,17 +139,45 @@ The 10 projects shipping with this convention as of April 2026:
 `tms9918_orbital_pool`, `tms9918_snake`. Their pre-migration scripts
 (60+ lines each) compressed to 23 lines apiece.
 
-## Use from a project Makefile
+## Makefile.common — shared Makefile fragment
+
+`Makefile.common` absorbs the `ca65` / `ld65` / `emit_*_txt.py`
+boilerplate that every single-binary project Makefile under
+`dev/projects/` was reinventing. A typical project Makefile is now five
+lines plus an include:
 
 ```make
+# HGR4 Mandelbrot
+PROJECT  := HGR4_Mandelbrot
 LOAD_CFG := ../../cc65/apple1_gen2.cfg
+OUT_DIR  := ../../../software/hgr
+LIB      := -I ../../lib/apple1 -I ../../lib/hgr -I ../../lib/m6502
+EMIT_TXT := 1
 
-$(OUT_DIR)/$(PROJECT).bin: $(PROJECT).asm
-    ca65 $(LIB) $<
-    ld65 -C $(LOAD_CFG) $(PROJECT).o -o $@
+include ../../cc65/Makefile.common
 ```
 
-If a project needs to *modify* one of these (different RAM size,
-different code segment, different BSS layout), copy it into the
+Variables the project sets:
+
+| Var | Required | Purpose |
+|---|---|---|
+| `PROJECT`  | yes | Basename: drives `<PROJECT>.asm`, `<PROJECT>.o`, `<PROJECT>.bin` |
+| `LOAD_CFG` | yes | `ld65` config (path or local file) |
+| `OUT_DIR`  | yes | Where the binary lands under `software/` |
+| `LIB`      | yes | `ca65 -I` flags (set to empty if no libs needed) |
+| `EMIT_TXT` | no  | Set to `1` to also emit Woz-hex via `emit_<PROJECT>_txt.py` |
+| `CFG`      | no  | Override knob — declare `CFG ?= default.cfg` + `LOAD_CFG := $(CFG)` to allow `make CFG=variant.cfg` |
+| `TEST_CMD` | no  | Override the `make test` body (default = stub message) |
+
+Targets provided: `all`, `clean`, `test`. The `test` target is wired up
+as a no-op stub today — projects opt in by setting `TEST_CMD` to a
+`tools/test_*_telnet.py` invocation.
+
+**Multi-binary or multi-object projects** (`games_maze`, `lib_smoke`,
+`tms9918_logo`) keep their own custom Makefiles. The shared fragment
+covers the single-binary case only.
+
+If a project needs to *modify* one of the linker configs (different RAM
+size, different code segment, different BSS layout), copy it into the
 project folder and tweak there — keep this directory pristine for the
 generic configs.

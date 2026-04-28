@@ -12,6 +12,17 @@ Three linker-config variants ship for different deployment scenarios:
 - `apple1_galaga_codetank_bank.cfg` — lower-bank slot (`$4100`) inside
   the multi-game CodeTank bank used by `tms9918_codetank_menu`.
 
+## Sprite layout
+
+22 distinct 16×16 sprite patterns share the TMS9918 sprite-pattern table
+(each 16×16 sprite consumes 4 of the 32 pattern slots). The full map
+lives at the top of `TMS_Galaga.asm` (lines ~82-105) under
+*Sprite pattern names*; ASCII-art pixel maps for every glyph follow
+inline alongside the data tables (search for `; --- Sprite patterns ---`
+and the `.byte %...` rows). Animation frames use the `_ALT` slots
+(`P_ENEMY*_ALT`, `P_EXP_ALT`, `P_PLAYER_TH`); the 32×32 super-boss is
+stitched from four quadrants (`P_SUPER_{TL,TR,BL,BR}`).
+
 ## Hardware
 
 - Machine: Apple 1 (4 KB DRAM for the cassette build)

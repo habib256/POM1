@@ -3,10 +3,21 @@
 Aim, charge, fire — bend the trajectory of your ball around 1..3
 gravity wells to hit the target. 32×24 cell grid (7×8-pixel cells),
 three levels, on the GEN2 Color Graphics Card. Companion of
-`tms9918_orbital_pool` (same gameplay, TMS9918 char-cell rendering).
+[`tms9918_orbital_pool`](../tms9918_orbital_pool/) (same level data and
+controls, TMS9918 char-cell rendering).
 
 Controls: `A`/`Z` rotate aim (16 directions, wraps); `S`/`X` adjust
 power (1..7); `SPACE` fires; `R` resets the shot.
+
+## Implementation note vs. the TMS9918 port
+
+Both ports share the same level layouts, the same 16-direction aim LUT
+and the same 1..7 power scale. The integration loops (`apply_gravity`,
+ball stepping) are independent re-implementations rather than a shared
+lib — pull strength uses `(dx * pull_lut[d2]) >> 4` here, and the
+companion port has its own variant tuned for the 8×8 char-cell grid.
+Visually similar gameplay, distinct code. If you re-tune one,
+re-validate the other.
 
 ## Hardware
 

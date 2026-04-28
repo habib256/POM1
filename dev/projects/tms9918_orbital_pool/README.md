@@ -3,10 +3,20 @@
 Aim, charge, fire — bend the trajectory of your ball around 1..3
 gravity wells to hit the target. 32×24 char-cell grid (native 8×8 TMS
 chars), three levels, on the P-LAB TMS9918 Graphic Card. Companion of
-`hgr_orbital_pool` (same gameplay, GEN2 HGR rendering).
+[`hgr_orbital_pool`](../hgr_orbital_pool/) (same level data and
+controls, GEN2 HGR rendering at 7×8-pixel cell resolution).
 
 Controls: `A`/`Z` rotate aim (16 directions, wraps); `S`/`X` adjust
 power (1..7); `SPACE` fires; `R` resets the shot.
+
+## Implementation note vs. the HGR port
+
+Both ports share the same level layouts, the same 16-direction aim LUT
+and the same 1..7 power scale. The integration loops (`apply_gravity`,
+ball stepping) are independent re-implementations rather than a shared
+lib — this port factors the multiply through `umult_8x8` + `lsr_16_x`
+helpers, the HGR port inlines a (>>4)-shift variant. Visually similar
+gameplay, distinct code. If you re-tune one, re-validate the other.
 
 ## Hardware
 
