@@ -65,6 +65,11 @@ private:
     static void renderMulticolor (uint32_t* pixels, const Snapshot& s, ImU32 backdrop);
     static void renderSprites    (uint32_t* pixels, const Snapshot& s);
 
+    // Per-VBLANK sprite scan that updates statusReg sticky bits 5 (collision)
+    // and 6 (5S) + the 5S sprite SAT index in low 5 bits. Bit-pattern based
+    // (color=0 sprites still collide). Live VRAM, called from advanceCycles.
+    static void scanSpritesForStatus(const uint8_t* vram, const uint8_t* regs, uint8_t& statusOut);
+
 private:
     std::array<uint8_t, 0x4000> vram{};
     std::array<uint8_t, 8>      regs{};

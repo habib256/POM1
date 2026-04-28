@@ -247,6 +247,23 @@ add_test(NAME codetank_smoke
                  "${CMAKE_SOURCE_DIR}/roms/jukebox.rom")
 set_tests_properties(codetank_smoke PROPERTIES TIMEOUT 5)
 
+# -- TMS9918A sprite-engine status-flag test ----------------------------------
+# Self-contained: TMS9918 only. Pins per-VBLANK sticky bits 5 (collision)
+# and 6 (5S overflow + index in low 5 bits) — none were set before this
+# test landed. Includes the "color=0 sprite still collides" rule and the
+# sticky-until-readControl behaviour.
+add_executable(test_tms9918_sprite_status
+    tms9918_sprite_status_test.cpp
+    ${CMAKE_SOURCE_DIR}/TMS9918.cpp
+)
+target_include_directories(test_tms9918_sprite_status PRIVATE
+    ${CMAKE_SOURCE_DIR}
+    ${CMAKE_SOURCE_DIR}/imgui
+)
+
+add_test(NAME tms9918_sprite_status COMMAND test_tms9918_sprite_status)
+set_tests_properties(tms9918_sprite_status PROPERTIES TIMEOUT 5)
+
 # -- CodeTank ↔ TMS9918 daughterboard dependency test -------------------------
 # Memory-level integration test: enabling CodeTank auto-plugs TMS9918,
 # disabling TMS9918 cascade-unplugs CodeTank, and disabling CodeTank does

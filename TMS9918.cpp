@@ -129,6 +129,11 @@ void TMS9918::advanceCycles(int cycles)
     frameCycleCounter += cycles;
     if (frameCycleCounter >= kCyclesPerFrame) {
         frameCycleCounter -= kCyclesPerFrame;
+        // Update sticky sprite-engine flags (collision bit 5, 5S bit 6 + index)
+        // before raising VBlank — only when display is enabled (R1 bit 6).
+        if (regs[1] & 0x40) {
+            scanSpritesForStatus(vram.data(), regs.data(), statusReg);
+        }
         statusReg |= 0x80; // set frame interrupt flag
     }
 }
@@ -332,7 +337,17 @@ void TMS9918::renderMulticolor(uint32_t* pixels, const Snapshot& s, ImU32 backdr
 }
 
 // --------------------------------------------------------------------------
-// Sprites — up to 32, rendered with priority (sprite 0 on top)
+// Sprites — per-scanline scan with 4-sprites-per-line hardware drop.
+//
+// Real TMS9918A scans the SAT against the active scanline; only the first
+// four sprites whose vertical band covers that line are drawn. The rest
+// vanish on that line (the source of authentic flicker). renderSprites
+// implements that visual rule. The status flags (collision bit 5, 5S bit 6
+// and index) are computed independently in scanSpritesForStatus on the
+// emulation thread (see advanceCycles).
+//
+// Within a scanline's visible-sprite list, sprite 0 has the highest priority
+// (drawn last, on top), so we emit in reverse-priority order.
 // --------------------------------------------------------------------------
 void TMS9918::renderSprites(uint32_t* pixels, const Snapshot& s)
 {
@@ -344,6 +359,7 @@ void TMS9918::renderSprites(uint32_t* pixels, const Snapshot& s)
 
     int sprPixelSize = doubleSize ? 16 : 8;
     int mag = magnified ? 2 : 1;
+    int spriteH = sprPixelSize * mag;
 
     struct SpriteInfo { int y, x; uint8_t name, color; };
     SpriteInfo sprites[32];
@@ -362,49 +378,152 @@ void TMS9918::renderSprites(uint32_t* pixels, const Snapshot& s)
         sprites[spriteCount++] = { y, x, name, (uint8_t)(color & 0x0F) };
     }
 
-    for (int i = spriteCount - 1; i >= 0; i--) {
-        const auto& spr = sprites[i];
-        if (spr.color == 0) continue;
-        ImU32 sprColor = kPalette[spr.color];
+    for (int sy = 0; sy < kScreenHeight; sy++) {
+        // Collect at most 4 sprites whose vertical band contains this scanline.
+        int visible[4]; int nVisible = 0;
+        for (int i = 0; i < spriteCount && nVisible < 4; i++) {
+            const auto& spr = sprites[i];
+            if (sy < spr.y || sy >= spr.y + spriteH) continue;
+            visible[nVisible++] = i;
+        }
 
-        uint8_t patName = spr.name;
-        if (doubleSize) patName &= 0xFC;
+        // Render in reverse-priority order so sprite 0 paints last (on top).
+        for (int k = nVisible - 1; k >= 0; k--) {
+            const auto& spr = sprites[visible[k]];
+            if (spr.color == 0) continue; // visually transparent — but still in slot count
+            ImU32 sprColor = kPalette[spr.color];
 
-        for (int row = 0; row < sprPixelSize; row++) {
-            int screenY = spr.y + row * mag;
+            uint8_t patName = spr.name;
+            if (doubleSize) patName &= 0xFC;
 
-            if (!doubleSize) {
-                uint16_t addr = (sprPatternBase + (uint16_t)patName * 8 + row) & 0x3FFF;
+            int rowInSpr = (sy - spr.y) / mag; // 0..7 or 0..15
+            // Fetch left half (8 bits), then right half if 16-wide.
+            int halves = doubleSize ? 2 : 1;
+            for (int half = 0; half < halves; half++) {
+                uint16_t addr;
+                if (!doubleSize) {
+                    addr = (sprPatternBase + (uint16_t)patName * 8 + rowInSpr) & 0x3FFF;
+                } else {
+                    int quadrant = (rowInSpr < 8) ? half * 2 : half * 2 + 1;
+                    addr = (sprPatternBase + (uint16_t)(patName + quadrant) * 8 + (rowInSpr & 7)) & 0x3FFF;
+                }
                 uint8_t patByte = s.vram[addr];
                 for (int bit = 0; bit < 8; bit++) {
                     if (!(patByte & (0x80 >> bit))) continue;
-                    int screenX = spr.x + bit * mag;
-                    for (int my = 0; my < mag; my++) {
-                        int sy = screenY + my;
-                        if (sy < 0 || sy >= kScreenHeight) continue;
-                        for (int mx = 0; mx < mag; mx++) {
-                            int sx = screenX + mx;
-                            if (sx < 0 || sx >= kScreenWidth) continue;
-                            pixels[sy * kScreenWidth + sx] = sprColor;
-                        }
+                    int screenX = spr.x + (half * 8 + bit) * mag;
+                    for (int mx = 0; mx < mag; mx++) {
+                        int sx = screenX + mx;
+                        if (sx < 0 || sx >= kScreenWidth) continue;
+                        pixels[sy * kScreenWidth + sx] = sprColor;
                     }
                 }
+            }
+        }
+    }
+}
+
+// --------------------------------------------------------------------------
+// scanSpritesForStatus — emulation-thread helper. Walks the live SAT against
+// every scanline and updates sticky status bits:
+//   bit 5 ($20) — sprite-sprite collision (ANY two opaque pattern bits
+//                 overlap, even when one or both sprites have color = 0).
+//   bit 6 ($40) — 5th-sprite-on-scanline overflow. Bits 0..4 latch the SAT
+//                 index of the offending sprite.
+// Both bits are sticky until readControl() clears them via the ~0xE0 mask.
+// --------------------------------------------------------------------------
+void TMS9918::scanSpritesForStatus(const uint8_t* vram, const uint8_t* regs, uint8_t& statusOut)
+{
+    uint16_t sprAttrBase    = (uint16_t)(regs[5] & 0x7F) << 7;
+    uint16_t sprPatternBase = (uint16_t)(regs[6] & 0x07) << 11;
+
+    bool doubleSize = (regs[1] & 0x02) != 0;
+    bool magnified  = (regs[1] & 0x01) != 0;
+
+    int sprPixelSize = doubleSize ? 16 : 8;
+    int mag = magnified ? 2 : 1;
+    int spriteH = sprPixelSize * mag;
+
+    struct SpriteInfo { int y, x; uint8_t name; bool earlyClock; };
+    SpriteInfo sprites[32];
+    int spriteCount = 0;
+
+    for (int i = 0; i < 32; i++) {
+        uint16_t attrAddr = (sprAttrBase + i * 4) & 0x3FFF;
+        uint8_t yRaw = vram[attrAddr];
+        if (yRaw == 0xD0) break;
+
+        int y = (int)yRaw - ((yRaw > 0xD0) ? 256 : 0) + 1;
+        int x = vram[(attrAddr + 1) & 0x3FFF];
+        uint8_t name  = vram[(attrAddr + 2) & 0x3FFF];
+        uint8_t color = vram[(attrAddr + 3) & 0x3FFF];
+        bool earlyClock = (color & 0x80) != 0;
+        if (earlyClock) x -= 32;
+        sprites[spriteCount++] = { y, x, name, earlyClock };
+    }
+
+    bool fiveAlreadyLatched = (statusOut & 0x40) != 0;
+    bool collisionAlreadyLatched = (statusOut & 0x20) != 0;
+
+    for (int sy = 0; sy < kScreenHeight; sy++) {
+        uint8_t mask[32];
+        bool maskInUse = false;
+        int visible = 0;
+
+        for (int i = 0; i < spriteCount; i++) {
+            const auto& spr = sprites[i];
+            if (sy < spr.y || sy >= spr.y + spriteH) continue;
+
+            if (visible == 4) {
+                if (!fiveAlreadyLatched) {
+                    statusOut = (statusOut & 0xE0) | (uint8_t)(i & 0x1F);
+                    statusOut |= 0x40;
+                    fiveAlreadyLatched = true;
+                }
+                // 5th+ sprites are dropped; they don't contribute to collision.
+                break;
+            }
+            visible++;
+
+            // Skip per-pixel work when both flags are already sticky for the
+            // rest of the frame — index/collision can't change.
+            if (collisionAlreadyLatched && fiveAlreadyLatched) continue;
+
+            uint8_t patName = spr.name;
+            if (doubleSize) patName &= 0xFC;
+            int rowInSpr = (sy - spr.y) / mag;
+
+            // Build a 16-bit pattern row (left half then optional right half).
+            uint8_t patLeft = 0, patRight = 0;
+            if (!doubleSize) {
+                patLeft = vram[(sprPatternBase + (uint16_t)patName * 8 + rowInSpr) & 0x3FFF];
             } else {
-                for (int half = 0; half < 2; half++) {
-                    int quadrant = (row < 8) ? half * 2 : half * 2 + 1;
-                    uint16_t addr = (sprPatternBase + (uint16_t)(patName + quadrant) * 8 + (row % 8)) & 0x3FFF;
-                    uint8_t patByte = s.vram[addr];
-                    for (int bit = 0; bit < 8; bit++) {
-                        if (!(patByte & (0x80 >> bit))) continue;
-                        int screenX = spr.x + (half * 8 + bit) * mag;
-                        for (int my = 0; my < mag; my++) {
-                            int sy = screenY + my;
-                            if (sy < 0 || sy >= kScreenHeight) continue;
-                            for (int mx = 0; mx < mag; mx++) {
-                                int sx = screenX + mx;
-                                if (sx < 0 || sx >= kScreenWidth) continue;
-                                pixels[sy * kScreenWidth + sx] = sprColor;
+                int qLeft  = (rowInSpr < 8) ? 0 : 1;
+                int qRight = (rowInSpr < 8) ? 2 : 3;
+                patLeft  = vram[(sprPatternBase + (uint16_t)(patName + qLeft)  * 8 + (rowInSpr & 7)) & 0x3FFF];
+                patRight = vram[(sprPatternBase + (uint16_t)(patName + qRight) * 8 + (rowInSpr & 7)) & 0x3FFF];
+            }
+
+            int halves = doubleSize ? 2 : 1;
+            if (!maskInUse) {
+                std::memset(mask, 0, sizeof(mask));
+                maskInUse = true;
+            }
+            for (int half = 0; half < halves; half++) {
+                uint8_t patByte = (half == 0) ? patLeft : patRight;
+                for (int bit = 0; bit < 8; bit++) {
+                    if (!(patByte & (0x80 >> bit))) continue;
+                    int baseX = spr.x + (half * 8 + bit) * mag;
+                    for (int mx = 0; mx < mag; mx++) {
+                        int sx = baseX + mx;
+                        if (sx < 0 || sx >= kScreenWidth) continue;
+                        uint8_t bm = (uint8_t)(0x80 >> (sx & 7));
+                        if (mask[sx >> 3] & bm) {
+                            if (!collisionAlreadyLatched) {
+                                statusOut |= 0x20;
+                                collisionAlreadyLatched = true;
                             }
+                        } else {
+                            mask[sx >> 3] |= bm;
                         }
                     }
                 }

@@ -1,0 +1,206 @@
+// TMS9918A sprite-engine status-flag smoke test.
+//
+// Self-contained: exercises TMS9918 alone (no Memory, no peripheral bus).
+// Pins three sticky status-register behaviors documented by the TI datasheet
+// and BiFi's MSX TMS9918A reference, none of which were implemented before
+// this test landed:
+//
+//   - Status bit 6 ($40) — fifth-sprite-on-scanline overflow flag.
+//     Set when any scanline contains >4 sprites. Bits 0..4 latch the SAT
+//     index of the fifth sprite. Sticky until readControl() clears it.
+//   - Status bit 5 ($20) — sprite-sprite collision. Set on any opaque
+//     pattern-bit overlap, even when one (or both) sprites have color = 0
+//     (a real TMS9918A collides on pattern bits, not on rendered color).
+//     Sticky.
+//   - Both flags survive multiple frames; readControl() clears them via
+//     the existing ~0xE0 mask.
+//
+// Each test runs in a fresh TMS9918 to avoid sticky-flag bleed.
+
+#include "TMS9918.h"
+
+#include <cassert>
+#include <cstdint>
+#include <cstdio>
+#include <cstdlib>
+
+namespace {
+
+void mustBeTrue(bool cond, const char* msg)
+{
+    if (!cond) {
+        std::fprintf(stderr, "ASSERT FAILED: %s\n", msg);
+        std::exit(1);
+    }
+}
+
+// VRAM write-address set + streamed bytes through the data port.
+void vramWrite(TMS9918& vdp, uint16_t addr, const uint8_t* data, size_t n)
+{
+    vdp.writeControl((uint8_t)(addr & 0xFF));
+    vdp.writeControl((uint8_t)(0x40 | ((addr >> 8) & 0x3F))); // $40xx = write address
+    for (size_t i = 0; i < n; i++) vdp.writeData(data[i]);
+}
+
+void writeReg(TMS9918& vdp, uint8_t reg, uint8_t value)
+{
+    vdp.writeControl(value);
+    vdp.writeControl((uint8_t)(0x80 | (reg & 0x07)));
+}
+
+// Default test layout:
+//   R1 = $C0   display on, 16K, 8x8 sprites, no magnify, no IRQ
+//   R5 = $06   SAT base = $0300 (6 << 7)
+//   R6 = $00   sprite pattern base = $0000
+// Pattern at name=1 ($0008..$000F) is solid 0xFF.
+void initVdp(TMS9918& vdp)
+{
+    vdp.reset();
+    writeReg(vdp, 1, 0xC0);
+    writeReg(vdp, 5, 0x06);
+    writeReg(vdp, 6, 0x00);
+    uint8_t solid[8] = {0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF};
+    vramWrite(vdp, 0x0008, solid, 8); // sprite name 1 → all-on pattern
+}
+
+// One-shot SAT entry write.
+void pokeSAT(TMS9918& vdp, int idx, uint8_t y, uint8_t x, uint8_t name, uint8_t color)
+{
+    uint8_t buf[4] = { y, x, name, color };
+    vramWrite(vdp, (uint16_t)(0x0300 + idx * 4), buf, 4);
+}
+
+// Drive one VBLANK worth of cycles. Use a value larger than any reasonable
+// kCyclesPerFrame so the rollover branch fires.
+void tickFrame(TMS9918& vdp)
+{
+    vdp.advanceCycles(2'000'000);
+}
+
+// Read status without disturbing latch state for subsequent control writes
+// in the same test (writeControl() clears latchIsSecond on its own; readControl
+// also resets it, so this is safe).
+uint8_t readStatus(TMS9918& vdp) { return vdp.readControl(); }
+
+} // namespace
+
+int main()
+{
+    // -----------------------------------------------------------------
+    // T1 — fifth-sprite flag + SAT index in low 5 bits
+    //
+    // 5 sprites all on Y=50 (top edge raw 49 since top = yRaw + 1).
+    // Names 1..5, colors non-zero. Terminator at SAT[5].
+    // Expected: bit 6 set; low 5 bits == 4 (the SAT index of the dropped
+    // 5th sprite — sprites 0..3 are kept, sprite 4 overflows).
+    // -----------------------------------------------------------------
+    {
+        TMS9918 vdp;
+        initVdp(vdp);
+        for (int i = 0; i < 5; i++) {
+            pokeSAT(vdp, i, /*y=*/49, /*x=*/(uint8_t)(i * 16), /*name=*/1, /*color=*/0x0F);
+        }
+        pokeSAT(vdp, 5, 0xD0, 0, 0, 0); // terminator
+        tickFrame(vdp);
+        uint8_t s = readStatus(vdp);
+        mustBeTrue((s & 0x40) != 0, "T1: fifth-sprite flag (bit 6) should be set");
+        mustBeTrue((s & 0x1F) == 4,  "T1: 5S index should be SAT idx 4 (5th sprite)");
+        // Bit 5 must NOT be set — sprites are spaced 16 apart and 8x8 wide, no overlap.
+        mustBeTrue((s & 0x20) == 0,  "T1: collision should not be set (no overlap)");
+    }
+
+    // -----------------------------------------------------------------
+    // T2 — sprite-sprite collision basic
+    //
+    // Two 8x8 sprites at Y=50, X=50 and X=52, both name=1 (solid),
+    // both color non-zero. Pixels 52..57 overlap.
+    // -----------------------------------------------------------------
+    {
+        TMS9918 vdp;
+        initVdp(vdp);
+        pokeSAT(vdp, 0, 49, 50, 1, 0x0F);
+        pokeSAT(vdp, 1, 49, 52, 1, 0x0F);
+        pokeSAT(vdp, 2, 0xD0, 0, 0, 0);
+        tickFrame(vdp);
+        uint8_t s = readStatus(vdp);
+        mustBeTrue((s & 0x20) != 0, "T2: collision flag (bit 5) should be set");
+        mustBeTrue((s & 0x40) == 0, "T2: 5S flag should not be set (only 2 sprites)");
+    }
+
+    // -----------------------------------------------------------------
+    // T3 — collision when one sprite has color 0
+    //
+    // The TMS9918A collides on pattern bits regardless of color. A
+    // color=0 sprite is visually transparent but its pattern bits still
+    // count for collision detection.
+    // -----------------------------------------------------------------
+    {
+        TMS9918 vdp;
+        initVdp(vdp);
+        pokeSAT(vdp, 0, 49, 50, 1, 0x00); // color 0 — transparent
+        pokeSAT(vdp, 1, 49, 50, 1, 0x0F); // visible, same X/Y
+        pokeSAT(vdp, 2, 0xD0, 0, 0, 0);
+        tickFrame(vdp);
+        uint8_t s = readStatus(vdp);
+        mustBeTrue((s & 0x20) != 0,
+                   "T3: collision should be set even when one sprite has color=0");
+    }
+
+    // -----------------------------------------------------------------
+    // T4 — sticky behaviour: collision flag survives further frames,
+    // and is only cleared by readControl().
+    // -----------------------------------------------------------------
+    {
+        TMS9918 vdp;
+        initVdp(vdp);
+        pokeSAT(vdp, 0, 49, 50, 1, 0x0F);
+        pokeSAT(vdp, 1, 49, 52, 1, 0x0F);
+        pokeSAT(vdp, 2, 0xD0, 0, 0, 0);
+        tickFrame(vdp);
+        // Now move the sprites apart so this frame would NOT trigger collision,
+        // but the flag must persist from the previous frame.
+        pokeSAT(vdp, 1, 49, 200, 1, 0x0F);
+        tickFrame(vdp);
+        tickFrame(vdp);
+        uint8_t s1 = readStatus(vdp);
+        mustBeTrue((s1 & 0x20) != 0, "T4: collision flag should still be sticky");
+        uint8_t s2 = readStatus(vdp);
+        mustBeTrue((s2 & 0x20) == 0, "T4: collision flag must clear after read");
+    }
+
+    // -----------------------------------------------------------------
+    // T5 — disjoint Y bands → no collision
+    // -----------------------------------------------------------------
+    {
+        TMS9918 vdp;
+        initVdp(vdp);
+        pokeSAT(vdp, 0, 49,  50, 1, 0x0F); // Y top = 50, band 50..57
+        pokeSAT(vdp, 1, 79,  50, 1, 0x0F); // Y top = 80, band 80..87 — disjoint
+        pokeSAT(vdp, 2, 0xD0, 0, 0, 0);
+        tickFrame(vdp);
+        uint8_t s = readStatus(vdp);
+        mustBeTrue((s & 0x20) == 0, "T5: disjoint Y bands must not collide");
+    }
+
+    // -----------------------------------------------------------------
+    // T6 — display blank (R1 bit 6 = 0) suppresses the sprite scan.
+    // No flags should be set even with 5 overlapping sprites.
+    // -----------------------------------------------------------------
+    {
+        TMS9918 vdp;
+        initVdp(vdp);
+        writeReg(vdp, 1, 0x80); // display off (bit 6 cleared)
+        for (int i = 0; i < 5; i++)
+            pokeSAT(vdp, i, 49, 50, 1, 0x0F);
+        pokeSAT(vdp, 5, 0xD0, 0, 0, 0);
+        tickFrame(vdp);
+        uint8_t s = readStatus(vdp);
+        mustBeTrue((s & 0x60) == 0,
+                   "T6: blanked display must not raise collision or 5S flags");
+        // Bit 7 (frame interrupt) is still set regardless of blanking.
+        mustBeTrue((s & 0x80) != 0, "T6: VBlank flag still raised when blanked");
+    }
+
+    std::printf("tms9918_sprite_status: all 6 tests passed\n");
+    return 0;
+}
