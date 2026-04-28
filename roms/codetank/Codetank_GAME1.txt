@@ -1,0 +1,15 @@
+P-LAB CodeTank GAME1 — TMS9918 game library + LOGO
+
+Lower jumper ($4000-$7FFF, lower 16 kB):
+  Menu at $4000: 1=Galaga, 2=Sokoban, 3=Snake, 4=Life
+  All four games run in place from ROM (no RAM copy).
+
+Upper jumper ($4000-$7FFF, upper 16 kB):
+  Dispatcher at $4000: 1=Tetris, 2=LOGO V1.7
+  - Tetris: payload at $4080, copies to RAM $0280 then runs.
+  - LOGO: turtle interpreter at $5E00, run-in-place. Mode-2 bitmap
+    turtle, REPL, REPEAT/IF/MAKE/RANDOM, user-defined procs with
+    parameters, tail recursion. Type HELP at the LOGO prompt.
+
+Type 4000R from the Woz Monitor to enter (after picking the jumper
+half via Hardware -> CodeTank).

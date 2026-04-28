@@ -222,8 +222,9 @@ const MachineConfig kMachinePresets[] = {
         "P-LAB Apple-1 with TMS9918 (CodeTank daughterboard)",
         "P-LAB Graphic Card (TMS9918A VDP) with the CodeTank 28c256 ROM daughterboard "
         "(Codetank_GAME1.rom) at $4000-$7FFF, Integer BASIC. The CodeTank piggybacks the "
-        "Graphic Card on real P-LAB silicon - it has no edge connector. Type 4000R from "
-        "the Woz Monitor to launch the bundled game.",
+        "Graphic Card on real P-LAB silicon - it has no edge connector. "
+        "Type 4000R: Lower jumper boots the 4-game menu (1=Galaga, 2=Sokoban, "
+        "3=Snake, 4=Life); Upper jumper boots the 1=Tetris / 2=LOGO V1.7 picker.",
         false, false, false, true, false, false, false,
         /*pr40*/ false,
         false, false, false, 16, BasicType::Integer,

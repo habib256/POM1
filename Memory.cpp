@@ -1381,11 +1381,12 @@ int Memory::loadCodeTankRom(const std::string& path)
         return 1;
     }
     // Default probe order. The shipped CodeTank library image
-    // (`Codetank_GAME1.rom`, the only 32 kB EEPROM dump in roms/codetank/)
+    // (`Codetank_GAME1.rom`, built by tools/build_codetank_logo_rom.py)
     // wins so plugging the CodeTank from the toolbar/Hardware menu drops
-    // the user straight into the bundled game. The legacy single-file
-    // `roms/codetank.rom` (kept around from before the library directory)
-    // stays as a fallback.
+    // the user straight into the bundled software: lower jumper = 4-game
+    // menu (Galaga/Sokoban/Snake/Life), upper jumper = Tetris/LOGO V1.7
+    // picker. The legacy single-file `roms/codetank.rom` (kept around
+    // from before the library directory) stays as a fallback.
     const char* candidates[] = {
         "roms/codetank/Codetank_GAME1.rom",
         "../roms/codetank/Codetank_GAME1.rom",
