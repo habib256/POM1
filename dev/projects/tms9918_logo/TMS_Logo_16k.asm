@@ -1,17 +1,20 @@
 ; ============================================================================
-; TMS_Logo.asm  --  APPLE-1 LOGO for TMS9918 (turtle interpreter)
+; TMS_Logo_16k.asm  --  APPLE-1 LOGO V2.0 for TMS9918 (16 KB variant)
 ; ============================================================================
-; *** V1.8 -- FINAL 8 KB BUILD (FROZEN) ***
+; *** V2.0 -- 16 KB BUILD (active development) ***
 ;
-; This file is the final tuning of the standalone (cassette / .txt-loaded
-; at $0280) Apple-1 8 KB build. The CODE+PROC areas are at the absolute
-; limit of what fits between $0280 and $1FFF -- 6 480 / 1 072 bytes
-; respectively, with about 30 B of code headroom and ZERO PROC headroom.
+; Forked from V1.8 (the final 8 KB build, frozen). This variant assumes a
+; 16 KB Apple-1 (or future CodeTank ROM) and uses the headroom for:
 ;
-; Future feature work targets a 16 KB variant (CodeTank-friendly) and
-; should NOT bloat this file. If you're adding a feature here just to
-; shave bytes elsewhere, that's fine; if you're growing the binary, fork
-; into a TMS_Logo16k.asm with its own cfg.
+;   - 12 user procs (was 5), 248-byte bodies (was 154 B).
+;   - A 1 024-byte control stack in PROCBSS (16 deep frames) replacing
+;     the pair of 60 B save buffers from V1.8 -- so non-tail nested
+;     proc calls go beyond the V1.8 hard limit of 1 nesting level.
+;   - IFELSE a OP b [yes] [no] (in addition to the bare IF).
+;   - Comparison operators <=, >=, <> (alongside <, >, =).
+;
+; Tail-call optimization (zero-frame recursion) is unchanged from V1.8 --
+; spiral 4 90 still costs zero control-stack frames.
 ;
 ; Build:
 ;   ca65 -I software/tms9918 -o build/TMS_Logo.o software/tms9918/TMS_Logo.asm
@@ -62,6 +65,7 @@
 
 ; --- I/O equates (Apple-1 + TMS9918 hardware) ------------------------------
 .include "apple1.inc"
+.include "tms9918.inc"          ; VDP_CTRL, VDP_DATA equates for SETSHAPE
 
 ; --- Imports from sibling modules -----------------------------------------
 ;
@@ -85,9 +89,11 @@ NAME_LEN          = 6     ; uppercase identifier width (proc, var, param). >=4
                           ;   still matches via bytes 0..3; the extra two
                           ;   bytes let names like THING vs THING1 stay
                           ;   distinct, and accept trailing digits.
-MAX_PROCS         = 5
-PROC_SLOT         = 174   ; V1.8 slot: 6 name + 1 nparams + 12 (2x6) param names + 1 body_len + 154 body
-PROC_BODY_MAX     = 154   ; just enough for verbose THING (154 bytes incl. CRs)
+MAX_PROCS         = 10
+PROC_SLOT         = 244   ; V2.0 slot: 6 name + 1 nparams + 12 (2x6) param names + 1 body_len + 224 body
+PROC_BODY_MAX     = 224   ; comfortable headroom (V1.8 had 154 = exactly THING's longform)
+CTRL_STACK_DEPTH  = 16    ; max non-tail proc-invocation depth (frames of CTRL_FRAME bytes each)
+CTRL_FRAME        = 64    ; per-frame: 60 B line_buf + 1 B line_idx + 1 B body_cursor + 1 B body_total + 1 B pad
 MAX_PARAMS        = 2
 PROC_NPARAMS_OFF  = 6     ; slot offset of n_params byte
 PROC_PARAMS_OFF   = 7     ; slot offset of param-names block (2 x NAME_LEN)
@@ -115,6 +121,13 @@ mptr_lo:      .res 1     ; mnemonic table cursor / handler ptr
 mptr_hi:      .res 1
 rep_end:      .res 1     ; REPEAT: index of matching ']'
 rep_start:    .res 1     ; REPEAT: index just past '['
+; ctrl_frame pointer (used by (zp),Y in proc_invoke push/pop -- requires ZP).
+mptr_save_lo: .res 1
+mptr_save_hi: .res 1
+; cmd_setshape scratch pointer to the matched shape pattern -- (zp),Y indirect
+; addressing requires this be in ZP.
+shape_pat_lo: .res 1
+shape_pat_hi: .res 1
 
 ; --- BSS scratch in $0200 page --------------------------------------------
 .segment "LINEBUF"
@@ -139,6 +152,18 @@ ny_save:    .res 1        ; ny clamped, held across line_xy (else tmp clobbered)
 bk_sign:    .res 1        ; FD/BK distance sign latch (0 = forward, $FF = backward)
 plot_mode:    .res 1      ; 0 = OR (default), 1 = XOR (turtle)
 turtle_visible: .res 1    ; 1 = turtle currently drawn into the bitmap
+; --- V2.0 dynamic-turtle ("sprite") mode -----------------------------------
+; sprite_mode = 0: classic bitmap turtle (XOR triangle). FORWARD draws the
+;                  trail and the turtle is rendered into the bitmap.
+; sprite_mode = 1: dynamic turtle. SETSHAPE has loaded a 16x16 pattern into
+;                  the TMS9918 sprite-pattern slot 0 and 16x16 sprites are
+;                  enabled (R1 |= $02). draw_turtle now writes Y/X to the
+;                  sprite attribute table at $3B00 instead of XORing into
+;                  the bitmap; erase_turtle is a no-op (sprites are
+;                  independent of the pattern table). FORWARD still draws
+;                  the trail unless PU.
+sprite_mode:    .res 1    ; 0 = bitmap turtle, 1 = dynamic (sprite) turtle
+; (shape_pat_lo / shape_pat_hi live in ZEROPAGE -- (zp),Y indirect access.)
 s_byte:    .res 1         ; signed sin(heading) * 64
 c_byte:    .res 1         ; signed cos(heading) * 64
 s_tip:     .res 1         ; (TIP_FWD * sin)/64 -- tip vertex offset
@@ -160,15 +185,24 @@ lfsr_hi:    .res 1
 ; --- User-procedure storage --------------------------------------------------
 ; MAX_PROCS slots, layout per slot above (PROC_SLOT bytes).
 .segment "PROCBSS"
-; variable table -- MAX_VARS entries x (NAME_LEN name + 2 byte value).
-; Lives here (rather than in LINEBUF) because the 6-byte names make it too
-; large to fit alongside the parser scratch in the 128-byte LBUF window.
-var_table: .res 48
-proc_table:    .res 870      ; MAX_PROCS (5) x PROC_SLOT (174) = 870
-proc_save_buf: .res 60       ; saved line_buf, depth-0 frame
-proc_save_idx: .res 1        ; saved line_idx, depth-0 frame
-proc_save_buf2: .res 60      ; saved line_buf, depth-1 frame (nested call)
-proc_save_idx2: .res 1       ; saved line_idx, depth-1 frame
+; -- Control stack (V2.0). Replaces V1.8's pair of 60-byte save buffers.
+; Each non-tail nested proc_invoke pushes one CTRL_FRAME-byte frame:
+;     bytes 0..59   line_buf snapshot (LINE_MAX = 60)
+;     byte  60      line_idx
+;     byte  61      proc_body_cursor of caller (so caller's @line_loop resumes)
+;     byte  62      proc_body_total  of caller
+;     byte  63      reserved
+; Tail-call optimisation pushes nothing; the stack only grows for
+; non-tail calls (proc invoked mid-line, e.g. inside a REPEAT slice).
+; CTRL_STACK_DEPTH frames = 16 → enough for THING1 = REPEAT 4 [THING],
+; deeply nested REPEAT/proc combos, and recursion that mixes tail and
+; non-tail calls.
+ctrl_stack:  .res 1024        ; CTRL_STACK_DEPTH (16) x CTRL_FRAME (64)
+ctrl_sp:     .res 1           ; frame count, 0..CTRL_STACK_DEPTH
+
+; -- variable table -- MAX_VARS entries x (NAME_LEN name + 2 byte value).
+var_table:   .res 48
+proc_table:  .res 2440        ; MAX_PROCS (10) x PROC_SLOT (244)
 ; V1.5 procedure parameters -- 2 named slots layered on top of var_table.
 ; var_lookup checks these first, so :SIZE in a proc body resolves to its
 ; param even if a global named SIZE also exists. After RTS we restore
@@ -178,7 +212,10 @@ param_slot0_value: .res 2
 param_slot1_name:  .res 6
 param_slot1_value: .res 2
 n_params_active:   .res 1    ; 0..MAX_PARAMS, valid params currently live
-in_proc_save:      .res 1    ; 1 if proc_save_buf currently holds an outer line_buf
+; in_proc_save was the V1.8 0/1/2 depth counter; in V2.0 it lives in
+; PROCBSS as `ctrl_sp` (frame count, 0..CTRL_STACK_DEPTH). Alias here so
+; existing tail-call check / init code doesn't need to touch every site.
+in_proc_save = ctrl_sp
 def_mode:          .res 1    ; 0 = REPL, 1 = currently collecting body lines for a new proc
 cur_proc_lo:       .res 1    ; -> current proc slot during definition
 cur_proc_hi:       .res 1
@@ -191,6 +228,9 @@ if_a_hi:           .res 1
 if_op_save:        .res 1    ; cmd_if: comparison operator char
 tail_p0_lo:        .res 1    ; tail-call trampoline: latched param-0 value
 tail_p0_hi:        .res 1
+; mptr_save_lo/hi MUST live in zero page so the (zp),Y indirect addressing
+; mode in ctrl_push / ctrl_pop works. Declared up in ZEROPAGE (search for
+; "ctrl_frame pointer").
 
 ; ============================================================================
 .segment "CODE"
@@ -209,6 +249,7 @@ main:
         LDA #0
         STA plot_mode
         STA turtle_visible
+        STA sprite_mode
         STA n_vars
         STA n_procs
         STA n_params_active
@@ -216,6 +257,13 @@ main:
         STA def_mode
         STA break_flag
         STA stop_flag
+        ; Pen down by default. V1.8 set this lazily inside cmd_home;
+        ; V2.0 fixed cmd_home to preserve pen across HOME (so PU+HOME+
+        ; REPEAT[FLY] doesn't leak a trail), so we have to explicitly
+        ; initialise pen here, otherwise the very first scenes of DEMO
+        ; (which haven't called PD yet) draw nothing.
+        LDA #1
+        STA pen
         ; LFSR seed -- non-zero
         LDA #$AC
         STA lfsr_lo
@@ -274,39 +322,332 @@ banner_msg:
         .byte $0D, "APPLE-1 LOGO FOR TMS9918 - TYPE HELP", $0D
         .byte 0
 
-help_msg:
-        .byte $0D, "APPLE-1 LOGO V1.8 (TMS9918)", $0D
-        .byte "FD/BK N  : FORWARD/BACK N PIX", $0D
-        .byte "TR/TL N  : TURN RIGHT/LEFT", $0D
-        .byte "PU PD    : PEN UP / DOWN", $0D
-        .byte "HOME     : CENTRE 128,96 H=0", $0D
-        .byte "CS       : CLEAR + HOME", $0D
-        .byte "SETXY X Y / SETH N", $0D
-        .byte "REPEAT N [ ... ]   : LOOP N TIMES", $0D
-        .byte "REPEAT FOREVER [ ] : ENDLESS", $0D
-        .byte "  ESC OR CTRL-G ABORT LOOP", $0D
-        .byte "  PROCS AND VARS SURVIVE", $0D
-        .byte "IF A > B [ ... ]   : ALSO < =", $0D
-        .byte "STOP : EXIT CURRENT PROC", $0D
-        .byte "ARG MAY BE :V + N OR :V - N", $0D
-        .byte "TAIL RECURSION OK (E.G. SPIRAL)", $0D
-        .byte "MAKE NAME N : SET VAR=N", $0D
-        .byte ":NAME    : USE VAR IN ARGS", $0D
-        .byte "TO N :A :B ... END : DEF PROC", $0D
-        .byte "  NAMES 6 CHARS A-Z 0-9", $0D
-        .byte "  6 PROCS, BODY 160 B EACH", $0D
-        .byte "  PROCS CAN CALL 1 OTHER PROC", $0D
-        .byte "NAME [A B]  : INVOKE PROC", $0D
-        .byte "RANDOM N : RANDOM 0..N-1 IN ARG", $0D
-        .byte "WAIT N   : PAUSE ~N SECONDS", $0D
-        .byte "PRINT ", $22, "WORD / PRINT N", $0D
-        .byte "_        : BACKSPACE INPUT", $0D
-        .byte "ALIASES  : FORWARD BACK RIGHT LEFT", $0D
-        .byte "  PENUP PENDOWN CLEARSCREEN", $0D
-        .byte "DEMO     : RUN BUILT-IN SLIDESHOW", $0D
-        .byte "HELP     : THIS LIST", $0D
-        .byte "BYE      : EXIT TO MONITOR", $0D
+; -------------------------------------------------------------------------
+; Paginated HELP. cmd_help (above) does the dispatch; here we just lay out
+; the table of contents and the 8 detail pages. Each page is null-
+; terminated. The TOC fits comfortably in a 24-line window so the user
+; can read it in one go before drilling into a topic.
+; -------------------------------------------------------------------------
+help_toc:
+        .byte $0D
+        .byte "APPLE-1 LOGO V2.0 -- HELP", $0D
+        .byte "TMS9918 graphics, 16K Apple-1", $0D
+        .byte $0D
+        .byte "Type HELP N for a topic page:", $0D
+        .byte $0D
+        .byte "  1  TURTLE MOTION", $0D
+        .byte "  2  PEN AND SCREEN", $0D
+        .byte "  3  DYNAMIC TURTLE (sprite)", $0D
+        .byte "  4  CONTROL FLOW", $0D
+        .byte "  5  VARIABLES & ARITHMETIC", $0D
+        .byte "  6  PROCEDURES", $0D
+        .byte "  7  CONSOLE & DEMO", $0D
+        .byte "  8  EXAMPLES", $0D
+        .byte $0D
+        .byte "ESC or Ctrl-G aborts a loop.", $0D
+        .byte "BYE returns to Woz Monitor.", $0D
         .byte 0
+
+help_p1:
+        .byte $0D, "1. TURTLE MOTION", $0D
+        .byte "  FD N / FORWARD N", $0D
+        .byte "    move forward N pixels", $0D
+        .byte "  BK N / BACK N", $0D
+        .byte "    move backward N pixels", $0D
+        .byte "  TR N / RIGHT N", $0D
+        .byte "    turn right N degrees", $0D
+        .byte "  TL N / LEFT N", $0D
+        .byte "    turn left N degrees", $0D
+        .byte "  HOME", $0D
+        .byte "    centre 128,96, heading 0", $0D
+        .byte "  SETXY X Y", $0D
+        .byte "    move to absolute (X,Y)", $0D
+        .byte "  SETH N", $0D
+        .byte "    set absolute heading 0..359", $0D
+        .byte 0
+
+help_p2:
+        .byte $0D, "2. PEN AND SCREEN", $0D
+        .byte "  PD / PENDOWN", $0D
+        .byte "    draw a trail (default)", $0D
+        .byte "  PU / PENUP", $0D
+        .byte "    no trail when moving", $0D
+        .byte "  CS / CLEARSCREEN", $0D
+        .byte "    erase the bitmap + HOME", $0D
+        .byte $0D
+        .byte "Pen state persists across", $0D
+        .byte "procs and REPEAT loops.", $0D
+        .byte 0
+
+help_p3:
+        .byte $0D, "3. DYNAMIC TURTLE", $0D
+        .byte "  SETSHAPE ", $22, "NAME", $0D
+        .byte "    swap to a 16x16 sprite.", $0D
+        .byte "    First call enables sprite", $0D
+        .byte "    mode and erases the bitmap", $0D
+        .byte "    triangle.", $0D
+        .byte $0D
+        .byte "Built-in shapes:", $0D
+        .byte "  BIRD1   bird, wings up", $0D
+        .byte "  BIRD2   bird, wings down", $0D
+        .byte "  TURTL   chunky turtle", $0D
+        .byte $0D
+        .byte "Animation example:", $0D
+        .byte "  TO FLY", $0D
+        .byte "    SETSHAPE ", $22, "BIRD1", $0D
+        .byte "    FD 4", $0D
+        .byte "    SETSHAPE ", $22, "BIRD2", $0D
+        .byte "    FD 4", $0D
+        .byte "  END", $0D
+        .byte "  PU  REPEAT 30 [FLY]", $0D
+        .byte 0
+
+help_p4:
+        .byte $0D, "4. CONTROL FLOW", $0D
+        .byte "  REPEAT N [ ... ]", $0D
+        .byte "    iterate N times", $0D
+        .byte "  REPEAT FOREVER [ ... ]", $0D
+        .byte "    endless loop. ESC or Ctrl-G", $0D
+        .byte "    abort cleanly; procs and", $0D
+        .byte "    variables survive intact.", $0D
+        .byte "  IF A OP B [ ... ]", $0D
+        .byte "    OP is one of:", $0D
+        .byte "      <  >  =  <=  >=  <>", $0D
+        .byte "  IFELSE A OP B [Y] [N]", $0D
+        .byte "    run [Y] if true else [N]", $0D
+        .byte "  STOP", $0D
+        .byte "    exit current proc early", $0D
+        .byte 0
+
+help_p5:
+        .byte $0D, "5. VARIABLES & ARITHMETIC", $0D
+        .byte "  MAKE NAME N", $0D
+        .byte "    set global var NAME = N", $0D
+        .byte "  :NAME", $0D
+        .byte "    read NAME in any arg", $0D
+        .byte "  :V + N    :V - N", $0D
+        .byte "    arithmetic in args", $0D
+        .byte "  RANDOM N", $0D
+        .byte "    uniform 0..N-1", $0D
+        .byte $0D
+        .byte "Up to 6 globals via MAKE.", $0D
+        .byte "Names are 6 chars (A-Z, 0-9).", $0D
+        .byte "Inside a proc body, :p1 :p2", $0D
+        .byte "shadow same-named globals.", $0D
+        .byte 0
+
+help_p6:
+        .byte $0D, "6. PROCEDURES", $0D
+        .byte "  TO NAME :p1 :p2 ... END", $0D
+        .byte "    multiline definition.", $0D
+        .byte "    Up to 2 named parameters.", $0D
+        .byte "  NAME args", $0D
+        .byte "    invoke previously defined", $0D
+        .byte "    procedure with 0..2 args.", $0D
+        .byte $0D
+        .byte "Limits:", $0D
+        .byte "  10 procs, 224 B per body", $0D
+        .byte "  16-level nested-call depth", $0D
+        .byte "  6-char identifiers (so", $0D
+        .byte "  THING and THING1 are", $0D
+        .byte "  distinct procs).", $0D
+        .byte $0D
+        .byte "Tail recursion is FREE: a proc", $0D
+        .byte "whose final statement calls", $0D
+        .byte "another proc reuses the frame.", $0D
+        .byte "spiral 4 90 = 49 levels in", $0D
+        .byte "a single frame.", $0D
+        .byte 0
+
+help_p7:
+        .byte $0D, "7. CONSOLE & DEMO", $0D
+        .byte "  PRINT ", $22, "WORD", $0D
+        .byte "    print literal word", $0D
+        .byte "  PRINT N", $0D
+        .byte "    print decimal", $0D
+        .byte "  WAIT N", $0D
+        .byte "    pause N seconds", $0D
+        .byte "  DEMO", $0D
+        .byte "    built-in slideshow", $0D
+        .byte "  HELP        this menu", $0D
+        .byte "  HELP N      a topic page", $0D
+        .byte "  BYE         exit to Wozmon", $0D
+        .byte $0D
+        .byte "ESC / Ctrl-G   abort a loop", $0D
+        .byte "_              backspace input", $0D
+        .byte 0
+
+help_p8:
+        .byte $0D, "8. EXAMPLES", $0D
+        .byte "  TO SQUARE", $0D
+        .byte "    REPEAT 4 [FD 50 RT 90]", $0D
+        .byte "  END", $0D
+        .byte "  TO FLOWER", $0D
+        .byte "    REPEAT 36 [RT 10 SQUARE]", $0D
+        .byte "  END", $0D
+        .byte "  FLOWER", $0D
+        .byte $0D
+        .byte "  TO SPIRAL :S :A", $0D
+        .byte "    IF :S > 100 [STOP]", $0D
+        .byte "    FD :S", $0D
+        .byte "    RT :A", $0D
+        .byte "    SPIRAL :S + 2 :A", $0D
+        .byte "  END", $0D
+        .byte "  CS  SPIRAL 4 90", $0D
+        .byte $0D
+        .byte "  TO FLY", $0D
+        .byte "    SETSHAPE ", $22, "BIRD1", $0D
+        .byte "    FD 4", $0D
+        .byte "    SETSHAPE ", $22, "BIRD2", $0D
+        .byte "    FD 4", $0D
+        .byte "  END", $0D
+        .byte "  PU  HOME  REPEAT 30 [FLY]", $0D
+        .byte 0
+
+; Stub so the legacy help_msg label still resolves (no longer used by
+; cmd_help itself; if some demo line still references HELP-style text,
+; it picks up the TOC).
+help_msg = help_toc
+
+.if 0
+; ---- old single-block help_msg (replaced by paginated above; kept here
+;      under .if 0 so the source still has the previous reference layout
+;      if you ever want to diff against it). The assembler skips the
+;      whole block. -----------------------------------------------------
+help_msg_unused_remove:
+        .byte $0D
+        .byte "==========================", $0D
+        .byte "APPLE-1 LOGO V2.0 (16K)", $0D
+        .byte "TMS9918 GRAPHICS, BY ARNAUD", $0D
+        .byte "==========================", $0D
+        .byte $0D
+        .byte "*** TURTLE MOTION ***", $0D
+        .byte "  FD N / FORWARD N", $0D
+        .byte "    move forward N pixels", $0D
+        .byte "  BK N / BACK N", $0D
+        .byte "    move back N pixels", $0D
+        .byte "  TR N / RIGHT N", $0D
+        .byte "    turn right N degrees", $0D
+        .byte "  TL N / LEFT N", $0D
+        .byte "    turn left N degrees", $0D
+        .byte "  HOME", $0D
+        .byte "    centre 128,96, heading 0", $0D
+        .byte "  SETXY X Y", $0D
+        .byte "    move to absolute (X,Y)", $0D
+        .byte "  SETH N", $0D
+        .byte "    set absolute heading 0..359", $0D
+        .byte $0D
+        .byte "*** PEN ***", $0D
+        .byte "  PU / PENUP", $0D
+        .byte "    no trail when moving", $0D
+        .byte "  PD / PENDOWN", $0D
+        .byte "    draw trail (default)", $0D
+        .byte "  CS / CLEARSCREEN", $0D
+        .byte "    erase + HOME", $0D
+        .byte $0D
+        .byte "*** DYNAMIC TURTLE (V2.0) ***", $0D
+        .byte "  SETSHAPE ", $22, "NAME", $0D
+        .byte "    swap to a 16x16 sprite.", $0D
+        .byte "    First call enables sprite", $0D
+        .byte "    mode and erases the bitmap", $0D
+        .byte "    triangle. Built-in shapes:", $0D
+        .byte "      BIRD1  bird wings up", $0D
+        .byte "      BIRD2  bird wings down", $0D
+        .byte "      TURTL  chunky turtle", $0D
+        .byte $0D
+        .byte "*** CONTROL FLOW ***", $0D
+        .byte "  REPEAT N [ ... ]", $0D
+        .byte "    iterate N times", $0D
+        .byte "  REPEAT FOREVER [ ... ]", $0D
+        .byte "    endless. ESC or CTRL-G", $0D
+        .byte "    abort cleanly. Procs and", $0D
+        .byte "    variables survive intact.", $0D
+        .byte "  IF A OP B [ ... ]", $0D
+        .byte "    run block when condition", $0D
+        .byte "    holds. OP is one of:", $0D
+        .byte "      <  >  =  <=  >=  <>", $0D
+        .byte "  IFELSE A OP B [Y] [N]", $0D
+        .byte "    run [Y] if true else [N]", $0D
+        .byte "  STOP", $0D
+        .byte "    exit current proc early", $0D
+        .byte $0D
+        .byte "*** VARIABLES ***", $0D
+        .byte "  MAKE NAME N", $0D
+        .byte "    set global var NAME=N", $0D
+        .byte "  :NAME", $0D
+        .byte "    read NAME in any arg", $0D
+        .byte "  :V + N   :V - N", $0D
+        .byte "    arithmetic in args", $0D
+        .byte "  RANDOM N", $0D
+        .byte "    uniform 0..N-1", $0D
+        .byte $0D
+        .byte "*** PROCEDURES ***", $0D
+        .byte "  TO NAME :p1 :p2 ... END", $0D
+        .byte "    multiline definition.", $0D
+        .byte "    Parameters are referenced", $0D
+        .byte "    as :p1, :p2 inside body.", $0D
+        .byte "  NAME args", $0D
+        .byte "    invoke previously defined", $0D
+        .byte "    procedure with N args.", $0D
+        .byte "  Limits: 10 procs, 224 B body,", $0D
+        .byte "  identifiers 6 chars A-Z 0-9", $0D
+        .byte "  (THING vs THING1 distinct).", $0D
+        .byte "  Tail recursion is FREE: a proc", $0D
+        .byte "  whose final statement calls", $0D
+        .byte "  itself reuses the frame and", $0D
+        .byte "  costs zero stack growth.", $0D
+        .byte "  Other nested calls go up to", $0D
+        .byte "  16 levels via the control", $0D
+        .byte "  stack in PROCBSS.", $0D
+        .byte $0D
+        .byte "*** CONSOLE ***", $0D
+        .byte "  PRINT ", $22, "WORD", $0D
+        .byte "    print a literal word", $0D
+        .byte "  PRINT N", $0D
+        .byte "    print decimal number", $0D
+        .byte "  WAIT N", $0D
+        .byte "    pause N seconds", $0D
+        .byte "  HELP", $0D
+        .byte "    this reference", $0D
+        .byte "  DEMO", $0D
+        .byte "    built-in slideshow", $0D
+        .byte "  BYE", $0D
+        .byte "    return to Woz Monitor", $0D
+        .byte $0D
+        .byte "*** EXAMPLES ***", $0D
+        .byte "  TO SQUARE", $0D
+        .byte "    REPEAT 4 [FD 50 RT 90]", $0D
+        .byte "  END", $0D
+        .byte "  TO FLOWER", $0D
+        .byte "    REPEAT 36 [RT 10 SQUARE]", $0D
+        .byte "  END", $0D
+        .byte "  FLOWER", $0D
+        .byte $0D
+        .byte "  TO SPIRAL :S :A", $0D
+        .byte "    IF :S > 100 [STOP]", $0D
+        .byte "    FD :S", $0D
+        .byte "    RT :A", $0D
+        .byte "    SPIRAL :S + 2 :A", $0D
+        .byte "  END", $0D
+        .byte "  CS  SPIRAL 4 90", $0D
+        .byte $0D
+        .byte "  TO FLY", $0D
+        .byte "    SETSHAPE ", $22, "BIRD1", $0D
+        .byte "    FD 4", $0D
+        .byte "    SETSHAPE ", $22, "BIRD2", $0D
+        .byte "    FD 4", $0D
+        .byte "  END", $0D
+        .byte "  PU  REPEAT 30 [FLY]", $0D
+        .byte $0D
+        .byte "*** BREAK / EDIT ***", $0D
+        .byte "  ESC      abort current loop", $0D
+        .byte "  CTRL-G   same (telnet-friendly)", $0D
+        .byte "  _        backspace at prompt", $0D
+        .byte $0D
+        .byte "Type any command. The prompt is", $0D
+        .byte "?  in REPL,  >  inside TO/END.", $0D
+        .byte 0
+.endif
 
 ; ============================================================================
 ; read_line: poll KBD until CR, echo each char, store into line_buf.
@@ -389,8 +730,9 @@ parse_and_exec:
         JMP @ok
 @not_rb:
         JSR find_mnem        ; -> A=flag, mptr=handler, line_idx advanced. C=1 on miss.
-        BCS @try_proc
-        STA tmp               ; flag byte
+        BCC @hit
+        JMP @try_proc        ; long jump (added flags pushed @try_proc out of BCS range)
+@hit:   STA tmp               ; flag byte
         CMP #1
         BEQ @one_arg
         CMP #2
@@ -401,6 +743,10 @@ parse_and_exec:
         BEQ @print_cmd
         CMP #'I'
         BEQ @if_cmd
+        CMP #'E'
+        BEQ @ifelse_cmd
+        CMP #'S'
+        BEQ @setshape_cmd
         ; flag 0: no arg
         JMP @dispatch
 @one_arg:
@@ -439,6 +785,14 @@ parse_and_exec:
 @if_cmd:
         JSR mark_ok
         JSR cmd_if
+        JMP @loop
+@ifelse_cmd:
+        JSR mark_ok
+        JSR cmd_ifelse
+        JMP @loop
+@setshape_cmd:
+        JSR mark_ok
+        JSR cmd_setshape
         JMP @loop
 @dispatch:
         JSR mark_ok
@@ -993,13 +1347,75 @@ cmd_stop:
         STA stop_flag
         RTS
 
+; cmd_help: paginated reference.
+;   HELP            -> print the table-of-contents page (help_toc).
+;   HELP N          -> print topic page N (1..NUM_HELP_PAGES).
+;   HELP 0 / unknown -> back to TOC, with a "?" hint.
+;
+; The hand-rolled CMP/BNE chain trades ~24 bytes vs. a 16-byte indexed
+; lookup table for clarity; CODE has plenty of headroom in the 16 KB
+; build, and HELP is only ever invoked interactively.
 cmd_help:
-        LDA #<help_msg
+        JSR skip_spaces
+        LDX line_idx
+        LDA line_buf,X
+        AND #$7F
+        CMP #$0D
+        BEQ @toc
+        CMP #']'
+        BEQ @toc
+        JSR parse_dec_arg
+        LDA arg_lo
+        BEQ @toc
+        CMP #1
+        BNE @n2
+        LDA #<help_p1
+        LDX #>help_p1
+        JMP print_help_str
+@n2:    CMP #2
+        BNE @n3
+        LDA #<help_p2
+        LDX #>help_p2
+        JMP print_help_str
+@n3:    CMP #3
+        BNE @n4
+        LDA #<help_p3
+        LDX #>help_p3
+        JMP print_help_str
+@n4:    CMP #4
+        BNE @n5
+        LDA #<help_p4
+        LDX #>help_p4
+        JMP print_help_str
+@n5:    CMP #5
+        BNE @n6
+        LDA #<help_p5
+        LDX #>help_p5
+        JMP print_help_str
+@n6:    CMP #6
+        BNE @n7
+        LDA #<help_p6
+        LDX #>help_p6
+        JMP print_help_str
+@n7:    CMP #7
+        BNE @n8
+        LDA #<help_p7
+        LDX #>help_p7
+        JMP print_help_str
+@n8:    CMP #8
+        BNE @toc
+        LDA #<help_p8
+        LDX #>help_p8
+        JMP print_help_str
+@toc:   LDA #<help_toc
+        LDX #>help_toc
+        ; fall through
+
+print_help_str:
         STA mptr_lo
-        LDA #>help_msg
-        STA mptr_hi
-        LDY #0
-@l:     LDA (mptr_lo),Y
+        STX mptr_hi
+@l:     LDY #0
+        LDA (mptr_lo),Y
         BEQ @done
         ORA #$80
         JSR ECHO
@@ -1124,6 +1540,50 @@ demo_script:
         .byte "PRINT ", $22, "SPIRAL91", $0D
         .byte "SPIRAL 0 91", $0D
         .byte "WAIT 3", $0D
+        .byte "CS", $0D
+        ; --- V2.0 dynamic-turtle scene: figure-8 bird flight --------------
+        ; True figure-8: BFR is a wing-flap cycle that turns right (+24°
+        ; net), BFL the same cycle turning left (-24°). BFLY runs 8 BFR
+        ; followed by 8 BFL, so each lobe sweeps 192° (a bit more than a
+        ; half-circle, giving the loops their bulged shape). The WAIT 1
+        ; inside each cycle paces it to ~0.8s/flap so it's watchable at
+        ; native 1x emulation speed instead of a blur.
+        ; After the flight, SETSHAPE "ARROW restores the classic bitmap
+        ; turtle so the rest of the REPL doesn't see a stale bird sprite.
+        .byte "PRINT ", $22, "BIRDFLY", $0D
+        ; PAUSE 1 (~100 ms) AFTER each SETSHAPE so both wing positions
+        ; get an equal hold time on screen -- otherwise BIRD1 would only
+        ; flash for the time of one FD+TR (~1 ms) before being replaced.
+        .byte "TO BFR", $0D
+        .byte "SETSHAPE ", $22, "BIRD1", $0D
+        .byte "FD 3", $0D
+        .byte "TR 12", $0D
+        .byte "PAUSE 1", $0D
+        .byte "SETSHAPE ", $22, "BIRD2", $0D
+        .byte "FD 3", $0D
+        .byte "TR 12", $0D
+        .byte "PAUSE 1", $0D
+        .byte "END", $0D
+        .byte "TO BFL", $0D
+        .byte "SETSHAPE ", $22, "BIRD1", $0D
+        .byte "FD 3", $0D
+        .byte "TL 12", $0D
+        .byte "PAUSE 1", $0D
+        .byte "SETSHAPE ", $22, "BIRD2", $0D
+        .byte "FD 3", $0D
+        .byte "TL 12", $0D
+        .byte "PAUSE 1", $0D
+        .byte "END", $0D
+        .byte "TO BFLY", $0D
+        .byte "REPEAT 8 [BFR]", $0D
+        .byte "REPEAT 8 [BFL]", $0D
+        .byte "END", $0D
+        .byte "PU", $0D
+        .byte "HOME", $0D
+        .byte "BFLY", $0D
+        .byte "WAIT 2", $0D
+        .byte "SETSHAPE ", $22, "ARROW", $0D
+        .byte "PD", $0D
         .byte "CS", $0D
         .byte "PRINT ", $22, "END", $0D
         .byte 0
@@ -1606,32 +2066,58 @@ do_tail_trampoline:
         STA proc_body_cursor
         RTS
 
-; proc_invoke (V1.6): bind params, then run a (possibly multi-line) body.
-;   Supports 1 level of nested invocation (caller -> proc1 -> proc2). Tracks
-;   depth in `in_proc_save` (0/1/2). Each depth has its own line_buf save
-;   slot (proc_save_buf / proc_save_buf2); proc_body_cursor/total are pushed
-;   on the 6502 stack so the outer body walker can resume.
+; ============================================================================
+; ctrl_frame_addr: compute mptr_save = ctrl_stack + ctrl_sp * CTRL_FRAME (64).
+;   Used by both push and pop in proc_invoke. CTRL_STACK_DEPTH=16 so sp
+;   fits in 4 bits; sp*64 spans 0..960 = 0x000..0x3C0, so the high byte
+;   adds at most 3 to ctrl_stack's high byte.
+; ============================================================================
+ctrl_frame_addr:
+        LDA ctrl_sp
+        LSR
+        LSR                       ; sp >> 2 -> high byte of sp*64
+        CLC
+        ADC #>ctrl_stack
+        STA mptr_save_hi
+        LDA ctrl_sp
+        AND #$03                  ; (sp & 3) -> bits 6..7 of low byte
+        ASL
+        ASL
+        ASL
+        ASL
+        ASL
+        ASL                       ; *64
+        CLC
+        ADC #<ctrl_stack
+        STA mptr_save_lo
+        BCC @done
+        INC mptr_save_hi
+@done:  RTS
+
+; proc_invoke (V2.0): bind params, then run a (possibly multi-line) body.
+;   Replaces V1.8's pair of 60 B save buffers with a 16-frame control
+;   stack in PROCBSS, so non-tail nested calls (e.g. THING1 = REPEAT 4
+;   [THING] inside SPIRAL inside FLOWER ...) go up to 16 deep.
+;   Tail calls still bypass the stack entirely via do_tail_trampoline,
+;   so deep tail recursion is free.
 ;
 ;   Steps:
-;     1. Refuse if depth already 2 -> ERR_FULL.
-;     2. Push outer body cursor/total so we can scratch them during arg
-;        parsing without losing the outer walker's state.
-;     3. Push outer param state (n_params_active + 2 x (name+value)).
-;     4. Read nparams from slot. Parse N decimal args from the OUTER line
-;        (so :OUTER_VAR still resolves under the OUTER param state).
-;     5. Copy param names from the slot, values from the parsed args, into
-;        param_slotN. Activate them by setting n_params_active = nparams.
-;     6. Save the outer line_buf to proc_save_buf (depth 0) or
-;        proc_save_buf2 (depth 1), then INC in_proc_save.
-;     7. Walk the body one CR-terminated line at a time through
-;        parse_and_exec.
-;     8. DEC in_proc_save, restore line_buf+line_idx from the matching
-;        depth frame, pop the outer param state, pop outer cursor/total.
+;     1. Refuse if ctrl_sp == CTRL_STACK_DEPTH -> ERR_FULL.
+;     2. Push outer body cursor/total + 17 B param state on the 6502
+;        stack so we can scratch them during arg parsing.
+;     3. Read nparams from slot. Parse N decimal args under OUTER scope.
+;     4. Copy param names from the slot, values from the parsed args,
+;        into param_slotN. Activate them by setting n_params_active.
+;     5. Push line_buf+line_idx into the next control-stack frame and
+;        INC ctrl_sp.
+;     6. Walk the body line by line through parse_and_exec.
+;     7. DEC ctrl_sp, pop line_buf+line_idx from the same frame, pop the
+;        outer param state, pop outer cursor/total.
 proc_invoke:
-        LDA in_proc_save
-        CMP #2
+        LDA ctrl_sp
+        CMP #CTRL_STACK_DEPTH
         BCC @ok_to_call
-        ; nested too deep (only 1 level supported)
+        ; control stack full -- non-tail recursion exceeded depth limit
         LDA #ERR_FULL
         JSR print_err
         RTS
@@ -1755,31 +2241,22 @@ proc_invoke:
 @bind_done:
         LDA tmp
         STA n_params_active
-        ; --- 6. save outer line_buf into the depth-N frame ---
-        LDA in_proc_save
-        BNE @sv_buf2
-        LDX #0
-@sv_buf1:
-        LDA line_buf,X
-        STA proc_save_buf,X
-        INX
-        CPX #LINE_MAX
-        BNE @sv_buf1
+        ; --- 6. push current line_buf+line_idx onto control stack ---
+        ; Frame layout (CTRL_FRAME=64): 0..59 = line_buf, 60 = line_idx,
+        ; 61..63 = reserved (proc_body_cursor/total are pushed to the
+        ; 6502 stack at @ok_to_call top, so we don't need to repeat them
+        ; here). Address: ctrl_stack + ctrl_sp * 64.
+        JSR ctrl_frame_addr      ; mptr_save_lo:hi -> ctrl_stack + sp*64
+        LDY #0
+@ctrl_push:
+        LDA line_buf,Y
+        STA (mptr_save_lo),Y
+        INY
+        CPY #LINE_MAX
+        BNE @ctrl_push
         LDA line_idx
-        STA proc_save_idx
-        JMP @after_sv
-@sv_buf2:
-        LDX #0
-@sv_buf2_l:
-        LDA line_buf,X
-        STA proc_save_buf2,X
-        INX
-        CPX #LINE_MAX
-        BNE @sv_buf2_l
-        LDA line_idx
-        STA proc_save_idx2
-@after_sv:
-        INC in_proc_save
+        STA (mptr_save_lo),Y     ; Y = LINE_MAX = 60
+        INC ctrl_sp
         ; total body length + cursor (live across body parse_and_exec)
         LDY #PROC_BODYLEN_OFF
         LDA (mptr_lo),Y
@@ -1834,31 +2311,18 @@ proc_invoke:
         ; resumes normally. (break_flag flows through to REPL.)
         LDA #0
         STA stop_flag
-        ; --- 8. restore outer line_buf + line_idx (depth-N frame) ---
-        DEC in_proc_save
-        LDA in_proc_save
-        BNE @rs_buf2
-        LDX #0
-@rs_buf1:
-        LDA proc_save_buf,X
-        STA line_buf,X
-        INX
-        CPX #LINE_MAX
-        BNE @rs_buf1
-        LDA proc_save_idx
+        ; --- 8. pop control-stack frame: restore line_buf + line_idx ---
+        DEC ctrl_sp
+        JSR ctrl_frame_addr      ; mptr_save -> ctrl_stack + sp*64
+        LDY #0
+@ctrl_pop:
+        LDA (mptr_save_lo),Y
+        STA line_buf,Y
+        INY
+        CPY #LINE_MAX
+        BNE @ctrl_pop
+        LDA (mptr_save_lo),Y     ; Y = LINE_MAX = 60
         STA line_idx
-        JMP @after_rs
-@rs_buf2:
-        LDX #0
-@rs_buf2_l:
-        LDA proc_save_buf2,X
-        STA line_buf,X
-        INX
-        CPX #LINE_MAX
-        BNE @rs_buf2_l
-        LDA proc_save_idx2
-        STA line_idx
-@after_rs:
         ; --- pop outer param state (LIFO) ---
         PLA
         STA param_slot1_value+1
@@ -1928,6 +2392,9 @@ cmd_print:
         BEQ @sdone
         CMP #$0D
         BEQ @sdone
+        CMP #']'                  ; V2.0: stop on ']' so PRINT inside an
+        BEQ @sdone                ; IF/IFELSE/REPEAT block doesn't eat the
+                                  ; closing bracket and confuse the caller.
         ORA #$80
         JSR ECHO
         INC line_idx
@@ -1945,6 +2412,28 @@ cmd_wait:
         LDA arg_lo
         BEQ @done
 @outer: LDX #0
+@x:     LDY #0
+@y:     NOP
+        NOP
+        DEY
+        BNE @y
+        DEX
+        BNE @x
+        DEC arg_lo
+        BNE @outer
+@done:  RTS
+
+; cmd_pause: PAUSE N -- ~100 ms per arg unit. About 1/8 of WAIT N, fine
+;   enough for animation timing. Single byte arg.
+;
+;   Inner loop is the same NOP-NOP-DEY busy-wait as WAIT (~3 072 cycles
+;   per X iter at 1 MHz), but X starts at 32 instead of 0 so each arg
+;   unit is 32 * 3 072 = 98 304 cycles ≈ 96 ms. PAUSE 5 ≈ 0.5 s,
+;   PAUSE 10 ≈ 1 s. For visible bird-flap pacing: PAUSE 2 (~0.2 s).
+cmd_pause:
+        LDA arg_lo
+        BEQ @done
+@outer: LDX #32
 @x:     LDY #0
 @y:     NOP
         NOP
@@ -2032,8 +2521,11 @@ cmd_home:
         LDA #0
         STA th_lo
         STA th_hi
-        LDA #1
-        STA pen
+        ; (V2.0 fix) HOME no longer flips pen back down -- the pen-state
+        ; should survive a HOME so PU + HOME + REPEAT [...] flies the
+        ; sprite without leaving a bitmap trail. CS still implicitly
+        ; resets pen via main: -> cmd_cs's clear_bitmap path (the screen
+        ; is empty so it doesn't matter).
         JSR draw_turtle
         RTS
 
@@ -2339,120 +2831,180 @@ cmd_repeat:
 ;   if_a_lo / if_a_hi / if_op_save live in PROCBSS (declared up there with
 ;   the rest of the IF/proc state, not here in CODE).
 ; ============================================================================
+; Comparison operator bitmask. parse_op stores the set of allowed signs
+; for `(a-b)` -- e.g. `<` accepts only negative results, `<=` accepts
+; negative or zero. cmp_eval computes the actual sign of (a-b) as one
+; of these bits and ANDs with if_op_save: non-zero → true.
+OK_NEG    = $01
+OK_ZERO   = $02
+OK_POS    = $04
+
+; parse_op: read 1-2 chars from line_buf and set if_op_save to the
+; corresponding sign-bitmask. Sets if_op_save = 0 on a bad operator.
+;   <    OK_NEG
+;   =    OK_ZERO
+;   >    OK_POS
+;   <=   OK_NEG | OK_ZERO
+;   >=   OK_POS | OK_ZERO
+;   <>   OK_NEG | OK_POS
+; line_idx advanced past whatever was consumed (1 or 2 chars).
+parse_op:
+        JSR skip_spaces
+        LDX line_idx
+        LDA line_buf,X
+        AND #$7F
+        CMP #'<'
+        BEQ @op_lt
+        CMP #'>'
+        BEQ @op_gt
+        CMP #'='
+        BEQ @op_eq
+        ; not an operator
+        LDA #0
+        STA if_op_save
+        RTS
+@op_eq: INC line_idx
+        LDA #OK_ZERO
+        STA if_op_save
+        RTS
+@op_lt: INC line_idx                ; consumed '<'
+        LDX line_idx
+        LDA line_buf,X
+        AND #$7F
+        CMP #'='
+        BEQ @op_le
+        CMP #'>'
+        BEQ @op_ne
+        ; bare '<'
+        LDA #OK_NEG
+        STA if_op_save
+        RTS
+@op_le: INC line_idx
+        LDA #(OK_NEG | OK_ZERO)
+        STA if_op_save
+        RTS
+@op_ne: INC line_idx
+        LDA #(OK_NEG | OK_POS)
+        STA if_op_save
+        RTS
+@op_gt: INC line_idx                ; consumed '>'
+        LDX line_idx
+        LDA line_buf,X
+        AND #$7F
+        CMP #'='
+        BEQ @op_ge
+        ; bare '>'
+        LDA #OK_POS
+        STA if_op_save
+        RTS
+@op_ge: INC line_idx
+        LDA #(OK_POS | OK_ZERO)
+        STA if_op_save
+        RTS
+
+; cmp_eval: signed 16-bit (a-b), store 0/1 in tmp.
+;   In : if_a_lo:hi (a), arg_lo:hi (b), if_op_save (bitmask).
+;   Out: tmp = 1 if (a OP b) holds, else 0. Clobbers A, tmp2.
+cmp_eval:
+        SEC
+        LDA if_a_lo
+        SBC arg_lo
+        STA tmp                     ; result lo
+        LDA if_a_hi
+        SBC arg_hi
+        STA tmp2                    ; result hi
+        ; Pick the actual sign-bit
+        LDA tmp2
+        BMI @sign_neg
+        ORA tmp
+        BEQ @sign_zero
+        LDA #OK_POS
+        JMP @check
+@sign_neg:
+        LDA #OK_NEG
+        JMP @check
+@sign_zero:
+        LDA #OK_ZERO
+@check: AND if_op_save
+        BEQ @false
+        LDA #1
+        STA tmp
+        RTS
+@false: LDA #0
+        STA tmp
+        RTS
+
+; scan_block: starting at line_idx (after skip_spaces), find the next
+; bracketed `[...]` slice. Sets rep_start = position just past '[',
+; rep_end = position of matching ']'. Advances line_idx past ']'.
+; Returns C=0 on success, C=1 if no '[' or unmatched (ERR_NO_RB).
+scan_block:
+        JSR skip_spaces
+        LDX line_idx
+        LDA line_buf,X
+        AND #$7F
+        CMP #'['
+        BNE @sb_miss
+        INX
+        STX rep_start
+        LDY #1
+@sb_l:  LDA line_buf,X
+        AND #$7F
+        CMP #$0D
+        BEQ @sb_miss
+        CMP #'['
+        BNE @sb_no
+        INY
+        JMP @sb_n
+@sb_no: CMP #']'
+        BNE @sb_n
+        DEY
+        BEQ @sb_found
+@sb_n:  INX
+        JMP @sb_l
+@sb_found:
+        STX rep_end
+        ; advance line_idx past ']'
+        INX
+        STX line_idx
+        CLC
+        RTS
+@sb_miss:
+        SEC
+        RTS
+
 cmd_if:
         ; The 'I' dispatch flag in parse_and_exec called us before any args
-        ; were parsed (unlike numeric flags). Parse the LHS, then op, then RHS.
+        ; were parsed (unlike numeric flags). Parse LHS, op, RHS, evaluate.
         JSR parse_dec_arg
         LDA arg_lo
         STA if_a_lo
         LDA arg_hi
         STA if_a_hi
-        JSR skip_spaces
-        LDX line_idx
-        LDA line_buf,X
-        AND #$7F
-        STA if_op_save
-        ; valid ops: > < =
-        CMP #'>'
-        BEQ @op_ok
-        CMP #'<'
-        BEQ @op_ok
-        CMP #'='
-        BEQ @op_ok
-        JMP @bad_arg
-@op_ok: INC line_idx             ; consume op
-        JSR parse_dec_arg
-        ; --- compare: signed 16-bit subtraction (a - b) -> tmp:tmp2 ---
-        SEC
-        LDA if_a_lo
-        SBC arg_lo
-        STA tmp
-        LDA if_a_hi
-        SBC arg_hi
-        STA tmp2
-        ; condition flag in A (1 = true, 0 = false)
+        JSR parse_op
         LDA if_op_save
-        CMP #'>'
-        BEQ @cmp_gt
-        CMP #'<'
-        BEQ @cmp_lt
-        ; '=': both bytes zero?
+        BEQ @bad_arg
+        JSR parse_dec_arg
+        JSR cmp_eval                ; tmp = 0/1
+        JSR scan_block              ; sets rep_start/rep_end, line_idx past ']'
+        BCS @bad
+        ; If false, we're done -- line_idx is already past ']'.
         LDA tmp
-        ORA tmp2
-        BEQ @set_true
-        BNE @set_false
-@cmp_gt:; a > b iff (a-b) > 0  → not negative AND not zero
-        LDA tmp2
-        BMI @set_false
-        ORA tmp
-        BEQ @set_false
-        BNE @set_true
-@cmp_lt:; a < b iff (a-b) < 0  → high byte negative
-        LDA tmp2
-        BMI @set_true
-        BPL @set_false
-@set_true:
-        LDA #1
-        STA tmp
-        JMP @scan_block
-@set_false:
-        LDA #0
-        STA tmp
-@scan_block:
-        ; expect '['
-        JSR skip_spaces
-        LDX line_idx
-        LDA line_buf,X
-        AND #$7F
-        CMP #'['
-        BNE @bad
-        INX
-        STX rep_start
-        LDY #1
-@s_scan:LDA line_buf,X
-        AND #$7F
-        CMP #$0D
-        BEQ @bad
-        CMP #'['
-        BNE @s_no
-        INY
-        JMP @s_next
-@s_no:  CMP #']'
-        BNE @s_next
-        DEY
-        BEQ @s_found
-@s_next:INX
-        JMP @s_scan
-@s_found:
-        STX rep_end
-        ; if false, skip past ']' and return
-        LDA tmp
-        BNE @run_body
-        LDA rep_end
-        CLC
-        ADC #1
-        STA line_idx
-        RTS
-@run_body:
-        LDA rep_start
-        STA line_idx
-        ; save bracket bounds so a nested IF/REPEAT inside the body can
-        ; reuse rep_start/rep_end without losing ours
-        LDA rep_start
+        BEQ @done
+        ; If true, run the block via parse_and_exec.
+        ; Save line_idx (now past ']') so we can resume there afterwards.
+        LDA line_idx
         PHA
         LDA rep_end
-        PHA
+        PHA                         ; preserve in case parse_and_exec recurses
+        LDA rep_start
+        STA line_idx
         JSR parse_and_exec
         PLA
         STA rep_end
         PLA
-        STA rep_start
-        ; advance past ']'
-        LDA rep_end
-        CLC
-        ADC #1
         STA line_idx
-        RTS
+@done:  RTS
 @bad:   LDA #ERR_NO_RB
         JSR print_err
 @bskip: LDX line_idx
@@ -2467,6 +3019,79 @@ cmd_if:
         LDA #ERR_BAD_ARG
         JSR print_err
         JMP @bskip
+
+; cmd_ifelse: IFELSE a OP b [yes] [no].
+;   Same comparison logic as cmd_if; runs the appropriate block.
+cmd_ifelse:
+        JSR parse_dec_arg
+        LDA arg_lo
+        STA if_a_lo
+        LDA arg_hi
+        STA if_a_hi
+        JSR parse_op
+        LDA if_op_save
+        BEQ @bad_arg
+        JSR parse_dec_arg
+        JSR cmp_eval                ; tmp = 0/1
+        ; --- scan first block (yes) ---
+        JSR scan_block
+        BCS @bad
+        ; latch yes-block bounds; scan_block clobbers rep_start/rep_end on
+        ; the next call so we save to PROCBSS scratch.
+        LDA rep_start
+        STA if_a_lo                 ; reuse: yes_start
+        LDA rep_end
+        STA if_a_hi                 ; reuse: yes_end
+        ; --- scan second block (no) ---
+        JSR scan_block
+        BCS @bad
+        ; line_idx now sits past the ']' of the no-block; we'll resume
+        ; here regardless of which branch ran.
+        LDA line_idx
+        PHA
+        ; Decide which slice to run.
+        LDA tmp
+        BNE @run_yes
+        ; false: rep_start/rep_end already point at the no-block.
+        LDA rep_start
+        STA line_idx
+        JMP @run_block
+@run_yes:
+        LDA if_a_lo                 ; yes_start
+        STA rep_start
+        LDA if_a_hi                 ; yes_end
+        STA rep_end
+        LDA rep_start
+        STA line_idx
+@run_block:
+        ; preserve rep_start/rep_end across recursive parse_and_exec
+        LDA rep_start
+        PHA
+        LDA rep_end
+        PHA
+        JSR parse_and_exec
+        PLA
+        STA rep_end
+        PLA
+        STA rep_start
+        ; restore line_idx to past the no-block
+        PLA
+        STA line_idx
+        RTS
+@bad:   LDA #ERR_NO_RB
+        JSR print_err
+@bskip2:LDX line_idx
+        LDA line_buf,X
+        AND #$7F
+        CMP #$0D
+        BEQ @bdone3
+        INC line_idx
+        JMP @bskip2
+@bdone3:RTS
+@bad_arg:
+        LDA #ERR_BAD_ARG
+        JSR print_err
+        JMP @bskip2
 
 ; ============================================================================
 ; -- Bitmap turtle (drawn as 3 line_xy segments forming an arrowhead) --
@@ -2637,10 +3262,36 @@ xor_turtle:
         STA plot_mode
         RTS
 
-; draw_turtle: if turtle_visible == 0 AND turtle fits on screen, draw + flag.
-;   Skips draw if tx/ty too close to an edge (vertices would wrap and produce
-;   garbage Bresenham segments). Margin = 9 (max tip extension).
+; draw_turtle: in bitmap mode, XOR-draw the triangle and flag visible.
+;   In sprite mode, write 4 bytes (Y, X, name, color) to the sprite #0
+;   attribute slot at VRAM $3B00. The TMS9918 hardware-blits the sprite
+;   over the bitmap; turtle_visible stays untouched (no XOR bookkeeping).
 draw_turtle:
+        LDA sprite_mode
+        BEQ @bitmap
+        ; --- sprite path: write sprite-0 attribute (Y, X, name=0, color=$0F)
+        LDA #$00
+        STA VDP_CTRL
+        LDA #$3B | $40            ; $3B00 + write enable
+        STA VDP_CTRL
+        ; Y = ty - 9: TMS9918 displays sprite at scanline (Y+1), and the
+        ; 16x16 pattern's top-left is the sprite origin -- shift up by 8
+        ; to centre on (tx,ty). With Y=$D0 special, we never reach it for
+        ; ty in 0..192 -- ty-9 lands in 0xF7..0xB7, all valid.
+        LDA ty_lo
+        SEC
+        SBC #9
+        STA VDP_DATA
+        LDA tx_lo
+        SEC
+        SBC #8
+        STA VDP_DATA
+        LDA #0                    ; pattern name = 0 (sprite_pattern_table[0])
+        STA VDP_DATA
+        LDA #$0F                  ; foreground colour = white (15)
+        STA VDP_DATA
+        RTS
+@bitmap:
         LDA turtle_visible
         BNE @done
         ; bounds check: tx in [9..246], ty in [9..182]
@@ -2660,9 +3311,13 @@ draw_turtle:
         STA turtle_visible
 @done:  RTS
 
-; erase_turtle: if turtle_visible == 1, compute verts at CURRENT pose
-;   (must match the verts used at last draw) + XOR-draw to remove, clear flag.
+; erase_turtle: bitmap mode -- XOR the triangle out at its current pose.
+;   Sprite mode -- nothing to do (TMS9918 sprites don't bleed into the
+;   pattern table, so moving the sprite is enough; old position vanishes
+;   automatically on the next attribute write).
 erase_turtle:
+        LDA sprite_mode
+        BNE @done
         LDA turtle_visible
         BEQ @done
         JSR compute_turtle_verts
@@ -2670,6 +3325,182 @@ erase_turtle:
         LDA #0
         STA turtle_visible
 @done:  RTS
+
+; ============================================================================
+; cmd_setshape: SETSHAPE "NAME -- swap the dynamic-turtle sprite pattern.
+;   Looks up NAME (BIRD1, BIRD2, TURTL, ...) in shape_table, copies the
+;   matching 32-byte 16x16 pattern into the TMS9918 sprite-pattern table
+;   slot 0 (VRAM $1800), then re-positions the turtle sprite. On the
+;   first call, also flips the VDP into 16x16-sprite mode (R1 |= $02)
+;   and erases any visible bitmap turtle so the two render paths don't
+;   ghost on top of each other.
+; ============================================================================
+cmd_setshape:
+        JSR skip_spaces
+        ; optional leading "
+        LDX line_idx
+        LDA line_buf,X
+        AND #$7F
+        CMP #'"'
+        BNE @rd
+        INC line_idx
+@rd:    JSR read_var_name        ; mnem_buf <- shape name (uppercased, padded)
+        LDA mnem_buf
+        CMP #' '
+        BNE @name_ok
+        JMP @bad_name             ; long jump (insertion of ARROW + search
+                                  ; setup pushed @bad_name out of branch range)
+@name_ok:
+        ; --- "ARROW" is a sentinel: revert to the classic bitmap-triangle
+        ;     turtle. Hide sprite-0 (Y=$D0 terminator), clear sprite_mode,
+        ;     redraw the bitmap turtle at the current (tx,ty). Lets the
+        ;     demo end with the original arrow visible instead of the
+        ;     last loaded bird sprite.
+        LDA mnem_buf
+        CMP #'A'
+        BNE @search_table
+        LDA mnem_buf+1
+        CMP #'R'
+        BNE @search_table
+        LDA mnem_buf+2
+        CMP #'R'
+        BNE @search_table
+        LDA mnem_buf+3
+        CMP #'O'
+        BNE @search_table
+        LDA mnem_buf+4
+        CMP #'W'
+        BNE @search_table
+        ; --- ARROW ---
+        LDA sprite_mode
+        BEQ @arrow_done           ; already in bitmap mode -- no-op
+        ; Y=$D0 to sprite #0 attribute = TMS9918 sprite-list terminator.
+        LDA #$00
+        STA VDP_CTRL
+        LDA #$3B | $40
+        STA VDP_CTRL
+        LDA #$D0
+        STA VDP_DATA
+        ; Flip back to bitmap mode and redraw the triangle.
+        LDA #0
+        STA sprite_mode
+        JSR draw_turtle           ; bitmap path now -- triangle XOR'd in
+@arrow_done:
+        RTS
+
+@search_table:
+        ; Search shape_table for mnem_buf (entries are NAME_LEN bytes name +
+        ; 2 bytes pattern pointer; $FF terminator).
+        LDA #<shape_table
+        STA mptr_lo
+        LDA #>shape_table
+        STA mptr_hi
+@search:
+        LDY #0
+        LDA (mptr_lo),Y
+        CMP #$FF
+        BEQ @bad_name
+@scmp:  LDA (mptr_lo),Y
+        CMP mnem_buf,Y
+        BNE @snext
+        INY
+        CPY #NAME_LEN
+        BNE @scmp
+        ; match -- pattern pointer at offset NAME_LEN (lo) / NAME_LEN+1 (hi)
+        LDY #NAME_LEN
+        LDA (mptr_lo),Y
+        STA shape_pat_lo
+        INY
+        LDA (mptr_lo),Y
+        STA shape_pat_hi
+        JMP @found
+@snext: CLC
+        LDA mptr_lo
+        ADC #(NAME_LEN+2)
+        STA mptr_lo
+        BCC @search
+        INC mptr_hi
+        JMP @search
+
+@found:
+        ; First-time entry: erase any bitmap turtle, enable 16x16 sprites.
+        LDA sprite_mode
+        BNE @load_pat
+        JSR erase_turtle          ; bitmap path while sprite_mode is still 0
+        ; R1 = $C2 = 16K + DISP + IE off + sprite-16 (M1=0 already in R0)
+        LDA #$C2
+        STA VDP_CTRL
+        LDA #$81                  ; write to register 1
+        STA VDP_CTRL
+        LDA #1
+        STA sprite_mode
+@load_pat:
+        ; Copy 32 bytes from (shape_pat),Y to VRAM $1800 (sprite pattern 0).
+        LDA #$00
+        STA VDP_CTRL
+        LDA #$18 | $40
+        STA VDP_CTRL
+        LDY #0
+@cppat: LDA (shape_pat_lo),Y
+        STA VDP_DATA
+        INY
+        CPY #32
+        BNE @cppat
+        ; Reposition sprite at the current turtle (tx, ty).
+        JSR draw_turtle
+        RTS
+@bad_name:
+        LDA #ERR_BAD_NAME
+        JSR print_err
+        RTS
+
+; shape_table: name (NAME_LEN = 6 bytes) + pointer to a 32-byte 16x16
+;   pattern. Names are padded with spaces so a 5-letter "BIRD1" matches
+;   what read_var_name puts in mnem_buf. Terminator: $FF.
+shape_table:
+        .byte "BIRD1 "
+        .word bird1_pat
+        .byte "BIRD2 "
+        .word bird2_pat
+        .byte "TURTL "
+        .word turtle_pat
+        .byte $FF
+
+; ----- 16x16 sprite patterns (TL 0..7, BL 8..15, TR 0..7, BR 8..15) -----
+; BIRD1 -- bird with wings up (V silhouette).
+bird1_pat:
+        ; TL (rows 0-7, cols 0-7)
+        .byte $00, $80, $C0, $60, $38, $0F, $02, $03
+        ; BL (rows 8-15, cols 0-7)
+        .byte $03, $02, $00, $00, $00, $00, $00, $00
+        ; TR (rows 0-7, cols 8-15)
+        .byte $00, $01, $03, $06, $1C, $F0, $40, $C0
+        ; BR (rows 8-15, cols 8-15)
+        .byte $C0, $40, $00, $00, $00, $00, $00, $00
+
+; BIRD2 -- bird with wings down (^ silhouette). BIRD1 mirrored vertically.
+bird2_pat:
+        ; TL
+        .byte $00, $00, $00, $00, $00, $02, $03, $03
+        ; BL
+        .byte $02, $0F, $38, $60, $C0, $80, $00, $00
+        ; TR
+        .byte $00, $00, $00, $00, $00, $40, $C0, $C0
+        ; BR
+        .byte $40, $F0, $1C, $06, $03, $01, $00, $00
+
+; TURTL -- chunky 16x16 turtle facing right (head pokes east, four legs,
+;   diamond shell). Drop-in default for users who want the sprite shape
+;   without a bird animation.
+turtle_pat:
+        ; TL
+        .byte $00, $00, $03, $0F, $1F, $3F, $7E, $FC
+        ; BL
+        .byte $7E, $3F, $1F, $0F, $03, $00, $00, $00
+        ; TR
+        .byte $00, $30, $E0, $F0, $F8, $FC, $7E, $7F
+        ; BR
+        .byte $7E, $FC, $F8, $F0, $E0, $30, $00, $00
 
 ; ============================================================================
 ; (VDP driver moved to tms9918m2.asm: init_vdp_g2, clear_bitmap, line_xy,
@@ -2718,12 +3549,18 @@ mnem_tab:
         .word cmd_to
         .byte "WAIT", 1
         .word cmd_wait
+        .byte "PAUS", 1           ; PAUSE N -- short wait, ~0.1 s per N
+        .word cmd_pause
         .byte "PRIN", 'P'         ; PRINT (custom flag, special-cased)
         .word cmd_print
         .byte "DEMO", 0           ; built-in slideshow
         .word cmd_demo
         .byte "IF  ", 'I'         ; IF <a> <op> <b> [ ... ]
         .word cmd_if
+        .byte "IFEL", 'E'         ; IFELSE <a> <op> <b> [yes] [no]
+        .word cmd_ifelse
+        .byte "SETS", 'S'         ; SETSHAPE "NAME -- swap dynamic-turtle shape
+        .word cmd_setshape
         .byte "STOP", 0           ; exit current proc early
         .word cmd_stop
         ; --- MIT-LOGO long-form aliases ---
