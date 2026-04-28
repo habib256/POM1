@@ -1,16 +1,7 @@
 # HGR8 BB Font Show (CP437 font sheet)
-.DEFAULT_GOAL := all
 PROJECT  := HGR8_BBFontShow
 LOAD_CFG := ../../cc65/apple1_gen2.cfg
 OUT_DIR  := ../../../software/hgr
 LIB      := -I ../../lib/apple1 -I ../../lib/hgr -I ../../lib/m6502
 
-$(OUT_DIR)/$(PROJECT).bin: $(PROJECT).asm
-	ca65 $(LIB) $<
-	ld65 -C $(LOAD_CFG) $(PROJECT).o -o $@
-
-.PHONY: all clean
-all: $(OUT_DIR)/$(PROJECT).bin
-
-clean:
-	rm -f $(PROJECT).o
+include ../../cc65/Makefile.common

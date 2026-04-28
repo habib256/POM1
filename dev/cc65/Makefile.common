@@ -1,0 +1,43 @@
+# Makefile.common — shared targets for cc65 6502 projects under dev/projects/
+#
+# Project Makefile defines:
+#   PROJECT   — basename, e.g. HGR4_Mandelbrot (drives <PROJECT>.asm + <PROJECT>.o)
+#   LOAD_CFG  — path to ld65 .cfg
+#   OUT_DIR   — where the .bin (and optional .txt) lands under software/
+#   LIB       — ca65 -I flags, e.g. "-I ../../lib/apple1 -I ../../lib/hgr"
+#   EMIT_TXT  — optional, set to 1 to also emit Wozmon-hex via emit_<PROJECT>_txt.py
+#   CFG       — optional override knob; set "CFG ?= default.cfg" + "LOAD_CFG := $(CFG)"
+#               in the project Makefile to allow `make CFG=variant.cfg`
+#
+# Then `include ../../cc65/Makefile.common`. Multi-project Makefiles
+# (e.g. games_maze with several .asm targets) keep their own pattern rules.
+
+.DEFAULT_GOAL := all
+
+OBJ := $(PROJECT).o
+
+$(OUT_DIR)/$(PROJECT).bin: $(PROJECT).asm
+	ca65 $(LIB) $<
+	ld65 -C $(LOAD_CFG) $(OBJ) -o $@
+
+ifeq ($(EMIT_TXT),1)
+$(OUT_DIR)/$(PROJECT).txt: $(OUT_DIR)/$(PROJECT).bin
+	python3 emit_$(PROJECT)_txt.py
+ALL_TARGETS := $(OUT_DIR)/$(PROJECT).txt
+else
+ALL_TARGETS := $(OUT_DIR)/$(PROJECT).bin
+endif
+
+.PHONY: all clean test
+all: $(ALL_TARGETS)
+
+clean:
+	rm -f $(OBJ)
+
+# Smoke-test target — drives POM1 via the telnet harness when the project
+# defines TEST_CMD (typically a tools/test_*_telnet.py invocation against
+# software/<dir>/<PROJECT>.{bin,txt}). Default = no-op stub so `make test`
+# never fails at the suite level; projects opt in by setting TEST_CMD.
+TEST_CMD ?= @echo "[$(PROJECT)] no smoke test wired — see dev/TODO6502.md"
+test: all
+	$(TEST_CMD)
