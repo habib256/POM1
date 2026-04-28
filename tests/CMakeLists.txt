@@ -33,6 +33,7 @@ set(POM1_TEST_CORE_SOURCES
     ${CMAKE_SOURCE_DIR}/M6502.cpp
     ${CMAKE_SOURCE_DIR}/Memory.cpp
     ${CMAKE_SOURCE_DIR}/PeripheralBus.cpp
+    ${CMAKE_SOURCE_DIR}/SnapshotIO.cpp
     ${CMAKE_SOURCE_DIR}/Logger.cpp
     ${CMAKE_SOURCE_DIR}/CassetteDevice.cpp
     ${CMAKE_SOURCE_DIR}/AudioDevice.cpp
@@ -271,3 +272,29 @@ add_test(NAME codetank_tms9918_dependency
          COMMAND test_codetank_tms9918_dependency
          WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
 set_tests_properties(codetank_tms9918_dependency PROPERTIES TIMEOUT 10)
+
+# -- Snapshot save/load round-trip test ---------------------------------------
+# Validates Memory::saveSnapshot / loadSnapshot end-to-end: file magic +
+# version, user-area RAM round-trip, card-enabled flags round-trip on PR-40
+# and GT-6144. Pin for any change to SnapshotIO format or Memory snapshot
+# orchestration.
+add_executable(test_snapshot_smoke
+    snapshot_smoke_test.cpp
+    ${POM1_TEST_CORE_SOURCES}
+)
+target_include_directories(test_snapshot_smoke PRIVATE
+    ${CMAKE_SOURCE_DIR}
+    ${CMAKE_SOURCE_DIR}/imgui
+)
+target_link_libraries(test_snapshot_smoke PRIVATE libresidfp_static)
+if(APPLE)
+    target_compile_definitions(test_snapshot_smoke PRIVATE GL_SILENCE_DEPRECATION)
+endif()
+if(WIN32)
+    target_link_libraries(test_snapshot_smoke PRIVATE ws2_32)
+endif()
+
+add_test(NAME snapshot_smoke
+         COMMAND test_snapshot_smoke
+         WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
+set_tests_properties(snapshot_smoke PROPERTIES TIMEOUT 10)

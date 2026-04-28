@@ -67,6 +67,11 @@ void drawToolbarCassetteIcon(ImDrawList* dl, const ImVec2& rmin, const ImVec2& r
 /// white pin stubs above and below. Vertical orientation.
 void drawToolbarDipChipIcon(ImDrawList* dl, const ImVec2& rmin, const ImVec2& rmax);
 
+/// P-LAB CodeTank — military-tank silhouette painted from primitives.
+/// FontAwesome 6 Free has no tank glyph, so the toolbar button uses an
+/// empty `##codeTankToolbar` ID and lets this helper paint over it.
+void drawToolbarTankIcon(ImDrawList* dl, const ImVec2& rmin, const ImVec2& rmax);
+
 /// Centred text label for toolbar buttons (BBS, HGR, etc.).
 void drawToolbarTextLabel(ImDrawList* dl, const ImVec2& rmin, const ImVec2& rmax, const char* text);
 

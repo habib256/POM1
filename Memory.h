@@ -99,6 +99,31 @@ public:
     // Last ROM loading error (empty if no error)
     const std::string& getLastError() const { return lastError; }
 
+    // ─────────────────────────────────────────────────────────────────
+    // Snapshot save/load — see SnapshotIO.h for the file format.
+    //
+    // Captured today (v1):
+    //   * 64 KB flat RAM (mem[])
+    //   * Card "enabled" flags (12 bools packed)
+    //   * Each peripheral's `Peripheral::serialize()` payload (default no-op
+    //     for cards that haven't migrated their state yet — see Peripheral.h)
+    //
+    // NOT captured yet (deliberate phase-1 limitations, documented so a
+    // contributor knows what to add next):
+    //   * M6502 register state (PC/A/X/Y/SP/status). Loading currently
+    //     re-runs from the reset vector. Add by plumbing through
+    //     EmulationController::saveSnapshot once it exists.
+    //   * Cassette deck transport position
+    //   * MicroSD `currentDirectory` cursor
+    //   * WiFiModem TCP connection (impossible to serialise — needs a
+    //     "drop and reconnect" policy at load time)
+    //
+    // Returns false on error and fills `error`.
+    // Caller is responsible for stopping the CPU before invoking either of
+    // these (saveSnapshot is read-only but loadSnapshot rewrites RAM).
+    bool saveSnapshot(const std::string& path, std::string& error) const;
+    bool loadSnapshot(const std::string& path, std::string& error);
+
     quint8 memRead(quint16 address);
     //quint8 memReadAbsolute(quint16 adr);
     void memWrite(quint16 address, quint8 value);

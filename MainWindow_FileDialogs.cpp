@@ -17,10 +17,12 @@
 #include <algorithm>
 #include <cstdio>
 #include <cstring>
+#include <ctime>
 #include <filesystem>
 #include <iomanip>
 #include <sstream>
 #include <string>
+#include <system_error>
 #include <vector>
 
 namespace {
@@ -686,6 +688,228 @@ void MainWindow_ImGui::renderSaveDialog()
         ImGui::SameLine();
         if (ImGui::Button("Cancel", ImVec2(120, 0))) {
             showSaveDialog = false;
+        }
+    }
+    ImGui::End();
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// Snapshot save / load — File menu entries.
+//
+// Snapshots capture RAM + card-enabled flags + each peripheral's
+// `Peripheral::serialize()` payload (default no-op until each card migrates
+// its internal state — see Peripheral.h). File format: SnapshotIO.h. The
+// dialogs root themselves on a `snapshots/` directory next to the
+// executable; the directory is auto-created on first save. Filenames are
+// timestamped by default so a save-mid-session never silently clobbers a
+// previous snapshot.
+// ─────────────────────────────────────────────────────────────────────────
+
+namespace {
+
+// Probe `snapshots/` (cwd → ../ → ../../) the same way Memory.cpp probes
+// other read/write data dirs, then create it on the first hit. Returns the
+// canonical absolute path or an empty string on failure.
+std::string resolveSnapshotsDir()
+{
+    namespace fs = std::filesystem;
+    const char* candidates[] = {"snapshots", "../snapshots", "../../snapshots"};
+    for (const auto* c : candidates) {
+        if (fs::is_directory(c)) {
+            std::error_code ec;
+            auto canon = fs::canonical(c, ec);
+            if (!ec) return canon.string();
+        }
+    }
+    // None found — create alongside the cwd.
+    std::error_code ec;
+    fs::create_directories("snapshots", ec);
+    if (!ec) {
+        auto canon = fs::canonical("snapshots", ec);
+        if (!ec) return canon.string();
+    }
+    return std::string();
+}
+
+// "pom1_2026-04-28_16-37-12.snap" — local time, safe filesystem chars.
+std::string defaultSnapshotFilename()
+{
+    std::time_t now = std::time(nullptr);
+    std::tm tm{};
+#if defined(_WIN32)
+    localtime_s(&tm, &now);
+#else
+    localtime_r(&now, &tm);
+#endif
+    char buf[64];
+    std::strftime(buf, sizeof(buf), "pom1_%Y-%m-%d_%H-%M-%S.snap", &tm);
+    return std::string(buf);
+}
+
+} // namespace
+
+void MainWindow_ImGui::loadSnapshot()
+{
+    snapshotDlg.reset();
+    showLoadSnapshotDialog = true;
+}
+
+void MainWindow_ImGui::saveSnapshot()
+{
+    snapshotDlg.reset();
+    std::strncpy(snapshotDlg.filename,
+                 defaultSnapshotFilename().c_str(),
+                 sizeof(snapshotDlg.filename) - 1);
+    snapshotDlg.filename[sizeof(snapshotDlg.filename) - 1] = '\0';
+    showSaveSnapshotDialog = true;
+}
+
+void MainWindow_ImGui::renderLoadSnapshotDialog()
+{
+    namespace fs = std::filesystem;
+    ImGui::SetNextWindowSize(ImVec2(520, 380), ImGuiCond_FirstUseEver);
+    if (ImGui::Begin("Load Snapshot", &showLoadSnapshotDialog)) {
+
+        if (!snapshotDlg.listScanned) {
+            if (snapshotDlg.snapshotsRoot.empty())
+                snapshotDlg.snapshotsRoot = resolveSnapshotsDir();
+            snapshotDlg.snapList.clear();
+            if (!snapshotDlg.snapshotsRoot.empty() &&
+                fs::is_directory(snapshotDlg.snapshotsRoot)) {
+                for (const auto& entry : fs::directory_iterator(snapshotDlg.snapshotsRoot)) {
+                    if (entry.is_regular_file() &&
+                        entry.path().extension() == ".snap")
+                        snapshotDlg.snapList.push_back(entry.path().filename().string());
+                }
+                std::sort(snapshotDlg.snapList.begin(), snapshotDlg.snapList.end());
+            }
+            snapshotDlg.listScanned = true;
+        }
+
+        ImGui::TextWrapped(
+            "Restore a previously saved POM1 state from the snapshots/ "
+            "directory. Captures: RAM + card-enabled flags + each "
+            "peripheral's serialised payload. CPU register state is NOT yet "
+            "captured — the loaded snapshot resumes from the reset vector.");
+        ImGui::Spacing();
+
+        if (snapshotDlg.snapshotsRoot.empty()) {
+            ImGui::TextColored(ImVec4(0.95f, 0.55f, 0.35f, 1.0f),
+                               "No snapshots/ directory found.");
+        } else {
+            ImGui::Text("Snapshots in: %s", snapshotDlg.snapshotsRoot.c_str());
+        }
+
+        ImGui::BeginChild("SnapList", ImVec2(-1, 200), true);
+        if (snapshotDlg.snapList.empty()) {
+            ImGui::TextDisabled("(no .snap files yet — use File → Save Snapshot first)");
+        } else {
+            for (const auto& f : snapshotDlg.snapList) {
+                if (ImGui::Selectable(f.c_str())) {
+                    auto fullPath = (fs::path(snapshotDlg.snapshotsRoot) / f).string();
+                    std::strncpy(snapshotDlg.filename, fullPath.c_str(),
+                                 sizeof(snapshotDlg.filename) - 1);
+                    snapshotDlg.filename[sizeof(snapshotDlg.filename) - 1] = '\0';
+                }
+            }
+        }
+        ImGui::EndChild();
+
+        ImGui::Separator();
+        ImGui::Text("Selected file:");
+        ImGui::SetNextItemWidth(-1);
+        ImGui::InputText("##snappath", snapshotDlg.filename, sizeof(snapshotDlg.filename));
+
+        if (!snapshotDlg.statusMessage.empty()) {
+            ImGui::TextColored(ImVec4(0.95f, 0.55f, 0.35f, 1.0f),
+                               "%s", snapshotDlg.statusMessage.c_str());
+        }
+
+        ImGui::Spacing();
+        const bool hasFile = snapshotDlg.filename[0] != '\0';
+        ImGui::BeginDisabled(!hasFile);
+        if (ImGui::Button("Load", ImVec2(120, 0))) {
+            std::string err;
+            if (emulation->loadSnapshot(snapshotDlg.filename, err)) {
+                emulation->copySnapshot(uiSnapshot);
+                std::string filename = fs::path(snapshotDlg.filename).filename().string();
+                setStatusMessage("Loaded snapshot: " + filename, 3.0f);
+                showLoadSnapshotDialog = false;
+                snapshotDlg.reset();
+            } else {
+                snapshotDlg.statusMessage =
+                    err.empty() ? "Error: cannot load snapshot" : err;
+            }
+        }
+        ImGui::EndDisabled();
+        ImGui::SameLine();
+        if (ImGui::Button("Cancel", ImVec2(120, 0))) {
+            showLoadSnapshotDialog = false;
+            snapshotDlg.reset();
+        }
+    }
+    ImGui::End();
+}
+
+void MainWindow_ImGui::renderSaveSnapshotDialog()
+{
+    namespace fs = std::filesystem;
+    ImGui::SetNextWindowSize(ImVec2(520, 240), ImGuiCond_FirstUseEver);
+    if (ImGui::Begin("Save Snapshot", &showSaveSnapshotDialog)) {
+
+        if (snapshotDlg.snapshotsRoot.empty())
+            snapshotDlg.snapshotsRoot = resolveSnapshotsDir();
+
+        ImGui::TextWrapped(
+            "Save the current POM1 state (RAM + card-enabled flags + each "
+            "peripheral's serialised payload). Files land in the snapshots/ "
+            "directory next to POM1.");
+        ImGui::Spacing();
+
+        if (!snapshotDlg.snapshotsRoot.empty())
+            ImGui::Text("Save into: %s", snapshotDlg.snapshotsRoot.c_str());
+
+        ImGui::Spacing();
+        ImGui::Text("Filename:");
+        ImGui::SetNextItemWidth(-1);
+        ImGui::InputText("##snapsavefile", snapshotDlg.filename,
+                         sizeof(snapshotDlg.filename));
+
+        if (!snapshotDlg.statusMessage.empty()) {
+            ImGui::TextColored(ImVec4(0.95f, 0.55f, 0.35f, 1.0f),
+                               "%s", snapshotDlg.statusMessage.c_str());
+        }
+
+        ImGui::Spacing();
+        const bool hasFilename = snapshotDlg.filename[0] != '\0';
+        ImGui::BeginDisabled(!hasFilename || snapshotDlg.snapshotsRoot.empty());
+        if (ImGui::Button("Save", ImVec2(120, 0))) {
+            // Compose absolute path. If the user left a bare filename (the
+            // common case via the timestamped default), stick it inside
+            // snapshots/. Auto-suffix .snap when missing so accidental
+            // typos still produce something the loader recognises.
+            fs::path target(snapshotDlg.filename);
+            if (!target.is_absolute())
+                target = fs::path(snapshotDlg.snapshotsRoot) / target;
+            if (target.extension() != ".snap")
+                target += ".snap";
+
+            std::string err;
+            if (emulation->saveSnapshot(target.string(), err)) {
+                setStatusMessage("Saved snapshot: " +
+                                 target.filename().string(), 3.0f);
+                showSaveSnapshotDialog = false;
+                snapshotDlg.reset();
+            } else {
+                snapshotDlg.statusMessage =
+                    err.empty() ? "Error: cannot save snapshot" : err;
+            }
+        }
+        ImGui::EndDisabled();
+        ImGui::SameLine();
+        if (ImGui::Button("Cancel", ImVec2(120, 0))) {
+            showSaveSnapshotDialog = false;
+            snapshotDlg.reset();
         }
     }
     ImGui::End();

@@ -9,15 +9,19 @@
 #define MICROSD_H
 
 #include "CpuClock.h"
+#include "Peripheral.h"
 
 #include <cstdint>
 #include <string>
+#include <string_view>
 #include <vector>
 #include <array>
 
-class MicroSD
+class MicroSD : public pom1::Peripheral
 {
 public:
+    std::string_view name() const override { return "microSD"; }
+
     static constexpr uint16_t kViaBase = 0xA000;
     static constexpr uint16_t kViaEnd  = 0xA00F;
     static constexpr uint16_t kRomBase = 0x8000;

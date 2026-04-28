@@ -65,6 +65,7 @@ set(SOURCES
     RomLoader.cpp
     KeyboardController.cpp
     SnapshotPublisher.cpp
+    SnapshotIO.cpp
     PeripheralBus.cpp
     Disassembler6502.cpp
     MainWindow_Layout.cpp

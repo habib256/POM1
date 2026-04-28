@@ -8,13 +8,18 @@
 #ifndef A1IO_RTC_H
 #define A1IO_RTC_H
 
+#include "Peripheral.h"
+
 #include <cstdint>
 #include <ctime>
 #include <array>
+#include <string_view>
 
-class A1IO_RTC
+class A1IO_RTC : public pom1::Peripheral
 {
 public:
+    std::string_view name() const override { return "A1-IO/RTC"; }
+
     static constexpr uint16_t kViaBase = 0x2000;
     static constexpr uint16_t kViaEnd  = 0x200F;
 

@@ -467,6 +467,18 @@ std::optional<CliPlan> parseCli(int argc, char* argv[], bool& listPresetsOut)
             plan.deferredActions.push_back(std::move(a));
             continue;
         }
+        if (arg == "--snapshot-save") {
+            if (!needArg(i, "--snapshot-save")) return std::nullopt;
+            CliAction a; a.kind = CliAction::Kind::SnapshotSave; a.pathS = argv[++i];
+            plan.deferredActions.push_back(std::move(a));
+            continue;
+        }
+        if (arg == "--snapshot-load") {
+            if (!needArg(i, "--snapshot-load")) return std::nullopt;
+            CliAction a; a.kind = CliAction::Kind::SnapshotLoad; a.pathS = argv[++i];
+            plan.deferredActions.push_back(std::move(a));
+            continue;
+        }
 
         pom1::log().error("CLI", "Unknown flag '" + arg +
                           "'. Run with --help for the supported list.");
@@ -636,6 +648,22 @@ void runDeferredActions(const std::vector<CliAction>& actions,
             case CliAction::Kind::RtcFreeze: emu.setRtcOverrideTime(a.timeT);
                                              pom1::log().info("CLI", "--rtc-freeze applied");
                                              break;
+            case CliAction::Kind::SnapshotSave: {
+                std::string err;
+                if (emu.saveSnapshot(a.pathS, err))
+                    pom1::log().info("CLI", "--snapshot-save -> " + a.pathS);
+                else
+                    pom1::log().error("CLI", "--snapshot-save '" + a.pathS + "': " + err);
+                break;
+            }
+            case CliAction::Kind::SnapshotLoad: {
+                std::string err;
+                if (emu.loadSnapshot(a.pathS, err))
+                    pom1::log().info("CLI", "--snapshot-load <- " + a.pathS);
+                else
+                    pom1::log().error("CLI", "--snapshot-load '" + a.pathS + "': " + err);
+                break;
+            }
         }
     }
 }

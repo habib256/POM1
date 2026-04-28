@@ -36,12 +36,18 @@
   #endif
 #endif
 
+#include "Peripheral.h"
+#include <string_view>
+
 /// P-LAB Apple-1 Wi-Fi Modem — 65C51 ACIA + ESP8266 modem emulation.
 /// ACIA I/O at $B000-$B003 (4 registers).
 /// AT command interpreter with TELNET client for BBS connections.
-class WiFiModem
+class WiFiModem : public pom1::Peripheral
 {
 public:
+    std::string_view name() const override { return "Wi-Fi Modem"; }
+    std::string_view mutexLabel() const override { return "WiFiModem::cardMutex"; }
+
     static constexpr uint16_t kAciaBase = 0xB000;
     static constexpr uint16_t kAciaEnd  = 0xB003;
 

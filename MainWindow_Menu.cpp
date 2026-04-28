@@ -88,6 +88,19 @@ void MainWindow_ImGui::renderMenuBar()
                 saveMemory();
             }
             ImGui::Separator();
+            if (ImGui::MenuItem("Load Snapshot...")) {
+                loadSnapshot();
+            }
+            if (ImGui::IsItemHovered())
+                ImGui::SetTooltip("Restore a previously saved POM1 state from snapshots/.\n"
+                                  "Captures RAM + card-enabled flags + per-peripheral payload.");
+            if (ImGui::MenuItem("Save Snapshot...")) {
+                saveSnapshot();
+            }
+            if (ImGui::IsItemHovered())
+                ImGui::SetTooltip("Save current POM1 state to snapshots/ as a versioned .snap file.\n"
+                                  "Same format as the --snapshot-save CLI flag.");
+            ImGui::Separator();
             ImGui::MenuItem("Cassette Deck", nullptr, &showCassetteDeck);
             if (ImGui::IsItemHovered())
                 ImGui::SetTooltip("Realistic procedural cassette deck.\nPiano keys, mechanical counter, live transport.");
@@ -588,10 +601,12 @@ void MainWindow_ImGui::renderToolbar()
         ImGui::SameLine();
         ImGui::PushStyleColor(ImGuiCol_Button,
             codeTankEnabled ? ImVec4(0.2f, 0.4f, 0.8f, 1.0f) : ImVec4(0.3f, 0.3f, 0.3f, 1.0f));
-        if (ImGui::Button("CT", btnSize)) {
+        if (ImGui::Button("##codeTankToolbar", btnSize)) {
             if (codeTankEnabled) unplugCodeTankFromToolbar();
             else plugCodeTankFromToolbar();
         }
+        drawToolbarTankIcon(ImGui::GetWindowDrawList(),
+                            ImGui::GetItemRectMin(), ImGui::GetItemRectMax());
         ImGui::PopStyleColor();
         showHardwareTooltip(
             "P-LAB CodeTank 28c256 ROM (daughterboard)\n"

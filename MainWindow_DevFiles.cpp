@@ -147,30 +147,24 @@ void MainWindow_ImGui::renderDevFilesWindow()
     ImGui::Separator();
 
     const float leftWidth = ImGui::GetContentRegionAvail().x * 0.32f;
+    const bool hasFilter = (filter[0] != '\0');
 
-    ImGui::BeginChild("##dev_tree", ImVec2(leftWidth, 0), true);
-    for (const auto& dir : tree) {
-        const bool hasFilter = (filter[0] != '\0');
-        bool dirHasMatch = !hasFilter;
-        if (hasFilter) {
-            for (const auto& f : dir.files) {
-                if (f.relPath.find(filter) != std::string::npos) { dirHasMatch = true; break; }
-            }
-        }
-        if (!dirHasMatch) continue;
-
-        const char* label = dir.relPath.empty() ? "dev/" : dir.relPath.c_str();
-        // Default-open the root, lib/, and cc65/. Leave projects/ collapsed
-        // so the tree fits onscreen on first open.
-        const bool defaultOpen = dir.relPath.empty()
-                              || dir.relPath == "lib"
-                              || dir.relPath.rfind("lib/", 0) == 0
-                              || dir.relPath == "cc65"
-                              || hasFilter;
-        ImGui::SetNextItemOpen(defaultOpen, hasFilter ? ImGuiCond_Always : ImGuiCond_FirstUseEver);
+    auto fileMatches = [&](const std::string& s) {
+        return !hasFilter || s.find(filter) != std::string::npos;
+    };
+    auto dirHasMatch = [&](const DevDirEntry& dir) {
+        if (!hasFilter) return true;
+        for (const auto& f : dir.files)
+            if (fileMatches(f.relPath)) return true;
+        return false;
+    };
+    auto renderDirNode = [&](const DevDirEntry& dir, const char* label, bool defaultOpen) {
+        if (!dirHasMatch(dir)) return;
+        ImGui::SetNextItemOpen(defaultOpen || hasFilter,
+                               hasFilter ? ImGuiCond_Always : ImGuiCond_FirstUseEver);
         if (ImGui::TreeNode(label)) {
             for (const auto& f : dir.files) {
-                if (hasFilter && f.relPath.find(filter) == std::string::npos) continue;
+                if (!fileMatches(f.relPath)) continue;
                 const bool selected = (f.relPath == selectedRel);
                 const char* leaf = f.relPath.c_str();
                 if (auto pos = f.relPath.find_last_of('/'); pos != std::string::npos)
@@ -185,7 +179,53 @@ void MainWindow_ImGui::renderDevFilesWindow()
             }
             ImGui::TreePop();
         }
+    };
+    auto isUnder = [](const DevDirEntry& d, const std::string& head) {
+        return d.relPath == head || d.relPath.rfind(head + "/", 0) == 0;
+    };
+    auto renderGroup = [&](const std::string& head, bool defaultOpen) {
+        bool anyMatch = false;
+        for (const auto& d : tree)
+            if (isUnder(d, head) && dirHasMatch(d)) { anyMatch = true; break; }
+        if (!anyMatch) return;
+
+        const std::string label = head + "/";
+        ImGui::SetNextItemOpen(defaultOpen || hasFilter,
+                               hasFilter ? ImGuiCond_Always : ImGuiCond_FirstUseEver);
+        if (ImGui::TreeNode(label.c_str())) {
+            for (const auto& d : tree) {
+                if (!isUnder(d, head)) continue;
+                const std::string subLabel = (d.relPath == head)
+                    ? std::string{"."}
+                    : d.relPath.substr(head.size() + 1);
+                renderDirNode(d, subLabel.c_str(), false);
+            }
+            ImGui::TreePop();
+        }
+    };
+
+    ImGui::BeginChild("##dev_tree", ImVec2(leftWidth, 0), true);
+
+    // Top-level dev/ files (READMEs, TODO).
+    for (const auto& d : tree) {
+        if (d.relPath.empty()) { renderDirNode(d, "dev/", true); break; }
     }
+    // cc65/ — single flat dir with linker configs.
+    for (const auto& d : tree) {
+        if (d.relPath == "cc65") { renderDirNode(d, "cc65/", true); break; }
+    }
+    // lib/ and projects/ as nested submenus so the tree stays compact.
+    renderGroup("lib", true);
+    renderGroup("projects", false);
+    // Anything else at the top level (defensive).
+    for (const auto& d : tree) {
+        if (d.relPath.empty()) continue;
+        if (d.relPath == "cc65") continue;
+        if (isUnder(d, "lib")) continue;
+        if (isUnder(d, "projects")) continue;
+        renderDirNode(d, d.relPath.c_str(), false);
+    }
+
     ImGui::EndChild();
 
     ImGui::SameLine();
@@ -203,10 +243,11 @@ void MainWindow_ImGui::renderDevFilesWindow()
     } else {
         ImGui::TextDisabled("%s", selectedRel.c_str());
         ImGui::Separator();
-        ImGui::BeginChild("##dev_content_scroll", ImVec2(0, 0), false,
-                          ImGuiWindowFlags_HorizontalScrollbar);
+        ImGui::BeginChild("##dev_content_scroll", ImVec2(0, 0), false);
+        ImGui::PushTextWrapPos(0.0f);
         ImGui::TextUnformatted(selectedContent.c_str(),
                                selectedContent.c_str() + selectedContent.size());
+        ImGui::PopTextWrapPos();
         ImGui::EndChild();
     }
     ImGui::EndChild();

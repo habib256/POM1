@@ -221,23 +221,29 @@ const MachineConfig kMachinePresets[] = {
     {   //                                  GEN2  uSD  SID  TMS  RTC  WiFi Term Krus CFFA ACI
         "P-LAB Apple-1 with TMS9918 (CodeTank daughterboard)",
         "P-LAB Graphic Card (TMS9918A VDP) with the CodeTank 28c256 ROM daughterboard "
-        "(Codetank_GAME1.rom) at $4000-$7FFF, Integer BASIC. The CodeTank piggybacks the "
-        "Graphic Card on real P-LAB silicon - it has no edge connector. "
-        "Type 4000R: Lower jumper boots the 4-game menu (1=Galaga, 2=Sokoban, "
-        "3=Snake, 4=Life); Upper jumper boots the 1=Tetris / 2=LOGO V1.7 picker.",
+        "(Codetank_GAME1.rom) at $4000-$7FFF, no BASIC (CodeTank ROM is the program). "
+        "The CodeTank piggybacks the Graphic Card on real P-LAB silicon - it has no "
+        "edge connector. Type 4000R: Lower jumper boots the 4-game menu (1=Galaga, "
+        "2=Sokoban, 3=Snake, 4=Life); Upper jumper boots the 1=Tetris / 2=LOGO V1.7 "
+        "picker.",
         false, false, false, true, false, false, false,
         /*pr40*/ false,
-        false, false, false, 16, BasicType::Integer,
+        false, false, false, 16, BasicType::None,
         /*sidSE*/ false,
         /*jukeBox*/ false, JukeBox::Jumper::RAM16_ROM32, JukeBox::ChipMode::Flash,
         /*codeTank*/ true, CodeTank::Jumper::Lower16,
         /*codeTankRom*/ "roms/codetank/Codetank_GAME1.rom",
         /*gt6144*/ false,
         {
-            {"Apple 1 Screen",               {10,  61},  {843, 701}},
-            {"P-LAB Graphic Card (TMS9918)", {857, 61},  {344, 286}},
-            {"P-LAB CodeTank",               {857, 353}, {344, 195}},
-            {"Tutorial: P-LAB TMS9918",      {859, 553}, {340, 211}},
+            // Apple 1 Screen + CodeTank panel stack on the left; the
+            // TMS9918 framebuffer dominates the right column; the
+            // Memory Map Bar (Horizontal) spans the full width at the
+            // bottom so the live $4000-$7FFF ROM band is always visible
+            // as the user picks games from the CodeTank menu.
+            {"Apple 1 Screen",                {8,   61},  {400, 350}},
+            {"P-LAB Graphic Card (TMS9918)",  {410, 61},  {800, 520}},
+            {"P-LAB CodeTank",                {8,   413}, {400, 170}},
+            {"Memory Map Bar (Horizontal)",   {8,   585}, {1202, 90}},
         }, 4
     },
     {   //                                  GEN2  uSD  SID  TMS  RTC  WiFi Term Krus CFFA ACI
@@ -603,6 +609,7 @@ void MainWindow_ImGui::applyMachineConfig(int presetIndex)
         else if (n == "SWTPC GT-6144 Graphic Terminal")       showGT6144       = true;
         else if (n == "Apple-1 Cassette Deck")                showCassetteDeck = true;
         else if (n == "Welcome")                              showWelcome      = true;
+        else if (n == "Memory Map Bar (Horizontal)")          showMemoryBarH   = true;
         else if (n == "Woz & Jobs (1976)")                    showWozJobsPhoto = true;
         else if (n == "Apple-1 Demo Session (1976)")          showWozJobsRectPhoto = true;
         else if (n == "P-LAB TMS9918 Card (Photo)")           showTmsBoardPhoto = true;

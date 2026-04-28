@@ -29,12 +29,17 @@
 #ifndef POM1_CODETANK_H
 #define POM1_CODETANK_H
 
+#include "Peripheral.h"
+
 #include <cstdint>
 #include <string>
+#include <string_view>
 #include <vector>
 
-class CodeTank {
+class CodeTank : public pom1::Peripheral {
 public:
+    std::string_view name() const override { return "CodeTank"; }
+
     // Physical board jumper: which half of the 32 kB 28c256 is wired into
     // the fixed 16 kB CPU window. Real hardware needs a power-off and
     // jumper move; POM1 hot-swaps because there is no socket.

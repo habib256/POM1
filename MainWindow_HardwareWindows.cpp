@@ -819,17 +819,7 @@ void MainWindow_ImGui::renderCodeTankWindow()
     applyPendingLayout("P-LAB CodeTank");
     if (ImGui::Begin("P-LAB CodeTank", &showCodeTank)) {
         const auto& snap = uiSnapshot.codeTank;
-        ImGui::TextColored(ImVec4(0.2f, 0.9f, 0.2f, 1.0f),
-            ICON_FA_CIRCLE_CHECK " Fixed ROM window: $4000-$7FFF (16 kB)");
-        ImGui::Text("Selected half: %s 16 kB",
-                    snap.jumper == CodeTank::Jumper::Upper16 ? "upper" : "lower");
-        ImGui::TextWrapped(
-            "Standalone P-LAB ROM card built around a single 32 kB 28c256. "
-            "The board jumper picks which 16 kB half is wired into "
-            "$4000-$7FFF; the other half stays available by flipping the "
-            "jumper. No Program Manager, no bank latch.");
 
-        ImGui::Separator();
         ImGui::Text("ROM file:");
         ImGui::SameLine();
         if (snap.romPath.empty()) {
@@ -862,14 +852,6 @@ void MainWindow_ImGui::renderCodeTankWindow()
         }
         ImGui::TextColored(ImVec4(0.7f, 0.7f, 0.7f, 1.0f),
             "Real hardware needs power-off to move the jumper - POM1 hot-swaps.");
-
-        if (ImGui::CollapsingHeader("Memory Map")) {
-            ImGui::BulletText("$0000-$3FFF  RAM (16 kB contiguous)");
-            ImGui::BulletText("$4000-$7FFF  CodeTank ROM window (selected 16 kB half)");
-            ImGui::BulletText("$CC00/$CC01  TMS9918 ports (coexists with CodeTank)");
-            ImGui::BulletText("$E000-$EFFF  Integer BASIC ROM");
-            ImGui::BulletText("$FF00-$FFFF  Woz Monitor");
-        }
     }
     ImGui::End();
 }

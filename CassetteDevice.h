@@ -4,6 +4,7 @@
 #include "CpuClock.h"
 #include "POM1Build.h"
 #include "AudioDevice.h"
+#include "Peripheral.h"
 #include "third_party/miniaudio.h"
 
 #include <algorithm>
@@ -12,11 +13,14 @@
 #include <deque>
 #include <mutex>
 #include <string>
+#include <string_view>
 #include <vector>
 
-class CassetteDevice : public AudioSource
+class CassetteDevice : public AudioSource, public pom1::Peripheral
 {
 public:
+    std::string_view name() const override { return "ACI"; }
+
     using quint8 = uint8_t;
     using quint16 = uint16_t;
 

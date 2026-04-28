@@ -43,12 +43,17 @@
 #ifndef POM1_JUKEBOX_H
 #define POM1_JUKEBOX_H
 
+#include "Peripheral.h"
+
 #include <cstdint>
 #include <string>
+#include <string_view>
 #include <vector>
 
-class JukeBox {
+class JukeBox : public pom1::Peripheral {
 public:
+    std::string_view name() const override { return "Juke-Box"; }
+
     // Jumper position: which part of a 32 kB page is visible in the CPU
     // address space.
     enum class Jumper : uint8_t {

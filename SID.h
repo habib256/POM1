@@ -20,20 +20,25 @@
 
 #include "AudioDevice.h"
 #include "CpuClock.h"
+#include "Peripheral.h"
 
 #include <array>
 #include <atomic>
 #include <cstdint>
 #include <memory>
 #include <mutex>
+#include <string_view>
 
 namespace reSIDfp { class SID; }
 
 namespace pom1 {
 
-class SID : public AudioSource
+class SID : public AudioSource, public Peripheral
 {
 public:
+    std::string_view name() const override { return "A1-SID"; }
+    std::string_view mutexLabel() const override { return "SID::chipMutex"; }
+
     static constexpr int kNumRegisters = 29;
     static constexpr int kSampleRate   = 44100;
 

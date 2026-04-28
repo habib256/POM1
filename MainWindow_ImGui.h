@@ -149,6 +149,8 @@ private:
     bool showMemoryBarH = false;  // wide-short horizontal variant
     bool showSaveDialog = false;
     bool showSaveTapeDialog = false;
+    bool showLoadSnapshotDialog = false;
+    bool showSaveSnapshotDialog = false;
     bool showGraphicsCard = false;
     bool graphicsCardEnabled = false;
     GLuint graphicsCardTexture = 0;
@@ -293,6 +295,8 @@ private:
     void renderMemoryBarHorizontalWindow();
     void renderSaveDialog();
     void renderSaveTapeDialog();
+    void renderLoadSnapshotDialog();
+    void renderSaveSnapshotDialog();
     void renderGraphicsCardWindow();
     void renderTMS9918Window();
     void renderGT6144Window();
@@ -310,6 +314,8 @@ private:
     void saveMemory();
     void loadTape();
     void saveTape();
+    void loadSnapshot();
+    void saveSnapshot();
     void pasteCode();
     void quit();
     void reset();
@@ -358,6 +364,26 @@ private:
         }
     };
     LoadDialogState loadDlg;
+
+    // Snapshot save/load dialog state. Populated on each open: the load
+    // path scans `snapshots/` for `.snap` files; the save path pre-fills a
+    // timestamped filename. See SnapshotIO.h for the file format and
+    // Memory::saveSnapshot for the list of state currently captured.
+    struct SnapshotDialogState {
+        char filename[256] = "";
+        std::vector<std::string> snapList;
+        bool listScanned = false;
+        std::string snapshotsRoot;     // absolute path of snapshots/
+        std::string statusMessage;     // last error/info shown inside the dialog
+        void reset() {
+            filename[0] = '\0';
+            snapList.clear();
+            listScanned = false;
+            snapshotsRoot.clear();
+            statusMessage.clear();
+        }
+    };
+    SnapshotDialogState snapshotDlg;
 
     // Loaded program/ROM regions (shown in Memory Map)
     struct LoadedRegion {

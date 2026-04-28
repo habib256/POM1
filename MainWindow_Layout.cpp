@@ -91,6 +91,73 @@ void drawToolbarDipChipIcon(ImDrawList* dl, const ImVec2& rmin, const ImVec2& rm
     }
 }
 
+void drawToolbarTankIcon(ImDrawList* dl, const ImVec2& rmin, const ImVec2& rmax)
+{
+    // Procedural tank silhouette for the P-LAB CodeTank toolbar button.
+    // FontAwesome 6 Free has no military-tank glyph, so we paint one from
+    // primitives — same approach as drawToolbarCassetteIcon. Components:
+    // tread band (bottom 18 %) with road wheels, hull (mid 30 %), turret
+    // (top centre 35 %), and a horizontal cannon barrel pointing right.
+    // Colours are chosen to read on both the "plugged" blue background
+    // and the "unplugged" grey background — body in white, accents in
+    // dark hull-shadow.
+    const float pad = 2.0f;
+    const ImVec2 a(rmin.x + pad, rmin.y + pad);
+    const ImVec2 b(rmax.x - pad, rmax.y - pad);
+    const float w = b.x - a.x;
+    const float h = b.y - a.y;
+
+    const ImU32 hull   = IM_COL32(232, 234, 240, 255);
+    const ImU32 shadow = IM_COL32(40, 44, 56, 255);
+
+    // Tread band (bottom). Solid dark rectangle with light road wheels.
+    const float treadTop = b.y - h * 0.22f;
+    const float treadBot = b.y - h * 0.04f;
+    dl->AddRectFilled(ImVec2(a.x + w * 0.02f, treadTop),
+                      ImVec2(b.x - w * 0.02f, treadBot),
+                      shadow, 1.5f);
+    // 4 road wheels evenly spaced.
+    const float wheelY = (treadTop + treadBot) * 0.5f;
+    const float wheelR = std::clamp(std::min(w, h) * 0.07f, 1.4f, 2.6f);
+    const float wxLeft  = a.x + w * 0.14f;
+    const float wxRight = b.x - w * 0.14f;
+    for (int i = 0; i < 4; ++i) {
+        const float t = static_cast<float>(i) / 3.0f;
+        const float wx = wxLeft + (wxRight - wxLeft) * t;
+        dl->AddCircleFilled(ImVec2(wx, wheelY), wheelR, hull);
+    }
+
+    // Hull — trapezoidal-ish silhouette: wide bottom edge along the tread
+    // top, slightly inset top edge above. ImDrawList's quad path keeps it
+    // crisp at any DPI.
+    const float hullTop = a.y + h * 0.42f;
+    {
+        ImVec2 p0(a.x + w * 0.05f, treadTop);
+        ImVec2 p1(b.x - w * 0.05f, treadTop);
+        ImVec2 p2(b.x - w * 0.10f, hullTop);
+        ImVec2 p3(a.x + w * 0.10f, hullTop);
+        dl->AddQuadFilled(p0, p1, p2, p3, hull);
+    }
+
+    // Turret — rounded "dome" sitting on top of the hull.
+    const float turretLeft  = a.x + w * 0.30f;
+    const float turretRight = a.x + w * 0.70f;
+    const float turretTop   = a.y + h * 0.18f;
+    dl->AddRectFilled(ImVec2(turretLeft, turretTop),
+                      ImVec2(turretRight, hullTop),
+                      hull, std::min(h * 0.10f, 2.5f));
+
+    // Cannon barrel — points right (hull-side). Horizontal rectangle from
+    // the turret's right edge to near the icon's right edge, at turret
+    // mid-height. Thickness scales with the icon size so it stays
+    // readable at small sizes.
+    const float barrelY      = (turretTop + hullTop) * 0.5f;
+    const float barrelHalf   = std::clamp(h * 0.05f, 0.9f, 1.6f);
+    dl->AddRectFilled(ImVec2(turretRight, barrelY - barrelHalf),
+                      ImVec2(b.x - w * 0.04f, barrelY + barrelHalf),
+                      hull);
+}
+
 void drawToolbarTextLabel(ImDrawList* dl, const ImVec2& rmin, const ImVec2& rmax, const char* t)
 {
     ImFont* font = ImGui::GetFont();

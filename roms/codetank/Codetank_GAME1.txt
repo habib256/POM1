@@ -1,15 +1,15 @@
-P-LAB CodeTank GAME1 — TMS9918 game library + LOGO
+P-LAB CODETANK — GAME1 CARTRIDGE
 
-Lower jumper ($4000-$7FFF, lower 16 kB):
-  Menu at $4000: 1=Galaga, 2=Sokoban, 3=Snake, 4=Life
-  All four games run in place from ROM (no RAM copy).
+★ 5 GAMES + 1 PROGRAMMING TOOL on a single 28c256 chip ★
 
-Upper jumper ($4000-$7FFF, upper 16 kB):
-  Dispatcher at $4000: 1=Tetris, 2=LOGO V1.7
-  - Tetris: payload at $4080, copies to RAM $0280 then runs.
-  - LOGO: turtle interpreter at $5E00, run-in-place. Mode-2 bitmap
-    turtle, REPL, REPEAT/IF/MAKE/RANDOM, user-defined procs with
-    parameters, tail recursion. Type HELP at the LOGO prompt.
+LOWER JUMPER  —  THE ARCADE PACK
+  1) GALAGA   — blast the alien wave!
+  2) SOKOBAN  — push every box onto its target
+  3) SNAKE    — eat, grow, don't bite yourself
+  4) LIFE     — Conway's cells, hypnotic
 
-Type 4000R from the Woz Monitor to enter (after picking the jumper
-half via Hardware -> CodeTank).
+UPPER JUMPER  —  TETRIS + LOGO
+  1) TETRIS   — the falling-block classic
+  2) LOGO 1.7 — draw with the turtle, write your own programs
+
+Plug the cartridge, type 4000R from the Woz Monitor, GO!

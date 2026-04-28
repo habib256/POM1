@@ -43,6 +43,8 @@ Three phases: **A** boot-time, **B** first-frame preset overrides, **C** deferre
 | `--play` / `--rec` / `--rewind` | C | Cassette transport. `--rec` = `armRecording()` (no $C000 wait). |
 | `--sd-mkdir <path>` / `--sd-put <h>:<g>` / `--sd-get <g>:<h>` | C | SD fixture seeding. |
 | `--rtc-freeze "YYYY-MM-DD HH:MM:SS"` | C | Set `A1IO_RTC::rtcOffsetSeconds` (host rate keeps ticking). |
+| `--snapshot-save <path>` | C | Write current state (RAM + card-enabled flags + per-card payload via `Peripheral::serialize`) to `<path>`. Format: see `SnapshotIO.h`. |
+| `--snapshot-load <path>` | C | Restore state from a `.snap` written by `--snapshot-save`. Per-card serialize hooks default to no-op until each card migrates its internal state — see `Peripheral.h`. |
 | `--break <addr>` | — | **Reserved**, errors out. Use `--step` + `--trace-brk`. |
 
 Two telnet tests auto-launch POM1 from repo root: `test_aci_telnet.py`, `test_sdcard_subdir_navigation_telnet.py`.
@@ -201,6 +203,7 @@ ctest -R klaus -V
 - **`jukebox_paged_rom_smoke`** — loads shipped 256 KB `roms/jukebox.rom`, 8 pages, lowest-`$A5`-at-`$7D00` boot picker, `$CA00` Px + bit-4 Sx in both jumpers, flash writes dropped, EEPROM rejects oversize.
 - **`codetank_smoke`** — 32 kB exact-size requirement, lower/upper jumper offset math, read-only invariant, previous-contents-on-rejection, Snapshot round-trip.
 - **`codetank_tms9918_dependency`** — Memory-level cascade: enabling CodeTank auto-plugs TMS9918, disabling TMS9918 cascade-unplugs CodeTank, disabling CodeTank does NOT touch TMS9918.
+- **`snapshot_smoke`** — Round-trips Memory through `saveSnapshot`/`loadSnapshot`: file magic + version, user-area RAM (`$0200-$1FFF`) restored byte-for-byte, card-enabled flags (PR-40 + GT-6144) survive. Pin for any change to `SnapshotIO` format or `Peripheral::serialize` dispatch.
 
 New invariant tests follow `tests/peripheral_bus_smoke_test.cpp` — `<cassert>` + `add_test` suffices; GTest/Catch2 only once multi-threaded tests land.
 

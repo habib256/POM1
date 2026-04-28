@@ -32,12 +32,18 @@
   #endif
 #endif
 
+#include "Peripheral.h"
+#include <string_view>
+
 /// P-LAB Apple-1 Terminal Card — bidirectional serial bridge.
 /// Passive device: eavesdrops on $D012 display writes, injects keys into $D010.
 /// Exposes a TCP server on localhost for external terminal connection.
-class TerminalCard
+class TerminalCard : public pom1::Peripheral
 {
 public:
+    std::string_view name() const override { return "Terminal Card"; }
+    std::string_view mutexLabel() const override { return "TerminalCard::cardMutex"; }
+
     static constexpr uint16_t kDefaultPort = 6502;
 
     TerminalCard();

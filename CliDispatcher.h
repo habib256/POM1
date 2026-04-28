@@ -70,6 +70,8 @@ struct CliAction {
         SdPut,         // hostS : guestS   : copy host → sdroot/guest
         SdGet,         // guestS : hostS   : copy sdroot/guest → host
         RtcFreeze,     // timeT            : setRtcOverrideTime(timeT)
+        SnapshotSave,  // pathS            : write current state to .snap
+        SnapshotLoad,  // pathS            : restore RAM + cards from .snap
     };
 
     Kind kind;

@@ -38,13 +38,19 @@
 #ifndef GT6144_H
 #define GT6144_H
 
+#include "Peripheral.h"
+
 #include <array>
 #include <cstdint>
 #include <mutex>
+#include <string_view>
 
-class GT6144
+class GT6144 : public pom1::Peripheral
 {
 public:
+    std::string_view name() const override { return "GT-6144"; }
+    std::string_view mutexLabel() const override { return "GT6144::cardMutex"; }
+
     static constexpr int kWidth  = 64;
     static constexpr int kHeight = 96;
     static constexpr int kFramebufferBytes = (kWidth * kHeight) / 8;  // 768

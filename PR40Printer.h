@@ -26,15 +26,20 @@
 #define PR40PRINTER_H
 
 #include "CpuClock.h"
+#include "Peripheral.h"
 
 #include <cstdint>
 #include <mutex>
 #include <string>
+#include <string_view>
 #include <vector>
 
-class PR40Printer
+class PR40Printer : public pom1::Peripheral
 {
 public:
+    std::string_view name() const override { return "PR-40"; }
+    std::string_view mutexLabel() const override { return "PR40Printer::cardMutex"; }
+
     /// Position of the DPDT switch Steve Jobs hot-wired to PB7 of the PIA.
     ///   Off       : printer disconnected; writes to $D012 ignored here,
     ///               only the video's displayBusyCycles drives PB7.

@@ -695,7 +695,11 @@ void MainWindow_ImGui::renderMemoryBarWindow()
     // --- Layout constants ---
     const float gutterW = 42.0f;
     const float barW = 48.0f;
-    const float bar2W = 18.0f;    // narrow true-scale bar (after labels)
+    // Bar 2 is a faithful clone of bar 1 — same 48 px width, same bevels,
+    // same Y positions (the distorted scale that gives every region enough
+    // room for its label). Connector lines drawn between the two bars
+    // delimit each zone visually; per-zone labels live in the gap.
+    const float bar2W = 48.0f;
     const float labelGap = 10.0f;
     const float textH = ImGui::GetTextLineHeight();
     const float minRegionH = textH + 4.0f;  // every region tall enough for its name
@@ -760,19 +764,9 @@ void MainWindow_ImGui::renderMemoryBarWindow()
     }
     const float totalBarH = curY - origin.y;
 
-    // --- Bar 2: true proportional Y positions (no min clamping) ---
-    std::vector<float> region2Y0(flat.size()), region2Y1(flat.size());
-    {
-        float cur2Y = origin.y;
-        for (size_t i = 0; i < flat.size(); ++i) {
-            float h = (static_cast<float>(flat[i].end - flat[i].start + 1) / 65536.0f) * totalBarH;
-            region2Y0[i] = cur2Y;
-            region2Y1[i] = cur2Y + h;
-            cur2Y += h;
-        }
-    }
-
-    // addrToY: interpolate within the distorted region layout
+    // addrToY: interpolate within the distorted region layout — both bars
+    // share this mapping (bar 2 is a clone of bar 1, not a proportional
+    // sibling).
     auto addrToY = [&](uint32_t addr) -> float {
         for (size_t i = 0; i < flat.size(); ++i) {
             uint32_t rStart = flat[i].start;
@@ -783,18 +777,6 @@ void MainWindow_ImGui::renderMemoryBarWindow()
             }
         }
         return regionY1.back();
-    };
-    // addrToY2: interpolate within the proportional (true-scale) bar 2 layout
-    auto addrToY2 = [&](uint32_t addr) -> float {
-        for (size_t i = 0; i < flat.size(); ++i) {
-            uint32_t rStart = flat[i].start;
-            uint32_t rEnd   = static_cast<uint32_t>(flat[i].end) + 1;
-            if (addr >= rStart && addr < rEnd) {
-                float t = static_cast<float>(addr - rStart) / static_cast<float>(rEnd - rStart);
-                return region2Y0[i] + t * (region2Y1[i] - region2Y0[i]);
-            }
-        }
-        return region2Y1.back();
     };
 
     // Helper: lighten/darken a color for 3D bevel effect
@@ -821,38 +803,78 @@ void MainWindow_ImGui::renderMemoryBarWindow()
                 ImVec2(bar2X + bar2W + 1, origin.y + totalBarH + 1),
                 IM_COL32(80, 80, 80, 255), 2.0f, 0, 1.0f);
 
-    // --- Draw flat regions with 3D bevel ---
+    // Three-pass rendering so labels stay on top of the connector lines:
+    //   Pass 1 — both bars (fills + bevels + separators), identical look
+    //   Pass 2 — connector lines from each bar-1 region edge to the same
+    //            edge in bar-2, visualising the per-region scale distortion
+    //   Pass 3 — region labels in the middle gap (drawn last so the
+    //            connector lines never punch through the text)
+
+    // --- Pass 1: draw both bars (mirror styling) ---
     for (size_t ri = 0; ri < flat.size(); ++ri) {
         const auto& fr = flat[ri];
-        float y0 = regionY0[ri];
-        float y1 = regionY1[ri];
-        float h = y1 - y0;
+        const float y0 = regionY0[ri];
+        const float y1 = regionY1[ri];
+        const float h  = y1 - y0;
 
-        // Main fill
+        // Bar 1 — distorted scale (min height guarantees label space).
         dl->AddRectFilled(ImVec2(barX, y0), ImVec2(barX + barW, y1), fr.color);
-
-        // Subtle 3D bevel
         if (h > 4.0f) {
             dl->AddLine(ImVec2(barX, y0 + 0.5f), ImVec2(barX + barW, y0 + 0.5f),
                         lighten(fr.color, 40), 1.0f);
             dl->AddLine(ImVec2(barX, y1 - 0.5f), ImVec2(barX + barW, y1 - 0.5f),
                         darken(fr.color, 40), 1.0f);
         }
-
-        // Region separator
         dl->AddLine(ImVec2(barX, y1), ImVec2(barX + barW, y1),
                     IM_COL32(30, 30, 30, 200), 1.0f);
 
-        // --- Bar 2: true proportional fill (same colour, after labels) ---
-        float y0p = region2Y0[ri];
-        float y1p = region2Y1[ri];
-        dl->AddRectFilled(ImVec2(bar2X, y0p), ImVec2(bar2X + bar2W, y1p), fr.color);
-        if (y1p - y0p > 1.5f) {
-            dl->AddLine(ImVec2(bar2X, y1p), ImVec2(bar2X + bar2W, y1p),
-                        IM_COL32(30, 30, 30, 200), 1.0f);
+        // Bar 2 — identical clone of bar 1 (same Y positions, same bevels).
+        dl->AddRectFilled(ImVec2(bar2X, y0), ImVec2(bar2X + bar2W, y1), fr.color);
+        if (h > 4.0f) {
+            dl->AddLine(ImVec2(bar2X, y0 + 0.5f), ImVec2(bar2X + bar2W, y0 + 0.5f),
+                        lighten(fr.color, 40), 1.0f);
+            dl->AddLine(ImVec2(bar2X, y1 - 0.5f), ImVec2(bar2X + bar2W, y1 - 0.5f),
+                        darken(fr.color, 40), 1.0f);
         }
+        dl->AddLine(ImVec2(bar2X, y1), ImVec2(bar2X + bar2W, y1),
+                    IM_COL32(30, 30, 30, 200), 1.0f);
+    }
 
-        // --- Labels: always show name (minimum height guarantees room) ---
+    // --- Pass 2: connector lines between bars (zone delimiters) ---
+    // Bars 1 and 2 share the same Y layout, so each region's boundaries
+    // line up at identical heights on both sides. We paint the gap between
+    // the bars with a faint zone-coloured tint (so the eye groups the two
+    // bar slabs into a single zone), then draw a dark hairline at every
+    // boundary so the transitions are unambiguous.
+    {
+        const float bar1Right = barX + barW;
+        const float bar2Left  = bar2X;
+        for (size_t ri = 0; ri < flat.size(); ++ri) {
+            const ImU32 zoneTint = (flat[ri].color & 0x00FFFFFFu) | (90u << 24);
+            dl->AddRectFilled(ImVec2(bar1Right, regionY0[ri]),
+                              ImVec2(bar2Left,  regionY1[ri]),
+                              zoneTint);
+        }
+        // Top edge of the very first region — every subsequent boundary is
+        // covered by the bottom-edge loop below.
+        dl->AddLine(ImVec2(bar1Right, regionY0[0]),
+                    ImVec2(bar2Left,  regionY0[0]),
+                    IM_COL32(60, 60, 60, 220), 1.5f);
+        for (size_t ri = 0; ri < flat.size(); ++ri) {
+            dl->AddLine(ImVec2(bar1Right, regionY1[ri]),
+                        ImVec2(bar2Left,  regionY1[ri]),
+                        IM_COL32(60, 60, 60, 220), 1.5f);
+        }
+    }
+
+    // --- Pass 3: per-zone labels (drawn last so the connector quads stay
+    // visible underneath but the text remains crisp). ---
+    for (size_t ri = 0; ri < flat.size(); ++ri) {
+        const auto& fr = flat[ri];
+        const float y0 = regionY0[ri];
+        const float y1 = regionY1[ri];
+        const float h  = y1 - y0;
+
         uint32_t sizeBytes = static_cast<uint32_t>(fr.end) - fr.start + 1;
         char labelBuf[128];
         if (sizeBytes >= 1024)
@@ -860,16 +882,36 @@ void MainWindow_ImGui::renderMemoryBarWindow()
         else
             snprintf(labelBuf, sizeof(labelBuf), "%s (%u B)", fr.label, (unsigned)sizeBytes);
 
-        float labelY = (y0 + y1) * 0.5f - textH * 0.5f;
-        dl->AddText(ImVec2(barX + barW + labelGap, labelY),
-                    IM_COL32(220, 220, 220, 255), labelBuf);
+        // Centre the text in the gap between the two bars rather than
+        // anchoring it to bar 1's right edge — looks more balanced now
+        // that the bars are the same width on either side.
+        const float gapMidX  = (barX + barW + bar2X) * 0.5f;
+        const float labelW   = ImGui::CalcTextSize(labelBuf).x;
+        const float labelX   = gapMidX - labelW * 0.5f;
+        const float labelY   = (y0 + y1) * 0.5f - textH * 0.5f;
 
-        // Address range underneath (only if enough room for two lines)
+        // Tiny dark tablet behind the text so it pops above the colour
+        // tint — same trick the PC indicator uses below.
+        dl->AddRectFilled(
+            ImVec2(labelX - 3, labelY - 1),
+            ImVec2(labelX + labelW + 3, labelY + textH + 1),
+            IM_COL32(28, 28, 36, 200), 2.0f);
+        dl->AddText(ImVec2(labelX, labelY),
+                    IM_COL32(232, 232, 232, 255), labelBuf);
+
+        // Address range underneath when there's vertical room for two lines.
         if (h > textH * 2.0f + 6.0f) {
             char addrBuf[24];
             snprintf(addrBuf, sizeof(addrBuf), "$%04X-$%04X", fr.start, fr.end);
-            dl->AddText(ImVec2(barX + barW + labelGap, labelY + textH + 1),
-                        IM_COL32(130, 130, 130, 255), addrBuf);
+            const float addrW = ImGui::CalcTextSize(addrBuf).x;
+            const float addrX = gapMidX - addrW * 0.5f;
+            const float addrY = labelY + textH + 1;
+            dl->AddRectFilled(
+                ImVec2(addrX - 3, addrY - 1),
+                ImVec2(addrX + addrW + 3, addrY + textH + 1),
+                IM_COL32(28, 28, 36, 180), 2.0f);
+            dl->AddText(ImVec2(addrX, addrY),
+                        IM_COL32(150, 150, 150, 255), addrBuf);
         }
     }
 
@@ -884,15 +926,6 @@ void MainWindow_ImGui::renderMemoryBarWindow()
                     IM_COL32(180, 180, 180, 255), "$0000");
         dl->AddText(ImVec2(origin.x, botLabelY),
                     IM_COL32(180, 180, 180, 255), "$FFFF");
-
-        // Bar 2 is a true 1:1 proportional scale — annotate as "%" on its left
-        auto drawRightAligned = [&](const char* s, float rx, float y, ImU32 col) {
-            float tw = ImGui::CalcTextSize(s).x;
-            dl->AddText(ImVec2(rx - tw, y), col, s);
-        };
-        const float bar2LabelX = bar2X - 4.0f;
-        drawRightAligned("0%",   bar2LabelX, origin.y,                      IM_COL32(180, 180, 180, 255));
-        drawRightAligned("100%", bar2LabelX, origin.y + totalBarH - textH,  IM_COL32(180, 180, 180, 255));
 
         const float minSpacing = textH + 2.0f;
         float lastLabelY = topLabelY;  // tracks the bottom of the last drawn label
@@ -917,8 +950,11 @@ void MainWindow_ImGui::renderMemoryBarWindow()
     }
 
     // --- PC indicator on bar 2: white arrow + label ---
+    // Both bars share `addrToY` now that bar 2 mirrors bar 1's distorted
+    // Y layout — the arrow lands on the right-hand side of the same
+    // region the PC actually lives in.
     {
-        float pcY = addrToY2(pc);
+        float pcY = addrToY(pc);
         float sz = 6.0f;
         // Arrow on the right side, pointing left into bar 2
         dl->AddTriangleFilled(

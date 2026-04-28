@@ -1447,4 +1447,191 @@ void Memory::advanceCycles(int cycles)
     if (sidEnabled || sidSpecialEditionEnabled) sid->advanceCycles(cycles);
 }
 
+// ─────────────────────────────────────────────────────────────────────
+// Snapshot save / load
+// ─────────────────────────────────────────────────────────────────────
+//
+// Format: see SnapshotIO.h. Sections written in this order:
+//   "MEM     " — 64 KB RAM + scalar/flag state
+//   "FLAGS   " — packed enable bits (16 bits, 12 used)
+//   "<card>  " — per-peripheral payload via Peripheral::serialize()
+//
+// Reader iterates sections by name and dispatches; unknown sections are
+// skipped (forward-compat). Cards that haven't migrated their state yet
+// write empty sections (the default Peripheral::serialize is a no-op),
+// so the framework already works end-to-end before every card is ready.
+
+#include "SnapshotIO.h"
+
+namespace {
+
+// Pack the 12 card-enabled flags into a single uint16_t. Order is stable
+// across versions — appending a new card reserves the next bit; never
+// reorder existing bits without bumping the snapshot version.
+constexpr uint16_t kFlagACI            = 1u << 0;
+constexpr uint16_t kFlagTMS9918        = 1u << 1;
+constexpr uint16_t kFlagSID            = 1u << 2;
+constexpr uint16_t kFlagSIDSpecialEdt  = 1u << 3;
+constexpr uint16_t kFlagMicroSD        = 1u << 4;
+constexpr uint16_t kFlagCFFA1          = 1u << 5;
+constexpr uint16_t kFlagJukeBox        = 1u << 6;
+constexpr uint16_t kFlagCodeTank       = 1u << 7;
+constexpr uint16_t kFlagWiFiModem      = 1u << 8;
+constexpr uint16_t kFlagTerminalCard   = 1u << 9;
+constexpr uint16_t kFlagA1IO_RTC       = 1u << 10;
+constexpr uint16_t kFlagPR40           = 1u << 11;
+constexpr uint16_t kFlagGT6144         = 1u << 12;
+constexpr uint16_t kFlagCassetteAudio  = 1u << 13;
+
+} // namespace
+
+bool Memory::saveSnapshot(const std::string& path, std::string& error) const
+{
+    pom1::SnapshotWriter w(path);
+    if (!w.good()) {
+        error = "cannot open snapshot file for writing: " + path;
+        return false;
+    }
+
+    // ── MEM section: 64 KB RAM + key/display state + scalar bookkeeping
+    {
+        auto h = w.beginSection("MEM");
+        w.writeBytes(mem.data(), mem.size());
+        w.writeU8(static_cast<uint8_t>(lastKey));
+        w.writeU8(keyReady ? 1 : 0);
+        w.writeU32(static_cast<uint32_t>(displayBusyCycles));
+        w.writeU16(static_cast<uint16_t>(ramSize));
+        w.writeU16(static_cast<uint16_t>(presetRamKB));
+        w.writeU8(oorStrictMode ? 1 : 0);
+        w.writeU8(writeInRom ? 1 : 0);
+        w.endSection(h);
+    }
+
+    // ── FLAGS section: packed card-enabled bitmap
+    {
+        uint16_t flags = 0;
+        if (aciEnabled)                flags |= kFlagACI;
+        if (tms9918Enabled)            flags |= kFlagTMS9918;
+        if (sidEnabled)                flags |= kFlagSID;
+        if (sidSpecialEditionEnabled)  flags |= kFlagSIDSpecialEdt;
+        if (microSDEnabled)            flags |= kFlagMicroSD;
+        if (cffa1Enabled)              flags |= kFlagCFFA1;
+        if (jukeBoxEnabled)            flags |= kFlagJukeBox;
+        if (codeTankEnabled)           flags |= kFlagCodeTank;
+        if (wifiModemEnabled)          flags |= kFlagWiFiModem;
+        if (terminalCardEnabled)       flags |= kFlagTerminalCard;
+        if (a1ioRtcEnabled)            flags |= kFlagA1IO_RTC;
+        if (pr40Enabled)               flags |= kFlagPR40;
+        if (gt6144Enabled)             flags |= kFlagGT6144;
+        if (cassetteAudioActive)       flags |= kFlagCassetteAudio;
+
+        auto h = w.beginSection("FLAGS");
+        w.writeU16(flags);
+        w.endSection(h);
+    }
+
+    // ── Per-peripheral sections. Iterate the same order so loadSnapshot
+    // matches up by sequence; the section name is also written for
+    // forward-compat (unknown sections are skipped on load).
+    auto writeCard = [&](const pom1::Peripheral& p) {
+        auto h = w.beginSection(p.name());
+        p.serialize(w);
+        w.endSection(h);
+    };
+    writeCard(*cassetteDevice);
+    writeCard(*tms9918);
+    writeCard(*sid);
+    writeCard(*microSD);
+    writeCard(*cffa1);
+    writeCard(*jukeBox);
+    writeCard(*codeTank);
+    writeCard(*wifiModem);
+    writeCard(*terminalCard);
+    writeCard(*a1ioRtc);
+    writeCard(*pr40Printer);
+    writeCard(*gt6144);
+
+    if (!w.good()) {
+        error = "I/O error while writing snapshot";
+        return false;
+    }
+    return true;
+}
+
+bool Memory::loadSnapshot(const std::string& path, std::string& error)
+{
+    pom1::SnapshotReader r(path);
+    if (!r.good()) {
+        error = r.error().empty() ? "snapshot read failed" : r.error();
+        return false;
+    }
+
+    // Build a name → peripheral lookup so we can dispatch by section
+    // name (insulates us against future card-order changes).
+    std::vector<pom1::Peripheral*> cards = {
+        cassetteDevice.get(), tms9918.get(), sid.get(),
+        microSD.get(), cffa1.get(), jukeBox.get(), codeTank.get(),
+        wifiModem.get(), terminalCard.get(), a1ioRtc.get(),
+        pr40Printer.get(), gt6144.get(),
+    };
+
+    std::string sectionName;
+    uint32_t    sectionLen = 0;
+    while (r.nextSection(sectionName, sectionLen)) {
+        if (sectionName == "MEM") {
+            r.readBytes(mem.data(), mem.size());
+            lastKey            = static_cast<char>(r.readU8());
+            keyReady           = r.readU8() != 0;
+            displayBusyCycles  = static_cast<int>(r.readU32());
+            ramSize            = static_cast<int>(r.readU16());
+            presetRamKB        = static_cast<int>(r.readU16());
+            oorStrictMode      = r.readU8() != 0;
+            writeInRom         = r.readU8() != 0;
+            markAllPagesDirty();
+            continue;
+        }
+        if (sectionName == "FLAGS") {
+            const uint16_t flags = r.readU16();
+            // Apply enable flags via the public setters so each card's
+            // bus handlers + ROM mirrors reconfigure themselves
+            // correctly. setX methods are idempotent.
+            setACIEnabled              ((flags & kFlagACI)            != 0);
+            setTMS9918Enabled          ((flags & kFlagTMS9918)        != 0);
+            setSIDEnabled              ((flags & kFlagSID)            != 0);
+            setSIDSpecialEditionEnabled((flags & kFlagSIDSpecialEdt)  != 0);
+            setMicroSDEnabled          ((flags & kFlagMicroSD)        != 0);
+            setCFFA1Enabled            ((flags & kFlagCFFA1)          != 0);
+            setJukeBoxEnabled          ((flags & kFlagJukeBox)        != 0);
+            setCodeTankEnabled         ((flags & kFlagCodeTank)       != 0);
+            setWiFiModemEnabled        ((flags & kFlagWiFiModem)      != 0);
+            terminalCardEnabled       =((flags & kFlagTerminalCard)   != 0);
+            setA1IO_RTCEnabled         ((flags & kFlagA1IO_RTC)       != 0);
+            pr40Enabled               =((flags & kFlagPR40)           != 0);
+            setGT6144Enabled           ((flags & kFlagGT6144)         != 0);
+            cassetteAudioActive       =((flags & kFlagCassetteAudio)  != 0);
+            continue;
+        }
+
+        // Per-peripheral section: dispatch by name.
+        bool dispatched = false;
+        for (auto* card : cards) {
+            if (card && card->name() == sectionName) {
+                card->deserialize(r);
+                dispatched = true;
+                break;
+            }
+        }
+        if (!dispatched) {
+            // Unknown section — skip (forward-compat).
+            r.skipCurrentSection();
+        }
+    }
+
+    if (!r.good()) {
+        error = "I/O error while reading snapshot";
+        return false;
+    }
+    return true;
+}
+
 

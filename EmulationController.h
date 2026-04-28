@@ -86,6 +86,13 @@ public:
     bool loadBinaryToRam(const std::string& path, quint16 address, std::string& error);
     bool saveMemoryRange(const std::string& path, quint16 startAddress, quint16 endAddress, bool binaryFormat, std::string& error);
 
+    /// Snapshot save/load — see Memory::saveSnapshot for the format and the
+    /// list of state currently captured. Both calls take stateMutex; the CPU
+    /// is paused for the duration so the snapshot is internally consistent.
+    /// loadSnapshot does NOT restart the CPU on its own — caller decides.
+    bool saveSnapshot(const std::string& path, std::string& error) const;
+    bool loadSnapshot(const std::string& path, std::string& error);
+
     void setWriteInRom(bool enabled);
     bool getWriteInRom() const;
     void setTerminalSpeed(int charsPerSecond);

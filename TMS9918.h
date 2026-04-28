@@ -15,12 +15,16 @@
 
 #include <array>
 #include <cstdint>
+#include <string_view>
 #include "CpuClock.h"
+#include "Peripheral.h"
 #include "imgui.h"
 
-class TMS9918
+class TMS9918 : public pom1::Peripheral
 {
 public:
+    std::string_view name() const override { return "TMS9918"; }
+
     static constexpr int kScreenWidth  = 256;
     static constexpr int kScreenHeight = 192;
     static constexpr int kVramSize     = 0x4000; // 16 KB

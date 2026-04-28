@@ -7,14 +7,19 @@
 #ifndef CFFA1_H
 #define CFFA1_H
 
+#include "Peripheral.h"
+
 #include <cstdint>
 #include <array>
 #include <vector>
 #include <string>
+#include <string_view>
 #include <fstream>
 
-class CFFA1 {
+class CFFA1 : public pom1::Peripheral {
 public:
+    std::string_view name() const override { return "CFFA1"; }
+
     // Address ranges
     static constexpr uint16_t kRomBase = 0x9000;
     static constexpr uint16_t kRomEnd  = 0xAFDF;

@@ -293,6 +293,21 @@ bool EmulationController::saveMemoryRange(const std::string& path, quint16 start
     return true;
 }
 
+bool EmulationController::saveSnapshot(const std::string& path, std::string& error) const
+{
+    std::lock_guard<PriorityMutex> lock(stateMutex);
+    return memory->saveSnapshot(path, error);
+}
+
+bool EmulationController::loadSnapshot(const std::string& path, std::string& error)
+{
+    std::lock_guard<PriorityMutex> lock(stateMutex);
+    if (!memory->loadSnapshot(path, error)) return false;
+    // Republish so the UI sees the new RAM/state immediately.
+    publisher.publish(*memory, *cpu, runRequested.load());
+    return true;
+}
+
 void EmulationController::setWriteInRom(bool enabled)
 {
     std::lock_guard<PriorityMutex> lock(stateMutex);
