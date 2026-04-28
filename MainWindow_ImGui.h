@@ -179,6 +179,10 @@ private:
     int tmsBoardPhotoHeight = 0;
     bool tmsBoardPhotoLoadTried = false;
     bool showTmsBoardPhoto = false;
+    GLuint pr40MechPhotoTexture = 0;
+    int pr40MechPhotoWidth = 0;
+    int pr40MechPhotoHeight = 0;
+    bool pr40MechPhotoLoadTried = false;
     bool showTMS9918 = false;
     bool tms9918Enabled = false;
     GLuint tms9918Texture = 0;
@@ -255,6 +259,7 @@ private:
     void renderWozJobsRectPhotoWindow();
     void ensureTmsBoardPhotoTexture();
     void renderTmsBoardPhotoWindow();
+    void ensurePR40MechPhotoTexture();
     void renderSpecialThanksWindow();
     void renderHardwareReferenceWindow();
     void renderSoftwareReferenceWindow();

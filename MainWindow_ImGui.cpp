@@ -160,6 +160,13 @@ void MainWindow_ImGui::destroyPom1()
         tmsBoardPhotoHeight = 0;
     }
     tmsBoardPhotoLoadTried = false;
+    if (pr40MechPhotoTexture) {
+        glDeleteTextures(1, &pr40MechPhotoTexture);
+        pr40MechPhotoTexture = 0;
+        pr40MechPhotoWidth = 0;
+        pr40MechPhotoHeight = 0;
+    }
+    pr40MechPhotoLoadTried = false;
 }
 
 // Fire every deferred card plug queued by applyMachineConfig() immediately,

@@ -54,6 +54,7 @@ static const char kAppIconFile[] = "icon.png";
 static const char kWozJobsPhotoFile[] = "woz_jobs_apple1.jpg";
 static const char kWozJobsRectPhotoFile[] = "woz_jobs_apple1-rect.jpg";
 static const char kTmsBoardPhotoFile[] = "PLAB_tms9918.png";
+static const char kPR40MechPhotoFile[] = "SWTPC PR-40 Printer.png";
 
 /** Generic cwd + exe-relative probe for files expected under pic/. */
 static std::string find_pic_file_path(const char* relBasename)
@@ -438,6 +439,44 @@ void MainWindow_ImGui::ensureTmsBoardPhotoTexture()
     tmsBoardPhotoTexture = tex;
     tmsBoardPhotoWidth = w;
     tmsBoardPhotoHeight = h;
+}
+
+void MainWindow_ImGui::ensurePR40MechPhotoTexture()
+{
+    if (pr40MechPhotoTexture != 0 || pr40MechPhotoLoadTried)
+        return;
+    pr40MechPhotoLoadTried = true;
+
+    const std::string path = find_pic_file_path(kPR40MechPhotoFile);
+    if (path.empty()) {
+        pom1::log().warn("Images",
+            std::string("SWTPC PR-40 mechanism photo not found (expected pic/") + kPR40MechPhotoFile + ")");
+        return;
+    }
+
+    int w = 0, h = 0, channels = 0;
+    unsigned char* pixels = stbi_load(path.c_str(), &w, &h, &channels, 4);
+    if (!pixels || w <= 0 || h <= 0) {
+        if (pixels) stbi_image_free(pixels);
+        pom1::log().warn("Images", "Could not decode SWTPC PR-40 mechanism photo: " + path);
+        return;
+    }
+
+    GLuint tex = 0;
+    glGenTextures(1, &tex);
+    glBindTexture(GL_TEXTURE_2D, tex);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, w, h, 0, GL_RGBA, GL_UNSIGNED_BYTE, pixels);
+    glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
+    stbi_image_free(pixels);
+
+    pr40MechPhotoTexture = tex;
+    pr40MechPhotoWidth = w;
+    pr40MechPhotoHeight = h;
 }
 
 void MainWindow_ImGui::renderTmsBoardPhotoWindow()

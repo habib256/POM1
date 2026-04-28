@@ -439,9 +439,10 @@ void MainWindow_ImGui::renderA1IO_RTCWindow()
 
 void MainWindow_ImGui::renderPR40Window()
 {
-    ImGui::SetNextWindowSize(ImVec2(440, 620), ImGuiCond_FirstUseEver);
+    ImGui::SetNextWindowSize(ImVec2(440, 780), ImGuiCond_FirstUseEver);
     applyPendingLayout("SWTPC PR-40 Printer");
     if (ImGui::Begin("SWTPC PR-40 Printer", &showPR40)) {
+        ensurePR40MechPhotoTexture();
         const auto& snap = uiSnapshot.pr40;
 
         // Status
@@ -490,7 +491,12 @@ void MainWindow_ImGui::renderPR40Window()
         ImGui::Text("Paper roll (3 7/8\" continuous, 40 col — %d line%s this session):",
                     static_cast<int>(snap.recentLines.size()),
                     snap.recentLines.size() == 1 ? "" : "s");
-        ImGui::BeginChild("##pr40paper", ImVec2(0, 420), true);
+        // Paper-roll look: off-white cream paper + black ink, period-faithful
+        // to the PR-40's continuous 3 7/8" thermal-style roll.
+        ImGui::PushStyleColor(ImGuiCol_ChildBg, IM_COL32(245, 240, 225, 255));
+        ImGui::PushStyleColor(ImGuiCol_Text,    IM_COL32(20, 20, 20, 255));
+        ImGui::PushStyleColor(ImGuiCol_Border,  IM_COL32(150, 140, 120, 255));
+        ImGui::BeginChild("##pr40paper", ImVec2(0, 340), true);
         {
             // Wrap at the child's right edge so narrow ribbon widths don't
             // truncate printed lines (replaces the prior horizontal scrollbar).
@@ -510,6 +516,7 @@ void MainWindow_ImGui::renderPR40Window()
             }
         }
         ImGui::EndChild();
+        ImGui::PopStyleColor(3);
 
         if (ImGui::Button("Tear off page")) {
             emulation->clearPR40Paper();
@@ -548,6 +555,18 @@ void MainWindow_ImGui::renderPR40Window()
             } else {
                 setStatusMessage(std::string("PR-40 save failed: ") + err, 4.0f);
             }
+        }
+
+        // Footer photo of the real PR-40 mechanism (top-down view of the
+        // Sanders 240/M-style print head + paper roll + ribbon spools).
+        // Fit to the full content width, aspect-preserved.
+        if (pr40MechPhotoTexture != 0 && pr40MechPhotoWidth > 0 && pr40MechPhotoHeight > 0) {
+            ImGui::Separator();
+            const float availW = ImGui::GetContentRegionAvail().x;
+            const float aspect = static_cast<float>(pr40MechPhotoHeight)
+                               / static_cast<float>(pr40MechPhotoWidth);
+            ImGui::Image((ImTextureID)(uintptr_t)pr40MechPhotoTexture,
+                         ImVec2(availW, availW * aspect));
         }
     }
     ImGui::End();

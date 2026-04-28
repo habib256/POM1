@@ -17,12 +17,14 @@ Ce document récapitule tout ce qu'il faut savoir pour programmer l'Apple 1 ému
 
 ### Commandes standard
 
+Les sources vivent sous `dev/projects/<name>/` (chacun a son `Makefile`). Workflow manuel si besoin :
+
 ```bash
 # Assemblage
-ca65 -o build/MyGame.o software/.../MyGame.asm
+ca65 -o build/MyGame.o dev/projects/<name>/MyGame.asm
 
 # Linker avec config spécifique
-ld65 -C software/apple1_4k.cfg -o build/MyGame.bin build/MyGame.o
+ld65 -C dev/cc65/apple1_4k.cfg -o build/MyGame.bin build/MyGame.o
 
 # Conversion binaire → Woz Monitor (hex dump 16 octets par ligne, adresses en hex)
 python3 -c "
@@ -31,8 +33,10 @@ base = 0x0280
 for i in range(0, len(data), 16):
     chunk = data[i:i+16]
     print(f'{base+i:04X}: ' + ' '.join(f'{b:02X}' for b in chunk))
-" > software/.../MyGame.txt
+" > software/<dir>/MyGame.txt
 ```
+
+Le binaire compilé et son `.txt` Woz hex sont déposés sous `software/<dir>/` — c'est là que POM1 va les lire (les hooks d'auto-activation de carte sont câblés sur `software/hgr/`, `software/tms9918/`, etc.).
 
 ### Chargement dans POM1
 
@@ -44,10 +48,10 @@ for i in range(0, len(data), 16):
 
 | Config | CODE range | Taille | Usage typique |
 |--------|-----------|--------|---------------|
-| `software/apple1.cfg` | `$0280-$0F7F` | 3 328 B | Petits jeux, purement texte |
-| `software/apple1_4k.cfg` | `$0280-$127F` | 4 096 B | Jeux texte de taille moyenne |
-| `software/hgr/apple1_gen2.cfg` | `$0280-$1FFF` | 7 552 B | Jeux HGR (réserve `$2000-$3FFF` pour le framebuffer) ; marche aussi pour TMS9918 (VRAM séparée) |
-| `software/pom1.cfg` | `$0300-$9FFF` | 40 KB | Programmes volumineux ; attention base différente |
+| `dev/cc65/apple1.cfg` | `$0280-$0F7F` | 3 328 B | Petits jeux, purement texte |
+| `dev/cc65/apple1_4k.cfg` | `$0280-$127F` | 4 096 B | Jeux texte de taille moyenne |
+| `dev/cc65/apple1_gen2.cfg` | `$0280-$1FFF` | 7 552 B | Jeux HGR (réserve `$2000-$3FFF` pour le framebuffer) ; marche aussi pour TMS9918 (VRAM séparée) |
+| `dev/cc65/pom1.cfg` | `$0300-$9FFF` | 40 KB | Programmes volumineux ; attention base différente |
 
 La syntaxe minimale d'un `.cfg` :
 
@@ -255,7 +259,7 @@ Si on imprime seulement `X |` (3 chars), les `|` se décalent visiblement des `+
 
 ### Exemple d'implémentation
 
-`software/games/Sokoban.asm` — grille ASCII 20×12, redraw plein à chaque coup, ~4 KB binaire avec 47 niveaux.
+`dev/projects/games_sokoban/Sokoban.asm` — grille ASCII 20×12, redraw plein à chaque coup, ~4 KB binaire avec 47 niveaux.
 
 ---
 
@@ -288,7 +292,7 @@ Le pixel est au final :
 
 ### Table de lookup hgr_tables.inc
 
-Le fichier `software/hgr/hgr_tables.inc` fournit (896 octets + 30 d'code) :
+Le fichier `dev/lib/hgr/hgr_tables.inc` (inclus via `-I ../../lib/hgr` dans les Makefiles projet) fournit (896 octets + 30 d'code) :
 - `hgr_lo[192]`, `hgr_hi[192]` : adresse de chaque scanline (gère l'interleave Apple II)
 - `hgr_col[256]`, `hgr_mask[256]` : pour un pixel à screenX x, donne la colonne d'octet et le bitmask
 - `plot_pixel` : routine ~45 cycles qui pose un pixel à (cur_x, cur_y)
@@ -317,7 +321,7 @@ Si la largeur n'est pas multiple de 7 (ex. maze avec murs 4 pixels), il faut des
 | 5 | +2 | $40 | $07 |
 | 6 | +3 | $78 | $00 |
 
-`fill_block` fait un read-modify-write : `byte |= mask1`, et si `mask2 ≠ 0`, `byte+1 |= mask2`. Voir `software/hgr/HGR2_Maze.asm`.
+`fill_block` fait un read-modify-write : `byte |= mask1`, et si `mask2 ≠ 0`, `byte+1 |= mask2`. Voir `dev/projects/hgr_maze/HGR_Maze.asm`.
 
 ### Astuce scanline stride +$0400
 
@@ -349,9 +353,10 @@ JSR clear_hgr              ; zéro le framebuffer
 
 ### Exemple d'implémentation
 
-- `software/hgr/HGR1_Maze.asm` — maze 19×11 avec murs 7 pixels byte-alignés
-- `software/hgr/HGR2_Maze.asm` — maze 34×23 avec sub-byte rendering
-- `software/hgr/HGR6_Sokoban.asm` — jeu complet 72 niveaux, 14×16 tuiles, delta rendering
+- `dev/projects/hgr_maze/HGR_Maze.asm` — maze sub-byte rendering (murs 4 pixels)
+- `dev/projects/hgr6_sokoban/HGR6_Sokoban.asm` — jeu complet 72 niveaux, 14×16 tuiles, delta rendering
+- `dev/projects/hgr4_mandelbrot/HGR4_Mandelbrot.asm` — calcul + pixel plotting
+- `dev/projects/hgr5_house/HGR5_House.asm` — dessin de formes
 
 ---
 
@@ -490,8 +495,8 @@ L'écran texte Apple 1 et la fenêtre TMS9918 sont **deux afficheurs indépendan
 
 ### Exemples d'implémentation
 
-- `software/tms9918/TMS_Sokoban.asm` — 47 niveaux, tuiles 8×8 avec 7 couleurs
-- `software/tms9918/TMS_Connect4.asm` — pions 32×32 sur plateau bleu plein écran
+- `dev/projects/tms9918_sokoban/TMS_Sokoban.asm` — 47 niveaux, tuiles 8×8 avec 7 couleurs
+- `dev/projects/tms9918_connect4/TMS_Connect4.asm` — pions 32×32 sur plateau bleu plein écran
 
 ---
 
@@ -650,23 +655,29 @@ Les trois ports de **Sokoban** partagent la même grille, la même logique de co
 
 | Fichier | Mode | Taille | Niveaux |
 |---------|------|--------|---------|
-| `software/games/Sokoban.asm` | Texte | 4054 B | 47 |
-| `software/hgr/HGR6_Sokoban.asm` | HGR GEN2 | 7399 B | 72 |
-| `software/tms9918/TMS_Sokoban.asm` | TMS9918 | 4354 B | 47 |
+| `dev/projects/games_sokoban/Sokoban.asm` | Texte | 4054 B | 47 |
+| `dev/projects/hgr6_sokoban/HGR6_Sokoban.asm` | HGR GEN2 | 7399 B | 72 |
+| `dev/projects/tms9918_sokoban/TMS_Sokoban.asm` | TMS9918 | 4354 B | 47 |
 
 Les trois ports de **Connect 4** de même :
 
 | Fichier | Mode | Taille |
 |---------|------|--------|
-| `software/games/Connect4.asm` | Texte | 1021 B |
-| `software/hgr/HGR7_Connect4.asm` | HGR GEN2 | 2003 B |
-| `software/tms9918/TMS_Connect4.asm` | TMS9918 | 1230 B |
+| `dev/projects/games_connect4/Connect4.asm` | Texte | 1021 B |
+| `dev/projects/hgr7_connect4/HGR7_Connect4.asm` | HGR GEN2 | 2003 B |
+| `dev/projects/tms9918_connect4/TMS_Connect4.asm` | TMS9918 | 1230 B |
 
 Autres programmes GEN2 utiles comme modèle :
-- `software/hgr/HGR1_Maze.asm` : maze byte-aligné (7-px walls)
-- `software/hgr/HGR2_Maze.asm` : maze sub-byte (4-px walls)
-- `software/hgr/HGR4_Mandelbrot.asm` : calcul + pixel plotting
-- `software/hgr/HGR5_House.asm` : dessin de formes
+- `dev/projects/hgr_maze/HGR_Maze.asm` : maze sub-byte rendering (4-px walls)
+- `dev/projects/hgr4_mandelbrot/HGR4_Mandelbrot.asm` : calcul + pixel plotting
+- `dev/projects/hgr5_house/HGR5_House.asm` : dessin de formes
+
+Bibliothèques réutilisables (`dev/lib/`) :
+- `dev/lib/apple1/apple1.inc` — équates Wozmon + PIA
+- `dev/lib/m6502/math.asm` — trig point-fixe, RNG LFSR, impression décimale
+- `dev/lib/tms9918/{tms9918.inc,tms9918m2.asm}` — équates VDP + driver Mode 2
+- `dev/lib/hgr/{hgr_tables.inc,smiley.inc}` — tables HGR
+- `dev/lib/sokoban/sokoban_*.inc` — données niveaux Sokoban partagées
 
 ---
 

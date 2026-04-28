@@ -1,68 +1,53 @@
 # APPLE1DEV.md
 
-Agent-facing playbook for writing **new Apple 1 software** that runs under POM1. Complements three other sources:
+Agent-facing playbook for writing **new Apple 1 software** that runs under POM1. Companions:
 
-- **`doc/Programming_Apple1_ASM.md`** — 700-line deep dive on 6502 / cc65 / HGR / TMS9918 (French, by Arnaud, based on the Sokoban and Connect 4 trilogies). This file is the authoritative ASM reference — don't duplicate it, link to it when you hit "how do I draw a tile on HGR?".
-- **`README.md`** — user-facing walkthrough, preset table, bundled-software index.
-- **`CLAUDE.md`** — emulator-side architecture (what owns what, mutex order, ROM-load invariants).
-
-The memory records at `/Users/factory/.claude/projects/-Users-factory-src-POM1/memory/` also contain hard-won lessons (`reference_apple1_game_programming.md`, `reference_subbyte_rendering.md`, `feedback_6502_register_preservation.md`) — read them before writing your first 6502 helper.
+- **`dev/Programming_Apple1_ASM.md`** — 700-line French deep dive on 6502 / cc65 / HGR / TMS9918 (Arnaud, drawn from the Sokoban + Connect 4 trilogies). Authoritative ASM reference — link, don't duplicate.
+- **`README.md`** — user walkthrough, preset table, software index.
+- **`CLAUDE.md`** — emulator-side architecture (mutex order, ROM-load invariants).
 
 ---
 
 ## 1. Decision tree — pick your stack
 
-**What is the user asking for?**
+| Goal | Language | Mode | Linker cfg |
+|------|----------|------|-----------|
+| Quick demo, one-screen output | Integer BASIC | Text 40×24 | — |
+| Game with strings, floats, save | **Applesoft Lite** | Text (no cursor pos) | — |
+| Fast tile gameplay, any mode | **6502 asm (cc65)** | Text / HGR / TMS9918 / GT-6144 | see §4 |
+| Apple-1-movie text mode | asm | Text | `dev/cc65/apple1.cfg` |
+| Colour pixel art, fractals | asm + GEN2 | HGR 280×192 | `dev/cc65/apple1_gen2.cfg` |
+| Sprite/tile game, multi-colour | asm + TMS9918 | Graphics I 32×24 | `dev/cc65/apple1_gen2.cfg` (VRAM is separate) |
+| 1976 SWTPC graphics | asm + GT-6144 | 64×96 mono | `dev/projects/gt6144_hello/gt6144.cfg` |
+| SID jingle | asm @ `$C800` regs | — | any |
+| Shell tool, file manager | asm + microSD shell | Text | `dev/cc65/apple1.cfg` |
 
-| User goal | Language | Mode | Linker cfg |
-|-----------|----------|------|-----------|
-| Quick demo, toy, one-screen output | Integer BASIC | Text 40×24 | — (`.apl.txt`) |
-| Interactive game, strings, floats | **Applesoft Lite** | Text (no cursor pos) | — (SAVE/LOAD via microSD) |
-| Fast gameplay, tile-based, any mode | **6502 asm (cc65)** | Text / HGR / TMS9918 | see §4 |
-| "Looks like the Apple 1 movie" | asm + text mode | Text | `apple1.cfg` |
-| Colour pixel art, fractals, HGR demos | asm + GEN2 | HGR 280×192 | `hgr/apple1_gen2.cfg` |
-| Sprite-driven game, multi-colour | asm + TMS9918 | Graphics I 32×24 | `apple1_gen2.cfg` (TMS VRAM is separate) |
-| SID chip music / jingle | asm @ `$C800` regs | — | any |
-| Shell tool, file manager | asm + microSD shell | Text | `apple1.cfg` |
-
-**Base address conventions** (stick to these so `.apl.txt` dumps stay canonical):
-
-- `$0280` — ACI / microSD / Juke-Box / Applesoft programs (default `SAVE`/`LOAD` target, and the universal run address)
-- `$0300` — alternate when `$0280-$02FF` is reserved for something else
-- `$0800` — Applesoft BASIC program storage (`SAVE` writes the tokenised listing starting here)
-- `$E000-$EFFF` — **Integer BASIC ROM** — don't load user code here unless you *are* BASIC
+**Base addresses** (stick to these for canonical `.txt` dumps):
+- `$0280` — ACI / microSD / Juke-Box / Applesoft programs (default `SAVE`/`LOAD` target, universal run address)
+- `$0300` — alternate when `$0280-$02FF` is reserved
+- `$0800` — Applesoft program storage (`SAVE` writes the tokenised listing here)
+- `$E000-$EFFF` — Integer BASIC ROM, off-limits
 
 ---
 
 ## 2. Toolchain fast-path
 
+Per-project Makefiles under `dev/projects/<name>/` already wire `ca65` + `ld65` + Woz-hex emit. Manual flow if you need it:
+
 ```bash
-# 1. Assemble
-ca65 -o build/MyProg.o software/.../MyProg.asm
-
-# 2. Link
-ld65 -C software/apple1.cfg -o build/MyProg.bin build/MyProg.o
-
-# 3. Convert .bin → Woz Monitor hex dump (.txt) that POM1's File > Load Memory accepts
+ca65 -o build/MyProg.o dev/projects/<name>/MyProg.asm
+ld65 -C dev/cc65/apple1.cfg -o build/MyProg.bin build/MyProg.o
 python3 -c "
-data = open('build/MyProg.bin','rb').read()
-base = 0x0280
+data = open('build/MyProg.bin','rb').read(); base = 0x0280
 for i in range(0, len(data), 16):
-    chunk = data[i:i+16]
-    print(f'{base+i:04X}: ' + ' '.join(f'{b:02X}' for b in chunk))
-" > software/.../MyProg.txt
-
-# 4. Load in POM1 via File > Load Memory, then 280R in Woz Monitor
+    print(f'{base+i:04X}: ' + ' '.join(f'{b:02X}' for b in data[i:i+16]))
+" > software/<dir>/MyProg.txt
+# In POM1: File > Load Memory → MyProg.txt → `280R` in Wozmon
 ```
 
-All cc65 configs define `ZP: $0000-$0022` (35 bytes of usable zero page — the Woz Monitor and ACI claim the rest).
+Compiled `.bin` / `.txt` Woz hex always land under `software/<dir>/` — that's POM1's runtime tree (preset auto-enable hooks are wired to `software/hgr/`, `software/tms9918/`, etc.).
 
-**Why the `.apl.txt` hex-dump format?** POM1's `Memory::loadHexDump()` accepts the canonical Apple 1 Wozmon format:
-- `AAAA: HH HH HH ...` — bytes at address `AAAA`
-- `:` separator between 8-byte groups (historical 1976 dump style) works too
-- `AAAAR` suffix at EOF runs at that address when the emulator finishes loading
-- `T` prefix = turbo (don't simulate Wozmon's per-char delay)
-- Inline comments `//`, `#`, `;` are stripped (prevents mnemonic letters like `LDA` / `DEX` being parsed as data)
+All cc65 configs reserve **`$0000-$0022` ZP** (35 bytes); Wozmon + ACI claim the rest. `Memory::loadHexDump()` accepts canonical Wozmon dumps: `AAAA: HH HH …` lines, optional `:` separator, `R` suffix at EOF for auto-run, `T` prefix (turbo, no per-char delay), inline `//` `#` `;` comments stripped (otherwise mnemonic letters like `LDA`/`DEX` would parse as data).
 
 ---
 
@@ -70,24 +55,18 @@ All cc65 configs define `ZP: $0000-$0022` (35 bytes of usable zero page — the 
 
 | Address | Name | Role |
 |---------|------|------|
-| `$D010` | KBD | Last key typed, **bit 7 always set** — strip with `AND #$7F` |
-| `$D011` | KBDCR | Bit 7 = 1 when a key is ready; reading `$D010` clears the strobe |
-| `$D012` | DSP | Write a character (**bit 7 must be set** — `ORA #$80`). Read bit 7 = 0 when ready |
-| `$FFEF` | ECHO | Woz Monitor routine: print A to the screen (expects bit 7 set) |
-| `$FFFC-$FFFF` | Vectors | Reset / IRQ / NMI in the Woz Monitor ROM |
+| `$D010` | KBD | Last key, **bit 7 always set** — strip with `AND #$7F` |
+| `$D011` | KBDCR | Bit 7 = 1 when key ready; reading `$D010` clears the strobe |
+| `$D012` | DSP | Write a char (**bit 7 must be set** — `ORA #$80`); read bit 7 = 0 when ready |
+| `$FFEF` | ECHO | Wozmon routine: print A (expects bit 7 set) |
+| `$FFFC-$FFFF` | Vectors | Reset / IRQ / NMI in Wozmon ROM |
 
-**Bit-7 rule** — the PIA 6821 uses bit 7 as a data-valid strobe in both directions:
-- Writing: set bit 7 (`ORA #$80`) before `STA $D012` or `JSR ECHO`. `CR` is `$8D`, not `$0D`.
-- Reading: strip bit 7 (`AND #$7F`) after `LDA $D010`.
-
-**Uppercase-only** — the Apple 1 keyboard forces uppercase in hardware. Compare against `#'W'`, not `#'w'`.
-
-**Standard wait-key** loop:
+**Bit-7 rule** — PIA 6821 uses bit 7 as a data-valid strobe both ways. Write: `ORA #$80` first; `CR` is `$8D`, not `$0D`. Read: `AND #$7F`. **Uppercase only** — keyboard forces it in hardware. Compare `#'W'`, never `#'w'`.
 
 ```asm
 wait_key:
 @wk:    LDA KBDCR
-        BPL @wk           ; bit 7 clear → no key, spin
+        BPL @wk           ; bit 7 clear → no key
         LDA KBD
         AND #$7F
         RTS
@@ -95,212 +74,163 @@ wait_key:
 
 ---
 
-## 4. Display modes — one-paragraph each (then go to the ASM doc)
+## 4. Display modes — one paragraph each (then go to Programming_Apple1_ASM.md)
 
 ### Text 40×24 (default)
-Append-only terminal. No cursor addressing. To "refresh" just reprint the frame — the scroll does the work. Minimum viable game frame ≈ 12 rows × 20 chars + footer = fits in 24 lines easily. Use `ECHO` at `$FFEF` with `ORA #$80`. See `dev/projects/games_sokoban/Sokoban.asm`.
+Append-only terminal, no cursor addressing. To "refresh", reprint the frame — scroll does the work. Min viable game frame ≈ 12×20 chars + footer fits in 24 lines. `ECHO` at `$FFEF` with `ORA #$80`. See `dev/projects/games_sokoban/Sokoban.asm`.
 
 ### GEN2 HGR (280×192, Uncle Bernie)
-Framebuffer at **`$2000-$3FFF`** (8 KB, non-linear Apple II scanline layout). 7 px/byte; **bit 7 selects the NTSC group** (not a pixel). Isolated lit pixel = colour (violet/green/blue/orange depending on group + screenX parity). **Adjacent lit pixels = white.** Use `dev/lib/hgr/hgr_tables.inc` for `plot_pixel`, `clear_hgr`, and the scanline address tables. For walls / tiles, prefer byte-aligned widths (7/14/21/28 px); for other widths use the sub-byte-mask LUT (`reference_subbyte_rendering.md` + `dev/projects/hgr_maze/HGR_Maze.asm`). **Full HGR reference: `doc/Programming_Apple1_ASM.md` §5.**
+Framebuffer **`$2000-$3FFF`** (8 KB, non-linear Apple II layout). 7 px/byte; **bit 7 = NTSC group selector**, not a pixel. Isolated lit pixel = colour (violet/green/blue/orange depending on group + screenX parity); **adjacent lit pixels = white**. Use `dev/lib/hgr/hgr_tables.inc` (`plot_pixel`, `clear_hgr`, scanline tables). Byte-aligned tile widths (7/14/21/28 px) avoid sub-byte work; for arbitrary widths use the sub-byte mask LUT pattern (see `dev/projects/hgr_maze/HGR_Maze.asm`). **Full reference: `dev/Programming_Apple1_ASM.md` §5.**
 
 ### TMS9918 (256×192, P-LAB Graphic Card)
-I/O at `$CC00` (data) + `$CC01` (control). VRAM **is separate from main RAM** (16 KB, accessed only by I/O). Graphics I mode = 32×24 character cells, 8×8 px. Key VRAM layout: pattern table `$0000`, name table `$1800`, colour table `$2000` (**one colour byte per group of 8 chars** — exploit this for multi-colour tile games by placing each tile type at char `0, 8, 16, …`). **Must disable sprites** on init (write `$D0` to the first sprite-Y byte `$1B00`) or garbage appears. **Full TMS9918 reference: `doc/Programming_Apple1_ASM.md` §6.**
+I/O at `$CC00` (data) + `$CC01` (control). VRAM is **separate** (16 KB, I/O-only). Graphics I = 32×24 cells of 8×8 px. Layout: pattern `$0000`, name `$1800`, colour `$2000` (**one colour byte per group of 8 chars** — exploit by placing each tile type at char `0, 8, 16, …`). **Must disable sprites on init** (write `$D0` to first sprite-Y at `$1B00`) or garbage appears. **Full reference: `dev/Programming_Apple1_ASM.md` §6.**
 
 ### SWTPC GT-6144 (64×96 mono, 1976 — first commercial Apple-1 graphics card)
-**Write-only** I/O at `$D00A` — a 4-phase FSM on a single byte:
-- `byte 0..63`  → latch X + pixel **OFF** (clear pixel)
-- `byte 64..127` → latch X + pixel **ON**
-- `byte 128..223` → commit **Y** using latched X + state (actual plot happens here)
-- `byte 224..255` → control opcode (`byte & 0x07`: 0 = invert display, 1 = normal, 4 = unblank, 5 = blank)
+**Write-only** I/O at `$D00A`, 4-phase FSM on a single byte:
+- `0..63` → latch X + pixel **OFF**
+- `64..127` → latch X + pixel **ON**
+- `128..223` → commit **Y** (actual plot uses latched X + state)
+- `224..255` → control opcode (`byte & 0x07`: 0=invert, 1=normal, 4=unblank, 5=blank)
 
-No read-back, no framebuffer in main RAM (lives on 6× Intel 2102 SRAM). To plot `(x,y)` with pixel ON: `STA $D00A` with `x|64`, then `y|128`. Inversion and blanking affect the video path only — the SRAM is untouched. Power-on state is visible bistable SRAM noise ("petits rectangles") — clear the framebuffer before drawing. Example: `dev/projects/gt6144_hello/GT1_Hello.asm` and `dev/projects/gt6144_life/GT1_Life.asm`. Linker config: `dev/projects/gt6144_hello/gt6144.cfg`.
-
----
-
-## 5. Integer BASIC — text-mode, integer only
-
-Loaded at `$E000`; cold-start `E000R`. This is Woz / Apple BASIC 1976-era.
-
-- **No floats, no strings beyond `PRINT`.** Arithmetic is 16-bit signed (-32 767..+32 767).
-- No `GOSUB` return stack depth beyond ~16 levels.
-- No disk I/O in the language itself — save/load programs via **cassette** or the **Juke-Box `&` prompt**.
-- `LIST`, `RUN`, `NEW`, `PRINT`, `INPUT`, `LET`, `GOTO`, `GOSUB`, `IF … THEN`, `FOR … NEXT`, `DIM`.
-
-Examples ship as `.apl.txt` Woz hex dumps in `software/basic/` (load via **File > Load Memory**, then `E2B3R` to re-enter BASIC with the program intact). **Use Integer BASIC when the program is small and integer-only.** Anything needing strings, floats, trig, or persistent storage → Applesoft Lite.
+No read-back, no main-RAM framebuffer (lives in 6× Intel 2102 SRAM). Plot `(x,y)` ON: `STA $D00A` with `x|64`, then `y|128`. Inversion + blanking affect video path only. Power-on = visible bistable noise — clear before drawing. Examples: `dev/projects/gt6144_hello/`, `dev/projects/gt6144_life/`. Linker: `dev/projects/gt6144_hello/gt6144.cfg`.
 
 ---
 
-## 6. Applesoft Lite — text-mode, with floats + strings + microSD save
+## 5. Integer BASIC vs Applesoft Lite
 
-Loaded at **`$6000`** with the microSD preset (`6000R` to cold-start, `6003R` warm) or at `$E000` with CFFA1.
+**Integer BASIC** (`$E000`, cold-start `E000R`): 16-bit signed (-32 767…+32 767), no floats, no strings beyond `PRINT`, ~16-deep `GOSUB`, no disk I/O (cassette or Juke-Box `&` only). Use when small + integer-only. Examples in `software/basic/` (load via File > Load Memory, then `E2B3R` to re-enter BASIC with the program intact).
 
-**Supported (use freely):**
+**Applesoft Lite** (`$6000` with microSD preset, cold-start `6000R`, warm `6003R`; or `$E000` with CFFA1):
 
-| Feature | Notes |
+| Supported | Notes |
 |---|---|
-| `GET A$` | Single-key read, no Enter required — enables arcade-style loops |
-| `CLS` | Clears via 24 CRs (scroll-clear, not a real clear) |
-| `SAVE "NAME"` / `LOAD "NAME"` | With microSD on, P-LAB routes these straight to `sdcard/NAME#F80801` |
-| `POKE` / `PEEK` / `CALL` | Direct memory access — use `POKE &HC800,…` to drive the SID |
-| `RND`, `INT`, `ABS`, `CHR$`, `ASC`, `LEN`, `MID$`, `LEFT$`, `RIGHT$`, `STR$`, `VAL` | All standard |
+| `GET A$` | Single-key read, no Enter — arcade-style loops |
+| `CLS` | Scroll-clear (24 CRs), not a real clear |
+| `SAVE "NAME"` / `LOAD "NAME"` | Routes to `sdcard/NAME#F80801` with microSD on |
+| `POKE` / `PEEK` / `CALL` | E.g. `POKE &HC800,…` to drive SID directly |
+| `RND`, `INT`, `ABS`, `CHR$`, `ASC`, `LEN`, `MID$`, `LEFT$`, `RIGHT$`, `STR$`, `VAL` | Standard |
 | `PRINT`, `INPUT`, `IF…THEN`, `FOR…NEXT`, `GOTO`, `GOSUB`, `ON…GOTO`, `DATA`/`READ` | Standard |
 
-**NOT supported** (design around these):
-
-- `HOME`, `HTAB`, `VTAB`, `TAB`, `POS` — **no cursor addressing**. Every frame = fresh block scrolled below the previous one. This is period-authentic for 1977-era Apple BASIC games.
-- `INVERSE`, `FLASH`, `NORMAL` — no character attributes.
-- `COS`, `SIN`, `TAN`, `ATN` — no trig (use polynomial approximations or lookup tables).
-
-**Design consequence**: never build a grid/board UI. Build turn-driven scroll-text games — each turn prints one block of text, the terminal scrolls old state off the top. Embrace it.
-
-**Saving from the emulator to the host:** the user types `SAVE "FOO"` at the Applesoft prompt → P-LAB writes `sdcard/FOO#F80801` (`F8` = Applesoft, `0801` = load address). The file shows up immediately on disk.
+**NOT supported** — no `HOME`/`HTAB`/`VTAB`/`TAB`/`POS`, no `INVERSE`/`FLASH`/`NORMAL`, no `COS`/`SIN`/`TAN`/`ATN`. **Design consequence**: never build a grid UI in Applesoft. Build turn-driven scroll-text games — each turn prints a fresh block, the terminal scrolls old state off the top. Period-authentic for 1977.
 
 ---
 
-## 7. SID sound — `$C800-$CFFF`, 29 registers (`addr & 0x1F`)
+## 6. SID sound — `$C800-$CFFF`, 29 regs (`addr & 0x1F`)
 
-Three voices, each at a 7-register offset:
+Three voices, each 7-register block:
 
-| Offset | Voice 1 | Voice 2 | Voice 3 | Role |
-|--------|---------|---------|---------|------|
+| Offset | V1 | V2 | V3 | Role |
+|--------|----|----|----|------|
 | +0 | `$C800` | `$C807` | `$C80E` | Frequency LSB |
 | +1 | `$C801` | `$C808` | `$C80F` | Frequency MSB |
 | +2 | `$C802` | `$C809` | `$C810` | PWM LSB |
 | +3 | `$C803` | `$C80A` | `$C811` | PWM MSB (4 bits) |
-| +4 | `$C804` | `$C80B` | `$C812` | Control (gate + waveform: `01` triangle, `02` sawtooth, `04` pulse, `08` noise) |
+| +4 | `$C804` | `$C80B` | `$C812` | Control: gate + waveform (`01` triangle, `02` saw, `04` pulse, `08` noise) |
 | +5 | `$C805` | `$C80C` | `$C813` | Attack / Decay |
 | +6 | `$C806` | `$C80D` | `$C814` | Sustain / Release |
 
-Global: `$C818` volume+filter-mode, `$C815-$C817` filter cutoff+resonance, `$C819/$C81A` paddle / "Theremin" inputs.
-
-**Play a note from asm** (voice 1):
+Global: `$C818` volume + filter mode, `$C815-$C817` filter cutoff/resonance, `$C819`/`$C81A` paddle inputs.
 
 ```asm
-        LDA #$10
-        STA $C818             ; master volume = 1 (0..15)
-        LDA #$08
-        STA $C805             ; attack=0, decay=8
-        LDA #$F8
-        STA $C806             ; sustain=$F, release=8
+        LDA #$10           ; master volume = 1 (0..15)
+        STA $C818
+        LDA #$08            \ A=0, D=8
+        STA $C805           /
+        LDA #$F8            \ S=$F, R=8
+        STA $C806           /
         LDA #<freq
         STA $C800
         LDA #>freq
-        STA $C801             ; pitch
-        LDA #$41              ; gate on + triangle
+        STA $C801
+        LDA #$41            ; gate on + triangle
         STA $C804
 ```
 
-Reference: `dev/projects/sid_piano/Claudio_PARMIGIANI_SID_PIANO_AZERTY.asm` (register definitions at the top, real-time keyboard-driven playback loop).
+From Applesoft: `POKE &HC818,16 : POKE &HC805,8 : POKE &HC804,65`.
 
-**From Applesoft**: `POKE &HC818,16 : POKE &HC805,8 : POKE &HC804,65`. Quick and dirty.
-
-**Convert a C64 `.sid` tune**: [`tools/sid2apple1.py`](tools/sid2apple1.py) rewrites `$D400` → `$C800`, neutralises CIA/VIC touches, emits a `.bin` that loads at `$0280` — run with `280R`. Source tunes: [HVSC](https://www.exotica.org.uk/wiki/High_Voltage_SID_Collection).
+Reference: `dev/projects/sid_piano/Claudio_PARMIGIANI_SID_PIANO_AZERTY.asm`. **C64 `.sid` conversion**: `tools/sid2apple1.py` rewrites `$D400` → `$C800`, neutralises CIA/VIC, emits `.bin` for `$0280`. Source tunes at [HVSC](https://www.exotica.org.uk/wiki/High_Voltage_SID_Collection).
 
 ---
 
-## 8. Peripherals — the user-facing commands
+## 7. Peripherals — user-facing commands
 
-The in-emulator Hardware Reference dialog (**Help > Hardware Reference**) is the authoritative source; this section is a quick-glance for agents. Covered commands match `MainWindow_Dialogs.cpp`.
+Help → Hardware Reference is authoritative; this is a quick-glance.
 
 ### SD CARD OS (microSD, `8000R`)
 
 | Command | Effect |
-|---------|--------|
-| `D` / `LS` | List current directory |
+|---|---|
+| `D` / `LS` | List cwd |
 | `CD <dir>` / `CD ..` | **Only navigation primitive** — absolute `/PATH`, relative, or `..` |
-| `PWD` | Print cwd (the prompt itself already shows it — `/PLAB/MCODE>`) |
-| `LOAD <name>` | Fuzzy case-insensitive prefix match, reads at the tagged address |
-| `SAVE` / `WRITE` | Write a memory range into the cwd |
-| `DEL <name>` | Delete a file in the cwd |
-| `MKDIR` / `RMDIR` | Create / remove a sub-dir in the cwd |
+| `PWD` | Print cwd (prompt already shows it: `/PLAB/MCODE>`) |
+| `LOAD <name>` | Fuzzy case-insensitive prefix; reads at the tagged address |
+| `SAVE` / `WRITE` | Write a memory range to cwd |
+| `DEL <name>` | Delete in cwd |
+| `MKDIR` / `RMDIR` | Create / remove sub-dir in cwd |
 
-**Invariant**: every name-accepting command resolves against **`currentDirectory` only — no recursion**. Use `CD` to navigate before `LOAD`/`DEL`/`SAVE` on a file deeper in the tree. Regression-pinned by `tools/test_sdcard_subdir_navigation_telnet.py`.
+**Invariant**: every name-accepting command resolves against `currentDirectory` only — no recursion. Use `CD` to navigate first. **Tagged filename**: `NAME#TTAAAA` (TT = `06` binary, `F1` Integer BASIC, `F8` Applesoft; AAAA = hex load address). Example: `ACEYDUCEY#f10800`.
 
-**Tagged filename format**: `NAME#TTAAAA` where `TT` = type (`06` binary, `F1` Integer BASIC, `F8` Applesoft BASIC) and `AAAA` = hex load address. Example: `ACEYDUCEY#f10800` = Integer BASIC program loaded at `$0800`.
+### Juke-Box Program Manager (`BD00R`, `&` prompt)
 
-### Juke-Box Program Manager (`BD00R` — `&` prompt)
+`H` help · `D` list current page · `L<X>` load tagged letter X · `P<0-F>` page switch (paged Flash) · `B` drop into BASIC (`E2B3R`, non-destructive) · `X` exit to Wozmon. Sub-menu **Save Program** at `B800R` (`#` prompt): `W` write RAM range, `S` save BASIC, `L` back to PM. **Building a Juke-Box ROM**: `doc/JUKEBOX_ROM_CREATOR/build_jukebox_rom.py` — produces the 32 KB image with `$A5` signature at file offset `$7D00` (= `$BD00`). Don't use P-LAB's `2-packer.sh` (subtly different layout).
 
-| Command | Effect |
-|---------|--------|
-| `H` | Help |
-| `D` | List current page (32 kB EEPROM, up to 16 programs) |
-| `L<X>` | Load program tagged letter `X` |
-| `P<0-F>` | Page switch (multi-page 29c020 / 29c040 not yet modelled in POM1) |
-| `B` | Drop into BASIC (via `E2B3R`, non-destructive) |
-| `X` | Exit to Woz Monitor |
+### MODEM BBS (Hayes subset, desktop only)
 
-Sub-menu **Save Program** at `B800R` (`#` prompt): `W` write RAM range to EEPROM, `S` save current BASIC program, `L` back to Program Manager.
-
-**Building a Juke-Box ROM**: use `doc/JUKEBOX_ROM_CREATOR/build_jukebox_rom.py` — concatenates Program Manager + BASIC + your programs into a 32 KB image with signature `$A5` at file offset `$7D00` (= `BD00`). Install as `roms/jukebox.rom`, boot with preset #10. **Don't use P-LAB's `2-packer.sh`** — it produces subtly different layouts.
-
-### MODEM BBS (`ATmodem` at `0280`, Hayes subset, desktop only)
-
-`AT` / `ATDT host:port` / `ATH` / `ATE0` / `ATE1` / `ATI` / `ATZ`. `+++` (with 1 s guard) to switch back to command mode. Typical BBS flow:
+`AT` / `ATDT host:port` / `ATH` / `ATE0/1` / `ATI` / `ATZ`. `+++` (1 s guard) → command mode. Typical:
 
 ```
-<ATmodem loaded at $0280 from software/net/ATmodem.txt, Woz prompt>
-0280R                         ; start the ACIA bridge
-AT                            ; → OK
-ATDT BBS.FOZZTEXX.COM:23      ; connect
-... (talk to the BBS) ...
-+++                           ; wait 1 s, escape
-ATH                           ; hang up
+0280R                         ; load ATmodem from software/net/, start ACIA bridge
+ATDT BBS.FOZZTEXX.COM:23
+... (talk) ...
++++  → ATH
 ```
 
 ### Terminal Card (TCP loopback `:6502`, desktop only)
 
-- Default: 7-bit (CR→CRLF, uppercase-in via `Ctrl-I`, uppercase-out via `Ctrl-O`)
-- `Ctrl-T` → 8-bit raw pass-through (needed for PETSCII / UTF-8 BBS output)
-- `Ctrl-L` clear, `Ctrl-R` reset the Apple 1
-- ESC-prefixed alternates (`ESC T/O/L/R/I`) for macOS/BSD ttys that eat the raw control chars before telnet sees them
+7-bit default (CR→CRLF, uppercase-in `Ctrl-I`, uppercase-out `Ctrl-O`); `Ctrl-T` → 8-bit raw (PETSCII / UTF-8 BBS). `Ctrl-L` clear, `Ctrl-R` reset, `Ctrl-S` screenshot. ESC-prefixed alternates (`ESC T/O/L/R/I/S`) for ttys eating raw control chars.
 
-### A1-IO & RTC (`$2000-$200F` VIA — mutually exclusive with GEN2 HGR framebuffer)
+### A1-IO & RTC (`$2000-$200F` VIA — mutex with GEN2 HGR)
 
-24-register broadcast pumped on a 100-cycle period with PORTB STROBE. Regs 0-5 = RTC (H/M/S/D/M/Y). Reg 6 = DS3231 die temperature. ADC + digital in/out follow. `software/a1io_rtc/` has a clock demo.
+24-reg broadcast on 100-cycle period with PORTB STROBE. Regs 0-5 = RTC (H/M/S/D/M/Y), reg 6 = DS3231 die temp, ADC + digital in/out follow. Demo: `dev/projects/a1io_rtc_clock/RtcClock.asm`.
 
-### SWTPC PR-40 Printer (no MMIO — `$D012` sniffer, Jobs 1976)
+### SWTPC PR-40 (passive `$D012` sniffer, Jobs 1976)
 
-Passive: every byte you `STA $D012` (with bit 7 set, per normal display rules) also lands in the PR-40's 40-char FIFO. `CR` (`$8D`) or a full FIFO flushes one line to paper; each flush arms a **~0.8 s mechanical cycle** that holds PB7 high. In *Mixed* switch mode the CPU naturally stalls at Wozmon's `BIT $D012 / BMI` loop; in *PrintOnly* mode you can flood the FIFO at 1 MHz (PB7 ignores the video /RDA). Nothing special to do from asm — just write as usual. UI shows the paper roll; tear-off saves to `.txt`.
+Every byte `STA $D012` (with bit 7 set, normal display rules) also lands in PR-40's 40-char FIFO. CR (`$8D`) or full FIFO flushes one line; each flush arms ~0.8 s mechanical cycle holding PB7 high. *Mixed* mode: CPU naturally stalls at Wozmon's `BIT $D012 / BMI`. *PrintOnly* mode: CPU floods FIFO at 1 MHz (PB7 ignores video /RDA). Nothing special from asm.
 
 ---
 
-## 9. Deployment — how the program reaches the user
+## 8. Deployment — four channels
 
-Four distribution channels, pick based on what the user asked:
+1. **Memory load** (default for dev iteration) — ship `.txt` Woz hex or `.bin`, user does **File > Load Memory** then `280R`. Auto-enables matching card if file lives under `software/hgr/`, `software/tms9918/`, `software/net/`|`/wifi/`, `software/a1io_rtc/`, `software/gt-6144/`, `sdcard/`. **`software/sid/` is intentionally NOT auto-enabled** (SID auto-plug desyncs the audio mixer across hardReset) — SID programs need a preset with `sid=true`.
+2. **microSD tagged file** — drop `NAME#TTAAAA` into `sdcard/` (optionally a sub-dir users `CD` into). Persists across sessions, also in WASM (preloaded MEMFS).
+3. **Juke-Box ROM bundle** — rebuild `roms/jukebox.rom` with your program baked, pick preset #11, type `BD00R`, choose from `&` prompt.
+4. **Cassette tape** — dump capture as `.aci`/`.wav`/`.mp3`/`.ogg`, drop in `cassettes/`. Add a line in `cassettes/tapeinfo.txt` (`MYPROG.ogg = 0280.04FF`) so the deck jaquette prints *"Type 0280.04FFR"*. Works in pulse mode (ACI plugged) and audio-stream mode (firmware-less).
 
-1. **Memory load (default for dev iteration)** — ship `.apl.txt` or `.bin`, user does **File > Load Memory**, then `280R` (or whatever the start address is). Auto-enables the matching card if the file lives under `software/hgr/`, `software/tms9918/`, `software/net/` (or `/wifi/`), `software/a1io_rtc/`, `software/gt-6144/`, or `sdcard/` — see `MainWindow_FileDialogs.cpp`. **`software/sid/` is intentionally NOT in the list** (SID auto-plug desyncs the audio mixer across hardReset) — SID programs rely on a preset with `sid=true`.
-2. **microSD tagged file** — drop `NAME#TTAAAA` into `sdcard/` (optionally under a sub-directory that users `CD` into first). Persistent across sessions, works in the WASM build too (preloaded into the MEMFS bundle).
-3. **Juke-Box ROM bundle** — rebuild `roms/jukebox.rom` with your program baked in, ship alongside the emulator; user picks preset #11, types `BD00R`, picks the program from the `&` prompt.
-4. **Cassette tape** — dump the capture to `.aci` / `.wav` / `.mp3` / `.ogg`, drop into `cassettes/`. Add a matching entry to `cassettes/tapeinfo.txt` (`filename = load-range`, e.g. `MYPROG.ogg = 0280.04FF`) so the deck's jaquette prints *"Type 0280.04FFR"* for the user. Works in both pulse mode (ACI plugged) and audio-stream mode (ACI unplugged, firmware-less playback).
-
-**Applesoft programs**: `SAVE "NAME"` from the Applesoft prompt writes `sdcard/NAME#F80801` directly. No manual dump step.
+Applesoft programs: `SAVE "NAME"` writes `sdcard/NAME#F80801` directly — no manual dump.
 
 ---
 
-## 10. Testing your program
+## 9. Testing
 
-### Manual path
+### Manual
 
-1. Build (`ca65` + `ld65` + the `.bin` → `.txt` one-liner above).
-2. Launch POM1 with the right preset: `./POM1 --preset 5 --terminal --cpu-max` (preset 5 = P-LAB microSD + Applesoft Lite, `--terminal` enables the `:6502` TCP bridge, `--cpu-max` pins the CPU at 1 MHz emulated so loads don't take 30 s of wallclock).
-3. **File > Load Memory** → pick the `.txt`. Or use `--tape <path>` to auto-preload.
-4. In the Woz Monitor, type `<start>R`.
+```bash
+./POM1 --preset 5 --terminal --cpu-max     # microSD + Applesoft Lite + telnet :6502
+# File > Load Memory → my.txt → `280R` (or whatever start)
+```
 
-### Automated path — telnet harness
+### Telnet harness
 
-The `tools/test_*_telnet.py` scripts drive the emulator via the Terminal Card. Two conventions in use:
+`tools/test_*_telnet.py` drives the emulator via Terminal Card. Two patterns: **agent auto-launches** POM1 (e.g. `test_aci_telnet.py`, `test_sdcard_subdir_navigation_telnet.py`) — run from repo root, suitable for CI/regression — or **user runs POM1 separately** and the script just connects to `127.0.0.1:6502`.
 
-- **Agent auto-launches POM1** (self-contained) — e.g. `tools/test_sdcard_subdir_navigation_telnet.py`, `tools/test_aci_telnet.py`. Usable for CI / regression pinning.
-- **User runs POM1 separately** (manual setup). Script just connects to `127.0.0.1:6502` and drives.
-
-**Skeleton for a new self-contained test**, copied directly from the existing pattern:
+Skeleton:
 
 ```python
 import select, signal, socket, subprocess, time
 from pathlib import Path
 
 HOST, PORT, CTRL_R = "127.0.0.1", 6502, 18
-REPO_ROOT = Path(__file__).resolve().parent.parent
+REPO = Path(__file__).resolve().parent.parent
 
 def recv_avail(sock, total=4.0, idle=0.4):
     end = time.time() + total; buf = b""
@@ -313,100 +243,91 @@ def recv_avail(sock, total=4.0, idle=0.4):
         elif buf: break
     return buf.decode("latin-1", errors="replace")
 
-def send_line(sock, cmd, wait=0.3, read_t=4.0):
+def send(sock, cmd, wait=0.3, t=4.0):
     sock.sendall((cmd + "\r").encode("ascii")); time.sleep(wait)
-    return recv_avail(sock, total=read_t, idle=0.4)
+    return recv_avail(sock, total=t)
 
-# 1. launch POM1
-proc = subprocess.Popen(
-    [str(REPO_ROOT / "build" / "POM1"), "--preset", "5", "--terminal", "--cpu-max"],
-    stdout=open("/tmp/pom1.log", "w"), stderr=subprocess.STDOUT, start_new_session=True)
+proc = subprocess.Popen([str(REPO/"build"/"POM1"), "--preset", "5", "--terminal", "--cpu-max"],
+                       stdout=open("/tmp/pom1.log","w"), stderr=subprocess.STDOUT,
+                       start_new_session=True)
 time.sleep(3.0)   # boot + 15-frame card defer
-
-# 2. drive via telnet
 sock = socket.create_connection((HOST, PORT), timeout=5)
-recv_avail(sock, total=2.0)                            # drain banner
+recv_avail(sock, total=2.0)
 sock.sendall(bytes([CTRL_R])); time.sleep(0.9)         # soft reset to Wozmon
-out = send_line(sock, "8000R", wait=0.6, read_t=3.0)   # enter SD CARD OS
-assert "/>" in out or "prompt" in out.lower()
-
-# 3. teardown
+out = send(sock, "8000R", wait=0.6, t=3.0)             # enter SD CARD OS
 proc.send_signal(signal.SIGTERM); proc.wait(timeout=5)
 ```
 
-Full working example: `tools/test_sdcard_subdir_navigation_telnet.py`.
+Full example: `tools/test_sdcard_subdir_navigation_telnet.py`.
 
-### Test via the built-in ctest
-For emulation-level invariants (CPU, bus, SID audio, ACI tape round-trip), add a C++ test in `tests/`. Template: `tests/peripheral_bus_smoke_test.cpp` — `<cassert>` + `add_test` in `tests/CMakeLists.txt`, no test framework needed.
-
-### Agent-facing CLI — drive POM1 from flags alone
-
-The full verb table (phases + syntax) lives in `CLAUDE.md` (*CLI flags*). One-liners for the most common scripted flows:
+### CLI one-liners
 
 | Goal | Command |
 |---|---|
-| Pick preset 5 (microSD + Applesoft Lite), enable Terminal, pin at MAX | `./POM1 --preset 5 --terminal --cpu-max` |
-| Load binary at `$0300` and jump to it, then paste keystrokes | `./POM1 --preset 1 --terminal --load 0300:prog.bin --run 0300 --paste keys.txt` |
-| Swap a preset's cards: GEN2 off, A1-SID on, 8580 chip, 2× speed | `./POM1 --preset 13 --disable hgr --enable sid --sid-chip 8580 --speed 34091` |
-| Seed a microSD fixture without typing `SAVE` through Wozmon | `./POM1 --preset 5 --sd-mkdir BASIC --sd-put host/PROG#F80801:BASIC/PROG#F80801` |
-| Freeze the RTC to midnight 2000-01-01 for a deterministic test | `./POM1 --preset 9 --rtc-freeze "2000-01-01 00:00:00"` |
-| Capture a SID tune into a `.wav` | `./POM1 --preset 6 --rec --save-tape /tmp/out --save-tape-format wav` |
-| Step 10 instructions at boot with BRK trace for debugging | `./POM1 --preset 0 --trace-brk --step 10` |
+| microSD + Applesoft + telnet, MAX speed | `./POM1 --preset 5 --terminal --cpu-max` |
+| Load + run + drive | `./POM1 -p 1 --terminal --load 0300:prog.bin --run 0300 --paste keys.txt` |
+| Swap cards | `./POM1 -p 13 --disable hgr --enable sid --sid-chip 8580 --speed 34091` |
+| Seed microSD fixture | `./POM1 -p 5 --sd-mkdir BASIC --sd-put host/PROG#F80801:BASIC/PROG#F80801` |
+| Capture SID to `.wav` | `./POM1 -p 6 --rec --save-tape /tmp/out --save-tape-format wav` |
+| Step + BRK trace | `./POM1 -p 0 --trace-brk --step 10` |
+| Freeze RTC | `./POM1 -p 9 --rtc-freeze "2000-01-01 00:00:00"` |
 
-Repeating flags stack in CLI order — `--load A:x.bin --load B:y.bin --run A` loads both files and jumps to A. The dispatcher rejects unknown flags and misformed arguments before opening the window, so agent scripts can read `exit=1` instead of inspecting logs.
+Repeating flags stack in CLI order. Card overrides (`--enable`, `--disable`, `--sid-chip`, `--jukebox-jumper`) land **before** the 15-frame deferred plug — clean. Verbs needing a plugged card (`--paste`, `--play`, `--rec`, `--sd-*`, `--rtc-freeze`) run **after** the defer — always see the fully-initialised bus.
 
-Note on phasing: card-plug overrides (`--enable` / `--disable` / `--sid-chip` / `--jukebox-jumper`) land **before** the emulator's 15-frame deferred plug fires, so they're clean — the card latches onto the chosen model/jumper on first activation. Verbs that need a plugged card (`--paste`, `--play`, `--rec`, `--sd-*`, `--rtc-freeze`) run **after** the defer timer, so they always see the fully-initialised bus.
+### Emulator-level invariant tests
+
+Add a C++ test in `tests/`. Template: `tests/peripheral_bus_smoke_test.cpp` — `<cassert>` + `add_test`, no framework needed. See `CLAUDE.md` *Testing* for the existing eight.
 
 ---
 
-## 11. Common gotchas — quick list
+## 10. Common gotchas
 
 | Gotcha | Fix |
 |---|---|
-| Branch ±127 out of range | Invert the condition + `JMP` to the real target, or add a mid-routine trampoline label |
-| `ADC` picks up stale carry | Put `CLC` before every *first* `ADC` of a sum |
-| Helper uses `TAX` + `LDA tbl,X` and clobbers caller's X | Use `TAY` + `LDA tbl,Y` inside helpers — X is reserved for `STA arr,X` callers. See `feedback_6502_register_preservation.md` |
-| Array > 256 bytes via `LDA arr,Y` | Use `(zp),Y` with a high-byte-adjusted pointer, or parallel lo/hi tables |
-| `.include` path | Resolves relative to the *source file*, not the CWD — keep `.inc` beside the `.asm` |
-| Lit HGR pixel renders coloured instead of white | Make sure every lit pixel has a lit neighbour. 1-px vertical line = colour; 2-px thick = white |
-| TMS9918 shows random sprites at boot | Write `$D0` to the first sprite-Y byte (`$1B00`) to kill the sprite chain |
-| Apple 1 text display "doesn't update" during a burst | `$D012` has a busy-wait delay — the CPU can outrun the display. Either poll bit 7 before writing, or just let it autopipeline |
-| `$D012` writes echoing to the Terminal Card eat your CPU budget in telnet tests | Use `--cpu-max` and `Ctrl-T` (8-bit raw); the real TurboType fix is to install a Wozmon-free dropper that skips `$D012` altogether (see TODO `TurboType`) |
-| Applesoft game has no grid because HOME/VTAB missing | Design around it — pure scroll-text games were the 1977 norm. Embrace the `$D012` write delay as pacing |
-| microSD `LOAD YUM` says `FILE NOT FOUND` | YUM lives under `sdcard/PLAB/MCODE/` — `CD PLAB` then `CD MCODE` first. Prompt `/PLAB/MCODE>` tells you where you are |
-| WOZ Monitor or SD CARD OS reloads twice on boot | Fixed — `Memory::loadApplesoftLiteSDCard` and `setMicroSDEnabled(true)` skip the redundant load via signature guards. Don't add new code paths that reload blindly |
+| Branch ±127 out of range | Invert + `JMP`, or trampoline label mid-routine |
+| `ADC` picks up stale carry | `CLC` before every *first* `ADC` of a sum |
+| Helper does `TAX` + `LDA tbl,X`, clobbers caller's X | Use `TAY` in helpers — X is reserved for `STA arr,X` callers |
+| Array > 256 B via `LDA arr,Y` | `(zp),Y` with high-byte adjusted, or parallel lo/hi tables |
+| `.include` path | Relative to source file, not CWD — keep `.inc` next to the `.asm` (or use Makefile `-I`) |
+| Lit HGR pixel renders coloured not white | Need a lit neighbour. 1-px line = colour; 2-px = white |
+| TMS9918 random sprites at boot | Write `$D0` to sprite-Y at `$1B00` to kill the chain |
+| Apple 1 text "stalls" during a burst | `$D012` has terminal-speed delay; either poll bit 7 or autopipeline |
+| `$D012` writes eat budget in telnet tests | `--cpu-max` + `Ctrl-T` (8-bit raw); fundamental fix is a Wozmon-free dropper |
+| Applesoft has no grid because no HOME/VTAB | Embrace scroll-text — period-authentic 1977 |
+| microSD `LOAD YUM` says `FILE NOT FOUND` | YUM lives under `sdcard/PLAB/MCODE/` — `CD PLAB` then `CD MCODE` first |
 
 ---
 
-## 12. Example-file index
+## 11. Example index — copy from these
 
-When writing something new, start by copying a known-good example:
-
-| Want to build… | Copy from… |
+| Want… | Copy from |
 |---|---|
-| Text-mode game with ASCII tiles | `dev/projects/games_sokoban/Sokoban.asm` + `dev/lib/sokoban/sokoban_common.inc` |
-| Text-mode BASIC program | `software/basic/mini-startrek.apl.txt` (hex format), or write fresh Applesoft |
+| Text-mode game, ASCII tiles | `dev/projects/games_sokoban/Sokoban.asm` |
+| Text-mode BASIC | `software/basic/mini-startrek.apl.txt` (Integer) or write fresh Applesoft |
 | HGR pixel plotter | `dev/projects/hgr4_mandelbrot/HGR4_Mandelbrot.asm` + `dev/lib/hgr/hgr_tables.inc` |
-| HGR byte-aligned tile game | `dev/projects/hgr6_sokoban/HGR6_Sokoban.asm` (14-px-wide tiles) |
-| HGR sub-byte tiles (≠ 7-px) | `dev/projects/hgr_maze/HGR_Maze.asm` (4-px walls) + `reference_subbyte_rendering.md` |
-| TMS9918 game with multi-colour tiles | `dev/projects/tms9918_sokoban/TMS_Sokoban.asm` (colour-group trick — 7 tile types × 8 chars) |
+| HGR byte-aligned tiles | `dev/projects/hgr6_sokoban/HGR6_Sokoban.asm` (14 px wide) |
+| HGR sub-byte tiles (≠ 7 px) | `dev/projects/hgr_maze/HGR_Maze.asm` (4-px walls) |
+| HGR shape drawing | `dev/projects/hgr5_house/HGR5_House.asm` |
+| TMS9918 multi-colour tiles | `dev/projects/tms9918_sokoban/TMS_Sokoban.asm` (colour-group trick) |
 | TMS9918 full-screen board | `dev/projects/tms9918_connect4/TMS_Connect4.asm` (32×32 px pieces) |
-| SID tune (direct register play) | `dev/projects/sid_piano/Claudio_PARMIGIANI_SID_PIANO_AZERTY.asm` |
-| SID tune (C64 conversion) | `python3 tools/sid2apple1.py Music.sid` |
-| Shared ASM helpers across modes | `dev/lib/sokoban/sokoban_common.inc` (pure-logic routines with mode-neutral API) |
-| New linker config | `dev/cc65/apple1.cfg` (3 328 B) or `dev/cc65/apple1_4k.cfg` (4 096 B) or `dev/cc65/apple1_gen2.cfg` (7 552 B, reserves HGR framebuffer) |
+| GT-6144 plotter | `dev/projects/gt6144_hello/GT1_Hello.asm`, `dev/projects/gt6144_life/GT1_Life.asm` |
+| SID direct register play | `dev/projects/sid_piano/Claudio_PARMIGIANI_SID_PIANO_AZERTY.asm` |
+| SID from C64 conversion | `python3 tools/sid2apple1.py Music.sid` |
+| RTC / sensors | `dev/projects/a1io_rtc_clock/RtcClock.asm` |
+| Shared logic across modes | `dev/lib/sokoban/sokoban_*.inc` (mode-neutral routines) |
+| New linker config | `dev/cc65/apple1.cfg` (3 328 B) / `apple1_4k.cfg` (4 096 B) / `apple1_gen2.cfg` (7 552 B, reserves HGR fb) |
 
 ---
 
-## 13. Checklist before declaring a program done
+## 12. Done-checklist
 
-1. **Budget** — fits the chosen linker config? `ls -l build/*.bin` vs the config's CODE size.
-2. **ZP usage** — all `.res`'d variables fit in `$0000-$0022` (or whatever the config reserves)?
-3. **Uppercase input** — every `CMP #'?'` uses an uppercase letter?
-4. **Keyboard layout prompt** — if the game uses WASD, did you add the QWERTY/AZERTY `1`/`2` prompt with `key_up_code` / `key_left_code` in ZP?
-5. **Branch ranges** — any `BNE` / `BCC` / `BEQ` within ±127 bytes of its target? Assembler will catch it at `ca65` time.
-6. **Win / loss condition** — do both intermediate states (e.g. *player on target*) get handled?
-7. **Tested** — loaded via `File > Load Memory`, run once, watched at least one complete loop?
-8. **Telnet test** — if the user will script it, does a minimal `test_*_telnet.py` pass?
-9. **Artifact distribution** — decided which channel (memory load / microSD tagged / Juke-Box / cassette)?
-10. **Docs** — added an entry to `README.md`'s *Software Library* tables if shipping it?
+1. Fits the linker config? `ls -l build/*.bin` vs CODE size.
+2. ZP usage in `$0000-$0022`?
+3. Every `CMP` uses uppercase letters?
+4. WASD prompt: QWERTY/AZERTY `1`/`2` selector with `key_up_code` / `key_left_code` in ZP?
+5. Branches in range? (ca65 catches at assembly time.)
+6. Both intermediate states handled (e.g. *player on target*)?
+7. Loaded via File > Load Memory, watched at least one full loop?
+8. If user-scripted, minimal `test_*_telnet.py` passes?
+9. Distribution channel decided (memory load / microSD / Juke-Box / cassette)?
+10. Entry added to `README.md` *Software Library* if shipping?
