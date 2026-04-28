@@ -1023,6 +1023,15 @@ void MainWindow_ImGui::renderCodeTankLibraryWindow()
                     jukeBoxEnabled = false;
                     emulation->setJukeBoxEnabled(false);
                 }
+                // CodeTank is a daughterboard of the TMS9918 — auto-plug the
+                // host so the UI flags match what Memory's setCodeTankEnabled
+                // is about to do.
+                if (!tms9918Enabled) {
+                    tms9918Enabled = true;
+                    showTMS9918 = true;
+                    emulation->setTMS9918Enabled(true);
+                    sidSpecialEditionEnabled = false;
+                }
                 if (!codeTankEnabled) {
                     codeTankEnabled = true;
                     emulation->setCodeTankEnabled(true);

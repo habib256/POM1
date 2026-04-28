@@ -1,5 +1,7 @@
-// Pin the standalone P-LAB CodeTank card: 32 kB ROM load, lower/upper jumper
-// math, and the read-only EEPROM invariant POM1 enforces.
+// Pin the P-LAB CodeTank daughterboard (rides the TMS9918 Graphic Card on
+// real silicon): 32 kB ROM load, lower/upper jumper math, and the read-only
+// EEPROM invariant POM1 enforces. Memory-level cascade with TMS9918 lives
+// in codetank_tms9918_dependency_test.cpp.
 //
 // Self-contained — only CodeTank + Logger. Mirrors gt6144_smoke_test in style.
 

@@ -40,6 +40,12 @@ namespace pom1::mainwindow::detail {
 // logic in applyMachineConfig / setXxxEnabled mirrors real bus conflicts
 // (SID ↔ SID-SE, TMS9918 ↔ SID-SE, GEN2 ↔ A1-IO, Juke-Box ↔ CFFA1/microSD/
 // Krusader/Wi-Fi Modem). See CLAUDE.md for the rationale.
+//
+// Daughterboard rule: CodeTank is NOT an expansion card — it's a daughter-
+// board that physically piggybacks the TMS9918 Graphic Card. Never set
+// codeTank=true with tms9918=false in a preset; Memory::setCodeTankEnabled
+// auto-plugs the host anyway, but a malformed preset would advertise an
+// impossible real-hardware configuration.
 // Layout design notes:
 //   - Every preset uses the same canonical POM1 Fantasy frame:
 //         Apple 1 Screen at (10, 61) size (843, 701)  ← LEFT column
@@ -213,17 +219,18 @@ const MachineConfig kMachinePresets[] = {
         }, 2
     },
     {   //                                  GEN2  uSD  SID  TMS  RTC  WiFi Term Krus CFFA ACI
-        "P-LAB Apple-1 with TMS9918 + CodeTank",
-        "P-LAB Graphic Card (TMS9918A VDP) + CodeTank 28c256 ROM (galaga_sokoban_menu.rom) "
-        "at $4000-$7FFF, Integer BASIC. Type 4000R from the Woz Monitor to enter the "
-        "CodeTank game menu (1 = Galaga, 2 = Sokoban).",
+        "P-LAB Apple-1 with TMS9918 (CodeTank daughterboard)",
+        "P-LAB Graphic Card (TMS9918A VDP) with the CodeTank 28c256 ROM daughterboard "
+        "(Codetank_GAME1.rom) at $4000-$7FFF, Integer BASIC. The CodeTank piggybacks the "
+        "Graphic Card on real P-LAB silicon - it has no edge connector. Type 4000R from "
+        "the Woz Monitor to launch the bundled game.",
         false, false, false, true, false, false, false,
         /*pr40*/ false,
         false, false, false, 16, BasicType::Integer,
         /*sidSE*/ false,
         /*jukeBox*/ false, JukeBox::Jumper::RAM16_ROM32, JukeBox::ChipMode::Flash,
         /*codeTank*/ true, CodeTank::Jumper::Lower16,
-        /*codeTankRom*/ "roms/codetank/galaga_sokoban_menu.rom",
+        /*codeTankRom*/ "roms/codetank/Codetank_GAME1.rom",
         /*gt6144*/ false,
         {
             {"Apple 1 Screen",               {10,  61},  {843, 701}},

@@ -245,3 +245,29 @@ add_test(NAME codetank_smoke
                  "${CMAKE_SOURCE_DIR}/roms/codetank.rom"
                  "${CMAKE_SOURCE_DIR}/roms/jukebox.rom")
 set_tests_properties(codetank_smoke PROPERTIES TIMEOUT 5)
+
+# -- CodeTank ↔ TMS9918 daughterboard dependency test -------------------------
+# Memory-level integration test: enabling CodeTank auto-plugs TMS9918,
+# disabling TMS9918 cascade-unplugs CodeTank, and disabling CodeTank does
+# NOT touch TMS9918. Pins the real-hardware "CodeTank is a daughterboard"
+# invariant inside Memory::set{TMS9918,CodeTank}Enabled.
+add_executable(test_codetank_tms9918_dependency
+    codetank_tms9918_dependency_test.cpp
+    ${POM1_TEST_CORE_SOURCES}
+)
+target_include_directories(test_codetank_tms9918_dependency PRIVATE
+    ${CMAKE_SOURCE_DIR}
+    ${CMAKE_SOURCE_DIR}/imgui
+)
+target_link_libraries(test_codetank_tms9918_dependency PRIVATE libresidfp_static)
+if(APPLE)
+    target_compile_definitions(test_codetank_tms9918_dependency PRIVATE GL_SILENCE_DEPRECATION)
+endif()
+if(WIN32)
+    target_link_libraries(test_codetank_tms9918_dependency PRIVATE ws2_32)
+endif()
+
+add_test(NAME codetank_tms9918_dependency
+         COMMAND test_codetank_tms9918_dependency
+         WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
+set_tests_properties(codetank_tms9918_dependency PROPERTIES TIMEOUT 10)

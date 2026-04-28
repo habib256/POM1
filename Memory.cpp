@@ -286,6 +286,11 @@ void Memory::setTMS9918Enabled(bool b)
     // TMS9918 and A1-AUDIO Special Edition both live at $CC00/$CC01 — plugging
     // the VDP evicts the SE card so the bus dispatch stays unambiguous.
     if (b && sidSpecialEditionEnabled) setSIDSpecialEditionEnabled(false);
+    // CodeTank is a daughterboard that physically piggybacks the TMS9918
+    // Graphic Card on real P-LAB hardware — yanking the host pulls the
+    // daughterboard off with it. Cascade-disable BEFORE flipping the flag
+    // so setCodeTankEnabled(false) sees a coherent state.
+    if (!b && codeTankEnabled) setCodeTankEnabled(false);
     tms9918Enabled = b;
     bus.setEnabled(tms9918BusHandle, b);
 }
@@ -1329,6 +1334,11 @@ void Memory::setCodeTankEnabled(bool b)
     if (b == codeTankEnabled) return;
     codeTankEnabled = b;
     if (b) {
+        // CodeTank is a daughterboard of the TMS9918 Graphic Card — it has
+        // no edge connector and no on-board address decoder, so it cannot
+        // exist standalone on the Apple-1 bus. Auto-plug the host first so
+        // the daughterboard always rides on real silicon.
+        if (!tms9918Enabled) setTMS9918Enabled(true);
         // CodeTank's $4000-$7FFF window collides with the Juke-Box's
         // $4000-$BFFF / $4000-$7FFF half. Keep one ROM card plugged at a
         // time — matches Parmigiani's "one board" rule.
@@ -1370,17 +1380,16 @@ int Memory::loadCodeTankRom(const std::string& path)
         pom1::log().warn("Mem", lastError);
         return 1;
     }
-    // Default probe order. The shipped 5-game menu ROM
-    // (`galaga_sokoban_menu.rom`, built by tools/build_codetank_rom.py)
+    // Default probe order. The shipped CodeTank library image
+    // (`Codetank_GAME1.rom`, the only 32 kB EEPROM dump in roms/codetank/)
     // wins so plugging the CodeTank from the toolbar/Hardware menu drops
-    // the user straight into the Galaga/Sokoban/Snake/Life selector. The
-    // `roms/codetank/`-rooted variants and the legacy single-file
-    // `roms/codetank.rom` stay as fallbacks.
+    // the user straight into the bundled game. The legacy single-file
+    // `roms/codetank.rom` (kept around from before the library directory)
+    // stays as a fallback.
     const char* candidates[] = {
-        "roms/codetank/galaga_sokoban_menu.rom",
-        "../roms/codetank/galaga_sokoban_menu.rom",
-        "../../roms/codetank/galaga_sokoban_menu.rom",
-        "/home/gistarcade/T\303\251l\303\251chargements/28c256_Final.bin",
+        "roms/codetank/Codetank_GAME1.rom",
+        "../roms/codetank/Codetank_GAME1.rom",
+        "../../roms/codetank/Codetank_GAME1.rom",
         "codetank.rom",
         "roms/codetank.rom", "../roms/codetank.rom", "../../roms/codetank.rom",
     };
@@ -1392,7 +1401,7 @@ int Memory::loadCodeTankRom(const std::string& path)
         }
     }
     lastError = "CodeTank ROM not found "
-                "(expected roms/codetank/galaga_sokoban_menu.rom)";
+                "(expected roms/codetank/Codetank_GAME1.rom)";
     pom1::log().warn("Mem", lastError);
     return 1;
 }

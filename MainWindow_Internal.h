@@ -121,15 +121,18 @@ struct MachineConfig {
     bool jukeBox;
     JukeBox::Jumper jukeBoxJumper;
     JukeBox::ChipMode jukeBoxChipMode;
-    // P-LAB CodeTank — standalone 28c256 ROM card at $4000-$7FFF. Pairs with
-    // the TMS9918 graphic card on real silicon (the two cards do not collide
-    // and a CodeTank ROM can ship a TMS9918 game). Mutually exclusive with
-    // the Juke-Box (overlapping ROM window).
+    // P-LAB CodeTank — 28c256 ROM daughterboard at $4000-$7FFF that
+    // physically piggybacks the TMS9918 Graphic Card on real P-LAB
+    // hardware. It has no edge connector and no on-board address decoder,
+    // so it cannot exist standalone: enabling codeTank auto-plugs TMS9918
+    // (see Memory::setCodeTankEnabled), and disabling TMS9918 cascade-
+    // unplugs CodeTank. Mutually exclusive with the Juke-Box (overlapping
+    // ROM window).
     bool codeTank;
     CodeTank::Jumper codeTankJumper;
     // Optional — when non-empty, the named ROM file is loaded into the
     // CodeTank card on plug. Empty falls back to the default probe path
-    // (roms/codetank.rom).
+    // (roms/codetank/Codetank_GAME1.rom, then the legacy roms/codetank.rom).
     const char* codeTankRomPath;
     // SWTPC GT-6144 Graphic Terminal (1976) — write-only 64x96 mono framebuffer
     // at $D00A. No bus conflicts with other cards at that address.

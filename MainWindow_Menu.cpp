@@ -56,15 +56,23 @@ void MainWindow_ImGui::renderMenuBar()
             setStatusMessage("P-LAB Juke-Box unplugged", 2.0f);
         };
         auto plugCodeTankFromUi = [&]() {
-            // CodeTank only owns $4000-$7FFF; the only required eviction is
-            // the Juke-Box (which can claim the same window).
+            // CodeTank is a daughterboard of the TMS9918 Graphic Card — auto-
+            // plug the host so the UI flags stay in sync with what Memory's
+            // setCodeTankEnabled would do anyway. Also evict the Juke-Box
+            // (overlapping $4000-$7FFF window).
             jukeBoxEnabled = false;
             emulation->setJukeBoxEnabled(false);
+            if (!tms9918Enabled) {
+                tms9918Enabled = true;
+                showTMS9918 = true;
+                emulation->setTMS9918Enabled(true);
+                sidSpecialEditionEnabled = false; // TMS9918 evicts SE
+            }
             emulation->setCodeTankJumper(codeTankJumper);
             emulation->setCodeTankEnabled(true);
             codeTankEnabled = true;
             showCodeTank = true;
-            setStatusMessage("P-LAB CodeTank plugged: 28c256 at $4000-$7FFF", 3.0f);
+            setStatusMessage("P-LAB CodeTank plugged on TMS9918 host: $4000-$7FFF", 3.0f);
         };
         auto unplugCodeTankFromUi = [&]() {
             emulation->setCodeTankEnabled(false);
@@ -247,19 +255,18 @@ void MainWindow_ImGui::renderMenuBar()
                 "Program Manager at $BD00: type BD00R from the Woz Monitor.\n\n"
                 "Plugging it unplugs CodeTank, CFFA1, microSD, Wi-Fi Modem, and A1-SID.\n"
                 "A1-AUDIO SE can coexist: it lives at $CC00-$CC1F, outside $CA00.");
-            if (ImGui::MenuItem("P-LAB CodeTank (28c256 ROM, pairs with TMS9918)",
+            if (ImGui::MenuItem("P-LAB CodeTank (28c256 ROM daughterboard)",
                                 nullptr, codeTankEnabled)) {
                 if (codeTankEnabled) unplugCodeTankFromUi();
                 else plugCodeTankFromUi();
             }
             showHardwareTooltip(
-                "P-LAB CodeTank 28c256 ROM\n"
+                "P-LAB CodeTank 28c256 ROM (daughterboard)\n"
                 "Fixed ROM window: $4000-$7FFF.\n"
                 "The board jumper selects lower or upper 16 kB of the 32 kB EEPROM.\n\n"
-                "Designed to ship TMS9918 games on real silicon - the CodeTank window\n"
-                "($4000-$7FFF) does not collide with TMS9918 ($CC00/$CC01), so the two\n"
-                "cards coexist freely. Plugging unplugs the Juke-Box (overlapping ROM\n"
-                "window).");
+                "Daughterboard of the TMS9918 Graphic Card - has no edge connector.\n"
+                "Plugging it auto-plugs the TMS9918 host (and evicts A1-AUDIO SE\n"
+                "and the Juke-Box). Unplugging the TMS9918 cascade-unplugs CodeTank.");
             if (ImGui::MenuItem("P-LAB CodeTank Library...", nullptr, &showCodeTankLibrary)) {
                 if (showCodeTankLibrary) setStatusMessage("CodeTank Library opened", 2.0f);
             }
@@ -311,13 +318,20 @@ void MainWindow_ImGui::renderMenuBar()
                 if (tms9918Enabled) {
                     showTMS9918 = true;
                     sidSpecialEditionEnabled = false; // mutually exclusive
+                } else if (codeTankEnabled) {
+                    // CodeTank is a daughterboard of the TMS9918 — Memory's
+                    // setTMS9918Enabled cascade-disabled it; mirror in UI flags.
+                    codeTankEnabled = false;
+                    showCodeTank = false;
+                    setStatusMessage("P-LAB CodeTank unplugged with TMS9918 host", 2.0f);
                 }
             }
             showHardwareTooltip(
                 "P-LAB Graphic Card (TMS9918)\n"
                 "VDP ports: $CC00/$CC01.\n\n"
                 "Plugging it unplugs A1-AUDIO SE, because the two cards share\n"
-                "the $CC00 control/data window.");
+                "the $CC00 control/data window. Unplugging it cascade-unplugs\n"
+                "the CodeTank daughterboard.");
             if (ImGui::MenuItem("P-LAB I/O Board & RTC", nullptr, &a1ioRtcEnabled)) {
                 emulation->setA1IO_RTCEnabled(a1ioRtcEnabled);
                 if (a1ioRtcEnabled) showA1IO_RTC = true;
@@ -487,11 +501,19 @@ void MainWindow_ImGui::renderToolbar()
         auto plugCodeTankFromToolbar = [&]() {
             jukeBoxEnabled = false;
             emulation->setJukeBoxEnabled(false);
+            // CodeTank is a daughterboard of the TMS9918 Graphic Card — auto-
+            // plug the host so UI flags match what Memory just did.
+            if (!tms9918Enabled) {
+                tms9918Enabled = true;
+                showTMS9918 = true;
+                emulation->setTMS9918Enabled(true);
+                sidSpecialEditionEnabled = false;
+            }
             emulation->setCodeTankJumper(codeTankJumper);
             emulation->setCodeTankEnabled(true);
             codeTankEnabled = true;
             showCodeTank = true;
-            setStatusMessage("P-LAB CodeTank plugged: 28c256 at $4000-$7FFF", 3.0f);
+            setStatusMessage("P-LAB CodeTank plugged on TMS9918 host: $4000-$7FFF", 3.0f);
         };
         auto unplugCodeTankFromToolbar = [&]() {
             emulation->setCodeTankEnabled(false);
@@ -572,11 +594,12 @@ void MainWindow_ImGui::renderToolbar()
         }
         ImGui::PopStyleColor();
         showHardwareTooltip(
-            "P-LAB CodeTank 28c256 ROM\n"
-            "Fixed ROM window: $4000-$7FFF. Pairs with the TMS9918 graphic card -\n"
-            "the two cards do not collide and a CodeTank ROM can ship a TMS9918\n"
-            "game that runs unchanged on real Apple-1 silicon.\n\n"
-            "Click toggles CodeTank. Plugging it unplugs the Juke-Box.\n"
+            "P-LAB CodeTank 28c256 ROM (daughterboard)\n"
+            "Fixed ROM window: $4000-$7FFF. Daughterboard of the TMS9918 Graphic\n"
+            "Card - has no edge connector, cannot exist standalone on the bus.\n\n"
+            "Click toggles CodeTank. Plugging it auto-plugs the TMS9918 host\n"
+            "(and evicts A1-AUDIO SE + Juke-Box). Unplugging the TMS9918\n"
+            "cascade-unplugs CodeTank.\n"
             "Use Hardware -> P-LAB CodeTank Library to pick which ROM to load.");
 
         ImGui::SameLine();
@@ -632,7 +655,15 @@ void MainWindow_ImGui::renderToolbar()
                 if (!showTMS9918) {
                     tms9918Enabled = false;
                     emulation->setTMS9918Enabled(false);
-                    setStatusMessage("P-LAB TMS9918 unplugged", 2.0f);
+                    if (codeTankEnabled) {
+                        // CodeTank rides on the TMS9918 host — Memory just
+                        // cascade-disabled it, mirror in UI flags.
+                        codeTankEnabled = false;
+                        showCodeTank = false;
+                        setStatusMessage("P-LAB TMS9918 + CodeTank daughterboard unplugged", 2.0f);
+                    } else {
+                        setStatusMessage("P-LAB TMS9918 unplugged", 2.0f);
+                    }
                 }
             }
         }
@@ -640,7 +671,8 @@ void MainWindow_ImGui::renderToolbar()
         showHardwareTooltip(
             "P-LAB Graphic Card (TMS9918)\n"
             "VDP ports: $CC00/$CC01.\n\n"
-            "Click toggles the output window/card. Plugging it unplugs A1-AUDIO SE.");
+            "Click toggles the output window/card. Plugging it unplugs A1-AUDIO SE.\n"
+            "Unplugging it also unplugs the CodeTank daughterboard.");
 
         ImGui::SameLine();
         if (graphicsCardEnabled && showGraphicsCard)

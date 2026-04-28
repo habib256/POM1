@@ -395,6 +395,9 @@ void MainWindow_ImGui::render()
                 case pom1::CliCard::Tms9918:
                     tms9918Enabled = o.enable; pendingTms9918Enable = o.enable;
                     if (o.enable) { sidSpecialEditionEnabled = false; pendingSidSEEnable = false; }
+                    // CodeTank is a daughterboard of the TMS9918 — yanking the
+                    // host yanks the daughterboard with it.
+                    if (!o.enable) { codeTankEnabled = false; pendingCodeTankEnable = false; }
                     break;
                 case pom1::CliCard::A1IoRtc:
                     a1ioRtcEnabled = o.enable; pendingA1ioRtcEnable = o.enable; break;
@@ -432,7 +435,14 @@ void MainWindow_ImGui::render()
                     break;
                 case pom1::CliCard::CodeTank:
                     codeTankEnabled = o.enable; pendingCodeTankEnable = o.enable;
-                    if (o.enable) { jukeBoxEnabled = false; pendingJukeBoxEnable = false; }
+                    if (o.enable) {
+                        jukeBoxEnabled = false; pendingJukeBoxEnable = false;
+                        // CodeTank is a daughterboard of the TMS9918 — schedule
+                        // the host so finalizePendingCardPlugs() plugs it first
+                        // (TMS9918 is finalized before CodeTank in that order).
+                        tms9918Enabled = true; pendingTms9918Enable = true;
+                        sidSpecialEditionEnabled = false; pendingSidSEEnable = false;
+                    }
                     break;
                 case pom1::CliCard::Pr40:
                     pr40Enabled = o.enable; pendingPr40Enable = o.enable;
