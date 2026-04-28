@@ -78,15 +78,21 @@ Tiny PRNG used by arcade games. `.include "prng16.asm"` exposes:
 
 | Symbol   | Description                                                      |
 |----------|------------------------------------------------------------------|
-| `prng16` | 16-bit Galois LFSR (taps 16, 14, 13, 11). Returns A = new `seed_lo`. |
+| `prng16` | 16-bit Galois LFSR (taps 16, 14, 13, 11). Returns A = new `prng_lo`. |
 
-Reserves its own ZP slots `seed_lo / seed_hi` via `.ifndef` guard with the
-same alias-on-tight-ZP convention as `prng8.asm`. Used by:
-`tms9918_galaga`, `tms9918_snake`.
+Reserves its own ZP slots `prng_lo / prng_hi` via `.ifndef` guard with the
+same alias-on-tight-ZP convention as `prng8.asm`. **Same canonical names
+as `prng8.asm`** — a project that includes both shares one state pair
+physically (you'd typically pick one in practice; the unified naming
+simply lets `dev/lib/apple1/zp.inc` declare `prng_lo / prng_hi` once at
+`$06/$07` and have both libs find them). Used by: `tms9918_galaga`,
+`tms9918_snake`.
 
 A semantically equivalent routine (same $B4 tap, no return value) lives in
-`math.asm` as `roll_lfsr` — projects already integrated with `math.asm`'s
-full ZP convention (e.g. `tms9918_logo`) can keep using that.
+`math.asm` as `roll_lfsr` — it operates on `lfsr_lo / lfsr_hi` (BSS, not
+ZP) which is a **physically distinct** state pair from `prng_lo/hi`.
+Projects already integrated with `math.asm`'s full ZP+BSS convention
+(e.g. `tms9918_logo`) can keep using `roll_lfsr`.
 
 ## Use
 
@@ -95,3 +101,15 @@ full ZP convention (e.g. `tms9918_logo`) can keep using that.
 In your project Makefile:
 
     LIB := -I ../../lib/apple1 -I ../../lib/m6502
+
+## Integration with the unified ZP convention
+
+The `.include`-style libs in this directory (`multiply.asm`, `prng8.asm`,
+`prng16.asm`) compose with `dev/lib/apple1/zp.inc` — include `zp.inc`
+once near the top of your `.asm` and the slots `mul_tmp / mul_res0`
+(at `$04/$05`) and `prng_lo / prng_hi` (at `$06/$07`) are pre-declared.
+The libs' own `.ifndef` guards detect the pre-declaration and skip
+duplicate allocation. The same `zp.inc` `.exportzp`s `tmp / tmp2` so
+`math.asm` (separately compiled into `math.o`) can `.importzp` them at
+link without manual project boilerplate. See
+`dev/projects/lib_smoke/LibSmoke.asm` for a worked example.

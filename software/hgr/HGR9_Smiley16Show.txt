@@ -1,5 +1,4 @@
 // HGR9 Smiley16 showcase (smiley.inc)
-// 1923 bytes - apple1_gen2.cfg - $0280, 280R - ends $0A02
 0280: A9 34 A2 03 20 21 03 20
 0288: 53 06 A9 52 85 03 A9 02
 0290: 85 08 A9 00 85 0A A5 0A

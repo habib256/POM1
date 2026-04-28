@@ -14,16 +14,25 @@
 ;
 ; ZP usage   2 bytes named print_ptr_lo / print_ptr_hi.
 ;            BY DEFAULT this module reserves a fresh pair in the caller's
-;            ZEROPAGE segment. If the caller is ZP-tight (.cfg ZP region
-;            already maxed out), the caller can alias the slot pair to
-;            two of its existing scratch bytes BEFORE the .include:
+;            ZEROPAGE segment. Three ways to integrate:
 ;
-;                print_ptr_lo = str_lo
-;                print_ptr_hi = str_hi
-;                .include "print.asm"
+;            (a) Use the unified ZP convention. `.include "zp.inc"` once
+;                before any other ZP allocation — it pre-declares
+;                print_ptr_lo / print_ptr_hi (and friends) at $02/$03,
+;                and the .ifndef guard below skips the duplicate alloc.
 ;
-;            The `.ifndef` guard below detects the alias and skips the
-;            fresh reservation — no extra ZP bytes consumed.
+;            (b) Stand-alone: just `.include "print.asm"`. The .ifndef
+;                allocates two fresh bytes in your ZEROPAGE segment.
+;
+;            (c) ZP-tight projects (.cfg ZP region already maxed out)
+;                can alias the slot pair to existing scratch BEFORE the
+;                include:
+;
+;                    print_ptr_lo = str_lo
+;                    print_ptr_hi = str_hi
+;                    .include "print.asm"
+;
+;                The .ifndef detects the alias and skips reservation.
 ;
 ; Caller does:  LDA #<msg / LDX #>msg / JSR print_str_ax
 ;

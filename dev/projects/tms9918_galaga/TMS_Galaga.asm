@@ -284,8 +284,8 @@ game_over:      .res 1
 won:            .res 1
 wave:           .res 1
 
-seed_lo:        .res 1
-seed_hi:        .res 1
+prng_lo:        .res 1
+prng_hi:        .res 1
 
 key_left_code:  .res 1
 key_right_code: .res 1
@@ -340,8 +340,8 @@ main:
 @kb_wait:
         JSR title_wait_key
         PHA
-        EOR seed_lo
-        STA seed_lo
+        EOR prng_lo
+        STA prng_lo
         PLA
         CMP #'1'
         BEQ @qwerty
@@ -365,16 +365,16 @@ main:
         LDA #' '                ; space = fire (same on both layouts)
         STA key_fire_code
         LDA #$5B                ; non-zero seed init (key timing also mixes in)
-        STA seed_lo
+        STA prng_lo
         LDA #$A3
-        STA seed_hi
+        STA prng_hi
 
         ; --- Title page 2: bonus drops help ---
         JSR draw_help_tms
         JSR draw_help_sprites
         JSR wait_key            ; any key dismisses the help
-        EOR seed_lo             ; mix key timing into PRNG
-        STA seed_lo
+        EOR prng_lo             ; mix key timing into PRNG
+        STA prng_lo
 
 new_game:
         ; Clear the name table so the title / game-over splash text
@@ -927,7 +927,7 @@ maybe_formation_fire:
         LDX #$04
 @pick:
         JSR prng16
-        LDA seed_lo
+        LDA prng_lo
         AND #$03
         CMP #$03
         BCS @next
@@ -1302,7 +1302,7 @@ maybe_start_dive:
         LDX #$03
 @pick:
         JSR prng16
-        LDA seed_lo
+        LDA prng_lo
         AND #$03
         CMP #$03
         BCS @next_try           ; rejected (only 0..2 valid)
@@ -3758,12 +3758,12 @@ init_starfield:
         LDX #$00
 @lp:
         JSR prng16
-        LDA seed_lo
+        LDA prng_lo
         AND #$1F
         STA star_x,X
 @y_retry:
         JSR prng16
-        LDA seed_hi
+        LDA prng_hi
         AND #$1F
         BEQ @y_retry
         CMP #23
@@ -3819,7 +3819,7 @@ tick_starfield:
         LDA #1
         STA star_y,X
         JSR prng16
-        LDA seed_lo
+        LDA prng_lo
         AND #$1F
         STA star_x,X
 @no_wrap:
@@ -3989,8 +3989,8 @@ delay_and_input:
         LDA KBD
         AND #$7F
         STA temp
-        EOR seed_lo
-        STA seed_lo
+        EOR prng_lo
+        STA prng_lo
         LDA temp
         JSR handle_key
 @nokey:
@@ -4042,14 +4042,9 @@ handle_key:
 ; =============================================
 ; wait_key / print_str_ax (Apple-1 helpers)
 ; =============================================
-wait_key:
-@wk:    LDA KBDCR
-        BPL @wk
-        LDA KBD
-        AND #$7F
-        RTS
-
-; print_str_ax — promoted to dev/lib/apple1/print.asm (Tier 2 mutualization).
+; wait_key / poll_key — promoted to dev/lib/apple1/kbd.asm.
+; print_str_ax — promoted to dev/lib/apple1/print.asm.
+.include "kbd.asm"
 .include "print.asm"
 
 

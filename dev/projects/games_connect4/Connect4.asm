@@ -404,12 +404,7 @@ render_screen:
 ; =============================================
 ; wait_key: returns ASCII in A (bit 7 stripped)
 ; =============================================
-wait_key:
-@wk:    LDA KBDCR
-        BPL @wk
-        LDA KBD
-        AND #$7F
-        RTS
+.include "kbd.asm"      ; wait_key, poll_key (Tier 2 mutualization)
 
 ; =============================================
 ; print_str_ax — promoted to dev/lib/apple1/print.asm (Tier 2 mutualization).

@@ -524,14 +524,9 @@ print_status:
         JSR print_str_ax
         RTS
 
-wait_key:
-@wk:    LDA KBDCR
-        BPL @wk
-        LDA KBD
-        AND #$7F
-        RTS
-
+; wait_key, poll_key — promoted to dev/lib/apple1/kbd.asm.
 ; print_str_ax — promoted to dev/lib/apple1/print.asm (Tier 2 mutualization).
+.include "kbd.asm"
 .include "print.asm"
 
 ; =============================================

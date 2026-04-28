@@ -1,57 +1,22 @@
 #!/usr/bin/env python3
-"""Assemble HGR10_Life and write HGR10_Life.txt (Woz Monitor hex)."""
+"""Assemble HGR10_Life and write HGR10_Life.txt — wraps emit_woz.py."""
 import pathlib
-import subprocess
 import sys
 
 PROJ = pathlib.Path(__file__).resolve().parent
-ROOT = PROJ.parents[2]
-LIB_APPLE1 = ROOT / "dev" / "lib" / "apple1"
-LIB_HGR = ROOT / "dev" / "lib" / "hgr"
-HGR = ROOT / "software" / "hgr"
-BUILD = ROOT / "build"
-ASM = PROJ / "HGR10_Life.asm"
-OBJ = BUILD / "HGR10_Life.o"
-BIN = BUILD / "HGR10_Life.bin"
-OUT = HGR / "HGR10_Life.txt"
-CFG = ROOT / "dev" / "cc65" / "apple1_gen2.cfg"
-
-START = 0x280
+sys.path.insert(0, str(PROJ.parents[1] / "cc65"))
+from emit_woz import emit  # noqa: E402
 
 
 def main() -> int:
-    BUILD.mkdir(parents=True, exist_ok=True)
-    subprocess.run(
-        [
-            "ca65",
-            "-I", str(LIB_APPLE1),
-            "-I", str(LIB_HGR),
-            "-o", str(OBJ),
-            str(ASM),
-        ],
-        check=True,
-        cwd=str(ROOT),
+    emit(
+        asm_files=["HGR10_Life.asm"],
+        lib_dirs=["apple1", "hgr"],
+        cfg="apple1_gen2.cfg",
+        out_dir_software="hgr",
+        start_addr=0x0280,
+        project_dir=PROJ,
     )
-    subprocess.run(
-        [
-            "ld65",
-            "-C", str(CFG),
-            "-o", str(BIN),
-            str(OBJ),
-        ],
-        check=True,
-        cwd=str(ROOT),
-    )
-    data = BIN.read_bytes()
-    lines = []
-    addr = START
-    for i in range(0, len(data), 8):
-        chunk = data[i : i + 8]
-        lines.append(f"{addr:04X}: " + " ".join(f"{b:02X}" for b in chunk))
-        addr += len(chunk)
-    lines.append("0280R")
-    OUT.write_text("\n".join(lines) + "\n", encoding="ascii")
-    print(f"Wrote {OUT} ({len(data)} bytes)", file=sys.stderr)
     return 0
 
 

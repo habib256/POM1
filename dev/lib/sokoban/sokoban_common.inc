@@ -100,31 +100,17 @@ check_win:
         RTS
 
 ; ---------------------------------------------
-; wait_key: block until the Apple 1 keyboard has a key.
-; Returns A = ASCII (bit 7 stripped).
+; wait_key (block on key) and print_str_ax (print ASCIIZ via ECHO) used to
+; live inline in this file. Now factored to lib/apple1/kbd.asm and
+; lib/apple1/print.asm — pulled in below via textual .include. The
+; print_ptr_lo/hi aliases fold print.asm's ZP slots onto the project's
+; existing str_lo/str_hi (consistent in all three Sokoban variants
+; — text 4 KB, HGR, TMS9918).
 ; ---------------------------------------------
-wait_key:
-@wk:    LDA KBDCR
-        BPL @wk
-        LDA KBD
-        AND #$7F
-        RTS
-
-; ---------------------------------------------
-; print_str_ax: print a NUL-terminated ASCII string.
-; Input: A = lo, X = hi of string address. Sets bit 7 before ECHO.
-; ---------------------------------------------
-print_str_ax:
-        STA str_lo
-        STX str_hi
-        LDY #$00
-@lp:    LDA (str_lo),Y
-        BEQ @dn
-        ORA #$80
-        JSR ECHO
-        INY
-        BNE @lp
-@dn:    RTS
+print_ptr_lo = str_lo
+print_ptr_hi = str_hi
+.include "kbd.asm"
+.include "print.asm"
 
 ; ---------------------------------------------
 ; load_level: fetch the level at index level_idx, expand its RLE body

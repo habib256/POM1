@@ -110,8 +110,8 @@ speed:          .res 1          ; outer delay count
 game_over:      .res 1
 won:            .res 1
 
-seed_lo:        .res 1
-seed_hi:        .res 1
+prng_lo:        .res 1
+prng_hi:        .res 1
 
 key_up_code:    .res 1
 key_left_code:  .res 1
@@ -142,8 +142,8 @@ main:
 @kb_wait:
         JSR wait_key
         PHA                     ; save key
-        EOR seed_lo             ; mix key timing into PRNG seed
-        STA seed_lo
+        EOR prng_lo             ; mix key timing into PRNG seed
+        STA prng_lo
         PLA                     ; restore key
         CMP #'1'
         BEQ @qwerty
@@ -169,8 +169,8 @@ main:
 @walls_wait:
         JSR wait_key
         PHA
-        EOR seed_lo
-        STA seed_lo
+        EOR prng_lo
+        STA prng_lo
         PLA
         CMP #'1'
         BEQ @deadly
@@ -187,9 +187,9 @@ main:
 
 @begin:
         LDA #$A5
-        STA seed_lo
+        STA prng_lo
         LDA #$3C
-        STA seed_hi
+        STA prng_hi
 
 new_game:
         LDA #$00
@@ -574,14 +574,14 @@ push_new_head:
 spawn_food:
 @retry:
         JSR prng16
-        LDA seed_lo
+        LDA prng_lo
         AND #$1F                ; 0..31
         BEQ @retry              ; reject 0
         CMP #31
         BCS @retry              ; reject 31
         STA new_x
         JSR prng16
-        LDA seed_hi
+        LDA prng_hi
         AND #$1F                ; 0..31
         CMP #PLAY_TOP
         BCC @retry              ; reject 0..1
@@ -638,8 +638,8 @@ delay_and_input:
         LDA KBD
         AND #$7F
         STA temp
-        EOR seed_lo
-        STA seed_lo             ; entropy mix
+        EOR prng_lo
+        STA prng_lo             ; entropy mix
         LDA temp
         JSR handle_key
 @nokey:
@@ -994,17 +994,12 @@ draw_str_tms:
 ; =============================================
 ; wait_key / print_str_ax: stock Apple-1 helpers.
 ; =============================================
-wait_key:
-@wk:    LDA KBDCR
-        BPL @wk
-        LDA KBD
-        AND #$7F
-        RTS
-
-; print_str_ax — promoted to dev/lib/apple1/print.asm (Tier 2 mutualization).
-; ZP-tight project: alias the lib's ZP slot pair to our existing str_lo/str_hi.
+; wait_key / poll_key — promoted to dev/lib/apple1/kbd.asm.
+; print_str_ax — promoted to dev/lib/apple1/print.asm.
+; ZP-tight project: alias print.asm's slot pair to our existing str_lo/str_hi.
 print_ptr_lo = str_lo
 print_ptr_hi = str_hi
+.include "kbd.asm"
 .include "print.asm"
 
 

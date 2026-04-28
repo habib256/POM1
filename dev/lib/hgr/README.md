@@ -1,4 +1,4 @@
-# lib/hgr — Uncle Bernie's GEN2 HGR data tables
+# lib/hgr — Uncle Bernie's GEN2 HGR data tables + sub-byte rendering
 
 Lookup tables for the GEN2 HGR card (passive RAM-mapped framebuffer at
 `$2000-$3FFF`). The card is 280×192 NTSC artifact-color; pixel layout follows
@@ -20,16 +20,81 @@ the Apple II non-linear scanline addressing.
   letters). Label: `HGR6_Sokoban_bbfont`. Used by
   `dev/projects/hgr6_sokoban/`. Drop-in compatible with `bbfont_cp437.inc`
   glyph layout.
+- **`subbyte4.inc`** — 7-phase sub-byte mask LUTs for **4-pixel-wide**
+  blocks. Three tables (`sb4_byte_off`, `sb4_mask1`, `sb4_mask2`) cover
+  grid columns `gx ∈ [0..68]`, encoding the byte offset and OR-mask
+  pair for each phase. Lifted from `hgr_maze`. To support a different
+  block width, copy this file as a template and recompute the masks
+  (the structure is identical).
+- **`subbyte_fill.asm`** — `subbyte_fill_4`: read-modify-write OR a
+  4-pixel × 4-row block at `(gx, scanline_ptr)`. Uses the LUTs from
+  `subbyte4.inc`.
 
-These are data-only includes. Drop them into your `.asm` with `.include` and
-reference the labels they define. See `dev/projects/hgr*/` for callers.
+## Sub-byte rendering quick reference
+
+HGR's 7 px/byte layout means non-7-aligned sprite widths must straddle
+byte boundaries. The 7-phase pattern for **4-pixel** blocks is:
+
+| `gx%7` | byte+ | mask1 | mask2 |
+|---|---|---|---|
+| 0 | +0 | $0F | $00 |
+| 1 | +0 | $70 | $01 |
+| 2 | +1 | $1E | $00 |
+| 3 | +1 | $60 | $03 |
+| 4 | +2 | $3C | $00 |
+| 5 | +2 | $40 | $07 |
+| 6 | +3 | $78 | $00 |
+
+Bit 7 of every byte stays clear (NTSC group selector, not a pixel) —
+colour-aware rendering must set bit 7 separately on each scanline byte.
+
+## subbyte_fill — public routine
+
+| Routine | Inputs | Output | Clobbers | ZP |
+|---|---|---|---|---|
+| `subbyte_fill_4` | X = gx (0..68), `sb_ptr_lo:hi` = first scanline | OR a 4×4 block | A, X, Y | `tmp`, `tmp2`, `sb_ptr_lo/hi` |
+
+Constraint: the 4 scanlines must lie in the **same HGR group** (Apple-II
+non-linear layout — within a group, consecutive scanlines are at
+`+$0400`). For blocks crossing group boundaries, do a full
+`hgr_lo/hi` lookup per row.
 
 ## Use
 
-    .include "apple1.inc"
-    .include "hgr_tables.inc"
+```asm
+.include "apple1.inc"
+.include "zp.inc"            ; provides tmp / tmp2
+.include "hgr_tables.inc"    ; scanline LUTs
+.include "subbyte4.inc"      ; 7-phase mask data
+.include "subbyte_fill.asm"  ; subbyte_fill_4 routine
+
+draw_wall_at_gx_y:
+        LDX gx                    ; grid column (0..68)
+        ; Look up first scanline base via hgr_tables for row gy*4
+        LDA hgr_lo,Y
+        STA sb_ptr_lo
+        LDA hgr_hi,Y
+        STA sb_ptr_hi
+        JSR subbyte_fill_4
+```
 
 In your project Makefile:
 
     LIB := -I ../../lib/apple1 -I ../../lib/hgr
     LOAD_CFG := ../../cc65/apple1_gen2.cfg
+
+## Migration path for `hgr_maze`
+
+`dev/projects/hgr_maze/HGR_Maze.asm` ships its own copy of the LUTs
+(lines 711-748) and a private `fill_block` (lines 280-314). To migrate:
+
+1. Add `.include "subbyte4.inc"` and `.include "subbyte_fill.asm"`.
+2. Alias `sb_ptr_lo = ptr_lo / sb_ptr_hi = ptr_hi` (or rename the
+   project's pointer slots).
+3. Replace each `JSR fill_block` with `JSR subbyte_fill_4`. The X
+   register input matches; the row pointer setup is identical.
+4. Delete the local `col_byte`, `col_mask1`, `col_mask2` tables and the
+   local `fill_block` routine. Project shrinks by ~80 lines.
+
+Pin the migration with a byte-comparison to confirm the rebuilt `.bin`
+matches the previous one.
