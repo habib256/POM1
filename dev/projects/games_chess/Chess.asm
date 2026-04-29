@@ -58,8 +58,15 @@ main:
         LDX #>str_title
         JSR print_str_ax
         JSR wait_key
-        LDA #$00
-        STA play_mode
+        ; Fall through to restart_game (mode prompt + init).
+
+; restart_game -- prompt user for mode, then start a fresh game.
+; Entry point for "new game after game-over" so the player can switch
+; mode between games. cycle_mode (M command at MOVE? prompt) is the
+; mid-game shortcut and stays unchanged.
+restart_game:
+        JSR choose_mode
+        ; fall through
 
 new_game:
         JSR init_board
@@ -142,32 +149,16 @@ game_loop:
         JSR game_status
         BEQ game_loop
 
-        ; Game over — render final board, announce result, wait, restart.
+        ; Game over — render final board, announce reason, prompt N/H.
         JSR render_board
         TAY                     ; Y = status code
-        CPY #$01
-        BNE @nwm
-        LDA #<msg_white_mate
-        LDX #>msg_white_mate
-        JMP @say
-@nwm:   CPY #$02
-        BNE @nbm
-        LDA #<msg_black_mate
-        LDX #>msg_black_mate
-        JMP @say
-@nbm:   ; stalemate
-        LDA #<msg_stalemate
-        LDX #>msg_stalemate
-@say:   JSR print_str_ax
-        JSR wait_key
-        JMP new_game
+        JMP game_over_announce
 
 show_quit:
         LDA #<msg_quit
         LDX #>msg_quit
         JSR print_str_ax
-        JSR wait_key
-        JMP new_game
+        JMP game_over_prompt    ; offer N=new game / H=help
 
 ; -- Cycle play mode: 0 → 1 → 2 → 3 → 0 → ... --
 cycle_mode:
@@ -299,6 +290,52 @@ do_ai:
 @gameover:
         ; Game over after AI move
         TAY
+        JSR render_board
+        JMP game_over_announce
+
+; =============================================
+; choose_mode -- prompt the user to pick play_mode (1..4) before a
+; new game starts. Loops until a key in '1'..'4' arrives. Echoes the
+; chosen mode label so the player has visual confirmation.
+; =============================================
+choose_mode:
+@ask:   LDA #<msg_mode_prompt
+        LDX #>msg_mode_prompt
+        JSR print_str_ax
+        JSR wait_key            ; A = key, bit 7 already stripped
+        CMP #'1'
+        BCC @ask                ; below '1' → re-prompt
+        CMP #'5'
+        BCS @ask                ; '5' or above → re-prompt
+        SEC
+        SBC #'1'                ; map '1'..'4' → 0..3
+        STA play_mode
+        ; Echo selection (same labels as cycle_mode).
+        LDA play_mode
+        BNE @nm0
+        LDA #<msg_mode_hvh
+        LDX #>msg_mode_hvh
+        JMP @say
+@nm0:   CMP #$01
+        BNE @nm1
+        LDA #<msg_mode_wai
+        LDX #>msg_mode_wai
+        JMP @say
+@nm1:   CMP #$02
+        BNE @nm2
+        LDA #<msg_mode_bai
+        LDX #>msg_mode_bai
+        JMP @say
+@nm2:   LDA #<msg_mode_ava
+        LDX #>msg_mode_ava
+@say:   JMP print_str_ax        ; tail call — RTS in print_str_ax returns to caller
+
+; =============================================
+; game_over_announce -- Y = status code (1=white mated, 2=black mated,
+; 3=stalemate). Prints the reason then falls through to game_over_prompt.
+; Never returns to caller (tail-jumps into restart_game).
+; =============================================
+game_over_announce:
         CPY #$01
         BNE @nwm
         LDA #<msg_white_mate
@@ -311,29 +348,51 @@ do_ai:
         JMP @say
 @nbm:   LDA #<msg_stalemate
         LDX #>msg_stalemate
-@say:   JSR render_board
+@say:   JSR print_str_ax
+        ; fall through to game_over_prompt
+
+; =============================================
+; game_over_prompt -- offer "N = new game" or "H = help". H re-shows the
+; splash help and re-prompts; any other key triggers a fresh game (with
+; mode prompt). Never returns.
+; =============================================
+game_over_prompt:
+@ask:   LDA #<msg_gameover_prompt
+        LDX #>msg_gameover_prompt
+        JSR print_str_ax
+        JSR wait_key            ; A = key (bit 7 stripped)
+        CMP #'H'
+        BNE @notH
+        ; Help: re-show the splash, wait for a key, then re-prompt.
+        LDA #<str_title
+        LDX #>str_title
         JSR print_str_ax
         JSR wait_key
-        JMP new_game
+        JMP @ask
+@notH:  ; Any other key starts a new game (mode prompt + init_board).
+        JMP restart_game
 
 ; =============================================
 ; render_board -- print the 8x8 board with file/rank labels
 ;
-; Layout (each cell is 2 chars wide → 3 chars per cell with separator):
+; Layout (each cell is 2 chars wide → 3 chars per cell with separator).
+; Files A..H labelled once at the top; ranks 1..8 labelled on the right
+; only (left-side rank column and bottom file row are intentionally
+; omitted for a tighter display on the 40-col Apple-1 screen).
 ;
-;     A  B  C  D  E  F  G  H
-;    +--+--+--+--+--+--+--+--+
-;  8 !BR!BN!BB!BQ!BK!BB!BN!BR! 8
-;    +--+--+--+--+--+--+--+--+
-;  7 !BP!BP!BP!BP!BP!BP!BP!BP! 7
-;    +--+--+--+--+--+--+--+--+
-;    ... ranks 6..3 with `..` for dark empty cells, `  ` for light ...
-;    +--+--+--+--+--+--+--+--+
-;  2 !WP!WP!WP!WP!WP!WP!WP!WP! 2
-;    +--+--+--+--+--+--+--+--+
-;  1 !WR!WN!WB!WQ!WK!WB!WN!WR! 1
-;    +--+--+--+--+--+--+--+--+
-;     A  B  C  D  E  F  G  H
+; A  B  C  D  E  F  G  H
+;+--+--+--+--+--+--+--+--+    (files line has 1 leading space so
+;                              letters land over cell content)
+;!BR!BN!BB!BQ!BK!BB!BN!BR! 8
+;+--+--+--+--+--+--+--+--+
+;!BP!BP!BP!BP!BP!BP!BP!BP! 7
+;+--+--+--+--+--+--+--+--+
+;... ranks 6..3 with `..` for dark empty cells, `  ` for light ...
+;+--+--+--+--+--+--+--+--+
+;!WP!WP!WP!WP!WP!WP!WP!WP! 2
+;+--+--+--+--+--+--+--+--+
+;!WR!WN!WB!WQ!WK!WB!WN!WR! 1
+;+--+--+--+--+--+--+--+--+
 ;
 ; Pieces are 2 chars: colour + piece. W = white, B = black.
 ;   WP white pawn   BP black pawn
@@ -360,18 +419,8 @@ render_board:
         LDX #>str_sep
         JSR print_str_ax
 
-        ; Leading rank label + space ("  8 " etc.)
-        LDA #' '
-        ORA #$80
-        JSR ECHO
-        LDA tmp
-        CLC
-        ADC #'1'
-        ORA #$80
-        JSR ECHO
-        LDA #' '
-        ORA #$80
-        JSR ECHO
+        ; No left margin — board is flush against col 0 to save display
+        ; time on the slow Apple-1 video (every char ≈ 17 ms).
 
         ; Print 8 cells across files 0..7
         LDA #$00
@@ -416,10 +465,6 @@ render_board:
 
         LDA #<str_sep
         LDX #>str_sep
-        JSR print_str_ax
-
-        LDA #<str_files
-        LDX #>str_files
         JSR print_str_ax
         RTS
 
@@ -515,10 +560,10 @@ str_title:
         .byte $0D, " PRESS ANY KEY TO START...", $0D, 0
 
 str_files:
-        .byte "    A  B  C  D  E  F  G  H", $0D, 0
+        .byte " A  B  C  D  E  F  G  H", $0D, 0
 
 str_sep:
-        .byte "   +--+--+--+--+--+--+--+--+", $0D, 0
+        .byte "+--+--+--+--+--+--+--+--+", $0D, 0
 
 str_white_turn:
         .byte " WHITE TO MOVE.", 0
@@ -557,17 +602,32 @@ msg_mode_ava:
         .byte $0D, " MODE: COMPUTER (W) VS COMPUTER (B)", $0D, 0
 mode_strs: .byte 0, 0, 0, 0, 0, 0, 0, 0   ; placeholder (unused)
 msg_quit:
-        .byte $0D, " GAME ABANDONED.", $0D
-        .byte " PRESS A KEY FOR NEW GAME.", $0D, 0
+        .byte $0D, " GAME ABANDONED BY PLAYER.", $0D, 0
 msg_white_mate:
-        .byte $0D, " *** CHECKMATE - BLACK WINS! ***", $0D
-        .byte " PRESS A KEY FOR NEW GAME.", $0D, 0
+        .byte $0D, " *** GAME OVER - CHECKMATE ***", $0D
+        .byte " WHITE'S KING IS CHECKMATED:", $0D
+        .byte " IN CHECK AND NO LEGAL MOVE LEFT.", $0D
+        .byte " BLACK WINS!", $0D, 0
 msg_black_mate:
-        .byte $0D, " *** CHECKMATE - WHITE WINS! ***", $0D
-        .byte " PRESS A KEY FOR NEW GAME.", $0D, 0
+        .byte $0D, " *** GAME OVER - CHECKMATE ***", $0D
+        .byte " BLACK'S KING IS CHECKMATED:", $0D
+        .byte " IN CHECK AND NO LEGAL MOVE LEFT.", $0D
+        .byte " WHITE WINS!", $0D, 0
 msg_stalemate:
-        .byte $0D, " *** STALEMATE - DRAW. ***", $0D
-        .byte " PRESS A KEY FOR NEW GAME.", $0D, 0
+        .byte $0D, " *** GAME OVER - STALEMATE ***", $0D
+        .byte " THE SIDE TO MOVE HAS NO LEGAL", $0D
+        .byte " MOVE BUT IS NOT IN CHECK.", $0D
+        .byte " DRAWN GAME.", $0D, 0
+msg_mode_prompt:
+        .byte $0D, " CHOOSE MODE:", $0D
+        .byte "   1 = HUMAN VS HUMAN", $0D
+        .byte "   2 = HUMAN (W) VS COMPUTER (B)", $0D
+        .byte "   3 = COMPUTER (W) VS HUMAN (B)", $0D
+        .byte "   4 = COMPUTER VS COMPUTER", $0D
+        .byte " SELECT (1-4)? ", 0
+msg_gameover_prompt:
+        .byte $0D, " N = NEW GAME    H = HELP", $0D
+        .byte " > ", 0
 
 ; --- pull in libraries via .include (Tier 2 mutualisation) ---
 .include "kbd.asm"

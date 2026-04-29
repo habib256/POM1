@@ -80,6 +80,13 @@ public:
     // ImGui::DestroyContext().
     void savePresetLayout(int presetIndex) const;
     bool loadPresetLayout(int presetIndex);  // returns true if a file was found
+
+    // Write default ini/imgui_preset_NN.ini + ini/preset_NN.size for every
+    // preset that doesn't have one yet, using the hard-coded defaults from
+    // kMachinePresets[].layout. Call once at boot. Never overwrites existing
+    // user customisations.
+    static void pregenerateMissingPresetLayouts();
+
     int  getActivePresetIndex() const { return activePresetIndex; }
 
     /// Render-loop accessor — main_imgui.cpp uses this to poll the Terminal

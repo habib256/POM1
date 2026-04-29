@@ -9,8 +9,9 @@
 ; Drop-in semantics — identical to every previous inline copy:
 ;   Input    A = low byte, X = high byte of pointer to NUL-terminated string.
 ;   Output   prints each byte ORed with $80 to ECHO ($FFEF), stops at $00.
-;            Max 256 bytes per string (Y is the iterator).
-;   Clobbers A, Y. X preserved.
+;            No length cap — when Y wraps past 255 the high byte of the
+;            pointer is bumped so strings can span pages.
+;   Clobbers A, Y. X preserved. print_ptr_hi is also modified for long strings.
 ;
 ; ZP usage   2 bytes named print_ptr_lo / print_ptr_hi.
 ;            BY DEFAULT this module reserves a fresh pair in the caller's
@@ -60,4 +61,6 @@ print_str_ax:
         JSR     ECHO
         INY
         BNE     @lp
+        INC     print_ptr_hi    ; Y wrapped → advance pointer to next page
+        BNE     @lp             ; always taken (high byte just got non-zero)
 @done:  RTS

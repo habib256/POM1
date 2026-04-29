@@ -474,6 +474,12 @@ int main(int argc, char* argv[])
                 "could not create ini/: " + ec.message());
         }
     }
+    // Pre-populate every preset's layout file with its hard-coded defaults
+    // (window pos/size from kMachinePresets[].layout + computed GLFW window
+    // size). Existing files are left alone, so user customisations persist.
+    // After this call, ini/imgui_preset_NN.ini exists for every preset 0..N
+    // even before the user has visited each one.
+    MainWindow_ImGui::pregenerateMissingPresetLayouts();
 #endif
 
     // Charger les polices

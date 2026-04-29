@@ -225,13 +225,15 @@ const MachineConfig kMachinePresets[] = {
         "P-LAB Apple-1 with TMS9918 (CodeTank daughterboard)",
         "P-LAB Graphic Card (TMS9918A VDP) with the CodeTank 28c256 ROM daughterboard "
         "(Codetank_GAME1.rom) at $4000-$7FFF, no BASIC (CodeTank ROM is the program). "
-        "The CodeTank piggybacks the Graphic Card on real P-LAB silicon - it has no "
-        "edge connector. Type 4000R: Lower jumper boots the 4-game menu (1=Galaga, "
-        "2=Sokoban, 3=Snake, 4=Life); Upper jumper boots the 1=Tetris / 2=LOGO V1.7 "
-        "picker.",
+        "Replica/Originals dual-bank RAM: 4 KB at $0000-$0FFF + 4 KB at $E000-$EFFF "
+        "(Parmigiani's standard 8 KB layout — same as 99% of Originals; with no BASIC "
+        "loaded the upper bank is free RAM). The CodeTank piggybacks the Graphic Card "
+        "on real P-LAB silicon - it has no edge connector. Type 4000R: Lower jumper "
+        "boots the 4-game menu (1=Galaga, 2=Sokoban, 3=Snake, 4=Life); Upper jumper "
+        "boots the 1=Tetris / 2=LOGO V1.7 picker.",
         false, false, false, true, false, false, false,
         /*pr40*/ false,
-        false, false, false, 16, BasicType::None,
+        false, false, false, 8, BasicType::None,
         /*sidSE*/ false,
         /*jukeBox*/ false, JukeBox::Jumper::RAM16_ROM32, JukeBox::ChipMode::Flash,
         /*codeTank*/ true, CodeTank::Jumper::Lower16,
