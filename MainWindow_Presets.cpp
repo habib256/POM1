@@ -91,7 +91,10 @@ const MachineConfig kMachinePresets[] = {
     },
     {
         "Apple-1 with ACI & Integer BASIC (October 1976)",
-        "Original bare board with the ACI cassette expansion card: 6502, 8 KB RAM, PIA 6821, Integer BASIC, WOZ Monitor.",
+        "Original bare board with the ACI cassette expansion card: 6502, "
+        "8 KB RAM (4 KB at $0000-$0FFF + 4 KB at $E000-$EFFF — Parmigiani's "
+        "standard dual-bank layout), PIA 6821, Integer BASIC loaded into "
+        "the upper 4 KB RAM bank from cassette, WOZ Monitor.",
         false, false, false, false, false, false, false,
         /*pr40*/ false,
         false, false, true, 8, BasicType::Integer,
@@ -871,4 +874,85 @@ bool MainWindow_ImGui::loadPresetLayout(int idx)
     }
 #endif
     return true;
+}
+
+// ---------------------------------------------------------------------------
+// pregenerateMissingPresetLayouts -- write out default ini/imgui_preset_NN.ini
+// + ini/preset_NN.size for every preset that doesn't have one yet, using the
+// hard-coded `kMachinePresets[i].layout` defaults (window name + pos + size).
+//
+// Called once at boot. Ensures the ini/ directory is fully populated even
+// before the user visits each preset, so that:
+//   1. Defaults are always discoverable and editable on disk.
+//   2. The ini files act as a versioned snapshot of the canonical layouts.
+//   3. Users can hand-edit any preset's layout without having to first launch
+//      it (handy for kiosk / repo-shipping setups).
+//
+// Does NOT overwrite existing ini files — user customisations are preserved.
+// ---------------------------------------------------------------------------
+void MainWindow_ImGui::pregenerateMissingPresetLayouts()
+{
+    namespace fs = std::filesystem;
+    std::error_code ec;
+    fs::create_directories("ini", ec);
+    if (ec) return;
+
+    int generated = 0;
+    for (int idx = 0; idx < kMachinePresetCount; ++idx) {
+        const std::string iniPath = iniPathForPreset(idx);
+        const std::string sizePath = sizePathForPreset(idx);
+        const bool iniExists  = fs::exists(iniPath, ec);
+        const bool sizeExists = fs::exists(sizePath, ec);
+        if (iniExists && sizeExists) continue;
+
+        const MachineConfig& cfg = kMachinePresets[idx];
+
+        // Write the .ini file with one [Window][...] section per layout entry.
+        if (!iniExists) {
+            std::ofstream f(iniPath);
+            if (!f) continue;
+            for (int i = 0; i < cfg.layoutCount; ++i) {
+                const MachineWindowPlacement& w = cfg.layout[i];
+                f << "[Window][" << w.name << "]\n";
+                f << "Pos=" << static_cast<int>(w.pos.x) << ','
+                            << static_cast<int>(w.pos.y) << '\n';
+                if (w.size.x > 0.0f && w.size.y > 0.0f) {
+                    f << "Size=" << static_cast<int>(w.size.x) << ','
+                                  << static_cast<int>(w.size.y) << '\n';
+                }
+                f << '\n';
+            }
+        }
+
+        // Write the .size file with the bounding box of the layout, plus a
+        // small floor matching the canonical Fantasy preset (last entry) so
+        // that no preset starts smaller than the reference frame.
+        if (!sizeExists) {
+            // Need a fallback Apple-1 screen size — use the spec's size if
+            // present, else a reasonable 843x701 baseline.
+            ImVec2 fallback(843.0f, 701.0f);
+            for (int i = 0; i < cfg.layoutCount; ++i) {
+                if (std::string(cfg.layout[i].name) == "Apple 1 Screen"
+                    && cfg.layout[i].size.x > 0.0f) {
+                    fallback = cfg.layout[i].size;
+                    break;
+                }
+            }
+            ImVec2 extent = pom1::mainwindow::detail::computePresetLayoutExtent(cfg, fallback);
+            int w = static_cast<int>(std::ceil(extent.x + 10.0f));
+            int h = static_cast<int>(std::ceil(extent.y + 60.0f));
+            // Floor at Fantasy preset extent (last entry — reference frame)
+            const MachineConfig& fantasy = kMachinePresets[kMachinePresetCount - 1];
+            ImVec2 fext = pom1::mainwindow::detail::computePresetLayoutExtent(fantasy, fallback);
+            if (fext.x > 0.0f) w = std::max(w, static_cast<int>(std::ceil(fext.x + 10.0f)));
+            if (fext.y > 0.0f) h = std::max(h, static_cast<int>(std::ceil(fext.y + 60.0f)));
+            saveSizeFile(idx, w, h);
+        }
+        ++generated;
+    }
+    if (generated > 0) {
+        pom1::log().info("Layout",
+            "Pre-generated " + std::to_string(generated) +
+            " preset layout file(s) under ini/");
+    }
 }

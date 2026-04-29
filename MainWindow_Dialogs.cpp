@@ -720,7 +720,7 @@ void MainWindow_ImGui::renderHardwareReferenceWindow()
                 "$CC00/$CC01  TMS9918 DATA/CTRL (wins over SID)\n"
                 "$D00A        SWTPC GT-6144 command port (write-only)\n"
                 "$D010-$D012  PIA (aliased across $D000-$D0FF)\n"
-                "$E000-$EFFF  Apple Integer BASIC ROM\n"
+                "$E000-$EFFF  Apple Integer BASIC (RAM, cassette-loaded)\n"
                 "$FF00-$FFFF  Woz Monitor + vectors");
             ImGui::PopFont();
             ImGui::EndChild();

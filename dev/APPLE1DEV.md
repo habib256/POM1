@@ -314,7 +314,9 @@ Add a C++ test in `tests/`. Template: `tests/peripheral_bus_smoke_test.cpp` — 
 | SID direct register play | `dev/projects/sid_piano/Claudio_PARMIGIANI_SID_PIANO_AZERTY.asm` |
 | SID from C64 conversion | `python3 tools/sid2apple1.py Music.sid` |
 | RTC / sensors | `dev/projects/a1io_rtc_clock/RtcClock.asm` |
-| Shared logic across modes | `dev/lib/sokoban/sokoban_*.inc` (mode-neutral routines) |
+| Shared logic across modes | `dev/lib/sokoban/sokoban_*.inc` (mode-neutral routines), `dev/lib/chess/chess_engine.asm` (separately-linked engine .o) |
+| Separately-linked engine module | `dev/lib/chess/chess_engine.asm` + per-variant Makefile linking 3 `.o` (text/TMS9918/HGR all share the same `chess_engine.o`) |
+| Algebraic move parser | `dev/lib/chess/chess_text_io.asm` (parses 4-5 char input like `E2E4`, `E7E8Q`) |
 | New linker config | `dev/cc65/apple1.cfg` (3 328 B) / `apple1_4k.cfg` (4 096 B) / `apple1_gen2.cfg` (7 552 B, reserves HGR fb) |
 
 ---

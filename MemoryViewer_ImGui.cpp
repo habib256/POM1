@@ -577,7 +577,11 @@ const char* MemoryViewer_ImGui::getRegionName(int address) const
     if (sidEnabled && address >= 0xC800 && address <= 0xCFFF) return "A1-SID";
     if (tms9918Enabled && address >= 0xCC00 && address <= 0xCC01) return "TMS9918 VDP";
     if (address >= 0xD000 && address <= 0xD0FF) return "I/O (KBD/DSP)";
-    if (address >= 0xE000 && address <= 0xEFFF) return "Integer BASIC ROM";
+    // $E000-$EFFF on real Apple-1 is RAM (Integer BASIC was distributed on
+    // cassette and loaded into RAM via Wozmon `E000.EFFR`). POM1 pre-seeds
+    // this RAM from basic.rom at boot, but writes are not blocked — programs
+    // can use this region as scratch (e.g. dev/projects/games_chess/ engine).
+    if (address >= 0xE000 && address <= 0xEFFF) return "Integer BASIC (RAM)";
     if (address >= 0xFF00) return "Woz Monitor ROM";
     return "User RAM";
 }

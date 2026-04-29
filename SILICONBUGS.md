@@ -18,11 +18,11 @@ L'émulation POM1 est suffisamment fidèle pour développer en text/bitmap (Mode
 ```
 $0000-$00FF   Zero page (Apple-1 standard)
 $0100-$01FF   Stack
-$0200-$1FFF   User RAM (~7,5 Ko utiles après stack/zp)            ← seul bloc GARANTI
+$0200-$1FFF   User RAM (~3,5 Ko utiles après stack/zp)            ← seul bloc GARANTI
 $2000-$3FFF   Libre côté CodeTank (mutex GEN2 HGR si carte présente) — TODO mesurer silicium
 $4000-$7FFF   ROM CodeTank 16 Ko (jumper Lower OU Upper)
 $CC00 / $CC01 TMS9918 DATA / CTRL
-$E000-$EFFF   Integer BASIC ROM
+$E000-$EFFF   User RAM Hi 4k
 $FF00-$FFFF   Wozmon + vecteurs
 ```
 

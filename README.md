@@ -154,6 +154,7 @@ Indices match `--preset N`. Per-preset window layouts persist under `ini/imgui_p
 | Program | Notes |
 |---------|-------|
 | ♟️ **Microchess** | Peter Jennings' chess engine — first commercial microcomputer game |
+| ♟️ **Chess** trilogy | Pure-asm chess inspired by [StewBC/cc65-Chess](https://github.com/StewBC/cc65-Chess), three variants ([text](dev/projects/games_chess/Chess.asm), [TMS9918](dev/projects/tms9918_chess/TMS_Chess.asm), [HGR](dev/projects/hgr_chess/HGR_Chess.asm)). v0.1: HvH, full move-gen + check/mate. AI v1.2 |
 | 🏰 **LittleTower** | Text adventure ([asm](dev/projects/games_little_tower/LittleTower-1.0.asm)) |
 | 🌙 **Lunar Lander** · 🔢 **2048** · 🔐 **Codebreaker** / 🧠 **Mastermind** · 🎲 **Shut the Box** · 🔵 **Peg Solitaire** · 🧩 **15-Puzzle** · 📝 **Worple** | Classics |
 | 🧬 **Game of Life** · 🎂 **30th** · 🐱 **ASCII Cat** · 🍺 **99 Bottles** | Demos |
