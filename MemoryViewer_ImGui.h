@@ -18,14 +18,14 @@ public:
 
     void render();
     void navigateToAddress(int address);
-    void updateLiveMemory(const std::vector<quint8>& memoryImage);
+    void updateLiveMemory(const std::vector<uint8_t>& memoryImage);
 
     struct ViewportRange { int startAddress, endAddress; };
     ViewportRange getViewportRange() const {
         int end = startAddress + bytesPerRow * displayRows;
         return { startAddress, end > 0x10000 ? 0x10000 : end };
     }
-    void setWriteCallback(std::function<void(quint16, quint8)> callback);
+    void setWriteCallback(std::function<void(uint16_t, uint8_t)> callback);
     void setGraphicsCardEnabled(bool enabled) { gen2Enabled = enabled; }
     void setTMS9918Enabled(bool enabled) { tms9918Enabled = enabled; }
     void setSIDEnabled(bool enabled) { sidEnabled = enabled; }
@@ -42,13 +42,13 @@ public:
     void setCodeTankEnabled(bool enabled) { codeTankEnabled = enabled; }
     void setCodeTankJumper(CodeTank::Jumper j) { codeTankJumper = j; }
 
-    struct RomRegion { quint16 start, end; };
+    struct RomRegion { uint16_t start, end; };
     void setLoadedRoms(const std::vector<RomRegion>& roms) { romRegions = roms; }
 
 private:
     Memory* memory;
-    const std::vector<quint8>* liveMemory = nullptr;
-    std::function<void(quint16, quint8)> writeCallback;
+    const std::vector<uint8_t>* liveMemory = nullptr;
+    std::function<void(uint16_t, uint8_t)> writeCallback;
 
     // Interface state
     int startAddress = 0x0000;
@@ -77,14 +77,14 @@ private:
     std::vector<RomRegion> romRegions;
 
     // Auto-refresh: snapshot taken when autoRefresh is off
-    std::vector<quint8> snapshot;
+    std::vector<uint8_t> snapshot;
     bool snapshotValid = false;
     void takeSnapshot();
-    quint8 readByte(int address) const;
+    uint8_t readByte(int address) const;
     const uint8_t* getMemoryPointer() const;
 
     // Change highlighting: per-byte frame counter tracking last modification
-    std::vector<quint8> prevMemory;
+    std::vector<uint8_t> prevMemory;
     std::vector<uint32_t> changeFrame;
     uint32_t frameCounter = 0;
     static constexpr uint32_t kChangeFadeFrames = 45; // ~0.75 s at 60 fps
@@ -102,13 +102,13 @@ private:
     bool editFocusSet = false;
 
     struct EditRecord {
-        quint16 address;
-        quint8 oldValue;
-        quint8 newValue;
+        uint16_t address;
+        uint8_t oldValue;
+        uint8_t newValue;
     };
     std::vector<EditRecord> undoStack;
     std::vector<EditRecord> redoStack;
-    void applyEdit(quint16 address, quint8 newValue);
+    void applyEdit(uint16_t address, uint8_t newValue);
     void undo();
     void redo();
 
@@ -127,7 +127,7 @@ private:
     void handleNavigation();
 
     // Helper functions
-    char getPrintableChar(quint8 value);
+    char getPrintableChar(uint8_t value);
     ImVec4 getColorForAddress(int address);
     const char* getRegionName(int address) const;
     bool isROM(int address);

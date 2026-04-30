@@ -337,18 +337,21 @@ init_vdp:
         ; yellow at char 40 → VRAM $0140
         LDA #$40
         STA VDP_CTRL
+        NOP                     ; +2c silicon-strict gap (LDA #imm bridge)
         LDA #$40
         STA VDP_CTRL
         JSR upload_pattern
 
         LDA #$C0
         STA VDP_CTRL
+        NOP                     ; +2c silicon-strict gap (LDA #imm bridge)
         LDA #$40
         STA VDP_CTRL
         JSR upload_pattern
 
         LDA #$40
         STA VDP_CTRL
+        NOP                     ; +2c silicon-strict gap (LDA #imm bridge)
         LDA #$41
         STA VDP_CTRL
         JSR upload_pattern
@@ -356,6 +359,7 @@ init_vdp:
         ; Colour table: 7 entries at $2000
         LDA #$00
         STA VDP_CTRL
+        NOP                     ; +2c silicon-strict gap (LDA #imm bridge)
         LDA #$60
         STA VDP_CTRL
         LDX #$00
@@ -369,6 +373,7 @@ init_vdp:
         ; Clear name table (768 bytes) to char 0
         LDA #$00
         STA VDP_CTRL
+        NOP                     ; +2c silicon-strict gap (LDA #imm bridge)
         LDA #$58
         STA VDP_CTRL
         LDX #$03
@@ -383,8 +388,10 @@ init_vdp:
         ; Disable sprites
         LDA #$00
         STA VDP_CTRL
+        NOP                     ; +2c silicon-strict gap (LDA #imm bridge)
         LDA #$5B
         STA VDP_CTRL
+        NOP                     ; +2c silicon-strict gap (LDA #imm bridge)
         LDA #$D0
         STA VDP_DATA
         RTS
@@ -483,6 +490,8 @@ draw_cell:
         ADC #$18
         ORA #$40
         STA VDP_CTRL
+        NOP                     ; +2c silicon-strict gap (back-to-back VDP store)
+        NOP                     ; +2c silicon-strict gap (back-to-back VDP store)
 
         ; Write 4 consecutive char codes
         STX VDP_DATA

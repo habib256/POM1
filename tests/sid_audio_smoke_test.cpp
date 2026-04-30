@@ -84,7 +84,7 @@ int main()
         assert(mem.isSIDEnabled());
 
         writeVoice1Triangle([&](uint8_t r, uint8_t v) {
-            mem.memWrite(static_cast<quint16>(0xC800 + r), v);
+            mem.memWrite(static_cast<uint16_t>(0xC800 + r), v);
         });
 
         const int totalCycles = POM1_CPU_CLOCK_HZ / 10;
@@ -117,7 +117,7 @@ int main()
 
         auto playAndProbe = [&](const char* label) {
             writeVoice1Triangle([&](uint8_t r, uint8_t v) {
-                mem.memWrite(static_cast<quint16>(0xC800 + r), v);
+                mem.memWrite(static_cast<uint16_t>(0xC800 + r), v);
             });
             const int totalCycles = POM1_CPU_CLOCK_HZ / 10;
             const int slice = 6000;

@@ -48,6 +48,30 @@ void writeReg(TMS9918& vdp, uint8_t reg, uint8_t value)
     vdp.writeControl((uint8_t)(0x80 | (reg & 0x07)));
 }
 
+void strictWriteControl(TMS9918& vdp, uint8_t value)
+{
+    vdp.advanceCycles(10);
+    vdp.writeControl(value);
+}
+
+void strictWriteData(TMS9918& vdp, uint8_t value)
+{
+    vdp.advanceCycles(10);
+    vdp.writeData(value);
+}
+
+void strictSetWriteAddress(TMS9918& vdp, uint16_t addr)
+{
+    strictWriteControl(vdp, (uint8_t)(addr & 0xFF));
+    strictWriteControl(vdp, (uint8_t)(0x40 | ((addr >> 8) & 0x3F)));
+}
+
+void strictSetReadAddress(TMS9918& vdp, uint16_t addr)
+{
+    strictWriteControl(vdp, (uint8_t)(addr & 0xFF));
+    strictWriteControl(vdp, (uint8_t)((addr >> 8) & 0x3F));
+}
+
 // Default test layout:
 //   R1 = $C0   display on, 16K, 8x8 sprites, no magnify, no IRQ
 //   R5 = $06   SAT base = $0300 (6 << 7)
@@ -201,6 +225,44 @@ int main()
         mustBeTrue((s & 0x80) != 0, "T6: VBlank flag still raised when blanked");
     }
 
-    std::printf("tms9918_sprite_status: all 6 tests passed\n");
+    // -----------------------------------------------------------------
+    // T7 — silicon strict 4K VRAM mode. With R1 bit 7 clear, addresses
+    // above $0FFF mirror into the first 4 KB.
+    // -----------------------------------------------------------------
+    {
+        TMS9918 vdp;
+        vdp.reset();
+        vdp.setSiliconStrictMode(true);
+        strictSetWriteAddress(vdp, 0x1800);
+        strictWriteData(vdp, 0xA5);
+        strictSetReadAddress(vdp, 0x0800);
+        vdp.advanceCycles(10);
+        mustBeTrue(vdp.readData() == 0xA5,
+                   "T7: strict 4K mode should mirror $1800 writes to $0800");
+    }
+
+    // -----------------------------------------------------------------
+    // T8 — silicon strict timing. Back-to-back VRAM writes in an active
+    // graphics mode are too fast; the second byte is dropped until enough
+    // 6502 cycles have elapsed.
+    // -----------------------------------------------------------------
+    {
+        TMS9918 vdp;
+        vdp.reset();
+        vdp.setSiliconStrictMode(true);
+        strictWriteControl(vdp, 0xC0); // R1 = display on + 16K
+        strictWriteControl(vdp, 0x81);
+        strictSetWriteAddress(vdp, 0x0000);
+        strictWriteData(vdp, 0x11);
+        vdp.writeData(0x22); // no advanceCycles: too fast, dropped
+        strictWriteData(vdp, 0x33);
+        strictSetReadAddress(vdp, 0x0000);
+        vdp.advanceCycles(10);
+        mustBeTrue(vdp.readData() == 0x11, "T8: first strict VRAM write should land");
+        vdp.advanceCycles(10);
+        mustBeTrue(vdp.readData() == 0x33, "T8: too-fast middle write should be dropped");
+    }
+
+    std::printf("tms9918_sprite_status: all 8 tests passed\n");
     return 0;
 }

@@ -15,7 +15,7 @@ MemoryViewer_ImGui::MemoryViewer_ImGui(Memory* mem)
 }
 
 // Read a byte: live from raw pointer (no I/O side effects) or from snapshot
-quint8 MemoryViewer_ImGui::readByte(int address) const
+uint8_t MemoryViewer_ImGui::readByte(int address) const
 {
     if ((autoRefresh || !snapshotValid) && liveMemory && !liveMemory->empty())
         return (*liveMemory)[address & 0xFFFF];
@@ -74,7 +74,7 @@ void MemoryViewer_ImGui::navigateToAddress(int address)
     jumpToAddress(address);
 }
 
-void MemoryViewer_ImGui::updateLiveMemory(const std::vector<quint8>& memoryImage)
+void MemoryViewer_ImGui::updateLiveMemory(const std::vector<uint8_t>& memoryImage)
 {
     liveMemory = &memoryImage;
     // Deliberately no per-frame snapshot copy. readByte() already reads
@@ -89,7 +89,7 @@ void MemoryViewer_ImGui::updateLiveMemory(const std::vector<quint8>& memoryImage
     // liveMemory directly anyway.
 }
 
-void MemoryViewer_ImGui::setWriteCallback(std::function<void(quint16, quint8)> callback)
+void MemoryViewer_ImGui::setWriteCallback(std::function<void(uint16_t, uint8_t)> callback)
 {
     writeCallback = std::move(callback);
 }
@@ -262,7 +262,7 @@ void MemoryViewer_ImGui::renderHexView()
             int currentAddr = address + col;
             if (currentAddr > 0xFFFF) break;
 
-            quint8 value = readByte(currentAddr);
+            uint8_t value = readByte(currentAddr);
 
             ImGui::SameLine(hexStartX + col * cellW);
 
@@ -312,8 +312,8 @@ void MemoryViewer_ImGui::renderHexView()
                     const char* end   = editBuffer + std::strlen(editBuffer);
                     auto [p, ec] = std::from_chars(begin, end, parsed, 16);
                     if (ec == std::errc{} && p == end && parsed <= 0xFF) {
-                        applyEdit(static_cast<quint16>(editAddress),
-                                  static_cast<quint8>(parsed));
+                        applyEdit(static_cast<uint16_t>(editAddress),
+                                  static_cast<uint8_t>(parsed));
                     }
                     editAddress = -1;
                 } else if (ImGui::IsKeyPressed(ImGuiKey_Escape) ||
@@ -419,7 +419,7 @@ void MemoryViewer_ImGui::searchMemory()
     if (strlen(searchBuffer) == 0) return;
 
     // Parse space-separated hex bytes (e.g. "A9 00 8D" or "A9008D")
-    quint8 pattern[128];
+    uint8_t pattern[128];
     int patternLen = 0;
     const char* p = searchBuffer;
     const char* const bufEnd = searchBuffer + std::strlen(searchBuffer);
@@ -430,7 +430,7 @@ void MemoryViewer_ImGui::searchMemory()
         const char* chunkEnd = p + 2 < bufEnd ? p + 2 : bufEnd;
         auto [ptr, ec] = std::from_chars(p, chunkEnd, val, 16);
         if (ec != std::errc{} || ptr == p) break;
-        pattern[patternLen++] = static_cast<quint8>(val);
+        pattern[patternLen++] = static_cast<uint8_t>(val);
         p = ptr;
         while (p < bufEnd && *p != ' ') p++;
     }
@@ -501,9 +501,9 @@ void MemoryViewer_ImGui::searchAsciiString()
 }
 
 // Edit with undo support
-void MemoryViewer_ImGui::applyEdit(quint16 address, quint8 newValue)
+void MemoryViewer_ImGui::applyEdit(uint16_t address, uint8_t newValue)
 {
-    quint8 oldValue = readByte(address);
+    uint8_t oldValue = readByte(address);
     if (oldValue == newValue) return;
     if (writeCallback) {
         writeCallback(address, newValue);
@@ -683,7 +683,7 @@ void MemoryViewer_ImGui::renderDisasmView()
     ImGui::EndChild();
 }
 
-char MemoryViewer_ImGui::getPrintableChar(quint8 value)
+char MemoryViewer_ImGui::getPrintableChar(uint8_t value)
 {
     return (value >= 32 && value <= 126) ? static_cast<char>(value) : '.';
 }

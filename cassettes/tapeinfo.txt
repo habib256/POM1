@@ -6,6 +6,7 @@
 # BASIC load: start Integer BASIC (E000R), then type LOAD
 
 # Integer BASIC ROM
+BASIC.aci = E000.EFFF
 BASIC.ogg = E000.EFFF
 
 # Demos

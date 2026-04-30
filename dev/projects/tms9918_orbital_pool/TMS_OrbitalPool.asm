@@ -439,6 +439,7 @@ draw_cell:
         LDA tmp2
         ORA #$40
         STA VDP_CTRL
+        NOP                     ; +2c silicon-strict gap (LDA zp/abs bridge)
 
         LDA cell_char
         STA VDP_DATA
@@ -486,6 +487,7 @@ compute_ball_pixel:
 move_ball_sprite:
         LDA #$00
         STA VDP_CTRL
+        NOP                     ; +2c silicon-strict gap (LDA #imm bridge)
         LDA #$5B                ; $1B | $40 (VDP write at $1B00)
         STA VDP_CTRL
 
@@ -511,6 +513,7 @@ stamp_trail_sprite:
         ASL
         ASL                     ; *4 (trail_slot <= 31, result <= 124)
         STA VDP_CTRL
+        NOP                     ; +2c silicon-strict gap (LDA #imm bridge)
         LDA #$5B                ; $1B | $40
         STA VDP_CTRL
 
@@ -541,6 +544,7 @@ stamp_trail_sprite:
 clear_trail_sprites:
         LDA #$04                ; $1B04 = sprite 1 start
         STA VDP_CTRL
+        NOP                     ; +2c silicon-strict gap (LDA #imm bridge)
         LDA #$5B
         STA VDP_CTRL
         LDX #31
@@ -579,6 +583,7 @@ init_vdp:
         ; Pattern table at $0000 (6 glyphs × 8 bytes = 48 bytes)
         LDA #$00
         STA VDP_CTRL
+        NOP                     ; +2c silicon-strict gap (LDA #imm bridge)
         LDA #$40                ; $00 | $40 = write to $0000
         STA VDP_CTRL
         LDX #0
@@ -592,15 +597,19 @@ init_vdp:
         ; Colour table at VRAM $2000, group 0 only (chars 0-7 green on black)
         LDA #$00
         STA VDP_CTRL
+        NOP                     ; +2c silicon-strict gap (LDA #imm bridge)
         LDA #$60                ; $20 | $40
         STA VDP_CTRL
+        NOP                     ; +2c silicon-strict gap (LDA #imm bridge)
         LDA #$21                ; fg=2 green, bg=1 black
         STA VDP_DATA
+        NOP                     ; +2c silicon-strict gap (LDA #imm bridge)
 
         ; Sprite pattern table at VRAM $3800 - upload 16 bytes:
         ; pattern 0 = ball (8 bytes), pattern 1 = trail dot (8 bytes)
         LDA #$00
         STA VDP_CTRL
+        NOP                     ; +2c silicon-strict gap (LDA #imm bridge)
         LDA #$78                ; $38 | $40
         STA VDP_CTRL
         LDX #0
@@ -618,6 +627,7 @@ init_vdp:
 clear_name_table:
         LDA #$00
         STA VDP_CTRL
+        NOP                     ; +2c silicon-strict gap (LDA #imm bridge)
         LDA #$58                ; $18 | $40
         STA VDP_CTRL
         LDX #3                  ; 3 pages

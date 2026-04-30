@@ -48,9 +48,9 @@ MainWindow_ImGui::MainWindow_ImGui()
 
 void MainWindow_ImGui::evictMemoryMapRegionsForJukeBox()
 {
-    constexpr quint16 kWinLo = 0x4000;
-    constexpr quint16 kWinHi = 0xBFFF;
-    auto overlaps = [kWinLo, kWinHi](quint16 s, quint16 e) {
+    constexpr uint16_t kWinLo = 0x4000;
+    constexpr uint16_t kWinHi = 0xBFFF;
+    auto overlaps = [kWinLo, kWinHi](uint16_t s, uint16_t e) {
         return s <= kWinHi && e >= kWinLo;
     };
     loadedRoms.erase(
@@ -89,7 +89,7 @@ void MainWindow_ImGui::createPom1()
     screen = std::make_unique<Screen_ImGui>();
     emulation = std::make_unique<EmulationController>(screen.get());
     memoryViewer = std::make_unique<MemoryViewer_ImGui>();
-    memoryViewer->setWriteCallback([this](quint16 address, quint8 value) {
+    memoryViewer->setWriteCallback([this](uint16_t address, uint8_t value) {
         emulation->writeMemory(address, value);
     });
     // Republie cpuRunning=true (le constructeur publie une fois avant runRequested.store(true)).
@@ -195,16 +195,28 @@ void MainWindow_ImGui::finalizePendingCardPlugs()
     // tape just loads (user-driven Play). Gated on pendingCassetteAudioActive
     // so that calling finalize mid-session (e.g. from File → Load) does not
     // reload the tape when no preset switch is in flight.
-    if (runCassettePreload && !initialTapePath.empty()) {
+    std::string preloadTapePath = initialTapePath;
+    bool preloadTapeAutoPlay = initialTapeAutoPlay;
+    bool preloadTapeForceProgramMode = false;
+    if (runCassettePreload && !pendingPresetTapePath.empty() && !initialTapeAutoPlay) {
+        preloadTapePath = pendingPresetTapePath;
+        preloadTapeAutoPlay = pendingPresetTapeAutoPlay;
+        preloadTapeForceProgramMode = pendingPresetTapeForceProgramMode;
+    }
+
+    if (runCassettePreload && !preloadTapePath.empty()) {
         std::string err;
-        if (emulation->loadTape(initialTapePath, err)) {
-            if (initialTapeAutoPlay) emulation->playTape();
+        const bool ok = preloadTapeForceProgramMode
+            ? emulation->loadProgramTape(preloadTapePath, err)
+            : emulation->loadTape(preloadTapePath, err);
+        if (ok) {
+            if (preloadTapeAutoPlay) emulation->playTape();
             pom1::log().info("POM1",
-                std::string("Preloaded cassette: ") + initialTapePath);
+                std::string("Preloaded cassette: ") + preloadTapePath);
         } else {
             pom1::log().error("POM1",
                 std::string("Failed to preload cassette '") +
-                initialTapePath + "': " + err);
+                preloadTapePath + "': " + err);
         }
     }
     if (pendingMicroSDEnable)        emulation->setMicroSDEnabled(true);
@@ -256,6 +268,9 @@ void MainWindow_ImGui::finalizePendingCardPlugs()
     pendingWifiModemEnable     = false;
     pendingJukeBoxEnable       = false;
     pendingCodeTankEnable      = false;
+    pendingPresetTapePath.clear();
+    pendingPresetTapeForceProgramMode = false;
+    pendingPresetTapeAutoPlay = false;
 
     // CLI phase-C: run deferred verbs right after the preset's cards are
     // fully plugged. Gated on the one-shot flag so a later
@@ -474,6 +489,13 @@ void MainWindow_ImGui::render()
         if (!codeTankRomPathOverride.empty()) {
             pendingCodeTankRomPath = codeTankRomPathOverride;
             codeTankRomPathOverride.clear();
+        }
+        if (siliconStrictModeOverride) {
+            // Override the preset default (set by applyMachineConfig from
+            // !fantasyPreset). Applied directly: the flag has no plug rail.
+            const bool v = *siliconStrictModeOverride;
+            emulation->setSiliconStrictMode(v);
+            siliconStrictModeEnabled = v;
         }
         if (initialExecutionSpeed) {
             executionSpeed = *initialExecutionSpeed;
@@ -772,7 +794,7 @@ void MainWindow_ImGui::stepCpu()
 // 6502 disassembly moved to Disassembler6502.{h,cpp}. This wrapper keeps
 // the existing MainWindow_ImGui::disassemble() entry point used by the
 // debug UI (and avoids touching MainWindow_ImGui.h's public surface).
-std::string MainWindow_ImGui::disassemble(quint16 pc, int& instrLen)
+std::string MainWindow_ImGui::disassemble(uint16_t pc, int& instrLen)
 {
     return pom1::disassemble6502(uiSnapshot.memory.data(), pc, instrLen);
 }

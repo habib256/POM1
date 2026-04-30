@@ -62,7 +62,7 @@ M6502::M6502(Memory * mem)
    }
 }
 
-quint16 M6502::memReadAbsolute(quint16 adr)
+uint16_t M6502::memReadAbsolute(uint16_t adr)
 {
   return (memory->memRead(adr) | memory->memRead((unsigned short)(adr + 1)) << 8);
 }
@@ -81,9 +81,9 @@ void M6502::popProgramCounter(void)
     // Sur le 6502, on push d'abord le high byte, puis le low byte
     // Donc on pop d'abord le low byte, puis le high byte
     stackPointer++;
-    quint8 lowByte = memory->memRead((unsigned short)(stackPointer + 0x100));
+    uint8_t lowByte = memory->memRead((unsigned short)(stackPointer + 0x100));
     stackPointer++;
-    quint8 highByte = memory->memRead((unsigned short)(stackPointer + 0x100));
+    uint8_t highByte = memory->memRead((unsigned short)(stackPointer + 0x100));
     programCounter = lowByte | (highByte << 8);
     cycles += 2;
 }
@@ -148,8 +148,8 @@ void M6502::Abs(void)
 
 void M6502::AbsX(void)
 {
-    quint16 base = memory->memRead(programCounter++);
-    base |= (quint16)memory->memRead(programCounter++) << 8;
+    uint16_t base = memory->memRead(programCounter++);
+    base |= (uint16_t)memory->memRead(programCounter++) << 8;
     op = base + xRegister;
     cycles += 2;
     if ((base & 0xFF00) != (op & 0xFF00))
@@ -158,8 +158,8 @@ void M6502::AbsX(void)
 
 void M6502::AbsY(void)
 {
-    quint16 base = memory->memRead(programCounter++);
-    base |= (quint16)memory->memRead(programCounter++) << 8;
+    uint16_t base = memory->memRead(programCounter++);
+    base |= (uint16_t)memory->memRead(programCounter++) << 8;
     op = base + yRegister;
     cycles += 2;
     if ((base & 0xFF00) != (op & 0xFF00))
@@ -168,27 +168,27 @@ void M6502::AbsY(void)
 
 void M6502::Ind(void)
 {
-    quint8 lo = memory->memRead(programCounter++);
-    quint16 hi = (quint16)memory->memRead(programCounter++) << 8;
-    op = memory->memRead((quint16)(hi + lo));
+    uint8_t lo = memory->memRead(programCounter++);
+    uint16_t hi = (uint16_t)memory->memRead(programCounter++) << 8;
+    op = memory->memRead((uint16_t)(hi + lo));
     lo = (lo + 1) & 0xFF;
-    op |= (quint16)memory->memRead((quint16)(hi + lo)) << 8;
+    op |= (uint16_t)memory->memRead((uint16_t)(hi + lo)) << 8;
     cycles += 4;
 }
 
 void M6502::IndZeroX(void)
 {
-    quint8 zp = (memory->memRead(programCounter++) + xRegister) & 0xFF;
+    uint8_t zp = (memory->memRead(programCounter++) + xRegister) & 0xFF;
     op = memory->memRead(zp);
-    op |= (quint16)memory->memRead((quint8)((zp + 1) & 0xFF)) << 8;
+    op |= (uint16_t)memory->memRead((uint8_t)((zp + 1) & 0xFF)) << 8;
     cycles += 3;
 }
 
 void M6502::IndZeroY(void)
 {
-    quint8 zp = memory->memRead(programCounter++);
-    quint16 base = memory->memRead(zp);
-    base |= (quint16)memory->memRead((quint8)((zp + 1) & 0xFF)) << 8;
+    uint8_t zp = memory->memRead(programCounter++);
+    uint16_t base = memory->memRead(zp);
+    base |= (uint16_t)memory->memRead((uint8_t)((zp + 1) & 0xFF)) << 8;
     op = base + yRegister;
     cycles += 3;
     if ((base & 0xFF00) != (op & 0xFF00))
@@ -197,7 +197,7 @@ void M6502::IndZeroY(void)
 
 void M6502::Rel(void)
 {
-    quint8 offset = memory->memRead(programCounter++);
+    uint8_t offset = memory->memRead(programCounter++);
     if (offset & 0x80)
         op = (programCounter + offset - 256) & 0xFFFF;
     else
@@ -207,30 +207,30 @@ void M6502::Rel(void)
 
 void M6502::WAbsX(void)
 {
-    quint16 base = memory->memRead(programCounter++);
-    base |= (quint16)memory->memRead(programCounter++) << 8;
+    uint16_t base = memory->memRead(programCounter++);
+    base |= (uint16_t)memory->memRead(programCounter++) << 8;
     op = base + xRegister;
     cycles += 3;
 }
 
 void M6502::WAbsY(void)
 {
-    quint16 base = memory->memRead(programCounter++);
-    base |= (quint16)memory->memRead(programCounter++) << 8;
+    uint16_t base = memory->memRead(programCounter++);
+    base |= (uint16_t)memory->memRead(programCounter++) << 8;
     op = base + yRegister;
     cycles += 3;
 }
 
 void M6502::WIndZeroY(void)
 {
-    quint8 zp = memory->memRead(programCounter++);
-    quint16 base = memory->memRead(zp);
-    base |= (quint16)memory->memRead((quint8)((zp + 1) & 0xFF)) << 8;
+    uint8_t zp = memory->memRead(programCounter++);
+    uint16_t base = memory->memRead(zp);
+    base |= (uint16_t)memory->memRead((uint8_t)((zp + 1) & 0xFF)) << 8;
     op = base + yRegister;
     cycles += 4;
 }
 
-void M6502::setStatusRegisterNZ(quint8 val)
+void M6502::setStatusRegisterNZ(uint8_t val)
 {
     if (val & 0x80)
         statusRegister |= M6502::Status::N;
@@ -292,7 +292,7 @@ void M6502::setFlagCarry(int val)
 
 void M6502::ADC(void)
 {
- quint8 Op1 = accumulator, Op2 = memory->memRead(op);
+ uint8_t Op1 = accumulator, Op2 = memory->memRead(op);
     cycles++;
 
     if (statusRegister & M6502::Status::D)
@@ -353,7 +353,7 @@ void M6502::setFlagBorrow(int val)
 
 void M6502::SBC(void)
 {
-quint8 Op1 = accumulator, Op2 = memory->memRead(op);
+uint8_t Op1 = accumulator, Op2 = memory->memRead(op);
     cycles++;
 
     if (statusRegister & M6502::Status::D)
@@ -365,7 +365,7 @@ quint8 Op1 = accumulator, Op2 = memory->memRead(op);
         accumulator = (accumulator & 0x0F) | (!(tmp & 0x100) ? tmp : tmp - 0x60);
      tmp = Op1 - Op2 - (statusRegister & M6502::Status::C ? 0 : 1);
         setFlagBorrow(tmp);
-        setStatusRegisterNZ((quint8)tmp);
+        setStatusRegisterNZ((uint8_t)tmp);
     }
     else
     {
@@ -387,7 +387,7 @@ void M6502::CMP(void)
  tmp = accumulator - memory->memRead(op);
     cycles++;
     setFlagBorrow(tmp);
-    setStatusRegisterNZ((quint8)tmp);
+    setStatusRegisterNZ((uint8_t)tmp);
 }
 
 void M6502::CPX(void)
@@ -395,7 +395,7 @@ void M6502::CPX(void)
   tmp = xRegister - memory->memRead(op);
     cycles++;
     setFlagBorrow(tmp);
-    setStatusRegisterNZ((quint8)tmp);
+    setStatusRegisterNZ((uint8_t)tmp);
 }
 
 void M6502::CPY(void)
@@ -403,7 +403,7 @@ void M6502::CPY(void)
     tmp = yRegister - memory->memRead(op);
     cycles++;
     setFlagBorrow(tmp);
-    setStatusRegisterNZ((quint8)tmp);
+    setStatusRegisterNZ((uint8_t)tmp);
 }
 
 void M6502::AND(void)
@@ -429,7 +429,7 @@ void M6502::EOR(void)
 
 void M6502::ASL(void)
 {
-    quint8 val = memory->memRead(op);
+    uint8_t val = memory->memRead(op);
 
     if (val & 0x80)
         statusRegister |= M6502::Status::C;
@@ -452,7 +452,7 @@ void M6502::ASL_A(void)
 
 void M6502::LSR(void)
 {
-    quint8 val = memory->memRead(op);
+    uint8_t val = memory->memRead(op);
 
     if (val & 1)
         statusRegister |= M6502::Status::C;
@@ -478,8 +478,8 @@ void M6502::LSR_A(void)
 
 void M6502::ROL(void)
 {
-    quint8 val = memory->memRead(op);
-    quint8 newCarry = val & 0x80;
+    uint8_t val = memory->memRead(op);
+    uint8_t newCarry = val & 0x80;
     val = (val << 1) | (statusRegister & M6502::Status::C ? 1 : 0);
 
     if (newCarry)
@@ -502,7 +502,7 @@ void M6502::ROL_A(void)
 
 void M6502::ROR(void)
 {
-    quint8 val = memory->memRead(op);
+    uint8_t val = memory->memRead(op);
     int newCarry = val & 1;
     val = (val >> 1) | (statusRegister & M6502::Status::C ? 0x80 : 0);
 
@@ -531,7 +531,7 @@ void M6502::ROR_A(void)
 
 void M6502::INC(void)
 {
-    quint8 val = memory->memRead(op);
+    uint8_t val = memory->memRead(op);
     val++;
     setStatusRegisterNZ(val);
     memory->memWrite(op, val);
@@ -540,7 +540,7 @@ void M6502::INC(void)
 
 void M6502::DEC(void)
 {
-    quint8 val = memory->memRead(op);
+    uint8_t val = memory->memRead(op);
     val--;
     setStatusRegisterNZ(val);
     memory->memWrite(op, val);
@@ -573,7 +573,7 @@ void M6502::DEY(void)
 
 void M6502::BIT(void)
 {
-    quint8 val = memory->memRead(op);
+    uint8_t val = memory->memRead(op);
 
     if (val & 0x40)
         statusRegister |= M6502::Status::V;
@@ -595,7 +595,7 @@ void M6502::BIT(void)
 
 void M6502::PHA(void)
 {
-memory->memWrite((quint16)(0x100 + stackPointer), accumulator);
+memory->memWrite((uint16_t)(0x100 + stackPointer), accumulator);
     stackPointer--;
     cycles++;
 }
@@ -607,7 +607,7 @@ void M6502::PHP(void)
     // the CPU — they're synthesised only when the status byte is pushed to
     // the stack by PHP or BRK. IRQ/NMI handlers push bit 5 set and bit 4
     // cleared instead; see handleIRQ / handleNMI.
-    memory->memWrite((quint16)(0x100 + stackPointer),
+    memory->memWrite((uint16_t)(0x100 + stackPointer),
                      statusRegister | M6502::Status::B | 0x20);
     stackPointer--;
     cycles++;
@@ -616,7 +616,7 @@ void M6502::PHP(void)
 void M6502::PLA(void)
 {
     stackPointer++;
-accumulator = memory->memRead((quint16)(stackPointer + 0x100));
+accumulator = memory->memRead((uint16_t)(stackPointer + 0x100));
     setStatusRegisterNZ(accumulator);
     cycles += 2;
 }
@@ -624,7 +624,7 @@ accumulator = memory->memRead((quint16)(stackPointer + 0x100));
 void M6502::PLP(void)
 {
     stackPointer++;
-  statusRegister = memory->memRead((quint16)(stackPointer + 0x100));
+  statusRegister = memory->memRead((uint16_t)(stackPointer + 0x100));
     cycles += 2;
 }
 
@@ -662,7 +662,7 @@ void M6502::BRK(void)
     // signature byte (which the CPU then tries to execute as an opcode).
     programCounter++;
     pushProgramCounter();
-    memory->memWrite((quint16)(0x100 + stackPointer), statusRegister | M6502::Status::B | 0x20);
+    memory->memWrite((uint16_t)(0x100 + stackPointer), statusRegister | M6502::Status::B | 0x20);
     stackPointer--;
     statusRegister |= M6502::Status::I;
     programCounter = memReadAbsolute(0xFFFE);
@@ -690,7 +690,7 @@ void M6502::RTS(void)
 
 void M6502::JSR(void)
 {
-    quint8 lo = memory->memRead(programCounter++);
+    uint8_t lo = memory->memRead(programCounter++);
     pushProgramCounter();
     programCounter = lo + (memory->memRead(programCounter) << 8);
     cycles += 3;

@@ -542,6 +542,8 @@ int main(int argc, char* argv[])
         mainWindow.setCodeTankJumperOverride(*plan.codeTankJumperOverride);
     if (!plan.codeTankRomPath.empty())
         mainWindow.setCodeTankRomPathOverride(plan.codeTankRomPath);
+    if (plan.siliconStrictModeOverride)
+        mainWindow.setSiliconStrictModeOverride(*plan.siliconStrictModeOverride);
     if (!plan.deferredActions.empty())
         mainWindow.setDeferredCliActions(std::move(plan.deferredActions));
     mainWindow.setWindow(window);

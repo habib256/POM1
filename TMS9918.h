@@ -97,6 +97,14 @@ private:
     bool snapshotDirty = true;        // skip the 16 KB VRAM + regs copy when nothing changed since last publish
 
     static constexpr int kCyclesPerFrame = POM1_CPU_CYCLES_PER_FRAME_1X_60HZ;
+    // Active display covers 192 of the 262 NTSC scanlines; the remaining 70
+    // are VBlank. Sized in CPU cycles so requiredAccessCycles() can decide
+    // whether the beam is currently scanning visible pixels (window = strict)
+    // or in VBlank (window = relaxed). Driven by frameCycleCounter, NOT by
+    // statusReg bit 7 — that flag is sticky-until-readControl, so software
+    // that never polls $CC01 (e.g. Galaga) leaves it set indefinitely and
+    // would otherwise free-pass every cycle as "VBlank".
+    static constexpr int kActiveDisplayCycles = (kCyclesPerFrame * 192) / 262;
 };
 
 #endif // TMS9918_H

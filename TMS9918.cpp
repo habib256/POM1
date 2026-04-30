@@ -74,7 +74,13 @@ uint16_t TMS9918::liveVramMask() const
 int TMS9918::requiredAccessCycles() const
 {
     if (!siliconStrictMode) return 0;
-    if ((regs[1] & 0x40) == 0 || (statusReg & 0x80) != 0) return 2;
+    // Display blanked (R1 bit 6 = 0) OR beam currently in VBlank: VRAM is
+    // free, only the ~2 µs preparation delay applies. The VBlank check uses
+    // frameCycleCounter (the physical beam position), NOT statusReg bit 7
+    // — bit 7 is sticky-until-readControl, so a program that never polls
+    // $CC01 (Galaga, for one) keeps it set forever and would otherwise see
+    // a permanently-relaxed window across the whole active display.
+    if ((regs[1] & 0x40) == 0 || frameCycleCounter >= kActiveDisplayCycles) return 2;
 
     const bool textMode       = (regs[1] & 0x10) != 0;
     const bool multicolorMode = (regs[1] & 0x08) != 0;
@@ -505,7 +511,7 @@ void TMS9918::scanSpritesForStatus(const uint8_t* vram, const uint8_t* regs,
 {
     uint16_t sprAttrBase    = (uint16_t)(regs[5] & 0x7F) << 7;
     uint16_t sprPatternBase = (uint16_t)(regs[6] & 0x07) << 11;
-    const uint16_t mask = vramMaskForRegs(regs, strict);
+    const uint16_t vramMask = vramMaskForRegs(regs, strict);
 
     bool doubleSize = (regs[1] & 0x02) != 0;
     bool magnified  = (regs[1] & 0x01) != 0;
@@ -519,14 +525,14 @@ void TMS9918::scanSpritesForStatus(const uint8_t* vram, const uint8_t* regs,
     int spriteCount = 0;
 
     for (int i = 0; i < 32; i++) {
-        uint16_t attrAddr = (sprAttrBase + i * 4) & mask;
+        uint16_t attrAddr = (sprAttrBase + i * 4) & vramMask;
         uint8_t yRaw = vram[attrAddr];
         if (yRaw == 0xD0) break;
 
         int y = (int)yRaw - ((yRaw > 0xD0) ? 256 : 0) + 1;
-        int x = vram[(attrAddr + 1) & mask];
-        uint8_t name  = vram[(attrAddr + 2) & mask];
-        uint8_t color = vram[(attrAddr + 3) & mask];
+        int x = vram[(attrAddr + 1) & vramMask];
+        uint8_t name  = vram[(attrAddr + 2) & vramMask];
+        uint8_t color = vram[(attrAddr + 3) & vramMask];
         bool earlyClock = (color & 0x80) != 0;
         if (earlyClock) x -= 32;
         sprites[spriteCount++] = { y, x, name, earlyClock };
@@ -566,12 +572,12 @@ void TMS9918::scanSpritesForStatus(const uint8_t* vram, const uint8_t* regs,
             // Build a 16-bit pattern row (left half then optional right half).
             uint8_t patLeft = 0, patRight = 0;
             if (!doubleSize) {
-                patLeft = vram[(sprPatternBase + (uint16_t)patName * 8 + rowInSpr) & mask];
+                patLeft = vram[(sprPatternBase + (uint16_t)patName * 8 + rowInSpr) & vramMask];
             } else {
                 int qLeft  = (rowInSpr < 8) ? 0 : 1;
                 int qRight = (rowInSpr < 8) ? 2 : 3;
-                patLeft  = vram[(sprPatternBase + (uint16_t)(patName + qLeft)  * 8 + (rowInSpr & 7)) & mask];
-                patRight = vram[(sprPatternBase + (uint16_t)(patName + qRight) * 8 + (rowInSpr & 7)) & mask];
+                patLeft  = vram[(sprPatternBase + (uint16_t)(patName + qLeft)  * 8 + (rowInSpr & 7)) & vramMask];
+                patRight = vram[(sprPatternBase + (uint16_t)(patName + qRight) * 8 + (rowInSpr & 7)) & vramMask];
             }
 
             int halves = doubleSize ? 2 : 1;

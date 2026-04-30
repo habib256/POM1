@@ -533,7 +533,7 @@ void CassetteDevice::beginRecordingIfNeeded()
     }
 }
 
-CassetteDevice::quint8 CassetteDevice::toggleOutput()
+uint8_t CassetteDevice::toggleOutput()
 {
     beginRecordingIfNeeded();
 
@@ -574,7 +574,7 @@ void CassetteDevice::armPlaybackAtStart()
     // until the ACI ROM actually polls $C081 and drives the tape forward.
 }
 
-CassetteDevice::quint8 CassetteDevice::readTapeInput()
+uint8_t CassetteDevice::readTapeInput()
 {
     // During progressive REW, the ACI sees a frozen tape input: the
     // signal reflects whatever `inputLevel` was at the moment REW was
@@ -789,6 +789,23 @@ bool CassetteDevice::loadTape(const std::string& path)
     }
 
     lastError = "Unsupported tape extension (expected .aci/.wav/.ogg/.mp3/.flac).";
+    return false;
+}
+
+bool CassetteDevice::loadProgramTape(const std::string& path)
+{
+    const std::string ext = lowerExtension(path);
+    loadInfo = lookupTapeInfo(path);
+    closeAudioStream();
+    audioStreamMode = false;
+
+    if (ext == ".aci") return loadAciTape(path);
+    if (ext == ".wav") return loadWavTape(path);
+    if (ext == ".ogg" || ext == ".mp3" || ext == ".flac") {
+        return loadMiniaudioTape(path);
+    }
+
+    lastError = "Unsupported program tape extension (expected .aci/.wav/.ogg/.mp3/.flac).";
     return false;
 }
 

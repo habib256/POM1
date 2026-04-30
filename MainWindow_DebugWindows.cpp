@@ -63,7 +63,7 @@ void MainWindow_ImGui::renderDebugDialog()
             
             ImGui::Text("Status Register:");
             ImGui::NextColumn();
-            quint8 status = uiSnapshot.statusRegister;
+            uint8_t status = uiSnapshot.statusRegister;
             ImGui::Text("0x%02X [%c%c%c%c%c%c%c%c]", status,
                        (status & 0x80) ? 'N' : 'n',  // Negative
                        (status & 0x40) ? 'V' : 'v',  // Overflow
@@ -111,7 +111,7 @@ void MainWindow_ImGui::renderDebugDialog()
         
         // Désassemblage de l'instruction courante
         if (ImGui::CollapsingHeader("Current Instruction", ImGuiTreeNodeFlags_DefaultOpen)) {
-            quint16 pc = uiSnapshot.programCounter;
+            uint16_t pc = uiSnapshot.programCounter;
             int instrLen = 1;
             std::string disasm = disassemble(pc, instrLen);
 
@@ -129,14 +129,14 @@ void MainWindow_ImGui::renderDebugDialog()
         
         // Pile
         if (ImGui::CollapsingHeader("Stack", ImGuiTreeNodeFlags_DefaultOpen)) {
-            quint8 sp = uiSnapshot.stackPointer;
+            uint8_t sp = uiSnapshot.stackPointer;
             ImGui::Text("Stack Pointer: 0x01%02X", sp);
             
             ImGui::Text("Top 8 stack bytes:");
             ImGui::Columns(2, "StackColumns");
             for (int i = 0; i < 8; i++) {
-                quint16 addr = 0x0100 + ((sp + i + 1) & 0xFF);
-                quint8 value = uiSnapshot.memory[addr];
+                uint16_t addr = 0x0100 + ((sp + i + 1) & 0xFF);
+                uint8_t value = uiSnapshot.memory[addr];
                 ImGui::Text("0x01%02X:", (sp + i + 1) & 0xFF);
                 ImGui::NextColumn();
                 ImGui::Text("0x%02X", value);
@@ -229,9 +229,9 @@ std::vector<MainWindow_ImGui::MemRegion> MainWindow_ImGui::buildMemoryRegions()
         regions.push_back({ 0xE000, 0xEFFF, ramColor,   "User RAM" });
         regions.push_back({ 0xF000, 0xFFFF, unmapColor, "Unmapped" });
     } else {
-        quint16 ramTop = static_cast<quint16>(ramCeiling32);
+        uint16_t ramTop = static_cast<uint16_t>(ramCeiling32);
         if (ramTop > 0)
-            regions.push_back({ 0x0000, (quint16)(ramTop - 1), ramColor, "User RAM" });
+            regions.push_back({ 0x0000, (uint16_t)(ramTop - 1), ramColor, "User RAM" });
         regions.push_back({ ramTop, 0xFFFF, unmapColor, "Unmapped" });
     }
 
@@ -295,7 +295,7 @@ std::vector<MainWindow_ImGui::MemRegion> MainWindow_ImGui::buildMemoryRegions()
         const ImU32 jbRomPat      = IM_COL32(180, 130, 220, 255);
         const ImU32 jbProgMgr     = IM_COL32(230, 180, 255, 255);
         const auto& jb = uiSnapshot.jukeBox;
-        const quint16 romStart = (jb.jumper == JukeBox::Jumper::RAM16_ROM32)
+        const uint16_t romStart = (jb.jumper == JukeBox::Jumper::RAM16_ROM32)
                                  ? 0x4000 : 0x8000;
         if (jb.jumper == JukeBox::Jumper::RAM16_ROM32) {
             snprintf(jbProgramsLabel, sizeof(jbProgramsLabel),
@@ -353,10 +353,10 @@ void MainWindow_ImGui::renderMemoryMapGridWindow()
     const float gridH = ROWS * (cellSize + spacing);
     const float mapColW = gridW + 40.0f;
 
-    const quint8* memPtr = uiSnapshot.memory.data();
-    const quint16 pc = uiSnapshot.programCounter;
+    const uint8_t* memPtr = uiSnapshot.memory.data();
+    const uint16_t pc = uiSnapshot.programCounter;
     const int pcPage = pc >> 8;
-    const quint8 sp = uiSnapshot.stackPointer;
+    const uint8_t sp = uiSnapshot.stackPointer;
     const int spPage = 1; // stack is always page 1
 
     ImGuiTableFlags tableFlags = ImGuiTableFlags_BordersInnerH | ImGuiTableFlags_SizingFixedFit;
@@ -376,7 +376,7 @@ void MainWindow_ImGui::renderMemoryMapGridWindow()
     for (int row = 0; row < ROWS; ++row) {
         for (int col = 0; col < COLS; ++col) {
             int page = row * COLS + col;
-            quint16 addr = (quint16)(page << 8);
+            uint16_t addr = (uint16_t)(page << 8);
 
             // Find region color (last match wins — layers override)
             ImU32 baseColor = IM_COL32(40, 40, 40, 255);
@@ -649,12 +649,12 @@ void MainWindow_ImGui::renderMemoryBarWindow()
     int numRegions = static_cast<int>(regions.size());
 
     const ImU32 ramColor   = IM_COL32( 80, 200,  80, 255);
-    const quint8* memPtr = uiSnapshot.memory.data();
-    const quint16 pc = uiSnapshot.programCounter;
+    const uint8_t* memPtr = uiSnapshot.memory.data();
+    const uint16_t pc = uiSnapshot.programCounter;
 
     // --- Flatten regions at page granularity (256 pages, last-match-wins) ---
     struct FlatRegion {
-        quint16 start, end;  // inclusive
+        uint16_t start, end;  // inclusive
         ImU32 color;
         const char* label;
     };
@@ -666,7 +666,7 @@ void MainWindow_ImGui::renderMemoryBarWindow()
     PageInfo pageMap[256];
 
     for (int page = 0; page < 256; ++page) {
-        quint16 addr = static_cast<quint16>(page << 8);
+        uint16_t addr = static_cast<uint16_t>(page << 8);
         ImU32 color = IM_COL32(40, 40, 40, 255);
         const char* label = "Unmapped";
         for (int r = 0; r < numRegions; ++r) {
@@ -693,11 +693,11 @@ void MainWindow_ImGui::renderMemoryBarWindow()
     for (int page = 1; page < 256; ++page) {
         auto& prev = flat.back();
         if (pageMap[page].color == prev.color && pageMap[page].label == prev.label) {
-            prev.end = static_cast<quint16>((page << 8) | 0xFF);
+            prev.end = static_cast<uint16_t>((page << 8) | 0xFF);
         } else {
             flat.push_back({
-                static_cast<quint16>(page << 8),
-                static_cast<quint16>((page << 8) | 0xFF),
+                static_cast<uint16_t>(page << 8),
+                static_cast<uint16_t>((page << 8) | 0xFF),
                 pageMap[page].color,
                 pageMap[page].label
             });
@@ -1021,7 +1021,7 @@ void MainWindow_ImGui::renderMemoryBarWindow()
             // Reverse-map Y → address through distorted region layout
             uint32_t hoverAddr = 0xFFFF;
             const char* regionLabel = "Unknown";
-            quint16 regionStart = 0, regionEnd = 0;
+            uint16_t regionStart = 0, regionEnd = 0;
             for (size_t i = 0; i < flat.size(); ++i) {
                 if (mouse.y >= regionY0[i] && mouse.y < regionY1[i]) {
                     float t = (mouse.y - regionY0[i]) / (regionY1[i] - regionY0[i]);
@@ -1097,11 +1097,11 @@ void MainWindow_ImGui::renderMemoryBarHorizontalWindow()
     int numRegions = static_cast<int>(regions.size());
 
     const ImU32 ramColor   = IM_COL32( 80, 200,  80, 255);
-    const quint8* memPtr = uiSnapshot.memory.data();
-    const quint16 pc = uiSnapshot.programCounter;
+    const uint8_t* memPtr = uiSnapshot.memory.data();
+    const uint16_t pc = uiSnapshot.programCounter;
 
     struct FlatRegion {
-        quint16 start, end;
+        uint16_t start, end;
         ImU32 color;
         const char* label;
     };
@@ -1109,7 +1109,7 @@ void MainWindow_ImGui::renderMemoryBarHorizontalWindow()
     PageInfo pageMap[256];
 
     for (int page = 0; page < 256; ++page) {
-        quint16 addr = static_cast<quint16>(page << 8);
+        uint16_t addr = static_cast<uint16_t>(page << 8);
         ImU32 color = IM_COL32(40, 40, 40, 255);
         const char* label = "Unmapped";
         for (int r = 0; r < numRegions; ++r) {
@@ -1134,11 +1134,11 @@ void MainWindow_ImGui::renderMemoryBarHorizontalWindow()
     for (int page = 1; page < 256; ++page) {
         auto& prev = flat.back();
         if (pageMap[page].color == prev.color && pageMap[page].label == prev.label) {
-            prev.end = static_cast<quint16>((page << 8) | 0xFF);
+            prev.end = static_cast<uint16_t>((page << 8) | 0xFF);
         } else {
             flat.push_back({
-                static_cast<quint16>(page << 8),
-                static_cast<quint16>((page << 8) | 0xFF),
+                static_cast<uint16_t>(page << 8),
+                static_cast<uint16_t>((page << 8) | 0xFF),
                 pageMap[page].color,
                 pageMap[page].label
             });
@@ -1348,7 +1348,7 @@ void MainWindow_ImGui::renderMemoryBarHorizontalWindow()
             mouse.x >= origin.x && mouse.x < origin.x + totalBarW) {
             uint32_t hoverAddr = 0xFFFF;
             const char* regionLabel = "Unknown";
-            quint16 regionStart = 0, regionEnd = 0;
+            uint16_t regionStart = 0, regionEnd = 0;
             for (size_t i = 0; i < flat.size(); ++i) {
                 if (mouse.x >= regionX0[i] && mouse.x < regionX1[i]) {
                     float t = (mouse.x - regionX0[i]) / (regionX1[i] - regionX0[i]);

@@ -322,6 +322,14 @@ std::optional<CliPlan> parseCli(int argc, char* argv[], bool& listPresetsOut)
             if (!addCardsFromCsv(argv[++i], /*enable=*/false, plan.cardOverrides)) return std::nullopt;
             continue;
         }
+        if (arg == "--silicon-strict") {
+            plan.siliconStrictModeOverride = true;
+            continue;
+        }
+        if (arg == "--no-silicon-strict") {
+            plan.siliconStrictModeOverride = false;
+            continue;
+        }
         if (arg == "--sid-chip") {
             if (!needArg(i, "--sid-chip")) return std::nullopt;
             const std::string v = argv[++i];
@@ -505,7 +513,7 @@ void runLoad(const CliAction& a, EmulationController& emu)
     };
     bool isHex = endsWith(a.pathS, ".txt") || endsWith(a.pathS, ".hex");
     if (isHex) {
-        quint16 startAddr = 0;
+        uint16_t startAddr = 0;
         if (!emu.loadHexDump(a.pathS, startAddr, err, &bytes)) {
             pom1::log().error("CLI", "--load " + a.pathS + ": " + err);
             return;
@@ -517,7 +525,7 @@ void runLoad(const CliAction& a, EmulationController& emu)
         pom1::log().info("CLI", ss.str());
         return;
     }
-    if (!emu.loadBinary(a.pathS, static_cast<quint16>(a.addressI), err, &bytes)) {
+    if (!emu.loadBinary(a.pathS, static_cast<uint16_t>(a.addressI), err, &bytes)) {
         pom1::log().error("CLI", "--load " + a.pathS + ": " + err);
         return;
     }
@@ -644,7 +652,7 @@ void runDeferredActions(const std::vector<CliAction>& actions,
     for (const auto& a : actions) {
         switch (a.kind) {
             case CliAction::Kind::Load:      runLoad(a, emu);    break;
-            case CliAction::Kind::Run:       emu.jumpTo(static_cast<quint16>(a.addressI));
+            case CliAction::Kind::Run:       emu.jumpTo(static_cast<uint16_t>(a.addressI));
                                              pom1::log().info("CLI",
                                                  "--run $" + std::to_string(a.addressI));
                                              break;

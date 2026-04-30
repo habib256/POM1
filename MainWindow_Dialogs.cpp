@@ -1724,7 +1724,7 @@ void MainWindow_ImGui::renderMemoryConfigDialog()
         ImGui::Text("ROM Loading");
         ImGui::Separator();
 
-        auto hasRange = [](const std::vector<LoadedRegion>& v, quint16 s, quint16 e) {
+        auto hasRange = [](const std::vector<LoadedRegion>& v, uint16_t s, uint16_t e) {
             for (const auto& r : v)
                 if (r.start == s && r.end == e) return true;
             return false;

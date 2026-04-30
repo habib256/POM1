@@ -21,9 +21,6 @@ class CassetteDevice : public AudioSource, public pom1::Peripheral
 public:
     std::string_view name() const override { return "ACI"; }
 
-    using quint8 = uint8_t;
-    using quint16 = uint16_t;
-
     /// Logical deck mode surfaced to the UI. Derived from whether a tape
     /// is loaded and which playback path it's on — the deck UI shows this
     /// as a big label, and a mechanical "clunk" fires on every transition.
@@ -49,10 +46,11 @@ public:
     void resetApple1Side();
     void advanceCycles(int cycles);
 
-    quint8 readTapeInput();
-    quint8 toggleOutput();
+    uint8_t readTapeInput();
+    uint8_t toggleOutput();
 
     bool loadTape(const std::string& path);
+    bool loadProgramTape(const std::string& path);
     bool saveTape(const std::string& path) const;
 
     void rewindTape();

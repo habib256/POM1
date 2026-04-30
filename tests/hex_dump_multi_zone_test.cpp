@@ -61,9 +61,9 @@ int main()
     writeFixture();
 
     Memory mem;
-    quint16 startAddr = 0;
+    uint16_t startAddr = 0;
     int bytes = 0;
-    std::vector<std::pair<quint16, quint16>> zones;
+    std::vector<std::pair<uint16_t, uint16_t>> zones;
     int rc = mem.loadHexDump(kFixturePath, startAddr, &bytes, &zones);
     assert(rc == 0 && "loadHexDump returned error on a well-formed 2-zone dump");
     assert(bytes == 32 && "expected 16 lo + 16 hi = 32 bytes loaded");
@@ -78,10 +78,10 @@ int main()
     assert(zones[0].first == 0x0280 && zones[0].second == 0x028F);
     assert(zones[1].first == 0xE000 && zones[1].second == 0xE00F);
 
-    const quint8* m = mem.getMemoryPointer();
+    const uint8_t* m = mem.getMemoryPointer();
 
     // Lo block intact at $0280..$028F.
-    const quint8 expectedLo[16] = {
+    const uint8_t expectedLo[16] = {
         0xA9, 0x5E, 0xA2, 0x05, 0x20, 0x90, 0x0A, 0x20,
         0x77, 0x0A, 0x20, 0x14, 0x04, 0x20, 0x00, 0xE0
     };
@@ -96,7 +96,7 @@ int main()
     // Hi block intact at $E000..$E00F. This is the load that the user reported
     // as missing — the test pins it explicitly so any regression in the merge
     // logic that handles the lo→hi transition fails loudly.
-    const quint8 expectedHi[16] = {
+    const uint8_t expectedHi[16] = {
         0xA2, 0x00, 0x8A, 0x9D, 0x00, 0xEF, 0xE8, 0xE0,
         0x80, 0xD0, 0xF8, 0xA2, 0x00, 0x8A, 0x29, 0xF8
     };

@@ -87,14 +87,14 @@ uint16_t GraphicsCard::scanlineAddress(int y)
          + static_cast<uint16_t>(line) * 0x400;
 }
 
-void GraphicsCard::rasterizeLine(int y, const quint8* memory)
+void GraphicsCard::rasterizeLine(int y, const uint8_t* memory)
 {
     const uint16_t lineAddr = scanlineAddress(y);
     uint32_t* row = rawPixelBuf.data() + static_cast<size_t>(y) * kHiresWidth;
     const auto& table = hgrPixelTable();
 
     for (int col = 0; col < 40; ++col) {
-        const quint8 byte = memory[lineAddr + col];
+        const uint8_t byte = memory[lineAddr + col];
         const int parity = col & 1;
         const HgrPixelRow& pix = table[(parity << 8) | byte];
         std::memcpy(row + col * 7, pix.data(), sizeof(HgrPixelRow));
@@ -105,8 +105,8 @@ void GraphicsCard::rasterizeLine(int y, const quint8* memory)
     // The LUT was built assuming no external neighbour, so the only case it
     // gets wrong is precisely this both-on seam — patch it here.
     for (int col = 0; col < 39; ++col) {
-        const quint8 cur = memory[lineAddr + col];
-        const quint8 nxt = memory[lineAddr + col + 1];
+        const uint8_t cur = memory[lineAddr + col];
+        const uint8_t nxt = memory[lineAddr + col + 1];
         if ((cur & 0x40) && (nxt & 0x01)) {
             uint32_t* seam = row + col * 7 + 6;
             seam[0] = kWhite;
@@ -115,7 +115,7 @@ void GraphicsCard::rasterizeLine(int y, const quint8* memory)
     }
 }
 
-bool GraphicsCard::rasterizeToBuffer(const quint8* memory)
+bool GraphicsCard::rasterizeToBuffer(const uint8_t* memory)
 {
     // Plain memcmp against the per-line 40-byte cache from the previous frame.
     // resolveColor() only inspects neighbours within the same row, so a row's
@@ -127,7 +127,7 @@ bool GraphicsCard::rasterizeToBuffer(const quint8* memory)
     bool anyChanged = false;
     for (int y = 0; y < kHiresHeight; ++y) {
         const uint16_t lineAddr = scanlineAddress(y);
-        const quint8* src = memory + lineAddr;
+        const uint8_t* src = memory + lineAddr;
         if (forceAll || std::memcmp(src, lineCopy[y].data(), 40) != 0) {
             std::memcpy(lineCopy[y].data(), src, 40);
             rasterizeLine(y, memory);

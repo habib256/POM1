@@ -5,7 +5,8 @@ mutually exclusive (you pick one per project — links the matching `.o`).
 
 ## Files
 
-- **`tms9918.inc`** — `VDP_DATA = $CC00`, `VDP_CTRL = $CC01`. Pure equates.
+- **`tms9918.inc`** — `VDP_DATA = $CC00`, `VDP_CTRL = $CC01` + the
+  silicon-strict `WRT_DATA_REG` / `WRT_DATA_VAL` macros (see below).
 - **`tms9918m1.asm`** — Mode 1 (Graphics I, 32×24 cells of 8×8 px) driver.
   Mutualises the init + upload + name-table writes that 4+ games
   (TMS_Sokoban, TMS_Connect4, TMS_Snake, TMS_Galaga) currently re-derive.
@@ -117,6 +118,36 @@ In your project Makefile (Mode 1 example, multi-object link):
         ca65 $(LIB) $@:= -o $@ $<
     $(OUT)/MyGame.bin: $(OBJS)
         ld65 -C my_game.cfg $^ -o $@
+
+## Silicon-strict timing macros (`WRT_DATA_REG`, `WRT_DATA_VAL`)
+
+When POM1's Hardware menu → **Silicon Strict** is ON (default for every
+preset except the Multiplexing Fantasy ones), the TMS9918 enforces real-
+silicon access windows: VRAM writes happening less than ~8 cycles apart
+in Mode I + sprites are dropped. Two helper macros in `tms9918.inc` add
+the right NOP padding between consecutive `STA VDP_DATA`:
+
+```asm
+; A already loaded with the byte to push (typical loop body).
+WRT_DATA_REG     ; expands to: STA VDP_DATA / NOP / NOP
+
+; Or load-immediate then push.
+WRT_DATA_VAL #$AA  ; expands to: LDA #$AA / STA VDP_DATA / NOP
+```
+
+Both leave ≥ 8 cycles between the previous `STA VDP_DATA` and the next,
+which matches the worst-case window in Graphic I + sprites. Use them in
+new code; for an existing project, the patching playbook
+([`dev/SILICONBUGS.md`](../../SILICONBUGS.md) §17 Annexe E) covers
+mechanical NOP insertion across all back-to-back VDP stores. Reference
+implementation: `dev/projects/tms9918_galaga/TMS_Galaga.asm` carries
+~219 NOPs across its sprite / HUD / title / help routines.
+
+The macros only matter when the program writes back-to-back during
+*active display* (R1 bit 6 = 1). VRAM uploads done with display blanked
+(R1 bit 6 = 0) get the relaxed 2-cycle window — `init_vdp_g1` /
+`init_vdp_g2` could opt to blank around uploads to skip the macros, but
+none currently do.
 
 ## Migration path for existing Mode-1 games
 

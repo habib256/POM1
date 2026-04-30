@@ -292,6 +292,7 @@ init_vdp:
         ; the loop counter is 8-bit.)
         LDA #$C0
         STA VDP_CTRL
+        NOP                     ; +2c silicon-strict gap (LDA #imm bridge)
         LDA #$41                        ; $01 | $40
         STA VDP_CTRL
         LDX #$00
@@ -313,6 +314,7 @@ init_vdp:
         ; (HUD + title letters, all white).
         LDA #$00
         STA VDP_CTRL
+        NOP                     ; +2c silicon-strict gap (LDA #imm bridge)
         LDA #$60                        ; $20 | $40 (write flag)
         STA VDP_CTRL
         LDX #$00
@@ -326,6 +328,7 @@ init_vdp:
         ; --- Clear name table ($1800, 768 bytes = char 0 = blank floor) ---
         LDA #$00
         STA VDP_CTRL
+        NOP                     ; +2c silicon-strict gap (LDA #imm bridge)
         LDA #$58                        ; $18 | $40
         STA VDP_CTRL
         LDX #$03                        ; 3 pages
@@ -340,8 +343,10 @@ init_vdp:
         ; --- Disable sprites: first sprite Y = $D0 stops the chain ---
         LDA #$00
         STA VDP_CTRL
+        NOP                     ; +2c silicon-strict gap (LDA #imm bridge)
         LDA #$5B                        ; $1B | $40
         STA VDP_CTRL
+        NOP                     ; +2c silicon-strict gap (LDA #imm bridge)
         LDA #$D0
         STA VDP_DATA
         RTS
@@ -811,13 +816,17 @@ draw_hud:
         ; --- Row 0: "MV:HTU" at VRAM $1800 ---
         LDA #$00
         STA VDP_CTRL
+        NOP                     ; +2c silicon-strict gap (LDA #imm bridge)
         LDA #$58                        ; $18 | $40
         STA VDP_CTRL
+        NOP                     ; +2c silicon-strict gap (LDA #imm bridge)
 
         LDA #HUD_C_M
         STA VDP_DATA
+        NOP                     ; +2c silicon-strict gap (LDA #imm bridge)
         LDA #HUD_C_V
         STA VDP_DATA
+        NOP                     ; +2c silicon-strict gap (LDA #imm bridge)
         LDA #HUD_C_CL
         STA VDP_DATA
 
@@ -855,6 +864,7 @@ draw_hud:
         ; --- Row 1 cols 0-5: blank floor (char 0) to hide underlying BL/BR ---
         LDA #$20                        ; $1800 + 32 = $1820 low byte
         STA VDP_CTRL
+        NOP                     ; +2c silicon-strict gap (LDA #imm bridge)
         LDA #$58
         STA VDP_CTRL
         LDX #$06
@@ -867,10 +877,13 @@ draw_hud:
         ; --- Row 23 cols 28-31: "L:NN" at VRAM $1AFC ---
         LDA #$FC
         STA VDP_CTRL
+        NOP                     ; +2c silicon-strict gap (LDA #imm bridge)
         LDA #$5A                        ; $1A | $40
         STA VDP_CTRL
+        NOP                     ; +2c silicon-strict gap (LDA #imm bridge)
         LDA #HUD_C_L
         STA VDP_DATA
+        NOP                     ; +2c silicon-strict gap (LDA #imm bridge)
         LDA #HUD_C_CL
         STA VDP_DATA
 
@@ -897,6 +910,7 @@ draw_hud:
         ; --- Row 22 cols 28-31: blank to hide top-half of row-11 tiles ---
         LDA #$DC
         STA VDP_CTRL
+        NOP                     ; +2c silicon-strict gap (LDA #imm bridge)
         LDA #$5A
         STA VDP_CTRL
         LDX #$04
@@ -998,6 +1012,7 @@ draw_help_tms:
         ; Clear name table (3 × 256 bytes of char 0).
         LDA #$00
         STA VDP_CTRL
+        NOP                     ; +2c silicon-strict gap (LDA #imm bridge)
         LDA #$58
         STA VDP_CTRL
         LDX #$03
@@ -1085,6 +1100,8 @@ draw_help_tms:
 ; then emit raw char codes from (sptr_lo/hi) until $FF.
 draw_title_tms_line:
         STA VDP_CTRL
+        NOP                     ; +2c silicon-strict gap (back-to-back VDP store)
+        NOP                     ; +2c silicon-strict gap (back-to-back VDP store)
         STX VDP_CTRL
         LDY #$00
 @lp:    LDA (sptr_lo),Y
@@ -1105,6 +1122,7 @@ draw_success_tms:
         ; Clear name table — 3 × 256 bytes of char 0 at $1800.
         LDA #$00
         STA VDP_CTRL
+        NOP                     ; +2c silicon-strict gap (LDA #imm bridge)
         LDA #$58                        ; $18 | $40
         STA VDP_CTRL
         LDX #$03

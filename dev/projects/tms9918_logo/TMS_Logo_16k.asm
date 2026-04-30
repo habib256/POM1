@@ -3272,6 +3272,7 @@ draw_turtle:
         ; --- sprite path: write sprite-0 attribute (Y, X, name=0, color=$0F)
         LDA #$00
         STA VDP_CTRL
+        NOP                     ; +2c silicon-strict gap (LDA #imm bridge)
         LDA #$3B | $40            ; $3B00 + write enable
         STA VDP_CTRL
         ; Y = ty - 9: TMS9918 displays sprite at scanline (Y+1), and the
@@ -3286,8 +3287,10 @@ draw_turtle:
         SEC
         SBC #8
         STA VDP_DATA
+        NOP                     ; +2c silicon-strict gap (LDA #imm bridge)
         LDA #0                    ; pattern name = 0 (sprite_pattern_table[0])
         STA VDP_DATA
+        NOP                     ; +2c silicon-strict gap (LDA #imm bridge)
         LDA #$0F                  ; foreground colour = white (15)
         STA VDP_DATA
         RTS
@@ -3377,8 +3380,10 @@ cmd_setshape:
         ; Y=$D0 to sprite #0 attribute = TMS9918 sprite-list terminator.
         LDA #$00
         STA VDP_CTRL
+        NOP                     ; +2c silicon-strict gap (LDA #imm bridge)
         LDA #$3B | $40
         STA VDP_CTRL
+        NOP                     ; +2c silicon-strict gap (LDA #imm bridge)
         LDA #$D0
         STA VDP_DATA
         ; Flip back to bitmap mode and redraw the triangle.
@@ -3430,6 +3435,7 @@ cmd_setshape:
         ; R1 = $C2 = 16K + DISP + IE off + sprite-16 (M1=0 already in R0)
         LDA #$C2
         STA VDP_CTRL
+        NOP                     ; +2c silicon-strict gap (LDA #imm bridge)
         LDA #$81                  ; write to register 1
         STA VDP_CTRL
         LDA #1
@@ -3438,6 +3444,7 @@ cmd_setshape:
         ; Copy 32 bytes from (shape_pat),Y to VRAM $1800 (sprite pattern 0).
         LDA #$00
         STA VDP_CTRL
+        NOP                     ; +2c silicon-strict gap (LDA #imm bridge)
         LDA #$18 | $40
         STA VDP_CTRL
         LDY #0

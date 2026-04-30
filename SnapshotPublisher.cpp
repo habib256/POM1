@@ -28,8 +28,8 @@ void SnapshotPublisher::publish(Memory& mem, const M6502& cpu, bool cpuRunning)
     // the snapshot data stays fresh from the previous copy for free.
     if (mem.anyDirtyPage()) {
         const auto& pages = mem.getDirtyPages();
-        const quint8* memPtr = mem.getMemoryPointer();
-        quint8* dstPtr = snapshot.memory.data();
+        const uint8_t* memPtr = mem.getMemoryPointer();
+        uint8_t* dstPtr = snapshot.memory.data();
         int p = 0;
         while (p < 256) {
             if (!pages.test(static_cast<std::size_t>(p))) { ++p; continue; }
@@ -48,7 +48,7 @@ void SnapshotPublisher::publish(Memory& mem, const M6502& cpu, bool cpuRunning)
         const JukeBox& jb = mem.getJukeBox();
         const uint8_t* rom = jb.getRomPointer();
         const size_t romSize = jb.getRomBufferSize();
-        quint8* dst = snapshot.memory.data();
+        uint8_t* dst = snapshot.memory.data();
         const size_t pageOff = static_cast<size_t>(jb.getCurrentPage())
                                * JukeBox::kPageSize;
         if (jb.getJumper() == JukeBox::Jumper::RAM16_ROM32) {

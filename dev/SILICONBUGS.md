@@ -618,7 +618,7 @@ Toute autre combinaison (M1+M2, M2+M3, M1+M3, M1+M2+M3) = **mode hybride illéga
 
 Améliorations qui **rapprocheraient POM1 du silicium** mais ne sont pas implémentées :
 
-1. **Mode "silicon timing strict"** — option qui drop des octets si écriture VRAM trop rapide pour le mode actif (perfectionne Bug N°1).
+1. ~~**Mode "silicon timing strict"** — option qui drop des octets si écriture VRAM trop rapide pour le mode actif (perfectionne Bug N°1).~~ **✅ IMPLÉMENTÉ** : `TMS9918::siliconStrictMode` drop l'octet (`canAcceptAccess()` dans `TMS9918.cpp:98-101`) avec les fenêtres exactes de la table §2 (8c en Mode I+sprites, 4c en multicolor, 3c en text, 2c en blank/VBlank). Activé par défaut pour tous les presets sauf les Multiplexing Fantasy. Toggle runtime exposé via Hardware menu → "Silicon Strict (TMS9918 timing)" et CLI `--silicon-strict` / `--no-silicon-strict`. Status bar `STRICT` / `FANTASY`. Persiste dans le snapshot via `kFlagSiliconStrict` bit 14. Test : `tests/tms9918_silicon_strict_runtime_test.cpp`.
 2. **Scan sprite scanline-by-scanline** — appel de `scanSpritesForStatus()` en cours de frame, pas seulement au VBlank (résout Bugs N°5 et N°10).
 3. **Frame rate 59,94 Hz** — option NTSC exact (résout Bug N°11).
 4. **Sprite cloning émulé** — détection des modes hybrides illégaux et reproduction du cross-talk d'adressage (résout Bug N°8 partiellement, sans la dérive thermique).
@@ -629,4 +629,192 @@ Ces ajouts ne sont pas planifiés à court terme — ce doc sert d'abord à **é
 
 ---
 
-*Dernière mise à jour : 2026-04-28. Bug N°1 (timing) confirmé en silicium via Galaga. Bugs N°2 à N°11 issus de l'analyse statique de `TMS9918.cpp` croisée avec les références TI / Texas Instruments / BiFi MSX / openMSX — à valider sur silicium au cas par cas (Tests A à E ci-dessus).*
+## 16. Annexe D — Sous-bug du Bug N°1 : `statusReg` bit 7 sticky comme proxy VBlank (corrigé)
+
+### Symptôme
+Avant 2026-04-30, lancer Galaga via CodeTank en `Silicon Strict` ON ne déclenchait
+**aucun** drop d'octet alors que les patterns `STA $CC00` à 4-6 cycles d'intervalle
+sont visiblement KO sur silicium réel (cf. Bug N°1).
+
+### Cause racine
+`TMS9918::requiredAccessCycles()` (TMS9918.cpp:74-77) utilisait
+`(statusReg & 0x80) != 0` comme proxy *« on est en VBlank »* pour relâcher la
+fenêtre d'accès à 2 cycles. Mais ce bit est **sticky-until-`readControl`** :
+il s'arme à chaque VBlank et reste latché jusqu'à un `LDA $CC01`. Galaga ne lit
+**jamais** `$CC01` (0 occurrence dans `dev/projects/tms9918_galaga/TMS_Galaga.asm`)
+→ dès la 1re frame le bit reste à 1 pour de bon → `requiredAccessCycles()`
+retourne 2 cycles toute la frame → tous les writes Galaga passent.
+
+### Fix (TMS9918.cpp + TMS9918.h)
+La fenêtre dépend de la position physique du beam, pas du flag latché.
+Remplacé par :
+
+```cpp
+if ((regs[1] & 0x40) == 0 || frameCycleCounter >= kActiveDisplayCycles) return 2;
+```
+
+avec `kActiveDisplayCycles = (kCyclesPerFrame * 192) / 262` (≈ 12 490 cycles à
+1× — 192 scanlines actives sur les 262 du frame NTSC). Pendant l'affichage actif
+→ fenêtre 8c stricte, pendant VBlank physique → fenêtre 2c relaxée.
+
+### Conséquence pour le code utilisateur
+**Aucune** : la nouvelle gating reflète mieux le silicium et n'introduit pas de
+faux positifs. Les programmes qui pollaient `$CC01` par discipline continuent
+de fonctionner exactement pareil (la fenêtre n'a jamais dépendu du bit 7 sur
+silicium).
+
+---
+
+## 17. Annexe E — Case study : porter Galaga en silicon-strict
+
+`dev/projects/tms9918_galaga/TMS_Galaga.asm` est la première référence de jeu
+TMS9918 portée intégralement sous `Silicon Strict` ON. Dossier de bringup
+réutilisable pour les autres jeux du repo (Sokoban, Snake, Connect4, Maze3D).
+
+### Outillage de patching
+
+Script réutilisable : **`tools/silicon_strict_patch.py`**. Idempotent
+(re-running strippe ses propres NOPs marqués puis les ré-insère).
+
+```bash
+# Patch in place
+python3 tools/silicon_strict_patch.py path/to/Game.asm
+
+# Dry-run (compte sans écrire)
+python3 tools/silicon_strict_patch.py path/to/Game.asm --dry-run
+
+# Strip-only (revert sans réinsertion)
+python3 tools/silicon_strict_patch.py path/to/Game.asm --unpatch
+```
+
+Règles appliquées (cumulatives, ordre déterministe) :
+
+| Cas | Pattern détecté | NOPs ajoutés |
+|---|---|---|
+| **A** | `ST? VDP_*` adjacent à `ST? VDP_*` | 2 entre |
+| **B** | `ST? VDP_* / LDA #imm / ST? VDP_*` | 1 entre LDA et 2e ST? |
+| **C** | `ST? VDP_* / LDA <zp/abs/zp,X> / ST? VDP_*` | 1 idem |
+
+`ST?` couvre `STA` / `STX` / `STY` (Galaga utilise les trois).
+Cross-port (`VDP_DATA → VDP_CTRL` ou inverse) : la fenêtre est unique pour
+les deux ports — le matcher couvre `VDP_(DATA|CTRL)` indistinctement.
+
+**Skip annotation** : pour exclure une routine déjà optimisée à la main
+(ou qui blanke explicitement l'affichage avant ses uploads), insérer un
+commentaire `; SILICON_STRICT_SKIP` n'importe où dans le corps de la
+fonction (avant le `RTS` ou le label suivant). Le tool saute toute la
+routine en bloc.
+
+### Inventaire des projets patchés (état au 2026-04-30)
+
+Tous les programmes TMS9918 du repo + les drivers `lib/tms9918/` sont
+passés sous le tool. Compte des NOPs insérés :
+
+| Projet | Cas A | Cas B | Cas C | Total |
+|---|--:|--:|--:|--:|
+| `tms9918_galaga` (refactor `hide_slot_4` inclus) | 62 | 193 | 14 | **269** |
+| `tms9918_sokoban` | 2 | 16 | 0 | 18 |
+| `tms9918_snake` | 2 | 14 | 1 | 17 |
+| `tms9918_orbital_pool` | 0 | 9 | 1 | 10 |
+| `tms9918_connect4` | 2 | 7 | 0 | 9 |
+| `tms9918_logo` (Mode 2) | 0 | 7 | 0 | 7 |
+| `tms9918_life` | 0 | 6 | 0 | 6 |
+| `tms9918_maze3d` | 0 | 3 | 1 | 4 |
+| `tms9918_chess` | 0 | 1 | 0 | 1 |
+| `tms9918_codetank_menu` | 0 | 0 | 0 | 0 |
+| `tms9918_codetank_menu_upper` | 0 | 0 | 0 | 0 |
+| `tms9918_tetris_loader` | 0 | 0 | 0 | 0 |
+| `lib/tms9918/tms9918m1.asm` | 0 | 3 | 1 | 4 |
+| `lib/tms9918/tms9918m2.asm` | 0 | 5 | 1 | 6 |
+| **Total** | **68** | **264** | **19** | **351** |
+
+### Refactor d'économie de bytes : `hide_slot_4`
+
+Galaga avait 10 occurrences inline du pattern « cacher un slot SAT » (16 B
+chacun = 160 B total) :
+
+```asm
+LDA #HIDDEN_Y
+STA VDP_DATA
+LDA #$00
+STA VDP_DATA
+STA VDP_DATA
+STA VDP_DATA
+```
+
+Refactorisé en `hide_slot_4` (helper 22 B avec NOP padding intégré) + 10×
+`JSR hide_slot_4` (3 B chacun). Économie nette ≈ 100 B sur le slot ROM,
+indispensable pour faire rentrer la couverture NOP complète.
+
+### Bridges `LDA <zp 3c>` cachés
+
+Sites typiques manqués si on ne couvre pas le case C :
+
+| Site asm | Pattern | Symptôme silicon-strict |
+|---|---|---|
+| `render_sprites @show_p` | `STA VDP_DATA / LDA player_x / STA VDP_DATA` | Player ship clignote 1/2 frame |
+| `plot_star` final write | `STA VDP_CTRL / LDA temp3 / STA VDP_DATA` | Étoile non plottée → starfield clairsemé |
+| `render_sprites @en_paint X` | `STA VDP_DATA / LDA enemy_x / STA VDP_DATA` | Enemy clignote (mais `enemy_x,X` 4c → OK) |
+
+`player_x`, `temp3` etc. sont en zero page (`.res 1` dans le ZEROPAGE segment).
+`LDA zp` = 3 cycles → gap 4+3+4 = **11c** depuis le début du précédent STA, soit
+**7c** entre les deux *latches* VDP. Ajouter 1 NOP (2c) suffit pour atteindre 9c.
+
+### Bridges `STA VDP_CTRL / STX VDP_CTRL` (address-write 2-byte)
+
+`draw_str_tms` (et clones) faisait `STA VDP_CTRL / STX VDP_CTRL` direct (gap 4c).
+Le matcher initial ne ciblait que `STA VDP_CTRL` — `STX` et `STY` étaient
+ignorés → 2e moitié de l'address-write droppée → **toutes** les strings écrites
+par `draw_str_tms` finissaient à un offset VRAM aléatoire (texte splatté).
+Résolu en élargissant le matcher à `ST[AXY] VDP_(DATA|CTRL)`.
+
+### Slot ROM : pourquoi le layout `dualslot8k`
+
+La couverture NOP exhaustive sur Galaga = **219 NOPs** = 219 octets ajoutés.
+Le layout menu-bank historique (`build_codetank_rom.py --layout=menu`) ne
+réservait que **7 424 B** au slot Galaga (`$4100-$5DFF`) — Galaga avec patches
+faisait 7 419 B → 5 B de marge, pas tenable une fois qu'on couvre tous les cas.
+
+Solution : layout `--layout=dualslot8k`, qui offre **8 192 B** par slot et
+sacrifie le menu interactif + Snake/Life :
+
+```
+Lower bank ($4000-$7FFF) :
+  $4000-$5FFF  Galaga  (8 kB, 760 B padding avec patch full)
+  $6000-$7FFF  Sokoban (8 kB, 3 410 B padding)
+Upper bank :
+  Tetris launcher + payload (inchangé)
+```
+
+Pas de menu — Wozmon `4000R` lance Galaga, `6000R` lance Sokoban. ROM publiée
+sous `roms/codetank/Codetank_GAME1.rom`.
+
+### Builder
+
+```bash
+python3 tools/build_codetank_rom.py --layout=dualslot8k -o roms/codetank/Codetank_GAME1.rom
+```
+
+Cfgs : `apple1_galaga_codetank_8k.cfg` (link à `$4000`, slot 8 kB) et
+`apple1_sokoban_codetank_8k.cfg` (link à `$6000`).
+
+### Validation visuelle
+
+POM1 `--preset 8 --terminal --silicon-strict`, `4000R`, choisir QWERTY :
+- Page de garde `A1GALAGA / APPLE-1 TMS9918 / BY VERHILLE ARNAUD` complète.
+- 3 alien sprites SCOUT/FIGHTER/BOSS avec labels HP.
+- Menu keyboard `1 QWERTY (A D S) / 2 AZERTY (Q D S) / SPACE FIRE` propre.
+- Gameplay : HUD `SCORE/LIVES/W:01`, starfield 6-8 étoiles défilant en douceur,
+  ship player + ennemis sans clignotement.
+
+Screenshots de référence dans `screenshots/pom1_latest.png` (capturé via
+TerminalCard ESC S après `--terminal`).
+
+---
+
+*Dernière mise à jour : 2026-04-30. Bug N°1 (timing) confirmé en silicium via
+Galaga. Bug du sous-§16 corrigé dans POM1. Annexe E ajoutée avec le bringup
+Galaga complet (toolchain + cfgs `dualslot8k`). Bugs N°2 à N°11 issus de
+l'analyse statique de `TMS9918.cpp` croisée avec les références TI / Texas
+Instruments / BiFi MSX / openMSX — à valider sur silicium au cas par cas
+(Tests A à E ci-dessus).*

@@ -804,6 +804,7 @@ init_vdp_g2:
         ; name[row*32+col] = (row & 7)*32 + col
         LDA #$00
         STA VDP_CTRL
+        NOP                     ; +2c silicon-strict gap (LDA #imm bridge)
         LDA #$78               ; $38 | $40
         STA VDP_CTRL
         LDX #3                 ; 3 thirds
@@ -818,6 +819,7 @@ init_vdp_g2:
         ; --- color table: $F1 everywhere ($2000-$37FF, 6144 bytes) ---
         LDA #$00
         STA VDP_CTRL
+        NOP                     ; +2c silicon-strict gap (LDA #imm bridge)
         LDA #$60               ; $20 | $40
         STA VDP_CTRL
         LDX #24                ; 24 pages of 256
@@ -839,6 +841,7 @@ vdp2_regs:
 clear_bitmap:
         LDA #$00
         STA VDP_CTRL
+        NOP                     ; +2c silicon-strict gap (LDA #imm bridge)
         LDA #$40               ; $00 | $40 = write start of VRAM
         STA VDP_CTRL
         LDX #24                ; 24 * 256 = 6144
@@ -867,6 +870,7 @@ vdp_set_write:
 vdp_set_read:
         LDA pix_addr_lo
         STA VDP_CTRL
+        NOP                     ; +2c silicon-strict gap (LDA zp/abs bridge)
         LDA pix_addr_hi
         STA VDP_CTRL
         RTS

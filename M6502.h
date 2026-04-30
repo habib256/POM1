@@ -26,13 +26,13 @@ class M6502
 public:
     /// Bits du registre P (éviter #define N,C,I,… qui cassent les en-têtes Windows).
     struct Status {
-        static constexpr quint8 N = 0x80;
-        static constexpr quint8 V = 0x40;
-        static constexpr quint8 B = 0x10;
-        static constexpr quint8 D = 0x08;
-        static constexpr quint8 I = 0x04;
-        static constexpr quint8 Z = 0x02;
-        static constexpr quint8 C = 0x01;
+        static constexpr uint8_t N = 0x80;
+        static constexpr uint8_t V = 0x40;
+        static constexpr uint8_t B = 0x10;
+        static constexpr uint8_t D = 0x08;
+        static constexpr uint8_t I = 0x04;
+        static constexpr uint8_t Z = 0x02;
+        static constexpr uint8_t C = 0x01;
     };
 
     M6502();
@@ -51,7 +51,7 @@ public:
     /// ring buffer is always live (cheap) and can be dumped on demand.
     void setDebugBrkTrace(bool enabled) { debugBrkTrace = enabled; }
     bool getDebugBrkTrace() const { return debugBrkTrace; }
-    quint16 memReadAbsolute(quint16 adr);
+    uint16_t memReadAbsolute(uint16_t adr);
     
     // Nouvelles méthodes pour l'exécution et l'affichage
     void step(void);  // Exécuter une instruction
@@ -65,17 +65,17 @@ public:
     bool isRunning(void) const { return running; }
     
     // Accesseurs pour les registres (pour le débogueur)
-    quint8 getAccumulator(void) const { return accumulator; }
-    quint8 getXRegister(void) const { return xRegister; }
-    quint8 getYRegister(void) const { return yRegister; }
-    quint8 getStatusRegister(void) const { return statusRegister; }
-    quint8 getStackPointer(void) const { return stackPointer; }
-    quint16 getProgramCounter(void) const { return programCounter; }
+    uint8_t getAccumulator(void) const { return accumulator; }
+    uint8_t getXRegister(void) const { return xRegister; }
+    uint8_t getYRegister(void) const { return yRegister; }
+    uint8_t getStatusRegister(void) const { return statusRegister; }
+    uint8_t getStackPointer(void) const { return stackPointer; }
+    uint16_t getProgramCounter(void) const { return programCounter; }
     /// Jump the PC to an arbitrary address without going through RESET.
     /// Used by the Klaus Dormann functional test harness (the test binary
     /// sets its reset vector to an error trap and expects callers to jump
     /// directly into $0400).
-    void setProgramCounter(quint16 pc) { programCounter = pc; }
+    void setProgramCounter(uint16_t pc) { programCounter = pc; }
 
 private:
 
@@ -85,10 +85,10 @@ private :
     Memory *memory;
 
     bool debugBrkTrace = false;   // see setDebugBrkTrace()
-    quint8 accumulator, xRegister, yRegister, statusRegister, stackPointer;
+    uint8_t accumulator, xRegister, yRegister, statusRegister, stackPointer;
     int IRQ, NMI;
-    quint16 programCounter;
-    quint16 op;
+    uint16_t programCounter;
+    uint16_t op;
     int tmp;
     int cycles;
     int running;

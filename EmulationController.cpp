@@ -183,14 +183,14 @@ void EmulationController::queueKey(char key)
     wakeCv.notify_all();
 }
 
-void EmulationController::writeMemory(quint16 address, quint8 value)
+void EmulationController::writeMemory(uint16_t address, uint8_t value)
 {
     std::lock_guard<PriorityMutex> lock(stateMutex);
     memory->memWrite(address, value);
     publisher.publish(*memory, *cpu, runRequested.load());
 }
 
-bool EmulationController::loadBinaryToRam(const std::string& path, quint16 address, std::string& error)
+bool EmulationController::loadBinaryToRam(const std::string& path, uint16_t address, std::string& error)
 {
     std::lock_guard<PriorityMutex> lock(stateMutex);
     int result = memory->loadBinary(path.c_str(), address);
@@ -202,14 +202,14 @@ bool EmulationController::loadBinaryToRam(const std::string& path, quint16 addre
     return true;
 }
 
-bool EmulationController::loadHexDump(const std::string& path, quint16& startAddress, std::string& error,
+bool EmulationController::loadHexDump(const std::string& path, uint16_t& startAddress, std::string& error,
                                       int* bytesLoaded,
-                                      std::vector<std::pair<quint16,quint16>>* zones)
+                                      std::vector<std::pair<uint16_t,uint16_t>>* zones)
 {
     stopCpu();
     std::lock_guard<PriorityMutex> lock(stateMutex);
 
-    quint16 addr = 0;
+    uint16_t addr = 0;
     int result = memory->loadHexDump(path.c_str(), addr, bytesLoaded, zones);
     if (result != 0) {
         error = "Error: unable to load file";
@@ -235,7 +235,7 @@ bool EmulationController::loadHexDump(const std::string& path, quint16& startAdd
     return true;
 }
 
-bool EmulationController::loadBinary(const std::string& path, quint16 startAddress, std::string& error, int* bytesLoaded)
+bool EmulationController::loadBinary(const std::string& path, uint16_t startAddress, std::string& error, int* bytesLoaded)
 {
     stopCpu();
     std::lock_guard<PriorityMutex> lock(stateMutex);
@@ -264,10 +264,10 @@ bool EmulationController::loadBinary(const std::string& path, quint16 startAddre
     return true;
 }
 
-bool EmulationController::saveMemoryRange(const std::string& path, quint16 startAddress, quint16 endAddress, bool binaryFormat, std::string& error)
+bool EmulationController::saveMemoryRange(const std::string& path, uint16_t startAddress, uint16_t endAddress, bool binaryFormat, std::string& error)
 {
     std::lock_guard<PriorityMutex> lock(stateMutex);
-    const quint8* memPtr = memory->getMemoryPointer();
+    const uint8_t* memPtr = memory->getMemoryPointer();
     std::ofstream file(path, binaryFormat ? std::ios::binary : std::ios::out);
     if (!file.is_open()) {
         error = "Error: unable to write file";
@@ -275,18 +275,18 @@ bool EmulationController::saveMemoryRange(const std::string& path, quint16 start
     }
 
     if (binaryFormat) {
-        for (quint16 a = startAddress; a <= endAddress; ++a) {
-            quint8 b = memPtr[a];
+        for (uint16_t a = startAddress; a <= endAddress; ++a) {
+            uint8_t b = memPtr[a];
             file.write(reinterpret_cast<char*>(&b), 1);
             if (a == 0xFFFF) break;
         }
     } else {
-        for (quint16 a = startAddress; a <= endAddress; a += 16) {
+        for (uint16_t a = startAddress; a <= endAddress; a += 16) {
             file << std::hex << std::uppercase << std::setfill('0')
                  << std::setw(4) << a << ":";
             int lineEnd = std::min((int)a + 16, (int)endAddress + 1);
             for (int i = a; i < lineEnd; ++i) {
-                file << " " << std::setfill('0') << std::setw(2) << (int)memPtr[(quint16)i];
+                file << " " << std::setfill('0') << std::setw(2) << (int)memPtr[(uint16_t)i];
             }
             file << "\n";
             if (a + 16 < a) break;
@@ -444,6 +444,19 @@ bool EmulationController::loadTape(const std::string& path, std::string& error)
 {
     std::lock_guard<PriorityMutex> lock(stateMutex);
     if (!memory->getCassetteDevice().loadTape(path)) {
+        error = memory->getCassetteDevice().getLastError();
+        publisher.publish(*memory, *cpu, runRequested.load());
+        return false;
+    }
+    memory->getCassetteDevice().rewindTape();
+    publisher.publish(*memory, *cpu, runRequested.load());
+    return true;
+}
+
+bool EmulationController::loadProgramTape(const std::string& path, std::string& error)
+{
+    std::lock_guard<PriorityMutex> lock(stateMutex);
+    if (!memory->getCassetteDevice().loadProgramTape(path)) {
         error = memory->getCassetteDevice().getLastError();
         publisher.publish(*memory, *cpu, runRequested.load());
         return false;
@@ -902,7 +915,7 @@ void EmulationController::setRtcOverrideTime(std::time_t target)
     memory->getA1IO_RTC().setOverrideTime(target);
 }
 
-void EmulationController::jumpTo(quint16 address)
+void EmulationController::jumpTo(uint16_t address)
 {
     stopCpu();
     std::lock_guard<PriorityMutex> lock(stateMutex);

@@ -62,6 +62,10 @@ public:
     void setJukeBoxChipModeOverride(JukeBox::ChipMode m) { jukeBoxChipModeOverride = m; }
     void setCodeTankJumperOverride(CodeTank::Jumper j) { codeTankJumperOverride = j; }
     void setCodeTankRomPathOverride(std::string p) { codeTankRomPathOverride = std::move(p); }
+    // CLI --silicon-strict / --no-silicon-strict. Applied on the first frame,
+    // *after* the preset's default (!fantasyPreset) so the override wins.
+    // Subsequent preset switches reset to default - this is intentional.
+    void setSiliconStrictModeOverride(bool enabled) { siliconStrictModeOverride = enabled; }
     // CLI phase-C verbs. Applied once, the frame after pendingCardEnableFrames
     // reaches zero (the same frame the deferred plug commits).
     void setDeferredCliActions(std::vector<pom1::CliAction> actions)
@@ -220,6 +224,11 @@ private:
     bool showCodeTank = false;
     bool showCodeTankLibrary = false;
     CodeTank::Jumper codeTankJumper = CodeTank::Jumper::Lower16;
+    // UI mirror of EmulationController::isSiliconStrictMode(). Resynced from
+    // applyMachineConfig() (preset-driven default = !fantasyPreset) and from
+    // the Hardware menu toggle. Drives the Hardware menu checkbox state and
+    // the STRICT/FANTASY status-bar tag.
+    bool siliconStrictModeEnabled = true;
     bool showDevFilesWindow = false;     // Dev > Source Browser
     bool fullscreen = false;
 
@@ -295,7 +304,7 @@ private:
     void renderLoadTapeDialog();
     void renderCassetteControlWindow();
     void renderCassetteDeckWindow();
-    struct MemRegion { quint16 start, end; ImU32 color; const char* label; };
+    struct MemRegion { uint16_t start, end; ImU32 color; const char* label; };
     std::vector<MemRegion> buildMemoryRegions();
     void renderMemoryMapGridWindow();
     void renderMemoryBarWindow();
@@ -347,7 +356,7 @@ private:
     void evictMemoryMapRegionsForJukeBox();
     void setStatusMessage(const std::string& message, float duration = 3.0f);
     void updateStatus(float deltaTime);
-    std::string disassemble(quint16 pc, int& instrLen);
+    std::string disassemble(uint16_t pc, int& instrLen);
 
     // Load dialog state (non-static, reset on open)
     struct LoadDialogState {
@@ -395,8 +404,8 @@ private:
     // Loaded program/ROM regions (shown in Memory Map)
     struct LoadedRegion {
         std::string name;
-        quint16 start;
-        quint16 end;
+        uint16_t start;
+        uint16_t end;
     };
     std::vector<LoadedRegion> loadedPrograms;
     std::vector<LoadedRegion> loadedRoms; // ROMs loaded by presets (BASIC, Krusader, etc.)
@@ -414,6 +423,7 @@ private:
     std::optional<JukeBox::ChipMode>    jukeBoxChipModeOverride; // --jukebox-chip
     std::optional<CodeTank::Jumper>     codeTankJumperOverride;  // --codetank-jumper
     std::string                         codeTankRomPathOverride; // --codetank-rom
+    std::optional<bool>                 siliconStrictModeOverride; // --silicon-strict / --no-silicon-strict
     std::vector<pom1::CliAction>        deferredCliActions; // phase-C queue
     bool deferredCliActionsConsumed = false;
     // applyMachineConfig() normally triggers emulation->hardReset() to wipe
@@ -462,6 +472,9 @@ private:
     CodeTank::Jumper pendingCodeTankJumper = CodeTank::Jumper::Lower16;
     std::string pendingCodeTankRomPath;
     bool pendingCassetteAudioActive = false;
+    std::string pendingPresetTapePath;
+    bool pendingPresetTapeForceProgramMode = false;
+    bool pendingPresetTapeAutoPlay = false;
 
     struct TapeDialogState {
         char filePath[512] = "cassette.aci";

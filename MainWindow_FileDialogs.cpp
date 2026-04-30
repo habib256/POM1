@@ -201,13 +201,13 @@ void MainWindow_ImGui::renderLoadDialog()
                 }
             }
 
-            quint16 addr = 0;
+            uint16_t addr = 0;
             std::string error;
             int bytesLoaded = 0;
-            std::vector<std::pair<quint16,quint16>> hexZones;
+            std::vector<std::pair<uint16_t,uint16_t>> hexZones;
             bool ok = false;
             if (loadDlg.fileType == 0) {
-                addr = (quint16)strtol(loadDlg.addressStr, nullptr, 16);
+                addr = (uint16_t)strtol(loadDlg.addressStr, nullptr, 16);
                 ok = emulation->loadBinary(loadDlg.filePath, addr, error, &bytesLoaded);
             } else {
                 ok = emulation->loadHexDump(loadDlg.filePath, addr, error, &bytesLoaded, &hexZones);
@@ -235,7 +235,7 @@ void MainWindow_ImGui::renderLoadDialog()
                     for (const auto& z : hexZones)
                         loadedPrograms.push_back({filename, z.first, z.second});
                 } else if (bytesLoaded > 0) {
-                    quint16 progEnd = static_cast<quint16>(addr + bytesLoaded - 1);
+                    uint16_t progEnd = static_cast<uint16_t>(addr + bytesLoaded - 1);
                     loadedPrograms.erase(
                         std::remove_if(loadedPrograms.begin(), loadedPrograms.end(),
                             [addr, progEnd](const LoadedRegion& p) {
@@ -680,8 +680,8 @@ void MainWindow_ImGui::renderSaveDialog()
         ImGui::InputText("##endaddr", endStr, sizeof(endStr),
                          ImGuiInputTextFlags_CharsHexadecimal | ImGuiInputTextFlags_CharsUppercase);
 
-        quint16 startAddr = (quint16)strtol(startStr, nullptr, 16);
-        quint16 endAddr = (quint16)strtol(endStr, nullptr, 16);
+        uint16_t startAddr = (uint16_t)strtol(startStr, nullptr, 16);
+        uint16_t endAddr = (uint16_t)strtol(endStr, nullptr, 16);
         int size = (endAddr >= startAddr) ? (endAddr - startAddr + 1) : 0;
         ImGui::Text("Size: %d bytes (%d pages)", size, (size + 255) / 256);
 

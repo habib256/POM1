@@ -283,6 +283,7 @@ upload_chess_patterns:
 @dpat:
         LDA #$AA                ; row pattern: bit pattern X.X.X.X.
         STA VDP_DATA
+        NOP                     ; +2c silicon-strict gap (LDA #imm bridge)
         LDA #$55                ; row pattern: .X.X.X.X
         STA VDP_DATA
         DEX

@@ -54,6 +54,18 @@ int ramKbBeforeBasicType(const std::string& text)
     return std::stoi(text.substr(begin, end - begin));
 }
 
+std::string basicTypeToken(const std::string& text)
+{
+    const std::size_t begin = text.find("BasicType::");
+    assert(begin != std::string::npos);
+    std::size_t end = begin;
+    while (end < text.size() &&
+           (std::isalnum(static_cast<unsigned char>(text[end])) || text[end] == ':')) {
+        ++end;
+    }
+    return text.substr(begin, end - begin);
+}
+
 } // namespace
 
 int main(int argc, char** argv)
@@ -65,6 +77,7 @@ int main(int argc, char** argv)
     int presets = 0;
     int excluded = 0;
     int checked = 0;
+    int nonFantasy = 0;
 
     const std::size_t table = source.find("const MachineConfig kMachinePresets[]");
     assert(table != std::string::npos);
@@ -91,9 +104,16 @@ int main(int argc, char** argv)
             ++presets;
             const std::string name = firstQuotedString(entry);
             const int ramKB = ramKbBeforeBasicType(entry);
+            const std::string basicType = basicTypeToken(entry);
             const std::string lowerName = lowerAscii(name);
-            if (lowerName.find("fantasy") != std::string::npos ||
-                lowerName.find("bare apple-1") != std::string::npos) {
+            const bool fantasy = lowerName.find("fantasy") != std::string::npos;
+            if (!fantasy) {
+                ++nonFantasy;
+                if (basicType == "BasicType::Integer") {
+                    failures.push_back(name + " still preloads Integer BASIC");
+                }
+            }
+            if (fantasy || lowerName.find("bare apple-1") != std::string::npos) {
                 ++excluded;
                 --depth;
                 continue;
@@ -110,9 +130,10 @@ int main(int argc, char** argv)
     assert(presets >= 10);
     assert(excluded >= 2);
     assert(checked > 0);
+    assert(nonFantasy > 0);
 
     if (!failures.empty()) {
-        std::cerr << "Non-fantasy, non-bare presets must use standard 8 KB dual-bank RAM:\n";
+        std::cerr << "Preset realism invariant failed:\n";
         for (const auto& failure : failures) {
             std::cerr << "  - " << failure << "\n";
         }
@@ -120,6 +141,8 @@ int main(int argc, char** argv)
     }
 
     std::cout << "Checked " << checked
-              << " non-fantasy, non-bare presets; all are 8 KB dual-bank profiles.\n";
+              << " non-fantasy, non-bare presets; all are 8 KB dual-bank profiles. "
+              << "Checked " << nonFantasy
+              << " non-fantasy presets; none preload Integer BASIC.\n";
     return 0;
 }

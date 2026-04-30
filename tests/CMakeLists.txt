@@ -301,6 +301,25 @@ target_include_directories(test_tms9918_sprite_status PRIVATE
 add_test(NAME tms9918_sprite_status COMMAND test_tms9918_sprite_status)
 set_tests_properties(tms9918_sprite_status PROPERTIES TIMEOUT 5)
 
+# -- TMS9918A Silicon Strict runtime-toggle test ------------------------------
+# Pins the Hardware menu / CLI toggle behaviour: setSiliconStrictMode(true|false)
+# must transition cleanly without a chip reset, so an A/B comparison against
+# real silicon (the typical Galaga-via-CodeTank workflow) works live. Static
+# strict-mode drop is already covered by tms9918_sprite_status T8; this test
+# exists for the toggle delta only.
+add_executable(test_tms9918_silicon_strict_runtime
+    tms9918_silicon_strict_runtime_test.cpp
+    ${CMAKE_SOURCE_DIR}/TMS9918.cpp
+)
+target_include_directories(test_tms9918_silicon_strict_runtime PRIVATE
+    ${CMAKE_SOURCE_DIR}
+    ${CMAKE_SOURCE_DIR}/imgui
+)
+
+add_test(NAME tms9918_silicon_strict_runtime
+         COMMAND test_tms9918_silicon_strict_runtime)
+set_tests_properties(tms9918_silicon_strict_runtime PROPERTIES TIMEOUT 5)
+
 # -- CodeTank ↔ TMS9918 daughterboard dependency test -------------------------
 # Memory-level integration test: enabling CodeTank auto-plugs TMS9918,
 # disabling TMS9918 cascade-unplugs CodeTank, and disabling CodeTank does

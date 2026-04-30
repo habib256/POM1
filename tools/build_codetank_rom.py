@@ -201,6 +201,45 @@ def build_upper_bank_tetris() -> bytes:
     return bytes(bank)
 
 
+def build_lower_bank_dualslot8k() -> bytes:
+    """Lower 16 kB: Galaga 8 kB at $4000-$5FFF + Sokoban 8 kB at $6000-$7FFF.
+    No menu; the user runs `4000R` (Galaga) or `6000R` (Sokoban) directly.
+    Trades Snake / Life / interactive menu for Galaga having enough room to
+    carry the silicon-strict NOP padding (the menu-bank slot of 7424 B is
+    too tight once every back-to-back VDP store gets a 1-2 cycle gap).
+    """
+    print("[CodeTank] dualslot-8k bank: Galaga + Sokoban (8 kB each, no menu)",
+          file=sys.stderr)
+    galaga = assemble(
+        GALAGA_ASM,
+        DEV / "tms9918_galaga" / "apple1_galaga_codetank_8k.cfg",
+        "TMS_Galaga_8k", 0x2000)
+    sokoban = assemble(
+        SOKOBAN_ASM,
+        DEV / "tms9918_sokoban" / "apple1_sokoban_codetank_8k.cfg",
+        "TMS_Sokoban_8k", 0x2000)
+    bank = bytearray(b"\xFF" * HALF_SIZE)
+    slot(bank, 0x0000, galaga,  0x2000, "Galaga  ($4000-$5FFF)    ")
+    slot(bank, 0x2000, sokoban, 0x2000, "Sokoban ($6000-$7FFF)    ")
+    return bytes(bank)
+
+
+def build_lower_bank_galaga_full() -> bytes:
+    """Lower 16 kB: Galaga linked at $4000 with the entire bank to itself.
+    Pairs naturally with the existing Tetris upper bank — one coherent
+    program per CodeTank jumper position, the way the hardware was meant
+    to be used. Galaga has 8 kB+ of headroom for silicon-strict NOPs.
+    """
+    print("[CodeTank] galaga-full lower bank (Galaga $4000-$7FFF, full 16 kB)",
+          file=sys.stderr)
+    galaga = assemble(GALAGA_ASM, GALAGA_SPLIT_CFG, "TMS_Galaga_full",
+                      HALF_SIZE)
+    bank = bytearray(b"\xFF" * HALF_SIZE)
+    slot(bank, 0x0000, galaga, HALF_SIZE,
+         f"Galaga  ($4000-$7FFF, full 16 kB)")
+    return bytes(bank)
+
+
 def build_split_halves() -> tuple[bytes, bytes]:
     """Two 16 kB halves: Galaga at $4000 in lower, Sokoban at $4000
     in upper. Pick a game by moving the board jumper."""
@@ -227,7 +266,7 @@ def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument(
         "--layout",
-        choices=("menu", "split"),
+        choices=("menu", "split", "dualslot8k", "galaga_tetris"),
         default="menu",
         help="ROM layout (default: menu)",
     )
@@ -247,11 +286,12 @@ def main() -> int:
     need("ca65")
     need("ld65")
 
-    out = args.output or (
-        ROOT / "roms" / "codetank" /
-        ("galaga_sokoban_menu.rom" if args.layout == "menu"
-         else "galaga_sokoban_split.rom")
-    )
+    default_names = {
+        "menu":       "galaga_sokoban_menu.rom",
+        "split":      "galaga_sokoban_split.rom",
+        "dualslot8k": "galaga_sokoban_dualslot8k.rom",
+    }
+    out = args.output or (ROOT / "roms" / "codetank" / default_names[args.layout])
     out.parent.mkdir(parents=True, exist_ok=True)
 
     if args.layout == "menu":
@@ -262,12 +302,21 @@ def main() -> int:
             "TMS9918: Galaga / Sokoban / Snake / Life (lower jumper, menu) "
             "+ Tetris (upper jumper, auto-launch). Type 4000R.\n"
         )
-    else:
+    elif args.layout == "split":
         lower, upper = build_split_halves()
         rom = lower + upper
         sidecar_body = (
             "TMS9918 split bank: Lower = Galaga, Upper = Sokoban. "
             "Pick with the board jumper, then 4000R.\n"
+        )
+    else:  # dualslot8k
+        lower = build_lower_bank_dualslot8k()
+        upper = build_upper_bank_tetris()
+        rom = lower + upper
+        sidecar_body = (
+            "TMS9918 dualslot-8k: lower jumper = Galaga ($4000) + Sokoban "
+            "($6000), each in 8 kB; upper jumper = Tetris launcher. "
+            "No interactive menu; run 4000R or 6000R from Wozmon.\n"
         )
 
     assert len(rom) == ROM_SIZE, len(rom)

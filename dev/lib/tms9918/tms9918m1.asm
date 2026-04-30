@@ -86,8 +86,10 @@ init_vdp_g1:
 disable_sprites:
         LDA     #$00
         STA     VDP_CTRL
+        NOP                     ; +2c silicon-strict gap (LDA #imm bridge)
         LDA     #$5B            ; $1B | $40 = write at $1B00
         STA     VDP_CTRL
+        NOP                     ; +2c silicon-strict gap (LDA #imm bridge)
         LDA     #$D0
         STA     VDP_DATA
         RTS
@@ -100,6 +102,7 @@ disable_sprites:
 clear_name_table:
         LDA     #$00
         STA     VDP_CTRL
+        NOP                     ; +2c silicon-strict gap (LDA #imm bridge)
         LDA     #$58            ; $18 | $40 = write at $1800
         STA     VDP_CTRL
         LDX     #$03            ; 3 * 256 = 768 bytes
@@ -131,6 +134,7 @@ vdp_set_write:
 vdp_set_read:
         LDA     vdp_lo
         STA     VDP_CTRL
+        NOP                     ; +2c silicon-strict gap (LDA zp/abs bridge)
         LDA     vdp_hi          ; bit 6 = 0 → read
         STA     VDP_CTRL
         RTS

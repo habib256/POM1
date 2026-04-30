@@ -76,6 +76,7 @@ init_vdp_g2:
         ; --- write linear name table at $3800 ---
         LDA #$00
         STA VDP_CTRL
+        NOP                     ; +2c silicon-strict gap (LDA #imm bridge)
         LDA #$78
         STA VDP_CTRL
         LDX #3
@@ -89,6 +90,7 @@ init_vdp_g2:
         ; --- color table: $F1 everywhere ($2000-$37FF, 6144 bytes) ---
         LDA #$00
         STA VDP_CTRL
+        NOP                     ; +2c silicon-strict gap (LDA #imm bridge)
         LDA #$60
         STA VDP_CTRL
         LDX #24
@@ -108,6 +110,7 @@ vdp2_regs:
 clear_bitmap:
         LDA #$00
         STA VDP_CTRL
+        NOP                     ; +2c silicon-strict gap (LDA #imm bridge)
         LDA #$40
         STA VDP_CTRL
         LDX #24
@@ -124,8 +127,10 @@ clear_bitmap:
 disable_sprites:
         LDA #$00
         STA VDP_CTRL
+        NOP                     ; +2c silicon-strict gap (LDA #imm bridge)
         LDA #$3B | $40
         STA VDP_CTRL
+        NOP                     ; +2c silicon-strict gap (LDA #imm bridge)
         LDA #$D0
         STA VDP_DATA
         RTS
@@ -141,6 +146,7 @@ vdp_set_write:
 vdp_set_read:
         LDA pix_addr_lo
         STA VDP_CTRL
+        NOP                     ; +2c silicon-strict gap (LDA zp/abs bridge)
         LDA pix_addr_hi
         STA VDP_CTRL
         RTS

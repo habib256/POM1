@@ -90,14 +90,14 @@ const MachineConfig kMachinePresets[] = {
         }, 3
     },
     {
-        "Apple-1 with ACI & Integer BASIC (October 1976)",
+        "Apple-1 with ACI & BASIC cassette (October 1976)",
         "Original bare board with the ACI cassette expansion card: 6502, "
         "8 KB RAM (4 KB at $0000-$0FFF + 4 KB at $E000-$EFFF — Parmigiani's "
-        "standard dual-bank layout), PIA 6821, Integer BASIC loaded into "
-        "the upper 4 KB RAM bank from cassette, WOZ Monitor.",
+        "standard dual-bank layout), PIA 6821, Integer BASIC cassette ready "
+        "to load into the upper 4 KB RAM bank, WOZ Monitor.",
         false, false, false, false, false, false, false,
         /*pr40*/ false,
-        false, false, true, 8, BasicType::Integer,
+        false, false, true, 8, BasicType::IntegerCassette,
         /*sidSE*/ false,
         /*jukeBox*/ false, JukeBox::Jumper::RAM16_ROM32, JukeBox::ChipMode::Flash,
         /*codeTank*/ false, CodeTank::Jumper::Lower16, /*codeTankRom*/ nullptr,
@@ -113,14 +113,14 @@ const MachineConfig kMachinePresets[] = {
         "First commercial Apple-1 graphics card: Southwest Technical Products' GT-6144 "
         "(1976, $98.50). Standalone 64x96 monochrome framebuffer on 6x Intel 2102 SRAM "
         "chips, write-only I/O port at $D00A. Boots on the October-1976 Apple-1 "
-        "footprint (8 KB RAM + ACI + Integer BASIC), which is the machine Woz used "
-        "when demonstrating the GT-6144 in Interface Age. Power-on framebuffer state "
-        "is visible SRAM bistable noise; programs clear it before drawing. See the "
-        "Hardware Reference window and the top comment of GT6144.h for the 4-phase "
-        "command protocol.",
+        "footprint (8 KB RAM + ACI + BASIC cassette), which is the machine Woz used "
+        "when demonstrating the GT-6144 in Interface Age. Includes Steve Jobs' "
+        "PR-40 printer interface in Mixed switch mode. Power-on framebuffer state "
+        "is visible SRAM bistable noise; programs clear it before drawing. See "
+        "GT6144.h for the 4-phase command protocol.",
         false, false, false, false, false, false, false,
-        /*pr40*/ false,
-        false, false, /*aci*/ true, /*ramKB*/ 8, BasicType::Integer,
+        /*pr40*/ true,
+        false, false, /*aci*/ true, /*ramKB*/ 8, BasicType::None,
         /*sidSE*/ false,
         /*jukeBox*/ false, JukeBox::Jumper::RAM16_ROM32, JukeBox::ChipMode::Flash,
         /*codeTank*/ false, CodeTank::Jumper::Lower16, /*codeTankRom*/ nullptr,
@@ -129,18 +129,20 @@ const MachineConfig kMachinePresets[] = {
             {"Apple 1 Screen",                 {10,  61},  {843, 701}},
             // 4:3 content lives inside whatever size we give the window;
             // GL_NEAREST stretches the 64x96 texture horizontally 2x.
-            {"SWTPC GT-6144 Graphic Terminal", {856, 58},  {338, 277}},
-            {"Tutorial: SWTPC GT-6144",        {856, 337}, {339, 425}},
-        }, 3
+            {"SWTPC GT-6144 Graphic Terminal", {856, 58},  {338, 220}},
+            {"SWTPC PR-40 Printer",            {856, 282}, {338, 220}},
+            {"Tutorial: SWTPC GT-6144",        {856, 506}, {339, 256}},
+        }, 4
     },
     {
-        "Replica-1 with ACI, Krusader & Integer BASIC (Briel 2003)",
+        "Replica-1 with ACI & Krusader (Briel 2003)",
         "Vince Briel's modern recreation. 8 KB dual-bank RAM (4 KB at "
         "$0000-$0FFF + 4 KB at $E000-$EFFF — Parmigiani's standard layout, same "
-        "as 99 % of Originals). Integer BASIC, Krusader assembler, ACI cassette.",
+        "as 99 % of Originals). Krusader assembler and ACI cassette; "
+        "Integer BASIC can be loaded from cassette when needed.",
         false, false, false, false, false, false, false,
         /*pr40*/ false,
-        true, false, true, 8, BasicType::Integer,
+        true, false, true, 8, BasicType::None,
         /*sidSE*/ false,
         /*jukeBox*/ false, JukeBox::Jumper::RAM16_ROM32, JukeBox::ChipMode::Flash,
         /*codeTank*/ false, CodeTank::Jumper::Lower16, /*codeTankRom*/ nullptr,
@@ -177,8 +179,8 @@ const MachineConfig kMachinePresets[] = {
         "P-LAB Apple-1 with microSD & Applesoft Lite (April 2022)",
         "P-LAB microSD Storage Card, Applesoft Lite. 8 KB dual-bank RAM "
         "(4 KB at $0000-$0FFF + 4 KB at $E000-$EFFF — Parmigiani's standard). "
-        "Integer BASIC stays at $E000; Applesoft Lite is a separate ROM at "
-        "$6000-$7FFF (cold/warm: 6000R / 6003R).",
+        "Applesoft Lite is a separate ROM at $6000-$7FFF (cold/warm: "
+        "6000R / 6003R); the $E000-$EFFF high bank stays free RAM.",
         false, true, false, false, false, false, false,
         /*pr40*/ false,
         false, false, false, 8, BasicType::ApplesoftLite,
@@ -197,12 +199,12 @@ const MachineConfig kMachinePresets[] = {
     },
     {   //                                  GEN2  uSD  SID  TMS  RTC  WiFi Term Krus CFFA ACI
         "P-LAB Apple-1 with A1-SID Sound Card ($C800-$CFFF)",
-        "P-LAB A1-SID Sound Card (MOS 6581/8580), Integer BASIC. Registers at "
+        "P-LAB A1-SID Sound Card (MOS 6581/8580). Registers at "
         "$C800-$CFFF. 8 KB dual-bank RAM (4 KB at $0000-$0FFF + 4 KB at "
         "$E000-$EFFF — Parmigiani's standard layout).",
         false, false, true, false, false, false, false,
         /*pr40*/ false,
-        false, false, false, 8, BasicType::Integer,
+        false, false, false, 8, BasicType::None,
         /*sidSE*/ false,
         /*jukeBox*/ false, JukeBox::Jumper::RAM16_ROM32, JukeBox::ChipMode::Flash,
         /*codeTank*/ false, CodeTank::Jumper::Lower16, /*codeTankRom*/ nullptr,
@@ -223,7 +225,7 @@ const MachineConfig kMachinePresets[] = {
         "$E000-$EFFF — Parmigiani's standard layout).",
         false, false, false, false, false, false, false,
         /*pr40*/ false,
-        false, false, false, 8, BasicType::Integer,
+        false, false, false, 8, BasicType::None,
         /*sidSE*/ true,
         /*jukeBox*/ false, JukeBox::Jumper::RAM16_ROM32, JukeBox::ChipMode::Flash,
         /*codeTank*/ false, CodeTank::Jumper::Lower16, /*codeTankRom*/ nullptr,
@@ -265,13 +267,13 @@ const MachineConfig kMachinePresets[] = {
     },
     {   //                                  GEN2  uSD  SID  TMS  RTC  WiFi Term Krus CFFA ACI
         "P-LAB Apple-1 with I/O Board & RTC",
-        "P-LAB A1-IO Board & RTC (DS3231, DS18B20, analog/digital I/O), "
-        "Integer BASIC. 8 KB dual-bank RAM (4 KB at $0000-$0FFF + 4 KB at "
+        "P-LAB A1-IO Board & RTC (DS3231, DS18B20, analog/digital I/O). "
+        "8 KB dual-bank RAM (4 KB at $0000-$0FFF + 4 KB at "
         "$E000-$EFFF — Parmigiani's standard layout). The A1-IO VIA at "
         "$2000-$200F is on the peripheral bus (not main RAM).",
         false, false, false, false, true, false, false,
         /*pr40*/ false,
-        false, false, false, 8, BasicType::Integer,
+        false, false, false, 8, BasicType::None,
         /*sidSE*/ false,
         /*jukeBox*/ false, JukeBox::Jumper::RAM16_ROM32, JukeBox::ChipMode::Flash,
         /*codeTank*/ false, CodeTank::Jumper::Lower16, /*codeTankRom*/ nullptr,
@@ -284,13 +286,13 @@ const MachineConfig kMachinePresets[] = {
     },
     {   //                                  GEN2  uSD  SID  TMS  RTC  WiFi Term Krus CFFA ACI
         "P-LAB Apple-1 with Wi-Fi Modem BBS",
-        "P-LAB MODEM BBS (65C51 ACIA, ESP8266 AT, TCP/TELNET), Integer BASIC. "
+        "P-LAB MODEM BBS (65C51 ACIA, ESP8266 AT, TCP/TELNET). "
         "8 KB dual-bank RAM (4 KB at $0000-$0FFF + 4 KB at $E000-$EFFF — "
         "Parmigiani's standard layout). The ACIA at $B000-$B003 is on the "
         "peripheral bus.",
         false, false, false, false, false, true, false,
         /*pr40*/ false,
-        false, false, false, 8, BasicType::Integer,
+        false, false, false, 8, BasicType::None,
         /*sidSE*/ false,
         /*jukeBox*/ false, JukeBox::Jumper::RAM16_ROM32, JukeBox::ChipMode::Flash,
         /*codeTank*/ false, CodeTank::Jumper::Lower16, /*codeTankRom*/ nullptr,
@@ -307,12 +309,11 @@ const MachineConfig kMachinePresets[] = {
         "no ACI cassette. The Juke-Box's EEPROM replaces tape loading entirely. "
         "Type BD00R from the Woz Monitor to launch the Program Manager (& "
         "prompt). 8 KB dual-bank RAM (4 KB at $0000-$0FFF + 4 KB at $E000-$EFFF "
-        "— Parmigiani's standard layout); Integer BASIC is pre-loaded into the "
-        "high bank at $E000 so L<letter> on a BASIC program followed by B works "
-        "directly; the LA command still reloads BASIC from the EEPROM if needed.",
+        "— Parmigiani's standard layout); $E000-$EFFF stays free RAM by default. "
+        "Use the Juke-Box LA command to load BASIC from EEPROM when needed.",
         false, false, false, false, false, false, false,
         /*pr40*/ false,
-        false, false, /*aci*/ false, /*ramKB*/ 8, BasicType::Integer,
+        false, false, /*aci*/ false, /*ramKB*/ 8, BasicType::None,
         /*sidSE*/ false,
         /*jukeBox*/ true, JukeBox::Jumper::RAM16_ROM32, JukeBox::ChipMode::Flash,
         /*codeTank*/ false, CodeTank::Jumper::Lower16, /*codeTankRom*/ nullptr,
@@ -358,7 +359,7 @@ const MachineConfig kMachinePresets[] = {
     },
     {
         "Uncle Bernie's Apple-1 with GEN2 HGR Color (April 2026)",
-        "Uncle Bernie's GEN2 280x192 HGR color graphics, Integer BASIC. "
+        "Uncle Bernie's GEN2 280x192 HGR color graphics. "
         "8 KB dual-bank RAM (4 KB at $0000-$0FFF + 4 KB at $E000-$EFFF — "
         "Parmigiani's standard layout). The GEN2 framebuffer at $2000-$3FFF "
         "lives on the card itself; main motherboard RAM stays the standard "
@@ -366,7 +367,7 @@ const MachineConfig kMachinePresets[] = {
         "$2000-$3FFF without warnings.)",
         true, false, false, false, false, false, false,
         /*pr40*/ false,
-        false, false, false, 8, BasicType::Integer,
+        false, false, false, 8, BasicType::None,
         /*sidSE*/ false,
         /*jukeBox*/ false, JukeBox::Jumper::RAM16_ROM32, JukeBox::ChipMode::Flash,
         /*codeTank*/ false, CodeTank::Jumper::Lower16, /*codeTankRom*/ nullptr,
@@ -432,6 +433,14 @@ ImVec2 computePresetLayoutExtent(const MachineConfig& cfg, ImVec2 appleScreenFal
 
 namespace {
 using namespace pom1::mainwindow::detail;
+
+std::string findFirstExistingPath(std::initializer_list<const char*> candidates)
+{
+    for (const char* path : candidates) {
+        if (path && std::filesystem::exists(path)) return path;
+    }
+    return {};
+}
 }
 
 void MainWindow_ImGui::applyPendingLayout(const char* windowName)
@@ -576,6 +585,10 @@ void MainWindow_ImGui::applyMachineConfig(int presetIndex)
     // flagged in the status bar without blocking the program.
     presetRamKB = cfg.ramKB;
     emulation->setPresetRamKB(cfg.ramKB);
+    const bool fantasyPreset = std::string_view(cfg.name).find("Fantasy") != std::string_view::npos;
+    emulation->setSiliconStrictMode(!fantasyPreset);
+    siliconStrictModeEnabled = !fantasyPreset;
+    emulation->setOutOfRangeStrictMode(!fantasyPreset);
 
     // UI flags reflect the preset's target state immediately (the menu
     // checkmarks and toolbar chips are driven by these). The actual
@@ -689,6 +702,20 @@ void MainWindow_ImGui::applyMachineConfig(int presetIndex)
     pendingPr40Enable           = cfg.pr40Printer;
     pendingGT6144Enable         = cfg.gt6144;
     pendingCassetteAudioActive  = true;
+    pendingPresetTapePath.clear();
+    pendingPresetTapeForceProgramMode = false;
+    pendingPresetTapeAutoPlay = false;
+    if (cfg.basicType == BasicType::IntegerCassette) {
+        pendingPresetTapePath = findFirstExistingPath({
+            "cassettes/BASIC.aci", "../cassettes/BASIC.aci", "../../cassettes/BASIC.aci",
+            "cassettes/BASIC.ogg", "../cassettes/BASIC.ogg", "../../cassettes/BASIC.ogg",
+        });
+        pendingPresetTapeForceProgramMode = true;
+        if (pendingPresetTapePath.empty()) {
+            pom1::log().warn("POM1",
+                "Integer BASIC cassette asset not found (expected cassettes/BASIC.aci or BASIC.ogg)");
+        }
+    }
     pendingCardEnableFrames     = kCardEnableDeferFrames;
 
     // Load the appropriate BASIC ROM for this preset and track in loadedRoms
@@ -701,14 +728,20 @@ void MainWindow_ImGui::applyMachineConfig(int presetIndex)
             // kCardEnableDeferFrames, so at this point microSDEnabled /
             // cffa1Enabled are still false — calling the generic
             // reloadApplesoftLite() would dispatch to the CFFA1 variant
-            // ($E000-$FFFF) and clobber Integer BASIC + Woz Monitor even
+            // ($E000-$FFFF) and clobber the high RAM bank + Woz Monitor
             // when the preset wanted the microSD variant at $6000.
             if (cfg.microSD && !cfg.cffa1) {
                 ok = emulation->reloadApplesoftLiteSDCard(error);
                 if (ok) {
-                    loadedRoms.push_back({"Integer BASIC", 0xE000, 0xEFFF});
+                    if (fantasyPreset) {
+                        ok = emulation->reloadBasic(error);
+                        if (ok) loadedRoms.push_back({"Integer BASIC", 0xE000, 0xEFFF});
+                    } else {
+                        emulation->unloadBasic();
+                    }
                     loadedRoms.push_back({"Applesoft Lite (P-LAB microSD)", 0x6000, 0x7FFF});
-                    loadedRoms.push_back({"Woz Monitor", 0xFF00, 0xFFFF});
+                    if (ok && emulation->reloadWozMonitor(error))
+                        loadedRoms.push_back({"Woz Monitor", 0xFF00, 0xFFFF});
                 }
             } else {
                 ok = emulation->reloadApplesoftLiteCFFA1(error);
@@ -721,8 +754,16 @@ void MainWindow_ImGui::applyMachineConfig(int presetIndex)
             if (ok) loadedRoms.push_back({"Integer BASIC", 0xE000, 0xEFFF});
             if (emulation->reloadWozMonitor(error))
                 loadedRoms.push_back({"Woz Monitor", 0xFF00, 0xFFFF});
+        } else if (cfg.basicType == BasicType::IntegerCassette) {
+            // October 1976 hardware shipped BASIC on cassette, not preloaded
+            // in RAM. Leave $E000-$EFFF as high-bank RAM; the preset inserts
+            // the BASIC tape in the deck and the user loads it through ACI.
+            emulation->unloadBasic();
+            ok = emulation->reloadWozMonitor(error);
+            if (ok)
+                loadedRoms.push_back({"Woz Monitor", 0xFF00, 0xFFFF});
         } else {
-            // BasicType::None — pre-October-1976 bare Apple-1 has only the Woz Monitor.
+            // BasicType::None — realistic presets leave $E000-$EFFF as RAM.
             emulation->unloadBasic();
             ok = emulation->reloadWozMonitor(error);
             if (ok) loadedRoms.push_back({"Woz Monitor", 0xFF00, 0xFFFF});

@@ -2533,6 +2533,15 @@ score_add_with_mul:
 
 
 ; =============================================
+; hide_slot_4: write a hidden SAT slot with silicon-strict NOP padding.
+; Replaces 10 inline 16-B copies in render_sprites/_super_n.
+; =============================================
+hide_slot_4:
+        JSR hide_slot_4
+        RTS
+
+
+; =============================================
 ; render_sprites: rebuild the entire sprite attribute table at $1B00.
 ; Slot order: player, e0, e1, e2, pb0, pb1, eb0, eb1, eb2, terminator.
 ; Hidden sprites get Y=$C0 (off-screen, chain continues).
@@ -2541,6 +2550,7 @@ render_sprites:
         ; Set VDP write address = $1B00 (sprite attribute table)
         LDA #$00
         STA VDP_CTRL
+        NOP                     ; +2c silicon-strict gap (LDA #imm bridge)
         LDA #$5B                ; $1B | $40
         STA VDP_CTRL
 
@@ -2548,16 +2558,12 @@ render_sprites:
         LDA flash_cd
         AND #$04                ; alternate every 4 ticks of the flash
         BEQ @show_p
-        LDA #HIDDEN_Y
-        STA VDP_DATA
-        LDA #$00
-        STA VDP_DATA
-        STA VDP_DATA
-        STA VDP_DATA
+        JSR hide_slot_4
         JMP @after_p
 @show_p:
         LDA #PLAYER_Y
         STA VDP_DATA
+        NOP                     ; +2c silicon-strict gap (LDA zp/abs bridge)
         LDA player_x
         STA VDP_DATA
         ; Pattern: thrust flicker when the ship is actually moving.
@@ -2572,6 +2578,7 @@ render_sprites:
         LDA #P_PLAYER
 @write_p:
         STA VDP_DATA
+        NOP                     ; +2c silicon-strict gap (LDA #imm bridge)
         LDA #COL_PLAYER
         STA VDP_DATA
 @after_p:
@@ -2583,12 +2590,7 @@ render_sprites:
         CMP #2
         BNE @en_alive
         ; Dead -> hidden
-        LDA #HIDDEN_Y
-        STA VDP_DATA
-        LDA #$00
-        STA VDP_DATA
-        STA VDP_DATA
-        STA VDP_DATA
+        JSR hide_slot_4
         JMP @en_next
 @en_alive:
         ; Hit-flash strobe: alternate visibility every 4 ticks while
@@ -2597,12 +2599,7 @@ render_sprites:
         BEQ @en_paint
         AND #$04
         BNE @en_paint           ; bit set -> show frame
-        LDA #HIDDEN_Y
-        STA VDP_DATA
-        LDA #$00
-        STA VDP_DATA
-        STA VDP_DATA
-        STA VDP_DATA
+        JSR hide_slot_4
         JMP @en_next
 @en_paint:
         ; Y
@@ -2638,6 +2635,7 @@ render_sprites:
 @no_alt:
         LDA temp
         STA VDP_DATA
+        NOP                     ; +2c silicon-strict gap (LDA zp/abs bridge)
         ; Colour (E3 is already magenta in the palette so the boss
         ; uses the same hue as a regular E3 -- no override needed).
         LDA enemy_color,X
@@ -2654,20 +2652,18 @@ render_sprites:
 @pb_lp:
         LDA pb_active,X
         BNE @pb_show
-        LDA #HIDDEN_Y
-        STA VDP_DATA
-        LDA #$00
-        STA VDP_DATA
-        STA VDP_DATA
-        STA VDP_DATA
+        JSR hide_slot_4
         JMP @pb_next
 @pb_show:
         LDA pb_y,X
         STA VDP_DATA
+        NOP                     ; +2c silicon-strict gap (LDA zp/abs bridge)
         LDA pb_x,X
         STA VDP_DATA
+        NOP                     ; +2c silicon-strict gap (LDA #imm bridge)
         LDA #P_PBULLET
         STA VDP_DATA
+        NOP                     ; +2c silicon-strict gap (LDA #imm bridge)
         LDA #COL_PB
         STA VDP_DATA
 @pb_next:
@@ -2680,20 +2676,18 @@ render_sprites:
 @eb_lp:
         LDA eb_active,X
         BNE @eb_show
-        LDA #HIDDEN_Y
-        STA VDP_DATA
-        LDA #$00
-        STA VDP_DATA
-        STA VDP_DATA
-        STA VDP_DATA
+        JSR hide_slot_4
         JMP @eb_next
 @eb_show:
         LDA eb_y,X
         STA VDP_DATA
+        NOP                     ; +2c silicon-strict gap (LDA zp/abs bridge)
         LDA eb_x,X
         STA VDP_DATA
+        NOP                     ; +2c silicon-strict gap (LDA #imm bridge)
         LDA #P_EBULLET
         STA VDP_DATA
+        NOP                     ; +2c silicon-strict gap (LDA #imm bridge)
         LDA #COL_EB
         STA VDP_DATA
 @eb_next:
@@ -2706,6 +2700,7 @@ render_sprites:
         BEQ @exp_hide
         LDA exp_y
         STA VDP_DATA
+        NOP                     ; +2c silicon-strict gap (LDA zp/abs bridge)
         LDA exp_x
         STA VDP_DATA
         ; Big frame for the first half of the burst, smaller "fade"
@@ -2719,16 +2714,12 @@ render_sprites:
         LDA #P_EXP_ALT
 @write_exp:
         STA VDP_DATA
+        NOP                     ; +2c silicon-strict gap (LDA #imm bridge)
         LDA #COL_EXP
         STA VDP_DATA
         JMP @after_exp
 @exp_hide:
-        LDA #HIDDEN_Y
-        STA VDP_DATA
-        LDA #$00
-        STA VDP_DATA
-        STA VDP_DATA
-        STA VDP_DATA
+        JSR hide_slot_4
 @after_exp:
 
         ; --- Slot 11: falling drop (bonus or skull) ---
@@ -2736,21 +2727,18 @@ render_sprites:
         BEQ @drop_hide
         LDA drop_y
         STA VDP_DATA
+        NOP                     ; +2c silicon-strict gap (LDA zp/abs bridge)
         LDA drop_x
         STA VDP_DATA
         LDY drop_type
         LDA drop_pat,Y
         STA VDP_DATA
+        NOP                     ; +2c silicon-strict gap (LDA zp/abs bridge)
         LDA drop_color,Y
         STA VDP_DATA
         JMP @after_drop
 @drop_hide:
-        LDA #HIDDEN_Y
-        STA VDP_DATA
-        LDA #$00
-        STA VDP_DATA
-        STA VDP_DATA
-        STA VDP_DATA
+        JSR hide_slot_4
 @after_drop:
 
         ; --- Slot 12: score popup (single shared sprite) ---
@@ -2758,20 +2746,18 @@ render_sprites:
         BEQ @popup_hide
         LDA popup_y
         STA VDP_DATA
+        NOP                     ; +2c silicon-strict gap (LDA zp/abs bridge)
         LDA popup_x
         STA VDP_DATA
+        NOP                     ; +2c silicon-strict gap (LDA #imm bridge)
         LDA #P_POPUP
         STA VDP_DATA
+        NOP                     ; +2c silicon-strict gap (LDA zp/abs bridge)
         LDA popup_color
         STA VDP_DATA
         JMP @after_popup
 @popup_hide:
-        LDA #HIDDEN_Y
-        STA VDP_DATA
-        LDA #$00
-        STA VDP_DATA
-        STA VDP_DATA
-        STA VDP_DATA
+        JSR hide_slot_4
 @after_popup:
 
         ; --- Slot 13: shield ring (drawn around the ship) ---
@@ -2779,20 +2765,18 @@ render_sprites:
         BEQ @shield_hide
         LDA #PLAYER_Y
         STA VDP_DATA
+        NOP                     ; +2c silicon-strict gap (LDA zp/abs bridge)
         LDA player_x
         STA VDP_DATA
+        NOP                     ; +2c silicon-strict gap (LDA #imm bridge)
         LDA #P_SHIELD_RING
         STA VDP_DATA
+        NOP                     ; +2c silicon-strict gap (LDA #imm bridge)
         LDA #COL_SHIELD
         STA VDP_DATA
         JMP @after_shield
 @shield_hide:
-        LDA #HIDDEN_Y
-        STA VDP_DATA
-        LDA #$00
-        STA VDP_DATA
-        STA VDP_DATA
-        STA VDP_DATA
+        JSR hide_slot_4
 @after_shield:
 
         ; --- Slots 14..17 + 18..21: super bosses (parameterized) ---
@@ -2804,9 +2788,14 @@ render_sprites:
         ; --- Slot 22: chain terminator ---
         LDA #TERM_Y
         STA VDP_DATA
+        NOP                     ; +2c silicon-strict gap (LDA #imm bridge)
         LDA #$00
         STA VDP_DATA
+        NOP                     ; +2c silicon-strict gap (back-to-back VDP store)
+        NOP                     ; +2c silicon-strict gap (back-to-back VDP store)
         STA VDP_DATA
+        NOP                     ; +2c silicon-strict gap (back-to-back VDP store)
+        NOP                     ; +2c silicon-strict gap (back-to-back VDP store)
         STA VDP_DATA
         RTS
 
@@ -2822,12 +2811,7 @@ render_super_n:
         ; Hidden -- write 4 hidden entries
         LDY #$04
 @hide_lp:
-        LDA #HIDDEN_Y
-        STA VDP_DATA
-        LDA #$00
-        STA VDP_DATA
-        STA VDP_DATA
-        STA VDP_DATA
+        JSR hide_slot_4
         DEY
         BNE @hide_lp
         RTS
@@ -2835,12 +2819,16 @@ render_super_n:
         ; TL @ (super_x[X], super_y[X])
         LDA super_y,X
         STA VDP_DATA
+        NOP                     ; +2c silicon-strict gap (LDA zp/abs bridge)
         LDA super_x,X
         STA VDP_DATA
+        NOP                     ; +2c silicon-strict gap (LDA #imm bridge)
         LDA #P_SUPER_TL
         STA VDP_DATA
+        NOP                     ; +2c silicon-strict gap (LDA #imm bridge)
         LDA #COL_SUPER
         STA VDP_DATA
+        NOP                     ; +2c silicon-strict gap (LDA zp/abs bridge)
         ; TR @ (super_x[X]+16, super_y[X])
         LDA super_y,X
         STA VDP_DATA
@@ -2848,8 +2836,10 @@ render_super_n:
         CLC
         ADC #$10
         STA VDP_DATA
+        NOP                     ; +2c silicon-strict gap (LDA #imm bridge)
         LDA #P_SUPER_TR
         STA VDP_DATA
+        NOP                     ; +2c silicon-strict gap (LDA #imm bridge)
         LDA #COL_SUPER
         STA VDP_DATA
         ; BL @ (super_x[X], super_y[X]+16)
@@ -2857,10 +2847,13 @@ render_super_n:
         CLC
         ADC #$10
         STA VDP_DATA
+        NOP                     ; +2c silicon-strict gap (LDA zp/abs bridge)
         LDA super_x,X
         STA VDP_DATA
+        NOP                     ; +2c silicon-strict gap (LDA #imm bridge)
         LDA #P_SUPER_BL
         STA VDP_DATA
+        NOP                     ; +2c silicon-strict gap (LDA #imm bridge)
         LDA #COL_SUPER
         STA VDP_DATA
         ; BR @ (super_x[X]+16, super_y[X]+16)
@@ -2872,8 +2865,10 @@ render_super_n:
         CLC
         ADC #$10
         STA VDP_DATA
+        NOP                     ; +2c silicon-strict gap (LDA #imm bridge)
         LDA #P_SUPER_BR
         STA VDP_DATA
+        NOP                     ; +2c silicon-strict gap (LDA #imm bridge)
         LDA #COL_SUPER
         STA VDP_DATA
         RTS
@@ -2886,13 +2881,20 @@ render_super_n:
 hide_all_sprites:
         LDA #$00
         STA VDP_CTRL
+        NOP                     ; +2c silicon-strict gap (LDA #imm bridge)
         LDA #$5B
         STA VDP_CTRL
+        NOP                     ; +2c silicon-strict gap (LDA #imm bridge)
         LDA #TERM_Y
         STA VDP_DATA
+        NOP                     ; +2c silicon-strict gap (LDA #imm bridge)
         LDA #$00
         STA VDP_DATA
+        NOP                     ; +2c silicon-strict gap (back-to-back VDP store)
+        NOP                     ; +2c silicon-strict gap (back-to-back VDP store)
         STA VDP_DATA
+        NOP                     ; +2c silicon-strict gap (back-to-back VDP store)
+        NOP                     ; +2c silicon-strict gap (back-to-back VDP store)
         STA VDP_DATA
         RTS
 
@@ -2904,18 +2906,25 @@ draw_hud:
         ; VRAM addr $1800 (row 0 col 0)
         LDA #$00
         STA VDP_CTRL
+        NOP                     ; +2c silicon-strict gap (LDA #imm bridge)
         LDA #$58                ; $18 | $40
         STA VDP_CTRL
+        NOP                     ; +2c silicon-strict gap (LDA #imm bridge)
         LDA #C_S
         STA VDP_DATA
+        NOP                     ; +2c silicon-strict gap (LDA #imm bridge)
         LDA #C_C
         STA VDP_DATA
+        NOP                     ; +2c silicon-strict gap (LDA #imm bridge)
         LDA #C_O
         STA VDP_DATA
+        NOP                     ; +2c silicon-strict gap (LDA #imm bridge)
         LDA #C_R
         STA VDP_DATA
+        NOP                     ; +2c silicon-strict gap (LDA #imm bridge)
         LDA #C_E
         STA VDP_DATA
+        NOP                     ; +2c silicon-strict gap (LDA #imm bridge)
         LDA #C_CL
         STA VDP_DATA
 
@@ -2938,10 +2947,13 @@ draw_hud:
         ; duplicate it on the top row.)
         LDA #$1C
         STA VDP_CTRL
+        NOP                     ; +2c silicon-strict gap (LDA #imm bridge)
         LDA #$58                ; $18 | $40
         STA VDP_CTRL
+        NOP                     ; +2c silicon-strict gap (LDA #imm bridge)
         LDA #C_W
         STA VDP_DATA
+        NOP                     ; +2c silicon-strict gap (LDA #imm bridge)
         LDA #C_CL
         STA VDP_DATA
         ; Wave as 2-digit decimal (00..99)
@@ -2969,18 +2981,25 @@ draw_hud:
         ; --- Bottom-right "LIVES:N" at row 23 col 24 -> $1AD8 ---
         LDA #$D8
         STA VDP_CTRL
+        NOP                     ; +2c silicon-strict gap (LDA #imm bridge)
         LDA #$5A                ; $1A | $40
         STA VDP_CTRL
+        NOP                     ; +2c silicon-strict gap (LDA #imm bridge)
         LDA #C_L
         STA VDP_DATA
+        NOP                     ; +2c silicon-strict gap (LDA #imm bridge)
         LDA #C_I
         STA VDP_DATA
+        NOP                     ; +2c silicon-strict gap (LDA #imm bridge)
         LDA #C_V
         STA VDP_DATA
+        NOP                     ; +2c silicon-strict gap (LDA #imm bridge)
         LDA #C_E
         STA VDP_DATA
+        NOP                     ; +2c silicon-strict gap (LDA #imm bridge)
         LDA #C_S
         STA VDP_DATA
+        NOP                     ; +2c silicon-strict gap (LDA #imm bridge)
         LDA #C_CL
         STA VDP_DATA
         LDA player_lives
@@ -3077,87 +3096,123 @@ draw_title_tms:
         ; Row 14 col 4 -> $19C4
         LDA #$C4
         STA VDP_CTRL
+        NOP                     ; +2c silicon-strict gap (LDA #imm bridge)
         LDA #$59
         STA VDP_CTRL
+        NOP                     ; +2c silicon-strict gap (LDA #imm bridge)
         LDA #C_S
         STA VDP_DATA
+        NOP                     ; +2c silicon-strict gap (LDA #imm bridge)
         LDA #C_C
         STA VDP_DATA
+        NOP                     ; +2c silicon-strict gap (LDA #imm bridge)
         LDA #C_O
         STA VDP_DATA
+        NOP                     ; +2c silicon-strict gap (LDA #imm bridge)
         LDA #C_U
         STA VDP_DATA
+        NOP                     ; +2c silicon-strict gap (LDA #imm bridge)
         LDA #C_T
         STA VDP_DATA
+        NOP                     ; +2c silicon-strict gap (LDA #imm bridge)
 
         ; "FIGHTER" centred under red sprite (X=120, cols 15-16).
         ; Row 14 col 12 -> $19CC
         LDA #$CC
         STA VDP_CTRL
+        NOP                     ; +2c silicon-strict gap (LDA #imm bridge)
         LDA #$59
         STA VDP_CTRL
+        NOP                     ; +2c silicon-strict gap (LDA #imm bridge)
         LDA #C_F
         STA VDP_DATA
+        NOP                     ; +2c silicon-strict gap (LDA #imm bridge)
         LDA #C_I
         STA VDP_DATA
+        NOP                     ; +2c silicon-strict gap (LDA #imm bridge)
         LDA #C_G
         STA VDP_DATA
+        NOP                     ; +2c silicon-strict gap (LDA #imm bridge)
         LDA #C_H
         STA VDP_DATA
+        NOP                     ; +2c silicon-strict gap (LDA #imm bridge)
         LDA #C_T
         STA VDP_DATA
+        NOP                     ; +2c silicon-strict gap (LDA #imm bridge)
         LDA #C_E
         STA VDP_DATA
+        NOP                     ; +2c silicon-strict gap (LDA #imm bridge)
         LDA #C_R
         STA VDP_DATA
+        NOP                     ; +2c silicon-strict gap (LDA #imm bridge)
 
         ; "BOSS" centred under cyan sprite (X=192, cols 24-25).
         ; Row 14 col 22 -> $19D6
         LDA #$D6
         STA VDP_CTRL
+        NOP                     ; +2c silicon-strict gap (LDA #imm bridge)
         LDA #$59
         STA VDP_CTRL
+        NOP                     ; +2c silicon-strict gap (LDA #imm bridge)
         LDA #C_B
         STA VDP_DATA
+        NOP                     ; +2c silicon-strict gap (LDA #imm bridge)
         LDA #C_O
         STA VDP_DATA
+        NOP                     ; +2c silicon-strict gap (LDA #imm bridge)
         LDA #C_S
         STA VDP_DATA
+        NOP                     ; +2c silicon-strict gap (LDA #imm bridge)
         LDA #C_S
         STA VDP_DATA
+        NOP                     ; +2c silicon-strict gap (LDA #imm bridge)
 
         ; HP labels under each name. Row 15 -> $19E0
         ; "2HP" col 5 -> $19E5
         LDA #$E5
         STA VDP_CTRL
+        NOP                     ; +2c silicon-strict gap (LDA #imm bridge)
         LDA #$59
         STA VDP_CTRL
+        NOP                     ; +2c silicon-strict gap (LDA #imm bridge)
         LDA #C_D0+2
         STA VDP_DATA
+        NOP                     ; +2c silicon-strict gap (LDA #imm bridge)
         LDA #C_H
         STA VDP_DATA
+        NOP                     ; +2c silicon-strict gap (LDA #imm bridge)
         LDA #C_P
         STA VDP_DATA
+        NOP                     ; +2c silicon-strict gap (LDA #imm bridge)
         ; "4HP" col 14 -> $19EE
         LDA #$EE
         STA VDP_CTRL
+        NOP                     ; +2c silicon-strict gap (LDA #imm bridge)
         LDA #$59
         STA VDP_CTRL
+        NOP                     ; +2c silicon-strict gap (LDA #imm bridge)
         LDA #C_D0+4
         STA VDP_DATA
+        NOP                     ; +2c silicon-strict gap (LDA #imm bridge)
         LDA #C_H
         STA VDP_DATA
+        NOP                     ; +2c silicon-strict gap (LDA #imm bridge)
         LDA #C_P
         STA VDP_DATA
+        NOP                     ; +2c silicon-strict gap (LDA #imm bridge)
         ; "6HP" col 23 -> $19F7
         LDA #$F7
         STA VDP_CTRL
+        NOP                     ; +2c silicon-strict gap (LDA #imm bridge)
         LDA #$59
         STA VDP_CTRL
+        NOP                     ; +2c silicon-strict gap (LDA #imm bridge)
         LDA #C_D0+6
         STA VDP_DATA
+        NOP                     ; +2c silicon-strict gap (LDA #imm bridge)
         LDA #C_H
         STA VDP_DATA
+        NOP                     ; +2c silicon-strict gap (LDA #imm bridge)
         LDA #C_P
         STA VDP_DATA
 
@@ -3210,44 +3265,60 @@ draw_title_tms:
 draw_title_sprites:
         LDA #$00
         STA VDP_CTRL
+        NOP                     ; +2c silicon-strict gap (LDA #imm bridge)
         LDA #$5B                ; $1B | $40 = SAT $1B00
         STA VDP_CTRL
+        NOP                     ; +2c silicon-strict gap (LDA #imm bridge)
         ; Slot 0: yellow scout at (48, 88)
         LDA #88
         STA VDP_DATA
+        NOP                     ; +2c silicon-strict gap (LDA #imm bridge)
         LDA #48
         STA VDP_DATA
         LDA #P_ENEMY1
         JSR title_apply_anim
         STA VDP_DATA
+        NOP                     ; +2c silicon-strict gap (LDA #imm bridge)
         LDA #COL_E1
         STA VDP_DATA
+        NOP                     ; +2c silicon-strict gap (LDA #imm bridge)
         ; Slot 1: red fighter at (120, 88)
         LDA #88
         STA VDP_DATA
+        NOP                     ; +2c silicon-strict gap (LDA #imm bridge)
         LDA #120
         STA VDP_DATA
         LDA #P_ENEMY2
         JSR title_apply_anim
         STA VDP_DATA
+        NOP                     ; +2c silicon-strict gap (LDA #imm bridge)
         LDA #COL_E2
         STA VDP_DATA
+        NOP                     ; +2c silicon-strict gap (LDA #imm bridge)
         ; Slot 2: cyan boss at (192, 88)
         LDA #88
         STA VDP_DATA
+        NOP                     ; +2c silicon-strict gap (LDA #imm bridge)
         LDA #192
         STA VDP_DATA
         LDA #P_ENEMY3
         JSR title_apply_anim
         STA VDP_DATA
+        NOP                     ; +2c silicon-strict gap (LDA #imm bridge)
         LDA #COL_E3
         STA VDP_DATA
+        NOP                     ; +2c silicon-strict gap (LDA #imm bridge)
         ; Terminator
         LDA #TERM_Y
         STA VDP_DATA
+        NOP                     ; +2c silicon-strict gap (LDA #imm bridge)
         LDA #$00
         STA VDP_DATA
+        NOP                     ; +2c silicon-strict gap (back-to-back VDP store)
+        NOP                     ; +2c silicon-strict gap (back-to-back VDP store)
         STA VDP_DATA
+        NOP                     ; +2c silicon-strict gap (back-to-back VDP store)
+        NOP                     ; +2c silicon-strict gap (back-to-back VDP store)
         STA VDP_DATA
         RTS
 
@@ -3370,59 +3441,86 @@ draw_help_tms:
 draw_help_sprites:
         LDA #$00
         STA VDP_CTRL
+        NOP                     ; +2c silicon-strict gap (LDA #imm bridge)
         LDA #$5B
         STA VDP_CTRL
+        NOP                     ; +2c silicon-strict gap (LDA #imm bridge)
         ; Slot 0: DOUBLE icon at row 5 (Y=40)
         LDA #40
         STA VDP_DATA
+        NOP                     ; +2c silicon-strict gap (LDA #imm bridge)
         LDA #40
         STA VDP_DATA
+        NOP                     ; +2c silicon-strict gap (LDA #imm bridge)
         LDA #P_BONUS_DOUBLE
         STA VDP_DATA
+        NOP                     ; +2c silicon-strict gap (LDA #imm bridge)
         LDA #COL_BD
         STA VDP_DATA
+        NOP                     ; +2c silicon-strict gap (LDA #imm bridge)
         ; Slot 1: TRIPLE row 8 (Y=64)
         LDA #64
         STA VDP_DATA
+        NOP                     ; +2c silicon-strict gap (LDA #imm bridge)
         LDA #40
         STA VDP_DATA
+        NOP                     ; +2c silicon-strict gap (LDA #imm bridge)
         LDA #P_BONUS_TRIPLE
         STA VDP_DATA
+        NOP                     ; +2c silicon-strict gap (LDA #imm bridge)
         LDA #COL_BT
         STA VDP_DATA
+        NOP                     ; +2c silicon-strict gap (LDA #imm bridge)
         ; Slot 2: SHIELD row 11 (Y=88)
         LDA #88
         STA VDP_DATA
+        NOP                     ; +2c silicon-strict gap (LDA #imm bridge)
         LDA #40
         STA VDP_DATA
+        NOP                     ; +2c silicon-strict gap (LDA #imm bridge)
         LDA #P_BONUS_SHIELD
         STA VDP_DATA
+        NOP                     ; +2c silicon-strict gap (LDA #imm bridge)
         LDA #COL_BS
         STA VDP_DATA
+        NOP                     ; +2c silicon-strict gap (LDA #imm bridge)
         ; Slot 3: SKULL row 14 (Y=112)
         LDA #112
         STA VDP_DATA
+        NOP                     ; +2c silicon-strict gap (LDA #imm bridge)
         LDA #40
         STA VDP_DATA
+        NOP                     ; +2c silicon-strict gap (LDA #imm bridge)
         LDA #P_MALUS_SKULL
         STA VDP_DATA
+        NOP                     ; +2c silicon-strict gap (LDA #imm bridge)
         LDA #COL_MS
         STA VDP_DATA
+        NOP                     ; +2c silicon-strict gap (LDA #imm bridge)
         ; Slot 4: SMART BOMB row 17 (Y=136) -- starburst, dark green
         LDA #136
         STA VDP_DATA
+        NOP                     ; +2c silicon-strict gap (LDA #imm bridge)
         LDA #40
         STA VDP_DATA
+        NOP                     ; +2c silicon-strict gap (LDA #imm bridge)
         LDA #P_EXP
         STA VDP_DATA
+        NOP                     ; +2c silicon-strict gap (LDA #imm bridge)
         LDA #12                 ; dark green (matches drop_color[4])
         STA VDP_DATA
+        NOP                     ; +2c silicon-strict gap (LDA #imm bridge)
         ; Terminator
         LDA #TERM_Y
         STA VDP_DATA
+        NOP                     ; +2c silicon-strict gap (LDA #imm bridge)
         LDA #$00
         STA VDP_DATA
+        NOP                     ; +2c silicon-strict gap (back-to-back VDP store)
+        NOP                     ; +2c silicon-strict gap (back-to-back VDP store)
         STA VDP_DATA
+        NOP                     ; +2c silicon-strict gap (back-to-back VDP store)
+        NOP                     ; +2c silicon-strict gap (back-to-back VDP store)
         STA VDP_DATA
         RTS
 
@@ -3438,48 +3536,67 @@ draw_wave_clear_tms:
         ; "WAVE NN CLEAR" centred row 7 col 9 -> $18E9
         LDA #$E9
         STA VDP_CTRL
+        NOP                     ; +2c silicon-strict gap (LDA #imm bridge)
         LDA #$58
         STA VDP_CTRL
+        NOP                     ; +2c silicon-strict gap (LDA #imm bridge)
         LDA #C_W
         STA VDP_DATA
+        NOP                     ; +2c silicon-strict gap (LDA #imm bridge)
         LDA #C_A
         STA VDP_DATA
+        NOP                     ; +2c silicon-strict gap (LDA #imm bridge)
         LDA #C_V
         STA VDP_DATA
+        NOP                     ; +2c silicon-strict gap (LDA #imm bridge)
         LDA #C_E
         STA VDP_DATA
+        NOP                     ; +2c silicon-strict gap (LDA #imm bridge)
         LDA #C_SP
         STA VDP_DATA
         LDA wave
         JSR emit_2digit_tms
         LDA #C_SP
         STA VDP_DATA
+        NOP                     ; +2c silicon-strict gap (LDA #imm bridge)
         LDA #C_C
         STA VDP_DATA
+        NOP                     ; +2c silicon-strict gap (LDA #imm bridge)
         LDA #C_L
         STA VDP_DATA
+        NOP                     ; +2c silicon-strict gap (LDA #imm bridge)
         LDA #C_E
         STA VDP_DATA
+        NOP                     ; +2c silicon-strict gap (LDA #imm bridge)
         LDA #C_A
         STA VDP_DATA
+        NOP                     ; +2c silicon-strict gap (LDA #imm bridge)
         LDA #C_R
         STA VDP_DATA
+        NOP                     ; +2c silicon-strict gap (LDA #imm bridge)
 
         ; "SCORE NNNNN" row 10 col 10 -> $194A
         LDA #$4A
         STA VDP_CTRL
+        NOP                     ; +2c silicon-strict gap (LDA #imm bridge)
         LDA #$59
         STA VDP_CTRL
+        NOP                     ; +2c silicon-strict gap (LDA #imm bridge)
         LDA #C_S
         STA VDP_DATA
+        NOP                     ; +2c silicon-strict gap (LDA #imm bridge)
         LDA #C_C
         STA VDP_DATA
+        NOP                     ; +2c silicon-strict gap (LDA #imm bridge)
         LDA #C_O
         STA VDP_DATA
+        NOP                     ; +2c silicon-strict gap (LDA #imm bridge)
         LDA #C_R
         STA VDP_DATA
+        NOP                     ; +2c silicon-strict gap (LDA #imm bridge)
         LDA #C_E
         STA VDP_DATA
+        NOP                     ; +2c silicon-strict gap (LDA #imm bridge)
         LDA #C_SP
         STA VDP_DATA
         JSR score_to_digits
@@ -3495,26 +3612,37 @@ draw_wave_clear_tms:
         ; "NEXT WAVE NN" row 14 col 10 -> $19CA
         LDA #$CA
         STA VDP_CTRL
+        NOP                     ; +2c silicon-strict gap (LDA #imm bridge)
         LDA #$59
         STA VDP_CTRL
+        NOP                     ; +2c silicon-strict gap (LDA #imm bridge)
         LDA #C_N
         STA VDP_DATA
+        NOP                     ; +2c silicon-strict gap (LDA #imm bridge)
         LDA #C_E
         STA VDP_DATA
+        NOP                     ; +2c silicon-strict gap (LDA #imm bridge)
         LDA #C_X
         STA VDP_DATA
+        NOP                     ; +2c silicon-strict gap (LDA #imm bridge)
         LDA #C_T
         STA VDP_DATA
+        NOP                     ; +2c silicon-strict gap (LDA #imm bridge)
         LDA #C_SP
         STA VDP_DATA
+        NOP                     ; +2c silicon-strict gap (LDA #imm bridge)
         LDA #C_W
         STA VDP_DATA
+        NOP                     ; +2c silicon-strict gap (LDA #imm bridge)
         LDA #C_A
         STA VDP_DATA
+        NOP                     ; +2c silicon-strict gap (LDA #imm bridge)
         LDA #C_V
         STA VDP_DATA
+        NOP                     ; +2c silicon-strict gap (LDA #imm bridge)
         LDA #C_E
         STA VDP_DATA
+        NOP                     ; +2c silicon-strict gap (LDA #imm bridge)
         LDA #C_SP
         STA VDP_DATA
         LDA wave
@@ -3573,70 +3701,101 @@ draw_victory_tms:
         ; "VICTORY" - row 5 col 12 -> $18AC
         LDA #$AC
         STA VDP_CTRL
+        NOP                     ; +2c silicon-strict gap (LDA #imm bridge)
         LDA #$58
         STA VDP_CTRL
+        NOP                     ; +2c silicon-strict gap (LDA #imm bridge)
         LDA #C_V
         STA VDP_DATA
+        NOP                     ; +2c silicon-strict gap (LDA #imm bridge)
         LDA #C_I
         STA VDP_DATA
+        NOP                     ; +2c silicon-strict gap (LDA #imm bridge)
         LDA #C_C
         STA VDP_DATA
+        NOP                     ; +2c silicon-strict gap (LDA #imm bridge)
         LDA #C_T
         STA VDP_DATA
+        NOP                     ; +2c silicon-strict gap (LDA #imm bridge)
         LDA #C_O
         STA VDP_DATA
+        NOP                     ; +2c silicon-strict gap (LDA #imm bridge)
         LDA #C_R
         STA VDP_DATA
+        NOP                     ; +2c silicon-strict gap (LDA #imm bridge)
         LDA #C_Y
         STA VDP_DATA
+        NOP                     ; +2c silicon-strict gap (LDA #imm bridge)
 
         ; "YOU WIN" - row 7 col 12 -> $18EC
         LDA #$EC
         STA VDP_CTRL
+        NOP                     ; +2c silicon-strict gap (LDA #imm bridge)
         LDA #$58
         STA VDP_CTRL
+        NOP                     ; +2c silicon-strict gap (LDA #imm bridge)
         LDA #C_Y
         STA VDP_DATA
+        NOP                     ; +2c silicon-strict gap (LDA #imm bridge)
         LDA #C_O
         STA VDP_DATA
+        NOP                     ; +2c silicon-strict gap (LDA #imm bridge)
         LDA #C_U
         STA VDP_DATA
+        NOP                     ; +2c silicon-strict gap (LDA #imm bridge)
         LDA #C_SP
         STA VDP_DATA
+        NOP                     ; +2c silicon-strict gap (LDA #imm bridge)
         LDA #C_W
         STA VDP_DATA
+        NOP                     ; +2c silicon-strict gap (LDA #imm bridge)
         LDA #C_I
         STA VDP_DATA
+        NOP                     ; +2c silicon-strict gap (LDA #imm bridge)
         LDA #C_N
         STA VDP_DATA
+        NOP                     ; +2c silicon-strict gap (LDA #imm bridge)
 
         ; "FINAL SCORE NNNNN" - row 11 col 7 -> $1967
         LDA #$67
         STA VDP_CTRL
+        NOP                     ; +2c silicon-strict gap (LDA #imm bridge)
         LDA #$59
         STA VDP_CTRL
+        NOP                     ; +2c silicon-strict gap (LDA #imm bridge)
         LDA #C_F
         STA VDP_DATA
+        NOP                     ; +2c silicon-strict gap (LDA #imm bridge)
         LDA #C_I
         STA VDP_DATA
+        NOP                     ; +2c silicon-strict gap (LDA #imm bridge)
         LDA #C_N
         STA VDP_DATA
+        NOP                     ; +2c silicon-strict gap (LDA #imm bridge)
         LDA #C_A
         STA VDP_DATA
+        NOP                     ; +2c silicon-strict gap (LDA #imm bridge)
         LDA #C_L
         STA VDP_DATA
+        NOP                     ; +2c silicon-strict gap (LDA #imm bridge)
         LDA #C_SP
         STA VDP_DATA
+        NOP                     ; +2c silicon-strict gap (LDA #imm bridge)
         LDA #C_S
         STA VDP_DATA
+        NOP                     ; +2c silicon-strict gap (LDA #imm bridge)
         LDA #C_C
         STA VDP_DATA
+        NOP                     ; +2c silicon-strict gap (LDA #imm bridge)
         LDA #C_O
         STA VDP_DATA
+        NOP                     ; +2c silicon-strict gap (LDA #imm bridge)
         LDA #C_R
         STA VDP_DATA
+        NOP                     ; +2c silicon-strict gap (LDA #imm bridge)
         LDA #C_E
         STA VDP_DATA
+        NOP                     ; +2c silicon-strict gap (LDA #imm bridge)
         LDA #C_SP
         STA VDP_DATA
         JSR score_to_digits
@@ -3652,6 +3811,7 @@ draw_victory_tms:
         ; "PRESS A KEY" centred row 17 col 10 -> $1A2A
         LDA #$2A
         STA VDP_CTRL
+        NOP                     ; +2c silicon-strict gap (LDA #imm bridge)
         LDA #$5A
         STA VDP_CTRL
         LDA #<title_press_tms
@@ -3689,6 +3849,7 @@ draw_gameover_tms:
 clear_name_table:
         LDA #$00
         STA VDP_CTRL
+        NOP                     ; +2c silicon-strict gap (LDA #imm bridge)
         LDA #$58
         STA VDP_CTRL
         LDX #$03
@@ -3744,6 +3905,7 @@ plot_star:
         ADC #$18                        ; + name-table base + carry
         ORA #$40                        ; write flag
         STA VDP_CTRL
+        NOP                     ; +2c silicon-strict gap (LDA zp/abs bridge)
         LDA temp3
         STA VDP_DATA
         RTS
@@ -3846,6 +4008,8 @@ tick_starfield:
 
 draw_str_tms:
         STA VDP_CTRL
+        NOP                     ; +2c silicon-strict gap (back-to-back VDP store)
+        NOP                     ; +2c silicon-strict gap (back-to-back VDP store)
         STX VDP_CTRL
         LDY #$00
 @lp:    LDA (sptr_lo),Y
@@ -3877,6 +4041,7 @@ init_vdp:
         ; --- Upload sprite patterns at $3800 ---
         LDA #$00
         STA VDP_CTRL
+        NOP                     ; +2c silicon-strict gap (LDA #imm bridge)
         LDA #$78                ; $38 | $40
         STA VDP_CTRL
 
@@ -3902,6 +4067,7 @@ init_vdp:
         ; --- Upload HUD glyph patterns at VRAM $01C0 (chars 56..) ---
         LDA #$C0
         STA VDP_CTRL
+        NOP                     ; +2c silicon-strict gap (LDA #imm bridge)
         LDA #$41                ; $01 | $40
         STA VDP_CTRL
         LDX #$00
@@ -3920,16 +4086,19 @@ init_vdp:
         ; --- 4 starfield colour groups (12-15) all draw the same dot.
         LDA #$40                ; char 104 = VRAM $0340
         STA VDP_CTRL
+        NOP                     ; +2c silicon-strict gap (LDA #imm bridge)
         LDA #$43
         STA VDP_CTRL
         JSR upload_star_pattern
         LDA #$80                ; char 112 = VRAM $0380
         STA VDP_CTRL
+        NOP                     ; +2c silicon-strict gap (LDA #imm bridge)
         LDA #$43
         STA VDP_CTRL
         JSR upload_star_pattern
         LDA #$C0                ; char 120 = VRAM $03C0
         STA VDP_CTRL
+        NOP                     ; +2c silicon-strict gap (LDA #imm bridge)
         LDA #$43
         STA VDP_CTRL
         JSR upload_star_pattern
@@ -3937,6 +4106,7 @@ init_vdp:
         ; --- Tile colour groups (chars 0-95): we only use the HUD set ---
         LDA #$00
         STA VDP_CTRL
+        NOP                     ; +2c silicon-strict gap (LDA #imm bridge)
         LDA #$60                ; $20 | $40
         STA VDP_CTRL
         LDX #$00
@@ -3949,6 +4119,7 @@ init_vdp:
         ; --- Clear name table $1800 (768 B) ---
         LDA #$00
         STA VDP_CTRL
+        NOP                     ; +2c silicon-strict gap (LDA #imm bridge)
         LDA #$58
         STA VDP_CTRL
         LDX #$03
@@ -3963,13 +4134,20 @@ init_vdp:
         ; --- Init sprite attribute table: only the chain terminator ---
         LDA #$00
         STA VDP_CTRL
+        NOP                     ; +2c silicon-strict gap (LDA #imm bridge)
         LDA #$5B                ; $1B | $40
         STA VDP_CTRL
+        NOP                     ; +2c silicon-strict gap (LDA #imm bridge)
         LDA #TERM_Y
         STA VDP_DATA
+        NOP                     ; +2c silicon-strict gap (LDA #imm bridge)
         LDA #$00
         STA VDP_DATA
+        NOP                     ; +2c silicon-strict gap (back-to-back VDP store)
+        NOP                     ; +2c silicon-strict gap (back-to-back VDP store)
         STA VDP_DATA
+        NOP                     ; +2c silicon-strict gap (back-to-back VDP store)
+        NOP                     ; +2c silicon-strict gap (back-to-back VDP store)
         STA VDP_DATA
         RTS
 

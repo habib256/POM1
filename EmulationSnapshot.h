@@ -28,13 +28,13 @@
 
 struct EmulationSnapshot
 {
-    std::vector<quint8> memory = std::vector<quint8>(0x10000, 0);
-    quint16 programCounter = 0;
-    quint8 accumulator = 0;
-    quint8 xRegister = 0;
-    quint8 yRegister = 0;
-    quint8 stackPointer = 0;
-    quint8 statusRegister = 0;
+    std::vector<uint8_t> memory = std::vector<uint8_t>(0x10000, 0);
+    uint16_t programCounter = 0;
+    uint8_t accumulator = 0;
+    uint8_t xRegister = 0;
+    uint8_t yRegister = 0;
+    uint8_t stackPointer = 0;
+    uint8_t statusRegister = 0;
     bool cpuRunning = false;
     bool keyReady = false;
     char lastKey = 0;

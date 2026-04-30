@@ -46,9 +46,6 @@ class PR40Printer;
 #include "JukeBox.h"
 #include "MicroSD.h"
 
-using quint8  = uint8_t;
-using quint16 = uint16_t;
-
 class Memory
 {
 public:
@@ -79,7 +76,7 @@ public:
     bool isOutOfRangeStrictMode(void) const { return oorStrictMode; }
 
     // Load Memory from file
-    int loadROM(const char* filename, quint16 startAddress, size_t maxSize, const char* label);
+    int loadROM(const char* filename, uint16_t startAddress, size_t maxSize, const char* label);
     int loadBasic(void);
     // Zero the $E000-$EFFF BASIC ROM region — matches a pre-October-1976
     // bare Apple-1 that shipped with no BASIC cassette.
@@ -93,17 +90,17 @@ public:
     int loadKrusader(void);
     int loadWozMonitor(void);
     int loadAciRom(void);
-    void configureResetVectors(quint16 vectorAddress = 0xFF00);
-    int loadBinary(const char* filename, quint16 startAddress, int* bytesLoaded = nullptr);
+    void configureResetVectors(uint16_t vectorAddress = 0xFF00);
+    int loadBinary(const char* filename, uint16_t startAddress, int* bytesLoaded = nullptr);
     // loadHexDump: parse a Wozmon-hex dump (e.g. games_chess Chess.txt) and
     // write each `AAAA: BB BB ...` block into mem[]. Multi-zone dumps that
     // jump between disjoint address ranges (chess: $0280 lo block + $E000 hi
     // block) populate the optional `zones` vector with one (start, end) pair
     // per contiguous zone — used by the file-dialog post-load metadata so the
     // Memory Map can display each zone as its own loadedPrograms entry.
-    int loadHexDump(const char* filename, quint16 &startAddress,
+    int loadHexDump(const char* filename, uint16_t &startAddress,
                     int* bytesLoaded = nullptr,
-                    std::vector<std::pair<quint16,quint16>>* zones = nullptr);
+                    std::vector<std::pair<uint16_t,uint16_t>>* zones = nullptr);
 
     // Last ROM loading error (empty if no error)
     const std::string& getLastError() const { return lastError; }
@@ -133,11 +130,11 @@ public:
     bool saveSnapshot(const std::string& path, std::string& error) const;
     bool loadSnapshot(const std::string& path, std::string& error);
 
-    quint8 memRead(quint16 address);
-    //quint8 memReadAbsolute(quint16 adr);
-    void memWrite(quint16 address, quint8 value);
-    const quint8* getMemoryPointer() const { return mem.data(); }
-    quint8* getMemoryPointerMutable() { return mem.data(); }
+    uint8_t memRead(uint16_t address);
+    //uint8_t memReadAbsolute(uint16_t adr);
+    void memWrite(uint16_t address, uint8_t value);
+    const uint8_t* getMemoryPointer() const { return mem.data(); }
+    uint8_t* getMemoryPointerMutable() { return mem.data(); }
     // Debug: diagnostic string summarising which bus handlers are enabled.
     std::string busStateSummary() const;
 
@@ -342,6 +339,10 @@ private:
     DisplayDevice* displayDevice = nullptr;     // non-owning; injected by EmulationController
     
     // Clavier Apple 1 (0xD010 = KBD, 0xD011 = KBDCR)
+    // REQUIRES: stateMutex held by caller. UI never touches these directly —
+    // it queues via KeyboardController; drainTo() crosses the bridge inside
+    // the emulation slice. CPU $D010/$D011 reads, terminal injection, and
+    // snapshot publish/save/load all run on the emul thread under stateMutex.
     char lastKey = 0;
     bool keyReady = false;
     std::queue<char> keyBuffer;
@@ -353,7 +354,7 @@ private:
 private :
 
     // Memory itself tab
-    std::vector<quint8> mem;
+    std::vector<uint8_t> mem;
 
     // Copy Juke-Box EEPROM into mem[] for the active ROM window (and clear
     // $4000-$7FFF in RAM32/ROM16 mode) so the flat array matches the bus.
@@ -379,7 +380,7 @@ private :
     int oorAccessCount = 0;
     bool oorStrictMode = false;       // true: enforce bounds (reads→$FF, writes dropped)
     std::unordered_set<uint32_t> oorWarned;  // key = (addr<<1)|isWrite; capped at 64
-    void checkOutOfRangeAccess(quint16 address, bool isWrite);
+    void checkOutOfRangeAccess(uint16_t address, bool isWrite);
     bool writeInRom;
     std::string lastError;
     std::unique_ptr<CassetteDevice> cassetteDevice;

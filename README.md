@@ -203,7 +203,7 @@ $98.50, demoed by Woz in *Interface Age*. **64×96** mono framebuffer on 6× Int
 **280×192** HIRES, Apple II-compatible memory at `$2000-$3FFF`, **NTSC artifact colour** (violet, green, blue, orange, white, black + glow). Auto-loads `software/hgr/GEN2.HGR.BIN`; includes [HGR Maze](dev/projects/hgr_maze/HGR_Maze.asm).
 
 ### P-LAB Graphic Card (TMS9918)
-[P-LAB Apple-1 Graphic Card](https://p-l4b.github.io/graphic/) — TMS9918A VDP, **256×192**, 15 colours + transparent, 32 hardware sprites, 4 modes. I/O at `$CC00` (data) / `$CC01` (control), 16 KB dedicated VRAM. Compatible with [nippur72's apple1-videocard-lib](https://github.com/nippur72/apple1-videocard-lib). Bundled (`software/tms9918/`): Tetris, demo suite (text / bitmap / sprites / IRQ), PicShow image viewer.
+[P-LAB Apple-1 Graphic Card](https://p-l4b.github.io/graphic/) — TMS9918A VDP, **256×192**, 15 colours + transparent, 32 hardware sprites, 4 modes. I/O at `$CC00` (data) / `$CC01` (control), 16 KB dedicated VRAM. Compatible with [nippur72's apple1-videocard-lib](https://github.com/nippur72/apple1-videocard-lib). Bundled (`software/tms9918/`): Tetris, demo suite (text / bitmap / sprites / IRQ), PicShow image viewer. **Silicon Strict** toggle (*Hardware → Silicon Strict (TMS9918 timing)* or `--silicon-strict` / `--no-silicon-strict`) drops VRAM writes that violate the real chip's ~8-cycle access window, so games like Galaga show the same sprite-artefact glitches as on real silicon — see [`dev/SILICONBUGS.md`](dev/SILICONBUGS.md). Default ON for every preset except the Multiplexing Fantasy ones.
 
 ---
 

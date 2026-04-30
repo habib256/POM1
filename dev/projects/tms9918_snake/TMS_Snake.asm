@@ -261,6 +261,7 @@ init_arena:
         ; --- Clear TMS name table $1800 (3 pages) ---
         LDA #$00
         STA VDP_CTRL
+        NOP                     ; +2c silicon-strict gap (LDA #imm bridge)
         LDA #$58                ; $18 | $40
         STA VDP_CTRL
         LDX #$03
@@ -742,6 +743,7 @@ init_vdp:
         ; 39 glyphs * 8 bytes = 312 bytes (chars 56..94).
         LDA #$C0
         STA VDP_CTRL
+        NOP                     ; +2c silicon-strict gap (LDA #imm bridge)
         LDA #$41                ; $01 | $40
         STA VDP_CTRL
         LDX #$00
@@ -759,6 +761,7 @@ init_vdp:
         ; --- Colour table at $2000 (12 entries for groups 0..11) ---
         LDA #$00
         STA VDP_CTRL
+        NOP                     ; +2c silicon-strict gap (LDA #imm bridge)
         LDA #$60                ; $20 | $40
         STA VDP_CTRL
         LDX #$00
@@ -771,6 +774,7 @@ init_vdp:
         ; --- Clear name table $1800 (3 pages) ---
         LDA #$00
         STA VDP_CTRL
+        NOP                     ; +2c silicon-strict gap (LDA #imm bridge)
         LDA #$58
         STA VDP_CTRL
         LDX #$03
@@ -785,8 +789,10 @@ init_vdp:
         ; --- Disable sprites: first sprite Y = $D0 stops the chain ---
         LDA #$00
         STA VDP_CTRL
+        NOP                     ; +2c silicon-strict gap (LDA #imm bridge)
         LDA #$5B                ; $1B | $40
         STA VDP_CTRL
+        NOP                     ; +2c silicon-strict gap (LDA #imm bridge)
         LDA #$D0
         STA VDP_DATA
         RTS
@@ -813,6 +819,7 @@ plot_cell:
         ADC #$18
         ORA #$40
         STA VDP_CTRL
+        NOP                     ; +2c silicon-strict gap (LDA zp/abs bridge)
         LDA temp
         STA VDP_DATA
         RTS
@@ -826,18 +833,25 @@ draw_hud:
         ; VRAM addr $1800 (row 0, col 0)
         LDA #$00
         STA VDP_CTRL
+        NOP                     ; +2c silicon-strict gap (LDA #imm bridge)
         LDA #$58
         STA VDP_CTRL
+        NOP                     ; +2c silicon-strict gap (LDA #imm bridge)
         LDA #HUD_C_S
         STA VDP_DATA
+        NOP                     ; +2c silicon-strict gap (LDA #imm bridge)
         LDA #HUD_C_C
         STA VDP_DATA
+        NOP                     ; +2c silicon-strict gap (LDA #imm bridge)
         LDA #HUD_C_O
         STA VDP_DATA
+        NOP                     ; +2c silicon-strict gap (LDA #imm bridge)
         LDA #HUD_C_R
         STA VDP_DATA
+        NOP                     ; +2c silicon-strict gap (LDA #imm bridge)
         LDA #HUD_C_E
         STA VDP_DATA
+        NOP                     ; +2c silicon-strict gap (LDA #imm bridge)
         LDA #HUD_C_CL
         STA VDP_DATA
 
@@ -963,6 +977,7 @@ draw_win_tms:
 clear_name_table:
         LDA #$00
         STA VDP_CTRL
+        NOP                     ; +2c silicon-strict gap (LDA #imm bridge)
         LDA #$58
         STA VDP_CTRL
         LDX #$03
@@ -980,6 +995,8 @@ clear_name_table:
 ; by caller), then emit raw char codes from (sptr_lo/hi) until $FF.
 draw_str_tms:
         STA VDP_CTRL
+        NOP                     ; +2c silicon-strict gap (back-to-back VDP store)
+        NOP                     ; +2c silicon-strict gap (back-to-back VDP store)
         STX VDP_CTRL
         LDY #$00
 @lp:    LDA (sptr_lo),Y

@@ -372,6 +372,25 @@ void MainWindow_ImGui::renderMenuBar()
                 "ACIA window: $B000-$B003.\n\n"
                 "Plugging it unplugs Juke-Box when the Juke-Box ROM covers\n"
                 "$B000-$B003.");
+
+            ImGui::Separator();
+            if (ImGui::MenuItem("Silicon Strict (TMS9918 timing)",
+                                nullptr, &siliconStrictModeEnabled)) {
+                emulation->setSiliconStrictMode(siliconStrictModeEnabled);
+                setStatusMessage(siliconStrictModeEnabled
+                    ? "Silicon Strict ON - VRAM writes < 8 cycles dropped (Mode I + sprites)"
+                    : "Silicon Strict OFF - emulator-tolerant timing", 3.0f);
+            }
+            showHardwareTooltip(
+                "Silicon Strict (TMS9918 timing)\n\n"
+                "When ON, the TMS9918 enforces real-silicon access windows:\n"
+                "VRAM writes happening less than ~8 cycles apart in Mode I + sprites\n"
+                "are dropped (matches Bug N1 in dev/SILICONBUGS.md). Reproduces the\n"
+                "sprite-artefact / checkerboard glitches Galaga shows on real hardware.\n"
+                "R1 bit 7 also gates 4K vs 16K VRAM addressing.\n\n"
+                "When OFF, all writes always land - useful for debugging or running\n"
+                "code that has not been silicon-audited yet. Default = ON for every\n"
+                "preset except the Multiplexing Fantasy ones.");
             ImGui::EndMenu();
         }
 
@@ -1070,15 +1089,18 @@ void MainWindow_ImGui::renderStatusBar()
             keyText = oss.str();
         }
 
+        const std::string siliconText = siliconStrictModeEnabled ? "| STRICT" : "| FANTASY";
+
         const float spacing = ImGui::GetStyle().ItemSpacing.x;
         float rightWidth =
             ImGui::CalcTextSize(cpuText.c_str()).x +
             ImGui::CalcTextSize(speedText.c_str()).x +
             ImGui::CalcTextSize(ramText.c_str()).x +
+            ImGui::CalcTextSize(siliconText.c_str()).x +
             ImGui::CalcTextSize(tapeText.c_str()).x +
             (audioText.empty() ? 0.0f : ImGui::CalcTextSize(audioText.c_str()).x) +
             (keyText.empty() ? 0.0f : ImGui::CalcTextSize(keyText.c_str()).x) +
-            spacing * 5.0f;
+            spacing * 6.0f;
 
         ImGui::SameLine();
         ImGui::SetCursorPosX(std::max(ImGui::GetCursorPosX(), ImGui::GetWindowWidth() - rightWidth - 16.0f));
@@ -1094,6 +1116,12 @@ void MainWindow_ImGui::renderStatusBar()
 
         ImGui::SameLine();
         ImGui::Text("%s", ramText.c_str());
+
+        ImGui::SameLine();
+        ImGui::TextColored(siliconStrictModeEnabled
+            ? ImVec4(0.85f, 0.55f, 0.25f, 1.0f)   // ambre = silicium réel
+            : ImVec4(0.55f, 0.55f, 0.95f, 1.0f),  // bleu  = fantasy permissif
+            "%s", siliconText.c_str());
 
         ImGui::SameLine();
         if (uiSnapshot.cassetteLoadedTape) {

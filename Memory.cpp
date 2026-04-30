@@ -50,7 +50,7 @@ namespace {
 // bits (`EOR #$30`, `CMP #$52`) only work against bit-7-stripped storage
 // and will make the parser restart at $C100 on every char here. See
 // tests/aci_tape_loading_test.cpp for the regression pinning this.
-constexpr quint8 kAciRom[0x100] = {
+constexpr uint8_t kAciRom[0x100] = {
     0xA9,0xAA,0x20,0xEF,0xFF,0xA9,0x8D,0x20,0xEF,0xFF,0xA0,0xFF,0xC8,0xAD,0x11,0xD0,
     0x10,0xFB,0xAD,0x10,0xD0,0x99,0x00,0x02,0x20,0xEF,0xFF,0xC9,0x9B,0xF0,0xE1,0xC9,
     0x8D,0xD0,0xE9,0xA2,0xFF,0xA9,0x00,0x85,0x24,0x85,0x25,0x85,0x26,0x85,0x27,0xE8,
@@ -314,7 +314,7 @@ void Memory::setACIEnabled(bool b)
     if (b) {
         loadAciRom();
     } else {
-        std::fill_n(mem.begin() + 0xC100, 0x100, static_cast<quint8>(0));
+        std::fill_n(mem.begin() + 0xC100, 0x100, static_cast<uint8_t>(0));
         markPagesDirty(0xC100, 0x100);
     }
 }
@@ -368,17 +368,17 @@ void Memory::resetOutOfRangeAccessCount(void)
 //     $8000 and naturally falls outside the gap (the existing dispatch order
 //     hits ROM / peripheral pages there before this check).
 //   - otherwise: contiguous low — gap is [presetRamKB * 1024, $8000).
-static inline bool isOorAddress(quint16 address, int presetRamKB)
+static inline bool isOorAddress(uint16_t address, int presetRamKB)
 {
     if (presetRamKB >= 64) return false;
     if (address >= 0x8000) return false;
-    const quint16 oorLow = (presetRamKB == 8)
+    const uint16_t oorLow = (presetRamKB == 8)
         ? 0x1000
-        : static_cast<quint16>(presetRamKB * 1024);
+        : static_cast<uint16_t>(presetRamKB * 1024);
     return address >= oorLow;
 }
 
-void Memory::checkOutOfRangeAccess(quint16 address, bool isWrite)
+void Memory::checkOutOfRangeAccess(uint16_t address, bool isWrite)
 {
     // User-RAM ceiling: warn when a program touches RAM past the preset budget.
     // Skip ROM/IO ($8000+) and the dual-bank high RAM ($E000-$EFFF) — those
@@ -465,14 +465,14 @@ void Memory::resetMemory(void)
 }
 
 
-void Memory::configureResetVectors(quint16 vectorAddress)
+void Memory::configureResetVectors(uint16_t vectorAddress)
 {
-    mem[0xFFFA] = static_cast<quint8>(vectorAddress & 0xFF);
-    mem[0xFFFB] = static_cast<quint8>((vectorAddress >> 8) & 0xFF);
-    mem[0xFFFC] = static_cast<quint8>(vectorAddress & 0xFF);
-    mem[0xFFFD] = static_cast<quint8>((vectorAddress >> 8) & 0xFF);
-    mem[0xFFFE] = static_cast<quint8>(vectorAddress & 0xFF);
-    mem[0xFFFF] = static_cast<quint8>((vectorAddress >> 8) & 0xFF);
+    mem[0xFFFA] = static_cast<uint8_t>(vectorAddress & 0xFF);
+    mem[0xFFFB] = static_cast<uint8_t>((vectorAddress >> 8) & 0xFF);
+    mem[0xFFFC] = static_cast<uint8_t>(vectorAddress & 0xFF);
+    mem[0xFFFD] = static_cast<uint8_t>((vectorAddress >> 8) & 0xFF);
+    mem[0xFFFE] = static_cast<uint8_t>(vectorAddress & 0xFF);
+    mem[0xFFFF] = static_cast<uint8_t>((vectorAddress >> 8) & 0xFF);
     markPagesDirty(0xFFFA, 6);
 }
 
@@ -512,7 +512,7 @@ std::string Memory::busStateSummary() const
     return oss.str();
 }
 
-int Memory::loadROM(const char* filename, quint16 startAddress, size_t maxSize, const char* label)
+int Memory::loadROM(const char* filename, uint16_t startAddress, size_t maxSize, const char* label)
 {
     lastError.clear();
 
@@ -567,7 +567,7 @@ int Memory::loadROM(const char* filename, quint16 startAddress, size_t maxSize, 
     }
 
     for (size_t i = 0; i < fileContent.size(); ++i) {
-        mem[startAddress + i] = (quint8)fileContent[i];
+        mem[startAddress + i] = (uint8_t)fileContent[i];
     }
     markPagesDirty(startAddress, fileContent.size());
     {
@@ -586,7 +586,7 @@ int Memory::loadBasic(void)
 
 void Memory::unloadBasic(void)
 {
-    std::fill_n(mem.begin() + 0xE000, 0x1000, static_cast<quint8>(0));
+    std::fill_n(mem.begin() + 0xE000, 0x1000, static_cast<uint8_t>(0));
     markPagesDirty(0xE000, 0x1000);
 }
 
@@ -651,7 +651,7 @@ int Memory::loadAciRom(void)
     return 0;
 }
 
-int Memory::loadBinary(const char* filename, quint16 startAddress, int* bytesLoaded)
+int Memory::loadBinary(const char* filename, uint16_t startAddress, int* bytesLoaded)
 {
     if (bytesLoaded) *bytesLoaded = 0;
     std::ifstream file(filename, std::ios::binary);
@@ -677,7 +677,7 @@ int Memory::loadBinary(const char* filename, quint16 startAddress, int* bytesLoa
     file.close();
 
     for (size_t i = 0; i < fileContent.size(); ++i) {
-        mem[startAddress + i] = (quint8)fileContent[i];
+        mem[startAddress + i] = (uint8_t)fileContent[i];
     }
     markPagesDirty(startAddress, fileContent.size());
     if (bytesLoaded) *bytesLoaded = static_cast<int>(fileContent.size());
@@ -691,8 +691,8 @@ int Memory::loadBinary(const char* filename, quint16 startAddress, int* bytesLoa
     return 0;
 }
 
-int Memory::loadHexDump(const char* filename, quint16 &startAddress, int* bytesLoaded,
-                        std::vector<std::pair<quint16,quint16>>* zones)
+int Memory::loadHexDump(const char* filename, uint16_t &startAddress, int* bytesLoaded,
+                        std::vector<std::pair<uint16_t,uint16_t>>* zones)
 {
     if (bytesLoaded) *bytesLoaded = 0;
     if (zones) zones->clear();
@@ -700,12 +700,12 @@ int Memory::loadHexDump(const char* filename, quint16 &startAddress, int* bytesL
     // ('AAAA:') flip closes the previous zone and starts a new one. The final
     // zone is closed at end of parse. zoneActive distinguishes "no zone yet"
     // (before the first address) from "zone in progress".
-    quint16 zoneStart = 0;
+    uint16_t zoneStart = 0;
     unsigned int zoneLastAddr = 0; // last address actually written
     bool zoneActive = false;
     auto closeZone = [&]() {
         if (!zones || !zoneActive) return;
-        zones->push_back({zoneStart, static_cast<quint16>(zoneLastAddr)});
+        zones->push_back({zoneStart, static_cast<uint16_t>(zoneLastAddr)});
         zoneActive = false;
     };
     std::ifstream file(filename);
@@ -738,7 +738,7 @@ int Memory::loadHexDump(const char* filename, quint16 &startAddress, int* bytesL
     }
 
     unsigned int currentAddr = 0;
-    quint16 runAddr = 0;
+    uint16_t runAddr = 0;
     bool firstAddr = true;
     bool hasRunAddr = false;
     int totalBytes = 0;
@@ -789,10 +789,10 @@ int Memory::loadHexDump(const char* filename, quint16 &startAddress, int* bytesL
             // Inline data-byte writer with zone tracking. Every byte written
             // through this helper extends or starts a zone; address-prefix
             // flips below close the zone before resetting currentAddr.
-            auto writeByte = [&](quint8 v) {
+            auto writeByte = [&](uint8_t v) {
                 if (currentAddr >= 0x10000) return;
                 if (!zoneActive) {
-                    zoneStart = static_cast<quint16>(currentAddr);
+                    zoneStart = static_cast<uint16_t>(currentAddr);
                     zoneActive = true;
                 }
                 mem[currentAddr] = v;
@@ -807,12 +807,12 @@ int Memory::loadHexDump(const char* filename, quint16 &startAddress, int* bytesL
                     size_t dataLen = hexStr.size() - 4;
                     if (dataLen % 2 != 0) oddDigitsDropped++;
                     for (size_t j = 0; j + 1 < dataLen; j += 2) {
-                        quint8 val = (hexVal(hexStr[j]) << 4) | hexVal(hexStr[j + 1]);
+                        uint8_t val = (hexVal(hexStr[j]) << 4) | hexVal(hexStr[j + 1]);
                         writeByte(val);
                     }
                     hexStr = hexStr.substr(dataLen);
                 }
-                runAddr = (quint16)strtol(hexStr.c_str(), nullptr, 16);
+                runAddr = (uint16_t)strtol(hexStr.c_str(), nullptr, 16);
                 hasRunAddr = true;
                 i++; // skip the R
                 continue;
@@ -824,17 +824,20 @@ int Memory::loadHexDump(const char* filename, quint16 &startAddress, int* bytesL
                     size_t dataLen = hexStr.size() - 4;
                     if (dataLen % 2 != 0) oddDigitsDropped++;
                     for (size_t j = 0; j + 1 < dataLen; j += 2) {
-                        quint8 val = (hexVal(hexStr[j]) << 4) | hexVal(hexStr[j + 1]);
+                        uint8_t val = (hexVal(hexStr[j]) << 4) | hexVal(hexStr[j + 1]);
                         writeByte(val);
                     }
                     hexStr = hexStr.substr(dataLen);
                 }
-                // Address jump: close the zone we were filling so the new
-                // address starts a fresh zone. Multi-zone dumps (chess.txt =
-                // $0280 lo + $E000 hi) hit this twice — once when the parser
-                // first sees "0280:", once at the lo→hi flip "00E000:".
-                closeZone();
-                currentAddr = (quint16)strtol(hexStr.c_str(), nullptr, 16);
+                // Address line: only close the current zone when the new
+                // address is a real jump. Sequential address lines that
+                // pick up exactly where the previous line left off
+                // (e.g. "0288:" after 8 bytes from "0280:") stay in the
+                // same zone — closing on every address line would shred
+                // chess.txt into one zone per 8-byte row.
+                uint16_t newAddr = (uint16_t)strtol(hexStr.c_str(), nullptr, 16);
+                if (zoneActive && newAddr != currentAddr) closeZone();
+                currentAddr = newAddr;
                 if (firstAddr) {
                     startAddress = currentAddr;
                     firstAddr = false;
@@ -848,7 +851,7 @@ int Memory::loadHexDump(const char* filename, quint16 &startAddress, int* bytesL
             // warning below — masks real bugs in hand-edited dumps.
             if (hexStr.size() % 2 != 0) oddDigitsDropped++;
             for (size_t j = 0; j + 1 < hexStr.size(); j += 2) {
-                quint8 val = (hexVal(hexStr[j]) << 4) | hexVal(hexStr[j + 1]);
+                uint8_t val = (hexVal(hexStr[j]) << 4) | hexVal(hexStr[j + 1]);
                 writeByte(val);
             }
             continue;
@@ -889,7 +892,7 @@ int Memory::loadHexDump(const char* filename, quint16 &startAddress, int* bytesL
     return firstAddr && !hasRunAddr ? 1 : 0;
 }
 
-quint8 Memory::memRead(quint16 address)
+uint8_t Memory::memRead(uint16_t address)
 {
     // Test mode: flat 64 KB RAM, no side effects (Klaus Dormann functional
     // test expects the whole address space to behave as RAM).
@@ -919,7 +922,7 @@ quint8 Memory::memRead(quint16 address)
     if (address == 0xD010) {
         // KBD : retourne le caractère avec bit 7 à 1
         // Lire 0xD010 efface le strobe (PIA 6821 behavior)
-        quint8 result = keyReady ? (lastKey | 0x80) : 0x00;
+        uint8_t result = keyReady ? (lastKey | 0x80) : 0x00;
         keyReady = false;
         // Charger la touche suivante du buffer si disponible
         if (!keyBuffer.empty()) {
@@ -950,7 +953,7 @@ quint8 Memory::memRead(quint16 address)
         if (busy) return mem[address] | 0x80;
         return mem[address] & 0x7F;
     } else if (address == 0xD011) {
-        quint8 result = keyReady ? 0x80 : 0x00;
+        uint8_t result = keyReady ? 0x80 : 0x00;
         return result;
     }
 
@@ -966,7 +969,7 @@ quint8 Memory::memRead(quint16 address)
     return mem[address];
 }
 
-void Memory::memWrite(quint16 address, quint8 value)
+void Memory::memWrite(uint16_t address, uint8_t value)
 {
     // Test mode: flat 64 KB RAM, no ROM protection, no peripheral side
     // effects. Keep the dirty-page bit accurate in case a test ever checks
@@ -1401,7 +1404,7 @@ void Memory::setCodeTankEnabled(bool b)
         bus.setEnabled(codeTankBusHandle, false);
         // Clear the mirrored ROM bytes so the Memory Viewer doesn't keep
         // showing stale ROM contents at $4000-$7FFF after unplug.
-        std::fill_n(mem.begin() + CodeTank::kBase, CodeTank::kHalfSize, static_cast<quint8>(0));
+        std::fill_n(mem.begin() + CodeTank::kBase, CodeTank::kHalfSize, static_cast<uint8_t>(0));
         markPagesDirty(CodeTank::kBase, CodeTank::kHalfSize);
     }
 }
@@ -1528,6 +1531,7 @@ constexpr uint16_t kFlagA1IO_RTC       = 1u << 10;
 constexpr uint16_t kFlagPR40           = 1u << 11;
 constexpr uint16_t kFlagGT6144         = 1u << 12;
 constexpr uint16_t kFlagCassetteAudio  = 1u << 13;
+constexpr uint16_t kFlagSiliconStrict  = 1u << 14;  // TMS9918 silicon-strict timing window
 
 } // namespace
 
@@ -1570,6 +1574,7 @@ bool Memory::saveSnapshot(const std::string& path, std::string& error) const
         if (pr40Enabled)               flags |= kFlagPR40;
         if (gt6144Enabled)             flags |= kFlagGT6144;
         if (cassetteAudioActive)       flags |= kFlagCassetteAudio;
+        if (siliconStrictMode)         flags |= kFlagSiliconStrict;
 
         auto h = w.beginSection("FLAGS");
         w.writeU16(flags);
@@ -1655,6 +1660,14 @@ bool Memory::loadSnapshot(const std::string& path, std::string& error)
             pr40Enabled               =((flags & kFlagPR40)           != 0);
             setGT6144Enabled           ((flags & kFlagGT6144)         != 0);
             cassetteAudioActive       =((flags & kFlagCassetteAudio)  != 0);
+            // Restoring a v1 .snap (saved before kFlagSiliconStrict existed)
+            // will land here with the bit clear — treat as "unknown" rather
+            // than "off" by leaving the current value. Versioned snapshots
+            // would let us distinguish; for now, be conservative and only
+            // overwrite when the flag is set OR when other v2-era bits show
+            // the writer was aware of bit 14 (none yet → we just always
+            // honour the bit).
+            setSiliconStrictMode       ((flags & kFlagSiliconStrict)  != 0);
             continue;
         }
 

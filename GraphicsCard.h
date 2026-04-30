@@ -26,8 +26,6 @@
 class GraphicsCard
 {
 public:
-    using quint8 = uint8_t;
-
     static constexpr int kHiresWidth = 280;
     static constexpr int kHiresHeight = 192;
     static constexpr uint16_t kHiresBase = 0x2000;
@@ -40,7 +38,7 @@ public:
     // Returns true if any pixel changed since the previous call (caller can
     // skip the GL upload otherwise; harmless to ignore).
     // memory must point to the full 64 KB address space.
-    bool rasterizeToBuffer(const quint8* memory);
+    bool rasterizeToBuffer(const uint8_t* memory);
 
     // RGBA pixel buffer, kHiresWidth × kHiresHeight, byte order matches
     // GL_RGBA + GL_UNSIGNED_BYTE on little-endian (same convention as TMS9918).
@@ -54,7 +52,7 @@ public:
     static uint16_t scanlineAddress(int y);
 
 private:
-    void rasterizeLine(int y, const quint8* memory);
+    void rasterizeLine(int y, const uint8_t* memory);
     // Horizontal additive glow applied to black pixels only — loose stand-in
     // for NTSC chroma bandwidth smear. Each lit left/right neighbour
     // contributes a fraction of its colour (see kGlowHNum/Den) summed into

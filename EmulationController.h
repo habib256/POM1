@@ -81,14 +81,14 @@ public:
     void dumpCpuPcTrace(const char* tag);
 
     void queueKey(char key);
-    void writeMemory(quint16 address, quint8 value);
+    void writeMemory(uint16_t address, uint8_t value);
 
-    bool loadHexDump(const std::string& path, quint16& startAddress, std::string& error,
+    bool loadHexDump(const std::string& path, uint16_t& startAddress, std::string& error,
                      int* bytesLoaded = nullptr,
-                     std::vector<std::pair<quint16,quint16>>* zones = nullptr);
-    bool loadBinary(const std::string& path, quint16 startAddress, std::string& error, int* bytesLoaded = nullptr);
-    bool loadBinaryToRam(const std::string& path, quint16 address, std::string& error);
-    bool saveMemoryRange(const std::string& path, quint16 startAddress, quint16 endAddress, bool binaryFormat, std::string& error);
+                     std::vector<std::pair<uint16_t,uint16_t>>* zones = nullptr);
+    bool loadBinary(const std::string& path, uint16_t startAddress, std::string& error, int* bytesLoaded = nullptr);
+    bool loadBinaryToRam(const std::string& path, uint16_t address, std::string& error);
+    bool saveMemoryRange(const std::string& path, uint16_t startAddress, uint16_t endAddress, bool binaryFormat, std::string& error);
 
     /// Snapshot save/load — see Memory::saveSnapshot for the format and the
     /// list of state currently captured. Both calls take stateMutex; the CPU
@@ -118,6 +118,7 @@ public:
     void clearMemory();
 
     bool loadTape(const std::string& path, std::string& error);
+    bool loadProgramTape(const std::string& path, std::string& error);
     bool saveTape(const std::string& path, std::string& error);
     void rewindTape();
     void playTape();
@@ -234,13 +235,13 @@ public:
     // that address — for a `--load addr:path --run addr` pair the
     // loadBinary path already handles reset, so `--run` is only required in
     // the naked form.
-    void jumpTo(quint16 address);
+    void jumpTo(uint16_t address);
 
     /// Web (Emscripten) : pas de std::thread — avancer l’émulation depuis la boucle principale.
     void pumpEmulationMainThread(double deltaSeconds);
 
 private:
-    static constexpr quint16 kDefaultResetVector = 0xFF00;
+    static constexpr uint16_t kDefaultResetVector = 0xFF00;
 
 private:
     void emulationLoop();
@@ -261,7 +262,7 @@ private:
     std::condition_variable wakeCv;
     std::mutex wakeMutex;
 
-    quint16 preferredSoftResetVector = kDefaultResetVector;
+    uint16_t preferredSoftResetVector = kDefaultResetVector;
 
 #if !POM1_IS_WASM
     std::thread emulationThread;
