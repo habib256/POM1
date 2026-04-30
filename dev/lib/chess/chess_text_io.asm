@@ -124,7 +124,23 @@ read_player_move:
         SEC
         LDA #$08            ; cycle play mode (HvH / W=AI / B=AI / AvA)
         RTS
-@nota:  CMP #'O'
+@nota:  CMP #'H'
+        BNE @noth
+        ORA #$80
+        JSR ECHO
+        JSR newline
+        SEC
+        LDA #$09            ; H = hint (engine suggests a move; doesn't play it)
+        RTS
+@noth:  CMP #'L'
+        BNE @notl
+        ORA #$80
+        JSR ECHO
+        JSR newline
+        SEC
+        LDA #$0A            ; L = list legal moves for the side to move
+        RTS
+@notl:  CMP #'O'
         BEQ @go_castle
         JMP @noto
 @go_castle:

@@ -1,9 +1,16 @@
-# Apple 1 Chess (TMS9918 variant) — v0.1
+# Apple 1 Chess (TMS9918 variant) — v0.1 (engine v0.5)
 
 Pure 6502 asm chess for the original Apple 1 + P-LAB TMS9918 Graphic Card.
 Two-player human vs human on an 8×8 board with 16×16-pixel piece glyphs
 displayed on the TMS9918 screen; status text and move input on the
 regular Apple-1 40×24 display.
+
+Engine bumped to v0.5 — the AI no longer blunders (SEE on the destination
+square, MVV-LVA tie-break, random reservoir sampler for genuine ties; see
+`dev/lib/chess/README.md`). The text-variant v0.5 UX features (`H`, `L`,
+last-move highlight, MAT line, anti-scroll, `D` strategy toggle) are
+text-only and don't appear here — the TMS renderer prints `NOT IMPLEMENTED`
+when the parser surfaces those return codes.
 
 Inspired by StewBC/cc65-Chess (algorithm reference). Shares
 `chess_engine.o` with the text and HGR variants of the trilogy

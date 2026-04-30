@@ -295,6 +295,12 @@ void Memory::setTMS9918Enabled(bool b)
     bus.setEnabled(tms9918BusHandle, b);
 }
 
+void Memory::setSiliconStrictMode(bool enabled)
+{
+    siliconStrictMode = enabled;
+    tms9918->setSiliconStrictMode(enabled);
+}
+
 void Memory::setACIEnabled(bool b)
 {
     if (aciEnabled == b) return;

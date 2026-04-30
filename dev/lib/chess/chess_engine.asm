@@ -41,6 +41,11 @@
 .export toggle_side
 .export starting_position    ; re-export for variants that want to peek
 .export piece_letters
+; Internals exposed so variants can enumerate legal moves without duplicating
+; the engine's machinery (used by Chess.asm's do_list_moves and do_hint).
+.export is_pseudo_legal
+.export make_move
+.export unmake_move
 
 ; --- BSS ------------------------------------------------------------------
 .segment "BOARDST"
@@ -90,9 +95,19 @@ ai_scan_y:              .res 1      ; to-square iterator
 ai_best_from:           .res 1
 ai_best_to:             .res 1
 ai_best_score:          .res 1      ; signed 8-bit
+ai_best_mvvlva:         .res 1      ; MVV-LVA tie-break score (signed 8-bit)
 score_lo:               .res 1      ; evaluate_material output
 perft_count_lo:         .res 1
 perft_count_hi:         .res 1
+
+; --- SMART-mode state (LFSR + strategy + SEE scratch) ---
+ai_rng:                 .res 1      ; 8-bit LFSR (period 255). Seeded in init_board.
+ai_strategy:            .res 1      ; AI_STRATEGY_NAIVE / _SMART
+see_min_val:            .res 1      ; lowest attacker value found (find_min_attacker)
+see_min_sq:             .res 1      ; that attacker's square
+see_value:              .res 1      ; signed 8-bit net gain from see_estimate
+see_victim:             .res 1      ; raw victim value (mat_simple lookup) for adjustment
+see_mover:              .res 1      ; our piece byte at mv_to (cached for SEE)
 
 ; --- Compact undo (16 bytes; relies on unmake_move) ---
 ; After a successful user move, we copy the saved_* slots (which the engine
@@ -124,6 +139,7 @@ ce_sq:          .res 1      ; current scan square
 ce_dir:         .res 1      ; current direction offset
 ce_target:      .res 1      ; target square being tested
 ce_piece:       .res 1      ; piece-type at MOVE-GEN's from-square (set by caller)
+.exportzp ce_piece          ; do_list_moves loads it before each is_pseudo_legal
 ce_color:       .res 1      ; colour byte of moving side
 ce_dirs_left:   .res 1      ; direction-table loop counter
 ce_dir_ptr:     .res 1      ; index into knight_offsets / king_offsets etc.
@@ -203,6 +219,19 @@ init_board:
         STA king_sq_white
         LDA #$74
         STA king_sq_black
+
+        ; Seed the 8-bit LFSR used by SMART-mode tie-break. Seeding only on
+        ; init_board (not on every ai_play_move) lets the RNG state diverge
+        ; through a game so AvA runs are non-deterministic by move 2-3.
+        ; $AC is a fixed odd seed; the period-255 LFSR cycles through every
+        ; non-zero value before repeating.
+        LDA #$AC
+        STA ai_rng
+
+        ; Default strategy: SMART (1-ply + MVV-LVA + SEE + random tie-break).
+        ; The 'D' command at the prompt cycles between NAIVE and SMART.
+        LDA #AI_STRATEGY_SMART
+        STA ai_strategy
         RTS
 
 ; ============================================================================
@@ -1557,11 +1586,168 @@ mat_simple:
         .byte 0, 1, 3, 3, 5, 9, 0, 0
 
 ; ============================================================================
+; ai_rng_step -- advance the 8-bit LFSR. Period 255 (Galois, taps $1D).
+; ============================================================================
+; Returns A = new LFSR state (and stored in ai_rng). Z reflects A.
+; Bit 0 of the result is the random bit consumed by the reservoir sampler.
+; Self-heals if ai_rng ever drops to zero (which kills the LFSR).
+ai_rng_step:
+        LDA ai_rng
+        BNE @nz
+        LDA #$AC
+@nz:    ASL A
+        BCC @done
+        EOR #$1D
+@done:  STA ai_rng
+        RTS
+
+; ============================================================================
+; find_min_attacker -- lowest-value piece of attacker_color that attacks
+;                      attacked_sq. Reuses the engine's per-piece attack
+;                      helpers so it understands sliders + pinned-ray rules.
+; ============================================================================
+; Inputs:  attacker_color, attacked_sq (BSS) — same convention as in_check.
+; Outputs: CC + A = mat_simple value (1, 3, 5, 9), X = attacker's square.
+;          CS if no piece of attacker_color attacks attacked_sq.
+;
+; Iterates the whole 0x88 board. Keeps the cheapest match — lets see_estimate
+; assume the opponent (or our defender) will recapture with the LEAST valuable
+; piece available, which is the standard SEE simplification.
+;
+; Note: callers wanting "find a defender of mv_to" pass attacker_color =
+; side_to_move. The piece on mv_to itself is never reported because no piece
+; type attacks its own square (offsets are all non-zero).
+find_min_attacker:
+        LDA #$FF                ; sentinel "no attacker yet"
+        STA see_min_val
+        LDA #$00
+        STA see_min_sq
+        LDX #$00
+@loop:
+        TXA
+        AND #OFFBOARD_MASK
+        BNE @next
+        LDA board,X
+        BEQ @next
+        TAY
+        AND #COLOR_MASK
+        CMP attacker_color
+        BNE @next
+        ; Piece of right color on-board — does it attack attacked_sq?
+        STX ce_sq
+        TYA
+        STA atk_piece
+        JSR attacks_target
+        BCS @next
+        ; It attacks. Compare value vs current minimum.
+        TYA
+        AND #PIECE_MASK
+        TAY
+        LDA mat_simple,Y
+        CMP see_min_val
+        BCS @next               ; not strictly lower
+        STA see_min_val
+        STX see_min_sq
+@next:
+        INX
+        BNE @loop
+        ; Exit
+        LDA see_min_val
+        CMP #$FF
+        BEQ @none
+        LDX see_min_sq
+        CLC
+        RTS
+@none:  SEC
+        RTS
+
+; ============================================================================
+; see_estimate -- net material gain from the exchange chain on mv_to.
+; ============================================================================
+; Inputs (set by caller, normally ai_play_move just after make_move):
+;   - mv_to: the destination square (our piece is there now).
+;   - saved_captured: piece byte that occupied mv_to before our move
+;     (0 if non-capture). make_move stored this for unmake_move; we reuse it.
+;   - side_to_move: still our side (apply_user_move toggles it later).
+;
+; Output: A = signed 8-bit net gain in pawn-equivalents (positive = we win
+; material, negative = we lose). For NAIVE strategy this is never called.
+;
+; Algorithm (depth-2 SEE — a common approximation that catches the vast
+; majority of 1-ply blunders):
+;   gain = victim_value                                  (0 if no capture)
+;   if no enemy attacker of mv_to:  return gain          (move is safe)
+;   gain -= our_piece_value                              (we'll be recaptured)
+;   if no friendly defender of mv_to: return gain
+;   gain += enemy_min_attacker_value                     (we recapture cheapest)
+;   return gain
+;
+; This is enough to make the AI refuse "Q takes pawn defended by pawn" and
+; "N to square attacked by pawn, no defender" — the two patterns that
+; dominate v0.4's blunder rate.
+see_estimate:
+        ; Cache our piece byte (the one now at mv_to) — used twice below.
+        LDX mv_to
+        LDA board,X
+        STA see_mover
+
+        ; gain := value(saved_captured)  (0 if non-capture)
+        LDA saved_captured
+        BEQ @vz
+        AND #PIECE_MASK
+        TAY
+        LDA mat_simple,Y
+        JMP @gset
+@vz:    LDA #$00
+@gset:  STA see_value           ; signed gain accumulator
+
+        ; --- Find the lowest enemy attacker of mv_to ---
+        LDA side_to_move
+        EOR #COLOR_BLACK
+        STA attacker_color
+        LDA mv_to
+        STA attacked_sq
+        JSR find_min_attacker
+        BCS @done               ; no enemy attacker — return raw gain
+
+        ; Save enemy_min for the recapture step.
+        STA tmp                 ; tmp = enemy_min_value
+        ; gain -= our_piece_value
+        LDA see_mover
+        AND #PIECE_MASK
+        TAY
+        SEC
+        LDA see_value
+        SBC mat_simple,Y
+        STA see_value
+
+        ; --- Find the lowest friendly defender of mv_to (other than the
+        ; piece on mv_to itself, which never appears in attacker iteration). ---
+        LDA side_to_move
+        STA attacker_color
+        LDA mv_to
+        STA attacked_sq
+        JSR find_min_attacker
+        BCS @done               ; no defender — exchange ends
+
+        ; gain += enemy_min_value (we recapture with the cheapest defender)
+        CLC
+        LDA see_value
+        ADC tmp
+        STA see_value
+@done:
+        LDA see_value
+        RTS
+
+; ============================================================================
 ; ai_play_move -- pick + apply best 1-ply move for side_to_move
 ; ============================================================================
-; Enumerates all pseudo-legal moves, filters those that leave own king in
-; check, evaluates each via evaluate_material, picks the one with highest
-; score for side_to_move. If multiple tied, keeps the first.
+; v0.5 behaviour, controlled by ai_strategy:
+;   NAIVE:  v0.4-style 1-ply max(material). Deterministic, blunders often.
+;   SMART:  same enumeration, but each candidate's score is adjusted by
+;           Static Exchange Evaluation on the destination (so hanging-piece
+;           captures get penalised), MVV-LVA breaks score ties, and an
+;           8-bit LFSR reservoir-samples among MVV-LVA-equal candidates.
 ;
 ; Output: applies the move (board updated, side toggled). Returns CC if a
 ; move was made, CS if no legal move exists (caller should treat as mate
@@ -1569,13 +1755,15 @@ mat_simple:
 .export ai_play_move
 .export ai_best_from, ai_best_to
 .export ai_best_score
+.export ai_strategy, ai_rng
 ai_play_move:
-        ; Initialise best to "none" with score = -128 (worst).
+        ; Initialise best to "none" with score = -128 (worst), MVV-LVA = -128.
         LDA #$88
         STA ai_best_from
         STA ai_best_to
-        LDA #$80                ; -128 in signed 8-bit
+        LDA #$80                ; -128 signed
         STA ai_best_score
+        STA ai_best_mvvlva
 
         LDA #$00
         STA ai_scan_x           ; scan_x = current from-square iterator
@@ -1622,41 +1810,188 @@ ai_play_move:
         STA mv_promo
         STA mv_flags
         JSR is_pseudo_legal
-        BCS @nextt
+        BCC @psl_ok
+        JMP @nextt
+@psl_ok:
         JSR make_move
         JSR in_check
-        BNE @bad
+        BEQ @move_safe
+        JMP @bad
+@move_safe:
         ; Move is legal. Evaluate (from the moving side's perspective —
         ; but make_move did NOT toggle side_to_move; toggle_side is done
         ; later by apply_user_move only on real moves). So side_to_move
         ; is still our side. evaluate_material returns OUR material -
         ; THEIR material, which is what we want to maximise.
         JSR evaluate_material
-        ; Compare A (signed) against ai_best_score.
-        ; Signed 8-bit comparison: if (A - best) overflow set differently from N flag, swap.
-        ; Simpler: A - best, then check N XOR V to determine sign.
-        ; For our purpose: positive deltas dominate. We do an unsigned trick:
-        ; Convert both to biased unsigned (+128) and compare.
+        STA see_value           ; reuse slot for the raw score (will be replaced
+                                ; by SEE result in SMART path; it's fine — see_value
+                                ; isn't read across the call below)
+        ; --- SMART adjustments: SEE + MVV-LVA secondary score ---
+        LDA ai_strategy
+        BEQ @score_done         ; NAIVE path — keep raw eval as score, no MVV-LVA
+
+        ; victim_value = mat_simple[saved_captured & PIECE_MASK]  (0 if non-capture)
+        LDA saved_captured
+        BEQ @vv_zero
+        AND #PIECE_MASK
+        TAY
+        LDA mat_simple,Y
+        JMP @vv_have
+@vv_zero: LDA #$00
+@vv_have: STA see_victim
+
+        ; SEE: net gain considering possible recapture chain on mv_to.
+        ; (see_estimate stores its result in see_value and returns it in A.)
+        JSR see_estimate
+
+        ; Adjusted score = raw_eval + (see_value - see_victim).
+        ; Intuition: evaluate_material already credited us with see_victim
+        ; (the captured piece is gone from the board). SEE recomputes the
+        ; *eventual* material delta after recapture. Subtracting see_victim
+        ; isolates the "exchange continuation" delta we need to add.
+        SEC
+        LDA see_value
+        SBC see_victim
+        STA tmp                 ; tmp = see_value - see_victim (signed)
+        ; Reload raw eval (we left it in evaluate_material's score_lo too).
         CLC
-        ADC #$80                ; bias to unsigned
-        STA tmp                 ; tmp = candidate (unsigned)
+        LDA score_lo
+        ADC tmp
+        STA see_value           ; see_value now = adjusted score (signed)
+@score_done:
+
+        ; --- Compare adjusted score against ai_best_score ---
+        ; Signed compare via +$80 bias trick (same as v0.4).
+        CLC
+        LDA see_value
+        ADC #$80
+        STA tmp                 ; candidate (unsigned)
         CLC
         LDA ai_best_score
         ADC #$80
-        STA tmp2                ; tmp2 = best (unsigned)
+        STA tmp2                ; best (unsigned)
         LDA tmp
         CMP tmp2
-        BCC @worse              ; candidate < best → keep best
-        ; candidate >= best → update best
+        BCS @cmp_ge             ; candidate >= best
+        JMP @worse              ; candidate <  best → keep best
+@cmp_ge:
+        BEQ @cmp_eq             ; tie → MVV-LVA tie-break path
+        JMP @replace            ; candidate > best → replace
+@cmp_eq:
+        ; --- Score tied: apply MVV-LVA + reservoir-sample tie-break ---
+        ; (Only meaningful in SMART; in NAIVE, ai_best_mvvlva stays $80
+        ; and the candidate's mvvlva is computed below as the same default,
+        ; so the BNE @worse path takes over and we keep first-encountered.)
+        LDA ai_strategy
+        BNE @do_mvvlva          ; SMART → tie-break
+        JMP @worse              ; NAIVE: deterministic, keep first
+@do_mvvlva:
+
+        ; Compute MVV-LVA score for this candidate.
+        ;   if capture:  mvvlva = victim*6 - attacker_value
+        ;   else:        mvvlva = -1   (rank below all captures)
+        LDA saved_captured
+        BNE @mv_cap
+        LDA #$FF                ; -1 signed
+        STA tmp                 ; tmp will be biased below
+        JMP @mv_set
+@mv_cap:
+        ; Multiply victim_value by 6 = (v << 2) + (v << 1).
+        LDA see_victim
+        ASL A
+        ASL A                   ; v*4
+        STA tmp                 ; tmp = v*4
+        LDA see_victim
+        ASL A                   ; v*2
+        CLC
+        ADC tmp
+        STA tmp                 ; tmp = v*6
+        ; attacker_value = mat_simple[ce_piece & PIECE_MASK]  (the moving piece)
+        LDA ce_piece
+        AND #PIECE_MASK
+        TAY
         SEC
         LDA tmp
-        SBC #$80                ; back to signed
+        SBC mat_simple,Y
+        STA tmp                 ; tmp = mvvlva (signed)
+@mv_set:
+        ; Bias and compare against ai_best_mvvlva.
+        CLC
+        LDA tmp
+        ADC #$80
+        STA tmp                 ; candidate mvvlva (unsigned)
+        CLC
+        LDA ai_best_mvvlva
+        ADC #$80
+        STA tmp2                ; best mvvlva (unsigned)
+        LDA tmp
+        CMP tmp2
+        BCC @worse              ; mvvlva < best → keep best
+        BNE @replace_mvvlva     ; mvvlva > best → replace
+
+        ; --- Full tie: reservoir-sample. Step the LFSR; replace iff bit 0 = 1. ---
+        JSR ai_rng_step
+        AND #$01
+        BEQ @worse              ; bit 0 = 0 → keep current best
+        ; Fall through to @replace_mvvlva (replace).
+@replace_mvvlva:
+        ; Update both score and mvvlva (the score was equal anyway).
+        SEC
+        LDA tmp
+        SBC #$80                ; back to signed mvvlva
+        STA ai_best_mvvlva
+        LDA see_value           ; adjusted score
         STA ai_best_score
         LDA mv_from
         STA ai_best_from
         LDA mv_to
         STA ai_best_to
+        JMP @after_replace
+@replace:
+        ; New best score: also recompute mvvlva and store (only meaningful in
+        ; SMART; NAIVE leaves ai_best_mvvlva at the initial $80 and the equality
+        ; path above is unreachable).
+        LDA ai_strategy
+        BEQ @nv_score
+        LDA saved_captured
+        BNE @nv_cap
+        LDA #$FF
+        STA ai_best_mvvlva
+        JMP @nv_score
+@nv_cap:
+        LDA see_victim
+        ASL A
+        ASL A
+        STA tmp
+        LDA see_victim
+        ASL A
+        CLC
+        ADC tmp
+        STA tmp
+        LDA ce_piece
+        AND #PIECE_MASK
+        TAY
+        SEC
+        LDA tmp
+        SBC mat_simple,Y
+        STA ai_best_mvvlva
+@nv_score:
+        LDA see_value
+        STA ai_best_score
+        LDA mv_from
+        STA ai_best_from
+        LDA mv_to
+        STA ai_best_to
+@after_replace:
 @worse:
+        ; v0.5 lesson: per-candidate "thinking" dots cost ~10 ms each
+        ; through the Apple-1 ECHO busy-wait. With ~50 legal moves per
+        ; position that adds ~0.5 s wallclock per AI move on top of the
+        ; SEE evaluation. Indicator removed — `do_ai` already prints
+        ; "COMPUTER THINKING..." once before calling here, which is
+        ; enough signal at --cpu-max where the search completes in tens
+        ; of ms anyway.
         JSR unmake_move
         JMP @nextt
 @bad:
@@ -1671,7 +2006,6 @@ ai_play_move:
         BEQ @end_f
         JMP @floop
 @end_f:
-
         ; Apply best move (if any).
         LDA ai_best_from
         CMP #$88

@@ -108,8 +108,8 @@ struct MachineConfig {
     bool pr40Printer;   // SWTPC PR-40 (Jobs Oct. 1976 Interface Age hack)
     bool krusader;
     bool cffa1;
-    bool aci;                   // Apple Cassette Interface (false = pre-ACI bare 4K)
-    int  ramKB;                 // Usable RAM in kilobytes (8 = Woz original, 32 = Replica/P-LAB)
+    bool aci;                   // Apple Cassette Interface (false for pre-ACI Bare 4K)
+    int  ramKB;                 // Usable RAM in kilobytes (8 = standard dual-bank Apple-1)
     BasicType basicType;
     // A1-AUDIO Special Edition: Claudio Parmigiani's 10-unit A1-AUDIO card
     // (https://p-l4b.github.io/A1-AUDIO/). Same MOS 6581/8580 chip as the

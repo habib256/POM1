@@ -101,6 +101,8 @@ public:
     bool getWriteInRom() const;
     void setTerminalSpeed(int charsPerSecond);
     void setPresetRamKB(int kb);
+    void setSiliconStrictMode(bool enabled);
+    bool isSiliconStrictMode() const;
     int getOutOfRangeAccessCount() const;
     void setOutOfRangeStrictMode(bool enable);
     bool isOutOfRangeStrictMode() const;

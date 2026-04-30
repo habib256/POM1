@@ -15,8 +15,9 @@ chess_text_io.o: ../../lib/chess/chess_text_io.asm
 	ca65 $(LIB) -o $@ $<
 
 # ld65 emits two binaries (Chess.bin.lo for $0280-$0FFF, Chess.bin.hi for $E000-$EFFF)
-$(OUT_DIR)/Chess.bin.lo $(OUT_DIR)/Chess.bin.hi: $(OBJS)
-	ld65 -C apple1_chess_text.cfg $(OBJS) -o $(OUT_DIR)/Chess.bin
+# plus Chess.sym (VICE-format label file) consumed by tests/chess_engine_perft_smoke_test.
+$(OUT_DIR)/Chess.bin.lo $(OUT_DIR)/Chess.bin.hi $(OUT_DIR)/Chess.sym: $(OBJS)
+	ld65 -C apple1_chess_text.cfg -Ln $(OUT_DIR)/Chess.sym $(OBJS) -o $(OUT_DIR)/Chess.bin
 	@rm -f $(OUT_DIR)/Chess.bin       # ld65 leaves an empty placeholder; remove it
 
 # Combined Wozmon-hex .txt with both blocks (low at $0280, high at $E000).

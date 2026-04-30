@@ -93,6 +93,43 @@ add_test(NAME peripheral_bus_smoke
          COMMAND test_peripheral_bus)
 set_tests_properties(peripheral_bus_smoke PROPERTIES TIMEOUT 5)
 
+# -- Preset RAM profile invariant ---------------------------------------------
+# All real-hardware presets use Parmigiani's standard 8 KB dual-bank map
+# ($0000-$0FFF + $E000-$EFFF), except the pre-ACI Bare Apple-1 which remains
+# the July-1976 4 KB baseline. Emulator-only Fantasy presets opt out with flat
+# 64 KB.
+add_executable(test_preset_ram_profiles
+    preset_ram_profiles_smoke_test.cpp
+)
+target_include_directories(test_preset_ram_profiles PRIVATE ${CMAKE_SOURCE_DIR})
+
+add_test(NAME preset_ram_profiles_smoke
+         COMMAND test_preset_ram_profiles
+                 "${CMAKE_SOURCE_DIR}/MainWindow_Presets.cpp")
+set_tests_properties(preset_ram_profiles_smoke PROPERTIES TIMEOUT 5)
+
+# -- Standard 8 KB dual-bank Memory mapping ------------------------------------
+# Pins the meaning of presetRamKB == 8: it is not contiguous $0000-$1FFF RAM,
+# but the Apple-1/Replica dual-bank layout used by the presets above.
+add_executable(test_memory_dualram
+    memory_dualram_smoke_test.cpp
+    ${POM1_TEST_CORE_SOURCES}
+)
+target_include_directories(test_memory_dualram PRIVATE
+    ${CMAKE_SOURCE_DIR}
+    ${CMAKE_SOURCE_DIR}/imgui
+)
+target_link_libraries(test_memory_dualram PRIVATE libresidfp_static)
+if(APPLE)
+    target_compile_definitions(test_memory_dualram PRIVATE GL_SILENCE_DEPRECATION)
+endif()
+if(WIN32)
+    target_link_libraries(test_memory_dualram PRIVATE ws2_32)
+endif()
+
+add_test(NAME memory_dualram_smoke COMMAND test_memory_dualram)
+set_tests_properties(memory_dualram_smoke PROPERTIES TIMEOUT 10)
+
 # -- SID audio production smoke test ------------------------------------------
 # Needs the full Memory+peripheral core to exercise the PeripheralBus path.
 add_executable(test_sid_audio
@@ -315,6 +352,68 @@ add_test(NAME snapshot_smoke
          COMMAND test_snapshot_smoke
          WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
 set_tests_properties(snapshot_smoke PROPERTIES TIMEOUT 10)
+
+# -- Chess engine perft (depth 1) smoke test ----------------------------------
+# Loads the dual-bank Chess artefacts (Chess.bin.lo @ $0280, Chess.bin.hi @
+# $E000) plus the VICE label file (Chess.sym) produced by `ld65 -Ln`, drops a
+# RAM trampoline at $0200 that calls init_board then perft1 then JMP-traps,
+# and asserts the perft count == 20 (the well-known depth-1 count for the
+# initial position). Catches silent regressions in move-gen, the ce_piece /
+# atk_piece aliasing fix, and the perft enumeration loop.
+#
+# The artefacts are produced by `make` in dev/projects/games_chess/. CMake
+# rebuilds them via a custom command so `ctest` always exercises the latest
+# engine sources without requiring developers to remember the make step.
+set(CHESS_ARTIFACT_DIR "${CMAKE_SOURCE_DIR}/software/games")
+set(CHESS_BIN_LO "${CHESS_ARTIFACT_DIR}/Chess.bin.lo")
+set(CHESS_BIN_HI "${CHESS_ARTIFACT_DIR}/Chess.bin.hi")
+set(CHESS_SYM    "${CHESS_ARTIFACT_DIR}/Chess.sym")
+set(CHESS_SRCDIR "${CMAKE_SOURCE_DIR}/dev/projects/games_chess")
+
+find_program(CA65 ca65)
+find_program(LD65 ld65)
+if(CA65 AND LD65)
+    add_custom_command(
+        OUTPUT  ${CHESS_BIN_LO} ${CHESS_BIN_HI} ${CHESS_SYM}
+        COMMAND ${CMAKE_COMMAND} -E chdir ${CHESS_SRCDIR} make
+        DEPENDS ${CHESS_SRCDIR}/Chess.asm
+                ${CMAKE_SOURCE_DIR}/dev/lib/chess/chess_engine.asm
+                ${CMAKE_SOURCE_DIR}/dev/lib/chess/chess_text_io.asm
+                ${CMAKE_SOURCE_DIR}/dev/lib/chess/chess_common.inc
+                ${CMAKE_SOURCE_DIR}/dev/lib/chess/chess_tables.inc
+                ${CHESS_SRCDIR}/apple1_chess_text.cfg
+                ${CHESS_SRCDIR}/Makefile
+        COMMENT "Building Chess engine artefacts via ca65/ld65"
+        VERBATIM
+    )
+    add_custom_target(chess_engine_artefacts ALL
+        DEPENDS ${CHESS_BIN_LO} ${CHESS_BIN_HI} ${CHESS_SYM}
+    )
+
+    add_executable(test_chess_engine_perft
+        chess_engine_perft_smoke_test.cpp
+        ${POM1_TEST_CORE_SOURCES}
+    )
+    add_dependencies(test_chess_engine_perft chess_engine_artefacts)
+    target_include_directories(test_chess_engine_perft PRIVATE
+        ${CMAKE_SOURCE_DIR}
+        ${CMAKE_SOURCE_DIR}/imgui
+    )
+    target_link_libraries(test_chess_engine_perft PRIVATE libresidfp_static)
+    if(APPLE)
+        target_compile_definitions(test_chess_engine_perft PRIVATE GL_SILENCE_DEPRECATION)
+    endif()
+    if(WIN32)
+        target_link_libraries(test_chess_engine_perft PRIVATE ws2_32)
+    endif()
+
+    add_test(NAME chess_engine_perft_smoke
+             COMMAND test_chess_engine_perft "${CHESS_ARTIFACT_DIR}"
+             WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
+    set_tests_properties(chess_engine_perft_smoke PROPERTIES TIMEOUT 30)
+else()
+    message(STATUS "ca65/ld65 not found — skipping chess_engine_perft_smoke test")
+endif()
 
 # -- Wozmon-hex multi-zone load test ------------------------------------------
 # Pin Memory::loadHexDump for dumps that span disjoint memory zones (e.g.

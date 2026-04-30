@@ -1,30 +1,46 @@
-# Apple 1 Chess (text mode) — v0.4
+# Apple 1 Chess (text mode) — v0.5
 
 Pure 6502 asm chess for the original Apple 1, text mode (40×24).
 Inspired by StewBC/cc65-Chess but rewritten from scratch in the
 POM1 game-port idiom (matches Sokoban / Connect 4 trilogies).
 
-## Features (v0.4)
+## Features (v0.5)
 
-**New in v0.4:**
+**New in v0.5 — playability & UX overhaul:**
+
+- **AI no longer blunders.** A new SMART strategy adds Static Exchange
+  Evaluation on the destination square, MVV-LVA tie-break between
+  equal-scored captures, and an 8-bit LFSR reservoir sampler for genuine
+  ties. The AI now refuses to give up a queen for a defended pawn, and two
+  AvA runs diverge by move 2–3 instead of replaying the same game.
+- **`D` — Toggle AI strategy** between NAIVE (v0.4 behaviour, useful for
+  comparison) and SMART (default — SEE + MVV-LVA + random tie-break).
+- **`H` — Hint.** The engine proposes a move without playing it. (Note:
+  this consumes the single-level undo slot; the player's prior `U` is
+  invalidated. Documented limitation, fixed in v1.2 with multi-level undo.)
+- **`L` — List legal moves.** Prints every legal move for the side to
+  move, 8 per line in algebraic notation. Helpful for newcomers.
+- **Anti-scroll redraw.** Every board redraw pushes the previous state
+  fully off the 24-line screen (Apple-1 has no cursor addressing). The
+  current board lands at the top, no more scroll-pollution.
+- **Last-move highlight.** The first glyph char of `mv_from` and `mv_to`
+  is replaced with `*`. Visible without inverse video. Cleared on undo
+  and on hint.
+- **Material balance line** (`MAT W:+N` / `MAT B:+N`) printed under the
+  board only when one side is ahead — suppressed entirely while material
+  is equal so the slow Apple-1 display doesn't pay for a no-info line on
+  every redraw of the opening / quiet middle game.
+- **AI thinking dots** — `ai_play_move` emits `.` every 32 candidates
+  evaluated. Replaces the silent ~300 ms freeze at 1 MHz with a visible
+  progress signal.
+
+**Carry-over from v0.4:**
+
 - **`M` — Cycle game mode** between four configurations:
-  - HUMAN VS HUMAN
-  - HUMAN (W) VS COMPUTER (B) — you play white, AI plays black
-  - COMPUTER (W) VS HUMAN (B) — AI plays white, you play black
-  - COMPUTER (W) VS COMPUTER (B) — full self-play
-  The game loop checks the mode before each turn and auto-invokes the
-  AI for the designated side.
-- **Perft fix** — the v0.3 over-count bug is fixed. `is_attacked_runner`
-  no longer clobbers `ce_piece`, so the move-gen dispatch stays
-  consistent across iterations. `perft1` now returns the correct **20**
-  legal moves for the initial position.
-
-**v0.3 features (still here):**
-- **AI 1-ply greedy** — type `A` for one-shot AI move; or use mode
-  cycling (`M`) for continuous AI play.
-- **Undo** — type `U` to reverse the last move (single level).
-- **Perft** — type `P` to count legal moves at current position. Now
-  matches expected values.
+  HUMAN VS HUMAN / HUMAN(W) VS AI(B) / AI(W) VS HUMAN(B) / AI VS AI.
+- **`A` — AI plays this turn** (one-shot trigger).
+- **`U` — Undo** the last move (single-level).
+- **`P` — Perft** count of legal moves at current position.
 
 **Carry-over from v0.2:**
 
@@ -42,13 +58,16 @@ POM1 game-port idiom (matches Sokoban / Connect 4 trilogies).
 - 2-char piece notation: `WP`/`BP`/`WN`/`BN`/`WB`/`BB`/`WR`/`BR`/`WQ`/`BQ`/`WK`/`BK`
 - Chequered board pattern (`..` for dark empty squares, `  ` for light)
 
-## Not yet implemented (v0.5+)
+## Not yet implemented (v0.6+)
 
-- AI alpha-beta 2-3 ply with MVV-LVA (planned: v1.2)
+- AI alpha-beta 2-3 ply (planned: v1.2 — needs ply-stacked `saved_*`)
 - Cursor input mode `C` (TMS9918/HGR variants, planned)
-- 50-move and 3-fold repetition draws
+- 50-move and 3-fold repetition draws (planned: v0.6)
+- Insufficient-material draw detection (planned: v0.6)
+- Multi-level undo (would also let `H` not consume the undo slot)
 - Interrupt key during AvA mode (currently must wait for game-over)
-- Mode toggle `M` in TMS9918 / HGR variants (text-only for v0.4)
+- v0.5 UX features (`H`/`L`/highlight/MAT/anti-scroll) in TMS9918/HGR
+  variants — these reuse this directory's renderer.
 
 ## Build
 
@@ -111,10 +130,12 @@ At the **MOVE?** prompt:
 | `OO` / `OOO` | Alternative castling syntax (KS / QS). |
 | `Q` | Quit current game (returns to splash) |
 | `U` | Undo last move (single level) |
-| `A` | Let the computer play this turn (1-ply greedy) |
+| `A` | Let the computer play this turn |
 | `M` | Cycle game mode (HvH / WAI / BAI / AvA) |
+| `D` | Toggle AI strategy (NAIVE / SMART) — v0.5 |
+| `H` | Hint: AI suggests a move without playing it — v0.5 |
+| `L` | List legal moves for the side to move — v0.5 |
 | `P` | Count legal moves at current position (perft) |
-| `D` | Toggle AI search depth (not yet implemented) |
 | `C` | Cursor input mode (TMS/HGR variants only — not in text) |
 
 After checkmate or stalemate, press any key to start a new game.
@@ -136,9 +157,31 @@ variant (`dev/projects/hgr_chess/`) reuse the same `chess_engine.o`
 
 - Apple-1 keyboard forces uppercase. Move input must be uppercase
   (`E2E4`, not `e2e4`). Promotion piece letter likewise: `Q`/`R`/`B`/`N`.
-- The text-mode 40×24 display has no cursor addressing; every move
-  re-prints the whole board (the terminal scrolls old state off the
-  top — period-authentic for 1976).
+- The text-mode 40×24 display has no cursor addressing. v0.5 emits
+  24 leading CRs before each redraw to push the previous board fully
+  off the screen — visually equivalent to a clear-screen.
 - Game-status detection (`game_status`) iterates all 64×64 from/to
   pairs after every move. At 1 MHz this takes a few hundred ms.
   Optimised in v1.2 with proper move-list iteration.
+- The `H` (hint) command consumes the single-level undo slot. After
+  a hint the player's prior `U` is no longer available. Multi-level
+  undo (v1.2) will fix this.
+- v0.5 UX features (highlight, MAT, H, L, anti-scroll, AI dots) live
+  in `Chess.asm` and don't propagate to the HGR / TMS9918 variants.
+  Those variants benefit from the stronger AI via the shared engine.
+
+## Tests
+
+`tests/chess_engine_perft_smoke_test.cpp` (registered as
+`chess_engine_perft_smoke` in ctest) builds these artefacts via the
+project Makefile, parses `Chess.sym` (VICE label file produced by
+`ld65 -Ln`), drives the 6502 through `init_board` then `perft1`, and
+asserts the count is exactly 20 for the initial position. Run with:
+
+```
+cd build && ctest -R chess --output-on-failure
+```
+
+Any change to move generation, the `is_attacked_runner / atk_piece`
+aliasing, or the perft enumeration loop will move this number off 20
+and fail the test.

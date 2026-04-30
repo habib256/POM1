@@ -1,9 +1,17 @@
-# Apple 1 Chess (GEN2 HGR variant) — v0.1
+# Apple 1 Chess (GEN2 HGR variant) — v0.1 (engine v0.5)
 
 Pure 6502 asm chess for the original Apple 1 + Uncle Bernie's GEN2
 Color Graphics Card. Two-player human vs human, with the chess engine +
 piece display on the regular Apple-1 40×24 text screen, AND a chequered
 8×8 board frame drawn on the GEN2 HGR framebuffer.
+
+Engine bumped to v0.5 (SMART AI by default, SEE + MVV-LVA + random tie-break).
+The new text-variant UX commands (`H`, `L`, last-move highlight, `MAT` line,
+anti-scroll redraw, AI thinking dots) live in the text variant's `Chess.asm`
+and don't ship in this variant yet — track them in
+`dev/projects/games_chess/README.md`. The `D` command (NAIVE/SMART toggle)
+also exits this variant via `msg_nyi_cmd` because the renderer hasn't been
+wired to handle the new return codes.
 
 Inspired by StewBC/cc65-Chess (algorithm reference). Shares
 `chess_engine.o` with the text and TMS9918 variants of the trilogy.

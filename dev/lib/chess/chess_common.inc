@@ -96,6 +96,17 @@ MAT_KING   = 127            ; pseudo-infinity for king (never captured legally)
 SIDE_WHITE = $00
 SIDE_BLACK = $80
 
+; --- AI strategy codes (selected by the 'D' command at the prompt) ---------
+; NAIVE = original v0.4 behaviour (1-ply greedy material; deterministic).
+; SMART = adds three layers on top of v0.4 without going past 1-ply:
+;          * MVV-LVA tie-break between equal-scored captures
+;          * Static Exchange Evaluation on the destination — refuses moves
+;            that hang the moving piece for a less-valuable attacker
+;          * 8-bit LFSR reservoir sampler for genuine ties (MVV-LVA equal),
+;            so two AvA runs from a fresh boot diverge by move 2-3.
+AI_STRATEGY_NAIVE = 0
+AI_STRATEGY_SMART = 1
+
 ; --- Error codes returned by apply_user_move ------------------------------
 ERR_EMPTY        = 1
 ERR_WRONG_COLOR  = 2

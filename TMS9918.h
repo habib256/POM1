@@ -33,6 +33,7 @@ public:
         std::array<uint8_t, 0x4000> vram{};
         std::array<uint8_t, 8> regs{};
         uint8_t statusReg = 0;
+        bool siliconStrictMode = false;
     };
 
     TMS9918();
@@ -45,6 +46,12 @@ public:
 
     // Cycle counting — generates frame flag (~60 Hz)
     void advanceCycles(int cycles);
+
+    // Silicon-accuracy checks used by real-hardware presets. When enabled,
+    // R1 bit 7 selects 4K/16K VRAM addressing and CPU accesses to $CC00/$CC01
+    // must leave enough 6502 cycles for the VDP's internal access window.
+    void setSiliconStrictMode(bool enabled);
+    bool isSiliconStrictMode() const { return siliconStrictMode; }
 
     void reset();
 
@@ -68,7 +75,13 @@ private:
     // Per-VBLANK sprite scan that updates statusReg sticky bits 5 (collision)
     // and 6 (5S) + the 5S sprite SAT index in low 5 bits. Bit-pattern based
     // (color=0 sprites still collide). Live VRAM, called from advanceCycles.
-    static void scanSpritesForStatus(const uint8_t* vram, const uint8_t* regs, uint8_t& statusOut);
+    static void scanSpritesForStatus(const uint8_t* vram, const uint8_t* regs,
+                                     bool strict, uint8_t& statusOut);
+    static uint16_t vramMaskForRegs(const uint8_t* regs, bool strict);
+    uint16_t liveVramMask() const;
+    int requiredAccessCycles() const;
+    bool canAcceptAccess() const;
+    void noteAcceptedAccess();
 
 private:
     std::array<uint8_t, 0x4000> vram{};
@@ -79,6 +92,8 @@ private:
     uint16_t vramAddr       = 0;
     uint8_t readAheadBuffer = 0;
     int frameCycleCounter   = 0;
+    int cyclesSinceIoAccess = 1000000;
+    bool siliconStrictMode  = false;
     bool snapshotDirty = true;        // skip the 16 KB VRAM + regs copy when nothing changed since last publish
 
     static constexpr int kCyclesPerFrame = POM1_CPU_CYCLES_PER_FRAME_1X_60HZ;

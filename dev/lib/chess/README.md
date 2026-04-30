@@ -69,7 +69,7 @@ Every move is 3 bytes: `(from, to, flags)`. Flags layout (`mv_flags`):
 In v0.1 only bits 0-3 are produced; en-passant + castling are stubbed
 (parsed but rejected with `ERR_NOT_IMPL`).
 
-## Status — v0.4 (current)
+## Status — v0.5 (current)
 
 | Feature | State |
 |---|---|
@@ -84,11 +84,42 @@ In v0.1 only bits 0-3 are produced; en-passant + castling are stubbed
 | Algebraic input parser (auto-complete on 4 chars) | ✅ |
 | Auto-detect castling from `E1G1`/`E1C1` syntax | ✅ |
 | AI 1-ply greedy (max our material - their material) | ✅ |
-| Undo (single-level via compact engine state save) | ✅ |
-| **Perft (depth 1)** — `is_attacked_runner`/`ce_piece` aliasing fixed; returns 20 for initial pos | ✅ |
+| **AI 1-ply + MVV-LVA tie-break** (v0.5)             | ✅ |
+| **AI 1-ply + Static Exchange Evaluation** (v0.5)    | ✅ refuses obvious blunders (queen for defended pawn etc.) |
+| **AI random tie-break via 8-bit LFSR** (v0.5)       | ✅ AvA games diverge by move 2–3 |
+| **AI strategy toggle** (NAIVE / SMART, v0.5)        | ✅ via the `D` command at the prompt |
+| **AI thinking indicator** (`.` per 32 nodes, v0.5)  | ✅ |
+| Undo (single-level via compact engine state save)   | ✅ — note: `H` (hint) consumes the slot |
+| **Perft (depth 1)** — returns 20 for initial pos    | ✅ pinned by `chess_engine_perft_smoke` ctest |
 | **Mode cycling (`M`)** — HvH / WAI / BAI / AvA in text variant | ✅ |
-| AI (alpha-beta 2-3 ply + MVV-LVA) | ⏳ v1.2 |
-| Perft (depth ≥2, recursive) | ⏳ v0.5 (needs ply-stacked saved_*) |
+| AI (alpha-beta 2-3 ply)                             | ⏳ v1.2 |
+| Perft (depth ≥2, recursive)                         | ⏳ v0.6 (needs ply-stacked saved_*) |
+| 50-move / threefold-repetition / insufficient-material draws | ⏳ v0.6 |
+
+### v0.5 internals
+
+`ai_play_move` now lives behind an `ai_strategy` byte (BSS):
+
+- `AI_STRATEGY_NAIVE = 0` — bit-exact v0.4 behaviour. Picks the first
+  candidate that maximises `evaluate_material` (raw `our − their`).
+- `AI_STRATEGY_SMART = 1` (default, set in `init_board`) — for each
+  candidate computes:
+    1. **Static Exchange Evaluation** on `mv_to`. Simulates depth-2 exchange:
+       `gain = victim − our_piece + min_friendly_defender_value`. The
+       adjusted score becomes `raw_eval + (see_value − victim_value)`,
+       so capturing a defended pawn with a queen lands at roughly −8
+       and the AI prefers any quiet move scoring 0.
+    2. **MVV-LVA** secondary score = `victim_value × 6 − attacker_value`
+       (or `−1` for non-captures), used as a tie-break on equal scores.
+       Effect: at equal material delta, the AI prefers active captures.
+    3. **8-bit LFSR reservoir sample** (Galois, taps `$1D`, period 255)
+       seeded `$AC` in `init_board`. When score AND mvvlva are equal,
+       step the LFSR and replace iff bit 0 = 1. Diverges AvA games.
+
+Helpers `find_min_attacker` and `see_estimate` are added; `is_pseudo_legal`,
+`make_move`, `unmake_move` are now exported so variant code (Chess.asm's
+`do_list_moves`, `do_hint`) can enumerate legal moves without re-implementing
+move-gen.
 
 ## Perft expected counts (for v0.2 self-test)
 

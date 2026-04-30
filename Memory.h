@@ -214,6 +214,8 @@ public:
     const TMS9918& getTMS9918() const { return *tms9918; }
     void setTMS9918Enabled(bool b);
     bool isTMS9918Enabled() const { return tms9918Enabled; }
+    void setSiliconStrictMode(bool enabled);
+    bool isSiliconStrictMode() const { return siliconStrictMode; }
 
     // P-LAB A1-SID Sound Card (MOS 6581/8580)
     pom1::SID& getSID() { return *sid; }
@@ -420,6 +422,7 @@ private :
     bool pr40Enabled = false;
     std::unique_ptr<GT6144> gt6144;
     bool gt6144Enabled = false;
+    bool siliconStrictMode = false;
 
     // PeripheralBus — central dispatch for memory-mapped I/O. Each peripheral
     // registers a range + read/write handler; memRead/memWrite delegate to

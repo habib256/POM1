@@ -51,7 +51,58 @@ void TMS9918::reset()
     vramAddr        = 0;
     readAheadBuffer = 0;
     frameCycleCounter = 0;
+    cyclesSinceIoAccess = 1000000;
     snapshotDirty   = true;
+}
+
+void TMS9918::setSiliconStrictMode(bool enabled)
+{
+    siliconStrictMode = enabled;
+    cyclesSinceIoAccess = 1000000;
+}
+
+uint16_t TMS9918::vramMaskForRegs(const uint8_t* regs, bool strict)
+{
+    return (strict && (regs[1] & 0x80) == 0) ? 0x0FFF : 0x3FFF;
+}
+
+uint16_t TMS9918::liveVramMask() const
+{
+    return vramMaskForRegs(regs.data(), siliconStrictMode);
+}
+
+int TMS9918::requiredAccessCycles() const
+{
+    if (!siliconStrictMode) return 0;
+    if ((regs[1] & 0x40) == 0 || (statusReg & 0x80) != 0) return 2;
+
+    const bool textMode       = (regs[1] & 0x10) != 0;
+    const bool multicolorMode = (regs[1] & 0x08) != 0;
+    const bool bitmapMode     = (regs[0] & 0x02) != 0;
+    if (textMode) return 3;
+    if (multicolorMode) return 4;
+
+    const uint16_t satBase = static_cast<uint16_t>(regs[5] & 0x7F) << 7;
+    const uint16_t mask = liveVramMask();
+    bool spritesActive = false;
+    for (int i = 0; i < 32; ++i) {
+        const uint8_t y = vram[(satBase + i * 4) & mask];
+        if (y == 0xD0) break;
+        spritesActive = true;
+        break;
+    }
+    if (!spritesActive) return 4;
+    return bitmapMode ? 8 : 8;
+}
+
+bool TMS9918::canAcceptAccess() const
+{
+    return !siliconStrictMode || cyclesSinceIoAccess >= requiredAccessCycles();
+}
+
+void TMS9918::noteAcceptedAccess()
+{
+    cyclesSinceIoAccess = 0;
 }
 
 // --------------------------------------------------------------------------
@@ -60,18 +111,24 @@ void TMS9918::reset()
 void TMS9918::writeData(uint8_t value)
 {
     latchIsSecond = false;                    // data-port access resets latch state
-    vram[vramAddr & 0x3FFF] = value;
+    if (!canAcceptAccess()) return;
+    noteAcceptedAccess();
+    const uint16_t mask = liveVramMask();
+    vram[vramAddr & mask] = value;
     readAheadBuffer = value;
-    vramAddr = (vramAddr + 1) & 0x3FFF;
+    vramAddr = (vramAddr + 1) & mask;
     snapshotDirty = true;
 }
 
 uint8_t TMS9918::readData()
 {
     latchIsSecond = false;                    // data-port access resets latch state
+    if (!canAcceptAccess()) return readAheadBuffer;
+    noteAcceptedAccess();
+    const uint16_t mask = liveVramMask();
     uint8_t result = readAheadBuffer;
-    readAheadBuffer = vram[vramAddr & 0x3FFF];
-    vramAddr = (vramAddr + 1) & 0x3FFF;
+    readAheadBuffer = vram[vramAddr & mask];
+    vramAddr = (vramAddr + 1) & mask;
     return result;
 }
 
@@ -80,6 +137,8 @@ uint8_t TMS9918::readData()
 // --------------------------------------------------------------------------
 void TMS9918::writeControl(uint8_t value)
 {
+    if (!canAcceptAccess()) return;
+    noteAcceptedAccess();
     if (!latchIsSecond) {
         // First byte — store in latch
         controlLatch  = value;
@@ -96,8 +155,9 @@ void TMS9918::writeControl(uint8_t value)
         // Set VRAM read address
         vramAddr = ((uint16_t)(value & 0x3F) << 8) | controlLatch;
         // Pre-fetch first byte into read-ahead buffer
-        readAheadBuffer = vram[vramAddr & 0x3FFF];
-        vramAddr = (vramAddr + 1) & 0x3FFF;
+        const uint16_t mask = liveVramMask();
+        readAheadBuffer = vram[vramAddr & mask];
+        vramAddr = (vramAddr + 1) & mask;
     }
     else if (cmd == 0x40) {
         // Set VRAM write address
@@ -114,6 +174,8 @@ void TMS9918::writeControl(uint8_t value)
 
 uint8_t TMS9918::readControl()
 {
+    if (!canAcceptAccess()) return statusReg;
+    noteAcceptedAccess();
     latchIsSecond = false;
     uint8_t result = statusReg;
     // Clear frame flag (bit 7), collision flag (bit 5) on read
@@ -126,13 +188,14 @@ uint8_t TMS9918::readControl()
 // --------------------------------------------------------------------------
 void TMS9918::advanceCycles(int cycles)
 {
+    cyclesSinceIoAccess = std::min(cyclesSinceIoAccess + cycles, 1000000);
     frameCycleCounter += cycles;
     if (frameCycleCounter >= kCyclesPerFrame) {
         frameCycleCounter -= kCyclesPerFrame;
         // Update sticky sprite-engine flags (collision bit 5, 5S bit 6 + index)
         // before raising VBlank — only when display is enabled (R1 bit 6).
         if (regs[1] & 0x40) {
-            scanSpritesForStatus(vram.data(), regs.data(), statusReg);
+            scanSpritesForStatus(vram.data(), regs.data(), siliconStrictMode, statusReg);
         }
         statusReg |= 0x80; // set frame interrupt flag
     }
@@ -145,6 +208,7 @@ void TMS9918::copySnapshot(Snapshot& out)
 {
     // Status register changes on every frame tick, so always mirror it.
     out.statusReg = statusReg;
+    out.siliconStrictMode = siliconStrictMode;
     // VRAM (16 KB) and register file only move when the card is actually
     // touched by software — a dirty flag avoids a 16 KB memcpy on idle frames.
     if (snapshotDirty) {
@@ -198,21 +262,22 @@ void TMS9918::renderGraphicsI(uint32_t* pixels, const Snapshot& s, ImU32 backdro
     uint16_t nameBase    = (uint16_t)(s.regs[2] & 0x0F) << 10;
     uint16_t colorBase   = (uint16_t) s.regs[3] << 6;
     uint16_t patternBase = (uint16_t)(s.regs[4] & 0x07) << 11;
+    const uint16_t mask = vramMaskForRegs(s.regs.data(), s.siliconStrictMode);
 
     for (int row = 0; row < 24; row++) {
         for (int col = 0; col < 32; col++) {
-            uint8_t name = s.vram[(nameBase + row * 32 + col) & 0x3FFF];
+            uint8_t name = s.vram[(nameBase + row * 32 + col) & mask];
 
-            uint8_t colorByte = s.vram[(colorBase + (name >> 3)) & 0x3FFF];
+            uint8_t colorByte = s.vram[(colorBase + (name >> 3)) & mask];
             uint8_t fgIdx = (colorByte >> 4) & 0x0F;
             uint8_t bgIdx =  colorByte       & 0x0F;
             ImU32 fg = (fgIdx == 0) ? backdrop : kPalette[fgIdx];
             ImU32 bg = (bgIdx == 0) ? backdrop : kPalette[bgIdx];
 
-            uint16_t patAddr = (patternBase + (uint16_t)name * 8) & 0x3FFF;
+            uint16_t patAddr = (patternBase + (uint16_t)name * 8) & mask;
 
             for (int line = 0; line < 8; line++) {
-                uint8_t pat = s.vram[(patAddr + line) & 0x3FFF];
+                uint8_t pat = s.vram[(patAddr + line) & mask];
                 int py = row * 8 + line;
                 for (int bit = 0; bit < 8; bit++) {
                     ImU32 color = (pat & (0x80 >> bit)) ? fg : bg;
@@ -230,6 +295,7 @@ void TMS9918::renderGraphicsI(uint32_t* pixels, const Snapshot& s, ImU32 backdro
 void TMS9918::renderGraphicsII(uint32_t* pixels, const Snapshot& s, ImU32 backdrop)
 {
     uint16_t nameBase = (uint16_t)(s.regs[2] & 0x0F) << 10;
+    const uint16_t mask = vramMaskForRegs(s.regs.data(), s.siliconStrictMode);
 
     uint16_t colorBase   = (uint16_t)(s.regs[3] & 0x80) << 6;
     uint16_t colorMask   = ((uint16_t)(s.regs[3] & 0x7F) << 6) | 0x003F;
@@ -239,7 +305,7 @@ void TMS9918::renderGraphicsII(uint32_t* pixels, const Snapshot& s, ImU32 backdr
     for (int row = 0; row < 24; row++) {
         int section = row / 8;
         for (int col = 0; col < 32; col++) {
-            uint8_t name = s.vram[(nameBase + row * 32 + col) & 0x3FFF];
+            uint8_t name = s.vram[(nameBase + row * 32 + col) & mask];
 
             uint16_t charOffset = (uint16_t)(section * 256 + name) * 8;
 
@@ -248,8 +314,8 @@ void TMS9918::renderGraphicsII(uint32_t* pixels, const Snapshot& s, ImU32 backdr
                 uint16_t patAddr  = patternBase + (offset & patternMask);
                 uint16_t colAddr  = colorBase   + (offset & colorMask);
 
-                uint8_t pat       = s.vram[patAddr & 0x3FFF];
-                uint8_t colorByte = s.vram[colAddr & 0x3FFF];
+                uint8_t pat       = s.vram[patAddr & mask];
+                uint8_t colorByte = s.vram[colAddr & mask];
 
                 uint8_t fgIdx = (colorByte >> 4) & 0x0F;
                 uint8_t bgIdx =  colorByte       & 0x0F;
@@ -274,6 +340,7 @@ void TMS9918::renderText(uint32_t* pixels, const Snapshot& s, ImU32 backdrop)
 {
     uint16_t nameBase    = (uint16_t)(s.regs[2] & 0x0F) << 10;
     uint16_t patternBase = (uint16_t)(s.regs[4] & 0x07) << 11;
+    const uint16_t mask = vramMaskForRegs(s.regs.data(), s.siliconStrictMode);
 
     uint8_t fgIdx = (s.regs[7] >> 4) & 0x0F;
     ImU32 fg = (fgIdx == 0) ? backdrop : kPalette[fgIdx];
@@ -281,11 +348,11 @@ void TMS9918::renderText(uint32_t* pixels, const Snapshot& s, ImU32 backdrop)
     // Text mode: 240 pixels wide, centered in 256 (8-pixel border each side)
     for (int row = 0; row < 24; row++) {
         for (int col = 0; col < 40; col++) {
-            uint8_t name = s.vram[(nameBase + row * 40 + col) & 0x3FFF];
-            uint16_t patAddr = (patternBase + (uint16_t)name * 8) & 0x3FFF;
+            uint8_t name = s.vram[(nameBase + row * 40 + col) & mask];
+            uint16_t patAddr = (patternBase + (uint16_t)name * 8) & mask;
 
             for (int line = 0; line < 8; line++) {
-                uint8_t pat = s.vram[(patAddr + line) & 0x3FFF];
+                uint8_t pat = s.vram[(patAddr + line) & mask];
                 int py = row * 8 + line;
                 for (int bit = 0; bit < 6; bit++) {
                     if (pat & (0x80 >> bit))
@@ -303,16 +370,17 @@ void TMS9918::renderMulticolor(uint32_t* pixels, const Snapshot& s, ImU32 backdr
 {
     uint16_t nameBase    = (uint16_t)(s.regs[2] & 0x0F) << 10;
     uint16_t patternBase = (uint16_t)(s.regs[4] & 0x07) << 11;
+    const uint16_t mask = vramMaskForRegs(s.regs.data(), s.siliconStrictMode);
 
     for (int row = 0; row < 24; row++) {
         for (int col = 0; col < 32; col++) {
-            uint8_t name = s.vram[(nameBase + row * 32 + col) & 0x3FFF];
+            uint8_t name = s.vram[(nameBase + row * 32 + col) & mask];
 
             int patRow = (row % 4) * 2;
-            uint16_t patAddr = (patternBase + (uint16_t)name * 8 + patRow) & 0x3FFF;
+            uint16_t patAddr = (patternBase + (uint16_t)name * 8 + patRow) & mask;
 
             for (int subRow = 0; subRow < 2; subRow++) {
-                uint8_t colorByte = s.vram[(patAddr + subRow) & 0x3FFF];
+                uint8_t colorByte = s.vram[(patAddr + subRow) & mask];
                 uint8_t leftIdx  = (colorByte >> 4) & 0x0F;
                 uint8_t rightIdx =  colorByte       & 0x0F;
 
@@ -353,6 +421,7 @@ void TMS9918::renderSprites(uint32_t* pixels, const Snapshot& s)
 {
     uint16_t sprAttrBase    = (uint16_t)(s.regs[5] & 0x7F) << 7;
     uint16_t sprPatternBase = (uint16_t)(s.regs[6] & 0x07) << 11;
+    const uint16_t mask = vramMaskForRegs(s.regs.data(), s.siliconStrictMode);
 
     bool doubleSize = (s.regs[1] & 0x02) != 0;
     bool magnified  = (s.regs[1] & 0x01) != 0;
@@ -366,14 +435,14 @@ void TMS9918::renderSprites(uint32_t* pixels, const Snapshot& s)
     int spriteCount = 0;
 
     for (int i = 0; i < 32; i++) {
-        uint16_t attrAddr = (sprAttrBase + i * 4) & 0x3FFF;
+        uint16_t attrAddr = (sprAttrBase + i * 4) & mask;
         uint8_t yRaw = s.vram[attrAddr];
         if (yRaw == 0xD0) break;
 
         int y = (int)yRaw - ((yRaw > 0xD0) ? 256 : 0) + 1;
-        int x = s.vram[(attrAddr + 1) & 0x3FFF];
-        uint8_t name  = s.vram[(attrAddr + 2) & 0x3FFF];
-        uint8_t color = s.vram[(attrAddr + 3) & 0x3FFF];
+        int x = s.vram[(attrAddr + 1) & mask];
+        uint8_t name  = s.vram[(attrAddr + 2) & mask];
+        uint8_t color = s.vram[(attrAddr + 3) & mask];
         if (color & 0x80) x -= 32;
         sprites[spriteCount++] = { y, x, name, (uint8_t)(color & 0x0F) };
     }
@@ -402,10 +471,10 @@ void TMS9918::renderSprites(uint32_t* pixels, const Snapshot& s)
             for (int half = 0; half < halves; half++) {
                 uint16_t addr;
                 if (!doubleSize) {
-                    addr = (sprPatternBase + (uint16_t)patName * 8 + rowInSpr) & 0x3FFF;
+                    addr = (sprPatternBase + (uint16_t)patName * 8 + rowInSpr) & mask;
                 } else {
                     int quadrant = (rowInSpr < 8) ? half * 2 : half * 2 + 1;
-                    addr = (sprPatternBase + (uint16_t)(patName + quadrant) * 8 + (rowInSpr & 7)) & 0x3FFF;
+                    addr = (sprPatternBase + (uint16_t)(patName + quadrant) * 8 + (rowInSpr & 7)) & mask;
                 }
                 uint8_t patByte = s.vram[addr];
                 for (int bit = 0; bit < 8; bit++) {
@@ -431,10 +500,12 @@ void TMS9918::renderSprites(uint32_t* pixels, const Snapshot& s)
 //                 index of the offending sprite.
 // Both bits are sticky until readControl() clears them via the ~0xE0 mask.
 // --------------------------------------------------------------------------
-void TMS9918::scanSpritesForStatus(const uint8_t* vram, const uint8_t* regs, uint8_t& statusOut)
+void TMS9918::scanSpritesForStatus(const uint8_t* vram, const uint8_t* regs,
+                                   bool strict, uint8_t& statusOut)
 {
     uint16_t sprAttrBase    = (uint16_t)(regs[5] & 0x7F) << 7;
     uint16_t sprPatternBase = (uint16_t)(regs[6] & 0x07) << 11;
+    const uint16_t mask = vramMaskForRegs(regs, strict);
 
     bool doubleSize = (regs[1] & 0x02) != 0;
     bool magnified  = (regs[1] & 0x01) != 0;
@@ -448,14 +519,14 @@ void TMS9918::scanSpritesForStatus(const uint8_t* vram, const uint8_t* regs, uin
     int spriteCount = 0;
 
     for (int i = 0; i < 32; i++) {
-        uint16_t attrAddr = (sprAttrBase + i * 4) & 0x3FFF;
+        uint16_t attrAddr = (sprAttrBase + i * 4) & mask;
         uint8_t yRaw = vram[attrAddr];
         if (yRaw == 0xD0) break;
 
         int y = (int)yRaw - ((yRaw > 0xD0) ? 256 : 0) + 1;
-        int x = vram[(attrAddr + 1) & 0x3FFF];
-        uint8_t name  = vram[(attrAddr + 2) & 0x3FFF];
-        uint8_t color = vram[(attrAddr + 3) & 0x3FFF];
+        int x = vram[(attrAddr + 1) & mask];
+        uint8_t name  = vram[(attrAddr + 2) & mask];
+        uint8_t color = vram[(attrAddr + 3) & mask];
         bool earlyClock = (color & 0x80) != 0;
         if (earlyClock) x -= 32;
         sprites[spriteCount++] = { y, x, name, earlyClock };
@@ -495,12 +566,12 @@ void TMS9918::scanSpritesForStatus(const uint8_t* vram, const uint8_t* regs, uin
             // Build a 16-bit pattern row (left half then optional right half).
             uint8_t patLeft = 0, patRight = 0;
             if (!doubleSize) {
-                patLeft = vram[(sprPatternBase + (uint16_t)patName * 8 + rowInSpr) & 0x3FFF];
+                patLeft = vram[(sprPatternBase + (uint16_t)patName * 8 + rowInSpr) & mask];
             } else {
                 int qLeft  = (rowInSpr < 8) ? 0 : 1;
                 int qRight = (rowInSpr < 8) ? 2 : 3;
-                patLeft  = vram[(sprPatternBase + (uint16_t)(patName + qLeft)  * 8 + (rowInSpr & 7)) & 0x3FFF];
-                patRight = vram[(sprPatternBase + (uint16_t)(patName + qRight) * 8 + (rowInSpr & 7)) & 0x3FFF];
+                patLeft  = vram[(sprPatternBase + (uint16_t)(patName + qLeft)  * 8 + (rowInSpr & 7)) & mask];
+                patRight = vram[(sprPatternBase + (uint16_t)(patName + qRight) * 8 + (rowInSpr & 7)) & mask];
             }
 
             int halves = doubleSize ? 2 : 1;

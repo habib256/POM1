@@ -336,6 +336,19 @@ void EmulationController::setPresetRamKB(int kb)
     memory->setPresetRamKB(kb);
 }
 
+void EmulationController::setSiliconStrictMode(bool enabled)
+{
+    std::lock_guard<PriorityMutex> lock(stateMutex);
+    memory->setSiliconStrictMode(enabled);
+    publisher.publish(*memory, *cpu, runRequested.load());
+}
+
+bool EmulationController::isSiliconStrictMode() const
+{
+    std::lock_guard<PriorityMutex> lock(stateMutex);
+    return memory->isSiliconStrictMode();
+}
+
 int EmulationController::getOutOfRangeAccessCount() const
 {
     std::lock_guard<PriorityMutex> lock(stateMutex);
