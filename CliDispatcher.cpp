@@ -494,6 +494,29 @@ void runLoad(const CliAction& a, EmulationController& emu)
 {
     std::string err;
     int bytes = 0;
+    // Extension-aware routing: .txt / .hex go through the Wozmon-hex parser
+    // so multi-zone dumps (e.g. games_chess Chess.txt = $0280 + $E000 blocks)
+    // load both zones from a single CLI invocation. The addr argument is
+    // informational for hex dumps — the file's own address prefixes win.
+    auto endsWith = [](const std::string& s, const std::string& suf) {
+        return s.size() >= suf.size() &&
+               std::equal(suf.rbegin(), suf.rend(), s.rbegin(),
+                          [](char a, char b){ return std::tolower((unsigned char)a) == std::tolower((unsigned char)b); });
+    };
+    bool isHex = endsWith(a.pathS, ".txt") || endsWith(a.pathS, ".hex");
+    if (isHex) {
+        quint16 startAddr = 0;
+        if (!emu.loadHexDump(a.pathS, startAddr, err, &bytes)) {
+            pom1::log().error("CLI", "--load " + a.pathS + ": " + err);
+            return;
+        }
+        std::ostringstream ss;
+        ss << "--load " << a.pathS << " (hex) → run $" << std::hex << std::uppercase
+           << std::setw(4) << std::setfill('0') << startAddr
+           << " (" << std::dec << bytes << " bytes across multiple zones)";
+        pom1::log().info("CLI", ss.str());
+        return;
+    }
     if (!emu.loadBinary(a.pathS, static_cast<quint16>(a.addressI), err, &bytes)) {
         pom1::log().error("CLI", "--load " + a.pathS + ": " + err);
         return;

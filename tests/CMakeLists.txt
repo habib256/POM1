@@ -315,3 +315,32 @@ add_test(NAME snapshot_smoke
          COMMAND test_snapshot_smoke
          WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
 set_tests_properties(snapshot_smoke PROPERTIES TIMEOUT 10)
+
+# -- Wozmon-hex multi-zone load test ------------------------------------------
+# Pin Memory::loadHexDump for dumps that span disjoint memory zones (e.g.
+# games_chess Chess.txt = $0280 lo block + $E000 hi block). The merge logic
+# that joins "...00" + "E000:" across the line boundary into a "merged
+# data+address" token (see Memory.cpp loadHexDump) is the load-bearing piece
+# — if it regresses, only the lo block loads and the engine at $E000 silently
+# drops on the floor. The user reported exactly this symptom on 2026-04-30;
+# this test ensures it can't regress unnoticed.
+add_executable(test_hex_dump_multi_zone
+    hex_dump_multi_zone_test.cpp
+    ${POM1_TEST_CORE_SOURCES}
+)
+target_include_directories(test_hex_dump_multi_zone PRIVATE
+    ${CMAKE_SOURCE_DIR}
+    ${CMAKE_SOURCE_DIR}/imgui
+)
+target_link_libraries(test_hex_dump_multi_zone PRIVATE libresidfp_static)
+if(APPLE)
+    target_compile_definitions(test_hex_dump_multi_zone PRIVATE GL_SILENCE_DEPRECATION)
+endif()
+if(WIN32)
+    target_link_libraries(test_hex_dump_multi_zone PRIVATE ws2_32)
+endif()
+
+add_test(NAME hex_dump_multi_zone
+         COMMAND test_hex_dump_multi_zone
+         WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
+set_tests_properties(hex_dump_multi_zone PROPERTIES TIMEOUT 5)
