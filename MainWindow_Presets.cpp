@@ -135,10 +135,12 @@ const MachineConfig kMachinePresets[] = {
     },
     {
         "Replica-1 with ACI, Krusader & Integer BASIC (Briel 2003)",
-        "Vince Briel's modern recreation: Integer BASIC, Krusader assembler, ACI cassette.",
+        "Vince Briel's modern recreation. 8 KB dual-bank RAM (4 KB at "
+        "$0000-$0FFF + 4 KB at $E000-$EFFF — Parmigiani's standard layout, same "
+        "as 99 % of Originals). Integer BASIC, Krusader assembler, ACI cassette.",
         false, false, false, false, false, false, false,
         /*pr40*/ false,
-        true, false, true, 32, BasicType::Integer,
+        true, false, true, 8, BasicType::Integer,
         /*sidSE*/ false,
         /*jukeBox*/ false, JukeBox::Jumper::RAM16_ROM32, JukeBox::ChipMode::Flash,
         /*codeTank*/ false, CodeTank::Jumper::Lower16, /*codeTankRom*/ nullptr,
@@ -151,10 +153,13 @@ const MachineConfig kMachinePresets[] = {
     },
     {
         "Replica-1 with CFFA1 & Applesoft Lite (Dreher 2007)",
-        "Replica 1 with CFFA1 CompactFlash storage, Applesoft Lite.",
+        "Replica-1 with CFFA1 CompactFlash storage, Applesoft Lite. "
+        "8 KB dual-bank RAM (4 KB at $0000-$0FFF + 4 KB at $E000-$EFFF — "
+        "Parmigiani's standard layout). Applesoft Lite spans $E000-$FFFF in "
+        "the CFFA1 build, so the high bank holds the BASIC ROM.",
         false, false, false, false, false, false, false,
         /*pr40*/ false,
-        false, true, false, 32, BasicType::ApplesoftLite,
+        false, true, false, 8, BasicType::ApplesoftLite,
         /*sidSE*/ false,
         /*jukeBox*/ false, JukeBox::Jumper::RAM16_ROM32, JukeBox::ChipMode::Flash,
         /*codeTank*/ false, CodeTank::Jumper::Lower16, /*codeTankRom*/ nullptr,
@@ -170,10 +175,13 @@ const MachineConfig kMachinePresets[] = {
     },
     {
         "P-LAB Apple-1 with microSD & Applesoft Lite (April 2022)",
-        "P-LAB microSD Storage Card, Applesoft Lite.",
+        "P-LAB microSD Storage Card, Applesoft Lite. 8 KB dual-bank RAM "
+        "(4 KB at $0000-$0FFF + 4 KB at $E000-$EFFF — Parmigiani's standard). "
+        "Integer BASIC stays at $E000; Applesoft Lite is a separate ROM at "
+        "$6000-$7FFF (cold/warm: 6000R / 6003R).",
         false, true, false, false, false, false, false,
         /*pr40*/ false,
-        false, false, false, 32, BasicType::ApplesoftLite,
+        false, false, false, 8, BasicType::ApplesoftLite,
         /*sidSE*/ false,
         /*jukeBox*/ false, JukeBox::Jumper::RAM16_ROM32, JukeBox::ChipMode::Flash,
         /*codeTank*/ false, CodeTank::Jumper::Lower16, /*codeTankRom*/ nullptr,
@@ -189,10 +197,12 @@ const MachineConfig kMachinePresets[] = {
     },
     {   //                                  GEN2  uSD  SID  TMS  RTC  WiFi Term Krus CFFA ACI
         "P-LAB Apple-1 with A1-SID Sound Card ($C800-$CFFF)",
-        "P-LAB A1-SID Sound Card (MOS 6581/8580), Integer BASIC. Registers at $C800-$CFFF.",
+        "P-LAB A1-SID Sound Card (MOS 6581/8580), Integer BASIC. Registers at "
+        "$C800-$CFFF. 8 KB dual-bank RAM (4 KB at $0000-$0FFF + 4 KB at "
+        "$E000-$EFFF — Parmigiani's standard layout).",
         false, false, true, false, false, false, false,
         /*pr40*/ false,
-        false, false, false, 32, BasicType::Integer,
+        false, false, false, 8, BasicType::Integer,
         /*sidSE*/ false,
         /*jukeBox*/ false, JukeBox::Jumper::RAM16_ROM32, JukeBox::ChipMode::Flash,
         /*codeTank*/ false, CodeTank::Jumper::Lower16, /*codeTankRom*/ nullptr,
@@ -207,11 +217,13 @@ const MachineConfig kMachinePresets[] = {
     },
     {   //                                  GEN2  uSD  SID  TMS  RTC  WiFi Term Krus CFFA ACI
         "P-LAB Apple-1 with A1-AUDIO Special Edition ($CC00-$CC1F)",
-        "Claudio Parmigiani's A1-AUDIO Special Edition (10 units): MOS 6581/8580 at $CC00-$CC1F. "
-        "Mutually exclusive with TMS9918 (same $CC00/$CC01 window).",
+        "Claudio Parmigiani's A1-AUDIO Special Edition (10 units): MOS 6581/8580 "
+        "at $CC00-$CC1F. Mutually exclusive with TMS9918 (same $CC00/$CC01 "
+        "window). 8 KB dual-bank RAM (4 KB at $0000-$0FFF + 4 KB at "
+        "$E000-$EFFF — Parmigiani's standard layout).",
         false, false, false, false, false, false, false,
         /*pr40*/ false,
-        false, false, false, 32, BasicType::Integer,
+        false, false, false, 8, BasicType::Integer,
         /*sidSE*/ true,
         /*jukeBox*/ false, JukeBox::Jumper::RAM16_ROM32, JukeBox::ChipMode::Flash,
         /*codeTank*/ false, CodeTank::Jumper::Lower16, /*codeTankRom*/ nullptr,
@@ -253,10 +265,13 @@ const MachineConfig kMachinePresets[] = {
     },
     {   //                                  GEN2  uSD  SID  TMS  RTC  WiFi Term Krus CFFA ACI
         "P-LAB Apple-1 with I/O Board & RTC",
-        "P-LAB A1-IO Board & RTC (DS3231, DS18B20, analog/digital I/O), Integer BASIC.",
+        "P-LAB A1-IO Board & RTC (DS3231, DS18B20, analog/digital I/O), "
+        "Integer BASIC. 8 KB dual-bank RAM (4 KB at $0000-$0FFF + 4 KB at "
+        "$E000-$EFFF — Parmigiani's standard layout). The A1-IO VIA at "
+        "$2000-$200F is on the peripheral bus (not main RAM).",
         false, false, false, false, true, false, false,
         /*pr40*/ false,
-        false, false, false, 32, BasicType::Integer,
+        false, false, false, 8, BasicType::Integer,
         /*sidSE*/ false,
         /*jukeBox*/ false, JukeBox::Jumper::RAM16_ROM32, JukeBox::ChipMode::Flash,
         /*codeTank*/ false, CodeTank::Jumper::Lower16, /*codeTankRom*/ nullptr,
@@ -269,10 +284,13 @@ const MachineConfig kMachinePresets[] = {
     },
     {   //                                  GEN2  uSD  SID  TMS  RTC  WiFi Term Krus CFFA ACI
         "P-LAB Apple-1 with Wi-Fi Modem BBS",
-        "P-LAB MODEM BBS (65C51 ACIA, ESP8266 AT, TCP/TELNET), Integer BASIC.",
+        "P-LAB MODEM BBS (65C51 ACIA, ESP8266 AT, TCP/TELNET), Integer BASIC. "
+        "8 KB dual-bank RAM (4 KB at $0000-$0FFF + 4 KB at $E000-$EFFF — "
+        "Parmigiani's standard layout). The ACIA at $B000-$B003 is on the "
+        "peripheral bus.",
         false, false, false, false, false, true, false,
         /*pr40*/ false,
-        false, false, false, 32, BasicType::Integer,
+        false, false, false, 8, BasicType::Integer,
         /*sidSE*/ false,
         /*jukeBox*/ false, JukeBox::Jumper::RAM16_ROM32, JukeBox::ChipMode::Flash,
         /*codeTank*/ false, CodeTank::Jumper::Lower16, /*codeTankRom*/ nullptr,
@@ -284,16 +302,17 @@ const MachineConfig kMachinePresets[] = {
         }, 3
     },
     {   //                                  GEN2  uSD  SID  TMS  RTC  WiFi Term Krus CFFA ACI
-        "P-LAB Apple-1 with Juke-Box (16 kB RAM)",
+        "P-LAB Apple-1 with Juke-Box",
         "Minimal Juke-Box configuration: 32 kB EEPROM ROM library at $4000-$BFFF, "
-        "16 kB contiguous RAM, no ACI cassette. The Juke-Box's EEPROM replaces "
-        "tape loading entirely. Type BD00R from the Woz Monitor to launch the "
-        "Program Manager (& prompt). Apple Integer BASIC is pre-loaded at "
-        "$E000 so L<letter> on a BASIC program followed by B works directly; "
-        "the LA command still reloads BASIC from the EEPROM if needed.",
+        "no ACI cassette. The Juke-Box's EEPROM replaces tape loading entirely. "
+        "Type BD00R from the Woz Monitor to launch the Program Manager (& "
+        "prompt). 8 KB dual-bank RAM (4 KB at $0000-$0FFF + 4 KB at $E000-$EFFF "
+        "— Parmigiani's standard layout); Integer BASIC is pre-loaded into the "
+        "high bank at $E000 so L<letter> on a BASIC program followed by B works "
+        "directly; the LA command still reloads BASIC from the EEPROM if needed.",
         false, false, false, false, false, false, false,
         /*pr40*/ false,
-        false, false, /*aci*/ false, /*ramKB*/ 16, BasicType::Integer,
+        false, false, /*aci*/ false, /*ramKB*/ 8, BasicType::Integer,
         /*sidSE*/ false,
         /*jukeBox*/ true, JukeBox::Jumper::RAM16_ROM32, JukeBox::ChipMode::Flash,
         /*codeTank*/ false, CodeTank::Jumper::Lower16, /*codeTankRom*/ nullptr,
@@ -339,10 +358,15 @@ const MachineConfig kMachinePresets[] = {
     },
     {
         "Uncle Bernie's Apple-1 with GEN2 HGR Color (April 2026)",
-        "Uncle Bernie's GEN2 280x192 HGR color graphics, Integer BASIC.",
+        "Uncle Bernie's GEN2 280x192 HGR color graphics, Integer BASIC. "
+        "8 KB dual-bank RAM (4 KB at $0000-$0FFF + 4 KB at $E000-$EFFF — "
+        "Parmigiani's standard layout). The GEN2 framebuffer at $2000-$3FFF "
+        "lives on the card itself; main motherboard RAM stays the standard "
+        "8 KB. (Default OOR mode is permissive, so HGR programs read/write "
+        "$2000-$3FFF without warnings.)",
         true, false, false, false, false, false, false,
         /*pr40*/ false,
-        false, false, false, 32, BasicType::Integer,
+        false, false, false, 8, BasicType::Integer,
         /*sidSE*/ false,
         /*jukeBox*/ false, JukeBox::Jumper::RAM16_ROM32, JukeBox::ChipMode::Flash,
         /*codeTank*/ false, CodeTank::Jumper::Lower16, /*codeTankRom*/ nullptr,

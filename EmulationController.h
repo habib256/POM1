@@ -8,6 +8,8 @@
 #include <memory>
 #include <mutex>
 #include <string>
+#include <utility>
+#include <vector>
 
 #include "CpuClock.h"
 #include "POM1Build.h"
@@ -81,7 +83,9 @@ public:
     void queueKey(char key);
     void writeMemory(quint16 address, quint8 value);
 
-    bool loadHexDump(const std::string& path, quint16& startAddress, std::string& error, int* bytesLoaded = nullptr);
+    bool loadHexDump(const std::string& path, quint16& startAddress, std::string& error,
+                     int* bytesLoaded = nullptr,
+                     std::vector<std::pair<quint16,quint16>>* zones = nullptr);
     bool loadBinary(const std::string& path, quint16 startAddress, std::string& error, int* bytesLoaded = nullptr);
     bool loadBinaryToRam(const std::string& path, quint16 address, std::string& error);
     bool saveMemoryRange(const std::string& path, quint16 startAddress, quint16 endAddress, bool binaryFormat, std::string& error);

@@ -31,6 +31,7 @@
 #include <unordered_set>
 #include <bitset>
 #include <cstddef>
+#include <utility>
 #include "AudioDevice.h"
 #include "CassetteDevice.h"
 #include "SID.h"
@@ -94,7 +95,15 @@ public:
     int loadAciRom(void);
     void configureResetVectors(quint16 vectorAddress = 0xFF00);
     int loadBinary(const char* filename, quint16 startAddress, int* bytesLoaded = nullptr);
-    int loadHexDump(const char* filename, quint16 &startAddress, int* bytesLoaded = nullptr);
+    // loadHexDump: parse a Wozmon-hex dump (e.g. games_chess Chess.txt) and
+    // write each `AAAA: BB BB ...` block into mem[]. Multi-zone dumps that
+    // jump between disjoint address ranges (chess: $0280 lo block + $E000 hi
+    // block) populate the optional `zones` vector with one (start, end) pair
+    // per contiguous zone — used by the file-dialog post-load metadata so the
+    // Memory Map can display each zone as its own loadedPrograms entry.
+    int loadHexDump(const char* filename, quint16 &startAddress,
+                    int* bytesLoaded = nullptr,
+                    std::vector<std::pair<quint16,quint16>>* zones = nullptr);
 
     // Last ROM loading error (empty if no error)
     const std::string& getLastError() const { return lastError; }

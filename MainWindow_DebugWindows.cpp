@@ -214,8 +214,20 @@ std::vector<MainWindow_ImGui::MemRegion> MainWindow_ImGui::buildMemoryRegions()
     std::vector<MemRegion> regions;
 
     // --- Layer 0: base (User RAM + Unmapped) ---
+    // Apple-1 hardware reality: presetRamKB == 8 is Parmigiani's standard
+    // dual-bank layout (4 KB at $0000-$0FFF + 4 KB at $E000-$EFFF — same as
+    // 99 % of Originals + every Replica). NOT a contiguous 8 KB at
+    // $0000-$1FFF. The high-bank User RAM stays visible as green here; when
+    // the preset loads BASIC / Applesoft Lite the Layer-3 yellow ROM band
+    // overlays it (last-match-wins in the grid render). Other ramKB values
+    // (4 / 16 / 32 / 64) keep the contiguous-low semantics.
     if (fullRam) {
         regions.push_back({ 0x0000, 0xFFFF, ramColor, "User RAM" });
+    } else if (presetRamKB == 8) {
+        regions.push_back({ 0x0000, 0x0FFF, ramColor,   "User RAM" });
+        regions.push_back({ 0x1000, 0xDFFF, unmapColor, "Unmapped" });
+        regions.push_back({ 0xE000, 0xEFFF, ramColor,   "User RAM" });
+        regions.push_back({ 0xF000, 0xFFFF, unmapColor, "Unmapped" });
     } else {
         quint16 ramTop = static_cast<quint16>(ramCeiling32);
         if (ramTop > 0)

@@ -356,13 +356,28 @@ void Memory::resetOutOfRangeAccessCount(void)
     oorWarned.clear();
 }
 
+// Apple-1 OOR range for the current preset.
+//   - presetRamKB == 8: Parmigiani dual-bank — RAM lives at $0000-$0FFF and
+//     $E000-$EFFF, so the OOR gap is [$1000, $8000). The high bank is above
+//     $8000 and naturally falls outside the gap (the existing dispatch order
+//     hits ROM / peripheral pages there before this check).
+//   - otherwise: contiguous low — gap is [presetRamKB * 1024, $8000).
+static inline bool isOorAddress(quint16 address, int presetRamKB)
+{
+    if (presetRamKB >= 64) return false;
+    if (address >= 0x8000) return false;
+    const quint16 oorLow = (presetRamKB == 8)
+        ? 0x1000
+        : static_cast<quint16>(presetRamKB * 1024);
+    return address >= oorLow;
+}
+
 void Memory::checkOutOfRangeAccess(quint16 address, bool isWrite)
 {
     // User-RAM ceiling: warn when a program touches RAM past the preset budget.
-    // Skip ROM/IO ($8000+) — those are handled earlier in the dispatch.
-    if (presetRamKB >= 64) return;
-    const quint16 ceiling = static_cast<quint16>(presetRamKB) * 1024;
-    if (address < ceiling || address >= 0x8000) return;
+    // Skip ROM/IO ($8000+) and the dual-bank high RAM ($E000-$EFFF) — those
+    // are handled earlier in the dispatch.
+    if (!isOorAddress(address, presetRamKB)) return;
     ++oorAccessCount;
     if (oorWarned.size() >= 64) return;
     uint32_t key = (static_cast<uint32_t>(address) << 1) | (isWrite ? 1u : 0u);
@@ -670,9 +685,23 @@ int Memory::loadBinary(const char* filename, quint16 startAddress, int* bytesLoa
     return 0;
 }
 
-int Memory::loadHexDump(const char* filename, quint16 &startAddress, int* bytesLoaded)
+int Memory::loadHexDump(const char* filename, quint16 &startAddress, int* bytesLoaded,
+                        std::vector<std::pair<quint16,quint16>>* zones)
 {
     if (bytesLoaded) *bytesLoaded = 0;
+    if (zones) zones->clear();
+    // Tracks the current contiguous zone we're filling. Each address-prefix
+    // ('AAAA:') flip closes the previous zone and starts a new one. The final
+    // zone is closed at end of parse. zoneActive distinguishes "no zone yet"
+    // (before the first address) from "zone in progress".
+    quint16 zoneStart = 0;
+    unsigned int zoneLastAddr = 0; // last address actually written
+    bool zoneActive = false;
+    auto closeZone = [&]() {
+        if (!zones || !zoneActive) return;
+        zones->push_back({zoneStart, static_cast<quint16>(zoneLastAddr)});
+        zoneActive = false;
+    };
     std::ifstream file(filename);
     if (!file.is_open()) {
         pom1::log().error("Mem", std::string("Cannot open file: ") + filename);
@@ -751,6 +780,21 @@ int Memory::loadHexDump(const char* filename, quint16 &startAddress, int* bytesL
             size_t peek = i;
             while (peek < cleaned.size() && (cleaned[peek] == ' ' || cleaned[peek] == '\t' || cleaned[peek] == '\r' || cleaned[peek] == '\n')) peek++;
 
+            // Inline data-byte writer with zone tracking. Every byte written
+            // through this helper extends or starts a zone; address-prefix
+            // flips below close the zone before resetting currentAddr.
+            auto writeByte = [&](quint8 v) {
+                if (currentAddr >= 0x10000) return;
+                if (!zoneActive) {
+                    zoneStart = static_cast<quint16>(currentAddr);
+                    zoneActive = true;
+                }
+                mem[currentAddr] = v;
+                zoneLastAddr = currentAddr;
+                currentAddr++;
+                totalBytes++;
+            };
+
             if (i < cleaned.size() && (cleaned[i] == 'R' || cleaned[i] == 'r')) {
                 // Handle merged data+run: e.g. "FFE2B3R" = data FF, run E2B3
                 if (hexStr.size() > 4) {
@@ -758,10 +802,7 @@ int Memory::loadHexDump(const char* filename, quint16 &startAddress, int* bytesL
                     if (dataLen % 2 != 0) oddDigitsDropped++;
                     for (size_t j = 0; j + 1 < dataLen; j += 2) {
                         quint8 val = (hexVal(hexStr[j]) << 4) | hexVal(hexStr[j + 1]);
-                        if (currentAddr < 0x10000) {
-                            mem[currentAddr++] = val;
-                            totalBytes++;
-                        }
+                        writeByte(val);
                     }
                     hexStr = hexStr.substr(dataLen);
                 }
@@ -778,13 +819,15 @@ int Memory::loadHexDump(const char* filename, quint16 &startAddress, int* bytesL
                     if (dataLen % 2 != 0) oddDigitsDropped++;
                     for (size_t j = 0; j + 1 < dataLen; j += 2) {
                         quint8 val = (hexVal(hexStr[j]) << 4) | hexVal(hexStr[j + 1]);
-                        if (currentAddr < 0x10000) {
-                            mem[currentAddr++] = val;
-                            totalBytes++;
-                        }
+                        writeByte(val);
                     }
                     hexStr = hexStr.substr(dataLen);
                 }
+                // Address jump: close the zone we were filling so the new
+                // address starts a fresh zone. Multi-zone dumps (chess.txt =
+                // $0280 lo + $E000 hi) hit this twice — once when the parser
+                // first sees "0280:", once at the lo→hi flip "00E000:".
+                closeZone();
                 currentAddr = (quint16)strtol(hexStr.c_str(), nullptr, 16);
                 if (firstAddr) {
                     startAddress = currentAddr;
@@ -800,10 +843,7 @@ int Memory::loadHexDump(const char* filename, quint16 &startAddress, int* bytesL
             if (hexStr.size() % 2 != 0) oddDigitsDropped++;
             for (size_t j = 0; j + 1 < hexStr.size(); j += 2) {
                 quint8 val = (hexVal(hexStr[j]) << 4) | hexVal(hexStr[j + 1]);
-                if (currentAddr < 0x10000) {
-                    mem[currentAddr++] = val;
-                    totalBytes++;
-                }
+                writeByte(val);
             }
             continue;
         }
@@ -811,6 +851,10 @@ int Memory::loadHexDump(const char* filename, quint16 &startAddress, int* bytesL
         // Caractère inconnu — sauter
         i++;
     }
+
+    // Close the final zone (the one currently being filled when the parse ran
+    // off the end of the file).
+    closeZone();
 
     // Utiliser l'adresse de run si disponible, sinon la première adresse
     if (hasRunAddr)
@@ -907,12 +951,11 @@ quint8 Memory::memRead(quint16 address)
     checkOutOfRangeAccess(address, false);
     // Strict enforcement: unmapped RAM on a real 1976 4 K Apple-1 floats on
     // the bus; the ROMs that follow at $C1xx/$E0xx/$FFxx are handled above.
-    // Return $FF as a safe stand-in for "nothing driving the bus".
-    if (oorStrictMode && presetRamKB < 64) {
-        const quint16 ceiling = static_cast<quint16>(presetRamKB) * 1024;
-        if (address >= ceiling && address < 0x8000) {
-            return 0xFF;
-        }
+    // Return $FF as a safe stand-in for "nothing driving the bus". For
+    // 8 KB Parmigiani dual-bank presets the $E000-$EFFF high bank is also
+    // valid RAM (handled inside isOorAddress).
+    if (oorStrictMode && isOorAddress(address, presetRamKB)) {
+        return 0xFF;
     }
     return mem[address];
 }
@@ -1000,11 +1043,8 @@ void Memory::memWrite(quint16 address, quint8 value)
     // Strict enforcement: drop writes to unmapped RAM so programs that stray
     // past the preset's physical RAM ceiling can't silently corrupt the
     // backing array and then read back their own garbage.
-    if (oorStrictMode && presetRamKB < 64) {
-        const quint16 ceiling = static_cast<quint16>(presetRamKB) * 1024;
-        if (address >= ceiling && address < 0x8000) {
-            return;
-        }
+    if (oorStrictMode && isOorAddress(address, presetRamKB)) {
+        return;
     }
     mem[address] = value;
     dirtyPages.set(static_cast<std::size_t>(address >> 8));

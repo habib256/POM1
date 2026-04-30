@@ -202,13 +202,15 @@ bool EmulationController::loadBinaryToRam(const std::string& path, quint16 addre
     return true;
 }
 
-bool EmulationController::loadHexDump(const std::string& path, quint16& startAddress, std::string& error, int* bytesLoaded)
+bool EmulationController::loadHexDump(const std::string& path, quint16& startAddress, std::string& error,
+                                      int* bytesLoaded,
+                                      std::vector<std::pair<quint16,quint16>>* zones)
 {
     stopCpu();
     std::lock_guard<PriorityMutex> lock(stateMutex);
 
     quint16 addr = 0;
-    int result = memory->loadHexDump(path.c_str(), addr, bytesLoaded);
+    int result = memory->loadHexDump(path.c_str(), addr, bytesLoaded, zones);
     if (result != 0) {
         error = "Error: unable to load file";
         publisher.publish(*memory, *cpu, runRequested.load());

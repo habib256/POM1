@@ -204,12 +204,13 @@ void MainWindow_ImGui::renderLoadDialog()
             quint16 addr = 0;
             std::string error;
             int bytesLoaded = 0;
+            std::vector<std::pair<quint16,quint16>> hexZones;
             bool ok = false;
             if (loadDlg.fileType == 0) {
                 addr = (quint16)strtol(loadDlg.addressStr, nullptr, 16);
                 ok = emulation->loadBinary(loadDlg.filePath, addr, error, &bytesLoaded);
             } else {
-                ok = emulation->loadHexDump(loadDlg.filePath, addr, error, &bytesLoaded);
+                ok = emulation->loadHexDump(loadDlg.filePath, addr, error, &bytesLoaded, &hexZones);
                 snprintf(loadDlg.addressStr, sizeof(loadDlg.addressStr), "%04X", addr);
             }
             if (ok) {
@@ -217,10 +218,24 @@ void MainWindow_ImGui::renderLoadDialog()
                 cpuRunning = true;
                 stepMode = false;
                 std::string filename = std::filesystem::path(loadDlg.filePath).filename().string();
-                // Track loaded program region for Memory Map
-                if (bytesLoaded > 0) {
+                // Track loaded program regions for the Memory Map. Multi-zone
+                // hex dumps (e.g. games_chess Chess.txt = $0280 lo + $E000 hi)
+                // emit one entry per zone so the high block doesn't get drawn
+                // as a bogus contiguous range that runs through ROM space.
+                // Binary loads always yield a single contiguous region.
+                if (!hexZones.empty()) {
+                    auto overlapsAny = [&hexZones](const LoadedRegion& p) {
+                        for (const auto& z : hexZones)
+                            if (!(p.end < z.first || p.start > z.second)) return true;
+                        return false;
+                    };
+                    loadedPrograms.erase(
+                        std::remove_if(loadedPrograms.begin(), loadedPrograms.end(), overlapsAny),
+                        loadedPrograms.end());
+                    for (const auto& z : hexZones)
+                        loadedPrograms.push_back({filename, z.first, z.second});
+                } else if (bytesLoaded > 0) {
                     quint16 progEnd = static_cast<quint16>(addr + bytesLoaded - 1);
-                    // Remove any existing region that overlaps
                     loadedPrograms.erase(
                         std::remove_if(loadedPrograms.begin(), loadedPrograms.end(),
                             [addr, progEnd](const LoadedRegion& p) {

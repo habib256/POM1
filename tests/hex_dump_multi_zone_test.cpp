@@ -36,6 +36,8 @@
 #include <cassert>
 #include <cstdio>
 #include <fstream>
+#include <utility>
+#include <vector>
 
 namespace {
 const char* kFixturePath = "/tmp/pom1_hex_dump_multi_zone.txt";
@@ -61,10 +63,20 @@ int main()
     Memory mem;
     quint16 startAddr = 0;
     int bytes = 0;
-    int rc = mem.loadHexDump(kFixturePath, startAddr, &bytes);
+    std::vector<std::pair<quint16, quint16>> zones;
+    int rc = mem.loadHexDump(kFixturePath, startAddr, &bytes, &zones);
     assert(rc == 0 && "loadHexDump returned error on a well-formed 2-zone dump");
     assert(bytes == 32 && "expected 16 lo + 16 hi = 32 bytes loaded");
     assert(startAddr == 0x0280 && "run address should be $0280 (the trailing 0280R)");
+
+    // Zone tracking: the file dialog uses this output to register one
+    // loadedPrograms entry per disjoint zone. Without it the Memory Map
+    // would draw a bogus contiguous band from $0280 to $0280+totalBytes-1
+    // that runs through ROM space. Pin the exact endpoints so a future
+    // refactor of the parser's address-flip logic can't regress this.
+    assert(zones.size() == 2 && "expected one zone per disjoint address block");
+    assert(zones[0].first == 0x0280 && zones[0].second == 0x028F);
+    assert(zones[1].first == 0xE000 && zones[1].second == 0xE00F);
 
     const quint8* m = mem.getMemoryPointer();
 
