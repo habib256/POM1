@@ -1,1 +1,0 @@
-TMS9918 split bank: Lower = Galaga, Upper = Sokoban. Pick with the board jumper, then 4000R.

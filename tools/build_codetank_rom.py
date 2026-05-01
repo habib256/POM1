@@ -176,12 +176,18 @@ def build_lower_bank() -> bytes:
 
 
 def assemble_multi(asms: list[pathlib.Path], cfg: pathlib.Path, name: str,
-                   max_size: int) -> bytes:
+                   max_size: int,
+                   extra_ca65_args: list[str] | None = None) -> bytes:
     """Assemble each `asms[i]` separately with ca65, then link the whole
     bundle with `cfg`. Used for LOGO V2.0 which links three modules
     (TMS_Logo_16k + math + tms9918m2) into one ROM image.
+
+    `extra_ca65_args` lets the caller pass per-build flags such as
+    `-D CODETANK_BUILD` to gate features that only fit in the
+    cartridge variant (LABEL, DEMO2, embedded charmap).
     """
     BUILD.mkdir(parents=True, exist_ok=True)
+    extra = extra_ca65_args or []
     objs: list[pathlib.Path] = []
     for asm in asms:
         obj = BUILD / f"{name}_{asm.stem}.o"
@@ -193,6 +199,7 @@ def assemble_multi(asms: list[pathlib.Path], cfg: pathlib.Path, name: str,
              "-I", str(LIB_SOKOBAN),
              "-I", str(LIB_HGR),
              "-I", str(asm.parent),
+             *extra,
              "-o", str(obj), str(asm)],
             check=True, cwd=str(ROOT),
         )
@@ -215,12 +222,18 @@ def assemble_multi(asms: list[pathlib.Path], cfg: pathlib.Path, name: str,
 def build_upper_bank_logo() -> bytes:
     """Upper 16 kB: TMS_LOGO V2.0 interpreter at $4000-$7FFF, run in
     place from ROM. PROCBSS lives in the upper Parmigiani RAM bank
-    ($E000-$EFFF) per apple1_logo_v2_codetank_bank.cfg."""
+    ($E000-$EFFF) per apple1_logo_v2_codetank_bank.cfg.
+
+    Passes `-D CODETANK_BUILD` so LABEL / DEMO2 / charmap_table get
+    compiled in (they're gated out of the dev DRAM build because
+    apple1_logo_16k.cfg has no spare CODE budget for them).
+    """
     print("\n[CodeTank] Upper bank (TMS_LOGO V2.0, run-in-place):",
           file=sys.stderr)
     logo = assemble_multi(
         [LOGO_V2_ASM, LOGO_V2_MATH_ASM, LOGO_V2_VDP_ASM],
-        LOGO_V2_BANK_CFG, "TMS_Logo_v2_bank", HALF_SIZE)
+        LOGO_V2_BANK_CFG, "TMS_Logo_v2_bank", HALF_SIZE,
+        extra_ca65_args=["-D", "CODETANK_BUILD"])
     bank = bytearray(b"\xFF" * HALF_SIZE)
     slot(bank, 0x0000, logo, HALF_SIZE, "LOGO V2.0  ($4000-$7FFF)")
     return bytes(bank)

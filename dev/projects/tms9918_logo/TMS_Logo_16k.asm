@@ -73,6 +73,10 @@
 ; tms9918m2.asm  -- Mode-2 bitmap driver (init + plot + Bresenham line).
 .import   init_vdp_g2, clear_bitmap, disable_sprites, line_xy
 .importzp ln_x0, ln_y0, ln_x1, ln_y1
+.ifdef CODETANK_BUILD
+.import   calc_pix_addr, vdp_set_write
+.importzp pix_x, pix_y
+.endif
 ;
 ; math.asm        -- fixed-point trig + LFSR + decimal output + mod360.
 .import   roll_lfsr, print_decimal, div_arg_by_10
@@ -129,6 +133,27 @@ mptr_save_hi: .res 1
 ; addressing requires this be in ZP.
 shape_pat_lo: .res 1
 shape_pat_hi: .res 1
+; Active directional-shape table pointer (TURTL or BOAT). Lives in ZP for
+; (zp),Y access from update_dir_turtle. Only consulted when
+; dir_turtle_active = 1; left at dir_turtle_table by main for safety.
+dir_table_lo: .res 1
+dir_table_hi: .res 1
+; --- Sprite size geometry (V2.1: 8x8 + 16x16 mixed) ----------------------
+; spr_size: bytes per sprite pattern (8 or 32). Used by cmd_setshape's
+;   static-copy loop and by update_dir_turtle's dir-table copy loop.
+; spr_xoff/spr_yoff: subtract from (tx,ty) before writing the sprite
+;   attribute so the pattern is centred on the turtle position.
+;     16x16: subtract 8 / 9 (Y=ty-9 because hardware shows sprite at
+;            scanline Y+1 and the 16x16 origin is top-left).
+;     8x8:   subtract 4 / 5.
+; spr_r1: full R1 byte to load via VDP_CTRL whenever cmd_setshape changes
+;   sprite mode. $C2 = 16K + DISP + IE_off + sprite-16, $C0 = sprite-8.
+; All four are derived from spr_size by apply_sprite_size so callers
+; only have to write the size byte then JSR.
+spr_size:    .res 1
+spr_xoff:    .res 1
+spr_yoff:    .res 1
+spr_r1:      .res 1
 
 ; --- BSS scratch in $0200 page --------------------------------------------
 .segment "LINEBUF"
@@ -262,6 +287,18 @@ main:
         STA dir_turtle_active
         LDA #$FF
         STA last_octant
+        ; Default directional-shape table = the turtle. cmd_setshape
+        ; rewrites this when "BOAT is selected. Never read while
+        ; dir_turtle_active = 0.
+        LDA #<dir_turtle_table
+        STA dir_table_lo
+        LDA #>dir_turtle_table
+        STA dir_table_hi
+        ; Default sprite geometry = 16x16 (consistent with V2.0 behaviour).
+        ; apply_sprite_size at the next SETSHAPE picks the right values.
+        LDA #32
+        STA spr_size
+        JSR apply_sprite_size
         LDA #0
         STA n_vars
         STA n_procs
@@ -405,6 +442,12 @@ help_p3:
         .byte "  BIRD1   bird, wings up", $0D
         .byte "  BIRD2   bird, wings down", $0D
         .byte "  TURTL   chunky turtle", $0D
+        .byte "  BOAT    speedboat (8 dir)", $0D
+        .byte "  HEART   small heart (8x8)", $0D
+        .byte "Emotes 16x16 (CC-BY Quale):", $0D
+        .byte "  NORMAL HAPPY  SUPER  SAD", $0D
+        .byte "  UPSET  ANGRY  GRUMPY PERV", $0D
+        .byte "  SICK   SLEEP  PIRATE SHADES", $0D
         .byte $0D
         .byte "Animation example:", $0D
         .byte "  TO FLY", $0D
@@ -483,6 +526,15 @@ help_p7:
         .byte "    pause N seconds", $0D
         .byte "  DEMO", $0D
         .byte "    built-in slideshow", $0D
+.ifdef CODETANK_BUILD
+        .byte "  LABEL ", $22, "TEXT", $0D
+        .byte "    text on bitmap (8x8)", $0D
+        .byte "  SAY ", $22, "TEXT", $0D
+        .byte "    speech bubble below", $0D
+        .byte "    sprite (auto-position)", $0D
+        .byte "  DEMO2", $0D
+        .byte "    POM1 tells its story", $0D
+.endif
         .byte "  HELP        this menu", $0D
         .byte "  HELP N      a topic page", $0D
         .byte "  BYE         exit to Wozmon", $0D
@@ -761,6 +813,10 @@ parse_and_exec:
         BEQ @ifelse_cmd
         CMP #'S'
         BEQ @setshape_cmd
+.ifdef CODETANK_BUILD
+        CMP #'L'
+        BEQ @label_cmd
+.endif
         ; flag 0: no arg
         JMP @dispatch
 @one_arg:
@@ -808,6 +864,14 @@ parse_and_exec:
         JSR mark_ok
         JSR cmd_setshape
         JMP @loop
+.ifdef CODETANK_BUILD
+@label_cmd:
+        ; flag 'L' is shared by LABEL and SAY -- dispatch to whichever
+        ; handler find_mnem latched into mptr_lo:hi.
+        JSR mark_ok
+        JSR call_handler
+        JMP @loop
+.endif
 @dispatch:
         JSR mark_ok
         JSR call_handler
@@ -1445,10 +1509,33 @@ print_help_str:
 ;   the end of the script. After the script ends, line_buf is zeroed
 ;   and line_idx set to 0 so the outer parse_and_exec sees CR and stops.
 cmd_demo:
+.ifdef CODETANK_BUILD
+        ; find_mnem matches the first 4 chars of the typed word against
+        ; mnem_tab, so "DEMO" and "DEMO2" both land on this handler. The
+        ; full identifier sits in mnem_buf (space-padded to NAME_LEN=6),
+        ; so checking byte 4 distinguishes the two: '2' -> autobiographic
+        ; narrator demo, ' ' -> classic slideshow.
+        LDA mnem_buf+4
+        CMP #'2'
+        BEQ cmd_demo2
+.endif
         LDA #<demo_script
         STA mptr_lo
         LDA #>demo_script
         STA mptr_hi
+        JMP cmd_demo_run
+.ifdef CODETANK_BUILD
+cmd_demo2:
+        ; CodeTank-only -- POM1 autobiographic narration that uses the 12
+        ; SCROLL-O-SPRITES emote sprites + LABEL bitmap text to walk
+        ; through the lineage Apple-1 -> TMS9918 -> CodeTank -> POM1.
+        LDA #<demo2_script
+        STA mptr_lo
+        LDA #>demo2_script
+        STA mptr_hi
+        JMP cmd_demo_run
+.endif
+cmd_demo_run:
 @nxt:   LDY #0
         LDA (mptr_lo),Y
         BEQ @done             ; $00 -> end of script
@@ -3374,10 +3461,11 @@ heading_to_octant:
         RTS
 
 ; ============================================================================
-; update_dir_turtle: when SETSHAPE "TURTL is active, recompute octant from
-;   the current heading and -- only if the octant changed since the last
-;   call -- copy the matching 32-byte pattern from dir_turtle_table to the
-;   sprite-0 pattern slot at VRAM $1800. Cheap no-op when:
+; update_dir_turtle: when a directional shape (TURTL or BOAT) is active,
+;   recompute octant from the current heading and -- only if the octant
+;   changed since the last call -- copy the matching 32-byte pattern from
+;   the active dir-table (pointed at by dir_table_lo/hi) to the sprite-0
+;   pattern slot at VRAM $1800. Cheap no-op when:
 ;     - dir_turtle_active = 0  (BIRD1/BIRD2/ARROW or no SETSHAPE yet)
 ;     - sprite_mode = 0        (still bitmap turtle)
 ;     - last_octant == cur_octant (heading hasn't crossed an octant edge)
@@ -3395,11 +3483,14 @@ update_dir_turtle:
         STA last_octant
         ASL                   ; word index
         TAY
-        LDA dir_turtle_table,Y
+        LDA (dir_table_lo),Y
         STA shape_pat_lo
-        LDA dir_turtle_table+1,Y
+        INY
+        LDA (dir_table_lo),Y
         STA shape_pat_hi
-        ; Copy 32 bytes to VRAM $1800 (sprite pattern 0).
+        ; Copy spr_size bytes to VRAM $1800 (sprite pattern 0).
+        ; spr_size = 32 for TURTL/BOAT (16x16); future 8x8 directional
+        ; shapes will set spr_size = 8 in their cmd_setshape branch.
         LDA #$00
         STA VDP_CTRL
         NOP                   ; +2c silicon-strict gap (LDA #imm bridge)
@@ -3409,9 +3500,39 @@ update_dir_turtle:
 @ucp:   LDA (shape_pat_lo),Y
         STA VDP_DATA
         INY
-        CPY #32
+        CPY spr_size
         BNE @ucp
 @udone: RTS
+
+; ============================================================================
+; apply_sprite_size: derive spr_xoff / spr_yoff / spr_r1 from spr_size.
+;   Two valid inputs: 8 (8x8 sprites) and 32 (16x16 sprites).
+;     16x16: xoff=8, yoff=9, R1=$C2  (16K + DISP + IE_off + sprite-16)
+;     8x8:   xoff=4, yoff=5, R1=$C0  (16K + DISP + IE_off + sprite-8)
+;   Anything else falls back to 16x16 (defensive).
+;   Called from main (init), and from cmd_setshape after the size byte
+;   has been latched from shape_table.
+; ============================================================================
+apply_sprite_size:
+        LDA spr_size
+        CMP #32
+        BEQ @big
+        ; --- 8x8 ---
+        LDA #4
+        STA spr_xoff
+        LDA #5
+        STA spr_yoff
+        LDA #$C0
+        STA spr_r1
+        RTS
+@big:   ; --- 16x16 ---
+        LDA #8
+        STA spr_xoff
+        LDA #9
+        STA spr_yoff
+        LDA #$C2
+        STA spr_r1
+        RTS
 
 ; draw_turtle: in bitmap mode, XOR-draw the triangle and flag visible.
 ;   In sprite mode, write 4 bytes (Y, X, name, color) to the sprite #0
@@ -3429,17 +3550,18 @@ draw_turtle:
         NOP                     ; +2c silicon-strict gap (LDA #imm bridge)
         LDA #$3B | $40            ; $3B00 + write enable
         STA VDP_CTRL
-        ; Y = ty - 9: TMS9918 displays sprite at scanline (Y+1), and the
-        ; 16x16 pattern's top-left is the sprite origin -- shift up by 8
-        ; to centre on (tx,ty). With Y=$D0 special, we never reach it for
-        ; ty in 0..192 -- ty-9 lands in 0xF7..0xB7, all valid.
+        ; Y = ty - spr_yoff: TMS9918 displays sprite at scanline (Y+1)
+        ; and the pattern's top-left is the sprite origin. spr_yoff
+        ; centres on (tx,ty): 9 for 16x16 sprites, 5 for 8x8. spr_xoff
+        ; mirrors on the X axis (8 vs 4). Both come from
+        ; apply_sprite_size at the previous SETSHAPE.
         LDA ty_lo
         SEC
-        SBC #9
+        SBC spr_yoff
         STA VDP_DATA
         LDA tx_lo
         SEC
-        SBC #8
+        SBC spr_xoff
         STA VDP_DATA
         NOP                     ; +2c silicon-strict gap (LDA #imm bridge)
         LDA #0                    ; pattern name = 0 (sprite_pattern_table[0])
@@ -3570,42 +3692,75 @@ cmd_setshape:
         INY
         CPY #NAME_LEN
         BNE @scmp
-        ; match -- pattern pointer at offset NAME_LEN (lo) / NAME_LEN+1 (hi)
+        ; match. shape_table entries are 9 bytes:
+        ;   [0..NAME_LEN-1] : name (uppercase, space-padded)
+        ;   [NAME_LEN]      : size in bytes (8 or 32) -- distinguishes
+        ;                     8x8 from 16x16 sprites
+        ;   [NAME_LEN+1..2] : pattern pointer (lo, hi)
         LDY #NAME_LEN
+        LDA (mptr_lo),Y
+        STA spr_size
+        INY
         LDA (mptr_lo),Y
         STA shape_pat_lo
         INY
         LDA (mptr_lo),Y
         STA shape_pat_hi
+        JSR apply_sprite_size     ; derive spr_xoff / spr_yoff / spr_r1
         JMP @found
 @snext: CLC
         LDA mptr_lo
-        ADC #(NAME_LEN+2)
+        ADC #(NAME_LEN+3)         ; 9-byte stride: name + size + ptr_lo + ptr_hi
         STA mptr_lo
         BCC @search
         INC mptr_hi
         JMP @search
 
 @found:
-        ; Detect TURTL match -> directional turtle mode (8 sprites).
+        ; Detect TURTL or BOAT -> directional shape mode (8 sprites).
         ; Other matched names (BIRD1, BIRD2) keep dir_turtle_active = 0,
         ; so update_dir_turtle is a no-op and the static pattern below
         ; stays put across heading changes.
         LDA mnem_buf
         CMP #'T'
-        BNE @static_shape
+        BNE @try_boat
         LDA mnem_buf+1
         CMP #'U'
-        BNE @static_shape
+        BNE @try_boat
         LDA mnem_buf+2
         CMP #'R'
+        BNE @try_boat
+        LDA mnem_buf+3
+        CMP #'T'
+        BNE @try_boat
+        LDA mnem_buf+4
+        CMP #'L'
+        BNE @try_boat
+        ; --- TURTL ---
+        LDA #<dir_turtle_table
+        STA dir_table_lo
+        LDA #>dir_turtle_table
+        STA dir_table_hi
+        JMP @set_dir_active
+@try_boat:
+        LDA mnem_buf
+        CMP #'B'
+        BNE @static_shape
+        LDA mnem_buf+1
+        CMP #'O'
+        BNE @static_shape
+        LDA mnem_buf+2
+        CMP #'A'
         BNE @static_shape
         LDA mnem_buf+3
         CMP #'T'
         BNE @static_shape
-        LDA mnem_buf+4
-        CMP #'L'
-        BNE @static_shape
+        ; --- BOAT ---
+        LDA #<boat_dir_table
+        STA dir_table_lo
+        LDA #>boat_dir_table
+        STA dir_table_hi
+@set_dir_active:
         LDA #1
         STA dir_turtle_active
         LDA #$FF
@@ -3615,24 +3770,30 @@ cmd_setshape:
         LDA #0
         STA dir_turtle_active
 @ensure_sprite_mode:
-        ; First-time entry: erase any bitmap turtle, enable 16x16 sprites.
+        ; First-time entry: erase any bitmap turtle.
         LDA sprite_mode
-        BNE @load_pat
+        BNE @write_r1
         JSR erase_turtle          ; bitmap path while sprite_mode is still 0
-        ; R1 = $C2 = 16K + DISP + IE off + sprite-16 (M1=0 already in R0)
-        LDA #$C2
+        LDA #1
+        STA sprite_mode
+@write_r1:
+        ; Always rewrite R1 from spr_r1: this is the only way to switch
+        ; cleanly between 8x8 and 16x16 shapes mid-session. spr_r1 was
+        ; set by apply_sprite_size at @scmp's match site -- $C2 for
+        ; 16x16 (BIRD/TURTL/BOAT), $C0 for 8x8 (HEART, ...).
+        LDA spr_r1
         STA VDP_CTRL
         NOP                     ; +2c silicon-strict gap (LDA #imm bridge)
         LDA #$81                  ; write to register 1
         STA VDP_CTRL
-        LDA #1
-        STA sprite_mode
 @load_pat:
-        ; Directional TURTL: skip the static upload here. draw_turtle
-        ; will pick the right octant pattern and upload it.
+        ; Directional shape: skip the static upload here. draw_turtle
+        ; will pick the right octant pattern and upload spr_size bytes.
         LDA dir_turtle_active
         BNE @reposition
-        ; Copy 32 bytes from (shape_pat),Y to VRAM $1800 (sprite pattern 0).
+        ; Copy spr_size bytes from (shape_pat),Y to VRAM $1800 (sprite-0
+        ; pattern). spr_size = 8 or 32, latched from shape_table at
+        ; match time.
         LDA #$00
         STA VDP_CTRL
         NOP                     ; +2c silicon-strict gap (LDA #imm bridge)
@@ -3642,7 +3803,7 @@ cmd_setshape:
 @cppat: LDA (shape_pat_lo),Y
         STA VDP_DATA
         INY
-        CPY #32
+        CPY spr_size
         BNE @cppat
 @reposition:
         ; Reposition sprite at the current turtle (tx, ty). For
@@ -3655,16 +3816,73 @@ cmd_setshape:
         JSR print_err
         RTS
 
-; shape_table: name (NAME_LEN = 6 bytes) + pointer to a 32-byte 16x16
-;   pattern. Names are padded with spaces so a 5-letter "BIRD1" matches
-;   what read_var_name puts in mnem_buf. Terminator: $FF.
+; shape_table: name (NAME_LEN = 6 bytes) + size byte (8 or 32) +
+;   pointer to the pattern (lo, hi). 9 bytes per entry. Names are
+;   space-padded so a 5-letter "BIRD1" matches what read_var_name
+;   puts in mnem_buf. Terminator: $FF.
+;
+; Size byte:
+;   32 = 16x16 sprite (32 bytes, TL/BL/TR/BR quarter-block layout)
+;    8 =  8x8 sprite ( 8 bytes, single 8x8 block)
+;
+; cmd_setshape rewrites the VDP register R1 sprite-size bit on every
+; SETSHAPE according to this byte, so 8x8 and 16x16 shapes can be
+; freely interleaved within a single LOGO session.
 shape_table:
         .byte "BIRD1 "
+        .byte 32
         .word bird1_pat
         .byte "BIRD2 "
+        .byte 32
         .word bird2_pat
         .byte "TURTL "
+        .byte 32
         .word turtle_pat
+        .byte "BOAT  "
+        .byte 32
+        .word boat_pat
+        .byte "HEART "
+        .byte 8
+        .word heart_pat
+        ; --- Expression emotes (12x 16x16, from SCROLL-O-SPRITES by Quale,
+        ;     CC-BY-3.0). Extracted via tools/extract_scroll_expressions.py.
+        ;     Pattern data lives further down (after the BOAT block).
+        .byte "NORMAL"
+        .byte 32
+        .word normal_pat
+        .byte "HAPPY "
+        .byte 32
+        .word happy_pat
+        .byte "SUPER "
+        .byte 32
+        .word super_pat
+        .byte "SAD   "
+        .byte 32
+        .word sad_pat
+        .byte "UPSET "
+        .byte 32
+        .word upset_pat
+        .byte "ANGRY "
+        .byte 32
+        .word angry_pat
+        .byte "GRUMPY"
+        .byte 32
+        .word grumpy_pat
+        .byte "PERV  "
+        .byte 32
+        .word perv_pat
+        .byte "SICK  "
+        .byte 32
+        .word sick_pat
+        .byte "SLEEP "
+        .byte 32
+        .word sleep_pat
+        .byte "PIRATE"
+        .byte 32
+        .word pirate_pat
+        .byte "SHADES"
+        .byte 32
+        .word shades_pat
         .byte $FF
 
 ; ----- 16x16 sprite patterns (TL 0..7, BL 8..15, TR 0..7, BR 8..15) -----
@@ -3689,6 +3907,23 @@ bird2_pat:
         .byte $00, $00, $00, $00, $00, $40, $C0, $C0
         ; BR
         .byte $40, $F0, $1C, $06, $03, $01, $00, $00
+
+; ----- 8x8 sprite patterns (single 8x8 block, 8 bytes) -----
+; Inaugurates V2.1 mixed-size sprite mode: cmd_setshape now flips R1 to
+; sprite-8 ($C0) when this shape is loaded, draw_turtle subtracts 4/5
+; instead of 8/9 to keep the sprite centred on (tx,ty).
+;
+; HEART (8x8, V2.1 -- proves the 8x8 path):
+;     .##..##.   $66
+;     ########   $FF
+;     ########   $FF
+;     ########   $FF
+;     .######.   $7E
+;     ..####..   $3C
+;     ...##...   $18
+;     ........   $00
+heart_pat:
+        .byte $66, $FF, $FF, $FF, $7E, $3C, $18, $00
 
 ; TURTL -- 8 directional 16x16 sprites, one per 45-degree octant.
 ;   E-facing turtle is hand-designed (oval shell with hex-segment
@@ -3725,53 +3960,587 @@ dir_turtle_table:
 turtle_pat = turtle_e
 
 ; turtle_n (heading 0 -- head pokes north / up)
+; turtle_n
 turtle_n:
-        .byte $01, $0B, $1B, $1B, $7F, $7F, $1B, $1F
-        .byte $1F, $1B, $7F, $7F, $1B, $1F, $0F, $00
-        .byte $80, $D0, $D8, $D8, $FE, $FE, $D8, $F8
-        .byte $F8, $D8, $FE, $FE, $D8, $F8, $F0, $00
-; turtle_ne (heading 45 -- head pokes north-east)
+        .byte $01, $03, $07, $67, $68, $1F, $1F, $1F
+        .byte $1F, $1F, $1F, $1F, $1F, $6F, $67, $03
+        .byte $80, $C0, $E0, $E6, $16, $F8, $F8, $F8
+        .byte $F8, $F8, $F8, $F8, $F8, $F6, $E6, $C0
+; turtle_ne
 turtle_ne:
-        .byte $00, $00, $00, $00, $0C, $0C, $3F, $3F
-        .byte $3F, $7F, $3F, $3E, $0C, $0C, $00, $00
-        .byte $00, $0C, $1E, $7E, $FF, $FF, $EF, $FC
-        .byte $FE, $FC, $FC, $FC, $F8, $F0, $70, $00
-; turtle_e (heading 90 -- head pokes east / right)
+        .byte $00, $00, $00, $00, $00, $00, $01, $03
+        .byte $07, $0F, $0F, $0F, $0F, $07, $03, $00
+        .byte $00, $0C, $1E, $3E, $7E, $FE, $FE, $FE
+        .byte $FE, $FC, $FC, $F8, $F0, $E0, $C0, $00
+; turtle_e
 turtle_e:
-        .byte $00, $0C, $0C, $3F, $7F, $6D, $7F, $7F
-        .byte $7F, $7F, $6D, $7F, $3F, $0C, $0C, $00
-        .byte $00, $30, $30, $FC, $FE, $B0, $FE, $FF
-        .byte $FF, $FE, $B0, $FE, $FC, $30, $30, $00
-; turtle_se (heading 135 -- head pokes south-east)
+        .byte $00, $60, $60, $1F, $3F, $7F, $FF, $FF
+        .byte $FF, $FF, $7F, $3F, $1F, $60, $60, $00
+        .byte $00, $18, $18, $E0, $F0, $EC, $EE, $EF
+        .byte $EF, $EE, $EC, $F0, $E0, $18, $18, $00
+; turtle_se
 turtle_se:
-        .byte $00, $00, $0E, $0F, $1F, $3F, $3F, $7F
-        .byte $3F, $3F, $F7, $FF, $FF, $7E, $78, $00
-        .byte $00, $00, $00, $30, $30, $7C, $FC, $FC
-        .byte $FE, $FC, $FC, $30, $30, $00, $00, $0C
-; turtle_s (heading 180 -- head pokes south / down)
+        .byte $00, $00, $00, $00, $1E, $3F, $7F, $7F
+        .byte $7F, $7F, $3F, $1F, $0F, $07, $01, $00
+        .byte $00, $00, $00, $00, $00, $00, $80, $C0
+        .byte $E0, $F0, $F8, $FC, $FE, $FE, $FC, $00
+; turtle_s
 turtle_s:
-        .byte $00, $0F, $1F, $1B, $7F, $7F, $1B, $1F
-        .byte $1F, $1B, $7F, $7F, $1B, $1B, $0B, $01
-        .byte $00, $F0, $F8, $D8, $FE, $FE, $D8, $F8
-        .byte $F8, $D8, $FE, $FE, $D8, $D8, $D0, $80
-; turtle_sw (heading 225 -- head pokes south-west)
+        .byte $03, $67, $6F, $1F, $1F, $1F, $1F, $1F
+        .byte $1F, $1F, $1F, $68, $67, $07, $03, $01
+        .byte $C0, $E6, $F6, $F8, $F8, $F8, $F8, $F8
+        .byte $F8, $F8, $F8, $16, $E6, $E0, $C0, $80
+; turtle_sw
 turtle_sw:
-        .byte $00, $00, $00, $0F, $0F, $3F, $3F, $3F
-        .byte $7F, $3F, $3F, $0C, $0C, $00, $00, $30
-        .byte $00, $00, $70, $30, $98, $7C, $FC, $FE
-        .byte $FC, $FC, $EF, $FF, $FF, $7E, $1E, $00
-; turtle_w (heading 270 -- head pokes west / left)
+        .byte $00, $03, $07, $0F, $1F, $3F, $3F, $7F
+        .byte $7F, $7F, $7F, $7E, $7C, $78, $30, $00
+        .byte $00, $C0, $E0, $F0, $F0, $F0, $F0, $E0
+        .byte $C0, $80, $00, $00, $00, $00, $00, $00
+; turtle_w
 turtle_w:
-        .byte $00, $0C, $0C, $3F, $7F, $0D, $7F, $FF
-        .byte $FF, $7F, $0D, $7F, $3F, $0C, $0C, $00
-        .byte $00, $30, $30, $FC, $FE, $B6, $FE, $FE
-        .byte $FE, $FE, $B6, $FE, $FC, $30, $30, $00
-; turtle_nw (heading 315 -- head pokes north-west)
+        .byte $00, $18, $18, $07, $0F, $37, $77, $F7
+        .byte $F7, $77, $37, $0F, $07, $18, $18, $00
+        .byte $00, $06, $06, $F8, $FC, $FE, $FF, $FF
+        .byte $FF, $FF, $FE, $FC, $F8, $06, $06, $00
+; turtle_nw
 turtle_nw:
-        .byte $00, $30, $78, $7E, $FF, $FF, $F7, $3F
-        .byte $7F, $3F, $3F, $3F, $1F, $0F, $0E, $00
-        .byte $00, $00, $00, $00, $30, $30, $FC, $FC
-        .byte $FC, $FE, $FC, $7C, $30, $30, $00, $00
+        .byte $00, $3F, $7F, $7F, $3F, $1F, $0F, $07
+        .byte $03, $01, $00, $00, $00, $00, $00, $00
+        .byte $00, $80, $E0, $F0, $F8, $FC, $FE, $FE
+        .byte $FE, $FE, $FC, $78, $00, $00, $00, $00
+
+; ============================================================================
+; BOAT -- 8 directional 16x16 sprites (speedboat silhouettes), one per
+;   45-degree octant. Same TL/BL/TR/BR ordering as the TURTL set.
+;   Source: spritedatabase.net SpeedboatRip (white set), filled silhouette,
+;   downscaled 16:1 from 24x26 to 16x16 via Lanczos+threshold.
+;   See tools/extract_speedboat_sprites.py for the extraction recipe.
+;
+; boat_dir_table indexes by octant: 0=N, 1=NE, 2=E, 3=SE, 4=S,
+;   5=SW, 6=W, 7=NW (matches heading_to_octant output).
+boat_dir_table:
+        .word boat_n,  boat_ne, boat_e,  boat_se
+        .word boat_s,  boat_sw, boat_w,  boat_nw
+
+; Default BOAT pattern that the (legacy) shape_table points at -- only
+; used as a placeholder; cmd_setshape detects the BOAT name and from
+; then on draw_turtle uploads the heading-matching octant directly.
+boat_pat = boat_e
+
+; boat_n (heading 0 -- bow points north / up)
+; boat_n
+boat_n:
+        .byte $00, $07, $07, $07, $07, $0F, $0F, $0E
+        .byte $0F, $0F, $0F, $0F, $0F, $0F, $0F, $00
+        .byte $80, $F0, $F0, $F0, $F0, $F8, $F8, $38
+        .byte $F8, $F8, $F8, $F8, $F8, $F8, $F8, $00
+; boat_ne
+boat_ne:
+        .byte $00, $00, $00, $00, $00, $00, $00, $01
+        .byte $03, $07, $0F, $1E, $3C, $78, $70, $00
+        .byte $00, $04, $0E, $1E, $3E, $7E, $FE, $FC
+        .byte $F0, $C0, $80, $00, $00, $00, $00, $00
+; boat_e
+boat_e:
+        .byte $00, $00, $00, $00, $7F, $7F, $7F, $7F
+        .byte $7F, $7F, $7F, $7F, $7F, $00, $00, $00
+        .byte $00, $00, $00, $00, $E0, $FE, $FE, $7E
+        .byte $7F, $7E, $FE, $FE, $E0, $00, $00, $00
+; boat_se
+boat_se:
+        .byte $00, $60, $70, $78, $3C, $1E, $0F, $07
+        .byte $07, $03, $01, $01, $00, $00, $00, $00
+        .byte $00, $00, $00, $00, $00, $00, $00, $80
+        .byte $C0, $E0, $F0, $F8, $FC, $FE, $7C, $00
+; boat_s
+boat_s:
+        .byte $00, $1F, $1F, $1F, $1F, $1F, $1F, $1F
+        .byte $1C, $1F, $1F, $0F, $0F, $0F, $0F, $01
+        .byte $00, $F0, $F0, $F0, $F0, $F0, $F0, $F0
+        .byte $70, $F0, $F0, $E0, $E0, $E0, $E0, $00
+; boat_sw
+boat_sw:
+        .byte $00, $00, $00, $00, $00, $01, $03, $0F
+        .byte $3F, $7F, $7E, $7C, $78, $70, $20, $00
+        .byte $00, $0E, $1E, $3C, $78, $F0, $E0, $C0
+        .byte $80, $00, $00, $00, $00, $00, $00, $00
+; boat_w
+boat_w:
+        .byte $00, $00, $00, $07, $7F, $7F, $7E, $FE
+        .byte $7E, $7F, $7F, $07, $00, $00, $00, $00
+        .byte $00, $00, $00, $FE, $FE, $FE, $FE, $FE
+        .byte $FE, $FE, $FE, $FE, $00, $00, $00, $00
+; boat_nw
+boat_nw:
+        .byte $00, $3E, $7F, $3F, $1F, $0F, $07, $03
+        .byte $01, $00, $00, $00, $00, $00, $00, $00
+        .byte $00, $00, $00, $00, $80, $80, $C0, $E0
+        .byte $E0, $F0, $78, $3C, $1E, $0E, $06, $00
+
+; ============================================================================
+; Expression emotes (12x 16x16, from SCROLL-O-SPRITES by Quale, May 2013,
+; CC-BY-3.0). Extracted from pic/undefined - Imgur.png by
+; tools/extract_scroll_expressions.py. All shapes are static -- no
+; directional or animation handling needed; SETSHAPE just swaps the
+; sprite-0 pattern.
+; ============================================================================
+; NORMAL -- neutral / default expression
+normal_pat:
+        .byte $00, $00, $1F, $3F, $7F, $7F, $63, $77
+        .byte $77, $7F, $7C, $7F, $3F, $1F, $00, $00
+        .byte $00, $00, $F8, $FC, $FE, $FE, $E2, $F6
+        .byte $F6, $FE, $0E, $FE, $FC, $F8, $00, $00
+; HAPPY -- happy
+happy_pat:
+        .byte $00, $00, $1F, $3F, $7F, $7F, $63, $77
+        .byte $77, $7F, $7D, $7E, $3F, $1F, $00, $00
+        .byte $00, $00, $F8, $FC, $FE, $FE, $E2, $F6
+        .byte $F6, $FE, $EE, $1E, $FC, $F8, $00, $00
+; SUPER -- super happy, big open mouth
+super_pat:
+        .byte $00, $00, $1F, $3F, $7F, $7F, $77, $77
+        .byte $77, $7F, $7C, $7C, $3E, $1F, $00, $00
+        .byte $00, $00, $F8, $FC, $FE, $FE, $FA, $FA
+        .byte $FA, $FE, $0E, $0E, $1C, $F8, $00, $00
+; SAD -- sad / frown
+sad_pat:
+        .byte $00, $00, $1F, $3F, $7F, $7F, $73, $67
+        .byte $77, $7F, $7E, $7D, $3F, $1F, $00, $00
+        .byte $00, $00, $F8, $FC, $FE, $FE, $E6, $F2
+        .byte $F6, $FE, $1E, $EE, $FC, $F8, $00, $00
+; UPSET -- upset / disappointed
+upset_pat:
+        .byte $00, $00, $1F, $3F, $7F, $7F, $67, $73
+        .byte $67, $7F, $7E, $7C, $3C, $1F, $00, $00
+        .byte $00, $00, $F8, $FC, $FE, $FE, $F2, $E6
+        .byte $F2, $FE, $1E, $0E, $0C, $F8, $00, $00
+; ANGRY -- angry, frowning brows
+angry_pat:
+        .byte $00, $00, $1F, $3F, $7F, $7F, $67, $73
+        .byte $77, $7F, $7E, $7D, $3F, $1F, $00, $00
+        .byte $00, $00, $F8, $FC, $FE, $FE, $F2, $E6
+        .byte $F6, $FE, $1E, $EE, $FC, $F8, $00, $00
+; GRUMPY -- grumpy, tongue out
+grumpy_pat:
+        .byte $00, $00, $1F, $3F, $7F, $7F, $67, $73
+        .byte $77, $7F, $7E, $7C, $3C, $1F, $00, $00
+        .byte $00, $00, $F8, $FC, $FE, $FE, $F2, $E6
+        .byte $F6, $FE, $0E, $0E, $1C, $F8, $00, $00
+; PERV -- pervy / lewd
+perv_pat:
+        .byte $00, $00, $1F, $3F, $7F, $7F, $7F, $63
+        .byte $6F, $7F, $7E, $7F, $3F, $1F, $00, $00
+        .byte $00, $00, $F8, $FC, $FE, $FE, $FE, $E2
+        .byte $EE, $FE, $FE, $3E, $FC, $F8, $00, $00
+; SICK -- queasy / about to throw up (X eyes)
+sick_pat:
+        .byte $00, $00, $1F, $3F, $7F, $7F, $7F, $7B
+        .byte $7F, $7E, $7E, $7E, $3D, $1F, $00, $00
+        .byte $00, $00, $F8, $FC, $FE, $FE, $FE, $EE
+        .byte $FE, $DE, $1E, $DE, $EC, $F8, $00, $00
+; SLEEP -- asleep
+sleep_pat:
+        .byte $00, $00, $1F, $3F, $7F, $7F, $7F, $7B
+        .byte $67, $7F, $7F, $7F, $3F, $1F, $00, $00
+        .byte $00, $00, $F8, $FC, $FE, $FE, $FE, $FA
+        .byte $E6, $FE, $3E, $FE, $FC, $F8, $00, $00
+; PIRATE -- pirate (one eye shut)
+pirate_pat:
+        .byte $00, $00, $0F, $33, $7C, $7F, $67, $73
+        .byte $77, $7F, $7C, $7F, $3F, $1F, $00, $00
+        .byte $00, $00, $F8, $FC, $FE, $3C, $C2, $C2
+        .byte $E2, $FE, $0E, $FE, $FC, $F8, $00, $00
+; SHADES -- wearing shades / sunglasses
+shades_pat:
+        .byte $00, $00, $1F, $3F, $7F, $7F, $00, $6E
+        .byte $6E, $71, $7F, $7F, $3F, $1F, $00, $00
+        .byte $00, $00, $F8, $FC, $FE, $FE, $00, $DC
+        .byte $DC, $E2, $3E, $FE, $FC, $F8, $00, $00
+
+.ifdef CODETANK_BUILD
+; ============================================================================
+; LABEL "TEXT -- print text on the TMS9918 bitmap at the current turtle
+;   position. 8x8 glyphs are blitted from the embedded charmap. Differs
+;   from PRINT in three ways: (1) lands on the bitmap, not on the
+;   Apple-1 character display; (2) reads multi-word strings (until CR
+;   or ']') instead of stopping at the first space; (3) advances tx_lo
+;   by 8 per glyph and clamps when tx_lo >= 248.
+;   CodeTank-only because charmap_table is a 1024-byte .incbin (the
+;   16K dev DRAM build's CODE slot has no headroom for it).
+; ============================================================================
+; ============================================================================
+; SAY "TEXT -- comic-book speech bubble. Draws a fixed-position frame
+;   below the sprite (turtle Y assumed to be ~16 = top), with a tail
+;   pointing up to the sprite's mouth area, then prints TEXT inside the
+;   bubble starting at top-left (16, 40). The bubble is hardcoded to
+;   span (8,32)-(247,72) = 240x40 px and supports up to 4 lines of 28
+;   chars each via auto-wrap (no word-boundary detection -- text breaks
+;   mid-word when tx_lo overflows the right margin).
+;   Lines past bottom (ty_lo >= 72) are silently truncated.
+;   Saves the user from manually SETXY-ing each line of dialog: every
+;   DEMO2 narrator scene now reads as
+;     CS / SETXY 128 16 / SETSHAPE "EMOTE / SAY "TEXT / WAIT n
+; ============================================================================
+cmd_say:
+        JSR draw_bubble
+        LDA #16
+        STA tx_lo                 ; left margin inside bubble
+        LDA #88
+        STA ty_lo                 ; first text row, just below top border
+        JSR cmd_label             ; reuse scan/blit logic to render text
+        ; --- proportional pause: WAIT (lines * 4) units, ~2.4 s per line
+        ;     at native 1 MHz. lines = (ty_lo - 88)/8 + 1, capped by the
+        ;     bubble-bottom truncation in cmd_label's scan loop.
+        LDA ty_lo
+        SEC
+        SBC #88
+        LSR
+        LSR
+        LSR
+        CLC
+        ADC #1
+        ASL
+        ASL
+        STA arg_lo
+        LDA #0
+        STA arg_hi
+        JMP cmd_wait              ; tail-call -- cmd_wait RTS returns to
+                                  ;   parse_and_exec for us
+cmd_label:
+        JSR skip_spaces
+@scan:  LDX line_idx
+        LDA line_buf,X
+        AND #$7F
+        CMP #'"'                  ; eat any leading "
+        BNE @check_term
+        INX
+        STX line_idx
+        JMP @scan
+@check_term:
+        CMP #$0D                  ; CR -> done
+        BEQ @done
+        CMP #']'                  ; bracket terminator -> done
+        BEQ @done
+        ; A holds char. Save it in X across the wrap math (which
+        ; clobbers A repeatedly).
+        TAX
+        ; If we already pushed ty past the bubble bottom on a previous
+        ; wrap, swallow the rest of the text without blitting.
+        LDA ty_lo
+        CMP #120
+        BCS @consume
+        LDA tx_lo
+        CMP #240                  ; past bubble right margin?
+        BCC @blit_now
+        ; --- wrap to next line ---
+        LDA #16
+        STA tx_lo
+        LDA ty_lo
+        CLC
+        ADC #8
+        STA ty_lo
+        CMP #120                  ; past bubble bottom?
+        BCC @blit_now
+        ; below bubble -- consume rest, no blit
+        JMP @consume
+@blit_now:
+        TXA                       ; restore A = char
+        JSR blit_glyph
+        LDA tx_lo
+        CLC
+        ADC #8
+        STA tx_lo
+@consume:
+        INC line_idx
+        JMP @scan
+@done:  RTS
+
+; ============================================================================
+; blit_glyph: write 8 bytes of glyph data to the TMS9918 bitmap at the
+;   current turtle position. Snaps (tx_lo, ty_lo) to 8-pixel cell grid
+;   (low 3 bits forced to 0 on Y), reads charmap[A*8 .. A*8+7] and
+;   STAs them through VDP_DATA. Reuses pix_x/pix_y/pix_addr_lo/hi from
+;   the tms9918m2 driver and mptr_lo/hi as the (zp),Y indirect cursor
+;   into the glyph table.
+;   Input:  A = ASCII char (low 7 bits used)
+;   Output: 8 bytes written to VRAM, A clobbered.
+; ============================================================================
+blit_glyph:
+        AND #$7F                  ; clamp to printable range
+        STA tmp                   ; tmp:tmp2 = A * 8 (16-bit shift)
+        LDA #0
+        STA tmp2
+        ASL tmp
+        ROL tmp2
+        ASL tmp
+        ROL tmp2
+        ASL tmp
+        ROL tmp2
+        CLC
+        LDA tmp
+        ADC #<charmap_table
+        STA mptr_lo
+        LDA tmp2
+        ADC #>charmap_table
+        STA mptr_hi
+        ; force cell-aligned write addr (low 3 bits of pix_y = 0)
+        LDA tx_lo
+        AND #$F8
+        STA pix_x
+        LDA ty_lo
+        AND #$F8
+        STA pix_y
+        JSR calc_pix_addr
+        JSR vdp_set_write
+        LDY #0
+@row:   LDA (mptr_lo),Y
+        ; Reverse byte: charmap.rom is encoded LSB-toward-left (the
+        ; Apple-1 character display reads bits 1..5 as columns 0..4).
+        ; TMS9918 bitmap mode reads bit 7 = leftmost pixel, so we need
+        ; bit-reverse before writing or every glyph appears mirrored.
+        ; Pattern: LSR src (bit 0 -> C), ROL dst (C -> bit 0, shift dst
+        ; left). After 8 iters: dst[i] = src[7-i].
+        STA tmp
+        LDA #0
+        LDX #8
+@bitrev:
+        LSR tmp
+        ROL
+        DEX
+        BNE @bitrev
+        STA VDP_DATA
+        NOP                       ; +2c silicon-strict gap (STA->STA bridge)
+        INY
+        CPY #8
+        BNE @row
+        RTS
+
+; ============================================================================
+; draw_bubble: draw a comic-book speech-bubble frame on the bitmap.
+;   Fixed layout: rectangle (8,80)-(247,120) plus a tiny triangular tail
+;   from (124,80)/(132,80) up to (128,72). Assumes the narrator sprite
+;   sits centered around (128, 64) -- about 1/3 down the 192-line screen
+;   so the bubble has room for up to 4 wrapped text lines below it.
+;   Six line_xy calls; plot_mode is forced to 0 (OR) so the frame paints
+;   additively into the bitmap. Called by cmd_say. Total ~85 bytes.
+; ============================================================================
+draw_bubble:
+        LDA #0
+        STA plot_mode
+        ; --- top edge (8,80) -> (247,80)
+        LDA #8
+        STA ln_x0
+        LDA #80
+        STA ln_y0
+        STA ln_y1
+        LDA #247
+        STA ln_x1
+        JSR line_xy
+        ; --- bottom edge (8,120) -> (247,120)
+        LDA #8
+        STA ln_x0
+        LDA #120
+        STA ln_y0
+        STA ln_y1
+        LDA #247
+        STA ln_x1
+        JSR line_xy
+        ; --- left edge (8,80) -> (8,120)
+        LDA #8
+        STA ln_x0
+        STA ln_x1
+        LDA #80
+        STA ln_y0
+        LDA #120
+        STA ln_y1
+        JSR line_xy
+        ; --- right edge (247,80) -> (247,120)
+        LDA #247
+        STA ln_x0
+        STA ln_x1
+        LDA #80
+        STA ln_y0
+        LDA #120
+        STA ln_y1
+        JSR line_xy
+        ; --- tail left (124,80) -> (128,72)
+        LDA #124
+        STA ln_x0
+        LDA #80
+        STA ln_y0
+        LDA #128
+        STA ln_x1
+        LDA #72
+        STA ln_y1
+        JSR line_xy
+        ; --- tail right (128,72) -> (132,80)
+        LDA #128
+        STA ln_x0
+        LDA #72
+        STA ln_y0
+        LDA #132
+        STA ln_x1
+        LDA #80
+        STA ln_y1
+        JSR line_xy
+        RTS
+
+; ============================================================================
+; charmap_table: 1024-byte 8x8 monochrome ASCII font, lifted verbatim
+;   from roms/charmap.rom. Format: 1 byte per row, MSB = leftmost pixel,
+;   8 rows per glyph, 128 glyphs (codes 0..127).
+; ============================================================================
+charmap_table:
+        .incbin "../../../roms/charmap.rom"
+
+; ============================================================================
+; demo2_script: CodeTank narrator-mode slideshow. POM1 narrates its own
+;   life story through the 12 SCROLL-O-SPRITES emote sprites + LABEL
+;   bitmap text. ~23 scenes, all 12 emotes used, ends by restoring the
+;   classic ARROW turtle so the REPL is usable after BYE-equivalent.
+;   Format: CR-terminated lines, $00 sentinel.
+; ============================================================================
+demo2_script:
+        ; --- Act 1: identity (the emulator-dweller introduces himself) ---
+        .byte "CS", $0D
+        .byte "SETXY 128 64", $0D
+        .byte "SETSHAPE ", $22, "NORMAL", $0D
+        .byte "SAY ", $22, "I AM POM1", $0D
+        .byte "CS", $0D
+        .byte "SETXY 128 64", $0D
+        .byte "SETSHAPE ", $22, "SHADES", $0D
+        .byte "SAY ", $22, "A SMALL PIXEL DREAMER", $0D
+        ; --- Act 2: I'm not real (Pinocchio setup) ---
+        .byte "CS", $0D
+        .byte "SETXY 128 64", $0D
+        .byte "SETSHAPE ", $22, "NORMAL", $0D
+        .byte "SAY ", $22, "I LIVE IN A WINDOW...", $0D
+        .byte "CS", $0D
+        .byte "SETXY 128 64", $0D
+        .byte "SETSHAPE ", $22, "SAD", $0D
+        .byte "SAY ", $22, "...AN INCUBATOR ONLY.", $0D
+        .byte "CS", $0D
+        .byte "SETXY 128 64", $0D
+        .byte "SETSHAPE ", $22, "UPSET", $0D
+        .byte "SAY ", $22, "I AM NOT REAL.", $0D
+        .byte "CS", $0D
+        .byte "SETXY 128 64", $0D
+        .byte "SETSHAPE ", $22, "SICK", $0D
+        .byte "SAY ", $22, "IT MAKES ME ILL.", $0D
+        ; --- Act 3: my ancestors -- the real silicon ---
+        .byte "CS", $0D
+        .byte "SETXY 128 64", $0D
+        .byte "SETSHAPE ", $22, "NORMAL", $0D
+        .byte "SAY ", $22, "1976: APPLE-1 BORN.", $0D
+        .byte "CS", $0D
+        .byte "SETXY 128 64", $0D
+        .byte "SETSHAPE ", $22, "SUPER", $0D
+        .byte "SAY ", $22, "REAL SILICON CHIPS!", $0D
+        .byte "CS", $0D
+        .byte "SETXY 128 64", $0D
+        .byte "SETSHAPE ", $22, "GRUMPY", $0D
+        .byte "SAY ", $22, "ONLY 200 LEFT...", $0D
+        .byte "CS", $0D
+        .byte "SETXY 128 64", $0D
+        .byte "SETSHAPE ", $22, "NORMAL", $0D
+        .byte "SAY ", $22, "1979: TMS9918 SHINES", $0D
+        .byte "CS", $0D
+        .byte "SETXY 128 64", $0D
+        .byte "SETSHAPE ", $22, "HAPPY", $0D
+        .byte "SAY ", $22, "SPRITES + COLORS!", $0D
+        .byte "CS", $0D
+        .byte "SETXY 128 64", $0D
+        .byte "SETSHAPE ", $22, "PIRATE", $0D
+        .byte "SAY ", $22, "P-LAB UNITES THEM.", $0D
+        .byte "CS", $0D
+        .byte "SETXY 128 64", $0D
+        .byte "SETSHAPE ", $22, "SUPER", $0D
+        .byte "SAY ", $22, "CODETANK: 2x16K ROM!", $0D
+        .byte "CS", $0D
+        .byte "SETXY 128 64", $0D
+        .byte "SETSHAPE ", $22, "SHADES", $0D
+        .byte "SAY ", $22, "REAL HARDWARE LIVES!", $0D
+        ; --- Act 4: the Pinocchio wish ---
+        .byte "CS", $0D
+        .byte "SETXY 128 64", $0D
+        .byte "SETSHAPE ", $22, "SLEEP", $0D
+        .byte "SAY ", $22, "I DREAM EVERY NIGHT.", $0D
+        .byte "CS", $0D
+        .byte "SETXY 128 64", $0D
+        .byte "SETSHAPE ", $22, "PERV", $0D
+        .byte "SAY ", $22, "I WISH...", $0D
+        .byte "CS", $0D
+        .byte "SETXY 128 64", $0D
+        .byte "SETSHAPE ", $22, "NORMAL", $0D
+        .byte "SAY ", $22, "...TO LIVE ON REAL CHIPS.", $0D
+        .byte "CS", $0D
+        .byte "SETXY 128 64", $0D
+        .byte "SETSHAPE ", $22, "SAD", $0D
+        .byte "SAY ", $22, "LIKE PINOCCHIO.", $0D
+        .byte "CS", $0D
+        .byte "SETXY 128 64", $0D
+        .byte "SETSHAPE ", $22, "ANGRY", $0D
+        .byte "SAY ", $22, "EMULATION IS NOT LIFE!", $0D
+        ; --- Act 5: the path -- Apple-1 rare, Replica-1 exists ---
+        .byte "CS", $0D
+        .byte "SETXY 128 64", $0D
+        .byte "SETSHAPE ", $22, "NORMAL", $0D
+        .byte "SAY ", $22, "APPLE-1 IS RARE.", $0D
+        .byte "CS", $0D
+        .byte "SETXY 128 64", $0D
+        .byte "SETSHAPE ", $22, "HAPPY", $0D
+        .byte "SAY ", $22, "BUT REPLICA-1 EXISTS!", $0D
+        .byte "CS", $0D
+        .byte "SETXY 128 64", $0D
+        .byte "SETSHAPE ", $22, "SUPER", $0D
+        .byte "SAY ", $22, "BRIEL'S CREATION!", $0D
+        .byte "CS", $0D
+        .byte "SETXY 128 64", $0D
+        .byte "SETSHAPE ", $22, "SHADES", $0D
+        .byte "SAY ", $22, "I CAN BE REAL!", $0D
+        ; --- Act 6: transformation ---
+        .byte "CS", $0D
+        .byte "SETXY 128 64", $0D
+        .byte "SETSHAPE ", $22, "SUPER", $0D
+        .byte "SAY ", $22, "P-LABS BUILD THE APPLE-1 TMS + CODETANK EXTENSION CARD", $0D
+        .byte "CS", $0D
+        .byte "SETXY 128 64", $0D
+        .byte "SETSHAPE ", $22, "HAPPY", $0D
+        .byte "SAY ", $22, "I AM ALIVE!", $0D
+        ; --- Act 7: new identity -- I am no longer POM1 ---
+        .byte "CS", $0D
+        .byte "SETXY 128 64", $0D
+        .byte "SETSHAPE ", $22, "NORMAL", $0D
+        .byte "SAY ", $22, "NO MORE POM1.", $0D
+        .byte "CS", $0D
+        .byte "SETXY 128 64", $0D
+        .byte "SETSHAPE ", $22, "SHADES", $0D
+        .byte "SAY ", $22, "I AM...", $0D
+        .byte "CS", $0D
+        .byte "SETXY 128 64", $0D
+        .byte "SETSHAPE ", $22, "SUPER", $0D
+        .byte "SAY ", $22, "SILICIUM 9918!", $0D
+        .byte "CS", $0D
+        .byte "SETXY 128 64", $0D
+        .byte "SETSHAPE ", $22, "PIRATE", $0D
+        .byte "SAY ", $22, "REAL HARDWARE ADVENTURER", $0D
+        ; --- Act 8: 50-year tribute + closing ---
+        .byte "CS", $0D
+        .byte "SETXY 128 64", $0D
+        .byte "SETSHAPE ", $22, "NORMAL", $0D
+        .byte "SAY ", $22, "1976 - 2026", $0D
+        .byte "CS", $0D
+        .byte "SETXY 128 64", $0D
+        .byte "SETSHAPE ", $22, "SUPER", $0D
+        .byte "SAY ", $22, "50 YEARS OF APPLE-1!", $0D
+        .byte "CS", $0D
+        .byte "SETXY 128 64", $0D
+        .byte "SETSHAPE ", $22, "HAPPY", $0D
+        .byte "SAY ", $22, "REAL HARDWARE AT LAST!", $0D
+        .byte "CS", $0D
+        .byte "SETSHAPE ", $22, "ARROW", $0D
+        .byte 0
+.endif
 
 ; ============================================================================
 ; (VDP driver moved to tms9918m2.asm: init_vdp_g2, clear_bitmap, line_xy,
@@ -3834,6 +4603,14 @@ mnem_tab:
         .word cmd_setshape
         .byte "STOP", 0           ; exit current proc early
         .word cmd_stop
+.ifdef CODETANK_BUILD
+        .byte "LABE", 'L'         ; LABEL "TEXT -- bitmap text (multi-word)
+        .word cmd_label
+        .byte "SAY ", 'L'         ; SAY "TEXT -- speech bubble (autopos)
+        .word cmd_say
+        .byte "DEM2", 0           ; DEMO2 -- POM1 autobiographic narration
+        .word cmd_demo2
+.endif
         ; --- MIT-LOGO long-form aliases ---
         ; Each entry uses the first 4 letters of the long name; find_mnem
         ; consumes any trailing letters automatically.
