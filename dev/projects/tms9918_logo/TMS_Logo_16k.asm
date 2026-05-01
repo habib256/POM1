@@ -1,5 +1,6 @@
 ; ============================================================================
 ; TMS_Logo_16k.asm  --  APPLE-1 LOGO V2.0 for TMS9918 (16 KB variant)
+;                       (c) 2026 VERHILLE Arnaud
 ; ============================================================================
 ; *** V2.0 -- 16 KB BUILD (active development) ***
 ;
@@ -163,6 +164,14 @@ turtle_visible: .res 1    ; 1 = turtle currently drawn into the bitmap
 ;                  independent of the pattern table). FORWARD still draws
 ;                  the trail unless PU.
 sprite_mode:    .res 1    ; 0 = bitmap turtle, 1 = dynamic (sprite) turtle
+; --- directional TURTL: 8 sprites, one per 45-degree octant ---------------
+; SETSHAPE "TURTL flips dir_turtle_active = 1; from then on every heading
+; change picks the matching pattern from dir_turtle_table and re-uploads
+; the 32 bytes to VRAM $1800 -- but only when the octant index actually
+; changes (last_octant != $FF cache), so straight-line FORWARD doesn't
+; thrash VRAM.
+dir_turtle_active: .res 1   ; 1 = TURTL family active, 0 = static shape
+last_octant:    .res 1      ; cached octant index, $FF = invalidate
 ; (shape_pat_lo / shape_pat_hi live in ZEROPAGE -- (zp),Y indirect access.)
 s_byte:    .res 1         ; signed sin(heading) * 64
 c_byte:    .res 1         ; signed cos(heading) * 64
@@ -250,6 +259,10 @@ main:
         STA plot_mode
         STA turtle_visible
         STA sprite_mode
+        STA dir_turtle_active
+        LDA #$FF
+        STA last_octant
+        LDA #0
         STA n_vars
         STA n_procs
         STA n_params_active
@@ -320,6 +333,7 @@ new_prompt:
 
 banner_msg:
         .byte $0D, "APPLE-1 LOGO FOR TMS9918 - TYPE HELP", $0D
+        .byte "(C) 2026 VERHILLE ARNAUD", $0D
         .byte 0
 
 ; -------------------------------------------------------------------------
@@ -1482,8 +1496,10 @@ cmd_demo:
         STA line_idx
         RTS
 
-; demo_script: 8-program slideshow. Single-word PRINT labels (no spaces)
-;   because PRINT stops at first space.
+; demo_script: multi-scene slideshow (~30 PRINT labels). Single-word
+;   PRINT labels (no spaces) because PRINT stops at first space.
+;   Most scenes are bare REPEAT compositions; SPIRAL/FLOWER/BFLY are
+;   the only ones that define+invoke procs (they survive at the REPL).
 demo_script:
         .byte "PRINT ", $22, "DEMO", $0D
         .byte "WAIT 1", $0D
@@ -1540,6 +1556,68 @@ demo_script:
         .byte "PRINT ", $22, "SPIRAL91", $0D
         .byte "SPIRAL 0 91", $0D
         .byte "WAIT 3", $0D
+        .byte "CS", $0D
+        ; --- extra REPL scenes (no procs, just REPEAT compositions) ----
+        ; Polygons -- N-gon = REPEAT N [FD step TR (360/N)].
+        .byte "PRINT ", $22, "PENTAGN", $0D
+        .byte "REPEAT 5 [FD 50 TR 72]", $0D
+        .byte "WAIT 2", $0D
+        .byte "CS", $0D
+        .byte "PRINT ", $22, "HEXAGON", $0D
+        .byte "REPEAT 6 [FD 45 TR 60]", $0D
+        .byte "WAIT 2", $0D
+        .byte "CS", $0D
+        .byte "PRINT ", $22, "OCTAGON", $0D
+        .byte "REPEAT 8 [FD 35 TR 45]", $0D
+        .byte "WAIT 2", $0D
+        .byte "CS", $0D
+        ; Star variants -- non-convex {N/k} stars: TR > 360/N skips vertices.
+        .byte "PRINT ", $22, "STAR7", $0D
+        .byte "REPEAT 7 [FD 70 TR 154]", $0D
+        .byte "WAIT 2", $0D
+        .byte "CS", $0D
+        .byte "PRINT ", $22, "STAR8", $0D
+        .byte "REPEAT 8 [FD 60 TR 135]", $0D
+        .byte "WAIT 2", $0D
+        .byte "CS", $0D
+        .byte "PRINT ", $22, "BURST", $0D
+        .byte "REPEAT 9 [FD 70 TR 160]", $0D
+        .byte "WAIT 2", $0D
+        .byte "CS", $0D
+        ; Doubly-nested REPEATs -- copies of a small motif rotated around.
+        .byte "PRINT ", $22, "PINWHL", $0D
+        .byte "REPEAT 10 [REPEAT 4 [FD 22 TR 90] TR 36]", $0D
+        .byte "WAIT 3", $0D
+        .byte "CS", $0D
+        .byte "PRINT ", $22, "KALEID", $0D
+        .byte "REPEAT 24 [REPEAT 5 [FD 120 TR 144] TR 15]", $0D
+        .byte "WAIT 3", $0D
+        .byte "CS", $0D
+        .byte "PRINT ", $22, "GARDEN", $0D
+        .byte "REPEAT 8 [REPEAT 3 [FD 35 TR 120] TR 45]", $0D
+        .byte "WAIT 3", $0D
+        .byte "CS", $0D
+        .byte "PRINT ", $22, "CIRCLES", $0D
+        .byte "REPEAT 6 [REPEAT 24 [FD 6 TR 15] TR 60]", $0D
+        .byte "WAIT 3", $0D
+        .byte "CS", $0D
+        ; SETXY-driven absolute-position scenes. RANDOM N caps at N<=255.
+
+        .byte "PRINT ", $22, "RAYS", $0D
+        .byte "REPEAT 36 [PU HOME PD SETH RANDOM 250 FD 70]", $0D
+        .byte "WAIT 3", $0D
+        .byte "CS", $0D
+        ; Dynamic-turtle teaser -- chunky turtle on a polygonal walk, then
+        ; restore the bitmap arrow so subsequent scenes don't see a stray
+        ; sprite (BIRDFLY below also ends with SETSHAPE "ARROW).
+        .byte "PRINT ", $22, "TURTLEW", $0D
+        .byte "PU", $0D
+        .byte "HOME", $0D
+        .byte "SETSHAPE ", $22, "TURTL", $0D
+        .byte "PD", $0D
+        .byte "REPEAT 36 [FD 6 TR 10]", $0D
+        .byte "WAIT 2", $0D
+        .byte "SETSHAPE ", $22, "ARROW", $0D
         .byte "CS", $0D
         ; --- V2.0 dynamic-turtle scene: figure-8 bird flight --------------
         ; True figure-8: BFR is a wing-flap cycle that turns right (+24°
@@ -3262,6 +3340,79 @@ xor_turtle:
         STA plot_mode
         RTS
 
+; ============================================================================
+; heading_to_octant: map (th_lo, th_hi) heading 0..359 to an octant 0..7
+;   (0=N, 1=NE, 2=E, 3=SE, 4=S, 5=SW, 6=W, 7=NW). Each octant spans 45 deg
+;   centred on its compass point, so the boundary at heading=22 already
+;   commits to NE. Returns A = octant; preserves Y; clobbers X, tmp, tmp2.
+; ============================================================================
+heading_to_octant:
+        LDA th_lo
+        CLC
+        ADC #22
+        STA tmp
+        LDA th_hi
+        ADC #0
+        STA tmp2
+        LDX #0
+@hloop: LDA tmp2
+        BNE @hsub             ; high byte non-zero, definitely >= 45
+        LDA tmp
+        CMP #45
+        BCC @hdone
+@hsub:  LDA tmp
+        SEC
+        SBC #45
+        STA tmp
+        LDA tmp2
+        SBC #0
+        STA tmp2
+        INX
+        JMP @hloop
+@hdone: TXA
+        AND #7                ; mod 8 (heading 360+22 -> X=8 -> 0=N)
+        RTS
+
+; ============================================================================
+; update_dir_turtle: when SETSHAPE "TURTL is active, recompute octant from
+;   the current heading and -- only if the octant changed since the last
+;   call -- copy the matching 32-byte pattern from dir_turtle_table to the
+;   sprite-0 pattern slot at VRAM $1800. Cheap no-op when:
+;     - dir_turtle_active = 0  (BIRD1/BIRD2/ARROW or no SETSHAPE yet)
+;     - sprite_mode = 0        (still bitmap turtle)
+;     - last_octant == cur_octant (heading hasn't crossed an octant edge)
+;   Called from draw_turtle's sprite path, so every TR / TL / SETH / HOME
+;   that re-draws the turtle picks up the fresh pattern automatically.
+; ============================================================================
+update_dir_turtle:
+        LDA dir_turtle_active
+        BEQ @udone
+        LDA sprite_mode
+        BEQ @udone
+        JSR heading_to_octant ; A = 0..7
+        CMP last_octant
+        BEQ @udone            ; still in same 45 deg slice
+        STA last_octant
+        ASL                   ; word index
+        TAY
+        LDA dir_turtle_table,Y
+        STA shape_pat_lo
+        LDA dir_turtle_table+1,Y
+        STA shape_pat_hi
+        ; Copy 32 bytes to VRAM $1800 (sprite pattern 0).
+        LDA #$00
+        STA VDP_CTRL
+        NOP                   ; +2c silicon-strict gap (LDA #imm bridge)
+        LDA #$18 | $40
+        STA VDP_CTRL
+        LDY #0
+@ucp:   LDA (shape_pat_lo),Y
+        STA VDP_DATA
+        INY
+        CPY #32
+        BNE @ucp
+@udone: RTS
+
 ; draw_turtle: in bitmap mode, XOR-draw the triangle and flag visible.
 ;   In sprite mode, write 4 bytes (Y, X, name, color) to the sprite #0
 ;   attribute slot at VRAM $3B00. The TMS9918 hardware-blits the sprite
@@ -3269,6 +3420,9 @@ xor_turtle:
 draw_turtle:
         LDA sprite_mode
         BEQ @bitmap
+        ; --- directional TURTL: refresh sprite pattern when heading
+        ; octant changed (no-op if dir_turtle_active = 0).
+        JSR update_dir_turtle
         ; --- sprite path: write sprite-0 attribute (Y, X, name=0, color=$0F)
         LDA #$00
         STA VDP_CTRL
@@ -3375,6 +3529,9 @@ cmd_setshape:
         CMP #'W'
         BNE @search_table
         ; --- ARROW ---
+        ; Always exit directional-turtle mode -- ARROW means bitmap.
+        LDA #0
+        STA dir_turtle_active
         LDA sprite_mode
         BEQ @arrow_done           ; already in bitmap mode -- no-op
         ; Y=$D0 to sprite #0 attribute = TMS9918 sprite-list terminator.
@@ -3404,7 +3561,9 @@ cmd_setshape:
         LDY #0
         LDA (mptr_lo),Y
         CMP #$FF
-        BEQ @bad_name
+        BNE @scmp                 ; near branch; long-jump fallthrough below
+        JMP @bad_name             ; @bad_name out of branch range now that
+                                  ; @found has TURTL detection + dir-mode setup
 @scmp:  LDA (mptr_lo),Y
         CMP mnem_buf,Y
         BNE @snext
@@ -3428,6 +3587,34 @@ cmd_setshape:
         JMP @search
 
 @found:
+        ; Detect TURTL match -> directional turtle mode (8 sprites).
+        ; Other matched names (BIRD1, BIRD2) keep dir_turtle_active = 0,
+        ; so update_dir_turtle is a no-op and the static pattern below
+        ; stays put across heading changes.
+        LDA mnem_buf
+        CMP #'T'
+        BNE @static_shape
+        LDA mnem_buf+1
+        CMP #'U'
+        BNE @static_shape
+        LDA mnem_buf+2
+        CMP #'R'
+        BNE @static_shape
+        LDA mnem_buf+3
+        CMP #'T'
+        BNE @static_shape
+        LDA mnem_buf+4
+        CMP #'L'
+        BNE @static_shape
+        LDA #1
+        STA dir_turtle_active
+        LDA #$FF
+        STA last_octant           ; force octant reload on next draw_turtle
+        JMP @ensure_sprite_mode
+@static_shape:
+        LDA #0
+        STA dir_turtle_active
+@ensure_sprite_mode:
         ; First-time entry: erase any bitmap turtle, enable 16x16 sprites.
         LDA sprite_mode
         BNE @load_pat
@@ -3441,6 +3628,10 @@ cmd_setshape:
         LDA #1
         STA sprite_mode
 @load_pat:
+        ; Directional TURTL: skip the static upload here. draw_turtle
+        ; will pick the right octant pattern and upload it.
+        LDA dir_turtle_active
+        BNE @reposition
         ; Copy 32 bytes from (shape_pat),Y to VRAM $1800 (sprite pattern 0).
         LDA #$00
         STA VDP_CTRL
@@ -3453,7 +3644,10 @@ cmd_setshape:
         INY
         CPY #32
         BNE @cppat
-        ; Reposition sprite at the current turtle (tx, ty).
+@reposition:
+        ; Reposition sprite at the current turtle (tx, ty). For
+        ; dir_turtle_active = 1 this also runs update_dir_turtle and
+        ; uploads the heading-matching pattern.
         JSR draw_turtle
         RTS
 @bad_name:
@@ -3496,18 +3690,88 @@ bird2_pat:
         ; BR
         .byte $40, $F0, $1C, $06, $03, $01, $00, $00
 
-; TURTL -- chunky 16x16 turtle facing right (head pokes east, four legs,
-;   diamond shell). Drop-in default for users who want the sprite shape
-;   without a bird animation.
-turtle_pat:
-        ; TL
-        .byte $00, $00, $03, $0F, $1F, $3F, $7E, $FC
-        ; BL
-        .byte $7E, $3F, $1F, $0F, $03, $00, $00, $00
-        ; TR
-        .byte $00, $30, $E0, $F0, $F8, $FC, $7E, $7F
-        ; BR
-        .byte $7E, $FC, $F8, $F0, $E0, $30, $00, $00
+; TURTL -- 8 directional 16x16 sprites, one per 45-degree octant.
+;   E-facing turtle is hand-designed (oval shell with hex-segment
+;   seams, 4 splayed legs, head pokes east). N / S / W are 90-degree
+;   rotations; NE / NW / SE / SW are hand-tweaked so the head
+;   protrudes diagonally without aliasing.
+;   See tools/gen_turtle_sprites.py for the pixel-art source.
+;
+; turtle_e (heading 90 - the model):
+;     ....##....##....   1
+;     ....##....##....   2
+;     ..############..   3
+;     .##############.   4
+;     .##.##.##.##....   5  hex segments
+;     .##############.   6
+;     .###############   7  shell + head
+;     .###############   8  shell + head
+;     .##############.   9
+;     .##.##.##.##....   10 hex segments
+;     .##############.   11
+;     ..############..   12
+;     ....##....##....   13
+;     ....##....##....   14
+;
+; dir_turtle_table indexes by octant: 0=N, 1=NE, 2=E, 3=SE, 4=S,
+;   5=SW, 6=W, 7=NW (matches heading_to_octant output).
+dir_turtle_table:
+        .word turtle_n,  turtle_ne, turtle_e,  turtle_se
+        .word turtle_s,  turtle_sw, turtle_w,  turtle_nw
+
+; Default TURTL pattern that the (legacy) shape_table points at -- only
+; used as a placeholder; cmd_setshape detects the TURTL name and from
+; then on draw_turtle uploads the heading-matching octant directly.
+turtle_pat = turtle_e
+
+; turtle_n (heading 0 -- head pokes north / up)
+turtle_n:
+        .byte $01, $0B, $1B, $1B, $7F, $7F, $1B, $1F
+        .byte $1F, $1B, $7F, $7F, $1B, $1F, $0F, $00
+        .byte $80, $D0, $D8, $D8, $FE, $FE, $D8, $F8
+        .byte $F8, $D8, $FE, $FE, $D8, $F8, $F0, $00
+; turtle_ne (heading 45 -- head pokes north-east)
+turtle_ne:
+        .byte $00, $00, $00, $00, $0C, $0C, $3F, $3F
+        .byte $3F, $7F, $3F, $3E, $0C, $0C, $00, $00
+        .byte $00, $0C, $1E, $7E, $FF, $FF, $EF, $FC
+        .byte $FE, $FC, $FC, $FC, $F8, $F0, $70, $00
+; turtle_e (heading 90 -- head pokes east / right)
+turtle_e:
+        .byte $00, $0C, $0C, $3F, $7F, $6D, $7F, $7F
+        .byte $7F, $7F, $6D, $7F, $3F, $0C, $0C, $00
+        .byte $00, $30, $30, $FC, $FE, $B0, $FE, $FF
+        .byte $FF, $FE, $B0, $FE, $FC, $30, $30, $00
+; turtle_se (heading 135 -- head pokes south-east)
+turtle_se:
+        .byte $00, $00, $0E, $0F, $1F, $3F, $3F, $7F
+        .byte $3F, $3F, $F7, $FF, $FF, $7E, $78, $00
+        .byte $00, $00, $00, $30, $30, $7C, $FC, $FC
+        .byte $FE, $FC, $FC, $30, $30, $00, $00, $0C
+; turtle_s (heading 180 -- head pokes south / down)
+turtle_s:
+        .byte $00, $0F, $1F, $1B, $7F, $7F, $1B, $1F
+        .byte $1F, $1B, $7F, $7F, $1B, $1B, $0B, $01
+        .byte $00, $F0, $F8, $D8, $FE, $FE, $D8, $F8
+        .byte $F8, $D8, $FE, $FE, $D8, $D8, $D0, $80
+; turtle_sw (heading 225 -- head pokes south-west)
+turtle_sw:
+        .byte $00, $00, $00, $0F, $0F, $3F, $3F, $3F
+        .byte $7F, $3F, $3F, $0C, $0C, $00, $00, $30
+        .byte $00, $00, $70, $30, $98, $7C, $FC, $FE
+        .byte $FC, $FC, $EF, $FF, $FF, $7E, $1E, $00
+; turtle_w (heading 270 -- head pokes west / left)
+turtle_w:
+        .byte $00, $0C, $0C, $3F, $7F, $0D, $7F, $FF
+        .byte $FF, $7F, $0D, $7F, $3F, $0C, $0C, $00
+        .byte $00, $30, $30, $FC, $FE, $B6, $FE, $FE
+        .byte $FE, $FE, $B6, $FE, $FC, $30, $30, $00
+; turtle_nw (heading 315 -- head pokes north-west)
+turtle_nw:
+        .byte $00, $30, $78, $7E, $FF, $FF, $F7, $3F
+        .byte $7F, $3F, $3F, $3F, $1F, $0F, $0E, $00
+        .byte $00, $00, $00, $00, $30, $30, $FC, $FC
+        .byte $FC, $FE, $FC, $7C, $30, $30, $00, $00
 
 ; ============================================================================
 ; (VDP driver moved to tms9918m2.asm: init_vdp_g2, clear_bitmap, line_xy,

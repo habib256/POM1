@@ -1,1 +1,1 @@
-TMS9918: Galaga / Sokoban / Snake / Life (lower jumper, menu) + Tetris (upper jumper, auto-launch). Type 4000R.
+TMS9918: Galaga / Sokoban / Snake / Life (lower jumper, menu) + TMS_LOGO V2.0 (upper jumper, run-in-place). Type 4000R from either jumper position.

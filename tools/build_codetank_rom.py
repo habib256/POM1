@@ -10,7 +10,6 @@ Default layout (one ROM file, both halves used):
                    2 = SOKOBAN
                    3 = SNAKE
                    4 = LIFE
-                   5 = TETRIS (jumper UP)
                  and JMPs to the chosen entry.
     $4100-$5DFF  TMS_A1GALAGA  (linked at $4100, 7 424 B slot)
     $5E00-$70FF  TMS_SOKOBAN   (linked at $5E00, 4 864 B slot)
@@ -18,21 +17,23 @@ Default layout (one ROM file, both halves used):
     $7A00-$7FFF  TMS_LIFE      (linked at $7A00, 1 536 B slot)
 
   Upper 16 kB ($4000-$7FFF when CodeTank board jumper = Upper):
-    $4000-$407F  Tetris launcher (tetris_loader.asm) - copies the payload
-                 from $4080 down to $0280 in RAM, then JMPs $0280.
-    $4080-$5DAB  Tetris payload (raw 7 308 B from software/tms9918/tetris.bin)
-    $5DAC-$7FFF  $FF padding
+    $4000-$xxxx  TMS_LOGO V2.0 interpreter (linked at $4000,
+                 CODE segment fills as needed up to 16 kB).
+                 PROCBSS lives at $E000-$EFFF in the upper Parmigiani
+                 RAM bank (4 kB) so the 1 kB control stack + 2.4 kB
+                 proc_table fit. Type 4000R after flipping the
+                 jumper to Upper to launch the turtle REPL.
 
 The lower-bank games (Galaga, Sokoban, Snake, Life) all run **in place
 from ROM**. Galaga/Sokoban/Snake fit in the bare 4 kB Apple-1 footprint;
-Life uses two 884-B grids at $1000/$1400 so it needs at least 8 kB RAM.
-Tetris (no source available - Nippur72/KickC) is a binary blob copied
-into RAM at $0280-$1FAC, so it also needs >=8 kB DRAM. POM1 preset 8
-ships 16 kB which covers everything.
+Life uses two 884-B grids at $0800/$0C00 (low Parmigiani RAM bank).
+LOGO V2.0 also runs in place from ROM and uses the high RAM bank for
+its proc / var / control-stack tables.
 
 Optional --layout=split: the original two-bank layout (Galaga in lower,
-Sokoban in upper, no Snake / Tetris). Kept around for board-jumper
-demonstrations - the menu-bank layout above is what preset 8 loads.
+Sokoban in upper, no Snake / Life / LOGO / menu). Kept around for
+board-jumper demonstrations - the menu-bank layout above is what
+preset 2 loads.
 
 Usage:
     python3 tools/build_codetank_rom.py
@@ -63,14 +64,9 @@ SOKOBAN_SLOT_SIZE = SNAKE_OFFSET   - SOKOBAN_OFFSET  # 0x1300 = 4 864 B (TIGHT)
 SNAKE_SLOT_SIZE   = LIFE_OFFSET    - SNAKE_OFFSET    # 0x0900 = 2 304 B
 LIFE_SLOT_SIZE    = HALF_SIZE      - LIFE_OFFSET     # 0x0600 = 1 536 B
 
-# Upper-bank Tetris layout: 128-byte loader + raw payload right after.
-TETRIS_LOADER_OFFSET   = 0x0000     # bank+$0000 = CPU $4000
-TETRIS_PAYLOAD_OFFSET  = 0x0080     # bank+$0080 = CPU $4080
-TETRIS_LOADER_SLOT     = TETRIS_PAYLOAD_OFFSET - TETRIS_LOADER_OFFSET  # 128 B
-
 # Sources moved from software/tms9918/ to dev/projects/<name>/ during the
 # 2026-04 dev/ reorg. Each project now owns its own .asm + .cfg files;
-# the runtime artifacts (tetris.bin, *.bin/.txt outputs) still live under
+# the runtime artifacts (*.bin/.txt outputs) still live under
 # software/tms9918/.
 DEV = ROOT / "dev" / "projects"
 
@@ -86,9 +82,10 @@ SNAKE_ASM         = DEV / "tms9918_snake"         / "TMS_Snake.asm"
 SNAKE_BANK_CFG    = DEV / "tms9918_snake"         / "apple1_snake_codetank_bank.cfg"
 LIFE_ASM          = DEV / "tms9918_life"          / "TMS_Life.asm"
 LIFE_BANK_CFG     = DEV / "tms9918_life"          / "apple1_life_codetank_bank.cfg"
-TETRIS_LOADER_ASM = DEV / "tms9918_tetris_loader" / "tetris_loader.asm"
-TETRIS_LOADER_CFG = DEV / "tms9918_tetris_loader" / "apple1_tetris_loader.cfg"
-TETRIS_BIN        = TMS / "tetris.bin"
+LOGO_V2_ASM       = DEV / "tms9918_logo"          / "TMS_Logo_16k.asm"
+LOGO_V2_BANK_CFG  = DEV / "tms9918_logo"          / "apple1_logo_v2_codetank_bank.cfg"
+LOGO_V2_MATH_ASM  = ROOT / "dev" / "lib" / "m6502"   / "math.asm"
+LOGO_V2_VDP_ASM   = ROOT / "dev" / "lib" / "tms9918" / "tms9918m2.asm"
 LIB_APPLE1        = ROOT / "dev" / "lib" / "apple1"
 LIB_M6502         = ROOT / "dev" / "lib" / "m6502"
 LIB_TMS           = ROOT / "dev" / "lib" / "tms9918"
@@ -178,26 +175,54 @@ def build_lower_bank() -> bytes:
     return bytes(bank)
 
 
-def build_upper_bank_tetris() -> bytes:
-    """Upper 16 kB: tiny loader at $4000 + raw Tetris payload at $4080."""
-    print("\n[CodeTank] Upper bank (Tetris launcher + payload):",
-          file=sys.stderr)
-    loader = assemble(TETRIS_LOADER_ASM, TETRIS_LOADER_CFG,
-                      "tetris_loader", TETRIS_LOADER_SLOT)
-    payload = TETRIS_BIN.read_bytes()
-    if not payload:
-        raise SystemExit(f"{TETRIS_BIN}: empty file")
-    payload_room = HALF_SIZE - TETRIS_PAYLOAD_OFFSET
-    if len(payload) > payload_room:
-        raise SystemExit(
-            f"tetris.bin is {len(payload)} B, exceeds upper-bank payload "
-            f"slot of {payload_room} B"
+def assemble_multi(asms: list[pathlib.Path], cfg: pathlib.Path, name: str,
+                   max_size: int) -> bytes:
+    """Assemble each `asms[i]` separately with ca65, then link the whole
+    bundle with `cfg`. Used for LOGO V2.0 which links three modules
+    (TMS_Logo_16k + math + tms9918m2) into one ROM image.
+    """
+    BUILD.mkdir(parents=True, exist_ok=True)
+    objs: list[pathlib.Path] = []
+    for asm in asms:
+        obj = BUILD / f"{name}_{asm.stem}.o"
+        subprocess.run(
+            ["ca65",
+             "-I", str(LIB_APPLE1),
+             "-I", str(LIB_M6502),
+             "-I", str(LIB_TMS),
+             "-I", str(LIB_SOKOBAN),
+             "-I", str(LIB_HGR),
+             "-I", str(asm.parent),
+             "-o", str(obj), str(asm)],
+            check=True, cwd=str(ROOT),
         )
+        objs.append(obj)
+    binp = BUILD / f"{name}.bin"
+    subprocess.run(
+        ["ld65", "-C", str(cfg), "-o", str(binp), *map(str, objs)],
+        check=True, cwd=str(ROOT),
+    )
+    data = binp.read_bytes()
+    if not data:
+        raise SystemExit(f"{name}: ld65 produced an empty binary")
+    if len(data) > max_size:
+        raise SystemExit(
+            f"{name}: code is {len(data)} B, exceeds slot of {max_size} B"
+        )
+    return data
+
+
+def build_upper_bank_logo() -> bytes:
+    """Upper 16 kB: TMS_LOGO V2.0 interpreter at $4000-$7FFF, run in
+    place from ROM. PROCBSS lives in the upper Parmigiani RAM bank
+    ($E000-$EFFF) per apple1_logo_v2_codetank_bank.cfg."""
+    print("\n[CodeTank] Upper bank (TMS_LOGO V2.0, run-in-place):",
+          file=sys.stderr)
+    logo = assemble_multi(
+        [LOGO_V2_ASM, LOGO_V2_MATH_ASM, LOGO_V2_VDP_ASM],
+        LOGO_V2_BANK_CFG, "TMS_Logo_v2_bank", HALF_SIZE)
     bank = bytearray(b"\xFF" * HALF_SIZE)
-    slot(bank, TETRIS_LOADER_OFFSET, loader,  TETRIS_LOADER_SLOT,
-         "tetris loader  ($4000-$407F)")
-    slot(bank, TETRIS_PAYLOAD_OFFSET, payload, payload_room,
-         "tetris payload ($4080+)   ")
+    slot(bank, 0x0000, logo, HALF_SIZE, "LOGO V2.0  ($4000-$7FFF)")
     return bytes(bank)
 
 
@@ -266,7 +291,7 @@ def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument(
         "--layout",
-        choices=("menu", "split", "dualslot8k", "galaga_tetris"),
+        choices=("menu", "split", "dualslot8k"),
         default="menu",
         help="ROM layout (default: menu)",
     )
@@ -296,11 +321,12 @@ def main() -> int:
 
     if args.layout == "menu":
         lower = build_lower_bank()
-        upper = build_upper_bank_tetris()
+        upper = build_upper_bank_logo()
         rom = lower + upper
         sidecar_body = (
             "TMS9918: Galaga / Sokoban / Snake / Life (lower jumper, menu) "
-            "+ Tetris (upper jumper, auto-launch). Type 4000R.\n"
+            "+ TMS_LOGO V2.0 (upper jumper, run-in-place). Type 4000R "
+            "from either jumper position.\n"
         )
     elif args.layout == "split":
         lower, upper = build_split_halves()
@@ -311,11 +337,11 @@ def main() -> int:
         )
     else:  # dualslot8k
         lower = build_lower_bank_dualslot8k()
-        upper = build_upper_bank_tetris()
+        upper = build_upper_bank_logo()
         rom = lower + upper
         sidecar_body = (
             "TMS9918 dualslot-8k: lower jumper = Galaga ($4000) + Sokoban "
-            "($6000), each in 8 kB; upper jumper = Tetris launcher. "
+            "($6000), each in 8 kB; upper jumper = TMS_LOGO V2.0. "
             "No interactive menu; run 4000R or 6000R from Wozmon.\n"
         )
 

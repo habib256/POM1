@@ -25,6 +25,10 @@
 ;   7 Bunnies             (7-cell methuselah, R. Wainwright 1971)
 ;   8 Pi-heptomino        (7-cell methuselah, dense ash)
 ;   9 Oscillator Zoo      (Blinker + Toad + Beacon + a Block still life)
+;  10 Still Lifes         (Block + Beehive + Loaf + Boat + Ship, no motion)
+;  11 Glider Storm        (4 gliders converge toward the centre)
+;  12 Octagon 2           (period-5 octagonal oscillator, 16 cells)
+;  13 Thunderbird         (6-cell methuselah, ~243 generations)
 ; =============================================
 ; Assemble:
 ;   ca65 -o build/TMS_Life.o software/tms9918/TMS_Life.asm
@@ -38,18 +42,20 @@
 ; software/tms9918/), File > Load Memory TMS_Life.txt, then 280R in
 ; the Woz Monitor. Tap any key to change pattern, ESC to exit.
 ;
-; Memory footprint (8 KB Apple-1 + TMS9918 minimum):
-;   $0280-~$0790  code + pattern tables + HUD strings (output file)
-;   $1000-$1373   grid_a       (884 B, zeroed at boot)
-;   $1400-$1773   grid_b       (884 B, zeroed at boot)
+; Memory footprint (Parmigiani dual-bank 8 KB + TMS9918):
+;   $0280-~$078B  code + pattern tables + HUD strings (output file)
+;   $0800-$0B73   grid_a       (884 B, zeroed at boot)
+;   $0C00-$0F73   grid_b       (884 B, zeroed at boot)
 ;   VRAM on card  pattern/name/color tables (not main bus)
 ;
-; Grids deliberately live BELOW $2000 so they sit in the bare Apple-1
-; RAM area regardless of what's plugged at $4000+. Earlier revisions
-; put them at $4000/$4400, but that collides with the P-LAB CodeTank
-; ROM window when both Life and a CodeTank cart are loaded on the same
-; preset (CodeTank ROM eats the writes -> grids stay frozen at ROM
-; bytes -> render() feeds garbage chars to the TMS9918).
+; Grids must stay inside the low RAM bank ($0000-$0FFF) because the
+; TMS9918 presets use Parmigiani's dual-bank layout (4 KB at $0000 +
+; 4 KB at $E000) — anything in [$1000, $8000) is OOR and gets dropped
+; by Memory.cpp's strict-OOR enforcement, which froze the grids at
+; $FF and made the simulation render solid blocks. $0800/$0C00 sits
+; above the program (~$078B) and below the bank ceiling at $0FFF, so
+; it works on every TMS9918-capable preset (with or without CodeTank
+; ROM at $4000-$7FFF, with or without GEN2 HGR at $2000-$3FFF).
 ;
 ; Cell layout:       cell (r, c), r in 1..24, c in 1..32
 ;                    byte = grid[r*34 + c]   (0 = dead, 1 = alive)
@@ -82,15 +88,18 @@ KEY_DOT   = $AE             ; '.'   - single step  (2E | 80)
 KEY_R     = $D2             ; 'R'   - reseed       (52 | 80)
 
 ; ----- Pattern catalog -----
-NUM_PATTERNS = 10
+NUM_PATTERNS = 14
 
 ; ----- Runtime RAM (absolute, NOT in the output file) -----
-; Grids must avoid the CodeTank ROM window ($4000-$7FFF when a CodeTank
-; cart is plugged) and the GEN2 HGR framebuffer ($2000-$3FFF when GEN2
-; is plugged). $1000/$1400 sits above the program (~$0790) and below
-; both expansion windows, so it's safe on every TMS9918-capable preset.
-grid_a  := $1000
-grid_b  := $1400
+; Grids must live inside the Parmigiani 8 KB dual-bank low RAM
+; ($0000-$0FFF) — [$1000, $8000) is OOR on every TMS9918 preset and
+; the strict-OOR check drops writes there. They also need to avoid
+; the CodeTank ROM window ($4000-$7FFF when a CodeTank cart is
+; plugged) and the GEN2 HGR framebuffer ($2000-$3FFF when GEN2 is
+; plugged). $0800/$0C00 sits above the program image (ends ~$078B)
+; and stays inside the low bank, so it's safe everywhere.
+grid_a  := $0800
+grid_b  := $0C00
 
 ; ----- Zero page -----
 .zeropage
@@ -639,12 +648,14 @@ patterns_lo:
         .byte <pattern_pulsar,  <pattern_pentadeca, <pattern_diehard
         .byte <pattern_acorn,   <pattern_rpent,     <pattern_parade
         .byte <pattern_glider,  <pattern_bunnies,   <pattern_pi
-        .byte <pattern_zoo
+        .byte <pattern_zoo,     <pattern_still,     <pattern_storm
+        .byte <pattern_octagon, <pattern_thunder
 patterns_hi:
         .byte >pattern_pulsar,  >pattern_pentadeca, >pattern_diehard
         .byte >pattern_acorn,   >pattern_rpent,     >pattern_parade
         .byte >pattern_glider,  >pattern_bunnies,   >pattern_pi
-        .byte >pattern_zoo
+        .byte >pattern_zoo,     >pattern_still,     >pattern_storm
+        .byte >pattern_octagon, >pattern_thunder
 
 ; Pattern names — NUL-terminated ASCII, terminated with $0D (CR).
 ; print_str ORs $80 into each byte before sending to ECHO.
@@ -652,12 +663,14 @@ pattern_names_lo:
         .byte <name_pulsar,  <name_pentadeca, <name_diehard
         .byte <name_acorn,   <name_rpent,     <name_parade
         .byte <name_glider,  <name_bunnies,   <name_pi
-        .byte <name_zoo
+        .byte <name_zoo,     <name_still,     <name_storm
+        .byte <name_octagon, <name_thunder
 pattern_names_hi:
         .byte >name_pulsar,  >name_pentadeca, >name_diehard
         .byte >name_acorn,   >name_rpent,     >name_parade
         .byte >name_glider,  >name_bunnies,   >name_pi
-        .byte >name_zoo
+        .byte >name_zoo,     >name_still,     >name_storm
+        .byte >name_octagon, >name_thunder
 
 name_pulsar:    .byte "PULSAR", $0D, 0
 name_pentadeca: .byte "PENTADECATHLON", $0D, 0
@@ -669,6 +682,10 @@ name_glider:    .byte "GLIDER", $0D, 0
 name_bunnies:   .byte "BUNNIES", $0D, 0
 name_pi:        .byte "PI-HEPTOMINO", $0D, 0
 name_zoo:       .byte "OSCILLATOR ZOO", $0D, 0
+name_still:     .byte "STILL LIFES", $0D, 0
+name_storm:     .byte "GLIDER STORM", $0D, 0
+name_octagon:   .byte "OCTAGON 2", $0D, 0
+name_thunder:   .byte "THUNDERBIRD", $0D, 0
 
 ; HUD chrome — printed once at boot + on transport actions.
 str_title:  .byte "TMS LIFE 32X24  B3/S23", $0D, 0
@@ -810,6 +827,86 @@ pattern_zoo:
         ; Block (control: never moves, never blinks)
         .byte  5, 25,   5, 26
         .byte  6, 25,   6, 26
+        .byte $FF
+
+; Pattern 10 — Still Lifes. Five canonical static configurations
+; (Block, Beehive, Loaf, Boat, Ship) lined up across rows 3-6.
+; They never move or change — useful as a B3/S23 sanity check
+; and a visual reference for "what survives forever".
+pattern_still:
+        ; Block (cols 3-4)
+        .byte  3,  3,   3,  4
+        .byte  4,  3,   4,  4
+        ; Beehive (cols 8-11)
+        .byte  3,  9,   3, 10
+        .byte  4,  8,   4, 11
+        .byte  5,  9,   5, 10
+        ; Loaf (cols 15-18)
+        .byte  3, 16,   3, 17
+        .byte  4, 15,   4, 18
+        .byte  5, 16,   5, 18
+        .byte  6, 17
+        ; Boat (cols 22-24)
+        .byte  3, 22,   3, 23
+        .byte  4, 22,   4, 24
+        .byte  5, 23
+        ; Ship (cols 28-30)
+        .byte  3, 28,   3, 29
+        .byte  4, 28,   4, 30
+        .byte  5, 29,   5, 30
+        .byte $FF
+
+; Pattern 11 — Glider Storm. One glider in each corner aimed at
+; the centre of the playfield. They take ~9-10 ticks per move and
+; collide somewhere around (12, 16); the wreckage is different
+; depending on the exact phase alignment so reseeding is fun.
+pattern_storm:
+        ; SE-bound glider, top-left corner
+        .byte  2,  3
+        .byte  3,  4
+        .byte  4,  2,   4,  3,   4,  4
+        ; SW-bound glider, top-right corner
+        .byte  2, 29
+        .byte  3, 28
+        .byte  4, 28,   4, 29,   4, 30
+        ; NE-bound glider, bottom-left corner
+        .byte 20,  2,  20,  3,  20,  4
+        .byte 21,  4
+        .byte 22,  3
+        ; NW-bound glider, bottom-right corner
+        .byte 20, 28,  20, 29,  20, 30
+        .byte 21, 28
+        .byte 22, 29
+        .byte $FF
+
+; Pattern 12 — Octagon 2. Period-5 oscillator, 8x8 bounding box,
+; centred on rows 12-13, cols 15-16. Visually striking: a clean
+; octagon ring that pulses between 16 and 24 live cells.
+pattern_octagon:
+        .byte  9, 15,   9, 16
+        .byte 10, 14,  10, 17
+        .byte 11, 13,  11, 18
+        .byte 12, 12,  12, 19
+        .byte 13, 12,  13, 19
+        .byte 14, 13,  14, 18
+        .byte 15, 14,  15, 17
+        .byte 16, 15,  16, 16
+        .byte $FF
+
+; Pattern 13 — Thunderbird. 6-cell methuselah; a horizontal
+; blinker stacked one row above a vertical 1x3 line. Stabilises
+; only after ~243 generations into a small ash field.
+;
+;   ###
+;   ...
+;   .#.
+;   .#.
+;   .#.
+pattern_thunder:
+        .byte 10, 15,  10, 16,  10, 17
+        .byte 12, 16
+        .byte 13, 16
+        .byte 14, 16
         .byte $FF
 
 ; row_ofs[r] = r * 34  (0 <= r <= 25)

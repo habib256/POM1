@@ -2987,6 +2987,7 @@ draw_hud:
         CLC
         ADC #C_D0
         STA VDP_DATA            ; ones
+        NOP                     ; +2c silicon-strict gap (cross-port: STA DATA -> STA CTRL via LDA #imm = 6c KO)
 
         ; (HUD bonus indicators removed: streak shows up via the score
         ;  popup that floats from the killed alien, and the weapon

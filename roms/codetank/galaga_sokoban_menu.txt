@@ -1,1 +1,0 @@
-TMS9918: Galaga / Sokoban / Snake / Life (lower jumper, menu) + Tetris (upper jumper, auto-launch). Type 4000R.

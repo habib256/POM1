@@ -55,11 +55,12 @@ PLAY_LEFT   = 1
 PLAY_RIGHT  = 30
 
 ; --- Tile codes (also TMS char codes) ---
-CELL_EMPTY = 0
-CELL_WALL  = 1
-CELL_BODY  = 8
-CELL_HEAD  = 16
-CELL_FOOD  = 24
+CELL_EMPTY     = 0
+CELL_WALL      = 1      ; deadly border (solid brick) - chosen when wrap_mode=0
+CELL_WALL_PASS = 2      ; passable border (small dot) - chosen when wrap_mode=1
+CELL_BODY      = 8
+CELL_HEAD      = 16
+CELL_FOOD      = 24
 
 ; --- Game tuning ---
 INITIAL_LEN    = 4
@@ -116,6 +117,7 @@ prng_hi:        .res 1
 key_up_code:    .res 1
 key_left_code:  .res 1
 wrap_mode:      .res 1          ; 0 = walls deadly, 1 = walls wrap-around
+hi_score:       .res 1          ; best score this session (persists across new_game)
 
 draw_row:       .res 1
 draw_col:       .res 1
@@ -163,6 +165,24 @@ main:
         STA key_left_code
 
 @ask_walls:
+        ; Refresh the TMS splash so the wall-mode choice is visible
+        ; in graphics output too — overwrite the keyboard prompt rows
+        ; in-place. Strings are sized to fully clobber the old text.
+        LDA #<title_walls_select_tms
+        STA sptr_lo
+        LDA #>title_walls_select_tms
+        STA sptr_hi
+        LDA #$E8                ; $19E8 = row 15 col 8
+        LDX #$59
+        JSR draw_str_tms
+        LDA #<title_walls_keys_tms
+        STA sptr_lo
+        LDA #>title_walls_keys_tms
+        STA sptr_hi
+        LDA #$48                ; $1A48 = row 18 col 8
+        LDX #$5A
+        JSR draw_str_tms
+
         LDA #<str_walls
         LDX #>str_walls
         JSR print_str_ax
@@ -190,6 +210,8 @@ main:
         STA prng_lo
         LDA #$3C
         STA prng_hi
+        LDA #$00
+        STA hi_score            ; reset once per power-on; new_game keeps it
 
 new_game:
         LDA #$00
@@ -256,8 +278,20 @@ play_loop:
 ; init_arena: clear the TMS name table, then paint the wall border.
 ; Walls are visual only — collision checks them by coordinate
 ; (col 0/31, row 1/23) so we don't need a backing tile-code grid.
+; The border tile reflects wrap_mode: solid brick when walls are
+; deadly (wrap_mode=0), porous dot pattern when the snake wraps
+; through to the opposite side (wrap_mode=1). The chosen char is
+; cached in temp2 (which plot_cell never touches) so each of the
+; four border passes can reload it cheaply.
 ; =============================================
 init_arena:
+        LDA #CELL_WALL
+        LDX wrap_mode
+        BEQ @wall_picked
+        LDA #CELL_WALL_PASS
+@wall_picked:
+        STA temp2
+
         ; --- Clear TMS name table $1800 (3 pages) ---
         LDA #$00
         STA VDP_CTRL
@@ -279,7 +313,7 @@ init_arena:
         LDA #$00
         STA draw_col
 @top:
-        LDA #CELL_WALL
+        LDA temp2
         JSR plot_cell
         INC draw_col
         LDA draw_col
@@ -292,7 +326,7 @@ init_arena:
         LDA #$00
         STA draw_col
 @bot:
-        LDA #CELL_WALL
+        LDA temp2
         JSR plot_cell
         INC draw_col
         LDA draw_col
@@ -305,7 +339,7 @@ init_arena:
         LDA #$02
         STA draw_row
 @left:
-        LDA #CELL_WALL
+        LDA temp2
         JSR plot_cell
         INC draw_row
         LDA draw_row
@@ -318,7 +352,7 @@ init_arena:
         LDA #$02
         STA draw_row
 @right:
-        LDA #CELL_WALL
+        LDA temp2
         JSR plot_cell
         INC draw_row
         LDA draw_row
@@ -464,6 +498,11 @@ move_snake:
 @ate:
         ; Food eaten: snake grows by 1. No tail trim.
         INC score
+        LDA score
+        CMP hi_score
+        BCC @no_hi_update
+        STA hi_score            ; new personal best — sticks across new_game
+@no_hi_update:
         INC foods_since
         ; Speed up every SPEED_STEP_EVERY foods (cap at SPEED_FLOOR).
         LDA foods_since
@@ -652,8 +691,11 @@ delay_and_input:
 
 
 ; handle_key: A = ASCII (bit 7 stripped). Updates pend_dx/pend_dy.
-; Recognises W/A/S/D (or Z/Q/S/D after AZERTY pick).
+; Recognises W/A/S/D (or Z/Q/S/D after AZERTY pick), and 'P' to
+; pause/freeze the game until any other key resumes it.
 handle_key:
+        CMP #'P'
+        BEQ @pause
         CMP key_up_code
         BEQ @up
         CMP #'S'
@@ -662,6 +704,14 @@ handle_key:
         BEQ @left
         CMP #'D'
         BEQ @right
+        RTS
+@pause:
+        ; Block on the keyboard until the user hits anything. The
+        ; resume key is dropped (no direction change), and its timing
+        ; is mixed into the PRNG so pauses jitter food placement.
+        JSR wait_key
+        EOR prng_lo
+        STA prng_lo
         RTS
 @up:
         LDA #$00
@@ -706,7 +756,7 @@ init_vdp:
         CPX #$08
         BNE @regloop
 
-        ; --- Upload the 4 tile patterns at chars 0, 8, 16, 24 ---
+        ; --- Upload the 6 tile patterns at chars 0, 1, 2, 8, 16, 24 ---
         ; Each pattern is 8 bytes (single 8x8 glyph).
         LDX #$00
 @tlp:
@@ -736,7 +786,7 @@ init_vdp:
         PLA
         TAX
         INX
-        CPX #$04
+        CPX #$06
         BNE @tlp
 
         ; --- Upload HUD glyph patterns at char 56 (VRAM $01C0) ---
@@ -826,8 +876,12 @@ plot_cell:
 
 
 ; =============================================
-; draw_hud: render "SCORE:NNN" at row 0 cols 0..8.
+; draw_hud: render "SCORE:NNN" at row 0 cols 0..8 and "HI:NNN" at
+; cols 23..28 (right side of the HUD bar, above the playfield).
 ; Called after every successful move (cheap, the row is small).
+; The 3-digit decimal emitter is factored into emit_3digit_vdp so
+; both readouts share it, which paid for the hi-score addition
+; without overflowing the 2 304 B CodeTank slot.
 ; =============================================
 draw_hud:
         ; VRAM addr $1800 (row 0, col 0)
@@ -836,47 +890,58 @@ draw_hud:
         NOP                     ; +2c silicon-strict gap (LDA #imm bridge)
         LDA #$58
         STA VDP_CTRL
-        NOP                     ; +2c silicon-strict gap (LDA #imm bridge)
-        LDA #HUD_C_S
-        STA VDP_DATA
-        NOP                     ; +2c silicon-strict gap (LDA #imm bridge)
-        LDA #HUD_C_C
-        STA VDP_DATA
-        NOP                     ; +2c silicon-strict gap (LDA #imm bridge)
-        LDA #HUD_C_O
-        STA VDP_DATA
-        NOP                     ; +2c silicon-strict gap (LDA #imm bridge)
-        LDA #HUD_C_R
-        STA VDP_DATA
-        NOP                     ; +2c silicon-strict gap (LDA #imm bridge)
-        LDA #HUD_C_E
-        STA VDP_DATA
-        NOP                     ; +2c silicon-strict gap (LDA #imm bridge)
-        LDA #HUD_C_CL
-        STA VDP_DATA
-
-        ; 3-digit decimal of `score` (0..255)
-        LDA score
+        ; "SCORE:" — 6 chars from a fixed table.
         LDX #$00
-@h100:  CMP #100
-        BCC @h100d
+@hud_lp:
+        NOP                     ; +2c silicon-strict gap (LDA abs,X bridge)
+        LDA hud_score_str,X
+        STA VDP_DATA
+        INX
+        CPX #$06
+        BCC @hud_lp
+        LDA score
+        JSR emit_3digit_vdp
+
+        ; VRAM addr $1817 (row 0, col 23) — start of "HI:NNN"
+        LDA #$17
+        STA VDP_CTRL
+        NOP                     ; +2c silicon-strict gap (LDA #imm bridge)
+        LDA #$58
+        STA VDP_CTRL
+        LDX #$00
+@hi_lp:
+        NOP                     ; +2c silicon-strict gap (LDA abs,X bridge)
+        LDA hud_hi_str,X
+        STA VDP_DATA
+        INX
+        CPX #$03
+        BCC @hi_lp
+        LDA hi_score
+        JMP emit_3digit_vdp     ; tail-call
+
+; emit_3digit_vdp: A in 0..255 -> 3 ASCII digits to VDP_DATA.
+; CMP sets carry when A >= operand, so the SBC #imm chains work
+; without an explicit SEC. Trashes A, X, temp.
+emit_3digit_vdp:
+        LDX #$00
+@h:     CMP #100
+        BCC @hd
         SBC #100
         INX
-        JMP @h100
-@h100d: STA temp
+        JMP @h
+@hd:    STA temp
         TXA
         CLC
         ADC #HUD_C_D0
         STA VDP_DATA            ; hundreds
-
         LDA temp
         LDX #$00
-@t10:   CMP #$0A
-        BCC @t10d
+@t:     CMP #$0A
+        BCC @td
         SBC #$0A
         INX
-        JMP @t10
-@t10d:  STA temp
+        JMP @t
+@td:    STA temp
         TXA
         CLC
         ADC #HUD_C_D0
@@ -886,6 +951,11 @@ draw_hud:
         ADC #HUD_C_D0
         STA VDP_DATA            ; ones
         RTS
+
+hud_score_str:
+        .byte HUD_C_S, HUD_C_C, HUD_C_O, HUD_C_R, HUD_C_E, HUD_C_CL
+hud_hi_str:
+        .byte HUD_C_H, HUD_C_I, HUD_C_CL
 
 
 ; =============================================
@@ -1035,11 +1105,20 @@ print_ptr_hi = str_hi
 vdp_regs:
         .byte $00, $C0, $06, $80, $00, $36, $07, $01
 
-; --- Pattern-table VRAM offsets for the 4 tiles (chars 0, 8, 16, 24) ---
+; --- Pattern-table VRAM offsets for the 6 tiles ---
+;     char 0 EMPTY      $0000
+;     char 1 WALL       $0008
+;     char 2 WALL_PASS  $0010
+;     char 8 BODY       $0040
+;     char 16 HEAD      $0080
+;     char 24 FOOD      $00C0
+; The earlier rev shipped only 4 entries (chars 0/8/16/24) which left
+; char 1 uninitialised, so deadly walls rendered invisible and BODY/
+; HEAD/FOOD inherited the wrong patterns.
 tile_vram_lo:
-        .byte $00, $40, $80, $C0
+        .byte $00, $08, $10, $40, $80, $C0
 tile_vram_hi:
-        .byte $00, $00, $00, $00
+        .byte $00, $00, $00, $00, $00, $00
 
 ; --- row * 32 (cell_grid stride / name-table stride) for rows 0..23 ---
 row_x32_lo:
@@ -1056,7 +1135,7 @@ tile_patterns:
         ; --- Tile 0 EMPTY: all background ---
         .byte $00, $00, $00, $00, $00, $00, $00, $00
 
-        ; --- Tile 1 WALL: classic offset brick mortar ---
+        ; --- Tile 1 WALL: classic offset brick mortar (deadly mode) ---
         ;  XXXXXXXX  $FF
         ;  X..X..X.  $92
         ;  X..X..X.  $92
@@ -1066,6 +1145,21 @@ tile_patterns:
         ;  ..X..X..  $24
         ;  ..X..X..  $24
         .byte $FF, $92, $92, $92, $FF, $24, $24, $24
+
+        ; --- Tile 2 WALL_PASS: porous "wrap-mode" boundary marker ---
+        ;  ........  $00
+        ;  ........  $00
+        ;  ........  $00
+        ;  ...XX...  $18
+        ;  ...XX...  $18
+        ;  ........  $00
+        ;  ........  $00
+        ;  ........  $00
+        ; A single 2x2 dot at the centre of every cell. Reads as a
+        ; dotted line on the playfield border, clearly distinct from
+        ; the solid-brick deadly wall, so the player sees at a glance
+        ; whether they can wrap or will die.
+        .byte $00, $00, $00, $18, $18, $00, $00, $00
 
         ; --- Tile 8 BODY: rounded 6x6 filled square ---
         ;  ........  $00
@@ -1253,6 +1347,12 @@ title_keys_tms:
         ; 1 _ ( W A S D )  2 _ ( Z Q S D )
         ; layout fits 16 chars centred at col 8
         .byte 60,79,93,88,73,69,83,94,79,61,79,93,89,87,69,83,94, $FF
+title_walls_select_tms:
+        ; S E L E C T _ W A L L S _ _ _   (15 chars to clobber "SELECT KEYBOARD")
+        .byte 69,77,78,77,90,82,79,88,73,78,78,69,79,79,79, $FF
+title_walls_keys_tms:
+        ; 1 _ ( D E A D L Y ) _ 2 _ ( W R A P )   (19 chars, covers old 17-char prompt)
+        .byte 60,79,93,83,77,73,83,78,84,94,79,61,79,93,88,76,73,75,94, $FF
 title_over_tms:
         ; G A M E _ O V E R
         .byte 80,73,56,77,79,70,57,77,76, $FF
@@ -1267,7 +1367,8 @@ title_press_tms:
 str_title:
         .byte $0D, " SNAKE FOR APPLE 1 + TMS9918", $0D
         .byte " V.ARNAUD 26  EAT THE APPLES!", $0D
-        .byte " WALLS AND TAIL ARE FATAL.", $0D, 0
+        .byte " WALLS AND TAIL ARE FATAL.", $0D
+        .byte " P = PAUSE   HI = BEST SCORE", $0D, 0
 
 str_layout:
         .byte $0D, " KEYBOARD: 1 QWERTY  2 AZERTY", $0D, 0

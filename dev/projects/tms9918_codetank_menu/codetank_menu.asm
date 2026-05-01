@@ -11,10 +11,9 @@
 ;   $7100-$79FF  TMS_SNAKE      (linked at $7100)
 ;   $7A00-$7FFF  TMS_LIFE       (linked at $7A00)
 ;
-; Tetris lives in the OPPOSITE half of the 28c256: move the
-; CodeTank board jumper to "Upper" then 4000R to launch it.
-; (The upper bank is a tiny bootstrap that copies the Tetris
-; payload from ROM down to $0280 in RAM and runs it.)
+; The upper 16 kB bank ships TMS_LOGO V2.0 (turtle graphics
+; interpreter) at $4000 — flip the CodeTank board jumper to
+; "Upper" and type 4000R from Wozmon to launch the REPL.
 ;
 ; Wozmon entry: 4000R after plugging the CodeTank card.
 ; =============================================
@@ -77,7 +76,7 @@ prompt:
         .byte "2 = SOKOBAN", $0D
         .byte "3 = SNAKE", $0D
         .byte "4 = LIFE", $0D
-        .byte "5 = TETRIS (JUMPER UP)", $0D
+        .byte "(LOGO V2 ON UPPER JUMPER)", $0D
         .byte $0D
         .byte "PICK 1, 2, 3 OR 4 ? "
         .byte 0
