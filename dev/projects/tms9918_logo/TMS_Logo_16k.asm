@@ -1,5 +1,5 @@
 ; ============================================================================
-; TMS_Logo_16k.asm  --  APPLE-1 LOGO V2.0 for TMS9918 (16 KB variant)
+; TMS_Logo_16k.asm  --  APPLE-1 LOGO V2.5 for TMS9918 (16 KB variant)
 ;                       (c) 2026 VERHILLE Arnaud
 ; ============================================================================
 ; *** V2.0 -- 16 KB BUILD (active development) ***
@@ -133,11 +133,7 @@ mptr_save_hi: .res 1
 ; addressing requires this be in ZP.
 shape_pat_lo: .res 1
 shape_pat_hi: .res 1
-; Active directional-shape table pointer (TURTL or BOAT). Lives in ZP for
-; (zp),Y access from update_dir_turtle. Only consulted when
-; dir_turtle_active = 1; left at dir_turtle_table by main for safety.
-dir_table_lo: .res 1
-dir_table_hi: .res 1
+; (Removed dir_table_lo/hi -- TURTL/BOAT directional sprites are gone.)
 ; --- Sprite size geometry (V2.1: 8x8 + 16x16 mixed) ----------------------
 ; spr_size: bytes per sprite pattern (8 or 32). Used by cmd_setshape's
 ;   static-copy loop and by update_dir_turtle's dir-table copy loop.
@@ -154,6 +150,14 @@ spr_size:    .res 1
 spr_xoff:    .res 1
 spr_yoff:    .res 1
 spr_r1:      .res 1
+.ifdef CODETANK_BUILD
+; --- EDIT (visual proc editor) state -----------------------------------
+;   ed_cur_line: 0..ed_n_lines-1, the line the '>' arrow points at.
+;   ed_n_lines : count of CR-terminated lines in the active proc body
+;                (recomputed by ed_draw on every redraw).
+ed_cur_line: .res 1
+ed_n_lines:  .res 1
+.endif
 
 ; --- BSS scratch in $0200 page --------------------------------------------
 .segment "LINEBUF"
@@ -189,14 +193,8 @@ turtle_visible: .res 1    ; 1 = turtle currently drawn into the bitmap
 ;                  independent of the pattern table). FORWARD still draws
 ;                  the trail unless PU.
 sprite_mode:    .res 1    ; 0 = bitmap turtle, 1 = dynamic (sprite) turtle
-; --- directional TURTL: 8 sprites, one per 45-degree octant ---------------
-; SETSHAPE "TURTL flips dir_turtle_active = 1; from then on every heading
-; change picks the matching pattern from dir_turtle_table and re-uploads
-; the 32 bytes to VRAM $1800 -- but only when the octant index actually
-; changes (last_octant != $FF cache), so straight-line FORWARD doesn't
-; thrash VRAM.
-dir_turtle_active: .res 1   ; 1 = TURTL family active, 0 = static shape
-last_octant:    .res 1      ; cached octant index, $FF = invalidate
+; (Removed dir_turtle_active / last_octant -- TURTL/BOAT directional
+;  sprites are gone, every shape is static now.)
 ; (shape_pat_lo / shape_pat_hi live in ZEROPAGE -- (zp),Y indirect access.)
 s_byte:    .res 1         ; signed sin(heading) * 64
 c_byte:    .res 1         ; signed cos(heading) * 64
@@ -284,16 +282,6 @@ main:
         STA plot_mode
         STA turtle_visible
         STA sprite_mode
-        STA dir_turtle_active
-        LDA #$FF
-        STA last_octant
-        ; Default directional-shape table = the turtle. cmd_setshape
-        ; rewrites this when "BOAT is selected. Never read while
-        ; dir_turtle_active = 0.
-        LDA #<dir_turtle_table
-        STA dir_table_lo
-        LDA #>dir_turtle_table
-        STA dir_table_hi
         ; Default sprite geometry = 16x16 (consistent with V2.0 behaviour).
         ; apply_sprite_size at the next SETSHAPE picks the right values.
         LDA #32
@@ -381,7 +369,7 @@ banner_msg:
 ; -------------------------------------------------------------------------
 help_toc:
         .byte $0D
-        .byte "APPLE-1 LOGO V2.0 -- HELP", $0D
+        .byte "APPLE-1 LOGO V2.5 -- HELP", $0D
         .byte "TMS9918 graphics, 16K Apple-1", $0D
         .byte $0D
         .byte "Type HELP N for a topic page:", $0D
@@ -441,8 +429,6 @@ help_p3:
         .byte "Built-in shapes:", $0D
         .byte "  BIRD1   bird, wings up", $0D
         .byte "  BIRD2   bird, wings down", $0D
-        .byte "  TURTL   chunky turtle", $0D
-        .byte "  BOAT    speedboat (8 dir)", $0D
         .byte "  HEART   small heart (8x8)", $0D
         .byte "Emotes 16x16 (CC-BY Quale):", $0D
         .byte "  NORMAL HAPPY  SUPER  SAD", $0D
@@ -501,6 +487,17 @@ help_p6:
         .byte "  NAME args", $0D
         .byte "    invoke previously defined", $0D
         .byte "    procedure with 0..2 args.", $0D
+.ifdef CODETANK_BUILD
+        .byte "  LIST", $0D
+        .byte "    list names (text mode)", $0D
+        .byte "  LIST NAME", $0D
+        .byte "    dump body on bitmap.", $0D
+        .byte "  EDIT NAME -- visual:", $0D
+        .byte "    , up   . down", $0D
+        .byte "    - del  + ins", $0D
+        .byte "    type to replace line", $0D
+        .byte "    ESC = save & exit", $0D
+.endif
         .byte $0D
         .byte "Limits:", $0D
         .byte "  10 procs, 224 B per body", $0D
@@ -583,7 +580,7 @@ help_msg = help_toc
 help_msg_unused_remove:
         .byte $0D
         .byte "==========================", $0D
-        .byte "APPLE-1 LOGO V2.0 (16K)", $0D
+        .byte "APPLE-1 LOGO V2.5 (16K)", $0D
         .byte "TMS9918 GRAPHICS, BY ARNAUD", $0D
         .byte "==========================", $0D
         .byte $0D
@@ -611,7 +608,7 @@ help_msg_unused_remove:
         .byte "  CS / CLEARSCREEN", $0D
         .byte "    erase + HOME", $0D
         .byte $0D
-        .byte "*** DYNAMIC TURTLE (V2.0) ***", $0D
+        .byte "*** DYNAMIC TURTLE (V2.5) ***", $0D
         .byte "  SETSHAPE ", $22, "NAME", $0D
         .byte "    swap to a 16x16 sprite.", $0D
         .byte "    First call enables sprite", $0D
@@ -1694,18 +1691,7 @@ demo_script:
         .byte "REPEAT 36 [PU HOME PD SETH RANDOM 250 FD 70]", $0D
         .byte "WAIT 3", $0D
         .byte "CS", $0D
-        ; Dynamic-turtle teaser -- chunky turtle on a polygonal walk, then
-        ; restore the bitmap arrow so subsequent scenes don't see a stray
-        ; sprite (BIRDFLY below also ends with SETSHAPE "ARROW).
-        .byte "PRINT ", $22, "TURTLEW", $0D
-        .byte "PU", $0D
-        .byte "HOME", $0D
-        .byte "SETSHAPE ", $22, "TURTL", $0D
-        .byte "PD", $0D
-        .byte "REPEAT 36 [FD 6 TR 10]", $0D
-        .byte "WAIT 2", $0D
-        .byte "SETSHAPE ", $22, "ARROW", $0D
-        .byte "CS", $0D
+        ; (TURTLEW scene removed -- TURTL directional sprite is gone.)
         ; --- V2.0 dynamic-turtle scene: figure-8 bird flight --------------
         ; True figure-8: BFR is a wing-flap cycle that turns right (+24°
         ; net), BFL the same cycle turning left (-24°). BFLY runs 8 BFR
@@ -1960,6 +1946,876 @@ cmd_to:
         LDA #ERR_FULL
         JSR print_err
         RTS
+
+.ifdef CODETANK_BUILD
+; ============================================================================
+; cmd_list: LIST [NAME]  -- procedure dumper for the TMS9918 bitmap.
+;   - LIST NAME : displays the named procedure body, line-by-line, on
+;                 the bitmap (8x8 glyphs, line 0 = name, line 2 onward
+;                 = body lines). Truncates at row 23 (192 px).
+;   - LIST      : with no argument, prints the names of every defined
+;                 proc, one per line.
+;   Always clears the bitmap and disables the sprite layer so the
+;   listing is readable. After LIST, user can SETSHAPE again to bring
+;   back a sprite. Uses shape_pat_lo/hi as the slot pointer because
+;   blit_glyph clobbers mptr_lo/hi with the charmap address.
+; ============================================================================
+cmd_list:
+        JSR skip_spaces
+        LDX line_idx
+        LDA line_buf,X
+        AND #$7F
+        CMP #$0D
+        BNE @not_cr
+        JMP @list_all
+@not_cr:
+        CMP #']'
+        BNE @not_brk
+        JMP @list_all
+@not_brk:
+        ; --- LIST NAME path ---
+        JSR read_var_name        ; mnem_buf <- proc name
+        JSR find_proc            ; mptr_lo:hi -> slot, C=1 if not found
+        BCS @bad
+        ; preserve slot pointer in shape_pat (blit_glyph clobbers mptr)
+        LDA mptr_lo
+        STA shape_pat_lo
+        LDA mptr_hi
+        STA shape_pat_hi
+        JSR clear_bitmap
+        JSR disable_sprites
+        LDA #0
+        STA sprite_mode
+        STA tx_lo
+        STA ty_lo
+        ; --- print proc name on row 0. blit_glyph clobbers tmp/tmp2,
+        ;     so we round-trip Y through the 6502 stack instead.
+        LDY #0
+@nm:    TYA
+        PHA
+        LDA (shape_pat_lo),Y
+        JSR blit_glyph
+        LDA tx_lo
+        CLC
+        ADC #8
+        STA tx_lo
+        PLA
+        TAY
+        INY
+        CPY #NAME_LEN
+        BNE @nm
+        ; --- skip a blank row, then iterate the body ---
+        LDA #0
+        STA tx_lo
+        LDA #16
+        STA ty_lo
+        LDY #PROC_BODYLEN_OFF
+        LDA (shape_pat_lo),Y
+        STA arg_lo               ; body_len -- arg_lo survives blit_glyph
+                                 ; (which clobbers tmp/tmp2)
+        LDY #PROC_BODY_OFF
+@body:
+        ; bytes consumed = Y - PROC_BODY_OFF; stop when >= body_len
+        TYA
+        SEC
+        SBC #PROC_BODY_OFF
+        CMP arg_lo
+        BCS @done
+        ; off-screen guard: ty >= 192 -> stop
+        LDA ty_lo
+        CMP #192
+        BCS @done
+        TYA
+        PHA                       ; preserve Y across blit_glyph
+        LDA (shape_pat_lo),Y
+        AND #$7F
+        CMP #$0D
+        BEQ @newline
+        JSR blit_glyph
+        LDA tx_lo
+        CLC
+        ADC #8
+        STA tx_lo
+        PLA
+        TAY
+        INY
+        JMP @body
+@newline:
+        LDA #0
+        STA tx_lo
+        LDA ty_lo
+        CLC
+        ADC #8
+        STA ty_lo
+        PLA
+        TAY
+        INY
+        JMP @body
+@done:  RTS
+@bad:   LDA #ERR_BAD_NAME
+        JSR print_err
+        RTS
+
+; --- LIST (no arg) -- list every proc name on the Apple-1 character
+;     display via ECHO. No graphics; text output is more practical for
+;     a quick directory check (and lets the user scroll back through
+;     terminal history). ---
+@list_all:
+        LDA n_procs
+        BNE @any
+        RTS
+@any:
+        LDA #<proc_table
+        STA shape_pat_lo
+        LDA #>proc_table
+        STA shape_pat_hi
+        LDA n_procs
+        STA arg_lo               ; remaining count
+        ; print a leading CR for visual separation from the prompt
+        LDA #$0D | $80
+        JSR ECHO
+@aloop:
+        LDY #0
+@anm:   LDA (shape_pat_lo),Y
+        ORA #$80                 ; ECHO requires bit 7 set
+        JSR ECHO
+        INY
+        CPY #NAME_LEN
+        BNE @anm
+        LDA #$0D | $80
+        JSR ECHO
+        ; advance shape_pat by PROC_SLOT (244)
+        CLC
+        LDA shape_pat_lo
+        ADC #PROC_SLOT
+        STA shape_pat_lo
+        LDA shape_pat_hi
+        ADC #0
+        STA shape_pat_hi
+        DEC arg_lo
+        BNE @aloop
+        RTS
+
+; ============================================================================
+; cmd_edit: EDIT NAME -- visual fullscreen procedure editor on the
+;   TMS9918 bitmap. Shows the body line-by-line, marks the current line
+;   with a '>' arrow at column 0, lets the user navigate with Ctrl-K
+;   (up) / Ctrl-J (down), delete the current line with Ctrl-D, insert a
+;   blank line above with Ctrl-I (Tab), or replace the current line by
+;   typing any printable char (which becomes the first char of the new
+;   line; CR commits, ESC aborts the in-line edit). ESC at the editor's
+;   key loop saves (body is already mutated in place) and returns to
+;   the REPL with the bitmap-arrow turtle restored at HOME.
+;
+;   Slot pointer is cached in shape_pat_lo:hi (blit_glyph clobbers
+;   mptr_lo:hi). All scratch registers are restored across blit_glyph
+;   calls via stack PHA/PLA (X/Y) or via arg_lo/arg_hi when blit_glyph
+;   wouldn't touch them (arg_lo/hi survive blit_glyph since blit_glyph
+;   only uses tmp/tmp2/mptr).
+; ============================================================================
+cmd_edit:
+        JSR skip_spaces
+        JSR read_var_name
+        JSR find_proc
+        BCC @ok
+        JMP @bad_name
+@ok:
+        ; cache slot pointer (blit_glyph will trash mptr)
+        LDA mptr_lo
+        STA shape_pat_lo
+        LDA mptr_hi
+        STA shape_pat_hi
+        LDA #0
+        STA ed_cur_line
+@redraw:
+        JSR ed_draw
+@key_loop:
+        JSR ed_wait_key            ; A = ASCII (no echo)
+        CMP #$1B                   ; ESC -> save & exit
+        BEQ @exit
+        CMP #'Q'                   ; Q = save & exit
+        BEQ @exit
+        CMP #'U'                   ; U = up
+        BNE @not_up
+        JMP @up
+@not_up:
+        CMP #'D'                   ; D = down
+        BNE @not_dn
+        JMP @down
+@not_dn:
+        CMP #'R'                   ; R = replace current line
+        BNE @not_r
+        JSR ed_replace_line
+        JMP @redraw
+@not_r:
+        CMP #'I'                   ; I = insert blank line above
+        BNE @not_i
+        JSR ed_insert_line
+        JMP @redraw
+@not_i:
+        CMP #'X'                   ; X = delete current line
+        BNE @not_x
+        JSR ed_delete_line
+        JMP @redraw
+@not_x:
+        ; everything else is ignored in nav mode -- the bottom-row menu
+        ; tells the user which keys are valid.
+        JMP @key_loop
+@up:    LDA ed_cur_line
+        BEQ @key_loop              ; already at top
+        DEC ed_cur_line
+        JMP @redraw
+@down:  LDA ed_cur_line
+        CLC
+        ADC #1
+        CMP ed_n_lines             ; cur+1 < n_lines ?
+        BCS @key_loop              ; no -> ignore
+        STA ed_cur_line
+        JMP @redraw
+@exit:
+        ; --- save & exit: clear bitmap, hide sprite, restore ARROW turtle.
+        ; The body has been mutated in place during edits, so "saving"
+        ; is just exiting cleanly.
+        JSR clear_bitmap
+        JSR disable_sprites
+        LDA #0
+        STA sprite_mode
+        STA turtle_visible
+        JSR cmd_home               ; centres turtle, redraws bitmap arrow
+        RTS
+@bad_name:
+        LDA #ERR_BAD_NAME
+        JSR print_err
+        RTS
+
+; ============================================================================
+; ed_wait_key: blocking polled keyboard read, NO echo. Returns A = ASCII
+;   (bit 7 stripped). Mirrors the polling pattern from read_line but
+;   skips the ECHO call so editor input doesn't bleed onto the Apple-1
+;   character display.
+; ============================================================================
+ed_wait_key:
+        LDA KBDCR
+        BPL ed_wait_key
+        LDA KBD
+        AND #$7F
+        RTS
+
+; ============================================================================
+; ed_draw: full-screen redraw. Clears bitmap, disables sprite, blits
+;   "EDIT: NAME" header on row 0, walks the body, blits each line at
+;   col 1 of (line_index + 2), counts lines into ed_n_lines, finally
+;   draws the '>' cursor arrow at col 0 of (ed_cur_line + 2).
+;   Body bytes are read through (shape_pat_lo),Y -- preserved across
+;   blit_glyph since shape_pat is in ZP and blit_glyph uses mptr.
+; ============================================================================
+ed_draw:
+        JSR clear_bitmap
+        JSR disable_sprites
+        LDA #0
+        STA sprite_mode
+        STA tx_lo
+        STA ty_lo
+        ; --- header: blit "EDIT: " then NAME ---
+        LDA #'E'
+        JSR @hb
+        LDA #'D'
+        JSR @hb
+        LDA #'I'
+        JSR @hb
+        LDA #'T'
+        JSR @hb
+        LDA #':'
+        JSR @hb
+        LDA #' '
+        JSR @hb
+        LDY #0
+@nm:    TYA
+        PHA
+        LDA (shape_pat_lo),Y
+        JSR blit_glyph
+        LDA tx_lo
+        CLC
+        ADC #8
+        STA tx_lo
+        PLA
+        TAY
+        INY
+        CPY #NAME_LEN
+        BNE @nm
+        ; --- horizontal separator at y=11 between header (row 0, y=0..7)
+        ;     and body (starts row 2, y=16). Frames the editing area.
+        LDA #0
+        STA ln_x0
+        LDA #11
+        STA ln_y0
+        LDA #255
+        STA ln_x1
+        LDA #11
+        STA ln_y1
+        JSR line_xy
+        ; --- body lines ---
+        LDA #0
+        STA ed_n_lines
+        LDA #8                     ; col 1 (8 px from left)
+        STA tx_lo
+        LDA #16                    ; row 2
+        STA ty_lo
+        LDY #PROC_BODYLEN_OFF
+        LDA (shape_pat_lo),Y
+        STA arg_lo                 ; body_len
+        LDY #PROC_BODY_OFF
+@body:
+        TYA
+        SEC
+        SBC #PROC_BODY_OFF
+        CMP arg_lo
+        BCS @body_done
+        LDA ty_lo
+        CMP #168                   ; row 21 cut-off (menu lives at rows 22-23)
+        BCS @body_done
+        TYA
+        PHA
+        LDA (shape_pat_lo),Y
+        AND #$7F
+        CMP #$0D
+        BEQ @nl
+        JSR blit_glyph
+        LDA tx_lo
+        CLC
+        ADC #8
+        STA tx_lo
+        PLA
+        TAY
+        INY
+        JMP @body
+@nl:
+        LDA #8
+        STA tx_lo
+        LDA ty_lo
+        CLC
+        ADC #8
+        STA ty_lo
+        INC ed_n_lines
+        PLA
+        TAY
+        INY
+        JMP @body
+@body_done:
+        ; --- cursor: '>' at col 0 of (ed_cur_line + 2). Skip if no lines.
+        LDA ed_n_lines
+        BEQ @no_cursor
+        LDA #0
+        STA tx_lo
+        LDA ed_cur_line
+        CLC
+        ADC #2
+        ASL
+        ASL
+        ASL                        ; row * 8
+        STA ty_lo
+        LDA #'>'
+        JSR blit_glyph
+@no_cursor:
+        ; --- horizontal separator at y=171 between body (last row y=167)
+        ;     and menu (starts y=176). Bresenham line_xy from (0,171) to (255,171).
+        LDA #0
+        STA ln_x0
+        LDA #171
+        STA ln_y0
+        LDA #255
+        STA ln_x1
+        LDA #171
+        STA ln_y1
+        JSR line_xy
+        ; --- bottom menu on rows 22-23 (y=176, y=184). Two-line layout
+        ;     because a single 32-cell row can't fit all six commands
+        ;     spelled out. $0D separates the two lines, 0 terminates.
+        LDA #0
+        STA tx_lo
+        LDA #176
+        STA ty_lo
+        LDX #0
+@menu:  LDA ed_menu_str,X
+        BEQ @menu_done
+        CMP #$0D
+        BNE @menu_char
+        ; line break: advance ty_lo, reset tx_lo
+        LDA #0
+        STA tx_lo
+        LDA ty_lo
+        CLC
+        ADC #8
+        STA ty_lo
+        INX
+        JMP @menu
+@menu_char:
+        TXA
+        PHA
+        LDA ed_menu_str,X
+        JSR blit_glyph
+        LDA tx_lo
+        CLC
+        ADC #8
+        STA tx_lo
+        PLA
+        TAX
+        INX
+        JMP @menu
+@menu_done:
+        RTS
+@hb:    ; helper: blit char in A, advance tx_lo by 8 (preserves nothing)
+        JSR blit_glyph
+        LDA tx_lo
+        CLC
+        ADC #8
+        STA tx_lo
+        RTS
+
+ed_menu_str:
+        .byte "U=UP D=DN R=REPLACE", $0D
+        .byte "I=INS X=DEL Q=SAVE", 0
+@hb:    ; helper: blit char in A, advance tx_lo by 8
+        PHA
+        JSR blit_glyph
+        LDA tx_lo
+        CLC
+        ADC #8
+        STA tx_lo
+        PLA
+        RTS
+
+; ============================================================================
+; ed_find_line_offset: walk the body counting CRs to locate the byte
+;   range of line `ed_cur_line`. Returns:
+;     arg_lo = body offset (0-based, relative to PROC_BODY_OFF) of line start
+;     arg_hi = length of the line (excluding the trailing CR)
+;   If ed_cur_line >= ed_n_lines, returns arg_lo = body_len, arg_hi = 0
+;   (i.e., points to the end of the body, valid for "insert at end").
+; ============================================================================
+ed_find_line_offset:
+        ; Compute slot-relative END index of body: tmp = PROC_BODY_OFF + body_len
+        LDY #PROC_BODYLEN_OFF
+        LDA (shape_pat_lo),Y
+        CLC
+        ADC #PROC_BODY_OFF
+        STA tmp                    ; tmp = body end (slot Y past last byte)
+        LDX #0                     ; line counter
+        LDY #PROC_BODY_OFF         ; Y walks slot indices
+        LDA ed_cur_line
+        BEQ @found_start           ; cur_line == 0 -> we're already there
+@scan:
+        CPY tmp
+        BCS @at_end
+        LDA (shape_pat_lo),Y
+        AND #$7F
+        INY                        ; advance past this byte
+        CMP #$0D
+        BNE @scan                  ; not CR -> keep scanning current line
+        INX                        ; CR -> next line
+        CPX ed_cur_line
+        BNE @scan                  ; not yet at target line
+@found_start:
+        ; Y now points to start of line ed_cur_line (slot index).
+        ; arg_lo = body-relative offset = Y - PROC_BODY_OFF
+        TYA
+        SEC
+        SBC #PROC_BODY_OFF
+        STA arg_lo
+        ; walk to next CR / end to compute length
+        LDX #0
+@lloop:
+        CPY tmp
+        BCS @len_done
+        LDA (shape_pat_lo),Y
+        AND #$7F
+        CMP #$0D
+        BEQ @len_done
+        INX
+        INY
+        JMP @lloop
+@len_done:
+        STX arg_hi
+        RTS
+@at_end:
+        LDA tmp
+        SEC
+        SBC #PROC_BODY_OFF
+        STA arg_lo
+        LDA #0
+        STA arg_hi
+        RTS
+
+; ============================================================================
+; ed_replace_line: type a fresh line of input on the cursor row. The
+;   first char is already in A (the trigger). Reads more chars, blitting
+;   each one on the bitmap as visual feedback. CR commits (splices new
+;   line into body), ESC aborts. Backspace (`_`) deletes one char.
+; ============================================================================
+ed_replace_line:
+        ; Start with empty line_buf -- the user types the full new line.
+        LDA #0
+        STA line_idx
+        ; cursor lands at col 1 of (cur_line+2)
+        LDA #8
+        STA tx_lo
+        LDA ed_cur_line
+        CLC
+        ADC #2
+        ASL
+        ASL
+        ASL
+        STA ty_lo
+        ; erase the old visible line by blitting 31 spaces over it
+        LDX #31
+@clr:   TXA
+        PHA
+        LDA #' '
+        JSR blit_glyph
+        LDA tx_lo
+        CLC
+        ADC #8
+        STA tx_lo
+        PLA
+        TAX
+        DEX
+        BPL @clr
+        ; reset tx_lo to start of line
+        LDA #8
+        STA tx_lo
+@in_loop:
+        JSR ed_wait_key
+        CMP #$0D
+        BEQ @commit
+        CMP #$1B
+        BNE @not_esc2
+        RTS                        ; abort: body unchanged
+@not_esc2:
+        CMP #$5F                   ; '_' = backspace
+        BEQ @bs
+        CMP #$20
+        BCC @in_loop               ; ignore other ctrl
+        ; printable: store and blit
+        LDX line_idx
+        CPX #LINE_MAX
+        BCS @in_loop               ; full
+        STA line_buf,X
+        INC line_idx
+        JSR blit_glyph
+        LDA tx_lo
+        CLC
+        ADC #8
+        STA tx_lo
+        JMP @in_loop
+@bs:
+        LDX line_idx
+        BEQ @in_loop               ; already empty
+        DEC line_idx
+        ; erase last cell on bitmap
+        LDA tx_lo
+        SEC
+        SBC #8
+        STA tx_lo
+        LDA #' '
+        JSR blit_glyph
+        ; don't advance tx_lo (user types here next)
+        JMP @in_loop
+@commit:
+        ; line_buf[0..line_idx-1] = new content. Splice into body.
+        ; Old line is at arg_lo..arg_lo+arg_hi (excl CR), CR at arg_lo+arg_hi.
+        ; New line will be line_idx bytes + 1 CR.
+        JSR ed_find_line_offset    ; refresh arg_lo (start), arg_hi (old len)
+        ; --- compute body_len after splice ---
+        LDY #PROC_BODYLEN_OFF
+        LDA (shape_pat_lo),Y
+        STA tmp                    ; old body_len
+        ; new_len = old - (arg_hi + 1) + (line_idx + 1)
+        ;         = old + line_idx - arg_hi
+        SEC
+        SBC arg_hi
+        CLC
+        ADC line_idx
+        STA tmp2                   ; new body_len
+        ; check overflow
+        CMP #PROC_BODY_MAX + 1
+        BCC @ok_size
+        RTS                        ; silently abort (body would overflow)
+@ok_size:
+        ; --- shift trailing bytes to make room (or close gap) ---
+        ; We rewrite the body from arg_lo onwards: copy line_buf + CR,
+        ; then copy the suffix that was after the old line.
+        ; Suffix was at body[arg_lo + arg_hi + 1 .. tmp-1].
+        ; We need a scratch buffer because suffix may overlap with
+        ; destination. Use the area BEYOND tmp (body_max) as scratch?
+        ; Simpler: copy suffix to line_buf+LINE_MAX (free area in BSS).
+        ; line_buf is 60 bytes (LINE_MAX). After it sits mnem_buf (6 B).
+        ; mnem_buf is needed -- can't trash. So use a different staging.
+        ; Use the body region beyond old end as scratch since we're
+        ; rewriting everything anyway. Trick: write new line first, then
+        ; copy old suffix forward/backward depending on size delta.
+        ; Easier: use a forward / backward memmove based on delta sign.
+        LDA line_idx
+        CMP arg_hi
+        BCC @shrink_or_eq
+        BEQ @same_len
+        ; --- expand: shift suffix RIGHT, then copy new line ---
+        JSR @move_suffix_right
+        JMP @write_new
+@same_len:
+        JMP @write_new
+@shrink_or_eq:
+        JSR @move_suffix_left
+@write_new:
+        ; copy line_buf[0..line_idx-1] to body[arg_lo..]
+        LDX #0
+@wn:    CPX line_idx
+        BEQ @wn_cr
+        TXA
+        CLC
+        ADC arg_lo
+        CLC
+        ADC #PROC_BODY_OFF
+        TAY
+        LDA line_buf,X
+        STA (shape_pat_lo),Y
+        INX
+        JMP @wn
+@wn_cr:
+        ; place CR
+        TXA
+        CLC
+        ADC arg_lo
+        CLC
+        ADC #PROC_BODY_OFF
+        TAY
+        LDA #$0D
+        STA (shape_pat_lo),Y
+        ; update body_len
+        LDA tmp2
+        LDY #PROC_BODYLEN_OFF
+        STA (shape_pat_lo),Y
+        RTS
+
+; ----- @move_suffix_right: shift bytes [arg_lo+arg_hi+1 .. old_len-1]
+;       to [arg_lo+line_idx+1 .. new_len-1]. Walk backwards.
+@move_suffix_right:
+        LDA tmp                    ; old body_len -- last byte index = tmp-1
+        TAX                        ; X = src cursor (relative to body_start)
+@msr_loop:
+        ; X is the byte index NOT YET copied; we copy X-1 to dst.
+        ; src ends when X == arg_lo + arg_hi + 1 (don't copy old CR or before).
+        TXA
+        SEC
+        SBC arg_lo
+        SEC
+        SBC arg_hi
+        ; A = X - arg_lo - arg_hi; if A == 1, we're at the old CR position
+        CMP #2
+        BCC @msr_done
+        DEX
+        ; src index = X (relative to body, byte to copy)
+        ; dst index = X + (line_idx - arg_hi)
+        TXA
+        CLC
+        ADC line_idx
+        SEC
+        SBC arg_hi
+        CLC
+        ADC #PROC_BODY_OFF
+        STA tmp2
+        TXA
+        CLC
+        ADC #PROC_BODY_OFF
+        TAY                        ; src absolute offset within slot
+        LDA (shape_pat_lo),Y
+        LDY tmp2                   ; dst absolute offset
+        STA (shape_pat_lo),Y
+        JMP @msr_loop
+@msr_done:
+        RTS
+
+; ----- @move_suffix_left: shift bytes [arg_lo+arg_hi+1 .. old_len-1]
+;       to [arg_lo+line_idx+1 .. new_len-1]. Walk forwards (line_idx <= arg_hi).
+@move_suffix_left:
+        ; src cursor X = arg_lo + arg_hi + 1
+        LDA arg_lo
+        CLC
+        ADC arg_hi
+        CLC
+        ADC #1
+        TAX                        ; src index (within body)
+@msl_loop:
+        CPX tmp                    ; X >= old body_len -> done
+        BCS @msl_done
+        ; dst = X - (arg_hi - line_idx) = X - arg_hi + line_idx
+        TXA
+        SEC
+        SBC arg_hi
+        CLC
+        ADC line_idx
+        CLC
+        ADC #PROC_BODY_OFF
+        STA tmp2                   ; dst absolute
+        TXA
+        CLC
+        ADC #PROC_BODY_OFF
+        TAY                        ; src absolute
+        LDA (shape_pat_lo),Y
+        LDY tmp2
+        STA (shape_pat_lo),Y
+        INX
+        JMP @msl_loop
+@msl_done:
+        RTS
+
+; ============================================================================
+; ed_delete_line: drop the current line from the body. Memmoves the
+;   trailing bytes left by (arg_hi + 1) and decrements body_len.
+;   No-op if cursor is already past the last line.
+; ============================================================================
+ed_delete_line:
+        LDA ed_cur_line
+        CMP ed_n_lines
+        BCS @done                  ; cursor past end -> nothing to delete
+        JSR ed_find_line_offset
+        ; gap = arg_hi + 1 (incl. CR)
+        LDY #PROC_BODYLEN_OFF
+        LDA (shape_pat_lo),Y
+        STA tmp                    ; body_len
+        ; X = src cursor (within body), starts at arg_lo + arg_hi + 1
+        LDA arg_lo
+        CLC
+        ADC arg_hi
+        CLC
+        ADC #1
+        TAX
+@dl_loop:
+        CPX tmp
+        BCS @dl_done
+        ; load src byte: body[X]
+        TXA
+        CLC
+        ADC #PROC_BODY_OFF
+        TAY
+        LDA (shape_pat_lo),Y
+        PHA                        ; save byte across dst index calc
+        ; compute dst Y = (X - arg_hi - 1) + PROC_BODY_OFF
+        TXA
+        SEC
+        SBC arg_hi
+        SEC
+        SBC #1
+        CLC
+        ADC #PROC_BODY_OFF
+        TAY
+        PLA
+        STA (shape_pat_lo),Y
+        INX
+        JMP @dl_loop
+@dl_done:
+        ; body_len -= (arg_hi + 1)
+        LDA tmp
+        SEC
+        SBC arg_hi
+        SEC
+        SBC #1
+        LDY #PROC_BODYLEN_OFF
+        STA (shape_pat_lo),Y
+        ; clamp ed_cur_line if it now points past the last line
+        ; (ed_n_lines is updated by ed_draw on next redraw, but we
+        ;  need a quick estimate now -- use current count - 1)
+        LDA ed_n_lines
+        BEQ @done                  ; was already 0
+        SEC
+        SBC #1
+        STA ed_n_lines
+        LDA ed_cur_line
+        CMP ed_n_lines
+        BCC @done
+        ; cur_line >= n_lines -> step back
+        LDA ed_n_lines
+        BNE @clamp_dec
+        STA ed_cur_line            ; both 0
+        JMP @done
+@clamp_dec:
+        SEC
+        SBC #1
+        STA ed_cur_line
+@done:  RTS
+
+; ============================================================================
+; ed_insert_line: insert a blank line ($0D) AFTER ed_cur_line, then move
+;   the cursor down to the new blank line. Memmoves body[insert_pos..]
+;   right by 1, writes $0D at insert_pos, body_len += 1.
+;   Silently aborts if body is full (body_len >= PROC_BODY_MAX).
+;   When the body is empty (body_len = 0), the new line goes at offset
+;   0 and the cursor stays at line 0 (now the only line).
+; ============================================================================
+ed_insert_line:
+        LDY #PROC_BODYLEN_OFF
+        LDA (shape_pat_lo),Y
+        CMP #PROC_BODY_MAX
+        BCC @ok
+        RTS                        ; full, abort
+@ok:
+        STA tmp                    ; tmp = body_len (old)
+        JSR ed_find_line_offset    ; arg_lo = cur_line start, arg_hi = its length
+        ; --- insertion point = AFTER current line = arg_lo + arg_hi + 1
+        LDA arg_lo
+        CLC
+        ADC arg_hi
+        CLC
+        ADC #1
+        STA tmp2                   ; tmp2 = insert offset (body-relative)
+        ; If body was empty, force insert_pos to 0
+        LDA tmp
+        BNE @have_body
+        LDA #0
+        STA tmp2
+@have_body:
+        ; shift body[tmp2 .. body_len-1] right by 1 -- walk backward
+        LDX tmp                    ; X = old body_len (one past last byte)
+@il_loop:
+        CPX tmp2
+        BCC @il_done
+        BEQ @il_done
+        DEX
+        TXA
+        CLC
+        ADC #PROC_BODY_OFF
+        TAY
+        LDA (shape_pat_lo),Y
+        PHA
+        TXA
+        CLC
+        ADC #1
+        CLC
+        ADC #PROC_BODY_OFF
+        TAY
+        PLA
+        STA (shape_pat_lo),Y
+        JMP @il_loop
+@il_done:
+        ; write CR at body[tmp2]
+        LDA tmp2
+        CLC
+        ADC #PROC_BODY_OFF
+        TAY
+        LDA #$0D
+        STA (shape_pat_lo),Y
+        ; body_len += 1
+        LDY #PROC_BODYLEN_OFF
+        LDA tmp
+        CLC
+        ADC #1
+        STA (shape_pat_lo),Y
+        ; move cursor down onto the new blank line, unless body was empty
+        ; (in which case the new line is line 0 and cursor stays there)
+        LDA tmp
+        BEQ @done
+        INC ed_cur_line
+@done:  RTS
+.endif
 
 ; proc_collect_line: called by REPL when def_mode = 1. Inspects line_buf:
 ;   - "END" (followed by space or CR) -> finalise, def_mode = 0, OK.
@@ -3461,50 +4317,6 @@ heading_to_octant:
         RTS
 
 ; ============================================================================
-; update_dir_turtle: when a directional shape (TURTL or BOAT) is active,
-;   recompute octant from the current heading and -- only if the octant
-;   changed since the last call -- copy the matching 32-byte pattern from
-;   the active dir-table (pointed at by dir_table_lo/hi) to the sprite-0
-;   pattern slot at VRAM $1800. Cheap no-op when:
-;     - dir_turtle_active = 0  (BIRD1/BIRD2/ARROW or no SETSHAPE yet)
-;     - sprite_mode = 0        (still bitmap turtle)
-;     - last_octant == cur_octant (heading hasn't crossed an octant edge)
-;   Called from draw_turtle's sprite path, so every TR / TL / SETH / HOME
-;   that re-draws the turtle picks up the fresh pattern automatically.
-; ============================================================================
-update_dir_turtle:
-        LDA dir_turtle_active
-        BEQ @udone
-        LDA sprite_mode
-        BEQ @udone
-        JSR heading_to_octant ; A = 0..7
-        CMP last_octant
-        BEQ @udone            ; still in same 45 deg slice
-        STA last_octant
-        ASL                   ; word index
-        TAY
-        LDA (dir_table_lo),Y
-        STA shape_pat_lo
-        INY
-        LDA (dir_table_lo),Y
-        STA shape_pat_hi
-        ; Copy spr_size bytes to VRAM $1800 (sprite pattern 0).
-        ; spr_size = 32 for TURTL/BOAT (16x16); future 8x8 directional
-        ; shapes will set spr_size = 8 in their cmd_setshape branch.
-        LDA #$00
-        STA VDP_CTRL
-        NOP                   ; +2c silicon-strict gap (LDA #imm bridge)
-        LDA #$18 | $40
-        STA VDP_CTRL
-        LDY #0
-@ucp:   LDA (shape_pat_lo),Y
-        STA VDP_DATA
-        INY
-        CPY spr_size
-        BNE @ucp
-@udone: RTS
-
-; ============================================================================
 ; apply_sprite_size: derive spr_xoff / spr_yoff / spr_r1 from spr_size.
 ;   Two valid inputs: 8 (8x8 sprites) and 32 (16x16 sprites).
 ;     16x16: xoff=8, yoff=9, R1=$C2  (16K + DISP + IE_off + sprite-16)
@@ -3541,9 +4353,6 @@ apply_sprite_size:
 draw_turtle:
         LDA sprite_mode
         BEQ @bitmap
-        ; --- directional TURTL: refresh sprite pattern when heading
-        ; octant changed (no-op if dir_turtle_active = 0).
-        JSR update_dir_turtle
         ; --- sprite path: write sprite-0 attribute (Y, X, name=0, color=$0F)
         LDA #$00
         STA VDP_CTRL
@@ -3651,9 +4460,7 @@ cmd_setshape:
         CMP #'W'
         BNE @search_table
         ; --- ARROW ---
-        ; Always exit directional-turtle mode -- ARROW means bitmap.
-        LDA #0
-        STA dir_turtle_active
+        ; Switch back to bitmap-triangle turtle.
         LDA sprite_mode
         BEQ @arrow_done           ; already in bitmap mode -- no-op
         ; Y=$D0 to sprite #0 attribute = TMS9918 sprite-list terminator.
@@ -3717,58 +4524,9 @@ cmd_setshape:
         JMP @search
 
 @found:
-        ; Detect TURTL or BOAT -> directional shape mode (8 sprites).
-        ; Other matched names (BIRD1, BIRD2) keep dir_turtle_active = 0,
-        ; so update_dir_turtle is a no-op and the static pattern below
-        ; stays put across heading changes.
-        LDA mnem_buf
-        CMP #'T'
-        BNE @try_boat
-        LDA mnem_buf+1
-        CMP #'U'
-        BNE @try_boat
-        LDA mnem_buf+2
-        CMP #'R'
-        BNE @try_boat
-        LDA mnem_buf+3
-        CMP #'T'
-        BNE @try_boat
-        LDA mnem_buf+4
-        CMP #'L'
-        BNE @try_boat
-        ; --- TURTL ---
-        LDA #<dir_turtle_table
-        STA dir_table_lo
-        LDA #>dir_turtle_table
-        STA dir_table_hi
-        JMP @set_dir_active
-@try_boat:
-        LDA mnem_buf
-        CMP #'B'
-        BNE @static_shape
-        LDA mnem_buf+1
-        CMP #'O'
-        BNE @static_shape
-        LDA mnem_buf+2
-        CMP #'A'
-        BNE @static_shape
-        LDA mnem_buf+3
-        CMP #'T'
-        BNE @static_shape
-        ; --- BOAT ---
-        LDA #<boat_dir_table
-        STA dir_table_lo
-        LDA #>boat_dir_table
-        STA dir_table_hi
-@set_dir_active:
-        LDA #1
-        STA dir_turtle_active
-        LDA #$FF
-        STA last_octant           ; force octant reload on next draw_turtle
-        JMP @ensure_sprite_mode
-@static_shape:
-        LDA #0
-        STA dir_turtle_active
+        ; All shapes are static now (TURTL/BOAT directional families
+        ; were removed). The static-pattern path below copies spr_size
+        ; bytes once and the sprite stays put across heading changes.
 @ensure_sprite_mode:
         ; First-time entry: erase any bitmap turtle.
         LDA sprite_mode
@@ -3786,11 +4544,8 @@ cmd_setshape:
         NOP                     ; +2c silicon-strict gap (LDA #imm bridge)
         LDA #$81                  ; write to register 1
         STA VDP_CTRL
+        NOP                     ; +2c silicon-strict gap (LDA #imm bridge)
 @load_pat:
-        ; Directional shape: skip the static upload here. draw_turtle
-        ; will pick the right octant pattern and upload spr_size bytes.
-        LDA dir_turtle_active
-        BNE @reposition
         ; Copy spr_size bytes from (shape_pat),Y to VRAM $1800 (sprite-0
         ; pattern). spr_size = 8 or 32, latched from shape_table at
         ; match time.
@@ -3806,9 +4561,7 @@ cmd_setshape:
         CPY spr_size
         BNE @cppat
 @reposition:
-        ; Reposition sprite at the current turtle (tx, ty). For
-        ; dir_turtle_active = 1 this also runs update_dir_turtle and
-        ; uploads the heading-matching pattern.
+        ; Reposition sprite at the current turtle (tx, ty).
         JSR draw_turtle
         RTS
 @bad_name:
@@ -3835,12 +4588,6 @@ shape_table:
         .byte "BIRD2 "
         .byte 32
         .word bird2_pat
-        .byte "TURTL "
-        .byte 32
-        .word turtle_pat
-        .byte "BOAT  "
-        .byte 32
-        .word boat_pat
         .byte "HEART "
         .byte 8
         .word heart_pat
@@ -3924,6 +4671,16 @@ bird2_pat:
 ;     ........   $00
 heart_pat:
         .byte $66, $FF, $FF, $FF, $7E, $3C, $18, $00
+
+.if 0
+; ============================================================================
+; (TURTL and BOAT directional sprite sets removed -- they were the
+; original V2.0/V2.1 dynamic-turtle showcase but ate ~700 B of ROM.
+; The directional dispatch in cmd_setshape, update_dir_turtle helper,
+; dir_turtle_table/boat_dir_table indirection, and ZP slots
+; dir_turtle_active/last_octant/dir_table_lo/hi were all wired only
+; to these two shapes, so they're gone too.
+; ============================================================================
 
 ; TURTL -- 8 directional 16x16 sprites, one per 45-degree octant.
 ;   E-facing turtle is hand-designed (oval shell with hex-segment
@@ -4076,6 +4833,7 @@ boat_nw:
         .byte $01, $00, $00, $00, $00, $00, $00, $00
         .byte $00, $00, $00, $00, $80, $80, $C0, $E0
         .byte $E0, $F0, $78, $3C, $1E, $0E, $06, $00
+.endif
 
 ; ============================================================================
 ; Expression emotes (12x 16x16, from SCROLL-O-SPRITES by Quale, May 2013,
@@ -4309,7 +5067,6 @@ blit_glyph:
         DEX
         BNE @bitrev
         STA VDP_DATA
-        NOP                       ; +2c silicon-strict gap (STA->STA bridge)
         INY
         CPY #8
         BNE @row
@@ -4610,6 +5367,10 @@ mnem_tab:
         .word cmd_say
         .byte "DEM2", 0           ; DEMO2 -- POM1 autobiographic narration
         .word cmd_demo2
+        .byte "LIST", 0           ; LIST [NAME] -- dump proc body to bitmap
+        .word cmd_list
+        .byte "EDIT", 0           ; EDIT NAME -- visual fullscreen editor
+        .word cmd_edit
 .endif
         ; --- MIT-LOGO long-form aliases ---
         ; Each entry uses the first 4 letters of the long name; find_mnem

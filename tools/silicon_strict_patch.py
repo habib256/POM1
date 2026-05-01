@@ -39,7 +39,7 @@ NOP_LDAI = "        NOP                     ; +2c silicon-strict gap (LDA #imm b
 NOP_LDAZ = "        NOP                     ; +2c silicon-strict gap (LDA zp/abs bridge)\n"
 
 RE_VDP_STORE = re.compile(r"^\s+ST[AXY]\s+VDP_(DATA|CTRL)\s*$")
-RE_LABEL     = re.compile(r"^([a-zA-Z_][a-zA-Z0-9_]*):\s*$")
+RE_LABEL     = re.compile(r"^[ \t]*(@?[a-zA-Z_][a-zA-Z0-9_]*):\s*$")
 RE_LDA_IMM   = re.compile(r"^\s*LDA\s+#")
 RE_LDA_ANY   = re.compile(r"^\s*LDA\s+[^#]")  # LDA non-immediate (zp / abs / (zp),Y / zp,X / abs,X)
 
