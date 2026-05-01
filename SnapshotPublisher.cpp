@@ -8,6 +8,7 @@
 #include "CassetteDevice.h"
 #include "M6502.h"
 #include "Memory.h"
+#include "TMS9918.h"
 
 void SnapshotPublisher::publish(Memory& mem, const M6502& cpu, bool cpuRunning)
 {
@@ -86,6 +87,7 @@ void SnapshotPublisher::publish(Memory& mem, const M6502& cpu, bool cpuRunning)
     snapshot.writeInRom     = mem.getWriteInRom();
     snapshot.ramSizeKB      = mem.getRamSizeKB();
     snapshot.oorStrictMode  = mem.isOutOfRangeStrictMode();
+    snapshot.vdpDroppedWrites = mem.getTMS9918().droppedWriteCount();
 
     CassetteDevice& cassette = mem.getCassetteDevice();
     snapshot.cassetteLoadedTape                = cassette.hasLoadedTape();

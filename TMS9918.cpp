@@ -52,6 +52,7 @@ void TMS9918::reset()
     readAheadBuffer = 0;
     frameCycleCounter = 0;
     cyclesSinceIoAccess = 1000000;
+    droppedWrites = 0;
     snapshotDirty   = true;
 }
 
@@ -59,6 +60,7 @@ void TMS9918::setSiliconStrictMode(bool enabled)
 {
     siliconStrictMode = enabled;
     cyclesSinceIoAccess = 1000000;
+    droppedWrites = 0;     // restart the counter on toggle so users see new drops only
 }
 
 uint16_t TMS9918::vramMaskForRegs(const uint8_t* regs, bool strict)
@@ -117,7 +119,7 @@ void TMS9918::noteAcceptedAccess()
 void TMS9918::writeData(uint8_t value)
 {
     latchIsSecond = false;                    // data-port access resets latch state
-    if (!canAcceptAccess()) return;
+    if (!canAcceptAccess()) { ++droppedWrites; return; }
     noteAcceptedAccess();
     const uint16_t mask = liveVramMask();
     vram[vramAddr & mask] = value;
@@ -143,7 +145,7 @@ uint8_t TMS9918::readData()
 // --------------------------------------------------------------------------
 void TMS9918::writeControl(uint8_t value)
 {
-    if (!canAcceptAccess()) return;
+    if (!canAcceptAccess()) { ++droppedWrites; return; }
     noteAcceptedAccess();
     if (!latchIsSecond) {
         // First byte — store in latch

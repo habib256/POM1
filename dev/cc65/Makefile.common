@@ -16,9 +16,23 @@
 
 OBJ := $(PROJECT).o
 
-$(OUT_DIR)/$(PROJECT).bin: $(PROJECT).asm
+# EXTRA_ASM — additional .asm files to assemble + link alongside the project's
+# main .asm. Used to pull in mutualised library code (e.g. tms9918m1.asm for
+# the silicon-strict-clean VDP write helpers). Project Makefile sets it like:
+#   EXTRA_ASM := ../../lib/tms9918/tms9918m1.asm
+EXTRA_ASM ?=
+EXTRA_O := $(notdir $(EXTRA_ASM:.asm=.o))
+
+# Per-source rule: assemble each EXTRA_ASM into a local .o.
+define EXTRA_RULE
+$(notdir $(1:.asm=.o)): $(1)
+	ca65 $(LIB) -o $$@ $$<
+endef
+$(foreach src,$(EXTRA_ASM),$(eval $(call EXTRA_RULE,$(src))))
+
+$(OUT_DIR)/$(PROJECT).bin: $(PROJECT).asm $(EXTRA_O)
 	ca65 $(LIB) $<
-	ld65 -C $(LOAD_CFG) $(OBJ) -o $@
+	ld65 -C $(LOAD_CFG) $(OBJ) $(EXTRA_O) -o $@
 
 ifeq ($(EMIT_TXT),1)
 $(OUT_DIR)/$(PROJECT).txt: $(OUT_DIR)/$(PROJECT).bin
@@ -32,7 +46,7 @@ endif
 all: $(ALL_TARGETS)
 
 clean:
-	rm -f $(OBJ)
+	rm -f $(OBJ) $(EXTRA_O)
 
 # Smoke-test target — drives POM1 via the telnet harness when the project
 # defines TEST_CMD (typically a tools/test_*_telnet.py invocation against

@@ -2533,11 +2533,25 @@ score_add_with_mul:
 
 
 ; =============================================
-; hide_slot_4: write a hidden SAT slot with silicon-strict NOP padding.
-; Replaces 10 inline 16-B copies in render_sprites/_super_n.
+; hide_slot_4: write a hidden SAT slot (Y=HIDDEN_Y, X=0, name=0, color=0)
+; with silicon-strict NOP padding. Replaces 10 inline 16-B copies in
+; render_sprites / render_super_n. Compact loop variant: the first STA
+; pushes HIDDEN_Y, then a 3-iteration loop pushes three zeros (X / name /
+; color). DEX+BNE (5c) provides the silicon-strict bridge between writes
+; — no inline NOPs needed inside the loop.
 ; =============================================
 hide_slot_4:
-        JSR hide_slot_4
+        LDA #HIDDEN_Y           ; preserve X and Y for render_sprites' @en_lp /
+        STA VDP_DATA            ; @pb_lp / @eb_lp loops which iterate via X
+        NOP                     ; +2c silicon-strict gap (LDA #imm bridge)
+        LDA #$00
+        STA VDP_DATA
+        NOP                     ; +2c silicon-strict gap (back-to-back STA)
+        NOP
+        STA VDP_DATA
+        NOP                     ; +2c silicon-strict gap (back-to-back STA)
+        NOP
+        STA VDP_DATA
         RTS
 
 

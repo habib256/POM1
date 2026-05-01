@@ -1089,7 +1089,17 @@ void MainWindow_ImGui::renderStatusBar()
             keyText = oss.str();
         }
 
-        const std::string siliconText = siliconStrictModeEnabled ? "| STRICT" : "| FANTASY";
+        std::string siliconText;
+        if (siliconStrictModeEnabled) {
+            std::ostringstream oss;
+            oss << "| STRICT";
+            if (uiSnapshot.vdpDroppedWrites > 0) {
+                oss << " (drop:" << uiSnapshot.vdpDroppedWrites << ")";
+            }
+            siliconText = oss.str();
+        } else {
+            siliconText = "| FANTASY";
+        }
 
         const float spacing = ImGui::GetStyle().ItemSpacing.x;
         float rightWidth =

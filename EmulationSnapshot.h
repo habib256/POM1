@@ -41,6 +41,7 @@ struct EmulationSnapshot
     bool writeInRom = false;
     int ramSizeKB = 0;
     bool oorStrictMode = false;
+    uint64_t vdpDroppedWrites = 0;   // TMS9918 silicon-strict drops since last toggle/reset
     bool cassetteLoadedTape = false;
     bool cassetteRecordedTape = false;
     bool cassettePlaybackActive = false;

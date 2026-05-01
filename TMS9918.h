@@ -53,6 +53,13 @@ public:
     void setSiliconStrictMode(bool enabled);
     bool isSiliconStrictMode() const { return siliconStrictMode; }
 
+    // Cumulative count of VDP writes (data + control port) dropped because
+    // siliconStrictMode was on and `canAcceptAccess()` rejected the byte.
+    // Exposed in the status bar next to the STRICT/FANTASY tag so users can
+    // see at a glance how often a program violates the access window.
+    uint64_t droppedWriteCount() const { return droppedWrites; }
+    void resetDroppedWriteCount() { droppedWrites = 0; }
+
     void reset();
 
     void copySnapshot(Snapshot& out);
@@ -94,6 +101,7 @@ private:
     int frameCycleCounter   = 0;
     int cyclesSinceIoAccess = 1000000;
     bool siliconStrictMode  = false;
+    uint64_t droppedWrites  = 0;      // cumulative count of VDP writes dropped by siliconStrictMode
     bool snapshotDirty = true;        // skip the 16 KB VRAM + regs copy when nothing changed since last publish
 
     static constexpr int kCyclesPerFrame = POM1_CPU_CYCLES_PER_FRAME_1X_60HZ;

@@ -26,7 +26,7 @@ ECHO   = $FFEF
 
 ; --- Game entry points (must match the linker configs below).
 GALAGA_ENTRY  = $4100
-SOKOBAN_ENTRY = $5E00
+SOKOBAN_ENTRY = $5E10            ; +16 B headroom for Galaga's hide_slot_4 helper
 SNAKE_ENTRY   = $7100
 LIFE_ENTRY    = $7A00
 

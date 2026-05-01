@@ -54,7 +54,7 @@ HALF_SIZE = 0x4000   # 16 kB
 # Menu-bank layout offsets within the lower 16 kB bank.
 MENU_OFFSET    = 0x0000   # bank+$0000 = CPU $4000
 GALAGA_OFFSET  = 0x0100   # bank+$0100 = CPU $4100
-SOKOBAN_OFFSET = 0x1E00   # bank+$1E00 = CPU $5E00
+SOKOBAN_OFFSET = 0x1E10   # bank+$1E00 = CPU $5E00
 SNAKE_OFFSET   = 0x3100   # bank+$3100 = CPU $7100
 LIFE_OFFSET    = 0x3A00   # bank+$3A00 = CPU $7A00
 MENU_SLOT_SIZE    = GALAGA_OFFSET  - MENU_OFFSET     # 0x0100 =   256 B
