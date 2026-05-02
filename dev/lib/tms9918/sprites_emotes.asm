@@ -18,6 +18,7 @@
 ; ============================================================================
 .export normal_pat, happy_pat, super_pat, sad_pat, upset_pat, angry_pat
 .export grumpy_pat, perv_pat, sick_pat, sleep_pat, pirate_pat, shades_pat
+.export bird1_pat, bird2_pat, heart_pat
 
 .segment "CODE"
 
@@ -93,3 +94,45 @@ shades_pat:
         .byte $6E, $71, $7F, $7F, $3F, $1F, $00, $00
         .byte $00, $00, $F8, $FC, $FE, $FE, $00, $DC
         .byte $DC, $E2, $3E, $FE, $FC, $F8, $00, $00
+
+; ============================================================================
+; Extras: 16x16 birds (V silhouette / inverted V) + 8x8 heart. Lifted from
+; TMS_Logo_16k.asm so any TMS9918 demo / narrator scene can pull them in.
+; The 16x16 layout is the same as the emotes above (TL, BL, TR, BR halves).
+; The heart is a single 8 B 8x8 block -- the typical SETSHAPE size flip
+; (R1 = $C0 instead of $C2) belongs to the caller.
+; ============================================================================
+
+; BIRD1 -- bird with wings up (V silhouette).
+bird1_pat:
+        ; TL (rows 0-7, cols 0-7)
+        .byte $00, $80, $C0, $60, $38, $0F, $02, $03
+        ; BL (rows 8-15, cols 0-7)
+        .byte $03, $02, $00, $00, $00, $00, $00, $00
+        ; TR (rows 0-7, cols 8-15)
+        .byte $00, $01, $03, $06, $1C, $F0, $40, $C0
+        ; BR (rows 8-15, cols 8-15)
+        .byte $C0, $40, $00, $00, $00, $00, $00, $00
+
+; BIRD2 -- bird with wings down (^ silhouette). BIRD1 mirrored vertically.
+bird2_pat:
+        ; TL
+        .byte $00, $00, $00, $00, $00, $02, $03, $03
+        ; BL
+        .byte $02, $0F, $38, $60, $C0, $80, $00, $00
+        ; TR
+        .byte $00, $00, $00, $00, $00, $40, $C0, $C0
+        ; BR
+        .byte $40, $F0, $1C, $06, $03, $01, $00, $00
+
+; HEART (8x8 single block):
+;     .##..##.   $66
+;     ########   $FF
+;     ########   $FF
+;     ########   $FF
+;     .######.   $7E
+;     ..####..   $3C
+;     ...##...   $18
+;     ........   $00
+heart_pat:
+        .byte $66, $FF, $FF, $FF, $7E, $3C, $18, $00

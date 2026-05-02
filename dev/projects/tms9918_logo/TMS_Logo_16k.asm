@@ -67,6 +67,7 @@
 ; --- I/O equates (Apple-1 + TMS9918 hardware) ------------------------------
 .include "apple1.inc"
 .include "tms9918.inc"          ; VDP_CTRL, VDP_DATA equates for SETSHAPE
+.include "kbd.asm"              ; lib/apple1/kbd.asm: wait_key + poll_key
 
 ; --- Imports from sibling modules -----------------------------------------
 ;
@@ -81,6 +82,10 @@
 ; 32 B each). Always linked: shape_table references these via .word.
 .import   normal_pat, happy_pat, super_pat, sad_pat, upset_pat, angry_pat
 .import   grumpy_pat, perv_pat, sick_pat, sleep_pat, pirate_pat, shades_pat
+.import   bird1_pat, bird2_pat, heart_pat
+;
+; sprite_helpers.asm -- apply_sprite_size + heading_to_octant.
+.import   apply_sprite_size, heading_to_octant
 ;
 ; text_bitmap.asm -- charmap_table (1 KB) + 8x8 glyph blitter. Gated by
 ; CODETANK_BUILD inside the lib (the dev DRAM build's CODE budget can't
@@ -100,6 +105,7 @@
 ; --- Exports consumed by sibling modules ----------------------------------
 .exportzp tmp, tmp2, arg_lo, arg_hi, arg2_lo, arg2_hi, th_lo, th_hi
 .exportzp mptr_lo, mptr_hi    ; text_bitmap.asm uses (mptr),Y as glyph cursor
+.exportzp spr_size, spr_xoff, spr_yoff, spr_r1   ; sprite_helpers.asm
 .export   prod_lo, prod_hi, sign_flag, lfsr_lo, lfsr_hi, plot_mode
 ;
 ; --- buffer_editor.asm bindings (CodeTank-only) -----------------------------
@@ -805,11 +811,7 @@ help_msg_unused_remove:
 ; ============================================================================
 read_line:
         LDX #0
-@wait:  LDA KBDCR
-        BPL @wait
-        LDA KBD
-        STA tmp               ; raw (bit 7 set) for echo
-        AND #$7F
+@wait:  JSR wait_key          ; A = key, bit 7 stripped (lib/apple1/kbd.asm)
         CMP #$0D
         BEQ @cr
         CMP #'_'              ; Wozmon-style destructive backspace
@@ -819,19 +821,19 @@ read_line:
         STA line_buf,X
         INX
 @no_store:
-        LDA tmp
+        ORA #$80              ; ECHO wants bit 7 set
         JSR ECHO
         JMP @wait
 @bs:    CPX #0
         BEQ @bs_skip          ; nothing to erase
         DEX
 @bs_skip:
-        LDA tmp               ; echo "_" so display shows the backspace
+        ORA #$80              ; A still holds '_' from wait_key
         JSR ECHO
         JMP @wait
 @cr:    LDA #$0D
         STA line_buf,X
-        LDA tmp
+        ORA #$80              ; A still $0D
         JSR ECHO
         RTS
 
@@ -845,10 +847,8 @@ read_line:
 ;             prefix.
 ; ============================================================================
 poll_break:
-        LDA KBDCR
-        BPL @done
-        LDA KBD                 ; read clears the strobe
-        AND #$7F
+        JSR poll_key            ; A = key (bit 7 stripped) or 0 if no key
+        BEQ @done               ; lib/apple1/kbd.asm sets Z when none pending
         CMP #$1B                ; ESC
         BEQ @set
         CMP #$07                ; Ctrl-G (BEL) -- classic LOGO interrupt
@@ -1559,49 +1559,49 @@ cmd_help:
         BNE @n2
         LDA #<help_p1
         LDX #>help_p1
-        JMP print_help_str
+        JMP print_str_ax
 @n2:    CMP #2
         BNE @n3
         LDA #<help_p2
         LDX #>help_p2
-        JMP print_help_str
+        JMP print_str_ax
 @n3:    CMP #3
         BNE @n4
         LDA #<help_p3
         LDX #>help_p3
-        JMP print_help_str
+        JMP print_str_ax
 @n4:    CMP #4
         BNE @n5
         LDA #<help_p4
         LDX #>help_p4
-        JMP print_help_str
+        JMP print_str_ax
 @n5:    CMP #5
         BNE @n6
         LDA #<help_p5
         LDX #>help_p5
-        JMP print_help_str
+        JMP print_str_ax
 @n6:    CMP #6
         BNE @n7
         LDA #<help_p6
         LDX #>help_p6
-        JMP print_help_str
+        JMP print_str_ax
 @n7:    CMP #7
         BNE @n8
         LDA #<help_p7
         LDX #>help_p7
-        JMP print_help_str
+        JMP print_str_ax
 @n8:    CMP #8
         BNE @n9
         LDA #<help_p8
         LDX #>help_p8
-        JMP print_help_str
+        JMP print_str_ax
 @n9:
 .ifdef CODETANK_BUILD
         CMP #9
         BNE @toc
         LDA #<help_p9
         LDX #>help_p9
-        JMP print_help_str
+        JMP print_str_ax
 .else
         JMP @toc
 .endif
@@ -1609,19 +1609,12 @@ cmd_help:
         LDX #>help_toc
         ; fall through
 
-print_help_str:
-        STA mptr_lo
-        STX mptr_hi
-@l:     LDY #0
-        LDA (mptr_lo),Y
-        BEQ @done
-        ORA #$80
-        JSR ECHO
-        INC mptr_lo
-        BNE @l
-        INC mptr_hi
-        JMP @l
-@done:  RTS
+; print_help_str lives in dev/lib/apple1/print.asm as print_str_ax. We
+; alias its ZP slot to LOGO's mptr_lo:hi (same role as the original
+; in-line implementation) before the .include so no extra ZP is burned.
+print_ptr_lo = mptr_lo
+print_ptr_hi = mptr_hi
+.include "print.asm"
 
 ; cmd_demo: built-in slideshow that runs each demo line through
 ;   parse_and_exec. Each line lives in CODE (read-only) and is copied
@@ -3815,68 +3808,9 @@ trace_turtle_lines:
         JSR line_xy
         RTS
 
-; ============================================================================
-; heading_to_octant: map (th_lo, th_hi) heading 0..359 to an octant 0..7
-;   (0=N, 1=NE, 2=E, 3=SE, 4=S, 5=SW, 6=W, 7=NW). Each octant spans 45 deg
-;   centred on its compass point, so the boundary at heading=22 already
-;   commits to NE. Returns A = octant; preserves Y; clobbers X, tmp, tmp2.
-; ============================================================================
-heading_to_octant:
-        LDA th_lo
-        CLC
-        ADC #22
-        STA tmp
-        LDA th_hi
-        ADC #0
-        STA tmp2
-        LDX #0
-@hloop: LDA tmp2
-        BNE @hsub             ; high byte non-zero, definitely >= 45
-        LDA tmp
-        CMP #45
-        BCC @hdone
-@hsub:  LDA tmp
-        SEC
-        SBC #45
-        STA tmp
-        LDA tmp2
-        SBC #0
-        STA tmp2
-        INX
-        JMP @hloop
-@hdone: TXA
-        AND #7                ; mod 8 (heading 360+22 -> X=8 -> 0=N)
-        RTS
-
-; ============================================================================
-; apply_sprite_size: derive spr_xoff / spr_yoff / spr_r1 from spr_size.
-;   Two valid inputs: 8 (8x8 sprites) and 32 (16x16 sprites).
-;     16x16: xoff=8, yoff=9, R1=$C2  (16K + DISP + IE_off + sprite-16)
-;     8x8:   xoff=4, yoff=5, R1=$C0  (16K + DISP + IE_off + sprite-8)
-;   Anything else falls back to 16x16 (defensive).
-;   Called from main (init), and from cmd_setshape after the size byte
-;   has been latched from shape_table.
-; ============================================================================
-apply_sprite_size:
-        LDA spr_size
-        CMP #32
-        BEQ @big
-        ; --- 8x8 ---
-        LDA #4
-        STA spr_xoff
-        LDA #5
-        STA spr_yoff
-        LDA #$C0
-        STA spr_r1
-        RTS
-@big:   ; --- 16x16 ---
-        LDA #8
-        STA spr_xoff
-        LDA #9
-        STA spr_yoff
-        LDA #$C2
-        STA spr_r1
-        RTS
+; --- heading_to_octant + apply_sprite_size live in
+;     dev/lib/tms9918/sprite_helpers.asm. Caller-provided ZP wiring is
+;     handled by .exportzp / .importzp at the top of this file.
 
 ; draw_turtle: in bitmap mode, save the 9 cells around the turtle then
 ;   OR-trace the triangle on top so trails are not inverted (cleanly
@@ -4168,45 +4102,9 @@ shape_table:
         .word shades_pat
         .byte $FF
 
-; ----- 16x16 sprite patterns (TL 0..7, BL 8..15, TR 0..7, BR 8..15) -----
-; BIRD1 -- bird with wings up (V silhouette).
-bird1_pat:
-        ; TL (rows 0-7, cols 0-7)
-        .byte $00, $80, $C0, $60, $38, $0F, $02, $03
-        ; BL (rows 8-15, cols 0-7)
-        .byte $03, $02, $00, $00, $00, $00, $00, $00
-        ; TR (rows 0-7, cols 8-15)
-        .byte $00, $01, $03, $06, $1C, $F0, $40, $C0
-        ; BR (rows 8-15, cols 8-15)
-        .byte $C0, $40, $00, $00, $00, $00, $00, $00
-
-; BIRD2 -- bird with wings down (^ silhouette). BIRD1 mirrored vertically.
-bird2_pat:
-        ; TL
-        .byte $00, $00, $00, $00, $00, $02, $03, $03
-        ; BL
-        .byte $02, $0F, $38, $60, $C0, $80, $00, $00
-        ; TR
-        .byte $00, $00, $00, $00, $00, $40, $C0, $C0
-        ; BR
-        .byte $40, $F0, $1C, $06, $03, $01, $00, $00
-
-; ----- 8x8 sprite patterns (single 8x8 block, 8 bytes) -----
-; Inaugurates V2.1 mixed-size sprite mode: cmd_setshape now flips R1 to
-; sprite-8 ($C0) when this shape is loaded, draw_turtle subtracts 4/5
-; instead of 8/9 to keep the sprite centred on (tx,ty).
-;
-; HEART (8x8, V2.1 -- proves the 8x8 path):
-;     .##..##.   $66
-;     ########   $FF
-;     ########   $FF
-;     ########   $FF
-;     .######.   $7E
-;     ..####..   $3C
-;     ...##...   $18
-;     ........   $00
-heart_pat:
-        .byte $66, $FF, $FF, $FF, $7E, $3C, $18, $00
+; ----- bird1_pat / bird2_pat / heart_pat now live alongside the emote
+;       sprites in dev/lib/tms9918/sprites_emotes.asm. shape_table above
+;       references them via .word; ld65 resolves them from the lib .o.
 
 .if 0
 ; ============================================================================

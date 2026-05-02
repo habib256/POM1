@@ -90,6 +90,7 @@ LOGO_V2_EMOTE_ASM = ROOT / "dev" / "lib" / "tms9918" / "sprites_emotes.asm"
 LOGO_V2_TEXT_ASM  = ROOT / "dev" / "lib" / "tms9918" / "text_bitmap.asm"
 LOGO_V2_BUBBLE_ASM= ROOT / "dev" / "lib" / "tms9918" / "bubble.asm"
 LOGO_V2_BUFED_ASM = ROOT / "dev" / "lib" / "tms9918" / "buffer_editor.asm"
+LOGO_V2_SPRH_ASM  = ROOT / "dev" / "lib" / "tms9918" / "sprite_helpers.asm"
 LIB_APPLE1        = ROOT / "dev" / "lib" / "apple1"
 LIB_M6502         = ROOT / "dev" / "lib" / "m6502"
 LIB_TMS           = ROOT / "dev" / "lib" / "tms9918"
@@ -237,7 +238,7 @@ def build_upper_bank_logo() -> bytes:
     logo = assemble_multi(
         [LOGO_V2_ASM, LOGO_V2_MATH_ASM, LOGO_V2_VDP_ASM,
          LOGO_V2_EMOTE_ASM, LOGO_V2_TEXT_ASM, LOGO_V2_BUBBLE_ASM,
-         LOGO_V2_BUFED_ASM],
+         LOGO_V2_BUFED_ASM, LOGO_V2_SPRH_ASM],
         LOGO_V2_BANK_CFG, "TMS_Logo_v2_bank", HALF_SIZE,
         extra_ca65_args=["-D", "CODETANK_BUILD"])
     bank = bytearray(b"\xFF" * HALF_SIZE)

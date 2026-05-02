@@ -23,7 +23,7 @@ $(OUT_DIR)/TMS_Logo.txt: $(OUT_DIR)/TMS_Logo.bin
 	python3 emit_TMS_Logo_txt.py
 
 # --- V2.0 (16 KB, active dev) ---
-OBJS_16K := TMS_Logo_16k.o math_16k.o tms9918m2_16k.o sprites_emotes_16k.o text_bitmap_16k.o bubble_16k.o buffer_editor_16k.o
+OBJS_16K := TMS_Logo_16k.o math_16k.o tms9918m2_16k.o sprites_emotes_16k.o text_bitmap_16k.o bubble_16k.o buffer_editor_16k.o sprite_helpers_16k.o
 
 TMS_Logo_16k.o: TMS_Logo_16k.asm
 	ca65 $(LIB) -o $@ $<
@@ -44,6 +44,9 @@ bubble_16k.o: ../../lib/tms9918/bubble.asm
 	ca65 $(LIB) -o $@ $<
 
 buffer_editor_16k.o: ../../lib/tms9918/buffer_editor.asm
+	ca65 $(LIB) -o $@ $<
+
+sprite_helpers_16k.o: ../../lib/tms9918/sprite_helpers.asm
 	ca65 $(LIB) -o $@ $<
 
 $(OUT_DIR)/TMS_Logo_16k.bin: $(OBJS_16K)
