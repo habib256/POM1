@@ -30,6 +30,11 @@
 .exportzp pix_x, pix_y, pix_addr_lo, pix_addr_hi, pix_mask, pix_byte
 .exportzp ln_x0, ln_y0, ln_x1, ln_y1, ln_dx, ln_dy, ln_sx, ln_sy
 .exportzp ln_err, ln_err_hi
+; pen_color (low nibble 0..15) -- foreground colour written into the
+; Mode-2 colour table at $2000 every time plot_set fires in OR mode.
+; init_vdp_g2 seeds it to $0F (white) so projects that never touch SETPC
+; keep the legacy white-on-black look.
+.exportzp pen_color
 
 ; --- imports ---------------------------------------------------------------
 .importzp tmp, tmp2
@@ -57,6 +62,9 @@ ln_sx:        .res 1
 ln_sy:        .res 1
 ln_err:       .res 1
 ln_err_hi:    .res 1
+pen_color:    .res 1     ; 0..15 -- foreground colour written to colour
+                         ;   table by plot_set in OR mode. Default $0F
+                         ;   (white) is written by init_vdp_g2.
 
 ; ============================================================================
 .segment "CODE"
@@ -101,6 +109,10 @@ init_vdp_g2:
         BNE @cl
         DEX
         BNE @cl
+        ; default pen colour = white (15). plot_set picks this up in OR
+        ; mode to recolour the cell it just touched. SETPC overrides.
+        LDA #$0F
+        STA pen_color
         RTS
 
 vdp2_regs:
@@ -186,6 +198,25 @@ plot_set:
 @write: STA pix_byte
         JSR vdp_set_write
         LDA pix_byte
+        STA VDP_DATA
+        ; --- colour cell (only on OR draws). XOR is the turtle-erase
+        ;     path which must leave the trail's colour alone.
+        LDA plot_mode
+        BNE @done
+        ; address = $2000 + pix_addr (same offset as pattern cell). The
+        ; auto-increment from the data-port write above advanced VRAM
+        ; address by 1, so re-prime the control port now.
+        LDA pix_addr_lo
+        STA VDP_CTRL
+        LDA pix_addr_hi
+        ORA #$60                ; $60 = $20 (table base) | $40 (write enable)
+        STA VDP_CTRL
+        LDA pen_color
+        ASL
+        ASL
+        ASL
+        ASL                     ; pen_color in high nibble
+        ORA #$01                ; transparent background (Mode-2 colour 1)
         STA VDP_DATA
 @done:  RTS
 

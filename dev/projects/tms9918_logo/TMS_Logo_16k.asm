@@ -73,6 +73,7 @@
 ; tms9918m2.asm  -- Mode-2 bitmap driver (init + plot + Bresenham line).
 .import   init_vdp_g2, clear_bitmap, disable_sprites, line_xy
 .importzp ln_x0, ln_y0, ln_x1, ln_y1
+.importzp pen_color           ; lib-owned pen colour (set via SETPC)
 .ifdef CODETANK_BUILD
 .import   calc_pix_addr, vdp_set_write
 .importzp pix_x, pix_y
@@ -150,6 +151,12 @@ spr_size:    .res 1
 spr_xoff:    .res 1
 spr_yoff:    .res 1
 spr_r1:      .res 1
+; --- Sprite colour (V2.5) ----------------------------------------------
+; sprite_color : low-nibble colour (0..15) of the dynamic-turtle sprite-0
+;                attribute. Default $0F = white. SETSC :n updates this.
+;                pen_color (the trail/bitmap colour) lives in tms9918m2's
+;                ZP and is imported below.
+sprite_color: .res 1
 .ifdef CODETANK_BUILD
 ; --- EDIT (visual proc editor) state -----------------------------------
 ;   ed_cur_line: 0..ed_n_lines-1, the line the '>' arrow points at.
@@ -302,6 +309,10 @@ main:
         ; (which haven't called PD yet) draw nothing.
         LDA #1
         STA pen
+        ; default sprite colour = white. pen_color is initialised by
+        ; init_vdp_g2 (lib-owned).
+        LDA #$0F
+        STA sprite_color
         ; LFSR seed -- non-zero
         LDA #$AC
         STA lfsr_lo
@@ -382,6 +393,9 @@ help_toc:
         .byte "  6  PROCEDURES", $0D
         .byte "  7  CONSOLE & DEMO", $0D
         .byte "  8  EXAMPLES", $0D
+.ifdef CODETANK_BUILD
+        .byte "  9  PROCEDURE EDITOR", $0D
+.endif
         .byte $0D
         .byte "ESC or Ctrl-G aborts a loop.", $0D
         .byte "BYE returns to Woz Monitor.", $0D
@@ -412,10 +426,12 @@ help_p2:
         .byte "  PU / PENUP", $0D
         .byte "    no trail when moving", $0D
         .byte "  CS / CLEARSCREEN", $0D
-        .byte "    erase the bitmap + HOME", $0D
+        .byte "    erase bitmap + HOME", $0D
+        .byte "  SETPC N  pen colour 0..15", $0D
+        .byte "  SETTC N  sprite colour", $0D
         .byte $0D
-        .byte "Pen state persists across", $0D
-        .byte "procs and REPEAT loops.", $0D
+        .byte "Pen / colour persist across", $0D
+        .byte "procs and REPEAT.", $0D
         .byte 0
 
 help_p3:
@@ -492,11 +508,9 @@ help_p6:
         .byte "    list names (text mode)", $0D
         .byte "  LIST NAME", $0D
         .byte "    dump body on bitmap.", $0D
-        .byte "  EDIT NAME -- visual:", $0D
-        .byte "    , up   . down", $0D
-        .byte "    - del  + ins", $0D
-        .byte "    type to replace line", $0D
-        .byte "    ESC = save & exit", $0D
+        .byte "  EDIT NAME", $0D
+        .byte "    visual editor on bitmap.", $0D
+        .byte "    See HELP 9 for full keys.", $0D
 .endif
         .byte $0D
         .byte "Limits:", $0D
@@ -566,6 +580,44 @@ help_p8:
         .byte "  END", $0D
         .byte "  PU  HOME  REPEAT 30 [FLY]", $0D
         .byte 0
+
+.ifdef CODETANK_BUILD
+help_p9:
+        .byte $0D, "9. PROCEDURE EDITOR", $0D
+        .byte "EDIT NAME opens a full-screen", $0D
+        .byte "visual editor on the TMS9918", $0D
+        .byte "bitmap. > marks the current", $0D
+        .byte "line. A 2-row menu at the", $0D
+        .byte "bottom shows the keys.", $0D
+        .byte $0D
+        .byte "NAVIGATION:", $0D
+        .byte "  U   cursor up", $0D
+        .byte "  D   cursor down", $0D
+        .byte $0D
+        .byte "MUTATION:", $0D
+        .byte "  E   edit current line", $0D
+        .byte "  I   insert blank AFTER", $0D
+        .byte "  X   delete current line", $0D
+        .byte $0D
+        .byte "EXIT:", $0D
+        .byte "  Q / ESC  save and return", $0D
+        .byte $0D
+        .byte "INSIDE E MODE:", $0D
+        .byte "  type new line, _ erases", $0D
+        .byte "  last char, CR commits,", $0D
+        .byte "  ESC aborts the change.", $0D
+        .byte $0D
+        .byte "Limits: 224 B body, 60 char", $0D
+        .byte "per line. Saving is in RAM", $0D
+        .byte "only -- power-cycle wipes it.", $0D
+        .byte $0D
+        .byte "DEMO procs (SQUARE, FLOWER,", $0D
+        .byte "SPIRAL...) come from ROM:", $0D
+        .byte "LIST is fine, EDIT changes", $0D
+        .byte "are lost on next DEMO run.", $0D
+        .byte "Use TO MYNAME ... END first.", $0D
+        .byte 0
+.endif
 
 ; Stub so the legacy help_msg label still resolves (no longer used by
 ; cmd_help itself; if some demo line still references HELP-style text,
@@ -1414,6 +1466,27 @@ cmd_pd:
         STA pen
         RTS
 
+; cmd_setpc: SETPC N -- pen (trail) colour. N is masked to 0..15. The
+;   actual colour-table write happens inside plot_set on the next pen
+;   draw, so SETPC is a constant-time setter.
+cmd_setpc:
+        LDA arg_lo
+        AND #$0F
+        STA pen_color
+        RTS
+
+; cmd_setsc: SETSC N -- sprite-0 (dynamic turtle) colour. Re-write
+;   sprite-0's attribute right away so the change is visible without
+;   waiting for the next FORWARD/SETSHAPE refresh.
+cmd_setsc:
+        LDA arg_lo
+        AND #$0F
+        STA sprite_color
+        LDA sprite_mode
+        BEQ @done                  ; bitmap turtle, no attr to refresh
+        JSR draw_turtle            ; re-emits sprite-0 attribute (4 B)
+@done:  RTS
+
 ; cmd_stop: signal "exit current proc". Loop checks in cmd_repeat,
 ; parse_and_exec, and proc_invoke @line_loop unwind to proc_invoke
 ; @body_done which clears the flag.
@@ -1478,10 +1551,20 @@ cmd_help:
         LDX #>help_p7
         JMP print_help_str
 @n8:    CMP #8
-        BNE @toc
+        BNE @n9
         LDA #<help_p8
         LDX #>help_p8
         JMP print_help_str
+@n9:
+.ifdef CODETANK_BUILD
+        CMP #9
+        BNE @toc
+        LDA #<help_p9
+        LDX #>help_p9
+        JMP print_help_str
+.else
+        JMP @toc
+.endif
 @toc:   LDA #<help_toc
         LDX #>help_toc
         ; fall through
@@ -1588,24 +1671,33 @@ demo_script:
         .byte "PRINT ", $22, "DEMO", $0D
         .byte "WAIT 1", $0D
         .byte "CS", $0D
+        ; --- V2.5: SETPC tints each scene a different colour. The pen
+        ;     palette uses the standard TMS9918 list (1=black, 2/3=greens,
+        ;     4/5=blues, 6=dark red, 7=cyan, 8/9=reds, 10/11=yellows,
+        ;     12=dark green, 13=magenta, 14=gray, 15=white).
         ; SQUARE scene replaced by the SQUARE proc below (used by FLOWER).
         .byte "PRINT ", $22, "STAR", $0D
+        .byte "SETPC 11", $0D
         .byte "REPEAT 5 [FD 80 TR 144]", $0D
         .byte "WAIT 2", $0D
         .byte "CS", $0D
         .byte "PRINT ", $22, "CIRCLE", $0D
+        .byte "SETPC 5", $0D
         .byte "REPEAT 36 [FD 5 TR 10]", $0D
         .byte "WAIT 2", $0D
         .byte "CS", $0D
         .byte "PRINT ", $22, "SUN", $0D
+        .byte "SETPC 10", $0D
         .byte "REPEAT 18 [FD 60 BK 60 TR 20]", $0D
         .byte "WAIT 2", $0D
         .byte "CS", $0D
         .byte "PRINT ", $22, "ROSETTE", $0D
+        .byte "SETPC 8", $0D
         .byte "REPEAT 12 [REPEAT 6 [FD 25 TR 60] TR 30]", $0D
         .byte "WAIT 3", $0D
         .byte "CS", $0D
         .byte "PRINT ", $22, "RANDOM", $0D
+        .byte "SETPC 13", $0D
         .byte "REPEAT 80 [FD RANDOM 20 TR RANDOM 90]", $0D
         .byte "WAIT 3", $0D
         .byte "CS", $0D
@@ -1624,6 +1716,7 @@ demo_script:
         .byte "TO FLOWER", $0D
         .byte "REPEAT 36 [TR 10 SQUARE]", $0D
         .byte "END", $0D
+        .byte "SETPC 3", $0D
         .byte "FLOWER", $0D
         .byte "WAIT 3", $0D
         .byte "CS", $0D
@@ -1634,10 +1727,12 @@ demo_script:
         .byte "SPIRAL :SIZE + 2 :ANGLE", $0D
         .byte "END", $0D
         .byte "PRINT ", $22, "SPIRAL90", $0D
+        .byte "SETPC 7", $0D
         .byte "SPIRAL 0 90", $0D
         .byte "WAIT 3", $0D
         .byte "CS", $0D
         .byte "PRINT ", $22, "SPIRAL91", $0D
+        .byte "SETPC 9", $0D
         .byte "SPIRAL 0 91", $0D
         .byte "WAIT 3", $0D
         .byte "CS", $0D
@@ -1674,6 +1769,7 @@ demo_script:
         .byte "WAIT 3", $0D
         .byte "CS", $0D
         .byte "PRINT ", $22, "KALEID", $0D
+        .byte "SETPC 9", $0D
         .byte "REPEAT 24 [REPEAT 5 [FD 120 TR 144] TR 15]", $0D
         .byte "WAIT 3", $0D
         .byte "CS", $0D
@@ -1702,6 +1798,8 @@ demo_script:
         ; After the flight, SETSHAPE "ARROW restores the classic bitmap
         ; turtle so the rest of the REPL doesn't see a stale bird sprite.
         .byte "PRINT ", $22, "BIRDFLY", $0D
+        .byte "SETTC 11", $0D                ; yellow bird sprite
+        .byte "SETPC 5", $0D                 ; light-blue trail (if any)
         ; PAUSE 1 (~100 ms) AFTER each SETSHAPE so both wing positions
         ; get an equal hold time on screen -- otherwise BIRD1 would only
         ; flash for the time of one FD+TR (~1 ms) before being replaced.
@@ -1735,6 +1833,8 @@ demo_script:
         .byte "WAIT 2", $0D
         .byte "SETSHAPE ", $22, "ARROW", $0D
         .byte "PD", $0D
+        .byte "SETPC 15", $0D                ; restore default white pen
+        .byte "SETTC 15", $0D                ; restore default white turtle
         .byte "CS", $0D
         .byte "PRINT ", $22, "END", $0D
         .byte 0
@@ -2143,7 +2243,7 @@ cmd_edit:
         BNE @not_dn
         JMP @down
 @not_dn:
-        CMP #'R'                   ; R = replace current line
+        CMP #'E'                   ; E = edit (replace) current line
         BNE @not_r
         JSR ed_replace_line
         JMP @redraw
@@ -2182,6 +2282,16 @@ cmd_edit:
         STA sprite_mode
         STA turtle_visible
         JSR cmd_home               ; centres turtle, redraws bitmap arrow
+        ; ed_replace_line reuses line_idx as a replacement-char counter,
+        ; so on return it no longer points at the trailing CR of "EDIT
+        ; NAME". Reset line_buf+line_idx to a clean CR (same trick as
+        ; cmd_demo @done) so parse_and_exec @loop unwinds instead of
+        ; re-dispatching cmd_edit on the stale "EDIT NAME" still in
+        ; line_buf -- that was the symptom of "exit doesn't work".
+        LDA #$0D
+        STA line_buf
+        LDA #0
+        STA line_idx
         RTS
 @bad_name:
         LDA #ERR_BAD_NAME
@@ -2302,9 +2412,8 @@ ed_draw:
         INY
         JMP @body
 @body_done:
-        ; --- cursor: '>' at col 0 of (ed_cur_line + 2). Skip if no lines.
-        LDA ed_n_lines
-        BEQ @no_cursor
+        ; --- cursor: '>' at col 0 of (ed_cur_line + 2). Always drawn so
+        ;     user can see where they are even with an empty body.
         LDA #0
         STA tx_lo
         LDA ed_cur_line
@@ -2373,8 +2482,8 @@ ed_draw:
         RTS
 
 ed_menu_str:
-        .byte "U=UP D=DN R=REPLACE", $0D
-        .byte "I=INS X=DEL Q=SAVE", 0
+        .byte " U=UP   D=DOWN   E=EDIT", $0D
+        .byte " I=INS  X=DEL   Q=SAVE", 0
 @hb:    ; helper: blit char in A, advance tx_lo by 8
         PHA
         JSR blit_glyph
@@ -4375,8 +4484,8 @@ draw_turtle:
         NOP                     ; +2c silicon-strict gap (LDA #imm bridge)
         LDA #0                    ; pattern name = 0 (sprite_pattern_table[0])
         STA VDP_DATA
-        NOP                     ; +2c silicon-strict gap (LDA #imm bridge)
-        LDA #$0F                  ; foreground colour = white (15)
+        NOP                     ; +2c silicon-strict gap (LDA zp/abs bridge)
+        LDA sprite_color          ; sprite-0 colour (SETSC controls this)
         STA VDP_DATA
         RTS
 @bitmap:
@@ -5333,6 +5442,12 @@ mnem_tab:
         .word cmd_setxy
         .byte "SETH", 1
         .word cmd_seth
+        .byte "SETP", 1           ; SETPC N -- pen (trail) colour 0..15
+        .word cmd_setpc
+        .byte "SETT", 1           ; SETTC N -- turtle/sprite colour 0..15
+        .word cmd_setsc           ;            (note: SETSC would alias
+                                  ;            SETSHAPE since find_mnem
+                                  ;            keys on the first 4 chars)
         .byte "REPE", 'R'
         .word 0               ; never called via dispatcher; cmd_repeat
                               ; is invoked directly from parse_and_exec.
