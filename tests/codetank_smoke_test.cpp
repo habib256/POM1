@@ -29,8 +29,12 @@ int main(int argc, char** argv)
 
     CodeTank ct;
     std::string err;
-    mustBeTrue(ct.loadRomFile(romPath, err),
-               ("loadRomFile failed: " + err).c_str());
+    const bool ok = ct.loadRomFile(romPath, err);
+    // Build the assert message in a named local so its storage outlives the
+    // mustBeTrue call (passing a temporary's c_str() printed an empty string
+    // because the std::string was already destroyed by the time fprintf ran).
+    const std::string loadFailMsg = "loadRomFile failed: " + err;
+    mustBeTrue(ok, loadFailMsg.c_str());
     mustBeTrue(ct.getRomSize() == CodeTank::kRomSize,
                "CodeTank image should be exactly 32 kB");
     mustBeTrue(ct.hasRom(),

@@ -563,6 +563,19 @@ bool EmulationController::isTMS9918Enabled() const
     return memory->isTMS9918Enabled();
 }
 
+void EmulationController::setHgrFramebufferAttached(bool attached)
+{
+    std::lock_guard<PriorityMutex> lock(stateMutex);
+    memory->setHgrFramebufferAttached(attached);
+    publisher.publish(*memory, *cpu, runRequested.load());
+}
+
+bool EmulationController::isHgrFramebufferAttached() const
+{
+    std::lock_guard<PriorityMutex> lock(stateMutex);
+    return memory->isHgrFramebufferAttached();
+}
+
 void EmulationController::setACIEnabled(bool enabled)
 {
     std::lock_guard<PriorityMutex> lock(stateMutex);

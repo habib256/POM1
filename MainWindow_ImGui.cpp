@@ -417,7 +417,9 @@ void MainWindow_ImGui::render()
                 case pom1::CliCard::A1IoRtc:
                     a1ioRtcEnabled = o.enable; pendingA1ioRtcEnable = o.enable; break;
                 case pom1::CliCard::Hgr:
-                    graphicsCardEnabled = o.enable; break;   // passive; no pending flag
+                    graphicsCardEnabled = o.enable;
+                    emulation->setHgrFramebufferAttached(graphicsCardEnabled);
+                    break;   // passive; no pending flag
                 case pom1::CliCard::Cffa1:
                     cffa1Enabled = o.enable; pendingCffa1Enable = o.enable; break;
                 case pom1::CliCard::Krusader: {

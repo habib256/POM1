@@ -597,6 +597,7 @@ void MainWindow_ImGui::applyMachineConfig(int presetIndex)
     // has been executing for ~200 ms.
     aciEnabled               = cfg.aci;
     graphicsCardEnabled      = cfg.graphicsCard;
+    emulation->setHgrFramebufferAttached(graphicsCardEnabled);
     showGraphicsCard         = false;
     microSDEnabled           = cfg.microSD;
     cffa1Enabled             = cfg.cffa1;

@@ -75,6 +75,14 @@ public:
     void setOutOfRangeStrictMode(bool enable) { oorStrictMode = enable; }
     bool isOutOfRangeStrictMode(void) const { return oorStrictMode; }
 
+    // Uncle Bernie's GEN2 HGR card carries its own 8 KB framebuffer mapped at
+    // $2000-$3FFF. When the card is plugged, the region behaves like RAM
+    // (Apple-1 hardware reality) regardless of presetRamKB / strict mode.
+    // This carve-out keeps `isOorAddress` from blocking legitimate writes
+    // to the framebuffer on small-RAM presets.
+    void setHgrFramebufferAttached(bool e) { hgrFramebufferAttached = e; }
+    bool isHgrFramebufferAttached(void) const { return hgrFramebufferAttached; }
+
     // Load Memory from file
     int loadROM(const char* filename, uint16_t startAddress, size_t maxSize, const char* label);
     int loadBasic(void);
@@ -379,6 +387,7 @@ private :
     int presetRamKB = 64;             // user-visible RAM ceiling for OOR warnings
     int oorAccessCount = 0;
     bool oorStrictMode = false;       // true: enforce bounds (reads→$FF, writes dropped)
+    bool hgrFramebufferAttached = false;  // GEN2 HGR card supplies RAM at $2000-$3FFF
     std::unordered_set<uint32_t> oorWarned;  // key = (addr<<1)|isWrite; capped at 64
     void checkOutOfRangeAccess(uint16_t address, bool isWrite);
     bool writeInRom;

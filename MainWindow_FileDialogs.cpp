@@ -149,6 +149,7 @@ void MainWindow_ImGui::renderLoadDialog()
                 loadPath.find("\\hgr\\") != std::string::npos) {
                 if (!graphicsCardEnabled) {
                     graphicsCardEnabled = true;
+                    emulation->setHgrFramebufferAttached(true);
                     showGraphicsCard = true;
                 }
             } else if (loadPath.find("/tms9918/") != std::string::npos ||

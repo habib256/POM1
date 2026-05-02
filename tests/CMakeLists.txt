@@ -280,7 +280,7 @@ target_include_directories(test_codetank PRIVATE ${CMAKE_SOURCE_DIR})
 
 add_test(NAME codetank_smoke
          COMMAND test_codetank
-                 "${CMAKE_SOURCE_DIR}/roms/codetank.rom"
+                 "${CMAKE_SOURCE_DIR}/roms/codetank/Codetank_GAME1.rom"
                  "${CMAKE_SOURCE_DIR}/roms/jukebox.rom")
 set_tests_properties(codetank_smoke PROPERTIES TIMEOUT 5)
 

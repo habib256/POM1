@@ -14,7 +14,7 @@ def main() -> int:
         lib_dirs=["apple1", "hgr", "m6502"],
         cfg="apple1_gen2.cfg",
         out_dir_software="hgr",
-        start_addr=0x0280,
+        start_addr=0xE000,
         project_dir=PROJ,
     )
     return 0

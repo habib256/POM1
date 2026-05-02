@@ -368,10 +368,19 @@ void Memory::resetOutOfRangeAccessCount(void)
 //     $8000 and naturally falls outside the gap (the existing dispatch order
 //     hits ROM / peripheral pages there before this check).
 //   - otherwise: contiguous low — gap is [presetRamKB * 1024, $8000).
-static inline bool isOorAddress(uint16_t address, int presetRamKB)
+//   - GEN2 HGR carve-out: when the card is plugged it brings its own 8 KB
+//     framebuffer at $2000-$3FFF — that range becomes RAM-backed regardless
+//     of presetRamKB, matching real hardware (the card's onboard SRAM is
+//     wired directly onto the bus). Without this exception, strict mode
+//     would silently drop every pixel write on small-RAM presets.
+static inline bool isOorAddress(uint16_t address, int presetRamKB,
+                                bool hgrFramebufferAttached)
 {
     if (presetRamKB >= 64) return false;
     if (address >= 0x8000) return false;
+    if (hgrFramebufferAttached && address >= 0x2000 && address < 0x4000) {
+        return false;
+    }
     const uint16_t oorLow = (presetRamKB == 8)
         ? 0x1000
         : static_cast<uint16_t>(presetRamKB * 1024);
@@ -383,7 +392,7 @@ void Memory::checkOutOfRangeAccess(uint16_t address, bool isWrite)
     // User-RAM ceiling: warn when a program touches RAM past the preset budget.
     // Skip ROM/IO ($8000+) and the dual-bank high RAM ($E000-$EFFF) — those
     // are handled earlier in the dispatch.
-    if (!isOorAddress(address, presetRamKB)) return;
+    if (!isOorAddress(address, presetRamKB, hgrFramebufferAttached)) return;
     ++oorAccessCount;
     if (oorWarned.size() >= 64) return;
     uint32_t key = (static_cast<uint32_t>(address) << 1) | (isWrite ? 1u : 0u);
@@ -962,8 +971,10 @@ uint8_t Memory::memRead(uint16_t address)
     // the bus; the ROMs that follow at $C1xx/$E0xx/$FFxx are handled above.
     // Return $FF as a safe stand-in for "nothing driving the bus". For
     // 8 KB Parmigiani dual-bank presets the $E000-$EFFF high bank is also
-    // valid RAM (handled inside isOorAddress).
-    if (oorStrictMode && isOorAddress(address, presetRamKB)) {
+    // valid RAM (handled inside isOorAddress). Same carve-out for the GEN2
+    // HGR framebuffer at $2000-$3FFF when the card is plugged.
+    if (oorStrictMode && isOorAddress(address, presetRamKB,
+                                      hgrFramebufferAttached)) {
         return 0xFF;
     }
     return mem[address];
@@ -1052,7 +1063,8 @@ void Memory::memWrite(uint16_t address, uint8_t value)
     // Strict enforcement: drop writes to unmapped RAM so programs that stray
     // past the preset's physical RAM ceiling can't silently corrupt the
     // backing array and then read back their own garbage.
-    if (oorStrictMode && isOorAddress(address, presetRamKB)) {
+    if (oorStrictMode && isOorAddress(address, presetRamKB,
+                                      hgrFramebufferAttached)) {
         return;
     }
     mem[address] = value;

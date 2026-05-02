@@ -237,6 +237,7 @@ void MainWindow_ImGui::renderMenuBar()
             // --- Community hardware (non-P-LAB) ----------------------------
             if (ImGui::MenuItem("Uncle Bernie's GEN2 HGR Graphic Card", nullptr, &graphicsCardEnabled)) {
                 if (graphicsCardEnabled) showGraphicsCard = true;
+                emulation->setHgrFramebufferAttached(graphicsCardEnabled);
             }
             showHardwareTooltip(
                 "Uncle Bernie's GEN2 HGR Graphic Card\n"
@@ -718,6 +719,7 @@ void MainWindow_ImGui::renderToolbar()
         if (ImGui::Button("##hgrToolbar", btnSize)) {
             if (!graphicsCardEnabled) {
                 graphicsCardEnabled = true;
+                emulation->setHgrFramebufferAttached(true);
                 showGraphicsCard = true;
                 // Load demo HGR image at $2000 if available
                 std::string demoPath;
@@ -736,6 +738,7 @@ void MainWindow_ImGui::renderToolbar()
                 showGraphicsCard = !showGraphicsCard;
                 if (!showGraphicsCard) {
                     graphicsCardEnabled = false;
+                    emulation->setHgrFramebufferAttached(false);
                     setStatusMessage("GEN2 unplugged", 2.0f);
                 }
             }

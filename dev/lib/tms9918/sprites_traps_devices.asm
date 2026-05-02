@@ -1,0 +1,89 @@
+; ============================================================================
+; sprites_traps_devices.asm  --  12 sprites (16x16, TMS9918 sprite mode)
+; ----------------------------------------------------------------------------
+; SCROLL-O-SPRITES "Traps & Devices" by Quale, May 2013, CC-BY-3.0.
+; Lifted from pic/undefined - Imgur.png by tools/extract_scroll_sprites.py.
+;
+; Layout: each 16x16 sprite occupies 32 bytes -- the first 16 bytes are
+; the left half (column 0..7), the next 16 the right half (column 8..15).
+; Native TMS9918 16x16 sprite layout: stream the 32 bytes into a
+; sprite-pattern slot starting at base $3800 + slot*32.
+; ============================================================================
+.export trap_net_pat, trap_web_pat, trap_spikes_pat, trap_caltrops_pat, trap_dart_pat
+.export trap_pit_pat, trap_grate_pat, trap_chest_open_pat, trap_chest_pat, trap_button_pat
+.export trap_lever_down_pat, trap_lever_up_pat
+
+.segment "CODE"
+
+; slot 01/12 of "Traps & Devices" row -- net
+trap_net_pat:
+        .byte $00, $02, $12, $3F, $12, $12, $77, $12
+        .byte $12, $7F, $12, $12, $3F, $12, $02, $00
+        .byte $00, $40, $48, $FC, $48, $48, $FE, $48
+        .byte $08, $1E, $08, $48, $FC, $48, $40, $00
+; slot 02/12 of "Traps & Devices" row -- web
+trap_web_pat:
+        .byte $00, $10, $0B, $14, $12, $75, $2C, $2B
+        .byte $25, $29, $16, $23, $5C, $07, $04, $00
+        .byte $00, $20, $E0, $3A, $C4, $68, $94, $A4
+        .byte $D4, $34, $AE, $48, $28, $D0, $08, $00
+; slot 03/12 of "Traps & Devices" row -- spikes
+trap_spikes_pat:
+        .byte $00, $00, $00, $00, $00, $00, $07, $00
+        .byte $55, $7E, $00, $00, $00, $00, $00, $00
+        .byte $00, $00, $00, $00, $00, $00, $E0, $00
+        .byte $AA, $7E, $00, $00, $00, $00, $00, $00
+; slot 04/12 of "Traps & Devices" row -- caltrops
+trap_caltrops_pat:
+        .byte $00, $00, $00, $00, $02, $03, $02, $03
+        .byte $02, $03, $00, $01, $00, $00, $00, $00
+        .byte $00, $00, $00, $00, $C0, $40, $C0, $40
+        .byte $C0, $40, $00, $80, $00, $00, $00, $00
+; slot 05/12 of "Traps & Devices" row -- dart
+trap_dart_pat:
+        .byte $00, $00, $00, $00, $02, $06, $06, $00
+        .byte $00, $04, $0C, $0C, $00, $00, $00, $00
+        .byte $00, $00, $00, $00, $10, $30, $30, $00
+        .byte $00, $20, $60, $60, $00, $00, $00, $00
+; slot 06/12 of "Traps & Devices" row -- pit
+trap_pit_pat:
+        .byte $00, $3F, $60, $40, $42, $46, $46, $40
+        .byte $40, $44, $4C, $4C, $40, $60, $3F, $00
+        .byte $00, $FC, $06, $02, $12, $32, $32, $02
+        .byte $02, $22, $62, $62, $02, $06, $FC, $00
+; slot 07/12 of "Traps & Devices" row -- grate
+trap_grate_pat:
+        .byte $00, $3F, $60, $4F, $52, $52, $5F, $52
+        .byte $52, $5F, $52, $52, $4F, $60, $3F, $00
+        .byte $00, $FC, $06, $F2, $4A, $4A, $FA, $4A
+        .byte $4A, $FA, $4A, $4A, $F2, $06, $FC, $00
+; slot 08/12 of "Traps & Devices" row -- chest_open
+trap_chest_open_pat:
+        .byte $00, $3F, $60, $40, $40, $40, $40, $40
+        .byte $40, $40, $40, $40, $4F, $60, $3F, $00
+        .byte $00, $FC, $06, $02, $02, $02, $02, $02
+        .byte $02, $02, $02, $02, $F2, $06, $FC, $00
+; slot 09/12 of "Traps & Devices" row -- chest
+trap_chest_pat:
+        .byte $00, $00, $00, $1F, $10, $17, $17, $16
+        .byte $16, $17, $17, $10, $1F, $00, $00, $00
+        .byte $00, $00, $00, $F8, $08, $E8, $E8, $68
+        .byte $E8, $E8, $E8, $08, $F8, $00, $00, $00
+; slot 10/12 of "Traps & Devices" row -- button
+trap_button_pat:
+        .byte $00, $00, $00, $1F, $10, $10, $13, $13
+        .byte $13, $13, $13, $10, $1F, $00, $00, $00
+        .byte $00, $00, $00, $F8, $08, $08, $E8, $E8
+        .byte $28, $68, $E8, $08, $F8, $00, $00, $00
+; slot 11/12 of "Traps & Devices" row -- lever_down
+trap_lever_down_pat:
+        .byte $00, $00, $00, $60, $60, $10, $08, $04
+        .byte $1A, $31, $3F, $3F, $3F, $00, $00, $00
+        .byte $00, $00, $00, $00, $00, $00, $00, $00
+        .byte $F8, $0C, $FC, $FC, $FC, $00, $00, $00
+; slot 12/12 of "Traps & Devices" row -- lever_up
+trap_lever_up_pat:
+        .byte $00, $00, $00, $00, $00, $00, $00, $00
+        .byte $1F, $30, $3F, $3F, $3F, $00, $00, $00
+        .byte $00, $00, $00, $06, $06, $08, $10, $20
+        .byte $58, $8C, $FC, $FC, $FC, $00, $00, $00

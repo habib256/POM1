@@ -150,6 +150,13 @@ public:
     void setTMS9918Enabled(bool enabled);
     bool isTMS9918Enabled() const;
 
+    // Uncle Bernie's GEN2 HGR Graphic Card. The card itself is owned by the
+    // UI (passive read of $2000-$3FFF) — this hook only tells Memory whether
+    // the framebuffer is bus-attached, so OOR strict mode stops dropping
+    // pixel writes on small-RAM presets.
+    void setHgrFramebufferAttached(bool attached);
+    bool isHgrFramebufferAttached() const;
+
     // P-LAB A1-SID Sound Card
     void setSIDEnabled(bool enabled);
     bool isSIDEnabled() const;
