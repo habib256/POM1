@@ -11,7 +11,7 @@ from emit_woz import emit  # noqa: E402
 def main() -> int:
     emit(
         asm_files=["HGR_SymbolsShow.asm"],
-        lib_dirs=["apple1", "hgr"],
+        lib_dirs=["apple1", "hgr", "hgr/sprites"],
         cfg="apple1_gen2.cfg",
         out_dir_software="hgr",
         start_addr=0xE000,

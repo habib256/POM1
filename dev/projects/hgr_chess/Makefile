@@ -25,7 +25,7 @@ out=[]; addr=0x0280; \
 [(out.append(f'{addr+i:04X}: ' + ' '.join(f'{b:02X}' for b in lo[i:i+8])), None)[1] for i in range(0, len(lo), 8)]; \
 addr=0xE000; \
 [(out.append(f'{addr+i:04X}: ' + ' '.join(f'{b:02X}' for b in hi[i:i+8])), None)[1] for i in range(0, len(hi), 8)]; \
-out.append('0280R'); \
+out.append('E000R'); \
 open('$(OUT_DIR)/HGR_Chess.txt','w').write('\n'.join(out)+'\n'); \
 print(f'Wrote $(OUT_DIR)/HGR_Chess.txt (lo={len(lo)} B at 0280, hi={len(hi)} B at E000)')"
 

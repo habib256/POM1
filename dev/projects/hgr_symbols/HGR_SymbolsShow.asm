@@ -2,9 +2,10 @@
 ; HGR_SymbolsShow.asm  --  display the 23 SCROLL-O-SPRITES "Symbols" sprites
 ; on Uncle Bernie's GEN2 Color Graphics Card
 ; -----------------------------------------------------------------------------
-; Source data: dev/lib/tms9918/sprites_symbols.asm  (23 x 16x16 TMS9918 sprites)
-; Pre-rendered for GEN2 HGR by _gen_sprites_symbols_hgr.py into
-; sprites_symbols_hgr.inc (48 B per sprite, 16 rows x 3 bytes).
+; Sprite data is pulled from the shared HGR sprite library at
+;   dev/lib/hgr/sprites/sprites_symbols_hgr.asm
+; (auto-generated from dev/lib/tms9918/sprites_symbols.asm by
+;  tools/build_hgr_sprites.py — same labels, just the HGR pixel format).
 ;
 ; Layout: 6 columns x 4 rows grid (24 slots, 23 used). Each slot is
 ; 4 HGR bytes (3 sprite + 1 gap) wide, 22 scanlines tall (16 sprite + 6 gap).
@@ -45,6 +46,13 @@ slot_row:   .res 1                  ; current slot row (0..GRID_ROWS-1)
 
 .code
 
+; --- Shared sprite library: SYMBOLS_HGR_COUNT comes from the .inc header
+;     (immediate-mode constants); the data labels (symbols_hgr_data and the
+;     per-sprite *_pat tail) come from the .asm file pulled inline below.
+;     Pick ONE library per build — the per-sprite labels match the TMS9918
+;     variant by design, so cc65 will reject linking both. ---
+.include "sprites_symbols_hgr.inc"
+
 main:
         LDA #<str_title
         LDX #>str_title
@@ -52,7 +60,7 @@ main:
 
         JSR clear_hgr
 
-        ; --- iterate slots row-major; stop after HGR_SYMBOL_GLYPH_COUNT ---
+        ; --- iterate slots row-major; stop after SYMBOLS_HGR_COUNT ---
         LDA #0
         STA sm_idx
         STA slot_row
@@ -92,7 +100,7 @@ main:
         ; advance sprite index, stop when all rendered
         INC sm_idx
         LDA sm_idx
-        CMP #HGR_SYMBOL_GLYPH_COUNT
+        CMP #SYMBOLS_HGR_COUNT
         BCS @done
 
         ; advance slot col / row
@@ -119,12 +127,12 @@ main:
 
 ; -----------------------------------------------------------------------------
 ; draw_symbol -- A = sprite index (0..22). Reads hcol, top_y from zp.
-;   Reads 16 rows x 3 bytes from hgr_symbols_data + idx*48 and stores them
+;   Reads 16 rows x 3 bytes from symbols_hgr_data + idx*48 and stores them
 ;   at (hgr_row[top_y + r] + hcol .. + hcol + 2) for r in 0..15.
 ; Clobbers: A, X, Y, ptr_lo/hi, fpl/fph, gline.
 ; -----------------------------------------------------------------------------
 draw_symbol:
-        ; fp = hgr_symbols_data + A*48 = A*32 + A*16
+        ; fp = symbols_hgr_data + A*48 = A*32 + A*16
         ;   = (A << 5) + (A << 4)
         TAX
         STX gline                   ; reuse gline as scratch for low partial
@@ -147,13 +155,13 @@ draw_symbol:
         DEX
         BNE @add_lp
 @off_done:
-        ; fp += hgr_symbols_data
+        ; fp += symbols_hgr_data
         LDA fpl
         CLC
-        ADC #<hgr_symbols_data
+        ADC #<symbols_hgr_data
         STA fpl
         LDA fph
-        ADC #>hgr_symbols_data
+        ADC #>symbols_hgr_data
         STA fph
 
         LDA #0
@@ -222,5 +230,5 @@ str_footer:
         .byte " POTION  ZZZ  SKULL  SWORDS  SHIELD", $0D
         .byte " HOURGLASS         press any key", $0D, 0
 
-.include "sprites_symbols_hgr.inc"
+.include "sprites/sprites_symbols_hgr.asm"
 .include "hgr_tables.inc"

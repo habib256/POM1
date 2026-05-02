@@ -53,7 +53,8 @@ Or via CLI:
 
 ```
 ./POM1 --preset 13 --terminal --cpu-max \
-       --load 0x0280:software/hgr/HGR_Chess.bin --run 0x0280
+       --load 0x0280:software/hgr/HGR_Chess.bin.lo \
+       --load 0xE000:software/hgr/HGR_Chess.bin.hi --run 0xE000
 ```
 
 ## Controls
