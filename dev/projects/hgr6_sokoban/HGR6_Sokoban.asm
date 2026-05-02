@@ -35,7 +35,9 @@ KBDCR   = $D011
 ; --- Game constants ---
 NCOLS   = 20
 NROWS   = 12
-NUM_LEVELS = 72
+NUM_LEVELS = 45            ; trimmed from 72 to fit DATA_LOW (3.2 KB low bank)
+                           ; on the Parmigiani 8 KB dual-bank — levels
+                           ; 46..72 (sokoban_levels_ext.inc) dropped.
 
 ; --- Tile types ---
 TILE_FLOOR         = 0
@@ -1304,7 +1306,8 @@ tile_bitmaps:
 
 ; --- Level data (RLE compressed) ---
 .include "sokoban_levels.inc"
-.include "sokoban_levels_ext.inc"
+; sokoban_levels_ext.inc (levels 46..72) dropped: would push DATA_LOW past
+; the 3.2 KB low-bank ceiling on the Parmigiani 8 KB dual-bank.
 
 level_ptrs_lo:
         .byte <level1, <level2, <level3, <level4, <level5
@@ -1316,12 +1319,6 @@ level_ptrs_lo:
         .byte <level31, <level32, <level33, <level34, <level35
         .byte <level36, <level37, <level38, <level39, <level40
         .byte <level41, <level42, <level43, <level44, <level45
-        .byte <level46, <level47, <level48, <level49, <level50
-        .byte <level51, <level52, <level53, <level54, <level55
-        .byte <level56, <level57, <level58, <level59, <level60
-        .byte <level61, <level62, <level63, <level64, <level65
-        .byte <level66, <level67, <level68, <level69, <level70
-        .byte <level71, <level72
 level_ptrs_hi:
         .byte >level1, >level2, >level3, >level4, >level5
         .byte >level6, >level7, >level8, >level9, >level10
@@ -1332,17 +1329,11 @@ level_ptrs_hi:
         .byte >level31, >level32, >level33, >level34, >level35
         .byte >level36, >level37, >level38, >level39, >level40
         .byte >level41, >level42, >level43, >level44, >level45
-        .byte >level46, >level47, >level48, >level49, >level50
-        .byte >level51, >level52, >level53, >level54, >level55
-        .byte >level56, >level57, >level58, >level59, >level60
-        .byte >level61, >level62, >level63, >level64, >level65
-        .byte >level66, >level67, >level68, >level69, >level70
-        .byte >level71, >level72
 
 ; --- Strings ---
 str_title:
         .byte $0D, " SOKOBAN + GEN2 HGR", $0D
-        .byte " MICROBAN I 72LV  V.ARNAUD 26", $0D
+        .byte " MICROBAN I 45LV  V.ARNAUD 26", $0D
         .byte " PUSH BOXES ON TARGETS  U R N", $0D, 0
 
 str_layout:
