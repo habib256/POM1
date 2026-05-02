@@ -1,5 +1,5 @@
 ; ============================================================================
-; TMS_Logo_16k.asm  --  APPLE-1 LOGO V2.5 for TMS9918 (16 KB variant)
+; TMS_Logo_16k.asm  --  APPLE-1 LOGO V2.6 for TMS9918 (16 KB variant)
 ;                       (c) 2026 VERHILLE Arnaud
 ; ============================================================================
 ; *** V2.0 -- 16 KB BUILD (active development) ***
@@ -72,12 +72,10 @@
 ;
 ; tms9918m2.asm  -- Mode-2 bitmap driver (init + plot + Bresenham line).
 .import   init_vdp_g2, clear_bitmap, disable_sprites, line_xy
-.importzp ln_x0, ln_y0, ln_x1, ln_y1
+.import   calc_pix_addr, vdp_set_write, vdp_set_read
+.importzp ln_x0, ln_y0, ln_x1, ln_y1, pix_x, pix_y
+.importzp pix_addr_lo, pix_addr_hi
 .importzp pen_color           ; lib-owned pen colour (set via SETPC)
-.ifdef CODETANK_BUILD
-.import   calc_pix_addr, vdp_set_write
-.importzp pix_x, pix_y
-.endif
 ;
 ; math.asm        -- fixed-point trig + LFSR + decimal output + mod360.
 .import   roll_lfsr, print_decimal, div_arg_by_10
@@ -151,12 +149,10 @@ spr_size:    .res 1
 spr_xoff:    .res 1
 spr_yoff:    .res 1
 spr_r1:      .res 1
-; --- Sprite colour (V2.5) ----------------------------------------------
-; sprite_color : low-nibble colour (0..15) of the dynamic-turtle sprite-0
-;                attribute. Default $0F = white. SETSC :n updates this.
-;                pen_color (the trail/bitmap colour) lives in tms9918m2's
-;                ZP and is imported below.
-sprite_color: .res 1
+; --- Colour ------------------------------------------------------------
+; All colourisable surfaces (trail, bitmap arrow, sprite-0, bitmap text)
+; share a single source of truth: pen_color, exported by tms9918m2.asm.
+; SETPC is the only command that writes to it.
 .ifdef CODETANK_BUILD
 ; --- EDIT (visual proc editor) state -----------------------------------
 ;   ed_cur_line: 0..ed_n_lines-1, the line the '>' arrow points at.
@@ -215,6 +211,15 @@ tx1:       .res 1         ; vertex 1 (back-left)
 ty1:       .res 1
 tx2:       .res 1         ; vertex 2 (back-right)
 ty2:       .res 1
+; --- Arrow background save state (option B: save/restore the 9 cells in
+;     the 3x3 box centred on the turtle, so OR-mode draw can be cleanly
+;     reversed without XOR's transient trail-bit inversion). The 72 byte
+;     pattern buffer lives in PROCBSS (LBUF is full); the iteration
+;     counters stay here next to plot_mode.
+arrow_rows_left:  .res 1
+arrow_cols_left:  .res 1
+arrow_bx:         .res 1   ; leftmost cell column of the saved bbox
+arrow_io_dir:     .res 1   ; 0 = save (VDP -> BSS), 1 = restore (BSS -> VDP)
 n_vars:    .res 1         ; current number of vars in use (0..MAX_VARS)
 n_procs:   .res 1         ; current number of user procedures (0..MAX_PROCS)
 cmd_status: .res 1        ; 0 = nothing, 1 = OK, 2 = ERR (per parse_and_exec call)
@@ -251,6 +256,12 @@ param_slot0_value: .res 2
 param_slot1_name:  .res 6
 param_slot1_value: .res 2
 n_params_active:   .res 1    ; 0..MAX_PARAMS, valid params currently live
+; --- Arrow background buffer (see option B notes above). 16 cells × 8
+;     pattern bytes per cell = 128 bytes. The box is 4x4 (32x32 px) to
+;     guarantee tip coverage at any heading -- a 3x3 box is just shy of
+;     the tip's ±9 px reach when the turtle sits in the second half of
+;     a cell. Lives here because LBUF is full.
+arrow_bg_pat:      .res 128
 ; in_proc_save was the V1.8 0/1/2 depth counter; in V2.0 it lives in
 ; PROCBSS as `ctrl_sp` (frame count, 0..CTRL_STACK_DEPTH). Alias here so
 ; existing tail-call check / init code doesn't need to touch every site.
@@ -309,10 +320,7 @@ main:
         ; (which haven't called PD yet) draw nothing.
         LDA #1
         STA pen
-        ; default sprite colour = white. pen_color is initialised by
-        ; init_vdp_g2 (lib-owned).
-        LDA #$0F
-        STA sprite_color
+        ; pen_color initialised to $0F (white) by init_vdp_g2 (lib-owned).
         ; LFSR seed -- non-zero
         LDA #$AC
         STA lfsr_lo
@@ -380,7 +388,7 @@ banner_msg:
 ; -------------------------------------------------------------------------
 help_toc:
         .byte $0D
-        .byte "APPLE-1 LOGO V2.5 -- HELP", $0D
+        .byte "APPLE-1 LOGO V2.6 -- HELP", $0D
         .byte "TMS9918 graphics, 16K Apple-1", $0D
         .byte $0D
         .byte "Type HELP N for a topic page:", $0D
@@ -427,10 +435,11 @@ help_p2:
         .byte "    no trail when moving", $0D
         .byte "  CS / CLEARSCREEN", $0D
         .byte "    erase bitmap + HOME", $0D
-        .byte "  SETPC N  pen colour 0..15", $0D
-        .byte "  SETTC N  sprite colour", $0D
+        .byte "  SETPC N  colour 0..15 --", $0D
+        .byte "    tints trail, arrow,", $0D
+        .byte "    sprite and text.", $0D
         .byte $0D
-        .byte "Pen / colour persist across", $0D
+        .byte "Colour persists across", $0D
         .byte "procs and REPEAT.", $0D
         .byte 0
 
@@ -632,8 +641,8 @@ help_msg = help_toc
 help_msg_unused_remove:
         .byte $0D
         .byte "==========================", $0D
-        .byte "APPLE-1 LOGO V2.5 (16K)", $0D
-        .byte "TMS9918 GRAPHICS, BY ARNAUD", $0D
+        .byte "APPLE-1 LOGO V2.6 (16K)", $0D
+        .byte "(C) 2026 VERHILLE ARNAUD", $0D
         .byte "==========================", $0D
         .byte $0D
         .byte "*** TURTLE MOTION ***", $0D
@@ -660,7 +669,7 @@ help_msg_unused_remove:
         .byte "  CS / CLEARSCREEN", $0D
         .byte "    erase + HOME", $0D
         .byte $0D
-        .byte "*** DYNAMIC TURTLE (V2.5) ***", $0D
+        .byte "*** DYNAMIC TURTLE (V2.6) ***", $0D
         .byte "  SETSHAPE ", $22, "NAME", $0D
         .byte "    swap to a 16x16 sprite.", $0D
         .byte "    First call enables sprite", $0D
@@ -1466,25 +1475,30 @@ cmd_pd:
         STA pen
         RTS
 
-; cmd_setpc: SETPC N -- pen (trail) colour. N is masked to 0..15. The
-;   actual colour-table write happens inside plot_set on the next pen
-;   draw, so SETPC is a constant-time setter.
+; cmd_setpc: SETPC N -- the single colour command. N is masked to 0..15
+;   and stored in pen_color, which drives every colourised path:
+;     * trails       (plot_set OR mode writes the colour cell)
+;     * bitmap arrow (the OR-mode triangle draw paints its outline cells
+;                    with pen_color; SETPC just erases the visible arrow
+;                    and redraws so the new pen_color takes effect)
+;     * sprite-0     (draw_turtle re-emits the attribute byte)
+;     * bitmap text  (LABEL/SAY -- blit_glyph writes the colour cells;
+;                    SAY temporarily overrides to white for readability)
+;   No separate sprite/turtle colour register exists: pen_color is the
+;   one source of truth.
 cmd_setpc:
         LDA arg_lo
         AND #$0F
         STA pen_color
-        RTS
-
-; cmd_setsc: SETSC N -- sprite-0 (dynamic turtle) colour. Re-write
-;   sprite-0's attribute right away so the change is visible without
-;   waiting for the next FORWARD/SETSHAPE refresh.
-cmd_setsc:
-        LDA arg_lo
-        AND #$0F
-        STA sprite_color
         LDA sprite_mode
-        BEQ @done                  ; bitmap turtle, no attr to refresh
-        JSR draw_turtle            ; re-emits sprite-0 attribute (4 B)
+        BEQ @bitmap
+        JSR draw_turtle            ; sprite path: re-emit sprite-0 attribute
+        RTS
+@bitmap:
+        LDA turtle_visible
+        BEQ @done                  ; nothing to repaint
+        JSR erase_turtle           ; restore saved bg cells
+        JSR draw_turtle            ; re-save + OR-draw with new pen_color
 @done:  RTS
 
 ; cmd_stop: signal "exit current proc". Loop checks in cmd_repeat,
@@ -1681,11 +1695,6 @@ demo_script:
         .byte "REPEAT 5 [FD 80 TR 144]", $0D
         .byte "WAIT 2", $0D
         .byte "CS", $0D
-        .byte "PRINT ", $22, "CIRCLE", $0D
-        .byte "SETPC 5", $0D
-        .byte "REPEAT 36 [FD 5 TR 10]", $0D
-        .byte "WAIT 2", $0D
-        .byte "CS", $0D
         .byte "PRINT ", $22, "SUN", $0D
         .byte "SETPC 10", $0D
         .byte "REPEAT 18 [FD 60 BK 60 TR 20]", $0D
@@ -1726,11 +1735,6 @@ demo_script:
         .byte "RIGHT :ANGLE", $0D
         .byte "SPIRAL :SIZE + 2 :ANGLE", $0D
         .byte "END", $0D
-        .byte "PRINT ", $22, "SPIRAL90", $0D
-        .byte "SETPC 7", $0D
-        .byte "SPIRAL 0 90", $0D
-        .byte "WAIT 3", $0D
-        .byte "CS", $0D
         .byte "PRINT ", $22, "SPIRAL91", $0D
         .byte "SETPC 9", $0D
         .byte "SPIRAL 0 91", $0D
@@ -1738,25 +1742,13 @@ demo_script:
         .byte "CS", $0D
         ; --- extra REPL scenes (no procs, just REPEAT compositions) ----
         ; Polygons -- N-gon = REPEAT N [FD step TR (360/N)].
-        .byte "PRINT ", $22, "PENTAGN", $0D
-        .byte "REPEAT 5 [FD 50 TR 72]", $0D
-        .byte "WAIT 2", $0D
-        .byte "CS", $0D
         .byte "PRINT ", $22, "HEXAGON", $0D
         .byte "REPEAT 6 [FD 45 TR 60]", $0D
-        .byte "WAIT 2", $0D
-        .byte "CS", $0D
-        .byte "PRINT ", $22, "OCTAGON", $0D
-        .byte "REPEAT 8 [FD 35 TR 45]", $0D
         .byte "WAIT 2", $0D
         .byte "CS", $0D
         ; Star variants -- non-convex {N/k} stars: TR > 360/N skips vertices.
         .byte "PRINT ", $22, "STAR7", $0D
         .byte "REPEAT 7 [FD 70 TR 154]", $0D
-        .byte "WAIT 2", $0D
-        .byte "CS", $0D
-        .byte "PRINT ", $22, "STAR8", $0D
-        .byte "REPEAT 8 [FD 60 TR 135]", $0D
         .byte "WAIT 2", $0D
         .byte "CS", $0D
         .byte "PRINT ", $22, "BURST", $0D
@@ -1798,8 +1790,7 @@ demo_script:
         ; After the flight, SETSHAPE "ARROW restores the classic bitmap
         ; turtle so the rest of the REPL doesn't see a stale bird sprite.
         .byte "PRINT ", $22, "BIRDFLY", $0D
-        .byte "SETTC 11", $0D                ; yellow bird sprite
-        .byte "SETPC 5", $0D                 ; light-blue trail (if any)
+        .byte "SETPC 11", $0D                ; yellow -- bird sprite + trail
         ; PAUSE 1 (~100 ms) AFTER each SETSHAPE so both wing positions
         ; get an equal hold time on screen -- otherwise BIRD1 would only
         ; flash for the time of one FD+TR (~1 ms) before being replaced.
@@ -1833,9 +1824,14 @@ demo_script:
         .byte "WAIT 2", $0D
         .byte "SETSHAPE ", $22, "ARROW", $0D
         .byte "PD", $0D
-        .byte "SETPC 15", $0D                ; restore default white pen
-        .byte "SETTC 15", $0D                ; restore default white turtle
+        ; --- final epilogue: reset colour to default white so the REPL
+        ;     doesn't inherit any tint from the slideshow. Order matters:
+        ;     CS first so cmd_home draws the arrow at the centre cells
+        ;     (which may carry tints leaked from earlier scenes), THEN
+        ;     SETPC 15 then erases+redraws the arrow at HOME with the
+        ;     new pen_color (option B: arrow_save_bbox+OR draw, reversible).
         .byte "CS", $0D
+        .byte "SETPC 15", $0D                ; trail/arrow/sprite -> white
         .byte "PRINT ", $22, "END", $0D
         .byte 0
 
@@ -4353,11 +4349,97 @@ compute_turtle_verts:
         STA arg_lo
         RTS
 
-; xor_turtle: set XOR plot mode, draw 3 lines tip<->BL<->BR<->tip,
-;             restore plot mode. Caller must have called compute_turtle_verts.
-xor_turtle:
-        LDA #1
-        STA plot_mode
+; ============================================================================
+; Option B -- save/restore the 9 cells of the arrow's bounding box around
+;   the OR-mode triangle draw. The arrow is OR'd over the saved background
+;   so trail bits are not inverted (unlike XOR), and erase replays the
+;   saved bytes verbatim, restoring the bitmap exactly. No XOR vertex
+;   doubling since OR is idempotent. compute_turtle_verts is still needed
+;   to feed trace_turtle_lines (line_xy needs explicit endpoints), but the
+;   box that we save is anchored on (tx_lo, ty_lo) snapped to the cell
+;   grid -- the arrow is at most 13x13 px so a 24x24 px (3x3 cells) box
+;   centred on the turtle covers it for any heading, given the existing
+;   draw_turtle bounds check (tx in [9..246], ty in [9..182]).
+;
+; Iteration order is row-major (top-to-bottom, left-to-right), so save
+; and restore both run X = 0..71 in lock-step and don't need per-cell
+; address bookkeeping.
+; ============================================================================
+
+arrow_save_bbox:
+        LDA #0                    ; mode 0 = save (VDP read -> BSS)
+        .byte $2C                 ; BIT abs absorbs the next LDA #1 opcode
+arrow_restore_bbox:
+        LDA #1                    ; mode 1 = restore (BSS -> VDP write)
+arrow_io_bbox:
+        STA arrow_io_dir
+        ; --- 4x4 cell bbox (32x32 px) anchored on (tx-9, ty-9) snapped
+        ;     down to the cell grid, so the bbox always contains the
+        ;     full ±9 px reach of the arrow's tip regardless of heading.
+        ;     Clamp the right/bottom anchor so the box stays on-screen
+        ;     (256x192 px = 32x24 cells; bbox max start = 224,160).
+        LDA tx_lo
+        SEC
+        SBC #9
+        AND #$F8
+        CMP #225
+        BCC @x_ok
+        LDA #224
+@x_ok:  STA arrow_bx
+        LDA ty_lo
+        SEC
+        SBC #9
+        AND #$F8
+        CMP #161
+        BCC @y_ok
+        LDA #160
+@y_ok:  STA pix_y
+        LDA #4
+        STA arrow_rows_left
+        LDX #0
+@row:   LDA arrow_bx
+        STA pix_x
+        LDA #4
+        STA arrow_cols_left
+@col:   JSR calc_pix_addr
+        LDA arrow_io_dir
+        BNE @restore_cell
+        ; --- save 8 bytes: VDP_DATA -> arrow_bg_pat[X..X+7] ---
+        JSR vdp_set_read
+        LDY #8
+@s_b:   LDA VDP_DATA
+        STA arrow_bg_pat,X
+        INX
+        DEY
+        BNE @s_b
+        BEQ @next_col
+@restore_cell:
+        ; --- restore 8 bytes: arrow_bg_pat[X..X+7] -> VDP_DATA ---
+        JSR vdp_set_write
+        LDY #8
+@r_b:   LDA arrow_bg_pat,X
+        STA VDP_DATA
+        INX
+        DEY
+        BNE @r_b
+@next_col:
+        LDA pix_x
+        CLC
+        ADC #8
+        STA pix_x
+        DEC arrow_cols_left
+        BNE @col
+        LDA pix_y
+        CLC
+        ADC #8
+        STA pix_y
+        DEC arrow_rows_left
+        BNE @row
+        RTS
+
+; trace_turtle_lines: emit the 3 line_xy calls (tip->BL->BR->tip) using
+;   whatever plot_mode the caller set. Used by draw_turtle's bitmap path.
+trace_turtle_lines:
         ; line tip -> back-left
         LDA tx0
         STA ln_x0
@@ -4388,8 +4470,6 @@ xor_turtle:
         LDA ty0
         STA ln_y1
         JSR line_xy
-        LDA #0
-        STA plot_mode
         RTS
 
 ; ============================================================================
@@ -4455,10 +4535,12 @@ apply_sprite_size:
         STA spr_r1
         RTS
 
-; draw_turtle: in bitmap mode, XOR-draw the triangle and flag visible.
+; draw_turtle: in bitmap mode, save the 9 cells around the turtle then
+;   OR-trace the triangle on top so trails are not inverted (cleanly
+;   reversible by erase_turtle, which writes the saved cells back).
 ;   In sprite mode, write 4 bytes (Y, X, name, color) to the sprite #0
 ;   attribute slot at VRAM $3B00. The TMS9918 hardware-blits the sprite
-;   over the bitmap; turtle_visible stays untouched (no XOR bookkeeping).
+;   over the bitmap; no save/restore needed.
 draw_turtle:
         LDA sprite_mode
         BEQ @bitmap
@@ -4485,7 +4567,7 @@ draw_turtle:
         LDA #0                    ; pattern name = 0 (sprite_pattern_table[0])
         STA VDP_DATA
         NOP                     ; +2c silicon-strict gap (LDA zp/abs bridge)
-        LDA sprite_color          ; sprite-0 colour (SETSC controls this)
+        LDA pen_color             ; sprite-0 colour (SETPC drives every surface)
         STA VDP_DATA
         RTS
 @bitmap:
@@ -4503,22 +4585,24 @@ draw_turtle:
         CMP #183
         BCS @done
         JSR compute_turtle_verts
-        JSR xor_turtle
+        JSR arrow_save_bbox       ; capture 9 cells before we modify them
+        LDA #0                    ; OR mode: set bits + write colour cells
+        STA plot_mode
+        JSR trace_turtle_lines
         LDA #1
         STA turtle_visible
 @done:  RTS
 
-; erase_turtle: bitmap mode -- XOR the triangle out at its current pose.
-;   Sprite mode -- nothing to do (TMS9918 sprites don't bleed into the
-;   pattern table, so moving the sprite is enough; old position vanishes
-;   automatically on the next attribute write).
+; erase_turtle: bitmap mode -- replay the saved 9 cells over the pattern
+;   table, restoring the bitmap exactly. Sprite mode -- nothing to do
+;   (sprites don't bleed into the pattern table, the next attribute
+;   write moves them).
 erase_turtle:
         LDA sprite_mode
         BNE @done
         LDA turtle_visible
         BEQ @done
-        JSR compute_turtle_verts
-        JSR xor_turtle
+        JSR arrow_restore_bbox
         LDA #0
         STA turtle_visible
 @done:  RTS
@@ -5039,22 +5123,34 @@ shades_pat:
 ; SAY "TEXT -- comic-book speech bubble. Draws a fixed-position frame
 ;   below the sprite (turtle Y assumed to be ~16 = top), with a tail
 ;   pointing up to the sprite's mouth area, then prints TEXT inside the
-;   bubble starting at top-left (16, 40). The bubble is hardcoded to
-;   span (8,32)-(247,72) = 240x40 px and supports up to 4 lines of 28
+;   bubble starting at top-left (16, 88). The bubble is hardcoded to
+;   span (8,80)-(247,112) = 240x32 px and supports up to 3 lines of 28
 ;   chars each via auto-wrap (no word-boundary detection -- text breaks
 ;   mid-word when tx_lo overflows the right margin).
-;   Lines past bottom (ty_lo >= 72) are silently truncated.
+;   Lines past bottom (ty_lo >= 112) are silently truncated.
 ;   Saves the user from manually SETXY-ing each line of dialog: every
 ;   DEMO2 narrator scene now reads as
 ;     CS / SETXY 128 16 / SETSHAPE "EMOTE / SAY "TEXT / WAIT n
 ; ============================================================================
 cmd_say:
+        ; The speech bubble must stay readable regardless of the sprite
+        ; tint set by SETPC (the character may be green when ill, red
+        ; when angry, etc.). Save pen_color, force white for the bubble
+        ; outline + glyph cells, and restore it after the text is laid
+        ; out so subsequent commands (sprite refresh, trail, etc.) keep
+        ; the user-chosen colour.
+        LDA pen_color
+        PHA
+        LDA #$0F
+        STA pen_color
         JSR draw_bubble
         LDA #16
         STA tx_lo                 ; left margin inside bubble
         LDA #88
         STA ty_lo                 ; first text row, just below top border
         JSR cmd_label             ; reuse scan/blit logic to render text
+        PLA
+        STA pen_color             ; restore caller's tint
         ; --- proportional pause: WAIT (lines * 4) units, ~2.4 s per line
         ;     at native 1 MHz. lines = (ty_lo - 88)/8 + 1, capped by the
         ;     bubble-bottom truncation in cmd_label's scan loop.
@@ -5094,7 +5190,7 @@ cmd_label:
         ; If we already pushed ty past the bubble bottom on a previous
         ; wrap, swallow the rest of the text without blitting.
         LDA ty_lo
-        CMP #120
+        CMP #112
         BCS @consume
         LDA tx_lo
         CMP #240                  ; past bubble right margin?
@@ -5106,7 +5202,7 @@ cmd_label:
         CLC
         ADC #8
         STA ty_lo
-        CMP #120                  ; past bubble bottom?
+        CMP #112                  ; past bubble bottom?
         BCC @blit_now
         ; below bubble -- consume rest, no blit
         JMP @consume
@@ -5179,14 +5275,33 @@ blit_glyph:
         INY
         CPY #8
         BNE @row
+        ; --- paint the cell's 8 colour-table bytes with pen_color so SETPC
+        ;     also tints LABEL/SAY text. The colour table mirrors the
+        ;     pattern table layout at base $2000, so we can re-prime the
+        ;     VDP cursor with the same pix_addr but the $2000 base bit set.
+        LDA pix_addr_lo
+        STA VDP_CTRL
+        LDA pix_addr_hi
+        ORA #$60                  ; $20 (colour base) | $40 (write enable)
+        STA VDP_CTRL
+        LDA pen_color
+        ASL
+        ASL
+        ASL
+        ASL                       ; pen_color in high nibble
+        ORA #$01                  ; transparent background ($x1)
+        LDX #8
+@col:   STA VDP_DATA
+        DEX
+        BNE @col
         RTS
 
 ; ============================================================================
 ; draw_bubble: draw a comic-book speech-bubble frame on the bitmap.
-;   Fixed layout: rectangle (8,80)-(247,120) plus a tiny triangular tail
+;   Fixed layout: rectangle (8,80)-(247,112) plus a tiny triangular tail
 ;   from (124,80)/(132,80) up to (128,72). Assumes the narrator sprite
 ;   sits centered around (128, 64) -- about 1/3 down the 192-line screen
-;   so the bubble has room for up to 4 wrapped text lines below it.
+;   so the bubble has room for up to 3 wrapped text lines below it.
 ;   Six line_xy calls; plot_mode is forced to 0 (OR) so the frame paints
 ;   additively into the bitmap. Called by cmd_say. Total ~85 bytes.
 ; ============================================================================
@@ -5202,31 +5317,31 @@ draw_bubble:
         LDA #247
         STA ln_x1
         JSR line_xy
-        ; --- bottom edge (8,120) -> (247,120)
+        ; --- bottom edge (8,112) -> (247,112)
         LDA #8
         STA ln_x0
-        LDA #120
+        LDA #112
         STA ln_y0
         STA ln_y1
         LDA #247
         STA ln_x1
         JSR line_xy
-        ; --- left edge (8,80) -> (8,120)
+        ; --- left edge (8,80) -> (8,112)
         LDA #8
         STA ln_x0
         STA ln_x1
         LDA #80
         STA ln_y0
-        LDA #120
+        LDA #112
         STA ln_y1
         JSR line_xy
-        ; --- right edge (247,80) -> (247,120)
+        ; --- right edge (247,80) -> (247,112)
         LDA #247
         STA ln_x0
         STA ln_x1
         LDA #80
         STA ln_y0
-        LDA #120
+        LDA #112
         STA ln_y1
         JSR line_xy
         ; --- tail left (124,80) -> (128,72)
@@ -5291,8 +5406,10 @@ demo2_script:
         .byte "SAY ", $22, "I AM NOT REAL.", $0D
         .byte "CS", $0D
         .byte "SETXY 128 64", $0D
+        .byte "SETPC 3", $0D                  ; green sprite for "ill"
         .byte "SETSHAPE ", $22, "SICK", $0D
         .byte "SAY ", $22, "IT MAKES ME ILL.", $0D
+        .byte "SETPC 15", $0D                 ; back to white for next scene
         ; --- Act 3: my ancestors -- the real silicon ---
         .byte "CS", $0D
         .byte "SETXY 128 64", $0D
@@ -5345,8 +5462,10 @@ demo2_script:
         .byte "SAY ", $22, "LIKE PINOCCHIO.", $0D
         .byte "CS", $0D
         .byte "SETXY 128 64", $0D
+        .byte "SETPC 9", $0D                  ; red sprite for anger
         .byte "SETSHAPE ", $22, "ANGRY", $0D
         .byte "SAY ", $22, "EMULATION IS NOT LIFE!", $0D
+        .byte "SETPC 15", $0D                 ; back to white for next scene
         ; --- Act 5: the path -- Apple-1 rare, Replica-1 exists ---
         .byte "CS", $0D
         .byte "SETXY 128 64", $0D
@@ -5442,12 +5561,9 @@ mnem_tab:
         .word cmd_setxy
         .byte "SETH", 1
         .word cmd_seth
-        .byte "SETP", 1           ; SETPC N -- pen (trail) colour 0..15
-        .word cmd_setpc
-        .byte "SETT", 1           ; SETTC N -- turtle/sprite colour 0..15
-        .word cmd_setsc           ;            (note: SETSC would alias
-                                  ;            SETSHAPE since find_mnem
-                                  ;            keys on the first 4 chars)
+        .byte "SETP", 1           ; SETPC N -- the only colour command
+        .word cmd_setpc           ;            (drives trail, arrow, sprite,
+                                  ;            and bitmap text simultaneously)
         .byte "REPE", 'R'
         .word 0               ; never called via dispatcher; cmd_repeat
                               ; is invoked directly from parse_and_exec.

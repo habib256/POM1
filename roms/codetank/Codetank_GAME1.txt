@@ -1,1 +1,1 @@
-TMS9918: Galaga / Sokoban / Snake / Life (lower jumper, menu) + TMS_LOGO V2.5 (upper jumper, run-in-place). Type 4000R from either jumper position.
+TMS9918: Galaga / Sokoban / Snake / Life (lower jumper, menu) + TMS_LOGO V2.6 (upper jumper, run-in-place). Type 4000R from either jumper position.

@@ -17,7 +17,7 @@ Default layout (one ROM file, both halves used):
     $7A00-$7FFF  TMS_LIFE      (linked at $7A00, 1 536 B slot)
 
   Upper 16 kB ($4000-$7FFF when CodeTank board jumper = Upper):
-    $4000-$xxxx  TMS_LOGO V2.5 interpreter (linked at $4000,
+    $4000-$xxxx  TMS_LOGO V2.6 interpreter (linked at $4000,
                  CODE segment fills as needed up to 16 kB).
                  PROCBSS lives at $E000-$EFFF in the upper Parmigiani
                  RAM bank (4 kB) so the 1 kB control stack + 2.4 kB
@@ -27,7 +27,7 @@ Default layout (one ROM file, both halves used):
 The lower-bank games (Galaga, Sokoban, Snake, Life) all run **in place
 from ROM**. Galaga/Sokoban/Snake fit in the bare 4 kB Apple-1 footprint;
 Life uses two 884-B grids at $0800/$0C00 (low Parmigiani RAM bank).
-LOGO V2.5 also runs in place from ROM and uses the high RAM bank for
+LOGO V2.6 also runs in place from ROM and uses the high RAM bank for
 its proc / var / control-stack tables.
 
 Optional --layout=split: the original two-bank layout (Galaga in lower,
@@ -179,7 +179,7 @@ def assemble_multi(asms: list[pathlib.Path], cfg: pathlib.Path, name: str,
                    max_size: int,
                    extra_ca65_args: list[str] | None = None) -> bytes:
     """Assemble each `asms[i]` separately with ca65, then link the whole
-    bundle with `cfg`. Used for LOGO V2.5 which links three modules
+    bundle with `cfg`. Used for LOGO V2.6 which links three modules
     (TMS_Logo_16k + math + tms9918m2) into one ROM image.
 
     `extra_ca65_args` lets the caller pass per-build flags such as
@@ -220,7 +220,7 @@ def assemble_multi(asms: list[pathlib.Path], cfg: pathlib.Path, name: str,
 
 
 def build_upper_bank_logo() -> bytes:
-    """Upper 16 kB: TMS_LOGO V2.5 interpreter at $4000-$7FFF, run in
+    """Upper 16 kB: TMS_LOGO V2.6 interpreter at $4000-$7FFF, run in
     place from ROM. PROCBSS lives in the upper Parmigiani RAM bank
     ($E000-$EFFF) per apple1_logo_v2_codetank_bank.cfg.
 
@@ -228,14 +228,14 @@ def build_upper_bank_logo() -> bytes:
     compiled in (they're gated out of the dev DRAM build because
     apple1_logo_16k.cfg has no spare CODE budget for them).
     """
-    print("\n[CodeTank] Upper bank (TMS_LOGO V2.5, run-in-place):",
+    print("\n[CodeTank] Upper bank (TMS_LOGO V2.6, run-in-place):",
           file=sys.stderr)
     logo = assemble_multi(
         [LOGO_V2_ASM, LOGO_V2_MATH_ASM, LOGO_V2_VDP_ASM],
         LOGO_V2_BANK_CFG, "TMS_Logo_v2_bank", HALF_SIZE,
         extra_ca65_args=["-D", "CODETANK_BUILD"])
     bank = bytearray(b"\xFF" * HALF_SIZE)
-    slot(bank, 0x0000, logo, HALF_SIZE, "LOGO V2.5  ($4000-$7FFF)")
+    slot(bank, 0x0000, logo, HALF_SIZE, "LOGO V2.6  ($4000-$7FFF)")
     return bytes(bank)
 
 
@@ -338,7 +338,7 @@ def main() -> int:
         rom = lower + upper
         sidecar_body = (
             "TMS9918: Galaga / Sokoban / Snake / Life (lower jumper, menu) "
-            "+ TMS_LOGO V2.5 (upper jumper, run-in-place). Type 4000R "
+            "+ TMS_LOGO V2.6 (upper jumper, run-in-place). Type 4000R "
             "from either jumper position.\n"
         )
     elif args.layout == "split":
@@ -354,7 +354,7 @@ def main() -> int:
         rom = lower + upper
         sidecar_body = (
             "TMS9918 dualslot-8k: lower jumper = Galaga ($4000) + Sokoban "
-            "($6000), each in 8 kB; upper jumper = TMS_LOGO V2.5. "
+            "($6000), each in 8 kB; upper jumper = TMS_LOGO V2.6. "
             "No interactive menu; run 4000R or 6000R from Wozmon.\n"
         )
 
