@@ -1256,6 +1256,12 @@ row_x20:
 
 ; --- Tile bitmaps (7 tiles x 32 bytes = 224 bytes) ---
 ; Each tile: 16 scanlines, 2 bytes per scanline
+;
+; Everything from here to EOF lives in the low bank ($0280-$0EFF) under
+; the dual-bank Parmigiani layout — this is where the bulk data goes so
+; the high bank ($E000-$EFFF) stays free for the program code.
+.segment "DATA_LOW"
+
 tile_bitmaps:
 ; Tile 0: FLOOR (all black)
         .byte $00,$00, $00,$00, $00,$00, $00,$00
