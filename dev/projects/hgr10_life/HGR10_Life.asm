@@ -25,14 +25,16 @@
 ;   python3 software/hgr/emit_HGR10_Life_txt.py
 ;
 ; Run in POM1: plug GEN2 card (auto-enabled when loading from
-; software/hgr/), File > Load Memory HGR10_Life.txt, then 280R
+; software/hgr/), File > Load Memory HGR10_Life.txt, then E000R
 ; in the Woz Monitor. Tap any key to change pattern, ESC to exit.
 ;
-; Memory footprint (all within 8 KB from $0280):
-;   $0280-~$0800  code + pattern tables (output file)
-;   $1200-$18E3   grid_a       (1764 B, zeroed at boot)
-;   $1900-$1FE3   grid_b       (1764 B, zeroed at boot)
+; Memory footprint (Parmigiani 8 KB dual-bank + GEN2):
+;   $0200-$08E3   grid_a       (1764 B, zeroed at boot — overwrites Wozmon
+;                               keyboard input buffer at $0200-$027F, but
+;                               that's only used while typing)
+;   $0900-$0FE3   grid_b       (1764 B, zeroed at boot)
 ;   $2000-$3FFF   HGR framebuffer (GEN2 reads this)
+;   $E000-~$E700  code + pattern tables (output file)
 ;
 ; Cell layout:       cell (r, c), r in 1..40, c in 1..40
 ;                    byte = grid[r*42 + c]   (0 = dead, 1 = alive)
@@ -57,8 +59,11 @@ KEY_ESC   = $9B             ; Apple 1 ESC (bit 7 set)
 NUM_PATTERNS = 6
 
 ; ----- Runtime RAM (absolute, NOT in the output file) -----
-grid_a  := $1200
-grid_b  := $1900
+; The 8 KB dual-bank Parmigiani has no RAM at $1000-$1FFF; the grids must
+; live in the low bank. 1764 B + 1764 B fits $0200-$0FE3 with 28 B of
+; slack at the end of each grid for page alignment.
+grid_a  := $0200
+grid_b  := $0900
 
 ; ----- Zero page -----
 .zeropage

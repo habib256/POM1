@@ -12,7 +12,7 @@ entry in the HGR demo series.
 
 ## Sources
 
-- `HGR5_House.asm` — main entry, loads at `$0280`
+- `HGR5_House.asm` — main entry, loads at `$E000`
 - libs used: `dev/lib/apple1/`, `dev/lib/hgr/`
 
 ## Build
@@ -29,7 +29,7 @@ By hand:
 
 1. POM1 → Presets → GEN2 HGR preset (TODO).
 2. File → Load → `software/hgr/HGR5_House.bin`.
-3. Wozmon `\` prompt: type `280R`.
+3. Wozmon `\` prompt: type `E000R`.
 
 ## Author / License
 

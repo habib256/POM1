@@ -7,7 +7,7 @@
 ;   ca65 -o build/HGR7_Connect4.o software/hgr/HGR7_Connect4.asm
 ;   ld65 -C software/hgr/apple1_gen2.cfg -o build/HGR7_Connect4.bin build/HGR7_Connect4.o
 ;
-; Load via File > Load Memory (HGR7_Connect4.txt), 280R.
+; Load via File > Load Memory (HGR7_Connect4.txt), E000R.
 ; GEN2 card must be enabled in Hardware menu.
 ;
 ; Pieces are 14x16 rounded rectangles, dithered in NTSC artefact

@@ -9,7 +9,7 @@
 ;   ld65 -C software/hgr/apple1_gen2.cfg -o build/HGR3_TestCard.bin build/HGR3_TestCard.o
 ;
 ; In POM1: plug GEN2 card, File > Load Memory (HGR3_TestCard.txt)
-; then type 280R in Woz Monitor.
+; then type E000R in Woz Monitor.
 ;
 ; Shows 8 vertical bands (5 byte columns each):
 ;   BLACK | VIOLET | GREEN | WHITE | BLUE | ORANGE | WHITE | BLACK
@@ -28,7 +28,7 @@ cur_y:      .res 1      ; $03  (used as scanline counter here)
 ptr_lo:     .res 1      ; $04  (required by hgr_tables.inc)
 ptr_hi:     .res 1      ; $05  (required by hgr_tables.inc)
 
-; --- Code at $0280 ---
+; --- Code at $E000 ---
 .code
 
 ; =============================================

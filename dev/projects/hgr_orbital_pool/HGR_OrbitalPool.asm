@@ -26,12 +26,12 @@
 ;   python3 software/hgr/emit_HGR_OrbitalPool_txt.py
 ;
 ; Run in POM1: plug GEN2 (auto-enabled when loading from software/hgr/),
-; File > Load Memory HGR_OrbitalPool.txt, then 280R in the Woz Monitor.
+; File > Load Memory HGR_OrbitalPool.txt, then E000R in the Woz Monitor.
 ;
-; Memory footprint:
-;   $0280-~$1000  code + LUTs + level data (output file)
-;   $1800-$1813   game state (non-critical, NOT in output file)
+; Memory footprint (Parmigiani 8 KB dual-bank + GEN2):
+;   $0280-$0295   game state (overlays Wozmon kbd buffer at runtime)
 ;   $2000-$3FFF   HGR framebuffer (GEN2 reads this)
+;   $E000-~$EFFF  code + LUTs + level data (output file)
 ;
 ; Physics: 16-bit 8.8 fixed-point position/velocity. Per well per step,
 ; gravity delta is (dx * pull_lut[d2]) >> 4 with d2 = dx*dx + dy*dy.
@@ -70,24 +70,27 @@ MAX_WELLS  = 3
 LEVEL_STRIDE = 11          ; bytes per level record (see level_0)
 
 ; ----- Runtime RAM (absolute; NOT in output file) -----
-state         := $1800
-lvl_idx       := $1801
-aim_angle     := $1802
-aim_power     := $1803
-frame_cnt_lo  := $1804
-frame_cnt_hi  := $1805
-num_wells     := $1806
-wells_x       := $1807     ; 3 bytes
-wells_y       := $180A     ; 3 bytes
-target_x      := $180D
-target_y      := $180E
-ball_start_x  := $180F
-ball_start_y  := $1810
-prev_px       := $1811
-prev_py       := $1812
-exit_flag     := $1813
-ball_pixel_x  := $1814     ; ball pixel column 0..223
-ball_pixel_y  := $1815     ; ball pixel row 0..191
+; Parmigiani 8 KB dual-bank has no RAM at $1000-$1FFF — relocated from
+; $1800 to $0280 (after the Wozmon keyboard input buffer at $0200-$027F,
+; which is unused once the program is running).
+state         := $0280
+lvl_idx       := $0281
+aim_angle     := $0282
+aim_power     := $0283
+frame_cnt_lo  := $0284
+frame_cnt_hi  := $0285
+num_wells     := $0286
+wells_x       := $0287     ; 3 bytes
+wells_y       := $028A     ; 3 bytes
+target_x      := $028D
+target_y      := $028E
+ball_start_x  := $028F
+ball_start_y  := $0290
+prev_px       := $0291
+prev_py       := $0292
+exit_flag     := $0293
+ball_pixel_x  := $0294     ; ball pixel column 0..223
+ball_pixel_y  := $0295     ; ball pixel row 0..191
 
 ; ----- Zero page -----
 .zeropage

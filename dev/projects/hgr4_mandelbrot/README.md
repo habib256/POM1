@@ -13,7 +13,7 @@ HGR demo series.
 
 ## Sources
 
-- `HGR4_Mandelbrot.asm` — main entry, loads at `$0280`
+- `HGR4_Mandelbrot.asm` — main entry, loads at `$E000`
 - `emit_HGR4_Mandelbrot_txt.py` — assemble + emit Woz hex `.txt`
 - libs used: `dev/lib/apple1/`, `dev/lib/hgr/`
 
@@ -32,7 +32,7 @@ By hand:
 
 1. POM1 → Presets → GEN2 HGR preset (TODO).
 2. File → Load → `software/hgr/HGR4_Mandelbrot.txt`.
-3. Wozmon `\` prompt: type `280R`.
+3. Wozmon `\` prompt: type `E000R`.
 
 ## Author / License
 

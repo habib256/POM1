@@ -10,7 +10,7 @@
 ;   ld65 -C software/hgr/apple1_gen2.cfg -o build/HGR9_Smiley16Show.bin build/HGR9_Smiley16Show.o
 ;   python3 software/hgr/emit_HGR9_Smiley16Show_txt.py
 ;
-; POM1: carte GEN2, File > Load Memory (HGR9_Smiley16Show.txt), puis 280R.
+; POM1: carte GEN2, File > Load Memory (HGR9_Smiley16Show.txt), puis E000R.
 ; =============================================
 
 ECHO    = $FFEF

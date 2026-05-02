@@ -34,7 +34,7 @@ cur_y:      .res 1      ; $03  (required by hgr_tables.inc)
 ptr_lo:     .res 1      ; $04  (required by hgr_tables.inc)
 ptr_hi:     .res 1      ; $05  (required by hgr_tables.inc)
 
-; --- Code at $0280 ---
+; --- Code at $E000 ---
 .code
 
 ; =============================================

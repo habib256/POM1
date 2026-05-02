@@ -13,7 +13,7 @@ pattern, ESC to exit. Tenth entry in the HGR demo series.
 
 ## Sources
 
-- `HGR10_Life.asm` — main entry, loads at `$0280`
+- `HGR10_Life.asm` — main entry, loads at `$E000`
 - `emit_HGR10_Life_txt.py` — assemble + emit Woz hex `.txt`
 - libs used: `dev/lib/apple1/`, `dev/lib/hgr/`
 
@@ -32,7 +32,7 @@ By hand:
 
 1. POM1 → Presets → GEN2 HGR preset (TODO).
 2. File → Load → `software/hgr/HGR10_Life.txt`.
-3. Wozmon `\` prompt: type `280R`.
+3. Wozmon `\` prompt: type `E000R`.
 
 ## Author / License
 

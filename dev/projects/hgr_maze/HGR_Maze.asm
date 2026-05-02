@@ -13,7 +13,7 @@
 ; framebuffer and places BSS (grid, stack) at $4000+.
 ;
 ; In POM1: plug GEN2 card, File > Load Memory (HGR2_Maze.txt)
-; then type 280R in Woz Monitor.
+; then type E000R in Woz Monitor.
 ;
 ; Each grid unit maps to a 4x4 pixel block.
 ; 4 pixels don't align to 7-pixel HGR byte boundaries,
@@ -73,7 +73,7 @@ gptr_hi:     .res 1     ; $16
 temp_lo:     .res 1     ; $17
 temp_hi:     .res 1     ; $18
 
-; --- Code at $0280 ---
+; --- Code at $E000 ---
 .code
 
 ; =============================================

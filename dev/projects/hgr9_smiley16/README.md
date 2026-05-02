@@ -15,7 +15,7 @@ Ninth entry in the HGR demo series.
 
 ## Sources
 
-- `HGR9_Smiley16Show.asm` — main entry, loads at `$0280`
+- `HGR9_Smiley16Show.asm` — main entry, loads at `$E000`
 - `_gen_smiley16.py` — regenerates `dev/lib/hgr/smiley.inc` from the
   AVIF emoji sheet (no toolchain prerequisites; only run when the art
   changes)
@@ -37,7 +37,7 @@ By hand:
 
 1. POM1 → Presets → GEN2 HGR preset (TODO).
 2. File → Load → `software/hgr/HGR9_Smiley16Show.txt`.
-3. Wozmon `\` prompt: type `280R`.
+3. Wozmon `\` prompt: type `E000R`.
 
 ## Author / License
 

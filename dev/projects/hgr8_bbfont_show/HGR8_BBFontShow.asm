@@ -11,7 +11,7 @@
 ;   ld65 -C software/hgr/apple1_gen2.cfg -o build/HGR8_BBFontShow.bin build/HGR8_BBFontShow.o
 ;
 ; In POM1: enable GEN2, File > Load Memory (HGR8_BBFontShow.txt),
-; then type 280R in Woz Monitor.
+; then type E000R in Woz Monitor.
 ;
 ; Grid: 16 columns × 16 rows. Each cell 14×16 px (7-bit glyph + pad byte).
 ; Row pitch 10 scanlines (fits 192 lines).

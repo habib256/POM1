@@ -14,7 +14,7 @@
 ;   make
 ;
 ; Run (POM1 with GEN2 enabled, preset that includes HGR):
-;   File > Load Memory > software/hgr/HGR_SymbolsShow.txt   then:   280R
+;   File > Load Memory > software/hgr/HGR_SymbolsShow.txt   then:   E000R
 ; =============================================================================
 
 ECHO    = $FFEF

@@ -13,7 +13,7 @@ the HGR demo series.
 
 ## Sources
 
-- `HGR3_TestCard.asm` — main entry, loads at `$0280`
+- `HGR3_TestCard.asm` — main entry, loads at `$E000`
 - libs used: `dev/lib/apple1/`, `dev/lib/hgr/`
 
 ## Build
@@ -30,7 +30,7 @@ By hand:
 
 1. POM1 → Presets → GEN2 HGR preset (TODO).
 2. File → Load → `software/hgr/HGR3_TestCard.bin`.
-3. Wozmon `\` prompt: type `280R`.
+3. Wozmon `\` prompt: type `E000R`.
 
 ## Author / License
 

@@ -11,7 +11,7 @@ Card. Seventh entry in the HGR demo series.
 
 ## Sources
 
-- `HGR7_Connect4.asm` — main entry, loads at `$0280`
+- `HGR7_Connect4.asm` — main entry, loads at `$E000`
 - libs used: `dev/lib/apple1/`, `dev/lib/hgr/`
 
 ## Build
@@ -28,7 +28,7 @@ By hand:
 
 1. POM1 → Presets → GEN2 HGR preset (TODO).
 2. File → Load → `software/hgr/HGR7_Connect4.bin`.
-3. Wozmon `\` prompt: type `280R`.
+3. Wozmon `\` prompt: type `E000R`.
 
 ## Author / License
 
