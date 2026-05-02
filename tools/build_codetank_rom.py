@@ -86,6 +86,10 @@ LOGO_V2_ASM       = DEV / "tms9918_logo"          / "TMS_Logo_16k.asm"
 LOGO_V2_BANK_CFG  = DEV / "tms9918_logo"          / "apple1_logo_v2_codetank_bank.cfg"
 LOGO_V2_MATH_ASM  = ROOT / "dev" / "lib" / "m6502"   / "math.asm"
 LOGO_V2_VDP_ASM   = ROOT / "dev" / "lib" / "tms9918" / "tms9918m2.asm"
+LOGO_V2_EMOTE_ASM = ROOT / "dev" / "lib" / "tms9918" / "sprites_emotes.asm"
+LOGO_V2_TEXT_ASM  = ROOT / "dev" / "lib" / "tms9918" / "text_bitmap.asm"
+LOGO_V2_BUBBLE_ASM= ROOT / "dev" / "lib" / "tms9918" / "bubble.asm"
+LOGO_V2_BUFED_ASM = ROOT / "dev" / "lib" / "tms9918" / "buffer_editor.asm"
 LIB_APPLE1        = ROOT / "dev" / "lib" / "apple1"
 LIB_M6502         = ROOT / "dev" / "lib" / "m6502"
 LIB_TMS           = ROOT / "dev" / "lib" / "tms9918"
@@ -231,7 +235,9 @@ def build_upper_bank_logo() -> bytes:
     print("\n[CodeTank] Upper bank (TMS_LOGO V2.6, run-in-place):",
           file=sys.stderr)
     logo = assemble_multi(
-        [LOGO_V2_ASM, LOGO_V2_MATH_ASM, LOGO_V2_VDP_ASM],
+        [LOGO_V2_ASM, LOGO_V2_MATH_ASM, LOGO_V2_VDP_ASM,
+         LOGO_V2_EMOTE_ASM, LOGO_V2_TEXT_ASM, LOGO_V2_BUBBLE_ASM,
+         LOGO_V2_BUFED_ASM],
         LOGO_V2_BANK_CFG, "TMS_Logo_v2_bank", HALF_SIZE,
         extra_ca65_args=["-D", "CODETANK_BUILD"])
     bank = bytearray(b"\xFF" * HALF_SIZE)
