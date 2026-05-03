@@ -102,6 +102,23 @@ corr_row:       .res 1          ; cy of room 0 — preserved across iter 1
                                 ; west-anchor cell on a corridor cell
                                 ; (would replace the wall-on-left rule
                                 ; with a door-on-left otherwise).
+depth:          .res 1          ; current dungeon depth (1..255).
+                                ; Only stairs-down advances depth.
+                                ; 'N' regenerates at the same depth;
+                                ; edge doors warp horizontally /
+                                ; vertically into a sibling big-room
+                                ; on the same floor.
+trans_mode:     .res 1          ; level-transition kind (set by
+                                ;   main_loop, consumed by new_level):
+                                ;   0 = regen ('N')      — random gen, no INC
+                                ;   1 = descent (stairs) — random gen, depth++
+                                ;   2 = exited E (col 15) — force big-room, spawn at W
+                                ;   3 = exited W (col 0)  — force big-room, spawn at E
+                                ;   4 = exited N (row 0)  — force big-room, spawn at S
+                                ;   5 = exited S (row 9)  — force big-room, spawn at N
+wrap_anchor:    .res 1          ; row (modes 2/3) or col (modes 4/5)
+                                ; the player exited at — preserved as
+                                ; the spawn anchor in the wrapped room.
 
 
 ; --- Map buffer (160 B, 16x10 logical tiles, one byte = tile base id) ---
@@ -131,35 +148,45 @@ start:
         JSR draw_title          ; ROGUE banner + key-layout prompt
         JSR wait_kb_choice      ; bind keys + seed prng_lo/hi from key timing
 
+        LDA #1                  ; first level — new_level INCs from here
+        STA depth
+        LDA #0                  ; trans_mode 0 = regen (random gen, no wrap)
+        STA trans_mode          ; ensures place_perimeter_doors places
+                                ; all 4 doors on the very first big-room.
+
         JSR clear_name_table    ; wipe title before the game view appears
         JSR gen_dungeon         ; procedural rooms + corridors + stairs;
                                 ; sets player_col/row to first room centre.
         JSR render_map          ; expand 16x10 logical map to 32x20 char block
 
-        JSR upload_player_pat   ; char_adventurer -> sprite pattern slot 0
+        JSR upload_player_pat   ; char_paladin2_pat -> sprite pattern slot 0
         JSR place_player        ; SAT slot 0 = (Y, X, name=0, color)
+        JSR update_hud          ; HUD on rows 20-23: depth + key hints
 
 main_loop:
         JSR wait_key            ; A = raw key (high bit still set)
         CMP #('N' | $80)        ; 'N' regenerates a fresh random level
-        BEQ @new_level
+        BEQ @do_regen
         JSR handle_input        ; carry clear -> tgt_col/tgt_row set
         BCS main_loop           ; no movement key -> just wait again
         JSR check_collision     ; carry clear -> passable
         BCS main_loop           ; blocked -> ignore the move
-        ; A successful move whose target is on the screen frame can
-        ; only mean the player walked onto a big-room edge door —
-        ; check_collision lets TILE_DOOR through regardless of bounds.
-        ; Treat that as a level transition: regenerate a fresh map
-        ; rather than placing the sprite off the playable grid.
+        ; Classify the move's target into one of three buckets:
+        ;   - TILE_STAIRS_DOWN → descent (depth++)
+        ;   - on the screen frame → edge-door wrap (same depth, force
+        ;     big-room, spawn at the opposite edge)
+        ;   - everything else → regular move within the playable area
+        JSR tile_at_target
+        CMP #TILE_STAIRS_DOWN
+        BEQ @do_descent
         LDA tgt_col
-        BEQ @new_level          ; col 0 (west edge)
+        BEQ @exit_w             ; col 0
         CMP #15
-        BEQ @new_level          ; col 15 (east edge)
+        BEQ @exit_e             ; col 15
         LDA tgt_row
-        BEQ @new_level          ; row 0 (north edge)
+        BEQ @exit_n             ; row 0
         CMP #9
-        BEQ @new_level          ; row 9 (south edge)
+        BEQ @exit_s             ; row 9
         ; Regular move within the playable interior.
         LDA tgt_col
         STA player_col
@@ -167,21 +194,155 @@ main_loop:
         STA player_row
         JSR place_player        ; rewrite SAT slot 0 with new (Y, X)
         JMP main_loop
-@new_level:
+
+@do_regen:
+        LDA #0
+        STA trans_mode
+        JSR new_level
+        JMP main_loop
+
+@do_descent:
+        LDA #1
+        STA trans_mode
+        JSR new_level
+        JMP main_loop
+
+@exit_e:                        ; tgt_col = 15
+        LDA #2
+        STA trans_mode
+        LDA tgt_row
+        STA wrap_anchor
+        JSR new_level
+        JMP main_loop
+
+@exit_w:                        ; tgt_col = 0
+        LDA #3
+        STA trans_mode
+        LDA tgt_row
+        STA wrap_anchor
+        JSR new_level
+        JMP main_loop
+
+@exit_n:                        ; tgt_row = 0
+        LDA #4
+        STA trans_mode
+        LDA tgt_col
+        STA wrap_anchor
+        JSR new_level
+        JMP main_loop
+
+@exit_s:                        ; tgt_row = 9
+        LDA #5
+        STA trans_mode
+        LDA tgt_col
+        STA wrap_anchor
         JSR new_level
         JMP main_loop
 
 
 ; ----------------------------------------------------------------------------
-; new_level: regenerate a fresh dungeon (random big-room or two-rooms
-; layout) and refresh the screen. Called from main_loop when the user
-; presses 'N'. Reuses the LFSR state — no need to reseed.
+; new_level: rebuild the screen according to trans_mode.
+;   trans_mode = 0 ('N')      : random gen (big-room or two-rooms),
+;                                no depth change.
+;   trans_mode = 1 (stairs)   : random gen, depth advances by one.
+;   trans_mode = 2..5 (edges) : force a big-room and respawn the
+;                                player on the opposite edge so the
+;                                two rooms feel like a continuous
+;                                horizontal/vertical neighbourhood;
+;                                depth unchanged. wrap_anchor carries
+;                                the row (modes 2/3) or col (4/5).
+; LFSR state survives across calls — no reseed needed.
 ; ----------------------------------------------------------------------------
 new_level:
-        JSR gen_dungeon         ; new map_buffer + new player_col/row
-        JSR clear_name_table    ; wipe the previous level off VRAM
-        JSR render_map          ; paint the new logical map
-        JSR place_player        ; rewrite SAT slot 0 at the new spawn
+        ; Depth only advances on stairs-down descent.
+        LDA trans_mode
+        CMP #1
+        BNE @no_inc
+        INC depth
+@no_inc:
+        ; Edge-door wrap modes (2..5) force a big-room layout so the
+        ; spawn-at-opposite-edge override always lands inside a known
+        ; geometry. Mode 0/1 keep the random dispatcher.
+        LDA trans_mode
+        CMP #2
+        BCS @wrap
+        JSR gen_dungeon
+        JMP @paint
+@wrap:
+        JSR fill_with_walls
+        JSR gen_big_room
+        JSR apply_wrap_spawn    ; overrides player_col/row to the
+                                ; opposite edge of the new big-room
+@paint:
+        JSR clear_name_table
+        JSR render_map
+        JSR place_player
+        JSR update_hud
+        RTS
+
+
+; ----------------------------------------------------------------------------
+; apply_wrap_spawn: respawn the player at the opposite edge of the
+; freshly-generated big-room AND stamp a TILE_DOOR on the entry-edge
+; cell aligned with the player's anchor row/col. The aligned door
+; lets the player walk back out the same way they came (re-triggers
+; a wrap), so the world feels continuous even though every wrap
+; regenerates a fresh map. The four random perimeter doors from
+; gen_big_room remain in place — most of the time the aligned door
+; sits on a different cell from any of them.
+;
+;   trans_mode 2 (exited E)  → spawn (1,  anchor); door at (0,  anchor)
+;   trans_mode 3 (exited W)  → spawn (14, anchor); door at (15, anchor)
+;   trans_mode 4 (exited N)  → spawn (anchor, 8); door at (anchor, 9)
+;   trans_mode 5 (exited S)  → spawn (anchor, 1); door at (anchor, 0)
+; ----------------------------------------------------------------------------
+apply_wrap_spawn:
+        LDA     trans_mode
+        CMP     #2
+        BEQ     @to_w
+        CMP     #3
+        BEQ     @to_e
+        CMP     #4
+        BEQ     @to_s
+        ; mode 5 (the only remaining): exited S → spawn at N edge.
+        LDA     #1
+        STA     player_row
+        LDA     wrap_anchor
+        STA     player_col
+        ; Aligned return door at (anchor, 0).
+        STA     tgt_col
+        LDA     #0
+        STA     tgt_row
+        JMP     @stamp
+@to_w:                                  ; exited E → spawn at W edge.
+        LDA     #1
+        STA     player_col
+        LDA     wrap_anchor
+        STA     player_row
+        STA     tgt_row
+        LDA     #0
+        STA     tgt_col
+        JMP     @stamp
+@to_e:                                  ; exited W → spawn at E edge.
+        LDA     #14
+        STA     player_col
+        LDA     wrap_anchor
+        STA     player_row
+        STA     tgt_row
+        LDA     #15
+        STA     tgt_col
+        JMP     @stamp
+@to_s:                                  ; exited N → spawn at S edge.
+        LDA     #8
+        STA     player_row
+        LDA     wrap_anchor
+        STA     player_col
+        STA     tgt_col
+        LDA     #9
+        STA     tgt_row
+@stamp:
+        LDA     #TILE_DOOR
+        JSR     set_tile
         RTS
 
 
@@ -218,9 +379,7 @@ upload_tileset:
         LDX     #8
 @page:  LDY     #0
 @byte:  LDA     (vdp_src_lo),Y
-        STA     VDP_DATA        ; 4c
-        NOP                     ; 2c
-        NOP                     ; 2c silicon-strict gap (back-to-back STA)
+        WRT_DATA_REG
         INY
         BNE     @byte
         INC     vdp_src_hi
@@ -241,9 +400,7 @@ upload_colour_table:
 
         LDX     #0
 @lp:    LDA     tileset_color_table,X
-        STA     VDP_DATA        ; 4c
-        NOP                     ; 2c
-        NOP                     ; 2c silicon-strict gap
+        WRT_DATA_REG
         INX
         CPX     #32
         BNE     @lp
@@ -282,11 +439,24 @@ gen_dungeon:
 
 ; ----------------------------------------------------------------------------
 ; gen_big_room: single full-screen room (cols [1..14], rows [1..8]).
-; Stairs-up at the top-right interior cell so its east neighbour is
-; the screen-edge wall (col 15). Stairs-down at the bottom-left
-; interior cell. Four decorative doors, one per cardinal wall, at
-; random positions along the wall — these are the "exits to other
-; rooms" suggested by the screen-edge perimeter.
+; Stairs-up at the top-right interior cell (14, 2) so its east
+; neighbour is the screen-edge wall (col 15). Player spawns one cell
+; WEST of the stairs at (13, 2) — the "arrived from above" anchor —
+; matching the spec rule "le personnage arrive à gauche de l'escalier".
+;
+; TODO (when HP system + sprites land):
+;   - Replace TILE_STAIRS_UP with a rubble tile (bldg_rubble_pat) so
+;     the visual reads "the way up just collapsed". Slot 16 of the
+;     PALETTE in tools/extract_quale_8x8_tiles.py is the swap point.
+;   - Stepping into the rubble cell should still block movement AND
+;     subtract 1 HP (penalty for trying to climb back up). For now
+;     check_collision treats TILE_STAIRS_UP as a hard wall.
+;
+; Stairs-down at bottom-left interior corner (1, 8) — west neighbour
+; is the screen frame, so the descent sprite sits with a wall on its
+; left as the spec demands. Four random perimeter doors complete the
+; level's "exit portals"; in wrap mode the entry edge's random door
+; is suppressed so apply_wrap_spawn's aligned door is alone there.
 ; ----------------------------------------------------------------------------
 gen_big_room:
         LDA     #1
@@ -298,16 +468,17 @@ gen_big_room:
         STA     room_h
         JSR     carve_room
 
-        ; Stairs-up at top-right interior corner — east neighbour is
-        ; col 15 (screen-edge wall). Player spawns here.
+        ; Stairs-up at (14, 2). Player spawn one cell west at (13, 2).
         LDA     #14
         STA     tgt_col
-        STA     player_col
         LDA     #2
         STA     tgt_row
-        STA     player_row
         LDA     #TILE_STAIRS_UP
         JSR     set_tile
+        LDA     #13
+        STA     player_col
+        LDA     #2
+        STA     player_row
 
         ; Stairs-down at bottom-left interior corner: west neighbour
         ; is col 0 (screen frame wall), satisfying the wall-on-left rule.
@@ -323,18 +494,29 @@ gen_big_room:
 
 
 ; ----------------------------------------------------------------------------
-; place_perimeter_doors: four TILE_DOOR cells, one per cardinal screen
-; edge. Doors REPLACE wall cells on the frame (rows 0/9, cols 0/15)
-; rather than sitting on interior cells — walking onto them is the
-; "exit to another map" mechanic. main_loop detects when the target of
-; a move is at a screen edge and triggers new_level instead of moving
-; the player off-grid (so player coords stay valid for handle_input).
-; Random positions stay inside [3..12] / [3..6] so doors line up with
-; reachable interior cells (the player walks from (col, 1) onto the
-; door at (col, 0), etc.).
+; place_perimeter_doors: up to four TILE_DOOR cells, one per cardinal
+; screen edge. Doors REPLACE wall cells on the frame (rows 0/9, cols
+; 0/15) rather than sitting on interior cells — walking onto them is
+; the "exit to another map" mechanic. main_loop detects when the
+; target of a move is at a screen edge and triggers new_level instead
+; of moving the player off-grid.
+;
+; In wrap modes (trans_mode 2..5) the entry edge is SKIPPED so the
+; aligned return door stamped by apply_wrap_spawn is the only door on
+; that wall — otherwise the player would see two doors on the wall
+; they just came in through, which the spec forbids.
+;   trans_mode 2 (exited E → spawn W) : skip W edge here.
+;   trans_mode 3 (exited W → spawn E) : skip E edge.
+;   trans_mode 4 (exited N → spawn S) : skip S edge.
+;   trans_mode 5 (exited S → spawn N) : skip N edge.
+; Modes 0 and 1 leave trans_mode out of the [2..5] range and place all
+; four random doors as before.
 ; ----------------------------------------------------------------------------
 place_perimeter_doors:
-        ; --- North door: (col rand[3..12], row 0) ---
+        ; --- North door (skipped on mode 5) ---
+        LDA     trans_mode
+        CMP     #5
+        BEQ     @skip_n
         LDA     #10
         JSR     rand_mod
         CLC
@@ -344,8 +526,11 @@ place_perimeter_doors:
         STA     tgt_row
         LDA     #TILE_DOOR
         JSR     set_tile
-
-        ; --- South door: (col rand[3..12], row 9) ---
+@skip_n:
+        ; --- South door (skipped on mode 4) ---
+        LDA     trans_mode
+        CMP     #4
+        BEQ     @skip_s
         LDA     #10
         JSR     rand_mod
         CLC
@@ -355,8 +540,11 @@ place_perimeter_doors:
         STA     tgt_row
         LDA     #TILE_DOOR
         JSR     set_tile
-
-        ; --- West door: (col 0, row rand[3..6]) ---
+@skip_s:
+        ; --- West door (skipped on mode 2) ---
+        LDA     trans_mode
+        CMP     #2
+        BEQ     @skip_w
         LDA     #4
         JSR     rand_mod
         CLC
@@ -366,8 +554,11 @@ place_perimeter_doors:
         STA     tgt_col
         LDA     #TILE_DOOR
         JSR     set_tile
-
-        ; --- East door: (col 15, row rand[3..6]) ---
+@skip_w:
+        ; --- East door (skipped on mode 3) ---
+        LDA     trans_mode
+        CMP     #3
+        BEQ     @skip_e
         LDA     #4
         JSR     rand_mod
         CLC
@@ -377,6 +568,7 @@ place_perimeter_doors:
         STA     tgt_col
         LDA     #TILE_DOOR
         JSR     set_tile
+@skip_e:
         RTS
 
 
@@ -408,13 +600,11 @@ gen_two_rooms:
         STA     cy
 
         ; Iter 0: save room 0's top-right interior corner as the
-        ;         player's spawn / stairs-up location.
-        ;         (rx+rw-1, ry): east neighbour is the room's east wall
-        ;         (row ry ≠ cy means the corridor doesn't run here, so
-        ;         the wall stays intact through finalize_doors). This
-        ;         honours the "stairs-up sprite has its right side
-        ;         against a wall" rule and leaves the corridor's
-        ;         room-0 exit door free to render at (rx+rw, cy).
+        ;         stairs-up location (rx+rw-1, ry). Player spawns ONE
+        ;         CELL WEST of the stairs (rx+rw-2, ry) per the spec —
+        ;         "arrive à gauche de l'escalier". Row ry ≠ cy keeps
+        ;         the cell west of stairs from sitting on the corridor,
+        ;         so the spawn cell is always plain interior floor.
         ; Iter 1: dig the L-corridor from the previous centre.
         LDA     room_idx
         BNE     @subsequent
@@ -422,8 +612,8 @@ gen_two_rooms:
         CLC
         ADC     room_w
         SEC
-        SBC     #1
-        STA     player_col              ; rx + rw - 1
+        SBC     #2
+        STA     player_col              ; rx + rw - 2 (left of stairs)
         LDA     room_y
         STA     player_row              ; ry  (top row of interior)
         ; Remember room 0's centre row — that's the corridor's H row,
@@ -450,8 +640,12 @@ gen_two_rooms:
         ; corridor's room-0 exit and its room-1 entry.
         JSR     finalize_doors
 
-        ; Stairs-up at room 0's right-edge cell (east neighbour = wall).
+        ; Stairs-up at room 0's right-edge cell (one EAST of player
+        ; spawn — see iter 0 above). East neighbour is the room's east
+        ; wall, so the sprite's right side is anchored as required.
         LDA     player_col
+        CLC
+        ADC     #1
         STA     tgt_col
         LDA     player_row
         STA     tgt_row
@@ -893,14 +1087,10 @@ render_map:
         ;     16 tiles in the current logical row.
         LDY     #0
 @tl_lp: LDA     (vdp_src_lo),Y  ; tile base id
-        STA     VDP_DATA        ; TL = base+0
-        NOP
-        NOP                     ; +2c silicon-strict gap
+        WRT_DATA_REG            ; TL = base+0
         CLC
         ADC     #1
-        STA     VDP_DATA        ; TR = base+1
-        NOP
-        NOP
+        WRT_DATA_REG            ; TR = base+1
         INY
         CPY     #LOGICAL_COLS
         BNE     @tl_lp
@@ -911,14 +1101,10 @@ render_map:
 @bl_lp: LDA     (vdp_src_lo),Y  ; tile base id
         CLC
         ADC     #2
-        STA     VDP_DATA        ; BL = base+2
-        NOP
-        NOP
+        WRT_DATA_REG            ; BL = base+2
         CLC
         ADC     #1
-        STA     VDP_DATA        ; BR = base+3
-        NOP
-        NOP
+        WRT_DATA_REG            ; BR = base+3
         INY
         CPY     #LOGICAL_COLS
         BNE     @bl_lp
@@ -948,9 +1134,7 @@ upload_player_pat:
         STA     VDP_CTRL
         LDX     #0
 @lp:    LDA     char_paladin2_pat,X
-        STA     VDP_DATA        ; 4c
-        NOP                     ; 2c
-        NOP                     ; 2c silicon-strict gap
+        WRT_DATA_REG
         INX
         CPX     #32
         BNE     @lp
@@ -976,21 +1160,15 @@ place_player:
         ASL
         ASL
         ASL                     ; row * 16
-        STA     VDP_DATA
-        NOP
+        WRT_DATA_REG
         LDA     player_col
         ASL
         ASL
         ASL
         ASL                     ; col * 16
-        STA     VDP_DATA
-        NOP
-        LDA     #$00            ; pattern slot 0
-        STA     VDP_DATA
-        NOP
-        LDA     #COL_PLAYER
-        STA     VDP_DATA
-        NOP
+        WRT_DATA_REG
+        WRT_DATA_VAL $00        ; pattern slot 0
+        WRT_DATA_VAL COL_PLAYER
 
         LDA     #$D0            ; sprite #1 -> chain terminator
         STA     VDP_DATA
@@ -1072,12 +1250,17 @@ check_collision:
         CMP     #(PLAY_RIGHT_COL + 1)
         BCS     @blocked
         ; Allowed-tile whitelist (door already handled above).
+        ; TILE_STAIRS_UP intentionally OMITTED — stepping back up the
+        ; way you came is forbidden.
+        ; TODO (when HP system lands): instead of plain blocking,
+        ;   "trying to go up" should subtract 1 HP and emit some
+        ;   feedback — block, then deduct, so the player can poke at
+        ;   the rubble at a cost. Keep the visual swap to bldg_rubble
+        ;   in sync (see gen_big_room TODO comment).
         LDA     tmp
         CMP     #TILE_EMPTY
         BEQ     @pass
         CMP     #TILE_STAIRS_DOWN
-        BEQ     @pass
-        CMP     #TILE_STAIRS_UP
         BEQ     @pass
 @blocked:
         SEC
@@ -1118,75 +1301,166 @@ draw_text:
 @lp:    LDA     (vdp_src_lo),Y
         CMP     #$FF
         BEQ     @done
-        STA     VDP_DATA
-        NOP
-        NOP                     ; +2c silicon-strict gap (back-to-back data)
+        WRT_DATA_REG
         INY
         BNE     @lp
 @done:  RTS
 
 
 ; ----------------------------------------------------------------------------
+; update_hud: paint a 32-char status line on name-table row 20
+; (VRAM $1A80) — the HUD area below the 32x20 playfield. Layout:
+;
+;     "DEPTH 003    WASD MOVE  N NEW   "
+;       6        + 3   + 4 +  4 +     15
+;
+; The 4-character movement-key block in the middle is dynamic — it
+; reads key_north / key_west / key_south / key_east (set by
+; wait_kb_choice) and prints them in N-W-S-E mnemonic order, so a
+; QWERTY user sees "WASD" while an AZERTY user sees "ZQSD" without
+; touching the layout. Re-run on every level transition so the
+; digits stay in sync with `depth`.
+; ----------------------------------------------------------------------------
+update_hud:
+        LDA     #$80                    ; row 20 col 0 = $1A80
+        STA     VDP_CTRL
+        NOP
+        LDA     #$5A                    ; $1A | $40 -> write
+        STA     VDP_CTRL
+        ; --- Prefix "DEPTH " (6 chars) ---
+        LDX     #0
+@prefix:
+        LDA     hud_prefix,X
+        WRT_DATA_REG
+        INX
+        CPX     #6
+        BNE     @prefix
+        ; --- 3 depth digits ---
+        LDA     depth
+        JSR     print_byte_3digits
+        ; --- 4 spacer chars between digits and the dynamic key block ---
+        LDA     #' '
+        LDX     #4
+@gap:
+        WRT_DATA_REG
+        DEX
+        BNE     @gap
+        ; --- Dynamic movement keys (NWSE = WASD on QWERTY, ZQSD on
+        ;     AZERTY). Strip the high bit so the byte matches the
+        ;     ASCII-aligned font glyph char ID.
+        LDA     key_north
+        AND     #$7F
+        WRT_DATA_REG
+        LDA     key_west
+        AND     #$7F
+        WRT_DATA_REG
+        LDA     key_south
+        AND     #$7F
+        WRT_DATA_REG
+        LDA     key_east
+        AND     #$7F
+        WRT_DATA_REG
+        ; --- Suffix (15 chars, fills the rest of row 20) ---
+        LDX     #0
+@suffix:
+        LDA     hud_suffix,X
+        WRT_DATA_REG
+        INX
+        CPX     #15
+        BNE     @suffix
+        RTS
+
+
+; ----------------------------------------------------------------------------
+; print_byte_3digits: stream A as 3 zero-padded ASCII decimal digits
+; to VDP_DATA (caller has already armed the VRAM write address). The
+; font-glyph chars at IDs 48..57 match ASCII '0'..'9' 1:1, so adding
+; '0' to a 0..9 nibble yields the right char id directly.
+; Clobbers A, X.
+; ----------------------------------------------------------------------------
+print_byte_3digits:
+        ; Hundreds.
+        LDX     #0
+@h:     CMP     #100
+        BCC     @h_done
+        SEC
+        SBC     #100
+        INX
+        JMP     @h
+@h_done:
+        PHA                             ; save remainder for tens/units
+        TXA
+        CLC
+        ADC     #'0'
+        WRT_DATA_REG
+        PLA
+        ; Tens.
+        LDX     #0
+@t:     CMP     #10
+        BCC     @t_done
+        SEC
+        SBC     #10
+        INX
+        JMP     @t
+@t_done:
+        PHA
+        TXA
+        CLC
+        ADC     #'0'
+        WRT_DATA_REG
+        PLA
+        ; Units (whatever's left in A is < 10).
+        CLC
+        ADC     #'0'
+        WRT_DATA_REG
+        RTS
+
+
+hud_prefix:
+        .byte "DEPTH "                  ; 6 chars
+hud_suffix:
+        .byte " MOVE  N NEW   "         ; 15 chars
+                                        ; (4 prefix + 3 digits + 4 gap +
+                                        ;  4 dyn keys + 15 suffix = 32)
+
+
+; ----------------------------------------------------------------------------
 ; draw_title: paint the title screen on the cleared name table. Each
-; line is centred manually via the precomputed VRAM addr (= $1800 +
-; row * 32 + col). Strings live in the data tail below.
+; entry in title_table is a 4-byte tuple (str_lo, str_hi, vram_lo,
+; vram_hi_with_write_bit) describing one centred line. The VRAM addr
+; is precomputed as $1800 + row * 32 + col, then ORed with $40 (write
+; bit) for draw_text's STX VDP_CTRL second-byte. tmp holds the table
+; index across the JSR (draw_text leaves zp untouched but clobbers X).
 ; ----------------------------------------------------------------------------
 draw_title:
-        ; "ROGUE" at row 4, col 13 -> $1800 + 4*32 + 13 = $188D
-        LDA     #<title_rogue
+        LDX     #0
+@lp:    LDA     title_table+0,X         ; str_lo
         STA     vdp_src_lo
-        LDA     #>title_rogue
+        LDA     title_table+1,X         ; str_hi
         STA     vdp_src_hi
-        LDA     #$8D
-        LDX     #$58            ; $18 | $40 (write at $1800 + ...)
+        LDA     title_table+2,X         ; vram_lo
+        PHA
+        STX     tmp                     ; preserve loop index
+        LDA     title_table+3,X         ; vram_hi (already | $40)
+        TAX
+        PLA                             ; A = vram_lo, X = vram_hi
         JSR     draw_text
-
-        ; "P-LAB TMS9918 ROGUELIKE" at row 7, col 4 -> $18E4
-        LDA     #<title_subtitle
-        STA     vdp_src_lo
-        LDA     #>title_subtitle
-        STA     vdp_src_hi
-        LDA     #$E4
-        LDX     #$58
-        JSR     draw_text
-
-        ; "BY VERHILLE ARNAUD" at row 9, col 7 -> $1927
-        LDA     #<title_author
-        STA     vdp_src_lo
-        LDA     #>title_author
-        STA     vdp_src_hi
-        LDA     #$27
-        LDX     #$59            ; $19 | $40
-        JSR     draw_text
-
-        ; "SELECT KEYBOARD" at row 13, col 8 -> $19A8
-        LDA     #<title_select_kb
-        STA     vdp_src_lo
-        LDA     #>title_select_kb
-        STA     vdp_src_hi
-        LDA     #$A8
-        LDX     #$59
-        JSR     draw_text
-
-        ; "1 QWERTY (HJKL)" at row 15, col 8 -> $19E8
-        LDA     #<title_qwerty
-        STA     vdp_src_lo
-        LDA     #>title_qwerty
-        STA     vdp_src_hi
-        LDA     #$E8
-        LDX     #$59
-        JSR     draw_text
-
-        ; "2 AZERTY (QZSD)" at row 17, col 8 -> $1A28
-        LDA     #<title_azerty
-        STA     vdp_src_lo
-        LDA     #>title_azerty
-        STA     vdp_src_hi
-        LDA     #$28
-        LDX     #$5A            ; $1A | $40
-        JSR     draw_text
-
+        LDA     tmp
+        CLC
+        ADC     #4
+        TAX
+        CPX     #(title_table_end - title_table)
+        BCC     @lp
         RTS
+
+title_table:
+        .byte   <title_rogue,     >title_rogue,     $8D, $58
+        .byte   <title_subtitle,  >title_subtitle,  $E4, $58
+        .byte   <title_author,    >title_author,    $27, $59
+        .byte   <title_select_kb, >title_select_kb, $A8, $59
+        .byte   <title_qwerty,    >title_qwerty,    $E8, $59
+        .byte   <title_azerty,    >title_azerty,    $28, $5A
+title_table_end:
 
 
 ; ----------------------------------------------------------------------------
@@ -1226,16 +1500,21 @@ wait_kb_choice:
         BEQ     @azerty
         JMP     @lp             ; not a layout key; keep waiting + seeding
 @qwerty:
-        LDA     #('H' | $80)
+        ; QWERTY → standard WASD: W=north, A=west, S=south, D=east.
+        ; Matches the AZERTY ZQSD bindings below: each key sits at the
+        ; same physical position on its respective layout.
+        LDA     #('A' | $80)
         STA     key_west
-        LDA     #('L' | $80)
+        LDA     #('D' | $80)
         STA     key_east
-        LDA     #('K' | $80)
+        LDA     #('W' | $80)
         STA     key_north
-        LDA     #('J' | $80)
+        LDA     #('S' | $80)
         STA     key_south
         RTS
 @azerty:
+        ; AZERTY → ZQSD (= WASD shifted by the French keyboard's W↔Z
+        ; and A↔Q swaps). Z=north, Q=west, S=south, D=east.
         LDA     #('Q' | $80)
         STA     key_west
         LDA     #('D' | $80)
@@ -1260,10 +1539,14 @@ title_author:
         .byte   "BY VERHILLE ARNAUD", $FF
 title_select_kb:
         .byte   "SELECT KEYBOARD", $FF
+; The Quale font has no usable paren glyphs (its "lparen"/"rparen" labels
+; are mis-extracted), so the keys ride the title line as bare letters.
+; QWERTY = WASD (N/W/S/E mnemonic), AZERTY = ZQSD (= same physical keys
+; on a French keyboard).
 title_qwerty:
-        .byte   "1 QWERTY (HJKL)", $FF
+        .byte   "1 QWERTY WASD", $FF
 title_azerty:
-        .byte   "2 AZERTY (QZSD)", $FF
+        .byte   "2 AZERTY ZQSD", $FF
 
 
 ; ============================================================================

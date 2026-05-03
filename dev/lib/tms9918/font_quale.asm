@@ -112,7 +112,11 @@ font_quale_upper_O:
 font_quale_upper_P:
         .byte $00, $7C, $66, $66, $66, $7C, $60, $60
 font_quale_upper_Q:
-        .byte $00, $3C, $66, $66, $66, $66, $66, $3C
+        ; Hand-fixed: Quale's extraction emitted the same bytes as 'O'
+        ; (no descender) so QWERTY/QZSD read as OWERTY/OZSD. Restore an
+        ; O-shape body with a clear 2-pixel tail under the bottom-right
+        ; (so 'Q' is unambiguously distinct from 'O' even at 8x8).
+        .byte $00, $3C, $66, $66, $6A, $66, $3C, $03
 font_quale_upper_R:
         .byte $00, $7C, $66, $66, $66, $7C, $66, $66
 font_quale_upper_S:

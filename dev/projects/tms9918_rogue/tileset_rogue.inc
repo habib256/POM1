@@ -107,7 +107,7 @@ tileset_rogue:
         .byte $00, $66, $66, $76, $6E, $66, $66, $66    ; char  78  'N' (font_quale_upper_N)
         .byte $00, $3C, $66, $66, $66, $66, $66, $3C    ; char  79  'O' (font_quale_upper_O)
         .byte $00, $7C, $66, $66, $66, $7C, $60, $60    ; char  80  'P' (font_quale_upper_P)
-        .byte $00, $3C, $66, $66, $66, $66, $66, $3C    ; char  81  'Q' (font_quale_upper_Q)
+        .byte $00, $3C, $66, $66, $6A, $66, $3C, $03    ; char  81  'Q' (font_quale_upper_Q)
         .byte $00, $7C, $66, $66, $66, $7C, $66, $66    ; char  82  'R' (font_quale_upper_R)
         .byte $00, $3C, $66, $60, $3C, $06, $66, $3C    ; char  83  'S' (font_quale_upper_S)
         .byte $00, $7E, $18, $18, $18, $18, $18, $18    ; char  84  'T' (font_quale_upper_T)
