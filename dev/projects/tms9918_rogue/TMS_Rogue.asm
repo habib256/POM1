@@ -46,9 +46,15 @@ PLAY_RIGHT_COL = 14             ; last walkable logical col
 ; (no starvation tick — the game loop pressure comes from combat itself,
 ; balanced by food drops that monsters leave behind on death).
 HP_MAX         = 10
-PLAYER_DMG     = 2              ; damage dealt per bump-attack on a monster
-FOOD_HEAL      = 3              ; HP restored when the player walks onto
-                                ; a food item (capped at HP_MAX)
+PLAYER_DMG     = 1              ; damage dealt per bump-attack on a monster.
+                                ; At 1 every monster ≥ 2 HP needs at
+                                ; least 2 bumps to kill, guaranteeing
+                                ; a retaliation chance — combat costs
+                                ; HP, not just turns.
+FOOD_HEAL      = 2              ; HP restored when the player walks onto
+                                ; a food item (capped at HP_MAX). Tuned
+                                ; so a single heal covers one DEATH bite
+                                ; but not a full engagement.
 
 ; --- Monster pool ------------------------------------------------------
 ; 16-slot pool at $E300 (high bank, after the 768-byte map_buffer).
@@ -83,8 +89,12 @@ MON_HURT       = 7              ; non-zero if the monster should render
                                 ; clear_hurt_flags at top of main_loop).
 MON_TYPE_UNDEAD   = 1
 MON_TYPE_GHOST    = 2
-MON_TYPE_DEATH    = 3
-MON_TYPE_SKELETON = 4
+MON_TYPE_SKELETON = 3
+MON_TYPE_DEATH    = 4           ; deliberately last so the depth-keyed
+                                ; type pool (min(depth, 4)) only unlocks
+                                ; DEATH at depth 4 — at depth 3 the
+                                ; player still only faces UNDEAD/GHOST/
+                                ; SKELETON, none of which one-shot.
 SPRITE_NAME_PLAYER   = 0
 SPRITE_NAME_UNDEAD   = 4
 SPRITE_NAME_GHOST    = 8
@@ -231,9 +241,13 @@ mon_type_pool:  .res 1          ; spawn-time difficulty: max MON_TYPE id
                                 ; 4+ adds SKELETON (all 4 types).
 mon_hp_bonus:   .res 1          ; spawn-time difficulty: extra HP added
                                 ; to every monster's mon_init_hp value
-                                ; (= depth / 4). Doesn't change MON_DMG
-                                ; — sustained-damage scaling, not
-                                ; one-shot-kill scaling.
+                                ; (= depth / 3). Sustained-damage
+                                ; scaling — encounters get longer.
+mon_dmg_bonus:  .res 1          ; spawn-time difficulty: extra damage
+                                ; added to every monster's MON_DMG
+                                ; (= depth / 6 = (depth/3) >> 1).
+                                ; Lethality scaling — late-game bites
+                                ; actually hurt.
 
 
 ; --- Map buffer (160 B, 16x10 logical tiles, one byte = tile base id) ---
@@ -1230,11 +1244,16 @@ calc_map_ptr:
 ;             rand_mod uses this as the upper bound, so each level
 ;             unlocks one new tier of menace.
 ;
-;   - hp bonus = depth / 4
-;             added on top of mon_init_hp[type] for every spawn.
-;             Sustained-damage scaling: a depth-8 UNDEAD has 1+2 = 3
-;             HP, needs two PLAYER_DMG=2 hits instead of one. MON_DMG
-;             stays raw — encounters get longer, not lethal-er.
+;   - hp bonus  = depth / 3   (subtract-3 loop, no clean shift)
+;             added on top of mon_init_hp[type]. Encounters get longer
+;             — a depth-9 UNDEAD has 1+3 = 4 HP, needs four PLAYER_DMG
+;             hits.
+;
+;   - dmg bonus = depth / 6   (derived as (depth/3) >> 1)
+;             added on top of mon_init_dmg[type]. Late-game bites
+;             actually hurt — at depth 12 every monster carries +2 dmg
+;             on top of its base, so DEATH bites for 4 of the player's
+;             10 HP per turn.
 ;
 ; find_empty_cell rejects the player's cell and any cell already
 ; holding a monster (item pool is empty at this point so no item
@@ -1276,11 +1295,24 @@ spawn_monsters:
 @cap_pool:
         STA     mon_type_pool
 
-        ; --- mon_hp_bonus = depth / 4 (LSR LSR) ---
+        ; --- mon_hp_bonus = depth / 3 (subtract-3 loop — no clean
+        ;     shift for /3 on the 6502).  mon_dmg_bonus = depth / 6 is
+        ;     derived as (depth/3) >> 1, which is mathematically equal
+        ;     to floor(depth/6) for any non-negative depth, so we avoid
+        ;     a second division loop. ---
         LDA     depth
+        LDX     #0
+@d3:    CMP     #3
+        BCC     @d3_done
+        SEC
+        SBC     #3
+        INX
+        JMP     @d3
+@d3_done:
+        STX     mon_hp_bonus
+        TXA
         LSR
-        LSR
-        STA     mon_hp_bonus
+        STA     mon_dmg_bonus
 
 @spawn_lp:
         LDA     pool_idx
@@ -1313,7 +1345,10 @@ spawn_monsters:
         STA     monsters+MON_NAME,X
         LDA     mon_init_color,Y
         STA     monsters+MON_COLOR,X
+        ; DMG = mon_init_dmg[type] + mon_dmg_bonus  (depth-scaled lethality)
         LDA     mon_init_dmg,Y
+        CLC
+        ADC     mon_dmg_bonus
         STA     monsters+MON_DMG,X
 
         LDA     pool_idx
@@ -1403,18 +1438,19 @@ monster_at_target:
 
 ; ----------------------------------------------------------------------------
 ; mon_init_*: per-type initialisation tables, indexed by MON_TYPE
-; (1=undead, 2=ghost, 3=death, 4=skeleton). Index 0 is the dead/empty
+; (1=undead, 2=ghost, 3=skeleton, 4=death). Index 0 is the dead/empty
 ; marker and never read here, so it sits as a placeholder $00.
-; SKELETON is the second-tier warrior — 2 HP / 2 dmg makes it a hard-
-; hitting glass cannon: dies in one PLAYER_DMG=2 bump but takes a
-; bigger HP chunk back if it lands its swing first.
+; The order is tuned so the depth-scaled type pool (min(depth, 4))
+; introduces tiers from least to most lethal: weakest at depth 1
+; (UNDEAD), DEATH gated to depth 4 so the player has time to ramp HP
+; before the 2-dmg/3-HP tier appears.
 ; ----------------------------------------------------------------------------
 mon_init_hp:
-        .byte   0, 1, 2, 3, 2
+        .byte   0, 1, 2, 2, 3
 mon_init_name:
-        .byte   0, SPRITE_NAME_UNDEAD, SPRITE_NAME_GHOST, SPRITE_NAME_DEATH, SPRITE_NAME_SKELETON
+        .byte   0, SPRITE_NAME_UNDEAD, SPRITE_NAME_GHOST, SPRITE_NAME_SKELETON, SPRITE_NAME_DEATH
 mon_init_color:
-        .byte   0, MON_COL_UNDEAD, MON_COL_GHOST, MON_COL_DEATH, MON_COL_SKELETON
+        .byte   0, MON_COL_UNDEAD, MON_COL_GHOST, MON_COL_SKELETON, MON_COL_DEATH
 mon_init_dmg:
         .byte   0, 1, 1, 2, 2
 
@@ -1509,9 +1545,10 @@ try_pickup_item:
 ; player_attack_monster: deal PLAYER_DMG damage to the monster at pool
 ; offset X. Saturates HP at 0. Survivors get MON_HURT set so they
 ; render in COL_HURT this frame; killed monsters free their slot AND
-; drop a food item at their last position 50% of the time (rand_mod
-; coin-flip). Half-rate keeps the heal economy in check — if every
-; kill dropped food the player's HP would never go down for long.
+; drop a food item at their last position 1-in-2 times (rand_mod #2
+; → BNE no_drop). 50% rate keeps the heal economy roughly neutral —
+; the player can sustain combat indefinitely on average, but a streak
+; of no-drops puts them in real danger.
 ; ----------------------------------------------------------------------------
 player_attack_monster:
         LDA     monsters+MON_HP,X
@@ -1529,11 +1566,11 @@ player_attack_monster:
         STA     tgt_row
         LDA     #0
         STA     monsters+MON_TYPE,X
-        ; 50% drop rate. rand_mod #2 returns 0 or 1 (uniform); 0 = no
-        ; drop, 1 = food. rand_mod preserves X (it touches A + tmp only).
+        ; 50% drop rate. rand_mod #2 returns {0, 1}; only 0 fires the
+        ; drop. rand_mod preserves X (it touches A + tmp only).
         LDA     #2
         JSR     rand_mod
-        BEQ     @no_drop
+        BNE     @no_drop
         JMP     spawn_item              ; tail-call (RTS from spawn_item)
 @no_drop:
         RTS
@@ -2353,26 +2390,59 @@ finish_turn:
 
 
 ; ----------------------------------------------------------------------------
-; death_screen: clear the playfield, paint "YOU DIED ON LEVEL NNN" centred
-; on row 11, then wait for any key and JMP $4000 (cartridge cold-start).
-; The cold-start re-runs `start:` which re-seeds the PRNG via the
-; reaction-time loop, so each retry produces a fresh dungeon.
+; death_screen: paint "YOU DIED ON LEVEL NNN" on the bottom HUD row,
+; LEAVING the playfield and stats row visible — the player sees the
+; frozen scene of their death (last sprite positions, HP 00/HM on the
+; HUD) underneath the verdict. Then a ~1.3 s deaf-time before keys
+; resume so the killing keypress (or held repeats) can't insta-restart,
+; then wait for any key, then JMP $4000 (cartridge cold-start) to
+; re-seed the PRNG and start over.
 ; ----------------------------------------------------------------------------
 death_screen:
-        JSR     clear_name_table
-        ; "YOU DIED ON LEVEL " (18 chars) at row 11, col 5 -> $1965.
-        ; Auto-increment lands the 3 depth digits at $1977-$1979 (col 23-25),
-        ; total line spans cols 5..25 (21 chars, ~centred in the 32-wide row).
+        ; "YOU DIED ON LEVEL " (18 chars) at row 22, col 5 -> $1AC5.
+        ; Auto-increment lands the 3 depth digits at $1AD7-$1AD9 (col
+        ; 23-25), total line spans cols 5..25 (21 chars, ~centred in
+        ; the 32-wide row). Row 20 still holds the live HUD; row 21
+        ; stays blank as a separator.
         LDA     #<msg_died
         STA     vdp_src_lo
         LDA     #>msg_died
         STA     vdp_src_hi
-        LDA     #$65
-        LDX     #$59                    ; $19 | $40
+        LDA     #$C5
+        LDX     #$5A                    ; $1A | $40
         JSR     draw_text
         LDA     depth
         JSR     print_byte_3digits
-        JSR     wait_key                ; any key acknowledges
+
+        ; --- Deaf time: triple-nested busy loop, ignores the keyboard
+        ; for ~1.3 s at the 1.022 MHz CPU clock. Keeps the death scene
+        ; on screen long enough to read AND swallows any in-flight key
+        ; from the move that just killed the player (so the next press
+        ; is an explicit "OK, restart"). mon_abs_dx is reused here as
+        ; the outer counter — it's dead state on the death path
+        ; (move_monsters never runs again).
+        ;   inner  : INY/BNE = 5 c × 256 iters = 1280 c
+        ;   middle : (1280 + INX/BNE) × 256 = ~329 k c
+        ;   outer  : ~329 k × 4 = ~1.3 M c ≈ 1.3 s @ 1.022 MHz
+        LDA     #4
+        STA     mon_abs_dx
+@d_outer:
+        LDX     #0
+@d_middle:
+        LDY     #0
+@d_inner:
+        INY
+        BNE     @d_inner
+        INX
+        BNE     @d_middle
+        DEC     mon_abs_dx
+        BNE     @d_outer
+
+        ; Drain any latched key so a held key during the delay doesn't
+        ; instantly fire wait_key (reading KBD clears the PIA strobe).
+        LDA     KBD
+
+        JSR     wait_key                ; now a fresh press acknowledges
         JMP     $4000                   ; cartridge cold-start
 
 

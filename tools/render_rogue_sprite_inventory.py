@@ -86,11 +86,11 @@ HW_SPRITES = [
     (8,  "undead_ghost_pat",   "GHOST",    14, 1,
      "MON_TYPE 2 — 2 HP, 1 dmg; mid-tier"),
     (12, "undead_death_pat",   "DEATH",    10, 1,
-     "MON_TYPE 3 — 3 HP, 2 dmg; strongest undead (Quale's 'mummy' artwork)"),
+     "MON_TYPE 4 — 3 HP, 2 dmg; strongest undead, gated to depth 4 (Quale's 'mummy' artwork)"),
     (16, "food_meat_pat",      "FOOD",     11, 1,
-     "drumstick dropped by dead monster (50% rate) — heals FOOD_HEAL=3 HP"),
+     "drumstick dropped by dead monster (50% rate) — heals FOOD_HEAL=2 HP"),
     (20, "undead_skeleton_pat", "SKELETON", 7, 1,
-     "MON_TYPE 4 — 2 HP, 2 dmg; warrior tier (Quale's 'crossbones' artwork)"),
+     "MON_TYPE 3 — 2 HP, 2 dmg; warrior tier, unlocks at depth 3 (Quale's 'crossbones' artwork)"),
 ]
 
 
