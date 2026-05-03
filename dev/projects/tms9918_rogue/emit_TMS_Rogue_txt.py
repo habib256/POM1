@@ -13,7 +13,6 @@ def main() -> int:
         asm_files=[
             "TMS_Rogue.asm",
             "../../lib/tms9918/tms9918m1.asm",
-            "../../lib/tms9918/sprites_characters.asm",
         ],
         lib_dirs=["apple1", "m6502", "tms9918"],
         cfg="apple1_rogue.cfg",
