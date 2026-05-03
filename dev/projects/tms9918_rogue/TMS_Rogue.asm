@@ -45,16 +45,16 @@ PLAY_RIGHT_COL = 14             ; last walkable logical col
 ; → JMP $4000 (cartridge cold-start). HP only decreases via monster hits
 ; (no starvation tick — the game loop pressure comes from combat itself,
 ; balanced by food drops that monsters leave behind on death).
-HP_MAX         = 10
+HP_MAX         = 14
 PLAYER_DMG     = 1              ; damage dealt per bump-attack on a monster.
                                 ; At 1 every monster ≥ 2 HP needs at
                                 ; least 2 bumps to kill, guaranteeing
                                 ; a retaliation chance — combat costs
                                 ; HP, not just turns.
-FOOD_HEAL      = 2              ; HP restored when the player walks onto
+FOOD_HEAL      = 3              ; HP restored when the player walks onto
                                 ; a food item (capped at HP_MAX). Tuned
                                 ; so a single heal covers one DEATH bite
-                                ; but not a full engagement.
+                                ; with a little margin.
 
 ; --- Monster pool ------------------------------------------------------
 ; 16-slot pool at $E300 (high bank, after the 768-byte map_buffer).
@@ -161,6 +161,36 @@ N_ROOMS        = 2              ; "two-rooms" mode: first in left half,
 TILE_CORR       = 1
 TILE_CORR_DROP  = $81
 
+; --- Field of view (compute_fov) ---------------------------------------
+; vis_buffer holds one byte per logical tile (16x10 = 160 B), parallel
+; to map_buffer. Two visibility bits:
+;   bit 0 (VIS_SEEN)    once set, stays set for the rest of the level
+;                        — "remembered" terrain is rendered greyed-out
+;                        (same chars as live for now; static map can be
+;                        recalled visually because it never changes).
+;   bit 1 (VIS_VISIBLE) lit by the current FOV pass — gates whether
+;                        place_all_sprites emits a SAT entry for any
+;                        monster/item sitting on this cell.
+;
+; compute_fov walks Bresenham rays from the player to every cell on the
+; logical perimeter (rows 0/9 + cols 0/15 = 48 cells), capped at
+; FOV_RADIUS steps. Each ray marks every cell it touches with both
+; bits, and stops the moment the ray crosses an opaque tile (TILE_WALL)
+; — the wall itself is marked but anything past it is not.
+;
+; FOV_RADIUS tuning: the playable interior is only 14 wide × 8 tall, so
+; a radius ≥ 5 lights most of the grid from the centre and movement
+; barely changes what's visible. Even radius 4 felt "trop loin" in
+; the bigger rooms because the box-perimeter casting fills the full
+; 9×9 box around the player when there's no wall to clip the rays.
+; Radius 3 → 7×7 box → ~half a small room visible at any time, which
+; restores the "torchlight in a dark dungeon" feel and makes movement
+; meaningful again.
+FOV_RADIUS      = 3
+VIS_SEEN        = $01
+VIS_VISIBLE     = $02
+VIS_BOTH        = $03
+
 ; --- Apple 1 keyboard codes (high bit set, KBD always has bit 7 = 1) ---
 ; The four movement-key slots are loaded at runtime from the title-screen
 ; layout choice (QWERTY HJKL vs AZERTY QZSD), so the game loop compares
@@ -249,6 +279,28 @@ mon_dmg_bonus:  .res 1          ; spawn-time difficulty: extra damage
                                 ; Lethality scaling — late-game bites
                                 ; actually hurt.
 
+; --- FOV scratch (compute_fov / cast_ray) ------------------------------
+; Bresenham state. ray_endx/y are the target perimeter cell, set by the
+; outer loop in compute_fov. cur_x/y walk from the player to the target;
+; abs_dx/dy + sx/sy split the signed delta into magnitude + sign so the
+; Bresenham core stays unsigned. fov_err is the running signed error
+; (range ≈ -16..+16 — fits in signed 8-bit). fov_e2 caches err<<1 so
+; the two step decisions in one iteration share the same shifted value.
+ray_endx:       .res 1
+ray_endy:       .res 1
+cur_x:          .res 1
+cur_y:          .res 1
+abs_dx:         .res 1
+abs_dy:         .res 1
+sx:             .res 1          ; $01 (east) or $FF (west)
+sy:             .res 1          ; $01 (south) or $FF (north)
+fov_err:        .res 1
+fov_e2:         .res 1
+fov_step:       .res 1          ; cast_ray's step countdown — kept in ZP so
+                                ; the X register stays available for
+                                ; compute_fov's outer per-edge counter
+                                ; across the JSR.
+
 
 ; --- Map buffer (160 B, 16x10 logical tiles, one byte = tile base id) ---
 ; The 2-pass corridor algorithm (mark every dug cell as TILE_DOOR, then
@@ -257,6 +309,9 @@ mon_dmg_bonus:  .res 1          ; spawn-time difficulty: extra damage
 ; itself is the bookkeeping.
 .segment "MAPSEG"
 map_buffer:     .res LOGICAL_COLS * LOGICAL_ROWS
+; Parallel visibility buffer: one byte per cell, VIS_SEEN | VIS_VISIBLE
+; bits. clear_vis_buffer wipes it on every new_level.
+vis_buffer:     .res LOGICAL_COLS * LOGICAL_ROWS
 
 ; --- Monster + item pools in unused high-bank RAM ----------------------
 ; Both pools live outside the linker-managed MAPSEG (which ends at
@@ -279,6 +334,15 @@ items    = $E380
 start:
         SEI                     ; we drive the chip ourselves
         CLD
+        ; --- Stack pointer reset. death_screen reaches us via
+        ; `JMP $4000` from inside `JSR finish_turn` — the JSR's return
+        ; address is still on the stack and never gets popped, so each
+        ; death leaks 2 bytes of stack. Without TXS here, ~63 deaths
+        ; in one session wraps SP and corrupts return addresses. Real
+        ; Apple-1 power-on doesn't guarantee SP either, so this also
+        ; covers genuine cold-boot. ---
+        LDX #$FF
+        TXS
 
         JSR init_vdp_g1         ; 8 registers + disable_sprites
         JSR override_r1_16x16   ; switch sprite mode 8x8 -> 16x16
@@ -296,11 +360,20 @@ start:
                                 ; all 4 doors on the very first big-room.
         LDA #HP_MAX             ; full HP at game start
         STA hp
+        ; player_hurt is consumed by the FIRST place_all_sprites below
+        ; (before main_loop runs clear_hurt_flags). On restart after a
+        ; death the killing-bump left it non-zero, which would render
+        ; the spawn sprite in COL_HURT for one frame. Clear explicitly.
+        LDA #0
+        STA player_hurt
 
         JSR clear_name_table    ; wipe title before the game view appears
         JSR gen_dungeon         ; procedural rooms + corridors + stairs;
                                 ; sets player_col/row to first room centre.
+        JSR clear_vis_buffer    ; fresh dungeon -> nothing remembered yet
+        JSR compute_fov         ; light up the player's spawn neighbourhood
         JSR render_map          ; expand 16x10 logical map to 32x20 char block
+                                ; (now FOV-gated: dark cells render blank)
 
         JSR upload_sprite_pats  ; player + 3 undead patterns -> $3800-$387F
         JSR spawn_monsters      ; populate the pool for the first level
@@ -333,6 +406,11 @@ main_loop:
         ;     big-room, spawn at the opposite edge)
         ;   - everything else → regular move within the playable area
         JSR tile_at_target
+        STA tmp                 ; cache the target tile id for the
+                                ; door-crossing reactivation check below
+                                ; (CMP/BEQ/LDA chain through the edge
+                                ; classifiers doesn't touch ZP, so tmp
+                                ; survives until the regular-move block).
         CMP #TILE_STAIRS_DOWN
         BEQ @do_descent
         LDA tgt_col
@@ -348,16 +426,33 @@ main_loop:
         STA player_col
         LDA tgt_row
         STA player_row
+        ; Door-crossing fog reactivation: stepping ONTO a TILE_DOOR
+        ; cell wipes vis_buffer so everything behind us (the room or
+        ; corridor we just left) goes black again. compute_fov then
+        ; rebuilds visibility from the door cell, lighting up only
+        ; the immediate neighbourhood of the threshold. Combined with
+        ; opaque doors in is_opaque_at_cur, this makes every room a
+        ; fresh "scene" — no peeking through doors, no remembered
+        ; layout once you've left.
+        LDA tmp
+        CMP #TILE_DOOR
+        BNE @no_door_reset
+        JSR clear_vis_buffer
+@no_door_reset:
         JSR try_pickup_item     ; HP += FOOD_HEAL if a food drop is here
         JSR move_monsters       ; AI + monster→player attacks
-        JSR place_all_sprites   ; rewrite the full SAT
+        JSR compute_fov         ; player moved -> recompute FOV
+        JSR render_map          ; redraw the playfield under the new FOV
+        JSR place_all_sprites   ; rewrite the full SAT (FOV-gated)
         JSR finish_turn         ; HUD repaint (may JMP death)
         JMP main_loop
 
 @bump:
         ; X is set by monster_at_target — pool offset of the bumped
         ; monster. Player attacks (no move), monsters take their turn,
-        ; redraw, tick. Order matches the regular-move path.
+        ; redraw, tick. No compute_fov / render_map: the player didn't
+        ; move so vis_buffer is unchanged; place_all_sprites still
+        ; reruns to reflect monster moves + the bump-attack flash.
         JSR player_attack_monster
         JSR move_monsters
         JSR place_all_sprites
@@ -450,6 +545,8 @@ new_level:
 @paint:
         JSR spawn_monsters      ; fresh undead pool for the new layout
         JSR clear_name_table
+        JSR clear_vis_buffer    ; new level -> forget the previous map
+        JSR compute_fov         ; light the spawn neighbourhood
         JSR render_map
         JSR place_all_sprites
         JSR update_hud
@@ -1924,6 +2021,12 @@ apply_step:
 ; block of 4 chars (base+0=TL, base+1=TR, base+2=BL, base+3=BR).
 ; Auto-increment streams the data row-by-row: one logical row produces
 ; 32 TL/TR chars (name-table row N) followed by 32 BL/BR chars (row N+1).
+;
+; FOV gate: each cell consults vis_buffer[index] before emitting. A
+; cell whose VIS_SEEN bit is clear writes 4 zeros (blank black) — so
+; un-visited corridors stay black even after gen_dungeon paints them in
+; the map_buffer. compute_fov is responsible for setting both bits as
+; the player walks; clear_vis_buffer wipes everything on level change.
 ; ----------------------------------------------------------------------------
 render_map:
         LDA     #$00
@@ -1937,16 +2040,31 @@ render_map:
         LDA     #>map_buffer
         STA     vdp_src_hi
 
+        ; Parallel walker into vis_buffer (map_ptr is dead during render).
+        LDA     #<vis_buffer
+        STA     map_ptr
+        LDA     #>vis_buffer
+        STA     map_ptr+1
+
         LDX     #LOGICAL_ROWS   ; logical rows remaining
 @row_lp:
         ; --- TL / TR pass: 32 chars covering the upper half of all
         ;     16 tiles in the current logical row.
         LDY     #0
-@tl_lp: LDA     (vdp_src_lo),Y  ; tile base id
+@tl_lp: LDA     (map_ptr),Y     ; visibility byte for this tile
+        AND     #VIS_SEEN
+        BEQ     @tl_dark        ; never seen -> 2 blank chars
+        LDA     (vdp_src_lo),Y  ; tile base id
         WRT_DATA_REG            ; TL = base+0
         CLC
         ADC     #1
         WRT_DATA_REG            ; TR = base+1
+        JMP     @tl_next
+@tl_dark:
+        LDA     #0              ; char 0 is fully blank in the tileset
+        WRT_DATA_REG            ; TL = blank
+        WRT_DATA_REG            ; TR = blank (A still 0)
+@tl_next:
         INY
         CPY     #LOGICAL_COLS
         BNE     @tl_lp
@@ -1954,27 +2072,384 @@ render_map:
         ; --- BL / BR pass: next 32 chars (auto-increment lands us on
         ;     name-table row N+1 = bottom half of the same tiles).
         LDY     #0
-@bl_lp: LDA     (vdp_src_lo),Y  ; tile base id
+@bl_lp: LDA     (map_ptr),Y     ; visibility byte (same row of vis_buffer)
+        AND     #VIS_SEEN
+        BEQ     @bl_dark
+        LDA     (vdp_src_lo),Y  ; tile base id
         CLC
         ADC     #2
         WRT_DATA_REG            ; BL = base+2
         CLC
         ADC     #1
         WRT_DATA_REG            ; BR = base+3
+        JMP     @bl_next
+@bl_dark:
+        LDA     #0
+        WRT_DATA_REG
+        WRT_DATA_REG
+@bl_next:
         INY
         CPY     #LOGICAL_COLS
         BNE     @bl_lp
 
-        ; Advance map source pointer to next logical row.
+        ; Advance both source + visibility pointers to the next logical
+        ; row (they march in lock-step, 16 bytes per row).
         CLC
         LDA     vdp_src_lo
         ADC     #LOGICAL_COLS
         STA     vdp_src_lo
-        BCC     @noinc
+        BCC     @noinc_src
         INC     vdp_src_hi
-@noinc:
+@noinc_src:
+        CLC
+        LDA     map_ptr
+        ADC     #LOGICAL_COLS
+        STA     map_ptr
+        BCC     @noinc_vis
+        INC     map_ptr+1
+@noinc_vis:
         DEX
         BNE     @row_lp
+        RTS
+
+
+; ----------------------------------------------------------------------------
+; clear_vis_buffer: zero all 160 visibility bytes. Called by new_level
+; (and once at start) so a fresh dungeon shows nothing until the player
+; lights it up. Sentinel-BNE pattern: 160 = $A0 has bit 7 set so the
+; naïve "LDX #159 / DEX / BPL" countdown exits after one iteration
+; (the DEX result $9E still has bit 7 set, BPL never taken). Counting
+; down with DEX-then-store-then-BNE writes indices 159..0 inclusive
+; (160 bytes), exiting cleanly when X reaches 0 AFTER the final STA.
+; ----------------------------------------------------------------------------
+clear_vis_buffer:
+        LDA     #0
+        LDX     #(LOGICAL_COLS * LOGICAL_ROWS)
+@lp:    DEX
+        STA     vis_buffer,X
+        BNE     @lp
+        RTS
+
+
+; ----------------------------------------------------------------------------
+; compute_fov: re-flood the player's field of view. Three phases:
+;
+;   1. Strip every VIS_VISIBLE bit off vis_buffer (VIS_SEEN persists —
+;      that's the "remembered terrain" memory).
+;   2. Light the player's own cell (always visible, regardless of any
+;      degenerate Bresenham that would skip it).
+;   3. Cast Bresenham rays from the player to every cell on the
+;      perimeter of a (2*FOV_RADIUS + 1) box centred on the player.
+;      That's 8 * FOV_RADIUS rays (32 with R=4) — each ray points in a
+;      genuinely distinct direction, so the rays fan out evenly around
+;      the player and every cell within radius gets touched by at
+;      least one. Targets that fall outside the grid are still passed
+;      to cast_ray as-is — the OOB check inside cast_ray bails when
+;      the ray walks off the playable area, which is fine since walls
+;      always sit on rows 0/9 and cols 0/15 and stop the ray first.
+;
+; Targets can be NEGATIVE (8-bit signed, e.g. $FD = -3 when player_col
+; = 1 and box-edge dx = -4); cast_ray's signed-diff math handles that.
+;
+; Cost: 32 rays × ≤ FOV_RADIUS steps × ~55 cycles/step ≈ 7 k cycles
+; (~7 ms at 1 MHz). render_map adds another ~10 k. Comfortably under
+; one frame, even allowing for the silicon-strict NOPs in WRT_DATA_REG.
+; ----------------------------------------------------------------------------
+compute_fov:
+        ; --- Phase 1: wipe vis_buffer entirely. We deliberately drop
+        ; the VIS_SEEN persistence — the only cells that should render
+        ; this turn are the ones the rays will repaint in phase 2/3.
+        ; Cells the player walked past last turn but are no longer in
+        ; range plunge straight back into darkness, exactly the
+        ; "torch always works" behaviour. The VIS_SEEN bit stays in
+        ; the format so render_map / place_all_sprites can keep
+        ; testing it without churn — phase 3 just OR's both bits
+        ; together (VIS_BOTH) so VIS_SEEN tracks VIS_VISIBLE 1:1. ---
+        ; Sentinel-BNE: 160 has bit 7 set, so "LDX #159 / DEX / BPL"
+        ; exits after one iteration and the wipe never happens (every
+        ; cell ever lit stays lit forever, "light through walls"). See
+        ; clear_vis_buffer for the matching pattern.
+        LDA     #0
+        LDX     #(LOGICAL_COLS * LOGICAL_ROWS)
+@clr_lp:
+        DEX
+        STA     vis_buffer,X
+        BNE     @clr_lp
+
+        ; --- Phase 2: light the player's cell (mark_visible_at_cur
+        ; works off cur_x/cur_y, so seed those first). ---
+        LDA     player_col
+        STA     cur_x
+        LDA     player_row
+        STA     cur_y
+        JSR     mark_visible_at_cur
+
+        ; --- Phase 3: cast rays to the player's box-perimeter. ---
+        ; Top edge: dy = -R, dx = -R..+R.
+        LDA     player_row
+        SEC
+        SBC     #FOV_RADIUS
+        STA     ray_endy
+        LDA     player_col
+        SEC
+        SBC     #FOV_RADIUS
+        STA     ray_endx
+        LDX     #(2 * FOV_RADIUS + 1)
+@top_lp:
+        JSR     cast_ray
+        INC     ray_endx
+        DEX
+        BNE     @top_lp
+
+        ; Bottom edge: dy = +R, dx = -R..+R.
+        LDA     player_row
+        CLC
+        ADC     #FOV_RADIUS
+        STA     ray_endy
+        LDA     player_col
+        SEC
+        SBC     #FOV_RADIUS
+        STA     ray_endx
+        LDX     #(2 * FOV_RADIUS + 1)
+@bot_lp:
+        JSR     cast_ray
+        INC     ray_endx
+        DEX
+        BNE     @bot_lp
+
+        ; Left edge: dx = -R, dy = -(R-1)..+(R-1) — corners already cast.
+        LDA     player_col
+        SEC
+        SBC     #FOV_RADIUS
+        STA     ray_endx
+        LDA     player_row
+        SEC
+        SBC     #(FOV_RADIUS - 1)
+        STA     ray_endy
+        LDX     #(2 * FOV_RADIUS - 1)
+@lft_lp:
+        JSR     cast_ray
+        INC     ray_endy
+        DEX
+        BNE     @lft_lp
+
+        ; Right edge: dx = +R.
+        LDA     player_col
+        CLC
+        ADC     #FOV_RADIUS
+        STA     ray_endx
+        LDA     player_row
+        SEC
+        SBC     #(FOV_RADIUS - 1)
+        STA     ray_endy
+        LDX     #(2 * FOV_RADIUS - 1)
+@rgt_lp:
+        JSR     cast_ray
+        INC     ray_endy
+        DEX
+        BNE     @rgt_lp
+        RTS
+
+
+; ----------------------------------------------------------------------------
+; cast_ray: walk a Bresenham line from (player_col, player_row) toward
+; (ray_endx, ray_endy), marking each touched cell with VIS_BOTH. Stops
+; on the first opaque tile (TILE_WALL — the wall itself gets marked) or
+; after FOV_RADIUS steps, whichever comes first.
+;
+; Standard Wikipedia "all-cases" Bresenham, transposed to absolute
+; deltas + sign bytes so the inner core stays unsigned. fov_err lives
+; in signed 8-bit (range ≈ -16..+16 since LOGICAL_COLS=16, LOGICAL_ROWS
+; =10 — well clear of overflow). The step countdown lives in fov_step
+; (ZP) — early drafts used X for it, but compute_fov's per-edge outer
+; loops also use X, and JSR cast_ray clobbered it: depending on which
+; cell-by-cell path the ray took, X came back as anything from 0 to 4,
+; turning the outer DEX/BNE into either an early exit or an infinite
+; loop (= black screen on the unlucky seed).
+;
+; ray_endx / ray_endy are SIGNED 8-bit — compute_fov passes box-
+; perimeter offsets that can land outside the grid (e.g. ray_endx = $FD
+; = -3 when player_col = 1 and dx = -4). The abs/sign block below
+; uses signed-difference + BPL/BMI sign-check so the slope is correct
+; even with negative targets; the OOB guard in the step loop bails the
+; instant cur_x or cur_y wraps past the grid.
+;
+; Two step decisions per iteration use the same fov_e2 = err << 1:
+;   - x-step taken iff (e2 + abs_dy) >= 0   ↔ e2 >= -abs_dy
+;   - y-step taken iff (abs_dx - e2) >= 0   ↔ e2 <=  abs_dx
+; Both implemented as ADC/SBC + BMI-skip, which is non-strict (>= 0)
+; — matches Wikipedia's reference and gives the canonical diagonal
+; tie-break.
+; ----------------------------------------------------------------------------
+cast_ray:
+        LDA     player_col
+        STA     cur_x
+        LDA     player_row
+        STA     cur_y
+
+        ; --- abs_dx, sx (signed-difference + sign-check) ---
+        LDA     ray_endx
+        SEC
+        SBC     cur_x           ; signed result fits 8-bit (|.| ≤ 19)
+        BMI     @neg_dx         ; bit 7 set -> negative -> sx = -1
+        STA     abs_dx
+        LDA     #$01
+        STA     sx
+        JMP     @done_dx
+@neg_dx:
+        EOR     #$FF
+        CLC
+        ADC     #1              ; A = -A (two's-complement negate)
+        STA     abs_dx
+        LDA     #$FF
+        STA     sx
+@done_dx:
+
+        ; --- abs_dy, sy ---
+        LDA     ray_endy
+        SEC
+        SBC     cur_y
+        BMI     @neg_dy
+        STA     abs_dy
+        LDA     #$01
+        STA     sy
+        JMP     @done_dy
+@neg_dy:
+        EOR     #$FF
+        CLC
+        ADC     #1
+        STA     abs_dy
+        LDA     #$FF
+        STA     sy
+@done_dy:
+
+        ; --- err = abs_dx - abs_dy (signed) ---
+        LDA     abs_dx
+        SEC
+        SBC     abs_dy
+        STA     fov_err
+
+        LDA     #FOV_RADIUS
+        STA     fov_step        ; step countdown in ZP — see header
+@step_lp:
+        ; --- e2 = err << 1 (signed; ASL preserves two's-complement
+        ; for our small range) ---
+        LDA     fov_err
+        ASL     A
+        STA     fov_e2
+
+        ; --- x-step? if (e2 + abs_dy) >= 0 (BMI skips on negative) ---
+        ; The opacity check happens BETWEEN the x-step and the y-step
+        ; instead of after both. This kills the Bresenham corner-cut
+        ; bug: when both x- and y-step fire in the same iteration the
+        ; original code jumped diagonally over the orthogonal cell, so
+        ; if THAT cell was a wall the ray slipped through the corner
+        ; and lit up monsters/items inside the room behind. Now the
+        ; intermediate orthogonal cell is marked + opacity-tested in
+        ; sequence, so a wall on the diagonal path stops the ray.
+        CLC
+        ADC     abs_dy
+        BMI     @no_xstep
+        LDA     fov_err
+        SEC
+        SBC     abs_dy
+        STA     fov_err
+        LDA     cur_x
+        CLC
+        ADC     sx              ; sx is +1 or -1 ($FF)
+        STA     cur_x
+        ; OOB guard: cur_x wrapped past the grid (signed-wrap to $FF or
+        ; ran past LOGICAL_COLS). Either way, ray dies here.
+        CMP     #LOGICAL_COLS
+        BCS     @done
+        LDA     cur_y
+        CMP     #LOGICAL_ROWS
+        BCS     @done
+        JSR     mark_visible_at_cur
+        JSR     is_opaque_at_cur
+        BNE     @done           ; orthogonal cell was a wall -> stop
+@no_xstep:
+        ; --- y-step? if (abs_dx - e2) >= 0 ---
+        LDA     abs_dx
+        SEC
+        SBC     fov_e2
+        BMI     @no_ystep
+        LDA     fov_err
+        CLC
+        ADC     abs_dx
+        STA     fov_err
+        LDA     cur_y
+        CLC
+        ADC     sy
+        STA     cur_y
+        ; OOB guard.
+        CMP     #LOGICAL_ROWS
+        BCS     @done
+        LDA     cur_x
+        CMP     #LOGICAL_COLS
+        BCS     @done
+        JSR     mark_visible_at_cur
+        JSR     is_opaque_at_cur
+        BNE     @done
+@no_ystep:
+        DEC     fov_step
+        BNE     @step_lp
+@done:
+        RTS
+
+
+; ----------------------------------------------------------------------------
+; mark_visible_at_cur: vis_buffer[cur_y * 16 + cur_x] |= VIS_BOTH.
+; Caller has already verified cur_x / cur_y are in-range. Clobbers A,Y;
+; preserves X (which cast_ray uses as the step countdown).
+; ----------------------------------------------------------------------------
+mark_visible_at_cur:
+        LDA     cur_y
+        ASL     A
+        ASL     A
+        ASL     A
+        ASL     A               ; cur_y * 16
+        CLC
+        ADC     cur_x
+        TAY
+        LDA     vis_buffer,Y
+        ORA     #VIS_BOTH
+        STA     vis_buffer,Y
+        RTS
+
+
+; ----------------------------------------------------------------------------
+; is_opaque_at_cur: returns A = 1 (Z clear) if map_buffer[cur_y * 16 +
+; cur_x] holds an FOV-blocking tile, else A = 0 (Z set). Caller
+; branches via BNE (opaque -> stop the ray) / BEQ (transparent ->
+; continue). Clobbers A, Y; preserves X.
+;
+; Both walls AND doors block sight: a door is the threshold of a new
+; room, and the whole point of "fog reactivates at each new room" is
+; that you can't peek through a door from a corridor — the ray stops
+; AT the door (the door itself gets marked visible by mark_visible_at_
+; cur in the same step), and the room beyond stays dark until the
+; player walks through. Doors stay PASSABLE for movement (handled in
+; check_collision); FOV-opaque is purely a sight-line concept.
+; ----------------------------------------------------------------------------
+is_opaque_at_cur:
+        LDA     cur_y
+        ASL     A
+        ASL     A
+        ASL     A
+        ASL     A
+        CLC
+        ADC     cur_x
+        TAY
+        LDA     map_buffer,Y
+        CMP     #TILE_WALL
+        BEQ     @opaque
+        CMP     #TILE_DOOR
+        BEQ     @opaque
+        LDA     #0
+        RTS
+@opaque:
+        LDA     #1
         RTS
 
 
@@ -2072,11 +2547,29 @@ place_all_sprites:
 @p_write:
         WRT_DATA_REG
 
-        ; --- Slots 1..N: live monsters (one SAT entry per non-zero MON_TYPE) ---
+        ; --- Slots 1..N: live monsters (one SAT entry per non-zero
+        ;     MON_TYPE). FOV gate: a monster on a cell whose
+        ;     VIS_VISIBLE bit is clear is dropped from the SAT entirely
+        ;     — same effect as if the slot were dead this frame, no
+        ;     halo/leak through fog. Monsters in seen-only cells stay
+        ;     hidden too (Rogue convention: you remember the layout,
+        ;     not the bestiary that walked through it).
         LDX     #0
 @mon_lp:
         LDA     monsters+MON_TYPE,X
         BEQ     @mon_skip
+        ; FOV gate: vis_buffer[row * 16 + col] & VIS_VISIBLE.
+        LDA     monsters+MON_ROW,X
+        ASL
+        ASL
+        ASL
+        ASL                     ; row * 16
+        CLC
+        ADC     monsters+MON_COL,X
+        TAY
+        LDA     vis_buffer,Y
+        AND     #VIS_VISIBLE
+        BEQ     @mon_skip       ; not lit -> no SAT entry this frame
         LDA     monsters+MON_ROW,X
         ASL
         ASL
@@ -2113,9 +2606,24 @@ place_all_sprites:
         ; index) which gives them the LOWEST display priority on
         ; TMS9918 — so a player or monster sprite standing on the
         ; same cell covers the food, exactly the visual we want.
+        ; Items also FOV-gate: a food drop sitting in a dark room is
+        ; invisible until the player walks far enough to light its
+        ; cell.
         LDX     #0
 @item_lp:
         LDA     items+ITEM_TYPE,X
+        BEQ     @item_skip
+        ; FOV gate: vis_buffer[row * 16 + col] & VIS_VISIBLE.
+        LDA     items+ITEM_ROW,X
+        ASL
+        ASL
+        ASL
+        ASL
+        CLC
+        ADC     items+ITEM_COL,X
+        TAY
+        LDA     vis_buffer,Y
+        AND     #VIS_VISIBLE
         BEQ     @item_skip
         LDA     items+ITEM_ROW,X
         ASL
@@ -2281,15 +2789,16 @@ draw_text:
 ; update_hud: paint a 32-char status line on name-table row 20
 ; (VRAM $1A80) — the HUD area below the 32x20 playfield. Layout:
 ;
-;     "DEPTH NNN HP HH/HM              "
-;       6  + 3 + 1+ 3 +2+1+2 +     14
+;     "DEPTH NNN               HP HH/HM"
+;       6 +  3  +     15      + 3 +  5
+;     cols 0..8                cols 24..31
 ;
-; The depth field reflects the current dungeon depth (1..255). HP shows
-; current/max in two-digit pairs (HM = HP_MAX constant). Repainted by
-; finish_turn so HP digits stay live after monster attacks and food
-; pickups. The dynamic-key reminder previously on this row was dropped
-; in favour of the persistent stats — the player learns the layout on
-; the title screen.
+; DEPTH stays anchored on the left so the player sees it first reading
+; left-to-right; HP rides on the right edge so the eye snaps to it
+; after every action (the meaningful number per turn). 15 spaces in
+; the middle keep the row at exactly 32 chars and visually separate
+; the two stats. Repainted by finish_turn so HP digits stay live after
+; monster attacks and food pickups.
 ; ----------------------------------------------------------------------------
 update_hud:
         LDA     #$80                    ; row 20 col 0 = $1A80
@@ -2306,25 +2815,26 @@ update_hud:
         BNE     @d_lp
         LDA     depth
         JSR     print_byte_3digits
-        ; --- " HP " (4 chars) ---
+        ; --- 15 spaces of right-padding (cols 9..23) ---
+        LDA     #' '
+        LDX     #15
+@sp_lp: WRT_DATA_REG
+        DEX
+        BNE     @sp_lp
+        ; --- "HP " (3 chars, cols 24..26) ---
         LDX     #0
 @h_lp:  LDA     hud_hp,X
         WRT_DATA_REG
         INX
-        CPX     #4
+        CPX     #3
         BNE     @h_lp
+        ; --- "HH/HM" (5 chars, cols 27..31) ---
         LDA     hp
         JSR     print_byte_2digits
         LDA     #'/'
         WRT_DATA_REG
         LDA     #HP_MAX
         JSR     print_byte_2digits
-        ; --- 14 trailing spaces fill the row to 32 chars ---
-        LDA     #' '
-        LDX     #14
-@sp_lp: WRT_DATA_REG
-        DEX
-        BNE     @sp_lp
         RTS
 
 
@@ -2446,8 +2956,11 @@ death_screen:
         JMP     $4000                   ; cartridge cold-start
 
 
-hud_depth:      .byte "DEPTH "                  ; 6 chars
-hud_hp:         .byte " HP "                    ; 4 chars
+hud_depth:      .byte "DEPTH "                  ; 6 chars (left-anchored)
+hud_hp:         .byte "HP "                     ; 3 chars (right-anchored;
+                                                ;   no leading space — the
+                                                ;   15-char gap lives in
+                                                ;   update_hud directly)
 msg_died:       .byte "YOU DIED ON LEVEL ", $FF
 
 

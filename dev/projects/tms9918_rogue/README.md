@@ -28,6 +28,22 @@ Ships as `roms/codetank/Codetank_GAMES2.rom` — load via POM1's
   attack combat, HP/food stats, HUD on the bottom 4 rows, stairs-down
   regenerates a harder level, permadeath = "YOU DIED ON LEVEL N"
   + JMP $4000.
+- **MVP4 TODO — classic Rogue command set**:
+  - **Ranged attack** (`t` — throw): hurl a stackable projectile
+    (dagger, arrow) in a chosen direction. Needs a target-direction
+    prompt (vi keys reused) and a per-projectile travel loop that
+    stops on the first wall, monster, or end-of-FOV.
+  - **Equipment slots**:
+    - `w` — wield a weapon from the inventory (replaces PLAYER_DMG
+      with the weapon's damage roll).
+    - `W` — wear armor (subtracts from incoming MON_DMG).
+    - `P` — put on a magic ring (passive effect — regen, see-invis,
+      stealth, etc.).
+    - `R` — remove the currently-equipped ring / armor / weapon.
+  - **Inventory** (`i`): list every carried item with a single-letter
+    slot id (`a`..`z`), so the equip/throw prompts can address items
+    by slot. Pickup currently auto-heals food on contact; under MVP4
+    food becomes inventory-managed too (eat via `e`).
 
 ## Files
 
