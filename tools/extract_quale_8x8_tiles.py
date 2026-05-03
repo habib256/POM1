@@ -79,7 +79,12 @@ PALETTE: dict[int, tuple[str | None, str]] = {
     12: ("bldg_door_wood_pat",     "door"),         # plank+iron-band wooden door
 
     # --- Group 2 (chars 16..23): stairs-up + fixtures (lt-yellow on black) ---
-    16: ("bldg_stairs_up_pat",     "stairs_up"),    # was bldg_stairs_pat — renamed for clarity
+    # TILE_STAIRS_UP renders a cobblestone block (bldg_cobble3_pat) so the
+    # cell reads "the way up just collapsed" — Berlin-Interpretation
+    # one-way descent. The TILE_STAIRS_UP equate keeps its semantic name
+    # (the collision rule still treats the cell as a hard wall in
+    # check_collision); only the visual changes.
+    16: ("bldg_cobble3_pat",       "stairs_up"),
     20: ("expl_torch_pat",         "torch"),
 
     # --- Group 3 (chars 24..31): items (cyan on black) ---

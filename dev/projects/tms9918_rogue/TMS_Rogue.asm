@@ -40,6 +40,93 @@ PLAY_BOT_ROW   = 8              ; last walkable logical row
 PLAY_LEFT_COL  = 1              ; first walkable logical col
 PLAY_RIGHT_COL = 14             ; last walkable logical col
 
+; --- Vital stats (finish_turn / death_screen) --------------------------
+; HP_MAX caps the player's hit points. Reaching 0 triggers death_screen
+; → JMP $4000 (cartridge cold-start). HP only decreases via monster hits
+; (no starvation tick — the game loop pressure comes from combat itself,
+; balanced by food drops that monsters leave behind on death).
+HP_MAX         = 10
+PLAYER_DMG     = 2              ; damage dealt per bump-attack on a monster
+FOOD_HEAL      = 3              ; HP restored when the player walks onto
+                                ; a food item (capped at HP_MAX)
+
+; --- Monster pool ------------------------------------------------------
+; 16-slot pool at $E300 (high bank, after the 768-byte map_buffer).
+; Per-slot layout (8 bytes; padding leaves room for AI state later):
+;
+;   +0 MON_TYPE   0=dead/empty, 1=undead, 2=ghost, 3=death
+;   +1 MON_HP     remaining hit points (0 → mark dead)
+;   +2 MON_COL    logical 0..15
+;   +3 MON_ROW    logical 0..9
+;   +4 MON_NAME   sprite-name (4/8/12 → VRAM $3820/$3840/$3860)
+;   +5 MON_COLOR  TMS9918 palette index for the SAT colour byte
+;   +6 MON_DMG    damage dealt to the player on a successful hit
+;   +7 reserved
+;
+; Slot 0 of the SAT is the player; slots 1..16 mirror the monster pool
+; (one SAT entry per live monster), and the next-after-last gets Y=$D0
+; as the chain terminator. Sprite-pattern slot 0 ($3800-$381F) is the
+; player; slots 4/8/12 are the three undead types, all uploaded once
+; at start.
+MON_COUNT      = 16
+MON_SIZE       = 8
+MON_TYPE       = 0
+MON_HP         = 1
+MON_COL        = 2
+MON_ROW        = 3
+MON_NAME       = 4
+MON_COLOR      = 5
+MON_DMG        = 6
+MON_HURT       = 7              ; non-zero if the monster should render
+                                ; in COL_HURT this frame (set by
+                                ; player_attack_monster, cleared by
+                                ; clear_hurt_flags at top of main_loop).
+MON_TYPE_UNDEAD   = 1
+MON_TYPE_GHOST    = 2
+MON_TYPE_DEATH    = 3
+MON_TYPE_SKELETON = 4
+SPRITE_NAME_PLAYER   = 0
+SPRITE_NAME_UNDEAD   = 4
+SPRITE_NAME_GHOST    = 8
+SPRITE_NAME_DEATH    = 12
+SPRITE_NAME_FOOD     = 16
+SPRITE_NAME_SKELETON = 20
+
+; TMS9918 palette indices used for monster sprites (0=transp, 7=cyan,
+; 14=gray, 15=white, 10=dk yellow). UNDEAD stays bright white, GHOST
+; gets the pale gray, DEATH ages into dark yellow, SKELETON rides on
+; cyan to stand out as the warrior-class undead — all visible on the
+; gray-on-black wall pattern.
+MON_COL_UNDEAD   = 15
+MON_COL_GHOST    = 14
+MON_COL_DEATH    = 10
+MON_COL_SKELETON = 7
+COL_HURT       = 8              ; medium red — shared "took a hit" colour
+                                ; for the player and any wounded monster
+                                ; that survived its damage tick.
+COL_FOOD       = 11             ; light yellow — food drumstick reads as
+                                ; "edible" against the gray walls.
+
+; --- Item pool (food drops) --------------------------------------------
+; 8-slot pool at $E380, immediately after the monster pool ($E300-$E37F)
+; — placing them contiguous lets one clear loop reset both at level
+; transitions. Per-slot layout (4 bytes; +3 reserved for future item
+; types like potions / scrolls):
+;
+;   +0 ITEM_TYPE  0=empty, 1=food (only type for now)
+;   +1 ITEM_COL   logical 0..15
+;   +2 ITEM_ROW   logical 0..9
+;   +3 reserved
+;
+; Food drops where a monster died (player_attack_monster sets
+; ITEM_TYPE=1 at the corpse cell). Walking onto the cell heals
+; FOOD_HEAL HP (capped at HP_MAX) and frees the slot.
+ITEM_COUNT     = 8
+ITEM_SIZE      = 4
+ITEM_TYPE      = 0
+ITEM_COL       = 1
+ITEM_ROW       = 2
+
 ; --- Procedural dungeon tuning (gen_dungeon) ---
 N_ROOMS        = 2              ; "two-rooms" mode: first in left half,
                                 ; second in right half, separated by a
@@ -119,6 +206,34 @@ trans_mode:     .res 1          ; level-transition kind (set by
 wrap_anchor:    .res 1          ; row (modes 2/3) or col (modes 4/5)
                                 ; the player exited at — preserved as
                                 ; the spawn anchor in the wrapped room.
+hp:             .res 1          ; current HP (0..HP_MAX). 0 = death.
+player_hurt:    .res 1          ; non-zero if the player sprite should
+                                ; render in COL_HURT this frame.
+                                ; clear_hurt_flags resets it at the top
+                                ; of every main_loop iteration; set by
+                                ; step_monster_toward_player when a
+                                ; monster lands its bump-attack.
+pool_idx:       .res 1          ; current monster slot byte-offset into
+                                ; `monsters` ($E300+); used by
+                                ; spawn_monsters and move_monsters as a
+                                ; loop cursor (advances by MON_SIZE).
+pool_limit:     .res 1          ; high-water byte-offset for spawn_monsters
+                                ; (set once from depth + 2, capped at
+                                ; MON_COUNT * MON_SIZE).
+mon_abs_dx:     .res 1          ; |player_col - mon.col| for the monster
+mon_abs_dy:     .res 1          ;   currently being moved. Sign of the
+                                ;   step is re-derived from a CMP at
+                                ;   step time, so we don't store it.
+mon_type_pool:  .res 1          ; spawn-time difficulty: max MON_TYPE id
+                                ; eligible to spawn this level (= depth
+                                ; capped at 4). depth 1 = UNDEAD only,
+                                ; depth 2 adds GHOST, 3 adds DEATH,
+                                ; 4+ adds SKELETON (all 4 types).
+mon_hp_bonus:   .res 1          ; spawn-time difficulty: extra HP added
+                                ; to every monster's mon_init_hp value
+                                ; (= depth / 4). Doesn't change MON_DMG
+                                ; — sustained-damage scaling, not
+                                ; one-shot-kill scaling.
 
 
 ; --- Map buffer (160 B, 16x10 logical tiles, one byte = tile base id) ---
@@ -128,6 +243,18 @@ wrap_anchor:    .res 1          ; row (modes 2/3) or col (modes 4/5)
 ; itself is the bookkeeping.
 .segment "MAPSEG"
 map_buffer:     .res LOGICAL_COLS * LOGICAL_ROWS
+
+; --- Monster + item pools in unused high-bank RAM ----------------------
+; Both pools live outside the linker-managed MAPSEG (which ends at
+; $E0A0 after the 160-byte map_buffer); the rest of the high bank up
+; to $EFFF is free RAM and we address it absolutely. Keeping the two
+; pools contiguous (monsters then items) lets spawn_monsters wipe both
+; with a single loop covering 160 B starting at `monsters`.
+;
+;   monsters $E300-$E37F  16 slots × 8 B = 128 B
+;   items    $E380-$E39F   8 slots × 4 B =  32 B
+monsters = $E300
+items    = $E380
 
 
 ; =============================================
@@ -153,22 +280,37 @@ start:
         LDA #0                  ; trans_mode 0 = regen (random gen, no wrap)
         STA trans_mode          ; ensures place_perimeter_doors places
                                 ; all 4 doors on the very first big-room.
+        LDA #HP_MAX             ; full HP at game start
+        STA hp
 
         JSR clear_name_table    ; wipe title before the game view appears
         JSR gen_dungeon         ; procedural rooms + corridors + stairs;
                                 ; sets player_col/row to first room centre.
         JSR render_map          ; expand 16x10 logical map to 32x20 char block
 
-        JSR upload_player_pat   ; char_paladin2_pat -> sprite pattern slot 0
-        JSR place_player        ; SAT slot 0 = (Y, X, name=0, color)
-        JSR update_hud          ; HUD on rows 20-23: depth + key hints
+        JSR upload_sprite_pats  ; player + 3 undead patterns -> $3800-$387F
+        JSR spawn_monsters      ; populate the pool for the first level
+        JSR place_all_sprites   ; SAT: player slot 0 + each live monster
+        JSR update_hud          ; HUD on row 20: depth + HP + food
 
 main_loop:
+        ; Reset hurt flags so any flash from last turn doesn't leak
+        ; into THIS turn's place_all_sprites repaint. The SAT still
+        ; holds the previous frame's red-flash colour bytes until the
+        ; next place_all_sprites overwrites them, so the flash is
+        ; visible during wait_key.
+        JSR clear_hurt_flags
         JSR wait_key            ; A = raw key (high bit still set)
         CMP #('N' | $80)        ; 'N' regenerates a fresh random level
         BEQ @do_regen
         JSR handle_input        ; carry clear -> tgt_col/tgt_row set
         BCS main_loop           ; no movement key -> just wait again
+        ; Monster on the target cell? bump-attack instead of moving —
+        ; this fires BEFORE check_collision so the player can hit a
+        ; monster sitting on a wall-frame door without "falling off
+        ; the screen" (frame doors are passable for the player).
+        JSR monster_at_target   ; on hit: C clear, X = pool offset
+        BCC @bump
         JSR check_collision     ; carry clear -> passable
         BCS main_loop           ; blocked -> ignore the move
         ; Classify the move's target into one of three buckets:
@@ -192,19 +334,33 @@ main_loop:
         STA player_col
         LDA tgt_row
         STA player_row
-        JSR place_player        ; rewrite SAT slot 0 with new (Y, X)
+        JSR try_pickup_item     ; HP += FOOD_HEAL if a food drop is here
+        JSR move_monsters       ; AI + monster→player attacks
+        JSR place_all_sprites   ; rewrite the full SAT
+        JSR finish_turn         ; HUD repaint (may JMP death)
+        JMP main_loop
+
+@bump:
+        ; X is set by monster_at_target — pool offset of the bumped
+        ; monster. Player attacks (no move), monsters take their turn,
+        ; redraw, tick. Order matches the regular-move path.
+        JSR player_attack_monster
+        JSR move_monsters
+        JSR place_all_sprites
+        JSR finish_turn
         JMP main_loop
 
 @do_regen:
         LDA #0
         STA trans_mode
         JSR new_level
-        JMP main_loop
+        JMP main_loop           ; 'N' regen is a debug refresh, no turn cost
 
 @do_descent:
         LDA #1
         STA trans_mode
         JSR new_level
+        JSR finish_turn        ; descent counts as a turn
         JMP main_loop
 
 @exit_e:                        ; tgt_col = 15
@@ -213,6 +369,7 @@ main_loop:
         LDA tgt_row
         STA wrap_anchor
         JSR new_level
+        JSR finish_turn
         JMP main_loop
 
 @exit_w:                        ; tgt_col = 0
@@ -221,6 +378,7 @@ main_loop:
         LDA tgt_row
         STA wrap_anchor
         JSR new_level
+        JSR finish_turn
         JMP main_loop
 
 @exit_n:                        ; tgt_row = 0
@@ -229,6 +387,7 @@ main_loop:
         LDA tgt_col
         STA wrap_anchor
         JSR new_level
+        JSR finish_turn
         JMP main_loop
 
 @exit_s:                        ; tgt_row = 9
@@ -237,6 +396,7 @@ main_loop:
         LDA tgt_col
         STA wrap_anchor
         JSR new_level
+        JSR finish_turn
         JMP main_loop
 
 
@@ -274,9 +434,10 @@ new_level:
         JSR apply_wrap_spawn    ; overrides player_col/row to the
                                 ; opposite edge of the new big-room
 @paint:
+        JSR spawn_monsters      ; fresh undead pool for the new layout
         JSR clear_name_table
         JSR render_map
-        JSR place_player
+        JSR place_all_sprites
         JSR update_hud
         RTS
 
@@ -512,64 +673,55 @@ gen_big_room:
 ; Modes 0 and 1 leave trans_mode out of the [2..5] range and place all
 ; four random doors as before.
 ; ----------------------------------------------------------------------------
+; Per-edge tuple (4 bytes) walked by the table-driven loop below:
+;   +0 skip_mode : trans_mode value that suppresses this edge
+;                  (out-of-range modes 0/1 never match → all 4 doors land)
+;   +1 span      : rand_mod argument (col/row range = span cells wide)
+;   +2 axis      : 0 → randomise tgt_col, fixed → tgt_row (N/S doors)
+;                  1 → randomise tgt_row, fixed → tgt_col (W/E doors)
+;   +3 fixed     : the screen-frame col (0/15) or row (0/9) the door sits on
+; Random coord = rand_mod(span) + 3 — the +3 leaves a 3-cell margin from
+; each corner so doors never land in the corner cells (they would defeat
+; the wrap-spawn alignment trick in apply_wrap_spawn).
+DOOR_BASE = 3
 place_perimeter_doors:
-        ; --- North door (skipped on mode 5) ---
-        LDA     trans_mode
-        CMP     #5
-        BEQ     @skip_n
-        LDA     #10
-        JSR     rand_mod
+        LDX     #0
+@lp:    LDA     door_table+0,X          ; skip_mode for this edge
+        CMP     trans_mode
+        BEQ     @skip
+        LDA     door_table+1,X          ; span
+        JSR     rand_mod                ; A in [0, span); X preserved
         CLC
-        ADC     #3
-        STA     tgt_col
-        LDA     #0
-        STA     tgt_row
+        ADC     #DOOR_BASE              ; A in [3, 3+span)
+        LDY     door_table+2,X          ; axis (0 = horizontal, 1 = vertical)
+        BNE     @vert
+        STA     tgt_col                 ; N/S: rand into col
+        LDA     door_table+3,X
+        STA     tgt_row                 ; fixed row (0 or 9)
+        JMP     @stamp
+@vert:
+        STA     tgt_row                 ; W/E: rand into row
+        LDA     door_table+3,X
+        STA     tgt_col                 ; fixed col (0 or 15)
+@stamp:
         LDA     #TILE_DOOR
-        JSR     set_tile
-@skip_n:
-        ; --- South door (skipped on mode 4) ---
-        LDA     trans_mode
-        CMP     #4
-        BEQ     @skip_s
-        LDA     #10
-        JSR     rand_mod
+        JSR     set_tile                ; preserves X
+@skip:
+        TXA
         CLC
-        ADC     #3
-        STA     tgt_col
-        LDA     #9
-        STA     tgt_row
-        LDA     #TILE_DOOR
-        JSR     set_tile
-@skip_s:
-        ; --- West door (skipped on mode 2) ---
-        LDA     trans_mode
-        CMP     #2
-        BEQ     @skip_w
-        LDA     #4
-        JSR     rand_mod
-        CLC
-        ADC     #3
-        STA     tgt_row
-        LDA     #0
-        STA     tgt_col
-        LDA     #TILE_DOOR
-        JSR     set_tile
-@skip_w:
-        ; --- East door (skipped on mode 3) ---
-        LDA     trans_mode
-        CMP     #3
-        BEQ     @skip_e
-        LDA     #4
-        JSR     rand_mod
-        CLC
-        ADC     #3
-        STA     tgt_row
-        LDA     #15
-        STA     tgt_col
-        LDA     #TILE_DOOR
-        JSR     set_tile
-@skip_e:
+        ADC     #4
+        TAX
+        CPX     #(door_table_end - door_table)
+        BCC     @lp
         RTS
+
+door_table:
+        ;       skip span axis fixed
+        .byte   5,   10,  0,   0        ; N: skip on mode 5, col rand, row 0
+        .byte   4,   10,  0,   9        ; S: skip on mode 4, col rand, row 9
+        .byte   2,    4,  1,   0        ; W: skip on mode 2, row rand, col 0
+        .byte   3,    4,  1,  15        ; E: skip on mode 3, row rand, col 15
+door_table_end:
 
 
 ; ----------------------------------------------------------------------------
@@ -1063,6 +1215,673 @@ calc_map_ptr:
 
 
 ; ----------------------------------------------------------------------------
+; spawn_monsters: zero out the monster + item pools, then drop a depth-
+; scaled wave of undead onto random TILE_EMPTY cells. Three knobs all
+; key off `depth`:
+;
+;   - count  = min(depth + 2, MON_COUNT)
+;             depth 1 → 3 monsters, depth 14 → 16 (capped).
+;
+;   - type pool = min(depth, 4)
+;             depth 1 = UNDEAD only,
+;             depth 2 = + GHOST,
+;             depth 3 = + DEATH,
+;             depth 4+ = + SKELETON (full mix).
+;             rand_mod uses this as the upper bound, so each level
+;             unlocks one new tier of menace.
+;
+;   - hp bonus = depth / 4
+;             added on top of mon_init_hp[type] for every spawn.
+;             Sustained-damage scaling: a depth-8 UNDEAD has 1+2 = 3
+;             HP, needs two PLAYER_DMG=2 hits instead of one. MON_DMG
+;             stays raw — encounters get longer, not lethal-er.
+;
+; find_empty_cell rejects the player's cell and any cell already
+; holding a monster (item pool is empty at this point so no item
+; collision). If find_empty_cell fails (32 attempts exhausted) we stop
+; early — the level just ends up with fewer monsters than the budget.
+; ----------------------------------------------------------------------------
+spawn_monsters:
+        ; --- Clear both pools in one 160-byte sweep starting at the
+        ; monster pool ($E300); items live contiguously at $E380.
+        ; Sentinel-BNE pattern (cf. fill_with_walls) because
+        ; 160 - 1 = 159 = $9F has bit 7 set, so a plain
+        ; LDX/DEX/BPL countdown would exit immediately on the first DEX.
+        LDA     #0
+        LDX     #(MON_COUNT * MON_SIZE + ITEM_COUNT * ITEM_SIZE)
+@cl:    DEX
+        STA     monsters,X
+        BNE     @cl
+
+        ; --- pool_limit = min(depth + 2, MON_COUNT) * MON_SIZE ---
+        LDA     depth
+        CLC
+        ADC     #2
+        CMP     #(MON_COUNT + 1)
+        BCC     @cap_count
+        LDA     #MON_COUNT
+@cap_count:
+        ASL                             ; ×8 = byte offset (MON_SIZE = 8)
+        ASL
+        ASL
+        STA     pool_limit
+        LDA     #0
+        STA     pool_idx
+
+        ; --- mon_type_pool = min(depth, 4) — type pool widens by depth ---
+        LDA     depth
+        CMP     #5
+        BCC     @cap_pool               ; depth < 5 → use depth as-is
+        LDA     #4
+@cap_pool:
+        STA     mon_type_pool
+
+        ; --- mon_hp_bonus = depth / 4 (LSR LSR) ---
+        LDA     depth
+        LSR
+        LSR
+        STA     mon_hp_bonus
+
+@spawn_lp:
+        LDA     pool_idx
+        CMP     pool_limit
+        BCS     @done                   ; placed enough
+
+        JSR     find_empty_cell         ; tgt_col/tgt_row set on success
+        BCS     @done                   ; ran out of free cells → bail
+
+        ; --- Roll a random type 1..mon_type_pool (depth-scaled) ---
+        LDA     mon_type_pool
+        JSR     rand_mod
+        CLC
+        ADC     #1
+        TAY                             ; Y = type, indexes mon_init_* tables
+
+        LDX     pool_idx
+        TYA
+        STA     monsters+MON_TYPE,X
+        ; HP = mon_init_hp[type] + mon_hp_bonus  (depth-scaled durability)
+        LDA     mon_init_hp,Y
+        CLC
+        ADC     mon_hp_bonus
+        STA     monsters+MON_HP,X
+        LDA     tgt_col
+        STA     monsters+MON_COL,X
+        LDA     tgt_row
+        STA     monsters+MON_ROW,X
+        LDA     mon_init_name,Y
+        STA     monsters+MON_NAME,X
+        LDA     mon_init_color,Y
+        STA     monsters+MON_COLOR,X
+        LDA     mon_init_dmg,Y
+        STA     monsters+MON_DMG,X
+
+        LDA     pool_idx
+        CLC
+        ADC     #MON_SIZE
+        STA     pool_idx
+        JMP     @spawn_lp
+@done:
+        RTS
+
+
+; ----------------------------------------------------------------------------
+; find_empty_cell: roll random (col, row) pairs in [0..LOGICAL_COLS) x
+; [0..LOGICAL_ROWS) until one lands on a TILE_EMPTY cell that is neither
+; the player's current cell nor occupied by a live monster. Up to 32
+; attempts before giving up.
+;   On success: tgt_col / tgt_row set, carry CLEAR.
+;   On failure: carry SET.
+; The PHA/PLA pair around monster_at_target preserves the X attempts
+; counter (monster_at_target uses X for its scan).
+; ----------------------------------------------------------------------------
+find_empty_cell:
+        LDX     #32                     ; attempts counter
+@try:
+        LDA     #LOGICAL_COLS
+        JSR     rand_mod
+        STA     tgt_col
+        LDA     #LOGICAL_ROWS
+        JSR     rand_mod
+        STA     tgt_row
+        JSR     tile_at_target          ; preserves X (uses Y)
+        CMP     #TILE_EMPTY
+        BNE     @next
+        LDA     tgt_col
+        CMP     player_col
+        BNE     @ok_player
+        LDA     tgt_row
+        CMP     player_row
+        BEQ     @next
+@ok_player:
+        TXA
+        PHA                             ; save attempts counter
+        JSR     monster_at_target       ; clobbers X
+        PLA
+        TAX                             ; restore attempts counter
+        BCC     @next                   ; C clear = monster present → retry
+        CLC
+        RTS
+@next:
+        DEX
+        BNE     @try
+        SEC
+        RTS
+
+
+; ----------------------------------------------------------------------------
+; monster_at_target: scan the monster pool for a live monster (type != 0)
+; whose (col, row) matches (tgt_col, tgt_row).
+;   On hit:  carry CLEAR, X = byte offset of the slot in `monsters`.
+;   On miss: carry SET.
+; Uses A and X. Preserves Y. Used by both find_empty_cell (to avoid
+; double-spawning on the same cell) and the bump-attack path in
+; main_loop (to detect "player tried to step into a monster").
+; ----------------------------------------------------------------------------
+monster_at_target:
+        LDX     #0
+@lp:    LDA     monsters+MON_TYPE,X
+        BEQ     @next                   ; type 0 = empty slot
+        LDA     monsters+MON_COL,X
+        CMP     tgt_col
+        BNE     @next
+        LDA     monsters+MON_ROW,X
+        CMP     tgt_row
+        BNE     @next
+        CLC                             ; hit
+        RTS
+@next:
+        TXA
+        CLC
+        ADC     #MON_SIZE
+        TAX
+        CPX     #(MON_COUNT * MON_SIZE)
+        BCC     @lp
+        SEC                             ; miss
+        RTS
+
+
+; ----------------------------------------------------------------------------
+; mon_init_*: per-type initialisation tables, indexed by MON_TYPE
+; (1=undead, 2=ghost, 3=death, 4=skeleton). Index 0 is the dead/empty
+; marker and never read here, so it sits as a placeholder $00.
+; SKELETON is the second-tier warrior — 2 HP / 2 dmg makes it a hard-
+; hitting glass cannon: dies in one PLAYER_DMG=2 bump but takes a
+; bigger HP chunk back if it lands its swing first.
+; ----------------------------------------------------------------------------
+mon_init_hp:
+        .byte   0, 1, 2, 3, 2
+mon_init_name:
+        .byte   0, SPRITE_NAME_UNDEAD, SPRITE_NAME_GHOST, SPRITE_NAME_DEATH, SPRITE_NAME_SKELETON
+mon_init_color:
+        .byte   0, MON_COL_UNDEAD, MON_COL_GHOST, MON_COL_DEATH, MON_COL_SKELETON
+mon_init_dmg:
+        .byte   0, 1, 1, 2, 2
+
+
+; ----------------------------------------------------------------------------
+; spawn_item: drop a food item at (tgt_col, tgt_row). Caller has copied
+; the dying monster's MON_COL/MON_ROW into tgt_col/tgt_row. Picks the
+; first empty pool slot (ITEM_TYPE == 0); if every slot is taken the
+; food is silently lost — 8 simultaneous items is a generous cap, and
+; the player would have already healed several times to fill the pool.
+; ----------------------------------------------------------------------------
+spawn_item:
+        LDX     #0
+@lp:    LDA     items+ITEM_TYPE,X
+        BEQ     @found
+        TXA
+        CLC
+        ADC     #ITEM_SIZE
+        TAX
+        CPX     #(ITEM_COUNT * ITEM_SIZE)
+        BCC     @lp
+        RTS                             ; pool full → food lost
+@found:
+        LDA     #1
+        STA     items+ITEM_TYPE,X
+        LDA     tgt_col
+        STA     items+ITEM_COL,X
+        LDA     tgt_row
+        STA     items+ITEM_ROW,X
+        RTS
+
+
+; ----------------------------------------------------------------------------
+; item_at_target: scan the item pool for a live food drop at
+; (tgt_col, tgt_row).
+;   On hit:  carry CLEAR, X = byte offset of the slot in `items`.
+;   On miss: carry SET.
+; Mirrors monster_at_target's contract so try_pickup_item can read X
+; back to free the slot.
+; ----------------------------------------------------------------------------
+item_at_target:
+        LDX     #0
+@lp:    LDA     items+ITEM_TYPE,X
+        BEQ     @next
+        LDA     items+ITEM_COL,X
+        CMP     tgt_col
+        BNE     @next
+        LDA     items+ITEM_ROW,X
+        CMP     tgt_row
+        BNE     @next
+        CLC
+        RTS
+@next:
+        TXA
+        CLC
+        ADC     #ITEM_SIZE
+        TAX
+        CPX     #(ITEM_COUNT * ITEM_SIZE)
+        BCC     @lp
+        SEC
+        RTS
+
+
+; ----------------------------------------------------------------------------
+; try_pickup_item: called from main_loop's regular-move path right
+; after the player's coordinates are updated. If a food item sits on
+; the player's new cell, free the slot and add FOOD_HEAL to HP
+; (saturating at HP_MAX). Otherwise no-op.
+; ----------------------------------------------------------------------------
+try_pickup_item:
+        LDA     player_col
+        STA     tgt_col
+        LDA     player_row
+        STA     tgt_row
+        JSR     item_at_target
+        BCS     @done
+        LDA     #0
+        STA     items+ITEM_TYPE,X       ; consume the item
+        LDA     hp
+        CLC
+        ADC     #FOOD_HEAL
+        CMP     #(HP_MAX + 1)
+        BCC     @store
+        LDA     #HP_MAX
+@store:
+        STA     hp
+@done:
+        RTS
+
+
+; ----------------------------------------------------------------------------
+; player_attack_monster: deal PLAYER_DMG damage to the monster at pool
+; offset X. Saturates HP at 0. Survivors get MON_HURT set so they
+; render in COL_HURT this frame; killed monsters free their slot AND
+; drop a food item at their last position 50% of the time (rand_mod
+; coin-flip). Half-rate keeps the heal economy in check — if every
+; kill dropped food the player's HP would never go down for long.
+; ----------------------------------------------------------------------------
+player_attack_monster:
+        LDA     monsters+MON_HP,X
+        SEC
+        SBC     #PLAYER_DMG
+        BCS     @store
+        LDA     #0
+@store:
+        STA     monsters+MON_HP,X
+        BNE     @hurt_flash
+        ; --- Killed: stash the corpse cell, free the slot, then maybe drop. ---
+        LDA     monsters+MON_COL,X
+        STA     tgt_col
+        LDA     monsters+MON_ROW,X
+        STA     tgt_row
+        LDA     #0
+        STA     monsters+MON_TYPE,X
+        ; 50% drop rate. rand_mod #2 returns 0 or 1 (uniform); 0 = no
+        ; drop, 1 = food. rand_mod preserves X (it touches A + tmp only).
+        LDA     #2
+        JSR     rand_mod
+        BEQ     @no_drop
+        JMP     spawn_item              ; tail-call (RTS from spawn_item)
+@no_drop:
+        RTS
+@hurt_flash:
+        LDA     #1
+        STA     monsters+MON_HURT,X
+        RTS
+
+
+; ----------------------------------------------------------------------------
+; move_monsters: walk the pool; each live monster takes one turn driven
+; by step_monster, the per-MON_TYPE AI dispatcher. UNDEAD does direct
+; greedy chase, GHOST wanders (random walk), DEATH skips half its turns
+; before chasing, SKELETON takes the shorter axis first to flank — see
+; step_monster's banner for the full table.
+;
+; All AIs ultimately route through apply_step which deals damage on
+; player overlap (MON_DMG saturating-sub HP) or moves the monster if
+; the target cell is in-bounds, passable, and unoccupied.
+;
+; Doors are FORBIDDEN for monsters by design — each undead is confined
+; to its spawn room (or to a corridor segment between two doors), so
+; the player can rest in another room and the pursuit stops at the
+; threshold. Only TILE_EMPTY and TILE_STAIRS_DOWN are passable.
+;
+; Edge cells of the screen frame are also not enterable — the
+; PLAY_*_ROW/COL bounds keep monsters inside the playable interior so
+; they can never sit on a wrap-door (and the bounds check fires before
+; the tile check, so frame doors are rejected even before this rule).
+; ----------------------------------------------------------------------------
+move_monsters:
+        LDA     #0
+        STA     pool_idx
+@lp:
+        LDX     pool_idx
+        LDA     monsters+MON_TYPE,X
+        BEQ     @next
+        JSR     step_monster
+@next:
+        LDA     pool_idx
+        CLC
+        ADC     #MON_SIZE
+        STA     pool_idx
+        CMP     #(MON_COUNT * MON_SIZE)
+        BCC     @lp
+        RTS
+
+
+; ----------------------------------------------------------------------------
+; step_monster: move-or-attack dispatcher for one monster, indexed by
+; MON_TYPE. Pac-Man-style behaviour split — each undead has its own AI:
+;
+;   UNDEAD   (MON_TYPE 1) -> ai_undead   : Blinky-style direct chase
+;                                          (greedy on the larger |delta|,
+;                                          fallback to the other axis if
+;                                          blocked).
+;   GHOST    (MON_TYPE 2) -> ai_ghost    : random walk — picks one of the
+;                                          four cardinal directions
+;                                          uniformly each turn. Wanders
+;                                          and only hits the player by
+;                                          chance.
+;   DEATH    (MON_TYPE 3) -> ai_death    : sloth chase — coin-flip skip
+;                                          (acts ~half the turns), but
+;                                          when it does act it runs the
+;                                          full greedy chase. Slow but
+;                                          its 2-dmg hit is brutal.
+;   SKELETON (MON_TYPE 4) -> ai_skeleton : anti-greedy chase — picks the
+;                                          SHORTER axis first, so it
+;                                          flanks rather than rushing
+;                                          straight at the player.
+;
+; All AIs eventually route through try_step_x / try_step_y / apply_step
+; which handle bounds + tile passability + monster/food collision +
+; player overlap (= bite). On entry: X = pool offset (MON_TYPE != 0).
+; Clobbers A, X, Y, mon_abs_dx, mon_abs_dy, tgt_col, tgt_row, tmp.
+; ----------------------------------------------------------------------------
+step_monster:
+        LDA     monsters+MON_TYPE,X
+        CMP     #MON_TYPE_GHOST
+        BEQ     ai_ghost
+        CMP     #MON_TYPE_DEATH
+        BEQ     ai_death
+        CMP     #MON_TYPE_SKELETON
+        BEQ     ai_skeleton
+        ; Default = MON_TYPE_UNDEAD = greedy chase.
+        ; (also catches any future unknown type — safer than RTS.)
+        ; Fall through into ai_undead.
+
+
+; ----------------------------------------------------------------------------
+; ai_undead: greedy chase — step on the axis with the larger |delta|.
+; If that step is blocked (wall, door, monster, food, edge), fall back
+; to the other axis so the undead can still navigate around obstacles.
+; ----------------------------------------------------------------------------
+ai_undead:
+        JSR     compute_abs_deltas
+        BEQ     @bail                   ; both deltas 0 → defensive
+        LDA     mon_abs_dx
+        CMP     mon_abs_dy
+        BCC     @y_first                ; |dx| < |dy| → y-axis first
+        JSR     try_step_x
+        BCC     @bail                   ; success
+        JSR     try_step_y
+        RTS
+@y_first:
+        JSR     try_step_y
+        BCC     @bail
+        JSR     try_step_x
+@bail:
+        RTS
+
+
+; ----------------------------------------------------------------------------
+; ai_skeleton: anti-greedy chase — try the SHORTER axis first, fall
+; back to the longer. The skeleton tends to circle and flank rather
+; than rush head-on, which makes it dangerous from unexpected angles.
+; Distinct path from undead even when both deltas are non-zero.
+; ----------------------------------------------------------------------------
+ai_skeleton:
+        JSR     compute_abs_deltas
+        BEQ     @bail
+        LDA     mon_abs_dx
+        CMP     mon_abs_dy
+        BCC     @x_first                ; |dx| < |dy| → x-axis first (anti)
+        JSR     try_step_y              ; |dx| >= |dy| → y-axis first (anti)
+        BCC     @bail
+        JSR     try_step_x
+        RTS
+@x_first:
+        JSR     try_step_x
+        BCC     @bail
+        JSR     try_step_y
+@bail:
+        RTS
+
+
+; ----------------------------------------------------------------------------
+; ai_death: sloth chase — half the turns the death monster simply
+; doesn't move (coin flip via rand_mod #2). The other half it runs
+; ai_undead's greedy chase. Combined with its 2-dmg hit and 3 HP, the
+; player has time to disengage but pays heavily for getting cornered.
+; ----------------------------------------------------------------------------
+ai_death:
+        LDA     #2
+        JSR     rand_mod                ; A in {0, 1}; preserves X
+        BEQ     @skip
+        JMP     ai_undead               ; tail-call greedy
+@skip:
+        RTS
+
+
+; ----------------------------------------------------------------------------
+; ai_ghost: random walk — picks one of the four cardinal directions
+; uniformly each turn (rand_mod #4 → {N, S, W, E} via ghost_dx/dy
+; signed-byte tables). The chosen step routes through apply_step like
+; the chase AIs, so walls/doors/monsters/food still block. The ghost
+; doesn't aim at the player at all — it bites by accident.
+; ----------------------------------------------------------------------------
+ai_ghost:
+        LDA     #4
+        JSR     rand_mod                ; A in [0..3]
+        TAY
+        LDA     monsters+MON_COL,X
+        CLC
+        ADC     ghost_dx,Y              ; signed offset (-1, 0, +1)
+        STA     tgt_col
+        LDA     monsters+MON_ROW,X
+        CLC
+        ADC     ghost_dy,Y
+        STA     tgt_row
+        JMP     apply_step              ; tail-call
+
+; Direction table (signed): index 0=N, 1=S, 2=W, 3=E.
+ghost_dx:
+        .byte   $00, $00, $FF, $01
+ghost_dy:
+        .byte   $FF, $01, $00, $00
+
+
+; ----------------------------------------------------------------------------
+; compute_abs_deltas: shared helper for the chasing AIs.
+; Sets mon_abs_dx = |player_col - mon.col| and mon_abs_dy = same for
+; rows. On return A = mon_abs_dx | mon_abs_dy with the Z flag set iff
+; both deltas are 0 (caller's BEQ catches the defensive "monster sits
+; on player" case — never happens in normal play but cheap to guard).
+; ----------------------------------------------------------------------------
+compute_abs_deltas:
+        LDA     player_col
+        SEC
+        SBC     monsters+MON_COL,X
+        BCS     @abs_dx_done
+        EOR     #$FF
+        CLC
+        ADC     #1                      ; two's-complement negate
+@abs_dx_done:
+        STA     mon_abs_dx
+        LDA     player_row
+        SEC
+        SBC     monsters+MON_ROW,X
+        BCS     @abs_dy_done
+        EOR     #$FF
+        CLC
+        ADC     #1
+@abs_dy_done:
+        STA     mon_abs_dy
+        ORA     mon_abs_dx              ; Z set iff both deltas are 0
+        RTS
+
+
+; ----------------------------------------------------------------------------
+; try_step_x / try_step_y: attempt one cardinal step on the given axis.
+; The sign is derived from a CMP against player_col / player_row, so we
+; never need a stored dx/dy sign. If the monster is already aligned on
+; this axis (abs == 0) the routine returns C set without touching state.
+; Both routines fall through to apply_step which does the attack-or-move
+; check and returns C clear on success.
+;
+; X (the monster pool offset) is preserved across the call by all paths.
+; ----------------------------------------------------------------------------
+try_step_x:
+        LDA     mon_abs_dx
+        BNE     @x_compute
+        SEC                             ; nothing to do on this axis
+        RTS
+@x_compute:
+        LDA     monsters+MON_ROW,X
+        STA     tgt_row
+        LDA     monsters+MON_COL,X
+        CMP     player_col
+        BCC     @x_east                 ; mon.col < player.col → +1
+        SEC
+        SBC     #1
+        STA     tgt_col
+        JMP     apply_step
+@x_east:
+        CLC
+        ADC     #1
+        STA     tgt_col
+        JMP     apply_step
+
+try_step_y:
+        LDA     mon_abs_dy
+        BNE     @y_compute
+        SEC
+        RTS
+@y_compute:
+        LDA     monsters+MON_COL,X
+        STA     tgt_col
+        LDA     monsters+MON_ROW,X
+        CMP     player_row
+        BCC     @y_south                ; mon.row < player.row → +1
+        SEC
+        SBC     #1
+        STA     tgt_row
+        JMP     apply_step
+@y_south:
+        CLC
+        ADC     #1
+        STA     tgt_row
+        ; fall through to apply_step
+
+
+; ----------------------------------------------------------------------------
+; apply_step: shared tail for try_step_x / try_step_y.
+; Reads tgt_col / tgt_row (already set by the caller) and:
+;   - if (tgt) == player → attack player (HP -= mon.MON_DMG, set
+;     player_hurt) and return CLC (success — counts as the action).
+;   - else if the cell is in-bounds, passable (EMPTY or STAIRS_DOWN
+;     only — doors are forbidden for monsters), and not occupied by
+;     another monster or a food drop → write back into MON_COL/ROW and
+;     return CLC.
+;   - else return SEC (blocked — caller may try the other axis).
+; ----------------------------------------------------------------------------
+apply_step:
+        LDA     tgt_col
+        CMP     player_col
+        BNE     @check_pass
+        LDA     tgt_row
+        CMP     player_row
+        BNE     @check_pass
+        ; --- Player overlap → bite ---
+        LDA     monsters+MON_DMG,X
+        STA     tmp
+        LDA     hp
+        SEC
+        SBC     tmp
+        BCS     @hp_ok
+        LDA     #0
+@hp_ok:
+        STA     hp
+        LDA     #1
+        STA     player_hurt
+        CLC                             ; counts as the monster's action
+        RTS
+@check_pass:
+        ; In bounds (playable interior, edge frame is for the player only) ?
+        LDA     tgt_row
+        CMP     #PLAY_TOP_ROW
+        BCC     @blocked
+        CMP     #(PLAY_BOT_ROW + 1)
+        BCS     @blocked
+        LDA     tgt_col
+        CMP     #PLAY_LEFT_COL
+        BCC     @blocked
+        CMP     #(PLAY_RIGHT_COL + 1)
+        BCS     @blocked
+        ; Passable tile + no other monster + no food on this cell?
+        ; Monsters can't trample food drops — that lets the player stake
+        ; out a bait cell or back off to recover, and visually keeps the
+        ; food sprite from being hidden under a monster sprite.
+        TXA
+        PHA                             ; save monster slot offset
+        JSR     tile_at_target
+        STA     tmp                     ; cache the tile id
+        JSR     monster_at_target       ; clobbers X (carry: clear=hit)
+        PLA
+        TAX                             ; restore monster slot offset
+        BCC     @blocked                ; another monster occupies this cell
+        TXA
+        PHA
+        JSR     item_at_target          ; clobbers X (carry: clear=hit)
+        PLA
+        TAX
+        BCC     @blocked                ; a food drop occupies this cell
+        ; Doors are FORBIDDEN for monsters — they confine each undead
+        ; to its spawn room (or to the corridor segment between two
+        ; doors). The player can rest in another room knowing the
+        ; pursuit stops at the threshold. Side-effect: monsters can
+        ; never die on a door cell, so spawn_item never drops food on
+        ; a door (no need to special-case the drop site).
+        LDA     tmp
+        CMP     #TILE_EMPTY
+        BEQ     @move_ok
+        CMP     #TILE_STAIRS_DOWN
+        BEQ     @move_ok
+@blocked:
+        SEC
+        RTS
+@move_ok:
+        LDA     tgt_col
+        STA     monsters+MON_COL,X
+        LDA     tgt_row
+        STA     monsters+MON_ROW,X
+        CLC
+        RTS
+
+
+; ----------------------------------------------------------------------------
 ; render_map: expand the 160-byte map_buffer into the name table at
 ; VRAM $1800. Each logical tile (1 byte = base char id) becomes a 2x2
 ; block of 4 chars (base+0=TL, base+1=TR, base+2=BL, base+3=BR).
@@ -1123,38 +1942,76 @@ render_map:
 
 
 ; ----------------------------------------------------------------------------
-; upload_player_pat: stream char_paladin2_pat (32 bytes, 16x16 layout
-; native to the TMS9918) into sprite pattern slot 0 at VRAM $3800.
+; upload_sprite_pats: stream all 6 sprite patterns (player + 4 undead +
+; food drop) as a single 192-byte block to VRAM $3800. The patterns
+; sit back-to-back in source order (sprite_pats), so a single auto-
+; increment loop covers slots 0/4/8/12/16/20 — names that the SAT colour
+; byte indexes by (name & ~3) in 16x16 mode.
+;   slot  0 ($3800-$381F) : player paladin
+;   slot  4 ($3820-$383F) : undead         (MON_TYPE_UNDEAD)
+;   slot  8 ($3840-$385F) : ghost          (MON_TYPE_GHOST)
+;   slot 12 ($3860-$387F) : death          (MON_TYPE_DEATH)
+;   slot 16 ($3880-$389F) : food meat      (ITEM_TYPE food drop)
+;   slot 20 ($38A0-$38BF) : skeleton       (MON_TYPE_SKELETON)
 ; ----------------------------------------------------------------------------
-upload_player_pat:
+upload_sprite_pats:
         LDA     #$00
         STA     VDP_CTRL
         NOP
         LDA     #$78            ; $38 | $40 -> write at $3800
         STA     VDP_CTRL
         LDX     #0
-@lp:    LDA     char_paladin2_pat,X
+@lp:    LDA     sprite_pats,X
         WRT_DATA_REG
         INX
-        CPX     #32
+        CPX     #192
         BNE     @lp
         RTS
 
 
 ; ----------------------------------------------------------------------------
-; place_player: rewrite Sprite Attribute Table slot 0. Logical position
-; (lcol, lrow) maps to pixel (lcol*16, lrow*16) so the 16x16 sprite
-; lands exactly on one 16x16 logical tile.
-;   Slot 0: Y=lrow*16, X=lcol*16, pattern=0, color=COL_PLAYER (lt-blue)
-;   Slot 1: Y=$D0    -> chip stops scanning here
+; clear_hurt_flags: zero player_hurt and every MON_HURT byte. Called at
+; the top of each main_loop iteration so the red flash from last turn
+; only persists until the next player action — by the time
+; place_all_sprites runs for the new turn, it sees fresh hurt flags
+; that this turn's combat has set (or not).
 ; ----------------------------------------------------------------------------
-place_player:
+clear_hurt_flags:
+        LDA     #0
+        STA     player_hurt
+        LDX     #0
+@lp:    STA     monsters+MON_HURT,X
+        TXA
+        CLC
+        ADC     #MON_SIZE
+        TAX
+        CPX     #(MON_COUNT * MON_SIZE)
+        BCC     @lp
+        RTS
+
+
+; ----------------------------------------------------------------------------
+; place_all_sprites: rewrite the entire Sprite Attribute Table at $1B00.
+; Slot 0 is always the player (Y=row*16, X=col*16, name=0, COL_PLAYER).
+; Slots 1..N are one entry per LIVE monster (MON_TYPE != 0), in pool
+; order — each pulls Y/X from MON_ROW/MON_COL × 16 and (name, color)
+; straight from the per-monster fields. The next-after-last slot gets
+; Y=$D0, the chip's chain-terminator sentinel — every later SAT entry
+; is ignored regardless of contents.
+;
+; Logical (lcol, lrow) → pixel (lcol*16, lrow*16) so a 16x16 sprite
+; sits exactly on its 16x16 logical tile. We don't bother sub-pixel-
+; centring monsters into the 4-rendered-quads tile (they ride the same
+; cell grid as the player, which already aligns).
+; ----------------------------------------------------------------------------
+place_all_sprites:
         LDA     #$00
         STA     VDP_CTRL
         NOP                     ; +2c silicon-strict gap (LDA #imm bridge)
         LDA     #$5B            ; $1B | $40 -> write at $1B00
         STA     VDP_CTRL
 
+        ; --- Slot 0: player ---
         LDA     player_row
         ASL
         ASL
@@ -1167,10 +2024,86 @@ place_player:
         ASL
         ASL                     ; col * 16
         WRT_DATA_REG
-        WRT_DATA_VAL $00        ; pattern slot 0
-        WRT_DATA_VAL COL_PLAYER
+        WRT_DATA_VAL SPRITE_NAME_PLAYER
+        ; Player colour: COL_HURT if hurt this frame, else COL_PLAYER.
+        LDA     player_hurt
+        BEQ     @p_normal
+        LDA     #COL_HURT
+        JMP     @p_write
+@p_normal:
+        LDA     #COL_PLAYER
+@p_write:
+        WRT_DATA_REG
 
-        LDA     #$D0            ; sprite #1 -> chain terminator
+        ; --- Slots 1..N: live monsters (one SAT entry per non-zero MON_TYPE) ---
+        LDX     #0
+@mon_lp:
+        LDA     monsters+MON_TYPE,X
+        BEQ     @mon_skip
+        LDA     monsters+MON_ROW,X
+        ASL
+        ASL
+        ASL
+        ASL
+        WRT_DATA_REG
+        LDA     monsters+MON_COL,X
+        ASL
+        ASL
+        ASL
+        ASL
+        WRT_DATA_REG
+        LDA     monsters+MON_NAME,X
+        WRT_DATA_REG
+        ; Monster colour: COL_HURT if MON_HURT,X set, else MON_COLOR,X.
+        LDA     monsters+MON_HURT,X
+        BEQ     @m_normal
+        LDA     #COL_HURT
+        JMP     @m_write
+@m_normal:
+        LDA     monsters+MON_COLOR,X
+@m_write:
+        WRT_DATA_REG
+@mon_skip:
+        TXA
+        CLC
+        ADC     #MON_SIZE
+        TAX
+        CPX     #(MON_COUNT * MON_SIZE)
+        BCC     @mon_lp
+
+        ; --- Slots after monsters: live food items (one entry per
+        ; non-zero ITEM_TYPE). Items render LAST (highest SAT slot
+        ; index) which gives them the LOWEST display priority on
+        ; TMS9918 — so a player or monster sprite standing on the
+        ; same cell covers the food, exactly the visual we want.
+        LDX     #0
+@item_lp:
+        LDA     items+ITEM_TYPE,X
+        BEQ     @item_skip
+        LDA     items+ITEM_ROW,X
+        ASL
+        ASL
+        ASL
+        ASL
+        WRT_DATA_REG
+        LDA     items+ITEM_COL,X
+        ASL
+        ASL
+        ASL
+        ASL
+        WRT_DATA_REG
+        WRT_DATA_VAL SPRITE_NAME_FOOD
+        WRT_DATA_VAL COL_FOOD
+@item_skip:
+        TXA
+        CLC
+        ADC     #ITEM_SIZE
+        TAX
+        CPX     #(ITEM_COUNT * ITEM_SIZE)
+        BCC     @item_lp
+
+        ; --- Chain terminator: Y=$D0 ends sprite scanning ---
+        LDA     #$D0
         STA     VDP_DATA
         RTS
 
@@ -1311,15 +2244,15 @@ draw_text:
 ; update_hud: paint a 32-char status line on name-table row 20
 ; (VRAM $1A80) — the HUD area below the 32x20 playfield. Layout:
 ;
-;     "DEPTH 003    WASD MOVE  N NEW   "
-;       6        + 3   + 4 +  4 +     15
+;     "DEPTH NNN HP HH/HM              "
+;       6  + 3 + 1+ 3 +2+1+2 +     14
 ;
-; The 4-character movement-key block in the middle is dynamic — it
-; reads key_north / key_west / key_south / key_east (set by
-; wait_kb_choice) and prints them in N-W-S-E mnemonic order, so a
-; QWERTY user sees "WASD" while an AZERTY user sees "ZQSD" without
-; touching the layout. Re-run on every level transition so the
-; digits stay in sync with `depth`.
+; The depth field reflects the current dungeon depth (1..255). HP shows
+; current/max in two-digit pairs (HM = HP_MAX constant). Repainted by
+; finish_turn so HP digits stay live after monster attacks and food
+; pickups. The dynamic-key reminder previously on this row was dropped
+; in favour of the persistent stats — the player learns the layout on
+; the title screen.
 ; ----------------------------------------------------------------------------
 update_hud:
         LDA     #$80                    ; row 20 col 0 = $1A80
@@ -1327,59 +2260,46 @@ update_hud:
         NOP
         LDA     #$5A                    ; $1A | $40 -> write
         STA     VDP_CTRL
-        ; --- Prefix "DEPTH " (6 chars) ---
+        ; --- "DEPTH " (6 chars) ---
         LDX     #0
-@prefix:
-        LDA     hud_prefix,X
+@d_lp:  LDA     hud_depth,X
         WRT_DATA_REG
         INX
         CPX     #6
-        BNE     @prefix
-        ; --- 3 depth digits ---
+        BNE     @d_lp
         LDA     depth
         JSR     print_byte_3digits
-        ; --- 4 spacer chars between digits and the dynamic key block ---
-        LDA     #' '
-        LDX     #4
-@gap:
-        WRT_DATA_REG
-        DEX
-        BNE     @gap
-        ; --- Dynamic movement keys (NWSE = WASD on QWERTY, ZQSD on
-        ;     AZERTY). Strip the high bit so the byte matches the
-        ;     ASCII-aligned font glyph char ID.
-        LDA     key_north
-        AND     #$7F
-        WRT_DATA_REG
-        LDA     key_west
-        AND     #$7F
-        WRT_DATA_REG
-        LDA     key_south
-        AND     #$7F
-        WRT_DATA_REG
-        LDA     key_east
-        AND     #$7F
-        WRT_DATA_REG
-        ; --- Suffix (15 chars, fills the rest of row 20) ---
+        ; --- " HP " (4 chars) ---
         LDX     #0
-@suffix:
-        LDA     hud_suffix,X
+@h_lp:  LDA     hud_hp,X
         WRT_DATA_REG
         INX
-        CPX     #15
-        BNE     @suffix
+        CPX     #4
+        BNE     @h_lp
+        LDA     hp
+        JSR     print_byte_2digits
+        LDA     #'/'
+        WRT_DATA_REG
+        LDA     #HP_MAX
+        JSR     print_byte_2digits
+        ; --- 14 trailing spaces fill the row to 32 chars ---
+        LDA     #' '
+        LDX     #14
+@sp_lp: WRT_DATA_REG
+        DEX
+        BNE     @sp_lp
         RTS
 
 
 ; ----------------------------------------------------------------------------
-; print_byte_3digits: stream A as 3 zero-padded ASCII decimal digits
-; to VDP_DATA (caller has already armed the VRAM write address). The
-; font-glyph chars at IDs 48..57 match ASCII '0'..'9' 1:1, so adding
+; print_byte_3digits / print_byte_2digits: stream A as N zero-padded ASCII
+; decimal digits to VDP_DATA (caller already armed the VRAM write address).
+; The font-glyph chars at IDs 48..57 match ASCII '0'..'9' 1:1, so adding
 ; '0' to a 0..9 nibble yields the right char id directly.
-; Clobbers A, X.
+; print_byte_3digits handles the hundreds digit then falls through into
+; print_byte_2digits for the tens + units. Clobbers A, X.
 ; ----------------------------------------------------------------------------
 print_byte_3digits:
-        ; Hundreds.
         LDX     #0
 @h:     CMP     #100
         BCC     @h_done
@@ -1394,7 +2314,8 @@ print_byte_3digits:
         ADC     #'0'
         WRT_DATA_REG
         PLA
-        ; Tens.
+        ; fall through to print_byte_2digits
+print_byte_2digits:
         LDX     #0
 @t:     CMP     #10
         BCC     @t_done
@@ -1416,12 +2337,48 @@ print_byte_3digits:
         RTS
 
 
-hud_prefix:
-        .byte "DEPTH "                  ; 6 chars
-hud_suffix:
-        .byte " MOVE  N NEW   "         ; 15 chars
-                                        ; (4 prefix + 3 digits + 4 gap +
-                                        ;  4 dyn keys + 15 suffix = 32)
+; ----------------------------------------------------------------------------
+; finish_turn: bookkeeping at the end of every accepted player action.
+; Repaints the HUD (HP may have changed via monster attacks or food
+; pickup) and tail-jumps to death_screen if HP hit 0. No starvation —
+; the only way HP drops is a monster bump-attacking the player.
+; ----------------------------------------------------------------------------
+finish_turn:
+        JSR     update_hud
+        LDA     hp
+        BNE     @alive
+        JMP     death_screen            ; tail-call (never returns)
+@alive:
+        RTS
+
+
+; ----------------------------------------------------------------------------
+; death_screen: clear the playfield, paint "YOU DIED ON LEVEL NNN" centred
+; on row 11, then wait for any key and JMP $4000 (cartridge cold-start).
+; The cold-start re-runs `start:` which re-seeds the PRNG via the
+; reaction-time loop, so each retry produces a fresh dungeon.
+; ----------------------------------------------------------------------------
+death_screen:
+        JSR     clear_name_table
+        ; "YOU DIED ON LEVEL " (18 chars) at row 11, col 5 -> $1965.
+        ; Auto-increment lands the 3 depth digits at $1977-$1979 (col 23-25),
+        ; total line spans cols 5..25 (21 chars, ~centred in the 32-wide row).
+        LDA     #<msg_died
+        STA     vdp_src_lo
+        LDA     #>msg_died
+        STA     vdp_src_hi
+        LDA     #$65
+        LDX     #$59                    ; $19 | $40
+        JSR     draw_text
+        LDA     depth
+        JSR     print_byte_3digits
+        JSR     wait_key                ; any key acknowledges
+        JMP     $4000                   ; cartridge cold-start
+
+
+hud_depth:      .byte "DEPTH "                  ; 6 chars
+hud_hp:         .byte " HP "                    ; 4 chars
+msg_died:       .byte "YOU DIED ON LEVEL ", $FF
 
 
 ; ----------------------------------------------------------------------------
@@ -1550,18 +2507,74 @@ title_azerty:
 
 
 ; ============================================================================
-; char_paladin2_pat -- player sprite (16x16, 32 bytes), inlined from
-; dev/lib/tms9918/sprites_characters.asm so we don't pull in the full
-; 33-sprite library and overflow the 3 456 B low-bank CODE budget.
-; (Bytes copied post-shift, i.e. after tools/shift_characters_up.py
-; ran — the lib's char sprites had a 2-row blank top + 0-row blank
-; bottom that got rebalanced to 1+1.)
+; sprite_pats -- 4 sprite patterns (16x16, 32 B each = 128 B), uploaded
+; as a single contiguous block to VRAM $3800 by upload_sprite_pats.
+; Inlined here rather than .imported from the lib .asm files because
+; pulling in the full 33-sprite character lib + 8-sprite undead lib
+; would blow the 3 456 B low-bank CODE budget on the DRAM build.
+;
+;   Slot 0 / $3800 : char_paladin2_pat (player, lt-blue)
+;     Source: dev/lib/tms9918/sprites_characters.asm, post-shift bytes
+;     (tools/shift_characters_up.py rebalanced the 2-row blank top + 0
+;     blank bottom to 1+1).
+;
+;   Slot 4 / $3820 : undead_undead_pat   (was Quale's "skull")
+;   Slot 8 / $3840 : undead_ghost_pat
+;   Slot 12 / $3860: undead_death_pat    (was Quale's "mummy")
+;     Source: dev/lib/tms9918/sprites_unliving.asm — Quale's
+;     SCROLL-O-SPRITES "The Unliving" row, CC-BY-3.0. Labels were
+;     re-mapped (skull → UNDEAD as "first-tier undead", mummy → DEATH
+;     as "strongest undead"); the lib's .export was updated to match.
+;
+;   Slot 16 / $3880: food_meat_pat (drumstick — dropped by dead monsters)
+;     Source: dev/lib/tms9918/sprites_food_drink.asm — Quale's
+;     SCROLL-O-SPRITES "Food & Drink" row, CC-BY-3.0.
+;
+;   Slot 20 / $38A0: undead_skeleton_pat (was Quale's "crossbones")
+;     Source: dev/lib/tms9918/sprites_unliving.asm — second-tier
+;     warrior undead. Sits AFTER the food slot in the sprite-pattern
+;     table (food landed at slot 16 first chronologically); the
+;     skip-by-name SAT addressing is unaffected by slot order.
 ; ============================================================================
-char_paladin2_pat:
+sprite_pats:
+char_paladin2_pat:                              ; slot 0 — player
         .byte $01, $07, $0F, $0F, $09, $08, $0E, $02
         .byte $7A, $68, $6B, $6B, $69, $6A, $34, $00
         .byte $82, $E7, $F0, $F2, $92, $12, $72, $72
         .byte $66, $16, $D8, $E2, $82, $62, $22, $00
+undead_undead_pat:                              ; slot 4 — undead
+        .byte $00, $00, $17, $0F, $09, $09, $0F, $2E
+        .byte $0C, $04, $38, $57, $47, $07, $06, $02
+        .byte $00, $02, $E0, $F0, $F0, $D0, $F0, $B0
+        .byte $30, $22, $18, $D4, $E4, $E0, $60, $50
+undead_ghost_pat:                               ; slot 8 — ghost
+        .byte $00, $07, $0F, $1D, $1B, $5F, $7D, $7C
+        .byte $3C, $1E, $1F, $1F, $0F, $03, $00, $00
+        .byte $00, $E0, $F0, $F8, $B8, $DA, $7E, $3E
+        .byte $3C, $B8, $F8, $F8, $FA, $FC, $00, $00
+undead_death_pat:                               ; slot 12 — death
+        .byte $00, $63, $77, $4F, $48, $51, $51, $56
+        .byte $53, $53, $78, $3F, $5F, $47, $47, $4C
+        .byte $00, $F0, $E0, $F0, $10, $88, $88, $68
+        .byte $C8, $48, $10, $F8, $FC, $E4, $F0, $D8
+                                                ; slot 16 — food (meat)
+        .byte $00, $00, $00, $00, $00, $00, $03, $0F
+        .byte $3B, $5E, $7E, $6C, $78, $31, $1E, $00
+        .byte $00, $18, $1E, $1E, $30, $60, $C0, $60
+        .byte $00, $40, $40, $80, $80, $00, $00, $00
+undead_skeleton_pat:                            ; slot 20 — skeleton
+        ; Bytes shifted up by one row vs. the lib's
+        ; undead_skeleton_pat (the Quale extraction left a 2-row blank
+        ; top and 0-row blank bottom, so the unshifted sprite floats
+        ; one cell low). Same fix as char_paladin2_pat (see the
+        ; tools/shift_characters_up.py docstring): each 16-row
+        ; half-column is rotated by one — left[0..14] = old left[1..15],
+        ; left[15] = 0; mirror for the right half. Only the inline copy
+        ; here is shifted; the lib bytes stay raw for other consumers.
+        .byte $00, $07, $0F, $0F, $09, $09, $0E, $03
+        .byte $03, $18, $27, $31, $33, $04, $04, $00
+        .byte $00, $E0, $F0, $F0, $90, $90, $70, $C0
+        .byte $40, $18, $E4, $8C, $CC, $20, $20, $00
 
 ; ============================================================================
 ; prng16 -- 16-bit Galois LFSR shared library (lib/m6502/prng16.asm).

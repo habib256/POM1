@@ -41,7 +41,8 @@ TMS_PALETTE = {
     15: (255, 255, 255),
 }
 
-# Tiles currently used by TMS_Rogue. Mirrors the PALETTE dict in
+# Tiles currently used by TMS_Rogue (rendered into the name table via
+# the pattern table at $0000). Mirrors the PALETTE dict in
 # tools/extract_quale_8x8_tiles.py — keep in sync by hand. fg/bg from
 # the tileset_color_table groups (one fg/bg per group of 8 chars).
 #   group 0 (chars  0.. 7): $E1 — gray on black
@@ -55,23 +56,42 @@ TILES = [
     (4,  "bldg_brick_wall_pat",         "WALL",       14, 1,
      "stone wall (everything outside dug area)"),
     (8,  "bldg_stairs_down_pat",        "STAIRS_DOWN", 10, 1,
-     "stairs down — last room's centre (was mis-labelled bldg_house_pat)"),
+     "stairs down — descent path; advances depth"),
     (12, "bldg_door_wood_pat",          "DOOR",       10, 1,
-     "wooden door — corridor → room boundary"),
-    (16, "bldg_stairs_up_pat",          "STAIRS_UP",  11, 1,
-     "stairs up — top-right of room 0, right side anchored to wall"),
+     "wooden door — passable for player + monsters"),
+    (16, "bldg_cobble3_pat",            "STAIRS_UP",  11, 1,
+     "rubble — 'the way up just collapsed' (one-way descent)"),
     (20, "expl_torch_pat",              "TORCH",      11, 1,
      "torch — DEFINED in tileset, NOT USED in code yet"),
     (24, "expl_coin_pat",               "GOLD",        7, 1,
-     "gold — NOT USED yet (MVP3)"),
+     "gold — NOT USED yet (item pool is food-only for now)"),
     (28, "expl_flask_pat",              "POTION",      7, 1,
-     "potion — NOT USED yet (MVP3)"),
+     "potion — NOT USED yet (item pool is food-only for now)"),
 ]
 
-# Player sprite is inlined in TMS_Rogue.asm rather than imported from
-# sprites_characters.asm to fit the 3 456 B low-bank code budget.
-PLAYER = ("char_paladin2_pat", "PLAYER", 5, 1,
-          "16x16 hardware sprite (slot 0) lt-blue — inlined in TMS_Rogue.asm")
+# Hardware sprites (16x16 SAT entries, pattern table at $3800). Inlined
+# into sprite_pats in TMS_Rogue.asm rather than .imported from the lib
+# to fit the cartridge layout cleanly.
+#   slot  0 ($3800) : player paladin
+#   slot  4 ($3820) : skull   (MON_TYPE 1)
+#   slot  8 ($3840) : ghost   (MON_TYPE 2)
+#   slot 12 ($3860) : mummy   (MON_TYPE 3)
+#   slot 16 ($3880) : food meat (ITEM_TYPE 1, food drop)
+HW_SPRITES = [
+    # (slot, sprite_label, display_name, fg_idx, bg_idx, role)
+    (0,  "char_paladin2_pat",  "PLAYER",   5,  1,
+     "lt-blue — flashes red (col 8) when hit by a monster"),
+    (4,  "undead_undead_pat",  "UNDEAD",   15, 1,
+     "MON_TYPE 1 — 1 HP, 1 dmg; weakest undead (Quale's 'skull' artwork)"),
+    (8,  "undead_ghost_pat",   "GHOST",    14, 1,
+     "MON_TYPE 2 — 2 HP, 1 dmg; mid-tier"),
+    (12, "undead_death_pat",   "DEATH",    10, 1,
+     "MON_TYPE 3 — 3 HP, 2 dmg; strongest undead (Quale's 'mummy' artwork)"),
+    (16, "food_meat_pat",      "FOOD",     11, 1,
+     "drumstick dropped by dead monster (50% rate) — heals FOOD_HEAL=3 HP"),
+    (20, "undead_skeleton_pat", "SKELETON", 7, 1,
+     "MON_TYPE 4 — 2 HP, 2 dmg; warrior tier (Quale's 'crossbones' artwork)"),
+]
 
 
 LABEL_RE = re.compile(r"^([a-zA-Z][a-zA-Z0-9_]*):\s*$")
@@ -172,11 +192,16 @@ def main() -> int:
     PAD = 24
     TEXT_X = PAD + SPR_PX + 28
     WIDTH = 880
-    HEIGHT = PAD * 2 + ROW_H * (len(TILES) + 1) + 40
+    SECTION_H = 32               # vertical room for each section header
+    HEIGHT = (PAD * 2
+              + SECTION_H + ROW_H * len(TILES)
+              + SECTION_H + ROW_H * len(HW_SPRITES)
+              + 40)
 
     img = Image.new("RGB", (WIDTH, HEIGHT), (24, 24, 28))
     draw = ImageDraw.Draw(img)
     title_font = load_font(20)
+    section_font = load_font(17)
     big = load_font(16)
     small = load_font(13)
 
@@ -186,8 +211,9 @@ def main() -> int:
 
     y = PAD + 24
 
-    def emit(label: str | None, name: str, tile_id: int | None,
-             fg_idx: int, bg_idx: int, role: str, y: int) -> None:
+    def emit(label: str | None, name: str, head_prefix: str,
+             tile_id: int | None, fg_idx: int, bg_idx: int,
+             role: str, y: int) -> None:
         fg = TMS_PALETTE[fg_idx]
         bg = TMS_PALETTE[bg_idx]
         if label is None:
@@ -202,8 +228,8 @@ def main() -> int:
         bordered.paste(spr, (1, 1))
         img.paste(bordered, (PAD - 1, y - 1))
 
-        head = (f"TILE_{name}  (id={tile_id})" if tile_id is not None
-                else name)
+        head = (f"{head_prefix}{name}  (id={tile_id})"
+                if tile_id is not None else f"{head_prefix}{name}")
         draw.text((TEXT_X, y + 4), head,
                   fill=(255, 255, 255), font=big)
         sub = f"sprite label : {label or '(blank)'}"
@@ -215,12 +241,24 @@ def main() -> int:
         draw.text((TEXT_X, y + 64), role,
                   fill=(220, 220, 160), font=small)
 
+    # --- Section 1: name-table tiles (8x8 quads in pattern table $0000) ---
+    draw.text((PAD, y),
+              "Tiles  (pattern table $0000, name table $1800)",
+              fill=(160, 220, 255), font=section_font)
+    y += SECTION_H
     for tile_id, label, name, fg_idx, bg_idx, role in TILES:
-        emit(label, name, tile_id, fg_idx, bg_idx, role, y)
+        emit(label, name, "TILE_", tile_id, fg_idx, bg_idx, role, y)
         y += ROW_H
 
-    label, name, fg_idx, bg_idx, role = PLAYER
-    emit(label, name, None, fg_idx, bg_idx, role, y)
+    # --- Section 2: hardware sprites (16x16 in sprite-pattern table $3800) ---
+    draw.text((PAD, y),
+              "Hardware sprites  (sprite pattern table $3800, SAT $1B00)",
+              fill=(160, 220, 255), font=section_font)
+    y += SECTION_H
+    for slot, label, name, fg_idx, bg_idx, role in HW_SPRITES:
+        emit(label, name, f"slot {slot:>2} — ", None,
+             fg_idx, bg_idx, role, y)
+        y += ROW_H
 
     img.save(OUT_PNG)
     print(f"Wrote {OUT_PNG} ({WIDTH}x{HEIGHT})")
