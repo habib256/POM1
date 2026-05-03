@@ -75,11 +75,11 @@ PALETTE: dict[int, tuple[str | None, str]] = {
     4:  ("bldg_brick_wall_pat",    "wall"),        # full 16x16 brick
 
     # --- Group 1 (chars 8..15): portals (yellow on black) ---
-    8:  ("bldg_stairs_pat",        "stairs_down"),
-    12: ("bldg_door_pat",          "door"),
+    8:  ("bldg_stairs_down_pat",   "stairs_down"),  # was mis-labelled "house"
+    12: ("bldg_door_wood_pat",     "door"),         # plank+iron-band wooden door
 
-    # --- Group 2 (chars 16..23): containers / fixtures (orange on black) ---
-    16: ("expl_chest_closed_pat",  "chest_closed"),
+    # --- Group 2 (chars 16..23): stairs-up + fixtures (lt-yellow on black) ---
+    16: ("bldg_stairs_up_pat",     "stairs_up"),    # was bldg_stairs_pat — renamed for clarity
     20: ("expl_torch_pat",         "torch"),
 
     # --- Group 3 (chars 24..31): items (cyan on black) ---

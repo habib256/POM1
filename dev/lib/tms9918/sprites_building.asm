@@ -11,7 +11,7 @@
 ; ============================================================================
 .export bldg_brick_wall_pat, bldg_brick_wall2_pat, bldg_brick_wall3_pat, bldg_cobble_pat, bldg_cobble2_pat
 .export bldg_cobble3_pat, bldg_window_pat, bldg_window_grate_pat, bldg_door_locked_pat, bldg_door_pat
-.export bldg_house_pat, bldg_stairs_pat, bldg_battlement_pat, bldg_pillar_pat, bldg_rubble_pat
+.export bldg_stairs_down_pat, bldg_stairs_up_pat, bldg_door_wood_pat, bldg_pillar_pat, bldg_rubble_pat
 .export bldg_dome_pat, bldg_tent_pat, bldg_signpost_pat, bldg_stool_pat, bldg_bench_pat
 .export bldg_shelf_pat, bldg_bridge_pat, bldg_arch_pat
 
@@ -77,20 +77,28 @@ bldg_door_pat:
         .byte $BA, $BA, $BB, $B8, $B8, $BF, $80, $FF
         .byte $FF, $01, $FD, $1D, $9D, $9D, $9D, $9D
         .byte $9D, $9D, $9D, $1D, $1D, $FD, $01, $FF
-; slot 11/23 of "Building" row -- house
-bldg_house_pat:
+; slot 11/23 of "Building" row -- stairs going DOWN (mis-labelled "house"
+; in the Quale source — the sprite shows a tile with a stepped descent
+; into the floor, not a building exterior; sister sprite
+; bldg_stairs_up_pat (slot 12) covers ascending stairs).
+bldg_stairs_down_pat:
         .byte $00, $7F, $40, $40, $40, $40, $40, $40
         .byte $43, $43, $43, $7B, $7B, $7B, $7F, $00
         .byte $00, $FE, $02, $02, $02, $1E, $1E, $1E
         .byte $DE, $DE, $DE, $DE, $DE, $DE, $FE, $00
-; slot 12/23 of "Building" row -- stairs
-bldg_stairs_pat:
+; slot 12/23 of "Building" row -- stairs going UP (renamed from
+; bldg_stairs_pat for clarity now that the sister sprite at slot 11
+; is bldg_stairs_down_pat). Steps ascend toward the right side, so
+; the consumer should anchor the right side against a wall.
+bldg_stairs_up_pat:
         .byte $00, $00, $00, $03, $03, $03, $7B, $7B
         .byte $7B, $7B, $78, $78, $40, $40, $7F, $00
         .byte $1E, $1E, $1E, $DE, $DE, $DE, $DE, $DE
         .byte $C2, $C2, $02, $02, $02, $02, $FE, $00
-; slot 13/23 of "Building" row -- battlement
-bldg_battlement_pat:
+; slot 13/23 of "Building" row -- wooden door (was mis-labelled "battlement"
+; in the Quale source — the sprite actually depicts a planked wooden door
+; with iron bands; the keep-wall battlement sprite isn't in this set).
+bldg_door_wood_pat:
         .byte $00, $0B, $3B, $7B, $7B, $7B, $7B, $7B
         .byte $4F, $30, $4B, $7B, $7B, $00, $7F, $00
         .byte $00, $D0, $DC, $DE, $DE, $DE, $DE, $DE

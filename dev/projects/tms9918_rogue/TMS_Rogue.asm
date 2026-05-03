@@ -28,7 +28,11 @@
 .importzp vdp_lo, vdp_hi, vdp_src_lo, vdp_src_hi
 
 ; --- Geometry: logical 16x10 tile grid in the top 20 char rows ---
-COL_WHITE      = 15
+; Sprite-mode colour indices (TMS9918 palette: 4 dk-blue, 5 lt-blue,
+; 14 gray, 15 white). The hero sprite uses lt-blue so it stands out
+; against the gray-on-black wall pattern.
+COL_LT_BLUE    = 5
+COL_PLAYER     = COL_LT_BLUE
 LOGICAL_COLS   = 16
 LOGICAL_ROWS   = 10
 PLAY_TOP_ROW   = 1              ; first walkable logical row
@@ -37,7 +41,28 @@ PLAY_LEFT_COL  = 1              ; first walkable logical col
 PLAY_RIGHT_COL = 14             ; last walkable logical col
 
 ; --- Procedural dungeon tuning (gen_dungeon) ---
-N_ROOMS        = 5              ; rooms carved per level
+N_ROOMS        = 2              ; "two-rooms" mode: first in left half,
+                                ; second in right half, separated by a
+                                ; ≥1-column gap so they never overlap.
+                                ; The L-corridor between centres is the
+                                ; only inter-room connection.
+                                ; "big-room" mode generates a single
+                                ; full-screen room with edge doors
+                                ; (no corridor).
+
+; Internal tile ids used by gen_dungeon's dig+finalize pipeline.
+; TILE_CORR is the transient marker carve_corridor_marker writes onto
+; every wall cell the L-corridor traverses. finalize_doors then
+; classifies each marker as either:
+;   - TILE_DOOR   (boundary cell — neighbours a room interior)
+;   - TILE_CORR_DROP (high-bit-flagged "convert-to-empty in pass 2")
+; A two-pass design is necessary so that pass-1 decisions never read
+; back a freshly-converted EMPTY: pass 1 only writes TILE_DOOR or the
+; high-bit drop value, both of which compare unequal to TILE_EMPTY.
+; Char id 1 isn't in the tileset PALETTE so it renders all-zero blank
+; (same as TILE_EMPTY) — even an unfinalised buffer would draw cleanly.
+TILE_CORR       = 1
+TILE_CORR_DROP  = $81
 
 ; --- Apple 1 keyboard codes (high bit set, KBD always has bit 7 = 1) ---
 ; The four movement-key slots are loaded at runtime from the title-screen
@@ -72,9 +97,18 @@ cy:             .res 1
 prev_cx:        .res 1          ; previous room centre (for corridor)
 prev_cy:        .res 1
 room_idx:       .res 1          ; loop counter through gen_dungeon
+corr_row:       .res 1          ; cy of room 0 — preserved across iter 1
+                                ; so stairs-down can avoid placing its
+                                ; west-anchor cell on a corridor cell
+                                ; (would replace the wall-on-left rule
+                                ; with a door-on-left otherwise).
 
 
 ; --- Map buffer (160 B, 16x10 logical tiles, one byte = tile base id) ---
+; The 2-pass corridor algorithm (mark every dug cell as TILE_DOOR, then
+; finalize_doors converts non-boundary markers back to TILE_EMPTY) means
+; we don't need to remember room rects after carving — the marker tile
+; itself is the bookkeeping.
 .segment "MAPSEG"
 map_buffer:     .res LOGICAL_COLS * LOGICAL_ROWS
 
@@ -107,16 +141,48 @@ start:
 
 main_loop:
         JSR wait_key            ; A = raw key (high bit still set)
+        CMP #('N' | $80)        ; 'N' regenerates a fresh random level
+        BEQ @new_level
         JSR handle_input        ; carry clear -> tgt_col/tgt_row set
         BCS main_loop           ; no movement key -> just wait again
         JSR check_collision     ; carry clear -> passable
         BCS main_loop           ; blocked -> ignore the move
+        ; A successful move whose target is on the screen frame can
+        ; only mean the player walked onto a big-room edge door —
+        ; check_collision lets TILE_DOOR through regardless of bounds.
+        ; Treat that as a level transition: regenerate a fresh map
+        ; rather than placing the sprite off the playable grid.
+        LDA tgt_col
+        BEQ @new_level          ; col 0 (west edge)
+        CMP #15
+        BEQ @new_level          ; col 15 (east edge)
+        LDA tgt_row
+        BEQ @new_level          ; row 0 (north edge)
+        CMP #9
+        BEQ @new_level          ; row 9 (south edge)
+        ; Regular move within the playable interior.
         LDA tgt_col
         STA player_col
         LDA tgt_row
         STA player_row
         JSR place_player        ; rewrite SAT slot 0 with new (Y, X)
         JMP main_loop
+@new_level:
+        JSR new_level
+        JMP main_loop
+
+
+; ----------------------------------------------------------------------------
+; new_level: regenerate a fresh dungeon (random big-room or two-rooms
+; layout) and refresh the screen. Called from main_loop when the user
+; presses 'N'. Reuses the LFSR state — no need to reseed.
+; ----------------------------------------------------------------------------
+new_level:
+        JSR gen_dungeon         ; new map_buffer + new player_col/row
+        JSR clear_name_table    ; wipe the previous level off VRAM
+        JSR render_map          ; paint the new logical map
+        JSR place_player        ; rewrite SAT slot 0 at the new spawn
+        RTS
 
 
 ; ----------------------------------------------------------------------------
@@ -185,47 +251,191 @@ upload_colour_table:
 
 
 ; ----------------------------------------------------------------------------
-; gen_dungeon: build a procedural level in map_buffer.
-;   1. Fill the whole 160-cell buffer with TILE_WALL.
-;   2. Carve N_ROOMS random rectangular rooms inside the 14x8 interior.
-;   3. Connect each room's centre to the previous one with an L-corridor.
-;   4. Spawn the player at the first room's centre.
-;   5. Stamp TILE_STAIRS_DOWN at the last room's centre.
-; All randomness comes from prng16 (16-bit Galois LFSR, lib/m6502).
-; The state was seeded during wait_kb_choice from the time-to-keypress.
+; gen_dungeon: top-level dispatcher. Coin-flip picks one of two layouts:
+;
+;   - "big-room"  : a single full-screen room with stairs at opposite
+;                   corners and decorative doors at each cardinal
+;                   wall midpoint (transition portals to other levels,
+;                   cosmetic for now).
+;   - "two-rooms" : two non-overlapping rooms in opposite halves of
+;                   the screen, connected by an L-corridor. Stairs-up
+;                   sits on the right edge of the left room (so the
+;                   sprite's right side abuts a wall), stairs-down at
+;                   the right room's centre.
+;
+; All randomness comes from prng16 (16-bit Galois LFSR, lib/m6502),
+; seeded from time-to-keypress during wait_kb_choice.
 ; ----------------------------------------------------------------------------
 gen_dungeon:
         JSR     fill_with_walls
+        LDA     #2
+        JSR     rand_mod                ; 0 or 1
+        ; rand_mod's final flag set comes from `CMP tmp` inside the
+        ; reduction loop, so Z reflects "A == tmp" (always 0 here),
+        ; NOT "A == 0". Re-test A explicitly so BEQ actually fires.
+        CMP     #0
+        BEQ     @big                    ; 6502 branch is ±128 — use a
+        JMP     gen_two_rooms           ; trampoline JMP for either path
+@big:
+        JMP     gen_big_room
+
+
+; ----------------------------------------------------------------------------
+; gen_big_room: single full-screen room (cols [1..14], rows [1..8]).
+; Stairs-up at the top-right interior cell so its east neighbour is
+; the screen-edge wall (col 15). Stairs-down at the bottom-left
+; interior cell. Four decorative doors, one per cardinal wall, at
+; random positions along the wall — these are the "exits to other
+; rooms" suggested by the screen-edge perimeter.
+; ----------------------------------------------------------------------------
+gen_big_room:
+        LDA     #1
+        STA     room_x
+        STA     room_y
+        LDA     #14
+        STA     room_w
+        LDA     #8
+        STA     room_h
+        JSR     carve_room
+
+        ; Stairs-up at top-right interior corner — east neighbour is
+        ; col 15 (screen-edge wall). Player spawns here.
+        LDA     #14
+        STA     tgt_col
+        STA     player_col
+        LDA     #2
+        STA     tgt_row
+        STA     player_row
+        LDA     #TILE_STAIRS_UP
+        JSR     set_tile
+
+        ; Stairs-down at bottom-left interior corner: west neighbour
+        ; is col 0 (screen frame wall), satisfying the wall-on-left rule.
+        LDA     #1
+        STA     tgt_col
+        LDA     #8
+        STA     tgt_row
+        LDA     #TILE_STAIRS_DOWN
+        JSR     set_tile
+
+        JSR     place_perimeter_doors
+        RTS
+
+
+; ----------------------------------------------------------------------------
+; place_perimeter_doors: four TILE_DOOR cells, one per cardinal screen
+; edge. Doors REPLACE wall cells on the frame (rows 0/9, cols 0/15)
+; rather than sitting on interior cells — walking onto them is the
+; "exit to another map" mechanic. main_loop detects when the target of
+; a move is at a screen edge and triggers new_level instead of moving
+; the player off-grid (so player coords stay valid for handle_input).
+; Random positions stay inside [3..12] / [3..6] so doors line up with
+; reachable interior cells (the player walks from (col, 1) onto the
+; door at (col, 0), etc.).
+; ----------------------------------------------------------------------------
+place_perimeter_doors:
+        ; --- North door: (col rand[3..12], row 0) ---
+        LDA     #10
+        JSR     rand_mod
+        CLC
+        ADC     #3
+        STA     tgt_col
+        LDA     #0
+        STA     tgt_row
+        LDA     #TILE_DOOR
+        JSR     set_tile
+
+        ; --- South door: (col rand[3..12], row 9) ---
+        LDA     #10
+        JSR     rand_mod
+        CLC
+        ADC     #3
+        STA     tgt_col
+        LDA     #9
+        STA     tgt_row
+        LDA     #TILE_DOOR
+        JSR     set_tile
+
+        ; --- West door: (col 0, row rand[3..6]) ---
+        LDA     #4
+        JSR     rand_mod
+        CLC
+        ADC     #3
+        STA     tgt_row
+        LDA     #0
+        STA     tgt_col
+        LDA     #TILE_DOOR
+        JSR     set_tile
+
+        ; --- East door: (col 15, row rand[3..6]) ---
+        LDA     #4
+        JSR     rand_mod
+        CLC
+        ADC     #3
+        STA     tgt_row
+        LDA     #15
+        STA     tgt_col
+        LDA     #TILE_DOOR
+        JSR     set_tile
+        RTS
+
+
+; ----------------------------------------------------------------------------
+; gen_two_rooms: two non-overlapping rooms, one per half of the screen,
+; joined by an L-corridor. dig_corridor + carve_corridor_marker +
+; finalize_doors place exactly two doors (one at each end of the
+; corridor). Stairs-up at the right edge of room 0 so its east
+; neighbour is room 0's east wall — visually anchors the sprite.
+; Stairs-down at room 1's centre.
+; ----------------------------------------------------------------------------
+gen_two_rooms:
         LDA     #0
         STA     room_idx
 @room_lp:
-        JSR     pick_random_room ; -> room_x, room_y, room_w, room_h
-        JSR     carve_room       ; mark all cells in the rect TILE_EMPTY
+        JSR     pick_random_room        ; uses room_idx to pick half
+        JSR     carve_room
 
-        ; Compute (cx, cy) = (room_x + room_w/2, room_y + room_h/2).
+        ; Compute (cx, cy) = centre of the room we just carved.
+        ; LSR puts bit 0 into Carry; a bare ADC (no CLC) rounds the
+        ; half-width up — still inside the room interior.
         LDA     room_w
         LSR
-        CLC
         ADC     room_x
         STA     cx
         LDA     room_h
         LSR
-        CLC
         ADC     room_y
         STA     cy
 
-        ; First room? Spawn the player at its centre.
+        ; Iter 0: save room 0's top-right interior corner as the
+        ;         player's spawn / stairs-up location.
+        ;         (rx+rw-1, ry): east neighbour is the room's east wall
+        ;         (row ry ≠ cy means the corridor doesn't run here, so
+        ;         the wall stays intact through finalize_doors). This
+        ;         honours the "stairs-up sprite has its right side
+        ;         against a wall" rule and leaves the corridor's
+        ;         room-0 exit door free to render at (rx+rw, cy).
+        ; Iter 1: dig the L-corridor from the previous centre.
         LDA     room_idx
-        BNE     @after_first
-        LDA     cx
-        STA     player_col
+        BNE     @subsequent
+        LDA     room_x
+        CLC
+        ADC     room_w
+        SEC
+        SBC     #1
+        STA     player_col              ; rx + rw - 1
+        LDA     room_y
+        STA     player_row              ; ry  (top row of interior)
+        ; Remember room 0's centre row — that's the corridor's H row,
+        ; which determines where the corridor enters room 1's west wall
+        ; (if at all). Stairs-down placement uses this to avoid landing
+        ; on the west-entry door cell.
         LDA     cy
-        STA     player_row
-        JMP     @save_centre
-@after_first:
-        ; Subsequent room: dig an L-corridor from the previous centre.
+        STA     corr_row
+        JMP     @advance
+@subsequent:
         JSR     dig_corridor
-@save_centre:
+@advance:
         LDA     cx
         STA     prev_cx
         LDA     cy
@@ -235,13 +445,194 @@ gen_dungeon:
         CMP     #N_ROOMS
         BNE     @room_lp
 
-        ; Last room (cx/cy still holds its centre): stamp stairs-down.
-        LDA     cx
+        ; Demote mid-corridor markers to TILE_EMPTY; promote boundary
+        ; markers to real TILE_DOOR. Exactly two doors survive: the
+        ; corridor's room-0 exit and its room-1 entry.
+        JSR     finalize_doors
+
+        ; Stairs-up at room 0's right-edge cell (east neighbour = wall).
+        LDA     player_col
         STA     tgt_col
-        LDA     cy
+        LDA     player_row
+        STA     tgt_row
+        LDA     #TILE_STAIRS_UP
+        JSR     set_tile
+
+        ; Stairs-down at room 1's top-left interior corner so its WEST
+        ; neighbour is room 1's west wall. Edge case: if the corridor
+        ; entered room 1 horizontally at row ry_1, that wall cell is a
+        ; door, not a wall — bump stairs-down down by one row to keep
+        ; the wall-on-left invariant. (rh_1 ≥ 3 guarantees ry_1+1 stays
+        ; inside room 1's interior.)
+        LDA     room_x                  ; rx_1
+        STA     tgt_col
+        LDA     room_y                  ; ry_1
+        CMP     corr_row
+        BNE     @stairs_down_row_ok
+        CLC
+        ADC     #1                      ; ry_1 + 1
+@stairs_down_row_ok:
         STA     tgt_row
         LDA     #TILE_STAIRS_DOWN
         JSR     set_tile
+        RTS
+
+
+; ----------------------------------------------------------------------------
+; carve_corridor_marker: if the current cell (tgt_col, tgt_row) is a
+; TILE_WALL, replace it with TILE_CORR (a transient marker — a
+; distinct char id from TILE_DOOR so finalize_doors can do its
+; classification pass without confusing already-classified cells
+; with un-classified ones). Cells already non-wall are left alone —
+; never overwriting room interiors is what makes finalize_doors'
+; "neighbour is TILE_EMPTY" test mean exactly "neighbour is a room
+; interior we haven't touched".
+; ----------------------------------------------------------------------------
+carve_corridor_marker:
+        JSR     tile_at_target
+        CMP     #TILE_WALL
+        BNE     @skip
+        LDA     #TILE_CORR
+        JSR     set_tile
+@skip:  RTS
+
+
+; ----------------------------------------------------------------------------
+; finalize_doors: classify every TILE_CORR marker the dig pass left
+; behind into either TILE_DOOR (room boundary) or TILE_EMPTY (mid-
+; corridor floor). Done in two passes so pass-1 decisions can never
+; contaminate pass-1 reads:
+;
+;   Pass 1: for each TILE_CORR cell, check the four cardinal
+;     neighbours for TILE_EMPTY (= original room interior). If any
+;     match → write TILE_DOOR (final). Otherwise → write
+;     TILE_CORR_DROP ($81 — high bit makes it ≠ TILE_EMPTY for any
+;     subsequent in-pass check, while staying clearly distinct from
+;     all real tiles).
+;   Pass 2: scan again, convert every TILE_CORR_DROP to TILE_EMPTY.
+;
+; Why two passes: writing TILE_EMPTY mid-pass would make later cells
+; falsely see a room-interior neighbour and stay flagged as doors —
+; that was the bug producing the alternating-door cascade.
+;
+; Bounds: corridor cells stay inside [1..14] × [1..8] by construction
+; (rooms can't reach the screen frame), so col±1 ∈ [0..15] and
+; row±1 ∈ [0..9] are always valid map_buffer indices.
+;
+; Clobbers A, X, Y, tgt_col, tgt_row, map_ptr.
+; ----------------------------------------------------------------------------
+finalize_doors:
+        ; ---- Pass 1: classify TILE_CORR cells ----
+        LDX     #LOGICAL_COLS * LOGICAL_ROWS    ; 160; X = 159..0 via DEX
+@p1:
+        DEX
+        LDA     map_buffer,X
+        CMP     #TILE_CORR
+        BNE     @p1_next
+        ; Decode (col, row) from index X = row*16 + col.
+        TXA
+        AND     #$0F
+        STA     tgt_col
+        TXA
+        LSR
+        LSR
+        LSR
+        LSR
+        STA     tgt_row
+        ; West neighbour.
+        DEC     tgt_col
+        JSR     tile_at_target
+        INC     tgt_col
+        CMP     #TILE_EMPTY
+        BEQ     @p1_keep
+        ; East neighbour.
+        INC     tgt_col
+        JSR     tile_at_target
+        DEC     tgt_col
+        CMP     #TILE_EMPTY
+        BEQ     @p1_keep
+        ; North neighbour.
+        DEC     tgt_row
+        JSR     tile_at_target
+        INC     tgt_row
+        CMP     #TILE_EMPTY
+        BEQ     @p1_keep
+        ; South neighbour.
+        INC     tgt_row
+        JSR     tile_at_target
+        DEC     tgt_row
+        CMP     #TILE_EMPTY
+        BEQ     @p1_keep
+        ; Mid-corridor: flag for pass-2 conversion to EMPTY.
+        LDA     #TILE_CORR_DROP
+        STA     map_buffer,X
+        JMP     @p1_next
+@p1_keep:
+        ; Boundary cell — promote marker to a real door.
+        LDA     #TILE_DOOR
+        STA     map_buffer,X
+@p1_next:
+        TXA
+        BNE     @p1
+
+        ; ---- Pass 2: convert flagged drops to TILE_EMPTY ----
+        LDX     #LOGICAL_COLS * LOGICAL_ROWS
+@p2:
+        DEX
+        LDA     map_buffer,X
+        CMP     #TILE_CORR_DROP
+        BNE     @p2_next
+        LDA     #TILE_EMPTY
+        STA     map_buffer,X
+@p2_next:
+        TXA
+        BNE     @p2
+
+        ; ---- Pass 3: collapse adjacent doors ----
+        ; A corridor that runs alongside a room (one cell parallel to
+        ; the room's wall) makes every cell in that run flag as a
+        ; boundary, producing a horizontal/vertical conga line of
+        ; doors. We want at most one door per run. For each TILE_DOOR
+        ; cell, if its west OR north neighbour is also TILE_DOOR,
+        ; demote this cell to TILE_EMPTY. Iterating X = 159..0 means
+        ; the top-leftmost door of any run survives; the rest collapse.
+        ; Diagonally-placed doors (e.g. one west wall + one north wall
+        ; entry on the same room) stay because they're never directly
+        ; adjacent in the same row or column.
+        LDX     #LOGICAL_COLS * LOGICAL_ROWS
+@p3:
+        DEX
+        LDA     map_buffer,X
+        CMP     #TILE_DOOR
+        BNE     @p3_next
+        ; Decode (col, row) from index X.
+        TXA
+        AND     #$0F
+        STA     tgt_col
+        TXA
+        LSR
+        LSR
+        LSR
+        LSR
+        STA     tgt_row
+        ; West neighbour.
+        DEC     tgt_col
+        JSR     tile_at_target
+        INC     tgt_col
+        CMP     #TILE_DOOR
+        BEQ     @p3_demote
+        ; North neighbour.
+        DEC     tgt_row
+        JSR     tile_at_target
+        INC     tgt_row
+        CMP     #TILE_DOOR
+        BNE     @p3_next
+@p3_demote:
+        LDA     #TILE_EMPTY
+        STA     map_buffer,X
+@p3_next:
+        TXA
+        BNE     @p3
         RTS
 
 
@@ -265,33 +656,66 @@ fill_with_walls:
 
 
 ; ----------------------------------------------------------------------------
-; pick_random_room: pick a rectangular room with random origin + size.
-;   room_x in [1, 10]   so room_x + room_w(max=5) - 1 <= 14 (last interior col)
-;   room_y in [1, 6]    so room_y + room_h(max=3) - 1 <= 8  (last interior row)
-;   room_w in [3, 5],   room_h in [2, 3]
+; pick_random_room: pick a rectangular room in the half of the screen
+; selected by room_idx (0 = left half, cols [1..7]; 1 = right half,
+; cols [9..14]). The 1-col gap at col 8 guarantees rooms never abut
+; or overlap, so the L-corridor between their centres always crosses
+; at least one wall — which is what makes the door-marker pass clean.
+;
+;   room_w in [4, 6]
+;   room_h in [3, 5]
+;   room_y in [1, 9 - room_h]   ; computed from h so the room always
+;                                 fits inside rows [1..8]
+;   left  half: room_x in [1, 8  - room_w]
+;   right half: room_x in [9, 15 - room_w]
+;
+; Right half has 6 usable cols [9..14], so w=6 is the maximum and lands
+; at x=9 only — picking that combo gives a half-wide room on the right.
+;
 ; rand_mod modulates prng16 down to the requested span.
 ; ----------------------------------------------------------------------------
 pick_random_room:
-        LDA     #10
+        ; Width and height are independent of which half.
+        LDA     #3
         JSR     rand_mod
         CLC
-        ADC     #1
-        STA     room_x          ; [1, 10]
-        LDA     #6
-        JSR     rand_mod
-        CLC
-        ADC     #1
-        STA     room_y          ; [1, 6]
+        ADC     #4
+        STA     room_w          ; [4, 6]
         LDA     #3
         JSR     rand_mod
         CLC
         ADC     #3
-        STA     room_w          ; [3, 5]
-        LDA     #2
+        STA     room_h          ; [3, 5]
+        ; y in [1, 9 - h]  → rand_mod(9 - h) + 1
+        LDA     #9
+        SEC
+        SBC     room_h
         JSR     rand_mod
         CLC
-        ADC     #2
-        STA     room_h          ; [2, 3]
+        ADC     #1
+        STA     room_y
+
+        ; X depends on the half (room_idx 0 = left, 1 = right).
+        LDA     room_idx
+        BNE     @right_half
+        ; Left: x in [1, 8-w]  → rand_mod(8-w) + 1
+        LDA     #8
+        SEC
+        SBC     room_w
+        JSR     rand_mod
+        CLC
+        ADC     #1
+        STA     room_x
+        RTS
+@right_half:
+        ; Right: x in [9, 15-w]  → rand_mod(7-w) + 9
+        LDA     #7
+        SEC
+        SBC     room_w
+        JSR     rand_mod
+        CLC
+        ADC     #9
+        STA     room_x
         RTS
 
 
@@ -342,10 +766,15 @@ carve_room:
 
 
 ; ----------------------------------------------------------------------------
-; dig_corridor: dig an L-shaped corridor of TILE_EMPTY between
-; (prev_cx, prev_cy) and (cx, cy). Goes horizontal first along
-; row=prev_cy, then vertical along col=cx, so the corner sits at
+; dig_corridor: dig an L-shaped corridor between (prev_cx, prev_cy)
+; and (cx, cy). Horizontal segment runs along row = prev_cy, then
+; the vertical segment runs along col = cx, so the corner sits at
 ; (cx, prev_cy). Inclusive endpoints on both segments.
+;
+; Each cell along the path is processed via carve_corridor_marker:
+; walls become TILE_DOOR markers, room interiors are left intact.
+; finalize_doors then converts mid-corridor markers back to
+; TILE_EMPTY, leaving only boundary cells as proper TILE_DOORs.
 ; ----------------------------------------------------------------------------
 dig_corridor:
         ; --- Horizontal segment at row = prev_cy ---
@@ -355,7 +784,6 @@ dig_corridor:
         LDA     prev_cx
         CMP     cx
         BCC     @h_lo_prev      ; prev_cx < cx
-        ; prev_cx >= cx -> low end is cx
         LDA     cx
         STA     tgt_col
         LDA     prev_cx
@@ -367,11 +795,10 @@ dig_corridor:
         LDA     cx
         STA     tmp
 @h_lp:
-        LDA     #TILE_EMPTY
-        JSR     set_tile
+        JSR     carve_corridor_marker
         LDA     tgt_col
         CMP     tmp
-        BCS     @h_done         ; tgt_col >= max -> we already wrote it
+        BCS     @h_done         ; tgt_col >= max -> we already processed it
         INC     tgt_col
         JMP     @h_lp
 @h_done:
@@ -393,8 +820,7 @@ dig_corridor:
         LDA     cy
         STA     tmp
 @v_lp:
-        LDA     #TILE_EMPTY
-        JSR     set_tile
+        JSR     carve_corridor_marker
         LDA     tgt_row
         CMP     tmp
         BCS     @v_done
@@ -411,6 +837,20 @@ dig_corridor:
 ; ----------------------------------------------------------------------------
 set_tile:
         PHA
+        JSR     calc_map_ptr
+        LDY     tgt_col
+        PLA
+        STA     (map_ptr),Y
+        RTS
+
+
+; ----------------------------------------------------------------------------
+; calc_map_ptr: set map_ptr to &map_buffer[tgt_row * 16].
+; Caller adds tgt_col via (map_ptr),Y. Clobbers A; preserves X.
+; Logical map is 16x10 = 160 B; row * 16 max = 144 fits in one page,
+; so the high-byte INC is a defensive carry guard (rare but cheap).
+; ----------------------------------------------------------------------------
+calc_map_ptr:
         LDA     #<map_buffer
         STA     map_ptr
         LDA     #>map_buffer
@@ -419,17 +859,13 @@ set_tile:
         ASL
         ASL
         ASL
-        ASL                     ; row * 16 (max 9*16 = 144, fits in byte)
+        ASL
         CLC
         ADC     map_ptr
         STA     map_ptr
-        BCC     @noinc
+        BCC     @done
         INC     map_ptr+1
-@noinc:
-        LDY     tgt_col
-        PLA
-        STA     (map_ptr),Y
-        RTS
+@done:  RTS
 
 
 ; ----------------------------------------------------------------------------
@@ -501,7 +937,7 @@ render_map:
 
 
 ; ----------------------------------------------------------------------------
-; upload_player_pat: stream char_adventurer_pat (32 bytes, 16x16 layout
+; upload_player_pat: stream char_paladin2_pat (32 bytes, 16x16 layout
 ; native to the TMS9918) into sprite pattern slot 0 at VRAM $3800.
 ; ----------------------------------------------------------------------------
 upload_player_pat:
@@ -511,7 +947,7 @@ upload_player_pat:
         LDA     #$78            ; $38 | $40 -> write at $3800
         STA     VDP_CTRL
         LDX     #0
-@lp:    LDA     char_adventurer_pat,X
+@lp:    LDA     char_paladin2_pat,X
         STA     VDP_DATA        ; 4c
         NOP                     ; 2c
         NOP                     ; 2c silicon-strict gap
@@ -525,7 +961,7 @@ upload_player_pat:
 ; place_player: rewrite Sprite Attribute Table slot 0. Logical position
 ; (lcol, lrow) maps to pixel (lcol*16, lrow*16) so the 16x16 sprite
 ; lands exactly on one 16x16 logical tile.
-;   Slot 0: Y=lrow*16, X=lcol*16, pattern=0, color=COL_WHITE
+;   Slot 0: Y=lrow*16, X=lcol*16, pattern=0, color=COL_PLAYER (lt-blue)
 ;   Slot 1: Y=$D0    -> chip stops scanning here
 ; ----------------------------------------------------------------------------
 place_player:
@@ -552,7 +988,7 @@ place_player:
         LDA     #$00            ; pattern slot 0
         STA     VDP_DATA
         NOP
-        LDA     #COL_WHITE
+        LDA     #COL_PLAYER
         STA     VDP_DATA
         NOP
 
@@ -611,9 +1047,20 @@ handle_input:
 ; check_collision: read map_buffer[tgt_row * 16 + tgt_col] and decide
 ; if the cell is passable.
 ;   Returns carry CLEAR -> passable,
-;           carry SET   -> blocked (wall, edge, locked door, etc.).
+;           carry SET   -> blocked.
+;
+; Special case: TILE_DOOR cells are ALWAYS passable, even when they
+; sit on the screen frame (rows 0/9, cols 0/15). Big-room mode places
+; doors at frame positions to mark map exits — main_loop intercepts
+; the move and triggers new_level instead of leaving the player off-grid.
+; Other tiles are still bounded to the playable interior [1..14] x [1..8].
 ; ----------------------------------------------------------------------------
 check_collision:
+        JSR     tile_at_target
+        CMP     #TILE_DOOR
+        BEQ     @pass
+        STA     tmp                     ; cache tile for the second test below
+        ; Bounds check (only non-door tiles need playable interior).
         LDA     tgt_row
         CMP     #PLAY_TOP_ROW
         BCC     @blocked
@@ -624,13 +1071,13 @@ check_collision:
         BCC     @blocked
         CMP     #(PLAY_RIGHT_COL + 1)
         BCS     @blocked
-
-        JSR     tile_at_target
+        ; Allowed-tile whitelist (door already handled above).
+        LDA     tmp
         CMP     #TILE_EMPTY
         BEQ     @pass
-        CMP     #TILE_DOOR
-        BEQ     @pass
         CMP     #TILE_STAIRS_DOWN
+        BEQ     @pass
+        CMP     #TILE_STAIRS_UP
         BEQ     @pass
 @blocked:
         SEC
@@ -642,27 +1089,10 @@ check_collision:
 
 ; ----------------------------------------------------------------------------
 ; tile_at_target: read map_buffer[tgt_row * 16 + tgt_col].
-; Returns A = tile base id. Clobbers Y, map_ptr.
-; Logical map is 16x10 = 160 B, fits in one page once offset added, so
-; the row*16 multiply collapses to ASL x4 with no high-byte carry.
+; Returns A = tile base id. Clobbers Y, map_ptr; preserves X.
 ; ----------------------------------------------------------------------------
 tile_at_target:
-        LDA     #<map_buffer
-        STA     map_ptr
-        LDA     #>map_buffer
-        STA     map_ptr+1
-
-        LDA     tgt_row
-        ASL
-        ASL
-        ASL
-        ASL                     ; row * 16; max 9 * 16 = 144, fits in byte
-        CLC
-        ADC     map_ptr
-        STA     map_ptr
-        BCC     @noinc          ; map_buffer is page-aligned-ish; carry rare
-        INC     map_ptr+1
-@noinc:
+        JSR     calc_map_ptr
         LDY     tgt_col
         LDA     (map_ptr),Y
         RTS
@@ -837,15 +1267,18 @@ title_azerty:
 
 
 ; ============================================================================
-; char_adventurer_pat -- player sprite (16x16, 32 bytes), inlined from
+; char_paladin2_pat -- player sprite (16x16, 32 bytes), inlined from
 ; dev/lib/tms9918/sprites_characters.asm so we don't pull in the full
 ; 33-sprite library and overflow the 3 456 B low-bank CODE budget.
+; (Bytes copied post-shift, i.e. after tools/shift_characters_up.py
+; ran — the lib's char sprites had a 2-row blank top + 0-row blank
+; bottom that got rebalanced to 1+1.)
 ; ============================================================================
-char_adventurer_pat:
-        .byte $00, $00, $07, $0F, $1F, $1B, $1F, $5E
-        .byte $37, $03, $0C, $1F, $37, $07, $06, $02
-        .byte $00, $00, $E0, $F0, $F8, $D8, $F8, $7A
-        .byte $EC, $C0, $30, $F8, $EC, $E0, $60, $40
+char_paladin2_pat:
+        .byte $01, $07, $0F, $0F, $09, $08, $0E, $02
+        .byte $7A, $68, $6B, $6B, $69, $6A, $34, $00
+        .byte $82, $E7, $F0, $F2, $92, $12, $72, $72
+        .byte $66, $16, $D8, $E2, $82, $62, $22, $00
 
 ; ============================================================================
 ; prng16 -- 16-bit Galois LFSR shared library (lib/m6502/prng16.asm).

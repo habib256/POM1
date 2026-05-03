@@ -10,13 +10,20 @@ Ships as `roms/codetank/Codetank_GAMES2.rom` — load via POM1's
 
 ## MVP roadmap
 
-- **MVP1 (done)** — hardcoded bordered room, vi-key movement (HJKL),
-  collision against a RAM map buffer, stairs-down placeholder. Player
-  is rendered as a 16x16 hardware sprite (Quale's `char_adventurer`).
-- **MVP2** — LFSR-16 PRNG, recursive BSP partitioning + room carving,
-  L-shape corridor connection, Bresenham-shadowcasting FOV with
-  fog-of-war via colour-group swap. Map becomes bit-packed (1 byte
-  per cell: terrain ID + visited flag + entity ID + solid flag).
+- **MVP1 (done)** — vi-key movement (HJKL / QZSD on AZERTY), 16x16
+  hardware-sprite player (Quale's `char_adventurer`), collision against
+  a RAM map buffer.
+- **MVP2 partial (done)** — LFSR-16 PRNG seeded from time-to-keypress,
+  N-room random carving + L-shape corridor chain (connectivity
+  guaranteed by construction). Each room's perimeter is scanned post-
+  hoc and TILE_EMPTY perimeter cells become TILE_DOOR — that's the
+  visual cue that a corridor cuts through the wall. Player spawns on
+  TILE_STAIRS_UP at the first room's centre, TILE_STAIRS_DOWN sits at
+  the last room's centre.
+- **MVP2 still TODO** — Bresenham-shadowcasting FOV with fog-of-war
+  via colour-group swap. Map could later become bit-packed (terrain
+  ID + visited flag + entity ID + solid flag in one byte) once we
+  start tracking visited state.
 - **MVP3** — monster pool (16 slots), item pool (8 slots), bump-to-
   attack combat, HP/food stats, HUD on the bottom 4 rows, stairs-down
   regenerates a harder level, permadeath = "YOU DIED ON LEVEL N"
@@ -79,14 +86,14 @@ python3 tools/extract_quale_8x8_tiles.py
 The colour table (32 bytes at VRAM `$2000`) groups char IDs in
 batches of 8 for the Mode-1 1-pair-per-group constraint:
 
-| Group | Char IDs | Intended use            | Colour byte |
-|-------|----------|-------------------------|-------------|
-| 0     |  0..7    | stone walls/floors      | $E1 gray/blk |
-| 1     |  8..15   | doors / stairs / portals| $A1 dk-yel/blk |
-| 2     | 16..23   | items / equipment       | $B1 lt-yel/blk |
-| 3     | 24..31   | magic items             | $71 cyan/blk |
-| 4     | 32..39   | monster fallback chars  | $81 med-red/blk |
-| 5+    | 40..255  | reserved (HUD, future)  | $F1 white/blk |
+| Group | Char IDs | Intended use              | Colour byte |
+|-------|----------|---------------------------|-------------|
+| 0     |  0..7    | stone walls/floors        | $E1 gray/blk |
+| 1     |  8..15   | stairs-down + door        | $A1 dk-yel/blk |
+| 2     | 16..23   | stairs-up (arch) + torch  | $B1 lt-yel/blk |
+| 3     | 24..31   | items / magic             | $71 cyan/blk |
+| 4     | 32..39   | font (' ' + punct)        | $F1 white/blk |
+| 5+    | 40..255  | font (digits, A..Z)       | $F1 white/blk |
 
 ## Controls
 

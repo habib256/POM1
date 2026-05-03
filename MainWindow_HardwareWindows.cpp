@@ -959,11 +959,83 @@ std::vector<CodeTankLibraryEntry> scanCodeTankLibrary()
     return out;
 }
 
+void drawCodeTankStatusPill(const char* label, bool enabled, ImU32 onColor)
+{
+    const ImVec2 pos = ImGui::GetCursorScreenPos();
+    const ImVec2 textSize = ImGui::CalcTextSize(label);
+    const ImVec2 size(textSize.x + 18.0f, ImGui::GetFrameHeight());
+    ImDrawList* dl = ImGui::GetWindowDrawList();
+    dl->AddRectFilled(pos, ImVec2(pos.x + size.x, pos.y + size.y),
+                      enabled ? onColor : IM_COL32(55, 55, 62, 255), 5.0f);
+    dl->AddText(ImVec2(pos.x + 9.0f, pos.y + (size.y - textSize.y) * 0.5f),
+                enabled ? IM_COL32(12, 16, 18, 255)
+                        : IM_COL32(150, 150, 156, 255),
+                label);
+    ImGui::Dummy(size);
+}
+
+void drawCodeTankConsoleHeader(bool codeTankOnline,
+                               bool tmsOnline,
+                               size_t romCount,
+                               const std::string& currentRom)
+{
+    const ImVec2 start = ImGui::GetCursorScreenPos();
+    const float width = std::max(360.0f, ImGui::GetContentRegionAvail().x);
+    const ImVec2 size(width, 118.0f);
+    ImDrawList* dl = ImGui::GetWindowDrawList();
+
+    const ImVec2 end(start.x + size.x, start.y + size.y);
+    dl->AddRectFilledMultiColor(start, end,
+                                IM_COL32(8, 14, 20, 255),
+                                IM_COL32(20, 38, 48, 255),
+                                IM_COL32(14, 18, 28, 255),
+                                IM_COL32(5, 8, 14, 255));
+    dl->AddRect(start, end, IM_COL32(85, 210, 190, 190), 8.0f, 0, 1.5f);
+    for (float y = start.y + 8.0f; y < end.y - 6.0f; y += 6.0f) {
+        dl->AddLine(ImVec2(start.x + 8.0f, y), ImVec2(end.x - 8.0f, y),
+                    IM_COL32(255, 255, 255, 14));
+    }
+
+    dl->AddText(ImVec2(start.x + 18.0f, start.y + 16.0f),
+                IM_COL32(92, 245, 205, 255), "P-LAB CODETANK");
+    dl->AddText(ImVec2(start.x + 18.0f, start.y + 38.0f),
+                IM_COL32(240, 245, 255, 255), "APPLE-1 GAME CONSOLE");
+    dl->AddText(ImVec2(start.x + 18.0f, start.y + 66.0f),
+                IM_COL32(185, 195, 205, 255), "TMS9918 VIDEO CARTRIDGE BAY");
+
+    const std::string activeName = currentRom.empty()
+        ? std::string("NO CARTRIDGE INSERTED")
+        : std::filesystem::path(currentRom).filename().string();
+    char stats[128];
+    std::snprintf(stats, sizeof(stats), "%zu ROMS  |  BOOT 4000R  |  WINDOW $4000-$7FFF",
+                  romCount);
+    dl->AddText(ImVec2(start.x + 18.0f, start.y + 91.0f),
+                IM_COL32(255, 206, 94, 255), stats);
+
+    const float panelW = 210.0f;
+    const ImVec2 panelMin(end.x - panelW - 16.0f, start.y + 16.0f);
+    const ImVec2 panelMax(end.x - 16.0f, end.y - 16.0f);
+    dl->AddRectFilled(panelMin, panelMax, IM_COL32(4, 6, 10, 170), 6.0f);
+    dl->AddRect(panelMin, panelMax, IM_COL32(255, 206, 94, 160), 6.0f);
+    dl->AddText(ImVec2(panelMin.x + 12.0f, panelMin.y + 12.0f),
+                codeTankOnline ? IM_COL32(80, 245, 120, 255)
+                               : IM_COL32(170, 170, 176, 255),
+                codeTankOnline ? "CODETANK ONLINE" : "CODETANK STANDBY");
+    dl->AddText(ImVec2(panelMin.x + 12.0f, panelMin.y + 34.0f),
+                tmsOnline ? IM_COL32(80, 245, 220, 255)
+                          : IM_COL32(170, 170, 176, 255),
+                tmsOnline ? "TMS9918 HOST READY" : "TMS9918 HOST OFFLINE");
+    dl->AddText(ImVec2(panelMin.x + 12.0f, panelMin.y + 62.0f),
+                IM_COL32(235, 235, 235, 255), activeName.c_str());
+
+    ImGui::Dummy(size);
+}
+
 } // namespace
 
 void MainWindow_ImGui::renderCodeTankLibraryWindow()
 {
-    ImGui::SetNextWindowSize(ImVec2(480, 360), ImGuiCond_FirstUseEver);
+    ImGui::SetNextWindowSize(ImVec2(640, 520), ImGuiCond_FirstUseEver);
     if (ImGui::Begin("P-LAB CodeTank Library", &showCodeTankLibrary)) {
         // Cache the scan across frames; refresh on the Refresh button. Static
         // is fine here: this window only ever runs on the UI thread.
@@ -977,12 +1049,22 @@ void MainWindow_ImGui::renderCodeTankLibraryWindow()
             entries = scanCodeTankLibrary();
         }
         ImGui::SameLine();
-        ImGui::TextDisabled("roms/codetank/  (drop 32 kB .rom files here)");
+        ImGui::TextDisabled("roms/codetank/  (32 kB .rom/.bin cartridges)");
 
         ImGui::Separator();
 
         // Currently-loaded ROM (highlighted in green).
         const std::string& currentRom = uiSnapshot.codeTank.romPath;
+        drawCodeTankConsoleHeader(codeTankEnabled, tms9918Enabled, entries.size(), currentRom);
+        ImGui::Spacing();
+        drawCodeTankStatusPill("28C256 ROM", true, IM_COL32(255, 206, 94, 255));
+        ImGui::SameLine();
+        drawCodeTankStatusPill("TMS9918", tms9918Enabled, IM_COL32(80, 245, 220, 255));
+        ImGui::SameLine();
+        drawCodeTankStatusPill("CODETANK", codeTankEnabled, IM_COL32(80, 245, 120, 255));
+        ImGui::SameLine();
+        ImGui::TextDisabled("Insert cartridge, pick bank, type 4000R from Wozmon.");
+        ImGui::Spacing();
 
         ImGui::BeginChild("##codetank_lib_scroll",
                           ImVec2(0, -ImGui::GetFrameHeightWithSpacing() - 8.0f));
@@ -1027,29 +1109,50 @@ void MainWindow_ImGui::renderCodeTankLibraryWindow()
                 const auto& e = entries[i];
                 const bool isActive = (currentRom == e.path.string());
                 ImGui::PushID(static_cast<int>(i));
+                ImGui::PushStyleColor(ImGuiCol_ChildBg,
+                                      isActive ? IM_COL32(18, 42, 30, 255)
+                                               : IM_COL32(20, 22, 28, 255));
+                ImGui::PushStyleColor(ImGuiCol_Border,
+                                      isActive ? IM_COL32(95, 240, 130, 210)
+                                               : IM_COL32(75, 80, 92, 180));
+                ImGui::BeginChild("cart", ImVec2(0, 124.0f), true,
+                                  ImGuiWindowFlags_NoScrollbar);
                 if (isActive) {
                     ImGui::PushStyleColor(ImGuiCol_Text,
                                           ImVec4(0.4f, 0.95f, 0.4f, 1.0f));
-                    ImGui::Text(ICON_FA_PLAY " %s", e.filename.c_str());
+                    ImGui::Text(ICON_FA_PLAY " INSERTED  %s", e.filename.c_str());
                     ImGui::PopStyleColor();
                 } else {
-                    ImGui::TextUnformatted(e.filename.c_str());
+                    ImGui::Text(ICON_FA_GAMEPAD " CARTRIDGE  %s", e.filename.c_str());
                 }
+                ImGui::SameLine();
+                ImGui::TextDisabled("32 KB / 2 x 16 KB");
+
+                ImGui::Separator();
+
                 if (!e.description.empty()) {
-                    ImGui::Indent();
                     ImGui::TextWrapped("%s", e.description.c_str());
-                    ImGui::Unindent();
+                } else {
+                    ImGui::TextDisabled("No label sidecar. Drop a matching .txt file next to the ROM for cabinet notes.");
                 }
+
+                ImGui::Spacing();
                 if (e.mirrored) {
                     // Both halves identical (typical of menu-layout ROMs):
                     // one Load button is enough.
-                    if (ImGui::Button("Load")) plug(e, CodeTank::Jumper::Lower16, "");
-                } else {
-                    if (ImGui::Button("Load Lower")) plug(e, CodeTank::Jumper::Lower16, " (lower)");
+                    if (ImGui::Button("Insert cartridge")) plug(e, CodeTank::Jumper::Lower16, "");
                     ImGui::SameLine();
-                    if (ImGui::Button("Load Upper")) plug(e, CodeTank::Jumper::Upper16, " (upper)");
+                    ImGui::TextDisabled("mirrored banks");
+                } else {
+                    if (ImGui::Button("Insert Lower bank")) plug(e, CodeTank::Jumper::Lower16, " (lower)");
+                    ImGui::SameLine();
+                    if (ImGui::Button("Insert Upper bank")) plug(e, CodeTank::Jumper::Upper16, " (upper)");
+                    ImGui::SameLine();
+                    ImGui::TextDisabled("jumper selects the visible $4000-$7FFF half");
                 }
-                ImGui::Separator();
+                ImGui::EndChild();
+                ImGui::PopStyleColor(2);
+                ImGui::Spacing();
                 ImGui::PopID();
             }
         }

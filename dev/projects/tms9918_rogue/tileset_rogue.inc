@@ -19,7 +19,7 @@ TILE_EMPTY          = 0
 TILE_WALL           = 4
 TILE_STAIRS_DOWN    = 8
 TILE_DOOR           = 12
-TILE_CHEST_CLOSED   = 16
+TILE_STAIRS_UP      = 16
 TILE_TORCH          = 20
 TILE_GOLD           = 24
 TILE_POTION         = 28
@@ -34,18 +34,18 @@ tileset_rogue:
         .byte $DF, $DF, $DF, $DF, $DF, $00, $FD, $FD    ; char   5  wall.TR (bldg_brick_wall_pat)
         .byte $FD, $FD, $FD, $FD, $FD, $00, $DF, $DF    ; char   6  wall.BL (bldg_brick_wall_pat)
         .byte $FD, $FD, $FD, $FD, $FD, $00, $DF, $DF    ; char   7  wall.BR (bldg_brick_wall_pat)
-        .byte $00, $00, $00, $03, $03, $03, $7B, $7B    ; char   8  stairs_down.TL (bldg_stairs_pat)
-        .byte $1E, $1E, $1E, $DE, $DE, $DE, $DE, $DE    ; char   9  stairs_down.TR (bldg_stairs_pat)
-        .byte $7B, $7B, $78, $78, $40, $40, $7F, $00    ; char  10  stairs_down.BL (bldg_stairs_pat)
-        .byte $C2, $C2, $02, $02, $02, $02, $FE, $00    ; char  11  stairs_down.BR (bldg_stairs_pat)
-        .byte $FF, $80, $BF, $B8, $BB, $BA, $BA, $BA    ; char  12  door.TL (bldg_door_pat)
-        .byte $FF, $01, $FD, $1D, $9D, $9D, $9D, $9D    ; char  13  door.TR (bldg_door_pat)
-        .byte $BA, $BA, $BB, $B8, $B8, $BF, $80, $FF    ; char  14  door.BL (bldg_door_pat)
-        .byte $9D, $9D, $9D, $1D, $1D, $FD, $01, $FF    ; char  15  door.BR (bldg_door_pat)
-        .byte $00, $00, $07, $04, $04, $04, $04, $73    ; char  16  chest_closed.TL (expl_chest_closed_pat)
-        .byte $00, $00, $5C, $06, $06, $06, $06, $BC    ; char  17  chest_closed.TR (expl_chest_closed_pat)
-        .byte $7F, $7F, $7F, $7F, $7F, $00, $00, $00    ; char  18  chest_closed.BL (expl_chest_closed_pat)
-        .byte $BC, $BC, $BC, $BC, $BC, $00, $00, $00    ; char  19  chest_closed.BR (expl_chest_closed_pat)
+        .byte $00, $7F, $40, $40, $40, $40, $40, $40    ; char   8  stairs_down.TL (bldg_stairs_down_pat)
+        .byte $00, $FE, $02, $02, $02, $1E, $1E, $1E    ; char   9  stairs_down.TR (bldg_stairs_down_pat)
+        .byte $43, $43, $43, $7B, $7B, $7B, $7F, $00    ; char  10  stairs_down.BL (bldg_stairs_down_pat)
+        .byte $DE, $DE, $DE, $DE, $DE, $DE, $FE, $00    ; char  11  stairs_down.BR (bldg_stairs_down_pat)
+        .byte $00, $0B, $3B, $7B, $7B, $7B, $7B, $7B    ; char  12  door.TL (bldg_door_wood_pat)
+        .byte $00, $D0, $DC, $DE, $DE, $DE, $DE, $DE    ; char  13  door.TR (bldg_door_wood_pat)
+        .byte $4F, $30, $4B, $7B, $7B, $00, $7F, $00    ; char  14  door.BL (bldg_door_wood_pat)
+        .byte $FE, $00, $DE, $DE, $DE, $00, $FE, $00    ; char  15  door.BR (bldg_door_wood_pat)
+        .byte $00, $00, $00, $03, $03, $03, $7B, $7B    ; char  16  stairs_up.TL (bldg_stairs_up_pat)
+        .byte $1E, $1E, $1E, $DE, $DE, $DE, $DE, $DE    ; char  17  stairs_up.TR (bldg_stairs_up_pat)
+        .byte $7B, $7B, $78, $78, $40, $40, $7F, $00    ; char  18  stairs_up.BL (bldg_stairs_up_pat)
+        .byte $C2, $C2, $02, $02, $02, $02, $FE, $00    ; char  19  stairs_up.BR (bldg_stairs_up_pat)
         .byte $00, $00, $00, $04, $00, $01, $13, $07    ; char  20  torch.TL (expl_torch_pat)
         .byte $00, $40, $68, $F0, $F0, $F8, $98, $38    ; char  21  torch.TR (expl_torch_pat)
         .byte $04, $02, $07, $0C, $18, $30, $60, $00    ; char  22  torch.BL (expl_torch_pat)

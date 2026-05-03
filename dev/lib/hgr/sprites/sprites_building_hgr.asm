@@ -19,7 +19,7 @@
 ; ============================================================================
 .export bldg_brick_wall_pat, bldg_brick_wall2_pat, bldg_brick_wall3_pat, bldg_cobble_pat, bldg_cobble2_pat
 .export bldg_cobble3_pat, bldg_window_pat, bldg_window_grate_pat, bldg_door_locked_pat, bldg_door_pat
-.export bldg_house_pat, bldg_stairs_pat, bldg_battlement_pat, bldg_pillar_pat, bldg_rubble_pat
+.export bldg_stairs_down_pat, bldg_stairs_up_pat, bldg_door_wood_pat, bldg_pillar_pat, bldg_rubble_pat
 .export bldg_dome_pat, bldg_tent_pat, bldg_signpost_pat, bldg_stool_pat, bldg_bench_pat
 .export bldg_shelf_pat, bldg_bridge_pat, bldg_arch_pat
 .export building_hgr_data
@@ -93,20 +93,20 @@ bldg_door_pat:
         .byte $5D, $73, $02, $5D, $72, $02, $5D, $72, $02, $5D, $72, $02  ; rows 04..07
         .byte $5D, $72, $02, $5D, $72, $02, $5D, $73, $02, $1D, $70, $02  ; rows 08..11
         .byte $1D, $70, $02, $7D, $7F, $02, $01, $00, $02, $7F, $7F, $03  ; rows 12..15
-; slot 11/23 of "Building" row -- house
-bldg_house_pat:
+; slot 11/23 of "Building" row -- stairs going DOWN (mis-labelled "house"
+bldg_stairs_down_pat:
         .byte $00, $00, $00, $7E, $7F, $01, $02, $00, $01, $02, $00, $01  ; rows 00..03
         .byte $02, $00, $01, $02, $70, $01, $02, $70, $01, $02, $70, $01  ; rows 04..07
         .byte $42, $77, $01, $42, $77, $01, $42, $77, $01, $5E, $77, $01  ; rows 08..11
         .byte $5E, $77, $01, $5E, $77, $01, $7E, $7F, $01, $00, $00, $00  ; rows 12..15
-; slot 12/23 of "Building" row -- stairs
-bldg_stairs_pat:
+; slot 12/23 of "Building" row -- stairs going UP (renamed from
+bldg_stairs_up_pat:
         .byte $00, $70, $01, $00, $70, $01, $00, $70, $01, $40, $77, $01  ; rows 00..03
         .byte $40, $77, $01, $40, $77, $01, $5E, $77, $01, $5E, $77, $01  ; rows 04..07
         .byte $5E, $07, $01, $5E, $07, $01, $1E, $00, $01, $1E, $00, $01  ; rows 08..11
         .byte $02, $00, $01, $02, $00, $01, $7E, $7F, $01, $00, $00, $00  ; rows 12..15
-; slot 13/23 of "Building" row -- battlement
-bldg_battlement_pat:
+; slot 13/23 of "Building" row -- wooden door (was mis-labelled "battlement"
+bldg_door_wood_pat:
         .byte $00, $00, $00, $50, $17, $00, $5C, $77, $00, $5E, $77, $01  ; rows 00..03
         .byte $5E, $77, $01, $5E, $77, $01, $5E, $77, $01, $5E, $77, $01  ; rows 04..07
         .byte $72, $7F, $01, $0C, $00, $00, $52, $77, $01, $5E, $77, $01  ; rows 08..11
