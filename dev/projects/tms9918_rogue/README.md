@@ -22,10 +22,13 @@ Ships as `roms/codetank/Codetank_GAMES2.rom` — load via POM1's
   big-room at the same depth, with the entry door re-stamped opposite
   the player's exit. Bresenham FOV (8\*FOV_RADIUS rays to the player's
   box-perimeter) with opaque walls + opaque doors — every room is a
-  fresh "scene", no peeking through thresholds. **Still TODO**:
-  recursive shadowcasting (Bresenham has slope artifacts), persistent
-  fog-of-war (currently full re-flood every turn — "torchlight" mode,
-  no remembered terrain), and bit-packing of map+vis buffers.
+  fresh "scene", no peeking through thresholds. Persistent fog-of-war
+  was deliberately retired in favour of pure torchlight: `compute_fov`
+  wipes `vis_buffer` and re-paints from scratch every move, so cells
+  that leave the player's radius plunge back into darkness immediately.
+  **Still TODO**: recursive shadowcasting (Bresenham has slope
+  artifacts), and bit-packing the map + vis buffers (currently 160 + 160 B
+  for 16×10 = 160 cells; one bit-per-cell visibility would shrink to 20 B).
 - **MVP3 (done)** — 16-slot monster pool at `$E300` (UNDEAD/GHOST/
   SKELETON/DEATH/TROLL, depth-keyed type pool + per-depth HP & damage
   bonuses; TROLL flees the player via `ai_troll`, gated to depth 5+),
@@ -35,68 +38,95 @@ Ships as `roms/codetank/Codetank_GAMES2.rom` — load via POM1's
   permadeath → "YOU DIED ON LEVEL N" + 1.3 s deaf-time + JMP $4000
   cartridge cold-start. Food drops where a monster died, walking onto
   the cell heals FOOD_HEAL HP (capped at HP_MAX).
-- **MVP4 (done) — three-key Rogue command set**: 26-slot inventory at
-  `$E3A0` (one slot per letter A..Z, 8 B per slot), 7 item categories
-  (weapon, armor, ring, potion, scroll, food, dagger). After the
-  MVP4 simplification each category has a **single sub-type** that
-  matches its on-screen sprite — a Quale outfit/magick/food pictogram:
-  - **SWORD** (weapon, dmg 2) — `outfit_sword_pat`
-  - **TUNIC** (armor, def 2) — `outfit_tunic_pat`
-  - **AMULET** (ring, regen) — `outfit_amulet_pat`
-  - **POTION** (heal +8 HP) — `food_bottle_pat`
+- **MVP4 (done) — three-key Rogue command set + timed-buff equipment**:
+  26-slot inventory at `$E3A0` (one slot per letter A..Z, 8 B per slot),
+  8 item categories (weapon, armor, ring, potion, scroll, food, dagger,
+  torch). Each category has a single sub-type that matches its on-screen
+  sprite — a Quale outfit / magick / food / exploration pictogram:
+  - **SWORD** (weapon, ATK +2 for `WEAPON_DURATION` = 20 turns) — `outfit_sword_pat`
+  - **TUNIC** (armor, DEF +1 for `ARMOR_DURATION` = 30 turns) — `outfit_tunic_pat`
+  - **AMULET** (ring, +1 HP every `RING_REGEN_PERIOD` = 5 turns,
+    expires after `RING_DURATION` = 15 turns) — `outfit_amulet_pat`
+  - **POTION** (heal +5 HP, capped at `hp_max`) — `food_bottle_pat`
   - **SCROLL** (full-map reveal) — `magic_scroll_pat`
-  - **RATION** (food, +`FOOD_HEAL` HP) — meat sprite
-  - **DAGGER** (thrown, dmg 2) — `outfit_dagger_pat`
+  - **RATION** (food, +`FOOD_HEAL` = 3 HP) — meat sprite
+  - **DAGGER** (thrown, dmg 2, `THROW_RANGE` = 8) — `outfit_dagger_pat`
+  - **TORCH** (FOV doubles from `FOV_RADIUS` = 3 to `TORCH_RADIUS` = 7
+    for `TORCH_DURATION` = 50 turns) — `expl_torch_pat`
 
   Pickup is auto on bump; the player only ever explicitly **inspects**,
   **uses**, or **throws**:
-  - `I` — open the **inventory** modal (full-screen list with
-    `[A] *NAME +V` / `(xQ)` formatting, `*` flags equipped slots).
-    From inside the modal, **type a letter** to activate that slot
-    directly (same dispatch as `E` below — the modal closes and the
-    effect fires); any other key just dismisses. The `E` command
-    keeps working from the playfield as a single-step shortcut.
+  - `I` — open the **inventory** modal (full list with `[L] QxNAME UTIL`
+    rows, one 16×16 sprite per slot). From inside the modal, **type a
+    letter** to activate that slot directly (same dispatch as `E` below
+    — modal closes and the effect fires); any other key dismisses. The
+    `E` command keeps working from the playfield as a single-step shortcut.
   - `E` — **use** a slot, with type-driven dispatch:
-    - `WEAPON` / `ARMOR` / `RING` → toggle equip (free action).
-      Re-pressing `E` on the same slot un-equips; pressing it on a
-      different slot of the same type replaces the previous one.
-      The amulet manages `ring_flags`' `RING_F_REGEN` bit.
-    - `FOOD` (ration) → +`FOOD_HEAL` HP (cap `HP_MAX`), consumes the
+    - `WEAPON` / `ARMOR` / `RING` / `TORCH` → activate the buff (free
+      action). The slot is **consumed** and the matching ZP timer
+      (`weapon_timer` / `armor_timer` / `ring_timer` / `torch_timer`)
+      is set to its category duration. Re-using a fresh item of the
+      same kind overwrites the timer — no stacking, latest activation
+      wins. Each turn `finish_turn` ticks the four timers down; on
+      weapon/armor expiry it calls `recompute_player_stats` so the
+      boost drops cleanly. Ring expiry clears `RING_F_REGEN` from
+      `ring_flags` so the regen tick stops firing.
+    - `FOOD` (ration) → +`FOOD_HEAL` HP (cap `hp_max`), consumes the
       slot, costs a turn.
-    - `POTION` → +`INV_VALUE` HP (= 8, cap), costs a turn.
+    - `POTION` → +5 HP (cap `hp_max`), costs a turn.
     - `SCROLL` → one-shot full-map reveal modal (press any key to
       return), costs a turn.
-    - `DAGGER` → not "used"; throw it instead with `T`.
-  - `T` — **throw** a dagger. Two-stage prompt: pick the slot, then
-    a direction (vi keys). Cell-by-cell animation at ~80 ms/frame,
-    range `THROW_RANGE = 8`. Stops on the first wall / door / monster /
+    - `DAGGER` → not "used"; throw it with `T`.
+  - `T` — **throw** a dagger. Two-stage prompt: pick the slot, then a
+    direction (vi keys). Cell-by-cell animation at ~80 ms/frame, range
+    `THROW_RANGE` = 8. Stops on the first wall / door / monster /
     out-of-bounds; lands the dagger on the last empty cell (or on the
     monster's corpse). Costs a turn.
-  - **HUD**: row 21 shows `W:_  A:_  R:_   ATK:NN DEF:NN` —
-    equipped slot letters (or `-`) and the recomputed
-    `player_dmg` / `player_def`. Combat reads `player_dmg` instead
-    of the constant `PLAYER_DMG`, and incoming hits subtract
-    `player_def` (floor 0) before damaging HP.
-  - **Amulet of regeneration**: `RING_F_REGEN` makes `finish_turn`
-    add +1 HP every `RING_REGEN_PERIOD` (= 5) turns.
+  - **HUD** (3 rows below the playfield):
+    - **Row 20** — `DEPTH NNN                  HP HH/HM` — current
+      floor and live HP / runtime cap.
+    - **Row 21** — `ATK:NN DEF:NN             XP:NNN` — recomputed
+      `player_dmg` / `player_def` (combat reads these; incoming hits
+      subtract `player_def`, floor 0, before damaging HP) plus the
+      kill counter.
+    - **Row 22** — `WPN:NN ARM:NN RNG:NN TRC:NN` — countdown for each
+      active buff timer (`00` = expired). The legacy `W:_ A:_ R:_`
+      equipped-letter row was dropped when equipment became consumable
+      buffs.
+  - **XP-driven progression**: `player_xp` increments by 1 per slain
+    monster (saturates at 255). Three independent countdowns drive
+    level-ups in `award_xp`, all reset on `init_inventory`:
+    - every  5 kills → `+1 hp_max` (and `+1` current HP — small heal-on-up),
+    - every 10 kills → `+1 xp_atk_bonus`, folded into `player_dmg`,
+    - every 20 kills → `+1 xp_def_bonus`, folded into `player_def`.
   - **Items spawn at level gen**: `spawn_level_items` scatters 1..3
-    typed items per floor (food 35%, dagger 20%, potion 15%, scroll
-    10%, weapon 8%, armor 7%, ring 5%); the legacy "monster drops
+    typed items per floor; cumulative thresholds out of 32 give food
+    ≈ 28 %, dagger ≈ 16 %, potion ≈ 12 %, weapon ≈ 12 %, scroll ≈ 9 %,
+    armor ≈ 9 %, ring ≈ 6 %, torch ≈ 6 %. The legacy "monster drops
     food on death" path is preserved.
   - **Pickup is auto** on contact; if the bag is full the item stays
-    on the floor. Stackables (food, daggers) merge into an existing
-    slot via `INV_QTY++` so a fistful of daggers takes one letter.
+    on the floor. Stackables (food, daggers, potions, scrolls, torches)
+    merge into an existing slot via `INV_QTY++` so a fistful of daggers
+    takes one letter.
+  - **Win-screen at depth 13**: descending the stairs from depth 12
+    triggers `win_screen` instead of generating depth 13 — the
+    "DUNGEON CONQUERED" twin of `death_screen`. Both end-screens call
+    `paint_scores` (DEPTH / KILLS / HP MAX / ATK BASE / DEF BASE),
+    apply a ~1.3 s deaf-time, then wait for any keypress, then
+    `JMP $4000` cold-start.
 
 ## Files
 
 ```
-TMS_Rogue.asm                main source (boots, init VDP, game loop)
-tileset_rogue.inc            generated by tools/extract_quale_8x8_tiles.py
-apple1_rogue.cfg             DRAM dev cfg ($0280 + dual-bank high RAM)
-apple1_rogue_codetank.cfg    cartridge cfg ($4000 + dual-bank high RAM)
-emit_TMS_Rogue_txt.py        Wozmon-hex emitter (DRAM build only)
-Makefile                     drives ca65 + ld65 (default cfg = DRAM)
+TMS_Rogue.asm        main source (boots, init VDP, game loop)
+tileset_rogue.inc    generated by tools/extract_quale_8x8_tiles.py
+apple1_rogue.cfg     cartridge cfg ($4000-$7FFF + dual-bank high RAM)
+Makefile             drives ca65 + ld65
 ```
+
+The 8 KB Parmigiani DRAM target (code at `$0280`, Wozmon-hex `.txt`)
+was abandoned once MVP4 outgrew the 3.5 KB low-bank CODE budget; the
+cartridge build ($4000-$7FFF, 16 KB) is now the only supported path.
 
 ## Memory layout (Parmigiani dual-bank, preset 8)
 
@@ -111,7 +141,7 @@ two banks with a hole in the middle:
   silently fail to persist.
 - **High bank**: `$E000-$EFFF` (4 KB). Linker-managed `MAPSEG` hosts
   `map_buffer` (160 B, 16×10 logical tiles, one byte per tile) +
-  `vis_buffer` (160 B, parallel VIS_SEEN/VIS_VISIBLE bits). After
+  `vis_buffer` (160 B, single VIS_VISIBLE bit per cell). After
   MAPSEG ends at `$E0A0`, two absolutely-addressed pools:
   `monsters` at `$E300` (16 slots × 8 B = 128 B) and `items` at
   `$E380` (8 slots × 4 B = 32 B). `$E3A0-$EFFF` (~3.2 KB) is free
@@ -119,18 +149,19 @@ two banks with a hole in the middle:
 
 ## Build
 
-DRAM dev (8 KB Parmigiani, low + high bank):
-```bash
-cd dev/projects/tms9918_rogue
-make                                  # default cfg = apple1_rogue.cfg
-# Loads as TMS_Rogue.txt at $0280, run with 280R from Wozmon.
-```
-
-Cartridge:
+Cartridge (the only supported target):
 ```bash
 python3 tools/build_games2_rom.py     # writes roms/codetank/Codetank_GAMES2.rom
 ./build/POM1 --preset 8 --codetank-rom roms/codetank/Codetank_GAMES2.rom
 # Then 4000R from Wozmon to start.
+```
+
+Local compile-check (writes `software/tms9918/TMS_Rogue.bin` linked at
+`$4000`, not loadable as-is — use `build_games2_rom.py` for the ROM
+image):
+```bash
+cd dev/projects/tms9918_rogue
+make
 ```
 
 ## Tileset regeneration
@@ -167,10 +198,11 @@ game loop binds the four movement keys at runtime.
 - `I` — show **inventory** (modal). Type a slot letter `A..Z` from
   inside the modal to activate the item directly; any other key
   dismisses.
-- `E` — **use** a slot from the playfield (toggle-equip for
-  weapon/armor/ring, consume for food/potion/scroll; auto-dispatches
-  by type)
-- `T` — **throw** a dagger (asks for direction next)
+- `E` — **use** a slot from the playfield. Auto-dispatches by type:
+  weapon / armor / ring / torch are consumed and arm a per-category
+  turn-countdown buff; food / potion heal; scroll reveals the map
+  one-shot; dagger errors out (use `T` instead).
+- `T` — **throw** a dagger (asks for direction next).
 - `N` — regenerate the current level at the same depth (debug refresh,
   no turn cost — does not advance depth or cost HP).
 - Stepping onto `TILE_STAIRS_DOWN` advances to a deeper level (depth++,

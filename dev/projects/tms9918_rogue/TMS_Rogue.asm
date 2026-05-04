@@ -300,20 +300,23 @@ TILE_CORR_DROP  = $81
 
 ; --- Field of view (compute_fov) ---------------------------------------
 ; vis_buffer holds one byte per logical tile (16x10 = 160 B), parallel
-; to map_buffer. Two visibility bits:
-;   bit 0 (VIS_SEEN)    once set, stays set for the rest of the level
-;                        — "remembered" terrain is rendered greyed-out
-;                        (same chars as live for now; static map can be
-;                        recalled visually because it never changes).
-;   bit 1 (VIS_VISIBLE) lit by the current FOV pass — gates whether
-;                        place_all_sprites emits a SAT entry for any
-;                        monster/item sitting on this cell.
+; to map_buffer. Single visibility bit: VIS_VISIBLE = lit by the current
+; FOV pass. compute_fov wipes the buffer entirely on every call and
+; re-paints the lit cells — pure "torchlight" mode, no persistent
+; memory of explored terrain. render_map renders cells whose bit is set
+; (everything else is blacked out); place_all_sprites uses the same
+; gate to drop monsters / items in dark cells from the SAT.
+;
+; The earlier VIS_SEEN bit (persistent "remembered" terrain) was retired
+; once compute_fov needed to wipe the buffer at every step for the
+; door-crossing reset to work — VIS_SEEN was always equal to VIS_VISIBLE
+; in practice, so the duplicate bit was removed.
 ;
 ; compute_fov walks Bresenham rays from the player to every cell on the
 ; logical perimeter (rows 0/9 + cols 0/15 = 48 cells), capped at
-; FOV_RADIUS steps. Each ray marks every cell it touches with both
-; bits, and stops the moment the ray crosses an opaque tile (TILE_WALL)
-; — the wall itself is marked but anything past it is not.
+; FOV_RADIUS steps. Each ray marks every cell it touches and stops the
+; moment the ray crosses an opaque tile (TILE_WALL) — the wall itself
+; is marked but anything past it is not.
 ;
 ; FOV_RADIUS tuning: the playable interior is only 14 wide × 8 tall, so
 ; a radius ≥ 5 lights most of the grid from the centre and movement
@@ -324,9 +327,7 @@ TILE_CORR_DROP  = $81
 ; restores the "torchlight in a dark dungeon" feel and makes movement
 ; meaningful again.
 FOV_RADIUS      = 3
-VIS_SEEN        = $01
-VIS_VISIBLE     = $02
-VIS_BOTH        = $03
+VIS_VISIBLE     = $01
 
 ; --- Apple 1 keyboard codes (high bit set, KBD always has bit 7 = 1) ---
 ; The four movement-key slots are loaded at runtime from the title-screen
@@ -533,8 +534,8 @@ fov_step:       .res 1          ; cast_ray's step countdown — kept in ZP so
 ; itself is the bookkeeping.
 .segment "MAPSEG"
 map_buffer:     .res LOGICAL_COLS * LOGICAL_ROWS
-; Parallel visibility buffer: one byte per cell, VIS_SEEN | VIS_VISIBLE
-; bits. clear_vis_buffer wipes it on every new_level.
+; Parallel visibility buffer: one byte per cell, single VIS_VISIBLE
+; bit. clear_vis_buffer wipes it on every new_level.
 vis_buffer:     .res LOGICAL_COLS * LOGICAL_ROWS
 
 ; --- Monster + item pools in unused high-bank RAM ----------------------
@@ -3004,10 +3005,11 @@ apply_step:
 ; 32 TL/TR chars (name-table row N) followed by 32 BL/BR chars (row N+1).
 ;
 ; FOV gate: each cell consults vis_buffer[index] before emitting. A
-; cell whose VIS_SEEN bit is clear writes 4 zeros (blank black) — so
-; un-visited corridors stay black even after gen_dungeon paints them in
-; the map_buffer. compute_fov is responsible for setting both bits as
-; the player walks; clear_vis_buffer wipes everything on level change.
+; cell whose VIS_VISIBLE bit is clear writes 4 zeros (blank black) — so
+; un-lit corridors stay black even after gen_dungeon paints them in
+; the map_buffer. compute_fov wipes vis_buffer entirely and re-paints
+; the lit cells on every player move; clear_vis_buffer also wipes on
+; level change / door crossings.
 ; ----------------------------------------------------------------------------
 render_map:
         LDA     #$00
@@ -3033,7 +3035,7 @@ render_map:
         ;     16 tiles in the current logical row.
         LDY     #0
 @tl_lp: LDA     (map_ptr),Y     ; visibility byte for this tile
-        AND     #VIS_SEEN
+        AND     #VIS_VISIBLE
         BEQ     @tl_dark        ; never seen -> 2 blank chars
         LDA     (vdp_src_lo),Y  ; tile base id
         WRT_DATA_REG            ; TL = base+0
@@ -3054,7 +3056,7 @@ render_map:
         ;     name-table row N+1 = bottom half of the same tiles).
         LDY     #0
 @bl_lp: LDA     (map_ptr),Y     ; visibility byte (same row of vis_buffer)
-        AND     #VIS_SEEN
+        AND     #VIS_VISIBLE
         BEQ     @bl_dark
         LDA     (vdp_src_lo),Y  ; tile base id
         CLC
@@ -3115,8 +3117,7 @@ clear_vis_buffer:
 ; ----------------------------------------------------------------------------
 ; compute_fov: re-flood the player's field of view. Three phases:
 ;
-;   1. Strip every VIS_VISIBLE bit off vis_buffer (VIS_SEEN persists —
-;      that's the "remembered terrain" memory).
+;   1. Wipe vis_buffer entirely — pure torchlight, no remembered terrain.
 ;   2. Light the player's own cell (always visible, regardless of any
 ;      degenerate Bresenham that would skip it).
 ;   3. Cast Bresenham rays from the player to every cell on the
@@ -3159,15 +3160,10 @@ compute_fov:
         SBC     #1
         STA     fov_r_arm               ; 2R - 1 (left/right edge rays)
 
-        ; --- Phase 1: wipe vis_buffer entirely. We deliberately drop
-        ; the VIS_SEEN persistence — the only cells that should render
-        ; this turn are the ones the rays will repaint in phase 2/3.
-        ; Cells the player walked past last turn but are no longer in
-        ; range plunge straight back into darkness, exactly the
-        ; "torch always works" behaviour. The VIS_SEEN bit stays in
-        ; the format so render_map / place_all_sprites can keep
-        ; testing it without churn — phase 3 just OR's both bits
-        ; together (VIS_BOTH) so VIS_SEEN tracks VIS_VISIBLE 1:1. ---
+        ; --- Phase 1: wipe vis_buffer entirely. Cells the player
+        ; walked past last turn but are no longer in range plunge
+        ; straight back into darkness — pure "torch always works"
+        ; behaviour, no remembered terrain. ---
         ; Sentinel-BNE: 160 has bit 7 set, so "LDX #159 / DEX / BPL"
         ; exits after one iteration and the wipe never happens (every
         ; cell ever lit stays lit forever, "light through walls"). See
@@ -3260,7 +3256,7 @@ compute_fov:
 
 ; ----------------------------------------------------------------------------
 ; cast_ray: walk a Bresenham line from (player_col, player_row) toward
-; (ray_endx, ray_endy), marking each touched cell with VIS_BOTH. Stops
+; (ray_endx, ray_endy), marking each touched cell with VIS_VISIBLE. Stops
 ; on the first opaque tile (TILE_WALL — the wall itself gets marked) or
 ; after FOV_RADIUS steps, whichever comes first.
 ;
@@ -3407,7 +3403,7 @@ cast_ray:
 
 
 ; ----------------------------------------------------------------------------
-; mark_visible_at_cur: vis_buffer[cur_y * 16 + cur_x] |= VIS_BOTH.
+; mark_visible_at_cur: vis_buffer[cur_y * 16 + cur_x] |= VIS_VISIBLE.
 ; Caller has already verified cur_x / cur_y are in-range. Clobbers A,Y;
 ; preserves X (which cast_ray uses as the step countdown).
 ; ----------------------------------------------------------------------------
@@ -3421,7 +3417,7 @@ mark_visible_at_cur:
         ADC     cur_x
         TAY
         LDA     vis_buffer,Y
-        ORA     #VIS_BOTH
+        ORA     #VIS_VISIBLE
         STA     vis_buffer,Y
         RTS
 
@@ -5046,10 +5042,8 @@ dispatch_use_slot:
         ; render the now-fully-lit map, wait for a keypress (modal
         ; "look at this"), consume the scroll, redraw under normal FOV.
         ; The reveal does NOT persist — compute_fov on the next move
-        ; strips VIS_VISIBLE and the player drops back to torchlight.
-        ; A persistent VIS_SEEN trail would require the MVP2 fog rework
-        ; (was scoped out of MVP4).
-        LDA     #VIS_BOTH
+        ; wipes vis_buffer and the player drops back to torchlight.
+        LDA     #VIS_VISIBLE
         LDX     #(LOGICAL_COLS * LOGICAL_ROWS)
 @map_lp:
         DEX

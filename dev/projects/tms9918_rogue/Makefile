@@ -1,11 +1,11 @@
-# TMS9918 Rogue — default = stock cassette ($0280) variant.
-# Override at the command line: `make CFG=apple1_rogue_codetank.cfg`.
+# TMS9918 Rogue — cartridge-only ($4000-$7FFF, 16 kB CodeTank slot).
+# The 8 KB Parmigiani DRAM target was abandoned: the game outgrew the
+# 3.5 kB low-bank CODE budget. Distribution path = roms/codetank/Codetank_GAMES2.rom
+# via tools/build_games2_rom.py.
 PROJECT  := TMS_Rogue
-CFG      ?= apple1_rogue.cfg
-LOAD_CFG := $(CFG)
+LOAD_CFG := apple1_rogue.cfg
 OUT_DIR  := ../../../software/tms9918
 LIB      := -I ../../lib/apple1 -I ../../lib/m6502 -I ../../lib/tms9918
 EXTRA_ASM := ../../lib/tms9918/tms9918m1.asm ../../lib/tms9918/tms9918_pad.asm
-EMIT_TXT := 1
 
 include ../../cc65/Makefile.common

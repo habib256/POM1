@@ -38,12 +38,13 @@ HALF_SIZE = 0x4000   # 16 kB
 
 DEV = ROOT / "dev" / "projects"
 ROGUE_ASM = DEV / "tms9918_rogue" / "TMS_Rogue.asm"
-ROGUE_CFG = DEV / "tms9918_rogue" / "apple1_rogue_codetank.cfg"
+ROGUE_CFG = DEV / "tms9918_rogue" / "apple1_rogue.cfg"
 
 LIB_APPLE1 = ROOT / "dev" / "lib" / "apple1"
 LIB_M6502  = ROOT / "dev" / "lib" / "m6502"
 LIB_TMS    = ROOT / "dev" / "lib" / "tms9918"
-TMS_M1_ASM = LIB_TMS / "tms9918m1.asm"
+TMS_M1_ASM  = LIB_TMS / "tms9918m1.asm"
+TMS_PAD_ASM = LIB_TMS / "tms9918_pad.asm"
 
 DEFAULT_OUT = ROOT / "roms" / "codetank" / "Codetank_GAMES2.rom"
 
@@ -92,7 +93,7 @@ def build_lower_bank() -> bytes:
     """Lower 16 kB: TMS_Rogue at $4000, $FF-padded."""
     print("[GAMES2] Lower bank (TMS_Rogue, run-in-place):", file=sys.stderr)
     rogue = assemble_multi(
-        [ROGUE_ASM, TMS_M1_ASM],
+        [ROGUE_ASM, TMS_M1_ASM, TMS_PAD_ASM],
         ROGUE_CFG, "TMS_Rogue", HALF_SIZE,
     )
     bank = bytearray(b"\xFF" * HALF_SIZE)
