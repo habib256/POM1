@@ -20,11 +20,13 @@
 ; exactly over one logical 16x16 tile.
 ; =============================================
 
+        .import tms9918_pad12  ; silicon-strict pad16 (helper from tms9918_pad.asm)
 .include "apple1.inc"
 .include "tms9918.inc"
 
 ; --- Lib (tms9918m1.asm) ---
 .import init_vdp_g1, clear_name_table, vdp_set_write, name_at_rc
+.import disable_sprites
 .importzp vdp_lo, vdp_hi, vdp_src_lo, vdp_src_hi, vdp_row, vdp_col
 
 ; --- Geometry: logical 16x10 tile grid in the top 20 char rows ---
@@ -55,6 +57,32 @@ FOOD_HEAL      = 3              ; HP restored when the player walks onto
                                 ; a food item (capped at HP_MAX). Tuned
                                 ; so a single heal covers one DEATH bite
                                 ; with a little margin.
+; Per-buff durations after activation. Each tier is tuned to its role:
+; the offensive buff is short (force aggressive timing), defense is
+; medium (covers a couple of encounters), the ring is between the two
+; (long enough for the regen to actually pulse), and the torch is the
+; longest by far (exploration aid, spans most of a floor).
+WEAPON_DURATION = 20            ; sword window — covers 1-2 fights at
+                                ; depth 1 (3-monster pool ~6-9 turns)
+                                ; or one prolonged encounter mid-game.
+ARMOR_DURATION  = 30            ; tunic spans multiple combat windows
+                                ; per floor — you can't "save" damage
+                                ; already taken, so the buffer needs
+                                ; to cover the trip between heals.
+RING_DURATION   = 15            ; amulet REGEN — needs a few cycles
+                                ; to actually heal (RING_REGEN_PERIOD
+                                ; = 5, so 15 turns = up to 3 pulses).
+TORCH_DURATION  = 50            ; exploration tool, not a fight
+                                ; window. 50 turns ≈ a full floor's
+                                ; worth of moves at the 14×8 interior,
+                                ; so a torch carries you most of a
+                                ; level if you light it on entry.
+TORCH_RADIUS   = 7              ; FOV during a torch buff. Doubles the
+                                ; default FOV_RADIUS=3 (3→7 covers
+                                ; nearly the full 14×8 playable
+                                ; interior — see one room edge to the
+                                ; other plus most of an adjacent
+                                ; corridor).
 
 ; --- Monster pool ------------------------------------------------------
 ; 16-slot pool at $E300 (high bank, after the 768-byte map_buffer).
@@ -123,6 +151,7 @@ SPRITE_NAME_WEAPON   = 36       ; generic sword for mace / sword / axe
 SPRITE_NAME_ARMOR    = 40       ; generic chest plate for leather / chain / plate
 SPRITE_NAME_RING     = 44
 SPRITE_NAME_TROLL    = 48       ; troll grunt — flees the player
+SPRITE_NAME_TORCH    = 52       ; consumable torch (FOV buff item)
 
 ; TMS9918 palette indices used for monster sprites (0=transp, 2=med green,
 ; 7=cyan, 14=gray, 15=white, 10=dk yellow). UNDEAD stays bright white,
@@ -146,6 +175,11 @@ COL_SCROLL     = 7              ; cyan — paper
 COL_WEAPON     = 15             ; white — polished steel
 COL_ARMOR      = 6              ; dark red — leather/iron
 COL_RING       = 10             ; dark yellow — gold
+COL_TORCH      = 9              ; light red / orange — flame.
+                                ;   The TMS9918 palette has no pure
+                                ;   orange; idx 9 is the warmest red
+                                ;   that still reads as fire against
+                                ;   the gray dungeon walls.
 
 ; --- World item pool (drops on the dungeon floor) ----------------------
 ; 8-slot pool at $E380, immediately after the monster pool ($E300-$E37F)
@@ -176,7 +210,11 @@ ITEM_T_POTION  = 4
 ITEM_T_SCROLL  = 5
 ITEM_T_FOOD    = 6
 ITEM_T_DAGGER  = 7              ; throwable stackable projectile
-ITEM_T_MAX     = 7
+ITEM_T_TORCH   = 8              ; consumable FOV boost (TORCH_DURATION
+                                ; turns of TORCH_RADIUS). No range
+                                ; weapon / no equip — pure exploration
+                                ; tool. Spawned by spawn_level_items.
+ITEM_T_MAX     = 8
 
 ; Sub-type ids (per category). After the MVP4 simplification each
 ; category has a single sub-type that matches its on-screen sprite —
@@ -197,6 +235,8 @@ SUB_FOOD_RATION   = 0           ; HP += FOOD_HEAL (3)
 SUB_FOOD_COUNT    = 1
 SUB_DAGGER_PLAIN  = 0           ; thrown dmg 2
 SUB_DAGGER_COUNT  = 1
+SUB_TORCH_PLAIN   = 0           ; FOV boost to TORCH_RADIUS
+SUB_TORCH_COUNT   = 1
 
 ; Ring effect bit flag packed into ring_flags ZP. After MVP4 simplification
 ; the only ring is the regen amulet; the bit-mask form is kept because the
@@ -220,8 +260,12 @@ RING_REGEN_PERIOD = 5           ; HP++ every 5 turns when amulet worn
 ;
 ; INV_COUNT == 26 because the on-screen letter is "the slot index".
 ; The free slot search is linear from 0 — first hole gets the new item.
-; Equipped slot indices live in ZP (equipped_weapon / _armor / _ring),
-; each holding either a slot index (0..25) or $FF for "none".
+; Active gear is no longer tracked by an equipped_* slot index — the
+; buff-timer rework made every gear category (weapon / armor / ring /
+; torch) a CONSUMABLE: activation drains the slot and starts a
+; per-category ZP timer countdown. Durations live in the WEAPON_DURATION
+; / ARMOR_DURATION / RING_DURATION / TORCH_DURATION constants; the
+; cached boost value lives next to each timer.
 INV_COUNT      = 26
 INV_SIZE       = 8
 INV_TYPE       = 0
@@ -381,16 +425,69 @@ mon_dmg_bonus:  .res 1          ; spawn-time difficulty: extra damage
 ; matters after MVP4 simplification, but the bit-mask form is preserved
 ; for cheap toggling. regen_tick counts down from RING_REGEN_PERIOD to 1
 ; each turn; on hitting 0 it adds +1 HP and reloads.
-equipped_weapon:.res 1
-equipped_armor: .res 1
-equipped_ring:  .res 1
 ring_flags:     .res 1
 regen_tick:     .res 1
 player_dmg:     .res 1          ; computed: weapon_value (or 1 bare-handed)
+                                ; + xp_atk_bonus
 player_def:     .res 1          ; computed: armor_value (or 0 unarmored)
+                                ; + xp_def_bonus
 player_xp:      .res 1          ; kill counter, +1 per slain monster
                                 ; (saturates at 255). Painted on the
                                 ; row-21 HUD as XP:NNN.
+
+; --- XP-driven progression ---------------------------------------------
+; Three countdowns gate the level-up effects. Each award_xp tick
+; decrements all three; whichever hits 0 fires its bonus and reloads.
+; That keeps the stats in sync with player_xp without per-frame
+; division. Bonuses are additive on top of equipment values:
+;   +1 HP_MAX every 5 kills (also +1 current HP — small heal-on-up)
+;   +1 ATK    every 10 kills (in recompute_player_stats)
+;   +1 DEF    every 20 kills (in recompute_player_stats)
+; All three reset in init_inventory (cold-start covers death restart).
+hp_max:         .res 1          ; runtime HP cap (replaces HP_MAX literal
+                                ; in heal sites + regen + HUD). Init'd
+                                ; to HP_MAX, grows with player_xp/5.
+xp_atk_bonus:   .res 1          ; player_xp / 10, folded into player_dmg
+xp_def_bonus:   .res 1          ; player_xp / 20, folded into player_def
+hp_tick:        .res 1          ; reload 5  → +1 hp_max on rollover
+atk_tick:       .res 1          ; reload 10 → +1 xp_atk_bonus on rollover
+def_tick:       .res 1          ; reload 20 → +1 xp_def_bonus on rollover
+
+; --- Timed buff state --------------------------------------------------
+; Weapons / armors / rings / torches are CONSUMABLE buffs: using one
+; wipes the slot and starts a per-category turn countdown (durations
+; in WEAPON_DURATION / ARMOR_DURATION / RING_DURATION / TORCH_DURATION).
+; While the timer is non-zero the boost stacks into player_dmg /
+; player_def (above the XP base) or the FOV radius (torch).
+; Reactivating the same kind replaces the timer (no stacking; latest
+; activation wins). Each turn finish_turn ticks all four; on
+; weapon/armor expiry it calls
+; recompute_player_stats so the bonus drops cleanly.
+weapon_timer:   .res 1          ; remaining turns of weapon buff (0 = bare)
+weapon_boost:   .res 1          ; cached weapon INV_VALUE (= ATK boost)
+armor_timer:    .res 1          ; remaining turns of armor buff
+armor_boost:    .res 1          ; cached armor INV_VALUE (= DEF boost)
+torch_timer:    .res 1          ; remaining turns of torch FOV boost
+ring_timer:     .res 1          ; remaining turns of ring buff (REGEN
+                                ; passive). Expiry clears ring_flags so
+                                ; finish_turn's regen tick stops firing.
+ring_boost:     .res 1          ; cached ring INV_VALUE (= RING_F_*
+                                ; bit). On expiry we AND ring_flags
+                                ; with ~ring_boost — keeps the path
+                                ; future-proof if a second ring sub-
+                                ; type lands and only one of two bits
+                                ; should be cleared.
+; --- Cached FOV radius for the current compute_fov call ---------------
+; compute_fov fills these once at entry, switching between FOV_RADIUS
+; and TORCH_RADIUS based on torch_timer. cast_ray's step countdown +
+; the box-perimeter math read fov_r / fov_r_diam / fov_r_arm so the
+; same routine handles both default and torch-lit FOV without forking.
+;   fov_r       = active radius (3 default, 7 with torch)
+;   fov_r_diam  = 2 * fov_r + 1   (box-edge length, top/bottom rays)
+;   fov_r_arm   = 2 * fov_r - 1   (left/right rays, corners pre-cast)
+fov_r:          .res 1
+fov_r_diam:     .res 1
+fov_r_arm:      .res 1
 
 ; --- MVP4 thrown projectile ZP -----------------------------------------
 ; throw_active = 1 while a dagger is mid-flight: place_all_sprites
@@ -721,11 +818,18 @@ main_loop:
 ; LFSR state survives across calls — no reseed needed.
 ; ----------------------------------------------------------------------------
 new_level:
-        ; Depth only advances on stairs-down descent.
+        ; Depth only advances on stairs-down descent. Reaching depth
+        ; 13 short-circuits straight into the victory screen — there
+        ; is no real "level 13" floor, just the win-state takeover
+        ; (CONGRATULATIONS banner + scores + cold-start on keypress).
         LDA trans_mode
         CMP #1
         BNE @no_inc
         INC depth
+        LDA depth
+        CMP #13
+        BCC @no_inc
+        JMP win_screen
 @no_inc:
         ; Edge-door wrap modes (2..5) force a big-room layout so the
         ; spawn-at-opposite-edge override always lands inside a known
@@ -825,7 +929,7 @@ apply_wrap_spawn:
 override_r1_16x16:
         LDA     #$C2
         STA     VDP_CTRL
-        NOP                     ; +2c silicon-strict gap (LDA #imm bridge)
+        JSR     tms9918_pad12   ; +12c silicon-strict pad16 (before LDA #imm bridge)
         LDA     #$81            ; $01 | $80 -> register 1
         STA     VDP_CTRL
         RTS
@@ -1679,10 +1783,12 @@ spawn_monsters:
 ;
 ; Thresholds use a 32-entry roll (matches the LFSR's natural granularity
 ; better than 100 and lets rand_mod #32 short-circuit after one iteration
-; for 0..31 results). Weights:
-;   food 35%, dagger 20%, potion 15%, scroll 10%, weapon 8%, armor 7%,
-;   ring 5%.  Heavy on consumables so the player has fuel for combat;
-;   weapons / armour / rings are rare enough to matter when found.
+; for 0..31 results). Weights (post buff-timer rework):
+;   food 28%, dagger 16%, potion 13%, scroll 9%, weapon 13%, armor 9%,
+;   ring 6%, torch 6%.
+; Weapons + armours bumped (8→13%, 7→9%) since they're now CONSUMABLE
+; on use (10-turn buff) — must drop more often or the player runs out
+; of buffs after one floor. Torches added at 6% to seed exploration.
 ; ----------------------------------------------------------------------------
 spawn_level_items:
         LDA     #3
@@ -1725,13 +1831,13 @@ spawn_level_items:
 level_item_thresh:
         ; cumulative roll thresholds; first index whose threshold > roll
         ; wins. Last entry must equal the rand_mod modulus (32).
-        .byte   11, 17, 22, 25, 28, 30, 32
+        .byte   9, 14, 18, 21, 25, 28, 30, 32
 level_item_type:
         .byte   ITEM_T_FOOD, ITEM_T_DAGGER, ITEM_T_POTION, ITEM_T_SCROLL
-        .byte   ITEM_T_WEAPON, ITEM_T_ARMOR, ITEM_T_RING
+        .byte   ITEM_T_WEAPON, ITEM_T_ARMOR, ITEM_T_RING, ITEM_T_TORCH
 level_item_subc:
         .byte   SUB_FOOD_COUNT, SUB_DAGGER_COUNT, SUB_POT_COUNT, SUB_SCROLL_COUNT
-        .byte   SUB_WEAPON_COUNT, SUB_ARMOR_COUNT, SUB_RING_COUNT
+        .byte   SUB_WEAPON_COUNT, SUB_ARMOR_COUNT, SUB_RING_COUNT, SUB_TORCH_COUNT
 
 
 ; ----------------------------------------------------------------------------
@@ -1938,15 +2044,12 @@ try_pickup_item:
         STA     map_ptr+1               ; scratch[1] = subtype
         TXA
         PHA                             ; preserve world slot offset
-        ; Stackable types merge into an existing slot; everything else
-        ; takes the first empty slot.
-        LDA     map_ptr
-        CMP     #ITEM_T_FOOD
-        BEQ     @try_stack
-        CMP     #ITEM_T_DAGGER
-        BEQ     @try_stack
-        JMP     @find_empty
-@try_stack:
+        ; Every item type now stacks on (type, subtype) match — the
+        ; buff-timer rework made weapons / armours / torches each into
+        ; a per-use charge, so picking up a second sword should grow
+        ; the existing pile (1xSWORD → 2xSWORD), not eat a new bag
+        ; letter. Rings + scrolls never *had* to be unique either, so
+        ; folding them in tightens the inventory display too.
         JSR     find_inv_stack          ; C clear → matching slot in X
         BCS     @find_empty
         INC     inventory+INV_QTY,X
@@ -2074,7 +2177,11 @@ lookup_item_value:
         BNE     @nd
         LDA     dagger_value_table,Y
         RTS
-@nd:    LDA     #0
+@nd:    CMP     #ITEM_T_TORCH
+        BNE     @nt
+        LDA     torch_value_table,Y
+        RTS
+@nt:    LDA     #0
         RTS
 
 ; Per-category value tables. Sub-type id = byte index (always 0 after
@@ -2089,17 +2196,31 @@ lookup_item_value:
 weapon_value_table:
         .byte 2                         ; sword: dmg 2
 armor_value_table:
-        .byte 2                         ; tunic: def 2
+        .byte 1                         ; tunic: def 1 (immune-armor fix:
+                                        ; with def 2 every dmg-1 monster
+                                        ; was reduced to 0 via apply_step's
+                                        ; floor-at-0, trivialising depths
+                                        ; 1-5; def 1 keeps a 1-dmg punch
+                                        ; alive for UNDEAD/GHOST/TROLL.
 ring_value_table:
         .byte RING_F_REGEN              ; amulet: regen flag
 potion_value_table:
-        .byte 8                         ; potion: heal +8 HP
+        .byte 5                         ; potion: heal +5 HP (tuned down
+                                        ; from 8 — at HP_MAX 14 a +8 heal
+                                        ; was 57% of max, making potions
+                                        ; a "free run reset"; +5 is still
+                                        ; meaningful but forces planning).
 scroll_value_table:
         .byte SUB_SCROLL_MAP            ; scroll: full-map reveal
 food_value_table:
         .byte FOOD_HEAL                 ; ration: +3 HP
 dagger_value_table:
         .byte 2                         ; thrown damage
+torch_value_table:
+        .byte SUB_TORCH_PLAIN           ; torch: 1 sub-type, FOV boost
+                                        ; magnitude is hardcoded via
+                                        ; TORCH_RADIUS in compute_fov;
+                                        ; the value byte is just a tag.
 
 ; --- Item → SAT name / palette tables (indexed by ITEM_T_*) ------------
 ; Index 0 (ITEM_T_NONE) entries are unreachable from place_all_sprites
@@ -2114,6 +2235,7 @@ item_sprite_table:
         .byte SPRITE_NAME_SCROLL        ; 5 ITEM_T_SCROLL
         .byte SPRITE_NAME_FOOD          ; 6 ITEM_T_FOOD
         .byte SPRITE_NAME_DAGGER        ; 7 ITEM_T_DAGGER
+        .byte SPRITE_NAME_TORCH         ; 8 ITEM_T_TORCH
 item_color_table:
         .byte 0
         .byte COL_WEAPON
@@ -2123,6 +2245,7 @@ item_color_table:
         .byte COL_SCROLL
         .byte COL_FOOD
         .byte COL_DAGGER
+        .byte COL_TORCH
 
 ; --- Item display names ($FF-terminated ASCII) -------------------------
 ; One name per category after MVP4 simplification — matches the on-screen
@@ -2136,6 +2259,7 @@ name_potion:    .byte "POTION",    $FF
 name_scroll:    .byte "SCROLL",    $FF
 name_ration:    .byte "RATION",    $FF
 name_dagger:    .byte "DAGGER",    $FF
+name_torch:     .byte "TORCH",     $FF
 name_unknown:   .byte "?",         $FF
 
 ; Per-category pointer tables. Sub-type id = byte index (always 0 now).
@@ -2167,6 +2291,10 @@ dagger_name_table:
         .byte <name_dagger
 dagger_name_table_h:
         .byte >name_dagger
+torch_name_table:
+        .byte <name_torch
+torch_name_table_h:
+        .byte >name_torch
 
 
 ; ----------------------------------------------------------------------------
@@ -2221,10 +2349,17 @@ lookup_item_name:
         STA     vdp_src_hi
         RTS
 @nd:    CPX     #ITEM_T_DAGGER
-        BNE     @unknown
+        BNE     @nt
         LDA     dagger_name_table,Y
         STA     vdp_src_lo
         LDA     dagger_name_table_h,Y
+        STA     vdp_src_hi
+        RTS
+@nt:    CPX     #ITEM_T_TORCH
+        BNE     @unknown
+        LDA     torch_name_table,Y
+        STA     vdp_src_lo
+        LDA     torch_name_table_h,Y
         STA     vdp_src_hi
         RTS
 @unknown:
@@ -2258,55 +2393,69 @@ init_inventory:
         STA     ring_flags
         STA     regen_tick
         STA     player_xp               ; fresh run starts at 0 kills
+        STA     xp_atk_bonus            ; no XP-driven ATK bonus yet
+        STA     xp_def_bonus            ; no XP-driven DEF bonus yet
         STA     throw_active            ; no projectile in flight at boot
-        LDA     #INV_NONE
-        STA     equipped_weapon
-        STA     equipped_armor
-        STA     equipped_ring
+        STA     weapon_timer            ; no weapon buff active
+        STA     weapon_boost
+        STA     armor_timer             ; no armor buff active
+        STA     armor_boost
+        STA     torch_timer             ; no torch buff active
+        STA     ring_timer              ; no ring buff active
+        STA     ring_boost
+        LDA     #HP_MAX
+        STA     hp_max                  ; runtime HP cap, XP-bumpable
+        LDA     #5
+        STA     hp_tick
+        LDA     #10
+        STA     atk_tick
+        LDA     #20
+        STA     def_tick
+        ; equipped_* bookkeeping is gone — every gear category is now
+        ; a consumable buff (weapon / armor / ring / torch). The bag
+        ; letter visible in the inventory IS the activation key, no
+        ; "equipped slot" indirection needed.
         JSR     recompute_player_stats  ; sets player_dmg = 1, player_def = 0
         RTS
 
 
 ; ----------------------------------------------------------------------------
 ; recompute_player_stats: rebuild player_dmg + player_def from the
-; current equipped_* slots. Called any time the equipped state changes
-; (equip / un-equip weapon, armor, or amulet).
+; live timer-based buff state, then fold in the XP-driven progression
+; bonuses. Called when:
+;   - a buff is activated (@do_weapon / @do_armor consume + start timer)
+;   - a buff timer rolls over to 0 in finish_turn
+;   - an XP threshold fires in award_xp
 ;
 ; Formula:
-;   player_dmg = equipped_weapon.INV_VALUE if any, else 1 (bare hands)
-;   player_def = equipped_armor.INV_VALUE  if any, else 0
+;   player_dmg = (weapon_timer ? weapon_boost : 1) + xp_atk_bonus
+;   player_def = (armor_timer  ? armor_boost  : 0) + xp_def_bonus
 ; The "1 if no weapon" base preserves MVP3's bare-hands PLAYER_DMG=1.
-; The amulet's regen happens in finish_turn, not here. Clobbers A, X.
+; The amulet's regen happens in finish_turn, not here. Clobbers A.
 ; ----------------------------------------------------------------------------
 recompute_player_stats:
         ; --- player_dmg ---
-        LDA     equipped_weapon
-        CMP     #INV_NONE
-        BNE     @have_wpn
-        LDA     #1                      ; bare-handed base
+        LDA     weapon_timer
+        BEQ     @no_wpn                 ; expired → bare-handed
+        LDA     weapon_boost
         JMP     @wpn_save
-@have_wpn:
-        ASL                             ; slot_idx * 8 = byte offset
-        ASL
-        ASL
-        TAX
-        LDA     inventory+INV_VALUE,X
+@no_wpn:
+        LDA     #1                      ; bare-handed base
 @wpn_save:
+        CLC
+        ADC     xp_atk_bonus            ; XP progression bonus
         STA     player_dmg
 
         ; --- player_def ---
-        LDA     equipped_armor
-        CMP     #INV_NONE
-        BNE     @have_arm
-        LDA     #0
+        LDA     armor_timer
+        BEQ     @no_arm                 ; expired → unarmored
+        LDA     armor_boost
         JMP     @arm_save
-@have_arm:
-        ASL
-        ASL
-        ASL
-        TAX
-        LDA     inventory+INV_VALUE,X
+@no_arm:
+        LDA     #0
 @arm_save:
+        CLC
+        ADC     xp_def_bonus            ; XP progression bonus
         STA     player_def
         RTS
 
@@ -2315,10 +2464,11 @@ recompute_player_stats:
 ; player_attack_monster: deal PLAYER_DMG damage to the monster at pool
 ; offset X. Saturates HP at 0. Survivors get MON_HURT set so they
 ; render in COL_HURT this frame; killed monsters free their slot AND
-; drop a food item at their last position 1-in-2 times (rand_mod #2
-; → BNE no_drop). 50% rate keeps the heal economy roughly neutral —
-; the player can sustain combat indefinitely on average, but a streak
-; of no-drops puts them in real danger.
+; drop a food item at their last position 1-in-4 times (rand_mod #4
+; → BNE no_drop). 25% rate (tuned down from 50%) keeps the heal econ
+; tight — combined with the +35% level-spawn food and +1 HP every 5
+; kills from XP, the player still sustains combat over a long run but
+; can no longer thesaurise enough heal to ignore positioning.
 ; ----------------------------------------------------------------------------
 player_attack_monster:
         LDA     monsters+MON_HP,X
@@ -2338,9 +2488,9 @@ player_attack_monster:
         LDA     #0
         STA     monsters+MON_TYPE,X
         JSR     award_xp
-        ; 50% drop rate. rand_mod #2 returns {0, 1}; only 0 fires the
+        ; 25% drop rate. rand_mod #4 returns {0..3}; only 0 fires the
         ; drop. rand_mod preserves X (it touches A + tmp only).
-        LDA     #2
+        LDA     #4
         JSR     rand_mod
         BNE     @no_drop
         JMP     spawn_item              ; tail-call (RTS from spawn_item)
@@ -2353,15 +2503,59 @@ player_attack_monster:
 
 
 ; ----------------------------------------------------------------------------
-; award_xp: +1 to player_xp, saturating at 255 so the row-21 HUD stays
-; at a clean 3-digit "XP:255" cap and the byte never wraps to 0 after
-; a long run. Clobbers A only (X preserved by callers' contract).
+; award_xp: +1 to player_xp, saturating at 255, then ticks the three
+; level-up countdowns (hp_tick, atk_tick, def_tick). Each tick that
+; rolls over to 0 fires its bonus and reloads; the level-up curve is:
+;   hp_max +1 every 5 kills (+ 1 current HP, capped to new hp_max)
+;   xp_atk_bonus +1 every 10 kills
+;   xp_def_bonus +1 every 20 kills
+; The two ATK/DEF events JSR recompute_player_stats so player_dmg and
+; player_def pick up the new bonuses immediately — the next bump or
+; bite uses the level-up'd value. Saved across the JSR via X-on-stack
+; because callers (player_attack_monster, throw kill) hold X = monster
+; pool offset and need it preserved.
 ; ----------------------------------------------------------------------------
 award_xp:
         LDA     player_xp
         CMP     #$FF
         BEQ     @done
         INC     player_xp
+        ; --- HP_MAX tick ---
+        DEC     hp_tick
+        BNE     @no_hp
+        LDA     #5
+        STA     hp_tick
+        INC     hp_max
+        ; +1 current HP, but never above the freshly-bumped cap.
+        LDA     hp
+        CMP     hp_max
+        BCS     @no_hp                  ; already at or above (defensive)
+        INC     hp
+@no_hp:
+        ; --- ATK tick ---
+        DEC     atk_tick
+        BNE     @no_atk
+        LDA     #10
+        STA     atk_tick
+        INC     xp_atk_bonus
+        TXA
+        PHA
+        JSR     recompute_player_stats
+        PLA
+        TAX
+@no_atk:
+        ; --- DEF tick ---
+        DEC     def_tick
+        BNE     @no_def
+        LDA     #20
+        STA     def_tick
+        INC     xp_def_bonus
+        TXA
+        PHA
+        JSR     recompute_player_stats
+        PLA
+        TAX
+@no_def:
 @done:
         RTS
 
@@ -2943,6 +3137,28 @@ clear_vis_buffer:
 ; one frame, even allowing for the silicon-strict NOPs in WRT_DATA_REG.
 ; ----------------------------------------------------------------------------
 compute_fov:
+        ; --- Phase 0: pick the active radius (FOV_RADIUS by default,
+        ; TORCH_RADIUS while torch_timer > 0) and pre-compute the box
+        ; arithmetic constants the perimeter loops + cast_ray read.
+        ; All later sites use the ZP bytes instead of the literal
+        ; FOV_RADIUS so the same routine handles both modes. ---
+        LDA     torch_timer
+        BEQ     @r_default
+        LDA     #TORCH_RADIUS
+        JMP     @r_save
+@r_default:
+        LDA     #FOV_RADIUS
+@r_save:
+        STA     fov_r
+        ASL
+        STA     fov_r_diam              ; 2R
+        INC     fov_r_diam              ; 2R + 1 (box edge length)
+        LDA     fov_r
+        ASL
+        SEC
+        SBC     #1
+        STA     fov_r_arm               ; 2R - 1 (left/right edge rays)
+
         ; --- Phase 1: wipe vis_buffer entirely. We deliberately drop
         ; the VIS_SEEN persistence — the only cells that should render
         ; this turn are the ones the rays will repaint in phase 2/3.
@@ -2975,13 +3191,13 @@ compute_fov:
         ; Top edge: dy = -R, dx = -R..+R.
         LDA     player_row
         SEC
-        SBC     #FOV_RADIUS
+        SBC     fov_r
         STA     ray_endy
         LDA     player_col
         SEC
-        SBC     #FOV_RADIUS
+        SBC     fov_r
         STA     ray_endx
-        LDX     #(2 * FOV_RADIUS + 1)
+        LDX     fov_r_diam              ; 2R + 1
 @top_lp:
         JSR     cast_ray
         INC     ray_endx
@@ -2991,13 +3207,13 @@ compute_fov:
         ; Bottom edge: dy = +R, dx = -R..+R.
         LDA     player_row
         CLC
-        ADC     #FOV_RADIUS
+        ADC     fov_r
         STA     ray_endy
         LDA     player_col
         SEC
-        SBC     #FOV_RADIUS
+        SBC     fov_r
         STA     ray_endx
-        LDX     #(2 * FOV_RADIUS + 1)
+        LDX     fov_r_diam
 @bot_lp:
         JSR     cast_ray
         INC     ray_endx
@@ -3007,13 +3223,15 @@ compute_fov:
         ; Left edge: dx = -R, dy = -(R-1)..+(R-1) — corners already cast.
         LDA     player_col
         SEC
-        SBC     #FOV_RADIUS
+        SBC     fov_r
         STA     ray_endx
         LDA     player_row
         SEC
-        SBC     #(FOV_RADIUS - 1)
+        SBC     fov_r
+        CLC
+        ADC     #1                      ; row - (R - 1) = row - R + 1
         STA     ray_endy
-        LDX     #(2 * FOV_RADIUS - 1)
+        LDX     fov_r_arm               ; 2R - 1
 @lft_lp:
         JSR     cast_ray
         INC     ray_endy
@@ -3023,13 +3241,15 @@ compute_fov:
         ; Right edge: dx = +R.
         LDA     player_col
         CLC
-        ADC     #FOV_RADIUS
+        ADC     fov_r
         STA     ray_endx
         LDA     player_row
         SEC
-        SBC     #(FOV_RADIUS - 1)
+        SBC     fov_r
+        CLC
+        ADC     #1
         STA     ray_endy
-        LDX     #(2 * FOV_RADIUS - 1)
+        LDX     fov_r_arm
 @rgt_lp:
         JSR     cast_ray
         INC     ray_endy
@@ -3116,7 +3336,8 @@ cast_ray:
         SBC     abs_dy
         STA     fov_err
 
-        LDA     #FOV_RADIUS
+        LDA     fov_r           ; runtime radius (FOV_RADIUS or
+                                ; TORCH_RADIUS while torch_timer > 0)
         STA     fov_step        ; step countdown in ZP — see header
 @step_lp:
         ; --- e2 = err << 1 (signed; ASL preserves two's-complement
@@ -3241,11 +3462,11 @@ is_opaque_at_cur:
 
 
 ; ----------------------------------------------------------------------------
-; upload_sprite_pats: stream all sprite patterns as one 416-byte block
+; upload_sprite_pats: stream all sprite patterns as one 448-byte block
 ; to VRAM $3800. The patterns sit back-to-back in source order
 ; (sprite_pats), so a single auto-increment loop covers every slot.
-; In 16x16 mode each name slot is 32 B (4 char patterns), so 416 B
-; covers names 0..48 inclusive (13 sprites).
+; In 16x16 mode each name slot is 32 B (4 char patterns), so 448 B
+; covers names 0..52 inclusive (14 sprites).
 ;   slot  0 ($3800-$381F) : player paladin
 ;   slot  4 ($3820-$383F) : undead         (MON_TYPE_UNDEAD)
 ;   slot  8 ($3840-$385F) : ghost          (MON_TYPE_GHOST)
@@ -3259,14 +3480,16 @@ is_opaque_at_cur:
 ;   slot 40 ($3940-$395F) : armor-generic  (ITEM_T_ARMOR)
 ;   slot 44 ($3960-$397F) : ring (amulet)  (ITEM_T_RING)
 ;   slot 48 ($3980-$399F) : troll grunt    (MON_TYPE_TROLL)
+;   slot 52 ($39A0-$39BF) : torch          (ITEM_T_TORCH)
 ;
-; Total = 416 B = $01A0. The simple "INX / BNE" loop wraps after 256,
-; so we stride in two halves (0..255 then 0..159).
+; Total = 448 B = $01C0. The simple "INX / BNE" loop wraps after 256,
+; so we stride in two halves (0..255 then 0..191).
 ; ----------------------------------------------------------------------------
 upload_sprite_pats:
         LDA     #$00
         STA     VDP_CTRL
         NOP
+        JSR     tms9918_pad12   ; +12c silicon-strict pad16 (before LDA #imm bridge)
         LDA     #$78            ; $38 | $40 -> write at $3800
         STA     VDP_CTRL
         ; First 256 bytes
@@ -3275,12 +3498,12 @@ upload_sprite_pats:
         WRT_DATA_REG
         INX
         BNE     @lp1
-        ; Last 160 bytes (offsets 256..415)
+        ; Last 192 bytes (offsets 256..447)
         LDX     #0
 @lp2:   LDA     sprite_pats+256,X
         WRT_DATA_REG
         INX
-        CPX     #160
+        CPX     #192
         BNE     @lp2
         RTS
 
@@ -3332,9 +3555,11 @@ clear_hurt_flags:
 place_all_sprites:
         LDA     #$00
         STA     VDP_CTRL
-        NOP                     ; +2c silicon-strict gap (LDA #imm bridge)
+        JSR     tms9918_pad12   ; +12c silicon-strict pad16 (before LDA #imm bridge)
         LDA     #$5B            ; $1B | $40 -> write at $1B00
         STA     VDP_CTRL
+        JSR     tms9918_pad12   ; addr-cmd → first STA VDP_DATA: only 11c
+                                ; without this (LDA zp + 4*ASL + STA = 15c)
 
         ; --- Slot 0: player ---
         LDA     player_row
@@ -3612,8 +3837,8 @@ tile_at_target:
 ; ----------------------------------------------------------------------------
 draw_text:
         STA     VDP_CTRL
-        NOP                     ; +2c silicon-strict gap (back-to-back ctrl)
         NOP
+        JSR     tms9918_pad12   ; +12c silicon-strict pad16 (back-to-back VDP store)
         STX     VDP_CTRL
         LDY     #0
 @lp:    LDA     (vdp_src_lo),Y
@@ -3644,8 +3869,10 @@ update_hud:
         LDA     #$80                    ; row 20 col 0 = $1A80
         STA     VDP_CTRL
         NOP
+        JSR     tms9918_pad12   ; +12c silicon-strict pad16 (before LDA #imm bridge)
         LDA     #$5A                    ; $1A | $40 -> write
         STA     VDP_CTRL
+        JSR     tms9918_pad12           ; gap addr-cmd → first data STA
         ; --- "DEPTH " (6 chars) ---
         LDX     #0
 @d_lp:  LDA     hud_depth,X
@@ -3673,7 +3900,7 @@ update_hud:
         JSR     print_byte_2digits
         LDA     #'/'
         WRT_DATA_REG
-        LDA     #HP_MAX
+        LDA     hp_max                  ; XP-bumpable cap, not literal
         JSR     print_byte_2digits
         ; Fall through into update_hud_equip — paints row 21 with the
         ; equipped slot letters + computed ATK/DEF.
@@ -3723,6 +3950,66 @@ update_hud_equip:
         WRT_DATA_VAL ':'
         LDA     player_xp
         JSR     print_byte_3digits
+        ; Fall through into update_hud_timers — paints row 22 with
+        ; the four buff countdowns (weapon / armor / ring / torch).
+
+; ----------------------------------------------------------------------------
+; update_hud_timers: paint row 22 with the four active buff timers so
+; the player sees how many turns remain on each consumable buff. Each
+; counter is 0..max-of-its-category (TORCH_DURATION=50 is the largest);
+; print_byte_2digits handles 0..99, so a 50 fits cleanly.
+; The row is wiped by clear_msg_rows at the top of finish_turn (right
+; before update_hud runs), so the painted text starts from a clean
+; slate every turn. Layout (32 cols):
+;
+;   "_WPN:NN_ARM:NN_RNG:NN_TRC:NN____"
+;    0      6        13       20    27
+;
+; (1 leading space, 4 trailing spaces — keeps the line centred.)
+; ----------------------------------------------------------------------------
+update_hud_timers:
+        LDA     #$C0                    ; row 22 col 0 = $1AC0
+        STA     VDP_CTRL
+        NOP
+        JSR     tms9918_pad12   ; +12c silicon-strict pad16 (before LDA #imm bridge)
+        LDA     #$5A                    ; $1A | $40
+        STA     VDP_CTRL
+        JSR     tms9918_pad12           ; gap addr-cmd → first WRT_DATA_VAL
+        WRT_DATA_VAL ' '                ; col 0 — leading
+        WRT_DATA_VAL 'W'
+        WRT_DATA_VAL 'P'
+        WRT_DATA_VAL 'N'
+        WRT_DATA_VAL ':'
+        LDA     weapon_timer
+        JSR     print_byte_2digits
+        WRT_DATA_VAL ' '
+        WRT_DATA_VAL 'A'
+        WRT_DATA_VAL 'R'
+        WRT_DATA_VAL 'M'
+        WRT_DATA_VAL ':'
+        LDA     armor_timer
+        JSR     print_byte_2digits
+        WRT_DATA_VAL ' '
+        WRT_DATA_VAL 'R'
+        WRT_DATA_VAL 'N'
+        WRT_DATA_VAL 'G'
+        WRT_DATA_VAL ':'
+        LDA     ring_timer
+        JSR     print_byte_2digits
+        WRT_DATA_VAL ' '
+        WRT_DATA_VAL 'T'
+        WRT_DATA_VAL 'R'
+        WRT_DATA_VAL 'C'
+        WRT_DATA_VAL ':'
+        LDA     torch_timer
+        JSR     print_byte_2digits
+        ; 4 trailing spaces (cols 28..31) so leftover glyphs from a
+        ; prior wider message on this row don't bleed through.
+        LDA     #' '
+        LDX     #4
+@sp_lp: WRT_DATA_REG
+        DEX
+        BNE     @sp_lp
         RTS
 
 
@@ -3793,20 +4080,56 @@ finish_turn:
         LDA     #RING_REGEN_PERIOD
         STA     regen_tick
         LDA     hp
-        CMP     #HP_MAX
+        CMP     hp_max                  ; runtime cap, not literal
         BCS     @no_regen
         INC     hp
         JMP     @no_regen
 @regen_dec:
         DEC     regen_tick
 @no_regen:
+        ; --- Buff timers: weapon / armor / torch ---
+        ; Each ticks down by 1 per turn. Weapon + armor expiries call
+        ; recompute_player_stats so player_dmg / player_def drop the
+        ; boost cleanly. Torch expiry doesn't need a recompute (FOV is
+        ; recomputed on the next move from compute_fov).
+        LDA     weapon_timer
+        BEQ     @no_weapon_tick
+        DEC     weapon_timer
+        BNE     @no_weapon_tick
+        JSR     recompute_player_stats
+@no_weapon_tick:
+        LDA     armor_timer
+        BEQ     @no_armor_tick
+        DEC     armor_timer
+        BNE     @no_armor_tick
+        JSR     recompute_player_stats
+@no_armor_tick:
+        LDA     torch_timer
+        BEQ     @no_torch_tick
+        DEC     torch_timer
+@no_torch_tick:
+        ; Ring expiry clears the active RING_F_* bit out of ring_flags.
+        ; AND-with-complement of ring_boost so a future second-bit
+        ; ring (e.g. RING_F_PROT) coexists if both are activated and
+        ; only the expired one drops.
+        LDA     ring_timer
+        BEQ     @no_ring_tick
+        DEC     ring_timer
+        BNE     @no_ring_tick
+        LDA     ring_boost
+        EOR     #$FF
+        AND     ring_flags
+        STA     ring_flags
+        LDA     #0
+        STA     ring_boost
+@no_ring_tick:
+        ; Order matters: clear_msg_rows wipes rows 22-23 FIRST (any
+        ; transient "INV FULL" / "NOT WEARABLE" prompt left from an
+        ; earlier free-action handler), then update_hud paints rows
+        ; 20-22 — including the buff timers on row 22, which would
+        ; otherwise be zapped if clear_msg_rows ran second.
+        JSR     clear_msg_rows
         JSR     update_hud
-        JSR     clear_msg_rows          ; wipe transient prompt / error
-                                        ; text from rows 22-23 so an
-                                        ; "INV FULL" / "NOT WEARABLE"
-                                        ; left over from an earlier
-                                        ; free-action prompt doesn't
-                                        ; haunt the screen across turns
         LDA     hp
         BNE     @alive
         JMP     death_screen            ; tail-call (never returns)
@@ -3826,8 +4149,10 @@ clear_msg_rows:
         LDA     #$C0
         STA     VDP_CTRL
         NOP
+        JSR     tms9918_pad12   ; +12c silicon-strict pad16 (before LDA #imm bridge)
         LDA     #$5A                    ; $1A | $40
         STA     VDP_CTRL
+        JSR     tms9918_pad12           ; gap addr-cmd → first WRT_DATA_VAL
         LDX     #64
 @lp:    WRT_DATA_VAL ' '
         DEX
@@ -3836,40 +4161,172 @@ clear_msg_rows:
 
 
 ; ----------------------------------------------------------------------------
-; death_screen: paint "YOU DIED ON LEVEL NNN" on the bottom HUD row,
-; LEAVING the playfield and stats row visible — the player sees the
-; frozen scene of their death (last sprite positions, HP 00/HM on the
-; HUD) underneath the verdict. Then a ~1.3 s deaf-time before keys
-; resume so the killing keypress (or held repeats) can't insta-restart,
-; then wait for any key, then JMP $4000 (cartridge cold-start) to
-; re-seed the PRNG and start over.
+; death_screen: full GAME OVER takeover screen. Wipes the playfield,
+; paints the banner + cause-of-death + detailed stats block, then waits
+; for an acknowledging keypress before cold-starting the cartridge
+; (JMP $4000). Reached from finish_turn when hp == 0.
+;
+; Layout (32x24):
+;   row  3:           GAME OVER
+;   row  6:      YOU DIED ON LEVEL NNN
+;   row  9..13: stats block (DEPTH / KILLS / HP MAX / ATK / DEF)
+;   row 16:           PRESS ANY KEY
 ; ----------------------------------------------------------------------------
 death_screen:
-        ; "YOU DIED ON LEVEL " (18 chars) at row 22, col 5 -> $1AC5.
-        ; Auto-increment lands the 3 depth digits at $1AD7-$1AD9 (col
-        ; 23-25), total line spans cols 5..25 (21 chars, ~centred in
-        ; the 32-wide row). Row 20 still holds the live HUD; row 21
-        ; stays blank as a separator.
+        JSR     disable_sprites         ; hide hero + monsters under the splash
+        JSR     clear_name_table
+        ; "GAME OVER" (9 chars) — row 3 col 11 → $186B
+        LDA     #<msg_game_over
+        STA     vdp_src_lo
+        LDA     #>msg_game_over
+        STA     vdp_src_hi
+        LDA     #$6B
+        LDX     #$58                    ; $18 | $40
+        JSR     draw_text
+        ; "YOU DIED ON LEVEL " (18 chars) — row 6 col 5 → $18C5
         LDA     #<msg_died
         STA     vdp_src_lo
         LDA     #>msg_died
         STA     vdp_src_hi
         LDA     #$C5
-        LDX     #$5A                    ; $1A | $40
+        LDX     #$58
         JSR     draw_text
         LDA     depth
         JSR     print_byte_3digits
+        ; Detailed stats + footer
+        JSR     paint_scores
+        JMP     wait_for_restart
 
-        ; --- Deaf time: triple-nested busy loop, ignores the keyboard
-        ; for ~1.3 s at the 1.022 MHz CPU clock. Keeps the death scene
-        ; on screen long enough to read AND swallows any in-flight key
-        ; from the move that just killed the player (so the next press
-        ; is an explicit "OK, restart"). mon_abs_dx is reused here as
-        ; the outer counter — it's dead state on the death path
-        ; (move_monsters never runs again).
-        ;   inner  : INY/BNE = 5 c × 256 iters = 1280 c
-        ;   middle : (1280 + INX/BNE) × 256 = ~329 k c
-        ;   outer  : ~329 k × 4 = ~1.3 M c ≈ 1.3 s @ 1.022 MHz
+
+; ----------------------------------------------------------------------------
+; win_screen: full CONGRATULATIONS takeover screen for the player who
+; reaches the bottom of the dungeon (depth 13 — see the new_level
+; depth-cap branch). Same layout shape as death_screen so the two
+; endings feel like sister ceremonies.
+;
+; Layout:
+;   row  3:        CONGRATULATIONS
+;   row  6:         DUNGEON CONQUERED
+;   row  9..13: stats block (DEPTH / KILLS / HP MAX / ATK / DEF)
+;   row 16:           PRESS ANY KEY
+; ----------------------------------------------------------------------------
+win_screen:
+        JSR     clear_name_table
+        ; "CONGRATULATIONS" (15 chars) — row 3 col 8 → $1868
+        LDA     #<msg_congrats
+        STA     vdp_src_lo
+        LDA     #>msg_congrats
+        STA     vdp_src_hi
+        LDA     #$68
+        LDX     #$58
+        JSR     draw_text
+        ; "DUNGEON CONQUERED" (17 chars) — row 6 col 7 → $18C7
+        LDA     #<msg_won
+        STA     vdp_src_lo
+        LDA     #>msg_won
+        STA     vdp_src_hi
+        LDA     #$C7
+        LDX     #$58
+        JSR     draw_text
+        ; Detailed stats + footer
+        JSR     paint_scores
+        JMP     wait_for_restart
+
+
+; ----------------------------------------------------------------------------
+; paint_scores: fill rows 9..13 with the end-of-game stats block at
+; col 10, then "PRESS ANY KEY" at row 16 col 9. Shared by death_screen
+; and win_screen.
+;
+; Stats sourced from current ZP at end-of-game:
+;   DEPTH      = depth                       (3 digits)
+;   KILLS      = player_xp                   (3 digits)
+;   HP MAX     = hp_max (XP-bumpable cap)    (2 digits)
+;   ATK BASE   = 1 + xp_atk_bonus            (2 digits, includes
+;                                             bare-handed +1 base)
+;   DEF BASE   = xp_def_bonus                (2 digits)
+; "BASE" suffixes flag these as the player's permanent (XP-driven)
+; growth — buff timers are gone from the picture by the time we paint.
+; ----------------------------------------------------------------------------
+paint_scores:
+        ; row 9 col 10 → $192A
+        LDA     #<msg_score_depth
+        STA     vdp_src_lo
+        LDA     #>msg_score_depth
+        STA     vdp_src_hi
+        LDA     #$2A
+        LDX     #$59                    ; $19 | $40
+        JSR     draw_text
+        LDA     depth
+        JSR     print_byte_3digits
+        ; row 10 col 10 → $194A
+        LDA     #<msg_kills
+        STA     vdp_src_lo
+        LDA     #>msg_kills
+        STA     vdp_src_hi
+        LDA     #$4A
+        LDX     #$59
+        JSR     draw_text
+        LDA     player_xp
+        JSR     print_byte_3digits
+        ; row 11 col 10 → $196A
+        LDA     #<msg_score_hp
+        STA     vdp_src_lo
+        LDA     #>msg_score_hp
+        STA     vdp_src_hi
+        LDA     #$6A
+        LDX     #$59
+        JSR     draw_text
+        LDA     hp_max
+        JSR     print_byte_2digits
+        ; row 12 col 10 → $198A
+        LDA     #<msg_score_atk
+        STA     vdp_src_lo
+        LDA     #>msg_score_atk
+        STA     vdp_src_hi
+        LDA     #$8A
+        LDX     #$59
+        JSR     draw_text
+        LDA     xp_atk_bonus
+        CLC
+        ADC     #1                      ; bare-handed +1 base
+        JSR     print_byte_2digits
+        ; row 13 col 10 → $19AA
+        LDA     #<msg_score_def
+        STA     vdp_src_lo
+        LDA     #>msg_score_def
+        STA     vdp_src_hi
+        LDA     #$AA
+        LDX     #$59
+        JSR     draw_text
+        LDA     xp_def_bonus
+        JSR     print_byte_2digits
+        ; "PRESS ANY KEY" — row 16 col 9 → $1A09
+        LDA     #<msg_press_key
+        STA     vdp_src_lo
+        LDA     #>msg_press_key
+        STA     vdp_src_hi
+        LDA     #$09
+        LDX     #$5A
+        JSR     draw_text
+        RTS
+
+
+; ----------------------------------------------------------------------------
+; wait_for_restart: ~1.3 s deaf-time (busy loop, ignores the KBD) so a
+; held movement key from the killing turn can't insta-restart, then
+; wait_key for an explicit acknowledgment, then JMP $4000 to cold-start
+; the cartridge (re-seeds PRNG, re-runs init_inventory). Shared by
+; death_screen and win_screen.
+;
+; Loop budget @ 1.022 MHz:
+;   inner  : INY/BNE = 5 c × 256 iters = 1280 c
+;   middle : (1280 + INX/BNE) × 256 = ~329 k c
+;   outer  : ~329 k × 4 = ~1.3 M c ≈ 1.3 s
+; mon_abs_dx is dead state on the end-of-game path so we reuse it as
+; the outer counter rather than burn another ZP byte.
+; ----------------------------------------------------------------------------
+wait_for_restart:
         LDA     #4
         STA     mon_abs_dx
 @d_outer:
@@ -3883,12 +4340,8 @@ death_screen:
         BNE     @d_middle
         DEC     mon_abs_dx
         BNE     @d_outer
-
-        ; Drain any latched key so a held key during the delay doesn't
-        ; instantly fire wait_key (reading KBD clears the PIA strobe).
-        LDA     KBD
-
-        JSR     wait_key                ; now a fresh press acknowledges
+        LDA     KBD                     ; drain latched key
+        JSR     wait_key                ; explicit acknowledge press
         JMP     $4000                   ; cartridge cold-start
 
 
@@ -3898,6 +4351,14 @@ hud_hp:         .byte "HP "                     ; 3 chars (right-anchored;
                                                 ;   15-char gap lives in
                                                 ;   update_hud directly)
 msg_died:       .byte "YOU DIED ON LEVEL ", $FF
+msg_kills:      .byte "KILLS: ", $FF
+msg_game_over:  .byte "GAME OVER", $FF
+msg_congrats:   .byte "CONGRATULATIONS", $FF
+msg_won:        .byte "DUNGEON CONQUERED", $FF
+msg_score_depth:.byte "DEPTH: ", $FF
+msg_score_hp:   .byte "HP MAX: ", $FF
+msg_score_atk:  .byte "ATK BASE: ", $FF
+msg_score_def:  .byte "DEF BASE: ", $FF
 title_inv:      .byte "INVENTORY", $FF
 msg_press_key:  .byte "PRESS ANY KEY", $FF
 msg_empty_inv:  .byte "(NOTHING)", $FF
@@ -3972,6 +4433,7 @@ show_inventory:
         LDA     #$00
         STA     VDP_CTRL
         NOP
+        JSR     tms9918_pad12   ; +12c silicon-strict pad16 (before LDA #imm bridge)
         LDA     #$5B                    ; $1B | $40 → write at $1B00
         STA     VDP_CTRL
         LDA     #3
@@ -3988,8 +4450,10 @@ show_inventory:
         ASL
         ASL                             ; row * 8 = pixel Y
         WRT_DATA_REG
-        WRT_DATA_VAL 8                  ; pixel X = col 1 (16x16 sprite
-                                        ; occupies tile cols 1..2)
+        WRT_DATA_VAL 80                 ; pixel X = col 10 (16x16 sprite
+                                        ; occupies tile cols 10..11 — sits
+                                        ; between "[A] qtyx" prefix and
+                                        ; the item NAME on the same row)
         LDA     inventory+INV_TYPE,X
         TAY
         LDA     item_sprite_table,Y
@@ -4023,10 +4487,11 @@ show_inventory:
         LDX     vdp_hi
         JSR     draw_text
         ; Walk the bag. map_ptr[0] = next display row (starts at 3),
-        ; X = current slot byte offset. Each shown slot consumes TWO
-        ; display rows: row N for "[L] *NAME", row N+1 for the "+V" /
-        ; "(xQ)" advantage line that used to be appended on the same
-        ; line. Cap leaves rows 21/22 free for the footer.
+        ; X = current slot byte offset. Each slot now occupies TWO
+        ; display rows because the 16x16 inline sprite at col 10..11
+        ; spans 2 tile rows; row N carries "[L] QxSS NAME UTIL" text,
+        ; row N+1 is blank text (sprite bottom half is rendered there).
+        ; Cap at row 21 leaves row 22 for the footer.
         LDA     #3
         STA     map_ptr
         LDX     #0
@@ -4042,11 +4507,8 @@ show_inventory:
                                         ; main_loop already)
         JSR     draw_inv_line
         LDX     tgt_col
-        INC     map_ptr                 ; advance to advantage row N+1
-        STX     tgt_col
-        JSR     draw_inv_advantage
-        LDX     tgt_col
-        INC     map_ptr                 ; advance past advantage row
+        INC     map_ptr                 ; +1 row for the sprite bottom half
+        INC     map_ptr                 ; +1 row before next entry start
 @slot_next:
         TXA
         CLC
@@ -4130,10 +4592,20 @@ show_inventory:
 ;   X       = slot byte offset (0, 8, 16, ..., 200) — preserved on RTS.
 ;   map_ptr = display row 0..23 (caller passes via vdp_row indirectly).
 ; Layout (col 4..n):
-;   "[L] M NAME"
-; where L = 'A' + (X >> 3), M = '*' if equipped else ' ', NAME = the
-; type/sub-type display string. The numeric advantage (+V or (xQ)) is
-; painted by draw_inv_advantage on the next row.
+;   "[L] QxSS NAME UTIL"
+; where:
+;   L  = 'A' + (X >> 3)              slot letter
+;   Q  = INV_QTY ('1'..'9')          stack count, always shown
+;   x  = literal 'x'                 multiplier
+;   SS = blanks at cols 10-11        the SAT sprite renders here over
+;                                    the blank tiles (sprite X = px 80)
+;   NAME = type/sub-type display string from lookup_item_name
+;   UTIL = "ATK+N" / "DEF+N" / "HP+N" / "REGEN" / "REVEAL" / "THROW"
+;          / "FOV+N", appended by draw_inv_utility (tail-call).
+; The legacy '*' equipped marker was dropped: weapons + armours are now
+; consumable buffs, so the only candidate was the ring, and an "is the
+; ring on?" indicator is more readable on the HUD than buried in the
+; bag list.
 ; ----------------------------------------------------------------------------
 draw_inv_line:
         LDA     map_ptr
@@ -4146,32 +4618,31 @@ draw_inv_line:
         TXA
         LSR
         LSR
-        LSR
-        STA     tmp                     ; tmp = slot index 0..25 (also reused below)
+        LSR                             ; A = slot index 0..25
         CLC
         ADC     #'A'
         WRT_DATA_REG                    ; the letter
         WRT_DATA_VAL ']'
         WRT_DATA_VAL ' '
-        ; Equipped marker: '*' if slot index matches any of the three
-        ; equipped_* registers, else ' '.
-        LDA     equipped_weapon
-        CMP     tmp
-        BEQ     @star
-        LDA     equipped_armor
-        CMP     tmp
-        BEQ     @star
-        LDA     equipped_ring
-        CMP     tmp
-        BEQ     @star
-        WRT_DATA_VAL ' '
-        JMP     @name
-@star:
-        WRT_DATA_VAL '*'
-@name:
+        ; Stack count: INV_QTY reflects the pile size (every type
+        ; stacks now). Capped at 9 for display so qty=10..255 doesn't
+        ; spill into ASCII glyphs ('0' + 10 = ':' otherwise) — silent
+        ; clamp keeps the layout tidy. The actual stack size is still
+        ; tracked correctly in INV_QTY for the consume / decrement path.
+        LDA     inventory+INV_QTY,X
+        CMP     #10
+        BCC     @qty_ok
+        LDA     #9
+@qty_ok:
+        CLC
+        ADC     #'0'
+        WRT_DATA_REG
+        WRT_DATA_VAL 'x'
+        WRT_DATA_VAL ' '                ; col 10 — sprite tile (left half)
+        WRT_DATA_VAL ' '                ; col 11 — sprite tile (right half)
+        WRT_DATA_VAL ' '                ; col 12 — gap before NAME
         ; Look up display string → vdp_src_lo/hi. lookup_item_name
-        ; clobbers A/X — preserve slot offset in tmp+1 (= ZP scratch
-        ; we steal from the unused upper bytes; map_ptr+1 is dead here).
+        ; clobbers A/X — preserve slot offset in map_ptr+1.
         STX     map_ptr+1
         LDA     inventory+INV_TYPE,X
         LDY     inventory+INV_SUBTYPE,X
@@ -4189,9 +4660,10 @@ draw_inv_line:
         BNE     @nm_lp
 @nm_done:
         ; Tail-call into draw_inv_utility so the utility tag (ATK+N,
-        ; DEF+N, HP+N, REGEN, REVEAL, THROW) lands on the same row, in
-        ; the auto-increment stream right after the name. X still holds
-        ; the slot offset (the @nm_lp loop only touches A and Y).
+        ; DEF+N, HP+N, REGEN, REVEAL, THROW, FOV+N) lands on the same
+        ; row, in the auto-increment stream right after the name. X
+        ; still holds the slot offset (the @nm_lp loop only touches
+        ; A and Y).
         JMP     draw_inv_utility
 
 
@@ -4240,6 +4712,10 @@ draw_inv_utility:
         BNE     @n_scr
         JMP     @scroll
 @n_scr:
+        CMP     #ITEM_T_TORCH
+        BNE     @n_torch
+        JMP     @torch
+@n_torch:
         ; ITEM_T_DAGGER (only remaining type) → "THROW"
         WRT_DATA_VAL 'T'
         WRT_DATA_VAL 'H'
@@ -4291,47 +4767,17 @@ draw_inv_utility:
         WRT_DATA_VAL 'A'
         WRT_DATA_VAL 'L'
         RTS
-
-
-; ----------------------------------------------------------------------------
-; draw_inv_advantage: paint the second row of an inventory entry — only
-; the "(xQ)" stack count for food/daggers when QTY ≥ 2. The numeric
-; +V bonus that used to live here is now folded into the utility tag
-; (ATK+N / DEF+N / HP+N) on row N alongside the name, so this row is
-; blank for everything except stackables.
-; Inputs:
-;   X       = slot byte offset (preserved on RTS)
-;   map_ptr = display row (the one BELOW draw_inv_line's row)
-; Layout: text starts at col 8 so it sits under the start of the name
-; ('[L] *' is 5 chars at col 4..8, name begins at col 9).
-; ----------------------------------------------------------------------------
-draw_inv_advantage:
-        LDA     inventory+INV_TYPE,X
-        CMP     #ITEM_T_FOOD
-        BEQ     @qty
-        CMP     #ITEM_T_DAGGER
-        BEQ     @qty
-        RTS
-@qty:
-        LDA     inventory+INV_QTY,X
-        CMP     #2
-        BCC     @qty_skip
-        STX     map_ptr+1               ; preserve slot offset across name_at_rc
-        LDA     map_ptr
-        STA     vdp_row
-        LDA     #8
-        STA     vdp_col
-        JSR     name_at_rc
-        JSR     vdp_set_write
-        WRT_DATA_VAL '('
-        WRT_DATA_VAL 'X'
-        LDX     map_ptr+1
-        LDA     inventory+INV_QTY,X
+@torch:
+        WRT_DATA_VAL 'F'
+        WRT_DATA_VAL 'O'
+        WRT_DATA_VAL 'V'
+        WRT_DATA_VAL '+'
+        LDA     #TORCH_RADIUS
+        SEC
+        SBC     #FOV_RADIUS             ; A = boost magnitude (4 by default)
         CLC
-        ADC     #'0'                    ; assumes qty < 10
+        ADC     #'0'                    ; assumes magnitude < 10
         WRT_DATA_REG
-        WRT_DATA_VAL ')'
-@qty_skip:
         RTS
 
 
@@ -4384,10 +4830,10 @@ parse_inv_letter:
 
 ; ----------------------------------------------------------------------------
 ; consume_inv_slot: decrement INV_QTY at byte offset X. If QTY drops
-; to 0, free the slot (clear INV_TYPE). Stackable types (food, dagger)
-; thus naturally fold the "stack of 1" case into the "single item"
-; case. Equipped consumables aren't a thing, so we don't bother
-; checking equipped_*.
+; to 0, free the slot (clear INV_TYPE). All item types stack on
+; (type, subtype) match now (see try_pickup_item), so a "stack of 1"
+; folds naturally into the "single item" case. No equipped_* checks
+; either — every gear category is a consumable buff.
 ; ----------------------------------------------------------------------------
 consume_inv_slot:
         DEC     inventory+INV_QTY,X
@@ -4403,19 +4849,20 @@ consume_inv_slot:
 ; sub-type. Pickup is automatic on bump; this is the ONLY way to
 ; activate an item's effect.
 ;
-; Equipment (free action — toggles, no turn cost):
-;   WEAPON (sword)  → toggle equipped_weapon
-;   ARMOR  (tunic)  → toggle equipped_armor
-;   RING   (amulet) → toggle equipped_ring (manages RING_F_REGEN bit)
+; Buff (free action — consumes 1 charge, starts a per-category timer):
+;   WEAPON (sword)  → weapon_timer = WEAPON_DURATION; weapon_boost = ATK
+;   ARMOR  (tunic)  → armor_timer  = ARMOR_DURATION;  armor_boost  = DEF
+;   RING   (amulet) → ring_timer   = RING_DURATION;   ring_flags  |= bit
+;   TORCH           → torch_timer  = TORCH_DURATION;  FOV → TORCH_RADIUS
 ;
 ; Consumable (consumes the slot, takes a turn):
-;   FOOD   (ration) heal +FOOD_HEAL HP (cap HP_MAX)
-;   POTION          heal +INV_VALUE HP (= 8, cap)
+;   FOOD   (ration) heal +FOOD_HEAL HP (cap hp_max)
+;   POTION          heal +INV_VALUE HP (cap hp_max)
 ;   SCROLL          one-shot full-map view (modal)
 ;   DAGGER          not consumed here — use 'T' to throw.
 ;
 ; Returns A = 1 if a turn was consumed (caller drives move_monsters +
-; finish_turn), A = 0 for free actions (toggle, error, dagger).
+; finish_turn), A = 0 for free actions (buff activation, error, dagger).
 ; ----------------------------------------------------------------------------
 handle_use:
         LDA     #<msg_use_q
@@ -4468,6 +4915,10 @@ dispatch_use_slot:
         BNE     @nxd_scr
         JMP     @do_scroll
 @nxd_scr:
+        CMP     #ITEM_T_TORCH
+        BNE     @nxd_torch
+        JMP     @do_torch
+@nxd_torch:
         ; ITEM_T_DAGGER lands here — not "used", only "thrown".
         LDA     #<msg_not_use
         STA     vdp_src_lo
@@ -4478,81 +4929,79 @@ dispatch_use_slot:
         LDA     #0
         RTS
 
-; --- Equipment toggles (all free actions — no turn cost) ---
-; The "is this slot already equipped?" test compares the new slot
-; INDEX (map_ptr >> 3) to the equipped_* register. Match → un-equip;
-; mismatch → equip (replacing any prior weapon/armor of that type).
+; --- Buff activation (free actions — no turn cost) ---
+; Weapons / armours / torches are CONSUMABLE buffs. Activating one:
+;   1. caches the item's INV_VALUE into weapon_boost / armor_boost
+;      (or just sets torch_timer for torches — no value to cache,
+;      compute_fov uses the constant TORCH_RADIUS),
+;   2. sets the matching timer to its per-category duration constant,
+;   3. consumes the inventory slot,
+;   4. recomputes player_dmg / player_def (weapon / armor only),
+;   5. redraws.
+; Reactivating any same-class item simply overwrites the timer (no
+; stacking). Free action so the player can pop a buff and still move
+; the same turn — turning timing into a real lever.
 @do_weapon:
-        LDA     map_ptr
-        LSR
-        LSR
-        LSR                             ; A = new slot index
-        CMP     equipped_weapon
-        BNE     @w_set                  ; different slot → equip new
-        LDA     #INV_NONE               ; same slot → toggle off
-@w_set:
-        STA     equipped_weapon
+        LDX     map_ptr
+        LDA     inventory+INV_VALUE,X
+        STA     weapon_boost
+        LDA     #WEAPON_DURATION
+        STA     weapon_timer
+        JSR     consume_inv_slot
+        JSR     recompute_player_stats
+        JSR     redraw_game
+        LDA     #0                      ; free action
+        RTS
+
+@do_armor:
+        LDX     map_ptr
+        LDA     inventory+INV_VALUE,X
+        STA     armor_boost
+        LDA     #ARMOR_DURATION
+        STA     armor_timer
+        JSR     consume_inv_slot
         JSR     recompute_player_stats
         JSR     redraw_game
         LDA     #0
         RTS
 
-@do_armor:
-        LDA     map_ptr
-        LSR
-        LSR
-        LSR
-        CMP     equipped_armor
-        BNE     @a_set
-        LDA     #INV_NONE
-@a_set:
-        STA     equipped_armor
-        JSR     recompute_player_stats
+@do_torch:
+        ; Torch lights up the FOV to TORCH_RADIUS for TORCH_DURATION
+        ; turns (50 — far longer than the combat buffs since this is
+        ; an exploration tool, not a fight window). compute_fov reads
+        ; torch_timer and switches radii on its own — no
+        ; recompute_player_stats call needed (FOV doesn't touch
+        ; player_dmg / player_def). The redraw_game call below pipes
+        ; the freshly-lit cells into the playfield right away.
+        LDX     map_ptr
+        LDA     #TORCH_DURATION
+        STA     torch_timer
+        JSR     consume_inv_slot
+        JSR     compute_fov             ; widen the lit cells immediately
         JSR     redraw_game
         LDA     #0
         RTS
 
 @do_ring:
-        ; Rings are special: ring_flags' RING_F_* bit drives the passive
-        ; effect (regen, prot, str). Take off the OLD ring (if any) FIRST
-        ; — the bit clear is needed for both the toggle-off case and the
-        ; replace case. Then either set INV_NONE (toggle) or set the new
-        ; slot + OR its bit into ring_flags.
-        LDA     map_ptr
-        LSR
-        LSR
-        LSR
-        STA     tmp                     ; tmp = new slot index
-        LDA     equipped_ring
-        CMP     #INV_NONE
-        BEQ     @r_no_old
-        ASL
-        ASL
-        ASL                             ; old slot idx → byte offset
-        TAX
+        ; Ring activation is now a CONSUMABLE buff like weapon / armor.
+        ; Cache the INV_VALUE bit (RING_F_*) into ring_boost, OR it
+        ; into ring_flags so finish_turn's regen tick fires, set
+        ; ring_timer = RING_DURATION, and reset regen_tick to 0 so the
+        ; first +1 HP fires next turn (small grace bonus, mirrors the
+        ; pre-rework behaviour). On expiry, finish_turn AND-clears the
+        ; bit out of ring_flags.
+        LDX     map_ptr
         LDA     inventory+INV_VALUE,X
-        EOR     #$FF
-        AND     ring_flags
-        STA     ring_flags
-@r_no_old:
-        ; Toggle vs replace: if the new slot equals the (old) equipped
-        ; slot, the player picked the same ring → un-equip.
-        LDA     tmp
-        CMP     equipped_ring
-        BEQ     @r_off
-        STA     equipped_ring           ; A = tmp (new slot index)
-        LDX     map_ptr                 ; new ring's byte offset
-        LDA     inventory+INV_VALUE,X
+        STA     ring_boost
         ORA     ring_flags
         STA     ring_flags
-        JMP     @r_done
-@r_off:
-        LDA     #INV_NONE
-        STA     equipped_ring
-@r_done:
-        JSR     recompute_player_stats
-        JSR     redraw_game
+        LDA     #RING_DURATION
+        STA     ring_timer
         LDA     #0
+        STA     regen_tick              ; first regen tick fires next turn
+        JSR     consume_inv_slot
+        JSR     redraw_game
+        LDA     #0                      ; free action
         RTS
 
 @do_food:
@@ -4561,9 +5010,9 @@ dispatch_use_slot:
         LDA     hp
         CLC
         ADC     inventory+INV_VALUE,X
-        CMP     #(HP_MAX + 1)
+        CMP     hp_max                  ; runtime cap (HP_MAX + xp/5)
         BCC     @food_save
-        LDA     #HP_MAX
+        LDA     hp_max
 @food_save:
         STA     hp
         LDX     map_ptr
@@ -4573,16 +5022,16 @@ dispatch_use_slot:
         RTS
 
 @do_potion:
-        ; Heal HP += INV_VALUE (= 8), capped at HP_MAX. After MVP4
+        ; Heal HP += INV_VALUE, capped at runtime hp_max. After MVP4
         ; simplification there's only one potion sub-type, so no
         ; sub-type dispatch is needed.
         LDX     map_ptr
         LDA     hp
         CLC
-        ADC     inventory+INV_VALUE,X   ; potion heal = 8
-        CMP     #(HP_MAX + 1)
+        ADC     inventory+INV_VALUE,X
+        CMP     hp_max
         BCC     @pot_save
-        LDA     #HP_MAX
+        LDA     hp_max
 @pot_save:
         STA     hp
         LDX     map_ptr
@@ -5152,6 +5601,14 @@ troll_grunt_pat:                                ; slot 48 — troll grunt
         .byte $07, $08, $1F, $37, $27, $36, $32, $02
         .byte $00, $00, $00, $00, $00, $EE, $BC, $F0
         .byte $E0, $10, $F8, $EC, $E4, $6C, $4C, $40
+expl_torch_pat:                                 ; slot 52 — torch
+        ; Quale's expl_torch_pat (sprites_exploration.asm slot 01/21
+        ; of "Exploration"). Inlined to keep the cartridge link
+        ; self-contained. Painted in COL_TORCH (light yellow flame).
+        .byte $00, $00, $00, $04, $00, $01, $13, $07
+        .byte $04, $02, $07, $0C, $18, $30, $60, $00
+        .byte $00, $40, $68, $F0, $F0, $F8, $98, $38
+        .byte $78, $F0, $E0, $00, $00, $00, $00, $00
 
 ; ============================================================================
 ; prng16 -- 16-bit Galois LFSR shared library (lib/m6502/prng16.asm).

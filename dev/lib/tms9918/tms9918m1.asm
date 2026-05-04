@@ -35,8 +35,9 @@
 ;   $3800-$3FFF  Sprite pattern table
 ; ============================================================================
 
+        .import tms9918_pad12  ; silicon-strict pad16 (helper from tms9918_pad.asm)
 .include "apple1.inc"
-.include "tms9918.inc"
+.include "tms9918.inc"  ; provides .import tms9918_pad12
 
 ; --- exported ZP slots -----------------------------------------------------
 .exportzp vdp_lo, vdp_hi, vdp_src_lo, vdp_src_hi, vdp_row, vdp_col
@@ -63,21 +64,47 @@ vdp_col:        .res 1
 ; ============================================================================
 
 ; ----------------------------------------------------------------------------
-; init_vdp_g1: write 8 Mode-1 registers, then tail-call disable_sprites.
+; init_vdp_g1: write 8 Mode-1 registers, then disable sprites + re-arm R1.
+;   SILICON_STRICT_SKIP — entire init runs with display blanked (R1 bit 6
+;   masked OFF during the @rg loop). Bulk uploads from this point on don't
+;   need pads since the threshold stays at 2c. Display goes ON only at the
+;   very end via the final R1 re-arm — at which point the caller's next
+;   VDP write picks up 16c gating, with the pad inserted in caller code.
+;
 ;   Always disable sprites on init — without this, random bistable VRAM
-;   noise on power-on appears as floating sprites (CLAUDE.md gotcha).
+;   noise on power-on appears as floating sprites (CLAUDE.md gotcha). We
+;   call disable_sprites as a normal subroutine (was a fall-through before)
+;   so the SAT terminator write happens while the display is still blanked.
 ; ----------------------------------------------------------------------------
 init_vdp_g1:
+        ; SILICON_STRICT_SKIP — register-loop hand-padded so it survives
+        ; entry with R1 already display-ON. Intra-pair JSR pad12 covers
+        ; worst-case 16c; trailing NOP gives inter-iter 17c. After X=1
+        ; commits $80 to R1, threshold drops to 2c for the rest.
         LDX     #0
 @rg:    LDA     vdp1_regs,X
+        CPX     #1
+        BNE     @rg_store
+        AND     #$BF            ; force display OFF for the loop pass
+@rg_store:
         STA     VDP_CTRL
         TXA
         ORA     #$80
+        JSR     tms9918_pad12   ; intra-pair: 16c gap value→cmd
         STA     VDP_CTRL
+        NOP                     ; +2c for inter-iter gap (→17c)
         INX
         CPX     #8
         BNE     @rg
-        ; fall through to disable_sprites
+        JSR     disable_sprites ; SAT terminator with display still OFF
+        ; --- Final: re-arm R1 with the table value (display ON typically).
+        ;     Display stays OFF until the cmd byte commits — threshold = 2c
+        ;     through both STAs, no inline pad needed.
+        LDA     vdp1_regs+1
+        STA     VDP_CTRL
+        LDA     #$81            ; cmd = $80 | reg-1
+        STA     VDP_CTRL
+        RTS
 
 ; ----------------------------------------------------------------------------
 ; disable_sprites: write $D0 to sprite #0 Y attribute at VRAM $1B00. The
@@ -86,10 +113,10 @@ init_vdp_g1:
 disable_sprites:
         LDA     #$00
         STA     VDP_CTRL
-        NOP                     ; +2c silicon-strict gap (LDA #imm bridge)
+        JSR     tms9918_pad12   ; +12c silicon-strict pad16 (before LDA #imm bridge)
         LDA     #$5B            ; $1B | $40 = write at $1B00
         STA     VDP_CTRL
-        NOP                     ; +2c silicon-strict gap (LDA #imm bridge)
+        JSR     tms9918_pad12   ; +12c silicon-strict pad16 (before LDA #imm bridge)
         LDA     #$D0
         STA     VDP_DATA
         RTS
@@ -102,13 +129,16 @@ disable_sprites:
 clear_name_table:
         LDA     #$00
         STA     VDP_CTRL
-        NOP                     ; +2c silicon-strict gap (LDA #imm bridge)
+        JSR     tms9918_pad12   ; +12c silicon-strict pad16 (before LDA #imm bridge)
         LDA     #$58            ; $18 | $40 = write at $1800
         STA     VDP_CTRL
+        JSR     tms9918_pad12   ; addr-cmd → first STA VDP_DATA cushion
         LDX     #$03            ; 3 * 256 = 768 bytes
         LDA     #$00
 @np:    LDY     #$00
 @nb:    STA     VDP_DATA
+        JSR     tms9918_pad12   ; silicon-strict 16c (loop-back inner @nb,
+                                ; raw inner gap = STA+INY+BNE = 9c)
         INY
         BNE     @nb
         DEX
@@ -122,10 +152,12 @@ clear_name_table:
 vdp_set_write:
         LDA     vdp_lo
         STA     VDP_CTRL
+        JSR     tms9918_pad12   ; silicon-strict 16c (LDA zp + ORA bridge)
         LDA     vdp_hi
         ORA     #$40            ; bit 6 = write
         STA     VDP_CTRL
-        RTS
+        JSR     tms9918_pad12   ; cushion: caller's first STA VDP_DATA lands
+        RTS                     ; ≥ 16c+ after the cmd byte (12c+6c+6c=24c gap)
 
 ; ----------------------------------------------------------------------------
 ; vdp_set_read: prep VDP for reads at vdp_lo:hi.
@@ -134,10 +166,11 @@ vdp_set_write:
 vdp_set_read:
         LDA     vdp_lo
         STA     VDP_CTRL
-        NOP                     ; +2c silicon-strict gap (LDA zp/abs bridge)
+        JSR     tms9918_pad12   ; +12c silicon-strict pad16 (before LDA zp/abs bridge)
         LDA     vdp_hi          ; bit 6 = 0 → read
         STA     VDP_CTRL
-        RTS
+        JSR     tms9918_pad12   ; cushion: caller's first LDA VDP_DATA lands
+        RTS                     ; ≥ 16c+ after the cmd byte
 
 ; ----------------------------------------------------------------------------
 ; vdp_upload_a: copy A bytes from (vdp_src_lo:hi) to VDP_DATA.

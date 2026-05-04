@@ -1,0 +1,3 @@
+Codetank_GAME3.rom — TMS9918 P-LAB CodeTank cartridge
+  Lower jumper: 4000R → TMS_Life (Conway Game of Life)
+  Upper jumper: empty (reserved for future expansion)

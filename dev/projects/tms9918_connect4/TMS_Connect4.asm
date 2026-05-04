@@ -18,6 +18,7 @@
 ; red piece, yellow piece — all on a continuous blue board.
 ; =============================================
 
+        .import tms9918_pad12  ; silicon-strict pad16 (helper from tms9918_pad.asm)
 ECHO     = $FFEF
 KBD      = $D010
 KBDCR    = $D011
@@ -326,6 +327,7 @@ init_vdp:
         STA VDP_CTRL
         TXA
         ORA #$80
+        JSR     tms9918_pad12   ; +12c silicon-strict pad16 (back-to-back VDP store)
         STA VDP_CTRL
         INX
         CPX #$08
@@ -336,22 +338,23 @@ init_vdp:
         ; red   at char 24 → VRAM $00C0
         ; yellow at char 40 → VRAM $0140
         LDA #$40
+        JSR     tms9918_pad12   ; +12c silicon-strict pad16 (back-to-back VDP store)
         STA VDP_CTRL
-        NOP                     ; +2c silicon-strict gap (LDA #imm bridge)
+        JSR     tms9918_pad12   ; +12c silicon-strict pad16 (before LDA #imm bridge)
         LDA #$40
         STA VDP_CTRL
         JSR upload_pattern
 
         LDA #$C0
         STA VDP_CTRL
-        NOP                     ; +2c silicon-strict gap (LDA #imm bridge)
+        JSR     tms9918_pad12   ; +12c silicon-strict pad16 (before LDA #imm bridge)
         LDA #$40
         STA VDP_CTRL
         JSR upload_pattern
 
         LDA #$40
         STA VDP_CTRL
-        NOP                     ; +2c silicon-strict gap (LDA #imm bridge)
+        JSR     tms9918_pad12   ; +12c silicon-strict pad16 (before LDA #imm bridge)
         LDA #$41
         STA VDP_CTRL
         JSR upload_pattern
@@ -359,12 +362,13 @@ init_vdp:
         ; Colour table: 7 entries at $2000
         LDA #$00
         STA VDP_CTRL
-        NOP                     ; +2c silicon-strict gap (LDA #imm bridge)
+        JSR     tms9918_pad12   ; +12c silicon-strict pad16 (before LDA #imm bridge)
         LDA #$60
         STA VDP_CTRL
         LDX #$00
 @colloop:
         LDA tile_colors,X
+        JSR     tms9918_pad12   ; +12c silicon-strict pad16 (back-to-back VDP store)
         STA VDP_DATA
         INX
         CPX #$07
@@ -372,13 +376,15 @@ init_vdp:
 
         ; Clear name table (768 bytes) to char 0
         LDA #$00
+        JSR     tms9918_pad12   ; +12c silicon-strict pad16 (back-to-back VDP store)
         STA VDP_CTRL
-        NOP                     ; +2c silicon-strict gap (LDA #imm bridge)
+        JSR     tms9918_pad12   ; +12c silicon-strict pad16 (before LDA #imm bridge)
         LDA #$58
         STA VDP_CTRL
         LDX #$03
         LDA #$00
 @np:    LDY #$00
+        JSR     tms9918_pad12   ; +12c silicon-strict pad16 (back-to-back VDP store)
 @nb:    STA VDP_DATA
         INY
         BNE @nb
@@ -387,11 +393,12 @@ init_vdp:
 
         ; Disable sprites
         LDA #$00
+        JSR     tms9918_pad12   ; +12c silicon-strict pad16 (back-to-back VDP store)
         STA VDP_CTRL
-        NOP                     ; +2c silicon-strict gap (LDA #imm bridge)
+        JSR     tms9918_pad12   ; +12c silicon-strict pad16 (before LDA #imm bridge)
         LDA #$5B
         STA VDP_CTRL
-        NOP                     ; +2c silicon-strict gap (LDA #imm bridge)
+        JSR     tms9918_pad12   ; +12c silicon-strict pad16 (before LDA #imm bridge)
         LDA #$D0
         STA VDP_DATA
         RTS
@@ -485,21 +492,24 @@ draw_cell:
         ; Set VDP write addr to $1800 + temp
         LDA temp
         STA VDP_CTRL
+        JSR     tms9918_pad12   ; +12c silicon-strict pad16 (before LDA zp/abs bridge)
         LDA temp2
         CLC
         ADC #$18
         ORA #$40
         STA VDP_CTRL
-        NOP                     ; +2c silicon-strict gap (back-to-back VDP store)
-        NOP                     ; +2c silicon-strict gap (back-to-back VDP store)
 
         ; Write 4 consecutive char codes
+        JSR     tms9918_pad12   ; +12c silicon-strict pad16 (back-to-back VDP store)
         STX VDP_DATA
         INX
+        JSR     tms9918_pad12   ; +12c silicon-strict pad16 (back-to-back VDP store)
         STX VDP_DATA
         INX
+        JSR     tms9918_pad12   ; +12c silicon-strict pad16 (back-to-back VDP store)
         STX VDP_DATA
         INX
+        JSR     tms9918_pad12   ; +12c silicon-strict pad16 (back-to-back VDP store)
         STX VDP_DATA
         INX
 

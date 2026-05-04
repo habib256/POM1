@@ -53,7 +53,24 @@ Un cycle mémoire VDP ≈ **372 ns**. La fenêtre d'accès CPU s'ouvre :
 | **Mode Graphic I / II avec sprites actifs** | 1 sur 16 cycles | **~6 µs** | Cas de Galaga |
 | Mode Graphic I / II avec sprites désactivés (Y=$D0 dès SAT[0]) | 1 sur 6 cycles | ~2,2 µs | Astuce d'init si pas besoin de sprites |
 
-**Pour Galaga (Mode 0 Graphic I + 10 sprites actifs)**, le pire cas est **~6 µs** — soit ~6,1 cycles 6502 à 1,022 MHz. Avec la marge de préparation 2 µs, viser **8 cycles entre accès** reste la règle prudente.
+**Pour Galaga (Mode 0 Graphic I + 10 sprites actifs)**, le pire cas *typique* est **~6 µs** — soit ~6,1 cycles 6502 à 1,022 MHz à phase CPU↔VDP idéale.
+
+### Pourquoi viser 16 cycles, pas 8 (paranoid mode)
+
+Le 8c historique reflétait le pire-cas typique au meilleur alignement de phase. Sur silicium réel, la phase CPU↔VDP dérive (clocks asynchrones), et le pire-pire-cas combine :
+
+1. **Slot manqué** : si l'accès CPU arrive juste après qu'un slot VDP a été consommé, il faut attendre le prochain slot — jusqu'à 16 cycles VDP = ~6 µs supplémentaires.
+2. **Latch STA** : l'écriture CPU est validée à la fin du cycle de l'instruction (4c pour STA abs).
+3. **Marge de phase NMOS** : ~2c de jitter sur du silicium chaud (turnaround bus).
+
+Total : 6.1c (slot) + 4c (STA) + 6c (marge phase) = **~16 cycles**. POM1 strict applique 16c en Mode I+sprites, contrat : *passer POM1 strict ⇒ silicium garanti*. Les autres modes appliquent le même facteur ×2 :
+
+| Mode | Seuil POM1 strict (cycles) | 1 slot VDP toutes les ... |
+|---|--:|---|
+| Mode I + sprites actifs | **16** | 16 cycles VDP |
+| Mode I sans sprites / Mode II / Multicolor | 6 | 4-6 cycles VDP |
+| Texte (M1) | 4 | 3 cycles VDP |
+| Display blanké / VBlank | 2 | bande passante libre |
 
 ### Ce que fait POM1
 
@@ -69,19 +86,25 @@ void TMS9918::writeData(uint8_t value) {
 ```
 Tous les octets passent, quel que soit le rythme. **Le code peut spammer `STA $CC00` à 1 cycle d'intervalle, POM1 dira "OK".**
 
-### Impact sur le code (Galaga = pire cas ~6-8 µs)
+### Impact sur le code (Galaga = pire-pire cas ~16 cycles paranoid)
 
-À 1,022 MHz Apple-1 : **1 cycle ≈ 0,978 µs**. Cible prudente : **≥ 8 cycles entre deux accès VRAM** en Mode Graphic + sprites.
+À 1,022 MHz Apple-1 : **1 cycle ≈ 0,978 µs**. Cible paranoid : **≥ 16 cycles entre deux accès VRAM** en Mode Graphic + sprites.
 
-| Pattern 6502 | Cycles entre 2 writes VRAM | Verdict silicium |
+| Pattern 6502 | Cycles entre 2 writes VRAM | Verdict silicium 16c |
 |---|---|---|
-| `STA $CC00` ; `STA $CC00` (back-to-back) | 4 | **KO** (≈ 3,9 µs) |
-| `LDA #x` ; `STA $CC00` ; `LDA #y` ; `STA $CC00` | 6 | KO en Graphic+sprites (≈ 5,9 µs) |
-| `STA $CC00` ; `LDA zp,X` ; `STA $CC00` | 7 | Limite Graphic, OK Text |
-| `STA $CC00,X` ; `STA $CC00,X` | 5+5 = 10 | **OK** (≈ 9,8 µs) tous modes |
-| `STA $CC00` ; `NOP` ; `NOP` ; `STA $CC00` | 4+2+2 = 8 | Limite Graphic |
-| `STA $CC00` ; `NOP` ; `NOP` ; `NOP` ; `STA $CC00` | 4+2+2+2 = 10 | **OK** confortable |
-| `STA $CC00` ; `INX` ; `LDA tab,X` ; `STA $CC00` | 4+2+4 = 10 | **OK** (loop typique) |
+| `STA $CC00` ; `STA $CC00` (back-to-back) | 4 | **KO** |
+| `LDA #x` ; `STA $CC00` ; `LDA #y` ; `STA $CC00` | 6 | **KO** |
+| `STA $CC00` ; `NOP×2` ; `STA $CC00` (ancien strict 8c) | 8 | **KO paranoid** |
+| `STA $CC00` ; `NOP×6` ; `STA $CC00` | 16 | **OK** (6 NOPs = 6 octets) |
+| `STA $CC00` ; `JSR tms9918_pad12` ; `STA $CC00` | **16** | **OK** (3 octets pour 12c — gagnant) |
+| `STA $CC00` ; `LDA #x` ; `JSR tms9918_pad12` ; `STA $CC00` | **22** | **OK** confortable (3 octets ajoutés) |
+| Boucle `LDA tab,X / STA $CC00,X / DEX / BNE` | 4+5+2+3 = 14c entre writes | **KO**, ajouter 1 NOP |
+
+### Padding dense — `JSR tms9918_pad12` (preferred)
+
+Le helper `tms9918_pad12: rts` (1 octet) coûte 12 cycles via JSR (3 octets au site). **Ratio 4 c/B au site**, deux fois plus dense que NOP (2 c/B). Pour 16c gap STA-STA, le JSR remplace 6 NOPs (économie : 3 octets/site).
+
+`tms9918_pad24: jsr pad12 / rts` chaîne pour les pads exotiques (24c en 3 octets au site, helper 4 octets). Les deux sont définis dans `dev/lib/tms9918/tms9918_pad.asm` et exportés via `.export` ; le linker config de chaque projet TMS9918 charge la lib via `EXTRA_ASM` (Makefile.common) ou directement via `tools/build_codetank_rom.py` qui auto-détecte la dépendance.
 
 ### Cas réel — `render_sprites` dans Galaga
 
@@ -130,21 +153,21 @@ STA VDP_CTRL
 
 ### Fix recommandés (par ordre de préférence)
 
-**Option A — Macro `WRT_DATA_NOP` côté lib (recommandé)**
+**Option A — Macros `WRT_DATA_REG` / `WRT_DATA_VAL` côté lib (recommandé)**
 
-Ajouter dans `dev/lib/tms9918/tms9918.inc` :
+`dev/lib/tms9918/tms9918.inc` fournit (paranoid 16c) :
 ```asm
-.macro WRT_DATA_NOP val
-    LDA #val           ; 2c
-    STA VDP_DATA       ; 4c
-    NOP                ; 2c
-    NOP                ; 2c   total avant prochain write : 10c minimum
+.import tms9918_pad12, tms9918_pad24
+
+.macro WRT_DATA_REG             ; A déjà chargé, gap 16c en sortie
+        STA     VDP_DATA        ; 4c
+        JSR     tms9918_pad12   ; 12c, 3 bytes — next write lands 16c later
 .endmacro
 
-.macro WRT_DATA_REG    ; pour A déjà chargé
-    STA VDP_DATA       ; 4c
-    NOP                ; 2c
-    NOP                ; 2c
+.macro WRT_DATA_VAL val          ; val immédiat, gap 16c en sortie
+        LDA     #val            ; 2c
+        STA     VDP_DATA        ; 4c
+        JSR     tms9918_pad12   ; 12c, 3 bytes
 .endmacro
 ```
 
@@ -618,7 +641,7 @@ Toute autre combinaison (M1+M2, M2+M3, M1+M3, M1+M2+M3) = **mode hybride illéga
 
 Améliorations qui **rapprocheraient POM1 du silicium** mais ne sont pas implémentées :
 
-1. ~~**Mode "silicon timing strict"** — option qui drop des octets si écriture VRAM trop rapide pour le mode actif (perfectionne Bug N°1).~~ **✅ IMPLÉMENTÉ** : `TMS9918::siliconStrictMode` drop l'octet (`canAcceptAccess()` dans `TMS9918.cpp:98-101`) avec les fenêtres exactes de la table §2 (8c en Mode I+sprites, 4c en multicolor, 3c en text, 2c en blank/VBlank). Activé par défaut pour tous les presets sauf les Multiplexing Fantasy. Toggle runtime exposé via Hardware menu → "Silicon Strict (TMS9918 timing)" et CLI `--silicon-strict` / `--no-silicon-strict`. Status bar `STRICT` / `FANTASY`. Persiste dans le snapshot via `kFlagSiliconStrict` bit 14. Test : `tests/tms9918_silicon_strict_runtime_test.cpp`.
+1. ~~**Mode "silicon timing strict"** — option qui drop des octets si écriture VRAM trop rapide pour le mode actif (perfectionne Bug N°1).~~ **✅ IMPLÉMENTÉ (paranoid 16c)** : `TMS9918::siliconStrictMode` drop l'octet (`canAcceptAccess()` dans `TMS9918.cpp`) avec les fenêtres durcies de la table §2 (**16c** en Mode I+sprites, 6c en multicolor / Mode I sans sprites, 4c en text, 2c en blank/VBlank). Contrat : *passer POM1 strict ⇒ silicium garanti*. Activé par défaut pour tous les presets sauf les Multiplexing Fantasy. Toggle runtime exposé via Hardware menu → "Silicon Strict (TMS9918 timing)" et CLI `--silicon-strict` / `--no-silicon-strict`. Status bar `STRICT` / `FANTASY`. Persiste dans le snapshot via `kFlagSiliconStrict` bit 14. Test : `tests/tms9918_silicon_strict_runtime_test.cpp` (pin 16/6/6/4/2 par mode).
 2. **Scan sprite scanline-by-scanline** — appel de `scanSpritesForStatus()` en cours de frame, pas seulement au VBlank (résout Bugs N°5 et N°10).
 3. **Frame rate 59,94 Hz** — option NTSC exact (résout Bug N°11).
 4. **Sprite cloning émulé** — détection des modes hybrides illégaux et reproduction du cross-talk d'adressage (résout Bug N°8 partiellement, sans la dérive thermique).
@@ -673,8 +696,7 @@ réutilisable pour les autres jeux du repo (Sokoban, Snake, Connect4, Maze3D).
 
 ### Outillage de patching
 
-Script réutilisable : **`tools/silicon_strict_patch.py`**. Idempotent
-(re-running strippe ses propres NOPs marqués puis les ré-insère).
+Script réutilisable : **`tools/silicon_strict_patch.py`** (paranoid 16c, v2 JSR strategy). Idempotent — `--unpatch` strippe les marqueurs v1 (NOPs) et v2 (JSR) avant ré-insertion fraîche.
 
 ```bash
 # Patch in place
@@ -689,11 +711,13 @@ python3 tools/silicon_strict_patch.py path/to/Game.asm --unpatch
 
 Règles appliquées (cumulatives, ordre déterministe) :
 
-| Cas | Pattern détecté | NOPs ajoutés |
-|---|---|---|
-| **A** | `ST? VDP_*` adjacent à `ST? VDP_*` | 2 entre |
-| **B** | `ST? VDP_* / LDA #imm / ST? VDP_*` | 1 entre LDA et 2e ST? |
-| **C** | `ST? VDP_* / LDA <zp/abs/zp,X> / ST? VDP_*` | 1 idem |
+| Cas | Pattern détecté | Insertion v2 (16c paranoid) | Octets ajoutés |
+|---|---|---|--:|
+| **A** | `ST? VDP_*` adjacent à `ST? VDP_*` | `JSR tms9918_pad12` entre | 3 |
+| **B** | `ST? VDP_* / LDA #imm / ST? VDP_*` | `JSR tms9918_pad12` AVANT le LDA | 3 |
+| **C** | `ST? VDP_* / LDA <zp/abs/zp,X> / ST? VDP_*` | `JSR tms9918_pad12` AVANT le LDA | 3 |
+
+Le patcher injecte aussi `.import tms9918_pad12` une fois en haut de chaque fichier patché (pour les projets qui n'incluent pas `tms9918.inc`). Le helper `tms9918_pad12 / pad24` vit dans `dev/lib/tms9918/tms9918_pad.asm` et est lié automatiquement par `Makefile.common` (via `EXTRA_ASM`), `emit_woz.py` (auto-détection), et `build_codetank_rom.py` (auto-détection).
 
 `ST?` couvre `STA` / `STX` / `STY` (Galaga utilise les trois).
 Cross-port (`VDP_DATA → VDP_CTRL` ou inverse) : la fenêtre est unique pour

@@ -69,6 +69,7 @@
 ;   marginal; consider re-rasterising only when the angle changes.
 ; ============================================================================
 
+        .import tms9918_pad12  ; silicon-strict pad16 (helper from tms9918_pad.asm)
 .include "tms9918.inc"
 
 ; --- Triangle geometry constants. Override before .include if you want a
@@ -511,7 +512,7 @@ sprite_buf_upload:
         ; --- prime VDP write address ---
         LDA tmp
         STA VDP_CTRL
-        NOP                      ; +2c silicon-strict gap (LDA #imm bridge)
+        JSR     tms9918_pad12   ; +12c silicon-strict pad16 (before LDA zp/abs bridge)
         LDA tmp2
         CLC
         ADC #SPRITE_PATBASE_HI   ; high byte = $38 + (slot>>3)
@@ -520,6 +521,7 @@ sprite_buf_upload:
         ; --- stream 32 bytes ---
         LDX #0
 @l:     LDA sprite_buf,X
+        JSR     tms9918_pad12   ; +12c silicon-strict pad16 (back-to-back VDP store)
         STA VDP_DATA
         INX
         CPX #32
@@ -537,7 +539,7 @@ sprite_attr_write:
         ASL
         ASL                      ; A = slot * 4 (slot<32, so fits 8 bits)
         STA VDP_CTRL
-        NOP                      ; +2c silicon-strict gap
+        JSR     tms9918_pad12   ; +12c silicon-strict pad16 (before LDA #imm bridge)
         LDA #SPRITE_ATTRBASE_HI | $40
         STA VDP_CTRL
         ; Y byte: TMS9918 displays sprite at scanline (Y+1), so to render
@@ -548,17 +550,19 @@ sprite_attr_write:
         SEC
         LDA tri_y
         SBC #9                   ; center -> top-left, then -1 for hardware
+        JSR     tms9918_pad12   ; +12c silicon-strict pad16 (back-to-back VDP store)
         STA VDP_DATA
         SEC
         LDA tri_x
         SBC #8
+        JSR     tms9918_pad12   ; +12c silicon-strict pad16 (back-to-back VDP store)
         STA VDP_DATA
-        NOP                      ; +2c silicon-strict gap (LDA #imm bridge)
+        JSR     tms9918_pad12   ; +12c silicon-strict pad16 (before LDA zp/abs bridge)
         LDA tri_slot             ; pattern name = slot index
         ASL
         ASL                      ; 16x16 sprites consume 4 names per slot
         STA VDP_DATA
-        NOP                      ; +2c silicon-strict gap (LDA zp/abs bridge)
+        JSR     tms9918_pad12   ; +12c silicon-strict pad16 (before LDA zp/abs bridge)
         LDA tri_color
         STA VDP_DATA
         RTS

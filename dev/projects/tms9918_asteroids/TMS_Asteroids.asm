@@ -32,6 +32,7 @@
 ; ============================================================================
 
 ; --- I/O equates -----------------------------------------------------------
+        .import tms9918_pad12  ; silicon-strict pad16 (helper from tms9918_pad.asm)
 .include "apple1.inc"
 .include "tms9918.inc"
 ; kbd.asm (wait_key / poll_key) is .include'd AT THE BOTTOM of this file
@@ -162,7 +163,7 @@ main:
         ;     the top-left quadrant.
         LDA #$C2
         STA VDP_CTRL
-        NOP                      ; +2c silicon-strict gap (LDA #imm bridge)
+        JSR     tms9918_pad12   ; +12c silicon-strict pad16 (before LDA #imm bridge)
         LDA #$81                 ; write to register 1
         STA VDP_CTRL
         ; --- LFSR seed for future RANDOM (asteroid spawn) ---
@@ -438,10 +439,10 @@ update_bullet:
         ASL
         ASL                      ; A = (X+1) * 4 = attr addr lo
         STA VDP_CTRL
-        NOP                      ; +2c silicon-strict gap (LDA #imm bridge)
+        JSR     tms9918_pad12   ; +12c silicon-strict pad16 (before LDA #imm bridge)
         LDA #$3B | $40
         STA VDP_CTRL
-        NOP                      ; +2c silicon-strict gap (LDA #imm bridge)
+        JSR     tms9918_pad12   ; +12c silicon-strict pad16 (before LDA #imm bridge)
         LDA #SPR_HIDE_Y
         STA VDP_DATA
 @next:
@@ -461,10 +462,10 @@ init_sprite_chain:
         ASL
         ASL                      ; A = slot * 4 = attr addr lo
         STA VDP_CTRL
-        NOP                      ; +2c silicon-strict gap (LDA #imm bridge)
+        JSR     tms9918_pad12   ; +12c silicon-strict pad16 (before LDA #imm bridge)
         LDA #$3B | $40
         STA VDP_CTRL
-        NOP                      ; +2c silicon-strict gap (LDA #imm bridge)
+        JSR     tms9918_pad12   ; +12c silicon-strict pad16 (before LDA #imm bridge)
         LDA #SPR_HIDE_Y
         STA VDP_DATA
         INX
@@ -472,11 +473,12 @@ init_sprite_chain:
         BNE @hl
         ; --- terminator at slot SPRITE_TERMSLOT ---
         LDA #SPRITE_TERMSLOT * 4
+        JSR     tms9918_pad12   ; +12c silicon-strict pad16 (back-to-back VDP store)
         STA VDP_CTRL
-        NOP                      ; +2c silicon-strict gap (LDA #imm bridge)
+        JSR     tms9918_pad12   ; +12c silicon-strict pad16 (before LDA #imm bridge)
         LDA #$3B | $40
         STA VDP_CTRL
-        NOP                      ; +2c silicon-strict gap (LDA #imm bridge)
+        JSR     tms9918_pad12   ; +12c silicon-strict pad16 (before LDA #imm bridge)
         LDA #SPR_TERM_Y
         STA VDP_DATA
         RTS

@@ -9,7 +9,7 @@
 OUT_DIR  := ../../../software/tms9918
 LIB      := -I ../../lib/apple1 -I ../../lib/tms9918
 
-OBJS := TMS_Wozmon_demo.o tms9918_text.o tms9918_console.o tms9918_helpers.o
+OBJS := TMS_Wozmon_demo.o tms9918_text.o tms9918_console.o tms9918_helpers.o tms9918_pad.o
 
 TMS_Wozmon_demo.o: TMS_Wozmon_demo.asm
 	ca65 $(LIB) -o $@ $<
@@ -21,6 +21,9 @@ tms9918_console.o: ../../lib/tms9918/tms9918_console.asm
 	ca65 $(LIB) -o $@ $<
 
 tms9918_helpers.o: ../../lib/tms9918/tms9918_helpers.asm
+	ca65 $(LIB) -o $@ $<
+
+tms9918_pad.o: ../../lib/tms9918/tms9918_pad.asm
 	ca65 $(LIB) -o $@ $<
 
 $(OUT_DIR)/TMS_Wozmon_demo.bin: $(OBJS)

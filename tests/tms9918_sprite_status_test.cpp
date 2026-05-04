@@ -48,15 +48,17 @@ void writeReg(TMS9918& vdp, uint8_t reg, uint8_t value)
     vdp.writeControl((uint8_t)(0x80 | (reg & 0x07)));
 }
 
+// Strict-aware helpers must advance enough cycles to clear the worst-case
+// access window (16c paranoid in Mode I + sprites). 20c covers it with margin.
 void strictWriteControl(TMS9918& vdp, uint8_t value)
 {
-    vdp.advanceCycles(10);
+    vdp.advanceCycles(20);
     vdp.writeControl(value);
 }
 
 void strictWriteData(TMS9918& vdp, uint8_t value)
 {
-    vdp.advanceCycles(10);
+    vdp.advanceCycles(20);
     vdp.writeData(value);
 }
 
@@ -236,7 +238,7 @@ int main()
         strictSetWriteAddress(vdp, 0x1800);
         strictWriteData(vdp, 0xA5);
         strictSetReadAddress(vdp, 0x0800);
-        vdp.advanceCycles(10);
+        vdp.advanceCycles(20);
         mustBeTrue(vdp.readData() == 0xA5,
                    "T7: strict 4K mode should mirror $1800 writes to $0800");
     }
@@ -257,9 +259,9 @@ int main()
         vdp.writeData(0x22); // no advanceCycles: too fast, dropped
         strictWriteData(vdp, 0x33);
         strictSetReadAddress(vdp, 0x0000);
-        vdp.advanceCycles(10);
+        vdp.advanceCycles(20);
         mustBeTrue(vdp.readData() == 0x11, "T8: first strict VRAM write should land");
-        vdp.advanceCycles(10);
+        vdp.advanceCycles(20);
         mustBeTrue(vdp.readData() == 0x33, "T8: too-fast middle write should be dropped");
     }
 

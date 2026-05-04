@@ -40,6 +40,7 @@
 ; (Cursor mode 'C' planned for v0.3)
 ; =============================================
 
+        .import tms9918_pad12  ; silicon-strict pad16 (helper from tms9918_pad.asm)
 .include "apple1.inc"
 .include "zp.inc"
 .include "tms9918.inc"
@@ -273,6 +274,7 @@ upload_chess_patterns:
         ; Light square: dotted pattern $00 / $00 / ... (just empty)
         LDX #64                 ; chars 8..15 = 8 chars × 8 bytes
 @l1:    LDA #$00
+        JSR     tms9918_pad12   ; +12c silicon-strict pad16 (back-to-back VDP store)
         STA VDP_DATA
         DEX
         BNE @l1
@@ -282,8 +284,9 @@ upload_chess_patterns:
         LDX #8
 @dpat:
         LDA #$AA                ; row pattern: bit pattern X.X.X.X.
+        JSR     tms9918_pad12   ; +12c silicon-strict pad16 (back-to-back VDP store)
         STA VDP_DATA
-        NOP                     ; +2c silicon-strict gap (LDA #imm bridge)
+        JSR     tms9918_pad12   ; +12c silicon-strict pad16 (before LDA #imm bridge)
         LDA #$55                ; row pattern: .X.X.X.X
         STA VDP_DATA
         DEX
@@ -291,6 +294,7 @@ upload_chess_patterns:
         ; That writes 16 bytes for 2 chars; need 64 bytes total for 8 chars.
         LDX #6 * 8              ; remaining 6 chars × 8 bytes = 48 bytes
 @d2:    LDA #$00
+        JSR     tms9918_pad12   ; +12c silicon-strict pad16 (back-to-back VDP store)
         STA VDP_DATA
         DEX
         BNE @d2
@@ -298,6 +302,7 @@ upload_chess_patterns:
         ; Now at char 24. Skip to char 32 (white pieces).
         LDX #8 * 8              ; 8 chars × 8 bytes = 64 bytes of zeros
 @sk:    LDA #$00
+        JSR     tms9918_pad12   ; +12c silicon-strict pad16 (back-to-back VDP store)
         STA VDP_DATA
         DEX
         BNE @sk
@@ -562,6 +567,7 @@ render_one_cell:
         ; The TMS9918 auto-increments VRAM addr after each write.
         CLC
         ADC #$01
+        JSR     tms9918_pad12   ; +12c silicon-strict pad16 (back-to-back VDP store)
         STA VDP_DATA
         PLA
 
@@ -574,9 +580,11 @@ render_one_cell:
         LDA tmp
         CLC
         ADC #$02
+        JSR     tms9918_pad12   ; +12c silicon-strict pad16 (back-to-back VDP store)
         STA VDP_DATA
         CLC
         ADC #$01
+        JSR     tms9918_pad12   ; +12c silicon-strict pad16 (back-to-back VDP store)
         STA VDP_DATA
         RTS
 @e_b:
@@ -584,6 +592,7 @@ render_one_cell:
         STA VDP_DATA
         CLC
         ADC #$01
+        JSR     tms9918_pad12   ; +12c silicon-strict pad16 (back-to-back VDP store)
         STA VDP_DATA
         RTS
 

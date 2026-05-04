@@ -20,37 +20,42 @@ VDP_CTRL = $CC01        ; VDP register / address port (write twice = setup)
 ; index ORed with $80 in CTRL — see tms9918m2.asm:init_vdp_g2 for an example.
 
 ; ---------------------------------------------------------------------------
-; VRAM access timing — silicon-strict back-to-back gating.
+; VRAM access timing — silicon-strict back-to-back gating (paranoid 16c).
 ;
 ; Real TMS9918A silicon opens a CPU access window only every ~6 µs in Mode I
-; with sprites active (cf. dev/SILICONBUGS.md Bug N°1). At 1.022 MHz that's
-; ~6 cycles; with the ~2 µs preparation margin, the safe gap is ≥ 8 cycles
-; between two VRAM writes. POM1 enforces this when the Hardware → Silicon
-; Strict toggle is on (default for every preset except Multiplexing Fantasy):
-; writes that arrive too fast are silently DROPPED, exactly like on silicon.
+; with sprites active (cf. dev/SILICONBUGS.md Bug N°1). The "8 cycle" gap of
+; the original strict mode reflected the *typical* worst case at ideal CPU↔VDP
+; phase alignment. The *worst-worst* case adds one full slot wait + STA latch
+; + bus turnaround on warm NMOS → the safe gap is **≥ 16 cycles**.
 ;
-; The macros below pad two consecutive `STA VDP_DATA` so the gap is ≥ 8 c:
+; POM1 enforces 16c when Hardware → Silicon Strict is ON (default for every
+; preset except Multiplexing Fantasy). Writes that arrive too fast are
+; silently DROPPED — exactly like silicon under unfavorable phase alignment.
+;
+; Padding strategy: prefer `JSR tms9918_pad12` over NOPs (defined in
+; tms9918_pad.asm). 3 bytes for 12c idle vs 6 NOPs for the same 12c — half
+; the ROM cost.
+;
 ;   STA VDP_DATA          ; 4c
-;   NOP / NOP             ; 2c + 2c → next write lands 8 c later
+;   JSR tms9918_pad12     ; 12c (3 bytes) → next write lands 16 c later
 ;
 ; Use WRT_DATA_REG when A is already loaded with the byte to push (typical
 ; sprite-attribute and tile-stream loops). Use WRT_DATA_VAL for "load
-; immediate, then push" — the LDA #imm itself is 2c so the trailing NOP
-; count drops by one.
-;
-; Indexed addressing (`STA VDP_DATA,X` with X=0) costs +1 cycle — pair it
-; with a single NOP if you prefer style over a NOP-pair.
+; immediate, then push" — same 16c gap to the next write.
 ; ---------------------------------------------------------------------------
+; Note: WRT_DATA_REG / WRT_DATA_VAL reference tms9918_pad12; callers using
+; these macros must `.import tms9918_pad12` themselves (the patcher v3 does
+; this automatically when injecting JSR tms9918_pad12 — see SILICONBUGS.md).
+
 .macro WRT_DATA_REG
         STA     VDP_DATA        ; 4c
-        NOP                     ; 2c
-        NOP                     ; 2c — next write lands 8c later
+        JSR     tms9918_pad12   ; 12c, 3 bytes — next write lands 16c later
 .endmacro
 
 .macro WRT_DATA_VAL val
         LDA     #val            ; 2c
         STA     VDP_DATA        ; 4c
-        NOP                     ; 2c — next write lands 8c later
+        JSR     tms9918_pad12   ; 12c, 3 bytes — next write lands 16c later
 .endmacro
 
 .endif  ; _TMS9918_INC_LOADED_

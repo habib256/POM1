@@ -65,8 +65,18 @@
 ; ============================================================================
 
 ; --- I/O equates (Apple-1 + TMS9918 hardware) ------------------------------
+        .import tms9918_pad12  ; silicon-strict pad16 (helper from tms9918_pad.asm)
 .include "apple1.inc"
 .include "tms9918.inc"          ; VDP_CTRL, VDP_DATA equates for SETSHAPE
+
+; The CodeTank ROM places this CODE segment at $4000 (upper bank). The
+; user types `4000R` from Wozmon; we MUST land in `main` (cold-start),
+; not in wait_key (which would blocking-poll the keyboard and silently
+; return to Wozmon on the first key). Force a JMP main as the very first
+; bytes of the CODE segment, BEFORE the kbd.asm include below.
+.segment "CODE"
+        jmp main
+
 .include "kbd.asm"              ; lib/apple1/kbd.asm: wait_key + poll_key
 
 ; --- Imports from sibling modules -----------------------------------------
@@ -408,7 +418,7 @@ new_prompt:
         RTS
 
 banner_msg:
-        .byte $0D, "APPLE-1 LOGO FOR TMS9918 - TYPE HELP", $0D
+        .byte $0D, "APPLE-1 LOGO/TMS9918 - TYPE HELP", $0D
         .byte "(C) 2026 VERHILLE ARNAUD", $0D
         .byte 0
 
@@ -437,8 +447,7 @@ help_toc:
         .byte "  9  PROCEDURE EDITOR", $0D
 .endif
         .byte $0D
-        .byte "ESC or Ctrl-G aborts a loop.", $0D
-        .byte "BYE returns to Woz Monitor.", $0D
+        .byte "ESC/Ctrl-G abort, BYE = Wozmon.", $0D
         .byte 0
 
 help_p1:
@@ -3824,7 +3833,7 @@ draw_turtle:
         ; --- sprite path: write sprite-0 attribute (Y, X, name=0, color=$0F)
         LDA #$00
         STA VDP_CTRL
-        NOP                     ; +2c silicon-strict gap (LDA #imm bridge)
+        JSR     tms9918_pad12   ; +12c silicon-strict pad16 (before LDA #imm bridge)
         LDA #$3B | $40            ; $3B00 + write enable
         STA VDP_CTRL
         ; Y = ty - spr_yoff: TMS9918 displays sprite at scanline (Y+1)
@@ -3832,18 +3841,20 @@ draw_turtle:
         ; centres on (tx,ty): 9 for 16x16 sprites, 5 for 8x8. spr_xoff
         ; mirrors on the X axis (8 vs 4). Both come from
         ; apply_sprite_size at the previous SETSHAPE.
+        JSR     tms9918_pad12   ; +12c silicon-strict pad16 (before LDA zp/abs bridge)
         LDA ty_lo
         SEC
         SBC spr_yoff
         STA VDP_DATA
+        JSR     tms9918_pad12   ; +12c silicon-strict pad16 (before LDA zp/abs bridge)
         LDA tx_lo
         SEC
         SBC spr_xoff
         STA VDP_DATA
-        NOP                     ; +2c silicon-strict gap (LDA #imm bridge)
+        JSR     tms9918_pad12   ; +12c silicon-strict pad16 (before LDA #imm bridge)
         LDA #0                    ; pattern name = 0 (sprite_pattern_table[0])
         STA VDP_DATA
-        NOP                     ; +2c silicon-strict gap (LDA zp/abs bridge)
+        JSR     tms9918_pad12   ; +12c silicon-strict pad16 (before LDA zp/abs bridge)
         LDA pen_color             ; sprite-0 colour (SETPC drives every surface)
         STA VDP_DATA
         RTS
@@ -3936,10 +3947,10 @@ cmd_setshape:
         ; Y=$D0 to sprite #0 attribute = TMS9918 sprite-list terminator.
         LDA #$00
         STA VDP_CTRL
-        NOP                     ; +2c silicon-strict gap (LDA #imm bridge)
+        JSR     tms9918_pad12   ; +12c silicon-strict pad16 (before LDA #imm bridge)
         LDA #$3B | $40
         STA VDP_CTRL
-        NOP                     ; +2c silicon-strict gap (LDA #imm bridge)
+        JSR     tms9918_pad12   ; +12c silicon-strict pad16 (before LDA #imm bridge)
         LDA #$D0
         STA VDP_DATA
         ; Flip back to bitmap mode and redraw the triangle.
@@ -4011,21 +4022,22 @@ cmd_setshape:
         ; 16x16 (BIRD/TURTL/BOAT), $C0 for 8x8 (HEART, ...).
         LDA spr_r1
         STA VDP_CTRL
-        NOP                     ; +2c silicon-strict gap (LDA #imm bridge)
+        JSR     tms9918_pad12   ; +12c silicon-strict pad16 (before LDA #imm bridge)
         LDA #$81                  ; write to register 1
         STA VDP_CTRL
-        NOP                     ; +2c silicon-strict gap (LDA #imm bridge)
 @load_pat:
         ; Copy spr_size bytes from (shape_pat),Y to VRAM $1800 (sprite-0
         ; pattern). spr_size = 8 or 32, latched from shape_table at
         ; match time.
+        JSR     tms9918_pad12   ; +12c silicon-strict pad16 (before LDA #imm bridge)
         LDA #$00
         STA VDP_CTRL
-        NOP                     ; +2c silicon-strict gap (LDA #imm bridge)
+        JSR     tms9918_pad12   ; +12c silicon-strict pad16 (before LDA #imm bridge)
         LDA #$18 | $40
         STA VDP_CTRL
         LDY #0
 @cppat: LDA (shape_pat_lo),Y
+        JSR     tms9918_pad12   ; +12c silicon-strict pad16 (back-to-back VDP store)
         STA VDP_DATA
         INY
         CPY spr_size

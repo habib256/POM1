@@ -38,6 +38,7 @@
 ; =============================================
 
 ; --- Apple 1 I/O ---
+        .import tms9918_pad12  ; silicon-strict pad16 (helper from tms9918_pad.asm)
 ECHO    = $FFEF
 KBD     = $D010
 KBDCR   = $D011
@@ -295,12 +296,13 @@ init_arena:
         ; --- Clear TMS name table $1800 (3 pages) ---
         LDA #$00
         STA VDP_CTRL
-        NOP                     ; +2c silicon-strict gap (LDA #imm bridge)
+        JSR     tms9918_pad12   ; +12c silicon-strict pad16 (before LDA #imm bridge)
         LDA #$58                ; $18 | $40
         STA VDP_CTRL
         LDX #$03
         LDA #$00
 @np:    LDY #$00
+        JSR     tms9918_pad12   ; +12c silicon-strict pad16 (back-to-back VDP store)
 @nb:    STA VDP_DATA
         INY
         BNE @nb
@@ -745,13 +747,25 @@ handle_key:
 ; =============================================
 init_vdp:
         ; --- 8 VDP registers ---
+        ; SILICON_STRICT_SKIP — register-loop hand-padded so it survives
+        ; entry with R1 already display-ON (e.g. CodeTank re-launch from
+        ; another game that left $C0/$C2 in R1). R1 bit 6 masked OFF on
+        ; the X=1 pass; intra-pair JSR pad12 covers worst-case 16c
+        ; threshold; trailing NOP gives inter-iter 17c. Once X=1 commits
+        ; R1=$80 (display OFF), threshold drops to 2c for the rest.
         LDX #$00
 @regloop:
         LDA vdp_regs,X
+        CPX #1
+        BNE @reg_store
+        AND #$BF                ; force R1 display=OFF for the loop pass
+@reg_store:
         STA VDP_CTRL
         TXA
         ORA #$80
+        JSR tms9918_pad12       ; intra-pair: 16c gap value→cmd
         STA VDP_CTRL
+        NOP                     ; +2c for inter-iter gap (→17c)
         INX
         CPX #$08
         BNE @regloop
@@ -793,7 +807,6 @@ init_vdp:
         ; 39 glyphs * 8 bytes = 312 bytes (chars 56..94).
         LDA #$C0
         STA VDP_CTRL
-        NOP                     ; +2c silicon-strict gap (LDA #imm bridge)
         LDA #$41                ; $01 | $40
         STA VDP_CTRL
         LDX #$00
@@ -811,7 +824,6 @@ init_vdp:
         ; --- Colour table at $2000 (12 entries for groups 0..11) ---
         LDA #$00
         STA VDP_CTRL
-        NOP                     ; +2c silicon-strict gap (LDA #imm bridge)
         LDA #$60                ; $20 | $40
         STA VDP_CTRL
         LDX #$00
@@ -824,7 +836,6 @@ init_vdp:
         ; --- Clear name table $1800 (3 pages) ---
         LDA #$00
         STA VDP_CTRL
-        NOP                     ; +2c silicon-strict gap (LDA #imm bridge)
         LDA #$58
         STA VDP_CTRL
         LDX #$03
@@ -839,12 +850,19 @@ init_vdp:
         ; --- Disable sprites: first sprite Y = $D0 stops the chain ---
         LDA #$00
         STA VDP_CTRL
-        NOP                     ; +2c silicon-strict gap (LDA #imm bridge)
         LDA #$5B                ; $1B | $40
         STA VDP_CTRL
-        NOP                     ; +2c silicon-strict gap (LDA #imm bridge)
         LDA #$D0
         STA VDP_DATA
+
+        ; --- Final: re-arm R1 with table value (display ON). Display stays
+        ;     OFF until the cmd byte commits — threshold = 2c through both
+        ;     STAs, no inline pad needed. The caller's next VDP write picks
+        ;     up 16c gating, with the pad inserted in caller code.
+        LDA vdp_regs+1
+        STA VDP_CTRL
+        LDA #$81
+        STA VDP_CTRL
         RTS
 
 
@@ -865,11 +883,12 @@ plot_cell:
         CLC
         ADC draw_col
         STA VDP_CTRL
+        JSR     tms9918_pad12   ; +12c silicon-strict pad16 (before LDA zp/abs bridge)
         LDA row_x32_hi,X
         ADC #$18
         ORA #$40
         STA VDP_CTRL
-        NOP                     ; +2c silicon-strict gap (LDA zp/abs bridge)
+        JSR     tms9918_pad12   ; +12c silicon-strict pad16 (before LDA zp/abs bridge)
         LDA temp
         STA VDP_DATA
         RTS
@@ -887,14 +906,14 @@ draw_hud:
         ; VRAM addr $1800 (row 0, col 0)
         LDA #$00
         STA VDP_CTRL
-        NOP                     ; +2c silicon-strict gap (LDA #imm bridge)
+        JSR     tms9918_pad12   ; +12c silicon-strict pad16 (before LDA #imm bridge)
         LDA #$58
         STA VDP_CTRL
         ; "SCORE:" — 6 chars from a fixed table.
         LDX #$00
 @hud_lp:
-        NOP                     ; +2c silicon-strict gap (LDA abs,X bridge)
         LDA hud_score_str,X
+        JSR     tms9918_pad12   ; +12c silicon-strict pad16 (back-to-back VDP store)
         STA VDP_DATA
         INX
         CPX #$06
@@ -904,14 +923,15 @@ draw_hud:
 
         ; VRAM addr $1817 (row 0, col 23) — start of "HI:NNN"
         LDA #$17
+        JSR     tms9918_pad12   ; +12c silicon-strict pad16 (back-to-back VDP store)
         STA VDP_CTRL
-        NOP                     ; +2c silicon-strict gap (LDA #imm bridge)
+        JSR     tms9918_pad12   ; +12c silicon-strict pad16 (before LDA #imm bridge)
         LDA #$58
         STA VDP_CTRL
         LDX #$00
 @hi_lp:
-        NOP                     ; +2c silicon-strict gap (LDA abs,X bridge)
         LDA hud_hi_str,X
+        JSR     tms9918_pad12   ; +12c silicon-strict pad16 (back-to-back VDP store)
         STA VDP_DATA
         INX
         CPX #$03
@@ -933,7 +953,9 @@ emit_3digit_vdp:
         TXA
         CLC
         ADC #HUD_C_D0
+        JSR     tms9918_pad12   ; +12c silicon-strict pad16 (back-to-back VDP store)
         STA VDP_DATA            ; hundreds
+        JSR     tms9918_pad12   ; +12c silicon-strict pad16 (before LDA zp/abs bridge)
         LDA temp
         LDX #$00
 @t:     CMP #$0A
@@ -946,6 +968,7 @@ emit_3digit_vdp:
         CLC
         ADC #HUD_C_D0
         STA VDP_DATA            ; tens
+        JSR     tms9918_pad12   ; +12c silicon-strict pad16 (before LDA zp/abs bridge)
         LDA temp
         CLC
         ADC #HUD_C_D0
@@ -1047,12 +1070,13 @@ draw_win_tms:
 clear_name_table:
         LDA #$00
         STA VDP_CTRL
-        NOP                     ; +2c silicon-strict gap (LDA #imm bridge)
+        JSR     tms9918_pad12   ; +12c silicon-strict pad16 (before LDA #imm bridge)
         LDA #$58
         STA VDP_CTRL
         LDX #$03
         LDA #$00
 @np:    LDY #$00
+        JSR     tms9918_pad12   ; +12c silicon-strict pad16 (back-to-back VDP store)
 @nb:    STA VDP_DATA
         INY
         BNE @nb
@@ -1065,13 +1089,13 @@ clear_name_table:
 ; by caller), then emit raw char codes from (sptr_lo/hi) until $FF.
 draw_str_tms:
         STA VDP_CTRL
-        NOP                     ; +2c silicon-strict gap (back-to-back VDP store)
-        NOP                     ; +2c silicon-strict gap (back-to-back VDP store)
+        JSR     tms9918_pad12   ; +12c silicon-strict pad16 (back-to-back VDP store)
         STX VDP_CTRL
         LDY #$00
 @lp:    LDA (sptr_lo),Y
         CMP #$FF
         BEQ @done
+        JSR     tms9918_pad12   ; +12c silicon-strict pad16 (back-to-back VDP store)
         STA VDP_DATA
         INY
         JMP @lp

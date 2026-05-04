@@ -1,19 +1,25 @@
 // TMS9918 Silicon Strict (siliconStrictMode) runtime-toggle smoke test.
 //
-// Pins the user-facing behaviour of the new Hardware menu / CLI toggle:
+// Pins the user-facing behaviour of the Hardware menu / CLI toggle:
 // the TMS9918 must transition cleanly between "tolerant" and "silicon-strict"
 // states without a chip reset, so the user can A/B compare a running program
 // (typically Galaga via CodeTank) against real hardware behaviour.
 //
+// Paranoid 16c contract — passing POM1 strict ⇒ silicon-safe (cf.
+// dev/SILICONBUGS.md Bug N°1). Per-mode thresholds:
+//   Mode I + sprites active        : 16 cycles
+//   Mode I sprites OFF / Multicolor:  6 cycles
+//   Text mode                      :  4 cycles
+//   Display blanked / VBlank       :  2 cycles
+//
 // What's covered:
 //   - Phase 1 (strict=false): back-to-back $CC00 writes all land in VRAM.
-//   - Phase 2 (flip strict=true mid-flight, no reset): back-to-back writes
-//     past the first one are dropped because no cycles have elapsed.
+//   - Phase 2 (strict=true, Mode I + sprites): writes need ≥ 16-cycle gap;
+//     a 15-cycle gap drops, a 16-cycle gap is accepted.
 //   - Phase 3 (flip strict=false again): tolerance restored, all writes land.
-//
-// References:
-//   dev/SILICONBUGS.md Bug N1 (~8 cycles between writes in Mode I + sprites)
-//   tests/tms9918_sprite_status_test.cpp T8 (static drop, single phase)
+//   - Phase 4 (strict=true, text mode): 4-cycle window.
+//   - Phase 5 (strict=true, multicolor): 6-cycle window.
+//   - Phase 6 (strict=true, display blanked): 2-cycle window.
 
 #include "TMS9918.h"
 
@@ -32,10 +38,11 @@ void mustBeTrue(bool cond, const char* msg)
 }
 
 // Strict-aware control / data helpers: advance enough cycles so the access
-// is always accepted, regardless of the current strict-mode flag.
+// is always accepted, regardless of the current strict-mode flag. 20c covers
+// the worst-case (16c Mode I + sprites) with margin.
 void strictWriteControl(TMS9918& vdp, uint8_t value)
 {
-    vdp.advanceCycles(10);
+    vdp.advanceCycles(20);
     vdp.writeControl(value);
 }
 
@@ -53,13 +60,13 @@ void strictSetReadAddress(TMS9918& vdp, uint16_t addr)
 
 void strictWriteData(TMS9918& vdp, uint8_t value)
 {
-    vdp.advanceCycles(10);
+    vdp.advanceCycles(20);
     vdp.writeData(value);
 }
 
 // Configure VDP in Mode 0 (Graphic I) with display on and sprite 0 active.
-// requiredAccessCycles() returns 8 for this configuration, which is the
-// pessimistic case the user wants to reproduce (Galaga's render_sprites).
+// requiredAccessCycles() returns 16 for this configuration (Galaga's
+// render_sprites worst case).
 void initActiveSpriteMode(TMS9918& vdp)
 {
     // R1 = 0xC0 -> display on (bit 6), 16K (bit 7), Mode 0, no sprite mag, no IRQ.
@@ -81,63 +88,78 @@ void initActiveSpriteMode(TMS9918& vdp)
 uint8_t readVramAt(TMS9918& vdp, uint16_t addr)
 {
     strictSetReadAddress(vdp, addr);
-    vdp.advanceCycles(10);
-    // Read-ahead buffer: setReadAddress already pre-fetched, first readData
-    // returns it; we want the byte AT addr, not at addr+1, so call once.
+    vdp.advanceCycles(20);
     return vdp.readData();
+}
+
+// Phase helpers: drive a write at a precise gap and observe whether it
+// landed (accepted) or stayed at zero (dropped).
+void writeAtGap(TMS9918& vdp, uint16_t addr, uint8_t value, int gapCycles)
+{
+    strictSetWriteAddress(vdp, addr);
+    vdp.advanceCycles(gapCycles);
+    vdp.writeData(value);
 }
 
 } // namespace
 
 int main()
 {
-    TMS9918 vdp;
-    vdp.reset();
-    initActiveSpriteMode(vdp);
+    int assertions = 0;
 
+    // ----------------------------------------------------------------------
     // Phase 1: tolerant mode (default after reset). Spam 4 bytes back-to-back
     // at $1000..$1003 with zero cycle gap. All four MUST land.
+    // ----------------------------------------------------------------------
     {
+        TMS9918 vdp;
+        vdp.reset();
+        initActiveSpriteMode(vdp);
         vdp.setSiliconStrictMode(false);
         strictSetWriteAddress(vdp, 0x1000);
-        // No advanceCycles between these four. canAcceptAccess() returns
-        // true unconditionally when strict=false.
         vdp.writeData(0xA1);
         vdp.writeData(0xA2);
         vdp.writeData(0xA3);
         vdp.writeData(0xA4);
 
-        mustBeTrue(readVramAt(vdp, 0x1000) == 0xA1, "Phase1: byte 0 lands");
-        mustBeTrue(readVramAt(vdp, 0x1001) == 0xA2, "Phase1: byte 1 lands");
-        mustBeTrue(readVramAt(vdp, 0x1002) == 0xA3, "Phase1: byte 2 lands");
-        mustBeTrue(readVramAt(vdp, 0x1003) == 0xA4, "Phase1: byte 3 lands");
+        mustBeTrue(readVramAt(vdp, 0x1000) == 0xA1, "Phase1: byte 0 lands"); ++assertions;
+        mustBeTrue(readVramAt(vdp, 0x1001) == 0xA2, "Phase1: byte 1 lands"); ++assertions;
+        mustBeTrue(readVramAt(vdp, 0x1002) == 0xA3, "Phase1: byte 2 lands"); ++assertions;
+        mustBeTrue(readVramAt(vdp, 0x1003) == 0xA4, "Phase1: byte 3 lands"); ++assertions;
     }
 
-    // Phase 2: flip to strict mode mid-flight, no reset. After
-    // strictSetWriteAddress, cyclesSinceIoAccess is 0 (the second control
-    // write reset it). Open the window once with advanceCycles, do the
-    // first writeData (accepted), then 3 back-to-back writeData with zero
-    // gap (each must be dropped). VRAM at $1011..$1013 keeps its reset
-    // value (0x00).
+    // ----------------------------------------------------------------------
+    // Phase 2: strict mode, Mode I + sprites → 16-cycle window.
+    // gap = 15 → drop; gap = 16 → accept.
+    // ----------------------------------------------------------------------
     {
+        TMS9918 vdp;
+        vdp.reset();
+        initActiveSpriteMode(vdp);
         vdp.setSiliconStrictMode(true);
-        strictSetWriteAddress(vdp, 0x1010);
-        vdp.advanceCycles(10);  // open the window for write 0
-        vdp.writeData(0xB1);    // accepted: gap = 10 cycles
-        vdp.writeData(0xB2);    // dropped: gap = 0
-        vdp.writeData(0xB3);    // dropped
-        vdp.writeData(0xB4);    // dropped
 
-        mustBeTrue(readVramAt(vdp, 0x1010) == 0xB1, "Phase2: byte 0 lands (window open)");
-        mustBeTrue(readVramAt(vdp, 0x1011) == 0x00, "Phase2: byte 1 dropped");
-        mustBeTrue(readVramAt(vdp, 0x1012) == 0x00, "Phase2: byte 2 dropped");
-        mustBeTrue(readVramAt(vdp, 0x1013) == 0x00, "Phase2: byte 3 dropped");
+        writeAtGap(vdp, 0x1010, 0xB1, 16);  // accept
+        writeAtGap(vdp, 0x1011, 0xB2, 15);  // drop (boundary -1)
+        writeAtGap(vdp, 0x1012, 0xB3, 16);  // accept (boundary)
+        writeAtGap(vdp, 0x1013, 0xB4, 100); // accept (way over)
+
+        mustBeTrue(readVramAt(vdp, 0x1010) == 0xB1, "Phase2: gap=16 accepted"); ++assertions;
+        mustBeTrue(readVramAt(vdp, 0x1011) == 0x00, "Phase2: gap=15 dropped"); ++assertions;
+        mustBeTrue(readVramAt(vdp, 0x1012) == 0xB3, "Phase2: gap=16 boundary accepted"); ++assertions;
+        mustBeTrue(readVramAt(vdp, 0x1013) == 0xB4, "Phase2: gap=100 accepted"); ++assertions;
     }
 
-    // Phase 3: flip back to tolerant. The drop must stop immediately, again
-    // without resetting the chip state. Same back-to-back pattern as Phase 1
-    // at $1020..$1023.
+    // ----------------------------------------------------------------------
+    // Phase 3: tolerant restored, no chip reset. Same back-to-back as Phase 1.
+    // ----------------------------------------------------------------------
     {
+        TMS9918 vdp;
+        vdp.reset();
+        initActiveSpriteMode(vdp);
+        vdp.setSiliconStrictMode(true);
+        // (... drop a couple to dirty the dropped-counter ...)
+        vdp.writeData(0x99);
+        vdp.writeData(0x99);
         vdp.setSiliconStrictMode(false);
         strictSetWriteAddress(vdp, 0x1020);
         vdp.writeData(0xC1);
@@ -145,18 +167,80 @@ int main()
         vdp.writeData(0xC3);
         vdp.writeData(0xC4);
 
-        mustBeTrue(readVramAt(vdp, 0x1020) == 0xC1, "Phase3: byte 0 lands");
-        mustBeTrue(readVramAt(vdp, 0x1021) == 0xC2, "Phase3: byte 1 lands");
-        mustBeTrue(readVramAt(vdp, 0x1022) == 0xC3, "Phase3: byte 2 lands");
-        mustBeTrue(readVramAt(vdp, 0x1023) == 0xC4, "Phase3: byte 3 lands");
+        mustBeTrue(readVramAt(vdp, 0x1020) == 0xC1, "Phase3: byte 0 lands"); ++assertions;
+        mustBeTrue(readVramAt(vdp, 0x1021) == 0xC2, "Phase3: byte 1 lands"); ++assertions;
+        mustBeTrue(readVramAt(vdp, 0x1022) == 0xC3, "Phase3: byte 2 lands"); ++assertions;
+        mustBeTrue(readVramAt(vdp, 0x1023) == 0xC4, "Phase3: byte 3 lands"); ++assertions;
+    }
+
+    // ----------------------------------------------------------------------
+    // Phase 4: strict + text mode (M1=1) → 4-cycle window.
+    // ----------------------------------------------------------------------
+    {
+        TMS9918 vdp;
+        vdp.reset();
+        // R1 = 0xD0 -> display on (bit 6), 16K (bit 7), Mode 1 (M1=bit 4)
+        strictWriteControl(vdp, 0xD0);
+        strictWriteControl(vdp, 0x81);
+        vdp.setSiliconStrictMode(true);
+
+        writeAtGap(vdp, 0x1100, 0xD1, 4);   // accept (boundary)
+        writeAtGap(vdp, 0x1101, 0xD2, 3);   // drop  (boundary -1)
+        writeAtGap(vdp, 0x1102, 0xD3, 10);  // accept
+
+        mustBeTrue(readVramAt(vdp, 0x1100) == 0xD1, "Phase4 text: gap=4 accepted"); ++assertions;
+        mustBeTrue(readVramAt(vdp, 0x1101) == 0x00, "Phase4 text: gap=3 dropped"); ++assertions;
+        mustBeTrue(readVramAt(vdp, 0x1102) == 0xD3, "Phase4 text: gap=10 accepted"); ++assertions;
+    }
+
+    // ----------------------------------------------------------------------
+    // Phase 5: strict + multicolor (M2=1) → 6-cycle window.
+    // ----------------------------------------------------------------------
+    {
+        TMS9918 vdp;
+        vdp.reset();
+        // R1 = 0xC8 -> display on, 16K, Mode 3 (M2=bit 3)
+        strictWriteControl(vdp, 0xC8);
+        strictWriteControl(vdp, 0x81);
+        vdp.setSiliconStrictMode(true);
+
+        writeAtGap(vdp, 0x1200, 0xE1, 6);   // accept (boundary)
+        writeAtGap(vdp, 0x1201, 0xE2, 5);   // drop  (boundary -1)
+        writeAtGap(vdp, 0x1202, 0xE3, 10);  // accept
+
+        mustBeTrue(readVramAt(vdp, 0x1200) == 0xE1, "Phase5 multicolor: gap=6 accepted"); ++assertions;
+        mustBeTrue(readVramAt(vdp, 0x1201) == 0x00, "Phase5 multicolor: gap=5 dropped"); ++assertions;
+        mustBeTrue(readVramAt(vdp, 0x1202) == 0xE3, "Phase5 multicolor: gap=10 accepted"); ++assertions;
+    }
+
+    // ----------------------------------------------------------------------
+    // Phase 6: strict + display blanked (R1 bit 6 = 0) → 2-cycle window.
+    // VRAM bandwidth is free, only the prep delay applies.
+    // ----------------------------------------------------------------------
+    {
+        TMS9918 vdp;
+        vdp.reset();
+        // R1 = 0x80 -> 16K, display OFF (bit 6 = 0), Mode 0
+        strictWriteControl(vdp, 0x80);
+        strictWriteControl(vdp, 0x81);
+        vdp.setSiliconStrictMode(true);
+
+        writeAtGap(vdp, 0x1300, 0xF1, 2);   // accept (boundary)
+        writeAtGap(vdp, 0x1301, 0xF2, 1);   // drop  (boundary -1)
+
+        mustBeTrue(readVramAt(vdp, 0x1300) == 0xF1, "Phase6 blank: gap=2 accepted"); ++assertions;
+        mustBeTrue(readVramAt(vdp, 0x1301) == 0x00, "Phase6 blank: gap=1 dropped"); ++assertions;
     }
 
     // Sanity: getter must mirror the last setter call.
-    vdp.setSiliconStrictMode(true);
-    mustBeTrue(vdp.isSiliconStrictMode(), "isSiliconStrictMode reflects setter (true)");
-    vdp.setSiliconStrictMode(false);
-    mustBeTrue(!vdp.isSiliconStrictMode(), "isSiliconStrictMode reflects setter (false)");
+    {
+        TMS9918 vdp;
+        vdp.setSiliconStrictMode(true);
+        mustBeTrue(vdp.isSiliconStrictMode(), "isSiliconStrictMode reflects setter (true)"); ++assertions;
+        vdp.setSiliconStrictMode(false);
+        mustBeTrue(!vdp.isSiliconStrictMode(), "isSiliconStrictMode reflects setter (false)"); ++assertions;
+    }
 
-    std::printf("tms9918_silicon_strict_runtime: all 12 assertions passed\n");
+    std::printf("tms9918_silicon_strict_runtime: all %d assertions passed\n", assertions);
     return 0;
 }

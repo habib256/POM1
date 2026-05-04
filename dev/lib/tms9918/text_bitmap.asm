@@ -33,6 +33,7 @@
 ;   pen_color                    foreground colour for the colour cell
 ; ============================================================================
 
+        .import tms9918_pad12  ; silicon-strict pad16 (helper from tms9918_pad.asm)
 .ifdef CODETANK_BUILD
 
 .include "tms9918.inc"          ; VDP_DATA / VDP_CTRL
@@ -101,7 +102,9 @@ text_blit_glyph:
         ;     pattern table layout at base $2000, so we can re-prime the
         ;     VDP cursor with the same pix_addr but the $2000 base bit set.
         LDA pix_addr_lo
+        JSR     tms9918_pad12   ; +12c silicon-strict pad16 (back-to-back VDP store)
         STA VDP_CTRL
+        JSR     tms9918_pad12   ; +12c silicon-strict pad16 (before LDA zp/abs bridge)
         LDA pix_addr_hi
         ORA #$60                  ; $20 (colour base) | $40 (write enable)
         STA VDP_CTRL
@@ -113,6 +116,7 @@ text_blit_glyph:
         ORA #$01                  ; transparent background ($x1)
         LDX #8
 @col:   STA VDP_DATA
+        JSR tms9918_pad12       ; silicon-strict 16c (loop-back inner @col)
         DEX
         BNE @col
         RTS

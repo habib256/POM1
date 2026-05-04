@@ -102,6 +102,7 @@ private:
     int cyclesSinceIoAccess = 1000000;
     bool siliconStrictMode  = false;
     uint64_t droppedWrites  = 0;      // cumulative count of VDP writes dropped by siliconStrictMode
+    int      droppedWriteTraceCount = 0; // first N drops trace to stderr (debug)
     bool snapshotDirty = true;        // skip the 16 KB VRAM + regs copy when nothing changed since last publish
 
     static constexpr int kCyclesPerFrame = POM1_CPU_CYCLES_PER_FRAME_1X_60HZ;

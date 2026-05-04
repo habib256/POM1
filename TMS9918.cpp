@@ -9,6 +9,7 @@
 
 #include "TMS9918.h"
 #include <algorithm>
+#include <cstdio>
 #include <cstring>
 
 // --------------------------------------------------------------------------
@@ -53,6 +54,7 @@ void TMS9918::reset()
     frameCycleCounter = 0;
     cyclesSinceIoAccess = 1000000;
     droppedWrites = 0;
+    droppedWriteTraceCount = 0;
     snapshotDirty   = true;
 }
 
@@ -60,7 +62,8 @@ void TMS9918::setSiliconStrictMode(bool enabled)
 {
     siliconStrictMode = enabled;
     cyclesSinceIoAccess = 1000000;
-    droppedWrites = 0;     // restart the counter on toggle so users see new drops only
+    droppedWrites = 0;
+    droppedWriteTraceCount = 0;     // restart the counter on toggle so users see new drops only
 }
 
 uint16_t TMS9918::vramMaskForRegs(const uint8_t* regs, bool strict)
@@ -84,12 +87,19 @@ int TMS9918::requiredAccessCycles() const
     // a permanently-relaxed window across the whole active display.
     if ((regs[1] & 0x40) == 0 || frameCycleCounter >= kActiveDisplayCycles) return 2;
 
+    // Paranoid silicon-strict thresholds (cf. dev/SILICONBUGS.md Bug N°1).
+    // The "1 slot per N VDP cycles" model gives the *typical* worst case at
+    // ideal CPU↔VDP phase alignment; the *worst-worst* case adds one full
+    // slot wait (CPU access arrives just after a slot consumed) plus the
+    // 4-cycle STA latch + ~2c bus turnaround on warm NMOS. We dimension each
+    // mode so passing POM1 strict guarantees silicon — the contract is:
+    //   gap ≥ 1 full VDP slot period + STA + phase margin.
     const bool textMode       = (regs[1] & 0x10) != 0;
     const bool multicolorMode = (regs[1] & 0x08) != 0;
-    const bool bitmapMode     = (regs[0] & 0x02) != 0;
-    if (textMode) return 3;
-    if (multicolorMode) return 4;
+    if (textMode) return 4;          // 1 slot/3 VDP cycles, +1c phase margin
+    if (multicolorMode) return 6;    // 1 slot/4 VDP cycles, +2c phase margin
 
+    // Mode I / Mode II : check sprite-active terminator.
     const uint16_t satBase = static_cast<uint16_t>(regs[5] & 0x7F) << 7;
     const uint16_t mask = liveVramMask();
     bool spritesActive = false;
@@ -99,8 +109,8 @@ int TMS9918::requiredAccessCycles() const
         spritesActive = true;
         break;
     }
-    if (!spritesActive) return 4;
-    return bitmapMode ? 8 : 8;
+    if (!spritesActive) return 6;    // 1 slot/6 VDP cycles when SAT[0]=$D0
+    return 16;                        // 1 slot/16 VDP cycles + STA + phase margin
 }
 
 bool TMS9918::canAcceptAccess() const
@@ -119,7 +129,19 @@ void TMS9918::noteAcceptedAccess()
 void TMS9918::writeData(uint8_t value)
 {
     latchIsSecond = false;                    // data-port access resets latch state
-    if (!canAcceptAccess()) { ++droppedWrites; return; }
+    if (!canAcceptAccess()) {
+        ++droppedWrites;
+        if (droppedWriteTraceCount < 60) {
+            std::fprintf(stderr,
+                "[TMS9918 DROP #%llu] writeData val=%02X vramAddr=%04X gap=%d "
+                "required=%d frameCycle=%d R1=%02X\n",
+                (unsigned long long)droppedWrites, value, vramAddr,
+                cyclesSinceIoAccess, requiredAccessCycles(),
+                frameCycleCounter, regs[1]);
+            ++droppedWriteTraceCount;
+        }
+        return;
+    }
     noteAcceptedAccess();
     const uint16_t mask = liveVramMask();
     vram[vramAddr & mask] = value;
@@ -145,7 +167,19 @@ uint8_t TMS9918::readData()
 // --------------------------------------------------------------------------
 void TMS9918::writeControl(uint8_t value)
 {
-    if (!canAcceptAccess()) { ++droppedWrites; return; }
+    if (!canAcceptAccess()) {
+        ++droppedWrites;
+        if (droppedWriteTraceCount < 60) {
+            std::fprintf(stderr,
+                "[TMS9918 DROP #%llu] writeControl val=%02X latch2=%d gap=%d "
+                "required=%d frameCycle=%d R1=%02X\n",
+                (unsigned long long)droppedWrites, value, latchIsSecond,
+                cyclesSinceIoAccess, requiredAccessCycles(),
+                frameCycleCounter, regs[1]);
+            ++droppedWriteTraceCount;
+        }
+        return;
+    }
     noteAcceptedAccess();
     if (!latchIsSecond) {
         // First byte — store in latch

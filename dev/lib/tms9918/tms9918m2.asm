@@ -23,6 +23,7 @@
 ;   plot_mode           -- 1 BSS byte: 0 = OR, 1 = XOR.
 ; ============================================================================
 
+        .import tms9918_pad12  ; silicon-strict pad16 (helper from tms9918_pad.asm)
 .include "apple1.inc"
 .include "tms9918.inc"
 
@@ -71,20 +72,33 @@ pen_color:    .res 1     ; 0..15 -- foreground colour written to colour
 ; ============================================================================
 
 ; init_vdp_g2: 8 registers + linear name table + colour table = $F1.
+;   SILICON_STRICT_SKIP — runs entirely with display blanked (threshold 2c).
+;   The @rg loop masks R1's display bit OFF; the bulk uploads (name + colour
+;   tables) all run before R1 is re-armed at the very end. Only the final
+;   R1 re-arm flips display ON, after which the caller's first VDP write
+;   needs 16c gating — but that's the patcher's job in caller code, not here.
 init_vdp_g2:
+        ; SILICON_STRICT_SKIP — register-loop hand-padded so it survives
+        ; entry with R1 already display-ON. Intra-pair JSR pad12 + NOP
+        ; inter-iter ensures 16c+ gap regardless of entry state.
         LDX #0
 @rg:    LDA vdp2_regs,X
+        CPX #1
+        BNE @rg_store
+        AND #$BF                ; R1 display OFF during loop
+@rg_store:
         STA VDP_CTRL
         TXA
         ORA #$80
+        JSR tms9918_pad12       ; intra-pair: 16c gap value→cmd
         STA VDP_CTRL
+        NOP                     ; +2c for inter-iter gap (→17c)
         INX
         CPX #8
         BNE @rg
-        ; --- write linear name table at $3800 ---
+        ; --- write linear name table at $3800 (display still OFF) ---
         LDA #$00
         STA VDP_CTRL
-        NOP                     ; +2c silicon-strict gap (LDA #imm bridge)
         LDA #$78
         STA VDP_CTRL
         LDX #3
@@ -98,7 +112,6 @@ init_vdp_g2:
         ; --- color table: $F1 everywhere ($2000-$37FF, 6144 bytes) ---
         LDA #$00
         STA VDP_CTRL
-        NOP                     ; +2c silicon-strict gap (LDA #imm bridge)
         LDA #$60
         STA VDP_CTRL
         LDX #24
@@ -113,6 +126,12 @@ init_vdp_g2:
         ; mode to recolour the cell it just touched. SETPC overrides.
         LDA #$0F
         STA pen_color
+        ; --- Final: re-arm R1 with table value (display ON). Display stays
+        ;     OFF until the cmd byte commits, so threshold remains 2c.
+        LDA vdp2_regs+1
+        STA VDP_CTRL
+        LDA #$81
+        STA VDP_CTRL
         RTS
 
 vdp2_regs:
@@ -122,12 +141,13 @@ vdp2_regs:
 clear_bitmap:
         LDA #$00
         STA VDP_CTRL
-        NOP                     ; +2c silicon-strict gap (LDA #imm bridge)
+        JSR     tms9918_pad12   ; +12c silicon-strict pad16 (before LDA #imm bridge)
         LDA #$40
         STA VDP_CTRL
         LDX #24
         LDY #0
 @lp:    LDA #$00
+        JSR     tms9918_pad12   ; +12c silicon-strict pad16 (back-to-back VDP store)
         STA VDP_DATA
         INY
         BNE @lp
@@ -139,10 +159,10 @@ clear_bitmap:
 disable_sprites:
         LDA #$00
         STA VDP_CTRL
-        NOP                     ; +2c silicon-strict gap (LDA #imm bridge)
+        JSR     tms9918_pad12   ; +12c silicon-strict pad16 (before LDA #imm bridge)
         LDA #$3B | $40
         STA VDP_CTRL
-        NOP                     ; +2c silicon-strict gap (LDA #imm bridge)
+        JSR     tms9918_pad12   ; +12c silicon-strict pad16 (before LDA #imm bridge)
         LDA #$D0
         STA VDP_DATA
         RTS
@@ -150,18 +170,21 @@ disable_sprites:
 vdp_set_write:
         LDA pix_addr_lo
         STA VDP_CTRL
+        JSR tms9918_pad12       ; silicon-strict 16c (LDA zp + ORA bridge)
         LDA pix_addr_hi
         ORA #$40
         STA VDP_CTRL
-        RTS
+        JSR tms9918_pad12       ; cushion: caller's first STA VDP_DATA lands
+        RTS                     ; ≥16c after cmd (12c+6c+6c=24c gap)
 
 vdp_set_read:
         LDA pix_addr_lo
         STA VDP_CTRL
-        NOP                     ; +2c silicon-strict gap (LDA zp/abs bridge)
+        JSR     tms9918_pad12   ; +12c silicon-strict pad16 (before LDA zp/abs bridge)
         LDA pix_addr_hi
         STA VDP_CTRL
-        RTS
+        JSR tms9918_pad12       ; cushion: caller's first LDA VDP_DATA lands
+        RTS                     ; ≥16c after cmd
 
 calc_pix_addr:
         LDA pix_x
@@ -201,6 +224,7 @@ plot_set:
         STA VDP_DATA
         ; --- colour cell (only on OR draws). XOR is the turtle-erase
         ;     path which must leave the trail's colour alone.
+        JSR     tms9918_pad12   ; +12c silicon-strict pad16 (before LDA zp/abs bridge)
         LDA plot_mode
         BNE @done
         ; address = $2000 + pix_addr (same offset as pattern cell). The
@@ -208,6 +232,7 @@ plot_set:
         ; address by 1, so re-prime the control port now.
         LDA pix_addr_lo
         STA VDP_CTRL
+        JSR     tms9918_pad12   ; +12c silicon-strict pad16 (before LDA zp/abs bridge)
         LDA pix_addr_hi
         ORA #$60                ; $60 = $20 (table base) | $40 (write enable)
         STA VDP_CTRL

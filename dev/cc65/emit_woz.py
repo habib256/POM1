@@ -113,6 +113,31 @@ def emit(
     project_dir = pathlib.Path(project_dir).resolve()
     root = _find_root()
 
+    # Auto-link tms9918_pad.asm whenever any source references the silicon-
+    # strict pad helper (injected by tools/silicon_strict_patch.py). Saves
+    # every per-project emit_*_txt.py from listing lib/tms9918/tms9918_pad.asm
+    # explicitly.
+    pad_asm = root / "dev" / "lib" / "tms9918" / "tms9918_pad.asm"
+    if pad_asm.is_file():
+        already_listed = False
+        needs_pad = False
+        for asm in asm_files:
+            try:
+                src_path = _resolve_asm(asm, project_dir, root)
+            except FileNotFoundError:
+                continue
+            if src_path.resolve() == pad_asm.resolve():
+                already_listed = True
+                break
+            try:
+                content = src_path.read_text(errors="ignore")
+            except OSError:
+                continue
+            if "tms9918_pad12" in content or "tms9918_pad24" in content:
+                needs_pad = True
+        if needs_pad and not already_listed:
+            asm_files = list(asm_files) + [str(pad_asm)]
+
     build_dir = root / "build"
     build_dir.mkdir(parents=True, exist_ok=True)
 

@@ -1,1 +1,3 @@
-TMS9918: Galaga / Sokoban / Snake / Life (lower jumper, menu) + TMS_LOGO V2.6 (upper jumper, run-in-place). Type 4000R from either jumper position.
+Codetank_GAME1.rom — TMS9918 P-LAB CodeTank cartridge
+  Lower jumper: 4000R → menu → 1=Galaga 2=Sokoban 3=Snake
+  Upper jumper: 4000R → TMS_LOGO V2.6 turtle interpreter

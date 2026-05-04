@@ -3,7 +3,7 @@
 OUT_DIR  := ../../../software/tms9918
 LIB      := -I ../../lib/apple1 -I ../../lib/chess -I ../../lib/tms9918
 
-OBJS := TMS_Chess.o chess_engine.o chess_text_io.o tms9918m1.o
+OBJS := TMS_Chess.o chess_engine.o chess_text_io.o tms9918m1.o tms9918_pad.o
 
 TMS_Chess.o: TMS_Chess.asm
 	ca65 $(LIB) -o $@ $<
@@ -15,6 +15,9 @@ chess_text_io.o: ../../lib/chess/chess_text_io.asm
 	ca65 $(LIB) -o $@ $<
 
 tms9918m1.o: ../../lib/tms9918/tms9918m1.asm
+	ca65 $(LIB) -o $@ $<
+
+tms9918_pad.o: ../../lib/tms9918/tms9918_pad.asm
 	ca65 $(LIB) -o $@ $<
 
 $(OUT_DIR)/TMS_Chess.bin.lo $(OUT_DIR)/TMS_Chess.bin.hi: $(OBJS)

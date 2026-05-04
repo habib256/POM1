@@ -22,6 +22,7 @@
 ; refactor through these two entries (tools/silicon_strict_refactor.py).
 ; ============================================================================
 
+        .import tms9918_pad12  ; silicon-strict pad16 (helper from tms9918_pad.asm)
 .include "tms9918.inc"
 
 .export vdp_write_a, vdp_set_write_xy
@@ -61,5 +62,6 @@ vdp_set_write_xy:
         NOP
         TYA
         ORA     #$40            ; bit 6 = write
+        JSR     tms9918_pad12   ; +12c silicon-strict pad16 (back-to-back VDP store)
         STA     VDP_CTRL
         RTS
