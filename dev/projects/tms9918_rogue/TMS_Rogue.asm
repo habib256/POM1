@@ -37,6 +37,11 @@ COL_LT_BLUE    = 5
 COL_PLAYER     = COL_LT_BLUE
 LOGICAL_COLS   = 16
 LOGICAL_ROWS   = 10
+; Aliases consumed by lib/m6502/shadowcast.asm (declared before its
+; .include at EOF; the lib references SHADOW_COLS / SHADOW_ROWS in its
+; OOR check inside apply_octant).
+SHADOW_COLS    = LOGICAL_COLS
+SHADOW_ROWS    = LOGICAL_ROWS
 PLAY_TOP_ROW   = 1              ; first walkable logical row
 PLAY_BOT_ROW   = 8              ; last walkable logical row
 PLAY_LEFT_COL  = 1              ; first walkable logical col
@@ -94,22 +99,31 @@ TORCH_RADIUS   = 7              ; FOV during a torch buff. Doubles the
 
 ; --- Monster pool ------------------------------------------------------
 ; 16-slot pool at $E300 (high bank, after the 768-byte map_buffer).
-; Per-slot layout (8 bytes; padding leaves room for AI state later):
+; Per-slot layout (8 bytes):
 ;
-;   +0 MON_TYPE   0=dead/empty, 1=undead, 2=ghost, 3=death
+;   +0 MON_TYPE   0=dead/empty, 1=undead, 2=ghost, 3=troll,
+;                 4=skeleton, 5=death
 ;   +1 MON_HP     remaining hit points (0 → mark dead)
 ;   +2 MON_COL    logical 0..15
 ;   +3 MON_ROW    logical 0..9
-;   +4 MON_NAME   sprite-name (4/8/12 → VRAM $3820/$3840/$3860)
+;   +4 MON_NAME   sprite-name (4/8/12/20/48 → VRAM $3820/$3840/$3860/
+;                 $38A0/$3980)
 ;   +5 MON_COLOR  TMS9918 palette index for the SAT colour byte
 ;   +6 MON_DMG    damage dealt to the player on a successful hit
-;   +7 reserved
+;   +7 MON_HURT   non-zero if the sprite should render in COL_HURT this
+;                 frame; for trolls, doubles as the persistent
+;                 "provoked" flag (kept across turns by clear_hurt_flags
+;                 so ai_troll switches from flee to chase).
 ;
-; Slot 0 of the SAT is the player; slots 1..16 mirror the monster pool
-; (one SAT entry per live monster), and the next-after-last gets Y=$D0
-; as the chain terminator. Sprite-pattern slot 0 ($3800-$381F) is the
-; player; slots 4/8/12 are the three undead types, all uploaded once
-; at start.
+; SAT budget worst case after the HUD dagger counter:
+;   player + dagger HUD + 16 monsters + 8 floor items + 4 buff icons
+;   + 1 thrown dagger = 31 live entries, leaving entry 31 for Y=$D0.
+; The sharper HUD constraint is the TMS9918's 4-sprites-per-scanline
+; limit: timer icons share y=176, so only four SAT entries that cover
+; rows 22-23 are visible there. The dagger HUD icon lives at y=160
+; (rows 20-21) to stay off that timer scanline group.
+; Sprite-pattern slot 0 ($3800-$381F) is the player; slots 4/8/12 are
+; the three undead types, all uploaded once at start.
 MON_COUNT      = 16
 MON_SIZE       = 8
 MON_TYPE       = 0
@@ -513,49 +527,41 @@ fov_r:          .res 1
 throw_active:   .res 1
 throw_dx:       .res 1
 throw_dy:       .res 1
-throw_dmg:      .res 1          ; cached INV_VALUE of the dagger being
-                                ; thrown — read once before consuming
-                                ; the slot, then applied to the monster
-                                ; on hit.
+throw_dmg:      .res 1          ; cached damage of the dagger being
+                                ; thrown — applied to the monster on
+                                ; hit. Loaded from DAGGER_DMG constant
+                                ; before consuming a charge from
+                                ; dagger_qty (daggers no longer ride
+                                ; the inventory pool, see below).
 throw_step:     .res 1          ; remaining flight cells (0..THROW_RANGE).
                                 ; Was previously aliased to fov_step from
                                 ; the Bresenham FOV; the shadowcaster
                                 ; doesn't need a step counter, so a
                                 ; dedicated byte is clearer.
 
-; --- FOV scratch (compute_fov / cast_octant / apply_octant) -----------
-; cur_x/y is the cell currently being marked / opacity-tested (also
-; reused by mark_visible_at_cur, is_opaque_at_cur, and the dagger-
-; throw animation). The cast_* slots hold the recursive-shadowcaster
-; frame; they get save/restored on the hardware stack around every
-; recursive call (see cast_octant). oct_* hold the per-octant
-; transform from canonical (col, depth) to grid offsets (dx, dy) — each
-; element is 0, 1, or $FF (signed -1). mul_a/mul_b/mul_tmp are scratch
-; for mul_4bit, the 4-bit×4-bit→8-bit multiply used by every slope
-; comparison.
+; --- FOV scratch (compute_fov / shadowcaster lib) ---------------------
+; oct_*, cast_* and the cross-product scratch (cast_xprod) live in
+; `lib/m6502/shadowcast.asm` — its `.ifndef cast_depth` guard allocates
+; them inside this project's ZP segment when the file is .include'd at
+; the bottom. cur_x/cur_y are pre-declared here (instead of letting the
+; lib do it) so every site that uses them — including the dagger-throw
+; animation, mark_visible_at_cur, and is_opaque_at_cur — sees them as
+; ZP at assembly time and gets the short-form addressing. The lib's
+; second .ifndef guard (`cur_x`) skips its own .res for them.
+; The 4-bit×4-bit slope multiplies route through `umul4` (lib/m6502/
+; multiply.asm), which owns its own mul_tmp / mul_res0.
 cur_x:          .res 1
 cur_y:          .res 1
-oct_xx:         .res 1          ; col → grid X coefficient (-1, 0, +1)
-oct_xy:         .res 1          ; depth → grid X coefficient
-oct_yx:         .res 1          ; col → grid Y coefficient
-oct_yy:         .res 1          ; depth → grid Y coefficient
-oct_idx:        .res 1          ; outer octant loop counter (0..7)
-cast_depth:     .res 1          ; current row depth (1..fov_r)
-cast_col:       .res 1          ; current col cursor inside row (depth..0)
-cast_blocked:   .res 1          ; non-zero while inside a wall chain
-cast_start_n:   .res 1          ; live cone — high-slope edge as a
-cast_start_d:   .res 1          ;   reduced fraction (num/den)
-cast_end_n:     .res 1          ; live cone — low-slope edge
-cast_end_d:     .res 1
-cast_save_n:    .res 1          ; "new_start" — narrowed start that
-cast_save_d:    .res 1          ;   takes effect at next wall→floor
-cast_lslope_n:  .res 1          ; current cell's left (high) slope
-cast_lslope_d:  .res 1          ;   = (2c+1) / (2d-1)
-cast_rslope_n:  .res 1          ; current cell's right (low) slope
-cast_rslope_d:  .res 1          ;   = max(0, 2c-1) / (2d+1)
-mul_a:          .res 1          ; 4-bit×4-bit multiplier scratch
-mul_b:          .res 1
-mul_tmp:        .res 1          ; cross-product comparison LHS
+
+; --- Dagger ammo counter ----------------------------------------------
+; Daggers behave like a quiver, NOT like inventory items: they never
+; take a bag letter, never appear in the inventory modal, and they
+; have a dedicated HUD slot at the bottom-right of the buff-timer area
+; (sprite + 2-digit count). Pickup increments dagger_qty, throw
+; decrements it. Capped at 99 for the 2-digit display; extra pickups
+; past the cap are silently dropped (matches "you can't carry any more
+; daggers" feedback).
+dagger_qty:     .res 1
 
 
 ; --- Map buffer (160 B, 16x10 logical tiles, one byte = tile base id) ---
@@ -611,6 +617,11 @@ start:
         JSR draw_title          ; ROGUE banner + key-layout prompt
         JSR wait_kb_choice      ; bind keys + seed prng_lo/hi from key timing
 
+        JSR clear_name_table    ; second title page = mission briefing
+        JSR draw_briefing       ; lore + mechanics primer
+        LDA KBD                 ; drain layout-choice strobe ('1' / '2')
+        JSR wait_key            ; explicit ack before the dungeon appears
+
         LDA #1                  ; first level — new_level INCs from here
         STA depth
         LDA #0                  ; trans_mode 0 = regen (random gen, no wrap)
@@ -644,7 +655,7 @@ start:
         JSR spawn_level_items   ; 1..3 typed items scattered on TILE_EMPTY
         JSR spawn_level_pits    ; 0..2 pits scattered on TILE_EMPTY
         JSR place_all_sprites   ; SAT: player slot 0 + each live monster
-        JSR update_hud          ; HUD on row 20: depth + HP + food
+        JSR update_hud          ; HUD rows 20..23: stats + timers/ammo
 
 main_loop:
         ; Reset hurt flags so any flash from last turn doesn't leak
@@ -658,21 +669,26 @@ main_loop:
         BNE @nx_n
         JMP @do_regen
 @nx_n:
-        ; --- MVP4 commands (each via BNE-skip-then-JMP trampoline,
-        ; the handlers sit past 127 bytes from this dispatch point).
-        ; Only THREE commands now: inspect, use, throw. 'E' is a
-        ; toggle-or-consume — sub-type drives whether it equips
-        ; gear (free action) or consumes food/potion/scroll (turn).
+        ; --- Commands (each via BNE-skip-then-JMP trampoline; handlers
+        ; sit past 127 bytes from this dispatch point). Item use happens
+        ; from the inventory modal (I + slot letter); E was removed as a
+        ; redundant playfield prompt.
         CMP     #('I' | $80)
         BNE     @nx_i
         JMP     @do_inv
-@nx_i:  CMP     #('E' | $80)
-        BNE     @nx_e
-        JMP     @do_use
-@nx_e:  CMP     #('T' | $80)
+@nx_i:  CMP     #('T' | $80)
         BNE     @nx_t
         JMP     @do_throw
-@nx_t:
+@nx_t:  CMP     #('?' | $80)
+        BEQ     @help_jmp       ; both keys land on the same trampoline
+        CMP     #('H' | $80)    ; H is free in both layouts (WASD / ZQSD)
+        BNE     @nx_h
+@help_jmp:
+        JMP     @do_help
+@nx_h:  CMP     #('.' | $80)    ; rest one turn (regen tick, no movement)
+        BNE     @nx_dot
+        JMP     @do_rest
+@nx_dot:
         JSR handle_input        ; carry clear -> tgt_col/tgt_row set
         BCS main_loop           ; no movement key -> just wait again
         ; Monster on the target cell? bump-attack instead of moving —
@@ -779,23 +795,26 @@ main_loop:
         JSR finish_turn
         JMP main_loop
 
-@do_use:
-        JSR handle_use          ; A=1 → turn consumed, A=0 → free / error
+@do_throw:
+        JSR handle_throw        ; A=1 → turn consumed, A=0 → free / error
         TAX
-        BNE @use_turn           ; non-zero → take a turn (long-jump trampoline)
-        JMP main_loop           ; free action — main_loop too far for BEQ
-@use_turn:
+        BNE @throw_turn
+        JMP main_loop
+@throw_turn:
         JSR move_monsters
         JSR place_all_sprites
         JSR finish_turn
         JMP main_loop
 
-@do_throw:
-        JSR handle_throw        ; same A=1/0 contract as handle_use
-        TAX
-        BNE @throw_turn
+@do_help:
+        JSR show_help           ; modal — always a free action
         JMP main_loop
-@throw_turn:
+
+@do_rest:
+        ; '.' rest — burn one turn without moving. Monsters take their
+        ; turn, the regen amulet pulses, all buff timers tick down. Same
+        ; cleanup chain as a regular move minus compute_fov / render_map
+        ; (player didn't move, so visibility is unchanged).
         JSR move_monsters
         JSR place_all_sprites
         JSR finish_turn
@@ -1513,20 +1532,9 @@ pick_random_room:
         RTS
 
 
-; ----------------------------------------------------------------------------
-; rand_mod: A = max (must be > 0). Returns A in [0, max).
-; Repeated subtract — fast for our small ranges (<= 16).
-; Clobbers tmp.
-; ----------------------------------------------------------------------------
-rand_mod:
-        STA     tmp
-        JSR     prng16
-@lp:    CMP     tmp
-        BCC     @done
-        SEC
-        SBC     tmp
-        JMP     @lp
-@done:  RTS
+; rand_mod -- uniform [0, A) pseudorandom — promoted to lib/m6502/dungeon.asm
+; (.include'd at EOF). It depends on prng16, hence the include order at the
+; bottom of the file (prng16 first, dungeon next).
 
 
 ; ----------------------------------------------------------------------------
@@ -1818,8 +1826,8 @@ spawn_monsters:
 ; Thresholds use a 32-entry roll (matches the LFSR's natural granularity
 ; better than 100 and lets rand_mod #32 short-circuit after one iteration
 ; for 0..31 results). Weights (post buff-timer rework):
-;   food 28%, dagger 16%, potion 13%, scroll 9%, weapon 13%, armor 9%,
-;   ring 6%, torch 6%.
+;   food 19%, dagger 25%, potion 9%, scroll 6%, weapon 13%, armor 9%,
+;   ring 6%, torch 13%.
 ; Weapons + armours bumped (8→13%, 7→9%) since they're now CONSUMABLE
 ; on use (10-turn buff) — must drop more often or the player runs out
 ; of buffs after one floor. Torches added at 6% to seed exploration.
@@ -1866,12 +1874,12 @@ level_item_thresh:
         ; cumulative roll thresholds; first index whose threshold > roll
         ; wins. Last entry must equal the rand_mod modulus (32). Per-
         ; category mass (out of 32):
-        ;   FOOD 7  DAGGER 5  POTION 3  SCROLL 3
-        ;   WEAPON 4  ARMOR 3  RING 2  TORCH 5
-        ; Torches were boosted from 2 → 5 to make the FOV-doubling buff
-        ; show up regularly enough to feel like part of the loop (was a
-        ; once-every-3-floors curio).
-        .byte   7, 12, 15, 18, 22, 25, 27, 32
+        ;   FOOD 6  DAGGER 8  POTION 3  SCROLL 2
+        ;   WEAPON 4  ARMOR 3  RING 2  TORCH 4
+        ; Daggers were boosted from 5 → 8 now that they are quiver ammo
+        ; with their own HUD counter, not inventory clutter. Food, scrolls
+        ; and torches give back one roll each to keep the total at 32.
+        .byte   6, 14, 17, 19, 23, 26, 28, 32
 level_item_type:
         .byte   ITEM_T_FOOD, ITEM_T_DAGGER, ITEM_T_POTION, ITEM_T_SCROLL
         .byte   ITEM_T_WEAPON, ITEM_T_ARMOR, ITEM_T_RING, ITEM_T_TORCH
@@ -1933,48 +1941,71 @@ trigger_pit:
 
 
 ; ----------------------------------------------------------------------------
-; find_empty_cell: roll random (col, row) pairs in [0..LOGICAL_COLS) x
-; [0..LOGICAL_ROWS) until one lands on a TILE_EMPTY cell that is neither
-; the player's current cell nor occupied by a live monster. Up to 32
-; attempts before giving up.
+; find_empty_cell: pick an unoccupied TILE_EMPTY cell that is neither
+; the player's nor held by a live monster / floor item.
 ;   On success: tgt_col / tgt_row set, carry CLEAR.
-;   On failure: carry SET.
-; The PHA/PLA pair around monster_at_target preserves the X attempts
-; counter (monster_at_target uses X for its scan).
+;   On failure: carry SET (only when literally every cell is ineligible).
+;
+; Strategy: random START offset in [0, 160) followed by a deterministic
+; linear sweep of all 160 cells (wrapping past 159 → 0). Guarantees an
+; eligible cell is returned if one exists — the previous "32 random
+; tries then bail" form had a real ~1-2 % silent-fail rate on small
+; two-rooms layouts (P(empty)≈12 % → P(all 32 miss)≈0.875^32≈1.4 %)
+; and would silently strip a monster / item / pit from the level.
+; Worst case here is a full 160-cell scan, well under one frame.
+;
+; tmp = current cursor offset (rand_mod stomps tmp, so we only call it
+; ONCE up-front and never inside the loop). monster_at_target /
+; item_at_target clobber X but leave tmp alone, so the cursor survives.
+; The PHA/PLA around the pool scans preserves X = remaining-cell counter.
 ; ----------------------------------------------------------------------------
 find_empty_cell:
-        LDX     #32                     ; attempts counter
+        LDA     #LOGICAL_COLS * LOGICAL_ROWS
+        JSR     rand_mod                ; A in [0, 160)
+        STA     tmp                     ; cursor offset
+        LDX     #LOGICAL_COLS * LOGICAL_ROWS  ; remaining cells to inspect
 @try:
-        LDA     #LOGICAL_COLS
-        JSR     rand_mod
+        ; Decode tmp = row*16 + col → (tgt_col, tgt_row).
+        LDA     tmp
+        AND     #$0F
         STA     tgt_col
-        LDA     #LOGICAL_ROWS
-        JSR     rand_mod
+        LDA     tmp
+        LSR
+        LSR
+        LSR
+        LSR
         STA     tgt_row
-        JSR     tile_at_target          ; preserves X (uses Y)
+        JSR     tile_at_target          ; preserves X (uses Y, map_ptr)
         CMP     #TILE_EMPTY
-        BNE     @next
+        BNE     @advance
         LDA     tgt_col
         CMP     player_col
         BNE     @ok_player
         LDA     tgt_row
         CMP     player_row
-        BEQ     @next
+        BEQ     @advance
 @ok_player:
         TXA
-        PHA                             ; save attempts counter
+        PHA                             ; save remaining counter
         JSR     monster_at_target       ; clobbers X
-        BCC     @next_pop               ; monster present → retry
+        BCC     @advance_pop            ; monster present → next cell
         JSR     item_at_target          ; clobbers X
         PLA
-        TAX                             ; restore attempts counter
-        BCC     @next                   ; item present → retry
+        TAX                             ; restore remaining counter
+        BCC     @advance                ; item present → next cell
         CLC
         RTS
-@next_pop:
+@advance_pop:
         PLA
         TAX
-@next:
+@advance:
+        INC     tmp
+        LDA     tmp
+        CMP     #LOGICAL_COLS * LOGICAL_ROWS
+        BCC     @no_wrap
+        LDA     #0
+        STA     tmp
+@no_wrap:
         DEX
         BNE     @try
         SEC
@@ -2112,11 +2143,12 @@ item_at_target:
 ; ----------------------------------------------------------------------------
 ; try_pickup_item: called from main_loop's regular-move path right
 ; after the player's coordinates are updated. If an item sits on the
-; player's new cell, push it into the inventory pool. Stackable types
-; (food, dagger) merge with an existing slot of the same sub-type by
-; bumping INV_QTY; everything else takes the first empty slot. If the
-; bag is full, the item stays on the ground and the player has to
-; come back (no message yet — eventual P10 polish).
+; player's new cell, push it into the inventory pool. Daggers are the
+; one exception: they increment dagger_qty and never enter the bag.
+; Every inventory item merges with an existing slot of the same sub-type
+; by bumping INV_QTY; otherwise it takes the first empty slot. If the
+; bag is full, the item stays on the ground and the player has to come
+; back (no message yet — eventual P10 polish).
 ;
 ; map_ptr is reused as scratch for the cached (type, subtype) of the
 ; world item — it's dead between turns (only render_map writes to it).
@@ -2136,6 +2168,9 @@ try_pickup_item:
         STA     map_ptr+1               ; scratch[1] = subtype
         TXA
         PHA                             ; preserve world slot offset
+        LDA     map_ptr
+        CMP     #ITEM_T_DAGGER
+        BEQ     @pickup_dagger
         ; Every item type now stacks on (type, subtype) match — the
         ; buff-timer rework made weapons / armours / torches each into
         ; a per-use charge, so picking up a second sword should grow
@@ -2171,6 +2206,14 @@ try_pickup_item:
         ; come back, eat / equip something, then walk over the cell again.
 @done:
         RTS
+@pickup_dagger:
+        ; Daggers are ammo, not inventory. Cap to the 2-digit HUD range;
+        ; extra pickups past 99 are consumed but do not increase the count.
+        LDA     dagger_qty
+        CMP     #DAGGER_QTY_MAX
+        BCS     @consume
+        INC     dagger_qty
+        JMP     @consume
 
 
 ; ----------------------------------------------------------------------------
@@ -2488,6 +2531,8 @@ init_inventory:
         STA     xp_atk_bonus            ; no XP-driven ATK bonus yet
         STA     xp_def_bonus            ; no XP-driven DEF bonus yet
         STA     throw_active            ; no projectile in flight at boot
+        STA     dagger_qty              ; dagger ammo is a HUD counter,
+                                        ; not an inventory stack
         STA     weapon_timer            ; no weapon buff active
         STA     weapon_boost
         STA     armor_timer             ; no armor buff active
@@ -3303,34 +3348,8 @@ compute_fov:
         STA     cur_y
         JSR     mark_visible_at_cur
 
-        ; --- Phase 3: 8 octants. ---
-        LDA     #0
-        STA     oct_idx
-@oct_lp:
-        LDX     oct_idx
-        LDA     octant_xx,X
-        STA     oct_xx
-        LDA     octant_xy,X
-        STA     oct_xy
-        LDA     octant_yx,X
-        STA     oct_yx
-        LDA     octant_yy,X
-        STA     oct_yy
-
-        ; Initial cone: start = 1/1, end = 0/1, depth = 1.
-        LDA     #1
-        STA     cast_start_n
-        STA     cast_start_d
-        STA     cast_end_d
-        STA     cast_depth
-        LDA     #0
-        STA     cast_end_n
-        JSR     cast_octant
-
-        INC     oct_idx
-        LDA     oct_idx
-        CMP     #8
-        BCC     @oct_lp
+        ; --- Phase 3: 8 octants via the shared shadowcaster lib. ---
+        JSR     shadowcast_octants
         ; Fall through into strip_invisible_pit_reveals.
 
 ; ----------------------------------------------------------------------------
@@ -3357,374 +3376,6 @@ strip_invisible_pit_reveals:
         BPL     @lp
         RTS
 
-
-; ----------------------------------------------------------------------------
-; Octant transforms. Each octant maps canonical (col, depth) coords —
-; col ∈ [0, depth], depth ∈ [1, fov_r] — to a grid (dx, dy) offset
-; from (player_col, player_row):
-;     dx = col * oct_xx + depth * oct_xy
-;     dy = col * oct_yx + depth * oct_yy
-; Each row of the table has exactly one nonzero in {xx, xy} and one
-; in {yx, yy}; the nonzeros are ±1, $FF being two's-complement -1.
-; The 8 rows together cover all 8 octants without overlap. apply_
-; octant adds player_col / player_row and stores in cur_x / cur_y.
-octant_xx:      .byte   0,    1,   $FF,   0,    0,   $FF,   1,    0
-octant_xy:      .byte   1,    0,    0,   $FF, $FF,   0,     0,    1
-octant_yx:      .byte $FF,    0,    0,   $FF,   1,    0,    0,    1
-octant_yy:      .byte   0,   $FF, $FF,    0,    0,    1,    1,    0
-
-
-; ----------------------------------------------------------------------------
-; cast_octant: recursive shadowcast for one octant. Reads cast_depth /
-; cast_start_n,d / cast_end_n,d from ZP; iterates rows of increasing
-; depth and inside each row scans cols from outer (col = depth, slope
-; ≈ 1) to inner (col = 0, slope = 0). For each in-cone cell:
-;   - mark visible
-;   - if the cell is opaque (wall / door):
-;       * floor → wall transition: recurse one row deeper with the cone
-;         narrowed to (start, leftSlope) — the wall's high edge, which
-;         is the steepest slope the wall occludes at deeper rows.
-;       * cache rightSlope as cast_save_n/d ("new_start"). This is what
-;         the row's `start` becomes if we cross back to floor later in
-;         the same row.
-;   - if the cell is floor and we just exited a wall chain, rewind
-;     start to cast_save_n/d.
-; If the row ends with cast_blocked still set (an unbroken wall chain
-; across the cone tail), the routine returns — every deeper row is
-; entirely shadowed.
-;
-; Recursion depth ≤ fov_r ≤ 7. Each recursive frame pushes 9 bytes of
-; live state (depth, col, blocked, save_n/d, start_n/d, end_n/d) plus
-; the JSR return address: 11 bytes per level, ~80 bytes peak. The
-; hardware stack handles it easily.
-; ----------------------------------------------------------------------------
-cast_octant:
-        ; --- Empty cone? if start_n/start_d <= end_n/end_d -> return.
-        ; Cross-multiplication: start_n * end_d <= end_n * start_d.
-        LDA     cast_start_n
-        STA     mul_a
-        LDA     cast_end_d
-        JSR     mul_4bit                ; A = start_n * end_d
-        STA     mul_tmp
-        LDA     cast_end_n
-        STA     mul_a
-        LDA     cast_start_d
-        JSR     mul_4bit                ; A = end_n * start_d
-        CMP     mul_tmp                 ; carry set iff end*start_d >= start*end_d
-        BCC     @row_lp                 ; start > end -> real cone
-        JMP     @rt                     ; start <= end -> empty cone, done
-@row_lp:
-        LDA     cast_depth
-        CMP     fov_r
-        BEQ     @row_ok
-        BCC     @row_ok                 ; depth < fov_r -> process row
-        JMP     @rt                     ; depth > fov_r -> done with octant
-@row_ok:
-        ; --- Per-row state ---
-        LDA     #0
-        STA     cast_blocked
-        LDA     cast_start_n
-        STA     cast_save_n             ; "new_start" — initial value =
-        LDA     cast_start_d            ;   current start; updated as we
-        STA     cast_save_d             ;   discover wall chains.
-
-        LDA     cast_depth
-        STA     cast_col                ; outer-most cell in row
-
-@col_lp:
-        ; --- Compute leftSlope = (2c + 1) / (2d - 1) ---
-        ; --- Compute rightSlope = max(0, 2c - 1) / (2d + 1) ---
-        LDA     cast_col
-        ASL                             ; A = 2c
-        PHA                             ; save 2c
-        CLC
-        ADC     #1                      ; 2c + 1
-        STA     cast_lslope_n
-        LDA     cast_depth
-        ASL                             ; A = 2d
-        PHA                             ; save 2d
-        SEC
-        SBC     #1                      ; 2d - 1
-        STA     cast_lslope_d
-        ; rightSlope numerator: 0 if col=0, else 2c-1.
-        LDA     cast_col
-        BEQ     @rs_zero
-        PLA                             ; A = 2d
-        STA     cast_rslope_d           ; (we'll fix d after)
-        PLA                             ; A = 2c
-        SEC
-        SBC     #1                      ; 2c - 1
-        STA     cast_rslope_n
-        JMP     @rs_d
-@rs_zero:
-        PLA                             ; A = 2d
-        STA     cast_rslope_d
-        PLA                             ; discard 2c (col was 0)
-        LDA     #0
-        STA     cast_rslope_n
-@rs_d:
-        INC     cast_rslope_d           ; 2d + 1
-
-        ; --- Cone test (a): if cast_start < rightSlope, skip cell.
-        ; start_n/start_d < rslope_n/rslope_d
-        ;   <=>  start_n * rslope_d  <  rslope_n * start_d
-        LDA     cast_start_n
-        STA     mul_a
-        LDA     cast_rslope_d
-        JSR     mul_4bit
-        STA     mul_tmp                 ; start_n * rslope_d
-        LDA     cast_rslope_n
-        STA     mul_a
-        LDA     cast_start_d
-        JSR     mul_4bit                ; rslope_n * start_d
-        CMP     mul_tmp                 ; >= mul_tmp => rslope >= start
-        BEQ     @in_cone_a              ; equal: still in cone (boundary)
-        BCC     @in_cone_a              ; rslope < start -> in cone
-        JMP     @next_col               ; rslope > start -> too steep, skip
-@in_cone_a:
-        ; --- Cone test (b): if leftSlope < cast_end, break (past cone).
-        ; lslope_n/lslope_d < end_n/end_d
-        ;   <=>  lslope_n * end_d  <  end_n * lslope_d
-        LDA     cast_lslope_n
-        STA     mul_a
-        LDA     cast_end_d
-        JSR     mul_4bit
-        STA     mul_tmp                 ; lslope_n * end_d
-        LDA     cast_end_n
-        STA     mul_a
-        LDA     cast_lslope_d
-        JSR     mul_4bit                ; end_n * lslope_d
-        CMP     mul_tmp
-        BEQ     @in_cone_b              ; equal: keep
-        BCC     @in_cone_b              ; end*lslope_d < lslope_n*end_d
-                                        ;   -> end < lslope -> in cone
-        JMP     @break_row              ; lslope < end -> past cone
-@in_cone_b:
-        ; --- Resolve cell to grid (cur_x, cur_y) and OOR-test. ---
-        JSR     apply_octant
-        LDA     cur_x
-        CMP     #LOGICAL_COLS
-        BCS     @oor_cell
-        LDA     cur_y
-        CMP     #LOGICAL_ROWS
-        BCS     @oor_cell
-
-        ; In-bounds: mark visible + check opacity.
-        JSR     mark_visible_at_cur
-        JSR     is_opaque_at_cur
-        BNE     @cell_blocks            ; opaque → wall handling
-
-        ; --- Floor cell ---
-        LDA     cast_blocked
-        BEQ     @next_col               ; not blocked -> just continue
-        ; Wall→floor transition: rewind start to cast_save_n/d.
-        LDA     #0
-        STA     cast_blocked
-        LDA     cast_save_n
-        STA     cast_start_n
-        LDA     cast_save_d
-        STA     cast_start_d
-        JMP     @next_col
-
-@cell_blocks:
-        ; --- Wall cell ---
-        LDA     cast_blocked
-        BNE     @wall_extend            ; already in wall chain — just
-                                        ; track new_start, no recursion.
-
-        ; Floor → wall transition. Recurse one row deeper with cone
-        ; (start, l_slope), then cache new_start = r_slope.
-        LDA     #1
-        STA     cast_blocked
-        LDA     cast_depth
-        CMP     fov_r
-        BCS     @save_new_start         ; depth >= fov_r -> deepest row,
-                                        ; nothing past the wall to scan.
-
-        ; --- Save 9-byte frame, set up child params, recurse, restore.
-        LDA     cast_depth
-        PHA
-        LDA     cast_col
-        PHA
-        LDA     cast_blocked
-        PHA
-        LDA     cast_save_n
-        PHA
-        LDA     cast_save_d
-        PHA
-        LDA     cast_start_n
-        PHA
-        LDA     cast_start_d
-        PHA
-        LDA     cast_end_n
-        PHA
-        LDA     cast_end_d
-        PHA
-
-        INC     cast_depth              ; child row = depth + 1
-        LDA     cast_lslope_n
-        STA     cast_end_n              ; cone narrowed to (start, lslope)
-        LDA     cast_lslope_d
-        STA     cast_end_d
-
-        JSR     cast_octant
-
-        PLA
-        STA     cast_end_d
-        PLA
-        STA     cast_end_n
-        PLA
-        STA     cast_start_d
-        PLA
-        STA     cast_start_n
-        PLA
-        STA     cast_save_d
-        PLA
-        STA     cast_save_n
-        PLA
-        STA     cast_blocked
-        PLA
-        STA     cast_col
-        PLA
-        STA     cast_depth
-
-@save_new_start:
-@wall_extend:
-        ; Cache rightSlope as new_start (latest wall in chain wins).
-        LDA     cast_rslope_n
-        STA     cast_save_n
-        LDA     cast_rslope_d
-        STA     cast_save_d
-        JMP     @next_col
-
-@oor_cell:
-        ; Treat off-grid as wall; runs the wall-state machine but skips
-        ; mark_visible / opacity (the cell is unreachable anyway).
-        LDA     cast_blocked
-        BNE     @oor_extend
-        LDA     #1
-        STA     cast_blocked
-@oor_extend:
-        LDA     cast_rslope_n
-        STA     cast_save_n
-        LDA     cast_rslope_d
-        STA     cast_save_d
-        ; (no recursion — off-grid wall doesn't shadow anything in-grid
-        ; that wasn't already shadowed by the actual border wall, and
-        ; in our 16x10 layout border cells are always TILE_WALL anyway.)
-
-@next_col:
-        LDA     cast_col
-        BEQ     @col_done               ; col already 0 -> row scan done
-        DEC     cast_col
-        JMP     @col_lp
-
-@break_row:
-@col_done:
-        ; If the row ended while still inside a wall chain, every
-        ; deeper row would be entirely shadowed by it -> return.
-        LDA     cast_blocked
-        BNE     @rt
-
-        INC     cast_depth
-        JMP     @row_lp
-@rt:
-        RTS
-
-
-; ----------------------------------------------------------------------------
-; apply_octant: cur_x = player_col + col * oct_xx + depth * oct_xy
-;               cur_y = player_row + col * oct_yx + depth * oct_yy
-; All four oct_* coefficients are signed: $00, $01, or $FF (= -1). The
-; signed_mul_unit helper resolves coeff * magnitude into an 8-bit
-; two's-complement byte, then we sum into the (unsigned) player coord.
-; The caller's OOR check (CMP #LOGICAL_COLS) catches both overshoot
-; and signed-wrap underflow ($FF).
-; ----------------------------------------------------------------------------
-apply_octant:
-        LDA     oct_xx
-        LDY     cast_col
-        JSR     signed_mul_unit
-        STA     mul_tmp                 ; col * oct_xx
-        LDA     oct_xy
-        LDY     cast_depth
-        JSR     signed_mul_unit
-        CLC
-        ADC     mul_tmp                 ; + depth * oct_xy
-        CLC
-        ADC     player_col
-        STA     cur_x
-
-        LDA     oct_yx
-        LDY     cast_col
-        JSR     signed_mul_unit
-        STA     mul_tmp
-        LDA     oct_yy
-        LDY     cast_depth
-        JSR     signed_mul_unit
-        CLC
-        ADC     mul_tmp
-        CLC
-        ADC     player_row
-        STA     cur_y
-        RTS
-
-
-; ----------------------------------------------------------------------------
-; signed_mul_unit: A = signed_unit * magnitude.
-;   In:  A = coefficient ($00, $01, or $FF)
-;        Y = unsigned magnitude (≤ TORCH_RADIUS = 7)
-;   Out: A = signed product as two's-complement byte
-;        ($00, +Y, or -Y respectively)
-; ----------------------------------------------------------------------------
-signed_mul_unit:
-        CMP     #0
-        BEQ     @zero
-        BMI     @neg
-        TYA
-        RTS
-@neg:
-        TYA
-        EOR     #$FF
-        CLC
-        ADC     #1
-        RTS
-@zero:
-        LDA     #0
-        RTS
-
-
-; ----------------------------------------------------------------------------
-; mul_4bit: 4-bit × 4-bit unsigned multiply.
-;   In:  mul_a = multiplicand (0..15)
-;        A    = multiplier   (0..15)
-;   Out: A    = mul_a * multiplier (0..225, fits in one byte)
-;   Clobbers: X, mul_b
-;
-; Used exclusively by cast_octant's slope cross-multiplications. All
-; slope numerators / denominators stay within 0..(2*TORCH_RADIUS+1) =
-; 0..15, so the product fits comfortably in 8 bits.
-; ----------------------------------------------------------------------------
-mul_4bit:
-        ; Park b in the upper nybble of mul_b so the shift-and-add
-        ; loop only needs 4 iterations.
-        ASL
-        ASL
-        ASL
-        ASL
-        STA     mul_b
-        LDA     #0
-        LDX     #4
-@lp:
-        ASL                             ; result <<= 1
-        ASL     mul_b                   ; bit of multiplier -> carry
-        BCC     @noadd
-        CLC
-        ADC     mul_a
-@noadd:
-        DEX
-        BNE     @lp
-        RTS
 
 
 ; ----------------------------------------------------------------------------
@@ -3862,11 +3513,12 @@ clear_hurt_flags:
 ; ----------------------------------------------------------------------------
 ; place_all_sprites: rewrite the entire Sprite Attribute Table at $1B00.
 ; Slot 0 is always the player (Y=row*16, X=col*16, name=0, COL_PLAYER).
-; Slots 1..N are one entry per LIVE monster (MON_TYPE != 0), in pool
-; order — each pulls Y/X from MON_ROW/MON_COL × 16 and (name, color)
-; straight from the per-monster fields. The next-after-last slot gets
-; Y=$D0, the chip's chain-terminator sentinel — every later SAT entry
-; is ignored regardless of contents.
+; Slot 1 is the always-visible dagger ammo HUD icon. Slots after that
+; are one entry per LIVE monster (MON_TYPE != 0), in pool order — each
+; pulls Y/X from MON_ROW/MON_COL × 16 and (name, color) straight from
+; the per-monster fields. The next-after-last slot gets Y=$D0, the chip's
+; chain-terminator sentinel — every later SAT entry is ignored regardless
+; of contents.
 ;
 ; Logical (lcol, lrow) → pixel (lcol*16, lrow*16) so a 16x16 sprite
 ; sits exactly on its 16x16 logical tile. We don't bother sub-pixel-
@@ -3906,7 +3558,18 @@ place_all_sprites:
 @p_write:
         WRT_DATA_REG
 
-        ; --- Slots 1..N: live monsters (one SAT entry per non-zero
+        ; --- Slot 1: dagger ammo HUD. It lives on rows 20-21, above the
+        ;     timer icons, so it never enters the same 4-sprites-per-
+        ;     scanline group. The 2-digit count is painted by
+        ;     update_hud_equip at row 21 cols 30-31.
+        LDA     #160
+        WRT_DATA_REG
+        LDA     #224                    ; pixel x=224 (cols 28-29)
+        WRT_DATA_REG
+        WRT_DATA_VAL SPRITE_NAME_DAGGER
+        WRT_DATA_VAL COL_DAGGER
+
+        ; --- Slots 2..N: live monsters (one SAT entry per non-zero
         ;     MON_TYPE). FOV gate: a monster on a cell whose
         ;     VIS_VISIBLE bit is clear is dropped from the SAT entirely
         ;     — same effect as if the slot were dead this frame, no
@@ -4017,19 +3680,22 @@ place_all_sprites:
         ;     countdowns are painted to the immediately-right name-table
         ;     cells by update_hud_timers — the alternating SPR / DIG
         ;     layout reads as "icon NN  icon NN  icon NN  icon NN".
-        ;     Layout (always 4 fixed slot positions, packed centred):
-        ;       WPN: sprite px=64  (cols  8-9)   digits cols 10-11
-        ;       ARM: sprite px=96  (cols 12-13)  digits cols 14-15
-        ;       RNG: sprite px=128 (cols 16-17)  digits cols 18-19
-        ;       TRC: sprite px=160 (cols 20-21)  digits cols 22-23
-        ;     All 4 fit on the same 16-line scan window (176-191) under
-        ;     the 4-per-scanline TMS9918 limit; nothing gameplay-side
-        ;     ever lives at y >= 160 (logical row 9 ends at y=159).
+        ;     Layout (left-packed against col 0, digits sit on row 23
+        ;     immediately right of each sprite — sprites span rows 22-23,
+        ;     digits live in the SPRITE-FREE column to the right):
+        ;       WPN: sprite px=  0 (cols  0-1)   digits row 23 cols  2-3
+        ;       ARM: sprite px= 32 (cols  4-5)   digits row 23 cols  6-7
+        ;       RNG: sprite px= 64 (cols  8-9)   digits row 23 cols 10-11
+        ;       TRC: sprite px= 96 (cols 12-13)  digits row 23 cols 14-15
+        ;     Dagger ammo uses y=160 (rows 20-21) so it doesn't compete
+        ;     with the timer icons on rows 22-23.
+        ;     Nothing gameplay-side ever lives at y >= 160 (logical row 9
+        ;     ends at y=159).
         LDA     weapon_timer
         BEQ     @no_wpn_spr
         LDA     #176
         WRT_DATA_REG
-        LDA     #64
+        LDA     #0                      ; pixel x=0 — leftmost slot
         WRT_DATA_REG
         WRT_DATA_VAL SPRITE_NAME_WEAPON
         WRT_DATA_VAL COL_WEAPON
@@ -4038,7 +3704,7 @@ place_all_sprites:
         BEQ     @no_arm_spr
         LDA     #176
         WRT_DATA_REG
-        LDA     #96
+        LDA     #32                     ; pixel x=32 (cols 4-5)
         WRT_DATA_REG
         WRT_DATA_VAL SPRITE_NAME_ARMOR
         WRT_DATA_VAL COL_ARMOR
@@ -4047,7 +3713,7 @@ place_all_sprites:
         BEQ     @no_rng_spr
         LDA     #176
         WRT_DATA_REG
-        LDA     #128
+        LDA     #64                     ; pixel x=64 (cols 8-9)
         WRT_DATA_REG
         WRT_DATA_VAL SPRITE_NAME_RING
         WRT_DATA_VAL COL_RING
@@ -4056,7 +3722,7 @@ place_all_sprites:
         BEQ     @no_trc_spr
         LDA     #176
         WRT_DATA_REG
-        LDA     #160
+        LDA     #96                     ; pixel x=96 (cols 12-13)
         WRT_DATA_REG
         WRT_DATA_VAL SPRITE_NAME_TORCH
         WRT_DATA_VAL COL_TORCH
@@ -4244,19 +3910,16 @@ draw_text:
 
 
 ; ----------------------------------------------------------------------------
-; update_hud: paint a 32-char status line on name-table row 20
-; (VRAM $1A80) — the HUD area below the 32x20 playfield. Layout:
+; update_hud: paint the 4-row HUD below the 32x20 playfield. Layout:
 ;
-;     "DEPTH NNN               HP HH/HM"
-;       6 +  3  +     15      + 3 +  5
-;     cols 0..8                cols 24..31
+;   row 20: DEPTH NNN                         [dagger sprite top]
+;   row 21: ATK:NN DEF:NN                     [dagger sprite] NN
+;   row 22: timers' sprite tops                         HP HH/HM
+;   row 23: timer digits                         XP:NNN
 ;
-; DEPTH stays anchored on the left so the player sees it first reading
-; left-to-right; HP rides on the right edge so the eye snaps to it
-; after every action (the meaningful number per turn). 15 spaces in
-; the middle keep the row at exactly 32 chars and visually separate
-; the two stats. Repainted by finish_turn so HP digits stay live after
-; monster attacks and food pickups.
+; Dagger ammo now lives above the timer row to avoid the TMS9918
+; 4-sprites-per-scanline limit; HP and XP stay right-anchored on the
+; last two HUD text rows.
 ; ----------------------------------------------------------------------------
 update_hud:
         LDA     #$80                    ; row 20 col 0 = $1A80
@@ -4275,42 +3938,24 @@ update_hud:
         BNE     @d_lp
         LDA     depth
         JSR     print_byte_3digits
-        ; --- 15 spaces of right-padding (cols 9..23) ---
+        ; --- 23 spaces of right-padding (cols 9..31). The dagger sprite
+        ;     covers cols 28-29, so the name-table below it must be blank. ---
         LDA     #' '
-        LDX     #15
+        LDX     #23
 @sp_lp: WRT_DATA_REG
         DEX
         BNE     @sp_lp
-        ; --- "HP " (3 chars, cols 24..26) ---
-        LDX     #0
-@h_lp:  LDA     hud_hp,X
-        WRT_DATA_REG
-        INX
-        CPX     #3
-        BNE     @h_lp
-        ; --- "HH/HM" (5 chars, cols 27..31) ---
-        LDA     hp
-        JSR     print_byte_2digits
-        LDA     #'/'
-        WRT_DATA_REG
-        LDA     hp_max                  ; XP-bumpable cap, not literal
-        JSR     print_byte_2digits
         ; Fall through into update_hud_equip — paints row 21 with the
-        ; equipped slot letters + computed ATK/DEF.
+        ; computed ATK/DEF and dagger ammo count.
 
 ; ----------------------------------------------------------------------------
-; update_hud_equip: paint row 21 with combat stats + XP.
-;   "ATK:NN DEF:NN             XP:NNN"
-;    cols 0..12               cols 26..31
+; update_hud_equip: paint row 21 with combat stats + dagger ammo.
+;   "ATK:NN DEF:NN               [dagger]NN"
+;    cols 0..12                         cols 30..31
 ; ATK = computed player_dmg (weapon + str_bonus + ring_str),
 ; DEF = computed player_def (armor + ring_prot),
-; XP  = kills counter (0..255, saturating). The 13 spaces in between
-; pad the line to a fixed 32 chars — no flicker on changes, and the
-; right-anchored XP keeps the reading cadence consistent with row 20
-; where DEPTH is left-anchored and HP rides the right edge.
-; The previous "W:_  A:_  R:_" equipment letters were dropped: the
-; inventory modal already shows '*' on equipped slots next to each
-; sprite, so the row-21 echo was redundant.
+; dagger_qty = ammo counter (0..99, zero-padded). The 17 spaces between
+; DEF and the count keep cols 28-29 blank under the 16x16 dagger sprite.
 ; ----------------------------------------------------------------------------
 update_hud_equip:
         LDA     #21
@@ -4332,40 +3977,65 @@ update_hud_equip:
         WRT_DATA_VAL ':'
         LDA     player_def
         JSR     print_byte_2digits
-        ; 13 spaces of right-padding (cols 13..25).
+        ; 17 spaces of right-padding (cols 13..29).
         LDA     #' '
-        LDX     #13
+        LDX     #17
 @sp_lp: WRT_DATA_REG
         DEX
         BNE     @sp_lp
-        WRT_DATA_VAL 'X'
-        WRT_DATA_VAL 'P'
-        WRT_DATA_VAL ':'
-        LDA     player_xp
-        JSR     print_byte_3digits
-        ; Fall through into update_hud_timers — paints row 22 with
-        ; the four buff countdowns (weapon / armor / ring / torch).
+        LDA     dagger_qty
+        JSR     print_byte_2digits
+        ; Fall through into update_hud_hp — paints row 22 with right-
+        ; anchored HP before row 23's timers + XP.
+
+; ----------------------------------------------------------------------------
+; update_hud_hp: paint HP on row 22 cols 24..31.
+; ----------------------------------------------------------------------------
+update_hud_hp:
+        LDA     #22
+        STA     vdp_row
+        LDA     #24
+        STA     vdp_col
+        JSR     name_at_rc
+        JSR     vdp_set_write
+        LDX     #0
+@h_lp:  LDA     hud_hp,X
+        WRT_DATA_REG
+        INX
+        CPX     #3
+        BNE     @h_lp
+        LDA     hp
+        JSR     print_byte_2digits
+        LDA     #'/'
+        WRT_DATA_REG
+        LDA     hp_max                  ; XP-bumpable cap, not literal
+        JSR     print_byte_2digits
+        ; Fall through into update_hud_timers — paints row 23 with
+        ; the four buff countdowns (weapon / armor / ring / torch),
+        ; flush against the left edge, plus XP on the right.
 
 ; ----------------------------------------------------------------------------
 ; update_hud_timers: paint the digit countdowns next to each active
-; buff sprite at the bottom of the screen. The matching item sprites
-; are emitted by place_all_sprites at y=176 (rows 22-23); this routine
-; only writes the 2-digit text adjacent to each one.
+; buff sprite at the very bottom of the screen, plus XP at the far
+; right. The matching item sprites are
+; emitted by place_all_sprites at y=176 (rows 22-23); this routine writes
+; the 2-digit text on row 23 immediately to the right of each sprite
+; footprint.
 ;
-; Stream-paint row 22 cols 10..23 (14 chars) with digit pairs
-; interleaved with sprite-footprint gaps. Inactive timers paint
-; spaces — clear_msg_rows already wipes row 22 to spaces, but the
-; auto-increment cursor still has to advance through every cell, so
-; we explicitly write the gap spaces too.
+; Stream-paint row 23 cols 2..31 — leading sprite footprint
+; at cols 0-1 is left blank by clear_msg_rows. Inactive timers paint
+; spaces; the auto-increment cursor still has to advance through every
+; cell, so the gap-space writes interleaved with the digit pairs are
+; mandatory even for "no buff" runs.
 ;
-;   col:  10-11  12-13  14-15  16-17  18-19  20-21  22-23
-;         WPN n  [ARM]  ARM n  [RNG]  RNG n  [TRC]  TRC n
+;   col:  2-3   4-5    6-7   8-9    10-11  12-13  14-15 ... 26-31
+;         WPN n [ARM]  ARM n [RNG]  RNG n  [TRC]  TRC n      XP:NNN
 ;         (sprite footprints for ARM/RNG/TRC sit on the gap cols;
-;          the WPN sprite footprint sits at cols 8-9 to the LEFT of
+;          the WPN sprite footprint sits at cols 0-1 to the LEFT of
 ;          the digits stream, untouched by this routine.)
 ; ----------------------------------------------------------------------------
 update_hud_timers:
-        LDA     #$CA                    ; row 22 col 10 = $1ACA
+        LDA     #$E2                    ; row 23 col 2 = $1AE2
         STA     VDP_CTRL
         NOP
         JSR     tms9918_pad12   ; +12c silicon-strict pad16 (before LDA #imm bridge)
@@ -4373,7 +4043,7 @@ update_hud_timers:
         STA     VDP_CTRL
         JSR     tms9918_pad12           ; gap addr-cmd → first WRT_DATA_VAL
 
-        ; Slot 0: WPN digits (cols 10-11)
+        ; Slot 0: WPN digits (cols 2-3)
         LDA     weapon_timer
         BEQ     @wpn_blank
         JSR     print_byte_2digits
@@ -4382,10 +4052,10 @@ update_hud_timers:
         WRT_DATA_VAL ' '
         WRT_DATA_VAL ' '
 @gap_arm:
-        WRT_DATA_VAL ' '                ; cols 12-13: ARM sprite footprint
+        WRT_DATA_VAL ' '                ; cols 4-5: ARM sprite footprint
         WRT_DATA_VAL ' '
 
-        ; Slot 1: ARM digits (cols 14-15)
+        ; Slot 1: ARM digits (cols 6-7)
         LDA     armor_timer
         BEQ     @arm_blank
         JSR     print_byte_2digits
@@ -4394,10 +4064,10 @@ update_hud_timers:
         WRT_DATA_VAL ' '
         WRT_DATA_VAL ' '
 @gap_rng:
-        WRT_DATA_VAL ' '                ; cols 16-17: RNG sprite footprint
+        WRT_DATA_VAL ' '                ; cols 8-9: RNG sprite footprint
         WRT_DATA_VAL ' '
 
-        ; Slot 2: RNG digits (cols 18-19)
+        ; Slot 2: RNG digits (cols 10-11)
         LDA     ring_timer
         BEQ     @rng_blank
         JSR     print_byte_2digits
@@ -4406,17 +4076,30 @@ update_hud_timers:
         WRT_DATA_VAL ' '
         WRT_DATA_VAL ' '
 @gap_trc:
-        WRT_DATA_VAL ' '                ; cols 20-21: TRC sprite footprint
+        WRT_DATA_VAL ' '                ; cols 12-13: TRC sprite footprint
         WRT_DATA_VAL ' '
 
-        ; Slot 3: TRC digits (cols 22-23)
+        ; Slot 3: TRC digits (cols 14-15)
         LDA     torch_timer
         BEQ     @trc_blank
         JSR     print_byte_2digits
-        RTS
+        JMP     @xp_gap
 @trc_blank:
         WRT_DATA_VAL ' '
         WRT_DATA_VAL ' '
+@xp_gap:
+        ; Clear cols 16-25, then write XP at cols 26-31.
+        LDA     #' '
+        LDX     #10
+@xp_sp_lp:
+        WRT_DATA_REG
+        DEX
+        BNE     @xp_sp_lp
+        WRT_DATA_VAL 'X'
+        WRT_DATA_VAL 'P'
+        WRT_DATA_VAL ':'
+        LDA     player_xp
+        JSR     print_byte_3digits
         RTS
 
 
@@ -4532,8 +4215,8 @@ finish_turn:
 @no_ring_tick:
         ; Order matters: clear_msg_rows wipes rows 22-23 FIRST (any
         ; transient "INV FULL" / "NOT WEARABLE" prompt left from an
-        ; earlier free-action handler), then update_hud paints rows
-        ; 20-22 — including the buff timers on row 22, which would
+        ; earlier free-action handler), then update_hud repaints rows
+        ; 20-23 — including HP/XP and the buff timer digits, which would
         ; otherwise be zapped if clear_msg_rows ran second.
         JSR     clear_msg_rows
         JSR     update_hud
@@ -4561,6 +4244,26 @@ clear_msg_rows:
         STA     VDP_CTRL
         JSR     tms9918_pad12           ; gap addr-cmd → first WRT_DATA_VAL
         LDX     #64
+@lp:    WRT_DATA_VAL ' '
+        DEX
+        BNE     @lp
+        RTS
+
+; ----------------------------------------------------------------------------
+; clear_msg_row23: blank just row 23 (32 chars) — used by transient-prompt
+; cancellers (handle_throw cancel) that need to wipe the on-screen prompt
+; without disturbing row 22's HP line. Same VDP-write recipe as
+; clear_msg_rows but starts at $1AE0 (row 23 col 0) and emits 32 spaces.
+; ----------------------------------------------------------------------------
+clear_msg_row23:
+        LDA     #$E0
+        STA     VDP_CTRL
+        NOP
+        JSR     tms9918_pad12
+        LDA     #$5A                    ; $1A | $40
+        STA     VDP_CTRL
+        JSR     tms9918_pad12
+        LDX     #32
 @lp:    WRT_DATA_VAL ' '
         DEX
         BNE     @lp
@@ -4818,12 +4521,9 @@ msg_empty_inv:  .byte "-NOTHING-", $FF       ; same length as "(NOTHING)" so
                                               ; '(' / ')' glyphs are broken
                                               ; (extracted as plain vertical
                                               ; bars), so dashes here.
-msg_use_q:      .byte "USE WHICH? ", $FF
-msg_throw_q:    .byte "THROW WHICH? ", $FF
 msg_dir_q:      .byte "DIRECTION? ", $FF
-msg_no_item:    .byte "NO SUCH ITEM", $FF
 msg_not_use:    .byte "NOT USABLE", $FF
-msg_not_throw:  .byte "NOT THROWABLE", $FF
+msg_no_dagger:  .byte "NO DAGGER", $FF        ; throw with empty bag
 msg_no_room:    .byte "NO ROOM", $FF
 
 
@@ -4845,6 +4545,8 @@ redraw_game:
 
 ; ----------------------------------------------------------------------------
 ; show_inventory: full-screen modal listing every non-empty bag slot.
+; Daggers are deliberately absent: they live in dagger_qty and are shown
+; on the HUD, not as lettered inventory entries.
 ; Blocks until any key is pressed, then redraws the game view. Each
 ; slot occupies TWO display rows: the item's 16x16 sprite at (col 1,
 ; row N) sits to the left of "[L] *NAME UTILITY" on row N. The utility
@@ -4862,8 +4564,6 @@ redraw_game:
 ;   [SPRITE] [E]  SCROLL REVEAL     ← scroll: full-map reveal
 ;   [SPRITE] [F]  RATION HP+3       ← food
 ;                 (X3)                  ← stack count on row N+1
-;   [SPRITE] [G]  DAGGER THROW      ← dagger: 'T' to throw
-;                 (X3)
 ;
 ; 9 slots fit (rows 3..20). Empty inventory shows "(NOTHING)" centred.
 ; The footer is constant "PRESS ANY KEY" at row 22, col 9.
@@ -4898,6 +4598,8 @@ show_inventory:
 @spr_lp:
         LDA     inventory+INV_TYPE,X
         BEQ     @spr_next
+        CMP     #ITEM_T_DAGGER
+        BEQ     @spr_next               ; legacy/corrupt slots stay hidden
         LDA     map_ptr
         CMP     #21                     ; same cap as text pass — leaves
         BCS     @spr_next               ; rows 21/22 free for footer
@@ -4956,6 +4658,8 @@ show_inventory:
 @slot_lp:
         LDA     inventory+INV_TYPE,X
         BEQ     @slot_next
+        CMP     #ITEM_T_DAGGER
+        BEQ     @slot_next              ; daggers are HUD ammo, not bag UI
         LDA     map_ptr
         CMP     #21
         BCS     @slot_next              ; bag is huge → silently truncate
@@ -5028,11 +4732,13 @@ show_inventory:
         TAX
         LDA     inventory+INV_TYPE,X
         BEQ     @inv_dismiss            ; empty slot → no-op
+        CMP     #ITEM_T_DAGGER
+        BEQ     @inv_dismiss            ; hidden legacy slot → no-op
+@inv_dispatch:
         ; Valid slot — dispatch via the shared use-slot routine. It
-        ; redraws on success paths (equip toggle / consume) and leaves
-        ; the dagger error message on row 23. We always trail with a
-        ; PHA / redraw_game / PLA so the modal is wiped uniformly and
-        ; the turn-cost flag survives back to main_loop's @do_inv.
+        ; redraws on success paths. We always trail with a PHA /
+        ; redraw_game / PLA so the modal is wiped uniformly and the
+        ; turn-cost flag survives back to main_loop's @do_inv.
         JSR     dispatch_use_slot
         PHA
         JSR     redraw_game
@@ -5136,7 +4842,7 @@ draw_inv_line:
 ;   POTION  → HP+N     (N = 8)
 ;   SCROLL  → REVEAL   (full-map reveal effect)
 ;   FOOD    → HP+N     (N = FOOD_HEAL = 3)
-;   DAGGER  → THROW    (use 'T' to throw, 'E' is a no-op)
+;   DAGGER  → hidden legacy fallback; live daggers are HUD ammo
 ;
 ; Inputs:
 ;   X = slot byte offset (preserved on RTS so callers can re-use it).
@@ -5174,7 +4880,9 @@ draw_inv_utility:
         BNE     @n_torch
         JMP     @torch
 @n_torch:
-        ; ITEM_T_DAGGER (only remaining type) → "THROW"
+        ; ITEM_T_DAGGER is unreachable in normal play (daggers are HUD ammo),
+        ; but keep a legacy/corrupt-slot label instead of falling into
+        ; random bytes if an old slot survives in RAM.
         WRT_DATA_VAL 'T'
         WRT_DATA_VAL 'H'
         WRT_DATA_VAL 'R'
@@ -5257,36 +4965,6 @@ print_msg_row:
 
 
 ; ----------------------------------------------------------------------------
-; parse_inv_letter: convert raw key (high bit set, expect 'A'..'Z')
-; into a slot byte offset and validate the slot is non-empty.
-;   Inputs:  A = KBD value (high bit set)
-;   Returns: C clear → X = slot byte offset, slot guaranteed non-empty
-;            C set   → invalid (out of range or empty slot)
-; The high-bit strip + 'A' subtraction collapses the two failure paths
-; (key < 'A' or key > 'Z') into a single BCS check via 6502's natural
-; unsigned underflow. INV_COUNT is the upper bound (26 letters).
-; ----------------------------------------------------------------------------
-parse_inv_letter:
-        AND     #$7F
-        SEC
-        SBC     #'A'
-        BCC     @bad                    ; key was < 'A'
-        CMP     #INV_COUNT
-        BCS     @bad                    ; key was > 'A'+INV_COUNT-1
-        ASL
-        ASL
-        ASL                             ; slot index → byte offset
-        TAX
-        LDA     inventory+INV_TYPE,X
-        BEQ     @bad                    ; empty slot
-        CLC
-        RTS
-@bad:
-        SEC
-        RTS
-
-
-; ----------------------------------------------------------------------------
 ; consume_inv_slot: decrement INV_QTY at byte offset X. If QTY drops
 ; to 0, free the slot (clear INV_TYPE). All item types stack on
 ; (type, subtype) match now (see try_pickup_item), so a "stack of 1"
@@ -5301,47 +4979,6 @@ consume_inv_slot:
 @done:
         RTS
 
-
-; ----------------------------------------------------------------------------
-; handle_use: 'E' command — single unified action that dispatches on
-; sub-type. Pickup is automatic on bump; this is the ONLY way to
-; activate an item's effect.
-;
-; Buff (free action — consumes 1 charge, starts a per-category timer):
-;   WEAPON (sword)  → weapon_timer = WEAPON_DURATION; weapon_boost = ATK
-;   ARMOR  (tunic)  → armor_timer  = ARMOR_DURATION;  armor_boost  = DEF
-;   RING   (amulet) → ring_timer   = RING_DURATION;   ring_flags  |= bit
-;   TORCH           → torch_timer  = TORCH_DURATION;  FOV → TORCH_RADIUS
-;
-; Consumable (consumes the slot, takes a turn):
-;   FOOD   (ration) heal +FOOD_HEAL HP (cap hp_max)
-;   POTION          heal +INV_VALUE HP (cap hp_max)
-;   SCROLL          one-shot full-map view (modal)
-;   DAGGER          not consumed here — use 'T' to throw.
-;
-; Returns A = 1 if a turn was consumed (caller drives move_monsters +
-; finish_turn), A = 0 for free actions (buff activation, error, dagger).
-; ----------------------------------------------------------------------------
-handle_use:
-        LDA     #<msg_use_q
-        STA     vdp_src_lo
-        LDA     #>msg_use_q
-        STA     vdp_src_hi
-        LDA     #23
-        JSR     print_msg_row
-        LDA     KBD                     ; drain stale strobe
-        JSR     wait_key
-        JSR     parse_inv_letter
-        BCC     dispatch_use_slot       ; valid + non-empty → dispatch
-        ; Parse failed (out of range / empty slot) — show msg, free action.
-        LDA     #<msg_no_item
-        STA     vdp_src_lo
-        LDA     #>msg_no_item
-        STA     vdp_src_hi
-        LDA     #23
-        JSR     print_msg_row
-        LDA     #0
-        RTS
 
 ; ----------------------------------------------------------------------------
 ; dispatch_use_slot: shared dispatch body. On entry X = slot byte offset
@@ -5597,40 +5234,43 @@ delay_throw_frame:
 
 ; ----------------------------------------------------------------------------
 ; handle_throw: 'T' command — hurl a dagger in a chosen direction.
-; The dagger flies up to THROW_RANGE cells, stopping on the first wall,
-; door, monster, or out-of-bounds cell. On a monster hit it deals
-; throw_dmg damage (cached INV_VALUE), drops the dagger on the corpse
-; cell. Otherwise it lands on the last empty cell. INV_QTY is
-; decremented from the slot at the start (consume_inv_slot call BEFORE
-; the animation so even if the player dies from a counter-attack the
-; dagger is correctly accounted for).
+; Streamlined fire-and-forget design (per project spec):
+;   1. Check dagger_qty — daggers are ammo, not inventory slots.
+;      Silent-fail with "NO DAGGER" + free action if the quiver is empty.
+;   2. Print "DIRECTION? " on row 23, wait for a movement key.
+;   3. parse_direction → throw_dx/dy. Cancel returns silently with the
+;      dagger count unchanged (free action, prompt persists until the
+;      next turn — visual reminder that the throw didn't happen).
+;   4. Decrement dagger_qty.
+;   5. Animate flight cell-by-cell at ~80 ms/frame, range THROW_RANGE.
+;      The dagger ALWAYS vanishes on stop — monster hit (deal throw_dmg,
+;      kill if HP→0), wall / door / stairs / pit, OOB, or end of range.
+;      No floor drops; matches the player-facing model "fire and forget".
 ;
 ; Returns A = 1 (turn consumed) on a successful throw, A = 0 on error
-; (no item / wrong type / cancelled direction).
+; (no daggers in bag / cancelled direction).
 ; ----------------------------------------------------------------------------
 THROW_RANGE = 8
+DAGGER_DMG  = 2                 ; per-throw damage (dagger is now a
+                                ; quiver-stat ammo, not an inventory
+                                ; item, so the dmg lives as a constant
+                                ; rather than INV_VALUE on a slot).
+DAGGER_QTY_MAX = 99             ; ammo cap (2-digit HUD display)
 
 handle_throw:
-        ; --- Pick the dagger slot ---
-        LDA     #<msg_throw_q
+        ; --- Quiver empty → "NO DAGGER", free action. ---
+        LDA     dagger_qty
+        BNE     @have_dagger
+        LDA     #<msg_no_dagger
         STA     vdp_src_lo
-        LDA     #>msg_throw_q
+        LDA     #>msg_no_dagger
         STA     vdp_src_hi
         LDA     #23
         JSR     print_msg_row
-        LDA     KBD
-        JSR     wait_key
-        JSR     parse_inv_letter
-        BCC     @have_item
-        JMP     @no_item                ; trampoline (BCS too far)
-@have_item:
-        STX     map_ptr                 ; cache slot offset
-        LDA     inventory+INV_TYPE,X
-        CMP     #ITEM_T_DAGGER
-        BEQ     @is_dagger
-        JMP     @not_throwable
-@is_dagger:
-        LDA     inventory+INV_VALUE,X
+        LDA     #0
+        RTS
+@have_dagger:
+        LDA     #DAGGER_DMG
         STA     throw_dmg               ; cache dmg before consume
 
         ; --- Pick the direction ---
@@ -5640,16 +5280,19 @@ handle_throw:
         STA     vdp_src_hi
         LDA     #23
         JSR     print_msg_row
-        LDA     KBD
+        LDA     KBD                     ; drain T strobe
         JSR     wait_key
         JSR     parse_direction
         BCC     @have_dir
-        JMP     @cancelled
+        ; Cancelled — non-direction key. Wipe row 23 so the prompt
+        ; doesn't linger ("DIRECTION? " confused players into thinking
+        ; the game was still waiting), bag stays intact, free action.
+        JSR     clear_msg_row23
+        LDA     #0
+        RTS
 @have_dir:
-
-        ; --- Consume one dagger from the stack BEFORE the flight. ---
-        LDX     map_ptr
-        JSR     consume_inv_slot
+        ; --- Consume one dagger charge from the quiver. ---
+        DEC     dagger_qty
 
         ; --- Animate the flight. cur_x/cur_y walk from the player's
         ; cell outward by (throw_dx, throw_dy) up to THROW_RANGE steps. ---
@@ -5672,19 +5315,19 @@ handle_throw:
         LDA     cur_y
         ADC     throw_dy
         STA     cur_y
-        ; Bounds: stay strictly inside the playable interior.
+        ; Bounds: stay strictly inside the playable interior — off-grid
+        ; means the dagger sailed off the playfield, vanish.
         LDA     cur_y
         CMP     #PLAY_TOP_ROW
-        BCC     @oob
+        BCC     @vanish
         CMP     #(PLAY_BOT_ROW + 1)
-        BCS     @oob
+        BCS     @vanish
         LDA     cur_x
         CMP     #PLAY_LEFT_COL
-        BCC     @oob
+        BCC     @vanish
         CMP     #(PLAY_RIGHT_COL + 1)
-        BCS     @oob
-        ; Tile check — only TILE_EMPTY is fly-through. Walls / doors /
-        ; stairs all stop the projectile.
+        BCS     @vanish
+        ; Tile check — non-empty (wall/door/stairs/pit) stops the dagger.
         LDA     cur_y
         ASL
         ASL
@@ -5694,7 +5337,7 @@ handle_throw:
         ADC     cur_x
         TAY
         LDA     map_buffer,Y
-        BNE     @blocked                ; non-empty tile blocks
+        BNE     @vanish
         ; Monster check — first hit absorbs the dagger.
         LDA     cur_x
         STA     tgt_col
@@ -5707,37 +5350,12 @@ handle_throw:
         JSR     delay_throw_frame
         DEC     throw_step
         BNE     @flight_lp
-        ; Ran out of range — drop on the current (empty, in-bounds) cell.
-        JMP     @drop_at_cur
+        ; End of range — vanish.
+        JMP     @vanish
 
-@oob:
-        ; Stepped off the playable interior. Back up by one to land on
-        ; the last in-bounds cell.
-        LDA     cur_x
-        SEC
-        SBC     throw_dx
-        STA     cur_x
-        LDA     cur_y
-        SEC
-        SBC     throw_dy
-        STA     cur_y
-        JMP     @drop_at_cur
-@blocked:
-        ; Walked into a wall / door / stairs cell. Step back one so the
-        ; dagger lands on the last empty floor cell.
-        LDA     cur_x
-        SEC
-        SBC     throw_dx
-        STA     cur_x
-        LDA     cur_y
-        SEC
-        SBC     throw_dy
-        STA     cur_y
-        JMP     @drop_at_cur
 @hit_mon:
         ; X = monster pool offset. Apply throw_dmg, set MON_HURT, kill
-        ; if HP hits 0. Don't drop food on a thrown kill — only bump
-        ; kills give food (keeps melee strategically distinct).
+        ; if HP hits 0. No food drop (only bump kills give food).
         LDA     monsters+MON_HP,X
         SEC
         SBC     throw_dmg
@@ -5749,51 +5367,106 @@ handle_throw:
         LDA     #0
         STA     monsters+MON_TYPE,X
         JSR     award_xp
-        JMP     @drop_at_cur
+        JMP     @vanish
 @hurt:
         LDA     #1
         STA     monsters+MON_HURT,X
-        JMP     @drop_at_cur
-@drop_at_cur:
-        ; Disable the in-flight render BEFORE spawning the floor item
-        ; (else the dagger renders twice during the next redraw — once
-        ; as a SAT projectile and once as a regular floor item entity).
+        ; Fall through to vanish.
+@vanish:
+        ; Dagger ends here — clear the in-flight sprite, repaint once
+        ; so the projectile disappears from the SAT, charge a turn.
         LDA     #0
         STA     throw_active
-        LDA     cur_x
-        STA     tgt_col
-        LDA     cur_y
-        STA     tgt_row
-        LDA     #ITEM_T_DAGGER
-        LDY     #SUB_DAGGER_PLAIN
-        JSR     spawn_typed_item        ; if pool full, dagger silently lost
         JSR     redraw_game
         LDA     #1
         RTS
 
-@cancelled:
-        ; Player pressed an unrecognised key for the direction prompt.
-        ; Free action — leave the dagger in the bag.
-        LDA     #0
-        RTS
-@not_throwable:
-        LDA     #<msg_not_throw
+
+; ----------------------------------------------------------------------------
+; show_help: full-screen help modal reached from main_loop's '?'
+; dispatch. Hides every gameplay sprite (Y=$D0 chain terminator at
+; SAT[0] via disable_sprites), wipes the name table, paints a static
+; reference card from `help_table` (same str_lo/hi + vram_lo/hi tuple
+; layout as draw_title), drains the '?' strobe, waits for any key,
+; then redraws the playfield. Always a free action — caller does NOT
+; tick monsters or call finish_turn.
+;
+; The reference card lives in cartridge ROM as 16 short $FF-terminated
+; strings (~250 B), keeping the player from needing the README on real
+; hardware. Both keyboard layouts (QWERTY-WASD / AZERTY-ZQSD) are
+; printed because the title-screen choice is forgotten by the time
+; the player needs the reminder.
+; ----------------------------------------------------------------------------
+show_help:
+        JSR     disable_sprites
+        JSR     clear_name_table
+        ; Walk help_table — same 4-byte tuple loop as draw_title (tmp
+        ; survives draw_text). Each tuple = (str_lo, str_hi, vram_lo,
+        ; vram_hi_with_write_bit).
+        LDX     #0
+@lp:    LDA     help_table+0,X
         STA     vdp_src_lo
-        LDA     #>msg_not_throw
+        LDA     help_table+1,X
         STA     vdp_src_hi
-        LDA     #23
-        JSR     print_msg_row
-        LDA     #0
+        LDA     help_table+2,X
+        PHA
+        STX     tmp                     ; preserve loop index
+        LDA     help_table+3,X
+        TAX
+        PLA                             ; A = vram_lo, X = vram_hi
+        JSR     draw_text
+        LDA     tmp
+        CLC
+        ADC     #4
+        TAX
+        CPX     #(help_table_end - help_table)
+        BCC     @lp
+        ; Drain the '?' strobe so a held key can't insta-close, then
+        ; wait for an explicit ack press.
+        LDA     KBD
+        JSR     wait_key
+        JSR     redraw_game
         RTS
-@no_item:
-        LDA     #<msg_no_item
-        STA     vdp_src_lo
-        LDA     #>msg_no_item
-        STA     vdp_src_hi
-        LDA     #23
-        JSR     print_msg_row
-        LDA     #0
-        RTS
+
+help_table:
+        ;       str_lo,         str_hi,         vram_lo, vram_hi
+        .byte   <hlp_title,     >hlp_title,     $2E, $58  ; row  1 col 14
+        .byte   <hlp_move_hdr,  >hlp_move_hdr,  $62, $58  ; row  3 col  2
+        .byte   <hlp_move_qw,   >hlp_move_qw,   $84, $58  ; row  4 col  4
+        .byte   <hlp_move_az,   >hlp_move_az,   $A4, $58  ; row  5 col  4
+        .byte   <hlp_cmds_hdr,  >hlp_cmds_hdr,  $E2, $58  ; row  7 col  2
+        .byte   <hlp_cmd_i,     >hlp_cmd_i,     $04, $59  ; row  8 col  4
+        .byte   <hlp_cmd_t,     >hlp_cmd_t,     $24, $59  ; row  9 col  4
+        .byte   <hlp_cmd_n,     >hlp_cmd_n,     $44, $59  ; row 10 col  4
+        .byte   <hlp_cmd_q,     >hlp_cmd_q,     $64, $59  ; row 11 col  4
+        .byte   <hlp_cmd_rest,  >hlp_cmd_rest,  $84, $59  ; row 12 col  4
+        .byte   <hlp_tips_hdr,  >hlp_tips_hdr,  $C2, $59  ; row 14 col  2
+        .byte   <hlp_tip_bump,  >hlp_tip_bump,  $E4, $59  ; row 15 col  4
+        .byte   <hlp_tip_pick,  >hlp_tip_pick,  $04, $5A  ; row 16 col  4
+        .byte   <hlp_tip_down,  >hlp_tip_down,  $24, $5A  ; row 17 col  4
+        .byte   <hlp_tip_warp,  >hlp_tip_warp,  $44, $5A  ; row 18 col  4
+        .byte   <hlp_tip_win,   >hlp_tip_win,   $64, $5A  ; row 19 col  4
+        .byte   <msg_press_key, >msg_press_key, $C9, $5A  ; row 22 col  9
+help_table_end:
+
+; --- Help-screen strings ($FF-terminated; reuses msg_press_key from
+; the death/win shared pool to avoid a duplicate). ---
+hlp_title:      .byte "HELP", $FF
+hlp_move_hdr:   .byte "MOVEMENT KEYS", $FF
+hlp_move_qw:    .byte "1 QWERTY  W A S D", $FF
+hlp_move_az:    .byte "2 AZERTY  Z Q S D", $FF
+hlp_cmds_hdr:   .byte "COMMANDS", $FF
+hlp_cmd_i:      .byte "I  INVENTORY OPEN/USE", $FF
+hlp_cmd_t:      .byte "T  THROW DAGGER", $FF
+hlp_cmd_n:      .byte "N  NEW LEVEL [DEBUG]", $FF
+hlp_cmd_q:      .byte "H/?  THIS HELP SCREEN", $FF
+hlp_cmd_rest:   .byte ".  REST ONE TURN", $FF
+hlp_tips_hdr:   .byte "TIPS", $FF
+hlp_tip_bump:   .byte "BUMP MONSTER TO ATTACK", $FF
+hlp_tip_pick:   .byte "PICKUP IS AUTOMATIC", $FF
+hlp_tip_down:   .byte "STAIRS DOWN: DESCEND", $FF
+hlp_tip_warp:   .byte "EDGE DOOR: WARP LEVEL", $FF
+hlp_tip_win:    .byte "REACH DEPTH 13 TO WIN", $FF
 
 
 ; ----------------------------------------------------------------------------
@@ -5826,13 +5499,76 @@ draw_title:
         RTS
 
 title_table:
-        .byte   <title_rogue,     >title_rogue,     $8D, $58
-        .byte   <title_subtitle,  >title_subtitle,  $E4, $58
-        .byte   <title_author,    >title_author,    $27, $59
-        .byte   <title_select_kb, >title_select_kb, $A8, $59
-        .byte   <title_qwerty,    >title_qwerty,    $E8, $59
-        .byte   <title_azerty,    >title_azerty,    $28, $5A
+        .byte   <title_rogue,     >title_rogue,     $8D, $58  ; row  4 col 13
+        .byte   <title_subtitle,  >title_subtitle,  $E4, $58  ; row  7 col  4
+        .byte   <title_author,    >title_author,    $27, $59  ; row  9 col  7
+        .byte   <title_select_kb, >title_select_kb, $A8, $59  ; row 13 col  8
+        .byte   <title_qwerty,    >title_qwerty,    $E8, $59  ; row 15 col  8
+        .byte   <title_azerty,    >title_azerty,    $28, $5A  ; row 17 col  8
+        .byte   <title_help_hint, >title_help_hint, $88, $5A  ; row 20 col  8
 title_table_end:
+
+
+; ----------------------------------------------------------------------------
+; draw_briefing: second title page — mission lore + a five-bullet
+; mechanics primer + the win condition. Painted right after the
+; keyboard-layout choice so the player gets the "why am I doing this"
+; pitch BEFORE the dungeon view appears. start: drains KBD then
+; wait_keys for an explicit acknowledgment, then continues into level 1.
+; Same table-driven loop as draw_title — separate table so each page
+; can be edited independently. tmp survives draw_text.
+; ----------------------------------------------------------------------------
+draw_briefing:
+        LDX     #0
+@lp:    LDA     briefing_table+0,X
+        STA     vdp_src_lo
+        LDA     briefing_table+1,X
+        STA     vdp_src_hi
+        LDA     briefing_table+2,X
+        PHA
+        STX     tmp
+        LDA     briefing_table+3,X
+        TAX
+        PLA
+        JSR     draw_text
+        LDA     tmp
+        CLC
+        ADC     #4
+        TAX
+        CPX     #(briefing_table_end - briefing_table)
+        BCC     @lp
+        RTS
+
+briefing_table:
+        ;       str_lo,         str_hi,         vram_lo, vram_hi
+        .byte   <brf_title,     >brf_title,     $48, $58  ; row  2 col  8
+        .byte   <brf_lore1,     >brf_lore1,     $A2, $58  ; row  5 col  2
+        .byte   <brf_lore2,     >brf_lore2,     $C2, $58  ; row  6 col  2
+        .byte   <brf_lore3,     >brf_lore3,     $22, $59  ; row  9 col  2
+        .byte   <brf_lore4,     >brf_lore4,     $42, $59  ; row 10 col  2
+        .byte   <brf_tip1,      >brf_tip1,      $A4, $59  ; row 13 col  4
+        .byte   <brf_tip2,      >brf_tip2,      $C4, $59  ; row 14 col  4
+        .byte   <brf_tip3,      >brf_tip3,      $E4, $59  ; row 15 col  4
+        .byte   <brf_tip4,      >brf_tip4,      $04, $5A  ; row 16 col  4
+        .byte   <brf_tip5,      >brf_tip5,      $24, $5A  ; row 17 col  4
+        .byte   <brf_win,       >brf_win,       $84, $5A  ; row 20 col  4
+        .byte   <msg_press_key, >msg_press_key, $C9, $5A  ; row 22 col  9
+briefing_table_end:
+
+; --- Mission-briefing strings ($FF-terminated). Apostrophes / parens
+; avoided (broken Quale glyphs); brackets + dashes + asterisks render
+; cleanly. Reuses msg_press_key (death/win/help shared pool). ---
+brf_title:      .byte "MISSION BRIEFING", $FF
+brf_lore1:      .byte "AN AMULET LIES BURIED DEEP", $FF
+brf_lore2:      .byte "IN THE FORSAKEN DUNGEON.", $FF
+brf_lore3:      .byte "DESCEND 12 FLOORS OF UNDEAD,", $FF
+brf_lore4:      .byte "CLAIM IT, AND ESCAPE ALIVE.", $FF
+brf_tip1:       .byte "* BUMP MONSTERS TO ATTACK", $FF
+brf_tip2:       .byte "* PICK UP EVERY DROP", $FF
+brf_tip3:       .byte "* LIGHT TORCHES TO SEE FAR", $FF
+brf_tip4:       .byte "* WATCH FOR TRAP PITS", $FF
+brf_tip5:       .byte "* PERMADEATH - ONE LIFE", $FF
+brf_win:        .byte "REACH DEPTH 13 TO ESCAPE", $FF
 
 
 ; ----------------------------------------------------------------------------
@@ -5919,6 +5655,11 @@ title_qwerty:
         .byte   "1 QWERTY WASD", $FF
 title_azerty:
         .byte   "2 AZERTY ZQSD", $FF
+; Hint line so a first-time player knows the in-game help is one
+; keypress away. Brackets render fine in the Quale font (the bracket
+; glyphs survived the extraction; only the parens were broken).
+title_help_hint:
+        .byte   "[H] FOR HELP IN GAME", $FF
 
 
 ; ============================================================================
@@ -6075,6 +5816,37 @@ expl_torch_pat:                                 ; slot 52 — torch
 ; guard then skips its own .res 1 alloc).
 ; ============================================================================
 .include "prng16.asm"
+
+
+; ============================================================================
+; dungeon -- procedural-generation primitives (lib/m6502/dungeon.asm).
+; Currently exposes `rand_mod` (uniform [0, A) PRNG wrapper). The bigger
+; BSP-light pattern (room placement + L-corridor + door classification)
+; stays inline in this file since it bakes in the 16×10 grid layout —
+; see the lib's header for what would need parametrising for promotion.
+; ============================================================================
+.include "dungeon.asm"
+
+
+; ============================================================================
+; multiply -- umul8 (8x8 -> 16-bit) + umul4 (4x4 -> 8-bit) shared library.
+; The lib reserves its own mul_tmp / mul_res0 ZP slots via .ifndef guard.
+; umul4 is consumed by shadowcast.asm below for slope cross-multiplications.
+; ============================================================================
+.include "multiply.asm"
+
+
+; ============================================================================
+; shadowcast -- recursive shadowcasting FOV (lib/m6502/shadowcast.asm).
+; Expects the caller to provide:
+;   - player_col, player_row, fov_r       (ZP — declared above)
+;   - SHADOW_COLS, SHADOW_ROWS            (constants — declared above)
+;   - mark_visible_at_cur, is_opaque_at_cur (subroutines — defined above)
+;   - umul4                               (from multiply.asm above)
+; The lib's .ifndef guard allocates cur_x/cur_y/oct_*/cast_* in our
+; .zeropage segment.
+; ============================================================================
+.include "shadowcast.asm"
 
 
 ; ============================================================================

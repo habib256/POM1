@@ -83,11 +83,15 @@ Ships as `roms/codetank/Codetank_GAMES2.rom` — load via POM1's
     - `SCROLL` → one-shot full-map reveal modal (press any key to
       return), costs a turn.
     - `DAGGER` → not "used"; throw it with `T`.
-  - `T` — **throw** a dagger. Two-stage prompt: pick the slot, then a
-    direction (vi keys). Cell-by-cell animation at ~80 ms/frame, range
-    `THROW_RANGE` = 8. Stops on the first wall / door / monster /
-    out-of-bounds; lands the dagger on the last empty cell (or on the
-    monster's corpse). Costs a turn.
+  - `T` — **throw** a dagger. Single-prompt: directly asks for a
+    direction (vi keys); the dagger slot is auto-picked via
+    `find_dagger_slot` (the bag's first `ITEM_T_DAGGER`, since dagger
+    is the only throwable type). Cell-by-cell animation at ~80 ms/frame,
+    range `THROW_RANGE` = 8. The dagger **vanishes on impact** —
+    monster hit (deals `INV_VALUE` damage = 2), wall / door / stairs /
+    pit, OOB, or end of range. No floor drop. Costs a turn on a
+    completed throw; free action with `NO DAGGER` if the bag is empty
+    or silent if the direction key isn't recognised.
   - **HUD** (3 rows below the playfield):
     - **Row 20** — `DEPTH NNN                  HP HH/HM` — current
       floor and live HP / runtime cap.
@@ -97,9 +101,11 @@ Ships as `roms/codetank/Codetank_GAMES2.rom` — load via POM1's
       kill counter.
     - **Rows 22-23** — one 16×16 item sprite + 2-digit countdown per
       ACTIVE buff (sword / tunic / amulet / torch); inactive buffs are
-      blank. The icons sit at fixed pixel slots (x = 64 / 96 / 128 /
-      160) so the player learns which is which by position; digits sit
-      immediately to the right of each icon. The legacy
+      blank. **Left-packed**: icons at pixel x = 0 / 32 / 64 / 96
+      (cols 0-1, 4-5, 8-9, 12-13), with each 2-digit countdown sitting
+      on **row 23** (the very bottom) immediately right of its icon
+      (cols 2-3, 6-7, 10-11, 14-15). Cols 16-31 of rows 22-23 stay
+      blank — free for future status pickups. The legacy
       `WPN:NN ARM:NN RNG:NN TRC:NN` text row + `W:_ A:_ R:_`
       equipped-letter row were both dropped.
   - **XP-driven progression**: `player_xp` increments by 1 per slain
@@ -211,9 +217,21 @@ game loop binds the four movement keys at runtime.
   weapon / armor / ring / torch are consumed and arm a per-category
   turn-countdown buff; food / potion heal; scroll reveals the map
   one-shot; dagger errors out (use `T` instead).
-- `T` — **throw** a dagger (asks for direction next).
+- `T` — **throw** a dagger. Auto-picks the first dagger in your bag,
+  then asks for a direction (vi keys). The dagger flies in that
+  direction until it hits a monster (deals damage), an obstacle
+  (wall / door / stairs / pit), or runs out of range — and **vanishes
+  on impact**. No floor drops. Free action with `NO DAGGER` if the bag
+  has none, or silent if the direction key isn't recognised.
 - `N` — regenerate the current level at the same depth (debug refresh,
   no turn cost — does not advance depth or cost HP).
+- `.` — **rest** one turn. No movement, but monsters take their turn,
+  the regen amulet pulses (if active), and every buff timer ticks down.
+  Useful when an amulet is on and you want the +1 HP heal without
+  giving up positioning.
+- `?` — open the **help** modal (free action). Static reference card
+  listing both keyboard layouts, every command, and the gameplay rules
+  — so the player on a real cartridge doesn't need this README.
 - Stepping onto `TILE_STAIRS_DOWN` advances to a deeper level (depth++,
   harder monster pool); walking off a screen-edge `TILE_DOOR` warps to
   a sibling big-room at the same depth, spawning at the opposite edge.

@@ -79,7 +79,7 @@ LOGO_V2_SPRH_ASM   = LIB_TMS     / "sprite_helpers.asm"
 
 # --- GAME2 sources ---------------------------------------------------------
 ROGUE_ASM          = DEV / "tms9918_rogue" / "TMS_Rogue.asm"
-ROGUE_CODETANK_CFG = DEV / "tms9918_rogue" / "apple1_rogue_codetank.cfg"
+ROGUE_CODETANK_CFG = DEV / "tms9918_rogue" / "apple1_rogue.cfg"
 ROGUE_M1_ASM       = LIB_TMS / "tms9918m1.asm"
 
 CHESS_ASM          = DEV / "tms9918_chess" / "TMS_Chess.asm"
