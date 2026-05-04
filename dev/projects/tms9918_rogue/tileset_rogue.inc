@@ -20,7 +20,7 @@ TILE_WALL           = 4
 TILE_STAIRS_DOWN    = 8
 TILE_DOOR           = 12
 TILE_STAIRS_UP      = 16
-TILE_TORCH          = 20
+TILE_TRAP_PIT       = 20
 TILE_GOLD           = 24
 TILE_POTION         = 28
 
@@ -46,10 +46,10 @@ tileset_rogue:
         .byte $3D, $BD, $FC, $D8, $C6, $86, $38, $7D    ; char  17  stairs_up.TR (bldg_cobble3_pat)
         .byte $DF, $3F, $7F, $7F, $7F, $3F, $1F, $C0    ; char  18  stairs_up.BL (bldg_cobble3_pat)
         .byte $7D, $BC, $D8, $E3, $E7, $E6, $D8, $3C    ; char  19  stairs_up.BR (bldg_cobble3_pat)
-        .byte $00, $00, $00, $04, $00, $01, $13, $07    ; char  20  torch.TL (expl_torch_pat)
-        .byte $00, $40, $68, $F0, $F0, $F8, $98, $38    ; char  21  torch.TR (expl_torch_pat)
-        .byte $04, $02, $07, $0C, $18, $30, $60, $00    ; char  22  torch.BL (expl_torch_pat)
-        .byte $78, $F0, $E0, $00, $00, $00, $00, $00    ; char  23  torch.BR (expl_torch_pat)
+        .byte $00, $3F, $60, $40, $42, $46, $46, $40    ; char  20  trap_pit.TL (trap_pit_pat)
+        .byte $00, $FC, $06, $02, $12, $32, $32, $02    ; char  21  trap_pit.TR (trap_pit_pat)
+        .byte $40, $44, $4C, $4C, $40, $60, $3F, $00    ; char  22  trap_pit.BL (trap_pit_pat)
+        .byte $02, $22, $62, $62, $02, $06, $FC, $00    ; char  23  trap_pit.BR (trap_pit_pat)
         .byte $00, $00, $00, $00, $3F, $7F, $73, $08    ; char  24  gold.TL (expl_coin_pat)
         .byte $00, $00, $00, $00, $D8, $BC, $BC, $00    ; char  25  gold.TR (expl_coin_pat)
         .byte $7B, $73, $7F, $7F, $7F, $00, $00, $00    ; char  26  gold.BL (expl_coin_pat)
@@ -84,12 +84,12 @@ tileset_rogue:
         .byte $00, $7E, $06, $06, $0C, $0C, $18, $18    ; char  55  '7' (font_quale_digits_7)
         .byte $00, $3C, $66, $66, $3C, $66, $66, $3C    ; char  56  '8' (font_quale_digits_8)
         .byte $00, $3C, $66, $66, $3E, $06, $06, $3C    ; char  57  '9' (font_quale_digits_9)
-        .byte $00, $00, $00, $00, $00, $00, $00, $00    ; char  58  (unused)
+        .byte $00, $00, $18, $18, $00, $18, $18, $00    ; char  58  ':' (manual)
         .byte $00, $00, $00, $00, $00, $00, $00, $00    ; char  59  (unused)
         .byte $00, $00, $00, $00, $00, $00, $00, $00    ; char  60  (unused)
         .byte $00, $00, $00, $00, $00, $00, $00, $00    ; char  61  (unused)
         .byte $00, $00, $00, $00, $00, $00, $00, $00    ; char  62  (unused)
-        .byte $00, $00, $00, $00, $00, $00, $00, $00    ; char  63  (unused)
+        .byte $00, $3C, $66, $06, $0C, $18, $00, $18    ; char  63  '?' (manual)
         .byte $00, $00, $00, $00, $00, $00, $00, $00    ; char  64  (unused)
         .byte $00, $3C, $66, $66, $66, $7E, $66, $66    ; char  65  'A' (font_quale_upper_A)
         .byte $00, $7C, $66, $66, $7C, $66, $66, $7C    ; char  66  'B' (font_quale_upper_B)
@@ -117,9 +117,9 @@ tileset_rogue:
         .byte $00, $66, $66, $3C, $18, $3C, $66, $66    ; char  88  'X' (font_quale_upper_X)
         .byte $00, $66, $66, $66, $3C, $18, $18, $18    ; char  89  'Y' (font_quale_upper_Y)
         .byte $00, $7E, $06, $0C, $18, $30, $60, $7E    ; char  90  'Z' (font_quale_upper_Z)
-        .byte $00, $00, $00, $00, $00, $00, $00, $00    ; char  91  (unused)
+        .byte $00, $1C, $10, $10, $10, $10, $1C, $00    ; char  91  '[' (manual)
         .byte $00, $00, $03, $06, $0C, $18, $30, $60    ; char  92  '\' (font_quale_punct_bslash)
-        .byte $00, $00, $00, $00, $00, $00, $00, $00    ; char  93  (unused)
+        .byte $00, $38, $08, $08, $08, $08, $38, $00    ; char  93  ']' (manual)
         .byte $00, $00, $00, $00, $00, $00, $00, $00    ; char  94  (unused)
         .byte $00, $00, $00, $00, $00, $00, $00, $00    ; char  95  (unused)
         .byte $00, $00, $00, $00, $00, $00, $00, $00    ; char  96  (unused)

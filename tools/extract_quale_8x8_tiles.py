@@ -78,14 +78,19 @@ PALETTE: dict[int, tuple[str | None, str]] = {
     8:  ("bldg_stairs_down_pat",   "stairs_down"),  # was mis-labelled "house"
     12: ("bldg_door_wood_pat",     "door"),         # plank+iron-band wooden door
 
-    # --- Group 2 (chars 16..23): stairs-up + fixtures (lt-yellow on black) ---
+    # --- Group 2 (chars 16..23): stairs-up + trap (lt-yellow on black) ---
     # TILE_STAIRS_UP renders a cobblestone block (bldg_cobble3_pat) so the
     # cell reads "the way up just collapsed" — Berlin-Interpretation
     # one-way descent. The TILE_STAIRS_UP equate keeps its semantic name
     # (the collision rule still treats the cell as a hard wall in
     # check_collision); only the visual changes.
     16: ("bldg_cobble3_pat",       "stairs_up"),
-    20: ("expl_torch_pat",         "torch"),
+    # TILE_TRAP_PIT renders Quale's pit graphic. Lt-yellow outline reads
+    # as "danger zone" against the gray walls. Stepping on it costs HP
+    # (see trigger_pit + main_loop hook in TMS_Rogue.asm); the pit stays
+    # visible afterwards so a second visit costs HP again — players
+    # learn to remember pit positions across the FOV-wipe.
+    20: ("trap_pit_pat",           "trap_pit"),
 
     # --- Group 3 (chars 24..31): items (cyan on black) ---
     24: ("expl_coin_pat",          "gold"),
@@ -127,6 +132,19 @@ FONT_PALETTE: dict[int, str] = {
 # A..Z at char IDs 65..90.
 for _i in range(26):
     FONT_PALETTE[65 + _i] = f"font_quale_upper_{chr(65 + _i)}"
+
+
+# Hand-authored glyphs for chars that font_quale.asm doesn't ship at all
+# (or ships visibly broken). Each entry = 8 rows of 8 px (MSB = leftmost
+# col), matching Quale's "row 0 mostly blank" convention. Drawn deliberately
+# narrow so they don't visually crowd the digits and uppercase letters
+# they share rows with in the HUD.
+MANUAL_GLYPHS: dict[int, list[int]] = {
+    ord(":"): [0x00, 0x00, 0x18, 0x18, 0x00, 0x18, 0x18, 0x00],
+    ord("?"): [0x00, 0x3C, 0x66, 0x06, 0x0C, 0x18, 0x00, 0x18],
+    ord("["): [0x00, 0x1C, 0x10, 0x10, 0x10, 0x10, 0x1C, 0x00],
+    ord("]"): [0x00, 0x38, 0x08, 0x08, 0x08, 0x08, 0x38, 0x00],
+}
 
 
 # Mode 1 colour byte format: high nibble = fg, low nibble = bg.
@@ -312,6 +330,16 @@ def emit_inc(sprites: dict[str, list[int]],
                     f"font glyph {label!r} not found in font_quale.asm "
                     f"(typo in FONT_PALETTE? char {cid} = {chr(cid)!r})")
             chars[cid] = (font[label], f"'{chr(cid)}' ({label})")
+
+    for cid, rows in MANUAL_GLYPHS.items():
+        if cid in chars:
+            raise SystemExit(
+                f"char {cid} ({chr(cid)!r}) collides between MANUAL_GLYPHS "
+                f"and PALETTE/FONT_PALETTE")
+        if len(rows) != 8:
+            raise SystemExit(
+                f"MANUAL_GLYPHS[{cid}] must be 8 rows, got {len(rows)}")
+        chars[cid] = (list(rows), f"'{chr(cid)}' (manual)")
 
     # --- Pattern table: 256 chars * 8 bytes = 2048 bytes ---
     lines.append("; --- Pattern table (256 * 8 = 2048 B), upload to VRAM $0000 -------------")

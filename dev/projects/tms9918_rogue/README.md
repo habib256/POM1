@@ -89,10 +89,13 @@ Ships as `roms/codetank/Codetank_GAMES2.rom` — load via POM1's
       `player_dmg` / `player_def` (combat reads these; incoming hits
       subtract `player_def`, floor 0, before damaging HP) plus the
       kill counter.
-    - **Row 22** — `WPN:NN ARM:NN RNG:NN TRC:NN` — countdown for each
-      active buff timer (`00` = expired). The legacy `W:_ A:_ R:_`
-      equipped-letter row was dropped when equipment became consumable
-      buffs.
+    - **Rows 22-23** — one 16×16 item sprite + 2-digit countdown per
+      ACTIVE buff (sword / tunic / amulet / torch); inactive buffs are
+      blank. The icons sit at fixed pixel slots (x = 64 / 96 / 128 /
+      160) so the player learns which is which by position; digits sit
+      immediately to the right of each icon. The legacy
+      `WPN:NN ARM:NN RNG:NN TRC:NN` text row + `W:_ A:_ R:_`
+      equipped-letter row were both dropped.
   - **XP-driven progression**: `player_xp` increments by 1 per slain
     monster (saturates at 255). Three independent countdowns drive
     level-ups in `award_xp`, all reset on `init_inventory`:
@@ -101,8 +104,8 @@ Ships as `roms/codetank/Codetank_GAMES2.rom` — load via POM1's
     - every 20 kills → `+1 xp_def_bonus`, folded into `player_def`.
   - **Items spawn at level gen**: `spawn_level_items` scatters 1..3
     typed items per floor; cumulative thresholds out of 32 give food
-    ≈ 28 %, dagger ≈ 16 %, potion ≈ 12 %, weapon ≈ 12 %, scroll ≈ 9 %,
-    armor ≈ 9 %, ring ≈ 6 %, torch ≈ 6 %. The legacy "monster drops
+    ≈ 22 %, dagger ≈ 16 %, torch ≈ 16 %, weapon ≈ 12 %, potion ≈ 9 %,
+    scroll ≈ 9 %, armor ≈ 9 %, ring ≈ 6 %. The legacy "monster drops
     food on death" path is preserved.
   - **Pickup is auto** on contact; if the bag is full the item stays
     on the floor. Stackables (food, daggers, potions, scrolls, torches)

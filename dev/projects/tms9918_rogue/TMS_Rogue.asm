@@ -57,6 +57,14 @@ FOOD_HEAL      = 3              ; HP restored when the player walks onto
                                 ; a food item (capped at HP_MAX). Tuned
                                 ; so a single heal covers one DEATH bite
                                 ; with a little margin.
+PIT_DMG        = 3              ; HP lost on stepping into a TILE_TRAP_PIT.
+                                ; Tuned to match a hard DEATH bite so a
+                                ; pit + monster combo can kill an
+                                ; unhealed player. Pits stay visible
+                                ; after first hit — repeated steps
+                                ; deal damage every time.
+LAST_ATTACKER_PIT = 6           ; sentinel last_attacker value for pits;
+                                ; mon_name_lo/hi[6] = "A PIT".
 ; Per-buff durations after activation. Each tier is tuned to its role:
 ; the offensive buff is short (force aggressive timing), defense is
 ; medium (covers a couple of encounters), the ring is between the two
@@ -391,6 +399,9 @@ player_hurt:    .res 1          ; non-zero if the player sprite should
                                 ; of every main_loop iteration; set by
                                 ; step_monster_toward_player when a
                                 ; monster lands its bump-attack.
+last_attacker:  .res 1          ; MON_TYPE of the last monster that bit
+                                ; the player. 0 = none yet. Surfaced as
+                                ; "KILLED BY <NAME>" on the death screen.
 pool_idx:       .res 1          ; current monster slot byte-offset into
                                 ; `monsters` ($E300+); used by
                                 ; spawn_monsters and move_monsters as a
@@ -593,6 +604,9 @@ start:
         ; the spawn sprite in COL_HURT for one frame. Clear explicitly.
         LDA #0
         STA player_hurt
+        STA last_attacker       ; no killer yet → death screen renders
+                                ; "KILLED BY UNKNOWN" if hp ever hits 0
+                                ; before any monster lands a bite.
         JSR init_inventory      ; wipes the 26-slot bag + clears equipped_*
                                 ; + zeros ring_flags
                                 ; + recomputes derived player_dmg/def
@@ -608,6 +622,7 @@ start:
         JSR upload_sprite_pats  ; player + 3 undead patterns -> $3800-$387F
         JSR spawn_monsters      ; populate the pool for the first level
         JSR spawn_level_items   ; 1..3 typed items scattered on TILE_EMPTY
+        JSR spawn_level_pits    ; 0..2 pits scattered on TILE_EMPTY
         JSR place_all_sprites   ; SAT: player slot 0 + each live monster
         JSR update_hud          ; HUD on row 20: depth + HP + food
 
@@ -700,6 +715,11 @@ main_loop:
         BNE @no_door_reset
         JSR clear_vis_buffer
 @no_door_reset:
+        LDA tmp                 ; pit trap fires every step (no consume)
+        CMP #TILE_TRAP_PIT
+        BNE @no_pit
+        JSR trigger_pit
+@no_pit:
         JSR try_pickup_item     ; HP += FOOD_HEAL if a food drop is here
         JSR move_monsters       ; AI + monster→player attacks
         JSR compute_fov         ; player moved -> recompute FOV
@@ -848,6 +868,7 @@ new_level:
 @paint:
         JSR spawn_monsters      ; fresh undead pool for the new layout
         JSR spawn_level_items   ; fresh items scattered for this floor
+        JSR spawn_level_pits    ; 0..2 fresh pits for this floor
         JSR clear_name_table
         JSR clear_vis_buffer    ; new level -> forget the previous map
         JSR compute_fov         ; light the spawn neighbourhood
@@ -1019,14 +1040,6 @@ gen_dungeon:
 ; neighbour is the screen-edge wall (col 15). Player spawns one cell
 ; WEST of the stairs at (13, 2) — the "arrived from above" anchor —
 ; matching the spec rule "le personnage arrive à gauche de l'escalier".
-;
-; TODO (when HP system + sprites land):
-;   - Replace TILE_STAIRS_UP with a rubble tile (bldg_rubble_pat) so
-;     the visual reads "the way up just collapsed". Slot 16 of the
-;     PALETTE in tools/extract_quale_8x8_tiles.py is the swap point.
-;   - Stepping into the rubble cell should still block movement AND
-;     subtract 1 HP (penalty for trying to climb back up). For now
-;     check_collision treats TILE_STAIRS_UP as a hard wall.
 ;
 ; Stairs-down at bottom-left interior corner (1, 8) — west neighbour
 ; is the screen frame, so the descent sprite sits with a wall on its
@@ -1831,14 +1844,72 @@ spawn_level_items:
 ; Per-category tables — parallel arrays. Index = category id.
 level_item_thresh:
         ; cumulative roll thresholds; first index whose threshold > roll
-        ; wins. Last entry must equal the rand_mod modulus (32).
-        .byte   9, 14, 18, 21, 25, 28, 30, 32
+        ; wins. Last entry must equal the rand_mod modulus (32). Per-
+        ; category mass (out of 32):
+        ;   FOOD 7  DAGGER 5  POTION 3  SCROLL 3
+        ;   WEAPON 4  ARMOR 3  RING 2  TORCH 5
+        ; Torches were boosted from 2 → 5 to make the FOV-doubling buff
+        ; show up regularly enough to feel like part of the loop (was a
+        ; once-every-3-floors curio).
+        .byte   7, 12, 15, 18, 22, 25, 27, 32
 level_item_type:
         .byte   ITEM_T_FOOD, ITEM_T_DAGGER, ITEM_T_POTION, ITEM_T_SCROLL
         .byte   ITEM_T_WEAPON, ITEM_T_ARMOR, ITEM_T_RING, ITEM_T_TORCH
 level_item_subc:
         .byte   SUB_FOOD_COUNT, SUB_DAGGER_COUNT, SUB_POT_COUNT, SUB_SCROLL_COUNT
         .byte   SUB_WEAPON_COUNT, SUB_ARMOR_COUNT, SUB_RING_COUNT, SUB_TORCH_COUNT
+
+
+; ----------------------------------------------------------------------------
+; spawn_level_pits: scatter 0..2 TILE_TRAP_PIT cells on EMPTY floor squares
+; (1d3 roll). Pits stay visible AND keep dealing damage on every step —
+; players have to remember their position across the FOV-wipe. Called from
+; new_level + start: right after spawn_level_items so the PRNG advances at
+; the same point each turn, keeping seeds reproducible.
+; ----------------------------------------------------------------------------
+spawn_level_pits:
+        LDA     #3
+        JSR     rand_mod                ; A = 0..2
+@lp:    CMP     #0
+        BEQ     @done
+        PHA                             ; save remaining count across find/set
+        JSR     find_empty_cell
+        BCS     @done_pop               ; no empty cell left → bail
+        LDA     #TILE_TRAP_PIT
+        JSR     set_tile
+        PLA
+        SEC
+        SBC     #1
+        JMP     @lp
+@done:  RTS
+@done_pop:
+        PLA
+        RTS
+
+
+; ----------------------------------------------------------------------------
+; trigger_pit: subtract PIT_DMG from hp (saturating at 0), flag the player
+; sprite for the next-frame hurt flash, and tag last_attacker so the death
+; screen renders "KILLED BY A PIT" instead of a monster name. Pit tile is
+; NOT consumed — repeat steps cost HP every time.
+; ----------------------------------------------------------------------------
+trigger_pit:
+        LDA     hp
+        SEC
+        SBC     #PIT_DMG
+        BCS     @hp_ok
+        LDA     #0
+@hp_ok:
+        STA     hp
+        LDA     #1
+        STA     player_hurt
+        LDA     #LAST_ATTACKER_PIT
+        STA     last_attacker
+        ; Reveal the pit on the cell we just stepped onto. main_loop's
+        ; regular-move path arrived here with tgt_col/tgt_row still
+        ; holding the destination (= player's new position), so the
+        ; helper writes the right cell.
+        JMP     reveal_pit_at_target    ; tail-call (RTS from helper)
 
 
 ; ----------------------------------------------------------------------------
@@ -2942,6 +3013,8 @@ apply_step:
         STA     hp
         LDA     #1
         STA     player_hurt
+        LDA     monsters+MON_TYPE,X     ; cache attacker for death screen
+        STA     last_attacker
         CLC                             ; counts as the monster's action
         RTS
 @check_pass:
@@ -2985,6 +3058,8 @@ apply_step:
         BEQ     @move_ok
         CMP     #TILE_STAIRS_DOWN
         BEQ     @move_ok
+        CMP     #TILE_TRAP_PIT
+        BEQ     @move_pit               ; pit is walkable → damage + reveal
 @blocked:
         SEC
         RTS
@@ -2994,6 +3069,29 @@ apply_step:
         LDA     tgt_row
         STA     monsters+MON_ROW,X
         CLC
+        RTS
+@move_pit:
+        ; Monster stepped onto a pit. Subtract PIT_DMG from MON_HP
+        ; (saturating), reveal the cell so the player sees the trap,
+        ; then either commit the move (survived) or free the slot
+        ; (killed — no XP, no drop, the player didn't earn it).
+        LDA     monsters+MON_HP,X
+        SEC
+        SBC     #PIT_DMG
+        BCS     @pit_hp_ok
+        LDA     #0
+@pit_hp_ok:
+        STA     monsters+MON_HP,X
+        JSR     reveal_pit_at_target    ; preserves X
+        LDA     monsters+MON_HP,X
+        BEQ     @pit_kill
+        LDA     #1
+        STA     monsters+MON_HURT,X
+        JMP     @move_ok                ; survived → commit step
+@pit_kill:
+        LDA     #0
+        STA     monsters+MON_TYPE,X
+        CLC                             ; counts as the monster's action
         RTS
 
 
@@ -3033,11 +3131,19 @@ render_map:
 @row_lp:
         ; --- TL / TR pass: 32 chars covering the upper half of all
         ;     16 tiles in the current logical row.
+        ; Pit cells: high bit of map_buffer = revealed (render as
+        ; TILE_TRAP_PIT); high bit clear AND tile id == TILE_TRAP_PIT
+        ; = hidden (render blank, same as out-of-FOV cells).
         LDY     #0
 @tl_lp: LDA     (map_ptr),Y     ; visibility byte for this tile
         AND     #VIS_VISIBLE
         BEQ     @tl_dark        ; never seen -> 2 blank chars
-        LDA     (vdp_src_lo),Y  ; tile base id
+        LDA     (vdp_src_lo),Y  ; raw map byte
+        BMI     @tl_render      ; bit 7 set = revealed pit (mask below)
+        CMP     #TILE_TRAP_PIT
+        BEQ     @tl_dark        ; hidden pit → blank
+@tl_render:
+        AND     #$7F            ; strip reveal bit (no-op on normal tiles)
         WRT_DATA_REG            ; TL = base+0
         CLC
         ADC     #1
@@ -3058,7 +3164,12 @@ render_map:
 @bl_lp: LDA     (map_ptr),Y     ; visibility byte (same row of vis_buffer)
         AND     #VIS_VISIBLE
         BEQ     @bl_dark
-        LDA     (vdp_src_lo),Y  ; tile base id
+        LDA     (vdp_src_lo),Y  ; raw map byte
+        BMI     @bl_render      ; bit 7 set = revealed pit
+        CMP     #TILE_TRAP_PIT
+        BEQ     @bl_dark        ; hidden pit → blank
+@bl_render:
+        AND     #$7F            ; strip reveal bit
         CLC
         ADC     #2
         WRT_DATA_REG            ; BL = base+2
@@ -3092,7 +3203,11 @@ render_map:
         INC     map_ptr+1
 @noinc_vis:
         DEX
-        BNE     @row_lp
+        BEQ     @done
+        JMP     @row_lp                 ; long-jump trampoline — render_map
+                                        ; grew past the BNE range when the
+                                        ; pit reveal/hide branches landed.
+@done:
         RTS
 
 
@@ -3251,6 +3366,32 @@ compute_fov:
         INC     ray_endy
         DEX
         BNE     @rgt_lp
+        ; Tail: any revealed pit that's no longer in FOV reverts to
+        ; hidden. The player has to re-discover (or re-step into) it.
+        ; Fall through into strip_invisible_pit_reveals.
+
+; ----------------------------------------------------------------------------
+; strip_invisible_pit_reveals: scan map_buffer for cells with the high
+; bit set (= revealed pit) and clear the bit on cells whose vis_buffer
+; entry is dark this turn. Pits that drift out of the player's torchlight
+; re-hide so the player has to remember (or re-trigger) them.
+;
+; Called as the tail of compute_fov so every FOV recomputation propagates
+; the rule "revealed iff currently lit".
+; ----------------------------------------------------------------------------
+strip_invisible_pit_reveals:
+        LDX     #(LOGICAL_COLS * LOGICAL_ROWS) - 1
+@lp:    LDA     map_buffer,X
+        BPL     @next                   ; high bit clear → nothing to do
+        LDA     vis_buffer,X
+        AND     #VIS_VISIBLE
+        BNE     @next                   ; cell in FOV → keep reveal
+        LDA     map_buffer,X
+        AND     #$7F
+        STA     map_buffer,X            ; out of FOV → re-hide
+@next:
+        DEX
+        BPL     @lp
         RTS
 
 
@@ -3686,6 +3827,57 @@ place_all_sprites:
         CPX     #(ITEM_COUNT * ITEM_SIZE)
         BCC     @item_lp
 
+        ; --- Buff-timer sprites at the bottom of the screen (y=176,
+        ;     covering rows 22-23). One SAT entry per ACTIVE timer
+        ;     (zero timer → no entry, no pixel cost). Companion 2-digit
+        ;     countdowns are painted to the immediately-right name-table
+        ;     cells by update_hud_timers — the alternating SPR / DIG
+        ;     layout reads as "icon NN  icon NN  icon NN  icon NN".
+        ;     Layout (always 4 fixed slot positions, packed centred):
+        ;       WPN: sprite px=64  (cols  8-9)   digits cols 10-11
+        ;       ARM: sprite px=96  (cols 12-13)  digits cols 14-15
+        ;       RNG: sprite px=128 (cols 16-17)  digits cols 18-19
+        ;       TRC: sprite px=160 (cols 20-21)  digits cols 22-23
+        ;     All 4 fit on the same 16-line scan window (176-191) under
+        ;     the 4-per-scanline TMS9918 limit; nothing gameplay-side
+        ;     ever lives at y >= 160 (logical row 9 ends at y=159).
+        LDA     weapon_timer
+        BEQ     @no_wpn_spr
+        LDA     #176
+        WRT_DATA_REG
+        LDA     #64
+        WRT_DATA_REG
+        WRT_DATA_VAL SPRITE_NAME_WEAPON
+        WRT_DATA_VAL COL_WEAPON
+@no_wpn_spr:
+        LDA     armor_timer
+        BEQ     @no_arm_spr
+        LDA     #176
+        WRT_DATA_REG
+        LDA     #96
+        WRT_DATA_REG
+        WRT_DATA_VAL SPRITE_NAME_ARMOR
+        WRT_DATA_VAL COL_ARMOR
+@no_arm_spr:
+        LDA     ring_timer
+        BEQ     @no_rng_spr
+        LDA     #176
+        WRT_DATA_REG
+        LDA     #128
+        WRT_DATA_REG
+        WRT_DATA_VAL SPRITE_NAME_RING
+        WRT_DATA_VAL COL_RING
+@no_rng_spr:
+        LDA     torch_timer
+        BEQ     @no_trc_spr
+        LDA     #176
+        WRT_DATA_REG
+        LDA     #160
+        WRT_DATA_REG
+        WRT_DATA_VAL SPRITE_NAME_TORCH
+        WRT_DATA_VAL COL_TORCH
+@no_trc_spr:
+
         ; --- Optional thrown-projectile slot (handle_throw sets this
         ;     while a dagger is mid-flight). Inserted BEFORE the chain
         ;     terminator so the chip actually scans + draws it. cur_x /
@@ -3790,16 +3982,15 @@ check_collision:
         BCS     @blocked
         ; Allowed-tile whitelist (door already handled above).
         ; TILE_STAIRS_UP intentionally OMITTED — stepping back up the
-        ; way you came is forbidden.
-        ; TODO (when HP system lands): instead of plain blocking,
-        ;   "trying to go up" should subtract 1 HP and emit some
-        ;   feedback — block, then deduct, so the player can poke at
-        ;   the rubble at a cost. Keep the visual swap to bldg_rubble
-        ;   in sync (see gen_big_room TODO comment).
+        ; way you came is forbidden (treated as a hard wall).
+        ; TILE_TRAP_PIT IS allowed — the player walks in (visible or not)
+        ; and trigger_pit deals damage in main_loop after the move.
         LDA     tmp
         CMP     #TILE_EMPTY
         BEQ     @pass
         CMP     #TILE_STAIRS_DOWN
+        BEQ     @pass
+        CMP     #TILE_TRAP_PIT
         BEQ     @pass
 @blocked:
         SEC
@@ -3811,12 +4002,32 @@ check_collision:
 
 ; ----------------------------------------------------------------------------
 ; tile_at_target: read map_buffer[tgt_row * 16 + tgt_col].
-; Returns A = tile base id. Clobbers Y, map_ptr; preserves X.
+; Returns A = tile base id with the pit-reveal bit ($80) masked off,
+; so callers can compare to TILE_* constants without caring whether
+; a pit is currently revealed or hidden. Clobbers Y, map_ptr; preserves X.
 ; ----------------------------------------------------------------------------
 tile_at_target:
         JSR     calc_map_ptr
         LDY     tgt_col
         LDA     (map_ptr),Y
+        AND     #$7F                    ; strip pit-reveal bit
+        RTS
+
+
+; ----------------------------------------------------------------------------
+; reveal_pit_at_target: set the pit-reveal bit ($80) on the
+; map_buffer cell at (tgt_col, tgt_row). Used by trigger_pit (player)
+; and apply_step's @move_pit branch (monster) so render_map switches
+; the cell from blank-floor to visible pit graphic. The bit is cleared
+; again by strip_invisible_pit_reveals once the cell drifts out of FOV.
+; Clobbers A, Y, map_ptr; preserves X.
+; ----------------------------------------------------------------------------
+reveal_pit_at_target:
+        JSR     calc_map_ptr
+        LDY     tgt_col
+        LDA     (map_ptr),Y
+        ORA     #$80
+        STA     (map_ptr),Y
         RTS
 
 
@@ -3834,8 +4045,10 @@ tile_at_target:
 draw_text:
         STA     VDP_CTRL
         NOP
-        JSR     tms9918_pad12   ; +12c silicon-strict pad16 (back-to-back VDP store)
+        JSR     tms9918_pad12   ; +12c silicon-strict pad16 (addr-low → addr-high)
         STX     VDP_CTRL
+        JSR     tms9918_pad12   ; +12c silicon-strict pad16 (cmd → 1st STA VDP_DATA;
+                                ; raw gap is LDY+LDA(zp,Y)+CMP+BEQ+STA = 15c)
         LDY     #0
 @lp:    LDA     (vdp_src_lo),Y
         CMP     #$FF
@@ -3950,62 +4163,76 @@ update_hud_equip:
         ; the four buff countdowns (weapon / armor / ring / torch).
 
 ; ----------------------------------------------------------------------------
-; update_hud_timers: paint row 22 with the four active buff timers so
-; the player sees how many turns remain on each consumable buff. Each
-; counter is 0..max-of-its-category (TORCH_DURATION=50 is the largest);
-; print_byte_2digits handles 0..99, so a 50 fits cleanly.
-; The row is wiped by clear_msg_rows at the top of finish_turn (right
-; before update_hud runs), so the painted text starts from a clean
-; slate every turn. Layout (32 cols):
+; update_hud_timers: paint the digit countdowns next to each active
+; buff sprite at the bottom of the screen. The matching item sprites
+; are emitted by place_all_sprites at y=176 (rows 22-23); this routine
+; only writes the 2-digit text adjacent to each one.
 ;
-;   "_WPN:NN_ARM:NN_RNG:NN_TRC:NN____"
-;    0      6        13       20    27
+; Stream-paint row 22 cols 10..23 (14 chars) with digit pairs
+; interleaved with sprite-footprint gaps. Inactive timers paint
+; spaces — clear_msg_rows already wipes row 22 to spaces, but the
+; auto-increment cursor still has to advance through every cell, so
+; we explicitly write the gap spaces too.
 ;
-; (1 leading space, 4 trailing spaces — keeps the line centred.)
+;   col:  10-11  12-13  14-15  16-17  18-19  20-21  22-23
+;         WPN n  [ARM]  ARM n  [RNG]  RNG n  [TRC]  TRC n
+;         (sprite footprints for ARM/RNG/TRC sit on the gap cols;
+;          the WPN sprite footprint sits at cols 8-9 to the LEFT of
+;          the digits stream, untouched by this routine.)
 ; ----------------------------------------------------------------------------
 update_hud_timers:
-        LDA     #$C0                    ; row 22 col 0 = $1AC0
+        LDA     #$CA                    ; row 22 col 10 = $1ACA
         STA     VDP_CTRL
         NOP
         JSR     tms9918_pad12   ; +12c silicon-strict pad16 (before LDA #imm bridge)
         LDA     #$5A                    ; $1A | $40
         STA     VDP_CTRL
         JSR     tms9918_pad12           ; gap addr-cmd → first WRT_DATA_VAL
-        WRT_DATA_VAL ' '                ; col 0 — leading
-        WRT_DATA_VAL 'W'
-        WRT_DATA_VAL 'P'
-        WRT_DATA_VAL 'N'
-        WRT_DATA_VAL ':'
+
+        ; Slot 0: WPN digits (cols 10-11)
         LDA     weapon_timer
+        BEQ     @wpn_blank
         JSR     print_byte_2digits
+        JMP     @gap_arm
+@wpn_blank:
         WRT_DATA_VAL ' '
-        WRT_DATA_VAL 'A'
-        WRT_DATA_VAL 'R'
-        WRT_DATA_VAL 'M'
-        WRT_DATA_VAL ':'
+        WRT_DATA_VAL ' '
+@gap_arm:
+        WRT_DATA_VAL ' '                ; cols 12-13: ARM sprite footprint
+        WRT_DATA_VAL ' '
+
+        ; Slot 1: ARM digits (cols 14-15)
         LDA     armor_timer
+        BEQ     @arm_blank
         JSR     print_byte_2digits
+        JMP     @gap_rng
+@arm_blank:
         WRT_DATA_VAL ' '
-        WRT_DATA_VAL 'R'
-        WRT_DATA_VAL 'N'
-        WRT_DATA_VAL 'G'
-        WRT_DATA_VAL ':'
+        WRT_DATA_VAL ' '
+@gap_rng:
+        WRT_DATA_VAL ' '                ; cols 16-17: RNG sprite footprint
+        WRT_DATA_VAL ' '
+
+        ; Slot 2: RNG digits (cols 18-19)
         LDA     ring_timer
+        BEQ     @rng_blank
         JSR     print_byte_2digits
+        JMP     @gap_trc
+@rng_blank:
         WRT_DATA_VAL ' '
-        WRT_DATA_VAL 'T'
-        WRT_DATA_VAL 'R'
-        WRT_DATA_VAL 'C'
-        WRT_DATA_VAL ':'
+        WRT_DATA_VAL ' '
+@gap_trc:
+        WRT_DATA_VAL ' '                ; cols 20-21: TRC sprite footprint
+        WRT_DATA_VAL ' '
+
+        ; Slot 3: TRC digits (cols 22-23)
         LDA     torch_timer
+        BEQ     @trc_blank
         JSR     print_byte_2digits
-        ; 4 trailing spaces (cols 28..31) so leftover glyphs from a
-        ; prior wider message on this row don't bleed through.
-        LDA     #' '
-        LDX     #4
-@sp_lp: WRT_DATA_REG
-        DEX
-        BNE     @sp_lp
+        RTS
+@trc_blank:
+        WRT_DATA_VAL ' '
+        WRT_DATA_VAL ' '
         RTS
 
 
@@ -4165,6 +4392,7 @@ clear_msg_rows:
 ; Layout (32x24):
 ;   row  3:           GAME OVER
 ;   row  6:      YOU DIED ON LEVEL NNN
+;   row  7:        KILLED BY <NAME>
 ;   row  9..13: stats block (DEPTH / KILLS / HP MAX / ATK / DEF)
 ;   row 16:           PRESS ANY KEY
 ; ----------------------------------------------------------------------------
@@ -4189,6 +4417,29 @@ death_screen:
         JSR     draw_text
         LDA     depth
         JSR     print_byte_3digits
+        ; "KILLED BY " (10 chars) — row 7 col 7 → $18E7. Killer name
+        ; appended right after at $18F1 via a second draw_text call;
+        ; the name comes from the mon_name_lo/hi table indexed by
+        ; last_attacker (0..5; clamps to UNKNOWN if out of range).
+        LDA     #<msg_killed_by
+        STA     vdp_src_lo
+        LDA     #>msg_killed_by
+        STA     vdp_src_hi
+        LDA     #$E7
+        LDX     #$58
+        JSR     draw_text
+        LDX     last_attacker
+        CPX     #7                      ; valid range: 0..6 (6 = "A PIT")
+        BCC     @attacker_ok
+        LDX     #0                      ; out-of-range → UNKNOWN slot
+@attacker_ok:
+        LDA     mon_name_lo,X
+        STA     vdp_src_lo
+        LDA     mon_name_hi,X
+        STA     vdp_src_hi
+        LDA     #$F1                    ; row 7 col 17 (right after "KILLED BY ")
+        LDX     #$58
+        JSR     draw_text
         ; Detailed stats + footer
         JSR     paint_scores
         JMP     wait_for_restart
@@ -4347,6 +4598,26 @@ hud_hp:         .byte "HP "                     ; 3 chars (right-anchored;
                                                 ;   15-char gap lives in
                                                 ;   update_hud directly)
 msg_died:       .byte "YOU DIED ON LEVEL ", $FF
+msg_killed_by:  .byte "KILLED BY ", $FF       ; 10 chars; lookup table below
+                                              ; supplies the trailing name
+                                              ; (longest = "SKELETON", 8 chars).
+mon_name_unknown: .byte "UNKNOWN",  $FF
+mon_name_undead:  .byte "UNDEAD",   $FF
+mon_name_ghost:   .byte "GHOST",    $FF
+mon_name_troll:   .byte "TROLL",    $FF
+mon_name_skel:    .byte "SKELETON", $FF
+mon_name_death:   .byte "DEATH",    $FF
+mon_name_pit:     .byte "A PIT",    $FF       ; sentinel index 6
+; Indexed by last_attacker (0 = no killer yet → UNKNOWN, 1..5 = MON_TYPE_*,
+; 6 = LAST_ATTACKER_PIT).
+mon_name_lo:
+        .byte <mon_name_unknown, <mon_name_undead, <mon_name_ghost
+        .byte <mon_name_troll,   <mon_name_skel,   <mon_name_death
+        .byte <mon_name_pit
+mon_name_hi:
+        .byte >mon_name_unknown, >mon_name_undead, >mon_name_ghost
+        .byte >mon_name_troll,   >mon_name_skel,   >mon_name_death
+        .byte >mon_name_pit
 msg_kills:      .byte "KILLS: ", $FF
 msg_game_over:  .byte "GAME OVER", $FF
 msg_congrats:   .byte "CONGRATULATIONS", $FF
@@ -4357,7 +4628,12 @@ msg_score_atk:  .byte "ATK BASE: ", $FF
 msg_score_def:  .byte "DEF BASE: ", $FF
 title_inv:      .byte "INVENTORY", $FF
 msg_press_key:  .byte "PRESS ANY KEY", $FF
-msg_empty_inv:  .byte "(NOTHING)", $FF
+msg_empty_inv:  .byte "-NOTHING-", $FF       ; same length as "(NOTHING)" so
+                                              ; centring at col 11 still
+                                              ; lands cleanly. Quale font's
+                                              ; '(' / ')' glyphs are broken
+                                              ; (extracted as plain vertical
+                                              ; bars), so dashes here.
 msg_use_q:      .byte "USE WHICH? ", $FF
 msg_throw_q:    .byte "THROW WHICH? ", $FF
 msg_dir_q:      .byte "DIRECTION? ", $FF
@@ -4442,9 +4718,11 @@ show_inventory:
         CMP     #21                     ; same cap as text pass — leaves
         BCS     @spr_next               ; rows 21/22 free for footer
         LDA     map_ptr
+        SEC
+        SBC     #1                      ; shift sprite up by half its height
         ASL
         ASL
-        ASL                             ; row * 8 = pixel Y
+        ASL                             ; (row - 1) * 8 = pixel Y
         WRT_DATA_REG
         WRT_DATA_VAL 80                 ; pixel X = col 10 (16x16 sprite
                                         ; occupies tile cols 10..11 — sits
