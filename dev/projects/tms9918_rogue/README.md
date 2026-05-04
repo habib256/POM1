@@ -20,15 +20,21 @@ Ships as `roms/codetank/Codetank_GAMES2.rom` — load via POM1's
   TILE_DOOR — that's the visual cue that a corridor cuts through the
   wall. Edge-door wraps (cols 0/15, rows 0/9) regenerate a sibling
   big-room at the same depth, with the entry door re-stamped opposite
-  the player's exit. Bresenham FOV (8\*FOV_RADIUS rays to the player's
-  box-perimeter) with opaque walls + opaque doors — every room is a
-  fresh "scene", no peeking through thresholds. Persistent fog-of-war
+  the player's exit. **FOV uses Björn Bergström's recursive
+  shadowcasting** (RogueBasin 2002): the plane around the player is
+  partitioned into 8 octants and each is processed by `cast_octant`,
+  which scans rows of increasing depth and shrinks the visible cone
+  on every wall encounter. All slope numerators / denominators stay
+  ≤ 2\*TORCH_RADIUS+1 = 15, so the cross-products fit in one byte and
+  the per-cell comparison only needs a 4-bit×4-bit multiply. Walls
+  AND doors block sight — every room is a fresh "scene", no peeking
+  through thresholds, and no slope artifacts. Persistent fog-of-war
   was deliberately retired in favour of pure torchlight: `compute_fov`
   wipes `vis_buffer` and re-paints from scratch every move, so cells
   that leave the player's radius plunge back into darkness immediately.
-  **Still TODO**: recursive shadowcasting (Bresenham has slope
-  artifacts), and bit-packing the map + vis buffers (currently 160 + 160 B
-  for 16×10 = 160 cells; one bit-per-cell visibility would shrink to 20 B).
+  **Still TODO**: bit-packing the map + vis buffers (currently 160 +
+  160 B for 16×10 = 160 cells; one bit-per-cell visibility would
+  shrink to 20 B).
 - **MVP3 (done)** — 16-slot monster pool at `$E300` (UNDEAD/GHOST/
   SKELETON/DEATH/TROLL, depth-keyed type pool + per-depth HP & damage
   bonuses; TROLL flees the player via `ai_troll`, gated to depth 5+),

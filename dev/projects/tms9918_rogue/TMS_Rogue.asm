@@ -320,20 +320,29 @@ TILE_CORR_DROP  = $81
 ; door-crossing reset to work — VIS_SEEN was always equal to VIS_VISIBLE
 ; in practice, so the duplicate bit was removed.
 ;
-; compute_fov walks Bresenham rays from the player to every cell on the
-; logical perimeter (rows 0/9 + cols 0/15 = 48 cells), capped at
-; FOV_RADIUS steps. Each ray marks every cell it touches and stops the
-; moment the ray crosses an opaque tile (TILE_WALL) — the wall itself
-; is marked but anything past it is not.
+; compute_fov uses Björn Bergström's recursive shadowcasting (RogueBasin
+; 2002). The plane around the player is partitioned into 8 octants;
+; each is processed by `cast_octant`, which scans rows of increasing
+; depth and columns from outer (slope ≈ 1) to inner (slope = 0). For
+; every cell it computes leftSlope = (2c+1)/(2d-1) and rightSlope =
+; max(0, 2c-1)/(2d+1) and tests them against the live cone (start, end)
+; via cross-multiplication (mul_4bit). On floor→wall transitions it
+; recurses one row deeper with the cone narrowed to (start, leftSlope);
+; the wall's rightSlope becomes the new start when the row crosses back
+; to floor. Result: mathematically symmetric FOV with no slope
+; artifacts and no coverage holes — the previous Bresenham pass
+; occasionally let the player peek past a corner into the next room.
 ;
 ; FOV_RADIUS tuning: the playable interior is only 14 wide × 8 tall, so
 ; a radius ≥ 5 lights most of the grid from the centre and movement
-; barely changes what's visible. Even radius 4 felt "trop loin" in
-; the bigger rooms because the box-perimeter casting fills the full
-; 9×9 box around the player when there's no wall to clip the rays.
-; Radius 3 → 7×7 box → ~half a small room visible at any time, which
-; restores the "torchlight in a dark dungeon" feel and makes movement
-; meaningful again.
+; barely changes what's visible. Radius 3 keeps "torchlight in a dark
+; dungeon" pacing — half a small room at any time. TORCH_RADIUS = 7
+; doubles that during the torch buff.
+;
+; All slope numerators/denominators stay within {0..15} (max 2*7+1),
+; so the cross-products fit in a single byte (max 15*15 = 225 < 256)
+; and we use a tiny 4-bit×4-bit multiply (mul_4bit) instead of a full
+; 8x8 → 16-bit routine.
 FOV_RADIUS      = 3
 VIS_VISIBLE     = $01
 
@@ -490,16 +499,10 @@ ring_boost:     .res 1          ; cached ring INV_VALUE (= RING_F_*
                                 ; type lands and only one of two bits
                                 ; should be cleared.
 ; --- Cached FOV radius for the current compute_fov call ---------------
-; compute_fov fills these once at entry, switching between FOV_RADIUS
-; and TORCH_RADIUS based on torch_timer. cast_ray's step countdown +
-; the box-perimeter math read fov_r / fov_r_diam / fov_r_arm so the
-; same routine handles both default and torch-lit FOV without forking.
-;   fov_r       = active radius (3 default, 7 with torch)
-;   fov_r_diam  = 2 * fov_r + 1   (box-edge length, top/bottom rays)
-;   fov_r_arm   = 2 * fov_r - 1   (left/right rays, corners pre-cast)
+; compute_fov picks fov_r at entry (FOV_RADIUS by default, TORCH_RADIUS
+; while torch_timer > 0). cast_octant + apply_octant read it as the
+; row-loop terminator.
 fov_r:          .res 1
-fov_r_diam:     .res 1
-fov_r_arm:      .res 1
 
 ; --- MVP4 thrown projectile ZP -----------------------------------------
 ; throw_active = 1 while a dagger is mid-flight: place_all_sprites
@@ -514,28 +517,45 @@ throw_dmg:      .res 1          ; cached INV_VALUE of the dagger being
                                 ; thrown — read once before consuming
                                 ; the slot, then applied to the monster
                                 ; on hit.
+throw_step:     .res 1          ; remaining flight cells (0..THROW_RANGE).
+                                ; Was previously aliased to fov_step from
+                                ; the Bresenham FOV; the shadowcaster
+                                ; doesn't need a step counter, so a
+                                ; dedicated byte is clearer.
 
-; --- FOV scratch (compute_fov / cast_ray) ------------------------------
-; Bresenham state. ray_endx/y are the target perimeter cell, set by the
-; outer loop in compute_fov. cur_x/y walk from the player to the target;
-; abs_dx/dy + sx/sy split the signed delta into magnitude + sign so the
-; Bresenham core stays unsigned. fov_err is the running signed error
-; (range ≈ -16..+16 — fits in signed 8-bit). fov_e2 caches err<<1 so
-; the two step decisions in one iteration share the same shifted value.
-ray_endx:       .res 1
-ray_endy:       .res 1
+; --- FOV scratch (compute_fov / cast_octant / apply_octant) -----------
+; cur_x/y is the cell currently being marked / opacity-tested (also
+; reused by mark_visible_at_cur, is_opaque_at_cur, and the dagger-
+; throw animation). The cast_* slots hold the recursive-shadowcaster
+; frame; they get save/restored on the hardware stack around every
+; recursive call (see cast_octant). oct_* hold the per-octant
+; transform from canonical (col, depth) to grid offsets (dx, dy) — each
+; element is 0, 1, or $FF (signed -1). mul_a/mul_b/mul_tmp are scratch
+; for mul_4bit, the 4-bit×4-bit→8-bit multiply used by every slope
+; comparison.
 cur_x:          .res 1
 cur_y:          .res 1
-abs_dx:         .res 1
-abs_dy:         .res 1
-sx:             .res 1          ; $01 (east) or $FF (west)
-sy:             .res 1          ; $01 (south) or $FF (north)
-fov_err:        .res 1
-fov_e2:         .res 1
-fov_step:       .res 1          ; cast_ray's step countdown — kept in ZP so
-                                ; the X register stays available for
-                                ; compute_fov's outer per-edge counter
-                                ; across the JSR.
+oct_xx:         .res 1          ; col → grid X coefficient (-1, 0, +1)
+oct_xy:         .res 1          ; depth → grid X coefficient
+oct_yx:         .res 1          ; col → grid Y coefficient
+oct_yy:         .res 1          ; depth → grid Y coefficient
+oct_idx:        .res 1          ; outer octant loop counter (0..7)
+cast_depth:     .res 1          ; current row depth (1..fov_r)
+cast_col:       .res 1          ; current col cursor inside row (depth..0)
+cast_blocked:   .res 1          ; non-zero while inside a wall chain
+cast_start_n:   .res 1          ; live cone — high-slope edge as a
+cast_start_d:   .res 1          ;   reduced fraction (num/den)
+cast_end_n:     .res 1          ; live cone — low-slope edge
+cast_end_d:     .res 1
+cast_save_n:    .res 1          ; "new_start" — narrowed start that
+cast_save_d:    .res 1          ;   takes effect at next wall→floor
+cast_lslope_n:  .res 1          ; current cell's left (high) slope
+cast_lslope_d:  .res 1          ;   = (2c+1) / (2d-1)
+cast_rslope_n:  .res 1          ; current cell's right (low) slope
+cast_rslope_d:  .res 1          ;   = max(0, 2c-1) / (2d+1)
+mul_a:          .res 1          ; 4-bit×4-bit multiplier scratch
+mul_b:          .res 1
+mul_tmp:        .res 1          ; cross-product comparison LHS
 
 
 ; --- Map buffer (160 B, 16x10 logical tiles, one byte = tile base id) ---
@@ -3230,34 +3250,30 @@ clear_vis_buffer:
 
 
 ; ----------------------------------------------------------------------------
-; compute_fov: re-flood the player's field of view. Three phases:
+; compute_fov: re-flood the player's field of view via recursive
+; shadowcasting (Björn Bergström, RogueBasin 2002). Four phases:
 ;
-;   1. Wipe vis_buffer entirely — pure torchlight, no remembered terrain.
-;   2. Light the player's own cell (always visible, regardless of any
-;      degenerate Bresenham that would skip it).
-;   3. Cast Bresenham rays from the player to every cell on the
-;      perimeter of a (2*FOV_RADIUS + 1) box centred on the player.
-;      That's 8 * FOV_RADIUS rays (32 with R=4) — each ray points in a
-;      genuinely distinct direction, so the rays fan out evenly around
-;      the player and every cell within radius gets touched by at
-;      least one. Targets that fall outside the grid are still passed
-;      to cast_ray as-is — the OOB check inside cast_ray bails when
-;      the ray walks off the playable area, which is fine since walls
-;      always sit on rows 0/9 and cols 0/15 and stop the ray first.
+;   0. Pick fov_r — FOV_RADIUS by default, TORCH_RADIUS while a torch
+;      buff is active.
+;   1. Wipe vis_buffer entirely. Pure torchlight, no remembered terrain.
+;   2. Light the player's own cell (cast_octant starts at depth=1, so
+;      depth=0 needs a separate seed).
+;   3. Loop the 8 octants. For each octant, set the (xx, xy, yx, yy)
+;      transform and call cast_octant with the full cone start=1/1,
+;      end=0/1 starting at depth=1.
+;   4. Tail: strip_invisible_pit_reveals re-hides any revealed pit
+;      that's outside the new FOV (fall-through, unchanged).
 ;
-; Targets can be NEGATIVE (8-bit signed, e.g. $FD = -3 when player_col
-; = 1 and box-edge dx = -4); cast_ray's signed-diff math handles that.
-;
-; Cost: 32 rays × ≤ FOV_RADIUS steps × ~55 cycles/step ≈ 7 k cycles
-; (~7 ms at 1 MHz). render_map adds another ~10 k. Comfortably under
-; one frame, even allowing for the silicon-strict NOPs in WRT_DATA_REG.
+; Cost analysis (R=7, torch on): up to 4*R*(R+1) = 224 cell visits
+; across the 8 octants; each costs ~250 cycles (slope mul + compare +
+; mark + opacity test). ~56 k cycles, ~56 ms at 1 MHz, ~3 frames.
+; Default R=3: 4*R*(R+1) = 48 visits, ~12 k cycles, well under one
+; frame. The slower torch path is acceptable — torch is a buff with
+; finite duration and the radius doubling already implies "deeper
+; thinking time per turn".
 ; ----------------------------------------------------------------------------
 compute_fov:
-        ; --- Phase 0: pick the active radius (FOV_RADIUS by default,
-        ; TORCH_RADIUS while torch_timer > 0) and pre-compute the box
-        ; arithmetic constants the perimeter loops + cast_ray read.
-        ; All later sites use the ZP bytes instead of the literal
-        ; FOV_RADIUS so the same routine handles both modes. ---
+        ; --- Phase 0: pick the active radius. ---
         LDA     torch_timer
         BEQ     @r_default
         LDA     #TORCH_RADIUS
@@ -3266,19 +3282,8 @@ compute_fov:
         LDA     #FOV_RADIUS
 @r_save:
         STA     fov_r
-        ASL
-        STA     fov_r_diam              ; 2R
-        INC     fov_r_diam              ; 2R + 1 (box edge length)
-        LDA     fov_r
-        ASL
-        SEC
-        SBC     #1
-        STA     fov_r_arm               ; 2R - 1 (left/right edge rays)
 
-        ; --- Phase 1: wipe vis_buffer entirely. Cells the player
-        ; walked past last turn but are no longer in range plunge
-        ; straight back into darkness — pure "torch always works"
-        ; behaviour, no remembered terrain. ---
+        ; --- Phase 1: wipe vis_buffer entirely.
         ; Sentinel-BNE: 160 has bit 7 set, so "LDX #159 / DEX / BPL"
         ; exits after one iteration and the wipe never happens (every
         ; cell ever lit stays lit forever, "light through walls"). See
@@ -3298,76 +3303,34 @@ compute_fov:
         STA     cur_y
         JSR     mark_visible_at_cur
 
-        ; --- Phase 3: cast rays to the player's box-perimeter. ---
-        ; Top edge: dy = -R, dx = -R..+R.
-        LDA     player_row
-        SEC
-        SBC     fov_r
-        STA     ray_endy
-        LDA     player_col
-        SEC
-        SBC     fov_r
-        STA     ray_endx
-        LDX     fov_r_diam              ; 2R + 1
-@top_lp:
-        JSR     cast_ray
-        INC     ray_endx
-        DEX
-        BNE     @top_lp
+        ; --- Phase 3: 8 octants. ---
+        LDA     #0
+        STA     oct_idx
+@oct_lp:
+        LDX     oct_idx
+        LDA     octant_xx,X
+        STA     oct_xx
+        LDA     octant_xy,X
+        STA     oct_xy
+        LDA     octant_yx,X
+        STA     oct_yx
+        LDA     octant_yy,X
+        STA     oct_yy
 
-        ; Bottom edge: dy = +R, dx = -R..+R.
-        LDA     player_row
-        CLC
-        ADC     fov_r
-        STA     ray_endy
-        LDA     player_col
-        SEC
-        SBC     fov_r
-        STA     ray_endx
-        LDX     fov_r_diam
-@bot_lp:
-        JSR     cast_ray
-        INC     ray_endx
-        DEX
-        BNE     @bot_lp
+        ; Initial cone: start = 1/1, end = 0/1, depth = 1.
+        LDA     #1
+        STA     cast_start_n
+        STA     cast_start_d
+        STA     cast_end_d
+        STA     cast_depth
+        LDA     #0
+        STA     cast_end_n
+        JSR     cast_octant
 
-        ; Left edge: dx = -R, dy = -(R-1)..+(R-1) — corners already cast.
-        LDA     player_col
-        SEC
-        SBC     fov_r
-        STA     ray_endx
-        LDA     player_row
-        SEC
-        SBC     fov_r
-        CLC
-        ADC     #1                      ; row - (R - 1) = row - R + 1
-        STA     ray_endy
-        LDX     fov_r_arm               ; 2R - 1
-@lft_lp:
-        JSR     cast_ray
-        INC     ray_endy
-        DEX
-        BNE     @lft_lp
-
-        ; Right edge: dx = +R.
-        LDA     player_col
-        CLC
-        ADC     fov_r
-        STA     ray_endx
-        LDA     player_row
-        SEC
-        SBC     fov_r
-        CLC
-        ADC     #1
-        STA     ray_endy
-        LDX     fov_r_arm
-@rgt_lp:
-        JSR     cast_ray
-        INC     ray_endy
-        DEX
-        BNE     @rgt_lp
-        ; Tail: any revealed pit that's no longer in FOV reverts to
-        ; hidden. The player has to re-discover (or re-step into) it.
+        INC     oct_idx
+        LDA     oct_idx
+        CMP     #8
+        BCC     @oct_lp
         ; Fall through into strip_invisible_pit_reveals.
 
 ; ----------------------------------------------------------------------------
@@ -3396,150 +3359,371 @@ strip_invisible_pit_reveals:
 
 
 ; ----------------------------------------------------------------------------
-; cast_ray: walk a Bresenham line from (player_col, player_row) toward
-; (ray_endx, ray_endy), marking each touched cell with VIS_VISIBLE. Stops
-; on the first opaque tile (TILE_WALL — the wall itself gets marked) or
-; after FOV_RADIUS steps, whichever comes first.
-;
-; Standard Wikipedia "all-cases" Bresenham, transposed to absolute
-; deltas + sign bytes so the inner core stays unsigned. fov_err lives
-; in signed 8-bit (range ≈ -16..+16 since LOGICAL_COLS=16, LOGICAL_ROWS
-; =10 — well clear of overflow). The step countdown lives in fov_step
-; (ZP) — early drafts used X for it, but compute_fov's per-edge outer
-; loops also use X, and JSR cast_ray clobbered it: depending on which
-; cell-by-cell path the ray took, X came back as anything from 0 to 4,
-; turning the outer DEX/BNE into either an early exit or an infinite
-; loop (= black screen on the unlucky seed).
-;
-; ray_endx / ray_endy are SIGNED 8-bit — compute_fov passes box-
-; perimeter offsets that can land outside the grid (e.g. ray_endx = $FD
-; = -3 when player_col = 1 and dx = -4). The abs/sign block below
-; uses signed-difference + BPL/BMI sign-check so the slope is correct
-; even with negative targets; the OOB guard in the step loop bails the
-; instant cur_x or cur_y wraps past the grid.
-;
-; Two step decisions per iteration use the same fov_e2 = err << 1:
-;   - x-step taken iff (e2 + abs_dy) >= 0   ↔ e2 >= -abs_dy
-;   - y-step taken iff (abs_dx - e2) >= 0   ↔ e2 <=  abs_dx
-; Both implemented as ADC/SBC + BMI-skip, which is non-strict (>= 0)
-; — matches Wikipedia's reference and gives the canonical diagonal
-; tie-break.
+; Octant transforms. Each octant maps canonical (col, depth) coords —
+; col ∈ [0, depth], depth ∈ [1, fov_r] — to a grid (dx, dy) offset
+; from (player_col, player_row):
+;     dx = col * oct_xx + depth * oct_xy
+;     dy = col * oct_yx + depth * oct_yy
+; Each row of the table has exactly one nonzero in {xx, xy} and one
+; in {yx, yy}; the nonzeros are ±1, $FF being two's-complement -1.
+; The 8 rows together cover all 8 octants without overlap. apply_
+; octant adds player_col / player_row and stores in cur_x / cur_y.
+octant_xx:      .byte   0,    1,   $FF,   0,    0,   $FF,   1,    0
+octant_xy:      .byte   1,    0,    0,   $FF, $FF,   0,     0,    1
+octant_yx:      .byte $FF,    0,    0,   $FF,   1,    0,    0,    1
+octant_yy:      .byte   0,   $FF, $FF,    0,    0,    1,    1,    0
+
+
 ; ----------------------------------------------------------------------------
-cast_ray:
-        LDA     player_col
-        STA     cur_x
-        LDA     player_row
-        STA     cur_y
+; cast_octant: recursive shadowcast for one octant. Reads cast_depth /
+; cast_start_n,d / cast_end_n,d from ZP; iterates rows of increasing
+; depth and inside each row scans cols from outer (col = depth, slope
+; ≈ 1) to inner (col = 0, slope = 0). For each in-cone cell:
+;   - mark visible
+;   - if the cell is opaque (wall / door):
+;       * floor → wall transition: recurse one row deeper with the cone
+;         narrowed to (start, leftSlope) — the wall's high edge, which
+;         is the steepest slope the wall occludes at deeper rows.
+;       * cache rightSlope as cast_save_n/d ("new_start"). This is what
+;         the row's `start` becomes if we cross back to floor later in
+;         the same row.
+;   - if the cell is floor and we just exited a wall chain, rewind
+;     start to cast_save_n/d.
+; If the row ends with cast_blocked still set (an unbroken wall chain
+; across the cone tail), the routine returns — every deeper row is
+; entirely shadowed.
+;
+; Recursion depth ≤ fov_r ≤ 7. Each recursive frame pushes 9 bytes of
+; live state (depth, col, blocked, save_n/d, start_n/d, end_n/d) plus
+; the JSR return address: 11 bytes per level, ~80 bytes peak. The
+; hardware stack handles it easily.
+; ----------------------------------------------------------------------------
+cast_octant:
+        ; --- Empty cone? if start_n/start_d <= end_n/end_d -> return.
+        ; Cross-multiplication: start_n * end_d <= end_n * start_d.
+        LDA     cast_start_n
+        STA     mul_a
+        LDA     cast_end_d
+        JSR     mul_4bit                ; A = start_n * end_d
+        STA     mul_tmp
+        LDA     cast_end_n
+        STA     mul_a
+        LDA     cast_start_d
+        JSR     mul_4bit                ; A = end_n * start_d
+        CMP     mul_tmp                 ; carry set iff end*start_d >= start*end_d
+        BCC     @row_lp                 ; start > end -> real cone
+        JMP     @rt                     ; start <= end -> empty cone, done
+@row_lp:
+        LDA     cast_depth
+        CMP     fov_r
+        BEQ     @row_ok
+        BCC     @row_ok                 ; depth < fov_r -> process row
+        JMP     @rt                     ; depth > fov_r -> done with octant
+@row_ok:
+        ; --- Per-row state ---
+        LDA     #0
+        STA     cast_blocked
+        LDA     cast_start_n
+        STA     cast_save_n             ; "new_start" — initial value =
+        LDA     cast_start_d            ;   current start; updated as we
+        STA     cast_save_d             ;   discover wall chains.
 
-        ; --- abs_dx, sx (signed-difference + sign-check) ---
-        LDA     ray_endx
-        SEC
-        SBC     cur_x           ; signed result fits 8-bit (|.| ≤ 19)
-        BMI     @neg_dx         ; bit 7 set -> negative -> sx = -1
-        STA     abs_dx
-        LDA     #$01
-        STA     sx
-        JMP     @done_dx
-@neg_dx:
-        EOR     #$FF
+        LDA     cast_depth
+        STA     cast_col                ; outer-most cell in row
+
+@col_lp:
+        ; --- Compute leftSlope = (2c + 1) / (2d - 1) ---
+        ; --- Compute rightSlope = max(0, 2c - 1) / (2d + 1) ---
+        LDA     cast_col
+        ASL                             ; A = 2c
+        PHA                             ; save 2c
         CLC
-        ADC     #1              ; A = -A (two's-complement negate)
-        STA     abs_dx
-        LDA     #$FF
-        STA     sx
-@done_dx:
-
-        ; --- abs_dy, sy ---
-        LDA     ray_endy
+        ADC     #1                      ; 2c + 1
+        STA     cast_lslope_n
+        LDA     cast_depth
+        ASL                             ; A = 2d
+        PHA                             ; save 2d
         SEC
-        SBC     cur_y
-        BMI     @neg_dy
-        STA     abs_dy
-        LDA     #$01
-        STA     sy
-        JMP     @done_dy
-@neg_dy:
+        SBC     #1                      ; 2d - 1
+        STA     cast_lslope_d
+        ; rightSlope numerator: 0 if col=0, else 2c-1.
+        LDA     cast_col
+        BEQ     @rs_zero
+        PLA                             ; A = 2d
+        STA     cast_rslope_d           ; (we'll fix d after)
+        PLA                             ; A = 2c
+        SEC
+        SBC     #1                      ; 2c - 1
+        STA     cast_rslope_n
+        JMP     @rs_d
+@rs_zero:
+        PLA                             ; A = 2d
+        STA     cast_rslope_d
+        PLA                             ; discard 2c (col was 0)
+        LDA     #0
+        STA     cast_rslope_n
+@rs_d:
+        INC     cast_rslope_d           ; 2d + 1
+
+        ; --- Cone test (a): if cast_start < rightSlope, skip cell.
+        ; start_n/start_d < rslope_n/rslope_d
+        ;   <=>  start_n * rslope_d  <  rslope_n * start_d
+        LDA     cast_start_n
+        STA     mul_a
+        LDA     cast_rslope_d
+        JSR     mul_4bit
+        STA     mul_tmp                 ; start_n * rslope_d
+        LDA     cast_rslope_n
+        STA     mul_a
+        LDA     cast_start_d
+        JSR     mul_4bit                ; rslope_n * start_d
+        CMP     mul_tmp                 ; >= mul_tmp => rslope >= start
+        BEQ     @in_cone_a              ; equal: still in cone (boundary)
+        BCC     @in_cone_a              ; rslope < start -> in cone
+        JMP     @next_col               ; rslope > start -> too steep, skip
+@in_cone_a:
+        ; --- Cone test (b): if leftSlope < cast_end, break (past cone).
+        ; lslope_n/lslope_d < end_n/end_d
+        ;   <=>  lslope_n * end_d  <  end_n * lslope_d
+        LDA     cast_lslope_n
+        STA     mul_a
+        LDA     cast_end_d
+        JSR     mul_4bit
+        STA     mul_tmp                 ; lslope_n * end_d
+        LDA     cast_end_n
+        STA     mul_a
+        LDA     cast_lslope_d
+        JSR     mul_4bit                ; end_n * lslope_d
+        CMP     mul_tmp
+        BEQ     @in_cone_b              ; equal: keep
+        BCC     @in_cone_b              ; end*lslope_d < lslope_n*end_d
+                                        ;   -> end < lslope -> in cone
+        JMP     @break_row              ; lslope < end -> past cone
+@in_cone_b:
+        ; --- Resolve cell to grid (cur_x, cur_y) and OOR-test. ---
+        JSR     apply_octant
+        LDA     cur_x
+        CMP     #LOGICAL_COLS
+        BCS     @oor_cell
+        LDA     cur_y
+        CMP     #LOGICAL_ROWS
+        BCS     @oor_cell
+
+        ; In-bounds: mark visible + check opacity.
+        JSR     mark_visible_at_cur
+        JSR     is_opaque_at_cur
+        BNE     @cell_blocks            ; opaque → wall handling
+
+        ; --- Floor cell ---
+        LDA     cast_blocked
+        BEQ     @next_col               ; not blocked -> just continue
+        ; Wall→floor transition: rewind start to cast_save_n/d.
+        LDA     #0
+        STA     cast_blocked
+        LDA     cast_save_n
+        STA     cast_start_n
+        LDA     cast_save_d
+        STA     cast_start_d
+        JMP     @next_col
+
+@cell_blocks:
+        ; --- Wall cell ---
+        LDA     cast_blocked
+        BNE     @wall_extend            ; already in wall chain — just
+                                        ; track new_start, no recursion.
+
+        ; Floor → wall transition. Recurse one row deeper with cone
+        ; (start, l_slope), then cache new_start = r_slope.
+        LDA     #1
+        STA     cast_blocked
+        LDA     cast_depth
+        CMP     fov_r
+        BCS     @save_new_start         ; depth >= fov_r -> deepest row,
+                                        ; nothing past the wall to scan.
+
+        ; --- Save 9-byte frame, set up child params, recurse, restore.
+        LDA     cast_depth
+        PHA
+        LDA     cast_col
+        PHA
+        LDA     cast_blocked
+        PHA
+        LDA     cast_save_n
+        PHA
+        LDA     cast_save_d
+        PHA
+        LDA     cast_start_n
+        PHA
+        LDA     cast_start_d
+        PHA
+        LDA     cast_end_n
+        PHA
+        LDA     cast_end_d
+        PHA
+
+        INC     cast_depth              ; child row = depth + 1
+        LDA     cast_lslope_n
+        STA     cast_end_n              ; cone narrowed to (start, lslope)
+        LDA     cast_lslope_d
+        STA     cast_end_d
+
+        JSR     cast_octant
+
+        PLA
+        STA     cast_end_d
+        PLA
+        STA     cast_end_n
+        PLA
+        STA     cast_start_d
+        PLA
+        STA     cast_start_n
+        PLA
+        STA     cast_save_d
+        PLA
+        STA     cast_save_n
+        PLA
+        STA     cast_blocked
+        PLA
+        STA     cast_col
+        PLA
+        STA     cast_depth
+
+@save_new_start:
+@wall_extend:
+        ; Cache rightSlope as new_start (latest wall in chain wins).
+        LDA     cast_rslope_n
+        STA     cast_save_n
+        LDA     cast_rslope_d
+        STA     cast_save_d
+        JMP     @next_col
+
+@oor_cell:
+        ; Treat off-grid as wall; runs the wall-state machine but skips
+        ; mark_visible / opacity (the cell is unreachable anyway).
+        LDA     cast_blocked
+        BNE     @oor_extend
+        LDA     #1
+        STA     cast_blocked
+@oor_extend:
+        LDA     cast_rslope_n
+        STA     cast_save_n
+        LDA     cast_rslope_d
+        STA     cast_save_d
+        ; (no recursion — off-grid wall doesn't shadow anything in-grid
+        ; that wasn't already shadowed by the actual border wall, and
+        ; in our 16x10 layout border cells are always TILE_WALL anyway.)
+
+@next_col:
+        LDA     cast_col
+        BEQ     @col_done               ; col already 0 -> row scan done
+        DEC     cast_col
+        JMP     @col_lp
+
+@break_row:
+@col_done:
+        ; If the row ended while still inside a wall chain, every
+        ; deeper row would be entirely shadowed by it -> return.
+        LDA     cast_blocked
+        BNE     @rt
+
+        INC     cast_depth
+        JMP     @row_lp
+@rt:
+        RTS
+
+
+; ----------------------------------------------------------------------------
+; apply_octant: cur_x = player_col + col * oct_xx + depth * oct_xy
+;               cur_y = player_row + col * oct_yx + depth * oct_yy
+; All four oct_* coefficients are signed: $00, $01, or $FF (= -1). The
+; signed_mul_unit helper resolves coeff * magnitude into an 8-bit
+; two's-complement byte, then we sum into the (unsigned) player coord.
+; The caller's OOR check (CMP #LOGICAL_COLS) catches both overshoot
+; and signed-wrap underflow ($FF).
+; ----------------------------------------------------------------------------
+apply_octant:
+        LDA     oct_xx
+        LDY     cast_col
+        JSR     signed_mul_unit
+        STA     mul_tmp                 ; col * oct_xx
+        LDA     oct_xy
+        LDY     cast_depth
+        JSR     signed_mul_unit
+        CLC
+        ADC     mul_tmp                 ; + depth * oct_xy
+        CLC
+        ADC     player_col
+        STA     cur_x
+
+        LDA     oct_yx
+        LDY     cast_col
+        JSR     signed_mul_unit
+        STA     mul_tmp
+        LDA     oct_yy
+        LDY     cast_depth
+        JSR     signed_mul_unit
+        CLC
+        ADC     mul_tmp
+        CLC
+        ADC     player_row
+        STA     cur_y
+        RTS
+
+
+; ----------------------------------------------------------------------------
+; signed_mul_unit: A = signed_unit * magnitude.
+;   In:  A = coefficient ($00, $01, or $FF)
+;        Y = unsigned magnitude (≤ TORCH_RADIUS = 7)
+;   Out: A = signed product as two's-complement byte
+;        ($00, +Y, or -Y respectively)
+; ----------------------------------------------------------------------------
+signed_mul_unit:
+        CMP     #0
+        BEQ     @zero
+        BMI     @neg
+        TYA
+        RTS
+@neg:
+        TYA
         EOR     #$FF
         CLC
         ADC     #1
-        STA     abs_dy
-        LDA     #$FF
-        STA     sy
-@done_dy:
+        RTS
+@zero:
+        LDA     #0
+        RTS
 
-        ; --- err = abs_dx - abs_dy (signed) ---
-        LDA     abs_dx
-        SEC
-        SBC     abs_dy
-        STA     fov_err
 
-        LDA     fov_r           ; runtime radius (FOV_RADIUS or
-                                ; TORCH_RADIUS while torch_timer > 0)
-        STA     fov_step        ; step countdown in ZP — see header
-@step_lp:
-        ; --- e2 = err << 1 (signed; ASL preserves two's-complement
-        ; for our small range) ---
-        LDA     fov_err
-        ASL     A
-        STA     fov_e2
-
-        ; --- x-step? if (e2 + abs_dy) >= 0 (BMI skips on negative) ---
-        ; The opacity check happens BETWEEN the x-step and the y-step
-        ; instead of after both. This kills the Bresenham corner-cut
-        ; bug: when both x- and y-step fire in the same iteration the
-        ; original code jumped diagonally over the orthogonal cell, so
-        ; if THAT cell was a wall the ray slipped through the corner
-        ; and lit up monsters/items inside the room behind. Now the
-        ; intermediate orthogonal cell is marked + opacity-tested in
-        ; sequence, so a wall on the diagonal path stops the ray.
+; ----------------------------------------------------------------------------
+; mul_4bit: 4-bit × 4-bit unsigned multiply.
+;   In:  mul_a = multiplicand (0..15)
+;        A    = multiplier   (0..15)
+;   Out: A    = mul_a * multiplier (0..225, fits in one byte)
+;   Clobbers: X, mul_b
+;
+; Used exclusively by cast_octant's slope cross-multiplications. All
+; slope numerators / denominators stay within 0..(2*TORCH_RADIUS+1) =
+; 0..15, so the product fits comfortably in 8 bits.
+; ----------------------------------------------------------------------------
+mul_4bit:
+        ; Park b in the upper nybble of mul_b so the shift-and-add
+        ; loop only needs 4 iterations.
+        ASL
+        ASL
+        ASL
+        ASL
+        STA     mul_b
+        LDA     #0
+        LDX     #4
+@lp:
+        ASL                             ; result <<= 1
+        ASL     mul_b                   ; bit of multiplier -> carry
+        BCC     @noadd
         CLC
-        ADC     abs_dy
-        BMI     @no_xstep
-        LDA     fov_err
-        SEC
-        SBC     abs_dy
-        STA     fov_err
-        LDA     cur_x
-        CLC
-        ADC     sx              ; sx is +1 or -1 ($FF)
-        STA     cur_x
-        ; OOB guard: cur_x wrapped past the grid (signed-wrap to $FF or
-        ; ran past LOGICAL_COLS). Either way, ray dies here.
-        CMP     #LOGICAL_COLS
-        BCS     @done
-        LDA     cur_y
-        CMP     #LOGICAL_ROWS
-        BCS     @done
-        JSR     mark_visible_at_cur
-        JSR     is_opaque_at_cur
-        BNE     @done           ; orthogonal cell was a wall -> stop
-@no_xstep:
-        ; --- y-step? if (abs_dx - e2) >= 0 ---
-        LDA     abs_dx
-        SEC
-        SBC     fov_e2
-        BMI     @no_ystep
-        LDA     fov_err
-        CLC
-        ADC     abs_dx
-        STA     fov_err
-        LDA     cur_y
-        CLC
-        ADC     sy
-        STA     cur_y
-        ; OOB guard.
-        CMP     #LOGICAL_ROWS
-        BCS     @done
-        LDA     cur_x
-        CMP     #LOGICAL_COLS
-        BCS     @done
-        JSR     mark_visible_at_cur
-        JSR     is_opaque_at_cur
-        BNE     @done
-@no_ystep:
-        DEC     fov_step
-        BNE     @step_lp
-@done:
+        ADC     mul_a
+@noadd:
+        DEX
+        BNE     @lp
         RTS
 
 
@@ -5477,7 +5661,7 @@ handle_throw:
         STA     throw_active            ; place_all_sprites now appends
                                         ; an extra dagger SAT entry
         LDA     #THROW_RANGE
-        STA     fov_step                ; reuse FOV step as flight counter
+        STA     throw_step
 @flight_lp:
         ; Step (cur_x, cur_y) by (throw_dx, throw_dy).
         CLC
@@ -5521,7 +5705,7 @@ handle_throw:
         ; Empty cell — render this frame and step again.
         JSR     redraw_game             ; rebuilds SAT with throw_active=1
         JSR     delay_throw_frame
-        DEC     fov_step
+        DEC     throw_step
         BNE     @flight_lp
         ; Ran out of range — drop on the current (empty, in-bounds) cell.
         JMP     @drop_at_cur
