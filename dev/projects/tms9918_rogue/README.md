@@ -8,12 +8,12 @@ RAM layout (low bank for code, high bank for the map buffer).
 Ships as `roms/codetank/Codetank_GAME2.rom` — load via POM1's
 `--codetank-rom` and run with `4000R` from Wozmon.
 
-## MVP roadmap
+## Shipped features
 
-- **MVP1 (done)** — vi-key movement (HJKL / QZSD on AZERTY), 16x16
+- **MVP1** — vi-key movement (HJKL / QZSD on AZERTY), 16x16
   hardware-sprite player (Quale's `char_adventurer`), collision against
   a RAM map buffer.
-- **MVP2 (done)** — LFSR-16 PRNG seeded from time-to-keypress,
+- **MVP2** — LFSR-16 PRNG seeded from time-to-keypress,
   random gen dispatcher (coin-flip between big-room and two-rooms +
   L-corridor; connectivity guaranteed by construction). Each room's
   perimeter is scanned post-hoc and TILE_EMPTY perimeter cells become
@@ -32,10 +32,7 @@ Ships as `roms/codetank/Codetank_GAME2.rom` — load via POM1's
   was deliberately retired in favour of pure torchlight: `compute_fov`
   wipes `vis_buffer` and re-paints from scratch every move, so cells
   that leave the player's radius plunge back into darkness immediately.
-  **Still TODO**: bit-packing the map + vis buffers (currently 160 +
-  160 B for 16×10 = 160 cells; one bit-per-cell visibility would
-  shrink to 20 B).
-- **MVP3 (done)** — 16-slot monster pool at `$E300` (UNDEAD/GHOST/
+- **MVP3** — 16-slot monster pool at `$E300` (UNDEAD/GHOST/
   SKELETON/DEATH/TROLL, depth-keyed type pool + per-depth HP & damage
   bonuses; TROLL flees the player via `ai_troll`, gated to depth 5+),
   8-slot item pool at `$E380` for food drops, bump-to-attack
@@ -44,7 +41,7 @@ Ships as `roms/codetank/Codetank_GAME2.rom` — load via POM1's
   permadeath → "YOU DIED ON LEVEL N" + 1.3 s deaf-time + JMP $4000
   cartridge cold-start. Food drops where a monster died, walking onto
   the cell heals FOOD_HEAL HP (capped at HP_MAX).
-- **MVP4 (done) — inventory-first command set + timed-buff equipment**:
+- **MVP4 — inventory-first command set + timed-buff equipment**:
   26-slot inventory at `$E3A0` (one slot per letter A..Z, 8 B per slot),
   8 item categories (weapon, armor, ring, potion, scroll, food, dagger,
   torch). Each category has a single sub-type that matches its on-screen
@@ -128,6 +125,13 @@ Ships as `roms/codetank/Codetank_GAME2.rom` — load via POM1's
     `paint_scores` (DEPTH / KILLS / HP MAX / ATK BASE / DEF BASE),
     apply a ~1.3 s deaf-time, then wait for any keypress, then
     `JMP $4000` cold-start.
+
+## TODO
+
+- **Bit-pack `map_buffer` + `vis_buffer`** — currently 160 + 160 B for
+  16×10 cells. Visibility is single-bit, so `vis_buffer` shrinks to
+  20 B; tile ids fit in 4 bits, so `map_buffer` shrinks to 80 B.
+  Frees ~220 B of high-bank RAM for future content.
 
 ## Files
 
