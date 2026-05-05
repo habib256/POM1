@@ -5,17 +5,17 @@
 // states without a chip reset, so the user can A/B compare a running program
 // (typically Galaga via CodeTank) against real hardware behaviour.
 //
-// Paranoid 16c contract — passing POM1 strict ⇒ silicon-safe (cf.
+// Hardened 24c contract — passing POM1 strict ⇒ silicon-safe (cf.
 // dev/SILICONBUGS.md Bug N°1). Per-mode thresholds:
-//   Mode I + sprites active        : 16 cycles
+//   Mode I + sprites active        : 24 cycles  (was 16, May 2026 hardening)
 //   Mode I sprites OFF / Multicolor:  6 cycles
 //   Text mode                      :  4 cycles
 //   Display blanked / VBlank       :  2 cycles
 //
 // What's covered:
 //   - Phase 1 (strict=false): back-to-back $CC00 writes all land in VRAM.
-//   - Phase 2 (strict=true, Mode I + sprites): writes need ≥ 16-cycle gap;
-//     a 15-cycle gap drops, a 16-cycle gap is accepted.
+//   - Phase 2 (strict=true, Mode I + sprites): writes need ≥ 24-cycle gap;
+//     a 23-cycle gap drops, a 24-cycle gap is accepted.
 //   - Phase 3 (flip strict=false again): tolerance restored, all writes land.
 //   - Phase 4 (strict=true, text mode): 4-cycle window.
 //   - Phase 5 (strict=true, multicolor): 6-cycle window.
@@ -38,11 +38,11 @@ void mustBeTrue(bool cond, const char* msg)
 }
 
 // Strict-aware control / data helpers: advance enough cycles so the access
-// is always accepted, regardless of the current strict-mode flag. 20c covers
-// the worst-case (16c Mode I + sprites) with margin.
+// is always accepted, regardless of the current strict-mode flag. 28c covers
+// the worst-case (24c Mode I + sprites) with margin.
 void strictWriteControl(TMS9918& vdp, uint8_t value)
 {
-    vdp.advanceCycles(20);
+    vdp.advanceCycles(28);
     vdp.writeControl(value);
 }
 
@@ -60,13 +60,13 @@ void strictSetReadAddress(TMS9918& vdp, uint16_t addr)
 
 void strictWriteData(TMS9918& vdp, uint8_t value)
 {
-    vdp.advanceCycles(20);
+    vdp.advanceCycles(28);
     vdp.writeData(value);
 }
 
 // Configure VDP in Mode 0 (Graphic I) with display on and sprite 0 active.
-// requiredAccessCycles() returns 16 for this configuration (Galaga's
-// render_sprites worst case).
+// requiredAccessCycles() returns 24 for this configuration (Galaga's
+// render_sprites worst case under the hardened contract).
 void initActiveSpriteMode(TMS9918& vdp)
 {
     // R1 = 0xC0 -> display on (bit 6), 16K (bit 7), Mode 0, no sprite mag, no IRQ.
@@ -88,7 +88,7 @@ void initActiveSpriteMode(TMS9918& vdp)
 uint8_t readVramAt(TMS9918& vdp, uint16_t addr)
 {
     strictSetReadAddress(vdp, addr);
-    vdp.advanceCycles(20);
+    vdp.advanceCycles(28);
     return vdp.readData();
 }
 
@@ -129,8 +129,8 @@ int main()
     }
 
     // ----------------------------------------------------------------------
-    // Phase 2: strict mode, Mode I + sprites → 16-cycle window.
-    // gap = 15 → drop; gap = 16 → accept.
+    // Phase 2: strict mode, Mode I + sprites → 24-cycle window.
+    // gap = 23 → drop; gap = 24 → accept.
     // ----------------------------------------------------------------------
     {
         TMS9918 vdp;
@@ -138,14 +138,14 @@ int main()
         initActiveSpriteMode(vdp);
         vdp.setSiliconStrictMode(true);
 
-        writeAtGap(vdp, 0x1010, 0xB1, 16);  // accept
-        writeAtGap(vdp, 0x1011, 0xB2, 15);  // drop (boundary -1)
-        writeAtGap(vdp, 0x1012, 0xB3, 16);  // accept (boundary)
+        writeAtGap(vdp, 0x1010, 0xB1, 24);  // accept (boundary)
+        writeAtGap(vdp, 0x1011, 0xB2, 23);  // drop (boundary -1)
+        writeAtGap(vdp, 0x1012, 0xB3, 24);  // accept (boundary)
         writeAtGap(vdp, 0x1013, 0xB4, 100); // accept (way over)
 
-        mustBeTrue(readVramAt(vdp, 0x1010) == 0xB1, "Phase2: gap=16 accepted"); ++assertions;
-        mustBeTrue(readVramAt(vdp, 0x1011) == 0x00, "Phase2: gap=15 dropped"); ++assertions;
-        mustBeTrue(readVramAt(vdp, 0x1012) == 0xB3, "Phase2: gap=16 boundary accepted"); ++assertions;
+        mustBeTrue(readVramAt(vdp, 0x1010) == 0xB1, "Phase2: gap=24 accepted"); ++assertions;
+        mustBeTrue(readVramAt(vdp, 0x1011) == 0x00, "Phase2: gap=23 dropped"); ++assertions;
+        mustBeTrue(readVramAt(vdp, 0x1012) == 0xB3, "Phase2: gap=24 boundary accepted"); ++assertions;
         mustBeTrue(readVramAt(vdp, 0x1013) == 0xB4, "Phase2: gap=100 accepted"); ++assertions;
     }
 

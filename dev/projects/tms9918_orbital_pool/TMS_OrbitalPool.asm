@@ -38,7 +38,7 @@
 ; =============================================
 
 ; ----- Apple 1 I/O -----
-        .import tms9918_pad12  ; silicon-strict pad16 (helper from tms9918_pad.asm)
+        .import tms9918_pad24  ; silicon-strict pad24 (helper from tms9918_pad.asm)
 KBDCR   = $D011
 KBD     = $D010
 
@@ -437,12 +437,12 @@ draw_cell:
         ; Write VDP address: low first, then (high | $40) = write
         LDA tmp
         STA VDP_CTRL
-        JSR     tms9918_pad12   ; +12c silicon-strict pad16 (before LDA zp/abs bridge)
+        JSR     tms9918_pad24   ; +24c silicon-strict pad24 (before LDA zp/abs bridge)
         LDA tmp2
         ORA #$40
         STA VDP_CTRL
 
-        JSR     tms9918_pad12   ; +12c silicon-strict pad16 (before LDA zp/abs bridge)
+        JSR     tms9918_pad24   ; +24c silicon-strict pad24 (before LDA zp/abs bridge)
         LDA cell_char
         STA VDP_DATA
         RTS
@@ -489,22 +489,22 @@ compute_ball_pixel:
 move_ball_sprite:
         LDA #$00
         STA VDP_CTRL
-        JSR     tms9918_pad12   ; +12c silicon-strict pad16 (before LDA #imm bridge)
+        JSR     tms9918_pad24   ; +24c silicon-strict pad24 (before LDA #imm bridge)
         LDA #$5B                ; $1B | $40 (VDP write at $1B00)
         STA VDP_CTRL
 
-        JSR     tms9918_pad12   ; +12c silicon-strict pad16 (before LDA zp/abs bridge)
+        JSR     tms9918_pad24   ; +24c silicon-strict pad24 (before LDA zp/abs bridge)
         LDA ball_pixel_y
         SEC
         SBC #1
         STA VDP_DATA            ; Y
-        JSR     tms9918_pad12   ; +12c silicon-strict pad16 (before LDA zp/abs bridge)
+        JSR     tms9918_pad24   ; +24c silicon-strict pad24 (before LDA zp/abs bridge)
         LDA ball_pixel_x
         STA VDP_DATA            ; X
-        JSR     tms9918_pad12   ; +12c silicon-strict pad16 (before LDA #imm bridge)
+        JSR     tms9918_pad24   ; +24c silicon-strict pad24 (before LDA #imm bridge)
         LDA #0
         STA VDP_DATA            ; pattern 0 = ball
-        JSR     tms9918_pad12   ; +12c silicon-strict pad16 (before LDA #imm bridge)
+        JSR     tms9918_pad24   ; +24c silicon-strict pad24 (before LDA #imm bridge)
         LDA #$0F
         STA VDP_DATA            ; color 15
         RTS
@@ -519,22 +519,22 @@ stamp_trail_sprite:
         ASL
         ASL                     ; *4 (trail_slot <= 31, result <= 124)
         STA VDP_CTRL
-        JSR     tms9918_pad12   ; +12c silicon-strict pad16 (before LDA #imm bridge)
+        JSR     tms9918_pad24   ; +24c silicon-strict pad24 (before LDA #imm bridge)
         LDA #$5B                ; $1B | $40
         STA VDP_CTRL
 
-        JSR     tms9918_pad12   ; +12c silicon-strict pad16 (before LDA zp/abs bridge)
+        JSR     tms9918_pad24   ; +24c silicon-strict pad24 (before LDA zp/abs bridge)
         LDA ball_pixel_y
         SEC
         SBC #1
         STA VDP_DATA            ; Y
-        JSR     tms9918_pad12   ; +12c silicon-strict pad16 (before LDA zp/abs bridge)
+        JSR     tms9918_pad24   ; +24c silicon-strict pad24 (before LDA zp/abs bridge)
         LDA ball_pixel_x
         STA VDP_DATA            ; X
-        JSR     tms9918_pad12   ; +12c silicon-strict pad16 (before LDA #imm bridge)
+        JSR     tms9918_pad24   ; +24c silicon-strict pad24 (before LDA #imm bridge)
         LDA #1
         STA VDP_DATA            ; pattern 1 = trail dot
-        JSR     tms9918_pad12   ; +12c silicon-strict pad16 (before LDA #imm bridge)
+        JSR     tms9918_pad24   ; +24c silicon-strict pad24 (before LDA #imm bridge)
         LDA #$0F
         STA VDP_DATA            ; color 15
 
@@ -554,24 +554,25 @@ stamp_trail_sprite:
 clear_trail_sprites:
         LDA #$04                ; $1B04 = sprite 1 start
         STA VDP_CTRL
-        JSR     tms9918_pad12   ; +12c silicon-strict pad16 (before LDA #imm bridge)
+        JSR     tms9918_pad24   ; +24c silicon-strict pad24 (before LDA #imm bridge)
         LDA #$5B
         STA VDP_CTRL
         LDX #31
 @lp:
         LDA #$D1                ; Y off-screen (not $D0 which terminates list)
-        JSR     tms9918_pad12   ; +12c silicon-strict pad16 (back-to-back VDP store)
+        JSR     tms9918_pad24   ; +24c silicon-strict pad24 (back-to-back VDP store)
         STA VDP_DATA
-        JSR     tms9918_pad12   ; +12c silicon-strict pad16 (before LDA #imm bridge)
+        JSR     tms9918_pad24   ; +24c silicon-strict pad24 (before LDA #imm bridge)
         LDA #$00
         STA VDP_DATA            ; X
-        JSR     tms9918_pad12   ; +12c silicon-strict pad16 (before LDA #imm bridge)
+        JSR     tms9918_pad24   ; +24c silicon-strict pad24 (before LDA #imm bridge)
         LDA #$01
         STA VDP_DATA            ; pattern 1
-        JSR     tms9918_pad12   ; +12c silicon-strict pad16 (before LDA #imm bridge)
+        JSR     tms9918_pad24   ; +24c silicon-strict pad24 (before LDA #imm bridge)
         LDA #$0F
         STA VDP_DATA            ; color
         DEX
+        JSR     tms9918_pad24   ; +24c silicon-strict pad24 (back-to-back VDP store)
         BNE @lp
         LDA #1
         STA trail_slot
@@ -589,54 +590,55 @@ init_vdp:
         STA VDP_CTRL
         TXA
         ORA #$80
-        JSR     tms9918_pad12   ; +12c silicon-strict pad16 (back-to-back VDP store)
+        JSR     tms9918_pad24   ; +24c silicon-strict pad24 (back-to-back VDP store)
         STA VDP_CTRL
         INX
         CPX #8
+        JSR     tms9918_pad24   ; +24c silicon-strict pad24 (back-to-back VDP store)
         BNE @regs
 
         ; Pattern table at $0000 (6 glyphs × 8 bytes = 48 bytes)
         LDA #$00
-        JSR     tms9918_pad12   ; +12c silicon-strict pad16 (back-to-back VDP store)
         STA VDP_CTRL
-        JSR     tms9918_pad12   ; +12c silicon-strict pad16 (before LDA #imm bridge)
+        JSR     tms9918_pad24   ; +24c silicon-strict pad24 (before LDA #imm bridge)
         LDA #$40                ; $00 | $40 = write to $0000
         STA VDP_CTRL
         LDX #0
 @ptn:
         LDA glyph_data,X
-        JSR     tms9918_pad12   ; +12c silicon-strict pad16 (back-to-back VDP store)
+        JSR     tms9918_pad24   ; +24c silicon-strict pad24 (back-to-back VDP store)
         STA VDP_DATA
         INX
         CPX #48
+        JSR     tms9918_pad24   ; +24c silicon-strict pad24 (back-to-back VDP store)
         BNE @ptn
 
         ; Colour table at VRAM $2000, group 0 only (chars 0-7 green on black)
         LDA #$00
-        JSR     tms9918_pad12   ; +12c silicon-strict pad16 (back-to-back VDP store)
         STA VDP_CTRL
-        JSR     tms9918_pad12   ; +12c silicon-strict pad16 (before LDA #imm bridge)
+        JSR     tms9918_pad24   ; +24c silicon-strict pad24 (before LDA #imm bridge)
         LDA #$60                ; $20 | $40
         STA VDP_CTRL
-        JSR     tms9918_pad12   ; +12c silicon-strict pad16 (before LDA #imm bridge)
+        JSR     tms9918_pad24   ; +24c silicon-strict pad24 (before LDA #imm bridge)
         LDA #$21                ; fg=2 green, bg=1 black
         STA VDP_DATA
 
         ; Sprite pattern table at VRAM $3800 - upload 16 bytes:
         ; pattern 0 = ball (8 bytes), pattern 1 = trail dot (8 bytes)
-        JSR     tms9918_pad12   ; +12c silicon-strict pad16 (before LDA #imm bridge)
+        JSR     tms9918_pad24   ; +24c silicon-strict pad24 (before LDA #imm bridge)
         LDA #$00
         STA VDP_CTRL
-        JSR     tms9918_pad12   ; +12c silicon-strict pad16 (before LDA #imm bridge)
+        JSR     tms9918_pad24   ; +24c silicon-strict pad24 (before LDA #imm bridge)
         LDA #$78                ; $38 | $40
         STA VDP_CTRL
         LDX #0
 @spr:
         LDA ball_sprite,X
-        JSR     tms9918_pad12   ; +12c silicon-strict pad16 (back-to-back VDP store)
+        JSR     tms9918_pad24   ; +24c silicon-strict pad24 (back-to-back VDP store)
         STA VDP_DATA
         INX
         CPX #16
+        JSR     tms9918_pad24   ; +24c silicon-strict pad24 (back-to-back VDP store)
         BNE @spr
         RTS
 
@@ -646,16 +648,17 @@ init_vdp:
 clear_name_table:
         LDA #$00
         STA VDP_CTRL
-        JSR     tms9918_pad12   ; +12c silicon-strict pad16 (before LDA #imm bridge)
+        JSR     tms9918_pad24   ; +24c silicon-strict pad24 (before LDA #imm bridge)
         LDA #$58                ; $18 | $40
         STA VDP_CTRL
         LDX #3                  ; 3 pages
         LDY #0
         LDA #CHR_EMPTY
 @lp:
-        JSR     tms9918_pad12   ; +12c silicon-strict pad16 (back-to-back VDP store)
+        JSR     tms9918_pad24   ; +24c silicon-strict pad24 (back-to-back VDP store)
         STA VDP_DATA
         INY
+        JSR     tms9918_pad24   ; +24c silicon-strict pad24 (back-to-back VDP store)
         BNE @lp
         DEX
         BNE @lp

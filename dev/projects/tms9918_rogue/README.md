@@ -5,7 +5,7 @@ Graphic Card. Custom 8x8 tileset sliced from Quale's SCROLL-O-SPRITES
 (CC-BY-3.0), 16x16 hardware sprite for the player, dual-bank Parmigiani
 RAM layout (low bank for code, high bank for the map buffer).
 
-Ships as `roms/codetank/Codetank_GAMES2.rom` — load via POM1's
+Ships as `roms/codetank/Codetank_GAME2.rom` — load via POM1's
 `--codetank-rom` and run with `4000R` from Wozmon.
 
 ## MVP roadmap
@@ -44,7 +44,7 @@ Ships as `roms/codetank/Codetank_GAMES2.rom` — load via POM1's
   permadeath → "YOU DIED ON LEVEL N" + 1.3 s deaf-time + JMP $4000
   cartridge cold-start. Food drops where a monster died, walking onto
   the cell heals FOOD_HEAL HP (capped at HP_MAX).
-- **MVP4 (done) — three-key Rogue command set + timed-buff equipment**:
+- **MVP4 (done) — inventory-first command set + timed-buff equipment**:
   26-slot inventory at `$E3A0` (one slot per letter A..Z, 8 B per slot),
   8 item categories (weapon, armor, ring, potion, scroll, food, dagger,
   torch). Each category has a single sub-type that matches its on-screen
@@ -60,14 +60,13 @@ Ships as `roms/codetank/Codetank_GAMES2.rom` — load via POM1's
   - **TORCH** (FOV doubles from `FOV_RADIUS` = 3 to `TORCH_RADIUS` = 7
     for `TORCH_DURATION` = 50 turns) — `expl_torch_pat`
 
-  Pickup is auto on bump; the player only ever explicitly **inspects**,
-  **uses**, or **throws**:
+  Pickup is automatic on contact; the player only ever explicitly
+  **inspects / uses** inventory slots or **throws** daggers:
   - `I` — open the **inventory** modal (full list with `[L] QxNAME UTIL`
     rows, one 16×16 sprite per slot). From inside the modal, **type a
-    letter** to activate that slot directly (same dispatch as `E` below
-    — modal closes and the effect fires); any other key dismisses. The
-    `E` command keeps working from the playfield as a single-step shortcut.
-  - `E` — **use** a slot, with type-driven dispatch:
+    letter** to activate that slot directly — the modal closes and the
+    effect fires; any other key dismisses. Slot activation uses
+    type-driven dispatch:
     - `WEAPON` / `ARMOR` / `RING` / `TORCH` → activate the buff (free
       action). The slot is **consumed** and the matching ZP timer
       (`weapon_timer` / `armor_timer` / `ring_timer` / `torch_timer`)
@@ -166,13 +165,13 @@ two banks with a hole in the middle:
 
 Cartridge (the only supported target):
 ```bash
-python3 tools/build_games2_rom.py     # writes roms/codetank/Codetank_GAMES2.rom
-./build/POM1 --preset 8 --codetank-rom roms/codetank/Codetank_GAMES2.rom
+python3 tools/build_codetank_rom.py --rom=2     # writes roms/codetank/Codetank_GAME2.rom
+./build/POM1 --preset 8 --codetank-rom roms/codetank/Codetank_GAME2.rom
 # Then 4000R from Wozmon to start.
 ```
 
 Local compile-check (writes `software/tms9918/TMS_Rogue.bin` linked at
-`$4000`, not loadable as-is — use `build_games2_rom.py` for the ROM
+`$4000`, not loadable as-is — use `build_codetank_rom.py --rom=2` for the ROM
 image):
 ```bash
 cd dev/projects/tms9918_rogue
@@ -212,19 +211,15 @@ game loop binds the four movement keys at runtime.
 - `Q` / `Z` / `S` / `D` — west / north / south / east (AZERTY layout)
 - `I` — show **inventory** (modal). Type a slot letter `A..Z` from
   inside the modal to activate the item directly; any other key
-  dismisses.
-- `E` — **use** a slot from the playfield. Auto-dispatches by type:
-  weapon / armor / ring / torch are consumed and arm a per-category
-  turn-countdown buff; food / potion heal; scroll reveals the map
-  one-shot; dagger errors out (use `T` instead).
+  dismisses. Weapons / armor / rings / torches arm timed buffs; food /
+  potions heal; scrolls reveal the map one-shot; daggers are thrown with
+  `T` instead.
 - `T` — **throw** a dagger. Auto-picks the first dagger in your bag,
   then asks for a direction (vi keys). The dagger flies in that
   direction until it hits a monster (deals damage), an obstacle
   (wall / door / stairs / pit), or runs out of range — and **vanishes
   on impact**. No floor drops. Free action with `NO DAGGER` if the bag
   has none, or silent if the direction key isn't recognised.
-- `N` — regenerate the current level at the same depth (debug refresh,
-  no turn cost — does not advance depth or cost HP).
 - `.` — **rest** one turn. No movement, but monsters take their turn,
   the regen amulet pulses (if active), and every buff timer ticks down.
   Useful when an amulet is on and you want the +1 HP heal without

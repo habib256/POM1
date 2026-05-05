@@ -1,22 +1,23 @@
 #!/usr/bin/env python3
 """
 silicon_strict_patch.py — insert JSR-based padding into a 6502 .asm so back-
-to-back TMS9918 VDP stores respect the silicon-strict access window of 16
-cycles (paranoid mode, cf. dev/SILICONBUGS.md Bug N°1 §2).
+to-back TMS9918 VDP stores respect the silicon-strict access window of 24
+cycles (hardened paranoid mode, cf. dev/SILICONBUGS.md Bug N°1 §2).
 
-Idempotent: re-running on an already-patched file leaves it unchanged. Both
-v1 markers (NOPs) and v2 markers (JSR) are stripped before re-insertion.
+Idempotent: re-running on an already-patched file leaves it unchanged. Old
+v1 markers (NOPs), v2-pad16 markers (JSR pad12) and v2-pad24 markers
+(JSR pad24) are all stripped before re-insertion.
 
 Rules applied (per dev/SILICONBUGS.md §17 Annexe E):
 
-    A — ST? VDP_*                 / ST? VDP_*    → 1 JSR tms9918_pad12 between
-                                                   gap = 4 + 12 + 4 = 16c
-    B — ST? VDP_* / LDA #imm      / ST? VDP_*    → 1 JSR tms9918_pad12 before
+    A — ST? VDP_*                 / ST? VDP_*    → 1 JSR tms9918_pad24 between
+                                                   gap = 4 + 24 + 4 = 32c
+    B — ST? VDP_* / LDA #imm      / ST? VDP_*    → 1 JSR tms9918_pad24 before
                                                    the LDA #imm.
-                                                   gap = 4 + 12 + 2 + 4 = 22c
-    C — ST? VDP_* / LDA <addr>    / ST? VDP_*    → 1 JSR tms9918_pad12 before
+                                                   gap = 4 + 24 + 2 + 4 = 34c
+    C — ST? VDP_* / LDA <addr>    / ST? VDP_*    → 1 JSR tms9918_pad24 before
                                                    the LDA addr (zp/abs/zp,X).
-                                                   gap = 4 + 12 + 3 + 4 = 23c
+                                                   gap = 4 + 24 + 3 + 4 = 35c
 
 `ST?` covers STA / STX / STY (a few games use STX VDP_CTRL for fast
 two-byte address writes). The TMS9918 access window is shared between
@@ -25,16 +26,17 @@ CTRL→CTRL, and DATA↔CTRL pairs are all gated identically.
 
 Why JSR instead of NOPs?
     NOP        = 2 cycles in 1 byte (ratio 2 c/B)
-    JSR + RTS  = 12 cycles in 3 bytes at the call site, helper itself = 1 byte
-                 (ratio 4 c/B at the call site — half the ROM cost)
+    JSR pad24  = 24 cycles in 3 bytes at the call site, helper itself = 4 B
+                 (ratio 8 c/B at the call site — 4× denser than NOP)
 
-The helper `tms9918_pad12` (and `tms9918_pad24` for chained pads) is defined
-in `dev/lib/tms9918/tms9918_pad.asm` and must be linked into every project.
-Each project's Makefile adds it to EXTRA_ASM.
+The helpers `tms9918_pad12` (legacy 12c) and `tms9918_pad24` (hardened 24c)
+are defined in `dev/lib/tms9918/tms9918_pad.asm` and must be linked into
+every project. Each project's Makefile / build_codetank_rom.py auto-links
+the helper when its symbol is referenced.
 
 Usage:
     silicon_strict_patch.py <file.asm> [--dry-run]
-    silicon_strict_patch.py <file.asm> [--unpatch]   # strip v1+v2 patches
+    silicon_strict_patch.py <file.asm> [--unpatch]   # strip v1+v2(16/24) patches
 
 Skip annotations: any subroutine that runs with display blanked (R1 bit 6 = 0)
 or has its own carefully-tuned padding can be skipped by adding a comment
@@ -49,23 +51,45 @@ import re
 import sys
 
 # v1 marker (NOP padding, 8c paranoid). Stripped on every run for backward
-# compat — a fresh patch re-inserts the v2 form.
+# compat — a fresh patch re-inserts the latest v2 form.
 V1_MARKER = "silicon-strict gap"
 
-# v2 marker (JSR tms9918_pad12, 16c paranoid). Distinct enough from v1 that
-# strip_marker_lines() removes both safely.
-V2_MARKER = "silicon-strict pad16"
+# v2-pad16 marker (legacy JSR tms9918_pad12, 16c paranoid). Stripped so a
+# rerun of the patcher re-injects the hardened pad24 form.
+V2_PAD16_MARKER = "silicon-strict pad16"
 
-# v2 also injects `.import tms9918_pad12` once near the top of any file we
+# v2-pad24 marker (current JSR tms9918_pad24, 24c hardened paranoid).
+V2_MARKER = "silicon-strict pad24"
+
+# v2 also injects `.import tms9918_pad24` once near the top of any file we
 # patch (so cc65 resolves the symbol against tms9918_pad.asm). The marker
 # tags the line so --unpatch removes it, and re-patch is idempotent.
-V2_IMPORT = "        .import tms9918_pad12  ; silicon-strict pad16 (helper from tms9918_pad.asm)\n"
+V2_IMPORT = "        .import tms9918_pad24  ; silicon-strict pad24 (helper from tms9918_pad.asm)\n"
 
-JSR_BTB  = "        JSR     tms9918_pad12   ; +12c silicon-strict pad16 (back-to-back VDP store)\n"
-JSR_LDAI = "        JSR     tms9918_pad12   ; +12c silicon-strict pad16 (before LDA #imm bridge)\n"
-JSR_LDAZ = "        JSR     tms9918_pad12   ; +12c silicon-strict pad16 (before LDA zp/abs bridge)\n"
+JSR_BTB  = "        JSR     tms9918_pad24   ; +24c silicon-strict pad24 (back-to-back VDP store)\n"
+JSR_LDAI = "        JSR     tms9918_pad24   ; +24c silicon-strict pad24 (before LDA #imm bridge)\n"
+JSR_LDAZ = "        JSR     tms9918_pad24   ; +24c silicon-strict pad24 (before LDA zp/abs bridge)\n"
 
-RE_VDP_STORE = re.compile(r"^\s+ST[AXY]\s+VDP_(DATA|CTRL)\s*(;.*)?$")
+RE_VDP_STORE = re.compile(
+    r"^\s+(?:"
+    r"ST[AXY]\s+VDP_(?:DATA|CTRL)"      # raw STA/STX/STY VDP_*
+    r"|WRT_DATA_REG\b"                  # tms9918.inc macro: STA + pad24
+    r"|WRT_DATA_VAL\b"                  # tms9918.inc macro: LDA # + STA + pad24
+    r")"
+    r"(?:\s+[^;]*?)?(?:\s*;.*)?$"
+)
+# Macros from tms9918.inc that embed their own postlude pad24. The patcher
+# treats them as VDP stores when looking for a STA2 target (so callers get
+# padded before them) but skips the outer-loop forward analysis from them
+# (because the macro itself already provides the gap to the *next* VDP
+# write). Without this distinction, a chain like
+#   WRT_DATA_REG / LDA / WRT_DATA_REG
+# would get a redundant patcher-injected pad24 inserted between the macros.
+RE_BUILTIN_PADDED_STORE = re.compile(r"^\s+WRT_DATA_(?:REG|VAL)\b")
+
+
+def is_builtin_padded_store(line: str) -> bool:
+    return bool(RE_BUILTIN_PADDED_STORE.match(strip_inline_label(line)))
 RE_LABEL     = re.compile(r"^[ \t]*(@?[a-zA-Z_][a-zA-Z0-9_]*):\s*$")
 # Top-level labels only (no leading @) — used by the SKIP-range walker so a
 # `; SILICON_STRICT_SKIP` comment in init_vdp_g2 covers ALL its @local
@@ -111,6 +135,48 @@ RE_BRIDGE_OK = re.compile(
 # tbl,X / STA VDP_DATA`). Distinguish from VDP store via its own regex.
 RE_NONVDP_STORE = re.compile(r"^\s+ST[AXY]\s+(?!VDP_)\S")
 
+# Control-flow instructions that terminate the local cycle accounting:
+# JMP (unconditional), Bcc (8 conditional branches), JSR (subroutine call —
+# the called body's cycle count is opaque to the local walk), RTS / RTI
+# (return — what comes next is up to the caller).
+#
+# When the patcher's forward bridge walk encounters one of these, it falls
+# into "branch lookahead" mode: scan further in source for a STA VDP_*, and
+# if found, pad before the branch instruction (so the pad fires once per
+# iteration regardless of which way the branch goes).
+RE_BRANCH = re.compile(
+    r"^\s+(JMP|JSR|RTS|RTI|"
+    r"BCC|BCS|BNE|BEQ|BPL|BMI|BVC|BVS"
+    r")\b"
+)
+
+
+def is_branch_or_jump(line: str) -> bool:
+    return bool(RE_BRANCH.match(strip_inline_label(line)))
+
+
+def branch_target_label(line: str) -> str | None:
+    """If this line is a JMP/JSR/Bcc to a label, return the label name (or
+    None for RTS/RTI/computed branches)."""
+    m = re.match(
+        r'^\s*(?:JMP|JSR|BCC|BCS|BNE|BEQ|BPL|BMI|BVC|BVS)\s+(@?[a-zA-Z_]\w*)',
+        strip_inline_label(line).strip()
+    )
+    return m.group(1) if m else None
+
+
+# Detect a JSR call that's already an idle-pad helper (12c or 24c). When
+# the patcher walks forward from STA1 and the very next instruction is one
+# of these, STA1 is already protected — skip its analysis. This keeps the
+# patcher idempotent when called on a file that contains hand-coded pad
+# helpers (lib files like tms9918m1.asm, or hand-tuned project sites that
+# pre-date the v2 marker convention).
+RE_EXISTING_PAD = re.compile(r'^\s+JSR\s+tms9918_pad(?:12|24)\b')
+
+
+def is_existing_pad(line: str) -> bool:
+    return bool(RE_EXISTING_PAD.match(strip_inline_label(line)))
+
 
 # Strip an optional inline label prefix `@local: ` or `name: ` from the start
 # of the line so the regexes for VDP_STORE / LDA / BRIDGE see the opcode even
@@ -138,8 +204,25 @@ def is_lda_any(line: str) -> bool:
 
 
 def strip_marker_lines(src: list[str]) -> list[str]:
-    """Remove every line that we previously inserted (carries v1 or v2 marker)."""
-    return [l for l in src if V1_MARKER not in l and V2_MARKER not in l]
+    """Remove every line we previously inserted (v1 NOP, v2 pad16 JSR, or
+    v2 pad24 JSR).
+
+    Strict regex match — a line is stripped ONLY if it has the exact shape
+    of an auto-generated line (`<indent> JSR tms9918_pad{12,24} ; ... <key>`
+    or `<indent> .import tms9918_pad{12,24} ; ... <key>`). Hand-written
+    comments that merely *mention* the marker phrase (e.g. a `JSR pad24`
+    prologue whose docstring explains "this avoids the silicon-strict
+    pad24 strip key") are preserved.
+
+    Without this strict check the patcher's hide_slot_4 prologue in
+    TMS_Galaga.asm got eaten on every rerun (May 2026 incident)."""
+    auto_re = re.compile(
+        r"^\s+(?:JSR\s+tms9918_pad(?:12|24)|\.import\s+tms9918_pad(?:12|24))\b"
+        r".*?(?:" + re.escape(V1_MARKER)
+        + "|" + re.escape(V2_PAD16_MARKER)
+        + "|" + re.escape(V2_MARKER) + ")"
+    )
+    return [l for l in src if not auto_re.match(l)]
 
 
 def find_skip_ranges(src: list[str]) -> list[tuple[int, int]]:
@@ -181,11 +264,11 @@ def next_code_lines(src: list[str], i: int, n: int):
 
 
 def apply_padding(src: list[str]) -> tuple[list[str], dict[str, int]]:
-    """v2 strategy:
-       - Case A: insert JSR tms9918_pad12 between the two ST? VDP_*.
-       - Case B/C: insert JSR tms9918_pad12 BEFORE the LDA bridge (so the
-         12c idle lands between STA1 and the LDA, giving gap = 4+12+2+4 = 22c
-         for B, 4+12+3+4 = 23c for C — well over the 16c paranoid threshold).
+    """v2-pad24 strategy:
+       - Case A: insert JSR tms9918_pad24 between the two ST? VDP_*.
+       - Case B/C: insert JSR tms9918_pad24 BEFORE the LDA bridge (so the
+         24c idle lands between STA1 and the LDA, giving gap = 4+24+2+4 = 34c
+         for B, 4+24+3+4 = 35c for C — well over the 24c hardened threshold).
          Bridge instructions like ORA/CLC/ADC/INX between the LDA and the
          second STA are tolerated (up to 3 in a row) — common in vdp_set_write
          (`LDA hi / ORA #$40 / STA VDP_CTRL`) and tile-loop address builders.
@@ -215,17 +298,29 @@ def apply_padding(src: list[str]) -> tuple[list[str], dict[str, int]]:
     pad_before: dict[int, str] = {}
 
     # Up to this many bridge instructions allowed between two VDP stores.
-    MAX_BRIDGE = 4
+    # Bumped 4 → 8 (May 2026) because the 24c-hardened contract pushes
+    # callers to chain more value-shaping ops between VDP writes (typical
+    # offender: `LDA pen_color / ASL × 4 / ORA #$01 / STA VDP_DATA` in
+    # tms9918m2.asm:plot_set — 6 bridges, was missed at MAX_BRIDGE=4).
+    MAX_BRIDGE = 8
     # Forward-search window for the second VDP store across simple control
     # flow (conditional branches + JMP). Used by the "branch lookahead"
     # extension below: if the second VDP store is reachable within this many
-    # source lines via at most one branch, we still pad before the LDA — the
-    # pad runs unconditionally before the branch decision, so it covers every
-    # path to the next VDP write.
-    BRANCH_LOOKAHEAD_LINES = 14
+    # source lines via at most one branch, we still pad — the pad runs
+    # unconditionally before the branch decision (or before the branch
+    # instruction itself for backward loops), so it covers every path to
+    # the next VDP write.
+    BRANCH_LOOKAHEAD_LINES = 16
 
     for i, line in enumerate(src):
         if in_skip(i) or not is_vdp_store(line):
+            continue
+        if is_builtin_padded_store(line):
+            # WRT_DATA_REG / WRT_DATA_VAL macros embed their own postlude
+            # pad24. Don't analyse forward from them — the macro itself
+            # supplies the gap to the next VDP store. (They still serve as
+            # STA2 targets when an *earlier* STA walks forward to find the
+            # next VDP store.)
             continue
         # Walk forward up to (1 LDA + MAX_BRIDGE bridge + 1 STA) = 6 code lines.
         nxt = next_code_lines(src, i, 1 + MAX_BRIDGE + 1)
@@ -237,11 +332,18 @@ def apply_padding(src: list[str]) -> tuple[list[str], dict[str, int]]:
             pad_before.setdefault(n0_idx, JSR_BTB)
             counts["A"] += 1
             continue
+        if is_existing_pad(n0_text):
+            # STA1 is already followed by a hand-coded pad helper —
+            # whatever comes after the pad is ≥ 24c away from STA1. Skip
+            # this STA's analysis; the next STA in source will be analysed
+            # on its own iteration of the outer loop.
+            continue
         # Generalized case A: STA / [bridge instructions only] / STA. The
         # patcher inserts pad before the LAST STA (the "second" one), not
         # before the first bridge instruction. This avoids disturbing the
-        # caller's data flow and gives gap = 4 + (bridges) + 12 + 4 ≥ 18c.
+        # caller's data flow and gives gap = 4 + (bridges) + 24 + 4 ≥ 30c.
         bridge_kind = None
+        branch_idx: int | None = None  # set when the bridge ends on JMP/Bcc/JSR/RTS
         if is_lda_imm(n0_text):
             bridge_kind = "B"
         elif is_lda_any(n0_text):
@@ -249,29 +351,62 @@ def apply_padding(src: list[str]) -> tuple[list[str], dict[str, int]]:
         elif RE_BRIDGE_OK.match(strip_inline_label(n0_text)) \
                 or RE_NONVDP_STORE.match(strip_inline_label(n0_text)):
             bridge_kind = "A"  # generalized case A — non-LDA bridge
+        elif is_branch_or_jump(n0_text):
+            # First non-bridge after STA1 is a control-flow instruction.
+            # Skip the bridge walk and jump directly to the branch lookahead
+            # so we still find any STA VDP within the lookahead window
+            # (forward path), inside the branch target's body (JMP/Bcc-follow),
+            # or in a backward-loop body (Bcc back to a label upstream).
+            bridge_kind = "branch"
+            branch_idx = n0_idx
         else:
             continue
         # Walk through up to MAX_BRIDGE-1 bridge instructions; stop at first STA VDP.
         sta2_idx = None
-        bridge_ended_in_branch = False
-        for k in range(1, len(nxt)):
-            kk_idx, kk_text = nxt[k]
-            if is_vdp_store(kk_text):
-                sta2_idx = kk_idx
+        bridge_ended_in_branch = (bridge_kind == "branch")
+        if not bridge_ended_in_branch:
+            for k in range(1, len(nxt)):
+                kk_idx, kk_text = nxt[k]
+                if is_vdp_store(kk_text):
+                    sta2_idx = kk_idx
+                    break
+                kk_stripped = strip_inline_label(kk_text)
+                if RE_BRIDGE_OK.match(kk_stripped) or RE_NONVDP_STORE.match(kk_stripped):
+                    continue
+                # Stopped on something that's neither a bridge nor a VDP store.
+                # Treat as branch terminator and fall through to the lookahead.
+                bridge_ended_in_branch = True
+                branch_idx = kk_idx
                 break
-            kk_stripped = strip_inline_label(kk_text)
-            if RE_BRIDGE_OK.match(kk_stripped) or RE_NONVDP_STORE.match(kk_stripped):
-                continue
-            # Stopped on something that's neither a bridge nor a VDP store.
-            # If it's a conditional branch / JMP, scan ahead linearly through
-            # source lines for a STA VDP within BRANCH_LOOKAHEAD_LINES — the
-            # pad goes BEFORE the LDA at n0_idx, so it runs unconditionally
-            # before the branch. This covers patterns like:
-            #     STA VDP  / LDA state / BEQ alt / LDA reg,X / JMP cont
-            #     alt:                            / LDA #imm
-            #     cont: STA VDP
-            bridge_ended_in_branch = True
-            break
+        # Backward-branch tight-loop detection (May 2026 fix):
+        # Independently of the forward scan, check if the branch is a
+        # conditional Bcc whose target is BEFORE branch_idx. If yes AND
+        # the loop body (between target label and branch) contains a STA
+        # VDP_*, this is a tight loop — pad before the branch so every
+        # iteration's STA→STA gap gets the cushion. Without this check,
+        # a forward-found exit STA (in the next sibling routine) would
+        # take precedence, leaving the back-edge unpadded (Chess
+        # upload_chess_patterns @z1/@l1/@dpat tight-fill loops, May 2026).
+        is_backward_loop = False
+        if bridge_ended_in_branch and branch_idx is not None:
+            label_name = branch_target_label(src[branch_idx])
+            if label_name and label_name in labels_map:
+                tgt = labels_map[label_name]
+                if tgt < branch_idx:
+                    # Branch targets earlier label. Is there a STA VDP in
+                    # the loop body? Scan from target up to (but excluding)
+                    # the branch line.
+                    for kk in range(tgt, branch_idx):
+                        if is_vdp_store(src[kk]):
+                            is_backward_loop = True
+                            break
+        if is_backward_loop:
+            # Pad before the branch — covers both back-edge AND loop-exit
+            # paths with a single pad (since the pad runs unconditionally
+            # before the Bcc decision).
+            pad_before.setdefault(branch_idx, JSR_BTB)
+            counts["A"] += 1
+            continue
         if sta2_idx is None:
             if bridge_ended_in_branch:
                 # Look ahead in raw source lines for a STA VDP. Bound the scan
@@ -280,36 +415,30 @@ def apply_padding(src: list[str]) -> tuple[list[str], dict[str, int]]:
                 # lines. RTS/JMP-out also ends the scan via the top-level
                 # label check.
                 # +1 so the target STA at distance LOOKAHEAD lines is included.
-                #
-                # If the branch is an unconditional `JMP @local`, follow it
-                # to the label and scan from there too. This catches the
-                # slot-convergence pattern `STA / JMP @after_N / @hidden:
-                # JSR hide_slot_4 / @after_N: LDA active / BEQ hide / LDA /
-                # STA` where the next VDP write is after the JMP target.
+                start_idx = branch_idx if branch_idx is not None else (n0_idx + 1)
                 limit = min(len(src), i + BRANCH_LOOKAHEAD_LINES + 1)
                 # Scan forward physically.
-                for k in range(n0_idx + 1, limit):
+                for k in range(start_idx + 1, limit):
                     if RE_TOP_LABEL.match(src[k]):
                         break
                     if is_vdp_store(src[k]):
                         sta2_idx = k
                         break
-                # If the branch was an unconditional JMP @local, also scan
-                # from the JMP target — the convergence STA may live there.
-                if sta2_idx is None:
-                    for k in range(n0_idx, min(len(src), i + BRANCH_LOOKAHEAD_LINES + 1)):
-                        s = src[k].strip()
-                        m = re.match(r'JMP\s+(@?\w+)', strip_inline_label(src[k]).strip())
-                        if m and m.group(1) in labels_map:
-                            tgt = labels_map[m.group(1)]
-                            tgt_limit = min(len(src), tgt + BRANCH_LOOKAHEAD_LINES + 1)
-                            for kk in range(tgt, tgt_limit):
-                                if kk != tgt and RE_TOP_LABEL.match(src[kk]):
-                                    break
-                                if is_vdp_store(src[kk]):
-                                    sta2_idx = kk
-                                    break
-                            if sta2_idx is not None:
+                # Follow the branch target label if forward scan didn't find
+                # anything. Catches:
+                #   - JMP @after_N convergence (slot rendering with hidden alts)
+                #   - Bcc @loop backward branches (tight loops where the next
+                #     VDP STA is the loop body's first store)
+                if sta2_idx is None and branch_idx is not None:
+                    label_name = branch_target_label(src[branch_idx])
+                    if label_name and label_name in labels_map:
+                        tgt = labels_map[label_name]
+                        tgt_limit = min(len(src), tgt + BRANCH_LOOKAHEAD_LINES + 1)
+                        for kk in range(tgt, tgt_limit):
+                            if kk != tgt and RE_TOP_LABEL.match(src[kk]):
+                                break
+                            if is_vdp_store(src[kk]):
+                                sta2_idx = kk
                                 break
             if sta2_idx is None:
                 continue
@@ -319,8 +448,20 @@ def apply_padding(src: list[str]) -> tuple[list[str], dict[str, int]]:
         elif bridge_kind == "C":
             pad_before.setdefault(n0_idx, JSR_LDAZ)
             counts["C"] += 1
-        else:  # generalized case A — pad lands right before the second STA.
-            pad_before.setdefault(sta2_idx, JSR_BTB)
+        else:  # generalized case A or branch-terminated case
+            # Pad placement:
+            #  - sta2 found AFTER the branch (forward / JMP-target convergence):
+            #    pad before sta2_idx (the next STA's instruction).
+            #  - sta2 found BEFORE the branch (backward Bcc into loop body):
+            #    pad before the branch instruction itself, so it fires on
+            #    every iter just before looping back. Pad-before-sta2 in this
+            #    case would land at the loop body's top, which only fires
+            #    once per overall entry, not per iteration.
+            if bridge_ended_in_branch and branch_idx is not None \
+                    and sta2_idx < branch_idx:
+                pad_before.setdefault(branch_idx, JSR_BTB)
+            else:
+                pad_before.setdefault(sta2_idx, JSR_BTB)
             counts["A"] += 1
 
     for i, line in enumerate(src):

@@ -128,7 +128,7 @@ def assemble(asm: pathlib.Path, cfg: pathlib.Path, name: str,
             t = asm.read_text(errors="ignore")
         except OSError:
             t = ""
-        if "tms9918_pad12" in t:
+        if "tms9918_pad12" in t or "tms9918_pad24" in t:
             pad_obj = BUILD / f"{name}_pad.o"
             _ca65(pad_asm, pad_obj)
             objs.append(pad_obj)
@@ -163,7 +163,7 @@ def assemble_multi(asms: list[pathlib.Path], cfg: pathlib.Path, name: str,
             t = asm.read_text(errors="ignore")
         except OSError:
             t = ""
-        if "tms9918_pad12" in t:
+        if "tms9918_pad12" in t or "tms9918_pad24" in t:
             needs_pad = True
     pad_asm = LIB_TMS / "tms9918_pad.asm"
     if needs_pad and pad_asm.is_file() and pad_asm not in asms:
@@ -217,21 +217,26 @@ def assemble_game1_lower_binaries() -> tuple[bytes, bytes, bytes, bytes]:
 def build_game1_lower_bank() -> bytes:
     """Lower 16 kB layout — menu at $4000 dispatches to 3 games by entry
     address. Each game's bank cfg pins its start address; we copy each
-    binary into its slot and verify it fits."""
+    binary into its slot and verify it fits.
+
+    May 2026 reshuffle: under the 24c silicon-strict contract Galaga grew
+    past the old 7 936 B slot. Sokoban shifted +256 B and Snake +512 B to
+    absorb the growth; the prior 512 B end-headroom is now part of Snake's
+    slot. Update codetank_menu.asm:SOKOBAN_ENTRY/SNAKE_ENTRY and the three
+    bank cfgs in lock-step if any of these offsets change again."""
     menu, galaga, sokoban, snake = assemble_game1_lower_binaries()
     print("[GAME1] Lower bank layout (menu + 3 games, run-in-place):",
           file=sys.stderr)
     # Slot offsets pinned by each game's bank cfg:
     #   menu     $4000-$40FF   ( 256 B, apple1_codetank_menu.cfg)
-    #   Galaga   $4100-$5FFF   (7 936 B, apple1_galaga_codetank_bank.cfg)
-    #   Sokoban  $6000-$73FF   (5 120 B, apple1_sokoban_codetank_bank.cfg)
-    #   Snake    $7400-$7DFF   (2 560 B, apple1_snake_codetank_bank.cfg)
-    #   $7E00-$7FFF unused (512 B headroom for any game's spillover)
+    #   Galaga   $4100-$60FF   (8 192 B, apple1_galaga_codetank_bank.cfg)
+    #   Sokoban  $6100-$75FF   (5 376 B, apple1_sokoban_codetank_bank.cfg)
+    #   Snake    $7600-$7FFF   (2 560 B, apple1_snake_codetank_bank.cfg)
     bank = bytearray(b"\xFF" * HALF_SIZE)
     slot(bank, 0x0000, menu,    0x0100, "Menu      ($4000-$40FF)")
-    slot(bank, 0x0100, galaga,  0x1F00, "Galaga    ($4100-$5FFF)")
-    slot(bank, 0x2000, sokoban, 0x1400, "Sokoban   ($6000-$73FF)")
-    slot(bank, 0x3400, snake,   0x0A00, "Snake     ($7400-$7DFF)")
+    slot(bank, 0x0100, galaga,  0x2000, "Galaga    ($4100-$60FF)")
+    slot(bank, 0x2100, sokoban, 0x1500, "Sokoban   ($6100-$75FF)")
+    slot(bank, 0x3600, snake,   0x0A00, "Snake     ($7600-$7FFF)")
     return bytes(bank)
 
 

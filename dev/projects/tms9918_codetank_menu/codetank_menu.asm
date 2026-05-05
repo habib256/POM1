@@ -5,10 +5,13 @@
 ;
 ; Layout in the lower bank (Codetank_GAME1.rom):
 ;   $4000-$40FF  Menu (this file)                   (256 B)
-;   $4100-$5FFF  TMS_A1GALAGA   (linked at $4100)   (7 936 B slot)
-;   $6000-$73FF  TMS_SOKOBAN    (linked at $6000)   (5 120 B slot)
-;   $7400-$7DFF  TMS_SNAKE      (linked at $7400)   (2 560 B slot)
-;   $7E00-$7FFF  unused / padding                   (512 B)
+;   $4100-$60FF  TMS_A1GALAGA   (linked at $4100)   (8 192 B slot)
+;   $6100-$75FF  TMS_SOKOBAN    (linked at $6100)   (5 376 B slot)
+;   $7600-$7FFF  TMS_SNAKE      (linked at $7600)   (2 560 B slot)
+;
+; Re-shuffled May 2026: Galaga grew past 7 936 B once the 24c silicon-
+; strict pads landed; absorbed the prior $7E00-$7FFF end-headroom by
+; shifting Sokoban (+256 B) and Snake (+512 B) forward.
 ;
 ; Life moved to its own cartridge (Codetank_GAME3.rom). The upper 16 kB
 ; bank ships TMS_LOGO V2.6 (turtle interpreter) at $4000 — flip the
@@ -25,11 +28,11 @@ ECHO   = $FFEF
 
 ; --- Game entry points (must match the linker configs):
 ;     apple1_galaga_codetank_bank.cfg   start=$4100
-;     apple1_sokoban_codetank_bank.cfg  start=$6000
-;     apple1_snake_codetank_bank.cfg    start=$7400
+;     apple1_sokoban_codetank_bank.cfg  start=$6100
+;     apple1_snake_codetank_bank.cfg    start=$7600
 GALAGA_ENTRY  = $4100
-SOKOBAN_ENTRY = $6000
-SNAKE_ENTRY   = $7400
+SOKOBAN_ENTRY = $6100
+SNAKE_ENTRY   = $7600
 
 .code
 

@@ -87,13 +87,16 @@ int TMS9918::requiredAccessCycles() const
     // a permanently-relaxed window across the whole active display.
     if ((regs[1] & 0x40) == 0 || frameCycleCounter >= kActiveDisplayCycles) return 2;
 
-    // Paranoid silicon-strict thresholds (cf. dev/SILICONBUGS.md Bug N°1).
+    // Hardened silicon-strict thresholds (cf. dev/SILICONBUGS.md Bug N°1).
     // The "1 slot per N VDP cycles" model gives the *typical* worst case at
     // ideal CPU↔VDP phase alignment; the *worst-worst* case adds one full
     // slot wait (CPU access arrives just after a slot consumed) plus the
     // 4-cycle STA latch + ~2c bus turnaround on warm NMOS. We dimension each
     // mode so passing POM1 strict guarantees silicon — the contract is:
     //   gap ≥ 1 full VDP slot period + STA + phase margin.
+    // May 2026: Mode I+sprites bumped 16→24c after Galaga/LOGO sprite-table
+    // overflows. Patcher emits JSR tms9918_pad24 (24c) to match. Other modes
+    // keep their 4/6/6c thresholds — their slot periods are physically shorter.
     const bool textMode       = (regs[1] & 0x10) != 0;
     const bool multicolorMode = (regs[1] & 0x08) != 0;
     if (textMode) return 4;          // 1 slot/3 VDP cycles, +1c phase margin
@@ -110,7 +113,9 @@ int TMS9918::requiredAccessCycles() const
         break;
     }
     if (!spritesActive) return 6;    // 1 slot/6 VDP cycles when SAT[0]=$D0
-    return 16;                        // 1 slot/16 VDP cycles + STA + phase margin
+    return 24;                        // hardened: 1 slot/16 VDP cycles + STA + 8c phase margin
+                                      // (was 16c — Galaga sprite tables and LOGO turtle redraws
+                                      //  overflowed at 16c under unfavourable phase, May 2026 bump)
 }
 
 bool TMS9918::canAcceptAccess() const

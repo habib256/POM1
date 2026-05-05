@@ -20,7 +20,7 @@
 ; exactly over one logical 16x16 tile.
 ; =============================================
 
-        .import tms9918_pad12  ; silicon-strict pad16 (helper from tms9918_pad.asm)
+        .import tms9918_pad24  ; silicon-strict pad24 (helper from tms9918_pad.asm)
 .include "apple1.inc"
 .include "tms9918.inc"
 
@@ -400,13 +400,12 @@ corr_row:       .res 1          ; cy of room 0 — preserved across iter 1
                                 ; with a door-on-left otherwise).
 depth:          .res 1          ; current dungeon depth (1..255).
                                 ; Only stairs-down advances depth.
-                                ; 'N' regenerates at the same depth;
-                                ; edge doors warp horizontally /
+                                ; Edge doors warp horizontally /
                                 ; vertically into a sibling big-room
                                 ; on the same floor.
 trans_mode:     .res 1          ; level-transition kind (set by
                                 ;   main_loop, consumed by new_level):
-                                ;   0 = regen ('N')      — random gen, no INC
+                                ;   0 = initial level    — random gen, no INC
                                 ;   1 = descent (stairs) — random gen, depth++
                                 ;   2 = exited E (col 15) — force big-room, spawn at W
                                 ;   3 = exited W (col 0)  — force big-room, spawn at E
@@ -624,7 +623,7 @@ start:
 
         LDA #1                  ; first level — new_level INCs from here
         STA depth
-        LDA #0                  ; trans_mode 0 = regen (random gen, no wrap)
+        LDA #0                  ; trans_mode 0 = initial random gen, no wrap
         STA trans_mode          ; ensures place_perimeter_doors places
                                 ; all 4 doors on the very first big-room.
         LDA #HP_MAX             ; full HP at game start
@@ -665,10 +664,6 @@ main_loop:
         ; visible during wait_key.
         JSR clear_hurt_flags
         JSR wait_key            ; A = raw key (high bit still set)
-        CMP #('N' | $80)        ; 'N' regenerates a fresh random level
-        BNE @nx_n
-        JMP @do_regen
-@nx_n:
         ; --- Commands (each via BNE-skip-then-JMP trampoline; handlers
         ; sit past 127 bytes from this dispatch point). Item use happens
         ; from the inventory modal (I + slot letter); E was removed as a
@@ -776,12 +771,6 @@ main_loop:
         JSR finish_turn
         JMP main_loop
 
-@do_regen:
-        LDA #0
-        STA trans_mode
-        JSR new_level
-        JMP main_loop           ; 'N' regen is a debug refresh, no turn cost
-
 @do_inv:
         JSR show_inventory      ; A=1 if the player tapped a letter that
                                 ; consumed a food/potion/scroll, A=0 if
@@ -866,8 +855,8 @@ main_loop:
 
 ; ----------------------------------------------------------------------------
 ; new_level: rebuild the screen according to trans_mode.
-;   trans_mode = 0 ('N')      : random gen (big-room or two-rooms),
-;                                no depth change.
+;   trans_mode = 0           : initial random gen (big-room or two-rooms),
+;                              no depth change.
 ;   trans_mode = 1 (stairs)   : random gen, depth advances by one.
 ;   trans_mode = 2..5 (edges) : force a big-room and respawn the
 ;                                player on the opposite edge so the
@@ -990,7 +979,7 @@ apply_wrap_spawn:
 override_r1_16x16:
         LDA     #$C2
         STA     VDP_CTRL
-        JSR     tms9918_pad12   ; +12c silicon-strict pad16 (before LDA #imm bridge)
+        JSR     tms9918_pad24   ; +24c silicon-strict pad24 (before LDA #imm bridge)
         LDA     #$81            ; $01 | $80 -> register 1
         STA     VDP_CTRL
         RTS
@@ -3458,15 +3447,16 @@ is_opaque_at_cur:
 ; so we stride in two halves (0..255 then 0..191).
 ; ----------------------------------------------------------------------------
 upload_sprite_pats:
+        JSR     tms9918_pad24   ; MANUAL caller-gap cushion (24c)
         LDA     #$00
         STA     VDP_CTRL
-        NOP
-        JSR     tms9918_pad12   ; +12c silicon-strict pad16 (before LDA #imm bridge)
+        JSR     tms9918_pad24   ; +24c silicon-strict pad24 (before LDA #imm bridge)
         LDA     #$78            ; $38 | $40 -> write at $3800
         STA     VDP_CTRL
         ; First 256 bytes
         LDX     #0
 @lp1:   LDA     sprite_pats,X
+        JSR     tms9918_pad24   ; +24c silicon-strict pad24 (back-to-back VDP store)
         WRT_DATA_REG
         INX
         BNE     @lp1
@@ -3528,10 +3518,10 @@ clear_hurt_flags:
 place_all_sprites:
         LDA     #$00
         STA     VDP_CTRL
-        JSR     tms9918_pad12   ; +12c silicon-strict pad16 (before LDA #imm bridge)
+        JSR     tms9918_pad24   ; +24c silicon-strict pad24 (before LDA #imm bridge)
         LDA     #$5B            ; $1B | $40 -> write at $1B00
         STA     VDP_CTRL
-        JSR     tms9918_pad12   ; addr-cmd → first STA VDP_DATA: only 11c
+        JSR     tms9918_pad24   ; addr-cmd → first STA VDP_DATA: only 11c (now bumped to 24c via pad24)
                                 ; without this (LDA zp + 4*ASL + STA = 15c)
 
         ; --- Slot 0: player ---
@@ -3893,15 +3883,15 @@ reveal_pit_at_target:
 ;   their matching ASCII char IDs in the pattern table.
 ; ----------------------------------------------------------------------------
 draw_text:
+        JSR     tms9918_pad24   ; MANUAL caller-gap cushion (24c)
         STA     VDP_CTRL
-        NOP
-        JSR     tms9918_pad12   ; +12c silicon-strict pad16 (addr-low → addr-high)
+        JSR     tms9918_pad24   ; +24c silicon-strict pad24 (back-to-back VDP store)
         STX     VDP_CTRL
-        JSR     tms9918_pad12   ; +12c silicon-strict pad16 (cmd → 1st STA VDP_DATA;
                                 ; raw gap is LDY+LDA(zp,Y)+CMP+BEQ+STA = 15c)
         LDY     #0
 @lp:    LDA     (vdp_src_lo),Y
         CMP     #$FF
+        JSR     tms9918_pad24   ; +24c silicon-strict pad24 (back-to-back VDP store)
         BEQ     @done
         WRT_DATA_REG
         INY
@@ -3922,13 +3912,13 @@ draw_text:
 ; last two HUD text rows.
 ; ----------------------------------------------------------------------------
 update_hud:
+        JSR     tms9918_pad24   ; MANUAL caller-gap cushion (24c)
         LDA     #$80                    ; row 20 col 0 = $1A80
         STA     VDP_CTRL
-        NOP
-        JSR     tms9918_pad12   ; +12c silicon-strict pad16 (before LDA #imm bridge)
+        JSR     tms9918_pad24   ; +24c silicon-strict pad24 (before LDA #imm bridge)
         LDA     #$5A                    ; $1A | $40 -> write
         STA     VDP_CTRL
-        JSR     tms9918_pad12           ; gap addr-cmd → first data STA
+        JSR     tms9918_pad24           ; gap addr-cmd → first data STA
         ; --- "DEPTH " (6 chars) ---
         LDX     #0
 @d_lp:  LDA     hud_depth,X
@@ -4035,13 +4025,13 @@ update_hud_hp:
 ;          the digits stream, untouched by this routine.)
 ; ----------------------------------------------------------------------------
 update_hud_timers:
+        JSR     tms9918_pad24   ; MANUAL caller-gap cushion (24c)
         LDA     #$E2                    ; row 23 col 2 = $1AE2
         STA     VDP_CTRL
-        NOP
-        JSR     tms9918_pad12   ; +12c silicon-strict pad16 (before LDA #imm bridge)
+        JSR     tms9918_pad24   ; +24c silicon-strict pad24 (before LDA #imm bridge)
         LDA     #$5A                    ; $1A | $40
         STA     VDP_CTRL
-        JSR     tms9918_pad12           ; gap addr-cmd → first WRT_DATA_VAL
+        JSR     tms9918_pad24           ; gap addr-cmd → first WRT_DATA_VAL
 
         ; Slot 0: WPN digits (cols 2-3)
         LDA     weapon_timer
@@ -4236,13 +4226,13 @@ finish_turn:
 ; clear "stale prompt residue" before the new turn's HUD repaints.
 ; ----------------------------------------------------------------------------
 clear_msg_rows:
+        JSR     tms9918_pad24   ; MANUAL caller-gap cushion (24c)
         LDA     #$C0
         STA     VDP_CTRL
-        NOP
-        JSR     tms9918_pad12   ; +12c silicon-strict pad16 (before LDA #imm bridge)
+        JSR     tms9918_pad24   ; +24c silicon-strict pad24 (before LDA #imm bridge)
         LDA     #$5A                    ; $1A | $40
         STA     VDP_CTRL
-        JSR     tms9918_pad12           ; gap addr-cmd → first WRT_DATA_VAL
+        JSR     tms9918_pad24           ; gap addr-cmd → first WRT_DATA_VAL
         LDX     #64
 @lp:    WRT_DATA_VAL ' '
         DEX
@@ -4256,13 +4246,13 @@ clear_msg_rows:
 ; clear_msg_rows but starts at $1AE0 (row 23 col 0) and emits 32 spaces.
 ; ----------------------------------------------------------------------------
 clear_msg_row23:
+        JSR     tms9918_pad24   ; MANUAL caller-gap cushion (24c)
         LDA     #$E0
         STA     VDP_CTRL
-        NOP
-        JSR     tms9918_pad12
+        JSR     tms9918_pad24
         LDA     #$5A                    ; $1A | $40
         STA     VDP_CTRL
-        JSR     tms9918_pad12
+        JSR     tms9918_pad24
         LDX     #32
 @lp:    WRT_DATA_VAL ' '
         DEX
@@ -4589,9 +4579,10 @@ show_inventory:
         LDA     #$00
         STA     VDP_CTRL
         NOP
-        JSR     tms9918_pad12   ; +12c silicon-strict pad16 (before LDA #imm bridge)
+        JSR     tms9918_pad24   ; +24c silicon-strict pad24 (before LDA #imm bridge)
         LDA     #$5B                    ; $1B | $40 → write at $1B00
         STA     VDP_CTRL
+        JSR     tms9918_pad24   ; +24c silicon-strict pad24 (before LDA #imm bridge)
         LDA     #3
         STA     map_ptr
         LDX     #0
@@ -5437,9 +5428,8 @@ help_table:
         .byte   <hlp_cmds_hdr,  >hlp_cmds_hdr,  $E2, $58  ; row  7 col  2
         .byte   <hlp_cmd_i,     >hlp_cmd_i,     $04, $59  ; row  8 col  4
         .byte   <hlp_cmd_t,     >hlp_cmd_t,     $24, $59  ; row  9 col  4
-        .byte   <hlp_cmd_n,     >hlp_cmd_n,     $44, $59  ; row 10 col  4
-        .byte   <hlp_cmd_q,     >hlp_cmd_q,     $64, $59  ; row 11 col  4
-        .byte   <hlp_cmd_rest,  >hlp_cmd_rest,  $84, $59  ; row 12 col  4
+        .byte   <hlp_cmd_q,     >hlp_cmd_q,     $44, $59  ; row 10 col  4
+        .byte   <hlp_cmd_rest,  >hlp_cmd_rest,  $64, $59  ; row 11 col  4
         .byte   <hlp_tips_hdr,  >hlp_tips_hdr,  $C2, $59  ; row 14 col  2
         .byte   <hlp_tip_bump,  >hlp_tip_bump,  $E4, $59  ; row 15 col  4
         .byte   <hlp_tip_pick,  >hlp_tip_pick,  $04, $5A  ; row 16 col  4
@@ -5458,7 +5448,6 @@ hlp_move_az:    .byte "2 AZERTY  Z Q S D", $FF
 hlp_cmds_hdr:   .byte "COMMANDS", $FF
 hlp_cmd_i:      .byte "I  INVENTORY OPEN/USE", $FF
 hlp_cmd_t:      .byte "T  THROW DAGGER", $FF
-hlp_cmd_n:      .byte "N  NEW LEVEL [DEBUG]", $FF
 hlp_cmd_q:      .byte "H/?  THIS HELP SCREEN", $FF
 hlp_cmd_rest:   .byte ".  REST ONE TURN", $FF
 hlp_tips_hdr:   .byte "TIPS", $FF
@@ -5505,15 +5494,15 @@ title_table:
         .byte   <title_select_kb, >title_select_kb, $A8, $59  ; row 13 col  8
         .byte   <title_qwerty,    >title_qwerty,    $E8, $59  ; row 15 col  8
         .byte   <title_azerty,    >title_azerty,    $28, $5A  ; row 17 col  8
-        .byte   <title_help_hint, >title_help_hint, $88, $5A  ; row 20 col  8
+        .byte   <title_help_hint, >title_help_hint, $86, $5A  ; row 20 col  6
 title_table_end:
 
 
 ; ----------------------------------------------------------------------------
-; draw_briefing: second title page — mission lore + a five-bullet
-; mechanics primer + the win condition. Painted right after the
-; keyboard-layout choice so the player gets the "why am I doing this"
-; pitch BEFORE the dungeon view appears. start: drains KBD then
+; draw_briefing: second title page — compact mission cards plus the win
+; condition. Painted right after the keyboard-layout choice so the
+; player gets the "why am I doing this" pitch BEFORE the dungeon view
+; appears. start: drains KBD then
 ; wait_keys for an explicit acknowledgment, then continues into level 1.
 ; Same table-driven loop as draw_title — separate table so each page
 ; can be edited independently. tmp survives draw_text.
@@ -5541,34 +5530,30 @@ draw_briefing:
 
 briefing_table:
         ;       str_lo,         str_hi,         vram_lo, vram_hi
-        .byte   <brf_title,     >brf_title,     $48, $58  ; row  2 col  8
-        .byte   <brf_lore1,     >brf_lore1,     $A2, $58  ; row  5 col  2
-        .byte   <brf_lore2,     >brf_lore2,     $C2, $58  ; row  6 col  2
-        .byte   <brf_lore3,     >brf_lore3,     $22, $59  ; row  9 col  2
-        .byte   <brf_lore4,     >brf_lore4,     $42, $59  ; row 10 col  2
-        .byte   <brf_tip1,      >brf_tip1,      $A4, $59  ; row 13 col  4
-        .byte   <brf_tip2,      >brf_tip2,      $C4, $59  ; row 14 col  4
-        .byte   <brf_tip3,      >brf_tip3,      $E4, $59  ; row 15 col  4
-        .byte   <brf_tip4,      >brf_tip4,      $04, $5A  ; row 16 col  4
-        .byte   <brf_tip5,      >brf_tip5,      $24, $5A  ; row 17 col  4
+        .byte   <brf_title,     >brf_title,     $4D, $58  ; row  2 col 13
+        .byte   <brf_goal,      >brf_goal,      $84, $58  ; row  4 col  4
+        .byte   <brf_stairs,    >brf_stairs,    $E4, $58  ; row  7 col  4
+        .byte   <brf_sword,     >brf_sword,     $44, $59  ; row 10 col  4
+        .byte   <brf_bag,       >brf_bag,       $84, $59  ; row 12 col  4
+        .byte   <brf_torch,     >brf_torch,     $C4, $59  ; row 14 col  4
+        .byte   <brf_pit,       >brf_pit,       $04, $5A  ; row 16 col  4
+        .byte   <brf_skull,     >brf_skull,     $44, $5A  ; row 18 col  4
         .byte   <brf_win,       >brf_win,       $84, $5A  ; row 20 col  4
         .byte   <msg_press_key, >msg_press_key, $C9, $5A  ; row 22 col  9
 briefing_table_end:
 
 ; --- Mission-briefing strings ($FF-terminated). Apostrophes / parens
-; avoided (broken Quale glyphs); brackets + dashes + asterisks render
+; avoided (broken Quale glyphs); brackets + dashes render
 ; cleanly. Reuses msg_press_key (death/win/help shared pool). ---
-brf_title:      .byte "MISSION BRIEFING", $FF
-brf_lore1:      .byte "AN AMULET LIES BURIED DEEP", $FF
-brf_lore2:      .byte "IN THE FORSAKEN DUNGEON.", $FF
-brf_lore3:      .byte "DESCEND 12 FLOORS OF UNDEAD,", $FF
-brf_lore4:      .byte "CLAIM IT, AND ESCAPE ALIVE.", $FF
-brf_tip1:       .byte "* BUMP MONSTERS TO ATTACK", $FF
-brf_tip2:       .byte "* PICK UP EVERY DROP", $FF
-brf_tip3:       .byte "* LIGHT TORCHES TO SEE FAR", $FF
-brf_tip4:       .byte "* WATCH FOR TRAP PITS", $FF
-brf_tip5:       .byte "* PERMADEATH - ONE LIFE", $FF
-brf_win:        .byte "REACH DEPTH 13 TO ESCAPE", $FF
+brf_title:      .byte "MISSION", $FF
+brf_goal:       .byte "[AMULET] FIND IT", $FF
+brf_stairs:     .byte "[STAIRS] GO DOWN 12 FLOORS", $FF
+brf_sword:      .byte "[SWORD] BUMP MONSTERS", $FF
+brf_bag:        .byte "[BAG] PICK UP ITEMS", $FF
+brf_torch:      .byte "[TORCH] LIGHT THE DARK", $FF
+brf_pit:        .byte "[PIT] WATCH YOUR STEP", $FF
+brf_skull:      .byte "[SKULL] ONE LIFE", $FF
+brf_win:        .byte "DEPTH 13 = ESCAPE", $FF
 
 
 ; ----------------------------------------------------------------------------

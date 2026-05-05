@@ -65,7 +65,7 @@
 ; ============================================================================
 
 ; --- I/O equates (Apple-1 + TMS9918 hardware) ------------------------------
-        .import tms9918_pad12  ; silicon-strict pad16 (helper from tms9918_pad.asm)
+        .import tms9918_pad24  ; silicon-strict pad24 (helper from tms9918_pad.asm)
 .include "apple1.inc"
 .include "tms9918.inc"          ; VDP_CTRL, VDP_DATA equates for SETSHAPE
 
@@ -755,15 +755,11 @@ help_msg_unused_remove:
         .byte "    invoke previously defined", $0D
         .byte "    procedure with N args.", $0D
         .byte "  Limits: 10 procs, 224 B body,", $0D
-        .byte "  identifiers 6 chars A-Z 0-9", $0D
-        .byte "  (THING vs THING1 distinct).", $0D
+        .byte "  6-char A-Z 0-9 ids (distinct).", $0D
         .byte "  Tail recursion is FREE: a proc", $0D
-        .byte "  whose final statement calls", $0D
-        .byte "  itself reuses the frame and", $0D
-        .byte "  costs zero stack growth.", $0D
-        .byte "  Other nested calls go up to", $0D
-        .byte "  16 levels via the control", $0D
-        .byte "  stack in PROCBSS.", $0D
+        .byte "  whose last call reuses frame", $0D
+        .byte "  (zero stack growth).", $0D
+        .byte "  Other calls: 16 levels max.", $0D
         .byte $0D
         .byte "*** CONSOLE ***", $0D
         .byte "  PRINT ", $22, "WORD", $0D
@@ -806,7 +802,7 @@ help_msg_unused_remove:
         .byte $0D
         .byte "*** BREAK / EDIT ***", $0D
         .byte "  ESC      abort current loop", $0D
-        .byte "  CTRL-G   same (telnet-friendly)", $0D
+        .byte "  CTRL-G   same (telnet)", $0D
         .byte "  _        backspace at prompt", $0D
         .byte $0D
         .byte "Type any command. The prompt is", $0D
@@ -1797,10 +1793,8 @@ demo_script:
         .byte "REPEAT 8 [REPEAT 3 [FD 35 TR 120] TR 45]", $0D
         .byte "WAIT 3", $0D
         .byte "CS", $0D
-        .byte "PRINT ", $22, "CIRCLES", $0D
-        .byte "REPEAT 6 [REPEAT 24 [FD 6 TR 15] TR 60]", $0D
-        .byte "WAIT 3", $0D
-        .byte "CS", $0D
+        ; (CIRCLES scene removed May 2026 to absorb +6 B from 24c silicon-
+        ;  strict pads in tms9918m2.asm:plot_set + draw_turtle prologue.)
         ; SETXY-driven absolute-position scenes. RANDOM N caps at N<=255.
 
         .byte "PRINT ", $22, "RAYS", $0D
@@ -3766,6 +3760,7 @@ arrow_io_bbox:
         STA VDP_DATA
         INX
         DEY
+        JSR     tms9918_pad24   ; +24c silicon-strict pad24 (back-to-back VDP store)
         BNE @r_b
 @next_col:
         LDA pix_x
@@ -3828,12 +3823,13 @@ trace_turtle_lines:
 ;   attribute slot at VRAM $3B00. The TMS9918 hardware-blits the sprite
 ;   over the bitmap; no save/restore needed.
 draw_turtle:
+        JSR     tms9918_pad24   ; MANUAL caller-gap cushion (24c)
         LDA sprite_mode
         BEQ @bitmap
         ; --- sprite path: write sprite-0 attribute (Y, X, name=0, color=$0F)
         LDA #$00
         STA VDP_CTRL
-        JSR     tms9918_pad12   ; +12c silicon-strict pad16 (before LDA #imm bridge)
+        JSR     tms9918_pad24   ; +24c silicon-strict pad24 (before LDA #imm bridge)
         LDA #$3B | $40            ; $3B00 + write enable
         STA VDP_CTRL
         ; Y = ty - spr_yoff: TMS9918 displays sprite at scanline (Y+1)
@@ -3841,20 +3837,20 @@ draw_turtle:
         ; centres on (tx,ty): 9 for 16x16 sprites, 5 for 8x8. spr_xoff
         ; mirrors on the X axis (8 vs 4). Both come from
         ; apply_sprite_size at the previous SETSHAPE.
-        JSR     tms9918_pad12   ; +12c silicon-strict pad16 (before LDA zp/abs bridge)
+        JSR     tms9918_pad24   ; +24c silicon-strict pad24 (before LDA zp/abs bridge)
         LDA ty_lo
         SEC
         SBC spr_yoff
         STA VDP_DATA
-        JSR     tms9918_pad12   ; +12c silicon-strict pad16 (before LDA zp/abs bridge)
+        JSR     tms9918_pad24   ; +24c silicon-strict pad24 (before LDA zp/abs bridge)
         LDA tx_lo
         SEC
         SBC spr_xoff
         STA VDP_DATA
-        JSR     tms9918_pad12   ; +12c silicon-strict pad16 (before LDA #imm bridge)
+        JSR     tms9918_pad24   ; +24c silicon-strict pad24 (before LDA #imm bridge)
         LDA #0                    ; pattern name = 0 (sprite_pattern_table[0])
         STA VDP_DATA
-        JSR     tms9918_pad12   ; +12c silicon-strict pad16 (before LDA zp/abs bridge)
+        JSR     tms9918_pad24   ; +24c silicon-strict pad24 (before LDA zp/abs bridge)
         LDA pen_color             ; sprite-0 colour (SETPC drives every surface)
         STA VDP_DATA
         RTS
@@ -3947,15 +3943,16 @@ cmd_setshape:
         ; Y=$D0 to sprite #0 attribute = TMS9918 sprite-list terminator.
         LDA #$00
         STA VDP_CTRL
-        JSR     tms9918_pad12   ; +12c silicon-strict pad16 (before LDA #imm bridge)
+        JSR     tms9918_pad24   ; +24c silicon-strict pad24 (before LDA #imm bridge)
         LDA #$3B | $40
         STA VDP_CTRL
-        JSR     tms9918_pad12   ; +12c silicon-strict pad16 (before LDA #imm bridge)
+        JSR     tms9918_pad24   ; +24c silicon-strict pad24 (before LDA #imm bridge)
         LDA #$D0
         STA VDP_DATA
         ; Flip back to bitmap mode and redraw the triangle.
         LDA #0
         STA sprite_mode
+        JSR     tms9918_pad24   ; +24c silicon-strict pad24 (back-to-back VDP store)
         JSR draw_turtle           ; bitmap path now -- triangle XOR'd in
 @arrow_done:
         RTS
@@ -4022,25 +4019,26 @@ cmd_setshape:
         ; 16x16 (BIRD/TURTL/BOAT), $C0 for 8x8 (HEART, ...).
         LDA spr_r1
         STA VDP_CTRL
-        JSR     tms9918_pad12   ; +12c silicon-strict pad16 (before LDA #imm bridge)
+        JSR     tms9918_pad24   ; +24c silicon-strict pad24 (before LDA #imm bridge)
         LDA #$81                  ; write to register 1
         STA VDP_CTRL
 @load_pat:
         ; Copy spr_size bytes from (shape_pat),Y to VRAM $1800 (sprite-0
         ; pattern). spr_size = 8 or 32, latched from shape_table at
         ; match time.
-        JSR     tms9918_pad12   ; +12c silicon-strict pad16 (before LDA #imm bridge)
+        JSR     tms9918_pad24   ; +24c silicon-strict pad24 (before LDA #imm bridge)
         LDA #$00
         STA VDP_CTRL
-        JSR     tms9918_pad12   ; +12c silicon-strict pad16 (before LDA #imm bridge)
+        JSR     tms9918_pad24   ; +24c silicon-strict pad24 (before LDA #imm bridge)
         LDA #$18 | $40
         STA VDP_CTRL
         LDY #0
 @cppat: LDA (shape_pat_lo),Y
-        JSR     tms9918_pad12   ; +12c silicon-strict pad16 (back-to-back VDP store)
+        JSR     tms9918_pad24   ; +24c silicon-strict pad24 (back-to-back VDP store)
         STA VDP_DATA
         INY
         CPY spr_size
+        JSR     tms9918_pad24   ; +24c silicon-strict pad24 (back-to-back VDP store)
         BNE @cppat
 @reposition:
         ; Reposition sprite at the current turtle (tx, ty).
@@ -4664,4 +4662,8 @@ mnem_tab:
         .word cmd_pd
         .byte "CLEA", 0           ; CLEARSCREEN -> CS
         .word cmd_cs
-        .byte $FF, $FF, $FF, $FF, $FF, $FF, $FF
+        .byte $FF                ; terminator byte for find_mnem's CMP #$FF / BEQ @miss
+                                  ; (was padded with 6 redundant $FF bytes;
+                                  ;  reclaimed May 2026 to absorb the +6 B
+                                  ;  growth from 24c silicon-strict pad24
+                                  ;  insertions — see CLAUDE.md / SILICONBUGS.md).

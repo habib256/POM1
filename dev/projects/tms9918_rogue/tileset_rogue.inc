@@ -72,7 +72,7 @@ tileset_rogue:
         .byte $00, $00, $00, $18, $18, $7E, $18, $18    ; char  43  '+' (font_quale_punct_minus)
         .byte $00, $00, $00, $00, $00, $00, $00, $00    ; char  44  (unused)
         .byte $00, $00, $00, $00, $00, $7E, $00, $00    ; char  45  '-' (font_quale_punct_lt)
-        .byte $00, $00, $00, $00, $00, $00, $00, $00    ; char  46  (unused)
+        .byte $00, $00, $00, $00, $00, $18, $18, $00    ; char  46  '.' (manual)
         .byte $00, $00, $C0, $60, $30, $18, $0C, $06    ; char  47  '/' (font_quale_punct_plus)
         .byte $00, $3C, $66, $6E, $76, $66, $66, $3C    ; char  48  '0' (font_quale_digits_0)
         .byte $00, $18, $38, $18, $18, $18, $18, $7E    ; char  49  '1' (font_quale_digits_1)
