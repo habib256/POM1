@@ -32,6 +32,7 @@
 
 ; --- Apple 1 I/O ---
         .import tms9918_pad40  ; silicon-strict pad40 (helper from tms9918_pad.asm)
+        .import tms9918_pad12  ; small VBlank-sync cushion (12c, 3 B at call site)
 ECHO     = $FFEF
 KBD      = $D010
 KBDCR    = $D011
@@ -2538,14 +2539,23 @@ score_add_with_mul:
 ; Called only from render_sprites — see SKIP annotation inside.
 ; =============================================
 hide_slot_4:
-        ; SILICON_STRICT_SKIP — only ever called from render_sprites'
-        ; VBlank-gated body. The 2c gate inherits via the JSR/RTS
-        ; boundary, so back-to-back STA VDP_DATA writes need no padding.
+        ; Called from render_sprites' VBlank-gated body. VBlank gate is
+        ; 16c, so each STA-STA pair needs >= 12c of bridge. The auto-
+        ; patcher injects JSR pad40 between consecutive writes (over-spec
+        ; for 16c but consistent with the rest of the code base). Cost
+        ; per call: 3 pads x 40c = ~120c, negligible vs the 4554c VBlank
+        ; budget. (Do NOT mention the patcher skip-tag literal in this
+        ; comment block — find_skip_ranges does a substring match and
+        ; would flag hide_slot_4 as exempt, suppressing all pad
+        ; injection.)
         LDA #HIDDEN_Y           ; preserve X and Y for render_sprites' @en_lp /
         STA VDP_DATA            ; @pb_lp / @eb_lp loops which iterate via X
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (before LDA #imm bridge)
         LDA #$00
         STA VDP_DATA
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (back-to-back VDP store)
         STA VDP_DATA
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (back-to-back VDP store)
         STA VDP_DATA
         RTS
 
@@ -2556,17 +2566,20 @@ hide_slot_4:
 ; Hidden sprites get Y=$C0 (off-screen, chain continues).
 ; =============================================
 render_sprites:
-        ; SILICON_STRICT_SKIP — body runs during the VBlank window. The
-        ; 2-step F-flag dance at entry (drain stale + wait fresh) puts
-        ; us at the START of the chip's vertical retrace, when the
-        ; silicon-strict gate drops to 2c (cf. dev/SILICONBUGS.md §2.5
-        ; paranoid-mode + §16 F-flag timing). All VDP_DATA / VDP_CTRL
-        ; writes between @v_wait and the function's RTS complete in
-        ; <600 cycles, far below the 4554c (60Hz NTSC) VBlank budget.
-        ; No JSR pad40 calls anywhere in the body — the auto-patcher
-        ; sees SILICON_STRICT_SKIP and leaves this routine alone.
-        ; Saves ~50× pad40 (2000c per frame + ~150 ROM bytes) vs the
-        ; previous padded design.
+        ; VBlank-gated SAT rebuild. The 2-step F-flag dance at entry
+        ; (drain stale + wait fresh) puts us at the START of the chip's
+        ; vertical retrace (cf. dev/SILICONBUGS.md §16 F-flag timing fix,
+        ; corrected May 2026 in TMS9918::advanceCycles). The full 4554c
+        ; (60Hz NTSC) VBlank budget is then available for the SAT
+        ; rebuild; this leaves comfortable headroom even with the
+        ; auto-patcher's pad40 calls between every VDP write pair
+        ; (~50 sites × ~45c = ~2250c).
+        ;
+        ; VBlank gate is 16c (matches Mode I + sprites worst case via
+        ; the "1 slot/16 + STA + margin" formula). Pad40 is over-spec
+        ; for 16c but the patcher emits it uniformly across the code
+        ; base — accept the cycle waste in exchange for one global
+        ; padding contract.
 
         ; VBlank sync. First BIT drains any stale F flag carried from
         ; the previous frame's render (also clears 5S/C — Galaga never
@@ -2576,13 +2589,22 @@ render_sprites:
 @v_wait:
         BIT VDP_CTRL
         BPL @v_wait
+        ; Cushion across the BIT/BPL → STA VDP_CTRL boundary. The exit
+        ; BIT just consumed a VDP read access (counter=4 after), so the
+        ; following LDA + STA VDP_CTRL pair lands at gap = 4+2+2+0 = 8c
+        ; without padding — below the 16c VBlank threshold. The
+        ; auto-patcher only walks STA→STA pairs and can't see this
+        ; cross-boundary case, so we emit the pad explicitly.
+        JSR tms9918_pad12
         ; Set VDP write address = $1B00 (sprite attribute table)
         LDA #$00
         STA VDP_CTRL
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (before LDA #imm bridge)
         LDA #$5B                ; $1B | $40
         STA VDP_CTRL
 
         ; --- Slot 0: player (hidden during flash blink-off) ---
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (before LDA zp/abs bridge)
         LDA flash_cd
         AND #$04                ; alternate every 4 ticks of the flash
         BEQ @show_p
@@ -2591,9 +2613,12 @@ render_sprites:
 @show_p:
         LDA #PLAYER_Y
         STA VDP_DATA
-        LDA player_x
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (before LDA zp/abs bridge)
+        LDA player_x            ; zp 3c → 7c gap (need 8c)
+        NOP                     ; +2c
         STA VDP_DATA
         ; Pattern: thrust flicker when the ship is actually moving.
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (before LDA zp/abs bridge)
         LDA player_dir
         BEQ @plain_p
         LDA anim_tick
@@ -2605,7 +2630,9 @@ render_sprites:
         LDA #P_PLAYER
 @write_p:
         STA VDP_DATA
-        LDA #COL_PLAYER
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (before LDA #imm bridge)
+        LDA #COL_PLAYER         ; imm 2c → 6c gap
+        NOP                     ; +2c → 8c
         STA VDP_DATA
 @after_p:
 
@@ -2614,6 +2641,7 @@ render_sprites:
 @en_lp:
         LDA enemy_state,X
         CMP #2
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (back-to-back VDP store)
         BNE @en_alive
         ; Dead -> hidden
         JSR hide_slot_4
@@ -2639,6 +2667,7 @@ render_sprites:
         STA VDP_DATA
         ; X
         LDA enemy_state,X
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (back-to-back VDP store)
         BEQ @form_x
         LDA enemy_x,X
         JMP @xw
@@ -2649,6 +2678,7 @@ render_sprites:
 @xw:
         STA VDP_DATA
         ; Pattern (toggle frame 0 / frame 1 via anim_tick bit 4)
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (before LDA zp/abs bridge)
         LDA enemy_pat,X
         STA temp
         LDA anim_tick
@@ -2663,6 +2693,7 @@ render_sprites:
         STA VDP_DATA
         ; Colour (E3 is already magenta in the palette so the boss
         ; uses the same hue as a regular E3 -- no override needed).
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (before LDA zp/abs bridge)
         LDA enemy_color,X
         STA VDP_DATA
 @en_next:
@@ -2681,16 +2712,23 @@ render_sprites:
         JMP @pb_next
 @pb_show:
         LDA pb_y,X
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (back-to-back VDP store)
         STA VDP_DATA
-        LDA pb_x,X
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (before LDA zp/abs bridge)
+        LDA pb_x,X              ; abs,X 4c → 8c gap ✓
         STA VDP_DATA
-        LDA #P_PBULLET
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (before LDA #imm bridge)
+        LDA #P_PBULLET          ; imm 2c → 6c gap
+        NOP                     ; +2c → 8c
         STA VDP_DATA
-        LDA #COL_PB
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (before LDA #imm bridge)
+        LDA #COL_PB             ; imm 2c → 6c gap
+        NOP                     ; +2c → 8c
         STA VDP_DATA
 @pb_next:
         INX
         CPX #$03
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (back-to-back VDP store)
         BCC @pb_lp
 
         ; --- Slots 7..9: enemy bullets ---
@@ -2703,15 +2741,21 @@ render_sprites:
 @eb_show:
         LDA eb_y,X
         STA VDP_DATA
-        LDA eb_x,X
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (before LDA zp/abs bridge)
+        LDA eb_x,X              ; abs,X 4c → 8c gap ✓
         STA VDP_DATA
-        LDA #P_EBULLET
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (before LDA #imm bridge)
+        LDA #P_EBULLET          ; imm 2c → 6c gap
+        NOP                     ; +2c → 8c
         STA VDP_DATA
-        LDA #COL_EB
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (before LDA #imm bridge)
+        LDA #COL_EB             ; imm 2c → 6c gap
+        NOP                     ; +2c → 8c
         STA VDP_DATA
 @eb_next:
         INX
         CPX #$03
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (back-to-back VDP store)
         BCC @eb_lp
 
         ; --- Slot 10: hit explosion (2-frame animation) ---
@@ -2719,10 +2763,13 @@ render_sprites:
         BEQ @exp_hide
         LDA exp_y
         STA VDP_DATA
-        LDA exp_x
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (before LDA zp/abs bridge)
+        LDA exp_x               ; zp 3c → 7c gap
+        NOP                     ; +2c → 9c
         STA VDP_DATA
         ; Big frame for the first half of the burst, smaller "fade"
         ; frame in the second half.
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (before LDA zp/abs bridge)
         LDA exp_t
         CMP #$08
         BCC @exp_alt_pat
@@ -2732,7 +2779,9 @@ render_sprites:
         LDA #P_EXP_ALT
 @write_exp:
         STA VDP_DATA
-        LDA #COL_EXP
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (before LDA #imm bridge)
+        LDA #COL_EXP            ; imm 2c → 6c gap
+        NOP                     ; +2c → 8c
         STA VDP_DATA
         JMP @after_exp
 @exp_hide:
@@ -2743,13 +2792,18 @@ render_sprites:
         LDA drop_active
         BEQ @drop_hide
         LDA drop_y
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (back-to-back VDP store)
         STA VDP_DATA
-        LDA drop_x
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (before LDA zp/abs bridge)
+        LDA drop_x              ; zp 3c → 7c gap
+        NOP                     ; +2c → 9c
         STA VDP_DATA
-        LDY drop_type
-        LDA drop_pat,Y
+        LDY drop_type           ; zp 3c
+        LDA drop_pat,Y          ; abs,Y 4c → 7+4 = 11c gap ✓
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (back-to-back VDP store)
         STA VDP_DATA
-        LDA drop_color,Y
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (before LDA zp/abs bridge)
+        LDA drop_color,Y        ; abs,Y 4c → 8c gap ✓ boundary
         STA VDP_DATA
         JMP @after_drop
 @drop_hide:
@@ -2760,12 +2814,19 @@ render_sprites:
         LDA popup_active
         BEQ @popup_hide
         LDA popup_y
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (back-to-back VDP store)
         STA VDP_DATA
-        LDA popup_x
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (before LDA zp/abs bridge)
+        LDA popup_x             ; zp 3c → 7c gap
+        NOP                     ; +2c → 9c
         STA VDP_DATA
-        LDA #P_POPUP
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (before LDA #imm bridge)
+        LDA #P_POPUP            ; imm 2c → 6c gap
+        NOP                     ; +2c → 8c
         STA VDP_DATA
-        LDA popup_color
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (before LDA zp/abs bridge)
+        LDA popup_color         ; zp 3c → 7c gap
+        NOP                     ; +2c → 9c
         STA VDP_DATA
         JMP @after_popup
 @popup_hide:
@@ -2776,12 +2837,19 @@ render_sprites:
         LDA shield_t
         BEQ @shield_hide
         LDA #PLAYER_Y
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (back-to-back VDP store)
         STA VDP_DATA
-        LDA player_x
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (before LDA zp/abs bridge)
+        LDA player_x            ; zp 3c → 7c gap
+        NOP                     ; +2c → 9c
         STA VDP_DATA
-        LDA #P_SHIELD_RING
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (before LDA #imm bridge)
+        LDA #P_SHIELD_RING      ; imm 2c → 6c gap
+        NOP                     ; +2c → 8c
         STA VDP_DATA
-        LDA #COL_SHIELD
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (before LDA #imm bridge)
+        LDA #COL_SHIELD         ; imm 2c → 6c gap
+        NOP                     ; +2c → 8c
         STA VDP_DATA
         JMP @after_shield
 @shield_hide:
@@ -2847,9 +2915,10 @@ render_sprites:
 ; preserve slot ordering.
 ; =============================================
 render_super_n:
-        ; SILICON_STRICT_SKIP — only ever called from render_sprites'
-        ; VBlank window. Inherits the 2c gate, so auto-patcher pads
-        ; inside this routine would be wasted cycles.
+        ; Called from render_sprites' VBlank-gated body — runs with the
+        ; gate at 16c. The auto-patcher injects pad40 between consecutive
+        ; VDP writes; over-spec for 16c but uniform with the rest of
+        ; the code base.
         LDA is_super_boss,X
         BNE @show
         ; Hidden -- write 4 hidden entries
@@ -2861,48 +2930,71 @@ render_super_n:
         RTS
 @show:
         ; TL @ (super_x[X], super_y[X])
-        LDA super_y,X
+        LDA super_y,X           ; abs,X 4c
         STA VDP_DATA
-        LDA super_x,X
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (before LDA zp/abs bridge)
+        LDA super_x,X           ; abs,X 4c → 8c gap ✓
         STA VDP_DATA
-        LDA #P_SUPER_TL
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (before LDA #imm bridge)
+        LDA #P_SUPER_TL         ; imm 2c → 6c gap
+        NOP                     ; +2c → 8c
         STA VDP_DATA
-        LDA #COL_SUPER
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (before LDA #imm bridge)
+        LDA #COL_SUPER          ; imm 2c → 6c gap
+        NOP                     ; +2c → 8c
         STA VDP_DATA
         ; TR @ (super_x[X]+16, super_y[X])
-        LDA super_y,X
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (before LDA zp/abs bridge)
+        LDA super_y,X           ; 4c → 8c gap ✓
         STA VDP_DATA
-        LDA super_x,X
-        CLC
-        ADC #$10
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (before LDA zp/abs bridge)
+        LDA super_x,X           ; 4c
+        CLC                     ; 2c
+        ADC #$10                ; 2c → 8c bridge ✓
         STA VDP_DATA
-        LDA #P_SUPER_TR
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (before LDA #imm bridge)
+        LDA #P_SUPER_TR         ; imm 2c → 6c gap
+        NOP                     ; +2c → 8c
         STA VDP_DATA
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (before LDA #imm bridge)
         LDA #COL_SUPER
+        NOP
         STA VDP_DATA
         ; BL @ (super_x[X], super_y[X]+16)
-        LDA super_y,X
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (before LDA zp/abs bridge)
+        LDA super_y,X           ; 4c
         CLC
-        ADC #$10
+        ADC #$10                ; 8c bridge ✓
         STA VDP_DATA
-        LDA super_x,X
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (before LDA zp/abs bridge)
+        LDA super_x,X           ; 4c → 8c ✓
         STA VDP_DATA
-        LDA #P_SUPER_BL
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (before LDA #imm bridge)
+        LDA #P_SUPER_BL         ; 2c → 6c
+        NOP
         STA VDP_DATA
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (before LDA #imm bridge)
         LDA #COL_SUPER
+        NOP
         STA VDP_DATA
         ; BR @ (super_x[X]+16, super_y[X]+16)
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (before LDA zp/abs bridge)
         LDA super_y,X
         CLC
-        ADC #$10
+        ADC #$10                ; 8c bridge
         STA VDP_DATA
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (before LDA zp/abs bridge)
         LDA super_x,X
         CLC
         ADC #$10
         STA VDP_DATA
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (before LDA #imm bridge)
         LDA #P_SUPER_BR
+        NOP
         STA VDP_DATA
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (before LDA #imm bridge)
         LDA #COL_SUPER
+        NOP
         STA VDP_DATA
         RTS
 
@@ -4080,14 +4172,13 @@ draw_str_tms:
 ; =============================================
 init_vdp:
         ; --- 8 VDP registers ---
-        ; SILICON_STRICT_SKIP — register-loop hand-padded so it survives
-        ; entry with R1 already display-ON (e.g. CodeTank re-launch from
-        ; another game that left $C2 in R1). Intra-pair JSR pad40 clears
-        ; the 40c hardened threshold; inter-iter JSR pad40 lifts the value
-        ; byte of the next iteration over 40c too. Once X=1 commits R1=$80
-        ; (display OFF), threshold drops to 2c for the rest of init —
-        ; pads cost ~640 cycles total over the 8-iter loop, all during
-        ; display-off init so user-visible cost is zero.
+        ; The register loop must survive entry with R1 already display-ON
+        ; (e.g. CodeTank re-launch from another game that left $C2 in R1).
+        ; The auto-patcher injects JSR pad40 between intra-pair (value→cmd)
+        ; and inter-iter (cmd→next-value via BNE @regloop loop-back) — its
+        ; backward-branch detector lands a pad before the BNE so every iter
+        ; clears the 40c threshold. Once iter 1 (X=1) commits R1 = AND #$BF
+        ; (display OFF), the gate drops to 16c for the rest of init.
         LDX #$00
 @regloop:
         LDA vdp_regs,X
@@ -4098,14 +4189,17 @@ init_vdp:
         STA VDP_CTRL
         TXA
         ORA #$80
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (back-to-back VDP store)
         STA VDP_CTRL
         INX
         CPX #$08
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (back-to-back VDP store)
         BNE @regloop
 
         ; --- Upload sprite patterns at $3800 ---
         LDA #$00
         STA VDP_CTRL
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (before LDA #imm bridge)
         LDA #$78                ; $38 | $40
         STA VDP_CTRL
 
@@ -4113,78 +4207,98 @@ init_vdp:
         ; chunks because X is 8-bit (256+256+192).
         LDX #$00
 @sp1:   LDA sprite_patterns,X
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (back-to-back VDP store)
         STA VDP_DATA
         INX
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (back-to-back VDP store)
         BNE @sp1                ; first 256 bytes
         LDX #$00
 @sp2:   LDA sprite_patterns+256,X
         STA VDP_DATA
         INX
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (back-to-back VDP store)
         BNE @sp2                ; next 256 bytes
         LDX #$00
 @sp3:   LDA sprite_patterns+512,X
         STA VDP_DATA
         INX
         CPX #(704-512)          ; remaining 192 bytes
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (back-to-back VDP store)
         BCC @sp3
 
         ; --- Upload HUD glyph patterns at VRAM $01C0 (chars 56..) ---
         LDA #$C0
         STA VDP_CTRL
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (before LDA #imm bridge)
         LDA #$41                ; $01 | $40
         STA VDP_CTRL
         LDX #$00
 @hp1:   LDA hud_patterns,X
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (back-to-back VDP store)
         STA VDP_DATA
         INX
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (back-to-back VDP store)
         BNE @hp1                ; first 256 bytes
         LDX #$00
 @hp2:   LDA hud_patterns+256,X
         STA VDP_DATA
         INX
         CPX #72                 ; 328-256 = 72 bytes (incl '-' and starfield dot)
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (back-to-back VDP store)
         BCC @hp2
 
         ; --- Replicate the star pattern at chars 104, 112, 120 so the
         ; --- 4 starfield colour groups (12-15) all draw the same dot.
         LDA #$40                ; char 104 = VRAM $0340
         STA VDP_CTRL
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (before LDA #imm bridge)
         LDA #$43
         STA VDP_CTRL
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (back-to-back VDP store)
         JSR upload_star_pattern
         LDA #$80                ; char 112 = VRAM $0380
         STA VDP_CTRL
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (before LDA #imm bridge)
         LDA #$43
         STA VDP_CTRL
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (back-to-back VDP store)
         JSR upload_star_pattern
         LDA #$C0                ; char 120 = VRAM $03C0
         STA VDP_CTRL
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (before LDA #imm bridge)
         LDA #$43
         STA VDP_CTRL
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (back-to-back VDP store)
         JSR upload_star_pattern
 
         ; --- Tile colour groups (chars 0-95): we only use the HUD set ---
         LDA #$00
         STA VDP_CTRL
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (before LDA #imm bridge)
         LDA #$60                ; $20 | $40
         STA VDP_CTRL
         LDX #$00
 @cl:    LDA tile_colors,X
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (back-to-back VDP store)
         STA VDP_DATA
         INX
         CPX #$10                ; 16 colour groups (incl. 4 star groups)
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (back-to-back VDP store)
         BNE @cl
 
         ; --- Clear name table $1800 (768 B) ---
         LDA #$00
         STA VDP_CTRL
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (before LDA #imm bridge)
         LDA #$58
         STA VDP_CTRL
         LDX #$03
         LDA #$00
 @np:    LDY #$00
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (back-to-back VDP store)
 @nb:    STA VDP_DATA
         INY
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (back-to-back VDP store)
         BNE @nb
         DEX
         BNE @np
@@ -4192,20 +4306,27 @@ init_vdp:
         ; --- Init sprite attribute table: only the chain terminator ---
         LDA #$00
         STA VDP_CTRL
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (before LDA #imm bridge)
         LDA #$5B                ; $1B | $40
         STA VDP_CTRL
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (before LDA #imm bridge)
         LDA #TERM_Y
         STA VDP_DATA
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (before LDA #imm bridge)
         LDA #$00
         STA VDP_DATA
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (back-to-back VDP store)
         STA VDP_DATA
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (back-to-back VDP store)
         STA VDP_DATA
 
         ; --- Final: re-arm R1 with the table value (display ON). Display
         ;     stays OFF until the cmd byte commits — threshold = 2c through
         ;     both STAs, no pad needed inline.
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (before LDA zp/abs bridge)
         LDA vdp_regs+1
         STA VDP_CTRL
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (before LDA #imm bridge)
         LDA #$81
         STA VDP_CTRL
         RTS

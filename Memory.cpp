@@ -1518,15 +1518,20 @@ void Memory::advanceCycles(int cycles)
     //   - TMS9918  : R1 bit 5 (IRQ enable) AND status bit 7 (F flag).
     //                Read of $CC01 clears F → IRQ self-clears next tick.
     //   - A1-IO RTC: 65C22 IFR bit 7 (any IRQ-enabled flag set).
+    //   - microSD  : 65C22 IFR bit 7 (Timer 1/2 + SR + handshake flags).
     //   - WiFiModem: 65C51 ACIA status bit 7 (IRQ pending) AND control
     //                command-reg IRQ-enable inverted-polarity bit.
     //
     // ACI cassette is software-polled on real Apple-1 hardware — no /IRQ
     // line on the cassette interface — so it stays out of the OR.
+    // GraphicsCard (GEN2 HGR), CFFA1, JukeBox, CodeTank, GT-6144, PR-40
+    // and TerminalCard either have no /INT pin or never wire it on the
+    // P-LAB / community Apple-1 implementations — they stay polled.
     if (cpuForIrq) {
         bool irq = false;
         if (tms9918Enabled && tms9918->irqAsserted()) irq = true;
         if (a1ioRtcEnabled && a1ioRtc->irqAsserted()) irq = true;
+        if (microSDEnabled && microSD->irqAsserted()) irq = true;
         if (wifiModemEnabled && wifiModem->irqAsserted()) irq = true;
         cpuForIrq->setIRQ(irq ? 1 : 0);
     }

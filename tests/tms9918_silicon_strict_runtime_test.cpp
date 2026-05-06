@@ -214,8 +214,11 @@ int main()
     }
 
     // ----------------------------------------------------------------------
-    // Phase 6: strict + display blanked (R1 bit 6 = 0) → 2-cycle window.
-    // VRAM bandwidth is free, only the prep delay applies.
+    // Phase 6: strict + display blanked (R1 bit 6 = 0) → 16-cycle window.
+    // Mirrors the Mode I+sprites worst case (1 slot/16 VDP + STA + margin).
+    // Most natural 6502 patterns drop here without explicit padding —
+    // typical `LDA abs / STA / LDA abs / STA` is only 8c gap, so the
+    // patcher injects JSR pad{12,24,40} or display-off blanking is used.
     // ----------------------------------------------------------------------
     {
         TMS9918 vdp;
@@ -225,11 +228,15 @@ int main()
         strictWriteControl(vdp, 0x81);
         vdp.setSiliconStrictMode(true);
 
-        writeAtGap(vdp, 0x1300, 0xF1, 2);   // accept (boundary)
-        writeAtGap(vdp, 0x1301, 0xF2, 1);   // drop  (boundary -1)
+        writeAtGap(vdp, 0x1300, 0xF1, 16);  // accept (boundary)
+        writeAtGap(vdp, 0x1301, 0xF2, 15);  // drop  (boundary -1)
+        writeAtGap(vdp, 0x1302, 0xF3, 8);   // drop  (LDA abs / STA / LDA abs / STA)
+        writeAtGap(vdp, 0x1303, 0xF4, 6);   // drop  (LDA #imm bridge)
 
-        mustBeTrue(readVramAt(vdp, 0x1300) == 0xF1, "Phase6 blank: gap=2 accepted"); ++assertions;
-        mustBeTrue(readVramAt(vdp, 0x1301) == 0x00, "Phase6 blank: gap=1 dropped"); ++assertions;
+        mustBeTrue(readVramAt(vdp, 0x1300) == 0xF1, "Phase6 blank: gap=16 accepted"); ++assertions;
+        mustBeTrue(readVramAt(vdp, 0x1301) == 0x00, "Phase6 blank: gap=15 dropped"); ++assertions;
+        mustBeTrue(readVramAt(vdp, 0x1302) == 0x00, "Phase6 blank: gap=8 dropped"); ++assertions;
+        mustBeTrue(readVramAt(vdp, 0x1303) == 0x00, "Phase6 blank: gap=6 dropped"); ++assertions;
     }
 
     // Sanity: getter must mirror the last setter call.

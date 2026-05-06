@@ -723,11 +723,25 @@ Le patcher injecte aussi `.import tms9918_pad12` une fois en haut de chaque fich
 Cross-port (`VDP_DATA → VDP_CTRL` ou inverse) : la fenêtre est unique pour
 les deux ports — le matcher couvre `VDP_(DATA|CTRL)` indistinctement.
 
-**Skip annotation** : pour exclure une routine déjà optimisée à la main
-(ou qui blanke explicitement l'affichage avant ses uploads), insérer un
-commentaire `; SILICON_STRICT_SKIP` n'importe où dans le corps de la
-fonction (avant le `RTS` ou le label suivant). Le tool saute toute la
-routine en bloc.
+**Pas de skip annotation — strict means strict.** Les versions antérieures
+du patcher honoraient un commentaire `; SILICON_STRICT_SKIP` pour
+exempter une routine de l'injection de pads. Cet *escape hatch* a été
+retiré (mai 2026) pour deux raisons :
+1. Substring-match footgun : un commentaire mentionnant le nom de la
+   directive (par ex. *« do not add SILICON_STRICT_SKIP here »*)
+   désactivait silencieusement l'injection sur toute la routine —
+   incident hide_slot_4 dans Galaga où des heures ont été perdues à
+   chercher une régression cycle alors que les pads n'avaient simplement
+   pas été émis.
+2. Une « strict mode » avec exemptions par routine est une promesse
+   creuse : un build qui passe strict ne garantit plus le contrat
+   silicium, parce que l'auditeur ne peut plus distinguer les routines
+   auditées des routines exemptées.
+
+Les routines qui ont besoin d'un padding particulier (cushions cross-JSR,
+sync VBlank entry pad, cross-caller cushion en début d'`init_vdp_g*`)
+doivent inliner explicitement leur `JSR tms9918_pad{12,40}`. Le patcher
+détecte ces pads manuels via `is_existing_pad` et n'injecte pas par-dessus.
 
 ### Inventaire des projets patchés (état au 2026-04-30)
 

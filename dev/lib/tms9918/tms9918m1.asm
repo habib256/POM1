@@ -65,11 +65,11 @@ vdp_col:        .res 1
 
 ; ----------------------------------------------------------------------------
 ; init_vdp_g1: write 8 Mode-1 registers, then disable sprites + re-arm R1.
-;   SILICON_STRICT_SKIP — entire init runs with display blanked (R1 bit 6
-;   masked OFF during the @rg loop). Bulk uploads from this point on don't
-;   need pads since the threshold stays at 2c. Display goes ON only at the
-;   very end via the final R1 re-arm — at which point the caller's next
-;   VDP write picks up 24c gating, with the pad inserted in caller code.
+;   The auto-patcher injects pad40 between intra-pair (value→cmd) and
+;   inter-iter (cmd→next-value via BNE @rg loop-back) writes. Even if the
+;   caller leaves R1 with display ON (Rogue boot after a game-switch from
+;   LOGO/Galaga), iter 1 (X=1) commits R1 with bit 6 cleared and the gate
+;   drops to 16c for the rest of init.
 ;
 ;   Always disable sprites on init — without this, random bistable VRAM
 ;   noise on power-on appears as floating sprites (CLAUDE.md gotcha). We
@@ -77,14 +77,10 @@ vdp_col:        .res 1
 ;   so the SAT terminator write happens while the display is still blanked.
 ; ----------------------------------------------------------------------------
 init_vdp_g1:
-        ; SILICON_STRICT_SKIP — register-loop hand-padded so it survives
-        ; entry with R1 already display-ON. Both intra-pair AND inter-iter
-        ; gaps now use JSR pad24 (24c) so the loop is safe regardless of
-        ; the caller's R1 state (Rogue boot after a game-switch from LOGO/
-        ; Galaga left display ON; the prior NOP-only inter-iter dropped
-        ; ~10 bytes per init under the 24c contract → garbled register
-        ; sequence, May 2026 incident).
-        JSR     tms9918_pad40   ; MANUAL caller-gap cushion (40c)
+        ; Caller-gap cushion: covers the worst-case scenario where the
+        ; caller's last VDP write was very recent (e.g. Rogue boot
+        ; immediately after the menu's last STA VDP_CTRL).
+        JSR     tms9918_pad40   ; cross-caller cushion (40c)
         LDX     #0
 @rg:    LDA     vdp1_regs,X
         CPX     #1
@@ -94,11 +90,11 @@ init_vdp_g1:
         STA     VDP_CTRL
         TXA
         ORA     #$80
-        JSR     tms9918_pad40   ; intra-pair: 40c gap value→cmd
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (back-to-back VDP store)
         STA     VDP_CTRL
-        JSR     tms9918_pad40   ; inter-iter: 40c gap cmd→next data byte
         INX
         CPX     #8
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (back-to-back VDP store)
         BNE     @rg
         JSR     disable_sprites ; SAT terminator with display still OFF
         ; --- Final: re-arm R1 with the table value (display ON typically).
@@ -106,6 +102,7 @@ init_vdp_g1:
         ;     through both STAs, no inline pad needed.
         LDA     vdp1_regs+1
         STA     VDP_CTRL
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (before LDA #imm bridge)
         LDA     #$81            ; cmd = $80 | reg-1
         STA     VDP_CTRL
         RTS

@@ -39,11 +39,16 @@ Usage:
     silicon_strict_patch.py <file.asm> [--dry-run]
     silicon_strict_patch.py <file.asm> [--unpatch]   # strip v1+v2(16/24/40) patches
 
-Skip annotations: any subroutine that runs with display blanked (R1 bit 6 = 0)
-or has its own carefully-tuned padding can be skipped by adding a comment
-`; SILICON_STRICT_SKIP` on a line *before* the routine label, anywhere in
-the routine. The skip applies to the entire labelled function until the
-next top-level label.
+**Strict means strict — no SKIP escape hatch.** Earlier versions honoured
+a `; SILICON_STRICT_SKIP` comment to exempt a routine from pad injection
+(typically used for register-init loops that run with display blanked).
+That escape hatch was removed in May 2026 because (a) it created subtle
+footguns when stale comments triggered substring matches and (b) the
+"strict mode" contract is meaningless with per-routine exemptions.
+Routines that genuinely need different padding (e.g. cross-JSR cushions,
+VBlank-sync entry pads) must inline an explicit `JSR tms9918_pad{12,40}`
+themselves — their hand-coded pads are recognised by `is_existing_pad`
+and the patcher will not double-inject.
 """
 from __future__ import annotations
 import argparse
@@ -96,9 +101,9 @@ RE_BUILTIN_PADDED_STORE = re.compile(r"^\s+WRT_DATA_(?:REG|VAL)\b")
 def is_builtin_padded_store(line: str) -> bool:
     return bool(RE_BUILTIN_PADDED_STORE.match(strip_inline_label(line)))
 RE_LABEL     = re.compile(r"^[ \t]*(@?[a-zA-Z_][a-zA-Z0-9_]*):\s*$")
-# Top-level labels only (no leading @) — used by the SKIP-range walker so a
-# `; SILICON_STRICT_SKIP` comment in init_vdp_g2 covers ALL its @local
-# labels (@rg, @rg_store, @th, @nm, @cl) until the next TOP-level label.
+# Top-level labels only (no leading @) — used by find_skip_ranges (now a
+# no-op stub) and find_stale_skip_markers to delimit routines for the
+# stale-SKIP warning.
 RE_TOP_LABEL = re.compile(r"^[ \t]*([a-zA-Z_][a-zA-Z0-9_]*):\s*$")
 RE_LDA_IMM   = re.compile(r"^\s*LDA\s+#")
 RE_LDA_ANY   = re.compile(r"^\s*LDA\s+[^#]")  # LDA non-immediate (zp / abs / (zp),Y / zp,X / abs,X)
@@ -232,23 +237,27 @@ def strip_marker_lines(src: list[str]) -> list[str]:
 
 
 def find_skip_ranges(src: list[str]) -> list[tuple[int, int]]:
-    """Return [(start, end)] line index ranges of routines marked SILICON_STRICT_SKIP.
-    A routine is the lines from a TOP-level `name:` label up to (exclusive)
-    the next top-level label — `@local:` labels do NOT end the range, so a
-    skip annotation in a routine covers all its local subroutines.
-    The skip is requested by a comment line containing 'SILICON_STRICT_SKIP'
-    anywhere inside that routine."""
-    label_lines = [i for i, l in enumerate(src) if RE_TOP_LABEL.match(l)]
-    if not label_lines:
-        return []
-    boundaries = label_lines + [len(src)]
-    ranges = []
-    for k, start in enumerate(label_lines):
-        end = boundaries[k + 1] - 1
-        body = "".join(src[start:end + 1])
-        if "SILICON_STRICT_SKIP" in body:
-            ranges.append((start, end))
-    return ranges
+    """Strict mode means strict — no per-routine exemption. The legacy
+    `; SILICON_STRICT_SKIP` annotation was removed (May 2026) after it
+    created two recurring footguns:
+        1. Stale comments mentioning the directive name silently
+           disabled pad injection across an entire routine.
+        2. "Skip" exemptions defeated the whole point of strict mode —
+           a passing strict-mode build no longer guaranteed the silicon
+           contract because the auditor couldn't tell which routines
+           had been audited vs. exempted.
+
+    Always returns []. If the marker is still present in source, the
+    patcher does NOT honour it (and emits a warning so the user knows
+    to clean it up)."""
+    return []
+
+
+def find_stale_skip_markers(src: list[str]) -> list[int]:
+    """Return line indices of any leftover `; SILICON_STRICT_SKIP` comments.
+    These are no longer honoured — surface them so the user can remove."""
+    skip_re = re.compile(r"^\s*;\s*SILICON_STRICT_SKIP\b")
+    return [i for i, line in enumerate(src) if skip_re.match(line)]
 
 
 def next_code_lines(src: list[str], i: int, n: int):
@@ -267,6 +276,21 @@ def next_code_lines(src: list[str], i: int, n: int):
             out.append((j, src[j]))
         j += 1
     return out
+
+
+def warn_stale_skip(src: list[str], path: pathlib.Path) -> None:
+    """Print a warning if the source still mentions the obsolete SKIP
+    annotation. Strict mode means strict — these markers are no longer
+    honoured."""
+    stale = find_stale_skip_markers(src)
+    if stale:
+        print(f"{path}: WARNING — {len(stale)} stale SILICON_STRICT_SKIP "
+              f"marker(s) found at line(s) {[i+1 for i in stale]}.",
+              file=sys.stderr)
+        print("  Strict mode no longer honours these. Either remove the",
+              file=sys.stderr)
+        print("  comments, or accept that pads will be injected uniformly.",
+              file=sys.stderr)
 
 
 def apply_padding(src: list[str]) -> tuple[list[str], dict[str, int]]:
@@ -504,6 +528,7 @@ def main() -> int:
     args = ap.parse_args()
 
     src = args.file.read_text().splitlines(keepends=True)
+    warn_stale_skip(src, args.file)
     stripped = strip_marker_lines(src)
     removed = len(src) - len(stripped)
 

@@ -79,13 +79,25 @@ uint16_t TMS9918::liveVramMask() const
 int TMS9918::requiredAccessCycles() const
 {
     if (!siliconStrictMode) return 0;
-    // Display blanked (R1 bit 6 = 0) OR beam currently in VBlank: VRAM is
-    // free, only the ~2 µs preparation delay applies. The VBlank check uses
-    // frameCycleCounter (the physical beam position), NOT statusReg bit 7
-    // — bit 7 is sticky-until-readControl, so a program that never polls
-    // $CC01 (Galaga, for one) keeps it set forever and would otherwise see
-    // a permanently-relaxed window across the whole active display.
-    if ((regs[1] & 0x40) == 0 || frameCycleCounter >= kActiveDisplayCycles) return 2;
+    // Display blanked (R1 bit 6 = 0) OR beam currently in VBlank: VRAM
+    // bandwidth is free, only the chip preparation latency applies. The
+    // VBlank check uses frameCycleCounter (the physical beam position),
+    // NOT statusReg bit 7 — bit 7 is sticky-until-readControl, so a
+    // program that never polls $CC01 (Galaga pre-VBlank-sync, for one)
+    // keeps it set forever and would otherwise see a permanently-relaxed
+    // window across the whole active display.
+    //
+    // The threshold here mirrors the active-display worst case formula
+    // "1 slot/16 VDP cycles + STA + phase margin" — even during VBlank,
+    // when slot contention is gone, the chip's internal latch + warm-NMOS
+    // turnaround can stretch CPU access on real silicon. Setting VBlank
+    // to 16c (instead of the theoretical 2c "preparation only") provides
+    // visibility on tight patterns (`STA / LDA #imm / STA`, `LDA abs /
+    // STA / LDA abs / STA`, …) that may bug on silicon under unfavourable
+    // phase even when the doc table claims VBlank is free. The
+    // diagnostic value is high — any program that drops here flags a
+    // risky inter-write pattern that would warrant a pad on hardware.
+    if ((regs[1] & 0x40) == 0 || frameCycleCounter >= kActiveDisplayCycles) return 16;
 
     // Hardened silicon-strict thresholds (cf. dev/SILICONBUGS.md Bug N°1).
     // The "1 slot per N VDP cycles" model gives the *typical* worst case at

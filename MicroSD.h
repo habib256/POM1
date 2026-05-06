@@ -45,6 +45,15 @@ public:
     // Debug logging (disabled by default for performance)
     bool debugEnabled = false;
 
+    // /IRQ line state. 65C22 standard semantics: any IRQ source unmasked
+    // in IER and active in IFR pulls /IRQ. Wired to the Memory-side
+    // aggregator (cf. dev/SILICONBUGS.md Bug N°2). Most microSD shell
+    // workflows poll PORTB STROBE bits rather than enable timer/SR
+    // interrupts, so this is dormant in typical use — but a future SD
+    // shell or assembler that uses Timer 1 for byte-time delays would
+    // get a real /IRQ now.
+    bool irqAsserted() const { return (ifr & ier & 0x7F) != 0; }
+
 private:
     // --- MCU command IDs (match arduino.ino) ---
     static constexpr uint8_t CMD_READ   = 0;

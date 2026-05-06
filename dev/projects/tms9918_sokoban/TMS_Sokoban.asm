@@ -238,13 +238,13 @@ move_loop_j:
 ; init_vdp: set up TMS9918 registers, patterns, colours and clear name table
 ; =============================================
 init_vdp:
-        ; SILICON_STRICT_SKIP — register-loop is hand-padded so it survives
-        ; entry with R1 already display-ON (e.g. re-launching from Wozmon
-        ; after another game left $C2 in R1). The intra-pair JSR pad12
-        ; covers the worst-case 16c threshold; the trailing NOP brings the
-        ; inter-iter gap to 17c. Once X=1 commits R1 = $80 (display OFF),
-        ; subsequent iters run at the 2c blanked threshold but the loop
-        ; pads cost nothing extra (~96 cycles total — init runs once).
+        ; The register loop must survive entry with R1 already display-ON
+        ; (e.g. re-launching from Wozmon after another game left $C2 in
+        ; R1). The auto-patcher injects JSR pad40 intra-pair (between
+        ; ORA #$80 and STA VDP_CTRL cmd) and inter-iter (loop-back
+        ; detection drops a pad before BNE @regloop). Once iter 1 (X=1)
+        ; commits R1 with bit 6 cleared, the gate drops to 16c for the
+        ; rest of init.
         LDX #$00
 @regloop:
         LDA vdp_regs,X
@@ -255,11 +255,11 @@ init_vdp:
         STA VDP_CTRL
         TXA
         ORA #$80                        ; register write flag
-        JSR tms9918_pad40               ; intra-pair: 40c gap value→cmd
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (back-to-back VDP store)
         STA VDP_CTRL
-        JSR tms9918_pad40               ; inter-iter: 40c gap cmd→next value
         INX
         CPX #$08
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (back-to-back VDP store)
         BNE @regloop
 
         ; --- Load 7 tile patterns at pattern-table offsets 0, 64, 128, ... ---
@@ -268,6 +268,7 @@ init_vdp:
         ; Set VRAM write addr = $00{vram_lo tbl}
         LDA tile_vram_lo,X
         STA VDP_CTRL
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (before LDA zp/abs bridge)
         LDA tile_vram_hi,X
         ORA #$40                        ; write flag
         STA VDP_CTRL
@@ -292,6 +293,7 @@ init_vdp:
         STA VDP_DATA
         INY
         CPY #$20                        ; 32 bytes per tile (4 glyphs)
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (back-to-back VDP store)
         BCC @pb
 
         PLA
@@ -305,13 +307,16 @@ init_vdp:
         ; the loop counter is 8-bit.)
         LDA #$C0
         STA VDP_CTRL
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (before LDA #imm bridge)
         LDA #$41                        ; $01 | $40
         STA VDP_CTRL
         LDX #$00
 @hudpat1:
         LDA hud_patterns,X
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (back-to-back VDP store)
         STA VDP_DATA
         INX
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (back-to-back VDP store)
         BNE @hudpat1                    ; writes 256 bytes
         LDX #$00
 @hudpat2:
@@ -319,6 +324,7 @@ init_vdp:
         STA VDP_DATA
         INX
         CPX #56                         ; remaining 312-256 = 56 bytes
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (back-to-back VDP store)
         BCC @hudpat2
 
         ; --- Load 12 colour bytes at colour table $2000 (groups 0..11) ---
@@ -326,26 +332,32 @@ init_vdp:
         ; (HUD + title letters, all white).
         LDA #$00
         STA VDP_CTRL
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (before LDA #imm bridge)
         LDA #$60                        ; $20 | $40 (write flag)
         STA VDP_CTRL
         LDX #$00
 @colloop:
         LDA tile_colors,X
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (back-to-back VDP store)
         STA VDP_DATA
         INX
         CPX #$0C
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (back-to-back VDP store)
         BNE @colloop
 
         ; --- Clear name table ($1800, 768 bytes = char 0 = blank floor) ---
         LDA #$00
         STA VDP_CTRL
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (before LDA #imm bridge)
         LDA #$58                        ; $18 | $40
         STA VDP_CTRL
         LDX #$03                        ; 3 pages
         LDA #$00
 @np:    LDY #$00
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (back-to-back VDP store)
 @nb:    STA VDP_DATA
         INY
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (back-to-back VDP store)
         BNE @nb
         DEX
         BNE @np
@@ -353,16 +365,20 @@ init_vdp:
         ; --- Disable sprites: first sprite Y = $D0 stops the chain ---
         LDA #$00
         STA VDP_CTRL
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (before LDA #imm bridge)
         LDA #$5B                        ; $1B | $40
         STA VDP_CTRL
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (before LDA #imm bridge)
         LDA #$D0
         STA VDP_DATA
 
         ; --- Final: re-arm R1 with display ON. Display stays OFF until the
         ;     cmd byte commits — threshold = 2c through both STAs, no pad
         ;     needed inline. The caller's next VDP write picks up 16c gating.
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (before LDA zp/abs bridge)
         LDA vdp_regs+1
         STA VDP_CTRL
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (before LDA #imm bridge)
         LDA #$81
         STA VDP_CTRL
         RTS

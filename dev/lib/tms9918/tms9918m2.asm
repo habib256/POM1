@@ -72,18 +72,14 @@ pen_color:    .res 1     ; 0..15 -- foreground colour written to colour
 ; ============================================================================
 
 ; init_vdp_g2: 8 registers + linear name table + colour table = $F1.
-;   SILICON_STRICT_SKIP — runs entirely with display blanked (threshold 2c).
-;   The @rg loop masks R1's display bit OFF; the bulk uploads (name + colour
-;   tables) all run before R1 is re-armed at the very end. Only the final
-;   R1 re-arm flips display ON, after which the caller's first VDP write
-;   needs 24c gating — but that's the patcher's job in caller code, not here.
+;   The @rg loop masks R1's display bit OFF on iter 1 (X=1); subsequent
+;   iters and bulk uploads run with the gate at 16c (display blanked).
+;   The auto-patcher injects pad40 intra-pair and inter-iter — strict
+;   means strict, no SKIP escape hatch.
 init_vdp_g2:
-        ; SILICON_STRICT_SKIP — register-loop hand-padded so it survives
-        ; entry with R1 already display-ON. Both intra-pair AND inter-iter
-        ; gaps use JSR pad24 (was a single NOP for inter-iter, only safe
-        ; when caller booted with display OFF — same fix as tms9918m1.asm
-        ; init_vdp_g1, May 2026).
-        JSR     tms9918_pad40   ; MANUAL caller-gap cushion (40c)
+        ; Caller-gap cushion: covers the case where init_vdp_g2 is
+        ; called immediately after another VDP write in the caller.
+        JSR     tms9918_pad40   ; cross-caller cushion (40c)
         LDX #0
 @rg:    LDA vdp2_regs,X
         CPX #1
@@ -93,35 +89,41 @@ init_vdp_g2:
         STA VDP_CTRL
         TXA
         ORA #$80
-        JSR     tms9918_pad40       ; intra-pair: 40c gap value→cmd
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (back-to-back VDP store)
         STA VDP_CTRL
-        JSR     tms9918_pad40       ; inter-iter: 40c gap cmd→next data byte
         INX
         CPX #8
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (back-to-back VDP store)
         BNE @rg
         ; --- write linear name table at $3800 (display still OFF) ---
         LDA #$00
         STA VDP_CTRL
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (before LDA #imm bridge)
         LDA #$78
         STA VDP_CTRL
         LDX #3
 @th:    LDY #0
 @nm:    TYA
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (back-to-back VDP store)
         STA VDP_DATA
         INY
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (back-to-back VDP store)
         BNE @nm
         DEX
         BNE @th
         ; --- color table: $F1 everywhere ($2000-$37FF, 6144 bytes) ---
         LDA #$00
         STA VDP_CTRL
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (before LDA #imm bridge)
         LDA #$60
         STA VDP_CTRL
         LDX #24
         LDY #0
 @cl:    LDA #$F1
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (back-to-back VDP store)
         STA VDP_DATA
         INY
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (back-to-back VDP store)
         BNE @cl
         DEX
         BNE @cl
@@ -133,6 +135,7 @@ init_vdp_g2:
         ;     OFF until the cmd byte commits, so threshold remains 2c.
         LDA vdp2_regs+1
         STA VDP_CTRL
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (before LDA #imm bridge)
         LDA #$81
         STA VDP_CTRL
         RTS
