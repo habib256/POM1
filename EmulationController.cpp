@@ -43,6 +43,7 @@ EmulationController::EmulationController(Screen_ImGui* screenWidget)
     cpu = std::make_unique<M6502>(memory.get());
 
     memory->setDisplayDevice(screen);
+    memory->setCpuForIrq(cpu.get());
 
     {
         std::lock_guard<PriorityMutex> lock(stateMutex);

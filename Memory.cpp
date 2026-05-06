@@ -26,6 +26,7 @@
 
 #include "Memory.h"
 #include "Logger.h"
+#include "M6502.h"
 #include "TMS9918.h"
 #include "MicroSD.h"
 #include "WiFiModem.h"
@@ -1506,6 +1507,29 @@ void Memory::advanceCycles(int cycles)
     // 44.1 kHz independent of executionSpeed, decoupling music tempo from
     // CPU speed (Max mode → way too fast, WASM frame drop → too slow).
     if (sidEnabled || sidSpecialEditionEnabled) sid->advanceCycles(cycles);
+
+    // Aggregate /IRQ line — wire-OR of every plugged peripheral's interrupt
+    // request. The CPU's setIRQ() takes a level (1 = asserted, 0 = clear),
+    // matching the real 6502's level-triggered /IRQ pin: the line is
+    // re-evaluated after every opcode, so a peripheral that lowers its
+    // request between two CPU ticks naturally de-asserts /IRQ.
+    //
+    // Sources currently wired (per dev/SILICONBUGS.md Bug N°2):
+    //   - TMS9918  : R1 bit 5 (IRQ enable) AND status bit 7 (F flag).
+    //                Read of $CC01 clears F → IRQ self-clears next tick.
+    //   - A1-IO RTC: 65C22 IFR bit 7 (any IRQ-enabled flag set).
+    //   - WiFiModem: 65C51 ACIA status bit 7 (IRQ pending) AND control
+    //                command-reg IRQ-enable inverted-polarity bit.
+    //
+    // ACI cassette is software-polled on real Apple-1 hardware — no /IRQ
+    // line on the cassette interface — so it stays out of the OR.
+    if (cpuForIrq) {
+        bool irq = false;
+        if (tms9918Enabled && tms9918->irqAsserted()) irq = true;
+        if (a1ioRtcEnabled && a1ioRtc->irqAsserted()) irq = true;
+        if (wifiModemEnabled && wifiModem->irqAsserted()) irq = true;
+        cpuForIrq->setIRQ(irq ? 1 : 0);
+    }
 }
 
 // ─────────────────────────────────────────────────────────────────────

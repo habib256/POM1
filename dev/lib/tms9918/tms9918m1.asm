@@ -35,9 +35,9 @@
 ;   $3800-$3FFF  Sprite pattern table
 ; ============================================================================
 
-        .import tms9918_pad24  ; silicon-strict pad24 (helper from tms9918_pad.asm)
+        .import tms9918_pad40  ; silicon-strict pad40 (helper from tms9918_pad.asm)
 .include "apple1.inc"
-.include "tms9918.inc"  ; provides .import tms9918_pad24
+.include "tms9918.inc"  ; provides WRT_DATA_REG / WRT_DATA_VAL macros (pad40)
 
 ; --- exported ZP slots -----------------------------------------------------
 .exportzp vdp_lo, vdp_hi, vdp_src_lo, vdp_src_hi, vdp_row, vdp_col
@@ -84,7 +84,7 @@ init_vdp_g1:
         ; Galaga left display ON; the prior NOP-only inter-iter dropped
         ; ~10 bytes per init under the 24c contract → garbled register
         ; sequence, May 2026 incident).
-        JSR     tms9918_pad24   ; MANUAL caller-gap cushion (24c)
+        JSR     tms9918_pad40   ; MANUAL caller-gap cushion (40c)
         LDX     #0
 @rg:    LDA     vdp1_regs,X
         CPX     #1
@@ -94,9 +94,9 @@ init_vdp_g1:
         STA     VDP_CTRL
         TXA
         ORA     #$80
-        JSR     tms9918_pad24   ; intra-pair: 24c gap value→cmd
+        JSR     tms9918_pad40   ; intra-pair: 40c gap value→cmd
         STA     VDP_CTRL
-        JSR     tms9918_pad24   ; inter-iter: 24c gap cmd→next data byte
+        JSR     tms9918_pad40   ; inter-iter: 40c gap cmd→next data byte
         INX
         CPX     #8
         BNE     @rg
@@ -115,13 +115,13 @@ init_vdp_g1:
 ;   TMS9918 stops processing the sprite chain at the first $D0 it sees.
 ; ----------------------------------------------------------------------------
 disable_sprites:
-        JSR     tms9918_pad24   ; MANUAL caller-gap cushion (24c)
+        JSR     tms9918_pad40   ; MANUAL caller-gap cushion (40c)
         LDA     #$00
         STA     VDP_CTRL
-        JSR     tms9918_pad24   ; +24c silicon-strict pad24 (before LDA #imm bridge)
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (before LDA #imm bridge)
         LDA     #$5B            ; $1B | $40 = write at $1B00
         STA     VDP_CTRL
-        JSR     tms9918_pad24   ; +24c silicon-strict pad24 (before LDA #imm bridge)
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (before LDA #imm bridge)
         LDA     #$D0
         STA     VDP_DATA
         RTS
@@ -132,18 +132,18 @@ disable_sprites:
 ;   colour byte at $2000 makes them invisible.
 ; ----------------------------------------------------------------------------
 clear_name_table:
-        JSR     tms9918_pad24   ; MANUAL caller-gap cushion (24c)
+        JSR     tms9918_pad40   ; MANUAL caller-gap cushion (40c)
         LDA     #$00
         STA     VDP_CTRL
-        JSR     tms9918_pad24   ; +24c silicon-strict pad24 (before LDA #imm bridge)
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (before LDA #imm bridge)
         LDA     #$58            ; $18 | $40 = write at $1800
         STA     VDP_CTRL
-        JSR     tms9918_pad24   ; addr-cmd → first STA VDP_DATA cushion
+        JSR     tms9918_pad40   ; addr-cmd → first STA VDP_DATA cushion
         LDX     #$03            ; 3 * 256 = 768 bytes
         LDA     #$00
 @np:    LDY     #$00
 @nb:    STA     VDP_DATA
-        JSR     tms9918_pad24   ; silicon-strict 24c (loop-back inner @nb,
+        JSR     tms9918_pad40   ; silicon-strict 40c (loop-back inner @nb,
                                 ; raw inner gap = STA+INY+BNE = 9c)
         INY
         BNE     @nb
@@ -156,14 +156,14 @@ clear_name_table:
 ;   Caller writes data via STA VDP_DATA after this returns.
 ; ----------------------------------------------------------------------------
 vdp_set_write:
-        JSR     tms9918_pad24   ; MANUAL caller-gap cushion (24c)
+        JSR     tms9918_pad40   ; MANUAL caller-gap cushion (40c)
         LDA     vdp_lo
         STA     VDP_CTRL
-        JSR     tms9918_pad24   ; silicon-strict 24c (LDA zp + ORA bridge)
+        JSR     tms9918_pad40   ; silicon-strict 40c (LDA zp + ORA bridge)
         LDA     vdp_hi
         ORA     #$40            ; bit 6 = write
         STA     VDP_CTRL
-        JSR     tms9918_pad24   ; cushion: caller's first STA VDP_DATA lands
+        JSR     tms9918_pad40   ; cushion: caller's first STA VDP_DATA lands
         RTS                     ; ≥ 24c+ after the cmd byte (12c+6c+6c=24c gap)
 
 ; ----------------------------------------------------------------------------
@@ -171,13 +171,13 @@ vdp_set_write:
 ;   Caller reads via LDA VDP_DATA after this returns.
 ; ----------------------------------------------------------------------------
 vdp_set_read:
-        JSR     tms9918_pad24   ; MANUAL caller-gap cushion (24c)
+        JSR     tms9918_pad40   ; MANUAL caller-gap cushion (40c)
         LDA     vdp_lo
         STA     VDP_CTRL
-        JSR     tms9918_pad24   ; +24c silicon-strict pad24 (before LDA zp/abs bridge)
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (before LDA zp/abs bridge)
         LDA     vdp_hi          ; bit 6 = 0 → read
         STA     VDP_CTRL
-        JSR     tms9918_pad24   ; cushion: caller's first LDA VDP_DATA lands
+        JSR     tms9918_pad40   ; cushion: caller's first LDA VDP_DATA lands
         RTS                     ; ≥ 24c+ after the cmd byte
 
 ; ----------------------------------------------------------------------------
@@ -194,6 +194,7 @@ vdp_upload_a:
         STA     VDP_DATA
         INY
         CPY     tmp
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (back-to-back VDP store)
         BNE     @lp
         RTS
 

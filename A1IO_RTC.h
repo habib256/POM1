@@ -69,6 +69,14 @@ public:
     // for short scripted runs the drift is under 1 s).
     void setOverrideTime(std::time_t target);
 
+    // /IRQ line state. Real 65C22 keeps IFR bit 7 dynamically equal to
+    // `(IFR & IER & 0x7F) != 0` — i.e., set whenever any IRQ source flag
+    // (T1/T2/SR/CB1/CB2/CA1/CA2) is both raised in IFR and unmasked in
+    // IER. We compute it on demand so writes to IFR/IER from the 6502
+    // don't need to keep the master bit in sync (cf. dev/SILICONBUGS.md
+    // Bug N°2 — was previously a no-op because /INT wasn't routed).
+    bool irqAsserted() const { return (ifr & ier & 0x7F) != 0; }
+
 private:
     // --- VIA 65C22 registers ---
     uint8_t portB;          // $2000 - Port B (data bus to/from ATMEGA)

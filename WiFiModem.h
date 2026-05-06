@@ -67,6 +67,20 @@ public:
     // Thread-safe: takes the modem mutex internally so it can be called from the UI thread.
     void requestDisconnect();
 
+    // /IRQ line state. The 65C51 ACIA pulls /IRQ low on receive-data-
+    // ready or overrun, gated by command-register bit 1 (CMD_IRQ_DIS,
+    // active-high — 1 means "IRQ disabled" per W65C51N datasheet). The
+    // status register is rebuilt on every read in this emulator, so we
+    // recompute IRQ from the underlying flags instead of cached state.
+    // Wired to the Memory-side /IRQ aggregator (dev/SILICONBUGS.md
+    // Bug N°2). Tx-empty IRQ is intentionally NOT triggered: the
+    // W65C51N has the well-known TDRE-stuck-high silicon bug, so every
+    // CPU tick would re-trigger IRQ if Tx-IRQ were enabled.
+    bool irqAsserted() const {
+        if ((commandReg & CMD_IRQ_DIS) != 0) return false;
+        return rdrfFlag || overrunFlag;
+    }
+
     // Snapshot for UI display
     struct Snapshot {
         uint8_t statusReg = 0;

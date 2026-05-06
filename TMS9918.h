@@ -60,6 +60,12 @@ public:
     uint64_t droppedWriteCount() const { return droppedWrites; }
     void resetDroppedWriteCount() { droppedWrites = 0; }
 
+    // /INT line state. Asserted (true) when R1 bit 5 (IRQ enable) is set
+    // AND status bit 7 (F frame flag) is sticky. Reading $CC01 clears
+    // F → /INT self-de-asserts on the next CPU tick. Wired to the 6502
+    // /IRQ aggregator in Memory::advanceCycles (see SILICONBUGS Bug N°2).
+    bool irqAsserted() const { return (regs[1] & 0x20) && (statusReg & 0x80); }
+
     void reset();
 
     void copySnapshot(Snapshot& out);

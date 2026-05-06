@@ -68,7 +68,7 @@
 ; =============================================
 
 ; ----- Apple 1 I/O -----
-        .import tms9918_pad24  ; silicon-strict pad24 (helper from tms9918_pad.asm)
+        .import tms9918_pad40  ; silicon-strict pad40 (helper from tms9918_pad.asm)
 KBDCR   = $D011
 KBD     = $D010
 ECHO    = $FFEF             ; Woz Monitor character output ($D012 with busy wait)
@@ -331,44 +331,44 @@ init_vdp:
         STA VDP_CTRL
         TXA
         ORA #$80
-        JSR     tms9918_pad24   ; +24c silicon-strict pad24 (back-to-back VDP store)
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (back-to-back VDP store)
         STA VDP_CTRL
         INX
         CPX #8
-        JSR     tms9918_pad24   ; +24c silicon-strict pad24 (back-to-back VDP store)
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (back-to-back VDP store)
         BNE @regloop
 
         ; Pattern table at $0000: 16 bytes for chars 0-1.
         LDA #$00
         STA VDP_CTRL
-        JSR     tms9918_pad24   ; +24c silicon-strict pad24 (before LDA #imm bridge)
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (before LDA #imm bridge)
         LDA #$40            ; $00 | $40 = write to $0000
         STA VDP_CTRL
         LDX #0
 @ptn:
         LDA patterns_chars,X
-        JSR     tms9918_pad24   ; +24c silicon-strict pad24 (back-to-back VDP store)
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (back-to-back VDP store)
         STA VDP_DATA
         INX
         CPX #16
-        JSR     tms9918_pad24   ; +24c silicon-strict pad24 (back-to-back VDP store)
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (back-to-back VDP store)
         BNE @ptn
 
         ; Colour table at $2000 - write group 0 only (chars 0-7 green on black).
         LDA #$00
         STA VDP_CTRL
-        JSR     tms9918_pad24   ; +24c silicon-strict pad24 (before LDA #imm bridge)
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (before LDA #imm bridge)
         LDA #$60            ; $20 | $40 = write to $2000
         STA VDP_CTRL
-        JSR     tms9918_pad24   ; +24c silicon-strict pad24 (before LDA #imm bridge)
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (before LDA #imm bridge)
         LDA #$21            ; fg=2 medium green, bg=1 black
         STA VDP_DATA
 
         ; Clear name table at $1800 (768 bytes = char 0 everywhere).
-        JSR     tms9918_pad24   ; +24c silicon-strict pad24 (before LDA #imm bridge)
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (before LDA #imm bridge)
         LDA #$00
         STA VDP_CTRL
-        JSR     tms9918_pad24   ; +24c silicon-strict pad24 (before LDA #imm bridge)
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (before LDA #imm bridge)
         LDA #$58            ; $18 | $40 = write to $1800
         STA VDP_CTRL
         LDX #3              ; 3 full pages = 768 bytes
@@ -376,10 +376,10 @@ init_vdp:
 @clr_pg:
         LDY #0
 @clr_b:
-        JSR     tms9918_pad24   ; +24c silicon-strict pad24 (back-to-back VDP store)
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (back-to-back VDP store)
         STA VDP_DATA
         INY
-        JSR     tms9918_pad24   ; +24c silicon-strict pad24 (back-to-back VDP store)
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (back-to-back VDP store)
         BNE @clr_b
         DEX
         BNE @clr_pg
@@ -469,7 +469,7 @@ render:
         ; Set VDP write address = $1800 (name table base)
         LDA #$00
         STA VDP_CTRL
-        JSR     tms9918_pad24   ; +24c silicon-strict pad24 (before LDA #imm bridge)
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (before LDA #imm bridge)
         LDA #$58            ; $18 | $40
         STA VDP_CTRL
 
@@ -492,7 +492,7 @@ render:
         STA VDP_DATA        ; cell value IS the char code
         INY
         CPY #33
-        JSR     tms9918_pad24   ; +24c silicon-strict pad24 (back-to-back VDP store)
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (back-to-back VDP store)
         BNE @col_loop
 
         INC row_i

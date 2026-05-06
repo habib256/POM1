@@ -36,7 +36,7 @@
 ; the densest burst sees an open access window.
 ; ============================================================================
 
-        .import tms9918_pad24  ; silicon-strict pad24 (helper from tms9918_pad.asm)
+        .import tms9918_pad40  ; silicon-strict pad40 (helper from tms9918_pad.asm)
 .include "apple1.inc"
 .include "tms9918.inc"
 
@@ -75,10 +75,11 @@ init_vdp_text:
         STA     VDP_CTRL
         TXA
         ORA     #$80
-        JSR     tms9918_pad24   ; +24c silicon-strict pad24 (back-to-back VDP store)
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (back-to-back VDP store)
         STA     VDP_CTRL
         INX
         CPX     #8
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (back-to-back VDP store)
         BNE     @rg
         RTS
 
@@ -94,16 +95,16 @@ upload_charmap:
         ; 1) Blank display (R1 = $80, M1=1, screen off).
         LDA     #$80
         STA     VDP_CTRL
-        JSR     tms9918_pad24   ; +24c silicon-strict pad24 (before LDA #imm bridge)
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (before LDA #imm bridge)
         LDA     #$81            ; reg 1
         STA     VDP_CTRL
 
         ; 2) Set VRAM write pointer to $0000 (pattern table base).
-        JSR     tms9918_pad24   ; +24c silicon-strict pad24 (before LDA #imm bridge)
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (before LDA #imm bridge)
         LDA     #$00
         STA     VDP_CTRL
         NOP
-        JSR     tms9918_pad24   ; +24c silicon-strict pad24 (before LDA #imm bridge)
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (before LDA #imm bridge)
         LDA     #$40            ; $00 | $40 = write at $0000
         STA     VDP_CTRL
 
@@ -132,6 +133,7 @@ upload_charmap:
         BNE     @bitrev
         STA     VDP_DATA        ; >> 8c since previous latch
         INY
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (back-to-back VDP store)
         BNE     @byte
         INC     vdp_src_hi      ; advance to next page
         DEX
@@ -139,10 +141,9 @@ upload_charmap:
 
         ; 4) Re-enable display (R1 = $D0).
         LDA     #$D0
-        JSR     tms9918_pad24   ; +24c silicon-strict pad24 (back-to-back VDP store)
         STA     VDP_CTRL
         NOP
-        JSR     tms9918_pad24   ; +24c silicon-strict pad24 (before LDA #imm bridge)
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (before LDA #imm bridge)
         LDA     #$81
         STA     VDP_CTRL
         RTS
@@ -155,25 +156,26 @@ clear_screen_text:
         LDA     #$00
         STA     VDP_CTRL
         NOP
-        JSR     tms9918_pad24   ; +24c silicon-strict pad24 (before LDA #imm bridge)
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (before LDA #imm bridge)
         LDA     #$48            ; $08 | $40 = write at $0800
         STA     VDP_CTRL
         ; 960 bytes = 3 pages of 256 + 192. Loop X = 3 full pages, then
         ; tail of 192. Each STA VDP_DATA + INY/BNE = >= 8c.
-        JSR     tms9918_pad24   ; +24c silicon-strict pad24 (before LDA #imm bridge)
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (before LDA #imm bridge)
         LDA     #$20            ; space
         LDX     #3
 @p:     LDY     #0
 @b:     STA     VDP_DATA
         INY
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (back-to-back VDP store)
         BNE     @b
         DEX
         BNE     @p
         ; Tail: 192 bytes
         LDY     #192
-        JSR     tms9918_pad24   ; +24c silicon-strict pad24 (back-to-back VDP store)
 @t:     STA     VDP_DATA
         DEY
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (back-to-back VDP store)
         BNE     @t
         RTS
 
@@ -186,7 +188,7 @@ vdp_set_write:
         NOP                     ; +2c gap
         LDA     vdp_hi
         ORA     #$40            ; bit 6 = write
-        JSR     tms9918_pad24   ; +24c silicon-strict pad24 (back-to-back VDP store)
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (back-to-back VDP store)
         STA     VDP_CTRL
         RTS
 
@@ -197,7 +199,7 @@ vdp_set_read:
         LDA     vdp_lo
         STA     VDP_CTRL
         NOP
-        JSR     tms9918_pad24   ; +24c silicon-strict pad24 (before LDA zp/abs bridge)
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (before LDA zp/abs bridge)
         LDA     vdp_hi          ; bit 6 = 0 -> read
         STA     VDP_CTRL
         RTS

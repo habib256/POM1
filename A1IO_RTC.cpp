@@ -205,7 +205,12 @@ uint8_t A1IO_RTC::readRegister(uint16_t address)
     case 0x0A: return shiftReg;
     case 0x0B: return acr;
     case 0x0C: return pcr;
-    case 0x0D: return ifr;
+    case 0x0D:
+        // 65C22 IFR bit 7 reads as the wire-OR of (IFR & IER & 0x7F),
+        // i.e., "any unmasked source pending". Bits 0-6 are stored
+        // directly. Real silicon recomputes bit 7 on the fly; the
+        // emulator does the same so /IRQ status reads back correctly.
+        return (ifr & 0x7F) | ((ifr & ier & 0x7F) ? 0x80 : 0);
     case 0x0E: return ier | 0x80; // bit 7 always reads as 1
 
     case 0x0F: // ORA (no handshake) - reads Port A without affecting STROBE

@@ -38,7 +38,7 @@
 ; =============================================
 
 ; --- Apple 1 I/O ---
-        .import tms9918_pad24  ; silicon-strict pad24 (helper from tms9918_pad.asm)
+        .import tms9918_pad40  ; silicon-strict pad40 (helper from tms9918_pad.asm)
 ECHO    = $FFEF
 KBD     = $D010
 KBDCR   = $D011
@@ -296,16 +296,16 @@ init_arena:
         ; --- Clear TMS name table $1800 (3 pages) ---
         LDA #$00
         STA VDP_CTRL
-        JSR     tms9918_pad24   ; +24c silicon-strict pad24 (before LDA #imm bridge)
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (before LDA #imm bridge)
         LDA #$58                ; $18 | $40
         STA VDP_CTRL
         LDX #$03
         LDA #$00
 @np:    LDY #$00
-        JSR     tms9918_pad24   ; +24c silicon-strict pad24 (back-to-back VDP store)
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (back-to-back VDP store)
 @nb:    STA VDP_DATA
         INY
-        JSR     tms9918_pad24   ; +24c silicon-strict pad24 (back-to-back VDP store)
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (back-to-back VDP store)
         BNE @nb
         DEX
         BNE @np
@@ -764,9 +764,9 @@ init_vdp:
         STA VDP_CTRL
         TXA
         ORA #$80
-        JSR tms9918_pad24       ; intra-pair: 24c gap value→cmd
+        JSR tms9918_pad40       ; intra-pair: 40c gap value→cmd
         STA VDP_CTRL
-        NOP                     ; +2c for inter-iter gap (→17c)
+        JSR tms9918_pad40       ; inter-iter: 40c gap cmd→next value
         INX
         CPX #$08
         BNE @regloop
@@ -884,12 +884,12 @@ plot_cell:
         CLC
         ADC draw_col
         STA VDP_CTRL
-        JSR     tms9918_pad24   ; +24c silicon-strict pad24 (before LDA zp/abs bridge)
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (before LDA zp/abs bridge)
         LDA row_x32_hi,X
         ADC #$18
         ORA #$40
         STA VDP_CTRL
-        JSR     tms9918_pad24   ; +24c silicon-strict pad24 (before LDA zp/abs bridge)
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (before LDA zp/abs bridge)
         LDA temp
         STA VDP_DATA
         RTS
@@ -907,18 +907,18 @@ draw_hud:
         ; VRAM addr $1800 (row 0, col 0)
         LDA #$00
         STA VDP_CTRL
-        JSR     tms9918_pad24   ; +24c silicon-strict pad24 (before LDA #imm bridge)
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (before LDA #imm bridge)
         LDA #$58
         STA VDP_CTRL
         ; "SCORE:" — 6 chars from a fixed table.
         LDX #$00
 @hud_lp:
         LDA hud_score_str,X
-        JSR     tms9918_pad24   ; +24c silicon-strict pad24 (back-to-back VDP store)
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (back-to-back VDP store)
         STA VDP_DATA
         INX
         CPX #$06
-        JSR     tms9918_pad24   ; +24c silicon-strict pad24 (back-to-back VDP store)
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (back-to-back VDP store)
         BCC @hud_lp
         LDA score
         JSR emit_3digit_vdp
@@ -926,17 +926,17 @@ draw_hud:
         ; VRAM addr $1817 (row 0, col 23) — start of "HI:NNN"
         LDA #$17
         STA VDP_CTRL
-        JSR     tms9918_pad24   ; +24c silicon-strict pad24 (before LDA #imm bridge)
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (before LDA #imm bridge)
         LDA #$58
         STA VDP_CTRL
         LDX #$00
 @hi_lp:
         LDA hud_hi_str,X
-        JSR     tms9918_pad24   ; +24c silicon-strict pad24 (back-to-back VDP store)
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (back-to-back VDP store)
         STA VDP_DATA
         INX
         CPX #$03
-        JSR     tms9918_pad24   ; +24c silicon-strict pad24 (back-to-back VDP store)
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (back-to-back VDP store)
         BCC @hi_lp
         LDA hi_score
         JMP emit_3digit_vdp     ; tail-call
@@ -956,7 +956,7 @@ emit_3digit_vdp:
         CLC
         ADC #HUD_C_D0
         STA VDP_DATA            ; hundreds
-        JSR     tms9918_pad24   ; +24c silicon-strict pad24 (before LDA zp/abs bridge)
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (before LDA zp/abs bridge)
         LDA temp
         LDX #$00
 @t:     CMP #$0A
@@ -969,7 +969,7 @@ emit_3digit_vdp:
         CLC
         ADC #HUD_C_D0
         STA VDP_DATA            ; tens
-        JSR     tms9918_pad24   ; +24c silicon-strict pad24 (before LDA zp/abs bridge)
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (before LDA zp/abs bridge)
         LDA temp
         CLC
         ADC #HUD_C_D0
@@ -1071,16 +1071,16 @@ draw_win_tms:
 clear_name_table:
         LDA #$00
         STA VDP_CTRL
-        JSR     tms9918_pad24   ; +24c silicon-strict pad24 (before LDA #imm bridge)
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (before LDA #imm bridge)
         LDA #$58
         STA VDP_CTRL
         LDX #$03
         LDA #$00
 @np:    LDY #$00
-        JSR     tms9918_pad24   ; +24c silicon-strict pad24 (back-to-back VDP store)
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (back-to-back VDP store)
 @nb:    STA VDP_DATA
         INY
-        JSR     tms9918_pad24   ; +24c silicon-strict pad24 (back-to-back VDP store)
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (back-to-back VDP store)
         BNE @nb
         DEX
         BNE @np
@@ -1091,16 +1091,16 @@ clear_name_table:
 ; by caller), then emit raw char codes from (sptr_lo/hi) until $FF.
 draw_str_tms:
         STA VDP_CTRL
-        JSR     tms9918_pad24   ; +24c silicon-strict pad24 (back-to-back VDP store)
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (back-to-back VDP store)
         STX VDP_CTRL
         LDY #$00
 @lp:    LDA (sptr_lo),Y
         CMP #$FF
         BEQ @done
-        JSR     tms9918_pad24   ; +24c silicon-strict pad24 (back-to-back VDP store)
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (back-to-back VDP store)
         STA VDP_DATA
         INY
-        JSR     tms9918_pad24   ; +24c silicon-strict pad24 (back-to-back VDP store)
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (back-to-back VDP store)
         JMP @lp
 @done:  RTS
 

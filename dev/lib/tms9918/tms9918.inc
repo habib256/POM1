@@ -20,44 +20,43 @@ VDP_CTRL = $CC01        ; VDP register / address port (write twice = setup)
 ; index ORed with $80 in CTRL — see tms9918m2.asm:init_vdp_g2 for an example.
 
 ; ---------------------------------------------------------------------------
-; VRAM access timing — silicon-strict back-to-back gating (hardened 24c).
+; VRAM access timing — silicon-strict back-to-back gating (hardened 40c).
 ;
 ; Real TMS9918A silicon opens a CPU access window only every ~6 µs in Mode I
-; with sprites active (cf. dev/SILICONBUGS.md Bug N°1). The "8 cycle" gap of
-; the original strict mode reflected the *typical* worst case at ideal CPU↔VDP
-; phase alignment. The *worst-worst* case adds one full slot wait + STA latch
-; + bus turnaround on warm NMOS → the safe gap is **≥ 24 cycles** (May 2026
-; hardening — was 16c, but Galaga sprite loops and LOGO turtle redraws
-; overflow at exactly 16c under unfavourable phase, so we doubled the margin).
+; with sprites active (cf. dev/SILICONBUGS.md Bug N°1). Phase alignment +
+; warm-NMOS drift can shrink the visible window past the original 8c margin
+; — the May 2026 hardening ramp went 16c → 24c → 40c after Galaga sprite
+; tables and LOGO turtle redraws kept showing artefacts at every previous
+; level. The current 40c floor leaves comfortable margin at any phase.
 ;
-; POM1 enforces 24c when Hardware → Silicon Strict is ON (default for every
+; POM1 enforces 40c when Hardware → Silicon Strict is ON (default for every
 ; preset except Multiplexing Fantasy). Writes that arrive too fast are
 ; silently DROPPED — exactly like silicon under unfavorable phase alignment.
 ;
-; Padding strategy: prefer `JSR tms9918_pad24` over NOPs (defined in
-; tms9918_pad.asm). 3 bytes for 24c idle vs 12 NOPs for the same 24c — 4×
+; Padding strategy: prefer `JSR tms9918_pad40` over NOPs (defined in
+; tms9918_pad.asm). 3 bytes for 40c idle vs 20 NOPs for the same 40c — 6.67×
 ; denser at the call site.
 ;
 ;   STA VDP_DATA          ; 4c
-;   JSR tms9918_pad24     ; 24c (3 bytes) → next write lands 24 c later
+;   JSR tms9918_pad40     ; 40c (3 bytes) → next write lands 40 c later
 ;
 ; Use WRT_DATA_REG when A is already loaded with the byte to push (typical
 ; sprite-attribute and tile-stream loops). Use WRT_DATA_VAL for "load
-; immediate, then push" — same 24c gap to the next write.
+; immediate, then push" — same 40c gap to the next write.
 ; ---------------------------------------------------------------------------
-; Note: WRT_DATA_REG / WRT_DATA_VAL reference tms9918_pad24; callers using
-; these macros must `.import tms9918_pad24` themselves (the patcher does
-; this automatically when injecting JSR tms9918_pad24 — see SILICONBUGS.md).
+; Note: WRT_DATA_REG / WRT_DATA_VAL reference tms9918_pad40; callers using
+; these macros must `.import tms9918_pad40` themselves (the patcher does
+; this automatically when injecting JSR tms9918_pad40 — see SILICONBUGS.md).
 
 .macro WRT_DATA_REG
         STA     VDP_DATA        ; 4c
-        JSR     tms9918_pad24   ; 24c, 3 bytes — next write lands 24c later
+        JSR     tms9918_pad40   ; 40c, 3 bytes — next write lands 40c later
 .endmacro
 
 .macro WRT_DATA_VAL val
         LDA     #val            ; 2c
         STA     VDP_DATA        ; 4c
-        JSR     tms9918_pad24   ; 24c, 3 bytes — next write lands 24c later
+        JSR     tms9918_pad40   ; 40c, 3 bytes — next write lands 40c later
 .endmacro
 
 .endif  ; _TMS9918_INC_LOADED_

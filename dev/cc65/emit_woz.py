@@ -133,7 +133,9 @@ def emit(
                 content = src_path.read_text(errors="ignore")
             except OSError:
                 continue
-            if "tms9918_pad12" in content or "tms9918_pad24" in content:
+            if ("tms9918_pad12" in content
+                    or "tms9918_pad24" in content
+                    or "tms9918_pad40" in content):
                 needs_pad = True
         if needs_pad and not already_listed:
             asm_files = list(asm_files) + [str(pad_asm)]

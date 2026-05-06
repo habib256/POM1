@@ -94,9 +94,12 @@ int TMS9918::requiredAccessCycles() const
     // 4-cycle STA latch + ~2c bus turnaround on warm NMOS. We dimension each
     // mode so passing POM1 strict guarantees silicon — the contract is:
     //   gap ≥ 1 full VDP slot period + STA + phase margin.
-    // May 2026: Mode I+sprites bumped 16→24c after Galaga/LOGO sprite-table
-    // overflows. Patcher emits JSR tms9918_pad24 (24c) to match. Other modes
-    // keep their 4/6/6c thresholds — their slot periods are physically shorter.
+    // May 2026: Mode I+sprites pad ramp 16→24→40c. The 24c level still
+    // displayed Galaga sprite-table corruption and LOGO turtle redraw
+    // artefacts under unfavourable CPU↔VDP phase; doubling the safety
+    // margin to 40c eliminates both. Patcher emits JSR tms9918_pad40 (40c)
+    // to match. Other modes keep their 4/6/6c thresholds — their slot
+    // periods are physically shorter so they don't need the extra cushion.
     const bool textMode       = (regs[1] & 0x10) != 0;
     const bool multicolorMode = (regs[1] & 0x08) != 0;
     if (textMode) return 4;          // 1 slot/3 VDP cycles, +1c phase margin
@@ -113,9 +116,10 @@ int TMS9918::requiredAccessCycles() const
         break;
     }
     if (!spritesActive) return 6;    // 1 slot/6 VDP cycles when SAT[0]=$D0
-    return 24;                        // hardened: 1 slot/16 VDP cycles + STA + 8c phase margin
-                                      // (was 16c — Galaga sprite tables and LOGO turtle redraws
-                                      //  overflowed at 16c under unfavourable phase, May 2026 bump)
+    return 40;                        // hardened: 1 slot/16 VDP cycles + STA + 24c phase margin
+                                      // (was 24c — Galaga sprite tables and LOGO turtle redraws
+                                      //  still overflowed at 24c under unfavourable phase,
+                                      //  May 2026 bump to 40c kills the residual artefacts)
 }
 
 bool TMS9918::canAcceptAccess() const
@@ -236,15 +240,38 @@ uint8_t TMS9918::readControl()
 void TMS9918::advanceCycles(int cycles)
 {
     cyclesSinceIoAccess = std::min(cyclesSinceIoAccess + cycles, 1000000);
+    const int prevCounter = frameCycleCounter;
     frameCycleCounter += cycles;
-    if (frameCycleCounter >= kCyclesPerFrame) {
-        frameCycleCounter -= kCyclesPerFrame;
-        // Update sticky sprite-engine flags (collision bit 5, 5S bit 6 + index)
-        // before raising VBlank — only when display is enabled (R1 bit 6).
+
+    // F flag (bit 7) and the per-frame sprite-engine status scan fire at
+    // the START of VBlank — the moment the beam crosses from line 191 into
+    // line 192 (real silicon: flag goes high during vertical retrace, see
+    // TMS9918A datasheet §3.5.1). The 6502 idiom for VBlank-synced VRAM
+    // bursts depends on this:
+    //
+    //     @wait_vbl: BIT $CC01      ; clear stale F + N := bit 7
+    //                BPL @wait_vbl  ; spin until fresh F set
+    //     ; ... 4554c of free 2c-gate VRAM bandwidth before active display ...
+    //
+    // Originally POM1 fired F at the frame ROLLOVER (counter wraps to 0,
+    // == start of next active display) which left zero VBlank window
+    // post-poll. Detecting the "just crossed kActiveDisplayCycles" edge
+    // restores the silicon-correct cadence.
+    if (prevCounter < kActiveDisplayCycles && frameCycleCounter >= kActiveDisplayCycles) {
+        // Sprite-engine status scan happens at VBlank start on real silicon
+        // too (the chip walks the SAT during vertical retrace), only when
+        // display is enabled (R1 bit 6).
         if (regs[1] & 0x40) {
             scanSpritesForStatus(vram.data(), regs.data(), siliconStrictMode, statusReg);
         }
-        statusReg |= 0x80; // set frame interrupt flag
+        statusReg |= 0x80;
+    }
+
+    // Frame counter rollover at the END of VBlank (== start of next active
+    // display). No flag side-effect — the F flag stays sticky-set until
+    // software reads $CC01 to clear it.
+    if (frameCycleCounter >= kCyclesPerFrame) {
+        frameCycleCounter -= kCyclesPerFrame;
     }
 }
 

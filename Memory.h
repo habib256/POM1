@@ -40,6 +40,7 @@ class WiFiModem;
 class TerminalCard;
 class A1IO_RTC;
 class PR40Printer;
+class M6502;
 #include "CFFA1.h"
 #include "CodeTank.h"
 #include "GT6144.h"
@@ -343,8 +344,17 @@ public:
     // Central audio device (mixes CassetteDevice + SID)
     AudioDevice& getAudioDevice() { return *audioDevice; }
 
+    // /IRQ aggregator — see Memory::advanceCycles() for the wire-OR logic.
+    // EmulationController calls this once at startup so peripherals can
+    // pull /IRQ on the 6502 (TMS9918 vblank, 65C22 timers, 65C51 Rx, …).
+    // Pre-existing programs that assumed POM1's broken "/INT not wired"
+    // behaviour (cf. dev/SILICONBUGS.md Bug N°2 workaround) keep working
+    // because they pre-disable interrupts (`SEI`) or never set R1 bit 5.
+    void setCpuForIrq(M6502* c) { cpuForIrq = c; }
+
 private:
     DisplayDevice* displayDevice = nullptr;     // non-owning; injected by EmulationController
+    M6502* cpuForIrq = nullptr;                 // non-owning; aggregator target for setIRQ()
     
     // Clavier Apple 1 (0xD010 = KBD, 0xD011 = KBDCR)
     // REQUIRES: stateMutex held by caller. UI never touches these directly —

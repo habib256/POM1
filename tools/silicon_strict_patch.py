@@ -1,23 +1,23 @@
 #!/usr/bin/env python3
 """
 silicon_strict_patch.py — insert JSR-based padding into a 6502 .asm so back-
-to-back TMS9918 VDP stores respect the silicon-strict access window of 24
+to-back TMS9918 VDP stores respect the silicon-strict access window of 40
 cycles (hardened paranoid mode, cf. dev/SILICONBUGS.md Bug N°1 §2).
 
 Idempotent: re-running on an already-patched file leaves it unchanged. Old
-v1 markers (NOPs), v2-pad16 markers (JSR pad12) and v2-pad24 markers
-(JSR pad24) are all stripped before re-insertion.
+v1 markers (NOPs), v2-pad16 markers (JSR pad12), v2-pad24 markers and
+v2-pad40 markers are all stripped before re-insertion.
 
 Rules applied (per dev/SILICONBUGS.md §17 Annexe E):
 
-    A — ST? VDP_*                 / ST? VDP_*    → 1 JSR tms9918_pad24 between
-                                                   gap = 4 + 24 + 4 = 32c
-    B — ST? VDP_* / LDA #imm      / ST? VDP_*    → 1 JSR tms9918_pad24 before
+    A — ST? VDP_*                 / ST? VDP_*    → 1 JSR tms9918_pad40 between
+                                                   gap = 4 + 40 + 4 = 48c
+    B — ST? VDP_* / LDA #imm      / ST? VDP_*    → 1 JSR tms9918_pad40 before
                                                    the LDA #imm.
-                                                   gap = 4 + 24 + 2 + 4 = 34c
-    C — ST? VDP_* / LDA <addr>    / ST? VDP_*    → 1 JSR tms9918_pad24 before
+                                                   gap = 4 + 40 + 2 + 4 = 50c
+    C — ST? VDP_* / LDA <addr>    / ST? VDP_*    → 1 JSR tms9918_pad40 before
                                                    the LDA addr (zp/abs/zp,X).
-                                                   gap = 4 + 24 + 3 + 4 = 35c
+                                                   gap = 4 + 40 + 3 + 4 = 51c
 
 `ST?` covers STA / STX / STY (a few games use STX VDP_CTRL for fast
 two-byte address writes). The TMS9918 access window is shared between
@@ -26,17 +26,18 @@ CTRL→CTRL, and DATA↔CTRL pairs are all gated identically.
 
 Why JSR instead of NOPs?
     NOP        = 2 cycles in 1 byte (ratio 2 c/B)
-    JSR pad24  = 24 cycles in 3 bytes at the call site, helper itself = 4 B
-                 (ratio 8 c/B at the call site — 4× denser than NOP)
+    JSR pad40  = 40 cycles in 3 bytes at the call site, helper itself = 7 B
+                 (ratio 13.3 c/B at the call site — 6.67× denser than NOP)
 
-The helpers `tms9918_pad12` (legacy 12c) and `tms9918_pad24` (hardened 24c)
-are defined in `dev/lib/tms9918/tms9918_pad.asm` and must be linked into
-every project. Each project's Makefile / build_codetank_rom.py auto-links
-the helper when its symbol is referenced.
+The helpers `tms9918_pad12` (legacy 12c), `tms9918_pad24` (legacy 24c) and
+`tms9918_pad40` (hardened 40c, current default) are defined in
+`dev/lib/tms9918/tms9918_pad.asm` and must be linked into every project.
+Each project's Makefile / build_codetank_rom.py auto-links the helper when
+its symbol is referenced.
 
 Usage:
     silicon_strict_patch.py <file.asm> [--dry-run]
-    silicon_strict_patch.py <file.asm> [--unpatch]   # strip v1+v2(16/24) patches
+    silicon_strict_patch.py <file.asm> [--unpatch]   # strip v1+v2(16/24/40) patches
 
 Skip annotations: any subroutine that runs with display blanked (R1 bit 6 = 0)
 or has its own carefully-tuned padding can be skipped by adding a comment
@@ -55,36 +56,40 @@ import sys
 V1_MARKER = "silicon-strict gap"
 
 # v2-pad16 marker (legacy JSR tms9918_pad12, 16c paranoid). Stripped so a
-# rerun of the patcher re-injects the hardened pad24 form.
+# rerun of the patcher re-injects the hardened pad form.
 V2_PAD16_MARKER = "silicon-strict pad16"
 
-# v2-pad24 marker (current JSR tms9918_pad24, 24c hardened paranoid).
-V2_MARKER = "silicon-strict pad24"
+# v2-pad24 marker (legacy JSR tms9918_pad24, 24c paranoid). Stripped so a
+# rerun re-injects the current pad40 form.
+V2_PAD24_MARKER = "silicon-strict pad24"
 
-# v2 also injects `.import tms9918_pad24` once near the top of any file we
+# v2-pad40 marker (current JSR tms9918_pad40, 40c hardened paranoid).
+V2_MARKER = "silicon-strict pad40"
+
+# v2 also injects `.import tms9918_pad40` once near the top of any file we
 # patch (so cc65 resolves the symbol against tms9918_pad.asm). The marker
 # tags the line so --unpatch removes it, and re-patch is idempotent.
-V2_IMPORT = "        .import tms9918_pad24  ; silicon-strict pad24 (helper from tms9918_pad.asm)\n"
+V2_IMPORT = "        .import tms9918_pad40  ; silicon-strict pad40 (helper from tms9918_pad.asm)\n"
 
-JSR_BTB  = "        JSR     tms9918_pad24   ; +24c silicon-strict pad24 (back-to-back VDP store)\n"
-JSR_LDAI = "        JSR     tms9918_pad24   ; +24c silicon-strict pad24 (before LDA #imm bridge)\n"
-JSR_LDAZ = "        JSR     tms9918_pad24   ; +24c silicon-strict pad24 (before LDA zp/abs bridge)\n"
+JSR_BTB  = "        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (back-to-back VDP store)\n"
+JSR_LDAI = "        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (before LDA #imm bridge)\n"
+JSR_LDAZ = "        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (before LDA zp/abs bridge)\n"
 
 RE_VDP_STORE = re.compile(
     r"^\s+(?:"
     r"ST[AXY]\s+VDP_(?:DATA|CTRL)"      # raw STA/STX/STY VDP_*
-    r"|WRT_DATA_REG\b"                  # tms9918.inc macro: STA + pad24
-    r"|WRT_DATA_VAL\b"                  # tms9918.inc macro: LDA # + STA + pad24
+    r"|WRT_DATA_REG\b"                  # tms9918.inc macro: STA + pad40
+    r"|WRT_DATA_VAL\b"                  # tms9918.inc macro: LDA # + STA + pad40
     r")"
     r"(?:\s+[^;]*?)?(?:\s*;.*)?$"
 )
-# Macros from tms9918.inc that embed their own postlude pad24. The patcher
+# Macros from tms9918.inc that embed their own postlude pad40. The patcher
 # treats them as VDP stores when looking for a STA2 target (so callers get
 # padded before them) but skips the outer-loop forward analysis from them
 # (because the macro itself already provides the gap to the *next* VDP
 # write). Without this distinction, a chain like
 #   WRT_DATA_REG / LDA / WRT_DATA_REG
-# would get a redundant patcher-injected pad24 inserted between the macros.
+# would get a redundant patcher-injected pad40 inserted between the macros.
 RE_BUILTIN_PADDED_STORE = re.compile(r"^\s+WRT_DATA_(?:REG|VAL)\b")
 
 
@@ -165,13 +170,13 @@ def branch_target_label(line: str) -> str | None:
     return m.group(1) if m else None
 
 
-# Detect a JSR call that's already an idle-pad helper (12c or 24c). When
-# the patcher walks forward from STA1 and the very next instruction is one
-# of these, STA1 is already protected — skip its analysis. This keeps the
-# patcher idempotent when called on a file that contains hand-coded pad
-# helpers (lib files like tms9918m1.asm, or hand-tuned project sites that
-# pre-date the v2 marker convention).
-RE_EXISTING_PAD = re.compile(r'^\s+JSR\s+tms9918_pad(?:12|24)\b')
+# Detect a JSR call that's already an idle-pad helper (12c, 24c or 40c).
+# When the patcher walks forward from STA1 and the very next instruction
+# is one of these, STA1 is already protected — skip its analysis. This
+# keeps the patcher idempotent when called on a file that contains hand-
+# coded pad helpers (lib files like tms9918m1.asm, or hand-tuned project
+# sites that pre-date the v2 marker convention).
+RE_EXISTING_PAD = re.compile(r'^\s+JSR\s+tms9918_pad(?:12|24|40)\b')
 
 
 def is_existing_pad(line: str) -> bool:
@@ -204,22 +209,23 @@ def is_lda_any(line: str) -> bool:
 
 
 def strip_marker_lines(src: list[str]) -> list[str]:
-    """Remove every line we previously inserted (v1 NOP, v2 pad16 JSR, or
-    v2 pad24 JSR).
+    """Remove every line we previously inserted (v1 NOP, v2 pad16 JSR,
+    v2 pad24 JSR or v2 pad40 JSR).
 
     Strict regex match — a line is stripped ONLY if it has the exact shape
-    of an auto-generated line (`<indent> JSR tms9918_pad{12,24} ; ... <key>`
-    or `<indent> .import tms9918_pad{12,24} ; ... <key>`). Hand-written
-    comments that merely *mention* the marker phrase (e.g. a `JSR pad24`
+    of an auto-generated line (`<indent> JSR tms9918_pad{12,24,40} ; ... <key>`
+    or `<indent> .import tms9918_pad{12,24,40} ; ... <key>`). Hand-written
+    comments that merely *mention* the marker phrase (e.g. a `JSR pad40`
     prologue whose docstring explains "this avoids the silicon-strict
-    pad24 strip key") are preserved.
+    pad40 strip key") are preserved.
 
     Without this strict check the patcher's hide_slot_4 prologue in
     TMS_Galaga.asm got eaten on every rerun (May 2026 incident)."""
     auto_re = re.compile(
-        r"^\s+(?:JSR\s+tms9918_pad(?:12|24)|\.import\s+tms9918_pad(?:12|24))\b"
+        r"^\s+(?:JSR\s+tms9918_pad(?:12|24|40)|\.import\s+tms9918_pad(?:12|24|40))\b"
         r".*?(?:" + re.escape(V1_MARKER)
         + "|" + re.escape(V2_PAD16_MARKER)
+        + "|" + re.escape(V2_PAD24_MARKER)
         + "|" + re.escape(V2_MARKER) + ")"
     )
     return [l for l in src if not auto_re.match(l)]
@@ -264,13 +270,13 @@ def next_code_lines(src: list[str], i: int, n: int):
 
 
 def apply_padding(src: list[str]) -> tuple[list[str], dict[str, int]]:
-    """v2-pad24 strategy:
-       - Case A: insert JSR tms9918_pad24 between the two ST? VDP_*.
-       - Case B/C: insert JSR tms9918_pad24 BEFORE the LDA bridge (so the
-         24c idle lands between STA1 and the LDA, giving gap = 4+24+2+4 = 34c
-         for B, 4+24+3+4 = 35c for C — well over the 24c hardened threshold).
+    """v2-pad40 strategy:
+       - Case A: insert JSR tms9918_pad40 between the two ST? VDP_*.
+       - Case B/C: insert JSR tms9918_pad40 BEFORE the LDA bridge (so the
+         40c idle lands between STA1 and the LDA, giving gap = 4+40+2+4 = 50c
+         for B, 4+40+3+4 = 51c for C — well over the 40c hardened threshold).
          Bridge instructions like ORA/CLC/ADC/INX between the LDA and the
-         second STA are tolerated (up to 3 in a row) — common in vdp_set_write
+         second STA are tolerated (up to 8 in a row) — common in vdp_set_write
          (`LDA hi / ORA #$40 / STA VDP_CTRL`) and tile-loop address builders.
 
        Inserting before the LDA (rather than between LDA and STA2) keeps the
@@ -298,7 +304,7 @@ def apply_padding(src: list[str]) -> tuple[list[str], dict[str, int]]:
     pad_before: dict[int, str] = {}
 
     # Up to this many bridge instructions allowed between two VDP stores.
-    # Bumped 4 → 8 (May 2026) because the 24c-hardened contract pushes
+    # Bumped 4 → 8 (May 2026) because the 40c-hardened contract pushes
     # callers to chain more value-shaping ops between VDP writes (typical
     # offender: `LDA pen_color / ASL × 4 / ORA #$01 / STA VDP_DATA` in
     # tms9918m2.asm:plot_set — 6 bridges, was missed at MAX_BRIDGE=4).
@@ -334,14 +340,14 @@ def apply_padding(src: list[str]) -> tuple[list[str], dict[str, int]]:
             continue
         if is_existing_pad(n0_text):
             # STA1 is already followed by a hand-coded pad helper —
-            # whatever comes after the pad is ≥ 24c away from STA1. Skip
-            # this STA's analysis; the next STA in source will be analysed
-            # on its own iteration of the outer loop.
+            # whatever comes after the pad is ≥ pad-helper cycles away
+            # from STA1. Skip this STA's analysis; the next STA in source
+            # will be analysed on its own iteration of the outer loop.
             continue
         # Generalized case A: STA / [bridge instructions only] / STA. The
         # patcher inserts pad before the LAST STA (the "second" one), not
         # before the first bridge instruction. This avoids disturbing the
-        # caller's data flow and gives gap = 4 + (bridges) + 24 + 4 ≥ 30c.
+        # caller's data flow and gives gap = 4 + (bridges) + 40 + 4 ≥ 48c.
         bridge_kind = None
         branch_idx: int | None = None  # set when the bridge ends on JMP/Bcc/JSR/RTS
         if is_lda_imm(n0_text):

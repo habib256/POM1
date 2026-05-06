@@ -129,7 +129,9 @@ def assemble(asm: pathlib.Path, cfg: pathlib.Path, name: str,
             t = asm.read_text(errors="ignore")
         except OSError:
             t = ""
-        if "tms9918_pad12" in t or "tms9918_pad24" in t:
+        if ("tms9918_pad12" in t
+                or "tms9918_pad24" in t
+                or "tms9918_pad40" in t):
             pad_obj = BUILD / f"{name}_pad.o"
             _ca65(pad_asm, pad_obj)
             objs.append(pad_obj)
@@ -164,7 +166,9 @@ def assemble_multi(asms: list[pathlib.Path], cfg: pathlib.Path, name: str,
             t = asm.read_text(errors="ignore")
         except OSError:
             t = ""
-        if "tms9918_pad12" in t or "tms9918_pad24" in t:
+        if ("tms9918_pad12" in t
+                or "tms9918_pad24" in t
+                or "tms9918_pad40" in t):
             needs_pad = True
     pad_asm = LIB_TMS / "tms9918_pad.asm"
     if needs_pad and pad_asm.is_file() and pad_asm not in asms:

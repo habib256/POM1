@@ -23,7 +23,7 @@
 ;   plot_mode           -- 1 BSS byte: 0 = OR, 1 = XOR.
 ; ============================================================================
 
-        .import tms9918_pad24  ; silicon-strict pad24 (helper from tms9918_pad.asm)
+        .import tms9918_pad40  ; silicon-strict pad40 (helper from tms9918_pad.asm)
 .include "apple1.inc"
 .include "tms9918.inc"
 
@@ -83,7 +83,7 @@ init_vdp_g2:
         ; gaps use JSR pad24 (was a single NOP for inter-iter, only safe
         ; when caller booted with display OFF — same fix as tms9918m1.asm
         ; init_vdp_g1, May 2026).
-        JSR     tms9918_pad24   ; MANUAL caller-gap cushion (24c)
+        JSR     tms9918_pad40   ; MANUAL caller-gap cushion (40c)
         LDX #0
 @rg:    LDA vdp2_regs,X
         CPX #1
@@ -93,9 +93,9 @@ init_vdp_g2:
         STA VDP_CTRL
         TXA
         ORA #$80
-        JSR tms9918_pad24       ; intra-pair: 24c gap value→cmd
+        JSR     tms9918_pad40       ; intra-pair: 40c gap value→cmd
         STA VDP_CTRL
-        JSR tms9918_pad24       ; inter-iter: 24c gap cmd→next data byte
+        JSR     tms9918_pad40       ; inter-iter: 40c gap cmd→next data byte
         INX
         CPX #8
         BNE @rg
@@ -142,18 +142,19 @@ vdp2_regs:
 
 ; clear_bitmap: zero the 6144-byte pattern table at $0000.
 clear_bitmap:
-        JSR     tms9918_pad24   ; MANUAL caller-gap cushion (24c)
+        JSR     tms9918_pad40   ; MANUAL caller-gap cushion (40c)
         LDA #$00
         STA VDP_CTRL
-        JSR     tms9918_pad24   ; +24c silicon-strict pad24 (before LDA #imm bridge)
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (before LDA #imm bridge)
         LDA #$40
         STA VDP_CTRL
         LDX #24
         LDY #0
 @lp:    LDA #$00
-        JSR     tms9918_pad24   ; +24c silicon-strict pad24 (back-to-back VDP store)
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (back-to-back VDP store)
         STA VDP_DATA
         INY
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (back-to-back VDP store)
         BNE @lp
         DEX
         BNE @lp
@@ -161,36 +162,36 @@ clear_bitmap:
 
 ; disable_sprites: write Y=$D0 to sprite #0 attribute (chip stops scanning).
 disable_sprites:
-        JSR     tms9918_pad24   ; MANUAL caller-gap cushion (24c)
+        JSR     tms9918_pad40   ; MANUAL caller-gap cushion (40c)
         LDA #$00
         STA VDP_CTRL
-        JSR     tms9918_pad24   ; +24c silicon-strict pad24 (before LDA #imm bridge)
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (before LDA #imm bridge)
         LDA #$3B | $40
         STA VDP_CTRL
-        JSR     tms9918_pad24   ; +24c silicon-strict pad24 (before LDA #imm bridge)
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (before LDA #imm bridge)
         LDA #$D0
         STA VDP_DATA
         RTS
 
 vdp_set_write:
-        JSR     tms9918_pad24   ; MANUAL caller-gap cushion (24c)
+        JSR     tms9918_pad40   ; MANUAL caller-gap cushion (40c)
         LDA pix_addr_lo
         STA VDP_CTRL
-        JSR tms9918_pad24       ; silicon-strict 24c (LDA zp + ORA bridge)
+        JSR tms9918_pad40       ; silicon-strict 40c (LDA zp + ORA bridge)
         LDA pix_addr_hi
         ORA #$40
         STA VDP_CTRL
-        JSR tms9918_pad24       ; cushion: caller's first STA VDP_DATA lands
+        JSR tms9918_pad40       ; cushion: caller's first STA VDP_DATA lands
         RTS                     ; ≥24c after cmd (12c+6c+6c=24c gap)
 
 vdp_set_read:
-        JSR     tms9918_pad24   ; MANUAL caller-gap cushion (24c)
+        JSR     tms9918_pad40   ; MANUAL caller-gap cushion (40c)
         LDA pix_addr_lo
         STA VDP_CTRL
-        JSR     tms9918_pad24   ; +24c silicon-strict pad24 (before LDA zp/abs bridge)
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (before LDA zp/abs bridge)
         LDA pix_addr_hi
         STA VDP_CTRL
-        JSR tms9918_pad24       ; cushion: caller's first LDA VDP_DATA lands
+        JSR tms9918_pad40       ; cushion: caller's first LDA VDP_DATA lands
         RTS                     ; ≥24c after cmd
 
 calc_pix_addr:
@@ -231,7 +232,7 @@ plot_set:
         STA VDP_DATA
         ; --- colour cell (only on OR draws). XOR is the turtle-erase
         ;     path which must leave the trail's colour alone.
-        JSR     tms9918_pad24   ; +24c silicon-strict pad24 (before LDA zp/abs bridge)
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (before LDA zp/abs bridge)
         LDA plot_mode
         BNE @done
         ; address = $2000 + pix_addr (same offset as pattern cell). The
@@ -239,11 +240,11 @@ plot_set:
         ; address by 1, so re-prime the control port now.
         LDA pix_addr_lo
         STA VDP_CTRL
-        JSR     tms9918_pad24   ; +24c silicon-strict pad24 (before LDA zp/abs bridge)
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (before LDA zp/abs bridge)
         LDA pix_addr_hi
         ORA #$60                ; $60 = $20 (table base) | $40 (write enable)
         STA VDP_CTRL
-        JSR     tms9918_pad24   ; MANUAL: cmd-byte → first colour STA. Natural
+        JSR     tms9918_pad40   ; MANUAL: cmd-byte → first colour STA. Natural
                                 ; bridge LDA(3c)+ASL×4(8c)+ORA(2c) = 13c gives
                                 ; gap=17c < 24c (LOGO drop site, May 2026).
         LDA pen_color

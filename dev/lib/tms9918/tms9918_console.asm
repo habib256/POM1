@@ -34,6 +34,7 @@
 ; that already eats >= 12c, well above the 8c floor.
 ; ============================================================================
 
+        .import tms9918_pad40  ; silicon-strict pad40 (helper from tms9918_pad.asm)
 .include "apple1.inc"
 .include "tms9918.inc"
 
@@ -226,6 +227,7 @@ console_scroll:
         STA     VDP_DATA
         INY
         CPY     #40
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (back-to-back VDP store)
         BNE     @wr
         ; advance row
         INC     con_tmp
@@ -243,5 +245,6 @@ console_scroll:
         LDY     #40
 @bl:    STA     VDP_DATA
         DEY
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (back-to-back VDP store)
         BNE     @bl
         RTS

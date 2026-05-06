@@ -32,7 +32,7 @@
 ; ============================================================================
 
 ; --- I/O equates -----------------------------------------------------------
-        .import tms9918_pad24  ; silicon-strict pad24 (helper from tms9918_pad.asm)
+        .import tms9918_pad40  ; silicon-strict pad40 (helper from tms9918_pad.asm)
 .include "apple1.inc"
 .include "tms9918.inc"
 ; kbd.asm (wait_key / poll_key) is .include'd AT THE BOTTOM of this file
@@ -163,7 +163,7 @@ main:
         ;     the top-left quadrant.
         LDA #$C2
         STA VDP_CTRL
-        JSR     tms9918_pad24   ; +24c silicon-strict pad24 (before LDA #imm bridge)
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (before LDA #imm bridge)
         LDA #$81                 ; write to register 1
         STA VDP_CTRL
         ; --- LFSR seed for future RANDOM (asteroid spawn) ---
@@ -439,16 +439,16 @@ update_bullet:
         ASL
         ASL                      ; A = (X+1) * 4 = attr addr lo
         STA VDP_CTRL
-        JSR     tms9918_pad24   ; +24c silicon-strict pad24 (before LDA #imm bridge)
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (before LDA #imm bridge)
         LDA #$3B | $40
         STA VDP_CTRL
-        JSR     tms9918_pad24   ; +24c silicon-strict pad24 (before LDA #imm bridge)
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (before LDA #imm bridge)
         LDA #SPR_HIDE_Y
         STA VDP_DATA
 @next:
         INX
         CPX #BULLET_COUNT
-        JSR     tms9918_pad24   ; +24c silicon-strict pad24 (back-to-back VDP store)
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (back-to-back VDP store)
         BNE @loop
         RTS
 
@@ -463,23 +463,23 @@ init_sprite_chain:
         ASL
         ASL                      ; A = slot * 4 = attr addr lo
         STA VDP_CTRL
-        JSR     tms9918_pad24   ; +24c silicon-strict pad24 (before LDA #imm bridge)
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (before LDA #imm bridge)
         LDA #$3B | $40
         STA VDP_CTRL
-        JSR     tms9918_pad24   ; +24c silicon-strict pad24 (before LDA #imm bridge)
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (before LDA #imm bridge)
         LDA #SPR_HIDE_Y
         STA VDP_DATA
         INX
         CPX #SPRITE_TERMSLOT
-        JSR     tms9918_pad24   ; +24c silicon-strict pad24 (back-to-back VDP store)
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (back-to-back VDP store)
         BNE @hl
         ; --- terminator at slot SPRITE_TERMSLOT ---
         LDA #SPRITE_TERMSLOT * 4
         STA VDP_CTRL
-        JSR     tms9918_pad24   ; +24c silicon-strict pad24 (before LDA #imm bridge)
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (before LDA #imm bridge)
         LDA #$3B | $40
         STA VDP_CTRL
-        JSR     tms9918_pad24   ; +24c silicon-strict pad24 (before LDA #imm bridge)
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (before LDA #imm bridge)
         LDA #SPR_TERM_Y
         STA VDP_DATA
         RTS
