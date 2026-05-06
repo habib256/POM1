@@ -1,0 +1,45 @@
+0.1.0 - Initial release!
+
+0.2.0 - Changes
+  * 10 new general tiles.
+  * 19 new creature tiles.
+  * 15 new item tiles.
+
+  General Tiles
+  * Toilet and Sink tiles added.
+  * Bookcase (empty and full) tiles added.
+  * Candelebarum (lit and empty) tiles added.
+  * Bones and Graffiti tiles added.
+  * Metal Bar/Fence tiles added.
+
+  Creature Tiles
+  * Succubus and Incubus tiles added.
+  * Ettin, Cyclops, Minotaur and Blind Cave Ogre tiles added.
+  * Slug, Centipede, Worm and Cephalopod Monster tiles added.
+  * Horse, Elephant, Big Ape and Shark tiles added. 
+  * Raven, Cockatrice and Couatl tiles added.
+  * Lichen and Mold tiles added.
+
+  Item Tiles
+  * Gloves, Gauntlets, Pants and Greaves tiles added.
+  * Chain, Ball & Chain and Bear Trap tiles added.
+  * Leash and Saddle tiles added.
+  * Bugle and Harp tiles added.
+  * Lockpick and Lockpicks Set/Keychain tiles added.
+  * Tin Opener tile added.
+
+0.3.0 - Changes
+  * 12 new general tiles.
+  * 21 new creature tiles.
+  * a bunch of reorganising tiles from a single tileset into separate tile sheets.
+
+  General Tiles
+  * 2 Rail tiles added.
+  * 2 Minecart tiles added.
+  * Stalactite and Stalagmite tiles added.
+  * Spike Trap tiles added.
+  * 1 Pebbles tile.
+  * 3 Rock tiles.
+
+  Creature Tiles
+  * Added a bunch of tiles for different human job classes. (thanks MimiKitty for the suggestion)

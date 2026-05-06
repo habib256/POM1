@@ -1,0 +1,10 @@
+Hexany's Roguelike Tiles is a 16x16 monochrome "1-bit" pixel-art tileset, made primarily for old school roguelikes and rpgs.
+
+The tileset is currently WIP, so I'll add more tiles and improve existent ones when I have a time to do so.
+
+Check the LICENSE.txt and COPYING.txt for license info.
+
+Links:
+  * Itch.io Page - https://hexany-ives.itch.io/hexanys-roguelike-tiles
+  * My Mastodon - https://artsio.com/@HexanyIves
+  * My Mastodon Gamedev Account - https://mastodon.gamedev.place/@HexanyIves
