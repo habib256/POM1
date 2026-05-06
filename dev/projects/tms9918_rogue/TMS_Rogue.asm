@@ -28,6 +28,7 @@
 .import init_vdp_g1, clear_name_table, vdp_set_write, name_at_rc
 .import disable_sprites
 .importzp vdp_lo, vdp_hi, vdp_src_lo, vdp_src_hi, vdp_row, vdp_col
+.import boss_sprite_pats        ; sprites_boss.asm — 4x16x16 boss tile
 
 ; --- Geometry: logical 16x10 tile grid in the top 20 char rows ---
 ; Sprite-mode colour indices (TMS9918 palette: 4 dk-blue, 5 lt-blue,
@@ -68,8 +69,10 @@ PIT_DMG        = 3              ; HP lost on stepping into a TILE_TRAP_PIT.
                                 ; unhealed player. Pits stay visible
                                 ; after first hit — repeated steps
                                 ; deal damage every time.
-LAST_ATTACKER_PIT = 6           ; sentinel last_attacker value for pits;
-                                ; mon_name_lo/hi[6] = "A PIT".
+LAST_ATTACKER_PIT = 7           ; sentinel last_attacker value for pits;
+                                ; mon_name_lo/hi[7] = "A PIT". Slot 6
+                                ; is owned by MON_TYPE_BOSS (= "THE
+                                ; DEMON" in the death-screen lookup).
 ; Per-buff durations after activation. Each tier is tuned to its role:
 ; the offensive buff is short (force aggressive timing), defense is
 ; medium (covers a couple of encounters), the ring is between the two
@@ -158,8 +161,17 @@ MON_TYPE_SKELETON = 4           ; gated to depth 5+ — mon_type_pool
                                 ; widens from 3 to 4 there.
 MON_TYPE_DEATH    = 5           ; gated to depth 10+ — mon_type_pool
                                 ; widens from 4 to 5 there. Latest
-                                ; tier so the player has serious gear
-                                ; before facing 2-dmg/3-HP brutes.
+                                ; random-spawn tier so the player has
+                                ; serious gear before facing 2-dmg/3-HP
+                                ; brutes.
+MON_TYPE_BOSS     = 6           ; depth-13 boss. Single instance,
+                                ; spawned by gen_boss_room. 32x32
+                                ; visual = 4 sprite slots tiled around
+                                ; a single MON_ROW/MON_COL anchor;
+                                ; logically occupies the 2x2 footprint
+                                ; (anchor, anchor+E, anchor+S,
+                                ; anchor+SE). Killing it triggers
+                                ; win_screen.
 SPRITE_NAME_PLAYER   = 0
 SPRITE_NAME_UNDEAD   = 4
 SPRITE_NAME_GHOST    = 8
@@ -174,6 +186,10 @@ SPRITE_NAME_ARMOR    = 40       ; generic chest plate for leather / chain / plat
 SPRITE_NAME_RING     = 44
 SPRITE_NAME_TROLL    = 48       ; troll grunt — flees the player
 SPRITE_NAME_TORCH    = 52       ; consumable torch (FOV buff item)
+SPRITE_NAME_BOSS_TL  = 56       ; depth-13 boss — top-left 16x16 tile
+SPRITE_NAME_BOSS_TR  = 60       ; top-right
+SPRITE_NAME_BOSS_BL  = 64       ; bottom-left
+SPRITE_NAME_BOSS_BR  = 68       ; bottom-right
 
 ; TMS9918 palette indices used for monster sprites (0=transp, 2=med green,
 ; 7=cyan, 14=gray, 15=white, 10=dk yellow). UNDEAD stays bright white,
@@ -184,6 +200,9 @@ SPRITE_NAME_TORCH    = 52       ; consumable torch (FOV buff item)
 MON_COL_UNDEAD   = 15
 MON_COL_GHOST    = 14
 MON_COL_DEATH    = 10
+MON_COL_BOSS     = 8            ; medium red — boss demon silhouette
+                                ; reads as "this thing wants you dead"
+                                ; against the gray-on-black walls
 MON_COL_SKELETON = 7
 MON_COL_TROLL    = 2
 COL_HURT       = 8              ; medium red — shared "took a hit" colour
@@ -306,28 +325,41 @@ N_ROOMS        = 2              ; "two-rooms" mode: first in left half,
                                 ; full-screen room with edge doors
                                 ; (no corridor).
 
-; Internal tile ids used by gen_dungeon's dig+finalize pipeline.
-; TILE_CORR is the transient marker carve_corridor_marker writes onto
-; every wall cell the L-corridor traverses. finalize_doors then
-; classifies each marker as either:
-;   - TILE_DOOR   (boundary cell — neighbours a room interior)
-;   - TILE_CORR_DROP (high-bit-flagged "convert-to-empty in pass 2")
-; A two-pass design is necessary so that pass-1 decisions never read
-; back a freshly-converted EMPTY: pass 1 only writes TILE_DOOR or the
-; high-bit drop value, both of which compare unequal to TILE_EMPTY.
-; Char id 1 isn't in the tileset PALETTE so it renders all-zero blank
-; (same as TILE_EMPTY) — even an unfinalised buffer would draw cleanly.
-TILE_CORR       = 1
-TILE_CORR_DROP  = $81
+; --- Dense TILE_* ids (4 bits per cell in the bit-packed map_buffer) ---
+; map_buffer stores 2 cells per byte (low nibble = even col, high nibble
+; = odd col). Each nibble holds: bits 0..2 = tile id below, bit 3 =
+; pit-reveal flag (only meaningful for TILE_TRAP_PIT). render_map's
+; `tile_char_base[id]` LUT turns a dense id into a `CHAR_*` base from
+; tileset_rogue.inc when streaming to the name table.
+;
+; TILE_CORR / TILE_CORR_DROP are transient markers used during corridor
+; carving: carve_corridor_marker plants TILE_CORR on freshly-dug cells,
+; finalize_doors pass 1 promotes boundary markers to TILE_DOOR and
+; flags mid-corridor markers as TILE_CORR_DROP, pass 2 demotes the
+; drops to TILE_EMPTY. Neither marker survives finalize_doors, but
+; render_map maps both to CHAR_EMPTY anyway so a half-finalised buffer
+; still draws cleanly.
+TILE_EMPTY       = 0
+TILE_WALL        = 1
+TILE_DOOR        = 2
+TILE_STAIRS_DOWN = 3
+TILE_STAIRS_UP   = 4
+TILE_TRAP_PIT    = 5
+TILE_CORR        = 6
+TILE_CORR_DROP   = 7
+TILE_REVEAL_BIT  = $08          ; OR into nibble for revealed pit
 
 ; --- Field of view (compute_fov) ---------------------------------------
-; vis_buffer holds one byte per logical tile (16x10 = 160 B), parallel
-; to map_buffer. Single visibility bit: VIS_VISIBLE = lit by the current
-; FOV pass. compute_fov wipes the buffer entirely on every call and
-; re-paints the lit cells — pure "torchlight" mode, no persistent
-; memory of explored terrain. render_map renders cells whose bit is set
-; (everything else is blacked out); place_all_sprites uses the same
-; gate to drop monsters / items in dark cells from the SAT.
+; vis_buffer is a bit-packed visibility map: 16x10 = 160 cells → 20
+; bytes, one bit per cell. Layout: row R uses bytes 2R and 2R+1; bit
+; (col & 7) of byte (R*2 + col>>3) is the cell's lit flag. compute_fov
+; wipes the buffer entirely on every call and re-paints the lit cells —
+; pure "torchlight" mode, no persistent memory of explored terrain.
+; render_map renders cells whose bit is set (everything else is blacked
+; out); place_all_sprites uses the same gate to drop monsters / items
+; in dark cells from the SAT. The VIS_VISIBLE constant survives as the
+; "any bit set" sentinel returned by vis_test_a — callers do BNE/BEQ
+; on the helper's A return without caring about the specific mask.
 ;
 ; The earlier VIS_SEEN bit (persistent "remembered" terrain) was retired
 ; once compute_fov needed to wipe the buffer at every step for the
@@ -359,6 +391,7 @@ TILE_CORR_DROP  = $81
 ; 8x8 → 16-bit routine.
 FOV_RADIUS      = 3
 VIS_VISIBLE     = $01
+VIS_BUFFER_SIZE = 20            ; (LOGICAL_COLS * LOGICAL_ROWS + 7) / 8
 
 ; --- Apple 1 keyboard codes (high bit set, KBD always has bit 7 = 1) ---
 ; The four movement-key slots are loaded at runtime from the title-screen
@@ -517,6 +550,27 @@ ring_boost:     .res 1          ; cached ring INV_VALUE (= RING_F_*
 ; row-loop terminator.
 fov_r:          .res 1
 
+; --- Bit-packed vis_buffer scratch -------------------------------------
+; vismask holds the bit mask while vis_test_a decomposes a linear
+; (0..159) cell index into byte index + bit position. vis_pak_lo /
+; vis_pak_hi are render_map's per-row 16-bit shift register: the row's
+; two visibility bytes get loaded once per logical row, then the
+; LSR/ROR pair extracts one cell-visibility bit per inner-loop
+; iteration straight into the carry flag.
+vismask:        .res 1
+vis_pak_lo:     .res 1
+vis_pak_hi:     .res 1
+
+; --- Bit-packed map_buffer scratch -------------------------------------
+; tmp_packed[0] caches the new-nibble argument across the
+; read-modify-write inside map_set_x / set_tile / reveal_pit_at_target;
+; tmp_packed[1] caches the surviving "other nibble" of the byte while
+; the active nibble gets rebuilt. pak_byte holds render_map's current
+; packed map byte while two cells are emitted from it.
+tmp_packed:     .res 2
+pak_byte:       .res 2          ; [0] = current packed byte; [1] = nibble
+                                ; cache for emit_tl_cell / emit_bl_cell
+
 ; --- MVP4 thrown projectile ZP -----------------------------------------
 ; throw_active = 1 while a dagger is mid-flight: place_all_sprites
 ; appends one extra SAT entry (dagger sprite at cur_x/cur_y * 16) before
@@ -569,17 +623,27 @@ dagger_qty:     .res 1
 ; we don't need to remember room rects after carving — the marker tile
 ; itself is the bookkeeping.
 .segment "MAPSEG"
-map_buffer:     .res LOGICAL_COLS * LOGICAL_ROWS
-; Parallel visibility buffer: one byte per cell, single VIS_VISIBLE
-; bit. clear_vis_buffer wipes it on every new_level.
-vis_buffer:     .res LOGICAL_COLS * LOGICAL_ROWS
+; Bit-packed map_buffer: 2 cells per byte (low nibble = even col, high
+; nibble = odd col), 16 cols × 10 rows = 160 cells → 80 bytes. Each
+; nibble carries dense TILE_* (bits 0..2) + pit-reveal bit (bit 3).
+; The map_get / set / reveal helpers in this file own the packing math.
+map_buffer:     .res (LOGICAL_COLS * LOGICAL_ROWS) / 2
+; Bit-packed parallel visibility buffer: one BIT per cell (16x10 = 160
+; cells → 20 bytes). Layout: row R uses bytes 2R and 2R+1; bit (col & 7)
+; of byte (R*2 + col>>3) is the cell's VIS_VISIBLE flag. The vis_test_a
+; helper does the linear-index → byte+bit decomposition; render_map
+; loads both row bytes into vis_pak_lo / vis_pak_hi and consumes them
+; as a 16-bit shift register. clear_vis_buffer wipes it on every
+; new_level.
+vis_buffer:     .res 20
 
 ; --- Monster + item pools in unused high-bank RAM ----------------------
 ; Both pools live outside the linker-managed MAPSEG (which ends at
-; $E0A0 after the 160-byte map_buffer); the rest of the high bank up
-; to $EFFF is free RAM and we address it absolutely. Keeping the two
-; pools contiguous (monsters then items) lets spawn_monsters wipe both
-; with a single loop covering 160 B starting at `monsters`.
+; $E064 after the 80-byte map_buffer + 20-byte vis_buffer); the rest
+; of the high bank up to $EFFF is free RAM and we address it
+; absolutely. Keeping the two pools contiguous (monsters then items)
+; lets spawn_monsters wipe both with a single loop covering 160 B
+; starting at `monsters`.
 ;
 ;   monsters  $E300-$E37F  16 slots × 8 B = 128 B
 ;   items     $E380-$E39F   8 slots × 4 B =  32 B
@@ -867,10 +931,10 @@ main_loop:
 ; LFSR state survives across calls — no reseed needed.
 ; ----------------------------------------------------------------------------
 new_level:
-        ; Depth only advances on stairs-down descent. Reaching depth
-        ; 13 short-circuits straight into the victory screen — there
-        ; is no real "level 13" floor, just the win-state takeover
-        ; (CONGRATULATIONS banner + scores + cold-start on keypress).
+        ; Depth only advances on stairs-down descent. Reaching depth 13
+        ; routes into the boss room — a fixed big-room layout with one
+        ; MON_TYPE_BOSS instance (the 32x32 demon). Edge-door wraps and
+        ; non-stairs paths skip the depth check entirely.
         LDA trans_mode
         CMP #1
         BNE @no_inc
@@ -878,7 +942,8 @@ new_level:
         LDA depth
         CMP #13
         BCC @no_inc
-        JMP win_screen
+        ; depth >= 13 → boss room takeover.
+        JMP @boss
 @no_inc:
         ; Edge-door wrap modes (2..5) force a big-room layout so the
         ; spawn-at-opposite-edge override always lands inside a known
@@ -897,6 +962,18 @@ new_level:
         JSR spawn_monsters      ; fresh undead pool for the new layout
         JSR spawn_level_items   ; fresh items scattered for this floor
         JSR spawn_level_pits    ; 0..2 fresh pits for this floor
+        JMP @repaint
+@boss:
+        ; Boss room: fixed big-room geometry, no doors / no stairs / no
+        ; items / no pits / no random monster pool. gen_boss_room hand-
+        ; carves the arena and stamps the player spawn. spawn_boss then
+        ; writes the single MON_TYPE_BOSS entry into monsters[0]; the
+        ; usual spawn_monsters wipe path is bypassed so its monster-
+        ; pool wipe doesn't clobber the boss the moment it lands.
+        JSR fill_with_walls
+        JSR gen_boss_room
+        JSR spawn_boss
+@repaint:
         JSR clear_name_table
         JSR clear_vis_buffer    ; new level -> forget the previous map
         JSR compute_fov         ; light the spawn neighbourhood
@@ -1107,6 +1184,106 @@ gen_big_room:
         JSR     set_tile
 
         JSR     place_perimeter_doors
+        RTS
+
+
+; ----------------------------------------------------------------------------
+; gen_boss_room: depth-13 arena. Same big-room geometry as gen_big_room
+; (cols 1..14 × rows 1..8) but stripped of stairs / perimeter doors —
+; the player is committed once they descend, the only way out is to
+; kill the boss (or die). Boss anchor at (7, 4) so its 32x32 visual
+; footprint covers cells (7,4)/(8,4)/(7,5)/(8,5); player spawns at
+; (7, 8) directly south of the boss with a clear approach.
+; ----------------------------------------------------------------------------
+gen_boss_room:
+        LDA     #1
+        STA     room_x
+        STA     room_y
+        LDA     #14
+        STA     room_w
+        LDA     #8
+        STA     room_h
+        JSR     carve_room
+
+        ; Player spawn — south of the boss, walking distance to engage.
+        LDA     #7
+        STA     player_col
+        LDA     #8
+        STA     player_row
+        RTS
+
+
+; ----------------------------------------------------------------------------
+; spawn_boss: write the single MON_TYPE_BOSS instance into monsters[0]
+; and zero the rest of the monster + item pools (same wipe spawn_monsters
+; uses, but no random-spawn loop afterwards). HP = mon_init_hp[BOSS] +
+; mon_hp_bonus (depth / 3); DMG = mon_init_dmg[BOSS] + mon_dmg_bonus
+; (depth / 6). At depth 13 that lands the boss at 19 HP / 6 dmg, well
+; clear of normal-tier endgame monsters.
+;
+; Anchor at (7, 4): the place_all_sprites boss path tiles three more
+; SAT entries at +16 px on each axis so the 32x32 visual covers cells
+; (7,4)/(8,4)/(7,5)/(8,5).
+; ----------------------------------------------------------------------------
+spawn_boss:
+        ; Wipe the monster + item pools (160 B starting at `monsters`)
+        ; so a previous level's leftovers don't render alongside the
+        ; boss. Same loop spawn_monsters uses at the top of every
+        ; level — keep it inline so the boss path doesn't drag in the
+        ; whole random-spawn machinery.
+        LDA     #0
+        LDX     #(MON_COUNT * MON_SIZE) + (ITEM_COUNT * ITEM_SIZE)
+@wipe_lp:
+        DEX
+        STA     monsters,X
+        BNE     @wipe_lp
+        STA     monsters,X              ; final write at offset 0
+
+        ; Compute the depth-scaled HP / DMG bonuses (same shape as
+        ; spawn_monsters): /3 for HP, /6 for DMG. Subtract-3 loop
+        ; tracks the quotient in X; mon_dmg_bonus is just X >> 1.
+        LDA     depth
+        LDX     #0
+@hp_q:  CMP     #3
+        BCC     @hp_q_done
+        SEC
+        SBC     #3
+        INX
+        JMP     @hp_q
+@hp_q_done:
+        STX     mon_hp_bonus            ; depth / 3
+        TXA
+        LSR                             ; depth / 6
+        STA     mon_dmg_bonus
+
+        ; Stamp monsters[0] = MON_TYPE_BOSS at (col=7, row=4).
+        LDX     #0
+        LDA     #MON_TYPE_BOSS
+        STA     monsters+MON_TYPE,X
+        ; HP = mon_init_hp[6] + mon_hp_bonus
+        LDY     #MON_TYPE_BOSS
+        LDA     mon_init_hp,Y
+        CLC
+        ADC     mon_hp_bonus
+        STA     monsters+MON_HP,X
+        ; DMG = mon_init_dmg[6] + mon_dmg_bonus
+        LDA     mon_init_dmg,Y
+        CLC
+        ADC     mon_dmg_bonus
+        STA     monsters+MON_DMG,X
+        ; Sprite name = TL slot (the other three quadrants are
+        ; emitted by place_all_sprites at +16 px offsets).
+        LDA     mon_init_name,Y
+        STA     monsters+MON_NAME,X
+        LDA     mon_init_color,Y
+        STA     monsters+MON_COLOR,X
+        ; Anchor (col, row) = (7, 4).
+        LDA     #7
+        STA     monsters+MON_COL,X
+        LDA     #4
+        STA     monsters+MON_ROW,X
+        LDA     #0
+        STA     monsters+MON_HURT,X
         RTS
 
 
@@ -1328,7 +1505,9 @@ finalize_doors:
         LDX     #LOGICAL_COLS * LOGICAL_ROWS    ; 160; X = 159..0 via DEX
 @p1:
         DEX
-        LDA     map_buffer,X
+        TXA
+        JSR     map_get_a               ; A = nibble; X preserved
+        AND     #7                      ; strip reveal bit (none here, but cheap)
         CMP     #TILE_CORR
         BNE     @p1_next
         ; Decode (col, row) from index X = row*16 + col.
@@ -1367,12 +1546,12 @@ finalize_doors:
         BEQ     @p1_keep
         ; Mid-corridor: flag for pass-2 conversion to EMPTY.
         LDA     #TILE_CORR_DROP
-        STA     map_buffer,X
+        JSR     map_set_x
         JMP     @p1_next
 @p1_keep:
         ; Boundary cell — promote marker to a real door.
         LDA     #TILE_DOOR
-        STA     map_buffer,X
+        JSR     map_set_x
 @p1_next:
         TXA
         BNE     @p1
@@ -1381,11 +1560,13 @@ finalize_doors:
         LDX     #LOGICAL_COLS * LOGICAL_ROWS
 @p2:
         DEX
-        LDA     map_buffer,X
+        TXA
+        JSR     map_get_a
+        AND     #7
         CMP     #TILE_CORR_DROP
         BNE     @p2_next
         LDA     #TILE_EMPTY
-        STA     map_buffer,X
+        JSR     map_set_x
 @p2_next:
         TXA
         BNE     @p2
@@ -1404,7 +1585,9 @@ finalize_doors:
         LDX     #LOGICAL_COLS * LOGICAL_ROWS
 @p3:
         DEX
-        LDA     map_buffer,X
+        TXA
+        JSR     map_get_a
+        AND     #7
         CMP     #TILE_DOOR
         BNE     @p3_next
         ; Decode (col, row) from index X.
@@ -1431,7 +1614,7 @@ finalize_doors:
         BNE     @p3_next
 @p3_demote:
         LDA     #TILE_EMPTY
-        STA     map_buffer,X
+        JSR     map_set_x
 @p3_next:
         TXA
         BNE     @p3
@@ -1439,18 +1622,15 @@ finalize_doors:
 
 
 ; ----------------------------------------------------------------------------
-; fill_with_walls: set every byte of map_buffer to TILE_WALL.
-; Walks 160 bytes via abs,X. X=159..0; BPL exits when X wraps to $FF.
+; fill_with_walls: stamp TILE_WALL onto every cell of the bit-packed
+; map_buffer. Each byte holds 2 cells, so we write
+; (TILE_WALL << 4) | TILE_WALL into all 80 bytes — one byte = both
+; nibbles set to TILE_WALL. Sentinel-BNE: LDX #80, DEX-then-store,
+; exit when X reaches 0 after writing index 0.
 ; ----------------------------------------------------------------------------
 fill_with_walls:
-        ; The earlier `LDX #159 / STA / DEX / BPL` form had a subtle bug:
-        ; 159 = $9F has bit 7 = 1, so the very first DEX leaves X with
-        ; bit 7 still set ($9E) → BPL never branches → only the topmost
-        ; byte gets written. Iterate down with a sentinel BNE instead:
-        ; X=160 (DEX-then-write), exit when X reaches 0 after writing
-        ; the last byte at index 0.
-        LDA     #TILE_WALL
-        LDX     #160
+        LDA     #(TILE_WALL << 4) | TILE_WALL
+        LDX     #80
 @lp:    DEX
         STA     map_buffer,X
         BNE     @lp
@@ -1622,41 +1802,122 @@ dig_corridor:
 
 
 ; ----------------------------------------------------------------------------
-; set_tile: write A to map_buffer[tgt_row * 16 + tgt_col].
-; Saves A on the 6502 stack so the caller's value survives the
-; address arithmetic. Clobbers Y, map_ptr.
+; tile_char_base: dense TILE_* (0..7) → CHAR_* base id used by render_map.
+; Slots 6/7 (TILE_CORR / TILE_CORR_DROP) are transient markers and
+; should never reach render_map after finalize_doors; we still map them
+; to CHAR_EMPTY so a half-finalised buffer draws cleanly instead of
+; flashing garbage chars.
 ; ----------------------------------------------------------------------------
-set_tile:
-        PHA
-        JSR     calc_map_ptr
-        LDY     tgt_col
-        PLA
-        STA     (map_ptr),Y
+tile_char_base:
+        .byte CHAR_EMPTY        ; 0 TILE_EMPTY
+        .byte CHAR_WALL         ; 1 TILE_WALL
+        .byte CHAR_DOOR         ; 2 TILE_DOOR
+        .byte CHAR_STAIRS_DOWN  ; 3 TILE_STAIRS_DOWN
+        .byte CHAR_STAIRS_UP    ; 4 TILE_STAIRS_UP
+        .byte CHAR_TRAP_PIT     ; 5 TILE_TRAP_PIT
+        .byte CHAR_EMPTY        ; 6 TILE_CORR    (transient → blank)
+        .byte CHAR_EMPTY        ; 7 TILE_CORR_DROP (transient → blank)
+
+
+; ----------------------------------------------------------------------------
+; map_get_a: read the packed cell nibble at linear cell index A (0..159).
+; Returns A = nibble (0..15): bits 0..2 = dense tile id, bit 3 = pit
+; reveal flag. Caller does `AND #7` to drop the reveal bit when checking
+; tile identity. Clobbers Y, tmp_packed; preserves X.
+;
+; Decomposition: byte = idx >> 1; nibble select = idx & 1 (low for even
+; col, high for odd col).
+; ----------------------------------------------------------------------------
+map_get_a:
+        LSR                     ; A = byte index, carry = old idx & 1
+        TAY
+        LDA     map_buffer,Y
+        BCS     @hi
+        AND     #$0F
+        RTS
+@hi:
+        LSR
+        LSR
+        LSR
+        LSR
         RTS
 
 
 ; ----------------------------------------------------------------------------
-; calc_map_ptr: set map_ptr to &map_buffer[tgt_row * 16].
-; Caller adds tgt_col via (map_ptr),Y. Clobbers A; preserves X.
-; Logical map is 16x10 = 160 B; row * 16 max = 144 fits in one page,
-; so the high-byte INC is a defensive carry guard (rare but cheap).
+; map_set_x: write nibble A (0..15) to packed cell at linear index X.
+; Preserves X. Clobbers A, Y, tmp_packed.
+;
+; Read-modify-write: keep the surviving nibble of the byte and merge
+; the new one in.
 ; ----------------------------------------------------------------------------
-calc_map_ptr:
-        LDA     #<map_buffer
-        STA     map_ptr
-        LDA     #>map_buffer
-        STA     map_ptr+1
+map_set_x:
+        AND     #$0F            ; sanitize new nibble
+        STA     tmp_packed      ; new nibble in low 4 bits
+        TXA
+        LSR                     ; A = byte index, carry = X & 1
+        TAY
+        LDA     map_buffer,Y
+        BCS     @set_hi
+        AND     #$F0            ; keep high nibble, clear low
+        ORA     tmp_packed      ; merge new low nibble
+        STA     map_buffer,Y
+        RTS
+@set_hi:
+        AND     #$0F            ; keep low nibble, clear high
+        STA     tmp_packed+1
+        LDA     tmp_packed
+        ASL
+        ASL
+        ASL
+        ASL                     ; new nibble shifted to bits 4..7
+        ORA     tmp_packed+1
+        STA     map_buffer,Y
+        RTS
+
+
+; ----------------------------------------------------------------------------
+; set_tile: write A as a dense tile id (0..15) to map_buffer at
+; (tgt_col, tgt_row). Preserves X — place_perimeter_doors and other
+; loop-driven callers (`JSR set_tile ; preserves X`) lean on this.
+; Clobbers A, Y, tmp_packed.
+;
+; Byte index = tgt_row * 8 + tgt_col / 2; nibble select = tgt_col & 1.
+; ----------------------------------------------------------------------------
+set_tile:
+        AND     #$0F                    ; sanitize new nibble
+        STA     tmp_packed
+        LDA     tgt_col
+        LSR                             ; A = tgt_col / 2 (carry discarded)
+        STA     tmp_packed+1
         LDA     tgt_row
         ASL
         ASL
-        ASL
-        ASL
+        ASL                             ; row * 8
         CLC
-        ADC     map_ptr
-        STA     map_ptr
-        BCC     @done
-        INC     map_ptr+1
-@done:  RTS
+        ADC     tmp_packed+1            ; + col / 2
+        TAY                             ; Y = byte index
+        LDA     tgt_col
+        AND     #1
+        BNE     @set_hi
+        ; even col → low nibble
+        LDA     map_buffer,Y
+        AND     #$F0                    ; keep high nibble
+        ORA     tmp_packed              ; merge new low nibble
+        STA     map_buffer,Y
+        RTS
+@set_hi:
+        ; odd col → high nibble
+        LDA     map_buffer,Y
+        AND     #$0F                    ; keep low nibble
+        STA     tmp_packed+1
+        LDA     tmp_packed
+        ASL
+        ASL
+        ASL
+        ASL                             ; new nibble shifted to bits 4..7
+        ORA     tmp_packed+1
+        STA     map_buffer,Y
+        RTS
 
 
 ; ----------------------------------------------------------------------------
@@ -2014,6 +2275,9 @@ monster_at_target:
         LDX     #0
 @lp:    LDA     monsters+MON_TYPE,X
         BEQ     @next                   ; type 0 = empty slot
+        CMP     #MON_TYPE_BOSS
+        BEQ     @boss
+        ; Standard 1-cell monsters: exact (col, row) match.
         LDA     monsters+MON_COL,X
         CMP     tgt_col
         BNE     @next
@@ -2021,6 +2285,23 @@ monster_at_target:
         CMP     tgt_row
         BNE     @next
         CLC                             ; hit
+        RTS
+@boss:
+        ; Boss occupies a 2x2 footprint anchored at MON_COL/MON_ROW.
+        ; Cell (tgt_col, tgt_row) hits the boss iff:
+        ;   tgt_col in {anchor_col, anchor_col+1}
+        ;   tgt_row in {anchor_row, anchor_row+1}
+        LDA     tgt_col
+        SEC
+        SBC     monsters+MON_COL,X
+        CMP     #2
+        BCS     @next                   ; >= 2 → outside footprint
+        LDA     tgt_row
+        SEC
+        SBC     monsters+MON_ROW,X
+        CMP     #2
+        BCS     @next
+        CLC                             ; bump hits the boss
         RTS
 @next:
         TXA
@@ -2045,14 +2326,23 @@ monster_at_target:
 ; threat — and DEATH (id 5) waits until depth 10 so the player has
 ; serious gear before facing the 3-HP / 2-dmg sloth-chase brutes.
 ; ----------------------------------------------------------------------------
+; The 7th slot (index 6 = MON_TYPE_BOSS) is reserved for the depth-13
+; encounter; it is never picked by spawn_monsters' rand_mod path
+; (mon_type_pool caps at 5) — gen_boss_room hand-spawns it instead.
+; HP/dmg are intentionally high: bare HP 15 with depth-13 mon_hp_bonus
+; (depth/3 = 4) lands the boss at 19 HP, mon_dmg_bonus (depth/6 = 2) on
+; top of base 4 dmg lands a 6-dmg bite. With expected player gear
+; (TUNIC armour for DEF +1 plus XP-driven DEF) the boss bites the
+; player for ~3 HP per turn, gating the win behind real positioning
+; rather than face-tanking.
 mon_init_hp:
-        .byte   0, 1, 2, 3, 2, 3
+        .byte   0, 1, 2, 3, 2, 3, 15
 mon_init_name:
-        .byte   0, SPRITE_NAME_UNDEAD, SPRITE_NAME_GHOST, SPRITE_NAME_TROLL, SPRITE_NAME_SKELETON, SPRITE_NAME_DEATH
+        .byte   0, SPRITE_NAME_UNDEAD, SPRITE_NAME_GHOST, SPRITE_NAME_TROLL, SPRITE_NAME_SKELETON, SPRITE_NAME_DEATH, SPRITE_NAME_BOSS_TL
 mon_init_color:
-        .byte   0, MON_COL_UNDEAD, MON_COL_GHOST, MON_COL_TROLL, MON_COL_SKELETON, MON_COL_DEATH
+        .byte   0, MON_COL_UNDEAD, MON_COL_GHOST, MON_COL_TROLL, MON_COL_SKELETON, MON_COL_DEATH, MON_COL_BOSS
 mon_init_dmg:
-        .byte   0, 1, 1, 1, 2, 2
+        .byte   0, 1, 1, 1, 2, 2, 4
 
 
 ; ----------------------------------------------------------------------------
@@ -2611,6 +2901,9 @@ player_attack_monster:
         STA     tgt_col
         LDA     monsters+MON_ROW,X
         STA     tgt_row
+        LDA     monsters+MON_TYPE,X
+        CMP     #MON_TYPE_BOSS
+        BEQ     @boss_killed
         LDA     #0
         STA     monsters+MON_TYPE,X
         JSR     award_xp
@@ -2622,6 +2915,17 @@ player_attack_monster:
         JMP     spawn_item              ; tail-call (RTS from spawn_item)
 @no_drop:
         RTS
+@boss_killed:
+        ; Boss kill = run win. Free the slot so the in-progress redraw
+        ; doesn't paint a 32x32 corpse, count the kill, and JMP into
+        ; the victory takeover. win_screen handles its own stack reset
+        ; (resets SP, paints CONGRATULATIONS, waits for any key, then
+        ; cold-starts via JMP $4000) so we don't need to RTS through
+        ; the apply_step / main_loop chain.
+        LDA     #0
+        STA     monsters+MON_TYPE,X
+        JSR     award_xp                ; one final +1 for the trophy kill
+        JMP     win_screen
 @hurt_flash:
         LDA     #1
         STA     monsters+MON_HURT,X
@@ -2763,6 +3067,10 @@ step_monster:
         BEQ     ai_skeleton
         CMP     #MON_TYPE_TROLL
         BEQ     ai_troll
+        CMP     #MON_TYPE_BOSS
+        BNE     @undead_default
+        JMP     ai_boss                 ; out-of-range branch — trampoline
+@undead_default:
         ; Default = MON_TYPE_UNDEAD = greedy chase.
         ; (also catches any future unknown type — safer than RTS.)
         ; Fall through into ai_undead.
@@ -2944,6 +3252,210 @@ try_flee_y:
         SBC     #1
         STA     tgt_row
         JMP     apply_step
+
+
+; ----------------------------------------------------------------------------
+; ai_boss: greedy chase for the depth-13 boss. The boss occupies a 2x2
+; footprint anchored at MON_COL/MON_ROW; movement on either axis shifts
+; the whole footprint by one cell. apply_boss_step does the 4-cell
+; passability sweep AND the player-overlap bite (player inside the new
+; footprint = bump-attack, no actual move).
+;
+; Compute deltas relative to the anchor cell (top-left of the
+; footprint). With the anchor as the reference, |dx| / |dy| keep their
+; meaning as "axis priority", and the "step toward player" sign is
+; recovered via CMP just like ai_undead.
+; ----------------------------------------------------------------------------
+ai_boss:
+        JSR     compute_abs_deltas
+        BEQ     @bail
+        LDA     mon_abs_dx
+        CMP     mon_abs_dy
+        BCC     @y_first                ; |dx| < |dy| → y-axis first
+        JSR     try_boss_step_x
+        BCC     @bail
+        JSR     try_boss_step_y
+        RTS
+@y_first:
+        JSR     try_boss_step_y
+        BCC     @bail
+        JSR     try_boss_step_x
+@bail:
+        RTS
+
+
+; ----------------------------------------------------------------------------
+; try_boss_step_x / try_boss_step_y: 2x2 sibling of try_step_x / _y for
+; the boss. Sets tgt_col / tgt_row to the prospective new anchor and
+; tail-calls apply_boss_step. If |delta| on this axis is 0 there is no
+; signed direction to take, bail with C set so the caller tries the
+; other axis. Both routines preserve X (the boss's pool offset = 0).
+; ----------------------------------------------------------------------------
+try_boss_step_x:
+        LDA     mon_abs_dx
+        BNE     @compute
+        SEC
+        RTS
+@compute:
+        LDA     monsters+MON_ROW,X
+        STA     tgt_row
+        LDA     monsters+MON_COL,X
+        CMP     player_col
+        BCC     @east                   ; anchor.col < player.col → +1
+        SEC
+        SBC     #1
+        STA     tgt_col
+        JMP     apply_boss_step
+@east:
+        CLC
+        ADC     #1
+        STA     tgt_col
+        JMP     apply_boss_step
+
+try_boss_step_y:
+        LDA     mon_abs_dy
+        BNE     @compute
+        SEC
+        RTS
+@compute:
+        LDA     monsters+MON_COL,X
+        STA     tgt_col
+        LDA     monsters+MON_ROW,X
+        CMP     player_row
+        BCC     @south                  ; anchor.row < player.row → +1
+        SEC
+        SBC     #1
+        STA     tgt_row
+        JMP     apply_boss_step
+@south:
+        CLC
+        ADC     #1
+        STA     tgt_row
+        ; fall through to apply_boss_step
+
+
+; ----------------------------------------------------------------------------
+; apply_boss_step: shared tail for try_boss_step_x / _y. (tgt_col,
+; tgt_row) carries the prospective new anchor. Returns:
+;   - C clear if the action consumed the boss's turn (either bit
+;     the player or moved into the new anchor cell);
+;   - C set if blocked (caller may try the other axis).
+;
+; Player overlap test uses the same "tgt_col..+1, tgt_row..+1" 2x2
+; window as monster_at_target's boss path. If the player sits in the
+; new footprint, the boss bites: hp -= max(MON_DMG - player_def, 0),
+; saturated at 0; player_hurt + last_attacker get set; the boss does
+; NOT advance (the player blocks the step).
+;
+; Otherwise we sweep the four prospective cells: in-bounds of the
+; playable rectangle AND tile == TILE_EMPTY. Any failure short-circuits
+; to @blocked. tgt_col / tgt_row get DEC'd back to the new-anchor
+; coordinates before commit.
+; ----------------------------------------------------------------------------
+apply_boss_step:
+        ; --- Player overlap test (player inside new 2x2 footprint?) ---
+        LDA     player_col
+        SEC
+        SBC     tgt_col
+        CMP     #2
+        BCS     @sweep
+        LDA     player_row
+        SEC
+        SBC     tgt_row
+        CMP     #2
+        BCS     @sweep
+        ; Player is in the new footprint → bite, no move.
+        LDA     monsters+MON_DMG,X
+        SEC
+        SBC     player_def
+        BCS     @dmg_ok
+        LDA     #0
+@dmg_ok:
+        STA     tmp
+        LDA     hp
+        SEC
+        SBC     tmp
+        BCS     @hp_ok
+        LDA     #0
+@hp_ok:
+        STA     hp
+        LDA     #1
+        STA     player_hurt
+        LDA     #MON_TYPE_BOSS
+        STA     last_attacker
+        CLC                             ; turn used
+        RTS
+
+@sweep:
+        ; Cell A = (tgt_col, tgt_row) — already in tgt_*.
+        JSR     boss_cell_passable
+        BCS     @blocked
+        ; Cell B = (tgt_col+1, tgt_row) — INC col, restore on exit.
+        INC     tgt_col
+        JSR     boss_cell_passable
+        BCS     @blk_dec_col
+        ; Cell D = (tgt_col+1, tgt_row+1).
+        INC     tgt_row
+        JSR     boss_cell_passable
+        BCS     @blk_dec_col_row
+        ; Cell C = (tgt_col, tgt_row+1).
+        DEC     tgt_col
+        JSR     boss_cell_passable
+        BCS     @blk_dec_row
+        ; All four passable. Restore tgt_row to new-anchor row, commit.
+        DEC     tgt_row
+        LDA     tgt_col
+        STA     monsters+MON_COL,X
+        LDA     tgt_row
+        STA     monsters+MON_ROW,X
+        CLC
+        RTS
+
+@blk_dec_col_row:
+        DEC     tgt_row
+@blk_dec_col:
+        DEC     tgt_col
+        SEC
+        RTS
+@blk_dec_row:
+        DEC     tgt_row
+        SEC
+        RTS
+@blocked:
+        SEC
+        RTS
+
+
+; ----------------------------------------------------------------------------
+; boss_cell_passable: is the cell at (tgt_col, tgt_row) a valid
+; destination for one of the boss's four footprint cells?
+;   - In bounds (PLAY_LEFT_COL .. PLAY_RIGHT_COL, PLAY_TOP_ROW ..
+;     PLAY_BOT_ROW); the boss room has no perimeter doors, so the
+;     bounds rectangle is the wall ring.
+;   - Tile == TILE_EMPTY (the boss room has no stairs, doors, items
+;     or pits — a wall is the only blocker that can show up).
+; Returns C clear if passable, C set if blocked. Preserves X (boss
+; pool offset). Clobbers A, Y, tmp_packed.
+; ----------------------------------------------------------------------------
+boss_cell_passable:
+        LDA     tgt_row
+        CMP     #PLAY_TOP_ROW
+        BCC     @blocked
+        CMP     #(PLAY_BOT_ROW + 1)
+        BCS     @blocked
+        LDA     tgt_col
+        CMP     #PLAY_LEFT_COL
+        BCC     @blocked
+        CMP     #(PLAY_RIGHT_COL + 1)
+        BCS     @blocked
+        JSR     tile_at_target
+        CMP     #TILE_EMPTY
+        BNE     @blocked
+        CLC
+        RTS
+@blocked:
+        SEC
+        RTS
 
 
 ; ----------------------------------------------------------------------------
@@ -3150,18 +3662,28 @@ apply_step:
 
 
 ; ----------------------------------------------------------------------------
-; render_map: expand the 160-byte map_buffer into the name table at
-; VRAM $1800. Each logical tile (1 byte = base char id) becomes a 2x2
-; block of 4 chars (base+0=TL, base+1=TR, base+2=BL, base+3=BR).
-; Auto-increment streams the data row-by-row: one logical row produces
-; 32 TL/TR chars (name-table row N) followed by 32 BL/BR chars (row N+1).
+; render_map: expand the bit-packed map_buffer (80 B, 2 cells/byte)
+; into the name table at VRAM $1800. Each logical tile becomes a 2x2
+; block of 4 chars (base+0=TL, base+1=TR, base+2=BL, base+3=BR), with
+; `base` looked up in tile_char_base[] keyed by the cell's dense
+; TILE_* id. Auto-increment streams data row-by-row: one logical row
+; produces 32 TL/TR chars (name-table row N) followed by 32 BL/BR
+; chars (row N+1).
 ;
-; FOV gate: each cell consults vis_buffer[index] before emitting. A
-; cell whose VIS_VISIBLE bit is clear writes 4 zeros (blank black) — so
-; un-lit corridors stay black even after gen_dungeon paints them in
-; the map_buffer. compute_fov wipes vis_buffer entirely and re-paints
-; the lit cells on every player move; clear_vis_buffer also wipes on
-; level change / door crossings.
+; FOV gate: each cell consults vis_buffer's bit-packed flag before
+; emitting. A dark cell writes 4 zeros (blank black) — so un-lit
+; corridors stay black even after gen_dungeon paints them in the
+; map_buffer. The two vis-row bytes load once per logical row into the
+; vis_pak_lo / vis_pak_hi shift register; LSR vis_pak_hi / ROR
+; vis_pak_lo extracts the next column's bit straight into the carry
+; flag, in column-iteration order. We re-load before the BL pass since
+; the TL pass drains the register.
+;
+; Inner loop iterates Y = 0..7 (8 packed map bytes per logical row),
+; processing 2 cells per iteration: low nibble first (col 2Y), then
+; high nibble (col 2Y+1). Row counter lives in tmp_packed (not X) so
+; emit_tl_cell / emit_bl_cell can use X freely as the tile-id index
+; into tile_char_base.
 ; ----------------------------------------------------------------------------
 render_map:
         LDA     #$00
@@ -3170,93 +3692,128 @@ render_map:
         STA     vdp_hi
         JSR     vdp_set_write   ; addr = $1800 (name table top)
 
+        ; vdp_src walks 8 packed bytes per logical row.
         LDA     #<map_buffer
         STA     vdp_src_lo
         LDA     #>map_buffer
         STA     vdp_src_hi
 
-        ; Parallel walker into vis_buffer (map_ptr is dead during render).
+        ; map_ptr walks the bit-packed vis_buffer (2 bytes per row).
         LDA     #<vis_buffer
         STA     map_ptr
         LDA     #>vis_buffer
         STA     map_ptr+1
 
-        LDX     #LOGICAL_ROWS   ; logical rows remaining
+        LDA     #LOGICAL_ROWS
+        STA     tmp_packed      ; row counter — frees X for emit helpers
 @row_lp:
-        ; --- TL / TR pass: 32 chars covering the upper half of all
-        ;     16 tiles in the current logical row.
-        ; Pit cells: high bit of map_buffer = revealed (render as
-        ; TILE_TRAP_PIT); high bit clear AND tile id == TILE_TRAP_PIT
-        ; = hidden (render blank, same as out-of-FOV cells).
+        ; Load the row's two visibility bytes into the shift register.
         LDY     #0
-@tl_lp: LDA     (map_ptr),Y     ; visibility byte for this tile
-        AND     #VIS_VISIBLE
-        BEQ     @tl_dark        ; never seen -> 2 blank chars
-        LDA     (vdp_src_lo),Y  ; raw map byte
-        BMI     @tl_render      ; bit 7 set = revealed pit (mask below)
-        CMP     #TILE_TRAP_PIT
-        BEQ     @tl_dark        ; hidden pit → blank
-@tl_render:
-        AND     #$7F            ; strip reveal bit (no-op on normal tiles)
-        WRT_DATA_REG            ; TL = base+0
-        CLC
-        ADC     #1
-        WRT_DATA_REG            ; TR = base+1
-        JMP     @tl_next
-@tl_dark:
-        LDA     #0              ; char 0 is fully blank in the tileset
-        WRT_DATA_REG            ; TL = blank
-        WRT_DATA_REG            ; TR = blank (A still 0)
-@tl_next:
+        LDA     (map_ptr),Y
+        STA     vis_pak_lo
         INY
-        CPY     #LOGICAL_COLS
-        BNE     @tl_lp
+        LDA     (map_ptr),Y
+        STA     vis_pak_hi
 
-        ; --- BL / BR pass: next 32 chars (auto-increment lands us on
-        ;     name-table row N+1 = bottom half of the same tiles).
+        ; --- TL / TR pass: 16 cols = 8 packed map bytes ---
         LDY     #0
-@bl_lp: LDA     (map_ptr),Y     ; visibility byte (same row of vis_buffer)
-        AND     #VIS_VISIBLE
-        BEQ     @bl_dark
-        LDA     (vdp_src_lo),Y  ; raw map byte
-        BMI     @bl_render      ; bit 7 set = revealed pit
-        CMP     #TILE_TRAP_PIT
-        BEQ     @bl_dark        ; hidden pit → blank
-@bl_render:
-        AND     #$7F            ; strip reveal bit
-        CLC
-        ADC     #2
-        WRT_DATA_REG            ; BL = base+2
-        CLC
-        ADC     #1
-        WRT_DATA_REG            ; BR = base+3
-        JMP     @bl_next
-@bl_dark:
+@tl_byte_lp:
+        LDA     (vdp_src_lo),Y
+        STA     pak_byte
+        ; --- low nibble (col 2Y) ---
+        LSR     vis_pak_hi
+        ROR     vis_pak_lo
+        BCC     @tl_lo_dark
+        LDA     pak_byte
+        AND     #$0F
+        JSR     emit_tl_cell
+        JMP     @tl_hi
+@tl_lo_dark:
         LDA     #0
         WRT_DATA_REG
         WRT_DATA_REG
-@bl_next:
+@tl_hi: ; --- high nibble (col 2Y+1) ---
+        LSR     vis_pak_hi
+        ROR     vis_pak_lo
+        BCC     @tl_hi_dark
+        LDA     pak_byte
+        LSR
+        LSR
+        LSR
+        LSR
+        JSR     emit_tl_cell
+        JMP     @tl_byte_next
+@tl_hi_dark:
+        LDA     #0
+        WRT_DATA_REG
+        WRT_DATA_REG
+@tl_byte_next:
         INY
-        CPY     #LOGICAL_COLS
-        BNE     @bl_lp
+        CPY     #(LOGICAL_COLS / 2)
+        BNE     @tl_byte_lp
 
-        ; Advance both source + visibility pointers to the next logical
-        ; row (they march in lock-step, 16 bytes per row).
+        ; Reload the row's vis bytes — the TL pass drained the register.
+        LDY     #0
+        LDA     (map_ptr),Y
+        STA     vis_pak_lo
+        INY
+        LDA     (map_ptr),Y
+        STA     vis_pak_hi
+
+        ; --- BL / BR pass: same iteration, base+2/base+3 chars. ---
+        LDY     #0
+@bl_byte_lp:
+        LDA     (vdp_src_lo),Y
+        STA     pak_byte
+        LSR     vis_pak_hi
+        ROR     vis_pak_lo
+        BCC     @bl_lo_dark
+        LDA     pak_byte
+        AND     #$0F
+        JSR     emit_bl_cell
+        JMP     @bl_hi
+@bl_lo_dark:
+        LDA     #0
+        WRT_DATA_REG
+        WRT_DATA_REG
+@bl_hi: LSR     vis_pak_hi
+        ROR     vis_pak_lo
+        BCC     @bl_hi_dark
+        LDA     pak_byte
+        LSR
+        LSR
+        LSR
+        LSR
+        JSR     emit_bl_cell
+        JMP     @bl_byte_next
+@bl_hi_dark:
+        LDA     #0
+        WRT_DATA_REG
+        WRT_DATA_REG
+@bl_byte_next:
+        INY
+        CPY     #(LOGICAL_COLS / 2)
+        BNE     @bl_byte_lp
+        JMP     @row_advance
+
+
+@row_advance:
+        ; Advance source pointer 8 bytes (packed map row) and vis ptr 2.
         CLC
         LDA     vdp_src_lo
-        ADC     #LOGICAL_COLS
+        ADC     #(LOGICAL_COLS / 2)
         STA     vdp_src_lo
         BCC     @noinc_src
         INC     vdp_src_hi
 @noinc_src:
         CLC
         LDA     map_ptr
-        ADC     #LOGICAL_COLS
+        ADC     #2
         STA     map_ptr
         BCC     @noinc_vis
         INC     map_ptr+1
 @noinc_vis:
-        DEX
+        DEC     tmp_packed              ; row counter
         BEQ     @done
         JMP     @row_lp                 ; long-jump trampoline — render_map
                                         ; grew past the BNE range when the
@@ -3266,17 +3823,71 @@ render_map:
 
 
 ; ----------------------------------------------------------------------------
-; clear_vis_buffer: zero all 160 visibility bytes. Called by new_level
-; (and once at start) so a fresh dungeon shows nothing until the player
-; lights it up. Sentinel-BNE pattern: 160 = $A0 has bit 7 set so the
-; naïve "LDX #159 / DEX / BPL" countdown exits after one iteration
-; (the DEX result $9E still has bit 7 set, BPL never taken). Counting
-; down with DEX-then-store-then-BNE writes indices 159..0 inclusive
-; (160 bytes), exiting cleanly when X reaches 0 AFTER the final STA.
+; emit_tl_cell / emit_bl_cell: render one cell's 2 chars (TL+TR or
+; BL+BR) given the 4-bit cell nibble in A. Bits 0..2 = dense TILE_*
+; id, bit 3 = pit-reveal flag (only meaningful for TILE_TRAP_PIT).
+; A hidden pit (TILE_TRAP_PIT without reveal) renders as blank — same
+; as out-of-FOV cells. Clobbers A, X. Caller's X is dead inside
+; render_map (row counter lives in tmp_packed); pak_byte+1 holds the
+; cached nibble across the reveal-bit test.
+; ----------------------------------------------------------------------------
+emit_tl_cell:
+        STA     pak_byte+1              ; cache full nibble
+        AND     #7
+        TAX                             ; X = tile id 0..7
+        LDA     pak_byte+1
+        AND     #TILE_REVEAL_BIT
+        BNE     @show                   ; revealed pit → render normally
+        CPX     #TILE_TRAP_PIT
+        BEQ     @dark                   ; hidden pit → blank
+@show:
+        LDA     tile_char_base,X
+        WRT_DATA_REG                    ; TL = base+0
+        CLC
+        ADC     #1
+        WRT_DATA_REG                    ; TR = base+1
+        RTS
+@dark:
+        LDA     #0
+        WRT_DATA_REG
+        WRT_DATA_REG
+        RTS
+
+emit_bl_cell:
+        STA     pak_byte+1
+        AND     #7
+        TAX
+        LDA     pak_byte+1
+        AND     #TILE_REVEAL_BIT
+        BNE     @show
+        CPX     #TILE_TRAP_PIT
+        BEQ     @dark
+@show:
+        LDA     tile_char_base,X
+        CLC
+        ADC     #2
+        WRT_DATA_REG                    ; BL = base+2
+        CLC
+        ADC     #1
+        WRT_DATA_REG                    ; BR = base+3
+        RTS
+@dark:
+        LDA     #0
+        WRT_DATA_REG
+        WRT_DATA_REG
+        RTS
+
+
+; ----------------------------------------------------------------------------
+; clear_vis_buffer: zero all 20 visibility bytes (bit-packed, 8 cells
+; per byte). Called by new_level (and once at start) so a fresh dungeon
+; shows nothing until the player lights it up. DEX-then-store-then-BNE
+; writes indices 19..0 inclusive, exiting cleanly when X reaches 0
+; after the final STA.
 ; ----------------------------------------------------------------------------
 clear_vis_buffer:
         LDA     #0
-        LDX     #(LOGICAL_COLS * LOGICAL_ROWS)
+        LDX     #VIS_BUFFER_SIZE
 @lp:    DEX
         STA     vis_buffer,X
         BNE     @lp
@@ -3317,13 +3928,11 @@ compute_fov:
 @r_save:
         STA     fov_r
 
-        ; --- Phase 1: wipe vis_buffer entirely.
-        ; Sentinel-BNE: 160 has bit 7 set, so "LDX #159 / DEX / BPL"
-        ; exits after one iteration and the wipe never happens (every
-        ; cell ever lit stays lit forever, "light through walls"). See
-        ; clear_vis_buffer for the matching pattern.
+        ; --- Phase 1: wipe vis_buffer entirely (20 bit-packed bytes,
+        ; one bit per cell). Same DEX-then-store-then-BNE pattern as
+        ; clear_vis_buffer; writes indices 19..0 inclusive.
         LDA     #0
-        LDX     #(LOGICAL_COLS * LOGICAL_ROWS)
+        LDX     #VIS_BUFFER_SIZE
 @clr_lp:
         DEX
         STA     vis_buffer,X
@@ -3352,37 +3961,90 @@ compute_fov:
 ; ----------------------------------------------------------------------------
 strip_invisible_pit_reveals:
         LDX     #(LOGICAL_COLS * LOGICAL_ROWS) - 1
-@lp:    LDA     map_buffer,X
-        BPL     @next                   ; high bit clear → nothing to do
-        LDA     vis_buffer,X
-        AND     #VIS_VISIBLE
-        BNE     @next                   ; cell in FOV → keep reveal
-        LDA     map_buffer,X
-        AND     #$7F
-        STA     map_buffer,X            ; out of FOV → re-hide
+@lp:    TXA
+        JSR     map_get_a               ; A = nibble (raw, reveal bit kept)
+        AND     #TILE_REVEAL_BIT        ; bit 3 of the nibble
+        BEQ     @next                   ; not a revealed pit
+        TXA
+        JSR     vis_test_a              ; A nonzero if cell in FOV
+        BNE     @next                   ; lit → keep reveal
+        ; Out of FOV → clear the reveal bit on this cell. Drop straight
+        ; into the byte/nibble layer to skip a second map_get_a/map_set_x
+        ; round-trip — pit cells are sparse so this hot path stays tight.
+        TXA
+        LSR                             ; A = byte index, carry = X & 1
+        TAY
+        BCS     @clr_hi
+        LDA     map_buffer,Y
+        AND     #$F7                    ; clear low-nibble reveal bit
+        STA     map_buffer,Y
+        JMP     @next
+@clr_hi:
+        LDA     map_buffer,Y
+        AND     #$7F                    ; clear high-nibble reveal bit
+        STA     map_buffer,Y
 @next:
         DEX
         BPL     @lp
         RTS
 
 
+; ----------------------------------------------------------------------------
+; vis_bitmask: 1 << bit. Indexed by (linear cell index & 7) to recover
+; the per-cell mask inside vis_buffer's bit-packed bytes.
+; ----------------------------------------------------------------------------
+vis_bitmask:
+        .byte $01, $02, $04, $08, $10, $20, $40, $80
+
 
 ; ----------------------------------------------------------------------------
-; mark_visible_at_cur: vis_buffer[cur_y * 16 + cur_x] |= VIS_VISIBLE.
-; Caller has already verified cur_x / cur_y are in-range. Clobbers A,Y;
-; preserves X (which cast_ray uses as the step countdown).
+; vis_test_a: read the visibility bit at linear cell index A (0..159).
+; Returns A = 0 if the cell is dark, A != 0 (the bit mask) if lit.
+; Caller branches via BNE (lit) / BEQ (dark). Clobbers A, Y; preserves X.
+;
+; Decomposition: byte = idx >> 3 (0..19); bit = idx & 7. The bit mask
+; comes from vis_bitmask[bit].
 ; ----------------------------------------------------------------------------
-mark_visible_at_cur:
-        LDA     cur_y
-        ASL     A
-        ASL     A
-        ASL     A
-        ASL     A               ; cur_y * 16
-        CLC
-        ADC     cur_x
+vis_test_a:
+        PHA                     ; save linear index
+        AND     #7              ; bit position 0..7
+        TAY
+        LDA     vis_bitmask,Y
+        STA     vismask
+        PLA                     ; A = linear index again
+        LSR
+        LSR
+        LSR                     ; A = byte index 0..19
         TAY
         LDA     vis_buffer,Y
-        ORA     #VIS_VISIBLE
+        AND     vismask
+        RTS
+
+
+; ----------------------------------------------------------------------------
+; mark_visible_at_cur: set the bit-packed visibility bit at
+; (cur_x, cur_y). Caller has already verified cur_x / cur_y are
+; in-range. Clobbers A, Y; preserves X (cast_ray uses X as the step
+; countdown).
+;
+; idx = cur_y * 16 + cur_x → byte = cur_y * 2 + (cur_x >> 3), bit = cur_x & 7.
+; ----------------------------------------------------------------------------
+mark_visible_at_cur:
+        LDA     cur_x
+        AND     #7
+        TAY
+        LDA     vis_bitmask,Y           ; mask = 1 << (cur_x & 7)
+        STA     vismask
+        LDA     cur_x
+        LSR
+        LSR
+        LSR                             ; cur_x >> 3 (0 or 1)
+        CLC
+        ADC     cur_y
+        ADC     cur_y                   ; cur_y * 2 + (cur_x >> 3)
+        TAY
+        LDA     vis_buffer,Y
+        ORA     vismask
         STA     vis_buffer,Y
         RTS
 
@@ -3408,9 +4070,9 @@ is_opaque_at_cur:
         ASL     A
         ASL     A
         CLC
-        ADC     cur_x
-        TAY
-        LDA     map_buffer,Y
+        ADC     cur_x                   ; A = linear cell index
+        JSR     map_get_a               ; A = nibble; preserves X
+        AND     #7                      ; strip reveal bit, A = dense tile id
         CMP     #TILE_WALL
         BEQ     @opaque
         CMP     #TILE_DOOR
@@ -3442,9 +4104,13 @@ is_opaque_at_cur:
 ;   slot 44 ($3960-$397F) : ring (amulet)  (ITEM_T_RING)
 ;   slot 48 ($3980-$399F) : troll grunt    (MON_TYPE_TROLL)
 ;   slot 52 ($39A0-$39BF) : torch          (ITEM_T_TORCH)
+;   slot 56 ($39C0-$39DF) : boss top-left  (MON_TYPE_BOSS Q_TL)
+;   slot 60 ($39E0-$39FF) : boss top-right (MON_TYPE_BOSS Q_TR)
+;   slot 64 ($3A00-$3A1F) : boss bottom-left  (MON_TYPE_BOSS Q_BL)
+;   slot 68 ($3A20-$3A3F) : boss bottom-right (MON_TYPE_BOSS Q_BR)
 ;
-; Total = 448 B = $01C0. The simple "INX / BNE" loop wraps after 256,
-; so we stride in two halves (0..255 then 0..191).
+; Total = 448 B (sprite_pats) + 128 B (boss_sprite_pats) = 576 B.
+; INX/BNE wraps after 256, so we stride in three loops: 256, 192, 128.
 ; ----------------------------------------------------------------------------
 upload_sprite_pats:
         JSR     tms9918_pad24   ; MANUAL caller-gap cushion (24c)
@@ -3453,20 +4119,29 @@ upload_sprite_pats:
         JSR     tms9918_pad24   ; +24c silicon-strict pad24 (before LDA #imm bridge)
         LDA     #$78            ; $38 | $40 -> write at $3800
         STA     VDP_CTRL
-        ; First 256 bytes
+        ; First 256 bytes (slots 0..31, offsets 0..255 of sprite_pats)
         LDX     #0
 @lp1:   LDA     sprite_pats,X
         JSR     tms9918_pad24   ; +24c silicon-strict pad24 (back-to-back VDP store)
         WRT_DATA_REG
         INX
         BNE     @lp1
-        ; Last 192 bytes (offsets 256..447)
+        ; Next 192 bytes (slots 32..55, offsets 256..447 of sprite_pats)
         LDX     #0
 @lp2:   LDA     sprite_pats+256,X
         WRT_DATA_REG
         INX
         CPX     #192
         BNE     @lp2
+        ; Boss tile: 128 bytes from boss_sprite_pats → slots 56..68
+        ; (VRAM $39C0..$3A3F). The auto-increment cursor is already
+        ; sitting at $39C0, so we just keep streaming.
+        LDX     #0
+@lp3:   LDA     boss_sprite_pats,X
+        WRT_DATA_REG
+        INX
+        CPX     #128
+        BNE     @lp3
         RTS
 
 
@@ -3569,8 +4244,14 @@ place_all_sprites:
         LDX     #0
 @mon_lp:
         LDA     monsters+MON_TYPE,X
-        BEQ     @mon_skip
-        ; FOV gate: vis_buffer[row * 16 + col] & VIS_VISIBLE.
+        BNE     @mon_alive
+        JMP     @mon_skip               ; out-of-range branch — trampoline
+@mon_alive:
+        CMP     #MON_TYPE_BOSS
+        BNE     @one_cell
+        JMP     @boss_paint             ; out-of-range branch — trampoline
+@one_cell:
+        ; FOV gate: vis_test_a (linear index in A → bit-packed lookup).
         LDA     monsters+MON_ROW,X
         ASL
         ASL
@@ -3578,10 +4259,10 @@ place_all_sprites:
         ASL                     ; row * 16
         CLC
         ADC     monsters+MON_COL,X
-        TAY
-        LDA     vis_buffer,Y
-        AND     #VIS_VISIBLE
-        BEQ     @mon_skip       ; not lit -> no SAT entry this frame
+        JSR     vis_test_a
+        BNE     @mon_lit
+        JMP     @mon_skip               ; out-of-range — trampoline
+@mon_lit:
         LDA     monsters+MON_ROW,X
         ASL
         ASL
@@ -3605,13 +4286,109 @@ place_all_sprites:
         LDA     monsters+MON_COLOR,X
 @m_write:
         WRT_DATA_REG
+        JMP     @mon_skip
+@boss_paint:
+        ; FOV gate on the anchor cell: if the top-left of the
+        ; footprint is dark, drop the whole boss from the SAT (avoids
+        ; half-painted demons floating through fog). pak_byte+1 caches
+        ; the boss colour across the four quadrant emissions; pak_byte
+        ; caches the row * 16 base so the SBC math doesn't have to
+        ; redo the shift.
+        LDA     monsters+MON_ROW,X
+        ASL
+        ASL
+        ASL
+        ASL                     ; row * 16
+        CLC
+        ADC     monsters+MON_COL,X
+        JSR     vis_test_a
+        BNE     @boss_lit
+        JMP     @mon_skip               ; dark anchor → drop the whole tile
+@boss_lit:
+        ; Pre-resolve the colour (COL_HURT during the bump-frame, else
+        ; MON_COLOR). One MON_HURT load → 4 quadrants → consistent
+        ; flash across the whole 32x32 silhouette.
+        LDA     monsters+MON_HURT,X
+        BEQ     @boss_normal
+        LDA     #COL_HURT
+        JMP     @boss_color_done
+@boss_normal:
+        LDA     monsters+MON_COLOR,X
+@boss_color_done:
+        STA     pak_byte+1              ; cached boss colour byte
+        ; Cache row * 16 (top y) and col * 16 (left x) — used by all
+        ; four quadrant SAT writes plus the +16 px sibling rows.
+        LDA     monsters+MON_ROW,X
+        ASL
+        ASL
+        ASL
+        ASL
+        STA     pak_byte                ; pak_byte = top y
+        ; --- TL quadrant: y = top, x = left, name = TL ---
+        LDA     pak_byte
+        WRT_DATA_REG
+        LDA     monsters+MON_COL,X
+        ASL
+        ASL
+        ASL
+        ASL
+        WRT_DATA_REG                    ; left x
+        WRT_DATA_VAL SPRITE_NAME_BOSS_TL
+        LDA     pak_byte+1
+        WRT_DATA_REG
+        ; --- TR quadrant: y = top, x = left + 16, name = TR ---
+        LDA     pak_byte
+        WRT_DATA_REG
+        LDA     monsters+MON_COL,X
+        ASL
+        ASL
+        ASL
+        ASL
+        CLC
+        ADC     #16
+        WRT_DATA_REG                    ; left x + 16
+        WRT_DATA_VAL SPRITE_NAME_BOSS_TR
+        LDA     pak_byte+1
+        WRT_DATA_REG
+        ; --- BL quadrant: y = top + 16, x = left, name = BL ---
+        LDA     pak_byte
+        CLC
+        ADC     #16
+        WRT_DATA_REG                    ; top y + 16
+        LDA     monsters+MON_COL,X
+        ASL
+        ASL
+        ASL
+        ASL
+        WRT_DATA_REG
+        WRT_DATA_VAL SPRITE_NAME_BOSS_BL
+        LDA     pak_byte+1
+        WRT_DATA_REG
+        ; --- BR quadrant: y = top + 16, x = left + 16, name = BR ---
+        LDA     pak_byte
+        CLC
+        ADC     #16
+        WRT_DATA_REG
+        LDA     monsters+MON_COL,X
+        ASL
+        ASL
+        ASL
+        ASL
+        CLC
+        ADC     #16
+        WRT_DATA_REG
+        WRT_DATA_VAL SPRITE_NAME_BOSS_BR
+        LDA     pak_byte+1
+        WRT_DATA_REG
 @mon_skip:
         TXA
         CLC
         ADC     #MON_SIZE
         TAX
         CPX     #(MON_COUNT * MON_SIZE)
-        BCC     @mon_lp
+        BCS     @mon_done
+        JMP     @mon_lp                 ; out-of-range backward branch
+@mon_done:
 
         ; --- Slots after monsters: live items (one entry per non-zero
         ; ITEM_TYPE). Items render LAST (highest SAT slot index) which
@@ -3625,7 +4402,7 @@ place_all_sprites:
 @item_lp:
         LDA     items+ITEM_TYPE,X
         BEQ     @item_skip
-        ; FOV gate: vis_buffer[row * 16 + col] & VIS_VISIBLE.
+        ; FOV gate: vis_test_a (linear index in A → bit-packed lookup).
         LDA     items+ITEM_ROW,X
         ASL
         ASL
@@ -3633,9 +4410,7 @@ place_all_sprites:
         ASL
         CLC
         ADC     items+ITEM_COL,X
-        TAY
-        LDA     vis_buffer,Y
-        AND     #VIS_VISIBLE
+        JSR     vis_test_a
         BEQ     @item_skip
         LDA     items+ITEM_ROW,X
         ASL
@@ -3841,33 +4616,73 @@ check_collision:
 
 
 ; ----------------------------------------------------------------------------
-; tile_at_target: read map_buffer[tgt_row * 16 + tgt_col].
-; Returns A = tile base id with the pit-reveal bit ($80) masked off,
-; so callers can compare to TILE_* constants without caring whether
-; a pit is currently revealed or hidden. Clobbers Y, map_ptr; preserves X.
+; tile_at_target: read the dense tile id at (tgt_col, tgt_row).
+; Returns A = tile id (bits 0..2 only — pit-reveal bit stripped) so
+; callers compare to TILE_* (dense) without caring whether a pit is
+; revealed or hidden. Preserves X. Clobbers A, Y, tmp_packed.
+;
+; Byte index = tgt_row * 8 + tgt_col / 2; nibble select = tgt_col & 1.
 ; ----------------------------------------------------------------------------
 tile_at_target:
-        JSR     calc_map_ptr
-        LDY     tgt_col
-        LDA     (map_ptr),Y
-        AND     #$7F                    ; strip pit-reveal bit
+        LDA     tgt_col
+        LSR                             ; A = tgt_col / 2
+        STA     tmp_packed
+        LDA     tgt_row
+        ASL
+        ASL
+        ASL                             ; row * 8
+        CLC
+        ADC     tmp_packed              ; + col / 2
+        TAY                             ; Y = byte index
+        LDA     tgt_col
+        AND     #1
+        BNE     @tg_hi
+        LDA     map_buffer,Y
+        AND     #7                      ; low nibble, reveal stripped
+        RTS
+@tg_hi:
+        LDA     map_buffer,Y
+        LSR
+        LSR
+        LSR
+        LSR                             ; high nibble down to low
+        AND     #7                      ; reveal stripped
         RTS
 
 
 ; ----------------------------------------------------------------------------
-; reveal_pit_at_target: set the pit-reveal bit ($80) on the
-; map_buffer cell at (tgt_col, tgt_row). Used by trigger_pit (player)
-; and apply_step's @move_pit branch (monster) so render_map switches
-; the cell from blank-floor to visible pit graphic. The bit is cleared
+; reveal_pit_at_target: set the pit-reveal bit (bit 3 of the cell
+; nibble) at (tgt_col, tgt_row). Used by trigger_pit (player) and
+; apply_step's @move_pit branch (monster) so render_map switches the
+; cell from blank-floor to visible pit graphic. The bit is cleared
 ; again by strip_invisible_pit_reveals once the cell drifts out of FOV.
-; Clobbers A, Y, map_ptr; preserves X.
+; Preserves X. Clobbers A, Y, tmp_packed.
+;
+; Low nibble: OR #$08. High nibble: OR #$80 (bit 3 of the high nibble
+; = bit 7 of the byte).
 ; ----------------------------------------------------------------------------
 reveal_pit_at_target:
-        JSR     calc_map_ptr
-        LDY     tgt_col
-        LDA     (map_ptr),Y
+        LDA     tgt_col
+        LSR
+        STA     tmp_packed
+        LDA     tgt_row
+        ASL
+        ASL
+        ASL
+        CLC
+        ADC     tmp_packed
+        TAY
+        LDA     tgt_col
+        AND     #1
+        BNE     @rv_hi
+        LDA     map_buffer,Y
+        ORA     #$08
+        STA     map_buffer,Y
+        RTS
+@rv_hi:
+        LDA     map_buffer,Y
         ORA     #$80
-        STA     (map_ptr),Y
+        STA     map_buffer,Y
         RTS
 
 
@@ -4297,7 +5112,9 @@ death_screen:
         ; "KILLED BY " (10 chars) — row 7 col 7 → $18E7. Killer name
         ; appended right after at $18F1 via a second draw_text call;
         ; the name comes from the mon_name_lo/hi table indexed by
-        ; last_attacker (0..5; clamps to UNKNOWN if out of range).
+        ; last_attacker (0..7; clamps to UNKNOWN if out of range).
+        ; Slots: 0=UNKNOWN, 1..5=MON_TYPE_*, 6=MON_TYPE_BOSS,
+        ; 7=LAST_ATTACKER_PIT.
         LDA     #<msg_killed_by
         STA     vdp_src_lo
         LDA     #>msg_killed_by
@@ -4306,7 +5123,7 @@ death_screen:
         LDX     #$58
         JSR     draw_text
         LDX     last_attacker
-        CPX     #7                      ; valid range: 0..6 (6 = "A PIT")
+        CPX     #8                      ; valid range: 0..7
         BCC     @attacker_ok
         LDX     #0                      ; out-of-range → UNKNOWN slot
 @attacker_ok:
@@ -4484,17 +5301,18 @@ mon_name_ghost:   .byte "GHOST",    $FF
 mon_name_troll:   .byte "TROLL",    $FF
 mon_name_skel:    .byte "SKELETON", $FF
 mon_name_death:   .byte "DEATH",    $FF
-mon_name_pit:     .byte "A PIT",    $FF       ; sentinel index 6
-; Indexed by last_attacker (0 = no killer yet → UNKNOWN, 1..5 = MON_TYPE_*,
-; 6 = LAST_ATTACKER_PIT).
+mon_name_boss:    .byte "THE DEMON", $FF      ; MON_TYPE_BOSS
+mon_name_pit:     .byte "A PIT",    $FF       ; sentinel index 7
+; Indexed by last_attacker (0 = no killer yet → UNKNOWN, 1..5 = MON_TYPE_*
+; for the random tiers, 6 = MON_TYPE_BOSS, 7 = LAST_ATTACKER_PIT).
 mon_name_lo:
         .byte <mon_name_unknown, <mon_name_undead, <mon_name_ghost
         .byte <mon_name_troll,   <mon_name_skel,   <mon_name_death
-        .byte <mon_name_pit
+        .byte <mon_name_boss,    <mon_name_pit
 mon_name_hi:
         .byte >mon_name_unknown, >mon_name_undead, >mon_name_ghost
         .byte >mon_name_troll,   >mon_name_skel,   >mon_name_death
-        .byte >mon_name_pit
+        .byte >mon_name_boss,    >mon_name_pit
 msg_kills:      .byte "KILLS: ", $FF
 msg_game_over:  .byte "GAME OVER", $FF
 msg_congrats:   .byte "CONGRATULATIONS", $FF
@@ -5133,13 +5951,13 @@ dispatch_use_slot:
         ; "look at this"), consume the scroll, redraw under normal FOV.
         ; The reveal does NOT persist — compute_fov on the next move
         ; wipes vis_buffer and the player drops back to torchlight.
-        LDA     #VIS_VISIBLE
-        LDX     #(LOGICAL_COLS * LOGICAL_ROWS)
+        ; Bit-packed: 8 cells per byte, so $FF lights 8 cells at once.
+        LDA     #$FF
+        LDX     #VIS_BUFFER_SIZE
 @map_lp:
         DEX
         STA     vis_buffer,X
         BNE     @map_lp
-        STA     vis_buffer,X            ; final write at offset 0
         JSR     clear_name_table
         JSR     render_map
         JSR     place_all_sprites
@@ -5325,9 +6143,9 @@ handle_throw:
         ASL
         ASL
         CLC
-        ADC     cur_x
-        TAY
-        LDA     map_buffer,Y
+        ADC     cur_x                   ; A = linear cell index
+        JSR     map_get_a               ; A = nibble (4 bits)
+        AND     #7                      ; strip reveal bit, A = dense tile id
         BNE     @vanish
         ; Monster check — first hit absorbs the dagger.
         LDA     cur_x

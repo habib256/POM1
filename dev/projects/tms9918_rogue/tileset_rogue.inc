@@ -13,16 +13,19 @@
 
 .export tileset_rogue, tileset_color_table
 
-; --- Tile base char IDs (use as `LDA #TILE_WALL`) ----------------------
+; --- Tile base char IDs (use via `tile_char_base` LUT in render_map) ---
 ; Each tile occupies 4 consecutive chars: base+0=TL, +1=TR, +2=BL, +3=BR.
-TILE_EMPTY          = 0
-TILE_WALL           = 4
-TILE_STAIRS_DOWN    = 8
-TILE_DOOR           = 12
-TILE_STAIRS_UP      = 16
-TILE_TRAP_PIT       = 20
-TILE_GOLD           = 24
-TILE_POTION         = 28
+; The dense `TILE_*` symbols (4-bit ids used inside the bit-packed
+; map_buffer) live in TMS_Rogue.asm; render_map turns a dense id into
+; a CHAR_* base via `tile_char_base[id]`.
+CHAR_EMPTY          = 0
+CHAR_WALL           = 4
+CHAR_STAIRS_DOWN    = 8
+CHAR_DOOR           = 12
+CHAR_STAIRS_UP      = 16
+CHAR_TRAP_PIT       = 20
+CHAR_GOLD           = 24
+CHAR_POTION         = 28
 
 ; --- Pattern table (256 * 8 = 2048 B), upload to VRAM $0000 -------------
 tileset_rogue:

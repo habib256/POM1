@@ -119,19 +119,48 @@ Ships as `roms/codetank/Codetank_GAME2.rom` — load via POM1's
     on the floor. Stackables (food, daggers, potions, scrolls, torches)
     merge into an existing slot via `INV_QTY++` so a fistful of daggers
     takes one letter.
-  - **Win-screen at depth 13**: descending the stairs from depth 12
-    triggers `win_screen` instead of generating depth 13 — the
-    "DUNGEON CONQUERED" twin of `death_screen`. Both end-screens call
-    `paint_scores` (DEPTH / KILLS / HP MAX / ATK BASE / DEF BASE),
-    apply a ~1.3 s deaf-time, then wait for any keypress, then
-    `JMP $4000` cold-start.
+  - **Boss room at depth 13** (MVP5): descending the stairs from
+    depth 12 routes into `gen_boss_room` + `spawn_boss` instead of
+    triggering `win_screen` immediately. The boss arena is a fixed
+    big-room (cols 1..14 × rows 1..8) with **no doors / no stairs /
+    no items / no pits** — once the player descends, the only exit is
+    to kill the demon (or die trying). Player spawns at (7, 8); the
+    boss anchor sits at (7, 4) with a 32×32 visual that occupies cells
+    (7,4)/(8,4)/(7,5)/(8,5) — 4 hardware sprites tiled together
+    (slots 56/60/64/68 in the pattern table) painted from a single
+    `MON_TYPE_BOSS` pool entry. Sprite art is Hexany Ives'
+    "Monster Menagerie" `creature_024.png` (CC0); the conversion lives
+    in `tools/extract_hexany_boss_sprite.py` and emits
+    `sprites_boss.asm`. The boss has **base HP 15 / dmg 4** scaled by
+    the depth-13 spawn bonuses (`+depth/3` HP, `+depth/6` dmg) → 19 HP
+    / 6 dmg; with expected gear (TUNIC + XP DEF) the bite lands at
+    ~3 HP/turn, gating the win behind real positioning. AI is
+    greedy-chase like UNDEAD but routed through a 2x2-aware
+    `apply_boss_step` that checks all four prospective footprint
+    cells and treats "player inside the new footprint" as the
+    bump-attack. Killing the boss tail-calls `win_screen` —
+    "DUNGEON CONQUERED" + score takeover; dying to the boss shows
+    "KILLED BY THE DEMON" on the death screen.
+- **Hidden pit traps** — `spawn_level_pits` scatters 0..2 `TILE_TRAP_PIT`
+  cells per floor (1d3 roll) on random `TILE_EMPTY` tiles. Pits start
+  hidden: render_map paints them as blank floor (high bit clear + tile
+  id == `TILE_TRAP_PIT` ⇒ "blank, same as out-of-FOV cells"). Stepping
+  onto a pit calls `trigger_pit`: the player loses `PIT_DMG = 3` HP
+  (saturated at 0), the sprite flashes red for the next frame, and the
+  cell flips to "revealed" via the high bit on its `map_buffer` byte
+  so it now renders as the pit pictogram. Pits are **not consumed** —
+  re-stepping costs HP again, so you have to remember the layout. Pits
+  drift back to "hidden" the moment they leave the player's FOV
+  (`strip_invisible_pit_reveals`, run as the tail of `compute_fov`),
+  forcing a real "do I remember where it was" play. Monsters trigger
+  the same trap (`PIT_DMG` off `MON_HP`), thrown daggers stop dead on
+  the cell, and dying on a pit shows `KILLED BY A PIT` on the death
+  screen via `last_attacker = LAST_ATTACKER_PIT`.
 
 ## TODO
 
-- **Bit-pack `map_buffer` + `vis_buffer`** — currently 160 + 160 B for
-  16×10 cells. Visibility is single-bit, so `vis_buffer` shrinks to
-  20 B; tile ids fit in 4 bits, so `map_buffer` shrinks to 80 B.
-  Frees ~220 B of high-bank RAM for future content.
+(MVP1-MVP4 + bit-packed buffers all shipped — open candidates live in
+`dev/TODO6502.md` under hygiene / WIP.)
 
 ## Files
 
@@ -158,12 +187,14 @@ two banks with a hole in the middle:
   silicon-strict mode. **Do not put variables here** — they will
   silently fail to persist.
 - **High bank**: `$E000-$EFFF` (4 KB). Linker-managed `MAPSEG` hosts
-  `map_buffer` (160 B, 16×10 logical tiles, one byte per tile) +
-  `vis_buffer` (160 B, single VIS_VISIBLE bit per cell). After
-  MAPSEG ends at `$E0A0`, two absolutely-addressed pools:
-  `monsters` at `$E300` (16 slots × 8 B = 128 B) and `items` at
-  `$E380` (8 slots × 4 B = 32 B). `$E3A0-$EFFF` (~3.2 KB) is free
-  for MVP4 inventory + equipment state.
+  `map_buffer` (80 B, **bit-packed**, 2 cells per byte — low nibble =
+  even col, high nibble = odd col; bits 0..2 = dense `TILE_*` id, bit
+  3 = pit-reveal flag) + `vis_buffer` (20 B, bit-packed, one bit per
+  cell — 8 cells per byte, row R uses bytes 2R / 2R+1). After MAPSEG
+  ends at `$E064`, three absolutely-addressed pools: `monsters` at
+  `$E300` (16 slots × 8 B = 128 B), `items` at `$E380` (8 slots ×
+  4 B = 32 B), and `inventory` at `$E3A0` (26 slots × 8 B = 208 B).
+  `$E470-$EFFF` (~3 KB) is free for future content.
 
 ## Build
 
@@ -234,11 +265,21 @@ game loop binds the four movement keys at runtime.
 - Stepping onto `TILE_STAIRS_DOWN` advances to a deeper level (depth++,
   harder monster pool); walking off a screen-edge `TILE_DOOR` warps to
   a sibling big-room at the same depth, spawning at the opposite edge.
+- Stepping onto a hidden `TILE_TRAP_PIT` costs `PIT_DMG` HP and reveals
+  the pit pictogram on that cell. Pits are not consumed, so re-stepping
+  costs HP again — and the reveal lapses the moment the pit leaves your
+  FOV, so you have to remember its location. Daggers thrown across a
+  pit stop on it (no jump-overs). Dying on a pit shows `KILLED BY A PIT`.
 
 ## Credits
 
 - Custom tileset and sprite art: Quale's SCROLL-O-SPRITES (May 2013,
   CC-BY-3.0). See `dev/lib/tms9918/sprites_*.asm` headers for the
   full attribution chain.
+- Depth-13 boss sprite: Hexany Ives' SCROLL-O-SPRITES "Monster
+  Menagerie" (`creature_024.png`, CC0). See
+  https://hexany-ives.itch.io/hexanys-monster-menagerie. The 32×32
+  source is sliced into 4 × 16×16 TMS9918 sprite slots by
+  `tools/extract_hexany_boss_sprite.py` → `sprites_boss.asm`.
 - TMS9918 driver + silicon-strict timing macros:
   `dev/lib/tms9918/tms9918m1.asm`.

@@ -287,14 +287,20 @@ def emit_inc(sprites: dict[str, list[int]],
     lines.append(".export tileset_rogue, tileset_color_table")
     lines.append("")
 
-    # --- Tile ID equates (referenced from TMS_Rogue.asm) ---
-    # Each TILE_* equate is the BASE char ID; the renderer writes
-    # base+0..3 as the four quadrants of the 16x16 logical tile.
-    lines.append("; --- Tile base char IDs (use as `LDA #TILE_WALL`) ----------------------")
+    # --- Tile base char IDs (referenced from TMS_Rogue.asm) ---
+    # Each CHAR_* equate is the BASE char ID; the renderer writes
+    # base+0..3 as the four quadrants of the 16x16 logical tile. The
+    # bit-packed `map_buffer` stores dense 4-bit `TILE_*` ids (defined
+    # in TMS_Rogue.asm); render_map turns a dense id into a CHAR_*
+    # base via the `tile_char_base[id]` LUT.
+    lines.append("; --- Tile base char IDs (use via `tile_char_base` LUT in render_map) ---")
     lines.append("; Each tile occupies 4 consecutive chars: base+0=TL, +1=TR, +2=BL, +3=BR.")
+    lines.append("; The dense `TILE_*` symbols (4-bit ids used inside the bit-packed")
+    lines.append("; map_buffer) live in TMS_Rogue.asm; render_map turns a dense id into")
+    lines.append("; a CHAR_* base via `tile_char_base[id]`.")
     for cid in sorted(PALETTE):
         _, name = PALETTE[cid]
-        lines.append(f"TILE_{name.upper():<14} = {cid}")
+        lines.append(f"CHAR_{name.upper():<14} = {cid}")
     lines.append("")
 
     # Build a unified char-id -> (rows, comment) map.

@@ -79,6 +79,7 @@ LOGO_V2_SPRH_ASM   = LIB_TMS     / "sprite_helpers.asm"
 
 # --- GAME2 sources ---------------------------------------------------------
 ROGUE_ASM          = DEV / "tms9918_rogue" / "TMS_Rogue.asm"
+ROGUE_BOSS_ASM     = DEV / "tms9918_rogue" / "sprites_boss.asm"
 ROGUE_CODETANK_CFG = DEV / "tms9918_rogue" / "apple1_rogue.cfg"
 ROGUE_M1_ASM       = LIB_TMS / "tms9918m1.asm"
 
@@ -261,7 +262,7 @@ def build_game2_lower_bank() -> bytes:
     """Lower 16 kB: TMS_Rogue alone, full $4000-$7FFF, run-in-place."""
     print("[GAME2] Lower bank (TMS_Rogue alone, full 16 kB):", file=sys.stderr)
     rogue = assemble_multi(
-        [ROGUE_ASM, ROGUE_M1_ASM],
+        [ROGUE_ASM, ROGUE_M1_ASM, ROGUE_BOSS_ASM],
         ROGUE_CODETANK_CFG, "G2_Rogue", HALF_SIZE)
     bank = bytearray(b"\xFF" * HALF_SIZE)
     slot(bank, 0x0000, rogue, HALF_SIZE, "Rogue     ($4000-$7FFF)")
