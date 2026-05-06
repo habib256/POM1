@@ -260,6 +260,70 @@ def find_stale_skip_markers(src: list[str]) -> list[int]:
     return [i for i, line in enumerate(src) if skip_re.match(line)]
 
 
+# JSR target name extractor (for cross-routine analysis).
+RE_JSR_TARGET = re.compile(r"^\s+JSR\s+(@?[a-zA-Z_][a-zA-Z0-9_]*)\b")
+
+
+def jsr_target(line: str) -> str | None:
+    m = RE_JSR_TARGET.match(strip_inline_label(line))
+    return m.group(1) if m else None
+
+
+# RTS detector (case-insensitive, no operand).
+RE_RTS_LINE = re.compile(r"^\s+RTS\s*(;.*)?$", re.IGNORECASE)
+
+
+def find_vdp_tail_routines(src: list[str]) -> set[str]:
+    """Return the set of TOP-level routine names whose body ends — at any
+    RTS exit point — with a STA VDP_* close enough to leak the silicon-
+    strict gap into the caller. Cross-JSR boundaries are the major gap
+    the patcher used to miss: caller's STA → JSR routineB → routineB's
+    last STA + RTS (12c) → caller's next STA = ~10-13c gap, well under
+    the 16c VBlank threshold. Treating these JSR call sites as
+    *synthetic* VDP stores in the main case detector lets the patcher
+    inject a pad on the caller side automatically.
+
+    Heuristic: walk each TOP-level routine body. For every RTS, look
+    backward for the most recent STA VDP_* within ≤ 4 code lines (no
+    intervening VDP store between them). If found, the routine is
+    VDP-tail. This matches the typical shape `... / STA VDP_DATA / RTS`
+    or `... / STA VDP_DATA / [bridge] / RTS` used by helpers like
+    emit_3digit_vdp, draw_str_tms, plot_star, hide_slot_4, etc."""
+    tail_routines: set[str] = set()
+    label_lines: list[tuple[int, str]] = []
+    for i, l in enumerate(src):
+        m = RE_TOP_LABEL.match(l)
+        if m:
+            label_lines.append((i, m.group(1)))
+    if not label_lines:
+        return tail_routines
+    boundaries = [i for i, _ in label_lines] + [len(src)]
+
+    def is_code_line(line: str) -> bool:
+        s = line.strip()
+        return bool(s) and not s.startswith(";") and not RE_LABEL.match(line)
+
+    for k, (start, name) in enumerate(label_lines):
+        end = boundaries[k + 1] - 1
+        last_vdp_idx = -1
+        for i in range(start, end + 1):
+            line = src[i]
+            if is_vdp_store(line):
+                last_vdp_idx = i
+                continue
+            if not is_code_line(line):
+                continue
+            if RE_RTS_LINE.match(strip_inline_label(line)):
+                if last_vdp_idx >= 0:
+                    code_between = sum(
+                        1 for j in range(last_vdp_idx + 1, i) if is_code_line(src[j])
+                    )
+                    if code_between <= 4:
+                        tail_routines.add(name)
+                last_vdp_idx = -1  # reset for next exit point
+    return tail_routines
+
+
 def next_code_lines(src: list[str], i: int, n: int):
     """Return the next n non-empty / non-comment / non-label / non-NOP lines after i.
 
@@ -319,6 +383,21 @@ def apply_padding(src: list[str]) -> tuple[list[str], dict[str, int]]:
         if m_lbl:
             labels_map.setdefault(m_lbl.group(1), i_lbl)
 
+    # Pre-scan: which routines END (at any RTS exit) with STA VDP_*.
+    # A `JSR <vdp_tail>` site is treated as a synthetic VDP store for the
+    # purposes of case detection, so callers get padded before their next
+    # VDP access. See find_vdp_tail_routines for the heuristic.
+    vdp_tail = find_vdp_tail_routines(src)
+
+    def is_vdp_access_line(line: str) -> bool:
+        """True for real STA VDP_* and for JSR <vdp_tail_routine> — both
+        consume the chip's access window, so the patcher's STA→STA
+        analysis must treat them uniformly."""
+        if is_vdp_store(line):
+            return True
+        tgt = jsr_target(line)
+        return tgt is not None and tgt in vdp_tail
+
     out: list[str] = []
     counts = {"A": 0, "B": 0, "C": 0}
 
@@ -343,11 +422,18 @@ def apply_padding(src: list[str]) -> tuple[list[str], dict[str, int]]:
     BRANCH_LOOKAHEAD_LINES = 16
 
     for i, line in enumerate(src):
-        if in_skip(i) or not is_vdp_store(line):
+        if in_skip(i):
+            continue
+        # Start STA1 analysis from real VDP stores AND from JSR sites that
+        # call a VDP-tail routine (the JSR is a synthetic VDP access — its
+        # callee ends with STA VDP_* + RTS, so the access-window clock
+        # bleeds into the caller).
+        if not (is_vdp_store(line) or
+                (jsr_target(line) is not None and jsr_target(line) in vdp_tail)):
             continue
         if is_builtin_padded_store(line):
             # WRT_DATA_REG / WRT_DATA_VAL macros embed their own postlude
-            # pad24. Don't analyse forward from them — the macro itself
+            # pad40. Don't analyse forward from them — the macro itself
             # supplies the gap to the next VDP store. (They still serve as
             # STA2 targets when an *earlier* STA walks forward to find the
             # next VDP store.)
@@ -357,8 +443,11 @@ def apply_padding(src: list[str]) -> tuple[list[str], dict[str, int]]:
         if not nxt:
             continue
         n0_idx, n0_text = nxt[0]
-        if is_vdp_store(n0_text):
-            # Case A direct — STA / STA back-to-back. Insert pad between.
+        if is_vdp_access_line(n0_text):
+            # Case A direct — STA/JSR-vdp-tail back-to-back. Insert pad
+            # between. Note the second access can itself be a JSR to a
+            # VDP-tail routine (caller chains two VDP-writing helpers
+            # back-to-back — pad before the second JSR is correct).
             pad_before.setdefault(n0_idx, JSR_BTB)
             counts["A"] += 1
             continue
@@ -397,13 +486,14 @@ def apply_padding(src: list[str]) -> tuple[list[str], dict[str, int]]:
         if not bridge_ended_in_branch:
             for k in range(1, len(nxt)):
                 kk_idx, kk_text = nxt[k]
-                if is_vdp_store(kk_text):
+                if is_vdp_access_line(kk_text):
+                    # STA2 found — could be a real STA or a JSR <vdp_tail>.
                     sta2_idx = kk_idx
                     break
                 kk_stripped = strip_inline_label(kk_text)
                 if RE_BRIDGE_OK.match(kk_stripped) or RE_NONVDP_STORE.match(kk_stripped):
                     continue
-                # Stopped on something that's neither a bridge nor a VDP store.
+                # Stopped on something that's neither a bridge nor a VDP access.
                 # Treat as branch terminator and fall through to the lookahead.
                 bridge_ended_in_branch = True
                 branch_idx = kk_idx
@@ -427,7 +517,7 @@ def apply_padding(src: list[str]) -> tuple[list[str], dict[str, int]]:
                     # the loop body? Scan from target up to (but excluding)
                     # the branch line.
                     for kk in range(tgt, branch_idx):
-                        if is_vdp_store(src[kk]):
+                        if is_vdp_access_line(src[kk]):
                             is_backward_loop = True
                             break
         if is_backward_loop:
@@ -451,7 +541,7 @@ def apply_padding(src: list[str]) -> tuple[list[str], dict[str, int]]:
                 for k in range(start_idx + 1, limit):
                     if RE_TOP_LABEL.match(src[k]):
                         break
-                    if is_vdp_store(src[k]):
+                    if is_vdp_access_line(src[k]):
                         sta2_idx = k
                         break
                 # Follow the branch target label if forward scan didn't find
@@ -467,7 +557,7 @@ def apply_padding(src: list[str]) -> tuple[list[str], dict[str, int]]:
                         for kk in range(tgt, tgt_limit):
                             if kk != tgt and RE_TOP_LABEL.match(src[kk]):
                                 break
-                            if is_vdp_store(src[kk]):
+                            if is_vdp_access_line(src[kk]):
                                 sta2_idx = kk
                                 break
             if sta2_idx is None:

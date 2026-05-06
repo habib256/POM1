@@ -176,6 +176,7 @@ main:
         LDA #$E8                ; $19E8 = row 15 col 8
         LDX #$59
         JSR draw_str_tms
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (before LDA #imm bridge)
         LDA #<title_walls_keys_tms
         STA sptr_lo
         LDA #>title_walls_keys_tms
@@ -400,6 +401,7 @@ init_snake:
         LDX temp2
         INX
         CPX #INITIAL_LEN-1
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (back-to-back VDP store)
         BCC @build
 
         ; Head segment at (12, 15) — X = INITIAL_LEN-1 = 3 on entry.
@@ -941,6 +943,7 @@ draw_hud:
         JSR emit_3digit_vdp
 
         ; VRAM addr $1817 (row 0, col 23) — start of "HI:NNN"
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (before LDA #imm bridge)
         LDA #$17
         STA VDP_CTRL
         JSR     tms9918_pad40   ; +40c silicon-strict pad40 (before LDA #imm bridge)
@@ -1011,8 +1014,10 @@ draw_title_tms:
         STA sptr_hi
         LDA #$AC                ; $18AC = row 5 col 12
         LDX #$58
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (back-to-back VDP store)
         JSR draw_str_tms
 
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (before LDA #imm bridge)
         LDA #<title_card_tms
         STA sptr_lo
         LDA #>title_card_tms
@@ -1021,6 +1026,7 @@ draw_title_tms:
         LDX #$59
         JSR draw_str_tms
 
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (before LDA #imm bridge)
         LDA #<title_author_tms
         STA sptr_lo
         LDA #>title_author_tms
@@ -1029,6 +1035,7 @@ draw_title_tms:
         LDX #$59
         JSR draw_str_tms
 
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (before LDA #imm bridge)
         LDA #<title_select_tms
         STA sptr_lo
         LDA #>title_select_tms
@@ -1037,6 +1044,7 @@ draw_title_tms:
         LDX #$59
         JSR draw_str_tms
 
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (before LDA #imm bridge)
         LDA #<title_keys_tms
         STA sptr_lo
         LDA #>title_keys_tms
@@ -1049,6 +1057,7 @@ draw_title_tms:
 ; draw_gameover_tms: "GAME OVER" + "PRESS A KEY" splash.
 draw_gameover_tms:
         JSR clear_name_table
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (before LDA #imm bridge)
         LDA #<title_over_tms
         STA sptr_lo
         LDA #>title_over_tms
@@ -1056,6 +1065,7 @@ draw_gameover_tms:
         LDA #$4B                ; $194B = row 10 col 11
         LDX #$59
         JSR draw_str_tms
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (before LDA #imm bridge)
         LDA #<title_press_tms
         STA sptr_lo
         LDA #>title_press_tms
@@ -1068,6 +1078,7 @@ draw_gameover_tms:
 ; draw_win_tms: "YOU WIN!" splash.
 draw_win_tms:
         JSR clear_name_table
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (before LDA #imm bridge)
         LDA #<title_win_tms
         STA sptr_lo
         LDA #>title_win_tms
@@ -1075,6 +1086,7 @@ draw_win_tms:
         LDA #$4C                ; $194C = row 10 col 12
         LDX #$59
         JSR draw_str_tms
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (before LDA #imm bridge)
         LDA #<title_press_tms
         STA sptr_lo
         LDA #>title_press_tms

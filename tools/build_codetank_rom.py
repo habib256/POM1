@@ -234,13 +234,16 @@ def build_game1_lower_bank() -> bytes:
           file=sys.stderr)
     # Slot offsets pinned by each game's bank cfg:
     #   menu     $4000-$40FF   ( 256 B, apple1_codetank_menu.cfg)
-    #   Galaga   $4100-$60FF   (8 192 B, apple1_galaga_codetank_bank.cfg)
-    #   Sokoban  $6100-$75FF   (5 376 B, apple1_sokoban_codetank_bank.cfg)
+    #   Galaga   $4100-$61FF   (8 448 B, apple1_galaga_codetank_bank.cfg)
+    #   Sokoban  $6200-$75FF   (5 120 B, apple1_sokoban_codetank_bank.cfg)
     #   Snake    $7600-$7FFF   (2 560 B, apple1_snake_codetank_bank.cfg)
+    # May 2026 v2 reshuffle: cross-JSR strict-mode pads pushed Galaga past
+    # the previous 8 192 B slot, so shifted Sokoban entry +256 B (matching
+    # codetank_menu.asm's SOKOBAN_ENTRY = $6200).
     bank = bytearray(b"\xFF" * HALF_SIZE)
     slot(bank, 0x0000, menu,    0x0100, "Menu      ($4000-$40FF)")
-    slot(bank, 0x0100, galaga,  0x2000, "Galaga    ($4100-$60FF)")
-    slot(bank, 0x2100, sokoban, 0x1500, "Sokoban   ($6100-$75FF)")
+    slot(bank, 0x0100, galaga,  0x2100, "Galaga    ($4100-$61FF)")
+    slot(bank, 0x2200, sokoban, 0x1400, "Sokoban   ($6200-$75FF)")
     slot(bank, 0x3600, snake,   0x0A00, "Snake     ($7600-$7FFF)")
     return bytes(bank)
 

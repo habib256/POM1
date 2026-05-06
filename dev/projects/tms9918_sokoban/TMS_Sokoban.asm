@@ -174,6 +174,7 @@ key_help:
         JSR wait_key
         JSR render_all                  ; repaint the playfield
         JSR draw_hud                    ; repaint the two-corner HUD
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (back-to-back VDP store)
         JMP move_loop
 
 key_up:
@@ -817,8 +818,10 @@ execute_undo:
         LDA prev_player_col
         STA draw_col
         LDA STATE_GRID,X
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (back-to-back VDP store)
         JSR draw_cell
 
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (before LDA zp/abs bridge)
         LDA prev_player_row
         STA player_row
         LDA prev_player_col
@@ -988,9 +991,11 @@ draw_title_tms:
         STA sptr_hi
         LDA #$6C
         LDX #$58
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (back-to-back VDP store)
         JSR draw_title_tms_line
 
         ; "APPLE 1" at row 7 col 12   -> $18EC
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (before LDA #imm bridge)
         LDA #<title_apple_tms
         STA sptr_lo
         LDA #>title_apple_tms
@@ -1000,6 +1005,7 @@ draw_title_tms:
         JSR draw_title_tms_line
 
         ; "TMS9918 VDP" at row 8 col 10 -> $190A
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (before LDA #imm bridge)
         LDA #<title_card_tms
         STA sptr_lo
         LDA #>title_card_tms
@@ -1009,6 +1015,7 @@ draw_title_tms:
         JSR draw_title_tms_line
 
         ; "BY VERHILLE ARNAUD" at row 11 col 7 -> $1967
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (before LDA #imm bridge)
         LDA #<title_author_tms
         STA sptr_lo
         LDA #>title_author_tms
@@ -1018,6 +1025,7 @@ draw_title_tms:
         JSR draw_title_tms_line
 
         ; "SELECT KEYBOARD" row 12 col 8 -> $1988 (15 chars)
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (before LDA #imm bridge)
         LDA #<title_select_kb_tms
         STA sptr_lo
         LDA #>title_select_kb_tms
@@ -1027,6 +1035,7 @@ draw_title_tms:
         JSR draw_title_tms_line
 
         ; "1 QWERTY (WASD)" row 15 col 8 -> $19E8
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (before LDA #imm bridge)
         LDA #<title_qwerty_tms
         STA sptr_lo
         LDA #>title_qwerty_tms
@@ -1036,6 +1045,7 @@ draw_title_tms:
         JSR draw_title_tms_line
 
         ; "2 AZERTY (ZQSD)" row 16 col 8 -> $1A08
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (before LDA #imm bridge)
         LDA #<title_azerty_tms
         STA sptr_lo
         LDA #>title_azerty_tms
@@ -1045,6 +1055,7 @@ draw_title_tms:
         JSR draw_title_tms_line
 
         ; "H HELP" row 20 col 12 -> $1A8C
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (before LDA #imm bridge)
         LDA #<title_h_help_tms
         STA sptr_lo
         LDA #>title_h_help_tms
@@ -1086,6 +1097,7 @@ draw_help_tms:
         JSR draw_title_tms_line
 
         ; "QWERTY (WASD)" row 6 col 10 -> $18CA (align with command rows)
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (before LDA #imm bridge)
         LDA #<help_qwerty_tms
         STA sptr_lo
         LDA #>help_qwerty_tms
@@ -1095,6 +1107,7 @@ draw_help_tms:
         JSR draw_title_tms_line
 
         ; "AZERTY (ZQSD)" row 7 col 10 -> $18EA
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (before LDA #imm bridge)
         LDA #<help_azerty_tms
         STA sptr_lo
         LDA #>help_azerty_tms
@@ -1104,6 +1117,7 @@ draw_help_tms:
         JSR draw_title_tms_line
 
         ; "U UNDO" row 10 col 10 (align with R/N/H — key in col 10, verb from 12)
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (before LDA #imm bridge)
         LDA #<help_u_tms
         STA sptr_lo
         LDA #>help_u_tms
@@ -1113,6 +1127,7 @@ draw_help_tms:
         JSR draw_title_tms_line
 
         ; "R RESET" row 11 col 10 -> $196A
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (before LDA #imm bridge)
         LDA #<help_r_tms
         STA sptr_lo
         LDA #>help_r_tms
@@ -1122,6 +1137,7 @@ draw_help_tms:
         JSR draw_title_tms_line
 
         ; "N NEXT" row 12 col 10 -> $198A
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (before LDA #imm bridge)
         LDA #<help_n_tms
         STA sptr_lo
         LDA #>help_n_tms
@@ -1131,6 +1147,7 @@ draw_help_tms:
         JSR draw_title_tms_line
 
         ; "H HELP" row 13 col 10 -> $19AA
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (before LDA #imm bridge)
         LDA #<help_h_tms
         STA sptr_lo
         LDA #>help_h_tms
@@ -1140,6 +1157,7 @@ draw_help_tms:
         JSR draw_title_tms_line
 
         ; "ANY KEY BACK" at row 20 col 10 -> $1A8A
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (before LDA #imm bridge)
         LDA #<help_back_tms
         STA sptr_lo
         LDA #>help_back_tms
@@ -1205,6 +1223,7 @@ draw_success_tms:
         STA sptr_hi
         LDA #$AA
         LDX #$59
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (back-to-back VDP store)
         JMP draw_title_tms_line         ; tail-call
 
 ; --- TMS title strings (raw TMS char codes, $FF terminated) ---

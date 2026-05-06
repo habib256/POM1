@@ -87,16 +87,14 @@ int TMS9918::requiredAccessCycles() const
     // keeps it set forever and would otherwise see a permanently-relaxed
     // window across the whole active display.
     //
-    // The threshold here mirrors the active-display worst case formula
-    // "1 slot/16 VDP cycles + STA + phase margin" — even during VBlank,
-    // when slot contention is gone, the chip's internal latch + warm-NMOS
-    // turnaround can stretch CPU access on real silicon. Setting VBlank
-    // to 16c (instead of the theoretical 2c "preparation only") provides
-    // visibility on tight patterns (`STA / LDA #imm / STA`, `LDA abs /
-    // STA / LDA abs / STA`, …) that may bug on silicon under unfavourable
-    // phase even when the doc table claims VBlank is free. The
-    // diagnostic value is high — any program that drops here flags a
-    // risky inter-write pattern that would warrant a pad on hardware.
+    // VBlank threshold = 16c. Matches the active-display Mode I+sprites
+    // worst case formula "1 slot/16 VDP + STA + margin" — even during
+    // VBlank, when slot contention is gone, the chip's internal latch +
+    // warm-NMOS turnaround can stretch CPU access. Strict means strict:
+    // no per-mode escape hatch. The auto-patcher walks cross-JSR
+    // boundaries (find_vdp_tail_routines + JSR-as-VDP-store treatment)
+    // so callers of routines that end with STA VDP_* get a pad before
+    // their next VDP access automatically.
     if ((regs[1] & 0x40) == 0 || frameCycleCounter >= kActiveDisplayCycles) return 16;
 
     // Hardened silicon-strict thresholds (cf. dev/SILICONBUGS.md Bug N°1).

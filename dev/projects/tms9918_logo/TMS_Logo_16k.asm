@@ -952,6 +952,7 @@ parse_and_exec:
 @setshape_cmd:
         JSR mark_ok
         JSR cmd_setshape
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (back-to-back VDP store)
         JMP @loop
 .ifdef CODETANK_BUILD
 @label_cmd:
@@ -1529,6 +1530,7 @@ cmd_setpc:
         LDA turtle_visible
         BEQ @done                  ; nothing to repaint
         JSR erase_turtle           ; restore saved bg cells
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (back-to-back VDP store)
         JSR draw_turtle            ; re-save + OR-draw with new pen_color
 @done:  RTS
 
@@ -1714,11 +1716,9 @@ demo_script:
         ;     4/5=blues, 6=dark red, 7=cyan, 8/9=reds, 10/11=yellows,
         ;     12=dark green, 13=magenta, 14=gray, 15=white).
         ; SQUARE scene replaced by the SQUARE proc below (used by FLOWER).
-        .byte "PRINT ", $22, "STAR", $0D
-        .byte "SETPC 11", $0D
-        .byte "REPEAT 5 [FD 80 TR 144]", $0D
-        .byte "WAIT 2", $0D
-        .byte "CS", $0D
+        ; ("STAR" 5-pointed scene removed May 2026 to absorb +12 B from
+        ;  the cmd_say tx/ty save-restore fix. STAR7 below covers the
+        ;  same {N/k} non-convex visual family.)
         .byte "PRINT ", $22, "SUN", $0D
         .byte "SETPC 10", $0D
         .byte "REPEAT 18 [FD 60 BK 60 TR 20]", $0D
@@ -3950,9 +3950,9 @@ cmd_setshape:
         LDA #$D0
         STA VDP_DATA
         ; Flip back to bitmap mode and redraw the triangle.
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (before LDA #imm bridge)
         LDA #0
         STA sprite_mode
-        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (back-to-back VDP store)
         JSR draw_turtle           ; bitmap path now -- triangle XOR'd in
 @arrow_done:
         RTS
@@ -4314,7 +4314,19 @@ cmd_say:
         ; outline + glyph cells, and restore it after the text is laid
         ; out so subsequent commands (sprite refresh, trail, etc.) keep
         ; the user-chosen colour.
+        ;
+        ; ALSO save the turtle (tx_lo, ty_lo) — cmd_label walks tx/ty
+        ; through the bubble glyph cells and leaves them at the end of
+        ; the text. Without restoration the next SETPC / SETSHAPE would
+        ; redraw the sprite-0 attribute at the bubble-text-end position
+        ; instead of the user's intended SETXY position (DEMO2 "SICK
+        ; sprite parks inside the bubble after MAKE ME ILL" regression,
+        ; reported May 2026).
         LDA pen_color
+        PHA
+        LDA tx_lo
+        PHA
+        LDA ty_lo
         PHA
         LDA #$0F
         STA pen_color
@@ -4324,11 +4336,11 @@ cmd_say:
         LDA #88
         STA ty_lo                 ; first text row, just below top border
         JSR cmd_label             ; reuse scan/blit logic to render text
-        PLA
-        STA pen_color             ; restore caller's tint
         ; --- proportional pause: WAIT (lines * 4) units, ~2.4 s per line
         ;     at native 1 MHz. lines = (ty_lo - 88)/8 + 1, capped by the
-        ;     bubble-bottom truncation in cmd_label's scan loop.
+        ;     bubble-bottom truncation in cmd_label's scan loop. Compute
+        ;     this *before* restoring ty_lo, since the saved value tells
+        ;     us nothing about how many lines the bubble actually used.
         LDA ty_lo
         SEC
         SBC #88
@@ -4342,6 +4354,13 @@ cmd_say:
         STA arg_lo
         LDA #0
         STA arg_hi
+        ; --- restore turtle position + pen_color (LIFO) ---
+        PLA
+        STA ty_lo
+        PLA
+        STA tx_lo
+        PLA
+        STA pen_color
         JMP cmd_wait              ; tail-call -- cmd_wait RTS returns to
                                   ;   parse_and_exec for us
 cmd_label:

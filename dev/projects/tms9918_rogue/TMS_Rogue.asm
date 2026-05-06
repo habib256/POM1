@@ -674,6 +674,7 @@ start:
         JSR init_vdp_g1         ; 8 registers + disable_sprites
         JSR override_r1_16x16   ; switch sprite mode 8x8 -> 16x16
         JSR upload_tileset      ; 2048 B pattern table -> VRAM $0000
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (back-to-back VDP store)
         JSR upload_colour_table ; 32 B colour table   -> VRAM $2000
         JSR clear_name_table    ; whole 32x24 -> char 0 (black)
 
@@ -717,6 +718,7 @@ start:
         JSR spawn_monsters      ; populate the pool for the first level
         JSR spawn_level_items   ; 1..3 typed items scattered on TILE_EMPTY
         JSR spawn_level_pits    ; 0..2 pits scattered on TILE_EMPTY
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (back-to-back VDP store)
         JSR place_all_sprites   ; SAT: player slot 0 + each live monster
         JSR update_hud          ; HUD rows 20..23: stats + timers/ammo
 
@@ -831,6 +833,7 @@ main_loop:
         ; reruns to reflect monster moves + the bump-attack flash.
         JSR player_attack_monster
         JSR move_monsters
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (back-to-back VDP store)
         JSR place_all_sprites
         JSR finish_turn
         JMP main_loop
@@ -844,6 +847,7 @@ main_loop:
         JMP main_loop           ; free action — no monster turn
 @inv_turn:
         JSR move_monsters
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (back-to-back VDP store)
         JSR place_all_sprites
         JSR finish_turn
         JMP main_loop
@@ -855,6 +859,7 @@ main_loop:
         JMP main_loop
 @throw_turn:
         JSR move_monsters
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (back-to-back VDP store)
         JSR place_all_sprites
         JSR finish_turn
         JMP main_loop
@@ -869,6 +874,7 @@ main_loop:
         ; cleanup chain as a regular move minus compute_fov / render_map
         ; (player didn't move, so visibility is unchanged).
         JSR move_monsters
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (back-to-back VDP store)
         JSR place_all_sprites
         JSR finish_turn
         JMP main_loop
@@ -3730,6 +3736,7 @@ render_map:
         JMP     @tl_hi
 @tl_lo_dark:
         LDA     #0
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (back-to-back VDP store)
         WRT_DATA_REG
         WRT_DATA_REG
 @tl_hi: ; --- high nibble (col 2Y+1) ---
@@ -3745,6 +3752,7 @@ render_map:
         JMP     @tl_byte_next
 @tl_hi_dark:
         LDA     #0
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (back-to-back VDP store)
         WRT_DATA_REG
         WRT_DATA_REG
 @tl_byte_next:
@@ -3774,6 +3782,7 @@ render_map:
         JMP     @bl_hi
 @bl_lo_dark:
         LDA     #0
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (back-to-back VDP store)
         WRT_DATA_REG
         WRT_DATA_REG
 @bl_hi: LSR     vis_pak_hi
@@ -3788,6 +3797,7 @@ render_map:
         JMP     @bl_byte_next
 @bl_hi_dark:
         LDA     #0
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (back-to-back VDP store)
         WRT_DATA_REG
         WRT_DATA_REG
 @bl_byte_next:
@@ -4729,6 +4739,7 @@ draw_text:
 update_hud:
         JSR     tms9918_pad40   ; MANUAL caller-gap cushion (40c)
         LDA     #$80                    ; row 20 col 0 = $1A80
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (back-to-back VDP store)
         STA     VDP_CTRL
         JSR     tms9918_pad40   ; +40c silicon-strict pad40 (before LDA #imm bridge)
         LDA     #$5A                    ; $1A | $40 -> write
@@ -4775,6 +4786,7 @@ update_hud_equip:
         WRT_DATA_VAL ':'
         LDA     player_dmg
         JSR     print_byte_2digits
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (back-to-back VDP store)
         WRT_DATA_VAL ' '
         WRT_DATA_VAL 'D'
         WRT_DATA_VAL 'E'
@@ -4783,6 +4795,7 @@ update_hud_equip:
         LDA     player_def
         JSR     print_byte_2digits
         ; 17 spaces of right-padding (cols 13..29).
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (before LDA #imm bridge)
         LDA     #' '
         LDX     #17
 @sp_lp: WRT_DATA_REG
@@ -4797,6 +4810,7 @@ update_hud_equip:
 ; update_hud_hp: paint HP on row 22 cols 24..31.
 ; ----------------------------------------------------------------------------
 update_hud_hp:
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (before LDA #imm bridge)
         LDA     #22
         STA     vdp_row
         LDA     #24
@@ -4811,6 +4825,7 @@ update_hud_hp:
         BNE     @h_lp
         LDA     hp
         JSR     print_byte_2digits
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (before LDA #imm bridge)
         LDA     #'/'
         WRT_DATA_REG
         LDA     hp_max                  ; XP-bumpable cap, not literal
@@ -4854,6 +4869,7 @@ update_hud_timers:
         JSR     print_byte_2digits
         JMP     @gap_arm
 @wpn_blank:
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (back-to-back VDP store)
         WRT_DATA_VAL ' '
         WRT_DATA_VAL ' '
 @gap_arm:
@@ -4866,6 +4882,7 @@ update_hud_timers:
         JSR     print_byte_2digits
         JMP     @gap_rng
 @arm_blank:
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (back-to-back VDP store)
         WRT_DATA_VAL ' '
         WRT_DATA_VAL ' '
 @gap_rng:
@@ -4878,6 +4895,7 @@ update_hud_timers:
         JSR     print_byte_2digits
         JMP     @gap_trc
 @rng_blank:
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (back-to-back VDP store)
         WRT_DATA_VAL ' '
         WRT_DATA_VAL ' '
 @gap_trc:
@@ -4890,6 +4908,7 @@ update_hud_timers:
         JSR     print_byte_2digits
         JMP     @xp_gap
 @trc_blank:
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (back-to-back VDP store)
         WRT_DATA_VAL ' '
         WRT_DATA_VAL ' '
 @xp_gap:
@@ -5024,6 +5043,7 @@ finish_turn:
         ; 20-23 — including HP/XP and the buff timer digits, which would
         ; otherwise be zapped if clear_msg_rows ran second.
         JSR     clear_msg_rows
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (back-to-back VDP store)
         JSR     update_hud
         LDA     hp
         BNE     @alive
@@ -5100,6 +5120,7 @@ death_screen:
         LDX     #$58                    ; $18 | $40
         JSR     draw_text
         ; "YOU DIED ON LEVEL " (18 chars) — row 6 col 5 → $18C5
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (before LDA #imm bridge)
         LDA     #<msg_died
         STA     vdp_src_lo
         LDA     #>msg_died
@@ -5108,6 +5129,7 @@ death_screen:
         LDX     #$58
         JSR     draw_text
         LDA     depth
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (back-to-back VDP store)
         JSR     print_byte_3digits
         ; "KILLED BY " (10 chars) — row 7 col 7 → $18E7. Killer name
         ; appended right after at $18F1 via a second draw_text call;
@@ -5133,6 +5155,7 @@ death_screen:
         STA     vdp_src_hi
         LDA     #$F1                    ; row 7 col 17 (right after "KILLED BY ")
         LDX     #$58
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (back-to-back VDP store)
         JSR     draw_text
         ; Detailed stats + footer
         JSR     paint_scores
@@ -5162,6 +5185,7 @@ win_screen:
         LDX     #$58
         JSR     draw_text
         ; "DUNGEON CONQUERED" (17 chars) — row 6 col 7 → $18C7
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (before LDA #imm bridge)
         LDA     #<msg_won
         STA     vdp_src_lo
         LDA     #>msg_won
@@ -5197,8 +5221,10 @@ paint_scores:
         STA     vdp_src_hi
         LDA     #$2A
         LDX     #$59                    ; $19 | $40
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (back-to-back VDP store)
         JSR     draw_text
         LDA     depth
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (back-to-back VDP store)
         JSR     print_byte_3digits
         ; row 10 col 10 → $194A
         LDA     #<msg_kills
@@ -5209,6 +5235,7 @@ paint_scores:
         LDX     #$59
         JSR     draw_text
         LDA     player_xp
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (back-to-back VDP store)
         JSR     print_byte_3digits
         ; row 11 col 10 → $196A
         LDA     #<msg_score_hp
@@ -5218,9 +5245,11 @@ paint_scores:
         LDA     #$6A
         LDX     #$59
         JSR     draw_text
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (before LDA zp/abs bridge)
         LDA     hp_max
         JSR     print_byte_2digits
         ; row 12 col 10 → $198A
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (before LDA #imm bridge)
         LDA     #<msg_score_atk
         STA     vdp_src_lo
         LDA     #>msg_score_atk
@@ -5228,11 +5257,13 @@ paint_scores:
         LDA     #$8A
         LDX     #$59
         JSR     draw_text
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (before LDA zp/abs bridge)
         LDA     xp_atk_bonus
         CLC
         ADC     #1                      ; bare-handed +1 base
         JSR     print_byte_2digits
         ; row 13 col 10 → $19AA
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (before LDA #imm bridge)
         LDA     #<msg_score_def
         STA     vdp_src_lo
         LDA     #>msg_score_def
@@ -5240,9 +5271,11 @@ paint_scores:
         LDA     #$AA
         LDX     #$59
         JSR     draw_text
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (before LDA zp/abs bridge)
         LDA     xp_def_bonus
         JSR     print_byte_2digits
         ; "PRESS ANY KEY" — row 16 col 9 → $1A09
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (before LDA #imm bridge)
         LDA     #<msg_press_key
         STA     vdp_src_lo
         LDA     #>msg_press_key
@@ -5347,6 +5380,7 @@ redraw_game:
         JSR     clear_name_table
         JSR     render_map
         JSR     place_all_sprites
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (back-to-back VDP store)
         JSR     update_hud
         RTS
 
@@ -5505,6 +5539,7 @@ show_inventory:
         JSR     draw_text
 @footer:
         ; "PRESS ANY KEY" at row 22 col 9.
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (before LDA #imm bridge)
         LDA     #22
         STA     vdp_row
         LDA     #9
@@ -5521,6 +5556,7 @@ show_inventory:
         ; fresh keypress (drain mirrors death_screen's pattern so a held
         ; 'I' doesn't insta-close the modal).
         LDA     KBD
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (back-to-back VDP store)
         JSR     wait_key
         ; If the player typed an in-range letter pointing at a non-empty
         ; slot, jump straight into the use/equip/throw dispatch — no
@@ -5961,6 +5997,7 @@ dispatch_use_slot:
         JSR     clear_name_table
         JSR     render_map
         JSR     place_all_sprites
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (back-to-back VDP store)
         JSR     update_hud
         ; Wait for any key — drain first so the killing 'E' press doesn't
         ; insta-close the modal.
@@ -6229,6 +6266,7 @@ show_help:
         ADC     #4
         TAX
         CPX     #(help_table_end - help_table)
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (back-to-back VDP store)
         BCC     @lp
         ; Drain the '?' strobe so a held key can't insta-close, then
         ; wait for an explicit ack press.
@@ -6302,6 +6340,7 @@ draw_title:
         ADC     #4
         TAX
         CPX     #(title_table_end - title_table)
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (back-to-back VDP store)
         BCC     @lp
         RTS
 
@@ -6343,6 +6382,7 @@ draw_briefing:
         ADC     #4
         TAX
         CPX     #(briefing_table_end - briefing_table)
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (back-to-back VDP store)
         BCC     @lp
         RTS
 

@@ -202,6 +202,7 @@ main:
         STA quit_flag
         STA view_mode
         JSR init_vdp_g2
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (back-to-back VDP store)
         JSR clear_bitmap
         ; drain stale keystrokes left over from Woz Monitor / paste buffer
         JSR drain_kb
@@ -939,10 +940,12 @@ plot_set:
         STA pix_mask
         ; read existing byte
         JSR vdp_set_read
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (before LDA zp/abs bridge)
         LDA VDP_DATA
         ORA pix_mask
         STA pix_byte
         JSR vdp_set_write
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (before LDA zp/abs bridge)
         LDA pix_byte
         STA VDP_DATA
 plot_done:
@@ -1242,6 +1245,7 @@ write_char:
         JSR vdp_set_write
         LDY #0
 @lp:    LDA (ptr_lo),Y
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (back-to-back VDP store)
         STA VDP_DATA
         INY
         CPY #8
@@ -1300,6 +1304,7 @@ clear_band:
         ; aligned -> set byte to 0
         JSR calc_pix_addr
         JSR vdp_set_write
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (before LDA #imm bridge)
         LDA #0
         STA VDP_DATA
 @bumpx: LDA pix_x
@@ -1331,6 +1336,7 @@ show_title:
         STA fl_x1
         LDA #28
         STA fl_y0
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (back-to-back VDP store)
         JSR hline
         LDA #60
         STA fl_y0
@@ -1517,6 +1523,7 @@ show_help:
         STA ch_cy
         LDA #<str_help_h1
         LDX #>str_help_h1
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (back-to-back VDP store)
         JSR print_str_ax
 
         LDA #1
@@ -1617,6 +1624,7 @@ show_win:
         STA ch_cy
         LDA #<str_win1
         LDX #>str_win1
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (back-to-back VDP store)
         JSR print_str_ax
         LDA #4
         STA ch_cx
@@ -1656,6 +1664,7 @@ show_lose:
         STA ch_cy
         LDA #<str_lose1
         LDX #>str_lose1
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (back-to-back VDP store)
         JSR print_str_ax
         LDA #6
         STA ch_cx
@@ -1690,6 +1699,7 @@ render_3d:
         STA fl_x1
         LDA #95
         STA fl_y0
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (back-to-back VDP store)
         JSR hline
         LDA #96
         STA fl_y0
@@ -2515,6 +2525,7 @@ render_map:
         STA ch_cy
         LDA #<str_map_title
         LDX #>str_map_title
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (back-to-back VDP store)
         JSR print_str_ax
 
         ; outer bounds
@@ -2693,6 +2704,7 @@ render_map:
 @mn:    LDX ch_idx
         INX
         CPX #NUM_MOBS
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (back-to-back VDP store)
         BNE @mlp
 
         ; Player arrow
@@ -2719,6 +2731,7 @@ render_map:
         STA ch_cy
         LDA #<str_map_help
         LDX #>str_map_help
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (back-to-back VDP store)
         JSR print_str_ax
         RTS
 
@@ -2880,6 +2893,7 @@ draw_combat_screen:
         STA ch_cy
         LDA #<str_combat_title
         LDX #>str_combat_title
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (back-to-back VDP store)
         JSR print_str_ax
 
         ; Monster name

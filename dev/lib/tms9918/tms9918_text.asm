@@ -261,6 +261,7 @@ print_at_rc_text:
         JSR     name_at_rc_text
         JSR     vdp_set_write
         PLA
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (back-to-back VDP store)
         STA     VDP_DATA
         RTS
 

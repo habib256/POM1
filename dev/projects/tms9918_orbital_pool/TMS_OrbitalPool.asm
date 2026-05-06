@@ -190,6 +190,7 @@ reset_shot:
         STA state
         JSR clear_trail_sprites
         JSR compute_ball_pixel
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (back-to-back VDP store)
         JSR move_ball_sprite
         RTS
 
@@ -334,9 +335,11 @@ render_scene:
         STA cell_row
         LDA #CHR_WELL
         STA cell_char
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (back-to-back VDP store)
         JSR draw_cell
         LDX well_i
         INX
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (back-to-back VDP store)
         JMP @wloop
 @done_wells:
 
@@ -351,10 +354,12 @@ render_scene:
         ; Ball is rendered via hardware sprite; refresh its position here
         ; so it survives the name-table clear at the top of render_scene.
         JSR compute_ball_pixel
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (back-to-back VDP store)
         JSR move_ball_sprite
 
         LDA state
         CMP #ST_AIM
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (back-to-back VDP store)
         BNE @done
         JSR draw_aim_tip
 @done:
@@ -518,6 +523,7 @@ stamp_trail_sprite:
         LDA trail_slot
         ASL
         ASL                     ; *4 (trail_slot <= 31, result <= 124)
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (back-to-back VDP store)
         STA VDP_CTRL
         JSR     tms9918_pad40   ; +40c silicon-strict pad40 (before LDA #imm bridge)
         LDA #$5B                ; $1B | $40

@@ -223,6 +223,7 @@ plot_set:
         LDA bitmask,X
         STA pix_mask
         JSR vdp_set_read
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (before LDA zp/abs bridge)
         LDA VDP_DATA
         LDX plot_mode
         BNE @xor
@@ -231,6 +232,7 @@ plot_set:
 @xor:   EOR pix_mask
 @write: STA pix_byte
         JSR vdp_set_write
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (before LDA zp/abs bridge)
         LDA pix_byte
         STA VDP_DATA
         ; --- colour cell (only on OR draws). XOR is the turtle-erase

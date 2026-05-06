@@ -192,6 +192,7 @@ sprite_triangle_render:
         ; --- Upload and place
         LDA tri_slot
         JSR sprite_buf_upload
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (before LDA zp/abs bridge)
         LDA tri_slot
         JMP sprite_attr_write     ; tail call
 

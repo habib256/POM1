@@ -100,6 +100,7 @@ init_vdp_g1:
         ; --- Final: re-arm R1 with the table value (display ON typically).
         ;     Display stays OFF until the cmd byte commits — threshold = 2c
         ;     through both STAs, no inline pad needed.
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (before LDA zp/abs bridge)
         LDA     vdp1_regs+1
         STA     VDP_CTRL
         JSR     tms9918_pad40   ; +40c silicon-strict pad40 (before LDA #imm bridge)
@@ -242,6 +243,7 @@ print_at_rc:
         JSR     name_at_rc
         JSR     vdp_set_write
         PLA
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (back-to-back VDP store)
         STA     VDP_DATA
         RTS
 

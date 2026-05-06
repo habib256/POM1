@@ -330,6 +330,7 @@ print_ptr_hi = str_hi
 main:
         JSR init_vdp
         JSR draw_title_tms
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (back-to-back VDP store)
         JSR draw_title_sprites
 
         LDA #<str_title
@@ -412,6 +413,7 @@ new_wave:
         INC wave
         JSR reset_arena
         JSR render_sprites
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (back-to-back VDP store)
         JSR draw_hud
 
 play_loop:
@@ -441,6 +443,7 @@ play_loop:
         JSR check_dive_vs_player
         JSR render_sprites
 
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (before LDA zp/abs bridge)
         LDA game_over
         BNE @over
         JSR all_dead
@@ -462,13 +465,16 @@ play_loop:
         JSR score_add
         JSR draw_hud
         ; Game-win check: did the player just clear the final wave?
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (before LDA zp/abs bridge)
         LDA wave
         CMP #WIN_WAVE
         BCC @normal_clear
         JMP @victory
 @normal_clear:
         JSR hide_all_sprites
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (back-to-back VDP store)
         JSR draw_wave_clear_tms
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (before LDA #imm bridge)
         LDA #<str_wave
         LDX #>str_wave
         JSR print_str_ax
@@ -477,7 +483,9 @@ play_loop:
 
 @victory:
         JSR hide_all_sprites
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (back-to-back VDP store)
         JSR draw_victory_tms
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (before LDA #imm bridge)
         LDA #<str_win
         LDX #>str_win
         JSR print_str_ax
@@ -2462,6 +2470,7 @@ player_hit:
 @over:
         LDA #$01
         STA game_over
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (back-to-back VDP store)
         JSR draw_hud
         RTS
 
@@ -2612,6 +2621,7 @@ render_sprites:
         JMP @after_p
 @show_p:
         LDA #PLAYER_Y
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (back-to-back VDP store)
         STA VDP_DATA
         JSR     tms9918_pad40   ; +40c silicon-strict pad40 (before LDA zp/abs bridge)
         LDA player_x            ; zp 3c → 7c gap (need 8c)
@@ -2645,6 +2655,7 @@ render_sprites:
         BNE @en_alive
         ; Dead -> hidden
         JSR hide_slot_4
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (back-to-back VDP store)
         JMP @en_next
 @en_alive:
         ; Hit-flash strobe: alternate visibility every 4 ticks while
@@ -2654,6 +2665,7 @@ render_sprites:
         AND #$04
         BNE @en_paint           ; bit set -> show frame
         JSR hide_slot_4
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (back-to-back VDP store)
         JMP @en_next
 @en_paint:
         ; Y
@@ -2708,11 +2720,12 @@ render_sprites:
 @pb_lp:
         LDA pb_active,X
         BNE @pb_show
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (back-to-back VDP store)
         JSR hide_slot_4
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (back-to-back VDP store)
         JMP @pb_next
 @pb_show:
         LDA pb_y,X
-        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (back-to-back VDP store)
         STA VDP_DATA
         JSR     tms9918_pad40   ; +40c silicon-strict pad40 (before LDA zp/abs bridge)
         LDA pb_x,X              ; abs,X 4c → 8c gap ✓
@@ -2740,6 +2753,7 @@ render_sprites:
         JMP @eb_next
 @eb_show:
         LDA eb_y,X
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (back-to-back VDP store)
         STA VDP_DATA
         JSR     tms9918_pad40   ; +40c silicon-strict pad40 (before LDA zp/abs bridge)
         LDA eb_x,X              ; abs,X 4c → 8c gap ✓
@@ -2785,14 +2799,15 @@ render_sprites:
         STA VDP_DATA
         JMP @after_exp
 @exp_hide:
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (back-to-back VDP store)
         JSR hide_slot_4
 @after_exp:
 
         ; --- Slot 11: falling drop (bonus or skull) ---
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (before LDA zp/abs bridge)
         LDA drop_active
         BEQ @drop_hide
         LDA drop_y
-        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (back-to-back VDP store)
         STA VDP_DATA
         JSR     tms9918_pad40   ; +40c silicon-strict pad40 (before LDA zp/abs bridge)
         LDA drop_x              ; zp 3c → 7c gap
@@ -2807,14 +2822,15 @@ render_sprites:
         STA VDP_DATA
         JMP @after_drop
 @drop_hide:
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (back-to-back VDP store)
         JSR hide_slot_4
 @after_drop:
 
         ; --- Slot 12: score popup (single shared sprite) ---
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (before LDA zp/abs bridge)
         LDA popup_active
         BEQ @popup_hide
         LDA popup_y
-        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (back-to-back VDP store)
         STA VDP_DATA
         JSR     tms9918_pad40   ; +40c silicon-strict pad40 (before LDA zp/abs bridge)
         LDA popup_x             ; zp 3c → 7c gap
@@ -2830,14 +2846,15 @@ render_sprites:
         STA VDP_DATA
         JMP @after_popup
 @popup_hide:
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (back-to-back VDP store)
         JSR hide_slot_4
 @after_popup:
 
         ; --- Slot 13: shield ring (drawn around the ship) ---
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (before LDA zp/abs bridge)
         LDA shield_t
         BEQ @shield_hide
         LDA #PLAYER_Y
-        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (back-to-back VDP store)
         STA VDP_DATA
         JSR     tms9918_pad40   ; +40c silicon-strict pad40 (before LDA zp/abs bridge)
         LDA player_x            ; zp 3c → 7c gap
@@ -2853,6 +2870,7 @@ render_sprites:
         STA VDP_DATA
         JMP @after_shield
 @shield_hide:
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (back-to-back VDP store)
         JSR hide_slot_4
 @after_shield:
 
@@ -2874,6 +2892,7 @@ render_sprites:
         ; The pad40 prologue at @term_now covers the cross-JSR caller
         ; case (render_super_n's last STA → JSR + RTS + 2-byte BNE/BEQ
         ; bridge → @term_now's STA = ~12c, < 40c).
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (before LDA zp/abs bridge)
         LDA is_super_boss
         ORA is_super_boss+1
         BEQ @term_now           ; both inactive → write Y=$D0 at slot 14, done
@@ -2886,8 +2905,10 @@ render_sprites:
         ; super0 inactive, super1 active — emit 4 hidden entries for slots 14-17.
         LDY #$04
 @s0h_lp:
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (back-to-back VDP store)
         JSR hide_slot_4
         DEY
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (back-to-back VDP store)
         BNE @s0h_lp
 @after_s0:
         LDA is_super_boss+1
@@ -2904,6 +2925,7 @@ render_sprites:
         ; Single Y=$D0 ends the SAT scan. Caller's last STA was either
         ; render_super_n's colour write (post-RTS) or a sibling slot —
         ; either way we cross a JSR boundary, so apply a manual cushion.
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (before LDA #imm bridge)
         LDA #TERM_Y
         STA VDP_DATA
         RTS
@@ -2926,6 +2948,7 @@ render_super_n:
 @hide_lp:
         JSR hide_slot_4
         DEY
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (back-to-back VDP store)
         BNE @hide_lp
         RTS
 @show:
@@ -3199,6 +3222,7 @@ draw_title_tms:
         JSR draw_str_tms
 
         ; "APPLE-1 TMS9918" 15 chars - row 4 col 8 -> $1888
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (before LDA #imm bridge)
         LDA #<title_card_tms
         STA sptr_lo
         LDA #>title_card_tms
@@ -3208,6 +3232,7 @@ draw_title_tms:
         JSR draw_str_tms
 
         ; "BY VERHILLE ARNAUD" - row 6 col 7 -> $18C7
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (before LDA #imm bridge)
         LDA #<title_author_tms
         STA sptr_lo
         LDA #>title_author_tms
@@ -3222,6 +3247,7 @@ draw_title_tms:
         ;
         ; "SCOUT" centred under yellow sprite (X=48, cols 6-7).
         ; Row 14 col 4 -> $19C4
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (before LDA #imm bridge)
         LDA #$C4
         STA VDP_CTRL
         JSR     tms9918_pad40   ; +40c silicon-strict pad40 (before LDA #imm bridge)
@@ -3356,6 +3382,7 @@ draw_title_tms:
         JSR draw_str_tms
 
         ; "1 QWERTY (A D S)" - row 19 col 8 -> $1A68
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (before LDA #imm bridge)
         LDA #<title_qwerty_tms
         STA sptr_lo
         LDA #>title_qwerty_tms
@@ -3365,6 +3392,7 @@ draw_title_tms:
         JSR draw_str_tms
 
         ; "2 AZERTY (Q D S)" - row 20 col 8 -> $1A88
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (before LDA #imm bridge)
         LDA #<title_azerty_tms
         STA sptr_lo
         LDA #>title_azerty_tms
@@ -3374,6 +3402,7 @@ draw_title_tms:
         JSR draw_str_tms
 
         ; "SPACE FIRE" - row 22 col 11 -> $1ACB
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (before LDA #imm bridge)
         LDA #<title_keys_tms
         STA sptr_lo
         LDA #>title_keys_tms
@@ -3515,6 +3544,7 @@ draw_help_tms:
         JSR draw_str_tms
 
         ; "DOUBLE SHOT" - row 5 col 9 -> $18A9
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (before LDA #imm bridge)
         LDA #<title_help_double
         STA sptr_lo
         LDA #>title_help_double
@@ -3524,6 +3554,7 @@ draw_help_tms:
         JSR draw_str_tms
 
         ; "TRIPLE SHOT" - row 8 col 9 -> $1909
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (before LDA #imm bridge)
         LDA #<title_help_triple
         STA sptr_lo
         LDA #>title_help_triple
@@ -3533,6 +3564,7 @@ draw_help_tms:
         JSR draw_str_tms
 
         ; "SHIELD" - row 11 col 9 -> $1969
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (before LDA #imm bridge)
         LDA #<title_help_shield
         STA sptr_lo
         LDA #>title_help_shield
@@ -3542,6 +3574,7 @@ draw_help_tms:
         JSR draw_str_tms
 
         ; "SKULL : - 1 LIFE" - row 14 col 8 -> $19C8
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (before LDA #imm bridge)
         LDA #<title_help_skull
         STA sptr_lo
         LDA #>title_help_skull
@@ -3551,6 +3584,7 @@ draw_help_tms:
         JSR draw_str_tms
 
         ; "BOMB : KILL ALL" - row 17 col 9 -> $1A29
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (before LDA #imm bridge)
         LDA #<title_help_bomb
         STA sptr_lo
         LDA #>title_help_bomb
@@ -3560,6 +3594,7 @@ draw_help_tms:
         JSR draw_str_tms
 
         ; "ANY KEY - START" - row 20 col 8 -> $1A88
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (before LDA #imm bridge)
         LDA #<title_help_anykey
         STA sptr_lo
         LDA #>title_help_anykey
@@ -3687,6 +3722,7 @@ draw_wave_clear_tms:
         JSR     tms9918_pad40   ; +40c silicon-strict pad40 (before LDA zp/abs bridge)
         LDA wave
         JSR emit_2digit_tms
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (before LDA #imm bridge)
         LDA #C_SP
         STA VDP_DATA
         JSR     tms9918_pad40   ; +40c silicon-strict pad40 (before LDA #imm bridge)
@@ -3975,7 +4011,9 @@ draw_gameover_tms:
         STA sptr_hi
         LDA #$4B                ; row 10 col 11
         LDX #$59
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (back-to-back VDP store)
         JSR draw_str_tms
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (before LDA #imm bridge)
         LDA #<title_press_tms
         STA sptr_lo
         LDA #>title_press_tms
@@ -4091,6 +4129,7 @@ init_starfield:
         JSR plot_star
         INX
         CPX #$08
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (back-to-back VDP store)
         BCC @lp
         RTS
 
@@ -4145,6 +4184,7 @@ tick_starfield:
         JSR plot_star
         INX
         CPX #$08
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (back-to-back VDP store)
         BCC @lp
 @done:
         RTS
@@ -4256,6 +4296,7 @@ init_vdp:
         STA VDP_CTRL
         JSR     tms9918_pad40   ; +40c silicon-strict pad40 (back-to-back VDP store)
         JSR upload_star_pattern
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (before LDA #imm bridge)
         LDA #$80                ; char 112 = VRAM $0380
         STA VDP_CTRL
         JSR     tms9918_pad40   ; +40c silicon-strict pad40 (before LDA #imm bridge)
@@ -4263,6 +4304,7 @@ init_vdp:
         STA VDP_CTRL
         JSR     tms9918_pad40   ; +40c silicon-strict pad40 (back-to-back VDP store)
         JSR upload_star_pattern
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (before LDA #imm bridge)
         LDA #$C0                ; char 120 = VRAM $03C0
         STA VDP_CTRL
         JSR     tms9918_pad40   ; +40c silicon-strict pad40 (before LDA #imm bridge)
@@ -4272,6 +4314,7 @@ init_vdp:
         JSR upload_star_pattern
 
         ; --- Tile colour groups (chars 0-95): we only use the HUD set ---
+        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (before LDA #imm bridge)
         LDA #$00
         STA VDP_CTRL
         JSR     tms9918_pad40   ; +40c silicon-strict pad40 (before LDA #imm bridge)

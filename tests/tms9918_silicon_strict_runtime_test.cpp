@@ -216,9 +216,8 @@ int main()
     // ----------------------------------------------------------------------
     // Phase 6: strict + display blanked (R1 bit 6 = 0) → 16-cycle window.
     // Mirrors the Mode I+sprites worst case (1 slot/16 VDP + STA + margin).
-    // Most natural 6502 patterns drop here without explicit padding —
-    // typical `LDA abs / STA / LDA abs / STA` is only 8c gap, so the
-    // patcher injects JSR pad{12,24,40} or display-off blanking is used.
+    // Strict means strict — no per-mode escape hatch. The auto-patcher
+    // handles cross-JSR boundaries via VDP-tail routine detection.
     // ----------------------------------------------------------------------
     {
         TMS9918 vdp;
@@ -237,6 +236,84 @@ int main()
         mustBeTrue(readVramAt(vdp, 0x1301) == 0x00, "Phase6 blank: gap=15 dropped"); ++assertions;
         mustBeTrue(readVramAt(vdp, 0x1302) == 0x00, "Phase6 blank: gap=8 dropped"); ++assertions;
         mustBeTrue(readVramAt(vdp, 0x1303) == 0x00, "Phase6 blank: gap=6 dropped"); ++assertions;
+    }
+
+    // ----------------------------------------------------------------------
+    // Phase 7: cross-JSR boundary at VBlank gate (Snake draw_hud regression).
+    //
+    // Models the sequence around `JSR emit_3digit_vdp` in TMS_Snake.asm:
+    //   STA VDP_DATA      ; callee's last opcode (4c) → counter reset to 4
+    //   RTS               ; (6c) → counter at 10
+    //   JSR tms9918_pad40 ; (40c) → counter at 50         ← patcher-injected
+    //   LDA #$17          ; (2c) → counter at 52
+    //   STA VDP_CTRL      ; check counter (52 ≥ 16) → ACCEPT
+    //   JSR tms9918_pad40 ; (40c) → counter at 4+40 = 44   ← patcher-injected
+    //   LDA #$58          ; (2c) → counter at 46
+    //   STA VDP_CTRL      ; check counter (46 ≥ 16) → ACCEPT
+    //
+    // Without the patcher's cross-JSR pads, the counter at each STA VDP_CTRL
+    // would be 12c (10c RTS-bridge + 2c LDA), exactly matching the
+    // user-observed gap=12 drops in Snake at strict 16c-VBlank.
+    // ----------------------------------------------------------------------
+    {
+        TMS9918 vdp;
+        vdp.reset();
+        // R1 = 0xC0 -> display ON, 16K, Mode 0, sprites 8x8
+        strictWriteControl(vdp, 0xC0);
+        strictWriteControl(vdp, 0x81);
+        // Drive frameCycleCounter past kActiveDisplayCycles so we're in VBlank.
+        vdp.advanceCycles(13000);
+        vdp.setSiliconStrictMode(true);
+
+        // Set up VRAM write address = $1000.
+        strictSetWriteAddress(vdp, 0x1000);
+
+        // ---- callee's last STA VDP_DATA ----
+        vdp.advanceCycles(44);            // saturated entry to writeData
+        vdp.writeData(0xCA);              // ACCEPT, counter resets to 0 inside
+        vdp.advanceCycles(4);             // STA opcode's own 4c
+
+        // ---- bridge: RTS (6c) + JSR pad40 (40c) + LDA #$17 (2c) = 48c ----
+        vdp.advanceCycles(6 + 40 + 2);
+        vdp.writeControl(0x17);           // 1st byte of addr pair, counter=52 → ACCEPT
+        vdp.advanceCycles(4);             // STA VDP_CTRL opcode's own 4c
+
+        // ---- bridge: JSR pad40 (40c) + LDA #$58 (2c) = 42c ----
+        vdp.advanceCycles(40 + 2);
+        vdp.writeControl(0x58);           // 2nd byte, counter=46 → ACCEPT, addr = $1817
+        vdp.advanceCycles(4);
+
+        // Final data write to confirm address landed correctly.
+        vdp.advanceCycles(40 + 2);        // mirror Snake's @hi_lp: JSR pad40 + LDA hud_hi_str,X
+        vdp.writeData(0xAB);
+
+        mustBeTrue(readVramAt(vdp, 0x1817) == 0xAB,
+                   "Phase7 cross-JSR: pad40 cushion lets the post-RTS address-set + data-write land at the intended VRAM address"); ++assertions;
+
+        // Negative control: same pattern WITHOUT the cross-JSR pad → drop.
+        // Bridge becomes RTS (6c) + LDA #imm (2c) = 8c, gap = 12c < 16c VBlank.
+        vdp.reset();
+        strictWriteControl(vdp, 0xC0);
+        strictWriteControl(vdp, 0x81);
+        vdp.advanceCycles(13000);
+        vdp.setSiliconStrictMode(true);
+        strictSetWriteAddress(vdp, 0x2000);
+        vdp.advanceCycles(44);
+        vdp.writeData(0xDE);              // accepted
+        vdp.advanceCycles(4);             // STA's 4c
+        vdp.advanceCycles(6 + 2);         // RTS + LDA only — NO pad40
+        vdp.writeControl(0x17);           // gap=12 < 16 → DROP
+        // Latch is still 0 from last accepted writeControl in the strictWriteControl
+        // path. Even after the dropped $17, latch stays 0. So the next byte
+        // write — even if accepted — is interpreted as a fresh 1st byte, the
+        // address is never set, and the subsequent writeData lands at the
+        // chip's *previous* vramAddr (= $2000). VRAM[$2017] therefore stays 0.
+        vdp.advanceCycles(44);
+        vdp.writeControl(0x58);           // accepted but as 1st byte of new pair
+        vdp.advanceCycles(44);
+        vdp.writeData(0xEE);              // lands at $2000 (or wherever vramAddr is)
+        mustBeTrue(readVramAt(vdp, 0x2017) == 0x00,
+                   "Phase7 negative: without cross-JSR pad, the dropped addr-set leaves VRAM[$2017] unwritten"); ++assertions;
     }
 
     // Sanity: getter must mirror the last setter call.
