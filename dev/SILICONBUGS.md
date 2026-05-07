@@ -36,41 +36,65 @@ $FF00-$FFFF   Wozmon + vecteurs
 
 Le TMS9918A est **esclave de son propre signal vidéo** : le scan pixel + le rafraîchissement DRAM sont prioritaires absolus. Le CPU ne reçoit que des **fenêtres d'accès VRAM** ouvertes par le séquenceur interne. Quand le CPU initie un accès à `$CC00` ou `$CC01` :
 
-1. **Délai physique de préparation** : ~2 µs incompressibles.
-2. **Attente de fenêtre libre** : variable, selon le mode actif et l'usage des sprites.
+1. **Délai physique de préparation** : ~28 ticks VDP (≈ 1,3 µs, openMSX `Delta::D28`).
+2. **Attente du prochain slot libre** : variable selon la position dans la scanline et le mode actif.
 
-Si le CPU envoie le prochain octet **avant que la fenêtre précédente n'ait été consommée**, le pipeline interne déborde et **l'octet est perdu ou corrompu** dans la VRAM. Aucune erreur signalée.
+Si le CPU envoie le prochain octet **avant que le latch précédent n'ait été drainé**, le chip écrase silencieusement (openMSX `tooFastCallback` avec `allowTooFastAccess=false`). Aucune erreur signalée. C'est la cause primaire des damiers Galaga sur silicium réel.
 
-### Les latences réelles dépendent du mode actif
+### Modèle slot-table openMSX (source de vérité)
 
-Un cycle mémoire VDP ≈ **372 ns**. La fenêtre d'accès CPU s'ouvre :
+POM1 v6.x a remplacé le seuil min-distance par un **port verbatim du modèle openMSX** (`src/video/VDPAccessSlots.cc`). Une scanline TMS9918 NTSC fait 1368 ticks VDP (≈ 63,7 µs, `TICKS_PER_LINE` openMSX). Pour chaque mode, openMSX publie la liste exacte des positions de slot CPU dans la ligne :
 
-| Mode actif | Fréquence fenêtre | Délai pire cas | Notes |
-|---|---|---|---|
-| **Affichage blanké** (R1 bit 6 = 0) ou **VBLANK** | continu | ~2 µs (préparation seule) | Bande passante libre, init VRAM rapide possible |
-| **Mode Texte** (M1=1) | 1 sur 3 cycles | ~1,1 µs | Le plus tolérant — pas de sprites |
-| **Mode Multicolore** (M2=1) | 1 sur 4 cycles | ~1,5 µs | |
-| **Mode Graphic I / II avec sprites actifs** | 1 sur 16 cycles | **~6 µs** | Cas de Galaga |
-| Mode Graphic I / II avec sprites désactivés (Y=$D0 dès SAT[0]) | 1 sur 6 cycles | ~2,2 µs | Astuce d'init si pas besoin de sprites |
+- `slotsMsx1ScreenOff` — display blanké (R1.6=0). Slots tous les ~8 ticks pour la majeure partie de la ligne.
+- `slotsMsx1Gfx12` — Mode I (Graphic 1) + Mode II (Graphic 2). 19 slots/ligne ; pattern bursty `4, 12, 20, 28, 116, 124, 132, 140, 220, 348, 476, 604, 732, 860, 988, 1116, 1236, 1244, 1364`.
+- `slotsMsx1Gfx3` — Multicolor (Mode 3). 51 slots/ligne, intermédiaire entre Gfx12 et Text.
+- `slotsMsx1Text` — Text (Mode 1). 91 slots/ligne, dense pour la première moitié.
 
-**Pour Galaga (Mode 0 Graphic I + 10 sprites actifs)**, le pire cas *typique* est **~6 µs** — soit ~6,1 cycles 6502 à 1,022 MHz à phase CPU↔VDP idéale.
+À chaque accès CPU à `$CC00/$CC01` :
+1. POM1 calcule `linePosTicks = (frameCycleCounter * 21) % 1368` (1 cycle 6502 ≈ 21 ticks à 1.022727 MHz).
+2. Recherche dans la table active : `slotTick = smallest slot ≥ linePosTicks + 28`.
+3. `pendingDrainCycles = ceil((slotTick - linePosTicks) / 21)` cycles 6502.
+4. Pendant ce drain, tout autre accès est silencieusement écrasé.
 
-### Pourquoi viser 16 cycles, pas 8 (paranoid mode)
+**Important** : openMSX **ne distingue pas sprites-on/off** sur MSX1 — `slotsMsx1Gfx12` agrège les deux cas (le pattern de slots reflète déjà le pire cas avec sprites). On supprime donc le scan SAT[0]=$D0 historique.
 
-Le 8c historique reflétait le pire-cas typique au meilleur alignement de phase. Sur silicium réel, la phase CPU↔VDP dérive (clocks asynchrones), et le pire-pire-cas combine :
+### Divergence POM1 vs openMSX : VBlank libre
 
-1. **Slot manqué** : si l'accès CPU arrive juste après qu'un slot VDP a été consommé, il faut attendre le prochain slot — jusqu'à 16 cycles VDP = ~6 µs supplémentaires.
-2. **Latch STA** : l'écriture CPU est validée à la fin du cycle de l'instruction (4c pour STA abs).
-3. **Marge de phase NMOS** : ~2c de jitter sur du silicium chaud (turnaround bus).
+openMSX choisit la table active uniquement selon `(R1.6, mode)` — la position verticale dans la frame n'influe pas. Cela fait que pendant les ~70 lignes de VBlank NTSC avec display ON, openMSX impose la table Gfx12 alors que sur silicium **le sprite-scan + pixel-fetch n'ont pas lieu** : la bande passante VRAM est libre.
 
-Total : 6.1c (slot) + 4c (STA) + 6c (marge phase) = **~16 cycles**. POM1 strict applique 16c en Mode I+sprites, contrat : *passer POM1 strict ⇒ silicium garanti*. Les autres modes appliquent le même facteur ×2 :
+POM1 corrige ça côté `selectSlotTable()` : si `frameCycleCounter >= kActiveDisplayCycles` (i.e. en VBlank), on bascule sur `slotsMsx1ScreenOff` quel que soit R1.6. Cela autorise l'idiome silicon-correct :
 
-| Mode | Seuil POM1 strict (cycles) | 1 slot VDP toutes les ... |
-|---|--:|---|
-| Mode I + sprites actifs | **16** | 16 cycles VDP |
-| Mode I sans sprites / Mode II / Multicolor | 6 | 4-6 cycles VDP |
-| Texte (M1) | 4 | 3 cycles VDP |
-| Display blanké / VBlank | 2 | bande passante libre |
+```asm
+@wait_vbl: BIT $CC01
+           BPL @wait_vbl     ; spin until F flag set
+           ; ~4554 cycles 6502 de bande passante CPU-libre disponibles
+```
+
+Sans cette divergence, des programmes comme Rogue (qui empilent les uploads en VBlank) auraient des drops fantômes sous POM1 alors qu'ils tournent sur silicium réel.
+
+### Rendu progressif par scanline (rainbow demos) ✅ IMPLÉMENTÉ
+
+POM1 conserve une `framebuffer[320×240]` persistante côté `TMS9918`, peinte ligne par ligne dans `advanceCycles` au moment où le faisceau franchit chaque scanline. Conséquences silicon-correctes :
+
+- **R7 (backdrop) changé en milieu de frame** → le L/R border bands des scanlines suivantes utilisent la nouvelle couleur. Lignes déjà rasterisées gardent l'ancienne. Effet "rainbow" possible.
+- **R1.6 (display blank) toggled en milieu de frame** → lignes "active" = pixels rendus, lignes "blank" = backdrop seul.
+- **VRAM modifiée en milieu de frame** → seules les lignes rendues APRÈS la modification voient le nouveau pattern/SAT/color. Lignes antérieures sont figées.
+- **R5/R6/R4 changés mid-frame** → next-line render utilise les nouveaux pointeurs (split-screen attribute changes).
+
+Cf. `TMS9918::renderActiveLine`, `paintLeftRightBorderForActiveLine`, `paintTopBorder`, `paintBottomBorder`. Les helpers `renderGfxILineRaw` / `renderGfxIILineRaw` / `renderTextLineRaw` / `renderMulticolorLineRaw` / `renderSpritesLineRaw` font le travail per-scanline raw, partageable entre live (progressive) et legacy (snapshot).
+
+Test pin : `tests/tms9918_per_scanline_test.cpp` Phase F valide qu'un changement R7 mid-frame produit deux couleurs de bordure différentes selon la zone verticale.
+
+### Pire-cas silicon par mode (mesuré via slot-table)
+
+| Mode | Pire gap inter-slots (ticks) | Cycles 6502 | Pire-cas total (D28 prep + gap) |
+|---|--:|--:|--:|
+| Display blanké | 16 | 0,8c | 2c (D28 dominé) |
+| Texte (M1) | 16 | 0,8c | 2c |
+| Multicolor (M2) | 88 | 4,2c | 5c |
+| **Graphic I/II** | **128** | **6,1c** | **7,5c** |
+
+Le **plancher empirique Tetris (gap 11c)** se situe ~50% au-dessus du pire silicon Gfx12 (7,5c) — confortable. Galaga (4c bursts) est sous le plancher → drops attendus, comme sur silicium.
 
 ### Ce que fait POM1
 
@@ -86,19 +110,39 @@ void TMS9918::writeData(uint8_t value) {
 ```
 Tous les octets passent, quel que soit le rythme. **Le code peut spammer `STA $CC00` à 1 cycle d'intervalle, POM1 dira "OK".**
 
-### Impact sur le code (Galaga = pire-pire cas ~16 cycles paranoid)
+### Impact sur le code (silicon worst-case Gfx12 = ~7,5c, pad12 OK)
 
-À 1,022 MHz Apple-1 : **1 cycle ≈ 0,978 µs**. Cible paranoid : **≥ 16 cycles entre deux accès VRAM** en Mode Graphic + sprites.
+À 1,022 MHz Apple-1 : **1 cycle ≈ 0,978 µs**. Le modèle slot-table donne un pire-cas Gfx12 de ~7,5c (D28 prep + 128 ticks worst gap). Tous les patterns ci-dessous sont jugés contre ce floor — Tetris (11c) passe largement, Galaga (4c bursts) drop systématiquement.
 
-| Pattern 6502 | Cycles entre 2 writes VRAM | Verdict silicium 16c |
-|---|---|---|
-| `STA $CC00` ; `STA $CC00` (back-to-back) | 4 | **KO** |
-| `LDA #x` ; `STA $CC00` ; `LDA #y` ; `STA $CC00` | 6 | **KO** |
-| `STA $CC00` ; `NOP×2` ; `STA $CC00` (ancien strict 8c) | 8 | **KO paranoid** |
-| `STA $CC00` ; `NOP×6` ; `STA $CC00` | 16 | **OK** (6 NOPs = 6 octets) |
-| `STA $CC00` ; `JSR tms9918_pad12` ; `STA $CC00` | **16** | **OK** (3 octets pour 12c — gagnant) |
-| `STA $CC00` ; `LDA #x` ; `JSR tms9918_pad12` ; `STA $CC00` | **22** | **OK** confortable (3 octets ajoutés) |
-| Boucle `LDA tab,X / STA $CC00,X / DEX / BNE` | 4+5+2+3 = 14c entre writes | **KO**, ajouter 1 NOP |
+| Pattern 6502 | Gap entre writes | Verdict slot-model | Note |
+|---|---|---|---|
+| `STA $CC00` ; `STA $CC00` (back-to-back) | 4c | **KO** | sous le floor |
+| `LDA #x` ; `STA $CC00` ; `LDA #y` ; `STA $CC00` | 6c | **KO** | sous le floor |
+| `STA $CC00` ; `NOP×2` ; `STA $CC00` (ancien strict 8c) | 8c | **borderline** | dépend de la phase |
+| `STA $CC00` ; `JSR tms9918_pad12` ; `STA $CC00` | 16c | **OK** (3 octets, gagnant ratio) |
+| `STA $CC00` ; `NOP×6` ; `STA $CC00` | 16c | **OK** (6 NOPs = 6 octets) |
+| Boucle Tetris (`LDA / STA $CC00 / DEX / BNE`) | 11c | **OK** (silicon-validated) |
+| Boucle `LDA tab,X / STA $CC00,X / DEX / BNE` | 14c | **OK** confortable |
+
+Le choix de **`JSR tms9918_pad12`** (16c gap, 3 octets au site) reste optimal : ratio 4c/octet, deux fois plus dense que NOP×6 (2c/octet). `pad24` et `pad40` sont des cushions plus larges utiles pour les routines callées depuis des call-sites multiples (Phase 7 du test runtime).
+
+### Diagnostiquer un programme qui drop
+
+POM1 expose une infrastructure de diagnostic complète quand `Silicon Strict` est ON :
+
+- **Status bar** : compteur live `STRICT — drops:N` à côté du tag STRICT/FANTASY.
+- **Trace stderr** : les 60 premiers drops sont tracés une ligne par drop avec PC, valeur, vramAddr, drain restant, position dans la ligne, table active, port (D=$CC00 / C=$CC01), phase (active/vblank). Format :
+  ```
+  [TMS9918 DROP #N] D val=B0 vramAddr=1100 latch2=0 drain=4c linePos=1152
+  nextSlot=1236 tbl=Gfx12 vblank=0 frameCycle=120 R1=C0 PC=$5A04
+  ```
+- **Menu Hardware → Dump TMS9918 drop diagnostics** : produit sur stderr le histogramme complet :
+  - total + breakdown port/phase/table
+  - top-16 PC (mid-instruction ; le `STA` est à `PC-3` pour `STA abs` / `STA abs,X`)
+  - reset via `Reset TMS9918 drop counter` adjacent
+- **CLI** : `--silicon-strict` / `--no-silicon-strict` au boot.
+
+Pour cibler un programme silicon-safe, le workflow est : strict ON → lancer le programme → `Dump diagnostics` → corriger la PC en tête de liste (probablement un STA dans une boucle serrée) → re-tester → itérer.
 
 ### Padding dense — `JSR tms9918_pad12` (preferred)
 
@@ -259,7 +303,7 @@ Et **toujours** OR-er `VDP_R1_BASE` quand on écrit R1.
 
 ---
 
-## 5. BUG N°4 — Collision sprite en overscan
+## 5. BUG N°4 — Collision sprite en overscan ✅ IMPLÉMENTÉ
 
 ### Ce que fait le silicium
 
@@ -267,23 +311,15 @@ Le sprite engine du TMS9918 raster une zone interne **plus large que l'écran vi
 
 ### Ce que fait POM1
 
-`scanSpritesForStatus()` dans `TMS9918.cpp:434-533` clipe à `[0, 256)` :
-```cpp
-if (sx < 0 || sx >= kScreenWidth) continue;
-```
-Les pixels en overscan ne sont pas comptés. **Aucune collision détectée hors écran.**
+**`scanSpritesForLine()` dans `TMS9918.cpp` étend la collision à `[-32, 288)`** depuis le passage au modèle slot-table openMSX (mai 2026). Le test `tms9918_per_scanline` Phase D pinne ce comportement. Le rendu (`renderSprites`) reste clippé à `[0, 256)` — l'overscan n'apparaît pas visuellement, seulement dans la détection de collision (silicon-correct).
 
-### Impact
+### Pin du comportement
 
-Code qui spawn un sprite ennemi à `X = -30` (avec early-clock bit 7 du color byte) en attendant que la collision le détruise au passage du joueur **ne déclenchera jamais bit 5 sur POM1** mais le fera sur silicium. Risque de "ennemis fantômes" qui ne meurent que sur silicium.
-
-### Recommandation
-
-Ne pas s'appuyer sur la collision en zone overscan. Si le gameplay nécessite "collision off-screen", la calculer en software (bounding-box sur les coordonnées sprites en RAM) plutôt que via le status register.
+`tests/tms9918_per_scanline_test.cpp` Phase D : 2 sprites en early-clock (color bit 7 = 1, X=10 → réel X=-22), pattern $FF, Y=50. Lecture du status après une frame → bit 5 doit être set.
 
 ---
 
-## 6. BUG N°5 — Sprite scan 1×/frame (au VBlank) vs par scanline
+## 6. BUG N°5 — Sprite scan 1×/frame (au VBlank) vs par scanline ✅ IMPLÉMENTÉ
 
 ### Ce que fait le silicium
 
@@ -291,7 +327,7 @@ Les flags collision (bit 5) et 5S (bit 6) sont mis à jour **scanline par scanli
 
 ### Ce que fait POM1
 
-`advanceCycles()` (`TMS9918.cpp:127-139`) appelle `scanSpritesForStatus()` **une seule fois** par frame, juste avant de lever bit 7. Pendant la frame, bits 5 et 6 sont **figés à leur valeur de la frame précédente**.
+**`advanceCycles()` invoque `scanSpritesForLine(line)` à chaque scanline franchie** (mai 2026). Port verbatim de la logique openMSX `SpriteChecker::checkSprites1` (line-major variant — POM1 walk la SAT une fois par scanline, openMSX la sprite-major loop optim n'apporte rien à 60 Hz). `scanSpritesForStatus` (1×/frame) reste comme fallback VBlank pour les frames où le display est resté blanké.
 
 ### Impact 1 — Détection de collision retardée
 
@@ -324,7 +360,7 @@ Le silicium **efface bit 7 (F), bit 6 (5S) ET bit 5 (C) à chaque lecture** du s
 
 ---
 
-## 7. BUG N°6 — Status bits 0..4 ne reflètent pas le "dernier sprite scanné"
+## 7. BUG N°6 — Status bits 0..4 ne reflètent pas le "dernier sprite scanné" ✅ IMPLÉMENTÉ
 
 ### Ce que fait le silicium
 
@@ -332,34 +368,11 @@ Sur le TMS9918A standard, bits 0..4 du status register contiennent l'index SAT d
 
 ### Ce que fait POM1
 
-`scanSpritesForStatus()` (`TMS9918.cpp:467-484`) ne met à jour les bits 0..4 **que** quand bit 6 est latché :
-```cpp
-if (visible == 4) {
-    if (!fiveAlreadyLatched) {
-        statusOut = (statusOut & 0xE0) | (uint8_t)(i & 0x1F);
-        statusOut |= 0x40;
-        ...
-    }
-}
-```
-Sans overflow, les bits 0..4 restent à 0.
+**`scanSpritesForLine()` met à jour bits 0..4 = lastSpriteIdx** à chaque scanline (mai 2026), où `lastSpriteIdx` est l'index SAT du dernier sprite walké pour cette ligne (terminator, ou sprite 31, ou n'importe quel index trouvé). Quand 5S latche, bits 0..4 freezent à l'index du 5e sprite (silicon-correct).
 
-### Impact
+### Pin du comportement
 
-Du code qui lit le status sans vérifier bit 6 et utilise les bits 0..4 comme "compteur sprites actifs" verra **0 en POM1** vs **valeur dynamique en silicium**. Divergence directe.
-
-### Recommandation
-
-**Toujours masquer avec bit 6 avant d'interpréter les bits 0..4** :
-```asm
-LDA VDP_CTRL
-TAX             ; sauvegarde
-AND #$40        ; bit 6 ?
-BEQ @no_5s      ; pas d'overflow → ignorer bits 0..4
-TXA
-AND #$1F        ; index du 5e sprite
-@no_5s:
-```
+`tests/tms9918_per_scanline_test.cpp` Phase C : 4 sprites à Y=50, terminator à SAT[4]. Après une frame complète, status doit avoir bits 0..4 = 4 (l'index du terminator) et bit 6 = 0.
 
 ---
 
@@ -478,21 +491,15 @@ Le TMS9918 ne fournit **pas d'IRQ raster** standard, mais les programmeurs d'ép
 
 ### Ce que fait POM1
 
-`scanSpritesForStatus()` est appelé **une seule fois par frame au VBlank** (`TMS9918.cpp:127-139`). Le bit 6 ne s'arme qu'à `T = fin de frame`, jamais à `T = milieu de frame`. La boucle d'attente du CPU **boucle sans fin pendant 16 ms** puis voit bit 6 d'un coup à la frame suivante → l'effet visuel s'applique au mauvais moment (ou pas du tout, si le code attend que bit 6 soit clear avant de re-armer).
+✅ **IMPLÉMENTÉ** : `scanSpritesForLine` est invoqué à chaque scanline franchie par le frameCycleCounter (mai 2026). Bit 6 s'arme exactement quand le faisceau croise la 5e ligne — la boucle d'attente du CPU sort à la même position qu'en silicium.
 
-**Code utilisant le hack 5S split = visuel cassé sur POM1, OK sur silicium.**
+### Pin du comportement
 
-### Impact
-
-Galaga n'utilise probablement **pas** ce hack (jeu simple, pas d'effet rainbow). Mais c'est l'un des hacks les plus répandus en homebrew MSX — toute portage de démo MSX vers Apple-1 + TMS9918 buggera sur POM1 et marchera en silicium.
-
-### Recommandation
-
-**Ne pas utiliser ce hack tant que POM1 ne fait pas du scan scanline-by-scanline**. C'est un futur ajout possible côté émulateur (cf. section "Roadmap émulateur" ci-dessous). En attendant, pour des effets multi-section, utiliser le polling VBlank classique et accepter qu'un effet entier s'applique par frame.
+`tests/tms9918_per_scanline_test.cpp` Phase B : 5 sprites à Y=95, polling bit 6 simulé. Avant le franchissement (line ~50) bit 6 = 0 ; après (line ~110) bit 6 = 1 + low 5 bits = 4 (l'index du 5e sprite).
 
 ---
 
-## 12. BUG N°11 — Frame rate 59,94 Hz NTSC vs 60 Hz POM1
+## 12. BUG N°11 — Frame rate 59,94 Hz NTSC vs 60 Hz POM1 ✅ IMPLÉMENTÉ
 
 ### Ce que fait le silicium
 
@@ -500,15 +507,11 @@ NTSC analogique = **59,94 Hz** exactement (60 × 1000/1001), pas 60 Hz rond. PAL
 
 ### Ce que fait POM1
 
-`POM1_CPU_CYCLES_PER_FRAME_1X_60HZ` dans `CpuClock.h` cale POM1 à **60 Hz fixe**. La VBlank tombe tous les 17045 cycles à 1× (1 022 727 / 60).
+`POM1_CPU_CYCLES_PER_FRAME_1X_60HZ` dans `CpuClock.h` cale désormais POM1 à **17062 cycles/frame ≈ 59.94 Hz** (mai 2026, était 17045 = 60 Hz round). Formule : `(1001 × 1022727 + 30000) / 60000`. Drift de ~0.1% éliminé pour les démos audio fines et les multiplexages SAT timing-critiques.
 
-### Impact
+### Pin du comportement
 
-Pour un jeu type Galaga qui fait du multiplexage SAT à chaque frame, la différence 59,94 vs 60 Hz est **imperceptible**. Pour des effets de précision musicale (sync audio sur VBlank) ou des démos avec timing analogique fin, **un drift cumulatif de ~0,1 % apparaît**.
-
-### Recommandation
-
-Ne pas se baser sur "exactement 60 frames par seconde". Compter en cycles CPU, pas en frames. Si une démo MSX d'origine tourne à 59,94, accepter un léger drift en POM1.
+`tests/tms9918_per_scanline_test.cpp` Phase E : asserte `POM1_CPU_CYCLES_PER_FRAME_1X_60HZ == 17062`.
 
 ---
 

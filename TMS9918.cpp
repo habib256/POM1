@@ -138,6 +138,9 @@ void TMS9918::reset()
     readAheadBuffer = 0;
     frameCycleCounter = 0;
     pendingDrainCycles = 0;
+    lastScanlineProcessed = -1;
+    lastScanlineRendered  = -1;
+    framebuffer.fill(kPalette[1]);             // start with all-black border
     droppedWrites = 0;
     droppedWriteTraceCount = 0;
     dropStats = DropDiagnostics{};
@@ -187,8 +190,21 @@ uint16_t TMS9918::liveVramMask() const
 // --------------------------------------------------------------------------
 TMS9918::SlotSpan TMS9918::selectSlotTable() const
 {
+    // Silicon-correct relaxation: during vertical retrace (VBlank, ~70 lines
+    // out of 262 NTSC) the chip's pixel scan + sprite scan don't fetch VRAM,
+    // so the CPU bandwidth becomes free regardless of R1.6. openMSX's stock
+    // `getTab(vdp)` does not model this — it always returns the mode-specific
+    // table. We deliberately diverge here because real silicon programs
+    // (Rogue, Galaga init) batch their VRAM uploads in VBlank and silicon
+    // accepts every byte, while the unmodified openMSX model would
+    // (incorrectly) drop bursts < ~7c gap during VBlank.
+    //
+    // Threshold: frameCycleCounter >= kActiveDisplayCycles. This is the same
+    // gate used by the F-flag set in advanceCycles (vertical-retrace edge
+    // detection) — keeps the two behaviours consistent.
+    const bool inVBlank = frameCycleCounter >= kActiveDisplayCycles;
     const bool displayEnabled = (regs[1] & 0x40) != 0;
-    if (!displayEnabled)
+    if (!displayEnabled || inVBlank)
         return SlotSpan{slotsMsx1ScreenOff.data(), slotsMsx1ScreenOff.size()};
     const bool m1 = (regs[1] & 0x10) != 0;   // text
     const bool m2 = (regs[1] & 0x08) != 0;   // multicolor
@@ -199,8 +215,9 @@ TMS9918::SlotSpan TMS9918::selectSlotTable() const
 
 TMS9918::SlotTableId TMS9918::activeSlotTableId() const
 {
+    const bool inVBlank = frameCycleCounter >= kActiveDisplayCycles;
     const bool displayEnabled = (regs[1] & 0x40) != 0;
-    if (!displayEnabled)              return kSlotTableScreenOff;
+    if (!displayEnabled || inVBlank)  return kSlotTableScreenOff;
     if (regs[1] & 0x10)               return kSlotTableText;
     if (regs[1] & 0x08)               return kSlotTableGfx3;
     return kSlotTableGfx12;
@@ -416,11 +433,54 @@ void TMS9918::advanceCycles(int cycles)
     // == start of next active display) which left zero VBlank window
     // post-poll. Detecting the "just crossed kActiveDisplayCycles" edge
     // restores the silicon-correct cadence.
+    // Per-scanline sprite scan (Bug N°5/N°6/N°10) AND per-scanline progressive
+    // rendering: walk every active scanline the simulated raster has just
+    // crossed since the previous advanceCycles. Each crossing both updates
+    // statusReg bits 5/6/0..4 silicon-correctly AND writes the active 256
+    // pixels of the line into the live framebuffer using LIVE state — so
+    // mid-frame R7/R1/VRAM changes propagate progressively (rainbow demos /
+    // raster split). Top border is painted at frame start, bottom at line 192.
+    {
+        const int totalScanlineNow = (int)((int64_t)frameCycleCounter * 262 / kCyclesPerFrame);
+        const int activeNow = std::min(totalScanlineNow, kScreenHeight);
+
+        // Paint the top border once per frame, on the first non-zero progress.
+        if (lastScanlineRendered == -1 && activeNow >= 0) {
+            paintTopBorder();
+        }
+
+        if (activeNow > lastScanlineProcessed) {
+            for (int line = lastScanlineProcessed + 1; line < activeNow; ++line) {
+                scanSpritesForLine(line);
+            }
+            lastScanlineProcessed = activeNow - 1 < kScreenHeight - 1
+                                  ? activeNow - 1
+                                  : kScreenHeight - 1;
+            if (activeNow >= kScreenHeight) lastScanlineProcessed = kScreenHeight;
+        }
+        if (activeNow > lastScanlineRendered) {
+            for (int line = lastScanlineRendered + 1; line < activeNow; ++line) {
+                renderActiveLine(line);
+            }
+            lastScanlineRendered = activeNow - 1 < kScreenHeight - 1
+                                 ? activeNow - 1
+                                 : kScreenHeight - 1;
+            if (activeNow >= kScreenHeight) {
+                lastScanlineRendered = kScreenHeight;
+                paintBottomBorder();
+            }
+        }
+    }
+
     if (prevCounter < kActiveDisplayCycles && frameCycleCounter >= kActiveDisplayCycles) {
-        // Sprite-engine status scan happens at VBlank start on real silicon
-        // too (the chip walks the SAT during vertical retrace), only when
-        // display is enabled (R1 bit 6).
-        if (regs[1] & 0x40) {
+        // F flag rises at VBlank entry. Per-scanline scan above has already
+        // updated bits 5/6/0..4 progressively; if display was blanked the
+        // whole active period (no scanSpritesForLine work happened),
+        // scanSpritesForStatus runs as a fallback — silicon does walk the
+        // SAT during vertical retrace, but on POM1 the per-line path is
+        // strictly more accurate, so the fallback only fires when the
+        // per-line path stayed dormant.
+        if ((regs[1] & 0x40) && lastScanlineProcessed < kScreenHeight) {
             scanSpritesForStatus(vram.data(), regs.data(), siliconStrictMode, statusReg);
         }
         statusReg |= 0x80;
@@ -428,9 +488,14 @@ void TMS9918::advanceCycles(int cycles)
 
     // Frame counter rollover at the END of VBlank (== start of next active
     // display). No flag side-effect — the F flag stays sticky-set until
-    // software reads $CC01 to clear it.
-    if (frameCycleCounter >= kCyclesPerFrame) {
+    // software reads $CC01 to clear it. Loop with `while` so a single huge
+    // advanceCycles (e.g. tickFrame test passing 2M cycles) can rollover
+    // multiple times instead of leaving frameCycleCounter stuck above
+    // kCyclesPerFrame for the next call.
+    while (frameCycleCounter >= kCyclesPerFrame) {
         frameCycleCounter -= kCyclesPerFrame;
+        lastScanlineProcessed = -1;               // reset per-line scan progress
+        lastScanlineRendered  = -1;               // reset per-line render progress
     }
 }
 
@@ -442,11 +507,16 @@ void TMS9918::copySnapshot(Snapshot& out)
     // Status register changes on every frame tick, so always mirror it.
     out.statusReg = statusReg;
     out.siliconStrictMode = siliconStrictMode;
-    // VRAM (16 KB) and register file only move when the card is actually
-    // touched by software — a dirty flag avoids a 16 KB memcpy on idle frames.
+    // VRAM (16 KB) + register file + 320×240 framebuffer (300 KB) only move
+    // when the card is actually touched by software — a dirty flag avoids
+    // unnecessary memcpy on idle frames. The framebuffer is the silicon-
+    // progressive raster — UI uploads it to GL directly without any further
+    // per-snapshot rendering.
     if (snapshotDirty) {
         std::memcpy(out.vram.data(), vram.data(), vram.size());
         std::memcpy(out.regs.data(), regs.data(), regs.size());
+        std::memcpy(out.framebuffer.data(), framebuffer.data(),
+                    framebuffer.size() * sizeof(uint32_t));
         snapshotDirty = false;
     }
 }
@@ -485,6 +555,271 @@ void TMS9918::renderToBuffer(uint32_t* pixels, const Snapshot& snap)
     if (!m1) {
         renderSprites(pixels, snap);
     }
+}
+
+// --------------------------------------------------------------------------
+// renderToBufferWithBorder — 320×240 with R7-coloured borders.
+// Renders the 256×192 active rect at offset (kBorderLeft, kBorderTop).
+// Border pixels are painted with kPalette[regs[7] & 0x0F] regardless of
+// display blank state — silicon's "border colour" stays alive even when
+// R1 bit 6 = 0 (blanked active area).
+// --------------------------------------------------------------------------
+void TMS9918::renderToBufferWithBorder(uint32_t* pixels, const Snapshot& snap)
+{
+    const uint8_t backdropIdx = snap.regs[7] & 0x0F;
+    const ImU32   border      = (backdropIdx == 0) ? kPalette[1] : kPalette[backdropIdx];
+
+    // Fill the entire 320×240 surface with the border colour first; the
+    // active 256×192 rect is overwritten below.
+    for (int i = 0; i < kFullWidth * kFullHeight; ++i) pixels[i] = border;
+
+    // Render the active rect into a temporary 256×192 buffer, then blit
+    // it centred into the full frame. Reusing renderToBuffer keeps the
+    // display-mode dispatch logic in one place. The temp lives in static
+    // thread_local storage (~192 KB) — too big for stack, called every
+    // frame so reuse beats heap alloc.
+    static thread_local uint32_t active[kScreenWidth * kScreenHeight];
+    renderToBuffer(active, snap);
+    for (int sy = 0; sy < kScreenHeight; ++sy) {
+        const int dstY = sy + kBorderTop;
+        std::memcpy(&pixels[dstY * kFullWidth + kBorderLeft],
+                    &active[sy * kScreenWidth],
+                    kScreenWidth * sizeof(uint32_t));
+    }
+}
+
+// --------------------------------------------------------------------------
+// Per-line raw renderers — silicon-progressive rasterisation building blocks.
+// Each writes 256 pixels into `lineBuf` for scanline `line`, reading from
+// raw vram/regs pointers (live or snapshot — caller decides). Backdrop
+// pre-fill is the caller's responsibility; these renderers overwrite every
+// pixel of `lineBuf` they visit. Sprites are NOT included — call
+// renderSpritesLineRaw separately after the background pass.
+// --------------------------------------------------------------------------
+
+void TMS9918::renderGfxILineRaw(int line, uint32_t* lineBuf,
+                                const uint8_t* vram, const uint8_t* regs,
+                                uint16_t vramMask, ImU32 backdrop)
+{
+    const uint16_t nameBase    = (uint16_t)(regs[2] & 0x0F) << 10;
+    const uint16_t colorBase   = (uint16_t)regs[3]          << 6;
+    const uint16_t patternBase = (uint16_t)(regs[4] & 0x07) << 11;
+    const int row       = line / 8;
+    const int lineInRow = line % 8;
+    for (int col = 0; col < 32; ++col) {
+        const uint8_t  name      = vram[(nameBase + row * 32 + col) & vramMask];
+        const uint8_t  colorByte = vram[(colorBase + (name >> 3))    & vramMask];
+        const uint8_t  fgIdx     = (colorByte >> 4) & 0x0F;
+        const uint8_t  bgIdx     =  colorByte       & 0x0F;
+        const ImU32    fg        = (fgIdx == 0) ? backdrop : kPalette[fgIdx];
+        const ImU32    bg        = (bgIdx == 0) ? backdrop : kPalette[bgIdx];
+        const uint16_t patAddr   = (patternBase + (uint16_t)name * 8 + lineInRow) & vramMask;
+        const uint8_t  pat       = vram[patAddr];
+        for (int bit = 0; bit < 8; ++bit)
+            lineBuf[col * 8 + bit] = (pat & (0x80 >> bit)) ? fg : bg;
+    }
+}
+
+void TMS9918::renderGfxIILineRaw(int line, uint32_t* lineBuf,
+                                 const uint8_t* vram, const uint8_t* regs,
+                                 uint16_t vramMask, ImU32 backdrop)
+{
+    const uint16_t nameBase    = (uint16_t)(regs[2] & 0x0F) << 10;
+    const uint16_t colorBase   = (uint16_t)(regs[3] & 0x80) << 6;
+    const uint16_t colorMask   = ((uint16_t)(regs[3] & 0x7F) << 6) | 0x003F;
+    const uint16_t patternBase = (uint16_t)(regs[4] & 0x04) << 11;
+    const uint16_t patternMask = ((uint16_t)(regs[4] & 0x03) << 11) | 0x07FF;
+    const int row       = line / 8;
+    const int lineInRow = line % 8;
+    const int section   = row / 8;
+    for (int col = 0; col < 32; ++col) {
+        const uint8_t  name       = vram[(nameBase + row * 32 + col) & vramMask];
+        const uint16_t charOffset = (uint16_t)(section * 256 + name) * 8 + lineInRow;
+        const uint16_t patAddr    = patternBase + (charOffset & patternMask);
+        const uint16_t colAddr    = colorBase   + (charOffset & colorMask);
+        const uint8_t  pat        = vram[patAddr & vramMask];
+        const uint8_t  colorByte  = vram[colAddr & vramMask];
+        const uint8_t  fgIdx      = (colorByte >> 4) & 0x0F;
+        const uint8_t  bgIdx      =  colorByte       & 0x0F;
+        const ImU32    fg         = (fgIdx == 0) ? backdrop : kPalette[fgIdx];
+        const ImU32    bg         = (bgIdx == 0) ? backdrop : kPalette[bgIdx];
+        for (int bit = 0; bit < 8; ++bit)
+            lineBuf[col * 8 + bit] = (pat & (0x80 >> bit)) ? fg : bg;
+    }
+}
+
+void TMS9918::renderTextLineRaw(int line, uint32_t* lineBuf,
+                                const uint8_t* vram, const uint8_t* regs,
+                                uint16_t vramMask, ImU32 backdrop)
+{
+    // Text mode: 240 pixels wide centred in 256 (8-pixel border each side).
+    // Caller already pre-filled lineBuf with backdrop, so we paint only
+    // the inner 240 px and leave the 8-px borders untouched.
+    const uint16_t nameBase    = (uint16_t)(regs[2] & 0x0F) << 10;
+    const uint16_t patternBase = (uint16_t)(regs[4] & 0x07) << 11;
+    const uint8_t  fgIdx       = (regs[7] >> 4) & 0x0F;
+    const uint8_t  bgIdx       =  regs[7]       & 0x0F;
+    const ImU32    fg          = (fgIdx == 0) ? backdrop : kPalette[fgIdx];
+    const ImU32    bg          = (bgIdx == 0) ? backdrop : kPalette[bgIdx];
+    const int row       = line / 8;
+    const int lineInRow = line % 8;
+    for (int col = 0; col < 40; ++col) {
+        const uint8_t  name    = vram[(nameBase + row * 40 + col) & vramMask];
+        const uint16_t patAddr = (patternBase + (uint16_t)name * 8 + lineInRow) & vramMask;
+        const uint8_t  pat     = vram[patAddr];
+        for (int bit = 0; bit < 6; ++bit)
+            lineBuf[8 + col * 6 + bit] = (pat & (0x80 >> bit)) ? fg : bg;
+    }
+}
+
+void TMS9918::renderMulticolorLineRaw(int line, uint32_t* lineBuf,
+                                      const uint8_t* vram, const uint8_t* regs,
+                                      uint16_t vramMask, ImU32 backdrop)
+{
+    const uint16_t nameBase    = (uint16_t)(regs[2] & 0x0F) << 10;
+    const uint16_t patternBase = (uint16_t)(regs[4] & 0x07) << 11;
+    const int row    = line / 8;
+    const int subRow = (line % 8) / 4;             // 0 or 1 within the 8-row band
+    const int patRow = (row % 4) * 2 + subRow;
+    for (int col = 0; col < 32; ++col) {
+        const uint8_t  name      = vram[(nameBase + row * 32 + col) & vramMask];
+        const uint8_t  colorByte = vram[(patternBase + (uint16_t)name * 8 + patRow) & vramMask];
+        const uint8_t  leftIdx   = (colorByte >> 4) & 0x0F;
+        const uint8_t  rightIdx  =  colorByte       & 0x0F;
+        const ImU32    leftCol   = (leftIdx  == 0) ? backdrop : kPalette[leftIdx];
+        const ImU32    rightCol  = (rightIdx == 0) ? backdrop : kPalette[rightIdx];
+        for (int px = 0; px < 4; ++px) lineBuf[col * 8 + px]     = leftCol;
+        for (int px = 0; px < 4; ++px) lineBuf[col * 8 + 4 + px] = rightCol;
+    }
+}
+
+void TMS9918::renderSpritesLineRaw(int line, uint32_t* lineBuf,
+                                   const uint8_t* vram, const uint8_t* regs,
+                                   uint16_t vramMask)
+{
+    const uint16_t sprAttrBase    = (uint16_t)(regs[5] & 0x7F) << 7;
+    const uint16_t sprPatternBase = (uint16_t)(regs[6] & 0x07) << 11;
+    const bool doubleSize = (regs[1] & 0x02) != 0;
+    const bool magnified  = (regs[1] & 0x01) != 0;
+    const int  sprPixelSize = doubleSize ? 16 : 8;
+    const int  mag          = magnified  ? 2  : 1;
+    const int  spriteH      = sprPixelSize * mag;
+
+    // Up to 4 visible sprites, in SAT order (priority high → low).
+    int visIdx[4];
+    int nVis = 0;
+    for (int i = 0; i < 32 && nVis < 4; ++i) {
+        const uint16_t attrAddr = (sprAttrBase + i * 4) & vramMask;
+        const uint8_t  yRaw = vram[attrAddr];
+        if (yRaw == 0xD0) break;
+        const int y = (int)yRaw - ((yRaw > 0xD0) ? 256 : 0) + 1;
+        if (line < y || line >= y + spriteH) continue;
+        visIdx[nVis++] = i;
+    }
+    // Render reverse-priority (sprite 0 paints last → on top).
+    for (int k = nVis - 1; k >= 0; --k) {
+        const int     i        = visIdx[k];
+        const uint16_t attrAddr = (sprAttrBase + i * 4) & vramMask;
+        const int      y        = (int)vram[attrAddr] - ((vram[attrAddr] > 0xD0) ? 256 : 0) + 1;
+        const uint8_t  color    = vram[(attrAddr + 3) & vramMask];
+        if ((color & 0x0F) == 0) continue;        // transparent — skip pixel paint
+        const ImU32    sprColor = kPalette[color & 0x0F];
+        int            x        = vram[(attrAddr + 1) & vramMask];
+        if (color & 0x80) x -= 32;
+        uint8_t patName = vram[(attrAddr + 2) & vramMask];
+        if (doubleSize) patName &= 0xFC;
+        const int rowInSpr = (line - y) / mag;
+        const int halves = doubleSize ? 2 : 1;
+        for (int half = 0; half < halves; ++half) {
+            uint16_t patAddr;
+            if (!doubleSize) {
+                patAddr = (sprPatternBase + (uint16_t)patName * 8 + rowInSpr) & vramMask;
+            } else {
+                const int quadrant = (rowInSpr < 8) ? half * 2 : half * 2 + 1;
+                patAddr = (sprPatternBase + (uint16_t)(patName + quadrant) * 8 + (rowInSpr & 7)) & vramMask;
+            }
+            const uint8_t patByte = vram[patAddr];
+            for (int bit = 0; bit < 8; ++bit) {
+                if (!(patByte & (0x80 >> bit))) continue;
+                const int screenX = x + (half * 8 + bit) * mag;
+                for (int mx = 0; mx < mag; ++mx) {
+                    const int sx = screenX + mx;
+                    if (sx < 0 || sx >= kScreenWidth) continue;
+                    lineBuf[sx] = sprColor;
+                }
+            }
+        }
+    }
+}
+
+// --------------------------------------------------------------------------
+// renderActiveLine — instance method, paints one active scanline of the
+// live framebuffer (offset row = line + kBorderTop). Uses LIVE state so
+// mid-frame R7/R1/VRAM changes are silicon-correctly progressive.
+// --------------------------------------------------------------------------
+void TMS9918::renderActiveLine(int line)
+{
+    if (line < 0 || line >= kScreenHeight) return;
+
+    const uint8_t backdropIdx = regs[7] & 0x0F;
+    const ImU32   backdrop    = (backdropIdx == 0) ? kPalette[1] : kPalette[backdropIdx];
+
+    uint32_t lineBuf[kScreenWidth];
+    for (int i = 0; i < kScreenWidth; ++i) lineBuf[i] = backdrop;
+
+    const bool blank = (regs[1] & 0x40) == 0;
+    if (!blank) {
+        const bool m1 = (regs[1] & 0x10) != 0;
+        const bool m2 = (regs[1] & 0x08) != 0;
+        const bool m3 = (regs[0] & 0x02) != 0;
+        const uint16_t mask = liveVramMask();
+
+        if      (!m1 && !m2 && !m3) renderGfxILineRaw      (line, lineBuf, vram.data(), regs.data(), mask, backdrop);
+        else if (!m1 && !m2 &&  m3) renderGfxIILineRaw     (line, lineBuf, vram.data(), regs.data(), mask, backdrop);
+        else if ( m1 && !m2 && !m3) renderTextLineRaw      (line, lineBuf, vram.data(), regs.data(), mask, backdrop);
+        else if (!m1 &&  m2 && !m3) renderMulticolorLineRaw(line, lineBuf, vram.data(), regs.data(), mask, backdrop);
+        // else: undefined mode combination — backdrop only
+
+        if (!m1) renderSpritesLineRaw(line, lineBuf, vram.data(), regs.data(), mask);
+    }
+
+    // Blit the 256-pixel active line into framebuffer at row (line + kBorderTop),
+    // cols [kBorderLeft, kBorderLeft + 256).
+    const int dstRow = line + kBorderTop;
+    std::memcpy(&framebuffer[dstRow * kFullWidth + kBorderLeft],
+                lineBuf, kScreenWidth * sizeof(uint32_t));
+    paintLeftRightBorderForActiveLine(line);
+    snapshotDirty = true;
+}
+
+void TMS9918::paintLeftRightBorderForActiveLine(int line)
+{
+    const uint8_t backdropIdx = regs[7] & 0x0F;
+    const ImU32   border      = (backdropIdx == 0) ? kPalette[1] : kPalette[backdropIdx];
+    const int     dstRow      = line + kBorderTop;
+    uint32_t* row = &framebuffer[dstRow * kFullWidth];
+    for (int x = 0; x < kBorderLeft; ++x)                                   row[x] = border;
+    for (int x = kBorderLeft + kScreenWidth; x < kFullWidth; ++x)            row[x] = border;
+}
+
+void TMS9918::paintTopBorder()
+{
+    const uint8_t backdropIdx = regs[7] & 0x0F;
+    const ImU32   border      = (backdropIdx == 0) ? kPalette[1] : kPalette[backdropIdx];
+    for (int row = 0; row < kBorderTop; ++row)
+        for (int x = 0; x < kFullWidth; ++x)
+            framebuffer[row * kFullWidth + x] = border;
+    snapshotDirty = true;
+}
+
+void TMS9918::paintBottomBorder()
+{
+    const uint8_t backdropIdx = regs[7] & 0x0F;
+    const ImU32   border      = (backdropIdx == 0) ? kPalette[1] : kPalette[backdropIdx];
+    for (int row = kBorderTop + kScreenHeight; row < kFullHeight; ++row)
+        for (int x = 0; x < kFullWidth; ++x)
+            framebuffer[row * kFullWidth + x] = border;
+    snapshotDirty = true;
 }
 
 // --------------------------------------------------------------------------
@@ -725,13 +1060,144 @@ void TMS9918::renderSprites(uint32_t* pixels, const Snapshot& s)
 }
 
 // --------------------------------------------------------------------------
-// scanSpritesForStatus — emulation-thread helper. Walks the live SAT against
-// every scanline and updates sticky status bits:
+// scanSpritesForLine — per-scanline sprite-scan helper. Updates sticky
+// status bits silicon-correctly as the simulated raster crosses each
+// active line:
 //   bit 5 ($20) — sprite-sprite collision (ANY two opaque pattern bits
 //                 overlap, even when one or both sprites have color = 0).
-//   bit 6 ($40) — 5th-sprite-on-scanline overflow. Bits 0..4 latch the SAT
-//                 index of the offending sprite.
-// Both bits are sticky until readControl() clears them via the ~0xE0 mask.
+//                 Collision detection extends into the overscan zone
+//                 [-32, 288) to catch early-clock sprites colliding off
+//                 the visible screen (cf. dev/SILICONBUGS.md Bug N°4).
+//   bit 6 ($40) — 5th-sprite-on-scanline overflow.
+//   bits 0..4   — when bit 6 is latched, the SAT index of the 5th sprite.
+//                 Otherwise, the index of the last sprite the chip walked
+//                 on this line (the Y=$D0 terminator entry, or sprite 31
+//                 if no terminator). Cf. Bug N°6.
+//
+// Source-of-truth: openMSX SpriteChecker::checkSprites1 (line-major variant
+// — POM1 walks the SAT once per scanline, openMSX's sprite-major loop
+// optimization isn't needed at our frame rate).
+// --------------------------------------------------------------------------
+void TMS9918::scanSpritesForLine(int line)
+{
+    if (line < 0 || line >= kScreenHeight) return;
+    if ((regs[1] & 0x40) == 0) return;             // display blanked → silicon doesn't scan
+
+    const uint16_t sprAttrBase    = (uint16_t)(regs[5] & 0x7F) << 7;
+    const uint16_t sprPatternBase = (uint16_t)(regs[6] & 0x07) << 11;
+    const uint16_t vramMask       = vramMaskForRegs(regs.data(), siliconStrictMode);
+    const bool doubleSize = (regs[1] & 0x02) != 0;
+    const bool magnified  = (regs[1] & 0x01) != 0;
+    const int  sprPixelSize = doubleSize ? 16 : 8;
+    const int  mag          = magnified  ? 2  : 1;
+    const int  spriteH      = sprPixelSize * mag;
+
+    // Overscan-aware collision mask: covers [-32, 288) → 320 pixels = 40 bytes.
+    // Index = (sx + 32) >> 3 ; bit = 0x80 >> ((sx + 32) & 7).
+    constexpr int kOverscanLeft = 32;
+    constexpr int kOverscanWidth = 320;          // 32 + 256 + 32
+    constexpr int kMaskBytes = kOverscanWidth / 8;
+    uint8_t mask[kMaskBytes];
+    bool maskInUse = false;
+
+    bool fiveAlreadyLatched      = (statusReg & 0x40) != 0;
+    bool collisionAlreadyLatched = (statusReg & 0x20) != 0;
+    int  visible = 0;
+    int  lastSpriteIdx = 0;                       // last SAT slot walked this line
+    bool sawTerminator = false;
+
+    for (int i = 0; i < 32; ++i) {
+        const uint16_t attrAddr = (sprAttrBase + i * 4) & vramMask;
+        const uint8_t  yRaw     = vram[attrAddr];
+        if (yRaw == 0xD0) { lastSpriteIdx = i; sawTerminator = true; break; }
+
+        const int y = (int)yRaw - ((yRaw > 0xD0) ? 256 : 0) + 1;
+        if (line < y || line >= y + spriteH) { lastSpriteIdx = i; continue; }
+
+        // Visible on this line.
+        if (visible == 4) {
+            if (!fiveAlreadyLatched && (statusReg & 0x80) == 0) {
+                // Per TMS9918.pdf: 5S detection only when F flag is zero.
+                statusReg = (uint8_t)((statusReg & 0xE0) | (i & 0x1F));
+                statusReg |= 0x40;
+                fiveAlreadyLatched = true;
+            }
+            // 5th+ sprites are dropped from rendering and don't contribute
+            // to collision detection.
+            lastSpriteIdx = i;
+            break;
+        }
+        ++visible;
+        lastSpriteIdx = i;
+
+        // Skip per-pixel work when both flags are sticky for the rest of
+        // the frame — no further state can change.
+        if (collisionAlreadyLatched && fiveAlreadyLatched) continue;
+
+        uint8_t patName = vram[(attrAddr + 2) & vramMask];
+        const uint8_t color = vram[(attrAddr + 3) & vramMask];
+        const bool earlyClock = (color & 0x80) != 0;
+        int x = vram[(attrAddr + 1) & vramMask];
+        if (earlyClock) x -= 32;
+
+        if (doubleSize) patName &= 0xFC;
+        const int rowInSpr = (line - y) / mag;
+
+        uint8_t patLeft = 0, patRight = 0;
+        if (!doubleSize) {
+            patLeft = vram[(sprPatternBase + (uint16_t)patName * 8 + rowInSpr) & vramMask];
+        } else {
+            const int qLeft  = (rowInSpr < 8) ? 0 : 1;
+            const int qRight = (rowInSpr < 8) ? 2 : 3;
+            patLeft  = vram[(sprPatternBase + (uint16_t)(patName + qLeft)  * 8 + (rowInSpr & 7)) & vramMask];
+            patRight = vram[(sprPatternBase + (uint16_t)(patName + qRight) * 8 + (rowInSpr & 7)) & vramMask];
+        }
+
+        if (!maskInUse) {
+            std::memset(mask, 0, sizeof(mask));
+            maskInUse = true;
+        }
+        const int halves = doubleSize ? 2 : 1;
+        for (int half = 0; half < halves; ++half) {
+            const uint8_t patByte = (half == 0) ? patLeft : patRight;
+            for (int bit = 0; bit < 8; ++bit) {
+                if (!(patByte & (0x80 >> bit))) continue;
+                const int baseX = x + (half * 8 + bit) * mag;
+                for (int mx = 0; mx < mag; ++mx) {
+                    const int sx = baseX + mx;
+                    // Bug N°4: collision spans overscan, not just [0, 256).
+                    if (sx < -kOverscanLeft || sx >= kScreenWidth + kOverscanLeft) continue;
+                    const int bitIndex = sx + kOverscanLeft;        // [0, 320)
+                    const uint8_t bm = (uint8_t)(0x80 >> (bitIndex & 7));
+                    uint8_t& cell = mask[bitIndex >> 3];
+                    if (cell & bm) {
+                        if (!collisionAlreadyLatched) {
+                            statusReg |= 0x20;
+                            collisionAlreadyLatched = true;
+                        }
+                    } else {
+                        cell |= bm;
+                    }
+                }
+            }
+        }
+    }
+
+    // Bug N°6: bits 0..4 reflect the last SAT index walked on this line when
+    // 5S is not latched. Silicon-correct: the chip latches whichever sprite
+    // index the line-scanner reached last (terminator, sprite 31, or
+    // no-match cases). When 5S latches, bits 0..4 stay at the 5th's index.
+    if (!fiveAlreadyLatched) {
+        statusReg = (uint8_t)((statusReg & 0xE0) | (lastSpriteIdx & 0x1F));
+    }
+    (void)sawTerminator;                          // documented for future use
+}
+
+// --------------------------------------------------------------------------
+// scanSpritesForStatus — legacy 1×/frame VBlank-edge fallback. Used only
+// when no per-line work happened during the active period (e.g. display
+// blanked the whole frame). Walks every line and applies the same logic
+// as scanSpritesForLine but in one shot. Idempotent.
 // --------------------------------------------------------------------------
 void TMS9918::scanSpritesForStatus(const uint8_t* vram, const uint8_t* regs,
                                    bool strict, uint8_t& statusOut)

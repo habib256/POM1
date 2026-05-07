@@ -320,6 +320,26 @@ add_test(NAME tms9918_silicon_strict_runtime
          COMMAND test_tms9918_silicon_strict_runtime)
 set_tests_properties(tms9918_silicon_strict_runtime PROPERTIES TIMEOUT 5)
 
+# -- TMS9918A Per-scanline sprite scan + overscan + 59.94 Hz test -------------
+# Pins silicon-correct timing of statusReg bits 5/6/0..4 implemented via
+# scanSpritesForLine (line-major port of openMSX SpriteChecker::checkSprites1):
+#   - Bug N°5: collision/5S armed when raster crosses the offending line.
+#   - Bug N°6: bits 0..4 reflect last-sprite-walked when no overflow.
+#   - Bug N°10: 5S raster split works (mid-frame effects).
+#   - Bug N°4: collision detected in overscan zone [-32, 288).
+#   - Bug N°11: kCyclesPerFrame matches 59.94 Hz NTSC (17073).
+add_executable(test_tms9918_per_scanline
+    tms9918_per_scanline_test.cpp
+    ${CMAKE_SOURCE_DIR}/TMS9918.cpp
+)
+target_include_directories(test_tms9918_per_scanline PRIVATE
+    ${CMAKE_SOURCE_DIR}
+    ${CMAKE_SOURCE_DIR}/imgui
+)
+
+add_test(NAME tms9918_per_scanline COMMAND test_tms9918_per_scanline)
+set_tests_properties(tms9918_per_scanline PROPERTIES TIMEOUT 5)
+
 # -- CodeTank ↔ TMS9918 daughterboard dependency test -------------------------
 # Memory-level integration test: enabling CodeTank auto-plugs TMS9918,
 # disabling TMS9918 cascade-unplugs CodeTank, and disabling CodeTank does

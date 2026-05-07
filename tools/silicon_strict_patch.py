@@ -1,23 +1,32 @@
 #!/usr/bin/env python3
 """
 silicon_strict_patch.py — insert JSR-based padding into a 6502 .asm so back-
-to-back TMS9918 VDP stores respect the silicon-strict access window of 40
-cycles (hardened paranoid mode, cf. dev/SILICONBUGS.md Bug N°1 §2).
+to-back TMS9918 VDP stores respect the silicon-strict access window of
+12 cycles (cf. dev/SILICONBUGS.md Bug N°1 §2).
+
+Since the TMS9918 timing model migrated from a 40c min-distance threshold
+to the openMSX slot-table port (May 2026), the silicon worst-case in
+Mode I+sprites is ~7.5c at any phase — pad12 (16c gap STA-STA) gives a
+2.1× safety margin, well over the silicon contract. pad24/pad40 are kept
+available as helpers for hand-coded cushions in cross-routine call paths
+that need a wider buffer (rare).
 
 Idempotent: re-running on an already-patched file leaves it unchanged. Old
-v1 markers (NOPs), v2-pad16 markers (JSR pad12), v2-pad24 markers and
-v2-pad40 markers are all stripped before re-insertion.
+v1 markers (NOPs), v2-pad16 markers, v2-pad24 markers and v2-pad40 markers
+are all stripped before re-insertion of the v3-pad12 form.
 
 Rules applied (per dev/SILICONBUGS.md §17 Annexe E):
 
-    A — ST? VDP_*                 / ST? VDP_*    → 1 JSR tms9918_pad40 between
-                                                   gap = 4 + 40 + 4 = 48c
-    B — ST? VDP_* / LDA #imm      / ST? VDP_*    → 1 JSR tms9918_pad40 before
+    A — ST? VDP_*                 / ST? VDP_*    → 1 JSR tms9918_pad12 between
+                                                   gap = 4 + 12 + 4 = 20c
+    B — ST? VDP_* / LDA #imm      / ST? VDP_*    → 1 JSR tms9918_pad12 before
                                                    the LDA #imm.
-                                                   gap = 4 + 40 + 2 + 4 = 50c
-    C — ST? VDP_* / LDA <addr>    / ST? VDP_*    → 1 JSR tms9918_pad40 before
+                                                   gap = 4 + 12 + 2 + 4 = 22c
+    C — ST? VDP_* / LDA <addr>    / ST? VDP_*    → 1 JSR tms9918_pad12 before
                                                    the LDA addr (zp/abs/zp,X).
-                                                   gap = 4 + 40 + 3 + 4 = 51c
+                                                   gap = 4 + 12 + 3 + 4 = 23c
+
+All three gaps are ≥ 2.6× the silicon worst-case (7.5c).
 
 `ST?` covers STA / STX / STY (a few games use STX VDP_CTRL for fast
 two-byte address writes). The TMS9918 access window is shared between
@@ -26,14 +35,15 @@ CTRL→CTRL, and DATA↔CTRL pairs are all gated identically.
 
 Why JSR instead of NOPs?
     NOP        = 2 cycles in 1 byte (ratio 2 c/B)
-    JSR pad40  = 40 cycles in 3 bytes at the call site, helper itself = 7 B
-                 (ratio 13.3 c/B at the call site — 6.67× denser than NOP)
+    JSR pad12  = 12 cycles in 3 bytes at the call site, helper itself = 1 B
+                 (ratio 4.0 c/B at the call site — 2× denser than NOP, and
+                  the helper is a one-byte RTS = lowest-overhead form).
 
-The helpers `tms9918_pad12` (legacy 12c), `tms9918_pad24` (legacy 24c) and
-`tms9918_pad40` (hardened 40c, current default) are defined in
-`dev/lib/tms9918/tms9918_pad.asm` and must be linked into every project.
-Each project's Makefile / build_codetank_rom.py auto-links the helper when
-its symbol is referenced.
+The helpers `tms9918_pad12` (current default 12c), `tms9918_pad24` (24c
+cushion) and `tms9918_pad40` (legacy 40c, retained for hand-coded use)
+are defined in `dev/lib/tms9918/tms9918_pad.asm` and must be linked into
+every project. Each project's Makefile / build_codetank_rom.py auto-links
+the helper when its symbol is referenced.
 
 Usage:
     silicon_strict_patch.py <file.asm> [--dry-run]
@@ -57,28 +67,33 @@ import re
 import sys
 
 # v1 marker (NOP padding, 8c paranoid). Stripped on every run for backward
-# compat — a fresh patch re-inserts the latest v2 form.
+# compat — a fresh patch re-inserts the latest v3 form.
 V1_MARKER = "silicon-strict gap"
 
-# v2-pad16 marker (legacy JSR tms9918_pad12, 16c paranoid). Stripped so a
-# rerun of the patcher re-injects the hardened pad form.
+# v2-pad16 marker (legacy JSR tms9918_pad12, 16c). Stripped so a rerun
+# re-injects the latest form. Conveniently, the v3-pad12 form is also
+# JSR pad12 at the call site, but with a v3-tagged comment.
 V2_PAD16_MARKER = "silicon-strict pad16"
 
-# v2-pad24 marker (legacy JSR tms9918_pad24, 24c paranoid). Stripped so a
-# rerun re-injects the current pad40 form.
+# v2-pad24 marker (legacy JSR tms9918_pad24, 24c). Stripped on rerun.
 V2_PAD24_MARKER = "silicon-strict pad24"
 
-# v2-pad40 marker (current JSR tms9918_pad40, 40c hardened paranoid).
-V2_MARKER = "silicon-strict pad40"
+# v2-pad40 marker (legacy JSR tms9918_pad40, 40c hardened paranoid).
+# Stripped on rerun — the openMSX slot-table model rendered pad40
+# 5× over-padded and pad12 is now sufficient with margin.
+V2_PAD40_MARKER = "silicon-strict pad40"
 
-# v2 also injects `.import tms9918_pad40` once near the top of any file we
-# patch (so cc65 resolves the symbol against tms9918_pad.asm). The marker
-# tags the line so --unpatch removes it, and re-patch is idempotent.
-V2_IMPORT = "        .import tms9918_pad40  ; silicon-strict pad40 (helper from tms9918_pad.asm)\n"
+# v3-pad12 marker (current default JSR tms9918_pad12, 12c silicon-safe).
+V2_MARKER = "silicon-strict pad12-v3"
 
-JSR_BTB  = "        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (back-to-back VDP store)\n"
-JSR_LDAI = "        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (before LDA #imm bridge)\n"
-JSR_LDAZ = "        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (before LDA zp/abs bridge)\n"
+# v3 injects `.import tms9918_pad12` once near the top of any file we patch
+# (so cc65 resolves the symbol against tms9918_pad.asm). The marker tags
+# the line so --unpatch removes it, and re-patch is idempotent.
+V2_IMPORT = "        .import tms9918_pad12  ; silicon-strict pad12-v3 (helper from tms9918_pad.asm)\n"
+
+JSR_BTB  = "        JSR     tms9918_pad12   ; +12c silicon-strict pad12-v3 (back-to-back VDP store)\n"
+JSR_LDAI = "        JSR     tms9918_pad12   ; +12c silicon-strict pad12-v3 (before LDA #imm bridge)\n"
+JSR_LDAZ = "        JSR     tms9918_pad12   ; +12c silicon-strict pad12-v3 (before LDA zp/abs bridge)\n"
 
 RE_VDP_STORE = re.compile(
     r"^\s+(?:"
@@ -231,6 +246,7 @@ def strip_marker_lines(src: list[str]) -> list[str]:
         r".*?(?:" + re.escape(V1_MARKER)
         + "|" + re.escape(V2_PAD16_MARKER)
         + "|" + re.escape(V2_PAD24_MARKER)
+        + "|" + re.escape(V2_PAD40_MARKER)
         + "|" + re.escape(V2_MARKER) + ")"
     )
     return [l for l in src if not auto_re.match(l)]

@@ -199,7 +199,9 @@ private:
     bool showTMS9918 = false;
     bool tms9918Enabled = false;
     GLuint tms9918Texture = 0;
-    std::array<uint32_t, TMS9918::kScreenWidth * TMS9918::kScreenHeight> tms9918PixelBuf{};
+    // 320×240 buffer including R7-coloured border bands. The active 256×192
+    // image lives at offset (kBorderLeft, kBorderTop) inside the buffer.
+    std::array<uint32_t, TMS9918::kFullWidth * TMS9918::kFullHeight> tms9918PixelBuf{};
     bool showGT6144 = false;
     bool gt6144Enabled = false;
     GLuint gt6144Texture = 0;

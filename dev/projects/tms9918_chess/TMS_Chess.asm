@@ -40,7 +40,7 @@
 ; (Cursor mode 'C' planned for v0.3)
 ; =============================================
 
-        .import tms9918_pad40  ; silicon-strict pad40 (helper from tms9918_pad.asm)
+        .import tms9918_pad12  ; silicon-strict pad12-v3 (helper from tms9918_pad.asm)
 .include "apple1.inc"
 .include "zp.inc"
 .include "tms9918.inc"
@@ -267,7 +267,7 @@ upload_chess_patterns:
 @z1:    LDA #$00
         STA VDP_DATA
         DEX
-        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (back-to-back VDP store)
+        JSR     tms9918_pad12   ; +12c silicon-strict pad12-v3 (back-to-back VDP store)
         BNE @z1
 
         ; Skip to char 8 (already at $40 = char 8).
@@ -277,7 +277,7 @@ upload_chess_patterns:
 @l1:    LDA #$00
         STA VDP_DATA
         DEX
-        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (back-to-back VDP store)
+        JSR     tms9918_pad12   ; +12c silicon-strict pad12-v3 (back-to-back VDP store)
         BNE @l1
 
         ; Dark square at chars 16..23.
@@ -286,18 +286,18 @@ upload_chess_patterns:
 @dpat:
         LDA #$AA                ; row pattern: bit pattern X.X.X.X.
         STA VDP_DATA
-        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (before LDA #imm bridge)
+        JSR     tms9918_pad12   ; +12c silicon-strict pad12-v3 (before LDA #imm bridge)
         LDA #$55                ; row pattern: .X.X.X.X
         STA VDP_DATA
         DEX
-        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (back-to-back VDP store)
+        JSR     tms9918_pad12   ; +12c silicon-strict pad12-v3 (back-to-back VDP store)
         BNE @dpat
         ; That writes 16 bytes for 2 chars; need 64 bytes total for 8 chars.
         LDX #6 * 8              ; remaining 6 chars × 8 bytes = 48 bytes
 @d2:    LDA #$00
         STA VDP_DATA
         DEX
-        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (back-to-back VDP store)
+        JSR     tms9918_pad12   ; +12c silicon-strict pad12-v3 (back-to-back VDP store)
         BNE @d2
 
         ; Now at char 24. Skip to char 32 (white pieces).
@@ -305,7 +305,7 @@ upload_chess_patterns:
 @sk:    LDA #$00
         STA VDP_DATA
         DEX
-        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (back-to-back VDP store)
+        JSR     tms9918_pad12   ; +12c silicon-strict pad12-v3 (back-to-back VDP store)
         BNE @sk
 
         ; --- White pieces at chars 32..55 (24 chars = 192 bytes) ---
@@ -324,7 +324,7 @@ upload_chess_patterns:
 @sk2:   LDA #$00
         STA VDP_DATA
         DEX
-        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (back-to-back VDP store)
+        JSR     tms9918_pad12   ; +12c silicon-strict pad12-v3 (back-to-back VDP store)
         BNE @sk2
 
         ; --- Black pieces at chars 64..87 ---
@@ -357,7 +357,7 @@ upload_chess_colors:
         STA VDP_DATA
         INX
         CPX #$20                ; 32 entries
-        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (back-to-back VDP store)
+        JSR     tms9918_pad12   ; +12c silicon-strict pad12-v3 (back-to-back VDP store)
         BNE @cl
         RTS
 
@@ -570,7 +570,7 @@ render_one_cell:
         ; The TMS9918 auto-increments VRAM addr after each write.
         CLC
         ADC #$01
-        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (back-to-back VDP store)
+        JSR     tms9918_pad12   ; +12c silicon-strict pad12-v3 (back-to-back VDP store)
         STA VDP_DATA
         PLA
 
@@ -583,20 +583,20 @@ render_one_cell:
         LDA tmp
         CLC
         ADC #$02
-        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (back-to-back VDP store)
+        JSR     tms9918_pad12   ; +12c silicon-strict pad12-v3 (back-to-back VDP store)
         STA VDP_DATA
         CLC
         ADC #$01
-        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (back-to-back VDP store)
+        JSR     tms9918_pad12   ; +12c silicon-strict pad12-v3 (back-to-back VDP store)
         STA VDP_DATA
         RTS
 @e_b:
         LDA tmp
-        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (back-to-back VDP store)
+        JSR     tms9918_pad12   ; +12c silicon-strict pad12-v3 (back-to-back VDP store)
         STA VDP_DATA
         CLC
         ADC #$01
-        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (back-to-back VDP store)
+        JSR     tms9918_pad12   ; +12c silicon-strict pad12-v3 (back-to-back VDP store)
         STA VDP_DATA
         RTS
 

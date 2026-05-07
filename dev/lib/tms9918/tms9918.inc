@@ -27,36 +27,39 @@ VDP_CTRL = $CC01        ; VDP register / address port (write twice = setup)
 ; warm-NMOS drift can shrink the visible window past the original 8c margin
 ; — the May 2026 hardening ramp went 16c → 24c → 40c after Galaga sprite
 ; tables and LOGO turtle redraws kept showing artefacts at every previous
-; level. The current 40c floor leaves comfortable margin at any phase.
+; openMSX slot-table model (May 2026): silicon worst-case Mode I+sprites is
+; ~7.5c. The 12c floor (via JSR tms9918_pad12) gives a 1.6× safety margin —
+; gap STA→STA = 4 + 12 + 4 = 20c, well above silicon contract. pad24/pad40
+; stay available for hand-coded cushions on cross-routine call paths.
 ;
-; POM1 enforces 40c when Hardware → Silicon Strict is ON (default for every
+; POM1 enforces this when Hardware → Silicon Strict is ON (default for every
 ; preset except Multiplexing Fantasy). Writes that arrive too fast are
 ; silently DROPPED — exactly like silicon under unfavorable phase alignment.
 ;
-; Padding strategy: prefer `JSR tms9918_pad40` over NOPs (defined in
-; tms9918_pad.asm). 3 bytes for 40c idle vs 20 NOPs for the same 40c — 6.67×
-; denser at the call site.
+; Padding strategy: prefer `JSR tms9918_pad12` over NOPs (defined in
+; tms9918_pad.asm). 3 bytes for 12c idle vs 6 NOPs for the same 12c — 2×
+; denser at the call site, with a 1-byte helper (RTS).
 ;
 ;   STA VDP_DATA          ; 4c
-;   JSR tms9918_pad40     ; 40c (3 bytes) → next write lands 40 c later
+;   JSR tms9918_pad12     ; 12c (3 bytes) → next write lands 12c later
 ;
 ; Use WRT_DATA_REG when A is already loaded with the byte to push (typical
 ; sprite-attribute and tile-stream loops). Use WRT_DATA_VAL for "load
-; immediate, then push" — same 40c gap to the next write.
+; immediate, then push" — same 12c gap to the next write.
 ; ---------------------------------------------------------------------------
-; Note: WRT_DATA_REG / WRT_DATA_VAL reference tms9918_pad40; callers using
-; these macros must `.import tms9918_pad40` themselves (the patcher does
-; this automatically when injecting JSR tms9918_pad40 — see SILICONBUGS.md).
+; Note: WRT_DATA_REG / WRT_DATA_VAL reference tms9918_pad12; callers using
+; these macros must `.import tms9918_pad12` themselves (the patcher does
+; this automatically when injecting JSR tms9918_pad12 — see SILICONBUGS.md).
 
 .macro WRT_DATA_REG
         STA     VDP_DATA        ; 4c
-        JSR     tms9918_pad40   ; 40c, 3 bytes — next write lands 40c later
+        JSR     tms9918_pad12   ; 12c, 3 bytes — next write lands 12c later
 .endmacro
 
 .macro WRT_DATA_VAL val
         LDA     #val            ; 2c
         STA     VDP_DATA        ; 4c
-        JSR     tms9918_pad40   ; 40c, 3 bytes — next write lands 40c later
+        JSR     tms9918_pad12   ; 12c, 3 bytes — next write lands 12c later
 .endmacro
 
 .endif  ; _TMS9918_INC_LOADED_

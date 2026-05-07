@@ -2,6 +2,7 @@
 #include "POM1Build.h"
 #include "PR40Printer.h"
 #include "RomLoader.h"
+#include "TMS9918.h"
 
 #include <algorithm>
 #include <chrono>
@@ -348,6 +349,24 @@ bool EmulationController::isSiliconStrictMode() const
 {
     std::lock_guard<PriorityMutex> lock(stateMutex);
     return memory->isSiliconStrictMode();
+}
+
+uint64_t EmulationController::tms9918DropCount() const
+{
+    std::lock_guard<PriorityMutex> lock(stateMutex);
+    return memory->getTMS9918().droppedWriteCount();
+}
+
+void EmulationController::resetTms9918DropCount()
+{
+    std::lock_guard<PriorityMutex> lock(stateMutex);
+    memory->getTMS9918().resetDroppedWriteCount();
+}
+
+void EmulationController::dumpTms9918DropDiagnostics(std::FILE* out, int topN) const
+{
+    std::lock_guard<PriorityMutex> lock(stateMutex);
+    memory->getTMS9918().dumpDropDiagnostics(out ? out : stderr, topN);
 }
 
 int EmulationController::getOutOfRangeAccessCount() const

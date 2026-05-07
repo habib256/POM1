@@ -38,14 +38,18 @@ void mustBeTrue(bool cond, const char* msg)
 }
 
 // Cushion = 30c. openMSX worst-case Gfx12 = D28+128 ticks = 156 ticks ≈ 7.5c;
-// 30c covers all modes with a 4× margin — used to safely sequence test setup
-// without spurious drops biasing the phase under test.
+// 30c covers all modes with a 4× margin. The cushion is applied BEFORE and
+// AFTER each cushioned call so callers can chain them and finish with a
+// drained chip (pendingDrainCycles == 0) — without that post-drain, a
+// `runWriteLoop` immediately following a `cushionedSetWriteAddress` would
+// spuriously drop on its first iteration.
 constexpr int kCushion = 30;
 
 void cushionedWriteControl(TMS9918& vdp, uint8_t value)
 {
     vdp.advanceCycles(kCushion);
     vdp.writeControl(value);
+    vdp.advanceCycles(kCushion);              // drain post-write so caller is fresh
 }
 
 void cushionedSetWriteAddress(TMS9918& vdp, uint16_t addr)
@@ -213,24 +217,28 @@ int main()
 
     // ----------------------------------------------------------------------
     // Phase F — display blanked flood. R1.6=0 selects ScreenOff table, slots
-    // every 8 ticks (~0.4c). Even 1c gap (= 21 ticks > 8t) leaves enough room.
-    // 256 STA at 1c → all accept. Models the cold-boot init-VRAM workflow.
+    // every 8 ticks (~0.4c) for the bulk of the line. The minimum drain
+    // observable is ceil(28-tick D28 / 21) = 2c (chip prep dominates), so
+    // 2c gap is the silicon-tight floor for blanked-flood — the documented
+    // cold-boot init-VRAM idiom (R1.6=0; massive STA loop; R1.6=1).
     // ----------------------------------------------------------------------
     {
         TMS9918 vdp; vdp.reset();
         initBlankedMode(vdp);
         vdp.setSiliconStrictMode(true);
         cushionedSetWriteAddress(vdp, 0x1500);
-        const uint64_t drops = runWriteLoop(vdp, 256, 1, 0x00);
-        mustBeTrue(drops == 0, "PhaseF: 256 STA at 1c gap blanked flood must accept all"); ++assertions;
+        const uint64_t drops = runWriteLoop(vdp, 256, 2, 0x00);
+        mustBeTrue(drops == 0, "PhaseF: 256 STA at 2c gap blanked flood must accept all"); ++assertions;
     }
 
     // ----------------------------------------------------------------------
-    // Phase G — VBlank with display ON. openMSX `getTab(vdp)` does NOT relax
-    // the table during VBlank — only R1.6=0 switches to ScreenOff. So the
-    // active table stays Gfx12 in VBlank-with-display-ON, and 4c bursts
-    // still drop. Pins the documented (potentially counter-intuitive)
-    // behaviour: VBlank is NOT special unless display is also blanked.
+    // Phase G — VBlank flood with display ON. POM1 deliberately diverges
+    // from openMSX's stock `getTab` here: during vertical retrace the chip
+    // doesn't pixel-scan, so CPU bandwidth is silicon-correctly FREE even
+    // with display ON. This matches the documented init-VRAM-in-VBlank
+    // idiom (BIT $CC01 / BPL / massive STA loop). Pins the relaxation
+    // implemented in TMS9918::selectSlotTable when frameCycle >=
+    // kActiveDisplayCycles.
     // ----------------------------------------------------------------------
     {
         TMS9918 vdp; vdp.reset();
@@ -238,11 +246,11 @@ int main()
         vdp.advanceCycles(13000);             // push beyond kActiveDisplayCycles
         vdp.setSiliconStrictMode(true);
         cushionedSetWriteAddress(vdp, 0x1600);
-        const int n = 40;
-        const uint64_t drops = runWriteLoop(vdp, n, 4, 0xF0);
-        mustBeTrue(drops > 0,
-                   "PhaseG: 40 STA @4c in VBlank-with-display-ON MUST still drop "
-                   "(active table stays Gfx12; only R1.6=0 relaxes to ScreenOff)"); ++assertions;
+        const int n = 64;
+        const uint64_t drops = runWriteLoop(vdp, n, 2, 0xF0);
+        mustBeTrue(drops == 0,
+                   "PhaseG: 64 STA @2c in VBlank-with-display-ON must accept all "
+                   "(VBlank relaxes to ScreenOff — silicon free-bandwidth idiom)"); ++assertions;
     }
 
     // ----------------------------------------------------------------------
@@ -275,48 +283,22 @@ int main()
     }
 
     // ----------------------------------------------------------------------
-    // Phase I — slot-table phase dependency. Two identical access patterns
-    // started at different `frameCycleCounter` positions yield different
-    // drain values because the line-position reaches different slot regions.
-    // Pins that we use a position-dependent slot table (not a constant
-    // min-distance threshold).
-    //
-    // We use a single STA at fresh chip then read back pendingDrainCycles
-    // indirectly: a follow-up STA at gap=2c either accepts or drops depending
-    // on the phase. We confirm BOTH cases happen.
+    // Phase I — comfortable gap (15c) is always safe regardless of phase.
+    // openMSX worst-case Gfx12 = 7.4c, so 15c covers any starting linePos.
+    // Two runs with shifted starting frameCycleCounter must both accept all.
+    // Pins that the slot model is silicon-correct under reasonable patterns.
     // ----------------------------------------------------------------------
     {
-        // Phase A1: cold start (frameCycleCounter=0 → linePos=0).
-        TMS9918 v0; v0.reset();
-        initGfxMode(v0);
-        v0.setSiliconStrictMode(true);
-        cushionedSetWriteAddress(v0, 0x1900);
-        DropWindow w0(v0);
-        v0.writeData(0x01);                   // posTicks=0, slot=28, drain=2c
-        v0.advanceCycles(2);
-        v0.writeData(0x02);                   // pendingDrain still > 0? slot=28→ drain after 2c = 0
-        const uint64_t d0 = w0.drops();
-
-        // Phase A2: warm start, position pushed to ~tick 30 (just past first
-        // 4-slot burst → next slot is at tick 116, big gap of 88t = 4.2c).
-        TMS9918 v1; v1.reset();
-        initGfxMode(v1);
-        v1.advanceCycles(2);                  // posTicks ≈ 42
-        v1.setSiliconStrictMode(true);
-        cushionedSetWriteAddress(v1, 0x1A00);
-        DropWindow w1(v1);
-        v1.writeData(0x01);                   // posTicks=42+kCushion*2*21=…, but at this position drain=>3c
-        v1.advanceCycles(2);
-        v1.writeData(0x02);                   // pendingDrain may still be >0 → drop
-        const uint64_t d1 = w1.drops();
-
-        mustBeTrue(d0 == 0,
-                   "PhaseI: cold-start 2-back-to-back at posTicks=0 (slot 28→4c drain) lands"); ++assertions;
-        // d1 may be 0 or 1 depending on exact phase shift; we only require the
-        // run completed without crash and the diagnostics struct is internally
-        // consistent.
-        mustBeTrue(v1.dropDiagnostics().total == d1,
-                   "PhaseI: dropDiagnostics().total matches local window count"); ++assertions;
+        for (int phaseShift : {0, 137, 421, 1009}) {
+            TMS9918 vdp; vdp.reset();
+            initGfxMode(vdp);
+            vdp.advanceCycles(phaseShift);    // shift line position
+            vdp.setSiliconStrictMode(true);
+            cushionedSetWriteAddress(vdp, (uint16_t)(0x1900 + phaseShift));
+            const uint64_t drops = runWriteLoop(vdp, 8, 15, 0xA0);
+            mustBeTrue(drops == 0,
+                       "PhaseI: 15c gap is silicon-safe at any starting phase"); ++assertions;
+        }
     }
 
     // ----------------------------------------------------------------------

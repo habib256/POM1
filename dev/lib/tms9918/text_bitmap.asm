@@ -33,7 +33,7 @@
 ;   pen_color                    foreground colour for the colour cell
 ; ============================================================================
 
-        .import tms9918_pad40  ; silicon-strict pad40 (helper from tms9918_pad.asm)
+        .import tms9918_pad12  ; silicon-strict pad12-v3 (helper from tms9918_pad.asm)
 .ifdef CODETANK_BUILD
 
 .include "tms9918.inc"          ; VDP_DATA / VDP_CTRL
@@ -96,7 +96,7 @@ text_blit_glyph:
         STA VDP_DATA
         INY
         CPY #8
-        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (back-to-back VDP store)
+        JSR     tms9918_pad12   ; +12c silicon-strict pad12-v3 (back-to-back VDP store)
         BNE @row
         ; --- paint the cell's 8 colour-table bytes with pen_color so callers
         ;     also tint LABEL/SAY text. The colour table mirrors the
@@ -104,11 +104,11 @@ text_blit_glyph:
         ;     VDP cursor with the same pix_addr but the $2000 base bit set.
         LDA pix_addr_lo
         STA VDP_CTRL
-        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (before LDA zp/abs bridge)
+        JSR     tms9918_pad12   ; +12c silicon-strict pad12-v3 (before LDA zp/abs bridge)
         LDA pix_addr_hi
         ORA #$60                  ; $20 (colour base) | $40 (write enable)
         STA VDP_CTRL
-        JSR     tms9918_pad40   ; MANUAL: cmd-byte → first @col STA. Natural
+        JSR     tms9918_pad12   ; MANUAL: cmd-byte → first @col STA. Natural
                                 ; bridge LDA+ASL×4+ORA+LDX = 15c gives gap=19c
                                 ; (LOGO LABEL/SAY drop site, May 2026).
         LDA pen_color
@@ -119,7 +119,7 @@ text_blit_glyph:
         ORA #$01                  ; transparent background ($x1)
         LDX #8
 @col:   STA VDP_DATA
-        JSR tms9918_pad40       ; silicon-strict 40c (loop-back inner @col)
+        JSR tms9918_pad12       ; silicon-strict 12c (loop-back inner @col)
         DEX
         BNE @col
         RTS

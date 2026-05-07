@@ -4,6 +4,7 @@
 #include <atomic>
 #include <condition_variable>
 #include <cstdint>
+#include <cstdio>
 #include <ctime>
 #include <memory>
 #include <mutex>
@@ -103,6 +104,12 @@ public:
     void setPresetRamKB(int kb);
     void setSiliconStrictMode(bool enabled);
     bool isSiliconStrictMode() const;
+    // TMS9918 silicon-strict diagnostics — forwarders to TMS9918::dropDiagnostics
+    // family. Returns 0 / no-ops when the card is unplugged. Used by the
+    // Hardware menu's "Dump TMS9918 drop diagnostics" item.
+    uint64_t tms9918DropCount() const;
+    void resetTms9918DropCount();
+    void dumpTms9918DropDiagnostics(std::FILE* out = nullptr, int topN = 16) const;
     int getOutOfRangeAccessCount() const;
     void setOutOfRangeStrictMode(bool enable);
     bool isOutOfRangeStrictMode() const;

@@ -96,6 +96,7 @@ void MainWindow_ImGui::renderTMS9918Window()
 {
     // Lazy texture creation — nearest-neighbour GL_NEAREST so every window size
     // gives a clean pixel-art result without the integer-scale black borders.
+    // Texture spans the FULL 320×240 frame (active 256×192 + R7 border bands).
     if (tms9918Texture == 0) {
         glGenTextures(1, &tms9918Texture);
         glBindTexture(GL_TEXTURE_2D, tms9918Texture);
@@ -104,34 +105,38 @@ void MainWindow_ImGui::renderTMS9918Window()
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
         glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA,
-                     TMS9918::kScreenWidth, TMS9918::kScreenHeight,
+                     TMS9918::kFullWidth, TMS9918::kFullHeight,
                      0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
     }
 
-    // Render into the CPU pixel buffer then upload to the GPU texture.
-    // IM_COL32 byte order [R,G,B,A] on little-endian matches GL_RGBA/GL_UNSIGNED_BYTE.
-    TMS9918::renderToBuffer(tms9918PixelBuf.data(), uiSnapshot.tms9918);
+    // The TMS9918 emulation already rasterises line-by-line into
+    // uiSnapshot.tms9918.framebuffer (silicon-progressive raster, R7 border
+    // bands, mid-frame R7/R1/VRAM changes all reflected). Upload the
+    // framebuffer directly to the GPU texture — no per-snapshot rendering
+    // needed in the UI path. IM_COL32 byte order [R,G,B,A] on little-endian
+    // matches GL_RGBA/GL_UNSIGNED_BYTE.
     glBindTexture(GL_TEXTURE_2D, tms9918Texture);
     glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0,
-                    TMS9918::kScreenWidth, TMS9918::kScreenHeight,
-                    GL_RGBA, GL_UNSIGNED_BYTE, tms9918PixelBuf.data());
+                    TMS9918::kFullWidth, TMS9918::kFullHeight,
+                    GL_RGBA, GL_UNSIGNED_BYTE,
+                    uiSnapshot.tms9918.framebuffer.data());
 
     const float defPs = kTMS9918DefaultPixelScale;
-    const float winW = TMS9918::kScreenWidth * defPs + 16.0f;
-    const float winH = TMS9918::kScreenHeight * defPs + 36.0f;
+    const float winW = TMS9918::kFullWidth  * defPs + 16.0f;
+    const float winH = TMS9918::kFullHeight * defPs + 36.0f;
     ImGui::SetNextWindowSize(ImVec2(winW, winH), ImGuiCond_FirstUseEver);
-    const float minWinW = TMS9918::kScreenWidth * kVideoCardMinPixelScale + 16.0f;
-    const float minWinH = TMS9918::kScreenHeight * kVideoCardMinPixelScale + 36.0f;
+    const float minWinW = TMS9918::kFullWidth  * kVideoCardMinPixelScale + 16.0f;
+    const float minWinH = TMS9918::kFullHeight * kVideoCardMinPixelScale + 36.0f;
     ImGui::SetNextWindowSizeConstraints(ImVec2(minWinW, minWinH), ImVec2(FLT_MAX, FLT_MAX));
     applyPendingLayout("P-LAB Graphic Card (TMS9918)");
     ImGui::PushStyleColor(ImGuiCol_WindowBg, IM_COL32(0, 0, 0, 255));
     if (ImGui::Begin("P-LAB Graphic Card (TMS9918)", &showTMS9918)) {
         ImVec2 avail = ImGui::GetContentRegionAvail();
-        float ps = std::min(avail.x / TMS9918::kScreenWidth,
-                            avail.y / TMS9918::kScreenHeight);
+        float ps = std::min(avail.x / TMS9918::kFullWidth,
+                            avail.y / TMS9918::kFullHeight);
         ps = std::max(ps, kVideoCardMinPixelScale);
-        ImVec2 size(std::floor(TMS9918::kScreenWidth  * ps),
-                    std::floor(TMS9918::kScreenHeight * ps));
+        ImVec2 size(std::floor(TMS9918::kFullWidth  * ps),
+                    std::floor(TMS9918::kFullHeight * ps));
 
         ImVec2 cursor = ImGui::GetCursorPos();
         ImGui::SetCursorPos(ImVec2(

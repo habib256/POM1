@@ -28,7 +28,7 @@
 ; =============================================
 
 ; ---- Apple 1 I/O ----
-        .import tms9918_pad40  ; silicon-strict pad40 (helper from tms9918_pad.asm)
+        .import tms9918_pad12  ; silicon-strict pad12-v3 (helper from tms9918_pad.asm)
 KBD     = $D010
 KBDCR   = $D011
 
@@ -202,7 +202,7 @@ main:
         STA quit_flag
         STA view_mode
         JSR init_vdp_g2
-        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (back-to-back VDP store)
+        JSR     tms9918_pad12   ; +12c silicon-strict pad12-v3 (back-to-back VDP store)
         JSR clear_bitmap
         ; drain stale keystrokes left over from Woz Monitor / paste buffer
         JSR drain_kb
@@ -797,27 +797,27 @@ init_vdp_g2:
         STA VDP_CTRL
         TXA
         ORA #$80
-        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (back-to-back VDP store)
+        JSR     tms9918_pad12   ; +12c silicon-strict pad12-v3 (back-to-back VDP store)
         STA VDP_CTRL
         INX
         CPX #8
-        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (back-to-back VDP store)
+        JSR     tms9918_pad12   ; +12c silicon-strict pad12-v3 (back-to-back VDP store)
         BNE @rg
 
         ; --- write linear name table at $3800 ---
         ; name[row*32+col] = (row & 7)*32 + col
         LDA #$00
         STA VDP_CTRL
-        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (before LDA #imm bridge)
+        JSR     tms9918_pad12   ; +12c silicon-strict pad12-v3 (before LDA #imm bridge)
         LDA #$78               ; $38 | $40
         STA VDP_CTRL
         LDX #3                 ; 3 thirds
 @th:    LDY #0                 ; bytes 0..255 in this third
 @nm:    TYA
-        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (back-to-back VDP store)
+        JSR     tms9918_pad12   ; +12c silicon-strict pad12-v3 (back-to-back VDP store)
         STA VDP_DATA
         INY
-        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (back-to-back VDP store)
+        JSR     tms9918_pad12   ; +12c silicon-strict pad12-v3 (back-to-back VDP store)
         BNE @nm
         DEX
         BNE @th
@@ -825,16 +825,16 @@ init_vdp_g2:
         ; --- color table: $F1 everywhere ($2000-$37FF, 6144 bytes) ---
         LDA #$00
         STA VDP_CTRL
-        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (before LDA #imm bridge)
+        JSR     tms9918_pad12   ; +12c silicon-strict pad12-v3 (before LDA #imm bridge)
         LDA #$60               ; $20 | $40
         STA VDP_CTRL
         LDX #24                ; 24 pages of 256
         LDY #0
 @cl:    LDA #$F1
-        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (back-to-back VDP store)
+        JSR     tms9918_pad12   ; +12c silicon-strict pad12-v3 (back-to-back VDP store)
         STA VDP_DATA
         INY
-        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (back-to-back VDP store)
+        JSR     tms9918_pad12   ; +12c silicon-strict pad12-v3 (back-to-back VDP store)
         BNE @cl
         DEX
         BNE @cl
@@ -849,16 +849,16 @@ vdp2_regs:
 clear_bitmap:
         LDA #$00
         STA VDP_CTRL
-        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (before LDA #imm bridge)
+        JSR     tms9918_pad12   ; +12c silicon-strict pad12-v3 (before LDA #imm bridge)
         LDA #$40               ; $00 | $40 = write start of VRAM
         STA VDP_CTRL
         LDX #24                ; 24 * 256 = 6144
         LDY #0
 @lp:    LDA #$00
-        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (back-to-back VDP store)
+        JSR     tms9918_pad12   ; +12c silicon-strict pad12-v3 (back-to-back VDP store)
         STA VDP_DATA
         INY
-        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (back-to-back VDP store)
+        JSR     tms9918_pad12   ; +12c silicon-strict pad12-v3 (back-to-back VDP store)
         BNE @lp
         DEX
         BNE @lp
@@ -872,7 +872,7 @@ clear_bitmap:
 vdp_set_write:
         LDA pix_addr_lo
         STA VDP_CTRL
-        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (before LDA zp/abs bridge)
+        JSR     tms9918_pad12   ; +12c silicon-strict pad12-v3 (before LDA zp/abs bridge)
         LDA pix_addr_hi
         ORA #$40
         STA VDP_CTRL
@@ -881,7 +881,7 @@ vdp_set_write:
 vdp_set_read:
         LDA pix_addr_lo
         STA VDP_CTRL
-        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (before LDA zp/abs bridge)
+        JSR     tms9918_pad12   ; +12c silicon-strict pad12-v3 (before LDA zp/abs bridge)
         LDA pix_addr_hi
         STA VDP_CTRL
         RTS
@@ -940,12 +940,12 @@ plot_set:
         STA pix_mask
         ; read existing byte
         JSR vdp_set_read
-        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (before LDA zp/abs bridge)
+        JSR     tms9918_pad12   ; +12c silicon-strict pad12-v3 (before LDA zp/abs bridge)
         LDA VDP_DATA
         ORA pix_mask
         STA pix_byte
         JSR vdp_set_write
-        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (before LDA zp/abs bridge)
+        JSR     tms9918_pad12   ; +12c silicon-strict pad12-v3 (before LDA zp/abs bridge)
         LDA pix_byte
         STA VDP_DATA
 plot_done:
@@ -1245,11 +1245,11 @@ write_char:
         JSR vdp_set_write
         LDY #0
 @lp:    LDA (ptr_lo),Y
-        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (back-to-back VDP store)
+        JSR     tms9918_pad12   ; +12c silicon-strict pad12-v3 (back-to-back VDP store)
         STA VDP_DATA
         INY
         CPY #8
-        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (back-to-back VDP store)
+        JSR     tms9918_pad12   ; +12c silicon-strict pad12-v3 (back-to-back VDP store)
         BNE @lp
         RTS
 
@@ -1304,7 +1304,7 @@ clear_band:
         ; aligned -> set byte to 0
         JSR calc_pix_addr
         JSR vdp_set_write
-        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (before LDA #imm bridge)
+        JSR     tms9918_pad12   ; +12c silicon-strict pad12-v3 (before LDA #imm bridge)
         LDA #0
         STA VDP_DATA
 @bumpx: LDA pix_x
@@ -1312,7 +1312,7 @@ clear_band:
         ADC #1
         STA pix_x
         CMP #0
-        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (back-to-back VDP store)
+        JSR     tms9918_pad12   ; +12c silicon-strict pad12-v3 (back-to-back VDP store)
         BNE @cont
 @cont:  LDA pix_x
         BNE @xcol               ; until wrap to 0 (after 256 -> 0)
@@ -1336,7 +1336,7 @@ show_title:
         STA fl_x1
         LDA #28
         STA fl_y0
-        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (back-to-back VDP store)
+        JSR     tms9918_pad12   ; +12c silicon-strict pad12-v3 (back-to-back VDP store)
         JSR hline
         LDA #60
         STA fl_y0
@@ -1523,7 +1523,7 @@ show_help:
         STA ch_cy
         LDA #<str_help_h1
         LDX #>str_help_h1
-        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (back-to-back VDP store)
+        JSR     tms9918_pad12   ; +12c silicon-strict pad12-v3 (back-to-back VDP store)
         JSR print_str_ax
 
         LDA #1
@@ -1624,7 +1624,7 @@ show_win:
         STA ch_cy
         LDA #<str_win1
         LDX #>str_win1
-        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (back-to-back VDP store)
+        JSR     tms9918_pad12   ; +12c silicon-strict pad12-v3 (back-to-back VDP store)
         JSR print_str_ax
         LDA #4
         STA ch_cx
@@ -1664,7 +1664,7 @@ show_lose:
         STA ch_cy
         LDA #<str_lose1
         LDX #>str_lose1
-        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (back-to-back VDP store)
+        JSR     tms9918_pad12   ; +12c silicon-strict pad12-v3 (back-to-back VDP store)
         JSR print_str_ax
         LDA #6
         STA ch_cx
@@ -1699,7 +1699,7 @@ render_3d:
         STA fl_x1
         LDA #95
         STA fl_y0
-        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (back-to-back VDP store)
+        JSR     tms9918_pad12   ; +12c silicon-strict pad12-v3 (back-to-back VDP store)
         JSR hline
         LDA #96
         STA fl_y0
@@ -2525,7 +2525,7 @@ render_map:
         STA ch_cy
         LDA #<str_map_title
         LDX #>str_map_title
-        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (back-to-back VDP store)
+        JSR     tms9918_pad12   ; +12c silicon-strict pad12-v3 (back-to-back VDP store)
         JSR print_str_ax
 
         ; outer bounds
@@ -2704,7 +2704,7 @@ render_map:
 @mn:    LDX ch_idx
         INX
         CPX #NUM_MOBS
-        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (back-to-back VDP store)
+        JSR     tms9918_pad12   ; +12c silicon-strict pad12-v3 (back-to-back VDP store)
         BNE @mlp
 
         ; Player arrow
@@ -2731,7 +2731,7 @@ render_map:
         STA ch_cy
         LDA #<str_map_help
         LDX #>str_map_help
-        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (back-to-back VDP store)
+        JSR     tms9918_pad12   ; +12c silicon-strict pad12-v3 (back-to-back VDP store)
         JSR print_str_ax
         RTS
 
@@ -2893,7 +2893,7 @@ draw_combat_screen:
         STA ch_cy
         LDA #<str_combat_title
         LDX #>str_combat_title
-        JSR     tms9918_pad40   ; +40c silicon-strict pad40 (back-to-back VDP store)
+        JSR     tms9918_pad12   ; +12c silicon-strict pad12-v3 (back-to-back VDP store)
         JSR print_str_ax
 
         ; Monster name

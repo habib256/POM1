@@ -32,11 +32,29 @@ public:
     static constexpr int kScreenHeight = 192;
     static constexpr int kVramSize     = 0x4000; // 16 KB
 
+    // TMS9918 NTSC visible region with R7-coloured borders. openMSX-aligned
+    // dimensions (~24 lines top + 24 bottom = 48 vertical border ; 32 px
+    // left + 32 right = 64 horizontal border). The active 256×192 image
+    // sits centred inside the 320×240 frame. R7 lower 4 bits paints the
+    // border (cf. dev/SILICONBUGS.md, "border colour" overscan rendering).
+    static constexpr int kBorderTop    = 24;
+    static constexpr int kBorderBottom = 24;
+    static constexpr int kBorderLeft   = 32;
+    static constexpr int kBorderRight  = 32;
+    static constexpr int kFullWidth    = kScreenWidth  + kBorderLeft + kBorderRight;  // 320
+    static constexpr int kFullHeight   = kScreenHeight + kBorderTop  + kBorderBottom; // 240
+
     struct Snapshot {
         std::array<uint8_t, 0x4000> vram{};
         std::array<uint8_t, 8> regs{};
         uint8_t statusReg = 0;
         bool siliconStrictMode = false;
+        // Persistent 320×240 RGBA framebuffer rendered progressively at the
+        // emulation-thread side (per scanline crossing). The UI reads this
+        // verbatim — no further per-snapshot rendering is required. Mid-frame
+        // R7 / R1 / VRAM changes affect only the lines drawn *after* the
+        // change, matching silicon's progressive raster behaviour.
+        std::array<uint32_t, 320 * 240> framebuffer{};
     };
 
     TMS9918();
@@ -118,6 +136,15 @@ public:
     // directly to an OpenGL texture for nearest-neighbour display at arbitrary window sizes.
     static void renderToBuffer(uint32_t* pixels, const Snapshot& snap);
 
+    // Render with R7-coloured borders into a 320×240 RGBA buffer. The 256×192
+    // active image is centred at offset (kBorderLeft, kBorderTop). Outside
+    // the active rect, every pixel is painted with kPalette[regs[7] & 0x0F]
+    // — the silicon's overscan/border colour. Used by the Hardware →
+    // TMS9918 panel so users can see colours that touch only R7 (typical
+    // demo "rainbow line" effects use the border bands as a separate
+    // canvas from the main playfield).
+    static void renderToBufferWithBorder(uint32_t* pixels, const Snapshot& snap);
+
     static const ImU32 kPalette[16];
 
 private:
@@ -128,9 +155,45 @@ private:
     static void renderMulticolor (uint32_t* pixels, const Snapshot& s, ImU32 backdrop);
     static void renderSprites    (uint32_t* pixels, const Snapshot& s);
 
-    // Per-VBLANK sprite scan that updates statusReg sticky bits 5 (collision)
-    // and 6 (5S) + the 5S sprite SAT index in low 5 bits. Bit-pattern based
-    // (color=0 sprites still collide). Live VRAM, called from advanceCycles.
+    // Per-scanline progressive-raster helpers. Read state directly from
+    // `vram` and `regs` (LIVE), so mid-frame register / VRAM changes only
+    // affect lines crossed *after* the change — silicon-correct rasterisation
+    // (cf. dev/SILICONBUGS.md "rainbow demo" use cases).
+    void renderActiveLine(int line);
+    void paintLeftRightBorderForActiveLine(int line);
+    void paintTopBorder();
+    void paintBottomBorder();
+    // Per-line raw renderers — operate on raw vram + regs pointers so they
+    // can be reused between the live progressive path and the legacy
+    // snapshot-based renderToBuffer.
+    static void renderGfxILineRaw       (int line, uint32_t* lineBuf,
+                                         const uint8_t* vram, const uint8_t* regs,
+                                         uint16_t vramMask, ImU32 backdrop);
+    static void renderGfxIILineRaw      (int line, uint32_t* lineBuf,
+                                         const uint8_t* vram, const uint8_t* regs,
+                                         uint16_t vramMask, ImU32 backdrop);
+    static void renderTextLineRaw       (int line, uint32_t* lineBuf,
+                                         const uint8_t* vram, const uint8_t* regs,
+                                         uint16_t vramMask, ImU32 backdrop);
+    static void renderMulticolorLineRaw (int line, uint32_t* lineBuf,
+                                         const uint8_t* vram, const uint8_t* regs,
+                                         uint16_t vramMask, ImU32 backdrop);
+    static void renderSpritesLineRaw    (int line, uint32_t* lineBuf,
+                                         const uint8_t* vram, const uint8_t* regs,
+                                         uint16_t vramMask);
+
+    // Per-scanline sprite scan that updates statusReg sticky bits 5 (collision),
+    // 6 (5S) and 0..4 (SAT index of the latched 5th sprite — or, when 5S is
+    // not set, the index of the last sprite the chip walked). Bit-pattern
+    // based (color=0 sprites still collide). Invoked from advanceCycles
+    // every time the simulated raster crosses an active scanline boundary,
+    // so collision/5S latch silicon-correctly mid-frame (cf. dev/SILICONBUGS.md
+    // Bug N°5 / N°6 / N°10). Source-of-truth: openMSX SpriteChecker::checkSprites1.
+    void scanSpritesForLine(int line);
+
+    // Legacy 1×/frame scan kept as a VBlank-edge fallback for the case where
+    // display was blanked the entire active period (no per-line work happened).
+    // Idempotent — repeating the call returns the same statusReg.
     static void scanSpritesForStatus(const uint8_t* vram, const uint8_t* regs,
                                      bool strict, uint8_t& statusOut);
     static uint16_t vramMaskForRegs(const uint8_t* regs, bool strict);
@@ -182,6 +245,20 @@ private:
     // access is still being serviced; another byte arriving now is dropped
     // (matches openMSX `pendingCpuAccess` + `tooFastCallback` default off).
     int  pendingDrainCycles = 0;
+
+    // Per-scanline sprite-scan progress. -1 = nothing scanned this frame;
+    // 0..192 = highest scanline covered (192 means VBlank reached). Reset
+    // at frame rollover. Drives the per-line invocation of scanSpritesForLine.
+    int  lastScanlineProcessed = -1;
+
+    // Persistent 320×240 RGBA framebuffer rendered line-by-line as the
+    // emulated raster crosses scanlines (silicon-correct progressive
+    // raster). The Snapshot publisher copies this verbatim into Snapshot
+    // ::framebuffer so the UI thread renders without any per-snapshot work.
+    std::array<uint32_t, 320 * 240> framebuffer{};
+    // Tracks the last scanline rendered into framebuffer this frame.
+    // Same semantics as lastScanlineProcessed but for the renderer.
+    int lastScanlineRendered = -1;
     bool siliconStrictMode  = false;
     uint64_t droppedWrites  = 0;      // cumulative count of VDP writes dropped by siliconStrictMode
     int      droppedWriteTraceCount = 0; // first N drops trace to stderr (debug)

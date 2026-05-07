@@ -379,19 +379,54 @@ void MainWindow_ImGui::renderMenuBar()
                                 nullptr, &siliconStrictModeEnabled)) {
                 emulation->setSiliconStrictMode(siliconStrictModeEnabled);
                 setStatusMessage(siliconStrictModeEnabled
-                    ? "Silicon Strict ON - VRAM writes < 8 cycles dropped (Mode I + sprites)"
+                    ? "Silicon Strict ON - openMSX slot-table model active"
                     : "Silicon Strict OFF - emulator-tolerant timing", 3.0f);
             }
             showHardwareTooltip(
                 "Silicon Strict (TMS9918 timing)\n\n"
-                "When ON, the TMS9918 enforces real-silicon access windows:\n"
-                "VRAM writes happening less than ~8 cycles apart in Mode I + sprites\n"
-                "are dropped (matches Bug N1 in dev/SILICONBUGS.md). Reproduces the\n"
-                "sprite-artefact / checkerboard glitches Galaga shows on real hardware.\n"
-                "R1 bit 7 also gates 4K vs 16K VRAM addressing.\n\n"
+                "When ON, the TMS9918 enforces real-silicon access windows using\n"
+                "the openMSX VDPAccessSlots slot-table model: each $CC00/$CC01\n"
+                "access locks the chip until the next free slot in the active\n"
+                "scanline-tick table (Gfx12 / Gfx3 / Text / ScreenOff). A new byte\n"
+                "arriving before the drain finishes is silently overwritten — the\n"
+                "exact behaviour Galaga damiers / Tetris timing-floor exhibit on\n"
+                "real silicon. Worst-case Mode I+sprites drain ≈ 7.5 cycles 6502.\n\n"
                 "When OFF, all writes always land - useful for debugging or running\n"
                 "code that has not been silicon-audited yet. Default = ON for every\n"
                 "preset except the Multiplexing Fantasy ones.");
+
+            // Drop diagnostics: dump the per-PC / per-port / per-table histogram
+            // to stderr so a user can identify exactly where their program is
+            // violating the slot timing. The numeric label shows the live
+            // dropped-write count to telegraph "you have something to inspect".
+            {
+                const uint64_t dropTotal = emulation->tms9918DropCount();
+                char label[96];
+                std::snprintf(label, sizeof(label),
+                              "Dump TMS9918 drop diagnostics (%llu drops)",
+                              (unsigned long long)dropTotal);
+                if (ImGui::MenuItem(label)) {
+                    emulation->dumpTms9918DropDiagnostics(stderr, 16);
+                    setStatusMessage(dropTotal > 0
+                        ? "TMS9918 drop diagnostics written to stderr (top-16 PC histogram)"
+                        : "No TMS9918 drops since last reset",
+                        4.0f);
+                }
+                showHardwareTooltip(
+                    "Dump TMS9918 drop diagnostics\n\n"
+                    "Writes the silicon-strict drop histogram to stderr:\n"
+                    "  - total drops since last reset / strict toggle\n"
+                    "  - breakdown by port ($CC00 data vs $CC01 control)\n"
+                    "  - breakdown by display phase (active vs vblank)\n"
+                    "  - breakdown by slot table (ScreenOff / Gfx12 / Gfx3 / Text)\n"
+                    "  - top-16 PC sites (mid-instruction; STA addr is PC-3)\n\n"
+                    "Counters reset when Silicon Strict is toggled or when a fresh\n"
+                    "snapshot is loaded. Live re-arm via 'Reset TMS9918 drop counter'.");
+                if (ImGui::MenuItem("Reset TMS9918 drop counter")) {
+                    emulation->resetTms9918DropCount();
+                    setStatusMessage("TMS9918 drop counter reset", 2.0f);
+                }
+            }
             ImGui::EndMenu();
         }
 

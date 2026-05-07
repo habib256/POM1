@@ -99,6 +99,15 @@ CHESS_ENGINE_ASM   = LIB_CHESS / "chess_engine.asm"
 CHESS_TEXT_IO_ASM  = LIB_CHESS / "chess_text_io.asm"
 CHESS_M1_ASM       = LIB_TMS   / "tms9918m1.asm"
 
+# --- TOOLS sources ---------------------------------------------------------
+# Codetank_TOOLS.rom hosts dev/silicon-validation utilities (no games).
+# Lower bank = TMS_SilTest (silicon discriminator suite for Parmigiani).
+# Upper bank = empty (reserved for future tools). Both halves linked at
+# $4000-$7FFF, run-in-place from ROM.
+SILTEST_ASM        = DEV / "tms9918_siltest" / "TMS_SilTest.asm"
+SILTEST_BANK_CFG   = DEV / "tms9918_siltest" / "apple1_siltest_codetank_bank.cfg"
+SILTEST_TEXT_ASM   = LIB_TMS / "tms9918_text.asm"
+
 
 # ---------------------------------------------------------------------------
 def need(tool: str) -> None:
@@ -331,6 +340,43 @@ def build_game3_upper_bank() -> bytes:
 
 
 # ---------------------------------------------------------------------------
+# TOOLS — TMS_SilTest (lower) + reserved (upper)
+# ---------------------------------------------------------------------------
+def build_tools_lower_bank() -> bytes:
+    """Lower 16 kB: TMS_SilTest run-in-place from $4000-$7FFF.
+    Silicon-validation suite for Parmigiani's hardware testing — boots
+    into 4 silicon-discriminator tests and prints results in text mode."""
+    print("[TOOLS] Lower bank (TMS_SilTest, full 16 kB):", file=sys.stderr)
+    siltest = assemble_multi(
+        [SILTEST_ASM, SILTEST_TEXT_ASM],
+        SILTEST_BANK_CFG, "TOOLS_SilTest", HALF_SIZE)
+    bank = bytearray(b"\xFF" * HALF_SIZE)
+    slot(bank, 0x0000, siltest, HALF_SIZE, "SilTest   ($4000-$7FFF)")
+    return bytes(bank)
+
+
+def build_tools_upper_bank() -> bytes:
+    """Upper 16 kB: reserved for future tools. Filled with $FF (EEPROM
+    erased state) so the operator sees an obvious 'no boot here' if they
+    flip the jumper without realising. A future tool slot can be wired
+    here in the same shape as the lower bank."""
+    print("\n[TOOLS] Upper bank (reserved, $FF-fill):", file=sys.stderr)
+    bank = bytearray(b"\xFF" * HALF_SIZE)
+    print(f"  reserved  ($4000-$7FFF) {0:5d} B / {HALF_SIZE:5d} B slot "
+          f"(  0.0%, {HALF_SIZE:5d} B free)", file=sys.stderr)
+    return bytes(bank)
+
+
+def build_tools() -> bytes:
+    print("\n========== Codetank_TOOLS.rom ==========", file=sys.stderr)
+    lower = build_tools_lower_bank()
+    upper = build_tools_upper_bank()
+    rom = lower + upper
+    assert len(rom) == ROM_SIZE
+    return rom
+
+
+# ---------------------------------------------------------------------------
 def build_game1() -> bytes:
     print("\n========== Codetank_GAME1.rom ==========", file=sys.stderr)
     lower = build_game1_lower_bank()
@@ -385,6 +431,14 @@ SIDECAR_GAME3 = (
     "  Upper jumper: empty (reserved for future expansion)\n"
 )
 
+SIDECAR_TOOLS = (
+    "Codetank_TOOLS.rom — TMS9918 silicon-validation utilities\n"
+    "  Lower jumper: 4000R → TMS_SilTest (Parmigiani validation suite —\n"
+    "                4 silicon-discriminator tests, see\n"
+    "                dev/projects/tms9918_siltest/README.md)\n"
+    "  Upper jumper: reserved for future dev tools\n"
+)
+
 
 def main() -> int:
     ap = argparse.ArgumentParser(
@@ -392,8 +446,8 @@ def main() -> int:
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     ap.add_argument(
-        "--rom", choices=("1", "2", "3", "all"), default="all",
-        help="Which CodeTank ROM to build (default: all 3)",
+        "--rom", choices=("1", "2", "3", "tools", "all"), default="all",
+        help="Which CodeTank ROM to build (default: all 4)",
     )
     args = ap.parse_args()
 
@@ -413,6 +467,10 @@ def main() -> int:
     if args.rom in ("3", "all"):
         rom3 = build_game3()
         write_rom(rom3, out_dir / "Codetank_GAME3.rom", SIDECAR_GAME3)
+
+    if args.rom in ("tools", "all"):
+        romT = build_tools()
+        write_rom(romT, out_dir / "Codetank_TOOLS.rom", SIDECAR_TOOLS)
 
     return 0
 
