@@ -1,5 +1,6 @@
 Codetank_TOOLS.rom — TMS9918 silicon-validation utilities
-  Lower jumper: 4000R → TMS_SilTest (Parmigiani validation suite —
-                4 silicon-discriminator tests, see
+  Lower jumper: 4000R → TMS_SilTest v2.0 (17 silicon-bug tests +
+                30s sprite-multiplexing stress benchmark; results
+                print on the Apple-1 native PIA display, see
                 dev/projects/tms9918_siltest/README.md)
   Upper jumper: reserved for future dev tools

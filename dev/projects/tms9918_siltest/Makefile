@@ -5,12 +5,9 @@
 OUT_DIR  := ../../../software/tms9918
 LIB      := -I ../../lib/apple1 -I ../../lib/m6502 -I ../../lib/tms9918
 
-OBJS := TMS_SilTest.o tms9918_text.o tms9918_pad.o
+OBJS := TMS_SilTest.o tms9918_pad.o
 
 TMS_SilTest.o: TMS_SilTest.asm
-	ca65 $(LIB) -o $@ $<
-
-tms9918_text.o: ../../lib/tms9918/tms9918_text.asm
 	ca65 $(LIB) -o $@ $<
 
 tms9918_pad.o: ../../lib/tms9918/tms9918_pad.asm

@@ -20,7 +20,6 @@ def main() -> int:
     emit(
         asm_files=[
             "TMS_SilTest.asm",
-            "lib/tms9918/tms9918_text.asm",
             "lib/tms9918/tms9918_pad.asm",
         ],
         lib_dirs=["apple1", "m6502", "tms9918"],

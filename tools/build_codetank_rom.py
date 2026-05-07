@@ -101,12 +101,12 @@ CHESS_M1_ASM       = LIB_TMS   / "tms9918m1.asm"
 
 # --- TOOLS sources ---------------------------------------------------------
 # Codetank_TOOLS.rom hosts dev/silicon-validation utilities (no games).
-# Lower bank = TMS_SilTest (silicon discriminator suite for Parmigiani).
-# Upper bank = empty (reserved for future tools). Both halves linked at
-# $4000-$7FFF, run-in-place from ROM.
+# Lower bank = TMS_SilTest (TMS9918 silicon-discriminator suite — runs
+# all SILICONBUGS bug battery, prints to Apple-1 native PIA display).
+# Upper bank = empty (reserved). Both halves linked at $4000-$7FFF,
+# run-in-place from ROM.
 SILTEST_ASM        = DEV / "tms9918_siltest" / "TMS_SilTest.asm"
 SILTEST_BANK_CFG   = DEV / "tms9918_siltest" / "apple1_siltest_codetank_bank.cfg"
-SILTEST_TEXT_ASM   = LIB_TMS / "tms9918_text.asm"
 
 
 # ---------------------------------------------------------------------------
@@ -344,12 +344,11 @@ def build_game3_upper_bank() -> bytes:
 # ---------------------------------------------------------------------------
 def build_tools_lower_bank() -> bytes:
     """Lower 16 kB: TMS_SilTest run-in-place from $4000-$7FFF.
-    Silicon-validation suite for Parmigiani's hardware testing — boots
-    into 4 silicon-discriminator tests and prints results in text mode."""
+    Silicon-validation suite — runs every SILICONBUGS bug as a test,
+    prints results on the Apple-1 native PIA display."""
     print("[TOOLS] Lower bank (TMS_SilTest, full 16 kB):", file=sys.stderr)
-    siltest = assemble_multi(
-        [SILTEST_ASM, SILTEST_TEXT_ASM],
-        SILTEST_BANK_CFG, "TOOLS_SilTest", HALF_SIZE)
+    siltest = assemble(SILTEST_ASM, SILTEST_BANK_CFG,
+                       "TOOLS_SilTest", HALF_SIZE)
     bank = bytearray(b"\xFF" * HALF_SIZE)
     slot(bank, 0x0000, siltest, HALF_SIZE, "SilTest   ($4000-$7FFF)")
     return bytes(bank)
@@ -433,8 +432,9 @@ SIDECAR_GAME3 = (
 
 SIDECAR_TOOLS = (
     "Codetank_TOOLS.rom — TMS9918 silicon-validation utilities\n"
-    "  Lower jumper: 4000R → TMS_SilTest (Parmigiani validation suite —\n"
-    "                4 silicon-discriminator tests, see\n"
+    "  Lower jumper: 4000R → TMS_SilTest v2.0 (17 silicon-bug tests +\n"
+    "                30s sprite-multiplexing stress benchmark; results\n"
+    "                print on the Apple-1 native PIA display, see\n"
     "                dev/projects/tms9918_siltest/README.md)\n"
     "  Upper jumper: reserved for future dev tools\n"
 )
