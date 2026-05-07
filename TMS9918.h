@@ -66,6 +66,16 @@ public:
     // /IRQ aggregator in Memory::advanceCycles (see SILICONBUGS Bug N°2).
     bool irqAsserted() const { return (regs[1] & 0x20) && (statusReg & 0x80); }
 
+    // Caller's program counter at the moment of the next VDP access.
+    // Memory::memWrite snapshots cpuForIrq->getProgramCounter() into here
+    // right before invoking writeData/writeControl/readData/readControl,
+    // so the drop trace can name the offending STA/LDA site directly
+    // (e.g. "drop at PC=$5A04" instead of grepping the source for the
+    // matching value). Note: PC is sampled mid-instruction — for a
+    // 3-byte `STA $CC00` the captured PC = (STA addr + 3), so the user
+    // looks for the STA at PC-3 in the disassembly.
+    void setLastAccessPc(uint16_t pc) { lastAccessPc = pc; }
+
     void reset();
 
     void copySnapshot(Snapshot& out);
@@ -109,6 +119,7 @@ private:
     bool siliconStrictMode  = false;
     uint64_t droppedWrites  = 0;      // cumulative count of VDP writes dropped by siliconStrictMode
     int      droppedWriteTraceCount = 0; // first N drops trace to stderr (debug)
+    uint16_t lastAccessPc   = 0;      // CPU PC at the most recent VDP-port access (set by Memory)
     bool snapshotDirty = true;        // skip the 16 KB VRAM + regs copy when nothing changed since last publish
 
     static constexpr int kCyclesPerFrame = POM1_CPU_CYCLES_PER_FRAME_1X_60HZ;

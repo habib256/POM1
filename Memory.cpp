@@ -196,9 +196,16 @@ Memory::Memory()
     tms9918BusHandle = bus.registerHandle(
         "TMS9918", {0xCC00, 0xCC01}, /*priority*/ 10,
         [this](uint16_t a) {
+            // Snapshot the CPU PC for the silicon-strict drop trace —
+            // when a future read drops, the log can name the offending
+            // instruction directly. PC is sampled mid-opcode (after
+            // operand fetch) so a 3-byte `LDA $CC0X` shows PC = (LDA
+            // address + 3); subtract 3 in the disassembly to find it.
+            if (cpuForIrq) tms9918->setLastAccessPc(cpuForIrq->getProgramCounter());
             return (a == 0xCC00) ? tms9918->readData() : tms9918->readControl();
         },
         [this](uint16_t a, uint8_t v) {
+            if (cpuForIrq) tms9918->setLastAccessPc(cpuForIrq->getProgramCounter());
             if (a == 0xCC00) tms9918->writeData(v);
             else tms9918->writeControl(v);
         });

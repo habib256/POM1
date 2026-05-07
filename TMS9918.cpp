@@ -151,12 +151,15 @@ void TMS9918::writeData(uint8_t value)
     if (!canAcceptAccess()) {
         ++droppedWrites;
         if (droppedWriteTraceCount < 60) {
+            // PC sampled mid-instruction by Memory::memWrite. For a 3-byte
+            // `STA $CC00` the captured PC = (STA addr + 3) — to find the
+            // offending site in the disassembly, look for the STA at PC-3.
             std::fprintf(stderr,
                 "[TMS9918 DROP #%llu] writeData val=%02X vramAddr=%04X gap=%d "
-                "required=%d frameCycle=%d R1=%02X\n",
+                "required=%d frameCycle=%d R1=%02X PC=$%04X\n",
                 (unsigned long long)droppedWrites, value, vramAddr,
                 cyclesSinceIoAccess, requiredAccessCycles(),
-                frameCycleCounter, regs[1]);
+                frameCycleCounter, regs[1], lastAccessPc);
             ++droppedWriteTraceCount;
         }
         return;
@@ -189,12 +192,14 @@ void TMS9918::writeControl(uint8_t value)
     if (!canAcceptAccess()) {
         ++droppedWrites;
         if (droppedWriteTraceCount < 60) {
+            // PC sampled mid-instruction by Memory::memWrite (see writeData
+            // above for the offset note — STA addr = PC - 3 for `STA $CC01`).
             std::fprintf(stderr,
                 "[TMS9918 DROP #%llu] writeControl val=%02X latch2=%d gap=%d "
-                "required=%d frameCycle=%d R1=%02X\n",
+                "required=%d frameCycle=%d R1=%02X PC=$%04X\n",
                 (unsigned long long)droppedWrites, value, latchIsSecond,
                 cyclesSinceIoAccess, requiredAccessCycles(),
-                frameCycleCounter, regs[1]);
+                frameCycleCounter, regs[1], lastAccessPc);
             ++droppedWriteTraceCount;
         }
         return;
