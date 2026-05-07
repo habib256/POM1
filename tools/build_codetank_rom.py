@@ -13,12 +13,15 @@ Three ROMs are produced (in roms/codetank/):
 
   Codetank_GAME2.rom (32 kB)
     Lower 16 kB: TMS_Rogue alone (full bank, run-in-place from $4000)
-    Upper 16 kB: TMS_Chess alone (full bank, run-in-place from $4000)
-    Jumper Lower → 4000R boots Rogue; jumper Upper → 4000R boots Chess.
+    Upper 16 kB: TETRIS / JUKEBOX prebuilt 16 kB image
+                 (`software/tms9918/tetris_jukebox.bin`, run-in-place)
+    Jumper Lower → 4000R boots Rogue; jumper Upper → 4000R boots Tetris/JB.
 
   Codetank_GAME3.rom (32 kB)
     Lower 16 kB: TMS_Life alone (run-in-place from $4000)
-    Upper 16 kB: empty (reserved for future expansion)
+    Upper 16 kB: TMS_Chess alone (full bank, run-in-place from $4000)
+                 (moved here from GAME2 upper in May 2026)
+    Jumper Lower → 4000R boots Life; jumper Upper → 4000R boots Chess.
 
 Each game's slot is sized to fit its current assembled binary (see the
 .cfg `size = $xxxx` field). `slot()` enforces the boundary and prints a
@@ -62,9 +65,16 @@ SOKOBAN_BANK_CFG  = DEV / "tms9918_sokoban"       / "apple1_sokoban_codetank_ban
 SNAKE_ASM         = DEV / "tms9918_snake"         / "TMS_Snake.asm"
 SNAKE_BANK_CFG    = DEV / "tms9918_snake"         / "apple1_snake_codetank_bank.cfg"
 
-# --- GAME3 sources (Life alone in lower bank) ------------------------------
+# --- GAME3 sources (Life lower; Chess upper, ex-GAME2) ---------------------
 LIFE_ASM          = DEV / "tms9918_life" / "TMS_Life.asm"
 LIFE_FULL_CFG     = DEV / "tms9918_life" / "apple1_life_codetank_full.cfg"
+
+# --- TETRIS / JUKEBOX (prebuilt 16 kB upper bank for GAME2) ----------------
+# Drop-in 6502 binary supplied as `software/tms9918/tetris_jukebox.bin` —
+# 16 384 B exact, runs in place from $4000 (CodeTank upper-jumper). No
+# source / no assembly: we splat the bytes into the upper bank verbatim.
+# May 2026: replaced Chess in GAME2 upper; Chess moved to GAME3 upper.
+TETRIS_JB_BIN     = ROOT / "software" / "tms9918" / "tetris_jukebox.bin"
 
 # --- LOGO V2 (GAME1 upper) -------------------------------------------------
 LOGO_V2_ASM        = DEV / "tms9918_logo" / "TMS_Logo_16k.asm"
@@ -277,13 +287,21 @@ def build_game2_lower_bank() -> bytes:
 
 
 def build_game2_upper_bank() -> bytes:
-    """Upper 16 kB: TMS_Chess alone, full $4000-$7FFF (CODE+ENGINE merged)."""
-    print("\n[GAME2] Upper bank (TMS_Chess alone, full 16 kB):", file=sys.stderr)
-    chess = assemble_multi(
-        [CHESS_ASM, CHESS_ENGINE_ASM, CHESS_TEXT_IO_ASM, CHESS_M1_ASM],
-        CHESS_CODETANK_CFG, "G2_Chess", HALF_SIZE)
+    """Upper 16 kB: TETRIS / JUKEBOX prebuilt binary, full $4000-$7FFF.
+    Drop-in image (no assembly) — just splat the 16 kB into the upper bank.
+    May 2026: replaced Chess (which moved to GAME3 upper)."""
+    print("\n[GAME2] Upper bank (TETRIS / JUKEBOX prebuilt, full 16 kB):",
+          file=sys.stderr)
+    if not TETRIS_JB_BIN.is_file():
+        raise SystemExit(
+            f"  ERROR: {TETRIS_JB_BIN} not found — cannot build GAME2 upper")
+    data = TETRIS_JB_BIN.read_bytes()
+    if len(data) != HALF_SIZE:
+        raise SystemExit(
+            f"  ERROR: {TETRIS_JB_BIN} is {len(data)} B, expected exactly "
+            f"{HALF_SIZE} B (full upper bank)")
     bank = bytearray(b"\xFF" * HALF_SIZE)
-    slot(bank, 0x0000, chess, HALF_SIZE, "Chess     ($4000-$7FFF)")
+    slot(bank, 0x0000, data, HALF_SIZE, "Tetris/JB ($4000-$7FFF)")
     return bytes(bank)
 
 
@@ -300,9 +318,16 @@ def build_game3_lower_bank() -> bytes:
 
 
 def build_game3_upper_bank() -> bytes:
-    """Upper 16 kB: empty (filled with $FF). Reserved for future expansion."""
-    print("\n[GAME3] Upper bank: empty ($FF fill, reserved)", file=sys.stderr)
-    return b"\xFF" * HALF_SIZE
+    """Upper 16 kB: TMS_Chess alone, full $4000-$7FFF (CODE+ENGINE merged).
+    Moved here from GAME2 in May 2026 to make room for the Tetris/Jukebox
+    drop-in image."""
+    print("\n[GAME3] Upper bank (TMS_Chess alone, full 16 kB):", file=sys.stderr)
+    chess = assemble_multi(
+        [CHESS_ASM, CHESS_ENGINE_ASM, CHESS_TEXT_IO_ASM, CHESS_M1_ASM],
+        CHESS_CODETANK_CFG, "G3_Chess", HALF_SIZE)
+    bank = bytearray(b"\xFF" * HALF_SIZE)
+    slot(bank, 0x0000, chess, HALF_SIZE, "Chess     ($4000-$7FFF)")
+    return bytes(bank)
 
 
 # ---------------------------------------------------------------------------

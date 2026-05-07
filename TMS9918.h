@@ -15,7 +15,10 @@
 
 #include <array>
 #include <cstdint>
+#include <cstdio>
+#include <cstddef>
 #include <string_view>
+#include <unordered_map>
 #include "CpuClock.h"
 #include "Peripheral.h"
 #include "imgui.h"
@@ -58,7 +61,37 @@ public:
     // Exposed in the status bar next to the STRICT/FANTASY tag so users can
     // see at a glance how often a program violates the access window.
     uint64_t droppedWriteCount() const { return droppedWrites; }
-    void resetDroppedWriteCount() { droppedWrites = 0; }
+    void resetDroppedWriteCount();
+
+    // Drop diagnostics — fine-grained per-PC histogram + per-port + per-mode
+    // breakdown. Reset on `setSiliconStrictMode()` and `resetDroppedWriteCount()`
+    // so a "test run" can be bounded by a strict-mode toggle. Exposed read-only;
+    // dump via `dumpDropDiagnostics()` for human-readable triage of the offending
+    // STA sites and modes.
+    enum SlotTableId : uint8_t {
+        kSlotTableScreenOff = 0,
+        kSlotTableGfx12     = 1,
+        kSlotTableGfx3      = 2,
+        kSlotTableText      = 3,
+        kSlotTableCount     = 4,
+    };
+    struct DropDiagnostics {
+        uint64_t total       = 0;          // == droppedWrites
+        uint64_t writeData   = 0;          // $CC00 writes dropped
+        uint64_t writeCtrl   = 0;          // $CC01 writes dropped
+        uint64_t byTable[kSlotTableCount] = {0,0,0,0};
+        uint64_t inActive    = 0;          // dropped during active display (frameCycle < kActiveDisplayCycles)
+        uint64_t inVBlank    = 0;          // dropped during VBlank (frameCycle >= kActiveDisplayCycles)
+        // PC histogram. STA $CC00 is 3 bytes — captured PC = STA addr + 3.
+        // The disassembly site is at PC-3 (or PC-2 for STA absX/absY = 3 bytes
+        // too, or PC-2 for STA $CC00,X via abs,X also 3 bytes). Always look at
+        // PC-3 first, then walk back if the opcode at PC-3 is not an STA.
+        std::unordered_map<uint16_t, uint64_t> byPc;
+    };
+    const DropDiagnostics& dropDiagnostics() const { return dropStats; }
+    // Pretty-print the diagnostics to a stream (stderr by default).
+    // Format: header + table breakdown + port breakdown + top-N PC histogram.
+    void dumpDropDiagnostics(std::FILE* out = stderr, int topN = 16) const;
 
     // /INT line state. Asserted (true) when R1 bit 5 (IRQ enable) is set
     // AND status bit 7 (F frame flag) is sticky. Reading $CC01 clears
@@ -102,9 +135,38 @@ private:
                                      bool strict, uint8_t& statusOut);
     static uint16_t vramMaskForRegs(const uint8_t* regs, bool strict);
     uint16_t liveVramMask() const;
-    int requiredAccessCycles() const;
+
+    // Silicon-strict timing: port verbatim of openMSX VDPAccessSlots.cc
+    // (TMS9918/MSX1 branch). Each scanline holds 1368 VDP ticks; the active
+    // table publishes the absolute tick positions where the chip grants the
+    // CPU a VRAM slot. A new CPU access drains for `pendingDrainCycles` 6502
+    // cycles before the chip is free again — a fresh access during that
+    // window is silently overwritten (silicon's `tooFastCallback`-equivalent
+    // is the dropped-write counter exposed via droppedWriteCount()).
+    //
+    // Time conversion: 1 line = 63.7 µs = 1368 ticks (NTSC TMS9918, openMSX
+    // `TICKS_PER_LINE`). 1 cycle 6502 ≈ 21 ticks at 1.022727 MHz. Position in
+    // the line is derived from frameCycleCounter (no separate counter).
+    // Tiny pointer+size view into a slot-tick array. C++17 stand-in for the
+    // C++20 `std::span<const int16_t>` openMSX uses; semantics match (data + size,
+    // forward-iterable, back() = last element).
+    struct SlotSpan {
+        const int16_t* data;
+        std::size_t    size;
+        const int16_t* begin() const { return data; }
+        const int16_t* end()   const { return data + size; }
+        int16_t        back()  const { return data[size - 1]; }
+    };
+
     bool canAcceptAccess() const;
     void noteAcceptedAccess();
+    SlotSpan selectSlotTable() const;
+    SlotTableId activeSlotTableId() const;
+    // Record a dropped access into dropStats and emit a stderr trace line.
+    // `port` is 'D' for $CC00 (writeData), 'C' for $CC01 (writeControl).
+    // `value` is the byte the program tried to write. Bumps droppedWrites and
+    // updates the PC/port/table/active-vs-vblank histograms.
+    void noteDroppedAccess(char port, uint8_t value);
 
 private:
     std::array<uint8_t, 0x4000> vram{};
@@ -115,12 +177,26 @@ private:
     uint16_t vramAddr       = 0;
     uint8_t readAheadBuffer = 0;
     int frameCycleCounter   = 0;
-    int cyclesSinceIoAccess = 1000000;
+    // 6502 cycles before the in-flight $CC00/$CC01 access has drained from
+    // the VDP latch. 0 = chip free, accepts a fresh access. >0 = a previous
+    // access is still being serviced; another byte arriving now is dropped
+    // (matches openMSX `pendingCpuAccess` + `tooFastCallback` default off).
+    int  pendingDrainCycles = 0;
     bool siliconStrictMode  = false;
     uint64_t droppedWrites  = 0;      // cumulative count of VDP writes dropped by siliconStrictMode
     int      droppedWriteTraceCount = 0; // first N drops trace to stderr (debug)
+    DropDiagnostics dropStats{};      // per-PC / per-port / per-table histograms
     uint16_t lastAccessPc   = 0;      // CPU PC at the most recent VDP-port access (set by Memory)
     bool snapshotDirty = true;        // skip the 16 KB VRAM + regs copy when nothing changed since last publish
+
+    // Slot-table model constants (openMSX-aligned).
+    // TICKS_PER_LINE = 1368 NTSC (openMSX VDP::TICKS_PER_LINE).
+    // D28 = 28-tick prep delay between CPU-side request and chip latch
+    // (Nouspikel "2 µs préparation chip", openMSX `Delta::D28`).
+    // 21 = round(1368 / 65) ≈ VDP ticks per 6502 cycle at 1.022727 MHz.
+    static constexpr int kVdpTicksPerLine    = 1368;
+    static constexpr int kVdpTicksPerCpuCycle = 21;
+    static constexpr int kVdpDeltaD28Ticks   = 28;
 
     static constexpr int kCyclesPerFrame = POM1_CPU_CYCLES_PER_FRAME_1X_60HZ;
     // Active display covers 192 of the 262 NTSC scanlines; the remaining 70

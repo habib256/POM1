@@ -4377,9 +4377,18 @@ init_vdp:
 
 ; =============================================
 ; delay_and_input: throttle the loop and slurp keys (non-blocking).
-; Outer = SPEED constant (~25 ms / tick at default).
+; Outer = SPEED constant. Each outer iter = ~2816c (256 inner ops at
+; ~11c each: LDA KBDCR + BPL + DEY + BNE), so SPEED=N gives roughly
+; N*2816 cycles of throttle per play_loop iteration.
+;
+; SPEED tuning history:
+;   6 → ~16896c (~1.0 frame at 60Hz, comfortable responsiveness)
+;   4 → ~11264c (~0.66 frame, 50% faster game pace, May 2026 user pref)
+; Lower than 4 risks running play_loop's logic + render_sprites past
+; the 60Hz frame budget (~17045c at 1×); the game would still work but
+; the per-frame delay would be the bottleneck instead of the throttle.
 ; =============================================
-SPEED = 6
+SPEED = 4
 delay_and_input:
         LDX #SPEED
 @outer:

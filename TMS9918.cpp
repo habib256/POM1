@@ -11,6 +11,91 @@
 #include <algorithm>
 #include <cstdio>
 #include <cstring>
+#include <utility>
+#include <vector>
+
+// --------------------------------------------------------------------------
+// openMSX VDP slot tables — TMS9918/MSX1 branch
+// Verbatim copy from openMSX src/video/VDPAccessSlots.cc (lines 71-127).
+// openMSX is GPL-2.0+, POM1 is GPL-2.0+ — license-compatible.
+// Source: https://github.com/openMSX/openMSX
+//
+// Each table publishes the absolute tick positions (within a 1368-tick
+// scanline) where the VDP grants the CPU a VRAM access slot. The trailing
+// `1368+x` cyclic duplicates ensure a "next slot ≥ targetTick" search always
+// terminates without manual wrap-around for positions near tick 1300+.
+//
+// `slotsMsx1ScreenOff` — display blanked (R1.6=0)
+// `slotsMsx1Gfx12`     — Mode I + Mode II (Graphic 1/2; sprites on or off,
+//                        openMSX does not split them on MSX1)
+// `slotsMsx1Gfx3`      — Multicolor (Mode 3)
+// `slotsMsx1Text`      — Text (Mode 1)
+// --------------------------------------------------------------------------
+namespace {
+
+constexpr std::array<int16_t, 107 + 18> slotsMsx1ScreenOff = {
+       4,   12,   20,   28,   36,   44,   52,   60,   68,   76,
+      84,   92,  100,  108,  116,  124,  132,  140,  148,  156,
+     164,  172,  180,  188,  196,  204,  220,  236,  252,  268,
+     284,  300,  316,  332,  348,  364,  380,  396,  412,  428,
+     444,  460,  476,  492,  508,  524,  540,  556,  572,  588,
+     604,  620,  636,  652,  668,  684,  700,  716,  732,  748,
+     764,  780,  796,  812,  828,  844,  860,  876,  892,  908,
+     924,  940,  956,  972,  988, 1004, 1020, 1036, 1052, 1068,
+    1084, 1100, 1116, 1132, 1148, 1164, 1180, 1196, 1212, 1228,
+    1236, 1244, 1252, 1260, 1268, 1276, 1284, 1292, 1300, 1308,
+    1316, 1324, 1332, 1340, 1348, 1356, 1364,
+    1368+  4, 1368+ 12, 1368+ 20, 1368+ 28, 1368+ 36,
+    1368+ 44, 1368+ 52, 1368+ 60, 1368+ 68, 1368+ 76,
+    1368+ 84, 1368+ 92, 1368+100, 1368+108, 1368+116,
+    1368+124, 1368+132, 1368+140,
+};
+
+constexpr std::array<int16_t, 19 + 8> slotsMsx1Gfx12 = {
+       4,   12,   20,   28,  116,  124,  132,  140,  220,  348,
+     476,  604,  732,  860,  988, 1116, 1236, 1244, 1364,
+    1368+  4, 1368+ 12, 1368+ 20, 1368+ 28, 1368+116,
+    1368+124, 1368+132, 1368+140,
+};
+
+constexpr std::array<int16_t, 51 + 8> slotsMsx1Gfx3 = {
+       4,   12,   20,   28,  116,  124,  132,  140,  220,  228,
+     260,  292,  324,  348,  356,  388,  420,  452,  476,  484,
+     516,  548,  580,  604,  612,  644,  676,  708,  732,  740,
+     772,  804,  836,  860,  868,  900,  932,  964,  988,  996,
+    1028, 1060, 1092, 1116, 1124, 1156, 1188, 1220, 1236, 1244,
+    1364,
+    1368+  4, 1368+ 12, 1368+ 20, 1368+ 28, 1368+116,
+    1368+124, 1368+132, 1368+140,
+};
+
+constexpr std::array<int16_t, 91 + 18> slotsMsx1Text = {
+       4,   12,   20,   28,   36,   44,   52,   60,   68,   76,
+      84,   92,  100,  108,  116,  124,  132,  140,  148,  156,
+     164,  172,  180,  188,  196,  204,  212,  220,  228,  244,
+     268,  292,  316,  340,  364,  388,  412,  436,  460,  484,
+     508,  532,  556,  580,  604,  628,  652,  676,  700,  724,
+     748,  772,  796,  820,  844,  868,  892,  916,  940,  964,
+     988, 1012, 1036, 1060, 1084, 1108, 1132, 1156, 1180, 1196,
+    1204, 1212, 1220, 1228, 1236, 1244, 1252, 1260, 1268, 1276,
+    1284, 1292, 1300, 1308, 1316, 1324, 1332, 1340, 1348, 1356,
+    1364,
+    1368+  4, 1368+ 12, 1368+ 20, 1368+ 28, 1368+ 36,
+    1368+ 44, 1368+ 52, 1368+ 60, 1368+ 68, 1368+ 76,
+    1368+ 84, 1368+ 92, 1368+100, 1368+108, 1368+116,
+    1368+124, 1368+132, 1368+140,
+};
+
+const char* slotTableName(const int16_t* data)
+{
+    if (data == slotsMsx1ScreenOff.data()) return "ScreenOff";
+    if (data == slotsMsx1Gfx12.data())     return "Gfx12";
+    if (data == slotsMsx1Gfx3.data())      return "Gfx3";
+    if (data == slotsMsx1Text.data())      return "Text";
+    return "?";
+}
+
+} // namespace
 
 // --------------------------------------------------------------------------
 // TMS9918A standard color palette (RGBA via IM_COL32)
@@ -52,18 +137,27 @@ void TMS9918::reset()
     vramAddr        = 0;
     readAheadBuffer = 0;
     frameCycleCounter = 0;
-    cyclesSinceIoAccess = 1000000;
+    pendingDrainCycles = 0;
     droppedWrites = 0;
     droppedWriteTraceCount = 0;
+    dropStats = DropDiagnostics{};
     snapshotDirty   = true;
 }
 
 void TMS9918::setSiliconStrictMode(bool enabled)
 {
     siliconStrictMode = enabled;
-    cyclesSinceIoAccess = 1000000;
+    pendingDrainCycles = 0;         // chip frais — first access always lands
     droppedWrites = 0;
     droppedWriteTraceCount = 0;     // restart the counter on toggle so users see new drops only
+    dropStats = DropDiagnostics{};
+}
+
+void TMS9918::resetDroppedWriteCount()
+{
+    droppedWrites = 0;
+    droppedWriteTraceCount = 0;
+    dropStats = DropDiagnostics{};
 }
 
 uint16_t TMS9918::vramMaskForRegs(const uint8_t* regs, bool strict)
@@ -76,70 +170,140 @@ uint16_t TMS9918::liveVramMask() const
     return vramMaskForRegs(regs.data(), siliconStrictMode);
 }
 
-int TMS9918::requiredAccessCycles() const
+// --------------------------------------------------------------------------
+// Slot-table model (openMSX port)
+//
+// Replaces the old min-distance threshold with openMSX's slot-position
+// approach. Each CPU access at $CC00/$CC01 looks up the next free slot in
+// the active scanline-tick table; if the chip is still draining a previous
+// access (`pendingDrainCycles > 0`) the new byte is silently overwritten
+// (== silicon's "tooFastCallback" behaviour with allowTooFastAccess=false).
+//
+// Side note: openMSX does not split sprites-on/off on MSX1 — the same
+// `slotsMsx1Gfx12` table covers both. We follow suit and removed the
+// old SAT[0]==$D0 fast-path (silicon doesn't discriminate either).
+//
+// Reference: src/video/VDPAccessSlots.cc in the openMSX repository.
+// --------------------------------------------------------------------------
+TMS9918::SlotSpan TMS9918::selectSlotTable() const
 {
-    if (!siliconStrictMode) return 0;
-    // Display blanked (R1 bit 6 = 0) OR beam currently in VBlank: VRAM
-    // bandwidth is free, only the chip preparation latency applies. The
-    // VBlank check uses frameCycleCounter (the physical beam position),
-    // NOT statusReg bit 7 — bit 7 is sticky-until-readControl, so a
-    // program that never polls $CC01 (Galaga pre-VBlank-sync, for one)
-    // keeps it set forever and would otherwise see a permanently-relaxed
-    // window across the whole active display.
-    //
-    // VBlank threshold = 16c. Matches the active-display Mode I+sprites
-    // worst case formula "1 slot/16 VDP + STA + margin" — even during
-    // VBlank, when slot contention is gone, the chip's internal latch +
-    // warm-NMOS turnaround can stretch CPU access. Strict means strict:
-    // no per-mode escape hatch. The auto-patcher walks cross-JSR
-    // boundaries (find_vdp_tail_routines + JSR-as-VDP-store treatment)
-    // so callers of routines that end with STA VDP_* get a pad before
-    // their next VDP access automatically.
-    if ((regs[1] & 0x40) == 0 || frameCycleCounter >= kActiveDisplayCycles) return 16;
+    const bool displayEnabled = (regs[1] & 0x40) != 0;
+    if (!displayEnabled)
+        return SlotSpan{slotsMsx1ScreenOff.data(), slotsMsx1ScreenOff.size()};
+    const bool m1 = (regs[1] & 0x10) != 0;   // text
+    const bool m2 = (regs[1] & 0x08) != 0;   // multicolor
+    if (m1) return SlotSpan{slotsMsx1Text.data(),  slotsMsx1Text.size()};
+    if (m2) return SlotSpan{slotsMsx1Gfx3.data(),  slotsMsx1Gfx3.size()};
+    return SlotSpan{slotsMsx1Gfx12.data(), slotsMsx1Gfx12.size()};
+}
 
-    // Hardened silicon-strict thresholds (cf. dev/SILICONBUGS.md Bug N°1).
-    // The "1 slot per N VDP cycles" model gives the *typical* worst case at
-    // ideal CPU↔VDP phase alignment; the *worst-worst* case adds one full
-    // slot wait (CPU access arrives just after a slot consumed) plus the
-    // 4-cycle STA latch + ~2c bus turnaround on warm NMOS. We dimension each
-    // mode so passing POM1 strict guarantees silicon — the contract is:
-    //   gap ≥ 1 full VDP slot period + STA + phase margin.
-    // May 2026: Mode I+sprites pad ramp 16→24→40c. The 24c level still
-    // displayed Galaga sprite-table corruption and LOGO turtle redraw
-    // artefacts under unfavourable CPU↔VDP phase; doubling the safety
-    // margin to 40c eliminates both. Patcher emits JSR tms9918_pad40 (40c)
-    // to match. Other modes keep their 4/6/6c thresholds — their slot
-    // periods are physically shorter so they don't need the extra cushion.
-    const bool textMode       = (regs[1] & 0x10) != 0;
-    const bool multicolorMode = (regs[1] & 0x08) != 0;
-    if (textMode) return 4;          // 1 slot/3 VDP cycles, +1c phase margin
-    if (multicolorMode) return 6;    // 1 slot/4 VDP cycles, +2c phase margin
+TMS9918::SlotTableId TMS9918::activeSlotTableId() const
+{
+    const bool displayEnabled = (regs[1] & 0x40) != 0;
+    if (!displayEnabled)              return kSlotTableScreenOff;
+    if (regs[1] & 0x10)               return kSlotTableText;
+    if (regs[1] & 0x08)               return kSlotTableGfx3;
+    return kSlotTableGfx12;
+}
 
-    // Mode I / Mode II : check sprite-active terminator.
-    const uint16_t satBase = static_cast<uint16_t>(regs[5] & 0x7F) << 7;
-    const uint16_t mask = liveVramMask();
-    bool spritesActive = false;
-    for (int i = 0; i < 32; ++i) {
-        const uint8_t y = vram[(satBase + i * 4) & mask];
-        if (y == 0xD0) break;
-        spritesActive = true;
-        break;
+void TMS9918::noteDroppedAccess(char port, uint8_t value)
+{
+    ++droppedWrites;
+    DropDiagnostics& d = dropStats;
+    ++d.total;
+    if (port == 'D') ++d.writeData; else ++d.writeCtrl;
+    const SlotTableId tbl = activeSlotTableId();
+    ++d.byTable[tbl];
+    const bool inVBlank = frameCycleCounter >= kActiveDisplayCycles;
+    if (inVBlank) ++d.inVBlank; else ++d.inActive;
+    ++d.byPc[lastAccessPc];
+
+    // First N drops also dump a single-line trace so devs see the problem
+    // without having to call dumpDropDiagnostics(). Trace cap survives the
+    // session — call resetDroppedWriteCount() to start a fresh window.
+    if (droppedWriteTraceCount < 60) {
+        const int posTicks = (frameCycleCounter * kVdpTicksPerCpuCycle) % kVdpTicksPerLine;
+        const auto slots   = selectSlotTable();
+        const int targetTick = posTicks + kVdpDeltaD28Ticks;
+        int slotTick = slots.back();
+        for (int v : slots) { if (v >= targetTick) { slotTick = v; break; } }
+        const int slotShortBy = pendingDrainCycles;     // cycles still owed to chip
+        std::fprintf(stderr,
+            "[TMS9918 DROP #%llu] %c val=%02X vramAddr=%04X latch2=%d "
+            "drain=%dc linePos=%d nextSlot=%d tbl=%s vblank=%d "
+            "frameCycle=%d R1=%02X PC=$%04X\n",
+            (unsigned long long)droppedWrites,
+            (port == 'D' ? 'D' : 'C'),
+            value, vramAddr, (int)latchIsSecond,
+            slotShortBy, posTicks, slotTick, slotTableName(slots.data),
+            (int)inVBlank, frameCycleCounter, regs[1], lastAccessPc);
+        ++droppedWriteTraceCount;
     }
-    if (!spritesActive) return 6;    // 1 slot/6 VDP cycles when SAT[0]=$D0
-    return 40;                        // hardened: 1 slot/16 VDP cycles + STA + 24c phase margin
-                                      // (was 24c — Galaga sprite tables and LOGO turtle redraws
-                                      //  still overflowed at 24c under unfavourable phase,
-                                      //  May 2026 bump to 40c kills the residual artefacts)
+}
+
+void TMS9918::dumpDropDiagnostics(std::FILE* out, int topN) const
+{
+    if (!out) out = stderr;
+    const DropDiagnostics& d = dropStats;
+    std::fprintf(out, "===== TMS9918 drop diagnostics =====\n");
+    std::fprintf(out, "  silicon strict   : %s\n", siliconStrictMode ? "ON" : "OFF");
+    std::fprintf(out, "  total drops      : %llu\n", (unsigned long long)d.total);
+    if (d.total == 0) {
+        std::fprintf(out, "  (no drops recorded since last reset / strict toggle)\n");
+        std::fprintf(out, "====================================\n");
+        return;
+    }
+    std::fprintf(out, "  by port          : data($CC00) %llu  ctrl($CC01) %llu\n",
+                 (unsigned long long)d.writeData, (unsigned long long)d.writeCtrl);
+    std::fprintf(out, "  by display phase : active %llu  vblank %llu\n",
+                 (unsigned long long)d.inActive, (unsigned long long)d.inVBlank);
+    static const char* kTableNames[kSlotTableCount] = {
+        "ScreenOff", "Gfx12 (Mode I/II)", "Gfx3 (Multicolor)", "Text"
+    };
+    std::fprintf(out, "  by slot table    :\n");
+    for (int i = 0; i < kSlotTableCount; ++i) {
+        if (d.byTable[i] == 0) continue;
+        std::fprintf(out, "    %-20s %llu\n", kTableNames[i],
+                     (unsigned long long)d.byTable[i]);
+    }
+    // Sort PC histogram, keep top N.
+    std::vector<std::pair<uint16_t, uint64_t>> top(d.byPc.begin(), d.byPc.end());
+    std::sort(top.begin(), top.end(),
+              [](const auto& a, const auto& b) { return a.second > b.second; });
+    const int n = std::min<int>(topN, (int)top.size());
+    std::fprintf(out, "  top %d PC sites  : (PC = mid-instruction; STA site is PC-3 for STA abs / STA abs,X)\n", n);
+    std::fprintf(out, "    %-8s %-12s %-s\n", "PC", "drops", "share");
+    for (int i = 0; i < n; ++i) {
+        const double pct = 100.0 * (double)top[i].second / (double)d.total;
+        std::fprintf(out, "    $%04X    %-12llu %5.1f%%\n",
+                     (unsigned)top[i].first,
+                     (unsigned long long)top[i].second,
+                     pct);
+    }
+    if ((int)top.size() > n) {
+        std::fprintf(out, "    ...      (%d more PC sites omitted)\n", (int)top.size() - n);
+    }
+    std::fprintf(out, "====================================\n");
+    std::fflush(out);
 }
 
 bool TMS9918::canAcceptAccess() const
 {
-    return !siliconStrictMode || cyclesSinceIoAccess >= requiredAccessCycles();
+    return !siliconStrictMode || pendingDrainCycles <= 0;
 }
 
 void TMS9918::noteAcceptedAccess()
 {
-    cyclesSinceIoAccess = 0;
+    if (!siliconStrictMode) return;
+    const int posTicks   = (frameCycleCounter * kVdpTicksPerCpuCycle) % kVdpTicksPerLine;
+    const int targetTick = posTicks + kVdpDeltaD28Ticks;
+    auto slots = selectSlotTable();
+    int slotTick = slots.back();              // wrap duplicates guarantee a hit
+    for (int v : slots) {
+        if (v >= targetTick) { slotTick = v; break; }
+    }
+    const int drainTicks = slotTick - posTicks;
+    pendingDrainCycles   = (drainTicks + kVdpTicksPerCpuCycle - 1) / kVdpTicksPerCpuCycle;
 }
 
 // --------------------------------------------------------------------------
@@ -149,19 +313,7 @@ void TMS9918::writeData(uint8_t value)
 {
     latchIsSecond = false;                    // data-port access resets latch state
     if (!canAcceptAccess()) {
-        ++droppedWrites;
-        if (droppedWriteTraceCount < 60) {
-            // PC sampled mid-instruction by Memory::memWrite. For a 3-byte
-            // `STA $CC00` the captured PC = (STA addr + 3) — to find the
-            // offending site in the disassembly, look for the STA at PC-3.
-            std::fprintf(stderr,
-                "[TMS9918 DROP #%llu] writeData val=%02X vramAddr=%04X gap=%d "
-                "required=%d frameCycle=%d R1=%02X PC=$%04X\n",
-                (unsigned long long)droppedWrites, value, vramAddr,
-                cyclesSinceIoAccess, requiredAccessCycles(),
-                frameCycleCounter, regs[1], lastAccessPc);
-            ++droppedWriteTraceCount;
-        }
+        noteDroppedAccess('D', value);
         return;
     }
     noteAcceptedAccess();
@@ -190,18 +342,7 @@ uint8_t TMS9918::readData()
 void TMS9918::writeControl(uint8_t value)
 {
     if (!canAcceptAccess()) {
-        ++droppedWrites;
-        if (droppedWriteTraceCount < 60) {
-            // PC sampled mid-instruction by Memory::memWrite (see writeData
-            // above for the offset note — STA addr = PC - 3 for `STA $CC01`).
-            std::fprintf(stderr,
-                "[TMS9918 DROP #%llu] writeControl val=%02X latch2=%d gap=%d "
-                "required=%d frameCycle=%d R1=%02X PC=$%04X\n",
-                (unsigned long long)droppedWrites, value, latchIsSecond,
-                cyclesSinceIoAccess, requiredAccessCycles(),
-                frameCycleCounter, regs[1], lastAccessPc);
-            ++droppedWriteTraceCount;
-        }
+        noteDroppedAccess('C', value);
         return;
     }
     noteAcceptedAccess();
@@ -254,7 +395,10 @@ uint8_t TMS9918::readControl()
 // --------------------------------------------------------------------------
 void TMS9918::advanceCycles(int cycles)
 {
-    cyclesSinceIoAccess = std::min(cyclesSinceIoAccess + cycles, 1000000);
+    if (pendingDrainCycles > 0) {
+        pendingDrainCycles -= cycles;
+        if (pendingDrainCycles < 0) pendingDrainCycles = 0;
+    }
     const int prevCounter = frameCycleCounter;
     frameCycleCounter += cycles;
 
