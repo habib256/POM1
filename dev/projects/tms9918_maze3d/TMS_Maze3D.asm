@@ -32,9 +32,8 @@
 KBD     = $D010
 KBDCR   = $D011
 
-; ---- TMS9918 MMIO ----
-VDP_DATA = $CC00
-VDP_CTRL = $CC01
+; ---- TMS9918 MMIO (VDP_DATA / VDP_CTRL + WAIT_VBLANK macro) ----
+.include "tms9918.inc"
 
 ; ---- Keys (Apple 1 ASCII | $80, upper-cased by the keyboard) ----
 KEY_ESC   = $9B
@@ -1690,6 +1689,8 @@ show_lose:
 ; render_3d - main scene
 ; =============================================
 render_3d:
+        ; Sync to VBlank before the full 3D-scene rebuild burst.
+        WAIT_VBLANK
         JSR clear_bitmap
 
         ; floor & ceiling base lines (horizon at y=96)
@@ -2518,6 +2519,8 @@ write_decimal_2d:
 ; Cell size 16x16 px; maze 11x7 -> 176x112; centered with header.
 ; =============================================
 render_map:
+        ; Sync to VBlank before the top-down map rebuild burst.
+        WAIT_VBLANK
         JSR clear_bitmap
         LDA #4
         STA ch_cx
@@ -2885,6 +2888,8 @@ mob_attacks:
 ; draw_combat_screen
 ; =============================================
 draw_combat_screen:
+        ; Sync to VBlank before the combat-scene rebuild burst.
+        WAIT_VBLANK
         JSR clear_bitmap
         ; Title bar
         LDA #10

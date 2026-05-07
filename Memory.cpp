@@ -1522,8 +1522,11 @@ void Memory::advanceCycles(int cycles)
     // request between two CPU ticks naturally de-asserts /IRQ.
     //
     // Sources currently wired (per dev/SILICONBUGS.md Bug N°2):
-    //   - TMS9918  : R1 bit 5 (IRQ enable) AND status bit 7 (F flag).
-    //                Read of $CC01 clears F → IRQ self-clears next tick.
+    //   - TMS9918  : default = NOT wired (P-LAB original leaves /INT
+    //                floating). irqAsserted() always returns false unless
+    //                the FPGA-mod strap is active (`setIrqStrapped(true)`).
+    //                When strapped: R1.5 (IRQ enable) AND status.7 (F flag);
+    //                read of $CC01 clears F → IRQ self-clears next tick.
     //   - A1-IO RTC: 65C22 IFR bit 7 (any IRQ-enabled flag set).
     //   - microSD  : 65C22 IFR bit 7 (Timer 1/2 + SR + handshake flags).
     //   - WiFiModem: 65C51 ACIA status bit 7 (IRQ pending) AND control

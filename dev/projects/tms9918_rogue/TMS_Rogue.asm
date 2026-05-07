@@ -3692,6 +3692,8 @@ apply_step:
 ; into tile_char_base.
 ; ----------------------------------------------------------------------------
 render_map:
+        ; Sync to VBlank before the full map rebuild burst.
+        WAIT_VBLANK
         LDA     #$00
         STA     vdp_lo
         LDA     #$18
@@ -5214,6 +5216,8 @@ win_screen:
 ; growth — buff timers are gone from the picture by the time we paint.
 ; ----------------------------------------------------------------------------
 paint_scores:
+        ; Sync to VBlank before the score-screen rebuild burst.
+        WAIT_VBLANK
         ; row 9 col 10 → $192A
         LDA     #<msg_score_depth
         STA     vdp_src_lo
@@ -5419,6 +5423,8 @@ redraw_game:
 ; loop can survive the JSRs that touch tmp.
 ; ----------------------------------------------------------------------------
 show_inventory:
+        ; Sync to VBlank before the inventory-screen rebuild burst.
+        WAIT_VBLANK
         ; Rebuild the SAT from scratch — every gameplay sprite (player +
         ; visible monsters + floor items) is gone, replaced by one
         ; pictogram per non-empty bag slot at (col 1, row N) so each
@@ -6244,6 +6250,8 @@ handle_throw:
 ; the player needs the reminder.
 ; ----------------------------------------------------------------------------
 show_help:
+        ; Sync to VBlank before the help-screen rebuild burst.
+        WAIT_VBLANK
         JSR     disable_sprites
         JSR     clear_name_table
         ; Walk help_table — same 4-byte tuple loop as draw_title (tmp
@@ -6323,6 +6331,8 @@ hlp_tip_win:    .byte "REACH DEPTH 13 TO WIN", $FF
 ; index across the JSR (draw_text leaves zp untouched but clobbers X).
 ; ----------------------------------------------------------------------------
 draw_title:
+        ; Sync to VBlank before the title-screen rebuild burst.
+        WAIT_VBLANK
         LDX     #0
 @lp:    LDA     title_table+0,X         ; str_lo
         STA     vdp_src_lo
@@ -6365,6 +6375,8 @@ title_table_end:
 ; can be edited independently. tmp survives draw_text.
 ; ----------------------------------------------------------------------------
 draw_briefing:
+        ; Sync to VBlank before the briefing-screen rebuild burst.
+        WAIT_VBLANK
         LDX     #0
 @lp:    LDA     briefing_table+0,X
         STA     vdp_src_lo

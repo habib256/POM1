@@ -340,6 +340,29 @@ target_include_directories(test_tms9918_per_scanline PRIVATE
 add_test(NAME tms9918_per_scanline COMMAND test_tms9918_per_scanline)
 set_tests_properties(tms9918_per_scanline PROPERTIES TIMEOUT 5)
 
+# -- TMS9918A advanced silicon-fidelity edge cases ---------------------------
+# Direct API-level coverage for behaviours documented in SILICONBUGS.md
+# but not previously locked-in by ctest:
+#   - Bug N°8 isIllegalModeRegs detector (M1+M2/M1+M3/M2+M3/all triple)
+#   - Bug N°5 $D0 mid-SAT terminator stops scan
+#   - color-0 sprite counts in 5S overflow (Nouspikel)
+#   - Sprite Y wraparound (yRaw > $D0 ⇒ negative line)
+#   - Bug N°4 overscan collision range [-32, kScreenWidth+32)
+#   - Bug N°6 last-sprite-walked encoded in status bits 0..4
+#   - Nouspikel "5S latches first occurrence top→bottom"
+#   - Status sticky-on-read (bits 5/6/7 cleared by readControl)
+add_executable(test_tms9918_advanced_silicon
+    tms9918_advanced_silicon_test.cpp
+    ${CMAKE_SOURCE_DIR}/TMS9918.cpp
+)
+target_include_directories(test_tms9918_advanced_silicon PRIVATE
+    ${CMAKE_SOURCE_DIR}
+    ${CMAKE_SOURCE_DIR}/imgui
+)
+
+add_test(NAME tms9918_advanced_silicon COMMAND test_tms9918_advanced_silicon)
+set_tests_properties(tms9918_advanced_silicon PROPERTIES TIMEOUT 5)
+
 # -- CodeTank ↔ TMS9918 daughterboard dependency test -------------------------
 # Memory-level integration test: enabling CodeTank auto-plugs TMS9918,
 # disabling TMS9918 cascade-unplugs CodeTank, and disabling CodeTank does

@@ -22,8 +22,9 @@
 ECHO     = $FFEF
 KBD      = $D010
 KBDCR    = $D011
-VDP_DATA = $CC00
-VDP_CTRL = $CC01
+
+; VDP_DATA / VDP_CTRL + WAIT_VBLANK macro come from the shared lib header.
+.include "tms9918.inc"
 
 NCOLS   = 7
 NROWS   = 6
@@ -428,6 +429,8 @@ upload_pattern:
 ; render_all: draw the whole board via repeated draw_cell calls
 ; =============================================
 render_all:
+        ; Sync to VBlank before the full-grid rebuild burst.
+        WAIT_VBLANK
         LDA #$00
         STA draw_row
 @rlp:
@@ -464,6 +467,12 @@ render_all:
 ; The 16 glyphs are written in row-major order: TL,T1,T2,TR,ML,...,BR
 ; =============================================
 draw_cell:
+        ; NOTE: no WAIT_VBLANK here — draw_cell is the inner routine
+        ; called 42 times in render_all's loop (7 cols x 6 rows). A
+        ; per-cell vblank wait would stall a board redraw to ~700 ms.
+        ; render_all already syncs once at its entry. The single-cell
+        ; post-drop repaint completes in ~50 us — fast enough to not
+        ; visibly tear.
         ; base_char = 8 + state*16
         ASL A
         ASL A

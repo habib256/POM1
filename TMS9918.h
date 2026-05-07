@@ -111,11 +111,25 @@ public:
     // Format: header + table breakdown + port breakdown + top-N PC histogram.
     void dumpDropDiagnostics(std::FILE* out = stderr, int topN = 16) const;
 
-    // /INT line state. Asserted (true) when R1 bit 5 (IRQ enable) is set
-    // AND status bit 7 (F frame flag) is sticky. Reading $CC01 clears
-    // F → /INT self-de-asserts on the next CPU tick. Wired to the 6502
-    // /IRQ aggregator in Memory::advanceCycles (see SILICONBUGS Bug N°2).
-    bool irqAsserted() const { return (regs[1] & 0x20) && (statusReg & 0x80); }
+    // /INT line state. The TMS9918 silicon pulls /INT low when R1 bit 5
+    // (IRQ enable) is set AND status bit 7 (F frame flag) is sticky;
+    // reading $CC01 clears F → /INT self-de-asserts on the next CPU tick.
+    //
+    // **P-LAB original card does NOT wire /INT to /IRQ** — the standard
+    // Apple-1 usage (and the one the Nippur72 libs target) is **polling
+    // via $CC01 bit 7**. POM1 therefore keeps the IRQ wiring disabled by
+    // default (`irqStrapped == false`); irqAsserted() always returns
+    // false in that case, even if a program were to set R1.5. An FPGA
+    // strap that bridges /INT to /IRQ (community mod, not P-LAB stock)
+    // is modelled by setting `irqStrapped = true` — useful when running
+    // MSX-derived code that expects an IRQ-on-VBlank handler.
+    // Cf. dev/SILICONBUGS.md Bug N°2.
+    bool irqAsserted() const {
+        if (!irqStrapped) return false;
+        return (regs[1] & 0x20) && (statusReg & 0x80);
+    }
+    void setIrqStrapped(bool on) { irqStrapped = on; }
+    bool isIrqStrapped() const   { return irqStrapped; }
 
     // Caller's program counter at the moment of the next VDP access.
     // Memory::memWrite snapshots cpuForIrq->getProgramCounter() into here
@@ -146,6 +160,10 @@ public:
     static void renderToBufferWithBorder(uint32_t* pixels, const Snapshot& snap);
 
     static const ImU32 kPalette[16];
+
+    // Bug N°8 detector — public so unit tests can verify it. Returns
+    // true when 2 or more of M1/M2/M3 are simultaneously set.
+    static bool isIllegalModeRegs(const uint8_t* regs);
 
 private:
     // Display mode helpers — write into pixel buffer
@@ -181,6 +199,17 @@ private:
     static void renderSpritesLineRaw    (int line, uint32_t* lineBuf,
                                          const uint8_t* vram, const uint8_t* regs,
                                          uint16_t vramMask);
+    // Bug N°8 (sprite cloning under illegal mode combinations) — when the
+    // M1/M2/M3 mode bits are forced into a hybrid combo (≥ 2 set), TMS9918A
+    // NMOS silicon produces "ghost clones" of the SAT sprites at polluted
+    // Y positions in the top 64 lines (R3 bits 5-6 + R6 bits 0-2 leak into
+    // the Y-fetch address). Demos like Alankomaat (Bandwagon, MSX) use this
+    // intentionally to display impossible sprite counts. Modelled here as a
+    // simple ghost render at Y = (slot*8) mod 64 — recognisable cascade of
+    // copies for the first ~8 slots.
+    static void renderCloneSpritesLineRaw(int line, uint32_t* lineBuf,
+                                          const uint8_t* vram, const uint8_t* regs,
+                                          uint16_t vramMask);
 
     // Per-scanline sprite scan that updates statusReg sticky bits 5 (collision),
     // 6 (5S) and 0..4 (SAT index of the latched 5th sprite — or, when 5S is
@@ -260,6 +289,10 @@ private:
     // Same semantics as lastScanlineProcessed but for the renderer.
     int lastScanlineRendered = -1;
     bool siliconStrictMode  = false;
+    // P-LAB original card leaves /INT floating; community FPGA mods can strap
+    // it to /IRQ. Default = false (matches stock P-LAB → polling-only via
+    // $CC01). Set true via setIrqStrapped() for FPGA-strap emulation.
+    bool irqStrapped        = false;
     uint64_t droppedWrites  = 0;      // cumulative count of VDP writes dropped by siliconStrictMode
     int      droppedWriteTraceCount = 0; // first N drops trace to stderr (debug)
     DropDiagnostics dropStats{};      // per-PC / per-port / per-table histograms

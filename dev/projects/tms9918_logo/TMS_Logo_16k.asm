@@ -3886,6 +3886,11 @@ erase_turtle:
         BNE @done
         LDA turtle_visible
         BEQ @done
+        ; Sync to VBlank before the bbox restore + line draw that
+        ; follows in the caller. Every visible command path routes
+        ; through here, so a single WAIT_VBLANK paces the whole REPL
+        ; render burst.
+        WAIT_VBLANK
         JSR arrow_restore_bbox
         LDA #0
         STA turtle_visible

@@ -73,9 +73,8 @@ KBDCR   = $D011
 KBD     = $D010
 ECHO    = $FFEF             ; Woz Monitor character output ($D012 with busy wait)
 
-; ----- TMS9918 MMIO -----
-VDP_DATA = $CC00
-VDP_CTRL = $CC01
+; ----- TMS9918 MMIO (VDP_DATA / VDP_CTRL + WAIT_VBLANK macro) -----
+.include "tms9918.inc"
 
 ; ----- Geometry -----
 ROW_SIZ   = 34              ; 32 interior cells + 2 ghost columns
@@ -466,6 +465,11 @@ init_pattern:
 ; then 24 rows * 32 bytes = 768 sequential writes.
 ; =============================================
 render:
+        ; Sync to VBlank before the 24x32 grid stream burst (768 writes
+        ; can't all fit in one ~4554c VBlank window — pacing means the
+        ; first rows land in retrace and the rest cascade through
+        ; silicon-strict slot-table arbitration).
+        WAIT_VBLANK
         ; Set VDP write address = $1800 (name table base)
         LDA #$00
         STA VDP_CTRL

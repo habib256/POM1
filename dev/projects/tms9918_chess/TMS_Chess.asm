@@ -446,6 +446,10 @@ draw_row_col_arg: .byte 0       ; 0x88 square passed to render_one_cell_from_sq
 ; render_all_cells -- redraw the entire 8x8 board
 ; =============================================
 render_all_cells:
+        ; Sync to VBlank before the 64-cell board rebuild burst (the
+        ; full sweep can't fit in one ~4554c window, but this paces the
+        ; rebuild to one frame and keeps the first row in retrace).
+        WAIT_VBLANK
         LDA #$00
         STA draw_row
 @rlp:
@@ -466,6 +470,8 @@ render_all_cells:
 ; render_one_cell_from_sq: extract (row, col) from the 0x88 square in
 ; draw_row_col_arg, then call render_one_cell.
 render_one_cell_from_sq:
+        ; Sync to VBlank before the single-cell post-move repaint.
+        WAIT_VBLANK
         LDA draw_row_col_arg
         AND #$07
         STA draw_col

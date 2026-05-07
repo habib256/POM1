@@ -37,9 +37,8 @@ ECHO     = $FFEF
 KBD      = $D010
 KBDCR    = $D011
 
-; --- TMS9918 I/O ---
-VDP_DATA = $CC00
-VDP_CTRL = $CC01
+; --- TMS9918 I/O (VDP_DATA / VDP_CTRL + WAIT_VBLANK macro) ---
+.include "tms9918.inc"
 
 ; --- Geometry / tuning ---
 PLAYER_Y       = 168            ; sprite top edge
@@ -2590,14 +2589,12 @@ render_sprites:
         ; base — accept the cycle waste in exchange for one global
         ; padding contract.
 
-        ; VBlank sync. First BIT drains any stale F flag carried from
-        ; the previous frame's render (also clears 5S/C — Galaga never
-        ; reads them, so collateral is fine). Inner loop spins until F
-        ; sets at the START of the next VBlank.
-        BIT VDP_CTRL
-@v_wait:
-        BIT VDP_CTRL
-        BPL @v_wait
+        ; VBlank sync via the shared WAIT_VBLANK macro (tms9918.inc).
+        ; First BIT drains any stale F flag carried from the previous
+        ; frame's render (also clears 5S/C — Galaga never reads them, so
+        ; collateral is fine). Inner loop spins until F sets at the START
+        ; of the next VBlank.
+        WAIT_VBLANK
         ; Cushion across the BIT/BPL → STA VDP_CTRL boundary. The exit
         ; BIT just consumed a VDP read access (counter=4 after), so the
         ; following LDA + STA VDP_CTRL pair lands at gap = 4+2+2+0 = 8c

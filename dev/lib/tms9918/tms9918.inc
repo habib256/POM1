@@ -62,4 +62,48 @@ VDP_CTRL = $CC01        ; VDP register / address port (write twice = setup)
         JSR     tms9918_pad12   ; 12c, 3 bytes — next write lands 12c later
 .endmacro
 
+; ---------------------------------------------------------------------------
+; VBlank synchronisation — polling-only on P-LAB. **DO NOT use IRQs.**
+;
+; Pourquoi : la carte P-LAB Apple-1 d'origine **ne câble pas** la broche
+; /INT du TMS9918 vers /IRQ du 6502 (la broche reste flottante côté carte).
+; L'usage canonique — celui que ciblent les libs Nippur72 — est de poller
+; le bit 7 (F flag) du status register en lisant $CC01. Un programme qui
+; ferait `LDA #$E0 / STA VDP_CTRL / LDA #$81 / STA VDP_CTRL / CLI / WAI`
+; en attendant une IRQ frame **deadlocke** sur P-LAB stock comme sur POM1
+; (default `irqStrapped=false`). Cf. dev/SILICONBUGS.md Bug N°2.
+;
+; Idiome standard :
+;
+;       LDA VDP_CTRL          ; ou BIT VDP_CTRL — drain stale F flag
+;   @v: BIT VDP_CTRL
+;       BPL @v                ; bit 7 = 0 → pas encore VBlank, on tourne
+;       ; ici on est dans la fenêtre VBlank ; F a été cleared par la lecture
+;       ; → ~4 554c de bande passante VRAM "gate 2c" disponibles avant que
+;       ; le faisceau ne reprenne l'active display sur la frame suivante.
+;
+; Side effect : la lecture de $CC01 efface AUSSI les bits 5 (collision) et
+; 6 (5S overflow). Si le programme dépend de ces flags, il doit les lire
+; AVANT le wait_vblank, ou utiliser un autre snapshot du status. La
+; majorité des jeux Apple-1 / POM1 (Galaga, Sokoban, Snake, Life, Rogue)
+; ne polle que F → le clobber sur 5/C est sans conséquence.
+;
+; Coût : ~13c par tour de boucle (BIT VDP_CTRL = 4c, BPL pris = 3c, autres
+; instructions). Worst-case wait = 17 062c (1 frame entière) = ~1 312 tours.
+; Quand R1 bit 5 est laissé à 0 (cas par défaut, P-LAB stock), tirer la
+; broche /INT côté chip est sans effet — le polling reste la seule voie
+; pour synchroniser sur la frame.
+;
+; Macro : encapsule le pattern en 7 octets (pas de label visible côté
+; appelant grâce au label local @vbl_wait — réutilisable dans la même
+; routine sans collision).
+; ---------------------------------------------------------------------------
+
+.macro WAIT_VBLANK
+        BIT     VDP_CTRL        ; 4c — drain stale F flag (clears bits 5/6/7)
+@vbl_wait:
+        BIT     VDP_CTRL        ; 4c
+        BPL     @vbl_wait       ; 3c taken / 2c falls through when F=1
+.endmacro
+
 .endif  ; _TMS9918_INC_LOADED_

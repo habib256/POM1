@@ -119,6 +119,45 @@ In your project Makefile (Mode 1 example, multi-object link):
     $(OUT)/MyGame.bin: $(OBJS)
         ld65 -C my_game.cfg $^ -o $@
 
+## VBlank synchronisation macro (`WAIT_VBLANK`)
+
+**P-LAB ne câble pas /INT** — la broche du VDP est laissée flottante côté
+carte. Conséquence : **toujours synchroniser les frames par polling**, jamais
+par IRQ. Même si un programme arme R1 bit 5 (IRQ enable côté chip), aucune
+IRQ ne remontera vers le 6502 sur la carte stock. Tous les jeux POM1
+(Galaga, Sokoban, Snake, Life, Rogue, …) suivent ce pattern.
+
+```asm
+.include "tms9918.inc"
+
+        ; … main game loop …
+@frame:
+        WAIT_VBLANK            ; spin sur bit 7 de $CC01 jusqu'à F=1
+        JSR render_sprites     ; ~4 554c "gate 2c" de bande passante VRAM
+        JSR update_logic       ; …puis logique pendant que le faisceau redescend
+        JMP @frame
+```
+
+`WAIT_VBLANK` se déroule en 7 octets :
+
+```asm
+        BIT VDP_CTRL           ; drain stale F (clears bits 5/6/7)
+@vbl_wait:
+        BIT VDP_CTRL
+        BPL @vbl_wait
+```
+
+Side effect : la lecture de `$CC01` efface aussi les bits 5 (collision) et 6
+(5S overflow). Si ton code dépend de ces flags, lis-les **avant** d'appeler
+`WAIT_VBLANK` (ou snapshot le status register dans une variable). Pour les
+jeux qui ne pollent que F, le clobber 5/6 est sans conséquence.
+
+Pour les utilisateurs ayant modifié leur réplica avec un strap FPGA
+`int_n_o → irq_n` (mod community, pas P-LAB d'origine), POM1 expose
+`TMS9918::setIrqStrapped(true)` côté API. Si tu écris du code pour
+P-LAB stock, ignore cette branche : poll, c'est tout. Détails complets
+dans [`dev/SILICONBUGS.md`](../../SILICONBUGS.md) Bug N°2.
+
 ## Silicon-strict timing macros (`WRT_DATA_REG`, `WRT_DATA_VAL`)
 
 When POM1's Hardware menu → **Silicon Strict** is ON (default for every

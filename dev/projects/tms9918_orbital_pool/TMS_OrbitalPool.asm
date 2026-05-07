@@ -42,9 +42,8 @@
 KBDCR   = $D011
 KBD     = $D010
 
-; ----- TMS9918 MMIO -----
-VDP_DATA = $CC00
-VDP_CTRL = $CC01
+; ----- TMS9918 MMIO (VDP_DATA / VDP_CTRL + WAIT_VBLANK macro) -----
+.include "tms9918.inc"
 
 ; ----- Keys (Apple 1: upper-case ASCII with bit 7 set) -----
 KEY_ESC   = $9B
@@ -322,6 +321,8 @@ handle_result:
 ; render_scene
 ; =============================================
 render_scene:
+        ; Sync to VBlank before the per-frame scene rebuild burst.
+        WAIT_VBLANK
         JSR clear_name_table
 
         LDX #0

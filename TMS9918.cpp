@@ -753,6 +753,68 @@ void TMS9918::renderSpritesLineRaw(int line, uint32_t* lineBuf,
 }
 
 // --------------------------------------------------------------------------
+// isIllegalModeRegs — Bug N°8 detector. Returns true when 2 or more of
+// the M1 / M2 / M3 mode bits are simultaneously set, which is reserved /
+// undocumented. TMS9918A NMOS silicon enters its "sprite cloning" hack
+// state in this regime; later TMS9929A and Yamaha V9938 fix it.
+// --------------------------------------------------------------------------
+bool TMS9918::isIllegalModeRegs(const uint8_t* regs)
+{
+    int n = 0;
+    if (regs[1] & 0x10) ++n;        // M1 (text)
+    if (regs[1] & 0x08) ++n;        // M2 (multicolor)
+    if (regs[0] & 0x02) ++n;        // M3 (graphic 2 / bitmap)
+    return n >= 2;
+}
+
+// --------------------------------------------------------------------------
+// renderCloneSpritesLineRaw — Bug N°8 cloning helper. Walks the SAT and
+// emits a "ghost" rendering of each sprite at a polluted Y in the top
+// 64 lines (Y_polluted = (slot * 8) | (regs[3] & 0x60) | (regs[6] & 0x07)
+// — the silicon's leak of low SPGT and color-table-base bits into the
+// Y-fetch address). Intentionally a SIMPLIFIED model — produces visible
+// cascade of ghost copies for the operator while keeping per-frame cost low.
+// --------------------------------------------------------------------------
+void TMS9918::renderCloneSpritesLineRaw(int line, uint32_t* lineBuf,
+                                        const uint8_t* vram, const uint8_t* regs,
+                                        uint16_t vramMask)
+{
+    const uint16_t sprAttrBase    = (uint16_t)(regs[5] & 0x7F) << 7;
+    const uint16_t sprPatternBase = (uint16_t)(regs[6] & 0x07) << 11;
+    const bool doubleSize = (regs[1] & 0x02) != 0;
+    const int  spriteH    = doubleSize ? 16 : 8;
+    const uint8_t pollutionMask = (regs[3] & 0x60) | (regs[6] & 0x07);
+
+    for (int i = 0; i < 32; ++i) {
+        const uint16_t attrAddr = (sprAttrBase + i * 4) & vramMask;
+        const uint8_t  yRaw     = vram[attrAddr];
+        if (yRaw == 0xD0) break;
+
+        // Polluted Y in [0, 63] — slot index drives the cascade, R3/R6
+        // bits add silicon-specific deformation to the pattern.
+        const int ghostY = ((i * 8) ^ pollutionMask) & 0x3F;
+        if (line < ghostY || line >= ghostY + spriteH) continue;
+
+        const uint8_t color = vram[(attrAddr + 3) & vramMask];
+        if ((color & 0x0F) == 0) continue;
+        const ImU32 sprColor = kPalette[color & 0x0F];
+        int x = vram[(attrAddr + 1) & vramMask];
+        if (color & 0x80) x -= 32;
+
+        const uint8_t patName = vram[(attrAddr + 2) & vramMask];
+        const int rowInSpr = line - ghostY;
+        const uint16_t patAddr = (sprPatternBase + (uint16_t)patName * 8 + (rowInSpr & 7)) & vramMask;
+        const uint8_t patByte = vram[patAddr];
+        for (int bit = 0; bit < 8; ++bit) {
+            if (!(patByte & (0x80 >> bit))) continue;
+            const int sx = x + bit;
+            if (sx < 0 || sx >= kScreenWidth) continue;
+            lineBuf[sx] = sprColor;
+        }
+    }
+}
+
+// --------------------------------------------------------------------------
 // renderActiveLine — instance method, paints one active scanline of the
 // live framebuffer (offset row = line + kBorderTop). Uses LIVE state so
 // mid-frame R7/R1/VRAM changes are silicon-correctly progressive.
@@ -773,14 +835,26 @@ void TMS9918::renderActiveLine(int line)
         const bool m2 = (regs[1] & 0x08) != 0;
         const bool m3 = (regs[0] & 0x02) != 0;
         const uint16_t mask = liveVramMask();
+        const bool illegal = isIllegalModeRegs(regs.data());
 
-        if      (!m1 && !m2 && !m3) renderGfxILineRaw      (line, lineBuf, vram.data(), regs.data(), mask, backdrop);
-        else if (!m1 && !m2 &&  m3) renderGfxIILineRaw     (line, lineBuf, vram.data(), regs.data(), mask, backdrop);
-        else if ( m1 && !m2 && !m3) renderTextLineRaw      (line, lineBuf, vram.data(), regs.data(), mask, backdrop);
-        else if (!m1 &&  m2 && !m3) renderMulticolorLineRaw(line, lineBuf, vram.data(), regs.data(), mask, backdrop);
-        // else: undefined mode combination — backdrop only
+        if (illegal) {
+            // Bug N°8: hybrid M1/M2/M3 combo. Real TI/NMOS silicon
+            // doesn't render a clean background but DOES drive the
+            // sprite engine — and in particular, sprites' Y addresses
+            // get corrupted, producing ghost clones at the top of the
+            // screen. We fall back to backdrop for the playfield and
+            // emit BOTH the regular sprite line AND the cloned ghost
+            // line so the operator sees the cloning effect.
+            renderSpritesLineRaw     (line, lineBuf, vram.data(), regs.data(), mask);
+            renderCloneSpritesLineRaw(line, lineBuf, vram.data(), regs.data(), mask);
+        } else {
+            if      (!m1 && !m2 && !m3) renderGfxILineRaw      (line, lineBuf, vram.data(), regs.data(), mask, backdrop);
+            else if (!m1 && !m2 &&  m3) renderGfxIILineRaw     (line, lineBuf, vram.data(), regs.data(), mask, backdrop);
+            else if ( m1 && !m2 && !m3) renderTextLineRaw      (line, lineBuf, vram.data(), regs.data(), mask, backdrop);
+            else if (!m1 &&  m2 && !m3) renderMulticolorLineRaw(line, lineBuf, vram.data(), regs.data(), mask, backdrop);
 
-        if (!m1) renderSpritesLineRaw(line, lineBuf, vram.data(), regs.data(), mask);
+            if (!m1) renderSpritesLineRaw(line, lineBuf, vram.data(), regs.data(), mask);
+        }
     }
 
     // Blit the 256-pixel active line into framebuffer at row (line + kBorderTop),

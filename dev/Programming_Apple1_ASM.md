@@ -493,10 +493,73 @@ Trivial comparé à HGR : calculez l'adresse name table `$1800 + row*32 + col`, 
 
 L'écran texte Apple 1 et la fenêtre TMS9918 sont **deux afficheurs indépendants**. Convention : utilisez le texte pour le titre, le prompt clavier (QWERTY/AZERTY), les messages de victoire ; utilisez le TMS pour le jeu lui-même.
 
+### Synchronisation frame — POLLING uniquement, jamais d'IRQ
+
+**Règle d'or P-LAB** : la carte P-LAB Apple-1 ne câble **PAS** la broche `/INT` du TMS9918 vers `/IRQ` du 6502. La broche reste flottante (laissée non-connectée par Parmigiani). Conséquence directe : tu **dois** synchroniser tes frames par polling du status register. Aucune IRQ ne sera jamais déclenchée par le VDP, même si tu actives R1 bit 5.
+
+C'est le pattern que ciblent les libs Nippur72 et que tous les jeux POM1 (Galaga, Sokoban, Snake, Life, Rogue, Asteroids, Connect4, etc.) utilisent.
+
+#### Idiome standard
+
+```asm
+        ; Wait for next VBlank — silicon-correct polling pattern
+        BIT $CC01             ; drain stale F flag (clears bits 5/6/7)
+@v_wait:
+        BIT $CC01
+        BPL @v_wait           ; bit 7 = 0 → pas encore VBlank
+        ; ici : on est dans VBlank, ~4 554 cycles de bande passante VRAM
+        ; "gate 2c" disponibles avant l'active display de la prochaine frame
+```
+
+Ou avec la macro `WAIT_VBLANK` partagée dans `dev/lib/tms9918/tms9918.inc` :
+
+```asm
+.include "tms9918.inc"
+
+        WAIT_VBLANK           ; expanse au pattern ci-dessus, 7 octets
+        ; ... upload SAT, sprites, animations …
+```
+
+#### Pourquoi pas d'IRQ
+
+Cas qui **deadlocke sur silicon P-LAB et sur POM1 par défaut** :
+
+```asm
+        LDA #$E0              ; R1 = display ON + IRQ enable + 16K
+        STA $CC01
+        LDA #$81              ; reg 1
+        STA $CC01
+        CLI                   ; autoriser /IRQ
+@loop:  JMP @loop             ; attendre IRQ frame en $FFFE
+```
+
+Le 6502 attendra éternellement parce que la broche `/INT` du chip n'est pas connectée à `/IRQ`. POM1 émule ce comportement fidèlement (`TMS9918::irqAsserted()` retourne `false` tant que `setIrqStrapped(true)` n'a pas été appelé — et personne ne l'appelle dans la chaîne par défaut).
+
+#### Side effect du polling sur les bits 5/6
+
+Lire `$CC01` efface bits 5 (collision), 6 (5S overflow) **et** 7 (F flag) en bloc. Si tu utilises ces flags, lis-les **avant** le `WAIT_VBLANK`, ou snapshot-les dans une variable :
+
+```asm
+        LDA $CC01             ; snapshot complet
+        STA last_status
+        AND #$80              ; isole F
+        BEQ @nope             ; pas de VBlank cette fois
+        LDA last_status
+        AND #$20              ; bit 5 collision
+        ; …
+```
+
+Pour les jeux qui ne lisent que F (cas majoritaire), le clobber de 5/6 n'a aucune conséquence visible.
+
+#### Cas particulier : strap FPGA community
+
+Certains utilisateurs ont **modifié leur réplica Apple-1 / replica-1 P-LAB** pour bridger `int_n_o` (VDP) → `irq_n` (6502) avec inverseur. Cette modif **n'est pas P-LAB d'origine**. POM1 expose `TMS9918::setIrqStrapped(true)` pour émuler ce mod. Tant que tu écris du code qui doit tourner sur **P-LAB stock**, ignore cette branche : poll, c'est tout. (Détails dans `dev/SILICONBUGS.md` Bug N°2.)
+
 ### Exemples d'implémentation
 
 - `dev/projects/tms9918_sokoban/TMS_Sokoban.asm` — 47 niveaux, tuiles 8×8 avec 7 couleurs
 - `dev/projects/tms9918_connect4/TMS_Connect4.asm` — pions 32×32 sur plateau bleu plein écran
+- `dev/projects/tms9918_galaga/TMS_Galaga.asm:2593-2600` — pattern de polling commenté en place
 
 ---
 

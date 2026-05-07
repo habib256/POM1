@@ -62,6 +62,7 @@
 
 ; --- I/O equates (Apple-1 + TMS9918 hardware) ------------------------------
 .include "apple1.inc"
+.include "tms9918.inc"   ; VDP_DATA / VDP_CTRL + WAIT_VBLANK macro
 
 ; --- Imports from sibling modules -----------------------------------------
 ;
@@ -2665,6 +2666,11 @@ draw_turtle:
 erase_turtle:
         LDA turtle_visible
         BEQ @done
+        ; Sync to VBlank before the turtle XOR-erase + line draw
+        ; that follows in the caller. Every visible command path
+        ; (fd/bk/setxy/seth/tr/tl/home/cs) routes through here, so a
+        ; single WAIT_VBLANK paces the whole REPL render burst.
+        WAIT_VBLANK
         JSR compute_turtle_verts
         JSR xor_turtle
         LDA #0

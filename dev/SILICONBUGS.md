@@ -6,6 +6,43 @@ L'émulation POM1 est suffisamment fidèle pour développer en text/bitmap (Mode
 
 ---
 
+## 0. Tableau de rigueur — état de modélisation par bug
+
+POM1 silicon-strict modélise les comportements TMS9918 documentés dans Nouspikel + openMSX. **Tous les modèles ne sont pas également vérifiables** : certains sont des ports verbatim de code de référence (très solides), d'autres sont des approximations plausibles dont le motif silicon réel reste incertain. Ce tableau donne le statut honnête de chaque bug pour informer la confiance qu'on peut accorder à POM1 comme outil de validation pré-déploiement.
+
+| Bug | Statut | Justification |
+|---|---|---|
+| **N°1** Slot-table timing | 🟢 SOLIDE | Tables verbatim copiées d'`openMSX VDPAccessSlots.cc`, algorithme `getTab` + Delta D28 identique. Test `tms9918_silicon_strict_runtime` (35 assertions). |
+| **N°2** /INT → /IRQ | 🟢 SOLIDE | Carte P-LAB d'origine **ne câble pas** /INT — usage canonique = polling $CC01. POM1 default = `irqStrapped=false` → `irqAsserted()` toujours faux. Strap optionnel pour FPGA mods (`setIrqStrapped(true)` ré-active R1.5 ∧ status.7). |
+| **N°3** R1.7 4K/16K | 🟢 SOLIDE | Mask `0x0FFF` vs `0x3FFF` selon R1.7. Datasheet confirme. Pinned par T06. |
+| **N°4** Overscan collision | 🟡 NON-VÉRIFIÉ | Range `[-32, kScreenWidth+32)` per Nouspikel. Plage exacte silicon non confirmée par silicon-side test. Pinné par T07 + ctest `tms9918_advanced_silicon` test 5. |
+| **N°5** Per-scanline scan | 🟡 NON-VÉRIFIÉ | Port openMSX `SpriteChecker::checkSprites1` line-major. Sub-cycle silicon details (ordre exact des fetches SAT, dummy reads après $D0) incertains. Pinné par tests T07-T11, T18-T20 + ctest. |
+| **N°6** Status bits 0..4 | 🟢 SOLIDE | "Last sprite walked" — logique simple confirmée par Nouspikel. T08 + ctest test 6. |
+| **N°7** Sprite scan in blank | 🔑 OPEN | POM1 dit `N` (skip). MSX BiFi suggère silicon scanne `Y`. Datasheet ambiguë. **SEUL test silicon résoudra**. T12. |
+| **N°8** Sprite cloning | ⚠️ APPROXIMATION | Formule `Y_polluted = ((slot*8) ^ ((R3 & $60) | (R6 & $07))) & $3F` est plausible mais **inventée** — silicon réel a un motif spécifique selon le routage interne SPGT non-documenté. POM1 produit des ghosts visibles (T16 répond Y) mais le motif diffère du silicon. |
+| **N°9** Flipflop reset | 🟢 SOLIDE | `latchIsSecond = false` dans readControl. Datasheet + Nouspikel confirment. T13 + ctest. |
+| **N°10** Raster split 5S | 🟡 NON-VÉRIFIÉ | Mécanisme via per-scanline scan (Bug N°5). Timing exact de la latch silicon vs POM1 peut différer de quelques cycles → split position légèrement différent. T15. |
+| **N°11** NTSC 59.94 Hz | 🟢 SOLIDE | Constante exacte 17062c = floor(1.022727 MHz / 59.94). Math vérifié. T14. |
+| **HBlank précis** | 🔴 NON MODÉLISÉ | POM1 ne distingue pas explicitement HBlank. Le slot-table le couvre implicitement, mais cas-edge possibles. |
+| **Dérive thermique N°8** | 🔴 NON MODÉLISÉ | Silicon NMOS chaud → clones disparaissent. POM1 = comportement froid permanent. |
+| **Tick→cycle drift** | ⚠️ APPROXIMATION | 21 ticks/cycle entier au lieu de 20.97 → ~510 ticks/frame d'erreur ≈ 24 cycles. Imperceptible mais existe. |
+
+**Légende** :
+- 🟢 SOLIDE — implémentation déterministe basée sur référence canonique (datasheet, openMSX source)
+- 🟡 NON-VÉRIFIÉ — modèle plausible reproduisant le comportement documenté, mais non confronté à du silicon réel
+- ⚠️ APPROXIMATION — modèle imparfait qui produit un effet visible/observable mais qui peut diverger de silicon dans les détails
+- 🔑 OPEN — comportement silicon réellement inconnu, POM1 prend un parti
+- 🔴 NON MODÉLISÉ — comportement silicon connu mais POM1 ne le simule pas
+
+**Couverture par tests** :
+- 19 ctest unit tests (auto, ~9 sec total)
+- 20 6502-asm tests dans TMS_SilTest auto-vérifiables
+- 3 tests interactifs visuels (T15, T16, T17)
+- Stress benchmark Galaga-class (~30 sec)
+- Démo finale 6 phases (~30 sec) avec sprites fauna réels
+
+---
+
 ## 1. Contexte & cible matérielle
 
 - **Plateforme cible** : Apple-1 + carte TMS9918 (P-LAB Graphic Card) + CodeTank daughterboard.
@@ -229,39 +266,39 @@ Sur émulateur, ces 3 options ne changent rien (POM1 est tolérant). Sur siliciu
 
 ---
 
-## 3. BUG N°2 — Ligne /INT non câblée sur POM1
+## 3. BUG N°2 — Ligne /INT non câblée sur la carte P-LAB
 
-### Ce que fait le silicium
+### Ce que fait le silicium TMS9918
 
-Quand R1 bit 5 = 1 (interrupt enable) et bit 7 du status register = 1 (frame flag), le TMS9918 tire la ligne `/INT` au niveau bas. Sur la carte P-LAB Apple-1, cette ligne est (en principe) câblée à `/IRQ` du 6502 → IRQ vector `$FFFE-$FFFF` exécuté à chaque VBlank.
+Quand R1 bit 5 = 1 (interrupt enable) et bit 7 du status register = 1 (frame flag), le TMS9918 tire la broche `/INT` au niveau bas (active-low). Reading $CC01 clears bit 7 → /INT relâché.
 
-### Ce que fait POM1
+### Ce que fait la carte P-LAB
 
-POM1 émule le bit 7 du status register correctement (`TMS9918.cpp:127-139`) mais **ne propage pas /INT vers le bus 6502**. Le CPU ne reçoit jamais d'interruption matérielle du VDP.
+**P-LAB n'a pas câblé /INT.** La broche `/INT` du VDP reste flottante (pull-up implicite via la carte mère Apple-1 ou laissée non-connectée). L'usage canonique sur P-LAB Apple-1 — celui que ciblent les libs **Nippur72** — est **polling via $CC01 bit 7** :
 
-### Impact
-
-Du code style :
-```asm
-LDA #$E0       ; display on + IRQ enable + 16K
-STA VDP_CTRL
-LDA #$81       ; reg 1
-STA VDP_CTRL
-CLI            ; autoriser IRQ
-@wait: BRA @wait  ; attendre IRQ frame, traitée par handler en $FFFE
-```
-**fonctionnera sur silicium** (l'IRQ frappe à chaque VBlank) mais **deadlock sur POM1** (le CPU tourne en rond, jamais interrompu).
-
-### Workaround portable
-
-Toujours **poller bit 7 du status register** plutôt que dépendre de l'IRQ matérielle :
 ```asm
 @vblank_wait:
     LDA VDP_CTRL    ; lecture status
     BPL @vblank_wait ; bit 7 = 0 → pas encore VBlank
     ; ici on est dans VBlank, status auto-cleared par la lecture
 ```
-Marche identiquement sur les deux cibles. **C'est le pattern à utiliser par défaut.**
+
+### Ce que fait POM1
+
+✅ **Conforme P-LAB par défaut** : `TMS9918::irqAsserted()` retourne `false` sans condition tant que `irqStrapped == false` (état d'origine). Le CPU 6502 ne reçoit jamais d'IRQ frame du VDP — exactement comme sur la carte P-LAB stock.
+
+### Strap optionnel pour FPGA mod
+
+Pour les utilisateurs qui ont **modifié leur réplica** afin de connecter `int_n_o` (VDP) → `irq_n` (6502) — **non-P-LAB d'origine**, ajout community / FPGA — POM1 expose `TMS9918::setIrqStrapped(true)`. Une fois activé, l'IRQ aggregator de `Memory::advanceCycles` honore la combinaison standard R1.5 ∧ status.7.
+
+### Impact
+
+- Du code Apple-1 / Nippur72 **stock P-LAB** = polling-only → marche identiquement sur silicium et POM1.
+- Du code style MSX-port avec `LDA #$E0 / STA VDP_CTRL / CLI / loop` qui dépend de l'IRQ → **deadlock sur P-LAB stock comme sur POM1 default**. Le programme doit soit poller, soit l'utilisateur active le strap (`Hardware → TMS9918 → IRQ strap` ou `setIrqStrapped(true)` via API).
+
+### Workaround portable
+
+**Toujours poller bit 7 du status register**, c'est le pattern P-LAB-conformant. Marche identiquement sur les deux cibles, pas de configuration nécessaire.
 
 ---
 
@@ -402,7 +439,7 @@ Programme court : afficher 2 sprites superposés, blanker l'écran, lire status 
 
 ---
 
-## 9. BUG N°8 — Sprite Cloning sous modes hybrides illégaux
+## 9. BUG N°8 — Sprite Cloning sous modes hybrides illégaux ✅ MODÉLISÉ
 
 ### Ce que fait le silicium
 
@@ -419,15 +456,19 @@ Sur silicium TMS9918A original (TI / NMOS), les clones **s'estompent progressive
 
 ### Ce que fait POM1
 
-Le dispatcher de mode dans `TMS9918.cpp:163-191` ne traite que les combinaisons légales et tombe sur "backdrop only" pour tout le reste :
-```cpp
-// else: undefined mode combination — backdrop only
-```
-**Aucune simulation du sprite cloning.** Code qui exploite ce hack marche en théorie sur silicium, écran noir sur POM1.
+✅ **MODÉLISÉ** (mai 2026) : `isIllegalModeRegs(regs)` détecte la combinaison illégale (≥ 2 des bits M1/M2/M3 actifs simultanément). En mode illégal, `renderActiveLine` :
 
-### Impact
+1. Saute les renderers de mode (backdrop only pour le playfield).
+2. Appelle `renderSpritesLineRaw` en bypassant le guard `if (!m1)` — donc les sprites s'affichent même en mode text-hybride.
+3. Appelle `renderCloneSpritesLineRaw` pour rendre des **fantômes** : pour chaque entrée SAT, un clone est dessiné à `Y_polluted = ((slot * 8) ^ ((R3 & $60) | (R6 & $07))) & $3F` → cascade de copies dans les 64 lignes du haut, motif déformé selon R3/R6 (= la fuite des bits du SPGT et color-table).
 
-Très peu probable que Galaga utilise ce hack. À garder en tête uniquement si tu portes une démo avancée ou si tu vois des sprites apparaître "de nulle part" sur silicium dans la zone Y=0..63 et que tu utilises des combinaisons de bits R0/R1 inhabituelles.
+Le test `tests/projects/tms9918_siltest` T16 met le chip en M1+M2+M3 puis place 4 sprites au slot 0..3. Sur POM1 strict, l'observateur voit maintenant les 4 sprites originaux à Y=70 + leurs ghost copies cascadées dans le haut → réponse Y attendue.
+
+### Limites du modèle POM1
+
+POM1 utilise une formule simplifiée pour `Y_polluted` qui produit un cascade visible et reproductible mais ne reproduit pas exactement le motif silicon (qui dépend de la microarchitecture interne du fetch SAT). Le test sert à confirmer que **du code qui dépend du cloning fait quelque chose de visible** sous POM1 ; pour des démos exigeant le motif exact silicon (Alankomaat-style art), tester sur silicium reste nécessaire.
+
+Pas de modélisation de la dérive thermique (clones qui s'estompent quand la puce chauffe) — comportement secondaire, hors scope.
 
 ### Recommandation
 
@@ -470,7 +511,7 @@ Note : sur Apple-1 + TMS9918, **la ligne /INT n'est pas câblée** (Bug N°2), d
 
 ---
 
-## 11. BUG N°10 — Hack raster split via 5S (effets mid-scanline)
+## 11. BUG N°10 — Hack raster split via 5S (effets mid-scanline) ✅ IMPLÉMENTÉ
 
 ### Ce que fait le silicium
 

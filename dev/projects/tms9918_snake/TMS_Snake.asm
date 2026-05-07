@@ -43,9 +43,8 @@ ECHO    = $FFEF
 KBD     = $D010
 KBDCR   = $D011
 
-; --- TMS9918 I/O ---
-VDP_DATA = $CC00
-VDP_CTRL = $CC01
+; --- TMS9918 I/O (VDP_DATA / VDP_CTRL + WAIT_VBLANK macro) ---
+.include "tms9918.inc"
 
 ; --- Geometry ---
 NCOLS   = 32
@@ -252,6 +251,10 @@ play_loop:
         LDA pend_dy
         STA dir_dy
 @keep:
+        ; Sync to VBlank before the per-tick redraw burst (move_snake's
+        ; tail erase + new head paint + draw_hud's score digits all fit
+        ; comfortably inside the ~4554c VBlank window).
+        WAIT_VBLANK
         JSR move_snake
         LDA game_over
         BNE @over

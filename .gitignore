@@ -49,6 +49,21 @@ __pycache__/
 *.swo
 *~
 
+# Quartus FPGA build artefacts (régénérés à chaque compilation)
+fpga/db/
+fpga/incremental_db/
+fpga/output_files/
+fpga/build_id.v
+fpga/c5_pin_model_dump.txt
+fpga/jtag.cdf
+# Pour livrer un bitstream signé, whitelister explicitement, p.ex. :
+# !fpga/output_files/AppleI_PLAB.rbf
+
+# Stragglers Quartus typiques
+*.qws
+*.smsg
+hps_isw_handoff/
+
 # OS files
 .DS_Store
 Thumbs.db

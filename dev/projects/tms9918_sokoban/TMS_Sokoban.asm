@@ -29,9 +29,8 @@ ECHO    = $FFEF
 KBD     = $D010
 KBDCR   = $D011
 
-; --- TMS9918 I/O ---
-VDP_DATA = $CC00
-VDP_CTRL = $CC01
+; --- TMS9918 I/O (VDP_DATA / VDP_CTRL + WAIT_VBLANK macro) ---
+.include "tms9918.inc"
 
 ; --- Game constants ---
 NCOLS   = 16
@@ -389,6 +388,8 @@ init_vdp:
 ; Playfield fills the full 32x24 screen (each tile is 2x2 chars).
 ; =============================================
 render_all:
+        ; Sync to VBlank before the full-playfield rebuild burst.
+        WAIT_VBLANK
         LDA #$00
         STA draw_row
 @rowlp:
@@ -424,6 +425,12 @@ render_all:
 ; starting at base = tile * 8 (so tiles live at chars 0, 8, 16, ..., 48).
 ; =============================================
 draw_cell:
+        ; NOTE: no WAIT_VBLANK here — draw_cell is the inner routine
+        ; called 192 times in render_all's loop (16 cols x 12 rows).
+        ; A per-cell vblank wait would stall a level redraw to ~3 s.
+        ; render_all already syncs once at its entry. Per-move single-
+        ; cell repaints (execute_move / execute_undo) are 2-3 calls
+        ; that complete in ~100 us — fast enough to not visibly tear.
         ; base_char = tile * 8  (also the colour-group trick: chars 0, 8, ...)
         ASL A
         ASL A

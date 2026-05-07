@@ -11,7 +11,7 @@ from emit_woz import emit  # noqa: E402
 def main() -> int:
     emit(
         asm_files=["TMS_Snake.asm"],
-        lib_dirs=["apple1", "m6502"],
+        lib_dirs=["apple1", "m6502", "tms9918"],
         cfg="apple1_snake.cfg",
         out_dir_software="tms9918",
         start_addr=0x0280,

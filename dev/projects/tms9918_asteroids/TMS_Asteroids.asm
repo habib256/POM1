@@ -348,6 +348,10 @@ wrap_y:
 ;   then update + render the bullet (slot 1).
 ; ----------------------------------------------------------------------------
 render:
+        ; Frame pacing — sync to TMS9918 VBlank before the per-frame
+        ; sprite + bullet rebuild. Drains the stale F flag and waits
+        ; for the next vertical retrace (~4554c VRAM-write window).
+        WAIT_VBLANK
         LDA ship_x_int
         STA tri_x
         LDA ship_y_int

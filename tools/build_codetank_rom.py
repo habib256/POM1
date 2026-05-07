@@ -345,10 +345,12 @@ def build_game3_upper_bank() -> bytes:
 def build_tools_lower_bank() -> bytes:
     """Lower 16 kB: TMS_SilTest run-in-place from $4000-$7FFF.
     Silicon-validation suite — runs every SILICONBUGS bug as a test,
-    prints results on the Apple-1 native PIA display."""
+    prints results on the Apple-1 native PIA display, ends with a
+    visual demo using fauna sprite patterns."""
     print("[TOOLS] Lower bank (TMS_SilTest, full 16 kB):", file=sys.stderr)
-    siltest = assemble(SILTEST_ASM, SILTEST_BANK_CFG,
-                       "TOOLS_SilTest", HALF_SIZE)
+    siltest = assemble_multi(
+        [SILTEST_ASM, LIB_TMS / "sprites_fauna.asm"],
+        SILTEST_BANK_CFG, "TOOLS_SilTest", HALF_SIZE)
     bank = bytearray(b"\xFF" * HALF_SIZE)
     slot(bank, 0x0000, siltest, HALF_SIZE, "SilTest   ($4000-$7FFF)")
     return bytes(bank)
