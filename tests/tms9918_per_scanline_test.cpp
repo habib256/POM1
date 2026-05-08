@@ -171,11 +171,15 @@ int main()
     }
 
     // ----------------------------------------------------------------------
-    // Phase D — Overscan collision (Bug N°4).
+    // Phase D — Visible-only collision (Bug N°4 corrected mai 2026).
     // 2 fully-opaque sprites in early-clock (color bit 7 set) at X=10 →
-    // real X=-22. Both at Y=50, fully overlapping. Silicon detects the
-    // collision in the overscan zone; pre-fix POM1 used to clip at
-    // [0, 256) and miss it.
+    // real X=-22. Both at Y=50, fully overlapping in the LEFT BORDER.
+    // Per openMSX (SpriteChecker.cc:187-191), collision detection is
+    // restricted to visible [0, 256). Border pixels do NOT trigger
+    // collision even when sprites overlap there. So NO collision should
+    // be latched.
+    // (Was inverted pre-mai 2026 — pinned the Nouspikel range but
+    // contradicted openMSX. Updated when POM1 aligned to openMSX.)
     // ----------------------------------------------------------------------
     {
         TMS9918 vdp;
@@ -187,8 +191,8 @@ int main()
 
         vdp.advanceCycles(POM1_CPU_CYCLES_PER_FRAME_1X_60HZ + 100);
         const uint8_t s = readStatus(vdp);
-        mustBeTrue((s & 0x20) != 0,
-                   "PhaseD: collision detected for early-clock sprites at real X=-22"); ++assertions;
+        mustBeTrue((s & 0x20) == 0,
+                   "PhaseD: NO collision for early-clock sprites at real X=-22 (border-only, visible-only per openMSX)"); ++assertions;
     }
 
     // ----------------------------------------------------------------------

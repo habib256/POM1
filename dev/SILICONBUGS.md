@@ -15,17 +15,22 @@ POM1 silicon-strict modélise les comportements TMS9918 documentés dans Nouspik
 | **N°1** Slot-table timing | 🟢 SOLIDE | Tables verbatim copiées d'`openMSX VDPAccessSlots.cc`, algorithme `getTab` + Delta D28 identique. Test `tms9918_silicon_strict_runtime` (35 assertions). |
 | **N°2** /INT → /IRQ | 🟢 SOLIDE | Carte P-LAB d'origine **ne câble pas** /INT — usage canonique = polling $CC01. POM1 default = `irqStrapped=false` → `irqAsserted()` toujours faux. Strap optionnel pour FPGA mods (`setIrqStrapped(true)` ré-active R1.5 ∧ status.7). |
 | **N°3** R1.7 4K/16K | 🟢 SOLIDE | Mask `0x0FFF` vs `0x3FFF` selon R1.7. Datasheet confirme. Pinned par T06. |
-| **N°4** Overscan collision | 🟡 NON-VÉRIFIÉ | Range `[-32, kScreenWidth+32)` per Nouspikel. Plage exacte silicon non confirmée par silicon-side test. Pinné par T07 + ctest `tms9918_advanced_silicon` test 5. |
-| **N°5** Per-scanline scan | 🟡 NON-VÉRIFIÉ | Port openMSX `SpriteChecker::checkSprites1` line-major. Sub-cycle silicon details (ordre exact des fetches SAT, dummy reads après $D0) incertains. Pinné par tests T07-T11, T18-T20 + ctest. |
+| **N°4** Collision range | 🟢 SOLIDE | **Visible-only `[0, kScreenWidth)`** par openMSX `SpriteChecker.cc:187-191` (*"Sprites that are partially off-screen position can collide, but only on the in-screen pixels. Sprites cannot collide in the left or right border, only in the visible screen area"*). Confirmé par meisei vdp.c:587-589 (guard bytes à 0x80 hors 256). Corrigé mai 2026 (était `[-32, 288)` per Nouspikel — qui contredisait les deux refs canoniques). Pinné par T07 + ctest. |
+| **N°5** Per-scanline scan | 🟢 SOLIDE | Port openMSX `SpriteChecker::checkSprites1` line-major (`SpriteChecker.cc:87`). Sub-cycle silicon details (ordre exact des fetches SAT, dummy reads après $D0) **non modélisés par openMSX non plus** — POM1 a la même résolution que la référence canonique. Pinné par tests T07-T11, T18-T20 + ctest. |
 | **N°6** Status bits 0..4 | 🟢 SOLIDE | "Last sprite walked" — logique simple confirmée par Nouspikel. T08 + ctest test 6. |
-| **N°7** Sprite scan in blank | 🔑 OPEN | POM1 dit `N` (skip). MSX BiFi suggère silicon scanne `Y`. Datasheet ambiguë. **SEUL test silicon résoudra**. T12. |
+| **N°7** Sprite scan in blank | 🟢 SOLIDE | POM1 skip le sprite scan en blank (cohérent avec meisei `vdp.c:437` `mode=9` → blank case = `memset bd 256` sans sprite). **Mai 2026** : POM1 force aussi status bits 0..4 à `$1F` en blank (per meisei vdp.c:437 `statuslow=0x1f`) au lieu de préserver la dernière valeur. T12. |
 | **N°8** Sprite cloning | 🟢 SOLIDE | **Port verbatim de meisei `vdp.c:591-670`** (mai 2026, hap — *"the only known correct implementation, tested side-by-side against real MSX1"*). Condition trigger = `M3 set ∧ (R4 & 3) ≠ 3` (R6 ne joue **pas**, contrairement à l'ancienne approximation POM1). Algorithme par 4 blocs de 64 lignes avec `clonemask[6]` modulant `yc = (line & cm[0]) - ((y ^ cm[1]) | cm[2])`. Sprites 0..7 jamais clonés (preprocessed in HBlank). |
 | **N°9** Flipflop reset | 🟢 SOLIDE | `latchIsSecond = false` dans readControl. Datasheet + Nouspikel confirment. T13 + ctest. |
-| **N°10** Raster split 5S | 🟡 NON-VÉRIFIÉ | Mécanisme via per-scanline scan (Bug N°5). Timing exact de la latch silicon vs POM1 peut différer de quelques cycles → split position légèrement différent. T15. |
+| **N°10** Raster split 5S | 🟢 SOLIDE | Mécanisme via per-scanline scan (Bug N°5). Granularité ligne-major = openMSX. Timing exact sub-scanline n'est pas modélisé par openMSX non plus → POM1 atteint la limite de la référence canonique. Pour des splits cycle-précis il faudrait étendre le modèle au-delà de l'état de l'art emulator. T15. |
 | **N°11** NTSC 59.94 Hz | 🟢 SOLIDE | Constante exacte 17062c = floor(1.022727 MHz / 59.94). Math vérifié. T14. |
-| **HBlank précis** | 🔴 NON MODÉLISÉ | POM1 ne distingue pas explicitement HBlank. Le slot-table le couvre implicitement, mais cas-edge possibles. |
-| **Dérive thermique N°8** | 🔴 NON MODÉLISÉ | Silicon NMOS chaud → clones disparaissent. POM1 = comportement froid permanent. |
-| **Tick→cycle drift** | ⚠️ APPROXIMATION | 21 ticks/cycle entier au lieu de 20.97 → ~510 ticks/frame d'erreur ≈ 24 cycles. Imperceptible mais existe. |
+| **HBlank précis** | 🟢 SOLIDE | Couvert par le slot-table porté d'openMSX (Bug N°1) **et** API publique `TMS9918::inHBlank()` (TMS9918.cpp, port verbatim de openMSX `VDP::getHR()` VDP.hh:948-961). Constantes TMS9918A NTSC : `HBLANK_LEN_TXT=404`, `HBLANK_LEN_GFX=312` ticks ; `getLeftSprites` 282/258 ticks (text/gfx) ; `getRightBorder` = leftSprites + 960/1024. Permet aux callers de tester si le faisceau est en HBlank. |
+| **Dérive thermique N°8** | 🔴 NON MODÉLISÉ | Silicon NMOS chaud → clones disparaissent. **Consensus emulator** : ni openMSX ni meisei ni POM1 ne modélisent. Hors scope. |
+| **Tick→cycle drift** | 🟢 SOLIDE | 21 ticks/cycle. openMSX `TICKS_PER_SECOND = 3579545×6 = 21477270`, 6502 = 1022727 → **ratio exact 21.0000029** (drift = 3 ticks/sec). Imperceptible. (L'ancien doc claim de 20.97 était une erreur — corrigé mai 2026.) |
+| **Chip type dispatch** | 🟢 SOLIDE | `enum class TMS9918::ChipType` couvre TMS9918A (default), TMS9929A, TMS9118/9128/9129, T7937A, T6950 (TMS9918.h). Setter `setChipType()` runtime. Toshiba (T7937A/T6950) court-circuit le sprite cloning (`isCloningActive` retourne false) — match meisei `!toshiba` guard et openMSX TMS-vs-Toshiba dispatch. V99x8 non modélisé (POM1 n'a pas la cible MSX2). Default reste TMS9918A pour la cible Apple-1 + P-LAB Graphic Card. |
+| **Color-0 sprite collision** | 🟢 SOLIDE | POM1 = collide. openMSX MSX1 (`isMSX1VDP()`) = collide always (`VDP.hh:201-208`). meisei = collide. **Match consensus** sur le comportement TMS9918A — la "???" mention dans les commentaires openMSX réfère uniquement aux V99x8 (qui ont un toggle). |
+| **Hybrid mode rendering** | 🟢 SOLIDE | **Port meisei dispatch (mai 2026)**. M3+M1 → fallback text (M3 ignored). M3+M2 → fallback multicolor. M1+M2 (et all-three après M3-XOR) → "static vertical bars" glitch (4 px text-color + 2 px backdrop, ×40, indépendant de VRAM). Programs affectés : Lotus F3 (MSX1 palette), Illusions demo, dvik/joyrex `scr5.rom`. Sprites OFF en mode 1/5 (text-derived) per meisei `if (~mode&1)`. |
+| **Text mode borders** | 🟢 SOLIDE | **6 px left / 10 px right** asymétrique per datasheet TMS9918A + meisei vdp.c:475-510 (corrigé mai 2026 — était 8/8 symétrique avant). |
+| **VRAM power-on init** | 🟢 SOLIDE | **`$FF` even / `$00` odd** bistable per meisei vdp.c:212-217 (corrigé mai 2026 — était all-zero avant). MSX1 silicon. MSX2 settle à all-`$FF`, programs MSX2-targeted (e.g. *Universe: Unknown* final) légèrement glitchy au boot — comportement consistent avec MSX1 hardware. |
 
 **Légende** :
 - 🟢 SOLIDE — implémentation déterministe basée sur référence canonique (datasheet, openMSX source)
@@ -490,7 +495,12 @@ C'est l'algo silicon exact (ou l'inversion mathématique la plus proche qu'hap a
 - **Dérive thermique** non modélisée (les clones disparaissent par bloc quand le VDP chauffe — block 1 d'abord puis block 2). hap décrit le test "blow dryer" dans le commentaire meisei. POM1 = comportement "froid" permanent.
 - **Toshiba / Yamaha V9938+** ont l'addressing factory-fixed et **ne clonent pas**. POM1 hard-code "TI silicon" (pas de dispatch sur kind de chip).
 
-Le test `tms9918_siltest` T16 (M1+M2+M3 + R4=0) reste valide et déclenche désormais via la condition meisei (M3 set + R4=0). Le test `tms9918_clone` (`dev/projects/`) est un fixture visuel standalone du même comportement.
+⚠️ **Conséquence pour T16 du `tms9918_siltest`** (mai 2026) : T16 utilise R0=$02 + R1=$D8, ce qui set M1+M2+M3 simultanément. Avec le nouveau dispatch meisei :
+- mode = 7 → après XOR M3 → mode 5 → "vertical bars glitch" + **sprites OFF** (M1 set).
+- isCloningActive gate = `!M1 && M3 && (R4&3)≠3` → false (M1 set).
+- Donc T16 affiche désormais : barres verticales statiques, **pas de sprites, pas de clones**.
+
+L'opérateur doit donc répondre **N** à la question "saw ghost sprites?" — c'est le comportement silicon correct. T16 devient un test du **mode hybride 5** plutôt que du cloning. Le vrai test cloning est désormais `dev/projects/tms9918_clone/` (Mode II legal + R4=0 + sprite #31, hap-style — fires cloning sans M1 pour respecter le gate sprite-engine).
 
 ### Recommandation
 

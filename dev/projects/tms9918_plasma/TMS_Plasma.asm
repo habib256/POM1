@@ -11,7 +11,7 @@
 ; Scope of this port (POM1 / Apple-1 + P-LAB TMS9918):
 ;   - All 12 effects from PlasmaParamList ported verbatim
 ;   - All 16 palettes from ColorPalettes ported verbatim
-;   - Auto-cycling: each effect runs 256 frames, then NextEffect
+;   - Auto-cycling: each effect runs ~15 s (450 frames), then NextEffect
 ;   - Linear cycle animation per frame (linear_phase++)
 ;   - Polling render only — P-LAB stock leaves /INT floating
 ;
@@ -28,7 +28,7 @@
 ;                    sine_pnts_y[n]_post_row_n + sine_pnts_x[n]_post_col_n
 ;                ) & 0xFF ]
 ;   per frame:   linear_phase++
-;                if duration_cnt-- == 0: NextEffect (cycles 0..11)
+;                if --duration_cnt == 0: NextEffect (cycles 0..11)
 ;                render: cell = StillFrame[i] + linear_phase
 ;
 ; Memory map (stock 4 KB Apple-1, low bank):
@@ -63,6 +63,10 @@ NUM_SINES   = 8
 NUM_EFFECTS = 12
 NUM_PALETTES = 16
 
+; ~15 s per effect. POM1 silicon-strict steady-state ≈ 30 fps for the
+; 19 200 c per-frame render budget, so 15 × 30 = 450 = $01C2 frames.
+DURATION_FRAMES = 450
+
 plasma_starts := $0C00       ; 768 bytes
 sine_table    := $0F00       ; 256 bytes (page-aligned)
 
@@ -81,7 +85,10 @@ col_x:     .res 1
 acc:       .res 1
 linear_phase: .res 1
 current_effect: .res 1
-duration_cnt:   .res 1
+; 16-bit per-effect frame counter — 15 s @ ~30 fps ≈ 450 frames
+; ($01C2). Decremented every frame; on underflow → switch effect.
+duration_lo:    .res 1
+duration_hi:    .res 1
 
 ; 8-sine accumulators (X-indexed: 0..7)
 sine_pnts_y: .res 8         ; re-init from params_starts_y per row
@@ -104,6 +111,13 @@ start:
         LDX #$FF
         TXS
 
+        ; Greeting on the Apple-1 native PIA display ($D012 via Wozmon
+        ; ECHO at $FFEF). Prints credits + auto-cycle info before the
+        ; TMS9918 demo takes over the visual focus.
+        LDA #<greeting
+        LDX #>greeting
+        JSR print_str_ax
+
         JSR init_vdp_g1           ; Mode I, sprites off
         JSR make_sine_table       ; sine_table[256] from sine_src[64]
         JSR upload_patterns       ; pattern table $0000
@@ -111,8 +125,11 @@ start:
         ; First effect: idx = 0 (matches jblang's FirstEffect)
         LDA #0
         STA current_effect
-        LDA #0
-        STA duration_cnt          ; 0 → first DEC wraps to $FF, gives 256 frames
+        ; Per-effect duration = ~15 s. At ~30 fps that's 450 frames = $01C2.
+        LDA #<DURATION_FRAMES
+        STA duration_lo
+        LDA #>DURATION_FRAMES
+        STA duration_hi
         JSR load_effect           ; copy params, copy palette
         JSR upload_color_table
         JSR calc_plasma_starts
@@ -130,8 +147,16 @@ main_loop:
         JSR render_frame
         INC linear_phase
 
-        ; Effect cycling: dec duration_cnt; on 0 → next effect
-        DEC duration_cnt
+        ; Effect cycling: 16-bit decrement of (duration_hi:duration_lo);
+        ; on underflow to 0 → next effect.
+        LDA duration_lo
+        SEC
+        SBC #1
+        STA duration_lo
+        LDA duration_hi
+        SBC #0
+        STA duration_hi
+        ORA duration_lo
         BNE main_loop
 
         ; --- duration expired: advance to next effect ---
@@ -146,10 +171,11 @@ main_loop:
         JSR load_effect
         JSR upload_color_table
         JSR calc_plasma_starts
-        ; duration_cnt is now $FF after the DEC above (it underflowed to 0).
-        ; A=0 from the wrap test path or A=current_effect — load fresh.
-        LDA #0
-        STA duration_cnt
+        ; Reload counter to the per-effect duration.
+        LDA #<DURATION_FRAMES
+        STA duration_lo
+        LDA #>DURATION_FRAMES
+        STA duration_hi
         JMP main_loop
 
 exit_to_wozmon:
@@ -528,6 +554,23 @@ color_palettes:
 
 
 ; ============================================================================
+; ============================================================================
+; Greeting — printed on the Apple-1 native PIA display at boot.
+; Wozmon ECHO ($FFEF) interprets bit 7 set as "ready to print" — the
+; print_str_ax helper ORs $80 onto each byte before calling ECHO, so the
+; data here stays as plain 7-bit ASCII (CR = $0D, NUL = $00 terminator).
+; ============================================================================
+greeting:
+        .byte $0D
+        .byte "TMS_PLASMA - 6502 PORT", $0D
+        .byte "ALGO: J.B. LANGSTON / CRUZER", $0D
+        .byte "12 EFFECTS X 16 PALETTES", $0D
+        .byte "AUTO-CYCLE ~8.5S PER EFFECT", $0D
+        .byte "ESC = EXIT TO WOZMON", $0D
+        .byte $0D
+        .byte $00
+
+; ============================================================================
 ; Effect parameters — 12 effects from PlasmaParamList.
 ; jblang's per-entry layout is 31 B (8+8+8+2+2+1+2). For 6502-friendly
 ; abs+X indexing we split into separate 12×8 tables and a 12 B
@@ -601,3 +644,11 @@ table_starts_y:
 table_palette_idx:
         ; effect #N → which palette to use (index into color_palettes 0..15)
         .byte 1, 6, 9, 10, 4, 7, 5, 3, 12, 0, 8, 11
+
+; ============================================================================
+; print_str_ax helper — placed at the END of CODE segment so the binary's
+; entry point ($0280) lands on `start:` (the first label in source order
+; under .segment "CODE" above), NOT on the print routine. Galaga uses the
+; same pattern (cf. dev/projects/tms9918_galaga/TMS_Galaga.asm:4455).
+; ============================================================================
+.include "print.asm"

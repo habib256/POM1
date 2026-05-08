@@ -101,12 +101,15 @@ CHESS_M1_ASM       = LIB_TMS   / "tms9918m1.asm"
 
 # --- TOOLS sources ---------------------------------------------------------
 # Codetank_TOOLS.rom hosts dev/silicon-validation utilities (no games).
-# Lower bank = TMS_SilTest (TMS9918 silicon-discriminator suite — runs
-# all SILICONBUGS bug battery, prints to Apple-1 native PIA display).
+# Lower bank = TMS_SilBench (TMS9918 29-test silicon benchmark suite —
+# visual + transcribable per-test results on Apple-1 native PIA display,
+# canonical regression fixture for the May 2026 silicon model).
 # Upper bank = empty (reserved). Both halves linked at $4000-$7FFF,
 # run-in-place from ROM.
-SILTEST_ASM        = DEV / "tms9918_siltest" / "TMS_SilTest.asm"
-SILTEST_BANK_CFG   = DEV / "tms9918_siltest" / "apple1_siltest_codetank_bank.cfg"
+SILBENCH_ASM        = DEV / "tms9918_silbench" / "TMS_SilBench.asm"
+SILBENCH_BANK_CFG   = DEV / "tms9918_silbench" / "apple1_silbench_codetank.cfg"
+SILBENCH_M1_ASM     = LIB_TMS / "tms9918m1.asm"
+SILBENCH_5S_ASM     = LIB_TMS / "tms9918_5strigger.asm"
 
 
 # ---------------------------------------------------------------------------
@@ -340,19 +343,19 @@ def build_game3_upper_bank() -> bytes:
 
 
 # ---------------------------------------------------------------------------
-# TOOLS — TMS_SilTest (lower) + reserved (upper)
+# TOOLS — TMS_SilBench (lower) + reserved (upper)
 # ---------------------------------------------------------------------------
 def build_tools_lower_bank() -> bytes:
-    """Lower 16 kB: TMS_SilTest run-in-place from $4000-$7FFF.
-    Silicon-validation suite — runs every SILICONBUGS bug as a test,
-    prints results on the Apple-1 native PIA display, ends with a
-    visual demo using fauna sprite patterns."""
-    print("[TOOLS] Lower bank (TMS_SilTest, full 16 kB):", file=sys.stderr)
-    siltest = assemble_multi(
-        [SILTEST_ASM, LIB_TMS / "sprites_fauna.asm"],
-        SILTEST_BANK_CFG, "TOOLS_SilTest", HALF_SIZE)
+    """Lower 16 kB: TMS_SilBench run-in-place from $4000-$7FFF.
+    29-test silicon benchmark — each test renders a visual on the
+    TMS9918 then prints a transcribable line on the Apple-1 PIA display
+    so an operator can diff Replica-1+P-LAB silicon vs POM1 strict."""
+    print("[TOOLS] Lower bank (TMS_SilBench, full 16 kB):", file=sys.stderr)
+    silbench = assemble_multi(
+        [SILBENCH_ASM, SILBENCH_M1_ASM, SILBENCH_5S_ASM],
+        SILBENCH_BANK_CFG, "TOOLS_SilBench", HALF_SIZE)
     bank = bytearray(b"\xFF" * HALF_SIZE)
-    slot(bank, 0x0000, siltest, HALF_SIZE, "SilTest   ($4000-$7FFF)")
+    slot(bank, 0x0000, silbench, HALF_SIZE, "SilBench  ($4000-$7FFF)")
     return bytes(bank)
 
 
@@ -434,10 +437,13 @@ SIDECAR_GAME3 = (
 
 SIDECAR_TOOLS = (
     "Codetank_TOOLS.rom — TMS9918 silicon-validation utilities\n"
-    "  Lower jumper: 4000R → TMS_SilTest v2.0 (17 silicon-bug tests +\n"
-    "                30s sprite-multiplexing stress benchmark; results\n"
-    "                print on the Apple-1 native PIA display, see\n"
-    "                dev/projects/tms9918_siltest/README.md)\n"
+    "  Lower jumper: 4000R → TMS_SilBench (29-test silicon benchmark\n"
+    "                suite — interactive menu (A=run all, 1..9=single\n"
+    "                test, ESC=exit). Each test renders a visual on the\n"
+    "                TMS9918 then prints a transcribable line on the\n"
+    "                Apple-1 native PIA display. Canonical regression\n"
+    "                fixture for the May 2026 silicon model — see\n"
+    "                dev/projects/tms9918_silbench/README.md)\n"
     "  Upper jumper: reserved for future dev tools\n"
 )
 

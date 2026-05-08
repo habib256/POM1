@@ -191,12 +191,19 @@ int main()
     }
 
     // --------------------------------------------------------------------
-    // Test 5 — Overscan collision range [-32, kScreenWidth+32).
+    // Test 5 — Collision range visible-only [0, kScreenWidth) per
+    //          openMSX SpriteChecker.cc:187-191 + meisei vdp.c:587-589.
     //
     // Two early-clock sprites (color bit 7 = 1, X=10 → real X=-22),
-    // Y=49, opaque pattern. Both sprites span pixels x=-22..-15 (off
-    // the visible 256-pixel area). Silicon detects collision in
-    // overscan; the model mirror that.
+    // Y=49, opaque pattern. Both sprites span pixels x=-22..-15, ENTIRELY
+    // in the left-border / overscan area. Per openMSX (silicon source of
+    // truth), sprite pixels in the border do NOT contribute to collision
+    // detection — only visible [0, 256) pixels. So even though the two
+    // sprites overlap exactly, NO collision should be latched.
+    //
+    // (Was inverted before mai 2026 — the test pinned the Nouspikel
+    // [-32, 288) range, contradicting openMSX. POM1 now matches
+    // openMSX; the test is updated to assert the new contract.)
     // --------------------------------------------------------------------
     {
         TMS9918 vdp;
@@ -207,7 +214,7 @@ int main()
         writeSAT(vdp, 1, 49, 10, 0, 0x8F);
         writeSAT(vdp, 2, 0xD0, 0, 0, 0);
         const uint8_t s = scanAndSnapshot(vdp);
-        must((s & 0x20) != 0, "T5: collision in overscan zone (real X=-22)"); ++n;
+        must((s & 0x20) == 0, "T5: NO collision in overscan zone (real X=-22) — visible-only per openMSX"); ++n;
     }
 
     // --------------------------------------------------------------------

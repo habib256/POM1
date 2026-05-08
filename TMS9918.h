@@ -166,15 +166,49 @@ public:
     // hybrid-mode case where the BG playfield render is bypassed).
     static bool isIllegalModeRegs(const uint8_t* regs);
 
+    // Chip-type dispatch — POM1 emulates one of several silicon
+    // variants. Default is TMS9918A (NTSC, what the P-LAB Apple-1
+    // Graphic Card carries). Toshiba clones (T7937A / T6950) have
+    // factory-fixed addressing that suppresses Bug N°8 sprite cloning;
+    // V9938 / V9958 (Yamaha MSX2+) likewise. The dispatch is currently
+    // limited to controlling cloning behaviour — frame timing stays
+    // NTSC across types because POM1's host machine is a 1.022 MHz
+    // 6502 Apple-1, not a Z80 MSX.
+    enum class ChipType : uint8_t {
+        TMS9918A = 0,   // TI NTSC (default — Apple-1 + P-LAB Graphic Card)
+        TMS9929A,       // TI PAL (313 lines — POM1 frame timer is NTSC, label only)
+        TMS9118,        // TI NTSC simplified (functional alias)
+        TMS9128,        // TI PAL simplified (functional alias)
+        TMS9129,        // TI PAL alt (functional alias)
+        T7937A,         // Toshiba — no sprite cloning
+        T6950,          // Toshiba — no sprite cloning
+    };
+    void setChipType(ChipType ct) { chipType = ct; }
+    ChipType getChipType() const { return chipType; }
+    bool isToshibaChip() const {
+        return chipType == ChipType::T7937A || chipType == ChipType::T6950;
+    }
+
     // Bug N°8 cloning trigger (meisei vdp.c:592 condition). Returns
     // true when the chip's sprite-cloning hack actually fires:
-    // M3 (R0 bit 1) set AND R4 bits 0-1 not both set, on TI/NMOS
-    // silicon. Independent of `isIllegalModeRegs` — clone ghosts
+    // M1 (R1 bit 4) NOT set AND M3 (R0 bit 1) set AND R4 bits 0-1
+    // not both set, on TI/NMOS silicon. Toshiba clones short-circuit
+    // to false. Independent of `isIllegalModeRegs` — clone ghosts
     // appear in legal Mode II setups too (e.g. MSX1 demos that set
-    // R4=$00 to mirror the pattern table). Toshiba clones and
-    // Yamaha V9938+ have factory-fixed addressing and never clone;
-    // POM1 emulates "TI silicon" hard-coded (no dispatch on chip kind).
-    static bool isCloningActive(const uint8_t* regs);
+    // R4=$00 to mirror the pattern table).
+    static bool isCloningActive(const uint8_t* regs, ChipType chip = ChipType::TMS9918A);
+
+    // HBlank query API (per openMSX `VDP::getHR()`, VDP.hh:948-961).
+    // Returns true when the simulated raster is currently in the
+    // horizontal blanking interval. The slot-table porting (Bug N°1)
+    // already covers HBlank timing for VRAM-write gating; this method
+    // just exposes the predicate for callers that need to query it
+    // explicitly (debugging, cycle-precise demos).
+    bool inHBlank() const;
+
+    // Public timing constants (per openMSX VDP.hh / VDP.cc TMS9918A NTSC).
+    static constexpr int kHBlankLenText = 404;     // VDP ticks
+    static constexpr int kHBlankLenGfx  = 312;     // VDP ticks
 
 private:
     // Display mode helpers — write into pixel buffer
@@ -207,6 +241,13 @@ private:
     static void renderMulticolorLineRaw (int line, uint32_t* lineBuf,
                                          const uint8_t* vram, const uint8_t* regs,
                                          uint16_t vramMask, ImU32 backdrop);
+    // Hybrid M1+M2 (or M1+M2+M3 after the M3-XOR rule) "static
+    // vertical bars" glitch — meisei vdp.c:480-488. The chip
+    // generates a deterministic 4 px text-color + 2 px backdrop
+    // pattern × 40, independent of VRAM contents. POM1 emits this
+    // when renderActiveLine's mode-dispatch lands in mode 5.
+    static void renderTextBarsLineRaw   (int line, uint32_t* lineBuf,
+                                         const uint8_t* regs, ImU32 backdrop);
     static void renderSpritesLineRaw    (int line, uint32_t* lineBuf,
                                          const uint8_t* vram, const uint8_t* regs,
                                          uint16_t vramMask);
@@ -309,6 +350,7 @@ private:
     DropDiagnostics dropStats{};      // per-PC / per-port / per-table histograms
     uint16_t lastAccessPc   = 0;      // CPU PC at the most recent VDP-port access (set by Memory)
     bool snapshotDirty = true;        // skip the 16 KB VRAM + regs copy when nothing changed since last publish
+    ChipType chipType = ChipType::TMS9918A;  // see setChipType — affects sprite cloning
 
     // Slot-table model constants (openMSX-aligned).
     // TICKS_PER_LINE = 1368 NTSC (openMSX VDP::TICKS_PER_LINE).

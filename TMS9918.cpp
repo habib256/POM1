@@ -129,7 +129,15 @@ TMS9918::TMS9918()
 
 void TMS9918::reset()
 {
-    vram.fill(0);
+    // Power-on VRAM bistable per real MSX1 silicon (per meisei
+    // vdp.c:212-217 reset comment): $FF on even addresses, $00 on
+    // odd. MSX2 and later settle to all-$FF; we emulate MSX1 here
+    // because that's what the P-LAB Apple-1 TMS9918 card models.
+    // Programs known to be affected: "Universe: Unknown (final)"
+    // expects 0 (MSX2 behavior, will glitch slightly on us, OK).
+    for (size_t i = 0; i < vram.size(); ++i) {
+        vram[i] = (i & 1) ? 0x00 : 0xFF;
+    }
     regs.fill(0);
     statusReg       = 0;
     controlLatch    = 0;
@@ -529,31 +537,50 @@ void TMS9918::copySnapshot(Snapshot& out)
 // --------------------------------------------------------------------------
 void TMS9918::renderToBuffer(uint32_t* pixels, const Snapshot& snap)
 {
-    uint8_t backdropIdx = snap.regs[7] & 0x0F;
-    ImU32 backdrop = (backdropIdx == 0) ? kPalette[1] : kPalette[backdropIdx];
+    // Refactored 2026-05 to delegate to the per-line raw renderers
+    // (the same path used by renderActiveLine for live progressive
+    // rasterisation). Eliminates the previous divergence where the
+    // legacy snapshot path used its own mode dispatch (no meisei
+    // hybrid handling, 8/8 text borders) while the live path got
+    // the openMSX/meisei-correct dispatch. Keeps the 4 frame-at-a-
+    // time renderers (renderGraphicsI/II/Text/Multicolor/Sprites)
+    // intact for any direct callers but routes the snapshot entry
+    // through the line-raw path.
+    const uint8_t backdropIdx = snap.regs[7] & 0x0F;
+    const ImU32   backdrop    = (backdropIdx == 0) ? kPalette[1] : kPalette[backdropIdx];
 
-    for (int i = 0; i < kScreenWidth * kScreenHeight; i++) pixels[i] = backdrop;
+    for (int i = 0; i < kScreenWidth * kScreenHeight; ++i) pixels[i] = backdrop;
 
-    bool blank = (snap.regs[1] & 0x40) == 0;
-    if (blank) return;
+    if ((snap.regs[1] & 0x40) == 0) return;       // display blanked
 
-    bool m1 = (snap.regs[1] & 0x10) != 0; // R1 bit 4
-    bool m2 = (snap.regs[1] & 0x08) != 0; // R1 bit 3
-    bool m3 = (snap.regs[0] & 0x02) != 0; // R0 bit 1
+    const bool m1 = (snap.regs[1] & 0x10) != 0;
+    const bool m2 = (snap.regs[1] & 0x08) != 0;
+    const bool m3 = (snap.regs[0] & 0x02) != 0;
+    const uint16_t mask = vramMaskForRegs(snap.regs.data(), snap.siliconStrictMode);
 
-    if (!m1 && !m2 && !m3) {
-        renderGraphicsI(pixels, snap, backdrop);
-    } else if (!m1 && !m2 && m3) {
-        renderGraphicsII(pixels, snap, backdrop);
-    } else if (m1 && !m2 && !m3) {
-        renderText(pixels, snap, backdrop);
-    } else if (!m1 && m2 && !m3) {
-        renderMulticolor(pixels, snap, backdrop);
-    }
-    // else: undefined mode combination — backdrop only
+    // meisei mode encoding: bit 0 = M1, bit 1 = M3, bit 2 = M2.
+    int mode = (m1 ? 1 : 0) | (m3 ? 2 : 0) | (m2 ? 4 : 0);
+    if ((mode & 2) && (mode & 5)) mode ^= 2;
 
-    if (!m1) {
-        renderSprites(pixels, snap);
+    for (int line = 0; line < kScreenHeight; ++line) {
+        uint32_t* lineBuf = &pixels[line * kScreenWidth];
+        // Backdrop pre-fill already done above.
+
+        switch (mode) {
+            case 0: renderGfxILineRaw      (line, lineBuf, snap.vram.data(), snap.regs.data(), mask, backdrop); break;
+            case 1: renderTextLineRaw      (line, lineBuf, snap.vram.data(), snap.regs.data(), mask, backdrop); break;
+            case 2: renderGfxIILineRaw     (line, lineBuf, snap.vram.data(), snap.regs.data(), mask, backdrop); break;
+            case 4: renderMulticolorLineRaw(line, lineBuf, snap.vram.data(), snap.regs.data(), mask, backdrop); break;
+            case 5: renderTextBarsLineRaw  (line, lineBuf, snap.regs.data(), backdrop); break;
+            default: break;
+        }
+
+        if (!m1) {
+            renderSpritesLineRaw(line, lineBuf, snap.vram.data(), snap.regs.data(), mask);
+            if (isCloningActive(snap.regs.data(), ChipType::TMS9918A)) {
+                renderCloneSpritesLineRaw(line, lineBuf, snap.vram.data(), snap.regs.data(), mask);
+            }
+        }
     }
 }
 
@@ -652,9 +679,14 @@ void TMS9918::renderTextLineRaw(int line, uint32_t* lineBuf,
                                 const uint8_t* vram, const uint8_t* regs,
                                 uint16_t vramMask, ImU32 backdrop)
 {
-    // Text mode: 240 pixels wide centred in 256 (8-pixel border each side).
+    // Text mode: 240 pixels wide centred in 256 with ASYMMETRIC borders
+    // per the TMS9918A datasheet and meisei vdp.c:475-510:
+    //   left border  = 6 pixels of backdrop
+    //   text content = 40 cols × 6 px = 240 pixels
+    //   right border = 10 pixels of backdrop
+    // (NOT 8/8 symmetric — fixed 2026-05 to match silicon.)
     // Caller already pre-filled lineBuf with backdrop, so we paint only
-    // the inner 240 px and leave the 8-px borders untouched.
+    // the inner 240 px and leave the borders untouched.
     const uint16_t nameBase    = (uint16_t)(regs[2] & 0x0F) << 10;
     const uint16_t patternBase = (uint16_t)(regs[4] & 0x07) << 11;
     const uint8_t  fgIdx       = (regs[7] >> 4) & 0x0F;
@@ -668,7 +700,32 @@ void TMS9918::renderTextLineRaw(int line, uint32_t* lineBuf,
         const uint16_t patAddr = (patternBase + (uint16_t)name * 8 + lineInRow) & vramMask;
         const uint8_t  pat     = vram[patAddr];
         for (int bit = 0; bit < 6; ++bit)
-            lineBuf[8 + col * 6 + bit] = (pat & (0x80 >> bit)) ? fg : bg;
+            lineBuf[6 + col * 6 + bit] = (pat & (0x80 >> bit)) ? fg : bg;
+    }
+}
+
+// --------------------------------------------------------------------------
+// renderTextBarsLineRaw — static "vertical bars" glitch for hybrid mode 5
+// (M1+M2, optionally with M3 ignored). Per meisei vdp.c:480-488 the chip
+// emits a deterministic pattern of 4 px text-color + 2 px backdrop, ×40,
+// fully independent of VRAM contents. Borders match standard text mode
+// (6 left / 10 right). Triggered by Lotus F3 in MSX1-palette mode and by
+// dvik/joyrex's "scr5.rom" / Illusions demo.
+// --------------------------------------------------------------------------
+void TMS9918::renderTextBarsLineRaw(int line, uint32_t* lineBuf,
+                                    const uint8_t* regs, ImU32 backdrop)
+{
+    (void)line;                                  // pattern is identical every line
+    const uint8_t fgIdx = (regs[7] >> 4) & 0x0F;
+    const ImU32   tc    = (fgIdx == 0) ? backdrop : kPalette[fgIdx];
+    for (int x = 0; x < 40; ++x) {
+        const int base = 6 + x * 6;              // 6-px left border per text mode
+        lineBuf[base]     = tc;
+        lineBuf[base + 1] = tc;
+        lineBuf[base + 2] = tc;
+        lineBuf[base + 3] = tc;
+        lineBuf[base + 4] = backdrop;
+        lineBuf[base + 5] = backdrop;
     }
 }
 
@@ -788,9 +845,49 @@ bool TMS9918::isIllegalModeRegs(const uint8_t* regs)
 // (without M3) is illegal but does NOT clone. So we gate cloning on
 // this predicate and leave the BG-skip path on isIllegalModeRegs.
 // --------------------------------------------------------------------------
-bool TMS9918::isCloningActive(const uint8_t* regs)
+bool TMS9918::isCloningActive(const uint8_t* regs, ChipType chip)
 {
-    return (regs[0] & 0x02) && ((regs[4] & 0x03) != 0x03);
+    // Toshiba clones (T7937A, T6950) factory-fixed the address routing
+    // that produces sprite cloning — they NEVER clone, regardless of
+    // R0/R4 (per meisei vdp.c:592 `!toshiba` guard). Yamaha V9938+
+    // also fixed the addressing but POM1 doesn't currently model V99x8.
+    if (chip == ChipType::T7937A || chip == ChipType::T6950) return false;
+
+    // Meisei vdp.c:571 + 592 conditions combined. Cloning fires when:
+    //   - M1 (R1 bit 4) is NOT set — sprite engine is gated on `~mode&1`
+    //     in meisei, so cloning (part of sprite preprocessing) is
+    //     inactive in any text-derived mode.
+    //   - M3 (R0 bit 1) IS set
+    //   - R4 bits 0-1 are NOT both set (`(R4 & 3) != 3`)
+    return !(regs[1] & 0x10)             // M1 = 0
+        && (regs[0] & 0x02)               // M3 = 1
+        && ((regs[4] & 0x03) != 0x03);    // R4 condition
+}
+
+// --------------------------------------------------------------------------
+// inHBlank — port of openMSX VDP::getHR (VDP.hh:948-961). Returns true
+// when the simulated raster is currently in horizontal blanking.
+// Constants for TMS9918A NTSC, derived from openMSX VDP.hh:
+//   getLeftSprites = 100 + 102 + 56 + (hAdjust−7)·4 + (text? 24 : 0)
+//                  = 258 (graphics) | 282 (text)   when hAdjust=7 (MSX1 default)
+//   getRightBorder = getLeftSprites + (text? 960 : 1024)
+// HBlank window length: 404 ticks text mode, 312 ticks graphics mode.
+// All in 21.477 MHz VDP ticks; 21 ticks per 1.022 MHz 6502 cycle.
+// --------------------------------------------------------------------------
+bool TMS9918::inHBlank() const
+{
+    constexpr int kLeftSpritesText = 282;
+    constexpr int kLeftSpritesGfx  = 258;
+
+    const bool textMode  = (regs[1] & 0x10) != 0;
+    const int  rightBdr  = (textMode ? kLeftSpritesText : kLeftSpritesGfx)
+                         + (textMode ? 960 : 1024);
+    const int  hblankLen = textMode ? kHBlankLenText : kHBlankLenGfx;
+
+    const int ticksThisFrame = frameCycleCounter * kVdpTicksPerCpuCycle;
+    const int ticksThisLine  = ticksThisFrame % kVdpTicksPerLine;
+
+    return (ticksThisLine + kVdpTicksPerLine - rightBdr) % kVdpTicksPerLine < hblankLen;
 }
 
 // --------------------------------------------------------------------------
@@ -936,32 +1033,40 @@ void TMS9918::renderActiveLine(int line)
         const bool m2 = (regs[1] & 0x08) != 0;
         const bool m3 = (regs[0] & 0x02) != 0;
         const uint16_t mask = liveVramMask();
-        const bool illegal = isIllegalModeRegs(regs.data());
 
-        if (illegal) {
-            // Hybrid M1/M2/M3 combo (≥ 2 set). Real TI/NMOS silicon
-            // doesn't render a clean BG playfield in this regime, but
-            // DOES drive the sprite engine — so we keep the backdrop-
-            // only fill and let sprites paint on top.
-            renderSpritesLineRaw(line, lineBuf, vram.data(), regs.data(), mask);
-        } else {
-            if      (!m1 && !m2 && !m3) renderGfxILineRaw      (line, lineBuf, vram.data(), regs.data(), mask, backdrop);
-            else if (!m1 && !m2 &&  m3) renderGfxIILineRaw     (line, lineBuf, vram.data(), regs.data(), mask, backdrop);
-            else if ( m1 && !m2 && !m3) renderTextLineRaw      (line, lineBuf, vram.data(), regs.data(), mask, backdrop);
-            else if (!m1 &&  m2 && !m3) renderMulticolorLineRaw(line, lineBuf, vram.data(), regs.data(), mask, backdrop);
+        // meisei vdp.c:419 mode encoding (port verbatim):
+        //   bit 0 = M1 (R1 bit 4)
+        //   bit 1 = M3 (R0 bit 1)
+        //   bit 2 = M2 (R1 bit 3)
+        int mode = (m1 ? 1 : 0) | (m3 ? 2 : 0) | (m2 ? 4 : 0);
 
-            if (!m1) renderSpritesLineRaw(line, lineBuf, vram.data(), regs.data(), mask);
+        // Hybrid M3 + (M1 or M2): chip silently clears M3 internally
+        // (meisei vdp.c:443-444). Mode falls back to whatever M1/M2
+        // selects:  M1+M3 → text;  M3+M2 → multicolor;  all → text+M2
+        // (= mode 5, the "vertical bars" glitch).
+        if ((mode & 2) && (mode & 5)) mode ^= 2;
+
+        switch (mode) {
+            case 0: renderGfxILineRaw      (line, lineBuf, vram.data(), regs.data(), mask, backdrop); break;
+            case 1: renderTextLineRaw      (line, lineBuf, vram.data(), regs.data(), mask, backdrop); break;
+            case 2: renderGfxIILineRaw     (line, lineBuf, vram.data(), regs.data(), mask, backdrop); break;
+            case 4: renderMulticolorLineRaw(line, lineBuf, vram.data(), regs.data(), mask, backdrop); break;
+            case 5: renderTextBarsLineRaw  (line, lineBuf, regs.data(), backdrop); break;
+            // No other modes possible after the XOR rule:
+            //   3 → 1 (text), 6 → 4 (multicolor), 7 → 5 (text+bars).
+            default: break;
         }
 
-        // Bug N°8 cloning is independent of hybrid-mode (meisei port):
-        // fires whenever M3 + R4 condition met (see isCloningActive),
-        // even in legal Mode II setups (e.g. hap's BASIC test from
-        // openMSX issue #593). Painted last so clones overlay on top
-        // of the regular sprites — silicon-correct, since cloning is
-        // a SAT-fetch-time bug, the rendered pixels go through the
-        // same painter as legitimate sprites.
-        if (isCloningActive(regs.data())) {
-            renderCloneSpritesLineRaw(line, lineBuf, vram.data(), regs.data(), mask);
+        // Sprite engine runs ONLY when M1 is clear — text mode
+        // (mode 1 or 5) disables sprite scanning on silicon
+        // (meisei vdp.c:571 `if (~mode&1)`). Cloning is part of
+        // the sprite engine and inherits the same gate.
+        if (!m1) {
+            renderSpritesLineRaw(line, lineBuf, vram.data(), regs.data(), mask);
+            // Bug N°8 cloning (meisei vdp.c:592 condition).
+            if (isCloningActive(regs.data(), chipType)) {
+                renderCloneSpritesLineRaw(line, lineBuf, vram.data(), regs.data(), mask);
+            }
         }
     }
 
@@ -1263,7 +1368,15 @@ void TMS9918::renderSprites(uint32_t* pixels, const Snapshot& s)
 void TMS9918::scanSpritesForLine(int line)
 {
     if (line < 0 || line >= kScreenHeight) return;
-    if ((regs[1] & 0x40) == 0) return;             // display blanked → silicon doesn't scan
+    if ((regs[1] & 0x40) == 0) {
+        // Display blanked: silicon doesn't sprite-scan, but DOES set
+        // status bits 0..4 to $1F (per meisei vdp.c:437,512 — the
+        // last-walked-slot index defaults to 31 in blank). POM1
+        // previously left bits 0..4 untouched, which kept stale
+        // values. (Fixed 2026-05.)
+        statusReg = (uint8_t)((statusReg & 0xE0) | 0x1F);
+        return;
+    }
 
     const uint16_t sprAttrBase    = (uint16_t)(regs[5] & 0x7F) << 7;
     const uint16_t sprPatternBase = (uint16_t)(regs[6] & 0x07) << 11;
@@ -1274,11 +1387,17 @@ void TMS9918::scanSpritesForLine(int line)
     const int  mag          = magnified  ? 2  : 1;
     const int  spriteH      = sprPixelSize * mag;
 
-    // Overscan-aware collision mask: covers [-32, 288) → 320 pixels = 40 bytes.
-    // Index = (sx + 32) >> 3 ; bit = 0x80 >> ((sx + 32) & 7).
-    constexpr int kOverscanLeft = 32;
-    constexpr int kOverscanWidth = 320;          // 32 + 256 + 32
-    constexpr int kMaskBytes = kOverscanWidth / 8;
+    // Collision mask covers the VISIBLE area [0, 256) only — per
+    // openMSX (`SpriteChecker.cc:187-191`): "Sprites that are partially
+    // off-screen position can collide, but only on the in-screen
+    // pixels. In other words: sprites cannot collide in the left or
+    // right border, only in the visible screen area."
+    // meisei vdp.c:587-589 implements the same semantics via guard
+    // bytes set to 0x80 (no collision bit) on either side of the
+    // 256-byte sprite line buffer.
+    // (Was [-32, 288) per Nouspikel before mai 2026 — corrected
+    // to match openMSX which is the silicon source of truth.)
+    constexpr int kMaskBytes = kScreenWidth / 8;  // 256 / 8 = 32 bytes
     uint8_t mask[kMaskBytes];
     bool maskInUse = false;
 
@@ -1347,11 +1466,13 @@ void TMS9918::scanSpritesForLine(int line)
                 const int baseX = x + (half * 8 + bit) * mag;
                 for (int mx = 0; mx < mag; ++mx) {
                     const int sx = baseX + mx;
-                    // Bug N°4: collision spans overscan, not just [0, 256).
-                    if (sx < -kOverscanLeft || sx >= kScreenWidth + kOverscanLeft) continue;
-                    const int bitIndex = sx + kOverscanLeft;        // [0, 320)
-                    const uint8_t bm = (uint8_t)(0x80 >> (bitIndex & 7));
-                    uint8_t& cell = mask[bitIndex >> 3];
+                    // Bug N°4 (corrected mai 2026 to match openMSX):
+                    // collisions only count in visible [0, 256). Pixels
+                    // in the left/right border (sprites partially off-
+                    // screen) are silently dropped from the mask.
+                    if (sx < 0 || sx >= kScreenWidth) continue;
+                    const uint8_t bm = (uint8_t)(0x80 >> (sx & 7));
+                    uint8_t& cell = mask[sx >> 3];
                     if (cell & bm) {
                         if (!collisionAlreadyLatched) {
                             statusReg |= 0x20;

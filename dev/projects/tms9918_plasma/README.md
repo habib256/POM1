@@ -9,7 +9,7 @@ gradient patterns ripped from *Produkthandler Kom Her*
 
 The demo cycles through **all 12 effects × 16 palettes** verbatim from
 jblang's `PlasmaParamList` / `ColorPalettes`, switching automatically
-every 256 frames (~8.5 s on POM1). Every cell of the 32×24 character
+every 450 frames (~15 s on POM1). Every cell of the 32×24 character
 grid is the sum of 8 sine waves (`StillFrame[y][x] = Σ_{n=0..7}
 sine_table[StartAngle[n] + ColFreq[n]·x + RowFreq[n]·y]`); each frame
 adds `linear_phase++` so the colour rings ripple outward.

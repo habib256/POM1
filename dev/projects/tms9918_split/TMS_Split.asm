@@ -59,7 +59,12 @@ SPLIT_LINE = 96
 tmp:    .res 1              ; required by tms9918m1.asm
 src_lo: .res 1
 src_hi: .res 1
+frame_lo:   .res 1          ; auto-exit timer (low byte)
+frame_hi:   .res 1          ; auto-exit timer (high byte)
 .exportzp tmp
+
+; Auto-exit after this many frames (≈10 s at 60 fps).
+AUTO_EXIT_FRAMES = 600
 
 ; =============================================
 .segment "CODE"
@@ -131,6 +136,13 @@ start:
         ; clears it, so the next frame re-arms via fresh sprites and
         ; the loop self-resets.
         ; =========================================================
+        ; --- Init auto-exit timer (so callers running the demo as part
+        ;     of a sequence can chain into the next program after ~10 s). ---
+        LDA #<AUTO_EXIT_FRAMES
+        STA frame_lo
+        LDA #>AUTO_EXIT_FRAMES
+        STA frame_hi
+
 @frame:
         WAIT_VBLANK             ; clears bits 5/6/7 of status register
 
@@ -154,6 +166,15 @@ start:
 
         ; --- Push palette_bot (warm colours) — live, mid-display ---
         JSR push_palette_bot
+
+        ; --- Decrement auto-exit timer; exit at zero ---
+        LDA frame_lo
+        BNE @no_borrow
+        LDA frame_hi
+        BEQ do_exit             ; both zero → 600 frames done, exit
+        DEC frame_hi
+@no_borrow:
+        DEC frame_lo
 
         JMP @frame
 
@@ -180,16 +201,12 @@ push_palette:
         LDA #$20
         STA vdp_hi
         JSR vdp_set_write       ; $2000 + write bit
-        LDX #0
-@p_lp:  LDA (src_lo,X)          ; X=0; uses (zp,X) addressing
-        STA VDP_DATA
+        LDY #0
+@p_lp:  LDA (src_lo),Y          ; post-indexed indirect: reads from
+        STA VDP_DATA            ; (src_lo:src_hi)+Y. Don't touch src_*.
         JSR tms9918_pad12
-        INC src_lo
-        BNE @p_no_carry
-        INC src_hi
-@p_no_carry:
-        INX
-        CPX #32
+        INY
+        CPY #32
         BNE @p_lp
         RTS
 
