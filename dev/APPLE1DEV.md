@@ -1,10 +1,19 @@
 # APPLE1DEV.md
 
-Agent-facing playbook for writing **new Apple 1 software** that runs under POM1. Companions:
+Agent-facing playbook for writing **new Apple 1 software** that runs under POM1.
 
-- **`dev/Programming_Apple1_ASM.md`** — 700-line French deep dive on 6502 / cc65 / HGR / TMS9918 (Arnaud, drawn from the Sokoban + Connect 4 trilogies). Authoritative ASM reference — link, don't duplicate.
-- **`README.md`** — user walkthrough, preset table, software index.
-- **`CLAUDE.md`** — emulator-side architecture (mutex order, ROM-load invariants).
+**Companion docs** (link instead of duplicating):
+
+| Doc | Role |
+|-----|------|
+| [`Programming_Apple1_ASM.md`](Programming_Apple1_ASM.md) | Référence ASM détaillée (6502, cc65, texte, HGR, TMS9918) — tirée des trilogies Sokoban + Connect 4. |
+| [`SILICONBUGS.md`](SILICONBUGS.md) | TMS9918 vs silicium réel, strict timing, sprites — **obligatoire** avant d’optimiser des boucles VRAM. |
+| [`TODO6502.md`](TODO6502.md) | Backlog logiciel 6502 / `dev/projects`. |
+| [`doc/CLI.md`](../doc/CLI.md) | Table complète des flags CLI (`CliDispatcher.cpp`). |
+| [`CLAUDE.md`](../CLAUDE.md) | Architecture émulateur (mutex bus, orchestration, `ctest`). |
+| [`README.md`](../README.md) | Guide utilisateur, tableau des presets, index logiciels. |
+
+**Sommaire :** sections **§1–§12** numérotées ci-dessous (parcourir les titres).
 
 ---
 
@@ -17,7 +26,7 @@ Agent-facing playbook for writing **new Apple 1 software** that runs under POM1.
 | Fast tile gameplay, any mode | **6502 asm (cc65)** | Text / HGR / TMS9918 / GT-6144 | see §4 |
 | Apple-1-movie text mode | asm | Text | `dev/cc65/apple1.cfg` |
 | Colour pixel art, fractals | asm + GEN2 | HGR 280×192 | `dev/cc65/apple1_gen2.cfg` |
-| Sprite/tile game, multi-colour | asm + TMS9918 | Graphics I 32×24 | `dev/cc65/apple1_gen2.cfg` (VRAM is separate) |
+| Sprite/tile game, multi-colour | asm + TMS9918 | Graphics I 32×24 | `dev/cc65/apple1.cfg` or `apple1_4k.cfg` (VRAM off-bus). Do not assume GEN2 + TMS9918 on one board — preset-level mutex except Multiplexing Fantasy (`README.md` / `CLAUDE.md`). |
 | 1976 SWTPC graphics | asm + GT-6144 | 64×96 mono | `dev/projects/gt6144_hello/gt6144.cfg` |
 | SID jingle | asm @ `$C800` regs | — | any |
 | Shell tool, file manager | asm + microSD shell | Text | `dev/cc65/apple1.cfg` |
@@ -83,7 +92,7 @@ Append-only terminal, no cursor addressing. To "refresh", reprint the frame — 
 Framebuffer **`$2000-$3FFF`** (8 KB, non-linear Apple II layout). 7 px/byte; **bit 7 = NTSC group selector**, not a pixel. Isolated lit pixel = colour (violet/green/blue/orange depending on group + screenX parity); **adjacent lit pixels = white**. Use `dev/lib/hgr/hgr_tables.inc` (`plot_pixel`, `clear_hgr`, scanline tables). Byte-aligned tile widths (7/14/21/28 px) avoid sub-byte work; for arbitrary widths use the sub-byte mask LUT pattern (see `dev/projects/hgr_maze/HGR_Maze.asm`). **Full reference: `dev/Programming_Apple1_ASM.md` §5.**
 
 ### TMS9918 (256×192, P-LAB Graphic Card)
-I/O at `$CC00` (data) + `$CC01` (control). VRAM is **separate** (16 KB, I/O-only). Graphics I = 32×24 cells of 8×8 px. Layout: pattern `$0000`, name `$1800`, colour `$2000` (**one colour byte per group of 8 chars** — exploit by placing each tile type at char `0, 8, 16, …`). **Must disable sprites on init** (write `$D0` to first sprite-Y at `$1B00`) or garbage appears. **VBlank sync = polling only** (`BIT $CC01 / BPL` or the `WAIT_VBLANK` macro in `lib/tms9918/tms9918.inc`) — P-LAB ne câble pas /INT, jamais utiliser CLI / IRQ-on-VBlank, le 6502 deadlocke (cf. SILICONBUGS Bug N°2). **Full reference: `dev/Programming_Apple1_ASM.md` §6.**
+I/O at `$CC00` (data) + `$CC01` (control). VRAM is **separate** (16 KB, I/O-only). Graphics I = 32×24 cells of 8×8 px. Layout: pattern `$0000`, name `$1800`, colour `$2000` (**one colour byte per group of 8 chars** — exploit by placing each tile type at char `0, 8, 16, …`). **Must disable sprites on init** (write `$D0` to first sprite-Y at `$1B00`) or garbage appears. **VBlank sync = polling only** (`BIT $CC01 / BPL` or the `WAIT_VBLANK` macro in `lib/tms9918/tms9918.inc`) — P-LAB ne câble pas /INT, jamais utiliser CLI / IRQ-on-VBlank, le 6502 deadlocke (voir [`SILICONBUGS.md`](SILICONBUGS.md) Bug N°2). **Silicon strict** drops too-fast VRAM writes (`--silicon-strict` / Hardware menu — [`doc/CLI.md`](../doc/CLI.md)); tuning & pad helpers → SILICONBUGS §2 / §17, `dev/lib/tms9918/tms9918_pad.asm`. **Full ASM tutorial: [`Programming_Apple1_ASM.md`](Programming_Apple1_ASM.md) §6.**
 
 ### SWTPC GT-6144 (64×96 mono, 1976 — first commercial Apple-1 graphics card)
 **Write-only** I/O at `$D00A`, 4-phase FSM on a single byte:
@@ -272,11 +281,13 @@ Full example: `tools/test_sdcard_subdir_navigation_telnet.py`.
 | Step + BRK trace | `./POM1 -p 0 --trace-brk --step 10` |
 | Freeze RTC | `./POM1 -p 9 --rtc-freeze "2000-01-01 00:00:00"` |
 
+Complete verb table (all phases): [`doc/CLI.md`](../doc/CLI.md).
+
 Repeating flags stack in CLI order. Card overrides (`--enable`, `--disable`, `--sid-chip`, `--jukebox-jumper`) land **before** the 15-frame deferred plug — clean. Verbs needing a plugged card (`--paste`, `--play`, `--rec`, `--sd-*`, `--rtc-freeze`) run **after** the defer — always see the fully-initialised bus.
 
 ### Emulator-level invariant tests
 
-Add a C++ test in `tests/`. Template: `tests/peripheral_bus_smoke_test.cpp` — `<cassert>` + `add_test`, no framework needed. See `CLAUDE.md` *Testing* for the existing eight.
+Add a C++ test in `tests/`. Template: `tests/peripheral_bus_smoke_test.cpp` — `<cassert>` + `add_test`, no framework needed. See `CLAUDE.md` *Testing* for registered smoke tests and `ctest -N`.
 
 ---
 

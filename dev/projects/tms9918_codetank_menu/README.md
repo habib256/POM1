@@ -17,10 +17,9 @@ use, no other cards required besides the TMS9918 (which the games need).
 
 ## Hardware
 
-- Machine: Apple 1 (4 KB DRAM)
+- Machine: Apple 1 (8 KB dual-bank motherboard RAM — preset **8** default)
 - Cards: P-LAB TMS9918, P-LAB CodeTank (lower-bank jumper)
-- Recommended POM1 preset: P-LAB Apple-1 with TMS9918 Graphic Card
-  (preset 8 ships CodeTank by default — TODO confirm).
+- Recommended POM1 preset: **8** — *P-LAB Apple-1 with TMS9918 (CodeTank daughterboard)* (`MainWindow_Presets.cpp`).
 
 ## Sources
 
@@ -41,7 +40,7 @@ By hand:
 
 ## Run in POM1
 
-1. POM1 → Presets → preset 8 (TMS9918 + CodeTank, TODO confirm).
+1. POM1 → Presets → **8** (TMS9918 + CodeTank).
 2. CodeTank board jumper = Lower; the menu ships in `roms/codetank.rom`.
 3. Wozmon `\` prompt: type `4000R`.
 

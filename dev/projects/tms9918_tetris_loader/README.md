@@ -23,14 +23,15 @@ Layout in the upper bank (standalone Tetris build):
     $4000  Bootstrap (this file)
     $4080  Tetris payload (7 308 B, padded with $FF to fill the bank)
 
-Tetris occupies `$0280-$1FAC` once copied, so it needs an Apple 1 with
-at least 8 KB DRAM (preset 8 ships 16 KB).
+Tetris occupies `$0280-$1FAC` once copied, so it needs the **8 KB**
+Parmigiani dual-bank layout shipped by preset **8** (`ramKB = 8` in
+`MainWindow_Presets.cpp`).
 
 ## Hardware
 
 - Machine: Apple 1 (8 KB DRAM minimum)
 - Cards: P-LAB TMS9918, P-LAB CodeTank (Upper jumper)
-- Recommended POM1 preset: preset 8 (TMS9918 + CodeTank) — TODO confirm.
+- Recommended POM1 preset: **8** — *P-LAB Apple-1 with TMS9918 (CodeTank daughterboard)* (`MainWindow_Presets.cpp`, repo root).
 
 ## Sources
 
@@ -54,7 +55,7 @@ externally — this Makefile only builds the bootstrap.
 
 ## Run in POM1
 
-1. POM1 → Presets → preset 8 (TMS9918 + CodeTank, TODO confirm).
+1. POM1 → Presets → **8** (TMS9918 + CodeTank).
 2. CodeTank board jumper = Upper; ROM image with the loader + Tetris
    payload installed.
 3. Wozmon `\` prompt: type `4000R`.

@@ -2,12 +2,17 @@
 
 Architecture / invariants / gotchas for the **emulator side** of POM1. User walkthrough → `README.md`; open work → `TODO.md`; history → `git log`.
 
-- Apple 1 software (BASIC, SID tunes, microSD shell tools, games) → **`dev/APPLE1DEV.md`** + `doc/Programming_Apple1_ASM.md`.
+**Contents:** [Overview](#project-overview) · [Build](#build--run) · [CLI](doc/CLI.md) · [WASM / cc65](#wasm-build) · [Architecture](#architecture) · [MMIO / CPU](#key-implementation-details) · [Memory map](#memory-map) · [Platforms](#platform-notes) · [Testing](#testing) · [Version bump](#version-string-locations)
+
+- Apple 1 software (BASIC, SID tunes, microSD shell tools, games) → **`dev/APPLE1DEV.md`** + **`dev/Programming_Apple1_ASM.md`**.
+- **CLI flags** (full table) → **`doc/CLI.md`** · implementation **`CliDispatcher.cpp`**.
 - 6502 ASM sources for every shipped program → **`dev/`** (`lib/{apple1,m6502,tms9918,hgr,sokoban}/`, `projects/<name>/`, `cc65/`). Browseable in-app via **Dev → Source Browser**. Compiled `.bin`/`.txt` land under `software/<dir>/` — that is what POM1 loads.
 
 ## Project Overview
 
 Apple 1 emulator (Dear ImGui, MOS 6502 + display + keyboard + ACI cassette) plus expansion cards: Uncle Bernie's GEN2 HGR, P-LAB A1-SID (6581/8580), TMS9918, microSD (65C22+ATMEGA), MODEM BBS (65C51+TCP), Terminal Card, A1-IO & RTC (65C22+ATMEGA32+DS3231), Juke-Box, CodeTank, Rich Dreher's CFFA1, SWTPC GT-6144 (1976) and PR-40 (1976, Jobs' *Interface Age* mod). Linux / macOS / Windows / Web (Emscripten).
+
+**Preset truth:** `--preset N` indexes `kMachinePresets[]` in `MainWindow_Presets.cpp` (RAM size, cards, BASIC type). The README preset table must stay in lockstep with that array.
 
 ## Build & Run
 
@@ -19,36 +24,9 @@ cd build && cmake .. && make # build → build/POM1
 
 Windows: `setup_imgui.bat` + vcpkg + `cmake --build . --config Release`. `compile_commands.json` symlinked for clangd.
 
-### CLI flags (`CliDispatcher.cpp`)
+### CLI
 
-Three phases: **A** boot-time, **B** first-frame preset overrides, **C** deferred — fire after the 15-frame card plug-in, in command-line order. `--load 0300:foo.bin --run 0300 --paste keys.txt` composes. Malformed verbs log `[CLI] ERROR:` and exit 1.
-
-| Flag | Phase | Effect |
-|------|-------|--------|
-| `--list-presets` | A | Print `kMachinePresets[]` and exit. |
-| `--preset <N\|name>` / `-p` | A | Index or case-insensitive substring (first match). |
-| `--terminal` | A | Force-enable Terminal Card (`127.0.0.1:6502`). |
-| `--tape <path>` | A | Preload + auto-Play. Default probe: `cassettes/WOZ_talk.mp3`. |
-| `--save-tape <path>` / `--save-tape-format <aci\|wav>` | A | Dump deck on clean shutdown. SIGINT/SIGTERM triggers `~MainWindow_ImGui`. |
-| `--cpu-max` | A | Pin `executionSpeed = 1 000 000` cycles/frame. Beats `--speed`. |
-| `--speed <cycles/frame>` | B | Override (1× = 17045, 2× = 34091). |
-| `--enable <card>[,…]` / `--disable <card>[,…]` | B | Rewrite deferred plug list. Names: `aci, sid, sid-se, microsd, tms9918, a1io-rtc, hgr, cffa1, krusader, wifi, terminal, jukebox, codetank, pr40, gt6144`. Mutex rules enforced. `--disable krusader` is a no-op (ROM unload needs hard reset). Run after `--terminal`. |
-| `--sid-chip <6581\|8580>` | B | Swap chip; libresidfp replays last register state. |
-| `--jukebox-jumper <ram16\|ram32>` / `--jukebox-chip <flash\|eeprom>` | B | Juke-Box ROM window + chip mode. |
-| `--codetank-jumper <lower\|upper>` / `--codetank-rom <path>` | B | Pick 16 kB half of 32 kB 28c256 / override default `roms/codetank/Codetank_GAME1.rom`. `--enable codetank` auto-schedules `--enable tms9918`; `--disable tms9918` cascade-unschedules CodeTank. |
-| `--silicon-strict` / `--no-silicon-strict` | B | Force-flip TMS9918 `siliconStrictMode` (paranoid 40c — drops VRAM writes < 40 cycles in Mode I+sprites, 4/6/6/2c in text/multicolor/no-sprites/blank, 4K/16K via R1 bit 7 — see `dev/SILICONBUGS.md` Bug N°1). Contract: passing POM1 strict ⇒ silicon-safe. May 2026 ramp: 16→24→40c after Galaga sprite tables and LOGO BIRD/Demo redraws kept showing artefacts at every previous level. Default = ON for every preset except the Multiplexing Fantasy ones; the override survives the first frame but a later preset switch resets to default. Hardware menu has a runtime toggle and the status bar shows `STRICT` / `FANTASY`. |
-| `--load <addr>:<path>` | C | Raw binary, rewrite reset, `hardReset` + `start`. Hex/decimal addr. Repeatable. |
-| `--run <addr>` | C | `EmulationController::jumpTo()`. |
-| `--paste <file>` | C | ≤4096 chars to keyboard queue (`\n`→CR, printable ASCII). |
-| `--step <N>` / `--trace-brk` | C | Step N + BRK trace dump. |
-| `--play` / `--rec` / `--rewind` | C | Cassette transport. `--rec` = `armRecording()` (no $C000 wait). |
-| `--sd-mkdir <path>` / `--sd-put <h>:<g>` / `--sd-get <g>:<h>` | C | SD fixture seeding. |
-| `--rtc-freeze "YYYY-MM-DD HH:MM:SS"` | C | Set `A1IO_RTC::rtcOffsetSeconds` (host rate keeps ticking). |
-| `--snapshot-save <path>` | C | Write current state (RAM + card-enabled flags + per-card payload via `Peripheral::serialize`) to `<path>`. Format: see `SnapshotIO.h`. |
-| `--snapshot-load <path>` | C | Restore state from a `.snap` written by `--snapshot-save`. Per-card serialize hooks default to no-op until each card migrates its internal state — see `Peripheral.h`. |
-| `--break <addr>` | C | Arm M6502 PC-matched halt (single breakpoint). Fires *before* the instruction at `<addr>` executes; CPU stops itself, logs `[CPU] WARN breakpoint hit at $XXXX` once. Cleared by `hardReset()` (preset switch). Continue with manual `stepCpu()` past the address followed by `startCpu()`, or `clearCpuBreakpoint()` + `startCpu()`. |
-
-Two telnet tests auto-launch POM1 from repo root: `test_aci_telnet.py`, `test_sdcard_subdir_navigation_telnet.py`.
+Full flag table (phases A/B/C, every verb, telnet helpers) → **[`doc/CLI.md`](doc/CLI.md)**. Implemented in **`CliDispatcher.cpp`**. Malformed verbs log `[CLI] ERROR:` and exit 1.
 
 ### WASM build
 
@@ -114,7 +92,10 @@ Claudio PARMIGIANI (P-LAB designer): on real hardware exactly ONE P-LAB card is 
 - **MicroSD** — 65C22 VIA `$A000-$A00F`, SD CARD OS ROM 8 KB at `$8000-$9FFF`. Handshake: PORTB bit 0 = CPU_STROBE, bit 7 = MCU_STROBE, PORTA = data. Host `sdcard/` as virtual FAT32; tagged `NAME#TTAAAA` filenames encode type + load addr. Commands: `cmdRead`/`Load` (strict + fuzzy prefix), `Write`, `Dir`/`Ls`, `Cd` (only nav op — `..`, absolute `/PATH`, relative, fuzzy leaf), `Del`, `Mkdir`, `Rmdir`, `Pwd`, `Mount`. **All name-accepting commands resolve against `currentDirectory` only — no recursive search.** Wozmon prompt literally is the cwd. Pinned by `test_sdcard_subdir_navigation_telnet.py`.
 - **CFFA1** — 8 KB ROM `$9000-$AFDF` (ID `CF`/`FA` at `$AFDC`/`$AFDD`), ATA/IDE regs `$AFE0-$AFFF` (A4 not decoded — `$AFE0` mirrors `$AFF0`). Backs ProDOS `.po`; READ/WRITE SECTOR + SET FEATURE only. Auto-mount probes `cfcard/cfcard.po` up three dirs. Two bus entries: read-only ROM + r/w regs.
 - **JukeBox** — Parmigiani & Rosselli. Chip modes: **Flash** (paged read-only, 16 KB–512 KB) / **EEPROM 28c256** (32 KB single-page, writable). ROM at `$4000-$BFFF` (RAM-16/ROM-32 jumper) or `$8000-$BFFF` (RAM-32/ROM-16); Program Manager `$BD00`, Save Program `$B800`. **Bank-select latch `$CA00`**: bits 0-3 = Px page, bit 4 = Sx sub-page. Bus: priority 20 ROM window + priority 15 `$CA00`. Mutex with CodeTank, CFFA1, microSD, Krusader, Wi-Fi Modem, A1-SID; A1-AUDIO SE coexists. Boot page = lowest with `$A5` at file offset `$7D00`. Pinned by `jukebox_paged_rom_smoke`.
-- **CodeTank** — P-LAB ROM **daughterboard** of the TMS9918 Graphic Card (split from JukeBox April 2026 so it can ride the Graphic Card piggyback). No edge connector, no on-board address decoder — cannot exist standalone on the bus. `Memory::setCodeTankEnabled(true)` auto-plugs the TMS9918 host; `setTMS9918Enabled(false)` cascade-unplugs CodeTank. Single 32 KB 28c256, jumper picks 16 KB half wired into fixed `$4000-$7FFF`. No `$CA00` latch, no paging. Read-only (real cards reflashed externally). On plug: `Memory::loadCodeTankRom` probes `roms/codetank/Codetank_GAME1.rom` (the shipped library image) then `codetank.rom` / `roms/codetank.rom`. **Shipped ROM contents** (`Codetank_GAME1.rom`, built by `tools/build_codetank_rom.py --layout=menu`): Lower jumper = menu at `$4000` + Galaga (`$4100`), Sokoban (`$5E00`), Snake (`$7100`), Life (`$7A00`), all run-in-place from ROM and **all silicon-strict-clean** (`tools/silicon_strict_patch.py` applied to every TMS9918 project, ~351 NOPs total — see `dev/SILICONBUGS.md` §17). Galaga uses the `hide_slot_4` JSR helper to fit its 7 424 B slot; the others fit naturally. Upper jumper = TMS_LOGO V2.6 turtle interpreter linked at `$4000-$7FFF`, run-in-place from ROM (~16 kB, 16 kB cap — keep an eye on the slot fill % when adding features). PROCBSS (control stack 1 kB + proc_table 2.4 kB + var_table) lives in the upper Parmigiani RAM bank at `$E000-$EFFF` since the low bank's `$0280-$0FFF` gap can't hold 4 kB. Type `4000R` from Wozmon after flipping the jumper. Other layouts available: `--layout=split` (Galaga full 16 kB lower / Sokoban full 16 kB upper, no LOGO), `--layout=dualslot8k` (Galaga + Sokoban side-by-side in lower 8 kB each + LOGO upper, no menu). **Hardware → CodeTank Library** scans `roms/codetank/*.{rom,bin}` (32 KB images + optional `.txt` sidecar). Bus priority 20, mutex with Juke-Box; rides the TMS9918 (always coexists). Preset 8 ("P-LAB Apple-1 with TMS9918 (CodeTank daughterboard)") plugs both by default. Pinned by `codetank_smoke` (CodeTank class) + `codetank_tms9918_dependency` (Memory-level cascade). **Silicon-strict padding helper**: every TMS9918 project links `dev/lib/tms9918/tms9918_pad.asm` (12 bytes total: `tms9918_pad12: rts` + `tms9918_pad24: jsr pad12 / rts` + `tms9918_pad40: jsr pad12 / jsr pad12 / nop / nop / rts`). The `silicon_strict_patch.py` tool injects `JSR tms9918_pad12` (12c, 3 bytes) — silicon worst-case Mode I+sprites is 7.5c under the openMSX slot-table model (May 2026), so pad12 gives a 1.6× margin. pad24/pad40 are kept available for hand-coded cushions. `build_codetank_rom.py` and `dev/cc65/emit_woz.py` auto-link `tms9918_pad.asm` when any source references any pad helper. The .inc's WRT_DATA_REG / WRT_DATA_VAL macros use pad12 too; the patcher injects an in-file `.import tms9918_pad12` near the top of any patched .asm so projects that don't include the .inc still resolve cleanly. Galaga's `render_sprites` builds the SAT in priority order, terminates the chain early via `Y=$D0` when slots 14-21 are inactive (the common no-super-boss case across waves W1-W10 + W12-W21), and drops the 3-byte tail of the chain terminator entry — saves ~36 VDP writes per frame in the dominant path.
+- **CodeTank** — P-LAB ROM **daughterboard** of the TMS9918 Graphic Card (split from JukeBox April 2026). No standalone edge connector / address decoder on the Apple 1 bus. `Memory::setCodeTankEnabled(true)` auto-plugs TMS9918; `setTMS9918Enabled(false)` cascade-unplugs CodeTank. Single 32 KB 28c256, jumper → 16 KB half at `$4000-$7FFF`; no `$CA00`, read-only. ROM probe order: `roms/codetank/Codetank_GAME1.rom`, then `codetank.rom` / `roms/codetank.rom`.
+  - **Shipped menu ROM** (`tools/build_codetank_rom.py --layout=menu`): lower = menu `$4000` + Galaga `$4100`, Sokoban `$5E00`, Snake `$7100`, Life `$7A00` (silicon-strict-clean via `tools/silicon_strict_patch.py`; background in `dev/SILICONBUGS.md` section 17). Upper = TMS_LOGO V2.6 at `$4000-$7FFF`; PROCBSS in Parmigiani RAM `$E000-$EFFF`. Alt layouts: `--layout=split`, `--layout=dualslot8k`.
+  - **UI / bus**: **Hardware → CodeTank Library** scans `roms/codetank/*.{rom,bin}`; priority 20; mutex with Juke-Box; always with TMS9918. Preset 8 plugs both. Tests: `codetank_smoke`, `codetank_tms9918_dependency`.
+  - **Silicon padding**: `dev/lib/tms9918/tms9918_pad.asm` + patcher inject `JSR tms9918_pad12`; macros / auto-link details → same SILICONBUGS section and `build_codetank_rom.py` / `emit_woz.py`.
 - **A1IO_RTC** — 65C22 VIA `$2000-$200F` (⚠ overlaps GEN2 — preset-level mutex). Emulated ATMEGA32 drives DS3231, DS18B20, 8 analog + 4 digital inputs, 16-bit shift-register output. 24 regs broadcast on 100-cycle period with PORTB STROBE.
 - **WiFiModem** — 65C51 ACIA `$B000-$B003`, ESP8266 AT (`AT`, `ATDT host:port`, `ATH`, `ATE0/1`, `ATI`, `ATZ`). TELNET IAC filtering + `CR LF→CR` strip, non-blocking TCP, baud 50-19200, `+++` 1 s guard, 4096 B circular Rx. `requestDisconnect()` is the UI-safe entry. Desktop only; WASM stubs return `NO CARRIER`.
 - **TerminalCard** — passive bridge sniffing `$D012` writes, injecting keys at `$D010`/`$D011`. TCP server IPv4 loopback :6502 (IPv6 `::1` refused). Modes: 7-bit (CR→CRLF, optional uppercase via Ctrl-O/I) and 8-bit raw (Ctrl-T). Controls Ctrl-L clear, Ctrl-R reset; ESC-prefixed alternates (ESC T/O/L/R/I) for ttys that eat Ctrl. **Ctrl-S / ESC S — Screenshot**: arms `screenshotPending`; main render thread runs `glReadPixels` between `RenderDrawData()` and `glfwSwapBuffers()`, Y-flips, writes `screenshots/pom1_latest.png`; emits `\r\n[SCREENSHOT: /abs/path]\r\n` on next `advanceCycles`. Result string uses own `screenshotResultMutex` so render thread never blocks on `cardMutex`. Unknown ESC sequences forward the ESC. On accept: `IAC WILL ECHO` + `IAC WILL SUPPRESS-GO-AHEAD` + `IAC DO SUPPRESS-GO-AHEAD` flips client to character-at-a-time. Pending reset/clear via `std::atomic<bool>` consumed **outside** `stateMutex`. Desktop only.
@@ -186,25 +167,29 @@ $FF00-$FFFF  Woz Monitor ROM + vectors ($FFFA-$FFFF)
 
 ## Testing
 
-`ctest` from `build/` (native-only, opt-out `-DPOM1_ENABLE_TESTS=OFF`):
+`ctest` from `build/` (native-only, opt-out `-DPOM1_ENABLE_TESTS=OFF`). Inventory lives in `tests/CMakeLists.txt` — after configure, `ctest -N` lists exact names (count varies: optional `chess_engine_perft_smoke` only if `ca65`/`ld65` are found).
 
 ```bash
-ctest                       # all eight (~5 s)
+ctest                       # full suite (~5–30 s wall time; Klaus + TMS9918 tests dominate)
 ctest --output-on-failure
 ctest -R klaus -V
 ```
 
-- **`klaus_6502_functional`** — [Klaus Dormann's 6502 test](https://github.com/Klaus2m5/6502_65C02_functional_tests) vs M6502. SHA-256-pinned download. `setTestMode(true)` (flat RAM), `PC = $0400`, step until `JMP *`; success = final PC `$3469`. ~1.5 s. Gates all CPU refactors.
-- **`peripheral_bus_smoke`** — fake-lambda assertions: page-mask miss, read routing, priority at SID↔TMS9918, `setEnabled` round-trip, sniffer pass-through.
-- **`sid_audio_smoke`** — voice-1 tone via bus, clocks CPU, asserts non-silent ring samples. Catches cycle-driven audio regressions.
-- **`aci_tape_loading`** — pulse extraction → ACI ROM → RAM on `cassettes/APPLE50TH.ogg`; first three bytes (`A9 FF 48`) at `$0280`. Validates `kTapeFileTimebaseHz = POM1_CPU_CLOCK_HZ`. Needs `${CMAKE_SOURCE_DIR}` cwd.
-- **`aci_tape_saving`** — drives ACI WRITE, saves `.aci` + `.wav`, reloads in fresh `Memory`, asserts byte-for-byte.
-- **`pr40_printer_smoke`** — PR-40 DPDT wiring to PB7, 40-char FIFO + CR flush, ~0.8 s mechanical stall.
-- **`gt6144_smoke`** — 4-phase FSM, pixel commit math, control-opcode alias matrix, "inversion doesn't touch SRAM" invariant, SRAM power-on noise (two fresh cards must not match byte-for-byte).
-- **`jukebox_paged_rom_smoke`** — loads shipped 256 KB `roms/jukebox.rom`, 8 pages, lowest-`$A5`-at-`$7D00` boot picker, `$CA00` Px + bit-4 Sx in both jumpers, flash writes dropped, EEPROM rejects oversize.
-- **`codetank_smoke`** — 32 kB exact-size requirement, lower/upper jumper offset math, read-only invariant, previous-contents-on-rejection, Snapshot round-trip.
-- **`codetank_tms9918_dependency`** — Memory-level cascade: enabling CodeTank auto-plugs TMS9918, disabling TMS9918 cascade-unplugs CodeTank, disabling CodeTank does NOT touch TMS9918.
-- **`snapshot_smoke`** — Round-trips Memory through `saveSnapshot`/`loadSnapshot`: file magic + version, user-area RAM (`$0200-$1FFF`) restored byte-for-byte, card-enabled flags (PR-40 + GT-6144) survive. Pin for any change to `SnapshotIO` format or `Peripheral::serialize` dispatch.
+- **`klaus_6502_functional`** — [Klaus Dormann's 6502 test](https://github.com/Klaus2m5/6502_65C02_functional_tests) vs M6502. SHA-256-pinned download. `setTestMode(true)` (flat RAM), `PC = $0400`, step until `JMP *`; success = final PC `$3469`. Gates all CPU refactors.
+- **`preset_ram_profiles_smoke`** — parses `MainWindow_Presets.cpp`: `ramKB`, `BasicType`, and Fantasy/non-Fantasy presets obey the documented rules (see test source).
+- **`memory_dualram_smoke`** — 8 KB dual-bank strict map: `$0000-$0FFF` + `$E000-$EFFF` writable; gap OOR-strict (`$FF` reads).
+- **`peripheral_bus_smoke`** — page-mask miss, read routing, SID↔TMS9918 priority, `setEnabled` round-trip, sniffer pass-through.
+- **`sid_audio_smoke`** — cycle-driven SID ring non-silent after bus writes + CPU clocks.
+- **`aci_tape_loading`** / **`aci_tape_saving`** — load path on `cassettes/APPLE50TH.ogg` (`${CMAKE_SOURCE_DIR}` cwd); save `.aci`/`.wav` round-trip.
+- **`pr40_printer_smoke`** — DPDT / PB7 merge, FIFO, mechanical delay.
+- **`gt6144_smoke`** — FSM, inversion-without-SRAM-touch, power-on noise uniqueness.
+- **`jukebox_paged_rom_smoke`** — `roms/jukebox.rom`, `$CA00`, flash vs EEPROM behaviour.
+- **`codetank_smoke`** / **`codetank_tms9918_dependency`** — ROM size, jumper offsets, read-only, TMS9918 cascade.
+- **`tms9918_sprite_status`** / **`tms9918_silicon_strict_runtime`** / **`tms9918_per_scanline`** / **`tms9918_advanced_silicon`** — VDP behaviour + strict timing pins (`dev/SILICONBUGS.md`).
+- **`snapshot_smoke`** — `SnapshotIO` + selected card flags / RAM round-trip; extend when peripherals gain `serialize`.
+- **`hex_dump_multi_zone`** — `Memory::loadHexDump` disjoint zones (e.g. chess `.txt` lo + `$E000` hi).
+- **`cpu_breakpoint_smoke`** — `--break <addr>` halt-before-instruction, clear, `hardReset` disarm (see [`doc/CLI.md`](doc/CLI.md)).
+- **`chess_engine_perft_smoke`** *(optional)* — built only with cc65 toolchain present.
 
 New invariant tests follow `tests/peripheral_bus_smoke_test.cpp` — `<cassert>` + `add_test` suffices; GTest/Catch2 only once multi-threaded tests land.
 

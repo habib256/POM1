@@ -51,13 +51,12 @@ Sortie :
 ## Lancement
 
 ```bash
-./build/POM1 --preset 2 \
+./build/POM1 --preset 8 \
              --load 0300:software/tms9918/TMS_Wozmon_demo.bin \
              --run 0300
 ```
 
-`--preset 2` = *P-LAB Apple-1 with TMS9918 (CodeTank daughterboard)*, qui
-plug le TMS9918 par défaut.
+`--preset 8` = entrée **8** dans `kMachinePresets[]` — *P-LAB Apple-1 with TMS9918 (CodeTank daughterboard)* (`MainWindow_Presets.cpp`). **`--preset 2` est le preset GT-6144**, pas le TMS9918.
 
 ## Ce que la démo affiche
 
@@ -98,7 +97,7 @@ TMS9918 CONSOLE OK
 - macros `WRT_DATA_REG` / `WRT_DATA_VAL` de `tms9918.inc` non utilisées
   ici (le driver gère sa propre cadence) ; chaque `STA VDP_DATA` est
   suivi d'un corps de boucle `INY/CPY/BNE` ou `LSR/ROL/DEC/BNE` qui
-  consomme ≥10 cycles, soit largement au-delà du seuil de 8 cycles
+  consomme ≥10 cycles,   soit au-delà du délai imposé par le modèle slot-table en mode courant
   (cf. `dev/SILICONBUGS.md` Bug N°1).
 - Pendant `upload_charmap` le display est blanké, donc même la rafale
   dense de 1024 octets ne déclenche pas de drop.
@@ -137,7 +136,7 @@ Inspection visuelle (manuel) :
 Snapshot VRAM (semi-automatique) :
 
 ```bash
-./build/POM1 --preset 2 \
+./build/POM1 --preset 8 \
              --load 0300:software/tms9918/TMS_Wozmon_demo.bin \
              --run 0300 \
              --step 500000 \

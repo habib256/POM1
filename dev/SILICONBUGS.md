@@ -2,6 +2,15 @@
 
 Ce document recense les **divergences POM1 ↔ silicium** observées (ou suspectées) sur le sous-système TMS9918, en particulier le **moteur sprites**. Il est conçu comme un carnet de bord pratique : chaque bug indique ce que fait le silicium, ce que fait POM1, l'impact sur le code, et le pattern de fix.
 
+**Voir aussi**
+
+| Doc | Usage |
+|-----|--------|
+| [`Programming_Apple1_ASM.md`](Programming_Apple1_ASM.md) §6 | Tutorial jeu TMS9918 (polling VBlank, init sprites) |
+| [`APPLE1DEV.md`](APPLE1DEV.md) §4 TMS9918 | Résumé agent + liens pad / strict |
+| [`doc/CLI.md`](../doc/CLI.md) | `--silicon-strict` / `--no-silicon-strict` |
+| [`CLAUDE.md`](../CLAUDE.md) *Testing* | Liste `ctest` TMS9918 (`tms9918_*`) |
+
 L'émulation POM1 est suffisamment fidèle pour développer en text/bitmap (Modes 1 et 2). Le moteur sprites présente des écarts qui ne se voient qu'en silicium réel — ce doc les documente pour qu'on n'y retombe plus.
 
 ---
@@ -50,12 +59,12 @@ POM1 silicon-strict modélise les comportements TMS9918 documentés dans Nouspik
 
 ## 1. Contexte & cible matérielle
 
-- **Plateforme cible** : Apple-1 + carte TMS9918 (P-LAB Graphic Card) + CodeTank daughterboard.
-- **Preset POM1 équivalent** : preset #2 — *P-LAB Apple-1 with TMS9918 (CodeTank daughterboard)*.
+- **Plateforme cible** : Apple-1 + carte TMS9918 (P-LAB Graphic Card) + daughterboard CodeTank (piggyback).
+- **Preset POM1 équivalent** : **#8** — *P-LAB Apple-1 with TMS9918 (CodeTank daughterboard)* (voir [`README.md`](../README.md) § Machine Presets).
 - **Référence "OK partout" (silicium + POM1)** : `TMS_Logo v1.7` — interpréteur LOGO en Mode 2 bitmap, pas de sprites. Validation du sous-système VRAM/registres/modes graphiques.
 - **Référence "OK POM1, KO silicium"** : `A1Galaga` — Mode 1 + sprites animés à 60 Hz. Sur silicium, sprites-artefacts et damiers parasites apparaissent autour des sprites légitimes dès l'écran de titre.
 
-### Map mémoire utilisable (preset #2)
+### Map mémoire utilisable (preset **#8**)
 
 ```
 $0000-$00FF   Zero page (Apple-1 standard)
@@ -182,7 +191,7 @@ POM1 expose une infrastructure de diagnostic complète quand `Silicon Strict` es
   - total + breakdown port/phase/table
   - top-16 PC (mid-instruction ; le `STA` est à `PC-3` pour `STA abs` / `STA abs,X`)
   - reset via `Reset TMS9918 drop counter` adjacent
-- **CLI** : `--silicon-strict` / `--no-silicon-strict` au boot.
+- **CLI** : voir [`doc/CLI.md`](../doc/CLI.md) — `--silicon-strict` / `--no-silicon-strict` au boot.
 
 Pour cibler un programme silicon-safe, le workflow est : strict ON → lancer le programme → `Dump diagnostics` → corriger la PC en tête de liste (probablement un STA dans une boucle serrée) → re-tester → itérer.
 
@@ -717,10 +726,10 @@ Toute autre combinaison (M1+M2, M2+M3, M1+M3, M1+M2+M3) = **mode hybride illéga
 
 Améliorations qui **rapprocheraient POM1 du silicium** mais ne sont pas implémentées :
 
-1. ~~**Mode "silicon timing strict"** — option qui drop des octets si écriture VRAM trop rapide pour le mode actif (perfectionne Bug N°1).~~ **✅ IMPLÉMENTÉ (paranoid 16c)** : `TMS9918::siliconStrictMode` drop l'octet (`canAcceptAccess()` dans `TMS9918.cpp`) avec les fenêtres durcies de la table §2 (**16c** en Mode I+sprites, 6c en multicolor / Mode I sans sprites, 4c en text, 2c en blank/VBlank). Contrat : *passer POM1 strict ⇒ silicium garanti*. Activé par défaut pour tous les presets sauf les Multiplexing Fantasy. Toggle runtime exposé via Hardware menu → "Silicon Strict (TMS9918 timing)" et CLI `--silicon-strict` / `--no-silicon-strict`. Status bar `STRICT` / `FANTASY`. Persiste dans le snapshot via `kFlagSiliconStrict` bit 14. Test : `tests/tms9918_silicon_strict_runtime_test.cpp` (pin 16/6/6/4/2 par mode).
+1. ~~**Mode "silicon timing strict"** — option qui drop des octets si écriture VRAM trop rapide pour le mode actif (perfectionne Bug N°1).~~ **✅ IMPLÉMENTÉ** : `TMS9918::siliconStrictMode` — si activé, `canAcceptAccess()` bloque les accès tant que `pendingDrainCycles` > 0 ; chaque accès accepté recalcule le délai jusqu’au prochain slot CPU via les tables openMSX portées en §2 (Bug N°1). Le comportement est **phase-dépendant** (mode d’affichage, sprites, VBlank, position dans la scanline), pas un unique seuil « N cycles » fixe pour tout le frame. Contrat pratique : *strict ON ⇒ alignement avec ce modèle slot-table*. Défaut ON pour tous les presets sauf Multiplexing Fantasy. Toggle : menu *Hardware → Silicon Strict (TMS9918 timing)* et CLI [`doc/CLI.md`](../doc/CLI.md) (`--silicon-strict` / `--no-silicon-strict`). Status bar `STRICT` / `FANTASY`. Snapshot : bit `kFlagSiliconStrict` (bit 14). Pin principal : `tests/tms9918_silicon_strict_runtime_test.cpp` (+ famille `tms9918_*` dans `CLAUDE.md` / `tests/CMakeLists.txt`).
 2. **Scan sprite scanline-by-scanline** — appel de `scanSpritesForStatus()` en cours de frame, pas seulement au VBlank (résout Bugs N°5 et N°10).
 3. **Frame rate 59,94 Hz** — option NTSC exact (résout Bug N°11).
-4. **Sprite cloning émulé** — détection des modes hybrides illégaux et reproduction du cross-talk d'adressage (résout Bug N°8 partiellement, sans la dérive thermique).
+4. **Sprite cloning — détection hybrides** — le cloning (Bug N°8) est déjà modélisé (meisei) ; une voie restante serait la dérive thermique NMOS (hors scope) et le raffinement des modes hybrides illégaux hors couverture test.
 5. **Câblage /INT → /IRQ 6502** — option dans le preset pour propager l'IRQ matérielle (résout Bug N°2).
 6. **R1 bit 7 (4K/16K)** strict — option qui mask l'adressage VRAM à 12 bits si bit 7=0 (résout Bug N°3 par detection précoce).
 
@@ -772,7 +781,7 @@ réutilisable pour les autres jeux du repo (Sokoban, Snake, Connect4, Maze3D).
 
 ### Outillage de patching
 
-Script réutilisable : **`tools/silicon_strict_patch.py`** (paranoid 16c, v2 JSR strategy). Idempotent — `--unpatch` strippe les marqueurs v1 (NOPs) et v2 (JSR) avant ré-insertion fraîche.
+Script réutilisable : **`tools/silicon_strict_patch.py`** (insertion `JSR tms9918_pad12` aux sites détectés — cf. §2 patterns 6502 / gap STA–STA). Idempotent — `--unpatch` strippe les marqueurs v1 (NOPs) et v2 (JSR) avant ré-insertion fraîche.
 
 ```bash
 # Patch in place
@@ -787,7 +796,7 @@ python3 tools/silicon_strict_patch.py path/to/Game.asm --unpatch
 
 Règles appliquées (cumulatives, ordre déterministe) :
 
-| Cas | Pattern détecté | Insertion v2 (16c paranoid) | Octets ajoutés |
+| Cas | Pattern détecté | Insertion v2 (`JSR tms9918_pad12`) | Octets ajoutés |
 |---|---|---|--:|
 | **A** | `ST? VDP_*` adjacent à `ST? VDP_*` | `JSR tms9918_pad12` entre | 3 |
 | **B** | `ST? VDP_* / LDA #imm / ST? VDP_*` | `JSR tms9918_pad12` AVANT le LDA | 3 |

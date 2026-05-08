@@ -1,9 +1,20 @@
 # Programmation Apple 1 en assembleur 6502
 
-**Guide pratique — modes texte, HGR (GEN2 Color Graphics Card), TMS9918 (P-LAB Graphic Card)**
+**Guide pratique — modes texte, HGR (GEN2 Color Graphics Card), TMS9918 (P-LAB Graphic Card)**  
 VERHILLE Arnaud — 2026
 
 Ce document récapitule tout ce qu'il faut savoir pour programmer l'Apple 1 émulé par POM1, dans les trois modes vidéo disponibles. Il est tiré de l'expérience concrète du portage de **Sokoban** (47-72 niveaux par mode) et **Connect 4** (les trois modes).
+
+**Documents voisins**
+
+| Fichier | Contenu |
+|---------|---------|
+| [`APPLE1DEV.md`](APPLE1DEV.md) | Playbook agent : presets, déploiement, CLI examples, pièges courts |
+| [`SILICONBUGS.md`](SILICONBUGS.md) | TMS9918 réel vs POM1, timings VRAM strict, sprites |
+| [`doc/CLI.md`](../doc/CLI.md) | Liste exhaustive des flags (`--preset`, `--silicon-strict`, …) |
+| [`TODO6502.md`](TODO6502.md) | Backlog projets sous `dev/projects/` |
+
+**Sommaire (titres §1–§11)** — toolchain · matériel commun · pièges 6502 · mode texte · HGR · TMS9918 · patterns jeux · zero page · implémentations de référence · ressources externes · checklist.
 
 ---
 
@@ -40,17 +51,18 @@ Le binaire compilé et son `.txt` Woz hex sont déposés sous `software/<dir>/` 
 
 ### Chargement dans POM1
 
-1. (Selon mode) : **Hardware menu** → activer carte GEN2 ou TMS9918
-2. **File > Load Memory** → sélectionner le `.txt`
-3. Dans le Woz Monitor, taper `280R` (ou adresse de démarrage)
+1. Choisir un preset avec la carte voulue — tableau **Machine Presets** dans [`README.md`](../README.md) (ex. TMS9918 + CodeTank → **preset 8**, GEN2 HGR → **13**).
+2. (Ou auto-enable : placer le livrable sous `software/hgr/`, `software/tms9918/`, etc. — voir [`APPLE1DEV.md`](APPLE1DEV.md) §8.)
+3. **File > Load Memory** → sélectionner le `.txt`
+4. Dans le Woz Monitor, taper `280R` (ou l’adresse de démarrage du linker)
 
 ### Configs linker disponibles
 
 | Config | CODE range | Taille | Usage typique |
 |--------|-----------|--------|---------------|
-| `dev/cc65/apple1.cfg` | `$0280-$0F7F` | 3 328 B | Petits jeux, purement texte |
-| `dev/cc65/apple1_4k.cfg` | `$0280-$127F` | 4 096 B | Jeux texte de taille moyenne |
-| `dev/cc65/apple1_gen2.cfg` | `$0280-$1FFF` | 7 552 B | Jeux HGR (réserve `$2000-$3FFF` pour le framebuffer) ; marche aussi pour TMS9918 (VRAM séparée) |
+| `dev/cc65/apple1.cfg` | `$0280-$0F7F` | 3 328 B | Petits jeux, texte ou TMS9918 seul (VRAM hors bus) |
+| `dev/cc65/apple1_4k.cfg` | `$0280-$127F` | 4 096 B | Jeux texte de taille moyenne ou TMS9918 plus grands |
+| `dev/cc65/apple1_gen2.cfg` | `$0280-$1FFF` | 7 552 B | Jeux HGR (réserve `$2000-$3FFF` pour le framebuffer) ; peut servir pour TMS9918 si tu réutilises la même fenêtre CODE — mutex GEN2/TMS9918 sauf presets Fantasy |
 | `dev/cc65/pom1.cfg` | `$0300-$9FFF` | 40 KB | Programmes volumineux ; attention base différente |
 
 La syntaxe minimale d'un `.cfg` :
@@ -553,7 +565,11 @@ Pour les jeux qui ne lisent que F (cas majoritaire), le clobber de 5/6 n'a aucun
 
 #### Cas particulier : strap FPGA community
 
-Certains utilisateurs ont **modifié leur réplica Apple-1 / replica-1 P-LAB** pour bridger `int_n_o` (VDP) → `irq_n` (6502) avec inverseur. Cette modif **n'est pas P-LAB d'origine**. POM1 expose `TMS9918::setIrqStrapped(true)` pour émuler ce mod. Tant que tu écris du code qui doit tourner sur **P-LAB stock**, ignore cette branche : poll, c'est tout. (Détails dans `dev/SILICONBUGS.md` Bug N°2.)
+Certains utilisateurs ont **modifié leur réplica Apple-1 / replica-1 P-LAB** pour bridger `int_n_o` (VDP) → `irq_n` (6502) avec inverseur. Cette modif **n'est pas P-LAB d'origine**. POM1 expose `TMS9918::setIrqStrapped(true)` pour émuler ce mod. Tant que tu écris du code qui doit tourner sur **P-LAB stock**, ignore cette branche : poll, c'est tout. (Détails dans [`SILICONBUGS.md`](SILICONBUGS.md) Bug N°2.)
+
+#### Strict silicon — écritures VRAM trop rapides
+
+Quand **Silicon Strict** est actif (défaut hors presets Multiplexing Fantasy), POM1 peut **ignorer** des octets si les accès `$CC00`/`$CC01` arrivent plus vite que le modèle slot-table — même comportement que le trop rapide sur puce réelle. Voir [`SILICONBUGS.md`](SILICONBUGS.md) §2 (Bug N°1), helpers `tms9918_pad12`, patcher `tools/silicon_strict_patch.py`. Toggle : menu Hardware ou [`doc/CLI.md`](../doc/CLI.md) (`--silicon-strict` / `--no-silicon-strict`).
 
 ### Exemples d'implémentation
 
@@ -565,9 +581,9 @@ Certains utilisateurs ont **modifié leur réplica Apple-1 / replica-1 P-LAB** p
 
 ## 7. Patterns partagés pour les jeux
 
-### Grille d'état à $4000
+### Grille d'état à `$4000`
 
-La zone `$4000+` est libre (64 KB de RAM dans POM1), idéale pour la grille de jeu. Pour un jeu 20×12 = 240 octets, ça tient dans une page :
+Sur les presets **Fantasy** (RAM plate 64 Ko) ou quand la fenêtre `$4000-$7FFF` n’est pas occupée par la ROM CodeTank / Juke-Box, `$4000+` peut tenir une grille ou des buffers volumineux. Sur les presets **dual-bank 8+8 Ko**, la même zone peut être ROM ou hors périmètre selon la carte — vérifier le preset dans [`README.md`](../README.md) ou tester sur la cible. Pour une grille **20×12** (240 octets), une page dans la RAM utilisateur basse ou **`GRID_BASE = $4000`** (quand disponible) suffisent :
 
 ```asm
 GRID_BASE = $4000
@@ -746,6 +762,7 @@ Bibliothèques réutilisables (`dev/lib/`) :
 
 ## 10. Ressources externes
 
+- **[`SILICONBUGS.md`](SILICONBUGS.md)** / **[`APPLE1DEV.md`](APPLE1DEV.md)** — pièges TMS9918 et déploiement POM1 (préférer ces fichiers aux résumés dispersés).
 - **Microban I (David W. Skinner, 2000)** — 155 niveaux Sokoban progressifs, petits et pédagogiques.
   Sources brutes : `https://github.com/martin-t/sokoban-solver/tree/master/levels/microban1/N.txt`
 - **Sokoban Wiki (format des niveaux)** : http://sokobano.de/wiki/index.php?title=Level_format

@@ -1,0 +1,32 @@
+# POM1 command-line flags
+
+Full reference for headless / scripted runs. Implementation: **`CliDispatcher.cpp`**. Emulator architecture (mutex order, peripherals, `ctest` pins) → [`CLAUDE.md`](../CLAUDE.md).
+
+Three phases: **A** boot-time, **B** first-frame preset overrides, **C** deferred — fire after the 15-frame card plug-in, in command-line order. Example: `--load 0300:foo.bin --run 0300 --paste keys.txt` composes. Malformed verbs log `[CLI] ERROR:` and exit 1.
+
+| Flag | Phase | Effect |
+|------|-------|--------|
+| `--list-presets` | A | Print `kMachinePresets[]` and exit. |
+| `--preset <N\|name>` / `-p` | A | Index or case-insensitive substring (first match). |
+| `--terminal` | A | Force-enable Terminal Card (`127.0.0.1:6502`). |
+| `--tape <path>` | A | Preload + auto-Play. Default probe: `cassettes/WOZ_talk.mp3`. |
+| `--save-tape <path>` / `--save-tape-format <aci\|wav>` | A | Dump deck on clean shutdown. SIGINT/SIGTERM triggers `~MainWindow_ImGui`. |
+| `--cpu-max` | A | Pin `executionSpeed = 1 000 000` cycles/frame. Beats `--speed`. |
+| `--speed <cycles/frame>` | B | Override (1× = 17045, 2× = 34091). |
+| `--enable <card>[,…]` / `--disable <card>[,…]` | B | Rewrite deferred plug list. Names: `aci, sid, sid-se, microsd, tms9918, a1io-rtc, hgr, cffa1, krusader, wifi, terminal, jukebox, codetank, pr40, gt6144`. Mutex rules enforced. `--disable krusader` is a no-op (ROM unload needs hard reset). Run after `--terminal`. |
+| `--sid-chip <6581\|8580>` | B | Swap chip; libresidfp replays last register state. |
+| `--jukebox-jumper <ram16\|ram32>` / `--jukebox-chip <flash\|eeprom>` | B | Juke-Box ROM window + chip mode. |
+| `--codetank-jumper <lower\|upper>` / `--codetank-rom <path>` | B | Pick 16 kB half of 32 kB 28c256 / override default `roms/codetank/Codetank_GAME1.rom`. `--enable codetank` auto-schedules `--enable tms9918`; `--disable tms9918` cascade-unschedules CodeTank. |
+| `--silicon-strict` / `--no-silicon-strict` | B | Force-flip TMS9918 `siliconStrictMode` (paranoid 40c — drops VRAM writes < 40 cycles in Mode I+sprites, 4/6/6/2c in text/multicolor/no-sprites/blank, 4K/16K via R1 bit 7 — see `dev/SILICONBUGS.md` Bug N°1). Contract: passing POM1 strict ⇒ silicon-safe. May 2026 ramp: 16→24→40c after Galaga sprite tables and LOGO BIRD/Demo redraws kept showing artefacts at every previous level. Default = ON for every preset except the Multiplexing Fantasy ones; the override survives the first frame but a later preset switch resets to default. Hardware menu has a runtime toggle and the status bar shows `STRICT` / `FANTASY`. |
+| `--load <addr>:<path>` | C | Raw binary, rewrite reset, `hardReset` + `start`. Hex/decimal addr. Repeatable. |
+| `--run <addr>` | C | `EmulationController::jumpTo()`. |
+| `--paste <file>` | C | ≤4096 chars to keyboard queue (`\n`→CR, printable ASCII). |
+| `--step <N>` / `--trace-brk` | C | Step N + BRK trace dump. |
+| `--play` / `--rec` / `--rewind` | C | Cassette transport. `--rec` = `armRecording()` (no $C000 wait). |
+| `--sd-mkdir <path>` / `--sd-put <h>:<g>` / `--sd-get <g>:<h>` | C | SD fixture seeding. |
+| `--rtc-freeze "YYYY-MM-DD HH:MM:SS"` | C | Set `A1IO_RTC::rtcOffsetSeconds` (host rate keeps ticking). |
+| `--snapshot-save <path>` | C | Write current state (RAM + card-enabled flags + per-card payload via `Peripheral::serialize`) to `<path>`. Format: see `SnapshotIO.h`. |
+| `--snapshot-load <path>` | C | Restore state from a `.snap` written by `--snapshot-save`. Per-card serialize hooks default to no-op until each card migrates its internal state — see `Peripheral.h`. |
+| `--break <addr>` | C | Arm M6502 PC-matched halt (single breakpoint). Fires *before* the instruction at `<addr>` executes; CPU stops itself, logs `[CPU] WARN breakpoint hit at $XXXX` once. Cleared by `hardReset()` (preset switch). Continue with manual `stepCpu()` past the address followed by `startCpu()`, or `clearCpuBreakpoint()` + `startCpu()`. |
+
+Two telnet tests auto-launch POM1 from repo root: `tools/test_aci_telnet.py`, `tools/test_sdcard_subdir_navigation_telnet.py`.

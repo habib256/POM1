@@ -19,7 +19,7 @@
 ;   ou : python3 emit_TMS_Wozmon_demo_txt.py
 ;
 ; Charge :
-;   ./build/POM1 --preset 2 \
+;   ./build/POM1 --preset 8 \
 ;                --load 0300:software/tms9918/TMS_Wozmon_demo.bin \
 ;                --run 0300
 ; =============================================
