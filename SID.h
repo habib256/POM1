@@ -103,6 +103,18 @@ public:
     };
     void copySnapshot(Snapshot& out) const;
 
+    // Round-trip the SID through a .snap file. Captures: 29 shadow registers
+    // (last value written by the CPU) + chip model. NOT captured: libresidfp's
+    // internal filter integrators / oscillator phase / envelope counters
+    // (the engine doesn't expose them — see SID.h header comment about
+    // write-only registers and bus fade). On load, each shadow register is
+    // re-poked through writeRegister() so the chip restarts from a
+    // consistent functional state — there is a brief filter-settle
+    // transient on resume but no audible discontinuity for typical music
+    // payloads.
+    void serialize(pom1::SnapshotWriter& writer) const override;
+    void deserialize(pom1::SnapshotReader& reader) override;
+
 private:
     /// libresidfp::SID::clock(cycles, buf) writes one short per produced
     /// sample. At 1.022 MHz / 44.1 kHz the ratio is ~23 cycles per sample,

@@ -292,6 +292,7 @@ set_tests_properties(codetank_smoke PROPERTIES TIMEOUT 5)
 add_executable(test_tms9918_sprite_status
     tms9918_sprite_status_test.cpp
     ${CMAKE_SOURCE_DIR}/TMS9918.cpp
+    ${CMAKE_SOURCE_DIR}/SnapshotIO.cpp
 )
 target_include_directories(test_tms9918_sprite_status PRIVATE
     ${CMAKE_SOURCE_DIR}
@@ -310,6 +311,7 @@ set_tests_properties(tms9918_sprite_status PROPERTIES TIMEOUT 5)
 add_executable(test_tms9918_silicon_strict_runtime
     tms9918_silicon_strict_runtime_test.cpp
     ${CMAKE_SOURCE_DIR}/TMS9918.cpp
+    ${CMAKE_SOURCE_DIR}/SnapshotIO.cpp
 )
 target_include_directories(test_tms9918_silicon_strict_runtime PRIVATE
     ${CMAKE_SOURCE_DIR}
@@ -331,6 +333,7 @@ set_tests_properties(tms9918_silicon_strict_runtime PROPERTIES TIMEOUT 5)
 add_executable(test_tms9918_per_scanline
     tms9918_per_scanline_test.cpp
     ${CMAKE_SOURCE_DIR}/TMS9918.cpp
+    ${CMAKE_SOURCE_DIR}/SnapshotIO.cpp
 )
 target_include_directories(test_tms9918_per_scanline PRIVATE
     ${CMAKE_SOURCE_DIR}
@@ -354,6 +357,7 @@ set_tests_properties(tms9918_per_scanline PROPERTIES TIMEOUT 5)
 add_executable(test_tms9918_advanced_silicon
     tms9918_advanced_silicon_test.cpp
     ${CMAKE_SOURCE_DIR}/TMS9918.cpp
+    ${CMAKE_SOURCE_DIR}/SnapshotIO.cpp
 )
 target_include_directories(test_tms9918_advanced_silicon PRIVATE
     ${CMAKE_SOURCE_DIR}

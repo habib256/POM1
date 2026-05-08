@@ -143,6 +143,16 @@ public:
 
     void reset();
 
+    // Round-trip the architecturally-visible VDP state through a .snap file.
+    // Captured: VRAM (16 KB) + 8 mode regs + statusReg + $CC01 two-byte
+    // latch state + vramAddr + readAheadBuffer + frameCycleCounter +
+    // pendingDrainCycles + per-line raster cursors + siliconStrictMode +
+    // irqStrapped + chipType. NOT captured: 320×240 framebuffer (regenerated
+    // on next progressive render via snapshotDirty), drop diagnostics
+    // (session-only), lastAccessPc.
+    void serialize(pom1::SnapshotWriter& writer) const override;
+    void deserialize(pom1::SnapshotReader& reader) override;
+
     void copySnapshot(Snapshot& out);
 
     // Render from snapshot into a 256×192 RGBA pixel buffer (kScreenWidth × kScreenHeight).

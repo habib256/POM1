@@ -10,10 +10,19 @@
 //     those don't pull in network sockets or audio devices that would
 //     complicate a pure-memory test).
 //
-// What this test does NOT (yet) cover — and why:
-//   - per-card payloads beyond enable flags. Most cards still ship the
-//     default `Peripheral::serialize()` no-op (see Peripheral.h);
-//     migrating each card's internal state is the next layer of work.
+// Card-payload coverage as cards adopt serialize/deserialize:
+//   - TMS9918: VRAM byte + register-7 (border colour) round-trip.
+//   - A1-SID:  shadow-register file round-trip.
+//   - ACI:     recorded-transition count round-trip (output-level FF flip-
+//              flop is reflected in the recording buffer growth).
+// What this test does NOT cover yet:
+//   - microSD, CFFA1, Juke-Box, A1IO_RTC, PR-40, GT-6144 internal state
+//     (those still inherit the no-op default — PR3 will land them).
+//   - in-flight cassette playback position (PR2 deliberately quiesces it
+//     on load — see CassetteDevice.h header comment).
+//   - libresidfp internal filter integrators / oscillator phase (engine
+//     does not expose them — load re-pokes shadow regs and accepts a
+//     short filter-settle transient).
 //
 // Adding card-payload coverage. Once a card overrides serialize/deserialize,
 // add an assertion here that mutates the card, snapshots, mutates again,
@@ -27,6 +36,7 @@
 #include "TerminalCard.h"
 #include "A1IO_RTC.h"
 #include "PR40Printer.h"
+#include "SID.h"
 #include "Memory.h"
 #include "M6502.h"
 #include "SnapshotIO.h"
@@ -67,11 +77,44 @@ int main()
                      static_cast<uint8_t>(rng() & 0xFF));
     }
 
-    // ── Enable two well-isolated cards. PR-40 + GT-6144 have no host
-    //    side-effects (sockets, audio devices) so the test stays
-    //    self-contained.
+    // ── Enable a representative mix of cards that exercise per-card
+    //    serialize hooks. PR-40 + GT-6144 stay enabled to pin the FLAGS
+    //    section; TMS9918 + SID exercise their own card sections; the
+    //    cassette deck always exists (no enable flag) so we just mutate it.
     mem.setPR40Enabled(true);
     mem.setGT6144Enabled(true);
+    mem.setTMS9918Enabled(true);
+    mem.setSIDEnabled(true);
+
+    // ── TMS9918: write a sentinel into VRAM[$0100] and set R7 (border
+    //    colour) to a non-default value via the standard $CC01 latch
+    //    protocol (low addr, high addr | $40 = "write data").
+    auto& vdp = mem.getTMS9918();
+    vdp.writeControl(0x00); vdp.writeControl(0x41);  // VRAM addr = $0100, write
+    vdp.writeData(0xA5);
+    vdp.writeControl(0x0E); vdp.writeControl(0x87);  // R7 = $0E (white-on-black border)
+
+    // ── SID: write distinct sentinels to a few registers (voice 1 freq
+    //    low/high, control). Going through Memory's MMIO at $C800-$CFFF
+    //    so the bus + chipMutex paths are exercised end-to-end.
+    mem.memWrite(0xC800, 0x42);  // voice 1 freq lo
+    mem.memWrite(0xC801, 0x33);  // voice 1 freq hi
+    mem.memWrite(0xC804, 0x21);  // voice 1 control (gate=1, triangle=1)
+
+    // ── Cassette: toggle the $C000 output flip-flop a few times. Each
+    //    toggle records a transition; `getRecordedTransitionCount()`
+    //    reflects the buffer growth round-trip below.
+    // The first toggle arms recording (sets lastOutputToggleCycle = currentCycle)
+    // without pushing a sample; each subsequent toggle records one delta. Four
+    // toggles therefore yield three recorded transitions.
+    auto& cassette = mem.getCassetteDevice();
+    cassette.armRecording();
+    for (int i = 0; i < 4; ++i) {
+        cassette.advanceCycles(100);   // currentCycle must advance between toggles
+        cassette.toggleOutput();       // for the transition to land in recordedDurations
+    }
+    const size_t expectedRecordedTransitions = cassette.getRecordedTransitionCount();
+    assert(expectedRecordedTransitions == 3);
 
     // ── CPU round-trip. Plant a tiny program at $0300 that mutates A/X/Y
     //    to known sentinel values, then step the CPU through it so the
@@ -165,6 +208,49 @@ int main()
     // ── Card-enabled flags must round-trip
     assert(mem2.isPR40Enabled());
     assert(mem2.isGT6144Enabled());
+    assert(mem2.isTMS9918Enabled());
+    assert(mem2.isSIDEnabled());
+
+    // ── TMS9918 internal state: VRAM byte + R7 border colour.
+    {
+        TMS9918::Snapshot vdpSnap;
+        mem2.getTMS9918().copySnapshot(vdpSnap);
+        if (vdpSnap.vram[0x0100] != 0xA5) {
+            std::fprintf(stderr, "TMS9918 VRAM[$0100] mismatch: got %02X expected A5\n",
+                         vdpSnap.vram[0x0100]);
+            return 1;
+        }
+        if (vdpSnap.regs[7] != 0x0E) {
+            std::fprintf(stderr, "TMS9918 R7 mismatch: got %02X expected 0E\n",
+                         vdpSnap.regs[7]);
+            return 1;
+        }
+    }
+
+    // ── SID shadow registers
+    {
+        pom1::SID::Snapshot sidSnap;
+        mem2.getSID().copySnapshot(sidSnap);
+        if (sidSnap.regs[0x00] != 0x42 ||
+            sidSnap.regs[0x01] != 0x33 ||
+            sidSnap.regs[0x04] != 0x21) {
+            std::fprintf(stderr,
+                "SID shadow regs mismatch: got %02X %02X %02X expected 42 33 21\n",
+                sidSnap.regs[0x00], sidSnap.regs[0x01], sidSnap.regs[0x04]);
+            return 1;
+        }
+    }
+
+    // ── Cassette recorded-transition buffer
+    {
+        const size_t got = mem2.getCassetteDevice().getRecordedTransitionCount();
+        if (got != expectedRecordedTransitions) {
+            std::fprintf(stderr,
+                "ACI recorded transitions mismatch: got %zu expected %zu\n",
+                got, expectedRecordedTransitions);
+            return 1;
+        }
+    }
 
     // ── CPU registers must round-trip exactly
     if (cpu2.getAccumulator()    != expectedA  ||
@@ -198,7 +284,8 @@ int main()
 
     std::error_code ec;
     std::filesystem::remove(path, ec);
-    std::printf("snapshot round-trip OK (%zu RAM bytes, 2 cards, CPU regs)\n",
-                baseline.size());
+    std::printf("snapshot round-trip OK (%zu RAM bytes, CPU regs, "
+                "TMS9918+SID+cassette state, %zu cards enabled)\n",
+                baseline.size(), size_t(4));
     return 0;
 }

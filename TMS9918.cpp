@@ -8,6 +8,7 @@
 // Reference: TMS9918A datasheet, nippur72/apple1-videocard-lib
 
 #include "TMS9918.h"
+#include "SnapshotIO.h"
 #include <algorithm>
 #include <cstdio>
 #include <cstring>
@@ -1603,4 +1604,44 @@ void TMS9918::scanSpritesForStatus(const uint8_t* vram, const uint8_t* regs,
             }
         }
     }
+}
+
+void TMS9918::serialize(pom1::SnapshotWriter& w) const
+{
+    w.writeBytes(vram.data(), vram.size());
+    w.writeBytes(regs.data(), regs.size());
+    w.writeU8 (statusReg);
+    w.writeU8 (controlLatch);
+    w.writeU8 (latchIsSecond ? 1 : 0);
+    w.writeU16(vramAddr);
+    w.writeU8 (readAheadBuffer);
+    w.writeU32(static_cast<uint32_t>(frameCycleCounter));
+    w.writeU32(static_cast<uint32_t>(pendingDrainCycles));
+    w.writeU32(static_cast<uint32_t>(lastScanlineProcessed));
+    w.writeU32(static_cast<uint32_t>(lastScanlineRendered));
+    w.writeU8 (siliconStrictMode ? 1 : 0);
+    w.writeU8 (irqStrapped ? 1 : 0);
+    w.writeU8 (static_cast<uint8_t>(chipType));
+}
+
+void TMS9918::deserialize(pom1::SnapshotReader& r)
+{
+    r.readBytes(vram.data(), vram.size());
+    r.readBytes(regs.data(), regs.size());
+    statusReg             = r.readU8();
+    controlLatch          = r.readU8();
+    latchIsSecond         = r.readU8() != 0;
+    vramAddr              = r.readU16();
+    readAheadBuffer       = r.readU8();
+    frameCycleCounter     = static_cast<int>(r.readU32());
+    pendingDrainCycles    = static_cast<int>(r.readU32());
+    lastScanlineProcessed = static_cast<int>(r.readU32());
+    lastScanlineRendered  = static_cast<int>(r.readU32());
+    siliconStrictMode     = r.readU8() != 0;
+    irqStrapped           = r.readU8() != 0;
+    chipType              = static_cast<ChipType>(r.readU8());
+    // Force a fresh framebuffer rebuild on the next progressive render —
+    // the 320×240 buffer was intentionally not snapshotted (it's derived
+    // state and would inflate the .snap by 300 KB).
+    snapshotDirty = true;
 }

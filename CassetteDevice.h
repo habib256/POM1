@@ -44,6 +44,17 @@ public:
     /// the CPU-cycle timebase. Loaded tape, playback position, recording
     /// buffer, speaker loop, paused flag and rewinding flag all survive.
     void resetApple1Side();
+
+    // Round-trip cassette state through a .snap file. Captures: $C000 flip-
+    // flop (`outputLevel`), CPU-cycle timebase (`currentCycle`,
+    // `lastOutputToggleCycle`), and the recorded transitions buffer. NOT
+    // captured (deliberate scope of PR2 — see TODO.md "Snapshot save/load"):
+    // loaded tape file (re-load via UI/CLI before snapshot-load), in-flight
+    // playback position, audio-stream decoder state. Loading a snapshot
+    // therefore preserves recordings but quiesces playback — the user
+    // re-presses PLAY after resuming.
+    void serialize(pom1::SnapshotWriter& writer) const override;
+    void deserialize(pom1::SnapshotReader& reader) override;
     void advanceCycles(int cycles);
 
     uint8_t readTapeInput();

@@ -3,6 +3,7 @@
 
 #include "SID.h"
 #include "Logger.h"
+#include "SnapshotIO.h"
 
 // Pull in the vendored libresidfp upstream class. The libresidfp include
 // directory (PUBLIC on the libresidfp_static target) puts its own SID.h
@@ -155,6 +156,28 @@ void SID::copySnapshot(Snapshot& out) const
     std::lock_guard<std::mutex> lock(chipMutex);
     out.regs = shadowRegs;
     out.chipModel = currentModel;
+}
+
+void SID::serialize(SnapshotWriter& w) const
+{
+    std::lock_guard<std::mutex> lock(chipMutex);
+    w.writeU8(static_cast<uint8_t>(currentModel));
+    w.writeBytes(shadowRegs.data(), shadowRegs.size());
+}
+
+void SID::deserialize(SnapshotReader& r)
+{
+    const uint8_t model = r.readU8();
+    std::array<uint8_t, kNumRegisters> regs{};
+    r.readBytes(regs.data(), regs.size());
+    // Apply outside the chipMutex by going through the public setters —
+    // setChipModel rebuilds the libresidfp filter chain (taking chipMutex
+    // internally) and writeRegister re-pokes each register so the engine
+    // restarts in a consistent functional state.
+    setChipModel(static_cast<ChipModel>(model));
+    for (uint8_t i = 0; i < kNumRegisters; ++i) {
+        writeRegister(i, regs[i]);
+    }
 }
 
 } // namespace pom1

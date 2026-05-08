@@ -1,5 +1,6 @@
 #include "CassetteDevice.h"
 #include "POM1Build.h"
+#include "SnapshotIO.h"
 
 // miniaudio is compiled via AudioDevice.cpp (MINIAUDIO_IMPLEMENTATION lives
 // there). We only need the function prototypes for the decoder API; no
@@ -270,6 +271,38 @@ void CassetteDevice::clearLiveAudioState()
 void CassetteDevice::dropLiveAudio()
 {
     clearLiveAudioState();
+}
+
+void CassetteDevice::serialize(pom1::SnapshotWriter& w) const
+{
+    w.writeU8 (outputLevel ? 1 : 0);
+    w.writeU8 (recordedInitialLevel ? 1 : 0);
+    w.writeU64(currentCycle);
+    w.writeU64(lastOutputToggleCycle);
+    // Recorded transitions: u32 count + u32 each. Bounded by user behaviour
+    // (fresh recording = a few seconds = ~1k entries typical).
+    w.writeU32(static_cast<uint32_t>(recordedDurations.size()));
+    if (!recordedDurations.empty()) {
+        w.writeBytes(recordedDurations.data(),
+                     recordedDurations.size() * sizeof(uint32_t));
+    }
+}
+
+void CassetteDevice::deserialize(pom1::SnapshotReader& r)
+{
+    outputLevel              = r.readU8() != 0;
+    recordedInitialLevel     = r.readU8() != 0;
+    currentCycle             = r.readU64();
+    lastOutputToggleCycle    = r.readU64();
+    const uint32_t count     = r.readU32();
+    recordedDurations.assign(count, 0);
+    if (count) {
+        r.readBytes(recordedDurations.data(), count * sizeof(uint32_t));
+    }
+    // Quiesce playback — PR2 deliberately doesn't restore in-flight tape
+    // position (see header comment). The user re-presses PLAY.
+    stopPulseAudio();
+    resetPlaybackState();
 }
 
 void CassetteDevice::stopPulseAudio()
