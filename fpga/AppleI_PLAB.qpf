@@ -1,7 +1,0 @@
-# Quartus project — Apple-I P-LAB TMS9918 / CodeTank (MiSTer)
-# Open AppleI_PLAB.qpf from this directory so paths (roms/, sys/, rtl/) resolve.
-
-QUARTUS_VERSION = "17.1"
-DATE = "00:00:00  January 01, 2026"
-
-PROJECT_REVISION = "AppleI_PLAB"
