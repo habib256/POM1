@@ -158,6 +158,76 @@ Pour les utilisateurs ayant modifié leur réplica avec un strap FPGA
 P-LAB stock, ignore cette branche : poll, c'est tout. Détails complets
 dans [`dev/SILICONBUGS.md`](../../SILICONBUGS.md) Bug N°2.
 
+## Mid-frame raster trap — 5th-sprite-overflow primitive (`tms9918_5strigger.asm`)
+
+Le polling V-blank donne **un** point de synchronisation par frame (la
+dernière ligne / fin de l'active display). Pour planifier un événement
+**au milieu** de la frame — palette split, name-table swap, upload de
+patterns supplémentaires pendant la moitié basse — on peut détourner le
+flag bit 6 du status register (5S = "5th sprite overflow") en plaçant 5
+sprites invisibles à la ligne où on veut piéger le faisceau.
+
+C'est exactement la technique de Daniel Vik dans la démo MSX *Waves*,
+adaptée au polling pur (P-LAB ne câble pas /INT — voir Bug N°2 dans
+`SILICONBUGS.md`).
+
+### Public symbols
+
+| Symbol            | Description                                              |
+|-------------------|----------------------------------------------------------|
+| `arm_5s_trigger`  | A = scan line (1..192) → écrit 5 sprites invisibles à cette ligne. SAT[0..4] consommés, SAT[5].Y = $D0 terminator. |
+| `wait_5s_trigger` | spin `BIT $CC01 / BVC` jusqu'à ce que 5S = 1. Coût ~6c/itération. Préserve A. |
+| `WAIT_5S`         | macro inline équivalente à `wait_5s_trigger` (4 octets, pas de `JSR`). Dans `tms9918.inc`. |
+
+### Usage canonique
+
+```asm
+        .import arm_5s_trigger, wait_5s_trigger
+        .import disable_sprites          ; tms9918m1.asm — pour désarmer
+.include "tms9918.inc"
+
+@frame:
+        WAIT_VBLANK                       ; clean les flags 5/6/7
+        LDA #96                           ; mid-screen scan line
+        JSR arm_5s_trigger                ; 5 sprites invisibles à Y=95
+        JSR upload_top_palette            ; couleurs pour la moitié haute
+        WAIT_5S                           ; (ou JSR wait_5s_trigger)
+        JSR upload_bottom_palette         ; swap mid-frame
+        JSR disable_sprites               ; désarme avant la prochaine frame
+        JMP @frame
+```
+
+### Caveats — à lire une fois
+
+1. **Toute lecture de `$CC01` efface les bits 5/6/7 ensemble**. N'intercale
+   PAS de `WAIT_VBLANK` entre `arm_5s_trigger` et `WAIT_5S` — le
+   polling V-blank consommerait bit 6 au passage.
+2. Le flag 5S **se latch sur la première ligne** où le 5e sprite est
+   trouvé. Les lignes suivantes avec encore 5+ sprites ne le re-lèvent
+   pas. Pour piéger plusieurs lignes dans une même frame, désarmer +
+   ré-armer entre les deux waits.
+3. Le chip compte sur la coordonnée Y uniquement. La position X et le
+   pattern n'entrent pas dans le compteur — `arm_5s_trigger` utilise
+   early-clock + couleur 0 (transparent) pour rendre les sprites
+   invisibles indépendamment du contenu de la pattern table.
+4. Si le programme utilise déjà des sprites pour le gameplay,
+   `arm_5s_trigger` écrase les SAT[0..5]. Soit sauvegarder/restaurer
+   autour de l'appel, soit réserver les 5 premiers slots du SAT comme
+   "trigger sprites" maintenus à Y=$D0 par défaut, bumpés à la vraie Y
+   uniquement au moment d'armer.
+5. Désarmer après usage : `disable_sprites` (lib mode 1 ou 2) écrit
+   Y=$D0 à SAT[0], le chip arrête tout scan SAT à partir de cette
+   entrée. Sans désarmement, le 5S re-déclenchera à chaque frame.
+
+### Coût
+
+- `arm_5s_trigger` : ~25 stores VDP avec pad12 entre chaque ≈ 600 cycles.
+  À faire 1× par frame, négligeable.
+- `WAIT_5S` : ~6c × (lignes restantes jusqu'au trigger). Worst case
+  ~12 000c quand on déclenche peu après un V-blank (ligne 8). C'est
+  une perte sèche de bande passante CPU pendant l'attente — utiliser
+  des splits **bas** dans la frame quand possible.
+
 ## Silicon-strict timing macros (`WRT_DATA_REG`, `WRT_DATA_VAL`)
 
 When POM1's Hardware menu → **Silicon Strict** is ON (default for every
@@ -187,6 +257,44 @@ The macros only matter when the program writes back-to-back during
 (R1 bit 6 = 0) get the relaxed 2-cycle window — `init_vdp_g1` /
 `init_vdp_g2` could opt to blank around uploads to skip the macros, but
 none currently do.
+
+### Shortcut: skip `pad12` in "Mode I + no sprites" hot loops
+
+If a project disables sprites for the whole frame (e.g. by leaving
+`init_vdp_g1`'s tail-call to `disable_sprites` in place and never
+re-arming the SAT), the silicon-strict floor drops to **6 c** between
+consecutive VDP writes (vs 7.5 c in Mode I + sprites, vs 12 c in the
+hardened pad12 contract). A natural 6502 inner loop already clears 6 c
+without any padding:
+
+```asm
+@cell:  LDA (src),Y           ; 5c
+        STA VDP_DATA          ; 4c — write happens here
+        INY                   ; 2c
+        BNE @cell             ; 3c (taken)
+;                STA→STA gap = INY + BNE + LDA = 2 + 3 + 5 = 10 c (3.3× floor)
+```
+
+Reference implementation: `dev/projects/tms9918_plasma/TMS_Plasma.asm`'s
+`render_frame` and `upload_patterns` deliberately drop `JSR
+tms9918_pad12` in the hot path, taking the demo from ~22 fps to ~60 fps
+without dropping any writes. The lib's `init_vdp_g1` / `vdp_set_write`
+keep their `pad12` calls because they wrap `STA VDP_CTRL` register
+writes (different timing class) and run in contexts that can't make
+the no-sprites assumption.
+
+**When to use this shortcut**:
+- Pure graphics-I demos with no sprite use (plasma, scrollers, tile
+  animations).
+- Save the macros for whatever sprite arming / SAT updates the
+  project still does — those keep the original gating.
+
+**When NOT to use it**:
+- Any project that uses sprites mid-frame (Galaga, Snake, Sokoban,
+  CodeTank menu).
+- Mode II projects (timing class differs).
+- If you're unsure: the universal `WRT_DATA_REG` / `WRT_DATA_VAL`
+  pad12 macros are always safe.
 
 ## Migration path for existing Mode-1 games
 

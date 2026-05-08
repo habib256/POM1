@@ -162,8 +162,19 @@ public:
     static const ImU32 kPalette[16];
 
     // Bug N°8 detector — public so unit tests can verify it. Returns
-    // true when 2 or more of M1/M2/M3 are simultaneously set.
+    // true when 2 or more of M1/M2/M3 are simultaneously set (the
+    // hybrid-mode case where the BG playfield render is bypassed).
     static bool isIllegalModeRegs(const uint8_t* regs);
+
+    // Bug N°8 cloning trigger (meisei vdp.c:592 condition). Returns
+    // true when the chip's sprite-cloning hack actually fires:
+    // M3 (R0 bit 1) set AND R4 bits 0-1 not both set, on TI/NMOS
+    // silicon. Independent of `isIllegalModeRegs` — clone ghosts
+    // appear in legal Mode II setups too (e.g. MSX1 demos that set
+    // R4=$00 to mirror the pattern table). Toshiba clones and
+    // Yamaha V9938+ have factory-fixed addressing and never clone;
+    // POM1 emulates "TI silicon" hard-coded (no dispatch on chip kind).
+    static bool isCloningActive(const uint8_t* regs);
 
 private:
     // Display mode helpers — write into pixel buffer

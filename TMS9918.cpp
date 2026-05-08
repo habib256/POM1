@@ -753,10 +753,15 @@ void TMS9918::renderSpritesLineRaw(int line, uint32_t* lineBuf,
 }
 
 // --------------------------------------------------------------------------
-// isIllegalModeRegs — Bug N°8 detector. Returns true when 2 or more of
-// the M1 / M2 / M3 mode bits are simultaneously set, which is reserved /
-// undocumented. TMS9918A NMOS silicon enters its "sprite cloning" hack
-// state in this regime; later TMS9929A and Yamaha V9938 fix it.
+// isIllegalModeRegs — hybrid-mode detector for the BG-render bypass path.
+// Returns true when 2 or more of M1/M2/M3 are simultaneously set
+// (reserved combinations the chip doesn't define a playfield render for).
+// In this regime POM1 falls back to backdrop-only and lets the sprite
+// engine still drive — see renderActiveLine().
+//
+// Note: the *cloning* effect (Bug N°8) does NOT depend on hybrid mode —
+// it depends on M3 + R4 (see isCloningActive below). The two predicates
+// are deliberately independent now.
 // --------------------------------------------------------------------------
 bool TMS9918::isIllegalModeRegs(const uint8_t* regs)
 {
@@ -768,48 +773,144 @@ bool TMS9918::isIllegalModeRegs(const uint8_t* regs)
 }
 
 // --------------------------------------------------------------------------
-// renderCloneSpritesLineRaw — Bug N°8 cloning helper. Walks the SAT and
-// emits a "ghost" rendering of each sprite at a polluted Y in the top
-// 64 lines (Y_polluted = (slot * 8) | (regs[3] & 0x60) | (regs[6] & 0x07)
-// — the silicon's leak of low SPGT and color-table-base bits into the
-// Y-fetch address). Intentionally a SIMPLIFIED model — produces visible
-// cascade of ghost copies for the operator while keeping per-frame cost low.
+// isCloningActive — meisei vdp.c:592 condition. The TMS9918A NMOS
+// chip clones sprites 8..31 into the top of the frame whenever:
+//   1. M3 (R0 bit 1) is set, AND
+//   2. R4 bits 0-1 are NOT both set (i.e. R4 & 3 != 3 — the chip needs
+//      at least one pattern-table block-mask bit cleared for the leak
+//      path to expose itself)
+// Toshiba clones and Yamaha V9938+ have factory-fixed addressing and
+// never clone. POM1 hard-codes "TI silicon" — no chip-kind dispatch.
+//
+// Independence from isIllegalModeRegs: hap's MSX BASIC test
+// (openMSX issue #593) sets up Mode II perfectly legally (only M3
+// set) but with R4=0 → cloning fires. Conversely, M1+M2 hybrid
+// (without M3) is illegal but does NOT clone. So we gate cloning on
+// this predicate and leave the BG-skip path on isIllegalModeRegs.
+// --------------------------------------------------------------------------
+bool TMS9918::isCloningActive(const uint8_t* regs)
+{
+    return (regs[0] & 0x02) && ((regs[4] & 0x03) != 0x03);
+}
+
+// --------------------------------------------------------------------------
+// renderCloneSpritesLineRaw — Bug N°8 cloning, port of meisei vdp.c
+// lines 591-670 ("the only known correct implementation", per hap's
+// commit message — tested side-by-side against real MSX1 silicon with
+// all sprite-Y / addressmask combinations).
+//
+// The chip splits scan-line space into 4 blocks of 64 lines:
+//   block 0 (lines   0.. 63): no cloning — sprites 0..7 are
+//                              preprocessed in HBlank and unaffected
+//   block 1 (lines  64..127): cloning IF R4 bit 0 = 0
+//   block 2 (lines 128..191): cloning IF R4 bit 1 = 0
+//   block 3 (lines 192..255): always cloning (off-screen for POM1's
+//                              192-line render, so we omit it)
+// Only sprite slots 8..31 are affected. The Y address fetched from
+// the SAT for each cloned slot is mangled by `clonemask[6]` according
+// to the per-block table; the sprite then renders at the resulting
+// y-offset within the line, even though its real SAT-Y would put it
+// elsewhere on the frame.
+//
+// POM1 caveats:
+//   - kScreenHeight = 192 → block 3 (192..255) never reaches us, so
+//     we don't emit those clones (they would correspond to "wrap"
+//     sprites placed at Y_attr 192..254 displaying at the top of the
+//     screen — meisei handles this via the wrap math; for POM1's
+//     visible 0..191 frame, block 0..2 covers all the visible cases).
+//   - Thermal drift (clones fading after the chip warms up) is
+//     not modelled.
 // --------------------------------------------------------------------------
 void TMS9918::renderCloneSpritesLineRaw(int line, uint32_t* lineBuf,
                                         const uint8_t* vram, const uint8_t* regs,
                                         uint16_t vramMask)
 {
-    const uint16_t sprAttrBase    = (uint16_t)(regs[5] & 0x7F) << 7;
-    const uint16_t sprPatternBase = (uint16_t)(regs[6] & 0x07) << 11;
-    const bool doubleSize = (regs[1] & 0x02) != 0;
-    const int  spriteH    = doubleSize ? 16 : 8;
-    const uint8_t pollutionMask = (regs[3] & 0x60) | (regs[6] & 0x07);
+    // Per-block clonemask setup (meisei vdp.c:613-658).
+    // Defaults: cm[0]/cm[3] = 0xFF (full line mask), cm[1..2,4..5] = 0
+    //           → yc = (line & 0xFF) - ((y ^ 0) | 0) = line - y (no clone)
+    uint8_t cm[6] = {0xFF, 0, 0, 0xFF, 0, 0};
+    bool active = false;
 
+    if (line >= 128 && line <= 191) {
+        // Block 2: cloning iff R4 bit 1 = 0
+        if (!(regs[4] & 0x02)) {
+            cm[1] = cm[4] = 0x80;
+            cm[5] = static_cast<uint8_t>((regs[3] << 1) & 0x80);
+            active = true;
+        }
+    } else if (line >= 64 && line <= 127) {
+        // Block 1: cloning iff R4 bit 0 = 0
+        if (!(regs[4] & 0x01)) {
+            cm[0] = 0x3F;
+            cm[5] = static_cast<uint8_t>((~regs[3] << 1) & 0x40);
+            active = true;
+        }
+    }
+    // line < 64 (block 0) or line > 191 (block 3 — off-screen for POM1)
+    // → no clone path on this line.
+
+    if (!active) return;
+
+    const uint16_t sprAttrBase    = static_cast<uint16_t>(regs[5] & 0x7F) << 7;
+    const uint16_t sprPatternBase = static_cast<uint16_t>(regs[6] & 0x07) << 11;
+    const bool doubleSize = (regs[1] & 0x02) != 0;
+    const bool magnified  = (regs[1] & 0x01) != 0;
+    const int  sprPixelSize = doubleSize ? 16 : 8;
+    const int  mag          = magnified  ? 2  : 1;
+    const int  spriteH      = sprPixelSize * mag;
+
+    // Walk SAT — only slots 8..31 are subject to cloning. Slots 0..7
+    // were preprocessed in HBlank and are rendered normally by
+    // renderSpritesLineRaw. We still respect the chain terminator
+    // at any earlier slot (Y=$D0).
     for (int i = 0; i < 32; ++i) {
         const uint16_t attrAddr = (sprAttrBase + i * 4) & vramMask;
         const uint8_t  yRaw     = vram[attrAddr];
         if (yRaw == 0xD0) break;
+        if (i < 8) continue;        // slots 0..7 not affected by cloning
 
-        // Polluted Y in [0, 63] — slot index drives the cascade, R3/R6
-        // bits add silicon-specific deformation to the pattern.
-        const int ghostY = ((i * 8) ^ pollutionMask) & 0x3F;
-        if (line < ghostY || line >= ghostY + spriteH) continue;
+        // meisei yc formula (vdp.c:667-668):
+        //   yc = (line & cm[0]) - ((y ^ cm[1]) | cm[2])
+        //   if yc out of bounds, retry with cm[3..5]
+        const uint8_t y = yRaw;
+        int yc = static_cast<int>(static_cast<uint8_t>((line & cm[0]) -
+                                  ((y ^ cm[1]) | cm[2])));
+        if (yc >= spriteH) {
+            yc = static_cast<int>(static_cast<uint8_t>((line & cm[3]) -
+                                  ((y ^ cm[4]) | cm[5])));
+        }
+        if (yc < 0 || yc >= spriteH) continue;
 
+        // Standard sprite render at this polluted yc — same path as
+        // renderSpritesLineRaw, just with yc in place of (line - y).
         const uint8_t color = vram[(attrAddr + 3) & vramMask];
-        if ((color & 0x0F) == 0) continue;
+        if ((color & 0x0F) == 0) continue;     // transparent
         const ImU32 sprColor = kPalette[color & 0x0F];
         int x = vram[(attrAddr + 1) & vramMask];
         if (color & 0x80) x -= 32;
+        uint8_t patName = vram[(attrAddr + 2) & vramMask];
+        if (doubleSize) patName &= 0xFC;
 
-        const uint8_t patName = vram[(attrAddr + 2) & vramMask];
-        const int rowInSpr = line - ghostY;
-        const uint16_t patAddr = (sprPatternBase + (uint16_t)patName * 8 + (rowInSpr & 7)) & vramMask;
-        const uint8_t patByte = vram[patAddr];
-        for (int bit = 0; bit < 8; ++bit) {
-            if (!(patByte & (0x80 >> bit))) continue;
-            const int sx = x + bit;
-            if (sx < 0 || sx >= kScreenWidth) continue;
-            lineBuf[sx] = sprColor;
+        const int rowInSpr = yc / mag;
+        const int halves = doubleSize ? 2 : 1;
+        for (int half = 0; half < halves; ++half) {
+            uint16_t patAddr;
+            if (!doubleSize) {
+                patAddr = (sprPatternBase + static_cast<uint16_t>(patName) * 8 + rowInSpr) & vramMask;
+            } else {
+                const int quadrant = (rowInSpr < 8) ? half * 2 : half * 2 + 1;
+                patAddr = (sprPatternBase + static_cast<uint16_t>(patName + quadrant) * 8 + (rowInSpr & 7)) & vramMask;
+            }
+            const uint8_t patByte = vram[patAddr];
+            for (int bit = 0; bit < 8; ++bit) {
+                if (!(patByte & (0x80 >> bit))) continue;
+                const int screenX = x + (half * 8 + bit) * mag;
+                for (int mx = 0; mx < mag; ++mx) {
+                    const int sx = screenX + mx;
+                    if (sx < 0 || sx >= kScreenWidth) continue;
+                    lineBuf[sx] = sprColor;
+                }
+            }
         }
     }
 }
@@ -838,15 +939,11 @@ void TMS9918::renderActiveLine(int line)
         const bool illegal = isIllegalModeRegs(regs.data());
 
         if (illegal) {
-            // Bug N°8: hybrid M1/M2/M3 combo. Real TI/NMOS silicon
-            // doesn't render a clean background but DOES drive the
-            // sprite engine — and in particular, sprites' Y addresses
-            // get corrupted, producing ghost clones at the top of the
-            // screen. We fall back to backdrop for the playfield and
-            // emit BOTH the regular sprite line AND the cloned ghost
-            // line so the operator sees the cloning effect.
-            renderSpritesLineRaw     (line, lineBuf, vram.data(), regs.data(), mask);
-            renderCloneSpritesLineRaw(line, lineBuf, vram.data(), regs.data(), mask);
+            // Hybrid M1/M2/M3 combo (≥ 2 set). Real TI/NMOS silicon
+            // doesn't render a clean BG playfield in this regime, but
+            // DOES drive the sprite engine — so we keep the backdrop-
+            // only fill and let sprites paint on top.
+            renderSpritesLineRaw(line, lineBuf, vram.data(), regs.data(), mask);
         } else {
             if      (!m1 && !m2 && !m3) renderGfxILineRaw      (line, lineBuf, vram.data(), regs.data(), mask, backdrop);
             else if (!m1 && !m2 &&  m3) renderGfxIILineRaw     (line, lineBuf, vram.data(), regs.data(), mask, backdrop);
@@ -854,6 +951,17 @@ void TMS9918::renderActiveLine(int line)
             else if (!m1 &&  m2 && !m3) renderMulticolorLineRaw(line, lineBuf, vram.data(), regs.data(), mask, backdrop);
 
             if (!m1) renderSpritesLineRaw(line, lineBuf, vram.data(), regs.data(), mask);
+        }
+
+        // Bug N°8 cloning is independent of hybrid-mode (meisei port):
+        // fires whenever M3 + R4 condition met (see isCloningActive),
+        // even in legal Mode II setups (e.g. hap's BASIC test from
+        // openMSX issue #593). Painted last so clones overlay on top
+        // of the regular sprites — silicon-correct, since cloning is
+        // a SAT-fetch-time bug, the rendered pixels go through the
+        // same painter as legitimate sprites.
+        if (isCloningActive(regs.data())) {
+            renderCloneSpritesLineRaw(line, lineBuf, vram.data(), regs.data(), mask);
         }
     }
 

@@ -106,4 +106,33 @@ VDP_CTRL = $CC01        ; VDP register / address port (write twice = setup)
         BPL     @vbl_wait       ; 3c taken / 2c falls through when F=1
 .endmacro
 
+; ---------------------------------------------------------------------------
+; Mid-frame raster trap via 5th-sprite-overflow flag (bit 6 of $CC01).
+;
+; Pre-conditions (caller responsibility):
+;   1. 5 invisible sprites already armed at the trap scan line — see
+;      `arm_5s_trigger` in tms9918_5strigger.asm.
+;   2. WAIT_VBLANK (or any read of $CC01) called immediately before, so
+;      stale 5S from the previous frame is cleared.
+;   3. NO other read of $CC01 between the WAIT_VBLANK and this macro —
+;      every read clobbers bit 6 along with bit 7 and bit 5.
+;
+; Behaviour:
+;   Spins ~6c per iteration (BIT $CC01 + BVC). Falls through the moment
+;   the chip detects the 5th sprite on the trap line. After fall-through,
+;   bits 5/6/7 of the status register are all clean (consumed by BIT).
+;
+; Use case: palette split mid-frame, name-table swap, on-the-fly
+; pattern-table update during the active-display half-frame. Equivalent
+; to MSX line-IRQ scheduling — but on P-LAB stock /INT is floating, so
+; polling is the only path. See dev/lib/tms9918/tms9918_5strigger.asm
+; for the full design notes.
+; ---------------------------------------------------------------------------
+
+.macro WAIT_5S
+@s_wait:
+        BIT     VDP_CTRL        ; 4c — V flag = bit 6 (5S overflow)
+        BVC     @s_wait         ; 3c taken / 2c falls through when 5S=1
+.endmacro
+
 .endif  ; _TMS9918_INC_LOADED_

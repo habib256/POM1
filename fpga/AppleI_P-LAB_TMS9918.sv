@@ -220,7 +220,9 @@ module emu (
 
     wire locked;
 
-    wire reset = RESET | status[0] | buttons[1];
+    // Hold core in reset until PLL is locked (stable clocks are required for HDMI lock).
+    wire reset_req  = RESET | status[0] | buttons[1];
+    wire reset_core = reset_req | ~locked;
 
     // ioctl_index: first F (TXT)=0, second F (BIN)=1 — MiSTer convention
     wire ioctl_ascii = ioctl_download && (ioctl_index == 8'd0);
@@ -258,7 +260,7 @@ module emu (
 
     apple1_plab apple1_plab (
         .clk25(clk25),
-        .rst_n(~reset),
+        .rst_n(~reset_core),
         .uart_rx(),
         .uart_tx(),
         .uart_cts(),
@@ -294,7 +296,7 @@ module emu (
 
     codetank_rom codetank_rom (
         .clk(clk25),
-        .rst_n(~reset),
+        .rst_n(~reset_core),
         .cpu_addr(cpu_ab[13:0]),
         .upper_half(codetank_upper),
         .dout(ct_dout),
@@ -327,7 +329,7 @@ module emu (
     tms9918_plab u_tms9918 (
         .clk(clk25),
         .ce_10m7(ce_10m7_pulse),
-        .reset_n(~reset),
+        .reset_n(~reset_core),
         .csr_n(csr_n),
         .csw_n(csw_n),
         .mode_a0(cpu_ab[0]),

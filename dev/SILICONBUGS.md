@@ -19,7 +19,7 @@ POM1 silicon-strict modélise les comportements TMS9918 documentés dans Nouspik
 | **N°5** Per-scanline scan | 🟡 NON-VÉRIFIÉ | Port openMSX `SpriteChecker::checkSprites1` line-major. Sub-cycle silicon details (ordre exact des fetches SAT, dummy reads après $D0) incertains. Pinné par tests T07-T11, T18-T20 + ctest. |
 | **N°6** Status bits 0..4 | 🟢 SOLIDE | "Last sprite walked" — logique simple confirmée par Nouspikel. T08 + ctest test 6. |
 | **N°7** Sprite scan in blank | 🔑 OPEN | POM1 dit `N` (skip). MSX BiFi suggère silicon scanne `Y`. Datasheet ambiguë. **SEUL test silicon résoudra**. T12. |
-| **N°8** Sprite cloning | ⚠️ APPROXIMATION | Formule `Y_polluted = ((slot*8) ^ ((R3 & $60) | (R6 & $07))) & $3F` est plausible mais **inventée** — silicon réel a un motif spécifique selon le routage interne SPGT non-documenté. POM1 produit des ghosts visibles (T16 répond Y) mais le motif diffère du silicon. |
+| **N°8** Sprite cloning | 🟢 SOLIDE | **Port verbatim de meisei `vdp.c:591-670`** (mai 2026, hap — *"the only known correct implementation, tested side-by-side against real MSX1"*). Condition trigger = `M3 set ∧ (R4 & 3) ≠ 3` (R6 ne joue **pas**, contrairement à l'ancienne approximation POM1). Algorithme par 4 blocs de 64 lignes avec `clonemask[6]` modulant `yc = (line & cm[0]) - ((y ^ cm[1]) | cm[2])`. Sprites 0..7 jamais clonés (preprocessed in HBlank). |
 | **N°9** Flipflop reset | 🟢 SOLIDE | `latchIsSecond = false` dans readControl. Datasheet + Nouspikel confirment. T13 + ctest. |
 | **N°10** Raster split 5S | 🟡 NON-VÉRIFIÉ | Mécanisme via per-scanline scan (Bug N°5). Timing exact de la latch silicon vs POM1 peut différer de quelques cycles → split position légèrement différent. T15. |
 | **N°11** NTSC 59.94 Hz | 🟢 SOLIDE | Constante exacte 17062c = floor(1.022727 MHz / 59.94). Math vérifié. T14. |
@@ -439,7 +439,7 @@ Programme court : afficher 2 sprites superposés, blanker l'écran, lire status 
 
 ---
 
-## 9. BUG N°8 — Sprite Cloning sous modes hybrides illégaux ✅ MODÉLISÉ
+## 9. BUG N°8 — Sprite Cloning ✅ MODÉLISÉ (port meisei verbatim, mai 2026)
 
 ### Ce que fait le silicium
 
@@ -456,19 +456,41 @@ Sur silicium TMS9918A original (TI / NMOS), les clones **s'estompent progressive
 
 ### Ce que fait POM1
 
-✅ **MODÉLISÉ** (mai 2026) : `isIllegalModeRegs(regs)` détecte la combinaison illégale (≥ 2 des bits M1/M2/M3 actifs simultanément). En mode illégal, `renderActiveLine` :
+✅ **MODÉLISÉ — port verbatim de meisei** (`src/vdp.c:591-670`, auteur **hap**, mai 2026). hap a publié dans [openMSX issue #593](https://github.com/openMSX/openMSX/issues/593) que c'est *"the only known correct implementation, tested side-by-side to my MSX1, with all possible sprite Y and addressmasks"* — donc **la** référence de fait.
 
-1. Saute les renderers de mode (backdrop only pour le playfield).
-2. Appelle `renderSpritesLineRaw` en bypassant le guard `if (!m1)` — donc les sprites s'affichent même en mode text-hybride.
-3. Appelle `renderCloneSpritesLineRaw` pour rendre des **fantômes** : pour chaque entrée SAT, un clone est dessiné à `Y_polluted = ((slot * 8) ^ ((R3 & $60) | (R6 & $07))) & $3F` → cascade de copies dans les 64 lignes du haut, motif déformé selon R3/R6 (= la fuite des bits du SPGT et color-table).
+POM1 expose 2 prédicats indépendants désormais :
 
-Le test `tests/projects/tms9918_siltest` T16 met le chip en M1+M2+M3 puis place 4 sprites au slot 0..3. Sur POM1 strict, l'observateur voit maintenant les 4 sprites originaux à Y=70 + leurs ghost copies cascadées dans le haut → réponse Y attendue.
+- **`isIllegalModeRegs(regs)`** — true si ≥ 2 des bits M1/M2/M3 sont actifs (combinaisons hybrides réservées). Sert à décider du **bypass du BG playfield** (backdrop-only) — comportement non lié au cloning.
+- **`isCloningActive(regs)`** — true ssi `(R0 & 2) ∧ ((R4 & 3) ≠ 3)` (condition meisei). C'est la vraie condition de déclenchement du cloning silicon. **R6 ne joue aucun rôle** (contrairement à l'ancienne approximation POM1).
 
-### Limites du modèle POM1
+Le cloning peut donc s'enclencher en **Mode II parfaitement légal** (M3 set, M1=M2=0) si R4 a au moins un bit 0-1 cleared — c'est exactement ce que fait le programme BASIC de référence de hap (issue #593) pour exhiber le bug. Réciproquement, M1+M2 hybride (sans M3) est illegal mais **ne clone pas**.
 
-POM1 utilise une formule simplifiée pour `Y_polluted` qui produit un cascade visible et reproductible mais ne reproduit pas exactement le motif silicon (qui dépend de la microarchitecture interne du fetch SAT). Le test sert à confirmer que **du code qui dépend du cloning fait quelque chose de visible** sous POM1 ; pour des démos exigeant le motif exact silicon (Alankomaat-style art), tester sur silicium reste nécessaire.
+L'algorithme `renderCloneSpritesLineRaw` (`TMS9918.cpp`) divise la frame en 4 blocs de 64 scanlines :
 
-Pas de modélisation de la dérive thermique (clones qui s'estompent quand la puce chauffe) — comportement secondaire, hors scope.
+| Block | Lignes | Condition | Effet sur `cm[0..5]` |
+|---|---|---|---|
+| 0 | 0..63 | jamais (sprites 0..7 preprocessed in HBlank) | — |
+| 1 | 64..127 | `R4 & 1 == 0` | `cm[0]=$3F`, `cm[5]=(~R3 << 1) & $40` |
+| 2 | 128..191 | `R4 & 2 == 0` | `cm[1]=cm[4]=$80`, `cm[5]=(R3 << 1) & $80` |
+| 3 | 192..255 | always (off-screen pour POM1, omis) | — |
+
+Pour chaque sprite slot 8..31 (les 0..7 sont **non affectés**) :
+
+```
+yc = (line & cm[0]) - ((y ^ cm[1]) | cm[2])
+if (yc >= spriteH) yc = (line & cm[3]) - ((y ^ cm[4]) | cm[5])
+if (yc < spriteH)  → render le sprite à yc avec le pattern fetch + color path standard
+```
+
+C'est l'algo silicon exact (ou l'inversion mathématique la plus proche qu'hap a pu déduire après comparaison side-by-side avec hardware réel).
+
+### Limites résiduelles
+
+- **Block 3 (lignes 192..255) omis** — kScreenHeight=192, donc on ne rend jamais ces scanlines. Les sprites placés en Y_attr=192..254 qui devraient wrapper sur la frame visible sont perdus côté cloning. Impact : démos qui exploitent le cloning de sprites tout-en-haut via Y wrap. **TODO si nécessaire** : étendre la pipeline pour traiter le cloning des Y_attr supérieurs à 192 et les remapper sur les scanlines 0..63 visibles.
+- **Dérive thermique** non modélisée (les clones disparaissent par bloc quand le VDP chauffe — block 1 d'abord puis block 2). hap décrit le test "blow dryer" dans le commentaire meisei. POM1 = comportement "froid" permanent.
+- **Toshiba / Yamaha V9938+** ont l'addressing factory-fixed et **ne clonent pas**. POM1 hard-code "TI silicon" (pas de dispatch sur kind de chip).
+
+Le test `tms9918_siltest` T16 (M1+M2+M3 + R4=0) reste valide et déclenche désormais via la condition meisei (M3 set + R4=0). Le test `tms9918_clone` (`dev/projects/`) est un fixture visuel standalone du même comportement.
 
 ### Recommandation
 
