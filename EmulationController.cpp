@@ -179,6 +179,33 @@ void EmulationController::dumpCpuPcTrace(const char* tag)
     cpu->dumpPcTrace(tag);
 }
 
+void EmulationController::setCpuBreakpoint(uint16_t address)
+{
+    std::lock_guard<PriorityMutex> lock(stateMutex);
+    cpu->setBreakpoint(address);
+}
+
+void EmulationController::clearCpuBreakpoint()
+{
+    std::lock_guard<PriorityMutex> lock(stateMutex);
+    cpu->clearBreakpoint();
+}
+
+bool EmulationController::hasCpuBreakpoint() const
+{
+    return cpu->hasBreakpoint();
+}
+
+uint16_t EmulationController::getCpuBreakpoint() const
+{
+    return cpu->getBreakpoint();
+}
+
+bool EmulationController::isCpuBreakpointTripped() const
+{
+    return cpu->isBreakpointTripped();
+}
+
 void EmulationController::queueKey(char key)
 {
     keyboard.queueKey(key);

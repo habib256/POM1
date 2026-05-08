@@ -1201,6 +1201,11 @@ void M6502::hardReset(void)
     }
 
     programCounter = memReadAbsolute(0xFFFC);
+
+    // A preset switch goes through hardReset(); a breakpoint armed
+    // against a previous preset's address space is meaningless after.
+    breakpointActive  = false;
+    breakpointTripped = false;
 }
 void M6502::softReset(void)
 {
@@ -1238,6 +1243,21 @@ int M6502::run(int maxCycles)
     running = 1;
 
     while (running && cyclesExecuted < maxCycles) {
+        // PC-matched halt. The branch on `breakpointActive` is the
+        // hot-path cost when no breakpoint is armed (compiler folds to
+        // a single load + jcc, predicted not-taken). Fires *before* the
+        // instruction at the breakpoint address executes — typical
+        // debugger semantics, lets callers inspect state at entry.
+        if (breakpointActive && programCounter == breakpointAddress) {
+            std::ostringstream oss;
+            oss << "breakpoint hit at $" << std::hex << std::uppercase
+                << std::setfill('0') << std::setw(4)
+                << static_cast<int>(programCounter);
+            pom1::log().warn("CPU", oss.str());
+            breakpointTripped = true;
+            running = 0;
+            break;
+        }
         step();
         cyclesExecuted += cycles;
     }
@@ -1247,6 +1267,11 @@ int M6502::run(int maxCycles)
 void M6502::start(void)
 {
     running = 1;
+    // Clear the trip latch so resuming after a breakpoint-driven halt
+    // (the user's "continue") doesn't immediately report tripped again.
+    // The breakpoint stays armed — `start()` is "go", `clearBreakpoint`
+    // is "disarm".
+    breakpointTripped = false;
 }
 
 void M6502::stop(void)

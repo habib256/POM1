@@ -505,3 +505,28 @@ add_test(NAME hex_dump_multi_zone
          COMMAND test_hex_dump_multi_zone
          WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
 set_tests_properties(hex_dump_multi_zone PROPERTIES TIMEOUT 5)
+
+# -- M6502 PC-matched breakpoint smoke test -----------------------------------
+# Pins the M6502 single-PC breakpoint added with --break <addr> (CLI verb).
+# Halt-before-instruction semantics, clearBreakpoint resume, manual step-over,
+# hardReset disarm, and the no-breakpoint sanity path. Self-contained — same
+# core source set Klaus uses (Memory's unique_ptr peripherals link
+# transitively through their headers).
+add_executable(test_cpu_breakpoint
+    cpu_breakpoint_smoke_test.cpp
+    ${POM1_TEST_CORE_SOURCES}
+)
+target_include_directories(test_cpu_breakpoint PRIVATE
+    ${CMAKE_SOURCE_DIR}
+    ${CMAKE_SOURCE_DIR}/imgui
+)
+target_link_libraries(test_cpu_breakpoint PRIVATE libresidfp_static)
+if(APPLE)
+    target_compile_definitions(test_cpu_breakpoint PRIVATE GL_SILENCE_DEPRECATION)
+endif()
+if(WIN32)
+    target_link_libraries(test_cpu_breakpoint PRIVATE ws2_32)
+endif()
+
+add_test(NAME cpu_breakpoint_smoke COMMAND test_cpu_breakpoint)
+set_tests_properties(cpu_breakpoint_smoke PROPERTIES TIMEOUT 5)

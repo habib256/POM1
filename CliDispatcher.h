@@ -72,6 +72,7 @@ struct CliAction {
         RtcFreeze,     // timeT            : setRtcOverrideTime(timeT)
         SnapshotSave,  // pathS            : write current state to .snap
         SnapshotLoad,  // pathS            : restore RAM + cards from .snap
+        Break,         // addressI         : arm M6502 PC-matched halt at addr
     };
 
     Kind kind;

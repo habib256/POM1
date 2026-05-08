@@ -36,7 +36,8 @@ Sections ordered by actionability: implementable first, externally-blocked last.
 
 ## 🔧 Technical debt
 
-- [ ] **CLI breakpoints (`--break <addr>`)** `[S · solid]` — landed without it because `M6502` has no breakpoint infra. Add PC-matched halt in `M6502::run()` (early-return on `programCounter == breakpoint`), `setBreakpoint`/`clearBreakpoint`, plumb through `EmulationController`, flip the `CliDispatcher.cpp` stub into a real `CliAction::Kind::Break`. Keep overhead off the hot path — single compare-and-branch behind a `breakpointActive` flag.
+<!-- CLI breakpoints `--break <addr>` — landed mai 2026 (commit history). Single-PC halt in M6502::run gated by `breakpointActive`, plumbed through EmulationController + CliDispatcher::Kind::Break. Pinned by `cpu_breakpoint_smoke` ctest. -->
+
 - [ ] **Snapshot save / load** `[M · solid]` — `--snapshot-save <path>` / `--snapshot-load <path>` serialising `EmulationSnapshot` + every peripheral's internal state (SID register file + filter, TMS9918 VRAM + regs, microSD fs cursor, modem connection, cassette transport + tape offset, CFFA1 disk offset, Juke-Box bank). Enables deterministic replay, reloadable test fixtures, one-click bug reports. Versioned on-disk format.
 - [ ] **Scriptable runtime IPC** `[M · nice]` — `--cmd-fd <N>` (or Unix socket) reading line-delimited commands while the emulator runs — same verbs as CLI flags, but for stateful sequences. Telnet on `:6502` carries keystrokes + display; this channel carries control without polluting the keyboard stream. Depends on CLI-verb + snapshot work above.
 - [ ] **Terminal Card — `Ctrl-K` hand-over** `[S · nice]` — match the 8BitFlux toggle: a `Ctrl-K` byte suspends `$D010`/`$D011` injection until `Ctrl-T` re-attaches. Useful once a script bootstrapped a program and the user wants to play without dropping the session. Hook: `injectionSuspended` next to `escapePending` / `eightBitMode` in `TerminalCard.cpp`.

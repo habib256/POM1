@@ -81,6 +81,17 @@ public:
     // Debug: dump the CPU's PC ring buffer to the log on demand.
     void dumpCpuPcTrace(const char* tag);
 
+    // PC-matched halt for headless/scripted debugging — see M6502::setBreakpoint.
+    // Single-PC by design; the CPU stops itself when it next reaches `address`,
+    // and `isCpuBreakpointTripped()` flips true. Continuing requires either a
+    // manual `stepCpu()` past the address followed by `startCpu()`, or
+    // `clearCpuBreakpoint()` + `startCpu()`.
+    void     setCpuBreakpoint(uint16_t address);
+    void     clearCpuBreakpoint();
+    bool     hasCpuBreakpoint() const;
+    uint16_t getCpuBreakpoint() const;
+    bool     isCpuBreakpointTripped() const;
+
     void queueKey(char key);
     void writeMemory(uint16_t address, uint8_t value);
 

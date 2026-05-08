@@ -46,7 +46,7 @@ Three phases: **A** boot-time, **B** first-frame preset overrides, **C** deferre
 | `--rtc-freeze "YYYY-MM-DD HH:MM:SS"` | C | Set `A1IO_RTC::rtcOffsetSeconds` (host rate keeps ticking). |
 | `--snapshot-save <path>` | C | Write current state (RAM + card-enabled flags + per-card payload via `Peripheral::serialize`) to `<path>`. Format: see `SnapshotIO.h`. |
 | `--snapshot-load <path>` | C | Restore state from a `.snap` written by `--snapshot-save`. Per-card serialize hooks default to no-op until each card migrates its internal state — see `Peripheral.h`. |
-| `--break <addr>` | — | **Reserved**, errors out. Use `--step` + `--trace-brk`. |
+| `--break <addr>` | C | Arm M6502 PC-matched halt (single breakpoint). Fires *before* the instruction at `<addr>` executes; CPU stops itself, logs `[CPU] WARN breakpoint hit at $XXXX` once. Cleared by `hardReset()` (preset switch). Continue with manual `stepCpu()` past the address followed by `startCpu()`, or `clearCpuBreakpoint()` + `startCpu()`. |
 
 Two telnet tests auto-launch POM1 from repo root: `test_aci_telnet.py`, `test_sdcard_subdir_navigation_telnet.py`.
 

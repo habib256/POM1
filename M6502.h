@@ -77,6 +77,33 @@ public:
     /// directly into $0400).
     void setProgramCounter(uint16_t pc) { programCounter = pc; }
 
+    /// PC-matched halt for headless/scripted debugging. When `active` is
+    /// true and `programCounter == address` at the top of `run()`'s loop,
+    /// the CPU stops itself (one log line at WARN) before the instruction
+    /// at that address executes. The check sits behind `breakpointActive`,
+    /// so the off-path cost is a single load + branch — no overhead when
+    /// the breakpoint isn't armed. Single-breakpoint by design (TODO entry
+    /// `[S · solid]`); multi-PC support can be added behind the same flag
+    /// later. Cleared on hardReset() so a preset switch doesn't carry it.
+    void setBreakpoint(uint16_t address) {
+        breakpointAddress = address;
+        breakpointActive  = true;
+        breakpointTripped = false;
+    }
+    void clearBreakpoint() {
+        breakpointActive  = false;
+        breakpointTripped = false;
+    }
+    bool hasBreakpoint() const { return breakpointActive; }
+    uint16_t getBreakpoint() const { return breakpointAddress; }
+    /// True iff the most recent `run()` exit was triggered by the
+    /// breakpoint firing (not by a `stop()` call or by the cycle budget
+    /// expiring). Self-cleared on the next `setBreakpoint` /
+    /// `clearBreakpoint` / `start()`. Lets the EmulationController and
+    /// the CLI dispatcher tell "halted at breakpoint" from "halted by
+    /// the user" without inspecting PC by hand.
+    bool isBreakpointTripped() const { return breakpointTripped; }
+
 private:
 
 
@@ -85,6 +112,15 @@ private :
     Memory *memory;
 
     bool debugBrkTrace = false;   // see setDebugBrkTrace()
+
+    // Single-PC breakpoint — see setBreakpoint() above. `breakpointActive`
+    // is the hot-path gate (one branch in `run()`). `breakpointTripped`
+    // latches on hit so callers can tell "halted at breakpoint" from
+    // "halted by stop()" without inspecting PC.
+    bool     breakpointActive   = false;
+    bool     breakpointTripped  = false;
+    uint16_t breakpointAddress  = 0;
+
     uint8_t accumulator, xRegister, yRegister, statusRegister, stackPointer;
     int IRQ, NMI;
     uint16_t programCounter;

@@ -416,10 +416,15 @@ std::optional<CliPlan> parseCli(int argc, char* argv[], bool& listPresetsOut)
             continue;
         }
         if (arg == "--break") {
-            logAndFail("--break is reserved for a future release "
-                       "(no M6502 breakpoint infrastructure yet). "
-                       "Use --step / --trace-brk for scripted CPU inspection.");
-            return std::nullopt;
+            if (!needArg(i, "--break")) return std::nullopt;
+            int addr;
+            if (!parseAddr16(argv[++i], addr)) {
+                logAndFail("--break: addr must be a 16-bit hex address");
+                return std::nullopt;
+            }
+            CliAction a; a.kind = CliAction::Kind::Break; a.addressI = addr;
+            plan.deferredActions.push_back(std::move(a));
+            continue;
         }
         if (arg == "--play") {
             CliAction a; a.kind = CliAction::Kind::Play;
@@ -693,6 +698,15 @@ void runDeferredActions(const std::vector<CliAction>& actions,
                     pom1::log().info("CLI", "--snapshot-load <- " + a.pathS);
                 else
                     pom1::log().error("CLI", "--snapshot-load '" + a.pathS + "': " + err);
+                break;
+            }
+            case CliAction::Kind::Break: {
+                emu.setCpuBreakpoint(static_cast<uint16_t>(a.addressI));
+                std::ostringstream ss;
+                ss << "--break $" << std::hex << std::uppercase
+                   << std::setfill('0') << std::setw(4) << a.addressI
+                   << " armed";
+                pom1::log().info("CLI", ss.str());
                 break;
             }
         }
