@@ -88,6 +88,12 @@ public:
     };
     void copySnapshot(Snapshot& out) const;
 
+    // Snapshot round-trip: switch mode + FIFO state + mech-cycle counter +
+    // paper roll. Counters (charactersPrinted/linesPrinted/pagesTornOff)
+    // are statistical — captured for UI continuity across reload.
+    void serialize(pom1::SnapshotWriter& writer) const override;
+    void deserialize(pom1::SnapshotReader& reader) override;
+
     void setMode(SwitchMode m);
     bool savePaperRoll(const std::string& path, std::string& error) const;
     /// Clear the paper roll. If `dumpedContents` is non-null, the current

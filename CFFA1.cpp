@@ -4,6 +4,7 @@
 
 #include "CFFA1.h"
 #include "Logger.h"
+#include "SnapshotIO.h"
 #include <cstring>
 #include <algorithm>
 
@@ -298,4 +299,38 @@ void CFFA1::flushSectorBuffer()
         ataStatus = kStatusDRDY | kStatusDSC | kStatusERR;
         ataError = 0x40;
     }
+}
+
+void CFFA1::serialize(pom1::SnapshotWriter& w) const
+{
+    w.writeU8(ataError);
+    w.writeU8(ataFeature);
+    w.writeU8(ataSectorCnt);
+    w.writeU8(ataLBA0);
+    w.writeU8(ataLBA1);
+    w.writeU8(ataLBA2);
+    w.writeU8(ataLBA3);
+    w.writeU8(ataStatus);
+    w.writeU8(ataDevCtrl);
+    w.writeBytes(sectorBuffer.data(), sectorBuffer.size());
+    w.writeU32(static_cast<uint32_t>(bufferIndex));
+    w.writeU8(readActive  ? 1 : 0);
+    w.writeU8(writeActive ? 1 : 0);
+}
+
+void CFFA1::deserialize(pom1::SnapshotReader& r)
+{
+    ataError      = r.readU8();
+    ataFeature    = r.readU8();
+    ataSectorCnt  = r.readU8();
+    ataLBA0       = r.readU8();
+    ataLBA1       = r.readU8();
+    ataLBA2       = r.readU8();
+    ataLBA3       = r.readU8();
+    ataStatus     = r.readU8();
+    ataDevCtrl    = r.readU8();
+    r.readBytes(sectorBuffer.data(), sectorBuffer.size());
+    bufferIndex   = static_cast<int>(r.readU32());
+    readActive    = r.readU8() != 0;
+    writeActive   = r.readU8() != 0;
 }

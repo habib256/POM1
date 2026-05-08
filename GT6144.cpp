@@ -4,6 +4,7 @@
 // See GT6144.h for protocol and hardware notes.
 
 #include "GT6144.h"
+#include "SnapshotIO.h"
 
 #include <random>
 
@@ -81,6 +82,28 @@ void GT6144::copySnapshot(Snapshot& out) const
     out.latchedX    = latchedX;
     out.latchedMode = latchedMode;
     out.awaitY      = awaitY;
+}
+
+void GT6144::serialize(pom1::SnapshotWriter& w) const
+{
+    std::lock_guard<std::mutex> lock(cardMutex);
+    w.writeBytes(framebuffer.data(), framebuffer.size());
+    w.writeU8(inverted ? 1 : 0);
+    w.writeU8(blanked  ? 1 : 0);
+    w.writeU8(latchedX);
+    w.writeU8(latchedMode);
+    w.writeU8(awaitY ? 1 : 0);
+}
+
+void GT6144::deserialize(pom1::SnapshotReader& r)
+{
+    std::lock_guard<std::mutex> lock(cardMutex);
+    r.readBytes(framebuffer.data(), framebuffer.size());
+    inverted    = r.readU8() != 0;
+    blanked     = r.readU8() != 0;
+    latchedX    = r.readU8();
+    latchedMode = r.readU8();
+    awaitY      = r.readU8() != 0;
 }
 
 void GT6144::renderToBuffer(uint32_t* out, const Snapshot& snap)

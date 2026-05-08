@@ -242,6 +242,7 @@ add_executable(test_gt6144
     gt6144_smoke_test.cpp
     ${CMAKE_SOURCE_DIR}/GT6144.cpp
     ${CMAKE_SOURCE_DIR}/PeripheralBus.cpp
+    ${CMAKE_SOURCE_DIR}/SnapshotIO.cpp
 )
 target_include_directories(test_gt6144 PRIVATE ${CMAKE_SOURCE_DIR})
 
@@ -259,6 +260,7 @@ add_executable(test_jukebox_paged_rom
     jukebox_paged_rom_smoke_test.cpp
     ${CMAKE_SOURCE_DIR}/JukeBox.cpp
     ${CMAKE_SOURCE_DIR}/Logger.cpp
+    ${CMAKE_SOURCE_DIR}/SnapshotIO.cpp
 )
 target_include_directories(test_jukebox_paged_rom PRIVATE ${CMAKE_SOURCE_DIR})
 
@@ -275,6 +277,7 @@ add_executable(test_codetank
     codetank_smoke_test.cpp
     ${CMAKE_SOURCE_DIR}/CodeTank.cpp
     ${CMAKE_SOURCE_DIR}/Logger.cpp
+    ${CMAKE_SOURCE_DIR}/SnapshotIO.cpp
 )
 target_include_directories(test_codetank PRIVATE ${CMAKE_SOURCE_DIR})
 

@@ -5,6 +5,7 @@
 // (Interface Age, Oct. 1976).
 
 #include "PR40Printer.h"
+#include "SnapshotIO.h"
 
 #include <algorithm>
 #include <fstream>
@@ -111,6 +112,38 @@ void PR40Printer::setMode(SwitchMode m)
 {
     std::lock_guard<std::mutex> lock(cardMutex);
     mode = m;
+}
+
+void PR40Printer::serialize(pom1::SnapshotWriter& w) const
+{
+    std::lock_guard<std::mutex> lock(cardMutex);
+    w.writeU8 (static_cast<uint8_t>(mode));
+    w.writeU8 (static_cast<uint8_t>(fifoLevel));
+    w.writeBytes(fifo, kFifoCapacity);
+    w.writeU32(static_cast<uint32_t>(mechCyclesRemaining));
+    w.writeU32(static_cast<uint32_t>(charactersPrinted));
+    w.writeU32(static_cast<uint32_t>(linesPrinted));
+    w.writeU32(static_cast<uint32_t>(pagesTornOff));
+    w.writeString(currentLine);
+    w.writeU32(static_cast<uint32_t>(paperLines.size()));
+    for (const auto& line : paperLines) w.writeString(line);
+}
+
+void PR40Printer::deserialize(pom1::SnapshotReader& r)
+{
+    std::lock_guard<std::mutex> lock(cardMutex);
+    mode               = static_cast<SwitchMode>(r.readU8());
+    fifoLevel          = r.readU8();
+    r.readBytes(fifo, kFifoCapacity);
+    mechCyclesRemaining = static_cast<int>(r.readU32());
+    charactersPrinted  = static_cast<int>(r.readU32());
+    linesPrinted       = static_cast<int>(r.readU32());
+    pagesTornOff       = static_cast<int>(r.readU32());
+    currentLine        = r.readString();
+    const uint32_t lineCount = r.readU32();
+    paperLines.clear();
+    paperLines.reserve(lineCount);
+    for (uint32_t i = 0; i < lineCount; ++i) paperLines.push_back(r.readString());
 }
 
 bool PR40Printer::savePaperRoll(const std::string& path, std::string& error) const

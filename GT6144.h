@@ -79,6 +79,12 @@ public:
 
     void copySnapshot(Snapshot& out) const;
 
+    // Snapshot round-trip: 768-byte framebuffer + FSM latches + video-stage
+    // flags. Captures everything the FSM cares about so a saved game can
+    // resume mid-stroke without visible artifacts.
+    void serialize(pom1::SnapshotWriter& writer) const override;
+    void deserialize(pom1::SnapshotReader& reader) override;
+
     // Fill `out` (kWidth x kHeight RGBA pixels, IM_COL32 byte order, same
     // convention as TMS9918::renderToBuffer) from a previously captured
     // snapshot. Applies inversion + blanking at render time — the framebuffer

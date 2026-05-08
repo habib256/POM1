@@ -4,6 +4,7 @@
 #include "CodeTank.h"
 
 #include "Logger.h"
+#include "SnapshotIO.h"
 
 #include <fstream>
 
@@ -57,4 +58,14 @@ void CodeTank::copySnapshot(Snapshot& out) const
     out.romSize = rom.size();
     out.jumper  = jumper;
     out.loaded  = !romPath.empty();
+}
+
+void CodeTank::serialize(pom1::SnapshotWriter& w) const
+{
+    w.writeU8(static_cast<uint8_t>(jumper));
+}
+
+void CodeTank::deserialize(pom1::SnapshotReader& r)
+{
+    jumper = static_cast<Jumper>(r.readU8());
 }

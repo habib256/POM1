@@ -77,6 +77,13 @@ public:
     // Bug N°2 — was previously a no-op because /INT wasn't routed).
     bool irqAsserted() const { return (ifr & ier & 0x7F) != 0; }
 
+    // Snapshot round-trip: VIA 65C22 register file + timer state +
+    // ATMEGA broadcast position + virtual register file (RTC, ADC, digital
+    // I/O) + shift-register output state. The DS3231 wallclock anchor
+    // (rtcOffsetSeconds) round-trips so a "frozen" RTC stays frozen.
+    void serialize(pom1::SnapshotWriter& writer) const override;
+    void deserialize(pom1::SnapshotReader& reader) override;
+
 private:
     // --- VIA 65C22 registers ---
     uint8_t portB;          // $2000 - Port B (data bus to/from ATMEGA)

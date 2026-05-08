@@ -38,6 +38,7 @@
 //   Write high byte to SR, wait, write low byte to SR
 
 #include "A1IO_RTC.h"
+#include "SnapshotIO.h"
 #include <chrono>
 #include <ctime>
 
@@ -422,4 +423,50 @@ void A1IO_RTC::setOverrideTime(std::time_t target)
     const std::time_t hostNow = std::chrono::system_clock::to_time_t(nowSys);
     rtcOffsetSeconds = static_cast<int>(target - hostNow);
     updateVirtualRegisters();
+}
+
+void A1IO_RTC::serialize(pom1::SnapshotWriter& w) const
+{
+    w.writeU8(portB); w.writeU8(portA); w.writeU8(ddrB); w.writeU8(ddrA);
+    w.writeU8(t1LatchLo); w.writeU8(t1LatchHi);
+    w.writeU8(t2CounterLo); w.writeU8(t2CounterHi);
+    w.writeU8(shiftReg); w.writeU8(acr); w.writeU8(pcr);
+    w.writeU8(ifr); w.writeU8(ier);
+    w.writeU16(t1Counter);
+    w.writeU8 (t1Running ? 1 : 0);
+    w.writeU32(static_cast<uint32_t>(broadcastRegister));
+    w.writeU32(static_cast<uint32_t>(broadcastCycleCounter));
+    w.writeU8 (strobeActive ? 1 : 0);
+    w.writeU8 (strobeConsumed ? 1 : 0);
+    w.writeBytes(virtualRegisters.data(), virtualRegisters.size());
+    w.writeU32(static_cast<uint32_t>(rtcOffsetSeconds));
+    w.writeBytes(analogInputs.data(),  analogInputs.size());
+    w.writeBytes(digitalInputs.data(), digitalInputs.size());
+    w.writeU16(digitalOutputs);
+    w.writeU8 (shiftOutHigh);
+    w.writeU8 (shiftHighWritten ? 1 : 0);
+    w.writeU8 (rwModeActive ? 1 : 0);
+}
+
+void A1IO_RTC::deserialize(pom1::SnapshotReader& r)
+{
+    portB = r.readU8(); portA = r.readU8(); ddrB = r.readU8(); ddrA = r.readU8();
+    t1LatchLo = r.readU8(); t1LatchHi = r.readU8();
+    t2CounterLo = r.readU8(); t2CounterHi = r.readU8();
+    shiftReg = r.readU8(); acr = r.readU8(); pcr = r.readU8();
+    ifr = r.readU8(); ier = r.readU8();
+    t1Counter = r.readU16();
+    t1Running = r.readU8() != 0;
+    broadcastRegister     = static_cast<int>(r.readU32());
+    broadcastCycleCounter = static_cast<int>(r.readU32());
+    strobeActive   = r.readU8() != 0;
+    strobeConsumed = r.readU8() != 0;
+    r.readBytes(virtualRegisters.data(), virtualRegisters.size());
+    rtcOffsetSeconds = static_cast<int>(r.readU32());
+    r.readBytes(analogInputs.data(),  analogInputs.size());
+    r.readBytes(digitalInputs.data(), digitalInputs.size());
+    digitalOutputs   = r.readU16();
+    shiftOutHigh     = r.readU8();
+    shiftHighWritten = r.readU8() != 0;
+    rwModeActive     = r.readU8() != 0;
 }

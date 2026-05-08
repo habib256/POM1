@@ -54,6 +54,14 @@ public:
     // get a real /IRQ now.
     bool irqAsserted() const { return (ifr & ier & 0x7F) != 0; }
 
+    // Snapshot round-trip: VIA 65C22 register file + handshake state +
+    // MCU protocol FSM (phase + accumulators + response/write buffers) +
+    // currentDirectory cursor. The on-disk virtual FAT32 (sdCardRootPath)
+    // is set by Memory at construction; the snapshot only restores cursor
+    // state, not the underlying filesystem.
+    void serialize(pom1::SnapshotWriter& writer) const override;
+    void deserialize(pom1::SnapshotReader& reader) override;
+
 private:
     // --- MCU command IDs (match arduino.ino) ---
     static constexpr uint8_t CMD_READ   = 0;

@@ -121,20 +121,22 @@ public:
     // Captured today (v1):
     //   * 64 KB flat RAM (mem[])
     //   * Card "enabled" flags (12 bools packed)
-    //   * Each peripheral's `Peripheral::serialize()` payload (default no-op
-    //     for cards that haven't migrated their state yet — see Peripheral.h)
+    //   * Per-card payloads — every card now overrides Peripheral::serialize.
+    //     See each card's header for what its section captures.
     //
     // CPU state (PC/A/X/Y/SP/status/IRQ/NMI/cycles) is round-tripped via the
     // optional `cpu` parameter — pass nullptr to skip the "CPU" section
     // entirely (useful for memory-only fixtures and the lower-level test
     // path that doesn't construct an M6502).
     //
-    // NOT captured yet (deliberate phase-1 limitations, documented so a
-    // contributor knows what to add next):
-    //   * Cassette deck transport position
-    //   * MicroSD `currentDirectory` cursor
-    //   * WiFiModem TCP connection (impossible to serialise — needs a
-    //     "drop and reconnect" policy at load time)
+    // NOT captured (intentional limitations):
+    //   * Cassette deck mid-stream playback position (the recording buffer
+    //     and $C000 flip-flop round-trip; the in-flight playback cursor
+    //     into a loaded tape is reset and the user re-presses PLAY).
+    //   * WiFiModem / TerminalCard TCP connections (kernel-side state —
+    //     reset on load; the user re-dials).
+    //   * libresidfp internal filter integrators / oscillator phase (not
+    //     exposed by the engine; shadow regs are re-poked at load).
     //
     // Returns false on error and fills `error`.
     // Caller is responsible for stopping the CPU before invoking either of

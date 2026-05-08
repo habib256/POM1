@@ -67,6 +67,16 @@ void SnapshotWriter::writeBytes(const void* data, std::size_t length) {
                               static_cast<std::streamsize>(length));
 }
 
+void SnapshotWriter::writeString(std::string_view s) {
+    writeU32(static_cast<uint32_t>(s.size()));
+    writeBytes(s.data(), s.size());
+}
+
+void SnapshotWriter::writeByteVector(const std::vector<uint8_t>& v) {
+    writeU32(static_cast<uint32_t>(v.size()));
+    writeBytes(v.data(), v.size());
+}
+
 SnapshotWriter::SectionHandle SnapshotWriter::beginSection(std::string_view name) {
     SectionHandle h{};
     writeFixedName(out, name);
@@ -145,6 +155,20 @@ uint64_t SnapshotReader::readU64() {
 void SnapshotReader::readBytes(void* data, std::size_t length) {
     if (length > 0) in.read(static_cast<char*>(data),
                             static_cast<std::streamsize>(length));
+}
+
+std::string SnapshotReader::readString() {
+    const uint32_t len = readU32();
+    std::string s(len, '\0');
+    if (len) readBytes(s.data(), len);
+    return s;
+}
+
+std::vector<uint8_t> SnapshotReader::readByteVector() {
+    const uint32_t len = readU32();
+    std::vector<uint8_t> v(len);
+    if (len) readBytes(v.data(), len);
+    return v;
 }
 
 bool SnapshotReader::nextSection(std::string& name, std::uint32_t& length) {

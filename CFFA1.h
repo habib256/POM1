@@ -52,6 +52,14 @@ public:
     void setDiskImagePath(const std::string& path) { diskImagePath = path; }
     const std::string& getDiskImagePath() const { return diskImagePath; }
 
+    // Snapshot round-trip: ATA register state + sector buffer + transfer
+    // flags. The disk image (path + open file) is owned by Memory at
+    // construction time and intentionally NOT serialized — the .po on disk
+    // holds the persistent storage; this captures only the in-flight
+    // CompactFlash controller state.
+    void serialize(pom1::SnapshotWriter& writer) const override;
+    void deserialize(pom1::SnapshotReader& reader) override;
+
 private:
     // ATA register offsets from IOBase
     enum ATAReg : uint8_t {

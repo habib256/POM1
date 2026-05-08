@@ -8,6 +8,7 @@
 
 #include "MicroSD.h"
 #include "Logger.h"
+#include "SnapshotIO.h"
 #include <fstream>
 #include <filesystem>
 #include <algorithm>
@@ -1144,4 +1145,83 @@ std::string MicroSD::getFileExtension(uint8_t type)
     case 0xF8: return "ASB"; // AppleSoft BASIC
     default:   return "???";
     }
+}
+
+void MicroSD::serialize(pom1::SnapshotWriter& w) const
+{
+    // VIA 65C22 register file
+    w.writeU8(portB); w.writeU8(portA); w.writeU8(ddrB); w.writeU8(ddrA);
+    w.writeU8(t1LatchLo); w.writeU8(t1LatchHi);
+    w.writeU8(t2CounterLo); w.writeU8(t2CounterHi);
+    w.writeU8(shiftReg); w.writeU8(acr); w.writeU8(pcr);
+    w.writeU8(ifr); w.writeU8(ier);
+    w.writeU16(t1Counter);
+    w.writeU8 (t1Running ? 1 : 0);
+    // Handshake
+    w.writeU8 (cpuStrobeHigh ? 1 : 0);
+    w.writeU8 (mcuStrobeHigh ? 1 : 0);
+    // MCU protocol FSM
+    w.writeU8 (static_cast<uint8_t>(mcuPhase));
+    w.writeU8 (static_cast<uint8_t>(nextPhaseAfterResponse));
+    w.writeU8 (currentCommand);
+    w.writeString(stringBuffer);
+    w.writeByteVector(responseBuffer);
+    w.writeU32(static_cast<uint32_t>(responseIndex));
+    // DIR/LS state — serialize entries inline
+    w.writeU32(static_cast<uint32_t>(dirEntries.size()));
+    for (const auto& e : dirEntries) {
+        w.writeString(e.name);
+        w.writeU64(static_cast<uint64_t>(e.size));
+        w.writeU8(e.isDirectory ? 1 : 0);
+    }
+    w.writeU32(static_cast<uint32_t>(dirEntryIndex));
+    w.writeU8 (dirIsLs ? 1 : 0);
+    // WRITE state
+    w.writeString(writeFilename);
+    w.writeU16(writeExpectedLen);
+    w.writeU32(static_cast<uint32_t>(writeLenBytesReceived));
+    w.writeByteVector(writeDataBuffer);
+    // Idle counters
+    w.writeU32(static_cast<uint32_t>(dirIdleCycles));
+    w.writeU32(static_cast<uint32_t>(testIdleCycles));
+    // Cursor
+    w.writeString(currentDirectory);
+}
+
+void MicroSD::deserialize(pom1::SnapshotReader& r)
+{
+    portB = r.readU8(); portA = r.readU8(); ddrB = r.readU8(); ddrA = r.readU8();
+    t1LatchLo = r.readU8(); t1LatchHi = r.readU8();
+    t2CounterLo = r.readU8(); t2CounterHi = r.readU8();
+    shiftReg = r.readU8(); acr = r.readU8(); pcr = r.readU8();
+    ifr = r.readU8(); ier = r.readU8();
+    t1Counter = r.readU16();
+    t1Running = r.readU8() != 0;
+    cpuStrobeHigh = r.readU8() != 0;
+    mcuStrobeHigh = r.readU8() != 0;
+    mcuPhase               = static_cast<McuPhase>(r.readU8());
+    nextPhaseAfterResponse = static_cast<McuPhase>(r.readU8());
+    currentCommand         = r.readU8();
+    stringBuffer    = r.readString();
+    responseBuffer  = r.readByteVector();
+    responseIndex   = static_cast<size_t>(r.readU32());
+    const uint32_t dirCount = r.readU32();
+    dirEntries.clear();
+    dirEntries.reserve(dirCount);
+    for (uint32_t i = 0; i < dirCount; ++i) {
+        DirEntry e{};
+        e.name = r.readString();
+        e.size = static_cast<uintmax_t>(r.readU64());
+        e.isDirectory = r.readU8() != 0;
+        dirEntries.push_back(std::move(e));
+    }
+    dirEntryIndex   = static_cast<size_t>(r.readU32());
+    dirIsLs         = r.readU8() != 0;
+    writeFilename   = r.readString();
+    writeExpectedLen = r.readU16();
+    writeLenBytesReceived = static_cast<int>(r.readU32());
+    writeDataBuffer = r.readByteVector();
+    dirIdleCycles   = static_cast<int>(r.readU32());
+    testIdleCycles  = static_cast<int>(r.readU32());
+    currentDirectory = r.readString();
 }

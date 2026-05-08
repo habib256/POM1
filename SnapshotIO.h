@@ -66,6 +66,11 @@ public:
     void writeU64(uint64_t v);
     void writeBytes(const void* data, std::size_t length);
 
+    /// Convenience: u32 length prefix + raw bytes. Used by cards that carry
+    /// variable-length state (filenames, paper rolls, EEPROM buffers).
+    void writeString(std::string_view s);
+    void writeByteVector(const std::vector<uint8_t>& v);
+
     /// Begin a named section. Writes the 8-byte name and a placeholder
     /// length; returns a handle the caller passes back to `endSection()`
     /// once the payload has been streamed. Sections cannot nest.
@@ -102,6 +107,10 @@ public:
     uint32_t readU32();
     uint64_t readU64();
     void     readBytes(void* data, std::size_t length);
+
+    /// Mirror of SnapshotWriter::writeString / writeByteVector.
+    std::string         readString();
+    std::vector<uint8_t> readByteVector();
 
     /// Advance to the next section. On success, returns true and fills
     /// `name` (NUL-trimmed) and `length`. The caller is then expected to

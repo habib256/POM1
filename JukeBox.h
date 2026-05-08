@@ -191,6 +191,15 @@ public:
     };
     void copySnapshot(Snapshot& out) const;
 
+    // Snapshot round-trip: bank-select latch ($CA00) + ROM buffer (writable
+    // EEPROM modifications survive reload) + chipMode + jumper. The romPath
+    // is written for human-readable diagnostics but ignored on load — the
+    // path is set by Memory at construction. If the saved chipMode is
+    // EEPROM, the buffer overrides any on-disk file; if Flash, the buffer
+    // is restored too so paged-ROM state is consistent.
+    void serialize(pom1::SnapshotWriter& writer) const override;
+    void deserialize(pom1::SnapshotReader& reader) override;
+
 private:
     // Convert a CPU address (inside the current ROM window) to an offset
     // into the `rom` buffer, honouring the current page + sub-page and the

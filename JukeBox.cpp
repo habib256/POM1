@@ -5,6 +5,7 @@
 #include "JukeBox.h"
 
 #include "Logger.h"
+#include "SnapshotIO.h"
 
 #include <cstring>
 #include <fstream>
@@ -295,4 +296,33 @@ void JukeBox::copySnapshot(Snapshot& out) const
     out.chipMode        = chipMode;
     out.writable        = writable;
     out.firmwarePresent = hasFirmware();
+}
+
+void JukeBox::serialize(pom1::SnapshotWriter& w) const
+{
+    w.writeU8 (static_cast<uint8_t>(jumper));
+    w.writeU8 (static_cast<uint8_t>(chipMode));
+    w.writeU8 (writable ? 1 : 0);
+    w.writeU8 (bankRegister);
+    w.writeU8 (pageCount);
+    w.writeU8 (bootPage);
+    w.writeU32(static_cast<uint32_t>(romSize));
+    w.writeByteVector(rom);
+    w.writeString(romPath);
+}
+
+void JukeBox::deserialize(pom1::SnapshotReader& r)
+{
+    jumper        = static_cast<Jumper>  (r.readU8());
+    chipMode      = static_cast<ChipMode>(r.readU8());
+    writable      = r.readU8() != 0;
+    bankRegister  = r.readU8();
+    pageCount     = r.readU8();
+    bootPage      = r.readU8();
+    romSize       = static_cast<size_t>(r.readU32());
+    rom           = r.readByteVector();
+    // romPath read for round-trip completeness, but the actual on-disk path
+    // is owned by Memory's preset / UI loader — we keep the saved value
+    // visible via copySnapshot but don't reopen the file.
+    romPath       = r.readString();
 }

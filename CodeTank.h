@@ -93,6 +93,11 @@ public:
     };
     void copySnapshot(Snapshot& out) const;
 
+    // Snapshot round-trip. ROM is read-only and re-loaded from disk by
+    // Memory at construction; we only persist the jumper position.
+    void serialize(pom1::SnapshotWriter& writer) const override;
+    void deserialize(pom1::SnapshotReader& reader) override;
+
 private:
     std::vector<uint8_t> rom;
     Jumper      jumper = Jumper::Lower16;

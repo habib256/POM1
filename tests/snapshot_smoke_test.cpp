@@ -15,14 +15,20 @@
 //   - A1-SID:  shadow-register file round-trip.
 //   - ACI:     recorded-transition count round-trip (output-level FF flip-
 //              flop is reflected in the recording buffer growth).
+//   - GT-6144: latched FSM state via copySnapshot.
+//   - PR-40:   switch mode via copySnapshot.
+//   - Juke-Box: bank-register latch ($CA00) via copySnapshot.
+//   - CodeTank: jumper position via copySnapshot.
+//   - CFFA1:   ATA LBA0 register read-back through MMIO.
 // What this test does NOT cover yet:
-//   - microSD, CFFA1, Juke-Box, A1IO_RTC, PR-40, GT-6144 internal state
-//     (those still inherit the no-op default — PR3 will land them).
 //   - in-flight cassette playback position (PR2 deliberately quiesces it
 //     on load — see CassetteDevice.h header comment).
 //   - libresidfp internal filter integrators / oscillator phase (engine
 //     does not expose them — load re-pokes shadow regs and accepts a
 //     short filter-settle transient).
+//   - microSD / A1-IO/RTC fine-grained state (round-tripped but not
+//     individually asserted here — covered by the lower-level card tests
+//     once they get their own snapshot fixtures).
 //
 // Adding card-payload coverage. Once a card overrides serialize/deserialize,
 // add an assertion here that mutates the card, snapshots, mutates again,
@@ -36,6 +42,11 @@
 #include "TerminalCard.h"
 #include "A1IO_RTC.h"
 #include "PR40Printer.h"
+#include "GT6144.h"
+#include "JukeBox.h"
+#include "CodeTank.h"
+#include "CFFA1.h"
+#include "MicroSD.h"
 #include "SID.h"
 #include "Memory.h"
 #include "M6502.h"
@@ -115,6 +126,27 @@ int main()
     }
     const size_t expectedRecordedTransitions = cassette.getRecordedTransitionCount();
     assert(expectedRecordedTransitions == 3);
+
+    // ── GT-6144: latch a non-default FSM mode (control opcode = blanked).
+    //    Phase-3 (224..255 byte&7=5) sets blanked=true.
+    mem.getGT6144().writeCommand(static_cast<uint8_t>(224 | 5));
+
+    // ── PR-40: switch mode flip
+    mem.setPR40Enabled(true);
+    mem.getPR40().setMode(PR40Printer::SwitchMode::PrintOnly);
+
+    // ── CodeTank: jumper toggle via setter (defaults to Lower16).
+    //    JukeBox is mutex with CodeTank + SID (it claims $4000-$BFFF), so
+    //    enabling it here would evict SID. Juke-Box's per-card serialize
+    //    is exercised separately below on a fresh Memory.
+    mem.setCodeTankEnabled(true);
+    mem.getCodeTank().setJumper(CodeTank::Jumper::Upper16);
+
+    // ── CFFA1: poke a sentinel into LBA0 register ($AFFB / $AFEB mirror).
+    mem.setCFFA1Enabled(true);
+    mem.memWrite(0xAFFB, 0x77);
+    const uint8_t expectedLBA0 = mem.memRead(0xAFFB);
+    assert(expectedLBA0 == 0x77);
 
     // ── CPU round-trip. Plant a tiny program at $0300 that mutates A/X/Y
     //    to known sentinel values, then step the CPU through it so the
@@ -252,6 +284,48 @@ int main()
         }
     }
 
+    // ── GT-6144 FSM latch
+    {
+        GT6144::Snapshot s;
+        mem2.getGT6144().copySnapshot(s);
+        if (!s.blanked) {
+            std::fprintf(stderr, "GT-6144 'blanked' flag did not survive snapshot\n");
+            return 1;
+        }
+    }
+
+    // ── PR-40 switch mode
+    {
+        PR40Printer::Snapshot s;
+        mem2.getPR40().copySnapshot(s);
+        if (s.mode != PR40Printer::SwitchMode::PrintOnly) {
+            std::fprintf(stderr, "PR-40 switch mode did not survive snapshot\n");
+            return 1;
+        }
+    }
+
+    // ── CodeTank jumper
+    {
+        assert(mem2.isCodeTankEnabled());
+        CodeTank::Snapshot s;
+        mem2.getCodeTank().copySnapshot(s);
+        if (s.jumper != CodeTank::Jumper::Upper16) {
+            std::fprintf(stderr, "CodeTank jumper did not survive snapshot\n");
+            return 1;
+        }
+    }
+
+    // ── CFFA1 LBA0 register
+    {
+        assert(mem2.isCFFA1Enabled());
+        const uint8_t got = mem2.memRead(0xAFFB);
+        if (got != 0x77) {
+            std::fprintf(stderr,
+                "CFFA1 LBA0 mismatch: got %02X expected 77\n", got);
+            return 1;
+        }
+    }
+
     // ── CPU registers must round-trip exactly
     if (cpu2.getAccumulator()    != expectedA  ||
         cpu2.getXRegister()      != expectedX  ||
@@ -282,10 +356,42 @@ int main()
     assert(mem3.isPR40Enabled());
     assert(mem3.isGT6144Enabled());
 
+    // ── Standalone Juke-Box round-trip. JukeBox is mutex with SID/CodeTank/
+    //    CFFA1/microSD/WiFiModem (it claims $4000-$BFFF), so a fresh Memory
+    //    with only JukeBox plugged keeps the test focused.
+    {
+        Memory memJB;
+        memJB.setJukeBoxEnabled(true);
+        memJB.memWrite(0xCA00, 0x05);   // page 5 latch
+        auto pathJB = makeTempPath("jukebox");
+        std::string errJB;
+        if (!memJB.saveSnapshot(pathJB.string(), errJB)) {
+            std::fprintf(stderr, "JB saveSnapshot failed: %s\n", errJB.c_str());
+            return 1;
+        }
+        Memory memJB2;
+        memJB2.setJukeBoxEnabled(true);
+        if (!memJB2.loadSnapshot(pathJB.string(), errJB)) {
+            std::fprintf(stderr, "JB loadSnapshot failed: %s\n", errJB.c_str());
+            return 1;
+        }
+        JukeBox::Snapshot s;
+        memJB2.getJukeBox().copySnapshot(s);
+        if (s.bankRegister != 0x05) {
+            std::fprintf(stderr,
+                "Juke-Box bankRegister round-trip failed: got %02X expected 05\n",
+                s.bankRegister);
+            return 1;
+        }
+        std::error_code ecJB;
+        std::filesystem::remove(pathJB, ecJB);
+    }
+
     std::error_code ec;
     std::filesystem::remove(path, ec);
     std::printf("snapshot round-trip OK (%zu RAM bytes, CPU regs, "
-                "TMS9918+SID+cassette state, %zu cards enabled)\n",
-                baseline.size(), size_t(4));
+                "TMS9918+SID+cassette+GT-6144+PR-40+CodeTank+CFFA1 + "
+                "standalone Juke-Box)\n",
+                baseline.size());
     return 0;
 }
