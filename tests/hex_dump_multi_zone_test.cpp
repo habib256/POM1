@@ -35,16 +35,25 @@
 
 #include <cassert>
 #include <cstdio>
+#include <filesystem>
 #include <fstream>
+#include <string>
 #include <utility>
 #include <vector>
 
 namespace {
-const char* kFixturePath = "/tmp/pom1_hex_dump_multi_zone.txt";
-
-void writeFixture()
+// Use std::filesystem::temp_directory_path so the test runs on Windows CI
+// (where /tmp doesn't exist) as well as Linux/macOS.
+std::string fixturePath()
 {
-    std::ofstream f(kFixturePath);
+    auto p = std::filesystem::temp_directory_path()
+           / "pom1_hex_dump_multi_zone.txt";
+    return p.string();
+}
+
+void writeFixture(const std::string& path)
+{
+    std::ofstream f(path);
     // lo block: 16 bytes at $0280
     f << "0280: A9 5E A2 05 20 90 0A 20\n"
          "0288: 77 0A 20 14 04 20 00 E0\n"
@@ -58,13 +67,14 @@ void writeFixture()
 
 int main()
 {
-    writeFixture();
+    const std::string path = fixturePath();
+    writeFixture(path);
 
     Memory mem;
     uint16_t startAddr = 0;
     int bytes = 0;
     std::vector<std::pair<uint16_t, uint16_t>> zones;
-    int rc = mem.loadHexDump(kFixturePath, startAddr, &bytes, &zones);
+    int rc = mem.loadHexDump(path.c_str(), startAddr, &bytes, &zones);
     assert(rc == 0 && "loadHexDump returned error on a well-formed 2-zone dump");
     assert(bytes == 32 && "expected 16 lo + 16 hi = 32 bytes loaded");
     assert(startAddr == 0x0280 && "run address should be $0280 (the trailing 0280R)");
@@ -110,6 +120,7 @@ int main()
     }
 
     std::printf("hex_dump_multi_zone: OK (lo=$0280, hi=$E000, run=$0280, %d bytes)\n", bytes);
-    std::remove(kFixturePath);
+    std::error_code ec;
+    std::filesystem::remove(path, ec);
     return 0;
 }

@@ -36,7 +36,7 @@ Sections ordered by actionability: implementable first, externally-blocked last.
 
 ## 🔧 Technical debt
 
-- [ ] **Snapshot save / load** `[M · solid]` — `--snapshot-save <path>` / `--snapshot-load <path>` serialising `EmulationSnapshot` + every peripheral's internal state (SID register file + filter, TMS9918 VRAM + regs, microSD fs cursor, modem connection, cassette transport + tape offset, CFFA1 disk offset, Juke-Box bank). Enables deterministic replay, reloadable test fixtures, one-click bug reports. Versioned on-disk format.
+- [ ] **Snapshot residual gaps** `[M · nice]` — base format + 12-card per-card payloads + CPU section landed (May 2026). Remaining work: cassette mid-stream playback position (re-load tape file by path on snapshot-load + seek to saved `playbackIndex`); WiFiModem / TerminalCard graceful "drop and reconnect" on load (currently kept disconnected); libresidfp internal filter integrators / oscillator phase (engine doesn't expose them — would need an upstream patch); SHA-256 footer (mentioned in `SnapshotIO.h` as v2 sweetener).
 - [ ] **Scriptable runtime IPC** `[M · nice]` — `--cmd-fd <N>` (or Unix socket) reading line-delimited commands while the emulator runs — same verbs as CLI flags, but for stateful sequences. Telnet on `:6502` carries keystrokes + display; this channel carries control without polluting the keyboard stream. Depends on CLI-verb + snapshot work above.
 - [ ] **Terminal Card — `Ctrl-K` hand-over** `[S · nice]` — match the 8BitFlux toggle: a `Ctrl-K` byte suspends `$D010`/`$D011` injection until `Ctrl-T` re-attaches. Useful once a script bootstrapped a program and the user wants to play without dropping the session. Hook: `injectionSuspended` next to `escapePending` / `eightBitMode` in `TerminalCard.cpp`.
 - [ ] **External `presets.json`** `[S · nice]` — `MainWindow_Presets.cpp` already flags itself as the migration target. Move `kMachinePresets[]` to JSON under `doc/` (or next to the executable) so users add presets without recompiling. Loader in `MainWindow_Presets.cpp`, keep the C++ table as fallback.
@@ -46,7 +46,7 @@ Sections ordered by actionability: implementable first, externally-blocked last.
 
 ## 🧪 Testing & CI
 
-- [ ] **GitHub Actions CI (ctest matrix)** `[S · solid]` — `ctest` runs in ~5 s, all native tests stable. Nightly + on-PR matrix building Linux / macOS / Windows (build + `ctest`) plus a WASM job (`emcmake`, no tests). Main effort: pinning toolchain versions and mirroring `setup_imgui.{sh,bat}`.
+- [ ] **microSD subdir navigation telnet test regression** `[S · solid]` — `tools/test_sdcard_subdir_navigation_telnet.py` consistently fails at steps 2.1 / 2.2 / 5.2 / 6.1: at root, `LOAD HELLO` returns the Wozmon backslash prompt instead of SD CARD OS's `FILE NOT FOUND`. Reproduces locally on `main` and on `c02ecef` (pre-IRQ refactor), so the regression predates the recent IRQ work. Tagged `continue-on-error: true` in `.github/workflows/ci.yml` so the rest of the smoke suite still gates merges. Investigate firmware / expected-string drift.
 
 ---
 
