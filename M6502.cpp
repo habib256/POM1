@@ -18,6 +18,7 @@
 
 #include "M6502.h"
 #include "Logger.h"
+#include "SnapshotIO.h"
 #include <sstream>
 #include <iomanip>
 
@@ -1277,5 +1278,31 @@ void M6502::start(void)
 void M6502::stop(void)
 {
     running = 0;
+}
+
+void M6502::serialize(pom1::SnapshotWriter& writer) const
+{
+    writer.writeU16(programCounter);
+    writer.writeU8(accumulator);
+    writer.writeU8(xRegister);
+    writer.writeU8(yRegister);
+    writer.writeU8(statusRegister);
+    writer.writeU8(stackPointer);
+    writer.writeU8(static_cast<uint8_t>(IRQ ? 1 : 0));
+    writer.writeU8(static_cast<uint8_t>(NMI ? 1 : 0));
+    writer.writeU32(static_cast<uint32_t>(cycles));
+}
+
+void M6502::deserialize(pom1::SnapshotReader& reader)
+{
+    programCounter = reader.readU16();
+    accumulator    = reader.readU8();
+    xRegister      = reader.readU8();
+    yRegister      = reader.readU8();
+    statusRegister = reader.readU8();
+    stackPointer   = reader.readU8();
+    IRQ            = reader.readU8();
+    NMI            = reader.readU8();
+    cycles         = static_cast<int>(reader.readU32());
 }
 

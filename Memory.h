@@ -32,6 +32,7 @@
 #include <bitset>
 #include <cstddef>
 #include <utility>
+#include <atomic>
 #include "AudioDevice.h"
 #include "CassetteDevice.h"
 #include "SID.h"
@@ -123,11 +124,13 @@ public:
     //   * Each peripheral's `Peripheral::serialize()` payload (default no-op
     //     for cards that haven't migrated their state yet — see Peripheral.h)
     //
+    // CPU state (PC/A/X/Y/SP/status/IRQ/NMI/cycles) is round-tripped via the
+    // optional `cpu` parameter — pass nullptr to skip the "CPU" section
+    // entirely (useful for memory-only fixtures and the lower-level test
+    // path that doesn't construct an M6502).
+    //
     // NOT captured yet (deliberate phase-1 limitations, documented so a
     // contributor knows what to add next):
-    //   * M6502 register state (PC/A/X/Y/SP/status). Loading currently
-    //     re-runs from the reset vector. Add by plumbing through
-    //     EmulationController::saveSnapshot once it exists.
     //   * Cassette deck transport position
     //   * MicroSD `currentDirectory` cursor
     //   * WiFiModem TCP connection (impossible to serialise — needs a
@@ -136,8 +139,10 @@ public:
     // Returns false on error and fills `error`.
     // Caller is responsible for stopping the CPU before invoking either of
     // these (saveSnapshot is read-only but loadSnapshot rewrites RAM).
-    bool saveSnapshot(const std::string& path, std::string& error) const;
-    bool loadSnapshot(const std::string& path, std::string& error);
+    bool saveSnapshot(const std::string& path, std::string& error,
+                      const class M6502* cpu = nullptr) const;
+    bool loadSnapshot(const std::string& path, std::string& error,
+                      class M6502* cpu = nullptr);
 
     uint8_t memRead(uint16_t address);
     //uint8_t memReadAbsolute(uint16_t adr);
@@ -435,7 +440,11 @@ private :
     std::unique_ptr<WiFiModem> wifiModem;
     bool wifiModemEnabled = false;
     std::unique_ptr<TerminalCard> terminalCard;
-    bool terminalCardEnabled = false;
+    // Atomic: written from UI thread under stateMutex, but read without the
+    // lock from the render thread (getTerminalCardIfEnabled) and from the
+    // emulation thread after it releases stateMutex (post-slice reset/clear
+    // drain in EmulationController::runEmulationSlice).
+    std::atomic<bool> terminalCardEnabled{false};
     std::unique_ptr<A1IO_RTC> a1ioRtc;
     bool a1ioRtcEnabled = false;
     std::unique_ptr<PR40Printer> pr40Printer;

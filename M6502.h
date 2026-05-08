@@ -21,6 +21,8 @@
 
 #include "Memory.h"
 
+namespace pom1 { class SnapshotWriter; class SnapshotReader; }
+
 class M6502
 {
 public:
@@ -103,6 +105,15 @@ public:
     /// the CLI dispatcher tell "halted at breakpoint" from "halted by
     /// the user" without inspecting PC by hand.
     bool isBreakpointTripped() const { return breakpointTripped; }
+
+    // Snapshot round-trip — written into the "CPU" section of a .snap file.
+    // Captures only architecturally-visible state (PC, A, X, Y, SR, SP,
+    // IRQ/NMI lines, cycle counter). Mid-instruction scratch (op, tmp,
+    // running) and debug toggles (breakpoint*, debugBrkTrace) are session-
+    // local and intentionally skipped — `loadSnapshot` always lands on an
+    // instruction boundary.
+    void serialize(pom1::SnapshotWriter& writer) const;
+    void deserialize(pom1::SnapshotReader& reader);
 
 private:
 

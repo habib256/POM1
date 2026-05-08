@@ -14,8 +14,6 @@
 //   - per-card payloads beyond enable flags. Most cards still ship the
 //     default `Peripheral::serialize()` no-op (see Peripheral.h);
 //     migrating each card's internal state is the next layer of work.
-//   - CPU register state. Snapshot v1 only captures Memory; CPU snapshot
-//     lives behind EmulationController::saveSnapshot once that exists.
 //
 // Adding card-payload coverage. Once a card overrides serialize/deserialize,
 // add an assertion here that mutates the card, snapshots, mutates again,
@@ -30,6 +28,7 @@
 #include "A1IO_RTC.h"
 #include "PR40Printer.h"
 #include "Memory.h"
+#include "M6502.h"
 #include "SnapshotIO.h"
 
 #include <cassert>
@@ -74,10 +73,39 @@ int main()
     mem.setPR40Enabled(true);
     mem.setGT6144Enabled(true);
 
+    // ── CPU round-trip. Plant a tiny program at $0300 that mutates A/X/Y
+    //    to known sentinel values, then step the CPU through it so the
+    //    saved registers differ from any plausible reset state.
+    //
+    //    $0300: A9 42      LDA #$42
+    //    $0302: A2 33      LDX #$33
+    //    $0304: A0 77      LDY #$77
+    //    $0306: EA         NOP
+    mem.memWrite(0x0300, 0xA9); mem.memWrite(0x0301, 0x42);
+    mem.memWrite(0x0302, 0xA2); mem.memWrite(0x0303, 0x33);
+    mem.memWrite(0x0304, 0xA0); mem.memWrite(0x0305, 0x77);
+    mem.memWrite(0x0306, 0xEA);
+
+    M6502 cpu(&mem);
+    cpu.setProgramCounter(0x0300);
+    cpu.start();
+    for (int i = 0; i < 4; ++i) cpu.step();
+    cpu.stop();
+    const uint8_t  expectedA  = cpu.getAccumulator();
+    const uint8_t  expectedX  = cpu.getXRegister();
+    const uint8_t  expectedY  = cpu.getYRegister();
+    const uint8_t  expectedSR = cpu.getStatusRegister();
+    const uint8_t  expectedSP = cpu.getStackPointer();
+    const uint16_t expectedPC = cpu.getProgramCounter();
+    assert(expectedA == 0x42);
+    assert(expectedX == 0x33);
+    assert(expectedY == 0x77);
+    assert(expectedPC == 0x0307);
+
     // ── Save
     auto path = makeTempPath("roundtrip");
     std::string err;
-    if (!mem.saveSnapshot(path.string(), err)) {
+    if (!mem.saveSnapshot(path.string(), err, &cpu)) {
         std::fprintf(stderr, "saveSnapshot failed: %s\n", err.c_str());
         return 1;
     }
@@ -101,8 +129,9 @@ int main()
         baseline[i] = mem.memRead(static_cast<uint16_t>(0x0200 + i));
     }
 
-    // ── Fresh Memory; nothing should match the previous one in the user area.
+    // ── Fresh Memory + CPU; neither RAM nor registers should match yet.
     Memory mem2;
+    M6502 cpu2(&mem2);
     bool anyDiff = false;
     for (size_t i = 0; i < baseline.size() && !anyDiff; ++i) {
         if (mem2.memRead(static_cast<uint16_t>(0x0200 + i)) != baseline[i])
@@ -111,9 +140,13 @@ int main()
     assert(anyDiff && "fresh Memory must differ from snapshotted RAM");
     assert(!mem2.isPR40Enabled());
     assert(!mem2.isGT6144Enabled());
+    assert(cpu2.getProgramCounter() != expectedPC ||
+           cpu2.getAccumulator()    != expectedA  ||
+           cpu2.getXRegister()      != expectedX  ||
+           cpu2.getYRegister()      != expectedY);
 
     // ── Load snapshot into the fresh instance
-    if (!mem2.loadSnapshot(path.string(), err)) {
+    if (!mem2.loadSnapshot(path.string(), err, &cpu2)) {
         std::fprintf(stderr, "loadSnapshot failed: %s\n", err.c_str());
         return 1;
     }
@@ -133,8 +166,39 @@ int main()
     assert(mem2.isPR40Enabled());
     assert(mem2.isGT6144Enabled());
 
+    // ── CPU registers must round-trip exactly
+    if (cpu2.getAccumulator()    != expectedA  ||
+        cpu2.getXRegister()      != expectedX  ||
+        cpu2.getYRegister()      != expectedY  ||
+        cpu2.getStatusRegister() != expectedSR ||
+        cpu2.getStackPointer()   != expectedSP ||
+        cpu2.getProgramCounter() != expectedPC) {
+        std::fprintf(stderr,
+            "CPU mismatch: A=%02X/%02X X=%02X/%02X Y=%02X/%02X "
+            "SR=%02X/%02X SP=%02X/%02X PC=%04X/%04X\n",
+            cpu2.getAccumulator(),    expectedA,
+            cpu2.getXRegister(),      expectedX,
+            cpu2.getYRegister(),      expectedY,
+            cpu2.getStatusRegister(), expectedSR,
+            cpu2.getStackPointer(),   expectedSP,
+            cpu2.getProgramCounter(), expectedPC);
+        return 1;
+    }
+
+    // ── Memory-only round-trip path (no CPU pointer): the "CPU" section
+    //    written above must be skipped cleanly by a reader that doesn't
+    //    care about CPU state.
+    Memory mem3;
+    if (!mem3.loadSnapshot(path.string(), err)) {
+        std::fprintf(stderr, "loadSnapshot (memory-only) failed: %s\n", err.c_str());
+        return 1;
+    }
+    assert(mem3.isPR40Enabled());
+    assert(mem3.isGT6144Enabled());
+
     std::error_code ec;
     std::filesystem::remove(path, ec);
-    std::printf("snapshot round-trip OK (%zu RAM bytes, 2 cards)\n", baseline.size());
+    std::printf("snapshot round-trip OK (%zu RAM bytes, 2 cards, CPU regs)\n",
+                baseline.size());
     return 0;
 }

@@ -1586,12 +1586,22 @@ constexpr uint16_t kFlagSiliconStrict  = 1u << 14;  // TMS9918 silicon-strict ti
 
 } // namespace
 
-bool Memory::saveSnapshot(const std::string& path, std::string& error) const
+bool Memory::saveSnapshot(const std::string& path, std::string& error,
+                          const M6502* cpu) const
 {
     pom1::SnapshotWriter w(path);
     if (!w.good()) {
         error = "cannot open snapshot file for writing: " + path;
         return false;
+    }
+
+    // ── CPU section: architecturally-visible 6502 state. Skipped when the
+    //    caller didn't supply a CPU (memory-only fixtures); loadSnapshot
+    //    treats a missing CPU section the same way for forward-compat.
+    if (cpu) {
+        auto h = w.beginSection("CPU");
+        cpu->serialize(w);
+        w.endSection(h);
     }
 
     // ── MEM section: 64 KB RAM + key/display state + scalar bookkeeping
@@ -1660,7 +1670,8 @@ bool Memory::saveSnapshot(const std::string& path, std::string& error) const
     return true;
 }
 
-bool Memory::loadSnapshot(const std::string& path, std::string& error)
+bool Memory::loadSnapshot(const std::string& path, std::string& error,
+                          M6502* cpu)
 {
     pom1::SnapshotReader r(path);
     if (!r.good()) {
@@ -1680,6 +1691,14 @@ bool Memory::loadSnapshot(const std::string& path, std::string& error)
     std::string sectionName;
     uint32_t    sectionLen = 0;
     while (r.nextSection(sectionName, sectionLen)) {
+        if (sectionName == "CPU") {
+            if (cpu) {
+                cpu->deserialize(r);
+            } else {
+                r.skipCurrentSection();
+            }
+            continue;
+        }
         if (sectionName == "MEM") {
             r.readBytes(mem.data(), mem.size());
             lastKey            = static_cast<char>(r.readU8());

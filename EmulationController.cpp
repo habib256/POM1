@@ -327,13 +327,13 @@ bool EmulationController::saveMemoryRange(const std::string& path, uint16_t star
 bool EmulationController::saveSnapshot(const std::string& path, std::string& error) const
 {
     std::lock_guard<PriorityMutex> lock(stateMutex);
-    return memory->saveSnapshot(path, error);
+    return memory->saveSnapshot(path, error, cpu.get());
 }
 
 bool EmulationController::loadSnapshot(const std::string& path, std::string& error)
 {
     std::lock_guard<PriorityMutex> lock(stateMutex);
-    if (!memory->loadSnapshot(path, error)) return false;
+    if (!memory->loadSnapshot(path, error, cpu.get())) return false;
     // Republish so the UI sees the new RAM/state immediately.
     publisher.publish(*memory, *cpu, runRequested.load());
     return true;
