@@ -6,7 +6,7 @@ a user typing `LOAD YUM` at `/PLAB>` while YUM actually lived in
 `/PLAB/MCODE`.
 
 Scenario ("CD before LOAD/DEL"):
-  1. Boot with --preset 4 (P-LAB microSD + Applesoft), --terminal, --cpu-max.
+  1. Boot with --preset 5 (P-LAB microSD + Applesoft), --terminal, --cpu-max.
   2. Drop a throwaway tagged file at sdcard/testdir/HELLO#040300 (harmless
      NOP bytes that load at $0300 without bricking anything).
   3. 8000R -> SD CARD OS prompt at /.
@@ -154,7 +154,7 @@ def launch_pom1(log_path: str):
     exe = ensure_pom1_binary()
     log = open(log_path, "w")
     proc = subprocess.Popen(
-        [str(exe), "--preset", "4", "--terminal", "--cpu-max"],
+        [str(exe), "--preset", "5", "--terminal", "--cpu-max"],
         stdout=log, stderr=subprocess.STDOUT, start_new_session=True,
     )
     # Boot + applyMachineConfig + 15-frame card-enable defer + first CPU slice.
@@ -212,7 +212,16 @@ def main() -> int:
         recv_avail(sock, total=1.5)
 
         print("\nStep 1: launch SD CARD OS (8000R)")
-        out = send_line(sock, "8000R", wait=0.7, read_t=3.0)
+        # The OS takes ~1-2 s to print its banner + initialize cwd to '/'.
+        # If the next command arrives before init completes, the firmware
+        # responds with a stale-cwd '?I/O ERROR' instead of 'FILE NOT FOUND'
+        # and the prompt comes back as '>' instead of '/>'. Block until we
+        # see '/>' (or 5 s timeout) so subsequent commands are deterministic.
+        sock.sendall(b"8000R\r")
+        deadline = time.time() + 5.0
+        out = ""
+        while time.time() < deadline and "/>" not in out:
+            out += recv_avail(sock, total=0.5, idle=0.2)
         vprint("1.1 banner", out)
 
         print("\nStep 2: LOAD / DEL at / (file lives in /testdir/)")

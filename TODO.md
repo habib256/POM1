@@ -44,12 +44,6 @@ Sections ordered by actionability: implementable first, externally-blocked last.
 
 ---
 
-## 🧪 Testing & CI
-
-- [ ] **microSD subdir navigation telnet test regression** `[S · solid]` — `tools/test_sdcard_subdir_navigation_telnet.py` consistently fails at steps 2.1 / 2.2 / 5.2 / 6.1: at root, `LOAD HELLO` returns the Wozmon backslash prompt instead of SD CARD OS's `FILE NOT FOUND`. Reproduces locally on `main` and on `c02ecef` (pre-IRQ refactor), so the regression predates the recent IRQ work. Tagged `continue-on-error: true` in `.github/workflows/ci.yml` so the rest of the smoke suite still gates merges. Investigate firmware / expected-string drift.
-
----
-
 ## ⏸️ Deferred / conditional
 
 Spec public, code change tractable, but gated on a real-world trigger (software exercising the feature, user demand, hardware availability). Promote when the trigger appears.

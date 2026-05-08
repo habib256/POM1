@@ -169,11 +169,4 @@ jobs:
         run: xvfb-run -a python3 tools/test_aci_telnet.py
 
       - name: microSD subdir navigation telnet test
-        # Pre-existing failure (reproducible locally on main and on c02ecef
-        # one commit before the recent IRQ refactor). At root, `LOAD HELLO`
-        # returns the Wozmon backslash prompt instead of SD CARD OS's
-        # `FILE NOT FOUND` — looks like the test fixture or expected-string
-        # drifted away from the firmware. Tracked separately; non-blocking
-        # so the rest of the smoke suite still gates merges.
-        continue-on-error: true
         run: xvfb-run -a python3 tools/test_sdcard_subdir_navigation_telnet.py
