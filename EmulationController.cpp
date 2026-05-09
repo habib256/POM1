@@ -701,6 +701,18 @@ bool EmulationController::isIECCardEnabled() const
     return memory->isIECCardEnabled();
 }
 
+bool EmulationController::mountIECDisk(const std::string& path)
+{
+    std::lock_guard<PriorityMutex> lock(stateMutex);
+    return memory->getIECCard().mountDisk(path);
+}
+
+void EmulationController::unmountIECDisk()
+{
+    std::lock_guard<PriorityMutex> lock(stateMutex);
+    memory->getIECCard().unmount();
+}
+
 EmulationController::IECCardUIState EmulationController::getIECCardUIState() const
 {
     std::lock_guard<PriorityMutex> lock(stateMutex);

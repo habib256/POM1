@@ -87,6 +87,8 @@ private:
         Idle,                // waiting for talker activity
         WaitClkReleased,     // talker should release CLK to signal "have byte"
         ReadyAckPulled,      // we released DATA, awaiting CLK pull (start of byte)
+        EoiAckPulse,         // EOI detected — DATA pulsed LOW briefly
+        EoiAckRelease,       // DATA released after EOI pulse, awaiting CLK pull
         ReceivingBits,       // 8 CLK rising edges → 8 bits LSB first
         ByteAck,             // we pulled DATA to ack received byte
     };

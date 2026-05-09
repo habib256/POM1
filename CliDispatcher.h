@@ -111,6 +111,7 @@ struct CliPlan {
     std::optional<JukeBox::ChipMode>   jukeBoxChipModeOverride;
     std::optional<CodeTank::Jumper>    codeTankJumperOverride;
     std::string                        codeTankRomPath;
+    std::string                        iecDiskPath;     // --iec-disk <path>: mount this .d64 on the IEC daughterboard at startup (overrides the default disks/iec/dev8.d64 probe)
     // --silicon-strict / --no-silicon-strict force-flip TMS9918 silicon-strict
     // mode after the preset has applied its default (!fantasyPreset). Empty =
     // honour the preset; the override survives the first render but does NOT

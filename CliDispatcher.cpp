@@ -362,6 +362,11 @@ std::optional<CliPlan> parseCli(int argc, char* argv[], bool& listPresetsOut)
             else { logAndFail("--codetank-jumper expects lower or upper"); return std::nullopt; }
             continue;
         }
+        if (arg == "--iec-disk") {
+            if (!needArg(i, "--iec-disk")) return std::nullopt;
+            plan.iecDiskPath = argv[++i];
+            continue;
+        }
         if (arg == "--codetank-rom") {
             if (!needArg(i, "--codetank-rom")) return std::nullopt;
             plan.codeTankRomPath = argv[++i];

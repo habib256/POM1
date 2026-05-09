@@ -542,6 +542,16 @@ int main(int argc, char* argv[])
         mainWindow.setCodeTankJumperOverride(*plan.codeTankJumperOverride);
     if (!plan.codeTankRomPath.empty())
         mainWindow.setCodeTankRomPathOverride(plan.codeTankRomPath);
+    if (!plan.iecDiskPath.empty()) {
+        // Mount immediately on the IEC card's virtual 1541. Memory ctor's
+        // probe (disks/iec/dev8.d64) ran before this; this override
+        // replaces what the probe loaded.
+        if (!mainWindow.getEmulationController()->mountIECDisk(plan.iecDiskPath)) {
+            pom1::log().warn("IEC", std::string("--iec-disk: failed to mount ") + plan.iecDiskPath);
+        } else {
+            pom1::log().info("IEC", std::string("--iec-disk: mounted ") + plan.iecDiskPath);
+        }
+    }
     if (plan.siliconStrictModeOverride)
         mainWindow.setSiliconStrictModeOverride(*plan.siliconStrictModeOverride);
     if (!plan.deferredActions.empty())

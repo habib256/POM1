@@ -1,12 +1,6 @@
 #include "IECCard.h"
 #include "SnapshotIO.h"
 
-#include <cstdio>
-
-#ifndef POM1_IEC_DEBUG
-#define POM1_IEC_DEBUG 0
-#endif
-
 namespace pom1 {
 
 namespace {
@@ -16,8 +10,12 @@ constexpr uint8_t kDriveAddress = 8;
 // SD OS 1.3 bit-time is ~60 µs; we use 50-cycle granularity as a
 // generous floor that beats the firmware's NOP-spacing without being
 // too lax against the 1ms T2 watchdog.
-constexpr int kTxBitSettleCycles = 30;
-constexpr int kTxByteAckCycles   = 60;
+// Generous settle times — the kernel's ACPTR routine has a lot of CPU work
+// between the "drive released CLK" event and the actual DATAHI (release
+// listener-side DATA hold), and we don't want drive bit transitions to
+// race the kernel's polling loop.
+constexpr int kTxBitSettleCycles = 50;
+constexpr int kTxByteAckCycles   = 80;
 constexpr int kTxEoiHoldCycles   = 250;  // ~250 µs for EOI signal
 }
 
@@ -58,7 +56,7 @@ void IECCard::busReset() {
 void IECCard::onViaPortBWrite(uint8_t portB, uint8_t ddrB) {
     lastPortB_ = portB;
     lastDdrB_  = ddrB;
-#if POM1_IEC_DEBUG
+#if 0  // disabled debug logging
     static int writeCount = 0;
     if (writeCount < 200) {
         std::fprintf(stderr, "[IEC] W#%d portB=%02X ddrB=%02X\n",
@@ -128,7 +126,7 @@ void IECCard::evaluateEdges(uint8_t portB, uint8_t ddrB) {
 
 // ---------- ATN handling ----------------------------------------------------
 
-#if POM1_IEC_DEBUG
+#if 0  // disabled debug logging
 static void iecLog(const char* tag) {
     std::fprintf(stderr, "[IEC] %s\n", tag);
     std::fflush(stderr);
@@ -136,7 +134,7 @@ static void iecLog(const char* tag) {
 #endif
 
 void IECCard::onAtnAsserted() {
-#if POM1_IEC_DEBUG
+#if 0  // disabled debug logging
     iecLog("ATN asserted");
 #endif
     // Under ATN, every device on the bus listens for command bytes. The
@@ -155,7 +153,7 @@ void IECCard::onAtnAsserted() {
 }
 
 void IECCard::onAtnReleased() {
-#if POM1_IEC_DEBUG
+#if 0  // disabled debug logging
     std::fflush(stderr); std::fprintf(stderr, "[IEC] ATN released, role=%d\n", static_cast<int>(role_));
 #endif
     // Role was already set by the last LISTEN/TALK/UNLSN/UNTALK byte that
@@ -175,8 +173,11 @@ void IECCard::onAtnReleased() {
 // ---------- CLK / DATA edge dispatch ---------------------------------------
 
 void IECCard::onClkRisingEdge() {
-    // Bus CLK went HIGH — talker released CLK.
-    if (role_ != Role::Listener) return;
+    // Bus CLK went HIGH — talker released CLK. Under ATN every device
+    // listens for command bytes regardless of prior role; after ATN
+    // release the established role determines whether we keep listening.
+    const bool listenerActive = prevAtnLow_ || role_ == Role::Listener;
+    if (!listenerActive) return;
     switch (rxPhase_) {
         case RxPhase::WaitClkReleased:
             // Talker is ready ("I have a byte"). Release DATA to say "ready".
@@ -208,16 +209,17 @@ void IECCard::onClkRisingEdge() {
 }
 
 void IECCard::onClkFallingEdge() {
-    if (role_ != Role::Listener) return;
+    const bool listenerActive = prevAtnLow_ || role_ == Role::Listener;
+    if (!listenerActive) return;
     switch (rxPhase_) {
         case RxPhase::ReadyAckPulled:
-            // Talker pulled CLK low → start of byte.
+        case RxPhase::EoiAckRelease:
+            // Talker pulled CLK low → start of byte. (For non-EOI we go
+            // ReadyAckPulled → ReceivingBits; for EOI we go through the
+            // EoiAckPulse / EoiAckRelease detour and end up here.)
             rxPhase_ = RxPhase::ReceivingBits;
             rxBitCount_ = 0;
             rxByte_ = 0;
-            // EOI handshake: if we observed >200µs CLK-released window and
-            // pulsed DATA back, mark the byte as EOI. (Simplified: we set
-            // rxEoi_ = true if the window exceeded threshold.)
             break;
         case RxPhase::ReceivingBits:
             if (rxBitCount_ >= 8) {
@@ -257,7 +259,7 @@ void IECCard::onDataFallingEdge() {
 void IECCard::deliverByteToDrive(uint8_t b, bool eoi) {
     const bool inFilenameWindow = wasOpenSecondary_;
     const bool isUnHandshake    = (b == 0x3F || b == 0x5F);
-#if POM1_IEC_DEBUG
+#if 0  // disabled debug logging
     std::fflush(stderr); std::fprintf(stderr, "[IEC] rx byte=%02X eoi=%d atn=%d filenameWin=%d role=%d\n",
                  b, eoi ? 1 : 0, prevAtnLow_ ? 1 : 0, inFilenameWindow ? 1 : 0,
                  static_cast<int>(role_));
@@ -337,14 +339,19 @@ void IECCard::startTransmitting() {
     txByte_ = 0;
     txEoi_ = false;
     if (!drive_.talkByte(txByte_, txEoi_)) {
-        // Nothing to send — release the bus and stay quiet. Listener will
-        // eventually time out; the kernel handles that as STATUS bit-1
-        // (timeout, BCS LD40 retry / EOI exit).
+#if 0  // disabled debug logging
+        std::fprintf(stderr, "[IEC] startTransmitting: no byte (drive empty)\n");
+        std::fflush(stderr);
+#endif
         releaseAllDriveLines();
         txPhase_ = TxPhase::AllSent;
         txDelayCycles_ = 0;
         return;
     }
+#if 0  // disabled debug logging
+    std::fprintf(stderr, "[IEC] startTransmitting: byte=%02X eoi=%d\n", txByte_, txEoi_ ? 1 : 0);
+    std::fflush(stderr);
+#endif
     // Pull CLK low (= "I have a byte"); release DATA. Kernel's TKATN has
     // already pulled DATA on its side, so the listener-ready handshake is
     // satisfied as soon as we enter the dance. No DATA falling-edge wait.
@@ -356,17 +363,42 @@ void IECCard::startTransmitting() {
 
 void IECCard::advanceCycles(int cpuCycles) {
     if (cpuCycles <= 0) return;
+#if 0  // disabled debug logging
+    static int dbgTickCount = 0;
+    static int dbgPrevPhase = 99;
+    if (role_ == Role::Talker && dbgTickCount < 1000 &&
+        (dbgPrevPhase != static_cast<int>(txPhase_) || txDelayCycles_ <= 0)) {
+        std::fprintf(stderr, "[IEC] tick cycles=%d txPhase=%d delay=%d bit=%d byte=%02X bus(C/D)=%d/%d\n",
+                     cpuCycles, static_cast<int>(txPhase_), txDelayCycles_, txBitIndex_, txByte_,
+                     bus_.level(IECBus::Line::CLK) ? 1 : 0,
+                     bus_.level(IECBus::Line::DATA) ? 1 : 0);
+        std::fflush(stderr);
+        dbgTickCount++;
+        dbgPrevPhase = static_cast<int>(txPhase_);
+    }
+#endif
 
     // EOI detection: if we're waiting in ReadyAckPulled (CLK released by host)
     // for >200 µs (~205 cycles), the firmware is signalling EOI on the next
     // byte (CBM convention: talker holds CLK > 200µs).
-    if (role_ == Role::Listener && rxPhase_ == RxPhase::ReadyAckPulled) {
+    // EOI listener handshake: if the talker holds CLK released for >200 µs
+    // without pulling it low, that's an EOI signal. The listener acks by
+    // pulling DATA briefly (>60 µs) then releasing — see firmware ISR02/
+    // ISR03 in kernal_serial.lm.
+    if ((role_ == Role::Listener || prevAtnLow_) && rxPhase_ == RxPhase::ReadyAckPulled) {
         rxEoiTimerCycles_ += cpuCycles;
         if (rxEoiTimerCycles_ > 205) {
             rxEoi_ = true;
-            // Pulse DATA low briefly (>60µs) to ack EOI — but the next CLK
-            // falling edge will pull DATA low anyway to ack the byte, so
-            // we just remember the flag.
+            bus_.setDrivePulled(IECBus::Line::DATA, true);  // EOI ack pulse
+            rxPhase_ = RxPhase::EoiAckPulse;
+            rxEoiTimerCycles_ = 0;
+        }
+    } else if ((role_ == Role::Listener || prevAtnLow_) && rxPhase_ == RxPhase::EoiAckPulse) {
+        rxEoiTimerCycles_ += cpuCycles;
+        if (rxEoiTimerCycles_ > 80) {
+            bus_.setDrivePulled(IECBus::Line::DATA, false); // release after pulse
+            rxPhase_ = RxPhase::EoiAckRelease;
+            rxEoiTimerCycles_ = 0;
         }
     }
 

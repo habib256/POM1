@@ -204,6 +204,11 @@ public:
         std::vector<Entry> directory;
     };
     IECCardUIState getIECCardUIState() const;
+    // Mount a .d64 disk image on the IEC card's virtual 1541. Replaces any
+    // previously mounted disk. Returns true on success. Path may be absolute
+    // or cwd-relative. Safe to call before/after setIECCardEnabled.
+    bool mountIECDisk(const std::string& path);
+    void unmountIECDisk();
     // Host filesystem root the microSD card maps onto. The desktop `Memory`
     // ctor probes `sdcard/`, `../sdcard`, `../../sdcard` and records the
     // first match; this getter returns that probed absolute path (empty
