@@ -13,7 +13,7 @@ Three phases: **A** boot-time, **B** first-frame preset overrides, **C** deferre
 | `--save-tape <path>` / `--save-tape-format <aci\|wav>` | A | Dump deck on clean shutdown. SIGINT/SIGTERM triggers `~MainWindow_ImGui`. |
 | `--cpu-max` | A | Pin `executionSpeed = 1 000 000` cycles/frame. Beats `--speed`. |
 | `--speed <cycles/frame>` | B | Override (1× = 17045, 2× = 34091). |
-| `--enable <card>[,…]` / `--disable <card>[,…]` | B | Rewrite deferred plug list. Names: `aci, sid, sid-se, microsd, tms9918, a1io-rtc, hgr, cffa1, krusader, wifi, terminal, jukebox, codetank, pr40, gt6144`. Mutex rules enforced. `--disable krusader` is a no-op (ROM unload needs hard reset). Run after `--terminal`. |
+| `--enable <card>[,…]` / `--disable <card>[,…]` | B | Rewrite deferred plug list. Names: `aci, sid, sid-se, microsd, tms9918, a1io-rtc, hgr, cffa1, krusader, wifi, terminal, jukebox, codetank, pr40, gt6144, iec`. `iec` cascade-enables microSD. Mutex rules enforced. `--disable krusader` is a no-op (ROM unload needs hard reset). Run after `--terminal`. |
 | `--sid-chip <6581\|8580>` | B | Swap chip; libresidfp replays last register state. |
 | `--jukebox-jumper <ram16\|ram32>` / `--jukebox-chip <flash\|eeprom>` | B | Juke-Box ROM window + chip mode. |
 | `--codetank-jumper <lower\|upper>` / `--codetank-rom <path>` | B | Pick 16 kB half of 32 kB 28c256 / override default `roms/codetank/Codetank_GAME1.rom`. `--enable codetank` auto-schedules `--enable tms9918`; `--disable tms9918` cascade-unschedules CodeTank. |

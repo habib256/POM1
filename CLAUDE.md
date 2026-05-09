@@ -6,7 +6,7 @@ Architecture / invariants / gotchas for the **emulator side** of POM1. User walk
 
 - Apple 1 software (BASIC, SID tunes, microSD shell tools, games) → **`dev/APPLE1DEV.md`** + **`dev/Programming_Apple1_ASM.md`**.
 - **CLI flags** (full table) → **`doc/CLI.md`** · implementation **`CliDispatcher.cpp`**.
-- 6502 ASM sources for every shipped program → **`dev/`** (`lib/{apple1,m6502,tms9918,hgr,sokoban}/`, `projects/<name>/`, `cc65/`). Browseable in-app via **Dev → Source Browser**. Compiled `.bin`/`.txt` land under `software/<dir>/` — that is what POM1 loads.
+- 6502 ASM sources for every shipped program → **`dev/`** (`lib/{apple1,m6502,tms9918,hgr,sokoban}/`, `projects/<name>/`, `cc65/`). Compiled `.bin`/`.txt` land under `software/<dir>/` — that is what POM1 loads. Release bundles omit `dev/`; clone the repo for sources.
 
 ## Project Overview
 
@@ -37,7 +37,7 @@ emcmake cmake .. && emmake make -j$(nproc 2>/dev/null || sysctl -n hw.ncpu)
 emrun POM1.html
 ```
 
-MEMFS preload (`if(POM1_IS_WASM)` in `CMakeLists.txt`) mounts `roms/ pic/ fonts/ software/ sdcard/ cassettes/ dev/` and the single `cfcard/cfcard.po` (other `.po` extras are desktop-only, >140 MB). Rebuild WASM after any change under those trees or `build-wasm/shell.html`. POST_BUILD copies `pic/icon.png` to `build-wasm/pic/` as an HTTP-visible favicon (MEMFS unreachable to the browser). Desktop `Memory` ctor probes `sdcard`, `../sdcard`, `../../sdcard` and `cfcard/cfcard.po`.
+MEMFS preload (`if(POM1_IS_WASM)` in `CMakeLists.txt`) mounts `roms/ pic/ fonts/ software/ sdcard/ cassettes/` and the single `cfcard/cfcard.po` (other `.po` extras are desktop-only, >140 MB). Rebuild WASM after any change under those trees or `build-wasm/shell.html`. POST_BUILD copies `pic/icon.png` to `build-wasm/pic/` as an HTTP-visible favicon (MEMFS unreachable to the browser). Desktop `Memory` ctor probes `sdcard`, `../sdcard`, `../../sdcard` and `cfcard/cfcard.po`.
 
 ### Assembling programs (cc65)
 
@@ -49,7 +49,7 @@ Each `.cpp/.h` pair owns one concern. Only non-obvious bits are called out.
 
 ### Parmigiani's golden rule — "one board at a time"
 
-Claudio PARMIGIANI (P-LAB designer): on real hardware exactly ONE P-LAB card is plugged. The 6502 bus has no arbitration and many P-LAB cards overlap address windows (A1-SID `$C800-$CFFF` vs TMS9918 `$CC00/$CC01`; A1-IO RTC `$2000-$200F` vs GEN2 HGR `$2000-$3FFF`; Juke-Box claims `$4000-$BFFF`). POM1 **breaks this on purpose** in "Multiplexing Fantasy" presets (#12, #15) — fantasy, not buildable. Mutex rules elsewhere mirror real bus conflicts. When adding a card, honour the rule and document any intentional coexistence.
+Claudio PARMIGIANI (P-LAB designer): on real hardware exactly ONE P-LAB card is plugged. The 6502 bus has no arbitration and many P-LAB cards overlap address windows (A1-SID `$C800-$CFFF` vs TMS9918 `$CC00/$CC01`; A1-IO RTC `$2000-$200F` vs GEN2 HGR `$2000-$3FFF`; Juke-Box claims `$4000-$BFFF`). POM1 **breaks this on purpose** in "Multiplexing Fantasy" presets (#12, #14) — fantasy, not buildable. Mutex rules elsewhere mirror real bus conflicts. When adding a card, honour the rule and document any intentional coexistence.
 
 ### Core
 
@@ -69,18 +69,17 @@ Claudio PARMIGIANI (P-LAB designer): on real hardware exactly ONE P-LAB card is 
 ### UI (ImGui)
 
 - **main_imgui.cpp** — GLFW/OpenGL3 (GL 3.2 Core / GLSL 150; WebGL 2 / GLSL ES 300 on WASM). `GLFW_OPENGL_FORWARD_COMPAT` macOS-only. SIGINT/SIGTERM → `glfwSetWindowShouldClose(1)` so `--save-tape` flushes. Desktop probes `pic/icon.png` (cwd / `../` / exe-relative) for `glfwSetWindowIcon`; `#if !defined(__APPLE__)` (macOS pulls icon from `.app`).
-- **MainWindow_ImGui** — single class across **9 TUs** sharing `MainWindow_Internal.h`: `_Layout`, `_Presets` (`kMachinePresets[]`), `_Menu`, `_Dialogs`, `_HardwareWindows` (TMS9918 GL texture 256×192 RGBA `GL_NEAREST`), `_FileDialogs` (auto-enable-by-directory), `_DebugWindows`, `_Keyboard`, `_DevFiles`. Keyboard bypasses `InputQueueCharacters` — keys go GLFW → Apple 1. `handleGlfwKey` tags PRESS/REPEAT into `nextCharIsRepeat`. With autorepeat off (default, matches TTL keyboards), REPEAT drops printable + Enter/Backspace/Escape; F7 hold-to-step honours REPEAT.
+- **MainWindow_ImGui** — single class across **8 TUs** sharing `MainWindow_Internal.h`: `_Layout`, `_Presets` (`kMachinePresets[]`), `_Menu`, `_Dialogs`, `_HardwareWindows` (TMS9918 GL texture 256×192 RGBA `GL_NEAREST`), `_FileDialogs` (auto-enable-by-directory), `_DebugWindows`, `_Keyboard`. Keyboard bypasses `InputQueueCharacters` — keys go GLFW → Apple 1. `handleGlfwKey` tags PRESS/REPEAT into `nextCharIsRepeat`. With autorepeat off (default, matches TTL keyboards), REPEAT drops printable + Enter/Backspace/Escape; F7 hold-to-step honours REPEAT.
 
   **`applyMachineConfig(int)` invariants**:
   - Unplugs every card, optional `hardReset()` (skipped first invocation), sets UI flags immediately, queues deferred plug via `pendingCardEnableFrames = kCardEnableDeferFrames` (15 frames ≈ 200 ms). Deferring past first CPU cycle fixes silent-card-on-boot (original symptom: silent SID).
   - **ROM selection uses preset config, not live flags** — microSD Applesoft Lite (`$6000-$7FFF`) vs CFFA1 flavour picked from `cfg.microSD`/`cfg.cffa1` directly (live flags still false at deferred plug time).
   - `applyPendingLayout(const char*)` runs before `Begin()` with **`ImGuiCond_FirstUseEver`**. **Widgets must not call `SetNextWindowSize(..., FirstUseEver)`** — overrides preset. `SetNextWindowSizeConstraints` is OK.
   - **Per-preset ini** `ini/imgui_preset_NN.ini` + `ini/preset_NN.size`. `io.IniFilename = nullptr`; POM1 manages files via `savePresetLayout`/`loadPresetLayout`. `applyMachineConfig(N)` saves outgoing then loads incoming before setting `activePresetIndex = N`. Clean shutdown saves again.
-  - **Default preset = last entry** (*POM1 Multiplexing Fantasy*, currently index 15). First-time use writes `preset_15.ini` + `glfwSetWindowSize` to `max(computePresetLayoutExtent(cfg, fallback), Fantasy extent)` — Fantasy floor 1206×807 means switching never shrinks the OS window. **Keep Fantasy last** — default-picker, banner (`screen->setShowBanner(presetIndex == kMachinePresetCount - 1)`), and window-size floor all key off the terminal index.
-  - Auto-enable by source dir of loaded file: `software/hgr/` → GEN2, `tms9918/` → TMS9918, `net/`|`/wifi/` → Wi-Fi Modem (resets), `sdcard/` → microSD, `a1io_rtc/` → A1-IO & RTC, `gt-6144/` → GT-6144. **`software/sid/` intentionally NOT listed** — SID auto-plug desyncs UI flag vs Memory state across hardReset → silent card. SID programs need a preset with `sid=true`.
+  - **Default preset = last entry** (*POM1 Multiplexing Fantasy*, currently index 14). First-time use writes `preset_14.ini` + `glfwSetWindowSize` to `max(computePresetLayoutExtent(cfg, fallback), Fantasy extent)` — Fantasy floor 1206×807 means switching never shrinks the OS window. **Keep Fantasy last** — default-picker, banner (`screen->setShowBanner(presetIndex == kMachinePresetCount - 1)`), and window-size floor all key off the terminal index.
+  - Auto-enable by source dir of loaded file: `software/Graphic HGR/` → GEN2, `Graphic TMS9918/` → TMS9918, `SOUND SID/` → A1-SID (evicts A1-AUDIO SE + Juke-Box per the menu mutex), `NET/` → Wi-Fi Modem (resets on reload), `sdcard/` → microSD, `a1io_rtc/` → A1-IO & RTC, `Graphic gt-6144/` → GT-6144. Each branch always raises the corresponding `show*` window flag (even when the card was already plugged) so loading from the folder pops the panel — required because the Fantasy preset leaves graphic cards unplugged by default.
 - **Screen_ImGui** — 40×24 grid. Two `characterRenderMode` (Apple1Charmap via `roms/charmap.rom`, HostAscii). Three `monitorMode` tints (Green/Amber/Mono). CRT effect = `drawCRTBackdrop()` phosphor-tint + `drawCRTScanlines()` 1-px `AddRectFilled` every 2 display pixels at integer Y (default `crtScanlineAlpha = 0.50`). `AddLine` avoided — its AA on macOS GL 3.2 / WebGL2 splits sub-2-px thickness across two rows and halves alpha.
 - **CassetteDeck_ImGui** — procedural (`ImDrawList`, no textures). Transport: REC alone = REC+PLAY, PAUSE latches only on Play/Rec, STOP releases, EJECT only from Stopped, REW/FF release PLAY. Forwards to `CassetteDevice` via `EmulationController`.
-- **MainWindow_DevFiles.cpp** — Dev → Source Browser, two-pane read-only view of `dev/`. Scan once at first open, lazy file load on selection, Refresh button, substring filter. Probes `dev/`, `../dev/`, `../../dev/`. Bundled in macOS `.app/Contents/Resources/dev/`, Windows release ZIP, WASM MEMFS.
 
 ### Peripherals
 
@@ -94,8 +93,14 @@ Claudio PARMIGIANI (P-LAB designer): on real hardware exactly ONE P-LAB card is 
 - **CFFA1** — 8 KB ROM `$9000-$AFDF` (ID `CF`/`FA` at `$AFDC`/`$AFDD`), ATA/IDE regs `$AFE0-$AFFF` (A4 not decoded — `$AFE0` mirrors `$AFF0`). Backs ProDOS `.po`; READ/WRITE SECTOR + SET FEATURE only. Auto-mount probes `cfcard/cfcard.po` up three dirs. Two bus entries: read-only ROM + r/w regs.
 - **JukeBox** — Parmigiani & Rosselli. Chip modes: **Flash** (paged read-only, 16 KB–512 KB) / **EEPROM 28c256** (32 KB single-page, writable). ROM at `$4000-$BFFF` (RAM-16/ROM-32 jumper) or `$8000-$BFFF` (RAM-32/ROM-16); Program Manager `$BD00`, Save Program `$B800`. **Bank-select latch `$CA00`**: bits 0-3 = Px page, bit 4 = Sx sub-page. Bus: priority 20 ROM window + priority 15 `$CA00`. Mutex with CodeTank, CFFA1, microSD, Krusader, Wi-Fi Modem, A1-SID; A1-AUDIO SE coexists. Boot page = lowest with `$A5` at file offset `$7D00`. Pinned by `jukebox_paged_rom_smoke`.
 - **CodeTank** — P-LAB ROM **daughterboard** of the TMS9918 Graphic Card (split from JukeBox April 2026). No standalone edge connector / address decoder on the Apple 1 bus. `Memory::setCodeTankEnabled(true)` auto-plugs TMS9918; `setTMS9918Enabled(false)` cascade-unplugs CodeTank. Single 32 KB 28c256, jumper → 16 KB half at `$4000-$7FFF`; no `$CA00`, read-only. ROM probe order: `roms/codetank/Codetank_GAME1.rom`, then `codetank.rom` / `roms/codetank.rom`.
-  - **Shipped menu ROM** (`tools/build_codetank_rom.py --layout=menu`): lower = menu `$4000` + Galaga `$4100`, Sokoban `$5E00`, Snake `$7100`, Life `$7A00` (silicon-strict-clean via `tools/silicon_strict_patch.py`; background in `dev/SILICONBUGS.md` section 17). Upper = TMS_LOGO V2.6 at `$4000-$7FFF`; PROCBSS in Parmigiani RAM `$E000-$EFFF`. Alt layouts: `--layout=split`, `--layout=dualslot8k`.
-  - **UI / bus**: **Hardware → CodeTank Library** scans `roms/codetank/*.{rom,bin}`; priority 20; mutex with Juke-Box; always with TMS9918. Preset 8 plugs both. Tests: `codetank_smoke`, `codetank_tms9918_dependency`.
+  - **Shipped library** (`tools/build_codetank_rom.py` produces 4 ROMs in `roms/codetank/`):
+    - `Codetank_GAME1.rom` — lower = menu($4000) + Galaga($4100) + Sokoban($6200) + Snake($7600); upper = TMS_LOGO V2.6 ($4000-$7FFF). Default boot ROM.
+    - `Codetank_GAME2.rom` — lower = TMS_Rogue full bank; upper = TMS_Nyan_CodeTank full bank (drop-in `software/Graphic TMS9918/Codetank/TMS_Nyan_CodeTank.bin`, padded to 16 KB).
+    - `Codetank_GAME3.rom` — lower = Tetris/CodeTank full bank (drop-in `software/Graphic TMS9918/Codetank/tetris_codetank.bin`); upper = menu($4000) + Life($4100) + Mandel($4900) + Plasma($5100).
+    - `Codetank_TEST.rom` — lower = TMS_SilBench (29-test silicon-validation suite, regression fixture for May 2026 silicon model); upper = menu($4000) + Clone($4100) + Split($4500) (silicon-bug demos: sprite clone bug N.8 / 5th-sprite palette split).
+    - All slots silicon-strict-clean via `tools/silicon_strict_patch.py`; background in `dev/SILICONBUGS.md` section 17. PROCBSS in Parmigiani RAM `$E000-$EFFF` for Logo.
+    - Per-cart menus live in `dev/projects/tms9918_codetank_{menu,game3_menu,test_menu}/`.
+  - **UI / bus**: **File → P-LAB CodeTank Library** scans `roms/codetank/*.{rom,bin}`; priority 20; mutex with Juke-Box; always with TMS9918. Preset 8 plugs both. Tests: `codetank_smoke`, `codetank_tms9918_dependency`.
   - **Silicon padding**: `dev/lib/tms9918/tms9918_pad.asm` + patcher inject `JSR tms9918_pad12`; macros / auto-link details → same SILICONBUGS section and `build_codetank_rom.py` / `emit_woz.py`.
 - **A1IO_RTC** — 65C22 VIA `$2000-$200F` (⚠ overlaps GEN2 — preset-level mutex). Emulated ATMEGA32 drives DS3231, DS18B20, 8 analog + 4 digital inputs, 16-bit shift-register output. 24 regs broadcast on 100-cycle period with PORTB STROBE.
 - **WiFiModem** — 65C51 ACIA `$B000-$B003`, ESP8266 AT (`AT`, `ATDT host:port`, `ATH`, `ATE0/1`, `ATI`, `ATZ`). TELNET IAC filtering + `CR LF→CR` strip, non-blocking TCP, baud 50-19200, `+++` 1 s guard, 4096 B circular Rx. `requestDisconnect()` is the UI-safe entry. Desktop only; WASM stubs return `NO CARRIER`.
@@ -168,7 +173,7 @@ $FF00-$FFFF  Woz Monitor ROM + vectors ($FFFA-$FFFF)
 
 ## Testing
 
-`ctest` from `build/` (native-only, opt-out `-DPOM1_ENABLE_TESTS=OFF`). Inventory lives in `tests/CMakeLists.txt` — after configure, `ctest -N` lists exact names (count varies: optional `chess_engine_perft_smoke` only if `ca65`/`ld65` are found).
+`ctest` from `build/` (native-only, opt-out `-DPOM1_ENABLE_TESTS=OFF`). Inventory lives in `tests/CMakeLists.txt` — after configure, `ctest -N` lists exact names. CMake never invokes `dev/projects/*/Makefile`; those are developer-only build steps. Tests load whatever artefact happens to live under `software/`.
 
 ```bash
 ctest                       # full suite (~5–30 s wall time; Klaus + TMS9918 tests dominate)
@@ -191,9 +196,8 @@ ctest -R klaus -V
 - **`codetank_smoke`** / **`codetank_tms9918_dependency`** — ROM size, jumper offsets, read-only, TMS9918 cascade.
 - **`tms9918_sprite_status`** / **`tms9918_silicon_strict_runtime`** / **`tms9918_per_scanline`** / **`tms9918_advanced_silicon`** — VDP behaviour + strict timing pins (`dev/SILICONBUGS.md`).
 - **`snapshot_smoke`** — `SnapshotIO` + selected card flags / RAM round-trip; extend when peripherals gain `serialize`.
-- **`hex_dump_multi_zone`** — `Memory::loadHexDump` disjoint zones (e.g. chess `.txt` lo + `$E000` hi).
+- **`hex_dump_multi_zone`** — `Memory::loadHexDump` disjoint zones (e.g. dual-bank `.txt` with a `$0280` lo block + `$E000` hi block).
 - **`cpu_breakpoint_smoke`** — `--break <addr>` halt-before-instruction, clear, `hardReset` disarm (see [`doc/CLI.md`](doc/CLI.md)).
-- **`chess_engine_perft_smoke`** *(optional)* — built only with cc65 toolchain present.
 
 New invariant tests follow `tests/peripheral_bus_smoke_test.cpp` — `<cassert>` + `add_test` suffices; GTest/Catch2 only once multi-threaded tests land.
 

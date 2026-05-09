@@ -13,7 +13,7 @@ def main() -> int:
         asm_files=["TMS_Maze3D.asm"],
         lib_dirs=["apple1", "tms9918"],
         cfg="apple1_maze3d.cfg",
-        out_dir_software="tms9918",
+        out_dir_software="Graphic TMS9918",
         start_addr=0x0280,
         project_dir=PROJ,
     )

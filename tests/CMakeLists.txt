@@ -425,76 +425,14 @@ add_test(NAME snapshot_smoke
          WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
 set_tests_properties(snapshot_smoke PROPERTIES TIMEOUT 10)
 
-# -- Chess engine perft (depth 1) smoke test ----------------------------------
-# Loads the dual-bank Chess artefacts (Chess.bin.lo @ $0280, Chess.bin.hi @
-# $E000) plus the VICE label file (Chess.sym) produced by `ld65 -Ln`, drops a
-# RAM trampoline at $0200 that calls init_board then perft1 then JMP-traps,
-# and asserts the perft count == 20 (the well-known depth-1 count for the
-# initial position). Catches silent regressions in move-gen, the ce_piece /
-# atk_piece aliasing fix, and the perft enumeration loop.
-#
-# The artefacts are produced by `make` in dev/projects/games_chess/. CMake
-# rebuilds them via a custom command so `ctest` always exercises the latest
-# engine sources without requiring developers to remember the make step.
-set(CHESS_ARTIFACT_DIR "${CMAKE_SOURCE_DIR}/software/games")
-set(CHESS_BIN_LO "${CHESS_ARTIFACT_DIR}/Chess.bin.lo")
-set(CHESS_BIN_HI "${CHESS_ARTIFACT_DIR}/Chess.bin.hi")
-set(CHESS_SYM    "${CHESS_ARTIFACT_DIR}/Chess.sym")
-set(CHESS_SRCDIR "${CMAKE_SOURCE_DIR}/dev/projects/games_chess")
-
-find_program(CA65 ca65)
-find_program(LD65 ld65)
-if(CA65 AND LD65)
-    add_custom_command(
-        OUTPUT  ${CHESS_BIN_LO} ${CHESS_BIN_HI} ${CHESS_SYM}
-        COMMAND ${CMAKE_COMMAND} -E chdir ${CHESS_SRCDIR} make
-        DEPENDS ${CHESS_SRCDIR}/Chess.asm
-                ${CMAKE_SOURCE_DIR}/dev/lib/games/chess/chess_engine.asm
-                ${CMAKE_SOURCE_DIR}/dev/lib/games/chess/chess_text_io.asm
-                ${CMAKE_SOURCE_DIR}/dev/lib/games/chess/chess_common.inc
-                ${CMAKE_SOURCE_DIR}/dev/lib/games/chess/chess_tables.inc
-                ${CHESS_SRCDIR}/apple1_chess_text.cfg
-                ${CHESS_SRCDIR}/Makefile
-        COMMENT "Building Chess engine artefacts via ca65/ld65"
-        VERBATIM
-    )
-    add_custom_target(chess_engine_artefacts ALL
-        DEPENDS ${CHESS_BIN_LO} ${CHESS_BIN_HI} ${CHESS_SYM}
-    )
-
-    add_executable(test_chess_engine_perft
-        chess_engine_perft_smoke_test.cpp
-        ${POM1_TEST_CORE_SOURCES}
-    )
-    add_dependencies(test_chess_engine_perft chess_engine_artefacts)
-    target_include_directories(test_chess_engine_perft PRIVATE
-        ${CMAKE_SOURCE_DIR}
-        ${CMAKE_SOURCE_DIR}/imgui
-    )
-    target_link_libraries(test_chess_engine_perft PRIVATE libresidfp_static)
-    if(APPLE)
-        target_compile_definitions(test_chess_engine_perft PRIVATE GL_SILENCE_DEPRECATION)
-    endif()
-    if(WIN32)
-        target_link_libraries(test_chess_engine_perft PRIVATE ws2_32)
-    endif()
-
-    add_test(NAME chess_engine_perft_smoke
-             COMMAND test_chess_engine_perft "${CHESS_ARTIFACT_DIR}"
-             WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
-    set_tests_properties(chess_engine_perft_smoke PROPERTIES TIMEOUT 30)
-else()
-    message(STATUS "ca65/ld65 not found — skipping chess_engine_perft_smoke test")
-endif()
-
 # -- Wozmon-hex multi-zone load test ------------------------------------------
-# Pin Memory::loadHexDump for dumps that span disjoint memory zones (e.g.
-# games_chess Chess.txt = $0280 lo block + $E000 hi block). The merge logic
-# that joins "...00" + "E000:" across the line boundary into a "merged
-# data+address" token (see Memory.cpp loadHexDump) is the load-bearing piece
-# — if it regresses, only the lo block loads and the engine at $E000 silently
-# drops on the floor. The user reported exactly this symptom on 2026-04-30;
-# this test ensures it can't regress unnoticed.
+# Pin Memory::loadHexDump for dumps that span disjoint memory zones (a
+# dual-bank `.txt` with a $0280 lo block and an $E000 hi block). The merge
+# logic that joins "...00" + "E000:" across the line boundary into a
+# "merged data+address" token (see Memory.cpp loadHexDump) is the
+# load-bearing piece — if it regresses, only the lo block loads and the
+# upper bank silently drops on the floor. The user reported exactly this
+# symptom on 2026-04-30; this test ensures it can't regress unnoticed.
 add_executable(test_hex_dump_multi_zone
     hex_dump_multi_zone_test.cpp
     ${POM1_TEST_CORE_SOURCES}

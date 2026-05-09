@@ -42,7 +42,7 @@ def main() -> int:
         ],
         lib_dirs=["apple1", "tms9918"],
         cfg=cfg,
-        out_dir_software="tms9918",
+        out_dir_software="Graphic TMS9918",
         start_addr=start_addr,
         project_dir=PROJ,
     )

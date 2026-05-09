@@ -1,18 +1,21 @@
 .DEFAULT_GOAL := all
 # Maze generators (Sidewinder + Recursive Backtracker)
 LOAD_CFG := ../../cc65/apple1_4k.cfg
-OUT_DIR  := ../../../software/games
+OUT_DIR  := ../../../software/Apple-1 games
+empty     :=
+space     := $(empty) $(empty)
+OUT_DIR_T := $(subst $(space),\$(space),$(OUT_DIR))
 LIB      := -I ../../lib/apple1 -I ../../lib/m6502
 
 PROGS    := Maze_Sidewinder Maze2_Backtracker
-BINS     := $(addprefix $(OUT_DIR)/,$(addsuffix .bin,$(PROGS)))
+BINS     := $(addprefix $(OUT_DIR_T)/,$(addsuffix .bin,$(PROGS)))
 
 .PHONY: all clean
 all: $(BINS)
 
-$(OUT_DIR)/%.bin: %.asm
+$(OUT_DIR_T)/%.bin: %.asm
 	ca65 $(LIB) $<
-	ld65 -C $(LOAD_CFG) $*.o -o $@
+	ld65 -C $(LOAD_CFG) $*.o -o "$@"
 
 clean:
 	rm -f $(addsuffix .o,$(PROGS))

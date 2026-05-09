@@ -8,19 +8,22 @@
 
 PROJECT  := HGR_Sokoban
 LOAD_CFG := ../games_sokoban/apple1_sok_hgr.cfg
-OUT_DIR  := ../../../software/hgr
+OUT_DIR  := ../../../software/Graphic HGR
+empty     :=
+space     := $(empty) $(empty)
+OUT_DIR_T := $(subst $(space),\$(space),$(OUT_DIR))
 LIB      := -I ../../lib/apple1 -I ../../lib/hgr -I ../../lib/games/sokoban -I ../../lib/m6502
 
 OBJS := $(PROJECT).o
 
 $(PROJECT).o: $(PROJECT).asm
-	ca65 $(LIB) -o $@ $<
+	ca65 $(LIB) -o "$@" $<
 
-$(OUT_DIR)/$(PROJECT).bin.lo $(OUT_DIR)/$(PROJECT).bin.hi: $(OBJS)
-	ld65 -C $(LOAD_CFG) $(OBJS) -o $(OUT_DIR)/$(PROJECT).bin
-	@rm -f $(OUT_DIR)/$(PROJECT).bin   # ld65 leaves an empty placeholder; remove it
+$(OUT_DIR_T)/$(PROJECT).bin.lo $(OUT_DIR_T)/$(PROJECT).bin.hi: $(OBJS)
+	ld65 -C $(LOAD_CFG) $(OBJS) -o "$(OUT_DIR)"/$(PROJECT).bin
+	@rm -f "$(OUT_DIR)"/$(PROJECT).bin   # ld65 leaves an empty placeholder; remove it
 
-$(OUT_DIR)/$(PROJECT).txt: $(OUT_DIR)/$(PROJECT).bin.lo $(OUT_DIR)/$(PROJECT).bin.hi
+$(OUT_DIR_T)/$(PROJECT).txt: $(OUT_DIR_T)/$(PROJECT).bin.lo $(OUT_DIR_T)/$(PROJECT).bin.hi
 	@python3 -c "lo=open('$(OUT_DIR)/$(PROJECT).bin.lo','rb').read(); \
 hi=open('$(OUT_DIR)/$(PROJECT).bin.hi','rb').read(); \
 out=['// HGR Sokoban — Parmigiani 8 KB dual-bank + GEN2']; addr=0x0280; \
@@ -32,10 +35,10 @@ open('$(OUT_DIR)/$(PROJECT).txt','w').write('\n'.join(out)+'\n'); \
 print(f'Wrote $(OUT_DIR)/$(PROJECT).txt (lo={len(lo)} B at 0280, hi={len(hi)} B at E000)')"
 
 .PHONY: all clean test
-all: $(OUT_DIR)/$(PROJECT).txt
+all: $(OUT_DIR_T)/$(PROJECT).txt
 
 clean:
-	rm -f $(OBJS) $(OUT_DIR)/$(PROJECT).bin*
+	rm -f $(OBJS) "$(OUT_DIR)"/$(PROJECT).bin*
 
 TEST_CMD ?= @echo "[$(PROJECT)] no smoke test wired"
 test: all

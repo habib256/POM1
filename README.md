@@ -39,7 +39,7 @@ Built with Dear ImGui & OpenGL — fast, lightweight, cross-platform (Linux, mac
 - ⏰ [P-LAB I/O Board & RTC](https://p-l4b.github.io/A1-IO_RTC/) — DS3231 + ADC + digital I/O.
 
 **Out of the box**
-- 🖥️ **16 one-click machine presets** from *Bare Apple-1 (July 1976)* to *POM1 Multiplexing Fantasy (2026)*.
+- 🖥️ **15 one-click machine presets** from *Bare Apple-1 (July 1976)* to *POM1 Multiplexing Fantasy (2026)*.
 - 🎮 **60+ programs** in `software/` — games, demos, BASIC, dev tools, A1-SID tunes, TMS9918 demos.
 
 ---
@@ -139,16 +139,15 @@ Indices match `--preset N`. Per-preset window layouts persist under `ini/imgui_p
 | 11 | **P-LAB Juke-Box** | 8 KB | — | Juke-Box (no ACI) |
 | 12 | **P-LAB Multiplexing Fantasy** | 64 KB | Applesoft Lite | microSD, A1-SID, TMS9918, I/O & RTC, Wi-Fi, Terminal |
 | 13 | **Uncle Bernie's GEN2 HGR Color (Apr 2026)** | 8 KB | — | GEN2 HGR |
-| 14 | **P-LAB microSD + IEC + Applesoft Lite** | 8 KB | Applesoft Lite | microSD, IEC daughterboard |
-| 15 | **POM1 Multiplexing Fantasy (2026)** ⭐ | 64 KB | Applesoft Lite | microSD, A1-SID, Wi-Fi, Terminal |
+| 14 | **POM1 Multiplexing Fantasy (2026)** ⭐ | 64 KB | Applesoft Lite | microSD, A1-SID, Wi-Fi, Terminal |
 
-⭐ = default. **Bare (0)** is the pre-ACI July-1976 shipping config. **Juke-Box (11)** drops ACI — EEPROM library replaces cassette loading. **RAM** = motherboard `ramKB` from [`MainWindow_Presets.cpp`](MainWindow_Presets.cpp) (`kMachinePresets[]`). Presets **3–11** and **13–14** use Parmigiani **8 KB dual-bank** (`$0000-$0FFF` + `$E000-$EFFF`). **Integer BASIC** remains loadable from cassette on presets **1–3** when `BasicType::None`.
+⭐ = default. **Bare (0)** is the pre-ACI July-1976 shipping config. **Juke-Box (11)** drops ACI — EEPROM library replaces cassette loading. **RAM** = motherboard `ramKB` from [`MainWindow_Presets.cpp`](MainWindow_Presets.cpp) (`kMachinePresets[]`). Presets **3–11** and **13** use Parmigiani **8 KB dual-bank** (`$0000-$0FFF` + `$E000-$EFFF`). **Integer BASIC** remains loadable from cassette on presets **1–3** when `BasicType::None`. **IEC daughterboard**: enable from **Hardware** after picking **preset 5** (microSD), or CLI `--preset 5 --enable iec`.
 
 ---
 
 ## 🎮 Software Library
 
-`software/` ships **60+ ready-to-run programs** — load via **File > Load Memory**. Most come from [apple1software.com](https://apple1software.com/), the reference archive. 6502 ASM sources for the bundled programs live in [`dev/projects/`](dev/) — browse from inside POM1 via **Dev → Source Browser**.
+`software/` ships **60+ ready-to-run programs** — load via **File > Load Memory**. Most come from [apple1software.com](https://apple1software.com/), the reference archive. 6502 ASM sources for the bundled programs live in [`dev/projects/`](dev/) in the **git checkout** (not shipped in release archives).
 
 <details open><summary><b>🕹️ Games & demos</b></summary>
 
@@ -257,7 +256,7 @@ Parmigiani & Rosselli's [P-LAB Juke-Box](https://p-l4b.github.io/jukebox/) — m
 
 ### P-LAB CodeTank
 
-ROM **daughterboard** of the P-LAB TMS9918 Graphic Card (piggyback; not a standalone bus card — in POM1, enabling CodeTank auto-enables TMS9918). Single 32 KB 28c256, jumper picks which 16 KB half maps to `$4000-$7FFF`; no `$CA00`, no paging, no Juke-Box Program Manager. **CT** toolbar + **Hardware → CodeTank Library** (`roms/codetank/*.{rom,bin}`). Mutex with Juke-Box on the `$4000-$7FFF` window; stacks with microSD, CFFA1, etc. CLI: `--enable codetank`, `--codetank-jumper lower|upper`, `--codetank-rom <path>`. Architecture notes → [`CLAUDE.md`](CLAUDE.md).
+ROM **daughterboard** of the P-LAB TMS9918 Graphic Card (piggyback; not a standalone bus card — in POM1, enabling CodeTank auto-enables TMS9918). Single 32 KB 28c256, jumper picks which 16 KB half maps to `$4000-$7FFF`; no `$CA00`, no paging, no Juke-Box Program Manager. **CT** toolbar + **File → P-LAB CodeTank Library** (`roms/codetank/*.{rom,bin}`). Mutex with Juke-Box on the `$4000-$7FFF` window; stacks with microSD, CFFA1, etc. CLI: `--enable codetank`, `--codetank-jumper lower|upper`, `--codetank-rom <path>`. Architecture notes → [`CLAUDE.md`](CLAUDE.md).
 
 ---
 
@@ -305,7 +304,7 @@ POM1 ships a complete cc65-based dev tree under [`dev/`](dev/):
 - [`dev/lib/`](dev/lib/) — reusable libraries (`apple1`, `m6502`, `tms9918`, `hgr`, `sokoban`).
 - [`dev/cc65/*.cfg`](dev/cc65/) — shared linker configs.
 
-Browse all of it from inside POM1 via **Dev → Source Browser**. Quick build:
+Quick build:
 
 ```bash
 cd dev/projects/<name> && make    # → software/<dir>/<name>.{bin,txt}

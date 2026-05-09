@@ -2,36 +2,49 @@
 """
 Build P-LAB CodeTank ROM images for the TMS9918 graphic card.
 
-Three ROMs are produced (in roms/codetank/):
+Four ROMs are produced (in roms/codetank/):
 
   Codetank_GAME1.rom (32 kB)
     Lower 16 kB: menu → Galaga, Sokoban, Snake (run-in-place)
-                 ($4000 menu / $4100 Galaga / $6000 Sokoban / $7400 Snake)
+                 ($4000 menu / $4100 Galaga / $6200 Sokoban / $7600 Snake)
     Upper 16 kB: TMS_LOGO V2.6 interpreter (run-in-place from $4000)
     Jumper Lower → 4000R brings up the picker; jumper Upper → 4000R boots
     LOGO directly.
 
   Codetank_GAME2.rom (32 kB)
     Lower 16 kB: TMS_Rogue alone (full bank, run-in-place from $4000)
-    Upper 16 kB: TETRIS / JUKEBOX prebuilt 16 kB image
-                 (`software/tms9918/tetris_jukebox.bin`, run-in-place)
-    Jumper Lower → 4000R boots Rogue; jumper Upper → 4000R boots Tetris/JB.
+    Upper 16 kB: TMS_Nyan_CodeTank (full bank, run-in-place from $4000)
+                 — drop-in image from
+                 software/Graphic TMS9918/Codetank/TMS_Nyan_CodeTank.bin.
+    Jumper Lower → 4000R boots Rogue; jumper Upper → 4000R animates Nyan.
 
   Codetank_GAME3.rom (32 kB)
-    Lower 16 kB: TMS_Life alone (run-in-place from $4000)
-    Upper 16 kB: TMS_Chess alone (full bank, run-in-place from $4000)
-                 (moved here from GAME2 upper in May 2026)
-    Jumper Lower → 4000R boots Life; jumper Upper → 4000R boots Chess.
+    Lower 16 kB: TMS_Tetris/CodeTank (full bank, run-in-place from $4000)
+                 — drop-in image from
+                 software/Graphic TMS9918/Codetank/tetris_codetank.bin.
+    Upper 16 kB: menu → Life, Mandel, Plasma (run-in-place)
+                 ($4000 menu / $4100 Life / $4900 Mandel / $5100 Plasma)
+    Jumper Lower → 4000R boots Tetris; jumper Upper → 4000R brings up the
+    picker.
+
+  Codetank_TEST.rom (32 kB)
+    Lower 16 kB: TMS_SilBench (full bank, run-in-place from $4000)
+                 — silicon-validation 29-test benchmark suite.
+    Upper 16 kB: menu → Clone, Split (run-in-place)
+                 ($4000 menu / $4100 Clone / $4500 Split)
+    Jumper Lower → 4000R boots SilBench; jumper Upper → 4000R brings up
+    the test picker.
 
 Each game's slot is sized to fit its current assembled binary (see the
 .cfg `size = $xxxx` field). `slot()` enforces the boundary and prints a
 clear deficit message if a game outgrows its slot.
 
 Usage:
-    python3 tools/build_codetank_rom.py            # build all 3
+    python3 tools/build_codetank_rom.py            # build all 4
     python3 tools/build_codetank_rom.py --rom=1    # only GAME1
     python3 tools/build_codetank_rom.py --rom=2    # only GAME2
     python3 tools/build_codetank_rom.py --rom=3    # only GAME3
+    python3 tools/build_codetank_rom.py --rom=test # only TEST
 """
 from __future__ import annotations
 import argparse
@@ -41,7 +54,7 @@ import subprocess
 import sys
 
 ROOT  = pathlib.Path(__file__).resolve().parents[1]
-TMS   = ROOT / "software" / "tms9918"
+TMS   = ROOT / "software" / "Graphic TMS9918"
 BUILD = ROOT / "build" / "codetank"
 
 ROM_SIZE  = 0x8000   # 32 kB (28c256)
@@ -51,9 +64,9 @@ DEV               = ROOT / "dev" / "projects"
 LIB_APPLE1        = ROOT / "dev" / "lib" / "apple1"
 LIB_M6502         = ROOT / "dev" / "lib" / "m6502"
 LIB_TMS           = ROOT / "dev" / "lib" / "tms9918"
-LIB_SOKOBAN       = ROOT / "dev" / "lib" / "sokoban"
+LIB_SOKOBAN       = ROOT / "dev" / "lib" / "games" / "sokoban"
 LIB_HGR           = ROOT / "dev" / "lib" / "hgr"
-LIB_CHESS         = ROOT / "dev" / "lib" / "chess"
+LIB_CHESS         = ROOT / "dev" / "lib" / "games" / "chess"
 
 # --- GAME1 sources (menu + Galaga + Sokoban + Snake lower; LOGO upper) -----
 MENU_ASM          = DEV / "tms9918_codetank_menu" / "codetank_menu.asm"
@@ -64,17 +77,6 @@ SOKOBAN_ASM       = DEV / "tms9918_sokoban"       / "TMS_Sokoban.asm"
 SOKOBAN_BANK_CFG  = DEV / "tms9918_sokoban"       / "apple1_sokoban_codetank_bank.cfg"
 SNAKE_ASM         = DEV / "tms9918_snake"         / "TMS_Snake.asm"
 SNAKE_BANK_CFG    = DEV / "tms9918_snake"         / "apple1_snake_codetank_bank.cfg"
-
-# --- GAME3 sources (Life lower; Chess upper, ex-GAME2) ---------------------
-LIFE_ASM          = DEV / "tms9918_life" / "TMS_Life.asm"
-LIFE_FULL_CFG     = DEV / "tms9918_life" / "apple1_life_codetank_full.cfg"
-
-# --- TETRIS / JUKEBOX (prebuilt 16 kB upper bank for GAME2) ----------------
-# Drop-in 6502 binary supplied as `software/tms9918/tetris_jukebox.bin` —
-# 16 384 B exact, runs in place from $4000 (CodeTank upper-jumper). No
-# source / no assembly: we splat the bytes into the upper bank verbatim.
-# May 2026: replaced Chess in GAME2 upper; Chess moved to GAME3 upper.
-TETRIS_JB_BIN     = ROOT / "software" / "tms9918" / "tetris_jukebox.bin"
 
 # --- LOGO V2 (GAME1 upper) -------------------------------------------------
 LOGO_V2_ASM        = DEV / "tms9918_logo" / "TMS_Logo_16k.asm"
@@ -87,29 +89,59 @@ LOGO_V2_BUBBLE_ASM = LIB_TMS     / "bubble.asm"
 LOGO_V2_BUFED_ASM  = LIB_TMS     / "buffer_editor.asm"
 LOGO_V2_SPRH_ASM   = LIB_TMS     / "sprite_helpers.asm"
 
-# --- GAME2 sources ---------------------------------------------------------
+# --- GAME2 sources (Rogue lower; Nyan/CodeTank prebuilt upper) -------------
 ROGUE_ASM          = DEV / "tms9918_rogue" / "TMS_Rogue.asm"
 ROGUE_BOSS_ASM     = DEV / "tms9918_rogue" / "sprites_boss.asm"
 ROGUE_CODETANK_CFG = DEV / "tms9918_rogue" / "apple1_rogue.cfg"
 ROGUE_M1_ASM       = LIB_TMS / "tms9918m1.asm"
 
-CHESS_ASM          = DEV / "tms9918_chess" / "TMS_Chess.asm"
-CHESS_CODETANK_CFG = DEV / "tms9918_chess" / "apple1_chess_codetank.cfg"
-CHESS_ENGINE_ASM   = LIB_CHESS / "chess_engine.asm"
-CHESS_TEXT_IO_ASM  = LIB_CHESS / "chess_text_io.asm"
-CHESS_M1_ASM       = LIB_TMS   / "tms9918m1.asm"
+# Nyan/CodeTank (GAME2 upper) — drop-in 16 KB image. The .bin in
+# software/Graphic TMS9918/Codetank/ is assembled by the project's own
+# Makefile (cf. dev/projects/tms9918_nyan_codetank/) at $4000 and pads
+# itself to fill the bank; we splat it verbatim into the upper half.
+NYAN_CT_BIN       = TMS / "Codetank" / "TMS_Nyan_CodeTank.bin"
 
-# --- TOOLS sources ---------------------------------------------------------
-# Codetank_TOOLS.rom hosts dev/silicon-validation utilities (no games).
-# Lower bank = TMS_SilBench (TMS9918 29-test silicon benchmark suite —
-# visual + transcribable per-test results on Apple-1 native PIA display,
-# canonical regression fixture for the May 2026 silicon model).
-# Upper bank = empty (reserved). Both halves linked at $4000-$7FFF,
-# run-in-place from ROM.
+# --- GAME3 sources (Tetris/CodeTank lower; menu+Life+Mandel+Plasma upper) --
+# Tetris/CodeTank — drop-in 16 KB image (full upper-bank-style binary,
+# no source / no assembly: we splat the bytes into the lower bank).
+TETRIS_CT_BIN     = TMS / "Codetank" / "tetris_codetank.bin"
+
+# GAME3 upper menu + 3 demo programs (Life, Mandel, Plasma) sharing the
+# upper bank via the menu pattern.
+GAME3_MENU_ASM    = DEV / "tms9918_codetank_game3_menu" / "codetank_game3_menu.asm"
+GAME3_MENU_CFG    = DEV / "tms9918_codetank_game3_menu" / "apple1_codetank_game3_menu.cfg"
+
+LIFE_ASM          = DEV / "tms9918_life"   / "TMS_Life.asm"
+LIFE_BANK_CFG     = DEV / "tms9918_life"   / "apple1_life_codetank_game3_bank.cfg"
+
+MANDEL_ASM        = DEV / "tms9918_mandel" / "TMS_Mandel.asm"
+MANDEL_BANK_CFG   = DEV / "tms9918_mandel" / "apple1_mandel_codetank_bank.cfg"
+MANDEL_VDP_ASM    = LIB_TMS / "tms9918m2.asm"
+
+PLASMA_ASM        = DEV / "tms9918_plasma" / "TMS_Plasma.asm"
+PLASMA_BANK_CFG   = DEV / "tms9918_plasma" / "apple1_plasma_codetank_bank.cfg"
+PLASMA_VDP_ASM    = LIB_TMS / "tms9918m1.asm"
+
+# --- TEST sources (SilBench lower; menu+Clone+Split upper) -----------------
+# Lower bank = TMS_SilBench (29-test silicon benchmark suite, canonical
+# regression fixture for the May 2026 silicon model).
 SILBENCH_ASM        = DEV / "tms9918_silbench" / "TMS_SilBench.asm"
 SILBENCH_BANK_CFG   = DEV / "tms9918_silbench" / "apple1_silbench_codetank.cfg"
 SILBENCH_M1_ASM     = LIB_TMS / "tms9918m1.asm"
 SILBENCH_5S_ASM     = LIB_TMS / "tms9918_5strigger.asm"
+
+# Upper bank = menu + Clone + Split (two TMS9918 silicon-bug mini-tests).
+TEST_MENU_ASM       = DEV / "tms9918_codetank_test_menu" / "codetank_test_menu.asm"
+TEST_MENU_CFG       = DEV / "tms9918_codetank_test_menu" / "apple1_codetank_test_menu.cfg"
+
+CLONE_ASM           = DEV / "tms9918_clone" / "TMS_Clone.asm"
+CLONE_BANK_CFG      = DEV / "tms9918_clone" / "apple1_clone_codetank_bank.cfg"
+CLONE_VDP_ASM       = LIB_TMS / "tms9918m2.asm"
+
+SPLIT_ASM           = DEV / "tms9918_split" / "TMS_Split.asm"
+SPLIT_BANK_CFG      = DEV / "tms9918_split" / "apple1_split_codetank_bank.cfg"
+SPLIT_M1_ASM        = LIB_TMS / "tms9918m1.asm"
+SPLIT_5S_ASM        = LIB_TMS / "tms9918_5strigger.asm"
 
 
 # ---------------------------------------------------------------------------
@@ -226,6 +258,24 @@ def slot(bank: bytearray, offset: int, data: bytes, slot_size: int,
     bank[offset:offset + len(data)] = data
 
 
+def splat_full_bank(bin_path: pathlib.Path, label: str) -> bytes:
+    """Read a drop-in binary (assembled at $4000 by its own project) and
+    return a 16 KB bank with the binary at offset 0 and $FF fill for the
+    rest. Used for prebuilt full-bank programs (Nyan/CodeTank,
+    Tetris/CodeTank) where there's no Makefile in build_codetank_rom.py.
+    Accepts inputs ≤ HALF_SIZE; they get padded to fill the bank."""
+    if not bin_path.is_file():
+        raise SystemExit(f"  ERROR: {bin_path} not found — cannot build {label}")
+    data = bin_path.read_bytes()
+    if len(data) > HALF_SIZE:
+        raise SystemExit(
+            f"  ERROR: {bin_path} is {len(data)} B, exceeds {HALF_SIZE} B "
+            f"half-bank")
+    bank = bytearray(b"\xFF" * HALF_SIZE)
+    slot(bank, 0x0000, data, HALF_SIZE, label)
+    return bytes(bank)
+
+
 # ---------------------------------------------------------------------------
 # GAME1 — menu + Galaga + Sokoban + Snake (lower) + LOGO V2 (upper)
 # ---------------------------------------------------------------------------
@@ -246,22 +296,17 @@ def build_game1_lower_bank() -> bytes:
     address. Each game's bank cfg pins its start address; we copy each
     binary into its slot and verify it fits.
 
-    May 2026 reshuffle: under the 24c silicon-strict contract Galaga grew
-    past the old 7 936 B slot. Sokoban shifted +256 B and Snake +512 B to
-    absorb the growth; the prior 512 B end-headroom is now part of Snake's
-    slot. Update codetank_menu.asm:SOKOBAN_ENTRY/SNAKE_ENTRY and the three
-    bank cfgs in lock-step if any of these offsets change again."""
+    Slot offsets pinned by each game's bank cfg:
+      menu     $4000-$40FF   ( 256 B, apple1_codetank_menu.cfg)
+      Galaga   $4100-$61FF   (8 448 B, apple1_galaga_codetank_bank.cfg)
+      Sokoban  $6200-$75FF   (5 120 B, apple1_sokoban_codetank_bank.cfg)
+      Snake    $7600-$7FFF   (2 560 B, apple1_snake_codetank_bank.cfg)
+    May 2026 v2 reshuffle: cross-JSR strict-mode pads pushed Galaga past
+    the previous 8 192 B slot, so shifted Sokoban entry +256 B (matching
+    codetank_menu.asm's SOKOBAN_ENTRY = $6200)."""
     menu, galaga, sokoban, snake = assemble_game1_lower_binaries()
     print("[GAME1] Lower bank layout (menu + 3 games, run-in-place):",
           file=sys.stderr)
-    # Slot offsets pinned by each game's bank cfg:
-    #   menu     $4000-$40FF   ( 256 B, apple1_codetank_menu.cfg)
-    #   Galaga   $4100-$61FF   (8 448 B, apple1_galaga_codetank_bank.cfg)
-    #   Sokoban  $6200-$75FF   (5 120 B, apple1_sokoban_codetank_bank.cfg)
-    #   Snake    $7600-$7FFF   (2 560 B, apple1_snake_codetank_bank.cfg)
-    # May 2026 v2 reshuffle: cross-JSR strict-mode pads pushed Galaga past
-    # the previous 8 192 B slot, so shifted Sokoban entry +256 B (matching
-    # codetank_menu.asm's SOKOBAN_ENTRY = $6200).
     bank = bytearray(b"\xFF" * HALF_SIZE)
     slot(bank, 0x0000, menu,    0x0100, "Menu      ($4000-$40FF)")
     slot(bank, 0x0100, galaga,  0x2100, "Galaga    ($4100-$61FF)")
@@ -285,7 +330,7 @@ def build_game1_upper_bank() -> bytes:
 
 
 # ---------------------------------------------------------------------------
-# GAME2 — Rogue (lower) + Chess (upper)
+# GAME2 — Rogue (lower) + Nyan/CodeTank (upper)
 # ---------------------------------------------------------------------------
 def build_game2_lower_bank() -> bytes:
     """Lower 16 kB: TMS_Rogue alone, full $4000-$7FFF, run-in-place."""
@@ -299,85 +344,87 @@ def build_game2_lower_bank() -> bytes:
 
 
 def build_game2_upper_bank() -> bytes:
-    """Upper 16 kB: TETRIS / JUKEBOX prebuilt binary, full $4000-$7FFF.
-    Drop-in image (no assembly) — just splat the 16 kB into the upper bank.
-    May 2026: replaced Chess (which moved to GAME3 upper)."""
-    print("\n[GAME2] Upper bank (TETRIS / JUKEBOX prebuilt, full 16 kB):",
+    """Upper 16 kB: TMS_Nyan_CodeTank prebuilt binary, full $4000-$7FFF.
+    Drop-in image from software/Graphic TMS9918/Codetank/ — assembled by
+    dev/projects/tms9918_nyan_codetank's own Makefile and padded to fill
+    the bank."""
+    print("\n[GAME2] Upper bank (TMS_Nyan_CodeTank, full 16 kB):",
           file=sys.stderr)
-    if not TETRIS_JB_BIN.is_file():
-        raise SystemExit(
-            f"  ERROR: {TETRIS_JB_BIN} not found — cannot build GAME2 upper")
-    data = TETRIS_JB_BIN.read_bytes()
-    if len(data) != HALF_SIZE:
-        raise SystemExit(
-            f"  ERROR: {TETRIS_JB_BIN} is {len(data)} B, expected exactly "
-            f"{HALF_SIZE} B (full upper bank)")
-    bank = bytearray(b"\xFF" * HALF_SIZE)
-    slot(bank, 0x0000, data, HALF_SIZE, "Tetris/JB ($4000-$7FFF)")
-    return bytes(bank)
+    return splat_full_bank(NYAN_CT_BIN, "Nyan/CT   ($4000-$7FFF)")
 
 
 # ---------------------------------------------------------------------------
-# GAME3 — Life (lower) + empty (upper)
+# GAME3 — Tetris/CodeTank (lower) + menu + Life + Mandel + Plasma (upper)
 # ---------------------------------------------------------------------------
 def build_game3_lower_bank() -> bytes:
-    """Lower 16 kB: TMS_Life alone, run-in-place from $4000-$7FFF."""
-    print("[GAME3] Lower bank (TMS_Life alone, full 16 kB):", file=sys.stderr)
-    life = assemble(LIFE_ASM, LIFE_FULL_CFG, "G3_Life", HALF_SIZE)
-    bank = bytearray(b"\xFF" * HALF_SIZE)
-    slot(bank, 0x0000, life, HALF_SIZE, "Life      ($4000-$7FFF)")
-    return bytes(bank)
+    """Lower 16 kB: tetris_codetank.bin prebuilt, full $4000-$7FFF.
+    Drop-in image from software/Graphic TMS9918/Codetank/ (16 384 B exact)."""
+    print("[GAME3] Lower bank (Tetris/CodeTank, full 16 kB):", file=sys.stderr)
+    return splat_full_bank(TETRIS_CT_BIN, "Tetris/CT ($4000-$7FFF)")
 
 
 def build_game3_upper_bank() -> bytes:
-    """Upper 16 kB: TMS_Chess alone, full $4000-$7FFF (CODE+ENGINE merged).
-    Moved here from GAME2 in May 2026 to make room for the Tetris/Jukebox
-    drop-in image."""
-    print("\n[GAME3] Upper bank (TMS_Chess alone, full 16 kB):", file=sys.stderr)
-    chess = assemble_multi(
-        [CHESS_ASM, CHESS_ENGINE_ASM, CHESS_TEXT_IO_ASM, CHESS_M1_ASM],
-        CHESS_CODETANK_CFG, "G3_Chess", HALF_SIZE)
+    """Upper 16 kB layout — menu at $4000 dispatches to 3 small demos.
+    Slot offsets pinned by each program's bank cfg:
+      menu     $4000-$40FF   ( 256 B, apple1_codetank_game3_menu.cfg)
+      Life     $4100-$48FF   (2 048 B, apple1_life_codetank_game3_bank.cfg)
+      Mandel   $4900-$50FF   (2 048 B, apple1_mandel_codetank_bank.cfg)
+      Plasma   $5100-$58FF   (2 048 B, apple1_plasma_codetank_bank.cfg)
+      reserved $5900-$7FFF   (free, $FF-fill)"""
+    print("\n[GAME3] Upper bank (menu + Life + Mandel + Plasma, run-in-place):",
+          file=sys.stderr)
+    menu   = assemble(GAME3_MENU_ASM, GAME3_MENU_CFG, "G3U_menu", 0x0100)
+    life   = assemble(LIFE_ASM,       LIFE_BANK_CFG,  "G3U_Life", 0x0800)
+    mandel = assemble_multi(
+        [MANDEL_ASM, MANDEL_VDP_ASM], MANDEL_BANK_CFG, "G3U_Mandel", 0x0800)
+    plasma = assemble_multi(
+        [PLASMA_ASM, PLASMA_VDP_ASM], PLASMA_BANK_CFG, "G3U_Plasma", 0x0800)
     bank = bytearray(b"\xFF" * HALF_SIZE)
-    slot(bank, 0x0000, chess, HALF_SIZE, "Chess     ($4000-$7FFF)")
+    slot(bank, 0x0000, menu,   0x0100, "Menu      ($4000-$40FF)")
+    slot(bank, 0x0100, life,   0x0800, "Life      ($4100-$48FF)")
+    slot(bank, 0x0900, mandel, 0x0800, "Mandel    ($4900-$50FF)")
+    slot(bank, 0x1100, plasma, 0x0800, "Plasma    ($5100-$58FF)")
     return bytes(bank)
 
 
 # ---------------------------------------------------------------------------
-# TOOLS — TMS_SilBench (lower) + reserved (upper)
+# TEST — TMS_SilBench (lower) + menu + Clone + Split (upper)
 # ---------------------------------------------------------------------------
-def build_tools_lower_bank() -> bytes:
+def build_test_lower_bank() -> bytes:
     """Lower 16 kB: TMS_SilBench run-in-place from $4000-$7FFF.
     29-test silicon benchmark — each test renders a visual on the
     TMS9918 then prints a transcribable line on the Apple-1 PIA display
     so an operator can diff Replica-1+P-LAB silicon vs POM1 strict."""
-    print("[TOOLS] Lower bank (TMS_SilBench, full 16 kB):", file=sys.stderr)
+    print("[TEST] Lower bank (TMS_SilBench, full 16 kB):", file=sys.stderr)
     silbench = assemble_multi(
         [SILBENCH_ASM, SILBENCH_M1_ASM, SILBENCH_5S_ASM],
-        SILBENCH_BANK_CFG, "TOOLS_SilBench", HALF_SIZE)
+        SILBENCH_BANK_CFG, "TEST_SilBench", HALF_SIZE)
     bank = bytearray(b"\xFF" * HALF_SIZE)
     slot(bank, 0x0000, silbench, HALF_SIZE, "SilBench  ($4000-$7FFF)")
     return bytes(bank)
 
 
-def build_tools_upper_bank() -> bytes:
-    """Upper 16 kB: reserved for future tools. Filled with $FF (EEPROM
-    erased state) so the operator sees an obvious 'no boot here' if they
-    flip the jumper without realising. A future tool slot can be wired
-    here in the same shape as the lower bank."""
-    print("\n[TOOLS] Upper bank (reserved, $FF-fill):", file=sys.stderr)
+def build_test_upper_bank() -> bytes:
+    """Upper 16 kB layout — menu at $4000 dispatches to 2 silicon-bug
+    mini-tests.
+    Slot offsets pinned by each program's bank cfg:
+      menu     $4000-$40FF   ( 256 B, apple1_codetank_test_menu.cfg)
+      Clone    $4100-$44FF   (1 024 B, apple1_clone_codetank_bank.cfg)
+      Split    $4500-$48FF   (1 024 B, apple1_split_codetank_bank.cfg)
+      reserved $4900-$7FFF   (free, $FF-fill)"""
+    print("\n[TEST] Upper bank (menu + Clone + Split, run-in-place):",
+          file=sys.stderr)
+    menu  = assemble(TEST_MENU_ASM, TEST_MENU_CFG, "TESTU_menu", 0x0100)
+    clone = assemble_multi(
+        [CLONE_ASM, CLONE_VDP_ASM], CLONE_BANK_CFG, "TESTU_Clone", 0x0400)
+    split = assemble_multi(
+        [SPLIT_ASM, SPLIT_M1_ASM, SPLIT_5S_ASM],
+        SPLIT_BANK_CFG, "TESTU_Split", 0x0400)
     bank = bytearray(b"\xFF" * HALF_SIZE)
-    print(f"  reserved  ($4000-$7FFF) {0:5d} B / {HALF_SIZE:5d} B slot "
-          f"(  0.0%, {HALF_SIZE:5d} B free)", file=sys.stderr)
+    slot(bank, 0x0000, menu,  0x0100, "Menu      ($4000-$40FF)")
+    slot(bank, 0x0100, clone, 0x0400, "Clone     ($4100-$44FF)")
+    slot(bank, 0x0500, split, 0x0400, "Split     ($4500-$48FF)")
     return bytes(bank)
-
-
-def build_tools() -> bytes:
-    print("\n========== Codetank_TOOLS.rom ==========", file=sys.stderr)
-    lower = build_tools_lower_bank()
-    upper = build_tools_upper_bank()
-    rom = lower + upper
-    assert len(rom) == ROM_SIZE
-    return rom
 
 
 # ---------------------------------------------------------------------------
@@ -408,6 +455,15 @@ def build_game3() -> bytes:
     return rom
 
 
+def build_test() -> bytes:
+    print("\n========== Codetank_TEST.rom ==========", file=sys.stderr)
+    lower = build_test_lower_bank()
+    upper = build_test_upper_bank()
+    rom = lower + upper
+    assert len(rom) == ROM_SIZE
+    return rom
+
+
 def write_rom(rom: bytes, out: pathlib.Path, sidecar: str) -> None:
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_bytes(rom)
@@ -426,17 +482,17 @@ SIDECAR_GAME1 = (
 SIDECAR_GAME2 = (
     "Codetank_GAME2.rom — TMS9918 P-LAB CodeTank cartridge\n"
     "  Lower jumper: 4000R → TMS_Rogue (dungeon crawler)\n"
-    "  Upper jumper: 4000R → TMS_Chess (Mode-1 chess vs engine)\n"
+    "  Upper jumper: 4000R → TMS_Nyan_CodeTank (12-frame Mode III animation)\n"
 )
 
 SIDECAR_GAME3 = (
     "Codetank_GAME3.rom — TMS9918 P-LAB CodeTank cartridge\n"
-    "  Lower jumper: 4000R → TMS_Life (Conway Game of Life)\n"
-    "  Upper jumper: empty (reserved for future expansion)\n"
+    "  Lower jumper: 4000R → Tetris/CodeTank (full 16 kB drop-in)\n"
+    "  Upper jumper: 4000R → menu → 1=Life 2=Mandel 3=Plasma\n"
 )
 
-SIDECAR_TOOLS = (
-    "Codetank_TOOLS.rom — TMS9918 silicon-validation utilities\n"
+SIDECAR_TEST = (
+    "Codetank_TEST.rom — TMS9918 silicon-validation utilities\n"
     "  Lower jumper: 4000R → TMS_SilBench (29-test silicon benchmark\n"
     "                suite — interactive menu (A=run all, 1..9=single\n"
     "                test, ESC=exit). Each test renders a visual on the\n"
@@ -444,7 +500,8 @@ SIDECAR_TOOLS = (
     "                Apple-1 native PIA display. Canonical regression\n"
     "                fixture for the May 2026 silicon model — see\n"
     "                dev/projects/tms9918_silbench/README.md)\n"
-    "  Upper jumper: reserved for future dev tools\n"
+    "  Upper jumper: 4000R → menu → 1=Clone (sprite-clone bug N.8)\n"
+    "                              2=Split (5th-sprite palette split)\n"
 )
 
 
@@ -454,7 +511,7 @@ def main() -> int:
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     ap.add_argument(
-        "--rom", choices=("1", "2", "3", "tools", "all"), default="all",
+        "--rom", choices=("1", "2", "3", "test", "all"), default="all",
         help="Which CodeTank ROM to build (default: all 4)",
     )
     args = ap.parse_args()
@@ -476,9 +533,9 @@ def main() -> int:
         rom3 = build_game3()
         write_rom(rom3, out_dir / "Codetank_GAME3.rom", SIDECAR_GAME3)
 
-    if args.rom in ("tools", "all"):
-        romT = build_tools()
-        write_rom(romT, out_dir / "Codetank_TOOLS.rom", SIDECAR_TOOLS)
+    if args.rom in ("test", "all"):
+        romT = build_test()
+        write_rom(romT, out_dir / "Codetank_TEST.rom", SIDECAR_TEST)
 
     return 0
 

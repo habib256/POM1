@@ -2,7 +2,7 @@
 """
 test_iec_telnet.py -- End-to-end smoke for the P-LAB IEC daughterboard.
 
-Boots POM1 with --preset 14 (P-LAB Apple-1 with microSD + IEC + Applesoft Lite)
+Boots POM1 with --preset 5 (microSD + Applesoft Lite) and --enable iec
 and exercises the @-prefixed IEC commands of SD CARD OS 1.3 against the
 bundled disks/iec/dev8.d64 fixture (label "POM1 IEC", id "01", with a
 single PRG file "HELLO" of 256 bytes).
@@ -124,7 +124,7 @@ def launch_pom1(log_path: str):
     exe = ensure_pom1_binary()
     log = open(log_path, "w")
     proc = subprocess.Popen(
-        [str(exe), "--preset", "14", "--terminal", "--cpu-max"],
+        [str(exe), "--preset", "5", "--enable", "iec", "--terminal", "--cpu-max"],
         stdout=log, stderr=subprocess.STDOUT, start_new_session=True,
         cwd=str(REPO_ROOT),
     )

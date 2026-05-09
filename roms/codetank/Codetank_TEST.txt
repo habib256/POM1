@@ -1,0 +1,2 @@
+Lower jumper: 4000R → TMS_SilBench (29-test silicon)
+Upper jumper: 4000R → menu → 1=Clone 2=Split (Bugs tests)

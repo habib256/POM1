@@ -14,6 +14,15 @@
 
 .DEFAULT_GOAL := all
 
+# OUT_DIR_T — Make-target form of $(OUT_DIR) (backslash-escapes spaces) so
+# `$(OUT_DIR_T)/foo: deps` parses as a single filename even when the
+# directory name contains spaces (e.g. "software/Apple-1 games"). Use
+# $(OUT_DIR_T) in target/prerequisite positions and "$(OUT_DIR)" (quoted)
+# in shell commands.
+empty     :=
+space     := $(empty) $(empty)
+OUT_DIR_T := $(subst $(space),\$(space),$(OUT_DIR))
+
 OBJ := $(PROJECT).o
 
 # EXTRA_ASM — additional .asm files to assemble + link alongside the project's
@@ -30,16 +39,16 @@ $(notdir $(1:.asm=.o)): $(1)
 endef
 $(foreach src,$(EXTRA_ASM),$(eval $(call EXTRA_RULE,$(src))))
 
-$(OUT_DIR)/$(PROJECT).bin: $(PROJECT).asm $(EXTRA_O)
+$(OUT_DIR_T)/$(PROJECT).bin: $(PROJECT).asm $(EXTRA_O)
 	ca65 $(LIB) $<
-	ld65 -C $(LOAD_CFG) $(OBJ) $(EXTRA_O) -o $@
+	ld65 -C $(LOAD_CFG) $(OBJ) $(EXTRA_O) -o "$(OUT_DIR)/$(PROJECT).bin"
 
 ifeq ($(EMIT_TXT),1)
-$(OUT_DIR)/$(PROJECT).txt: $(OUT_DIR)/$(PROJECT).bin
+$(OUT_DIR_T)/$(PROJECT).txt: $(OUT_DIR_T)/$(PROJECT).bin
 	python3 emit_$(PROJECT)_txt.py
-ALL_TARGETS := $(OUT_DIR)/$(PROJECT).txt
+ALL_TARGETS := $(OUT_DIR_T)/$(PROJECT).txt
 else
-ALL_TARGETS := $(OUT_DIR)/$(PROJECT).bin
+ALL_TARGETS := $(OUT_DIR_T)/$(PROJECT).bin
 endif
 
 .PHONY: all clean test

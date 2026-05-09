@@ -301,7 +301,7 @@ static void pom1_macos_provision_user_data_dir()
     // so the symlinks have to be refreshed on every launch. Detect staleness
     // by comparing read_symlink target to the expected one.
     static constexpr const char* kReadOnlyDirs[] = {
-        "roms", "fonts", "software", "dev", "pic", "cassettes"
+        "roms", "fonts", "software", "pic", "cassettes"
     };
     for (const char* name : kReadOnlyDirs) {
         fs::path link   = userDataDir / name;

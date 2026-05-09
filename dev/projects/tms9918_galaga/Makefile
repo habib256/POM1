@@ -3,7 +3,7 @@
 PROJECT  := TMS_Galaga
 CFG      ?= apple1_galaga.cfg
 LOAD_CFG := $(CFG)
-OUT_DIR  := ../../../software/tms9918
+OUT_DIR  := ../../../software/Graphic TMS9918
 LIB      := -I ../../lib/apple1 -I ../../lib/m6502 -I ../../lib/tms9918
 EXTRA_ASM := ../../lib/tms9918/tms9918_pad.asm
 EMIT_TXT := 1

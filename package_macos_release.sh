@@ -58,7 +58,6 @@ DATA_ROOT="$STAGING/Contents/Resources"
 cp -R roms      "$DATA_ROOT/roms"
 cp -R fonts     "$DATA_ROOT/fonts"
 cp -R software  "$DATA_ROOT/software"
-cp -R dev       "$DATA_ROOT/dev"
 cp -R cassettes "$DATA_ROOT/cassettes"
 cp -R pic       "$DATA_ROOT/pic"
 

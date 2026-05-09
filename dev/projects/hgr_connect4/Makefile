@@ -1,7 +1,7 @@
 # HGR Connect 4
 PROJECT  := HGR_Connect4
 LOAD_CFG := ../../cc65/apple1_gen2.cfg
-OUT_DIR  := ../../../software/hgr
+OUT_DIR  := ../../../software/Graphic HGR
 LIB      := -I ../../lib/apple1 -I ../../lib/hgr -I ../../lib/m6502
 EMIT_TXT := 1
 

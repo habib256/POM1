@@ -294,6 +294,14 @@ void MainWindow_ImGui::render()
     emulation->copySnapshot(uiSnapshot);
     cpuRunning = uiSnapshot.cpuRunning;
 
+    if (codeTankPendingWozRunAt > 0.0 && ImGui::GetTime() >= codeTankPendingWozRunAt) {
+        codeTankPendingWozRunAt = 0.0;
+        for (const char* p = "4000R"; *p; ++p) {
+            emulation->queueKey(*p);
+        }
+        emulation->queueKey('\r');
+    }
+
     // Deferred expansion-card plug (see MainWindow_ImGui.h for the full
     // rationale). Every card is unplugged up front in applyMachineConfig
     // (or at boot) and re-plugged here after the CPU has run ~200 ms —
@@ -471,6 +479,12 @@ void MainWindow_ImGui::render()
                     gt6144Enabled = o.enable; pendingGT6144Enable = o.enable;
                     if (!o.enable) emulation->setGT6144Enabled(false);
                     break;
+                case pom1::CliCard::IEC:
+                    iecCardEnabled = o.enable; pendingIECCardEnable = o.enable;
+                    if (o.enable) {
+                        microSDEnabled = true; pendingMicroSDEnable = true;
+                    }
+                    break;
             }
         }
         if (sidChipOverride) {
@@ -608,7 +622,6 @@ void MainWindow_ImGui::render()
     if (showMemoryConfig) renderMemoryConfigDialog();
     if (showLoadDialog) renderLoadDialog();
     if (showLoadTapeDialog) renderLoadTapeDialog();
-    if (showCassetteControl) renderCassetteControlWindow();
     if (showCassetteDeck) renderCassetteDeckWindow();
     if (showSaveDialog) renderSaveDialog();
     if (showSaveTapeDialog) renderSaveTapeDialog();
@@ -622,9 +635,7 @@ void MainWindow_ImGui::render()
     if (pr40Enabled && showPR40) renderPR40Window();
     if (a1ioRtcEnabled && showA1IO_RTC) renderA1IO_RTCWindow();
     if (jukeBoxEnabled && showJukeBox) renderJukeBoxWindow();
-    if (codeTankEnabled && showCodeTank) renderCodeTankWindow();
     if (showCodeTankLibrary) renderCodeTankLibraryWindow();
-    if (showDevFilesWindow) renderDevFilesWindow();
 
     // Barre de statut
     renderStatusBar();

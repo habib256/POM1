@@ -50,6 +50,7 @@ enum class CliCard : uint8_t {
     CodeTank,      // P-LAB CodeTank 28c256 ROM daughterboard of TMS9918 ($4000-$7FFF)
     Pr40,          // SWTPC PR-40 printer (Jobs 1976 Interface Age hack)
     GT6144,        // SWTPC GT-6144 graphic terminal (1976)
+    IEC,           // P-LAB IEC daughterboard on microSD (cascade-enables microSD)
 };
 
 /// One deferred action consumed by the Phase-C runner after the

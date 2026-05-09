@@ -742,7 +742,7 @@ void MainWindow_ImGui::renderHardwareReferenceWindow()
             hwKeyValue("I/O:", "$C000 output flip-flop (bit 7), $C081 tape input.");
             hwKeyValue("ROM:", "256 B Woz ACI firmware at $C100-$C1FF - entry point C100R in the Woz Monitor.");
             hwKeyValue("Files:", "Loads raw binary, .aci dumps, and .wav captures.");
-            hwKeyValue("UI:", "File -> Cassette Deck (realistic piano-key transport) or Cassette Controls (classic).");
+            hwKeyValue("UI:", "File -> Cassette Deck (piano-key transport).");
             hwHeading("How it works");
             ImGui::TextWrapped(
                 "The ACI is a single flip-flop: each time the CPU reads $C081 "
@@ -1224,7 +1224,7 @@ void MainWindow_ImGui::renderHardwareReferenceWindow()
         }
 
         // ---- MODEM BBS -----------------------------------------------
-        if (ImGui::CollapsingHeader("P-LAB MODEM BBS")) {
+        if (ImGui::CollapsingHeader("P-LAB MODEM BBS WIFI")) {
             ImGui::TextWrapped(
                 "WDC 65C51 ACIA + ESP8266 on real hardware; POM1 replaces the "
                 "ESP with a native Hayes/TELNET interpreter that dials real TCP "
@@ -1529,8 +1529,7 @@ void MainWindow_ImGui::renderSoftwareReferenceWindow()
 
         if (ImGui::CollapsingHeader("Cassette tapes")) {
             ImGui::TextWrapped(
-                "The Woz ACI accepts three cassette formats through File -> Cassette Deck / "
-                "Cassette Controls.");
+                "The Woz ACI accepts three cassette formats through File -> Cassette Deck.");
             hwHeading("Formats");
             hwKeyValue(".aci / .bin:", "Raw transition dumps.");
             hwKeyValue(".wav:", "Real captures. Decoded by the ACI comparator.");
@@ -2114,7 +2113,7 @@ void MainWindow_ImGui::renderTutorialCassetteWindow()
         tutStep(1, "Pick a preset with the ACI");
         ImGui::TextWrapped(
             "Presets menu > #1 'Apple-1 with ACI & Integer BASIC' or "
-            "#13 'POM1 Multiplexing Fantasy' (the default). The ACI ROM "
+            "#14 'POM1 Apple-1 Multiplexing Fantasy (2026)' (the default). The ACI ROM "
             "is at $C100-$C1FF, I/O at $C000 / $C081.");
 
         tutStep(2, "Open the deck and load a tape");
@@ -2237,7 +2236,7 @@ void MainWindow_ImGui::renderTutorialModemBBSWindow()
         bulletWrapped("ATE0 / ATE1 disable / enable command-mode echo.");
         bulletWrapped("No 'ATO' to resume a paused session - dial again with ATDT for a fresh socket.");
         bulletWrapped("TELNET IAC negotiations are filtered; CR+LF from the wire collapses to CR.");
-        bulletWrapped("See Hardware Reference > MODEM BBS for the full AT command set and baud table.");
+        bulletWrapped("See Hardware Reference > P-LAB MODEM BBS WIFI for the full AT command set and baud table.");
         ImGui::EndChild();
     }
     ImGui::End();
@@ -2873,11 +2872,12 @@ void MainWindow_ImGui::renderTutorialIECCardWindow()
             "disks/iec/dev8.d64 (174 848 B standard 35-track).");
         ImGui::BeginChild("tut_iec_scroll", ImVec2(0, 0), true);
 
-        tutStep(1, "Pick the IEC preset");
+        tutStep(1, "Enable microSD + IEC");
         ImGui::TextWrapped(
-            "Presets > 'P-LAB Apple-1 with microSD + IEC + Applesoft Lite'. "
-            "microSD is the host card; IEC is its daughterboard. Without "
-            "microSD plugged the IEC menu entry is greyed out.");
+            "Presets > #5 'P-LAB Apple-1 with microSD & Applesoft Lite', then "
+            "Hardware > enable 'P-LAB IEC Add-on (microSD daughterboard)'. "
+            "Or CLI: --preset 5 --enable iec. Without microSD plugged the IEC "
+            "menu entry is greyed out.");
 
         tutStep(2, "Boot SD CARD OS 1.3");
         ImGui::TextWrapped("From the Woz Monitor '\\' prompt:");

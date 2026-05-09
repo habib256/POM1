@@ -13,7 +13,7 @@ def main() -> int:
         asm_files=["HGR_SymbolsShow.asm"],
         lib_dirs=["apple1", "hgr", "hgr/sprites"],
         cfg="apple1_gen2.cfg",
-        out_dir_software="hgr",
+        out_dir_software="Graphic HGR",
         start_addr=0xE000,
         header_lines=[
             "// HGR Symbols showcase (sprites_symbols_hgr.inc, 23 sprites)",

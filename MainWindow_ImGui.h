@@ -154,7 +154,6 @@ private:
     bool showLoadDialog = false;
     bool showLoadTapeDialog = false;
     bool aciEnabled = true;   // Woz ACI cassette interface plugged (default on)
-    bool showCassetteControl = false;  // Legacy utilitarian controls
     bool showCassetteDeck = false;     // Realistic procedural cassette deck
     bool showMemoryMapGrid = false;
     bool showMemoryBar = false;
@@ -226,15 +225,17 @@ private:
     JukeBox::Jumper jukeBoxJumper = JukeBox::Jumper::RAM16_ROM32;
     JukeBox::ChipMode jukeBoxChipMode = JukeBox::ChipMode::Flash;
     bool codeTankEnabled = false;
-    bool showCodeTank = false;
     bool showCodeTankLibrary = false;
+    /// ImGui::GetTime() deadline to queue 4000R after CodeTank library insert + hardReset; 0 = none.
+    double codeTankPendingWozRunAt = 0.0;
+    /// Set from CodeTank Library insert — next TMS9918 Begin() uses SetNextWindowFocus().
+    bool bringTms9918WindowToFront = false;
     CodeTank::Jumper codeTankJumper = CodeTank::Jumper::Lower16;
     // UI mirror of EmulationController::isSiliconStrictMode(). Resynced from
     // applyMachineConfig() (preset-driven default = !fantasyPreset) and from
     // the Hardware menu toggle. Drives the Hardware menu checkbox state and
     // the STRICT/FANTASY status-bar tag.
     bool siliconStrictModeEnabled = true;
-    bool showDevFilesWindow = false;     // Dev > Source Browser
     bool fullscreen = false;
 
     // Keyboard input
@@ -309,7 +310,6 @@ private:
     void renderMemoryConfigDialog();
     void renderLoadDialog();
     void renderLoadTapeDialog();
-    void renderCassetteControlWindow();
     void renderCassetteDeckWindow();
     struct MemRegion { uint16_t start, end; ImU32 color; const char* label; };
     std::vector<MemRegion> buildMemoryRegions();
@@ -327,9 +327,7 @@ private:
     void renderTerminalCardWindow();
     void renderA1IO_RTCWindow();
     void renderJukeBoxWindow();
-    void renderCodeTankWindow();
     void renderCodeTankLibraryWindow();
-    void renderDevFilesWindow();
     void renderPR40Window();
 
     // Action functions

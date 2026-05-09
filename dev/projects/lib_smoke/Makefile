@@ -4,21 +4,24 @@
 .DEFAULT_GOAL := all
 PROJECT  := LibSmoke
 LOAD_CFG := apple1_smoke.cfg
-OUT_DIR  := ../../../software/dev
+OUT_DIR  := ../../../software/Apple-1 dev
+empty     :=
+space     := $(empty) $(empty)
+OUT_DIR_T := $(subst $(space),\$(space),$(OUT_DIR))
 LIB      := -I ../../lib/apple1 -I ../../lib/m6502 -I ../../lib/text40
 
 OBJS := $(PROJECT).o math.o
 
 $(PROJECT).o: $(PROJECT).asm
-	ca65 $(LIB) -o $@ $<
+	ca65 $(LIB) -o "$@" $<
 
 math.o: ../../lib/m6502/math.asm
-	ca65 $(LIB) -o $@ $<
+	ca65 $(LIB) -o "$@" $<
 
-$(OUT_DIR)/$(PROJECT).bin: $(OBJS)
-	ld65 -C $(LOAD_CFG) $^ -o $@
+$(OUT_DIR_T)/$(PROJECT).bin: $(OBJS)
+	ld65 -C $(LOAD_CFG) $^ -o "$@"
 
-$(OUT_DIR)/$(PROJECT).txt: $(OUT_DIR)/$(PROJECT).bin
+$(OUT_DIR_T)/$(PROJECT).txt: $(OUT_DIR_T)/$(PROJECT).bin
 	@python3 -c "import sys; \
 data = open('$(OUT_DIR)/$(PROJECT).bin','rb').read(); \
 lines = []; addr = 0x0280; \
@@ -28,7 +31,7 @@ open('$(OUT_DIR)/$(PROJECT).txt','w').write('\n'.join(lines)+'\n'); \
 print(f'Wrote $(OUT_DIR)/$(PROJECT).txt ({len(data)} bytes)')"
 
 .PHONY: all clean
-all: $(OUT_DIR)/$(PROJECT).txt
+all: $(OUT_DIR_T)/$(PROJECT).txt
 
 clean:
 	rm -f $(OBJS)

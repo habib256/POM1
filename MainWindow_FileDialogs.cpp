@@ -4,7 +4,8 @@
 // MainWindow_FileDialogs.cpp — load/save dialogs and the cassette control
 // window. Includes the file browser used by Load Memory, the binary/hex
 // auto-detect, and the hardware auto-enable heuristics that fire when the
-// loaded file's directory hints at a card (sid/, hgr/, tms9918/, etc.).
+// loaded file's directory hints at a card (Graphic HGR/, Graphic TMS9918/,
+// Graphic gt-6144/, NET/, a1io_rtc/, sdcard/).
 
 #include "MainWindow_ImGui.h"
 #include "MainWindow_Internal.h"
@@ -13,6 +14,8 @@
 #include "imgui.h"
 
 #include <GLFW/glfw3.h>
+
+#include <cfloat>
 
 #include <algorithm>
 #include <cstdio>
@@ -37,7 +40,10 @@ void MainWindow_ImGui::loadMemory()
 
 void MainWindow_ImGui::renderLoadDialog()
 {
-    ImGui::SetNextWindowSize(ImVec2(550, 450), ImGuiCond_FirstUseEver);
+    // Tall enough for FileList + path, type radios, address row, and buttons.
+    ImGui::SetNextWindowSizeConstraints(ImVec2(520.0f, 580.0f),
+                                        ImVec2(FLT_MAX, FLT_MAX));
+    ImGui::SetNextWindowSize(ImVec2(640.0f, 720.0f), ImGuiCond_FirstUseEver);
     if (ImGui::Begin("Load Program", &showLoadDialog)) {
 
         if (!loadDlg.filesScanned) {
@@ -78,7 +84,7 @@ void MainWindow_ImGui::renderLoadDialog()
             ImGui::Text("%s", displayPath.c_str());
         }
 
-        ImGui::BeginChild("FileList", ImVec2(-1, 220), true);
+        ImGui::BeginChild("FileList", ImVec2(-1, 360), true);
 
         if (loadDlg.currentDir != loadDlg.softAsmRoot) {
             if (ImGui::Selectable(".. /", false)) {
@@ -137,69 +143,75 @@ void MainWindow_ImGui::renderLoadDialog()
             finalizePendingCardPlugs();
 
             // Auto-enable hardware cards based on source directory.
-            // NB: A1-SID is intentionally NOT auto-plugged from /software/sid/.
-            // Auto-plug interacts badly with the SID's audio-mixer + bus state
-            // machine when re-loading a tune across hardReset (the UI flag and
-            // Memory state can end up out of sync, leaving the card plugged
-            // but silent). SID programs rely on the preset "P-LAB Apple-1
-            // with A1-SID Sound Card" (or any preset with `sid=true`) to
-            // plug the card; load dialogs no longer mutate SID state.
+            // Folder layout under software/: "Graphic HGR", "Graphic TMS9918",
+            // "Graphic gt-6144", "NET", "a1io_rtc", "SOUND SID", ... Match the
+            // canonical folder name (forward and backslash separators) and
+            // ALWAYS raise the corresponding window so loading from the folder
+            // opens the panel before interaction. This matters for the Fantasy
+            // preset, which leaves graphic cards unplugged by default — the
+            // user expects "open file from Graphic HGR/" to both plug HGR and
+            // pop the framebuffer window.
             std::string loadPath(loadDlg.filePath);
-            if (loadPath.find("/hgr/") != std::string::npos ||
-                loadPath.find("\\hgr\\") != std::string::npos) {
+            auto pathHas = [&](const char* fwd, const char* back) {
+                return loadPath.find(fwd) != std::string::npos ||
+                       loadPath.find(back) != std::string::npos;
+            };
+            if (pathHas("/Graphic HGR/", "\\Graphic HGR\\")) {
                 if (!graphicsCardEnabled) {
                     graphicsCardEnabled = true;
                     emulation->setHgrFramebufferAttached(true);
-                    showGraphicsCard = true;
                 }
-            } else if (loadPath.find("/tms9918/") != std::string::npos ||
-                       loadPath.find("\\tms9918\\") != std::string::npos) {
+                showGraphicsCard = true;
+            } else if (pathHas("/SOUND SID/", "\\SOUND SID\\")) {
+                if (!sidEnabled) {
+                    sidEnabled = true;
+                    emulation->setSIDEnabled(true);
+                    // Mirror the menu mutex: plugging A1-SID evicts A1-AUDIO SE
+                    // (same MOS chip) and Juke-Box ($CA00 latch sits inside the
+                    // SID window). See MainWindow_Menu.cpp:326.
+                    sidSpecialEditionEnabled = false;
+                    jukeBoxEnabled = false;
+                    setStatusMessage("P-LAB A1-SID plugged", 2.0f);
+                }
+            } else if (pathHas("/Graphic TMS9918/", "\\Graphic TMS9918\\")) {
                 if (!tms9918Enabled) {
                     tms9918Enabled = true;
-                    showTMS9918 = true;
                     emulation->setTMS9918Enabled(true);
                     setStatusMessage("P-LAB TMS9918 plugged", 2.0f);
                 }
-            } else if (loadPath.find("/sdcard/") != std::string::npos ||
-                       loadPath.find("\\sdcard\\") != std::string::npos) {
+                showTMS9918 = true;
+            } else if (pathHas("/sdcard/", "\\sdcard\\")) {
                 if (!microSDEnabled) {
                     microSDEnabled = true;
                     emulation->setMicroSDEnabled(true);
                     setStatusMessage("P-LAB microSD Card plugged", 2.0f);
                 }
-            } else if (loadPath.find("/wifi/") != std::string::npos ||
-                       loadPath.find("\\wifi\\") != std::string::npos ||
-                       loadPath.find("/net/") != std::string::npos ||
-                       loadPath.find("\\net\\") != std::string::npos) {
+            } else if (pathHas("/NET/", "\\NET\\")) {
                 if (!wifiModemEnabled) {
                     wifiModemEnabled = true;
-                    showWiFiModem = true;
                     emulation->setWiFiModemEnabled(true);
                     setStatusMessage("P-LAB Wi-Fi Modem plugged", 2.0f);
                 } else {
-                    // Reload from software/net/: drop any live BBS connection
+                    // Reload from software/NET/: drop any live BBS connection
                     // and clear ACIA state so the new auto-dial program starts fresh.
                     emulation->wifiModemReset();
                     setStatusMessage("P-LAB Wi-Fi Modem reset", 2.0f);
                 }
-            } else if (loadPath.find("/a1io_rtc/") != std::string::npos ||
-                       loadPath.find("\\a1io_rtc\\") != std::string::npos) {
+                showWiFiModem = true;
+            } else if (pathHas("/a1io_rtc/", "\\a1io_rtc\\")) {
                 if (!a1ioRtcEnabled) {
                     a1ioRtcEnabled = true;
-                    showA1IO_RTC = true;
                     emulation->setA1IO_RTCEnabled(true);
                     setStatusMessage("P-LAB I/O Board & RTC plugged", 2.0f);
                 }
-            } else if (loadPath.find("/gt-6144/") != std::string::npos ||
-                       loadPath.find("\\gt-6144\\") != std::string::npos ||
-                       loadPath.find("/GT-6144/") != std::string::npos ||
-                       loadPath.find("\\GT-6144\\") != std::string::npos) {
+                showA1IO_RTC = true;
+            } else if (pathHas("/Graphic gt-6144/", "\\Graphic gt-6144\\")) {
                 if (!gt6144Enabled) {
                     gt6144Enabled = true;
-                    showGT6144 = true;
                     emulation->setGT6144Enabled(true);
                     setStatusMessage("SWTPC GT-6144 plugged (64x96 framebuffer at $D00A)", 3.0f);
                 }
+                showGT6144 = true;
             }
 
             uint16_t addr = 0;
@@ -474,175 +486,6 @@ void MainWindow_ImGui::renderCassetteDeckWindow()
     }
     if (result.requestLoadDialog) showLoadTapeDialog = true;
     if (result.requestSaveDialog) showSaveTapeDialog = true;
-}
-
-void MainWindow_ImGui::renderCassetteControlWindow()
-{
-    ImGui::SetNextWindowSize(ImVec2(460, 320), ImGuiCond_FirstUseEver);
-    if (ImGui::Begin("Woz ACI Cassette Control", &showCassetteControl)) {
-        auto renderStateBadge = [](const char* label, const ImVec4& color) {
-            ImGui::TextColored(color, "%s", label);
-        };
-
-        ImGui::TextWrapped(
-            "Two modes share this deck. PROGRAM TAPE decodes audio into ACI "
-            "pulses at $C081 so the Woz ROM at $C100 can load Apple-1 "
-            "programs — selected automatically when the ACI card is plugged "
-            "at load time. AUDIO STREAM plays the file as raw sound through "
-            "the deck speaker — selected when the ACI is unplugged.");
-        ImGui::Separator();
-        ImGui::Spacing();
-
-        ImGui::Text("Reader");
-        ImGui::Separator();
-
-        if (uiSnapshot.cassetteLoadedTape) {
-            ImGui::TextWrapped("Inserted tape: %s", uiSnapshot.cassetteLoadedTapePath.c_str());
-            ImGui::Text("Mode:");
-            ImGui::SameLine();
-            if (uiSnapshot.cassetteAudioStreamMode) {
-                renderStateBadge("AUDIO STREAM (direct playback)",
-                                 ImVec4(0.45f, 0.85f, 0.95f, 1.0f));
-                const double total = uiSnapshot.cassettePlaybackTotalSeconds;
-                if (total > 0.0) {
-                    ImGui::Text("Duration: %d:%02d",
-                                static_cast<int>(total) / 60,
-                                static_cast<int>(total) % 60);
-                } else {
-                    ImGui::Text("Duration: unknown");
-                }
-            } else {
-                renderStateBadge("PROGRAM TAPE (ACI pulse decode)",
-                                 ImVec4(0.95f, 0.75f, 0.25f, 1.0f));
-                ImGui::Text("Transitions: %zu", uiSnapshot.cassetteLoadedTransitionCount);
-            }
-            ImGui::Text("State:");
-            ImGui::SameLine();
-            // State semantics differ per mode:
-            //   Stream mode:  PLAYING (audio thread pulling PCM frames) vs READY.
-            //                 The ARMED latch is pulse-only (B6 play-on-first-
-            //                 read); it has no meaning when the file is played
-            //                 as raw audio, so we hide it entirely.
-            //   Pulse  mode:  PLAYING (advancePlayback is consuming durations),
-            //                 ARMED (Play pressed, waiting for the ACI ROM to
-            //                 poll $C081 for the first time — B6 latch), or
-            //                 READY (stopped / leader).
-            if (uiSnapshot.cassetteAudioStreamMode) {
-                renderStateBadge(
-                    uiSnapshot.cassettePlaybackActive ? "PLAYING" : "READY",
-                    uiSnapshot.cassettePlaybackActive ? ImVec4(0.95f, 0.75f, 0.25f, 1.0f)
-                                                      : ImVec4(0.35f, 0.85f, 0.35f, 1.0f));
-            } else if (uiSnapshot.cassettePlaybackActive) {
-                renderStateBadge("READING", ImVec4(0.95f, 0.75f, 0.25f, 1.0f));
-            } else if (uiSnapshot.cassettePlaybackArmed) {
-                renderStateBadge("ARMED (waiting for $C081 read)",
-                                 ImVec4(0.95f, 0.55f, 0.25f, 1.0f));
-                if (ImGui::IsItemHovered()) {
-                    ImGui::SetTooltip(
-                        "The deck is loaded and Play is engaged, but the tape\n"
-                        "is not advancing yet — B6 play-on-first-read. It will\n"
-                        "start the moment the ACI ROM polls $C081 (e.g. after\n"
-                        "`C100R` in the Woz Monitor runs the READ routine).");
-                }
-            } else {
-                renderStateBadge("READY", ImVec4(0.35f, 0.85f, 0.35f, 1.0f));
-            }
-        } else {
-            ImGui::Text("Inserted tape: none");
-            ImGui::Text("ACI card:");
-            ImGui::SameLine();
-            renderStateBadge(aciEnabled ? "PLUGGED (next load → program tape)"
-                                        : "UNPLUGGED (next load → audio stream)",
-                             aciEnabled ? ImVec4(0.95f, 0.75f, 0.25f, 1.0f)
-                                        : ImVec4(0.45f, 0.85f, 0.95f, 1.0f));
-            ImGui::Text("State:");
-            ImGui::SameLine();
-            renderStateBadge("EMPTY", ImVec4(0.70f, 0.70f, 0.70f, 1.0f));
-        }
-
-        ImGui::Spacing();
-        if (ImGui::Button("Load Tape", ImVec2(130, 0))) {
-            showLoadTapeDialog = true;
-        }
-        ImGui::SameLine();
-        if (ImGui::Button("Rewind", ImVec2(130, 0))) {
-            emulation->rewindTape();
-            emulation->copySnapshot(uiSnapshot);
-            setStatusMessage("Tape rewound", 2.0f);
-        }
-        ImGui::SameLine();
-        if (ImGui::Button("Eject", ImVec2(130, 0))) {
-            emulation->ejectTape();
-            emulation->copySnapshot(uiSnapshot);
-            setStatusMessage("Tape ejected", 2.0f);
-        }
-
-        ImGui::Spacing();
-        ImGui::BeginDisabled(!uiSnapshot.cassetteLoadedTape);
-        if (ImGui::Button("Play", ImVec2(-1, 0))) {
-            emulation->playTape();
-            emulation->copySnapshot(uiSnapshot);
-            setStatusMessage("Tape playback started", 2.0f);
-        }
-        if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled) && !uiSnapshot.cassetteLoadedTape) {
-            ImGui::SetTooltip("Load a tape first.");
-        } else if (ImGui::IsItemHovered()) {
-            ImGui::SetTooltip("Start reading from the beginning of the inserted tape (virtual tape runs with the CPU).");
-        }
-        ImGui::EndDisabled();
-
-        ImGui::Spacing();
-        ImGui::Text("Recorder");
-        ImGui::Separator();
-        ImGui::Text("Live audio mode:");
-        bool stabilizedAudio = !uiSnapshot.cassetteHardwareAccurateLiveAudio;
-        if (ImGui::RadioButton("Real-time stabilized", stabilizedAudio)) {
-            emulation->setHardwareAccurateLiveAudio(false);
-            emulation->copySnapshot(uiSnapshot);
-        }
-        if (ImGui::IsItemHovered()) {
-            ImGui::SetTooltip("Stable GUI audio at a fixed sample rate.");
-        }
-        bool hardwareAccurateAudio = uiSnapshot.cassetteHardwareAccurateLiveAudio;
-        if (ImGui::RadioButton("Hardware faithful", hardwareAccurateAudio)) {
-            emulation->setHardwareAccurateLiveAudio(true);
-            emulation->copySnapshot(uiSnapshot);
-        }
-        if (ImGui::IsItemHovered()) {
-            ImGui::SetTooltip("Sound speed follows emulation speed like real hardware. Default at startup.");
-        }
-        ImGui::Spacing();
-        ImGui::Text("Recorder state:");
-        ImGui::SameLine();
-        if (uiSnapshot.cassetteRecordedTransitionCount > 0) {
-            renderStateBadge("RECORDED", ImVec4(0.95f, 0.35f, 0.35f, 1.0f));
-        } else {
-            renderStateBadge("IDLE", ImVec4(0.70f, 0.70f, 0.70f, 1.0f));
-        }
-        ImGui::Text("Captured transitions: %zu", uiSnapshot.cassetteRecordedTransitionCount);
-        ImGui::Text("Audio backend:");
-        ImGui::SameLine();
-        renderStateBadge(uiSnapshot.cassetteAudioAvailable ? "ACTIVE" : "UNAVAILABLE",
-                         uiSnapshot.cassetteAudioAvailable ? ImVec4(0.35f, 0.85f, 0.35f, 1.0f)
-                                                           : ImVec4(0.95f, 0.45f, 0.45f, 1.0f));
-        ImGui::Text("Live queue: %.1f ms", uiSnapshot.cassetteQueuedAudioSeconds * 1000.0);
-
-        ImGui::Spacing();
-        if (ImGui::Button("Save Tape", ImVec2(130, 0))) {
-            showSaveTapeDialog = true;
-        }
-        ImGui::SameLine();
-        if (ImGui::Button("Clear Capture", ImVec2(130, 0))) {
-            emulation->clearTapeCapture();
-            emulation->copySnapshot(uiSnapshot);
-            setStatusMessage("Cassette capture cleared", 2.0f);
-        }
-
-        ImGui::Spacing();
-        ImGui::Separator();
-        ImGui::TextWrapped("This window controls the Apple-1 cassette reader/recorder without changing the current audio rendering.");
-    }
-    ImGui::End();
 }
 
 void MainWindow_ImGui::saveMemory()

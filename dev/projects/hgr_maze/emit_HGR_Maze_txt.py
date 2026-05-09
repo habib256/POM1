@@ -13,7 +13,7 @@ def main() -> int:
         asm_files=["HGR_Maze.asm"],
         lib_dirs=["apple1", "m6502"],
         cfg="apple1_gen2.cfg",
-        out_dir_software="hgr",
+        out_dir_software="Graphic HGR",
         start_addr=0xE000,
         project_dir=PROJ,
     )

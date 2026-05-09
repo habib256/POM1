@@ -13,7 +13,7 @@ def main() -> int:
         asm_files=["TMS_Snake.asm"],
         lib_dirs=["apple1", "m6502", "tms9918"],
         cfg="apple1_snake.cfg",
-        out_dir_software="tms9918",
+        out_dir_software="Graphic TMS9918",
         start_addr=0x0280,
         project_dir=PROJ,
     )

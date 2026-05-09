@@ -197,13 +197,6 @@ if exist "software\" (
     echo AVERTISSEMENT: dossier software\ absent — omis.
 )
 
-if exist "dev\" (
-    echo Copie dev\ ...
-    xcopy /E /I /Q "dev" "%OUTDIR%\dev\" >nul
-) else (
-    echo AVERTISSEMENT: dossier dev\ absent — omis.
-)
-
 if exist "sdcard\" (
     echo Copie sdcard\ ...
     xcopy /E /I /Q "sdcard" "%OUTDIR%\sdcard\" >nul

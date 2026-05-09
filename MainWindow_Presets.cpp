@@ -50,17 +50,17 @@ namespace pom1::mainwindow::detail {
 //   - Every preset uses the same canonical POM1 Fantasy frame:
 //         Apple 1 Screen at (10, 61) size (843, 701)  ← LEFT column
 //         Right column: x=858, width=338, y range 61..764
-//         Resulting GLFW window: 1206 × 807 (matches preset 15).
+//         Resulting GLFW window: 1206 × 807 (matches last preset).
 //   - Right column is split top/bottom for every preset. The TOP slot
 //     (y=61, height≈223) carries the tutorial most relevant to the
 //     preset; the BOTTOM slot (y=288, height≈476) carries the
 //     peripheral's own visualisation panel (or a second useful window
 //     if the card has no dedicated panel: CFFA1, microSD, SID).
-//   - Preset 15 (POM1 Multiplexing Fantasy) is the shipped "default"
+//   - Last preset (POM1 Multiplexing Fantasy) is the shipped "default"
 //     preset — its layout MUST stay byte-identical to the shipped
 //     screenshot reference (the README mentions it). Don't touch.
 //     Every other preset mirrors its geometry. First-time use writes
-//     ini/imgui_preset_15.ini + ini/preset_15.size; subsequent launches
+//     ini/imgui_preset_NN.ini + ini/preset_NN.size (NN = index); subsequent launches
 //     load from there.
 //   - Preset 12 (P-LAB Multiplexing Fantasy) is the only exception
 //     that departs from the tutorial+peripheral template: it's the
@@ -263,15 +263,15 @@ const MachineConfig kMachinePresets[] = {
         /*gt6144*/ false,
         /*iecCard*/ false,
         {
-            // Apple 1 Screen + CodeTank panel stack on the left; the
+            // Apple 1 Screen + CodeTank Library stack on the left; the
             // TMS9918 framebuffer dominates the right column; the
             // Memory Map Bar (Horizontal) spans the full width at the
             // bottom so the live $4000-$7FFF ROM band is always visible
-            // as the user picks games from the CodeTank menu.
+            // as the user picks games from the library.
             {"Apple 1 Screen",                {8,   61},  {400, 350}},
             {"P-LAB Graphic Card (TMS9918)",  {410, 61},  {800, 520}},
-            {"P-LAB CodeTank",                {8,   413}, {400, 170}},
-            {"Memory Map Bar (Horizontal)",   {8,   585}, {1202, 90}},
+            {"P-LAB CodeTank Library",        {8,   413}, {640, 520}},
+            {"Memory Map Bar (Horizontal)",   {8,   940}, {1202, 90}},
         }, 4
     },
     {   //                                  GEN2  uSD  SID  TMS  RTC  WiFi Term Krus CFFA ACI
@@ -296,7 +296,7 @@ const MachineConfig kMachinePresets[] = {
     },
     {   //                                  GEN2  uSD  SID  TMS  RTC  WiFi Term Krus CFFA ACI
         "P-LAB Apple-1 with Wi-Fi Modem BBS",
-        "P-LAB MODEM BBS (65C51 ACIA, ESP8266 AT, TCP/TELNET). "
+        "P-LAB MODEM BBS WIFI (65C51 ACIA, ESP8266 AT, TCP/TELNET). "
         "8 KB dual-bank RAM (4 KB at $0000-$0FFF + 4 KB at $E000-$EFFF — "
         "Parmigiani's standard layout). The ACIA at $B000-$B003 is on the "
         "peripheral bus.",
@@ -393,37 +393,14 @@ const MachineConfig kMachinePresets[] = {
         }, 3
     },
     {
-        "P-LAB Apple-1 with microSD + IEC + Applesoft Lite",
-        "P-LAB IEC daughterboard piggybacking the microSD Storage Card "
-        "(SN7406 inverter on unused 65C22 pins). SD CARD OS 1.3 firmware "
-        "(nippur72/apple1-sdcard, CC BY 4.0) drives a virtual Commodore "
-        "1541 mounted from disks/iec/dev8.d64. Type @$ in Wozmon for the "
-        "directory, @L FILENAME to LOAD a PRG, @S FILENAME start end to "
-        "SAVE, @CMD/@ERR for DOS commands and the error channel. "
-        "8 KB dual-bank RAM, Applesoft Lite ($6000-$7FFF, 6000R cold).",
-        false, true, false, false, false, false, false,
-        /*pr40*/ false,
-        false, false, false, 8, BasicType::ApplesoftLite,
-        /*sidSE*/ false,
-        /*jukeBox*/ false, JukeBox::Jumper::RAM16_ROM32, JukeBox::ChipMode::Flash,
-        /*codeTank*/ false, CodeTank::Jumper::Lower16, /*codeTankRom*/ nullptr,
-        /*gt6144*/ false,
-        /*iecCard*/ true,
-        {
-            {"Apple 1 Screen",           {10,  61},  {843, 701}},
-            {"Tutorial: IEC",            {858, 61},  {338, 327}},
-            {"IEC Disk",                 {858, 393}, {338, 371}},
-        }, 3
-    },
-    {
         "POM1 Apple-1 Multiplexing Fantasy (2026)",
         "Emulator-only fantasy (violates Parmigiani's golden rule \"one board at a time\"): "
         "64 KB RAM, Applesoft Lite, microSD + A1-SID + Wi-Fi modem + Terminal Card. "
         "Graphic cards and the PR-40 printer off by default — plug them from the toolbar. "
         "ACI unplugged so the cassette deck acts as a plain audio player. Boots with the "
         "Cassette Deck + Welcome panels already open to the right of the Apple 1 screen; "
-        "your layout customisations persist under ini/imgui_preset_15.ini "
-        "(plus ini/preset_15.size for the OS window frame).",
+        "your layout customisations persist under ini/imgui_preset_14.ini "
+        "(plus ini/preset_14.size for the OS window frame).",
         false, true, true, false, false, true, true,
         /*pr40*/ false,
         false, false, false, 64, BasicType::ApplesoftLite,
@@ -434,7 +411,7 @@ const MachineConfig kMachinePresets[] = {
         /*iecCard*/ false,
         {
             // Positions / sizes match the shipped POM1 Fantasy screenshot
-            // so the first launch (no saved ini/imgui_preset_15.ini yet)
+            // so the first launch (no saved ini/imgui_preset_14.ini yet)
             // snaps straight to that layout.
             {"Apple 1 Screen",         {10,  61},  {843, 701}},
             {"Welcome",                {858, 61},  {338, 223}},
@@ -548,8 +525,10 @@ void MainWindow_ImGui::applyMachineConfig(int presetIndex)
     showMemoryConfig         = false;
     showLoadDialog           = false;
     showLoadTapeDialog       = false;
-    showCassetteControl      = false;
     showCassetteDeck         = false;
+    showCodeTankLibrary      = false;
+    codeTankPendingWozRunAt  = 0.0;
+    bringTms9918WindowToFront = false;
     showMemoryMapGrid        = false;
     showMemoryBar            = false;
     showMemoryBarH           = false;
@@ -654,7 +633,6 @@ void MainWindow_ImGui::applyMachineConfig(int presetIndex)
     showJukeBox              = false;
     codeTankEnabled          = cfg.codeTank;
     codeTankJumper           = cfg.codeTankJumper;
-    showCodeTank             = false;
 #if !POM1_IS_WASM
     terminalCardEnabled      = cfg.terminalCard;
     showTerminalCard         = false;
@@ -685,7 +663,8 @@ void MainWindow_ImGui::applyMachineConfig(int presetIndex)
         else if (n == "P-LAB I/O Board & RTC")                showA1IO_RTC     = true;
         else if (n == "P-LAB Wi-Fi Modem")                    showWiFiModem    = true;
         else if (n == "P-LAB Juke-Box")                       showJukeBox      = true;
-        else if (n == "P-LAB CodeTank")                       showCodeTank     = true;
+        else if (n == "P-LAB CodeTank Library" || n == "P-LAB CodeTank")
+            showCodeTankLibrary = true;
 #if !POM1_IS_WASM
         else if (n == "P-LAB Terminal Card")                  showTerminalCard = true;
 #endif

@@ -71,12 +71,14 @@ void MainWindow_ImGui::renderMenuBar()
             emulation->setCodeTankJumper(codeTankJumper);
             emulation->setCodeTankEnabled(true);
             codeTankEnabled = true;
-            showCodeTank = true;
+            showCodeTankLibrary = true;
             setStatusMessage("P-LAB CodeTank plugged on TMS9918 host: $4000-$7FFF", 3.0f);
         };
         auto unplugCodeTankFromUi = [&]() {
             emulation->setCodeTankEnabled(false);
             codeTankEnabled = false;
+            showCodeTankLibrary = false;
+            codeTankPendingWozRunAt = 0.0;
             setStatusMessage("P-LAB CodeTank unplugged", 2.0f);
         };
 
@@ -104,7 +106,14 @@ void MainWindow_ImGui::renderMenuBar()
             ImGui::MenuItem("Cassette Deck", nullptr, &showCassetteDeck);
             if (ImGui::IsItemHovered())
                 ImGui::SetTooltip("Realistic procedural cassette deck.\nPiano keys, mechanical counter, live transport.");
-            ImGui::MenuItem("Cassette Controls (classic)", nullptr, &showCassetteControl);
+            if (ImGui::MenuItem("P-LAB CodeTank Library...", nullptr, &showCodeTankLibrary)) {
+                if (showCodeTankLibrary) plugCodeTankFromUi();
+            }
+            showHardwareTooltip(
+                "Bibliothèque CodeTank — zone console de jeu P-LAB (cartouche ROM\n"
+                "$4000-$7FFF sur hôte TMS9918). Ouvre la fenêtre et branche TMS9918 +\n"
+                "CodeTank si besoin. ROM 32 ko dans roms/codetank/ (2 banques 16 ko).\n"
+                "Après un Run (banque basse ou haute), 4000R est envoyé au moniteur Woz.");
             ImGui::Separator();
             if (ImGui::MenuItem("Paste Code", shortcutLabel(GLFW_KEY_V, GLFW_MOD_CONTROL))) {
                 pasteCode();
@@ -199,6 +208,55 @@ void MainWindow_ImGui::renderMenuBar()
                 }
                 ImGui::EndMenu();
             }
+            ImGui::Separator();
+            if (ImGui::MenuItem("Silicon Strict (TMS9918 timing)",
+                                nullptr, &siliconStrictModeEnabled)) {
+                emulation->setSiliconStrictMode(siliconStrictModeEnabled);
+                setStatusMessage(siliconStrictModeEnabled
+                    ? "Silicon Strict ON - openMSX slot-table model active"
+                    : "Silicon Strict OFF - emulator-tolerant timing", 3.0f);
+            }
+            showHardwareTooltip(
+                "Silicon Strict (TMS9918 timing)\n\n"
+                "When ON, the TMS9918 enforces real-silicon access windows using\n"
+                "the openMSX VDPAccessSlots slot-table model: each $CC00/$CC01\n"
+                "access locks the chip until the next free slot in the active\n"
+                "scanline-tick table (Gfx12 / Gfx3 / Text / ScreenOff). A new byte\n"
+                "arriving before the drain finishes is silently overwritten — the\n"
+                "exact behaviour Galaga damiers / Tetris timing-floor exhibit on\n"
+                "real silicon. Worst-case Mode I+sprites drain ≈ 7.5 cycles 6502.\n\n"
+                "When OFF, all writes always land - useful for debugging or running\n"
+                "code that has not been silicon-audited yet. Default = ON for every\n"
+                "preset except the Multiplexing Fantasy ones.");
+
+            {
+                const uint64_t dropTotal = emulation->tms9918DropCount();
+                char label[96];
+                std::snprintf(label, sizeof(label),
+                              "Dump TMS9918 drop diagnostics (%llu drops)",
+                              (unsigned long long)dropTotal);
+                if (ImGui::MenuItem(label)) {
+                    emulation->dumpTms9918DropDiagnostics(stderr, 16);
+                    setStatusMessage(dropTotal > 0
+                        ? "TMS9918 drop diagnostics written to stderr (top-16 PC histogram)"
+                        : "No TMS9918 drops since last reset",
+                        4.0f);
+                }
+                showHardwareTooltip(
+                    "Dump TMS9918 drop diagnostics\n\n"
+                    "Writes the silicon-strict drop histogram to stderr:\n"
+                    "  - total drops since last reset / strict toggle\n"
+                    "  - breakdown by port ($CC00 data vs $CC01 control)\n"
+                    "  - breakdown by display phase (active vs vblank)\n"
+                    "  - breakdown by slot table (ScreenOff / Gfx12 / Gfx3 / Text)\n"
+                    "  - top-16 PC sites (mid-instruction; STA addr is PC-3)\n\n"
+                    "Counters reset when Silicon Strict is toggled or when a fresh\n"
+                    "snapshot is loaded. Live re-arm via 'Reset TMS9918 drop counter'.");
+                if (ImGui::MenuItem("Reset TMS9918 drop counter")) {
+                    emulation->resetTms9918DropCount();
+                    setStatusMessage("TMS9918 drop counter reset", 2.0f);
+                }
+            }
             ImGui::EndMenu();
         }
 
@@ -269,25 +327,6 @@ void MainWindow_ImGui::renderMenuBar()
                 "Program Manager at $BD00: type BD00R from the Woz Monitor.\n\n"
                 "Plugging it unplugs CodeTank, CFFA1, microSD, Wi-Fi Modem, and A1-SID.\n"
                 "A1-AUDIO SE can coexist: it lives at $CC00-$CC1F, outside $CA00.");
-            if (ImGui::MenuItem("P-LAB CodeTank (28c256 ROM daughterboard)",
-                                nullptr, codeTankEnabled)) {
-                if (codeTankEnabled) unplugCodeTankFromUi();
-                else plugCodeTankFromUi();
-            }
-            showHardwareTooltip(
-                "P-LAB CodeTank 28c256 ROM (daughterboard)\n"
-                "Fixed ROM window: $4000-$7FFF.\n"
-                "The board jumper selects lower or upper 16 kB of the 32 kB EEPROM.\n\n"
-                "Daughterboard of the TMS9918 Graphic Card - has no edge connector.\n"
-                "Plugging it auto-plugs the TMS9918 host (and evicts A1-AUDIO SE\n"
-                "and the Juke-Box). Unplugging the TMS9918 cascade-unplugs CodeTank.");
-            if (ImGui::MenuItem("P-LAB CodeTank Library...", nullptr, &showCodeTankLibrary)) {
-                if (showCodeTankLibrary) setStatusMessage("CodeTank Library opened", 2.0f);
-            }
-            showHardwareTooltip(
-                "Browse the available 32 kB CodeTank ROM images in roms/codetank/.\n"
-                "Each ROM holds two 16 kB banks - pick which one to wire into\n"
-                "$4000-$7FFF and the CodeTank card plugs itself.");
             if (ImGui::MenuItem("P-LAB microSD Storage Card", nullptr, &microSDEnabled)) {
                 emulation->setMicroSDEnabled(microSDEnabled);
                 if (microSDEnabled) {
@@ -357,7 +396,8 @@ void MainWindow_ImGui::renderMenuBar()
                     // CodeTank is a daughterboard of the TMS9918 — Memory's
                     // setTMS9918Enabled cascade-disabled it; mirror in UI flags.
                     codeTankEnabled = false;
-                    showCodeTank = false;
+                    showCodeTankLibrary = false;
+                    codeTankPendingWozRunAt = 0.0;
                     setStatusMessage("P-LAB CodeTank unplugged with TMS9918 host", 2.0f);
                 }
             }
@@ -367,6 +407,18 @@ void MainWindow_ImGui::renderMenuBar()
                 "Plugging it unplugs A1-AUDIO SE, because the two cards share\n"
                 "the $CC00 control/data window. Unplugging it cascade-unplugs\n"
                 "the CodeTank daughterboard.");
+            if (ImGui::MenuItem("P-LAB CodeTank ROM (TMS9918 daughterboard)",
+                                nullptr, codeTankEnabled)) {
+                if (codeTankEnabled) unplugCodeTankFromUi();
+                else plugCodeTankFromUi();
+            }
+            showHardwareTooltip(
+                "P-LAB CodeTank ROM (TMS9918 daughterboard)\n"
+                "28c256 EEPROM; fixed ROM window: $4000-$7FFF.\n"
+                "The board jumper selects lower or upper 16 kB of the 32 kB device.\n\n"
+                "Daughterboard of the TMS9918 Graphic Card — no edge connector.\n"
+                "Plugging it auto-plugs the TMS9918 host (and evicts A1-AUDIO SE\n"
+                "and the Juke-Box). Unplugging the TMS9918 cascade-unplugs CodeTank.");
             if (ImGui::MenuItem("P-LAB I/O Board & RTC", nullptr, &a1ioRtcEnabled)) {
                 emulation->setA1IO_RTCEnabled(a1ioRtcEnabled);
                 if (a1ioRtcEnabled) showA1IO_RTC = true;
@@ -382,7 +434,7 @@ void MainWindow_ImGui::renderMenuBar()
                 if (terminalCardEnabled) showTerminalCard = true;
             }
 #endif
-            if (ImGui::MenuItem("P-LAB MODEM BBS", nullptr, &wifiModemEnabled)) {
+            if (ImGui::MenuItem("P-LAB MODEM BBS WIFI", nullptr, &wifiModemEnabled)) {
                 emulation->setWiFiModemEnabled(wifiModemEnabled);
                 if (wifiModemEnabled) {
                     showWiFiModem = true;
@@ -390,64 +442,11 @@ void MainWindow_ImGui::renderMenuBar()
                 }
             }
             showHardwareTooltip(
-                "P-LAB MODEM BBS\n"
+                "P-LAB MODEM BBS WIFI\n"
                 "ACIA window: $B000-$B003.\n\n"
                 "Plugging it unplugs Juke-Box when the Juke-Box ROM covers\n"
                 "$B000-$B003.");
 
-            ImGui::Separator();
-            if (ImGui::MenuItem("Silicon Strict (TMS9918 timing)",
-                                nullptr, &siliconStrictModeEnabled)) {
-                emulation->setSiliconStrictMode(siliconStrictModeEnabled);
-                setStatusMessage(siliconStrictModeEnabled
-                    ? "Silicon Strict ON - openMSX slot-table model active"
-                    : "Silicon Strict OFF - emulator-tolerant timing", 3.0f);
-            }
-            showHardwareTooltip(
-                "Silicon Strict (TMS9918 timing)\n\n"
-                "When ON, the TMS9918 enforces real-silicon access windows using\n"
-                "the openMSX VDPAccessSlots slot-table model: each $CC00/$CC01\n"
-                "access locks the chip until the next free slot in the active\n"
-                "scanline-tick table (Gfx12 / Gfx3 / Text / ScreenOff). A new byte\n"
-                "arriving before the drain finishes is silently overwritten — the\n"
-                "exact behaviour Galaga damiers / Tetris timing-floor exhibit on\n"
-                "real silicon. Worst-case Mode I+sprites drain ≈ 7.5 cycles 6502.\n\n"
-                "When OFF, all writes always land - useful for debugging or running\n"
-                "code that has not been silicon-audited yet. Default = ON for every\n"
-                "preset except the Multiplexing Fantasy ones.");
-
-            // Drop diagnostics: dump the per-PC / per-port / per-table histogram
-            // to stderr so a user can identify exactly where their program is
-            // violating the slot timing. The numeric label shows the live
-            // dropped-write count to telegraph "you have something to inspect".
-            {
-                const uint64_t dropTotal = emulation->tms9918DropCount();
-                char label[96];
-                std::snprintf(label, sizeof(label),
-                              "Dump TMS9918 drop diagnostics (%llu drops)",
-                              (unsigned long long)dropTotal);
-                if (ImGui::MenuItem(label)) {
-                    emulation->dumpTms9918DropDiagnostics(stderr, 16);
-                    setStatusMessage(dropTotal > 0
-                        ? "TMS9918 drop diagnostics written to stderr (top-16 PC histogram)"
-                        : "No TMS9918 drops since last reset",
-                        4.0f);
-                }
-                showHardwareTooltip(
-                    "Dump TMS9918 drop diagnostics\n\n"
-                    "Writes the silicon-strict drop histogram to stderr:\n"
-                    "  - total drops since last reset / strict toggle\n"
-                    "  - breakdown by port ($CC00 data vs $CC01 control)\n"
-                    "  - breakdown by display phase (active vs vblank)\n"
-                    "  - breakdown by slot table (ScreenOff / Gfx12 / Gfx3 / Text)\n"
-                    "  - top-16 PC sites (mid-instruction; STA addr is PC-3)\n\n"
-                    "Counters reset when Silicon Strict is toggled or when a fresh\n"
-                    "snapshot is loaded. Live re-arm via 'Reset TMS9918 drop counter'.");
-                if (ImGui::MenuItem("Reset TMS9918 drop counter")) {
-                    emulation->resetTms9918DropCount();
-                    setStatusMessage("TMS9918 drop counter reset", 2.0f);
-                }
-            }
             ImGui::EndMenu();
         }
 
@@ -478,13 +477,6 @@ void MainWindow_ImGui::renderMenuBar()
             presetItem(13);  // Uncle Bernie's GEN2 HGR Color
             ImGui::Separator();
             presetItem(14);  // POM1 Multiplexing Fantasy (last -> banner)
-            ImGui::EndMenu();
-        }
-
-        if (ImGui::BeginMenu("Dev")) {
-            ImGui::MenuItem("Source Browser", nullptr, &showDevFilesWindow);
-            ImGui::Separator();
-            ImGui::TextDisabled("Browse dev/ - ASM sources, libraries, READMEs");
             ImGui::EndMenu();
         }
 
@@ -601,12 +593,14 @@ void MainWindow_ImGui::renderToolbar()
             emulation->setCodeTankJumper(codeTankJumper);
             emulation->setCodeTankEnabled(true);
             codeTankEnabled = true;
-            showCodeTank = true;
+            showCodeTankLibrary = true;
             setStatusMessage("P-LAB CodeTank plugged on TMS9918 host: $4000-$7FFF", 3.0f);
         };
         auto unplugCodeTankFromToolbar = [&]() {
             emulation->setCodeTankEnabled(false);
             codeTankEnabled = false;
+            showCodeTankLibrary = false;
+            codeTankPendingWozRunAt = 0.0;
             setStatusMessage("P-LAB CodeTank unplugged", 2.0f);
         };
 #if !POM1_IS_WASM
@@ -619,6 +613,24 @@ void MainWindow_ImGui::renderToolbar()
         // --- Chargement (premier) ---
         if (ImGui::Button(ICON_FA_FOLDER_OPEN, btnSize)) loadMemory();
         if (ImGui::IsItemHovered()) ImGui::SetTooltip("Load (Ctrl+O)");
+
+        ImGui::SameLine();
+        ImGui::PushStyleColor(ImGuiCol_Button,
+            codeTankEnabled ? ImVec4(0.2f, 0.4f, 0.8f, 1.0f) : ImVec4(0.3f, 0.3f, 0.3f, 1.0f));
+        if (ImGui::Button("##codeTankToolbar", btnSize)) {
+            if (codeTankEnabled) unplugCodeTankFromToolbar();
+            else plugCodeTankFromToolbar();
+        }
+        drawToolbarTankIcon(ImGui::GetWindowDrawList(),
+                            ImGui::GetItemRectMin(), ImGui::GetItemRectMax());
+        ImGui::PopStyleColor();
+        showHardwareTooltip(
+            "P-LAB CodeTank 28c256 ROM (daughterboard)\n"
+            "Fixed ROM window: $4000-$7FFF. Daughterboard of the TMS9918 Graphic\n"
+            "Card - has no edge connector, cannot exist standalone on the bus.\n\n"
+            "Click plugs CodeTank, auto-plugs the TMS9918 host (evicts A1-AUDIO SE +\n"
+            "Juke-Box), and opens the CodeTank Library. Click again to unplug.\n"
+            "Unplugging the TMS9918 toolbar/menu entry also cascade-unplugs CodeTank.");
 
         ImGui::SameLine();
         ImGui::PushStyleColor(ImGuiCol_Button,
@@ -673,25 +685,6 @@ void MainWindow_ImGui::renderToolbar()
             "ROM window: $4000-$BFFF or $8000-$BFFF. Bank latch: $CA00.\n\n"
             "Click toggles the Juke-Box card. Plugging it unplugs CodeTank,\n"
             "CFFA1, microSD, Wi-Fi Modem, and A1-SID. A1-AUDIO SE can coexist.");
-
-        ImGui::SameLine();
-        ImGui::PushStyleColor(ImGuiCol_Button,
-            codeTankEnabled ? ImVec4(0.2f, 0.4f, 0.8f, 1.0f) : ImVec4(0.3f, 0.3f, 0.3f, 1.0f));
-        if (ImGui::Button("##codeTankToolbar", btnSize)) {
-            if (codeTankEnabled) unplugCodeTankFromToolbar();
-            else plugCodeTankFromToolbar();
-        }
-        drawToolbarTankIcon(ImGui::GetWindowDrawList(),
-                            ImGui::GetItemRectMin(), ImGui::GetItemRectMax());
-        ImGui::PopStyleColor();
-        showHardwareTooltip(
-            "P-LAB CodeTank 28c256 ROM (daughterboard)\n"
-            "Fixed ROM window: $4000-$7FFF. Daughterboard of the TMS9918 Graphic\n"
-            "Card - has no edge connector, cannot exist standalone on the bus.\n\n"
-            "Click toggles CodeTank. Plugging it auto-plugs the TMS9918 host\n"
-            "(and evicts A1-AUDIO SE + Juke-Box). Unplugging the TMS9918\n"
-            "cascade-unplugs CodeTank.\n"
-            "Use Hardware -> P-LAB CodeTank Library to pick which ROM to load.");
 
         ImGui::SameLine();
         ImGui::PushStyleColor(ImGuiCol_Button,
@@ -750,7 +743,8 @@ void MainWindow_ImGui::renderToolbar()
                         // CodeTank rides on the TMS9918 host — Memory just
                         // cascade-disabled it, mirror in UI flags.
                         codeTankEnabled = false;
-                        showCodeTank = false;
+                        showCodeTankLibrary = false;
+                        codeTankPendingWozRunAt = 0.0;
                         setStatusMessage("P-LAB TMS9918 + CodeTank daughterboard unplugged", 2.0f);
                     } else {
                         setStatusMessage("P-LAB TMS9918 unplugged", 2.0f);
@@ -913,7 +907,7 @@ void MainWindow_ImGui::renderToolbar()
                              ImGui::GetItemRectMin(), ImGui::GetItemRectMax(), "BBS");
         ImGui::PopStyleColor();
         showHardwareTooltip(
-            "P-LAB MODEM BBS\n"
+            "P-LAB MODEM BBS WIFI\n"
             "ACIA window: $B000-$B003.\n\n"
             "Click toggles the card. Plugging it unplugs Juke-Box when its ROM\n"
             "covers $B000-$B003.");
