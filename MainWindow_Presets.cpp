@@ -50,17 +50,17 @@ namespace pom1::mainwindow::detail {
 //   - Every preset uses the same canonical POM1 Fantasy frame:
 //         Apple 1 Screen at (10, 61) size (843, 701)  ← LEFT column
 //         Right column: x=858, width=338, y range 61..764
-//         Resulting GLFW window: 1206 × 807 (matches preset 14).
+//         Resulting GLFW window: 1206 × 807 (matches preset 15).
 //   - Right column is split top/bottom for every preset. The TOP slot
 //     (y=61, height≈223) carries the tutorial most relevant to the
 //     preset; the BOTTOM slot (y=288, height≈476) carries the
 //     peripheral's own visualisation panel (or a second useful window
 //     if the card has no dedicated panel: CFFA1, microSD, SID).
-//   - Preset 14 (POM1 Multiplexing Fantasy) is the shipped "default"
+//   - Preset 15 (POM1 Multiplexing Fantasy) is the shipped "default"
 //     preset — its layout MUST stay byte-identical to the shipped
 //     screenshot reference (the README mentions it). Don't touch.
 //     Every other preset mirrors its geometry. First-time use writes
-//     ini/imgui_preset_14.ini + ini/preset_14.size; subsequent launches
+//     ini/imgui_preset_15.ini + ini/preset_15.size; subsequent launches
 //     load from there.
 //   - Preset 12 (P-LAB Multiplexing Fantasy) is the only exception
 //     that departs from the tutorial+peripheral template: it's the
@@ -422,8 +422,8 @@ const MachineConfig kMachinePresets[] = {
         "Graphic cards and the PR-40 printer off by default — plug them from the toolbar. "
         "ACI unplugged so the cassette deck acts as a plain audio player. Boots with the "
         "Cassette Deck + Welcome panels already open to the right of the Apple 1 screen; "
-        "your layout customisations persist under ini/imgui_preset_14.ini "
-        "(plus ini/preset_14.size for the OS window frame).",
+        "your layout customisations persist under ini/imgui_preset_15.ini "
+        "(plus ini/preset_15.size for the OS window frame).",
         false, true, true, false, false, true, true,
         /*pr40*/ false,
         false, false, false, 64, BasicType::ApplesoftLite,
@@ -434,7 +434,7 @@ const MachineConfig kMachinePresets[] = {
         /*iecCard*/ false,
         {
             // Positions / sizes match the shipped POM1 Fantasy screenshot
-            // so the first launch (no saved ini/imgui_preset_14.ini yet)
+            // so the first launch (no saved ini/imgui_preset_15.ini yet)
             // snaps straight to that layout.
             {"Apple 1 Screen",         {10,  61},  {843, 701}},
             {"Welcome",                {858, 61},  {338, 223}},

@@ -1,22 +1,85 @@
 #include "IECCard.h"
 #include "SnapshotIO.h"
 
+#include <cstdio>
+
+#ifndef POM1_IEC_DEBUG
+#define POM1_IEC_DEBUG 0
+#endif
+
+// IEC trace plumbing. Compile-time off by default; flip POM1_IEC_DEBUG to 1
+// (or pass -DPOM1_IEC_DEBUG=1) to capture FSM transitions + PORTB reads.
+// Hard-cap on log lines so a runaway dump never floods CI.
+#if POM1_IEC_DEBUG
+namespace pom1 { namespace iecdbg {
+    static unsigned long g_cycleCounter = 0;
+    static unsigned long g_logLines = 0;
+    static bool g_active = false;  // armed by caller (e.g. talker-mode entry)
+    constexpr unsigned long kMaxLogLines = 30000;
+    inline bool can_log() { return g_active && g_logLines < kMaxLogLines; }
+    inline void bump() { ++g_logLines; }
+} }
+#define IEC_LOG(...) \
+    do { if (::pom1::iecdbg::can_log()) { \
+        std::fprintf(stderr, "[IEC@%lu] ", ::pom1::iecdbg::g_cycleCounter); \
+        std::fprintf(stderr, __VA_ARGS__); \
+        std::fputc('\n', stderr); std::fflush(stderr); \
+        ::pom1::iecdbg::bump(); \
+    } } while (0)
+// Force-log: bypasses g_active so we can mark TX boundaries.
+#define IEC_FORCE_LOG(...) \
+    do { if (::pom1::iecdbg::g_logLines < ::pom1::iecdbg::kMaxLogLines) { \
+        std::fprintf(stderr, "[IEC@%lu] ", ::pom1::iecdbg::g_cycleCounter); \
+        std::fprintf(stderr, __VA_ARGS__); \
+        std::fputc('\n', stderr); std::fflush(stderr); \
+        ::pom1::iecdbg::bump(); \
+    } } while (0)
+#else
+#define IEC_LOG(...) do {} while (0)
+#define IEC_FORCE_LOG(...) do {} while (0)
+#endif
+
 namespace pom1 {
 
 namespace {
 constexpr uint8_t kDriveAddress = 8;
 
-// Drive1541 talker per-bit phase delay (in CPU cycles at 1.022 MHz).
-// SD OS 1.3 bit-time is ~60 µs; we use 50-cycle granularity as a
-// generous floor that beats the firmware's NOP-spacing without being
-// too lax against the 1ms T2 watchdog.
-// Generous settle times — the kernel's ACPTR routine has a lot of CPU work
-// between the "drive released CLK" event and the actual DATAHI (release
-// listener-side DATA hold), and we don't want drive bit transitions to
-// race the kernel's polling loop.
+#if POM1_IEC_DEBUG
+const char* txPhaseName(int p) {
+    switch (p) {
+        case 0: return "Idle";
+        case 1: return "Initial";
+        case 2: return "ReadyToSend";
+        case 3: return "StartByte";
+        case 4: return "SettleEoi";
+        case 5: return "BitSetup";
+        case 6: return "BitValid";
+        case 7: return "BitEnd";
+        case 8: return "ByteEnd";
+        case 9: return "Hold";
+        case 10: return "AllSent";
+    }
+    return "?";
+}
+#endif
+
+// Per-bit phase delay (CPU cycles at 1.022 MHz). The kernel's ACP03/ACP03A
+// loop runs ~25 cyc/iter; 50 cyc per drive-side phase is comfortably above
+// that.
 constexpr int kTxBitSettleCycles = 50;
+// After byte ack, hold lines released briefly before fetching the next byte.
 constexpr int kTxByteAckCycles   = 80;
-constexpr int kTxEoiHoldCycles   = 250;  // ~250 µs for EOI signal
+// Long safety timeouts on event-driven phases. Real CBM drives wait
+// indefinitely for the listener — we use a generous 100 ms cap (about
+// 102k cycles at 1.022 MHz) so a misbehaving listener doesn't deadlock
+// CI, but normal slow paths (BASIC LOAD doing memory work between
+// bytes) get plenty of breathing room.
+constexpr int kTxEdgeTimeoutCycles = 100000;   // ~100 ms
+// EOI hold time on the talker side (CBM convention: >200 µs).
+constexpr int kTxEoiHoldCycles   = 250;
+// Tiny delay after a kernel-driven DATA edge before the drive proceeds —
+// gives the kernel a few cycles to finish its instruction sequence.
+constexpr int kTxPostEdgeCycles = 30;
 }
 
 IECCard::IECCard() : drive_(kDriveAddress) {
@@ -80,11 +143,28 @@ uint8_t IECCard::mergeViaPortBRead(uint8_t microsdValue) const {
 
     // Per nippur72 schematic / kernal_serial.lm: VIA IN bits track bus level
     // directly (set = HIGH = released).
-    if (bus_.level(IECBus::Line::CLK))  out |= kClkInBit;
-    if (bus_.level(IECBus::Line::DATA)) out |= kDataInBit;
+    bool clkHigh = bus_.level(IECBus::Line::CLK);
+    bool dataHigh = bus_.level(IECBus::Line::DATA);
+    if (clkHigh)  out |= kClkInBit;
+    if (dataHigh) out |= kDataInBit;
 
     // Read-back of OUT bits (whatever the host wrote).
     out |= (lastPortB_ & (kAtnOutBit | kClkOutBit | kDataOutBit));
+
+#if POM1_IEC_DEBUG
+    // Log every PORTB read while we're in an active TX role. This is the
+    // strongest "what does the kernel see" signal: ACPTR samples DATA via
+    // PORTB.bit6 on every iteration of its CLK-poll + bit-shift loop. By
+    // correlating reads with the current TX phase, we can tell whether the
+    // kernel sampled the right bit at the right time.
+    ++dbgPortBReads_;
+    if (role_ == Role::Talker && txPhase_ != TxPhase::Idle &&
+        txPhase_ != TxPhase::AllSent) {
+        IEC_LOG("R#%lu portB phase=%-11s bit=%d byte=%02X clk=%d data=%d → %02X",
+                dbgPortBReads_, txPhaseName(static_cast<int>(txPhase_)),
+                txBitIndex_, txByte_, clkHigh ? 1 : 0, dataHigh ? 1 : 0, out);
+    }
+#endif
     return out;
 }
 
@@ -134,9 +214,7 @@ static void iecLog(const char* tag) {
 #endif
 
 void IECCard::onAtnAsserted() {
-#if 0  // disabled debug logging
-    iecLog("ATN asserted");
-#endif
+    IEC_LOG("ATN asserted (role=%d)", static_cast<int>(role_));
     // Under ATN, every device on the bus listens for command bytes. The
     // SD OS 1.3 kernel keeps ATN asserted across the *whole* OPEN+filename
     // +UNLSN+TALK+SECND command burst, so we don't reset role/secondary
@@ -153,9 +231,7 @@ void IECCard::onAtnAsserted() {
 }
 
 void IECCard::onAtnReleased() {
-#if 0  // disabled debug logging
-    std::fflush(stderr); std::fprintf(stderr, "[IEC] ATN released, role=%d\n", static_cast<int>(role_));
-#endif
+    IEC_LOG("ATN released → role=%d", static_cast<int>(role_));
     // Role was already set by the last LISTEN/TALK/UNLSN/UNTALK byte that
     // arrived under ATN. Just act on the final role.
     if (role_ == Role::Talker) {
@@ -237,20 +313,29 @@ void IECCard::onClkFallingEdge() {
 }
 
 void IECCard::onDataRisingEdge() {
-    // Bus DATA went HIGH (released by everyone).
-    if (role_ == Role::Talker && txPhase_ == TxPhase::ByteEnd) {
-        // Listener has not yet pulled DATA — keep waiting.
+    // Bus DATA went HIGH — listener (kernel) released DATA. This is the
+    // signal that the kernel reached DATAHI in ACPTR's EOIACP, meaning it's
+    // ready for the bit transfer. Synchronise the TX FSM to this event.
+    IEC_LOG("DATA rising  (role=%d phase=%s)", static_cast<int>(role_),
+            txPhaseName(static_cast<int>(txPhase_)));
+    if (role_ == Role::Talker && txPhase_ == TxPhase::ReadyToSend) {
+        // After a brief settling time, drive pulls CLK low to start bit 0.
+        txPhase_ = TxPhase::StartByte;
+        txDelayCycles_ = txEoi_ ? kTxEoiHoldCycles : kTxPostEdgeCycles;
+        IEC_LOG("  → StartByte (delay=%d)", txDelayCycles_);
     }
 }
 
 void IECCard::onDataFallingEdge() {
-    // Bus DATA went LOW (someone pulled). Only relevant in Talker mode for
-    // ack detection. The TX FSM is otherwise time-driven (see startTransmitting
-    // for why we don't hinge on DATA edges in the ready-to-send window).
+    // Bus DATA went LOW — listener (kernel) pulled DATA. After a byte's
+    // 8 bits the kernel does JSR DATALO to ack the byte received; the
+    // edge tells the drive it's safe to fetch and prepare the next byte.
+    IEC_LOG("DATA falling (role=%d phase=%s)", static_cast<int>(role_),
+            txPhaseName(static_cast<int>(txPhase_)));
     if (role_ == Role::Talker && txPhase_ == TxPhase::ByteEnd) {
-        // Listener pulled DATA = byte ack.
         txPhase_ = TxPhase::Hold;
         txDelayCycles_ = kTxByteAckCycles;
+        IEC_LOG("  → Hold (byte-ack edge, delay=%d)", txDelayCycles_);
     }
 }
 
@@ -338,20 +423,20 @@ void IECCard::startTransmitting() {
     txBitIndex_ = 0;
     txByte_ = 0;
     txEoi_ = false;
-    if (!drive_.talkByte(txByte_, txEoi_)) {
-#if 0  // disabled debug logging
-        std::fprintf(stderr, "[IEC] startTransmitting: no byte (drive empty)\n");
-        std::fflush(stderr);
+#if POM1_IEC_DEBUG
+    iecdbg::g_active = true;  // arm tracing for the upcoming TX session
 #endif
+    if (!drive_.talkByte(txByte_, txEoi_)) {
+        IEC_FORCE_LOG("startTransmitting: NO byte (drive empty) → AllSent");
         releaseAllDriveLines();
         txPhase_ = TxPhase::AllSent;
         txDelayCycles_ = 0;
+#if POM1_IEC_DEBUG
+        iecdbg::g_active = false;
+#endif
         return;
     }
-#if 0  // disabled debug logging
-    std::fprintf(stderr, "[IEC] startTransmitting: byte=%02X eoi=%d\n", txByte_, txEoi_ ? 1 : 0);
-    std::fflush(stderr);
-#endif
+    IEC_FORCE_LOG("startTransmitting: byte#1=%02X eoi=%d", txByte_, txEoi_ ? 1 : 0);
     // Pull CLK low (= "I have a byte"); release DATA. Kernel's TKATN has
     // already pulled DATA on its side, so the listener-ready handshake is
     // satisfied as soon as we enter the dance. No DATA falling-edge wait.
@@ -363,19 +448,8 @@ void IECCard::startTransmitting() {
 
 void IECCard::advanceCycles(int cpuCycles) {
     if (cpuCycles <= 0) return;
-#if 0  // disabled debug logging
-    static int dbgTickCount = 0;
-    static int dbgPrevPhase = 99;
-    if (role_ == Role::Talker && dbgTickCount < 1000 &&
-        (dbgPrevPhase != static_cast<int>(txPhase_) || txDelayCycles_ <= 0)) {
-        std::fprintf(stderr, "[IEC] tick cycles=%d txPhase=%d delay=%d bit=%d byte=%02X bus(C/D)=%d/%d\n",
-                     cpuCycles, static_cast<int>(txPhase_), txDelayCycles_, txBitIndex_, txByte_,
-                     bus_.level(IECBus::Line::CLK) ? 1 : 0,
-                     bus_.level(IECBus::Line::DATA) ? 1 : 0);
-        std::fflush(stderr);
-        dbgTickCount++;
-        dbgPrevPhase = static_cast<int>(txPhase_);
-    }
+#if POM1_IEC_DEBUG
+    iecdbg::g_cycleCounter += static_cast<unsigned long>(cpuCycles);
 #endif
 
     // EOI detection: if we're waiting in ReadyAckPulled (CLK released by host)
@@ -406,30 +480,46 @@ void IECCard::advanceCycles(int cpuCycles) {
     txDelayCycles_ -= cpuCycles;
     if (txDelayCycles_ > 0) return;
 
+#if POM1_IEC_DEBUG
+    TxPhase dbgPrevPhase = txPhase_;
+    int dbgPrevBit = txBitIndex_;
+    uint8_t dbgPrevByte = txByte_;
+#endif
+
     switch (txPhase_) {
         case TxPhase::Idle: break;
 
         case TxPhase::Initial:
-            // CLK has been low long enough for the listener to see "ready";
-            // release CLK = "byte coming, EOI window starts now".
+            // CLK has been low long enough for the listener to notice
+            // "talker ready". Release CLK now = "byte coming, EOI window
+            // starts". The next phase (ReadyToSend) is event-driven: it
+            // waits for the kernel's DATAHI write (= bus DATA rising
+            // edge) before pulling CLK low to begin the bit transfer.
             bus_.setDrivePulled(IECBus::Line::CLK,  false);
             bus_.setDrivePulled(IECBus::Line::DATA, false);
-            txPhase_ = TxPhase::ReadyToSend;
-            txDelayCycles_ = txEoi_ ? kTxEoiHoldCycles : kTxBitSettleCycles;
+            if (bus_.level(IECBus::Line::DATA)) {
+                // Kernel already released DATA before we got here (rare,
+                // but possible if the host CPU was running fast). Skip
+                // the edge wait and proceed to bit transfer.
+                txPhase_ = TxPhase::StartByte;
+                txDelayCycles_ = txEoi_ ? kTxEoiHoldCycles : kTxPostEdgeCycles;
+            } else {
+                txPhase_ = TxPhase::ReadyToSend;
+                txDelayCycles_ = kTxEdgeTimeoutCycles;  // edge will break early
+            }
             break;
 
         case TxPhase::ReadyToSend:
-            // Optional EOI hold expired (or no EOI). Pull CLK low =
-            // "starting bit transfer". Begin bit 0.
-            bus_.setDrivePulled(IECBus::Line::CLK,  true);
-            txBitIndex_ = 0;
-            txPhase_ = TxPhase::BitSetup;
-            txDelayCycles_ = kTxBitSettleCycles;
+            // Edge-driven phase — onDataRisingEdge advances us to StartByte
+            // when the kernel does DATAHI in EOIACP. The cycle-based
+            // timeout here is a safety net for misbehaving firmware.
+            txPhase_ = TxPhase::StartByte;
+            txDelayCycles_ = txEoi_ ? kTxEoiHoldCycles : kTxPostEdgeCycles;
             break;
 
         case TxPhase::StartByte:
         case TxPhase::SettleEoi:
-            // Legacy edge-driven phases — fold into ReadyToSend behaviour.
+            // Pull CLK low = "starting bit transfer". Begin bit 0.
             bus_.setDrivePulled(IECBus::Line::CLK, true);
             txBitIndex_ = 0;
             txPhase_ = TxPhase::BitSetup;
@@ -456,48 +546,64 @@ void IECCard::advanceCycles(int cpuCycles) {
             break;
 
         case TxPhase::BitEnd:
+            // Pull CLK low (= falling edge) — this is the kernel's
+            // ACP03A "wait for CLK LOW" signal, marking the end of the
+            // current bit. Required for both inter-bit transitions AND
+            // the last bit of the byte (otherwise ACP03A loops forever
+            // and the byte never completes).
+            bus_.setDrivePulled(IECBus::Line::CLK, true);
             txBitIndex_++;
             if (txBitIndex_ >= 8) {
-                // End of byte: release DATA + CLK so listener can ack
-                // (it pulls DATA briefly after seeing CLK low, then we wait
-                // for that DATA-falling edge before sending the next byte).
+                // End of byte: keep CLK pulled (so kernel sees "end of
+                // bit 7"), but release DATA so kernel can pull DATA in
+                // its post-byte JSR DATALO ack.
                 bus_.setDrivePulled(IECBus::Line::DATA, false);
-                bus_.setDrivePulled(IECBus::Line::CLK,  false);
                 txPhase_ = TxPhase::ByteEnd;
-                txDelayCycles_ = 0;
+                txDelayCycles_ = kTxEdgeTimeoutCycles;
             } else {
-                // Pull CLK low again (= falling edge) for next bit setup.
-                bus_.setDrivePulled(IECBus::Line::CLK, true);
                 txPhase_ = TxPhase::BitSetup;
                 txDelayCycles_ = kTxBitSettleCycles;
             }
             break;
 
         case TxPhase::ByteEnd:
-            // Edge-driven: kernel pulls DATA → onDataFallingEdge → Hold.
-            // Safety timeout: after 1500 cycles (~1.5 ms), assume ack
-            // happened and try to send next byte regardless.
-            txDelayCycles_ = 1500;
+            // Reached here from a fired timer in ByteEnd = kernel never sent
+            // the DATALO ack edge (or we entered ByteEnd after the edge had
+            // already fired in a different phase). Force the transition to
+            // Hold so the FSM doesn't deadlock — and log so we know it
+            // happened.
+            IEC_LOG("ByteEnd TIMEOUT (no DATALO ack edge) → Hold "
+                    "[clk=%d data=%d byte=%02X]",
+                    bus_.level(IECBus::Line::CLK) ? 1 : 0,
+                    bus_.level(IECBus::Line::DATA) ? 1 : 0, txByte_);
             txPhase_ = TxPhase::Hold;
+            txDelayCycles_ = kTxByteAckCycles;
             break;
 
         case TxPhase::Hold:
-            // Post-ack hold; fetch next byte. Reached either by the safety
-            // timeout above or by onDataFallingEdge from the listener.
+            // Post-ack hold. Reached either by edge (kernel's DATALO byte
+            // ack pulled DATA → onDataFallingEdge) or by safety timeout.
+            // CLK is currently pulled (from BitEnd of bit 7) — same state
+            // as just after startTransmitting for the first byte. Hold just
+            // transitions back into the standard byte-send dance, where
+            // Initial will release CLK (kernel's ACPTR ACP00A exits),
+            // ReadyToSend waits for kernel DATAHI, and StartByte pulls
+            // CLK back to begin bit transfer.
             txByte_ = 0;
             txEoi_ = false;
             if (drive_.talkByte(txByte_, txEoi_)) {
-                // Pull CLK low to signal "next byte coming" (between bytes
-                // the kernel's ACP00A loop is waiting for CLK to go HIGH;
-                // that requires us to be pulling now and to release shortly).
-                bus_.setDrivePulled(IECBus::Line::CLK,  true);
-                bus_.setDrivePulled(IECBus::Line::DATA, false);
+                IEC_FORCE_LOG("Hold → Initial: next byte=%02X eoi=%d",
+                              txByte_, txEoi_ ? 1 : 0);
                 txPhase_ = TxPhase::Initial;
                 txDelayCycles_ = kTxBitSettleCycles;
             } else {
+                IEC_FORCE_LOG("Hold → AllSent: drive empty");
                 releaseAllDriveLines();
                 txPhase_ = TxPhase::AllSent;
                 txDelayCycles_ = 0;
+#if POM1_IEC_DEBUG
+                iecdbg::g_active = false;
+#endif
             }
             break;
 
@@ -505,6 +611,17 @@ void IECCard::advanceCycles(int cpuCycles) {
             txDelayCycles_ = 0;
             break;
     }
+#if POM1_IEC_DEBUG
+    if (dbgPrevPhase != txPhase_ || dbgPrevBit != txBitIndex_ ||
+        dbgPrevByte != txByte_) {
+        IEC_LOG("FSM %s(b%d,%02X) → %s(b%d,%02X) delay=%d clk=%d data=%d",
+                txPhaseName(static_cast<int>(dbgPrevPhase)), dbgPrevBit, dbgPrevByte,
+                txPhaseName(static_cast<int>(txPhase_)), txBitIndex_, txByte_,
+                txDelayCycles_,
+                bus_.level(IECBus::Line::CLK) ? 1 : 0,
+                bus_.level(IECBus::Line::DATA) ? 1 : 0);
+    }
+#endif
 }
 
 void IECCard::enterIdle() {

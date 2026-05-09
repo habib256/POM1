@@ -18,7 +18,7 @@ set -euo pipefail
 
 cd "$(dirname "$0")"
 
-VERSION="1.8.6"
+VERSION="1.9.0"
 STAGING="dist/POM1.app"
 DMG_STAGE="dist/dmg-staging"
 DMGPATH="dist/POM1-macOS-v${VERSION}.dmg"

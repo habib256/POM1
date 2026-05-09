@@ -347,7 +347,7 @@ int main(int argc, char* argv[])
     // Install the Tee(stream + ring) logger so every subsystem message lands
     // both in stdout/stderr and in the ring buffer the debug console reads.
     pom1::initDefaultTeeLogger();
-    pom1::log().info("POM1", "v1.8.6 - Apple 1 Emulator (Dear ImGui)");
+    pom1::log().info("POM1", "v1.9.0 - Apple 1 Emulator (Dear ImGui)");
 
 #if !POM1_IS_WASM && defined(__APPLE__)
     pom1_macos_provision_user_data_dir();
@@ -413,7 +413,7 @@ int main(int argc, char* argv[])
 #endif
 
     // Create window
-    GLFWwindow* window = glfwCreateWindow(1274, 801, "POM1 v1.8.6 - Apple 1 Emulator", NULL, NULL);
+    GLFWwindow* window = glfwCreateWindow(1274, 801, "POM1 v1.9.0 - Apple 1 Emulator", NULL, NULL);
     if (window == NULL)
         return -1;
 

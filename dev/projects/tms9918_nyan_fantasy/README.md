@@ -13,7 +13,7 @@ local trim of [`dev/cc65/pom1_fantasy.cfg`](../../cc65/pom1_fantasy.cfg).
 
 ## Run in POM1
 
-1. Load **preset 14** (POM1 Multiplexing Fantasy 2026).
+1. Load **preset 15** (POM1 Multiplexing Fantasy 2026).
 2. Hardware menu → plug the **TMS9918** Graphic Card (it's off by
    default in this preset; preset 12 has it on).
 3. File → Load Memory → `software/tms9918/TMS_Nyan_Fantasy.txt`.

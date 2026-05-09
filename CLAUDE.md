@@ -49,7 +49,7 @@ Each `.cpp/.h` pair owns one concern. Only non-obvious bits are called out.
 
 ### Parmigiani's golden rule — "one board at a time"
 
-Claudio PARMIGIANI (P-LAB designer): on real hardware exactly ONE P-LAB card is plugged. The 6502 bus has no arbitration and many P-LAB cards overlap address windows (A1-SID `$C800-$CFFF` vs TMS9918 `$CC00/$CC01`; A1-IO RTC `$2000-$200F` vs GEN2 HGR `$2000-$3FFF`; Juke-Box claims `$4000-$BFFF`). POM1 **breaks this on purpose** in "Multiplexing Fantasy" presets (#12, #14) — fantasy, not buildable. Mutex rules elsewhere mirror real bus conflicts. When adding a card, honour the rule and document any intentional coexistence.
+Claudio PARMIGIANI (P-LAB designer): on real hardware exactly ONE P-LAB card is plugged. The 6502 bus has no arbitration and many P-LAB cards overlap address windows (A1-SID `$C800-$CFFF` vs TMS9918 `$CC00/$CC01`; A1-IO RTC `$2000-$200F` vs GEN2 HGR `$2000-$3FFF`; Juke-Box claims `$4000-$BFFF`). POM1 **breaks this on purpose** in "Multiplexing Fantasy" presets (#12, #15) — fantasy, not buildable. Mutex rules elsewhere mirror real bus conflicts. When adding a card, honour the rule and document any intentional coexistence.
 
 ### Core
 
@@ -203,8 +203,12 @@ New invariant tests follow `tests/peripheral_bus_smoke_test.cpp` — `<cassert>`
 
 Bump version in **all**:
 - `main_imgui.cpp` (console + window title)
-- `MainWindow_Dialogs.cpp` (About)
+- `MainWindow_Dialogs.cpp` (About — 2 occurrences, with-photo + no-photo branches)
 - `Screen_ImGui.cpp` (welcome)
 - `build-wasm/shell.html` (3 occurrences: `<meta>`, `<title>`, `<h1>`)
-- `README.md` (title + intro)
+- `README.md` (title)
+- `CMakeLists.txt` (`MACOSX_BUNDLE_BUNDLE_VERSION` + `MACOSX_BUNDLE_SHORT_VERSION_STRING`)
 - `package_windows_release.bat` (ZIP filename)
+- `package_macos_release.sh` (`VERSION="…"` → DMG filename)
+- `packaging/linux/build_appimage.sh` (`VERSION="${POM1_VERSION:-…}"` fallback)
+- `packaging/windows/README.txt` (header)
