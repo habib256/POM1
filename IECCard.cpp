@@ -58,6 +58,15 @@ void IECCard::busReset() {
 void IECCard::onViaPortBWrite(uint8_t portB, uint8_t ddrB) {
     lastPortB_ = portB;
     lastDdrB_  = ddrB;
+#if POM1_IEC_DEBUG
+    static int writeCount = 0;
+    if (writeCount < 200) {
+        std::fprintf(stderr, "[IEC] W#%d portB=%02X ddrB=%02X\n",
+                     writeCount, portB, ddrB);
+        std::fflush(stderr);
+    }
+    writeCount++;
+#endif
     evaluateEdges(portB, ddrB);
 }
 
@@ -122,6 +131,7 @@ void IECCard::evaluateEdges(uint8_t portB, uint8_t ddrB) {
 #if POM1_IEC_DEBUG
 static void iecLog(const char* tag) {
     std::fprintf(stderr, "[IEC] %s\n", tag);
+    std::fflush(stderr);
 }
 #endif
 
@@ -146,7 +156,7 @@ void IECCard::onAtnAsserted() {
 
 void IECCard::onAtnReleased() {
 #if POM1_IEC_DEBUG
-    std::fprintf(stderr, "[IEC] ATN released, role=%d\n", static_cast<int>(role_));
+    std::fflush(stderr); std::fprintf(stderr, "[IEC] ATN released, role=%d\n", static_cast<int>(role_));
 #endif
     // Role was already set by the last LISTEN/TALK/UNLSN/UNTALK byte that
     // arrived under ATN. Just act on the final role.
@@ -248,7 +258,7 @@ void IECCard::deliverByteToDrive(uint8_t b, bool eoi) {
     const bool inFilenameWindow = wasOpenSecondary_;
     const bool isUnHandshake    = (b == 0x3F || b == 0x5F);
 #if POM1_IEC_DEBUG
-    std::fprintf(stderr, "[IEC] rx byte=%02X eoi=%d atn=%d filenameWin=%d role=%d\n",
+    std::fflush(stderr); std::fprintf(stderr, "[IEC] rx byte=%02X eoi=%d atn=%d filenameWin=%d role=%d\n",
                  b, eoi ? 1 : 0, prevAtnLow_ ? 1 : 0, inFilenameWindow ? 1 : 0,
                  static_cast<int>(role_));
 #endif
