@@ -293,6 +293,8 @@ void MainWindow_ImGui::renderMenuBar()
                 if (microSDEnabled) {
                     cffa1Enabled = false; // sync UI
                     jukeBoxEnabled = false;
+                } else {
+                    iecCardEnabled = false; // cascade
                 }
             }
             showHardwareTooltip(
@@ -300,6 +302,25 @@ void MainWindow_ImGui::renderMenuBar()
                 "ROM/VIA window: $8000-$9FFF and $A000-$A00F.\n\n"
                 "Plugging it unplugs CFFA1 and Juke-Box, because their ROM\n"
                 "windows overlap the microSD firmware area.");
+            {
+                bool gateOk = microSDEnabled;
+                ImGui::BeginDisabled(!gateOk);
+                if (ImGui::MenuItem("P-LAB IEC Add-on (microSD daughterboard)",
+                                    nullptr, &iecCardEnabled)) {
+                    emulation->setIECCardEnabled(iecCardEnabled);
+                    if (iecCardEnabled) microSDEnabled = true; // cascade-on
+                }
+                ImGui::EndDisabled();
+                showHardwareTooltip(
+                    "P-LAB IEC daughterboard for the microSD Storage Card.\n"
+                    "Drives the Commodore IEC bus on unused 65C22 PORTB pins\n"
+                    "(bits 2-6) via an SN7406 inverter. Backed by a virtual\n"
+                    "1541 mounted from disks/iec/dev8.d64 (174 848 B).\n\n"
+                    "Firmware: SD CARD OS 1.3 (nippur72/apple1-sdcard, CC BY 4.0).\n"
+                    "Type @$ for catalogue, @L NAME to LOAD, @S NAME a b to SAVE,\n"
+                    "@CMD/@ERR for DOS commands and the error channel.\n\n"
+                    "Requires microSD plugged.");
+            }
             if (ImGui::MenuItem("P-LAB A1-SID Sound Card (SID @ $C800)", nullptr, &sidEnabled)) {
                 emulation->setSIDEnabled(sidEnabled);
                 // Prototype and SE share the same MOS chip — plugging one

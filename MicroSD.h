@@ -17,6 +17,8 @@
 #include <vector>
 #include <array>
 
+namespace pom1 { class IECCard; }
+
 class MicroSD : public pom1::Peripheral
 {
 public:
@@ -53,6 +55,13 @@ public:
     // shell or assembler that uses Timer 1 for byte-time delays would
     // get a real /IRQ now.
     bool irqAsserted() const { return (ifr & ier & 0x7F) != 0; }
+
+    // P-LAB IEC daughterboard hook. The IEC card is a passive sniffer on
+    // unused VIA PORTB pins (bits 2-6). When attached, every PORTB / DDRB
+    // write notifies it, and PORTB reads merge in the IEC bus IN bits.
+    // Pointer is non-owning; ownership lives in Memory.
+    void attachIECCard(pom1::IECCard* iec) { iecCard = iec; }
+    pom1::IECCard* getIECCard() const { return iecCard; }
 
     // Snapshot round-trip: VIA 65C22 register file + handshake state +
     // MCU protocol FSM (phase + accumulators + response/write buffers) +
@@ -101,6 +110,13 @@ private:
     // Timer 1 running state
     uint16_t t1Counter;
     bool     t1Running;
+
+    // Timer 2 running state. Used by SD OS 1.3's IEC byte-frame 1 ms
+    // timeout (writes T2H to start, polls IFR bit 5 for underflow).
+    bool     t2Running = false;
+
+    // P-LAB IEC daughterboard (non-owning).
+    pom1::IECCard* iecCard = nullptr;
 
     // --- Handshake state ---
     bool cpuStrobeHigh;     // Current CPU_STROBE (PORTB bit 0)

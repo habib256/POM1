@@ -142,6 +142,11 @@ struct MachineConfig {
     // SWTPC GT-6144 Graphic Terminal (1976) — write-only 64x96 mono framebuffer
     // at $D00A. No bus conflicts with other cards at that address.
     bool gt6144;
+    // P-LAB IEC daughterboard for the microSD Storage Card. Drives the
+    // Commodore IEC serial bus on unused 65C22 pins (PORTB bits 2-6) via
+    // an SN7406 inverter. Backed by a virtual 1541 mounted from
+    // disks/iec/dev8.d64. Daughterboard only — requires microSD enabled.
+    bool iecCard;
     MachineWindowPlacement layout[8];
     int layoutCount;
 };

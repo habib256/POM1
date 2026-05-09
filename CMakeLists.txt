@@ -56,6 +56,9 @@ set(SOURCES
     TMS9918.cpp
     MicroSD.cpp
     CFFA1.cpp
+    D64Image.cpp
+    Drive1541.cpp
+    IECCard.cpp
     JukeBox.cpp
     CodeTank.cpp
     WiFiModem.cpp

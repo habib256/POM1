@@ -185,6 +185,25 @@ public:
     // P-LAB microSD Storage Card
     void setMicroSDEnabled(bool enabled);
     bool isMicroSDEnabled() const;
+    // P-LAB IEC daughterboard (microSD daughterboard)
+    void setIECCardEnabled(bool enabled);
+    bool isIECCardEnabled() const;
+    // UI thread-safe snapshot of IEC card state for the IEC Disk window.
+    struct IECCardUIState {
+        bool hasDisk = false;
+        std::string diskPath;
+        std::string label;
+        std::string id;
+        int blocksFree = 0;
+        int totalBlocks = 0;
+        struct Entry {
+            std::string name;
+            uint16_t blocks = 0;
+            uint8_t type = 0;
+        };
+        std::vector<Entry> directory;
+    };
+    IECCardUIState getIECCardUIState() const;
     // Host filesystem root the microSD card maps onto. The desktop `Memory`
     // ctor probes `sdcard/`, `../sdcard`, `../../sdcard` and records the
     // first match; this getter returns that probed absolute path (empty

@@ -46,6 +46,7 @@ class M6502;
 #include "CodeTank.h"
 #include "GT6144.h"
 #include "JukeBox.h"
+#include "IECCard.h"
 #include "MicroSD.h"
 
 class Memory
@@ -251,6 +252,15 @@ public:
     bool isMicroSDEnabled() const { return microSDEnabled; }
     int loadSDCardRom(void);
 
+    // P-LAB IEC daughterboard for the microSD card. Drives the Commodore
+    // IEC serial bus on unused VIA pins; backed by a virtual 1541 mounted
+    // from disks/iec/dev8.d64. Cascade rule mirrors CodeTank/TMS9918:
+    // enabling auto-enables microSD; disabling microSD also drops IEC.
+    pom1::IECCard& getIECCard() { return *iecCard; }
+    const pom1::IECCard& getIECCard() const { return *iecCard; }
+    void setIECCardEnabled(bool b);
+    bool isIECCardEnabled() const { return iecCardEnabled; }
+
     // CFFA1 CompactFlash Interface (Rich Dreher)
     CFFA1& getCFFA1() { return *cffa1; }
     const CFFA1& getCFFA1() const { return *cffa1; }
@@ -433,6 +443,8 @@ private :
     std::unique_ptr<AudioDevice> audioDevice;
     std::unique_ptr<MicroSD> microSD;
     bool microSDEnabled = false;
+    std::unique_ptr<pom1::IECCard> iecCard;
+    bool iecCardEnabled = false;
     std::unique_ptr<CFFA1> cffa1;
     bool cffa1Enabled = false;
     std::unique_ptr<JukeBox> jukeBox;

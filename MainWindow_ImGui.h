@@ -139,6 +139,7 @@ private:
     bool showTutorialCassette = false;
     bool showTutorialModemBBS = false;
     bool showTutorialGT6144 = false;          // SWTPC GT-6144 Graphic Terminal
+    bool showTutorialIECCard = false;         // P-LAB IEC daughterboard
     bool showTutorialPR40 = false;            // SWTPC PR-40 Printer
     bool showTutorialTMS9918 = false;         // P-LAB TMS9918 Graphic Card
     bool showTutorialA1IORTC = false;         // P-LAB A1-IO & RTC
@@ -206,6 +207,8 @@ private:
     bool gt6144Enabled = false;
     GLuint gt6144Texture = 0;
     std::array<uint32_t, GT6144::kWidth * GT6144::kHeight> gt6144PixelBuf{};
+    bool showIECCard = false;
+    bool iecCardEnabled = false;
     bool sidEnabled = false;
     bool sidSpecialEditionEnabled = false;
     bool microSDEnabled = true;
@@ -299,6 +302,8 @@ private:
     void renderTutorialJukeBoxWindow();
     void renderTutorialTerminalCardWindow();
     void renderTutorialKrusaderWindow();
+    void renderTutorialIECCardWindow();
+    void renderIECCardWindow();
     void renderDebugDialog();
     void renderScreenConfigDialog();
     void renderMemoryConfigDialog();
@@ -466,6 +471,7 @@ private:
     bool pendingTerminalCardEnable = false;
     bool pendingPr40Enable = false;
     bool pendingGT6144Enable = false;
+    bool pendingIECCardEnable = false;
     bool pendingWifiModemEnable = false;
     bool pendingJukeBoxEnable = false;
     JukeBox::Jumper pendingJukeBoxJumper = JukeBox::Jumper::RAM16_ROM32;

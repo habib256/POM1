@@ -228,6 +228,7 @@ void MainWindow_ImGui::finalizePendingCardPlugs()
     if (pendingTerminalCardEnable)   emulation->setTerminalCardEnabled(true);
     if (pendingPr40Enable)           emulation->setPR40Enabled(true);
     if (pendingGT6144Enable)         emulation->setGT6144Enabled(true);
+    if (pendingIECCardEnable)        emulation->setIECCardEnabled(true);
     if (pendingWifiModemEnable)      emulation->setWiFiModemEnabled(true);
     if (pendingJukeBoxEnable) {
         // Chip mode + jumper have to be set BEFORE enabling the card —
@@ -265,6 +266,7 @@ void MainWindow_ImGui::finalizePendingCardPlugs()
     pendingTerminalCardEnable  = false;
     pendingPr40Enable          = false;
     pendingGT6144Enable        = false;
+    pendingIECCardEnable       = false;
     pendingWifiModemEnable     = false;
     pendingJukeBoxEnable       = false;
     pendingCodeTankEnable      = false;
@@ -597,6 +599,8 @@ void MainWindow_ImGui::render()
     if (showTutorialJukeBox) renderTutorialJukeBoxWindow();
     if (showTutorialTerminalCard) renderTutorialTerminalCardWindow();
     if (showTutorialKrusader) renderTutorialKrusaderWindow();
+    if (showTutorialIECCard) renderTutorialIECCardWindow();
+    if (iecCardEnabled && showIECCard) renderIECCardWindow();
     if (showWozJobsPhoto) renderWozJobsPhotoWindow();
     if (showWozJobsRectPhoto) renderWozJobsRectPhotoWindow();
     if (showTmsBoardPhoto) renderTmsBoardPhotoWindow();

@@ -2858,3 +2858,75 @@ void MainWindow_ImGui::renderTutorialKrusaderWindow()
     }
     ImGui::End();
 }
+
+void MainWindow_ImGui::renderTutorialIECCardWindow()
+{
+    ImGuiIO& io = ImGui::GetIO();
+    ImGui::SetNextWindowSize(ImVec2(470.0f, 460.0f), ImGuiCond_FirstUseEver);
+    ImGui::SetNextWindowPos(ImVec2(io.DisplaySize.x * 0.22f, io.DisplaySize.y * 0.10f),
+                            ImGuiCond_FirstUseEver);
+    applyPendingLayout("Tutorial: IEC");
+    if (ImGui::Begin("Tutorial: IEC", &showTutorialIECCard)) {
+        ImGui::TextWrapped(
+            "P-LAB IEC daughterboard for the microSD Storage Card. SN7406 "
+            "open-collector buffer + 65C22 PORTB pins (bits 2-6) drive a "
+            "Commodore IEC serial bus. POM1 emulates a single 1541 drive at "
+            "device 8, backed by a host .d64 disk image at "
+            "disks/iec/dev8.d64 (174 848 B standard 35-track).");
+        ImGui::BeginChild("tut_iec_scroll", ImVec2(0, 0), true);
+
+        tutStep(1, "Pick the IEC preset");
+        ImGui::TextWrapped(
+            "Presets > 'P-LAB Apple-1 with microSD + IEC + Applesoft Lite'. "
+            "microSD is the host card; IEC is its daughterboard. Without "
+            "microSD plugged the IEC menu entry is greyed out.");
+
+        tutStep(2, "Boot SD CARD OS 1.3");
+        ImGui::TextWrapped("From the Woz Monitor '\\' prompt:");
+        tutCode("8000R");
+        ImGui::TextWrapped(
+            "Banner '*** SD CARD OS 1.3' + the '/>' prompt. The IEC "
+            "commands all start with '@'.");
+
+        tutStep(3, "List the disk");
+        tutCode(
+            "@DEV               (show / set drive number; default 8)\n"
+            "@$                 (catalogue, also @DIR)\n"
+            "@DIR STAR*         (wildcard filter)");
+        ImGui::TextWrapped(
+            "Output mimics the 1541 directory listing: header line with "
+            "label/id, one PRG/SEQ entry per line, BLOCKS FREE trailer.");
+
+        tutStep(4, "Load and run a program");
+        tutCode(
+            "@L BASIC               (load — start address from PRG header)\n"
+            "@R STARTREK 0300       (load AT $0300 then run)\n"
+            "@BL ELIZA              (Integer BASIC load)\n"
+            "@BR ELIZA              (Integer BASIC load + run)");
+
+        tutStep(5, "Save back to the disk");
+        tutCode(
+            "@S MYPROG E000 EFFF    (save binary range)\n"
+            "@BS MYBASIC            (save Integer BASIC program)");
+
+        tutStep(6, "Errors and DOS commands");
+        tutCode(
+            "@ERR                   (read drive's error channel — '00, OK,...')\n"
+            "@CMD I                 (initialise — re-read BAM)\n"
+            "@CMD V                 (validate)\n"
+            "@CMD S0:WRONGFILE      (scratch / delete)\n"
+            "@CMD N0:NEWDISK,A1     (format)");
+
+        ImGui::Spacing();
+        ImGui::Separator();
+        ImGui::TextColored(ImVec4(0.90f, 0.70f, 0.60f, 1.0f), "Notes");
+        bulletWrapped("Firmware: SD CARD OS 1.3 (nippur72/apple1-sdcard, CC BY 4.0). The IEC kernel routines are linked into the same $8000-$9FFF EEPROM image.");
+        bulletWrapped("MVP supports a single drive at device 8 only. @DEV 9..11 is accepted but no second drive is mounted.");
+        bulletWrapped("Filenames are PETSCII bytes; matching is byte-for-byte after stripping $A0 padding. Use ASCII uppercase to be safe.");
+        bulletWrapped("Wildcards: '*' = rest of name, '%' = single character (CBM convention).");
+        bulletWrapped("Drop a .d64 file into disks/iec/dev8.d64 before launch — the file is mounted at startup.");
+        ImGui::EndChild();
+    }
+    ImGui::End();
+}
+

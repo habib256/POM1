@@ -78,6 +78,7 @@ const MachineConfig kMachinePresets[] = {
         /*jukeBox*/ false, JukeBox::Jumper::RAM16_ROM32, JukeBox::ChipMode::Flash,
         /*codeTank*/ false, CodeTank::Jumper::Lower16, /*codeTankRom*/ nullptr,
         /*gt6144*/ false,
+        /*iecCard*/ false,
         // Right column carries two 1976-era photos of Woz + Jobs with
         // the Apple-1 — the portrait (standing Woz, seated Jobs) on
         // top and the landscape demo-session shot below. Fitting
@@ -102,6 +103,7 @@ const MachineConfig kMachinePresets[] = {
         /*jukeBox*/ false, JukeBox::Jumper::RAM16_ROM32, JukeBox::ChipMode::Flash,
         /*codeTank*/ false, CodeTank::Jumper::Lower16, /*codeTankRom*/ nullptr,
         /*gt6144*/ false,
+        /*iecCard*/ false,
         {
             {"Apple 1 Screen",           {10,  61},  {843, 701}},
             {"Tutorial: Cassette (ACI)", {858, 61},  {338, 223}},
@@ -125,6 +127,7 @@ const MachineConfig kMachinePresets[] = {
         /*jukeBox*/ false, JukeBox::Jumper::RAM16_ROM32, JukeBox::ChipMode::Flash,
         /*codeTank*/ false, CodeTank::Jumper::Lower16, /*codeTankRom*/ nullptr,
         /*gt6144*/ true,
+        /*iecCard*/ false,
         {
             {"Apple 1 Screen",                 {10,  61},  {843, 701}},
             // 4:3 content lives inside whatever size we give the window;
@@ -147,6 +150,7 @@ const MachineConfig kMachinePresets[] = {
         /*jukeBox*/ false, JukeBox::Jumper::RAM16_ROM32, JukeBox::ChipMode::Flash,
         /*codeTank*/ false, CodeTank::Jumper::Lower16, /*codeTankRom*/ nullptr,
         /*gt6144*/ false,
+        /*iecCard*/ false,
         {
             {"Apple 1 Screen",        {10,  61},  {843, 701}},
             {"Tutorial: Krusader",    {858, 61},  {338, 223}},
@@ -166,6 +170,7 @@ const MachineConfig kMachinePresets[] = {
         /*jukeBox*/ false, JukeBox::Jumper::RAM16_ROM32, JukeBox::ChipMode::Flash,
         /*codeTank*/ false, CodeTank::Jumper::Lower16, /*codeTankRom*/ nullptr,
         /*gt6144*/ false,
+        /*iecCard*/ false,
         {
             // CFFA1 has no dedicated window (transparent storage); pair
             // the storage tutorial with the BASIC tutorial since the
@@ -188,6 +193,7 @@ const MachineConfig kMachinePresets[] = {
         /*jukeBox*/ false, JukeBox::Jumper::RAM16_ROM32, JukeBox::ChipMode::Flash,
         /*codeTank*/ false, CodeTank::Jumper::Lower16, /*codeTankRom*/ nullptr,
         /*gt6144*/ false,
+        /*iecCard*/ false,
         {
             // microSD is also transparent storage — no dedicated panel.
             // Show both the storage tutorial and the Applesoft one since
@@ -209,6 +215,7 @@ const MachineConfig kMachinePresets[] = {
         /*jukeBox*/ false, JukeBox::Jumper::RAM16_ROM32, JukeBox::ChipMode::Flash,
         /*codeTank*/ false, CodeTank::Jumper::Lower16, /*codeTankRom*/ nullptr,
         /*gt6144*/ false,
+        /*iecCard*/ false,
         {
             // A1-SID has no dedicated window (audio-only). Tutorial fills
             // the right column full height so there's room for the full
@@ -230,6 +237,7 @@ const MachineConfig kMachinePresets[] = {
         /*jukeBox*/ false, JukeBox::Jumper::RAM16_ROM32, JukeBox::ChipMode::Flash,
         /*codeTank*/ false, CodeTank::Jumper::Lower16, /*codeTankRom*/ nullptr,
         /*gt6144*/ false,
+        /*iecCard*/ false,
         {
             {"Apple 1 Screen",                 {10,  61}, {843, 701}},
             {"Tutorial: A1-SID / A1-AUDIO SE", {858, 61}, {338, 703}},
@@ -253,6 +261,7 @@ const MachineConfig kMachinePresets[] = {
         /*codeTank*/ true, CodeTank::Jumper::Lower16,
         /*codeTankRom*/ "roms/codetank/Codetank_GAME1.rom",
         /*gt6144*/ false,
+        /*iecCard*/ false,
         {
             // Apple 1 Screen + CodeTank panel stack on the left; the
             // TMS9918 framebuffer dominates the right column; the
@@ -278,6 +287,7 @@ const MachineConfig kMachinePresets[] = {
         /*jukeBox*/ false, JukeBox::Jumper::RAM16_ROM32, JukeBox::ChipMode::Flash,
         /*codeTank*/ false, CodeTank::Jumper::Lower16, /*codeTankRom*/ nullptr,
         /*gt6144*/ false,
+        /*iecCard*/ false,
         {
             {"Apple 1 Screen",              {10,  61},  {843, 701}},
             {"P-LAB I/O Board & RTC",       {858, 61},  {340, 268}},
@@ -297,6 +307,7 @@ const MachineConfig kMachinePresets[] = {
         /*jukeBox*/ false, JukeBox::Jumper::RAM16_ROM32, JukeBox::ChipMode::Flash,
         /*codeTank*/ false, CodeTank::Jumper::Lower16, /*codeTankRom*/ nullptr,
         /*gt6144*/ false,
+        /*iecCard*/ false,
         {
             {"Apple 1 Screen",            {10,  61},  {843, 701}},
             {"P-LAB Wi-Fi Modem",         {858, 61},  {339, 238}},
@@ -318,6 +329,7 @@ const MachineConfig kMachinePresets[] = {
         /*jukeBox*/ true, JukeBox::Jumper::RAM16_ROM32, JukeBox::ChipMode::Flash,
         /*codeTank*/ false, CodeTank::Jumper::Lower16, /*codeTankRom*/ nullptr,
         /*gt6144*/ false,
+        /*iecCard*/ false,
         {
             {"Apple 1 Screen",           {10,  61},  {843, 701}},
             {"P-LAB Juke-Box",           {857, 61},  {344, 321}},
@@ -338,6 +350,7 @@ const MachineConfig kMachinePresets[] = {
         /*jukeBox*/ false, JukeBox::Jumper::RAM16_ROM32, JukeBox::ChipMode::Flash,
         /*codeTank*/ false, CodeTank::Jumper::Lower16, /*codeTankRom*/ nullptr,
         /*gt6144*/ false,
+        /*iecCard*/ false,
         {
             // P-LAB Fantasy departs from the tutorial+peripheral template:
             // the right column stacks three cards so the user can see
@@ -372,10 +385,34 @@ const MachineConfig kMachinePresets[] = {
         /*jukeBox*/ false, JukeBox::Jumper::RAM16_ROM32, JukeBox::ChipMode::Flash,
         /*codeTank*/ false, CodeTank::Jumper::Lower16, /*codeTankRom*/ nullptr,
         /*gt6144*/ false,
+        /*iecCard*/ false,
         {
             {"Apple 1 Screen",                       {10,  61},  {843, 701}},
             {"Uncle Bernie's GEN2 HGR Graphic Card", {858, 60},  {338, 264}},
             {"Tutorial: Uncle Bernie's GEN2 HGR",    {858, 329}, {339, 432}},
+        }, 3
+    },
+    {
+        "P-LAB Apple-1 with microSD + IEC + Applesoft Lite",
+        "P-LAB IEC daughterboard piggybacking the microSD Storage Card "
+        "(SN7406 inverter on unused 65C22 pins). SD CARD OS 1.3 firmware "
+        "(nippur72/apple1-sdcard, CC BY 4.0) drives a virtual Commodore "
+        "1541 mounted from disks/iec/dev8.d64. Type @$ in Wozmon for the "
+        "directory, @L FILENAME to LOAD a PRG, @S FILENAME start end to "
+        "SAVE, @CMD/@ERR for DOS commands and the error channel. "
+        "8 KB dual-bank RAM, Applesoft Lite ($6000-$7FFF, 6000R cold).",
+        false, true, false, false, false, false, false,
+        /*pr40*/ false,
+        false, false, false, 8, BasicType::ApplesoftLite,
+        /*sidSE*/ false,
+        /*jukeBox*/ false, JukeBox::Jumper::RAM16_ROM32, JukeBox::ChipMode::Flash,
+        /*codeTank*/ false, CodeTank::Jumper::Lower16, /*codeTankRom*/ nullptr,
+        /*gt6144*/ false,
+        /*iecCard*/ true,
+        {
+            {"Apple 1 Screen",           {10,  61},  {843, 701}},
+            {"Tutorial: IEC",            {858, 61},  {338, 327}},
+            {"IEC Disk",                 {858, 393}, {338, 371}},
         }, 3
     },
     {
@@ -394,6 +431,7 @@ const MachineConfig kMachinePresets[] = {
         /*jukeBox*/ false, JukeBox::Jumper::RAM16_ROM32, JukeBox::ChipMode::Flash,
         /*codeTank*/ false, CodeTank::Jumper::Lower16, /*codeTankRom*/ nullptr,
         /*gt6144*/ false,
+        /*iecCard*/ false,
         {
             // Positions / sizes match the shipped POM1 Fantasy screenshot
             // so the first launch (no saved ini/imgui_preset_14.ini yet)
@@ -552,6 +590,7 @@ void MainWindow_ImGui::applyMachineConfig(int presetIndex)
     emulation->setSIDSpecialEditionEnabled(false);
     emulation->setACIEnabled(false);
     emulation->deactivateCassetteAudioSource();
+    emulation->setIECCardEnabled(false);
     emulation->setMicroSDEnabled(false);
     emulation->setCFFA1Enabled(false);
     emulation->setTMS9918Enabled(false);
@@ -624,6 +663,8 @@ void MainWindow_ImGui::applyMachineConfig(int presetIndex)
     showPR40                 = false;
     gt6144Enabled            = cfg.gt6144;
     showGT6144               = false;
+    iecCardEnabled           = cfg.iecCard;
+    showIECCard              = false;
     showCassetteDeck         = false;
     showWelcome              = false;
 
@@ -650,6 +691,7 @@ void MainWindow_ImGui::applyMachineConfig(int presetIndex)
 #endif
         else if (n == "SWTPC PR-40 Printer")                  showPR40         = true;
         else if (n == "SWTPC GT-6144 Graphic Terminal")       showGT6144       = true;
+        else if (n == "IEC Disk")                             showIECCard      = true;
         else if (n == "Apple-1 Cassette Deck")                showCassetteDeck = true;
         else if (n == "Welcome")                              showWelcome      = true;
         else if (n == "Memory Map Bar (Horizontal)")          showMemoryBarH   = true;
@@ -664,6 +706,7 @@ void MainWindow_ImGui::applyMachineConfig(int presetIndex)
         else if (n == "Tutorial: Cassette (ACI)")             showTutorialCassette     = true;
         else if (n == "Tutorial: Wi-Fi Modem BBS")            showTutorialModemBBS     = true;
         else if (n == "Tutorial: SWTPC GT-6144")              showTutorialGT6144       = true;
+        else if (n == "Tutorial: IEC")                        showTutorialIECCard      = true;
         else if (n == "Tutorial: SWTPC PR-40 Printer")        showTutorialPR40         = true;
         else if (n == "Tutorial: P-LAB TMS9918")              showTutorialTMS9918      = true;
         else if (n == "Tutorial: P-LAB A1-IO & RTC")          showTutorialA1IORTC      = true;
@@ -702,6 +745,7 @@ void MainWindow_ImGui::applyMachineConfig(int presetIndex)
 #endif
     pendingPr40Enable           = cfg.pr40Printer;
     pendingGT6144Enable         = cfg.gt6144;
+    pendingIECCardEnable        = cfg.iecCard;
     pendingCassetteAudioActive  = true;
     pendingPresetTapePath.clear();
     pendingPresetTapeForceProgramMode = false;

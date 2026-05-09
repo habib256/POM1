@@ -688,6 +688,49 @@ void EmulationController::setMicroSDEnabled(bool enabled)
     publisher.publish(*memory, *cpu, runRequested.load());
 }
 
+void EmulationController::setIECCardEnabled(bool enabled)
+{
+    std::lock_guard<PriorityMutex> lock(stateMutex);
+    memory->setIECCardEnabled(enabled);
+    publisher.publish(*memory, *cpu, runRequested.load());
+}
+
+bool EmulationController::isIECCardEnabled() const
+{
+    std::lock_guard<PriorityMutex> lock(stateMutex);
+    return memory->isIECCardEnabled();
+}
+
+EmulationController::IECCardUIState EmulationController::getIECCardUIState() const
+{
+    std::lock_guard<PriorityMutex> lock(stateMutex);
+    IECCardUIState s;
+    if (!memory->isIECCardEnabled()) return s;
+    const auto& iec = memory->getIECCard();
+    const auto& disk = iec.drive().image();
+    s.hasDisk = iec.hasDisk();
+    if (s.hasDisk) {
+        s.diskPath = iec.diskPath();
+        s.label = disk.labelAscii();
+        s.id = disk.idAscii();
+        s.blocksFree = disk.blocksFree();
+        s.totalBlocks = disk.totalBlocks();
+        for (const auto& e : disk.directory("*")) {
+            if (e.type == 0) continue;
+            IECCardUIState::Entry ue;
+            for (uint8_t b : e.name) {
+                if (b >= 0x20 && b <= 0x7E) ue.name += static_cast<char>(b);
+                else if (b >= 0xC1 && b <= 0xDA) ue.name += static_cast<char>(b - 0x80);
+                else ue.name += '?';
+            }
+            ue.blocks = e.blocks;
+            ue.type = e.type;
+            s.directory.push_back(std::move(ue));
+        }
+    }
+    return s;
+}
+
 bool EmulationController::isMicroSDEnabled() const
 {
     std::lock_guard<PriorityMutex> lock(stateMutex);

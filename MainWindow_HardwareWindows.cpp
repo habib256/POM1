@@ -1177,3 +1177,50 @@ void MainWindow_ImGui::renderCodeTankLibraryWindow()
     }
     ImGui::End();
 }
+
+// IEC Disk window — virtual 1541 status, mounted .d64 path, label/id/blocks
+// free, dir listing, mount/unmount controls. Reads current state from the
+// EmulationController's IECCard. Mount/unmount mutates from the UI thread —
+// safe because we hold the EmulationController's stateMutex inside its
+// setIECCardEnabled / mountDisk wrappers.
+void MainWindow_ImGui::renderIECCardWindow()
+{
+    ImGui::SetNextWindowSize(ImVec2(370, 400), ImGuiCond_FirstUseEver);
+    applyPendingLayout("IEC Disk");
+    if (ImGui::Begin("IEC Disk", &showIECCard)) {
+        auto s = emulation->getIECCardUIState();
+
+        ImGui::Text("Device 8 (P-LAB IEC daughterboard)");
+        ImGui::Separator();
+
+        if (!s.hasDisk) {
+            ImGui::TextColored(ImVec4(0.85f, 0.55f, 0.40f, 1.0f),
+                "No disk mounted.");
+            ImGui::TextWrapped(
+                "Drop a .d64 file at disks/iec/dev8.d64 (174 848 B standard "
+                "35-track) and re-plug the IEC card to mount it.");
+        } else {
+            ImGui::TextWrapped("Disk: %s", s.diskPath.c_str());
+            ImGui::Text("Label: %s    ID: %s    DOS: 2A",
+                s.label.c_str(), s.id.c_str());
+            ImGui::Text("Free: %d / %d blocks", s.blocksFree, s.totalBlocks);
+            ImGui::Spacing();
+
+            ImGui::TextColored(ImVec4(0.7f, 0.7f, 0.7f, 1.0f), "Directory");
+            ImGui::BeginChild("iec_dir", ImVec2(0, 0), true);
+            for (const auto& e : s.directory) {
+                const char* typ = "PRG";
+                switch (e.type & 0x07) {
+                    case 0x01: typ = "SEQ"; break;
+                    case 0x02: typ = "PRG"; break;
+                    case 0x03: typ = "USR"; break;
+                    case 0x04: typ = "REL"; break;
+                    default:   typ = "DEL"; break;
+                }
+                ImGui::Text("%4u  \"%-16s\" %s", e.blocks, e.name.c_str(), typ);
+            }
+            ImGui::EndChild();
+        }
+    }
+    ImGui::End();
+}

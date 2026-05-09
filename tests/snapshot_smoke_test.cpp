@@ -96,6 +96,8 @@ int main()
     mem.setGT6144Enabled(true);
     mem.setTMS9918Enabled(true);
     mem.setSIDEnabled(true);
+    // IEC round-trip is exercised in tests/iec_snapshot_smoke_test.cpp —
+    // enabling it here would cascade-disable the CFFA1 sentinel below.
 
     // ── TMS9918: write a sentinel into VRAM[$0100] and set R7 (border
     //    colour) to a non-default value via the standard $CC01 latch

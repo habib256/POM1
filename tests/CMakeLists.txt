@@ -40,6 +40,9 @@ set(POM1_TEST_CORE_SOURCES
     ${CMAKE_SOURCE_DIR}/TMS9918.cpp
     ${CMAKE_SOURCE_DIR}/SID.cpp
     ${CMAKE_SOURCE_DIR}/MicroSD.cpp
+    ${CMAKE_SOURCE_DIR}/IECCard.cpp
+    ${CMAKE_SOURCE_DIR}/Drive1541.cpp
+    ${CMAKE_SOURCE_DIR}/D64Image.cpp
     ${CMAKE_SOURCE_DIR}/WiFiModem.cpp
     ${CMAKE_SOURCE_DIR}/TerminalCard.cpp
     ${CMAKE_SOURCE_DIR}/A1IO_RTC.cpp
@@ -537,3 +540,62 @@ endif()
 
 add_test(NAME cpu_breakpoint_smoke COMMAND test_cpu_breakpoint)
 set_tests_properties(cpu_breakpoint_smoke PROPERTIES TIMEOUT 5)
+
+# -- IEC snapshot v2 round-trip ------------------------------------------------
+# Pins the IEC daughterboard payload through saveSnapshot/loadSnapshot:
+# kFlagIECCard (bit 15) + cascade kFlagMicroSD + Drive1541 error channel
+# survives across save/load.
+add_executable(test_iec_snapshot
+    iec_snapshot_smoke_test.cpp
+    ${POM1_TEST_CORE_SOURCES}
+)
+target_include_directories(test_iec_snapshot PRIVATE
+    ${CMAKE_SOURCE_DIR}
+    ${CMAKE_SOURCE_DIR}/imgui
+)
+target_link_libraries(test_iec_snapshot PRIVATE libresidfp_static)
+if(APPLE)
+    target_compile_definitions(test_iec_snapshot PRIVATE GL_SILENCE_DEPRECATION)
+endif()
+if(WIN32)
+    target_link_libraries(test_iec_snapshot PRIVATE ws2_32)
+endif()
+add_test(NAME iec_snapshot_smoke COMMAND test_iec_snapshot)
+set_tests_properties(iec_snapshot_smoke PROPERTIES TIMEOUT 5)
+
+# -- IECBus wired-AND smoke ----------------------------------------------------
+# Pins the open-collector model used by the P-LAB IEC daughterboard. Two
+# pullers (host + drive) per line; bus is HIGH only when both released.
+add_executable(test_iec_bus_wired_and
+    iec_bus_wired_and_smoke_test.cpp
+)
+target_include_directories(test_iec_bus_wired_and PRIVATE ${CMAKE_SOURCE_DIR})
+
+add_test(NAME iec_bus_wired_and_smoke COMMAND test_iec_bus_wired_and)
+set_tests_properties(iec_bus_wired_and_smoke PROPERTIES TIMEOUT 5)
+
+# -- D64 fixture maker (executable, not a test) -------------------------------
+# Generates disks/iec/fixture.d64 for the telnet harness. Run as a
+# build-time tool: `make make_iec_fixture && ./tools/make_iec_fixture out.d64`.
+add_executable(make_iec_fixture
+    ${CMAKE_SOURCE_DIR}/tools/make_iec_fixture.cpp
+    ${CMAKE_SOURCE_DIR}/D64Image.cpp
+)
+target_include_directories(make_iec_fixture PRIVATE ${CMAKE_SOURCE_DIR})
+set_target_properties(make_iec_fixture PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/tools")
+
+# -- D64Image smoke ------------------------------------------------------------
+# Pins the Commodore 1541 disk-image parser used by the P-LAB IEC daughterboard.
+# Geometry (35 tracks, 21/19/18/17 sectors), wildcard match, format() →
+# writeFile → readFile → deleteFile round-trip, and a save/mount round-trip
+# verifying disk persistence on the host filesystem.
+add_executable(test_d64_parse
+    d64_parse_smoke_test.cpp
+    ${CMAKE_SOURCE_DIR}/D64Image.cpp
+)
+target_include_directories(test_d64_parse PRIVATE ${CMAKE_SOURCE_DIR})
+
+add_test(NAME d64_parse_smoke COMMAND test_d64_parse)
+set_tests_properties(d64_parse_smoke PROPERTIES TIMEOUT 5)
+

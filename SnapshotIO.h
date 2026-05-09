@@ -42,7 +42,11 @@ namespace pom1 {
 /// Magic + version constants — exposed so tests can hand-write a snapshot
 /// file and assert the reader recognises it.
 inline constexpr char     kSnapshotMagic[8] = {'P','O','M','1','S','N','A','P'};
-inline constexpr uint32_t kSnapshotVersion  = 1;
+// v1: shipped April 2026 — base format (CPU/MEM/FLAGS + per-card sections).
+// v2: May 2026 — adds IECCard section + kFlagIECCard (bit 15) + MicroSD VIA
+//     T2 timer-running bool. v1 snapshots load fine on v2 readers (unknown
+//     sections are skipped; missing kFlagIECCard reads as 0 → IEC off).
+inline constexpr uint32_t kSnapshotVersion  = 2;
 
 /// Section names are 8 bytes, NUL-padded. 8 bytes keeps the file aligned
 /// and reads cheaply via fixed-size buffers. Names beyond 8 chars are

@@ -7,6 +7,7 @@
 // Firmware source: https://github.com/nippur72/apple1-sdcard
 
 #include "MicroSD.h"
+#include "IECCard.h"
 #include "Logger.h"
 #include "SnapshotIO.h"
 #include <fstream>
@@ -84,9 +85,13 @@ uint8_t MicroSD::readRegister(uint16_t address)
 
     switch (reg) {
     case 0x00: // PORTB — bit 0: CPU_STROBE, bit 7: MCU_STROBE
-        return (portB & 0x7E)
-             | (cpuStrobeHigh ? 0x01 : 0x00)
-             | (mcuStrobeHigh ? 0x80 : 0x00);
+    {
+        uint8_t v = (portB & 0x7E)
+                  | (cpuStrobeHigh ? 0x01 : 0x00)
+                  | (mcuStrobeHigh ? 0x80 : 0x00);
+        if (iecCard) v = iecCard->mergeViaPortBRead(v);
+        return v;
+    }
 
     case 0x01: // PORTA — data bus
         return portA;
@@ -110,7 +115,8 @@ uint8_t MicroSD::readRegister(uint16_t address)
     case 0x07: // T1 Latch High
         return t1LatchHi;
 
-    case 0x08: // T2 Counter Low
+    case 0x08: // T2 Counter Low — reading clears T2 interrupt flag
+        ifr &= ~0x20;
         return t2CounterLo;
 
     case 0x09: // T2 Counter High
@@ -208,6 +214,7 @@ void MicroSD::writeRegister(uint16_t address, uint8_t value)
                 prepareNextResponseByte();
             }
         }
+        if (iecCard) iecCard->onViaPortBWrite(portB, ddrB);
         break;
     }
 
@@ -225,6 +232,7 @@ void MicroSD::writeRegister(uint16_t address, uint8_t value)
             responseBuffer.clear();
             responseIndex = 0;
         }
+        if (iecCard) iecCard->onViaDdrBWrite(ddrB);
         break;
 
     case 0x03: // DDRA
@@ -259,8 +267,10 @@ void MicroSD::writeRegister(uint16_t address, uint8_t value)
         t2CounterLo = value;
         break;
 
-    case 0x09: // T2 Counter High
+    case 0x09: // T2 Counter High — writing starts the timer (one-shot)
         t2CounterHi = value;
+        t2Running = true;
+        ifr &= ~0x20; // clear T2 interrupt flag
         break;
 
     case 0x0A: // Shift Register
@@ -317,22 +327,44 @@ void MicroSD::advanceCycles(int cycles)
         }
     }
 
-    if (!t1Running || cycles <= 0) return;
+    if (cycles <= 0) return;
 
-    int remaining = static_cast<int>(t1Counter) - cycles;
-    if (remaining <= 0) {
-        ifr |= 0x40; // set T1 interrupt flag
-        if (acr & 0x40) {
-            // Free-running mode: reload from latch
-            t1Counter = (static_cast<uint16_t>(t1LatchHi) << 8) | t1LatchLo;
+    if (t1Running) {
+        int remaining = static_cast<int>(t1Counter) - cycles;
+        if (remaining <= 0) {
+            ifr |= 0x40; // set T1 interrupt flag
+            if (acr & 0x40) {
+                // Free-running mode: reload from latch
+                t1Counter = (static_cast<uint16_t>(t1LatchHi) << 8) | t1LatchLo;
+            } else {
+                // One-shot: stop
+                t1Running = false;
+                t1Counter = 0;
+            }
         } else {
-            // One-shot: stop
-            t1Running = false;
-            t1Counter = 0;
+            t1Counter = static_cast<uint16_t>(remaining);
         }
-    } else {
-        t1Counter = static_cast<uint16_t>(remaining);
     }
+
+    // Timer 2 — one-shot only. Counter lives in the (Hi << 8) | Lo
+    // register pair; SD OS 1.3's IEC code starts it by writing $A009.
+    if (t2Running) {
+        uint16_t t2 = (static_cast<uint16_t>(t2CounterHi) << 8) | t2CounterLo;
+        int remaining = static_cast<int>(t2) - cycles;
+        if (remaining <= 0) {
+            ifr |= 0x20; // set T2 interrupt flag
+            t2Running = false;
+            t2CounterHi = 0;
+            t2CounterLo = 0;
+        } else {
+            t2 = static_cast<uint16_t>(remaining);
+            t2CounterLo = static_cast<uint8_t>(t2 & 0xFF);
+            t2CounterHi = static_cast<uint8_t>(t2 >> 8);
+        }
+    }
+
+    // P-LAB IEC daughterboard FSM tick.
+    if (iecCard) iecCard->advanceCycles(cycles);
 }
 
 // ============================================================================

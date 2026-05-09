@@ -101,6 +101,17 @@ Memory::Memory()
             break;
         }
     }
+    iecCard = std::make_unique<pom1::IECCard>();
+    // Probe for the device-8 disk image. MVP supports a single drive.
+    for (const auto& dir : {"disks", "../disks", "../../disks"}) {
+        if (std::filesystem::is_directory(dir)) {
+            auto imgPath = std::filesystem::canonical(dir).string() + "/iec/dev8.d64";
+            if (std::filesystem::exists(imgPath)) {
+                iecCard->mountDisk(imgPath);
+            }
+            break;
+        }
+    }
     wifiModem = std::make_unique<WiFiModem>();
     terminalCard = std::make_unique<TerminalCard>();
     pr40Printer = std::make_unique<PR40Printer>();
@@ -1190,9 +1201,27 @@ void Memory::setMicroSDEnabled(bool b)
             loadSDCardRom();
         }
     } else {
+        // IEC daughterboard rides on microSD's VIA — drop it first.
+        if (iecCardEnabled) setIECCardEnabled(false);
         // Clear the ROM region (restore to RAM)
         std::fill(mem.begin() + 0x8000, mem.begin() + 0xA000, 0);
         markPagesDirty(0x8000, 0x2000);
+    }
+}
+
+void Memory::setIECCardEnabled(bool b)
+{
+    if (b == iecCardEnabled) return;
+    iecCardEnabled = b;
+    if (b) {
+        // The IEC card is a daughterboard that plugs into the microSD card's
+        // J1 connector. It physically requires microSD; auto-enable.
+        if (!microSDEnabled) setMicroSDEnabled(true);
+        microSD->attachIECCard(iecCard.get());
+        iecCard->busReset();
+    } else {
+        if (microSD) microSD->attachIECCard(nullptr);
+        iecCard->busReset();
     }
 }
 
@@ -1583,6 +1612,7 @@ constexpr uint16_t kFlagPR40           = 1u << 11;
 constexpr uint16_t kFlagGT6144         = 1u << 12;
 constexpr uint16_t kFlagCassetteAudio  = 1u << 13;
 constexpr uint16_t kFlagSiliconStrict  = 1u << 14;  // TMS9918 silicon-strict timing window
+constexpr uint16_t kFlagIECCard        = 1u << 15;  // P-LAB IEC daughterboard (microSD daughterboard)
 
 } // namespace
 
@@ -1636,6 +1666,7 @@ bool Memory::saveSnapshot(const std::string& path, std::string& error,
         if (gt6144Enabled)             flags |= kFlagGT6144;
         if (cassetteAudioActive)       flags |= kFlagCassetteAudio;
         if (siliconStrictMode)         flags |= kFlagSiliconStrict;
+        if (iecCardEnabled)            flags |= kFlagIECCard;
 
         auto h = w.beginSection("FLAGS");
         w.writeU16(flags);
@@ -1662,6 +1693,7 @@ bool Memory::saveSnapshot(const std::string& path, std::string& error,
     writeCard(*a1ioRtc);
     writeCard(*pr40Printer);
     writeCard(*gt6144);
+    writeCard(*iecCard);
 
     if (!w.good()) {
         error = "I/O error while writing snapshot";
@@ -1685,7 +1717,7 @@ bool Memory::loadSnapshot(const std::string& path, std::string& error,
         cassetteDevice.get(), tms9918.get(), sid.get(),
         microSD.get(), cffa1.get(), jukeBox.get(), codeTank.get(),
         wifiModem.get(), terminalCard.get(), a1ioRtc.get(),
-        pr40Printer.get(), gt6144.get(),
+        pr40Printer.get(), gt6144.get(), iecCard.get(),
     };
 
     std::string sectionName;
@@ -1738,6 +1770,9 @@ bool Memory::loadSnapshot(const std::string& path, std::string& error,
             // the writer was aware of bit 14 (none yet → we just always
             // honour the bit).
             setSiliconStrictMode       ((flags & kFlagSiliconStrict)  != 0);
+            // IEC card cascades onto microSD via setIECCardEnabled — make sure
+            // microSD has been (re-)enabled by the FLAGS dispatch above first.
+            setIECCardEnabled          ((flags & kFlagIECCard)        != 0);
             continue;
         }
 

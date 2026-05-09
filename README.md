@@ -39,7 +39,7 @@ Built with Dear ImGui & OpenGL — fast, lightweight, cross-platform (Linux, mac
 - ⏰ [P-LAB I/O Board & RTC](https://p-l4b.github.io/A1-IO_RTC/) — DS3231 + ADC + digital I/O.
 
 **Out of the box**
-- 🖥️ **15 one-click machine presets** from *Bare Apple-1 (July 1976)* to *POM1 Multiplexing Fantasy (2026)*.
+- 🖥️ **16 one-click machine presets** from *Bare Apple-1 (July 1976)* to *POM1 Multiplexing Fantasy (2026)*.
 - 🎮 **60+ programs** in `software/` — games, demos, BASIC, dev tools, A1-SID tunes, TMS9918 demos.
 
 ---
@@ -139,9 +139,10 @@ Indices match `--preset N`. Per-preset window layouts persist under `ini/imgui_p
 | 11 | **P-LAB Juke-Box** | 8 KB | — | Juke-Box (no ACI) |
 | 12 | **P-LAB Multiplexing Fantasy** | 64 KB | Applesoft Lite | microSD, A1-SID, TMS9918, I/O & RTC, Wi-Fi, Terminal |
 | 13 | **Uncle Bernie's GEN2 HGR Color (Apr 2026)** | 8 KB | — | GEN2 HGR |
-| 14 | **POM1 Multiplexing Fantasy (2026)** ⭐ | 64 KB | Applesoft Lite | microSD, A1-SID, Wi-Fi, Terminal |
+| 14 | **P-LAB microSD + IEC + Applesoft Lite** | 8 KB | Applesoft Lite | microSD, IEC daughterboard |
+| 15 | **POM1 Multiplexing Fantasy (2026)** ⭐ | 64 KB | Applesoft Lite | microSD, A1-SID, Wi-Fi, Terminal |
 
-⭐ = default. **Bare (0)** is the pre-ACI July-1976 shipping config. **Juke-Box (11)** drops ACI — EEPROM library replaces cassette loading. **RAM** = motherboard `ramKB` from [`MainWindow_Presets.cpp`](MainWindow_Presets.cpp) (`kMachinePresets[]`). Presets **3–11** and **13** use Parmigiani **8 KB dual-bank** (`$0000-$0FFF` + `$E000-$EFFF`). **Integer BASIC** remains loadable from cassette on presets **1–3** when `BasicType::None`.
+⭐ = default. **Bare (0)** is the pre-ACI July-1976 shipping config. **Juke-Box (11)** drops ACI — EEPROM library replaces cassette loading. **RAM** = motherboard `ramKB` from [`MainWindow_Presets.cpp`](MainWindow_Presets.cpp) (`kMachinePresets[]`). Presets **3–11** and **13–14** use Parmigiani **8 KB dual-bank** (`$0000-$0FFF` + `$E000-$EFFF`). **Integer BASIC** remains loadable from cassette on presets **1–3** when `BasicType::None`.
 
 ---
 
@@ -228,7 +229,11 @@ It rewrites `$D400` → `$C800` (incl. indirect pointers), neutralises CIA / VIC
 
 ### P-LAB microSD Storage Card
 
-[P-LAB microSD](https://p-l4b.github.io/sdcard/) — DOS-like file system over a 65C22 VIA + emulated ATMEGA. I/O `$A000-$A00F`, **SD CARD OS ROM** at `$8000-$9FFF` ([apple1-sdcard](https://github.com/nippur72/apple1-sdcard) firmware). Host `sdcard/` mounted as virtual FAT32. **Tagged filenames** `NAME#TTAAAA`: `#06` binary, `#F1` Integer BASIC, `#F8` Applesoft, `AAAA` hex load address.
+[P-LAB microSD](https://p-l4b.github.io/sdcard/) — DOS-like file system over a 65C22 VIA + emulated ATMEGA. I/O `$A000-$A00F`, **SD CARD OS ROM** at `$8000-$9FFF` ([apple1-sdcard](https://github.com/nippur72/apple1-sdcard) firmware, **CC BY 4.0**). Host `sdcard/` mounted as virtual FAT32. **Tagged filenames** `NAME#TTAAAA`: `#06` binary, `#F1` Integer BASIC, `#F8` Applesoft, `AAAA` hex load address.
+
+### P-LAB IEC Add-on
+
+[P-LAB IEC](https://p-l4b.github.io/iec/) — Commodore IEC serial bus daughterboard for the microSD card. **Single SN7406** (open-collector inverter) on the unused 65C22 PORTB pins (bits 2-6); no new MMIO window. Backed by a virtual **1541** drive on `disks/iec/dev8.d64` (174 848 B standard 35-track). Uses the same SD CARD OS 1.3 ROM at `$8000-$9FFF` (`@`-prefixed commands: `@DEV`, `@$/@DIR`, `@L`, `@S`, `@R`, `@BL/@BR/@BS`, `@ERR`, `@CMD`). MVP supports **device 8 only**; codepath structured to extend to 8-11.
 
 **Shell**: `DIR`/`LS`, `CD <dir>` / `CD ..` (only navigation primitive), `LOAD`, `SAVE`/`READ`/`WRITE`, `DEL`, `MKDIR`, `RMDIR`, `PWD`, `MOUNT`. **Crucial**: `LOAD` uses fuzzy case-insensitive prefix match **within the current directory only — no recursion**. The prompt shows the cwd (`/PLAB/MCODE>`), so there's no guessing where `LOAD` will look.
 
