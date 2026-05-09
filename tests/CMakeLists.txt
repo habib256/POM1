@@ -449,10 +449,10 @@ if(CA65 AND LD65)
         OUTPUT  ${CHESS_BIN_LO} ${CHESS_BIN_HI} ${CHESS_SYM}
         COMMAND ${CMAKE_COMMAND} -E chdir ${CHESS_SRCDIR} make
         DEPENDS ${CHESS_SRCDIR}/Chess.asm
-                ${CMAKE_SOURCE_DIR}/dev/lib/chess/chess_engine.asm
-                ${CMAKE_SOURCE_DIR}/dev/lib/chess/chess_text_io.asm
-                ${CMAKE_SOURCE_DIR}/dev/lib/chess/chess_common.inc
-                ${CMAKE_SOURCE_DIR}/dev/lib/chess/chess_tables.inc
+                ${CMAKE_SOURCE_DIR}/dev/lib/games/chess/chess_engine.asm
+                ${CMAKE_SOURCE_DIR}/dev/lib/games/chess/chess_text_io.asm
+                ${CMAKE_SOURCE_DIR}/dev/lib/games/chess/chess_common.inc
+                ${CMAKE_SOURCE_DIR}/dev/lib/games/chess/chess_tables.inc
                 ${CHESS_SRCDIR}/apple1_chess_text.cfg
                 ${CHESS_SRCDIR}/Makefile
         COMMENT "Building Chess engine artefacts via ca65/ld65"

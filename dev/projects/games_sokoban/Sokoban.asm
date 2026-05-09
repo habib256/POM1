@@ -57,7 +57,7 @@ LEVEL_BUF:  .res 128            ; ZP → zp,X addressing
 .segment "STATEGRID"
 STATE_GRID: .res 192            ; BSS → abs,X addressing (16x12)
 
-; --- Zero page (apple1.cfg gives $00-$22) ---
+; --- Zero page (apple1_4k.cfg gives $00-$22) ---
 .zeropage
 temp:          .res 1   ; $00
 temp2:         .res 1   ; $01

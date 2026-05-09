@@ -41,7 +41,7 @@ MEMFS preload (`if(POM1_IS_WASM)` in `CMakeLists.txt`) mounts `roms/ pic/ fonts/
 
 ### Assembling programs (cc65)
 
-Sources in `dev/`. Per-project Makefiles call `ca65` + `ld65`, then `python3 emit_*_txt.py` lands `.bin` + Woz-hex `.txt` under `software/<original_dir>/`. Configs: `dev/cc65/apple1.cfg` (text), `apple1_gen2.cfg` (HGR — reserves `$2000-$3FFF`), `dev/projects/games_sokoban/apple1_sok_{4k,8k,hgr}.cfg`. Sokoban configs define `LEVELBUF` (zp `$0020`) + `STATEGRID` (bss); use `.segment "LEVELBUF": zeropage` to force `zp,X`. Reusable libraries under `dev/lib/` (apple1 equates, m6502 math, tms9918 driver, hgr tables, sokoban level data); Makefiles pass `-I ../../lib/<lib>` so `.include "apple1.inc"` works.
+Sources in `dev/`. Per-project Makefiles call `ca65` + `ld65`, then `python3 emit_*_txt.py` lands `.bin` + Woz-hex `.txt` under `software/<original_dir>/`. Configs: `dev/cc65/apple1_4k.cfg` (text / TMS9918), `apple1_gen2.cfg` (HGR — reserves `$2000-$3FFF`), `codetank.cfg` (standalone CodeTank ROM at `$4000-$7FFF`), `pom1_fantasy.cfg` (Multiplexing Fantasy preset), `dev/projects/games_sokoban/apple1_sok_{4k,8k,hgr}.cfg`. Sokoban configs define `LEVELBUF` (zp `$0020`) + `STATEGRID` (bss); use `.segment "LEVELBUF": zeropage` to force `zp,X`. Reusable libraries under `dev/lib/` (apple1 equates, m6502 math, tms9918 driver, hgr tables, plus `dev/lib/games/{chess,sokoban}/` for shared engine + level data); Makefiles pass `-I ../../lib/<lib>` so `.include "apple1.inc"` works.
 
 ## Architecture
 

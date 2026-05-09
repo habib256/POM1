@@ -4,6 +4,6 @@ PROJECT  := Sokoban
 CFG      ?= apple1_sok_4k.cfg
 LOAD_CFG := $(CFG)
 OUT_DIR  := ../../../software/games
-LIB      := -I ../../lib/apple1 -I ../../lib/sokoban
+LIB      := -I ../../lib/apple1 -I ../../lib/games/sokoban
 
 include ../../cc65/Makefile.common

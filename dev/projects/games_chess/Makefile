@@ -1,17 +1,17 @@
 # Apple 1 Chess (text) — dual-bank build (lower 4K + upper 4K, per Parmegiani)
 .DEFAULT_GOAL := all
 OUT_DIR  := ../../../software/games
-LIB      := -I ../../lib/apple1 -I ../../lib/chess
+LIB      := -I ../../lib/apple1 -I ../../lib/games/chess
 
 OBJS := Chess.o chess_engine.o chess_text_io.o
 
 Chess.o: Chess.asm
 	ca65 $(LIB) -o $@ $<
 
-chess_engine.o: ../../lib/chess/chess_engine.asm
+chess_engine.o: ../../lib/games/chess/chess_engine.asm
 	ca65 $(LIB) -o $@ $<
 
-chess_text_io.o: ../../lib/chess/chess_text_io.asm
+chess_text_io.o: ../../lib/games/chess/chess_text_io.asm
 	ca65 $(LIB) -o $@ $<
 
 # ld65 emits two binaries (Chess.bin.lo for $0280-$0FFF, Chess.bin.hi for $E000-$EFFF)

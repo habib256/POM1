@@ -2,7 +2,7 @@
 
 Sokoban with a 16×16-block playfield (2×2 grid of 8×8 chars per tile)
 on the P-LAB TMS9918 Graphic Card. Re-uses the level pack and core
-push logic from `dev/lib/sokoban/` (Microban I #1..#44 by D.W. Skinner
+push logic from `dev/lib/games/sokoban/` (Microban I #1..#44 by D.W. Skinner
 plus three teaching levels). Each tile type lives in its own colour
 group so the TMS9918 palette colours every block automatically.
 
@@ -25,7 +25,7 @@ Two linker-config variants (both target the CodeTank ROM window):
 - `apple1_sokoban_codetank.cfg` — standalone CodeTank ROM (`$4000`,
   16 kB)
 - `apple1_sokoban_codetank_bank.cfg` — slot inside the menu bank (`$5E00`)
-- libs used: `dev/lib/apple1/`, `dev/lib/sokoban/`
+- libs used: `dev/lib/apple1/`, `dev/lib/games/sokoban/`
 
 ## Build
 

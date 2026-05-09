@@ -146,8 +146,8 @@ This project is the **text-mode variant** of the Apple-1 Chess trilogy.
 It links three 6502-asm objects:
 
 1. `Chess.o` (this directory) — text-mode renderer + game loop
-2. `chess_engine.o` (lib/chess/) — board, move-gen, make/unmake, check
-3. `chess_text_io.o` (lib/chess/) — algebraic move parser
+2. `chess_engine.o` (lib/games/chess/) — board, move-gen, make/unmake, check
+3. `chess_text_io.o` (lib/games/chess/) — algebraic move parser
 
 The TMS9918 variant (`dev/projects/tms9918_chess/`) and the HGR
 variant (`dev/projects/hgr_chess/`) reuse the same `chess_engine.o`

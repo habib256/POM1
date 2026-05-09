@@ -7,31 +7,29 @@ module that replaces the per-project `emit_*_txt.py` boilerplate.
 
 | Config | ZP | CODE start | CODE size | Reserved RAM | Use case |
 |---|---|---|---|---|---|
-| **`apple1.cfg`**       | $0000-$0022 (35 B) | $0280 | 3 328 B | — | Stock Apple-1, small text-mode programs |
-| **`apple1_4k.cfg`**    | $0000-$0022 (35 B) | $0280 | 4 096 B | — | Stock 4 KB DRAM, mid-size text programs |
-| **`apple1_8k.cfg`**    | $0000-$0022 (35 B) | $0280 | 7 552 B | — | Stock 8 KB DRAM, no expansion (text) |
-| **`apple1_gen2.cfg`**  | $0000-$001F (32 B) | $0280 | 7 552 B | $2000-$3FFF (HGR FB) | GEN2 HGR projects |
-| **`pom1.cfg`**         | $0000-$0022 (35 B) | $0300 | 40 192 B | — | Big programs (POM1-only, Krusader-RAM) |
+| **`apple1_4k.cfg`**     | $0000-$0022 (35 B) | $0280 | 4 096 B | — | Default text-mode (also TMS9918 — VRAM off-bus) |
+| **`apple1_gen2.cfg`**   | $0000-$001F (32 B) | $0280 | 7 552 B | $2000-$3FFF (HGR FB) | GEN2 HGR projects |
+| **`codetank.cfg`**      | $0000-$00FF (256 B) | $4000 | 16 384 B | — | Standalone CodeTank ROM (16 KB image, runs in place from ROM window) |
+| **`pom1_fantasy.cfg`**  | configurable | configurable | — | — | Multiplexing Fantasy preset (POM1-only) |
 
 ### Decision rule
 
-1. **Text-mode**: pick the smallest that fits. Start with `apple1.cfg`
-   (3.3 KB), upgrade to `apple1_4k.cfg` if you overflow, `apple1_8k.cfg`
-   if you still overflow.
+1. **Text-mode / TMS9918**: use `apple1_4k.cfg`. VRAM is on the TMS9918
+   card (16 KB I/O-only) so it doesn't compete with CODE.
 2. **HGR (GEN2)**: always `apple1_gen2.cfg`. The `$2000-$3FFF` reservation
    matches the framebuffer.
-3. **TMS9918**: VRAM is separate (16 KB I/O-only on the card), so pick
-   based on your CODE budget: `apple1.cfg` for small games,
-   `apple1_8k.cfg` if you grow.
-4. **GT-6144**: the framebuffer lives on 6× Intel 2102 SRAM (no Apple-1
-   RAM), so `apple1.cfg` or `apple1_8k.cfg` works. `gt6144_hello/gt6144.cfg`
-   is a project-local copy that loads at `$0300` to leave `$0280` clear
+3. **GT-6144**: the framebuffer lives on 6× Intel 2102 SRAM (no Apple-1
+   RAM), so `apple1_4k.cfg` works. `gt6144_hello/gt6144.cfg` is a
+   project-local copy that loads at `$0300` to leave `$0280` clear
    for ACI tape interaction (rarely needed; copy as a starting point).
-5. **CodeTank ROM banks**: project-local `.cfg` (sokoban_codetank,
-   galaga_codetank, etc.) with `CODE start = $4000` or `$5E00` etc. —
-   the ROM lives at the CodeTank window, not in RAM.
-6. **Big programs**: `pom1.cfg` only if you really need 40 KB and don't
-   care about real-Apple-1 portability.
+4. **CodeTank ROM (standalone)**: use `codetank.cfg` — 16 KB ROM at
+   `$4000-$7FFF`, full 256 B ZP, runs in place. For multi-game bank
+   slots (`$5E00`, `$7100`, etc.) or 8 KB jumper, keep a project-local
+   `.cfg` (sokoban_codetank_bank.cfg, galaga_codetank.cfg, etc.).
+5. **Dual-bank / large programs**: project-local `.cfg` that splits low
+   ($0280-$0FFF) + high ($E000-$EFFF) — see `games_chess`, `hgr_chess`,
+   `tms9918_chess`, `hgr_sokoban`, `games_sokoban` for canonical
+   examples. The Multiplexing Fantasy preset uses `pom1_fantasy.cfg`.
 
 ### Project-local configs
 
@@ -133,8 +131,9 @@ if __name__ == "__main__":
     raise SystemExit(main())
 ```
 
-The 10 projects shipping with this convention as of April 2026:
-`hgr10_life`, `hgr4_mandelbrot`, `hgr9_smiley16`, `hgr_orbital_pool`,
+Projects shipping with this convention:
+`hgr_life`, `hgr_mandelbrot`, `hgr_sierpinski`, `hgr_testcard`,
+`hgr_house`, `hgr_connect4`, `hgr_bbfont_show`, `hgr_orbital_pool`,
 `tms9918_galaga`, `tms9918_life`, `tms9918_logo`, `tms9918_maze3d`,
 `tms9918_orbital_pool`, `tms9918_snake`. Their pre-migration scripts
 (60+ lines each) compressed to 23 lines apiece.
@@ -147,8 +146,8 @@ boilerplate that every single-binary project Makefile under
 lines plus an include:
 
 ```make
-# HGR4 Mandelbrot
-PROJECT  := HGR4_Mandelbrot
+# HGR Mandelbrot
+PROJECT  := HGR_Mandelbrot
 LOAD_CFG := ../../cc65/apple1_gen2.cfg
 OUT_DIR  := ../../../software/hgr
 LIB      := -I ../../lib/apple1 -I ../../lib/hgr -I ../../lib/m6502
@@ -173,8 +172,9 @@ Targets provided: `all`, `clean`, `test`. The `test` target is wired up
 as a no-op stub today — projects opt in by setting `TEST_CMD` to a
 `tools/test_*_telnet.py` invocation.
 
-**Multi-binary or multi-object projects** (`games_maze`, `lib_smoke`,
-`tms9918_logo`) keep their own custom Makefiles. The shared fragment
+**Multi-binary or multi-object projects** (`demo_maze`, `lib_smoke`,
+`tms9918_logo`, the Chess and Sokoban dual-bank variants) keep their
+own custom Makefiles. The shared fragment
 covers the single-binary case only.
 
 If a project needs to *modify* one of the linker configs (different RAM

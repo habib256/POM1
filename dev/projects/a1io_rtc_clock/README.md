@@ -24,7 +24,7 @@ refresh. Reads broadcast registers from the emulated ATMEGA32 over the
 By hand:
 
     ca65 -I ../../lib/apple1 RtcClock.asm
-    ld65 -C ../../cc65/apple1.cfg RtcClock.o -o ../../../software/a1io_rtc/RtcClock.bin
+    ld65 -C ../../cc65/apple1_4k.cfg RtcClock.o -o ../../../software/a1io_rtc/RtcClock.bin
 
 ## Run in POM1
 

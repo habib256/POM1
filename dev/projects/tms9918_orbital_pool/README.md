@@ -37,7 +37,7 @@ gameplay, distinct code. If you re-tune one, re-validate the other.
 By hand:
 
     ca65 -I ../../lib/apple1 TMS_OrbitalPool.asm
-    ld65 -C ../../cc65/apple1.cfg TMS_OrbitalPool.o \
+    ld65 -C ../../cc65/apple1_4k.cfg TMS_OrbitalPool.o \
         -o ../../../software/tms9918/TMS_OrbitalPool.bin
     python3 emit_TMS_OrbitalPool_txt.py
 

@@ -1,18 +1,18 @@
 ; =============================================
-; HGR2 MAZE - GEN2 Color Graphics Card
+; HGR MAZE - GEN2 Color Graphics Card
 ; VERHILLE Arnaud - 2026
 ; Recursive Backtracker (DFS) Algorithm
 ; 34x23 cells -> 280x192 HGR screen
 ; Sub-byte rendering with lookup tables
 ; =============================================
 ; Assemble with cc65:
-;   ca65 -o build/HGR2_Maze.o software/hgr/HGR2_Maze.asm
-;   ld65 -C software/hgr/apple1_gen2.cfg -o build/HGR2_Maze.bin build/HGR2_Maze.o
+;   ca65 -o build/HGR_Maze.o software/hgr/HGR_Maze.asm
+;   ld65 -C software/hgr/apple1_gen2.cfg -o build/HGR_Maze.bin build/HGR_Maze.o
 ;
 ; The GEN2 linker config reserves $2000-$3FFF for the HGR
 ; framebuffer and places BSS (grid, stack) at $4000+.
 ;
-; In POM1: plug GEN2 card, File > Load Memory (HGR2_Maze.txt)
+; In POM1: plug GEN2 card, File > Load Memory (HGR_Maze.txt)
 ; then type E000R in Woz Monitor.
 ;
 ; Each grid unit maps to a 4x4 pixel block.
@@ -749,7 +749,7 @@ col_mask2:
 
 ; Strings (normal ASCII, null-terminated)
 str_title:
-        .byte $0D, " * HGR2 MAZE *", $0D
+        .byte $0D, " * HGR MAZE *", $0D
         .byte " GEN2 COLOR GRAPHICS CARD", $0D
         .byte " 34X23 CELLS - 4X4 PX", $0D
         .byte $0D, " PRESS ANY KEY...", $0D, 0

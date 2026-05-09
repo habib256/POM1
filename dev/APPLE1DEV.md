@@ -24,12 +24,12 @@ Agent-facing playbook for writing **new Apple 1 software** that runs under POM1.
 | Quick demo, one-screen output | Integer BASIC | Text 40×24 | — |
 | Game with strings, floats, save | **Applesoft Lite** | Text (no cursor pos) | — |
 | Fast tile gameplay, any mode | **6502 asm (cc65)** | Text / HGR / TMS9918 / GT-6144 | see §4 |
-| Apple-1-movie text mode | asm | Text | `dev/cc65/apple1.cfg` |
+| Apple-1-movie text mode | asm | Text | `dev/cc65/apple1_4k.cfg` |
 | Colour pixel art, fractals | asm + GEN2 | HGR 280×192 | `dev/cc65/apple1_gen2.cfg` |
-| Sprite/tile game, multi-colour | asm + TMS9918 | Graphics I 32×24 | `dev/cc65/apple1.cfg` or `apple1_4k.cfg` (VRAM off-bus). Do not assume GEN2 + TMS9918 on one board — preset-level mutex except Multiplexing Fantasy (`README.md` / `CLAUDE.md`). |
+| Sprite/tile game, multi-colour | asm + TMS9918 | Graphics I 32×24 | `dev/cc65/apple1_4k.cfg` (VRAM off-bus). Do not assume GEN2 + TMS9918 on one board — preset-level mutex except Multiplexing Fantasy (`README.md` / `CLAUDE.md`). |
 | 1976 SWTPC graphics | asm + GT-6144 | 64×96 mono | `dev/projects/gt6144_hello/gt6144.cfg` |
 | SID jingle | asm @ `$C800` regs | — | any |
-| Shell tool, file manager | asm + microSD shell | Text | `dev/cc65/apple1.cfg` |
+| Shell tool, file manager | asm + microSD shell | Text | `dev/cc65/apple1_4k.cfg` |
 
 **Base addresses** (stick to these for canonical `.txt` dumps):
 - `$0280` — ACI / microSD / Juke-Box / Applesoft programs (default `SAVE`/`LOAD` target, universal run address)
@@ -45,7 +45,7 @@ Per-project Makefiles under `dev/projects/<name>/` already wire `ca65` + `ld65` 
 
 ```bash
 ca65 -o build/MyProg.o dev/projects/<name>/MyProg.asm
-ld65 -C dev/cc65/apple1.cfg -o build/MyProg.bin build/MyProg.o
+ld65 -C dev/cc65/apple1_4k.cfg -o build/MyProg.bin build/MyProg.o
 python3 -c "
 data = open('build/MyProg.bin','rb').read(); base = 0x0280
 for i in range(0, len(data), 16):
@@ -315,20 +315,20 @@ Add a C++ test in `tests/`. Template: `tests/peripheral_bus_smoke_test.cpp` — 
 |---|---|
 | Text-mode game, ASCII tiles | `dev/projects/games_sokoban/Sokoban.asm` |
 | Text-mode BASIC | `software/basic/mini-startrek.apl.txt` (Integer) or write fresh Applesoft |
-| HGR pixel plotter | `dev/projects/hgr4_mandelbrot/HGR4_Mandelbrot.asm` + `dev/lib/hgr/hgr_tables.inc` |
-| HGR byte-aligned tiles | `dev/projects/hgr6_sokoban/HGR6_Sokoban.asm` (14 px wide) |
+| HGR pixel plotter | `dev/projects/hgr_mandelbrot/HGR_Mandelbrot.asm` + `dev/lib/hgr/hgr_tables.inc` |
+| HGR byte-aligned tiles | `dev/projects/hgr_sokoban/HGR_Sokoban.asm` (14 px wide) |
 | HGR sub-byte tiles (≠ 7 px) | `dev/projects/hgr_maze/HGR_Maze.asm` (4-px walls) |
-| HGR shape drawing | `dev/projects/hgr5_house/HGR5_House.asm` |
+| HGR shape drawing | `dev/projects/hgr_house/HGR_House.asm` |
 | TMS9918 multi-colour tiles | `dev/projects/tms9918_sokoban/TMS_Sokoban.asm` (colour-group trick) |
 | TMS9918 full-screen board | `dev/projects/tms9918_connect4/TMS_Connect4.asm` (32×32 px pieces) |
 | GT-6144 plotter | `dev/projects/gt6144_hello/GT1_Hello.asm`, `dev/projects/gt6144_life/GT1_Life.asm` |
 | SID direct register play | `dev/projects/sid_piano/Claudio_PARMIGIANI_SID_PIANO_AZERTY.asm` |
 | SID from C64 conversion | `python3 tools/sid2apple1.py Music.sid` |
 | RTC / sensors | `dev/projects/a1io_rtc_clock/RtcClock.asm` |
-| Shared logic across modes | `dev/lib/sokoban/sokoban_*.inc` (mode-neutral routines), `dev/lib/chess/chess_engine.asm` (separately-linked engine .o) |
-| Separately-linked engine module | `dev/lib/chess/chess_engine.asm` + per-variant Makefile linking 3 `.o` (text/TMS9918/HGR all share the same `chess_engine.o`) |
-| Algebraic move parser | `dev/lib/chess/chess_text_io.asm` (parses 4-5 char input like `E2E4`, `E7E8Q`) |
-| New linker config | `dev/cc65/apple1.cfg` (3 328 B) / `apple1_4k.cfg` (4 096 B) / `apple1_gen2.cfg` (7 552 B, reserves HGR fb) |
+| Shared logic across modes | `dev/lib/games/sokoban/sokoban_*.inc` (mode-neutral routines), `dev/lib/games/chess/chess_engine.asm` (separately-linked engine .o) |
+| Separately-linked engine module | `dev/lib/games/chess/chess_engine.asm` + per-variant Makefile linking 3 `.o` (text/TMS9918/HGR all share the same `chess_engine.o`) |
+| Algebraic move parser | `dev/lib/games/chess/chess_text_io.asm` (parses 4-5 char input like `E2E4`, `E7E8Q`) |
+| New linker config | `dev/cc65/apple1_4k.cfg` (4 096 B) / `apple1_gen2.cfg` (7 552 B, reserves HGR fb) / `pom1_fantasy.cfg` (Multiplexing Fantasy preset) |
 
 ---
 

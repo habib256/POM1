@@ -52,7 +52,7 @@ projects can alias the slot pair before the include:
     prng_hi = my_hi
     .include "prng8.asm"
 
-Used by: `games_maze/Maze_Sidewinder`, `games_maze/Maze2_Backtracker`,
+Used by: `demo_maze/Maze_Sidewinder`, `demo_maze/Maze2_Backtracker`,
 `hgr_maze/HGR_Maze`. Caller must seed the state to nonzero somewhere
 (zeroed state stays zero).
 
@@ -60,7 +60,7 @@ Used by: `games_maze/Maze_Sidewinder`, `games_maze/Maze2_Backtracker`,
 
 Standard 6502 shift-and-add multiplies (ref: 6502.org). Promoted out of
 `dev/lib/hgr/hgr_tables.inc` so projects that don't need multiply
-(HGR2_Sierpinski, HGR3_TestCard) no longer pay for the ZP slots.
+(HGR_Sierpinski, HGR_TestCard) no longer pay for the ZP slots.
 
 | Symbol  | Description                                                       |
 |---------|-------------------------------------------------------------------|
@@ -74,10 +74,10 @@ loop only needs 4 iterations instead of 8; the result fits in one byte
 since 15 × 15 = 225 < 256.
 
 Reserves its own ZP slots `mul_tmp / mul_res0` via `.ifndef` guard. Used
-by `hgr4_mandelbrot` (as building block for an inline 16×16 → 32 fixed-
+by `hgr_mandelbrot` (as building block for an inline 16×16 → 32 fixed-
 point multiply that adds its own `mul_res1..3` accumulator slots),
-`hgr5_house`, `hgr6_sokoban`, `hgr7_connect4`, `hgr8_bbfont_show`,
-`hgr9_smiley16`. `umul4` is used by `shadowcast.asm` for its slope
+`hgr_house`, `hgr_sokoban`, `hgr_connect4`, `hgr_bbfont_show`.
+`umul4` is used by `shadowcast.asm` for its slope
 cross-multiplications.
 
 ## shadowcast.asm — recursive shadowcasting field-of-view

@@ -11,10 +11,23 @@
 
 #include <cassert>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <filesystem>
 #include <string>
 #include <vector>
+
+// Side-effect-safe check macro — assert() is a no-op under NDEBUG, which
+// silently drops the wrapped expression. Use REQUIRE() for any expression
+// whose evaluation must happen (writeFile, mount, save…).
+#define REQUIRE(expr)                                                          \
+    do {                                                                       \
+        if (!(expr)) {                                                         \
+            std::fprintf(stderr, "REQUIRE failed: %s (%s:%d)\n",               \
+                         #expr, __FILE__, __LINE__);                           \
+            std::abort();                                                      \
+        }                                                                     \
+    } while (0)
 
 using pom1::D64Image;
 
@@ -55,7 +68,7 @@ static void check_wildcard() {
 static void check_format_writeread_delete() {
     D64Image img;
     bool ok = img.format("MYDISK", "A1");
-    assert(ok);
+    REQUIRE(ok);
 
     // 664 blocks free on a 35-track disk (track 18 is reserved/ignored in the count).
     assert(img.blocksFree() == img.totalBlocks());
@@ -75,11 +88,11 @@ static void check_format_writeread_delete() {
     data.reserve(300);
     data.push_back(0x01); data.push_back(0x08);  // load addr $0801
     for (int i = 0; i < 298; ++i) data.push_back(static_cast<uint8_t>(i & 0xFF));
-    assert(img.writeFile("HELLO", data));
+    REQUIRE(img.writeFile("HELLO", data));
 
     // Directory has one entry, blocks free decreased.
     auto dir = img.directory("*");
-    assert(dir.size() == 1);
+    REQUIRE(dir.size() == 1);
     assert(dir[0].name.size() == 5);
     assert(dir[0].name[0] == 'H' && dir[0].name[4] == 'O');
     assert(dir[0].blocks >= 2);    // 300 bytes / 254 = 2 blocks
@@ -87,36 +100,36 @@ static void check_format_writeread_delete() {
 
     // Read back, byte-compare.
     auto roundtrip = img.readFile("HELLO");
-    assert(roundtrip.size() == data.size());
+    REQUIRE(roundtrip.size() == data.size());
     for (size_t i = 0; i < data.size(); ++i) {
         if (roundtrip[i] != data[i]) {
             std::fprintf(stderr, "Mismatch at %zu: got %02X, expected %02X\n",
                          i, roundtrip[i], data[i]);
-            assert(false);
+            std::abort();
         }
     }
 
     // Wildcard read.
     auto byPat = img.readFile("HEL*");
-    assert(byPat == data);
+    REQUIRE(byPat == data);
 
     // Refuse to overwrite.
-    assert(!img.writeFile("HELLO", data));
+    REQUIRE(!img.writeFile("HELLO", data));
 
     // Delete + re-add.
-    assert(img.deleteFile("HELLO"));
+    REQUIRE(img.deleteFile("HELLO"));
     auto dirAfter = img.directory("*");
-    assert(dirAfter.empty());
-    assert(img.blocksFree() == 664);
-    assert(img.writeFile("HELLO", data));
-    assert(img.directory("*").size() == 1);
+    REQUIRE(dirAfter.empty());
+    REQUIRE(img.blocksFree() == 664);
+    REQUIRE(img.writeFile("HELLO", data));
+    REQUIRE(img.directory("*").size() == 1);
 }
 
 static void check_save_load_round_trip() {
     D64Image img;
     img.format("SAVED", "Z9");
     std::vector<uint8_t> data{0x00, 0x03, 0xAA, 0xBB, 0xCC, 0xDD};
-    assert(img.writeFile("FOO", data));
+    REQUIRE(img.writeFile("FOO", data));
 
     // Save to a temp path, mount fresh, read. Test-only path; no security context.
     auto base = std::filesystem::temp_directory_path() / "pom1_d64_smoke.d64";
@@ -128,24 +141,24 @@ static void check_save_load_round_trip() {
     // Workaround: write raw bytes ourselves, then mount.
     {
         std::FILE* f = std::fopen(path.c_str(), "wb");
-        assert(f);
+        REQUIRE(f);
         std::fwrite(img.rawBytes().data(), 1, img.rawBytes().size(), f);
         std::fclose(f);
     }
 
     D64Image img2;
-    assert(img2.mount(path));
-    assert(img2.blocksFree() == img.blocksFree());
+    REQUIRE(img2.mount(path));
+    REQUIRE(img2.blocksFree() == img.blocksFree());
     auto roundtrip = img2.readFile("FOO");
-    assert(roundtrip == data);
+    REQUIRE(roundtrip == data);
 
     // save() round-trip after mount.
-    assert(img2.deleteFile("FOO"));
-    assert(img2.save());
+    REQUIRE(img2.deleteFile("FOO"));
+    REQUIRE(img2.save());
 
     D64Image img3;
-    assert(img3.mount(path));
-    assert(img3.directory("*").empty());
+    REQUIRE(img3.mount(path));
+    REQUIRE(img3.directory("*").empty());
 
     std::remove(path.c_str());
 }

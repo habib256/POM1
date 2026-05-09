@@ -7,7 +7,7 @@ regular Apple-1 40×24 display.
 
 Engine bumped to v0.5 — the AI no longer blunders (SEE on the destination
 square, MVV-LVA tie-break, random reservoir sampler for genuine ties; see
-`dev/lib/chess/README.md`). The text-variant v0.5 UX features (`H`, `L`,
+`dev/lib/games/chess/README.md`). The text-variant v0.5 UX features (`H`, `L`,
 last-move highlight, MAT line, anti-scroll, `D` strategy toggle) are
 text-only and don't appear here — the TMS renderer prints `NOT IMPLEMENTED`
 when the parser surfaces those return codes.

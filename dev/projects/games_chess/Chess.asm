@@ -6,7 +6,7 @@
 ; Inspired by StewBC/cc65-Chess (algorithm reference).
 ; Apple-1 implementation: pure 6502 asm, board in 0x88 mailbox.
 ;
-; Engine lives in dev/lib/chess/chess_engine.asm (linked separately).
+; Engine lives in dev/lib/games/chess/chess_engine.asm (linked separately).
 ; This file is the text-mode renderer + game loop.
 ;
 ; Build:
@@ -383,7 +383,7 @@ do_hint:
 ; do_list_moves -- print every legal move for the side to move.
 ;
 ; Reuses the engine's is_pseudo_legal / make_move / in_check / unmake_move
-; primitives (now exported via the lib/chess public API). Prints up to 32
+; primitives (now exported via the lib/games/chess public API). Prints up to 32
 ; moves in a 5-char-wide grid (8 per line).
 ; =============================================
 do_list_moves:

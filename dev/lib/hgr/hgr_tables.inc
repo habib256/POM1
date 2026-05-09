@@ -42,7 +42,7 @@ plot_pixel:
 ; =============================================
 ; umul8 (8x8 -> 16-bit unsigned multiply) used to live here. It moved to
 ; `dev/lib/m6502/multiply.asm` so projects that don't need multiply
-; (HGR2_Sierpinski, HGR3_TestCard) no longer pay for the two ZP slots
+; (HGR_Sierpinski, HGR_TestCard) no longer pay for the two ZP slots
 ; mul_tmp / mul_res0. Projects that DO use umul8 should add:
 ;     .include "multiply.asm"
 ; alongside this file (with -I ../../lib/m6502 in their Makefile).

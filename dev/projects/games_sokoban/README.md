@@ -11,7 +11,7 @@ with no expansion RAM.
 - Machine: Apple 1 (4 KB stock — `apple1_sok_4k.cfg`, default).
   Larger budgets (`apple1_sok_8k.cfg`, `apple1_sok_hgr.cfg`) ship for
   variants that target 8 KB / GEN2 HGR setups respectively.
-- Cards: none (the HGR variant is consumed by `dev/projects/hgr6_sokoban/`)
+- Cards: none (the HGR variant is consumed by `dev/projects/hgr_sokoban/`)
 - Recommended POM1 preset: TODO — any text-mode Apple 1 preset.
 
 ## Sources
@@ -19,8 +19,8 @@ with no expansion RAM.
 - `Sokoban.asm` — main entry, loads at `$0280`
 - `apple1_sok_4k.cfg` — 4 KB DRAM target (default Makefile config)
 - `apple1_sok_8k.cfg` — 8 KB DRAM target (used by `tms9918_sokoban`)
-- `apple1_sok_hgr.cfg` — 8 KB DRAM + GEN2 HGR (used by `hgr6_sokoban`)
-- libs used: `dev/lib/apple1/`, `dev/lib/sokoban/`
+- `apple1_sok_hgr.cfg` — 8 KB DRAM + GEN2 HGR (used by `hgr_sokoban`)
+- libs used: `dev/lib/apple1/`, `dev/lib/games/sokoban/`
 
 ## Build
 
@@ -28,7 +28,7 @@ with no expansion RAM.
 
 By hand (any of the three variants):
 
-    ca65 -I ../../lib/apple1 -I ../../lib/sokoban Sokoban.asm
+    ca65 -I ../../lib/apple1 -I ../../lib/games/sokoban Sokoban.asm
     ld65 -C apple1_sok_4k.cfg Sokoban.o -o ../../../software/games/Sokoban.bin
 
 ## Run in POM1

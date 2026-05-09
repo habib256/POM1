@@ -159,7 +159,7 @@ Indices match `--preset N`. Per-preset window layouts persist under `ini/imgui_p
 | 🏰 **LittleTower** | Text adventure ([asm](dev/projects/games_little_tower/LittleTower-1.0.asm)) |
 | 🌙 **Lunar Lander** · 🔢 **2048** · 🔐 **Codebreaker** / 🧠 **Mastermind** · 🎲 **Shut the Box** · 🔵 **Peg Solitaire** · 🧩 **15-Puzzle** · 📝 **Worple** | Classics |
 | 🧬 **Game of Life** · 🎂 **30th** · 🐱 **ASCII Cat** · 🍺 **99 Bottles** | Demos |
-| 🌀 **Maze** / **Maze 2** | Sidewinder ([asm](dev/projects/games_maze/Maze_Sidewinder.asm)) and Recursive Backtracker ([asm](dev/projects/games_maze/Maze2_Backtracker.asm)) |
+| 🌀 **Maze** / **Maze 2** | Sidewinder ([asm](dev/projects/demo_maze/Maze_Sidewinder.asm)) and Recursive Backtracker ([asm](dev/projects/demo_maze/Maze2_Backtracker.asm)) |
 | 🎨 **HGR Maze** | GEN2 HIRES maze generator ([asm](dev/projects/hgr_maze/HGR_Maze.asm)) |
 | 🌌 **Mandelbrot** · 📊 **Cellular** · 🎨 **PasArt** | Fractal, 1D CA, parametric ASCII |
 </details>

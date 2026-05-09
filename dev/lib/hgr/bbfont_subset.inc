@@ -1,5 +1,5 @@
 ; =============================================================================
-; HGR6_Sokoban_bbfont.inc — HUD/title font for HGR6_Sokoban (GEN2)
+; bbfont_subset.inc — HUD/title font for HGR_Sokoban (GEN2)
 ; =============================================================================
 ; Source glyphs: Michael Pohoreski, apple2_hgr_font_tutorial (asm/fontbb.s).
 ; Encoding: AND #$7F; 8 rows top→bottom; bit 0 = left; no per-byte rev7.
@@ -7,13 +7,13 @@
 ; Exception: 'Q' (index 31) uses the left-7 raster from
 ; fonts/font_codepage_437_8x8.png (same GEN2 encoding).
 ;
-; Full CP437 0..255: HGR8_BBFont.inc (HGR8_BBFontShow).
+; Full CP437 0..255: bbfont_cp437.inc (HGR_BBFontShow).
 ; =============================================================================
 
 BBFONT_SOKOBAN_BYTES_PER_GLYPH = 8
 BBFONT_SOKOBAN_GLYPH_COUNT     = 38
 
-HGR6_Sokoban_bbfont:
+HGR_Sokoban_bbfont:
         .byte $1E, $33, $33, $33, $33, $33, $1E, $00  ; 0 '0'
         .byte $0C, $0E, $0F, $0C, $0C, $0C, $3F, $00  ; 1 '1'
         .byte $1E, $3F, $33, $38, $0E, $3F, $3F, $00  ; 2 '2'
@@ -53,4 +53,4 @@ HGR6_Sokoban_bbfont:
         .byte $38, $1C, $0E, $0E, $0E, $1C, $38, $00  ; 36 '('
         .byte $07, $0E, $1C, $1C, $1C, $0E, $07, $00  ; 37 ')'
 
-.assert (* - HGR6_Sokoban_bbfont) = (BBFONT_SOKOBAN_GLYPH_COUNT * BBFONT_SOKOBAN_BYTES_PER_GLYPH), error
+.assert (* - HGR_Sokoban_bbfont) = (BBFONT_SOKOBAN_GLYPH_COUNT * BBFONT_SOKOBAN_BYTES_PER_GLYPH), error

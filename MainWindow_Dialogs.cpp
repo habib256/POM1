@@ -1364,10 +1364,9 @@ static const char kSoftwareReferenceCc65Cmd[] =
     "ca65 -o build/program.o software/program.asm\n"
     "\n"
     "# Link with an Apple-1 config\n"
-    "ld65 -C software/apple1.cfg       -o build/program.bin build/program.o\n"
     "ld65 -C software/apple1_4k.cfg    -o build/program.bin build/program.o\n"
     "ld65 -C software/hgr/apple1_gen2.cfg -o build/program.bin build/program.o\n"
-    "ld65 -C software/pom1.cfg         -o build/program.bin build/program.o\n"
+    "ld65 -C software/pom1_fantasy.cfg -o build/program.bin build/program.o\n"
     "\n"
     "# Sokoban (real-hardware variants)\n"
     "ld65 -C software/games/apple1_sok_4k.cfg  -o build/sok.bin build/sok.o  # stock 4K (text)\n"
@@ -1561,10 +1560,9 @@ void MainWindow_ImGui::renderSoftwareReferenceWindow()
             ImGui::PopFont();
             ImGui::EndChild();
             hwHeading("Linker configs");
-            hwKeyValue("software/apple1.cfg:", "$0280-$0F7F (3328 B). Small text-only games.");
-            hwKeyValue("software/apple1_4k.cfg:", "$0280-$127F (4 KB). Medium text games, no HGR RAM.");
+            hwKeyValue("software/apple1_4k.cfg:", "$0280-$127F (4 KB). Default text-mode / TMS9918 (VRAM off-bus).");
             hwKeyValue("software/hgr/apple1_gen2.cfg:", "$0280-$1FFF (7552 B). HGR programs; reserves $2000-$3FFF.");
-            hwKeyValue("software/pom1.cfg:", "$0300-$9FFF (~40 KB). Large programs, different base.");
+            hwKeyValue("software/pom1_fantasy.cfg:", "Multiplexing Fantasy preset (POM1-only). Configurable layout.");
             hwHeading("Sokoban-specific (real Apple-1)");
             hwKeyValue("apple1_sok_4k.cfg:", "Stock 4K - text variant. LEVELBUF in zero page, STATEGRID in bss at $0F00.");
             hwKeyValue("apple1_sok_8k.cfg:", "Stock 8K + TMS9918. STATEGRID moved to $1F00.");

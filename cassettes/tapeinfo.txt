@@ -1,4 +1,4 @@
-# Apple 1 Cassette Library — load info
+# Apple 1 Cassette Library — Program mode infos
 # Format: filename = load address or command
 # Shown on the cassette label so the user knows what to type.
 #

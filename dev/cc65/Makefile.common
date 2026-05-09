@@ -1,7 +1,7 @@
 # Makefile.common — shared targets for cc65 6502 projects under dev/projects/
 #
 # Project Makefile defines:
-#   PROJECT   — basename, e.g. HGR4_Mandelbrot (drives <PROJECT>.asm + <PROJECT>.o)
+#   PROJECT   — basename, e.g. HGR_Mandelbrot (drives <PROJECT>.asm + <PROJECT>.o)
 #   LOAD_CFG  — path to ld65 .cfg
 #   OUT_DIR   — where the .bin (and optional .txt) lands under software/
 #   LIB       — ca65 -I flags, e.g. "-I ../../lib/apple1 -I ../../lib/hgr"
@@ -10,7 +10,7 @@
 #               in the project Makefile to allow `make CFG=variant.cfg`
 #
 # Then `include ../../cc65/Makefile.common`. Multi-project Makefiles
-# (e.g. games_maze with several .asm targets) keep their own pattern rules.
+# (e.g. demo_maze with several .asm targets) keep their own pattern rules.
 
 .DEFAULT_GOAL := all
 

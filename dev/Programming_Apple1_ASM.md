@@ -60,10 +60,9 @@ Le binaire compilé et son `.txt` Woz hex sont déposés sous `software/<dir>/` 
 
 | Config | CODE range | Taille | Usage typique |
 |--------|-----------|--------|---------------|
-| `dev/cc65/apple1.cfg` | `$0280-$0F7F` | 3 328 B | Petits jeux, texte ou TMS9918 seul (VRAM hors bus) |
-| `dev/cc65/apple1_4k.cfg` | `$0280-$127F` | 4 096 B | Jeux texte de taille moyenne ou TMS9918 plus grands |
+| `dev/cc65/apple1_4k.cfg` | `$0280-$127F` | 4 096 B | Jeux texte ou TMS9918 (VRAM hors bus) — config par défaut |
 | `dev/cc65/apple1_gen2.cfg` | `$0280-$1FFF` | 7 552 B | Jeux HGR (réserve `$2000-$3FFF` pour le framebuffer) ; peut servir pour TMS9918 si tu réutilises la même fenêtre CODE — mutex GEN2/TMS9918 sauf presets Fantasy |
-| `dev/cc65/pom1.cfg` | `$0300-$9FFF` | 40 KB | Programmes volumineux ; attention base différente |
+| `dev/cc65/pom1_fantasy.cfg` | configurable | — | Preset Multiplexing Fantasy (POM1-only) |
 
 La syntaxe minimale d'un `.cfg` :
 
@@ -366,9 +365,9 @@ JSR clear_hgr              ; zéro le framebuffer
 ### Exemple d'implémentation
 
 - `dev/projects/hgr_maze/HGR_Maze.asm` — maze sub-byte rendering (murs 4 pixels)
-- `dev/projects/hgr6_sokoban/HGR6_Sokoban.asm` — jeu complet 72 niveaux, 14×16 tuiles, delta rendering
-- `dev/projects/hgr4_mandelbrot/HGR4_Mandelbrot.asm` — calcul + pixel plotting
-- `dev/projects/hgr5_house/HGR5_House.asm` — dessin de formes
+- `dev/projects/hgr_sokoban/HGR_Sokoban.asm` — jeu complet 72 niveaux, 14×16 tuiles, delta rendering
+- `dev/projects/hgr_mandelbrot/HGR_Mandelbrot.asm` — calcul + pixel plotting
+- `dev/projects/hgr_house/HGR_House.asm` — dessin de formes
 
 ---
 
@@ -735,7 +734,7 @@ Les trois ports de **Sokoban** partagent la même grille, la même logique de co
 | Fichier | Mode | Taille | Niveaux |
 |---------|------|--------|---------|
 | `dev/projects/games_sokoban/Sokoban.asm` | Texte | 4054 B | 47 |
-| `dev/projects/hgr6_sokoban/HGR6_Sokoban.asm` | HGR GEN2 | 7399 B | 72 |
+| `dev/projects/hgr_sokoban/HGR_Sokoban.asm` | HGR GEN2 | 7399 B | 72 |
 | `dev/projects/tms9918_sokoban/TMS_Sokoban.asm` | TMS9918 | 4354 B | 47 |
 
 Les trois ports de **Connect 4** de même :
@@ -743,20 +742,21 @@ Les trois ports de **Connect 4** de même :
 | Fichier | Mode | Taille |
 |---------|------|--------|
 | `dev/projects/games_connect4/Connect4.asm` | Texte | 1021 B |
-| `dev/projects/hgr7_connect4/HGR7_Connect4.asm` | HGR GEN2 | 2003 B |
+| `dev/projects/hgr_connect4/HGR_Connect4.asm` | HGR GEN2 | 2003 B |
 | `dev/projects/tms9918_connect4/TMS_Connect4.asm` | TMS9918 | 1230 B |
 
 Autres programmes GEN2 utiles comme modèle :
 - `dev/projects/hgr_maze/HGR_Maze.asm` : maze sub-byte rendering (4-px walls)
-- `dev/projects/hgr4_mandelbrot/HGR4_Mandelbrot.asm` : calcul + pixel plotting
-- `dev/projects/hgr5_house/HGR5_House.asm` : dessin de formes
+- `dev/projects/hgr_mandelbrot/HGR_Mandelbrot.asm` : calcul + pixel plotting
+- `dev/projects/hgr_house/HGR_House.asm` : dessin de formes
 
 Bibliothèques réutilisables (`dev/lib/`) :
 - `dev/lib/apple1/apple1.inc` — équates Wozmon + PIA
 - `dev/lib/m6502/math.asm` — trig point-fixe, RNG LFSR, impression décimale
 - `dev/lib/tms9918/{tms9918.inc,tms9918m2.asm}` — équates VDP + driver Mode 2
 - `dev/lib/hgr/{hgr_tables.inc,smiley.inc}` — tables HGR
-- `dev/lib/sokoban/sokoban_*.inc` — données niveaux Sokoban partagées
+- `dev/lib/games/sokoban/sokoban_*.inc` — données niveaux Sokoban partagées
+- `dev/lib/games/chess/{chess_engine.asm,chess_text_io.asm,chess_*.inc}` — moteur d'échecs partagé (text/HGR/TMS9918)
 
 ---
 

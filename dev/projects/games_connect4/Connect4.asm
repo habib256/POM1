@@ -5,7 +5,7 @@
 ; =============================================
 ; Assemble:
 ;   ca65 -o build/Connect4.o software/games/Connect4.asm
-;   ld65 -C software/apple1.cfg -o build/Connect4.bin build/Connect4.o
+;   ld65 -C software/apple1_4k.cfg -o build/Connect4.bin build/Connect4.o
 ;
 ; Load via File > Load Memory (Connect4.txt), 280R.
 ;

@@ -12,7 +12,7 @@ def main() -> int:
     emit(
         asm_files=["TMS_OrbitalPool.asm"],
         lib_dirs=["apple1", "tms9918"],
-        cfg="apple1.cfg",
+        cfg="apple1_4k.cfg",
         out_dir_software="tms9918",
         start_addr=0x0280,
         project_dir=PROJ,

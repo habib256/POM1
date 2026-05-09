@@ -24,7 +24,7 @@ in stock 8 KB DRAM (~6 KB binary, no expansion cards required).
 By hand:
 
     ca65 -I ../../lib/apple1 LittleTower-1.0.asm
-    ld65 -C ../../cc65/apple1_8k.cfg LittleTower-1.0.o -o ../../../software/games/LittleTower-1.0.bin
+    ld65 -C apple1_little_tower.cfg LittleTower-1.0.o -o ../../../software/games/LittleTower-1.0.bin
 
 ## Run in POM1
 

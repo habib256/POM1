@@ -22,7 +22,7 @@ first to align four wins.
 By hand:
 
     ca65 -I ../../lib/apple1 Connect4.asm
-    ld65 -C ../../cc65/apple1.cfg Connect4.o -o ../../../software/games/Connect4.bin
+    ld65 -C ../../cc65/apple1_4k.cfg Connect4.o -o ../../../software/games/Connect4.bin
 
 ## Run in POM1
 

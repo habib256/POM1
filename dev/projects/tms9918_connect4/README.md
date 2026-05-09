@@ -2,7 +2,7 @@
 
 Two-player Connect 4 (drop-piece, 7×6 grid) on the P-LAB TMS9918
 Graphic Card. Companion of `games_connect4` (text mode) and
-`hgr7_connect4` (GEN2 HGR).
+`hgr_connect4` (GEN2 HGR).
 
 ## Hardware
 
@@ -22,7 +22,7 @@ Graphic Card. Companion of `games_connect4` (text mode) and
 By hand:
 
     ca65 -I ../../lib/apple1 -I ../../lib/tms9918 TMS_Connect4.asm
-    ld65 -C ../../cc65/apple1.cfg TMS_Connect4.o \
+    ld65 -C ../../cc65/apple1_4k.cfg TMS_Connect4.o \
         -o ../../../software/tms9918/TMS_Connect4.bin
 
 ## Run in POM1

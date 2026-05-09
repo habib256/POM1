@@ -1,7 +1,7 @@
 ; ============================================================================
 ; layout.asm -- QWERTY/AZERTY keyboard layout selector for WASD-style games
 ; ============================================================================
-; Promoted from inline copies in 6+ projects (games_sokoban, hgr6_sokoban,
+; Promoted from inline copies in 6+ projects (games_sokoban, hgr_sokoban,
 ; tms9918_sokoban, tms9918_snake, tms9918_galaga, tms9918_connect4 — all
 ; with the same 17-line dispatch). Two entry points:
 ;

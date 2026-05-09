@@ -5,7 +5,7 @@
 ; HGR pixel tables). Two reasons for the move:
 ;   (1) Multiply is generic 6502, not HGR-specific — it belongs in m6502/.
 ;   (2) Old layout forced every hgr_tables.inc consumer to also declare
-;       mul_tmp / mul_res0 (HGR2_Sierpinski, HGR3_TestCard previously broke).
+;       mul_tmp / mul_res0 (HGR_Sierpinski, HGR_TestCard previously broke).
 ;
 ; Reserves its own ZP slot pair (mul_tmp, mul_res0) via `.ifndef` guard so
 ; ZP-tight callers can alias their own slots before the .include:

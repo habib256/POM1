@@ -131,7 +131,7 @@ def main():
     if len(full) < 72:
         # Bootstrap path: read from the .asm sources that still hold raw data.
         for path, hi in [(ROOT / "games" / "Sokoban.asm", 47),
-                         (ROOT / "hgr" / "HGR6_Sokoban.asm", 72)]:
+                         (ROOT / "hgr" / "HGR_Sokoban.asm", 72)]:
             if path.exists():
                 try:
                     full.update(parse_levels(path, 1, hi))
