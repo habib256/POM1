@@ -10,7 +10,10 @@
 ;   ld65 -C software/hgr/apple1_gen2.cfg -o build/HGR_Maze.bin build/HGR_Maze.o
 ;
 ; The GEN2 linker config reserves $2000-$3FFF for the HGR
-; framebuffer and places BSS (grid, stack) at $4000+.
+; framebuffer; BSS (grid, DFS stacks) is page-aligned in the
+; low bank at $0300-$0EFF so the program runs on the
+; Parmigiani 8 KB dual-bank Apple-1 (preset 13) where the
+; gap $1000-$DFFF has no RAM.
 ;
 ; In POM1: plug GEN2 card, File > Load Memory (HGR_Maze.txt)
 ; then type E000R in Woz Monitor.
@@ -44,9 +47,12 @@ EAST_BIT  = $02
 VISITED   = $80
 
 ; --- Runtime RAM (page-aligned for efficient indirect access) ---
-GRID       = $4000      ; 782 bytes: cell data ($4000-$430D)
-DFS_STK_LO = $4400      ; 782 bytes: stack low bytes ($4400-$470D)
-DFS_STK_HI = $4800      ; 782 bytes: stack high bytes ($4800-$4B0D)
+; Placed in the dual-bank low window ($0300-$0EFF) so the
+; program runs on the 8 KB Parmigiani Apple-1 (preset 13).
+; Each block reserves 4 pages (1 KB) but only uses 782 bytes.
+GRID       = $0300      ; 782 bytes: cell data ($0300-$060D)
+DFS_STK_LO = $0700      ; 782 bytes: stack low bytes ($0700-$0A0D)
+DFS_STK_HI = $0B00      ; 782 bytes: stack high bytes ($0B00-$0E0D)
 
 ; --- Zero page variables ---
 .zeropage
@@ -318,7 +324,7 @@ fill_block:
 ; 16-bit cell indices for 34x23 = 782 cells
 ; =============================================
 generate_maze:
-        ; --- Clear GRID: zero 4 pages at $4000 (covers 782 bytes) ---
+        ; --- Clear GRID: zero 4 pages (covers 782 bytes) ---
         LDA #$00
         TAY
         STA gptr_lo
