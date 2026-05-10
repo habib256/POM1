@@ -516,7 +516,7 @@ void TMS9918::copySnapshot(Snapshot& out)
     // Status register changes on every frame tick, so always mirror it.
     out.statusReg = statusReg;
     out.siliconStrictMode = siliconStrictMode;
-    // VRAM (16 KB) + register file + 320×240 framebuffer (300 KB) only move
+    // VRAM (16 KB) + register file + 288×216 framebuffer (~243 KB) only move
     // when the card is actually touched by software — a dirty flag avoids
     // unnecessary memcpy on idle frames. The framebuffer is the silicon-
     // progressive raster — UI uploads it to GL directly without any further
@@ -586,7 +586,7 @@ void TMS9918::renderToBuffer(uint32_t* pixels, const Snapshot& snap)
 }
 
 // --------------------------------------------------------------------------
-// renderToBufferWithBorder — 320×240 with R7-coloured borders.
+// renderToBufferWithBorder — 288×216 with R7-coloured borders.
 // Renders the 256×192 active rect at offset (kBorderLeft, kBorderTop).
 // Border pixels are painted with kPalette[regs[7] & 0x0F] regardless of
 // display blank state — silicon's "border colour" stays alive even when
@@ -597,7 +597,7 @@ void TMS9918::renderToBufferWithBorder(uint32_t* pixels, const Snapshot& snap)
     const uint8_t backdropIdx = snap.regs[7] & 0x0F;
     const ImU32   border      = (backdropIdx == 0) ? kPalette[1] : kPalette[backdropIdx];
 
-    // Fill the entire 320×240 surface with the border colour first; the
+    // Fill the entire 288×216 surface with the border colour first; the
     // active 256×192 rect is overwritten below.
     for (int i = 0; i < kFullWidth * kFullHeight; ++i) pixels[i] = border;
 
@@ -1641,7 +1641,7 @@ void TMS9918::deserialize(pom1::SnapshotReader& r)
     irqStrapped           = r.readU8() != 0;
     chipType              = static_cast<ChipType>(r.readU8());
     // Force a fresh framebuffer rebuild on the next progressive render —
-    // the 320×240 buffer was intentionally not snapshotted (it's derived
+    // the 288×216 buffer was intentionally not snapshotted (it's derived
     // state and would inflate the .snap by 300 KB).
     snapshotDirty = true;
 }

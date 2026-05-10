@@ -232,9 +232,8 @@ int main()
         vdp.copySnapshot(snap);
 
         // Border-left pixel at line 25 (active line ~1) should be white.
-        const int kBorderTop  = 24;
-        const int kBorderLeft = 32;
-        const int kFullWidth  = 320;
+        const int kBorderTop  = TMS9918::kBorderTop;
+        const int kFullWidth  = TMS9918::kFullWidth;
         const uint32_t earlyLR  = snap.framebuffer[(kBorderTop + 5) * kFullWidth + 4];
         const uint32_t lateLR   = snap.framebuffer[(kBorderTop + 150) * kFullWidth + 4];
         const ImU32 white  = TMS9918::kPalette[0x0F];

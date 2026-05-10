@@ -82,22 +82,30 @@ void MainWindow_ImGui::renderDebugDialog()
             if (ImGui::Button("Step")) {
                 stepCpu();
             }
+            if (ImGui::IsItemHovered())
+                ImGui::SetTooltip("Execute one CPU instruction (F7)");
             ImGui::SameLine();
 
             if (cpuRunning) {
                 if (ImGui::Button("Stop")) {
                     stopCpu();
                 }
+                if (ImGui::IsItemHovered())
+                    ImGui::SetTooltip("Pause the emulation thread");
             } else {
                 if (ImGui::Button("Start")) {
                     startCpu();
                 }
+                if (ImGui::IsItemHovered())
+                    ImGui::SetTooltip("Resume the emulation thread");
             }
             ImGui::SameLine();
-            
+
             if (ImGui::Button("Reset")) {
                 hardReset();
             }
+            if (ImGui::IsItemHovered())
+                ImGui::SetTooltip("Hard reset (clears RAM, reloads ROMs) — Ctrl+F5");
             
 #if !POM1_IS_WASM
             ImGui::Spacing();
@@ -156,6 +164,8 @@ void MainWindow_ImGui::renderDebugDialog()
             if (ImGui::Button("Clear Log")) {
                 pom1::uiRingBuffer().clear();
             }
+            if (ImGui::IsItemHovered())
+                ImGui::SetTooltip("Empty the in-app log ring buffer");
             ImGui::SameLine();
             bool brkTrace = emulation->isCpuBrkTraceEnabled();
             if (ImGui::Checkbox("BRK trace", &brkTrace)) {

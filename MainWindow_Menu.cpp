@@ -947,6 +947,20 @@ void MainWindow_ImGui::renderToolbar()
         ImGui::SameLine(0, 12);
 
         // --- Resets groupés ---
+        // Clear Screen — physical button (CLR): wipes the 40x24 buffer and
+        // parks the cursor at (0,0) without touching the CPU. The running
+        // program keeps executing and will simply resume drawing on a
+        // freshly-blanked screen.
+        if (ImGui::Button("##clrToolbar", btnSize)) {
+            if (screen) screen->clear();
+            setStatusMessage("Screen cleared (CPU continues)", 2.0f);
+        }
+        drawToolbarTextLabel(ImGui::GetWindowDrawList(),
+                             ImGui::GetItemRectMin(), ImGui::GetItemRectMax(), "CLR");
+        if (ImGui::IsItemHovered())
+            ImGui::SetTooltip("Clear Screen — wipes the display, cursor @ top-left.\nDoes NOT reset the CPU (running software keeps executing).");
+
+        ImGui::SameLine();
         if (ImGui::Button(ICON_FA_ARROW_ROTATE_LEFT, btnSize)) reset();
         if (ImGui::IsItemHovered()) ImGui::SetTooltip("Soft Reset (F5)");
 

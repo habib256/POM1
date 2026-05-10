@@ -103,7 +103,7 @@ void MainWindow_ImGui::renderTMS9918Window()
 
     // Lazy texture creation — nearest-neighbour GL_NEAREST so every window size
     // gives a clean pixel-art result without the integer-scale black borders.
-    // Texture spans the FULL 320×240 frame (active 256×192 + R7 border bands).
+    // Texture spans the FULL 288×216 frame (active 256×192 + R7 border bands).
     if (tms9918Texture == 0) {
         glGenTextures(1, &tms9918Texture);
         glBindTexture(GL_TEXTURE_2D, tms9918Texture);
@@ -303,6 +303,8 @@ void MainWindow_ImGui::renderWiFiModemWindow()
             if (ImGui::Button("Disconnect")) {
                 emulation->wifiModemDisconnect();
             }
+            if (ImGui::IsItemHovered())
+                ImGui::SetTooltip("Drop the active TCP connection (sends NO CARRIER)");
         }
     }
     ImGui::End();
@@ -534,6 +536,8 @@ void MainWindow_ImGui::renderPR40Window()
             emulation->clearPR40Paper();
             setStatusMessage("PR-40: page torn off", 2.0f);
         }
+        if (ImGui::IsItemHovered())
+            ImGui::SetTooltip("Clear the paper roll (discards printed lines)");
         ImGui::SameLine();
         if (ImGui::Button("Copy to clipboard")) {
             std::string all;
@@ -552,6 +556,8 @@ void MainWindow_ImGui::renderPR40Window()
                           snap.recentLines.size() == 1 ? "" : "s");
             setStatusMessage(msg, 2.5f);
         }
+        if (ImGui::IsItemHovered())
+            ImGui::SetTooltip("Copy the entire paper roll to the system clipboard");
         ImGui::SameLine();
         // Save path resolves to the absolute cwd-relative location so the
         // user can actually find the file (was a status-message usability
@@ -568,6 +574,8 @@ void MainWindow_ImGui::renderPR40Window()
                 setStatusMessage(std::string("PR-40 save failed: ") + err, 4.0f);
             }
         }
+        if (ImGui::IsItemHovered())
+            ImGui::SetTooltip("Write the paper roll to pr40_paper.txt in the working directory");
 
         // Footer photo of the real PR-40 mechanism (top-down view of the
         // Sanders 240/M-style print head + paper roll + ribbon spools).
@@ -628,17 +636,23 @@ void MainWindow_ImGui::renderJukeBoxWindow()
                 uint8_t v = static_cast<uint8_t>((subPage << 4) | (curPage - 1));
                 emulation->setJukeBoxBankRegister(v);
             }
+            if (ImGui::IsItemHovered())
+                ImGui::SetTooltip("Previous page (writes $CA00)");
             ImGui::SameLine();
             if (ImGui::SliderInt("##jb_page", &curPage, 0, snap.pageCount - 1, "Page %u")) {
                 uint8_t v = static_cast<uint8_t>((subPage << 4) | (curPage & 0x0F));
                 emulation->setJukeBoxBankRegister(v);
             }
+            if (ImGui::IsItemHovered())
+                ImGui::SetTooltip("Drag to select Px page (writes $CA00 bank latch)");
             ImGui::SameLine();
             if (ImGui::ArrowButton("##jb_page_next", ImGuiDir_Right)
                 && curPage < snap.pageCount - 1) {
                 uint8_t v = static_cast<uint8_t>((subPage << 4) | (curPage + 1));
                 emulation->setJukeBoxBankRegister(v);
             }
+            if (ImGui::IsItemHovered())
+                ImGui::SetTooltip("Next page (writes $CA00)");
             ImGui::PopItemWidth();
 
             // Sub-page toggle is meaningful only with the 16 kB ROM window.
@@ -683,6 +697,10 @@ void MainWindow_ImGui::renderJukeBoxWindow()
                     setStatusMessage("Juke-Box page copy failed: " + error, 4.0f);
                 }
             }
+            if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
+                ImGui::SetTooltip(copyAllowed
+                    ? "Copy 32 KB page From -> To (RAM only — use Save ROM to persist)"
+                    : "Source and destination pages must differ");
             ImGui::EndDisabled();
 
             ImGui::SameLine();
@@ -695,6 +713,10 @@ void MainWindow_ImGui::renderJukeBoxWindow()
                     setStatusMessage("Juke-Box ROM save failed: " + error, 4.0f);
                 }
             }
+            if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
+                ImGui::SetTooltip(snap.romPath.empty()
+                    ? "No ROM loaded yet"
+                    : "Persist in-memory ROM edits to roms/jukebox.rom");
             ImGui::EndDisabled();
         }
 
@@ -740,6 +762,8 @@ void MainWindow_ImGui::renderJukeBoxWindow()
                 setStatusMessage(error, 4.0f);
             }
         }
+        if (ImGui::IsItemHovered())
+            ImGui::SetTooltip("Re-read roms/jukebox.rom from disk (discards unsaved page edits)");
 
         ImGui::Separator();
 
@@ -1112,6 +1136,8 @@ void MainWindow_ImGui::renderCodeTankLibraryWindow()
         if (ImGui::SmallButton("Refresh")) {
             entries = scanCodeTankLibrary();
         }
+        if (ImGui::IsItemHovered())
+            ImGui::SetTooltip("Re-scan roms/codetank/ for cartridges");
         ImGui::SameLine();
         ImGui::TextDisabled("roms/codetank/  (32 kB .rom/.bin cartridges)");
 
@@ -1211,6 +1237,11 @@ void MainWindow_ImGui::renderCodeTankLibraryWindow()
                     if (ImGui::Button(label, ImVec2(ctBtnW, 0))) {
                         plug(e, jumper, halfTag);
                     }
+                    if (ImGui::IsItemHovered()) {
+                        ImGui::SetTooltip(
+                            "Insert this cartridge with %s 16 KB jumper, plug TMS9918,\nhard-reset and auto-type 4000R after ~3 s",
+                            jumper == CodeTank::Jumper::Lower16 ? "Lower" : "Upper");
+                    }
                     ImGui::SameLine();
                     ImGui::PushTextWrapPos(ImGui::GetCursorPos().x
                                            + ImGui::GetContentRegionAvail().x);
@@ -1231,6 +1262,8 @@ void MainWindow_ImGui::renderCodeTankLibraryWindow()
                     if (ImGui::Button("Run Lower Bank##ct_mir", ImVec2(ctBtnW, 0))) {
                         plug(e, CodeTank::Jumper::Lower16, "");
                     }
+                    if (ImGui::IsItemHovered())
+                        ImGui::SetTooltip("Insert this mirrored cartridge, plug TMS9918,\nhard-reset and auto-type 4000R after ~3 s");
                     ImGui::SameLine();
                     ImGui::PushTextWrapPos(ImGui::GetCursorPos().x
                                            + ImGui::GetContentRegionAvail().x);
@@ -1276,6 +1309,8 @@ void MainWindow_ImGui::renderCodeTankLibraryWindow()
                 codeTankPendingWozRunAt = 0.0;
                 setStatusMessage("CodeTank unplugged", 2.0f);
             }
+            if (ImGui::IsItemHovered())
+                ImGui::SetTooltip("Remove the daughterboard (TMS9918 host stays plugged)");
             ImGui::SameLine();
         }
         ImGui::TextColored(ImVec4(0.7f, 0.7f, 0.7f, 1.0f),

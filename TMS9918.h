@@ -32,29 +32,30 @@ public:
     static constexpr int kScreenHeight = 192;
     static constexpr int kVramSize     = 0x4000; // 16 KB
 
-    // TMS9918 NTSC visible region with R7-coloured borders. openMSX-aligned
-    // dimensions (~24 lines top + 24 bottom = 48 vertical border ; 32 px
-    // left + 32 right = 64 horizontal border). The active 256×192 image
-    // sits centred inside the 320×240 frame. R7 lower 4 bits paints the
-    // border (cf. dev/SILICONBUGS.md, "border colour" overscan rendering).
-    static constexpr int kBorderTop    = 24;
-    static constexpr int kBorderBottom = 24;
-    static constexpr int kBorderLeft   = 32;
-    static constexpr int kBorderRight  = 32;
-    static constexpr int kFullWidth    = kScreenWidth  + kBorderLeft + kBorderRight;  // 320
-    static constexpr int kFullHeight   = kScreenHeight + kBorderTop  + kBorderBottom; // 240
+    // TMS9918 NTSC visible region with R7-coloured borders. The active
+    // 256×192 image sits centred inside a 288×216 frame (12-line top/bottom,
+    // 16-px left/right border bands — half of openMSX's 24/32 overscan to
+    // give the active image more prominence in the Hardware → Graphic Card
+    // window). R7 lower 4 bits paints the border (cf. dev/SILICONBUGS.md,
+    // "border colour" overscan rendering).
+    static constexpr int kBorderTop    = 12;
+    static constexpr int kBorderBottom = 12;
+    static constexpr int kBorderLeft   = 16;
+    static constexpr int kBorderRight  = 16;
+    static constexpr int kFullWidth    = kScreenWidth  + kBorderLeft + kBorderRight;  // 288
+    static constexpr int kFullHeight   = kScreenHeight + kBorderTop  + kBorderBottom; // 216
 
     struct Snapshot {
         std::array<uint8_t, 0x4000> vram{};
         std::array<uint8_t, 8> regs{};
         uint8_t statusReg = 0;
         bool siliconStrictMode = false;
-        // Persistent 320×240 RGBA framebuffer rendered progressively at the
+        // Persistent 288×216 RGBA framebuffer rendered progressively at the
         // emulation-thread side (per scanline crossing). The UI reads this
         // verbatim — no further per-snapshot rendering is required. Mid-frame
         // R7 / R1 / VRAM changes affect only the lines drawn *after* the
         // change, matching silicon's progressive raster behaviour.
-        std::array<uint32_t, 320 * 240> framebuffer{};
+        std::array<uint32_t, kFullWidth * kFullHeight> framebuffer{};
     };
 
     TMS9918();
@@ -147,7 +148,7 @@ public:
     // Captured: VRAM (16 KB) + 8 mode regs + statusReg + $CC01 two-byte
     // latch state + vramAddr + readAheadBuffer + frameCycleCounter +
     // pendingDrainCycles + per-line raster cursors + siliconStrictMode +
-    // irqStrapped + chipType. NOT captured: 320×240 framebuffer (regenerated
+    // irqStrapped + chipType. NOT captured: 288×216 framebuffer (regenerated
     // on next progressive render via snapshotDirty), drop diagnostics
     // (session-only), lastAccessPc.
     void serialize(pom1::SnapshotWriter& writer) const override;
@@ -160,7 +161,7 @@ public:
     // directly to an OpenGL texture for nearest-neighbour display at arbitrary window sizes.
     static void renderToBuffer(uint32_t* pixels, const Snapshot& snap);
 
-    // Render with R7-coloured borders into a 320×240 RGBA buffer. The 256×192
+    // Render with R7-coloured borders into a 288×216 RGBA buffer. The 256×192
     // active image is centred at offset (kBorderLeft, kBorderTop). Outside
     // the active rect, every pixel is painted with kPalette[regs[7] & 0x0F]
     // — the silicon's overscan/border colour. Used by the Hardware →
@@ -342,11 +343,11 @@ private:
     // at frame rollover. Drives the per-line invocation of scanSpritesForLine.
     int  lastScanlineProcessed = -1;
 
-    // Persistent 320×240 RGBA framebuffer rendered line-by-line as the
+    // Persistent 288×216 RGBA framebuffer rendered line-by-line as the
     // emulated raster crosses scanlines (silicon-correct progressive
     // raster). The Snapshot publisher copies this verbatim into Snapshot
     // ::framebuffer so the UI thread renders without any per-snapshot work.
-    std::array<uint32_t, 320 * 240> framebuffer{};
+    std::array<uint32_t, kFullWidth * kFullHeight> framebuffer{};
     // Tracks the last scanline rendered into framebuffer this frame.
     // Same semantics as lastScanlineProcessed but for the renderer.
     int lastScanlineRendered = -1;
