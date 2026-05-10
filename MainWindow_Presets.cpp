@@ -924,6 +924,29 @@ bool saveSizeFile(int idx, int w, int h)
     return bool(f);
 }
 
+/** Copy live window geometry into ImGui .ini settings (matches WindowSettingsHandler_WriteAll).
+ *  Needed for Memory Map Bar windows: savePresetLayout() may run before those Begin() calls
+ *  in the same frame (e.g. preset switch from the menu bar), so WriteAll would skip them. */
+void syncIniWindowFromLiveIfPresent(const char* windowName)
+{
+    ImGuiContext& g = *GImGui;
+    ImGuiWindow* window = ImGui::FindWindowByName(windowName);
+    if (!window || (window->Flags & ImGuiWindowFlags_NoSavedSettings))
+        return;
+    ImGuiWindowSettings* settings = ImGui::FindWindowSettingsByWindow(window);
+    if (!settings) {
+        settings = ImGui::CreateNewWindowSettings(window->Name);
+        window->SettingsOffset = g.SettingsWindows.offset_from_ptr(settings);
+    }
+    if (settings->ID != window->ID)
+        return;
+    settings->Pos = ImVec2ih(window->Pos);
+    settings->Size = ImVec2ih(window->SizeFull);
+    settings->IsChild = (window->Flags & ImGuiWindowFlags_ChildWindow) != 0;
+    settings->Collapsed = window->Collapsed;
+    settings->WantDelete = false;
+}
+
 } // namespace
 
 void MainWindow_ImGui::savePresetLayout(int idx) const
@@ -937,6 +960,10 @@ void MainWindow_ImGui::savePresetLayout(int idx) const
         return;
     }
     const std::string iniPath = iniPathForPreset(idx);
+    if (showMemoryBar)
+        syncIniWindowFromLiveIfPresent("Memory Map Bar");
+    if (showMemoryBarH)
+        syncIniWindowFromLiveIfPresent("Memory Map Bar (Horizontal)");
     ImGui::SaveIniSettingsToDisk(iniPath.c_str());
     pom1::log().debug("Layout",
         "Saved preset " + std::to_string(idx) + " → " + iniPath);

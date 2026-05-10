@@ -195,7 +195,7 @@ ctest -R klaus -V
 - **`gt6144_smoke`** — FSM, inversion-without-SRAM-touch, power-on noise uniqueness.
 - **`jukebox_paged_rom_smoke`** — `roms/jukebox.rom`, `$CA00`, flash vs EEPROM behaviour.
 - **`codetank_smoke`** / **`codetank_tms9918_dependency`** — ROM size, jumper offsets, read-only, TMS9918 cascade.
-- **`tms9918_sprite_status`** / **`tms9918_silicon_strict_runtime`** / **`tms9918_per_scanline`** / **`tms9918_advanced_silicon`** — VDP behaviour + strict timing pins (`dev/SILICONBUGS.md`).
+- **`tms9918_sprite_status`** / **`tms9918_silicon_strict_runtime`** / **`tms9918_per_scanline`** / **`tms9918_advanced_silicium`** — VDP behaviour + strict timing pins (`dev/SILICONBUGS.md`).
 - **`snapshot_smoke`** — `SnapshotIO` + selected card flags / RAM round-trip; extend when peripherals gain `serialize`.
 - **`hex_dump_multi_zone`** — `Memory::loadHexDump` disjoint zones (e.g. dual-bank `.txt` with a `$0280` lo block + `$E000` hi block).
 - **`cpu_breakpoint_smoke`** — `--break <addr>` halt-before-instruction, clear, `hardReset` disarm (see [`doc/CLI.md`](doc/CLI.md)).

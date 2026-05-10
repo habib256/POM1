@@ -1473,10 +1473,22 @@ int Memory::loadCodeTankRom(const std::string& path)
 {
     lastError.clear();
     if (!path.empty()) {
+        // Preset / CLI paths are usually repo-relative (roms/codetank/…).
+        // When the process cwd is build/ or another subdir, the bare path
+        // misses — try the same ../ and ../../ prefixes as the default
+        // probe below so we don't WARN and then succeed on setCodeTankEnabled.
         std::string error;
-        if (codeTank->loadRomFile(path, error)) {
-            if (codeTankEnabled) applyCodeTankFlatMemoryMirror();
-            return 0;
+        namespace fs = std::filesystem;
+        const fs::path p(path);
+        const char* relPrefixes[] = { "", "../", "../../", "../../../" };
+        for (const char* pre : relPrefixes) {
+            if (pre[0] != '\0' && p.is_absolute())
+                break;
+            const std::string tryPath = (pre[0] == '\0') ? path : std::string(pre) + path;
+            if (codeTank->loadRomFile(tryPath, error)) {
+                if (codeTankEnabled) applyCodeTankFlatMemoryMirror();
+                return 0;
+            }
         }
         lastError = error;
         pom1::log().warn("Mem", lastError);

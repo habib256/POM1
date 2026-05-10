@@ -649,6 +649,7 @@ void MainWindow_ImGui::renderMemoryMapGridWindow()
 
 void MainWindow_ImGui::renderMemoryBarWindow()
 {
+    applyPendingLayout("Memory Map Bar");
     ImGui::SetNextWindowSize(ImVec2(420, 520), ImGuiCond_FirstUseEver);
     if (!ImGui::Begin("Memory Map Bar", &showMemoryBar)) {
         ImGui::End();
@@ -1097,6 +1098,7 @@ void MainWindow_ImGui::renderMemoryBarWindow()
 
 void MainWindow_ImGui::renderMemoryBarHorizontalWindow()
 {
+    applyPendingLayout("Memory Map Bar (Horizontal)");
     ImGui::SetNextWindowSize(ImVec2(720, 78), ImGuiCond_FirstUseEver);
     if (!ImGui::Begin("Memory Map Bar (Horizontal)", &showMemoryBarH)) {
         ImGui::End();

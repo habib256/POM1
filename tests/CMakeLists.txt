@@ -383,18 +383,18 @@ set_tests_properties(tms9918_per_scanline PROPERTIES TIMEOUT 5)
 #   - Bug N°6 last-sprite-walked encoded in status bits 0..4
 #   - Nouspikel "5S latches first occurrence top→bottom"
 #   - Status sticky-on-read (bits 5/6/7 cleared by readControl)
-add_executable(test_tms9918_advanced_silicon
-    tms9918_advanced_silicon_test.cpp
+add_executable(test_tms9918_advanced_silicium
+    tms9918_advanced_silicium_test.cpp
     ${CMAKE_SOURCE_DIR}/TMS9918.cpp
     ${CMAKE_SOURCE_DIR}/SnapshotIO.cpp
 )
-target_include_directories(test_tms9918_advanced_silicon PRIVATE
+target_include_directories(test_tms9918_advanced_silicium PRIVATE
     ${CMAKE_SOURCE_DIR}
     ${CMAKE_SOURCE_DIR}/imgui
 )
 
-add_test(NAME tms9918_advanced_silicon COMMAND test_tms9918_advanced_silicon)
-set_tests_properties(tms9918_advanced_silicon PROPERTIES TIMEOUT 5)
+add_test(NAME tms9918_advanced_silicium COMMAND test_tms9918_advanced_silicium)
+set_tests_properties(tms9918_advanced_silicium PROPERTIES TIMEOUT 5)
 
 # -- CodeTank ↔ TMS9918 daughterboard dependency test -------------------------
 # Memory-level integration test: enabling CodeTank auto-plugs TMS9918,

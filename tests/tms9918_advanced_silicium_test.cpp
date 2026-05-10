@@ -1,4 +1,4 @@
-// TMS9918 advanced silicon-fidelity test — direct API-level coverage.
+// tms9918_advanced_silicium — couverture directe sur l'API TMS9918.
 //
 // Each ctest assertion below probes a specific silicon behaviour the
 // emulator claims to model, without depending on the SilTest 6502 binary.
@@ -280,6 +280,6 @@ int main()
         must((s2 & 0x20) == 0, "T8: 2nd read has bit 5 cleared (sticky-on-read)"); ++n;
     }
 
-    std::printf("tms9918_advanced_silicon: all %d assertions passed\n", n);
+    std::printf("tms9918_advanced_silicium: all %d assertions passed\n", n);
     return 0;
 }
