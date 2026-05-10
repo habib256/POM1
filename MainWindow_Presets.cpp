@@ -66,10 +66,6 @@ namespace pom1::mainwindow::detail {
 //     that departs from the tutorial+peripheral template: it's the
 //     "everything plugged" fantasy and stacks 3 peripherals in the
 //     right column instead of a tutorial.
-//   - Preset 8 (TMS9918 + CodeTank) keeps a narrow Apple column (400 px)
-//     beside the framebuffer, but Apple / TMS9918 / CodeTank Library
-//     all use the same default content height (701 px) as every other
-//     preset's Apple 1 Screen.
 const MachineConfig kMachinePresets[] = {
     //                                  GEN2  uSD  SID  TMS  RTC  WiFi Term Krus CFFA ACI  RAM  BASIC              SID-SE
     {
@@ -267,14 +263,12 @@ const MachineConfig kMachinePresets[] = {
         /*gt6144*/ false,
         /*iecCard*/ false,
         {
-            // Left: Apple (narrow) + CodeTank Library stacked, both h=701.
-            // Right: TMS9918 framebuffer h=701 (aligned with Apple row).
-            // Bar (Horizontal) under the library; same 701 px default height
-            // as the canonical Apple 1 Screen everywhere else.
-            {"Apple 1 Screen",                {8,   61},  {400, 701}},
-            {"P-LAB Graphic Card (TMS9918)",  {410, 61},  {800, 701}},
-            {"P-LAB CodeTank Library",        {8,   764}, {640, 701}},
-            {"Memory Map Bar (Horizontal)",   {8,  1470}, {1202, 90}},
+            // Factory layout matches ini_defaults/imgui_preset_08.ini (also
+            // seeded as build/ini/ when pre-generating preset layouts).
+            {"Apple 1 Screen",                {4,   60},  {404, 342}},
+            {"P-LAB CodeTank Library",        {4,   200}, {630, 597}},
+            {"P-LAB Graphic Card (TMS9918)",  {410, 61},  {795, 628}},
+            {"Memory Map Bar (Horizontal)",   {2,   690}, {1202, 105}},
         }, 4
     },
     {   //                                  GEN2  uSD  SID  TMS  RTC  WiFi Term Krus CFFA ACI
@@ -914,6 +908,39 @@ std::string sizePathForPreset(int idx)
     return std::string(buf);
 }
 
+/** Shipped under repo `ini_defaults/` (tracked in git). Used to seed preset 8
+ *  (CodeTank) layout files so they match the reviewed snapshot; cwd may be
+ *  repo root or `build/` (try ../ini_defaults/, etc.). */
+std::string findIniDefaultsFile(const char* basename)
+{
+    namespace fs = std::filesystem;
+    std::error_code ec;
+    const char* prefixes[] = {
+        "ini_defaults/",
+        "../ini_defaults/",
+        "../../ini_defaults/",
+        "../../../ini_defaults/",
+    };
+    for (const char* pre : prefixes) {
+        const std::string p = std::string(pre) + basename;
+        if (fs::is_regular_file(p, ec))
+            return p;
+    }
+    return {};
+}
+
+bool copyIniDefaultsFileTo(const char* basename, const std::string& destPath)
+{
+    namespace fs = std::filesystem;
+    const std::string src = findIniDefaultsFile(basename);
+    if (src.empty()) return false;
+    std::error_code ec;
+    if (fs::path parent = fs::path(destPath).parent_path(); !parent.empty())
+        fs::create_directories(parent, ec);
+    fs::copy_file(src, destPath, fs::copy_options::none, ec);
+    return !ec;
+}
+
 bool loadSizeFile(int idx, int& w, int& h)
 {
     std::ifstream f(sizePathForPreset(idx));
@@ -1024,6 +1051,9 @@ bool MainWindow_ImGui::loadPresetLayout(int idx)
 // pregenerateMissingPresetLayouts -- write out default ini/imgui_preset_NN.ini
 // + ini/preset_NN.size for every preset that doesn't have one yet, using the
 // hard-coded `kMachinePresets[i].layout` defaults (window name + pos + size).
+// Preset 8 (CodeTank): when `ini_defaults/imgui_preset_08.ini` and
+// `ini_defaults/preset_08.size` are found, those files are copied — they are
+// the canonical factory defaults (keep in sync with kMachinePresets[8]).
 //
 // Called once at boot. Ensures the ini/ directory is fully populated even
 // before the user visits each preset, so that:
@@ -1053,18 +1083,22 @@ void MainWindow_ImGui::pregenerateMissingPresetLayouts()
 
         // Write the .ini file with one [Window][...] section per layout entry.
         if (!iniExists) {
-            std::ofstream f(iniPath);
-            if (!f) continue;
-            for (int i = 0; i < cfg.layoutCount; ++i) {
-                const MachineWindowPlacement& w = cfg.layout[i];
-                f << "[Window][" << w.name << "]\n";
-                f << "Pos=" << static_cast<int>(w.pos.x) << ','
-                            << static_cast<int>(w.pos.y) << '\n';
-                if (w.size.x > 0.0f && w.size.y > 0.0f) {
-                    f << "Size=" << static_cast<int>(w.size.x) << ','
-                                  << static_cast<int>(w.size.y) << '\n';
+            bool seededFromDefaults = (idx == 8)
+                && copyIniDefaultsFileTo("imgui_preset_08.ini", iniPath);
+            if (!seededFromDefaults) {
+                std::ofstream f(iniPath);
+                if (!f) continue;
+                for (int i = 0; i < cfg.layoutCount; ++i) {
+                    const MachineWindowPlacement& w = cfg.layout[i];
+                    f << "[Window][" << w.name << "]\n";
+                    f << "Pos=" << static_cast<int>(w.pos.x) << ','
+                                << static_cast<int>(w.pos.y) << '\n';
+                    if (w.size.x > 0.0f && w.size.y > 0.0f) {
+                        f << "Size=" << static_cast<int>(w.size.x) << ','
+                                      << static_cast<int>(w.size.y) << '\n';
+                    }
+                    f << '\n';
                 }
-                f << '\n';
             }
         }
 
@@ -1072,25 +1106,29 @@ void MainWindow_ImGui::pregenerateMissingPresetLayouts()
         // small floor matching the canonical Fantasy preset (last entry) so
         // that no preset starts smaller than the reference frame.
         if (!sizeExists) {
-            // Need a fallback Apple-1 screen size — use the spec's size if
-            // present, else a reasonable 843x701 baseline.
-            ImVec2 fallback(843.0f, 701.0f);
-            for (int i = 0; i < cfg.layoutCount; ++i) {
-                if (std::string(cfg.layout[i].name) == "Apple 1 Screen"
-                    && cfg.layout[i].size.x > 0.0f) {
-                    fallback = cfg.layout[i].size;
-                    break;
+            bool seededFromDefaults = (idx == 8)
+                && copyIniDefaultsFileTo("preset_08.size", sizePath);
+            if (!seededFromDefaults) {
+                // Need a fallback Apple-1 screen size — use the spec's size if
+                // present, else a reasonable 843x701 baseline.
+                ImVec2 fallback(843.0f, 701.0f);
+                for (int i = 0; i < cfg.layoutCount; ++i) {
+                    if (std::string(cfg.layout[i].name) == "Apple 1 Screen"
+                        && cfg.layout[i].size.x > 0.0f) {
+                        fallback = cfg.layout[i].size;
+                        break;
+                    }
                 }
+                ImVec2 extent = pom1::mainwindow::detail::computePresetLayoutExtent(cfg, fallback);
+                int w = static_cast<int>(std::ceil(extent.x + 10.0f));
+                int h = static_cast<int>(std::ceil(extent.y + 60.0f));
+                // Floor at Fantasy preset extent (last entry — reference frame)
+                const MachineConfig& fantasy = kMachinePresets[kMachinePresetCount - 1];
+                ImVec2 fext = pom1::mainwindow::detail::computePresetLayoutExtent(fantasy, fallback);
+                if (fext.x > 0.0f) w = std::max(w, static_cast<int>(std::ceil(fext.x + 10.0f)));
+                if (fext.y > 0.0f) h = std::max(h, static_cast<int>(std::ceil(fext.y + 60.0f)));
+                saveSizeFile(idx, w, h);
             }
-            ImVec2 extent = pom1::mainwindow::detail::computePresetLayoutExtent(cfg, fallback);
-            int w = static_cast<int>(std::ceil(extent.x + 10.0f));
-            int h = static_cast<int>(std::ceil(extent.y + 60.0f));
-            // Floor at Fantasy preset extent (last entry — reference frame)
-            const MachineConfig& fantasy = kMachinePresets[kMachinePresetCount - 1];
-            ImVec2 fext = pom1::mainwindow::detail::computePresetLayoutExtent(fantasy, fallback);
-            if (fext.x > 0.0f) w = std::max(w, static_cast<int>(std::ceil(fext.x + 10.0f)));
-            if (fext.y > 0.0f) h = std::max(h, static_cast<int>(std::ceil(fext.y + 60.0f)));
-            saveSizeFile(idx, w, h);
         }
         ++generated;
     }
