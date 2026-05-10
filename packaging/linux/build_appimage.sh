@@ -19,7 +19,7 @@
 #        - exec usr/bin/POM1 avec LD_LIBRARY_PATH = usr/lib
 #   4. linuxdeploy bundle les libs non-blacklist, appimagetool emballe.
 #
-# Sortie : POM1-<VERSION>-x86_64.AppImage à la racine du repo.
+# Sortie : dist/POM1-<VERSION>-x86_64.AppImage
 
 set -euo pipefail
 
@@ -27,6 +27,7 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "${REPO_ROOT}"
 
 VERSION="${POM1_VERSION:-1.9.0}"
+DIST="${REPO_ROOT}/dist"
 WORK="${REPO_ROOT}/build-appimage"
 APPDIR="${WORK}/AppDir"
 TOOLS="${WORK}/tools"
@@ -87,13 +88,15 @@ NO_STRIP=1 "${TOOLS}/linuxdeploy.AppDir/AppRun" \
     >/dev/null
 
 # 5. appimagetool : assemble et compresse en zstd squashfs.
+mkdir -p "${DIST}"
+OUT="${DIST}/POM1-${VERSION}-x86_64.AppImage"
 PATH="${TOOLS}/appimagetool.AppDir/usr/bin:${PATH}" \
 ARCH=x86_64 \
 VERSION="${VERSION}" \
 "${TOOLS}/appimagetool.AppDir/usr/bin/appimagetool" \
     "${APPDIR}" \
-    "${REPO_ROOT}/POM1-${VERSION}-x86_64.AppImage"
+    "${OUT}"
 
 echo
-echo "[appimage] OK → ${REPO_ROOT}/POM1-${VERSION}-x86_64.AppImage"
-ls -lh "${REPO_ROOT}/POM1-${VERSION}-x86_64.AppImage"
+echo "[appimage] OK → ${OUT}"
+ls -lh "${OUT}"
