@@ -133,6 +133,29 @@ endif()
 add_test(NAME memory_dualram_smoke COMMAND test_memory_dualram)
 set_tests_properties(memory_dualram_smoke PROPERTIES TIMEOUT 10)
 
+# -- Reset vector scope -------------------------------------------------------
+# Pins that configureResetVectors only sets $FFFC/$FFFD (RESET), leaving the
+# WozMonitor.rom NMI ($0F00) and IRQ ($0000) intact. P-LAB IRQ-driven programs
+# that install a trampoline at $0000 break if IRQ is overwritten.
+add_executable(test_reset_vectors
+    reset_vectors_smoke_test.cpp
+    ${POM1_TEST_CORE_SOURCES}
+)
+target_include_directories(test_reset_vectors PRIVATE
+    ${CMAKE_SOURCE_DIR}
+    ${CMAKE_SOURCE_DIR}/imgui
+)
+target_link_libraries(test_reset_vectors PRIVATE libresidfp_static)
+if(APPLE)
+    target_compile_definitions(test_reset_vectors PRIVATE GL_SILENCE_DEPRECATION)
+endif()
+if(WIN32)
+    target_link_libraries(test_reset_vectors PRIVATE ws2_32)
+endif()
+add_test(NAME reset_vectors_smoke COMMAND test_reset_vectors
+         WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+set_tests_properties(reset_vectors_smoke PROPERTIES TIMEOUT 10)
+
 # -- SID audio production smoke test ------------------------------------------
 # Needs the full Memory+peripheral core to exercise the PeripheralBus path.
 add_executable(test_sid_audio

@@ -1,13 +1,12 @@
 // VIACLOCK - 60 Hz software clock driven by VIA T1 IRQ.
 // Patched for the P-LAB A1-IO & RTC card (VIA at $2000-$200F).
 //
-// IRQ vector restored to original Apple-1 convention ($FFFE -> $0000).
-// POM1 normally patches $FFFE -> $FF00 (Wozmon entry) at boot, which
-// would re-enter Wozmon on every IRQ. We rewrite it back to $00 $00 so
-// the program's own trampoline at $0000 (LDA #$4C/STA $00 / LDA #$96 /
-// STA $01 / LDA #$02 / STA $02, installed by sub $0676) routes IRQ to
-// the handler at $0296. Hard-reset reloads Wozmon ROM + reapplies POM1's
-// vector patch -> reload this file after Hard-Reset.
+// IRQ runs through the program's own RAM trampoline at $0000:
+//   - WozMonitor.rom IRQ vector at $FFFE -> $0000 (authentic Apple-1 value).
+//   - Sub $0676 of the program installs `JMP $0296` at $0000 during init,
+//     so when T1 underflows: IRQ -> $FFFE -> $0000 -> $0296 (handler).
+//   - $FFFE/$FFFF rewritten to $00 $00 here as belt-and-suspenders, in case
+//     a previously loaded file repointed the vector.
 //
 // (Original sdcard binary used $A00x; remapped 9 instruction sites to $200x.)
 // Just type 0280R after loading. Requires A1-IO & RTC plugged.

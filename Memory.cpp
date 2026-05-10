@@ -495,13 +495,17 @@ void Memory::resetMemory(void)
 
 void Memory::configureResetVectors(uint16_t vectorAddress)
 {
-    mem[0xFFFA] = static_cast<uint8_t>(vectorAddress & 0xFF);
-    mem[0xFFFB] = static_cast<uint8_t>((vectorAddress >> 8) & 0xFF);
+    // Only set the RESET vector ($FFFC/$FFFD). The 6502 has three vectors —
+    // NMI ($FFFA/$FFFB), RESET ($FFFC/$FFFD), IRQ/BRK ($FFFE/$FFFF) — and
+    // mass-overwriting all three to the same target was clobbering authentic
+    // Apple-1 values from WozMonitor.rom (NMI=$0F00, IRQ=$0000) on every
+    // load/hard-reset. That broke any P-LAB program that installs its own
+    // IRQ handler via the canonical Apple-1 trampoline at $0000 — IRQs
+    // ended up jumping to the loaded program's entry instead of routing
+    // through the user's RAM trampoline.
     mem[0xFFFC] = static_cast<uint8_t>(vectorAddress & 0xFF);
     mem[0xFFFD] = static_cast<uint8_t>((vectorAddress >> 8) & 0xFF);
-    mem[0xFFFE] = static_cast<uint8_t>(vectorAddress & 0xFF);
-    mem[0xFFFF] = static_cast<uint8_t>((vectorAddress >> 8) & 0xFF);
-    markPagesDirty(0xFFFA, 6);
+    markPagesDirty(0xFFFC, 2);
 }
 
 void Memory::setWriteInRom(bool b)

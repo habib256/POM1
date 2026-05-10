@@ -184,6 +184,7 @@ ctest -R klaus -V
 - **`klaus_6502_functional`** — [Klaus Dormann's 6502 test](https://github.com/Klaus2m5/6502_65C02_functional_tests) vs M6502. SHA-256-pinned download. `setTestMode(true)` (flat RAM), `PC = $0400`, step until `JMP *`; success = final PC `$3469`. Gates all CPU refactors.
 - **`preset_ram_profiles_smoke`** — parses `MainWindow_Presets.cpp`: `ramKB`, `BasicType`, and Fantasy/non-Fantasy presets obey the documented rules (see test source).
 - **`memory_dualram_smoke`** — 8 KB dual-bank strict map: `$0000-$0FFF` + `$E000-$EFFF` writable; gap OOR-strict (`$FF` reads).
+- **`reset_vectors_smoke`** — `Memory::configureResetVectors(addr)` only writes `$FFFC/$FFFD` (RES). NMI (`$FFFA/$FFFB`=$0F00) and IRQ (`$FFFE/$FFFF`=$0000) stay at the authentic WozMonitor.rom values so P-LAB programs installing an IRQ trampoline at `$0000` route correctly.
 - **`d64_parse_smoke`** — D64Image: 35-track geometry (21/19/18/17 sectors), wildcard match, `format()` → `writeFile` → `readFile` → `deleteFile` round-trip + save/mount persistence.
 - **`iec_bus_wired_and_smoke`** — IECBus open-collector wired-AND truth table: any device pulled = LOW; both released = HIGH.
 - **`iec_snapshot_smoke`** — IEC daughterboard round-trips through `saveSnapshot`/`loadSnapshot`. Pins `kFlagIECCard` (bit 15) + cascade `kFlagMicroSD` + `Drive1541` error-channel survival.
