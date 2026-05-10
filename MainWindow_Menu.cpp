@@ -1047,7 +1047,15 @@ void MainWindow_ImGui::renderToolbar()
             if (bar) ImGui::PushStyleColor(ImGuiCol_Button, activeColor);
             if (ImGui::Button(ICON_FA_CHART_BAR, btnSize)) showMemoryBar = !showMemoryBar;
             if (bar) ImGui::PopStyleColor();
-            if (ImGui::IsItemHovered()) ImGui::SetTooltip("Memory Map Bar");
+            if (ImGui::IsItemHovered()) ImGui::SetTooltip("Memory Map Bar (Vertical)");
+        }
+        ImGui::SameLine();
+        {
+            bool barH = showMemoryBarH;
+            if (barH) ImGui::PushStyleColor(ImGuiCol_Button, activeColor);
+            if (ImGui::Button(ICON_FA_BARS_STAGGERED, btnSize)) showMemoryBarH = !showMemoryBarH;
+            if (barH) ImGui::PopStyleColor();
+            if (ImGui::IsItemHovered()) ImGui::SetTooltip("Memory Map Bar (Horizontal)");
         }
 
         // --- Séparateur ---

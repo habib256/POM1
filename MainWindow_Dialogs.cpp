@@ -53,7 +53,7 @@ static const char kApple50LogoFile[] = "50_Anniv_Apple.png";
 static const char kAppIconFile[] = "icon.png";
 static const char kWozJobsPhotoFile[] = "woz_jobs_apple1.jpg";
 static const char kWozJobsRectPhotoFile[] = "woz_jobs_apple1-rect.jpg";
-static const char kTmsBoardPhotoFile[] = "PLAB_tms9918.png";
+static const char kTmsBoardPhotoFile[] = "Parmigiani.jpg";
 static const char kPR40MechPhotoFile[] = "SWTPC PR-40 Printer.png";
 
 /** Generic cwd + exe-relative probe for files expected under pic/. */
@@ -483,10 +483,9 @@ void MainWindow_ImGui::renderTmsBoardPhotoWindow()
 {
     ensureTmsBoardPhotoTexture();
 
-    // Photo of Claudio Parmigiani's P-LAB TMS9918 Graphic Card — the
-    // physical companion to the "P-LAB Graphic Card (TMS9918)" viewer
-    // window (which renders the live VDP framebuffer). The title
-    // explicitly calls out "(Photo)" to distinguish the two.
+    // P-LAB lab photo (Parmigiani.jpg) — companion to the "P-LAB Graphic Card
+    // (TMS9918)" viewer window (live VDP framebuffer). The title calls out
+    // "(Photo)" to distinguish the two.
     applyPendingLayout("P-LAB TMS9918 Card (Photo)");
     ImGui::SetNextWindowSizeConstraints(ImVec2(200, 200), ImVec2(FLT_MAX, FLT_MAX));
     if (ImGui::Begin("P-LAB TMS9918 Card (Photo)", &showTmsBoardPhoto)) {
