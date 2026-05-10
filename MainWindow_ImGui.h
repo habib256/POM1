@@ -158,6 +158,14 @@ private:
     bool showMemoryMapGrid = false;
     bool showMemoryBar = false;
     bool showMemoryBarH = false;  // wide-short horizontal variant
+    // Géométrie des Memory Map Bar pour persistance .ini quand la fenêtre
+    // n'est pas soumise ce frame (ex. barre fermée au moment du save).
+    ImVec2 memoryBarLastPos{};
+    ImVec2 memoryBarLastSize{};
+    bool   memoryBarLastGeomValid = false;
+    ImVec2 memoryBarHLastPos{};
+    ImVec2 memoryBarHLastSize{};
+    bool   memoryBarHLastGeomValid = false;
     bool showSaveDialog = false;
     bool showSaveTapeDialog = false;
     bool showLoadSnapshotDialog = false;

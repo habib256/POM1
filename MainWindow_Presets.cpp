@@ -66,6 +66,10 @@ namespace pom1::mainwindow::detail {
 //     that departs from the tutorial+peripheral template: it's the
 //     "everything plugged" fantasy and stacks 3 peripherals in the
 //     right column instead of a tutorial.
+//   - Preset 8 (TMS9918 + CodeTank) keeps a narrow Apple column (400 px)
+//     beside the framebuffer, but Apple / TMS9918 / CodeTank Library
+//     all use the same default content height (701 px) as every other
+//     preset's Apple 1 Screen.
 const MachineConfig kMachinePresets[] = {
     //                                  GEN2  uSD  SID  TMS  RTC  WiFi Term Krus CFFA ACI  RAM  BASIC              SID-SE
     {
@@ -263,15 +267,14 @@ const MachineConfig kMachinePresets[] = {
         /*gt6144*/ false,
         /*iecCard*/ false,
         {
-            // Apple 1 Screen + CodeTank Library stack on the left; the
-            // TMS9918 framebuffer dominates the right column; the
-            // Memory Map Bar (Horizontal) spans the full width at the
-            // bottom so the live $4000-$7FFF ROM band is always visible
-            // as the user picks games from the library.
-            {"Apple 1 Screen",                {8,   61},  {400, 350}},
-            {"P-LAB Graphic Card (TMS9918)",  {410, 61},  {800, 520}},
-            {"P-LAB CodeTank Library",        {8,   413}, {640, 520}},
-            {"Memory Map Bar (Horizontal)",   {8,   940}, {1202, 90}},
+            // Left: Apple (narrow) + CodeTank Library stacked, both h=701.
+            // Right: TMS9918 framebuffer h=701 (aligned with Apple row).
+            // Bar (Horizontal) under the library; same 701 px default height
+            // as the canonical Apple 1 Screen everywhere else.
+            {"Apple 1 Screen",                {8,   61},  {400, 701}},
+            {"P-LAB Graphic Card (TMS9918)",  {410, 61},  {800, 701}},
+            {"P-LAB CodeTank Library",        {8,   764}, {640, 701}},
+            {"Memory Map Bar (Horizontal)",   {8,  1470}, {1202, 90}},
         }, 4
     },
     {   //                                  GEN2  uSD  SID  TMS  RTC  WiFi Term Krus CFFA ACI
@@ -489,6 +492,9 @@ void MainWindow_ImGui::applyMachineConfig(int presetIndex)
     // is -1) and on self-reapply (same index — nothing to migrate).
     if (activePresetIndex >= 0 && activePresetIndex != presetIndex) {
         savePresetLayout(activePresetIndex);
+        // Évite d'écrire la géométrie du preset sortant dans le .ini entrant.
+        memoryBarLastGeomValid = false;
+        memoryBarHLastGeomValid = false;
     }
 
     // Reset transient UI state (dialogs, tutorial windows, help viewers,
@@ -924,26 +930,46 @@ bool saveSizeFile(int idx, int w, int h)
     return bool(f);
 }
 
-/** Copy live window geometry into ImGui .ini settings (matches WindowSettingsHandler_WriteAll).
- *  Needed for Memory Map Bar windows: savePresetLayout() may run before those Begin() calls
- *  in the same frame (e.g. preset switch from the menu bar), so WriteAll would skip them. */
-void syncIniWindowFromLiveIfPresent(const char* windowName)
+/** Flush Memory Map Bar geometry into ImGui .ini settings before SaveIniSettingsToDisk.
+ *  1) Prefer the live ImGuiWindow when it exists (same frame ordering issues as before).
+ *  2) Else use the last Pos/Size captured while the bar was visible — so shutdown or
+ *     preset switch after closing the bar still persists position in imgui_preset_NN.ini. */
+void syncMemoryBarIniToDisk(const char* windowName,
+                            bool storedGeomValid,
+                            const ImVec2& storedPos,
+                            const ImVec2& storedSize)
 {
     ImGuiContext& g = *GImGui;
-    ImGuiWindow* window = ImGui::FindWindowByName(windowName);
-    if (!window || (window->Flags & ImGuiWindowFlags_NoSavedSettings))
+    if (ImGuiWindow* window = ImGui::FindWindowByName(windowName)) {
+        if (window->Flags & ImGuiWindowFlags_NoSavedSettings)
+            return;
+        ImGuiWindowSettings* settings = ImGui::FindWindowSettingsByWindow(window);
+        if (!settings) {
+            settings = ImGui::CreateNewWindowSettings(window->Name);
+            window->SettingsOffset = g.SettingsWindows.offset_from_ptr(settings);
+        }
+        if (settings->ID != window->ID)
+            return;
+        settings->Pos = ImVec2ih(window->Pos);
+        settings->Size = ImVec2ih(window->SizeFull);
+        settings->IsChild = (window->Flags & ImGuiWindowFlags_ChildWindow) != 0;
+        settings->Collapsed = window->Collapsed;
+        settings->WantDelete = false;
         return;
-    ImGuiWindowSettings* settings = ImGui::FindWindowSettingsByWindow(window);
-    if (!settings) {
-        settings = ImGui::CreateNewWindowSettings(window->Name);
-        window->SettingsOffset = g.SettingsWindows.offset_from_ptr(settings);
     }
-    if (settings->ID != window->ID)
+    if (!storedGeomValid || storedSize.x <= 0.0f || storedSize.y <= 0.0f)
         return;
-    settings->Pos = ImVec2ih(window->Pos);
-    settings->Size = ImVec2ih(window->SizeFull);
-    settings->IsChild = (window->Flags & ImGuiWindowFlags_ChildWindow) != 0;
-    settings->Collapsed = window->Collapsed;
+
+    const ImGuiID id = ImHashStr(windowName);
+    ImGuiWindowSettings* settings = ImGui::FindWindowSettingsByID(id);
+    if (!settings)
+        settings = ImGui::CreateNewWindowSettings(windowName);
+    if (settings->ID != id)
+        return;
+    settings->Pos = ImVec2ih(storedPos);
+    settings->Size = ImVec2ih(storedSize);
+    settings->IsChild = false;
+    settings->Collapsed = false;
     settings->WantDelete = false;
 }
 
@@ -960,10 +986,10 @@ void MainWindow_ImGui::savePresetLayout(int idx) const
         return;
     }
     const std::string iniPath = iniPathForPreset(idx);
-    if (showMemoryBar)
-        syncIniWindowFromLiveIfPresent("Memory Map Bar");
-    if (showMemoryBarH)
-        syncIniWindowFromLiveIfPresent("Memory Map Bar (Horizontal)");
+    syncMemoryBarIniToDisk("Memory Map Bar", memoryBarLastGeomValid,
+                           memoryBarLastPos, memoryBarLastSize);
+    syncMemoryBarIniToDisk("Memory Map Bar (Horizontal)", memoryBarHLastGeomValid,
+                           memoryBarHLastPos, memoryBarHLastSize);
     ImGui::SaveIniSettingsToDisk(iniPath.c_str());
     pom1::log().debug("Layout",
         "Saved preset " + std::to_string(idx) + " → " + iniPath);

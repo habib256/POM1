@@ -12,6 +12,7 @@
 #include "Logger.h"
 
 #include "imgui.h"
+#include "imgui_internal.h"
 
 #include <algorithm>
 #include <cstdio>
@@ -1093,6 +1094,11 @@ void MainWindow_ImGui::renderMemoryBarWindow()
     const float pcLabelW = ImGui::CalcTextSize("PC $FFFF").x;
     const float rightMargin = 5.0f + 6.0f /*arrow sz*/ + pcLabelW + 6.0f;
     ImGui::Dummy(ImVec2(gutterW + barW + labelGap + maxLabelW + labelGap + bar2W + rightMargin, totalBarH));
+    if (ImGuiWindow* w = ImGui::GetCurrentWindow()) {
+        memoryBarLastPos = w->Pos;
+        memoryBarLastSize = w->SizeFull;
+        memoryBarLastGeomValid = true;
+    }
     ImGui::End();
 }
 
@@ -1398,5 +1404,10 @@ void MainWindow_ImGui::renderMemoryBarHorizontalWindow()
     // Reserve total layout space (top axis + bar + PC arrow + label).
     float totalH = topAxisH + bar1H + 6.0f + textH + 4.0f;
     ImGui::Dummy(ImVec2(totalBarW, totalH));
+    if (ImGuiWindow* w = ImGui::GetCurrentWindow()) {
+        memoryBarHLastPos = w->Pos;
+        memoryBarHLastSize = w->SizeFull;
+        memoryBarHLastGeomValid = true;
+    }
     ImGui::End();
 }
