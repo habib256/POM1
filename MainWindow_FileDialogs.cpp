@@ -5,7 +5,7 @@
 // window. Includes the file browser used by Load Memory, the binary/hex
 // auto-detect, and the hardware auto-enable heuristics that fire when the
 // loaded file's directory hints at a card (Graphic HGR/, Graphic TMS9918/,
-// Graphic gt-6144/, NET/, a1io_rtc/, sdcard/).
+// Apple-1_TMS_CC65/, Graphic gt-6144/, NET/, a1io_rtc/, sdcard/).
 
 #include "MainWindow_ImGui.h"
 #include "MainWindow_Internal.h"
@@ -144,7 +144,8 @@ void MainWindow_ImGui::renderLoadDialog()
 
             // Auto-enable hardware cards based on source directory.
             // Folder layout under software/: "Graphic HGR", "Graphic TMS9918",
-            // "Graphic gt-6144", "NET", "a1io_rtc", "SOUND SID", ... Match the
+            // "Apple-1_TMS_CC65" (cc65 CodeTank drop-ins), "Graphic gt-6144",
+            // "NET", "a1io_rtc", "SOUND SID", ... Match the
             // canonical folder name (forward and backslash separators) and
             // ALWAYS raise the corresponding window so loading from the folder
             // opens the panel before interaction. This matters for the Fantasy
@@ -173,7 +174,8 @@ void MainWindow_ImGui::renderLoadDialog()
                     jukeBoxEnabled = false;
                     setStatusMessage("P-LAB A1-SID plugged", 2.0f);
                 }
-            } else if (pathHas("/Graphic TMS9918/", "\\Graphic TMS9918\\")) {
+            } else if (pathHas("/Graphic TMS9918/", "\\Graphic TMS9918\\") ||
+                       pathHas("/Apple-1_TMS_CC65/", "\\Apple-1_TMS_CC65\\")) {
                 if (!tms9918Enabled) {
                     tms9918Enabled = true;
                     emulation->setTMS9918Enabled(true);

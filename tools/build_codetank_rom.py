@@ -15,13 +15,13 @@ Four ROMs are produced (in roms/codetank/):
     Lower 16 kB: TMS_Rogue alone (full bank, run-in-place from $4000)
     Upper 16 kB: TMS_Nyan_CodeTank (full bank, run-in-place from $4000)
                  — drop-in image from
-                 software/Graphic TMS9918/Codetank/TMS_Nyan_CodeTank.bin.
+                 software/Apple-1_TMS_CC65/TMS_Nyan_CodeTank.bin.
     Jumper Lower → 4000R boots Rogue; jumper Upper → 4000R animates Nyan.
 
   Codetank_GAME3.rom (32 kB)
     Lower 16 kB: TMS_Tetris/CodeTank (full bank, run-in-place from $4000)
                  — drop-in image from
-                 software/Graphic TMS9918/Codetank/tetris_codetank.bin.
+                 software/Apple-1_TMS_CC65/tetris_codetank.bin.
     Upper 16 kB: menu → Life, Mandel, Plasma (run-in-place)
                  ($4000 menu / $4100 Life / $4900 Mandel / $5100 Plasma)
     Jumper Lower → 4000R boots Tetris; jumper Upper → 4000R brings up the
@@ -54,7 +54,8 @@ import subprocess
 import sys
 
 ROOT  = pathlib.Path(__file__).resolve().parents[1]
-TMS   = ROOT / "software" / "Graphic TMS9918"
+# cc65 / apple1-videocard-lib drop-ins (16 KiB @ $4000) land here.
+CODETANK_CC65_BIN = ROOT / "software" / "Apple-1_TMS_CC65"
 BUILD = ROOT / "build" / "codetank"
 
 ROM_SIZE  = 0x8000   # 32 kB (28c256)
@@ -96,15 +97,15 @@ ROGUE_CODETANK_CFG = DEV / "tms9918_rogue" / "apple1_rogue.cfg"
 ROGUE_M1_ASM       = LIB_TMS / "tms9918m1.asm"
 
 # Nyan/CodeTank (GAME2 upper) — drop-in 16 KB image. The .bin in
-# software/Graphic TMS9918/Codetank/ is assembled by the project's own
+# software/Apple-1_TMS_CC65/ is assembled by the project's own
 # Makefile (cf. dev/projects/tms9918_nyan_codetank/) at $4000 and pads
 # itself to fill the bank; we splat it verbatim into the upper half.
-NYAN_CT_BIN       = TMS / "Codetank" / "TMS_Nyan_CodeTank.bin"
+NYAN_CT_BIN       = CODETANK_CC65_BIN / "TMS_Nyan_CodeTank.bin"
 
 # --- GAME3 sources (Tetris/CodeTank lower; menu+Life+Mandel+Plasma upper) --
 # Tetris/CodeTank — drop-in 16 KB image (full upper-bank-style binary,
 # no source / no assembly: we splat the bytes into the lower bank).
-TETRIS_CT_BIN     = TMS / "Codetank" / "tetris_codetank.bin"
+TETRIS_CT_BIN     = CODETANK_CC65_BIN / "tetris_codetank.bin"
 
 # GAME3 upper menu + 3 demo programs (Life, Mandel, Plasma) sharing the
 # upper bank via the menu pattern.
@@ -345,7 +346,7 @@ def build_game2_lower_bank() -> bytes:
 
 def build_game2_upper_bank() -> bytes:
     """Upper 16 kB: TMS_Nyan_CodeTank prebuilt binary, full $4000-$7FFF.
-    Drop-in image from software/Graphic TMS9918/Codetank/ — assembled by
+    Drop-in image from software/Apple-1_TMS_CC65/ — assembled by
     dev/projects/tms9918_nyan_codetank's own Makefile and padded to fill
     the bank."""
     print("\n[GAME2] Upper bank (TMS_Nyan_CodeTank, full 16 kB):",
@@ -358,7 +359,7 @@ def build_game2_upper_bank() -> bytes:
 # ---------------------------------------------------------------------------
 def build_game3_lower_bank() -> bytes:
     """Lower 16 kB: tetris_codetank.bin prebuilt, full $4000-$7FFF.
-    Drop-in image from software/Graphic TMS9918/Codetank/ (16 384 B exact)."""
+    Drop-in image from software/Apple-1_TMS_CC65/ (16 384 B exact)."""
     print("[GAME3] Lower bank (Tetris/CodeTank, full 16 kB):", file=sys.stderr)
     return splat_full_bank(TETRIS_CT_BIN, "Tetris/CT ($4000-$7FFF)")
 

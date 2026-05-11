@@ -1,0 +1,368 @@
+Modules list:
+-------------
+main.o:
+    CODE              Offs=000000  Size=00001C  Align=00001  Fill=0000
+    RODATA            Offs=000000  Size=000029  Align=00001  Fill=0000
+apple1_asm.o:
+    CODE              Offs=00001C  Size=000016  Align=00001  Fill=0000
+tms9918.o:
+    CODE              Offs=000032  Size=0001B4  Align=00001  Fill=0000
+    RODATA            Offs=000029  Size=000004  Align=00001  Fill=0000
+    BSS               Offs=000000  Size=00000B  Align=00001  Fill=0000
+screen1.o:
+    CODE              Offs=0001E6  Size=0005DD  Align=00001  Fill=0000
+    RODATA            Offs=00002D  Size=000008  Align=00001  Fill=0000
+    BSS               Offs=00000B  Size=000300  Align=00001  Fill=0000
+c64font_packed.o:
+    RODATA            Offs=000035  Size=000552  Align=00001  Fill=0000
+    BSS               Offs=00030B  Size=000008  Align=00001  Fill=0000
+c64font_unpack.o:
+    CODE              Offs=0007C3  Size=000049  Align=00001  Fill=0000
+    ZEROPAGE          Offs=000000  Size=000004  Align=00001  Fill=0000
+/usr/share/cc65/lib/none.lib(add.o):
+    CODE              Offs=00080C  Size=00001C  Align=00001  Fill=0000
+/usr/share/cc65/lib/none.lib(addeqsp.o):
+    CODE              Offs=000828  Size=000011  Align=00001  Fill=0000
+/usr/share/cc65/lib/none.lib(addysp.o):
+    CODE              Offs=000839  Size=00000E  Align=00001  Fill=0000
+/usr/share/cc65/lib/none.lib(aslax4.o):
+    CODE              Offs=000847  Size=000011  Align=00001  Fill=0000
+/usr/share/cc65/lib/none.lib(condes.o):
+    CODE              Offs=000858  Size=00000C  Align=00001  Fill=0000
+    DATA              Offs=000000  Size=000025  Align=00001  Fill=0000
+    ONCE              Offs=000000  Size=00000C  Align=00001  Fill=0000
+/usr/share/cc65/lib/none.lib(crt0.o):
+    STARTUP           Offs=000000  Size=000017  Align=00001  Fill=0000
+/usr/share/cc65/lib/none.lib(decsp1.o):
+    CODE              Offs=000864  Size=000009  Align=00001  Fill=0000
+/usr/share/cc65/lib/none.lib(decsp2.o):
+    CODE              Offs=00086D  Size=00000D  Align=00001  Fill=0000
+/usr/share/cc65/lib/none.lib(decsp3.o):
+    CODE              Offs=00087A  Size=00000D  Align=00001  Fill=0000
+/usr/share/cc65/lib/none.lib(decsp4.o):
+    CODE              Offs=000887  Size=00000D  Align=00001  Fill=0000
+/usr/share/cc65/lib/none.lib(decsp6.o):
+    CODE              Offs=000894  Size=00000D  Align=00001  Fill=0000
+/usr/share/cc65/lib/none.lib(icmp.o):
+    CODE              Offs=0008A1  Size=00002E  Align=00001  Fill=0000
+/usr/share/cc65/lib/none.lib(incsp1.o):
+    CODE              Offs=0008CF  Size=000007  Align=00001  Fill=0000
+/usr/share/cc65/lib/none.lib(incsp2.o):
+    CODE              Offs=0008D6  Size=000016  Align=00001  Fill=0000
+/usr/share/cc65/lib/none.lib(incsp3.o):
+    CODE              Offs=0008EC  Size=000005  Align=00001  Fill=0000
+/usr/share/cc65/lib/none.lib(incsp4.o):
+    CODE              Offs=0008F1  Size=000005  Align=00001  Fill=0000
+/usr/share/cc65/lib/none.lib(incsp5.o):
+    CODE              Offs=0008F6  Size=000005  Align=00001  Fill=0000
+/usr/share/cc65/lib/none.lib(incsp8.o):
+    CODE              Offs=0008FB  Size=000005  Align=00001  Fill=0000
+/usr/share/cc65/lib/none.lib(pusha.o):
+    CODE              Offs=000900  Size=000016  Align=00001  Fill=0000
+/usr/share/cc65/lib/none.lib(pushax.o):
+    CODE              Offs=000916  Size=00001A  Align=00001  Fill=0000
+/usr/share/cc65/lib/none.lib(pushwsp.o):
+    CODE              Offs=000930  Size=00001C  Align=00001  Fill=0000
+/usr/share/cc65/lib/none.lib(staspidx.o):
+    CODE              Offs=00094C  Size=000016  Align=00001  Fill=0000
+/usr/share/cc65/lib/none.lib(staxsp.o):
+    CODE              Offs=000962  Size=00000B  Align=00001  Fill=0000
+/usr/share/cc65/lib/none.lib(subeqsp.o):
+    CODE              Offs=00096D  Size=000015  Align=00001  Fill=0000
+/usr/share/cc65/lib/none.lib(zerobss.o):
+    CODE              Offs=000982  Size=000023  Align=00001  Fill=0000
+/usr/share/cc65/lib/none.lib(zeropage.o):
+    ZEROPAGE          Offs=000004  Size=00001A  Align=00001  Fill=0000
+
+
+Segment list:
+-------------
+Name                   Start     End    Size  Align
+----------------------------------------------------
+ZEROPAGE              000000  00001D  00001E  00001
+DATA                  000280  0002A4  000025  00001
+STARTUP               004000  004016  000017  00001
+ONCE                  004017  004022  00000C  00001
+CODE                  004023  0049C7  0009A5  00001
+RODATA                0049C8  004F4E  000587  00001
+BSS                   00E000  00E312  000313  00001
+
+
+Exports list by name:
+---------------------
+_SCREEN1_TABLE            0049F5 RLA    _VDP_DATA                 0049F1 RLA    
+__BSS_RUN__               00E000 RLA    __BSS_SIZE__              000313 REA    
+__CONSTRUCTOR_COUNT__     000000 REA    __CONSTRUCTOR_TABLE__     004023 RLA    
+__DESTRUCTOR_COUNT__      000000 REA    __DESTRUCTOR_TABLE__      004F4F RLA    
+__STACKSTART__            001000 REA    __STARTUP__               000001 REA    
+_apple1_getkey            00404A RLA    _c64font_glyph_buf        00E30B RLA    
+_c64font_rle_data         0049FD RLA    _c64font_rle_offs         004E8F RLA    
+_c64font_unpack_glyph     0047E6 RLA    _main                     004023 RLA    
+_screen1_load_font        004209 RLA    _screen1_prepare          0043BE RLA    
+_screen1_puts             004522 RLA    _tms_cursor_x             00E008 RLA    
+_tms_cursor_y             00E009 RLA    _tms_init_regs            0040F8 RLA    
+_tms_reverse              00E00A RLA    _tms_set_color            0040E6 RLA    
+_tms_set_vram_read_addr   00407F RLA    _tms_set_vram_write_addr  004055 RLA    
+_tms_wait_end_of_frame    00419F RLA    addeq0sp                  00484B RLA    
+addeqysp                  00484D RLA    addysp                    00485D RLA    
+decsp1                    004887 RLA    decsp2                    004890 RLA    
+decsp3                    00489D RLA    decsp4                    0048AA RLA    
+decsp6                    0048B7 RLA    donelib                   00487B RLA    
+incsp1                    0048F2 RLA    incsp2                    004901 RLA    
+incsp3                    00490F RLA    incsp4                    004914 RLA    
+incsp5                    004919 RLA    incsp8                    00491E RLA    
+initlib                   004017 RLA    ptr1                      00000C RLZ    
+push0                     004939 RLA    pusha                     004927 RLA    
+pusha0                    00493B RLA    pushax                    00493D RLA    
+pushwysp                  004955 RLA    regsave                   000008 RLZ    
+shlax4                    00486A RLA    sp                        000004 RLZ    
+sreg                      000006 RLZ    staspidx                  00496F RLA    
+stax0sp                   004985 RLA    staxysp                   004987 RLA    
+subeq0sp                  004990 RLA    tmp1                      000014 RLZ    
+tosadda0                  00482F RLA    tosicmp                   0048C6 RLA    
+zerobss                   0049A5 RLA    
+
+
+Exports list by value:
+----------------------
+__CONSTRUCTOR_COUNT__     000000 REA    __DESTRUCTOR_COUNT__      000000 REA    
+__STARTUP__               000001 REA    sp                        000004 RLZ    
+sreg                      000006 RLZ    regsave                   000008 RLZ    
+ptr1                      00000C RLZ    tmp1                      000014 RLZ    
+__BSS_SIZE__              000313 REA    __STACKSTART__            001000 REA    
+initlib                   004017 RLA    __CONSTRUCTOR_TABLE__     004023 RLA    
+_main                     004023 RLA    _apple1_getkey            00404A RLA    
+_tms_set_vram_write_addr  004055 RLA    _tms_set_vram_read_addr   00407F RLA    
+_tms_set_color            0040E6 RLA    _tms_init_regs            0040F8 RLA    
+_tms_wait_end_of_frame    00419F RLA    _screen1_load_font        004209 RLA    
+_screen1_prepare          0043BE RLA    _screen1_puts             004522 RLA    
+_c64font_unpack_glyph     0047E6 RLA    tosadda0                  00482F RLA    
+addeq0sp                  00484B RLA    addeqysp                  00484D RLA    
+addysp                    00485D RLA    shlax4                    00486A RLA    
+donelib                   00487B RLA    decsp1                    004887 RLA    
+decsp2                    004890 RLA    decsp3                    00489D RLA    
+decsp4                    0048AA RLA    decsp6                    0048B7 RLA    
+tosicmp                   0048C6 RLA    incsp1                    0048F2 RLA    
+incsp2                    004901 RLA    incsp3                    00490F RLA    
+incsp4                    004914 RLA    incsp5                    004919 RLA    
+incsp8                    00491E RLA    pusha                     004927 RLA    
+push0                     004939 RLA    pusha0                    00493B RLA    
+pushax                    00493D RLA    pushwysp                  004955 RLA    
+staspidx                  00496F RLA    stax0sp                   004985 RLA    
+staxysp                   004987 RLA    subeq0sp                  004990 RLA    
+zerobss                   0049A5 RLA    _VDP_DATA                 0049F1 RLA    
+_SCREEN1_TABLE            0049F5 RLA    _c64font_rle_data         0049FD RLA    
+_c64font_rle_offs         004E8F RLA    __DESTRUCTOR_TABLE__      004F4F RLA    
+__BSS_RUN__               00E000 RLA    _tms_cursor_x             00E008 RLA    
+_tms_cursor_y             00E009 RLA    _tms_reverse              00E00A RLA    
+_c64font_glyph_buf        00E30B RLA    
+
+
+Imports list:
+-------------
+_SCREEN1_TABLE (screen1.o):
+    main.o                    main.s(16)
+_VDP_DATA (tms9918.o):
+    screen1.o                 ../../lib/screen1.s(13)
+__BSS_RUN__ ([linker generated]):
+    zerobss.o                 common/zerobss.s(8)
+__BSS_SIZE__ ([linker generated]):
+    zerobss.o                 common/zerobss.s(8)
+__CONSTRUCTOR_COUNT__ ([linker generated]):
+    condes.o                  runtime/condes.s(18)
+__CONSTRUCTOR_TABLE__ ([linker generated]):
+    condes.o                  runtime/condes.s(18)
+__DESTRUCTOR_COUNT__ ([linker generated]):
+    condes.o                  runtime/condes.s(19)
+__DESTRUCTOR_TABLE__ ([linker generated]):
+    condes.o                  runtime/condes.s(19)
+__STACKSTART__ ([linker generated]):
+    crt0.o                    none/crt0.s(5)
+__STARTUP__ (crt0.o):
+    main.o                    main.s(13)
+_apple1_getkey (apple1_asm.o):
+    screen1.o                 ../../lib/screen1.s(31)
+_c64font_glyph_buf (c64font_packed.o):
+    c64font_unpack.o          ../../lib/c64font_unpack.s(11)
+    screen1.o                 ../../lib/screen1.s(29)
+_c64font_rle_data (c64font_packed.o):
+    c64font_unpack.o          ../../lib/c64font_unpack.s(11)
+_c64font_rle_offs (c64font_packed.o):
+    c64font_unpack.o          ../../lib/c64font_unpack.s(11)
+_c64font_unpack_glyph (c64font_unpack.o):
+    screen1.o                 ../../lib/screen1.s(30)
+_main (main.o):
+    crt0.o                    none/crt0.s(3)
+_screen1_load_font (screen1.o):
+    main.o                    main.s(17)
+_screen1_prepare (screen1.o):
+    main.o                    main.s(18)
+_screen1_puts (screen1.o):
+    main.o                    main.s(19)
+_tms_cursor_x (tms9918.o):
+    screen1.o                 ../../lib/screen1.s(14)
+_tms_cursor_y (tms9918.o):
+    screen1.o                 ../../lib/screen1.s(15)
+_tms_init_regs (tms9918.o):
+    main.o                    main.s(15)
+_tms_reverse (tms9918.o):
+    screen1.o                 ../../lib/screen1.s(16)
+_tms_set_color (tms9918.o):
+    main.o                    main.s(14)
+_tms_set_vram_read_addr (tms9918.o):
+    screen1.o                 ../../lib/screen1.s(18)
+_tms_set_vram_write_addr (tms9918.o):
+    screen1.o                 ../../lib/screen1.s(17)
+_tms_wait_end_of_frame (tms9918.o):
+    screen1.o                 ../../lib/screen1.s(19)
+addeq0sp (addeqsp.o):
+    screen1.o                 ../../lib/screen1.s(926)
+    screen1.o                 ../../lib/screen1.s(926)
+    screen1.o                 ../../lib/screen1.s(926)
+    screen1.o                 ../../lib/screen1.s(926)
+addeqysp (addeqsp.o):
+    screen1.o                 ../../lib/screen1.s(926)
+addysp (addysp.o):
+    incsp8.o                  runtime/incsp8.s(8)
+    incsp5.o                  runtime/incsp5.s(8)
+    incsp4.o                  runtime/incsp4.s(8)
+    incsp3.o                  runtime/incsp3.s(8)
+decsp1 (decsp1.o):
+    screen1.o                 ../../lib/screen1.s(926)
+    tms9918.o                 ../../lib/tms9918.s(380)
+decsp2 (decsp2.o):
+    screen1.o                 ../../lib/screen1.s(926)
+    screen1.o                 ../../lib/screen1.s(926)
+    screen1.o                 ../../lib/screen1.s(926)
+    tms9918.o                 ../../lib/tms9918.s(380)
+decsp3 (decsp3.o):
+    screen1.o                 ../../lib/screen1.s(926)
+decsp4 (decsp4.o):
+    screen1.o                 ../../lib/screen1.s(926)
+    screen1.o                 ../../lib/screen1.s(926)
+    screen1.o                 ../../lib/screen1.s(926)
+decsp6 (decsp6.o):
+    screen1.o                 ../../lib/screen1.s(926)
+donelib (condes.o):
+    crt0.o                    none/crt0.s(4)
+incsp1 (incsp1.o):
+    screen1.o                 ../../lib/screen1.s(926)
+    screen1.o                 ../../lib/screen1.s(926)
+    tms9918.o                 ../../lib/tms9918.s(380)
+incsp2 (incsp2.o):
+    staspidx.o                runtime/staspidx.s(8)
+    screen1.o                 ../../lib/screen1.s(926)
+    screen1.o                 ../../lib/screen1.s(926)
+    screen1.o                 ../../lib/screen1.s(926)
+    screen1.o                 ../../lib/screen1.s(926)
+    tms9918.o                 ../../lib/tms9918.s(380)
+    tms9918.o                 ../../lib/tms9918.s(380)
+    tms9918.o                 ../../lib/tms9918.s(380)
+    tms9918.o                 ../../lib/tms9918.s(380)
+    tms9918.o                 ../../lib/tms9918.s(380)
+    tms9918.o                 ../../lib/tms9918.s(380)
+incsp3 (incsp3.o):
+    screen1.o                 ../../lib/screen1.s(926)
+    screen1.o                 ../../lib/screen1.s(926)
+    tms9918.o                 ../../lib/tms9918.s(380)
+incsp4 (incsp4.o):
+    screen1.o                 ../../lib/screen1.s(926)
+    screen1.o                 ../../lib/screen1.s(926)
+    screen1.o                 ../../lib/screen1.s(926)
+incsp5 (incsp5.o):
+    screen1.o                 ../../lib/screen1.s(926)
+incsp8 (incsp8.o):
+    screen1.o                 ../../lib/screen1.s(926)
+    screen1.o                 ../../lib/screen1.s(926)
+    tms9918.o                 ../../lib/tms9918.s(380)
+initlib (condes.o):
+    crt0.o                    none/crt0.s(4)
+ptr1 (zeropage.o):
+    zerobss.o                 common/zerobss.s(9)
+    staspidx.o                runtime/staspidx.s(9)
+    screen1.o                 ../../lib/screen1.s(11)
+    tms9918.o                 ../../lib/tms9918.s(11)
+push0 (pushax.o):
+    screen1.o                 ../../lib/screen1.s(926)
+    screen1.o                 ../../lib/screen1.s(926)
+pusha (pusha.o):
+    screen1.o                 ../../lib/screen1.s(926)
+    screen1.o                 ../../lib/screen1.s(926)
+    screen1.o                 ../../lib/screen1.s(926)
+    tms9918.o                 ../../lib/tms9918.s(380)
+    tms9918.o                 ../../lib/tms9918.s(380)
+    tms9918.o                 ../../lib/tms9918.s(380)
+    tms9918.o                 ../../lib/tms9918.s(380)
+    tms9918.o                 ../../lib/tms9918.s(380)
+    tms9918.o                 ../../lib/tms9918.s(380)
+pusha0 (pushax.o):
+    screen1.o                 ../../lib/screen1.s(926)
+    screen1.o                 ../../lib/screen1.s(926)
+pushax (pushax.o):
+    screen1.o                 ../../lib/screen1.s(926)
+    screen1.o                 ../../lib/screen1.s(926)
+    screen1.o                 ../../lib/screen1.s(926)
+    screen1.o                 ../../lib/screen1.s(926)
+    tms9918.o                 ../../lib/tms9918.s(380)
+    tms9918.o                 ../../lib/tms9918.s(380)
+    tms9918.o                 ../../lib/tms9918.s(380)
+    tms9918.o                 ../../lib/tms9918.s(380)
+pushwysp (pushwsp.o):
+    screen1.o                 ../../lib/screen1.s(926)
+regsave (zeropage.o):
+    screen1.o                 ../../lib/screen1.s(10)
+    tms9918.o                 ../../lib/tms9918.s(10)
+shlax4 (aslax4.o):
+    screen1.o                 ../../lib/screen1.s(926)
+sp (zeropage.o):
+    addysp.o                  runtime/addysp.s(8)
+    subeqsp.o                 runtime/subeqsp.s(8)
+    staxsp.o                  runtime/staxsp.s(8)
+    staspidx.o                runtime/staspidx.s(9)
+    pushwsp.o                 runtime/pushwsp.s(8)
+    pushax.o                  runtime/pushax.s(8)
+    pusha.o                   runtime/pusha.s(8)
+    incsp2.o                  runtime/incsp2.s(8)
+    incsp1.o                  runtime/incsp1.s(8)
+    icmp.o                    runtime/icmp.s(9)
+    decsp6.o                  runtime/decsp6.s(8)
+    decsp4.o                  runtime/decsp4.s(8)
+    decsp3.o                  runtime/decsp3.s(8)
+    decsp2.o                  runtime/decsp2.s(8)
+    decsp1.o                  runtime/decsp1.s(8)
+    crt0.o                    /build/cc65-5FfAbq/cc65-2.19/asminc/zeropage.inc(11)
+    addeqsp.o                 runtime/addeqsp.s(8)
+    add.o                     runtime/add.s(12)
+    screen1.o                 ../../lib/screen1.s(10)
+    tms9918.o                 ../../lib/tms9918.s(10)
+sreg (zeropage.o):
+    icmp.o                    runtime/icmp.s(9)
+    screen1.o                 ../../lib/screen1.s(10)
+staspidx (staspidx.o):
+    screen1.o                 ../../lib/screen1.s(926)
+    tms9918.o                 ../../lib/tms9918.s(380)
+stax0sp (staxsp.o):
+    screen1.o                 ../../lib/screen1.s(926)
+    tms9918.o                 ../../lib/tms9918.s(380)
+staxysp (staxsp.o):
+    screen1.o                 ../../lib/screen1.s(926)
+    screen1.o                 ../../lib/screen1.s(926)
+    screen1.o                 ../../lib/screen1.s(926)
+    tms9918.o                 ../../lib/tms9918.s(380)
+subeq0sp (subeqsp.o):
+    screen1.o                 ../../lib/screen1.s(926)
+    screen1.o                 ../../lib/screen1.s(926)
+    tms9918.o                 ../../lib/tms9918.s(380)
+tmp1 (zeropage.o):
+    staspidx.o                runtime/staspidx.s(9)
+    aslax4.o                  runtime/aslax4.s(8)
+    add.o                     runtime/add.s(12)
+    screen1.o                 ../../lib/screen1.s(11)
+tosadda0 (add.o):
+    screen1.o                 ../../lib/screen1.s(926)
+tosicmp (icmp.o):
+    screen1.o                 ../../lib/screen1.s(926)
+    screen1.o                 ../../lib/screen1.s(926)
+zerobss (zerobss.o):
+    crt0.o                    none/crt0.s(3)
+

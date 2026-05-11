@@ -46,7 +46,8 @@ REPO = pathlib.Path(__file__).resolve().parents[1]
 TMS_DIR = REPO / "dev" / "lib" / "tms9918"
 HGR_DIR = REPO / "dev" / "lib" / "hgr" / "sprites"
 
-LABEL_RE = re.compile(r"^([a-z_][a-z0-9_]*):\s*$")
+# TMS peut préfixer les labels « C/cc65 » par _ (ex. _fauna_dog_pat).
+LABEL_RE = re.compile(r"^(_?[a-z][a-z0-9_]*):\s*$")
 BYTE_RE = re.compile(r"\.byte\s+(.*)")
 COMMENT_RE = re.compile(r"^;\s*slot\s+(\d+)/\d+\s+of\s+\"([^\"]+)\"\s+row\s+--\s+(.+)$")
 
@@ -73,7 +74,9 @@ def parse_tms_file(path: pathlib.Path):
         if m and (m.group(1).endswith("_pat") or m.group(1).endswith("_data")):
             if cur_label is not None and len(cur_bytes) == 32:
                 sprites.append((cur_label, cur_bytes, cur_slot_comment))
-            cur_label = m.group(1)
+            raw_lbl = m.group(1)
+            # HGR : mêmes noms publics sans _ (convention projets asm existants).
+            cur_label = raw_lbl[1:] if raw_lbl.startswith("_") else raw_lbl
             cur_bytes = []
             cur_slot_comment = pending_slot_comment
             pending_slot_comment = ""
