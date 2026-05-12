@@ -1,3 +1,9 @@
+/*
+ * apple1-videocard-lib — POM1 CodeTank cc65 port
+ * Derived from nippur72/apple1-videocard-lib (Antonino "Nino" Porcino).
+ *   https://github.com/nippur72/apple1-videocard-lib
+ * Upstream license: unspecified at time of fork (2026-05). Preserve attribution.
+ */
 #ifndef TMS9918_H
 #define TMS9918_H
 
@@ -74,5 +80,15 @@ void tms_wait_end_of_frame(void);
 void tms_copy_to_vram(const unsigned char *source, unsigned size, unsigned dest);
 
 #define tms_read_status() ((unsigned char)TMS_READ_CTRL_PORT)
+
+/* --- ca65 fast paths (tms_fast.s) --------------------------------------- */
+
+/* Burst-fill VRAM with `val` for `count` bytes. No per-byte IO delay. */
+void tms_fill_vram(unsigned addr, unsigned char val, unsigned count);
+
+/* Burst-copy from host (RAM/ROM) to VRAM. No per-byte IO delay.
+ * ~3-4x faster than the C tms_copy_to_vram() above; use when destination
+ * tolerates back-to-back writes (POM1 burst-safe outside VBLANK contention). */
+void tms_copy_to_vram_fast(const void *src, unsigned size, unsigned dest);
 
 #endif

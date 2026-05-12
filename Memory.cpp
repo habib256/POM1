@@ -474,7 +474,46 @@ void Memory::initMemory(){
     gt6144->reset();
     configureResetVectors(0xFF00);
 
+    // GEN2 HGR carries its own 8 KB DRAM at $2000-$3FFF — re-seed bistable
+    // noise on every init. EmulationController::hardReset() invokes
+    // resetMemory() *then* initMemory(); without this seed the zero-fill
+    // above wipes the noise that resetMemory just laid down, leaving the
+    // GEN2 window solid black after every hard reset.
+    if (hgrFramebufferAttached) {
+        std::random_device rd;
+        std::mt19937 gen(rd());
+        std::uniform_int_distribution<int> dist(0, 255);
+        for (int i = 0x2000; i < 0x4000; ++i) {
+            mem[i] = static_cast<uint8_t>(dist(gen));
+        }
+        markPagesDirty(0x2000, 0x2000);
+    }
+
     setWriteInRom(0);
+}
+
+void Memory::setHgrFramebufferAttached(bool e)
+{
+    // Off→on transition seeds the 8 KB framebuffer with mt19937 noise.
+    // Real Uncle Bernie GEN2 hardware holds its own DRAM at $2000-$3FFF;
+    // on a cold plug or first power-up the chips show bistable random
+    // values (same model GT-6144 and TMS9918 already use). resetMemory()
+    // re-seeds on F5 hard reset; this setter covers the cases resetMemory
+    // can't: first boot (applyMachineConfig skips hardReset on its very
+    // first invocation) and runtime menu/toolbar plug. The Silicon Strict
+    // Inspector can opt out via gen2DramNoiseOnPlug=false for tests that
+    // need a deterministic blank framebuffer.
+    const bool wasAttached = hgrFramebufferAttached;
+    hgrFramebufferAttached = e;
+    if (e && !wasAttached) {
+        std::random_device rd;
+        std::mt19937 gen(rd());
+        std::uniform_int_distribution<int> dist(0, 255);
+        for (int i = 0x2000; i < 0x4000; ++i) {
+            mem[i] = static_cast<uint8_t>(dist(gen));
+        }
+        markPagesDirty(0x2000, 0x2000);
+    }
 }
 
 void Memory::resetMemory(void)

@@ -22,10 +22,14 @@
 #define DINO_COLOR     COLOR_DARK_RED
 
 static void upload_sprite_patterns(void) {
-    tms_copy_to_vram(pat_chrome_run0, 32U, TMS_SPRITE_PATTERNS + (unsigned)PAT_CHROME_RUN0 * 32U);
-    tms_copy_to_vram(pat_chrome_run1, 32U, TMS_SPRITE_PATTERNS + (unsigned)PAT_CHROME_RUN1 * 32U);
-    tms_copy_to_vram(pat_chrome_jump, 32U, TMS_SPRITE_PATTERNS + (unsigned)PAT_CHROME_JUMP * 32U);
-    tms_copy_to_vram(pat_chrome_cactus, 32U, TMS_SPRITE_PATTERNS + (unsigned)PAT_CHROME_CACTUS * 32U);
+    /* En mode 16x16, le HW lit la VRAM SPGT a name*8 (les deux bits bas du name
+     * sont masques). PAT_CHROME_* sont deja des noms (multiples de 4), donc
+     * l'offset octet est name*8, pas name*32. Symptome du bug initial : sprites
+     * dessines comme un cadre vide ou avec des traits aleatoires. */
+    tms_copy_to_vram(pat_chrome_run0,   32U, TMS_SPRITE_PATTERNS + (unsigned)PAT_CHROME_RUN0   * 8U);
+    tms_copy_to_vram(pat_chrome_run1,   32U, TMS_SPRITE_PATTERNS + (unsigned)PAT_CHROME_RUN1   * 8U);
+    tms_copy_to_vram(pat_chrome_jump,   32U, TMS_SPRITE_PATTERNS + (unsigned)PAT_CHROME_JUMP   * 8U);
+    tms_copy_to_vram(pat_chrome_cactus, 32U, TMS_SPRITE_PATTERNS + (unsigned)PAT_CHROME_CACTUS * 8U);
 }
 
 static void draw_ground_row(void) {

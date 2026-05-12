@@ -39,8 +39,13 @@
  * pixels (the chroma-bandwidth-limited downsample real CRTs perform
  * optically).
  *
- * GEN2 is a colour card — the monochrome / phosphor-persistence variants
- * available in POM2 are deliberately not exposed here.
+ * Cosmetic toggles (HGR window controls — moniteur, not silicon):
+ *  - monitorMode: Colour / Green / Amber / Monochrome — desaturates
+ *    then tints the rendered image to mimic the monitor at the other
+ *    end of the composite cable. Re-uses the Screen_ImGui pattern.
+ *  - phosphorPersistence: 0..1. Frame-to-frame lerp toward the new
+ *    rasterised pixels — non-zero values force a full upload each
+ *    frame (the per-line diff is bypassed).
  *
  * Performance: rasterizeToBuffer() fills a 280×192 RGBA pixel buffer in
  * software and is 100% CPU — no shaders, no GL3+ dependency. Per-scanline
@@ -57,6 +62,13 @@ public:
     static constexpr int kHiresHeight = 192;
     static constexpr uint16_t kHiresBase = 0x2000;
     static constexpr int kHiresSize = 0x2000; // 8 KB
+
+    enum class MonitorMode : uint8_t {
+        Colour = 0,
+        Green = 1,
+        Amber = 2,
+        Monochrome = 3,
+    };
 
     GraphicsCard();
 
@@ -78,14 +90,34 @@ public:
     // Compute the address of a HIRES scanline (Apple II non-linear layout).
     static uint16_t scanlineAddress(int y);
 
+    // -------- Cosmetic monitor toggles (HGR window) --------
+    void setMonitorMode(MonitorMode m) {
+        if (m != monitorMode) { monitorMode = m; invalidate(); }
+    }
+    MonitorMode getMonitorMode() const { return monitorMode; }
+    void setPhosphorPersistence(float p) { phosphorPersistence = p; }
+    float getPhosphorPersistence() const { return phosphorPersistence; }
+    void setScanlineAlpha(float a) { scanlineAlpha = a; }
+    float getScanlineAlpha() const { return scanlineAlpha; }
+
 private:
     void rasterizeLine(int y, const uint8_t* memory);
+    // Apply monitor tint + persistence lerp to a single scanline of pixelBuf.
+    void postProcessLine(int y);
 
     // Cached copy of the previous frame's 40 framebuffer bytes per scanline
     // for the per-line skip diff.
     std::array<std::array<uint8_t, 40>, kHiresHeight> lineCopy{};
     bool invalidateNext = true;
     std::array<uint32_t, kHiresWidth * kHiresHeight> pixelBuf{};
+    // Snapshot of the previous frame's pixelBuf — only allocated when
+    // phosphorPersistence > 0, but kept resident so the lerp stays cheap.
+    std::array<uint32_t, kHiresWidth * kHiresHeight> prevPixelBuf{};
+
+    // Cosmetic state
+    MonitorMode monitorMode = MonitorMode::Colour;
+    float       phosphorPersistence = 0.0f;   // 0=snap, 1=hold previous frame
+    float       scanlineAlpha       = 0.0f;   // 0=no overlay, 1=fully black rows
 };
 
 #endif // GRAPHICSCARD_H

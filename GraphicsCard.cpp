@@ -101,6 +101,53 @@ inline uint32_t avgRgb(uint32_t a, uint32_t b)
     return (uint32_t(0xFFu) << 24) | (bl << 16) | (g << 8) | r;
 }
 
+// Per-mode phosphor tint factors (linear scale per channel). Applied after
+// the pixel is desaturated to luma. Values mirror Screen_ImGui's phosphor
+// palette so the GEN2 mono modes match the text screen visually.
+struct PhosphorTint { float r, g, b; };
+constexpr PhosphorTint kPhosphorTints[4] = {
+    {1.0f, 1.0f, 1.0f},  // Colour — unused (post-process bypassed)
+    {0.15f, 1.00f, 0.20f}, // Green  — P1 phosphor
+    {1.00f, 0.65f, 0.20f}, // Amber  — P3 phosphor
+    {0.95f, 0.95f, 0.95f}, // Mono   — paper-white
+};
+
+inline uint32_t applyPhosphorTint(uint32_t rgba, GraphicsCard::MonitorMode m)
+{
+    if (m == GraphicsCard::MonitorMode::Colour) return rgba;
+    const uint32_t r  = (rgba & 0xFFu);
+    const uint32_t g  = (rgba >> 8)  & 0xFFu;
+    const uint32_t bl = (rgba >> 16) & 0xFFu;
+    // Rec.601 luma — same coefficient set Screen_ImGui uses for charmap.
+    const float luma = (0.299f * r + 0.587f * g + 0.114f * bl);
+    const PhosphorTint& t = kPhosphorTints[static_cast<int>(m)];
+    auto clamp8 = [](float v) -> uint32_t {
+        if (v < 0.0f) return 0u;
+        if (v > 255.0f) return 255u;
+        return static_cast<uint32_t>(v);
+    };
+    const uint32_t nr  = clamp8(luma * t.r);
+    const uint32_t ng  = clamp8(luma * t.g);
+    const uint32_t nbl = clamp8(luma * t.b);
+    return (uint32_t(0xFFu) << 24) | (nbl << 16) | (ng << 8) | nr;
+}
+
+inline uint32_t lerpRgba(uint32_t newPix, uint32_t prevPix, float persistence)
+{
+    if (persistence <= 0.0f) return newPix;
+    if (persistence >= 1.0f) return prevPix;
+    const float a = persistence;
+    const float b = 1.0f - a;
+    auto mix = [&](uint32_t channelNew, uint32_t channelPrev) -> uint32_t {
+        const float v = b * channelNew + a * channelPrev;
+        return v < 0.0f ? 0u : (v > 255.0f ? 255u : static_cast<uint32_t>(v));
+    };
+    const uint32_t r  = mix(newPix & 0xFFu,       prevPix & 0xFFu);
+    const uint32_t g  = mix((newPix >> 8)  & 0xFFu, (prevPix >> 8)  & 0xFFu);
+    const uint32_t bl = mix((newPix >> 16) & 0xFFu, (prevPix >> 16) & 0xFFu);
+    return (uint32_t(0xFFu) << 24) | (bl << 16) | (g << 8) | r;
+}
+
 } // namespace
 
 // ─── GraphicsCard ─────────────────────────────────────────────────────────
@@ -169,21 +216,46 @@ void GraphicsCard::rasterizeLine(int y, const uint8_t* memory)
     }
 }
 
+void GraphicsCard::postProcessLine(int y)
+{
+    if (monitorMode == MonitorMode::Colour && phosphorPersistence <= 0.0f) return;
+    uint32_t* outRow = pixelBuf.data() + static_cast<size_t>(y) * kHiresWidth;
+    uint32_t* prevRow = prevPixelBuf.data() + static_cast<size_t>(y) * kHiresWidth;
+    for (int x = 0; x < kHiresWidth; ++x) {
+        uint32_t pix = applyPhosphorTint(outRow[x], monitorMode);
+        if (phosphorPersistence > 0.0f) {
+            pix = lerpRgba(pix, prevRow[x], phosphorPersistence);
+        }
+        outRow[x] = pix;
+    }
+}
+
 bool GraphicsCard::rasterizeToBuffer(const uint8_t* memory)
 {
     // Plain memcmp against the per-line 40-byte cache from the previous
     // frame. The MAME decode is deterministic in those 40 bytes (the
     // sliding window stays inside the row), so a byte-for-byte compare is
     // both correct and the cheapest diff available.
-    const bool forceAll = invalidateNext;
+    //
+    // Persistence > 0 bypasses the diff: even idle frames must lerp toward
+    // the prev buffer or trails would freeze.
+    const bool persistenceOn = phosphorPersistence > 0.0f;
+    const bool forceAll = invalidateNext || persistenceOn;
     invalidateNext = false;
     bool anyChanged = false;
+    // Snapshot last frame's pixels for lerp before rewriting them.
+    if (persistenceOn) {
+        std::memcpy(prevPixelBuf.data(), pixelBuf.data(),
+                    sizeof(uint32_t) * kHiresWidth * kHiresHeight);
+    }
     for (int y = 0; y < kHiresHeight; ++y) {
         const uint16_t lineAddr = scanlineAddress(y);
         const uint8_t* src = memory + lineAddr;
-        if (forceAll || std::memcmp(src, lineCopy[y].data(), 40) != 0) {
+        const bool ramChanged = std::memcmp(src, lineCopy[y].data(), 40) != 0;
+        if (forceAll || ramChanged) {
             std::memcpy(lineCopy[y].data(), src, 40);
             rasterizeLine(y, memory);
+            postProcessLine(y);
             anyChanged = true;
         }
     }

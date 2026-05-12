@@ -18,22 +18,22 @@
 
 boss_sprite_pats:
 ; Q_TL — top-left  16x16 of the 32x32 boss
-        .byte $FF, $FE, $FC, $FC, $FC, $FC, $FC, $FC
-        .byte $FE, $FF, $FE, $F8, $E0, $C6, $CF, $DF
-        .byte $FF, $7F, $FF, $FF, $FF, $7F, $34, $02
-        .byte $00, $00, $CB, $10, $07, $0E, $2C, $46
+        .byte $00, $01, $03, $03, $03, $03, $03, $03
+        .byte $01, $00, $01, $07, $1F, $39, $30, $20
+        .byte $00, $80, $00, $00, $00, $80, $CB, $FD
+        .byte $FF, $FF, $34, $EF, $F8, $F1, $D3, $B9
 ; Q_TR — top-right 16x16 of the 32x32 boss
-        .byte $FF, $FC, $FE, $FE, $FE, $FE, $2C, $40
-        .byte $00, $01, $D7, $0E, $E0, $70, $34, $62
-        .byte $FF, $FF, $7F, $7F, $7F, $7F, $7F, $7F
-        .byte $FF, $FF, $7F, $5F, $47, $63, $73, $3B
+        .byte $00, $03, $01, $01, $01, $01, $D3, $BF
+        .byte $FF, $FE, $28, $F1, $1F, $8F, $CB, $9D
+        .byte $00, $00, $80, $80, $80, $80, $80, $80
+        .byte $00, $00, $80, $A0, $B8, $9C, $8C, $C4
 ; Q_BL — bottom-left  16x16 of the 32x32 boss
-        .byte $FE, $CC, $C6, $CE, $E3, $FF, $FE, $FE
-        .byte $FF, $FD, $FD, $FB, $FF, $FF, $FF, $FF
-        .byte $63, $71, $1C, $0D, $47, $93, $8A, $A7
-        .byte $6B, $AD, $B5, $B5, $6D, $6E, $FF, $FF
+        .byte $01, $33, $39, $31, $1C, $00, $01, $01
+        .byte $00, $02, $02, $04, $00, $00, $00, $00
+        .byte $9C, $8E, $E3, $F2, $B8, $6C, $75, $58
+        .byte $94, $52, $4A, $4A, $92, $91, $00, $00
 ; Q_BR — bottom-right 16x16 of the 32x32 boss
-        .byte $C6, $8E, $38, $B3, $E7, $CC, $5B, $F5
-        .byte $D5, $36, $5A, $6B, $AB, $BE, $FF, $FF
-        .byte $3F, $73, $E3, $F3, $C7, $FF, $5F, $6F
-        .byte $AF, $BF, $BF, $BF, $7F, $FF, $FF, $FF
+        .byte $39, $71, $C7, $4C, $18, $33, $A4, $0A
+        .byte $2A, $C9, $A5, $94, $54, $41, $00, $00
+        .byte $C0, $8C, $1C, $0C, $38, $00, $A0, $90
+        .byte $50, $40, $40, $40, $80, $00, $00, $00

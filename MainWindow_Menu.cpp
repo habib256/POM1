@@ -265,8 +265,10 @@ void MainWindow_ImGui::renderMenuBar()
             ImGui::Separator();
             // --- Community hardware (non-P-LAB) ----------------------------
             if (ImGui::MenuItem("Uncle Bernie's GEN2 HGR Graphic Card", nullptr, &graphicsCardEnabled)) {
-                if (graphicsCardEnabled) showGraphicsCard = true;
-                emulation->setHgrFramebufferAttached(graphicsCardEnabled);
+                if (!gateStrictPlug("GEN2", graphicsCardEnabled)) {
+                    if (graphicsCardEnabled) showGraphicsCard = true;
+                    emulation->setHgrFramebufferAttached(graphicsCardEnabled);
+                }
             }
             showHardwareTooltip(
                 "Uncle Bernie's GEN2 HGR Graphic Card\n"
@@ -332,12 +334,14 @@ void MainWindow_ImGui::renderMenuBar()
                     "Requires microSD plugged.");
             }
             if (ImGui::MenuItem("P-LAB A1-SID Sound Card (SID @ $C800)", nullptr, &sidEnabled)) {
-                emulation->setSIDEnabled(sidEnabled);
-                // Prototype and SE share the same MOS chip — plugging one
-                // auto-unplugs the other on the backend; mirror that here.
-                if (sidEnabled) {
-                    sidSpecialEditionEnabled = false;
-                    jukeBoxEnabled = false;
+                if (!gateStrictPlug("A1-SID", sidEnabled)) {
+                    emulation->setSIDEnabled(sidEnabled);
+                    // Prototype and SE share the same MOS chip — plugging one
+                    // auto-unplugs the other on the backend; mirror that here.
+                    if (sidEnabled) {
+                        sidSpecialEditionEnabled = false;
+                        jukeBoxEnabled = false;
+                    }
                 }
             }
             showHardwareTooltip(
@@ -346,11 +350,13 @@ void MainWindow_ImGui::renderMenuBar()
                 "Plugging it unplugs A1-AUDIO SE (same SID chip) and Juke-Box\n"
                 "($CA00 bank latch sits inside the SID window).");
             if (ImGui::MenuItem("A1-AUDIO Special Edition (SID @ $CC00)", nullptr, &sidSpecialEditionEnabled)) {
-                emulation->setSIDSpecialEditionEnabled(sidSpecialEditionEnabled);
-                if (sidSpecialEditionEnabled) {
-                    // Mutually exclusive with the prototype SID and with TMS9918.
-                    sidEnabled = false;
-                    tms9918Enabled = false;
+                if (!gateStrictPlug("A1-AUDIO-SE", sidSpecialEditionEnabled)) {
+                    emulation->setSIDSpecialEditionEnabled(sidSpecialEditionEnabled);
+                    if (sidSpecialEditionEnabled) {
+                        // Mutually exclusive with the prototype SID and with TMS9918.
+                        sidEnabled = false;
+                        tms9918Enabled = false;
+                    }
                 }
             }
             showHardwareTooltip(
@@ -359,17 +365,19 @@ void MainWindow_ImGui::renderMenuBar()
                 "Plugging it unplugs A1-SID (same SID chip) and TMS9918\n"
                 "($CC00/$CC01 overlap). Juke-Box can coexist.");
             if (ImGui::MenuItem("P-LAB Graphic Card (TMS9918)", nullptr, &tms9918Enabled)) {
-                emulation->setTMS9918Enabled(tms9918Enabled);
-                if (tms9918Enabled) {
-                    showTMS9918 = true;
-                    sidSpecialEditionEnabled = false; // mutually exclusive
-                } else if (codeTankEnabled) {
-                    // CodeTank is a daughterboard of the TMS9918 — Memory's
-                    // setTMS9918Enabled cascade-disabled it; mirror in UI flags.
-                    codeTankEnabled = false;
-                    showCodeTankLibrary = false;
-                    codeTankPendingWozRunAt = 0.0;
-                    setStatusMessage("P-LAB CodeTank unplugged with TMS9918 host", 2.0f);
+                if (!gateStrictPlug("TMS9918", tms9918Enabled)) {
+                    emulation->setTMS9918Enabled(tms9918Enabled);
+                    if (tms9918Enabled) {
+                        showTMS9918 = true;
+                        sidSpecialEditionEnabled = false; // mutually exclusive
+                    } else if (codeTankEnabled) {
+                        // CodeTank is a daughterboard of the TMS9918 — Memory's
+                        // setTMS9918Enabled cascade-disabled it; mirror in UI flags.
+                        codeTankEnabled = false;
+                        showCodeTankLibrary = false;
+                        codeTankPendingWozRunAt = 0.0;
+                        setStatusMessage("P-LAB CodeTank unplugged with TMS9918 host", 2.0f);
+                    }
                 }
             }
             showHardwareTooltip(
@@ -391,8 +399,10 @@ void MainWindow_ImGui::renderMenuBar()
                 "Plugging it auto-plugs the TMS9918 host (and evicts A1-AUDIO SE\n"
                 "and the Juke-Box). Unplugging the TMS9918 cascade-unplugs CodeTank.");
             if (ImGui::MenuItem("P-LAB I/O Board & RTC", nullptr, &a1ioRtcEnabled)) {
-                emulation->setA1IO_RTCEnabled(a1ioRtcEnabled);
-                if (a1ioRtcEnabled) showA1IO_RTC = true;
+                if (!gateStrictPlug("A1-IO-RTC", a1ioRtcEnabled)) {
+                    emulation->setA1IO_RTCEnabled(a1ioRtcEnabled);
+                    if (a1ioRtcEnabled) showA1IO_RTC = true;
+                }
             }
             showHardwareTooltip(
                 "P-LAB I/O Board & RTC\n"
@@ -1063,6 +1073,55 @@ void MainWindow_ImGui::renderToolbar()
                 ImGui::SetTooltip(
                     charm ? "Apple-1 charmap (bitmap ROM)\nClick - use host ASCII font"
                           : "Host ASCII font\nClick - use Apple-1 charmap");
+            }
+        }
+
+        // --- Séparateur ---
+        ImGui::SameLine(0, 12);
+        ImGui::SeparatorEx(ImGuiSeparatorFlags_Vertical);
+        ImGui::SameLine(0, 12);
+
+        // --- Silicon profile toggle: ruler (Strict) / horse (Fantasy) -------
+        //
+        // Single click = bascule Strict <-> Fantasy en armant/desarmant tous les
+        // knobs silicon-fidelity (meme logique que le master button dans
+        // Hardware -> Silicon Strict Inspector) ET ouvre la fenetre Inspector
+        // pour donner le contexte (live drop diagnostics + fine tuning par
+        // knob). Pas d'icone licorne dans Font Awesome 6, le cheval sert
+        // d'analogue visuel.
+        {
+            const bool strict = siliconStrictModeEnabled;
+            const char* icon  = strict ? ICON_FA_RULER_COMBINED : ICON_FA_HORSE;
+            if (strict) {
+                ImGui::PushStyleColor(ImGuiCol_Button, activeColor);
+            }
+            if (ImGui::Button(icon, btnSize)) {
+                const bool turnOn = !strict;
+                siliconStrictModeEnabled     = turnOn;
+                vramNoiseOnResetEnabled      = turnOn;
+                systemRamNoiseOnResetEnabled = turnOn;
+                dramRefreshEnabled           = turnOn;
+                oorStrictModeEnabled         = turnOn;
+                emulation->setSiliconStrictMode(turnOn);
+                emulation->setVramNoiseOnReset(turnOn);
+                emulation->setSystemRamNoiseOnReset(turnOn);
+                emulation->setDramRefreshEnabled(turnOn);
+                emulation->setOutOfRangeStrictMode(turnOn);
+                showSiliconStrictWindow = true;
+                setStatusMessage(turnOn
+                    ? "SILICON STRICT ON — strict Apple-1 timing + VRAM/RAM noise + DRAM refresh + OOR armed"
+                    : "MULTIPLEXING FANTASY — every silicon-fidelity knob OFF",
+                    3.5f);
+            }
+            if (strict) {
+                ImGui::PopStyleColor();
+            }
+            if (ImGui::IsItemHovered()) {
+                ImGui::SetTooltip(
+                    strict ? "Silicon Strict (real Apple-1 timing + VRAM/RAM noise + DRAM refresh)\n"
+                             "Click - switch to Multiplexing Fantasy + open Inspector"
+                           : "Multiplexing Fantasy (every silicon-fidelity knob OFF)\n"
+                             "Click - switch to Silicon Strict + open Inspector");
             }
         }
 

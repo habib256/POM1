@@ -1,3 +1,9 @@
+/*
+ * apple1-videocard-lib — POM1 CodeTank cc65 port
+ * Derived from nippur72/apple1-videocard-lib (Antonino "Nino" Porcino).
+ *   https://github.com/nippur72/apple1-videocard-lib
+ * Upstream license: unspecified at time of fork (2026-05). Preserve attribution.
+ */
 #ifndef SCREEN1_H
 #define SCREEN1_H
 
@@ -31,5 +37,14 @@ void screen1_putc(unsigned char c);
 void screen1_puts(const unsigned char *s);
 void screen1_locate(unsigned char x, unsigned char y);
 void screen1_strinput(unsigned char *buffer, unsigned char max_length);
+
+/* --- Extended helpers (screen_ext.c) ------------------------------------ */
+
+/* Write one character at (x,y) without moving the cursor. Honours reverse. */
+void screen1_putcharxy(unsigned char x, unsigned char y, unsigned char c);
+
+/* Fill the 32-entry color attribute table (mode 1) with one FG_BG value.
+ * Pulls tms_fill_vram from tms_fast.s. */
+void screen1_fill_color_attr(unsigned char fg_bg);
 
 #endif

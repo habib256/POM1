@@ -59,6 +59,15 @@ void MainWindow_ImGui::renderGraphicsCardWindow()
                      0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
     }
 
+    // Sync cosmetic monitor knobs into the rasterizer each frame — the UI
+    // owns the source-of-truth flags but GraphicsCard memoises its state
+    // internally and bypasses the diff when colour mode + persistence both
+    // sit at their defaults.
+    graphicsCard.setMonitorMode(
+        static_cast<GraphicsCard::MonitorMode>(gen2MonitorMode));
+    graphicsCard.setPhosphorPersistence(gen2PhosphorPersistence);
+    graphicsCard.setScanlineAlpha(gen2ScanlineAlpha);
+
     // Per-scanline dirty hashing inside rasterizeToBuffer() means an idle
     // framebuffer costs ~7.7 KB of memory hashing and zero pixel writes.
     // The GL upload is skipped when nothing changed.
@@ -88,7 +97,48 @@ void MainWindow_ImGui::renderGraphicsCardWindow()
             cursorPos.x + std::max(0.0f, (avail.x - size.x) * 0.5f),
             cursorPos.y + std::max(0.0f, (avail.y - size.y) * 0.5f)));
 
+        const ImVec2 imgScreenPos = ImGui::GetCursorScreenPos();
         ImGui::Image((ImTextureID)(uintptr_t)graphicsCardTexture, size);
+
+        // Scanline overlay — drawn after the image so it sits on top of the
+        // texture pixels. Reuses Screen_ImGui's "1-px dark row every 2 display
+        // pixels" model with user-controllable alpha. Skipped at alpha=0.
+        if (gen2ScanlineAlpha > 0.001f && size.y > 1.0f) {
+            ImDrawList* dl = ImGui::GetWindowDrawList();
+            const int alpha8 = static_cast<int>(gen2ScanlineAlpha * 255.0f) & 0xFF;
+            const ImU32 col = IM_COL32(0, 0, 0, alpha8);
+            const float pixelH = size.y / static_cast<float>(GraphicsCard::kHiresHeight);
+            // Step every 2 logical scanlines so we get the alternating dark
+            // pattern. Use integer y to avoid sub-pixel AA halving.
+            for (int line = 0; line < GraphicsCard::kHiresHeight; line += 2) {
+                const float y = std::floor(imgScreenPos.y + line * pixelH);
+                dl->AddRectFilled(ImVec2(imgScreenPos.x, y),
+                                  ImVec2(imgScreenPos.x + size.x, y + 1.0f),
+                                  col);
+            }
+        }
+
+        // Cosmetic controls — collapsed by default so the image stays the focus.
+        ImGui::SetCursorPos(ImVec2(cursorPos.x, cursorPos.y + size.y + 8.0f));
+        if (ImGui::CollapsingHeader("Monitor##gen2monitor",
+                                    ImGuiTreeNodeFlags_None)) {
+            const char* modes[] = { "Colour", "Green (P1)", "Amber (P3)", "Mono" };
+            ImGui::SetNextItemWidth(160.0f);
+            if (ImGui::Combo("##gen2mode", &gen2MonitorMode, modes, IM_ARRAYSIZE(modes))) {
+                graphicsCard.setMonitorMode(
+                    static_cast<GraphicsCard::MonitorMode>(gen2MonitorMode));
+            }
+            ImGui::SameLine();
+            ImGui::TextColored(ImVec4(0.7f, 0.7f, 0.7f, 1.0f),
+                               "Phosphor tint applied to luma — does not affect emulation.");
+
+            ImGui::SetNextItemWidth(200.0f);
+            ImGui::SliderFloat("Phosphor persistence##gen2persist",
+                               &gen2PhosphorPersistence, 0.0f, 0.95f, "%.2f");
+            ImGui::SetNextItemWidth(200.0f);
+            ImGui::SliderFloat("Scanline overlay##gen2scan",
+                               &gen2ScanlineAlpha, 0.0f, 1.0f, "%.2f");
+        }
     }
     ImGui::End();
     ImGui::PopStyleColor();
@@ -1382,6 +1432,141 @@ void MainWindow_ImGui::renderIECCardWindow()
 // them mid-frame would corrupt the running picture. The UI states this
 // explicitly so users do `File → Hard Reset` after toggling.
 // ---------------------------------------------------------------------------
+// ---- Parmigiani's "one board at a time" rule -------------------------------
+//
+// Real Apple-1 bus has no arbitration: when two P-LAB cards decode the same
+// address window, the bus pulls itself apart and the system hangs. POM1's
+// Multiplexing Fantasy presets break this for fun (#12, #14), but silicon-
+// strict mode must enforce it. The conflict table mirrors the real cards
+// documented in CLAUDE.md "Parmigiani's golden rule" section.
+//
+// Auto-unplug priority: the secondary card in each pair gets unplugged so
+// the user keeps the more "anchoring" card (TMS9918 wins over SID at $CC00,
+// GEN2 keeps its 8 KB footprint over A1-IO RTC's 16 bytes, JukeBox loses to
+// CodeTank/CFFA1/microSD which are more commonly the focus of a session).
+namespace {
+struct ConflictRule {
+    const char* primary;     // kept plugged
+    bool* primaryFlag;       // pointer member-of MainWindow_ImGui — set by caller
+    const char* secondary;   // unplugged when both are on
+    bool* secondaryFlag;
+    const char* reason;      // overlap range / electrical clash
+};
+} // namespace
+
+std::vector<std::string> MainWindow_ImGui::listParmigianiConflicts() const
+{
+    std::vector<std::string> out;
+    // Pair: (active condition, description).
+    struct C { bool both; const char* desc; };
+    const C table[] = {
+        { graphicsCardEnabled && a1ioRtcEnabled,
+          "GEN2 HGR ↔ A1-IO & RTC — $2000-$200F overlap" },
+        { sidEnabled && tms9918Enabled,
+          "A1-SID ↔ TMS9918 — $CC00/$CC01 overlap" },
+        { sidSpecialEditionEnabled && tms9918Enabled,
+          "A1-AUDIO SE ↔ TMS9918 — $CC00-$CC1F overlap" },
+        { sidSpecialEditionEnabled && sidEnabled,
+          "A1-AUDIO SE ↔ A1-SID — same SID chip on two windows" },
+        { jukeBoxEnabled && cffa1Enabled,
+          "Juke-Box ↔ CFFA1 — $9000-$AFDF inside Juke-Box ROM window" },
+        { jukeBoxEnabled && microSDEnabled,
+          "Juke-Box ↔ microSD — $8000-$9FFF inside Juke-Box ROM window" },
+        { jukeBoxEnabled && wifiModemEnabled,
+          "Juke-Box ↔ Wi-Fi Modem — $B000-$B003 inside Juke-Box ROM window" },
+        { jukeBoxEnabled && sidEnabled,
+          "Juke-Box ↔ A1-SID — $CA00 bank latch vs SID register file" },
+        { jukeBoxEnabled && codeTankEnabled,
+          "Juke-Box ↔ CodeTank — share $4000-$7FFF ROM window" },
+    };
+    for (const auto& c : table) {
+        if (c.both) out.emplace_back(c.desc);
+    }
+    return out;
+}
+
+std::string MainWindow_ImGui::resolveParmigianiConflicts()
+{
+    std::vector<std::string> evicted;
+    auto unplug = [&](const char* name, auto applyOff) {
+        evicted.emplace_back(name);
+        applyOff();
+    };
+    // Order matters: handle the heaviest cards first so a chain of evictions
+    // settles in one pass.
+    if (jukeBoxEnabled && codeTankEnabled) {
+        unplug("Juke-Box", [&] {
+            jukeBoxEnabled = false;
+            emulation->setJukeBoxEnabled(false);
+        });
+    }
+    if (jukeBoxEnabled && (cffa1Enabled || microSDEnabled || wifiModemEnabled || sidEnabled)) {
+        unplug("Juke-Box", [&] {
+            jukeBoxEnabled = false;
+            emulation->setJukeBoxEnabled(false);
+        });
+    }
+    if (sidSpecialEditionEnabled && (tms9918Enabled || sidEnabled)) {
+        unplug("A1-AUDIO SE", [&] {
+            sidSpecialEditionEnabled = false;
+            emulation->setSIDSpecialEditionEnabled(false);
+        });
+    }
+    if (sidEnabled && tms9918Enabled) {
+        unplug("A1-SID", [&] {
+            sidEnabled = false;
+            emulation->setSIDEnabled(false);
+        });
+    }
+    if (graphicsCardEnabled && a1ioRtcEnabled) {
+        unplug("A1-IO & RTC", [&] {
+            a1ioRtcEnabled = false;
+            emulation->setA1IO_RTCEnabled(false);
+            showA1IO_RTC = false;
+        });
+    }
+    if (evicted.empty()) return {};
+    std::string msg = "[STRICT] Evicted: ";
+    for (size_t i = 0; i < evicted.size(); ++i) {
+        if (i) msg += ", ";
+        msg += evicted[i];
+    }
+    return msg;
+}
+
+bool MainWindow_ImGui::gateStrictPlug(const char* cardName, bool& uiFlag)
+{
+    if (!siliconStrictModeEnabled) return false;
+    if (!uiFlag) return false;            // user unplugged — always fine
+    if (!wouldCreateConflict(cardName)) return false;
+    uiFlag = false;                       // revert the UI flip
+    std::string msg = "[STRICT] ";
+    msg += cardName;
+    msg += " refused — multiplexing forbidden. Unplug the conflicting card first.";
+    setStatusMessage(msg, 4.0f);
+    return true;
+}
+
+bool MainWindow_ImGui::wouldCreateConflict(const char* cardName) const
+{
+    if (!cardName) return false;
+    auto eq = [&](const char* a) {
+        return std::strcmp(cardName, a) == 0;
+    };
+    if (eq("GEN2"))       return a1ioRtcEnabled;
+    if (eq("A1-IO-RTC"))  return graphicsCardEnabled;
+    if (eq("A1-SID"))     return tms9918Enabled || sidSpecialEditionEnabled || jukeBoxEnabled;
+    if (eq("TMS9918"))    return sidEnabled || sidSpecialEditionEnabled;
+    if (eq("A1-AUDIO-SE")) return sidEnabled || tms9918Enabled;
+    if (eq("JukeBox"))    return codeTankEnabled || cffa1Enabled || microSDEnabled
+                               || wifiModemEnabled || sidEnabled;
+    if (eq("CodeTank"))   return jukeBoxEnabled;
+    if (eq("CFFA1"))      return jukeBoxEnabled;
+    if (eq("microSD"))    return jukeBoxEnabled;
+    if (eq("WiFiModem"))  return jukeBoxEnabled;
+    return false;
+}
+
 void MainWindow_ImGui::renderSiliconStrictWindow()
 {
     ImGui::SetNextWindowSize(ImVec2(580, 540), ImGuiCond_FirstUseEver);
@@ -1394,7 +1579,7 @@ void MainWindow_ImGui::renderSiliconStrictWindow()
     // -------- 1. Master mode-toggle button (very visible) -----------------
     //
     // Two mutually-exclusive emulation profiles:
-    //   SILICON STRICT   = real P-LAB silicon timing + drops (green pill)
+    //   SILICON STRICT   = real Apple-1 silicon timing + drops (green pill)
     //   MULTIPLEXING FANTASY = permissive emulator path, every write lands
     //                          instantly (purple pill, matches the preset
     //                          name shipped with POM1).
@@ -1408,9 +1593,9 @@ void MainWindow_ImGui::renderSiliconStrictWindow()
                                      : ImVec4(0.68f, 0.22f, 0.68f, 1.0f);
         const ImVec4 bgAct  = strict ? ImVec4(0.14f, 0.45f, 0.22f, 1.0f)
                                      : ImVec4(0.45f, 0.14f, 0.45f, 1.0f);
-        const char* label   = strict
-            ? "Mode:  SILICON STRICT     (click to switch to Fantasy)"
-            : "Mode:  MULTIPLEXING FANTASY  (click to switch to Silicon Strict)";
+        // Short label so it stays readable when the window is narrow; the
+        // "click to switch" hint moves to a wrapped line below the button.
+        const char* label   = strict ? "SILICON STRICT" : "MULTIPLEXING FANTASY";
         ImGui::PushStyleColor(ImGuiCol_Button,        bg);
         ImGui::PushStyleColor(ImGuiCol_ButtonHovered, bgHov);
         ImGui::PushStyleColor(ImGuiCol_ButtonActive,  bgAct);
@@ -1421,14 +1606,33 @@ void MainWindow_ImGui::renderSiliconStrictWindow()
             vramNoiseOnResetEnabled        = turnOn;
             systemRamNoiseOnResetEnabled   = turnOn;
             dramRefreshEnabled             = turnOn;
+            oorStrictModeEnabled           = turnOn;
             emulation->setSiliconStrictMode(turnOn);
             emulation->setVramNoiseOnReset(turnOn);
             emulation->setSystemRamNoiseOnReset(turnOn);
             emulation->setDramRefreshEnabled(turnOn);
-            setStatusMessage(turnOn
-                ? "SILICON STRICT ON — strict timing + VRAM/RAM noise + DRAM refresh armed"
-                : "MULTIPLEXING FANTASY — every silicon-fidelity knob OFF",
-                3.5f);
+            emulation->setOutOfRangeStrictMode(turnOn);
+            // Strict-mode RAM topology: real Apple-1 has 8 KB dual-bank RAM
+            // ($0000-$0FFF + $E000-$EFFF) with $1000-$7FFF floating. Force
+            // the preset RAM ceiling to 8 KB when strict is armed; restore
+            // to 64 KB when fantasy is armed (anything-goes emulation map).
+            presetRamKB = turnOn ? 8 : 64;
+            emulation->setPresetRamKB(presetRamKB);
+            // monochromeVariant stays as-is — it represents which physical card
+            // Bernie shipped (colour vs B&W), independent of strict-vs-fantasy.
+            std::string msg = turnOn
+                ? std::string("SILICON STRICT ON — 8 KB dual-bank RAM + strict timing + noise + refresh + OOR armed")
+                : std::string("MULTIPLEXING FANTASY — every silicon-fidelity knob OFF, 64 KB RAM");
+            if (turnOn) {
+                // Going strict: resolve Parmigiani conflicts now. Multiplexing
+                // forbidden once the master switch is green.
+                const std::string evicted = resolveParmigianiConflicts();
+                if (!evicted.empty()) {
+                    msg += " · ";
+                    msg += evicted;
+                }
+            }
+            setStatusMessage(msg, 4.5f);
         }
         ImGui::PopStyleColor(4);
         if (ImGui::IsItemHovered()) {
@@ -1439,34 +1643,134 @@ void MainWindow_ImGui::renderSiliconStrictWindow()
                 "   - Juke-Box EEPROM 28c256 byte-write cycle\n"
                 "   - VRAM noise on cold boot / hard reset\n"
                 "   - Apple-1 RAM noise on cold boot / hard reset\n"
-                "   - Apple-1 DRAM refresh stall (4/65 cycle steal)\n\n"
+                "   - Apple-1 DRAM refresh stall (4/65 cycle steal)\n"
+                "   - Out-of-range RAM strict (reads -> $FF, writes dropped)\n"
+                "   - RAM ceiling: 8 KB dual-bank ($0000-$0FFF + $E000-$EFFF)\n"
+                "   - Parmigiani's one-board-at-a-time rule (auto-evict)\n\n"
                 "Silicon Strict  : every knob ON — POM1 behaves like real\n"
-                "                  warm-NMOS P-LAB silicon.\n"
+                "                  warm-NMOS Apple-1 silicon. Multiplexing\n"
+                "                  is forbidden; conflicting cards get\n"
+                "                  auto-unplugged when armed.\n"
                 "Multiplexing\n"
-                "Fantasy         : every knob OFF — emulator-tolerant path.\n\n"
+                "Fantasy         : every knob OFF, 64 KB flat RAM, multiple\n"
+                "                  cards may decode overlapping windows.\n\n"
                 "You can still fine-tune individual knobs in the sections\n"
-                "below after clicking the master switch.\n"
-                "Default = Silicon Strict for every preset except\n"
-                "the Multiplexing Fantasy ones (preset 12 / 14).");
+                "below after clicking the master switch.");
+        }
+        // Hint under the button — wraps if the window is narrow.
+        ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.7f, 0.7f, 0.7f, 1.0f));
+        ImGui::TextWrapped("%s", strict
+            ? "Click the button to switch to Multiplexing Fantasy."
+            : "Click the button to switch to Silicon Strict.");
+        ImGui::PopStyleColor();
+    }
+    ImGui::Spacing();
+    ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.7f, 0.7f, 0.7f, 1.0f));
+    ImGui::TextWrapped(
+        "Cold-boot toggles below take effect at the next Hard Reset.");
+    ImGui::PopStyleColor();
+    ImGui::Spacing();
+
+    // -------- 3. Apple-1 System RAM ---------------------------------------
+    if (ImGui::CollapsingHeader("Apple-1 system RAM",
+                                ImGuiTreeNodeFlags_DefaultOpen)) {
+        ImGui::SeparatorText("Cold-boot");
+        bool ramFlag = systemRamNoiseOnResetEnabled;
+        if (ImGui::Checkbox("RAM noise on cold boot / hard reset##ram",
+                            &ramFlag)) {
+            systemRamNoiseOnResetEnabled = ramFlag;
+            emulation->setSystemRamNoiseOnReset(ramFlag);
+            setStatusMessage(ramFlag
+                ? "RAM noise ON — takes effect at next Hard Reset"
+                : "RAM noise OFF — zero-init preserved", 3.0f);
+        }
+        if (ImGui::IsItemHovered()) {
+            ImGui::SetTooltip(
+                "Real 6502 RAM contains bistable noise at power-on. POM1\n"
+                "default is zero-init. Turn ON to seed RAM with mt19937 noise\n"
+                "so programs that assume ZP/RAM = 0 fail here the same way\n"
+                "they fail on cold Apple-1 silicon.");
+        }
+
+        ImGui::SeparatorText("DRAM refresh");
+        bool refreshFlag = dramRefreshEnabled;
+        if (ImGui::Checkbox("DRAM refresh stall (4/65 cycles stolen from CPU)",
+                            &refreshFlag)) {
+            dramRefreshEnabled = refreshFlag;
+            emulation->setDramRefreshEnabled(refreshFlag);
+            setStatusMessage(refreshFlag
+                ? "DRAM refresh ON — CPU stalls 4/65 cycles per scanline"
+                : "DRAM refresh OFF — CPU runs at full 1.022727 MHz", 3.0f);
+        }
+        if (ImGui::IsItemHovered()) {
+            ImGui::SetTooltip(
+                "Apple-1's refresh controller halts the 6502 during 4 of every\n"
+                "65 cycles (H10·H6 NAND slots at horizontal counter $C9, $D9,\n"
+                "$E9, $F9 — every 10th char). Non-transparent on this design,\n"
+                "so cycle-counted code (Wozmon ACI cassette, Disk II Woz\n"
+                "Machine) runs SLOWER on silicon than on the emulator.\n\n"
+                "Turn ON to reproduce that drift in POM1. Effective CPU rate\n"
+                "drops from 1.022727 MHz to ~960 058 Hz (61/65 ratio).\n\n"
+                "Reference: UncleBernie on applefritter, Jan 2022.");
+        }
+
+        const uint64_t stalls = emulation->getDramRefreshStallCount();
+        ImGui::Text("Stall cycles since reset: %llu",
+                    (unsigned long long)stalls);
+        if (stalls > 0) {
+            // Stall cycles vs total cycles is exactly 4/65 by Bresenham
+            // construction; show the equivalent wallclock loss for intuition.
+            constexpr double kHz = 1022727.0;
+            const double stalledSeconds = stalls / kHz;
+            ImGui::Text("Equivalent wallclock loss: %.3f s of CPU time",
+                        stalledSeconds);
+        } else {
+            ImGui::TextColored(ImVec4(0.6f, 0.6f, 0.6f, 1.0f),
+                "(no stalls yet — flip toggle ON to start counting)");
+        }
+        if (ImGui::Button("Reset refresh counter")) {
+            emulation->resetDramRefreshStallCount();
+            setStatusMessage("DRAM refresh stall counter reset", 2.0f);
+        }
+
+        ImGui::SeparatorText("Out-of-range RAM");
+        // Pull live from snapshot so flips done in Memory Settings are mirrored
+        // here without delay; keep oorStrictModeEnabled in sync for the master
+        // button's arm/disarm cycle.
+        oorStrictModeEnabled = uiSnapshot.oorStrictMode;
+        bool oorFlag = oorStrictModeEnabled;
+        if (ImGui::Checkbox("Strict out-of-range RAM (reads -> $FF, writes dropped)##oor",
+                            &oorFlag)) {
+            oorStrictModeEnabled = oorFlag;
+            emulation->setOutOfRangeStrictMode(oorFlag);
+            setStatusMessage(oorFlag
+                ? "OOR strict ON — accesses above preset RAM ceiling read $FF, writes dropped"
+                : "OOR strict OFF — accesses above preset RAM ceiling tracked but not enforced",
+                3.0f);
+        }
+        if (ImGui::IsItemHovered()) {
+            ImGui::SetTooltip(
+                "Real Apple-1 with no expansion RAM in [ramKB*1024 .. $7FFF]\n"
+                "reads $FF (bus floats high) and drops writes. POM1 default\n"
+                "tracks accesses (status bar shows OOR:N) without enforcing.\n"
+                "Turn ON for hardware-accurate behaviour at < 64 KB presets;\n"
+                "programs that wrongly assume RAM is there will fail here\n"
+                "exactly like on bare-4K silicon.");
+        }
+        ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.7f, 0.7f, 0.7f, 1.0f));
+        ImGui::TextWrapped(
+            "Active range at %d KB preset: $%04X - $7FFF.",
+            presetRamKB, presetRamKB * 1024);
+        ImGui::PopStyleColor();
+        if (presetRamKB >= 64) {
+            ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.85f, 0.75f, 0.45f, 1.0f));
+            ImGui::TextWrapped(
+                "(No effect at 64 KB preset — no OOR region.)");
+            ImGui::PopStyleColor();
         }
     }
-    ImGui::TextColored(ImVec4(0.7f, 0.7f, 0.7f, 1.0f),
-        "Clicking the button arms / disarms every silicon-fidelity knob below.");
-    ImGui::Spacing();
 
-    // -------- 2. Goal banner ----------------------------------------------
-    ImGui::TextWrapped(
-        "Goal: keep POM1 close enough to real P-LAB silicon that silicon-side "
-        "bugs surface here in Silicon Strict mode — uninitialised VRAM ghosts, "
-        "assume-zero-RAM crashes, timing-tight VDP loops, EEPROM write losses. "
-        "Defaults preserve historical POM1 behaviour; flip a knob below to "
-        "step closer to the hardware.");
-    ImGui::Spacing();
-    ImGui::TextColored(ImVec4(0.7f, 0.7f, 0.7f, 1.0f),
-        "Cold-boot toggles below take effect at the next Hard Reset.");
-    ImGui::Spacing();
-
-    // -------- 3. TMS9918 Graphic Card -------------------------------------
+    // -------- 4. TMS9918 Graphic Card -------------------------------------
     if (ImGui::CollapsingHeader("TMS9918 Graphic Card",
                                 ImGuiTreeNodeFlags_DefaultOpen)) {
         ImGui::SeparatorText("Cold-boot");
@@ -1542,66 +1846,45 @@ void MainWindow_ImGui::renderSiliconStrictWindow()
         }
     }
 
-    // -------- 4. Apple-1 System RAM ---------------------------------------
-    if (ImGui::CollapsingHeader("Apple-1 system RAM",
+    // -------- 4b. Active Parmigiani conflicts -----------------------------
+    if (ImGui::CollapsingHeader("Active conflicts (Parmigiani's golden rule)",
                                 ImGuiTreeNodeFlags_DefaultOpen)) {
-        ImGui::SeparatorText("Cold-boot");
-        bool ramFlag = systemRamNoiseOnResetEnabled;
-        if (ImGui::Checkbox("RAM noise on cold boot / hard reset##ram",
-                            &ramFlag)) {
-            systemRamNoiseOnResetEnabled = ramFlag;
-            emulation->setSystemRamNoiseOnReset(ramFlag);
-            setStatusMessage(ramFlag
-                ? "RAM noise ON — takes effect at next Hard Reset"
-                : "RAM noise OFF — zero-init preserved", 3.0f);
-        }
-        if (ImGui::IsItemHovered()) {
-            ImGui::SetTooltip(
-                "Real 6502 RAM contains bistable noise at power-on. POM1\n"
-                "default is zero-init. Turn ON to seed RAM with mt19937 noise\n"
-                "so programs that assume ZP/RAM = 0 fail here the same way\n"
-                "they fail on cold Apple-1 silicon.");
-        }
-
-        ImGui::SeparatorText("DRAM refresh");
-        bool refreshFlag = dramRefreshEnabled;
-        if (ImGui::Checkbox("DRAM refresh stall (4/65 cycles stolen from CPU)",
-                            &refreshFlag)) {
-            dramRefreshEnabled = refreshFlag;
-            emulation->setDramRefreshEnabled(refreshFlag);
-            setStatusMessage(refreshFlag
-                ? "DRAM refresh ON — CPU stalls 4/65 cycles per scanline"
-                : "DRAM refresh OFF — CPU runs at full 1.022727 MHz", 3.0f);
-        }
-        if (ImGui::IsItemHovered()) {
-            ImGui::SetTooltip(
-                "Apple-1's refresh controller halts the 6502 during 4 of every\n"
-                "65 cycles (H10·H6 NAND slots at horizontal counter $C9, $D9,\n"
-                "$E9, $F9 — every 10th char). Non-transparent on this design,\n"
-                "so cycle-counted code (Wozmon ACI cassette, Disk II Woz\n"
-                "Machine) runs SLOWER on silicon than on the emulator.\n\n"
-                "Turn ON to reproduce that drift in POM1. Effective CPU rate\n"
-                "drops from 1.022727 MHz to ~960 058 Hz (61/65 ratio).\n\n"
-                "Reference: UncleBernie on applefritter, Jan 2022.");
-        }
-
-        const uint64_t stalls = emulation->getDramRefreshStallCount();
-        ImGui::Text("Stall cycles since reset: %llu",
-                    (unsigned long long)stalls);
-        if (stalls > 0) {
-            // Stall cycles vs total cycles is exactly 4/65 by Bresenham
-            // construction; show the equivalent wallclock loss for intuition.
-            constexpr double kHz = 1022727.0;
-            const double stalledSeconds = stalls / kHz;
-            ImGui::Text("Equivalent wallclock loss: %.3f s of CPU time",
-                        stalledSeconds);
+        const std::vector<std::string> conflicts = listParmigianiConflicts();
+        if (conflicts.empty()) {
+            ImGui::TextColored(ImVec4(0.45f, 0.85f, 0.45f, 1.0f),
+                "OK — every plugged card respects one-board-at-a-time.");
         } else {
-            ImGui::TextColored(ImVec4(0.6f, 0.6f, 0.6f, 1.0f),
-                "(no stalls yet — flip toggle ON to start counting)");
+            ImGui::TextColored(ImVec4(1.0f, 0.4f, 0.4f, 1.0f),
+                "%zu conflict%s detected:", conflicts.size(),
+                conflicts.size() == 1 ? "" : "s");
+            for (const auto& c : conflicts) {
+                ImGui::Bullet();
+                ImGui::TextColored(ImVec4(1.0f, 0.6f, 0.6f, 1.0f), "%s", c.c_str());
+            }
+            ImGui::Spacing();
+            if (siliconStrictModeEnabled) {
+                ImGui::TextColored(ImVec4(1.0f, 0.85f, 0.4f, 1.0f),
+                    "Strict mode is ON but conflicts are active — toggling the\n"
+                    "master switch will auto-evict the secondary card in each pair.");
+                if (ImGui::Button("Evict conflicts now")) {
+                    const std::string m = resolveParmigianiConflicts();
+                    setStatusMessage(m.empty()
+                        ? "No conflicts to evict"
+                        : m, 4.0f);
+                }
+            } else {
+                ImGui::TextColored(ImVec4(0.7f, 0.7f, 0.7f, 1.0f),
+                    "Multiplexing Fantasy mode tolerates these for emulator\n"
+                    "convenience — real silicon would hang the bus.");
+            }
         }
-        if (ImGui::Button("Reset refresh counter")) {
-            emulation->resetDramRefreshStallCount();
-            setStatusMessage("DRAM refresh stall counter reset", 2.0f);
+        if (ImGui::IsItemHovered()) {
+            ImGui::SetTooltip(
+                "P-LAB designer Claudio PARMIGIANI's golden rule: on real\n"
+                "Apple-1 hardware exactly ONE card may decode each address\n"
+                "window at a time. POM1's Multiplexing Fantasy presets break\n"
+                "this on purpose (#12, #14). Silicon Strict mode auto-evicts\n"
+                "the secondary card in every conflict pair when armed.");
         }
     }
 
@@ -1618,9 +1901,11 @@ void MainWindow_ImGui::renderSiliconStrictWindow()
                         isEeprom ? "EEPROM 28c256 (writable)"
                                  : "Flash (read-only)");
             if (!isEeprom) {
-                ImGui::TextColored(ImVec4(0.6f, 0.6f, 0.6f, 1.0f),
-                    "(Flash mode has no per-byte write cycle to enforce —\n"
+                ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.6f, 0.6f, 0.6f, 1.0f));
+                ImGui::TextWrapped(
+                    "(Flash mode has no per-byte write cycle to enforce — "
                     "switch to EEPROM via Hardware → Juke-Box.)");
+                ImGui::PopStyleColor();
             } else {
                 constexpr double kHz = 1022727.0;
                 ImGui::SeparatorText("Write timing");
@@ -1661,10 +1946,12 @@ void MainWindow_ImGui::renderSiliconStrictWindow()
                 }
                 if (!siliconStrictModeEnabled) {
                     ImGui::Spacing();
-                    ImGui::TextColored(ImVec4(1.0f, 0.85f, 0.4f, 1.0f),
-                        "Strict mode is OFF — every write lands instantly\n"
-                        "(no drops, legacy POM1 behaviour). Enable the master\n"
+                    ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 0.85f, 0.4f, 1.0f));
+                    ImGui::TextWrapped(
+                        "Strict mode is OFF — every write lands instantly "
+                        "(no drops, legacy POM1 behaviour). Enable the master "
                         "switch at the top to model 28c256 silicon properly.");
+                    ImGui::PopStyleColor();
                 }
                 if (ImGui::Button("Reset EEPROM counters")) {
                     emulation->resetJukeBoxEepromCounters();

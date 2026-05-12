@@ -256,6 +256,10 @@ bomb_active:     .res 1          ; 1 = bomb sequence in flight (gates wave-clear
 bomb_phase:      .res 1          ; 0..(BOMB_PHASES-1)
 bomb_t:          .res 1          ; ticks until the next phase fires
 
+; --- Hidden cheat: 'B' at title → skip to first super-boss wave (11) ---
+boss_cheat:      .res 1          ; 0 = normal start at wave 1.
+                                 ; 1 = jump straight to SUPER_WAVE_1.
+
 ; --- Super boss(es): 2-element arrays (wave 11 = idx 0; wave 22 = idx 0+1) ---
 is_super_boss:   .res 2          ; index 0 / 1 = boss 1 / boss 2 active flag
 super_x:         .res 2
@@ -339,6 +343,10 @@ main:
         LDX #>str_layout
         JSR print_str_ax
 
+        ; Clear hidden-boss cheat flag (BSS is uninitialised on Apple-1
+        ; cold boot — RAM may be noise per silicon-strict reset model).
+        LDA #0
+        STA boss_cheat
 @kb_wait:
         JSR title_wait_key
         PHA
@@ -349,7 +357,16 @@ main:
         BEQ @qwerty
         CMP #'2'
         BEQ @azerty
+        CMP #'B'                ; hidden code — jump straight to wave 11
+        BEQ @boss_cheat
         JMP @kb_wait
+@boss_cheat:
+        ; Secret cheat: 'B' at title spawns the player at SUPER_WAVE_1
+        ; (single super boss). Defaults to AZERTY (Q=left, D=right) —
+        ; French keyboard, jumps to @azerty.
+        LDA #1
+        STA boss_cheat
+        JMP @azerty
 @qwerty:
         LDA #'A'
         STA key_left_code
@@ -398,6 +415,15 @@ new_game:
         STA is_super_boss+1
         LDA #INITIAL_LIVES
         STA player_lives
+        ; Wave seed: 0 → first new_wave INCs to 1 (normal start).
+        ; If boss_cheat is set (hidden 'B' code), seed at SUPER_WAVE_1 - 1
+        ; so the first INC lands on wave 11 = single super boss.
+        LDA boss_cheat
+        BEQ @std_wave
+        LDA #(SUPER_WAVE_1 - 1)
+        STA wave
+        JMP new_wave
+@std_wave:
         LDA #$00
         STA wave
 

@@ -90,8 +90,10 @@ public:
     // $2000-$3FFF. When the card is plugged, the region behaves like RAM
     // (Apple-1 hardware reality) regardless of presetRamKB / strict mode.
     // This carve-out keeps `isOorAddress` from blocking legitimate writes
-    // to the framebuffer on small-RAM presets.
-    void setHgrFramebufferAttached(bool e) { hgrFramebufferAttached = e; }
+    // to the framebuffer on small-RAM presets. On every off→on transition
+    // the framebuffer is seeded with mt19937 noise to mimic real DRAM
+    // bistable power-on state (see resetMemory() and dev/SILICONBUGS.md).
+    void setHgrFramebufferAttached(bool e);
     bool isHgrFramebufferAttached(void) const { return hgrFramebufferAttached; }
 
     // Load Memory from file

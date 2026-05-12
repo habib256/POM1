@@ -727,6 +727,24 @@ start:
                                 ; + zeros ring_flags
                                 ; + recomputes derived player_dmg/def
 
+        ; --- Hidden boss-cheat: 'B' at the title → spawn directly in the
+        ;     depth-13 boss room. depth=12 + trans_mode=1 makes new_level
+        ;     INC depth to 13 and route through its @boss path, which does
+        ;     fill_with_walls + gen_boss_room + spawn_boss + the full
+        ;     paint (clear_name_table, FOV, render_map, place_all_sprites,
+        ;     update_hud) — same sequence as the standard first-level
+        ;     setup below, packaged in one call. After that, JMP main_loop
+        ;     to skip the random-dungeon spawn path. ---
+        LDA boss_cheat
+        BEQ @std_first_level
+        LDA #12
+        STA depth
+        LDA #1
+        STA trans_mode
+        JSR new_level
+        JMP main_loop
+@std_first_level:
+
         JSR clear_name_table    ; wipe title before the game view appears
         JSR gen_dungeon         ; procedural rooms + corridors + stairs;
                                 ; sets player_col/row to first room centre.
@@ -6478,6 +6496,11 @@ brf_win:        .byte "DEPTH 13 = ESCAPE", $FF
 ;   AZERTY: Q=west, D=east, Z=north, S=south  (ZQSD layout, French gamers)
 ; ----------------------------------------------------------------------------
 wait_kb_choice:
+        ; Clear the hidden-boss cheat flag — BSS is uninitialised on Apple-1
+        ; cold boot (potentially RAM noise). The 'B' branch below sets it
+        ; back to 1 if the secret code is pressed at the title.
+        LDA     #0
+        STA     boss_cheat
         ; Seed the PRNG to a non-zero starting state. The busy-wait loop
         ; below increments prng_lo every iteration so the actual seed
         ; depends on how many cycles the user takes to press a key —
@@ -6503,7 +6526,16 @@ wait_kb_choice:
         BEQ     @qwerty
         CMP     #('2' | $80)
         BEQ     @azerty
+        CMP     #('B' | $80)    ; hidden code — jump straight to boss room
+        BEQ     @boss_cheat
         JMP     @lp             ; not a layout key; keep waiting + seeding
+@boss_cheat:
+        ; Secret cheat: 'B' at the title spawns the player directly in the
+        ; depth-13 boss room with full HP / empty inventory. Defaults to
+        ; AZERTY bindings (ZQSD) — French keyboard, jumps to @azerty below.
+        LDA     #1
+        STA     boss_cheat
+        JMP     @azerty
 @qwerty:
         ; QWERTY → standard WASD: W=north, A=west, S=south, D=east.
         ; Matches the AZERTY ZQSD bindings below: each key sits at the

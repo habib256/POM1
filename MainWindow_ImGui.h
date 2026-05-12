@@ -251,6 +251,14 @@ private:
     bool vramNoiseOnResetEnabled = false;
     bool systemRamNoiseOnResetEnabled = false;
     bool dramRefreshEnabled = false;
+    // GEN2 HGR cosmetic monitor controls — per-window state, not silicon.
+    int  gen2MonitorMode = 0;       // 0=Colour, 1=Green, 2=Amber, 3=Mono
+    float gen2PhosphorPersistence = 0.0f;
+    float gen2ScanlineAlpha = 0.0f;
+    // UI mirror of Memory::isOutOfRangeStrictMode(). Resynced from the same
+    // snapshot the Memory Settings dialog reads (uiSnapshot.oorStrictMode).
+    // Armed/disarmed by the master Strict/Fantasy switch.
+    bool oorStrictModeEnabled = false;
     bool fullscreen = false;
 
     // Keyboard input
@@ -375,6 +383,30 @@ private:
     /// Remove loaded ROM/program regions that overlap the Juke-Box expansion
     /// window ($4000-$BFFF) so the Memory Map matches the card.
     void evictMemoryMapRegionsForJukeBox();
+
+    // ---- Parmigiani's "one board at a time" rule enforcement ----
+    // Returns the list of currently-active Parmigiani conflicts as
+    // human-readable strings (e.g. "GEN2 HGR ↔ A1-IO RTC ($2000-$200F)").
+    // Empty when the plugged-card combo is silicon-valid. Used by the
+    // Silicon Strict Inspector for the "Active conflicts" section and
+    // by the strict-mode master switch to decide what to auto-unplug.
+    std::vector<std::string> listParmigianiConflicts() const;
+    // Auto-unplugs the secondary card in every active conflict (deterministic
+    // priority order — see implementation). Returns a description of what
+    // was unplugged so callers can echo it via setStatusMessage. No-op when
+    // no conflicts are active.
+    std::string resolveParmigianiConflicts();
+    // Returns true when the requested cardName (matches the labels used in
+    // the Hardware menu) would create a new conflict against the currently
+    // plugged cards. Used to gate MenuItem / toolbar toggles in strict mode.
+    bool wouldCreateConflict(const char* cardName) const;
+    // Inline gate for MenuItem / toolbar handlers. When the user just flipped
+    // `uiFlag` to true but silicon-strict mode forbids the resulting card
+    // combo (per wouldCreateConflict), revert the flag and emit a status
+    // message. Returns true when the toggle was REFUSED so the caller can
+    // skip the emulation->set...Enabled() call and any side effects.
+    bool gateStrictPlug(const char* cardName, bool& uiFlag);
+
     void setStatusMessage(const std::string& message, float duration = 3.0f);
     void updateStatus(float deltaTime);
     std::string disassemble(uint16_t pc, int& instrLen);
