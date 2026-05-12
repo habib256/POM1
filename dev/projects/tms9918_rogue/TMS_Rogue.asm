@@ -4263,6 +4263,21 @@ clear_hurt_flags:
 ; cell grid as the player, which already aligns).
 ; ----------------------------------------------------------------------------
 place_all_sprites:
+        ; VBlank-gated SAT rebuild — best-practice §6 of
+        ; doc/TMS9918-SPRITE_BEST_PRACTICES.md. Eliminates 1-frame sprite
+        ; tearing on cell-transition turns (old positions above the raster
+        ; intersection, new positions below) and drops every SAT write
+        ; into the wide ScreenOff slot table so silicon-strict POM1 never
+        ; emits [TMS9918 DROP] from this function. Cost: ≤1 frame of
+        ; latency between key press and on-screen update — imperceptible
+        ; for a turn-based game. The macro drains the stale F flag from
+        ; the previous frame then spins until F sets at the start of the
+        ; next VBlank.
+        WAIT_VBLANK
+        ; Cushion across the BIT/BPL → STA VDP_CTRL boundary (matches the
+        ; Galaga render_sprites pattern — the auto-patcher can't see
+        ; cross-macro flow into STA VDP_CTRL).
+        JSR     tms9918_pad12
         LDA     #$00
         STA     VDP_CTRL
         JSR     tms9918_pad12   ; +12c silicon-strict pad12-v3 (before LDA #imm bridge)

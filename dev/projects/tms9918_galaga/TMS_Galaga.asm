@@ -4369,22 +4369,29 @@ init_vdp:
         DEX
         BNE @np
 
-        ; --- Init sprite attribute table: only the chain terminator ---
+        ; --- Init sprite attribute table: gold-standard defensive fill.
+        ;     SAT[0].Y = $D0 (chain terminator) + SAT[1..127] = $D1
+        ;     (off-screen Y, NOT terminator). Mirrors lib disable_sprites
+        ;     (tms9918m1.asm) — guarantees that any future partial
+        ;     render_sprites pass which terminates early never re-exposes
+        ;     boot-time VRAM noise as ghost sprites. See
+        ;     doc/TMS9918-SPRITE_BEST_PRACTICES.md §1 and §2.
         LDA #$00
         STA VDP_CTRL
         JSR     tms9918_pad12   ; +12c silicon-strict pad12-v3 (before LDA #imm bridge)
-        LDA #$5B                ; $1B | $40
+        LDA #$5B                ; $1B | $40 -> write at $1B00
         STA VDP_CTRL
         JSR     tms9918_pad12   ; +12c silicon-strict pad12-v3 (before LDA #imm bridge)
-        LDA #TERM_Y
-        STA VDP_DATA
-        JSR     tms9918_pad12   ; +12c silicon-strict pad12-v3 (before LDA #imm bridge)
-        LDA #$00
+        LDA #TERM_Y             ; SAT[0].Y = $D0 (chain terminator)
         STA VDP_DATA
         JSR     tms9918_pad12   ; +12c silicon-strict pad12-v3 (back-to-back VDP store)
+        LDX #127                ; SAT[1..127] = $D1 via auto-inc
+        LDA #$D1
+@sat_fill:
         STA VDP_DATA
         JSR     tms9918_pad12   ; +12c silicon-strict pad12-v3 (back-to-back VDP store)
-        STA VDP_DATA
+        DEX
+        BNE @sat_fill
 
         ; --- Final: re-arm R1 with the table value (display ON). Display
         ;     stays OFF until the cmd byte commits — threshold = 2c through

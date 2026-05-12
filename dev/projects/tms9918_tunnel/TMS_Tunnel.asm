@@ -466,13 +466,17 @@ init_stars:
         STA spawn_x
         LDA #CENTER_Y
         STA spawn_y
+        ; Star coords are now SIGNED 8-bit displacement from the current
+        ; spawn point, not absolute screen pixels -> reset to 0 (= "at
+        ; spawn"). Display X = spawn_x + star_x_hi (8-bit unsigned add,
+        ; wrap allowed for fractional crossings). Signed overflow during
+        ; the per-frame velocity add is what tells us a star has reached
+        ; the edge of the visible area, at which point we respawn.
         LDX #(NUM_STARS - 1)
 @is:    LDA #0
         STA star_x_lo,X
         STA star_y_lo,X
-        LDA spawn_x
         STA star_x_hi,X
-        LDA spawn_y
         STA star_y_hi,X
         ; Lifespans staggered by 3 frames per star -> 16*3 = 48 frame ramp
         TXA
@@ -496,7 +500,12 @@ init_stars:
 update_stars:
         LDX #(NUM_STARS - 1)
 @us:    LDY star_vel,X
-        ; --- 16-bit X = X + vel_x ---
+        ; --- 16-bit signed X-displacement += vel_x ---
+        ;     star_x_hi is interpreted as signed -128..+127 (pixels from
+        ;     spawn). When the per-frame add overflows that range (V flag
+        ;     set on the high-byte ADC), the star has just crossed off
+        ;     the visible viewport in X -> respawn instead of wrapping
+        ;     back in on the opposite side.
         CLC
         LDA star_x_lo,X
         ADC vel_x_lo,Y
@@ -504,7 +513,8 @@ update_stars:
         LDA star_x_hi,X
         ADC vel_x_hi,Y
         STA star_x_hi,X
-        ; --- 16-bit Y = Y + vel_y ---
+        BVS @respawn
+        ; --- 16-bit signed Y-displacement += vel_y ---
         CLC
         LDA star_y_lo,X
         ADC vel_y_lo,Y
@@ -512,16 +522,18 @@ update_stars:
         LDA star_y_hi,X
         ADC vel_y_hi,Y
         STA star_y_hi,X
-        ; --- Decrement life; if 0, respawn. ---
+        BVS @respawn
+        ; --- Lifespan safety net (in case a star never overflows, e.g.
+        ;     near-vertical bearings that escape Y before X) ---
         DEC star_life,X
         BNE @uok
-        ; Respawn at the current tunnel-centre with a different bearing.
+@respawn:
+        ; Reset displacement to 0 -> star is back at the current spawn
+        ; point. Rotate the velocity index by +5 to pick a fresh bearing.
         LDA #0
         STA star_x_lo,X
         STA star_y_lo,X
-        LDA spawn_x
         STA star_x_hi,X
-        LDA spawn_y
         STA star_y_hi,X
         LDA #STAR_LIFE
         STA star_life,X
@@ -547,10 +559,15 @@ write_sat:
         JSR tms9918_pad12
 
         LDX #0
-@sl:    LDA star_y_hi,X           ; Y attr
+@sl:    LDA star_y_hi,X           ; signed Y-displacement from spawn
+        CLC
+        ADC spawn_y               ; -> absolute screen Y (8-bit wrap OK,
+                                  ;    overflow path already respawns)
         STA VDP_DATA
         JSR tms9918_pad12
-        LDA star_x_hi,X           ; X attr
+        LDA star_x_hi,X           ; signed X-displacement from spawn
+        CLC
+        ADC spawn_x               ; -> absolute screen X
         STA VDP_DATA
         JSR tms9918_pad12
         LDA #0                    ; pattern name (single white pixel)
