@@ -395,13 +395,19 @@ void Screen_ImGui::drawCRTBackdrop(float x0, float y0, float x1, float y1, bool 
 //
 // Total = 4 + 24×20 + 3×4 = 496 dashes / 28 rows.
 //
-// Anchor (per user observation): the first dot of the FIRST 20-dot row
-//   (which is the second row overall, after the 4-dot top line) lives at
-//   (x0 + cellW, y0 + cellH) — the bottom-right corner of char(0,0).
-// Step is chosen so that row 1 sits exactly at y = cellH and row 27
-// (last footer line) lands at y = h (bottom edge).
+// Vertical pitch IS cellH (one char-row period of horizontal-scan timing).
+// The 24 active rows therefore land exactly at the bottoms of the 24 text
+// character rows — that is *where the décalage was*: previously the 28
+// rows were compressed into the 24·cellH text-grid height, producing a
+// progressive drift that pulled the last active row up to ~y0+21·cellH
+// instead of y0+24·cellH. The 4 blanking rows (1 top + 3 bottom) now
+// extend into the over-scan above and below the text grid — matching the
+// real CRT photo where they live outside the active text area.
 //
-// Horizontal positions are also pinned to char-cell right edges:
+// Anchor: the first dot of the FIRST 20-dot row (row 1) lives at
+//   (x0 + cellW, y0 + cellH) — the bottom-right corner of char(0,0).
+//
+// Horizontal positions are pinned to char-cell right edges:
 //   - 4-dot rows  : every 10 chars  → x = cellW, 11·cellW, 21·cellW, 31·cellW
 //                   (corresponds to the H10·H6 NAND slots $C9/$D9/$E9/$F9).
 //   - 20-dot rows : every 2 chars   → x = cellW, 3·cellW, …, 39·cellW.
@@ -416,16 +422,17 @@ void Screen_ImGui::drawCRTRefreshDots(float x0, float y0, float x1, float y1,
     constexpr int kTopRows    = 1;
     constexpr int kActiveRows = 24;
     constexpr int kBotRows    = 3;
-    constexpr int kTotalRows  = kTopRows + kActiveRows + kBotRows;  // 28
     const float w = x1 - x0;
     const float h = y1 - y0;
     if (w <= 0.0f || h <= 0.0f) return;
     const float cellW = w / static_cast<float>(kCharCols);
     const float cellH = h / static_cast<float>(kCharRows);
-    // Anchor row 1 (first 20-dot row) at y = cellH, last row at y = h.
-    // Row 0 (the 4-dot top line) sits one step above row 1, so it lands
-    // just below the top edge.
-    const float rowStep = (h - cellH) / static_cast<float>(kTotalRows - 2);  // = (h - cellH) / 26
+    // Row pitch = one character-row period (= cellH). Row 1 anchors at
+    // y = cellH; row 24 lands at y = 24·cellH = h. Row 0 (top blanking)
+    // sits at y = 0 (top edge); rows 25..27 (bottom blanking) extend
+    // 1·cellH, 2·cellH, 3·cellH below the text grid into the parent
+    // window's CRT envelope.
+    const float rowStep = cellH;
     // Small vertical-rectangle marker — taller than wide but compact.
     const float dashW = std::min(2.0f, std::max(1.0f, cellW   * 0.10f));
     const float dashH = std::min(3.0f, std::max(1.5f, rowStep * 0.28f));
