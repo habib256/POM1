@@ -158,9 +158,11 @@ apple1 apple1 (
 );
 
 // 1-bit RGB → 8-bit (sera mixé/scalé par sys/)
+{% raw %}
 assign VGA_R = {{r,r,r}, 5'b0};
 assign VGA_G = {{g,g,g}, 5'b0};
 assign VGA_B = {{b,b,b}, 5'b0};
+{% endraw %}
 ```
 
 ---
