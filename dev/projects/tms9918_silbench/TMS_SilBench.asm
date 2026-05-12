@@ -66,6 +66,7 @@
         .import arm_5s_trigger, wait_5s_trigger
         .importzp vdp_lo, vdp_hi
         .import tms9918_pad12
+        .import vdp_display_off, vdp_display_on   ; lib helpers (tms9918_pad.asm)
 
 .include "apple1.inc"
 .include "tms9918.inc"
@@ -433,29 +434,8 @@ wait_frame:
         BPL @w
         RTS
 
-; ----------------------------------------------------------------------------
-; vdp_display_off — write R1 = $80 (display blanked, 16K, sprites 8x8).
-; Used at exit and between mode-switching tests.
-; ----------------------------------------------------------------------------
-vdp_display_off:
-        LDA #$80
-        STA VDP_CTRL
-        JSR tms9918_pad12
-        LDA #$81
-        STA VDP_CTRL
-        JSR tms9918_pad12
-        RTS
-
-; ----------------------------------------------------------------------------
-; vdp_display_on — re-arm R1 to $C0 (display ON, 16K, sprites 8x8 unmag).
-; Used after vdp_display_off to bracket SAT setup so the sprite scanner
-; doesn't latch spurious 5S/C from a partially-mutated SAT.
-; ----------------------------------------------------------------------------
-vdp_display_on:
-        LDY #1
-        LDA #$C0
-        JSR vdp_write_reg
-        RTS
+; vdp_display_off / vdp_display_on moved to dev/lib/tms9918/tms9918_pad.asm
+; (shared with Mandel / Logo / Rogue). Imported at top of file.
 
 ; ----------------------------------------------------------------------------
 ; vdp_full_reset — bring the chip into a deterministic quiet state between

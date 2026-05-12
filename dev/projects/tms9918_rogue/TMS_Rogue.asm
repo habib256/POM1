@@ -22,6 +22,7 @@
 
         .import tms9918_pad12  ; silicon-strict pad12-v3 (helper from tms9918_pad.asm)
         .import tms9918_pad40  ; silicon-strict pad40 (hot upload loops)
+        .import vdp_display_off ; lib helper — blank display for burst windows
 .include "apple1.inc"
 .include "tms9918.inc"
 
@@ -448,6 +449,9 @@ trans_mode:     .res 1          ; level-transition kind (set by
 wrap_anchor:    .res 1          ; row (modes 2/3) or col (modes 4/5)
                                 ; the player exited at — preserved as
                                 ; the spawn anchor in the wrapped room.
+boss_cheat:     .res 1          ; 0 = normal start at depth 1.
+                                ; 1 = hidden code 'B' picked at title:
+                                ; spawn directly in depth-13 boss room.
 hp:             .res 1          ; current HP (0..HP_MAX). 0 = death.
 player_hurt:    .res 1          ; non-zero if the player sprite should
                                 ; render in COL_HURT this frame.
@@ -672,33 +676,13 @@ start:
         LDX #$FF
         TXS
 
-        JSR init_vdp_g1         ; 8 registers + disable_sprites at $1B00
-
-        ; --- Display-OFF discipline (real-silicon adaptation, May 2026) ---
-        ; init_vdp_g1's final phase re-arms R1 = $C0 (display ON). On POM1
-        ; VRAM is zero-initialised, so the screen stays black during the
-        ; upload phase. On real P-LAB silicon VRAM is DRAM noise — the user
-        ; sees garbage tiles (random name-table indices into the not-yet-loaded
-        ; pattern table) until clear_name_table lands tens of ms later.
-        ; Force R1 = $80 immediately (display OFF, 16K, IRQ off, sprite 8x8)
-        ; and keep it OFF until every table is on solid ground. As a bonus,
-        ; CPU↔VDP access slots widen to the 2c gate (no sprite contention).
-        LDA     #$80
-        STA     VDP_CTRL
-        JSR     tms9918_pad12
-        LDA     #$81            ; cmd = $80 | reg 1
-        STA     VDP_CTRL
-        JSR     tms9918_pad12
-
-        ; --- SAT defensive Y-init (doc/TMS9918-SPRITE_INIT.md §4.2). ---
-        ; disable_sprites only wrote $D0 to SAT[0].Y. The other 31 Y slots
-        ; hold DRAM noise on real silicon: a stray $D0 there would freeze
-        ; the SAT scan at the wrong slot; an aberrant Y < $D0 would paint
-        ; a ghost sprite in the first frames. Set every byte of the SAT
-        ; to $D1 (off-screen Y, no terminator), then restore the $D0
-        ; terminator at slot 0 via disable_sprites.
-        JSR     clear_sat_y
-        JSR     disable_sprites
+        JSR init_vdp_g1         ; 8 regs + defensive SAT init via lib
+                                ; disable_sprites (full 128-byte $D0+$D1 fill,
+                                ; mirrors tms9918m2 — May 2026 symmetrization)
+        ; init_vdp_g1 exits with R1 = $C0 (display ON). Blank again for the
+        ; upload phase — masks the visible noise frame on real silicon AND
+        ; widens CPU↔VDP slots to the 2c ScreenOff gate.
+        JSR     vdp_display_off ; lib helper (tms9918_pad.asm)
 
         ; All VRAM uploads happen with display OFF — masks the visible noise
         ; frame AND gives the VDP its widest CPU access window.
@@ -1106,31 +1090,10 @@ override_r1_16x16:
         RTS
 
 
-; ----------------------------------------------------------------------------
-; clear_sat_y: write $D1 to all 128 bytes of the SAT at $1B00. Purpose is
-; defensive — see doc/TMS9918-SPRITE_INIT.md §4.2 "Programme / VRAM non
-; initialisée". On real P-LAB silicon the SAT comes up full of DRAM noise.
-; A stray $D0 in any Y slot would terminate the scan before the slot the
-; game cares about; an aberrant Y < $D0 would paint a ghost sprite in
-; the first frames. Writing $D1 everywhere (off-screen Y, NOT the
-; terminator) guarantees no ghost and no premature termination. Caller
-; MUST follow up with disable_sprites to put back the $D0 at SAT[0].Y.
-; ----------------------------------------------------------------------------
-clear_sat_y:
-        JSR     tms9918_pad12   ; caller-gap cushion
-        LDA     #$00            ; addr low
-        STA     VDP_CTRL
-        JSR     tms9918_pad12   ; addr-low → addr-cmd bridge
-        LDA     #$5B            ; $1B | $40 = write at $1B00 (SAT base)
-        STA     VDP_CTRL
-        JSR     tms9918_pad12   ; cmd → first STA VDP_DATA cushion
-        LDX     #128
-        LDA     #$D1
-@lp:    STA     VDP_DATA
-        JSR     tms9918_pad12   ; silicon-strict inner gap
-        DEX
-        BNE     @lp
-        RTS
+; clear_sat_y removed May 2026 — the defensive SAT.Y init is now part of
+; tms9918m1.asm::disable_sprites (called internally by init_vdp_g1). Same
+; $D0+127×$D1 pattern, in lib so all Mode I consumers benefit (Rogue, Chess,
+; Snake, OrbitalPool). See doc/TMS9918-SPRITE_INIT.md §4.2.
 
 
 ; ----------------------------------------------------------------------------

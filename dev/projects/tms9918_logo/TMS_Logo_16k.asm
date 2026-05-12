@@ -66,6 +66,7 @@
 
 ; --- I/O equates (Apple-1 + TMS9918 hardware) ------------------------------
         .import tms9918_pad12  ; silicon-strict pad12-v3 (helper from tms9918_pad.asm)
+        .import vdp_display_off    ; lib helper (tms9918_pad.asm)
 .include "apple1.inc"
 .include "tms9918.inc"          ; VDP_CTRL, VDP_DATA equates for SETSHAPE
 
@@ -337,7 +338,8 @@ main:
         JSR print_banner
         JSR init_vdp_g2
         JSR clear_bitmap
-        JSR disable_sprites
+        JSR disable_sprites ; lib m2: defensive SAT.Y fill + $D0 terminator
+                            ; (full $D1 burst per doc § 4.2, see m2.asm)
         LDA #0
         STA plot_mode
         STA turtle_visible
@@ -418,8 +420,8 @@ new_prompt:
         RTS
 
 banner_msg:
-        .byte $0D, "APPLE-1 LOGO/TMS9918 - TYPE HELP", $0D
-        .byte "(C) 2026 VERHILLE ARNAUD", $0D
+        .byte $0D, "APPLE-1 LOGO V2.6 - HELP", $0D
+        .byte "(C) 2026 A. VERHILLE", $0D
         .byte 0
 
 ; -------------------------------------------------------------------------
@@ -4018,15 +4020,11 @@ cmd_setshape:
         LDA #1
         STA sprite_mode
 @write_r1:
-        ; Always rewrite R1 from spr_r1: this is the only way to switch
-        ; cleanly between 8x8 and 16x16 shapes mid-session. spr_r1 was
-        ; set by apply_sprite_size at @scmp's match site -- $C2 for
-        ; 16x16 (BIRD/TURTL/BOAT), $C0 for 8x8 (HEART, ...).
-        LDA spr_r1
-        STA VDP_CTRL
-        JSR     tms9918_pad12   ; +12c silicon-strict pad12-v3 (before LDA #imm bridge)
-        LDA #$81                  ; write to register 1
-        STA VDP_CTRL
+        ; Blank display before the sprite-pattern burst (doc § 6.4).
+        ; Restored to spr_r1 ($C0/$C2) after the burst — spr_r1 carries
+        ; the correct sprite-size bit, so we can't use vdp_display_on
+        ; (which is the fixed-$C0 helper).
+        JSR vdp_display_off       ; lib helper (tms9918_pad.asm)
 @load_pat:
         ; Copy spr_size bytes from (shape_pat),Y to VRAM $1800 (sprite-0
         ; pattern). spr_size = 8 or 32, latched from shape_table at
@@ -4045,6 +4043,14 @@ cmd_setshape:
         CPY spr_size
         JSR     tms9918_pad12   ; +12c silicon-strict pad12-v3 (back-to-back VDP store)
         BNE @cppat
+        ; --- Restore display ON with the correct sprite-size bit. spr_r1
+        ;     was set by apply_sprite_size at @scmp's match site --
+        ;     $C2 for 16x16 (BIRD/TURTL/BOAT), $C0 for 8x8 (HEART/…). ---
+        LDA spr_r1
+        STA VDP_CTRL
+        JSR     tms9918_pad12   ; +12c silicon-strict pad12-v3 (before LDA #imm bridge)
+        LDA #$81                  ; write to register 1
+        STA VDP_CTRL
 @reposition:
         ; Reposition sprite at the current turtle (tx, ty).
         JSR draw_turtle

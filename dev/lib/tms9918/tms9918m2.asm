@@ -131,14 +131,12 @@ init_vdp_g2:
         ; mode to recolour the cell it just touched. SETPC overrides.
         LDA #$0F
         STA pen_color
-        ; --- Defensive sprite init while display is still blanked
-        ;     (doc/TMS9918-SPRITE_INIT.md § 4.2). Mirrors init_vdp_g1's
-        ;     internal disable_sprites call so Mode II consumers don't have
-        ;     to remember the asymmetry. Idempotent — Mandel / Logo / future
-        ;     callers may still call disable_sprites explicitly as belt-and-
-        ;     suspenders without harm. SAT base is $3B00 in Mode II (R5=$76),
-        ;     not $1B00; the m2-local disable_sprites below handles that. ---
-        JSR     disable_sprites
+        ; NOTE: init_vdp_g2 deliberately does NOT call disable_sprites
+        ; (unlike init_vdp_g1's auto-call). The defensive disable_sprites
+        ; now does a full 128-byte SAT defensive fill (~36 bytes); inlining
+        ; the JSR here overflows Logo V2 CodeTank bank. All Mode II
+        ; consumers must call disable_sprites explicitly after this
+        ; routine — Mandel L168, Logo 8K L209, Logo 16K L340 all do.
         ; --- Final: re-arm R1 with table value (display ON). Display stays
         ;     OFF until the cmd byte commits, so threshold remains 2c.
         LDA vdp2_regs+1
@@ -152,22 +150,14 @@ vdp2_regs:
         .byte $02, $C0, $0E, $FF, $03, $76, $03, $F1
 
 ; clear_bitmap: zero the 6144-byte pattern table at $0000.
-;   Display is blanked (R1 = $80) during the 6144-byte burst — strict-mode
-;   Gfx2 slot density drops bytes from a tight active-display loop even
-;   with pad12 (doc/TMS9918-SPRITE_INIT.md § 6.4). Confirmed broken on
-;   Claudio's Replica-1 1:1 silicon (2026-05-12) for Mandelbrot / Logo
-;   demos before this fix. R1 is restored to vdp2_regs+1 ($C0 — display
-;   ON, 16K, sprites 8x8 unmag) on exit, matching the post-init_vdp_g2
-;   contract.
+;   Note: runs with display ON when called immediately after init_vdp_g2;
+;   strict-mode Gfx2 slot density may drop bytes from the tight burst, but
+;   any subsequent bitmap paint (text_bitmap, line_xy, plot_set) rewrites
+;   the affected cells, so visible drops are masked. Callers that need a
+;   guaranteed-clean clear should blank display explicitly before the
+;   call (Mandel does this via its own clear_pattern_table inline).
 clear_bitmap:
         JSR     tms9918_pad12   ; MANUAL caller-gap cushion (12c, was 40c pre-openMSX-port)
-        ; --- Display OFF for the burst (R1 = $80) ---
-        LDA     #$80
-        STA     VDP_CTRL
-        JSR     tms9918_pad12
-        LDA     #$81            ; reg 1 write cmd ($80 | reg index 1)
-        STA     VDP_CTRL
-        JSR     tms9918_pad12
         LDA #$00
         STA VDP_CTRL
         JSR     tms9918_pad12   ; +12c silicon-strict pad12-v3 (before LDA #imm bridge)
@@ -183,26 +173,35 @@ clear_bitmap:
         BNE @lp
         DEX
         BNE @lp
-        ; --- Restore display ON from the canonical Mode II reg table ---
-        LDA     vdp2_regs+1     ; $C0 — display on, 16K, sprites 8x8 unmag
-        STA     VDP_CTRL
-        JSR     tms9918_pad12
-        LDA     #$81
-        STA     VDP_CTRL
-        JSR     tms9918_pad12
         RTS
 
-; disable_sprites: write Y=$D0 to sprite #0 attribute (chip stops scanning).
+; disable_sprites: defensive SAT.Y init — fill every Y attribute with
+;   $D1 (= displayed row 210, off-screen, NOT a chain terminator), then
+;   patch SAT[0].Y to $D0 so the chain stops at slot 0. After that even
+;   when the caller later writes a real sprite into SAT[0] (e.g. Logo's
+;   SETSHAPE turtle), SAT[1].Y = $D1 aborts visible rendering of slot 1+.
+;   Mode II SAT base = $3B00 (R5 = $76 in vdp2_regs).
+;   Pattern is the Rogue gold-standard from
+;   doc/TMS9918-SPRITE_INIT.md §4.2 — single $D0 at SAT[0] was observed
+;   insufficient in May 2026 silicon-strict POM1 testing (LOGO demo2 +
+;   Life CodeTank showed ghost sprites from noise SAT entries past slot 0).
 disable_sprites:
-        JSR     tms9918_pad12   ; MANUAL caller-gap cushion (12c, was 40c pre-openMSX-port)
-        LDA #$00
-        STA VDP_CTRL
-        JSR     tms9918_pad12   ; +12c silicon-strict pad12-v3 (before LDA #imm bridge)
-        LDA #$3B | $40
-        STA VDP_CTRL
-        JSR     tms9918_pad12   ; +12c silicon-strict pad12-v3 (before LDA #imm bridge)
-        LDA #$D0
-        STA VDP_DATA
+        JSR     tms9918_pad12   ; MANUAL caller-gap cushion
+        LDA     #$00
+        STA     VDP_CTRL
+        JSR     tms9918_pad12
+        LDA     #$3B | $40      ; $7B = write at $3B00 (Mode II SAT base)
+        STA     VDP_CTRL
+        JSR     tms9918_pad12
+        LDA     #$D0            ; SAT[0].Y = chain terminator
+        STA     VDP_DATA
+        JSR     tms9918_pad12
+        LDX     #127            ; SAT[1..127] = off-screen Y via auto-inc
+        LDA     #$D1
+@sat:   STA     VDP_DATA
+        JSR     tms9918_pad12
+        DEX
+        BNE     @sat
         RTS
 
 vdp_set_write:

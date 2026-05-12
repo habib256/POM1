@@ -387,26 +387,30 @@ init_vdp:
         DEX
         BNE @clr_pg
 
-        ; --- Defensive sprite init (doc/TMS9918-SPRITE_INIT.md § 4.2). ---
-        ; R1 = $C0 in vdp_regs has the sprite enable on (bit 1 = 0 → 8x8),
-        ; so sprite scanner is live the moment we re-arm R1. With VRAM
-        ; bistable noise on cold boot the SAT may contain a stray $D0 in
-        ; an unwanted Y slot (chain terminator at the wrong position) or
-        ; a visible Y < $D0 (ghost sprite from sprite pattern noise at
-        ; $3800). Life uses no sprites at all, so write $D0 to SAT[0].Y
-        ; ($1B00): chip stops scanning immediately, all subsequent SAT
-        ; bytes are ignored regardless of noise. Same primitive as the
-        ; lib's disable_sprites; inlined here because Life does not link
-        ; tms9918m1.o.
+        ; --- Defensive SAT init (doc/TMS9918-SPRITE_INIT.md § 4.2 — Rogue
+        ;     gold standard). Set addr = $1B00, write $D0 (SAT[0].Y =
+        ;     chain terminator) then 127× $D1 (off-screen Y, NOT
+        ;     terminator) via auto-increment. Even if SAT[0] is ever
+        ;     overwritten with a real sprite, SAT[1].Y = $D1 aborts
+        ;     visible rendering of slot 1+. Display is currently blanked
+        ;     (R1=$80 from the masked regloop) so the 128 writes go
+        ;     through the fast ScreenOff slot table.
         LDA #$00
         STA VDP_CTRL
         JSR     tms9918_pad12
         LDA #$5B                ; $1B | $40 = write at $1B00 (SAT base)
         STA VDP_CTRL
         JSR     tms9918_pad12
-        LDA #$D0                ; sprite chain terminator
+        LDA #$D0                ; SAT[0].Y = chain terminator
         STA VDP_DATA
         JSR     tms9918_pad12
+        LDX #127
+        LDA #$D1                ; SAT[1..127] = off-screen Y, no terminator
+@sat_clr:
+        STA VDP_DATA
+        JSR     tms9918_pad12
+        DEX
+        BNE @sat_clr
 
         ; --- All init bursts done — re-arm R1 to display ON (vdp_regs[1] = $C0).
         ;     Up to this point the regloop deliberately masked off the BLANK bit

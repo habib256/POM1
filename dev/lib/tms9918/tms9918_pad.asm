@@ -21,9 +21,13 @@
 ; Reference: dev/SILICONBUGS.md Bug N°1 §2 (paranoid 40c contract).
 ; ============================================================================
 
+.include "tms9918.inc"
+
 .export tms9918_pad12
 .export tms9918_pad24
 .export tms9918_pad40
+.export vdp_display_off
+.export vdp_display_on
 
 .segment "CODE"
 
@@ -52,3 +56,36 @@ tms9918_pad40:
         nop                     ; +2c  → 32c
         nop                     ; +2c  → 34c
         rts                     ; +6c RTS, total = 40c at caller's JSR site
+
+; ============================================================================
+; Display gate helpers (R1 register manipulation).
+; ============================================================================
+; vdp_display_off:  R1 = $80  (blanked, 16K, no IRQ, sprite 8x8 unmag).
+; vdp_display_on:   R1 = $C0  (display ON, 16K, sprite 8x8 unmag — matches
+;                              vdp1_regs[1] and vdp2_regs[1] defaults).
+;
+; Use these to bracket any VRAM burst that runs after init_vdp_g{1,2} has
+; left display ON. Strict-mode active-display slot density (Gfx12 ~19
+; slots/line) drops bytes from tight loops even with pad12 between writes;
+; blanking flips POM1 to slotsMsx1ScreenOff (~107 slots/line, ~2c apart)
+; where bursts always fit. See doc/TMS9918-SPRITE_INIT.md § 6.4.
+;
+; Callers that need a non-default ON value (e.g. R1 = $C2 for 16x16 sprites,
+; or $C3 for 16x16+mag) must do their own write and skip vdp_display_on.
+; ============================================================================
+
+; Fall-through trick: vdp_display_on loads A=$C0 then BIT $0080 swallows the
+; LDA #$80 of vdp_display_off (BIT abs is 3 bytes, $2C opcode + 2 byte addr).
+; Both paths converge on the shared STA / pad / STA / pad / RTS tail.
+; Saves ~12 bytes vs two independent helpers.
+vdp_display_on:
+        LDA     #$C0
+        .byte   $2C             ; BIT abs — opcode-swallows the next LDA #imm
+vdp_display_off:
+        LDA     #$80
+        STA     VDP_CTRL
+        JSR     tms9918_pad12
+        LDA     #$81            ; cmd = $80 | reg 1 (write to R1)
+        STA     VDP_CTRL
+        JSR     tms9918_pad12
+        RTS

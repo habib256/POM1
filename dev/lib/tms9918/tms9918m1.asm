@@ -109,19 +109,32 @@ init_vdp_g1:
         RTS
 
 ; ----------------------------------------------------------------------------
-; disable_sprites: write $D0 to sprite #0 Y attribute at VRAM $1B00. The
-;   TMS9918 stops processing the sprite chain at the first $D0 it sees.
+; disable_sprites: defensive SAT init at VRAM $1B00 (Mode I SAT base, R5=$36).
+;   Single $D0 at SAT[0].Y was observed insufficient under POM1 silicon-strict
+;   (LOGO demo2 + Life CodeTank ghost sprites from noise SAT entries past
+;   slot 0, May 2026). Adopt the Rogue gold-standard (doc/TMS9918-SPRITE_INIT.md
+;   §4.2): write $D0 to SAT[0].Y then 127× $D1 (off-screen Y, NOT terminator)
+;   via auto-increment to cover all 32 SAT entries. Even if SAT[0] is ever
+;   overwritten with a real sprite later, SAT[1].Y = $D1 aborts visible
+;   rendering of slot 1+. Mirrors tms9918m2.asm::disable_sprites.
 ; ----------------------------------------------------------------------------
 disable_sprites:
         JSR     tms9918_pad12   ; MANUAL caller-gap cushion (12c, was 40c pre-openMSX-port)
         LDA     #$00
         STA     VDP_CTRL
-        JSR     tms9918_pad12   ; +12c silicon-strict pad12-v3 (before LDA #imm bridge)
+        JSR     tms9918_pad12
         LDA     #$5B            ; $1B | $40 = write at $1B00
         STA     VDP_CTRL
-        JSR     tms9918_pad12   ; +12c silicon-strict pad12-v3 (before LDA #imm bridge)
-        LDA     #$D0
+        JSR     tms9918_pad12
+        LDA     #$D0            ; SAT[0].Y = chain terminator
         STA     VDP_DATA
+        JSR     tms9918_pad12
+        LDX     #127            ; SAT[1..127] = off-screen Y via auto-inc
+        LDA     #$D1
+@sat:   STA     VDP_DATA
+        JSR     tms9918_pad12
+        DEX
+        BNE     @sat
         RTS
 
 ; ----------------------------------------------------------------------------
@@ -131,15 +144,6 @@ disable_sprites:
 ; ----------------------------------------------------------------------------
 clear_name_table:
         JSR     tms9918_pad12   ; MANUAL caller-gap cushion (12c, was 40c pre-openMSX-port)
-        ; --- Display OFF for the 768-byte burst (R1 = $80) — strict-mode
-        ;     Gfx12 slot density drops bytes from active-display tight
-        ;     loops even with pad12 (doc/TMS9918-SPRITE_INIT.md § 6.4). ---
-        LDA     #$80
-        STA     VDP_CTRL
-        JSR     tms9918_pad12
-        LDA     #$81            ; reg 1 write cmd
-        STA     VDP_CTRL
-        JSR     tms9918_pad12
         LDA     #$00
         STA     VDP_CTRL
         JSR     tms9918_pad12   ; +12c silicon-strict pad12-v3 (before LDA #imm bridge)
@@ -156,14 +160,14 @@ clear_name_table:
         BNE     @nb
         DEX
         BNE     @np
-        ; --- Restore display ON from the canonical Mode I reg table ---
-        LDA     vdp1_regs+1     ; $C0 — display on, 16K, sprites 8x8 unmag
-        STA     VDP_CTRL
-        JSR     tms9918_pad12
-        LDA     #$81
-        STA     VDP_CTRL
-        JSR     tms9918_pad12
         RTS
+        ; NOTE: does NOT touch R1 — caller responsibility. Wrapping in an
+        ; internal display_off/display_on bracket regresses callers (notably
+        ; Rogue) that use a non-default R1 like $C2 (sprite 16x16): every
+        ; clear_name_table call would silently reset R1 to $C0 (8x8) and
+        ; render sprites at 1/4 size. If silicon-strict drops matter for a
+        ; specific burst, the caller should JSR vdp_display_off (lib helper
+        ; from tms9918_pad.asm) before and re-arm their own R1 after.
 
 ; ----------------------------------------------------------------------------
 ; vdp_set_write: prep VDP for auto-incrementing writes at vdp_lo:hi.
