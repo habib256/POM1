@@ -131,6 +131,15 @@ disable_sprites:
 ; ----------------------------------------------------------------------------
 clear_name_table:
         JSR     tms9918_pad12   ; MANUAL caller-gap cushion (12c, was 40c pre-openMSX-port)
+        ; --- Display OFF for the 768-byte burst (R1 = $80) — strict-mode
+        ;     Gfx12 slot density drops bytes from active-display tight
+        ;     loops even with pad12 (doc/TMS9918-SPRITE_INIT.md § 6.4). ---
+        LDA     #$80
+        STA     VDP_CTRL
+        JSR     tms9918_pad12
+        LDA     #$81            ; reg 1 write cmd
+        STA     VDP_CTRL
+        JSR     tms9918_pad12
         LDA     #$00
         STA     VDP_CTRL
         JSR     tms9918_pad12   ; +12c silicon-strict pad12-v3 (before LDA #imm bridge)
@@ -147,6 +156,13 @@ clear_name_table:
         BNE     @nb
         DEX
         BNE     @np
+        ; --- Restore display ON from the canonical Mode I reg table ---
+        LDA     vdp1_regs+1     ; $C0 — display on, 16K, sprites 8x8 unmag
+        STA     VDP_CTRL
+        JSR     tms9918_pad12
+        LDA     #$81
+        STA     VDP_CTRL
+        JSR     tms9918_pad12
         RTS
 
 ; ----------------------------------------------------------------------------

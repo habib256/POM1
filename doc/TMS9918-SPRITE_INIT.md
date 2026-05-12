@@ -137,6 +137,26 @@ Pour donner l’illusion de plus de 4 sprites sur une ligne, les jeux **rotent**
 
 Retirer la limite des 4 sprites **casse** la compatibilité : le **bit 5S** du statut et l’**index du 5e sprite** (bits 0–4) ne reflètent plus le matériel ; les routines qui **pollent** le statut pour décider quelle entrée SAT déplacer se comportent alors de façon erratique.
 
+### 6.4 Padding des écritures pendant l’affichage actif (mode strict POM1)
+
+Sous **mode strict POM1** (modèle slot-table porté d’openMSX, `TMS9918.cpp`), les fenêtres d’accès CPU en mode Gfx12 actif sont cadencées à **~19 slots / ligne**, soit environ un slot toutes les 12 cycles CPU. Une boucle assembleur dense (`LDA #imm` + `STA $CC00` + `DEX` + `BNE` ≈ 9–11 cycles par octet) **dépasse** ce débit : POM1 émet alors une trace `[TMS9918 DROP]` sur chaque écriture hors créneau — exactement comme le silicium TMS9918A laisse tomber l’octet quand l’automate n’est pas prêt.
+
+Signature typique dans le log POM1 :
+
+```
+[TMS9918 DROP #N] D val=FF vramAddr=11xx drain=1c..4c linePos=Y nextSlot=Z tbl=Gfx12 vblank=0 R1=C0 PC=$xxxx
+```
+
+`linePos < nextSlot` : le CPU écrit alors que la chip est encore occupée et que le prochain créneau est devant. Trois remèdes, classés du plus simple au plus structuré :
+
+1. **`vdp_display_off` autour de la boucle.** Désactiver le bit *blank* de VR1 (`REG1_BLANK_MASK = 0x40`) avant le burst, le rétablir après. En blank, POM1 bascule sur la table `slotsMsx1ScreenOff` (~107 slots / ligne) : la contention disparaît. C’est exactement la stratégie adoptée par les setups SAT de TMS_SilBench (tests T14 / T15) — l’étendre aux setups SPGT (motifs sprites) et à toute init de table volumineuse.
+
+2. **`BIT $CC01` (ou `LDA $CC01`) entre chaque écriture.** Macro `TMS_IO_DELAY()` côté nippur72 (`dev/apple1-videocard-lib/lib/utils.h:14`). Coût : 4 cycles CPU + un accès bus qui passe par la machine à slots du VDP, donc « cale » la boucle sur la cadence du chip. Effet collatéral : **efface F/5S/C et reset le flip-flop** (cf. *Bug N°9* dans `dev/SILICONBUGS.md`). À éviter quand le code surveille le statut, sûr partout ailleurs.
+
+3. **Burst chunké en VBLANK.** Pattern complet : `tms_wait_end_of_frame()` puis ≤ 128 octets dans une boucle serrée, recommencer à la trame suivante au besoin. Référence : `dev/apple1-videocard-lib/lib/screen1.c:47-90` (scroll vertical), commentaire explicite sur la fenêtre strict-mode (~4 500 cycles de slots `slotsMsx1ScreenOff` disponibles par trame). Adapté aux gros transferts (scroll, refresh complet d’écran).
+
+Diagnostic concret : aussi longtemps que des `[TMS9918 DROP]` apparaissent, appliquer un des trois remèdes au PC incriminé jusqu’à disparition des drops. La trace donne `PC=$xxxx` qui pointe directement la boucle fautive.
+
 ---
 
 ## 7. Registre de **statut** (lecture)
@@ -212,10 +232,34 @@ En respectant **contention**, **terminateur 0xD0**, **EC signé**, **limite 4/ l
 
 ---
 
+## 11. Validation sur silicium réel (mai 2026)
+
+Une vidéo de validation enregistrée par **Claudio Parmigiani** (designer P‑LAB) sur sa **Replica‑1 1:1** réelle, **12 mai 2026**, confirme que les comportements sprites de POM1 — corrects et fautifs — collent au silicium TMS9918A authentique :
+
+- Les correctifs accumulés passent sur silicium : scan ligne‑par‑ligne, terminateur **0xD0**, **Early Clock** en arithmétique signée, plafond **4 / ligne** avec **5S** *sticky*, collision en arithmétique pixel hors couleur.
+- Les échecs sont partagés : **Galaga**, les démos **Logo**, **Rogue**, **Mandelbrot** s’affichent de la même façon défectueuse sur silicium et sous POM1. Les correctifs doivent donc viser les sources cc65 / ASM (§ 6.4 ci‑dessus, § 9 pour l’init des données), **pas** l’émulateur.
+- **/INT non câblé** confirmé à l’oscilloscope : ligne à +5 V solide pendant les exécutions Tetris, Plasma, Galaga. Cohérent avec § 8 (pattern de polling `LDA $CC01 / BPL`) et `dev/SILICONBUGS.md` Bug N°2.
+
+---
+
+## 12. Note d’horloge — Apple‑1 1:1 vs Briel Replica‑1
+
+Les Apple‑1 d’origine et les Replicas 1:1 (basés DRAM) perdent **4 cycles sur 65** au refresh DRAM matériel : la logique de rafraîchissement « hoquette » l’horloge du 6502, soit un débit CPU effectif ≈ **959 920 Hz** au lieu des **1 022 727 Hz** nominaux. Briel’s Replica‑1 utilise du SRAM, ne déclenche aucun hoquet, et bénéficie des 65/65 cycles.
+
+POM1 modélise actuellement le cadencement **Briel** (horloge continue). Cela n’influe pas sur le sous‑système TMS9918 lui‑même — la machine à slots du VDP est cadencée sur la sous‑porteuse couleur NTSC, indépendante du CPU. Le seul cas où l’écart se voit est dans les programmes qui mesurent le temps **depuis** le 6502 (VIACLOCK et dérivés sur 65C22).
+
+Si un mode 1:1 venait à être ajouté (toggle préset `MachineFamily { ApplecComputer1, Replica1Briel }`), le hoquet doit s’appliquer **au CPU seulement** — les périphériques tournent sur leurs propres timebases et ne voient pas le refresh. Implémentation propre : *pacing* dans le slice loop d’`EmulationController` (4 cycles stallés tous les 65 cycles CPU), pas une mise à l’échelle globale de `POM1_CPU_CLOCK_HZ`.
+
+Référence : fil applefritter *RAM refresh cycle details* (Antonino Porcino + Uncle Bernie). Discussion par e‑mail Parmigiani ↔ équipe POM1 du **12 mai 2026**.
+
+---
+
 ## Références implicites dans ce document
 
 - Projet **POM1** (émulation Apple‑1, C++).
 - VDP **Texas Instruments TMS9918A** (docs d’ingénierie, comportements *silicon*).
 - Bibliothèque **apple1-videocard-lib** (**nippur72** / Antonino Porcino), pratiques **MSX1**.
+- Fil **applefritter** « RAM refresh cycle details » (Porcino + Uncle Bernie) — voir § 12.
+- Validation silicium **Replica‑1 1:1** par **Claudio Parmigiani** (design P‑LAB), 12 mai 2026 — voir § 11.
 
 Pour le détail des bugs silicon et tests de régression dans POM1, voir aussi `dev/SILICONBUGS.md` et les tests `tms9918_*` listés dans `CLAUDE.md`.

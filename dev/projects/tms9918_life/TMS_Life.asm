@@ -327,6 +327,10 @@ init_vdp:
         LDX #0
 @regloop:
         LDA vdp_regs,X
+        CPX #1                  ; force display OFF during init bursts
+        BNE @rg_store           ; (doc/TMS9918-SPRITE_INIT.md § 6.4 +
+        AND #$BF                ;  mirrors init_vdp_g1 in tms9918m1.asm)
+@rg_store:
         STA VDP_CTRL
         TXA
         ORA #$80
@@ -382,6 +386,37 @@ init_vdp:
         BNE @clr_b
         DEX
         BNE @clr_pg
+
+        ; --- Defensive sprite init (doc/TMS9918-SPRITE_INIT.md § 4.2). ---
+        ; R1 = $C0 in vdp_regs has the sprite enable on (bit 1 = 0 → 8x8),
+        ; so sprite scanner is live the moment we re-arm R1. With VRAM
+        ; bistable noise on cold boot the SAT may contain a stray $D0 in
+        ; an unwanted Y slot (chain terminator at the wrong position) or
+        ; a visible Y < $D0 (ghost sprite from sprite pattern noise at
+        ; $3800). Life uses no sprites at all, so write $D0 to SAT[0].Y
+        ; ($1B00): chip stops scanning immediately, all subsequent SAT
+        ; bytes are ignored regardless of noise. Same primitive as the
+        ; lib's disable_sprites; inlined here because Life does not link
+        ; tms9918m1.o.
+        LDA #$00
+        STA VDP_CTRL
+        JSR     tms9918_pad12
+        LDA #$5B                ; $1B | $40 = write at $1B00 (SAT base)
+        STA VDP_CTRL
+        JSR     tms9918_pad12
+        LDA #$D0                ; sprite chain terminator
+        STA VDP_DATA
+        JSR     tms9918_pad12
+
+        ; --- All init bursts done — re-arm R1 to display ON (vdp_regs[1] = $C0).
+        ;     Up to this point the regloop deliberately masked off the BLANK bit
+        ;     so pattern / colour / name-table bursts ran with R1 = $80. ---
+        LDA vdp_regs+1
+        STA VDP_CTRL
+        JSR     tms9918_pad12
+        LDA #$81                ; reg 1 write cmd
+        STA VDP_CTRL
+        JSR     tms9918_pad12
         RTS
 
 ; =============================================

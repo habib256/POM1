@@ -304,7 +304,6 @@ help_msg:
         .byte "_        : BACKSPACE INPUT", $0D
         .byte "ALIASES  : FORWARD BACK RIGHT LEFT", $0D
         .byte "  PENUP PENDOWN CLEARSCREEN", $0D
-        .byte "DEMO     : RUN BUILT-IN SLIDESHOW", $0D
         .byte "HELP     : THIS LIST", $0D
         .byte "BYE      : EXIT TO MONITOR", $0D
         .byte 0
@@ -1010,124 +1009,13 @@ cmd_help:
         JMP @l
 @done:  RTS
 
-; cmd_demo: built-in slideshow that runs each demo line through
-;   parse_and_exec. Each line lives in CODE (read-only) and is copied
-;   into line_buf to be tokenised. Lines are CR-terminated; $00 marks
-;   the end of the script. After the script ends, line_buf is zeroed
-;   and line_idx set to 0 so the outer parse_and_exec sees CR and stops.
-cmd_demo:
-        LDA #<demo_script
-        STA mptr_lo
-        LDA #>demo_script
-        STA mptr_hi
-@nxt:   LDY #0
-        LDA (mptr_lo),Y
-        BEQ @done             ; $00 -> end of script
-@cp:    LDA (mptr_lo),Y
-        STA line_buf,Y
-        INY
-        CMP #$0D
-        BNE @cp
-        ; advance script pointer past consumed bytes (Y = bytes copied)
-        TYA
-        CLC
-        ADC mptr_lo
-        STA mptr_lo
-        BCC @nc
-        INC mptr_hi
-@nc:    ; run the line. parse_and_exec / proc_collect_line both clobber
-        ; mptr_lo:hi via find_mnem, so save/restore the demo script pointer.
-        ; Honour def_mode so multi-line TO ... END blocks in the demo (used
-        ; for the recursive SPIRAL) get appended to a proc body rather than
-        ; parsed as commands.
-        LDA mptr_lo
-        PHA
-        LDA mptr_hi
-        PHA
-        LDA #0
-        STA cmd_status
-        LDA def_mode
-        BEQ @parse
-        JSR proc_collect_line
-        JMP @after_run
-@parse: LDA #0
-        STA line_idx
-        JSR parse_and_exec
-@after_run:
-        PLA
-        STA mptr_hi
-        PLA
-        STA mptr_lo
-        JMP @nxt
-@done:  ; terminate outer line_buf so the caller's parse_and_exec @loop
-        ; sees a CR and exits cleanly.
-        LDA #$0D
-        STA line_buf
-        LDA #0
-        STA line_idx
-        RTS
-
-; demo_script: 8-program slideshow. Single-word PRINT labels (no spaces)
-;   because PRINT stops at first space.
-demo_script:
-        .byte "PRINT ", $22, "DEMO", $0D
-        .byte "WAIT 1", $0D
-        .byte "CS", $0D
-        ; SQUARE scene replaced by the SQUARE proc below (used by FLOWER).
-        .byte "PRINT ", $22, "STAR", $0D
-        .byte "REPEAT 5 [FD 80 TR 144]", $0D
-        .byte "WAIT 2", $0D
-        .byte "CS", $0D
-        .byte "PRINT ", $22, "CIRCLE", $0D
-        .byte "REPEAT 36 [FD 5 TR 10]", $0D
-        .byte "WAIT 2", $0D
-        .byte "CS", $0D
-        .byte "PRINT ", $22, "SUN", $0D
-        .byte "REPEAT 18 [FD 60 BK 60 TR 20]", $0D
-        .byte "WAIT 2", $0D
-        .byte "CS", $0D
-        .byte "PRINT ", $22, "ROSETTE", $0D
-        .byte "REPEAT 12 [REPEAT 6 [FD 25 TR 60] TR 30]", $0D
-        .byte "WAIT 3", $0D
-        .byte "CS", $0D
-        .byte "PRINT ", $22, "RANDOM", $0D
-        .byte "REPEAT 80 [FD RANDOM 20 TR RANDOM 90]", $0D
-        .byte "WAIT 3", $0D
-        .byte "CS", $0D
-        ; V1.8: cmd_demo now routes lines through proc_collect_line while
-        ; def_mode is set, so multi-line TO...END blocks in the demo are
-        ; captured. The procs survive at the REPL afterwards, so users can
-        ; rerun them or compose with their own code.
-        ;
-        ; SQUARE + FLOWER show nested proc invocation inside REPEAT (depth
-        ; 2, non-tail). SPIRAL shows deep tail recursion (~50 levels in
-        ; one frame). Together they exercise both proc-call paths.
-        .byte "TO SQUARE", $0D
-        .byte "REPEAT 4 [FD 50 TR 90]", $0D
-        .byte "END", $0D
-        .byte "PRINT ", $22, "FLOWER", $0D
-        .byte "TO FLOWER", $0D
-        .byte "REPEAT 36 [TR 10 SQUARE]", $0D
-        .byte "END", $0D
-        .byte "FLOWER", $0D
-        .byte "WAIT 3", $0D
-        .byte "CS", $0D
-        .byte "TO SPIRAL :SIZE :ANGLE", $0D
-        .byte "IF :SIZE > 100 [STOP]", $0D
-        .byte "FORWARD :SIZE", $0D
-        .byte "RIGHT :ANGLE", $0D
-        .byte "SPIRAL :SIZE + 2 :ANGLE", $0D
-        .byte "END", $0D
-        .byte "PRINT ", $22, "SPIRAL90", $0D
-        .byte "SPIRAL 0 90", $0D
-        .byte "WAIT 3", $0D
-        .byte "CS", $0D
-        .byte "PRINT ", $22, "SPIRAL91", $0D
-        .byte "SPIRAL 0 91", $0D
-        .byte "WAIT 3", $0D
-        .byte "CS", $0D
-        .byte "PRINT ", $22, "END", $0D
-        .byte 0
+; cmd_demo + demo_script removed in V1.8.1 — the lib's clear_bitmap now
+; brackets the 6144-byte burst with display_off / display_on (silicon-strict
+; fix, dev/lib/tms9918/tms9918m2.asm), which grows the m2.o segment by
+; ~150 bytes. The 8 KB Logo budget (CODE = 6464 B) had no slack for that
+; growth, so the DEMO slideshow was dropped to recover the room. The 16 KB
+; build (TMS_Logo_16k.asm + apple1_logo_16k.cfg) keeps DEMO and is the
+; recommended variant when the slideshow matters.
 
 ; cmd_make: parses "[\"]NAME VALUE", stores VALUE in var_table[NAME].
 ;   value can be a literal decimal or a :OTHER-NAME reference.
@@ -2726,8 +2614,6 @@ mnem_tab:
         .word cmd_wait
         .byte "PRIN", 'P'         ; PRINT (custom flag, special-cased)
         .word cmd_print
-        .byte "DEMO", 0           ; built-in slideshow
-        .word cmd_demo
         .byte "IF  ", 'I'         ; IF <a> <op> <b> [ ... ]
         .word cmd_if
         .byte "STOP", 0           ; exit current proc early

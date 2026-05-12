@@ -767,8 +767,21 @@ build_sq_table:
 ;   init_vdp_g2 initialised the colour table to $F1 (white-on-transparent),
 ;   but the pattern table is left undefined. Without zeroing it, the
 ;   first frames before the cell-write loop overwrites them show garbage.
+;
+;   Display blanked during the 6144-byte burst — doc/TMS9918-SPRITE_INIT.md
+;   § 6.4: strict-mode Gfx12 slot density (~19 slots/line) drops bytes from
+;   tight active-display loops even with pad12. Confirmed not-showing-up on
+;   Claudio's Replica-1 1:1 silicon (2026-05-12) with the pre-fix build.
 ; ----------------------------------------------------------------------------
 clear_pattern_table:
+        ; --- Display OFF: R1 = $80 (blanked, 16K addressing) ---
+        LDA #$80
+        STA VDP_CTRL
+        JSR tms9918_pad12
+        LDA #$81                ; reg 1 write cmd ($80 | reg index 1)
+        STA VDP_CTRL
+        JSR tms9918_pad12
+
         LDA #$00
         STA pix_addr_lo
         STA pix_addr_hi
@@ -783,6 +796,15 @@ clear_pattern_table:
         BNE @lp
         DEX
         BNE @lp
+
+        ; --- Display ON: R1 = $C0 (display on, 16K, sprites 8x8 unmag —
+        ;     matches vdp2_regs[1] in tms9918m2.asm). ---
+        LDA #$C0
+        STA VDP_CTRL
+        JSR tms9918_pad12
+        LDA #$81
+        STA VDP_CTRL
+        JSR tms9918_pad12
         RTS
 
 

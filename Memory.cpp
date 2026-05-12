@@ -496,6 +496,19 @@ void Memory::resetMemory(void)
             mem[i] = 0;
         }
     }
+    // GEN2 HGR carries its own 8 KB DRAM at $2000-$3FFF. Real Uncle Bernie
+    // hardware shows bistable noise on cold boot (matches GT-6144 and the
+    // TMS9918 VRAM model). When the card is plugged, force noise on this
+    // region regardless of systemRamNoiseOnReset — the HGR DRAM is independent
+    // of the Apple-1 main-RAM bank and never starts cleared on real silicon.
+    if (hgrFramebufferAttached) {
+        std::random_device rd;
+        std::mt19937 gen(rd());
+        std::uniform_int_distribution<int> dist(0, 255);
+        for (int i = 0x2000; i < 0x4000; ++i) {
+            mem[i] = static_cast<uint8_t>(dist(gen));
+        }
+    }
     markAllPagesDirty();
     // Apple-1 hard reset — zero only the bits of the ACI that are
     // electrically tied to the reset line (output flip-flop, CPU cycle

@@ -151,6 +151,14 @@ void TMS9918::reset()
         }
     }
     regs.fill(0);
+    // Power-on backdrop: white. Empirical observation on Claudio's Replica-1
+    // 1:1 silicon (2026-05-12): hardReset boots into a white-on-white screen
+    // (white backdrop, display ON appears white because pattern table holds
+    // unpredictable bits that mostly render through the bistable VRAM). POM1
+    // emulates the visual result by setting R7 = $0F (colour 15 = white) on
+    // reset; with R1 bit 6 = 0 (display blanked from regs.fill(0)) the
+    // renderer paints just the backdrop, giving uniform white.
+    regs[7] = 0x0F;
     statusReg       = 0;
     controlLatch    = 0;
     latchIsSecond   = false;
@@ -160,7 +168,7 @@ void TMS9918::reset()
     pendingDrainCycles = 0;
     lastScanlineProcessed = -1;
     lastScanlineRendered  = -1;
-    framebuffer.fill(kPalette[1]);             // start with all-black border
+    framebuffer.fill(kPalette[15]);            // start with all-white screen (matches Replica-1 silicon)
     droppedWrites = 0;
     droppedWriteTraceCount = 0;
     dropStats = DropDiagnostics{};

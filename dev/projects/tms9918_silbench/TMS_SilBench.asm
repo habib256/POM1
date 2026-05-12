@@ -1244,6 +1244,12 @@ test_T10:
 ; ----------------------------------------------------------------------------
 test_T11:
         JSR mode1_init
+        ; Display OFF during pattern + SAT writes — otherwise the sprite
+        ; scanner walks partial state mid-write and the post-frame status
+        ; misses 5S (POM1 strict mode + active-display slot density also
+        ; drops bytes from tight pattern loops; see doc/TMS9918-SPRITE_INIT.md
+        ; § 6.4).
+        JSR vdp_display_off
         ; Sprite-pattern 0 = visible solid 8x8 block.
         LDA #$38
         LDY #$00
@@ -1282,6 +1288,8 @@ test_T11:
         LDA #$D0                ; SAT[6] terminator
         STA VDP_DATA
         JSR tms9918_pad12
+        ; Re-enable display so the sprite scanner walks the clean SAT once.
+        JSR vdp_display_on
         ; Drain stale status, wait one full frame, capture status.
         BIT VDP_CTRL
         JSR tms9918_pad12
@@ -1446,6 +1454,11 @@ test_T13:
 ; ----------------------------------------------------------------------------
 test_T14:
         JSR mode1_init
+        ; Display OFF during pattern + SAT writes — otherwise the sprite
+        ; scanner walks partial state mid-write (spurious 5S/C) AND POM1's
+        ; strict-mode slot density drops bytes from the tight pattern loop
+        ; (doc/TMS9918-SPRITE_INIT.md § 6.4).
+        JSR vdp_display_off
         ; Pattern 0 = solid block.
         LDA #$38
         LDY #$00
@@ -1458,10 +1471,6 @@ test_T14:
         BNE @p
         ; SAT[0] (Y=80, X=120, name=0, colour=$0F)
         ; SAT[1] same Y, X=124 → 4 px overlap.
-        ; Display OFF during SAT writes — otherwise the sprite scanner
-        ; latches spurious 5S/C while SAT[0]=Y79 but SAT[1..31] still hold
-        ; pre-write Y=0 entries.
-        JSR vdp_display_off
         LDA #$1B
         LDY #$00
         JSR vdp_set_addr_aw
@@ -1503,6 +1512,7 @@ test_T14:
         STA val_lo
         LDA #0
         STA val_hi
+        LDA val_lo              ; reload — STA val_hi clobbered A above
         AND #$20
         BEQ @bad
         LDA #'P'
@@ -1522,6 +1532,9 @@ test_T14:
 ; ----------------------------------------------------------------------------
 test_T15:
         JSR mode1_init
+        ; Display OFF during pattern + SAT writes (see T14 rationale +
+        ; doc/TMS9918-SPRITE_INIT.md § 6.4 — strict-mode pattern drop).
+        JSR vdp_display_off
         LDA #$38
         LDY #$00
         JSR vdp_set_addr_aw
@@ -1531,8 +1544,6 @@ test_T15:
         JSR tms9918_pad12
         DEX
         BNE @p
-        ; Display OFF during SAT writes (see T14 rationale).
-        JSR vdp_display_off
         LDA #$1B
         LDY #$00
         JSR vdp_set_addr_aw
@@ -1572,6 +1583,7 @@ test_T15:
         STA val_lo
         LDA #0
         STA val_hi
+        LDA val_lo              ; reload — STA val_hi clobbered A above
         AND #$20
         BEQ @bad
         LDA #'P'
@@ -1808,6 +1820,7 @@ test_T19:
         STA val_lo
         LDA #0
         STA val_hi
+        LDA val_lo              ; reload — STA val_hi clobbered A above
         AND #$80
         BEQ @bad
         LDA #'P'
@@ -1823,6 +1836,9 @@ test_T19:
 ; ----------------------------------------------------------------------------
 test_T20:
         JSR mode1_init
+        ; Display OFF during pattern + SAT writes (strict-mode pattern
+        ; drops and scanner race — doc/TMS9918-SPRITE_INIT.md § 6.4).
+        JSR vdp_display_off
         ; Pattern 0 = solid.
         LDA #$38
         LDY #$00
@@ -1834,16 +1850,19 @@ test_T20:
         DEX
         BNE @p
         ; arm_5s_trigger via the lib — places 5 invisible sprites at line A
-        BIT VDP_CTRL            ; drain stale status
-        JSR tms9918_pad12
         LDA #96
         JSR arm_5s_trigger
+        ; Re-enable display so the chip scans the clean SAT.
+        JSR vdp_display_on
+        BIT VDP_CTRL            ; drain stale status (F latched during display_on)
+        JSR tms9918_pad12
         ; Wait one full frame.
         JSR delay_one_frame
         LDA VDP_CTRL
         STA val_lo
         LDA #0
         STA val_hi
+        LDA val_lo              ; reload — STA val_hi clobbered A above
         AND #$40
         BEQ @bad
         LDA #'P'
@@ -2314,6 +2333,7 @@ test_T29:
         STA val_lo
         LDA #0
         STA val_hi
+        LDA val_lo              ; reload — STA val_hi clobbered A above
         CMP #$99
         BNE @bad
         LDA #'P'

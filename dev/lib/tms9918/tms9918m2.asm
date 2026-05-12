@@ -131,6 +131,14 @@ init_vdp_g2:
         ; mode to recolour the cell it just touched. SETPC overrides.
         LDA #$0F
         STA pen_color
+        ; --- Defensive sprite init while display is still blanked
+        ;     (doc/TMS9918-SPRITE_INIT.md § 4.2). Mirrors init_vdp_g1's
+        ;     internal disable_sprites call so Mode II consumers don't have
+        ;     to remember the asymmetry. Idempotent — Mandel / Logo / future
+        ;     callers may still call disable_sprites explicitly as belt-and-
+        ;     suspenders without harm. SAT base is $3B00 in Mode II (R5=$76),
+        ;     not $1B00; the m2-local disable_sprites below handles that. ---
+        JSR     disable_sprites
         ; --- Final: re-arm R1 with table value (display ON). Display stays
         ;     OFF until the cmd byte commits, so threshold remains 2c.
         LDA vdp2_regs+1
@@ -144,8 +152,22 @@ vdp2_regs:
         .byte $02, $C0, $0E, $FF, $03, $76, $03, $F1
 
 ; clear_bitmap: zero the 6144-byte pattern table at $0000.
+;   Display is blanked (R1 = $80) during the 6144-byte burst — strict-mode
+;   Gfx2 slot density drops bytes from a tight active-display loop even
+;   with pad12 (doc/TMS9918-SPRITE_INIT.md § 6.4). Confirmed broken on
+;   Claudio's Replica-1 1:1 silicon (2026-05-12) for Mandelbrot / Logo
+;   demos before this fix. R1 is restored to vdp2_regs+1 ($C0 — display
+;   ON, 16K, sprites 8x8 unmag) on exit, matching the post-init_vdp_g2
+;   contract.
 clear_bitmap:
         JSR     tms9918_pad12   ; MANUAL caller-gap cushion (12c, was 40c pre-openMSX-port)
+        ; --- Display OFF for the burst (R1 = $80) ---
+        LDA     #$80
+        STA     VDP_CTRL
+        JSR     tms9918_pad12
+        LDA     #$81            ; reg 1 write cmd ($80 | reg index 1)
+        STA     VDP_CTRL
+        JSR     tms9918_pad12
         LDA #$00
         STA VDP_CTRL
         JSR     tms9918_pad12   ; +12c silicon-strict pad12-v3 (before LDA #imm bridge)
@@ -161,6 +183,13 @@ clear_bitmap:
         BNE @lp
         DEX
         BNE @lp
+        ; --- Restore display ON from the canonical Mode II reg table ---
+        LDA     vdp2_regs+1     ; $C0 — display on, 16K, sprites 8x8 unmag
+        STA     VDP_CTRL
+        JSR     tms9918_pad12
+        LDA     #$81
+        STA     VDP_CTRL
+        JSR     tms9918_pad12
         RTS
 
 ; disable_sprites: write Y=$D0 to sprite #0 attribute (chip stops scanning).
