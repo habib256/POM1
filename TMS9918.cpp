@@ -12,6 +12,7 @@
 #include <algorithm>
 #include <cstdio>
 #include <cstring>
+#include <random>
 #include <utility>
 #include <vector>
 
@@ -130,14 +131,24 @@ TMS9918::TMS9918()
 
 void TMS9918::reset()
 {
-    // Power-on VRAM bistable per real MSX1 silicon (per meisei
-    // vdp.c:212-217 reset comment): $FF on even addresses, $00 on
-    // odd. MSX2 and later settle to all-$FF; we emulate MSX1 here
-    // because that's what the P-LAB Apple-1 TMS9918 card models.
-    // Programs known to be affected: "Universe: Unknown (final)"
-    // expects 0 (MSX2 behavior, will glitch slightly on us, OK).
-    for (size_t i = 0; i < vram.size(); ++i) {
-        vram[i] = (i & 1) ? 0x00 : 0xFF;
+    // Power-on VRAM. Two profiles:
+    //   - vramNoiseOnReset == false (default): MSX1 silicon bistable per
+    //     meisei vdp.c:212-217 — $FF on even, $00 on odd. MSX2 settles to
+    //     all-$FF. Preserved as default for backwards compatibility with
+    //     existing tests and recorded snapshots.
+    //   - vramNoiseOnReset == true: true mt19937 noise, which is what
+    //     the warm P-LAB DRAM actually shows on cold boot. Surfaces the
+    //     class of bugs from doc/TMS9918-SPRITE_INIT.md §4.2 (uninit SAT,
+    //     ghost terminators, etc.) under POM1's silicon-strict mode.
+    if (vramNoiseOnReset) {
+        std::random_device rd;
+        std::mt19937 gen(rd());
+        std::uniform_int_distribution<int> dist(0, 255);
+        for (auto& byte : vram) byte = static_cast<uint8_t>(dist(gen));
+    } else {
+        for (size_t i = 0; i < vram.size(); ++i) {
+            vram[i] = (i & 1) ? 0x00 : 0xFF;
+        }
     }
     regs.fill(0);
     statusReg       = 0;

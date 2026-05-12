@@ -1261,6 +1261,21 @@ int M6502::run(int maxCycles)
         }
         step();
         cyclesExecuted += cycles;
+
+        // Apple-1 DRAM refresh stall — 4/65 cycles eaten by the refresh
+        // controller (H10·H6 NAND slots, see UncleBernie's applefritter
+        // post). Bresenham accumulator keeps the cumulative ratio exactly
+        // 4:65 without needing to track the horizontal counter. Injected
+        // here (post-instruction) so peripherals driven by Memory::advance
+        // Cycles see the stalls as part of the slice's cycle return.
+        if (dramRefreshEnabled) {
+            dramRefreshAccum += cycles * 4;
+            while (dramRefreshAccum >= 65) {
+                dramRefreshAccum -= 65;
+                ++cyclesExecuted;
+                ++dramRefreshStallCount;
+            }
+        }
     }
     return cyclesExecuted;
 }

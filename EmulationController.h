@@ -24,6 +24,7 @@
 #include "Memory.h"
 #include "Screen_ImGui.h"
 #include "SnapshotPublisher.h"
+#include "TMS9918.h"   // TMS9918::DropDiagnostics for getTms9918DropDiagnostics()
 
 // Mutex ordering: stateMutex > keyboard's internal keyMutex > publisher's
 // internal snapshotMutex. publisher.publish() is invoked while holding
@@ -115,12 +116,37 @@ public:
     void setPresetRamKB(int kb);
     void setSiliconStrictMode(bool enabled);
     bool isSiliconStrictMode() const;
+    // Silicon fidelity profile knobs. Each takes effect on the next
+    // hardReset (or Memory::resetMemory). Defaults are OFF — historic
+    // POM1 behaviour (MSX1 bistable VRAM, zero-init RAM) is preserved.
+    void setVramNoiseOnReset(bool enabled);
+    bool isVramNoiseOnReset() const;
+    void setSystemRamNoiseOnReset(bool enabled);
+    bool isSystemRamNoiseOnReset() const;
+    // Juke-Box EEPROM 28c256 write-cycle timing knobs (no-op when chip is
+    // in Flash mode or card is unplugged). All take a lock on stateMutex.
+    void setJukeBoxEepromWriteCycleCpu(int cycles);
+    int  getJukeBoxEepromWriteCycleCpu() const;
+    uint64_t getJukeBoxEepromWritesTotal() const;
+    uint64_t getJukeBoxEepromWritesDropped() const;
+    bool isJukeBoxEepromWriteBusy() const;
+    int  getJukeBoxEepromWriteBusyCycles() const;
+    void resetJukeBoxEepromCounters();
+
+    // Apple-1 DRAM refresh stall — see M6502::setDramRefreshEnabled().
+    void setDramRefreshEnabled(bool enabled);
+    bool isDramRefreshEnabled() const;
+    uint64_t getDramRefreshStallCount() const;
+    void resetDramRefreshStallCount();
     // TMS9918 silicon-strict diagnostics — forwarders to TMS9918::dropDiagnostics
     // family. Returns 0 / no-ops when the card is unplugged. Used by the
     // Hardware menu's "Dump TMS9918 drop diagnostics" item.
     uint64_t tms9918DropCount() const;
     void resetTms9918DropCount();
     void dumpTms9918DropDiagnostics(std::FILE* out = nullptr, int topN = 16) const;
+    // Returns a COPY of the live drop diagnostics for the UI inspector.
+    // Locks stateMutex internally so the unordered_map snapshot is safe.
+    TMS9918::DropDiagnostics getTms9918DropDiagnostics() const;
     int getOutOfRangeAccessCount() const;
     void setOutOfRangeStrictMode(bool enable);
     bool isOutOfRangeStrictMode() const;

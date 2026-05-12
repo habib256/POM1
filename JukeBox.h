@@ -45,6 +45,7 @@
 
 #include "Peripheral.h"
 
+#include <algorithm>
 #include <cstdint>
 #include <string>
 #include <string_view>
@@ -200,6 +201,31 @@ public:
     void serialize(pom1::SnapshotWriter& writer) const override;
     void deserialize(pom1::SnapshotReader& reader) override;
 
+    // ---------------- EEPROM 28c256 write-cycle timing ----------------
+    //
+    // Real 28c256 silicon needs a ~10 ms write cycle per byte. A second
+    // byte arriving before the first cycle ends is silently rejected on
+    // hardware (the chip is internally busy programming the storage cell;
+    // some 28c256 revisions return inverted-data via I/O7 status polling).
+    // POM1 emulates this when `siliconStrictMode` is ON — matches what the
+    // TMS9918 does for VDP timing. When OFF the legacy behaviour stands
+    // (every write lands instantly, no drops) so the UI Page-Copy /
+    // Save-ROM operations are not throttled.
+    //
+    // `writeCycleCpu` is the per-byte busy duration in 6502 cycles.
+    // Default = ceil(10 ms × 1 022 727 Hz) = 10 228 cycles. Min 1, max
+    // unbounded (typically 5000..20000 = 5..20 ms).
+    void setSiliconStrictMode(bool enabled) { siliconStrictMode = enabled; }
+    bool isSiliconStrictMode() const { return siliconStrictMode; }
+    void setEepromWriteCycleCpu(int cycles) { writeCycleCpu = std::max(1, cycles); }
+    int  getEepromWriteCycleCpu() const { return writeCycleCpu; }
+    void advanceCycles(int cycles);
+    bool isEepromWriteBusy() const { return writeBusyCycles > 0; }
+    int  getEepromWriteBusyCycles() const { return writeBusyCycles; }
+    uint64_t getEepromWritesTotal() const { return eepromWritesTotal; }
+    uint64_t getEepromWritesDropped() const { return eepromWritesDropped; }
+    void resetEepromCounters() { eepromWritesTotal = 0; eepromWritesDropped = 0; }
+
 private:
     // Convert a CPU address (inside the current ROM window) to an offset
     // into the `rom` buffer, honouring the current page + sub-page and the
@@ -225,6 +251,14 @@ private:
     uint8_t     bootPage      = 0;    // chosen by pickDefaultBootPage
     std::string romPath;
     size_t      romSize       = 0;    // original loaded file size (pre-pad)
+
+    // EEPROM 28c256 write-cycle timing state. See setSiliconStrictMode().
+    // Default writeCycleCpu = ceil(10 ms × CpuClock::POM1_CPU_CLOCK_HZ).
+    bool        siliconStrictMode = false;
+    int         writeCycleCpu     = 10228;  // 10 ms @ 1.022727 MHz
+    int         writeBusyCycles   = 0;      // remaining busy cycles (decremented by advanceCycles)
+    uint64_t    eepromWritesTotal   = 0;
+    uint64_t    eepromWritesDropped = 0;
 };
 
 #endif // POM1_JUKEBOX_H

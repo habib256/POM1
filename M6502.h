@@ -65,6 +65,23 @@ public:
     /// the nominal POM1_CPU_CLOCK_HZ rate).
     int run(int maxCycles);
     bool isRunning(void) const { return running; }
+
+    // -------- Apple-1 DRAM refresh stall ----------------------------------
+    //
+    // Per UncleBernie's applefritter analysis (Jan 2022): the Apple-1's
+    // refresh controller halts the 6502 during 4 of every 65 cycles (the
+    // H10·H6 NAND slot in each scanline). Refresh is NON-transparent —
+    // the CPU stalls, tight cycle-counted code runs slower on silicon
+    // than the emulator. Enable to reproduce silicon-side timing bugs
+    // (Wozmon ACI cassette, Disk II Woz Machine).
+    //
+    // Implemented as a Bresenham accumulator after every instruction:
+    // refreshAccum += instrCycles * 4; while (refreshAccum >= 65)
+    // inject one stall cycle. Cumulative ratio is exactly 4:65.
+    void setDramRefreshEnabled(bool enabled) { dramRefreshEnabled = enabled; }
+    bool isDramRefreshEnabled() const { return dramRefreshEnabled; }
+    uint64_t getDramRefreshStallCount() const { return dramRefreshStallCount; }
+    void resetDramRefreshStallCount() { dramRefreshStallCount = 0; dramRefreshAccum = 0; }
     
     // Accesseurs pour les registres (pour le débogueur)
     uint8_t getAccumulator(void) const { return accumulator; }
@@ -140,6 +157,10 @@ private :
     int cycles;
     int running;
 
+    // DRAM refresh emulation (see setDramRefreshEnabled).
+    bool     dramRefreshEnabled    = false;
+    int      dramRefreshAccum      = 0;
+    uint64_t dramRefreshStallCount = 0;
 
     void pushProgramCounter(void);
     void popProgramCounter(void);

@@ -378,6 +378,100 @@ bool EmulationController::isSiliconStrictMode() const
     return memory->isSiliconStrictMode();
 }
 
+void EmulationController::setVramNoiseOnReset(bool enabled)
+{
+    std::lock_guard<PriorityMutex> lock(stateMutex);
+    memory->setVramNoiseOnReset(enabled);
+}
+
+bool EmulationController::isVramNoiseOnReset() const
+{
+    std::lock_guard<PriorityMutex> lock(stateMutex);
+    return memory->isVramNoiseOnReset();
+}
+
+void EmulationController::setSystemRamNoiseOnReset(bool enabled)
+{
+    std::lock_guard<PriorityMutex> lock(stateMutex);
+    memory->setSystemRamNoiseOnReset(enabled);
+}
+
+bool EmulationController::isSystemRamNoiseOnReset() const
+{
+    std::lock_guard<PriorityMutex> lock(stateMutex);
+    return memory->isSystemRamNoiseOnReset();
+}
+
+void EmulationController::setJukeBoxEepromWriteCycleCpu(int cycles)
+{
+    std::lock_guard<PriorityMutex> lock(stateMutex);
+    memory->getJukeBox().setEepromWriteCycleCpu(cycles);
+}
+
+int EmulationController::getJukeBoxEepromWriteCycleCpu() const
+{
+    std::lock_guard<PriorityMutex> lock(stateMutex);
+    return memory->getJukeBox().getEepromWriteCycleCpu();
+}
+
+uint64_t EmulationController::getJukeBoxEepromWritesTotal() const
+{
+    std::lock_guard<PriorityMutex> lock(stateMutex);
+    return memory->getJukeBox().getEepromWritesTotal();
+}
+
+uint64_t EmulationController::getJukeBoxEepromWritesDropped() const
+{
+    std::lock_guard<PriorityMutex> lock(stateMutex);
+    return memory->getJukeBox().getEepromWritesDropped();
+}
+
+bool EmulationController::isJukeBoxEepromWriteBusy() const
+{
+    std::lock_guard<PriorityMutex> lock(stateMutex);
+    return memory->getJukeBox().isEepromWriteBusy();
+}
+
+int EmulationController::getJukeBoxEepromWriteBusyCycles() const
+{
+    std::lock_guard<PriorityMutex> lock(stateMutex);
+    return memory->getJukeBox().getEepromWriteBusyCycles();
+}
+
+void EmulationController::resetJukeBoxEepromCounters()
+{
+    std::lock_guard<PriorityMutex> lock(stateMutex);
+    memory->getJukeBox().resetEepromCounters();
+}
+
+void EmulationController::setDramRefreshEnabled(bool enabled)
+{
+    std::lock_guard<PriorityMutex> lock(stateMutex);
+    cpu->setDramRefreshEnabled(enabled);
+    // Mirror to the Apple-1 screen so the "faint dots" crosstalk artefact
+    // turns on alongside the CPU stall — visual confirmation the toggle
+    // is active (cf. UncleBernie applefritter post).
+    if (screen) screen->setDramRefreshDotsEnabled(enabled);
+}
+
+bool EmulationController::isDramRefreshEnabled() const
+{
+    std::lock_guard<PriorityMutex> lock(stateMutex);
+    return cpu->isDramRefreshEnabled();
+}
+
+uint64_t EmulationController::getDramRefreshStallCount() const
+{
+    std::lock_guard<PriorityMutex> lock(stateMutex);
+    return cpu->getDramRefreshStallCount();
+}
+
+void EmulationController::resetDramRefreshStallCount()
+{
+    std::lock_guard<PriorityMutex> lock(stateMutex);
+    cpu->resetDramRefreshStallCount();
+}
+
 uint64_t EmulationController::tms9918DropCount() const
 {
     std::lock_guard<PriorityMutex> lock(stateMutex);
@@ -394,6 +488,12 @@ void EmulationController::dumpTms9918DropDiagnostics(std::FILE* out, int topN) c
 {
     std::lock_guard<PriorityMutex> lock(stateMutex);
     memory->getTMS9918().dumpDropDiagnostics(out ? out : stderr, topN);
+}
+
+TMS9918::DropDiagnostics EmulationController::getTms9918DropDiagnostics() const
+{
+    std::lock_guard<PriorityMutex> lock(stateMutex);
+    return memory->getTMS9918().dropDiagnostics();
 }
 
 int EmulationController::getOutOfRangeAccessCount() const

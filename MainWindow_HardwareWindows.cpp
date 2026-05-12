@@ -1365,3 +1365,314 @@ void MainWindow_ImGui::renderIECCardWindow()
     }
     ImGui::End();
 }
+
+// ---------------------------------------------------------------------------
+// Silicon Strict Inspector — single home for silicon-fidelity toggles + the
+// live drop-diagnostics panel. Opened from `Hardware → Silicon Strict
+// Inspector...`.
+//
+// Layout (top → bottom):
+//   1. Goal banner
+//   2. Master toggle: Silicon Strict ON/OFF (with live status pill)
+//   3. CollapsingHeader "TMS9918 Graphic Card" — cold-boot noise + drop diag
+//   4. CollapsingHeader "Apple-1 system RAM"  — cold-boot noise
+//   5. CollapsingHeader "Juke-Box EEPROM"     — write-cycle timing + counters
+//
+// Cold-boot toggles apply on the NEXT hardReset / resetMemory — flipping
+// them mid-frame would corrupt the running picture. The UI states this
+// explicitly so users do `File → Hard Reset` after toggling.
+// ---------------------------------------------------------------------------
+void MainWindow_ImGui::renderSiliconStrictWindow()
+{
+    ImGui::SetNextWindowSize(ImVec2(580, 540), ImGuiCond_FirstUseEver);
+    applyPendingLayout("Silicon Strict Inspector");
+    if (!ImGui::Begin("Silicon Strict Inspector", &showSiliconStrictWindow)) {
+        ImGui::End();
+        return;
+    }
+
+    // -------- 1. Master mode-toggle button (very visible) -----------------
+    //
+    // Two mutually-exclusive emulation profiles:
+    //   SILICON STRICT   = real P-LAB silicon timing + drops (green pill)
+    //   MULTIPLEXING FANTASY = permissive emulator path, every write lands
+    //                          instantly (purple pill, matches the preset
+    //                          name shipped with POM1).
+    // The button background recolours by current mode so the user can read
+    // it in a glance from anywhere on screen.
+    {
+        const bool strict = siliconStrictModeEnabled;
+        const ImVec4 bg     = strict ? ImVec4(0.18f, 0.55f, 0.28f, 1.0f)
+                                     : ImVec4(0.55f, 0.18f, 0.55f, 1.0f);
+        const ImVec4 bgHov  = strict ? ImVec4(0.22f, 0.68f, 0.34f, 1.0f)
+                                     : ImVec4(0.68f, 0.22f, 0.68f, 1.0f);
+        const ImVec4 bgAct  = strict ? ImVec4(0.14f, 0.45f, 0.22f, 1.0f)
+                                     : ImVec4(0.45f, 0.14f, 0.45f, 1.0f);
+        const char* label   = strict
+            ? "Mode:  SILICON STRICT     (click to switch to Fantasy)"
+            : "Mode:  MULTIPLEXING FANTASY  (click to switch to Silicon Strict)";
+        ImGui::PushStyleColor(ImGuiCol_Button,        bg);
+        ImGui::PushStyleColor(ImGuiCol_ButtonHovered, bgHov);
+        ImGui::PushStyleColor(ImGuiCol_ButtonActive,  bgAct);
+        ImGui::PushStyleColor(ImGuiCol_Text,          ImVec4(1, 1, 1, 1));
+        if (ImGui::Button(label, ImVec2(-FLT_MIN, 42.0f))) {
+            const bool turnOn = !siliconStrictModeEnabled;
+            siliconStrictModeEnabled       = turnOn;
+            vramNoiseOnResetEnabled        = turnOn;
+            systemRamNoiseOnResetEnabled   = turnOn;
+            dramRefreshEnabled             = turnOn;
+            emulation->setSiliconStrictMode(turnOn);
+            emulation->setVramNoiseOnReset(turnOn);
+            emulation->setSystemRamNoiseOnReset(turnOn);
+            emulation->setDramRefreshEnabled(turnOn);
+            setStatusMessage(turnOn
+                ? "SILICON STRICT ON — strict timing + VRAM/RAM noise + DRAM refresh armed"
+                : "MULTIPLEXING FANTASY — every silicon-fidelity knob OFF",
+                3.5f);
+        }
+        ImGui::PopStyleColor(4);
+        if (ImGui::IsItemHovered()) {
+            ImGui::SetTooltip(
+                "One-click profile switch. Clicking ARMS or DISARMS every\n"
+                "silicon-fidelity knob at once:\n"
+                "   - TMS9918 openMSX slot-table timing\n"
+                "   - Juke-Box EEPROM 28c256 byte-write cycle\n"
+                "   - VRAM noise on cold boot / hard reset\n"
+                "   - Apple-1 RAM noise on cold boot / hard reset\n"
+                "   - Apple-1 DRAM refresh stall (4/65 cycle steal)\n\n"
+                "Silicon Strict  : every knob ON — POM1 behaves like real\n"
+                "                  warm-NMOS P-LAB silicon.\n"
+                "Multiplexing\n"
+                "Fantasy         : every knob OFF — emulator-tolerant path.\n\n"
+                "You can still fine-tune individual knobs in the sections\n"
+                "below after clicking the master switch.\n"
+                "Default = Silicon Strict for every preset except\n"
+                "the Multiplexing Fantasy ones (preset 12 / 14).");
+        }
+    }
+    ImGui::TextColored(ImVec4(0.7f, 0.7f, 0.7f, 1.0f),
+        "Clicking the button arms / disarms every silicon-fidelity knob below.");
+    ImGui::Spacing();
+
+    // -------- 2. Goal banner ----------------------------------------------
+    ImGui::TextWrapped(
+        "Goal: keep POM1 close enough to real P-LAB silicon that silicon-side "
+        "bugs surface here in Silicon Strict mode — uninitialised VRAM ghosts, "
+        "assume-zero-RAM crashes, timing-tight VDP loops, EEPROM write losses. "
+        "Defaults preserve historical POM1 behaviour; flip a knob below to "
+        "step closer to the hardware.");
+    ImGui::Spacing();
+    ImGui::TextColored(ImVec4(0.7f, 0.7f, 0.7f, 1.0f),
+        "Cold-boot toggles below take effect at the next Hard Reset.");
+    ImGui::Spacing();
+
+    // -------- 3. TMS9918 Graphic Card -------------------------------------
+    if (ImGui::CollapsingHeader("TMS9918 Graphic Card",
+                                ImGuiTreeNodeFlags_DefaultOpen)) {
+        ImGui::SeparatorText("Cold-boot");
+        bool vramFlag = vramNoiseOnResetEnabled;
+        if (ImGui::Checkbox("VRAM noise on cold boot / hard reset##vram",
+                            &vramFlag)) {
+            vramNoiseOnResetEnabled = vramFlag;
+            emulation->setVramNoiseOnReset(vramFlag);
+            setStatusMessage(vramFlag
+                ? "VRAM noise ON — takes effect at next Hard Reset"
+                : "VRAM noise OFF — MSX1 bistable preserved", 3.0f);
+        }
+        if (ImGui::IsItemHovered()) {
+            ImGui::SetTooltip(
+                "Real P-LAB Graphic Card boots with random DRAM noise in its\n"
+                "16 KB VRAM. POM1 default is the MSX1 bistable $FF/$00 pattern\n"
+                "(per meisei). Turn ON to seed VRAM with true mt19937 noise so\n"
+                "uninitialised-SAT bugs (doc/TMS9918-SPRITE_INIT.md §4.2) show\n"
+                "up here — exactly as on real silicon.");
+        }
+
+        ImGui::SeparatorText("Live drop diagnostics");
+        const auto diag = emulation->getTms9918DropDiagnostics();
+        ImGui::Text("Total drops:      %llu", (unsigned long long)diag.total);
+        ImGui::Text("By port:          $CC00 = %llu    $CC01 = %llu",
+                    (unsigned long long)diag.writeData,
+                    (unsigned long long)diag.writeCtrl);
+        ImGui::Text("By display phase: Active = %llu    VBlank = %llu",
+                    (unsigned long long)diag.inActive,
+                    (unsigned long long)diag.inVBlank);
+        ImGui::Text("By slot table:    ScreenOff=%llu  Gfx12=%llu  "
+                    "Gfx3=%llu  Text=%llu",
+                    (unsigned long long)diag.byTable[0],
+                    (unsigned long long)diag.byTable[1],
+                    (unsigned long long)diag.byTable[2],
+                    (unsigned long long)diag.byTable[3]);
+
+        ImGui::Spacing();
+        ImGui::TextColored(ImVec4(0.7f, 0.7f, 0.7f, 1.0f),
+                           "Top PC sites (instruction at PC-3 for STA abs)");
+        std::vector<std::pair<uint16_t, uint64_t>> pcs;
+        pcs.reserve(diag.byPc.size());
+        for (const auto& kv : diag.byPc) pcs.emplace_back(kv.first, kv.second);
+        std::sort(pcs.begin(), pcs.end(),
+                  [](const auto& a, const auto& b) { return a.second > b.second; });
+        ImGui::BeginChild("silstrict_pc_hist", ImVec2(0, 140), true);
+        if (pcs.empty()) {
+            ImGui::TextColored(ImVec4(0.6f, 0.6f, 0.6f, 1.0f),
+                               "(no drops since last reset)");
+        } else {
+            const int topN = std::min((int)pcs.size(), 16);
+            for (int i = 0; i < topN; ++i) {
+                ImGui::Text("  $%04X    %llu drops",
+                            pcs[i].first,
+                            (unsigned long long)pcs[i].second);
+            }
+            if ((int)pcs.size() > topN) {
+                ImGui::TextColored(ImVec4(0.6f, 0.6f, 0.6f, 1.0f),
+                                   "  ... and %d more PC sites not shown",
+                                   (int)pcs.size() - topN);
+            }
+        }
+        ImGui::EndChild();
+
+        if (ImGui::Button("Reset TMS9918 diagnostics")) {
+            emulation->resetTms9918DropCount();
+            setStatusMessage("TMS9918 drop diagnostics reset", 2.0f);
+        }
+        ImGui::SameLine();
+        if (ImGui::Button("Dump to stderr (top-16)")) {
+            emulation->dumpTms9918DropDiagnostics(stderr, 16);
+            setStatusMessage("TMS9918 drop diagnostics written to stderr", 3.0f);
+        }
+    }
+
+    // -------- 4. Apple-1 System RAM ---------------------------------------
+    if (ImGui::CollapsingHeader("Apple-1 system RAM",
+                                ImGuiTreeNodeFlags_DefaultOpen)) {
+        ImGui::SeparatorText("Cold-boot");
+        bool ramFlag = systemRamNoiseOnResetEnabled;
+        if (ImGui::Checkbox("RAM noise on cold boot / hard reset##ram",
+                            &ramFlag)) {
+            systemRamNoiseOnResetEnabled = ramFlag;
+            emulation->setSystemRamNoiseOnReset(ramFlag);
+            setStatusMessage(ramFlag
+                ? "RAM noise ON — takes effect at next Hard Reset"
+                : "RAM noise OFF — zero-init preserved", 3.0f);
+        }
+        if (ImGui::IsItemHovered()) {
+            ImGui::SetTooltip(
+                "Real 6502 RAM contains bistable noise at power-on. POM1\n"
+                "default is zero-init. Turn ON to seed RAM with mt19937 noise\n"
+                "so programs that assume ZP/RAM = 0 fail here the same way\n"
+                "they fail on cold Apple-1 silicon.");
+        }
+
+        ImGui::SeparatorText("DRAM refresh");
+        bool refreshFlag = dramRefreshEnabled;
+        if (ImGui::Checkbox("DRAM refresh stall (4/65 cycles stolen from CPU)",
+                            &refreshFlag)) {
+            dramRefreshEnabled = refreshFlag;
+            emulation->setDramRefreshEnabled(refreshFlag);
+            setStatusMessage(refreshFlag
+                ? "DRAM refresh ON — CPU stalls 4/65 cycles per scanline"
+                : "DRAM refresh OFF — CPU runs at full 1.022727 MHz", 3.0f);
+        }
+        if (ImGui::IsItemHovered()) {
+            ImGui::SetTooltip(
+                "Apple-1's refresh controller halts the 6502 during 4 of every\n"
+                "65 cycles (H10·H6 NAND slots at horizontal counter $C9, $D9,\n"
+                "$E9, $F9 — every 10th char). Non-transparent on this design,\n"
+                "so cycle-counted code (Wozmon ACI cassette, Disk II Woz\n"
+                "Machine) runs SLOWER on silicon than on the emulator.\n\n"
+                "Turn ON to reproduce that drift in POM1. Effective CPU rate\n"
+                "drops from 1.022727 MHz to ~960 058 Hz (61/65 ratio).\n\n"
+                "Reference: UncleBernie on applefritter, Jan 2022.");
+        }
+
+        const uint64_t stalls = emulation->getDramRefreshStallCount();
+        ImGui::Text("Stall cycles since reset: %llu",
+                    (unsigned long long)stalls);
+        if (stalls > 0) {
+            // Stall cycles vs total cycles is exactly 4/65 by Bresenham
+            // construction; show the equivalent wallclock loss for intuition.
+            constexpr double kHz = 1022727.0;
+            const double stalledSeconds = stalls / kHz;
+            ImGui::Text("Equivalent wallclock loss: %.3f s of CPU time",
+                        stalledSeconds);
+        } else {
+            ImGui::TextColored(ImVec4(0.6f, 0.6f, 0.6f, 1.0f),
+                "(no stalls yet — flip toggle ON to start counting)");
+        }
+        if (ImGui::Button("Reset refresh counter")) {
+            emulation->resetDramRefreshStallCount();
+            setStatusMessage("DRAM refresh stall counter reset", 2.0f);
+        }
+    }
+
+    // -------- 5. Juke-Box EEPROM 28c256 -----------------------------------
+    if (ImGui::CollapsingHeader("Juke-Box EEPROM (28c256)",
+                                ImGuiTreeNodeFlags_DefaultOpen)) {
+        if (!jukeBoxEnabled) {
+            ImGui::TextColored(ImVec4(0.6f, 0.6f, 0.6f, 1.0f),
+                "(Juke-Box card unplugged — plug it from Hardware menu)");
+        } else {
+            const bool isEeprom =
+                (uiSnapshot.jukeBox.chipMode == JukeBox::ChipMode::EEPROM28C256);
+            ImGui::Text("Chip mode: %s",
+                        isEeprom ? "EEPROM 28c256 (writable)"
+                                 : "Flash (read-only)");
+            if (!isEeprom) {
+                ImGui::TextColored(ImVec4(0.6f, 0.6f, 0.6f, 1.0f),
+                    "(Flash mode has no per-byte write cycle to enforce —\n"
+                    "switch to EEPROM via Hardware → Juke-Box.)");
+            } else {
+                constexpr double kHz = 1022727.0;
+                ImGui::SeparatorText("Write timing");
+                int writeCycleCpu = emulation->getJukeBoxEepromWriteCycleCpu();
+                float writeMs = static_cast<float>(writeCycleCpu * 1000.0 / kHz);
+                ImGui::SetNextItemWidth(220.0f);
+                if (ImGui::SliderFloat("Write cycle (ms)##eepromtwc",
+                                       &writeMs, 1.0f, 25.0f, "%.1f ms")) {
+                    int newCycles = static_cast<int>(writeMs * kHz / 1000.0);
+                    emulation->setJukeBoxEepromWriteCycleCpu(newCycles);
+                }
+                if (ImGui::IsItemHovered()) {
+                    ImGui::SetTooltip(
+                        "Byte-write cycle duration of the 28c256.\n"
+                        "Datasheet typical = 10 ms, max = 20 ms depending\n"
+                        "on fab lot. Default 10 ms = 10228 cycles @ 1.022727 MHz.");
+                }
+
+                ImGui::SeparatorText("Live counters");
+                const uint64_t total   = emulation->getJukeBoxEepromWritesTotal();
+                const uint64_t dropped = emulation->getJukeBoxEepromWritesDropped();
+                const bool busy        = emulation->isJukeBoxEepromWriteBusy();
+                const int busyCycles   = emulation->getJukeBoxEepromWriteBusyCycles();
+                const double busyMs    = busyCycles * 1000.0 / kHz;
+                ImGui::Text("Successful writes: %llu",
+                            (unsigned long long)total);
+                ImGui::TextColored(dropped > 0
+                                       ? ImVec4(1.0f, 0.55f, 0.4f, 1.0f)
+                                       : ImVec4(0.8f, 0.8f, 0.8f, 1.0f),
+                                   "Dropped (busy):    %llu",
+                                   (unsigned long long)dropped);
+                if (busy) {
+                    ImGui::TextColored(ImVec4(1.0f, 0.85f, 0.4f, 1.0f),
+                                       "WRITE BUSY — %d cycles remaining (%.2f ms)",
+                                       busyCycles, busyMs);
+                } else {
+                    ImGui::TextColored(ImVec4(0.5f, 0.7f, 0.5f, 1.0f), "Ready");
+                }
+                if (!siliconStrictModeEnabled) {
+                    ImGui::Spacing();
+                    ImGui::TextColored(ImVec4(1.0f, 0.85f, 0.4f, 1.0f),
+                        "Strict mode is OFF — every write lands instantly\n"
+                        "(no drops, legacy POM1 behaviour). Enable the master\n"
+                        "switch at the top to model 28c256 silicon properly.");
+                }
+                if (ImGui::Button("Reset EEPROM counters")) {
+                    emulation->resetJukeBoxEepromCounters();
+                    setStatusMessage("Juke-Box EEPROM counters reset", 2.0f);
+                }
+            }
+        }
+    }
+
+    ImGui::End();
+}

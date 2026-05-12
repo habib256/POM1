@@ -209,54 +209,25 @@ void MainWindow_ImGui::renderMenuBar()
                 ImGui::EndMenu();
             }
             ImGui::Separator();
-            if (ImGui::MenuItem("Silicon Strict (TMS9918 timing)",
-                                nullptr, &siliconStrictModeEnabled)) {
-                emulation->setSiliconStrictMode(siliconStrictModeEnabled);
-                setStatusMessage(siliconStrictModeEnabled
-                    ? "Silicon Strict ON - openMSX slot-table model active"
-                    : "Silicon Strict OFF - emulator-tolerant timing", 3.0f);
+            // Strict-mode toggle, drop-diagnostics dump and counter reset all
+            // moved into the Silicon Strict Inspector window — single home for
+            // the whole silicon-fidelity surface.
+            if (ImGui::MenuItem("Silicon Strict Inspector...",
+                                nullptr, &showSiliconStrictWindow)) {
+                // Window state is now bound to the menu's checkmark — no
+                // extra action needed; the render loop picks it up.
             }
             showHardwareTooltip(
-                "Silicon Strict (TMS9918 timing)\n\n"
-                "When ON, the TMS9918 enforces real-silicon access windows using\n"
-                "the openMSX VDPAccessSlots slot-table model: each $CC00/$CC01\n"
-                "access locks the chip until the next free slot in the active\n"
-                "scanline-tick table (Gfx12 / Gfx3 / Text / ScreenOff). A new byte\n"
-                "arriving before the drain finishes is silently overwritten — the\n"
-                "exact behaviour Galaga damiers / Tetris timing-floor exhibit on\n"
-                "real silicon. Worst-case Mode I+sprites drain ≈ 7.5 cycles 6502.\n\n"
-                "When OFF, all writes always land - useful for debugging or running\n"
-                "code that has not been silicon-audited yet. Default = ON for every\n"
-                "preset except the Multiplexing Fantasy ones.");
-
-            {
-                const uint64_t dropTotal = emulation->tms9918DropCount();
-                char label[96];
-                std::snprintf(label, sizeof(label),
-                              "Dump TMS9918 drop diagnostics (%llu drops)",
-                              (unsigned long long)dropTotal);
-                if (ImGui::MenuItem(label)) {
-                    emulation->dumpTms9918DropDiagnostics(stderr, 16);
-                    setStatusMessage(dropTotal > 0
-                        ? "TMS9918 drop diagnostics written to stderr (top-16 PC histogram)"
-                        : "No TMS9918 drops since last reset",
-                        4.0f);
-                }
-                showHardwareTooltip(
-                    "Dump TMS9918 drop diagnostics\n\n"
-                    "Writes the silicon-strict drop histogram to stderr:\n"
-                    "  - total drops since last reset / strict toggle\n"
-                    "  - breakdown by port ($CC00 data vs $CC01 control)\n"
-                    "  - breakdown by display phase (active vs vblank)\n"
-                    "  - breakdown by slot table (ScreenOff / Gfx12 / Gfx3 / Text)\n"
-                    "  - top-16 PC sites (mid-instruction; STA addr is PC-3)\n\n"
-                    "Counters reset when Silicon Strict is toggled or when a fresh\n"
-                    "snapshot is loaded. Live re-arm via 'Reset TMS9918 drop counter'.");
-                if (ImGui::MenuItem("Reset TMS9918 drop counter")) {
-                    emulation->resetTms9918DropCount();
-                    setStatusMessage("TMS9918 drop counter reset", 2.0f);
-                }
-            }
+                "Silicon Strict Inspector\n\n"
+                "Opens a window with the strict-mode toggle, silicon-fidelity\n"
+                "configuration (VRAM and RAM cold-boot noise, Juke-Box EEPROM\n"
+                "write-cycle timing) and live drop diagnostics (by port,\n"
+                "display phase, slot table, top PC sites).\n\n"
+                "Goal: an emulator faithful enough that silicon-side bugs\n"
+                "(uninitialised VRAM ghosts, assume-zero-RAM crashes,\n"
+                "timing-tight VDP loops, EEPROM write losses) surface in POM1\n"
+                "under strict mode, so you can fix them before flashing the\n"
+                "cartridge.");
             ImGui::EndMenu();
         }
 
@@ -947,7 +918,7 @@ void MainWindow_ImGui::renderToolbar()
         ImGui::SameLine(0, 12);
 
         // --- Resets groupés ---
-        // Clear Screen — physical button (CLR): wipes the 40x24 buffer and
+        // Clear Screen — physical button (CLS): wipes the 40x24 buffer and
         // parks the cursor at (0,0) without touching the CPU. The running
         // program keeps executing and will simply resume drawing on a
         // freshly-blanked screen.
@@ -956,7 +927,7 @@ void MainWindow_ImGui::renderToolbar()
             setStatusMessage("Screen cleared (CPU continues)", 2.0f);
         }
         drawToolbarTextLabel(ImGui::GetWindowDrawList(),
-                             ImGui::GetItemRectMin(), ImGui::GetItemRectMax(), "CLR");
+                             ImGui::GetItemRectMin(), ImGui::GetItemRectMax(), "CLS");
         if (ImGui::IsItemHovered())
             ImGui::SetTooltip("Clear Screen — wipes the display, cursor @ top-left.\nDoes NOT reset the CPU (running software keeps executing).");
 

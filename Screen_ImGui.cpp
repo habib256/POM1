@@ -384,6 +384,106 @@ void Screen_ImGui::drawCRTBackdrop(float x0, float y0, float x1, float y1, bool 
     }
 }
 
+// DRAM refresh crosstalk artefact — matched to the real Apple-1 photo
+// (doc/Artefacts.jpg). Layout reported by direct observation:
+//
+//   - Row 0 (top)        : 4 dots — refresh-slot crosstalk only.
+//   - Rows 1..24 (24)    : 20 dots — refresh slots + bus crosstalk on
+//                          every other char cycle.
+//   - Rows 25..27 (3)    : 4 dots each — same as top, three trailing
+//                          blanking lines at the bottom.
+//
+// Total = 4 + 24×20 + 3×4 = 496 dashes / 28 rows.
+//
+// Anchor (per user observation): the first dot of the FIRST 20-dot row
+//   (which is the second row overall, after the 4-dot top line) lives at
+//   (x0 + cellW, y0 + cellH) — the bottom-right corner of char(0,0).
+// Step is chosen so that row 1 sits exactly at y = cellH and row 27
+// (last footer line) lands at y = h (bottom edge).
+//
+// Horizontal positions are also pinned to char-cell right edges:
+//   - 4-dot rows  : every 10 chars  → x = cellW, 11·cellW, 21·cellW, 31·cellW
+//                   (corresponds to the H10·H6 NAND slots $C9/$D9/$E9/$F9).
+//   - 20-dot rows : every 2 chars   → x = cellW, 3·cellW, …, 39·cellW.
+//
+// UncleBernie + applefritter Jan 2022 thread describes the refresh slot
+// mechanism; the silicon photo establishes the visible layout.
+void Screen_ImGui::drawCRTRefreshDots(float x0, float y0, float x1, float y1,
+                                      bool /*charmapDisplay*/)
+{
+    constexpr int kCharCols   = 40;
+    constexpr int kCharRows   = 24;
+    constexpr int kTopRows    = 1;
+    constexpr int kActiveRows = 24;
+    constexpr int kBotRows    = 3;
+    constexpr int kTotalRows  = kTopRows + kActiveRows + kBotRows;  // 28
+    const float w = x1 - x0;
+    const float h = y1 - y0;
+    if (w <= 0.0f || h <= 0.0f) return;
+    const float cellW = w / static_cast<float>(kCharCols);
+    const float cellH = h / static_cast<float>(kCharRows);
+    // Anchor row 1 (first 20-dot row) at y = cellH, last row at y = h.
+    // Row 0 (the 4-dot top line) sits one step above row 1, so it lands
+    // just below the top edge.
+    const float rowStep = (h - cellH) / static_cast<float>(kTotalRows - 2);  // = (h - cellH) / 26
+    // Small vertical-rectangle marker — taller than wide but compact.
+    const float dashW = std::min(2.0f, std::max(1.0f, cellW   * 0.10f));
+    const float dashH = std::min(3.0f, std::max(1.5f, rowStep * 0.28f));
+    ImU32 dotCol;
+    switch (monitorMode) {
+        case MonitorMode::Amber:
+            dotCol = IM_COL32(255, 210, 140, 33);
+            break;
+        case MonitorMode::Monochrome:
+            dotCol = IM_COL32(235, 235, 235, 31);
+            break;
+        case MonitorMode::Green:
+        default:
+            dotCol = IM_COL32(170, 255, 180, 33);
+            break;
+    }
+    ImDrawList* dl = ImGui::GetWindowDrawList();
+
+    // rowIndex=1 lands exactly at y = cellH (anchor — bottom-right of
+    // char(0,0)); rowIndex=0 lands at y = cellH - rowStep (the leading
+    // 4-dot row near the top edge); rowIndex=27 lands at y = h.
+    auto paintRow = [&](int rowIndex, auto&& xForIndex, int dotCount) {
+        const float cy  = y0 + cellH + (rowIndex - 1) * rowStep;
+        const float py0 = cy - dashH * 0.5f;
+        const float py1 = cy + dashH * 0.5f;
+        for (int i = 0; i < dotCount; ++i) {
+            const float cx = x0 + xForIndex(i);
+            // Tall slash anchored on its right edge so the X coordinate
+            // sits exactly on the char's right border (= bottom-right
+            // corner pinning, per the silicon photo).
+            dl->AddRectFilled(ImVec2(cx - dashW, py0),
+                              ImVec2(cx,         py1),
+                              dotCol);
+        }
+    };
+
+    // 20-dot row column selector: char right edges 1, 3, 5, …, 39 → x = (2i+1)·cellW
+    auto twentyDotX = [cellW](int i) { return (2 * i + 1) * cellW; };
+    // 4-dot row column selector: each lands on the 5th, 10th, 15th, 20th
+    // dot of the 20-dot row above → indices 4, 9, 14, 19 in the 20-dot
+    // pattern → x = 9, 19, 29, 39 cellW (right edges of chars 8/18/28/38,
+    // matching the H10·H6 NAND slot spacing of 10 chars).
+    auto fourDotX   = [cellW](int i) { return (i * 10 + 9) * cellW; };
+
+    // --- Top blanking band: 1 row of 4 dots -------------------------------
+    paintRow(0, fourDotX, 4);
+
+    // --- Body: 24 rows × 20 dots -----------------------------------------
+    for (int r = 0; r < kActiveRows; ++r) {
+        paintRow(kTopRows + r, twentyDotX, 20);
+    }
+
+    // --- Bottom blanking band: 3 rows × 4 dots ---------------------------
+    for (int b = 0; b < kBotRows; ++b) {
+        paintRow(kTopRows + kActiveRows + b, fourDotX, 4);
+    }
+}
+
 void Screen_ImGui::drawCRTScanlines(float x0, float y0, float x1, float y1, bool charmapDisplay)
 {
     ImDrawList* dl = ImGui::GetWindowDrawList();
@@ -680,6 +780,14 @@ void Screen_ImGui::render()
         const ImVec2 absP0 = rasterMin;
         const ImVec2 absP1 = ImVec2(rasterMin.x + screenSize.x, rasterMin.y + screenSize.y);
         drawCRTScanlines(absP0.x, absP0.y, absP1.x, absP1.y, useCharmapRenderer);
+    }
+    // DRAM refresh crosstalk dots — painted on top of scanlines so they
+    // remain visible inside the dark mesh. Drawn regardless of crtEffect
+    // toggle: this is a silicon-fidelity diagnostic, not a CRT cosmetic.
+    if (dramRefreshDotsEnabled) {
+        const ImVec2 absP0 = rasterMin;
+        const ImVec2 absP1 = ImVec2(rasterMin.x + screenSize.x, rasterMin.y + screenSize.y);
+        drawCRTRefreshDots(absP0.x, absP0.y, absP1.x, absP1.y, useCharmapRenderer);
     }
 
     ImGui::PopFont();

@@ -636,6 +636,7 @@ void MainWindow_ImGui::render()
     if (a1ioRtcEnabled && showA1IO_RTC) renderA1IO_RTCWindow();
     if (jukeBoxEnabled && showJukeBox) renderJukeBoxWindow();
     if (showCodeTankLibrary) renderCodeTankLibraryWindow();
+    if (showSiliconStrictWindow) renderSiliconStrictWindow();
 
     // Barre de statut
     renderStatusBar();

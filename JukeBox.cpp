@@ -213,8 +213,27 @@ void JukeBox::writeByte(uint16_t address, uint8_t value)
     const size_t off = fileOffsetForAddress(address);
     if (off >= rom.size()) return;
     if (rom[off] == value) return;                    // no-op, skip disk write
+
+    // 28c256 byte-write cycle: ~10 ms during which the chip is internally
+    // programming the storage cell. A second byte arriving in that window
+    // is silently rejected on real silicon. Strict mode honours this; in
+    // permissive mode every write lands instantly (legacy POM1 behaviour
+    // so the UI Page-Copy / Save-ROM tools are not throttled).
+    if (siliconStrictMode && writeBusyCycles > 0) {
+        ++eepromWritesDropped;
+        return;
+    }
     rom[off] = value;
+    ++eepromWritesTotal;
+    if (siliconStrictMode) writeBusyCycles = writeCycleCpu;
     flushRomToFile();
+}
+
+void JukeBox::advanceCycles(int cycles)
+{
+    if (writeBusyCycles > 0 && cycles > 0) {
+        writeBusyCycles = std::max(0, writeBusyCycles - cycles);
+    }
 }
 
 void JukeBox::flushRomToFile() const

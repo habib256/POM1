@@ -62,6 +62,14 @@ public:
     bool getWriteInRom(void);
     int getRamSizeKB(void) const { return ramSize; }
 
+    // When true, resetMemory() seeds the RAM range with mt19937 noise
+    // instead of zeros — matches real Apple-1 6502 RAM at power-on
+    // (bistable noise). Surfaces "assume RAM = 0" bugs in user programs
+    // when paired with silicon-strict mode. Default = false (zero-init
+    // preserved for tests / snapshots).
+    void setSystemRamNoiseOnReset(bool enabled) { systemRamNoiseOnReset = enabled; }
+    bool isSystemRamNoiseOnReset() const { return systemRamNoiseOnReset; }
+
     // Preset RAM size (KB). Address space stays 64 KB; this drives the
     // out-of-range warning for user programs that reach beyond the preset's
     // physical RAM. Default 64 (no warnings).
@@ -230,6 +238,11 @@ public:
     bool isTMS9918Enabled() const { return tms9918Enabled; }
     void setSiliconStrictMode(bool enabled);
     bool isSiliconStrictMode() const { return siliconStrictMode; }
+
+    // Silicon fidelity toggles — forward to TMS9918::setVramNoiseOnReset.
+    // Kept here so the EmulationController facade only ever talks to Memory.
+    void setVramNoiseOnReset(bool enabled);
+    bool isVramNoiseOnReset() const;
 
     // P-LAB A1-SID Sound Card (MOS 6581/8580)
     pom1::SID& getSID() { return *sid; }
@@ -414,6 +427,7 @@ private :
     int presetRamKB = 64;             // user-visible RAM ceiling for OOR warnings
     int oorAccessCount = 0;
     bool oorStrictMode = false;       // true: enforce bounds (reads→$FF, writes dropped)
+    bool systemRamNoiseOnReset = false; // see setSystemRamNoiseOnReset()
     bool hgrFramebufferAttached = false;  // GEN2 HGR card supplies RAM at $2000-$3FFF
     std::unordered_set<uint32_t> oorWarned;  // key = (addr<<1)|isWrite; capped at 64
     void checkOutOfRangeAccess(uint16_t address, bool isWrite);

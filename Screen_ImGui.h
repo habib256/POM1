@@ -157,6 +157,16 @@ private:
     // effect without reintroducing the hard dark bars that used to cut glyphs.
     void drawCRTBackdrop(float x0, float y0, float x1, float y1, bool charmapDisplay);
     void drawCRTScanlines(float x0, float y0, float x1, float y1, bool charmapDisplay);
+    // DRAM refresh "faint dots" crosstalk artefact (UncleBernie / applefritter).
+    // Real Apple-1 silicon shows pale dots at the H10·H6 NAND refresh slots —
+    // every 10th character column, one per scanline. POM1 paints these only
+    // when the user enables DRAM refresh in the Silicon Strict Inspector.
+public:
+    void setDramRefreshDotsEnabled(bool enabled) { dramRefreshDotsEnabled = enabled; }
+    bool isDramRefreshDotsEnabled() const { return dramRefreshDotsEnabled; }
+private:
+    bool dramRefreshDotsEnabled = false;
+    void drawCRTRefreshDots(float x0, float y0, float x1, float y1, bool charmapDisplay);
 };
 
 #endif // SCREEN_IMGUI_H

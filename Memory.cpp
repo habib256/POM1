@@ -20,6 +20,7 @@
 #include <cstring>
 #include <filesystem>
 #include <fstream>
+#include <random>
 #include <sstream>
 #include <string>
 #include <cmath>
@@ -318,6 +319,17 @@ void Memory::setSiliconStrictMode(bool enabled)
 {
     siliconStrictMode = enabled;
     tms9918->setSiliconStrictMode(enabled);
+    jukeBox->setSiliconStrictMode(enabled);
+}
+
+void Memory::setVramNoiseOnReset(bool enabled)
+{
+    tms9918->setVramNoiseOnReset(enabled);
+}
+
+bool Memory::isVramNoiseOnReset() const
+{
+    return tms9918->isVramNoiseOnReset();
 }
 
 void Memory::setACIEnabled(bool b)
@@ -467,9 +479,22 @@ void Memory::initMemory(){
 
 void Memory::resetMemory(void)
 {
-    for (int i=0; i < ramSize*1024; i++)
-    {
-        mem[i]=0;
+    // RAM power-on profile. Default = zero-init (legacy, preserves tests
+    // and snapshots). When systemRamNoiseOnReset is enabled, seed RAM with
+    // mt19937 noise — matches what real Apple-1 6502 RAM actually shows
+    // at cold boot (bistable noise). Combined with silicon-strict mode
+    // this surfaces programs that assume RAM = 0.
+    if (systemRamNoiseOnReset) {
+        std::random_device rd;
+        std::mt19937 gen(rd());
+        std::uniform_int_distribution<int> dist(0, 255);
+        for (int i = 0; i < ramSize * 1024; ++i) {
+            mem[i] = static_cast<uint8_t>(dist(gen));
+        }
+    } else {
+        for (int i = 0; i < ramSize * 1024; ++i) {
+            mem[i] = 0;
+        }
     }
     markAllPagesDirty();
     // Apple-1 hard reset — zero only the bits of the ACI that are
@@ -1556,6 +1581,7 @@ void Memory::advanceCycles(int cycles)
     if (terminalCardEnabled) terminalCard->advanceCycles(cycles);
     if (a1ioRtcEnabled) a1ioRtc->advanceCycles(cycles);
     if (pr40Enabled) pr40Printer->advanceCycles(cycles);
+    if (jukeBoxEnabled) jukeBox->advanceCycles(cycles);
     // SID is driven by the *emulated* CPU clock, not by the audio device.
     // Without this call, libresidfp would produce samples at wallclock
     // 44.1 kHz independent of executionSpeed, decoupling music tempo from

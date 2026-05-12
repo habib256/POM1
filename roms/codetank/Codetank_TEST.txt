@@ -1,2 +1,10 @@
-Lower jumper: 4000R → TMS_SilBench (29-test silicon)
-Upper jumper: 4000R → menu → 1=Clone 2=Split (Bugs tests)
+Codetank_TEST.rom — TMS9918 silicon-validation utilities
+  Lower jumper: 4000R → TMS_SilBench (29-test silicon benchmark
+                suite — interactive menu (A=run all, 1..9=single
+                test, ESC=exit). Each test renders a visual on the
+                TMS9918 then prints a transcribable line on the
+                Apple-1 native PIA display. Canonical regression
+                fixture for the May 2026 silicon model — see
+                dev/projects/tms9918_silbench/README.md)
+  Upper jumper: 4000R → menu → 1=Clone (sprite-clone bug N.8)
+                              2=Split (5th-sprite palette split)

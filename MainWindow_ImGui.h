@@ -244,6 +244,13 @@ private:
     // the Hardware menu toggle. Drives the Hardware menu checkbox state and
     // the STRICT/FANTASY status-bar tag.
     bool siliconStrictModeEnabled = true;
+    // Silicon Strict Inspector window — opens from the Hardware menu just
+    // below the timing toggle. Surfaces drop-diagnostics live + lets the
+    // user pick faithful silicon profile toggles (VRAM/RAM cold-boot noise).
+    bool showSiliconStrictWindow = false;
+    bool vramNoiseOnResetEnabled = false;
+    bool systemRamNoiseOnResetEnabled = false;
+    bool dramRefreshEnabled = false;
     bool fullscreen = false;
 
     // Keyboard input
@@ -337,6 +344,7 @@ private:
     void renderJukeBoxWindow();
     void renderCodeTankLibraryWindow();
     void renderPR40Window();
+    void renderSiliconStrictWindow();
 
     // Action functions
     void loadMemory();

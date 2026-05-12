@@ -21,6 +21,7 @@
 ; =============================================
 
         .import tms9918_pad12  ; silicon-strict pad12-v3 (helper from tms9918_pad.asm)
+        .import tms9918_pad40  ; silicon-strict pad40 (hot upload loops)
 .include "apple1.inc"
 .include "tms9918.inc"
 
@@ -671,12 +672,48 @@ start:
         LDX #$FF
         TXS
 
-        JSR init_vdp_g1         ; 8 registers + disable_sprites
-        JSR override_r1_16x16   ; switch sprite mode 8x8 -> 16x16
+        JSR init_vdp_g1         ; 8 registers + disable_sprites at $1B00
+
+        ; --- Display-OFF discipline (real-silicon adaptation, May 2026) ---
+        ; init_vdp_g1's final phase re-arms R1 = $C0 (display ON). On POM1
+        ; VRAM is zero-initialised, so the screen stays black during the
+        ; upload phase. On real P-LAB silicon VRAM is DRAM noise — the user
+        ; sees garbage tiles (random name-table indices into the not-yet-loaded
+        ; pattern table) until clear_name_table lands tens of ms later.
+        ; Force R1 = $80 immediately (display OFF, 16K, IRQ off, sprite 8x8)
+        ; and keep it OFF until every table is on solid ground. As a bonus,
+        ; CPU↔VDP access slots widen to the 2c gate (no sprite contention).
+        LDA     #$80
+        STA     VDP_CTRL
+        JSR     tms9918_pad12
+        LDA     #$81            ; cmd = $80 | reg 1
+        STA     VDP_CTRL
+        JSR     tms9918_pad12
+
+        ; --- SAT defensive Y-init (doc/TMS9918-SPRITE_INIT.md §4.2). ---
+        ; disable_sprites only wrote $D0 to SAT[0].Y. The other 31 Y slots
+        ; hold DRAM noise on real silicon: a stray $D0 there would freeze
+        ; the SAT scan at the wrong slot; an aberrant Y < $D0 would paint
+        ; a ghost sprite in the first frames. Set every byte of the SAT
+        ; to $D1 (off-screen Y, no terminator), then restore the $D0
+        ; terminator at slot 0 via disable_sprites.
+        JSR     clear_sat_y
+        JSR     disable_sprites
+
+        ; All VRAM uploads happen with display OFF — masks the visible noise
+        ; frame AND gives the VDP its widest CPU access window.
         JSR upload_tileset      ; 2048 B pattern table -> VRAM $0000
-        JSR     tms9918_pad12   ; +12c silicon-strict pad12-v3 (back-to-back VDP store)
         JSR upload_colour_table ; 32 B colour table   -> VRAM $2000
-        JSR clear_name_table    ; whole 32x24 -> char 0 (black)
+        JSR upload_sprite_pats  ; 576 B sprite patterns -> VRAM $3800
+                                ; (moved up from the late init slot; sprite
+                                ;  patterns are level-independent for MVP)
+        JSR clear_name_table    ; whole 32x24 -> char 0 (black). Display
+                                ; still OFF, so the silicon's CPU slot is
+                                ; the fast 2c gate for all 768 writes.
+
+        ; Display ON + sprite 16x16 mode. Boot frame now lands on a fully
+        ; populated VDP state — no garbage flash even at NMOS phase corners.
+        JSR override_r1_16x16
 
         JSR draw_title          ; ROGUE banner + key-layout prompt
         JSR wait_kb_choice      ; bind keys + seed prng_lo/hi from key timing
@@ -714,7 +751,8 @@ start:
         JSR render_map          ; expand 16x10 logical map to 32x20 char block
                                 ; (now FOV-gated: dark cells render blank)
 
-        JSR upload_sprite_pats  ; player + 3 undead patterns -> $3800-$387F
+        ; upload_sprite_pats moved to the display-OFF init window — sprite
+        ; patterns are level-independent, no per-level re-upload needed.
         JSR spawn_monsters      ; populate the pool for the first level
         JSR spawn_level_items   ; 1..3 typed items scattered on TILE_EMPTY
         JSR spawn_level_pits    ; 0..2 pits scattered on TILE_EMPTY
@@ -1069,8 +1107,41 @@ override_r1_16x16:
 
 
 ; ----------------------------------------------------------------------------
+; clear_sat_y: write $D1 to all 128 bytes of the SAT at $1B00. Purpose is
+; defensive — see doc/TMS9918-SPRITE_INIT.md §4.2 "Programme / VRAM non
+; initialisée". On real P-LAB silicon the SAT comes up full of DRAM noise.
+; A stray $D0 in any Y slot would terminate the scan before the slot the
+; game cares about; an aberrant Y < $D0 would paint a ghost sprite in
+; the first frames. Writing $D1 everywhere (off-screen Y, NOT the
+; terminator) guarantees no ghost and no premature termination. Caller
+; MUST follow up with disable_sprites to put back the $D0 at SAT[0].Y.
+; ----------------------------------------------------------------------------
+clear_sat_y:
+        JSR     tms9918_pad12   ; caller-gap cushion
+        LDA     #$00            ; addr low
+        STA     VDP_CTRL
+        JSR     tms9918_pad12   ; addr-low → addr-cmd bridge
+        LDA     #$5B            ; $1B | $40 = write at $1B00 (SAT base)
+        STA     VDP_CTRL
+        JSR     tms9918_pad12   ; cmd → first STA VDP_DATA cushion
+        LDX     #128
+        LDA     #$D1
+@lp:    STA     VDP_DATA
+        JSR     tms9918_pad12   ; silicon-strict inner gap
+        DEX
+        BNE     @lp
+        RTS
+
+
+; ----------------------------------------------------------------------------
 ; upload_tileset: stream tileset_rogue (2048 bytes, 256 chars * 8) into
 ; the pattern table at VRAM $0000. Auto-increment write — one big block.
+;
+; Real-silicon adaptation (May 2026): the inner write loop uses pad40
+; instead of the macro's pad12 to satisfy the hardened 40c slot contract
+; documented in dev/lib/tms9918/tms9918_pad.asm. Caller runs this with
+; display OFF so the slot is the wide 2c gate, but the pad40 gives us
+; headroom even if a future caller forgets the OFF discipline.
 ; ----------------------------------------------------------------------------
 upload_tileset:
         LDA     #$00
@@ -1087,7 +1158,8 @@ upload_tileset:
         LDX     #8
 @page:  LDY     #0
 @byte:  LDA     (vdp_src_lo),Y
-        WRT_DATA_REG
+        STA     VDP_DATA
+        JSR     tms9918_pad40   ; 40c silicon-strict gap (was WRT_DATA_REG/pad12)
         INY
         BNE     @byte
         INC     vdp_src_hi
@@ -1097,7 +1169,8 @@ upload_tileset:
 
 
 ; ----------------------------------------------------------------------------
-; upload_colour_table: stream 32 colour bytes to VRAM $2000.
+; upload_colour_table: stream 32 colour bytes to VRAM $2000. Inner loop
+; uses pad40 — same rationale as upload_tileset.
 ; ----------------------------------------------------------------------------
 upload_colour_table:
         LDA     #$00
@@ -1108,7 +1181,8 @@ upload_colour_table:
 
         LDX     #0
 @lp:    LDA     tileset_color_table,X
-        WRT_DATA_REG
+        STA     VDP_DATA
+        JSR     tms9918_pad40   ; 40c silicon-strict gap (was WRT_DATA_REG/pad12)
         INX
         CPX     #32
         BNE     @lp
@@ -4125,23 +4199,27 @@ is_opaque_at_cur:
 ; INX/BNE wraps after 256, so we stride in three loops: 256, 192, 128.
 ; ----------------------------------------------------------------------------
 upload_sprite_pats:
-        JSR     tms9918_pad12   ; MANUAL caller-gap cushion (12c, was 40c pre-openMSX-port)
+        JSR     tms9918_pad12   ; MANUAL caller-gap cushion
         LDA     #$00
         STA     VDP_CTRL
-        JSR     tms9918_pad12   ; +12c silicon-strict pad12-v3 (before LDA #imm bridge)
+        JSR     tms9918_pad12   ; addr-low → addr-cmd bridge
         LDA     #$78            ; $38 | $40 -> write at $3800
         STA     VDP_CTRL
-        ; First 256 bytes (slots 0..31, offsets 0..255 of sprite_pats)
+        JSR     tms9918_pad12   ; cmd → first STA VDP_DATA cushion
+        ; First 256 bytes (slots 0..31, offsets 0..255 of sprite_pats).
+        ; Inner loops use pad40 (hardened 40c silicon contract) instead
+        ; of WRT_DATA_REG/pad12 — see upload_tileset rationale.
         LDX     #0
 @lp1:   LDA     sprite_pats,X
-        JSR     tms9918_pad12   ; +12c silicon-strict pad12-v3 (back-to-back VDP store)
-        WRT_DATA_REG
+        STA     VDP_DATA
+        JSR     tms9918_pad40
         INX
         BNE     @lp1
         ; Next 192 bytes (slots 32..55, offsets 256..447 of sprite_pats)
         LDX     #0
 @lp2:   LDA     sprite_pats+256,X
-        WRT_DATA_REG
+        STA     VDP_DATA
+        JSR     tms9918_pad40
         INX
         CPX     #192
         BNE     @lp2
@@ -4150,7 +4228,8 @@ upload_sprite_pats:
         ; sitting at $39C0, so we just keep streaming.
         LDX     #0
 @lp3:   LDA     boss_sprite_pats,X
-        WRT_DATA_REG
+        STA     VDP_DATA
+        JSR     tms9918_pad40
         INX
         CPX     #128
         BNE     @lp3

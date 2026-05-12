@@ -75,6 +75,13 @@ public:
     void setSiliconStrictMode(bool enabled);
     bool isSiliconStrictMode() const { return siliconStrictMode; }
 
+    // When true, reset() seeds VRAM with mt19937 noise instead of the MSX1
+    // bistable $FF/$00 alternation — closer to what warm P-LAB DRAM actually
+    // shows on cold boot, and surfaces uninitialised-VRAM bugs under strict
+    // mode. Default = false to preserve historical tests / snapshots.
+    void setVramNoiseOnReset(bool enabled) { vramNoiseOnReset = enabled; }
+    bool isVramNoiseOnReset() const { return vramNoiseOnReset; }
+
     // Cumulative count of VDP writes (data + control port) dropped because
     // siliconStrictMode was on and `canAcceptAccess()` rejected the byte.
     // Exposed in the status bar next to the STRICT/FANTASY tag so users can
@@ -352,6 +359,9 @@ private:
     // Same semantics as lastScanlineProcessed but for the renderer.
     int lastScanlineRendered = -1;
     bool siliconStrictMode  = false;
+    // See setVramNoiseOnReset(). Default OFF — preserves the MSX1 bistable
+    // power-on pattern that the test suite + recorded snapshots expect.
+    bool vramNoiseOnReset   = false;
     // P-LAB original card leaves /INT floating; community FPGA mods can strap
     // it to /IRQ. Default = false (matches stock P-LAB → polling-only via
     // $CC01). Set true via setIrqStrapped() for FPGA-strap emulation.
