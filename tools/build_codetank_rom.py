@@ -35,15 +35,24 @@ Four ROMs are produced (in roms/codetank/):
     Jumper Lower → 4000R boots SilBench; jumper Upper → 4000R brings up
     the test picker.
 
+  Codetank_GAME4.rom (32 kB)
+    Lower 16 kB: TMS_LightCorridor (full bank, run-in-place from $4000)
+                 — wireframe perspective tunnel + paddle + ball, 3
+                 difficulty levels. Original implementation inspired by
+                 the Light Corridor (Infogrames 1990) concept.
+    Upper 16 kB: reserved ($FF fill — future expansion).
+    Jumper Lower → 4000R boots Light Corridor.
+
 Each game's slot is sized to fit its current assembled binary (see the
 .cfg `size = $xxxx` field). `slot()` enforces the boundary and prints a
 clear deficit message if a game outgrows its slot.
 
 Usage:
-    python3 tools/build_codetank_rom.py            # build all 4
+    python3 tools/build_codetank_rom.py            # build all 5
     python3 tools/build_codetank_rom.py --rom=1    # only GAME1
     python3 tools/build_codetank_rom.py --rom=2    # only GAME2
     python3 tools/build_codetank_rom.py --rom=3    # only GAME3
+    python3 tools/build_codetank_rom.py --rom=4    # only GAME4
     python3 tools/build_codetank_rom.py --rom=test # only TEST
 """
 from __future__ import annotations
@@ -143,6 +152,13 @@ SPLIT_ASM           = DEV / "tms9918_split" / "TMS_Split.asm"
 SPLIT_BANK_CFG      = DEV / "tms9918_split" / "apple1_split_codetank_bank.cfg"
 SPLIT_M1_ASM        = LIB_TMS / "tms9918m1.asm"
 SPLIT_5S_ASM        = LIB_TMS / "tms9918_5strigger.asm"
+
+# --- GAME4 sources (Light Corridor — full lower 16 kB; upper reserved) -----
+LIGHT_CORRIDOR_ASM     = DEV / "tms9918_light_corridor" / "TMS_LightCorridor.asm"
+LIGHT_CORRIDOR_BANK_CFG = (
+    DEV / "tms9918_light_corridor" / "apple1_light_corridor_codetank_bank.cfg"
+)
+LIGHT_CORRIDOR_VDP_ASM = LIB_TMS / "tms9918m2.asm"
 
 
 # ---------------------------------------------------------------------------
@@ -429,6 +445,33 @@ def build_test_upper_bank() -> bytes:
 
 
 # ---------------------------------------------------------------------------
+# GAME4 — Light Corridor (lower) + reserved (upper)
+# ---------------------------------------------------------------------------
+def build_game4_lower_bank() -> bytes:
+    """Lower 16 kB: TMS_LightCorridor alone, full $4000-$7FFF, run-in-place.
+    Original implementation inspired by Infogrames' Light Corridor (1990):
+    wireframe perspective tunnel + paddle + ball with z-scaled sprite
+    swap, 3 difficulty levels."""
+    print("[GAME4] Lower bank (TMS_LightCorridor, full 16 kB):",
+          file=sys.stderr)
+    lc = assemble_multi(
+        [LIGHT_CORRIDOR_ASM, LIGHT_CORRIDOR_VDP_ASM],
+        LIGHT_CORRIDOR_BANK_CFG, "G4_LightCorridor", HALF_SIZE)
+    bank = bytearray(b"\xFF" * HALF_SIZE)
+    slot(bank, 0x0000, lc, HALF_SIZE, "LightCorr ($4000-$7FFF)")
+    return bytes(bank)
+
+
+def build_game4_upper_bank() -> bytes:
+    """Upper 16 kB: reserved for future expansion (currently $FF fill)."""
+    print("\n[GAME4] Upper bank (reserved, $FF fill):", file=sys.stderr)
+    bank = bytearray(b"\xFF" * HALF_SIZE)
+    print(f"  Reserved upper bank          0 B / {HALF_SIZE:5d} B slot "
+          f"(  0.0%, {HALF_SIZE:5d} B free)", file=sys.stderr)
+    return bytes(bank)
+
+
+# ---------------------------------------------------------------------------
 def build_game1() -> bytes:
     print("\n========== Codetank_GAME1.rom ==========", file=sys.stderr)
     lower = build_game1_lower_bank()
@@ -460,6 +503,15 @@ def build_test() -> bytes:
     print("\n========== Codetank_TEST.rom ==========", file=sys.stderr)
     lower = build_test_lower_bank()
     upper = build_test_upper_bank()
+    rom = lower + upper
+    assert len(rom) == ROM_SIZE
+    return rom
+
+
+def build_game4() -> bytes:
+    print("\n========== Codetank_GAME4.rom ==========", file=sys.stderr)
+    lower = build_game4_lower_bank()
+    upper = build_game4_upper_bank()
     rom = lower + upper
     assert len(rom) == ROM_SIZE
     return rom
@@ -505,6 +557,18 @@ SIDECAR_TEST = (
     "                              2=Split (5th-sprite palette split)\n"
 )
 
+SIDECAR_GAME4 = (
+    "Codetank_GAME4.rom — TMS9918 P-LAB CodeTank cartridge\n"
+    "  Lower jumper: 4000R → TMS_LightCorridor (wireframe perspective\n"
+    "                tunnel + paddle + ball, 3 difficulty levels).\n"
+    "                Controls: A/Q D = left/right, W/Z S = up/down,\n"
+    "                SPACE = launch, ESC = exit to Wozmon.\n"
+    "                Original implementation inspired by Infogrames'\n"
+    "                Light Corridor (1990) concept — original code,\n"
+    "                original assets.\n"
+    "  Upper jumper: reserved ($FF fill — future expansion).\n"
+)
+
 
 def main() -> int:
     ap = argparse.ArgumentParser(
@@ -512,8 +576,8 @@ def main() -> int:
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     ap.add_argument(
-        "--rom", choices=("1", "2", "3", "test", "all"), default="all",
-        help="Which CodeTank ROM to build (default: all 4)",
+        "--rom", choices=("1", "2", "3", "4", "test", "all"), default="all",
+        help="Which CodeTank ROM to build (default: all 5)",
     )
     args = ap.parse_args()
 
@@ -537,6 +601,10 @@ def main() -> int:
     if args.rom in ("test", "all"):
         romT = build_test()
         write_rom(romT, out_dir / "Codetank_TEST.rom", SIDECAR_TEST)
+
+    if args.rom in ("4", "all"):
+        rom4 = build_game4()
+        write_rom(rom4, out_dir / "Codetank_GAME4.rom", SIDECAR_GAME4)
 
     return 0
 
