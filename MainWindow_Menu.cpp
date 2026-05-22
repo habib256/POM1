@@ -192,6 +192,8 @@ void MainWindow_ImGui::renderMenuBar()
             ImGui::MenuItem("Memory Map Grid", shortcutLabel(GLFW_KEY_F2), &showMemoryMapGrid);
             ImGui::MenuItem("Memory Map Bar", nullptr, &showMemoryBar);
             ImGui::MenuItem("Memory Map Bar (Horizontal)", nullptr, &showMemoryBarH);
+            if (tms9918Enabled)
+                ImGui::MenuItem("TMS9918 VDP Inspector...", nullptr, &showTMS9918Inspector);
             if (ImGui::MenuItem("Memory Options")) {
                 configMemory();
             }
@@ -398,15 +400,6 @@ void MainWindow_ImGui::renderMenuBar()
                 "Daughterboard of the TMS9918 Graphic Card — no edge connector.\n"
                 "Plugging it auto-plugs the TMS9918 host (and evicts A1-AUDIO SE\n"
                 "and the Juke-Box). Unplugging the TMS9918 cascade-unplugs CodeTank.");
-            if (tms9918Enabled) {
-                if (ImGui::MenuItem("TMS9918 VDP Inspector...", nullptr, &showTMS9918Inspector)) {}
-                showHardwareTooltip(
-                    "TMS9918 VDP Inspector\n\n"
-                    "Fenêtre de débogage en lecture seule : registres R0-R7,\n"
-                    "table des sprites (SAT), visionneur de motifs, table des\n"
-                    "noms et dump VRAM 16 Ko.\n\n"
-                    "Disponible uniquement quand la P-LAB Graphic Card est branchée.");
-            }
             if (ImGui::MenuItem("P-LAB I/O Board & RTC", nullptr, &a1ioRtcEnabled)) {
                 if (!gateStrictPlug("A1-IO-RTC", a1ioRtcEnabled)) {
                     emulation->setA1IO_RTCEnabled(a1ioRtcEnabled);
