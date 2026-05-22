@@ -192,6 +192,8 @@ void MainWindow_ImGui::renderMenuBar()
             ImGui::MenuItem("Memory Map Grid", shortcutLabel(GLFW_KEY_F2), &showMemoryMapGrid);
             ImGui::MenuItem("Memory Map Bar", nullptr, &showMemoryBar);
             ImGui::MenuItem("Memory Map Bar (Horizontal)", nullptr, &showMemoryBarH);
+            if (tms9918Enabled)
+                ImGui::MenuItem("TMS9918 VDP Inspector...", nullptr, &showTMS9918Inspector);
             if (ImGui::MenuItem("Memory Options")) {
                 configMemory();
             }

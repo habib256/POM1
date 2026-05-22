@@ -78,6 +78,7 @@ set(SOURCES
     MainWindow_HardwareWindows.cpp
     MainWindow_FileDialogs.cpp
     MainWindow_DebugWindows.cpp
+    MainWindow_TMS9918Inspector.cpp
     MainWindow_Keyboard.cpp
     Logger.cpp
 )

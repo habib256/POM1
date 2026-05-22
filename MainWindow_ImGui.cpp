@@ -629,6 +629,7 @@ void MainWindow_ImGui::render()
     if (showSaveSnapshotDialog) renderSaveSnapshotDialog();
     if (graphicsCardEnabled && showGraphicsCard) renderGraphicsCardWindow();
     if (tms9918Enabled && showTMS9918) renderTMS9918Window();
+    if (tms9918Enabled && showTMS9918Inspector) renderTMS9918InspectorWindow();
     if (gt6144Enabled && showGT6144) renderGT6144Window();
     if (wifiModemEnabled && showWiFiModem) renderWiFiModemWindow();
     if (terminalCardEnabled && showTerminalCard) renderTerminalCardWindow();
