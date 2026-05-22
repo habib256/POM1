@@ -238,6 +238,7 @@ private:
     double codeTankPendingWozRunAt = 0.0;
     /// Set from CodeTank Library insert — next TMS9918 Begin() uses SetNextWindowFocus().
     bool bringTms9918WindowToFront = false;
+    bool showTMS9918Inspector = false;
     CodeTank::Jumper codeTankJumper = CodeTank::Jumper::Lower16;
     // UI mirror of EmulationController::isSiliconStrictMode(). Resynced from
     // applyMachineConfig() (preset-driven default = !fantasyPreset) and from
@@ -345,6 +346,7 @@ private:
     void renderSaveSnapshotDialog();
     void renderGraphicsCardWindow();
     void renderTMS9918Window();
+    void renderTMS9918InspectorWindow();
     void renderGT6144Window();
     void renderWiFiModemWindow();
     void renderTerminalCardWindow();
