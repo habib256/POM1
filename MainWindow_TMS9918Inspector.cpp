@@ -398,10 +398,12 @@ static void renderSpriteTableTab(const TMS9918::Snapshot& snap)
                         }
                     }
                 } else {
-                    // 16×16: four 8×8 quadrants
-                    // Layout: TL=+0, TR=+1, BL=+2, BR=+3
-                    static const int kQuadColOff[4] = {0, 8, 0, 8};
-                    static const int kQuadRowOff[4] = {0, 0, 8, 8};
+                    // 16×16: four 8×8 quadrants.
+                    // TMS9918 stores them column-major (down first, then right):
+                    // TL=+0, BL=+1, TR=+2, BR=+3 — matches the VDP render path
+                    // (renderSpritesLineRaw quadrant = half*2 [+1 for bottom]).
+                    static const int kQuadColOff[4] = {0, 0, 8, 8};
+                    static const int kQuadRowOff[4] = {0, 8, 0, 8};
                     for (int quad = 0; quad < 4; ++quad) {
                         for (int row = 0; row < 8; ++row) {
                             uint16_t pa = (uint16_t)(sprPatBase
