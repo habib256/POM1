@@ -379,9 +379,9 @@ public:
     // /IRQ aggregator — see Memory::advanceCycles() for the wire-OR logic.
     // EmulationController calls this once at startup so peripherals can
     // pull /IRQ on the 6502 (TMS9918 vblank, 65C22 timers, 65C51 Rx, …).
-    // Pre-existing programs that assumed POM1's broken "/INT not wired"
-    // behaviour (cf. dev/SILICONBUGS.md Bug N°2 workaround) keep working
-    // because they pre-disable interrupts (`SEI`) or never set R1 bit 5.
+    // TMS9918 /INT is wired by default (cf. dev/SILICONBUGS.md Bug N°2);
+    // polling-only programs keep working because they leave interrupts
+    // masked (never CLI) or never set R1 bit 5.
     void setCpuForIrq(M6502* c) { cpuForIrq = c; }
 
 private:

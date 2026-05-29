@@ -121,11 +121,12 @@ In your project Makefile (Mode 1 example, multi-object link):
 
 ## VBlank synchronisation macro (`WAIT_VBLANK`)
 
-**P-LAB ne câble pas /INT** — la broche du VDP est laissée flottante côté
-carte. Conséquence : **toujours synchroniser les frames par polling**, jamais
-par IRQ. Même si un programme arme R1 bit 5 (IRQ enable côté chip), aucune
-IRQ ne remontera vers le 6502 sur la carte stock. Tous les jeux POM1
-(Galaga, Sokoban, Snake, Life, Rogue, …) suivent ce pattern.
+**P-LAB câble /INT → /IRQ** (trace vérifiée sur le vrai matériel par
+Parmigiani), mais le soft Nippur72 ne s'en sert pas. Recommandation :
+**synchroniser les frames par polling** plutôt que par IRQ — c'est plus
+simple et indépendant du flag I. L'IRQ frame est bien disponible (R1 bit 5 +
+`CLI` + handler au vecteur $FFFE), mais tous les jeux POM1 (Galaga, Sokoban,
+Snake, Life, Rogue, …) suivent le pattern polling.
 
 ```asm
 .include "tms9918.inc"
@@ -152,11 +153,10 @@ Side effect : la lecture de `$CC01` efface aussi les bits 5 (collision) et 6
 `WAIT_VBLANK` (ou snapshot le status register dans une variable). Pour les
 jeux qui ne pollent que F, le clobber 5/6 est sans conséquence.
 
-Pour les utilisateurs ayant modifié leur réplica avec un strap FPGA
-`int_n_o → irq_n` (mod community, pas P-LAB d'origine), POM1 expose
-`TMS9918::setIrqStrapped(true)` côté API. Si tu écris du code pour
-P-LAB stock, ignore cette branche : poll, c'est tout. Détails complets
-dans [`dev/SILICONBUGS.md`](../../SILICONBUGS.md) Bug N°2.
+L'IRQ frame est câblée par défaut (`irqStrapped=true`) ; `TMS9918::setIrqStrapped(false)`
+modélise au besoin une carte hypothétique non câblée. Si tu écris du code
+pour P-LAB stock, le plus simple reste de poller — pas de configuration
+nécessaire. Détails complets dans [`dev/SILICONBUGS.md`](../../SILICONBUGS.md) Bug N°2.
 
 ## Mid-frame raster trap — 5th-sprite-overflow primitive (`tms9918_5strigger.asm`)
 
@@ -168,8 +168,9 @@ flag bit 6 du status register (5S = "5th sprite overflow") en plaçant 5
 sprites invisibles à la ligne où on veut piéger le faisceau.
 
 C'est exactement la technique de Daniel Vik dans la démo MSX *Waves*,
-adaptée au polling pur (P-LAB ne câble pas /INT — voir Bug N°2 dans
-`SILICONBUGS.md`).
+adaptée au polling pur — le TMS9918 n'a pas d'interruption ligne (seulement
+le /INT frame), donc le mid-frame se polle quel que soit le câblage de /INT
+(voir Bug N°2 dans `SILICONBUGS.md`).
 
 ### Public symbols
 

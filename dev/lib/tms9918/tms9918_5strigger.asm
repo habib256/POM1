@@ -1,14 +1,14 @@
 ; ============================================================================
 ; tms9918_5strigger.asm -- 5th-sprite-overflow as mid-frame synchronisation
-;                          primitive for the P-LAB TMS9918 (no /INT wired).
+;                          primitive for the P-LAB TMS9918.
 ;
 ; Why:
-;   The P-LAB Apple-1 Graphic Card leaves /INT floating, so MSX/SG-1000
-;   tricks that schedule mid-frame work via the V-blank IRQ are not
-;   available on stock hardware. The TMS9918 status register exposes
-;   another raster-following bit, however: bit 6 (5S = "5th sprite
-;   overflow") sets the moment the chip discovers a 5th sprite on the
-;   current scan line.
+;   The TMS9918 only has a frame /INT (no line interrupt), so the MSX/SG-1000
+;   trick of scheduling mid-frame work via an IRQ is not possible regardless
+;   of /INT wiring — even though P-LAB does wire /INT → /IRQ. The status
+;   register, however, exposes another raster-following bit: bit 6 (5S =
+;   "5th sprite overflow") sets the moment the chip discovers a 5th sprite
+;   on the current scan line.
 ;
 ;   By placing 5 invisible sprites at a chosen Y, the program can spin on
 ;   bit 6 to trap the raster as it crosses that scan line — same idea as

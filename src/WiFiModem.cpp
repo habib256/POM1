@@ -376,7 +376,14 @@ void WiFiModem::handleATDT(const std::string& args)
     if (colonPos != std::string::npos && colonPos < trimmed.size() - 1) {
         host = trimmed.substr(0, colonPos);
         try {
-            port = static_cast<uint16_t>(std::stoi(trimmed.substr(colonPos + 1)));
+            // std::stoi yields an int — reject out-of-range values instead of
+            // silently truncating into uint16_t (e.g. 70000 → 4464).
+            int portInt = std::stoi(trimmed.substr(colonPos + 1));
+            if (portInt < 1 || portInt > 65535) {
+                enqueueRxString("\r\nERROR\r\n");
+                return;
+            }
+            port = static_cast<uint16_t>(portInt);
         } catch (...) {
             enqueueRxString("\r\nERROR\r\n");
             return;

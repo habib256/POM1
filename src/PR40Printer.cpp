@@ -133,7 +133,9 @@ void PR40Printer::deserialize(pom1::SnapshotReader& r)
 {
     std::lock_guard<std::mutex> lock(cardMutex);
     mode               = static_cast<SwitchMode>(r.readU8());
-    fifoLevel          = r.readU8();
+    // Clamp the untrusted snapshot value: flushLineLocked() indexes fifo[40]
+    // up to fifoLevel, so an out-of-range value would read out of bounds.
+    fifoLevel          = std::min<int>(r.readU8(), kFifoCapacity);
     r.readBytes(fifo, kFifoCapacity);
     mechCyclesRemaining = static_cast<int>(r.readU32());
     charactersPrinted  = static_cast<int>(r.readU32());

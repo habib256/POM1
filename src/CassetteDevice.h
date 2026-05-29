@@ -288,7 +288,9 @@ private:
     // tape input): the next $C081 read rewinds the tape to the start so
     // the ACI READ routine sees the leader intact.
     uint64_t lastTapeInputCycle = 0;
-    bool playbackActive = false;
+    // Read on the realtime audio thread (fillAudioBuffer) and written on the
+    // CPU/UI thread — atomic to avoid a data race on the playback flag.
+    std::atomic<bool> playbackActive{false};
     uint64_t cyclesUntilInputToggle = 0;
     size_t playbackIndex = 0;
     // Progressive-rewind state (pulse mode). `rewinding` is set by
@@ -334,7 +336,10 @@ private:
     // audioStreamMutex because the audio callback competes with UI-thread
     // load/eject/seek calls.
     mutable std::mutex audioStreamMutex;
-    bool audioStreamMode = false;
+    // Read on the realtime audio thread before taking audioStreamMutex (and in
+    // const getMode()/isAudioStreamMode() queries) while the CPU/UI thread
+    // flips it on load/eject — atomic to make that mode probe race-free.
+    std::atomic<bool> audioStreamMode{false};
     bool audioStreamDecoderOpen = false;
     ma_decoder audioStreamDecoder{};
     uint64_t audioStreamCursor = 0;       // frames consumed so far

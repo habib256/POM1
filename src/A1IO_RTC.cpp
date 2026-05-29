@@ -266,8 +266,10 @@ void A1IO_RTC::writeRegister(uint16_t address, uint8_t value)
                     std::time_t hostTime = std::chrono::system_clock::to_time_t(now);
                     rtcOffsetSeconds = static_cast<int>(newTime - hostTime);
                     updateVirtualRegisters();
-                } else if (regIndex == 0 && dataValue > 0) {
-                    // Hour: excluded when 0 to prevent false writes at VIA power-up
+                } else if (regIndex == 0) {
+                    // Hour. Midnight (0) is a legitimate value — the DDR==0xFF +
+                    // RW-edge gate above already filters spurious power-up writes
+                    // (DDRs read back 0 at reset), so no hour-zero special case.
                     auto now = std::chrono::system_clock::now();
                     auto adjusted = now + std::chrono::seconds(rtcOffsetSeconds);
                     std::time_t tt = std::chrono::system_clock::to_time_t(adjusted);

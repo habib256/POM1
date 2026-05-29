@@ -138,10 +138,11 @@ Anti-pattern : SAT rebuild en active-display sans gating. Génère du
 
 ### 8. Polling F flag — pas d'IRQ
 
-- Sur P-LAB la broche `/INT` du TMS9918 **n'est pas câblée** au `/IRQ`
-  du 6502. Polling `BIT $CC01 / BPL` est la seule voie.
-- Tout code qui pose R1 bit 5 = 1 (IRQ enable) puis fait `CLI / WAI`
-  **deadlocke** sur P-LAB stock comme sur POM1 default.
+- Sur P-LAB la broche `/INT` du TMS9918 **est câblée** au `/IRQ` du 6502
+  (trace vérifiée par Parmigiani), mais le polling `BIT $CC01 / BPL` reste
+  le pattern recommandé (plus simple, indépendant du flag I).
+- L'IRQ-on-VBlank fonctionne (R1 bit 5 = 1 + `CLI` + handler au vecteur
+  `$FFFE` lisant `$CC01` atomiquement), mais le polling l'évite.
 - Effet collatéral : lire `$CC01` clear F, 5S, C — donc lire le status
   **avant** la macro `WAIT_VBLANK` si on dépend de 5S ou C.
 

@@ -448,10 +448,10 @@ void EmulationController::setDramRefreshEnabled(bool enabled)
 {
     std::lock_guard<PriorityMutex> lock(stateMutex);
     cpu->setDramRefreshEnabled(enabled);
-    // Mirror to the Apple-1 screen so the "faint dots" crosstalk artefact
-    // turns on alongside the CPU stall — visual confirmation the toggle
-    // is active (cf. UncleBernie applefritter post).
-    if (screen) screen->setDramRefreshDotsEnabled(enabled);
+    // NOTE: the screen "faint dots" crosstalk artefact is no longer mirrored
+    // from this toggle — it is now shown by default in all modes (silicon
+    // strict or not), see Screen_ImGui::dramRefreshDotsEnabled. This toggle
+    // only controls the CPU refresh stall.
 }
 
 bool EmulationController::isDramRefreshEnabled() const

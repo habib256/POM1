@@ -108,6 +108,14 @@ uint8_t CFFA1::readRegister(uint8_t offset)
 
     case RegData: {
         if (!readActive) return 0xFF;
+        // Defensive: a corrupt/hostile snapshot could restore bufferIndex out
+        // of [0,512). Abort the transfer rather than index sectorBuffer OOB.
+        if (bufferIndex < 0 || bufferIndex >= 512) {
+            readActive  = false;
+            bufferIndex = 0;
+            ataStatus   = kStatusDRDY | kStatusDSC;
+            return 0xFF;
+        }
         uint8_t val = sectorBuffer[bufferIndex++];
         if (bufferIndex >= 512) {
             readActive = false;
@@ -162,6 +170,13 @@ void CFFA1::writeRegister(uint8_t offset, uint8_t value)
 
     case RegData:
         if (!writeActive) return;
+        // Defensive: guard against an out-of-range bufferIndex restored from a
+        // corrupt/hostile snapshot before indexing sectorBuffer.
+        if (bufferIndex < 0 || bufferIndex >= 512) {
+            writeActive = false;
+            bufferIndex = 0;
+            return;
+        }
         sectorBuffer[bufferIndex++] = value;
         if (bufferIndex >= 512) {
             flushSectorBuffer();
@@ -331,6 +346,9 @@ void CFFA1::deserialize(pom1::SnapshotReader& r)
     ataDevCtrl    = r.readU8();
     r.readBytes(sectorBuffer.data(), sectorBuffer.size());
     bufferIndex   = static_cast<int>(r.readU32());
+    // Untrusted snapshot value — clamp into the sectorBuffer range so a forged
+    // index can never drive an out-of-bounds access at $AFE0 (RegData).
+    if (bufferIndex < 0 || bufferIndex >= 512) bufferIndex = 0;
     readActive    = r.readU8() != 0;
     writeActive   = r.readU8() != 0;
 }

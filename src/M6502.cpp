@@ -96,7 +96,8 @@ void M6502::handleIRQ(void)
 stackPointer--;
 statusRegister |= M6502::Status::I;
 programCounter = memReadAbsolute(0xFFFE);
-cycles += 5;
+// 7-cycle entry cost is accounted in step() (interruptCycles), not here:
+// executeOpcode() would otherwise wipe any cycles added in this handler.
 }
 
 void M6502::handleNMI(void)
@@ -107,7 +108,7 @@ void M6502::handleNMI(void)
     statusRegister |= M6502::Status::I;
     NMI = 0;
     programCounter = memReadAbsolute(0xFFFA);
-    cycles += 5;
+    // 7-cycle entry cost is accounted in step() (interruptCycles), not here.
 }
 
 void M6502::Imp(void)
@@ -667,14 +668,14 @@ void M6502::BRK(void)
     stackPointer--;
     statusRegister |= M6502::Status::I;
     programCounter = memReadAbsolute(0xFFFE);
-    cycles += 4;
+    cycles += 5;            // total 7 (base 1 + Imp 1 + 5): BRK = 7 cycles
 }
 
 void M6502::RTI(void)
 {
-    PLP();
+    PLP();                  // pulls status, adds 2 cycles
     popProgramCounter();
-    cycles++;
+    cycles += 2;            // total 6 (base 1 + Imp 1 + PLP 2 + 2): RTI = 6 cycles
 }
 
 void M6502::JMP(void)
@@ -686,7 +687,7 @@ void M6502::RTS(void)
 {
     popProgramCounter();
     programCounter++;
-    cycles += 2;
+    cycles += 4;            // total 6 (base 1 + Imp 1 + 4): RTS = 6 cycles
 }
 
 void M6502::JSR(void)
@@ -694,7 +695,7 @@ void M6502::JSR(void)
     uint8_t lo = memory->memRead(programCounter++);
     pushProgramCounter();
     programCounter = lo + (memory->memRead(programCounter) << 8);
-    cycles += 3;
+    cycles += 5;            // total 6 (base fetch 1 + 5): JSR = 6 cycles
 }
 
 void M6502::branch(void)
@@ -1227,12 +1228,22 @@ void M6502::setNMI(void)
 
 void M6502::step(void)
 {
-    if (!(statusRegister & M6502::Status::I) && IRQ)
+    // The 6502 interrupt entry sequence costs 7 cycles. executeOpcode() resets
+    // the per-instruction counter below, so the entry cost is captured here and
+    // folded back into `cycles` after the opcode runs — that way advanceCycles()
+    // *and* run()'s cyclesExecuted / DRAM-refresh accounting both see it.
+    int interruptCycles = 0;
+    if (!(statusRegister & M6502::Status::I) && IRQ) {
         handleIRQ();
-    if (NMI)
+        interruptCycles += 7;
+    }
+    if (NMI) {
         handleNMI();
+        interruptCycles += 7;
+    }
     
     executeOpcode();
+    cycles += interruptCycles;
     if (memory != nullptr) {
         memory->advanceCycles(cycles);
     }

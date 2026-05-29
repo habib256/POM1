@@ -13,7 +13,7 @@
 ;   - All 16 palettes from ColorPalettes ported verbatim
 ;   - Auto-cycling: each effect runs ~15 s (450 frames), then NextEffect
 ;   - Linear cycle animation per frame (linear_phase++)
-;   - Polling render only — P-LAB stock leaves /INT floating
+;   - Polling render only — P-LAB wires /INT, but we poll $CC01 by choice
 ;
 ; What's NOT ported (vs the Z80 original):
 ;   - Per-row sine warping (CalcPlasmaFrame's full body): uses Z80

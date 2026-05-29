@@ -22,8 +22,9 @@ adds `linear_phase++` so the colour rings ripple outward.
   32-pattern bank).
 - **Colour table 32 × 1 B** rewritten on every effect-switch (8 distinct
   pairs × 4 ColorRepeats).
-- **Polling-only V-blank sync** — P-LAB stock leaves /INT floating, so
-  the loop runs as fast as the silicon-strict slot table permits.
+- **Polling V-blank sync** — P-LAB wires /INT → /IRQ (verified by
+  Parmigiani), but this loop polls $CC01 by choice and runs as fast as
+  the silicon-strict slot table permits.
 - **Silicon-strict timing in "Mode I + no sprites"** — `init_vdp_g1`
   disables sprites at boot (Y=$D0 at SAT[0]), which drops the floor
   from 7.5 c (Mode I + sprites) to 6 c. The hot loops run *without*

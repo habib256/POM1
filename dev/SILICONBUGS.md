@@ -22,7 +22,7 @@ POM1 silicon-strict modélise les comportements TMS9918 documentés dans Nouspik
 | Bug | Statut | Justification |
 |---|---|---|
 | **N°1** Slot-table timing | 🟢 SOLIDE | Tables verbatim copiées d'`openMSX VDPAccessSlots.cc`, algorithme `getTab` + Delta D28 identique. Test `tms9918_silicon_strict_runtime` (35 assertions). |
-| **N°2** /INT → /IRQ | 🟢 SOLIDE | Carte P-LAB d'origine **ne câble pas** /INT — usage canonique = polling $CC01. POM1 default = `irqStrapped=false` → `irqAsserted()` toujours faux. Strap optionnel pour FPGA mods (`setIrqStrapped(true)` ré-active R1.5 ∧ status.7). |
+| **N°2** /INT → /IRQ | 🟢 SOLIDE | La carte P-LAB **câble** /INT → /IRQ (trace vérifiée sur le vrai matériel par Parmigiani) ; le soft Nippur72 ne s'en sert pas (polling $CC01). POM1 default = `irqStrapped=true` → `irqAsserted()` = R1.5 ∧ status.7 ; l'IRQ reste inerte tant que le programme ne fait pas `CLI`. Toggle `setIrqStrapped(false)` pour une carte hypothétique non câblée. |
 | **N°3** R1.7 4K/16K | 🟢 SOLIDE | Mask `0x0FFF` vs `0x3FFF` selon R1.7. Datasheet confirme. Pinned par T06. |
 | **N°4** Collision range | 🟢 SOLIDE | **Visible-only `[0, kScreenWidth)`** par openMSX `SpriteChecker.cc:187-191` (*"Sprites that are partially off-screen position can collide, but only on the in-screen pixels. Sprites cannot collide in the left or right border, only in the visible screen area"*). Confirmé par meisei vdp.c:587-589 (guard bytes à 0x80 hors 256). Corrigé mai 2026 (était `[-32, 288)` per Nouspikel — qui contredisait les deux refs canoniques). Pinné par T07 + ctest. |
 | **N°5** Per-scanline scan | 🟢 SOLIDE | Port openMSX `SpriteChecker::checkSprites1` line-major (`SpriteChecker.cc:87`). Sub-cycle silicon details (ordre exact des fetches SAT, dummy reads après $D0) **non modélisés par openMSX non plus** — POM1 a la même résolution que la référence canonique. Pinné par tests T07-T11, T18-T20 + ctest. |
@@ -280,7 +280,7 @@ Sur émulateur, ces 3 options ne changent rien (POM1 est tolérant). Sur siliciu
 
 ---
 
-## 3. BUG N°2 — Ligne /INT non câblée sur la carte P-LAB
+## 3. BUG N°2 — Ligne /INT câblée sur la carte P-LAB
 
 ### Ce que fait le silicium TMS9918
 
@@ -288,7 +288,7 @@ Quand R1 bit 5 = 1 (interrupt enable) et bit 7 du status register = 1 (frame fla
 
 ### Ce que fait la carte P-LAB
 
-**P-LAB n'a pas câblé /INT.** La broche `/INT` du VDP reste flottante (pull-up implicite via la carte mère Apple-1 ou laissée non-connectée). L'usage canonique sur P-LAB Apple-1 — celui que ciblent les libs **Nippur72** — est **polling via $CC01 bit 7** :
+**P-LAB câble /INT → /IRQ.** La broche `/INT` du VDP est connectée à la ligne `/IRQ` du 6502 — Parmigiani a vérifié la trace sur le vrai matériel. Le soft de Nino Porcino (libs **Nippur72**) ne l'utilise jamais : l'usage canonique reste le **polling via $CC01 bit 7** (plus simple, portable, indépendant du flag I) :
 
 ```asm
 @vblank_wait:
@@ -297,22 +297,24 @@ Quand R1 bit 5 = 1 (interrupt enable) et bit 7 du status register = 1 (frame fla
     ; ici on est dans VBlank, status auto-cleared par la lecture
 ```
 
+Mais la ligne étant bien présente, un handler IRQ-on-VBlank (`CLI` + vecteur `$FFFE`) fonctionne aussi sur le vrai matériel.
+
 ### Ce que fait POM1
 
-✅ **Conforme P-LAB par défaut** : `TMS9918::irqAsserted()` retourne `false` sans condition tant que `irqStrapped == false` (état d'origine). Le CPU 6502 ne reçoit jamais d'IRQ frame du VDP — exactement comme sur la carte P-LAB stock.
+✅ **Conforme P-LAB par défaut** : `irqStrapped == true` (état d'origine). `TMS9918::irqAsserted()` reflète le silicium — R1.5 ∧ status.7 — et l'IRQ aggregator de `Memory::advanceCycles` tire le `/IRQ` 6502 en conséquence ; la lecture de $CC01 efface le frame flag → l'IRQ se relâche au tick suivant. Comme sur le vrai matériel, la requête reste **inerte tant que le programme n'a pas fait `CLI`** (le flag I masque l'IRQ au reset) : le code Nippur72 polling-only n'est donc pas affecté.
 
-### Strap optionnel pour FPGA mod
+### Désactiver le câblage (carte hypothétique non câblée)
 
-Pour les utilisateurs qui ont **modifié leur réplica** afin de connecter `int_n_o` (VDP) → `irq_n` (6502) — **non-P-LAB d'origine**, ajout community / FPGA — POM1 expose `TMS9918::setIrqStrapped(true)`. Une fois activé, l'IRQ aggregator de `Memory::advanceCycles` honore la combinaison standard R1.5 ∧ status.7.
+`TMS9918::setIrqStrapped(false)` modélise une carte où /INT serait laissé flottant. `irqAsserted()` renvoie alors `false` sans condition (le VDP ne peut plus déclencher d'IRQ frame), quelle que soit la valeur de R1.5.
 
 ### Impact
 
-- Du code Apple-1 / Nippur72 **stock P-LAB** = polling-only → marche identiquement sur silicium et POM1.
-- Du code style MSX-port avec `LDA #$E0 / STA VDP_CTRL / CLI / loop` qui dépend de l'IRQ → **deadlock sur P-LAB stock comme sur POM1 default**. Le programme doit soit poller, soit l'utilisateur active le strap (`Hardware → TMS9918 → IRQ strap` ou `setIrqStrapped(true)` via API).
+- Du code Apple-1 / Nippur72 **stock P-LAB** = polling-only → marche identiquement sur silicium et POM1 (l'IRQ matérielle est présente mais masquée, sans effet).
+- Du code style MSX-port avec `LDA #$E0 / STA VDP_CTRL / CLI / loop` qui dépend de l'IRQ-on-VBlank → **fonctionne** sur P-LAB comme sur POM1 default, à condition d'installer un handler valide au vecteur `$FFFE` qui lit `$CC01` de façon atomique (cf. la convention flip-flop $CC01 ci-dessous). Le polling reste néanmoins recommandé.
 
 ### Workaround portable
 
-**Toujours poller bit 7 du status register**, c'est le pattern P-LAB-conformant. Marche identiquement sur les deux cibles, pas de configuration nécessaire.
+**Poller bit 7 du status register** reste le pattern recommandé (indépendant du flag I et du contenu du vecteur IRQ, sans piège de réentrance du flip-flop $CC01). L'IRQ-on-VBlank est désormais une option valide puisque la ligne est câblée.
 
 ---
 
@@ -548,7 +550,7 @@ vdp_irq_handler:
     RTI
 ```
 
-Note : sur Apple-1 + TMS9918, **la ligne /INT n'est pas câblée** (Bug N°2), donc cette IRQ ne se produit pas. Le bug est dormant. Mais si un futur portage TMS9918 connecte /INT au /IRQ 6502, la convention devient critique.
+Note : sur Apple-1 + TMS9918, **la ligne /INT est câblée** au /IRQ 6502 (Bug N°2, default `irqStrapped=true`). Dès qu'un programme fait `CLI` avec R1.5=1, cette IRQ se produit réellement et la convention ci-dessus devient critique — le handler DOIT lire $CC01 de façon atomique. Le soft Nippur72 reste à l'abri car il polle sans jamais démasquer l'IRQ (`CLI`).
 
 ---
 
@@ -607,7 +609,7 @@ Checklist en 6 étapes pour porter un programme POM1 vers silicium sans surprise
 
 3. **Auditer toutes les boucles d'écriture VRAM** — Chaque paire `STA VDP_DATA` consécutive doit avoir **≥ 8 cycles** entre les writes pendant l'affichage actif. Préférer `STA $CC00,X` ou macro `WRT_DATA_NOP`. Boucles d'init VRAM en début de programme peuvent ignorer cette règle si l'affichage est blanké (`R1 bit 6 = 0`) pendant le chargement.
 
-4. **Pas de dépendance à /INT** — Toujours poller bit 7 du status register. Pas de `CLI` + handler IRQ pour le VBlank.
+4. **Préférer le polling à /INT** — Poller bit 7 du status register reste le pattern recommandé (simple, indépendant du flag I, sans piège de réentrance du flip-flop $CC01). La ligne /INT est bien câblée sur P-LAB (Bug N°2), donc un handler IRQ-on-VBlank marche aussi — mais seulement avec un vecteur `$FFFE` valide et une lecture $CC01 atomique.
 
 5. **Pas de collision en overscan** — Bounding-box software pour les sprites hors écran.
 

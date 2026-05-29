@@ -1647,11 +1647,13 @@ void Memory::advanceCycles(int cycles)
     // request between two CPU ticks naturally de-asserts /IRQ.
     //
     // Sources currently wired (per dev/SILICONBUGS.md Bug N°2):
-    //   - TMS9918  : default = NOT wired (P-LAB original leaves /INT
-    //                floating). irqAsserted() always returns false unless
-    //                the FPGA-mod strap is active (`setIrqStrapped(true)`).
-    //                When strapped: R1.5 (IRQ enable) AND status.7 (F flag);
+    //   - TMS9918  : default = WIRED. The P-LAB card connects /INT → /IRQ
+    //                (trace verified on real hardware by Parmigiani), so
+    //                irqAsserted() = R1.5 (IRQ enable) AND status.7 (F flag);
     //                read of $CC01 clears F → IRQ self-clears next tick.
+    //                Stays harmless until the program does CLI (polling-only
+    //                Nippur72 code is unaffected). Toggle off with
+    //                setIrqStrapped(false) to model an un-wired card.
     //   - A1-IO RTC: 65C22 IFR bit 7 (any IRQ-enabled flag set).
     //   - microSD  : 65C22 IFR bit 7 (Timer 1/2 + SR + handshake flags).
     //   - WiFiModem: 65C51 ACIA status bit 7 (IRQ pending) AND control

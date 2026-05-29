@@ -31,6 +31,7 @@
 #include <emscripten.h>
 #include <emscripten/html5.h>
 #else
+#include <atomic>
 #include <csignal>
 #include <cstdio>
 #include <cstring>
@@ -54,10 +55,13 @@
 // telnet test scripts need this — they have no way to close the GLFW
 // window remotely). The handler asks the main loop to exit cleanly so
 // ~MainWindow_ImGui runs and the saveTape() path is reached.
-static GLFWwindow* g_signalWindow = nullptr;
+static std::atomic<GLFWwindow*> g_signalWindow{nullptr};
 static void pom1_signal_handler(int)
 {
-    if (g_signalWindow) glfwSetWindowShouldClose(g_signalWindow, 1);
+    // Loaded atomically and cleared to nullptr before glfwDestroyWindow() so a
+    // signal arriving during teardown can never touch a freed window pointer.
+    if (GLFWwindow* w = g_signalWindow.load(std::memory_order_acquire))
+        glfwSetWindowShouldClose(w, 1);
 }
 #endif
 
@@ -347,7 +351,7 @@ int main(int argc, char* argv[])
     // Install the Tee(stream + ring) logger so every subsystem message lands
     // both in stdout/stderr and in the ring buffer the debug console reads.
     pom1::initDefaultTeeLogger();
-    pom1::log().info("POM1", "v1.9.0 - Apple 1 Emulator (Dear ImGui)");
+    pom1::log().info("POM1", "v1.9.1 - Apple 1 Emulator (Dear ImGui)");
 
 #if !POM1_IS_WASM && defined(__APPLE__)
     pom1_macos_provision_user_data_dir();
@@ -413,7 +417,7 @@ int main(int argc, char* argv[])
 #endif
 
     // Create window
-    GLFWwindow* window = glfwCreateWindow(1274, 801, "POM1 v1.9.0 - Apple 1 Emulator", NULL, NULL);
+    GLFWwindow* window = glfwCreateWindow(1274, 801, "POM1 v1.9.1 - Apple 1 Emulator", NULL, NULL);
     if (window == NULL)
         return -1;
 
@@ -562,7 +566,7 @@ int main(int argc, char* argv[])
     // Route SIGINT/SIGTERM into a "please close the window" request so the
     // destructor path (→ --save-tape dump) runs instead of std::terminate'ing
     // the process mid-flight.
-    g_signalWindow = window;
+    g_signalWindow.store(window, std::memory_order_release);
     std::signal(SIGINT,  pom1_signal_handler);
     std::signal(SIGTERM, pom1_signal_handler);
 #endif
@@ -697,6 +701,8 @@ int main(int argc, char* argv[])
     ImGui_ImplGlfw_Shutdown();
     ImGui::DestroyContext();
 
+    // Stop the signal handler from dereferencing a window we're about to free.
+    g_signalWindow.store(nullptr, std::memory_order_release);
     glfwDestroyWindow(window);
     glfwTerminate();
 #endif

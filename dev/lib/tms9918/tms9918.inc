@@ -65,13 +65,13 @@ VDP_CTRL = $CC01        ; VDP register / address port (write twice = setup)
 ; ---------------------------------------------------------------------------
 ; VBlank synchronisation — polling-only on P-LAB. **DO NOT use IRQs.**
 ;
-; Pourquoi : la carte P-LAB Apple-1 d'origine **ne câble pas** la broche
-; /INT du TMS9918 vers /IRQ du 6502 (la broche reste flottante côté carte).
-; L'usage canonique — celui que ciblent les libs Nippur72 — est de poller
-; le bit 7 (F flag) du status register en lisant $CC01. Un programme qui
-; ferait `LDA #$E0 / STA VDP_CTRL / LDA #$81 / STA VDP_CTRL / CLI / WAI`
-; en attendant une IRQ frame **deadlocke** sur P-LAB stock comme sur POM1
-; (default `irqStrapped=false`). Cf. dev/SILICONBUGS.md Bug N°2.
+; Pourquoi : la carte P-LAB Apple-1 **câble** /INT du TMS9918 vers /IRQ du
+; 6502 (trace vérifiée sur le vrai matériel par Parmigiani), mais le soft
+; Nippur72 ne s'en sert pas. L'usage canonique est de poller le bit 7 (F
+; flag) du status register en lisant $CC01 — c'est plus simple, portable, et
+; indépendant du flag I. L'IRQ frame est bien disponible (default POM1
+; `irqStrapped=true`) : un `CLI` + handler au vecteur $FFFE fonctionne, mais
+; le polling reste recommandé. Cf. dev/SILICONBUGS.md Bug N°2.
 ;
 ; Idiome standard :
 ;
@@ -124,9 +124,10 @@ VDP_CTRL = $CC01        ; VDP register / address port (write twice = setup)
 ;
 ; Use case: palette split mid-frame, name-table swap, on-the-fly
 ; pattern-table update during the active-display half-frame. Equivalent
-; to MSX line-IRQ scheduling — but on P-LAB stock /INT is floating, so
-; polling is the only path. See dev/lib/tms9918/tms9918_5strigger.asm
-; for the full design notes.
+; to MSX line-IRQ scheduling — but the TMS9918 has no line interrupt (only
+; the frame /INT), so mid-frame scheduling must poll the 5S flag regardless
+; of how /INT is wired. See dev/lib/tms9918/tms9918_5strigger.asm for the
+; full design notes.
 ; ---------------------------------------------------------------------------
 
 .macro WAIT_5S

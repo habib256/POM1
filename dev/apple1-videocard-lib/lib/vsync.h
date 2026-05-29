@@ -6,8 +6,8 @@
  *
  * vsync.{c,h} — frame counter, polled-VBLANK style.
  *
- * Absent IRQ wiring on P-LAB stock cards (TMS /INT floats — see CLAUDE memory
- * "P-LAB TMS9918 /INT not wired"), the canonical way to count frames is to
+ * The P-LAB card wires TMS /INT → 6502 /IRQ (trace verified on real hardware
+ * by Parmigiani), but the canonical, simplest way to count frames is still to
  * poll $CC01 bit 7. vsync_wait() does exactly that and bumps `vsync_frames`,
  * giving a cheap monotonic time base (~60 Hz NTSC / ~50 Hz PAL).
  */

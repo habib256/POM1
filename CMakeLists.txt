@@ -329,8 +329,8 @@ else()
             MACOSX_BUNDLE_EXECUTABLE_NAME       "POM1"
             MACOSX_BUNDLE_GUI_IDENTIFIER        "net.gistlabs.pom1"
             MACOSX_BUNDLE_ICON_FILE             "POM1.icns"
-            MACOSX_BUNDLE_BUNDLE_VERSION        "1.9.0"
-            MACOSX_BUNDLE_SHORT_VERSION_STRING  "1.9.0"
+            MACOSX_BUNDLE_BUNDLE_VERSION        "1.9.1"
+            MACOSX_BUNDLE_SHORT_VERSION_STRING  "1.9.1"
             MACOSX_BUNDLE_COPYRIGHT             "Copyright © 2000-2026 Verhille Arnaud. GPL-3.0."
             MACOSX_BUNDLE_INFO_PLIST
                 "${CMAKE_CURRENT_SOURCE_DIR}/packaging/macos/Info.plist.in"

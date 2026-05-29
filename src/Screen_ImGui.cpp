@@ -337,7 +337,7 @@ void Screen_ImGui::autoClearAndWelcome()
         for (size_t i = 0; i < welcome.length() && startX + (int)i < SCREEN_WIDTH; ++i)
             screenBuffer[bufferIndex(0, startX + (int)i)] = welcome[i];
 
-        std::string version = "Version 1.9.0";
+        std::string version = "Version 1.9.1";
         startX = (SCREEN_WIDTH - (int)version.length()) / 2;
         for (size_t i = 0; i < version.length() && startX + (int)i < SCREEN_WIDTH; ++i)
             screenBuffer[bufferIndex(1, startX + (int)i)] = version[i];
@@ -454,8 +454,11 @@ void Screen_ImGui::drawCRTRefreshDots(float x0, float y0, float x1, float y1,
     // rowIndex=1 lands exactly at y = cellH (anchor — bottom-right of
     // char(0,0)); rowIndex=0 lands at y = cellH - rowStep (the leading
     // 4-dot row near the top edge); rowIndex=27 lands at y = h.
+    // Shift the whole dot field up by 6 screen px (requested look — the
+    // refresh dots sit slightly above the char-cell bottom edge).
+    constexpr float kDotVerticalShiftPx = 6.0f;
     auto paintRow = [&](int rowIndex, auto&& xForIndex, int dotCount) {
-        const float cy  = y0 + cellH + (rowIndex - 1) * rowStep;
+        const float cy  = y0 + cellH + (rowIndex - 1) * rowStep - kDotVerticalShiftPx;
         const float py0 = cy - dashH * 0.5f;
         const float py1 = cy + dashH * 0.5f;
         for (int i = 0; i < dotCount; ++i) {
@@ -789,8 +792,9 @@ void Screen_ImGui::render()
         drawCRTScanlines(absP0.x, absP0.y, absP1.x, absP1.y, useCharmapRenderer);
     }
     // DRAM refresh crosstalk dots — painted on top of scanlines so they
-    // remain visible inside the dark mesh. Drawn regardless of crtEffect
-    // toggle: this is a silicon-fidelity diagnostic, not a CRT cosmetic.
+    // remain visible inside the dark mesh. Drawn regardless of crtEffect and
+    // of silicon mode: shown by default (dramRefreshDotsEnabled = true) as a
+    // permanent part of the Apple-1 screen look.
     if (dramRefreshDotsEnabled) {
         const ImVec2 absP0 = rasterMin;
         const ImVec2 absP1 = ImVec2(rasterMin.x + screenSize.x, rasterMin.y + screenSize.y);

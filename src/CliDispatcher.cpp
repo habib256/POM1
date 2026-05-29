@@ -11,6 +11,7 @@
 #include "MainWindow_ImGui.h"
 
 #include <cctype>
+#include <climits>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -87,7 +88,7 @@ bool parseIntPositive(const std::string& s, int& out)
     try {
         size_t idx = 0;
         long n = std::stol(s, &idx, 10);
-        if (idx != s.size() || n < 0) return false;
+        if (idx != s.size() || n < 0 || n > INT_MAX) return false;  // avoid signed overflow on cast
         out = static_cast<int>(n);
         return true;
     } catch (...) { return false; }

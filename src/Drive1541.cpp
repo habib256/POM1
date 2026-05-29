@@ -473,6 +473,10 @@ void Drive1541::deserialize(SnapshotReader& r) {
     }
     activeListen_ = static_cast<int>(r.readU8()) - 1;
     activeTalk_   = static_cast<int>(r.readU8()) - 1;
+    // Untrusted snapshot values — a forged byte > 16 would index chan_[16] OOB
+    // in listenByte()/talkByte(). Clamp back to "no active channel" (-1).
+    if (activeListen_ < -1 || activeListen_ >= 16) activeListen_ = -1;
+    if (activeTalk_   < -1 || activeTalk_   >= 16) activeTalk_   = -1;
     sawOpenSecondary_ = r.readU8() != 0;
     errCode_   = r.readU8();
     errMsg_    = r.readString();

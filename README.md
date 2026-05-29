@@ -1,6 +1,6 @@
 <div align="center">
 
-# 🍎 POM1 v1.9.0 — Apple 1 Emulator
+# 🍎 POM1 v1.9.1 — Apple 1 Emulator
 
 ### *The 1976 personal computer revolution, faithfully reborn — with 50 years of expansion cards bolted on.*
 

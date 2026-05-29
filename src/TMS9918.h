@@ -123,14 +123,15 @@ public:
     // (IRQ enable) is set AND status bit 7 (F frame flag) is sticky;
     // reading $CC01 clears F → /INT self-de-asserts on the next CPU tick.
     //
-    // **P-LAB original card does NOT wire /INT to /IRQ** — the standard
-    // Apple-1 usage (and the one the Nippur72 libs target) is **polling
-    // via $CC01 bit 7**. POM1 therefore keeps the IRQ wiring disabled by
-    // default (`irqStrapped == false`); irqAsserted() always returns
-    // false in that case, even if a program were to set R1.5. An FPGA
-    // strap that bridges /INT to /IRQ (community mod, not P-LAB stock)
-    // is modelled by setting `irqStrapped = true` — useful when running
-    // MSX-derived code that expects an IRQ-on-VBlank handler.
+    // **The P-LAB card DOES wire /INT to the 6502 /IRQ** — Parmigiani
+    // verified the trace on real hardware. The Nippur72 software never
+    // relies on it (it polls $CC01 bit 7), but the line is physically
+    // there, so POM1 wires it by default (`irqStrapped == true`).
+    // irqAsserted() then mirrors the silicon: R1.5 (IRQ enable) AND
+    // status.7 (F flag). Like the real card, the request stays harmless
+    // until the program does CLI, so polling-only Nippur72 code is
+    // unaffected. The toggle is kept so a hypothetical un-wired card can
+    // be modelled with `setIrqStrapped(false)`.
     // Cf. dev/SILICONBUGS.md Bug N°2.
     bool irqAsserted() const {
         if (!irqStrapped) return false;
@@ -362,10 +363,11 @@ private:
     // See setVramNoiseOnReset(). Default OFF — preserves the MSX1 bistable
     // power-on pattern that the test suite + recorded snapshots expect.
     bool vramNoiseOnReset   = false;
-    // P-LAB original card leaves /INT floating; community FPGA mods can strap
-    // it to /IRQ. Default = false (matches stock P-LAB → polling-only via
-    // $CC01). Set true via setIrqStrapped() for FPGA-strap emulation.
-    bool irqStrapped        = false;
+    // The P-LAB card wires /INT → 6502 /IRQ (trace verified on real hardware
+    // by Parmigiani); canonical software still polls $CC01 instead of using it.
+    // Default = true (stock P-LAB wiring). Set false via setIrqStrapped() to
+    // model a hypothetical un-wired card.
+    bool irqStrapped        = true;
     uint64_t droppedWrites  = 0;      // cumulative count of VDP writes dropped by siliconStrictMode
     int      droppedWriteTraceCount = 0; // first N drops trace to stderr (debug)
     DropDiagnostics dropStats{};      // per-PC / per-port / per-table histograms

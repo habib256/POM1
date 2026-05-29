@@ -238,7 +238,7 @@ Une vidéo de validation enregistrée par **Claudio Parmigiani** (designer P‑L
 
 - Les correctifs accumulés passent sur silicium : scan ligne‑par‑ligne, terminateur **0xD0**, **Early Clock** en arithmétique signée, plafond **4 / ligne** avec **5S** *sticky*, collision en arithmétique pixel hors couleur.
 - Les échecs sont partagés : **Galaga**, les démos **Logo**, **Rogue**, **Mandelbrot** s’affichent de la même façon défectueuse sur silicium et sous POM1. Les correctifs doivent donc viser les sources cc65 / ASM (§ 6.4 ci‑dessus, § 9 pour l’init des données), **pas** l’émulateur.
-- **/INT non câblé** confirmé à l’oscilloscope : ligne à +5 V solide pendant les exécutions Tetris, Plasma, Galaga. Cohérent avec § 8 (pattern de polling `LDA $CC01 / BPL`) et `dev/SILICONBUGS.md` Bug N°2.
+- **/INT câblé mais jamais asservi** : à l’oscilloscope la ligne reste à +5 V solide pendant Tetris, Plasma, Galaga — non parce qu’elle est déconnectée (Parmigiani a vérifié le câblage /INT → /IRQ), mais parce que ces programmes pollent `$CC01` sans jamais démasquer l’IRQ (`CLI`), donc /INT n’est jamais tiré bas durablement. Cohérent avec § 8 (pattern de polling `LDA $CC01 / BPL`) et `dev/SILICONBUGS.md` Bug N°2.
 
 ---
 

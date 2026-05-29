@@ -504,9 +504,9 @@ Trivial comparé à HGR : calculez l'adresse name table `$1800 + row*32 + col`, 
 
 L'écran texte Apple 1 et la fenêtre TMS9918 sont **deux afficheurs indépendants**. Convention : utilisez le texte pour le titre, le prompt clavier (QWERTY/AZERTY), les messages de victoire ; utilisez le TMS pour le jeu lui-même.
 
-### Synchronisation frame — POLLING uniquement, jamais d'IRQ
+### Synchronisation frame — POLLING recommandé (l'IRQ marche aussi)
 
-**Règle d'or P-LAB** : la carte P-LAB Apple-1 ne câble **PAS** la broche `/INT` du TMS9918 vers `/IRQ` du 6502. La broche reste flottante (laissée non-connectée par Parmigiani). Conséquence directe : tu **dois** synchroniser tes frames par polling du status register. Aucune IRQ ne sera jamais déclenchée par le VDP, même si tu actives R1 bit 5.
+**Règle d'or P-LAB** : la carte P-LAB Apple-1 **câble** la broche `/INT` du TMS9918 vers `/IRQ` du 6502 (trace vérifiée sur le vrai matériel par Parmigiani). Le soft Nippur72 ne s'en sert pas : la convention est de synchroniser les frames par **polling** du status register — c'est plus simple, portable, et indépendant du flag I. L'IRQ-on-VBlank fonctionne néanmoins (R1 bit 5 + `CLI` + handler au vecteur `$FFFE` lisant `$CC01` atomiquement), mais reste l'option à éviter sauf besoin précis.
 
 C'est le pattern que ciblent les libs Nippur72 et que tous les jeux POM1 (Galaga, Sokoban, Snake, Life, Rogue, Asteroids, Connect4, etc.) utilisent.
 
