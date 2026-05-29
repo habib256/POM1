@@ -30,27 +30,27 @@ endif()
 # in. UI (Screen_ImGui, MainWindow_*, EmulationController) is deliberately
 # left out: the Klaus test drives the CPU directly, no ImGui context needed.
 set(POM1_TEST_CORE_SOURCES
-    ${CMAKE_SOURCE_DIR}/M6502.cpp
-    ${CMAKE_SOURCE_DIR}/Memory.cpp
-    ${CMAKE_SOURCE_DIR}/PeripheralBus.cpp
-    ${CMAKE_SOURCE_DIR}/SnapshotIO.cpp
-    ${CMAKE_SOURCE_DIR}/Logger.cpp
-    ${CMAKE_SOURCE_DIR}/CassetteDevice.cpp
-    ${CMAKE_SOURCE_DIR}/AudioDevice.cpp
-    ${CMAKE_SOURCE_DIR}/TMS9918.cpp
-    ${CMAKE_SOURCE_DIR}/SID.cpp
-    ${CMAKE_SOURCE_DIR}/MicroSD.cpp
-    ${CMAKE_SOURCE_DIR}/IECCard.cpp
-    ${CMAKE_SOURCE_DIR}/Drive1541.cpp
-    ${CMAKE_SOURCE_DIR}/D64Image.cpp
-    ${CMAKE_SOURCE_DIR}/WiFiModem.cpp
-    ${CMAKE_SOURCE_DIR}/TerminalCard.cpp
-    ${CMAKE_SOURCE_DIR}/A1IO_RTC.cpp
-    ${CMAKE_SOURCE_DIR}/CFFA1.cpp
-    ${CMAKE_SOURCE_DIR}/JukeBox.cpp
-    ${CMAKE_SOURCE_DIR}/CodeTank.cpp
-    ${CMAKE_SOURCE_DIR}/PR40Printer.cpp
-    ${CMAKE_SOURCE_DIR}/GT6144.cpp
+    ${CMAKE_SOURCE_DIR}/src/M6502.cpp
+    ${CMAKE_SOURCE_DIR}/src/Memory.cpp
+    ${CMAKE_SOURCE_DIR}/src/PeripheralBus.cpp
+    ${CMAKE_SOURCE_DIR}/src/SnapshotIO.cpp
+    ${CMAKE_SOURCE_DIR}/src/Logger.cpp
+    ${CMAKE_SOURCE_DIR}/src/CassetteDevice.cpp
+    ${CMAKE_SOURCE_DIR}/src/AudioDevice.cpp
+    ${CMAKE_SOURCE_DIR}/src/TMS9918.cpp
+    ${CMAKE_SOURCE_DIR}/src/SID.cpp
+    ${CMAKE_SOURCE_DIR}/src/MicroSD.cpp
+    ${CMAKE_SOURCE_DIR}/src/IECCard.cpp
+    ${CMAKE_SOURCE_DIR}/src/Drive1541.cpp
+    ${CMAKE_SOURCE_DIR}/src/D64Image.cpp
+    ${CMAKE_SOURCE_DIR}/src/WiFiModem.cpp
+    ${CMAKE_SOURCE_DIR}/src/TerminalCard.cpp
+    ${CMAKE_SOURCE_DIR}/src/A1IO_RTC.cpp
+    ${CMAKE_SOURCE_DIR}/src/CFFA1.cpp
+    ${CMAKE_SOURCE_DIR}/src/JukeBox.cpp
+    ${CMAKE_SOURCE_DIR}/src/CodeTank.cpp
+    ${CMAKE_SOURCE_DIR}/src/PR40Printer.cpp
+    ${CMAKE_SOURCE_DIR}/src/GT6144.cpp
 )
 
 add_executable(test_klaus_6502
@@ -58,7 +58,7 @@ add_executable(test_klaus_6502
     ${POM1_TEST_CORE_SOURCES}
 )
 target_include_directories(test_klaus_6502 PRIVATE
-    ${CMAKE_SOURCE_DIR}
+    ${CMAKE_SOURCE_DIR}/src
     # TMS9918.h uses ImU32 (colour constants) and GraphicsCard.h / Screen_ImGui.h
     # transitively reach via Memory's peripheral unique_ptrs. Just headers — no
     # ImGui symbols are called from the test runner, so we don't link ImGui.
@@ -88,9 +88,9 @@ set_tests_properties(klaus_6502_functional PROPERTIES
 # ordering, enable/disable round-trip, sniffer pass-through semantics).
 add_executable(test_peripheral_bus
     peripheral_bus_smoke_test.cpp
-    ${CMAKE_SOURCE_DIR}/PeripheralBus.cpp
+    ${CMAKE_SOURCE_DIR}/src/PeripheralBus.cpp
 )
-target_include_directories(test_peripheral_bus PRIVATE ${CMAKE_SOURCE_DIR})
+target_include_directories(test_peripheral_bus PRIVATE ${CMAKE_SOURCE_DIR}/src)
 
 add_test(NAME peripheral_bus_smoke
          COMMAND test_peripheral_bus)
@@ -104,11 +104,11 @@ set_tests_properties(peripheral_bus_smoke PROPERTIES TIMEOUT 5)
 add_executable(test_preset_ram_profiles
     preset_ram_profiles_smoke_test.cpp
 )
-target_include_directories(test_preset_ram_profiles PRIVATE ${CMAKE_SOURCE_DIR})
+target_include_directories(test_preset_ram_profiles PRIVATE ${CMAKE_SOURCE_DIR}/src)
 
 add_test(NAME preset_ram_profiles_smoke
          COMMAND test_preset_ram_profiles
-                 "${CMAKE_SOURCE_DIR}/MainWindow_Presets.cpp")
+                 "${CMAKE_SOURCE_DIR}/src/MainWindow_Presets.cpp")
 set_tests_properties(preset_ram_profiles_smoke PROPERTIES TIMEOUT 5)
 
 # -- Standard 8 KB dual-bank Memory mapping ------------------------------------
@@ -119,7 +119,7 @@ add_executable(test_memory_dualram
     ${POM1_TEST_CORE_SOURCES}
 )
 target_include_directories(test_memory_dualram PRIVATE
-    ${CMAKE_SOURCE_DIR}
+    ${CMAKE_SOURCE_DIR}/src
     ${CMAKE_SOURCE_DIR}/imgui
 )
 target_link_libraries(test_memory_dualram PRIVATE libresidfp_static)
@@ -142,7 +142,7 @@ add_executable(test_reset_vectors
     ${POM1_TEST_CORE_SOURCES}
 )
 target_include_directories(test_reset_vectors PRIVATE
-    ${CMAKE_SOURCE_DIR}
+    ${CMAKE_SOURCE_DIR}/src
     ${CMAKE_SOURCE_DIR}/imgui
 )
 target_link_libraries(test_reset_vectors PRIVATE libresidfp_static)
@@ -163,7 +163,7 @@ add_executable(test_sid_audio
     ${POM1_TEST_CORE_SOURCES}
 )
 target_include_directories(test_sid_audio PRIVATE
-    ${CMAKE_SOURCE_DIR}
+    ${CMAKE_SOURCE_DIR}/src
     ${CMAKE_SOURCE_DIR}/imgui
 )
 target_link_libraries(test_sid_audio PRIVATE libresidfp_static)
@@ -188,7 +188,7 @@ add_executable(test_aci_tape_loading
     ${POM1_TEST_CORE_SOURCES}
 )
 target_include_directories(test_aci_tape_loading PRIVATE
-    ${CMAKE_SOURCE_DIR}
+    ${CMAKE_SOURCE_DIR}/src
     ${CMAKE_SOURCE_DIR}/imgui
 )
 target_link_libraries(test_aci_tape_loading PRIVATE libresidfp_static)
@@ -220,7 +220,7 @@ add_executable(test_aci_tape_saving
     ${POM1_TEST_CORE_SOURCES}
 )
 target_include_directories(test_aci_tape_saving PRIVATE
-    ${CMAKE_SOURCE_DIR}
+    ${CMAKE_SOURCE_DIR}/src
     ${CMAKE_SOURCE_DIR}/imgui
 )
 target_link_libraries(test_aci_tape_saving PRIVATE libresidfp_static)
@@ -245,7 +245,7 @@ add_executable(test_pr40_printer
     ${POM1_TEST_CORE_SOURCES}
 )
 target_include_directories(test_pr40_printer PRIVATE
-    ${CMAKE_SOURCE_DIR}
+    ${CMAKE_SOURCE_DIR}/src
     ${CMAKE_SOURCE_DIR}/imgui
 )
 target_link_libraries(test_pr40_printer PRIVATE libresidfp_static)
@@ -266,11 +266,11 @@ set_tests_properties(pr40_printer_smoke PROPERTIES TIMEOUT 5)
 # the power-on random SRAM seeding.
 add_executable(test_gt6144
     gt6144_smoke_test.cpp
-    ${CMAKE_SOURCE_DIR}/GT6144.cpp
-    ${CMAKE_SOURCE_DIR}/PeripheralBus.cpp
-    ${CMAKE_SOURCE_DIR}/SnapshotIO.cpp
+    ${CMAKE_SOURCE_DIR}/src/GT6144.cpp
+    ${CMAKE_SOURCE_DIR}/src/PeripheralBus.cpp
+    ${CMAKE_SOURCE_DIR}/src/SnapshotIO.cpp
 )
-target_include_directories(test_gt6144 PRIVATE ${CMAKE_SOURCE_DIR})
+target_include_directories(test_gt6144 PRIVATE ${CMAKE_SOURCE_DIR}/src)
 
 add_test(NAME gt6144_smoke COMMAND test_gt6144)
 set_tests_properties(gt6144_smoke PROPERTIES TIMEOUT 5)
@@ -284,11 +284,11 @@ set_tests_properties(gt6144_smoke PROPERTIES TIMEOUT 5)
 # 16 kB window and lower/upper 28c256 jumper.
 add_executable(test_jukebox_paged_rom
     jukebox_paged_rom_smoke_test.cpp
-    ${CMAKE_SOURCE_DIR}/JukeBox.cpp
-    ${CMAKE_SOURCE_DIR}/Logger.cpp
-    ${CMAKE_SOURCE_DIR}/SnapshotIO.cpp
+    ${CMAKE_SOURCE_DIR}/src/JukeBox.cpp
+    ${CMAKE_SOURCE_DIR}/src/Logger.cpp
+    ${CMAKE_SOURCE_DIR}/src/SnapshotIO.cpp
 )
-target_include_directories(test_jukebox_paged_rom PRIVATE ${CMAKE_SOURCE_DIR})
+target_include_directories(test_jukebox_paged_rom PRIVATE ${CMAKE_SOURCE_DIR}/src)
 
 add_test(NAME jukebox_paged_rom_smoke
          COMMAND test_jukebox_paged_rom
@@ -301,11 +301,11 @@ set_tests_properties(jukebox_paged_rom_smoke PROPERTIES TIMEOUT 5)
 # oversized-file rejection contract.
 add_executable(test_codetank
     codetank_smoke_test.cpp
-    ${CMAKE_SOURCE_DIR}/CodeTank.cpp
-    ${CMAKE_SOURCE_DIR}/Logger.cpp
-    ${CMAKE_SOURCE_DIR}/SnapshotIO.cpp
+    ${CMAKE_SOURCE_DIR}/src/CodeTank.cpp
+    ${CMAKE_SOURCE_DIR}/src/Logger.cpp
+    ${CMAKE_SOURCE_DIR}/src/SnapshotIO.cpp
 )
-target_include_directories(test_codetank PRIVATE ${CMAKE_SOURCE_DIR})
+target_include_directories(test_codetank PRIVATE ${CMAKE_SOURCE_DIR}/src)
 
 add_test(NAME codetank_smoke
          COMMAND test_codetank
@@ -319,11 +319,11 @@ set_tests_properties(codetank_smoke PROPERTIES TIMEOUT 5)
 # reserved bank.
 add_executable(test_codetank_game4
     codetank_game4_smoke_test.cpp
-    ${CMAKE_SOURCE_DIR}/CodeTank.cpp
-    ${CMAKE_SOURCE_DIR}/Logger.cpp
-    ${CMAKE_SOURCE_DIR}/SnapshotIO.cpp
+    ${CMAKE_SOURCE_DIR}/src/CodeTank.cpp
+    ${CMAKE_SOURCE_DIR}/src/Logger.cpp
+    ${CMAKE_SOURCE_DIR}/src/SnapshotIO.cpp
 )
-target_include_directories(test_codetank_game4 PRIVATE ${CMAKE_SOURCE_DIR})
+target_include_directories(test_codetank_game4 PRIVATE ${CMAKE_SOURCE_DIR}/src)
 
 add_test(NAME codetank_game4_smoke
          COMMAND test_codetank_game4
@@ -337,11 +337,11 @@ set_tests_properties(codetank_game4_smoke PROPERTIES TIMEOUT 5)
 # sticky-until-readControl behaviour.
 add_executable(test_tms9918_sprite_status
     tms9918_sprite_status_test.cpp
-    ${CMAKE_SOURCE_DIR}/TMS9918.cpp
-    ${CMAKE_SOURCE_DIR}/SnapshotIO.cpp
+    ${CMAKE_SOURCE_DIR}/src/TMS9918.cpp
+    ${CMAKE_SOURCE_DIR}/src/SnapshotIO.cpp
 )
 target_include_directories(test_tms9918_sprite_status PRIVATE
-    ${CMAKE_SOURCE_DIR}
+    ${CMAKE_SOURCE_DIR}/src
     ${CMAKE_SOURCE_DIR}/imgui
 )
 
@@ -356,11 +356,11 @@ set_tests_properties(tms9918_sprite_status PROPERTIES TIMEOUT 5)
 # exists for the toggle delta only.
 add_executable(test_tms9918_silicon_strict_runtime
     tms9918_silicon_strict_runtime_test.cpp
-    ${CMAKE_SOURCE_DIR}/TMS9918.cpp
-    ${CMAKE_SOURCE_DIR}/SnapshotIO.cpp
+    ${CMAKE_SOURCE_DIR}/src/TMS9918.cpp
+    ${CMAKE_SOURCE_DIR}/src/SnapshotIO.cpp
 )
 target_include_directories(test_tms9918_silicon_strict_runtime PRIVATE
-    ${CMAKE_SOURCE_DIR}
+    ${CMAKE_SOURCE_DIR}/src
     ${CMAKE_SOURCE_DIR}/imgui
 )
 
@@ -378,11 +378,11 @@ set_tests_properties(tms9918_silicon_strict_runtime PROPERTIES TIMEOUT 5)
 #   - Bug N°11: kCyclesPerFrame matches 59.94 Hz NTSC (17073).
 add_executable(test_tms9918_per_scanline
     tms9918_per_scanline_test.cpp
-    ${CMAKE_SOURCE_DIR}/TMS9918.cpp
-    ${CMAKE_SOURCE_DIR}/SnapshotIO.cpp
+    ${CMAKE_SOURCE_DIR}/src/TMS9918.cpp
+    ${CMAKE_SOURCE_DIR}/src/SnapshotIO.cpp
 )
 target_include_directories(test_tms9918_per_scanline PRIVATE
-    ${CMAKE_SOURCE_DIR}
+    ${CMAKE_SOURCE_DIR}/src
     ${CMAKE_SOURCE_DIR}/imgui
 )
 
@@ -402,11 +402,11 @@ set_tests_properties(tms9918_per_scanline PROPERTIES TIMEOUT 5)
 #   - Status sticky-on-read (bits 5/6/7 cleared by readControl)
 add_executable(test_tms9918_advanced_silicium
     tms9918_advanced_silicium_test.cpp
-    ${CMAKE_SOURCE_DIR}/TMS9918.cpp
-    ${CMAKE_SOURCE_DIR}/SnapshotIO.cpp
+    ${CMAKE_SOURCE_DIR}/src/TMS9918.cpp
+    ${CMAKE_SOURCE_DIR}/src/SnapshotIO.cpp
 )
 target_include_directories(test_tms9918_advanced_silicium PRIVATE
-    ${CMAKE_SOURCE_DIR}
+    ${CMAKE_SOURCE_DIR}/src
     ${CMAKE_SOURCE_DIR}/imgui
 )
 
@@ -423,7 +423,7 @@ add_executable(test_codetank_tms9918_dependency
     ${POM1_TEST_CORE_SOURCES}
 )
 target_include_directories(test_codetank_tms9918_dependency PRIVATE
-    ${CMAKE_SOURCE_DIR}
+    ${CMAKE_SOURCE_DIR}/src
     ${CMAKE_SOURCE_DIR}/imgui
 )
 target_link_libraries(test_codetank_tms9918_dependency PRIVATE libresidfp_static)
@@ -449,7 +449,7 @@ add_executable(test_snapshot_smoke
     ${POM1_TEST_CORE_SOURCES}
 )
 target_include_directories(test_snapshot_smoke PRIVATE
-    ${CMAKE_SOURCE_DIR}
+    ${CMAKE_SOURCE_DIR}/src
     ${CMAKE_SOURCE_DIR}/imgui
 )
 target_link_libraries(test_snapshot_smoke PRIVATE libresidfp_static)
@@ -478,7 +478,7 @@ add_executable(test_hex_dump_multi_zone
     ${POM1_TEST_CORE_SOURCES}
 )
 target_include_directories(test_hex_dump_multi_zone PRIVATE
-    ${CMAKE_SOURCE_DIR}
+    ${CMAKE_SOURCE_DIR}/src
     ${CMAKE_SOURCE_DIR}/imgui
 )
 target_link_libraries(test_hex_dump_multi_zone PRIVATE libresidfp_static)
@@ -505,7 +505,7 @@ add_executable(test_cpu_breakpoint
     ${POM1_TEST_CORE_SOURCES}
 )
 target_include_directories(test_cpu_breakpoint PRIVATE
-    ${CMAKE_SOURCE_DIR}
+    ${CMAKE_SOURCE_DIR}/src
     ${CMAKE_SOURCE_DIR}/imgui
 )
 target_link_libraries(test_cpu_breakpoint PRIVATE libresidfp_static)
@@ -528,7 +528,7 @@ add_executable(test_iec_snapshot
     ${POM1_TEST_CORE_SOURCES}
 )
 target_include_directories(test_iec_snapshot PRIVATE
-    ${CMAKE_SOURCE_DIR}
+    ${CMAKE_SOURCE_DIR}/src
     ${CMAKE_SOURCE_DIR}/imgui
 )
 target_link_libraries(test_iec_snapshot PRIVATE libresidfp_static)
@@ -547,7 +547,7 @@ set_tests_properties(iec_snapshot_smoke PROPERTIES TIMEOUT 5)
 add_executable(test_iec_bus_wired_and
     iec_bus_wired_and_smoke_test.cpp
 )
-target_include_directories(test_iec_bus_wired_and PRIVATE ${CMAKE_SOURCE_DIR})
+target_include_directories(test_iec_bus_wired_and PRIVATE ${CMAKE_SOURCE_DIR}/src)
 
 add_test(NAME iec_bus_wired_and_smoke COMMAND test_iec_bus_wired_and)
 set_tests_properties(iec_bus_wired_and_smoke PROPERTIES TIMEOUT 5)
@@ -557,9 +557,9 @@ set_tests_properties(iec_bus_wired_and_smoke PROPERTIES TIMEOUT 5)
 # build-time tool: `make make_iec_fixture && ./tools/make_iec_fixture out.d64`.
 add_executable(make_iec_fixture
     ${CMAKE_SOURCE_DIR}/tools/make_iec_fixture.cpp
-    ${CMAKE_SOURCE_DIR}/D64Image.cpp
+    ${CMAKE_SOURCE_DIR}/src/D64Image.cpp
 )
-target_include_directories(make_iec_fixture PRIVATE ${CMAKE_SOURCE_DIR})
+target_include_directories(make_iec_fixture PRIVATE ${CMAKE_SOURCE_DIR}/src)
 set_target_properties(make_iec_fixture PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/tools")
 
@@ -570,9 +570,9 @@ set_target_properties(make_iec_fixture PROPERTIES
 # verifying disk persistence on the host filesystem.
 add_executable(test_d64_parse
     d64_parse_smoke_test.cpp
-    ${CMAKE_SOURCE_DIR}/D64Image.cpp
+    ${CMAKE_SOURCE_DIR}/src/D64Image.cpp
 )
-target_include_directories(test_d64_parse PRIVATE ${CMAKE_SOURCE_DIR})
+target_include_directories(test_d64_parse PRIVATE ${CMAKE_SOURCE_DIR}/src)
 
 add_test(NAME d64_parse_smoke COMMAND test_d64_parse)
 set_tests_properties(d64_parse_smoke PROPERTIES TIMEOUT 5)

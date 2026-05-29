@@ -45,6 +45,8 @@ Sources in `dev/`. Per-project Makefiles call `ca65` + `ld65`, then `python3 emi
 
 ## Architecture
 
+All C++ sources live under **`src/`** (vendored deps in **`src/third_party/`**). `imgui/`, `tests/`, `tools/` stay at the repo root. The root `CMakeLists.txt` collects sources via `${POM1_SRC_DIR}/...`. File references below are bare basenames — find them under `src/`.
+
 Each `.cpp/.h` pair owns one concern. Only non-obvious bits are called out.
 
 ### Parmigiani's golden rule — "one board at a time"
@@ -207,9 +209,9 @@ New invariant tests follow `tests/peripheral_bus_smoke_test.cpp` — `<cassert>`
 ## Version string locations
 
 Bump version in **all**:
-- `main_imgui.cpp` (console + window title)
-- `MainWindow_Dialogs.cpp` (About — 2 occurrences, with-photo + no-photo branches)
-- `Screen_ImGui.cpp` (welcome)
+- `src/main_imgui.cpp` (console + window title)
+- `src/MainWindow_Dialogs.cpp` (About — 2 occurrences, with-photo + no-photo branches)
+- `src/Screen_ImGui.cpp` (welcome)
 - `build-wasm/shell.html` (3 occurrences: `<meta>`, `<title>`, `<h1>`)
 - `README.md` (title)
 - `CMakeLists.txt` (`MACOSX_BUNDLE_BUNDLE_VERSION` + `MACOSX_BUNDLE_SHORT_VERSION_STRING`)

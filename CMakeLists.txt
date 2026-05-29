@@ -26,8 +26,8 @@ include(CheckIPOSupported)
 check_ipo_supported(RESULT POM1_IPO_SUPPORTED OUTPUT POM1_IPO_ERROR)
 
 # Vendored libresidfp (cycle-accurate SID emulation, GPL-2.0). See
-# third_party/libresidfp/CMakeLists.txt for the source list.
-add_subdirectory(third_party/libresidfp)
+# src/third_party/libresidfp/CMakeLists.txt for the source list.
+add_subdirectory(src/third_party/libresidfp)
 
 # ImGui
 set(IMGUI_DIR ${CMAKE_CURRENT_SOURCE_DIR}/imgui)
@@ -37,85 +37,86 @@ file(GLOB IMGUI_SOURCES
     ${IMGUI_DIR}/backends/imgui_impl_opengl3.cpp
 )
 
-# Project sources
+# Project sources (all under src/)
+set(POM1_SRC_DIR ${CMAKE_CURRENT_SOURCE_DIR}/src)
 set(SOURCES
-    A1IO_RTC.cpp
-    AudioDevice.cpp
-    CassetteDevice.cpp
-    CassetteDeck_ImGui.cpp
-    CliDispatcher.cpp
-    EmulationController.cpp
-    GraphicsCard.cpp
-    main_imgui.cpp
-    MainWindow_ImGui.cpp
-    M6502.cpp
-    Memory.cpp
-    MemoryViewer_ImGui.cpp
-    Screen_ImGui.cpp
-    SID.cpp
-    TMS9918.cpp
-    MicroSD.cpp
-    CFFA1.cpp
-    D64Image.cpp
-    Drive1541.cpp
-    IECCard.cpp
-    JukeBox.cpp
-    CodeTank.cpp
-    WiFiModem.cpp
-    TerminalCard.cpp
-    PR40Printer.cpp
-    GT6144.cpp
-    RomLoader.cpp
-    KeyboardController.cpp
-    SnapshotPublisher.cpp
-    SnapshotIO.cpp
-    PeripheralBus.cpp
-    Disassembler6502.cpp
-    MainWindow_Layout.cpp
-    MainWindow_Presets.cpp
-    MainWindow_Menu.cpp
-    MainWindow_Dialogs.cpp
-    MainWindow_HardwareWindows.cpp
-    MainWindow_FileDialogs.cpp
-    MainWindow_DebugWindows.cpp
-    MainWindow_TMS9918Inspector.cpp
-    MainWindow_Keyboard.cpp
-    Logger.cpp
+    ${POM1_SRC_DIR}/A1IO_RTC.cpp
+    ${POM1_SRC_DIR}/AudioDevice.cpp
+    ${POM1_SRC_DIR}/CassetteDevice.cpp
+    ${POM1_SRC_DIR}/CassetteDeck_ImGui.cpp
+    ${POM1_SRC_DIR}/CliDispatcher.cpp
+    ${POM1_SRC_DIR}/EmulationController.cpp
+    ${POM1_SRC_DIR}/GraphicsCard.cpp
+    ${POM1_SRC_DIR}/main_imgui.cpp
+    ${POM1_SRC_DIR}/MainWindow_ImGui.cpp
+    ${POM1_SRC_DIR}/M6502.cpp
+    ${POM1_SRC_DIR}/Memory.cpp
+    ${POM1_SRC_DIR}/MemoryViewer_ImGui.cpp
+    ${POM1_SRC_DIR}/Screen_ImGui.cpp
+    ${POM1_SRC_DIR}/SID.cpp
+    ${POM1_SRC_DIR}/TMS9918.cpp
+    ${POM1_SRC_DIR}/MicroSD.cpp
+    ${POM1_SRC_DIR}/CFFA1.cpp
+    ${POM1_SRC_DIR}/D64Image.cpp
+    ${POM1_SRC_DIR}/Drive1541.cpp
+    ${POM1_SRC_DIR}/IECCard.cpp
+    ${POM1_SRC_DIR}/JukeBox.cpp
+    ${POM1_SRC_DIR}/CodeTank.cpp
+    ${POM1_SRC_DIR}/WiFiModem.cpp
+    ${POM1_SRC_DIR}/TerminalCard.cpp
+    ${POM1_SRC_DIR}/PR40Printer.cpp
+    ${POM1_SRC_DIR}/GT6144.cpp
+    ${POM1_SRC_DIR}/RomLoader.cpp
+    ${POM1_SRC_DIR}/KeyboardController.cpp
+    ${POM1_SRC_DIR}/SnapshotPublisher.cpp
+    ${POM1_SRC_DIR}/SnapshotIO.cpp
+    ${POM1_SRC_DIR}/PeripheralBus.cpp
+    ${POM1_SRC_DIR}/Disassembler6502.cpp
+    ${POM1_SRC_DIR}/MainWindow_Layout.cpp
+    ${POM1_SRC_DIR}/MainWindow_Presets.cpp
+    ${POM1_SRC_DIR}/MainWindow_Menu.cpp
+    ${POM1_SRC_DIR}/MainWindow_Dialogs.cpp
+    ${POM1_SRC_DIR}/MainWindow_HardwareWindows.cpp
+    ${POM1_SRC_DIR}/MainWindow_FileDialogs.cpp
+    ${POM1_SRC_DIR}/MainWindow_DebugWindows.cpp
+    ${POM1_SRC_DIR}/MainWindow_TMS9918Inspector.cpp
+    ${POM1_SRC_DIR}/MainWindow_Keyboard.cpp
+    ${POM1_SRC_DIR}/Logger.cpp
 )
 
 set(HEADERS
-    A1IO_RTC.h
-    AudioDevice.h
-    CassetteDevice.h
-    CassetteDeck_ImGui.h
-    CliDispatcher.h
-    CpuClock.h
-    EmulationController.h
-    GraphicsCard.h
-    MainWindow_ImGui.h
-    M6502.h
-    Memory.h
-    MemoryViewer_ImGui.h
-    MicroSD.h
-    JukeBox.h
-    CodeTank.h
-    Screen_ImGui.h
-    SID.h
-    TMS9918.h
-    SocketHandle.h
-    WiFiModem.h
-    TerminalCard.h
-    PR40Printer.h
-    GT6144.h
-    RomLoader.h
-    KeyboardController.h
-    SnapshotPublisher.h
-    EmulationSnapshot.h
-    PeripheralBus.h
-    Disassembler6502.h
-    DisplayDevice.h
-    MainWindow_Internal.h
-    Logger.h
+    ${POM1_SRC_DIR}/A1IO_RTC.h
+    ${POM1_SRC_DIR}/AudioDevice.h
+    ${POM1_SRC_DIR}/CassetteDevice.h
+    ${POM1_SRC_DIR}/CassetteDeck_ImGui.h
+    ${POM1_SRC_DIR}/CliDispatcher.h
+    ${POM1_SRC_DIR}/CpuClock.h
+    ${POM1_SRC_DIR}/EmulationController.h
+    ${POM1_SRC_DIR}/GraphicsCard.h
+    ${POM1_SRC_DIR}/MainWindow_ImGui.h
+    ${POM1_SRC_DIR}/M6502.h
+    ${POM1_SRC_DIR}/Memory.h
+    ${POM1_SRC_DIR}/MemoryViewer_ImGui.h
+    ${POM1_SRC_DIR}/MicroSD.h
+    ${POM1_SRC_DIR}/JukeBox.h
+    ${POM1_SRC_DIR}/CodeTank.h
+    ${POM1_SRC_DIR}/Screen_ImGui.h
+    ${POM1_SRC_DIR}/SID.h
+    ${POM1_SRC_DIR}/TMS9918.h
+    ${POM1_SRC_DIR}/SocketHandle.h
+    ${POM1_SRC_DIR}/WiFiModem.h
+    ${POM1_SRC_DIR}/TerminalCard.h
+    ${POM1_SRC_DIR}/PR40Printer.h
+    ${POM1_SRC_DIR}/GT6144.h
+    ${POM1_SRC_DIR}/RomLoader.h
+    ${POM1_SRC_DIR}/KeyboardController.h
+    ${POM1_SRC_DIR}/SnapshotPublisher.h
+    ${POM1_SRC_DIR}/EmulationSnapshot.h
+    ${POM1_SRC_DIR}/PeripheralBus.h
+    ${POM1_SRC_DIR}/Disassembler6502.h
+    ${POM1_SRC_DIR}/DisplayDevice.h
+    ${POM1_SRC_DIR}/MainWindow_Internal.h
+    ${POM1_SRC_DIR}/Logger.h
 )
 
 # Platform-native icon resources — baked into the target so POM1.exe / POM1.app
@@ -169,7 +170,7 @@ endif()
 target_include_directories(${PROJECT_NAME} PRIVATE
     ${IMGUI_DIR}
     ${IMGUI_DIR}/backends
-    ${CMAKE_CURRENT_SOURCE_DIR}
+    ${POM1_SRC_DIR}
 )
 
 # libresidfp (vendored, third_party/libresidfp). PUBLIC include dir on the
@@ -179,7 +180,7 @@ target_link_libraries(${PROJECT_NAME} libresidfp_static)
 
 # ImDrawIdx 32 bits : imconfig.h le définit déjà ; le pré-include garantit imgui.cpp et tous les TUs
 # (évite WASM / CI avec caches ou chemins où imconfig semblait ignoré → assert 64k sommets).
-set(POM1_IMGUI_PREINCLUDE "${CMAKE_CURRENT_SOURCE_DIR}/POM1ImGuiPreinclude.h")
+set(POM1_IMGUI_PREINCLUDE "${POM1_SRC_DIR}/POM1ImGuiPreinclude.h")
 if(MSVC)
     target_compile_options(${PROJECT_NAME} PRIVATE "/FI${POM1_IMGUI_PREINCLUDE}")
 else()

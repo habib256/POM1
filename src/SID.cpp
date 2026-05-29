@@ -14,7 +14,7 @@
 // PUBLIC include dir (third_party/libresidfp/src). Including it here by
 // quoted name would re-include this file (same basename); use the relative
 // path to disambiguate.
-#include "../third_party/libresidfp/src/SID.h"
+#include "third_party/libresidfp/src/SID.h"
 
 #include <algorithm>
 #include <cstring>
