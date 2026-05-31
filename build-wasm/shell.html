@@ -1,348 +1,139 @@
 <!doctype html>
-<html lang="en-us">
+<html lang="en">
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta name="description" content="POM1 v1.9.1 — Apple 1 emulator in the browser (WebAssembly). MOS 6502, ACI cassette, GEN2 HGR, P-LAB TMS9918, A1-SID (cycle-accurate libresidfp 6581/8580), microSD.">
-  <meta name="author" content="Arnaud Verhille">
-  <title>POM1 v1.9.1 — Apple 1 Emulator</title>
-  <link rel="icon" type="image/png" href="pic/icon.png">
-  <style>
-    * { box-sizing: border-box; margin: 0; padding: 0; }
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="description" content="POM1 v1.9.1 — Apple 1 emulator in the browser (WebAssembly). MOS 6502, ACI cassette, GEN2 HGR, P-LAB TMS9918, A1-SID (cycle-accurate libresidfp 6581/8580), microSD.">
+<meta name="author" content="Arnaud Verhille">
+<title>POM1 v1.9.1 — Apple 1 Emulator</title>
+<link rel="icon" type="image/png" href="pic/icon.png">
+<style>
+  html, body { margin: 0; padding: 0; background: #000; color: #cfd0e8;
+               font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+               overflow: hidden; height: 100%; }
 
-    :root {
-      --pom1-bg: #000;
-      --pom1-text: #cfd0e8;
-      --pom1-muted: #8a8aa8;
-      --pom1-accent: #8fdf9f;
-      --pom1-link: #6fb8ff;
-      --pom1-rule: #1f1f33;
-    }
+  /* Top status pill — download progress while the ~40 MB MEMFS package loads. */
+  #status   { position: fixed; top: 14px; left: 50%; transform: translateX(-50%);
+              max-width: min(640px, calc(100vw - 32px)); padding: 10px 14px;
+              background: rgba(12,12,20,0.92); border: 1px solid #2a2a44;
+              border-radius: 8px; font-size: 13px; line-height: 1.4;
+              pointer-events: none; box-shadow: 0 8px 30px rgba(0,0,0,0.45);
+              z-index: 10; }
+  #status.hidden { display: none; }
+  .pill     { display: inline-block; padding: 2px 8px; border-radius: 9px;
+              background: #1f1f33; color: #8fdf9f; font-size: 11px; margin-right: 6px; }
+  #progress { display: inline-block; width: 220px; height: 6px;
+              background: #2a2a36; border-radius: 3px; overflow: hidden;
+              vertical-align: middle; margin-left: 6px; }
+  #progress > div { background: #8fdf9f; height: 100%; width: 0%;
+                    transition: width 0.1s linear; }
 
-    html, body { background: var(--pom1-bg); color: var(--pom1-text); }
+  /* Fullscreen "PLEASE WAIT" splash — stays until the first frame is painted. */
+  #bootSplash { position: fixed; inset: 0; display: flex; flex-direction: column;
+                align-items: center; justify-content: center; gap: 14px;
+                background: radial-gradient(ellipse at center, #101028 0%, #000 70%);
+                color: #f0f0f0; z-index: 5; transition: opacity 0.25s ease; }
+  #bootSplash.hidden { opacity: 0; pointer-events: none; }
+  #bootSplash .apple { font-size: 3rem; line-height: 1; }
+  #bootSplash .wait  { font: 700 clamp(28px, 7vw, 64px) ui-monospace, monospace;
+                       letter-spacing: 0.12em; color: #8fdf9f; }
+  #bootSplash .sub   { font-size: 0.85rem; color: #8a8aa8; text-align: center;
+                       max-width: 420px; line-height: 1.5; }
+  #bootSplash .spinner { width: 40px; height: 40px; border: 4px solid #2a2a44;
+                         border-top-color: #8fdf9f; border-radius: 50%;
+                         animation: spin 0.9s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
 
-    body {
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      min-height: 100vh;
-      font-family: system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-      padding: 16px 12px 24px;
-      gap: 12px;
-    }
+  /* Canvas drawn at its native preset pixel size (the WASM loop sets the
+     element width/height) and centered. Fullscreen request targets #canvas. */
+  canvas    { display: block; margin: auto; position: absolute; inset: 0;
+              max-width: 100vw; max-height: 100vh; background: #000;
+              cursor: default; outline: none; }
+  canvas:fullscreen, canvas:-webkit-full-screen {
+              width: 100vw; height: 100vh; max-width: 100vw; max-height: 100vh; }
 
-    a { color: var(--pom1-link); text-decoration: none; }
-    a:hover { text-decoration: underline; }
-
-    /* ── Header ── */
-    header.pom1-header {
-      width: 100%;
-      max-width: 960px;
-      text-align: center;
-      padding-bottom: 8px;
-      border-bottom: 1px solid var(--pom1-rule);
-    }
-    header.pom1-header h1 {
-      font-size: 1.5rem;
-      font-weight: 600;
-      letter-spacing: 0.5px;
-      color: var(--pom1-accent);
-    }
-    header.pom1-header h1 .apple { font-size: 1.1em; vertical-align: -2px; }
-    header.pom1-header .tagline {
-      font-size: 0.85rem;
-      color: var(--pom1-muted);
-      margin-top: 4px;
-    }
-    header.pom1-header .tagline strong { color: var(--pom1-text); font-weight: 600; }
-
-    /* ── Canvas ── */
-    #canvas-container {
-      overflow: hidden;
-      background: #000;
-      width: fit-content;
-      max-width: 100vw;
-      height: fit-content;
-      max-height: calc(100vh - 180px);
-      box-shadow: 0 0 24px rgba(143, 223, 159, 0.08);
-      border-radius: 4px;
-      position: relative;
-      /* Minimum frame so the loading overlay has room before Emscripten
-         sizes the canvas. Once the WASM boots, POM1 resizes the canvas to
-         its preset's layout extent and this min-size is absorbed. */
-      min-width: 640px;
-      min-height: 480px;
-    }
-
-    /* ── Loading overlay ──
-       Full-container splash shown until Emscripten finishes the ~40 MB
-       MEMFS preload + first frame. Hidden by monitorRunDependencies once
-       run-dependencies drop to zero. */
-    #loading-overlay {
-      position: absolute;
-      inset: 0;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      gap: 14px;
-      background: radial-gradient(ellipse at center, #101028 0%, #000 70%);
-      color: var(--pom1-text);
-      z-index: 2;
-      transition: opacity 0.25s ease;
-    }
-    #loading-overlay.hidden { opacity: 0; pointer-events: none; }
-    #loading-overlay .apple-big { font-size: 3rem; line-height: 1; }
-    #loading-overlay .title {
-      font-size: 1.05rem;
-      font-weight: 600;
-      color: var(--pom1-accent);
-      letter-spacing: 0.5px;
-    }
-    #loading-overlay .sub {
-      font-size: 0.85rem;
-      color: var(--pom1-muted);
-      max-width: 420px;
-      text-align: center;
-      line-height: 1.5;
-    }
-    #loading-overlay .big-spinner {
-      width: 44px; height: 44px;
-      border: 4px solid #2a2a44;
-      border-top-color: var(--pom1-accent);
-      border-radius: 50%;
-      animation: spin 0.9s linear infinite;
-    }
-    #loading-overlay progress {
-      width: 280px; height: 10px;
-      accent-color: var(--pom1-accent);
-    }
-    #loading-overlay .pct {
-      font-size: 0.8rem;
-      color: var(--pom1-muted);
-      font-variant-numeric: tabular-nums;
-    }
-    canvas.emscripten {
-      display: block;
-      width: auto;
-      height: auto;
-      max-width: 100vw;
-      max-height: calc(100vh - 180px);
-      cursor: default !important;
-    }
-
-    /* ── Fullscreen ── */
-    #canvas-container:fullscreen,
-    #canvas-container:-webkit-full-screen {
-      width: 100vw;
-      height: 100vh;
-      max-height: 100vh;
-      border-radius: 0;
-      box-shadow: none;
-    }
-    #canvas-container:fullscreen canvas,
-    #canvas-container:-webkit-full-screen canvas {
-      width: 100%;
-      height: 100%;
-      max-height: 100vh;
-    }
-
-    /* ── Status / Progress ── */
-    #status-bar {
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      gap: 10px;
-      min-height: 22px;
-      font-size: 0.8rem;
-      color: var(--pom1-muted);
-    }
-    #progress { width: 200px; height: 12px; display: none; accent-color: var(--pom1-accent); }
-    .spinner {
-      width: 18px; height: 18px;
-      border: 3px solid #3a3a55;
-      border-top-color: var(--pom1-accent);
-      border-radius: 50%;
-      animation: spin 0.75s linear infinite;
-      display: none;
-    }
-    @keyframes spin { to { transform: rotate(360deg); } }
-
-    /* ── Footer ── */
-    footer.pom1-footer {
-      width: 100%;
-      max-width: 960px;
-      text-align: center;
-      font-size: 0.78rem;
-      color: var(--pom1-muted);
-      padding-top: 8px;
-      border-top: 1px solid var(--pom1-rule);
-      line-height: 1.6;
-    }
-    footer.pom1-footer .row { margin: 2px 0; }
-    footer.pom1-footer .sep { color: #444; padding: 0 6px; }
-
-    @media (max-width: 600px) {
-      header.pom1-header h1 { font-size: 1.2rem; }
-      header.pom1-header .tagline { font-size: 0.75rem; }
-      footer.pom1-footer { font-size: 0.7rem; }
-    }
-  </style>
+  #err      { position: fixed; left: 16px; right: 16px; top: 16px;
+              padding: 12px 16px; background: #4a1a1a; color: #ffe;
+              border-radius: 6px; font-family: ui-monospace, monospace;
+              font-size: 12px; white-space: pre-wrap; display: none; z-index: 20; }
+</style>
 </head>
 <body>
 
-  <header class="pom1-header">
-    <h1><span class="apple">🍎</span> POM1 v1.9.1 — Apple 1 Emulator</h1>
-    <div class="tagline">
-      by <strong>Arnaud Verhille</strong> ·
-      Celebrating 50 years of Apple (1976–2026) ·
-      <a href="https://github.com/habib256/POM1" target="_blank" rel="noopener">GitHub</a>
-    </div>
-  </header>
+<div id="status">
+  <span class="pill">POM1 WASM</span>
+  <span id="statusMsg">Loading POM1: downloading assets…</span>
+  <span id="progress"><div></div></span>
+</div>
 
-  <div id="canvas-container">
-    <div id="loading-overlay">
-      <div class="apple-big">🍎</div>
-      <div class="title">POM1 — Apple 1 Emulator</div>
-      <div class="big-spinner"></div>
-      <div class="sub" id="loading-sub">Loading ~40 MB of ROMs, fonts, software and demo cassettes…</div>
-      <progress id="loading-progress" value="0" max="100"></progress>
-      <div class="pct" id="loading-pct">Starting…</div>
-    </div>
-    <canvas class="emscripten" id="canvas" oncontextmenu="event.preventDefault()" tabindex="-1"></canvas>
-  </div>
+<div id="err"></div>
 
-  <div id="status-bar">
-    <div class="spinner" id="spinner"></div>
-    <span id="status">Loading...</span>
-    <progress id="progress" value="0" max="100"></progress>
-  </div>
+<div id="bootSplash">
+  <div class="apple">🍎</div>
+  <div class="wait">PLEASE WAIT</div>
+  <div class="spinner"></div>
+  <div class="sub">POM1 v1.9.1 — Apple 1 Emulator · by Arnaud Verhille ·
+    loading ~40 MB of ROMs, fonts, software and demo cassettes…</div>
+</div>
 
-  <footer class="pom1-footer">
-    <div class="row">
-      MOS 6502 · Apple Cassette Interface · Bernie's GEN2 HGR ·
-      P-LAB TMS9918 · P-LAB A1-SID · P-LAB microSD · P-LAB MODEM BBS
-    </div>
-    <div class="row">
-      Hardware by <a href="https://p-l4b.github.io/" target="_blank" rel="noopener">Claudio Parmigiani (P-LAB)</a>
-      <span class="sep">·</span>
-      GEN2 by Uncle Bernie
-      <span class="sep">·</span>
-      Firmware &amp; KickC libs by <a href="https://github.com/nippur72" target="_blank" rel="noopener">Antonino Porcino (Nippur72)</a>
-    </div>
-    <div class="row">
-      © 2000–2026 Arnaud Verhille · GPL-3.0 ·
-      Apple 1 software archive: <a href="https://apple1software.com/" target="_blank" rel="noopener">apple1software.com</a> ·
-      <a href="https://applefritter.com/apple1/" target="_blank" rel="noopener">AppleFritter</a>
-    </div>
-    <div class="row" style="margin-top:6px; color:#666;">
-      Note: P-LAB MODEM BBS dialing and the P-LAB Terminal Card require raw TCP and are desktop-only in this build.
-    </div>
-  </footer>
+<canvas id="canvas" oncontextmenu="event.preventDefault()" tabindex="-1"></canvas>
 
-  <script>
-    var statusElement   = document.getElementById('status');
-    var progressElement = document.getElementById('progress');
-    var spinnerElement  = document.getElementById('spinner');
+<script>
+  const statusBox  = document.getElementById('status');
+  const statusMsg  = document.getElementById('statusMsg');
+  const progressEl = document.querySelector('#progress > div');
+  const errEl      = document.getElementById('err');
 
-    // Loading overlay (splash shown until Emscripten finishes preload)
-    var overlayEl         = document.getElementById('loading-overlay');
-    var overlayProgressEl = document.getElementById('loading-progress');
-    var overlayPctEl      = document.getElementById('loading-pct');
-    var overlaySubEl      = document.getElementById('loading-sub');
+  function setStatus(msg) { if (statusMsg) statusMsg.textContent = msg; }
+  function setProgress(num, total) {
+    if (!progressEl || !total) return;
+    progressEl.style.width = Math.min(100, (100 * num / total)) + '%';
+  }
 
-    // Hide the overlay once, after the first-frame init signal. Kept
-    // idempotent so late monitorRunDependencies(0) callbacks are benign.
-    function hideLoadingOverlay() {
-      if (!overlayEl || overlayEl.classList.contains('hidden')) return;
-      overlayEl.classList.add('hidden');
-      // Drop from layout after the fade so it stops consuming min-height.
-      setTimeout(function() { overlayEl.style.display = 'none'; }, 300);
-    }
+  // Called from C++ (main_imgui.cpp) right after the first glfwSwapBuffers, so
+  // the Apple 1 screen is genuinely visible before the splash disappears — not
+  // merely when the MEMFS preload finished downloading.
+  window.pom1FirstFrameReady = function() {
+    setProgress(1, 1);
+    setStatus("POM1 ready.");
+    document.getElementById('bootSplash').classList.add('hidden');
+    setTimeout(() => { statusBox.classList.add('hidden'); }, 250);
+  };
 
-    function formatBytes(n) {
-      if (!Number.isFinite(n) || n <= 0) return '';
-      if (n >= 1024 * 1024) return (n / (1024 * 1024)).toFixed(1) + ' MB';
-      if (n >= 1024) return (n / 1024).toFixed(0) + ' KB';
-      return n + ' B';
-    }
-
-    var Module = {
-      canvas: (function() { return document.getElementById('canvas'); })(),
-
-      print: function(text) {
-        if (arguments.length > 1) text = Array.prototype.slice.call(arguments).join(' ');
-        console.log(text);
-      },
-      printErr: function(text) {
-        if (arguments.length > 1) text = Array.prototype.slice.call(arguments).join(' ');
-        console.warn(text);
-      },
-
-      setStatus: function(text) {
-        if (!Module.setStatus.last) Module.setStatus.last = { time: Date.now(), text: '' };
-        if (text === Module.setStatus.last.text) return;
-        // Emscripten formats download progress as "prefix (loaded/total)".
-        var m = text.match(/([^(]+)\((\d+(\.\d+)?)\/(\d+)\)/);
-        var now = Date.now();
-        if (m && now - Module.setStatus.last.time < 30) return;
-        Module.setStatus.last.time = now;
-        Module.setStatus.last.text = text;
-
-        if (m) {
-          var loaded = parseFloat(m[2]);
-          var total  = parseFloat(m[4]);
-          progressElement.value = loaded * 100;
-          progressElement.max   = total  * 100;
-          progressElement.style.display = 'inline';
-          // Mirror into the big overlay splash.
-          if (overlayProgressEl) {
-            overlayProgressEl.value = loaded;
-            overlayProgressEl.max   = total;
-          }
-          if (overlayPctEl) {
-            var pct = total > 0 ? Math.round((loaded / total) * 100) : 0;
-            overlayPctEl.textContent = pct + '%  (' + formatBytes(loaded) + ' / ' + formatBytes(total) + ')';
-          }
-          if (overlaySubEl) overlaySubEl.textContent = (m[1] || 'Downloading…').trim();
-          text = m[1];
-        } else {
-          progressElement.style.display = 'none';
-          if (overlaySubEl && text) overlaySubEl.textContent = text;
-        }
-        statusElement.innerHTML = text;
-        spinnerElement.style.display = text ? 'block' : 'none';
-        if (!text && !m) document.getElementById('status-bar').style.display = 'none';
-      },
-
-      monitorRunDependencies: function(left) {
-        this.totalDependencies = Math.max(this.totalDependencies, left);
-        Module.setStatus(left
-          ? 'Preparing… (' + (this.totalDependencies - left) + '/' + this.totalDependencies + ')'
-          : '');
-        if (!left) {
-          document.getElementById('status-bar').style.display = 'none';
-          hideLoadingOverlay();
-        }
-      },
-      totalDependencies: 0,
-
-      // onRuntimeInitialized fires once the WASM module is ready to run
-      // (usually before the preloaded data package finishes, but safe as a
-      // secondary hide in case monitorRunDependencies never drops).
-      onRuntimeInitialized: function() {
-        // Keep the overlay visible a touch longer so the user perceives the
-        // splash; the dependency monitor is the primary gate.
+  var Module = {
+    canvas: document.getElementById('canvas'),
+    print:    (text) => { console.log(text); },
+    printErr: (text) => { console.warn(text); },
+    setStatus: (text) => {
+      if (!text) { setStatus("Loading POM1: initializing the emulator…"); return; }
+      // Emscripten posts "prefix (loaded/total)" during the data download.
+      const m = text.match(/\((\d+(?:\.\d+)?)\/(\d+)\)/);
+      if (m) {
+        setProgress(parseFloat(m[1]), parseFloat(m[2]));
+        setStatus("Loading POM1: downloading assets… " +
+                  Math.round(100 * parseFloat(m[1]) / parseFloat(m[2])) + "%");
+      } else {
+        setStatus("Loading POM1: " + text);
       }
-    };
+    },
+    monitorRunDependencies: function(left) {
+      if (left === 0) {
+        setProgress(1, 1);
+        setStatus("Loading POM1: assets loaded, initializing the emulator…");
+      }
+    },
+    onAbort: function(reason) {
+      errEl.style.display = 'block';
+      errEl.textContent = "POM1 failed while loading or initializing:\n" + reason;
+    },
+  };
 
-    Module.setStatus('Downloading…');
-    window.onerror = function() {
-      Module.setStatus('Error — see browser console');
-      spinnerElement.style.display = 'none';
-      if (overlayPctEl) overlayPctEl.textContent = 'Error — see browser console';
-    };
-  </script>
-  {{{ SCRIPT }}}
+  window.addEventListener('unhandledrejection', event => {
+    errEl.style.display = 'block';
+    errEl.textContent = "POM1 failed while loading or initializing:\n" +
+      (event.reason && (event.reason.stack || event.reason.message || event.reason));
+  });
+</script>
+{{{ SCRIPT }}}
 </body>
 </html>

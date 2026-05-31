@@ -595,14 +595,6 @@ int main(int argc, char* argv[])
             glfwMakeContextCurrent(c->window);
             glfwSwapInterval(1);
         }
-        // Efface le message Emscripten du type « Getting the system running » / spinner dès la 1ʳᵉ frame.
-        if (static bool clearedWasmStatus = false; !clearedWasmStatus) {
-            clearedWasmStatus = true;
-            emscripten_run_script(
-                "if(typeof Module!=='undefined'&&Module.setStatus){Module.setStatus('');}"
-                "var sp=document.getElementById('spinner');if(sp)sp.style.display='none';"
-                "var st=document.getElementById('status');if(st)st.textContent='Ready';");
-        }
         glfwPollEvents();
 
         // Taille canvas : hors plein écran = celle calculée dans MainWindow (Apple 1 + chrome) ;
@@ -657,6 +649,16 @@ int main(int argc, char* argv[])
         ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
 
         glfwSwapBuffers(c->window);
+
+        // Signale au shell HTML que la 1ʳᵉ frame est réellement peinte (après le
+        // swap, contrairement au clear de statut en début de boucle). Le shell
+        // masque alors le splash « PLEASE WAIT » : la transition n'apparaît qu'une
+        // fois l'écran Apple 1 visible, pas dès que le préchargement MEMFS finit.
+        if (static bool firstFrameReadySignaled = false; !firstFrameReadySignaled) {
+            firstFrameReadySignaled = true;
+            emscripten_run_script(
+                "if(globalThis.pom1FirstFrameReady){globalThis.pom1FirstFrameReady();}");
+        }
     }, &ctx, 0, true);
     // emscripten_set_main_loop_arg never returns when simulate_infinite_loop=true
 #else
