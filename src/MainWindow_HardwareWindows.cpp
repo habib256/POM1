@@ -365,6 +365,20 @@ void MainWindow_ImGui::renderTerminalCardWindow()
     ImGui::SetNextWindowSize(ImVec2(360, 280), ImGuiCond_FirstUseEver);
     applyPendingLayout("P-LAB Terminal Card");
     if (ImGui::Begin("P-LAB Terminal Card", &showTerminalCard)) {
+#if POM1_IS_WASM
+        // Browsers cannot open a listening TCP socket, so the telnet server
+        // never comes up in the web build. Make this visible up front so the
+        // user doesn't think the card is broken (the native screen + keyboard
+        // keep working; only the external-terminal bridge is unavailable).
+        ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 0.85f, 0.4f, 1.0f));
+        ImGui::TextWrapped("Web build: the telnet server is disabled.");
+        ImGui::PopStyleColor();
+        ImGui::TextWrapped("Browsers cannot open a listening TCP socket, so "
+                           "'telnet localhost 6502' has nothing to connect to. "
+                           "Use the desktop build to drive POM1 from an external "
+                           "terminal.");
+        ImGui::Separator();
+#endif
         const auto& snap = uiSnapshot.terminalCard;
 
         // Server status

@@ -29,9 +29,9 @@ Built with Dear ImGui & OpenGL — fast, lightweight, cross-platform.
 - 🎵 **Real chiptune sound on a 1976 board.** Drop a `.sid` from the [HVSC archive](https://www.exotica.org.uk/wiki/High_Voltage_SID_Collection) onto `tools/sid2apple1.py`, swap between MOS 6581 and CSG 8580 *while it plays*, and hear genuine SID through libresidfp.
 - 🎨 **Three independent graphics cards across half a century.** The 1976 SWTPC GT-6144 (with bistable SRAM noise on power-up), Uncle Bernie's GEN2 HGR (NTSC artifact colours), and the P-LAB TMS9918 (256×192 + 32 sprites + silicon-strict timing model documented in [`SILICONBUGS.md`](dev/SILICONBUGS.md)).
 - 📡 **Wi-Fi modem dialing real BBSes.** Flip on the P-LAB Wi-Fi card, type `ATDT bbs.fozztexx.com:23` in WOZ Monitor and you're on a 2026-era BBS. Or run `telnet localhost 6502` to drive the Apple 1 from any modern terminal.
-- 💾 **Cartridge ecosystem unique to POM1.** The P-LAB CodeTank ships **4 ready-to-flip cartridges** (GAME1/GAME2/GAME3/TEST) covering arcade games, dungeon crawlers, demos and silicon validation suites — all built from `dev/projects/` source you can hack and rebuild with `python3 tools/build_codetank_rom.py`.
+- 💾 **Cartridge ecosystem unique to POM1.** The P-LAB CodeTank ships **5 ready-to-flip cartridges** (GAME1/GAME2/GAME3/GAME4/TEST) covering arcade games, dungeon crawlers, demos and silicon validation suites — all built from `dev/projects/` source you can hack and rebuild with `python3 tools/build_codetank_rom.py`.
 - 🔬 **Cycle-accurate down to the bus.** The SID, TMS9918, ACI cassette and modem all run on the same `POM1_CPU_CLOCK_HZ = 1 022 727` clock; tempo follows emulation speed, not wall-clock. Klaus Dormann's 6502 functional test pinned in CI.
-- 🛠️ **A complete cc65 dev tree.** Every shipped program has source under [`dev/projects/`](dev/) — Galaga, Sokoban, Snake, Logo, Rogue, Tetris, Mandelbrot, Plasma, Connect-4 trilogy, two Sokoban trilogies, and more. Modify, `make`, watch it run.
+- 🛠️ **A complete cc65 dev tree.** Every shipped program has source under [`dev/projects/`](dev/) — Galaga, Sokoban, Snake, Logo, Rogue, Tetris, Mandelbrot, Plasma, Light Corridor, Connect-4 trilogy, two Sokoban trilogies, and more. Modify, `make`, watch it run.
 - ⌨️ **TTL-faithful keyboard** (no autorepeat by default, like the real ASCII keyboard ROM) — toggle to host autorepeat from *Settings* if you can't take it.
 
 ---
@@ -70,7 +70,7 @@ F000R    ; cold-start whatever ROM is currently mapped at $F000
 | 🎵 **A1-AUDIO Special Edition** | — | Same chip relocated to `$CC00-$CC1F` (excludes TMS9918) |
 | 🎨 **[Uncle Bernie's GEN2 HGR](https://www.applefritter.com/content/uncle-bernies-gen2-color-graphics-card-apple-1)** | 2026 | 280×192 Apple-II-style framebuffer with NTSC artifact colour |
 | 🎨 **[P-LAB TMS9918](https://p-l4b.github.io/graphic/)** | — | TMS9918A VDP, 256×192, 32 sprites, 4 modes. Silicon-strict timing model |
-| 💾 **P-LAB CodeTank** | — | Daughterboard of the TMS9918 card. **4 cartridges shipped** (see Software) |
+| 💾 **P-LAB CodeTank** | — | Daughterboard of the TMS9918 card. **5 cartridges shipped** (see Software) |
 | 💾 **[P-LAB Juke-Box](https://p-l4b.github.io/jukebox/)** | — | Paged 16 KB–512 KB flash + writable 28c256 EEPROM. `$CA00` bank latch |
 | ⏰ **[P-LAB I/O Board & RTC](https://p-l4b.github.io/A1-IO_RTC/)** | — | DS3231, DS18B20, ADC + digital I/O |
 | 📡 **[P-LAB Wi-Fi Modem](https://p-l4b.github.io/wifi/)** | — | 65C51 + ESP8266, Hayes AT, real TCP/TELNET (desktop only) |
@@ -186,15 +186,16 @@ Indices match `--preset N`. Per-preset window layouts persist under `ini/imgui_p
 
 `software/` ships **60+ ready-to-run programs** — load via *File → Load Memory*. Most come from [apple1software.com](https://apple1software.com/), the reference archive. 6502 ASM sources for the bundled programs live in [`dev/projects/`](dev/) in the **git checkout** (not in release archives). Auto-enable: load a file from `software/Graphic HGR/`, `software/Graphic TMS9918/`, `software/Apple-1_TMS_CC65/` (cc65 CodeTank images), `software/SOUND SID/`, `software/NET/`, `software/a1io_rtc/` or `software/Graphic gt-6144/` and POM1 plugs the matching card + opens its window.
 
-### 🃏 P-LAB CodeTank cartridge library *(new in v1.9.0)*
+### 🃏 P-LAB CodeTank cartridge library *(new in v1.9.0, GAME4 added v1.9.1)*
 
-Plug the CodeTank daughterboard (preset 8 or *Hardware → CodeTank*), open *File → P-LAB CodeTank Library*, pick a `.rom`, choose a jumper. **4 cartridges shipped**, all rebuilt from source via `python3 tools/build_codetank_rom.py`:
+Plug the CodeTank daughterboard (preset 8 or *Hardware → CodeTank*), open *File → P-LAB CodeTank Library*, pick a `.rom`, choose a jumper. **5 cartridges shipped**, all rebuilt from source via `python3 tools/build_codetank_rom.py`:
 
 | ROM | Lower jumper (`4000R`) | Upper jumper (`4000R`) |
 |---|---|---|
 | **`Codetank_GAME1.rom`** | menu → 1=Galaga 2=Sokoban 3=Snake | TMS_LOGO V2.6 turtle interpreter |
 | **`Codetank_GAME2.rom`** | TMS_Rogue (dungeon crawler) | TMS_Nyan_CodeTank (12-frame Mode III animation) |
 | **`Codetank_GAME3.rom`** | Tetris/CodeTank (full bank) | menu → 1=Life 2=Mandel 3=Plasma |
+| **`Codetank_GAME4.rom`** | TMS_LightCorridor (wireframe perspective tunnel, 3 levels) | *reserved (`$FF` fill — future expansion)* |
 | **`Codetank_TEST.rom`** | TMS_SilBench (29-test silicon validation) | menu → 1=Clone (sprite bug N.8) 2=Split (5th-sprite trigger) |
 
 Per-cart menu sources under `dev/projects/tms9918_codetank_{menu,game3_menu,test_menu}/`. Per-program bank cfgs stamp slot offsets that `slot()` enforces in `build_codetank_rom.py` — outgrow your slot, get a clear deficit message instead of a corrupt ROM.
