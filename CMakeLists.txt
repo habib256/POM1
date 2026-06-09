@@ -47,6 +47,7 @@ set(SOURCES
     ${POM1_SRC_DIR}/CliDispatcher.cpp
     ${POM1_SRC_DIR}/EmulationController.cpp
     ${POM1_SRC_DIR}/GraphicsCard.cpp
+    ${POM1_SRC_DIR}/Gen2VideoScanner.cpp
     ${POM1_SRC_DIR}/main_imgui.cpp
     ${POM1_SRC_DIR}/MainWindow_ImGui.cpp
     ${POM1_SRC_DIR}/M6502.cpp

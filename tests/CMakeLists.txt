@@ -51,6 +51,7 @@ set(POM1_TEST_CORE_SOURCES
     ${CMAKE_SOURCE_DIR}/src/CodeTank.cpp
     ${CMAKE_SOURCE_DIR}/src/PR40Printer.cpp
     ${CMAKE_SOURCE_DIR}/src/GT6144.cpp
+    ${CMAKE_SOURCE_DIR}/src/Gen2VideoScanner.cpp
 )
 
 add_executable(test_klaus_6502
@@ -95,6 +96,21 @@ target_include_directories(test_peripheral_bus PRIVATE ${CMAKE_SOURCE_DIR}/src)
 add_test(NAME peripheral_bus_smoke
          COMMAND test_peripheral_bus)
 set_tests_properties(peripheral_bus_smoke PROPERTIES TIMEOUT 5)
+
+# -- GEN2 release video scanner / floating bus --------------------------------
+# Self-contained: Gen2VideoScanner has no dependency on Memory, peripherals, or
+# libresidfp. Pins the MAME scanner_address oracle for known (cycle, mode)
+# tuples — HGR page1/2 bases, mixed bottom-4-rows text fallback, the text
+# H-blank phantom row — plus the floating-bus byte read against a stub 64 KB.
+add_executable(test_gen2_floatingbus
+    gen2_floatingbus_smoke_test.cpp
+    ${CMAKE_SOURCE_DIR}/src/Gen2VideoScanner.cpp
+)
+target_include_directories(test_gen2_floatingbus PRIVATE ${CMAKE_SOURCE_DIR}/src)
+
+add_test(NAME gen2_floatingbus_smoke
+         COMMAND test_gen2_floatingbus)
+set_tests_properties(gen2_floatingbus_smoke PROPERTIES TIMEOUT 5)
 
 # -- Preset RAM profile invariant ---------------------------------------------
 # All real-hardware presets use Parmigiani's standard 8 KB dual-bank map

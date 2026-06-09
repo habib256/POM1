@@ -506,6 +506,9 @@ void Memory::setHgrFramebufferAttached(bool e)
     const bool wasAttached = hgrFramebufferAttached;
     hgrFramebufferAttached = e;
     if (e && !wasAttached) {
+        // Cold plug: restart the video scanner at a deterministic frame phase
+        // so the floating bus / beam timing is reproducible from power-on.
+        gen2Scanner.resetCycle();
         std::random_device rd;
         std::mt19937 gen(rd());
         std::uniform_int_distribution<int> dist(0, 255);
@@ -1627,6 +1630,10 @@ void Memory::advanceCycles(int cycles)
         displayBusyCycles = std::max(0, displayBusyCycles - cycles);
     }
     cassetteDevice->advanceCycles(cycles);
+    // GEN2 release video scanner — drives the cycle-accurate floating bus /
+    // beam position. Same gating pattern as the cards above; zero cost when the
+    // HGR framebuffer card is unplugged.
+    if (hgrFramebufferAttached) gen2Scanner.advanceCycles(static_cast<uint64_t>(cycles));
     if (tms9918Enabled) tms9918->advanceCycles(cycles);
     if (microSDEnabled) microSD->advanceCycles(cycles);
     if (wifiModemEnabled) wifiModem->advanceCycles(cycles);

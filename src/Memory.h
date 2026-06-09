@@ -48,6 +48,7 @@ class M6502;
 #include "JukeBox.h"
 #include "IECCard.h"
 #include "MicroSD.h"
+#include "Gen2VideoScanner.h"
 
 class Memory
 {
@@ -95,6 +96,16 @@ public:
     // bistable power-on state (see resetMemory() and dev/SILICONBUGS.md).
     void setHgrFramebufferAttached(bool e);
     bool isHgrFramebufferAttached(void) const { return hgrFramebufferAttached; }
+
+    // GEN2 *release* video scanner (cycle-accurate floating bus + beam timing).
+    // The counter is advanced from advanceCycles() while the card is plugged.
+    // Phase 2 wires the $C250-$C257 soft switches that drive the DisplayState;
+    // these accessors expose the foundation for headless tests and MMIO reads.
+    uint64_t peekGen2VideoCycle(void) const { return gen2Scanner.peekVideoCycle(); }
+    uint8_t  gen2FloatingBus(void) const { return gen2Scanner.floatingBus(mem.data()); }
+    void     setGen2DisplayState(const Gen2VideoScanner::DisplayState& s) {
+        gen2Scanner.setDisplayState(s);
+    }
 
     // Load Memory from file
     int loadROM(const char* filename, uint16_t startAddress, size_t maxSize, const char* label);
@@ -431,6 +442,7 @@ private :
     bool oorStrictMode = false;       // true: enforce bounds (reads→$FF, writes dropped)
     bool systemRamNoiseOnReset = false; // see setSystemRamNoiseOnReset()
     bool hgrFramebufferAttached = false;  // GEN2 HGR card supplies RAM at $2000-$3FFF
+    Gen2VideoScanner gen2Scanner;         // GEN2 release video address generator (floating bus)
     std::unordered_set<uint32_t> oorWarned;  // key = (addr<<1)|isWrite; capped at 64
     void checkOutOfRangeAccess(uint16_t address, bool isWrite);
     bool writeInRom;
