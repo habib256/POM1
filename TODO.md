@@ -8,6 +8,65 @@ Sections ordered by actionability: implementable first, externally-blocked last.
 
 ---
 
+## 🖥️ Uncle Bernie GEN2 — moteur faisceau (back-port POM2 → POM1)
+
+> **Contexte** (AppleFritter, juin 2026) : la carte GEN2 *release* déplace les soft switches graphiques en **`$C250-$C257`** (`$C0` → `$C2` dans le code Apple II porté). Le vaporlock classique (`$C050` + bit-fumes bus flottant) **ne marche pas** avec l'ACI présent ; Bernie expose à la place un **drapeau MSB** sur lecture des soft switches `$C25x` pour détecter H-blank / V-blank. POM1 v1.8.6 ne modélise que le framebuffer passif `$2000-$3FFF` + rasterisation fin-de-frame MAME (`GraphicsCard.cpp`) — pas de faisceau cycle-accurate, pas de MMIO `$C2xx`.
+>
+> **Source POM2** (déjà fonctionnel) : `Memory::floatingBus()` (port MAME `apple2video.cpp:124-201`), journal d'événements vidéo horodaté (`VideoEvent` / `beginVideoEventFrame`), rendu beam-raced par bandes de scanlines (`Apple2Display::renderInternalBand`), signal composite OpenEmulator (`fillCompositeSignal` + `ColorCompositeOECpu` / shader GPU). Réf. `POM2/DEV.md` § Beam-racing, tests `floatingbus_page2_smoke`, `beam_race_composite`.
+>
+> **Tag global** `[L · critical]` — prérequis pour que Bernie et les ports de jeux Apple II HGR s'appuient sur la carte release, pas sur le prototype fil à fil.
+
+### Phase 0 — Spécification hardware (bloquant externe léger)
+
+- [ ] **Obtenir le map `$C250-$C257` release** `[S · critical]` — demander à Uncle Bernie le tableau bit-à-bit (TEXT / GRAPHICS / MIXED / PAGE1·2 / HIRES / FULL, sémantique MSB H-blank vs V-blank). Ne pas deviner depuis l'Apple II `$C05x` : le PCB release a des contraintes A6 distinctes. Bloque la Phase 2 tant que non confirmé. **Questions envoyées 2026-06-09 → `doc/GEN2_RELEASE_questions.md`** (8 points : map, read/write decode, MSB blank, timing, page 2, décodage `$C2xx`, coexistence ACI, état power-on) ; consigner les réponses dans ce fichier.
+- [ ] **Documenter la règle portage jeux** `[S · solid]` — note `doc/GEN2_RELEASE.md` : patch `$C05x`→`$C25x`, conserver `$C030` seul pour SPEAKER, retirer les autres accès `$C0xx` des ports Apple II, dual-monitor (texte `$D012` + HGR GEN2).
+
+### Phase 1 — Horloge vidéo + bus flottant (fondation cycle-accurate)
+
+- [x] **Compteur de cycles vidéo global** `[M · critical]` — `Gen2VideoScanner` (`src/Gen2VideoScanner.{h,cpp}`) maintient `cycleCounter % (65×262)` avec les constantes NTSC verbatim POM2 (`kCyclesPerLine=65`, `kLinesPerFrame=262`, `kCyclesPerFrame=17030`). `peekVideoCycle()` exposé pour tests headless ; `Memory::peekGen2VideoCycle()` le relaie.
+- [x] **Porter `floatingBus()`** `[M · critical]` — `Gen2VideoScanner::scannerAddress()` est le port verbatim de `POM2/src/Memory.cpp:floatingBus()` (formule MAME `scanner_address`), dépouillé des entrées IIe (80STORE, iieMode) ; le phantom row HBL texte `$1000` du II/II+ est conservé. `floatingBus(mem)` lit l'octet (HGR page 1 `$2000`, page 2 `$4000`). NB mirroring page 2 réel **non confirmé** (bloqué Phase 0) — la formule reste bit-exacte.
+- [x] **Brancher `advanceCycles` sur la GEN2** `[S · solid]` — `Memory::advanceCycles()` appelle `gen2Scanner.advanceCycles(cycles)` quand `hgrFramebufferAttached` (même pattern que TMS9918 / SID / cassette ; le scanner est possédé par `Memory`, pas `GraphicsCard` qui appartient à l'UI). Phase remise à zéro au branchement à froid.
+- [x] **Test `gen2_floatingbus_smoke`** `[S · solid]` — oracle adresse scanner (adresses calculées à la main : HGR p1/p2 `$2068`/`$4068` lead-in, `$2000`/`$4000` premier octet, texte `$0400` + phantom `$1468`, mixed bottom-4 `$0650`) + lecture octet à sentinelles + wrap compteur. `tests/gen2_floatingbus_smoke_test.cpp`, auto-contenu (motif `peripheral_bus_smoke`).
+
+### Phase 2 — Soft switches `$C250-$C257` + drapeau MSB Bernie
+
+- [ ] **`DisplayState` GEN2** `[S · critical]` — struct minimale : `textMode`, `mixedMode`, `page2`, `hiRes` (+ état power-on : TEXT, PAGE1, lo-res off). Port de `POM2/src/Memory.h::DisplayState`, sans les bits IIe (80COL, DHGR, 80STORE, AN3).
+- [ ] **MMIO via `PeripheralBus`** `[M · critical]` — enregistrer `GEN2_softswitch` sur `$C250-$C257` (priorité > ACI toggle si lecture ; écriture = bascule miroir Apple II). Écriture : mettre à jour `DisplayState` + journaliser un `VideoEvent{cycle, kind, value}` (port du log POM2).
+- [ ] **Lecture MSB blank (remplace vaporlock)** `[M · critical]` — sur lecture `$C25x` : `return (inHorizontalBlank() || inVerticalBlank()) ? 0x80 : 0x00` ORé avec `floatingBus() & 0x7F` selon spec Bernie (à affiner Phase 0). **Ne pas** réutiliser le chemin vaporlock `$C050` + bit-fumes seul — Bernie l'a explicitement abandonné avec ACI.
+- [ ] **Helpers `inHorizontalBlank()` / `inVerticalBlank()`** `[M · solid]` — dérivés de `(h_clock, v_clock)` dans le compteur 65×262 ; calibrer sur le timing Apple II (active video h 25..64, VBL v ≥ 192 ou selon spec Bernie).
+- [ ] **Test `gen2_softswitch_msb_smoke`** `[S · solid]` — poll `$C250` en boucle : MSB doit toggler à la cadence blank ; écriture `$C251` (SETGR) change le mode sans toggle TAPE OUT (ACI branchée, écriture `$C010` n'atteint plus les switches GEN2).
+
+### Phase 3 — Beam-racing & rendu synchronisé au faisceau
+
+- [ ] **Journal `VideoEvent` par frame** `[M · critical]` — `beginVideoFrame()` au rollover `cycleCounter` (front VBL ou ligne 0) ; `logVideoEvent(cycle, kind, value)` sur chaque écriture `$C25x` ; `takeVideoEvents()` consommé au rendu. Port de `POM2/src/Memory.{h,cpp}` (version allégée). ⚠️ **Stocker le cycle complet `(h_clock, v_clock)`, PAS seulement le scanline** : POM2 a gravé sa limite dans `VideoEvent.scanline` (`cycleCounter / kCyclesPerScanline` — la position horizontale est jetée), ce qui interdit définitivement les splits horizontaux. `Gen2VideoScanner::peekVideoCycle()` expose déjà le cycle ; le journal doit le **conserver**. **Granularité par cycle = objectif** (prérequis du split horizontal Bernie, cf. item dédié plus bas).
+- [ ] **`renderBeamRacing()` dans `GraphicsCard`** `[L · critical]` — remplacer / compléter `rasterizeToBuffer()` : rejouer les événements par bandes de scanlines (`renderInternalBand`, port `POM2/src/Apple2Display.cpp`). ⚠️ **POM2 est scanline-quantizé** : `renderBeamRacing` (`Apple2Display.cpp:247`) trie par `ev.scanline` puis rend des bandes de lignes **pleine largeur, un seul mode** → **splits verticaux (entre scanlines) uniquement, jamais mid-ligne**. Premier renderer POM1 = même périmètre (bascule TEXT↔HGR aux bords de scanline). Conserver le fast-path « zéro événement » = rendu actuel MAME (régression zéro sur démos existantes `hgr_*`).
+- [ ] **Modes d'affichage** `[M · solid]` — TEXT / GRAPHICS / MIXED : en TEXT ou MIXED bottom-4-rows, la fenêtre GEN2 n'affiche que la zone HGR (top 160 px) ; le texte reste sur l'écran Apple-1 `$D012` (dual-monitor Bernie). MIXED = bas 32 px texte Apple II sur terminal natif, pas sur GEN2.
+- [ ] **Interférence bus GEN2 + ACI** `[M · solid]` — modéliser que les cycles où le scanner vidéo lit `$2000-$3FFF` exposent `floatingBus()` aux lectures `$C25x` ; quand l'ACI écrit `$C0xx` pendant le refresh, le comportement MSB / données doit rester cohérent avec le setup Bernie (cassette + graphique simultanés). Test scénario : `C100R` + jeu HGR actif, pas de clear TEXT accidentel.
+- [ ] **Test `gen2_beam_race_smoke`** `[M · solid]` — port simplifié de `POM2/tests/beam_race_composite_test.cpp` : flip mode à la scanline 96, hash pixels bande haute ≠ bande basse.
+- [ ] **🎯 Split horizontal — granularité par cycle (OBJECTIF VOULU)** `[L · solid]` — la fonctionnalité phare de Bernie : colonnes TEXT alternant avec colonnes LORES **sur la même scanline** (calage au cycle via le flag HBLANK ; « color peg » Codebreaker). Exige un renderer **per-octet** changeant de mode aux frontières de colonnes *dans* la ligne — au-delà du modèle scanline-quantizé de POM2. **Voulu aussi dans POM2** (cf. `POM2/DEV.md`) ; POM2 est le banc de preuve naturel car il rend déjà TEXT/LORES/HGR et n'a **aucune dépendance Bernie** (timing Apple II documenté MAME). **Plan : POM2 d'abord → back-port POM1.** Prérequis POM1 : (1) rendu LORES + TEXT sur la GEN2 (HGR seul aujourd'hui), (2) `renderInternalBand` à granularité colonne, (3) flag HBLANK Phase 2. **Ne PAS graver la limite scanline dans `VideoEvent` (cf. item Journal) — garder `(h,v)` dès le départ.**
+
+### Phase 4 — Composite OpenEmulator (option rendu, pas bloquant MMIO)
+
+- [ ] **Signal 14,318 MHz `signalBuf`** `[M · nice]` — port `Apple2Display::fillCompositeSignal()` : 560 échantillons × 192 lignes, bitstream HGR avec half-dot delay (réutiliser `buildHgrWordRow` existant). Beam-race le signal sur le même journal d'événements que Phase 3.
+- [ ] **Chemin CPU `ColorCompositeOECpu`** `[M · nice]` — port `renderCompositeOeCpu()` + démodulateur FIR OpenEmulator (sans GLSL) pour WASM / fallback desktop. Menu GEN2 : « NTSC MAME (actuel) » vs « Composite OpenEmulator CPU » — calque le choix POM2 Graphics.
+- [ ] **Chemin GPU shader (desktop)** `[L · nice]` — optionnel : porter `NtscPostProcessor` POM2 si le shared texture layer (section Visuals) est en place ; sinon reporter.
+- [ ] **Test parité MAME vs OE CPU** `[S · nice]` — même framebuffer ± quelques pixels de phase ; pas de régression sur `hgr_testcard`.
+
+### Phase 5 — Intégration produit & validation Bernie
+
+- [ ] **Preset 13 + CLI** `[S · solid]` — vérifier que preset GEN2 HGR active le nouveau chemin beam (flag implicite dès que soft switches branchés). Option debug `--gen2-beam-log` (trace événements / cycle blank).
+- [ ] **Hardware Reference + tooltips** `[S · solid]` — `MainWindow_Dialogs.cpp` : map `$C250-$C257`, MSB blank, conflit ACI résolu, lien `doc/GEN2_RELEASE.md`. Remplacer la description « lecture passive $2000-$3FFF ».
+- [ ] **Démo de validation Bernie** `[M · solid]` — binaire test `dev/projects/hgr_vsync/` (nouveau) : poll MSB `$C250`, flip PAGE à VBL, texte score sur `$D012` + animation HGR ; jeu cible portage pilote (Taipan ou Breakout HGR).
+- [ ] **Mise à jour `CLAUDE.md` + README** `[S · nice]` — GEN2 passe de « passive framebuffer » à « beam-raced + `$C25x` MSB blank ».
+
+### Dépendances / hors scope immédiat
+
+- Vaporlock Apple II pur (`$C050` + bit-fumes sans MSB Bernie) — **hors scope** ; Bernie confirme non fonctionnel avec ACI.
+- DHGR, 80 colonnes, AN3, Le Chat Mauve — Apple IIe uniquement, pas la GEN2 Apple-1.
+- Speaker `$C030` — déjà dans la plage ACI `$C000-$C0FF` ; documenter pour les ports, pas de nouveau hardware.
+
+---
+
 ## 🔌 Peripherals
 
 - [ ] **P-LAB IEC Card** `[M · solid]` — Parmigiani's Commodore IEC serial bus card; lets the Apple-1 talk to 1541 floppy / printer / etc. Spec: https://p-l4b.github.io/iec/. Investigate register window + ATN/CLK/DATA handshake; honour mutex rules. Backing store probably a host `.d64` + small IEC state machine. New preset + Hardware Reference entry.
