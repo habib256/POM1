@@ -8,6 +8,26 @@ below land. Phase 2 can be implemented speculatively against the assumptions
 here — every guess is isolable and marked `// SPEC PENDING BERNIE` in code — but
 the bit-exact map needs confirmation before it ships.
 
+**POM2 reference (audit 2026-06-10).** The upstream beam-racing engine in
+`../POM2/` has evolved significantly since the initial POM1 plan was written.
+Horizontal mid-scanline splits (per-byte-column granularity) landed **2026-06-09**
+in both the RGBA framebuffer *and* the 14.318 MHz composite signal. The POM1
+back-port should mirror these POM2 artefacts — not the older scanline-only model
+described in early notes below:
+
+| POM2 artefact | Role for POM1 back-port |
+|---------------|-------------------------|
+| `Memory::VideoEvent{emuCycle, scanline, kind, value}` | Journal model — `emuCycle` is authoritative; horizontal position via `frameCycleToPos` |
+| `Apple2Display::frameCycleToPos(emuCycle)` | `byteCol = clamp((emuCycle % 65) − 25, 0, 40)` |
+| `Apple2Display::forEachBeamSegment` | Shared decomposition for RGBA + composite — **port this first** |
+| `renderInternalSegment` / `renderBeamRacing` | Column-bounded HGR (decode whole line, clip write-back) |
+| `fillCompositeSignal` + `paintHgr(col0,col1)` | Phase 4 optional — same `forEachBeamSegment` |
+| Tests `horizontal_split`, `beam_race_composite` | Adapt for GEN2 `$C25x` addresses |
+
+Out of scope for POM1: POM2's 560-wide IIe path (`horizontal_split_560`,
+save/restore `frame80`), DHGR, PAL 50 Hz profiles. Detail → `POM2/DEV.md` §
+Beam-racing, `POM2/TODO.md` § Display.
+
 **Sent:** 2026-06-09 (Arnaud → Uncle Bernie, AppleFritter PM).
 
 **Why each answer matters (impl mapping):**
@@ -131,24 +151,22 @@ columns of TEXT alternating with columns of LORES graphics (a "color peg"
 Codebreaker). → the beam-raced renderer must support **mid-scanline mode
 changes**, not just per-band switching.
 
-> **⚠️ Renderer-granularity finding (2026-06-09).** POM2's beam-racing renderer
-> is **scanline-quantized** and cannot do horizontal splits as-is:
-> `Apple2Display::renderBeamRacing` (`POM2/src/Apple2Display.cpp:247`) sorts
-> events by **`ev.scanline`** and renders **full-width** scanline bands via
-> `renderInternalBand(scanY0, scanY1)` — one mode per row. The horizontal
-> position within the line is **thrown away** at `Memory.cpp`
-> (`scanline = cycleCounter / kCyclesPerScanline`). So a verbatim port gives
-> **vertical splits only**.
+> **✅ POM2 renderer granularity (updated 2026-06-10).** The early concern that
+> POM2 was scanline-quantized is **obsolete**. As of **2026-06-09** POM2 ships
+> per-byte-column beam-racing via `forEachBeamSegment` + `frameCycleToPos`
+> (`POM2/src/Apple2Display.cpp`). `VideoEvent.emuCycle` was always stored; only
+> the horizontal component was previously discarded at replay — that is fixed.
+> RGBA and composite (`fillCompositeSignal`) share the same decomposition;
+> pinned by `horizontal_split` and `horizontal_split_composite`.
 >
-> **🎯 OBJECTIVE — cycle-level granularity (explicit user goal).** Horizontal
-> splits are a **wanted feature, in POM1 *and* POM2**. POM2 is the proving ground
-> (it already renders TEXT/LORES/HGR and has **no Bernie dependency** — Apple II
-> mid-scanline timing is MAME-documented), then back-port to POM1. **Do not
-> repeat POM2's mistake:** the POM1 `VideoEvent` journal must store the full
-> cycle `(h_clock, v_clock)` from day one (`Gen2VideoScanner::peekVideoCycle()`
-> already provides it), even if the first renderer only acts on scanline
-> boundaries. POM1 additionally needs LORES+TEXT rendering on the GEN2 (HGR-only
-> today) + the Phase 2 HBLANK flag. Tracked in `TODO.md` Phase 3.
+> **Back-port plan for POM1:** copy the POM2 trio (`VideoEvent.emuCycle` journal,
+> `frameCycleToPos`, `forEachBeamSegment`) — adapted for GEN2 `$C250–$C257` soft
+> switches and Bernie MSB blank reads (Phase 2). POM1 subset = 280-wide TEXT /
+> LORES / HGR only (no 560-wide IIe save/restore). Still needed on POM1: TEXT +
+> LORES renderers on the GEN2 window (HGR-only today), Phase 2 HBLANK MSB flag,
+> then port `horizontal_split_smoke` with `$C25x` addresses. **v1 refinement
+> scope:** column-byte boundary is exact; transition cycle within a character
+> clock is deferred (same as POM2). Tracked in `TODO.md` Phase 3.
 
 ### 2026-06-09 — full thread review (AppleFritter posts #1–#22)
 
