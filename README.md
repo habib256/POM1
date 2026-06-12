@@ -175,10 +175,10 @@ Indices match `--preset N`. Per-preset window layouts persist under `ini/imgui_p
 | 10 | **P-LAB Wi-Fi Modem BBS** | 8 KB | — | Wi-Fi Modem |
 | 11 | **P-LAB Juke-Box** | 8 KB | — | Juke-Box (no ACI) |
 | 12 | **P-LAB Multiplexing Fantasy** | 64 KB | Applesoft Lite | microSD, A1-SID, TMS9918, I/O & RTC, Wi-Fi, Terminal |
-| 13 | **Uncle Bernie's GEN2 HGR Color (Apr 2026)** | 8 KB | — | GEN2 HGR |
+| 13 | **Uncle Bernie's GEN2 HGR Color (Apr 2026)** | 48 KB | — | GEN2 HGR, ACI |
 | 14 | **POM1 Multiplexing Fantasy (2026)** ⭐ | 64 KB | Applesoft Lite | microSD, A1-SID, Wi-Fi, Terminal |
 
-⭐ = default. **Bare (0)** is the pre-ACI July-1976 shipping config. **Juke-Box (11)** drops ACI — EEPROM library replaces cassette loading. **RAM** = motherboard `ramKB` from [`MainWindow_Presets.cpp`](MainWindow_Presets.cpp) (`kMachinePresets[]`). Presets **3–11** and **13** use Parmigiani **8 KB dual-bank** (`$0000-$0FFF` + `$E000-$EFFF`). **Integer BASIC** remains loadable from cassette on presets **1–3** when `BasicType::None`. **IEC daughterboard**: enable from **Hardware** after picking **preset 5** (microSD), or CLI `--preset 5 --enable iec`.
+⭐ = default. **Bare (0)** is the pre-ACI July-1976 shipping config. **Juke-Box (11)** drops ACI — EEPROM library replaces cassette loading. **RAM** = motherboard `ramKB` from [`MainWindow_Presets.cpp`](MainWindow_Presets.cpp) (`kMachinePresets[]`). Presets **3–11** use Parmigiani **8 KB dual-bank** (`$0000-$0FFF` + `$E000-$EFFF`). **GEN2 (13)** mirrors Uncle Bernie's real release setup: the card doubles as a **48 KB RAM expansion** (`$0000-$BFFF` card DRAM + motherboard `$E000-$EFFF` — Bernie's "54 KB" spec, Q9) with the ACI plugged alongside. **Integer BASIC** remains loadable from cassette on presets **1–3** when `BasicType::None`. **IEC daughterboard**: enable from **Hardware** after picking **preset 5** (microSD), or CLI `--preset 5 --enable iec`.
 
 ---
 

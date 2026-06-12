@@ -369,18 +369,18 @@ const MachineConfig kMachinePresets[] = {
     },
     {
         "Uncle Bernie's Apple-1 with GEN2 HGR Color (April 2026)",
-        "Uncle Bernie's GEN2 280x192 HGR color graphics. "
-        "8 KB dual-bank RAM (4 KB at $0000-$0FFF + 4 KB at $E000-$EFFF — "
-        "Parmigiani's standard layout). The GEN2 framebuffer at $2000-$3FFF "
-        "lives on the card itself; main motherboard RAM stays the standard "
-        "8 KB. (Default OOR mode is permissive, so HGR programs read/write "
-        "$2000-$3FFF without warnings.) The ACI is plugged alongside — "
-        "Bernie's release board is designed to coexist with it (Q7: the PCB "
-        "even has a cutout for the ACI jacks), and Apple II ports keep their "
+        "Uncle Bernie's GEN2 280x192 HGR color graphics — his real release "
+        "setup. The card carries 48 KB of its own DRAM and doubles as a RAM "
+        "expansion (spec Q9: $0000-$BFFF on the card via the VMA write-"
+        "through latch, plus $E000-$EFFF on the motherboard — Bernie quotes "
+        "54 KB total). Both HGR pages ($2000/$4000) and both TEXT/LORES "
+        "pages ($0400/$0800) are RAM-backed. The ACI is plugged alongside — "
+        "the release board is designed to coexist with it (Q7: the PCB even "
+        "has a cutout for the ACI jacks), and Apple II ports keep their "
         "$C030 SPEAKER accesses for sound through the ACI TAPE OUT.",
         true, false, false, false, false, false, false,
         /*pr40*/ false,
-        false, false, true, 8, BasicType::None,
+        false, false, true, 48, BasicType::None,
         /*sidSE*/ false,
         /*jukeBox*/ false, JukeBox::Jumper::RAM16_ROM32, JukeBox::ChipMode::Flash,
         /*codeTank*/ false, CodeTank::Jumper::Lower16, /*codeTankRom*/ nullptr,

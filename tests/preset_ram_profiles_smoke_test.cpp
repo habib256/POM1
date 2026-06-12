@@ -119,7 +119,18 @@ int main(int argc, char** argv)
                 continue;
             }
             ++checked;
-            if (ramKB != 8) {
+            if (lowerName.find("gen2") != std::string::npos) {
+                // Uncle Bernie's GEN2 release card is a documented RAM
+                // expansion (doc/GEN2_RELEASE_questions.md Q9: 48 KB card
+                // DRAM at $0000-$BFFF via write-through + the motherboard's
+                // $E000-$EFFF bank — Bernie quotes 54 KB total). His real
+                // machine therefore runs 48 KB, not the Parmigiani 8 KB
+                // dual-bank.
+                if (ramKB != 48) {
+                    failures.push_back(name + " (GEN2) has " + std::to_string(ramKB)
+                                       + " KB RAM, expected 48 (Bernie Q9)");
+                }
+            } else if (ramKB != 8) {
                 failures.push_back(name + " has " + std::to_string(ramKB) + " KB RAM");
             }
         }
