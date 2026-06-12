@@ -169,6 +169,7 @@ void MainWindow_ImGui::renderMenuBar()
             if (ImGui::MenuItem("Debug Console", shortcutLabel(GLFW_KEY_F3))) {
                 debugCpu();
             }
+            ImGui::MenuItem("State Rewind...", nullptr, &showRewindTimeline);
             ImGui::EndMenu();
         }
 

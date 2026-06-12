@@ -568,6 +568,34 @@ target_include_directories(test_iec_bus_wired_and PRIVATE ${CMAKE_SOURCE_DIR}/sr
 add_test(NAME iec_bus_wired_and_smoke COMMAND test_iec_bus_wired_and)
 set_tests_properties(iec_bus_wired_and_smoke PROPERTIES TIMEOUT 5)
 
+# -- State-rewind ring buffer smoke -------------------------------------------
+# Pins pom1::RewindBuffer: synthetic-blob delta round-trip (COPY/FULL/CHUNKED
+# section deltas, keyframe-boundary replay, budget eviction, truncateAfter)
+# plus an end-to-end Memory::saveSnapshotToBuffer → reconstruct →
+# loadSnapshotFromBuffer round-trip. Needs the full Memory+peripheral core
+# because the end-to-end case instantiates Memory.
+add_executable(test_rewind_buffer
+    rewind_buffer_smoke_test.cpp
+    ${CMAKE_SOURCE_DIR}/src/RewindBuffer.cpp
+    ${POM1_TEST_CORE_SOURCES}
+)
+target_include_directories(test_rewind_buffer PRIVATE
+    ${CMAKE_SOURCE_DIR}/src
+    ${CMAKE_SOURCE_DIR}/imgui
+)
+target_link_libraries(test_rewind_buffer PRIVATE libresidfp_static)
+if(APPLE)
+    target_compile_definitions(test_rewind_buffer PRIVATE GL_SILENCE_DEPRECATION)
+endif()
+if(WIN32)
+    target_link_libraries(test_rewind_buffer PRIVATE ws2_32)
+endif()
+
+add_test(NAME rewind_buffer_smoke
+         COMMAND test_rewind_buffer
+         WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
+set_tests_properties(rewind_buffer_smoke PROPERTIES TIMEOUT 10)
+
 # -- D64 fixture maker (executable, not a test) -------------------------------
 # Generates disks/iec/fixture.d64 for the telnet harness. Run as a
 # build-time tool: `make make_iec_fixture && ./tools/make_iec_fixture out.d64`.

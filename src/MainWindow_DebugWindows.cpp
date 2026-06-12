@@ -215,6 +215,87 @@ void MainWindow_ImGui::renderDebugDialog()
     }
     ImGui::End();
 }
+
+// ── State-rewind timeline ───────────────────────────────────────────────────
+// A scrub slider over the in-memory ring of recent emulation snapshots
+// (EmulationController::RewindBuffer). Enabling starts periodic capture;
+// dragging the slider pauses the CPU and restores the previewed frame;
+// "Resume here" continues live from the chosen point (discarding the future).
+void MainWindow_ImGui::renderRewindTimelineWindow()
+{
+    ImGui::SetNextWindowSize(ImVec2(460, 200), ImGuiCond_FirstUseEver);
+    if (ImGui::Begin("State Rewind", &showRewindTimeline)) {
+        EmulationController::RewindStatus st = emulation->getRewindStatus();
+
+        bool enabled = st.enabled;
+        if (ImGui::Checkbox("Enable rewind recording", &enabled)) {
+            emulation->setRewindEnabled(enabled);
+            st = emulation->getRewindStatus();
+        }
+        ImGui::SameLine();
+        ImGui::TextDisabled("(?)");
+        if (ImGui::IsItemHovered()) {
+            ImGui::SetTooltip(
+                "Continuously captures emulator state (~4 frames/sec) into a\n"
+                "delta-compressed ring buffer. Drag the timeline to scrub back\n"
+                "through recent history; 'Resume here' continues from that point.");
+        }
+
+        if (!st.enabled) {
+            ImGui::TextDisabled("Recording off — enable to build a timeline.");
+            ImGui::End();
+            return;
+        }
+
+        const double mb = static_cast<double>(st.storedBytes) / (1024.0 * 1024.0);
+        ImGui::Text("Frames: %zu   Memory: %.1f MB", st.frameCount, mb);
+
+        ImGui::Separator();
+
+        if (st.frameCount <= 1) {
+            ImGui::TextDisabled("Collecting history…");
+            ImGui::End();
+            return;
+        }
+
+        const int lastFrame = static_cast<int>(st.frameCount) - 1;
+        int pos = static_cast<int>(st.currentPos);
+        if (pos > lastFrame) pos = lastFrame;
+
+        // Position relative to "live" (newest) expressed in seconds back.
+        const double secondsBack =
+            static_cast<double>(lastFrame - pos) * 0.25;  // kRewindCaptureIntervalSec
+        ImGui::Text("Position: frame %d / %d   (~%.1f s back)",
+                    pos, lastFrame, secondsBack);
+
+        ImGui::SetNextItemWidth(-1.0f);
+        if (ImGui::SliderInt("##rewindscrub", &pos, 0, lastFrame,
+                             st.previewing ? "PREVIEW" : "LIVE")) {
+            emulation->rewindSeekTo(static_cast<std::size_t>(pos));
+        }
+
+        ImGui::Spacing();
+        if (ImGui::Button("Resume here")) {
+            emulation->rewindResumeHere(static_cast<std::size_t>(pos));
+        }
+        if (ImGui::IsItemHovered())
+            ImGui::SetTooltip("Continue running from the previewed frame.\n"
+                              "Discards any history after this point.");
+        ImGui::SameLine();
+        if (ImGui::Button("Back to live")) {
+            emulation->rewindResumeLive();
+        }
+        if (ImGui::IsItemHovered())
+            ImGui::SetTooltip("Jump to the newest frame and resume, keeping history.");
+
+        if (st.previewing) {
+            ImGui::SameLine();
+            ImGui::TextColored(ImVec4(1.0f, 0.85f, 0.40f, 1.0f), "paused (preview)");
+        }
+    }
+    ImGui::End();
+}
+
 std::vector<MainWindow_ImGui::MemRegion> MainWindow_ImGui::buildMemoryRegions()
 {
     const uint32_t ramCeiling32 = static_cast<uint32_t>(presetRamKB) * 1024;

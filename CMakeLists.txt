@@ -71,6 +71,7 @@ set(SOURCES
     ${POM1_SRC_DIR}/KeyboardController.cpp
     ${POM1_SRC_DIR}/SnapshotPublisher.cpp
     ${POM1_SRC_DIR}/SnapshotIO.cpp
+    ${POM1_SRC_DIR}/RewindBuffer.cpp
     ${POM1_SRC_DIR}/PeripheralBus.cpp
     ${POM1_SRC_DIR}/Disassembler6502.cpp
     ${POM1_SRC_DIR}/MainWindow_Layout.cpp
@@ -112,6 +113,7 @@ set(HEADERS
     ${POM1_SRC_DIR}/RomLoader.h
     ${POM1_SRC_DIR}/KeyboardController.h
     ${POM1_SRC_DIR}/SnapshotPublisher.h
+    ${POM1_SRC_DIR}/RewindBuffer.h
     ${POM1_SRC_DIR}/EmulationSnapshot.h
     ${POM1_SRC_DIR}/PeripheralBus.h
     ${POM1_SRC_DIR}/Disassembler6502.h
