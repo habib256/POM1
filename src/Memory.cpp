@@ -298,7 +298,84 @@ Memory::Memory()
         [this](uint16_t /*a*/, uint8_t v) { gt6144->writeCommand(v); });
     bus.setEnabled(gt6144BusHandle, gt6144Enabled);
 
+    // Uncle Bernie's GEN2 release soft switches. Decode (Bernie's PDF, Q6):
+    //   SEL = $Cxxx & !A11 & A9 & A4
+    // i.e. the eight switches mirror every 8 locations across $C2xx, $C3xx,
+    // $C6xx, $C7xx wherever A4 = 1 ($C250-$C257 is the canonical block). One
+    // bus window covers $C200-$C7FF; the lambdas re-check the decode and
+    // mimic the flat-RAM fall-through for undecoded addresses ($C4xx/$C5xx
+    // have A9 = 0; A4 = 0 offsets are skipped by the card's decoder).
+    //   Read  (decoded): toggles the addressed switch AND returns HST0 in D7
+    //                    with floating-bus noise in D6-D0 (read-only design).
+    //   Write (decoded): ignored — a write would clash the card's D7 bus
+    //                    driver, so the hardware doesn't react. Blocked here
+    //                    (NOT pass-through) so the byte never lands in RAM.
+    gen2SoftSwitchBusHandle = bus.registerHandle(
+        "GEN2_softswitch", {0xC200, 0xC7FF}, /*priority*/ 0,
+        [this](uint16_t a) -> uint8_t {
+            if ((a & 0x0200) && (a & 0x0010)) return gen2SoftSwitchRead(a);
+            return mem[a];   // undecoded → flat-RAM fall-through
+        },
+        [this](uint16_t a, uint8_t v) {
+            if ((a & 0x0200) && (a & 0x0010)) return;  // switches ignore writes
+            mem[a] = v;      // undecoded → flat-RAM fall-through
+            dirtyPages.set(static_cast<std::size_t>(a >> 8));
+        });
+    bus.setEnabled(gen2SoftSwitchBusHandle, hgrFramebufferAttached);
+
     initMemory();
+}
+
+uint8_t Memory::gen2SoftSwitchRead(uint16_t address)
+{
+    // $C250-$C257 mapping (1:1 port of Apple II $C050-$C057, Bernie Table 1):
+    // A2-A1 pick the switch pair (TEXT / MIXED / PAGE / RES), A0 is the value.
+    //   $C250 TEXT_OFF  $C251 TEXT_ON   $C252 MIX_OFF  $C253 MIX_ON
+    //   $C254 PAGE_ONE  $C255 PAGE_TWO  $C256 LORES_ON $C257 HIRES_ON
+    const int  sw    = address & 0x07;
+    const bool value = (sw & 1) != 0;
+    Gen2VideoScanner::DisplayState st = gen2Scanner.displayState();
+    Gen2VideoScanner::EventKind kind = Gen2VideoScanner::EventKind::TextMode;
+    switch (sw >> 1) {
+        case 0: st.textMode  = value; kind = Gen2VideoScanner::EventKind::TextMode;  break;
+        case 1: st.mixedMode = value; kind = Gen2VideoScanner::EventKind::MixedMode; break;
+        case 2: st.page2     = value; kind = Gen2VideoScanner::EventKind::Page2;     break;
+        case 3: st.hiRes     = value; kind = Gen2VideoScanner::EventKind::HiRes;     break;
+    }
+    gen2Scanner.setDisplayState(st);
+
+    // Journal the flip at its in-instruction cycle: advanceCycles() runs
+    // after the instruction completes, so the scanner counter still points
+    // at the instruction's start — add the cycles the CPU has accumulated
+    // for the in-flight instruction (POM2 pushVideoEventLocked idiom).
+    const uint64_t emuCycle = gen2Scanner.cycle()
+        + (cpuForIrq ? static_cast<uint64_t>(cpuForIrq->getCurrentInstructionCycles()) : 0u);
+    if (gen2RecordingEvents.size() >= kGen2MaxEventsPerFrame) {
+        gen2RecordingEvents.clear();
+        gen2RecordingFrameStart = st;
+    } else {
+        gen2RecordingEvents.push_back({emuCycle, kind, value});
+    }
+
+    // HST0 in D7 (sampled at the access cycle). The low 7 bits are the
+    // floating data bus, which Bernie's spec says software must NEVER rely on.
+    // In silicon-strict mode we hand back xorshift32 garbage so that
+    // unreliability is impossible to miss — his explicit recommendation, to
+    // "show rookie programmers they do something they shouldn't." With
+    // silicon-strict off we instead expose the deterministic byte the video
+    // scanner is actually presenting (reproducible — useful for debugging).
+    const uint8_t low7 = siliconStrictMode
+        ? static_cast<uint8_t>(gen2Scanner.nextNoise() & 0x7F)
+        : static_cast<uint8_t>(gen2Scanner.floatingBus(mem.data()) & 0x7F);
+    return static_cast<uint8_t>((gen2Scanner.hst0At(emuCycle) << 7) | low7);
+}
+
+void Memory::resetGen2VideoEventJournal()
+{
+    gen2RecordingEvents.clear();
+    gen2PublishedEvents.clear();
+    gen2RecordingFrameStart = gen2Scanner.displayState();
+    gen2PublishedFrameStart = gen2RecordingFrameStart;
 }
 
 void Memory::setTMS9918Enabled(bool b)
@@ -399,17 +476,21 @@ void Memory::resetOutOfRangeAccessCount(void)
 //     $8000 and naturally falls outside the gap (the existing dispatch order
 //     hits ROM / peripheral pages there before this check).
 //   - otherwise: contiguous low — gap is [presetRamKB * 1024, $8000).
-//   - GEN2 HGR carve-out: when the card is plugged it brings its own 8 KB
-//     framebuffer at $2000-$3FFF — that range becomes RAM-backed regardless
-//     of presetRamKB, matching real hardware (the card's onboard SRAM is
-//     wired directly onto the bus). Without this exception, strict mode
-//     would silently drop every pixel write on small-RAM presets.
+//   - GEN2 HGR carve-out: when the card is plugged it brings its own DRAM
+//     behind the two HGR pages ($2000-$3FFF and $4000-$5FFF) — those ranges
+//     become RAM-backed regardless of presetRamKB, matching real hardware
+//     (the release card's onboard DRAM mirrors CPU writes via the VMA
+//     write-through latch). Without this exception, strict mode would
+//     silently drop every pixel write on small-RAM presets.
 static inline bool isOorAddress(uint16_t address, int presetRamKB,
                                 bool hgrFramebufferAttached)
 {
     if (presetRamKB >= 64) return false;
     if (address >= 0x8000) return false;
-    if (hgrFramebufferAttached && address >= 0x2000 && address < 0x4000) {
+    // GEN2 brings its own DRAM behind both HGR pages: page 1 $2000-$3FFF and
+    // page 2 $4000-$5FFF (Bernie's PDF Q5/Q9 — the release card is a RAM
+    // expansion whose graphics pages mirror CPU writes via write-through).
+    if (hgrFramebufferAttached && address >= 0x2000 && address < 0x6000) {
         return false;
     }
     const uint16_t oorLow = (presetRamKB == 8)
@@ -505,6 +586,14 @@ void Memory::setHgrFramebufferAttached(bool e)
     // need a deterministic blank framebuffer.
     const bool wasAttached = hgrFramebufferAttached;
     hgrFramebufferAttached = e;
+    bus.setEnabled(gen2SoftSwitchBusHandle, e);
+    if (e != wasAttached) {
+        // Any plug/unplug invalidates the beam journal — events carry scanner
+        // cycles that only make sense within one continuous power-on session.
+        // The soft-switch latch itself is left alone (Bernie: RESET never
+        // touches it; POM1 keeps whatever state the latch held).
+        resetGen2VideoEventJournal();
+    }
     if (e && !wasAttached) {
         // Cold plug: restart the video scanner at a deterministic frame phase
         // so the floating bus / beam timing is reproducible from power-on.
@@ -1632,8 +1721,21 @@ void Memory::advanceCycles(int cycles)
     cassetteDevice->advanceCycles(cycles);
     // GEN2 release video scanner — drives the cycle-accurate floating bus /
     // beam position. Same gating pattern as the cards above; zero cost when the
-    // HGR framebuffer card is unplugged.
-    if (hgrFramebufferAttached) gen2Scanner.advanceCycles(static_cast<uint64_t>(cycles));
+    // HGR framebuffer card is unplugged. At every video-frame rollover the
+    // soft-switch journal recorded during the frame is published for the
+    // beam-raced renderer (POM2 "republish at each video-frame boundary"
+    // model — the UI may re-render the same published frame at 60 Hz).
+    if (hgrFramebufferAttached) {
+        const uint64_t cpf    = gen2Scanner.cyclesPerFrame();
+        const uint64_t before = gen2Scanner.cycle() / cpf;
+        gen2Scanner.advanceCycles(static_cast<uint64_t>(cycles));
+        if (gen2Scanner.cycle() / cpf != before) {
+            gen2PublishedEvents = std::move(gen2RecordingEvents);
+            gen2RecordingEvents.clear();
+            gen2PublishedFrameStart = gen2RecordingFrameStart;
+            gen2RecordingFrameStart = gen2Scanner.displayState();
+        }
+    }
     if (tms9918Enabled) tms9918->advanceCycles(cycles);
     if (microSDEnabled) microSD->advanceCycles(cycles);
     if (wifiModemEnabled) wifiModem->advanceCycles(cycles);
@@ -1828,6 +1930,22 @@ void Memory::writeSnapshotSections(pom1::SnapshotWriter& w, const M6502* cpu) co
     writeCard(*pr40Printer);
     writeCard(*gt6144);
     writeCard(*iecCard);
+
+    // ── GEN2VID section: GEN2 release soft-switch latch + video phase.
+    //    The latch survives Apple-1 RESET on real hardware, so it must
+    //    survive snapshots / rewind too (a page-2 game restored mid-frame
+    //    would otherwise display the wrong HGR page until its next flip).
+    {
+        const Gen2VideoScanner::DisplayState& ds = gen2Scanner.displayState();
+        auto h = w.beginSection("GEN2VID");
+        w.writeU8(ds.textMode  ? 1 : 0);
+        w.writeU8(ds.mixedMode ? 1 : 0);
+        w.writeU8(ds.page2     ? 1 : 0);
+        w.writeU8(ds.hiRes     ? 1 : 0);
+        w.writeU8(gen2Scanner.isFiftyHz() ? 1 : 0);
+        w.writeU64(gen2Scanner.cycle());
+        w.endSection(h);
+    }
 }
 
 bool Memory::loadSnapshot(const std::string& path, std::string& error,
@@ -1905,6 +2023,22 @@ bool Memory::readSnapshotSections(pom1::SnapshotReader& r, std::string& error, M
             // IEC card cascades onto microSD via setIECCardEnabled — make sure
             // microSD has been (re-)enabled by the FLAGS dispatch above first.
             setIECCardEnabled          ((flags & kFlagIECCard)        != 0);
+            continue;
+        }
+
+        if (sectionName == "GEN2VID") {
+            Gen2VideoScanner::DisplayState ds;
+            ds.textMode  = r.readU8() != 0;
+            ds.mixedMode = r.readU8() != 0;
+            ds.page2     = r.readU8() != 0;
+            ds.hiRes     = r.readU8() != 0;
+            gen2Scanner.setFiftyHz(r.readU8() != 0);
+            gen2Scanner.setCycle(r.readU64());
+            gen2Scanner.setDisplayState(ds);
+            // Journaled events reference the pre-restore cycle stream —
+            // drop them; the next video frame republishes from the restored
+            // latch state.
+            resetGen2VideoEventJournal();
             continue;
         }
 

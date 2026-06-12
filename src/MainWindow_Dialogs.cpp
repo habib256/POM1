@@ -705,8 +705,8 @@ void MainWindow_ImGui::renderHardwareReferenceWindow()
                 "$0100-$01FF  Stack\n"
                 "$0200-$1FFF  User RAM (programs load at $0280 or $0300 by default)\n"
                 "$2000-$200F  A1-IO VIA 65C22 (when A1-IO & RTC is plugged)\n"
-                "$2000-$3FFF  GEN2 HGR framebuffer (8 KB - when GEN2 HGR is plugged)\n"
-                "$4000-$5FFF  User RAM\n"
+                "$2000-$3FFF  GEN2 HGR page 1 framebuffer (8 KB - when GEN2 HGR is plugged)\n"
+                "$4000-$5FFF  GEN2 HGR page 2 framebuffer / User RAM\n"
                 "$6000-$7FFF  Applesoft Lite SD ROM (microSD preset only)\n"
                 "$8000-$9FFF  SD CARD OS ROM (microSD)\n"
                 "$9000-$AFDF  CFFA1 firmware ROM (when CFFA1 plugged)\n"
@@ -715,6 +715,7 @@ void MainWindow_ImGui::renderHardwareReferenceWindow()
                 "$B000-$B003  MODEM BBS ACIA 65C51\n"
                 "$C000-$C0FF  Apple Cassette Interface ($C081 in, $C000 out)\n"
                 "$C100-$C1FF  Woz ACI ROM\n"
+                "$C250-$C257  GEN2 soft switches (read = toggle + HST0 in D7; mirrors $C2/$C3/$C6/$C7xx A4=1)\n"
                 "$C800-$CFFF  A1-SID (29 registers, mirrored every 32)\n"
                 "$CC00/$CC01  TMS9918 DATA/CTRL (wins over SID)\n"
                 "$D00A        SWTPC GT-6144 command port (write-only)\n"
@@ -913,12 +914,20 @@ void MainWindow_ImGui::renderHardwareReferenceWindow()
         // ---- GEN2 HGR -----------------------------------------------
         if (ImGui::CollapsingHeader("Uncle Bernie's GEN2 HGR Graphic Card")) {
             ImGui::TextWrapped(
-                "280x192 HIRES video card from applefritter designer Uncle Bernie. Passive "
-                "frame-buffer: it just paints whatever lives in RAM at $2000-$3FFF, with "
-                "the same non-linear scanline mapping as the Apple II HGR page.");
+                "Apple II-compatible video card from applefritter designer Uncle "
+                "Bernie (release board). Full Apple II video subsystem on the "
+                "Apple-1: TEXT 40x24 (B&W), LORES 40x48 (16 colours), HIRES "
+                "280x192 NTSC artifact colour, MIXED split - driven by soft "
+                "switches at $C250-$C257 and rendered beam-raced (mid-frame and "
+                "mid-scanline mode switches land where the beam was).");
             hwHeading("Particularities");
-            hwKeyValue("Framebuffer:", "8 KB at $2000-$3FFF (mutually exclusive with A1-IO & RTC that uses $2000-$200F).");
-            hwKeyValue("Colour:", "NTSC artifact colour - violet/green (group 1) and blue/orange (group 2) with white between.");
+            hwKeyValue("Soft switches:", "$C250-$C257, 1:1 port of Apple II $C050-$C057. READ-ONLY: a read toggles the switch AND returns HST0 in bit 7; writes are ignored. Mirrors across $C2/$C3/$C6/$C7xx where A4=1.");
+            hwKeyValue("HST0 flag:", "Bit 7 of any $C25x read: 1 during H/V-blank, 0 in live scan, with a 0 notch during the 3-cycle color burst (hcnt 13-15). Replaces the Apple II vaporlock (dead with the ACI present); OR two reads to mask the notch.");
+            hwKeyValue("Framebuffers:", "HIRES page 1 $2000-$3FFF, page 2 $4000-$5FFF ($C254/$C255); TEXT/LORES pages $0400/$0800. Mutually exclusive with A1-IO & RTC ($2000-$200F).");
+            hwKeyValue("Power-on:", "Soft-switch latch is indeterminate on the real PLDs and Apple-1 RESET never touches it - software must initialise the switches. POM1 cold state: GRAPHICS+HIRES+PAGE1.");
+            hwKeyValue("Timing:", "65 cycles/line; 262 lines @ 60 Hz or 312 @ 50 Hz (jumper in the HGR window). ~4200 cycles of VBL budget for page flips.");
+            hwKeyValue("Colour:", "NTSC artifact colour - violet/green (group 1) and blue/orange (group 2) with white between (MAME-calibrated LUT).");
+            hwKeyValue("Porting Apple II games:", "Rewrite $C05x to $C25x; keep $C030-$C03F (SPEAKER via ACI TAPE OUT); poll HST0 instead of vaporlock. Spec: doc/GEN2_RELEASE_questions.md.");
             hwKeyValue("Tooling:", "cc65 config software/hgr/apple1_gen2.cfg reserves the framebuffer.");
             hwKeyValue("Demo:", "Clicking HGR in the toolbar auto-loads software/hgr/GEN2.HGR.BIN if available.");
         }

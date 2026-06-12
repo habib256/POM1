@@ -151,6 +151,18 @@ void SnapshotPublisher::publish(Memory& mem, const M6502& cpu, bool cpuRunning)
     if (snapshot.gt6144Enabled) {
         mem.getGT6144().copySnapshot(snapshot.gt6144);
     }
+
+    // GEN2 release card: copy the last completed video frame's soft-switch
+    // journal + bracketing display states. Cheap when idle (empty vector).
+    snapshot.gen2Enabled = mem.isHgrFramebufferAttached();
+    if (snapshot.gen2Enabled) {
+        snapshot.gen2FiftyHz        = mem.isGen2FiftyHz();
+        snapshot.gen2DisplayState   = mem.gen2DisplayState();
+        snapshot.gen2FrameStartState = mem.gen2PublishedFrameStartState();
+        snapshot.gen2VideoEvents    = mem.gen2PublishedVideoEvents();
+    } else {
+        snapshot.gen2VideoEvents.clear();
+    }
 }
 
 void SnapshotPublisher::copyTo(EmulationSnapshot& out) const

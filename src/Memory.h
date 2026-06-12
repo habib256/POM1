@@ -89,24 +89,47 @@ public:
     void setOutOfRangeStrictMode(bool enable) { oorStrictMode = enable; }
     bool isOutOfRangeStrictMode(void) const { return oorStrictMode; }
 
-    // Uncle Bernie's GEN2 HGR card carries its own 8 KB framebuffer mapped at
-    // $2000-$3FFF. When the card is plugged, the region behaves like RAM
-    // (Apple-1 hardware reality) regardless of presetRamKB / strict mode.
-    // This carve-out keeps `isOorAddress` from blocking legitimate writes
-    // to the framebuffer on small-RAM presets. On every off→on transition
-    // the framebuffer is seeded with mt19937 noise to mimic real DRAM
-    // bistable power-on state (see resetMemory() and dev/SILICONBUGS.md).
+    // Uncle Bernie's GEN2 release card carries its own DRAM behind both HGR
+    // pages ($2000-$3FFF and $4000-$5FFF). When the card is plugged those
+    // regions behave like RAM regardless of presetRamKB / strict mode (the
+    // `isOorAddress` carve-out), the $C250-$C257 soft-switch bus handler is
+    // enabled, and the video scanner advances from advanceCycles(). On every
+    // off→on transition the page-1 framebuffer is seeded with mt19937 noise
+    // to mimic real DRAM bistable power-on state (see resetMemory() and
+    // dev/SILICONBUGS.md); the soft-switch journal resets on any transition.
     void setHgrFramebufferAttached(bool e);
     bool isHgrFramebufferAttached(void) const { return hgrFramebufferAttached; }
 
     // GEN2 *release* video scanner (cycle-accurate floating bus + beam timing).
     // The counter is advanced from advanceCycles() while the card is plugged.
-    // Phase 2 wires the $C250-$C257 soft switches that drive the DisplayState;
-    // these accessors expose the foundation for headless tests and MMIO reads.
+    // The $C250-$C257 soft switches (read-only: read toggles + returns HST0
+    // in D7; writes are no-ops — Bernie's PDF, doc/GEN2_RELEASE_questions.md)
+    // are served by the "GEN2_softswitch" PeripheralBus entry registered in
+    // the ctor and enabled with the card.
     uint64_t peekGen2VideoCycle(void) const { return gen2Scanner.peekVideoCycle(); }
     uint8_t  gen2FloatingBus(void) const { return gen2Scanner.floatingBus(mem.data()); }
     void     setGen2DisplayState(const Gen2VideoScanner::DisplayState& s) {
         gen2Scanner.setDisplayState(s);
+    }
+    const Gen2VideoScanner::DisplayState& gen2DisplayState(void) const {
+        return gen2Scanner.displayState();
+    }
+    // 50/60 Hz vertical-rate jumper of the release card (NTSC color either way).
+    void setGen2FiftyHz(bool on) { gen2Scanner.setFiftyHz(on); }
+    bool isGen2FiftyHz(void) const { return gen2Scanner.isFiftyHz(); }
+
+    // Per-video-frame soft-switch journal (beam racing, Phase 3). Soft-switch
+    // flips are recorded with their scanner cycle; at every video-frame
+    // rollover inside advanceCycles() the recording journal is published as
+    // "the events of the frame that just completed" together with the display
+    // state that was live when that frame started. SnapshotPublisher copies
+    // the published set each publish; re-rendering the same frame is safe
+    // (POM2 model — Memory republishes at each video-frame boundary).
+    const std::vector<Gen2VideoScanner::Event>& gen2PublishedVideoEvents(void) const {
+        return gen2PublishedEvents;
+    }
+    Gen2VideoScanner::DisplayState gen2PublishedFrameStartState(void) const {
+        return gen2PublishedFrameStart;
     }
 
     // Load Memory from file
@@ -460,6 +483,18 @@ private :
     bool systemRamNoiseOnReset = false; // see setSystemRamNoiseOnReset()
     bool hgrFramebufferAttached = false;  // GEN2 HGR card supplies RAM at $2000-$3FFF
     Gen2VideoScanner gen2Scanner;         // GEN2 release video address generator (floating bus)
+    // GEN2 soft-switch journal — recording half (current video frame) and
+    // published half (last completed frame). See gen2PublishedVideoEvents().
+    // A runaway program could flip a switch on every cycle; past the cap the
+    // journal collapses to "no events at the current state" (the renderer's
+    // fast path), which is the right degradation for a saturated frame.
+    static constexpr size_t kGen2MaxEventsPerFrame = 4096;
+    std::vector<Gen2VideoScanner::Event> gen2RecordingEvents;
+    std::vector<Gen2VideoScanner::Event> gen2PublishedEvents;
+    Gen2VideoScanner::DisplayState gen2RecordingFrameStart{};
+    Gen2VideoScanner::DisplayState gen2PublishedFrameStart{};
+    uint8_t gen2SoftSwitchRead(uint16_t address);
+    void resetGen2VideoEventJournal();
     std::unordered_set<uint32_t> oorWarned;  // key = (addr<<1)|isWrite; capped at 64
     void checkOutOfRangeAccess(uint16_t address, bool isWrite);
     bool writeInRom;
@@ -538,6 +573,11 @@ private :
     // overlapping peripherals (no $CA00 latch — CodeTank has no paging).
     PeripheralBus::Handle codeTankBusHandle = -1;
     PeripheralBus::Handle gt6144BusHandle    = -1;   // SWTPC GT-6144: $D00A, write-only
+    // GEN2 release soft switches. One window spanning $C200-$C7FF; the
+    // handler applies Bernie's decode SEL = $Cxxx & !A11 & A9 & A4 internally
+    // (pages $C2/$C3/$C6/$C7 with A4=1) and mimics flat-RAM fall-through for
+    // the addresses the card leaves undecoded.
+    PeripheralBus::Handle gen2SoftSwitchBusHandle = -1;
 
 };
 

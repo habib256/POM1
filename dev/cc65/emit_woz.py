@@ -98,6 +98,7 @@ def emit(
     bytes_per_line: int = 8,
     project_dir: pathlib.Path | None = None,
     quiet: bool = False,
+    extra_zones: Sequence[tuple[int, "str | pathlib.Path"]] = (),
 ) -> pathlib.Path:
     """Build a cc65 project and emit its Wozmon-hex `.txt` sidecar.
 
@@ -106,6 +107,12 @@ def emit(
     `lib_dirs` is a list of library names (`"apple1"`, `"hgr"`, …) — they
     are looked up in `dev/lib/<name>/` for the `-I` include path. Pass
     `lib_dirs=[]` for projects that use no library.
+
+    `extra_zones` is a list of `(addr, path)` raw binary blobs appended to
+    the `.txt` as additional hex zones (multi-zone dumps are supported by
+    POM1's `Memory::loadHexDump`). Used e.g. by a1_crazycycle to bundle an
+    8 KB HGR image at $2000 alongside the $E000 code — without bloating the
+    flat `.bin`. Paths resolve relative to the repo root.
     """
     if project_dir is None:
         # Caller didn't specify; assume CWD or the calling script's dir.
@@ -204,11 +211,25 @@ def emit(
         chunk = data[i : i + bytes_per_line]
         lines.append(f"{addr:04X}: " + " ".join(f"{b:02X}" for b in chunk))
         addr += len(chunk)
+    total = len(data)
+    # Extra raw-binary zones (e.g. an HGR image at $2000) — loadHexDump
+    # handles disjoint zones; the trailing run line still uses start_addr.
+    for zone_addr, zone_path in extra_zones:
+        zp = pathlib.Path(zone_path)
+        if not zp.is_absolute():
+            zp = root / zp
+        zdata = zp.read_bytes()
+        addr = zone_addr
+        for i in range(0, len(zdata), bytes_per_line):
+            chunk = zdata[i : i + bytes_per_line]
+            lines.append(f"{addr:04X}: " + " ".join(f"{b:02X}" for b in chunk))
+            addr += len(chunk)
+        total += len(zdata)
     lines.append(f"{start_addr:04X}R")
     out_txt.write_text("\n".join(lines) + "\n", encoding="ascii")
 
     if not quiet:
-        print(f"Wrote {out_txt} ({len(data)} bytes)", file=sys.stderr)
+        print(f"Wrote {out_txt} ({total} bytes)", file=sys.stderr)
     return out_txt
 
 

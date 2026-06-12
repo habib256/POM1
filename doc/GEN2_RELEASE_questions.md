@@ -1,17 +1,22 @@
 # GEN2 *release* card — open questions for Uncle Bernie
 
-**Status:** Phase 0 blocker for the GEN2 beam-racing back-port (see `TODO.md` →
-*Uncle Bernie GEN2 — moteur faisceau*). Phase 1 (cycle counter + floating-bus
-address oracle, `src/Gen2VideoScanner.{h,cpp}`) is **done and merged**; Phase 2
-(soft switches `$C250–$C257` + MSB blank flag) is **fully unblocked as of
-2026-06-12** — Bernie delivered the complete bit-exact reference in
-`doc/ColorGraphicsCard_doc_for_Arnaud.pdf` (transcribed under *Answers* below).
-**Every question Q1–Q10 is now RESOLVED**; drop the `// SPEC PENDING BERNIE`
-markers as Phase 2 lands. Key decided semantics: soft switches are **read-only**
-(reads toggle + return HST0 in D7, writes are no-ops), HST0 = **1 during H/V-blank
-with a 0 notch in the 3-cycle color burst**, page-2 HIRES at `$4000–$5FFF`, decode
-`SEL = $Cxxx & !A11 & A9 & A4` (mirrors across `$C2/$C3/$C6/$C7xx`), latch
-power-on indeterminate.
+**Status:** Phases 0–3 **SHIPPED 2026-06-12** (see `TODO.md` → *Uncle Bernie
+GEN2 — moteur faisceau*). Phase 1 = cycle counter + floating-bus oracle
+(`src/Gen2VideoScanner.{h,cpp}`); Phase 2 = the `$C250–$C257` read-only soft
+switches + HST0 flag (Memory's `GEN2_softswitch` bus handler, full
+`SEL = $Cxxx & !A11 & A9 & A4` decode, verbatim `hst0State`); Phase 3 = the
+beam-raced renderer in `GraphicsCard` (TEXT/LORES/HIRES/MIXED/PAGE2, vertical
+bands + horizontal mid-scanline splits via `frameCycleToPos` +
+`forEachBeamSegment`). All built from Bernie's bit-exact reference
+`doc/ColorGraphicsCard_doc_for_Arnaud.pdf` (transcribed under *Answers* below;
+**every question Q1–Q10 RESOLVED**). Pinned by `gen2_floatingbus_smoke`,
+`gen2_softswitch_msb_smoke`, `gen2_beam_race_smoke`,
+`gen2_horizontal_split_smoke`. Key decided semantics: soft switches are
+**read-only** (reads toggle + return HST0 in D7, writes are no-ops), HST0 =
+**1 during H/V-blank with a 0 notch in the 3-cycle color burst**, page-2 HIRES
+at `$4000–$5FFF`, decode `SEL = $Cxxx & !A11 & A9 & A4` (mirrors across
+`$C2/$C3/$C6/$C7xx`), latch power-on indeterminate (POM1 cold state:
+GRAPHICS+HIRES+PAGE1, never touched by RESET).
 
 **POM2 reference (audit 2026-06-10).** The upstream beam-racing engine in
 `../POM2/` has evolved significantly since the initial POM1 plan was written.
@@ -203,9 +208,14 @@ technical nuggets) for answers and emulation-relevant facts:
   address just before the scramble, so the card's graphics DRAM mirrors CPU
   writes (#1, #5, #15). Net effect for emulation: the card "sees" CPU writes to
   the graphics pages — POM1's passive-read model is a fair abstraction.
-- **Only HIRES works on the current prototype** — TEXT/LORES need the 2716 video
-  ROM rewrite (HIRES is the only Apple II mode needing no byte→dot-pattern ROM)
-  (#1, #15). ✅ This matches POM1 today (we only model HGR `$2000-$3FFF`).
+- ~~Only HIRES works on the current prototype~~ — **OBSOLETE, corrected
+  2026-06-12.** The early thread posts (#1, #15) described TEXT/LORES as pending
+  the 2716 video-ROM rewrite, but per Bernie's latest specification **all modes
+  work on the real hardware — including his prototype**: TEXT 40×25 (lowercase),
+  LORES 40×50 in 16 colors, HIRES 280×192, MIXED. The PDF's spec list describes
+  working features, not future plans. ⚠ POM1 rendering only HGR `$2000-$3FFF`
+  is therefore an **emulator gap** (TEXT/LORES/MIXED renderers tracked in
+  `TODO.md` Phase 3 *Modes d'affichage*), **not** hardware parity.
 
 **Timing (answers Q4 in part)**
 - ✅ **65 CPU cycles per scanline — explicitly confirmed**: *"the scan line
@@ -249,10 +259,12 @@ act on.
   the H-Byte of the address of the soft switch being read"* — he writes `($D2)`,
   which looks like a slip for `$C2` (high byte of `$C25x`); **confirm in the PDF**.
   *"But this is not reliable. So in the pdf I recommend to put random data there"*
-  to discourage rookies relying on it. → POM1 already seeds the floating bus; for
-  the `$C25x` read we may either return the scanner's fetched byte (our current
-  `floatingBus()` model) or deliberate noise — Bernie's intent is "garbage, don't
-  rely on it," so either is defensible. **Polarity of bit 7 still only in the PDF.**
+  to discourage rookies relying on it. → **DECIDED (2026-06-12):** the `$C25x`
+  read returns **xorshift32 noise in bits 0–6 when silicon-strict mode is ON**
+  (the default — honours Bernie's "show the rookie they shouldn't" intent), and
+  the **deterministic scanner floating-bus byte when silicon-strict is OFF**
+  (reproducible, handy for debugging). See `Memory::gen2SoftSwitchRead`.
+  **Polarity of bit 7 still only in the PDF.**
 - **Q4 (timing):** *"Timing seems identical to what you wrote in the question.
   More details in the pdf."* → 65 cyc/line, 262 lines, h 25–64 visible, 192 live
   lines **confirmed**; exact VBL boundary detail awaits the PDF.

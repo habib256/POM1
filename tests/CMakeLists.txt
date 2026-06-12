@@ -112,6 +112,66 @@ add_test(NAME gen2_floatingbus_smoke
          COMMAND test_gen2_floatingbus)
 set_tests_properties(gen2_floatingbus_smoke PROPERTIES TIMEOUT 5)
 
+# -- GEN2 release soft switches + HST0 MSB blank flag --------------------------
+# Phase 2 pin: $C250-$C257 read-only semantics (read toggles + returns HST0
+# in D7, writes blocked), Bernie's decode mask (mirrors across
+# $C2/$C3/$C6/$C7xx where A4=1; $C4xx/$C5xx stay RAM), the verbatim
+# hst0_state model (burst notch, HBL, VBL, 50 Hz), journal publication at
+# the video-frame rollover, and RESET leaving the latch alone. Needs the
+# full Memory core; runs from the repo root for roms/.
+add_executable(test_gen2_softswitch_msb
+    gen2_softswitch_msb_smoke_test.cpp
+    ${POM1_TEST_CORE_SOURCES}
+)
+target_include_directories(test_gen2_softswitch_msb PRIVATE
+    ${CMAKE_SOURCE_DIR}/src
+    ${CMAKE_SOURCE_DIR}/imgui
+)
+target_link_libraries(test_gen2_softswitch_msb PRIVATE libresidfp_static)
+if(APPLE)
+    target_compile_definitions(test_gen2_softswitch_msb PRIVATE GL_SILENCE_DEPRECATION)
+endif()
+if(WIN32)
+    target_link_libraries(test_gen2_softswitch_msb PRIVATE ws2_32)
+endif()
+
+add_test(NAME gen2_softswitch_msb_smoke
+         COMMAND test_gen2_softswitch_msb
+         WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
+set_tests_properties(gen2_softswitch_msb_smoke PROPERTIES TIMEOUT 10)
+
+# -- GEN2 beam-raced rendering: vertical splits + display modes ----------------
+# Phase 3 pin (port of POM2 beam_race_composite, LUT path): TEXT / LORES /
+# HIRES / MIXED / PAGE2 mode renders, a TEXT_ON flip at scanline 96 splitting
+# the frame into HGR top + TEXT bottom, the one-direction PAGE2 double-buffer
+# heuristic, and VBL events leaving the visible frame alone. Self-contained:
+# GraphicsCard + Gen2VideoScanner only.
+add_executable(test_gen2_beam_race
+    gen2_beam_race_smoke_test.cpp
+    ${CMAKE_SOURCE_DIR}/src/GraphicsCard.cpp
+    ${CMAKE_SOURCE_DIR}/src/Gen2VideoScanner.cpp
+)
+target_include_directories(test_gen2_beam_race PRIVATE ${CMAKE_SOURCE_DIR}/src)
+
+add_test(NAME gen2_beam_race_smoke COMMAND test_gen2_beam_race)
+set_tests_properties(gen2_beam_race_smoke PROPERTIES TIMEOUT 5)
+
+# -- GEN2 horizontal mid-scanline splits ---------------------------------------
+# Bernie's flagship release-card feature (port of POM2 horizontal_split):
+# TEXT columns alternating with HGR columns on the SAME scanline at the
+# byte-column boundary, the repeating per-line "color peg" pattern, and the
+# full-line-decode/clipped-write invariant that keeps the NTSC artifact
+# context intact at the split boundary.
+add_executable(test_gen2_horizontal_split
+    gen2_horizontal_split_smoke_test.cpp
+    ${CMAKE_SOURCE_DIR}/src/GraphicsCard.cpp
+    ${CMAKE_SOURCE_DIR}/src/Gen2VideoScanner.cpp
+)
+target_include_directories(test_gen2_horizontal_split PRIVATE ${CMAKE_SOURCE_DIR}/src)
+
+add_test(NAME gen2_horizontal_split_smoke COMMAND test_gen2_horizontal_split)
+set_tests_properties(gen2_horizontal_split_smoke PROPERTIES TIMEOUT 5)
+
 # -- Preset RAM profile invariant ---------------------------------------------
 # All real-hardware presets use Parmigiani's standard 8 KB dual-bank map
 # ($0000-$0FFF + $E000-$EFFF), except the pre-ACI Bare Apple-1 which remains

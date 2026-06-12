@@ -217,12 +217,16 @@ public:
     void setTMS9918Enabled(bool enabled);
     bool isTMS9918Enabled() const;
 
-    // Uncle Bernie's GEN2 HGR Graphic Card. The card itself is owned by the
-    // UI (passive read of $2000-$3FFF) — this hook only tells Memory whether
-    // the framebuffer is bus-attached, so OOR strict mode stops dropping
-    // pixel writes on small-RAM presets.
+    // Uncle Bernie's GEN2 HGR Graphic Card. The rasteriser is owned by the
+    // UI; this hook tells Memory whether the card is bus-attached — which
+    // enables the $C250-$C257 soft-switch window + HST0 flag, advances the
+    // cycle-accurate video scanner, and carves the HGR pages ($2000-$5FFF)
+    // out of OOR strict mode.
     void setHgrFramebufferAttached(bool attached);
     bool isHgrFramebufferAttached() const;
+    // GEN2 release card 50/60 Hz vertical-rate jumper (NTSC color either way).
+    void setGen2FiftyHz(bool fiftyHz);
+    bool isGen2FiftyHz() const;
 
     // P-LAB A1-SID Sound Card
     void setSIDEnabled(bool enabled);

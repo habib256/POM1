@@ -90,6 +90,14 @@ public:
     uint8_t getStatusRegister(void) const { return statusRegister; }
     uint8_t getStackPointer(void) const { return stackPointer; }
     uint16_t getProgramCounter(void) const { return programCounter; }
+    /// Cycles accumulated so far by the instruction currently executing
+    /// (opcode fetch + addressing mode + operation as they run). Sampled by
+    /// Memory's GEN2 soft-switch handler to timestamp a $C25x access at its
+    /// in-instruction cycle instead of the instruction's start — the POM2
+    /// `getCurrentInstructionCycles()` beam-racing idiom. Between
+    /// instructions it holds the LAST instruction's total; only consult it
+    /// from inside a memRead/memWrite issued by the CPU.
+    int getCurrentInstructionCycles(void) const { return cycles; }
     /// Jump the PC to an arbitrary address without going through RESET.
     /// Used by the Klaus Dormann functional test harness (the test binary
     /// sets its reset vector to an error trap and expects callers to jump

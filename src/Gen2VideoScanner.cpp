@@ -14,15 +14,14 @@
 // Input: h_clock [0..64] (active video from 25), v_clock [0..261] (active video
 // from 0). Output: the 16-bit DRAM address the video scanner is fetching.
 //
-// NOTE on page-2 HGR ($4000 base): the formula is kept bit-exact with MAME so
-// the address oracle matches. Whether the physical GEN2 release card actually
-// mirrors a second HGR page at $4000-$5FFF is unconfirmed (TODO Phase 0, blocked
-// on Uncle Bernie's $C250-$C257 map). The scanner produces the address either
-// way; the byte read just indexes whatever RAM lives there.
-uint16_t Gen2VideoScanner::scannerAddress(uint64_t frameCycle, const DisplayState& ds)
+// Page-2 HGR ($4000 base): CONFIRMED by Bernie's PDF (Q5, 2026-06-12) —
+// primary and secondary pages exist for TEXT and HIRES exactly like the
+// Apple II; HIRES page 2 = $4000-$5FFF, selected by $C255.
+uint16_t Gen2VideoScanner::scannerAddress(uint64_t frameCycle, const DisplayState& ds,
+                                          uint64_t lines)
 {
-    const uint64_t cyc     = frameCycle % kCyclesPerFrame;
-    const int      v_clock = static_cast<int>(cyc / kCyclesPerLine);  // 0..261
+    const uint64_t cyc     = frameCycle % (kCyclesPerLine * lines);
+    const int      v_clock = static_cast<int>(cyc / kCyclesPerLine);  // 0..261 (311 @ 50 Hz)
     const int      h_clock = static_cast<int>(cyc % kCyclesPerLine);  // 0..64
 
     int       Hires = (ds.hiRes && !ds.textMode) ? 1 : 0;
@@ -39,9 +38,9 @@ uint16_t Gen2VideoScanner::scannerAddress(uint64_t frameCycle, const DisplayStat
     const int h_5 = (h_state >> 5) & 1;
 
     // MAME `apple2video.cpp:149`: V[543210CBA] = 100000000 = 256+v. The frame
-    // is 262 lines, so subtract the line count when v wraps past 256.
+    // is 262 (or 312) lines, so subtract the line count when v wraps past 256.
     int v_state = 256 + v_clock;
-    if (v_clock >= 256) v_state -= static_cast<int>(kLinesPerFrame);
+    if (v_clock >= 256) v_state -= static_cast<int>(lines);
     const int v_A = (v_state >> 0) & 1;
     const int v_B = (v_state >> 1) & 1;
     const int v_C = (v_state >> 2) & 1;
@@ -83,4 +82,29 @@ uint16_t Gen2VideoScanner::scannerAddress(uint64_t frameCycle, const DisplayStat
         }
     }
     return address;
+}
+
+// ─── HST0 — Bernie's H/V-blank flag ─────────────────────────────────────────
+//
+// Verbatim port of the behavioural model in Bernie's PDF
+// (`doc/ColorGraphicsCard_doc_for_Arnaud.pdf`, Appendix 1 / Listing 2,
+// transcribed in doc/GEN2_RELEASE_questions.md Q3):
+//
+//   int hst0_state(int line, int hcnt)
+//   {
+//     if((hcnt > 12) && (hcnt < 16)) return 0; // in the BURST period
+//     if(line > 191) return 1;                 // in VBLANK
+//     if(hcnt > 24) return 0;                  // in live scan
+//     return 1;                                // in HBLANK
+//   }
+//
+// Note the ordering is load-bearing: the 3-cycle color-burst notch (hcnt
+// 13-15) reads 0 even inside V-blank — robust software ORs two samples to
+// mask it (Bernie's Listing 1). Do not "fix" by checking VBL first.
+int Gen2VideoScanner::hst0State(int line, int hcnt)
+{
+    if ((hcnt > 12) && (hcnt < 16)) return 0;  // in the BURST period
+    if (line > 191) return 1;                  // in VBLANK
+    if (hcnt > 24) return 0;                   // in live scan
+    return 1;                                  // in HBLANK
 }

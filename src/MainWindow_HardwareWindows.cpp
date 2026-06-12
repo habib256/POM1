@@ -68,10 +68,19 @@ void MainWindow_ImGui::renderGraphicsCardWindow()
     graphicsCard.setPhosphorPersistence(gen2PhosphorPersistence);
     graphicsCard.setScanlineAlpha(gen2ScanlineAlpha);
 
-    // Per-scanline dirty hashing inside rasterizeToBuffer() means an idle
-    // framebuffer costs ~7.7 KB of memory hashing and zero pixel writes.
-    // The GL upload is skipped when nothing changed.
-    if (graphicsCard.rasterizeToBuffer(uiSnapshot.memory.data())) {
+    // Beam-raced render (Phase 3): the soft-switch journal of the last
+    // completed video frame travels with the snapshot; render() replays it
+    // (vertical bands + horizontal mid-scanline splits) or falls back to
+    // the per-scanline-diffed HGR fast path when the latch sits at the
+    // classic GRAPHICS+HIRES+PAGE1 state with no events — an idle legacy
+    // framebuffer still costs ~7.7 KB of memcmp and zero pixel writes.
+    if (graphicsCard.render(uiSnapshot.memory.data(),
+                            uiSnapshot.gen2DisplayState,
+                            uiSnapshot.gen2FrameStartState,
+                            uiSnapshot.gen2VideoEvents,
+                            uiSnapshot.gen2FiftyHz
+                                ? Gen2VideoScanner::kLinesPerFrame50Hz
+                                : Gen2VideoScanner::kLinesPerFrame)) {
         glBindTexture(GL_TEXTURE_2D, graphicsCardTexture);
         glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0,
                         GraphicsCard::kHiresWidth, GraphicsCard::kHiresHeight,
@@ -118,26 +127,45 @@ void MainWindow_ImGui::renderGraphicsCardWindow()
             }
         }
 
-        // Cosmetic controls — collapsed by default so the image stays the focus.
-        ImGui::SetCursorPos(ImVec2(cursorPos.x, cursorPos.y + size.y + 8.0f));
-        if (ImGui::CollapsingHeader("Monitor##gen2monitor",
-                                    ImGuiTreeNodeFlags_None)) {
+        // Image-only window: nothing but the beam-cathode picture is drawn in
+        // the content area. Cosmetic monitor knobs + the live $C25x latch state
+        // live in a right-click context menu so the window stays pure picture
+        // (invisible until summoned — no function is lost).
+        if (ImGui::BeginPopupContextWindow("##gen2ctx")) {
+            // Live soft-switch latch ($C250-$C257, read-only — read toggles +
+            // returns HST0 in D7). Mirrors the Apple II $C05x semantics.
+            const auto& ds = uiSnapshot.gen2DisplayState;
+            ImGui::TextColored(ImVec4(0.6f, 0.6f, 0.6f, 1.0f),
+                "$C25x: %s %s %s %s%s",
+                ds.textMode ? "TEXT" : (ds.hiRes ? "HIRES" : "LORES"),
+                ds.mixedMode ? "MIXED" : "FULL",
+                ds.page2 ? "PAGE2" : "PAGE1",
+                uiSnapshot.gen2FiftyHz ? "50Hz" : "60Hz",
+                uiSnapshot.gen2VideoEvents.empty() ? "" : " \xC2\xB7 beam-split");
+            ImGui::Separator();
+
             const char* modes[] = { "Colour", "Green (P1)", "Amber (P3)", "Mono" };
             ImGui::SetNextItemWidth(160.0f);
-            if (ImGui::Combo("##gen2mode", &gen2MonitorMode, modes, IM_ARRAYSIZE(modes))) {
+            if (ImGui::Combo("Monitor##gen2mode", &gen2MonitorMode, modes, IM_ARRAYSIZE(modes))) {
                 graphicsCard.setMonitorMode(
                     static_cast<GraphicsCard::MonitorMode>(gen2MonitorMode));
             }
-            ImGui::SameLine();
-            ImGui::TextColored(ImVec4(0.7f, 0.7f, 0.7f, 1.0f),
-                               "Phosphor tint applied to luma — does not affect emulation.");
-
             ImGui::SetNextItemWidth(200.0f);
             ImGui::SliderFloat("Phosphor persistence##gen2persist",
                                &gen2PhosphorPersistence, 0.0f, 0.95f, "%.2f");
             ImGui::SetNextItemWidth(200.0f);
             ImGui::SliderFloat("Scanline overlay##gen2scan",
                                &gen2ScanlineAlpha, 0.0f, 1.0f, "%.2f");
+
+            // Vertical-rate jumper of the release card: 262 lines @ 60 Hz
+            // or 312 @ 50 Hz (NTSC color either way — Bernie's spec asks
+            // emulators to expose the option). Changes VBL length and the
+            // HST0 cadence, not the visible 192 lines.
+            bool fiftyHz = uiSnapshot.gen2FiftyHz;
+            if (ImGui::Checkbox("50 Hz vertical (312 lines)##gen2fiftyhz", &fiftyHz)) {
+                emulation->setGen2FiftyHz(fiftyHz);
+            }
+            ImGui::EndPopup();
         }
     }
     ImGui::End();

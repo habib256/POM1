@@ -12,7 +12,7 @@ PeripheralBus::Handle PeripheralBus::registerHandle(std::string name, Range rang
                                                     ReadFn onRead, WriteFn onWrite)
 {
     assert(entries.size() < static_cast<size_t>(kMaxEntries) &&
-           "PeripheralBus::EntryMask only supports 16 entries; widen the type.");
+           "PeripheralBus::EntryMask only supports 32 entries; widen the type.");
     // Capture the insertion index for the new entry BEFORE sorting. After
     // sortEntries() the vector is reordered by priority, so `entries.back()`
     // is NOT guaranteed to be the one we just pushed — higher-priority

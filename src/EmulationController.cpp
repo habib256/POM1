@@ -828,6 +828,19 @@ bool EmulationController::isHgrFramebufferAttached() const
     return memory->isHgrFramebufferAttached();
 }
 
+void EmulationController::setGen2FiftyHz(bool fiftyHz)
+{
+    std::lock_guard<PriorityMutex> lock(stateMutex);
+    memory->setGen2FiftyHz(fiftyHz);
+    publisher.publish(*memory, *cpu, runRequested.load());
+}
+
+bool EmulationController::isGen2FiftyHz() const
+{
+    std::lock_guard<PriorityMutex> lock(stateMutex);
+    return memory->isGen2FiftyHz();
+}
+
 void EmulationController::setACIEnabled(bool enabled)
 {
     std::lock_guard<PriorityMutex> lock(stateMutex);

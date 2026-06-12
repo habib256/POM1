@@ -71,11 +71,12 @@ public:
     }
 
 private:
-    // Bitmap of which entries overlap a given page. Two bytes covers up to
-    // 16 peripherals; the bus currently has ~10. Static_assert in .cpp guards
-    // against overflow if a future card pushes us past 16.
-    using EntryMask = uint16_t;
-    static constexpr int kMaxEntries = 16;
+    // Bitmap of which entries overlap a given page. Four bytes covers up to
+    // 32 peripherals; the bus currently has ~16 (the GEN2 $C2xx soft-switch
+    // window filled the old 16-entry uint16_t). The assert in registerHandle
+    // guards against overflow if future cards push past 32.
+    using EntryMask = uint32_t;
+    static constexpr int kMaxEntries = 32;
 
     struct Entry {
         std::string name;

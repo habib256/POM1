@@ -15,6 +15,7 @@
 #include <string>
 #include <vector>
 
+#include "Gen2VideoScanner.h"
 #include "M6502.h"
 #include "SID.h"
 #include "TMS9918.h"
@@ -78,6 +79,18 @@ struct EmulationSnapshot
     PR40Printer::Snapshot pr40;
     bool gt6144Enabled = false;
     GT6144::Snapshot gt6144;
+    // Uncle Bernie GEN2 release card — beam-raced rendering inputs. The UI
+    // feeds these to GraphicsCard::render(): the soft-switch state at the
+    // start of the last completed video frame, the soft-switch flips
+    // journaled during it (raster positions re-derived from emuCycle), and
+    // the latch state now (fast path / fallback). Memory republishes the set
+    // at each video-frame rollover, so re-rendering the same events at the
+    // UI's own frame rate is safe.
+    bool gen2Enabled = false;
+    bool gen2FiftyHz = false;
+    Gen2VideoScanner::DisplayState gen2DisplayState{};
+    Gen2VideoScanner::DisplayState gen2FrameStartState{};
+    std::vector<Gen2VideoScanner::Event> gen2VideoEvents;
 };
 
 #endif // EMULATIONSNAPSHOT_H
