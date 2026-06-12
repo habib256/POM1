@@ -339,6 +339,111 @@ bool EmulationController::loadSnapshot(const std::string& path, std::string& err
     return true;
 }
 
+// ── State rewind ──────────────────────────────────────────────────────────
+
+void EmulationController::setRewindEnabled(bool enabled)
+{
+    std::lock_guard<PriorityMutex> lock(stateMutex);
+    if (enabled == rewindEnabled_.load()) return;
+    rewindEnabled_.store(enabled);
+    rewindPreviewing_.store(false);
+    rewindCaptureAccum = 0.0;
+    if (!enabled) {
+        rewindBuffer.clear();
+        rewindFrameCount_.store(0);
+        rewindStoredBytes_.store(0);
+        rewindPos_.store(0);
+    } else {
+        // Seed with the current state so the timeline isn't empty.
+        rewindBuffer.capture(memory->saveSnapshotToBuffer(cpu.get()));
+        const std::size_t n = rewindBuffer.frameCount();
+        rewindFrameCount_.store(n);
+        rewindStoredBytes_.store(rewindBuffer.storedBytes());
+        rewindPos_.store(n ? n - 1 : 0);
+    }
+}
+
+void EmulationController::setRewindMemoryBudgetMB(int megabytes)
+{
+    if (megabytes < 1) megabytes = 1;
+    std::lock_guard<PriorityMutex> lock(stateMutex);
+    rewindBuffer.setMemoryBudget(static_cast<std::size_t>(megabytes) * 1024u * 1024u);
+    const std::size_t n = rewindBuffer.frameCount();
+    rewindFrameCount_.store(n);
+    rewindStoredBytes_.store(rewindBuffer.storedBytes());
+    if (n && rewindPos_.load() >= n) rewindPos_.store(n - 1);
+}
+
+EmulationController::RewindStatus EmulationController::getRewindStatus() const
+{
+    RewindStatus s;
+    s.enabled     = rewindEnabled_.load();
+    s.previewing  = rewindPreviewing_.load();
+    s.frameCount  = rewindFrameCount_.load();
+    s.currentPos  = rewindPos_.load();
+    s.storedBytes = rewindStoredBytes_.load();
+    return s;
+}
+
+void EmulationController::rewindRestoreFrame(std::size_t pos)
+{
+    // REQUIRES stateMutex held by caller.
+    std::vector<uint8_t> blob = rewindBuffer.reconstruct(pos);
+    if (blob.empty()) return;
+    std::string err;
+    if (memory->loadSnapshotFromBuffer(blob, err, cpu.get())) {
+        publisher.publish(*memory, *cpu, runRequested.load());
+        rewindPos_.store(pos);
+    }
+}
+
+void EmulationController::rewindSeekTo(std::size_t pos)
+{
+    std::lock_guard<PriorityMutex> lock(stateMutex);
+    if (pos >= rewindBuffer.frameCount()) return;
+    // Pause on the previewed frame; capture stays suppressed while previewing.
+    runRequested.store(false);
+    cpu->stop();
+    rewindPreviewing_.store(true);
+    rewindRestoreFrame(pos);
+}
+
+void EmulationController::rewindResumeHere(std::size_t pos)
+{
+    {
+        std::lock_guard<PriorityMutex> lock(stateMutex);
+        const std::size_t n = rewindBuffer.frameCount();
+        if (n == 0) return;
+        if (pos >= n) pos = n - 1;
+        rewindRestoreFrame(pos);
+        // Discard the rewound-past future — new capture continues from here.
+        rewindBuffer.truncateAfter(pos);
+        const std::size_t m = rewindBuffer.frameCount();
+        rewindFrameCount_.store(m);
+        rewindStoredBytes_.store(rewindBuffer.storedBytes());
+        rewindPos_.store(m ? m - 1 : 0);
+        rewindPreviewing_.store(false);
+        rewindCaptureAccum = 0.0;
+        cpu->start();
+        runRequested.store(true);
+    }
+    wakeCv.notify_all();
+}
+
+void EmulationController::rewindResumeLive()
+{
+    {
+        std::lock_guard<PriorityMutex> lock(stateMutex);
+        const std::size_t n = rewindBuffer.frameCount();
+        if (n) rewindRestoreFrame(n - 1);
+        rewindPreviewing_.store(false);
+        rewindCaptureAccum = 0.0;
+        cpu->start();
+        runRequested.store(true);
+    }
+    wakeCv.notify_all();
+}
+
 void EmulationController::setWriteInRom(bool enabled)
 {
     std::lock_guard<PriorityMutex> lock(stateMutex);
@@ -1181,6 +1286,20 @@ void EmulationController::runEmulationSlice(double elapsedSeconds)
             emulationCycleBudget -= static_cast<double>(actualCycles);
         }
         publisher.publish(*memory, *cpu, runRequested.load());
+
+        // State-rewind capture: a few snapshots per second while the CPU is
+        // actually running and we're not parked on a rewound preview frame.
+        if (rewindEnabled_.load() && runRequested.load() && !rewindPreviewing_.load()) {
+            rewindCaptureAccum += elapsedSeconds;
+            if (rewindCaptureAccum >= kRewindCaptureIntervalSec) {
+                rewindCaptureAccum = 0.0;
+                rewindBuffer.capture(memory->saveSnapshotToBuffer(cpu.get()));
+                const std::size_t n = rewindBuffer.frameCount();
+                rewindFrameCount_.store(n);
+                rewindStoredBytes_.store(rewindBuffer.storedBytes());
+                rewindPos_.store(n ? n - 1 : 0);
+            }
+        }
     }
 
     // Terminal Card: consume pending reset/clear OUTSIDE stateMutex

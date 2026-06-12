@@ -587,6 +587,9 @@ void MainWindow_ImGui::render()
         renderDebugDialog();
     }
 
+    // Timeline rewind (scrub through recent emulation history)
+    if (showRewindTimeline) renderRewindTimelineWindow();
+
     // Carte mémoire
     if (showMemoryMapGrid) renderMemoryMapGridWindow();
     if (showMemoryBar) renderMemoryBarWindow();

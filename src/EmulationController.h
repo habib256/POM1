@@ -22,6 +22,7 @@
 #include "KeyboardController.h"
 #include "M6502.h"
 #include "Memory.h"
+#include "RewindBuffer.h"
 #include "Screen_ImGui.h"
 #include "SnapshotPublisher.h"
 #include "TMS9918.h"   // TMS9918::DropDiagnostics for getTms9918DropDiagnostics()
@@ -109,6 +110,28 @@ public:
     /// loadSnapshot does NOT restart the CPU on its own — caller decides.
     bool saveSnapshot(const std::string& path, std::string& error) const;
     bool loadSnapshot(const std::string& path, std::string& error);
+
+    // ── State rewind (microM8-style timeline) ─────────────────────────────
+    // A bounded, delta-encoded ring of in-memory snapshots captured a few
+    // times per second while the CPU runs. The UI exposes a scrub slider;
+    // seeking pauses the CPU and restores the chosen frame. Resuming "here"
+    // discards the rewound-past future and continues recording. All access
+    // is funnelled through stateMutex — RewindBuffer has no locking of its
+    // own (see RewindBuffer.h).
+    struct RewindStatus {
+        bool        enabled    = false;
+        bool        previewing = false;   // paused on a rewound frame
+        std::size_t frameCount = 0;
+        std::size_t currentPos = 0;       // 0 = oldest, frameCount-1 = live
+        std::size_t storedBytes = 0;
+    };
+    void setRewindEnabled(bool enabled);
+    bool isRewindEnabled() const { return rewindEnabled_.load(); }
+    void setRewindMemoryBudgetMB(int megabytes);
+    RewindStatus getRewindStatus() const;
+    void rewindSeekTo(std::size_t pos);       // preview: pause + restore frame
+    void rewindResumeHere(std::size_t pos);   // restore + drop future + run
+    void rewindResumeLive();                  // jump to newest frame + run
 
     void setWriteInRom(bool enabled);
     bool getWriteInRom() const;
@@ -321,6 +344,8 @@ private:
 private:
     void emulationLoop();
     void runEmulationSlice(double elapsedSeconds);
+    // Restore frame `pos` into Memory+CPU and republish. REQUIRES stateMutex held.
+    void rewindRestoreFrame(std::size_t pos);
 
 private:
     Screen_ImGui* screen = nullptr;
@@ -349,6 +374,19 @@ private:
     int cycleBudgetAnchorCpf = -1;
     /// Budget de cycles partagé entre le fil d’émulation (natif) et pumpEmulationMainThread (Web).
     double emulationCycleBudget = 0.0;
+
+    // ── State rewind ──────────────────────────────────────────────────────
+    // rewindBuffer + rewindCaptureAccum are touched only under stateMutex
+    // (capture in the slice, seek/clear via the public API). The atomics
+    // mirror buffer status for lock-free reads from the UI thread.
+    static constexpr double kRewindCaptureIntervalSec = 0.25;  // ~4 frames/s
+    pom1::RewindBuffer rewindBuffer;
+    double rewindCaptureAccum = 0.0;
+    std::atomic<bool>        rewindEnabled_   { false };
+    std::atomic<bool>        rewindPreviewing_{ false };
+    std::atomic<std::size_t> rewindFrameCount_{ 0 };
+    std::atomic<std::size_t> rewindPos_       { 0 };
+    std::atomic<std::size_t> rewindStoredBytes_{ 0 };
 };
 
 #endif // EMULATIONCONTROLLER_H

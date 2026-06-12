@@ -1729,7 +1729,36 @@ bool Memory::saveSnapshot(const std::string& path, std::string& error,
         error = "cannot open snapshot file for writing: " + path;
         return false;
     }
+    writeSnapshotSections(w, cpu);
+    if (!w.good()) {
+        error = "I/O error while writing snapshot";
+        return false;
+    }
+    return true;
+}
 
+std::vector<uint8_t> Memory::saveSnapshotToBuffer(const M6502* cpu) const
+{
+    pom1::SnapshotWriter w;   // in-memory sink
+    if (!w.good()) return {};
+    writeSnapshotSections(w, cpu);
+    if (!w.good()) return {};
+    return w.takeBuffer();
+}
+
+bool Memory::loadSnapshotFromBuffer(const std::vector<uint8_t>& buffer,
+                                    std::string& error, M6502* cpu)
+{
+    pom1::SnapshotReader r(buffer);
+    if (!r.good()) {
+        error = r.error().empty() ? "snapshot read failed" : r.error();
+        return false;
+    }
+    return readSnapshotSections(r, error, cpu);
+}
+
+void Memory::writeSnapshotSections(pom1::SnapshotWriter& w, const M6502* cpu) const
+{
     // ── CPU section: architecturally-visible 6502 state. Skipped when the
     //    caller didn't supply a CPU (memory-only fixtures); loadSnapshot
     //    treats a missing CPU section the same way for forward-compat.
@@ -1799,12 +1828,6 @@ bool Memory::saveSnapshot(const std::string& path, std::string& error,
     writeCard(*pr40Printer);
     writeCard(*gt6144);
     writeCard(*iecCard);
-
-    if (!w.good()) {
-        error = "I/O error while writing snapshot";
-        return false;
-    }
-    return true;
 }
 
 bool Memory::loadSnapshot(const std::string& path, std::string& error,
@@ -1815,7 +1838,11 @@ bool Memory::loadSnapshot(const std::string& path, std::string& error,
         error = r.error().empty() ? "snapshot read failed" : r.error();
         return false;
     }
+    return readSnapshotSections(r, error, cpu);
+}
 
+bool Memory::readSnapshotSections(pom1::SnapshotReader& r, std::string& error, M6502* cpu)
+{
     // Build a name → peripheral lookup so we can dispatch by section
     // name (insulates us against future card-order changes).
     std::vector<pom1::Peripheral*> cards = {

@@ -12,7 +12,7 @@ namespace pom1 {
 
 namespace {
 
-void writeFixedName(std::ofstream& out, std::string_view name) {
+void writeFixedName(std::ostream& out, std::string_view name) {
     char buf[kSectionNameLen]{};
     const std::size_t copy = std::min(name.size(), kSectionNameLen);
     std::memcpy(buf, name.data(), copy);
@@ -20,7 +20,7 @@ void writeFixedName(std::ofstream& out, std::string_view name) {
     out.write(buf, kSectionNameLen);
 }
 
-std::string readFixedName(std::ifstream& in) {
+std::string readFixedName(std::istream& in) {
     char buf[kSectionNameLen]{};
     in.read(buf, kSectionNameLen);
     // NUL-trim — sections shorter than 8 chars are right-padded.
@@ -35,12 +35,32 @@ std::string readFixedName(std::ifstream& in) {
 // Writer
 // ─────────────────────────────────────────────────────────────────────
 SnapshotWriter::SnapshotWriter(const std::string& path)
-    : out(path, std::ios::binary | std::ios::trunc)
+    : owned(std::make_unique<std::ofstream>(path, std::ios::binary | std::ios::trunc)),
+      out(*owned)
 {
     if (!out.good()) return;
+    writeMagicHeader();
+}
+
+SnapshotWriter::SnapshotWriter()
+    : owned(std::make_unique<std::ostringstream>(std::ios::binary | std::ios::out)),
+      mem(static_cast<std::ostringstream*>(owned.get())),
+      out(*owned)
+{
+    writeMagicHeader();
+}
+
+void SnapshotWriter::writeMagicHeader() {
     out.write(kSnapshotMagic, sizeof(kSnapshotMagic));
     writeU32(kSnapshotVersion);
     writeU32(0);  // flags reserved
+}
+
+std::vector<uint8_t> SnapshotWriter::takeBuffer() {
+    if (!mem) return {};
+    out.flush();
+    const std::string s = mem->str();
+    return std::vector<uint8_t>(s.begin(), s.end());
 }
 
 void SnapshotWriter::writeU8(uint8_t v) {
@@ -104,13 +124,26 @@ void SnapshotWriter::writeSection(std::string_view name, const void* data, std::
 // Reader
 // ─────────────────────────────────────────────────────────────────────
 SnapshotReader::SnapshotReader(const std::string& path)
-    : in(path, std::ios::binary)
+    : owned(std::make_unique<std::ifstream>(path, std::ios::binary)),
+      in(*owned)
 {
     if (!in.good()) {
         errorMsg = "cannot open snapshot file: " + path;
         return;
     }
+    readMagicHeader();
+}
 
+SnapshotReader::SnapshotReader(const std::vector<uint8_t>& buffer)
+    : owned(std::make_unique<std::istringstream>(
+          std::string(reinterpret_cast<const char*>(buffer.data()), buffer.size()),
+          std::ios::binary | std::ios::in)),
+      in(*owned)
+{
+    readMagicHeader();
+}
+
+void SnapshotReader::readMagicHeader() {
     char magic[sizeof(kSnapshotMagic)]{};
     in.read(magic, sizeof(kSnapshotMagic));
     if (!in.good() || std::memcmp(magic, kSnapshotMagic, sizeof(kSnapshotMagic)) != 0) {

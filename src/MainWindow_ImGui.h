@@ -127,6 +127,7 @@ private:
     // Interface state
     bool showMemoryViewer = false;
     bool showDebugger = false;
+    bool showRewindTimeline = false;   // State-rewind timeline / scrub panel
     bool showAbout = false;
     bool showSpecialThanks = false;
     bool showHardwareReference = false;
@@ -330,6 +331,7 @@ private:
     void renderTutorialIECCardWindow();
     void renderIECCardWindow();
     void renderDebugDialog();
+    void renderRewindTimelineWindow();
     void renderScreenConfigDialog();
     void renderMemoryConfigDialog();
     void renderLoadDialog();

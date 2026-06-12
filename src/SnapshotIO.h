@@ -33,6 +33,8 @@
 #include <cstddef>
 #include <cstdint>
 #include <fstream>
+#include <memory>
+#include <sstream>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -53,16 +55,28 @@ inline constexpr uint32_t kSnapshotVersion  = 2;
 /// truncated by writeSection.
 inline constexpr std::size_t kSectionNameLen = 8;
 
-/// Append-only writer. The lifetime of the underlying ofstream is owned by
-/// the writer; the destructor closes cleanly. Errors are reported via
-/// `good()` after the final flush — POM1 does not throw from emulator-thread
-/// code.
+/// Append-only writer. The underlying stream is owned by the writer (a file
+/// stream for the path ctor, an in-memory string stream for the default
+/// ctor); the destructor closes cleanly. Errors are reported via `good()`
+/// after the final flush — POM1 does not throw from emulator-thread code.
+///
+/// The in-memory variant exists for the state-rewind ring buffer: it
+/// serializes a full snapshot to a `std::vector<uint8_t>` (via `takeBuffer`)
+/// without touching the disk, reusing every `Peripheral::serialize` path
+/// verbatim. The byte layout is identical to the file variant.
 class SnapshotWriter {
 public:
     explicit SnapshotWriter(const std::string& path);
+    /// In-memory sink. Serialized bytes are retrieved with `takeBuffer()`.
+    SnapshotWriter();
     ~SnapshotWriter() = default;
 
     bool good() const { return out.good(); }
+
+    /// In-memory mode only: detach the serialized snapshot bytes (header +
+    /// all sections written so far). Returns an empty vector in file mode.
+    /// Flushes the stream first; safe to call once after the last section.
+    std::vector<uint8_t> takeBuffer();
 
     void writeU8 (uint8_t  v);
     void writeU16(uint16_t v);
@@ -87,7 +101,10 @@ public:
     void writeSection(std::string_view name, const void* data, std::size_t length);
 
 private:
-    std::ofstream out;
+    void writeMagicHeader();
+    std::unique_ptr<std::ostream> owned;       // ofstream (file) or ostringstream (memory)
+    std::ostringstream*           mem = nullptr; // non-null in in-memory mode
+    std::ostream&                 out;          // bound to *owned
 };
 
 /// Read companion. Constructed against a path; `good()` reports the load
@@ -96,6 +113,10 @@ private:
 class SnapshotReader {
 public:
     explicit SnapshotReader(const std::string& path);
+    /// In-memory source — mirror of SnapshotWriter's in-memory mode. Reads a
+    /// snapshot straight out of a byte buffer (the rewind ring buffer's
+    /// reconstructed frames).
+    explicit SnapshotReader(const std::vector<uint8_t>& buffer);
     ~SnapshotReader() = default;
 
     /// True iff the file was a valid POM1 snapshot at construction *and*
@@ -129,7 +150,9 @@ public:
     bool atSectionBoundary() const { return cursor == sectionEnd; }
 
 private:
-    std::ifstream in;
+    void readMagicHeader();
+    std::unique_ptr<std::istream> owned;   // ifstream (file) or istringstream (memory)
+    std::istream& in;                       // bound to *owned
     bool          ok = false;
     uint32_t      ver = 0;
     std::string   errorMsg;

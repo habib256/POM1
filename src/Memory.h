@@ -50,6 +50,8 @@ class M6502;
 #include "MicroSD.h"
 #include "Gen2VideoScanner.h"
 
+namespace pom1 { class SnapshotWriter; class SnapshotReader; }
+
 class Memory
 {
 public:
@@ -167,6 +169,15 @@ public:
                       const class M6502* cpu = nullptr) const;
     bool loadSnapshot(const std::string& path, std::string& error,
                       class M6502* cpu = nullptr);
+
+    // In-memory snapshot variants — same byte layout as the file path, but
+    // the bytes never touch the disk. Used by the state-rewind ring buffer
+    // (EmulationController) to capture/restore frames cheaply. Returns an
+    // empty vector on failure for the save; the load fills `error` and
+    // returns false on a malformed buffer.
+    std::vector<uint8_t> saveSnapshotToBuffer(const class M6502* cpu = nullptr) const;
+    bool loadSnapshotFromBuffer(const std::vector<uint8_t>& buffer,
+                                std::string& error, class M6502* cpu = nullptr);
 
     uint8_t memRead(uint16_t address);
     //uint8_t memReadAbsolute(uint16_t adr);
@@ -396,6 +407,12 @@ public:
     void setCpuForIrq(M6502* c) { cpuForIrq = c; }
 
 private:
+    // Shared snapshot orchestration core — the file and in-memory save/load
+    // entry points both funnel through these so the section layout stays in
+    // one place.
+    void writeSnapshotSections(pom1::SnapshotWriter& w, const class M6502* cpu) const;
+    bool readSnapshotSections(pom1::SnapshotReader& r, std::string& error, class M6502* cpu);
+
     DisplayDevice* displayDevice = nullptr;     // non-owning; injected by EmulationController
     M6502* cpuForIrq = nullptr;                 // non-owning; aggregator target for setIRQ()
     
