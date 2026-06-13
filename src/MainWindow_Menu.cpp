@@ -1118,6 +1118,56 @@ void MainWindow_ImGui::renderToolbar()
             }
         }
 
+        // --- State-rewind timeline band (between the silicon badge and About) ---
+        // A live scrubber over the in-memory snapshot ring: drag to go back
+        // through recent history — the plugged displays preview that instant
+        // (rewindSeekTo restores + republishes the state) — and releasing
+        // resumes the machine at that frame (rewindResumeHere, discarding the
+        // rewound-past future). Sizes itself to the gap up to the About button.
+        {
+            ImGui::SameLine();
+            EmulationController::RewindStatus rw = emulation->getRewindStatus();
+            // One-shot: make the band live out of the box. The user can still
+            // turn recording off in CPU → State Rewind; we don't re-force it.
+            if (!rewindAutoStarted) {
+                rewindAutoStarted = true;
+                if (!rw.enabled) { emulation->setRewindEnabled(true); rw = emulation->getRewindStatus(); }
+            }
+            ImGuiStyle& style  = ImGui::GetStyle();
+            const float aboutW = ImGui::CalcTextSize(ICON_FA_CIRCLE_INFO).x + style.FramePadding.x * 2.0f;
+            const float aboutX = io.DisplaySize.x - aboutW - style.WindowPadding.x;
+            const float bandW  = aboutX - ImGui::GetCursorPosX() - style.ItemSpacing.x;
+            if (bandW >= 40.0f) {
+                ImGui::SetNextItemWidth(bandW);
+                if (!rw.enabled || rw.frameCount <= 1) {
+                    ImGui::BeginDisabled();
+                    int z = 0;
+                    ImGui::SliderInt("##toolbar_rewind", &z, 0, 0,
+                                     rw.enabled ? "timeline (recording...)" : "timeline (off)");
+                    ImGui::EndDisabled();
+                    if (ImGui::IsItemHovered())
+                        ImGui::SetTooltip("State timeline. Toggle recording in CPU → State Rewind.");
+                } else {
+                    const int lastFrame = static_cast<int>(rw.frameCount) - 1;
+                    int pos = static_cast<int>(rw.currentPos);
+                    if (pos > lastFrame) pos = lastFrame;
+                    char label[40];
+                    if (rw.previewing)
+                        std::snprintf(label, sizeof(label), "REWIND  -%.1fs",
+                                      static_cast<double>(lastFrame - pos) * 0.25);  // ~0.25 s/frame
+                    else
+                        std::snprintf(label, sizeof(label), "LIVE");
+                    if (ImGui::SliderInt("##toolbar_rewind", &pos, 0, lastFrame, label))
+                        emulation->rewindSeekTo(static_cast<std::size_t>(pos));      // drag → preview
+                    if (ImGui::IsItemDeactivatedAfterEdit())
+                        emulation->rewindResumeHere(static_cast<std::size_t>(pos));  // release → resume here
+                    if (ImGui::IsItemHovered() && !ImGui::IsItemActive())
+                        ImGui::SetTooltip("State timeline — drag to scrub back through recent\n"
+                                          "history; release to resume the machine at that instant.");
+                }
+            }
+        }
+
         // --- About button aligned to the right ---
         float aboutBtnW = ImGui::CalcTextSize(ICON_FA_CIRCLE_INFO).x + ImGui::GetStyle().FramePadding.x * 2.0f;
         ImGui::SameLine(io.DisplaySize.x - aboutBtnW - ImGui::GetStyle().WindowPadding.x);

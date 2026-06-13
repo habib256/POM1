@@ -16,6 +16,13 @@ authoritative commit-level history is `git log`; the user-facing feature tour is
   (~4 captures/s). UI: **CPU → State Rewind…** scrub panel — slider preview
   (pause + restore), *Resume here* (truncate the rewound-past future), *Back to
   live*. Pinned by `rewind_buffer_smoke`.
+- **Inline timeline band in the toolbar** — a live scrubber between the
+  silicon/fantasy badge and the About button (`renderToolbar`). Recording
+  auto-starts once so the band is live out of the box; dragging it back
+  previews that instant on every plugged display (`rewindSeekTo` restores +
+  republishes the state), and releasing resumes the machine there
+  (`rewindResumeHere`). Shows `LIVE` / `REWIND -N.Ns`, auto-sizes to the gap and
+  widens with the window. Shares the proven seek/resume API with the panel.
 
 ### Added — Uncle Bernie GEN2 colour graphics: cycle-accurate beam-racing engine (POM2 back-port)
 
@@ -107,15 +114,17 @@ the "fantasy" category.
   idles until SIGINT/SIGTERM. Lets the telemetry regression tests run on a
   display-less CI box — verified: `tools/test_telemetry_lockstep.py` now launches
   `--headless` and passes with `DISPLAY` unset (while the GUI path correctly fails
-  `glfwInit` there). `--preset`/`--enable`/`--disable` are GUI-only and skipped.
+  `glfwInit` there). **`--preset` / `--enable` / `--disable` are applied headless
+  too** (`MainWindow_ImGui::applyHeadlessConfig` — RAM + cards + BASIC ROM,
+  plugged immediately since there is no frame loop): `tools/test_headless_preset.py`
+  proves `--preset 13` plugs Uncle Bernie's GEN2 (the soft-switch HST0 bit
+  toggles) with no display, while the default machine does not.
 - **`Memory` out-of-line `~Memory()`** — added so the forward-declared peripheral
   `unique_ptr`s only need their complete type at the single dtor definition point
   (was previously relying on transitive includes in every TU that destroys a
   `Memory`).
 - **Not yet** (tracked in `TODO.md`): the CI **GitHub Actions** workflow itself
-  (now unblocked — it can drive `--headless` + the telemetry tests); full-preset
-  support under `--headless` (the GUI-coupled `applyMachineConfig` isn't reused
-  yet).
+  (now unblocked — it can drive `--headless --preset` + the telemetry tests).
 
 ### Added — Telemetry game-testing SDK kit
 

@@ -255,9 +255,9 @@ loop:   TELE_PUT player          ; per frame: push the state bytes
         ; ... apply input, loop ...
 ```
 
-> **Note:** `--headless` runs the default 64K machine — `--preset` is GUI-only
-> for now, so HGR/GEN2 game tests still need the windowed build (or the
-> headless-preset follow-up in `TODO.md`).
+> **Note:** `--headless --preset N` applies the preset's machine config (RAM +
+> cards + BASIC ROM) with no display — e.g. `--preset 13` plugs Uncle Bernie's
+> GEN2 for HGR game tests (`tools/test_headless_preset.py` verifies it).
 
 ---
 
