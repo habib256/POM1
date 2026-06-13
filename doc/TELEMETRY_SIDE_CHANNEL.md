@@ -212,38 +212,52 @@ Two complementary mechanisms, both already proven by the Terminal Card:
 
 ---
 
-## 7. CLI integration (the auto-compile → load → test loop)
+## 7. The SDK in practice — compile → load → test ✅ implemented
 
-Add to `CliDispatcher` (Phase-A flags, like `--enable` / `--load`):
+The CLI flags exist (`--telemetry-port`, `--telemetry-log`) plus `--headless`
+(no display). The reusable **kit** on top of them:
 
-- `--telemetry-port 6503` — plug the port + start the TCP listener.
-- `--telemetry-log run.bin` — file tap of the outbound stream (golden-trace
-  regression: diff against an expected capture; no live harness needed).
-- `--telemetry-lockstep` — arm deterministic mode from boot.
+- **6502 side** — `dev/lib/telemetry/telemetry.inc` (equates + `TELE_ARM` /
+  `TELE_PUT*` / `TELE_FRAME` macros).
+- **Harness side** — `tools/pom1_telemetry.py` (`TelemetryClient` +
+  `launch_headless`).
+- **Worked example** — `dev/projects/a1_telemetry_demo/` (a homing game) +
+  `tools/test_telemetry_demo.py`.
 
-Bernie's "dream SDK" then collapses to a Makefile target:
+Bernie's "dream SDK" loop, end to end — no display, no human:
 
 ```bash
-ca65 game.s && ld65 -C apple1_gen2.cfg game.o -o game.bin   # assemble (GEN2)
-POM1 --preset 13 --load game.bin --run \$0300 \
-     --telemetry-port 6503 &                                # boot + expose channel
-pytest test_game.py                                         # harness drives + checks
+make -C dev/projects/a1_telemetry_demo      # cc65 -> software/Telemetry/A1_TelemetryDemo.bin
+python3 tools/test_telemetry_demo.py        # boots POM1 --headless, drives it, asserts
 ```
 
-Harness sketch:
+A test is a few lines — read the frame, decide, advance one lock-step frame:
 
 ```python
-sock = connect("localhost", 6503)
-last_score = 0
-while True:
-    frame = read_frame(sock)                 # player_x, player_y, enemies, state, score
-    if frame.state == GAME_OVER:
-        break
-    send_key(sock, decide(frame))            # play
-    assert frame.score >= last_score         # invariant: score never decreases
-    assert not frame.crashed
-    last_score = frame.score
+from pom1_telemetry import launch_headless
+with launch_headless("software/Telemetry/A1_TelemetryDemo.bin",
+                     load_addr=0x0280, port=6601) as tc:
+    frame = tc.read_frame()                        # bytes: [player, target, won]
+    while not frame[2]:
+        move = b"\x01" if frame[0] < frame[1] else b"\x02"
+        frame = tc.step(move)                      # send input + ACK + next frame
 ```
+
+…and the matching game emits its state with the macros:
+
+```asm
+.include "telemetry.inc"
+        TELE_ARM                  ; arm lock-step (once at startup)
+loop:   TELE_PUT player          ; per frame: push the state bytes
+        TELE_PUT target
+        TELE_FRAME                ; flush + park until the harness ACKs
+        lda TELE_IN               ; resume: read the harness's input byte
+        ; ... apply input, loop ...
+```
+
+> **Note:** `--headless` runs the default 64K machine — `--preset` is GUI-only
+> for now, so HGR/GEN2 game tests still need the windowed build (or the
+> headless-preset follow-up in `TODO.md`).
 
 ---
 

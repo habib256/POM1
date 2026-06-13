@@ -359,11 +359,47 @@ static void pom1_macos_provision_user_data_dir()
 static std::atomic<bool> g_headlessStop{false};
 static void pom1_headless_signal_handler(int) { g_headlessStop.store(true); }
 
+// Map a --enable/--disable card to its EmulationController facade (immediate,
+// no GUI deferred plug). Cascades + mutex evictions live inside the setters.
+static void applyHeadlessCardOverride(EmulationController& emu, pom1::CliCard card, bool on)
+{
+    using CC = pom1::CliCard;
+    switch (card) {
+        case CC::Aci:          emu.setACIEnabled(on); break;
+        case CC::Sid:          emu.setSIDEnabled(on); break;
+        case CC::SidSE:        emu.setSIDSpecialEditionEnabled(on); break;
+        case CC::MicroSD:      emu.setMicroSDEnabled(on); break;
+        case CC::Tms9918:      emu.setTMS9918Enabled(on); break;
+        case CC::A1IoRtc:      emu.setA1IO_RTCEnabled(on); break;
+        case CC::Hgr:          emu.setHgrFramebufferAttached(on); break;
+        case CC::Cffa1:        emu.setCFFA1Enabled(on); break;
+        case CC::WifiModem:    emu.setWiFiModemEnabled(on); break;
+        case CC::TerminalCard: emu.setTerminalCardEnabled(on); break;
+        case CC::JukeBox:      emu.setJukeBoxEnabled(on); break;
+        case CC::CodeTank:     emu.setCodeTankEnabled(on); break;
+        case CC::Pr40:         emu.setPR40Enabled(on); break;
+        case CC::GT6144:       emu.setGT6144Enabled(on); break;
+        case CC::IEC:          emu.setIECCardEnabled(on); break;
+        case CC::Krusader:     { std::string e; if (on) emu.reloadKrusader(e); } break;
+    }
+}
+
 static int runHeadless(pom1::CliPlan& plan)
 {
     pom1::log().info("POM1", "headless mode — no window (Ctrl-C / SIGTERM to exit)");
 
     EmulationController emu(nullptr);   // null screen: the $D012 display sink is a no-op
+
+    // Machine config: apply the preset (RAM + cards + BASIC ROM) immediately —
+    // no GUI deferred plug — then explicit --enable/--disable overrides, then
+    // the --terminal override. So `--headless --preset 13` plugs GEN2 + 48K for
+    // an HGR game test, with no display.
+    if (plan.presetIndex >= 0)
+        MainWindow_ImGui::applyHeadlessConfig(emu, plan.presetIndex);
+    for (const auto& o : plan.cardOverrides)
+        applyHeadlessCardOverride(emu, o.card, o.enable);
+    if (plan.terminalOverride)
+        emu.setTerminalCardEnabled(true);
 
     if (plan.cpuMax)
         emu.setExecutionSpeedCyclesPerFrame(1000000);
@@ -376,13 +412,6 @@ static int runHeadless(pom1::CliPlan& plan)
         emu.setTelemetryLogFile(plan.telemetryLogPath);
     if (plan.telemetryPort || !plan.telemetryLogPath.empty())
         emu.setTelemetryEnabled(true);
-
-    if (plan.terminalOverride)
-        emu.setTerminalCardEnabled(true);
-
-    if (plan.presetIndex >= 0 || !plan.cardOverrides.empty())
-        pom1::log().warn("POM1", "headless: --preset / --enable / --disable are GUI-only "
-                                 "and ignored here; using the default 64K machine");
 
     // Phase-C deferred verbs (load / run / paste / step / sd-* / rtc / snapshot / break).
     pom1::runDeferredActions(plan.deferredActions, emu);

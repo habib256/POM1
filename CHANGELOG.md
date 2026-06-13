@@ -101,9 +101,39 @@ the "fantasy" category.
 - **UI status panel** — *View → Telemetry Side Channel…* shows the snapshot
   (enabled, listen port, connected harness, lock-step, frames/bytes) with an
   Enable toggle; fed via `EmulationSnapshot.telemetry` / `SnapshotPublisher`.
+- **`--headless`** — run with no GLFW window / GL / ImGui (`runHeadless` in
+  `main_imgui.cpp`): a separate driver builds `EmulationController` (own emulation
+  thread, null screen), applies speed + telemetry + Phase-C deferred verbs, then
+  idles until SIGINT/SIGTERM. Lets the telemetry regression tests run on a
+  display-less CI box — verified: `tools/test_telemetry_lockstep.py` now launches
+  `--headless` and passes with `DISPLAY` unset (while the GUI path correctly fails
+  `glfwInit` there). `--preset`/`--enable`/`--disable` are GUI-only and skipped.
 - **`Memory` out-of-line `~Memory()`** — added so the forward-declared peripheral
   `unique_ptr`s only need their complete type at the single dtor definition point
   (was previously relying on transitive includes in every TU that destroys a
   `Memory`).
-- **Not yet** (tracked in `TODO.md`): headless CI (run POM1 without a display) —
-  a separate, non-telemetry-specific concern tied to the CI GitHub Actions item.
+- **Not yet** (tracked in `TODO.md`): the CI **GitHub Actions** workflow itself
+  (now unblocked — it can drive `--headless` + the telemetry tests); full-preset
+  support under `--headless` (the GUI-coupled `applyMachineConfig` isn't reused
+  yet).
+
+### Added — Telemetry game-testing SDK kit
+
+Turns the raw telemetry mechanism into a usable kit — the "dream SDK" loop
+(compile → load → automated test that *sees* state + *drives* input),
+demonstrated end-to-end with no human and no display.
+
+- **`dev/lib/telemetry/telemetry.inc`** — cc65 6502-side library: `$C440-$C443`
+  equates + macros (`TELE_ARM`, `TELE_PUT`/`TELE_PUTA`/`TELE_PUTI`, `TELE_FRAME`)
+  so a game emits its per-frame state in a couple of lines.
+- **`tools/pom1_telemetry.py`** — Python harness library: `TelemetryClient`
+  (connect-with-retry, `read_frame`, `send`, `ack`, `step`) + a `launch_headless`
+  context manager (boots POM1 `--headless`, connects, tears down). Tests reason
+  over frames + inputs instead of parsing sockets.
+- **Worked example** — `dev/projects/a1_telemetry_demo/` (a "homing" game built
+  on `telemetry.inc`, → `software/Telemetry/A1_TelemetryDemo.bin`) +
+  `tools/test_telemetry_demo.py`: the harness reads `[player, target, won]`,
+  sends a direction each frame, and the player converges on the target in 15
+  deterministic frames — verified headless (no `DISPLAY`).
+- `tools/test_telemetry_lockstep.py` refactored onto the library (dogfood) and
+  switched to `--headless`.

@@ -31,6 +31,9 @@ public:
     void setWindow(GLFWwindow* win) { window = win; }
     static int getPresetCount();
     static const char* getPresetName(int index);
+    // GUI-free preset application for --headless (no ImGui / ini / window).
+    // Mirrors the machine-config essence of applyMachineConfig — see there.
+    static void applyHeadlessConfig(EmulationController& emu, int presetIndex);
     void setDefaultPresetIndex(int index) { defaultPresetIndex = index; }
     void setTerminalCardOverride(bool enable) { terminalCardOverride = enable; }
     void setTelemetryPortOverride(int port) { telemetryPortOverride = port; }

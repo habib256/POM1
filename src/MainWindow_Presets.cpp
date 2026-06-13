@@ -876,6 +876,71 @@ void MainWindow_ImGui::applyMachineConfig(int presetIndex)
     setStatusMessage(std::string("Preset: ") + cfg.name, 3.0f);
 }
 
+// GUI-free preset application for --headless. Mirrors the machine-config
+// essence of applyMachineConfig() — RAM size, strict modes, card plugs, BASIC
+// ROM, Krusader — but without ImGui (no ini/layout/window) and without the
+// 15-frame deferred plug (that only existed to dodge silent-card-on-boot for
+// audio; headless has no audio device, so cards plug immediately). Cascades
+// (CodeTank→TMS9918, IEC→microSD) and mutex evictions are handled inside the
+// EmulationController setters; the preset config is already mutex-consistent.
+void MainWindow_ImGui::applyHeadlessConfig(EmulationController& emu, int presetIndex)
+{
+    if (presetIndex < 0 || presetIndex >= kMachinePresetCount) return;
+    const MachineConfig& cfg = kMachinePresets[presetIndex];
+    pom1::log().info("POM1", std::string("headless preset: ") + cfg.name +
+                     " (" + std::to_string(cfg.ramKB) + "K)");
+
+    emu.setPresetRamKB(cfg.ramKB);
+    const bool fantasy = std::string_view(cfg.name).find("Fantasy") != std::string_view::npos;
+    emu.setSiliconStrictMode(!fantasy);
+    emu.setOutOfRangeStrictMode(!fantasy);
+
+    // Jumpers before the cards that read them.
+    emu.setJukeBoxJumper(cfg.jukeBoxJumper);
+    emu.setJukeBoxChipMode(cfg.jukeBoxChipMode);
+    emu.setCodeTankJumper(cfg.codeTankJumper);
+
+    // Plug cards (base cards before daughterboards).
+    emu.setHgrFramebufferAttached(cfg.graphicsCard);
+    emu.setTMS9918Enabled(cfg.tms9918);
+    emu.setCodeTankEnabled(cfg.codeTank);
+    emu.setSIDEnabled(cfg.sid);
+    emu.setSIDSpecialEditionEnabled(cfg.sidSpecialEdition);
+    emu.setMicroSDEnabled(cfg.microSD);
+    emu.setIECCardEnabled(cfg.iecCard);
+    emu.setCFFA1Enabled(cfg.cffa1);
+    emu.setJukeBoxEnabled(cfg.jukeBox);
+    emu.setWiFiModemEnabled(cfg.wifiModem);
+    emu.setA1IO_RTCEnabled(cfg.a1ioRtc);
+    emu.setPR40Enabled(cfg.pr40Printer);
+    emu.setGT6144Enabled(cfg.gt6144);
+    emu.setACIEnabled(cfg.aci);
+#if !POM1_IS_WASM
+    emu.setTerminalCardEnabled(cfg.terminalCard);
+#endif
+
+    // BASIC ROM — variant picked from cfg (not live flags), mirroring
+    // applyMachineConfig. Errors are logged by the reload* facades.
+    std::string err;
+    if (cfg.basicType == BasicType::ApplesoftLite) {
+        if (cfg.microSD && !cfg.cffa1) {
+            emu.reloadApplesoftLiteSDCard(err);
+            if (fantasy) emu.reloadBasic(err); else emu.unloadBasic();
+            emu.reloadWozMonitor(err);
+        } else {
+            emu.reloadApplesoftLiteCFFA1(err);
+        }
+    } else if (cfg.basicType == BasicType::Integer) {
+        emu.reloadBasic(err);
+        emu.reloadWozMonitor(err);
+    } else {
+        // None / IntegerCassette: $E000-$EFFF stays RAM (cassette BASIC loads later).
+        emu.unloadBasic();
+        emu.reloadWozMonitor(err);
+    }
+    if (cfg.krusader) emu.reloadKrusader(err);
+}
+
 int MainWindow_ImGui::getPresetCount()
 {
     return kMachinePresetCount;
