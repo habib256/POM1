@@ -168,7 +168,9 @@ void MainWindow_ImGui::renderMenuBar()
             if (ImGui::MenuItem("Debug Console", shortcutLabel(GLFW_KEY_F3))) {
                 debugCpu();
             }
-            ImGui::MenuItem("State Rewind...", nullptr, &showRewindTimeline);
+#if !POM1_IS_WASM
+            ImGui::MenuItem("State Rewind...", nullptr, &showRewindTimeline);  // desktop only
+#endif
             ImGui::EndMenu();
         }
 
@@ -1118,7 +1120,11 @@ void MainWindow_ImGui::renderToolbar()
             }
         }
 
+#if !POM1_IS_WASM
         // --- State-rewind timeline band (between the silicon badge and About) ---
+        // Desktop only: the rewind ring is captured on the dedicated emulation
+        // thread; in the single-threaded, memory-bounded WASM build it stutters
+        // the main loop, so rewind is disabled there entirely.
         // A live scrubber over the in-memory snapshot ring: drag to go back
         // through recent history — the plugged displays preview that instant
         // (rewindSeekTo restores + republishes the state) — and releasing
@@ -1167,6 +1173,7 @@ void MainWindow_ImGui::renderToolbar()
                 }
             }
         }
+#endif // !POM1_IS_WASM — rewind disabled in the web build
 
         // --- About button aligned to the right ---
         float aboutBtnW = ImGui::CalcTextSize(ICON_FA_CIRCLE_INFO).x + ImGui::GetStyle().FramePadding.x * 2.0f;

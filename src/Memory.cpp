@@ -1987,6 +1987,17 @@ void Memory::writeSnapshotSections(pom1::SnapshotWriter& w, const M6502* cpu) co
         w.writeU64(gen2Scanner.cycle());
         w.endSection(h);
     }
+
+    // ── SCREEN section: the Apple-1 text grid lives in the display device
+    //    (Screen_ImGui), not in RAM. Capture it so rewind / save-state restore
+    //    the *visible* screen — otherwise scrubbing the timeline moves CPU+RAM
+    //    back but the on-screen text stays at the live frame. Skipped for
+    //    memory-only fixtures with no display attached.
+    if (displayDevice) {
+        auto h = w.beginSection("SCREEN");
+        displayDevice->serialize(w);
+        w.endSection(h);
+    }
 }
 
 bool Memory::loadSnapshot(const std::string& path, std::string& error,
@@ -2064,6 +2075,13 @@ bool Memory::readSnapshotSections(pom1::SnapshotReader& r, std::string& error, M
             // IEC card cascades onto microSD via setIECCardEnabled — make sure
             // microSD has been (re-)enabled by the FLAGS dispatch above first.
             setIECCardEnabled          ((flags & kFlagIECCard)        != 0);
+            continue;
+        }
+
+        if (sectionName == "SCREEN") {
+            // Restore the visible Apple-1 text grid (rewind / save-state).
+            if (displayDevice) displayDevice->deserialize(r);
+            else               r.skipCurrentSection();
             continue;
         }
 

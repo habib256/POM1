@@ -1344,6 +1344,10 @@ void EmulationController::runEmulationSlice(double elapsedSeconds)
 
         // State-rewind capture: a few snapshots per second while the CPU is
         // actually running and we're not parked on a rewound preview frame.
+        // Desktop only — the single-threaded WASM build can't afford the
+        // periodic full-state capture on its one main-loop thread, so rewind is
+        // disabled there (no UI entry points are shown either).
+#if !POM1_IS_WASM
         if (rewindEnabled_.load() && runRequested.load() && !rewindPreviewing_.load() && !telemetryStalled) {
             rewindCaptureAccum += elapsedSeconds;
             if (rewindCaptureAccum >= kRewindCaptureIntervalSec) {
@@ -1355,6 +1359,7 @@ void EmulationController::runEmulationSlice(double elapsedSeconds)
                 rewindPos_.store(n ? n - 1 : 0);
             }
         }
+#endif
     }
 
     // Park on the lock-step ACK without busy-spinning (this slice did no CPU

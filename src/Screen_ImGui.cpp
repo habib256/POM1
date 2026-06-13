@@ -1,4 +1,5 @@
 #include "Screen_ImGui.h"
+#include "SnapshotIO.h"
 #include "imgui.h"
 #include <cstring>
 #include <cmath>
@@ -855,6 +856,46 @@ void Screen_ImGui::clear()
 {
     std::lock_guard<std::mutex> lock(bufferMutex);
     clearUnlocked();
+}
+
+// ── Snapshot hooks ──────────────────────────────────────────────────────────
+// Capture the text grid (content + scroll + cursor) so rewind / save-state
+// restore the *visible* Apple-1 screen, not just RAM. Transient render state
+// (atlas, blink, boot phases) is intentionally left out.
+void Screen_ImGui::serialize(pom1::SnapshotWriter& w) const
+{
+    std::lock_guard<std::mutex> lock(bufferMutex);
+    w.writeU16(static_cast<uint16_t>(topRow));
+    w.writeU16(static_cast<uint16_t>(cursorX));
+    w.writeU16(static_cast<uint16_t>(cursorY));
+    w.writeU16(static_cast<uint16_t>(screenBuffer.size()));
+    if (!screenBuffer.empty())
+        w.writeBytes(screenBuffer.data(), screenBuffer.size());
+}
+
+void Screen_ImGui::deserialize(pom1::SnapshotReader& r)
+{
+    std::lock_guard<std::mutex> lock(bufferMutex);
+    topRow  = static_cast<int>(r.readU16());
+    cursorX = static_cast<int>(r.readU16());
+    cursorY = static_cast<int>(r.readU16());
+    const uint16_t n = r.readU16();
+    if (n > 0 && static_cast<std::size_t>(n) == screenBuffer.size()) {
+        r.readBytes(screenBuffer.data(), n);
+    } else if (n > 0) {
+        // Size mismatch (foreign build) — consume the bytes to stay in sync.
+        std::vector<char> tmp(n);
+        r.readBytes(tmp.data(), n);
+    }
+    // Defensive clamp so a corrupt blob can't drive bufferIndex() out of range.
+    if (topRow  < 0 || topRow  >= SCREEN_HEIGHT) topRow  = 0;
+    if (cursorX < 0 || cursorX >= SCREEN_WIDTH)  cursorX = 0;
+    if (cursorY < 0 || cursorY >= SCREEN_HEIGHT) cursorY = 0;
+    // Force a fresh render of the restored grid; cancel any boot-phase overlay.
+    dirty             = true;
+    visibleCellsValid = false;
+    garbageClearTimer = -1.0f;
+    blackScreenTimer  = -1.0f;
 }
 
 void Screen_ImGui::resetDisplay()

@@ -6,7 +6,6 @@
 #include "RewindBuffer.h"
 
 #include <cstring>
-#include <unordered_map>
 
 #include "SnapshotIO.h"   // kSnapshotMagic — header size
 
@@ -123,33 +122,31 @@ std::vector<uint8_t> RewindBuffer::applyDelta(const std::vector<uint8_t>& prev,
                                               const Frame& f) {
     std::vector<SectionRef> ps;
     if (!parseSections(prev, ps)) return {};
-    std::unordered_map<std::string, SectionRef> byName;
-    byName.reserve(ps.size());
-    for (const auto& r : ps) byName.emplace(r.name, r);
+    // buildDelta emits exactly one delta per predecessor section, in the same
+    // order, so resolve the predecessor payload POSITIONALLY (by index) — not by
+    // name. Two sections sharing the same 8-byte name (a possible future
+    // collision after kSectionNameLen truncation) would otherwise both resolve
+    // to the first via a name→section map, silently corrupting reconstruction.
+    if (f.deltas.size() != ps.size()) return {};
 
     std::vector<uint8_t> out;
     out.reserve(prev.size());
     out.insert(out.end(), f.header.begin(), f.header.end());
 
-    for (const SectionDelta& d : f.deltas) {
+    for (std::size_t i = 0; i < f.deltas.size(); ++i) {
+        const SectionDelta& d = f.deltas[i];
+        const SectionRef&    r = ps[i];   // positional predecessor (see above)
         appendName(out, d.name);
         appendU32LE(out, d.length);
         switch (d.kind) {
-            case 0: {  // COPY from predecessor
-                auto it = byName.find(d.name);
-                if (it == byName.end()) return {};
-                const SectionRef& r = it->second;
+            case 0:    // COPY from predecessor
                 out.insert(out.end(), prev.begin() + r.offset,
                                       prev.begin() + r.offset + r.length);
                 break;
-            }
             case 1:    // FULL
                 out.insert(out.end(), d.full.begin(), d.full.end());
                 break;
             case 2: {  // CHUNKED — start from predecessor payload, patch chunks
-                auto it = byName.find(d.name);
-                if (it == byName.end()) return {};
-                const SectionRef& r = it->second;
                 const std::size_t base = out.size();
                 out.insert(out.end(), prev.begin() + r.offset,
                                       prev.begin() + r.offset + r.length);

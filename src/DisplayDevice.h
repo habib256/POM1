@@ -14,6 +14,8 @@
 /// the implementation to live inside a free/static function and routed
 /// through a hidden singleton atomic — preventing any form of dependency
 /// injection.
+namespace pom1 { class SnapshotWriter; class SnapshotReader; }
+
 class DisplayDevice
 {
 public:
@@ -24,6 +26,13 @@ public:
     /// its output lines). Implementations must be fast and non-blocking;
     /// heavy work belongs on the consumer thread.
     virtual void onChar(char c) = 0;
+
+    /// Optional snapshot hooks (default no-op) so the visible display state
+    /// rides along in rewind / save-state. Without this, restoring memory
+    /// leaves the on-screen text at the live frame — the Apple-1 text grid has
+    /// no backing RAM, it lives in the display device. Screen_ImGui overrides.
+    virtual void serialize(pom1::SnapshotWriter&) const {}
+    virtual void deserialize(pom1::SnapshotReader&) {}
 };
 
 #endif // DISPLAYDEVICE_H

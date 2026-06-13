@@ -35,6 +35,13 @@ public:
     // DisplayDevice interface — Memory calls this on every $D012 write.
     void onChar(char c) override { writeChar(c); }
 
+    // Snapshot hooks — the Apple-1 text grid (screenBuffer + scroll + cursor)
+    // is not in RAM, so it must be captured for rewind / save-state to restore
+    // the *visible* screen. Transient render state (atlas, blink, boot phases)
+    // is not serialised; deserialize() forces a re-render.
+    void serialize(pom1::SnapshotWriter& w) const override;
+    void deserialize(pom1::SnapshotReader& r) override;
+
     /** Colonnes / lignes de la grille texte Apple 1 */
     static constexpr int kApple1Columns = 40;
     static constexpr int kApple1Rows = 24;

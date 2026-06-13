@@ -23,6 +23,19 @@ authoritative commit-level history is `git log`; the user-facing feature tour is
   republishes the state), and releasing resumes the machine there
   (`rewindResumeHere`). Shows `LIVE` / `REWIND -N.Ns`, auto-sizes to the gap and
   widens with the window. Shares the proven seek/resume API with the panel.
+- **Snapshots now capture the visible screen** (new `SCREEN` section via a
+  `DisplayDevice::serialize` hook + `Screen_ImGui` override). The Apple-1 text
+  grid lives in the display device, not in RAM, so before this a rewind/restore
+  moved CPU+RAM back but the on-screen text stayed at the live frame — scrubbing
+  appeared to do nothing on a text preset. Now the grid (content + scroll +
+  cursor) rides along, so dragging the timeline shows the older screen images.
+  Benefits `.snap` save/load too; backward-compatible (old `.snap` files simply
+  lack the section). Memory-only fixtures (no display) skip it.
+- **Desktop only** — rewind capture runs on the dedicated emulation thread; the
+  single-threaded, memory-bounded WASM build can't afford the periodic
+  full-state capture on its one main-loop thread, so rewind (capture + the
+  toolbar band + the *State Rewind* panel) is compiled out (`#if !POM1_IS_WASM`)
+  in the web build.
 
 ### Added — Uncle Bernie GEN2 colour graphics: cycle-accurate beam-racing engine (POM2 back-port)
 

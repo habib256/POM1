@@ -595,7 +595,9 @@ void MainWindow_ImGui::render()
     }
 
     // Timeline rewind (scrub through recent emulation history)
-    if (showRewindTimeline) renderRewindTimelineWindow();
+#if !POM1_IS_WASM
+    if (showRewindTimeline) renderRewindTimelineWindow();   // rewind is desktop-only
+#endif
 
     // Carte mémoire
     if (showMemoryMapGrid) renderMemoryMapGridWindow();

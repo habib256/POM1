@@ -8,6 +8,7 @@
 #include "CpuClock.h"
 #include "Logger.h"
 
+#include <cerrno>
 #include <cstring>
 
 // ─────────────────────────────────────────────────────────────
@@ -171,22 +172,26 @@ void TelemetryPort::endFrame()
     }
     ++framesSentCount;
 
-    // Lock-step: park until the harness ACKs this frame. Memory checks
-    // isAwaitingAck() right after this write and halts the CPU (cycle-exact,
-    // right after the STA); EmulationController's slice loop then pumps the
-    // socket via serviceStall() until kAckByte clears the gate.
-    if (lockstep) awaitingAck = true;
-
     // Queue for the socket. Drop on backpressure (the log already has it) rather
     // than grow without bound; flag it once so the symptom is visible.
     if (outBuf.size() + len + 3 > kMaxOutBytes) {
         frameBuf.clear();
         pom1::log().warn("Telemetry", "outbound buffer full — frame dropped (socket)");
+        // Do NOT arm the lock-step gate here: the harness will never receive
+        // this frame, so parking on its ACK would just wedge the CPU until the
+        // watchdog auto-resume fires. Drop the frame and keep running.
         return;
     }
     outBuf.insert(outBuf.end(), hdr, hdr + 3);
     outBuf.insert(outBuf.end(), frameBuf.begin(), frameBuf.end());
     frameBuf.clear();
+
+    // Lock-step: park until the harness ACKs this (now-queued) frame. Memory
+    // checks isAwaitingAck() right after this write and halts the CPU
+    // (cycle-exact, right after the STA); EmulationController's slice loop then
+    // pumps the socket via serviceStall() until kAckByte clears the gate. Armed
+    // only once the frame is actually queued — never on the drop path above.
+    if (lockstep) awaitingAck = true;
 }
 
 void TelemetryPort::setLogFile(const std::string& path)
@@ -411,25 +416,52 @@ void TelemetryPort::pollClient()
 void TelemetryPort::flushOutbound()
 {
     if (!clientFd || outBuf.empty()) return;
-    sendRaw(outBuf.data(), outBuf.size());
-    outBuf.clear();
-}
-
-void TelemetryPort::sendRaw(const uint8_t* data, std::size_t len)
-{
-    if (!clientFd || len == 0) return;
-#ifdef _WIN32
-    const int sent = ::send(clientFd, reinterpret_cast<const char*>(data),
-                            static_cast<int>(len), 0);
-#else
-    const ssize_t sent = ::send(clientFd, data, len, MSG_NOSIGNAL);
-#endif
-    if (sent <= 0) {
-        // Peer gone / EPIPE — drop now; the next poll would see POLLHUP anyway.
-        disconnectClient();
+    const std::size_t sent = sendRaw(outBuf.data(), outBuf.size());
+    if (!clientFd) {
+        // Hard disconnect mid-flush: whatever is left is a partial frame that
+        // would desync the next harness — drop the whole queue for a clean start.
+        outBuf.clear();
         return;
     }
-    bytesSentCount += static_cast<uint32_t>(sent);
+    if (sent >= outBuf.size())
+        outBuf.clear();
+    else if (sent > 0)
+        // Short write (kernel send buffer full): keep the unsent tail and retry
+        // next tick. The SAME client receives the remainder in order — clearing
+        // it here would drop bytes mid-frame and desync the harness's parser.
+        outBuf.erase(outBuf.begin(),
+                     outBuf.begin() + static_cast<std::ptrdiff_t>(sent));
+    // sent == 0 with the client still up = EAGAIN: keep the full queue.
+}
+
+std::size_t TelemetryPort::sendRaw(const uint8_t* data, std::size_t len)
+{
+    if (!clientFd || len == 0) return 0;
+    std::size_t total = 0;
+    while (total < len) {
+#ifdef _WIN32
+        const int sent = ::send(clientFd, reinterpret_cast<const char*>(data + total),
+                                static_cast<int>(len - total), 0);
+#else
+        const ssize_t sent = ::send(clientFd, data + total, len - total, MSG_NOSIGNAL);
+#endif
+        if (sent > 0) { total += static_cast<std::size_t>(sent); continue; }
+
+        // sent <= 0: distinguish transient backpressure (non-blocking socket,
+        // kernel buffer full) from a dead peer. The client FD is O_NONBLOCK
+        // (set in acceptClient), so EAGAIN/EWOULDBLOCK is normal flow control —
+        // keep the tail and retry, do NOT tear down a healthy connection.
+#ifdef _WIN32
+        const bool wouldBlock = (sent < 0 && WSAGetLastError() == WSAEWOULDBLOCK);
+#else
+        const bool wouldBlock = (sent < 0 && (errno == EAGAIN || errno == EWOULDBLOCK));
+#endif
+        if (wouldBlock) break;
+        disconnectClient();   // sent == 0 (peer closed) or a real error / EPIPE
+        break;
+    }
+    bytesSentCount += static_cast<uint32_t>(total);
+    return total;
 }
 
 #else // POM1_IS_WASM — no networking (channel degrades to a no-op tap)
@@ -440,6 +472,6 @@ void TelemetryPort::acceptClient() {}
 void TelemetryPort::disconnectClient() { clientFd.reset(); clientAddress.clear(); }
 void TelemetryPort::pollClient() {}
 void TelemetryPort::flushOutbound() { outBuf.clear(); }
-void TelemetryPort::sendRaw(const uint8_t*, std::size_t) {}
+std::size_t TelemetryPort::sendRaw(const uint8_t*, std::size_t) { return 0; }
 
 #endif // POM1_IS_WASM

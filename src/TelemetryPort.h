@@ -200,7 +200,10 @@ private:
     void acceptClient();
     void disconnectClient();
     void pollClient();
-    void sendRaw(const uint8_t* data, std::size_t len);
+    // Sends as much of [data,len) as the non-blocking socket accepts and returns
+    // the byte count actually handed to the kernel (0 on EAGAIN / disconnect).
+    // The caller keeps any unsent tail for the next flush.
+    std::size_t sendRaw(const uint8_t* data, std::size_t len);
 
 #if !POM1_IS_WASM && defined(_WIN32)
     static bool winsockInitialized;
