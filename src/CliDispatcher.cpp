@@ -247,6 +247,10 @@ std::optional<CliPlan> parseCli(int argc, char* argv[], bool& listPresetsOut)
             plan.cpuMax = true;
             continue;
         }
+        if (arg == "--headless") {
+            plan.headless = true;
+            continue;
+        }
         if (arg == "--trace-brk") {
             CliAction a; a.kind = CliAction::Kind::TraceBrk;
             plan.deferredActions.push_back(std::move(a));

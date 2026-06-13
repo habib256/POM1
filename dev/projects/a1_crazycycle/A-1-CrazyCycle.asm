@@ -582,7 +582,7 @@ fill_text:
 msg:    .byte "Uncle Bernie HGR COLOR CARD "       ; MSGLEN (28) bytes
 
 str_banner:
-        .byte "GEN2 RELEASE DEMO - UBERNIE + BEAM WINDOW", $0D
+        .byte "GEN2 DEMO - UBERNIE + BEAM WINDOW", $0D
         .byte "1) TEXT PAGE   2) UBERNIE HGR PICTURE", $0D
         .byte "3) BOUNCING TEXT WINDOW (HST0 SYNC)", $0D
         .byte "ANY KEY EXITS TO WOZMON", $0D, $00

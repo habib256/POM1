@@ -32,12 +32,14 @@
 #include <emscripten/html5.h>
 #else
 #include <atomic>
+#include <chrono>
 #include <csignal>
 #include <cstdio>
 #include <cstring>
 #include <filesystem>
 #include <string>
 #include <system_error>
+#include <thread>
 #include <vector>
 #if defined(_WIN32)
 #ifndef WIN32_LEAN_AND_MEAN
@@ -346,6 +348,55 @@ static void pom1_macos_provision_user_data_dir()
 }
 #endif
 
+#if !POM1_IS_WASM
+// Headless driver (--headless): run the emulator with no GLFW window / GL /
+// ImGui — for CI and scripted runs (telemetry golden-trace, lock-step game
+// tests) that drive POM1 over the telemetry socket with no display. Reuses
+// EmulationController (its own emulation thread) + runDeferredActions; the
+// machine is the default 64K Apple-1. Preset / card-layout flags are GUI-only
+// (applyMachineConfig is ImGui-coupled) and are skipped here — full-preset
+// headless is a follow-up. See doc/CLI.md and doc/TELEMETRY_SIDE_CHANNEL.md.
+static std::atomic<bool> g_headlessStop{false};
+static void pom1_headless_signal_handler(int) { g_headlessStop.store(true); }
+
+static int runHeadless(pom1::CliPlan& plan)
+{
+    pom1::log().info("POM1", "headless mode — no window (Ctrl-C / SIGTERM to exit)");
+
+    EmulationController emu(nullptr);   // null screen: the $D012 display sink is a no-op
+
+    if (plan.cpuMax)
+        emu.setExecutionSpeedCyclesPerFrame(1000000);
+    else if (plan.executionSpeed)
+        emu.setExecutionSpeedCyclesPerFrame(*plan.executionSpeed);
+
+    if (plan.telemetryPort)
+        emu.setTelemetryListenPort(static_cast<uint16_t>(*plan.telemetryPort));
+    if (!plan.telemetryLogPath.empty())
+        emu.setTelemetryLogFile(plan.telemetryLogPath);
+    if (plan.telemetryPort || !plan.telemetryLogPath.empty())
+        emu.setTelemetryEnabled(true);
+
+    if (plan.terminalOverride)
+        emu.setTerminalCardEnabled(true);
+
+    if (plan.presetIndex >= 0 || !plan.cardOverrides.empty())
+        pom1::log().warn("POM1", "headless: --preset / --enable / --disable are GUI-only "
+                                 "and ignored here; using the default 64K machine");
+
+    // Phase-C deferred verbs (load / run / paste / step / sd-* / rtc / snapshot / break).
+    pom1::runDeferredActions(plan.deferredActions, emu);
+
+    std::signal(SIGINT,  pom1_headless_signal_handler);
+    std::signal(SIGTERM, pom1_headless_signal_handler);
+    while (!g_headlessStop.load()) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(50));
+    }
+    pom1::log().info("POM1", "headless shutdown");
+    return 0;
+}
+#endif // !POM1_IS_WASM
+
 int main(int argc, char* argv[])
 {
     // Install the Tee(stream + ring) logger so every subsystem message lands
@@ -367,6 +418,13 @@ int main(int argc, char* argv[])
     if (listPresetsSeen) return 0;
     if (!parsedPlan) return 1;
     pom1::CliPlan plan = std::move(*parsedPlan);
+
+#if !POM1_IS_WASM
+    // Headless: no window, no GL — go straight to the emulator driver. Must run
+    // before glfwInit so a display-less CI box never touches GLFW.
+    if (plan.headless)
+        return runHeadless(plan);
+#endif
 
     // Default bundled cassette: preload cassettes/WOZ_talk.mp3 when --tape
     // was not supplied. Probes the same cwd-relative locations as the

@@ -101,6 +101,7 @@ struct CliPlan {
     int                                presetIndex = -1;   // -1 = default
     bool                               terminalOverride = false;
     bool                               cpuMax = false;
+    bool                               headless = false;   // --headless: run with no GLFW window (CI / scripted; default 64K machine, no preset/card layout)
     std::optional<int>                 executionSpeed;     // cycles/frame
     std::optional<int>                 telemetryPort;      // --telemetry-port N: open the dev telemetry side channel on localhost:N (1-65535)
     std::string                        telemetryLogPath;   // --telemetry-log PATH: tee the outbound frame stream to a file (golden-trace); implies enabling the port
