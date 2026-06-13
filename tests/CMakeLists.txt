@@ -45,6 +45,7 @@ set(POM1_TEST_CORE_SOURCES
     ${CMAKE_SOURCE_DIR}/src/D64Image.cpp
     ${CMAKE_SOURCE_DIR}/src/WiFiModem.cpp
     ${CMAKE_SOURCE_DIR}/src/TerminalCard.cpp
+    ${CMAKE_SOURCE_DIR}/src/TelemetryPort.cpp
     ${CMAKE_SOURCE_DIR}/src/A1IO_RTC.cpp
     ${CMAKE_SOURCE_DIR}/src/CFFA1.cpp
     ${CMAKE_SOURCE_DIR}/src/JukeBox.cpp

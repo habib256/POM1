@@ -102,6 +102,8 @@ struct CliPlan {
     bool                               terminalOverride = false;
     bool                               cpuMax = false;
     std::optional<int>                 executionSpeed;     // cycles/frame
+    std::optional<int>                 telemetryPort;      // --telemetry-port N: open the dev telemetry side channel on localhost:N (1-65535)
+    std::string                        telemetryLogPath;   // --telemetry-log PATH: tee the outbound frame stream to a file (golden-trace); implies enabling the port
     std::string                        initialTapePath;
     bool                               initialTapeAutoPlay = false;
     std::string                        saveTapePath;

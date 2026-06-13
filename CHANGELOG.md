@@ -1,0 +1,109 @@
+# Changelog
+
+Notable **emulator** changes, lifted from `TODO.md` as work ships. The
+authoritative commit-level history is `git log`; the user-facing feature tour is
+`README.md`; open work lives in `TODO.md`. Format loosely follows
+[Keep a Changelog](https://keepachangelog.com/). Versions track the string in
+`src/main_imgui.cpp` / `README.md`.
+
+## [Unreleased]
+
+### Added — State rewind (microM8-style timeline)
+
+- **Timeline scrub + delta ring (MVP)** — `RewindBuffer`: delta-encoded ring of
+  in-memory snapshot blobs (section + 256 B chunk deltas, keyframe-anchored
+  segments, 128 MB budget eviction), captured from the emulation slice
+  (~4 captures/s). UI: **CPU → State Rewind…** scrub panel — slider preview
+  (pause + restore), *Resume here* (truncate the rewound-past future), *Back to
+  live*. Pinned by `rewind_buffer_smoke`.
+
+### Added — Uncle Bernie GEN2 colour graphics: cycle-accurate beam-racing engine (POM2 back-port)
+
+GEN2 moves from a passive `$2000-$3FFF` framebuffer + end-of-frame MAME
+rasteriser to a cycle-accurate, beam-raced video subsystem driven by the
+release card's `$C250-$C257` soft switches.
+
+- **Hardware spec resolved** — Bernie's `doc/ColorGraphicsCard_doc_for_Arnaud.pdf`
+  transcribed; Q1–Q10 closed in `doc/GEN2_RELEASE_questions.md`. Read-only
+  switches (a read toggles + returns HST0 in D7; writes are no-ops), HST0 high in
+  H/V-blank with a notch during the 3-cycle colour burst, HIRES page 2
+  `$4000-$5FFF`, decode `SEL = $Cxxx & !A11 & A9 & A4`, indeterminate power-on
+  latch (software must init; Apple-1 RESET leaves it alone), 65 cyc/line × 262
+  @60 Hz / 312 @50 Hz.
+- **Developer guide ("Bernie SDK")** — `doc/GEN2_RELEASE.md`: `$C25x` map, HST0
+  recipes, `$C05x`→`$C25x` porting table, dual-monitor, 48 KB RAM, the POM1 dev
+  loop. Reusable `dev/lib/gen2/` (`gen2.inc` equates + cheat-sheet,
+  `gen2_sync.asm` coarse `gen2_waitvbl` + exact `gen2_beam_lock`).
+- **Video clock + floating bus** — `Gen2VideoScanner` (`src/Gen2VideoScanner.{h,cpp}`):
+  NTSC cycle counter (`65×262`/`65×312`), verbatim MAME `scanner_address`,
+  `floatingBus(mem)` (HGR page 1 `$2000` / page 2 `$4000`); advanced from
+  `Memory::advanceCycles()` when the HGR framebuffer is attached. Pinned by
+  `gen2_floatingbus_smoke`.
+- **Soft switches `$C250-$C257` + HST0** — registered on `PeripheralBus` over
+  `$C200-$C7FF` with Bernie's mirror decode (`$C2/$C3/$C6/$C7xx`, A4=1); a read
+  toggles the switch, journals a `Gen2VideoScanner::Event`, and returns
+  `(HST0<<7) | xorshift-noise`; decoded writes are blocked. 50/60 Hz jumper
+  exposed (`setGen2FiftyHz`) + persisted in the `GEN2VID` snapshot section.
+  Pinned by `gen2_softswitch_msb_smoke`.
+- **Beam-raced renderer** — per-frame `VideoEvent` journal (`emuCycle` as the
+  single source of truth, republished at every video-frame rollover),
+  `frameCycleToPos` + `forEachBeamSegment`, `GraphicsCard::render(memory,
+  endState, frameStart, events, linesPerFrame)` with a zero-regression
+  `rasterizeToBuffer()` fast path for pre-beam HGR programs. Modes: TEXT 40×24
+  B&W (built-in 5×7 font), LORES 40×48/16-colour, HIRES 280×192 NTSC artifact,
+  MIXED, PAGE2. **Vertical and horizontal mid-scanline splits** (whole-line
+  decode, clipped write-back, NTSC neighbour context preserved at the boundary).
+  Pinned by `gen2_beam_race_smoke`, `gen2_horizontal_split_smoke`. OOR-strict
+  carve-out extended to `$2000-$5FFF` (card DRAM behind both HGR pages).
+- **Product integration** — preset 13 plugs the engine via
+  `setHgrFramebufferAttached`; Hardware Reference + tooltips + memory map
+  updated; CLAUDE.md updated; validation demo `dev/projects/a1_crazycycle/`
+  (→ `software/Graphic HGR/A-1-CrazyCycle.{bin,txt}`, `E000R`) — latch init by
+  reads, HGR colour test card, then a beam-raced TEXT window mid-pattern with
+  cycle-exact HST0 sync and per-line horizontal splits.
+
+### Added — Telemetry side channel (dev-only test-harness port)
+
+Binary, frame-delimited bridge for automated game testing — the generalisation
+of the Terminal Card's `$D012`→TCP→`$D010` bridge. The game writes its state to a
+4-byte MMIO window; an external harness reads it over TCP and drives synthetic
+input. Design: `doc/TELEMETRY_SIDE_CHANNEL.md`. Not real hardware — a dev aid in
+the "fantasy" category.
+
+- **`TelemetryPort`** (`src/TelemetryPort.{h,cpp}`) — a `pom1::Peripheral`
+  modelled on `TerminalCard`: MMIO window `$C440-$C443`
+  (`TELE_DATA`/`TELE_CTRL`/`TELE_IN`/`TELE_INLEN`), outbound frames
+  `0xAA <len16-le> <payload>` flushed from `advanceCycles`, inbound FIFO, TCP
+  server on localhost (default `:6503`, reuses `SocketHandle` + the TerminalCard
+  socket pattern, WASM no-op stubs), `KeyInjector` for synthetic keyboard input
+  (`$D010/$D011`). State is transient — `serialize`/`deserialize` are no-ops.
+- **Bus window `$C440-$C443`** — the `$C4xx` A9=0 dead zone GEN2's decoder
+  (`SEL = $Cxxx & !A11 & A9 & A4`) is structurally blind to and no other card
+  claims (ACI `$C0/$C1xx`, SID `$C8xx+`, Juke-Box ≤ `$BFFF`, PIA `$Dxxx`);
+  registered on the `PeripheralBus` at priority 30 so it wins over GEN2's broad
+  `$C200-$C7FF` pass-through. Disabled by default.
+- **`--telemetry-port <N>`** — opens the channel on `127.0.0.1:N` (CliDispatcher
+  → MainWindow override → `EmulationController::setTelemetryListenPort` +
+  `setTelemetryEnabled`). Documented in `doc/CLI.md`.
+- **Deterministic lock-step** (`kCtrlLockstepOn` / `$02`) — an end-frame write
+  parks the CPU at that instruction until the harness sends `kAckByte` (`0x06`):
+  `Memory` calls `M6502::stop()` for a cycle-exact halt, `EmulationController`'s
+  slice loop pumps the socket via `TelemetryPort::serviceStall()` between slices
+  (stateMutex released — no deadlock, UI stays live), a 5 s timeout auto-resumes a
+  dead harness. Game-transparent (no game-side polling). Verified end-to-end:
+  exactly one frame per ACK, CPU provably parked between frames — pinned by
+  `tools/test_telemetry_lockstep.py` (assembles a 6502 emitter, drives it over
+  the socket).
+- **`--telemetry-log <path>`** — tees the outbound frame stream to a binary file
+  (same framing as the socket) for golden-trace CI — no live harness needed,
+  diff a run against an expected capture. Implies enabling the port. Captures
+  every frame even under socket backpressure. Documented in `doc/CLI.md`.
+- **UI status panel** — *View → Telemetry Side Channel…* shows the snapshot
+  (enabled, listen port, connected harness, lock-step, frames/bytes) with an
+  Enable toggle; fed via `EmulationSnapshot.telemetry` / `SnapshotPublisher`.
+- **`Memory` out-of-line `~Memory()`** — added so the forward-declared peripheral
+  `unique_ptr`s only need their complete type at the single dtor definition point
+  (was previously relying on transitive includes in every TU that destroys a
+  `Memory`).
+- **Not yet** (tracked in `TODO.md`): headless CI (run POM1 without a display) —
+  a separate, non-telemetry-specific concern tied to the CI GitHub Actions item.

@@ -3,6 +3,8 @@
 #include "PR40Printer.h"
 #include "RomLoader.h"
 #include "TMS9918.h"
+#include "TelemetryPort.h"   // complete type for memory->getTelemetryPort()
+#include "Logger.h"
 
 #include <algorithm>
 #include <chrono>
@@ -34,6 +36,10 @@ constexpr double kMaxLiveAudioLeadSeconds = 0.15;
 constexpr int kMaxSliceCycles = 6000;
 constexpr double kMaxLiveAudioLeadSeconds = 0.025;
 #endif
+
+// Lock-step safety valve: if a parked frame goes un-ACKed this long (dead /
+// missing harness), auto-resume so the telemetry port can't wedge the emulator.
+constexpr double kTelemetryStallTimeoutSec = 5.0;
 
 } // namespace
 
@@ -1155,6 +1161,24 @@ void EmulationController::setTerminalCardEnabled(bool enabled)
     publisher.publish(*memory, *cpu, runRequested.load());
 }
 
+void EmulationController::setTelemetryEnabled(bool enabled)
+{
+    std::lock_guard<PriorityMutex> lock(stateMutex);
+    memory->setTelemetryEnabled(enabled);
+}
+
+void EmulationController::setTelemetryListenPort(uint16_t port)
+{
+    std::lock_guard<PriorityMutex> lock(stateMutex);
+    memory->getTelemetryPort().setListenPort(port);
+}
+
+void EmulationController::setTelemetryLogFile(const std::string& path)
+{
+    std::lock_guard<PriorityMutex> lock(stateMutex);
+    memory->getTelemetryPort().setLogFile(path);
+}
+
 bool EmulationController::isTerminalCardEnabled() const
 {
     std::lock_guard<PriorityMutex> lock(stateMutex);
@@ -1287,13 +1311,31 @@ void EmulationController::runEmulationSlice(double elapsedSeconds)
         return;
     }
 
+    bool telemetryStalled = false;
     {
         std::lock_guard<PriorityMutex> lock(stateMutex);
         memory->getCassetteDevice().setLiveAudioTimebaseHz(static_cast<uint32_t>(std::max(1.0, cyclesPerSecond)));
         keyboard.drainTo(*memory);
+
+        // Lock-step: the CPU is parked at an end-frame marker until the harness
+        // ACKs. Don't advance it — pump the telemetry socket so the ACK can
+        // arrive (the normal poll runs inside cpu->run, which we skip here),
+        // with a wall-clock timeout so a dead harness can't wedge the emulator.
+        telemetryStalled = memory->isTelemetryEnabled()
+                        && memory->getTelemetryPort().isAwaitingAck();
+        if (telemetryStalled) {
+            memory->getTelemetryPort().serviceStall();
+            telemetryStallSeconds += elapsedSeconds;
+            if (telemetryStallSeconds > kTelemetryStallTimeoutSec) {
+                memory->getTelemetryPort().clearAwaitingAck();
+                pom1::log().warn("Telemetry", "lock-step ACK timeout — auto-resuming");
+                telemetryStallSeconds = 0.0;
+            }
+        }
         // Re-vérifier sous le mutex : stopCpu()/step peut avoir eu lieu après le test du haut de boucle.
         // Sinon cpu->start() annule cpu->stop() et une tranche entière s'exécute entre deux F7.
-        if (runRequested.load()) {
+        else if (runRequested.load()) {
+            telemetryStallSeconds = 0.0;
             cpu->start();
             const int actualCycles = cpu->run(cyclesToRun);
             emulationCycleBudget -= static_cast<double>(actualCycles);
@@ -1302,7 +1344,7 @@ void EmulationController::runEmulationSlice(double elapsedSeconds)
 
         // State-rewind capture: a few snapshots per second while the CPU is
         // actually running and we're not parked on a rewound preview frame.
-        if (rewindEnabled_.load() && runRequested.load() && !rewindPreviewing_.load()) {
+        if (rewindEnabled_.load() && runRequested.load() && !rewindPreviewing_.load() && !telemetryStalled) {
             rewindCaptureAccum += elapsedSeconds;
             if (rewindCaptureAccum >= kRewindCaptureIntervalSec) {
                 rewindCaptureAccum = 0.0;
@@ -1313,6 +1355,14 @@ void EmulationController::runEmulationSlice(double elapsedSeconds)
                 rewindPos_.store(n ? n - 1 : 0);
             }
         }
+    }
+
+    // Park on the lock-step ACK without busy-spinning (this slice did no CPU
+    // work). 1 ms keeps ACK latency low without pegging a core.
+    if (telemetryStalled) {
+#if !POM1_IS_WASM
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+#endif
     }
 
     // Terminal Card: consume pending reset/clear OUTSIDE stateMutex

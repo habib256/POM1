@@ -543,6 +543,72 @@ void MainWindow_ImGui::renderA1IO_RTCWindow()
     ImGui::End();
 }
 
+void MainWindow_ImGui::renderTelemetryWindow()
+{
+    ImGui::SetNextWindowSize(ImVec2(360, 320), ImGuiCond_FirstUseEver);
+    applyPendingLayout("Telemetry Side Channel");
+    if (ImGui::Begin("Telemetry Side Channel", &showTelemetry)) {
+        ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.7f, 0.7f, 0.7f, 1.0f));
+        ImGui::TextWrapped("Dev-only test-harness port at $C440-$C443 (not real "
+                           "hardware). A game writes state + an end-frame marker; "
+                           "an external harness reads frames over TCP and drives "
+                           "input. See doc/TELEMETRY_SIDE_CHANNEL.md.");
+        ImGui::PopStyleColor();
+        ImGui::Separator();
+
+#if POM1_IS_WASM
+        ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 0.85f, 0.4f, 1.0f));
+        ImGui::TextWrapped("Web build: browsers cannot open a listening TCP "
+                           "socket, so the channel is a no-op.");
+        ImGui::PopStyleColor();
+        ImGui::Separator();
+#endif
+
+        const auto& snap = uiSnapshot.telemetry;
+
+        bool enabled = uiSnapshot.telemetryEnabled;
+        if (ImGui::Checkbox("Enabled", &enabled)) {
+            emulation->setTelemetryEnabled(enabled);
+        }
+        ImGui::SameLine();
+        ImGui::TextDisabled("(opens localhost:%d)", snap.listenPort);
+
+        if (uiSnapshot.telemetryEnabled) {
+            if (snap.serverListening)
+                ImGui::TextColored(ImVec4(0.2f, 0.9f, 0.2f, 1.0f),
+                    ICON_FA_SERVER " Listening on port %d", snap.listenPort);
+            else
+                ImGui::TextColored(ImVec4(0.9f, 0.2f, 0.2f, 1.0f),
+                    ICON_FA_SERVER " Server not running");
+
+            if (snap.clientConnected)
+                ImGui::TextColored(ImVec4(0.2f, 0.9f, 0.2f, 1.0f),
+                    ICON_FA_PLUG " Harness: %s", snap.clientAddress.c_str());
+            else
+                ImGui::TextColored(ImVec4(0.5f, 0.5f, 0.5f, 1.0f),
+                    ICON_FA_PLUG " No harness connected");
+
+            ImGui::Separator();
+            ImGui::Text("Lock-step:      %s", snap.lockstep ? "ARMED" : "off");
+            ImGui::Text("Frames sent:    %u", snap.framesSent);
+            ImGui::Text("Bytes sent:     %u", snap.bytesSent);
+            ImGui::Text("Bytes received: %u", snap.bytesReceived);
+        } else {
+            ImGui::TextDisabled("Disabled — tick Enabled, or pass --telemetry-port N.");
+        }
+
+        ImGui::Separator();
+        if (ImGui::CollapsingHeader("Registers ($C440-$C443)")) {
+            ImGui::BulletText("$C440 TELE_DATA  (W)  push a byte into the frame");
+            ImGui::BulletText("$C441 TELE_CTRL  (W)  $01 end-frame / $02 arm lock-step / $00 disarm");
+            ImGui::BulletText("$C441 TELE_STAT  (R)  b7 harness connected, b0 inbound available");
+            ImGui::BulletText("$C442 TELE_IN    (R)  pop one inbound byte (ACK $06 is consumed)");
+            ImGui::BulletText("$C443 TELE_INLEN (R)  inbound bytes pending");
+        }
+    }
+    ImGui::End();
+}
+
 void MainWindow_ImGui::renderPR40Window()
 {
     ImGui::SetNextWindowSize(ImVec2(440, 780), ImGuiCond_FirstUseEver);

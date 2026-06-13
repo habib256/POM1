@@ -32,6 +32,7 @@
 #include "MicroSD.h"
 #include "WiFiModem.h"
 #include "TerminalCard.h"
+#include "TelemetryPort.h"
 #include "A1IO_RTC.h"
 #include "PR40Printer.h"
 #include "CFFA1.h"
@@ -132,6 +133,12 @@ Memory::Memory()
     jukeBox = std::make_unique<JukeBox>();
     codeTank = std::make_unique<CodeTank>();
     terminalCard->setKeyInjector([this](char key, bool raw) {
+        if (raw) setKeyPressedRaw(key);
+        else setKeyPressed(key);
+    });
+
+    telemetryPort = std::make_unique<TelemetryPort>();
+    telemetryPort->setKeyInjector([this](char key, bool raw) {
         if (raw) setKeyPressedRaw(key);
         else setKeyPressed(key);
     });
@@ -323,8 +330,30 @@ Memory::Memory()
         });
     bus.setEnabled(gen2SoftSwitchBusHandle, hgrFramebufferAttached);
 
+    // Telemetry side channel (dev-only virtual device, $C440-$C443). Sits in the
+    // $C4xx A9=0 dead zone where GEN2's decoder (SEL = $Cxxx & !A11 & A9 & A4,
+    // needs A9=1) is structurally blind; no other card claims $C4xx/$C5xx.
+    // Priority 30 so it owns its four bytes over GEN2's broad $C200-$C7FF
+    // pass-through handler. Enabled only via setTelemetryEnabled (--telemetry-port).
+    telemetryBusHandle = bus.registerHandle(
+        "Telemetry", {TelemetryPort::kBaseAddr, TelemetryPort::kEndAddr}, /*priority*/ 30,
+        [this](uint16_t a) { return telemetryPort->readReg(a); },
+        [this](uint16_t a, uint8_t v) {
+            telemetryPort->writeReg(a, v);
+            // Lock-step: an end-frame write may have armed the ACK gate. Halt the
+            // CPU now so run() exits right after this STA (cycle-exact); the slice
+            // loop parks until the harness ACKs. Game-transparent, no deadlock.
+            if (cpuForIrq && telemetryPort->isAwaitingAck()) cpuForIrq->stop();
+        });
+    bus.setEnabled(telemetryBusHandle, telemetryEnabled.load());
+
     initMemory();
 }
+
+// Defined here (not defaulted in the header) so the forward-declared unique_ptr
+// peripheral members get their complete type from this TU's includes. See
+// Memory.h ~Memory().
+Memory::~Memory() = default;
 
 uint8_t Memory::gen2SoftSwitchRead(uint16_t address)
 {
@@ -454,6 +483,17 @@ void Memory::setGT6144Enabled(bool b)
     if (b && !gt6144Enabled) gt6144->reset();
     gt6144Enabled = b;
     bus.setEnabled(gt6144BusHandle, b);
+}
+
+void Memory::setTelemetryEnabled(bool b)
+{
+    if (b == telemetryEnabled.load()) return;
+    telemetryEnabled.store(b);
+    bus.setEnabled(telemetryBusHandle, b);
+    // The TCP server is opened only while the port is active. reset() (re)starts
+    // it + clears the FIFOs; shutdown() stops it + drops the client.
+    if (b) telemetryPort->reset();
+    else   telemetryPort->shutdown();
 }
 
 void Memory::setPresetRamKB(int kb)
@@ -1223,7 +1263,7 @@ void Memory::memWrite(uint16_t address, uint8_t value)
     // otherwise paint a spurious '_' on every soft reset.
     //
     // POM1 however has been historically permissive: emulator-era demos
-    // (e.g. software/tms9918/demo.bin, whose startup banner uses the WOZ
+    // (e.g. software/Apple-1_TMS_CC65/demo.bin, whose startup banner uses the WOZ
     // Monitor ECHO routine with plain ASCII in the accumulator — bit 7
     // clear) print correctly on POM1 even though a real Apple-1 would keep
     // the 74LS164 silent. Breaking that compatibility regresses every
@@ -1740,6 +1780,7 @@ void Memory::advanceCycles(int cycles)
     if (microSDEnabled) microSD->advanceCycles(cycles);
     if (wifiModemEnabled) wifiModem->advanceCycles(cycles);
     if (terminalCardEnabled) terminalCard->advanceCycles(cycles);
+    if (telemetryEnabled) telemetryPort->advanceCycles(cycles);
     if (a1ioRtcEnabled) a1ioRtc->advanceCycles(cycles);
     if (pr40Enabled) pr40Printer->advanceCycles(cycles);
     if (jukeBoxEnabled) jukeBox->advanceCycles(cycles);

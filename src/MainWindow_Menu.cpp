@@ -16,7 +16,6 @@
 #include <GLFW/glfw3.h>
 
 #include <cstdio>
-#include <filesystem>
 #include <iomanip>
 #include <sstream>
 #include <string>
@@ -195,6 +194,7 @@ void MainWindow_ImGui::renderMenuBar()
             ImGui::MenuItem("Memory Map Bar (Horizontal)", nullptr, &showMemoryBarH);
             if (tms9918Enabled)
                 ImGui::MenuItem("TMS9918 VDP Inspector...", nullptr, &showTMS9918Inspector);
+            ImGui::MenuItem("Telemetry Side Channel...", nullptr, &showTelemetry);
             if (ImGui::MenuItem("Memory Options")) {
                 configMemory();
             }
@@ -755,19 +755,9 @@ void MainWindow_ImGui::renderToolbar()
                 graphicsCardEnabled = true;
                 emulation->setHgrFramebufferAttached(true);
                 showGraphicsCard = true;
-                // Load demo HGR image at $2000 if available
-                std::string demoPath;
-                for (const auto& dir : {"software/hgr", "../software/hgr", "../../software/hgr"}) {
-                    std::string p = std::string(dir) + "/GEN2.HGR.BIN";
-                    if (std::filesystem::exists(p)) { demoPath = p; break; }
-                }
-                if (!demoPath.empty()) {
-                    std::string error;
-                    emulation->loadBinaryToRam(demoPath, 0x2000, error);
-                    setStatusMessage("GEN2 plugged - demo image loaded at $2000", 3.0f);
-                } else {
-                    setStatusMessage("GEN2 plugged", 2.0f);
-                }
+                // Plug only — load a demo via File > Open from "software/Graphic HGR/"
+                // (the folder auto-plugs GEN2 too).
+                setStatusMessage("GEN2 plugged", 2.0f);
             } else {
                 showGraphicsCard = !showGraphicsCard;
                 if (!showGraphicsCard) {

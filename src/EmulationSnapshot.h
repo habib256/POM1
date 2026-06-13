@@ -21,6 +21,7 @@
 #include "TMS9918.h"
 #include "WiFiModem.h"
 #include "TerminalCard.h"
+#include "TelemetryPort.h"
 #include "A1IO_RTC.h"
 #include "JukeBox.h"
 #include "CodeTank.h"
@@ -69,6 +70,8 @@ struct EmulationSnapshot
     WiFiModem::Snapshot wifiModem;
     bool terminalCardEnabled = false;
     TerminalCard::Snapshot terminalCard;
+    bool telemetryEnabled = false;
+    TelemetryPort::Snapshot telemetry;
     bool a1ioRtcEnabled = false;
     A1IO_RTC::Snapshot a1ioRtc;
     bool jukeBoxEnabled = false;

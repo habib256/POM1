@@ -33,6 +33,8 @@ public:
     static const char* getPresetName(int index);
     void setDefaultPresetIndex(int index) { defaultPresetIndex = index; }
     void setTerminalCardOverride(bool enable) { terminalCardOverride = enable; }
+    void setTelemetryPortOverride(int port) { telemetryPortOverride = port; }
+    void setTelemetryLogPath(const std::string& p) { telemetryLogPath = p; }
     // Preload a cassette file right after the initial preset applies, and/or
     // dump the deck's recording into `path` on clean shutdown. Both are
     // no-ops when empty. Used by --tape / --save-tape for scripted runs
@@ -225,6 +227,7 @@ private:
     bool showWiFiModem = false;
     bool terminalCardEnabled = !POM1_IS_WASM;
     bool showTerminalCard = !POM1_IS_WASM;
+    bool showTelemetry = false;           // dev telemetry side channel status window
     bool pr40Enabled = false;
     bool showPR40 = false;
     bool a1ioRtcEnabled = false;
@@ -352,6 +355,7 @@ private:
     void renderGT6144Window();
     void renderWiFiModemWindow();
     void renderTerminalCardWindow();
+    void renderTelemetryWindow();
     void renderA1IO_RTCWindow();
     void renderJukeBoxWindow();
     void renderCodeTankLibraryWindow();
@@ -469,6 +473,8 @@ private:
     int presetRamKB = 32;                 // Usable RAM for current preset (display only)
     int defaultPresetIndex = -1;          // -1 = last preset (POM1)
     bool terminalCardOverride = false;    // --terminal: enable Terminal Card on top of any preset
+    int  telemetryPortOverride = -1;      // --telemetry-port N: open dev telemetry side channel on localhost:N (-1 = off)
+    std::string telemetryLogPath;         // --telemetry-log PATH: golden-trace file tap (implies enabling the port)
     std::string initialTapePath;          // --tape: preload this file after the first-frame preset applies
     bool initialTapeAutoPlay = false;     // --tape presses PLAY; default bundled cassette only loads, waiting for the user
     std::string saveTapePath;             // --save-tape: dump the deck's recording on clean shutdown

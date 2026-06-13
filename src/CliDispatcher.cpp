@@ -281,6 +281,21 @@ std::optional<CliPlan> parseCli(int argc, char* argv[], bool& listPresetsOut)
             plan.executionSpeed = cpf;
             continue;
         }
+        if (arg == "--telemetry-port") {
+            if (!needArg(i, "--telemetry-port")) return std::nullopt;
+            int port = 0;
+            if (!parseIntPositive(argv[++i], port) || port < 1 || port > 65535) {
+                logAndFail("--telemetry-port expects a TCP port 1-65535");
+                return std::nullopt;
+            }
+            plan.telemetryPort = port;
+            continue;
+        }
+        if (arg == "--telemetry-log") {
+            if (!needArg(i, "--telemetry-log")) return std::nullopt;
+            plan.telemetryLogPath = argv[++i];
+            continue;
+        }
         if (arg == "--preset" || arg == "-p") {
             if (!needArg(i, "--preset")) return std::nullopt;
             const std::string val = argv[++i];

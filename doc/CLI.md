@@ -9,6 +9,8 @@ Three phases: **A** boot-time, **B** first-frame preset overrides, **C** deferre
 | `--list-presets` | A | Print `kMachinePresets[]` and exit. |
 | `--preset <N\|name>` / `-p` | A | Index or case-insensitive substring (first match). |
 | `--terminal` | A | Force-enable Terminal Card (`127.0.0.1:6502`). |
+| `--telemetry-port <N>` | A | Dev-only: open the telemetry side channel on `127.0.0.1:N` (1-65535). Binary frame-delimited bridge for automated game testing — the game writes state to `$C440-$C443`, an external harness reads it + drives input. See [`TELEMETRY_SIDE_CHANNEL.md`](TELEMETRY_SIDE_CHANNEL.md). |
+| `--telemetry-log <path>` | A | Dev-only: tee the telemetry outbound frame stream (`0xAA <len16> <payload>`…) to a binary file for golden-trace CI (no live harness needed — diff against an expected capture). Implies enabling the port (default `:6503` unless `--telemetry-port` also given). |
 | `--tape <path>` | A | Preload + auto-Play. Default probe: `cassettes/WOZ_talk.mp3`. |
 | `--save-tape <path>` / `--save-tape-format <aci\|wav>` | A | Dump deck on clean shutdown. SIGINT/SIGTERM triggers `~MainWindow_ImGui`. |
 | `--cpu-max` | A | Pin `executionSpeed = 1 000 000` cycles/frame. Beats `--speed`. |

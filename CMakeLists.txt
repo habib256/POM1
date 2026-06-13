@@ -65,6 +65,7 @@ set(SOURCES
     ${POM1_SRC_DIR}/CodeTank.cpp
     ${POM1_SRC_DIR}/WiFiModem.cpp
     ${POM1_SRC_DIR}/TerminalCard.cpp
+    ${POM1_SRC_DIR}/TelemetryPort.cpp
     ${POM1_SRC_DIR}/PR40Printer.cpp
     ${POM1_SRC_DIR}/GT6144.cpp
     ${POM1_SRC_DIR}/RomLoader.cpp

@@ -125,6 +125,10 @@ void SnapshotPublisher::publish(Memory& mem, const M6502& cpu, bool cpuRunning)
     if (snapshot.terminalCardEnabled) {
         mem.getTerminalCard().copySnapshot(snapshot.terminalCard);
     }
+    snapshot.telemetryEnabled = mem.isTelemetryEnabled();
+    if (snapshot.telemetryEnabled) {
+        mem.getTelemetryPort().copySnapshot(snapshot.telemetry);
+    }
     snapshot.a1ioRtcEnabled = mem.isA1IO_RTCEnabled();
     if (snapshot.a1ioRtcEnabled) {
         mem.getA1IO_RTC().copySnapshot(snapshot.a1ioRtc);

@@ -524,6 +524,10 @@ int main(int argc, char* argv[])
         mainWindow.setDefaultPresetIndex(plan.presetIndex);
     if (plan.terminalOverride)
         mainWindow.setTerminalCardOverride(true);
+    if (plan.telemetryPort)
+        mainWindow.setTelemetryPortOverride(*plan.telemetryPort);
+    if (!plan.telemetryLogPath.empty())
+        mainWindow.setTelemetryLogPath(plan.telemetryLogPath);
     if (!plan.initialTapePath.empty()) {
         mainWindow.setInitialTapePath(plan.initialTapePath);
         mainWindow.setInitialTapeAutoPlay(plan.initialTapeAutoPlay);

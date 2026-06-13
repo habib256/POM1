@@ -39,6 +39,7 @@
 class TMS9918;
 class WiFiModem;
 class TerminalCard;
+class TelemetryPort;
 class A1IO_RTC;
 class PR40Printer;
 class M6502;
@@ -57,6 +58,11 @@ class Memory
 public:
 
     Memory();
+    // Out-of-line (defined in Memory.cpp) so the forward-declared unique_ptr
+    // members (TMS9918 / WiFiModem / TerminalCard / TelemetryPort / A1IO_RTC /
+    // PR40Printer) only need their full type at the single dtor definition
+    // point, not in every TU that destroys a Memory.
+    ~Memory();
 
     // Memory Options
     void initMemory(void);
@@ -396,6 +402,13 @@ public:
     void setTerminalCardEnabled(bool b) { terminalCardEnabled = b; }
     bool isTerminalCardEnabled() const { return terminalCardEnabled; }
 
+    // Telemetry side channel ($C440-$C443) — dev-only virtual test-harness port.
+    // Server opens only when enabled (--telemetry-port). doc/TELEMETRY_SIDE_CHANNEL.md.
+    TelemetryPort& getTelemetryPort() { return *telemetryPort; }
+    const TelemetryPort& getTelemetryPort() const { return *telemetryPort; }
+    void setTelemetryEnabled(bool b);
+    bool isTelemetryEnabled() const { return telemetryEnabled.load(); }
+
     // P-LAB Apple-1 I/O Board & Real Time Clock (65C22 VIA + ATMEGA32 + DS3231)
     A1IO_RTC& getA1IO_RTC() { return *a1ioRtc; }
     const A1IO_RTC& getA1IO_RTC() const { return *a1ioRtc; }
@@ -539,6 +552,9 @@ private :
     // emulation thread after it releases stateMutex (post-slice reset/clear
     // drain in EmulationController::runEmulationSlice).
     std::atomic<bool> terminalCardEnabled{false};
+    std::unique_ptr<TelemetryPort> telemetryPort;
+    // Atomic for the same reason as terminalCardEnabled: queried off-thread.
+    std::atomic<bool> telemetryEnabled{false};
     std::unique_ptr<A1IO_RTC> a1ioRtc;
     bool a1ioRtcEnabled = false;
     std::unique_ptr<PR40Printer> pr40Printer;
@@ -578,6 +594,7 @@ private :
     // (pages $C2/$C3/$C6/$C7 with A4=1) and mimics flat-RAM fall-through for
     // the addresses the card leaves undecoded.
     PeripheralBus::Handle gen2SoftSwitchBusHandle = -1;
+    PeripheralBus::Handle telemetryBusHandle = -1;   // $C440-$C443, priority 30 (GEN2 A9=0 blind zone)
 
 };
 

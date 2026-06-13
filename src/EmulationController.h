@@ -306,6 +306,13 @@ public:
     // P-LAB Apple-1 Terminal Card
     void setTerminalCardEnabled(bool enabled);
     bool isTerminalCardEnabled() const;
+
+    // Dev telemetry side channel ($C440-$C443). setTelemetryListenPort() must
+    // precede setTelemetryEnabled(true) — enabling opens the TCP server on the
+    // current port. See doc/TELEMETRY_SIDE_CHANNEL.md.
+    void setTelemetryEnabled(bool enabled);
+    void setTelemetryListenPort(uint16_t port);
+    void setTelemetryLogFile(const std::string& path);
     /// Render-loop accessor. Returns null when the card is disabled. The
     /// returned reference is owned by Memory and outlives any single frame;
     /// callers must not retain it across hardReset() / preset switch.
@@ -378,6 +385,10 @@ private:
     int cycleBudgetAnchorCpf = -1;
     /// Budget de cycles partagé entre le fil d’émulation (natif) et pumpEmulationMainThread (Web).
     double emulationCycleBudget = 0.0;
+
+    /// Wall-clock spent parked on a telemetry lock-step ACK wait (slice loop);
+    /// reset when the CPU runs, trips kTelemetryStallTimeoutSec to auto-resume.
+    double telemetryStallSeconds = 0.0;
 
     // ── State rewind ──────────────────────────────────────────────────────
     // rewindBuffer + rewindCaptureAccum are touched only under stateMutex

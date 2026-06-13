@@ -396,6 +396,13 @@ void MainWindow_ImGui::render()
             terminalCardEnabled = true;
             emulation->setTerminalCardEnabled(true);
         }
+        if (telemetryPortOverride > 0 || !telemetryLogPath.empty()) {
+            if (telemetryPortOverride > 0)
+                emulation->setTelemetryListenPort(static_cast<uint16_t>(telemetryPortOverride));
+            if (!telemetryLogPath.empty())
+                emulation->setTelemetryLogFile(telemetryLogPath);
+            emulation->setTelemetryEnabled(true);
+        }
         // CLI --enable / --disable: rewrite the pendingXxxEnable flags the
         // deferred plug consumes. Also update the UI-facing bool so the
         // toolbar chip and menu checkmark match the override before the
@@ -636,6 +643,7 @@ void MainWindow_ImGui::render()
     if (gt6144Enabled && showGT6144) renderGT6144Window();
     if (wifiModemEnabled && showWiFiModem) renderWiFiModemWindow();
     if (terminalCardEnabled && showTerminalCard) renderTerminalCardWindow();
+    if (showTelemetry) renderTelemetryWindow();
     if (pr40Enabled && showPR40) renderPR40Window();
     if (a1ioRtcEnabled && showA1IO_RTC) renderA1IO_RTCWindow();
     if (jukeBoxEnabled && showJukeBox) renderJukeBoxWindow();

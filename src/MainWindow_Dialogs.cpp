@@ -928,8 +928,8 @@ void MainWindow_ImGui::renderHardwareReferenceWindow()
             hwKeyValue("Timing:", "65 cycles/line; 262 lines @ 60 Hz or 312 @ 50 Hz (jumper in the HGR window). ~4200 cycles of VBL budget for page flips.");
             hwKeyValue("Colour:", "NTSC artifact colour - violet/green (group 1) and blue/orange (group 2) with white between (MAME-calibrated LUT).");
             hwKeyValue("Porting Apple II games:", "Rewrite $C05x to $C25x; keep $C030-$C03F (SPEAKER via ACI TAPE OUT); poll HST0 instead of vaporlock. Spec: doc/GEN2_RELEASE_questions.md.");
-            hwKeyValue("Tooling:", "cc65 config software/hgr/apple1_gen2.cfg reserves the framebuffer.");
-            hwKeyValue("Demo:", "Clicking HGR in the toolbar auto-loads software/hgr/GEN2.HGR.BIN if available.");
+            hwKeyValue("Tooling:", "cc65 config dev/cc65/apple1_gen2.cfg reserves the framebuffer ($2000-$3FFF); includes dev/lib/{apple1,hgr,gen2}. Reference demo: dev/projects/a1_crazycycle/.");
+            hwKeyValue("Demos:", "File > Open anything under software/Graphic HGR/ (CrazyCycle, Life, Mandelbrot, Maze, Sierpinski, Sokoban) - opening from that folder auto-plugs GEN2.");
         }
 
         // ---- A1-SID (prototype) --------------------------------------
@@ -942,7 +942,7 @@ void MainWindow_ImGui::renderHardwareReferenceWindow()
             hwKeyValue("I/O:", "$C800-$CFFF, 29 registers, address AND $1F (mirrored 64 times).");
             hwKeyValue("Chip model:", "Settings menu -> A1-SID chip model (6581 vintage non-linear filter, or 8580 cleaner revision).");
             hwKeyValue("Audio:", "Cycle-driven synthesis on the emulation thread, lock-free ring buffer to the audio callback.");
-            hwKeyValue("Library:", "software/sid/ - .sid / .psid tunes auto-enable the card on load.");
+            hwKeyValue("Library:", "software/SOUND SID/ - SID tunes auto-enable the card on load.");
         }
 
         // ---- A1-AUDIO Special Edition --------------------------------
@@ -966,7 +966,7 @@ void MainWindow_ImGui::renderHardwareReferenceWindow()
             hwHeading("Particularities");
             hwKeyValue("I/O:", "$CC00 data port, $CC01 control port.");
             hwKeyValue("VRAM:", "16 KB dedicated, indirect addressing through the chip.");
-            hwKeyValue("Library:", "Compatible with nippur72/apple1-videocard-lib (software/tms9918/).");
+            hwKeyValue("Library:", "Compatible with nippur72/apple1-videocard-lib (software/Graphic TMS9918/).");
             hwKeyValue("Mutually exclusive:", "A1-AUDIO Special Edition (same $CC00 register window).");
         }
 
@@ -1368,18 +1368,18 @@ void MainWindow_ImGui::renderHardwareReferenceWindow()
 namespace {
 
 static const char kSoftwareReferenceCc65Cmd[] =
-    "# Assembly\n"
-    "ca65 -o build/program.o software/program.asm\n"
+    "# Assembly (6502 sources live under dev/)\n"
+    "ca65 -I dev/lib/apple1 -o build/program.o dev/projects/myprog/program.s\n"
     "\n"
-    "# Link with an Apple-1 config\n"
-    "ld65 -C software/apple1_4k.cfg    -o build/program.bin build/program.o\n"
-    "ld65 -C software/hgr/apple1_gen2.cfg -o build/program.bin build/program.o\n"
-    "ld65 -C software/pom1_fantasy.cfg -o build/program.bin build/program.o\n"
+    "# Link with an Apple-1 config (configs are under dev/cc65/)\n"
+    "ld65 -C dev/cc65/apple1_4k.cfg    -o build/program.bin build/program.o\n"
+    "ld65 -C dev/cc65/apple1_gen2.cfg  -o build/program.bin build/program.o  # GEN2 HGR\n"
+    "ld65 -C dev/cc65/pom1_fantasy.cfg -o build/program.bin build/program.o\n"
     "\n"
-    "# Sokoban (real-hardware variants)\n"
-    "ld65 -C software/games/apple1_sok_4k.cfg  -o build/sok.bin build/sok.o  # stock 4K (text)\n"
-    "ld65 -C software/games/apple1_sok_8k.cfg  -o build/sok.bin build/sok.o  # TMS9918 variant\n"
-    "ld65 -C software/games/apple1_sok_hgr.cfg -o build/sok.bin build/sok.o  # GEN2 HGR variant\n";
+    "# Sokoban (real-hardware variants, configs in dev/projects/games_sokoban/)\n"
+    "ld65 -C dev/projects/games_sokoban/apple1_sok_4k.cfg  -o build/sok.bin build/sok.o  # stock 4K (text)\n"
+    "ld65 -C dev/projects/games_sokoban/apple1_sok_8k.cfg  -o build/sok.bin build/sok.o  # TMS9918 variant\n"
+    "ld65 -C dev/projects/games_sokoban/apple1_sok_hgr.cfg -o build/sok.bin build/sok.o  # GEN2 HGR variant\n";
 
 } // namespace
 
@@ -1529,10 +1529,12 @@ void MainWindow_ImGui::renderSoftwareReferenceWindow()
             hwKeyValue("Paste Code (Ctrl+V):", "Feeds the clipboard through the keyboard (up to 4096 chars) - perfect for pasting Woz hex listings.");
             hwHeading("Auto-plug on load");
             ImGui::TextWrapped(
-                "The Load dialog auto-enables the matching card when you open a file "
-                "from software/sid/, software/hgr/, software/tms9918/, software/wifi/, "
-                "software/net/ or sdcard/. Loading from software/net/ also drops any "
-                "live Wi-Fi modem connection.");
+                "The Load dialog auto-enables the matching card from the file's folder: "
+                "software/Graphic HGR/ (GEN2), software/SOUND SID/ (A1-SID), "
+                "software/Graphic TMS9918/ or software/Apple-1_TMS_CC65/ (TMS9918), "
+                "software/Graphic gt-6144/ (GT-6144), software/a1io_rtc/ (A1-IO & RTC), "
+                "software/NET/ (Wi-Fi modem) or sdcard/ (microSD). Loading from "
+                "software/NET/ also drops any live Wi-Fi modem connection.");
         }
 
         if (ImGui::CollapsingHeader("Cassette tapes")) {
@@ -1567,10 +1569,10 @@ void MainWindow_ImGui::renderSoftwareReferenceWindow()
             ImGui::PopFont();
             ImGui::EndChild();
             hwHeading("Linker configs");
-            hwKeyValue("software/apple1_4k.cfg:", "$0280-$127F (4 KB). Default text-mode / TMS9918 (VRAM off-bus).");
-            hwKeyValue("software/hgr/apple1_gen2.cfg:", "$0280-$1FFF (7552 B). HGR programs; reserves $2000-$3FFF.");
-            hwKeyValue("software/pom1_fantasy.cfg:", "Multiplexing Fantasy preset (POM1-only). Configurable layout.");
-            hwHeading("Sokoban-specific (real Apple-1)");
+            hwKeyValue("dev/cc65/apple1_4k.cfg:", "$0280-$127F (4 KB). Default text-mode / TMS9918 (VRAM off-bus).");
+            hwKeyValue("dev/cc65/apple1_gen2.cfg:", "$0280-$1FFF (7552 B). GEN2 HGR programs; reserves $2000-$3FFF.");
+            hwKeyValue("dev/cc65/pom1_fantasy.cfg:", "Multiplexing Fantasy preset (POM1-only). Configurable layout.");
+            hwHeading("Sokoban-specific (real Apple-1, dev/projects/games_sokoban/)");
             hwKeyValue("apple1_sok_4k.cfg:", "Stock 4K - text variant. LEVELBUF in zero page, STATEGRID in bss at $0F00.");
             hwKeyValue("apple1_sok_8k.cfg:", "Stock 8K + TMS9918. STATEGRID moved to $1F00.");
             hwKeyValue("apple1_sok_hgr.cfg:", "8K + GEN2 HGR. Same discipline but HGR framebuffer reserved.");
@@ -1603,12 +1605,12 @@ void MainWindow_ImGui::renderSoftwareReferenceWindow()
         }
 
         if (ImGui::CollapsingHeader("Software library on disk")) {
-            hwKeyValue("software/:", "Assembled programs, BASIC listings, demos, SID tunes, HGR/TMS9918 art.");
-            hwKeyValue("software/games/:", "Sokoban variants, Maze2 Backtracker, Connect 4 (all three modes).");
-            hwKeyValue("software/hgr/:", "GEN2 demos (GEN2.HGR.BIN auto-loaded by the toolbar shortcut).");
-            hwKeyValue("software/sid/:", "SID/PSID tunes. Dropping one enables the A1-SID card.");
-            hwKeyValue("software/tms9918/:", "Video card library demos.");
-            hwKeyValue("software/net/:", "Modem / telnet programs. Loading one resets the modem connection.");
+            hwKeyValue("software/:", "Assembled programs, BASIC listings, demos, SID tunes, HGR/TMS9918 art (compiled output; 6502 sources live under dev/).");
+            hwKeyValue("software/Apple-1 games/:", "Sokoban variants, Maze2 Backtracker, Connect 4 (all three modes).");
+            hwKeyValue("software/Graphic HGR/:", "GEN2 HGR demos (CrazyCycle, Life, Mandelbrot, Maze, Sierpinski, Sokoban). Opening one auto-plugs GEN2.");
+            hwKeyValue("software/SOUND SID/:", "SID/PSID tunes. Dropping one enables the A1-SID card.");
+            hwKeyValue("software/Graphic TMS9918/:", "TMS9918 video card library demos.");
+            hwKeyValue("software/NET/:", "Modem / telnet programs. Loading one resets the modem connection.");
             hwKeyValue("sdcard/:", "Virtual microSD volume (FAT32 mapping).");
             hwKeyValue("cfcard/cfcard.po:", "ProDOS disk image for the CFFA1.");
             hwKeyValue("External:", "apple1software.com, applefritter.com/apple1.");
@@ -2199,7 +2201,7 @@ void MainWindow_ImGui::renderTutorialModemBBSWindow()
 
         tutStep(2, "Load the ATmodem ACIA driver");
         ImGui::TextWrapped(
-            "File > Load Memory > software/net/ATmodem.txt. It auto-"
+            "File > Load Memory > software/NET/ATmodem.txt. It auto-"
             "loads at $0280 (the standard Apple-1 scratch area). Alternatively "
             "paste the hex dump via File > Paste Code.");
 
@@ -2416,10 +2418,10 @@ void MainWindow_ImGui::renderTutorialTMS9918Window()
 
         tutStep(3, "Load a demo");
         ImGui::TextWrapped(
-            "File > Load Memory from software/tms9918/ — POM1 "
+            "File > Load Memory from software/Graphic TMS9918/ — POM1 "
             "auto-plugs the card when a file comes from that directory "
             "(see MainWindow_FileDialogs heuristics).");
-        tutCode("software/tms9918/TMS_Life.txt  -> 280R");
+        tutCode("software/Graphic TMS9918/TMS_Life.txt  -> 280R");
 
         tutStep(4, "Write VRAM");
         ImGui::TextWrapped(
@@ -2541,7 +2543,7 @@ void MainWindow_ImGui::renderTutorialSIDWindow()
 
         tutStep(4, "Load a SID tune");
         ImGui::TextWrapped(
-            "File > Load Memory > software/sid/ picks up the POM1 SID "
+            "File > Load Memory > software/SOUND SID/ picks up the POM1 SID "
             "driver. tools/sid2apple1.py and tools/midi2apple1sid.py "
             "package .sid / .mid files into Apple-1-loadable blobs.");
 
@@ -2566,54 +2568,83 @@ void MainWindow_ImGui::renderTutorialSIDWindow()
 void MainWindow_ImGui::renderTutorialGEN2HGRWindow()
 {
     ImGuiIO& io = ImGui::GetIO();
-    ImGui::SetNextWindowSize(ImVec2(470.0f, 460.0f), ImGuiCond_FirstUseEver);
+    ImGui::SetNextWindowSize(ImVec2(480.0f, 500.0f), ImGuiCond_FirstUseEver);
     ImGui::SetNextWindowPos(ImVec2(io.DisplaySize.x * 0.22f, io.DisplaySize.y * 0.17f),
                             ImGuiCond_FirstUseEver);
     applyPendingLayout("Tutorial: Uncle Bernie's GEN2 HGR");
     if (ImGui::Begin("Tutorial: Uncle Bernie's GEN2 HGR", &showTutorialGEN2HGR)) {
         ImGui::TextWrapped(
-            "Uncle Bernie's GEN2 card is a 280x192 HIRES framebuffer "
-            "with NTSC artifact colour — basically Apple II HGR on the "
-            "Apple 1 expansion slot. Passively reads RAM $2000-$3FFF.");
+            "Uncle Bernie's GEN2 is a full Apple II video subsystem on the "
+            "Apple-1 expansion connector: TEXT 40x24 (B&W), LORES 40x48 (16 "
+            "colours), HIRES 280x192 (NTSC artifact colour) and MIXED "
+            "(graphics + 4 text rows). Modes are picked by READ-ONLY soft "
+            "switches at $C250-$C257, and the picture is rendered beam-raced "
+            "— a mode switch mid-frame lands exactly where the beam was.");
         ImGui::BeginChild("tut_gen2_scroll", ImVec2(0, 0), true);
 
         tutStep(1, "Pick the preset");
         ImGui::TextWrapped(
-            "Presets > #13 'Uncle Bernie's Apple-1 with GEN2 HGR Color'. "
-            "The preset opens the HGR window to the right of the Apple 1 "
-            "screen.");
+            "Presets > #13 'Uncle Bernie's Apple-1 with GEN2 HGR Color'. It "
+            "plugs the card and opens the GEN2 output window plus this "
+            "tutorial. You can also click HGR on the toolbar, or use Hardware "
+            "> Uncle Bernie's GEN2 HGR Graphic Card.");
 
-        tutStep(2, "Write pixels");
+        tutStep(2, "Set the mode with the soft switches");
         ImGui::TextWrapped(
-            "Whatever lives in $2000-$3FFF IS the framebuffer. The "
-            "scanline layout is the non-linear Apple II HGR mapping — "
-            "`scanlineAddress()` in GraphicsCard.cpp maps (y) -> offset.");
-
-        tutStep(3, "Colour rules");
-        ImGui::TextWrapped(
-            "NTSC artifact colour: bit 7 of each byte picks the palette "
-            "group (clear = violet/green, set = blue/orange). White "
-            "between, based on adjacent-column parity.");
-
-        tutStep(4, "Try the demo");
-        ImGui::TextWrapped(
-            "Clicking the toolbar HGR button auto-loads "
-            "software/hgr/GEN2.HGR.BIN if present. To build a new demo:");
+            "A READ toggles a switch; writes are IGNORED (a write would clash "
+            "the card's D7 bus driver). Use LDA $C25x or BIT $C25x, never "
+            "STA.");
         tutCode(
-            "ca65 -o build/MyHgr.o software/hgr/MyHgr.asm\n"
-            "ld65 -C software/hgr/apple1_gen2.cfg \\\n"
-            "     -o build/MyHgr.bin build/MyHgr.o");
+            "$C250 TEXT_OFF (graphics)   $C254 PAGE1  ($0400 / $2000)\n"
+            "$C251 TEXT_ON  (text)       $C255 PAGE2  ($0800 / $4000)\n"
+            "$C252 MIX_OFF  (full)       $C256 LORES\n"
+            "$C253 MIX_ON   (4 rows)     $C257 HIRES");
         ImGui::TextWrapped(
-            "`software/hgr/apple1_gen2.cfg` reserves $2000-$3FFF so your "
-            "code and framebuffer never collide.");
+            "POM1's cold state is GRAPHICS+HIRES+PAGE1, but the real PLD "
+            "power-on is indeterminate and Apple-1 RESET never touches it — "
+            "always initialise every switch your program relies on.");
+
+        tutStep(3, "Draw HIRES pixels");
+        ImGui::TextWrapped(
+            "HIRES page 1 is $2000-$3FFF (page 2 $4000-$5FFF). The scanline "
+            "layout is the non-linear Apple II HGR mapping — "
+            "`scanlineAddress()` in GraphicsCard.cpp maps y -> base offset. "
+            "Colour comes from NTSC artifacts: bit 7 of each byte picks the "
+            "palette group (clear = violet/green, set = blue/orange), and "
+            "adjacent-column parity fills white. (TEXT and LORES draw into "
+            "pages $0400 / $0800 instead.)");
+
+        tutStep(4, "Sync to the beam with HST0");
+        ImGui::TextWrapped(
+            "Every $C25x read also returns the HST0 blank flag in bit 7: 1 "
+            "during H/V-blank, 0 in live scan (with a short notch during the "
+            "colour burst). Poll it to flip pages or redraw during V-blank "
+            "(~4200 cycles of budget) instead of the Apple II vaporlock. "
+            "Timing is 65 cycles/line; 262 lines @ 60 Hz or 312 @ 50 Hz "
+            "(vertical jumper in the GEN2 window).");
+
+        tutStep(5, "Run a demo, or build your own");
+        ImGui::TextWrapped(
+            "File > Open and pick anything in software/Graphic HGR/ "
+            "(A-1-CrazyCycle, HGR_Life, HGR_Mandelbrot, HGR_Maze, "
+            "HGR_Sierpinski, HGR_Sokoban) — opening from that folder "
+            "auto-plugs GEN2. To build a new program, assemble with cc65 "
+            "against dev/cc65/apple1_gen2.cfg, which reserves $2000-$3FFF so "
+            "your code and the framebuffer never collide:");
+        tutCode(
+            "ca65 -I dev/lib/apple1 -I dev/lib/hgr -I dev/lib/gen2 \\\n"
+            "     -o build/MyHgr.o MyHgr.s\n"
+            "ld65 -C dev/cc65/apple1_gen2.cfg \\\n"
+            "     -o build/MyHgr.bin build/MyHgr.o");
 
         ImGui::Spacing();
         ImGui::Separator();
         ImGui::TextColored(ImVec4(0.90f, 0.70f, 0.60f, 1.0f), "Notes");
-        bulletWrapped("Mutually exclusive with A1-IO & RTC (A1-IO's VIA lives at $2000-$200F, inside the GEN2 framebuffer).");
-        bulletWrapped("GEN2 is purely passive: no I/O port. Zero CPU overhead beyond RAM writes.");
-        bulletWrapped("Rendering uses a 14 KB LUT for byte -> 7-pixel blits, plus a second-pass fixup at inter-byte seams.");
-        bulletWrapped("See Hardware Reference > Uncle Bernie's GEN2 HGR Graphic Card for the full scanline map.");
+        bulletWrapped("Beam-raced: mid-frame and mid-scanline mode switches render where the beam was, so Bernie's split-screen tricks work.");
+        bulletWrapped("Soft switches are READ-ONLY at $C250-$C257, mirrored across $C2/$C3/$C6/$C7xx wherever A4=1. A read returns HST0 in bit 7; a write is a no-op.");
+        bulletWrapped("Mutually exclusive with A1-IO & RTC — its VIA at $2000-$200F sits inside the HGR framebuffer.");
+        bulletWrapped("Full developer guide: doc/GEN2_RELEASE.md (the 'Bernie SDK'); beam-raced reference demo in dev/projects/a1_crazycycle/.");
+        bulletWrapped("See Hardware Reference > Uncle Bernie's GEN2 HGR Graphic Card for the register map and timing.");
         ImGui::EndChild();
     }
     ImGui::End();
