@@ -13,9 +13,16 @@
 //     payload: PC, A, X, Y, SP, status, IRQ, NMI, cycles  (M6502::serialize)
 //
 //   Section: "MEM\0\0\0\0\0" + uint32_t length + payload
-//     payload: full 64 KB RAM, displayBusyCycles, last keyboard byte +
-//              ready bit, ramSize, presetRamKB, oorAccessCount, all 12
-//              card-enabled flags packed into 2 bytes.
+//     payload: full 64 KB RAM, last keyboard byte + ready bit,
+//              displayBusyCycles, ramSize, presetRamKB, oorStrictMode,
+//              writeInRom. The card-enabled bitmap lives in its own "FLAGS"
+//              section (not in MEM).
+//
+//   Section: "FLAGS\0\0\0" + uint32_t length + payload
+//     payload: packed card-enabled bitmap. v1/v2 wrote a uint16_t (16 bits);
+//              v3+ writes a uint32_t (adds the GEN2 HGR attach bit). The
+//              reader picks the width from the section length, so old
+//              snapshots still load (the extra bits read as 0).
 //
 //   Section per peripheral: name (8 bytes, NUL-padded) + uint32_t length +
 //   peripheral->serialize() payload.  Unknown sections are skipped on load
@@ -48,7 +55,13 @@ inline constexpr char     kSnapshotMagic[8] = {'P','O','M','1','S','N','A','P'};
 // v2: May 2026 — adds IECCard section + kFlagIECCard (bit 15) + MicroSD VIA
 //     T2 timer-running bool. v1 snapshots load fine on v2 readers (unknown
 //     sections are skipped; missing kFlagIECCard reads as 0 → IEC off).
-inline constexpr uint32_t kSnapshotVersion  = 2;
+// v3: June 2026 — widens the FLAGS payload from uint16_t to uint32_t and adds
+//     the GEN2 HGR card-attach bit (bit 16). The reader switches on the FLAGS
+//     section length, so v1/v2 snapshots (2-byte FLAGS) still load with the
+//     GEN2 bit reading as 0 (HGR detached). Older readers see an unknown 4-byte
+//     FLAGS payload — they read the low 2 bytes (legacy bits intact) and the
+//     section-boundary realign skips the extra 2.
+inline constexpr uint32_t kSnapshotVersion  = 3;
 
 /// Section names are 8 bytes, NUL-padded. 8 bytes keeps the file aligned
 /// and reads cheaply via fixed-size buffers. Names beyond 8 chars are
@@ -151,6 +164,12 @@ public:
 
 private:
     void readMagicHeader();
+    /// Total byte length of the underlying stream, sampled once at
+    /// construction. Used by readString/readByteVector to reject a forged
+    /// length that exceeds the data actually present (a corrupt or truncated
+    /// snapshot) before it triggers a multi-gigabyte allocation.
+    void measureStreamSize();
+    std::streamoff remainingBytes();
     std::unique_ptr<std::istream> owned;   // ifstream (file) or istringstream (memory)
     std::istream& in;                       // bound to *owned
     bool          ok = false;
@@ -158,6 +177,7 @@ private:
     std::string   errorMsg;
     std::streampos cursor{};
     std::streampos sectionEnd{};
+    std::streamoff streamSize = 0;
 };
 
 } // namespace pom1

@@ -131,6 +131,7 @@ SnapshotReader::SnapshotReader(const std::string& path)
         errorMsg = "cannot open snapshot file: " + path;
         return;
     }
+    measureStreamSize();
     readMagicHeader();
 }
 
@@ -140,7 +141,22 @@ SnapshotReader::SnapshotReader(const std::vector<uint8_t>& buffer)
           std::ios::binary | std::ios::in)),
       in(*owned)
 {
+    measureStreamSize();
     readMagicHeader();
+}
+
+void SnapshotReader::measureStreamSize() {
+    in.seekg(0, std::ios::end);
+    const std::streampos end = in.tellg();
+    in.seekg(0, std::ios::beg);
+    streamSize = (end > std::streampos(0)) ? static_cast<std::streamoff>(end) : 0;
+}
+
+std::streamoff SnapshotReader::remainingBytes() {
+    const std::streampos pos = in.tellg();
+    if (pos < std::streampos(0)) return 0;
+    const std::streamoff rem = streamSize - static_cast<std::streamoff>(pos);
+    return rem > 0 ? rem : 0;
 }
 
 void SnapshotReader::readMagicHeader() {
@@ -192,6 +208,12 @@ void SnapshotReader::readBytes(void* data, std::size_t length) {
 
 std::string SnapshotReader::readString() {
     const uint32_t len = readU32();
+    // Reject a length that can't fit in the bytes still present — a corrupt or
+    // truncated snapshot must fail cleanly, not attempt a huge allocation.
+    if (static_cast<std::streamoff>(len) > remainingBytes()) {
+        in.setstate(std::ios::failbit);
+        return {};
+    }
     std::string s(len, '\0');
     if (len) readBytes(s.data(), len);
     return s;
@@ -199,6 +221,10 @@ std::string SnapshotReader::readString() {
 
 std::vector<uint8_t> SnapshotReader::readByteVector() {
     const uint32_t len = readU32();
+    if (static_cast<std::streamoff>(len) > remainingBytes()) {
+        in.setstate(std::ios::failbit);
+        return {};
+    }
     std::vector<uint8_t> v(len);
     if (len) readBytes(v.data(), len);
     return v;

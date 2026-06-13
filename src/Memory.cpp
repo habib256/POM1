@@ -18,6 +18,7 @@
 
 #include <algorithm>
 #include <cstring>
+#include <exception>
 #include <filesystem>
 #include <fstream>
 #include <random>
@@ -1845,22 +1846,26 @@ namespace {
 // Pack the 12 card-enabled flags into a single uint16_t. Order is stable
 // across versions — appending a new card reserves the next bit; never
 // reorder existing bits without bumping the snapshot version.
-constexpr uint16_t kFlagACI            = 1u << 0;
-constexpr uint16_t kFlagTMS9918        = 1u << 1;
-constexpr uint16_t kFlagSID            = 1u << 2;
-constexpr uint16_t kFlagSIDSpecialEdt  = 1u << 3;
-constexpr uint16_t kFlagMicroSD        = 1u << 4;
-constexpr uint16_t kFlagCFFA1          = 1u << 5;
-constexpr uint16_t kFlagJukeBox        = 1u << 6;
-constexpr uint16_t kFlagCodeTank       = 1u << 7;
-constexpr uint16_t kFlagWiFiModem      = 1u << 8;
-constexpr uint16_t kFlagTerminalCard   = 1u << 9;
-constexpr uint16_t kFlagA1IO_RTC       = 1u << 10;
-constexpr uint16_t kFlagPR40           = 1u << 11;
-constexpr uint16_t kFlagGT6144         = 1u << 12;
-constexpr uint16_t kFlagCassetteAudio  = 1u << 13;
-constexpr uint16_t kFlagSiliconStrict  = 1u << 14;  // TMS9918 silicon-strict timing window
-constexpr uint16_t kFlagIECCard        = 1u << 15;  // P-LAB IEC daughterboard (microSD daughterboard)
+// uint32_t (not uint16_t): the original 16 bits are full, and v3 needs bit 16
+// for GEN2. The FLAGS section is written as a u32 from v3 on; the reader still
+// accepts the legacy 2-byte payload (see readSnapshotSections).
+constexpr uint32_t kFlagACI            = 1u << 0;
+constexpr uint32_t kFlagTMS9918        = 1u << 1;
+constexpr uint32_t kFlagSID            = 1u << 2;
+constexpr uint32_t kFlagSIDSpecialEdt  = 1u << 3;
+constexpr uint32_t kFlagMicroSD        = 1u << 4;
+constexpr uint32_t kFlagCFFA1          = 1u << 5;
+constexpr uint32_t kFlagJukeBox        = 1u << 6;
+constexpr uint32_t kFlagCodeTank       = 1u << 7;
+constexpr uint32_t kFlagWiFiModem      = 1u << 8;
+constexpr uint32_t kFlagTerminalCard   = 1u << 9;
+constexpr uint32_t kFlagA1IO_RTC       = 1u << 10;
+constexpr uint32_t kFlagPR40           = 1u << 11;
+constexpr uint32_t kFlagGT6144         = 1u << 12;
+constexpr uint32_t kFlagCassetteAudio  = 1u << 13;
+constexpr uint32_t kFlagSiliconStrict  = 1u << 14;  // TMS9918 silicon-strict timing window
+constexpr uint32_t kFlagIECCard        = 1u << 15;  // P-LAB IEC daughterboard (microSD daughterboard)
+constexpr uint32_t kFlagGEN2HGR        = 1u << 16;  // GEN2 HGR card attached (v3+; widened to u32)
 
 } // namespace
 
@@ -1925,9 +1930,9 @@ void Memory::writeSnapshotSections(pom1::SnapshotWriter& w, const M6502* cpu) co
         w.endSection(h);
     }
 
-    // ── FLAGS section: packed card-enabled bitmap
+    // ── FLAGS section: packed card-enabled bitmap (u32 since v3)
     {
-        uint16_t flags = 0;
+        uint32_t flags = 0;
         if (aciEnabled)                flags |= kFlagACI;
         if (tms9918Enabled)            flags |= kFlagTMS9918;
         if (sidEnabled)                flags |= kFlagSID;
@@ -1944,9 +1949,10 @@ void Memory::writeSnapshotSections(pom1::SnapshotWriter& w, const M6502* cpu) co
         if (cassetteAudioActive)       flags |= kFlagCassetteAudio;
         if (siliconStrictMode)         flags |= kFlagSiliconStrict;
         if (iecCardEnabled)            flags |= kFlagIECCard;
+        if (hgrFramebufferAttached)    flags |= kFlagGEN2HGR;
 
         auto h = w.beginSection("FLAGS");
-        w.writeU16(flags);
+        w.writeU32(flags);
         w.endSection(h);
     }
 
@@ -2013,6 +2019,13 @@ bool Memory::loadSnapshot(const std::string& path, std::string& error,
 
 bool Memory::readSnapshotSections(pom1::SnapshotReader& r, std::string& error, M6502* cpu)
 {
+  // A corrupt/truncated snapshot can carry a forged length that drives a card's
+  // deserialize to allocate gigabytes (std::string/vector ctors, reserve()).
+  // Those throw bad_alloc/length_error; catch them here so a bad file (File →
+  // Load snapshot, --load-snapshot) or a damaged rewind blob fails gracefully
+  // instead of std::terminate. The reader's own per-field length guard handles
+  // the common case; this is the backstop for the count-then-reserve paths.
+  try {
     // Build a name → peripheral lookup so we can dispatch by section
     // name (insulates us against future card-order changes).
     std::vector<pom1::Peripheral*> cards = {
@@ -2046,7 +2059,11 @@ bool Memory::readSnapshotSections(pom1::SnapshotReader& r, std::string& error, M
             continue;
         }
         if (sectionName == "FLAGS") {
-            const uint16_t flags = r.readU16();
+            // v3+ writes a u32; v1/v2 wrote a u16. Pick the width from the
+            // section length so old snapshots still load (the GEN2 bit and any
+            // future high bits then read as 0).
+            const uint32_t flags = (sectionLen >= 4) ? r.readU32()
+                                                     : r.readU16();
             // Apply enable flags via the public setters so each card's
             // bus handlers + ROM mirrors reconfigure themselves
             // correctly. setX methods are idempotent.
@@ -2075,6 +2092,15 @@ bool Memory::readSnapshotSections(pom1::SnapshotReader& r, std::string& error, M
             // IEC card cascades onto microSD via setIECCardEnabled — make sure
             // microSD has been (re-)enabled by the FLAGS dispatch above first.
             setIECCardEnabled          ((flags & kFlagIECCard)        != 0);
+            // GEN2 HGR attach. Restore the member + bus handle DIRECTLY rather
+            // than via setHgrFramebufferAttached(): a cold-plug through the
+            // setter re-seeds $2000-$3FFF with DRAM noise and resets the video
+            // scanner phase, which would clobber the framebuffer just restored
+            // by the MEM section and the latch/cycle restored by GEN2VID below.
+            // The MEM section already holds the framebuffer bytes, so all that
+            // is needed here is the attach state + the soft-switch bus window.
+            hgrFramebufferAttached = (flags & kFlagGEN2HGR) != 0;
+            bus.setEnabled(gen2SoftSwitchBusHandle, hgrFramebufferAttached);
             continue;
         }
 
@@ -2101,10 +2127,14 @@ bool Memory::readSnapshotSections(pom1::SnapshotReader& r, std::string& error, M
             continue;
         }
 
-        // Per-peripheral section: dispatch by name.
+        // Per-peripheral section: dispatch by name. The section name on disk is
+        // truncated to kSectionNameLen (8) bytes by writeFixedName, so compare
+        // against the card name TRUNCATED to the same width — otherwise a card
+        // whose name exceeds 8 chars (e.g. "A1-IO/RTC", "Wi-Fi Modem") never
+        // matches its own section and its state is silently dropped.
         bool dispatched = false;
         for (auto* card : cards) {
-            if (card && card->name() == sectionName) {
+            if (card && card->name().substr(0, pom1::kSectionNameLen) == sectionName) {
                 card->deserialize(r);
                 dispatched = true;
                 break;
@@ -2121,6 +2151,10 @@ bool Memory::readSnapshotSections(pom1::SnapshotReader& r, std::string& error, M
         return false;
     }
     return true;
+  } catch (const std::exception& e) {
+    error = std::string("corrupt snapshot: ") + e.what();
+    return false;
+  }
 }
 
 

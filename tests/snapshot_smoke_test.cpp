@@ -59,6 +59,7 @@
 #include <fstream>
 #include <random>
 #include <string>
+#include <string_view>
 
 namespace {
 
@@ -76,6 +77,42 @@ std::filesystem::path makeTempPath(const char* tag)
 int main()
 {
     Memory mem;
+
+    // ── Snapshot section-name invariant. writeFixedName truncates every name
+    //    to kSectionNameLen (8) bytes and readSnapshotSections dispatches on
+    //    that truncated form, so each serialized card's name must be unique
+    //    within its first 8 bytes — and must not collide with a framework
+    //    section. The A1-IO/RTC bug (9-char name, dropped on load) lived here;
+    //    pin it so a future card with a colliding 8-char prefix fails loudly.
+    {
+        const std::string_view names[] = {
+            mem.getCassetteDevice().name(), mem.getTMS9918().name(),
+            mem.getSID().name(),            mem.getMicroSD().name(),
+            mem.getCFFA1().name(),          mem.getJukeBox().name(),
+            mem.getCodeTank().name(),       mem.getWiFiModem().name(),
+            mem.getTerminalCard().name(),   mem.getA1IO_RTC().name(),
+            mem.getPR40().name(),           mem.getGT6144().name(),
+            mem.getIECCard().name(),
+        };
+        const size_t n = sizeof(names) / sizeof(names[0]);
+        for (size_t i = 0; i < n; ++i) {
+            const std::string_view a = names[i].substr(0, pom1::kSectionNameLen);
+            assert(a != "CPU" && a != "MEM" && a != "FLAGS" &&
+                   a != "SCREEN" && a != "GEN2VID" &&
+                   "card name collides with a reserved framework section");
+            for (size_t j = i + 1; j < n; ++j) {
+                if (a == names[j].substr(0, pom1::kSectionNameLen)) {
+                    std::fprintf(stderr,
+                        "snapshot section-name collision: '%.*s' and '%.*s' share "
+                        "the same first %zu bytes — one is lost on load\n",
+                        int(names[i].size()), names[i].data(),
+                        int(names[j].size()), names[j].data(),
+                        pom1::kSectionNameLen);
+                    return 1;
+                }
+            }
+        }
+    }
 
     // ── Mutate RAM with a deterministic pseudo-random pattern in the user
     //    area ($0200-$1FFF). Avoid ROM zones (BASIC at $E000+, Wozmon at
@@ -389,11 +426,89 @@ int main()
         std::filesystem::remove(pathJB, ecJB);
     }
 
+    // ── A1-IO/RTC round-trip. Regression for the section-name dispatch bug:
+    //    the card name "A1-IO/RTC" is 9 chars and is truncated to "A1-IO/RT"
+    //    on write, so a full-name compare on load never matched and the whole
+    //    section (VIA regs, analog/digital inputs, RTC offset) was silently
+    //    dropped. We mutate an analog input, save, and confirm it survives.
+    {
+        Memory memA;
+        memA.setA1IO_RTCEnabled(true);
+        memA.getA1IO_RTC().setAnalogInput(2, 0xAB);
+        memA.getA1IO_RTC().setDigitalInput(1, 0x00);  // override the pull-up default (1)
+        auto pathA = makeTempPath("a1io");
+        std::string errA;
+        if (!memA.saveSnapshot(pathA.string(), errA)) {
+            std::fprintf(stderr, "A1-IO saveSnapshot failed: %s\n", errA.c_str());
+            return 1;
+        }
+        Memory memA2;
+        if (!memA2.loadSnapshot(pathA.string(), errA)) {
+            std::fprintf(stderr, "A1-IO loadSnapshot failed: %s\n", errA.c_str());
+            return 1;
+        }
+        assert(memA2.isA1IO_RTCEnabled() && "A1-IO/RTC enable flag must round-trip");
+        A1IO_RTC::Snapshot sA;
+        memA2.getA1IO_RTC().copySnapshot(sA);
+        if (sA.analogInputs[2] != 0xAB || sA.digitalInputs[1] != 0x00) {
+            std::fprintf(stderr,
+                "A1-IO/RTC state did not survive snapshot: analog[2]=%02X (want AB) "
+                "digital[1]=%02X (want 00) — section likely skipped on load\n",
+                sA.analogInputs[2], sA.digitalInputs[1]);
+            return 1;
+        }
+        std::error_code ecA;
+        std::filesystem::remove(pathA, ecA);
+    }
+
+    // ── GEN2 HGR round-trip. Regression for the missing card-attach bit: the
+    //    framebuffer ($2000-$3FFF) lived in the MEM section but the attach
+    //    state itself was never persisted, so a reloaded GEN2 session came
+    //    back detached. Confirm attach + framebuffer byte + the 50 Hz jumper
+    //    (GEN2VID section) all survive, and that loading does NOT re-seed the
+    //    framebuffer with cold-plug noise.
+    {
+        Memory memG;
+        memG.setHgrFramebufferAttached(true);   // seeds $2000-$3FFF with noise...
+        memG.memWrite(0x2000, 0x5A);            // ...then we stamp a sentinel
+        memG.memWrite(0x3FFF, 0xC3);
+        memG.setGen2FiftyHz(true);
+        auto pathG = makeTempPath("gen2");
+        std::string errG;
+        if (!memG.saveSnapshot(pathG.string(), errG)) {
+            std::fprintf(stderr, "GEN2 saveSnapshot failed: %s\n", errG.c_str());
+            return 1;
+        }
+        Memory memG2;   // fresh: GEN2 detached, 60 Hz
+        assert(!memG2.isHgrFramebufferAttached());
+        if (!memG2.loadSnapshot(pathG.string(), errG)) {
+            std::fprintf(stderr, "GEN2 loadSnapshot failed: %s\n", errG.c_str());
+            return 1;
+        }
+        if (!memG2.isHgrFramebufferAttached()) {
+            std::fprintf(stderr, "GEN2 attach flag did not survive snapshot\n");
+            return 1;
+        }
+        if (memG2.memRead(0x2000) != 0x5A || memG2.memRead(0x3FFF) != 0xC3) {
+            std::fprintf(stderr,
+                "GEN2 framebuffer not restored (got %02X/%02X want 5A/C3) — "
+                "load may have re-seeded it with noise\n",
+                memG2.memRead(0x2000), memG2.memRead(0x3FFF));
+            return 1;
+        }
+        if (!memG2.isGen2FiftyHz()) {
+            std::fprintf(stderr, "GEN2 50 Hz jumper (GEN2VID section) did not survive\n");
+            return 1;
+        }
+        std::error_code ecG;
+        std::filesystem::remove(pathG, ecG);
+    }
+
     std::error_code ec;
     std::filesystem::remove(path, ec);
     std::printf("snapshot round-trip OK (%zu RAM bytes, CPU regs, "
                 "TMS9918+SID+cassette+GT-6144+PR-40+CodeTank+CFFA1 + "
-                "standalone Juke-Box)\n",
+                "standalone Juke-Box + A1-IO/RTC + GEN2 HGR)\n",
                 baseline.size());
     return 0;
 }
