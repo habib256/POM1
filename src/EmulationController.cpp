@@ -1179,6 +1179,23 @@ void EmulationController::setTelemetryLogFile(const std::string& path)
     memory->getTelemetryPort().setLogFile(path);
 }
 
+void EmulationController::telemetryInject(const uint8_t* data, std::size_t len)
+{
+    if (!data || len == 0) return;
+    std::lock_guard<PriorityMutex> lock(stateMutex);
+    if (!memory->isTelemetryEnabled()) return;
+    memory->getTelemetryPort().injectInbound(data, len);
+}
+
+void EmulationController::telemetryReleaseFrame()
+{
+    std::lock_guard<PriorityMutex> lock(stateMutex);
+    if (!memory->isTelemetryEnabled()) return;
+    // Same effect as the harness ACK: drop the park gate so the slice loop
+    // resumes the CPU until the next end-frame re-arms it (if lock-step is on).
+    memory->getTelemetryPort().clearAwaitingAck();
+}
+
 bool EmulationController::isTerminalCardEnabled() const
 {
     std::lock_guard<PriorityMutex> lock(stateMutex);

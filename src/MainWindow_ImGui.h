@@ -21,6 +21,8 @@
 #include "CliDispatcher.h"
 #include "SID.h"
 
+class TextEditor;   // vendored ImGuiColorTextEdit (POM1 Bench syntax editor)
+
 class MainWindow_ImGui
 {
 public:
@@ -232,6 +234,44 @@ private:
     bool terminalCardEnabled = !POM1_IS_WASM;
     bool showTerminalCard = !POM1_IS_WASM;
     bool showTelemetry = false;           // dev telemetry side channel status window
+    // Serial Monitor (telemetry) UI state — Phase A of the "POM1 Bench" (Arduino-
+    // style in-app SDK). Accumulates the TX wire stream tapped by TelemetryPort
+    // and drives synthetic inbound input. See TODO.md › POM1 Bench.
+    std::vector<unsigned char> telemetryMonitorBytes;  // accumulated TX wire bytes (capped)
+    std::string telemetryMonitorText;                  // cached hex/text rendering
+    uint64_t telemetryLastTxTotal = 0;                 // last Snapshot.txTotal consumed
+    bool telemetryMonitorHex = true;                   // hex dump vs raw-text view
+    bool telemetryMonitorAutoScroll = true;
+    bool telemetryMonitorDirty = false;                // rebuild text cache this frame
+    char telemetrySendBuf[256] = {0};                  // Serial Monitor input line
+    bool telemetrySendHex = false;                     // interpret input as hex bytes
+    char telemetryLogPathBuf[256] = "telemetry_trace.bin";
+
+    // "POM1 Bench" sketch editor — Phase B of the Arduino-style in-app SDK. The
+    // editor is a fixed 64 KB char buffer (imgui_stdlib.cpp is not in the build);
+    // Upload tees it to a temp file and pipes it through the same loadHexDump /
+    // loadBinary path the Load dialog uses (which already resets + runs).
+    bool showBench = false;
+    std::unique_ptr<TextEditor> benchEditor;           // ImGuiColorTextEdit (6502 syntax)
+    int  benchUploadMode = 0;                          // 0 = Hex (Wozmon), 1 = Raw bytes @ addr
+    char benchRawAddrBuf[8] = "0300";                  // hex load address for Raw mode
+    char benchFilePathBuf[512] = {0};                  // Open/Save path
+    std::string benchStatus;                           // last Upload/Open/Save result
+    bool benchStatusOk = true;                         // tint the status line
+    // cc65 toolchain (Phase C) — desktop only; probed once on first Bench open.
+    bool benchToolchainProbed = false;
+    bool benchToolchainOk = false;
+    std::string benchCa65;                             // resolved ca65 path ("" if absent)
+    std::string benchLd65;                             // resolved ld65 path
+    std::string benchLibFlags;                         // "-I <dir> …" from dev/lib/*
+    std::vector<std::string> benchBoardLabels;         // Board combo labels
+    std::vector<std::string> benchBoardCfgs;           // parallel cfg paths ("" = built-in)
+    int benchBoardIndex = 0;
+    std::string benchConsole;                          // ca65/ld65 build output pane
+    bool benchShowConsole = false;
+    std::string benchCl65;                             // cl65 path (C compiler driver)
+    std::string benchVideocardLib;                     // dev/apple1-videocard-lib/lib (abs) or ""
+    bool benchCl65Ok = false;                          // cl65 + videocard lib present (C mode)
     bool pr40Enabled = false;
     bool showPR40 = false;
     bool a1ioRtcEnabled = false;
@@ -360,6 +400,8 @@ private:
     void renderWiFiModemWindow();
     void renderTerminalCardWindow();
     void renderTelemetryWindow();
+    void renderBenchWindow();
+    void detectBenchToolchain();   // Phase C: locate ca65/ld65 + boards (once)
     void renderA1IO_RTCWindow();
     void renderJukeBoxWindow();
     void renderCodeTankLibraryWindow();

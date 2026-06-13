@@ -1,5 +1,6 @@
 #include "MainWindow_ImGui.h"
 #include "MainWindow_Internal.h"
+#include "TextEditor.h"   // complete type for std::unique_ptr<TextEditor> benchEditor
 #include "CliDispatcher.h"
 #include "WiFiModem.h"
 #include "TerminalCard.h"
@@ -646,6 +647,7 @@ void MainWindow_ImGui::render()
     if (wifiModemEnabled && showWiFiModem) renderWiFiModemWindow();
     if (terminalCardEnabled && showTerminalCard) renderTerminalCardWindow();
     if (showTelemetry) renderTelemetryWindow();
+    if (showBench) renderBenchWindow();
     if (pr40Enabled && showPR40) renderPR40Window();
     if (a1ioRtcEnabled && showA1IO_RTC) renderA1IO_RTCWindow();
     if (jukeBoxEnabled && showJukeBox) renderJukeBoxWindow();

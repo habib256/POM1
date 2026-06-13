@@ -16,6 +16,7 @@
 
 #include "imgui.h"
 #include "IconsFontAwesome6.h"
+#include "TextEditor.h"   // vendored ImGuiColorTextEdit — POM1 Bench syntax editor
 
 // renderTMS9918Window uploads a 256×192 RGBA texture each frame via raw GL
 // calls (glGenTextures / glBindTexture / glTexImage2D / glTexSubImage2D).
@@ -28,6 +29,7 @@
 
 #include <algorithm>
 #include <cstdint>
+#include <cstdlib>
 #include <cmath>
 #include <cctype>
 #include <cstdio>
@@ -35,9 +37,15 @@
 #include <filesystem>
 #include <fstream>
 #include <iterator>
+#include <memory>
 #include <sstream>
 #include <string>
 #include <vector>
+
+// cc65 Verify (Phase C) shells out to ca65/ld65 — desktop only.
+#if !POM1_IS_WASM && !defined(_WIN32)
+  #include <sys/wait.h>
+#endif
 
 namespace {
 using namespace pom1::mainwindow::detail;
@@ -543,23 +551,218 @@ void MainWindow_ImGui::renderA1IO_RTCWindow()
     ImGui::End();
 }
 
+// Parse whitespace/comma-separated hex byte tokens ("06 41 0D", "AA,BB") into
+// bytes. Shared by the Serial Monitor send line and the Bench "Raw bytes" upload.
+static void parseHexTokens(const char* s, std::vector<unsigned char>& out)
+{
+    const char* p = s;
+    while (*p) {
+        while (*p && !std::isxdigit((unsigned char)*p)) ++p;
+        if (!*p) break;
+        int v = 0, digits = 0;
+        while (*p && std::isxdigit((unsigned char)*p) && digits < 2) {
+            char c = *p++;
+            int d = (c <= '9') ? c - '0' : (c | 0x20) - 'a' + 10;
+            v = v * 16 + d; ++digits;
+        }
+        out.push_back(static_cast<unsigned char>(v & 0xFF));
+    }
+}
+
+#if !POM1_IS_WASM
+// ── cc65 Verify plumbing (Phase C of the POM1 Bench) — desktop only ──────────
+
+// Built-in fallback ld65 config: Apple-1 program loaded + run at $0300. Used
+// when the dev/ tree (with the real configs) isn't shipped (release bundles omit
+// dev/). CODE/RODATA/DATA go to the output file; BSS is runtime-zeroed.
+static const char* kBenchEmbeddedCfg =
+    "MEMORY {\n"
+    "    ZP:  start = $0000, size = $0030, type = rw, define = yes;\n"
+    "    RAM: start = $0300, size = $7C00, type = rw, define = yes, file = %O;\n"
+    "}\n"
+    "SEGMENTS {\n"
+    "    ZEROPAGE: load = ZP,  type = zp;\n"
+    "    CODE:     load = RAM, type = ro;\n"
+    "    RODATA:   load = RAM, type = ro,  optional = yes;\n"
+    "    DATA:     load = RAM, type = rw,  optional = yes;\n"
+    "    BSS:      load = RAM, type = bss, optional = yes, define = yes;\n"
+    "}\n";
+
+// Built-in cc65 C config: a freestanding C program in low RAM ($0300-$3FFF),
+// C stack growing down from $4000 — runs in a plain Apple-1 + TMS9918 with no
+// $4000 ROM / $E000 BASIC conflicts (unlike the CodeTank ROM cart config).
+static const char* kBenchCCfg =
+    "FEATURES {\n"
+    "    STARTADDRESS: default = $0300;\n"
+    "    CONDES: type=constructor, label=__CONSTRUCTOR_TABLE__, count=__CONSTRUCTOR_COUNT__, segment=ONCE;\n"
+    "    CONDES: type=destructor,  label=__DESTRUCTOR_TABLE__,  count=__DESTRUCTOR_COUNT__,  segment=RODATA;\n"
+    "    CONDES: type=interruptor, label=__INTERRUPTOR_TABLE__, count=__INTERRUPTOR_COUNT__, segment=RODATA, import=__CALLIRQ__;\n"
+    "}\n"
+    "SYMBOLS {\n"
+    "    __STACKSIZE__:  type=weak, value=$0400;\n"
+    "    __STACKSTART__: type=weak, value=$4000;\n"
+    "    __ZPSTART__:    type=weak, value=$0000;\n"
+    "}\n"
+    "MEMORY {\n"
+    "    ZP:  start=$0000, size=$0100, type=rw, define=yes;\n"
+    "    RAM: start=$0300, size=$3D00, type=rw, file=%O, define=yes;\n"
+    "}\n"
+    "SEGMENTS {\n"
+    "    ZEROPAGE: load=ZP,  type=zp;\n"
+    "    STARTUP:  load=RAM, type=ro,  define=yes;\n"
+    "    LOWCODE:  load=RAM, type=ro,  optional=yes;\n"
+    "    INIT:     load=RAM, type=ro,  optional=yes;\n"
+    "    ONCE:     load=RAM, type=ro,  optional=yes;\n"
+    "    CODE:     load=RAM, type=ro;\n"
+    "    RODATA:   load=RAM, type=ro;\n"
+    "    DATA:     load=RAM, type=rw,  define=yes;\n"
+    "    BSS:      load=RAM, type=bss, define=yes;\n"
+    "}\n";
+
+// Shell-quote a path for popen (single-quote on POSIX, double on Windows).
+static std::string shellQuote(const std::string& s)
+{
+#ifdef _WIN32
+    return "\"" + s + "\"";
+#else
+    std::string out = "'";
+    for (char c : s) { if (c == '\'') out += "'\\''"; else out += c; }
+    out += "'";
+    return out;
+#endif
+}
+
+// Run a command, capturing stdout+stderr. Returns the process exit code (or -1
+// if the pipe couldn't be opened).
+static int runCapture(const std::string& cmd, std::string& out)
+{
+    out.clear();
+    const std::string full = cmd + " 2>&1";
+#ifdef _WIN32
+    FILE* pipe = _popen(full.c_str(), "r");
+#else
+    FILE* pipe = popen(full.c_str(), "r");
+#endif
+    if (!pipe) return -1;
+    char buf[1024];
+    size_t n;
+    while ((n = std::fread(buf, 1, sizeof(buf), pipe)) > 0) out.append(buf, n);
+#ifdef _WIN32
+    return _pclose(pipe);
+#else
+    int rc = pclose(pipe);
+    if (rc != -1 && WIFEXITED(rc)) return WEXITSTATUS(rc);
+    return rc;
+#endif
+}
+
+// Resolve an executable by scanning $PATH (+ a couple of common cc65 dirs).
+static std::string whichExe(const char* name)
+{
+    namespace fs = std::filesystem;
+    std::vector<std::string> dirs;
+    if (const char* pathEnv = std::getenv("PATH")) {
+#ifdef _WIN32
+        const char sep = ';';
+#else
+        const char sep = ':';
+#endif
+        std::string p(pathEnv);
+        size_t start = 0;
+        while (start <= p.size()) {
+            size_t e = p.find(sep, start);
+            if (e == std::string::npos) e = p.size();
+            if (e > start) dirs.push_back(p.substr(start, e - start));
+            start = e + 1;
+        }
+    }
+    dirs.push_back("/usr/local/bin");
+    dirs.push_back("/opt/cc65/bin");
+    std::string exe = name;
+#ifdef _WIN32
+    exe += ".exe";
+#endif
+    std::error_code ec;
+    for (const auto& d : dirs) {
+        fs::path cand = fs::path(d) / exe;
+        if (fs::exists(cand, ec) && !fs::is_directory(cand, ec))
+            return cand.string();
+    }
+    return "";
+}
+
+// Pull the load address out of a ld65 config: the `start = $XXXX` of the MEMORY
+// region that owns the output file (`file = %O`). 0 if not found.
+static uint16_t parseCfgLoadAddr(const std::string& cfgPath)
+{
+    std::ifstream in(cfgPath);
+    if (!in) return 0;
+    std::string line;
+    while (std::getline(in, line)) {
+        if (line.find("%O") == std::string::npos) continue;
+        size_t s = line.find("start");
+        if (s == std::string::npos) continue;
+        size_t dollar = line.find('$', s);
+        if (dollar == std::string::npos) continue;
+        try { return static_cast<uint16_t>(std::stoul(line.substr(dollar + 1), nullptr, 16)); }
+        catch (...) { return 0; }
+    }
+    return 0;
+}
+#endif // !POM1_IS_WASM
+
+// Rebuild the cached hex-dump / raw-text rendering of the accumulated TX bytes.
+// Hex view = `OFFS  HH HH …(16)…  ascii`; text view maps printable bytes through
+// and shows the rest as '.'. Called only when the byte buffer or view toggles.
+static void formatTelemetryMonitor(const std::vector<unsigned char>& bytes,
+                                   bool hex, std::string& out)
+{
+    out.clear();
+    if (hex) {
+        char line[96];
+        for (std::size_t i = 0; i < bytes.size(); i += 16) {
+            int n = std::snprintf(line, sizeof(line), "%04zX  ", i);
+            std::string ascii;
+            for (std::size_t j = 0; j < 16; ++j) {
+                if (i + j < bytes.size()) {
+                    unsigned char b = bytes[i + j];
+                    n += std::snprintf(line + n, sizeof(line) - n, "%02X ", b);
+                    ascii += (b >= 0x20 && b < 0x7F) ? static_cast<char>(b) : '.';
+                } else {
+                    n += std::snprintf(line + n, sizeof(line) - n, "   ");
+                }
+            }
+            out.append(line);
+            out.append(" ");
+            out.append(ascii);
+            out.append("\n");
+        }
+    } else {
+        out.reserve(bytes.size());
+        for (unsigned char b : bytes)
+            out += (b >= 0x20 && b < 0x7F) || b == '\n' ? static_cast<char>(b) : '.';
+    }
+}
+
 void MainWindow_ImGui::renderTelemetryWindow()
 {
-    ImGui::SetNextWindowSize(ImVec2(360, 320), ImGuiCond_FirstUseEver);
+    ImGui::SetNextWindowSize(ImVec2(440, 520), ImGuiCond_FirstUseEver);
     applyPendingLayout("Telemetry Side Channel");
     if (ImGui::Begin("Telemetry Side Channel", &showTelemetry)) {
         ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.7f, 0.7f, 0.7f, 1.0f));
         ImGui::TextWrapped("Dev-only test-harness port at $C440-$C443 (not real "
-                           "hardware). A game writes state + an end-frame marker; "
-                           "an external harness reads frames over TCP and drives "
-                           "input. See doc/TELEMETRY_SIDE_CHANNEL.md.");
+                           "hardware) — the SDK's \"serial\". A game writes state + "
+                           "an end-frame marker; this Serial Monitor shows the "
+                           "outbound stream and injects inbound bytes (TELE_IN), "
+                           "exactly as a TCP harness would. doc/TELEMETRY_SIDE_CHANNEL.md.");
         ImGui::PopStyleColor();
         ImGui::Separator();
 
 #if POM1_IS_WASM
         ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 0.85f, 0.4f, 1.0f));
-        ImGui::TextWrapped("Web build: browsers cannot open a listening TCP "
-                           "socket, so the channel is a no-op.");
+        ImGui::TextWrapped("Web build: no listening TCP socket, so no external "
+                           "harness — but the Serial Monitor below still taps the "
+                           "game's output and can inject input.");
         ImGui::PopStyleColor();
         ImGui::Separator();
 #endif
@@ -574,25 +777,114 @@ void MainWindow_ImGui::renderTelemetryWindow()
         ImGui::TextDisabled("(opens localhost:%d)", snap.listenPort);
 
         if (uiSnapshot.telemetryEnabled) {
+            // ---- Connection / counters ----
             if (snap.serverListening)
                 ImGui::TextColored(ImVec4(0.2f, 0.9f, 0.2f, 1.0f),
                     ICON_FA_SERVER " Listening on port %d", snap.listenPort);
             else
                 ImGui::TextColored(ImVec4(0.9f, 0.2f, 0.2f, 1.0f),
                     ICON_FA_SERVER " Server not running");
-
+            ImGui::SameLine();
             if (snap.clientConnected)
                 ImGui::TextColored(ImVec4(0.2f, 0.9f, 0.2f, 1.0f),
-                    ICON_FA_PLUG " Harness: %s", snap.clientAddress.c_str());
+                    ICON_FA_PLUG " %s", snap.clientAddress.c_str());
             else
                 ImGui::TextColored(ImVec4(0.5f, 0.5f, 0.5f, 1.0f),
-                    ICON_FA_PLUG " No harness connected");
+                    ICON_FA_PLUG " no harness");
 
+            ImGui::Text("Lock-step: %s   Frames: %u   TX: %u B   RX: %u B",
+                        snap.lockstep ? (snap.awaitingAck ? "PARKED" : "ARMED") : "off",
+                        snap.framesSent, snap.bytesSent, snap.bytesReceived);
+            if (snap.awaitingAck) {
+                ImGui::SameLine();
+                if (ImGui::SmallButton("Step frame"))
+                    emulation->telemetryReleaseFrame();
+            }
+
+            // ---- Consume the TX tap (delta vs last seen total) ----
+            uint64_t total = snap.txTotal;
+            if (total < telemetryLastTxTotal) telemetryLastTxTotal = 0; // port was reset
+            if (total > telemetryLastTxTotal) {
+                uint64_t newCount = total - telemetryLastTxTotal;
+                if (newCount > snap.txTap.size()) newCount = snap.txTap.size(); // fell behind
+                const std::size_t off = snap.txTap.size() - static_cast<std::size_t>(newCount);
+                telemetryMonitorBytes.insert(telemetryMonitorBytes.end(),
+                                             snap.txTap.begin() + static_cast<std::ptrdiff_t>(off),
+                                             snap.txTap.end());
+                telemetryLastTxTotal = total;
+                telemetryMonitorDirty = true;
+                constexpr std::size_t kCap = 64 * 1024;
+                if (telemetryMonitorBytes.size() > kCap)
+                    telemetryMonitorBytes.erase(telemetryMonitorBytes.begin(),
+                        telemetryMonitorBytes.begin() +
+                        static_cast<std::ptrdiff_t>(telemetryMonitorBytes.size() - kCap));
+            }
+
+            // ---- Serial Monitor ----
             ImGui::Separator();
-            ImGui::Text("Lock-step:      %s", snap.lockstep ? "ARMED" : "off");
-            ImGui::Text("Frames sent:    %u", snap.framesSent);
-            ImGui::Text("Bytes sent:     %u", snap.bytesSent);
-            ImGui::Text("Bytes received: %u", snap.bytesReceived);
+            ImGui::TextUnformatted("Serial Monitor (TX from game)");
+            ImGui::SameLine();
+            if (ImGui::Checkbox("Hex", &telemetryMonitorHex)) telemetryMonitorDirty = true;
+            ImGui::SameLine();
+            ImGui::Checkbox("Auto-scroll", &telemetryMonitorAutoScroll);
+            ImGui::SameLine();
+            if (ImGui::SmallButton("Clear")) {
+                telemetryMonitorBytes.clear();
+                telemetryMonitorText.clear();
+                telemetryMonitorDirty = false;
+            }
+
+            if (telemetryMonitorDirty) {
+                formatTelemetryMonitor(telemetryMonitorBytes, telemetryMonitorHex,
+                                       telemetryMonitorText);
+                telemetryMonitorDirty = false;
+            }
+
+            ImGui::BeginChild("##telemetry_monitor", ImVec2(0, 180), true,
+                              ImGuiWindowFlags_HorizontalScrollbar);
+            ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.55f, 0.95f, 0.55f, 1.0f));
+            ImGui::TextUnformatted(telemetryMonitorText.c_str(),
+                                   telemetryMonitorText.c_str() + telemetryMonitorText.size());
+            ImGui::PopStyleColor();
+            if (telemetryMonitorAutoScroll &&
+                ImGui::GetScrollY() >= ImGui::GetScrollMaxY() - 1.0f)
+                ImGui::SetScrollHereY(1.0f);
+            ImGui::EndChild();
+
+            // ---- Inbound injection (Serial Monitor → game) ----
+            auto sendInput = [&]() {
+                std::vector<unsigned char> out;
+                if (telemetrySendHex) {
+                    parseHexTokens(telemetrySendBuf, out);
+                } else {
+                    for (const char* p = telemetrySendBuf; *p; ++p)
+                        out.push_back(static_cast<unsigned char>(*p));
+                }
+                if (!out.empty())
+                    emulation->telemetryInject(out.data(), out.size());
+                telemetrySendBuf[0] = '\0';
+            };
+
+            ImGui::SetNextItemWidth(-160.0f);
+            bool entered = ImGui::InputText("##telemetry_send", telemetrySendBuf,
+                                            sizeof(telemetrySendBuf),
+                                            ImGuiInputTextFlags_EnterReturnsTrue);
+            ImGui::SameLine();
+            if (ImGui::Button("Send") || entered) sendInput();
+            ImGui::SameLine();
+            ImGui::Checkbox("Hex##send", &telemetrySendHex);
+            ImGui::TextDisabled("→ TELE_IN ($C442). %s",
+                                telemetrySendHex ? "Bytes: e.g. \"06 41 0D\"."
+                                                 : "ASCII text.");
+
+            // ---- Golden-trace log ----
+            ImGui::Separator();
+            ImGui::SetNextItemWidth(-90.0f);
+            ImGui::InputText("##telemetry_log", telemetryLogPathBuf, sizeof(telemetryLogPathBuf));
+            ImGui::SameLine();
+            if (ImGui::Button("Log to file"))
+                emulation->setTelemetryLogFile(telemetryLogPathBuf);
+            ImGui::TextDisabled("Tees every frame to disk (same as --telemetry-log).");
         } else {
             ImGui::TextDisabled("Disabled — tick Enabled, or pass --telemetry-port N.");
         }
@@ -606,6 +898,592 @@ void MainWindow_ImGui::renderTelemetryWindow()
             ImGui::BulletText("$C443 TELE_INLEN (R)  inbound bytes pending");
         }
     }
+    ImGui::End();
+}
+
+// Locate ca65/ld65 and the available ld65 "boards" (.cfg) once, on first Bench
+// open. Desktop only — WASM can't shell out, so Verify stays disabled there.
+void MainWindow_ImGui::detectBenchToolchain()
+{
+    benchToolchainProbed = true;
+#if POM1_IS_WASM
+    benchToolchainOk = false;
+#else
+    namespace fs = std::filesystem;
+    std::error_code ec;
+
+    benchCa65 = whichExe("ca65");
+    benchLd65 = whichExe("ld65");
+    benchToolchainOk = !benchCa65.empty() && !benchLd65.empty();
+
+    // Locate the dev/ tree (boards + include libs); release bundles omit it.
+    std::string devRoot;
+    for (const char* p : {"dev", "../dev", "../../dev"}) {
+        if (fs::exists(fs::path(p) / "cc65", ec)) { devRoot = p; break; }
+    }
+
+    benchBoardLabels.clear();
+    benchBoardCfgs.clear();
+    // Built-in board first — always works, even without dev/.
+    benchBoardLabels.push_back("Apple-1 4K @ $0300 (built-in)");
+    benchBoardCfgs.push_back("");   // "" → write kBenchEmbeddedCfg to a temp file
+
+    if (!devRoot.empty()) {
+        for (const auto& e : fs::directory_iterator(fs::path(devRoot) / "cc65", ec)) {
+            if (e.path().extension() == ".cfg") {
+                benchBoardLabels.push_back(e.path().filename().string());
+                benchBoardCfgs.push_back(fs::absolute(e.path(), ec).string());
+            }
+        }
+        // -I for every dev/lib/* subdir so `.include "apple1.inc"` etc. resolve.
+        std::string flags;
+        for (const auto& e : fs::directory_iterator(fs::path(devRoot) / "lib", ec)) {
+            if (e.is_directory(ec))
+                flags += "-I " + shellQuote(fs::absolute(e.path(), ec).string()) + " ";
+        }
+        benchLibFlags = flags;
+    }
+
+    // C mode (cc65 cl65 driver) + the apple1-videocard-lib for TMS9918.
+    benchCl65 = whichExe("cl65");
+    if (!devRoot.empty()) {
+        const fs::path vlib = fs::path(devRoot) / "apple1-videocard-lib" / "lib";
+        if (fs::exists(vlib, ec)) benchVideocardLib = fs::absolute(vlib, ec).string();
+    }
+    benchCl65Ok = !benchCl65.empty() && !benchVideocardLib.empty();
+
+    if (benchBoardIndex >= static_cast<int>(benchBoardCfgs.size())) benchBoardIndex = 0;
+#endif
+}
+
+// "POM1 Bench" — the authoring half of the Arduino-style SDK (Phase B). A sketch
+// editor whose Upload tees the buffer to a temp file and pipes it through the
+// same loadHexDump / loadBinary path as the Load dialog (both already reset the
+// CPU + run). Hex mode = Wozmon dump (addresses in the text); Raw mode = flat hex
+// bytes loaded at the address field. cc65 Verify/Upload arrives in Phase C.
+// Per-source-mode starter sketches (benchUploadMode: 0 = cc65 asm, 1 = Wozmon
+// hex, 2 = raw bytes). Each is a working "Blink": print '!' via WozMon ECHO.
+static const char* kBenchSketchAsm =
+    "; POM1 Bench - cc65 sketch. Verify compiles; Upload builds + runs.\n"
+    "; Blink: print '!' forever via WozMon ECHO ($FFEF).\n"
+    "ECHO = $FFEF\n"
+    ".segment \"CODE\"\n"
+    "start:\n"
+    "    lda #$A1        ; '!' | $80\n"
+    "    jsr ECHO\n"
+    "    jmp start\n";
+static const char* kBenchSketchHex =
+    "; POM1 Bench - Wozmon hex. Upload loads + runs (addresses are in the text).\n"
+    "0300: A9 A1 20 EF FF 4C 00 03\n"
+    "0300R\n";
+static const char* kBenchSketchRaw =
+    "; Raw bytes - loaded flat at the $ address. '!' via WozMon ECHO.\n"
+    "A9 A1 20 EF FF 4C 00 03\n";
+static const char* kBenchSketchC =
+    "/* Hello world in C for the TMS9918 (apple1-videocard-lib, cc65).\n"
+    "   Upload assembles with cl65, auto-plugs the TMS9918 card, runs @ $0300. */\n"
+    "#include \"tms9918.h\"\n"
+    "#include \"screen1.h\"\n"
+    "\n"
+    "void main(void) {\n"
+    "    tms_init_regs(SCREEN1_TABLE);\n"
+    "    tms_set_color(COLOR_CYAN);\n"
+    "    screen1_prepare();\n"
+    "    screen1_load_font();\n"
+    "    screen1_puts((const unsigned char *)\"HELLO WORLD (C / TMS9918)\\nPOM1 Bench\");\n"
+    "    for (;;) { /* idle */ }\n"
+    "}\n";
+
+static const char* benchStarterFor(int mode)
+{
+    return mode == 0 ? kBenchSketchAsm
+         : mode == 2 ? kBenchSketchRaw
+         : mode == 3 ? kBenchSketchC
+                     : kBenchSketchHex;
+}
+
+// A 6502 / ca65 language definition for ImGuiColorTextEdit: NMOS mnemonics as
+// keywords, ca65 dot-directives + $hex / %binary / decimal numbers + ';' line
+// comments. Built once (the editor copies it).
+static const TextEditor::LanguageDefinition& build6502LangDef()
+{
+    static bool inited = false;
+    static TextEditor::LanguageDefinition lang;
+    if (inited) return lang;
+
+    static const char* const kMnemonics[] = {
+        "ADC","AND","ASL","BCC","BCS","BEQ","BIT","BMI","BNE","BPL","BRK","BVC","BVS",
+        "CLC","CLD","CLI","CLV","CMP","CPX","CPY","DEC","DEX","DEY","EOR","INC","INX",
+        "INY","JMP","JSR","LDA","LDX","LDY","LSR","NOP","ORA","PHA","PHP","PLA","PLP",
+        "ROL","ROR","RTI","RTS","SBC","SEC","SED","SEI","STA","STX","STY","TAX","TAY",
+        "TSX","TXA","TXS","TYA",
+    };
+    for (auto* m : kMnemonics) lang.mKeywords.insert(m);
+
+    using PI = TextEditor::PaletteIndex;
+    lang.mTokenRegexStrings.push_back({ "\\\"(\\\\.|[^\\\"])*\\\"", PI::String });
+    lang.mTokenRegexStrings.push_back({ "\\.[a-zA-Z_][a-zA-Z0-9_]*",  PI::Preprocessor }); // ca65 directive
+    lang.mTokenRegexStrings.push_back({ "\\$[0-9a-fA-F]+",            PI::Number });        // $hex
+    lang.mTokenRegexStrings.push_back({ "%[01]+",                    PI::Number });        // %binary
+    lang.mTokenRegexStrings.push_back({ "[0-9]+",                    PI::Number });        // decimal
+    lang.mTokenRegexStrings.push_back({ "[a-zA-Z_][a-zA-Z0-9_]*",    PI::Identifier });    // labels / symbols
+    lang.mTokenRegexStrings.push_back({ "[\\[\\]\\{\\}\\!\\%\\^\\&\\*\\(\\)\\-\\+\\=\\~\\|\\<\\>\\?\\/\\;\\,\\.\\#\\:\\@\\$]",
+                                        PI::Punctuation });
+
+    lang.mCommentStart      = "/*";   // ca65 has no block comments; sentinel won't appear
+    lang.mCommentEnd        = "*/";
+    lang.mSingleLineComment = ";";
+    lang.mCaseSensitive     = false;  // mnemonics are case-insensitive (lookup upper-cases)
+    lang.mAutoIndentation   = true;
+    lang.mName              = "6502";
+
+    inited = true;
+    return lang;
+}
+
+// Parse ca65/ld65 output into ImGuiColorTextEdit error markers, keyed by source
+// line. Matches the "file(<line>): Error/Warning: msg" form ca65 emits.
+static void parseBenchErrorMarkers(const std::string& out, TextEditor::ErrorMarkers& markers)
+{
+    size_t start = 0;
+    while (start <= out.size()) {
+        const size_t nl  = out.find('\n', start);
+        const size_t end = (nl == std::string::npos) ? out.size() : nl;
+        const std::string line = out.substr(start, end - start);
+        if (line.find("rror") != std::string::npos || line.find("arning") != std::string::npos) {
+            const size_t lp = line.find('(');
+            int lineNo = 0;
+            if (lp != std::string::npos) {
+                const size_t rp = line.find(')', lp);
+                if (rp != std::string::npos)
+                    try { lineNo = std::stoi(line.substr(lp + 1, rp - lp - 1)); } catch (...) { lineNo = 0; }
+            }
+            if (lineNo > 0) {
+                size_t mp = line.find("rror:");
+                if (mp == std::string::npos) mp = line.find("arning:");
+                markers[lineNo] = (mp == std::string::npos) ? line : line.substr(mp);
+            }
+        }
+        if (nl == std::string::npos) break;
+        start = nl + 1;
+    }
+}
+
+void MainWindow_ImGui::renderBenchWindow()
+{
+    if (!benchToolchainProbed) detectBenchToolchain();
+
+    // Lazy-init the ImGuiColorTextEdit editor (6502 syntax, Arduino-light
+    // palette). Default to cc65 asm when the toolchain is present, else Wozmon
+    // hex (which needs no compiler) so the sketch is usable out of the box.
+    if (!benchEditor) {
+        benchUploadMode = benchToolchainOk ? 0 : 1;
+        benchEditor = std::make_unique<TextEditor>();
+        benchEditor->SetLanguageDefinition(build6502LangDef());
+        benchEditor->SetPalette(TextEditor::GetLightPalette());
+        benchEditor->SetShowWhitespaces(false);
+        benchEditor->SetText(benchStarterFor(benchUploadMode));
+    }
+
+    // ── Arduino IDE palette (teal toolbar/status, dark console) ──
+    const ImVec4 kTeal     = ImVec4(0.000f, 0.592f, 0.616f, 1.0f); // #00979D
+    const ImVec4 kTealDark = ImVec4(0.000f, 0.353f, 0.369f, 1.0f); // hover/pressed
+    const ImVec4 kWhite    = ImVec4(1.0f, 1.0f, 1.0f, 1.0f);
+    const ImVec4 kConsoleBg= ImVec4(0.10f, 0.10f, 0.11f, 1.0f);
+
+    ImGui::SetNextWindowSize(ImVec2(620, 560), ImGuiCond_FirstUseEver);
+    applyPendingLayout("POM1 Bench");
+    if (!ImGui::Begin("POM1 Bench", &showBench)) { ImGui::End(); return; }
+
+    // ── Actions (lambdas so the toolbar can call them inline; layout-affecting
+    //    state like benchShowConsole is then set before the editor sizes) ──
+    auto doNew = [&]() {
+        benchEditor->SetText(benchStarterFor(benchUploadMode));
+        benchEditor->SetErrorMarkers({});
+        benchFilePathBuf[0] = '\0';
+        benchStatus = "New sketch"; benchStatusOk = true;
+    };
+    auto doOpen = [&]() {
+        if (benchFilePathBuf[0] == '\0') { benchStatus = "Open: enter a file path first"; benchStatusOk = false; return; }
+        std::ifstream in(benchFilePathBuf, std::ios::binary);
+        if (!in) { benchStatus = "Open failed: " + std::string(benchFilePathBuf); benchStatusOk = false; return; }
+        std::string data((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+        benchEditor->SetText(data);
+        benchEditor->SetErrorMarkers({});
+        benchStatus = "Opened " + std::string(benchFilePathBuf) + " (" + std::to_string(data.size()) + " B)";
+        benchStatusOk = true;
+    };
+    auto doSave = [&]() {
+        if (benchFilePathBuf[0] == '\0') { benchStatus = "Save: enter a file path first"; benchStatusOk = false; return; }
+        std::ofstream out(benchFilePathBuf, std::ios::binary);
+        if (!out) { benchStatus = "Save failed: " + std::string(benchFilePathBuf); benchStatusOk = false; return; }
+        const std::string text = benchEditor->GetText();
+        out.write(text.data(), static_cast<std::streamsize>(text.size()));
+        benchStatus = "Saved " + std::string(benchFilePathBuf) + " (" + std::to_string(text.size()) + " B)";
+        benchStatusOk = true;
+    };
+    auto loadExampleFile = [&](const char* rel, int mode, const char* nice, const char* boardHint) {
+        namespace fs = std::filesystem;
+        std::error_code ec;
+        for (const char* pre : {"", "../", "../../"}) {
+            const fs::path p = fs::path(pre) / rel;
+            if (!fs::exists(p, ec)) continue;
+            std::ifstream in(p, std::ios::binary);
+            std::string data((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+            benchUploadMode = mode;
+            benchEditor->SetText(data);
+            benchEditor->SetErrorMarkers({});
+            benchFilePathBuf[0] = '\0';
+            // Select the matching board (e.g. apple1_gen2.cfg for HGR demos).
+            if (boardHint)
+                for (int i = 0; i < static_cast<int>(benchBoardLabels.size()); ++i)
+                    if (benchBoardLabels[i].find(boardHint) != std::string::npos) { benchBoardIndex = i; break; }
+            benchStatus = std::string("Example: ") + nice; benchStatusOk = true;
+            return;
+        }
+        benchStatus = std::string("Example not found (needs dev/): ") + rel; benchStatusOk = false;
+    };
+    auto doDirectLoad = [&]() {            // hex (mode 1) / raw (mode 2)
+        namespace fs = std::filesystem;
+        std::error_code ec;
+        const fs::path dir = fs::temp_directory_path(ec);
+        const std::string src = benchEditor->GetText();
+        std::string error; int bytesLoaded = 0; bool ok = false; uint16_t entry = 0;
+        if (benchUploadMode == 1) {
+            const fs::path tmp = dir / "pom1_bench_sketch.txt";
+            std::ofstream(tmp, std::ios::binary).write(src.data(), static_cast<std::streamsize>(src.size()));
+            std::vector<std::pair<uint16_t, uint16_t>> zones;
+            ok = emulation->loadHexDump(tmp.string(), entry, error, &bytesLoaded, &zones);
+        } else {
+            std::vector<unsigned char> bytes; parseHexTokens(src.c_str(), bytes);
+            try { entry = static_cast<uint16_t>(std::stoul(benchRawAddrBuf, nullptr, 16)); } catch (...) { entry = 0x0300; }
+            if (bytes.empty()) error = "no hex bytes parsed";
+            else {
+                const fs::path tmp = dir / "pom1_bench_sketch.bin";
+                std::ofstream(tmp, std::ios::binary).write(reinterpret_cast<const char*>(bytes.data()),
+                                                           static_cast<std::streamsize>(bytes.size()));
+                ok = emulation->loadBinary(tmp.string(), entry, error, &bytesLoaded);
+            }
+        }
+        if (ok) {
+            emulation->copySnapshot(uiSnapshot);
+            char m[128]; std::snprintf(m, sizeof(m), "Uploaded %d B - running @ $%04X", bytesLoaded, entry);
+            benchStatus = m; benchStatusOk = true;
+        } else { benchStatus = "Upload failed: " + error; benchStatusOk = false; }
+    };
+#if !POM1_IS_WASM
+    auto doCompile = [&](bool thenRun) {   // compile (cc65) → temp .bin → (load+run)
+        namespace fs = std::filesystem;
+        std::error_code ec;
+        const fs::path dir  = fs::temp_directory_path(ec);
+        const fs::path binB = dir / "pom1_bench.bin";
+        const std::string src = benchEditor->GetText();
+        const bool cmode = (benchUploadMode == 3);
+        benchShowConsole = true;
+        uint16_t entry = 0;
+        bool wantGen2 = false;
+
+        if (cmode) {
+            // C: one cl65 invocation (compile + assemble + link) against the
+            // apple1-videocard-lib (TMS9918), into low RAM @ $0300.
+            const fs::path srcC = dir / "pom1_bench.c";
+            const fs::path cfgP = dir / "pom1_bench_c.cfg";
+            std::ofstream(srcC, std::ios::binary).write(src.data(), static_cast<std::streamsize>(src.size()));
+            std::ofstream(cfgP, std::ios::binary) << kBenchCCfg;
+            const std::string& lib = benchVideocardLib;
+            const std::string cmd = shellQuote(benchCl65) + " -t none -Oirs -C " + shellQuote(cfgP.string()) +
+                " -I " + shellQuote(lib) + " " + shellQuote(srcC.string()) +
+                " " + shellQuote(lib + "/apple1_asm.s") + " " + shellQuote(lib + "/tms9918.c") +
+                " " + shellQuote(lib + "/screen1.c") + " " + shellQuote(lib + "/c64font.c") +
+                " -o " + shellQuote(binB.string());
+            std::string out;
+            const int rc = runCapture(cmd, out);
+            benchConsole = "$ cl65 -t none [TMS9918 C]\n" + out;
+            if (rc != 0) {
+                TextEditor::ErrorMarkers em; parseBenchErrorMarkers(out, em); benchEditor->SetErrorMarkers(em);
+                benchStatus = "cl65 failed (see Build output)"; benchStatusOk = false; return;
+            }
+            benchEditor->SetErrorMarkers({});
+            benchConsole += "[ok] compiled + linked (C)\n";
+            entry = 0x0300;
+        } else {
+            // cc65 asm: ca65 + ld65, board cfg selects the load address.
+            const fs::path srcS = dir / "pom1_bench.s";
+            const fs::path objO = dir / "pom1_bench.o";
+            std::ofstream(srcS, std::ios::binary).write(src.data(), static_cast<std::streamsize>(src.size()));
+            std::string cfgPath = benchBoardCfgs[benchBoardIndex];
+            if (cfgPath.empty()) {
+                const fs::path embedded = dir / "pom1_bench_default.cfg";
+                std::ofstream(embedded, std::ios::binary) << kBenchEmbeddedCfg;
+                cfgPath = embedded.string();
+            }
+            std::string out;
+            const std::string ca = shellQuote(benchCa65) + " " + benchLibFlags +
+                shellQuote(srcS.string()) + " -o " + shellQuote(objO.string());
+            int rc = runCapture(ca, out);
+            benchConsole = "$ ca65 [" + benchBoardLabels[benchBoardIndex] + "]\n" + out;
+            if (rc != 0) {
+                TextEditor::ErrorMarkers em; parseBenchErrorMarkers(out, em); benchEditor->SetErrorMarkers(em);
+                benchStatus = "ca65 failed (see Build output)"; benchStatusOk = false; return;
+            }
+            benchEditor->SetErrorMarkers({});
+            const std::string ld = shellQuote(benchLd65) + " -C " + shellQuote(cfgPath) + " " +
+                shellQuote(objO.string()) + " -o " + shellQuote(binB.string());
+            rc = runCapture(ld, out);
+            benchConsole += "$ ld65 -C " + cfgPath + "\n" + out;
+            if (rc != 0) { benchStatus = "ld65 failed (see Build output)"; benchStatusOk = false; return; }
+            benchConsole += "[ok] assembled + linked\n";
+            entry = parseCfgLoadAddr(cfgPath);
+            if (entry == 0) { try { entry = static_cast<uint16_t>(std::stoul(benchRawAddrBuf, nullptr, 16)); } catch (...) { entry = 0x0300; } }
+            wantGen2 = (cfgPath.find("gen2") != std::string::npos);
+        }
+
+        if (!thenRun) { benchStatus = "Verify OK"; benchStatusOk = true; return; }
+
+        // Auto-plug the card the build targets (mirrors the file-dialog enable).
+        if (cmode) {
+            if (!tms9918Enabled) { tms9918Enabled = true; emulation->setTMS9918Enabled(true); }
+            showTMS9918 = true;
+        } else if (wantGen2) {
+            if (!graphicsCardEnabled) { graphicsCardEnabled = true; emulation->setHgrFramebufferAttached(true); }
+            showGraphicsCard = true;
+        }
+
+        std::string error; int bytesLoaded = 0;
+        if (emulation->loadBinary(binB.string(), entry, error, &bytesLoaded)) {
+            emulation->copySnapshot(uiSnapshot);
+            char msg[128]; std::snprintf(msg, sizeof(msg), "Built %d B - running @ $%04X", bytesLoaded, entry);
+            benchStatus = msg; benchStatusOk = true;
+        } else { benchStatus = "load failed: " + error; benchStatusOk = false; }
+    };
+#endif
+    auto doVerify = [&]() {
+#if !POM1_IS_WASM
+        if (benchUploadMode == 0 && benchToolchainOk) doCompile(false);
+        else if (benchUploadMode == 3 && benchCl65Ok)  doCompile(false);
+        else { benchStatus = "Verify needs cc65 (Source = cc65 asm or C)"; benchStatusOk = false; }
+#else
+        benchStatus = "Verify (cc65) is desktop-only"; benchStatusOk = false;
+#endif
+    };
+    auto doUpload = [&]() {
+        if (benchUploadMode == 0 || benchUploadMode == 3) {
+#if !POM1_IS_WASM
+            const bool ok = (benchUploadMode == 3) ? benchCl65Ok : benchToolchainOk;
+            if (ok) { doCompile(true); }
+            else {
+                benchStatus = (benchUploadMode == 3)
+                    ? "cc65 cl65 / videocard-lib not found (needs dev/)"
+                    : "cc65 not found - install ca65/ld65, or switch Source to hex";
+                benchStatusOk = false;
+            }
+#else
+            benchStatus = "cc65 build is desktop-only - switch Source to hex"; benchStatusOk = false;
+#endif
+        } else doDirectLoad();
+    };
+
+    // ── Teal toolbar with circular icon buttons (Arduino-style) ──
+    // Each button = an InvisibleButton hit-box + the icon glyph + a circle ring
+    // drawn *over* the icon (a subtle filled disc appears on hover for feedback).
+    bool openExamplesPopup = false;
+    auto circleBtn = [&](const char* icon, const char* id, const char* tip) -> bool {
+        const float d = 34.0f;
+        const ImVec2 p = ImGui::GetCursorScreenPos();
+        const bool clicked = ImGui::InvisibleButton(id, ImVec2(d, d));
+        const bool hov = ImGui::IsItemHovered();
+        ImDrawList* dl = ImGui::GetWindowDrawList();
+        const ImVec2 c(p.x + d * 0.5f, p.y + d * 0.5f);
+        if (hov) dl->AddCircleFilled(c, d * 0.5f, ImGui::GetColorU32(kTealDark), 32);
+        const ImVec2 ts = ImGui::CalcTextSize(icon);
+        dl->AddText(ImVec2(c.x - ts.x * 0.5f, c.y - ts.y * 0.5f), IM_COL32_WHITE, icon);
+        dl->AddCircle(c, d * 0.5f - 1.0f, IM_COL32_WHITE, 32, hov ? 2.5f : 1.5f); // ring over the icon
+        if (hov && tip) ImGui::SetTooltip("%s", tip);
+        return clicked;
+    };
+
+    ImGui::PushStyleColor(ImGuiCol_ChildBg, kTeal);
+    ImGui::BeginChild("##benchtoolbar", ImVec2(0, 44), false, ImGuiWindowFlags_NoScrollbar);
+    ImGui::SetCursorPos(ImVec2(8, 5));
+    if (circleBtn(ICON_FA_CHECK,         "##benchverify",   "Verify (compile)"))        doVerify();
+    ImGui::SameLine(0, 6);
+    if (circleBtn(ICON_FA_ARROW_RIGHT,   "##benchupload",   "Upload (build + run)"))    doUpload();
+    ImGui::SameLine(0, 18);
+    if (circleBtn(ICON_FA_FILE,          "##benchnew",      "New sketch"))              doNew();
+    ImGui::SameLine(0, 6);
+    if (circleBtn(ICON_FA_FOLDER_OPEN,   "##benchopen",     "Open (path field below)")) doOpen();
+    ImGui::SameLine(0, 6);
+    if (circleBtn(ICON_FA_FLOPPY_DISK,   "##benchsave",     "Save (path field below)")) doSave();
+    ImGui::SameLine(0, 6);
+    if (circleBtn(ICON_FA_BOOK,          "##benchexamples", "Examples"))                openExamplesPopup = true;
+    ImGui::SameLine(ImGui::GetWindowWidth() - 42);
+    if (circleBtn(ICON_FA_MAGNIFYING_GLASS, "##benchserial", "Serial Monitor (telemetry)")) showTelemetry = true;
+    ImGui::EndChild();
+    ImGui::PopStyleColor(); // toolbar ChildBg
+
+    // ── Examples menu (popup opened from the toolbar's book button) ──
+    if (openExamplesPopup) ImGui::OpenPopup("##benchexamplespopup");
+    if (ImGui::BeginPopup("##benchexamplespopup")) {
+        ImGui::TextDisabled("Examples"); ImGui::Separator();
+        if (ImGui::Selectable("Blink  (cc65 asm)")) {
+            benchUploadMode = 0; benchEditor->SetText(kBenchSketchAsm);
+            benchEditor->SetErrorMarkers({}); benchFilePathBuf[0] = '\0';
+            benchStatus = "Example: Blink (asm)"; benchStatusOk = true;
+        }
+        if (ImGui::Selectable("Blink  (Wozmon hex)")) {
+            benchUploadMode = 1; benchEditor->SetText(kBenchSketchHex);
+            benchEditor->SetErrorMarkers({}); benchFilePathBuf[0] = '\0';
+            benchStatus = "Example: Blink (hex)"; benchStatusOk = true;
+        }
+        if (ImGui::Selectable("Hello world  (C / TMS9918)")) {
+            benchUploadMode = 3; benchEditor->SetText(kBenchSketchC);
+            benchEditor->SetErrorMarkers({}); benchFilePathBuf[0] = '\0';
+            benchStatus = "Example: Hello (C / TMS9918)"; benchStatusOk = true;
+        }
+        ImGui::Separator();
+        if (ImGui::Selectable("A-1-CrazyCycle  (GEN2 HGR demo)"))
+            loadExampleFile("dev/projects/a1_crazycycle/A-1-CrazyCycle.asm", 0, "A-1-CrazyCycle", "gen2");
+        if (ImGui::Selectable("Telemetry demo  (SDK harness)"))
+            loadExampleFile("dev/projects/a1_telemetry_demo/A1_TelemetryDemo.asm", 0, "Telemetry demo", nullptr);
+        ImGui::EndPopup();
+    }
+
+    // ── Source-mode + Board row ──
+    ImGui::AlignTextToFramePadding();
+    ImGui::TextUnformatted("Source:");
+    ImGui::SameLine();
+    ImGui::SetNextItemWidth(150);
+    ImGui::Combo("##benchmode", &benchUploadMode, "cc65 asm\0Wozmon hex\0Raw bytes\0C (TMS9918)\0");
+    if (benchUploadMode == 2) {
+        ImGui::SameLine(); ImGui::TextUnformatted("@ $"); ImGui::SameLine();
+        ImGui::SetNextItemWidth(56);
+        ImGui::InputText("##benchaddr", benchRawAddrBuf, sizeof(benchRawAddrBuf),
+                         ImGuiInputTextFlags_CharsHexadecimal);
+    }
+#if !POM1_IS_WASM
+    if (benchUploadMode == 3) {
+        ImGui::SameLine(0, 16);
+        if (benchCl65Ok)
+            ImGui::TextColored(ImVec4(0.4f, 0.85f, 0.4f, 1.0f), ICON_FA_MICROCHIP " TMS9918 + cl65 (auto-plug @ $0300)");
+        else
+            ImGui::TextColored(ImVec4(1.0f, 0.7f, 0.3f, 1.0f), ICON_FA_HAMMER " needs cl65 + dev/apple1-videocard-lib");
+    }
+#endif
+#if !POM1_IS_WASM
+    if (benchUploadMode == 0) {
+        ImGui::SameLine(0, 16);
+        if (benchToolchainOk && !benchBoardLabels.empty()) {
+            ImGui::TextUnformatted("Board:"); ImGui::SameLine();
+            ImGui::SetNextItemWidth(240);
+            if (ImGui::BeginCombo("##benchboard", benchBoardLabels[benchBoardIndex].c_str())) {
+                for (int i = 0; i < static_cast<int>(benchBoardLabels.size()); ++i) {
+                    const bool sel = (i == benchBoardIndex);
+                    if (ImGui::Selectable(benchBoardLabels[i].c_str(), sel)) benchBoardIndex = i;
+                    if (sel) ImGui::SetItemDefaultFocus();
+                }
+                ImGui::EndCombo();
+            }
+        } else {
+            ImGui::SameLine();
+            ImGui::TextColored(ImVec4(1.0f, 0.7f, 0.3f, 1.0f), ICON_FA_HAMMER " cc65 not found");
+        }
+    }
+#endif
+
+    // ── Sketch tab ──
+    std::string tabName = "sketch";
+    if (benchFilePathBuf[0]) {
+        std::string p(benchFilePathBuf);
+        size_t slash = p.find_last_of("/\\");
+        tabName = (slash == std::string::npos) ? p : p.substr(slash + 1);
+    } else {
+        tabName += (benchUploadMode == 0 ? ".s" : benchUploadMode == 2 ? ".bin" : ".hex");
+    }
+    if (ImGui::BeginTabBar("##benchtabs", ImGuiTabBarFlags_None)) {
+        if (ImGui::BeginTabItem((tabName + "  ").c_str())) ImGui::EndTabItem();
+        ImGui::EndTabBar();
+    }
+
+    // ── Editor (ImGuiColorTextEdit, 6502 syntax highlighting) ──
+    // Reserve exact room below the editor so the bottom status bar is never
+    // clipped: path field (one frame row) + status bar + (optional) console
+    // block (its header row + child). All from live ImGui metrics.
+    ImVec2 avail = ImGui::GetContentRegionAvail();
+    const float spacingY      = ImGui::GetStyle().ItemSpacing.y;
+    const float rowH          = ImGui::GetFrameHeightWithSpacing();   // path field / console header
+    const float kStatusBarH   = 24.0f;
+    const float kConsoleChildH = 124.0f;
+    const float consoleBlock  = benchShowConsole ? (rowH + kConsoleChildH + spacingY) : 0.0f;
+    float editorH = avail.y - consoleBlock - rowH - (kStatusBarH + spacingY) - spacingY;
+    if (editorH < 100.0f) editorH = 100.0f;
+    benchEditor->Render("##benchsrc", ImVec2(avail.x, editorH), true);
+
+    // ── Build output console (dark; error lines orange + click → editor line) ──
+    if (benchShowConsole) {
+        ImGui::TextUnformatted("Build output");
+        ImGui::SameLine();
+        if (ImGui::SmallButton("Hide"))      benchShowConsole = false;
+        ImGui::SameLine();
+        if (ImGui::SmallButton("Clear##bc")) benchConsole.clear();
+        ImGui::PushStyleColor(ImGuiCol_ChildBg, kConsoleBg);
+        ImGui::BeginChild("##benchconsole", ImVec2(avail.x, kConsoleChildH), true,
+                          ImGuiWindowFlags_HorizontalScrollbar);
+        size_t start = 0;
+        while (start <= benchConsole.size()) {
+            size_t nl = benchConsole.find('\n', start);
+            const size_t end = (nl == std::string::npos) ? benchConsole.size() : nl;
+            const char* b = benchConsole.data() + start;
+            const char* e = benchConsole.data() + end;
+            const std::string line(b, e);
+            const bool err = line.find("rror") != std::string::npos ||
+                             line.find("ailed") != std::string::npos;
+            // Parse a "(<line>)" so the row can jump the editor cursor there.
+            int jumpLine = 0;
+            if (err) {
+                const size_t lp = line.find('(');
+                if (lp != std::string::npos) {
+                    const size_t rp = line.find(')', lp);
+                    if (rp != std::string::npos)
+                        try { jumpLine = std::stoi(line.substr(lp + 1, rp - lp - 1)); } catch (...) { jumpLine = 0; }
+                }
+            }
+            ImGui::PushStyleColor(ImGuiCol_Text, err ? ImVec4(0.96f, 0.55f, 0.22f, 1.0f)
+                                                     : ImVec4(0.82f, 0.82f, 0.82f, 1.0f));
+            if (jumpLine > 0) {
+                const std::string id = line + "##bcl" + std::to_string(start);
+                if (ImGui::Selectable(id.c_str()))
+                    benchEditor->SetCursorPosition(TextEditor::Coordinates(jumpLine - 1, 0));
+            } else {
+                ImGui::TextUnformatted(b, e);
+            }
+            ImGui::PopStyleColor();
+            if (nl == std::string::npos) break;
+            start = nl + 1;
+        }
+        ImGui::EndChild();
+        ImGui::PopStyleColor();
+    }
+
+    // ── Path field (Open/Save target) ──
+    ImGui::SetNextItemWidth(-1.0f);
+    ImGui::InputTextWithHint("##benchpath", "path to Open / Save…", benchFilePathBuf, sizeof(benchFilePathBuf));
+
+    // ── Teal status bar (selected board on the right, like Arduino) ──
+    ImGui::PushStyleColor(ImGuiCol_ChildBg, kTeal);
+    ImGui::BeginChild("##benchstatus", ImVec2(0, 24), false, ImGuiWindowFlags_NoScrollbar);
+    ImGui::PushStyleColor(ImGuiCol_Text, kWhite);
+    ImGui::SetCursorPos(ImVec2(8, 4));
+    ImGui::TextUnformatted(benchStatus.empty() ? "Ready" : benchStatus.c_str());
+    const std::string boardName = benchBoardLabels.empty() ? std::string("—")
+                                : benchBoardLabels[benchBoardIndex];
+    const std::string right = boardName + " on POM1";
+    const float rw = ImGui::CalcTextSize(right.c_str()).x;
+    ImGui::SetCursorPos(ImVec2(ImGui::GetWindowWidth() - rw - 8, 4));
+    ImGui::TextUnformatted(right.c_str());
+    ImGui::PopStyleColor();
+    ImGui::EndChild();
+    ImGui::PopStyleColor();
+
     ImGui::End();
 }
 

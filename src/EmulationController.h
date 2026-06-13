@@ -313,6 +313,12 @@ public:
     void setTelemetryEnabled(bool enabled);
     void setTelemetryListenPort(uint16_t port);
     void setTelemetryLogFile(const std::string& path);
+    /// Serial Monitor → game: push synthetic inbound bytes into the TELE_IN FIFO,
+    /// as if a TCP harness had sent them. No-op when telemetry is disabled.
+    void telemetryInject(const uint8_t* data, std::size_t len);
+    /// Release one frame while the CPU is parked on a lock-step ACK wait (the
+    /// in-app "Step frame" button). Equivalent to a harness sending the ACK byte.
+    void telemetryReleaseFrame();
     /// Render-loop accessor. Returns null when the card is disabled. The
     /// returned reference is owned by Memory and outlives any single frame;
     /// callers must not retain it across hardReset() / preset switch.

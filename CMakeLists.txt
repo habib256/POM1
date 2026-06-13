@@ -85,6 +85,7 @@ set(SOURCES
     ${POM1_SRC_DIR}/MainWindow_TMS9918Inspector.cpp
     ${POM1_SRC_DIR}/MainWindow_Keyboard.cpp
     ${POM1_SRC_DIR}/Logger.cpp
+    ${POM1_SRC_DIR}/third_party/ImGuiColorTextEdit/TextEditor.cpp
 )
 
 set(HEADERS
@@ -175,6 +176,7 @@ target_include_directories(${PROJECT_NAME} PRIVATE
     ${IMGUI_DIR}
     ${IMGUI_DIR}/backends
     ${POM1_SRC_DIR}
+    ${POM1_SRC_DIR}/third_party/ImGuiColorTextEdit
 )
 
 # libresidfp (vendored, third_party/libresidfp). PUBLIC include dir on the

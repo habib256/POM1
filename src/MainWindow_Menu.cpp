@@ -197,6 +197,7 @@ void MainWindow_ImGui::renderMenuBar()
             if (tms9918Enabled)
                 ImGui::MenuItem("TMS9918 VDP Inspector...", nullptr, &showTMS9918Inspector);
             ImGui::MenuItem("Telemetry Side Channel...", nullptr, &showTelemetry);
+            ImGui::MenuItem("POM1 Bench (sketch editor)...", nullptr, &showBench);
             if (ImGui::MenuItem("Memory Options")) {
                 configMemory();
             }

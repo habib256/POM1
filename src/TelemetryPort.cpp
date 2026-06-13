@@ -53,6 +53,8 @@ void TelemetryPort::reset()
     frameBuf.clear();
     outBuf.clear();
     inBuf.clear();
+    txMonitorRing.clear();
+    txMonitorTotal = 0;
     lockstep = false;
     awaitingAck = false;
     framesSentCount = 0;
@@ -172,6 +174,17 @@ void TelemetryPort::endFrame()
     }
     ++framesSentCount;
 
+    // Serial Monitor tap — mirror the wire bytes into the bounded ring before the
+    // socket backpressure check, so the in-app monitor (and the golden-trace log)
+    // both show every frame regardless of client timing.
+    auto tap = [&](const uint8_t* d, std::size_t n) {
+        for (std::size_t i = 0; i < n; ++i) txMonitorRing.push_back(d[i]);
+        txMonitorTotal += n;
+        while (txMonitorRing.size() > kMonitorRingBytes) txMonitorRing.pop_front();
+    };
+    tap(hdr, 3);
+    if (len) tap(frameBuf.data(), len);
+
     // Queue for the socket. Drop on backpressure (the log already has it) rather
     // than grow without bound; flag it once so the symptom is visible.
     if (outBuf.size() + len + 3 > kMaxOutBytes) {
@@ -250,9 +263,22 @@ void TelemetryPort::copySnapshot(Snapshot& out) const
     out.clientAddress   = clientAddress;
     out.listenPort      = listenPort;
     out.lockstep        = lockstep;
+    out.awaitingAck     = awaitingAck;
     out.framesSent      = framesSentCount;
     out.bytesSent       = bytesSentCount;
     out.bytesReceived   = bytesReceivedCount;
+    out.txTap.assign(txMonitorRing.begin(), txMonitorRing.end());
+    out.txTotal         = txMonitorTotal;
+}
+
+void TelemetryPort::injectInbound(const uint8_t* data, std::size_t len)
+{
+    std::lock_guard<std::mutex> lock(portMutex);
+    for (std::size_t i = 0; i < len; ++i) {
+        if (inBuf.size() >= kMaxInBytes) inBuf.pop_front(); // drop-oldest
+        inBuf.push_back(data[i]);
+    }
+    bytesReceivedCount += static_cast<uint32_t>(len);
 }
 
 // ─────────────────────────────────────────────────────────────

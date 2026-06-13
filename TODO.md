@@ -79,6 +79,47 @@ Sections ordered by actionability: implementable first, externally-blocked last.
 
 ---
 
+## 🛠️ POM1 Bench — IDE in-app façon Arduino (front-end auteur du SDK)
+
+> **Contexte** (juin 2026) : le « SDK rêvé » de Bernie (cc65/ca65 → émulateur → test) existe côté outils (port `$C440-$C443` + lib cc65 `dev/lib/telemetry/telemetry.inc` + harnais `tools/pom1_telemetry.py` + démo `dev/projects/a1_telemetry_demo/`), mais il vit en ligne de commande / `dev/`. Objectif : matérialiser la **boucle d'auteur** *à l'intérieur de POM1*, **dans le style de l'IDE Arduino** — fenêtre éditeur + boutons Verify/Upload + un **Serial Monitor qui EST la télémétrie**. C'est le pendant interactif du CI (section Technical debt) : le CI est l'assurance-régression batch ; ceci est l'établi. **Desktop-first** — le shell-out `ca65`/`ld65` est impossible en WASM, donc les boutons de compilation sont masqués sur le web (l'éditeur + le Serial Monitor restent dispo). `[L · solid]`.
+>
+> **Mapping Arduino → POM1** : sketch → source 6502/cc65 · *Board* → config `.cfg` cc65 (`apple1_4k` / `apple1_gen2` / `telemetry` …) · *Verify* (✓) → `ca65`+`ld65` → `.bin`, erreurs au panneau · *Upload* (→) → `loadHexDump`/`loadBinary` + reset/run · *Serial Monitor* → TX `$C440` (hex+ASCII) + ligne d'entrée → RX `$C442`, toggle lock-step · *console* → `stderr` toolchain, clic erreur → ligne.
+
+### Phase A — Serial Monitor (= télémétrie) — *indépendant du toolchain, marche aussi en WASM* — ✅ LIVRÉE (2026-06-14)
+
+> Améliore la fenêtre **Telemetry Side Channel** existante (aujourd'hui un panneau de *stats*) en vrai moniteur série. Réutilise 100 % de la plomberie `$C440-$C443`. Tient debout seule, avant tout éditeur. Build vert, lock-step + démo headless toujours verts (`test_telemetry_lockstep.py`, `test_telemetry_demo.py`).
+
+- [x] **Tap TX + moniteur hex/ASCII** `[S · solid]` — `TelemetryPort` accumule les octets *wire* (`AA <len16> payload`) dans `txMonitorRing` (cap 8 KB) + `txMonitorTotal` ; tap dans `endFrame()` *avant* le drop backpressure (le moniteur voit toutes les frames). Transporté via `Snapshot.txTap`/`txTotal` ; l'UI append le delta `txTotal - lastSeen` (survit à l'écrasement du slot SPSC). Vue scrollable hex+ASCII, autoscroll, *Clear*, toggle Hex/Texte.
+- [x] **Injection RX depuis l'UI** `[S · solid]` — ligne d'entrée → `TelemetryPort::injectInbound` (drop-oldest à `kMaxInBytes`), exposée via `EmulationController::telemetryInject` (calque de `setTelemetryEnabled`, sous `stateMutex`). Modes ASCII / Hex (`"06 41 0D"`).
+- [x] **Bouton *Step frame* (lock-step)** `[S · nice]` — quand le jeu a parké la frame (`awaitingAck`), le bouton relâche exactement une image via `EmulationController::telemetryReleaseFrame` → `clearAwaitingAck`. Avance image par image sans harnais Python.
+- [x] **Champ *Log to file*** `[S · nice]` — câble `setTelemetryLogFile` sur un champ chemin pour capturer la golden-trace depuis l'UI (même flux que `--telemetry-log`).
+
+### Phase B — Éditeur + Upload (sans compilation) — ✅ LIVRÉE (2026-06-14)
+
+> Fenêtre **POM1 Bench** (*Settings → POM1 Bench (sketch editor)…*). Le sketch « Blink » par défaut (`0300: A9 A1 20 EF FF 4C 00 03` + `0300R`, imprime `!` via WozMon ECHO) charge bien 8 o @ $0300 par le chemin `loadHexDump` (vérifié headless `--load`).
+
+- [x] **Fenêtre éditeur** `[M · solid]` — `InputTextMultiline` sur buffer `char` 64 KB fixe (`imgui_stdlib.cpp` **pas** dans le build — choix : pas de modif CMake pour le MVP ; passer à `std::string`+resize-callback en Phase D avec ImGuiColorTextEdit). Open/Save par champ chemin (`ifstream`/`ofstream`). Entrée menu *Settings*.
+- [x] **Upload (hex/brut)** `[S · solid]` — bouton *Upload* + combo de mode : **Hex (Wozmon)** → tee vers `temp/pom1_bench_sketch.txt` → `EmulationController::loadHexDump` ; **Raw bytes @ $** → `parseHexTokens` (factorisé, partagé avec le Serial Monitor) → `temp/.bin` → `loadBinary` à l'adresse du champ. Les deux loaders font déjà stop→reset-vectors→hardReset→start→run. Statut « Uploaded N B — running @ $XXXX ».
+
+### Phase C — Verify / Upload via cc65 (desktop only) — ✅ LIVRÉE (2026-06-14, sauf clic-erreur)
+
+> Toolbar cc65 dans **POM1 Bench** (desktop). Flux validé bout-en-bout : `ca65`/`ld65` + cfg embarqué produisent le « Blink » (`A9 A1 20 EF FF 4C 00 03`) et `loadBinary` le lance @ $0300 — identique au chemin hex. Tout sous `#if !POM1_IS_WASM` (WASM affiche « desktop-only »).
+
+- [x] **Détection toolchain + dropdown *Board*** `[M · solid]` — `whichExe` scanne `$PATH` (+ `/usr/local/bin`, `/opt/cc65/bin`) pour `ca65`/`ld65` ; hint « install cc65 » si absent. *Board* = cfg embarqué (« Apple-1 4K @ $0300 (built-in) », marche sans `dev/`) + scan de `dev/cc65/*.cfg` ; `-I` auto pour chaque `dev/lib/*` (résout `.include`). Sondé une fois (`detectBenchToolchain`).
+- [x] **Verify (✓) + panneau de sortie** `[M · solid]` — `runCapture` (popen, `2>&1`) lance `ca65 <libs> src.s -o src.o` puis `ld65 -C <board> src.o -o src.bin` en dossier temp ; sortie dans le panneau **Build output (cc65)** sous l'éditeur. **Verify** = assemble seul ; **Build & Run** = + `loadBinary` à l'adresse `start` du cfg (`parseCfgLoadAddr` sur la zone `file = %O`, fallback champ `$`). `shellQuote` POSIX/Windows.
+- [x] **Clic-erreur → ligne** `[S · nice]` — ✅ (Phase D / ImGuiColorTextEdit). `parseBenchErrorMarkers` lit `src(<line>): Error: …` du `stderr` ca65 → `TextEditor::SetErrorMarkers` (marqueur + tooltip dans la gouttière) ; les lignes d'erreur de la console **Build output** sont cliquables → `SetCursorPosition` saute à la ligne dans l'éditeur.
+
+### Phase D — Finitions
+
+- [x] **Habillage IDE Arduino** `[M · solid]` — ✅ (2026-06-14, réf. utilisateur nitrathor.fr/fiches/ide-arduino). Barre d'outils **teal `#00979D`** avec boutons ronds **Verify (✓)** / **Upload (→)** + **New/Open/Save** + **Serial Monitor (loupe)** aligné à droite (ouvre la fenêtre télémétrie) ; sélecteur **Source** (cc65 asm / Wozmon hex / Raw) + **Board** ; **onglet sketch** ; **éditeur crème** (fond clair, texte sombre) ; **console sombre** (lignes `error`/`failed` en orange) ; **barre d'état teal** avec « <board> on POM1 » à droite. Icônes FontAwesome (atlas full-solid mergé). Le starter par défaut suit le mode (asm si cc65 présent, sinon hex).
+- [x] **Coloration syntaxique 6502** `[M · nice]` — ✅ (2026-06-14). **ImGuiColorTextEdit vendoré** (BalazsJako, MIT, `src/third_party/ImGuiColorTextEdit/` + LICENSE, ajouté au CMake) ; compile contre l'ImGui 1.92.7 du repo. `build6502LangDef()` : mnémoniques NMOS en mots-clés, directives `.xxx`, nombres `$hex`/`%bin`/déc, commentaires `;`, palette claire. Remplace `InputTextMultiline` ; les 7 regex validées hors-GUI. Boutons toolbar = **icône + anneau dessiné par-dessus** (`AddCircle`), pas de disque plein.
+- [x] **Sketches d'exemple intégrés** `[S · solid]` — ✅ menu **Examples** (bouton livre de la toolbar → popup) : *Blink (cc65 asm)*, *Blink (Wozmon hex)*, *Hello world (C/TMS9918)*, *A-1-CrazyCycle (GEN2 HGR demo)*, *Telemetry demo*. Les exemples fichier (CrazyCycle/Telemetry) lisent `dev/projects/…` et sélectionnent la board adaptée (CrazyCycle → `apple1_gen2.cfg`). Donne un foyer in-app au kit SDK.
+- [x] **Mode source « C (TMS9918) »** `[M · solid]` — ✅ (2026-06-14). 4ᵉ mode source : `cl65 -t none -Oirs -C <cfg C embarqué bas-RAM @ $0300> -I dev/apple1-videocard-lib/lib main.c apple1_asm.s tms9918.c screen1.c c64font.c`. **Upload auto-plugge la TMS9918** (`setTMS9918Enabled` + `showTMS9918`) puis `loadBinary @ $0300`. cfg bas-RAM custom (pile C en $4000↓) → pas de conflit $4000/$E000. Détection `cl65` + lib via `detectBenchToolchain`. Build C validé bout-en-bout (3327 o). Les builds asm GEN2 auto-pluggent aussi GEN2 HGR (CrazyCycle).
+- [x] **Barre d'état non coupée** `[S]` — ✅ réserve de hauteur recalculée via métriques ImGui (`GetFrameHeightWithSpacing` pour le champ chemin + bloc console + barre d'état teal).
+- [ ] **WASM cc65 (stretch)** `[L · nice]` — cc65 compilé en WASM pour offrir Verify/Upload sur le web aussi ; gros chantier, optionnel — la Phase A/B reste la valeur de base sans lui.
+
+---
+
 ## 🎨 Visuals & UX
 
 > POM1 a déjà la meilleure UX du duo POM1/POM2 (126 tooltips, 15 tutoriels, boot scénographié, 0 ROM à fournir). Frictions résiduelles *(audit designer 2026-05-31)* :

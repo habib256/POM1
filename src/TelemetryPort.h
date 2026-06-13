@@ -123,6 +123,13 @@ public:
     using KeyInjector = std::function<void(char key, bool raw)>;
     void setKeyInjector(KeyInjector injector);
 
+    // Push synthetic inbound bytes (harness → game) from the in-app Serial
+    // Monitor, exactly as if a TCP harness had sent them: same TELE_IN FIFO,
+    // same drop-oldest cap. Thread-safe (portMutex). The lock-step ACK ($06) is
+    // NOT special-cased here — that release path is socket-only; the UI advances
+    // a parked frame via EmulationController instead. See doc/TELEMETRY…md.
+    void injectInbound(const uint8_t* data, std::size_t len);
+
     void setListenPort(uint16_t port);
 
     // Golden-trace tee (--telemetry-log): mirror the outbound frame stream to a
@@ -131,16 +138,25 @@ public:
     // every frame, even when the socket side drops on backpressure.
     void setLogFile(const std::string& path);
 
-    // Thread-safe snapshot for a future UI panel.
+    // Thread-safe snapshot for the UI panel / Serial Monitor.
     struct Snapshot {
         bool        serverListening = false;
         bool        clientConnected = false;
         std::string clientAddress;
         uint16_t    listenPort  = kDefaultPort;
         bool        lockstep    = false;
+        bool        awaitingAck = false;   // CPU parked on a lock-step frame
         uint32_t    framesSent  = 0;
         uint32_t    bytesSent   = 0;
         uint32_t    bytesReceived = 0;
+        // Serial Monitor tap: a bounded copy of the most-recent outbound *wire*
+        // bytes (0xAA <len16> payload) plus a monotonic total-ever counter. The
+        // UI keeps its own running total and appends only `txTotal - lastSeen`
+        // bytes from the tail of `txTap`, so it survives the SPSC slot being
+        // overwritten between UI reads (it only loses data if it falls more than
+        // kMonitorRingBytes behind — acceptable for a scrolling monitor).
+        std::vector<uint8_t> txTap;
+        uint64_t             txTotal = 0;
     };
     void copySnapshot(Snapshot& out) const;
 
@@ -156,12 +172,19 @@ private:
     static constexpr std::size_t kMaxFrameBytes = 65535;   // one frame's payload
     static constexpr std::size_t kMaxOutBytes   = 1u << 20; // queued-but-unsent backpressure
     static constexpr std::size_t kMaxInBytes    = 1u << 16; // inbound ring
+    static constexpr std::size_t kMonitorRingBytes = 8192; // Serial Monitor TX tap window
 
     // ---- State (guarded by portMutex) ----
     std::vector<uint8_t> frameBuf;   // bytes written to kRegData since last end-frame
     std::vector<uint8_t> outBuf;     // framed bytes awaiting socket flush
     std::deque<uint8_t>  inBuf;      // inbound bytes (harness → game)
     bool                 lockstep = false;
+
+    // Serial Monitor TX tap — last kMonitorRingBytes of the outbound wire stream
+    // (tapped in endFrame, even on socket backpressure drop, so the monitor sees
+    // every frame the game emitted) + a monotonic total of bytes ever tapped.
+    std::deque<uint8_t>  txMonitorRing;
+    uint64_t             txMonitorTotal = 0;
 
     // Lock-step ACK gate. Set by an end-frame write while `lockstep`; cleared
     // when the harness sends kAckByte (pollClient) or on timeout/disarm. While
