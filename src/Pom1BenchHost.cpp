@@ -79,6 +79,7 @@ const P1Ex kP1Examples[] = {
     { "Blink  (cc65 asm)",                 false, kSketchAsm, 0, "", 0 },
     { "Blink  (Wozmon hex)",               false, kSketchHex, 4, "", 0 },
     { "Hello world  (C / TMS9918)",        false, kSketchC,   3, "", 0 },
+    { "Connect 4  (text, Wozmon hex)",     true,  "software/Apple-1 games/Connect4.txt", 4, "", 0 },
     { "A-1-CrazyCycle  (Bernie GEN2 HGR)", true,  "dev/projects/a1_crazycycle/A-1-CrazyCycle.asm", 2,
       "sdcard/NONO/HGR/UBERNIE#062000", 0x2000 },
     { "Telemetry demo  (SDK harness)",     true,  "dev/projects/a1_telemetry_demo/A1_TelemetryDemo.asm", 0, "", 0 },
