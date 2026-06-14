@@ -31,7 +31,7 @@ stitched from four quadrants (`P_SUPER_{TL,TR,BL,BR}`).
 
 - Machine: Apple 1 (4 KB DRAM for the cassette build)
 - Cards: P-LAB TMS9918 (CodeTank for the ROM variants)
-- Recommended POM1 preset: TODO — pick a TMS9918 preset; preset 8 for
+- Recommended POM1 preset: TODO — pick a TMS9918 preset; preset 7 for
   the CodeTank variants.
 
 ## Sources
@@ -54,7 +54,7 @@ Override the linker config from the command line:
 
 ## Run in POM1
 
-1. POM1 → Presets → TMS9918 preset (preset 8 for CodeTank).
+1. POM1 → Presets → TMS9918 preset (preset 7 for CodeTank).
 2. File → Load → `software/tms9918/TMS_Galaga.txt`.
 3. Wozmon `\` prompt: type `280R` (cassette), `4000R` (CodeTank lower —
    menu/split/dualslot8k all map Galaga at or near `$4000`).

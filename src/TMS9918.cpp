@@ -1129,6 +1129,20 @@ void TMS9918::paintBottomBorder()
     snapshotDirty = true;
 }
 
+// Repaint the WHOLE framebuffer from the current VRAM + regs in one shot.
+// The progressive raster builds the image scanline-by-scanline only while the
+// CPU runs; after a snapshot / rewind restore (often paused) the framebuffer
+// would otherwise keep the pre-restore image. renderActiveLine already paints
+// the per-line left/right borders, so we just add the top/bottom bands.
+void TMS9918::rebuildFramebufferFromVram()
+{
+    paintTopBorder();
+    for (int line = 0; line < kScreenHeight; ++line)
+        renderActiveLine(line);
+    paintBottomBorder();
+    snapshotDirty = true;
+}
+
 // --------------------------------------------------------------------------
 // Graphics Mode I — 32x24 tiles, 256 patterns, 32 color groups
 // --------------------------------------------------------------------------
@@ -1659,8 +1673,10 @@ void TMS9918::deserialize(pom1::SnapshotReader& r)
     siliconStrictMode     = r.readU8() != 0;
     irqStrapped           = r.readU8() != 0;
     chipType              = static_cast<ChipType>(r.readU8());
-    // Force a fresh framebuffer rebuild on the next progressive render —
-    // the 288×216 buffer was intentionally not snapshotted (it's derived
-    // state and would inflate the .snap by 300 KB).
-    snapshotDirty = true;
+    // The framebuffer was intentionally not snapshotted (derived state, would
+    // inflate the .snap by ~300 KB). Rebuild it now from the restored VRAM so a
+    // save-state load OR a paused rewind preview shows the correct image
+    // immediately — the progressive raster only runs while the CPU executes,
+    // which doesn't happen during a rewind scrub.
+    rebuildFramebufferFromVram();
 }

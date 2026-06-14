@@ -68,7 +68,11 @@ void CodeBench::render(const char* title, bool* open)
     const ImVec4 kWhite    = ImVec4(1.0f, 1.0f, 1.0f, 1.0f);
     const ImVec4 kConsoleBg= ImVec4(0.10f, 0.10f, 0.11f, 1.0f);
 
-    ImGui::SetNextWindowSize(ImVec2(620, 560), ImGuiCond_FirstUseEver);
+    // Default tall enough that the toolbar, tab, editor, console and status bar
+    // all fit without the editor being squeezed to its 100 px floor; clamp the
+    // minimum so the user can't shrink it into a clipped, unusable stack.
+    ImGui::SetNextWindowSize(ImVec2(660, 720), ImGuiCond_FirstUseEver);
+    ImGui::SetNextWindowSizeConstraints(ImVec2(520, 480), ImVec2(FLT_MAX, FLT_MAX));
     if (!ImGui::Begin(title, open)) { ImGui::End(); return; }
 
     // ---- Actions ----
@@ -243,23 +247,33 @@ void CodeBench::render(const char* title, bool* open)
     // ---- New-sketch dialog: pick language + machine, load its HELLO WORLD ----
     if (openNew) ImGui::OpenPopup("##benchnewdlg");
     if (ImGui::BeginPopup("##benchnewdlg")) {
-        const auto& langs = host_->languages();
-        const auto& machs = host_->machines();
+        const auto& langs     = host_->languages();
+        const auto& machs     = host_->machines();
+        const auto& langHints = host_->languageHints();
+        const auto& machHints = host_->machineHints();
+        auto hintFor = [](const std::vector<std::string>& h, int i) -> const char* {
+            return (i >= 0 && i < (int)h.size() && !h[i].empty()) ? h[i].c_str() : nullptr;
+        };
         ImGui::TextDisabled("New sketch"); ImGui::Separator();
         ImGui::AlignTextToFramePadding(); ImGui::TextUnformatted("Language:"); ImGui::SameLine(96);
-        ImGui::SetNextItemWidth(220);
+        ImGui::SetNextItemWidth(300);
         if (ImGui::BeginCombo("##newlang", newLang_ < (int)langs.size() ? langs[newLang_].c_str() : "")) {
             for (int i = 0; i < (int)langs.size(); ++i)
                 if (ImGui::Selectable(langs[i].c_str(), i == newLang_)) newLang_ = i;
             ImGui::EndCombo();
         }
         ImGui::AlignTextToFramePadding(); ImGui::TextUnformatted("Target:"); ImGui::SameLine(96);
-        ImGui::SetNextItemWidth(220);
+        ImGui::SetNextItemWidth(300);
         if (ImGui::BeginCombo("##newmach", newMachine_ < (int)machs.size() ? machs[newMachine_].c_str() : "")) {
             for (int i = 0; i < (int)machs.size(); ++i)
                 if (ImGui::Selectable(machs[i].c_str(), i == newMachine_)) newMachine_ = i;
             ImGui::EndCombo();
         }
+        // Inline (non-floating) descriptions for the current selection.
+        if (const char* h = hintFor(langHints, newLang_))
+            ImGui::TextDisabled("%s", h);
+        if (const char* h = hintFor(machHints, newMachine_))
+            ImGui::TextDisabled("%s", h);
         ImGui::Separator();
         const int t = host_->targetFor(newLang_, newMachine_);
         if (t >= 0) {
@@ -295,14 +309,18 @@ void CodeBench::render(const char* title, bool* open)
         ImGui::EndTabBar();
     }
 
-    // ---- Editor (reserve room so the status bar is never clipped) ----
+    // ---- Editor (fills all vertical space down to the bottom status bar) ----
+    // `avail` already excludes the tab bar above. Below the editor we stack, with
+    // one ItemSpacing.y gap each: the optional console block, then the status bar.
+    // Reserve exactly that so the status bar sits flush at the window bottom and
+    // no vertical space is wasted.
     ImVec2 avail = ImGui::GetContentRegionAvail();
     const float spacingY       = ImGui::GetStyle().ItemSpacing.y;
-    const float rowH           = ImGui::GetFrameHeightWithSpacing();
+    const float rowH           = ImGui::GetFrameHeightWithSpacing();   // console header row
     const float kStatusBarH    = 24.0f;
     const float kConsoleChildH = 124.0f;
     const float consoleBlock   = showConsole_ ? (rowH + kConsoleChildH + spacingY) : 0.0f;
-    float editorH = avail.y - consoleBlock - rowH - (kStatusBarH + spacingY) - spacingY;
+    float editorH = avail.y - consoleBlock - kStatusBarH - spacingY;
     if (editorH < 100.0f) editorH = 100.0f;
     editor_->Render("##benchsrc", ImVec2(avail.x, editorH), true);
 

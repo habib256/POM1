@@ -1,5 +1,5 @@
 /*
- * text_adventure — jeu d'aventure textuelle (CodeTank + TMS9918, preset 8).
+ * text_adventure — jeu d'aventure textuelle (CodeTank + TMS9918, preset 7).
  * Inspire de la structure de Little Tower (salles, clef, torche, piece
  * sombre, mot sur un tableau, paralysie, dague, vampire).
  * Build: make -> software/Apple-1_TMS_CC65/text_adventure.{bin,txt}

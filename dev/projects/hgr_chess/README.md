@@ -52,7 +52,7 @@ The `software/hgr/` directory auto-enables the GEN2 card on load.
 Or via CLI:
 
 ```
-./POM1 --preset 13 --terminal --cpu-max \
+./POM1 --preset 12 --terminal --cpu-max \
        --load 0x0280:software/hgr/HGR_Chess.bin.lo \
        --load 0xE000:software/hgr/HGR_Chess.bin.hi --run 0xE000
 ```

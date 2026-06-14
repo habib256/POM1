@@ -32,4 +32,4 @@ cd dev/apple1-videocard-lib/demos/rogue_c
 make          # régénère rogue_gfx_data.c : make gfx && make
 ```
 
-POM1 : preset 8 (TMS9918 + CodeTank), charger `rogue_c.txt` ou `rogue_c.bin`, puis **`4000R`**.
+POM1 : preset 7 (TMS9918 + CodeTank), charger `rogue_c.txt` ou `rogue_c.bin`, puis **`4000R`**.

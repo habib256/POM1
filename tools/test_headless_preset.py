@@ -3,7 +3,7 @@
 # discriminating on a GEN2-only behaviour: a 6502 program reads a GEN2 soft
 # switch ($C250, whose D7 = HST0 = the cycle-accurate beam blank flag) and emits
 # it each frame.
-#   * with --preset 13 (Uncle Bernie GEN2 HGR): the scanner runs -> HST0 toggles,
+#   * with --preset 12 (Uncle Bernie GEN2 HGR): the scanner runs -> HST0 toggles,
 #   * with no preset (default 64K, $C250 is plain RAM): D7 is constant 0.
 # So a toggling D7 can only mean the GEN2 card was actually plugged headless.
 #
@@ -26,7 +26,7 @@ PROG = bytes([
     0xA9, 0x01, 0x8D, 0x41, 0xC4,   # LDA #$01 / STA $C441   (end-frame -> park)
     0x4C, 0x05, 0x03,               # JMP $0305              (loop)
 ])
-GEN2_PRESET = 13
+GEN2_PRESET = 12
 FRAMES = 96
 
 

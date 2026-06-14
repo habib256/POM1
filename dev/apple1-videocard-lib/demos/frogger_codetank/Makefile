@@ -1,4 +1,4 @@
-# Frogger mini — CodeTank + TMS9918 (preset 8), 4000R
+# Frogger mini — CodeTank + TMS9918 (preset 7), 4000R
 LIBDIR  := ../../lib
 CFG     := ../../cc65/codetank_c.cfg
 EMIT    := ../../tools/emit_codetank_txt.py

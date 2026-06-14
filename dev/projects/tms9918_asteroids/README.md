@@ -26,7 +26,7 @@ next milestones.
 ## Run
 
 ```bash
-./build/POM1 --preset 8       # P-LAB Apple-1 with TMS9918 + CodeTank
+./build/POM1 --preset 7       # P-LAB Apple-1 with TMS9918 + CodeTank
 ```
 
 In Wozmon, paste the contents of `software/tms9918/TMS_Asteroids.txt`
@@ -144,11 +144,11 @@ random VRAM noise in slots 6..31 from ever rendering.
 
 ## Smoke verification
 
-The binary loads cleanly under POM1 preset 8 and runs without hitting
+The binary loads cleanly under POM1 preset 7 and runs without hitting
 BRK over a 3-second smoke window:
 
 ```bash
-timeout 3 build/POM1 --preset 8 \
+timeout 3 build/POM1 --preset 7 \
     --load 0280:software/tms9918/TMS_Asteroids.bin \
     --run 0280 \
     --snapshot-save /tmp/asteroids.snap

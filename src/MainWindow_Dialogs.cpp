@@ -534,7 +534,7 @@ void MainWindow_ImGui::renderAboutDialog()
                          ImVec2(iconDisplay, iconDisplay));
             ImGui::SameLine();
             ImGui::BeginGroup();
-            ImGui::TextWrapped("POM1 v1.9.1 - Apple 1 Emulator (Dear ImGui)");
+            ImGui::TextWrapped("POM1 v1.9.2 - Apple 1 Emulator (Dear ImGui)");
             ImGui::TextWrapped("Celebrating 50 years of Apple (1976-2026)");
             ImGui::TextWrapped("Author: Arnaud VERHILLE");
             ImGui::TextWrapped("original POM1 (Java, 2000)");
@@ -542,7 +542,7 @@ void MainWindow_ImGui::renderAboutDialog()
             ImGui::TextWrapped("Copyright (C) 2000-2026 - GPL-3.0");
             ImGui::EndGroup();
         } else {
-            ImGui::TextWrapped("POM1 v1.9.1 - Apple 1 Emulator (Dear ImGui)");
+            ImGui::TextWrapped("POM1 v1.9.2 - Apple 1 Emulator (Dear ImGui)");
             ImGui::TextWrapped("Celebrating 50 years of Apple (1976-2026)");
             ImGui::TextWrapped("Author: Arnaud VERHILLE");
             ImGui::TextWrapped("original POM1 (Java, 2000)");
@@ -1906,7 +1906,7 @@ void MainWindow_ImGui::renderTutorialIntegerBasicWindow()
         tutStep(1, "Pick a preset that includes Integer BASIC");
         ImGui::TextWrapped(
             "Presets menu > any preset except the Applesoft-Lite ones "
-            "(#4 CFFA1, #5 microSD, #12 P-LAB Fantasy, #14 POM1 Fantasy). "
+            "(#4 CFFA1, #5 microSD, #11 P-LAB Fantasy, #13 POM1 Fantasy). "
             "Preset #1 'Apple-1 with ACI & Integer BASIC' is the "
             "historical default.");
 
@@ -2123,7 +2123,7 @@ void MainWindow_ImGui::renderTutorialCassetteWindow()
         tutStep(1, "Pick a preset with the ACI");
         ImGui::TextWrapped(
             "Presets menu > #1 'Apple-1 with ACI & Integer BASIC' or "
-            "#14 'POM1 Apple-1 Multiplexing Fantasy (2026)' (the default). The ACI ROM "
+            "#13 'POM1 Apple-1 Multiplexing Fantasy (2026)' (the default). The ACI ROM "
             "is at $C100-$C1FF, I/O at $C000 / $C081.");
 
         tutStep(2, "Open the deck and load a tape");
@@ -2404,7 +2404,7 @@ void MainWindow_ImGui::renderTutorialTMS9918Window()
 
         tutStep(1, "Pick a preset with the TMS9918");
         ImGui::TextWrapped(
-            "Presets > #8 'P-LAB Apple-1 with TMS9918 Graphic Card', or "
+            "Presets > #7 'P-LAB Apple-1 with TMS9918 (CodeTank daughterboard)', or "
             "plug Hardware > P-LAB Graphic Card (TMS9918).");
 
         tutStep(2, "Know the two I/O ports");
@@ -2464,7 +2464,7 @@ void MainWindow_ImGui::renderTutorialA1IORTCWindow()
 
         tutStep(1, "Pick the preset");
         ImGui::TextWrapped(
-            "Presets > #9 'P-LAB Apple-1 with I/O Board & RTC', or "
+            "Presets > #8 'P-LAB Apple-1 with I/O Board & RTC', or "
             "Hardware > P-LAB I/O Board & RTC.");
 
         tutStep(2, "Understand the broadcast protocol");
@@ -2479,7 +2479,7 @@ void MainWindow_ImGui::renderTutorialA1IORTCWindow()
             "\"YYYY-MM-DD HH:MM:SS\" to pin the emulated clock for "
             "scripted runs (time continues ticking at host rate — good "
             "for sub-minute tests).");
-        tutCode("./POM1 --preset 9 --rtc-freeze \"1976-07-10 12:00:00\"");
+        tutCode("./POM1 --preset 8 --rtc-freeze \"1976-07-10 12:00:00\"");
 
         tutStep(4, "Analog / digital inputs");
         ImGui::TextWrapped(
@@ -2520,8 +2520,8 @@ void MainWindow_ImGui::renderTutorialSIDWindow()
         ImGui::BeginChild("tut_sid_scroll", ImVec2(0, 0), true);
 
         tutStep(1, "Pick a preset with the SID");
-        bulletWrapped("#6 P-LAB A1-SID - register window $C800-$CFFF (classic).");
-        bulletWrapped("#7 P-LAB A1-AUDIO Special Edition - 10-unit limited run, same silicon, register window $CC00-$CC1F (excludes the TMS9918).");
+        bulletWrapped("#6 P-LAB A1-SID - default register window $C800-$CFFF (classic).");
+        bulletWrapped("A1-AUDIO Special Edition - 10-unit limited run, same silicon, window $CC00-$CC1F (excludes the TMS9918). Pick this variant from Settings > A1-SID version & addresses (no separate preset).");
 
         tutStep(2, "Swap the chip model");
         ImGui::TextWrapped(
@@ -2584,7 +2584,7 @@ void MainWindow_ImGui::renderTutorialGEN2HGRWindow()
 
         tutStep(1, "Pick the preset");
         ImGui::TextWrapped(
-            "Presets > #13 'Uncle Bernie's Apple-1 with GEN2 HGR Color'. It "
+            "Presets > #12 'Uncle Bernie's Apple-1 with GEN2 HGR Color'. It "
             "plugs the card and opens the GEN2 output window plus this "
             "tutorial. You can also click HGR on the toolbar, or use Hardware "
             "> Uncle Bernie's GEN2 HGR Graphic Card.");
@@ -2722,7 +2722,7 @@ void MainWindow_ImGui::renderTutorialJukeBoxWindow()
 
         tutStep(1, "Pick the preset");
         ImGui::TextWrapped(
-            "Presets > #11 'P-LAB Apple-1 with Juke-Box (16 kB RAM)'. "
+            "Presets > #10 'P-LAB Apple-1 with Juke-Box (16 kB RAM)'. "
             "The preset opens the Juke-Box window with the current RAM / "
             "ROM jumper setting.");
 

@@ -69,7 +69,7 @@ cycles/frame**, jamais resynchronisée — zéro jitter.
 
 Tout accès `$C0xx` bascule le flip-flop TAPE OUT de l'ACI — la convention
 SPEAKER `$C030` des ports Apple II (la carte release a déplacé ses switches
-en `$C25x` précisément pour laisser `$C0xx` à l'ACI ; le preset 13 de POM1
+en `$C25x` précisément pour laisser `$C0xx` à l'ACI ; le preset 12 de POM1
 branche l'ACI à côté de la GEN2, comme le PCB réel avec sa découpe jacks).
 
 - **Tick par slot de scanline** : chaque slot de 65 cycles (lignes burner ET
@@ -107,10 +107,10 @@ branche l'ACI à côté de la GEN2, comme le PCB réel avec sa découpe jacks).
 make          # → software/Graphic HGR/A-1-CrazyCycle.{bin,txt}
 ```
 
-POM1 : preset 13 (GEN2 HGR + ACI), charger `A-1-CrazyCycle.txt` (le dossier
+POM1 : preset 12 (GEN2 HGR + ACI), charger `A-1-CrazyCycle.txt` (le dossier
 `Graphic HGR/` auto-active la carte), puis `E000R`. Ou en CLI :
 
 ```bash
-./build/POM1 --preset 13 --load 'E000:software/Graphic HGR/A-1-CrazyCycle.txt'
+./build/POM1 --preset 12 --load 'E000:software/Graphic HGR/A-1-CrazyCycle.txt'
 # (le .txt charge code + image ; --save-tape musique.aci pour garder le morceau)
 ```

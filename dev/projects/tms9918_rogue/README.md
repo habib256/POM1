@@ -175,7 +175,7 @@ The 8 KB Parmigiani DRAM target (code at `$0280`, Wozmon-hex `.txt`)
 was abandoned once MVP4 outgrew the 3.5 KB low-bank CODE budget; the
 cartridge build ($4000-$7FFF, 16 KB) is now the only supported path.
 
-## Memory layout (Parmigiani dual-bank, preset 8)
+## Memory layout (Parmigiani dual-bank, preset 7)
 
 The standard P-LAB / Replica Apple-1 splits 8 KB user RAM into
 two banks with a hole in the middle:
@@ -201,7 +201,7 @@ two banks with a hole in the middle:
 Cartridge (the only supported target):
 ```bash
 python3 tools/build_codetank_rom.py --rom=2     # writes roms/codetank/Codetank_GAME2.rom
-./build/POM1 --preset 8 --codetank-rom roms/codetank/Codetank_GAME2.rom
+./build/POM1 --preset 7 --codetank-rom roms/codetank/Codetank_GAME2.rom
 # Then 4000R from Wozmon to start.
 ```
 

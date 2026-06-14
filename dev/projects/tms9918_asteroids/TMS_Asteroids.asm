@@ -16,7 +16,7 @@
 ;
 ; Build & run:
 ;   cd dev/projects/tms9918_asteroids && make
-;   ./POM1 --preset 8       (P-LAB Apple-1 with TMS9918 + CodeTank)
+;   ./POM1 --preset 7       (P-LAB Apple-1 with TMS9918 + CodeTank)
 ;     then in Woz Monitor paste the .txt and type 0280R.
 ;
 ; Controls (V0.2, AZERTY ZQSD):

@@ -39,8 +39,17 @@ void gen2_hgr_init(void);
 /* Fill the HIRES page-1 framebuffer ($2000-$3FFF) with `fill` (0 = black). */
 void gen2_hgr_clear(unsigned char fill);
 
+/* Base address of HIRES scanline y (0..191) in page 1 — Apple II interleave. */
+unsigned char *gen2_hgr_row(unsigned char y);
+
 /* Set a white pixel. x: 0..279, y: 0..191. Apple II interleaved HIRES layout. */
 void gen2_hgr_plot(unsigned x, unsigned char y);
+
+/* Draw an ASCII string at pixel (x, y) using the built-in Beautiful Boot 8x8
+ * font, pixel-doubled so the text is solid white (no NTSC colour artifacts) in
+ * 16x16 cells on an 18px pitch. Renders into HIRES page 1; call gen2_hgr_init
+ * + gen2_hgr_clear first. Non-printable chars render as a space. */
+void gen2_hgr_puts(unsigned x, unsigned char y, const char *s);
 
 /* Coarse spin until vertical blank (NOT cycle-exact — for tight beam-racing use
  * the ASM dev/lib/gen2 gen2_beam_lock). Double-samples HST0 to skip the colour-

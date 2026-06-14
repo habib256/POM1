@@ -103,8 +103,8 @@ In your project Makefile:
 microSD must be plugged. POM1:
 
 - `--preset 5` — microSD + Applesoft Lite (most common)
-- `--preset 11` — Juke-Box also has microSD
-- `--preset 12` / `14` — multiplexing fantasy
+- `--preset 10` — Juke-Box also has microSD
+- `--preset 11` / `13` — multiplexing fantasy
 - `--enable microsd` — adds it to any preset
 
 Note: the SD CARD OS ROM at `$8000-$9FFF` is loaded automatically when

@@ -26,7 +26,7 @@ exactly 1 536 output bytes per frame.
 
 ## Run in POM1
 
-1. Load **preset 8** (P-LAB Apple-1 with TMS9918 + CodeTank
+1. Load **preset 7** (P-LAB Apple-1 with TMS9918 + CodeTank
    daughterboard) — TMS9918 is plugged by default, CodeTank too.
 2. Hardware → CodeTank → ROM Library → select **Codetank_Nyan.rom**
    (it appears automatically because POM1 scans `roms/codetank/*.rom`

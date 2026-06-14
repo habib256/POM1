@@ -35,13 +35,14 @@ static const char* kSketchAsm =          // asm x Apple dual-4k/8k (text)
     "msg:\n"
     "    .byte $0D, \"HELLO WORLD\", $0D, $00\n";
 static const char* kSketchAsmTms =       // asm x TMS9918 (Graphics I text, loads a font)
-    "; HELLO WORLD on the TMS9918 (Graphics I). Loads a tiny font into VRAM and\n"
-    "; writes the message to the name table. VDP data=$CC00, ctrl=$CC01.\n"
+    "; HELLO WORLD on the TMS9918 (Graphics I). Proper init: regs loaded with the\n"
+    "; display BLANKED, all 16 KB VRAM cleared, sprites parked, then font/colour/\n"
+    "; message loaded and the screen turned on LAST. VDP data=$CC00, ctrl=$CC01.\n"
     "VDAT = $CC00\n"
     "VCTL = $CC01\n"
     ".segment \"CODE\"\n"
     "start:\n"
-    "    ldx #0          ; --- init 8 VDP registers (value then $80|reg) ---\n"
+    "    ldx #0          ; --- load 8 VDP registers (display OFF: R1 bit6=0) ---\n"
     "ireg:\n"
     "    lda regs,x\n"
     "    sta VCTL\n"
@@ -51,6 +52,26 @@ static const char* kSketchAsmTms =       // asm x TMS9918 (Graphics I text, load
     "    inx\n"
     "    cpx #8\n"
     "    bne ireg\n"
+    "    lda #$00         ; --- clear all 16 KB VRAM to a known state ---\n"
+    "    sta VCTL\n"
+    "    lda #$40         ; $0000 | write\n"
+    "    sta VCTL\n"
+    "    lda #$00\n"
+    "    ldy #64          ; 64 * 256 = 16384\n"
+    "clro:\n"
+    "    ldx #0\n"
+    "clri:\n"
+    "    sta VDAT\n"
+    "    inx\n"
+    "    bne clri\n"
+    "    dey\n"
+    "    bne clro\n"
+    "    lda #$00         ; --- park sprites: sprite 0 Y=$D0 stops the scan ---\n"
+    "    sta VCTL\n"
+    "    lda #($1B|$40)   ; sprite attribute table $1B00\n"
+    "    sta VCTL\n"
+    "    lda #$D0\n"
+    "    sta VDAT\n"
     "    lda #$00         ; --- pattern table $0000: blank + 7 glyphs (64 B) ---\n"
     "    sta VCTL\n"
     "    lda #$40         ; $0000 | write\n"
@@ -72,37 +93,29 @@ static const char* kSketchAsmTms =       // asm x TMS9918 (Graphics I text, load
     "    sta VDAT\n"
     "    dex\n"
     "    bne col\n"
-    "    lda #$00         ; --- name table $1800: clear 768 to blank ---\n"
-    "    sta VCTL\n"
-    "    lda #($18|$40)\n"
-    "    sta VCTL\n"
-    "    lda #$00\n"
-    "    ldy #3\n"
-    "nclo:\n"
-    "    ldx #0\n"
-    "ncli:\n"
-    "    sta VDAT\n"
-    "    inx\n"
-    "    bne ncli\n"
-    "    dey\n"
-    "    bne nclo\n"
     "    lda #$00         ; --- name table $1800: write the message ---\n"
     "    sta VCTL\n"
-    "    lda #($18|$40)\n"
+    "    lda #($18|$40)   ; (rest of the table is already blank from the clear)\n"
     "    sta VCTL\n"
     "    ldx #0\n"
     "msgl:\n"
     "    lda message,x\n"
     "    cmp #$FF\n"
-    "    beq done\n"
+    "    beq enable\n"
     "    sta VDAT\n"
     "    inx\n"
     "    bne msgl\n"
+    "enable:\n"
+    "    lda #$C0         ; --- screen ON last: R1 bit6 (BLANK) = 1 ---\n"
+    "    sta VCTL\n"
+    "    lda #($80|1)     ; register 1\n"
+    "    sta VCTL\n"
     "done:\n"
     "    jmp done\n"
     "; reg0..7: graphics I, name $1800, colour $2000, pattern $0000, backdrop blue\n"
+    "; R1=$80 here -> display BLANKED during setup; turned on at 'enable'\n"
     "regs:\n"
-    "    .byte $00,$C0,$06,$80,$00,$36,$07,$04\n"
+    "    .byte $00,$80,$06,$80,$00,$36,$07,$04\n"
     "; pattern 0 = blank, then glyphs 1..7 = H E L O W R D (8x8 each)\n"
     "font:\n"
     "    .byte $00,$00,$00,$00,$00,$00,$00,$00\n"
@@ -116,30 +129,166 @@ static const char* kSketchAsmTms =       // asm x TMS9918 (Graphics I text, load
     "; \"HELLO WORLD\" -> glyph indices (space = blank 0), $FF terminates\n"
     "message:\n"
     "    .byte 1,2,3,3,4,0,5,4,6,3,7,$FF\n";
-static const char* kSketchAsmGen2 =      // asm x GEN2 HGR (fill page 1)
-    "; HELLO - GEN2 HIRES. Soft switches $C250-$C257 (read = set), fill page 1.\n"
-    "GEN2 = $C250\n"
-    ".segment \"CODE\"\n"
+static const char* kSketchAsmGen2 =      // asm x GEN2 HGR (BBFont text)
+    "; HELLO WORLD - GEN2 HIRES with the Beautiful Boot 8x8 font (bbfont_cp437).\n"
+    "; Renders white, artifact-free text by PIXEL-DOUBLING every glyph: each set\n"
+    "; pixel becomes two adjacent HGR pixels (a >=2px run shows as white, never an\n"
+    "; NTSC colour fringe), and each row is drawn on two scanlines -> 16x16 cells.\n"
+    "; plot_pixel handles the 7px/byte packing, so glyphs may straddle byte\n"
+    "; boundaries freely. Pulls in dev/lib/gen2 + dev/lib/hgr.\n"
+    ".include \"gen2.inc\"\n"
+    "\n"
+    "TOP_ROW = 88            ; top scanline of the text band (0..191)\n"
+    "START_X = 42            ; left pixel of the first cell (centres 11 cells)\n"
+    "STRIDE  = 18            ; cell pitch: 16px doubled glyph + 2px gap\n"
+    "\n"
+    ".zeropage\n"
+    "cur_x:   .res 1         ; plot_pixel inputs\n"
+    "cur_y:   .res 1\n"
+    "ptr_lo:  .res 1\n"
+    "ptr_hi:  .res 1\n"
+    "src_lo:  .res 1         ; glyph data pointer (HGR_BBFont + ch*8)\n"
+    "src_hi:  .res 1\n"
+    "gx:      .res 1         ; left pixel of the current cell\n"
+    "px:      .res 1         ; running doubled-pixel X within a row\n"
+    "line:    .res 1         ; glyph row 0..7\n"
+    "chidx:   .res 1         ; index into the message\n"
+    "rowbits: .res 1         ; current glyph row, shifted out bit by bit\n"
+    "tmp:     .res 1\n"
+    "\n"
+    ".code\n"
     "start:\n"
-    "    bit GEN2+0      ; graphics (TEXT off)\n"
-    "    bit GEN2+7      ; hires\n"
-    "    bit GEN2+4      ; page 1\n"
-    "    bit GEN2+2      ; full screen\n"
+    "    bit GEN2_TEXTOFF        ; graphics (TEXT off)\n"
+    "    bit GEN2_HIRES          ; HIRES\n"
+    "    bit GEN2_PAGE1          ; page 1 ($2000)\n"
+    "    bit GEN2_MIXOFF         ; full screen\n"
+    "    jsr clear_hgr           ; zero $2000-$3FFF (black)\n"
+    "    lda #START_X\n"
+    "    sta gx\n"
     "    lda #$00\n"
-    "    sta $00\n"
-    "    lda #$20\n"
-    "    sta $01         ; ptr = $2000\n"
-    "    lda #$2A        ; pixel pattern\n"
-    "    ldy #$00\n"
-    "fill:\n"
-    "    sta ($00),y\n"
-    "    iny\n"
-    "    bne fill\n"
-    "    inc $01\n"
-    "    ldx $01\n"
-    "    cpx #$40        ; until $4000 ($2000-$3FFF filled)\n"
-    "    bne fill\n"
-    "    jmp *\n";
+    "    sta chidx\n"
+    "next_ch:\n"
+    "    ldx chidx\n"
+    "    lda message,x\n"
+    "    beq done                ; 0 terminates\n"
+    "    and #$7F                ; CP437 lower 128 == ASCII -> glyph index\n"
+    "    sta tmp                 ; src = HGR_BBFont + index*8\n"
+    "    lda #$00\n"
+    "    sta src_hi\n"
+    "    lda tmp\n"
+    "    asl a\n"
+    "    rol src_hi\n"
+    "    asl a\n"
+    "    rol src_hi\n"
+    "    asl a\n"
+    "    rol src_hi\n"
+    "    clc\n"
+    "    adc #<HGR_BBFont\n"
+    "    sta src_lo\n"
+    "    lda src_hi\n"
+    "    adc #>HGR_BBFont\n"
+    "    sta src_hi\n"
+    "    lda #$00\n"
+    "    sta line\n"
+    "rowloop:\n"
+    "    lda line                ; cur_y = TOP_ROW + line*2 (vertical doubling)\n"
+    "    asl a\n"
+    "    clc\n"
+    "    adc #TOP_ROW\n"
+    "    sta cur_y\n"
+    "    jsr draw_row            ; top scanline of the doubled row\n"
+    "    inc cur_y\n"
+    "    jsr draw_row            ; bottom scanline\n"
+    "    inc line\n"
+    "    lda line\n"
+    "    cmp #$08\n"
+    "    bne rowloop\n"
+    "    lda gx                  ; advance to next cell\n"
+    "    clc\n"
+    "    adc #STRIDE\n"
+    "    sta gx\n"
+    "    inc chidx\n"
+    "    jmp next_ch\n"
+    "done:\n"
+    "    jmp *\n"
+    "\n"
+    "; --- Draw one glyph row at cur_y, doubled horizontally. gx = cell left px ---\n"
+    "draw_row:\n"
+    "    ldy line\n"
+    "    lda (src_lo),y\n"
+    "    sta rowbits\n"
+    "    lda gx\n"
+    "    sta px                  ; px = cell left pixel\n"
+    "    ldx #$08                ; 8 source columns\n"
+    "@b: lsr rowbits            ; bit 0 (leftmost) -> carry\n"
+    "    bcc @skip\n"
+    "    lda px                  ; pixel pair: px and px+1 -> white run\n"
+    "    sta cur_x\n"
+    "    jsr plot_pixel\n"
+    "    inc cur_x               ; plot_pixel preserves cur_x\n"
+    "    jsr plot_pixel\n"
+    "@skip: lda px\n"
+    "    clc\n"
+    "    adc #$02                ; doubled pixels are 2 apart\n"
+    "    sta px\n"
+    "    dex\n"
+    "    bne @b\n"
+    "    rts\n"
+    "\n"
+    "message:\n"
+    "    .byte \"HELLO WORLD\", 0\n"
+    "\n"
+    ".include \"bbfont_cp437.inc\"\n"
+    ".include \"hgr_tables.inc\"\n";
+static const char* kSketchTxtGen2Asm =   // asm x GEN2 native TEXT mode ($0400)
+    "; HELLO WORLD - GEN2 native TEXT mode (40x24, page $0400, the card's built-in\n"
+    "; font). $C251 turns TEXT on; bytes land in the Apple-II-interleaved text page.\n"
+    "; Normal (non-inverse/flash) glyphs need bit 7 set, so ORA #$80 each char.\n"
+    ".include \"gen2.inc\"\n"
+    "ROW12 = $0628          ; row 12 base = $0400 + $80*(12&7) + $28*(12>>3)\n"
+    ".code\n"
+    "start:\n"
+    "    bit GEN2_TEXTON        ; TEXT mode (disables all graphics)\n"
+    "    bit GEN2_PAGE1         ; page 1 ($0400)\n"
+    "    bit GEN2_MIXOFF        ; full screen\n"
+    "    lda #$A0               ; clear page to spaces ($A0 = ' ' | $80)\n"
+    "    ldx #0\n"
+    "clr:\n"
+    "    sta $0400,x\n"
+    "    sta $0500,x\n"
+    "    sta $0600,x\n"
+    "    sta $0700,x\n"
+    "    inx\n"
+    "    bne clr\n"
+    "    ldx #0                 ; write centred message at row 12, col 14\n"
+    "msg:\n"
+    "    lda message,x\n"
+    "    beq done\n"
+    "    ora #$80               ; normal video (bit 7 set)\n"
+    "    sta ROW12+14,x\n"
+    "    inx\n"
+    "    bne msg\n"
+    "done:\n"
+    "    jmp *\n"
+    "message:\n"
+    "    .byte \"HELLO WORLD\", 0\n";
+static const char* kSketchTxtGen2C =     // C x GEN2 native TEXT mode ($0400)
+    "/* HELLO WORLD in GEN2 native TEXT mode (40x24, page $0400, built-in font).\n"
+    "   gen2_text() turns TEXT on; normal glyphs need bit 7 set. Upload runs @ $6000. */\n"
+    "#include \"gen2.h\"\n"
+    "\n"
+    "void main(void) {\n"
+    "    unsigned char *scr = (unsigned char *)(0x0628 + 14);  /* row 12, col 14 */\n"
+    "    unsigned char *page = (unsigned char *)0x0400;\n"
+    "    const char *s = \"HELLO WORLD\";\n"
+    "    unsigned i;\n"
+    "    gen2_text();                    /* TEXT on (disables graphics) */\n"
+    "    gen2_page1();\n"
+    "    gen2_full();\n"
+    "    for (i = 0; i < 0x400u; ++i) page[i] = 0xA0;   /* clear to spaces */\n"
+    "    while (*s) *scr++ = (unsigned char)(*s++ | 0x80);\n"
+    "    for (;;) { /* idle */ }\n"
+    "}\n";
 static const char* kSketchCText =        // C x Apple dual-4k/8k (WozMon I/O)
     "/* HELLO WORLD in C on a plain text Apple-1 (apple1.c woz_puts, cc65). */\n"
     "#include \"apple1.h\"\n"
@@ -170,18 +319,16 @@ static const char* kSketchC =
     "    for (;;) { /* idle */ }\n"
     "}\n";
 static const char* kSketchGen2C =
-    "/* HIRES in C on Uncle Bernie's GEN2 colour card (cc65).\n"
-    "   Soft switches $C250-$C257 + HST0 — see gen2.h. Upload builds + runs @ $6000. */\n"
+    "/* HELLO WORLD on Uncle Bernie's GEN2 HIRES, drawn with the Beautiful Boot\n"
+    "   font. gen2_hgr_puts pixel-doubles every glyph so the text is solid white\n"
+    "   (no NTSC colour artifacts). Soft switches $C250-$C257 — see gen2.h.\n"
+    "   Upload builds + runs @ $6000. */\n"
     "#include \"gen2.h\"\n"
     "\n"
     "void main(void) {\n"
-    "    unsigned x;\n"
-    "    gen2_hgr_init();          /* graphics + hires + page1 + full */\n"
-    "    gen2_hgr_clear(0);        /* black */\n"
-    "    for (x = 0; x < 192; ++x) {     /* draw an X */\n"
-    "        gen2_hgr_plot(x, (unsigned char)x);\n"
-    "        gen2_hgr_plot(279u - x, (unsigned char)x);\n"
-    "    }\n"
+    "    gen2_hgr_init();                    /* graphics + hires + page1 + full */\n"
+    "    gen2_hgr_clear(0);                  /* black */\n"
+    "    gen2_hgr_puts(42, 80, \"HELLO WORLD\");\n"
     "    for (;;) { /* idle */ }\n"
     "}\n";
 
@@ -202,25 +349,51 @@ namespace {
 
 // POM1 target: machine preset + linker cfg + source mode (0 asm/1 hex/2 raw/3 C)
 // + the HELLO-WORLD starter for it. The New dialog picks a (language x machine)
-// pair; the first 6 entries are that matrix, ordered language-major:
-//   0..2 = asm x {dual-4k, TMS9918, GEN2}, 3..5 = C x {dual-4k, TMS9918, GEN2}.
+// pair; the first 8 entries are that matrix, ordered language-major:
+//   0..3 = asm x {dual-4k, TMS9918, GEN2 HGR, Bernie TXT},
+//   4..7 = C   x {dual-4k, TMS9918, GEN2 HGR, Bernie TXT}.
+// (preset indices: dual-4k = 1, TMS9918+CodeTank = 7, GEN2 = 12.)
 struct P1T { const char* label; int preset; const char* cfg; const char* lang; int mode;
              bool needsCl65; bool wantsAddr; const char* sketch; };
 const P1T kP1Targets[] = {
-    { "Apple-1 dual-4k/8k (asm)",         1, "apple1_4k.cfg",   "6502", 0, false, false, kSketchAsm     },
-    { "TMS9918 (asm)",                    8, "apple1_4k.cfg",   "6502", 0, false, false, kSketchAsmTms  },
-    { "Uncle Bernie GEN2 HGR (asm)",     13, "apple1_gen2.cfg", "6502", 0, false, false, kSketchAsmGen2 },
-    { "Apple-1 dual-4k/8k (C)",           1, "C-plain",         "C",    3, true,  false, kSketchCText   },
-    { "TMS9918 CodeTank ROM (C)",         8, "C",               "C",    3, true,  false, kSketchC       },
-    { "Uncle Bernie GEN2 HGR (C)",       13, "C-gen2",          "C",    3, true,  false, kSketchGen2C   },
-    { "Wozmon hex (any machine)",        -1, "",                "hex",  1, false, false, kSketchHex     },
-    { "Raw bytes @ $ (any machine)",     -1, "",                "raw",  2, false, true,  kSketchRaw     },
+    { "Apple-1 dual 4K/8K (asm)",         1, "apple1_4k.cfg",   "6502", 0, false, false, kSketchAsm       },
+    { "P-LAB TMS9918 Graphic Card (asm)", 7, "apple1_4k.cfg",   "6502", 0, false, false, kSketchAsmTms    },
+    { "Uncle Bernie GEN2 HGR (asm)",     12, "apple1_gen2.cfg", "6502", 0, false, false, kSketchAsmGen2   },
+    { "Bernie GEN2 TXT (asm)",           12, "apple1_gen2.cfg", "6502", 0, false, false, kSketchTxtGen2Asm},
+    { "Apple-1 dual 4K/8K (C)",           1, "C-plain",         "C",    3, true,  false, kSketchCText     },
+    { "P-LAB TMS9918 CodeTank ROM (C)",   7, "C",               "C",    3, true,  false, kSketchC         },
+    { "Uncle Bernie GEN2 HGR (C)",       12, "C-gen2",          "C",    3, true,  false, kSketchGen2C     },
+    { "Bernie GEN2 TXT (C)",             12, "C-gen2",          "C",    3, true,  false, kSketchTxtGen2C  },
+    { "Wozmon hex (any machine)",        -1, "",                "hex",  1, false, false, kSketchHex       },
+    { "Raw bytes @ $ (any machine)",     -1, "",                "raw",  2, false, true,  kSketchRaw       },
 };
 const int kP1TargetCount = static_cast<int>(sizeof(kP1Targets) / sizeof(kP1Targets[0]));
 
-// New-dialog axes (language x machine -> target index = lang*3 + machine).
-const char* const kP1Languages[] = { "Assembly (ca65)", "C (cc65)" };
-const char* const kP1Machines[]  = { "Apple-1 dual-4k/8k", "TMS9918", "GEN2 HGR (Bernie)" };
+// New-dialog axes (language x machine -> target index = lang*4 + machine).
+// kP1*Hints are parallel to the labels and surface as combo-entry tooltips.
+const char* const kP1Languages[] = { "Assembly  —  ca65 / ld65", "C  —  cc65 / cl65" };
+const char* const kP1LanguageHints[] = {
+    "MOS 6502 assembler (cc65's ca65 + ld65). Links against the apple1 / tms9918 /\n"
+    "gen2 equate libraries under dev/lib via the per-target linker .cfg.",
+    "C cross-compiler (cc65's cl65). Pulls in the apple1.c runtime, or the\n"
+    "apple1-videocard-lib (TMS9918) / gen2 C runtime depending on the target.",
+};
+const char* const kP1Machines[]  = {
+    "Apple-1 dual 4K/8K  (text)",
+    "P-LAB Graphic Card  (TMS9918)",
+    "Uncle Bernie GEN2 HGR  (colour)",
+    "Bernie GEN2 TXT  (40x24 text)",
+};
+const char* const kP1MachineHints[] = {
+    "Stock Apple-1: 40x24 text printed through the WozMon ECHO routine ($FFEF).\n"
+    "Preset 1 (dual 4K/8K RAM).",
+    "P-LAB Graphic Card by Claudio Parmigiani — TMS9918 VDP, Graphics I mode,\n"
+    "256x192, data port $CC00 / control $CC01. Preset 7.",
+    "Uncle Bernie's GEN2 colour card — Apple II-style HIRES (280x192) driven by\n"
+    "the soft switches $C250-$C257. Hello world uses the BBFont. Preset 12.",
+    "Uncle Bernie's GEN2 in native TEXT mode — 40x24, page $0400, the card's\n"
+    "built-in font ($C251 TEXT on). Preset 12.",
+};
 
 struct P1Ex { const char* label; bool file; const char* data; int target; const char* asset; uint16_t addr; };
 const P1Ex kP1Examples[] = {
@@ -302,8 +475,10 @@ Pom1BenchHost::Pom1BenchHost(MainWindow_ImGui* mw) : mw_(mw)
                              kP1Targets[i].lang, kP1Targets[i].wantsAddr });
     for (int i = 0; i < kP1ExampleCount; ++i)
         examples_.push_back({ kP1Examples[i].label });
-    for (const char* l : kP1Languages) languages_.push_back(l);
-    for (const char* m : kP1Machines)  machines_.push_back(m);
+    for (const char* l : kP1Languages)     languages_.push_back(l);
+    for (const char* m : kP1Machines)      machines_.push_back(m);
+    for (const char* h : kP1LanguageHints) languageHints_.push_back(h);
+    for (const char* h : kP1MachineHints)  machineHints_.push_back(h);
 }
 
 void Pom1BenchHost::probe() const
@@ -354,7 +529,7 @@ void Pom1BenchHost::probe() const
 int Pom1BenchHost::defaultTargetIndex() const
 {
     probe();
-    return toolchainOk_ ? 0 : 6;   // asm dual-4k if cc65 present, else Wozmon hex
+    return toolchainOk_ ? 0 : 8;   // asm dual-4k if cc65 present, else Wozmon hex
 }
 
 std::string Pom1BenchHost::starterSketch(int target) const
@@ -363,13 +538,15 @@ std::string Pom1BenchHost::starterSketch(int target) const
     return kP1Targets[target].sketch ? kP1Targets[target].sketch : "";
 }
 
-const std::vector<std::string>& Pom1BenchHost::languages() const { return languages_; }
-const std::vector<std::string>& Pom1BenchHost::machines()  const { return machines_; }
+const std::vector<std::string>& Pom1BenchHost::languages()     const { return languages_; }
+const std::vector<std::string>& Pom1BenchHost::machines()      const { return machines_; }
+const std::vector<std::string>& Pom1BenchHost::languageHints() const { return languageHints_; }
+const std::vector<std::string>& Pom1BenchHost::machineHints()  const { return machineHints_; }
 
 int Pom1BenchHost::targetFor(int language, int machine) const
 {
-    if (language < 0 || language > 1 || machine < 0 || machine > 2) return -1;
-    return language * 3 + machine;   // matches the kP1Targets matrix ordering
+    if (language < 0 || language > 1 || machine < 0 || machine > 3) return -1;
+    return language * 4 + machine;   // matches the kP1Targets matrix ordering
 }
 
 void Pom1BenchHost::onTargetSelected(int target)

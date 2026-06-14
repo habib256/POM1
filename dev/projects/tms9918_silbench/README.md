@@ -77,7 +77,7 @@ Result column legend:
 - Machine: Apple 1 (4 KB DRAM stock — only the ZP and stack used; the
   ROM image lives in the CodeTank window)
 - Cards: P-LAB TMS9918 + CodeTank cartridge
-- Recommended POM1 preset: any TMS9918+CodeTank preset (e.g. preset 8).
+- Recommended POM1 preset: any TMS9918+CodeTank preset (e.g. preset 7).
 
 ## Build
 

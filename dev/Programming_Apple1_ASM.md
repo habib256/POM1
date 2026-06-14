@@ -51,7 +51,7 @@ Le binaire compilé et son `.txt` Woz hex sont déposés sous `software/<dir>/` 
 
 ### Chargement dans POM1
 
-1. Choisir un preset avec la carte voulue — tableau **Machine Presets** dans [`README.md`](../README.md) (ex. TMS9918 + CodeTank → **preset 8**, GEN2 HGR → **13**).
+1. Choisir un preset avec la carte voulue — tableau **Machine Presets** dans [`README.md`](../README.md) (ex. TMS9918 + CodeTank → **preset 7**, GEN2 HGR → **12**).
 2. (Ou auto-enable : placer le livrable sous `software/hgr/`, `software/tms9918/`, etc. — voir [`APPLE1DEV.md`](APPLE1DEV.md) §8.)
 3. **File > Load Memory** → sélectionner le `.txt`
 4. Dans le Woz Monitor, taper `280R` (ou l’adresse de démarrage du linker)

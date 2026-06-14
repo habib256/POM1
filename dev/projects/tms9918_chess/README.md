@@ -36,7 +36,7 @@ The `software/tms9918/` directory auto-enables the TMS9918 card on load.
 Or via CLI:
 
 ```
-./POM1 --preset 8 --terminal --cpu-max \
+./POM1 --preset 7 --terminal --cpu-max \
        --load 0x0280:software/tms9918/TMS_Chess.bin --run 0x0280
 ```
 

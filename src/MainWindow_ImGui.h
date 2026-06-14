@@ -304,6 +304,10 @@ private:
         ImVec2 size; // (0,0) = don't change size
     };
     std::vector<PendingWindowPlacement> pendingLayout;
+    // >0 while a layout reset is in flight: applyPendingLayout uses
+    // ImGuiCond_Always (forcing live windows back to the factory positions)
+    // instead of FirstUseEver, for this many frames. Cleared per-frame.
+    int layoutResetForceFrames = 0;
     int windowedWidth = 1200;
     int windowedHeight = 800;
     int windowedPosX = 100;
@@ -408,6 +412,15 @@ private:
     void applyMachineConfig(int presetIndex);
     void finalizePendingCardPlugs();
     void applyPendingLayout(const char* windowName);
+    // Restore every window (and the main OS window) to the active preset's
+    // factory layout, discarding ini/imgui_preset_NN.ini + .size. Settings menu.
+    void resetActivePresetLayout();
+    // Same, but for ALL presets: wipes every ini/*.ini + .size, re-seeds the
+    // factory files, and resets the active preset live. Settings menu.
+    void resetAllPresetLayouts();
+    // Default OS-window size for a preset (layout bounding box, floored at the
+    // POM1 Fantasy frame). Shared by applyMachineConfig + resetActivePresetLayout.
+    void defaultOsWindowSize(int presetIndex, int& outW, int& outH) const;
 
     // CPU execution functions
     void startCpu();

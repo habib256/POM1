@@ -245,6 +245,11 @@ private:
     void paintLeftRightBorderForActiveLine(int line);
     void paintTopBorder();
     void paintBottomBorder();
+    // Full-frame repaint of the live framebuffer from the current VRAM + regs.
+    // Used after deserialize so a snapshot/rewind restore shows the correct
+    // image immediately, even while the emulation is paused (the progressive
+    // per-scanline raster only runs while the CPU executes).
+    void rebuildFramebufferFromVram();
     // Per-line raw renderers — operate on raw vram + regs pointers so they
     // can be reused between the live progressive path and the legacy
     // snapshot-based renderToBuffer.

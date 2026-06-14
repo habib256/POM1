@@ -2,7 +2,7 @@
 """
 test_logo_telnet.py -- Smoke test for the P-LAB LOGO interpreter.
 
-Auto-launches POM1 with preset 8 (P-LAB Apple-1 with TMS9918 + CodeTank),
+Auto-launches POM1 with preset 7 (P-LAB Apple-1 with TMS9918 + CodeTank),
 the Terminal Card on localhost:6502, and the LOGO binary pre-loaded at
 $0280 with reset vector pointing at $0280.
 

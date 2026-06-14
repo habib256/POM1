@@ -12,7 +12,7 @@
 ; The GEN2 linker config reserves $2000-$3FFF for the HGR
 ; framebuffer; BSS (grid, DFS stacks) is page-aligned in the
 ; low bank at $0300-$0EFF so the program runs on the
-; Parmigiani 8 KB dual-bank Apple-1 (preset 13) where the
+; Parmigiani 8 KB dual-bank Apple-1 (preset 12) where the
 ; gap $1000-$DFFF has no RAM.
 ;
 ; In POM1: plug GEN2 card, File > Load Memory (HGR_Maze.txt)
@@ -48,7 +48,7 @@ VISITED   = $80
 
 ; --- Runtime RAM (page-aligned for efficient indirect access) ---
 ; Placed in the dual-bank low window ($0300-$0EFF) so the
-; program runs on the 8 KB Parmigiani Apple-1 (preset 13).
+; program runs on the 8 KB Parmigiani Apple-1 (preset 12).
 ; Each block reserves 4 pages (1 KB) but only uses 782 bytes.
 GRID       = $0300      ; 782 bytes: cell data ($0300-$060D)
 DFS_STK_LO = $0700      ; 782 bytes: stack low bytes ($0700-$0A0D)

@@ -22,6 +22,8 @@ public:
     const std::vector<bench::Example>& examples() const override { return examples_; }
     const std::vector<std::string>&    languages() const override;
     const std::vector<std::string>&    machines()  const override;
+    const std::vector<std::string>&    languageHints() const override;
+    const std::vector<std::string>&    machineHints()  const override;
     int         targetFor(int language, int machine) const override;
     int         defaultTargetIndex()         const override;
     std::string starterSketch(int target)    const override;
@@ -52,6 +54,8 @@ private:
     std::vector<bench::Example> examples_;
     std::vector<std::string>    languages_;
     std::vector<std::string>    machines_;
+    std::vector<std::string>    languageHints_;
+    std::vector<std::string>    machineHints_;
 
     // Companion asset staged before an asm build runs (set by loadExample).
     std::string extraAsset_;

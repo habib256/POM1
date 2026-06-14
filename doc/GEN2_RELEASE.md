@@ -26,7 +26,7 @@ Full Apple II video subsystem on the Apple-1 expansion connector:
 - **RAM expansion (Q9):** the card carries 48 KB DRAM covering `$0000-$BFFF`
   (CPU writes reach it through the VMA write-through latch) and the
   motherboard keeps `$E000-$EFFF` — Bernie quotes **54 KB** total. POM1
-  preset 13 models this configuration (48 KB + the `$E000` bank).
+  preset 12 models this configuration (48 KB + the `$E000` bank).
 - **Timing (Q4):** 65 CPU cycles/scanline; **262 lines @ 60 Hz** or
   **312 @ 50 Hz** (vertical jumper; NTSC colour either way). Lines 0-191
   live; visible bytes at h-counter 25-64. **~4200 cycles of V-blank budget**
@@ -147,13 +147,13 @@ plays, `--save-tape tune.aci` keeps the music as a playable tape.
 
 ## 6. Developing with POM1
 
-- **Preset 13** = Bernie's real machine: GEN2 (beam-raced, all modes,
+- **Preset 12** = Bernie's real machine: GEN2 (beam-raced, all modes,
   HST0-exact) + ACI + 48 KB. The `software/Graphic HGR/` folder auto-plugs
   the card on load.
 - **Dev loop:**
   ```bash
   cd dev/projects/<yours> && make        # ca65 + ld65 + Woz-hex .txt
-  ./build/POM1 --preset 13 --load 'E000:software/Graphic HGR/<P>.txt'
+  ./build/POM1 --preset 12 --load 'E000:software/Graphic HGR/<P>.txt'
   ```
   `.txt` loads run automatically (trailing `E000R`). Useful flags:
   `--terminal` (telnet 127.0.0.1:6502 — drive the keyboard from a script,

@@ -317,6 +317,13 @@ void MainWindow_ImGui::render()
             finalizePendingCardPlugs();
         }
     }
+    // Drain a layout reset (Settings → Reset window layout). applyPendingLayout
+    // forces the factory geometry with ImGuiCond_Always while this is >0; once
+    // it hits 0 the (kept) entries are dropped so normal FirstUseEver resumes.
+    if (layoutResetForceFrames > 0) {
+        if (--layoutResetForceFrames == 0)
+            pendingLayout.clear();
+    }
     // MemoryViewer setters are only consumed by render(), so don't bother
     // wiring them when the window is closed. The pointer hand-off in
     // updateLiveMemory() is cheap, but skipping the whole block keeps the
@@ -643,12 +650,16 @@ void MainWindow_ImGui::render()
     if (showSaveSnapshotDialog) renderSaveSnapshotDialog();
     if (graphicsCardEnabled && showGraphicsCard) renderGraphicsCardWindow();
     if (tms9918Enabled && showTMS9918) renderTMS9918Window();
-    if (tms9918Enabled && showTMS9918Inspector) renderTMS9918InspectorWindow();
+    // DevBench inspector: always available (reads the value snapshot, not the
+    // live card) so it can be opened even when the TMS9918 is unplugged.
+    if (showTMS9918Inspector) renderTMS9918InspectorWindow();
     if (gt6144Enabled && showGT6144) renderGT6144Window();
     if (wifiModemEnabled && showWiFiModem) renderWiFiModemWindow();
     if (terminalCardEnabled && showTerminalCard) renderTerminalCardWindow();
     if (showTelemetry) renderTelemetryWindow();
-    if (showBench) renderBenchWindow();
+#if !POM1_IS_WASM
+    if (showBench) renderBenchWindow();   // desktop-only dev tool (cc65 toolchain)
+#endif
     if (pr40Enabled && showPR40) renderPR40Window();
     if (a1ioRtcEnabled && showA1IO_RTC) renderA1IO_RTCWindow();
     if (jukeBoxEnabled && showJukeBox) renderJukeBoxWindow();

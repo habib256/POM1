@@ -615,7 +615,7 @@ Quelques traits qui distinguent le développement MiSTer d'un FPGA homebrew clas
 - **Versionning par date** — les cores sont nommés `<Name>_<YYYYMMDD>.rbf`, la date servant de version. Le HPS prend la dernière par défaut.
 - **Pas de save states génériques** — chaque core doit explicitement décider quels registres exposer pour la sauvegarde via le module `nvram` ; pas de snapshot full-fabric à la PCSX2.
 - **MRA files** — pour l'arcade, fichier XML qui décrit comment patcher/concaténer plusieurs ROMs en mémoire avant de les passer au core (pareil que ce que fait POM1 avec `loadHexDump` mais avec un format normalisé).
-- **MGL files** — chargement de jeu automatique au démarrage d'un core (équivalent de `--preset 14 --load addr:path` côté POM1 CLI).
+- **MGL files** — chargement de jeu automatique au démarrage d'un core (équivalent de `--preset 13 --load addr:path` côté POM1 CLI).
 
 ### 15.10 En résumé
 

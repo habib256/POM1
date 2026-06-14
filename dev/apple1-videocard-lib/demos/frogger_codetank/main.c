@@ -1,5 +1,5 @@
 /*
- * Frogger mini — Apple-1 + CodeTank + TMS9918 (cc65, preset 8, 4000R)
+ * Frogger mini — Apple-1 + CodeTank + TMS9918 (cc65, preset 7, 4000R)
  * Grenouille en sprite matériel (SPGT $1800), berges herbe sur les bords,
  * eau animée (2 motifs). A/D/W, Espace/Entrée pour rejouer.
  */

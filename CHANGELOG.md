@@ -8,6 +8,50 @@ authoritative commit-level history is `git log`; the user-facing feature tour is
 
 ## [Unreleased]
 
+### Added — DevBench menu + Bench GEN2 text target
+
+- **DevBench top-level menu** (`MainWindow_Menu.cpp`) — groups the dev tooling:
+  *POM1 Bench (sketch editor)*, *Telemetry Side Channel*, *TMS9918 VDP
+  Inspector*, *Silicon Strict Inspector*. Telemetry and Silicon Strict moved
+  here out of Settings.
+- **TMS9918 VDP Inspector always available** — opening it from DevBench
+  auto-plugs the TMS9918 (and evicts A1-AUDIO SE) so there is a live VDP to
+  inspect; `renderTMS9918InspectorWindow()` is no longer gated on
+  `tms9918Enabled` (`MainWindow_ImGui.cpp`, `if (showTMS9918Inspector)`).
+- **Bench "Bernie GEN2 TXT" target** + 4th machine axis in the New-sketch
+  dialog (`Pom1BenchHost.cpp`) — native GEN2 TEXT mode (40×24, page `$0400`,
+  built-in font, `$C251`), asm + C starters (`apple1_gen2.cfg` / `C-gen2`).
+  The New-sketch matrix is now 2 languages × 4 machines (`targetFor` =
+  `language*4 + machine`).
+- **Bench New-dialog hints** — optional `IBenchHost::languageHints()` /
+  `machineHints()` (`bench/IBenchHost.h`, `Pom1BenchHost.cpp`), shown inline in
+  the dialog; P-LAB cited for the TMS9918 entries.
+- **`gen2_hgr_puts()` / `gen2_hgr_row()`** in `dev/lib/gen2c`
+  (`gen2.c`/`gen2.h`) — draw an ASCII string in GEN2 HIRES using an embedded
+  Beautiful Boot font, pixel-doubled (H+V) to solid white with no NTSC
+  artifacts (16×16 cells, 18px pitch); `gen2_hgr_row` resolves a scanline base.
+- **Settings → A1-SID version & addresses** submenu (`MainWindow_Menu.cpp`) —
+  pick A1-SID (`$C800-$CFFF`) vs A1-AUDIO SE (`$CC00-$CC1F`) and list all 29 SID
+  register addresses for the active variant.
+
+### Changed — Preset table merge + GEN2/TMS starters
+
+- **Preset table simplified** (`MainWindow_Presets.cpp`) — the A1-SID and
+  A1-AUDIO Special Edition presets merged into ONE preset #6 (I/O window
+  selectable in *Settings → A1-SID version & addresses*). All later presets
+  renumbered (old 8→7 … 14→13); final range 0–13. Invariant kept: no TMS9918
+  preset without CodeTank — P-LAB Multiplexing Fantasy (#11) now plugs CodeTank
+  GAME1 (`roms/codetank/Codetank_GAME1.rom`). POM1 Multiplexing Fantasy (#13)
+  now plugs ACI by default. Preset numbers updated repo-wide in docs/tools.
+- **GEN2 hello-world starters** — GEN2 HGR asm + C now render BBFont
+  "HELLO WORLD" (pixel-doubled white text) instead of a fill/X;
+  `gen2_hgr_clear`/`gen2_hgr_puts` optimised (~20× faster — page/Y-indexed
+  clear, per-row base resolution). TMS9918 asm starter does a proper VDP init
+  (blank during setup → clear VRAM → park sprites → screen on last).
+- **Bench window** (`bench/CodeBench.cpp`) — taller default (660×720) + min
+  size (520×480, `SetNextWindowSizeConstraints`); bottom status bar pinned
+  flush to the window bottom (was leaving a ~30px gap).
+
 ### Added — State rewind (microM8-style timeline)
 
 - **Timeline scrub + delta ring (MVP)** — `RewindBuffer`: delta-encoded ring of

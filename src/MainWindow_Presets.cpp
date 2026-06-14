@@ -62,7 +62,7 @@ namespace pom1::mainwindow::detail {
 //     Every other preset mirrors its geometry. First-time use writes
 //     ini/imgui_preset_NN.ini + ini/preset_NN.size (NN = index); subsequent launches
 //     load from there.
-//   - Preset 12 (P-LAB Multiplexing Fantasy) is the only exception
+//   - Preset 11 (P-LAB Multiplexing Fantasy) is the only exception
 //     that departs from the tutorial+peripheral template: it's the
 //     "everything plugged" fantasy and stacks 3 peripherals in the
 //     right column instead of a tutorial.
@@ -204,10 +204,11 @@ const MachineConfig kMachinePresets[] = {
         }, 3
     },
     {   //                                  GEN2  uSD  SID  TMS  RTC  WiFi Term Krus CFFA ACI
-        "P-LAB Apple-1 with A1-SID Sound Card ($C800-$CFFF)",
-        "P-LAB A1-SID Sound Card (MOS 6581/8580). Registers at "
-        "$C800-$CFFF. 8 KB dual-bank RAM (4 KB at $0000-$0FFF + 4 KB at "
-        "$E000-$EFFF — Parmigiani's standard layout).",
+        "P-LAB Apple-1 with A1-SID Sound Card",
+        "P-LAB A1-SID Sound Card (MOS 6581/8580). Default I/O window $C800-$CFFF; "
+        "switch to the A1-AUDIO Special Edition window ($CC00-$CC1F, excludes "
+        "TMS9918) from Settings -> A1-SID version & addresses. 8 KB dual-bank RAM "
+        "(4 KB at $0000-$0FFF + 4 KB at $E000-$EFFF — Parmigiani's standard layout).",
         false, false, true, false, false, false, false,
         /*pr40*/ false,
         false, false, false, 8, BasicType::None,
@@ -221,25 +222,6 @@ const MachineConfig kMachinePresets[] = {
             // the right column full height so there's room for the full
             // register-poke example.
             {"Apple 1 Screen",                  {10,  61}, {843, 701}},
-            {"Tutorial: A1-SID / A1-AUDIO SE", {858, 61}, {338, 703}},
-        }, 2
-    },
-    {   //                                  GEN2  uSD  SID  TMS  RTC  WiFi Term Krus CFFA ACI
-        "P-LAB Apple-1 with A1-AUDIO Special Edition ($CC00-$CC1F)",
-        "Claudio Parmigiani's A1-AUDIO Special Edition (10 units): MOS 6581/8580 "
-        "at $CC00-$CC1F. Mutually exclusive with TMS9918 (same $CC00/$CC01 "
-        "window). 8 KB dual-bank RAM (4 KB at $0000-$0FFF + 4 KB at "
-        "$E000-$EFFF — Parmigiani's standard layout).",
-        false, false, false, false, false, false, false,
-        /*pr40*/ false,
-        false, false, false, 8, BasicType::None,
-        /*sidSE*/ true,
-        /*jukeBox*/ false, JukeBox::Jumper::RAM16_ROM32, JukeBox::ChipMode::Flash,
-        /*codeTank*/ false, CodeTank::Jumper::Lower16, /*codeTankRom*/ nullptr,
-        /*gt6144*/ false,
-        /*iecCard*/ false,
-        {
-            {"Apple 1 Screen",                 {10,  61}, {843, 701}},
             {"Tutorial: A1-SID / A1-AUDIO SE", {858, 61}, {338, 703}},
         }, 2
     },
@@ -335,9 +317,9 @@ const MachineConfig kMachinePresets[] = {
     },
     {   //                                  GEN2  uSD  SID  TMS  RTC  WiFi Term Krus CFFA ACI
         "P-LAB Apple-1 Multiplexing Fantasy",
-        "Emulator-only fantasy: plugs microSD, A1-SID, TMS9918, I/O & RTC, Wi-Fi modem, "
-        "and Terminal Card all at once. Violates Claudio Parmigiani's golden rule "
-        "\"one board at a time\" - impossible on real Apple-1 silicon (the 6502 bus has "
+        "Emulator-only fantasy: plugs microSD, A1-SID, TMS9918 (+ CodeTank), I/O & RTC, "
+        "Wi-Fi modem, and Terminal Card all at once. Violates Claudio Parmigiani's golden "
+        "rule \"one board at a time\" - impossible on real Apple-1 silicon (the 6502 bus has "
         "no arbitration, and several of these cards share overlapping address windows). "
         "Provided for convenience only.",
         false, true, true, true, true, true, true,
@@ -345,7 +327,8 @@ const MachineConfig kMachinePresets[] = {
         false, false, false, 64, BasicType::ApplesoftLite,
         /*sidSE*/ false,
         /*jukeBox*/ false, JukeBox::Jumper::RAM16_ROM32, JukeBox::ChipMode::Flash,
-        /*codeTank*/ false, CodeTank::Jumper::Lower16, /*codeTankRom*/ nullptr,
+        /*codeTank*/ true, CodeTank::Jumper::Lower16,
+        /*codeTankRom*/ "roms/codetank/Codetank_GAME1.rom",
         /*gt6144*/ false,
         /*iecCard*/ false,
         {
@@ -395,15 +378,15 @@ const MachineConfig kMachinePresets[] = {
     {
         "POM1 Apple-1 Multiplexing Fantasy (2026)",
         "Emulator-only fantasy (violates Parmigiani's golden rule \"one board at a time\"): "
-        "64 KB RAM, Applesoft Lite, microSD + A1-SID + Wi-Fi modem + Terminal Card. "
+        "64 KB RAM, Applesoft Lite, ACI + microSD + A1-SID + Wi-Fi modem + Terminal Card. "
         "Graphic cards and the PR-40 printer off by default — plug them from the toolbar. "
-        "ACI unplugged so the cassette deck acts as a plain audio player. Boots with the "
+        "ACI plugged by default so the cassette deck can load/save tapes. Boots with the "
         "Cassette Deck + Welcome panels already open to the right of the Apple 1 screen; "
-        "your layout customisations persist under ini/imgui_preset_14.ini "
-        "(plus ini/preset_14.size for the OS window frame).",
+        "your layout customisations persist under ini/imgui_preset_13.ini "
+        "(plus ini/preset_13.size for the OS window frame).",
         false, true, true, false, false, true, true,
         /*pr40*/ false,
-        false, false, false, 64, BasicType::ApplesoftLite,
+        false, false, true, 64, BasicType::ApplesoftLite,
         /*sidSE*/ false,
         /*jukeBox*/ false, JukeBox::Jumper::RAM16_ROM32, JukeBox::ChipMode::Flash,
         /*codeTank*/ false, CodeTank::Jumper::Lower16, /*codeTankRom*/ nullptr,
@@ -411,7 +394,7 @@ const MachineConfig kMachinePresets[] = {
         /*iecCard*/ false,
         {
             // Positions / sizes match the shipped POM1 Fantasy screenshot
-            // so the first launch (no saved ini/imgui_preset_14.ini yet)
+            // so the first launch (no saved ini/imgui_preset_13.ini yet)
             // snaps straight to that layout.
             {"Apple 1 Screen",         {10,  61},  {843, 701}},
             {"Welcome",                {858, 61},  {338, 223}},
@@ -468,15 +451,61 @@ void MainWindow_ImGui::applyPendingLayout(const char* windowName)
     // loads of the same preset (delete that file to restore the default).
     // Within a session, the condition also means that re-applying the same
     // preset leaves the user's customisations intact.
+    // During a layout reset (resetActivePresetLayout) force the factory
+    // position/size onto live windows with ImGuiCond_Always and KEEP the entry
+    // so it re-applies every frame until layoutResetForceFrames drains; normal
+    // switches use FirstUseEver and consume the entry once.
+    const bool force = layoutResetForceFrames > 0;
+    const ImGuiCond cond = force ? ImGuiCond_Always : ImGuiCond_FirstUseEver;
     for (auto it = pendingLayout.begin(); it != pendingLayout.end(); ++it) {
         if (it->name == windowName) {
-            ImGui::SetNextWindowPos(it->pos, ImGuiCond_FirstUseEver);
+            ImGui::SetNextWindowPos(it->pos, cond);
             if (it->size.x > 0.0f)
-                ImGui::SetNextWindowSize(it->size, ImGuiCond_FirstUseEver);
-            pendingLayout.erase(it);
+                ImGui::SetNextWindowSize(it->size, cond);
+            if (!force)
+                pendingLayout.erase(it);
             return;
         }
     }
+}
+
+// Default OS-window size for a preset: the layout bounding box (with a fallback
+// extent for the font-metric-dependent Apple 1 screen), floored at the POM1
+// Fantasy frame so switching presets never shrinks the window. Shared by
+// applyMachineConfig (first-use sizing) and resetActivePresetLayout.
+void MainWindow_ImGui::defaultOsWindowSize(int presetIndex, int& outW, int& outH) const
+{
+    outW = windowedWidth;
+    outH = windowedHeight;
+    if (presetIndex < 0 || presetIndex >= kMachinePresetCount) return;
+    const MachineConfig& cfg = kMachinePresets[presetIndex];
+
+    ImGui::PushFont(ImGui::GetIO().Fonts->Fonts[0]);
+    const ImVec2 charSize = ImGui::CalcTextSize("M");
+    ImGui::PopFont();
+    const ImVec2 cell = Screen_ImGui::computeApple1CellDimensions(charSize);
+    const float sw = cell.x * Screen_ImGui::kApple1Columns * screen->scale
+                     + kApple1ImGuiWinPadW;
+    const float sh = cell.y * Screen_ImGui::kApple1Rows * screen->scale
+                     + kApple1ImGuiWinPadH;
+    const ImVec2 extent = computePresetLayoutExtent(cfg, ImVec2(sw, sh));
+    const float rightPad  = 10.0f;
+    const float bottomPad = kStatusBarBandHeight + kApple1WindowDecorationSlop;
+    int glfwW = static_cast<int>(sw) + kApple1GlfwExtraW;
+    int glfwH = static_cast<int>(std::ceil(sh + apple1LayoutVerticalChrome()));
+    if (extent.x > 0.0f && extent.y > 0.0f) {
+        glfwW = std::max(glfwW, static_cast<int>(std::ceil(extent.x + rightPad)));
+        glfwH = std::max(glfwH, static_cast<int>(std::ceil(extent.y + bottomPad)));
+    }
+    // Floor at the last preset (POM1 Fantasy) extent — the canonical frame.
+    const ImVec2 fantasyExtent = computePresetLayoutExtent(
+        kMachinePresets[kMachinePresetCount - 1], ImVec2(sw, sh));
+    if (fantasyExtent.x > 0.0f && fantasyExtent.y > 0.0f) {
+        glfwW = std::max(glfwW, static_cast<int>(std::ceil(fantasyExtent.x + rightPad)));
+        glfwH = std::max(glfwH, static_cast<int>(std::ceil(fantasyExtent.y + bottomPad)));
+    }
+    outW = glfwW;
+    outH = glfwH;
 }
 
 void MainWindow_ImGui::applyMachineConfig(int presetIndex)
@@ -836,38 +865,9 @@ void MainWindow_ImGui::applyMachineConfig(int presetIndex)
 #if !POM1_IS_WASM
     if (!layoutLoaded && window) {
         // No saved size — derive a default OS-window bounding box from the
-        // preset's layout table. Needs a fallback extent for the Apple 1
-        // screen itself (whose default size depends on font metrics).
-        ImGui::PushFont(ImGui::GetIO().Fonts->Fonts[0]);
-        const ImVec2 charSize = ImGui::CalcTextSize("M");
-        ImGui::PopFont();
-        const ImVec2 cell = Screen_ImGui::computeApple1CellDimensions(charSize);
-        const float sw = cell.x * Screen_ImGui::kApple1Columns * screen->scale
-                         + kApple1ImGuiWinPadW;
-        const float sh = cell.y * Screen_ImGui::kApple1Rows * screen->scale
-                         + kApple1ImGuiWinPadH;
-        const ImVec2 extent = computePresetLayoutExtent(cfg, ImVec2(sw, sh));
-        const float rightPad  = 10.0f;
-        const float bottomPad = kStatusBarBandHeight + kApple1WindowDecorationSlop;
-        int glfwW = static_cast<int>(sw) + kApple1GlfwExtraW;
-        int glfwH = static_cast<int>(std::ceil(sh + apple1LayoutVerticalChrome()));
-        if (extent.x > 0.0f && extent.y > 0.0f) {
-            glfwW = std::max(glfwW, static_cast<int>(std::ceil(extent.x + rightPad)));
-            glfwH = std::max(glfwH, static_cast<int>(std::ceil(extent.y + bottomPad)));
-        }
-        // Every preset boots with at least POM1 Fantasy's canonical frame
-        // (1206 x 807 = Apple 1 Screen 843x701 + right column 338 wide +
-        // chrome), so switching between presets never shrinks the OS
-        // window. Presets whose layout naturally demands more keep the
-        // extent-driven size above. The minimum is computed from the
-        // last preset in the array (POM1 Fantasy) so the canonical
-        // reference stays tied to the preset table.
-        const ImVec2 fantasyExtent = computePresetLayoutExtent(
-            kMachinePresets[kMachinePresetCount - 1], ImVec2(sw, sh));
-        if (fantasyExtent.x > 0.0f && fantasyExtent.y > 0.0f) {
-            glfwW = std::max(glfwW, static_cast<int>(std::ceil(fantasyExtent.x + rightPad)));
-            glfwH = std::max(glfwH, static_cast<int>(std::ceil(fantasyExtent.y + bottomPad)));
-        }
+        // preset's layout table (factored so resetActivePresetLayout reuses it).
+        int glfwW = 0, glfwH = 0;
+        defaultOsWindowSize(presetIndex, glfwW, glfwH);
         glfwSetWindowSize(window, glfwW, glfwH);
     }
 #endif
@@ -976,7 +976,7 @@ std::string sizePathForPreset(int idx)
     return std::string(buf);
 }
 
-/** Shipped under repo `ini_defaults/` (tracked in git). Used to seed preset 8
+/** Shipped under repo `ini_defaults/` (tracked in git). Used to seed preset 7
  *  (CodeTank) layout files so they match the reviewed snapshot; cwd may be
  *  repo root or `build/` (try ../ini_defaults/, etc.). */
 std::string findIniDefaultsFile(const char* basename)
@@ -1115,13 +1115,64 @@ bool MainWindow_ImGui::loadPresetLayout(int idx)
     return true;
 }
 
+// Settings → "Reset Window Layout": drop the active preset's saved ImGui ini +
+// .size sidecar and the live ImGui window settings, re-seed the factory
+// positions, force them onto the live windows for a couple of frames, and
+// resize the OS window to the preset's default extent. (Placed after the
+// iniPathForPreset/sizePathForPreset helpers so they are in scope.)
+void MainWindow_ImGui::resetActivePresetLayout()
+{
+    const int idx = activePresetIndex;
+    if (idx < 0 || idx >= kMachinePresetCount) return;
+    const MachineConfig& cfg = kMachinePresets[idx];
+
+    ImGui::ClearIniSettings();                 // wipe live window settings store
+    std::error_code ec;
+    std::filesystem::remove(iniPathForPreset(idx), ec);
+    std::filesystem::remove(sizePathForPreset(idx), ec);
+    memoryBarLastGeomValid  = false;
+    memoryBarHLastGeomValid = false;
+
+    pendingLayout.clear();
+    for (int i = 0; i < cfg.layoutCount; ++i) {
+        const auto& p = cfg.layout[i];
+        pendingLayout.push_back({p.name, p.pos, p.size});
+    }
+    layoutResetForceFrames = 2;                 // apply with Always next frame(s)
+
+#if !POM1_IS_WASM
+    if (window) {
+        int glfwW = 0, glfwH = 0;
+        defaultOsWindowSize(idx, glfwW, glfwH);
+        glfwSetWindowSize(window, glfwW, glfwH);
+    }
+#endif
+    setStatusMessage("Window layout reset to preset default", 2.5f);
+}
+
+// Settings → "Reset ALL Presets' Layouts": delete every preset's saved ImGui
+// ini + .size, re-seed fresh factory files for all of them, and reset the
+// active preset's live windows now. Other presets snap to their defaults the
+// next time they are loaded.
+void MainWindow_ImGui::resetAllPresetLayouts()
+{
+    std::error_code ec;
+    for (int i = 0; i < kMachinePresetCount; ++i) {
+        std::filesystem::remove(iniPathForPreset(i), ec);
+        std::filesystem::remove(sizePathForPreset(i), ec);
+    }
+    resetActivePresetLayout();             // wipes live state + active files, resizes OS window
+    pregenerateMissingPresetLayouts();     // re-write factory ini/.size for all presets
+    setStatusMessage("All preset window layouts reset to factory default", 3.0f);
+}
+
 // ---------------------------------------------------------------------------
 // pregenerateMissingPresetLayouts -- write out default ini/imgui_preset_NN.ini
 // + ini/preset_NN.size for every preset that doesn't have one yet, using the
 // hard-coded `kMachinePresets[i].layout` defaults (window name + pos + size).
-// Preset 8 (CodeTank): when `ini_defaults/imgui_preset_08.ini` and
-// `ini_defaults/preset_08.size` are found, those files are copied — they are
-// the canonical factory defaults (keep in sync with kMachinePresets[8]).
+// Preset 7 (CodeTank): when `ini_defaults/imgui_preset_07.ini` and
+// `ini_defaults/preset_07.size` are found, those files are copied — they are
+// the canonical factory defaults (keep in sync with kMachinePresets[7]).
 //
 // Called once at boot. Ensures the ini/ directory is fully populated even
 // before the user visits each preset, so that:
@@ -1151,8 +1202,8 @@ void MainWindow_ImGui::pregenerateMissingPresetLayouts()
 
         // Write the .ini file with one [Window][...] section per layout entry.
         if (!iniExists) {
-            bool seededFromDefaults = (idx == 8)
-                && copyIniDefaultsFileTo("imgui_preset_08.ini", iniPath);
+            bool seededFromDefaults = (idx == 7)
+                && copyIniDefaultsFileTo("imgui_preset_07.ini", iniPath);
             if (!seededFromDefaults) {
                 std::ofstream f(iniPath);
                 if (!f) continue;
@@ -1174,8 +1225,8 @@ void MainWindow_ImGui::pregenerateMissingPresetLayouts()
         // small floor matching the canonical Fantasy preset (last entry) so
         // that no preset starts smaller than the reference frame.
         if (!sizeExists) {
-            bool seededFromDefaults = (idx == 8)
-                && copyIniDefaultsFileTo("preset_08.size", sizePath);
+            bool seededFromDefaults = (idx == 7)
+                && copyIniDefaultsFileTo("preset_07.size", sizePath);
             if (!seededFromDefaults) {
                 // Need a fallback Apple-1 screen size — use the spec's size if
                 // present, else a reasonable 843x701 baseline.

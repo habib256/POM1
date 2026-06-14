@@ -109,10 +109,10 @@ void MainWindow_ImGui::renderMenuBar()
                 if (showCodeTankLibrary) plugCodeTankFromUi();
             }
             showHardwareTooltip(
-                "Bibliothèque CodeTank — zone console de jeu P-LAB (cartouche ROM\n"
-                "$4000-$7FFF sur hôte TMS9918). Ouvre la fenêtre et branche TMS9918 +\n"
-                "CodeTank si besoin. ROM 32 ko dans roms/codetank/ (2 banques 16 ko).\n"
-                "Après un Run (banque basse ou haute), 4000R est envoyé au moniteur Woz.");
+                "CodeTank Library — P-LAB game-console cartridge (ROM window\n"
+                "$4000-$7FFF on the TMS9918 host). Opens the window and plugs TMS9918 +\n"
+                "CodeTank if needed. 32 KB ROM in roms/codetank/ (two 16 KB banks).\n"
+                "After a Run (lower or upper bank), 4000R is sent to the Woz monitor.");
             ImGui::Separator();
             if (ImGui::MenuItem("Paste Code", shortcutLabel(GLFW_KEY_V, GLFW_MOD_CONTROL))) {
                 pasteCode();
@@ -178,6 +178,26 @@ void MainWindow_ImGui::renderMenuBar()
             if (ImGui::MenuItem("Display Options")) {
                 configScreen();
             }
+            if (ImGui::BeginMenu("Reset Window Layout")) {
+                if (ImGui::MenuItem("This preset")) {
+                    resetActivePresetLayout();
+                }
+                if (ImGui::IsItemHovered())
+                    ImGui::SetTooltip(
+                        "Restore every window's size + position AND the main OS window\n"
+                        "to this preset's factory layout. Deletes the saved\n"
+                        "ini/imgui_preset_%02d.ini + preset_%02d.size for the active preset.",
+                        activePresetIndex, activePresetIndex);
+                if (ImGui::MenuItem("All presets")) {
+                    resetAllPresetLayouts();
+                }
+                if (ImGui::IsItemHovered())
+                    ImGui::SetTooltip(
+                        "Wipe every preset's saved layout (all ini/imgui_preset_NN.ini\n"
+                        "+ preset_NN.size), re-seed the factory defaults, and reset the\n"
+                        "active preset's windows now. Other presets revert on next load.");
+                ImGui::EndMenu();
+            }
             ImGui::Separator();
             ImGui::Text("Terminal Speed (chars/sec):");
             static int termSpeed = 60;
@@ -194,10 +214,6 @@ void MainWindow_ImGui::renderMenuBar()
             ImGui::MenuItem("Memory Map Grid", shortcutLabel(GLFW_KEY_F2), &showMemoryMapGrid);
             ImGui::MenuItem("Memory Map Bar", nullptr, &showMemoryBar);
             ImGui::MenuItem("Memory Map Bar (Horizontal)", nullptr, &showMemoryBarH);
-            if (tms9918Enabled)
-                ImGui::MenuItem("TMS9918 VDP Inspector...", nullptr, &showTMS9918Inspector);
-            ImGui::MenuItem("Telemetry Side Channel...", nullptr, &showTelemetry);
-            ImGui::MenuItem("POM1 Bench (sketch editor)...", nullptr, &showBench);
             if (ImGui::MenuItem("Memory Options")) {
                 configMemory();
             }
@@ -213,6 +229,70 @@ void MainWindow_ImGui::renderMenuBar()
                     setStatusMessage("A1-SID: CSG 8580 selected", 2.0f);
                 }
                 ImGui::EndMenu();
+            }
+            // P-LAB A1-SID card version + full register address map. The two card
+            // versions are mutually exclusive (same SID chip, different I/O window):
+            // standard A1-SID at $C800-$CFFF vs A1-AUDIO Special Edition at
+            // $CC00-$CC1F. Selecting a version plugs it (the backend evicts the
+            // other); the register list reflects the active version's base.
+            if (ImGui::BeginMenu("A1-SID version & addresses")) {
+                ImGui::TextDisabled("Card version (I/O window)");
+                if (ImGui::MenuItem("A1-SID  -  $C800-$CFFF", nullptr, sidEnabled)) {
+                    sidEnabled = true;
+                    sidSpecialEditionEnabled = false;
+                    emulation->setSIDEnabled(true);
+                    setStatusMessage("P-LAB A1-SID selected: $C800-$CFFF", 2.5f);
+                }
+                if (ImGui::MenuItem("A1-AUDIO Special Edition  -  $CC00-$CC1F",
+                                    nullptr, sidSpecialEditionEnabled)) {
+                    sidSpecialEditionEnabled = true;
+                    sidEnabled = false;
+                    emulation->setSIDSpecialEditionEnabled(true);
+                    setStatusMessage("P-LAB A1-AUDIO SE selected: $CC00-$CC1F", 2.5f);
+                }
+                ImGui::Separator();
+
+                // 29 SID registers ($00-$1C); regs $19-$1C are read-only.
+                static const char* const kSidRegNames[29] = {
+                    "V1 FREQ LO",  "V1 FREQ HI",  "V1 PW LO",    "V1 PW HI",
+                    "V1 CONTROL",  "V1 ATK/DEC",  "V1 SUS/REL",
+                    "V2 FREQ LO",  "V2 FREQ HI",  "V2 PW LO",    "V2 PW HI",
+                    "V2 CONTROL",  "V2 ATK/DEC",  "V2 SUS/REL",
+                    "V3 FREQ LO",  "V3 FREQ HI",  "V3 PW LO",    "V3 PW HI",
+                    "V3 CONTROL",  "V3 ATK/DEC",  "V3 SUS/REL",
+                    "FILTER FC LO","FILTER FC HI","RES/FILT",    "MODE/VOL",
+                    "POT X (ro)",  "POT Y (ro)",  "OSC3/RND (ro)","ENV3 (ro)",
+                };
+                const unsigned base = sidSpecialEditionEnabled ? 0xCC00u : 0xC800u;
+                ImGui::TextDisabled(sidSpecialEditionEnabled
+                    ? "A1-AUDIO SE registers (base $CC00, addr & $1F)"
+                    : "A1-SID registers (base $C800, addr & $1F)");
+                for (int i = 0; i < 29; ++i)
+                    ImGui::Text("  $%04X  R%02d  %s", base + i, i, kSidRegNames[i]);
+                ImGui::EndMenu();
+            }
+            ImGui::EndMenu();
+        }
+
+        if (ImGui::BeginMenu("DevBench")) {
+#if !POM1_IS_WASM
+            // POM1 Bench is a desktop-only dev tool: it shells out to the cc65
+            // toolchain (ca65/ld65/cl65), which cannot run in the browser. No
+            // dev authoring toolchain in the WASM build by design.
+            ImGui::MenuItem("POM1 Bench (sketch editor)...", nullptr, &showBench);
+#endif
+            ImGui::MenuItem("Telemetry Side Channel...", nullptr, &showTelemetry);
+            // Always available here (unlike the card windows, which only appear
+            // when the TMS9918 is plugged) — a dev-side VDP inspector. Opening it
+            // plugs the TMS9918 so there is a live VDP to inspect.
+            if (ImGui::MenuItem("TMS9918 VDP Inspector...", nullptr, &showTMS9918Inspector)) {
+                if (showTMS9918Inspector && !tms9918Enabled) {
+                    tms9918Enabled = true;
+                    showTMS9918 = true;
+                    emulation->setTMS9918Enabled(true);
+                    sidSpecialEditionEnabled = false;   // TMS9918 evicts A1-AUDIO SE
+                    setStatusMessage("TMS9918 plugged for VDP Inspector", 2.0f);
+                }
             }
             ImGui::Separator();
             // Strict-mode toggle, drop-diagnostics dump and counter reset all
@@ -451,19 +531,18 @@ void MainWindow_ImGui::renderMenuBar()
             presetItem(3);   // Replica-1 with ACI, Krusader (Briel)
             presetItem(4);   // Replica-1 with CFFA1 & Applesoft Lite (Dreher)
             ImGui::Separator();
-            // All P-LAB presets grouped together (indices 5..12)
+            // All P-LAB presets grouped together (indices 5..11)
             presetItem(5);   // P-LAB microSD + Applesoft Lite
-            presetItem(6);   // P-LAB A1-SID
-            presetItem(7);   // P-LAB A1-AUDIO Special Edition
-            presetItem(8);   // P-LAB TMS9918
-            presetItem(9);   // P-LAB I/O Board & RTC
-            presetItem(10);  // P-LAB Wi-Fi Modem BBS
-            presetItem(11);  // P-LAB Juke-Box (16 kB RAM)
-            presetItem(12);  // P-LAB Multiplexing Fantasy
+            presetItem(6);   // P-LAB A1-SID (address selectable in Settings)
+            presetItem(7);   // P-LAB TMS9918
+            presetItem(8);   // P-LAB I/O Board & RTC
+            presetItem(9);   // P-LAB Wi-Fi Modem BBS
+            presetItem(10);  // P-LAB Juke-Box (16 kB RAM)
+            presetItem(11);  // P-LAB Multiplexing Fantasy
             ImGui::Separator();
-            presetItem(13);  // Uncle Bernie's GEN2 HGR Color
+            presetItem(12);  // Uncle Bernie's GEN2 HGR Color
             ImGui::Separator();
-            presetItem(14);  // POM1 Multiplexing Fantasy (last -> banner)
+            presetItem(13);  // POM1 Multiplexing Fantasy (last -> banner)
             ImGui::EndMenu();
         }
 

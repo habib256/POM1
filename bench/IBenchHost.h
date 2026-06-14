@@ -65,6 +65,10 @@ public:
     //      unavailable). ----
     virtual const std::vector<std::string>& languages() const { static const std::vector<std::string> e; return e; }
     virtual const std::vector<std::string>& machines()  const { static const std::vector<std::string> e; return e; }
+    // Optional one-line descriptions shown as tooltips on each combo entry
+    // (parallel to languages()/machines(); empty → no tooltip).
+    virtual const std::vector<std::string>& languageHints() const { static const std::vector<std::string> e; return e; }
+    virtual const std::vector<std::string>& machineHints()  const { static const std::vector<std::string> e; return e; }
     virtual int targetFor(int /*language*/, int /*machine*/) const { return -1; }
 
     // ---- Machine + build (the emulator-specific work) ----
