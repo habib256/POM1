@@ -588,37 +588,6 @@ static const char* kBenchEmbeddedCfg =
     "    BSS:      load = RAM, type = bss, optional = yes, define = yes;\n"
     "}\n";
 
-// Built-in cc65 C config: a freestanding C program in low RAM ($0300-$3FFF),
-// C stack growing down from $4000 — runs in a plain Apple-1 + TMS9918 with no
-// $4000 ROM / $E000 BASIC conflicts (unlike the CodeTank ROM cart config).
-static const char* kBenchCCfg =
-    "FEATURES {\n"
-    "    STARTADDRESS: default = $0300;\n"
-    "    CONDES: type=constructor, label=__CONSTRUCTOR_TABLE__, count=__CONSTRUCTOR_COUNT__, segment=ONCE;\n"
-    "    CONDES: type=destructor,  label=__DESTRUCTOR_TABLE__,  count=__DESTRUCTOR_COUNT__,  segment=RODATA;\n"
-    "    CONDES: type=interruptor, label=__INTERRUPTOR_TABLE__, count=__INTERRUPTOR_COUNT__, segment=RODATA, import=__CALLIRQ__;\n"
-    "}\n"
-    "SYMBOLS {\n"
-    "    __STACKSIZE__:  type=weak, value=$0400;\n"
-    "    __STACKSTART__: type=weak, value=$4000;\n"
-    "    __ZPSTART__:    type=weak, value=$0000;\n"
-    "}\n"
-    "MEMORY {\n"
-    "    ZP:  start=$0000, size=$0100, type=rw, define=yes;\n"
-    "    RAM: start=$0300, size=$3D00, type=rw, file=%O, define=yes;\n"
-    "}\n"
-    "SEGMENTS {\n"
-    "    ZEROPAGE: load=ZP,  type=zp;\n"
-    "    STARTUP:  load=RAM, type=ro,  define=yes;\n"
-    "    LOWCODE:  load=RAM, type=ro,  optional=yes;\n"
-    "    INIT:     load=RAM, type=ro,  optional=yes;\n"
-    "    ONCE:     load=RAM, type=ro,  optional=yes;\n"
-    "    CODE:     load=RAM, type=ro;\n"
-    "    RODATA:   load=RAM, type=ro;\n"
-    "    DATA:     load=RAM, type=rw,  define=yes;\n"
-    "    BSS:      load=RAM, type=bss, define=yes;\n"
-    "}\n";
-
 // Shell-quote a path for popen (single-quote on POSIX, double on Windows).
 static std::string shellQuote(const std::string& s)
 {
@@ -916,26 +885,15 @@ void MainWindow_ImGui::detectBenchToolchain()
     benchLd65 = whichExe("ld65");
     benchToolchainOk = !benchCa65.empty() && !benchLd65.empty();
 
-    // Locate the dev/ tree (boards + include libs); release bundles omit it.
+    // Locate the dev/ tree (linker cfgs + include libs); release bundles omit it.
     std::string devRoot;
     for (const char* p : {"dev", "../dev", "../../dev"}) {
         if (fs::exists(fs::path(p) / "cc65", ec)) { devRoot = p; break; }
     }
 
-    benchBoardLabels.clear();
-    benchBoardCfgs.clear();
-    // Built-in board first — always works, even without dev/.
-    benchBoardLabels.push_back("Apple-1 4K @ $0300 (built-in)");
-    benchBoardCfgs.push_back("");   // "" → write kBenchEmbeddedCfg to a temp file
-
+    // -I for every dev/lib/* subdir so `.include "apple1.inc"` etc. resolve in
+    // asm builds. The target's linker cfg itself is resolved at build time.
     if (!devRoot.empty()) {
-        for (const auto& e : fs::directory_iterator(fs::path(devRoot) / "cc65", ec)) {
-            if (e.path().extension() == ".cfg") {
-                benchBoardLabels.push_back(e.path().filename().string());
-                benchBoardCfgs.push_back(fs::absolute(e.path(), ec).string());
-            }
-        }
-        // -I for every dev/lib/* subdir so `.include "apple1.inc"` etc. resolve.
         std::string flags;
         for (const auto& e : fs::directory_iterator(fs::path(devRoot) / "lib", ec)) {
             if (e.is_directory(ec))
@@ -944,15 +902,16 @@ void MainWindow_ImGui::detectBenchToolchain()
         benchLibFlags = flags;
     }
 
-    // C mode (cc65 cl65 driver) + the apple1-videocard-lib for TMS9918.
+    // C mode (cc65 cl65 driver) + the apple1-videocard-lib for TMS9918. C on the
+    // TMS9918 is always a CodeTank ROM image (codetank_c.cfg → 16 kB @ $4000).
     benchCl65 = whichExe("cl65");
     if (!devRoot.empty()) {
-        const fs::path vlib = fs::path(devRoot) / "apple1-videocard-lib" / "lib";
-        if (fs::exists(vlib, ec)) benchVideocardLib = fs::absolute(vlib, ec).string();
+        const fs::path vroot = fs::path(devRoot) / "apple1-videocard-lib";
+        if (fs::exists(vroot / "lib", ec)) benchVideocardLib = fs::absolute(vroot / "lib", ec).string();
+        const fs::path cfg = vroot / "cc65" / "codetank_c.cfg";
+        if (fs::exists(cfg, ec)) benchCodetankCfg = fs::absolute(cfg, ec).string();
     }
-    benchCl65Ok = !benchCl65.empty() && !benchVideocardLib.empty();
-
-    if (benchBoardIndex >= static_cast<int>(benchBoardCfgs.size())) benchBoardIndex = 0;
+    benchCl65Ok = !benchCl65.empty() && !benchVideocardLib.empty() && !benchCodetankCfg.empty();
 #endif
 }
 
@@ -981,7 +940,7 @@ static const char* kBenchSketchRaw =
     "A9 A1 20 EF FF 4C 00 03\n";
 static const char* kBenchSketchC =
     "/* Hello world in C for the TMS9918 (apple1-videocard-lib, cc65).\n"
-    "   Upload assembles with cl65, auto-plugs the TMS9918 card, runs @ $0300. */\n"
+    "   Upload builds a CodeTank ROM with cl65, flashes it and boots 4000R. */\n"
     "#include \"tms9918.h\"\n"
     "#include \"screen1.h\"\n"
     "\n"
@@ -1069,6 +1028,29 @@ static void parseBenchErrorMarkers(const std::string& out, TextEditor::ErrorMark
     }
 }
 
+// A Bench "target" binds the *machine* (a POM1 preset = cards + RAM + dual-bank)
+// to the *build* (cc65 linker cfg + source mode). Selecting one applies the
+// preset so the program runs in its real environment — e.g. CrazyCycle needs
+// Uncle Bernie's GEN2 preset ($E000 RAM, $2000/$4000 HGR framebuffers, ACI).
+// preset = -1 leaves the machine untouched (hex/raw/built-in). cfg: "" = the
+// built-in low-RAM asm cfg, "C" = the built-in C cfg, else a dev/cc65/<name>.
+struct BenchTarget {
+    const char* label;
+    int         preset;    // applyMachineConfig() index, -1 = don't touch the machine
+    const char* cfg;       // "" built-in asm / "C" built-in C / "<name>.cfg" in dev/cc65
+    int         mode;      // benchUploadMode: 0 asm, 1 hex, 2 raw, 3 C
+    bool        needsCl65; // requires cl65 + apple1-videocard-lib (C)
+};
+static const BenchTarget kBenchTargets[] = {
+    { "Built-in 4K @ $0300 (asm)",        -1, "",                0, false },
+    { "Apple-1 4K text (cc65 asm)",        1, "apple1_4k.cfg",   0, false },
+    { "Uncle Bernie GEN2 HGR+ACI (asm)",  13, "apple1_gen2.cfg", 0, false },
+    { "TMS9918 CodeTank ROM (C / cc65)",   8, "C",               3, true  },
+    { "Wozmon hex (any machine)",         -1, "",                1, false },
+    { "Raw bytes @ $ (any machine)",      -1, "",                2, false },
+};
+static const int kBenchTargetCount = static_cast<int>(sizeof(kBenchTargets) / sizeof(kBenchTargets[0]));
+
 void MainWindow_ImGui::renderBenchWindow()
 {
     if (!benchToolchainProbed) detectBenchToolchain();
@@ -1077,7 +1059,8 @@ void MainWindow_ImGui::renderBenchWindow()
     // palette). Default to cc65 asm when the toolchain is present, else Wozmon
     // hex (which needs no compiler) so the sketch is usable out of the box.
     if (!benchEditor) {
-        benchUploadMode = benchToolchainOk ? 0 : 1;
+        benchTargetIndex = benchToolchainOk ? 0 : 4;   // built-in asm, else Wozmon hex
+        benchUploadMode  = kBenchTargets[benchTargetIndex].mode;
         benchEditor = std::make_unique<TextEditor>();
         benchEditor->SetLanguageDefinition(build6502LangDef());
         benchEditor->SetPalette(TextEditor::GetLightPalette());
@@ -1097,10 +1080,21 @@ void MainWindow_ImGui::renderBenchWindow()
 
     // ── Actions (lambdas so the toolbar can call them inline; layout-affecting
     //    state like benchShowConsole is then set before the editor sizes) ──
+    // Apply a Bench target: plug its machine (POM1 preset) and adopt its source
+    // mode. The linker cfg + cl65 needs are resolved at build time.
+    auto applyTarget = [&](int idx) {
+        if (idx < 0 || idx >= kBenchTargetCount) return;
+        benchTargetIndex = idx;
+        const BenchTarget& t = kBenchTargets[idx];
+        benchUploadMode = t.mode;
+        if (t.preset >= 0 && t.preset != activePresetIndex)
+            applyMachineConfig(t.preset);   // plug the machine this target runs on
+    };
     auto doNew = [&]() {
         benchEditor->SetText(benchStarterFor(benchUploadMode));
         benchEditor->SetErrorMarkers({});
         benchFilePathBuf[0] = '\0';
+        benchExtraAsset.clear();
         benchStatus = "New sketch"; benchStatusOk = true;
     };
     auto doOpen = [&]() {
@@ -1122,7 +1116,8 @@ void MainWindow_ImGui::renderBenchWindow()
         benchStatus = "Saved " + std::string(benchFilePathBuf) + " (" + std::to_string(text.size()) + " B)";
         benchStatusOk = true;
     };
-    auto loadExampleFile = [&](const char* rel, int mode, const char* nice, const char* boardHint) {
+    auto loadExampleFile = [&](const char* rel, int targetIdx, const char* nice,
+                               const char* assetRel, uint16_t assetAddr) {
         namespace fs = std::filesystem;
         std::error_code ec;
         for (const char* pre : {"", "../", "../../"}) {
@@ -1130,14 +1125,12 @@ void MainWindow_ImGui::renderBenchWindow()
             if (!fs::exists(p, ec)) continue;
             std::ifstream in(p, std::ios::binary);
             std::string data((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
-            benchUploadMode = mode;
+            applyTarget(targetIdx);                 // plug the machine + set source mode
             benchEditor->SetText(data);
             benchEditor->SetErrorMarkers({});
             benchFilePathBuf[0] = '\0';
-            // Select the matching board (e.g. apple1_gen2.cfg for HGR demos).
-            if (boardHint)
-                for (int i = 0; i < static_cast<int>(benchBoardLabels.size()); ++i)
-                    if (benchBoardLabels[i].find(boardHint) != std::string::npos) { benchBoardIndex = i; break; }
+            benchExtraAsset = assetRel ? assetRel : "";
+            benchExtraAssetAddr = assetAddr;
             benchStatus = std::string("Example: ") + nice; benchStatusOk = true;
             return;
         }
@@ -1181,47 +1174,57 @@ void MainWindow_ImGui::renderBenchWindow()
         const bool cmode = (benchUploadMode == 3);
         benchShowConsole = true;
         uint16_t entry = 0;
-        bool wantGen2 = false;
 
         if (cmode) {
-            // C: one cl65 invocation (compile + assemble + link) against the
-            // apple1-videocard-lib (TMS9918), into low RAM @ $0300.
+            // C on the TMS9918 is always a CodeTank ROM: one cl65 invocation
+            // (compile + assemble + link) with codetank_c.cfg → a 16 kB ROM image
+            // at $4000, linked against the apple1-videocard-lib.
             const fs::path srcC = dir / "pom1_bench.c";
-            const fs::path cfgP = dir / "pom1_bench_c.cfg";
             std::ofstream(srcC, std::ios::binary).write(src.data(), static_cast<std::streamsize>(src.size()));
-            std::ofstream(cfgP, std::ios::binary) << kBenchCCfg;
             const std::string& lib = benchVideocardLib;
-            const std::string cmd = shellQuote(benchCl65) + " -t none -Oirs -C " + shellQuote(cfgP.string()) +
+            const std::string cmd = shellQuote(benchCl65) + " -t none -Oirs -C " + shellQuote(benchCodetankCfg) +
                 " -I " + shellQuote(lib) + " " + shellQuote(srcC.string()) +
                 " " + shellQuote(lib + "/apple1_asm.s") + " " + shellQuote(lib + "/tms9918.c") +
                 " " + shellQuote(lib + "/screen1.c") + " " + shellQuote(lib + "/c64font.c") +
                 " -o " + shellQuote(binB.string());
             std::string out;
             const int rc = runCapture(cmd, out);
-            benchConsole = "$ cl65 -t none [TMS9918 C]\n" + out;
+            benchConsole = "$ cl65 -t none -C codetank_c.cfg [CodeTank ROM]\n" + out;
             if (rc != 0) {
                 TextEditor::ErrorMarkers em; parseBenchErrorMarkers(out, em); benchEditor->SetErrorMarkers(em);
                 benchStatus = "cl65 failed (see Build output)"; benchStatusOk = false; return;
             }
             benchEditor->SetErrorMarkers({});
-            benchConsole += "[ok] compiled + linked (C)\n";
-            entry = 0x0300;
+            benchConsole += "[ok] compiled + linked → CodeTank ROM image\n";
+            entry = 0x4000;   // CodeTank boots at $4000 (4000R)
         } else {
             // cc65 asm: ca65 + ld65, board cfg selects the load address.
             const fs::path srcS = dir / "pom1_bench.s";
             const fs::path objO = dir / "pom1_bench.o";
             std::ofstream(srcS, std::ios::binary).write(src.data(), static_cast<std::streamsize>(src.size()));
-            std::string cfgPath = benchBoardCfgs[benchBoardIndex];
-            if (cfgPath.empty()) {
+            // Resolve the target's linker cfg: "" = built-in low-RAM, else dev/cc65/<name>.
+            const char* cfgName = kBenchTargets[benchTargetIndex].cfg;
+            std::string cfgPath;
+            if (!cfgName[0]) {
                 const fs::path embedded = dir / "pom1_bench_default.cfg";
                 std::ofstream(embedded, std::ios::binary) << kBenchEmbeddedCfg;
                 cfgPath = embedded.string();
+            } else {
+                for (const char* pre : {"dev/cc65/", "../dev/cc65/", "../../dev/cc65/"}) {
+                    const fs::path p = fs::path(pre) / cfgName;
+                    if (fs::exists(p, ec)) { cfgPath = fs::absolute(p, ec).string(); break; }
+                }
+                if (cfgPath.empty()) {
+                    benchShowConsole = true;
+                    benchConsole = std::string("linker cfg not found (needs dev/): ") + cfgName + "\n";
+                    benchStatus = "ld65 cfg missing"; benchStatusOk = false; return;
+                }
             }
             std::string out;
             const std::string ca = shellQuote(benchCa65) + " " + benchLibFlags +
                 shellQuote(srcS.string()) + " -o " + shellQuote(objO.string());
             int rc = runCapture(ca, out);
-            benchConsole = "$ ca65 [" + benchBoardLabels[benchBoardIndex] + "]\n" + out;
+            benchConsole = "$ ca65 [" + std::string(kBenchTargets[benchTargetIndex].label) + "]\n" + out;
             if (rc != 0) {
                 TextEditor::ErrorMarkers em; parseBenchErrorMarkers(out, em); benchEditor->SetErrorMarkers(em);
                 benchStatus = "ca65 failed (see Build output)"; benchStatusOk = false; return;
@@ -1235,18 +1238,56 @@ void MainWindow_ImGui::renderBenchWindow()
             benchConsole += "[ok] assembled + linked\n";
             entry = parseCfgLoadAddr(cfgPath);
             if (entry == 0) { try { entry = static_cast<uint16_t>(std::stoul(benchRawAddrBuf, nullptr, 16)); } catch (...) { entry = 0x0300; } }
-            wantGen2 = (cfgPath.find("gen2") != std::string::npos);
         }
 
         if (!thenRun) { benchStatus = "Verify OK"; benchStatusOk = true; return; }
 
-        // Auto-plug the card the build targets (mirrors the file-dialog enable).
         if (cmode) {
-            if (!tms9918Enabled) { tms9918Enabled = true; emulation->setTMS9918Enabled(true); }
-            showTMS9918 = true;
-        } else if (wantGen2) {
-            if (!graphicsCardEnabled) { graphicsCardEnabled = true; emulation->setHgrFramebufferAttached(true); }
-            showGraphicsCard = true;
+            // Install the build as a CodeTank ROM: the 16 kB image is the lower
+            // bank of the 32 kB 28c256, so pad it to 32 kB ($FF upper) — that is
+            // the exact size CodeTank::loadRomFile requires — then cold-boot 4000R
+            // (the same sequence as the CodeTank Library Run).
+            std::ifstream in(binB, std::ios::binary);
+            std::vector<unsigned char> rom(0x8000, 0xFF);
+            in.read(reinterpret_cast<char*>(rom.data()), 0x4000);   // lower 16 kB
+            const fs::path romPath = dir / "pom1_bench_codetank.rom";
+            std::ofstream(romPath, std::ios::binary)
+                .write(reinterpret_cast<const char*>(rom.data()), static_cast<std::streamsize>(rom.size()));
+
+            std::string error;
+            if (!emulation->loadCodeTankRom(romPath.string(), error)) {
+                benchStatus = "CodeTank ROM load failed: " + error; benchStatusOk = false; return;
+            }
+            codeTankJumper = CodeTank::Jumper::Lower16;
+            emulation->setCodeTankJumper(codeTankJumper);
+            if (!tms9918Enabled) { tms9918Enabled = true; showTMS9918 = true; emulation->setTMS9918Enabled(true); }
+            if (!codeTankEnabled) { codeTankEnabled = true; emulation->setCodeTankEnabled(true); }
+            emulation->hardReset();
+            codeTankPendingWozRunAt = ImGui::GetTime() + 1.0;   // boot to Wozmon, then 4000R
+            emulation->copySnapshot(uiSnapshot);
+            benchConsole += "[ok] flashed CodeTank ROM (lower bank) — 4000R\n";
+            benchStatus = "CodeTank ROM flashed — booting 4000R"; benchStatusOk = true;
+            return;
+        }
+
+        // asm: stage the companion asset (e.g. CrazyCycle's UBERNIE HGR image @
+        // $2000) into RAM before the code runs. The preset already plugged cards.
+        if (!benchExtraAsset.empty()) {
+            std::string ap;
+            for (const char* pre : {"", "../", "../../"}) {
+                const fs::path p = fs::path(pre) / benchExtraAsset;
+                if (fs::exists(p, ec)) { ap = p.string(); break; }
+            }
+            std::string aerr;
+            char amsg[160];
+            if (!ap.empty() && emulation->loadBinaryToRam(ap, benchExtraAssetAddr, aerr)) {
+                std::snprintf(amsg, sizeof(amsg), "[ok] asset -> $%04X (%s)\n",
+                              benchExtraAssetAddr, benchExtraAsset.c_str());
+            } else {
+                std::snprintf(amsg, sizeof(amsg), "[warn] asset not loaded: %s\n",
+                              benchExtraAsset.c_str());
+            }
+            benchConsole += amsg;
         }
 
         std::string error; int bytesLoaded = 0;
@@ -1325,68 +1366,62 @@ void MainWindow_ImGui::renderBenchWindow()
     if (openExamplesPopup) ImGui::OpenPopup("##benchexamplespopup");
     if (ImGui::BeginPopup("##benchexamplespopup")) {
         ImGui::TextDisabled("Examples"); ImGui::Separator();
-        if (ImGui::Selectable("Blink  (cc65 asm)")) {
-            benchUploadMode = 0; benchEditor->SetText(kBenchSketchAsm);
-            benchEditor->SetErrorMarkers({}); benchFilePathBuf[0] = '\0';
-            benchStatus = "Example: Blink (asm)"; benchStatusOk = true;
-        }
-        if (ImGui::Selectable("Blink  (Wozmon hex)")) {
-            benchUploadMode = 1; benchEditor->SetText(kBenchSketchHex);
-            benchEditor->SetErrorMarkers({}); benchFilePathBuf[0] = '\0';
-            benchStatus = "Example: Blink (hex)"; benchStatusOk = true;
-        }
-        if (ImGui::Selectable("Hello world  (C / TMS9918)")) {
-            benchUploadMode = 3; benchEditor->SetText(kBenchSketchC);
-            benchEditor->SetErrorMarkers({}); benchFilePathBuf[0] = '\0';
-            benchStatus = "Example: Hello (C / TMS9918)"; benchStatusOk = true;
-        }
+        // Inline starters: apply the target, clear any companion asset, set text.
+        auto inlineExample = [&](int targetIdx, const char* text, const char* nice) {
+            applyTarget(targetIdx);
+            benchEditor->SetText(text);
+            benchEditor->SetErrorMarkers({});
+            benchFilePathBuf[0] = '\0';
+            benchExtraAsset.clear();
+            benchStatus = std::string("Example: ") + nice; benchStatusOk = true;
+        };
+        if (ImGui::Selectable("Blink  (cc65 asm)"))        inlineExample(0, kBenchSketchAsm, "Blink (asm)");
+        if (ImGui::Selectable("Blink  (Wozmon hex)"))      inlineExample(4, kBenchSketchHex, "Blink (hex)");
+        if (ImGui::Selectable("Hello world  (C / TMS9918)")) inlineExample(3, kBenchSketchC, "Hello (C / TMS9918)");
         ImGui::Separator();
-        if (ImGui::Selectable("A-1-CrazyCycle  (GEN2 HGR demo)"))
-            loadExampleFile("dev/projects/a1_crazycycle/A-1-CrazyCycle.asm", 0, "A-1-CrazyCycle", "gen2");
+        if (ImGui::Selectable("A-1-CrazyCycle  (Bernie GEN2 HGR)"))
+            loadExampleFile("dev/projects/a1_crazycycle/A-1-CrazyCycle.asm", 2, "A-1-CrazyCycle",
+                            "sdcard/NONO/HGR/UBERNIE#062000", 0x2000);
         if (ImGui::Selectable("Telemetry demo  (SDK harness)"))
-            loadExampleFile("dev/projects/a1_telemetry_demo/A1_TelemetryDemo.asm", 0, "Telemetry demo", nullptr);
+            loadExampleFile("dev/projects/a1_telemetry_demo/A1_TelemetryDemo.asm", 0, "Telemetry demo",
+                            nullptr, 0);
         ImGui::EndPopup();
     }
 
-    // ── Source-mode + Board row ──
+    // ── Target / Machine row: one selector that binds the POM1 preset (cards +
+    //    RAM), the cc65 linker cfg and the source mode. Selecting it plugs the
+    //    machine the program runs on (e.g. Bernie's GEN2 preset for CrazyCycle). ──
     ImGui::AlignTextToFramePadding();
-    ImGui::TextUnformatted("Source:");
+    ImGui::TextUnformatted("Target:");
     ImGui::SameLine();
-    ImGui::SetNextItemWidth(150);
-    ImGui::Combo("##benchmode", &benchUploadMode, "cc65 asm\0Wozmon hex\0Raw bytes\0C (TMS9918)\0");
-    if (benchUploadMode == 2) {
+    ImGui::SetNextItemWidth(260);
+    if (ImGui::BeginCombo("##benchtarget", kBenchTargets[benchTargetIndex].label)) {
+        for (int i = 0; i < kBenchTargetCount; ++i) {
+            const bool sel = (i == benchTargetIndex);
+            if (ImGui::Selectable(kBenchTargets[i].label, sel)) applyTarget(i);
+            if (sel) ImGui::SetItemDefaultFocus();
+        }
+        ImGui::EndCombo();
+    }
+    if (benchUploadMode == 2) {   // raw bytes: load address
         ImGui::SameLine(); ImGui::TextUnformatted("@ $"); ImGui::SameLine();
         ImGui::SetNextItemWidth(56);
         ImGui::InputText("##benchaddr", benchRawAddrBuf, sizeof(benchRawAddrBuf),
                          ImGuiInputTextFlags_CharsHexadecimal);
     }
 #if !POM1_IS_WASM
-    if (benchUploadMode == 3) {
+    // Toolchain availability hint for the selected target.
+    const bool tgtNeedsCl65 = kBenchTargets[benchTargetIndex].needsCl65;
+    const bool tgtCompiled  = (benchUploadMode == 0 || benchUploadMode == 3);
+    if (tgtCompiled) {
         ImGui::SameLine(0, 16);
-        if (benchCl65Ok)
-            ImGui::TextColored(ImVec4(0.4f, 0.85f, 0.4f, 1.0f), ICON_FA_MICROCHIP " TMS9918 + cl65 (auto-plug @ $0300)");
+        const bool ok = tgtNeedsCl65 ? benchCl65Ok : benchToolchainOk;
+        if (ok)
+            ImGui::TextColored(ImVec4(0.4f, 0.85f, 0.4f, 1.0f), ICON_FA_MICROCHIP " %s",
+                               tgtNeedsCl65 ? "cl65 ready" : "ca65/ld65 ready");
         else
-            ImGui::TextColored(ImVec4(1.0f, 0.7f, 0.3f, 1.0f), ICON_FA_HAMMER " needs cl65 + dev/apple1-videocard-lib");
-    }
-#endif
-#if !POM1_IS_WASM
-    if (benchUploadMode == 0) {
-        ImGui::SameLine(0, 16);
-        if (benchToolchainOk && !benchBoardLabels.empty()) {
-            ImGui::TextUnformatted("Board:"); ImGui::SameLine();
-            ImGui::SetNextItemWidth(240);
-            if (ImGui::BeginCombo("##benchboard", benchBoardLabels[benchBoardIndex].c_str())) {
-                for (int i = 0; i < static_cast<int>(benchBoardLabels.size()); ++i) {
-                    const bool sel = (i == benchBoardIndex);
-                    if (ImGui::Selectable(benchBoardLabels[i].c_str(), sel)) benchBoardIndex = i;
-                    if (sel) ImGui::SetItemDefaultFocus();
-                }
-                ImGui::EndCombo();
-            }
-        } else {
-            ImGui::SameLine();
-            ImGui::TextColored(ImVec4(1.0f, 0.7f, 0.3f, 1.0f), ICON_FA_HAMMER " cc65 not found");
-        }
+            ImGui::TextColored(ImVec4(1.0f, 0.7f, 0.3f, 1.0f), ICON_FA_HAMMER " %s",
+                               tgtNeedsCl65 ? "needs cl65 + dev/apple1-videocard-lib" : "needs cc65 (ca65/ld65)");
     }
 #endif
 
@@ -1468,15 +1503,13 @@ void MainWindow_ImGui::renderBenchWindow()
     ImGui::SetNextItemWidth(-1.0f);
     ImGui::InputTextWithHint("##benchpath", "path to Open / Save…", benchFilePathBuf, sizeof(benchFilePathBuf));
 
-    // ── Teal status bar (selected board on the right, like Arduino) ──
+    // ── Teal status bar (selected target on the right, like Arduino) ──
     ImGui::PushStyleColor(ImGuiCol_ChildBg, kTeal);
     ImGui::BeginChild("##benchstatus", ImVec2(0, 24), false, ImGuiWindowFlags_NoScrollbar);
     ImGui::PushStyleColor(ImGuiCol_Text, kWhite);
     ImGui::SetCursorPos(ImVec2(8, 4));
     ImGui::TextUnformatted(benchStatus.empty() ? "Ready" : benchStatus.c_str());
-    const std::string boardName = benchBoardLabels.empty() ? std::string("—")
-                                : benchBoardLabels[benchBoardIndex];
-    const std::string right = boardName + " on POM1";
+    const std::string right = std::string(kBenchTargets[benchTargetIndex].label) + " on POM1";
     const float rw = ImGui::CalcTextSize(right.c_str()).x;
     ImGui::SetCursorPos(ImVec2(ImGui::GetWindowWidth() - rw - 8, 4));
     ImGui::TextUnformatted(right.c_str());

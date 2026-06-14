@@ -264,14 +264,19 @@ private:
     std::string benchCa65;                             // resolved ca65 path ("" if absent)
     std::string benchLd65;                             // resolved ld65 path
     std::string benchLibFlags;                         // "-I <dir> …" from dev/lib/*
-    std::vector<std::string> benchBoardLabels;         // Board combo labels
-    std::vector<std::string> benchBoardCfgs;           // parallel cfg paths ("" = built-in)
-    int benchBoardIndex = 0;
     std::string benchConsole;                          // ca65/ld65 build output pane
     bool benchShowConsole = false;
     std::string benchCl65;                             // cl65 path (C compiler driver)
     std::string benchVideocardLib;                     // dev/apple1-videocard-lib/lib (abs) or ""
-    bool benchCl65Ok = false;                          // cl65 + videocard lib present (C mode)
+    std::string benchCodetankCfg;                      // codetank_c.cfg (abs) — TMS9918 C ROM profile
+    bool benchCl65Ok = false;                          // cl65 + videocard lib + cfg present (C mode)
+    // Optional companion blob loaded into RAM before the build runs (e.g.
+    // CrazyCycle's UBERNIE HGR image at $2000, which ld65 does not produce).
+    std::string benchExtraAsset;                       // repo-relative path, "" = none
+    uint16_t    benchExtraAssetAddr = 0;
+    // Selected Bench "target" (machine preset + linker cfg + source mode) —
+    // index into kBenchTargets. Selecting one applies the POM1 preset.
+    int benchTargetIndex = 0;
     bool pr40Enabled = false;
     bool showPR40 = false;
     bool a1ioRtcEnabled = false;
