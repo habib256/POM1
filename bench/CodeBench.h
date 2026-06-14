@@ -39,8 +39,12 @@ private:
     bool showConsole_ = false;
     bool inited_ = false;
     std::string status_;
-    char filePath_[512] = {0};
     char rawAddr_[8] = "0300";
+    // In-app file browser (Open/Save), rooted at the host's browseDir().
+    std::string browseDir_;          // current directory shown in the browser
+    std::string loadedPath_;         // full path of the open file ("" = untitled)
+    bool browseSave_ = false;        // current popup is Save (vs Open)
+    char saveName_[128] = "sketch.s";
 };
 
 } // namespace bench

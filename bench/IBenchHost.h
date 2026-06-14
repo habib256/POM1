@@ -74,6 +74,10 @@ public:
     virtual bool hasStop() const { return false; }
     virtual void stop()          {}
 
+    // Directory the Open/Save file browser starts in (e.g. the project's dev/
+    // tree). "" or "." = current working directory.
+    virtual std::string browseDir() const { return "."; }
+
     // ---- Serial monitor (a separate window the host owns) ----
     virtual bool hasSerial() const { return false; }
     virtual void openSerial()      {}

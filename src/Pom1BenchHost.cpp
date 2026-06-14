@@ -433,6 +433,15 @@ void Pom1BenchHost::stop()
     mw_->stopCpu();   // halt the emulated CPU (same as the CPU menu's Stop)
 }
 
+std::string Pom1BenchHost::browseDir() const
+{
+    namespace fs = std::filesystem;
+    std::error_code ec;
+    for (const char* p : {"dev", "../dev", "../../dev"})
+        if (fs::exists(p, ec)) return fs::absolute(p, ec).string();
+    return ".";
+}
+
 void Pom1BenchHost::openSerial()
 {
     mw_->showTelemetry = true;

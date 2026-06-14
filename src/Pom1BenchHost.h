@@ -33,6 +33,7 @@ public:
 
     bool hasStop() const override { return true; }
     void stop() override;
+    std::string browseDir() const override;
 
     bool hasSerial() const override { return true; }
     void openSerial() override;

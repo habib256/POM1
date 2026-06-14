@@ -7,8 +7,10 @@
 #include "imgui.h"
 #include "IconsFontAwesome6.h"
 
+#include <algorithm>
 #include <cstdio>
 #include <cstring>
+#include <filesystem>
 #include <fstream>
 #include <iterator>
 #include <vector>
@@ -78,27 +80,34 @@ void CodeBench::render(const char* title, bool* open)
     auto doNew = [&]() {
         editor_->SetText(host_->starterSketch(targetIndex_));
         editor_->SetErrorMarkers({});
-        filePath_[0] = '\0';
+        loadedPath_.clear();
         status_ = "New sketch"; statusOk_ = true;
     };
-    auto doOpen = [&]() {
-        if (filePath_[0] == '\0') { status_ = "Open: enter a file path first"; statusOk_ = false; return; }
-        std::ifstream in(filePath_, std::ios::binary);
-        if (!in) { status_ = "Open failed: " + std::string(filePath_); statusOk_ = false; return; }
+    auto openFile = [&](const std::string& path) {
+        std::ifstream in(path, std::ios::binary);
+        if (!in) { status_ = "Open failed: " + path; statusOk_ = false; return; }
         std::string data((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
         editor_->SetText(data);
         editor_->SetErrorMarkers({});
-        status_ = "Opened " + std::string(filePath_) + " (" + std::to_string(data.size()) + " B)";
+        loadedPath_ = path;
+        status_ = "Opened " + path + " (" + std::to_string(data.size()) + " B)";
         statusOk_ = true;
     };
-    auto doSave = [&]() {
-        if (filePath_[0] == '\0') { status_ = "Save: enter a file path first"; statusOk_ = false; return; }
-        std::ofstream out(filePath_, std::ios::binary);
-        if (!out) { status_ = "Save failed: " + std::string(filePath_); statusOk_ = false; return; }
+    auto saveFile = [&](const std::string& path) {
+        std::ofstream out(path, std::ios::binary);
+        if (!out) { status_ = "Save failed: " + path; statusOk_ = false; return; }
         const std::string text = editor_->GetText();
         out.write(text.data(), static_cast<std::streamsize>(text.size()));
-        status_ = "Saved " + std::string(filePath_) + " (" + std::to_string(text.size()) + " B)";
+        loadedPath_ = path;
+        status_ = "Saved " + path + " (" + std::to_string(text.size()) + " B)";
         statusOk_ = true;
+    };
+    // Open the file browser popup (deferred OpenPopup after the toolbar child).
+    bool openBrowse = false;
+    auto browse = [&](bool save) {
+        if (browseDir_.empty()) browseDir_ = host_->browseDir();
+        browseSave_ = save;
+        openBrowse = true;
     };
     auto doVerify = [&]() { applyResult(host_->verify(targetIndex_, editor_->GetText(), rawAddr_)); };
     auto doUpload = [&]() { applyResult(host_->upload(targetIndex_, editor_->GetText(), rawAddr_)); };
@@ -137,9 +146,9 @@ void CodeBench::render(const char* title, bool* open)
     ImGui::SameLine(0, 18);
     if (circleBtn(ICON_FA_FILE,          "##benchnew",      "New sketch"))              doNew();
     ImGui::SameLine(0, 6);
-    if (circleBtn(ICON_FA_FOLDER_OPEN,   "##benchopen",     "Open (path field below)")) doOpen();
+    if (circleBtn(ICON_FA_FOLDER_OPEN,   "##benchopen",     "Open file (browse dev/)")) browse(false);
     ImGui::SameLine(0, 6);
-    if (circleBtn(ICON_FA_FLOPPY_DISK,   "##benchsave",     "Save (path field below)")) doSave();
+    if (circleBtn(ICON_FA_FLOPPY_DISK,   "##benchsave",     "Save file (browse)"))      browse(true);
     if (!host_->examples().empty()) {
         ImGui::SameLine(0, 6);
         if (circleBtn(ICON_FA_BOOK,      "##benchexamples", "Examples")) openExamplesPopup = true;
@@ -162,12 +171,64 @@ void CodeBench::render(const char* title, bool* open)
                 if (el.ok) {
                     editor_->SetText(el.source);
                     editor_->SetErrorMarkers({});
-                    filePath_[0] = '\0';
+                    loadedPath_.clear();
                     if (el.targetIndex >= 0) { targetIndex_ = el.targetIndex; applyTargetSyntax(); }
                 }
                 status_ = el.status; statusOk_ = el.ok;
             }
         }
+        ImGui::EndPopup();
+    }
+
+    // ---- File browser popup (Open / Save), rooted at the host's browseDir() ----
+    if (openBrowse) ImGui::OpenPopup("##benchbrowse");
+    if (ImGui::BeginPopup("##benchbrowse")) {
+        namespace fs = std::filesystem;
+        std::error_code ec;
+        fs::path cur(browseDir_);
+        ImGui::TextUnformatted(browseSave_ ? ICON_FA_FLOPPY_DISK " Save to" : ICON_FA_FOLDER_OPEN " Open");
+        ImGui::SameLine();
+        ImGui::TextDisabled("%s", cur.string().c_str());
+        ImGui::Separator();
+        ImGui::BeginChild("##browselist", ImVec2(480, 300), true);
+        if (cur.has_parent_path() && cur.parent_path() != cur) {
+            if (ImGui::Selectable(ICON_FA_FOLDER_OPEN " .."))
+                browseDir_ = cur.parent_path().string();
+        }
+        std::vector<std::string> dirs, files;
+        for (const auto& e : fs::directory_iterator(cur, ec)) {
+            if (e.is_directory(ec)) dirs.push_back(e.path().filename().string());
+            else                    files.push_back(e.path().filename().string());
+        }
+        std::sort(dirs.begin(), dirs.end());
+        std::sort(files.begin(), files.end());
+        for (const auto& d : dirs) {
+            const std::string label = ICON_FA_FOLDER_OPEN " " + d;
+            if (ImGui::Selectable(label.c_str())) browseDir_ = (cur / d).string();
+        }
+        for (const auto& f : files) {
+            const std::string label = ICON_FA_FILE " " + f;
+            if (ImGui::Selectable(label.c_str())) {
+                if (browseSave_) {
+                    std::snprintf(saveName_, sizeof(saveName_), "%s", f.c_str());
+                } else {
+                    openFile((cur / f).string());
+                    ImGui::CloseCurrentPopup();
+                }
+            }
+        }
+        ImGui::EndChild();
+        if (browseSave_) {
+            ImGui::SetNextItemWidth(-160.0f);
+            ImGui::InputText("##savename", saveName_, sizeof(saveName_));
+            ImGui::SameLine();
+            if (ImGui::Button("Save") && saveName_[0]) {
+                saveFile((cur / saveName_).string());
+                ImGui::CloseCurrentPopup();
+            }
+            ImGui::SameLine();
+        }
+        if (ImGui::Button("Cancel")) ImGui::CloseCurrentPopup();
         ImGui::EndPopup();
     }
 
@@ -201,10 +262,9 @@ void CodeBench::render(const char* title, bool* open)
 
     // ---- Sketch tab ----
     std::string tabName = "sketch";
-    if (filePath_[0]) {
-        std::string p(filePath_);
-        size_t slash = p.find_last_of("/\\");
-        tabName = (slash == std::string::npos) ? p : p.substr(slash + 1);
+    if (!loadedPath_.empty()) {
+        size_t slash = loadedPath_.find_last_of("/\\");
+        tabName = (slash == std::string::npos) ? loadedPath_ : loadedPath_.substr(slash + 1);
     }
     if (ImGui::BeginTabBar("##benchtabs", ImGuiTabBarFlags_None)) {
         if (ImGui::BeginTabItem((tabName + "  ").c_str())) ImGui::EndTabItem();
@@ -266,10 +326,6 @@ void CodeBench::render(const char* title, bool* open)
         ImGui::EndChild();
         ImGui::PopStyleColor();
     }
-
-    // ---- Path field ----
-    ImGui::SetNextItemWidth(-1.0f);
-    ImGui::InputTextWithHint("##benchpath", "path to Open / Save...", filePath_, sizeof(filePath_));
 
     // ---- Teal status bar (selected target on the right) ----
     ImGui::PushStyleColor(ImGuiCol_ChildBg, kTeal);
