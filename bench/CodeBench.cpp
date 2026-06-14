@@ -105,7 +105,8 @@ void CodeBench::render(const char* title, bool* open)
 
     // ---- Teal toolbar with circular icon buttons ----
     bool openExamplesPopup = false;
-    auto circleBtn = [&](const char* icon, const char* id, const char* tip) -> bool {
+    auto circleBtn = [&](const char* icon, const char* id, const char* tip,
+                         ImU32 iconCol = IM_COL32_WHITE) -> bool {
         const float d = 34.0f;
         const ImVec2 p = ImGui::GetCursorScreenPos();
         const bool clicked = ImGui::InvisibleButton(id, ImVec2(d, d));
@@ -114,7 +115,7 @@ void CodeBench::render(const char* title, bool* open)
         const ImVec2 c(p.x + d * 0.5f, p.y + d * 0.5f);
         if (hov) dl->AddCircleFilled(c, d * 0.5f, ImGui::GetColorU32(kTealDark), 32);
         const ImVec2 ts = ImGui::CalcTextSize(icon);
-        dl->AddText(ImVec2(c.x - ts.x * 0.5f, c.y - ts.y * 0.5f), IM_COL32_WHITE, icon);
+        dl->AddText(ImVec2(c.x - ts.x * 0.5f, c.y - ts.y * 0.5f), iconCol, icon);
         dl->AddCircle(c, d * 0.5f - 1.0f, IM_COL32_WHITE, 32, hov ? 2.5f : 1.5f);
         if (hov && tip) ImGui::SetTooltip("%s", tip);
         return clicked;
@@ -126,6 +127,13 @@ void CodeBench::render(const char* title, bool* open)
     if (circleBtn(ICON_FA_CHECK,         "##benchverify",   "Verify (compile)"))        doVerify();
     ImGui::SameLine(0, 6);
     if (circleBtn(ICON_FA_ARROW_RIGHT,   "##benchupload",   "Upload (build + run)"))    doUpload();
+    if (host_->hasStop()) {
+        ImGui::SameLine(0, 6);
+        if (circleBtn(ICON_FA_STOP, "##benchstop", "Stop (halt the CPU)", IM_COL32(235, 80, 60, 255))) {
+            host_->stop();
+            status_ = "Stopped"; statusOk_ = true;
+        }
+    }
     ImGui::SameLine(0, 18);
     if (circleBtn(ICON_FA_FILE,          "##benchnew",      "New sketch"))              doNew();
     ImGui::SameLine(0, 6);

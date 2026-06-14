@@ -70,6 +70,10 @@ public:
     virtual bool        toolchainReady(int target) const = 0;
     virtual std::string toolchainHint (int target) const = 0;   // short status text
 
+    // ---- Stop the running program (halt the emulated CPU) ----
+    virtual bool hasStop() const { return false; }
+    virtual void stop()          {}
+
     // ---- Serial monitor (a separate window the host owns) ----
     virtual bool hasSerial() const { return false; }
     virtual void openSerial()      {}

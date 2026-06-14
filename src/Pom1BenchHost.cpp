@@ -428,6 +428,11 @@ std::string Pom1BenchHost::toolchainHint(int target) const
     return t.needsCl65 ? "needs cl65 + dev/apple1-videocard-lib" : "needs cc65 (ca65/ld65)";
 }
 
+void Pom1BenchHost::stop()
+{
+    mw_->stopCpu();   // halt the emulated CPU (same as the CPU menu's Stop)
+}
+
 void Pom1BenchHost::openSerial()
 {
     mw_->showTelemetry = true;

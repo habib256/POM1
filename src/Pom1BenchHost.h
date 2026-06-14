@@ -31,6 +31,9 @@ public:
     bool        toolchainReady(int target) const override;
     std::string toolchainHint (int target) const override;
 
+    bool hasStop() const override { return true; }
+    void stop() override;
+
     bool hasSerial() const override { return true; }
     void openSerial() override;
 
