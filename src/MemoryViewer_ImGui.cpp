@@ -558,7 +558,12 @@ const char* MemoryViewer_ImGui::getRegionName(int address) const
     if (address <= 0x00FF) return "Zero Page";
     if (address <= 0x01FF) return "Stack";
     if (address <= 0x027F) return "Keyboard Buffer";
-    if (gen2Enabled && address >= 0x2000 && address <= 0x3FFF) return "GEN2 HGR Framebuffer";
+    if (gen2Enabled) {
+        if (address >= 0x0400 && address <= 0x07FF) return "GEN2 TEXT Page 1";
+        if (address >= 0x0800 && address <= 0x0BFF) return "GEN2 TEXT Page 2";
+        if (address >= 0x2000 && address <= 0x3FFF) return "GEN2 HGR Page 1";
+        if (address >= 0x4000 && address <= 0x5FFF) return "GEN2 HGR Page 2";
+    }
     if (codeTankEnabled && address >= 0x4000 && address <= 0x7FFF) return "CodeTank ROM";
     if (jukeBoxEnabled) {
         int romStart = (jbJumper == JukeBox::Jumper::RAM16_ROM32) ? 0x4000 : 0x8000;
@@ -733,8 +738,14 @@ ImVec4 MemoryViewer_ImGui::getColorForAddress(int address)
         return ImVec4(1.0f, 0.65f, 0.0f, 1.0f);    // Stack - orange
     if (address <= 0x027F)
         return ImVec4(0.0f, 0.78f, 1.0f, 1.0f);     // Keyboard Buffer - cyan
+    if (gen2Enabled && address >= 0x0400 && address <= 0x07FF)
+        return ImVec4(0.59f, 0.71f, 1.0f, 1.0f);    // GEN2 TEXT Page 1 - light blue
+    if (gen2Enabled && address >= 0x0800 && address <= 0x0BFF)
+        return ImVec4(0.43f, 0.55f, 0.86f, 1.0f);   // GEN2 TEXT Page 2 - dim blue
     if (gen2Enabled && address >= 0x2000 && address <= 0x3FFF)
-        return ImVec4(0.0f, 1.0f, 0.78f, 1.0f);     // GEN2 HGR Framebuffer - cyan/teal
+        return ImVec4(0.0f, 1.0f, 0.78f, 1.0f);     // GEN2 HGR Page 1 - cyan/teal
+    if (gen2Enabled && address >= 0x4000 && address <= 0x5FFF)
+        return ImVec4(0.0f, 0.75f, 0.59f, 1.0f);    // GEN2 HGR Page 2 - dim teal
     if (microSDEnabled && address >= 0x8000 && address <= 0x9FFF)
         return ImVec4(1.0f, 0.78f, 0.31f, 1.0f);    // SD CARD OS ROM - amber
     if (microSDEnabled && address >= 0xA000 && address <= 0xA00F)

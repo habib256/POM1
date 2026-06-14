@@ -343,8 +343,14 @@ std::vector<MainWindow_ImGui::MemRegion> MainWindow_ImGui::buildMemoryRegions()
     regions.push_back({ 0x0200, 0x027F, IM_COL32(  0, 200, 255, 255), "Keyboard Buffer" });
 
     // --- Layer 2: hardware cards / I/O / ROMs ---
-    if (graphicsCardEnabled)
-        regions.push_back({ 0x2000, 0x3FFF, IM_COL32(0, 255, 200, 255), "GEN2 HGR Framebuffer" });
+    if (graphicsCardEnabled) {
+        // GEN2 release card: RAM-backed TEXT/LORES + HIRES pages (both banks),
+        // displayed via the $C254/$C255 page soft switch (Apple II layout).
+        regions.push_back({ 0x0400, 0x07FF, IM_COL32(150, 180, 255, 255), "GEN2 TEXT Page 1" });
+        regions.push_back({ 0x0800, 0x0BFF, IM_COL32(110, 140, 220, 255), "GEN2 TEXT Page 2" });
+        regions.push_back({ 0x2000, 0x3FFF, IM_COL32(  0, 255, 200, 255), "GEN2 HGR Page 1"  });
+        regions.push_back({ 0x4000, 0x5FFF, IM_COL32(  0, 190, 150, 255), "GEN2 HGR Page 2"  });
+    }
     if (a1ioRtcEnabled)
         regions.push_back({ 0x2000, 0x200F, IM_COL32(255, 150, 50, 255), "IO_RTC VIA I/O" });
     if (microSDEnabled)
