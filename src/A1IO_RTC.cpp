@@ -157,7 +157,7 @@ uint8_t A1IO_RTC::getBroadcastPortA() const
 uint8_t A1IO_RTC::getBroadcastPortB() const
 {
     // Port B from ATMEGA: data value for current register
-    if (broadcastRegister < 24) {
+    if (broadcastRegister >= 0 && broadcastRegister < 24) {
         return virtualRegisters[broadcastRegister];
     }
     return 0;
@@ -459,8 +459,14 @@ void A1IO_RTC::deserialize(pom1::SnapshotReader& r)
     ifr = r.readU8(); ier = r.readU8();
     t1Counter = r.readU16();
     t1Running = r.readU8() != 0;
-    broadcastRegister     = static_cast<int>(r.readU32());
+    // Clamp the untrusted snapshot value: an out-of-range index would make
+    // getBroadcastPortB() index virtualRegisters[] out of bounds (its `< 24`
+    // guard misses negatives) and getBroadcastPortA() broadcast a bogus index.
+    const uint32_t br = r.readU32();
+    broadcastRegister     = (br < static_cast<uint32_t>(kNumRegisters))
+                                ? static_cast<int>(br) : 0;
     broadcastCycleCounter = static_cast<int>(r.readU32());
+    if (broadcastCycleCounter < 0) broadcastCycleCounter = 0;
     strobeActive   = r.readU8() != 0;
     strobeConsumed = r.readU8() != 0;
     r.readBytes(virtualRegisters.data(), virtualRegisters.size());

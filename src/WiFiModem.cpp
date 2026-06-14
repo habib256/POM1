@@ -440,12 +440,14 @@ void WiFiModem::sendToSocket(uint8_t byte)
 
 #ifdef _WIN32
     char buf = static_cast<char>(byte);
-    ::send(socketFd, &buf, 1, 0);
+    const auto sent = ::send(socketFd, &buf, 1, 0);
 #else
     uint8_t buf = byte;
-    ::send(socketFd, &buf, 1, MSG_NOSIGNAL);
+    const ssize_t sent = ::send(socketFd, &buf, 1, MSG_NOSIGNAL);
 #endif
-    bytesSentCount++;
+    // Only count a byte that actually went out — send() returns -1 on error
+    // (e.g. EWOULDBLOCK / EPIPE), and counting those over-reported the stat.
+    if (sent == 1) bytesSentCount++;
 }
 
 // Try to start a non-blocking connect() on an already-resolved address.

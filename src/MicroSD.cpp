@@ -1064,15 +1064,26 @@ std::string MicroSD::resolveHostPath(const std::string& name) const
 
     if (!cleanName.empty()) base /= cleanName;
 
-    // Security: ensure resolved path stays within sdCardRootPath
+    // Security: ensure resolved path stays within sdCardRootPath.
+    // weakly_canonical collapses any "../" in the (untrusted) CPU-supplied
+    // name, so a traversal either escapes the root (caught below) or stays
+    // inside (safe) — no separate dotdot filter is needed.
     std::error_code ec;
     std::string root_str = fs::weakly_canonical(fs::path(sdCardRootPath), ec).string();
     std::string path_str = fs::weakly_canonical(base, ec).string();
 
-    if (path_str.substr(0, root_str.size()) != root_str)
+    // A bare prefix test treats "/root_sd2" as inside "/root_sd"; require either
+    // an exact match or a real separator boundary right after the root.
+    const char sep = static_cast<char>(fs::path::preferred_separator);
+    const bool inside =
+        path_str == root_str ||
+        (path_str.size() > root_str.size() &&
+         path_str.compare(0, root_str.size(), root_str) == 0 &&
+         path_str[root_str.size()] == sep);
+    if (!inside)
         return root_str; // path traversal attempt — return root
 
-    return base.string();
+    return path_str; // canonical, sandbox-confined
 }
 
 std::string MicroSD::fuzzyMatchFilename(const std::string& name) const

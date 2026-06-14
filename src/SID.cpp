@@ -111,10 +111,13 @@ void SID::advanceCycles(int cycles)
             const size_t head = ringHead.load(std::memory_order_relaxed);
             const size_t next = (head + 1) % kRingCapacity;
 
-            if (next == ringTail.load(std::memory_order_acquire)) {
-                size_t tail = ringTail.load(std::memory_order_relaxed);
-                ringTail.store((tail + 1) % kRingCapacity, std::memory_order_release);
-            }
+            // Ring full: drop the newest sample. The producer must NEVER write
+            // ringTail — it is consumer-owned in this SPSC ring. Advancing it
+            // here raced fillAudioBuffer's own ringTail store and could skip or
+            // corrupt samples. Overflow only happens if the audio callback
+            // stalls, so dropping one fresh sample is inaudible.
+            if (next == ringTail.load(std::memory_order_acquire))
+                continue;
 
             ringBuf[head] = sample;
             ringHead.store(next, std::memory_order_release);

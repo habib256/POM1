@@ -1349,13 +1349,19 @@ void EmulationController::runEmulationSlice(double elapsedSeconds)
                 telemetryStallSeconds = 0.0;
             }
         }
-        // Re-vérifier sous le mutex : stopCpu()/step peut avoir eu lieu après le test du haut de boucle.
-        // Sinon cpu->start() annule cpu->stop() et une tranche entière s'exécute entre deux F7.
-        else if (runRequested.load()) {
+        else {
+            // Not stalled — clear the accumulator unconditionally. Doing this
+            // only when runRequested was true left a stale value behind if the
+            // harness ACKed while the CPU was stopped, which then tripped the
+            // stall timeout early on the next lock-step park.
             telemetryStallSeconds = 0.0;
-            cpu->start();
-            const int actualCycles = cpu->run(cyclesToRun);
-            emulationCycleBudget -= static_cast<double>(actualCycles);
+            // Re-vérifier sous le mutex : stopCpu()/step peut avoir eu lieu après le test du haut de boucle.
+            // Sinon cpu->start() annule cpu->stop() et une tranche entière s'exécute entre deux F7.
+            if (runRequested.load()) {
+                cpu->start();
+                const int actualCycles = cpu->run(cyclesToRun);
+                emulationCycleBudget -= static_cast<double>(actualCycles);
+            }
         }
         publisher.publish(*memory, *cpu, runRequested.load());
 

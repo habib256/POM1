@@ -167,7 +167,12 @@ std::size_t RewindBuffer::frameBytes(const Frame& f) {
     if (f.keyframe) return f.blob.size();
     std::size_t b = f.header.size();
     for (const SectionDelta& d : f.deltas) {
-        b += d.name.size() + sizeof(SectionDelta);
+        // Per-section on-the-wire overhead is the section header (8-byte name +
+        // u32 length), NOT sizeof(SectionDelta) — the struct carries std::string
+        // / std::vector book-keeping (~80 B) that never gets serialized, which
+        // inflated the estimate ~2.9x, wrongly rejected viable deltas (line ~117)
+        // and evicted rewind history far too early.
+        b += kSectionHeaderSize;
         b += d.full.size();
         for (const auto& ch : d.chunks) b += sizeof(uint32_t) + ch.second.size();
     }
