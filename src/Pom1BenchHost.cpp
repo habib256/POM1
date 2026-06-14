@@ -46,6 +46,21 @@ static const char* kSketchC =
     "    screen1_puts((const unsigned char *)\"HELLO WORLD (C / TMS9918)\\nPOM1 Bench\");\n"
     "    for (;;) { /* idle */ }\n"
     "}\n";
+static const char* kSketchGen2C =
+    "/* HIRES in C on Uncle Bernie's GEN2 colour card (cc65).\n"
+    "   Soft switches $C250-$C257 + HST0 — see gen2.h. Upload builds + runs @ $6000. */\n"
+    "#include \"gen2.h\"\n"
+    "\n"
+    "void main(void) {\n"
+    "    unsigned x;\n"
+    "    gen2_hgr_init();          /* graphics + hires + page1 + full */\n"
+    "    gen2_hgr_clear(0);        /* black */\n"
+    "    for (x = 0; x < 192; ++x) {     /* draw an X */\n"
+    "        gen2_hgr_plot(x, (unsigned char)x);\n"
+    "        gen2_hgr_plot(279u - x, (unsigned char)x);\n"
+    "    }\n"
+    "    for (;;) { /* idle */ }\n"
+    "}\n";
 
 static const char* kBenchEmbeddedCfg =
     "MEMORY {\n"
@@ -69,6 +84,7 @@ const P1T kP1Targets[] = {
     { "Apple-1 4K text (cc65 asm)",        1, "apple1_4k.cfg",   "6502", 0, false, false },
     { "Uncle Bernie GEN2 HGR+ACI (asm)",  13, "apple1_gen2.cfg", "6502", 0, false, false },
     { "TMS9918 CodeTank ROM (C / cc65)",   8, "C",               "C",    3, true,  false },
+    { "Uncle Bernie GEN2 HGR (C / cc65)", 13, "C-gen2",          "C",    3, true,  false },
     { "Wozmon hex (any machine)",         -1, "",                "hex",  1, false, false },
     { "Raw bytes @ $ (any machine)",      -1, "",                "raw",  2, false, true  },
 };
@@ -189,6 +205,15 @@ void Pom1BenchHost::probe() const
         if (fs::exists(cfg, ec)) codetankCfg_ = fs::absolute(cfg, ec).string();
     }
     cl65Ok_ = !cl65_.empty() && !videocardLib_.empty() && !codetankCfg_.empty();
+
+    // GEN2 HGR C: the gen2c lib + its cfg under dev/.
+    if (!devRoot.empty()) {
+        const fs::path glib = fs::path(devRoot) / "lib" / "gen2c";
+        const fs::path gcfg = fs::path(devRoot) / "cc65" / "apple1_gen2_c.cfg";
+        if (fs::exists(glib, ec)) gen2cLib_ = fs::absolute(glib, ec).string();
+        if (fs::exists(gcfg, ec)) gen2Cfg_  = fs::absolute(gcfg, ec).string();
+    }
+    gen2COk_ = !cl65_.empty() && !gen2cLib_.empty() && !gen2Cfg_.empty();
 #endif
 }
 
@@ -204,7 +229,7 @@ std::string Pom1BenchHost::starterSketch(int target) const
     switch (kP1Targets[target].mode) {
         case 0: return kSketchAsm;
         case 2: return kSketchRaw;
-        case 3: return kSketchC;
+        case 3: return std::string(kP1Targets[target].cfg) == "C-gen2" ? kSketchGen2C : kSketchC;
         default: return kSketchHex;
     }
 }
@@ -308,25 +333,40 @@ bench::BuildResult Pom1BenchHost::build(int target, const std::string& src, cons
     const fs::path dir  = fs::temp_directory_path(ec);
     const fs::path binB = dir / "pom1_bench.bin";
     const bool cmode = (t.mode == 3);
+    const bool gen2c = cmode && std::string(t.cfg) == "C-gen2";   // GEN2 HGR vs CodeTank
     r.showConsole = true;
     uint16_t entry = 0;
 
     if (cmode) {
-        if (!cl65Ok_) { r.console = "cl65 / videocard-lib not found (needs dev/)\n"; r.status = "cc65 cl65 missing"; return r; }
+        const bool ready = gen2c ? gen2COk_ : cl65Ok_;
+        if (!ready) {
+            r.console = gen2c ? "cl65 / gen2c lib not found (needs dev/)\n"
+                              : "cl65 / videocard-lib not found (needs dev/)\n";
+            r.status = "cc65 cl65 missing"; return r;
+        }
         const fs::path srcC = dir / "pom1_bench.c";
         std::ofstream(srcC, std::ios::binary).write(src.data(), static_cast<std::streamsize>(src.size()));
-        const std::string& lib = videocardLib_;
-        const std::string cmd = bench::shellQuote(cl65_) + " -t none -Oirs -C " + bench::shellQuote(codetankCfg_) +
-            " -I " + bench::shellQuote(lib) + " " + bench::shellQuote(srcC.string()) +
-            " " + bench::shellQuote(lib + "/apple1_asm.s") + " " + bench::shellQuote(lib + "/tms9918.c") +
-            " " + bench::shellQuote(lib + "/screen1.c") + " " + bench::shellQuote(lib + "/c64font.c") +
-            " -o " + bench::shellQuote(binB.string());
+        std::string cmd;
+        if (gen2c) {
+            cmd = bench::shellQuote(cl65_) + " -t none -Oirs -C " + bench::shellQuote(gen2Cfg_) +
+                " -I " + bench::shellQuote(gen2cLib_) + " " + bench::shellQuote(srcC.string()) +
+                " " + bench::shellQuote(gen2cLib_ + "/gen2.c") +
+                " -o " + bench::shellQuote(binB.string());
+        } else {
+            const std::string& lib = videocardLib_;
+            cmd = bench::shellQuote(cl65_) + " -t none -Oirs -C " + bench::shellQuote(codetankCfg_) +
+                " -I " + bench::shellQuote(lib) + " " + bench::shellQuote(srcC.string()) +
+                " " + bench::shellQuote(lib + "/apple1_asm.s") + " " + bench::shellQuote(lib + "/tms9918.c") +
+                " " + bench::shellQuote(lib + "/screen1.c") + " " + bench::shellQuote(lib + "/c64font.c") +
+                " -o " + bench::shellQuote(binB.string());
+        }
         std::string out;
         const int rc = bench::runCapture(cmd, out);
-        r.console = "$ cl65 -t none -C codetank_c.cfg [CodeTank ROM]\n" + out;
+        r.console = std::string("$ cl65 -t none [") + (gen2c ? "GEN2 HGR" : "CodeTank ROM") + "]\n" + out;
         if (rc != 0) { parseErrorMarkers(out, r.errors); r.status = "cl65 failed (see Build output)"; return r; }
-        r.console += "[ok] compiled + linked -> CodeTank ROM image\n";
-        entry = 0x4000;
+        r.console += gen2c ? "[ok] compiled + linked (GEN2 HGR)\n" : "[ok] compiled + linked -> CodeTank ROM image\n";
+        entry = gen2c ? parseCfgLoadAddr(gen2Cfg_) : 0x4000;
+        if (entry == 0) entry = 0x6000;
     } else {
         if (!toolchainOk_) { r.console = "cc65 (ca65/ld65) not found\n"; r.status = "cc65 missing"; return r; }
         const fs::path srcS = dir / "pom1_bench.s";
@@ -363,6 +403,17 @@ bench::BuildResult Pom1BenchHost::build(int target, const std::string& src, cons
     if (!run) { r.status = "Verify OK"; r.ok = true; return r; }
 
     auto* emu = mw_->emulation.get();
+    if (gen2c) {
+        // GEN2 HGR C: plain load + run @ $6000. The target's preset (#13) already
+        // plugged the GEN2 card; loadBinary resets + runs.
+        std::string error; int bytesLoaded = 0;
+        if (emu->loadBinary(binB.string(), entry, error, &bytesLoaded)) {
+            emu->copySnapshot(mw_->uiSnapshot);
+            char msg[128]; std::snprintf(msg, sizeof(msg), "Built %d B - running @ $%04X", bytesLoaded, entry);
+            r.status = msg; r.ok = true;
+        } else { r.status = "load failed: " + error; r.ok = false; }
+        return r;
+    }
     if (cmode) {
         // CodeTank ROM: pad 16K -> 32K (lower bank), flash, jumper, reset, 4000R.
         std::ifstream in(binB, std::ios::binary);
@@ -415,7 +466,8 @@ bool Pom1BenchHost::toolchainReady(int target) const
     const P1T& t = kP1Targets[target];
     if (t.mode == 1 || t.mode == 2) return true;
     probe();
-    return t.needsCl65 ? cl65Ok_ : toolchainOk_;
+    if (!t.needsCl65) return toolchainOk_;
+    return (std::string(t.cfg) == "C-gen2") ? gen2COk_ : cl65Ok_;
 }
 
 std::string Pom1BenchHost::toolchainHint(int target) const
@@ -424,9 +476,11 @@ std::string Pom1BenchHost::toolchainHint(int target) const
     const P1T& t = kP1Targets[target];
     if (t.mode == 1 || t.mode == 2) return "";
     probe();
-    const bool ready = t.needsCl65 ? cl65Ok_ : toolchainOk_;
-    if (ready) return t.needsCl65 ? "cl65 ready" : "ca65/ld65 ready";
-    return t.needsCl65 ? "needs cl65 + dev/apple1-videocard-lib" : "needs cc65 (ca65/ld65)";
+    if (!t.needsCl65) return toolchainOk_ ? "ca65/ld65 ready" : "needs cc65 (ca65/ld65)";
+    const bool gen2c = (std::string(t.cfg) == "C-gen2");
+    const bool ready = gen2c ? gen2COk_ : cl65Ok_;
+    if (ready) return "cl65 ready";
+    return gen2c ? "needs cl65 + dev/lib/gen2c" : "needs cl65 + dev/apple1-videocard-lib";
 }
 
 void Pom1BenchHost::stop()
