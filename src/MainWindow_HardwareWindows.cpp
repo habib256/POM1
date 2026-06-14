@@ -17,6 +17,8 @@
 #include "imgui.h"
 #include "IconsFontAwesome6.h"
 #include "TextEditor.h"   // vendored ImGuiColorTextEdit — POM1 Bench syntax editor
+#include "ProcessUtil.h"  // bench/ portable: shellQuote / runCapture / whichExe
+#include "BenchLang.h"    // bench/ portable: syntax definitions by language id
 
 // renderTMS9918Window uploads a 256×192 RGBA texture each frame via raw GL
 // calls (glGenTextures / glBindTexture / glTexImage2D / glTexSubImage2D).
@@ -50,6 +52,11 @@
 namespace {
 using namespace pom1::mainwindow::detail;
 }
+
+// Portable bench/ helpers, used bare below by the POM1 Bench implementation.
+using bench::shellQuote;
+using bench::runCapture;
+using bench::whichExe;
 
 void MainWindow_ImGui::renderGraphicsCardWindow()
 {
@@ -588,78 +595,6 @@ static const char* kBenchEmbeddedCfg =
     "    BSS:      load = RAM, type = bss, optional = yes, define = yes;\n"
     "}\n";
 
-// Shell-quote a path for popen (single-quote on POSIX, double on Windows).
-static std::string shellQuote(const std::string& s)
-{
-#ifdef _WIN32
-    return "\"" + s + "\"";
-#else
-    std::string out = "'";
-    for (char c : s) { if (c == '\'') out += "'\\''"; else out += c; }
-    out += "'";
-    return out;
-#endif
-}
-
-// Run a command, capturing stdout+stderr. Returns the process exit code (or -1
-// if the pipe couldn't be opened).
-static int runCapture(const std::string& cmd, std::string& out)
-{
-    out.clear();
-    const std::string full = cmd + " 2>&1";
-#ifdef _WIN32
-    FILE* pipe = _popen(full.c_str(), "r");
-#else
-    FILE* pipe = popen(full.c_str(), "r");
-#endif
-    if (!pipe) return -1;
-    char buf[1024];
-    size_t n;
-    while ((n = std::fread(buf, 1, sizeof(buf), pipe)) > 0) out.append(buf, n);
-#ifdef _WIN32
-    return _pclose(pipe);
-#else
-    int rc = pclose(pipe);
-    if (rc != -1 && WIFEXITED(rc)) return WEXITSTATUS(rc);
-    return rc;
-#endif
-}
-
-// Resolve an executable by scanning $PATH (+ a couple of common cc65 dirs).
-static std::string whichExe(const char* name)
-{
-    namespace fs = std::filesystem;
-    std::vector<std::string> dirs;
-    if (const char* pathEnv = std::getenv("PATH")) {
-#ifdef _WIN32
-        const char sep = ';';
-#else
-        const char sep = ':';
-#endif
-        std::string p(pathEnv);
-        size_t start = 0;
-        while (start <= p.size()) {
-            size_t e = p.find(sep, start);
-            if (e == std::string::npos) e = p.size();
-            if (e > start) dirs.push_back(p.substr(start, e - start));
-            start = e + 1;
-        }
-    }
-    dirs.push_back("/usr/local/bin");
-    dirs.push_back("/opt/cc65/bin");
-    std::string exe = name;
-#ifdef _WIN32
-    exe += ".exe";
-#endif
-    std::error_code ec;
-    for (const auto& d : dirs) {
-        fs::path cand = fs::path(d) / exe;
-        if (fs::exists(cand, ec) && !fs::is_directory(cand, ec))
-            return cand.string();
-    }
-    return "";
-}
-
 // Pull the load address out of a ld65 config: the `start = $XXXX` of the MEMORY
 // region that owns the output file (`file = %O`). 0 if not found.
 static uint16_t parseCfgLoadAddr(const std::string& cfgPath)
@@ -961,45 +896,6 @@ static const char* benchStarterFor(int mode)
                      : kBenchSketchHex;
 }
 
-// A 6502 / ca65 language definition for ImGuiColorTextEdit: NMOS mnemonics as
-// keywords, ca65 dot-directives + $hex / %binary / decimal numbers + ';' line
-// comments. Built once (the editor copies it).
-static const TextEditor::LanguageDefinition& build6502LangDef()
-{
-    static bool inited = false;
-    static TextEditor::LanguageDefinition lang;
-    if (inited) return lang;
-
-    static const char* const kMnemonics[] = {
-        "ADC","AND","ASL","BCC","BCS","BEQ","BIT","BMI","BNE","BPL","BRK","BVC","BVS",
-        "CLC","CLD","CLI","CLV","CMP","CPX","CPY","DEC","DEX","DEY","EOR","INC","INX",
-        "INY","JMP","JSR","LDA","LDX","LDY","LSR","NOP","ORA","PHA","PHP","PLA","PLP",
-        "ROL","ROR","RTI","RTS","SBC","SEC","SED","SEI","STA","STX","STY","TAX","TAY",
-        "TSX","TXA","TXS","TYA",
-    };
-    for (auto* m : kMnemonics) lang.mKeywords.insert(m);
-
-    using PI = TextEditor::PaletteIndex;
-    lang.mTokenRegexStrings.push_back({ "\\\"(\\\\.|[^\\\"])*\\\"", PI::String });
-    lang.mTokenRegexStrings.push_back({ "\\.[a-zA-Z_][a-zA-Z0-9_]*",  PI::Preprocessor }); // ca65 directive
-    lang.mTokenRegexStrings.push_back({ "\\$[0-9a-fA-F]+",            PI::Number });        // $hex
-    lang.mTokenRegexStrings.push_back({ "%[01]+",                    PI::Number });        // %binary
-    lang.mTokenRegexStrings.push_back({ "[0-9]+",                    PI::Number });        // decimal
-    lang.mTokenRegexStrings.push_back({ "[a-zA-Z_][a-zA-Z0-9_]*",    PI::Identifier });    // labels / symbols
-    lang.mTokenRegexStrings.push_back({ "[\\[\\]\\{\\}\\!\\%\\^\\&\\*\\(\\)\\-\\+\\=\\~\\|\\<\\>\\?\\/\\;\\,\\.\\#\\:\\@\\$]",
-                                        PI::Punctuation });
-
-    lang.mCommentStart      = "/*";   // ca65 has no block comments; sentinel won't appear
-    lang.mCommentEnd        = "*/";
-    lang.mSingleLineComment = ";";
-    lang.mCaseSensitive     = false;  // mnemonics are case-insensitive (lookup upper-cases)
-    lang.mAutoIndentation   = true;
-    lang.mName              = "6502";
-
-    inited = true;
-    return lang;
-}
-
 // Parse ca65/ld65 output into ImGuiColorTextEdit error markers, keyed by source
 // line. Matches the "file(<line>): Error/Warning: msg" form ca65 emits.
 static void parseBenchErrorMarkers(const std::string& out, TextEditor::ErrorMarkers& markers)
@@ -1062,7 +958,7 @@ void MainWindow_ImGui::renderBenchWindow()
         benchTargetIndex = benchToolchainOk ? 0 : 4;   // built-in asm, else Wozmon hex
         benchUploadMode  = kBenchTargets[benchTargetIndex].mode;
         benchEditor = std::make_unique<TextEditor>();
-        benchEditor->SetLanguageDefinition(build6502LangDef());
+        benchEditor->SetLanguageDefinition(bench::langDef("6502"));
         benchEditor->SetPalette(TextEditor::GetLightPalette());
         benchEditor->SetShowWhitespaces(false);
         benchEditor->SetText(benchStarterFor(benchUploadMode));
