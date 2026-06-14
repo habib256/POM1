@@ -324,7 +324,17 @@ std::vector<MainWindow_ImGui::MemRegion> MainWindow_ImGui::buildMemoryRegions()
         uint16_t ramTop = static_cast<uint16_t>(ramCeiling32);
         if (ramTop > 0)
             regions.push_back({ 0x0000, (uint16_t)(ramTop - 1), ramColor, "User RAM" });
-        regions.push_back({ ramTop, 0xFFFF, unmapColor, "Unmapped" });
+        // Uncle Bernie's GEN2 card carries $0000-$BFFF DRAM PLUS $E000-$EFFF
+        // motherboard RAM (the Integer-BASIC bank — spec Q9, "54 KB total").
+        // Show that high bank as RAM instead of folding it into one big
+        // Unmapped block; it matches the functional memory ($E000 is never OOR).
+        if (graphicsCardEnabled && ramTop <= 0xE000) {
+            regions.push_back({ ramTop, 0xDFFF, unmapColor, "Unmapped" });
+            regions.push_back({ 0xE000, 0xEFFF, ramColor,   "User RAM" });
+            regions.push_back({ 0xF000, 0xFFFF, unmapColor, "Unmapped" });
+        } else {
+            regions.push_back({ ramTop, 0xFFFF, unmapColor, "Unmapped" });
+        }
     }
 
     // --- Layer 1: CPU-reserved areas ---
