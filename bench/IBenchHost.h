@@ -59,6 +59,14 @@ public:
     virtual int         defaultTargetIndex()         const = 0;
     virtual std::string starterSketch(int target)    const = 0;   // for "New"
 
+    // ---- New-sketch dialog axes: a (language x machine) matrix. The default
+    //      returns empty lists (no dialog — New just reloads the current
+    //      target's starter). targetFor maps a pair to a target index (-1 if
+    //      unavailable). ----
+    virtual const std::vector<std::string>& languages() const { static const std::vector<std::string> e; return e; }
+    virtual const std::vector<std::string>& machines()  const { static const std::vector<std::string> e; return e; }
+    virtual int targetFor(int /*language*/, int /*machine*/) const { return -1; }
+
     // ---- Machine + build (the emulator-specific work) ----
     // Apply the machine (preset/cards) a target runs on + adopt its source mode.
     virtual void        onTargetSelected(int target)                                     = 0;

@@ -47,6 +47,8 @@ private:
     bool browseSave_ = false;        // current popup is Save (vs Open)
     char saveName_[128] = "sketch.s";
     std::vector<int> errorLines_;    // 1-based lines, mirrored onto the scrollbar
+    int newLang_ = 0;                // New-dialog selection: language x machine
+    int newMachine_ = 0;
 };
 
 } // namespace bench

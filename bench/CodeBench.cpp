@@ -103,6 +103,13 @@ void CodeBench::render(const char* title, bool* open)
         status_ = "Saved " + path + " (" + std::to_string(text.size()) + " B)";
         statusOk_ = true;
     };
+    // New: pick a (language x machine) target, then load its HELLO WORLD. If the
+    // host offers no axes, New just reloads the current target's starter.
+    bool openNew = false;
+    auto doNewChoose = [&]() {
+        if (host_->languages().empty() || host_->machines().empty()) doNew();
+        else openNew = true;
+    };
     // Open the file browser popup (deferred OpenPopup after the toolbar child).
     bool openBrowse = false;
     auto browse = [&](bool save) {
@@ -145,7 +152,7 @@ void CodeBench::render(const char* title, bool* open)
         }
     }
     ImGui::SameLine(0, 18);
-    if (circleBtn(ICON_FA_FILE,          "##benchnew",      "New sketch"))              doNew();
+    if (circleBtn(ICON_FA_FILE,          "##benchnew",      "New sketch (pick language + target)")) doNewChoose();
     ImGui::SameLine(0, 6);
     if (circleBtn(ICON_FA_FOLDER_OPEN,   "##benchopen",     "Open file (browse dev/)")) browse(false);
     ImGui::SameLine(0, 6);
@@ -233,32 +240,48 @@ void CodeBench::render(const char* title, bool* open)
         ImGui::EndPopup();
     }
 
-    // ---- Target row ----
-    ImGui::AlignTextToFramePadding();
-    ImGui::TextUnformatted("Target:");
-    ImGui::SameLine();
-    ImGui::SetNextItemWidth(260);
-    if (ImGui::BeginCombo("##benchtarget", targets[targetIndex_].label.c_str())) {
-        for (int i = 0; i < static_cast<int>(targets.size()); ++i) {
-            const bool sel = (i == targetIndex_);
-            if (ImGui::Selectable(targets[i].label.c_str(), sel)) applyTarget(i);
-            if (sel) ImGui::SetItemDefaultFocus();
+    // ---- New-sketch dialog: pick language + machine, load its HELLO WORLD ----
+    if (openNew) ImGui::OpenPopup("##benchnewdlg");
+    if (ImGui::BeginPopup("##benchnewdlg")) {
+        const auto& langs = host_->languages();
+        const auto& machs = host_->machines();
+        ImGui::TextDisabled("New sketch"); ImGui::Separator();
+        ImGui::AlignTextToFramePadding(); ImGui::TextUnformatted("Language:"); ImGui::SameLine(96);
+        ImGui::SetNextItemWidth(220);
+        if (ImGui::BeginCombo("##newlang", newLang_ < (int)langs.size() ? langs[newLang_].c_str() : "")) {
+            for (int i = 0; i < (int)langs.size(); ++i)
+                if (ImGui::Selectable(langs[i].c_str(), i == newLang_)) newLang_ = i;
+            ImGui::EndCombo();
         }
-        ImGui::EndCombo();
-    }
-    if (targets[targetIndex_].wantsAddr) {
-        ImGui::SameLine(); ImGui::TextUnformatted("@ $"); ImGui::SameLine();
-        ImGui::SetNextItemWidth(56);
-        ImGui::InputText("##benchaddr", rawAddr_, sizeof(rawAddr_), ImGuiInputTextFlags_CharsHexadecimal);
-    }
-    {
-        const std::string hint = host_->toolchainHint(targetIndex_);
-        if (!hint.empty()) {
-            ImGui::SameLine(0, 16);
-            const bool ok = host_->toolchainReady(targetIndex_);
-            ImGui::TextColored(ok ? ImVec4(0.4f, 0.85f, 0.4f, 1.0f) : ImVec4(1.0f, 0.7f, 0.3f, 1.0f),
-                               "%s %s", ok ? ICON_FA_MICROCHIP : ICON_FA_HAMMER, hint.c_str());
+        ImGui::AlignTextToFramePadding(); ImGui::TextUnformatted("Target:"); ImGui::SameLine(96);
+        ImGui::SetNextItemWidth(220);
+        if (ImGui::BeginCombo("##newmach", newMachine_ < (int)machs.size() ? machs[newMachine_].c_str() : "")) {
+            for (int i = 0; i < (int)machs.size(); ++i)
+                if (ImGui::Selectable(machs[i].c_str(), i == newMachine_)) newMachine_ = i;
+            ImGui::EndCombo();
         }
+        ImGui::Separator();
+        const int t = host_->targetFor(newLang_, newMachine_);
+        if (t >= 0) {
+            const std::string hint = host_->toolchainHint(t);
+            const bool ok = host_->toolchainReady(t);
+            if (!hint.empty())
+                ImGui::TextColored(ok ? ImVec4(0.4f, 0.85f, 0.4f, 1.0f) : ImVec4(1.0f, 0.7f, 0.3f, 1.0f),
+                                   "%s %s", ok ? ICON_FA_MICROCHIP : ICON_FA_HAMMER, hint.c_str());
+        } else {
+            ImGui::TextColored(ImVec4(1.0f, 0.7f, 0.3f, 1.0f), "combination unavailable");
+        }
+        if (ImGui::Button("Create") && t >= 0) {
+            applyTarget(t);
+            editor_->SetText(host_->starterSketch(t));
+            editor_->SetErrorMarkers({}); errorLines_.clear();
+            loadedPath_.clear();
+            status_ = "New: " + host_->targets()[t].label; statusOk_ = true;
+            ImGui::CloseCurrentPopup();
+        }
+        ImGui::SameLine();
+        if (ImGui::Button("Cancel")) ImGui::CloseCurrentPopup();
+        ImGui::EndPopup();
     }
 
     // ---- Sketch tab ----

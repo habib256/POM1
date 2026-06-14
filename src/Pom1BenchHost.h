@@ -20,6 +20,9 @@ public:
 
     const std::vector<bench::Target>&  targets()  const override { return targets_; }
     const std::vector<bench::Example>& examples() const override { return examples_; }
+    const std::vector<std::string>&    languages() const override;
+    const std::vector<std::string>&    machines()  const override;
+    int         targetFor(int language, int machine) const override;
     int         defaultTargetIndex()         const override;
     std::string starterSketch(int target)    const override;
 
@@ -47,6 +50,8 @@ private:
 
     std::vector<bench::Target>  targets_;
     std::vector<bench::Example> examples_;
+    std::vector<std::string>    languages_;
+    std::vector<std::string>    machines_;
 
     // Companion asset staged before an asm build runs (set by loadExample).
     std::string extraAsset_;
@@ -57,8 +62,9 @@ private:
     mutable bool        toolchainOk_ = false;
     mutable bool        cl65Ok_      = false;   // TMS9918 CodeTank C (videocard lib)
     mutable bool        gen2COk_     = false;   // GEN2 HGR C (gen2c lib)
+    mutable bool        plainCOk_    = false;   // plain text C (apple1.c lib)
     mutable std::string ca65_, ld65_, cl65_, libFlags_, videocardLib_, codetankCfg_;
-    mutable std::string gen2cLib_, gen2Cfg_;
+    mutable std::string gen2cLib_, gen2Cfg_, plainCfg_;
 };
 
 #endif // POM1_BENCH_HOST_H

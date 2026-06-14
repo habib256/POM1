@@ -16,15 +16,70 @@
 // Static data: starter sketches, the embedded asm cfg, target + example tables
 // ─────────────────────────────────────────────────────────────
 
-static const char* kSketchAsm =
-    "; POM1 Bench - cc65 sketch. Verify compiles; Upload builds + runs.\n"
-    "; Blink: print '!' forever via WozMon ECHO ($FFEF).\n"
+// HELLO-WORLD starters, one per (language x machine) the New dialog offers.
+static const char* kSketchAsm =          // asm x Apple dual-4k/8k (text)
+    "; HELLO WORLD - Apple-1 text via WozMon ECHO ($FFEF).\n"
     "ECHO = $FFEF\n"
     ".segment \"CODE\"\n"
     "start:\n"
-    "    lda #$A1        ; '!' | $80\n"
+    "    ldx #0\n"
+    "loop:\n"
+    "    lda msg,x\n"
+    "    beq done\n"
+    "    ora #$80\n"
     "    jsr ECHO\n"
-    "    jmp start\n";
+    "    inx\n"
+    "    bne loop\n"
+    "done:\n"
+    "    jmp done\n"
+    "msg:\n"
+    "    .byte $0D, \"HELLO WORLD\", $0D, $00\n";
+static const char* kSketchAsmTms =       // asm x TMS9918 (solid backdrop colour)
+    "; HELLO - TMS9918 solid backdrop colour (no font). VDP ctrl port = $CC01.\n"
+    "VDP = $CC01\n"
+    ".segment \"CODE\"\n"
+    "start:\n"
+    "    lda #$04        ; reg 7: backdrop colour = 4 (medium blue)\n"
+    "    sta VDP\n"
+    "    lda #$87        ; -> write register 7\n"
+    "    sta VDP\n"
+    "    lda #$80        ; reg 1: 16K=1, display blanked => whole screen = backdrop\n"
+    "    sta VDP\n"
+    "    lda #$81        ; -> write register 1\n"
+    "    sta VDP\n"
+    "    jmp *\n";
+static const char* kSketchAsmGen2 =      // asm x GEN2 HGR (fill page 1)
+    "; HELLO - GEN2 HIRES. Soft switches $C250-$C257 (read = set), fill page 1.\n"
+    "GEN2 = $C250\n"
+    ".segment \"CODE\"\n"
+    "start:\n"
+    "    bit GEN2+0      ; graphics (TEXT off)\n"
+    "    bit GEN2+7      ; hires\n"
+    "    bit GEN2+4      ; page 1\n"
+    "    bit GEN2+2      ; full screen\n"
+    "    lda #$00\n"
+    "    sta $00\n"
+    "    lda #$20\n"
+    "    sta $01         ; ptr = $2000\n"
+    "    lda #$2A        ; pixel pattern\n"
+    "    ldy #$00\n"
+    "fill:\n"
+    "    sta ($00),y\n"
+    "    iny\n"
+    "    bne fill\n"
+    "    inc $01\n"
+    "    ldx $01\n"
+    "    cpx #$40        ; until $4000 ($2000-$3FFF filled)\n"
+    "    bne fill\n"
+    "    jmp *\n";
+static const char* kSketchCText =        // C x Apple dual-4k/8k (WozMon I/O)
+    "/* HELLO WORLD in C on a plain text Apple-1 (apple1.c woz_puts, cc65). */\n"
+    "#include \"apple1.h\"\n"
+    "\n"
+    "void main(void) {\n"
+    "    woz_puts((const unsigned char *)\"\\rHELLO WORLD (C / Apple-1)\\r\");\n"
+    "    woz_mon();\n"
+    "}\n";
 static const char* kSketchHex =
     "; POM1 Bench - Wozmon hex. Upload loads + runs (addresses are in the text).\n"
     "0300: A9 A1 20 EF FF 4C 00 03\n"
@@ -77,25 +132,30 @@ static const char* kBenchEmbeddedCfg =
 
 namespace {
 
-// POM1 target: machine preset + linker cfg + source mode (0 asm/1 hex/2 raw/3 C).
-struct P1T { const char* label; int preset; const char* cfg; const char* lang; int mode; bool needsCl65; bool wantsAddr; };
+// POM1 target: machine preset + linker cfg + source mode (0 asm/1 hex/2 raw/3 C)
+// + the HELLO-WORLD starter for it. The New dialog picks a (language x machine)
+// pair; the first 6 entries are that matrix, ordered language-major:
+//   0..2 = asm x {dual-4k, TMS9918, GEN2}, 3..5 = C x {dual-4k, TMS9918, GEN2}.
+struct P1T { const char* label; int preset; const char* cfg; const char* lang; int mode;
+             bool needsCl65; bool wantsAddr; const char* sketch; };
 const P1T kP1Targets[] = {
-    { "Built-in 4K @ $0300 (asm)",        -1, "",                "6502", 0, false, false },
-    { "Apple-1 4K text (cc65 asm)",        1, "apple1_4k.cfg",   "6502", 0, false, false },
-    { "Uncle Bernie GEN2 HGR+ACI (asm)",  13, "apple1_gen2.cfg", "6502", 0, false, false },
-    { "TMS9918 CodeTank ROM (C / cc65)",   8, "C",               "C",    3, true,  false },
-    { "Uncle Bernie GEN2 HGR (C / cc65)", 13, "C-gen2",          "C",    3, true,  false },
-    { "Wozmon hex (any machine)",         -1, "",                "hex",  1, false, false },
-    { "Raw bytes @ $ (any machine)",      -1, "",                "raw",  2, false, true  },
+    { "Apple-1 dual-4k/8k (asm)",         1, "apple1_4k.cfg",   "6502", 0, false, false, kSketchAsm     },
+    { "TMS9918 (asm)",                    8, "apple1_4k.cfg",   "6502", 0, false, false, kSketchAsmTms  },
+    { "Uncle Bernie GEN2 HGR (asm)",     13, "apple1_gen2.cfg", "6502", 0, false, false, kSketchAsmGen2 },
+    { "Apple-1 dual-4k/8k (C)",           1, "C-plain",         "C",    3, true,  false, kSketchCText   },
+    { "TMS9918 CodeTank ROM (C)",         8, "C",               "C",    3, true,  false, kSketchC       },
+    { "Uncle Bernie GEN2 HGR (C)",       13, "C-gen2",          "C",    3, true,  false, kSketchGen2C   },
+    { "Wozmon hex (any machine)",        -1, "",                "hex",  1, false, false, kSketchHex     },
+    { "Raw bytes @ $ (any machine)",     -1, "",                "raw",  2, false, true,  kSketchRaw     },
 };
 const int kP1TargetCount = static_cast<int>(sizeof(kP1Targets) / sizeof(kP1Targets[0]));
 
+// New-dialog axes (language x machine -> target index = lang*3 + machine).
+const char* const kP1Languages[] = { "Assembly (ca65)", "C (cc65)" };
+const char* const kP1Machines[]  = { "Apple-1 dual-4k/8k", "TMS9918", "GEN2 HGR (Bernie)" };
+
 struct P1Ex { const char* label; bool file; const char* data; int target; const char* asset; uint16_t addr; };
 const P1Ex kP1Examples[] = {
-    { "Blink  (cc65 asm)",                 false, kSketchAsm, 0, "", 0 },
-    { "Blink  (Wozmon hex)",               false, kSketchHex, 4, "", 0 },
-    { "Hello world  (C / TMS9918)",        false, kSketchC,   3, "", 0 },
-    { "Connect 4  (text, Wozmon hex)",     true,  "software/Apple-1 games/Connect4.txt", 4, "", 0 },
     { "A-1-CrazyCycle  (Bernie GEN2 HGR)", true,  "dev/projects/a1_crazycycle/A-1-CrazyCycle.asm", 2,
       "sdcard/NONO/HGR/UBERNIE#062000", 0x2000 },
     { "Telemetry demo  (SDK harness)",     true,  "dev/projects/a1_telemetry_demo/A1_TelemetryDemo.asm", 0, "", 0 },
@@ -174,6 +234,8 @@ Pom1BenchHost::Pom1BenchHost(MainWindow_ImGui* mw) : mw_(mw)
                              kP1Targets[i].lang, kP1Targets[i].wantsAddr });
     for (int i = 0; i < kP1ExampleCount; ++i)
         examples_.push_back({ kP1Examples[i].label });
+    for (const char* l : kP1Languages) languages_.push_back(l);
+    for (const char* m : kP1Machines)  machines_.push_back(m);
 }
 
 void Pom1BenchHost::probe() const
@@ -212,26 +274,34 @@ void Pom1BenchHost::probe() const
         const fs::path gcfg = fs::path(devRoot) / "cc65" / "apple1_gen2_c.cfg";
         if (fs::exists(glib, ec)) gen2cLib_ = fs::absolute(glib, ec).string();
         if (fs::exists(gcfg, ec)) gen2Cfg_  = fs::absolute(gcfg, ec).string();
+        // Plain text C (apple1.c woz_puts) uses dev/cc65/apple1_c.cfg.
+        const fs::path pcfg = fs::path(devRoot) / "cc65" / "apple1_c.cfg";
+        if (fs::exists(pcfg, ec)) plainCfg_ = fs::absolute(pcfg, ec).string();
     }
-    gen2COk_ = !cl65_.empty() && !gen2cLib_.empty() && !gen2Cfg_.empty();
+    gen2COk_  = !cl65_.empty() && !gen2cLib_.empty() && !gen2Cfg_.empty();
+    plainCOk_ = !cl65_.empty() && !videocardLib_.empty() && !plainCfg_.empty();
 #endif
 }
 
 int Pom1BenchHost::defaultTargetIndex() const
 {
     probe();
-    return toolchainOk_ ? 0 : 4;   // built-in asm if cc65 present, else Wozmon hex
+    return toolchainOk_ ? 0 : 6;   // asm dual-4k if cc65 present, else Wozmon hex
 }
 
 std::string Pom1BenchHost::starterSketch(int target) const
 {
     if (target < 0 || target >= kP1TargetCount) return "";
-    switch (kP1Targets[target].mode) {
-        case 0: return kSketchAsm;
-        case 2: return kSketchRaw;
-        case 3: return std::string(kP1Targets[target].cfg) == "C-gen2" ? kSketchGen2C : kSketchC;
-        default: return kSketchHex;
-    }
+    return kP1Targets[target].sketch ? kP1Targets[target].sketch : "";
+}
+
+const std::vector<std::string>& Pom1BenchHost::languages() const { return languages_; }
+const std::vector<std::string>& Pom1BenchHost::machines()  const { return machines_; }
+
+int Pom1BenchHost::targetFor(int language, int machine) const
+{
+    if (language < 0 || language > 1 || machine < 0 || machine > 2) return -1;
+    return language * 3 + machine;   // matches the kP1Targets matrix ordering
 }
 
 void Pom1BenchHost::onTargetSelected(int target)
@@ -332,27 +402,40 @@ bench::BuildResult Pom1BenchHost::build(int target, const std::string& src, cons
     std::error_code ec;
     const fs::path dir  = fs::temp_directory_path(ec);
     const fs::path binB = dir / "pom1_bench.bin";
-    const bool cmode = (t.mode == 3);
-    const bool gen2c = cmode && std::string(t.cfg) == "C-gen2";   // GEN2 HGR vs CodeTank
+    const std::string cfgTag = t.cfg ? t.cfg : "";
+    const bool cmode  = (t.mode == 3);
+    const bool gen2c  = cmode && cfgTag == "C-gen2";    // GEN2 HGR (loadBinary @ $6000)
+    const bool plainc = cmode && cfgTag == "C-plain";   // plain text (loadBinary @ $0300)
+    const bool codetankc = cmode && !gen2c && !plainc;  // TMS9918 CodeTank ROM
     r.showConsole = true;
     uint16_t entry = 0;
 
     if (cmode) {
-        const bool ready = gen2c ? gen2COk_ : cl65Ok_;
+        const bool ready = gen2c ? gen2COk_ : plainc ? plainCOk_ : cl65Ok_;
         if (!ready) {
             r.console = gen2c ? "cl65 / gen2c lib not found (needs dev/)\n"
-                              : "cl65 / videocard-lib not found (needs dev/)\n";
+                      : plainc ? "cl65 / apple1.c lib not found (needs dev/)\n"
+                               : "cl65 / videocard-lib not found (needs dev/)\n";
             r.status = "cc65 cl65 missing"; return r;
         }
         const fs::path srcC = dir / "pom1_bench.c";
         std::ofstream(srcC, std::ios::binary).write(src.data(), static_cast<std::streamsize>(src.size()));
-        std::string cmd;
+        std::string cmd; const char* tag;
         if (gen2c) {
+            tag = "GEN2 HGR";
             cmd = bench::shellQuote(cl65_) + " -t none -Oirs -C " + bench::shellQuote(gen2Cfg_) +
                 " -I " + bench::shellQuote(gen2cLib_) + " " + bench::shellQuote(srcC.string()) +
                 " " + bench::shellQuote(gen2cLib_ + "/gen2.c") +
                 " -o " + bench::shellQuote(binB.string());
+        } else if (plainc) {
+            tag = "Apple-1 text";
+            const std::string& lib = videocardLib_;
+            cmd = bench::shellQuote(cl65_) + " -t none -Oirs -C " + bench::shellQuote(plainCfg_) +
+                " -I " + bench::shellQuote(lib) + " " + bench::shellQuote(srcC.string()) +
+                " " + bench::shellQuote(lib + "/apple1.c") + " " + bench::shellQuote(lib + "/apple1_asm.s") +
+                " -o " + bench::shellQuote(binB.string());
         } else {
+            tag = "CodeTank ROM";
             const std::string& lib = videocardLib_;
             cmd = bench::shellQuote(cl65_) + " -t none -Oirs -C " + bench::shellQuote(codetankCfg_) +
                 " -I " + bench::shellQuote(lib) + " " + bench::shellQuote(srcC.string()) +
@@ -362,11 +445,11 @@ bench::BuildResult Pom1BenchHost::build(int target, const std::string& src, cons
         }
         std::string out;
         const int rc = bench::runCapture(cmd, out);
-        r.console = std::string("$ cl65 -t none [") + (gen2c ? "GEN2 HGR" : "CodeTank ROM") + "]\n" + out;
+        r.console = std::string("$ cl65 -t none [") + tag + "]\n" + out;
         if (rc != 0) { parseErrorMarkers(out, r.errors); r.status = "cl65 failed (see Build output)"; return r; }
-        r.console += gen2c ? "[ok] compiled + linked (GEN2 HGR)\n" : "[ok] compiled + linked -> CodeTank ROM image\n";
-        entry = gen2c ? parseCfgLoadAddr(gen2Cfg_) : 0x4000;
-        if (entry == 0) entry = 0x6000;
+        r.console += std::string("[ok] compiled + linked (") + tag + ")\n";
+        entry = gen2c ? parseCfgLoadAddr(gen2Cfg_) : plainc ? parseCfgLoadAddr(plainCfg_) : 0x4000;
+        if (entry == 0) entry = plainc ? 0x0300 : 0x6000;
     } else {
         if (!toolchainOk_) { r.console = "cc65 (ca65/ld65) not found\n"; r.status = "cc65 missing"; return r; }
         const fs::path srcS = dir / "pom1_bench.s";
@@ -403,9 +486,9 @@ bench::BuildResult Pom1BenchHost::build(int target, const std::string& src, cons
     if (!run) { r.status = "Verify OK"; r.ok = true; return r; }
 
     auto* emu = mw_->emulation.get();
-    if (gen2c) {
-        // GEN2 HGR C: plain load + run @ $6000. The target's preset (#13) already
-        // plugged the GEN2 card; loadBinary resets + runs.
+    if (gen2c || plainc) {
+        // GEN2 HGR / plain text C: load + run (the target's preset already plugged
+        // the right card). loadBinary resets + runs at the cfg's entry.
         std::string error; int bytesLoaded = 0;
         if (emu->loadBinary(binB.string(), entry, error, &bytesLoaded)) {
             emu->copySnapshot(mw_->uiSnapshot);
@@ -414,7 +497,7 @@ bench::BuildResult Pom1BenchHost::build(int target, const std::string& src, cons
         } else { r.status = "load failed: " + error; r.ok = false; }
         return r;
     }
-    if (cmode) {
+    if (codetankc) {
         // CodeTank ROM: pad 16K -> 32K (lower bank), flash, jumper, reset, 4000R.
         std::ifstream in(binB, std::ios::binary);
         std::vector<unsigned char> rom(0x8000, 0xFF);
@@ -467,7 +550,10 @@ bool Pom1BenchHost::toolchainReady(int target) const
     if (t.mode == 1 || t.mode == 2) return true;
     probe();
     if (!t.needsCl65) return toolchainOk_;
-    return (std::string(t.cfg) == "C-gen2") ? gen2COk_ : cl65Ok_;
+    const std::string cfg = t.cfg ? t.cfg : "";
+    if (cfg == "C-gen2")  return gen2COk_;
+    if (cfg == "C-plain") return plainCOk_;
+    return cl65Ok_;
 }
 
 std::string Pom1BenchHost::toolchainHint(int target) const
@@ -477,10 +563,7 @@ std::string Pom1BenchHost::toolchainHint(int target) const
     if (t.mode == 1 || t.mode == 2) return "";
     probe();
     if (!t.needsCl65) return toolchainOk_ ? "ca65/ld65 ready" : "needs cc65 (ca65/ld65)";
-    const bool gen2c = (std::string(t.cfg) == "C-gen2");
-    const bool ready = gen2c ? gen2COk_ : cl65Ok_;
-    if (ready) return "cl65 ready";
-    return gen2c ? "needs cl65 + dev/lib/gen2c" : "needs cl65 + dev/apple1-videocard-lib";
+    return toolchainReady(target) ? "cl65 ready" : "needs cl65 + dev/";
 }
 
 void Pom1BenchHost::stop()
