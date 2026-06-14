@@ -347,6 +347,19 @@ static const char* kBenchEmbeddedCfg =
 
 namespace {
 
+// RAII sweeper for Bench's temp staging files: collect every scratch path we
+// write, delete them all in the destructor so cleanup runs on every return /
+// early-exit path (build() has many) without threading remove() calls through
+// each one. Errors are intentionally ignored (best-effort hygiene).
+struct TempFileSweeper {
+    std::vector<std::filesystem::path> paths;
+    void add(const std::filesystem::path& p) { paths.push_back(p); }
+    ~TempFileSweeper() {
+        std::error_code ec;
+        for (const auto& p : paths) std::filesystem::remove(p, ec);
+    }
+};
+
 // POM1 target: machine preset + linker cfg + source mode (0 asm/1 hex/2 raw/3 C)
 // + the HELLO-WORLD starter for it. The New dialog picks a (language x machine)
 // pair; the first 8 entries are that matrix, ordered language-major:
@@ -602,10 +615,13 @@ bench::BuildResult Pom1BenchHost::directLoad(int target, const std::string& src,
     bench::BuildResult r; r.showConsole = false;
     std::error_code ec;
     const fs::path dir = fs::temp_directory_path(ec);
+    if (ec || dir.empty()) { r.status = "no temp directory available"; r.ok = false; return r; }
+    TempFileSweeper sweep;
     auto* emu = mw_->emulation.get();
     std::string error; int bytesLoaded = 0; bool ok = false; uint16_t entry = 0;
     if (kP1Targets[target].mode == 1) {   // Wozmon hex
         const fs::path tmp = dir / "pom1_bench_sketch.txt";
+        sweep.add(tmp);
         std::ofstream(tmp, std::ios::binary).write(src.data(), static_cast<std::streamsize>(src.size()));
         std::vector<std::pair<uint16_t, uint16_t>> zones;
         ok = emu->loadHexDump(tmp.string(), entry, error, &bytesLoaded, &zones);
@@ -615,6 +631,7 @@ bench::BuildResult Pom1BenchHost::directLoad(int target, const std::string& src,
         if (bytes.empty()) error = "no hex bytes parsed";
         else {
             const fs::path tmp = dir / "pom1_bench_sketch.bin";
+            sweep.add(tmp);
             std::ofstream(tmp, std::ios::binary).write(reinterpret_cast<const char*>(bytes.data()),
                                                        static_cast<std::streamsize>(bytes.size()));
             ok = emu->loadBinary(tmp.string(), entry, error, &bytesLoaded);
@@ -646,7 +663,12 @@ bench::BuildResult Pom1BenchHost::build(int target, const std::string& src, cons
     namespace fs = std::filesystem;
     std::error_code ec;
     const fs::path dir  = fs::temp_directory_path(ec);
+    if (ec || dir.empty()) {
+        r.console = "fs::temp_directory_path failed\n"; r.status = "no temp directory"; return r;
+    }
+    TempFileSweeper sweep;
     const fs::path binB = dir / "pom1_bench.bin";
+    sweep.add(binB);
     const std::string cfgTag = t.cfg ? t.cfg : "";
     const bool cmode  = (t.mode == 3);
     const bool gen2c  = cmode && cfgTag == "C-gen2";    // GEN2 HGR (loadBinary @ $6000)
@@ -664,6 +686,7 @@ bench::BuildResult Pom1BenchHost::build(int target, const std::string& src, cons
             r.status = "cc65 cl65 missing"; return r;
         }
         const fs::path srcC = dir / "pom1_bench.c";
+        sweep.add(srcC);
         std::ofstream(srcC, std::ios::binary).write(src.data(), static_cast<std::streamsize>(src.size()));
         std::string cmd; const char* tag;
         if (gen2c) {
@@ -699,10 +722,12 @@ bench::BuildResult Pom1BenchHost::build(int target, const std::string& src, cons
         if (!toolchainOk_) { r.console = "cc65 (ca65/ld65) not found\n"; r.status = "cc65 missing"; return r; }
         const fs::path srcS = dir / "pom1_bench.s";
         const fs::path objO = dir / "pom1_bench.o";
+        sweep.add(srcS); sweep.add(objO);
         std::ofstream(srcS, std::ios::binary).write(src.data(), static_cast<std::streamsize>(src.size()));
         std::string cfgPath;
         if (!t.cfg[0]) {
             const fs::path e2 = dir / "pom1_bench_default.cfg";
+            sweep.add(e2);
             std::ofstream(e2, std::ios::binary) << kBenchEmbeddedCfg;
             cfgPath = e2.string();
         } else {
@@ -748,6 +773,7 @@ bench::BuildResult Pom1BenchHost::build(int target, const std::string& src, cons
         std::vector<unsigned char> rom(0x8000, 0xFF);
         in.read(reinterpret_cast<char*>(rom.data()), 0x4000);
         const fs::path romPath = dir / "pom1_bench_codetank.rom";
+        sweep.add(romPath);
         std::ofstream(romPath, std::ios::binary)
             .write(reinterpret_cast<const char*>(rom.data()), static_cast<std::streamsize>(rom.size()));
         std::string error;
