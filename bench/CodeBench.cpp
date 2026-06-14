@@ -50,7 +50,8 @@ void CodeBench::applyResult(const BuildResult& r)
     status_  = r.status;
     statusOk_ = r.ok;
     TextEditor::ErrorMarkers em;
-    for (const auto& e : r.errors) em[e.first] = e.second;
+    errorLines_.clear();
+    for (const auto& e : r.errors) { em[e.first] = e.second; errorLines_.push_back(e.first); }
     editor_->SetErrorMarkers(em);
 }
 
@@ -79,7 +80,7 @@ void CodeBench::render(const char* title, bool* open)
     };
     auto doNew = [&]() {
         editor_->SetText(host_->starterSketch(targetIndex_));
-        editor_->SetErrorMarkers({});
+        editor_->SetErrorMarkers({}); errorLines_.clear();
         loadedPath_.clear();
         status_ = "New sketch"; statusOk_ = true;
     };
@@ -88,7 +89,7 @@ void CodeBench::render(const char* title, bool* open)
         if (!in) { status_ = "Open failed: " + path; statusOk_ = false; return; }
         std::string data((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
         editor_->SetText(data);
-        editor_->SetErrorMarkers({});
+        editor_->SetErrorMarkers({}); errorLines_.clear();
         loadedPath_ = path;
         status_ = "Opened " + path + " (" + std::to_string(data.size()) + " B)";
         statusOk_ = true;
@@ -170,7 +171,7 @@ void CodeBench::render(const char* title, bool* open)
                 ExampleLoad el = host_->loadExample(i);
                 if (el.ok) {
                     editor_->SetText(el.source);
-                    editor_->SetErrorMarkers({});
+                    editor_->SetErrorMarkers({}); errorLines_.clear();
                     loadedPath_.clear();
                     if (el.targetIndex >= 0) { targetIndex_ = el.targetIndex; applyTargetSyntax(); }
                 }
@@ -281,6 +282,28 @@ void CodeBench::render(const char* title, bool* open)
     float editorH = avail.y - consoleBlock - rowH - (kStatusBarH + spacingY) - spacingY;
     if (editorH < 100.0f) editorH = 100.0f;
     editor_->Render("##benchsrc", ImVec2(avail.x, editorH), true);
+
+    // Mirror error lines onto the editor's scrollbar lane (VS Code-style overview
+    // ruler): a red tick at each error's proportional vertical position.
+    if (!errorLines_.empty()) {
+        const ImVec2 mn = ImGui::GetItemRectMin();   // editor child rect
+        const ImVec2 mx = ImGui::GetItemRectMax();
+        const int total = editor_->GetTotalLines();
+        if (total > 0) {
+            ImDrawList* dl = ImGui::GetWindowDrawList();
+            const float sb = ImGui::GetStyle().ScrollbarSize;
+            const float x0 = mx.x - sb + 1.0f;
+            const float x1 = mx.x - 1.0f;
+            const float trackH = mx.y - mn.y - 2.0f;
+            const ImU32 col = IM_COL32(235, 80, 60, 230);
+            for (int ln : errorLines_) {
+                float t = static_cast<float>(ln - 1) / static_cast<float>(total);
+                if (t < 0.0f) t = 0.0f; if (t > 1.0f) t = 1.0f;
+                const float y = mn.y + 1.0f + t * trackH;
+                dl->AddRectFilled(ImVec2(x0, y - 1.5f), ImVec2(x1, y + 1.5f), col, 1.0f);
+            }
+        }
+    }
 
     // ---- Build output console (error lines orange + click → editor line) ----
     if (showConsole_) {

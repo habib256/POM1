@@ -9,6 +9,7 @@
 #include <cstdint>
 #include <memory>
 #include <string>
+#include <vector>
 
 class TextEditor;
 
@@ -45,6 +46,7 @@ private:
     std::string loadedPath_;         // full path of the open file ("" = untitled)
     bool browseSave_ = false;        // current popup is Save (vs Open)
     char saveName_[128] = "sketch.s";
+    std::vector<int> errorLines_;    // 1-based lines, mirrored onto the scrollbar
 };
 
 } // namespace bench
