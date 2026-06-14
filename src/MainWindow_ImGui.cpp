@@ -1,6 +1,7 @@
 #include "MainWindow_ImGui.h"
 #include "MainWindow_Internal.h"
-#include "TextEditor.h"   // complete type for std::unique_ptr<TextEditor> benchEditor
+#include "Pom1BenchHost.h"   // complete types for std::unique_ptr members (dtor)
+#include "CodeBench.h"
 #include "CliDispatcher.h"
 #include "WiFiModem.h"
 #include "TerminalCard.h"

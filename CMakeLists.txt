@@ -86,8 +86,10 @@ set(SOURCES
     ${POM1_SRC_DIR}/MainWindow_Keyboard.cpp
     ${POM1_SRC_DIR}/Logger.cpp
     ${POM1_SRC_DIR}/third_party/ImGuiColorTextEdit/TextEditor.cpp
+    ${POM1_SRC_DIR}/Pom1BenchHost.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/bench/ProcessUtil.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/bench/BenchLang.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/bench/CodeBench.cpp
 )
 
 set(HEADERS

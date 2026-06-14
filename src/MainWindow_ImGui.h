@@ -21,10 +21,12 @@
 #include "CliDispatcher.h"
 #include "SID.h"
 
-class TextEditor;   // vendored ImGuiColorTextEdit (POM1 Bench syntax editor)
+class Pom1BenchHost;                 // POM1 host for the portable bench editor
+namespace bench { class CodeBench; } // bench/CodeBench.h
 
 class MainWindow_ImGui
 {
+    friend class Pom1BenchHost;   // bench host reaches presets + card-enable flags
 public:
     MainWindow_ImGui();
     ~MainWindow_ImGui();
@@ -247,36 +249,12 @@ private:
     bool telemetrySendHex = false;                     // interpret input as hex bytes
     char telemetryLogPathBuf[256] = "telemetry_trace.bin";
 
-    // "POM1 Bench" sketch editor — Phase B of the Arduino-style in-app SDK. The
-    // editor is a fixed 64 KB char buffer (imgui_stdlib.cpp is not in the build);
-    // Upload tees it to a temp file and pipes it through the same loadHexDump /
-    // loadBinary path the Load dialog uses (which already resets + runs).
+    // "POM1 Bench" — the portable bench/CodeBench editor driven by a
+    // Pom1BenchHost (cc65 toolchain, presets, CodeTank/loadBinary deploy). Both
+    // are created lazily on first open. See bench/IBenchHost.h.
     bool showBench = false;
-    std::unique_ptr<TextEditor> benchEditor;           // ImGuiColorTextEdit (6502 syntax)
-    int  benchUploadMode = 0;                          // 0 = Hex (Wozmon), 1 = Raw bytes @ addr
-    char benchRawAddrBuf[8] = "0300";                  // hex load address for Raw mode
-    char benchFilePathBuf[512] = {0};                  // Open/Save path
-    std::string benchStatus;                           // last Upload/Open/Save result
-    bool benchStatusOk = true;                         // tint the status line
-    // cc65 toolchain (Phase C) — desktop only; probed once on first Bench open.
-    bool benchToolchainProbed = false;
-    bool benchToolchainOk = false;
-    std::string benchCa65;                             // resolved ca65 path ("" if absent)
-    std::string benchLd65;                             // resolved ld65 path
-    std::string benchLibFlags;                         // "-I <dir> …" from dev/lib/*
-    std::string benchConsole;                          // ca65/ld65 build output pane
-    bool benchShowConsole = false;
-    std::string benchCl65;                             // cl65 path (C compiler driver)
-    std::string benchVideocardLib;                     // dev/apple1-videocard-lib/lib (abs) or ""
-    std::string benchCodetankCfg;                      // codetank_c.cfg (abs) — TMS9918 C ROM profile
-    bool benchCl65Ok = false;                          // cl65 + videocard lib + cfg present (C mode)
-    // Optional companion blob loaded into RAM before the build runs (e.g.
-    // CrazyCycle's UBERNIE HGR image at $2000, which ld65 does not produce).
-    std::string benchExtraAsset;                       // repo-relative path, "" = none
-    uint16_t    benchExtraAssetAddr = 0;
-    // Selected Bench "target" (machine preset + linker cfg + source mode) —
-    // index into kBenchTargets. Selecting one applies the POM1 preset.
-    int benchTargetIndex = 0;
+    std::unique_ptr<Pom1BenchHost>     benchHost_;
+    std::unique_ptr<bench::CodeBench>  codeBench_;
     bool pr40Enabled = false;
     bool showPR40 = false;
     bool a1ioRtcEnabled = false;
@@ -405,8 +383,7 @@ private:
     void renderWiFiModemWindow();
     void renderTerminalCardWindow();
     void renderTelemetryWindow();
-    void renderBenchWindow();
-    void detectBenchToolchain();   // Phase C: locate ca65/ld65 + boards (once)
+    void renderBenchWindow();   // thin delegator → codeBench_->render()
     void renderA1IO_RTCWindow();
     void renderJukeBoxWindow();
     void renderCodeTankLibraryWindow();
