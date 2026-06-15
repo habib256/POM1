@@ -31,9 +31,7 @@
 ; =============================================
 
 ; --- Apple 1 I/O ---
-ECHO    = $FFEF         ; Woz Monitor character output
-KBDCR   = $D011         ; Keyboard control register
-KBD     = $D010         ; Keyboard data register
+.include "apple1.inc"
 
 ; --- Maze constants ---
 NCOLS   = 34            ; Cell columns

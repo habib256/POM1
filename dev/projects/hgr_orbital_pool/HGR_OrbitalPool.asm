@@ -39,8 +39,7 @@
 ; =============================================
 
 ; ----- Apple 1 I/O -----
-KBDCR   = $D011
-KBD     = $D010
+.include "apple1.inc"
 
 ; ----- Keys (Apple 1: upper-case ASCII with bit 7 set) -----
 KEY_ESC   = $9B

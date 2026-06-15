@@ -22,9 +22,7 @@
 ; =============================================
 
 ; --- Apple 1 I/O ---
-KBD    = $D010
-KBDCR  = $D011
-ECHO   = $FFEF
+.include "apple1.inc"
 
 ; --- Game entry points (must match the linker configs):
 ;     apple1_galaga_codetank_bank.cfg   start=$4100

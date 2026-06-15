@@ -17,9 +17,7 @@
 ; =============================================
 
 ; --- Apple 1 I/O ---
-ECHO    = $FFEF
-KBDCR   = $D011
-KBD     = $D010
+.include "apple1.inc"
 
 ; --- Constants ---
 CENTER_X = 128          ; horizontal center

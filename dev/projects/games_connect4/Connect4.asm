@@ -13,9 +13,7 @@
 ; Red starts.  First to align four wins (row / column / diagonal).
 ; =============================================
 
-ECHO    = $FFEF
-KBD     = $D010
-KBDCR   = $D011
+.include "apple1.inc"
 
 NCOLS   = 7
 NROWS   = 6

@@ -45,8 +45,7 @@
 ; =============================================
 
 ; ----- Apple 1 I/O -----
-KBDCR   = $D011
-KBD     = $D010
+.include "apple1.inc"
 
 ; ----- Geometry -----
 ROW_SIZ   = 42              ; 40 interior cells + 2 ghost

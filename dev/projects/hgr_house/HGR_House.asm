@@ -14,9 +14,7 @@
 ; All drawn at byte-column resolution (40 cols × 192 rows).
 ; =============================================
 
-ECHO    = $FFEF
-KBDCR   = $D011
-KBD     = $D010
+.include "apple1.inc"
 
 ; --- NTSC color byte pairs (even/odd columns) ---
 ; To get consistent colors, swap patterns for even/odd byte columns.

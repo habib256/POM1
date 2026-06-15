@@ -13,9 +13,7 @@
 ;   ld65 -C software/apple1_4k.cfg -o build/RtcBigClock.bin build/RtcBigClock.o
 ; =============================================================
 
-ECHO    = $FFEF
-KBDCR   = $D011
-KBD     = $D010
+.include "apple1.inc"
 VIA_IRB = $2000
 VIA_IRA = $2001
 

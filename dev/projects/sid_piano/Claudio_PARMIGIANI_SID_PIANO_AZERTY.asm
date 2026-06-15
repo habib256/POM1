@@ -24,9 +24,7 @@ SR1      = $C806        ; Sustain/Release
 VOLUME   = $C818        ; master volume
 
 ; Apple 1 I/O
-KBD      = $D010
-KBDCR    = $D011
-ECHO     = $FFEF
+.include "apple1.inc"
 
 ; RAM variables
 DELAY_OL = $0280        ; delay outer loop counter

@@ -17,9 +17,7 @@
 ; =============================================
 
 ; --- Apple 1 I/O ---
-KBD    = $D010
-KBDCR  = $D011
-ECHO   = $FFEF
+.include "apple1.inc"
 
 ; --- Game entry points (must match the linker configs):
 ;     apple1_life_codetank_game3_bank.cfg   start=$4100

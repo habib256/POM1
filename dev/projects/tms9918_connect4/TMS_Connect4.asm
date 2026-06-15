@@ -19,9 +19,7 @@
 ; =============================================
 
         .import tms9918_pad12  ; silicon-strict pad12-v3 (helper from tms9918_pad.asm)
-ECHO     = $FFEF
-KBD      = $D010
-KBDCR    = $D011
+.include "apple1.inc"
 
 ; VDP_DATA / VDP_CTRL + WAIT_VBLANK macro come from the shared lib header.
 .include "tms9918.inc"
