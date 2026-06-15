@@ -27,15 +27,7 @@ $(OUT_DIR_T)/Chess.bin.lo $(OUT_DIR_T)/Chess.bin.hi $(OUT_DIR_T)/Chess.sym: $(OB
 # Wozmon's address-prefix syntax handles the 53 KB jump cleanly — it just
 # resets its write pointer when it sees a new "AAAA:" prefix.
 $(OUT_DIR_T)/Chess.txt: $(OUT_DIR_T)/Chess.bin.lo $(OUT_DIR_T)/Chess.bin.hi
-	@python3 -c "lo=open('$(OUT_DIR)/Chess.bin.lo','rb').read(); \
-hi=open('$(OUT_DIR)/Chess.bin.hi','rb').read(); \
-out=[]; addr=0x0280; \
-[(out.append(f'{addr+i:04X}: ' + ' '.join(f'{b:02X}' for b in lo[i:i+8])), None)[1] for i in range(0, len(lo), 8)]; \
-addr=0xE000; \
-[(out.append(f'{addr+i:04X}: ' + ' '.join(f'{b:02X}' for b in hi[i:i+8])), None)[1] for i in range(0, len(hi), 8)]; \
-out.append('0280R'); \
-open('$(OUT_DIR)/Chess.txt','w').write('\n'.join(out)+'\n'); \
-print(f'Wrote $(OUT_DIR)/Chess.txt (lo={len(lo)} B at \$$0280, hi={len(hi)} B at \$$E000)')"
+	@python3 ../../cc65/emit_dualbank.py "$(OUT_DIR)"/Chess.bin.lo "$(OUT_DIR)"/Chess.bin.hi "$(OUT_DIR)"/Chess.txt --run 0280
 
 .PHONY: all clean
 all: $(OUT_DIR_T)/Chess.txt
