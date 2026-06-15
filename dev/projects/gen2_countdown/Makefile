@@ -23,9 +23,10 @@ CL65     := cl65
 CFLAGS   := -t none -Oirs
 INCS     := -I $(GEN2C) -I $(APPLE1C)
 
-# Sources : le sketch + le runtime C GEN2 + la base texte apple1c (woz_mon).
+# Sources : le sketch + le runtime C GEN2 (+ son blitter asm) + apple1c (woz_mon).
 SRCS := $(PROJECT).c \
         $(GEN2C)/gen2.c \
+        $(GEN2C)/gen2_blit.s \
         $(APPLE1C)/apple1io.c \
         $(APPLE1C)/apple1io_asm.s
 
@@ -37,10 +38,10 @@ SRCS := $(PROJECT).c \
 all: $(PROJECT).bin
 	python3 emit_$(PROJECT)_txt.py
 
-$(PROJECT).bin: $(PROJECT).c $(GEN2C)/gen2.c $(GEN2C)/gen2.h \
+$(PROJECT).bin: $(PROJECT).c $(GEN2C)/gen2.c $(GEN2C)/gen2.h $(GEN2C)/gen2_blit.s \
                 $(APPLE1C)/apple1io.c $(APPLE1C)/apple1io.h \
                 $(APPLE1C)/apple1io_asm.s $(GEN2CFG)
 	$(CL65) $(CFLAGS) -C $(GEN2CFG) $(INCS) $(SRCS) -o $(PROJECT).bin
 
 clean:
-	rm -f $(PROJECT).bin $(PROJECT).o gen2.o apple1io.o apple1io_asm.o
+	rm -f $(PROJECT).bin $(PROJECT).o gen2.o gen2_blit.o apple1io.o apple1io_asm.o

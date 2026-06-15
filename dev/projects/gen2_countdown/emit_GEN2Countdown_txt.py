@@ -39,6 +39,7 @@ def main() -> int:
         "-I", str(GEN2C), "-I", str(APPLE1C),
         str(PROJ / "GEN2Countdown.c"),
         str(GEN2C / "gen2.c"),
+        str(GEN2C / "gen2_blit.s"),
         str(APPLE1C / "apple1io.c"),
         str(APPLE1C / "apple1io_asm.s"),
         "-o", str(out_bin),

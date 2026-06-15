@@ -730,12 +730,12 @@ static std::string teleDecodeValue(TeleFieldType type, const unsigned char* p, s
 // Game-agnostic: every row name/type/value comes from the game's own schema. If
 // no schema frame has been seen yet, show a greyed hint (the raw Serial Monitor
 // below still carries the bytes).
-static void renderTelemetryDecodedState(const std::vector<unsigned char>& bytes)
+static void renderTelemetryDecodedState(const std::vector<unsigned char>& schemaFrame,
+                                        const std::vector<unsigned char>& bytes)
 {
     ImGui::SeparatorText("Decoded state");
 
-    std::size_t schemaBegin = 0, schemaLen = 0;
-    if (!teleFindLastFrame(bytes, TelemetryPort::kSchemaSentinel, schemaBegin, schemaLen)) {
+    if (schemaFrame.empty()) {
         ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.6f, 0.6f, 0.6f, 1.0f));
         ImGui::TextWrapped("No schema frame — showing raw bytes below. A game can emit a "
                            "schema frame (TELE_CTRL=$03) so its fields appear here by name. "
@@ -745,7 +745,7 @@ static void renderTelemetryDecodedState(const std::vector<unsigned char>& bytes)
     }
 
     std::vector<TeleField> fields;
-    teleParseSchema(bytes.data() + schemaBegin, schemaLen, fields);
+    teleParseSchema(schemaFrame.data(), schemaFrame.size(), fields);
     if (fields.empty()) {
         ImGui::TextDisabled("Schema frame seen but no valid field descriptors decoded.");
         return;
@@ -891,17 +891,42 @@ void MainWindow_ImGui::renderTelemetryWindow()
                                              snap.txTap.end());
                 telemetryLastTxTotal = total;
                 telemetryMonitorDirty = true;
+
+                // Latch the schema frame BEFORE trimming. A game emits its schema
+                // ONCE at startup, so it is the oldest frame and the first to be
+                // evicted by the cap — without latching it, the "Decoded state"
+                // loses its schema and flickers between decoded and "no schema".
+                {
+                    std::size_t sBegin = 0, sLen = 0;
+                    if (teleFindLastFrame(telemetryMonitorBytes,
+                                          TelemetryPort::kSchemaSentinel, sBegin, sLen))
+                        telemetrySchemaFrame.assign(
+                            telemetryMonitorBytes.begin() + static_cast<std::ptrdiff_t>(sBegin),
+                            telemetryMonitorBytes.begin() + static_cast<std::ptrdiff_t>(sBegin + sLen));
+                }
+
+                // Trim at FRAME boundaries (whole [sentinel][len][payload] frames)
+                // so byte 0 always stays a frame start — a mid-frame trim desyncs
+                // the decoded-state parser and is the other half of the flicker.
                 constexpr std::size_t kCap = 64 * 1024;
-                if (telemetryMonitorBytes.size() > kCap)
+                if (telemetryMonitorBytes.size() > kCap) {
+                    const std::size_t want = telemetryMonitorBytes.size() - kCap;
+                    std::size_t cut = 0;
+                    while (cut < want && cut + 3 <= telemetryMonitorBytes.size()) {
+                        const std::size_t len = telemetryMonitorBytes[cut + 1] |
+                            (static_cast<std::size_t>(telemetryMonitorBytes[cut + 2]) << 8);
+                        if (cut + 3 + len > telemetryMonitorBytes.size()) break;
+                        cut += 3 + len;
+                    }
                     telemetryMonitorBytes.erase(telemetryMonitorBytes.begin(),
-                        telemetryMonitorBytes.begin() +
-                        static_cast<std::ptrdiff_t>(telemetryMonitorBytes.size() - kCap));
+                        telemetryMonitorBytes.begin() + static_cast<std::ptrdiff_t>(cut));
+                }
             }
 
             // ---- Decoded state (schema-driven, game-agnostic) ----
-            // Built from telemetryMonitorBytes, which the TX-tap block above has
-            // just refreshed, so it reflects the latest schema + data frames.
-            renderTelemetryDecodedState(telemetryMonitorBytes);
+            // Uses the LATCHED schema (stable across buffer trims) + the last data
+            // frame from the frame-aligned monitor buffer.
+            renderTelemetryDecodedState(telemetrySchemaFrame, telemetryMonitorBytes);
 
             // ---- Serial Monitor ----
             ImGui::Separator();

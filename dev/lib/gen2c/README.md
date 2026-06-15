@@ -15,12 +15,45 @@ mode itself (`gen2_hgr_init()` does this).
 |---|---|
 | `gen2_hgr_init()`            | graphics + HIRES + page 1 + full screen (call first) |
 | `gen2_hgr_clear(fill)`       | fill the `$2000-$3FFF` page (`0` = black) |
-| `gen2_hgr_plot(x, y)`        | set a white pixel, `x:0..279 y:0..191` |
+| `gen2_hgr_fill_rect(y0,rows,col0,ncols,val)` | **asm** byte-fill a rectangle (fast targeted erase) |
+| `gen2_hgr_fill_pixrect(x,y,w,h)` / `gen2_hgr_clear_pixrect(...)` | **asm** fill / erase a PIXEL rectangle (solid blocks/sprites) |
+| `gen2_hgr_plot(x, y)` / `gen2_hgr_unplot(x, y)` | set / clear a white pixel, `x:0..279 y:0..191` — **asm** |
 | `gen2_hgr_row(y)`            | base address of scanline `y` (Apple II interleave) |
-| `gen2_hgr_puts(x, y, s)`     | draw a white string (Beautiful Boot 8×8 font, 16×16 cells) |
-| `gen2_hgr_putu(x, y, value)` | draw `value` as unsigned decimal (scores/counters) |
+| `gen2_hgr_puts(x, y, s)`     | draw a white string (Beautiful Boot 8×8 font, 16×16 cells) — **asm** |
+| `gen2_hgr_putu(x, y, value)` | draw `value` as unsigned decimal (scores/counters) — **asm** |
 | `gen2_wait_vbl()`            | coarse spin until vertical blank |
 | `gen2_text()` … `gen2_hires()` | the eight `$C25x` soft-switch macros |
+
+### Assembly fast paths (`gen2_blit.s`)
+
+The text and erase hot paths run in hand-written 6502 (the C alone computed
+`x/7` / `x%7` software divisions per pixel — no hardware DIV on the 6502 — which
+cost millions of cycles for one line of text):
+
+- **`gen2_blit_glyph`** — the inner loop of `gen2_hgr_puts`/`putu`. The C wrapper
+  passes the glyph's starting byte column + bit mask (one division per *glyph*),
+  then the asm walks the 16 doubled pixels of each row advancing the column/mask
+  incrementally — zero per-pixel division. ~10× faster text.
+- **`gen2_fill_rect_asm`** — the inner loop of `gen2_hgr_fill_rect`: stores `val`
+  into a rectangle of whole framebuffer bytes. Erasing the band behind a digit
+  this way beats per-pixel `gen2_hgr_unplot` by a wide margin.
+- **`gen2_plot_asm` / `gen2_unplot_asm`** — the bodies of `gen2_hgr_plot` /
+  `gen2_hgr_unplot`. The byte column (`x/7`) and bit mask (`1<<x%7`) come from the
+  `gen2_col7` / `gen2_mask7` lookup tables instead of per-pixel division — ~4×
+  faster per pixel.
+- **`gen2_pixrect_asm`** — behind `gen2_hgr_fill_pixrect` / `clear_pixrect`. Draws
+  or erases a whole PIXEL rectangle in one call: a left partial byte, a tight
+  `STA` run of full bytes, and a right partial byte, per scanline. The C side just
+  clips and passes `x/xr/y/h/mode`; the asm derives columns + edge masks. **~10×
+  faster than a per-pixel `gen2_hgr_plot` double loop** — a 6×6 block is one call
+  instead of 36. This is the primitive for block/tile/sprite games like Snake.
+
+These read scanline base addresses from the `gen2_rowlo`/`gen2_rowhi` tables —
+and `plot`/`unplot` also the `gen2_col7`/`gen2_mask7` x-lookup tables — that
+`gen2.c` builds once. **Any project that compiles `gen2.c` must also assemble
+`gen2_blit.s`** (the per-project Makefile / emit script and the POM1 Bench
+already do). Parameters travel through a zero-page block (`#pragma zpsym`), so
+no cc65 stack juggling.
 
 ## Minimal program
 
@@ -42,7 +75,7 @@ Build (run `6000R`):
 
 ```bash
 cl65 -t none -Oirs -C ../../cc65/apple1_gen2_c.cfg -I . -I ../apple1c \
-     hello.c gen2.c ../apple1c/apple1io.c ../apple1c/apple1io_asm.s -o hello.bin
+     hello.c gen2.c gen2_blit.s ../apple1c/apple1io.c ../apple1c/apple1io_asm.s -o hello.bin
 ```
 
 Or just pick **GEN2 HGR (C)** in the *POM1 Bench* — it wires all of this for you.

@@ -15,15 +15,17 @@
  *                          --preset 12 --load 6000:<bin> --run 6000
  *
  * Telemetry: FREE-RUN (no lock-step) so the game plays live. Schema declares
- * EXACTLY 4 fields, in order: head_x:U8, head_y:U8, length:U8, alive:BOOL.
- * Per-tick DATA frame = [head_x, head_y, length, alive]. Harness can also drive
- * the snake by pushing a direction byte to TELE_IN (1=up 2=down 3=left 4=right).
+ * EXACTLY 5 fields, in order: head_x:U8, head_y:U8, length:U8, alive:BOOL,
+ * score:U16. Per-tick DATA frame = [head_x, head_y, length, alive, score].
+ * Harness can also drive the snake by pushing a direction byte to TELE_IN
+ * (1=up 2=down 3=left 4=right).
  *
  * --- Cell -> pixel mapping -------------------------------------------------
  * The 280x192 HIRES screen is divided into 8x8-pixel CELLS: 35 columns
  * (0..34, x = col*8) by 24 rows (0..23, y = row*8). A snake segment / the food
  * fills a 6x6 block inside its cell (a 1px gap on the right + bottom keeps the
- * grid readable). A 1px white border is drawn around the whole 35x24 field.
+ * grid readable). Top + bottom walls only (1px rules); the left/right sides are
+ * OPEN — the snake wraps horizontally from one edge to the other.
  * ---------------------------------------------------------------------------
  */
 #include "gen2.h"
@@ -56,6 +58,13 @@ static unsigned char pending;      /* queued heading (applied next tick) */
 static unsigned char alive;        /* 1 = playing, 0 = dead */
 static unsigned char foodx, foody; /* food cell */
 static unsigned int  score;        /* food eaten */
+static unsigned int  score_shown;  /* last score value drawn to the HUD (redraw-on-change) */
+static unsigned char layout = 1u;  /* keyboard: 1 = QWERTY (WASD), 2 = AZERTY (ZQSD) */
+/* Throttle iterations; lower = faster, shrinks per apple. The starting value is
+ * tuned so the per-tick busy-wait is HALF the original 9000-constant loop (a
+ * genuine x2 start speed): the variable-bound loop costs ~96 cyc/iter vs ~76 for
+ * a constant bound, so 9000*76/2/96 ~= 3565. */
+static unsigned int  tick_spins = 3565u;
 
 /* 16-bit LFSR PRNG (Galois), seeded from key-press timing at startup. */
 static unsigned int rng_state = 0xACE1u;
@@ -68,31 +77,18 @@ static unsigned int prng(void)
     return rng_state;
 }
 
-/* Fill a BLOCK x BLOCK white square at cell (cx, cy). */
+/* Fill a BLOCK x BLOCK white square at cell (cx, cy) in ONE asm call
+ * (gen2_hgr_fill_pixrect) instead of a 36-plot double loop — ~10x faster. */
 static void draw_cell(unsigned char cx, unsigned char cy)
 {
-    unsigned px = (unsigned)cx * CELL;
-    unsigned char py = cy * (unsigned char)CELL;
-    unsigned char r, c;
-    for (r = 0; r < BLOCK; ++r) {
-        for (c = 0; c < BLOCK; ++c) {
-            gen2_hgr_plot(px + c, (unsigned char)(py + r));
-        }
-    }
+    gen2_hgr_fill_pixrect((unsigned)cx * CELL, cy * (unsigned char)CELL, BLOCK, BLOCK);
 }
 
-/* Erase a cell — clears the BLOCK x BLOCK area so the snake's vacated tail can
- * be removed without touching the walls or the rest of the field. */
+/* Erase a cell — clears the BLOCK x BLOCK area (asm gen2_hgr_clear_pixrect) so
+ * the snake's vacated tail goes without touching the walls or the rest. */
 static void erase_cell(unsigned char cx, unsigned char cy)
 {
-    unsigned px = (unsigned)cx * CELL;
-    unsigned char py = cy * (unsigned char)CELL;
-    unsigned char r, c;
-    for (r = 0; r < BLOCK; ++r) {
-        for (c = 0; c < BLOCK; ++c) {
-            gen2_hgr_unplot(px + c, (unsigned char)(py + r));
-        }
-    }
+    gen2_hgr_clear_pixrect((unsigned)cx * CELL, cy * (unsigned char)CELL, BLOCK, BLOCK);
 }
 
 /* Draw the food as a small hollow diamond (a 6x6 block with corners clipped) so
@@ -116,31 +112,29 @@ static void draw_food(unsigned char cx, unsigned char cy)
     gen2_hgr_plot(px + 3, (unsigned char)(py + 5));
 }
 
-/* Border around the play area. The top wall sits at row TOP_WALL (leaving the
- * two rows above it as the score HUD); the snake never reaches it. */
+/* Top and bottom walls only — the left/right sides are OPEN so the snake wraps
+ * horizontally (see the wrap in tick()). Each wall is a 1px rule hugging the
+ * outermost playable row (so the snake dies exactly when it reaches it, with no
+ * empty-cell gap), drawn with a whole-byte fill_rect across the interior byte
+ * columns — entirely on the asm fast path, no per-pixel plot loop. */
 static void draw_border(void)
 {
-    unsigned x;
-    unsigned char y;
-    const unsigned char top = (unsigned char)(TOP_WALL * CELL);   /* y = 16 */
-    const unsigned char bot = (unsigned char)(ROWS * CELL - 1u);  /* y = 191 */
-    for (x = 0; x < COLS * CELL; ++x) {
-        gen2_hgr_plot(x, top);
-        gen2_hgr_plot(x, bot);
-    }
-    for (y = top; y <= bot; ++y) {
-        gen2_hgr_plot(0, y);
-        gen2_hgr_plot((unsigned)(COLS * CELL - 1u), y);
-    }
+    const unsigned char top = (unsigned char)((TOP_WALL + 1u) * CELL - 1u);  /* y = 23  */
+    const unsigned char bot = (unsigned char)((ROWS - 1u) * CELL);           /* y = 184 */
+    gen2_hgr_fill_rect(top, 1u, 1u, (COLS * CELL) / 7u - 2u, 0x7Fu);         /* top rule    */
+    gen2_hgr_fill_rect(bot, 1u, 1u, (COLS * CELL) / 7u - 2u, 0x7Fu);         /* bottom rule */
 }
 
-/* Place food on an empty cell (avoid the border ring and the snake body). */
+/* Place food on an empty cell INSIDE the playable field (avoid the border ring,
+ * the score HUD above the top wall, and the snake body). The playable rows are
+ * TOP_WALL+1 .. ROWS-2 — same bounds the wall-collision test enforces — so food
+ * can never land in the HUD strip above the top wall. */
 static void place_food(void)
 {
     unsigned char ok, i;
     do {
-        foodx = (unsigned char)(1u + prng() % (COLS - 2u));
-        foody = (unsigned char)(1u + prng() % (ROWS - 2u));
+        foodx = (unsigned char)(1u + prng() % (COLS - 2u));               /* cols 1..COLS-2 */
+        foody = (unsigned char)((TOP_WALL + 1u) + prng() % (ROWS - TOP_WALL - 2u)); /* rows TOP_WALL+1..ROWS-2 */
         ok = 1;
         for (i = 0; i < slen; ++i) {
             if (sx[i] == foodx && sy[i] == foody) { ok = 0; break; }
@@ -148,23 +142,25 @@ static void place_food(void)
     } while (!ok);
 }
 
-/* Declare the telemetry schema ONCE (head_x, head_y, length, alive). */
+/* Declare the telemetry schema ONCE (head_x, head_y, length, alive, score). */
 static void emit_schema(void)
 {
     tele_field(TELE_T_U8,   "head_x");
     tele_field(TELE_T_U8,   "head_y");
     tele_field(TELE_T_U8,   "length");
     tele_field(TELE_T_BOOL, "alive");
+    tele_field(TELE_T_U16,  "score");    /* apples eaten (0..65535)              */
     tele_schema_close();
 }
 
-/* Emit one per-tick DATA frame: [head_x, head_y, length, alive]. */
+/* Emit one per-tick DATA frame: [head_x, head_y, length, alive, score]. */
 static void emit_state(void)
 {
     tele_put(sx[0]);
     tele_put(sy[0]);
     tele_put(slen);
     tele_put(alive);
+    tele_put16(score);                   /* 2 bytes LE, matches TELE_T_U16       */
     tele_frame();
 }
 
@@ -181,6 +177,8 @@ static void new_game(void)
     pending = DIR_RIGHT;
     alive = 1;
     score = 0;
+    score_shown = 0;           /* redraw() draws score 0; the loop redraws only on change */
+    tick_spins = 3565u;        /* reset to the (genuine x2) starting speed (layout kept) */
     place_food();
 }
 
@@ -194,17 +192,21 @@ static void set_dir(unsigned char d)
     pending = d;
 }
 
-/* Read keyboard (WASD + ZQSD) and the harness TELE_IN direction byte. */
+/* Read the keyboard for the layout chosen at startup, plus the harness TELE_IN
+ * direction byte. Down/right are S/D in both layouts; only up/left differ —
+ * QWERTY = W/A, AZERTY = Z/Q — so a key meant for the other layout is ignored. */
 static void read_input(void)
 {
     unsigned char k = apple1_readkey();
     if (k) {
-        switch (k) {
-            case 'W': case 'w': case 'Z': case 'z': set_dir(DIR_UP);    break;
-            case 'S': case 's':                     set_dir(DIR_DOWN);  break;
-            case 'A': case 'a': case 'Q': case 'q': set_dir(DIR_LEFT);  break;
-            case 'D': case 'd':                     set_dir(DIR_RIGHT); break;
-            default: break;
+        if (k == 'S' || k == 's')      set_dir(DIR_DOWN);
+        else if (k == 'D' || k == 'd') set_dir(DIR_RIGHT);
+        else if (layout == 2u) {                 /* AZERTY: ZQSD */
+            if (k == 'Z' || k == 'z')      set_dir(DIR_UP);
+            else if (k == 'Q' || k == 'q') set_dir(DIR_LEFT);
+        } else {                                 /* QWERTY: WASD */
+            if (k == 'W' || k == 'w')      set_dir(DIR_UP);
+            else if (k == 'A' || k == 'a') set_dir(DIR_LEFT);
         }
     }
     /* Harness-driven direction: 1=up 2=down 3=left 4=right. */
@@ -230,10 +232,13 @@ static void tick(void)
         default: break;
     }
 
-    /* Wall collision: the playable area is cells 1..COLS-2 / 1..ROWS-2 (the
-     * outer ring is the border). */
-    if (nx == 0 || nx >= (unsigned char)(COLS - 1u) ||
-        ny <= TOP_WALL || ny >= (unsigned char)(ROWS - 1u)) {
+    /* Horizontal WRAP — no left/right walls: cols 1..COLS-2 form a ring, so a
+     * head leaving one side reappears on the other. (nx is unsigned char, so
+     * --nx from col 1 gives 0 and ++nx from col COLS-2 gives COLS-1.) */
+    if (nx < 1u)                                   nx = (unsigned char)(COLS - 2u);
+    else if (nx > (unsigned char)(COLS - 2u))      nx = 1u;
+    /* Top and bottom walls still kill. */
+    if (ny <= TOP_WALL || ny >= (unsigned char)(ROWS - 1u)) {
         alive = 0;
         return;
     }
@@ -256,9 +261,25 @@ static void tick(void)
     sy[0] = ny;
 
     if (grow) {
-        ++score;
+        score += 5u;                  /* each apple is worth 5 points */
+        /* Each apple speeds the snake up: shorten the throttle. Low floor + a
+         * gentle step so the speed keeps climbing for many apples instead of
+         * capping early (3565 -> ~365 over ~16 apples) — the end game gets
+         * genuinely fast. The floor stays > 0 so the throttle never vanishes. */
+        if (tick_spins > 400u) tick_spins -= 200u;
         place_food();
     }
+}
+
+/* Draw the score HUD (top-left). The glyph blitter ORs pixels into the
+ * framebuffer, so the digit band MUST be cleared first — otherwise each new
+ * value is OR'd on top of the previous one (e.g. "10" over "9") and the digits
+ * smear into garbage. The band (y=0..15) sits well above the top wall (y=23),
+ * so clearing it never touches the playfield. */
+static void draw_score(void)
+{
+    gen2_hgr_clear_pixrect(8u, 0u, 90u, 16u);   /* erase old digits (up to 5) */
+    gen2_hgr_putu(8, 0, score);
 }
 
 /* Full draw — clear + walls/border + food + whole snake + score. Called ONCE
@@ -272,8 +293,8 @@ static void redraw(void)
     draw_border();
     draw_food(foodx, foody);
     for (i = 0; i < slen; ++i) draw_cell(sx[i], sy[i]);
-    /* Score, top-left inside the field (BBFont 16x16 cells). */
-    gen2_hgr_putu(8, 0, score);
+    draw_score();                       /* score, top-left (BBFont 16x16 cells) */
+    gen2_hgr_puts(184, 0, "SNAKE");    /* title, top-right (white — see note on colour) */
 }
 
 /* Plain CPU-spin throttle for a playable tick rate. We deliberately do NOT call
@@ -284,38 +305,43 @@ static void redraw(void)
 static void throttle(void)
 {
     unsigned int n;
-    for (n = 0; n < 9000u; ++n) { /* busy spin */ }
+    unsigned int lim = tick_spins;   /* LOCAL copy: a global loop bound makes cc65
+                                       * reload it every iteration (~3x slower per
+                                       * spin) — a local keeps the busy loop tight,
+                                       * so halving tick_spins really doubles speed. */
+    for (n = 0; n < lim; ++n) { /* busy spin; tick_spins shrinks per apple */ }
 }
 
 void main(void)
 {
     unsigned int t;
 
-    /* ---- Title page: the name + BOTH control layouts, clearly labelled. Both
-     * work simultaneously (no selection needed), so we just show them. ---- */
+    /* ---- Title page: the name + the two control layouts, each prefixed with the
+     * key that selects it. Press 1 for QWERTY (WASD) or 2 for AZERTY (ZQSD). ---- */
     gen2_hgr_init();
     gen2_hgr_clear(0);
     gen2_hgr_puts(56,  16, "GEN2 SNAKE");
-    gen2_hgr_puts(20,  64, "QWERTY  WASD");
-    gen2_hgr_puts(20,  96, "AZERTY  ZQSD");
-    gen2_hgr_puts(56, 150, "GET READY");
+    gen2_hgr_puts(10,  64, "1 QWERTY  WASD");
+    gen2_hgr_puts(10,  96, "2 AZERTY  ZQSD");
+    gen2_hgr_puts(38, 150, "PRESS 1 OR 2");
 
     /* Telemetry: declare the schema once, then run free (live play, fire-hose). */
     emit_schema();
     tele_freerun();
 
-    /* Hold the title briefly, then AUTO-START — no blocking "press a key" gate
-     * (under the DevBench the Apple-1 keyboard usually isn't focused, which would
-     * freeze the game and its telemetry). A key / harness byte starts early.
+    /* Hold the title until the player picks a layout with '1' or '2', or AUTO-START
+     * with the QWERTY default after the timeout (under the DevBench the Apple-1
+     * keyboard is usually unfocused, and the harness drives play with no key).
      * gen2_hgr_init() is re-asserted DURING this hold so the title appears once
-     * the GEN2 card finishes its deferred plug — but NOT inside the game loop:
-     * keeping the soft-switch journal empty there lets the fast per-scanline
-     * diffed render path pick up the incremental tail-erase. (Re-asserting every
-     * frame forces the beam-race path, which left the old tail on screen — the
-     * snake then looked like it grew every step.) */
-    for (t = 0; t < 40u; ++t) {
+     * the GEN2 card finishes its deferred plug. */
+    layout = 1u;                       /* default if the title times out */
+    for (t = 0; t < 90u; ++t) {
+        unsigned char k;
         gen2_hgr_init();
-        if (apple1_readkey() != 0 || tele_inlen() != 0) break;
+        k = apple1_readkey();
+        if (k == '1') { layout = 1u; break; }
+        if (k == '2') { layout = 2u; break; }
+        if (tele_inlen() != 0) break;
         throttle();
     }
 
@@ -340,14 +366,18 @@ void main(void)
             tick();
             if (alive) {
                 /* INCREMENTAL redraw — walls/border were drawn once in redraw();
-                 * here we only touch the snake (+ score on growth). */
+                 * here we only touch the snake, the food, and the score. */
                 if (slen == olen) {
                     erase_cell(otx, oty);          /* snake moved: clear old tail */
                 } else {
-                    draw_food(foodx, foody);       /* grew: show the new food ... */
-                    gen2_hgr_putu(8, 0, score);   /* ... and the new score       */
+                    draw_food(foodx, foody);       /* grew: show the new food     */
                 }
                 draw_cell(sx[0], sy[0]);           /* draw the new head           */
+                /* Score: redraw ONLY when it actually changes — not every frame. */
+                if (score != score_shown) {
+                    draw_score();
+                    score_shown = score;
+                }
             }
             emit_state();          /* one DATA frame per tick */
             throttle();

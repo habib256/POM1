@@ -183,11 +183,22 @@ void CodeBench::render(const char* title, bool* open)
     if (pillBtn(ICON_FA_CHECK,       "", "##benchverify", "Verify - compile only")) doVerify();
     ImGui::SameLine(0, 6);
     if (pillBtn(ICON_FA_ARROW_RIGHT, "", "##benchupload", "Run - build and run on the emulator")) doUpload();
-    // CPU-control group, bracketed by dividers from the build pills on its left
-    // and the file actions on its right. One play/stop TOGGLE reflecting the
-    // live CPU state (▶ green to resume when halted, ■ red to halt when running)
-    // plus single-step. The "Run" pill above builds + deploys; this toggle just
-    // resumes/halts the already-loaded program.
+    // File-action group, separated from the build pills on its left.
+    sep();
+    ImGui::SameLine(0, 6);
+    if (circleBtn(ICON_FA_FILE,          "##benchnew",      "New sketch (pick language + target)")) doNewChoose();
+    ImGui::SameLine(0, 6);
+    if (circleBtn(ICON_FA_FOLDER_OPEN,   "##benchopen",     "Open file (browse dev/)")) browse(false);
+    ImGui::SameLine(0, 6);
+    if (circleBtn(ICON_FA_FLOPPY_DISK,   "##benchsave",     "Save file (browse)"))      browse(true);
+    if (!host_->examples().empty()) {
+        ImGui::SameLine(0, 6);
+        if (circleBtn(ICON_FA_BOOK,      "##benchexamples", "Examples")) openExamplesPopup = true;
+    }
+    // CPU-control group, now AFTER the file actions (its own divider moves with
+    // it). One play/stop TOGGLE reflecting the live CPU state (▶ green to resume
+    // when halted, ■ red to halt when running) plus single-step. The "Run" pill
+    // above builds + deploys; this toggle just resumes/halts the loaded program.
     if (host_->hasStop()) {
         sep();
         ImGui::SameLine(0, 6);
@@ -207,17 +218,6 @@ void CodeBench::render(const char* title, bool* open)
             std::string s = host_->cpuStep();   // "Stepped - PC: 0x...."
             status_ = s.empty() ? "Stepped" : s; statusOk_ = true;
         }
-    }
-    sep();
-    ImGui::SameLine(0, 6);
-    if (circleBtn(ICON_FA_FILE,          "##benchnew",      "New sketch (pick language + target)")) doNewChoose();
-    ImGui::SameLine(0, 6);
-    if (circleBtn(ICON_FA_FOLDER_OPEN,   "##benchopen",     "Open file (browse dev/)")) browse(false);
-    ImGui::SameLine(0, 6);
-    if (circleBtn(ICON_FA_FLOPPY_DISK,   "##benchsave",     "Save file (browse)"))      browse(true);
-    if (!host_->examples().empty()) {
-        ImGui::SameLine(0, 6);
-        if (circleBtn(ICON_FA_BOOK,      "##benchexamples", "Examples")) openExamplesPopup = true;
     }
 
     // Right-aligned cluster: the cc65 toolchain status is pinned to the far

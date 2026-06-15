@@ -253,6 +253,7 @@ private:
     // style in-app SDK). Accumulates the TX wire stream tapped by TelemetryPort
     // and drives synthetic inbound input. See TODO.md › POM1 Bench.
     std::vector<unsigned char> telemetryMonitorBytes;  // accumulated TX wire bytes (capped)
+    std::vector<unsigned char> telemetrySchemaFrame;   // latched last schema-frame payload (survives buffer trim)
     std::string telemetryMonitorText;                  // cached hex/text rendering
     uint64_t telemetryLastTxTotal = 0;                 // last Snapshot.txTotal consumed
     bool telemetryMonitorHex = true;                   // hex dump vs raw-text view

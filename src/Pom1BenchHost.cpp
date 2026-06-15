@@ -853,6 +853,7 @@ bench::BuildResult Pom1BenchHost::build(int target, const std::string& src, cons
             cmd = bench::shellQuote(cl65_) + " -t none -Oirs -C " + bench::shellQuote(gen2Cfg_) +
                 " -I " + bench::shellQuote(gen2cLib_) + a1c + tele + " " + bench::shellQuote(srcC.string()) +
                 " " + bench::shellQuote(gen2cLib_ + "/gen2.c") +
+                " " + bench::shellQuote(gen2cLib_ + "/gen2_blit.s") +
                 " -o " + bench::shellQuote(binB.string());
         } else if (plainc) {
             tag = "Apple-1 text";

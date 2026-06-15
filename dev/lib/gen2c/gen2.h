@@ -39,8 +39,31 @@ void gen2_hgr_init(void);
 /* Fill the HIRES page-1 framebuffer ($2000-$3FFF) with `fill` (0 = black). */
 void gen2_hgr_clear(unsigned char fill);
 
+/* Fast byte-aligned rectangle fill of HIRES page 1, via a hand-written 6502
+ * inner loop (gen2_blit.s). Fills `rows` scanlines from y0, byte columns
+ * [col0, col0+ncols), with `val` (0 = erase). Horizontally byte-granular
+ * (7px/byte, so col = x/7, ncols = how many 7px-wide bytes). This is the fast
+ * way to erase the area behind text / a sprite without clearing the whole
+ * screen — far cheaper than per-pixel gen2_hgr_unplot. The rectangle is clipped
+ * to the screen. Example: erase a 16x16 digit drawn at x=123,y=88 ->
+ * gen2_hgr_fill_rect(88, 16, 16, 8, 0). */
+void gen2_hgr_fill_rect(unsigned char y0, unsigned char rows,
+                        unsigned char col0, unsigned char ncols,
+                        unsigned char val);
+
 /* Base address of HIRES scanline y (0..191) in page 1 — Apple II interleave. */
 unsigned char *gen2_hgr_row(unsigned char y);
+
+/* Fill / erase a PIXEL-aligned rectangle [x, x+w) × [y, y+h) via a hand-written
+ * 6502 inner loop (gen2_blit.s) — unlike gen2_hgr_fill_rect these take pixel x/w,
+ * not byte columns, so partial edge bytes are handled. fill = white, clear =
+ * black. This is the fast way to draw/erase solid blocks (game tiles, sprites,
+ * bars): one call replaces a per-pixel gen2_hgr_plot double loop (e.g. a 6×6
+ * Snake cell = 1 call vs 36 plots). x:0..279, y:0..191; w (≤255) is clipped to
+ * the right edge, h to the bottom. For full-width spans prefer gen2_hgr_fill_rect
+ * (byte-aligned) or gen2_hgr_clear. */
+void gen2_hgr_fill_pixrect(unsigned x, unsigned char y, unsigned char w, unsigned char h);
+void gen2_hgr_clear_pixrect(unsigned x, unsigned char y, unsigned char w, unsigned char h);
 
 /* Set a white pixel. x: 0..279, y: 0..191. Apple II interleaved HIRES layout. */
 void gen2_hgr_plot(unsigned x, unsigned char y);
