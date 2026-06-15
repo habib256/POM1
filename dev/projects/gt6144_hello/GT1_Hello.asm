@@ -34,7 +34,7 @@
 ;   224 <= byte     : control opcode (not used here)
 ; =============================================
 
-GT_PORT   = $D00A
+.include "gt6144.inc"
 .include "apple1.inc"
 ; Woz Monitor GETLINE entry. $FF1A prints '\' (the prompt) + CR and falls
 ; through to the keyboard-wait loop. $FF1F is tempting (it's the label at

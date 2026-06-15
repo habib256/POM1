@@ -57,7 +57,7 @@
 
 ; ----- Apple 1 I/O -----
 .include "apple1.inc"
-GT_PORT  = $D00A
+.include "gt6144.inc"
 ; Woz Monitor GETLINE entry that prints '\' + CR (real prompt). $FF1F
 ; would skip the '\' — see GT1_Hello.asm for the trap rationale.
 

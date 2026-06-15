@@ -11,7 +11,7 @@ from emit_woz import emit  # noqa: E402
 def main() -> int:
     emit(
         asm_files=["A-1-CrazyCycle.asm"],
-        lib_dirs=["apple1", "hgr"],
+        lib_dirs=["apple1", "hgr", "gen2"],
         cfg="apple1_gen2.cfg",
         out_dir_software="Graphic HGR",
         start_addr=0xE000,

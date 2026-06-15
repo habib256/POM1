@@ -13,15 +13,9 @@
 .setcpu "6502"
 .segment "CODE"
 
-; SID registers (voice 1)
-FREQLO1  = $C800        ; frequency LSB
-FREQHI1  = $C801        ; frequency MSB
-PWM1     = $C802        ; PWM LO byte
-PWM2     = $C803        ; PWM HO (4 bit)
-CR1      = $C804        ; Waveform and Gate
-AD1      = $C805        ; Attack/Decay
-SR1      = $C806        ; Sustain/Release
-VOLUME   = $C818        ; master volume
+; SID registers — adopted from dev/lib/sid/sid.inc
+; (voice-1 regs SID_V1_FREQLO..SID_V1_SR + SID_VOLUME).
+.include "sid.inc"
 
 ; Apple 1 I/O
 .include "apple1.inc"
@@ -61,11 +55,11 @@ LOOP_NOTE:
         JSR PARSER
         JSR SET_OCTAVE
         LDA FREQ_HI
-        STA FREQHI1      ; store MSB freq on SID
+        STA SID_V1_FREQHI      ; store MSB freq on SID
         LDA FREQ_LO
-        STA FREQLO1      ; store LSB freq on SID
+        STA SID_V1_FREQLO      ; store LSB freq on SID
         LDA WAVEFORM
-        STA CR1           ; play the note
+        STA SID_V1_CR           ; play the note
         JSR DELAY
         JSR KILLER
         LDA #$00
@@ -310,7 +304,7 @@ L2:     DEC DELAY_IL
 
 KILLER:
         LDA #$00
-        STA CR1             ; kills the note
+        STA SID_V1_CR             ; kills the note
         RTS
 
 ; ---- Octave division ----
@@ -370,30 +364,30 @@ DEFAULT:
 
 INIT:
         LDA PWMLO
-        STA PWM1             ; store PWM1 on SID
+        STA SID_V1_PWMLO             ; store PWM1 on SID
         LDA PWMHI
-        STA PWM2             ; store PWM2 on SID
+        STA SID_V1_PWMHI             ; store PWM2 on SID
         LDA ATDEC
-        STA AD1              ; Attack/Decay
+        STA SID_V1_AD              ; Attack/Decay
         LDA SUSREL
-        STA SR1              ; Sustain/Release
+        STA SID_V1_SR              ; Sustain/Release
         LDA #$0F
-        STA VOLUME           ; max volume
+        STA SID_VOLUME           ; max volume
         RTS
 
 ; ---- Theremin mode ----
 
 THEREMIN_2:
         LDA WAVEFORM
-        STA CR1              ; play the note (non stop)
+        STA SID_V1_CR              ; play the note (non stop)
         JSR THERLOOP
         ; (never returns — reset to exit)
 
 THERLOOP:
         LDA $C819            ; read paddle X
-        STA FREQHI1          ; store MSB freq in SID
+        STA SID_V1_FREQHI          ; store MSB freq in SID
         LDA $C81A            ; read paddle Y
-        STA FREQLO1          ; store LSB freq in SID
+        STA SID_V1_FREQLO          ; store LSB freq in SID
         JSR THERLOOP         ; infinite recursion (will eventually overflow stack)
 
 ; ---- Welcome screen display ----
