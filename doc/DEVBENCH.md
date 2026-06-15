@@ -20,14 +20,17 @@ New to this? Start with [`QUICKSTART.md`](../QUICKSTART.md) §3.
 1. **DevBench → POM1 Bench**. Click **New** (file icon).
 2. Pick a **Language** (Assembly · `ca65/ld65`, or C · `cc65/cl65`) × a **Machine**.
 3. Edit the starter, then:
-   - **Verify** (✓) — assemble/compile only; errors land in the gutter + console
-     (click an error line to jump to it). A plain-language hint is prepended for
-     common cc65 diagnostics.
-   - **Upload** (▶) — build **and run**. POM1 switches to the target's machine
+   - **Verify** (✓ pill) — assemble/compile only; errors land in the gutter +
+     console (click an error line to jump to it). A plain-language hint is
+     prepended for common cc65 diagnostics.
+   - **Run** (▶ pill) — build **and run**. POM1 switches to the target's machine
      preset, loads the program and starts it; **you don't type a run command**.
+     The status line points you at the window where the output appears (the
+     TMS9918 / GEN2 window opens automatically for graphics targets).
 
-Picking a target applies its **machine preset** (cards + RAM), so Upload always
-runs on the right hardware.
+Picking a target applies its **machine preset** (cards + RAM), so Run always uses
+the right hardware. The tab shows a **`*`** while the sketch has unsaved edits;
+**Ctrl-S** saves (to the open file, or via the Save dialog for a new sketch).
 
 ---
 
@@ -110,8 +113,13 @@ defaults to **Wozmon hex** when it can't find cc65):
 
 ## Tips
 
-- **Examples** (book icon) loads larger, ready-made programs (e.g. the GEN2 HGR
-  *A-1-CrazyCycle* demo, the Telemetry SDK demo) — each sets its own machine.
+- **Examples** (book icon) — a graduated set on the Apple-1 text target (print a
+  character → a string → a loop → read the keyboard, then the same in C), plus
+  larger demos (GEN2 HGR *A-1-CrazyCycle*, the Telemetry SDK demo). Each example
+  selects its own machine.
+- **Toolchain status** (🛠 icon) — a popup showing what the cc65 probe found
+  (ca65/ld65/cl65 paths, whether `dev/` was located, per-target readiness) — your
+  first stop when a target is greyed/orange.
 - **Serial Monitor** (magnifier) opens the Telemetry side channel.
 - **Stop** (■) halts the emulated CPU.
 - **Build errors**: the console echoes the raw `ca65`/`ld65`/`cl65` output; a

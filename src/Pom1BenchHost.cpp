@@ -412,8 +412,100 @@ const char* const kP1MachineHints[] = {
     "built-in font ($C251 TEXT on). Preset 12.",
 };
 
+// Graduated learning examples (inline sources) on the Apple-1 text target. They
+// build on each other: print a char -> a string -> a loop -> read the keyboard,
+// then the same I/O in C. Larger demos (CrazyCycle, Telemetry) follow.
+static const char* kEx_char =
+    "; Example 1 - print one character. The Apple-1 display uses bit 7 as a\n"
+    "; \"data valid\" flag, so ORA #$80 before printing. Return with JMP WOZMON.\n"
+    ".include \"apple1.inc\"\n"
+    ".segment \"CODE\"\n"
+    "start:\n"
+    "    lda #'H'\n"
+    "    ora #$80\n"
+    "    jsr ECHO\n"
+    "    jmp WOZMON\n";
+static const char* kEx_string =
+    "; Example 2 - print a NUL-terminated string in a loop.\n"
+    ".include \"apple1.inc\"\n"
+    ".segment \"CODE\"\n"
+    "start:\n"
+    "    ldx #0\n"
+    "loop:\n"
+    "    lda msg,x\n"
+    "    beq done\n"
+    "    ora #$80\n"
+    "    jsr ECHO\n"
+    "    inx\n"
+    "    bne loop\n"
+    "done:\n"
+    "    jmp WOZMON\n"
+    "msg:\n"
+    "    .byte \"HELLO, APPLE 1!\", $0D, $00\n";
+static const char* kEx_loop =
+    "; Example 3 - count 0 to 9 by incrementing a character.\n"
+    ".include \"apple1.inc\"\n"
+    ".segment \"CODE\"\n"
+    "start:\n"
+    "    lda #'0'\n"
+    "loop:\n"
+    "    ora #$80          ; set bit 7, print the digit\n"
+    "    jsr ECHO\n"
+    "    and #$7F          ; strip it back off before maths\n"
+    "    clc\n"
+    "    adc #1\n"
+    "    cmp #'9'+1\n"
+    "    bne loop\n"
+    "    lda #$8D          ; carriage return\n"
+    "    jsr ECHO\n"
+    "    jmp WOZMON\n";
+static const char* kEx_keyboard =
+    "; Example 4 - echo the keyboard until Return ($0D). KBDCR bit 7 = key ready;\n"
+    "; reading KBD returns the key with bit 7 set, so AND #$7F to get the ASCII.\n"
+    ".include \"apple1.inc\"\n"
+    ".segment \"CODE\"\n"
+    "start:\n"
+    "wait:\n"
+    "    lda KBDCR\n"
+    "    bpl wait\n"
+    "    lda KBD\n"
+    "    and #$7F\n"
+    "    cmp #$0D\n"
+    "    beq done\n"
+    "    ora #$80\n"
+    "    jsr ECHO\n"
+    "    jmp wait\n"
+    "done:\n"
+    "    jmp WOZMON\n";
+static const char* kEx_c_hello =
+    "/* Example 5 - hello in C on the plain text Apple-1 (shared apple1c base). */\n"
+    "#include \"apple1io.h\"\n"
+    "void main(void) {\n"
+    "    woz_puts((const unsigned char *)\"\\rHELLO FROM C\\r\");\n"
+    "    woz_mon();\n"
+    "}\n";
+static const char* kEx_c_keyboard =
+    "/* Example 6 - echo the keyboard in C until Return. */\n"
+    "#include \"apple1io.h\"\n"
+    "void main(void) {\n"
+    "    unsigned char k;\n"
+    "    woz_puts((const unsigned char *)\"\\rTYPE (Return quits):\\r\");\n"
+    "    for (;;) {\n"
+    "        k = apple1_getkey();\n"
+    "        if (k == 13) break;\n"
+    "        woz_putc(k);\n"
+    "    }\n"
+    "    woz_mon();\n"
+    "}\n";
+
 struct P1Ex { const char* label; bool file; const char* data; int target; const char* asset; uint16_t addr; };
 const P1Ex kP1Examples[] = {
+    { "1 - Print a character (asm)",       false, kEx_char,       0, "", 0 },
+    { "2 - Print a string (asm)",          false, kEx_string,     0, "", 0 },
+    { "3 - Count 0 to 9 (asm)",            false, kEx_loop,       0, "", 0 },
+    { "4 - Echo the keyboard (asm)",       false, kEx_keyboard,   0, "", 0 },
+    { "5 - Hello in C",                    false, kEx_c_hello,    4, "", 0 },
+    { "6 - Keyboard echo in C",            false, kEx_c_keyboard, 4, "", 0 },
     { "A-1-CrazyCycle  (Bernie GEN2 HGR)", true,  "dev/projects/a1_crazycycle/A-1-CrazyCycle.asm", 2,
       "sdcard/NONO/HGR/UBERNIE#062000", 0x2000 },
     { "Telemetry demo  (SDK harness)",     true,  "dev/projects/a1_telemetry_demo/A1_TelemetryDemo.asm", 0, "", 0 },
@@ -810,7 +902,9 @@ bench::BuildResult Pom1BenchHost::build(int target, const std::string& src, cons
         std::string error; int bytesLoaded = 0;
         if (emu->loadBinary(binB.string(), entry, error, &bytesLoaded)) {
             emu->copySnapshot(mw_->uiSnapshot);
-            char msg[128]; std::snprintf(msg, sizeof(msg), "Built %d B - running @ $%04X", bytesLoaded, entry);
+            const char* where = "";   // point the user at where the output appears
+            if (gen2c) { mw_->showGraphicsCard = true; where = " - see the GEN2 HGR window"; }
+            char msg[160]; std::snprintf(msg, sizeof(msg), "Built %d B - running @ $%04X%s", bytesLoaded, entry, where);
             r.status = msg; r.ok = true;
         } else { r.status = "load failed: " + error; r.ok = false; }
         return r;
@@ -840,7 +934,7 @@ bench::BuildResult Pom1BenchHost::build(int target, const std::string& src, cons
         mw_->codeTankPendingWozRunAt = ImGui::GetTime() + 1.0;
         emu->copySnapshot(mw_->uiSnapshot);
         r.console += "[ok] flashed CODETANKDEV.rom (lower bank) - 4000R\n";
-        r.status = "CODETANKDEV.rom flashed - booting 4000R"; r.ok = true;
+        r.status = "CODETANKDEV.rom flashed - booting 4000R - see the TMS9918 window"; r.ok = true;
         return r;
     }
 
@@ -861,7 +955,9 @@ bench::BuildResult Pom1BenchHost::build(int target, const std::string& src, cons
     std::string error; int bytesLoaded = 0;
     if (emu->loadBinary(binB.string(), entry, error, &bytesLoaded)) {
         emu->copySnapshot(mw_->uiSnapshot);
-        char msg[128]; std::snprintf(msg, sizeof(msg), "Built %d B - running @ $%04X", bytesLoaded, entry);
+        const char* where = "";   // GEN2 asm targets render in the graphics window
+        if (t.preset == 12) { mw_->showGraphicsCard = true; where = " - see the GEN2 HGR window"; }
+        char msg[160]; std::snprintf(msg, sizeof(msg), "Built %d B - running @ $%04X%s", bytesLoaded, entry, where);
         r.status = msg; r.ok = true;
     } else { r.status = "load failed: " + error; r.ok = false; }
     return r;
@@ -889,6 +985,34 @@ std::string Pom1BenchHost::toolchainHint(int target) const
     probe();
     if (!t.needsCl65) return toolchainOk_ ? "ca65/ld65 ready" : "needs cc65 (ca65/ld65)";
     return toolchainReady(target) ? "cl65 ready" : "needs cl65 + dev/";
+}
+
+std::string Pom1BenchHost::toolchainReport() const
+{
+    probe();
+#if POM1_IS_WASM
+    return "DevBench is desktop-only - the web build has no cc65 toolchain.\n";
+#else
+    auto line = [](const char* name, const std::string& path) {
+        return std::string(name) + (path.empty() ? " : not found" : (" : " + path)) + "\n";
+    };
+    auto yn = [](bool b) { return b ? "ready" : "MISSING"; };
+    std::string s = "cc65 toolchain (DevBench probe)\n-------------------------------\n";
+    s += line("ca65 (assembler)", ca65_);
+    s += line("ld65 (linker)   ", ld65_);
+    s += line("cl65 (C driver) ", cl65_);
+    s += std::string("dev/ source tree : ") +
+         (libFlags_.empty() ? "NOT found (clone the repo - release bundles omit dev/)" : "found") + "\n";
+    s += "\nPer-target runtime:\n";
+    s += std::string("  asm (any machine)   : ") + yn(toolchainOk_) + "\n";
+    s += std::string("  C  Apple-1 text     : ") + yn(plainCOk_) + "\n";
+    s += std::string("  C  GEN2 HGR (gen2c) : ") + yn(gen2COk_) + "\n";
+    s += std::string("  C  TMS9918 (vcard)  : ") + yn(cl65Ok_) + "\n";
+    if (!toolchainOk_)
+        s += "\nInstall cc65:  apt install cc65  /  brew install cc65  /  pacman -S cc65\n"
+             "or https://cc65.github.io/ (add its bin/ to PATH), then reopen the Bench.\n";
+    return s;
+#endif
 }
 
 void Pom1BenchHost::stop()

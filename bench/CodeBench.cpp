@@ -30,6 +30,7 @@ void CodeBench::ensureEditor()
     editor_->SetShowWhitespaces(false);
     applyTargetSyntax();
     editor_->SetText(host_->starterSketch(targetIndex_));
+    lastSavedText_ = editor_->GetText(); dirty_ = false;
 }
 
 void CodeBench::applyTargetSyntax()
@@ -86,6 +87,7 @@ void CodeBench::render(const char* title, bool* open)
         editor_->SetText(host_->starterSketch(targetIndex_));
         editor_->SetErrorMarkers({}); errorLines_.clear();
         loadedPath_.clear();
+        lastSavedText_ = editor_->GetText(); dirty_ = false;
         status_ = "New sketch"; statusOk_ = true;
     };
     auto openFile = [&](const std::string& path) {
@@ -95,6 +97,7 @@ void CodeBench::render(const char* title, bool* open)
         editor_->SetText(data);
         editor_->SetErrorMarkers({}); errorLines_.clear();
         loadedPath_ = path;
+        lastSavedText_ = editor_->GetText(); dirty_ = false;
         status_ = "Opened " + path + " (" + std::to_string(data.size()) + " B)";
         statusOk_ = true;
     };
@@ -104,6 +107,7 @@ void CodeBench::render(const char* title, bool* open)
         const std::string text = editor_->GetText();
         out.write(text.data(), static_cast<std::streamsize>(text.size()));
         loadedPath_ = path;
+        lastSavedText_ = text; dirty_ = false;
         status_ = "Saved " + path + " (" + std::to_string(text.size()) + " B)";
         statusOk_ = true;
     };
@@ -124,8 +128,16 @@ void CodeBench::render(const char* title, bool* open)
     auto doVerify = [&]() { applyResult(host_->verify(targetIndex_, editor_->GetText(), rawAddr_)); };
     auto doUpload = [&]() { applyResult(host_->upload(targetIndex_, editor_->GetText(), rawAddr_)); };
 
-    // ---- Teal toolbar with circular icon buttons ----
+    // Ctrl-S saves: straight to the open file, or open the Save browser for an
+    // untitled sketch. Gated on Bench focus so it doesn't fight the host's keys.
+    if (ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows) &&
+        ImGui::IsKeyChordPressed(ImGuiMod_Ctrl | ImGuiKey_S)) {
+        if (!loadedPath_.empty()) saveFile(loadedPath_); else browse(true);
+    }
+
+    // ---- Teal toolbar with labelled action pills + circular icon buttons ----
     bool openExamplesPopup = false;
+    bool openToolchainPopup = false;
     auto circleBtn = [&](const char* icon, const char* id, const char* tip,
                          ImU32 iconCol = IM_COL32_WHITE) -> bool {
         const float d = 34.0f;
@@ -141,13 +153,31 @@ void CodeBench::render(const char* title, bool* open)
         if (hov && tip) ImGui::SetTooltip("%s", tip);
         return clicked;
     };
+    // Labelled pill (icon + text) for the two primary actions, so newcomers can
+    // tell "compile" from "run" without hovering for a tooltip.
+    auto pillBtn = [&](const char* icon, const char* label, const char* id, const char* tip) -> bool {
+        const std::string txt = std::string(icon) + "  " + label;
+        const ImVec2 ts = ImGui::CalcTextSize(txt.c_str());
+        const float padX = 11.0f, h = 34.0f;
+        const ImVec2 sz(ts.x + padX * 2.0f, h);
+        const ImVec2 p = ImGui::GetCursorScreenPos();
+        const bool clicked = ImGui::InvisibleButton(id, sz);
+        const bool hov = ImGui::IsItemHovered();
+        ImDrawList* dl = ImGui::GetWindowDrawList();
+        dl->AddRectFilled(p, ImVec2(p.x + sz.x, p.y + sz.y),
+                          ImGui::GetColorU32(hov ? kTealDark : kTeal), 7.0f);
+        dl->AddRect(p, ImVec2(p.x + sz.x, p.y + sz.y), IM_COL32_WHITE, 7.0f, 0, hov ? 2.5f : 1.5f);
+        dl->AddText(ImVec2(p.x + padX, p.y + (h - ts.y) * 0.5f), IM_COL32_WHITE, txt.c_str());
+        if (hov && tip) ImGui::SetTooltip("%s", tip);
+        return clicked;
+    };
 
     ImGui::PushStyleColor(ImGuiCol_ChildBg, kTeal);
     ImGui::BeginChild("##benchtoolbar", ImVec2(0, 44), false, ImGuiWindowFlags_NoScrollbar);
     ImGui::SetCursorPos(ImVec2(8, 5));
-    if (circleBtn(ICON_FA_CHECK,         "##benchverify",   "Verify (compile)"))        doVerify();
+    if (pillBtn(ICON_FA_CHECK,       "Verify", "##benchverify", "Verify - compile only")) doVerify();
     ImGui::SameLine(0, 6);
-    if (circleBtn(ICON_FA_ARROW_RIGHT,   "##benchupload",   "Upload (build + run)"))    doUpload();
+    if (pillBtn(ICON_FA_ARROW_RIGHT, "Run",    "##benchupload", "Run - build and run on the emulator")) doUpload();
     if (host_->hasStop()) {
         ImGui::SameLine(0, 6);
         if (circleBtn(ICON_FA_STOP, "##benchstop", "Stop (halt the CPU)", IM_COL32(235, 80, 60, 255))) {
@@ -165,6 +195,9 @@ void CodeBench::render(const char* title, bool* open)
         ImGui::SameLine(0, 6);
         if (circleBtn(ICON_FA_BOOK,      "##benchexamples", "Examples")) openExamplesPopup = true;
     }
+    ImGui::SameLine(0, 6);
+    if (circleBtn(ICON_FA_SCREWDRIVER_WRENCH, "##benchtoolchain", "Toolchain status (cc65 / dev/)"))
+        openToolchainPopup = true;
     if (host_->hasSerial()) {
         ImGui::SameLine(ImGui::GetWindowWidth() - 42);
         if (circleBtn(ICON_FA_MAGNIFYING_GLASS, "##benchserial", "Serial Monitor")) host_->openSerial();
@@ -184,11 +217,20 @@ void CodeBench::render(const char* title, bool* open)
                     editor_->SetText(el.source);
                     editor_->SetErrorMarkers({}); errorLines_.clear();
                     loadedPath_.clear();
+                    lastSavedText_ = editor_->GetText(); dirty_ = false;
                     if (el.targetIndex >= 0) { targetIndex_ = el.targetIndex; applyTargetSyntax(); }
                 }
                 status_ = el.status; statusOk_ = el.ok;
             }
         }
+        ImGui::EndPopup();
+    }
+
+    // ---- Toolchain status popup (what the cc65 probe found) ----
+    if (openToolchainPopup) ImGui::OpenPopup("##benchtoolchainpopup");
+    if (ImGui::BeginPopup("##benchtoolchainpopup")) {
+        const std::string rep = host_->toolchainReport();
+        ImGui::TextUnformatted(rep.empty() ? "No toolchain info." : rep.c_str());
         ImGui::EndPopup();
     }
 
@@ -290,6 +332,7 @@ void CodeBench::render(const char* title, bool* open)
             editor_->SetText(host_->starterSketch(t));
             editor_->SetErrorMarkers({}); errorLines_.clear();
             loadedPath_.clear();
+            lastSavedText_ = editor_->GetText(); dirty_ = false;
             status_ = "New: " + host_->targets()[t].label; statusOk_ = true;
             ImGui::CloseCurrentPopup();
         }
@@ -304,8 +347,9 @@ void CodeBench::render(const char* title, bool* open)
         size_t slash = loadedPath_.find_last_of("/\\");
         tabName = (slash == std::string::npos) ? loadedPath_ : loadedPath_.substr(slash + 1);
     }
+    if (dirty_) tabName += " *";
     if (ImGui::BeginTabBar("##benchtabs", ImGuiTabBarFlags_None)) {
-        if (ImGui::BeginTabItem((tabName + "  ").c_str())) ImGui::EndTabItem();
+        if (ImGui::BeginTabItem((tabName + "  ###benchtab").c_str())) ImGui::EndTabItem();
         ImGui::EndTabBar();
     }
 
@@ -323,6 +367,7 @@ void CodeBench::render(const char* title, bool* open)
     float editorH = avail.y - consoleBlock - kStatusBarH - spacingY;
     if (editorH < 100.0f) editorH = 100.0f;
     editor_->Render("##benchsrc", ImVec2(avail.x, editorH), true);
+    if (editor_->IsTextChanged()) dirty_ = (editor_->GetText() != lastSavedText_);
 
     // Mirror error lines onto the editor's scrollbar lane (VS Code-style overview
     // ruler): a red tick at each error's proportional vertical position.
