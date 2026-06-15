@@ -17,9 +17,9 @@ def main() -> int:
     emit(
         asm_files=["TMS_Galaga.asm"],
         lib_dirs=["apple1", "m6502", "tms9918"],
-        cfg="apple1_galaga.cfg",
+        cfg="apple1_galaga_codetank_bank.cfg",
         out_dir_software="Graphic TMS9918",
-        start_addr=0x0280,
+        start_addr=0x4100,
         project_dir=PROJ,
     )
     return 0
