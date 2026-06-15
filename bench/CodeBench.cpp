@@ -165,21 +165,6 @@ void CodeBench::render(const char* title, bool* open)
         ImGui::SameLine(0, 6);
         if (circleBtn(ICON_FA_BOOK,      "##benchexamples", "Examples")) openExamplesPopup = true;
     }
-    // Load-address field — shown only for the raw-bytes target, the one place the
-    // entry address is the user's to set (asm/C take it from the linker cfg, hex
-    // from the dump text). Feeds rawAddr_ straight into verify()/upload().
-    if (targets[targetIndex_].wantsAddr) {
-        ImGui::SameLine(0, 16);
-        ImGui::SetCursorPosY(10.0f);
-        ImGui::AlignTextToFramePadding();
-        ImGui::PushStyleColor(ImGuiCol_Text, kWhite);
-        ImGui::TextUnformatted("@ $");
-        ImGui::PopStyleColor();
-        ImGui::SameLine(0, 4);
-        ImGui::SetNextItemWidth(60);
-        ImGui::InputText("##benchaddr", rawAddr_, sizeof(rawAddr_),
-                         ImGuiInputTextFlags_CharsHexadecimal | ImGuiInputTextFlags_CharsUppercase);
-    }
     if (host_->hasSerial()) {
         ImGui::SameLine(ImGui::GetWindowWidth() - 42);
         if (circleBtn(ICON_FA_MAGNIFYING_GLASS, "##benchserial", "Serial Monitor")) host_->openSerial();
