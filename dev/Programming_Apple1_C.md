@@ -1,0 +1,185 @@
+# Programming the Apple 1 in C (cc65)
+
+The C counterpart to [`Programming_Apple1_ASM.md`](Programming_Apple1_ASM.md).
+You write C, the **cc65** cross-compiler (`cl65`) turns it into a 6502 binary,
+and POM1 runs it. No prior 6502 knowledge required — but the Apple 1 is a tiny
+machine, so a few rules below keep you out of trouble.
+
+**Fastest path:** *DevBench → POM1 Bench*, **New sketch → Language: C**, pick a
+machine, press **Upload**. The Bench wires the toolchain, the linker config and
+the libraries for you. This guide is for when you want to understand or build by
+hand.
+
+**Contents:** [Install](#1-install-cc65) · [Architecture](#2-architecture--one-text-base-two-graphics-layers) · [Your first program](#3-your-first-program) · [Text & keyboard](#4-text--keyboard-apple1c) · [GEN2 HGR](#5-gen2-hgr-colour-gen2c) · [TMS9918](#6-tms9918-sprites--colour) · [Memory budget](#7-memory-budget--the-1-gotcha) · [Gotchas](#8-gotchas)
+
+---
+
+## 1. Install cc65
+
+| OS | Command |
+|---|---|
+| Debian / Ubuntu | `sudo apt install cc65` |
+| Fedora | `sudo dnf install cc65` |
+| Arch | `sudo pacman -S cc65` |
+| macOS | `brew install cc65` |
+| Windows / other | <https://cc65.github.io/> — download, add `bin/` to `PATH` |
+
+Check it: `cl65 --version`. The POM1 Bench detects it automatically and tells you
+how to install it if it's missing.
+
+---
+
+## 2. Architecture — one text base, two graphics layers
+
+The key idea: **Apple-1 text + keyboard I/O is one shared library**, and each
+graphics card adds its own drawing layer on top. Learn the text API once; reuse
+it everywhere.
+
+```
+                 apple1c   (woz_puts / woz_getkey / woz_mon — the WOZ terminal)
+                /         \
+   GEN2 HGR (gen2c)        TMS9918 (apple1-videocard-lib: screen1 / tms9918)
+   280x192 colour          256x192, 32 sprites
+```
+
+| You want… | Include | Linker cfg | Runs at |
+|---|---|---|---|
+| **Plain text** (40×24 terminal) | `apple1io.h` | `dev/cc65/apple1_c.cfg` | `0300R` |
+| **GEN2 HGR colour** (+ text) | `gen2.h` (+ `apple1io.h`) | `dev/cc65/apple1_gen2_c.cfg` | `6000R` |
+| **TMS9918 sprites/colour** | `screen1.h` / `tms9918.h` | `apple1-videocard-lib/cc65/codetank_c.cfg` | `4000R` |
+
+Libraries:
+- `dev/lib/apple1c/` — the shared text/keyboard base ([README](lib/apple1c/README.md)).
+- `dev/lib/gen2c/` — GEN2 HGR runtime ([README](lib/gen2c/README.md)).
+- `dev/apple1-videocard-lib/` — Nino Porcino's TMS9918 runtime + demos.
+
+---
+
+## 3. Your first program
+
+```c
+#include "apple1io.h"
+
+void main(void) {
+    woz_puts((const unsigned char *)"\rHELLO WORLD\r");
+    woz_mon();                 /* return to the '\' Monitor prompt */
+}
+```
+
+Build and run (plain text):
+
+```bash
+cd dev/lib/apple1c
+cl65 -t none -Oirs -C ../../cc65/apple1_c.cfg -I . \
+     first.c apple1io.c apple1io_asm.s -o first.bin
+# In POM1: File > Load Memory > first.bin, then 0300R
+```
+
+Two non-obvious rules you just used:
+- **`void main(void)`**, not `int main()`. There's no OS to return a code to.
+- **No `<stdio.h>` / `printf`.** You print with `woz_puts` / `woz_putc`. (cc65's
+  full `printf` exists but pulls in a lot — keep it tiny.)
+
+---
+
+## 4. Text & keyboard (`apple1c`)
+
+`#include "apple1io.h"` — works on every machine.
+
+| Function | Effect |
+|---|---|
+| `woz_putc(c)` / `woz_puts(s)` | print a char / a string |
+| `woz_print_hex(b)` / `woz_print_hexword(w)` | print hex (no `printf` needed) |
+| `woz_mon()` | return to the WOZ Monitor |
+| `apple1_getkey()` | **block**, return `key & 0x7F` (uppercase only — the keyboard forces it) |
+| `apple1_readkey()` | `0` if no key, else the key (non-blocking — game loops) |
+| `apple1_iskeypressed()` | nonzero if a key is waiting |
+
+```c
+#include "apple1io.h"
+void main(void) {
+    unsigned char k;
+    woz_puts((const unsigned char *)"\rPRESS A KEY: ");
+    k = apple1_getkey();
+    woz_putc(k);
+    woz_mon();
+}
+```
+
+---
+
+## 5. GEN2 HGR colour (`gen2c`)
+
+`#include "gen2.h"` — 280×192 HIRES. Full API + gotchas: [lib/gen2c/README.md](lib/gen2c/README.md).
+
+```c
+#include "gen2.h"
+#include "apple1io.h"
+void main(void) {
+    gen2_hgr_init();                       /* graphics+hires+page1+full */
+    gen2_hgr_clear(0);                      /* black */
+    gen2_hgr_puts(42, 80, "SCORE");
+    gen2_hgr_putu(120, 80, 1234u);          /* a number */
+    for (;;) { }
+}
+```
+
+Build with `apple1_gen2_c.cfg`, run `6000R`. The two GEN2 rules: never *write*
+the `$C25x` soft switches, and always clear with `gen2_hgr_clear()` (a naïve
+16-bit loop is ~20× slower and blanks the screen).
+
+---
+
+## 6. TMS9918 sprites & colour
+
+Uses Nino Porcino's `apple1-videocard-lib` (`screen1.h`, `tms9918.h`,
+`screen2.h`). The Bench's **TMS9918 (C)** target builds a 16 KB CodeTank ROM and
+boots `4000R`. ~17 worked demos live in `dev/apple1-videocard-lib/demos/`
+(`hello_world`, `hello_screen1`, `tetris`, `rogue_c`, `sprite_animals`…).
+
+```c
+#include "tms9918.h"
+#include "screen1.h"
+void main(void) {
+    tms_init_regs(SCREEN1_TABLE);
+    tms_set_color(COLOR_CYAN);
+    screen1_prepare();
+    screen1_load_font();
+    screen1_puts((const unsigned char *)"HELLO TMS9918");
+    for (;;) { }
+}
+```
+
+---
+
+## 7. Memory budget — the #1 gotcha
+
+`apple1_c.cfg` (plain text) gives C only **`$0300-$0FFF` ≈ 2.75 KB** for
+code + data + the C stack. A few hundred bytes of global arrays and the linker
+overflows with a cryptic `ld65: Range error`. If you hit it:
+- move work into smaller functions / fewer globals, **or**
+- target **GEN2** (`apple1_gen2_c.cfg`, code at `$6000-$BEFF` ≈ 24 KB), **or**
+- use a bigger preset (the Multiplexing Fantasy, `pom1_fantasy.cfg`).
+
+| cfg | C code+data space | Notes |
+|---|---|---|
+| `apple1_c.cfg` | ~2.75 KB (`$0300-$0FFF`) | tight — small programs only |
+| `apple1_gen2_c.cfg` | ~24 KB (`$6000-$BEFF`) | roomy, above the HGR framebuffer |
+| `codetank_c.cfg` | 16 KB ROM image (`$4000`) | TMS9918, runs from ROM |
+
+---
+
+## 8. Gotchas
+
+| Gotcha | Fix |
+|---|---|
+| `int main()` misbehaves | use `void main(void)` |
+| `printf` not found / huge | use `woz_puts` / `woz_print_hex` / `gen2_hgr_putu` |
+| `ld65: Range error` on a small program | out of RAM — see §7, pick a roomier target |
+| GEN2 clear is slow + screen goes black for seconds | use `gen2_hgr_clear()`, not a 16-bit `for` loop |
+| GEN2 colours look wrong / switches don't stick | never `STA $C25x`; the macros *read* to toggle |
+| Keyboard compare fails for lowercase | the keyboard is **uppercase only** — compare `'A'`, never `'a'` |
+| C is missing in the web build | the cc65 Bench is **desktop-only**; compile on desktop |
+
+See also: [`APPLE1DEV.md`](APPLE1DEV.md) §1 decision tree, §3 I/O cheat sheet;
+[`Programming_Apple1_ASM.md`](Programming_Apple1_ASM.md) for the assembly route.

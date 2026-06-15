@@ -26,6 +26,15 @@ Ce document récapitule tout ce qu'il faut savoir pour programmer l'Apple 1 ému
 - **ld65** — linker, prend un `.cfg` pour placer segments et ZP
 - **python3** — génère le hex dump Woz Monitor à partir du binaire
 
+**Installer cc65** : `sudo apt install cc65` (Debian/Ubuntu) · `sudo dnf install cc65`
+(Fedora) · `sudo pacman -S cc65` (Arch) · `brew install cc65` (macOS) ·
+<https://cc65.github.io/> (Windows/autres). Vérifier avec `ca65 --version`.
+
+> **Le plus simple pour débuter** : le **POM1 Bench** intégré (*DevBench → POM1
+> Bench*, desktop) édite, assemble/compile (asm **ou** C) et lance en un clic, avec
+> un squelette `HELLO WORLD` par cible. Copie `dev/projects/_template/` pour un
+> point de départ minimal. En C → [`Programming_Apple1_C.md`](Programming_Apple1_C.md).
+
 ### Commandes standard
 
 Les sources vivent sous `dev/projects/<name>/` (chacun a son `Makefile`). Workflow manuel si besoin :
@@ -47,7 +56,7 @@ for i in range(0, len(data), 16):
 " > software/<dir>/MyGame.txt
 ```
 
-Le binaire compilé et son `.txt` Woz hex sont déposés sous `software/<dir>/` — c'est là que POM1 va les lire (les hooks d'auto-activation de carte sont câblés sur `software/hgr/`, `software/tms9918/`, etc.).
+Le binaire compilé et son `.txt` Woz hex sont déposés sous `software/<dir>/` — c'est là que POM1 va les lire (les hooks d'auto-activation de carte sont câblés sur `software/Graphic HGR/`, `software/Graphic TMS9918/`, etc.).
 
 ### Chargement dans POM1
 

@@ -66,9 +66,9 @@ private:
     mutable bool        toolchainOk_ = false;
     mutable bool        cl65Ok_      = false;   // TMS9918 CodeTank C (videocard lib)
     mutable bool        gen2COk_     = false;   // GEN2 HGR C (gen2c lib)
-    mutable bool        plainCOk_    = false;   // plain text C (apple1.c lib)
+    mutable bool        plainCOk_    = false;   // plain text C (shared apple1c lib)
     mutable std::string ca65_, ld65_, cl65_, libFlags_, videocardLib_, codetankCfg_;
-    mutable std::string gen2cLib_, gen2Cfg_, plainCfg_;
+    mutable std::string gen2cLib_, gen2Cfg_, plainCfg_, apple1cLib_;
 };
 
 #endif // POM1_BENCH_HOST_H

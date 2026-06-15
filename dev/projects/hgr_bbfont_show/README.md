@@ -9,7 +9,7 @@ non-Wozmon characters.
 
 - Machine: Apple 1 (8 KB DRAM)
 - Cards: GEN2 HGR
-- Recommended POM1 preset: TODO — pick a GEN2 HGR preset.
+- Recommended POM1 preset: 12 (Uncle Bernie's GEN2 HGR Color).
 
 ## Sources
 
@@ -29,10 +29,10 @@ By hand:
 
 ## Run in POM1
 
-1. POM1 → Presets → GEN2 HGR preset (TODO).
+1. POM1 → Presets → preset 12 (Uncle Bernie's GEN2 HGR Color).
 2. File → Load → `software/hgr/HGR_BBFontShow.bin`.
 3. Wozmon `\` prompt: type `E000R`.
 
 ## Author / License
 
-VERHILLE Arnaud, 2026. License: TODO.
+VERHILLE Arnaud, 2026. License: GPL-3.0 (see repository LICENSE).

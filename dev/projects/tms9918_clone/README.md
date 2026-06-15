@@ -114,4 +114,4 @@ If POM1 renders clones IN LEGAL Mode I (where it shouldn't),
 
 ## Author / License
 
-VERHILLE Arnaud, 2026. License: TODO.
+VERHILLE Arnaud, 2026. License: GPL-3.0 (see repository LICENSE).

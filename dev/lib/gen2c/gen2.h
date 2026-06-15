@@ -51,6 +51,10 @@ void gen2_hgr_plot(unsigned x, unsigned char y);
  * + gen2_hgr_clear first. Non-printable chars render as a space. */
 void gen2_hgr_puts(unsigned x, unsigned char y, const char *s);
 
+/* Draw `value` as unsigned decimal at (x, y), same 16x16 white cells / font as
+ * gen2_hgr_puts (1-5 digits, no leading zeros). Handy for scores and counters. */
+void gen2_hgr_putu(unsigned x, unsigned char y, unsigned value);
+
 /* Coarse spin until vertical blank (NOT cycle-exact — for tight beam-racing use
  * the ASM dev/lib/gen2 gen2_beam_lock). Double-samples HST0 to skip the colour-
  * burst notch and tells V-blank from H-blank by how long the blank lasts. */

@@ -11,7 +11,7 @@ Apple 1 terminal. Each shows a title screen and marks `S` (start) and
 
 - Machine: Apple 1 (stock 4 KB DRAM)
 - Cards: none
-- Recommended POM1 preset: TODO — any text-only Apple 1 preset.
+- Recommended POM1 preset: 1 (Apple-1 with ACI & BASIC; any text preset works).
 
 ## Sources
 
@@ -30,10 +30,10 @@ By hand (one program at a time):
 
 ## Run in POM1
 
-1. POM1 → Presets → any text-mode Apple 1 preset (TODO).
+1. POM1 → Presets → preset 1 (Apple-1 with ACI & BASIC).
 2. File → Load → `software/games/Maze_Sidewinder.bin` (or `Maze2_Backtracker.bin`).
 3. Wozmon `\` prompt: type `280R`.
 
 ## Author / License
 
-VERHILLE Arnaud, 2026. License: TODO.
+VERHILLE Arnaud, 2026. License: GPL-3.0 (see repository LICENSE).
