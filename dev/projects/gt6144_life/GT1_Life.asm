@@ -56,12 +56,10 @@
 ; =============================================
 
 ; ----- Apple 1 I/O -----
-KBDCR    = $D011
-KBD      = $D010
-GT_PORT  = $D00A
+.include "apple1.inc"
+.include "gt6144.inc"
 ; Woz Monitor GETLINE entry that prints '\' + CR (real prompt). $FF1F
 ; would skip the '\' — see GT1_Hello.asm for the trap rationale.
-WOZMON   = $FF1A
 
 ; ----- Geometry -----
 ROW_SIZ  = 42              ; 40 interior cols + 2 ghost

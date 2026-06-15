@@ -62,6 +62,22 @@ The **POM1 Bench** (*DevBench → POM1 Bench*) links this automatically for the
 *Apple-1 text (C)* and *GEN2 HGR (C)* targets, so on GEN2 you can draw HIRES
 **and** print to the terminal from the same program.
 
+## Relation to the TMS9918 (videocard-lib) C runtime
+
+`dev/apple1-videocard-lib/` (Nino Porcino's TMS9918 C library) ships its **own**
+copy of this text base — `apple1_asm.s` (byte-identical to `apple1io_asm.s`) plus
+the woz_* / keyboard helpers inside `apple1.c`/`apple1.h` (which also add
+`apple1_input_line*`). That duplication is **intentional and left in place**:
+videocard-lib is a *vendored* tree kept close to its upstream (own demos,
+Makefiles, tools), so we don't entangle it with `apple1c`. The split is:
+
+- **`apple1c`** = the POM1-side shared base, used by the plain-text and GEN2 HGR
+  C targets (one `apple1io.h` include).
+- **videocard-lib** = self-contained TMS9918 runtime, carries its own equivalent.
+
+Both expose the same `woz_*` API, so code reads the same either way. If
+videocard-lib is ever de-vendored, fold its text base onto `apple1c` then.
+
 ## Credit
 
 Asm shim + keyboard helpers ported verbatim from

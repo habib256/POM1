@@ -46,12 +46,10 @@
 
 ;******* Hardware Variables ************
 
-KBD   = $D010	         ; Keyboard I/O
-KBDCR = $D011
+.include "apple1.inc"
 
 ;************ Bios Address *************
 
-ECHO = $FFEF		;Print Character in Accumulator
 RESET = $FF1A		;Bios Getline
 
 ;********* Zero Page Variables *********

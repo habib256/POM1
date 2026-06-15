@@ -24,15 +24,7 @@ $(OUT_DIR_T)/$(PROJECT).bin.lo $(OUT_DIR_T)/$(PROJECT).bin.hi: $(OBJS)
 	@rm -f "$(OUT_DIR)"/$(PROJECT).bin   # ld65 leaves an empty placeholder; remove it
 
 $(OUT_DIR_T)/$(PROJECT).txt: $(OUT_DIR_T)/$(PROJECT).bin.lo $(OUT_DIR_T)/$(PROJECT).bin.hi
-	@python3 -c "lo=open('$(OUT_DIR)/$(PROJECT).bin.lo','rb').read(); \
-hi=open('$(OUT_DIR)/$(PROJECT).bin.hi','rb').read(); \
-out=['// HGR Sokoban — Parmigiani 8 KB dual-bank + GEN2']; addr=0x0280; \
-[(out.append(f'{addr+i:04X}: ' + ' '.join(f'{b:02X}' for b in lo[i:i+8])), None)[1] for i in range(0, len(lo), 8)]; \
-addr=0xE000; \
-[(out.append(f'{addr+i:04X}: ' + ' '.join(f'{b:02X}' for b in hi[i:i+8])), None)[1] for i in range(0, len(hi), 8)]; \
-out.append('E000R'); \
-open('$(OUT_DIR)/$(PROJECT).txt','w').write('\n'.join(out)+'\n'); \
-print(f'Wrote $(OUT_DIR)/$(PROJECT).txt (lo={len(lo)} B at 0280, hi={len(hi)} B at E000)')"
+	@python3 ../../cc65/emit_dualbank.py "$(OUT_DIR)"/$(PROJECT).bin.lo "$(OUT_DIR)"/$(PROJECT).bin.hi "$(OUT_DIR)"/$(PROJECT).txt --run E000 --header "// HGR Sokoban — Parmigiani 8 KB dual-bank + GEN2"
 
 .PHONY: all clean test
 all: $(OUT_DIR_T)/$(PROJECT).txt

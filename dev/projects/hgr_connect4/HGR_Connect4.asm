@@ -15,9 +15,7 @@
 ; Board is centred: byte cols 13..26 (pixels 91..188), scanlines 48..143.
 ; =============================================
 
-ECHO    = $FFEF
-KBD     = $D010
-KBDCR   = $D011
+.include "apple1.inc"
 
 NCOLS   = 7
 NROWS   = 6

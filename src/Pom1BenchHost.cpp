@@ -38,6 +38,8 @@ static const char* kSketchAsmTms =       // asm x TMS9918 (Graphics I text, load
     "; HELLO WORLD on the TMS9918 (Graphics I). Proper init: regs loaded with the\n"
     "; display BLANKED, all 16 KB VRAM cleared, sprites parked, then font/colour/\n"
     "; message loaded and the screen turned on LAST. VDP data=$CC00, ctrl=$CC01.\n"
+    "; Upload flashes this into CODETANKDEV.rom (CodeTank dev cartridge) and boots\n"
+    "; 4000R - it runs in place from the ROM window, like every TMS9918 program.\n"
     "VDAT = $CC00\n"
     "VCTL = $CC01\n"
     ".segment \"CODE\"\n"
@@ -368,18 +370,18 @@ struct TempFileSweeper {
 //   4..7 = C   x {dual-4k, TMS9918, GEN2 HGR, Bernie TXT}.
 // (preset indices: dual-4k = 1, TMS9918+CodeTank = 7, GEN2 = 12.)
 struct P1T { const char* label; int preset; const char* cfg; const char* lang; int mode;
-             bool needsCl65; bool wantsAddr; const char* sketch; };
+             bool needsCl65; bool wantsAddr; bool codetankRom; const char* sketch; };
 const P1T kP1Targets[] = {
-    { "Apple-1 dual 4K/8K (asm)",         1, "apple1_4k.cfg",   "6502", 0, false, false, kSketchAsm       },
-    { "P-LAB TMS9918 Graphic Card (asm)", 7, "apple1_4k.cfg",   "6502", 0, false, false, kSketchAsmTms    },
-    { "Uncle Bernie GEN2 HGR (asm)",     12, "apple1_gen2.cfg", "6502", 0, false, false, kSketchAsmGen2   },
-    { "Bernie GEN2 TXT (asm)",           12, "apple1_gen2.cfg", "6502", 0, false, false, kSketchTxtGen2Asm},
-    { "Apple-1 dual 4K/8K (C)",           1, "C-plain",         "C",    3, true,  false, kSketchCText     },
-    { "P-LAB TMS9918 CodeTank ROM (C)",   7, "C",               "C",    3, true,  false, kSketchC         },
-    { "Uncle Bernie GEN2 HGR (C)",       12, "C-gen2",          "C",    3, true,  false, kSketchGen2C     },
-    { "Bernie GEN2 TXT (C)",             12, "C-gen2",          "C",    3, true,  false, kSketchTxtGen2C  },
-    { "Wozmon hex (any machine)",        -1, "",                "hex",  1, false, false, kSketchHex       },
-    { "Raw bytes @ $ (any machine)",     -1, "",                "raw",  2, false, true,  kSketchRaw       },
+    { "Apple-1 dual 4K/8K (asm)",         1, "apple1_4k.cfg",   "6502", 0, false, false, false, kSketchAsm       },
+    { "P-LAB TMS9918 Graphic Card (asm)", 7, "codetank.cfg",    "6502", 0, false, false, true,  kSketchAsmTms    },
+    { "Uncle Bernie GEN2 HGR (asm)",     12, "apple1_gen2.cfg", "6502", 0, false, false, false, kSketchAsmGen2   },
+    { "Bernie GEN2 TXT (asm)",           12, "apple1_gen2.cfg", "6502", 0, false, false, false, kSketchTxtGen2Asm},
+    { "Apple-1 dual 4K/8K (C)",           1, "C-plain",         "C",    3, true,  false, false, kSketchCText     },
+    { "P-LAB TMS9918 CodeTank ROM (C)",   7, "C",               "C",    3, true,  false, true,  kSketchC         },
+    { "Uncle Bernie GEN2 HGR (C)",       12, "C-gen2",          "C",    3, true,  false, false, kSketchGen2C     },
+    { "Bernie GEN2 TXT (C)",             12, "C-gen2",          "C",    3, true,  false, false, kSketchTxtGen2C  },
+    { "Wozmon hex (any machine)",        -1, "",                "hex",  1, false, false, false, kSketchHex       },
+    { "Raw bytes @ $ (any machine)",     -1, "",                "raw",  2, false, true,  false, kSketchRaw       },
 };
 const int kP1TargetCount = static_cast<int>(sizeof(kP1Targets) / sizeof(kP1Targets[0]));
 
@@ -402,15 +404,108 @@ const char* const kP1MachineHints[] = {
     "Stock Apple-1: 40x24 text printed through the WozMon ECHO routine ($FFEF).\n"
     "Easiest place to start - no graphics card needed. Preset 1 (dual 4K/8K RAM).",
     "P-LAB Graphic Card by Claudio Parmigiani — TMS9918 VDP, Graphics I mode,\n"
-    "256x192, data port $CC00 / control $CC01. Preset 7.",
+    "256x192, data port $CC00 / control $CC01. Preset 7. Upload flashes the build\n"
+    "into CODETANKDEV.rom and boots 4000R (all TMS9918 code runs from CodeTank).",
     "Uncle Bernie's GEN2 colour card — Apple II-style HIRES (280x192) driven by\n"
     "the soft switches $C250-$C257. Hello world uses the BBFont. Preset 12.",
     "Uncle Bernie's GEN2 in native TEXT mode — 40x24, page $0400, the card's\n"
     "built-in font ($C251 TEXT on). Preset 12.",
 };
 
+// Graduated learning examples (inline sources) on the Apple-1 text target. They
+// build on each other: print a char -> a string -> a loop -> read the keyboard,
+// then the same I/O in C. Larger demos (CrazyCycle, Telemetry) follow.
+static const char* kEx_char =
+    "; Example 1 - print one character. The Apple-1 display uses bit 7 as a\n"
+    "; \"data valid\" flag, so ORA #$80 before printing. Return with JMP WOZMON.\n"
+    ".include \"apple1.inc\"\n"
+    ".segment \"CODE\"\n"
+    "start:\n"
+    "    lda #'H'\n"
+    "    ora #$80\n"
+    "    jsr ECHO\n"
+    "    jmp WOZMON\n";
+static const char* kEx_string =
+    "; Example 2 - print a NUL-terminated string in a loop.\n"
+    ".include \"apple1.inc\"\n"
+    ".segment \"CODE\"\n"
+    "start:\n"
+    "    ldx #0\n"
+    "loop:\n"
+    "    lda msg,x\n"
+    "    beq done\n"
+    "    ora #$80\n"
+    "    jsr ECHO\n"
+    "    inx\n"
+    "    bne loop\n"
+    "done:\n"
+    "    jmp WOZMON\n"
+    "msg:\n"
+    "    .byte \"HELLO, APPLE 1!\", $0D, $00\n";
+static const char* kEx_loop =
+    "; Example 3 - count 0 to 9 by incrementing a character.\n"
+    ".include \"apple1.inc\"\n"
+    ".segment \"CODE\"\n"
+    "start:\n"
+    "    lda #'0'\n"
+    "loop:\n"
+    "    ora #$80          ; set bit 7, print the digit\n"
+    "    jsr ECHO\n"
+    "    and #$7F          ; strip it back off before maths\n"
+    "    clc\n"
+    "    adc #1\n"
+    "    cmp #'9'+1\n"
+    "    bne loop\n"
+    "    lda #$8D          ; carriage return\n"
+    "    jsr ECHO\n"
+    "    jmp WOZMON\n";
+static const char* kEx_keyboard =
+    "; Example 4 - echo the keyboard until Return ($0D). KBDCR bit 7 = key ready;\n"
+    "; reading KBD returns the key with bit 7 set, so AND #$7F to get the ASCII.\n"
+    ".include \"apple1.inc\"\n"
+    ".segment \"CODE\"\n"
+    "start:\n"
+    "wait:\n"
+    "    lda KBDCR\n"
+    "    bpl wait\n"
+    "    lda KBD\n"
+    "    and #$7F\n"
+    "    cmp #$0D\n"
+    "    beq done\n"
+    "    ora #$80\n"
+    "    jsr ECHO\n"
+    "    jmp wait\n"
+    "done:\n"
+    "    jmp WOZMON\n";
+static const char* kEx_c_hello =
+    "/* Example 5 - hello in C on the plain text Apple-1 (shared apple1c base). */\n"
+    "#include \"apple1io.h\"\n"
+    "void main(void) {\n"
+    "    woz_puts((const unsigned char *)\"\\rHELLO FROM C\\r\");\n"
+    "    woz_mon();\n"
+    "}\n";
+static const char* kEx_c_keyboard =
+    "/* Example 6 - echo the keyboard in C until Return. */\n"
+    "#include \"apple1io.h\"\n"
+    "void main(void) {\n"
+    "    unsigned char k;\n"
+    "    woz_puts((const unsigned char *)\"\\rTYPE (Return quits):\\r\");\n"
+    "    for (;;) {\n"
+    "        k = apple1_getkey();\n"
+    "        if (k == 13) break;\n"
+    "        woz_putc(k);\n"
+    "    }\n"
+    "    woz_mon();\n"
+    "}\n";
+
 struct P1Ex { const char* label; bool file; const char* data; int target; const char* asset; uint16_t addr; };
 const P1Ex kP1Examples[] = {
+    { "1 - Print a character (asm)",       false, kEx_char,       0, "", 0 },
+    { "2 - Print a string (asm)",          false, kEx_string,     0, "", 0 },
+    { "3 - Count 0 to 9 (asm)",            false, kEx_loop,       0, "", 0 },
+    { "4 - Echo the keyboard (asm)",       false, kEx_keyboard,   0, "", 0 },
+    { "5 - Hello in C",                    false, kEx_c_hello,    4, "", 0 },
+    { "6 - Keyboard echo in C",            false, kEx_c_keyboard, 4, "", 0 },
     { "A-1-CrazyCycle  (Bernie GEN2 HGR)", true,  "dev/projects/a1_crazycycle/A-1-CrazyCycle.asm", 2,
       "sdcard/NONO/HGR/UBERNIE#062000", 0x2000 },
     { "Telemetry demo  (SDK harness)",     true,  "dev/projects/a1_telemetry_demo/A1_TelemetryDemo.asm", 0, "", 0 },
@@ -708,7 +803,8 @@ bench::BuildResult Pom1BenchHost::build(int target, const std::string& src, cons
     const bool cmode  = (t.mode == 3);
     const bool gen2c  = cmode && cfgTag == "C-gen2";    // GEN2 HGR (loadBinary @ $6000)
     const bool plainc = cmode && cfgTag == "C-plain";   // plain text (loadBinary @ $0300)
-    const bool codetankc = cmode && !gen2c && !plainc;  // TMS9918 CodeTank ROM
+    // (cmode && !gen2c && !plainc) is the TMS9918 C target; its deploy goes through
+    // the shared t.codetankRom path below, same as the TMS9918 asm target.
     r.showConsole = true;
     uint16_t entry = 0;
 
@@ -806,22 +902,30 @@ bench::BuildResult Pom1BenchHost::build(int target, const std::string& src, cons
         std::string error; int bytesLoaded = 0;
         if (emu->loadBinary(binB.string(), entry, error, &bytesLoaded)) {
             emu->copySnapshot(mw_->uiSnapshot);
-            char msg[128]; std::snprintf(msg, sizeof(msg), "Built %d B - running @ $%04X", bytesLoaded, entry);
+            const char* where = "";   // point the user at where the output appears
+            if (gen2c) { mw_->showGraphicsCard = true; where = " - see the GEN2 HGR window"; }
+            char msg[160]; std::snprintf(msg, sizeof(msg), "Built %d B - running @ $%04X%s", bytesLoaded, entry, where);
             r.status = msg; r.ok = true;
         } else { r.status = "load failed: " + error; r.ok = false; }
         return r;
     }
-    if (codetankc) {
-        // CodeTank ROM: pad 16K -> 32K (lower bank), flash, jumper, reset, 4000R.
+    if (t.codetankRom) {
+        // Unified CODETANKDEV path (TMS9918 asm + C targets): wrap the build into a
+        // persistent CodeTank dev ROM (roms/codetank/CODETANKDEV.rom), flash it,
+        // jumper to the lower 16K bank, reset and boot 4000R. Living under
+        // roms/codetank/ means the dev cartridge also shows up in
+        // File > P-LAB CodeTank Library, so it's reusable across uploads.
         std::ifstream in(binB, std::ios::binary);
         std::vector<unsigned char> rom(0x8000, 0xFF);
         in.read(reinterpret_cast<char*>(rom.data()), 0x4000);
-        const fs::path romPath = dir / "pom1_bench_codetank.rom";
-        sweep.add(romPath);
+        fs::path romPath;
+        for (const char* pre : {"roms/codetank", "../roms/codetank", "../../roms/codetank"})
+            if (fs::exists(fs::path(pre), ec)) { romPath = fs::path(pre) / "CODETANKDEV.rom"; break; }
+        if (romPath.empty()) romPath = dir / "CODETANKDEV.rom";   // fallback: no roms/codetank/ dir
         std::ofstream(romPath, std::ios::binary)
             .write(reinterpret_cast<const char*>(rom.data()), static_cast<std::streamsize>(rom.size()));
         std::string error;
-        if (!emu->loadCodeTankRom(romPath.string(), error)) { r.status = "CodeTank ROM load failed: " + error; return r; }
+        if (!emu->loadCodeTankRom(romPath.string(), error)) { r.status = "CODETANKDEV.rom load failed: " + error; return r; }
         mw_->codeTankJumper = CodeTank::Jumper::Lower16;
         emu->setCodeTankJumper(mw_->codeTankJumper);
         if (!mw_->tms9918Enabled) { mw_->tms9918Enabled = true; mw_->showTMS9918 = true; emu->setTMS9918Enabled(true); }
@@ -829,8 +933,8 @@ bench::BuildResult Pom1BenchHost::build(int target, const std::string& src, cons
         emu->hardReset();
         mw_->codeTankPendingWozRunAt = ImGui::GetTime() + 1.0;
         emu->copySnapshot(mw_->uiSnapshot);
-        r.console += "[ok] flashed CodeTank ROM (lower bank) - 4000R\n";
-        r.status = "CodeTank ROM flashed - booting 4000R"; r.ok = true;
+        r.console += "[ok] flashed CODETANKDEV.rom (lower bank) - 4000R\n";
+        r.status = "CODETANKDEV.rom flashed - booting 4000R - see the TMS9918 window"; r.ok = true;
         return r;
     }
 
@@ -851,7 +955,9 @@ bench::BuildResult Pom1BenchHost::build(int target, const std::string& src, cons
     std::string error; int bytesLoaded = 0;
     if (emu->loadBinary(binB.string(), entry, error, &bytesLoaded)) {
         emu->copySnapshot(mw_->uiSnapshot);
-        char msg[128]; std::snprintf(msg, sizeof(msg), "Built %d B - running @ $%04X", bytesLoaded, entry);
+        const char* where = "";   // GEN2 asm targets render in the graphics window
+        if (t.preset == 12) { mw_->showGraphicsCard = true; where = " - see the GEN2 HGR window"; }
+        char msg[160]; std::snprintf(msg, sizeof(msg), "Built %d B - running @ $%04X%s", bytesLoaded, entry, where);
         r.status = msg; r.ok = true;
     } else { r.status = "load failed: " + error; r.ok = false; }
     return r;
@@ -879,6 +985,34 @@ std::string Pom1BenchHost::toolchainHint(int target) const
     probe();
     if (!t.needsCl65) return toolchainOk_ ? "ca65/ld65 ready" : "needs cc65 (ca65/ld65)";
     return toolchainReady(target) ? "cl65 ready" : "needs cl65 + dev/";
+}
+
+std::string Pom1BenchHost::toolchainReport() const
+{
+    probe();
+#if POM1_IS_WASM
+    return "DevBench is desktop-only - the web build has no cc65 toolchain.\n";
+#else
+    auto line = [](const char* name, const std::string& path) {
+        return std::string(name) + (path.empty() ? " : not found" : (" : " + path)) + "\n";
+    };
+    auto yn = [](bool b) { return b ? "ready" : "MISSING"; };
+    std::string s = "cc65 toolchain (DevBench probe)\n-------------------------------\n";
+    s += line("ca65 (assembler)", ca65_);
+    s += line("ld65 (linker)   ", ld65_);
+    s += line("cl65 (C driver) ", cl65_);
+    s += std::string("dev/ source tree : ") +
+         (libFlags_.empty() ? "NOT found (clone the repo - release bundles omit dev/)" : "found") + "\n";
+    s += "\nPer-target runtime:\n";
+    s += std::string("  asm (any machine)   : ") + yn(toolchainOk_) + "\n";
+    s += std::string("  C  Apple-1 text     : ") + yn(plainCOk_) + "\n";
+    s += std::string("  C  GEN2 HGR (gen2c) : ") + yn(gen2COk_) + "\n";
+    s += std::string("  C  TMS9918 (vcard)  : ") + yn(cl65Ok_) + "\n";
+    if (!toolchainOk_)
+        s += "\nInstall cc65:  apt install cc65  /  brew install cc65  /  pacman -S cc65\n"
+             "or https://cc65.github.io/ (add its bin/ to PATH), then reopen the Bench.\n";
+    return s;
+#endif
 }
 
 void Pom1BenchHost::stop()

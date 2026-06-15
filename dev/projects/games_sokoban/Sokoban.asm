@@ -26,9 +26,7 @@
 ; =============================================
 
 ; --- Apple 1 I/O ---
-ECHO    = $FFEF
-KBD     = $D010
-KBDCR   = $D011
+.include "apple1.inc"
 
 ; --- Game constants ---
 NCOLS   = 16

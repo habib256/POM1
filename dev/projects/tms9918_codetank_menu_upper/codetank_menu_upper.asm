@@ -20,9 +20,7 @@
 ; =============================================
 
 ; --- Apple 1 I/O + monitor ROM ---
-KBD    = $D010
-KBDCR  = $D011
-ECHO   = $FFEF
+.include "apple1.inc"
 
 ; --- Targets ---
 LOGO_ENTRY = $5E00          ; LOGO ROM start, runs in place

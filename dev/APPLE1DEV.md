@@ -56,8 +56,9 @@ Agent-facing playbook for writing **new Apple 1 software** that runs under POM1.
 
 **Easiest authoring loop:** the in-app **POM1 Bench** (*DevBench → POM1 Bench*,
 desktop only) edits, assembles/compiles (asm **or** C) and runs in one click, with
-a `HELLO WORLD` starter per target — no Makefile needed. Copy `dev/projects/_template/`
-for a minimal asm or C starting point. The manual flow below is for batch/CI.
+a `HELLO WORLD` starter per target — no Makefile needed (per-target reference:
+[`../doc/DEVBENCH.md`](../doc/DEVBENCH.md)). Copy `dev/projects/_template/` for a
+minimal asm or C starting point. The manual flow below is for batch/CI.
 
 Per-project Makefiles under `dev/projects/<name>/` already wire `ca65` + `ld65` + Woz-hex emit. Manual flow if you need it:
 

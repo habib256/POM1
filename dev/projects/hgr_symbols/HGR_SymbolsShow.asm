@@ -18,9 +18,7 @@
 ;   File > Load Memory > software/hgr/HGR_SymbolsShow.txt   then:   E000R
 ; =============================================================================
 
-ECHO    = $FFEF
-KBDCR   = $D011
-KBD     = $D010
+.include "apple1.inc"
 
 GRID_COLS    = 6
 GRID_ROWS    = 4

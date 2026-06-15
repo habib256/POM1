@@ -142,19 +142,13 @@
         .include "apple1.inc"
 
 ; --- GEN2 release soft switches (canonical $C25x block) ---
-SS_TEXTOFF = $C250      ; graphics (TEXT off)
-SS_TEXTON  = $C251      ; TEXT on
-SS_MIXOFF  = $C252      ; full screen
-SS_MIXON   = $C253      ; split screen (bottom 4 rows TEXT)
-SS_PAGE1   = $C254      ; primary page   (TEXT $0400 / HGR $2000)
-SS_PAGE2   = $C255      ; secondary page (TEXT $0800 / HGR $4000)
-SS_LORES   = $C256      ; RES latch = LORES
-SS_HIRES   = $C257      ; RES latch = HIRES
+; Adopted from dev/lib/gen2/gen2.inc (GEN2_TEXTOFF..GEN2_HIRES = $C250..$C257).
+.include "gen2.inc"
 
-; HST0 polling address: SS_PAGE1 — this program lives on page 1, so the
+; HST0 polling address: GEN2_PAGE1 — this program lives on page 1, so the
 ; toggle a poll performs is always a no-op. NEVER poll a switch whose state
 ; you are not already in (the read would change the display mode).
-SS_POLL    = SS_PAGE1
+SS_POLL    = GEN2_PAGE1
 
 ; Apple II SPEAKER convention on the Apple-1: any $C0xx read toggles the
 ; ACI TAPE OUT flip-flop (Bernie Q7 — game ports keep $C030-$C03F intact;
@@ -311,9 +305,9 @@ main:
         ; ---- 1. Initialise the soft-switch latch (Bernie Q8) ----------------
         ; Reads, not writes — the switches only react to reads. TEXT is set
         ; last, after the text page is filled, so the reveal is clean.
-        LDA SS_MIXOFF           ; full screen (no split)
-        LDA SS_PAGE1            ; primary page
-        LDA SS_HIRES            ; RES latch = HIRES (shown once TEXT goes off)
+        LDA GEN2_MIXOFF           ; full screen (no split)
+        LDA GEN2_PAGE1            ; primary page
+        LDA GEN2_HIRES            ; RES latch = HIRES (shown once TEXT goes off)
         LDA #0
         STA fcnt
         STA hidx                ; horizontal bounce counter (wraps at 192)
@@ -323,12 +317,12 @@ main:
 
         ; ---- 2. TEXT page: message repeated over the whole display ----------
         JSR fill_text
-        LDA SS_TEXTON           ; reveal the text page
+        LDA GEN2_TEXTON           ; reveal the text page
         LDX #180                ; ~3 s @ 60 Hz
         JSR wait_frames
 
         ; ---- 3. UBERNIE HGR picture (pre-loaded at $2000 by the .txt) -------
-        LDA SS_TEXTOFF          ; reveal the image (TEXT off -> HIRES)
+        LDA GEN2_TEXTOFF          ; reveal the image (TEXT off -> HIRES)
         LDX #180                ; ~3 s
         JSR wait_frames
 
@@ -501,7 +495,7 @@ hw_wj:  STA hidx                ; 3
         ; killer may drop the next line to B&W).
 sqline: JMP (ptr1)              ; 5    -> slide1 + 8 - H: executes H NOPs
 slide1: NOPS 8                  ; 2*H executed
-        LDA SS_TEXTON           ; 4    bus at hcnt 25+2H -> beam enters
+        LDA GEN2_TEXTON           ; 4    bus at hcnt 25+2H -> beam enters
         ; ---- 20-cycle gap = music tick --------------------------------------
         DEY                     ; 2    countdown (Y = mcnt while in the window)
 gq_b:   BNE gq_no               ; 2 nt (toggle) / 3 t (no toggle)
@@ -513,7 +507,7 @@ gq_no:  NOPS 6                  ; 12   (no-toggle path: 3 + 12 = 15 = toggle)
 gq_join:
         LDA zp_dummy            ; 3    -> gap total 2+15+3 = 20
         ; ----------------------------------------------------------------------
-        LDA SS_TEXTOFF          ; 4    bus 24 after TEXT_ON -> beam leaves
+        LDA GEN2_TEXTOFF          ; 4    bus 24 after TEXT_ON -> beam leaves
         JMP (ptr2)              ; 5    -> slide2 + H: executes 8-H NOPs
 slide2: NOPS 8                  ; 16-2*H executed
         NOPS 3                  ; 6

@@ -28,15 +28,7 @@ $(OUT_DIR_T)/TMS_Chess.bin.lo $(OUT_DIR_T)/TMS_Chess.bin.hi: $(OBJS)
 	@rm -f "$(OUT_DIR)"/TMS_Chess.bin   # ld65 leaves an empty placeholder; remove it
 
 $(OUT_DIR_T)/TMS_Chess.txt: $(OUT_DIR_T)/TMS_Chess.bin.lo $(OUT_DIR_T)/TMS_Chess.bin.hi
-	@python3 -c "lo=open('$(OUT_DIR)/TMS_Chess.bin.lo','rb').read(); \
-hi=open('$(OUT_DIR)/TMS_Chess.bin.hi','rb').read(); \
-out=[]; addr=0x0280; \
-[(out.append(f'{addr+i:04X}: ' + ' '.join(f'{b:02X}' for b in lo[i:i+8])), None)[1] for i in range(0, len(lo), 8)]; \
-addr=0xE000; \
-[(out.append(f'{addr+i:04X}: ' + ' '.join(f'{b:02X}' for b in hi[i:i+8])), None)[1] for i in range(0, len(hi), 8)]; \
-out.append('0280R'); \
-open('$(OUT_DIR)/TMS_Chess.txt','w').write('\n'.join(out)+'\n'); \
-print(f'Wrote $(OUT_DIR)/TMS_Chess.txt (lo={len(lo)} B at 0280, hi={len(hi)} B at E000)')"
+	@python3 ../../cc65/emit_dualbank.py "$(OUT_DIR)"/TMS_Chess.bin.lo "$(OUT_DIR)"/TMS_Chess.bin.hi "$(OUT_DIR)"/TMS_Chess.txt --run 0280
 
 .PHONY: all clean
 all: $(OUT_DIR_T)/TMS_Chess.txt

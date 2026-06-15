@@ -18,9 +18,7 @@
 ; Loop exit: gidx wraps 255→0 (8-bit), so use BNE after INC, not CMP #256.
 ; =============================================
 
-ECHO    = $FFEF
-KBDCR   = $D011
-KBD     = $D010
+.include "apple1.inc"
 
 ; --- Zero page ---
 .zeropage

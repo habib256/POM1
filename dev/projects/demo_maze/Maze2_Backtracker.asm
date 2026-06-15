@@ -14,9 +14,7 @@
 ; =============================================
 
 ; --- Constants ---
-ECHO    = $FFEF         ; Woz Monitor character output routine
-KBDCR   = $D011         ; Keyboard control register (bit 7 = key ready)
-KBD     = $D010         ; Keyboard data register
+.include "apple1.inc"
 
 NCOLS   = 19            ; Number of cell columns
 NROWS   = 11            ; Number of cell rows

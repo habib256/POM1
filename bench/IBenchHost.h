@@ -82,6 +82,10 @@ public:
     virtual bool        toolchainReady(int target) const = 0;
     virtual std::string toolchainHint (int target) const = 0;   // short status text
 
+    // Multi-line "what the toolchain probe found" report (paths, dev/ tree,
+    // per-runtime readiness) for a diagnostics popup. Empty = nothing to show.
+    virtual std::string toolchainReport() const { return ""; }
+
     // ---- Stop the running program (halt the emulated CPU) ----
     virtual bool hasStop() const { return false; }
     virtual void stop()          {}

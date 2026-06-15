@@ -45,8 +45,7 @@
 ; =============================================
 
 ; ----- Apple 1 I/O -----
-KBDCR   = $D011
-KBD     = $D010
+.include "apple1.inc"
 
 ; ----- Geometry -----
 ROW_SIZ   = 42              ; 40 interior cells + 2 ghost
@@ -293,11 +292,11 @@ render:
         ; so (hgr_ptr),Y for Y=1..40 writes HGR columns 0..39
         ; (lets us share Y with the grid's 1..40 indexing)
         LDY y_cur
-        LDA hgr_lo_tbl,Y
+        LDA hgr_lo,Y
         SEC
         SBC #1
         STA hgr_lo_p
-        LDA hgr_hi_tbl,Y
+        LDA hgr_hi,Y
         SBC #0
         STA hgr_hi_p
 
@@ -558,11 +557,4 @@ row_ofs_hi:
 ;   addr[y] = $2000 + (y mod 8)*$0400
 ;                   + ((y/8) mod 8)*$80
 ;                   + (y/64)*$28
-hgr_lo_tbl:
-        .repeat 192, YS
-            .byte <($2000 + ((YS .MOD 8) * $0400) + (((YS / 8) .MOD 8) * $80) + ((YS / 64) * $28))
-        .endrepeat
-hgr_hi_tbl:
-        .repeat 192, YS
-            .byte >($2000 + ((YS .MOD 8) * $0400) + (((YS / 8) .MOD 8) * $80) + ((YS / 64) * $28))
-        .endrepeat
+.include "hgr_scanline.inc"

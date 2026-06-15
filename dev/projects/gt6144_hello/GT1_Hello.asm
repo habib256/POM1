@@ -34,13 +34,12 @@
 ;   224 <= byte     : control opcode (not used here)
 ; =============================================
 
-GT_PORT   = $D00A
-DSP       = $D012            ; Apple-1 display data/status (write = char; read bit 7 = busy)
+.include "gt6144.inc"
+.include "apple1.inc"
 ; Woz Monitor GETLINE entry. $FF1A prints '\' (the prompt) + CR and falls
 ; through to the keyboard-wait loop. $FF1F is tempting (it's the label at
 ; LDA #$8D / JSR ECHO) but it SKIPS the '\' print — the user then sees no
 ; prompt and thinks the machine rebooted. Always enter at $FF1A.
-WOZMON    = $FF1A
 
 ; ---- Zero-page scratch ----
 STR_LO    = $20

@@ -1,141 +1,22 @@
 ; =============================================
-; hgr_tables.inc — HGR pixel lookup tables
+; hgr_tables.inc - HGR pixel routines + lookup tables (umbrella bundle)
 ; GEN2 Color Graphics Card (280x192, Apple II layout)
 ; =============================================
+; Convenience bundle: pulls in plot_pixel + clear_hgr + all four lookup tables
+; in the original order, so existing consumers stay byte-for-byte unchanged.
 ;
-; Include this file in any GEN2 program that needs
-; fast per-pixel access to the HGR framebuffer.
+; To adopt only PART of it, include the modules directly instead:
+;   hgr_clear.asm        - clear_hgr            (needs ZP ptr_lo/ptr_hi)
+;   hgr_scanline.inc     - hgr_lo / hgr_hi tables
+;   hgr_plot_tables.inc  - hgr_col / hgr_mask tables
+;   hgr_plot.asm         - plot_pixel           (needs cur_x/cur_y/ptr + both table sets)
 ;
-; Required zero-page variables (declare in your program):
-;   cur_x:  .res 1    ; pixel X coordinate (0-255)
-;   cur_y:  .res 1    ; pixel Y coordinate (0-191)
-;   ptr_lo: .res 1    ; indirect pointer low byte
-;   ptr_hi: .res 1    ; indirect pointer high byte
+; Required zero-page for the full bundle (declare in your program):
+;   cur_x, cur_y, ptr_lo, ptr_hi
 ;
-; Provides:
-;   plot_pixel  — set pixel at (cur_x, cur_y), ~45 cycles
-;   clear_hgr   — zero out $2000-$3FFF
-;
-; Data: 896 bytes (4 lookup tables)
-; Code: ~30 bytes
+; (umul8 lives in dev/lib/m6502/multiply.asm - include it separately if needed.)
 ; =============================================
-
-; =============================================
-; PLOT PIXEL: set pixel at (cur_x, cur_y)
-; Uses table lookups — ~45 cycles total.
-; Preserves: cur_x, cur_y
-; Trashes: A, X, Y, ptr_lo, ptr_hi
-; =============================================
-plot_pixel:
-        LDX cur_y
-        LDA hgr_lo,X
-        STA ptr_lo
-        LDA hgr_hi,X
-        STA ptr_hi
-        LDX cur_x
-        LDA hgr_mask,X      ; pixel bitmask
-        LDY hgr_col,X       ; byte column
-        ORA (ptr_lo),Y       ; merge with existing pixels
-        STA (ptr_lo),Y       ; write back
-        RTS
-
-; =============================================
-; umul8 (8x8 -> 16-bit unsigned multiply) used to live here. It moved to
-; `dev/lib/m6502/multiply.asm` so projects that don't need multiply
-; (HGR_Sierpinski, HGR_TestCard) no longer pay for the two ZP slots
-; mul_tmp / mul_res0. Projects that DO use umul8 should add:
-;     .include "multiply.asm"
-; alongside this file (with -I ../../lib/m6502 in their Makefile).
-; =============================================
-
-; =============================================
-; CLEAR HGR: zero out $2000-$3FFF (8 KB)
-; Trashes: A, X, Y, ptr_lo, ptr_hi
-; =============================================
-clear_hgr:
-        LDA #$00
-        TAY
-        STA ptr_lo
-        LDX #$20
-        STX ptr_hi
-@clr:   STA (ptr_lo),Y
-        INY
-        BNE @clr
-        INC ptr_hi
-        LDX ptr_hi
-        CPX #$40
-        BNE @clr
-        RTS
-
-; =============================================
-; LOOKUP TABLES (896 bytes total)
-; =============================================
-
-; --- hgr_lo[192]: scanline base address low byte ---
-; addr = $2000 + (y%8)*$0400 + ((y/8)%8)*$80 + (y/64)*$28
-hgr_lo:
-        .byte $00, $00, $00, $00, $00, $00, $00, $00, $80, $80, $80, $80, $80, $80, $80, $80
-        .byte $00, $00, $00, $00, $00, $00, $00, $00, $80, $80, $80, $80, $80, $80, $80, $80
-        .byte $00, $00, $00, $00, $00, $00, $00, $00, $80, $80, $80, $80, $80, $80, $80, $80
-        .byte $00, $00, $00, $00, $00, $00, $00, $00, $80, $80, $80, $80, $80, $80, $80, $80
-        .byte $28, $28, $28, $28, $28, $28, $28, $28, $A8, $A8, $A8, $A8, $A8, $A8, $A8, $A8
-        .byte $28, $28, $28, $28, $28, $28, $28, $28, $A8, $A8, $A8, $A8, $A8, $A8, $A8, $A8
-        .byte $28, $28, $28, $28, $28, $28, $28, $28, $A8, $A8, $A8, $A8, $A8, $A8, $A8, $A8
-        .byte $28, $28, $28, $28, $28, $28, $28, $28, $A8, $A8, $A8, $A8, $A8, $A8, $A8, $A8
-        .byte $50, $50, $50, $50, $50, $50, $50, $50, $D0, $D0, $D0, $D0, $D0, $D0, $D0, $D0
-        .byte $50, $50, $50, $50, $50, $50, $50, $50, $D0, $D0, $D0, $D0, $D0, $D0, $D0, $D0
-        .byte $50, $50, $50, $50, $50, $50, $50, $50, $D0, $D0, $D0, $D0, $D0, $D0, $D0, $D0
-        .byte $50, $50, $50, $50, $50, $50, $50, $50, $D0, $D0, $D0, $D0, $D0, $D0, $D0, $D0
-
-; --- hgr_hi[192]: scanline base address high byte ---
-hgr_hi:
-        .byte $20, $24, $28, $2C, $30, $34, $38, $3C, $20, $24, $28, $2C, $30, $34, $38, $3C
-        .byte $21, $25, $29, $2D, $31, $35, $39, $3D, $21, $25, $29, $2D, $31, $35, $39, $3D
-        .byte $22, $26, $2A, $2E, $32, $36, $3A, $3E, $22, $26, $2A, $2E, $32, $36, $3A, $3E
-        .byte $23, $27, $2B, $2F, $33, $37, $3B, $3F, $23, $27, $2B, $2F, $33, $37, $3B, $3F
-        .byte $20, $24, $28, $2C, $30, $34, $38, $3C, $20, $24, $28, $2C, $30, $34, $38, $3C
-        .byte $21, $25, $29, $2D, $31, $35, $39, $3D, $21, $25, $29, $2D, $31, $35, $39, $3D
-        .byte $22, $26, $2A, $2E, $32, $36, $3A, $3E, $22, $26, $2A, $2E, $32, $36, $3A, $3E
-        .byte $23, $27, $2B, $2F, $33, $37, $3B, $3F, $23, $27, $2B, $2F, $33, $37, $3B, $3F
-        .byte $20, $24, $28, $2C, $30, $34, $38, $3C, $20, $24, $28, $2C, $30, $34, $38, $3C
-        .byte $21, $25, $29, $2D, $31, $35, $39, $3D, $21, $25, $29, $2D, $31, $35, $39, $3D
-        .byte $22, $26, $2A, $2E, $32, $36, $3A, $3E, $22, $26, $2A, $2E, $32, $36, $3A, $3E
-        .byte $23, $27, $2B, $2F, $33, $37, $3B, $3F, $23, $27, $2B, $2F, $33, $37, $3B, $3F
-
-; --- hgr_col[256]: x / 7 → byte column (0-36) ---
-hgr_col:
-        .byte $00, $00, $00, $00, $00, $00, $00, $01, $01, $01, $01, $01, $01, $01, $02, $02
-        .byte $02, $02, $02, $02, $02, $03, $03, $03, $03, $03, $03, $03, $04, $04, $04, $04
-        .byte $04, $04, $04, $05, $05, $05, $05, $05, $05, $05, $06, $06, $06, $06, $06, $06
-        .byte $06, $07, $07, $07, $07, $07, $07, $07, $08, $08, $08, $08, $08, $08, $08, $09
-        .byte $09, $09, $09, $09, $09, $09, $0A, $0A, $0A, $0A, $0A, $0A, $0A, $0B, $0B, $0B
-        .byte $0B, $0B, $0B, $0B, $0C, $0C, $0C, $0C, $0C, $0C, $0C, $0D, $0D, $0D, $0D, $0D
-        .byte $0D, $0D, $0E, $0E, $0E, $0E, $0E, $0E, $0E, $0F, $0F, $0F, $0F, $0F, $0F, $0F
-        .byte $10, $10, $10, $10, $10, $10, $10, $11, $11, $11, $11, $11, $11, $11, $12, $12
-        .byte $12, $12, $12, $12, $12, $13, $13, $13, $13, $13, $13, $13, $14, $14, $14, $14
-        .byte $14, $14, $14, $15, $15, $15, $15, $15, $15, $15, $16, $16, $16, $16, $16, $16
-        .byte $16, $17, $17, $17, $17, $17, $17, $17, $18, $18, $18, $18, $18, $18, $18, $19
-        .byte $19, $19, $19, $19, $19, $19, $1A, $1A, $1A, $1A, $1A, $1A, $1A, $1B, $1B, $1B
-        .byte $1B, $1B, $1B, $1B, $1C, $1C, $1C, $1C, $1C, $1C, $1C, $1D, $1D, $1D, $1D, $1D
-        .byte $1D, $1D, $1E, $1E, $1E, $1E, $1E, $1E, $1E, $1F, $1F, $1F, $1F, $1F, $1F, $1F
-        .byte $20, $20, $20, $20, $20, $20, $20, $21, $21, $21, $21, $21, $21, $21, $22, $22
-        .byte $22, $22, $22, $22, $22, $23, $23, $23, $23, $23, $23, $23, $24, $24, $24, $24
-
-; --- hgr_mask[256]: 1 << (x % 7) → pixel bitmask ---
-hgr_mask:
-        .byte $01, $02, $04, $08, $10, $20, $40, $01, $02, $04, $08, $10, $20, $40, $01, $02
-        .byte $04, $08, $10, $20, $40, $01, $02, $04, $08, $10, $20, $40, $01, $02, $04, $08
-        .byte $10, $20, $40, $01, $02, $04, $08, $10, $20, $40, $01, $02, $04, $08, $10, $20
-        .byte $40, $01, $02, $04, $08, $10, $20, $40, $01, $02, $04, $08, $10, $20, $40, $01
-        .byte $02, $04, $08, $10, $20, $40, $01, $02, $04, $08, $10, $20, $40, $01, $02, $04
-        .byte $08, $10, $20, $40, $01, $02, $04, $08, $10, $20, $40, $01, $02, $04, $08, $10
-        .byte $20, $40, $01, $02, $04, $08, $10, $20, $40, $01, $02, $04, $08, $10, $20, $40
-        .byte $01, $02, $04, $08, $10, $20, $40, $01, $02, $04, $08, $10, $20, $40, $01, $02
-        .byte $04, $08, $10, $20, $40, $01, $02, $04, $08, $10, $20, $40, $01, $02, $04, $08
-        .byte $10, $20, $40, $01, $02, $04, $08, $10, $20, $40, $01, $02, $04, $08, $10, $20
-        .byte $40, $01, $02, $04, $08, $10, $20, $40, $01, $02, $04, $08, $10, $20, $40, $01
-        .byte $02, $04, $08, $10, $20, $40, $01, $02, $04, $08, $10, $20, $40, $01, $02, $04
-        .byte $08, $10, $20, $40, $01, $02, $04, $08, $10, $20, $40, $01, $02, $04, $08, $10
-        .byte $20, $40, $01, $02, $04, $08, $10, $20, $40, $01, $02, $04, $08, $10, $20, $40
-        .byte $01, $02, $04, $08, $10, $20, $40, $01, $02, $04, $08, $10, $20, $40, $01, $02
-        .byte $04, $08, $10, $20, $40, $01, $02, $04, $08, $10, $20, $40, $01, $02, $04, $08
+.include "hgr_plot.asm"
+.include "hgr_clear.asm"
+.include "hgr_scanline.inc"
+.include "hgr_plot_tables.inc"

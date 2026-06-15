@@ -49,6 +49,8 @@ private:
     std::vector<int> errorLines_;    // 1-based lines, mirrored onto the scrollbar
     int newLang_ = 0;                // New-dialog selection: language x machine
     int newMachine_ = 0;
+    std::string lastSavedText_;      // editor text at the last save/new/open
+    bool dirty_ = false;             // editor changed since lastSavedText_ ('*' on tab)
 };
 
 } // namespace bench
