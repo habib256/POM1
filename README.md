@@ -396,7 +396,7 @@ Open work on the 6502 software side: [`dev/TODO6502.md`](dev/TODO6502.md). On th
 
 The top-level **DevBench** menu groups POM1's developer tools:
 
-- **POM1 Bench** — an in-app cc65/ca65 sketch editor: write 6502 asm or C, assemble/compile, and run on the emulator without leaving the window. **New sketch** picks a **Language** (Assembly · ca65/ld65, or C · cc65/cl65) × **Machine**, and drops in a matching "HELLO WORLD" starter:
+- **POM1 Bench** — an in-app cc65/ca65 sketch editor: write 6502 asm or C, assemble/compile, and run on the emulator without leaving the window. Full target reference → **[`doc/DEVBENCH.md`](doc/DEVBENCH.md)**. **New sketch** picks a **Language** (Assembly · ca65/ld65, or C · cc65/cl65) × **Machine**, and drops in a matching "HELLO WORLD" starter:
   - **Apple-1 dual 4K/8K** — plain text via WozMon ECHO (asm) / `woz_puts` (C).
   - **P-LAB Graphic Card (TMS9918)** — Graphics I text (credit: Claudio Parmigiani's card). Both the asm and C targets flash the build into a persistent `roms/CODETANKDEV.rom` CodeTank dev cartridge and boot `4000R` — all TMS9918 code runs from CodeTank.
   - **Uncle Bernie GEN2 HGR** — HIRES text drawn with the Beautiful Boot font, pixel-doubled to solid white (no NTSC colour artifacts); the C starter calls the new `gen2_hgr_puts()` from the gen2c runtime.

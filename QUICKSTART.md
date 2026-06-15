@@ -54,7 +54,8 @@ you launch almost everything in POM1.
 ## Step 3 — Step up to assembly or C (the POM1 Bench)
 
 Ready for real 6502 code? POM1 has a built-in editor — an Arduino-style sketch
-IDE that compiles and runs without leaving the window.
+IDE that compiles and runs without leaving the window. Full target reference:
+[`doc/DEVBENCH.md`](doc/DEVBENCH.md).
 
 1. **DevBench → POM1 Bench (sketch editor)…**
 2. Click **New** (the file icon). Pick:
