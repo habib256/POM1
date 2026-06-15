@@ -976,6 +976,13 @@ std::string sizePathForPreset(int idx)
     return std::string(buf);
 }
 
+std::string windowsPathForPreset(int idx)
+{
+    char buf[48];
+    std::snprintf(buf, sizeof(buf), "ini/preset_%02d.windows", idx);
+    return std::string(buf);
+}
+
 /** Shipped under repo `ini_defaults/` (tracked in git). Used to seed preset 7
  *  (CodeTank) layout files so they match the reviewed snapshot; cwd may be
  *  repo root or `build/` (try ../ini_defaults/, etc.). */
@@ -1070,7 +1077,7 @@ void syncMemoryBarIniToDisk(const char* windowName,
 
 } // namespace
 
-void MainWindow_ImGui::savePresetLayout(int idx) const
+void MainWindow_ImGui::savePresetLayout(int idx)
 {
     if (idx < 0 || idx >= kMachinePresetCount) return;
     std::error_code ec;
@@ -1086,6 +1093,7 @@ void MainWindow_ImGui::savePresetLayout(int idx) const
     syncMemoryBarIniToDisk("Memory Map Bar (Horizontal)", memoryBarHLastGeomValid,
                            memoryBarHLastPos, memoryBarHLastSize);
     ImGui::SaveIniSettingsToDisk(iniPath.c_str());
+    saveWindowFlags(idx);   // ini/preset_NN.windows: which desktop panels are open
     pom1::log().debug("Layout",
         "Saved preset " + std::to_string(idx) + " → " + iniPath);
 #if !POM1_IS_WASM
@@ -1104,6 +1112,8 @@ bool MainWindow_ImGui::loadPresetLayout(int idx)
     std::error_code ec;
     if (!std::filesystem::exists(path, ec)) return false;
     ImGui::LoadIniSettingsFromDisk(path.c_str());
+    loadWindowFlags(idx);   // restore which desktop panels are open (overrides
+                            // the card-driven defaults applyMachineConfig set)
 #if !POM1_IS_WASM
     if (window) {
         int w = 0, h = 0;
@@ -1112,6 +1122,75 @@ bool MainWindow_ImGui::loadPresetLayout(int idx)
         }
     }
 #endif
+    return true;
+}
+
+// ---------------------------------------------------------------------------
+// Window open/closed persistence (ini/preset_NN.windows)
+//
+// ImGui's own ini stores each window's position/size/collapsed state, but NOT
+// whether the app currently has that window *open* (the show* bool flags live
+// in app state). This sidecar captures the open/closed state of the curated
+// "desktop" panels so a saved arrangement — Bench + Telemetry + inspectors laid
+// out just so — reappears wholesale when the preset is selected again.
+// ---------------------------------------------------------------------------
+std::vector<std::pair<const char*, bool*>> MainWindow_ImGui::persistentWindowFlags()
+{
+    // Stable keys → backing flags. Tool + peripheral panels only; transient
+    // dialogs, tutorials, photos and config popups are intentionally excluded.
+    return {
+        { "Bench",             &showBench },
+        { "Telemetry",         &showTelemetry },
+        { "TMS9918Inspector",  &showTMS9918Inspector },
+        { "SiliconStrict",     &showSiliconStrictWindow },
+        { "MemoryViewer",      &showMemoryViewer },
+        { "Debugger",          &showDebugger },
+        { "RewindTimeline",    &showRewindTimeline },
+        { "MemoryMapGrid",     &showMemoryMapGrid },
+        { "MemoryBar",         &showMemoryBar },
+        { "MemoryBarH",        &showMemoryBarH },
+        { "CassetteDeck",      &showCassetteDeck },
+        { "GraphicsCard",      &showGraphicsCard },
+        { "TMS9918",           &showTMS9918 },
+        { "GT6144",            &showGT6144 },
+        { "IECCard",           &showIECCard },
+        { "WiFiModem",         &showWiFiModem },
+        { "TerminalCard",      &showTerminalCard },
+        { "PR40",              &showPR40 },
+        { "JukeBox",           &showJukeBox },
+        { "CodeTankLibrary",   &showCodeTankLibrary },
+    };
+}
+
+void MainWindow_ImGui::saveWindowFlags(int idx)
+{
+    if (idx < 0 || idx >= kMachinePresetCount) return;
+    std::error_code ec;
+    std::filesystem::create_directories("ini", ec);
+    std::ofstream f(windowsPathForPreset(idx));
+    if (!f) return;
+    for (const auto& wf : persistentWindowFlags())
+        f << wf.first << '=' << (*wf.second ? 1 : 0) << '\n';
+}
+
+bool MainWindow_ImGui::loadWindowFlags(int idx)
+{
+    if (idx < 0 || idx >= kMachinePresetCount) return false;
+    std::ifstream f(windowsPathForPreset(idx));
+    if (!f) return false;
+    // key → "1"/"0", applied only to keys present in the file (a partial file
+    // leaves the rest at the applyMachineConfig default).
+    const auto flags = persistentWindowFlags();
+    std::string line;
+    while (std::getline(f, line)) {
+        const std::size_t eq = line.find('=');
+        if (eq == std::string::npos) continue;
+        const std::string key = line.substr(0, eq);
+        const char c = (eq + 1 < line.size()) ? line[eq + 1] : '0';
+        const bool val = (c == '1' || c == 't' || c == 'T' || c == 'y' || c == 'Y');
+        for (const auto& wf : flags)
+            if (key == wf.first) { *wf.second = val; break; }
+    }
     return true;
 }
 
@@ -1130,6 +1209,7 @@ void MainWindow_ImGui::resetActivePresetLayout()
     std::error_code ec;
     std::filesystem::remove(iniPathForPreset(idx), ec);
     std::filesystem::remove(sizePathForPreset(idx), ec);
+    std::filesystem::remove(windowsPathForPreset(idx), ec);  // drop saved open/closed set
     memoryBarLastGeomValid  = false;
     memoryBarHLastGeomValid = false;
 
@@ -1160,6 +1240,7 @@ void MainWindow_ImGui::resetAllPresetLayouts()
     for (int i = 0; i < kMachinePresetCount; ++i) {
         std::filesystem::remove(iniPathForPreset(i), ec);
         std::filesystem::remove(sizePathForPreset(i), ec);
+        std::filesystem::remove(windowsPathForPreset(i), ec);
     }
     resetActivePresetLayout();             // wipes live state + active files, resizes OS window
     pregenerateMissingPresetLayouts();     // re-write factory ini/.size for all presets
@@ -1192,6 +1273,16 @@ void MainWindow_ImGui::pregenerateMissingPresetLayouts()
 
     int generated = 0;
     for (int idx = 0; idx < kMachinePresetCount; ++idx) {
+        // Seed the open/closed-window sidecar from ini_defaults/ when a curated
+        // one ships there — lets a saved arrangement become the default baseline
+        // on a fresh (config-less) install. Never overwrites a user's own.
+        const std::string winPath = windowsPathForPreset(idx);
+        if (!fs::exists(winPath, ec)) {
+            char winBase[48];
+            std::snprintf(winBase, sizeof(winBase), "preset_%02d.windows", idx);
+            copyIniDefaultsFileTo(winBase, winPath);
+        }
+
         const std::string iniPath = iniPathForPreset(idx);
         const std::string sizePath = sizePathForPreset(idx);
         const bool iniExists  = fs::exists(iniPath, ec);

@@ -1252,9 +1252,9 @@ void M6502::step(void)
 int M6502::run(int maxCycles)
 {
     int cyclesExecuted = 0;
-    running = 1;
+    running.store(1, std::memory_order_relaxed);
 
-    while (running && cyclesExecuted < maxCycles) {
+    while (running.load(std::memory_order_relaxed) && cyclesExecuted < maxCycles) {
         // PC-matched halt. The branch on `breakpointActive` is the
         // hot-path cost when no breakpoint is armed (compiler folds to
         // a single load + jcc, predicted not-taken). Fires *before* the
@@ -1267,7 +1267,7 @@ int M6502::run(int maxCycles)
                 << static_cast<int>(programCounter);
             pom1::log().warn("CPU", oss.str());
             breakpointTripped = true;
-            running = 0;
+            running.store(0, std::memory_order_relaxed);
             break;
         }
         step();
@@ -1293,7 +1293,7 @@ int M6502::run(int maxCycles)
 
 void M6502::start(void)
 {
-    running = 1;
+    running.store(1, std::memory_order_relaxed);
     // Clear the trip latch so resuming after a breakpoint-driven halt
     // (the user's "continue") doesn't immediately report tripped again.
     // The breakpoint stays armed — `start()` is "go", `clearBreakpoint`
@@ -1303,7 +1303,10 @@ void M6502::start(void)
 
 void M6502::stop(void)
 {
-    running = 0;
+    // May be called lock-free from another thread (EmulationController::
+    // stopCpu) to abort a slice already executing inside run(). The relaxed
+    // store is observed by run()'s loop guard within one instruction.
+    running.store(0, std::memory_order_relaxed);
 }
 
 void M6502::serialize(pom1::SnapshotWriter& writer) const

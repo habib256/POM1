@@ -74,6 +74,7 @@ public:
     static constexpr uint8_t kCtrlLockstepOff = 0x00;
     static constexpr uint8_t kCtrlEndFrame    = 0x01; // delimit + queue the accumulated frame
     static constexpr uint8_t kCtrlLockstepOn  = 0x02; // arm deterministic handshake (see TODO below)
+    static constexpr uint8_t kCtrlSchemaFrame = 0x03; // delimit a self-describing schema frame
 
     // Status bits returned by reading kRegCtrl.
     static constexpr uint8_t kStatConnected = 0x80; // bit7: a harness is connected
@@ -85,7 +86,11 @@ public:
     static constexpr uint8_t kAckByte = 0x06;       // ASCII ACK
 
     // Outbound frame wire format: kFrameSentinel, len-lo, len-hi, payload[len].
-    static constexpr uint8_t  kFrameSentinel = 0xAA;
+    // A self-describing *schema* frame uses kSchemaSentinel instead, with a
+    // payload of [type:1][name ASCII…][0x00] field descriptors — a consumer
+    // keeps the last schema and decodes subsequent data frames field-by-field.
+    static constexpr uint8_t  kFrameSentinel  = 0xAA;
+    static constexpr uint8_t  kSchemaSentinel = 0xA5; // schema-frame header byte
     static constexpr uint16_t kDefaultPort   = 6503; // Terminal Card owns 6502
 
     TelemetryPort();
@@ -116,6 +121,18 @@ public:
     bool isAwaitingAck() const;
     void clearAwaitingAck();
     void serviceStall();
+
+    // UI-driven lock-step arm/disarm (the in-app flow-control buttons), distinct
+    // from the game's own TELE_CTRL writes: arming makes the next emitted frame
+    // park the CPU; disarming + clearAwaitingAck() resumes free-running. Lets the
+    // user pause / step / run any telemetry-emitting game from the panel.
+    void setLockstep(bool on);
+
+    // True while a UI "Pause" deliberately holds lock-step. The lock-step ACK
+    // watchdog (auto-resume after kTelemetryStallTimeoutSec) is suppressed in
+    // this state — a user pause is meant to hold indefinitely, unlike a game
+    // that armed lock-step with no/dead harness.
+    bool isUserHeld() const;
 
     // Same key-injection contract as the Terminal Card: synthetic input for
     // games that read the keyboard ($D010/$D011) the normal way. raw == true
@@ -179,6 +196,7 @@ private:
     std::vector<uint8_t> outBuf;     // framed bytes awaiting socket flush
     std::deque<uint8_t>  inBuf;      // inbound bytes (harness → game)
     bool                 lockstep = false;
+    bool                 userHeld = false;  // lock-step armed by the UI Pause button
 
     // Serial Monitor TX tap — last kMonitorRingBytes of the outbound wire stream
     // (tapped in endFrame, even on socket backpressure drop, so the monitor sees
@@ -216,7 +234,8 @@ private:
     mutable std::mutex portMutex;
 
     // Internal helpers (network ops are desktop-only; WASM gets no-op stubs).
-    void endFrame();
+    // schema == true emits a kSchemaSentinel header and never arms lock-step.
+    void endFrame(bool schema = false);
     void flushOutbound();
     void startServer();
     void stopServer();

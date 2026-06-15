@@ -13,6 +13,7 @@
 #include "WiFiModem.h"
 #include "TerminalCard.h"
 #include "PR40Printer.h"
+#include "TelemetryPort.h"  // schema/data frame sentinels for the decoded-state table
 
 #include "imgui.h"
 #include "IconsFontAwesome6.h"
@@ -605,6 +606,199 @@ static void formatTelemetryMonitor(const std::vector<unsigned char>& bytes,
     }
 }
 
+// ─────────────────────────────────────────────────────────────
+// Self-describing telemetry: schema-driven "Decoded state" table
+//
+// Generalisation, not game-specific. We parse two frame kinds out of the same
+// outbound wire stream (telemetryMonitorBytes): a SCHEMA frame (sentinel 0xA5)
+// declaring a list of {type, name} field descriptors, and DATA frames (0xAA)
+// carrying the field VALUES in schema order. The decoded table is built purely
+// from whatever schema the game last emitted — nothing here knows about any
+// particular game. See doc/TELEMETRY_SIDE_CHANNEL.md.
+// ─────────────────────────────────────────────────────────────
+
+// Field type codes (shared wire contract). Sized payload bytes per the type.
+enum class TeleFieldType : uint8_t {
+    U8 = 1, S8 = 2, U16 = 3, S16 = 4, Bool = 5, Char = 6
+};
+
+struct TeleField {
+    TeleFieldType type;
+    std::string   name;
+};
+
+static const char* teleTypeName(TeleFieldType t)
+{
+    switch (t) {
+    case TeleFieldType::U8:   return "U8";
+    case TeleFieldType::S8:   return "S8";
+    case TeleFieldType::U16:  return "U16";
+    case TeleFieldType::S16:  return "S16";
+    case TeleFieldType::Bool: return "BOOL";
+    case TeleFieldType::Char: return "CHAR";
+    }
+    return "?";
+}
+
+// Bytes a field of this type consumes from a data-frame payload.
+static std::size_t teleTypeSize(TeleFieldType t)
+{
+    switch (t) {
+    case TeleFieldType::U16:
+    case TeleFieldType::S16:  return 2;
+    default:                  return 1;   // U8/S8/BOOL/CHAR
+    }
+}
+
+// Walk the wire buffer as [sentinel][len_lo][len_hi][payload] frames, recording
+// the byte ranges of the LAST schema (0xA5) and LAST data (0xAA) frame seen.
+// Returns true if a well-formed frame of the given sentinel was found; the
+// payload range is [outBegin, outBegin+outLen). A truncated trailing frame
+// (header or payload running past the buffer) is ignored.
+static bool teleFindLastFrame(const std::vector<unsigned char>& buf, uint8_t sentinel,
+                              std::size_t& outBegin, std::size_t& outLen)
+{
+    bool found = false;
+    std::size_t i = 0;
+    while (i + 3 <= buf.size()) {
+        const uint8_t sent = buf[i];
+        const std::size_t len = buf[i + 1] | (static_cast<std::size_t>(buf[i + 2]) << 8);
+        if (i + 3 + len > buf.size()) break;   // truncated tail — stop
+        if (sent == sentinel) {
+            outBegin = i + 3;
+            outLen   = len;
+            found    = true;
+        }
+        i += 3 + len;
+    }
+    return found;
+}
+
+// Parse a schema-frame payload ([type:1][name ASCII…][0x00] descriptors) into a
+// field list. Stops cleanly on a malformed/truncated descriptor.
+static void teleParseSchema(const unsigned char* p, std::size_t len,
+                            std::vector<TeleField>& out)
+{
+    out.clear();
+    std::size_t i = 0;
+    while (i < len) {
+        const uint8_t code = p[i++];
+        if (code < 1 || code > 6) break;        // unknown type — give up
+        std::string name;
+        while (i < len && p[i] != 0x00) name += static_cast<char>(p[i++]);
+        if (i >= len) break;                    // name not terminated — truncated
+        ++i;                                    // skip the 0x00 terminator
+        out.push_back({ static_cast<TeleFieldType>(code), std::move(name) });
+    }
+}
+
+// Decode one field's value (at *p, span bytes) into a display string.
+static std::string teleDecodeValue(TeleFieldType type, const unsigned char* p, std::size_t span)
+{
+    char tmp[32];
+    switch (type) {
+    case TeleFieldType::U8:
+        std::snprintf(tmp, sizeof(tmp), "%u", static_cast<unsigned>(p[0]));
+        return tmp;
+    case TeleFieldType::S8:
+        std::snprintf(tmp, sizeof(tmp), "%d", static_cast<int>(static_cast<int8_t>(p[0])));
+        return tmp;
+    case TeleFieldType::U16: {
+        const unsigned v = static_cast<unsigned>(p[0]) | (static_cast<unsigned>(p[1]) << 8);
+        std::snprintf(tmp, sizeof(tmp), "%u", v);
+        return tmp;
+    }
+    case TeleFieldType::S16: {
+        const int16_t v = static_cast<int16_t>(p[0] | (static_cast<uint16_t>(p[1]) << 8));
+        std::snprintf(tmp, sizeof(tmp), "%d", static_cast<int>(v));
+        return tmp;
+    }
+    case TeleFieldType::Bool:
+        return p[0] ? "true" : "false";
+    case TeleFieldType::Char: {
+        const unsigned char c = p[0];
+        if (c >= 0x20 && c < 0x7F) std::snprintf(tmp, sizeof(tmp), "'%c'  ($%02X)", c, c);
+        else                       std::snprintf(tmp, sizeof(tmp), "$%02X", c);
+        return tmp;
+    }
+    }
+    (void)span;
+    return "?";
+}
+
+// Render the schema-driven "Decoded state" table from the accumulated wire bytes.
+// Game-agnostic: every row name/type/value comes from the game's own schema. If
+// no schema frame has been seen yet, show a greyed hint (the raw Serial Monitor
+// below still carries the bytes).
+static void renderTelemetryDecodedState(const std::vector<unsigned char>& bytes)
+{
+    ImGui::SeparatorText("Decoded state");
+
+    std::size_t schemaBegin = 0, schemaLen = 0;
+    if (!teleFindLastFrame(bytes, TelemetryPort::kSchemaSentinel, schemaBegin, schemaLen)) {
+        ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.6f, 0.6f, 0.6f, 1.0f));
+        ImGui::TextWrapped("No schema frame — showing raw bytes below. A game can emit a "
+                           "schema frame (TELE_CTRL=$03) so its fields appear here by name. "
+                           "See doc/TELEMETRY_SIDE_CHANNEL.md.");
+        ImGui::PopStyleColor();
+        return;
+    }
+
+    std::vector<TeleField> fields;
+    teleParseSchema(bytes.data() + schemaBegin, schemaLen, fields);
+    if (fields.empty()) {
+        ImGui::TextDisabled("Schema frame seen but no valid field descriptors decoded.");
+        return;
+    }
+
+    std::size_t dataBegin = 0, dataLen = 0;
+    const bool haveData = teleFindLastFrame(bytes, TelemetryPort::kFrameSentinel, dataBegin, dataLen);
+
+    if (ImGui::BeginTable("##telemetry_decoded", 3,
+                          ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg |
+                          ImGuiTableFlags_SizingStretchProp)) {
+        ImGui::TableSetupColumn("Field");
+        ImGui::TableSetupColumn("Type");
+        ImGui::TableSetupColumn("Value");
+        ImGui::TableHeadersRow();
+
+        std::size_t off = 0;            // offset into the data payload
+        for (const TeleField& f : fields) {
+            const std::size_t span = teleTypeSize(f.type);
+            ImGui::TableNextRow();
+            ImGui::TableSetColumnIndex(0);
+            ImGui::TextUnformatted(f.name.c_str());
+            ImGui::TableSetColumnIndex(1);
+            ImGui::TextUnformatted(teleTypeName(f.type));
+            ImGui::TableSetColumnIndex(2);
+            if (haveData && off + span <= dataLen) {
+                const std::string v = teleDecodeValue(f.type, bytes.data() + dataBegin + off, span);
+                ImGui::TextUnformatted(v.c_str());
+            } else {
+                ImGui::TextDisabled("--");   // no value for this field yet
+            }
+            off += span;
+        }
+        ImGui::EndTable();
+    }
+
+    // Length-mismatch note: the data frame is shorter or longer than the schema.
+    if (haveData) {
+        std::size_t expected = 0;
+        for (const TeleField& f : fields) expected += teleTypeSize(f.type);
+        if (dataLen != expected) {
+            ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 0.75f, 0.3f, 1.0f));
+            ImGui::TextWrapped("Note: data frame is %zu B but schema expects %zu B "
+                               "(%s) — showing what fits.",
+                               dataLen, expected,
+                               dataLen < expected ? "fields truncated" : "extra trailing bytes");
+            ImGui::PopStyleColor();
+        }
+    } else {
+        ImGui::TextDisabled("No data frame yet — fields will fill in as the game emits state.");
+    }
+}
+
 void MainWindow_ImGui::renderTelemetryWindow()
 {
     ImGui::SetNextWindowSize(ImVec2(440, 520), ImGuiCond_FirstUseEver);
@@ -615,7 +809,9 @@ void MainWindow_ImGui::renderTelemetryWindow()
                            "hardware) — the SDK's \"serial\". A game writes state + "
                            "an end-frame marker; this Serial Monitor shows the "
                            "outbound stream and injects inbound bytes (TELE_IN), "
-                           "exactly as a TCP harness would. doc/TELEMETRY_SIDE_CHANNEL.md.");
+                           "exactly as a TCP harness would. If the game emits a schema "
+                           "frame (TELE_CTRL=$03) the \"Decoded state\" table below "
+                           "names its fields. doc/TELEMETRY_SIDE_CHANNEL.md.");
         ImGui::PopStyleColor();
         ImGui::Separator();
 
@@ -656,11 +852,32 @@ void MainWindow_ImGui::renderTelemetryWindow()
             ImGui::Text("Lock-step: %s   Frames: %u   TX: %u B   RX: %u B",
                         snap.lockstep ? (snap.awaitingAck ? "PARKED" : "ARMED") : "off",
                         snap.framesSent, snap.bytesSent, snap.bytesReceived);
-            if (snap.awaitingAck) {
-                ImGui::SameLine();
-                if (ImGui::SmallButton("Step frame"))
-                    emulation->telemetryReleaseFrame();
-            }
+
+            // ---- Flow control: pause / step / run the game at FRAME granularity ----
+            // Works for any telemetry game that closes each frame with TELE_FRAME
+            // (e.g. the GEN2 Snake). Pause arms lock-step so the game halts at its
+            // next emitted frame; Step releases exactly one; Run frees it again.
+            ImGui::TextUnformatted("Flow:");
+            ImGui::SameLine();
+            ImGui::BeginDisabled(snap.lockstep);
+            if (ImGui::Button(ICON_FA_PAUSE " Pause")) emulation->setTelemetryLockstep(true);
+            ImGui::EndDisabled();
+            if (ImGui::IsItemHovered())
+                ImGui::SetTooltip("Pause the game: it halts at its next emitted frame (arms lock-step).");
+            ImGui::SameLine();
+            ImGui::BeginDisabled(!snap.lockstep);
+            if (ImGui::Button(ICON_FA_FORWARD_STEP " Step")) emulation->telemetryReleaseFrame();
+            ImGui::EndDisabled();
+            if (ImGui::IsItemHovered())
+                ImGui::SetTooltip("Advance exactly one game frame, then re-park.");
+            ImGui::SameLine();
+            ImGui::BeginDisabled(!snap.lockstep);
+            if (ImGui::Button(ICON_FA_PLAY " Run")) emulation->setTelemetryLockstep(false);
+            ImGui::EndDisabled();
+            if (ImGui::IsItemHovered())
+                ImGui::SetTooltip("Resume free-running (disarm lock-step, release any park).");
+            ImGui::SameLine();
+            ImGui::TextDisabled(snap.awaitingAck ? "(parked)" : snap.lockstep ? "(armed)" : "(free)");
 
             // ---- Consume the TX tap (delta vs last seen total) ----
             uint64_t total = snap.txTotal;
@@ -680,6 +897,11 @@ void MainWindow_ImGui::renderTelemetryWindow()
                         telemetryMonitorBytes.begin() +
                         static_cast<std::ptrdiff_t>(telemetryMonitorBytes.size() - kCap));
             }
+
+            // ---- Decoded state (schema-driven, game-agnostic) ----
+            // Built from telemetryMonitorBytes, which the TX-tap block above has
+            // just refreshed, so it reflects the latest schema + data frames.
+            renderTelemetryDecodedState(telemetryMonitorBytes);
 
             // ---- Serial Monitor ----
             ImGui::Separator();
@@ -754,9 +976,16 @@ void MainWindow_ImGui::renderTelemetryWindow()
         if (ImGui::CollapsingHeader("Registers ($C440-$C443)")) {
             ImGui::BulletText("$C440 TELE_DATA  (W)  push a byte into the frame");
             ImGui::BulletText("$C441 TELE_CTRL  (W)  $01 end-frame / $02 arm lock-step / $00 disarm");
+            ImGui::Indent();
+            ImGui::BulletText("$03 schema-frame: same payload window, but field descriptors");
+            ImGui::BulletText("([type][name][$00]) — never parks lock-step. Decoded above.");
+            ImGui::Unindent();
             ImGui::BulletText("$C441 TELE_STAT  (R)  b7 harness connected, b0 inbound available");
             ImGui::BulletText("$C442 TELE_IN    (R)  pop one inbound byte (ACK $06 is consumed)");
             ImGui::BulletText("$C443 TELE_INLEN (R)  inbound bytes pending");
+            ImGui::Separator();
+            ImGui::TextDisabled("Schema + data frames ride the same outbound (read) wire "
+                                "stream; the decoder keeps the last of each.");
         }
     }
     ImGui::End();

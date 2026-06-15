@@ -39,6 +39,9 @@ public:
 
     bool hasStop() const override { return true; }
     void stop() override;
+    std::string cpuStep() override;
+    void cpuRun() override;
+    bool cpuIsRunning() const override;
     std::string browseDir() const override;
 
     bool hasSerial() const override { return true; }
@@ -70,6 +73,7 @@ private:
     mutable bool        plainCOk_    = false;   // plain text C (shared apple1c lib)
     mutable std::string ca65_, ld65_, cl65_, libFlags_, videocardLib_, codetankCfg_;
     mutable std::string gen2cLib_, gen2Cfg_, plainCfg_, apple1cLib_;
+    mutable std::string telemetryLib_;   // header-only telemetry.h include dir (all C targets)
 };
 
 #endif // POM1_BENCH_HOST_H

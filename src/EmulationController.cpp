@@ -106,6 +106,15 @@ void EmulationController::startCpu()
 void EmulationController::stopCpu()
 {
     runRequested.store(false);
+    // Signal the CPU lock-free *before* contending for stateMutex. If a slice
+    // is already inside cpu->run() (holding the mutex), this lets its loop
+    // guard observe running==0 and exit within one instruction instead of
+    // burning the rest of its ~6000-cycle budget. Without this, a Stop/Step
+    // click while free-running (the normal state right after the DevBench Run
+    // pill) advanced the CPU by the slice remainder before the single step —
+    // it looked like Step didn't single-step. cpu->stop() is re-issued under
+    // the lock below so the final state is unambiguously stopped.
+    cpu->stop();
     {
         std::lock_guard<PriorityMutex> lock(stateMutex);
         cpu->stop();
@@ -1196,6 +1205,15 @@ void EmulationController::telemetryReleaseFrame()
     memory->getTelemetryPort().clearAwaitingAck();
 }
 
+void EmulationController::setTelemetryLockstep(bool on)
+{
+    std::lock_guard<PriorityMutex> lock(stateMutex);
+    if (!memory->isTelemetryEnabled()) return;
+    auto& tp = memory->getTelemetryPort();
+    tp.setLockstep(on);
+    if (!on) tp.clearAwaitingAck();   // disarm → release any current park (resume)
+}
+
 bool EmulationController::isTerminalCardEnabled() const
 {
     std::lock_guard<PriorityMutex> lock(stateMutex);
@@ -1343,7 +1361,10 @@ void EmulationController::runEmulationSlice(double elapsedSeconds)
         if (telemetryStalled) {
             memory->getTelemetryPort().serviceStall();
             telemetryStallSeconds += elapsedSeconds;
-            if (telemetryStallSeconds > kTelemetryStallTimeoutSec) {
+            // A deliberate UI "Pause" holds indefinitely — only a harness-waiting
+            // stall (game-armed lock-step, no/dead harness) trips the watchdog.
+            if (telemetryStallSeconds > kTelemetryStallTimeoutSec
+                && !memory->getTelemetryPort().isUserHeld()) {
                 memory->getTelemetryPort().clearAwaitingAck();
                 pom1::log().warn("Telemetry", "lock-step ACK timeout — auto-resuming");
                 telemetryStallSeconds = 0.0;

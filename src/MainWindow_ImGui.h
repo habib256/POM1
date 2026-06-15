@@ -3,6 +3,7 @@
 
 #include <optional>
 #include <string>
+#include <utility>
 #include <vector>
 #include <memory>
 #include <cstring>
@@ -90,9 +91,21 @@ public:
     // preset switch, and from the main loop on clean shutdown so the
     // user's last layout survives across sessions. Public because
     // main_imgui.cpp's cleanup path must call savePresetLayout() before
-    // ImGui::DestroyContext().
-    void savePresetLayout(int presetIndex) const;
+    // ImGui::DestroyContext(). savePresetLayout also writes a
+    // ini/preset_NN.windows sidecar capturing which "desktop" panels (Bench,
+    // Telemetry, inspectors, card windows…) are open, so loadPresetLayout can
+    // restore the whole arrangement — not just window geometry. Not const: it
+    // reads the live show* flags through persistentWindowFlags().
+    void savePresetLayout(int presetIndex);
     bool loadPresetLayout(int presetIndex);  // returns true if a file was found
+
+    // The curated set of persistent "desktop" panels whose open/closed state is
+    // saved with the layout (tool + peripheral windows; transient dialogs,
+    // tutorials and photos are intentionally excluded). Maps a stable key to the
+    // backing show* flag. Shared by save/loadWindowFlags.
+    std::vector<std::pair<const char*, bool*>> persistentWindowFlags();
+    void saveWindowFlags(int presetIndex);   // → ini/preset_NN.windows
+    bool loadWindowFlags(int presetIndex);   // applies the sidecar if present
 
     // Write default ini/imgui_preset_NN.ini + ini/preset_NN.size for every
     // preset that doesn't have one yet, using the hard-coded defaults from
@@ -425,7 +438,10 @@ private:
     // CPU execution functions
     void startCpu();
     void stopCpu();
-    void stepCpu();
+    // Single-step one instruction; returns the post-step PC label
+    // ("PC: 0x1234"). Menu/F7 callers ignore the return; the DevBench
+    // toolbar surfaces it so a step on a graphics target still confirms.
+    std::string stepCpu();
     void updateCpuExecution(float deltaTime);
     
     // Utility functions

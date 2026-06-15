@@ -819,21 +819,30 @@ void MainWindow_ImGui::startCpu()
 void MainWindow_ImGui::stopCpu()
 {
     cpuRunning = false;
+    // Cancel any pending DevBench CodeTank autostart ("4000R\r" queued by the
+    // Run pill ~1 s out): the user explicitly halted, so don't let the deferred
+    // keystroke re-launch the program the next time the CPU runs.
+    codeTankPendingWozRunAt = 0.0;
     emulation->stopCpu();
     setStatusMessage("CPU stopped", 2.0f);
 }
 
-void MainWindow_ImGui::stepCpu()
+std::string MainWindow_ImGui::stepCpu()
 {
     // Arrêter l'exécution automatique et activer le mode pas à pas
     cpuRunning = false;
     stepMode = true;
+    // Same as stopCpu(): a single-step must not be masked by the DevBench
+    // CodeTank autostart firing (and queueing "4000R") moments later.
+    codeTankPendingWozRunAt = 0.0;
     emulation->stepCpu();
     emulation->copySnapshot(uiSnapshot);
-    
+
     std::stringstream ss;
-    ss << "Step - PC: 0x" << std::hex << std::uppercase << uiSnapshot.programCounter;
-    setStatusMessage(ss.str(), 2.0f);
+    ss << "PC: 0x" << std::hex << std::uppercase << uiSnapshot.programCounter;
+    const std::string pcLabel = ss.str();
+    setStatusMessage("Step - " + pcLabel, 2.0f);
+    return pcLabel;
 }
 
 

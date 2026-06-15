@@ -1,9 +1,13 @@
-# Telemetry Side Channel — Design Note (proposed)
+# Telemetry Side Channel — Design Note
 
-> **Status: design sketch, not implemented.** This documents a proposed
-> dev-only virtual peripheral. Nothing here ships yet — tracked in `TODO.md`
-> › *Automated game testing*. CLAUDE.md describes shipped architecture only;
-> when (if) this lands, the invariants migrate there.
+> **Status: shipped (POM1 1.9.2).** This dev-only virtual peripheral is
+> implemented (`src/TelemetryPort.{h,cpp}`), wired into the *DevBench → Telemetry
+> Side Channel* panel and the Bench Serial Monitor, and driven by the
+> `--telemetry-port` / `--telemetry-log` / `--headless` CLI flags. The reusable
+> kit (`dev/lib/telemetry/telemetry.inc`, `tools/pom1_telemetry.py`,
+> `dev/projects/a1_telemetry_demo/`) ships too. Sections still tagged *proposed*
+> below are the original design rationale, kept for context; the ✅ markers flag
+> what landed.
 
 **Goal.** Give an external test harness a way to *observe* a running Apple-1
 program's state and *drive* its input, so games — especially real-time action
@@ -161,7 +165,87 @@ headers:
   may also inject keystrokes out-of-band via the key-injection path (§5).
 - The *layout of the payload* (which byte is `player_x`, etc.) is a contract
   between one game and its one test program — POM1 stays agnostic. Convention:
-  ship the layout as a comment block / struct in the game's test file.
+  ship the layout as a comment block / struct in the game's test file, **or**
+  declare it on the wire with a schema frame (§4a) so the harness/UI can decode
+  it by name.
+
+---
+
+## 4a. Self-describing schema frames (v1) ✅
+
+The plain DATA frame (§4) is a bag of bytes whose meaning lives only in a
+comment. A **schema frame** lets a game *declare its fields on the wire* once, so
+the harness — and the POM1 Telemetry window — can decode every subsequent DATA
+frame **by name** with no per-game code. The DATA frame format is **unchanged**;
+the schema is purely additive.
+
+Two frame kinds now share the channel, distinguished by their sentinel:
+
+| Kind | On the wire | Closed by `TELE_CTRL` opcode | Payload |
+|------|-------------|------------------------------|---------|
+| **DATA** | `0xAA len_lo len_hi payload` | `0x01` (`TELE_END`) | field **values**, in schema order, each sized by its type |
+| **SCHEMA** | `0xA5 len_lo len_hi payload` | `0x03` (`TELE_SCHEMA`) | a run of field **descriptors** |
+
+A SCHEMA-frame payload is a sequence of **descriptors**, each:
+
+```
+[type : 1 byte] [field name : ASCII bytes] [0x00 terminator]
+```
+
+Field **type codes**:
+
+| Code | Type | Size | Notes |
+|------|------|------|-------|
+| `1` | `U8`   | 1 | unsigned |
+| `2` | `S8`   | 1 | signed |
+| `3` | `U16`  | 2 | little-endian, unsigned |
+| `4` | `S16`  | 2 | little-endian, signed |
+| `5` | `BOOL` | 1 | `0` = false, else true |
+| `6` | `CHAR` | 1 | ASCII |
+
+**Semantics.** Consumers keep the **last** schema seen and decode subsequent
+DATA frames field-by-field against it; with **no** schema seen they fall back to
+raw bytes (so old games keep working). Emit the schema **once at startup**, then
+one DATA frame per tick. Schema frames **never park lock-step** — they flush
+immediately regardless of mode. The UI shows a **decoded named table** (field
+name → value) once it has a schema.
+
+It stays **fully generalizable**: any game declares its own fields. For example,
+[`dev/projects/gen2_snake_telemetry`](../dev/projects/gen2_snake_telemetry)
+(Snake on the GEN2 HGR card) declares exactly four fields —
+`head_x:U8`, `head_y:U8`, `length:U8`, `alive:BOOL` — and runs free-run so it
+plays live while the Telemetry window shows the decoded state.
+
+**Emit it (C — `dev/lib/telemetry/telemetry.h`):**
+
+```c
+#include "telemetry.h"
+tele_field(TELE_T_U8,   "head_x");      /* declare the schema, once */
+tele_field(TELE_T_U8,   "head_y");
+tele_field(TELE_T_U8,   "length");
+tele_field(TELE_T_BOOL, "alive");
+tele_schema_close();                     /* -> 0xA5 schema frame */
+tele_freerun();                          /* live play, no lock-step */
+/* per tick: */
+tele_put(head_x); tele_put(head_y); tele_put(length); tele_put(alive);
+tele_frame();                            /* -> 0xAA data frame */
+```
+
+**Emit it (asm — `dev/lib/telemetry/telemetry.inc`):**
+
+```asm
+.include "telemetry.inc"
+        TELE_FIELD TELE_T_U8,   "head_x"
+        TELE_FIELD TELE_T_U8,   "head_y"
+        TELE_FIELD TELE_T_U8,   "length"
+        TELE_FIELD TELE_T_BOOL, "alive"
+        TELE_SCHEMA_FRAME                  ; -> 0xA5 schema frame
+```
+
+**Decode it (Python — `tools/pom1_telemetry.py`):** `read_frame()` transparently
+records any 0xA5 schema frame on `client.schema` and keeps returning DATA
+payloads; `decode(payload)` / `read_named()` turn a DATA payload into a
+`{name: value}` dict using the last schema.
 
 ---
 

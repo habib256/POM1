@@ -45,6 +45,10 @@ unsigned char *gen2_hgr_row(unsigned char y);
 /* Set a white pixel. x: 0..279, y: 0..191. Apple II interleaved HIRES layout. */
 void gen2_hgr_plot(unsigned x, unsigned char y);
 
+/* Clear a pixel (the inverse of gen2_hgr_plot) — lets a program erase a small
+ * region without clearing the whole framebuffer. x: 0..279, y: 0..191. */
+void gen2_hgr_unplot(unsigned x, unsigned char y);
+
 /* Draw an ASCII string at pixel (x, y) using the built-in Beautiful Boot 8x8
  * font, pixel-doubled so the text is solid white (no NTSC colour artifacts) in
  * 16x16 cells on an 18px pitch. Renders into HIRES page 1; call gen2_hgr_init

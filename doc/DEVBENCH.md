@@ -30,7 +30,8 @@ New to this? Start with [`QUICKSTART.md`](../QUICKSTART.md) §3.
 
 Picking a target applies its **machine preset** (cards + RAM), so Run always uses
 the right hardware. The tab shows a **`*`** while the sketch has unsaved edits;
-**Ctrl-S** saves (to the open file, or via the Save dialog for a new sketch).
+the **Save** (floppy-disk) toolbar button writes to the open file, or opens the
+Save dialog for a new sketch.
 
 ---
 

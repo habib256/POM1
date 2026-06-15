@@ -21,6 +21,8 @@
 
 #include "Memory.h"
 
+#include <atomic>
+
 namespace pom1 { class SnapshotWriter; class SnapshotReader; }
 
 class M6502
@@ -64,7 +66,7 @@ public:
     /// (otherwise the overshoot accumulates and the CPU runs faster than
     /// the nominal POM1_CPU_CLOCK_HZ rate).
     int run(int maxCycles);
-    bool isRunning(void) const { return running; }
+    bool isRunning(void) const { return running.load(std::memory_order_relaxed) != 0; }
 
     // -------- Apple-1 DRAM refresh stall ----------------------------------
     //
@@ -163,7 +165,14 @@ private :
     uint16_t op;
     int tmp;
     int cycles;
-    int running;
+    // `run()` polls this every loop iteration; `stop()` clears it. It is
+    // written lock-free by EmulationController::stopCpu() (off the emulation
+    // thread) to abort a slice already inside run() within one instruction,
+    // so a Stop/Step click while free-running can't burn the rest of the
+    // ~6000-cycle slice before the single step. Atomic to keep that
+    // cross-thread read/write well-defined (relaxed: no other state is
+    // published through it — the stateMutex still orders the actual stop).
+    std::atomic<int> running;
 
     // DRAM refresh emulation (see setDramRefreshEnabled).
     bool     dramRefreshEnabled    = false;

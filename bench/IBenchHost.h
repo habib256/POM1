@@ -86,9 +86,19 @@ public:
     // per-runtime readiness) for a diagnostics popup. Empty = nothing to show.
     virtual std::string toolchainReport() const { return ""; }
 
-    // ---- Stop the running program (halt the emulated CPU) ----
+    // ---- CPU controls (the host's debugger): stop, single-step, resume.
+    //      hasStop() gates the whole Stop / Step / Run group in the toolbar. ----
     virtual bool hasStop() const { return false; }
     virtual void stop()          {}
+    // Single-step one instruction. Returns a short status the toolbar can show
+    // (e.g. "Stepped - PC: 0x1234") so a step on a graphics target — which
+    // produces no visible on-screen change — still gives numeric confirmation.
+    // "" => caller falls back to a generic label.
+    virtual std::string cpuStep() { return ""; }
+    virtual void cpuRun()        {}   // resume free-running from where it stopped
+    // Live CPU run state, so the toolbar can show ONE play/stop toggle (▶ when
+    // halted → cpuRun(); ■ when running → stop()) instead of two buttons.
+    virtual bool cpuIsRunning() const { return false; }
 
     // Directory the Open/Save file browser starts in (e.g. the project's dev/
     // tree). "" or "." = current working directory.

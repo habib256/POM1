@@ -509,6 +509,7 @@ const P1Ex kP1Examples[] = {
     { "A-1-CrazyCycle  (Bernie GEN2 HGR)", true,  "dev/projects/a1_crazycycle/A-1-CrazyCycle.asm", 2,
       "sdcard/NONO/HGR/UBERNIE#062000", 0x2000 },
     { "Telemetry demo  (SDK harness)",     true,  "dev/projects/a1_telemetry_demo/A1_TelemetryDemo.asm", 0, "", 0 },
+    { "Snake telemetry  (Bernie GEN2 HGR)", true, "dev/projects/gen2_snake_telemetry/GEN2Snake.c", 6, "", 0 },
 };
 const int kP1ExampleCount = static_cast<int>(sizeof(kP1Examples) / sizeof(kP1Examples[0]));
 
@@ -661,6 +662,10 @@ void Pom1BenchHost::probe() const
         // terminal I/O. The graphics runtimes (gen2c / videocard-lib) sit on top.
         const fs::path a1c = fs::path(devRoot) / "lib" / "apple1c";
         if (fs::exists(a1c, ec)) apple1cLib_ = fs::absolute(a1c, ec).string();
+        // Header-only telemetry side-channel kit (telemetry.h). No .c to link —
+        // just an include dir, folded into every C build below.
+        const fs::path tele = fs::path(devRoot) / "lib" / "telemetry";
+        if (fs::exists(tele, ec)) telemetryLib_ = fs::absolute(tele, ec).string();
     }
     gen2COk_  = !cl65_.empty() && !gen2cLib_.empty() && !gen2Cfg_.empty();
     plainCOk_ = !cl65_.empty() && !apple1cLib_.empty() && !plainCfg_.empty();
@@ -721,6 +726,16 @@ bench::ExampleLoad Pom1BenchHost::loadExample(int i)
     extraAsset_     = e.asset ? e.asset : "";
     extraAssetAddr_ = e.addr;
     onTargetSelected(e.target);          // apply the example's machine
+    // The snake example is a self-describing telemetry showcase — pop the
+    // Telemetry Side Channel window so its schema-driven "Decoded state" table
+    // is visible the moment the user loads it. Keyed on the source path so other
+    // examples are untouched (a friend of MainWindow_ImGui reaches showTelemetry).
+    if (e.data && std::strstr(e.data, "gen2_snake_telemetry")) {
+        mw_->showTelemetry = true;
+        mw_->emulation->setTelemetryEnabled(true);   // open the port so the
+        // "Decoded state" table updates live without the user ticking Enabled
+        // (a preset switch on Run does not disable telemetry, so this persists).
+    }
     r.targetIndex = e.target;
     r.status = std::string("Example: ") + e.label;
     r.ok = true;
@@ -822,6 +837,10 @@ bench::BuildResult Pom1BenchHost::build(int target, const std::string& src, cons
         sweep.add(srcC);
         std::ofstream(srcC, std::ios::binary).write(src.data(), static_cast<std::streamsize>(src.size()));
         std::string cmd; const char* tag;
+        // Header-only telemetry side channel (telemetry.h) — include dir only,
+        // available to every C target so any sketch can emit telemetry frames.
+        const std::string tele = telemetryLib_.empty() ? std::string()
+            : " -I " + bench::shellQuote(telemetryLib_);
         if (gen2c) {
             tag = "GEN2 HGR";
             // Optionally fold in the shared apple1c text base so GEN2 C programs
@@ -832,21 +851,21 @@ bench::BuildResult Pom1BenchHost::build(int target, const std::string& src, cons
                       " " + bench::shellQuote(apple1cLib_ + "/apple1io.c") +
                       " " + bench::shellQuote(apple1cLib_ + "/apple1io_asm.s");
             cmd = bench::shellQuote(cl65_) + " -t none -Oirs -C " + bench::shellQuote(gen2Cfg_) +
-                " -I " + bench::shellQuote(gen2cLib_) + a1c + " " + bench::shellQuote(srcC.string()) +
+                " -I " + bench::shellQuote(gen2cLib_) + a1c + tele + " " + bench::shellQuote(srcC.string()) +
                 " " + bench::shellQuote(gen2cLib_ + "/gen2.c") +
                 " -o " + bench::shellQuote(binB.string());
         } else if (plainc) {
             tag = "Apple-1 text";
             const std::string& lib = apple1cLib_;   // shared, card-neutral text base
             cmd = bench::shellQuote(cl65_) + " -t none -Oirs -C " + bench::shellQuote(plainCfg_) +
-                " -I " + bench::shellQuote(lib) + " " + bench::shellQuote(srcC.string()) +
+                " -I " + bench::shellQuote(lib) + tele + " " + bench::shellQuote(srcC.string()) +
                 " " + bench::shellQuote(lib + "/apple1io.c") + " " + bench::shellQuote(lib + "/apple1io_asm.s") +
                 " -o " + bench::shellQuote(binB.string());
         } else {
             tag = "CodeTank ROM";
             const std::string& lib = videocardLib_;
             cmd = bench::shellQuote(cl65_) + " -t none -Oirs -C " + bench::shellQuote(codetankCfg_) +
-                " -I " + bench::shellQuote(lib) + " " + bench::shellQuote(srcC.string()) +
+                " -I " + bench::shellQuote(lib) + tele + " " + bench::shellQuote(srcC.string()) +
                 " " + bench::shellQuote(lib + "/apple1_asm.s") + " " + bench::shellQuote(lib + "/tms9918.c") +
                 " " + bench::shellQuote(lib + "/screen1.c") + " " + bench::shellQuote(lib + "/c64font.c") +
                 " -o " + bench::shellQuote(binB.string());
@@ -1018,6 +1037,23 @@ std::string Pom1BenchHost::toolchainReport() const
 void Pom1BenchHost::stop()
 {
     mw_->stopCpu();   // halt the emulated CPU (same as the CPU menu's Stop)
+}
+
+std::string Pom1BenchHost::cpuStep()
+{
+    // single-step one instruction (same as the CPU menu / F7); return the
+    // post-step PC so the toolbar can show numeric confirmation.
+    return "Stepped - " + mw_->stepCpu();
+}
+
+void Pom1BenchHost::cpuRun()
+{
+    mw_->startCpu();  // resume free-running (same as the CPU menu's Run)
+}
+
+bool Pom1BenchHost::cpuIsRunning() const
+{
+    return mw_->cpuRunning;  // UI-thread mirror of the run state (friend access)
 }
 
 std::string Pom1BenchHost::browseDir() const

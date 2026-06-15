@@ -20,7 +20,7 @@ const MainWindow_ImGui::Shortcut MainWindow_ImGui::shortcuts[] = {
     { GLFW_KEY_F5, GLFW_MOD_CONTROL, "Ctrl+F5", &MainWindow_ImGui::hardReset },
     { GLFW_KEY_F5, 0,                "F5",       &MainWindow_ImGui::reset },
     { GLFW_KEY_F6, 0,                "F6",       nullptr }, // toggle start/stop
-    { GLFW_KEY_F7, 0,                "F7",       &MainWindow_ImGui::stepCpu },
+    { GLFW_KEY_F7, 0,                "F7",       nullptr }, // single-step (stepCpu returns a status string; dispatched below)
     { GLFW_KEY_F1, 0,                "F1",       nullptr }, // toggle showMemoryViewer
     { GLFW_KEY_F2, 0,                "F2",       nullptr }, // toggle showMemoryMapGrid
     { GLFW_KEY_F3, 0,                "F3",       nullptr }, // toggle showDebugger
@@ -72,6 +72,8 @@ void MainWindow_ImGui::handleGlfwKey(int key, int scancode, int action, int mods
                 (this->*shortcuts[i].action)();
             } else if (key == GLFW_KEY_F6) {
                 cpuRunning ? stopCpu() : startCpu();
+            } else if (key == GLFW_KEY_F7) {
+                stepCpu();          // single-step; status string discarded for the key path
             } else if (key == GLFW_KEY_F1) {
                 showMemoryViewer = !showMemoryViewer;
             } else if (key == GLFW_KEY_F2) {

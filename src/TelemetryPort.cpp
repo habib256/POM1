@@ -134,12 +134,17 @@ void TelemetryPort::writeReg(uint16_t addr, uint8_t value)
         case kCtrlEndFrame:
             endFrame();
             break;
+        case kCtrlSchemaFrame:
+            endFrame(/*schema=*/true);
+            break;
         case kCtrlLockstepOn:
             lockstep = true;
+            userHeld = false;   // game-armed: keep the ACK watchdog active
             break;
         case kCtrlLockstepOff:
             lockstep = false;
             awaitingAck = false;
+            userHeld = false;
             break;
         default:
             // Unknown control opcode — ignore (forward-compatible).
@@ -155,12 +160,17 @@ void TelemetryPort::writeReg(uint16_t addr, uint8_t value)
     }
 }
 
-// Wrap frameBuf as [0xAA][len-lo][len-hi][payload], tee to the golden-trace log
-// and queue it for the socket. Caller holds portMutex.
-void TelemetryPort::endFrame()
+// Wrap frameBuf as [sentinel][len-lo][len-hi][payload], tee to the golden-trace
+// log and queue it for the socket. Caller holds portMutex. schema == true emits
+// a kSchemaSentinel (0xA5) self-describing schema frame instead of a 0xAA data
+// frame and never parks lock-step (a schema frame carries no game state — the
+// harness must not handshake on it). framesSentCount counts both kinds (it is a
+// "frames emitted on the wire" counter, matching the Serial Monitor's view).
+void TelemetryPort::endFrame(bool schema)
 {
     const std::size_t len = frameBuf.size();
-    const uint8_t hdr[3] = { kFrameSentinel,
+    const uint8_t sentinel = schema ? kSchemaSentinel : kFrameSentinel;
+    const uint8_t hdr[3] = { sentinel,
                              static_cast<uint8_t>(len & 0xFF),
                              static_cast<uint8_t>((len >> 8) & 0xFF) };
 
@@ -203,8 +213,10 @@ void TelemetryPort::endFrame()
     // checks isAwaitingAck() right after this write and halts the CPU
     // (cycle-exact, right after the STA); EmulationController's slice loop then
     // pumps the socket via serviceStall() until kAckByte clears the gate. Armed
-    // only once the frame is actually queued — never on the drop path above.
-    if (lockstep) awaitingAck = true;
+    // only once the frame is actually queued — never on the drop path above, and
+    // never for a schema frame (it carries no state, so the harness never ACKs
+    // it; parking would wedge the CPU on a token that never arrives).
+    if (lockstep && !schema) awaitingAck = true;
 }
 
 void TelemetryPort::setLogFile(const std::string& path)
@@ -229,6 +241,19 @@ void TelemetryPort::clearAwaitingAck()
 {
     std::lock_guard<std::mutex> lock(portMutex);
     awaitingAck = false;
+}
+
+void TelemetryPort::setLockstep(bool on)
+{
+    std::lock_guard<std::mutex> lock(portMutex);
+    lockstep = on;     // caller (EmulationController) also clears awaitingAck on disarm
+    userHeld = on;     // UI-driven hold → suppress the ACK watchdog while paused
+}
+
+bool TelemetryPort::isUserHeld() const
+{
+    std::lock_guard<std::mutex> lock(portMutex);
+    return userHeld;
 }
 
 void TelemetryPort::serviceStall()

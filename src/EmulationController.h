@@ -319,6 +319,11 @@ public:
     /// Release one frame while the CPU is parked on a lock-step ACK wait (the
     /// in-app "Step frame" button). Equivalent to a harness sending the ACK byte.
     void telemetryReleaseFrame();
+    /// UI flow control: arm/disarm lock-step from the panel (Pause / Run buttons),
+    /// independent of the game's own TELE_CTRL writes. Arming pauses the game at
+    /// its next emitted frame; disarming resumes free-running (and releases any
+    /// current park). No-op when telemetry is disabled.
+    void setTelemetryLockstep(bool on);
     /// Render-loop accessor. Returns null when the card is disabled. The
     /// returned reference is owned by Memory and outlives any single frame;
     /// callers must not retain it across hardReset() / preset switch.

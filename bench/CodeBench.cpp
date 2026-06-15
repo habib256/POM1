@@ -128,18 +128,11 @@ void CodeBench::render(const char* title, bool* open)
     auto doVerify = [&]() { applyResult(host_->verify(targetIndex_, editor_->GetText(), rawAddr_)); };
     auto doUpload = [&]() { applyResult(host_->upload(targetIndex_, editor_->GetText(), rawAddr_)); };
 
-    // Ctrl-S saves: straight to the open file, or open the Save browser for an
-    // untitled sketch. Gated on Bench focus so it doesn't fight the host's keys.
-    if (ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows) &&
-        ImGui::IsKeyChordPressed(ImGuiMod_Ctrl | ImGuiKey_S)) {
-        if (!loadedPath_.empty()) saveFile(loadedPath_); else browse(true);
-    }
-
     // ---- Teal toolbar with labelled action pills + circular icon buttons ----
     bool openExamplesPopup = false;
     bool openToolchainPopup = false;
     auto circleBtn = [&](const char* icon, const char* id, const char* tip,
-                         ImU32 iconCol = IM_COL32_WHITE) -> bool {
+                         ImU32 iconCol = IM_COL32_WHITE, ImU32 ringCol = IM_COL32_WHITE) -> bool {
         const float d = 34.0f;
         const ImVec2 p = ImGui::GetCursorScreenPos();
         const bool clicked = ImGui::InvisibleButton(id, ImVec2(d, d));
@@ -149,14 +142,15 @@ void CodeBench::render(const char* title, bool* open)
         if (hov) dl->AddCircleFilled(c, d * 0.5f, ImGui::GetColorU32(kTealDark), 32);
         const ImVec2 ts = ImGui::CalcTextSize(icon);
         dl->AddText(ImVec2(c.x - ts.x * 0.5f, c.y - ts.y * 0.5f), iconCol, icon);
-        dl->AddCircle(c, d * 0.5f - 1.0f, IM_COL32_WHITE, 32, hov ? 2.5f : 1.5f);
+        dl->AddCircle(c, d * 0.5f - 1.0f, ringCol, 32, hov ? 2.5f : 1.5f);
         if (hov && tip) ImGui::SetTooltip("%s", tip);
         return clicked;
     };
     // Labelled pill (icon + text) for the two primary actions, so newcomers can
     // tell "compile" from "run" without hovering for a tooltip.
     auto pillBtn = [&](const char* icon, const char* label, const char* id, const char* tip) -> bool {
-        const std::string txt = std::string(icon) + "  " + label;
+        const std::string txt = (label && label[0]) ? std::string(icon) + "  " + label
+                                                     : std::string(icon);
         const ImVec2 ts = ImGui::CalcTextSize(txt.c_str());
         const float padX = 11.0f, h = 34.0f;
         const ImVec2 sz(ts.x + padX * 2.0f, h);
@@ -171,21 +165,51 @@ void CodeBench::render(const char* title, bool* open)
         if (hov && tip) ImGui::SetTooltip("%s", tip);
         return clicked;
     };
+    // Thin vertical divider between toolbar groups (build · CPU controls · file).
+    auto sep = [&]() {
+        ImGui::SameLine(0, 6);
+        const ImVec2 p = ImGui::GetCursorScreenPos();
+        const float w = 11.0f;                       // total reserved width
+        ImGui::Dummy(ImVec2(w, 34.0f));
+        const float x = p.x + w * 0.5f;
+        ImGui::GetWindowDrawList()->AddRectFilled(
+            ImVec2(x - 1.0f, p.y + 4.0f), ImVec2(x + 1.0f, p.y + 30.0f),
+            IM_COL32(255, 255, 255, 70));
+    };
 
     ImGui::PushStyleColor(ImGuiCol_ChildBg, kTeal);
     ImGui::BeginChild("##benchtoolbar", ImVec2(0, 44), false, ImGuiWindowFlags_NoScrollbar);
     ImGui::SetCursorPos(ImVec2(8, 5));
-    if (pillBtn(ICON_FA_CHECK,       "Verify", "##benchverify", "Verify - compile only")) doVerify();
+    if (pillBtn(ICON_FA_CHECK,       "", "##benchverify", "Verify - compile only")) doVerify();
     ImGui::SameLine(0, 6);
-    if (pillBtn(ICON_FA_ARROW_RIGHT, "Run",    "##benchupload", "Run - build and run on the emulator")) doUpload();
+    if (pillBtn(ICON_FA_ARROW_RIGHT, "", "##benchupload", "Run - build and run on the emulator")) doUpload();
+    // CPU-control group, bracketed by dividers from the build pills on its left
+    // and the file actions on its right. One play/stop TOGGLE reflecting the
+    // live CPU state (▶ green to resume when halted, ■ red to halt when running)
+    // plus single-step. The "Run" pill above builds + deploys; this toggle just
+    // resumes/halts the already-loaded program.
     if (host_->hasStop()) {
+        sep();
         ImGui::SameLine(0, 6);
-        if (circleBtn(ICON_FA_STOP, "##benchstop", "Stop (halt the CPU)", IM_COL32(235, 80, 60, 255))) {
-            host_->stop();
-            status_ = "Stopped"; statusOk_ = true;
+        if (host_->cpuIsRunning()) {
+            if (circleBtn(ICON_FA_STOP, "##benchcputoggle", "Stop (halt the CPU)", IM_COL32(235, 80, 60, 255))) {
+                host_->stop();
+                status_ = "Stopped"; statusOk_ = true;
+            }
+        } else {
+            if (circleBtn(ICON_FA_PLAY, "##benchcputoggle", "Run CPU (resume the processor)", IM_COL32(120, 230, 140, 255))) {
+                host_->cpuRun();
+                status_ = "CPU running"; statusOk_ = true;
+            }
+        }
+        ImGui::SameLine(0, 6);
+        if (circleBtn(ICON_FA_FORWARD_STEP, "##benchstep", "Step (single 6502 instruction)")) {
+            std::string s = host_->cpuStep();   // "Stepped - PC: 0x...."
+            status_ = s.empty() ? "Stepped" : s; statusOk_ = true;
         }
     }
-    ImGui::SameLine(0, 18);
+    sep();
+    ImGui::SameLine(0, 6);
     if (circleBtn(ICON_FA_FILE,          "##benchnew",      "New sketch (pick language + target)")) doNewChoose();
     ImGui::SameLine(0, 6);
     if (circleBtn(ICON_FA_FOLDER_OPEN,   "##benchopen",     "Open file (browse dev/)")) browse(false);
@@ -195,13 +219,25 @@ void CodeBench::render(const char* title, bool* open)
         ImGui::SameLine(0, 6);
         if (circleBtn(ICON_FA_BOOK,      "##benchexamples", "Examples")) openExamplesPopup = true;
     }
-    ImGui::SameLine(0, 6);
-    if (circleBtn(ICON_FA_SCREWDRIVER_WRENCH, "##benchtoolchain", "Toolchain status (cc65 / dev/)"))
-        openToolchainPopup = true;
+
+    // Right-aligned cluster: the cc65 toolchain status is pinned to the far
+    // right; the Serial Monitor (when present) sits just to its left. The
+    // toolchain icon + ring turn red when the toolchain is incomplete for the
+    // current target, so a missing cc65 / dev/ tree is visible at a glance
+    // without opening the popup.
+    const bool toolchainOk = host_->toolchainReady(targetIndex_);
+    const ImU32 tcCol = toolchainOk ? IM_COL32_WHITE : IM_COL32(235, 80, 60, 255);
+    const float rightX = ImGui::GetWindowWidth() - 42;   // 34px button + 8px margin
     if (host_->hasSerial()) {
-        ImGui::SameLine(ImGui::GetWindowWidth() - 42);
+        ImGui::SameLine(rightX - 40);                    // 34px button + 6px gap
         if (circleBtn(ICON_FA_MAGNIFYING_GLASS, "##benchserial", "Serial Monitor")) host_->openSerial();
     }
+    ImGui::SameLine(rightX);
+    if (circleBtn(ICON_FA_SCREWDRIVER_WRENCH, "##benchtoolchain",
+                  toolchainOk ? "Toolchain status (cc65 / dev/)"
+                              : "Toolchain incomplete — cc65 / dev/ not found (click for details)",
+                  tcCol, tcCol))
+        openToolchainPopup = true;
     ImGui::EndChild();
     ImGui::PopStyleColor();
 
@@ -398,6 +434,9 @@ void CodeBench::render(const char* title, bool* open)
         if (ImGui::SmallButton("Hide"))      showConsole_ = false;
         ImGui::SameLine();
         if (ImGui::SmallButton("Clear##bc")) console_.clear();
+        ImGui::SameLine();
+        if (ImGui::SmallButton("Copy##bc") && !console_.empty())
+            ImGui::SetClipboardText(console_.c_str());
         ImGui::PushStyleColor(ImGuiCol_ChildBg, kConsoleBg);
         ImGui::BeginChild("##benchconsole", ImVec2(avail.x, kConsoleChildH), true,
                           ImGuiWindowFlags_HorizontalScrollbar);

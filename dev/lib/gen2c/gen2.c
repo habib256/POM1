@@ -39,6 +39,12 @@ void gen2_hgr_plot(unsigned x, unsigned char y)
     gen2_hgr_row(y)[x / 7u] |= (unsigned char)(1u << (x % 7u));   /* bit 7 = 0 */
 }
 
+void gen2_hgr_unplot(unsigned x, unsigned char y)
+{
+    if (x > 279 || y > 191) return;
+    gen2_hgr_row(y)[x / 7u] &= (unsigned char)~(1u << (x % 7u));
+}
+
 /* Double-sampled HST0 (the burst notch can zero one of two close reads). */
 static unsigned char gen2_blank(void)
 {
