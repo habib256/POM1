@@ -138,20 +138,7 @@ waitkey:
 ; =============================================
 ; CLEAR HGR: zero out $2000-$3FFF
 ; =============================================
-clear_hgr:
-        LDA #$00
-        TAY
-        STA ptr_lo
-        LDX #$20
-        STX ptr_hi
-@clr:   STA (ptr_lo),Y
-        INY
-        BNE @clr
-        INC ptr_hi
-        LDX ptr_hi
-        CPX #$40
-        BNE @clr
-        RTS
+.include "hgr_clear.asm"
 
 ; =============================================
 ; RENDER MAZE: iterate grid, fill wall blocks
