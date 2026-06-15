@@ -135,6 +135,13 @@ plot), `dev/lib/apple1/` (Wozmon/PIA equates, print). Multi-zone loading:
 `emit_woz.py` bundles raw blobs (e.g. an 8 KB HGR image at `$2000`) into the
 program's `.txt` via `extra_zones` — one Wozmon load installs everything.
 
+**Writing in C instead of asm?** Use the gen2c runtime —
+`dev/lib/gen2c/gen2.h` (`gen2_hgr_init` / `gen2_hgr_clear` / `gen2_hgr_plot` /
+`gen2_hgr_puts` / `gen2_hgr_putu`) linked with `dev/cc65/apple1_gen2_c.cfg`
+(CODE at `$6000`, both HGR pages reserved), plus the shared Apple-1 text/keyboard
+base `dev/lib/apple1c/` (`woz_puts`, `woz_getkey`). Full C guide:
+[`Programming_Apple1_C.md`](../dev/Programming_Apple1_C.md).
+
 ## 5. Sound: the ACI is the speaker (Q7)
 
 The release card moved its switches out of `$C0xx` precisely so the ACI

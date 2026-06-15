@@ -9,8 +9,7 @@ refresh. Reads broadcast registers from the emulated ATMEGA32 over the
 
 - Machine: Apple 1 (4 KB DRAM is enough)
 - Cards: P-LAB A1-IO & RTC
-- Recommended POM1 preset: TODO — pick the A1-IO & RTC preset from the
-  Presets menu.
+- Recommended POM1 preset: 8 (P-LAB I/O Board & RTC).
 
 ## Sources
 
@@ -28,10 +27,10 @@ By hand:
 
 ## Run in POM1
 
-1. POM1 → Presets → A1-IO & RTC preset (TODO).
+1. POM1 → Presets → preset 8 (P-LAB I/O Board & RTC).
 2. File → Load → `software/a1io_rtc/RtcClock.bin` (or the matching `.txt`).
 3. Wozmon `\` prompt: type `280R`.
 
 ## Author / License
 
-TODO — fill in author + license for the source.
+VERHILLE Arnaud, 2026. License: GPL-3.0 (see repository LICENSE).

@@ -12,7 +12,7 @@ fixed-position screen buffer at `$0850`.
 
 - Machine: Apple 1 (4 KB DRAM is enough)
 - Cards: P-LAB A1-SID
-- Recommended POM1 preset: TODO — pick the SID preset.
+- Recommended POM1 preset: 6 (P-LAB A1-SID).
 
 ## Sources
 
@@ -32,11 +32,11 @@ By hand:
 
 ## Run in POM1
 
-1. POM1 → Presets → SID preset (TODO).
+1. POM1 → Presets → preset 6 (P-LAB A1-SID).
 2. File → Load → `software/sid/Claudio_PARMIGIANI_SID_PIANO_AZERTY.bin`.
 3. Wozmon `\` prompt: type `600R`.
 
 ## Author / License
 
 Claudio Parmigiani, 2019 (original). AZERTY port: VERHILLE Arnaud, 2026.
-License: TODO.
+License: GPL-3.0 (see repository LICENSE).

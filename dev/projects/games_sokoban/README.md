@@ -12,7 +12,7 @@ with no expansion RAM.
   Larger budgets (`apple1_sok_8k.cfg`, `apple1_sok_hgr.cfg`) ship for
   variants that target 8 KB / GEN2 HGR setups respectively.
 - Cards: none (the HGR variant is consumed by `dev/projects/hgr_sokoban/`)
-- Recommended POM1 preset: TODO — any text-mode Apple 1 preset.
+- Recommended POM1 preset: 1 (Apple-1 with ACI & BASIC; any text preset works).
 
 ## Sources
 
@@ -33,11 +33,11 @@ By hand (any of the three variants):
 
 ## Run in POM1
 
-1. POM1 → Presets → any text-mode Apple 1 preset (TODO).
+1. POM1 → Presets → preset 1 (Apple-1 with ACI & BASIC).
 2. File → Load → `software/games/Sokoban.bin`.
 3. Wozmon `\` prompt: type `280R`.
 
 ## Author / License
 
 VERHILLE Arnaud, 2026. Microban I levels by David W. Skinner (2000).
-License: TODO.
+License: GPL-3.0 (see repository LICENSE).

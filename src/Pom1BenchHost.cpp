@@ -290,8 +290,9 @@ static const char* kSketchTxtGen2C =     // C x GEN2 native TEXT mode ($0400)
     "    for (;;) { /* idle */ }\n"
     "}\n";
 static const char* kSketchCText =        // C x Apple dual-4k/8k (WozMon I/O)
-    "/* HELLO WORLD in C on a plain text Apple-1 (apple1.c woz_puts, cc65). */\n"
-    "#include \"apple1.h\"\n"
+    "/* HELLO WORLD in C on a plain text Apple-1, using the shared apple1c text\n"
+    "   base (woz_puts/woz_getkey). The same apple1io.h works on the GEN2 card. */\n"
+    "#include \"apple1io.h\"\n"
     "\n"
     "void main(void) {\n"
     "    woz_puts((const unsigned char *)\"\\rHELLO WORLD (C / Apple-1)\\r\");\n"
@@ -392,14 +393,14 @@ const char* const kP1LanguageHints[] = {
     "apple1-videocard-lib (TMS9918) / gen2 C runtime depending on the target.",
 };
 const char* const kP1Machines[]  = {
-    "Apple-1 dual 4K/8K  (text)",
+    "Apple-1 dual 4K/8K  (text) - start here",
     "P-LAB Graphic Card  (TMS9918)",
     "Uncle Bernie GEN2 HGR  (colour)",
     "Bernie GEN2 TXT  (40x24 text)",
 };
 const char* const kP1MachineHints[] = {
     "Stock Apple-1: 40x24 text printed through the WozMon ECHO routine ($FFEF).\n"
-    "Preset 1 (dual 4K/8K RAM).",
+    "Easiest place to start - no graphics card needed. Preset 1 (dual 4K/8K RAM).",
     "P-LAB Graphic Card by Claudio Parmigiani — TMS9918 VDP, Graphics I mode,\n"
     "256x192, data port $CC00 / control $CC01. Preset 7.",
     "Uncle Bernie's GEN2 colour card — Apple II-style HIRES (280x192) driven by\n"
@@ -475,6 +476,33 @@ void parseErrorMarkers(const std::string& out, std::vector<std::pair<int, std::s
     }
 }
 
+// Cross-platform install nudge appended whenever the cc65 toolchain (or the dev/
+// source tree it needs) is missing — turns a dead-end "not found" into a fix.
+const char* const kCc65InstallHint =
+    "\nInstall the cc65 toolchain, then reopen the Bench:\n"
+    "  Debian/Ubuntu : sudo apt install cc65\n"
+    "  Fedora        : sudo dnf install cc65\n"
+    "  Arch          : sudo pacman -S cc65\n"
+    "  macOS         : brew install cc65\n"
+    "  Windows/other : https://cc65.github.io/  (add its bin/ to PATH)\n";
+
+// Plain-language one-liner for the most common ca65/ld65/cl65 diagnostics, so a
+// newcomer gets a nudge above the raw toolchain spew. Empty if nothing matches.
+std::string humanizeCc65(const std::string& out)
+{
+    auto has = [&](const char* s) { return out.find(s) != std::string::npos; };
+    std::string tip;
+    if (has("ndefined"))            // "Symbol ... undefined" / "Undefined external"
+        tip = "an undefined label/symbol - check spelling, or add its definition / .include.";
+    else if (has("Range error"))
+        tip = "a value is out of range - over 255 for an 8-bit operand, or a branch over 127 bytes away.";
+    else if (has("verflow") || has("emory configuration"))
+        tip = "the program is too big for the linker config - shrink it or pick a roomier target.";
+    else if (has("Unknown identifier") || has("nknown opcode") || has("yntax error"))
+        tip = "a typo or unknown name on the flagged line - check the mnemonic / identifier.";
+    return tip.empty() ? std::string() : "[bench] Hint: " + tip + "\n";
+}
+
 } // namespace
 
 // ─────────────────────────────────────────────────────────────
@@ -530,12 +558,17 @@ void Pom1BenchHost::probe() const
         const fs::path gcfg = fs::path(devRoot) / "cc65" / "apple1_gen2_c.cfg";
         if (fs::exists(glib, ec)) gen2cLib_ = fs::absolute(glib, ec).string();
         if (fs::exists(gcfg, ec)) gen2Cfg_  = fs::absolute(gcfg, ec).string();
-        // Plain text C (apple1.c woz_puts) uses dev/cc65/apple1_c.cfg.
+        // Plain text C uses dev/cc65/apple1_c.cfg + the shared apple1c text base.
         const fs::path pcfg = fs::path(devRoot) / "cc65" / "apple1_c.cfg";
         if (fs::exists(pcfg, ec)) plainCfg_ = fs::absolute(pcfg, ec).string();
+        // Shared Apple-1 text/keyboard C base (woz_puts/woz_getkey) — card-neutral,
+        // linked by both the plain-text and GEN2 HGR C targets so either can do
+        // terminal I/O. The graphics runtimes (gen2c / videocard-lib) sit on top.
+        const fs::path a1c = fs::path(devRoot) / "lib" / "apple1c";
+        if (fs::exists(a1c, ec)) apple1cLib_ = fs::absolute(a1c, ec).string();
     }
     gen2COk_  = !cl65_.empty() && !gen2cLib_.empty() && !gen2Cfg_.empty();
-    plainCOk_ = !cl65_.empty() && !videocardLib_.empty() && !plainCfg_.empty();
+    plainCOk_ = !cl65_.empty() && !apple1cLib_.empty() && !plainCfg_.empty();
 #endif
 }
 
@@ -657,6 +690,8 @@ bench::BuildResult Pom1BenchHost::build(int target, const std::string& src, cons
     }
 
 #if POM1_IS_WASM
+    r.console = "cc65 build is desktop-only - the in-browser POM1 has no ca65/ld65/cl65.\n"
+                "Compile in the desktop build, or paste a Wozmon hex dump (hex/raw target) instead.\n";
     r.status = "cc65 build is desktop-only"; return r;
 #else
     probe();
@@ -681,8 +716,10 @@ bench::BuildResult Pom1BenchHost::build(int target, const std::string& src, cons
         const bool ready = gen2c ? gen2COk_ : plainc ? plainCOk_ : cl65Ok_;
         if (!ready) {
             r.console = gen2c ? "cl65 / gen2c lib not found (needs dev/)\n"
-                      : plainc ? "cl65 / apple1.c lib not found (needs dev/)\n"
+                      : plainc ? "cl65 / apple1c lib not found (needs dev/)\n"
                                : "cl65 / videocard-lib not found (needs dev/)\n";
+            r.console += "The dev/ source tree must be present (clone the repo; release bundles omit dev/).\n";
+            r.console += kCc65InstallHint;
             r.status = "cc65 cl65 missing"; return r;
         }
         const fs::path srcC = dir / "pom1_bench.c";
@@ -691,16 +728,23 @@ bench::BuildResult Pom1BenchHost::build(int target, const std::string& src, cons
         std::string cmd; const char* tag;
         if (gen2c) {
             tag = "GEN2 HGR";
+            // Optionally fold in the shared apple1c text base so GEN2 C programs
+            // can also print to the WOZ terminal / read the keyboard.
+            std::string a1c;
+            if (!apple1cLib_.empty())
+                a1c = " -I " + bench::shellQuote(apple1cLib_) +
+                      " " + bench::shellQuote(apple1cLib_ + "/apple1io.c") +
+                      " " + bench::shellQuote(apple1cLib_ + "/apple1io_asm.s");
             cmd = bench::shellQuote(cl65_) + " -t none -Oirs -C " + bench::shellQuote(gen2Cfg_) +
-                " -I " + bench::shellQuote(gen2cLib_) + " " + bench::shellQuote(srcC.string()) +
+                " -I " + bench::shellQuote(gen2cLib_) + a1c + " " + bench::shellQuote(srcC.string()) +
                 " " + bench::shellQuote(gen2cLib_ + "/gen2.c") +
                 " -o " + bench::shellQuote(binB.string());
         } else if (plainc) {
             tag = "Apple-1 text";
-            const std::string& lib = videocardLib_;
+            const std::string& lib = apple1cLib_;   // shared, card-neutral text base
             cmd = bench::shellQuote(cl65_) + " -t none -Oirs -C " + bench::shellQuote(plainCfg_) +
                 " -I " + bench::shellQuote(lib) + " " + bench::shellQuote(srcC.string()) +
-                " " + bench::shellQuote(lib + "/apple1.c") + " " + bench::shellQuote(lib + "/apple1_asm.s") +
+                " " + bench::shellQuote(lib + "/apple1io.c") + " " + bench::shellQuote(lib + "/apple1io_asm.s") +
                 " -o " + bench::shellQuote(binB.string());
         } else {
             tag = "CodeTank ROM";
@@ -714,12 +758,12 @@ bench::BuildResult Pom1BenchHost::build(int target, const std::string& src, cons
         std::string out;
         const int rc = bench::runCapture(cmd, out);
         r.console = std::string("$ cl65 -t none [") + tag + "]\n" + out;
-        if (rc != 0) { parseErrorMarkers(out, r.errors); r.status = "cl65 failed (see Build output)"; return r; }
+        if (rc != 0) { parseErrorMarkers(out, r.errors); r.console += humanizeCc65(out); r.status = "cl65 failed (see Build output)"; return r; }
         r.console += std::string("[ok] compiled + linked (") + tag + ")\n";
         entry = gen2c ? parseCfgLoadAddr(gen2Cfg_) : plainc ? parseCfgLoadAddr(plainCfg_) : 0x4000;
         if (entry == 0) entry = plainc ? 0x0300 : 0x6000;
     } else {
-        if (!toolchainOk_) { r.console = "cc65 (ca65/ld65) not found\n"; r.status = "cc65 missing"; return r; }
+        if (!toolchainOk_) { r.console = std::string("cc65 (ca65/ld65) not found.\n") + kCc65InstallHint; r.status = "cc65 missing"; return r; }
         const fs::path srcS = dir / "pom1_bench.s";
         const fs::path objO = dir / "pom1_bench.o";
         sweep.add(srcS); sweep.add(objO);
@@ -742,12 +786,12 @@ bench::BuildResult Pom1BenchHost::build(int target, const std::string& src, cons
             bench::shellQuote(srcS.string()) + " -o " + bench::shellQuote(objO.string());
         int rc = bench::runCapture(ca, out);
         r.console = "$ ca65 [" + std::string(t.label) + "]\n" + out;
-        if (rc != 0) { parseErrorMarkers(out, r.errors); r.status = "ca65 failed (see Build output)"; return r; }
+        if (rc != 0) { parseErrorMarkers(out, r.errors); r.console += humanizeCc65(out); r.status = "ca65 failed (see Build output)"; return r; }
         const std::string ld = bench::shellQuote(ld65_) + " -C " + bench::shellQuote(cfgPath) + " " +
             bench::shellQuote(objO.string()) + " -o " + bench::shellQuote(binB.string());
         rc = bench::runCapture(ld, out);
         r.console += "$ ld65 -C " + cfgPath + "\n" + out;
-        if (rc != 0) { r.status = "ld65 failed (see Build output)"; return r; }
+        if (rc != 0) { r.console += humanizeCc65(out); r.status = "ld65 failed (see Build output)"; return r; }
         r.console += "[ok] assembled + linked\n";
         entry = parseCfgLoadAddr(cfgPath);
         if (entry == 0) { try { entry = static_cast<uint16_t>(std::stoul(addrHex, nullptr, 16)); } catch (...) { entry = 0x0300; } }

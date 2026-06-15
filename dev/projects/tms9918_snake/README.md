@@ -16,8 +16,7 @@ Two linker-config variants:
 
 - Machine: Apple 1 (4 KB DRAM is enough)
 - Cards: P-LAB TMS9918 (CodeTank for the bank variant)
-- Recommended POM1 preset: TODO — pick a TMS9918 preset; preset 7 for
-  the CodeTank variant.
+- Recommended POM1 preset: 7 (P-LAB TMS9918 + CodeTank).
 
 ## Sources
 
@@ -38,10 +37,10 @@ Override the linker config from the command line:
 
 ## Run in POM1
 
-1. POM1 → Presets → TMS9918 preset (TODO; preset 7 for CodeTank).
+1. POM1 → Presets → preset 7 (P-LAB TMS9918 + CodeTank).
 2. File → Load → `software/tms9918/TMS_Snake.txt`.
 3. Wozmon `\` prompt: type `280R` (cassette) or `7100R` (CodeTank).
 
 ## Author / License
 
-VERHILLE Arnaud, 2026. License: TODO.
+VERHILLE Arnaud, 2026. License: GPL-3.0 (see repository LICENSE).

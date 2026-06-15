@@ -202,3 +202,17 @@ void gen2_hgr_puts(unsigned x, unsigned char y, const char *s)
         cx += 18u;   /* 16px glyph + 2px gap */
     }
 }
+
+/* Unsigned decimal at (x, y) via gen2_hgr_puts. Builds the digits right-to-left
+ * into a 6-byte buffer (max 65535 = 5 digits + NUL), no leading zeros. */
+void gen2_hgr_putu(unsigned x, unsigned char y, unsigned value)
+{
+    char buf[6];
+    unsigned char i = 6;
+    buf[--i] = 0;                    /* buf[5] = NUL terminator */
+    do {
+        buf[--i] = (char)('0' + value % 10u);
+        value /= 10u;
+    } while (value != 0u);
+    gen2_hgr_puts(x, y, buf + i);
+}

@@ -30,6 +30,14 @@ Agent-facing playbook for writing **new Apple 1 software** that runs under POM1.
 | 1976 SWTPC graphics | asm + GT-6144 | 64×96 mono | `dev/projects/gt6144_hello/gt6144.cfg` |
 | SID jingle | asm @ `$C800` regs | — | any |
 | Shell tool, file manager | asm + microSD shell | Text | `dev/cc65/apple1_4k.cfg` |
+| **Prefer C?** Text program | **C (cc65)** | Text 40×24 | `dev/cc65/apple1_c.cfg` + `dev/lib/apple1c/` |
+| **Prefer C?** Colour pixel art | C + GEN2 | HGR 280×192 | `dev/cc65/apple1_gen2_c.cfg` + `dev/lib/gen2c/` |
+| **Prefer C?** Sprite/tile game | C + TMS9918 | Graphics I/II | `apple1-videocard-lib/cc65/codetank_c.cfg` |
+
+> **Writing in C?** All three C targets share one card-neutral Apple-1
+> text/keyboard base (`dev/lib/apple1c/` — `woz_puts` / `woz_getkey` / `woz_mon`),
+> with the graphics runtime (`gen2c` for GEN2, the videocard-lib for TMS9918)
+> layered on top. Full guide: [`Programming_Apple1_C.md`](Programming_Apple1_C.md).
 
 **Base addresses** (stick to these for canonical `.txt` dumps):
 - `$0280` — ACI / microSD / Juke-Box / Applesoft programs (default `SAVE`/`LOAD` target, universal run address)
@@ -40,6 +48,16 @@ Agent-facing playbook for writing **new Apple 1 software** that runs under POM1.
 ---
 
 ## 2. Toolchain fast-path
+
+**Install cc65 first** (the `ca65` / `ld65` / `cl65` suite): `sudo apt install cc65`
+(Debian/Ubuntu) · `sudo dnf install cc65` (Fedora) · `sudo pacman -S cc65` (Arch) ·
+`brew install cc65` (macOS) · <https://cc65.github.io/> (Windows/other). Verify with
+`ca65 --version`.
+
+**Easiest authoring loop:** the in-app **POM1 Bench** (*DevBench → POM1 Bench*,
+desktop only) edits, assembles/compiles (asm **or** C) and runs in one click, with
+a `HELLO WORLD` starter per target — no Makefile needed. Copy `dev/projects/_template/`
+for a minimal asm or C starting point. The manual flow below is for batch/CI.
 
 Per-project Makefiles under `dev/projects/<name>/` already wire `ca65` + `ld65` + Woz-hex emit. Manual flow if you need it:
 
@@ -54,7 +72,7 @@ for i in range(0, len(data), 16):
 # In POM1: File > Load Memory → MyProg.txt → `280R` in Wozmon
 ```
 
-Compiled `.bin` / `.txt` Woz hex always land under `software/<dir>/` — that's POM1's runtime tree (preset auto-enable hooks are wired to `software/hgr/`, `software/tms9918/`, etc.).
+Compiled `.bin` / `.txt` Woz hex always land under `software/<dir>/` — that's POM1's runtime tree (preset auto-enable hooks are wired to `software/Graphic HGR/`, `software/Graphic TMS9918/`, etc.).
 
 All cc65 configs reserve **`$0000-$0022` ZP** (35 bytes); Wozmon + ACI claim the rest. `Memory::loadHexDump()` accepts canonical Wozmon dumps: `AAAA: HH HH …` lines, optional `:` separator, `R` suffix at EOF for auto-run, `T` prefix (turbo, no per-char delay), inline `//` `#` `;` comments stripped (otherwise mnemonic letters like `LDA`/`DEX` would parse as data).
 
@@ -107,7 +125,7 @@ No read-back, no main-RAM framebuffer (lives in 6× Intel 2102 SRAM). Plot `(x,y
 
 ## 5. Integer BASIC vs Applesoft Lite
 
-**Integer BASIC** (`$E000`, cold-start `E000R`): 16-bit signed (-32 767…+32 767), no floats, no strings beyond `PRINT`, ~16-deep `GOSUB`, no disk I/O (cassette or Juke-Box `&` only). Use when small + integer-only. Examples in `software/basic/` (load via File > Load Memory, then `E2B3R` to re-enter BASIC with the program intact).
+**Integer BASIC** (`$E000`, cold-start `E000R`): 16-bit signed (-32 767…+32 767), no floats, no strings beyond `PRINT`, ~16-deep `GOSUB`, no disk I/O (cassette or Juke-Box `&` only). Use when small + integer-only. Examples in `software/Integer_basic/` (cold-start once with `E000R`, then File > Load Memory a `.apl.txt` — each ends with `E2B3R` to re-enter BASIC with the program intact — then `RUN`).
 
 **Applesoft Lite** (`$6000` with microSD preset, cold-start `6000R`, warm `6003R`; or `$E000` with CFFA1):
 
@@ -210,7 +228,7 @@ Every byte `STA $D012` (with bit 7 set, normal display rules) also lands in PR-4
 
 ## 8. Deployment — four channels
 
-1. **Memory load** (default for dev iteration) — ship `.txt` Woz hex or `.bin`, user does **File > Load Memory** then `280R`. Auto-enables matching card if file lives under `software/hgr/`, `software/tms9918/`, `software/net/`|`/wifi/`, `software/a1io_rtc/`, `software/gt-6144/`, `sdcard/`. **`software/sid/` is intentionally NOT auto-enabled** (SID auto-plug desyncs the audio mixer across hardReset) — SID programs need a preset with `sid=true`.
+1. **Memory load** (default for dev iteration) — ship `.txt` Woz hex or `.bin`, user does **File > Load Memory** then `280R`. The Load dialog auto-enables the matching card from the file's folder: `software/Graphic HGR/` (GEN2), `software/SOUND SID/` (A1-SID), `software/Graphic TMS9918/` or `software/Apple-1_TMS_CC65/` (TMS9918), `software/Graphic gt-6144/` (GT-6144), `software/a1io_rtc/` (A1-IO & RTC), `software/NET/` (Wi-Fi modem), or `sdcard/` (microSD). Each match also pops the card's window.
 2. **microSD tagged file** — drop `NAME#TTAAAA` into `sdcard/` (optionally a sub-dir users `CD` into). Persists across sessions, also in WASM (preloaded MEMFS).
 3. **Juke-Box ROM bundle** — rebuild `roms/jukebox.rom` with your program baked, pick preset #11, type `BD00R`, choose from `&` prompt.
 4. **Cassette tape** — dump capture as `.aci`/`.wav`/`.mp3`/`.ogg`, drop in `cassettes/`. Add a line in `cassettes/tapeinfo.txt` (`MYPROG.ogg = 0280.04FF`) so the deck jaquette prints *"Type 0280.04FFR"*. Works in pulse mode (ACI plugged) and audio-stream mode (firmware-less).
@@ -314,7 +332,7 @@ Add a C++ test in `tests/`. Template: `tests/peripheral_bus_smoke_test.cpp` — 
 | Want… | Copy from |
 |---|---|
 | Text-mode game, ASCII tiles | `dev/projects/games_sokoban/Sokoban.asm` |
-| Text-mode BASIC | `software/basic/mini-startrek.apl.txt` (Integer) or write fresh Applesoft |
+| Text-mode BASIC | `software/Integer_basic/mini-startrek.apl.txt` (Integer) or write fresh Applesoft |
 | HGR pixel plotter | `dev/projects/hgr_mandelbrot/HGR_Mandelbrot.asm` + `dev/lib/hgr/hgr_tables.inc` |
 | HGR byte-aligned tiles | `dev/projects/hgr_sokoban/HGR_Sokoban.asm` (14 px wide) |
 | HGR sub-byte tiles (≠ 7 px) | `dev/projects/hgr_maze/HGR_Maze.asm` (4-px walls) |

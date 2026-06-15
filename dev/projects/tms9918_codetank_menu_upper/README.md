@@ -61,4 +61,4 @@ The 128 B `.bin` then ships embedded inside `roms/codetank/Codetank_GAME1.rom`
 
 ## Author / License
 
-VERHILLE Arnaud, 2026. License: TODO.
+VERHILLE Arnaud, 2026. License: GPL-3.0 (see repository LICENSE).

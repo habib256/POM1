@@ -44,4 +44,4 @@ Override the linker config from the command line:
 ## Author / License
 
 VERHILLE Arnaud, 2026. Microban I levels by David W. Skinner (2000).
-License: TODO.
+License: GPL-3.0 (see repository LICENSE).

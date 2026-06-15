@@ -135,4 +135,4 @@ silicon-strict log — any mismatch flags either:
 
 ## Author / License
 
-VERHILLE Arnaud, 2026. License: TODO.
+VERHILLE Arnaud, 2026. License: GPL-3.0 (see repository LICENSE).

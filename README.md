@@ -38,15 +38,15 @@ Built with Dear ImGui & OpenGL — fast, lightweight, cross-platform.
 
 ## ⚡ 60-second tour
 
-Five things to try **right after first boot** (every preset boots into WOZ Monitor at `$FF00`):
+Five things to try **right after first boot** (every preset boots into WOZ Monitor at `$FF00`). New to the Apple 1? Follow the guided **[`QUICKSTART.md`](QUICKSTART.md)** — your first program in 5 minutes.
 
 ```
 0:F      ; Wozmon "examine" — read $0000 (PIA test)
 F000R    ; cold-start whatever ROM is currently mapped at $F000
 ```
 
-1. **Type a one-line BASIC program** → preset **#1**, paste-loads `software/basic/Hamurabi.apl.txt`, type `RUN`. Welcome to 1976.
-2. **Listen to a SID tune** → preset **#6** (A1-SID), pick `software/sid/Commando.bin` from *File → Load Memory*, type `280R`. C64 chiptune on Apple 1 hardware.
+1. **Write your first BASIC program** → preset **#1**, type `E000R` (cold-start Integer BASIC), then `10 PRINT "HELLO WORLD"` and `RUN`. Welcome to 1976.
+2. **Play the A1-SID piano** → preset **#6** (A1-SID), *File → Load Memory* → `software/SOUND SID/Claudio_PARMIGIANI_SID_PIANO_ORIG.txt`, type `C400R`, then press keys to play. Real SID synthesis on Apple 1 hardware.
 3. **Plug a TMS9918 cartridge** → preset **#7** (CodeTank), *File → P-LAB CodeTank Library* → `Codetank_GAME2.rom` → flip *upper jumper* → `4000R`. Mode-III Nyan Cat at 20 fps.
 4. **BBS over real TCP** → preset **#9** (Wi-Fi Modem), `0280R` to load ATmodem, then `ATDT bbs.fozztexx.com:23`. Browse a 2026-era BBS in WOZ Monitor.
 5. **Live debugging** → `F1` opens the memory viewer, `F7` single-steps the 6502, `F3` opens the BRK trace. Watch Microchess plan its move.
@@ -213,9 +213,11 @@ Per-cart menu sources under `dev/projects/tms9918_codetank_{menu,game3_menu,test
 | 🌌 **Mandelbrot** · 📊 **Cellular** · 🎨 **PasArt** | Fractal, 1D CA, parametric ASCII |
 </details>
 
-<details><summary><b>💻 BASIC programs</b> — load Enhanced BASIC first (<code>E000R</code>)</summary>
+<details><summary><b>💻 BASIC programs</b> (<code>software/Integer_basic/</code>) — cold-start Integer BASIC with <code>E000R</code></summary>
 
 🚀 Star Trek · 🃏 Blackjack · 🏛️ Hamurabi · 🌙 Lunar Lander Graphics · ⏱️ Stopwatch · 🔧 Resistor Calculator
+
+These are **Integer BASIC** listings (`software/Integer_basic/*.apl.txt`). Cold-start the interpreter once with `E000R`, then *File → Load Memory* → a `.apl.txt` (each ends with `E2B3R`, so it re-enters BASIC with the program intact), then type `RUN`. *Enhanced BASIC* (Lee Davison's) is a separate dev tool under `software/Apple-1 dev/`.
 </details>
 
 <details><summary><b>🛠️ Dev tools</b></summary>
@@ -353,12 +355,23 @@ Steve Jobs' October-1976 *Interface Age* hack: tee the SWTPC PR-40 40-column mat
 
 ## 🔧 Writing your own Apple 1 software
 
+**New here?** Start with **[`QUICKSTART.md`](QUICKSTART.md)** — your first program
+in 5 minutes (BASIC, then the Bench). The easiest authoring path is the in-app
+**POM1 Bench** (*DevBench → POM1 Bench*): an Arduino-style editor that assembles
+6502 asm or compiles C and runs it in one click, with a `HELLO WORLD` starter per
+target.
+
+For asm/C, install the **cc65** toolchain first: `sudo apt install cc65`
+(Debian/Ubuntu) · `sudo dnf install cc65` (Fedora) · `sudo pacman -S cc65` (Arch) ·
+`brew install cc65` (macOS) · <https://cc65.github.io/> (Windows/other).
+
 POM1 ships a complete cc65-based dev tree under [`dev/`](dev/):
 
 - [`dev/APPLE1DEV.md`](dev/APPLE1DEV.md) — agent-facing playbook (decision tree, I/O cheat sheet, deployment, gotchas, example index).
 - [`dev/Programming_Apple1_ASM.md`](dev/Programming_Apple1_ASM.md) — guide ASM (~790 lignes, FR) : 6502, cc65, HGR, TMS9918 (trilogies Sokoban + Connect 4).
+- [`dev/Programming_Apple1_C.md`](dev/Programming_Apple1_C.md) — C guide (cc65): one shared Apple-1 text base + the GEN2 HGR / TMS9918 graphics layers.
 - [`dev/projects/<name>/`](dev/projects/) — per-program README + Makefile + sources for everything POM1 ships.
-- [`dev/lib/`](dev/lib/) — reusable libraries (`apple1`, `m6502`, `tms9918`, `hgr`, `games/{chess,sokoban}`).
+- [`dev/lib/`](dev/lib/) — reusable libraries: **asm** (`apple1`, `m6502`, `tms9918`, `hgr`, `games/{chess,sokoban}`) + **C** (`apple1c` shared text/keyboard base, `gen2c` HGR runtime).
 - [`dev/cc65/*.cfg`](dev/cc65/) — shared linker configs.
 
 Quick build:

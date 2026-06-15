@@ -22,7 +22,7 @@ gameplay, distinct code. If you re-tune one, re-validate the other.
 
 - Machine: Apple 1 (4 KB DRAM)
 - Cards: P-LAB TMS9918
-- Recommended POM1 preset: TODO — pick a TMS9918 preset.
+- Recommended POM1 preset: 7 (P-LAB TMS9918 + CodeTank).
 
 ## Sources
 
@@ -43,10 +43,10 @@ By hand:
 
 ## Run in POM1
 
-1. POM1 → Presets → TMS9918 preset (TODO).
+1. POM1 → Presets → preset 7 (P-LAB TMS9918 + CodeTank).
 2. File → Load → `software/tms9918/TMS_OrbitalPool.txt`.
 3. Wozmon `\` prompt: type `280R`.
 
 ## Author / License
 
-VERHILLE Arnaud, 2026. License: TODO.
+VERHILLE Arnaud, 2026. License: GPL-3.0 (see repository LICENSE).
