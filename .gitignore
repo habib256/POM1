@@ -74,3 +74,5 @@ dev/**/*.o
 dev/**/*.map
 # Redundant flat binaries under software/ — the Wozmon .txt is the canonical form
 software/**/*.bin
+# DevBench scratch CodeTank ROM — regenerated into roms/codetank/ on TMS9918 upload
+roms/codetank/CODETANKDEV.rom

@@ -38,6 +38,8 @@ static const char* kSketchAsmTms =       // asm x TMS9918 (Graphics I text, load
     "; HELLO WORLD on the TMS9918 (Graphics I). Proper init: regs loaded with the\n"
     "; display BLANKED, all 16 KB VRAM cleared, sprites parked, then font/colour/\n"
     "; message loaded and the screen turned on LAST. VDP data=$CC00, ctrl=$CC01.\n"
+    "; Upload flashes this into CODETANKDEV.rom (CodeTank dev cartridge) and boots\n"
+    "; 4000R - it runs in place from the ROM window, like every TMS9918 program.\n"
     "VDAT = $CC00\n"
     "VCTL = $CC01\n"
     ".segment \"CODE\"\n"
@@ -368,18 +370,18 @@ struct TempFileSweeper {
 //   4..7 = C   x {dual-4k, TMS9918, GEN2 HGR, Bernie TXT}.
 // (preset indices: dual-4k = 1, TMS9918+CodeTank = 7, GEN2 = 12.)
 struct P1T { const char* label; int preset; const char* cfg; const char* lang; int mode;
-             bool needsCl65; bool wantsAddr; const char* sketch; };
+             bool needsCl65; bool wantsAddr; bool codetankRom; const char* sketch; };
 const P1T kP1Targets[] = {
-    { "Apple-1 dual 4K/8K (asm)",         1, "apple1_4k.cfg",   "6502", 0, false, false, kSketchAsm       },
-    { "P-LAB TMS9918 Graphic Card (asm)", 7, "apple1_4k.cfg",   "6502", 0, false, false, kSketchAsmTms    },
-    { "Uncle Bernie GEN2 HGR (asm)",     12, "apple1_gen2.cfg", "6502", 0, false, false, kSketchAsmGen2   },
-    { "Bernie GEN2 TXT (asm)",           12, "apple1_gen2.cfg", "6502", 0, false, false, kSketchTxtGen2Asm},
-    { "Apple-1 dual 4K/8K (C)",           1, "C-plain",         "C",    3, true,  false, kSketchCText     },
-    { "P-LAB TMS9918 CodeTank ROM (C)",   7, "C",               "C",    3, true,  false, kSketchC         },
-    { "Uncle Bernie GEN2 HGR (C)",       12, "C-gen2",          "C",    3, true,  false, kSketchGen2C     },
-    { "Bernie GEN2 TXT (C)",             12, "C-gen2",          "C",    3, true,  false, kSketchTxtGen2C  },
-    { "Wozmon hex (any machine)",        -1, "",                "hex",  1, false, false, kSketchHex       },
-    { "Raw bytes @ $ (any machine)",     -1, "",                "raw",  2, false, true,  kSketchRaw       },
+    { "Apple-1 dual 4K/8K (asm)",         1, "apple1_4k.cfg",   "6502", 0, false, false, false, kSketchAsm       },
+    { "P-LAB TMS9918 Graphic Card (asm)", 7, "codetank.cfg",    "6502", 0, false, false, true,  kSketchAsmTms    },
+    { "Uncle Bernie GEN2 HGR (asm)",     12, "apple1_gen2.cfg", "6502", 0, false, false, false, kSketchAsmGen2   },
+    { "Bernie GEN2 TXT (asm)",           12, "apple1_gen2.cfg", "6502", 0, false, false, false, kSketchTxtGen2Asm},
+    { "Apple-1 dual 4K/8K (C)",           1, "C-plain",         "C",    3, true,  false, false, kSketchCText     },
+    { "P-LAB TMS9918 CodeTank ROM (C)",   7, "C",               "C",    3, true,  false, true,  kSketchC         },
+    { "Uncle Bernie GEN2 HGR (C)",       12, "C-gen2",          "C",    3, true,  false, false, kSketchGen2C     },
+    { "Bernie GEN2 TXT (C)",             12, "C-gen2",          "C",    3, true,  false, false, kSketchTxtGen2C  },
+    { "Wozmon hex (any machine)",        -1, "",                "hex",  1, false, false, false, kSketchHex       },
+    { "Raw bytes @ $ (any machine)",     -1, "",                "raw",  2, false, true,  false, kSketchRaw       },
 };
 const int kP1TargetCount = static_cast<int>(sizeof(kP1Targets) / sizeof(kP1Targets[0]));
 
@@ -402,7 +404,8 @@ const char* const kP1MachineHints[] = {
     "Stock Apple-1: 40x24 text printed through the WozMon ECHO routine ($FFEF).\n"
     "Easiest place to start - no graphics card needed. Preset 1 (dual 4K/8K RAM).",
     "P-LAB Graphic Card by Claudio Parmigiani — TMS9918 VDP, Graphics I mode,\n"
-    "256x192, data port $CC00 / control $CC01. Preset 7.",
+    "256x192, data port $CC00 / control $CC01. Preset 7. Upload flashes the build\n"
+    "into CODETANKDEV.rom and boots 4000R (all TMS9918 code runs from CodeTank).",
     "Uncle Bernie's GEN2 colour card — Apple II-style HIRES (280x192) driven by\n"
     "the soft switches $C250-$C257. Hello world uses the BBFont. Preset 12.",
     "Uncle Bernie's GEN2 in native TEXT mode — 40x24, page $0400, the card's\n"
@@ -708,7 +711,8 @@ bench::BuildResult Pom1BenchHost::build(int target, const std::string& src, cons
     const bool cmode  = (t.mode == 3);
     const bool gen2c  = cmode && cfgTag == "C-gen2";    // GEN2 HGR (loadBinary @ $6000)
     const bool plainc = cmode && cfgTag == "C-plain";   // plain text (loadBinary @ $0300)
-    const bool codetankc = cmode && !gen2c && !plainc;  // TMS9918 CodeTank ROM
+    // (cmode && !gen2c && !plainc) is the TMS9918 C target; its deploy goes through
+    // the shared t.codetankRom path below, same as the TMS9918 asm target.
     r.showConsole = true;
     uint16_t entry = 0;
 
@@ -811,17 +815,23 @@ bench::BuildResult Pom1BenchHost::build(int target, const std::string& src, cons
         } else { r.status = "load failed: " + error; r.ok = false; }
         return r;
     }
-    if (codetankc) {
-        // CodeTank ROM: pad 16K -> 32K (lower bank), flash, jumper, reset, 4000R.
+    if (t.codetankRom) {
+        // Unified CODETANKDEV path (TMS9918 asm + C targets): wrap the build into a
+        // persistent CodeTank dev ROM (roms/codetank/CODETANKDEV.rom), flash it,
+        // jumper to the lower 16K bank, reset and boot 4000R. Living under
+        // roms/codetank/ means the dev cartridge also shows up in
+        // File > P-LAB CodeTank Library, so it's reusable across uploads.
         std::ifstream in(binB, std::ios::binary);
         std::vector<unsigned char> rom(0x8000, 0xFF);
         in.read(reinterpret_cast<char*>(rom.data()), 0x4000);
-        const fs::path romPath = dir / "pom1_bench_codetank.rom";
-        sweep.add(romPath);
+        fs::path romPath;
+        for (const char* pre : {"roms/codetank", "../roms/codetank", "../../roms/codetank"})
+            if (fs::exists(fs::path(pre), ec)) { romPath = fs::path(pre) / "CODETANKDEV.rom"; break; }
+        if (romPath.empty()) romPath = dir / "CODETANKDEV.rom";   // fallback: no roms/codetank/ dir
         std::ofstream(romPath, std::ios::binary)
             .write(reinterpret_cast<const char*>(rom.data()), static_cast<std::streamsize>(rom.size()));
         std::string error;
-        if (!emu->loadCodeTankRom(romPath.string(), error)) { r.status = "CodeTank ROM load failed: " + error; return r; }
+        if (!emu->loadCodeTankRom(romPath.string(), error)) { r.status = "CODETANKDEV.rom load failed: " + error; return r; }
         mw_->codeTankJumper = CodeTank::Jumper::Lower16;
         emu->setCodeTankJumper(mw_->codeTankJumper);
         if (!mw_->tms9918Enabled) { mw_->tms9918Enabled = true; mw_->showTMS9918 = true; emu->setTMS9918Enabled(true); }
@@ -829,8 +839,8 @@ bench::BuildResult Pom1BenchHost::build(int target, const std::string& src, cons
         emu->hardReset();
         mw_->codeTankPendingWozRunAt = ImGui::GetTime() + 1.0;
         emu->copySnapshot(mw_->uiSnapshot);
-        r.console += "[ok] flashed CodeTank ROM (lower bank) - 4000R\n";
-        r.status = "CodeTank ROM flashed - booting 4000R"; r.ok = true;
+        r.console += "[ok] flashed CODETANKDEV.rom (lower bank) - 4000R\n";
+        r.status = "CODETANKDEV.rom flashed - booting 4000R"; r.ok = true;
         return r;
     }
 
