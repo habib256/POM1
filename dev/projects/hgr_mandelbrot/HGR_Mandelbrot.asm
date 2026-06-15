@@ -26,9 +26,7 @@
 ; =============================================
 
 ; --- Apple 1 I/O ---
-ECHO    = $FFEF
-KBDCR   = $D011
-KBD     = $D010
+.include "apple1.inc"
 
 NUM_VIEWS = 6
 
