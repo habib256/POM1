@@ -7,6 +7,7 @@
 
 #include <cctype>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <filesystem>
 #include <fstream>
@@ -629,6 +630,31 @@ Pom1BenchHost::Pom1BenchHost(MainWindow_ImGui* mw) : mw_(mw)
 #endif
 }
 
+// Make a relocatable cc65 bundle self-locate its runtime (include/, lib/,
+// target/) by pointing CC65_HOME at <cc65>/share/cc65 next to the resolved
+// binary, when the user hasn't already set CC65_HOME. apt/brew cc65 binaries
+// don't all derive their prefix from argv[0], so a bundled toolchain needs this.
+static void ensureCc65Home(const std::string& binaryPath)
+{
+#if !POM1_IS_WASM
+    namespace fs = std::filesystem;
+    if (binaryPath.empty()) return;
+    if (const char* existing = std::getenv("CC65_HOME"); existing && *existing) return;
+    std::error_code ec;
+    // binaryPath = <cc65>/bin/ca65[.exe]  ->  <cc65>/share/cc65
+    fs::path home = fs::path(binaryPath).parent_path().parent_path() / "share" / "cc65";
+    if (!fs::is_directory(home, ec)) return;   // bare PATH hit, not a bundled tree
+    const std::string h = fs::absolute(home, ec).string();
+  #if defined(_WIN32)
+    _putenv_s("CC65_HOME", h.c_str());
+  #else
+    setenv("CC65_HOME", h.c_str(), 0);   // 0 = keep any pre-existing value (already guarded)
+  #endif
+#else
+    (void)binaryPath;
+#endif
+}
+
 void Pom1BenchHost::probe() const
 {
     if (probed_) return;
@@ -636,12 +662,41 @@ void Pom1BenchHost::probe() const
 #if !POM1_IS_WASM
     namespace fs = std::filesystem;
     std::error_code ec;
-    ca65_ = bench::whichExe("ca65");
-    ld65_ = bench::whichExe("ld65");
-    toolchainOk_ = !ca65_.empty() && !ld65_.empty();
 
-    std::string devRoot;
-    for (const char* p : {"dev", "../dev", "../../dev"})
+    // A bundled cc65 shipped next to the app makes a packaged build self-contained
+    // (no system cc65 on PATH needed). Search exe-relative dirs + an explicit
+    // POM1_CC65_DIR override FIRST, so the known-good bundle wins over PATH; a
+    // dev build with no bundle simply falls through to PATH.
+    const std::string exeDir = bench::executableDir();
+    std::vector<std::string> cc65Dirs;
+    if (const char* envDir = std::getenv("POM1_CC65_DIR"); envDir && *envDir)
+        cc65Dirs.emplace_back(envDir);
+    if (!exeDir.empty()) {
+        const fs::path e(exeDir);
+        cc65Dirs.push_back((e / "cc65" / "bin").string());                                 // Win ZIP / generic
+        cc65Dirs.push_back((e.parent_path() / "Resources" / "cc65" / "bin").string());     // macOS .app
+        cc65Dirs.push_back((e.parent_path() / "share" / "POM1" / "cc65" / "bin").string());// Linux AppImage
+    }
+
+    ca65_ = bench::whichExe("ca65", cc65Dirs);
+    ld65_ = bench::whichExe("ld65", cc65Dirs);
+    cl65_ = bench::whichExe("cl65", cc65Dirs);
+    toolchainOk_ = !ca65_.empty() && !ld65_.empty();
+    ensureCc65Home(!ca65_.empty() ? ca65_ : cl65_);
+
+    // The Bench's linker cfgs + libraries live under dev/. Release bundles can
+    // ship a dev/ subtree next to the app; probe exe-relative too so it resolves
+    // even though a packaged app chdir'd to a user-data dir at startup.
+    std::vector<std::string> devCandidates = {"dev", "../dev", "../../dev"};
+    if (!exeDir.empty()) {
+        const fs::path e(exeDir);
+        devCandidates.push_back((e / "dev").string());                            // Win ZIP / generic
+        devCandidates.push_back((e.parent_path() / "share" / "POM1" / "dev").string()); // Linux AppImage
+        devCandidates.push_back((e.parent_path() / "Resources" / "dev").string());      // macOS .app
+    }
+    std::string& devRoot = devRoot_;
+    devRoot.clear();
+    for (const auto& p : devCandidates)
         if (fs::exists(fs::path(p) / "cc65", ec)) { devRoot = p; break; }
     if (!devRoot.empty()) {
         std::string flags;
@@ -906,10 +961,17 @@ bench::BuildResult Pom1BenchHost::build(int target, const std::string& src, cons
             std::ofstream(e2, std::ios::binary) << kBenchEmbeddedCfg;
             cfgPath = e2.string();
         } else {
-            for (const char* pre : {"dev/cc65/", "../dev/cc65/", "../../dev/cc65/"}) {
-                const fs::path p = fs::path(pre) / t.cfg;
-                if (fs::exists(p, ec)) { cfgPath = fs::absolute(p, ec).string(); break; }
+            // Prefer the dev/ tree probe() resolved (covers source + bundled
+            // layouts), then fall back to a cwd-relative search.
+            if (!devRoot_.empty()) {
+                const fs::path p = fs::path(devRoot_) / "cc65" / t.cfg;
+                if (fs::exists(p, ec)) cfgPath = fs::absolute(p, ec).string();
             }
+            if (cfgPath.empty())
+                for (const char* pre : {"dev/cc65/", "../dev/cc65/", "../../dev/cc65/"}) {
+                    const fs::path p = fs::path(pre) / t.cfg;
+                    if (fs::exists(p, ec)) { cfgPath = fs::absolute(p, ec).string(); break; }
+                }
             if (cfgPath.empty()) { r.console = std::string("linker cfg not found (needs dev/): ") + t.cfg + "\n"; r.status = "ld65 cfg missing"; return r; }
         }
         std::string out;
@@ -1036,8 +1098,11 @@ std::string Pom1BenchHost::toolchainReport() const
     s += line("ca65 (assembler)", ca65_);
     s += line("ld65 (linker)   ", ld65_);
     s += line("cl65 (C driver) ", cl65_);
-    s += std::string("dev/ source tree : ") +
-         (libFlags_.empty() ? "NOT found (clone the repo - release bundles omit dev/)" : "found") + "\n";
+    if (const char* home = std::getenv("CC65_HOME"); home && *home)
+        s += std::string("CC65_HOME       : ") + home + "\n";
+    s += std::string("dev/ tree        : ") +
+         (devRoot_.empty() ? "NOT found (clone the repo - release bundles omit dev/)"
+                           : (devRoot_ + "  (resolved)")) + "\n";
     s += "\nPer-target runtime:\n";
     s += std::string("  asm (any machine)   : ") + yn(toolchainOk_) + "\n";
     s += std::string("  C  Apple-1 text     : ") + yn(plainCOk_) + "\n";
@@ -1047,6 +1112,20 @@ std::string Pom1BenchHost::toolchainReport() const
         s += "\nInstall cc65:  apt install cc65  /  brew install cc65  /  pacman -S cc65\n"
              "or https://cc65.github.io/ (add its bin/ to PATH), then reopen the Bench.\n";
     return s;
+#endif
+}
+
+std::string Pom1BenchHost::headerNote() const
+{
+#if POM1_IS_WASM
+    // The web build has no cc65 (no subprocesses in the browser): it can only
+    // type Woz-hex into the emulator. Point users at the desktop app for the
+    // full asm/C SDK rather than leaving a silently-crippled toolbar.
+    return "Web build: Woz-hex upload only - assembling 6502 asm / compiling C "
+           "needs the desktop app (bundled cc65). Download POM1 for "
+           "Windows / macOS / Linux: https://github.com/habib256/POM1/releases";
+#else
+    return "";
 #endif
 }
 

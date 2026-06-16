@@ -36,6 +36,7 @@ public:
     bool        toolchainReady(int target) const override;
     std::string toolchainHint (int target) const override;
     std::string toolchainReport() const override;
+    std::string headerNote() const override;
 
     bool hasStop() const override { return true; }
     void stop() override;
@@ -79,6 +80,7 @@ private:
     mutable std::string ca65_, ld65_, cl65_, libFlags_, videocardLib_, codetankCfg_;
     mutable std::string gen2cLib_, gen2Cfg_, plainCfg_, apple1cLib_;
     mutable std::string telemetryLib_;   // header-only telemetry.h include dir (all C targets)
+    mutable std::string devRoot_;        // resolved dev/ tree (source or bundled); reused at build time
 };
 
 #endif // POM1_BENCH_HOST_H

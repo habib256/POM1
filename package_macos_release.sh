@@ -69,6 +69,31 @@ cp -R sdcard    "$DATA_ROOT/sdcard"
 mkdir -p        "$DATA_ROOT/cfcard"
 [[ -f cfcard/cfcard.po ]] && cp cfcard/cfcard.po "$DATA_ROOT/cfcard/"
 
+# cc65 toolchain bundle (optional) → self-contained DevBench, no system cc65.
+# POM1 finds it exe-relative at Contents/Resources/cc65/bin and points CC65_HOME
+# at Contents/Resources/cc65/share/cc65 (ensureCc65Home, no launcher needed).
+# Source: $POM1_CC65_BUNDLE, else dist/cc65-bundle/cc65, else auto-build (brew).
+CC65_TREE=""
+if [[ -n "${POM1_CC65_BUNDLE:-}" && -d "${POM1_CC65_BUNDLE}/bin" ]]; then
+    CC65_TREE="${POM1_CC65_BUNDLE}"
+elif [[ -d "dist/cc65-bundle/cc65/bin" ]]; then
+    CC65_TREE="dist/cc65-bundle/cc65"
+elif command -v ca65 >/dev/null 2>&1; then
+    echo "==> cc65 detected — building bundle…"
+    tools/build_cc65_bundle.sh --out dist/cc65-bundle >/dev/null && CC65_TREE="dist/cc65-bundle/cc65"
+fi
+if [[ -n "$CC65_TREE" ]]; then
+    echo "==> cc65 bundle: $CC65_TREE"
+    cp -R "$CC65_TREE" "$DATA_ROOT/cc65"
+    # DevBench linker cfgs + libs (release bundles otherwise omit dev/).
+    mkdir -p "$DATA_ROOT/dev"
+    for d in cc65 lib apple1-videocard-lib; do
+        [[ -d "dev/$d" ]] && cp -R "dev/$d" "$DATA_ROOT/dev/$d"
+    done
+else
+    echo "==> (no cc65 bundle — DevBench limited to Woz-hex without system cc65)"
+fi
+
 # ---------- 4. DMG staging: POM1.app + /Applications shortcut + README -------
 echo "==> Preparing DMG staging in $DMG_STAGE"
 rm -rf "$DMG_STAGE"

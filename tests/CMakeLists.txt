@@ -144,6 +144,18 @@ add_test(NAME peripheral_bus_smoke
          COMMAND test_peripheral_bus)
 set_tests_properties(peripheral_bus_smoke PROPERTIES TIMEOUT 5)
 
+# -- bench process helpers (toolchain discovery) ------------------------------
+# Self-contained: executableDir() + whichExe(name, extraDirs) underpin the
+# exe-relative / POM1_CC65_DIR cc65 probe a packaged DevBench relies on.
+add_executable(test_process_util
+    process_util_smoke_test.cpp
+    ${CMAKE_SOURCE_DIR}/bench/ProcessUtil.cpp
+)
+target_include_directories(test_process_util PRIVATE ${CMAKE_SOURCE_DIR}/bench)
+
+add_test(NAME process_util_smoke COMMAND test_process_util)
+set_tests_properties(process_util_smoke PROPERTIES TIMEOUT 5)
+
 # -- GEN2 release video scanner / floating bus --------------------------------
 # Self-contained: Gen2VideoScanner has no dependency on Memory, peripherals, or
 # libresidfp. Pins the MAME scanner_address oracle for known (cycle, mode)

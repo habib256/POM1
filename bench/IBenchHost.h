@@ -86,6 +86,11 @@ public:
     // per-runtime readiness) for a diagnostics popup. Empty = nothing to show.
     virtual std::string toolchainReport() const { return ""; }
 
+    // Optional persistent banner shown at the very top of the Bench window
+    // (wrapped, highlighted) — e.g. a "this build can't compile asm/C, download
+    // the desktop app" call-to-action on the web build. Empty = no banner.
+    virtual std::string headerNote() const { return ""; }
+
     // ---- CPU controls (the host's debugger): stop, single-step, resume.
     //      hasStop() gates the whole Stop / Step / Run group in the toolbar. ----
     virtual bool hasStop() const { return false; }

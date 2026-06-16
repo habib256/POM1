@@ -218,6 +218,27 @@ if exist "cassettes\" (
     echo AVERTISSEMENT: dossier cassettes\ absent — omis.
 )
 
+REM ---- Optional cc65 toolchain bundle (self-contained DevBench) --------------
+REM Stage a relocatable cc65 tree (bin\ + share\cc65\) so the DevBench builds
+REM asm/C with no system cc65 on PATH. POM1 finds it exe-relative at cc65\bin
+REM and points CC65_HOME at cc65\share\cc65 (no launcher script needed).
+REM Produce one on a POSIX box (WSL / git-bash):
+REM   tools\build_cc65_bundle.sh --from cc65-snapshot-win64.zip --out dist\cc65-bundle
+REM or set POM1_CC65_BUNDLE to a dir holding bin\ + share\cc65\.
+set "CC65_TREE="
+if defined POM1_CC65_BUNDLE if exist "%POM1_CC65_BUNDLE%\bin" set "CC65_TREE=%POM1_CC65_BUNDLE%"
+if not defined CC65_TREE if exist "dist\cc65-bundle\cc65\bin" set "CC65_TREE=dist\cc65-bundle\cc65"
+if defined CC65_TREE (
+    echo Copie cc65 bundle ^(!CC65_TREE!^)...
+    xcopy /E /I /Q "!CC65_TREE!" "%OUTDIR%\cc65\" >nul
+    echo Copie dev\ ^(sous-ensemble DevBench^)...
+    if exist "dev\cc65" xcopy /E /I /Q "dev\cc65" "%OUTDIR%\dev\cc65\" >nul
+    if exist "dev\lib" xcopy /E /I /Q "dev\lib" "%OUTDIR%\dev\lib\" >nul
+    if exist "dev\apple1-videocard-lib" xcopy /E /I /Q "dev\apple1-videocard-lib" "%OUTDIR%\dev\apple1-videocard-lib\" >nul
+) else (
+    echo AVERTISSEMENT: pas de cc65 bundle — DevBench limite au Woz-hex sans cc65 systeme.
+)
+
 copy /Y "packaging\windows\README.txt" "%OUTDIR%\README.txt" >nul
 
 if not exist "dist" mkdir "dist"
