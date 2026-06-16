@@ -40,5 +40,13 @@ mkdir -p "${DATADIR}/ini"
 
 export LD_LIBRARY_PATH="${HERE}/usr/lib:${LD_LIBRARY_PATH}"
 
+# Bundled cc65 toolchain (if present): point the DevBench probe + cl65 runtime
+# at it explicitly. POM1 also self-locates it exe-relative, but exporting these
+# is robust against the chdir below and lets cl65 find its C runtime.
+if [ -d "${RES}/cc65/bin" ]; then
+    export POM1_CC65_DIR="${RES}/cc65/bin"
+    [ -z "${CC65_HOME:-}" ] && export CC65_HOME="${RES}/cc65/share/cc65"
+fi
+
 cd "${DATADIR}"
 exec "${HERE}/usr/bin/POM1" "$@"

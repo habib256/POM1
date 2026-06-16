@@ -76,6 +76,24 @@ void CodeBench::render(const char* title, bool* open)
     ImGui::SetNextWindowSizeConstraints(ImVec2(520, 480), ImVec2(FLT_MAX, FLT_MAX));
     if (!ImGui::Begin(title, open)) { ImGui::End(); return; }
 
+    // ---- Optional host banner (e.g. web build "desktop only" CTA) ----
+    {
+        const std::string note = host_->headerNote();
+        if (!note.empty()) {
+            ImGui::PushStyleColor(ImGuiCol_ChildBg, ImVec4(0.18f, 0.12f, 0.02f, 1.0f));
+            ImGui::BeginChild("##benchnote", ImVec2(0, 0),
+                              ImGuiChildFlags_AutoResizeY | ImGuiChildFlags_Borders);
+            ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 0.85f, 0.35f, 1.0f));
+            ImGui::PushTextWrapPos(0.0f);
+            ImGui::TextUnformatted(note.c_str());
+            ImGui::PopTextWrapPos();
+            ImGui::PopStyleColor();
+            ImGui::EndChild();
+            ImGui::PopStyleColor();
+            ImGui::Spacing();
+        }
+    }
+
     // ---- Actions ----
     auto applyTarget = [&](int i) {
         if (i < 0 || i >= static_cast<int>(targets.size())) return;

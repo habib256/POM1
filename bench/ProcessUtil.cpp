@@ -11,6 +11,13 @@
   #include <sys/wait.h>
 #endif
 
+#if defined(_WIN32)
+  #include <windows.h>
+#elif defined(__APPLE__) && !defined(__EMSCRIPTEN__)
+  #include <mach-o/dyld.h>
+  #include <climits>
+#endif
+
 namespace bench {
 
 std::string shellQuote(const std::string& s)
@@ -52,10 +59,38 @@ int runCapture(const std::string& cmd, std::string& out)
 #endif
 }
 
-std::string whichExe(const char* name)
+std::string executableDir()
+{
+    namespace fs = std::filesystem;
+    std::error_code ec;
+#if defined(__EMSCRIPTEN__)
+    return "";   // no real executable path in the browser
+#elif defined(_WIN32)
+    char buf[MAX_PATH];
+    DWORD n = GetModuleFileNameA(nullptr, buf, MAX_PATH);
+    if (n == 0 || n >= MAX_PATH) return "";
+    return fs::path(std::string(buf, n)).parent_path().string();
+#elif defined(__APPLE__)
+    char buf[PATH_MAX];
+    uint32_t n = sizeof(buf);
+    if (_NSGetExecutablePath(buf, &n) != 0) return "";   // buffer too small
+    fs::path p = fs::canonical(buf, ec);
+    if (ec) p = fs::path(buf);
+    return p.parent_path().string();
+#else  // Linux / other POSIX
+    fs::path p = fs::read_symlink("/proc/self/exe", ec);
+    if (ec) return "";
+    return p.parent_path().string();
+#endif
+}
+
+std::string whichExe(const char* name, const std::vector<std::string>& extraDirs)
 {
     namespace fs = std::filesystem;
     std::vector<std::string> dirs;
+    // Caller-supplied dirs win (e.g. an exe-relative bundled toolchain).
+    for (const auto& d : extraDirs)
+        if (!d.empty()) dirs.push_back(d);
     if (const char* pathEnv = std::getenv("PATH")) {
 #ifdef _WIN32
         const char sep = ';';
