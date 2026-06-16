@@ -101,6 +101,11 @@ extern void gen2_puts_run(void);        /* asm: draw the whole string in one loo
 extern unsigned char gen2_u_lo, gen2_u_hi;
 extern char *gen2_u_ptr;
 extern void gen2_utoa(void);            /* asm: bin->dec, no cc65 software /10      */
+/* gen2_hgr_blit (1bpp MSB-first sprite, SET/CLEAR/XOR) parameter block. */
+extern unsigned char gen2_b_col, gen2_b_mask, gen2_b_w, gen2_b_h;
+extern unsigned char gen2_b_stride, gen2_b_y, gen2_b_mode;
+extern const unsigned char *gen2_b_src;
+extern void gen2_blit_run(void);        /* asm: pixel-walk blit, mode-aware         */
 /* The parameter blocks live in the zero page (gen2_blit.s) — tell cc65 so it
  * emits zp stores instead of absolute (smaller/faster, and no ld65 warning). */
 #pragma zpsym("gen2_g_glyph")
@@ -135,6 +140,14 @@ extern void gen2_utoa(void);            /* asm: bin->dec, no cc65 software /10  
 #pragma zpsym("gen2_u_lo")
 #pragma zpsym("gen2_u_hi")
 #pragma zpsym("gen2_u_ptr")
+#pragma zpsym("gen2_b_col")
+#pragma zpsym("gen2_b_mask")
+#pragma zpsym("gen2_b_w")
+#pragma zpsym("gen2_b_h")
+#pragma zpsym("gen2_b_stride")
+#pragma zpsym("gen2_b_y")
+#pragma zpsym("gen2_b_mode")
+#pragma zpsym("gen2_b_src")
 
 /* Build the lookup tables once (all the asm fast paths read them): the
  * non-linear Apple II HIRES scanline bases (gen2_rowlo/gen2_rowhi) and the
@@ -336,4 +349,30 @@ void gen2_hgr_putu(unsigned x, unsigned char y, unsigned value)
     gen2_u_ptr = buf;
     gen2_utoa();                     /* asm bin->dec (no cc65 software /10 + %10) */
     gen2_hgr_puts(x, y, buf);
+}
+
+/* Blit a 1-bit-per-pixel sprite (MSB-first, see gen2.h) at pixel (x, y) in one of
+ * three modes. The asm walks pixel by pixel (HIRES is 7px/byte, so a byte-shift
+ * blit is impossible) and never touches the palette bit. Clips to the screen here
+ * (drop rows past 191, columns past 279) so the asm needs no per-pixel bound
+ * check; off-screen LEFT (x would be negative) is not supported — keep x >= 0. */
+void gen2_hgr_blit(unsigned x, unsigned char y, unsigned char w, unsigned char h,
+                   const unsigned char *bitmap, unsigned char mode)
+{
+    unsigned wfit;
+
+    gen2_build_tables();
+    if (y > 191u || w == 0u || h == 0u || x > 279u) return;
+    if ((unsigned)y + h > 192u) h = (unsigned char)(192u - y);   /* bottom clip   */
+    wfit = (x + w > 280u) ? (280u - x) : w;                      /* right clip    */
+
+    gen2_b_col    = (unsigned char)(x / 7u);
+    gen2_b_mask   = (unsigned char)(1u << (x % 7u));
+    gen2_b_w      = (unsigned char)wfit;
+    gen2_b_h      = h;
+    gen2_b_stride = (unsigned char)((w + 7u) / 8u);              /* full source row */
+    gen2_b_y      = y;
+    gen2_b_mode   = mode;
+    gen2_b_src    = bitmap;
+    gen2_blit_run();
 }

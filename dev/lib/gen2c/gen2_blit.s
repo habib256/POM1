@@ -35,6 +35,9 @@
         .export   _gen2_colorize_asm
         .export   _gen2_puts_run
         .export   _gen2_utoa
+        .export   _gen2_blit_run
+        .exportzp _gen2_b_col, _gen2_b_mask, _gen2_b_w, _gen2_b_h
+        .exportzp _gen2_b_stride, _gen2_b_y, _gen2_b_mode, _gen2_b_src
         .exportzp _gen2_t_col, _gen2_t_bit, _gen2_t_n, _gen2_t_color
         .exportzp _gen2_t_s, _gen2_t_font
         .exportzp _gen2_u_lo, _gen2_u_hi, _gen2_u_ptr
@@ -100,6 +103,16 @@ _gen2_t_font:  .res 2        ; glyph table base (kBBFontAscii)
 _gen2_u_lo:    .res 1        ; value low byte  (consumed by the subtraction)
 _gen2_u_hi:    .res 1        ; value high byte
 _gen2_u_ptr:   .res 2        ; output buffer pointer
+; gen2_hgr_blit (1bpp sprite, MSB-first) parameter block:
+_gen2_b_col:   .res 1        ; start byte column of the pen
+_gen2_b_mask:  .res 1        ; start bit mask (1 << (x % 7))
+_gen2_b_w:     .res 1        ; pixels to draw per row (right-clipped by C)
+_gen2_b_h:     .res 1        ; rows (bottom-clipped by C)
+_gen2_b_stride:.res 1        ; source bytes per row = (w+7)/8
+_gen2_b_y:     .res 1        ; current scanline (advanced per row)
+_gen2_b_mode:  .res 1        ; 0 SET (OR) / 1 CLEAR (AND ~) / 2 XOR (EOR)
+_gen2_b_src:   .res 2        ; source row pointer (advanced per row)
+b_srcidx:      .res 1        ; source byte index within the current row
 
 ; zero-page scratch aliases (cc65 leaves tmp1..tmp4 free for leaf asm routines):
 curcol  = tmp1               ; current byte column   (also Y during a store)
@@ -393,6 +406,86 @@ _gen2_utoa:
 
 utoa_pw_lo: .byte $10, $E8, $64, $0A, $01   ; 10000, 1000, 100, 10, 1  (low byte)
 utoa_pw_hi: .byte $27, $03, $00, $00, $00   ; 10000, 1000, 100, 10, 1  (high byte)
+
+; --- _gen2_blit_run : blit a 1bpp MSB-first sprite, mode SET / CLEAR / XOR -----
+; HIRES packs 7 pixels/byte (bit 7 = palette), so we cannot shift-and-OR bytes:
+; we walk pixel by pixel, reusing the proven pen (`advance`, curcol=tmp1/curmask=
+; tmp2, bits 0..6 only — bit 7 is never written, palette preserved). Per source
+; row: load the MSB-first bits into a shift register, draw gen2_b_w pixels (the C
+; wrapper right-clips so the pen never leaves col 0..39), then step source by
+; gen2_b_stride and y by 1. XOR mode makes a moving sprite erasable by re-blitting
+; (draw, then draw again at the old spot) — no save/restore, no flicker.
+_gen2_blit_run:
+@row:
+        ldy _gen2_b_y           ; ptr1 = scanline base
+        lda _gen2_rowlo,y
+        sta ptr1
+        lda _gen2_rowhi,y
+        sta ptr1+1
+        lda _gen2_b_col         ; reset pen to the sprite's left edge
+        sta tmp1                ; curcol
+        lda _gen2_b_mask
+        sta tmp2                ; curmask
+        ldy #0                  ; load first source byte of this row
+        lda (_gen2_b_src),y
+        sta tmp3                ; srcbits (MSB-first shift register)
+        lda #8
+        sta tmp4                ; bits left in srcbits
+        sty b_srcidx            ; srcidx = 0
+        ldx _gen2_b_w           ; pixels this row
+@px:
+        asl tmp3                ; C = next pixel (bit 7 first)
+        bcc @skip
+        jsr blit_apply          ; pixel set: SET/CLEAR/XOR + advance pen
+        jmp @after
+@skip:
+        jsr advance             ; pixel clear: just advance the pen
+@after:
+        dec tmp4                ; consumed a source bit
+        bne @next
+        inc b_srcidx            ; byte exhausted -> next source byte
+        ldy b_srcidx
+        lda (_gen2_b_src),y
+        sta tmp3
+        lda #8
+        sta tmp4
+@next:
+        dex
+        bne @px
+        clc                     ; next source row + next scanline
+        lda _gen2_b_src
+        adc _gen2_b_stride
+        sta _gen2_b_src
+        bcc @nyc
+        inc _gen2_b_src+1
+@nyc:
+        inc _gen2_b_y
+        dec _gen2_b_h
+        bne @row
+        rts
+
+; apply one pixel at (curcol=tmp1, curmask=tmp2) on scanline ptr1, then advance.
+blit_apply:
+        ldy tmp1                ; curcol
+        lda _gen2_b_mode
+        beq @bset
+        cmp #2
+        beq @bxor
+        lda tmp2                ; CLEAR: dest &= ~mask (keeps the palette bit)
+        eor #$FF
+        and (ptr1),y
+        sta (ptr1),y
+        jmp advance
+@bset:
+        lda tmp2                ; SET: dest |= mask
+        ora (ptr1),y
+        sta (ptr1),y
+        jmp advance
+@bxor:
+        lda tmp2                ; XOR: dest ^= mask
+        eor (ptr1),y
+        sta (ptr1),y
+        jmp advance
 
 ; --- _gen2_hgr_clear(fill in A) : fill the whole HIRES page-1 framebuffer ------
 ; Clears/fills $2000-$3FFF (32 pages x 256 bytes) with the byte in A. The byte

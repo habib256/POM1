@@ -72,6 +72,24 @@ void gen2_hgr_plot(unsigned x, unsigned char y);
  * region without clearing the whole framebuffer. x: 0..279, y: 0..191. */
 void gen2_hgr_unplot(unsigned x, unsigned char y);
 
+/* Blit a 1-bit-per-pixel sprite at pixel (x, y). The bitmap is MSB-first (bit 7
+ * = leftmost pixel), w pixels wide x h rows, each row padded to (w+7)/8 bytes,
+ * top to bottom. A '1' bit is a sprite pixel; '0' is transparent. Three modes:
+ *   GEN2_SET   - OR  the pixels in (draw over black);
+ *   GEN2_CLEAR - clear the pixels (erase a known shape);
+ *   GEN2_XOR   - toggle the pixels: blit once to draw, blit AGAIN at the same
+ *                spot to erase -> flicker-free moving sprites, no save/restore.
+ * Clipped to the screen on the right/bottom (keep x >= 0; off-screen-left is not
+ * supported). HIRES is 7px/byte so this walks pixel by pixel; for solid blocks
+ * gen2_hgr_fill_pixrect is far faster. Example (an 8x8 ball):
+ *   static const unsigned char ball[8] = {0x3C,0x7E,0xFF,0xFF,0xFF,0xFF,0x7E,0x3C};
+ *   gen2_hgr_blit(px, py, 8, 8, ball, GEN2_XOR); */
+#define GEN2_SET    0u
+#define GEN2_CLEAR  1u
+#define GEN2_XOR    2u
+void gen2_hgr_blit(unsigned x, unsigned char y, unsigned char w, unsigned char h,
+                   const unsigned char *bitmap, unsigned char mode);
+
 /* Draw an ASCII string at pixel (x, y) using the built-in Beautiful Boot 8x8
  * font, pixel-doubled so the text is solid white (no NTSC colour artifacts) in
  * 16x16 cells on an 18px pitch. Renders into HIRES page 1; call gen2_hgr_init
