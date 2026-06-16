@@ -113,6 +113,12 @@ public:
     void setYRegister(uint8_t v)      { yRegister = v; }
     void setStatusRegister(uint8_t v) { statusRegister = v; }
     void setStackPointer(uint8_t v)   { stackPointer = v; }
+    // NMOS decimal-mode ADC/SBC flag behaviour. true (default) = the original
+    // NMOS 6502 "bug" (N/Z invalid in decimal — real Apple-1 silicon); false =
+    // 65C02-style corrected flags (N/Z reflect the BCD result). Toggled from the
+    // Silicon window: silicon-strict = bug, fantasy = corrected.
+    void setDecimalBugNMOS(bool b) { decimalBugNMOS = b; }
+    bool isDecimalBugNMOS() const  { return decimalBugNMOS; }
 
     /// PC-matched halt for headless/scripted debugging. When `active` is
     /// true and `programCounter == address` at the top of `run()`'s loop,
@@ -168,6 +174,7 @@ private :
     uint16_t breakpointAddress  = 0;
 
     uint8_t accumulator, xRegister, yRegister, statusRegister, stackPointer;
+    bool decimalBugNMOS = true;   // NMOS decimal ADC/SBC flag bug (Silicon-window selectable)
     int IRQ, NMI;
     uint16_t programCounter;
     uint16_t op;

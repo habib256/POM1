@@ -299,27 +299,35 @@ void M6502::ADC(void)
 
     if (statusRegister & M6502::Status::D)
     {
-        // Canonical NMOS 6502 decimal ADC (Bruce Clark, "Decimal mode in the
-        // 6502"). Correct for every input incl. invalid BCD nibbles and the
-        // "undocumented" N/V flags. Z is taken from the BINARY sum (NMOS quirk).
+        // Decimal ADC. The accumulator result follows the canonical NMOS
+        // algorithm (Bruce Clark) for every input incl. invalid BCD. The N/Z
+        // FLAGS depend on the selected mode:
+        //   decimalBugNMOS  -> original NMOS chip: Z from the binary sum, N from
+        //                      the pre-adjust intermediate (the documented bug).
+        //   !decimalBugNMOS -> 65C02 "corrected": N/Z reflect the BCD result.
         const int c = (statusRegister & M6502::Status::C) ? 1 : 0;
-        if (!((Op1 + Op2 + c) & 0xFF)) statusRegister |= M6502::Status::Z;
-        else                           statusRegister &= ~M6502::Status::Z;
-
         int al = (Op1 & 0x0F) + (Op2 & 0x0F) + c;
         if (al >= 0x0A) al = ((al + 0x06) & 0x0F) + 0x10;
         int a = (Op1 & 0xF0) + (Op2 & 0xF0) + al;   // high sum; may exceed 0xFF
 
-        // N/V come from the high-nibble sum BEFORE the final decimal adjust.
-        if (a & 0x80) statusRegister |= M6502::Status::N;
-        else          statusRegister &= ~M6502::Status::N;
+        // V (overflow) from the pre-adjust sum — same value in both modes.
         if ((~(Op1 ^ Op2)) & (Op1 ^ a) & 0x80) statusRegister |= M6502::Status::V;
         else                                    statusRegister &= ~M6502::Status::V;
 
+        const int preAdjust = a;
         if (a >= 0xA0) a += 0x60;
         if (a >= 0x100) statusRegister |= M6502::Status::C;
         else            statusRegister &= ~M6502::Status::C;
         accumulator = (uint8_t)(a & 0xFF);
+
+        if (decimalBugNMOS) {
+            if (!((Op1 + Op2 + c) & 0xFF)) statusRegister |= M6502::Status::Z;
+            else                            statusRegister &= ~M6502::Status::Z;
+            if (preAdjust & 0x80) statusRegister |= M6502::Status::N;
+            else                  statusRegister &= ~M6502::Status::N;
+        } else {
+            setStatusRegisterNZ(accumulator);
+        }
     }
     else
     {
@@ -365,8 +373,9 @@ uint8_t Op1 = accumulator, Op2 = memory->memRead(op);
         else                statusRegister &= ~M6502::Status::C;
         if (((Op1 ^ Op2) & (Op1 ^ bin)) & 0x80) statusRegister |= M6502::Status::V;
         else                                     statusRegister &= ~M6502::Status::V;
-        setStatusRegisterNZ((uint8_t)bin);
         accumulator = (uint8_t)(a & 0xFF);
+        // NMOS bug: N/Z from the binary result. 65C02 corrected: from the BCD result.
+        setStatusRegisterNZ(decimalBugNMOS ? (uint8_t)bin : accumulator);
     }
     else
     {

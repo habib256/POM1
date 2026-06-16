@@ -530,6 +530,8 @@ void MainWindow_ImGui::render()
             const bool v = *siliconStrictModeOverride;
             emulation->setSiliconStrictMode(v);
             siliconStrictModeEnabled = v;
+            emulation->setCpuDecimalBugNMOS(v);
+            cpuDecimalBugEnabled = v;
         }
         if (initialExecutionSpeed) {
             executionSpeed = *initialExecutionSpeed;

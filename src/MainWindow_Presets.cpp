@@ -639,6 +639,10 @@ void MainWindow_ImGui::applyMachineConfig(int presetIndex)
     emulation->setSiliconStrictMode(!fantasyPreset);
     siliconStrictModeEnabled = !fantasyPreset;
     emulation->setOutOfRangeStrictMode(!fantasyPreset);
+    // NMOS decimal ADC/SBC flag bug: original-chip behaviour on strict presets,
+    // 65C02-corrected on the (fantasy) Multiplexing presets.
+    emulation->setCpuDecimalBugNMOS(!fantasyPreset);
+    cpuDecimalBugEnabled = !fantasyPreset;
 
     // UI flags reflect the preset's target state immediately (the menu
     // checkmarks and toolbar chips are driven by these). The actual

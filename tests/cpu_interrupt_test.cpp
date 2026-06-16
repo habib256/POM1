@@ -28,7 +28,8 @@
 
 namespace {
 // 6502 status bits.
-constexpr uint8_t FLAG_C = 0x01, FLAG_I = 0x04, FLAG_B = 0x10, FLAG_U = 0x20, FLAG_N = 0x80;
+constexpr uint8_t FLAG_C = 0x01, FLAG_Z = 0x02, FLAG_I = 0x04, FLAG_D = 0x08,
+                  FLAG_B = 0x10, FLAG_U = 0x20, FLAG_N = 0x80;
 
 int g_oks = 0, g_fails = 0;
 void check(bool cond, const char* msg) {
@@ -116,6 +117,43 @@ int main() {
     check(cpu.getStatusRegister() == (uint8_t)((FLAG_N | FLAG_C | FLAG_U)), "RTI restored P (bit5 forced 1, bit4 0)");
     check(cpu.getCurrentInstructionCycles() == 6, "RTI = 6 cycles");
 
-    std::printf("CPU interrupt timing: %d checks passed, %d failed\n", g_oks, g_fails);
+    // ---- 6. Decimal ADC/SBC: NMOS bug vs corrected (Silicon-selectable) ----
+    // ADC $50+$50 (C=0, D): result $00 in both modes. NMOS -> N=1,Z=0 (N from
+    // pre-adjust intermediate, Z from binary sum); corrected -> N=0,Z=1 (BCD
+    // result). The A result + carry are identical; only N/Z differ.
+    cpu.setIRQ(0);
+    ram[0x0600] = 0x69; ram[0x0601] = 0x50;   // ADC #$50
+    for (int nmos = 1; nmos >= 0; --nmos) {
+        cpu.setDecimalBugNMOS(nmos != 0);
+        cpu.setProgramCounter(0x0600);
+        cpu.setAccumulator(0x50);
+        cpu.setStatusRegister(FLAG_U | FLAG_D);   // C = 0
+        cpu.step();
+        check(cpu.getAccumulator() == 0x00, "decimal ADC $50+$50 = $00 (both modes)");
+        if (nmos) {
+            check((cpu.getStatusRegister() & FLAG_N) == FLAG_N, "NMOS decimal ADC: N=1 (bug)");
+            check((cpu.getStatusRegister() & FLAG_Z) == 0,      "NMOS decimal ADC: Z=0 (bug)");
+        } else {
+            check((cpu.getStatusRegister() & FLAG_N) == 0,      "corrected decimal ADC: N=0");
+            check((cpu.getStatusRegister() & FLAG_Z) == FLAG_Z, "corrected decimal ADC: Z=1");
+        }
+    }
+    // SBC $00-$80 (C=1, D): result $20 in both modes. NMOS N=1 (from binary
+    // -128); corrected N=0 (from BCD result $20).
+    ram[0x0610] = 0xE9; ram[0x0611] = 0x80;   // SBC #$80
+    for (int nmos = 1; nmos >= 0; --nmos) {
+        cpu.setDecimalBugNMOS(nmos != 0);
+        cpu.setProgramCounter(0x0610);
+        cpu.setAccumulator(0x00);
+        cpu.setStatusRegister(FLAG_U | FLAG_D | FLAG_C);   // C = 1 (no borrow in)
+        cpu.step();
+        check(cpu.getAccumulator() == 0x20, "decimal SBC $00-$80 = $20 (both modes)");
+        if (nmos) check((cpu.getStatusRegister() & FLAG_N) == FLAG_N, "NMOS decimal SBC: N=1 (bug)");
+        else      check((cpu.getStatusRegister() & FLAG_N) == 0,      "corrected decimal SBC: N=0");
+    }
+    cpu.setDecimalBugNMOS(true);   // restore the NMOS default
+
+    std::printf("CPU interrupt + decimal-mode behaviour: %d checks passed, %d failed\n",
+                g_oks, g_fails);
     return g_fails == 0 ? 0 : 1;
 }

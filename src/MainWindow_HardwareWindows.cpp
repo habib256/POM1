@@ -2139,6 +2139,8 @@ void MainWindow_ImGui::renderSiliconStrictWindow()
             emulation->setSystemRamNoiseOnReset(turnOn);
             emulation->setDramRefreshEnabled(turnOn);
             emulation->setOutOfRangeStrictMode(turnOn);
+            cpuDecimalBugEnabled           = turnOn;
+            emulation->setCpuDecimalBugNMOS(turnOn);
             // Strict-mode RAM topology: real Apple-1 has 8 KB dual-bank RAM
             // ($0000-$0FFF + $E000-$EFFF) with $1000-$7FFF floating. Force
             // the preset RAM ceiling to 8 KB when strict is armed; restore
@@ -2172,6 +2174,7 @@ void MainWindow_ImGui::renderSiliconStrictWindow()
                 "   - Apple-1 RAM noise on cold boot / hard reset\n"
                 "   - Apple-1 DRAM refresh stall (4/65 cycle steal)\n"
                 "   - Out-of-range RAM strict (reads -> $FF, writes dropped)\n"
+                "   - 6502 NMOS decimal ADC/SBC flag bug\n"
                 "   - RAM ceiling: 8 KB dual-bank ($0000-$0FFF + $E000-$EFFF)\n"
                 "   - Parmigiani's one-board-at-a-time rule (auto-evict)\n\n"
                 "Silicon Strict  : every knob ON — POM1 behaves like real\n"
@@ -2295,6 +2298,38 @@ void MainWindow_ImGui::renderSiliconStrictWindow()
                 "(No effect at 64 KB preset — no OOR region.)");
             ImGui::PopStyleColor();
         }
+    }
+
+    // -------- 3b. MOS 6502 CPU (NMOS) -------------------------------------
+    if (ImGui::CollapsingHeader("MOS 6502 CPU (NMOS)",
+                                ImGuiTreeNodeFlags_DefaultOpen)) {
+        ImGui::SeparatorText("Decimal mode (ADC/SBC)");
+        bool decFlag = cpuDecimalBugEnabled;
+        if (ImGui::Checkbox("NMOS decimal ADC/SBC flag bug (original chip)##decbug",
+                            &decFlag)) {
+            cpuDecimalBugEnabled = decFlag;
+            emulation->setCpuDecimalBugNMOS(decFlag);
+            setStatusMessage(decFlag
+                ? "Decimal ADC/SBC: NMOS bug — N/Z invalid in decimal (real Apple-1 6502)"
+                : "Decimal ADC/SBC: corrected — N/Z reflect the BCD result (65C02-style)",
+                3.5f);
+        }
+        if (ImGui::IsItemHovered()) {
+            ImGui::SetTooltip(
+                "The NMOS 6502 (the Apple-1's CPU) leaves N, V and Z *invalid*\n"
+                "after ADC/SBC in decimal (SED) mode — only the A result and the\n"
+                "carry are correct. The 65C02 later fixed this (valid N/Z, +1 cyc).\n\n"
+                "ON  (Silicon Strict) : reproduce the original NMOS flag bug — what\n"
+                "                       real Apple-1 silicon does.\n"
+                "OFF (Fantasy)        : corrected flags (N/Z from the BCD result).\n\n"
+                "Takes effect immediately. The A result and carry are identical in\n"
+                "both modes; only N/Z (and V) differ. No shipped Apple-1 software\n"
+                "uses decimal mode, so this is a fidelity nicety.");
+        }
+        ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.7f, 0.7f, 0.7f, 1.0f));
+        ImGui::TextWrapped(
+            "Pinned by the Tom Harte oracle (cpu_harte_smoke) in NMOS mode.");
+        ImGui::PopStyleColor();
     }
 
     // -------- 4. TMS9918 Graphic Card -------------------------------------
