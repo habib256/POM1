@@ -17,7 +17,7 @@ Two linker-config variants (both target the CodeTank ROM window):
 
 - Machine: Apple 1 (8 KB DRAM)
 - Cards: P-LAB TMS9918, P-LAB CodeTank
-- Recommended POM1 preset: **8** — *P-LAB Apple-1 with TMS9918 (CodeTank daughterboard)* (`MainWindow_Presets.cpp`).
+- Recommended POM1 preset: **7** — *P-LAB Apple-1 with TMS9918 (CodeTank daughterboard)* (`MainWindow_Presets.cpp`).
 
 ## Sources
 
@@ -29,7 +29,7 @@ Two linker-config variants (both target the CodeTank ROM window):
 
 ## Build
 
-    make                          # default = standalone CodeTank → ../../../software/tms9918/TMS_Sokoban.bin
+    make                          # default = standalone CodeTank → ../../../software/Graphic TMS9918/TMS_Sokoban.bin
 
 Override the linker config from the command line:
 
@@ -37,7 +37,7 @@ Override the linker config from the command line:
 
 ## Run in POM1
 
-1. POM1 → Presets → **8** (TMS9918 + CodeTank).
+1. POM1 → Presets → **7** (TMS9918 + CodeTank).
 2. CodeTank ROM in place; jumper = Lower.
 3. Wozmon `\` prompt: type `4000R` (standalone) or `5E00R` (bank slot).
 

@@ -17,21 +17,21 @@ animate a Life grid in real time.
 
 - `GT1_Life.asm` — main entry, loads at `$0300`
 - `gt6144.cfg` — local linker config (`CODE` at `$0300`, 4 KB cap)
-- libs used: `dev/lib/apple1/`
+- libs used: `dev/lib/apple1/`, `dev/lib/gt6144/`
 
 ## Build
 
-    make                          # produces ../../../software/gt-6144/GT1_Life.bin
+    make                          # produces ../../../software/Graphic gt-6144/GT1_Life.bin
 
 By hand:
 
-    ca65 -I ../../lib/apple1 GT1_Life.asm
-    ld65 -C gt6144.cfg GT1_Life.o -o ../../../software/gt-6144/GT1_Life.bin
+    ca65 -I ../../lib/apple1 -I ../../lib/gt6144 GT1_Life.asm
+    ld65 -C gt6144.cfg GT1_Life.o -o ../../../software/Graphic gt-6144/GT1_Life.bin
 
 ## Run in POM1
 
 1. POM1 → Presets → preset 2 (Apple-1 + SWTPC GT-6144).
-2. File → Load → `software/gt-6144/GT1_Life.bin`.
+2. File → Load → `software/Graphic gt-6144/GT1_Life.bin`.
 3. Wozmon `\` prompt: type `300R`.
 
 ## Author / License

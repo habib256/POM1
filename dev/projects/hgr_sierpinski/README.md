@@ -17,18 +17,18 @@ classic `(x AND y) == 0` rule.
 
 ## Build
 
-    make                          # produces ../../../software/hgr/HGR_Sierpinski.bin
+    make                          # produces ../../../software/Graphic HGR/HGR_Sierpinski.bin
 
 By hand:
 
     ca65 -I ../../lib/apple1 -I ../../lib/hgr HGR_Sierpinski.asm
     ld65 -C ../../cc65/apple1_gen2.cfg HGR_Sierpinski.o \
-        -o ../../../software/hgr/HGR_Sierpinski.bin
+        -o ../../../software/Graphic HGR/HGR_Sierpinski.bin
 
 ## Run in POM1
 
 1. POM1 → Presets → preset 12 (Uncle Bernie's GEN2 HGR Color).
-2. File → Load → `software/hgr/HGR_Sierpinski.bin`.
+2. File → Load → `software/Graphic HGR/HGR_Sierpinski.bin`.
 3. Wozmon `\` prompt: type `E000R`.
 
 ## Author / License

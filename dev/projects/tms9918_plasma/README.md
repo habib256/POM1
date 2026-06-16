@@ -46,8 +46,8 @@ adds `linear_phase++` so the colour rings ripple outward.
 
 - Machine: Apple 1 (stock 4 KB DRAM at `$0000-$0FFF`)
 - Card: P-LAB TMS9918 Graphic Card
-- Recommended POM1 preset: any TMS9918-enabled preset (presets 8-14
-  including CodeTank or Multiplexing Fantasy). The stock 4 KB layout
+- Recommended POM1 preset: 7 (P-LAB TMS9918 + CodeTank), or the P-LAB
+  Multiplexing Fantasy preset 11. The stock 4 KB layout
   works on every TMS9918 preset.
 
 ## Memory map
@@ -71,13 +71,13 @@ adds `linear_phase++` so the colour rings ripple outward.
 
 ## Build
 
-    make                      # → ../../../software/tms9918/TMS_Plasma.{bin,txt}
+    make                      # → ../../../software/Graphic TMS9918/TMS_Plasma.{bin,txt}
 
 ## Run in POM1
 
 1. POM1 → Hardware → plug the TMS9918 card (auto-enabled when loading
-   from `software/tms9918/`).
-2. File → Load → `software/tms9918/TMS_Plasma.txt`.
+   from `software/Graphic TMS9918/`).
+2. File → Load → `software/Graphic TMS9918/TMS_Plasma.txt`.
 3. Wozmon `\` prompt: type `280R`.
 4. Wait ~1 s for `calc_plasma_starts` (~7 frames). The first effect
    uses palette `Pal01` (mostly black + green — jblang's default).

@@ -25,11 +25,11 @@ Two linker-config variants:
   SNX/SNY ring buffers at `$0C00`/`$0D00`)
 - `apple1_snake_codetank_bank.cfg` — CodeTank lower-bank slot (`$7100`)
 - `emit_TMS_Snake_txt.py` — assemble + emit Woz hex `.txt`
-- libs used: `dev/lib/apple1/`
+- libs used: `dev/lib/apple1/`, `dev/lib/m6502/`, `dev/lib/tms9918/`
 
 ## Build
 
-    make                          # default = cassette → ../../../software/tms9918/TMS_Snake.{bin,txt}
+    make                          # default = cassette → ../../../software/Graphic TMS9918/TMS_Snake.{bin,txt}
 
 Override the linker config from the command line:
 
@@ -38,7 +38,7 @@ Override the linker config from the command line:
 ## Run in POM1
 
 1. POM1 → Presets → preset 7 (P-LAB TMS9918 + CodeTank).
-2. File → Load → `software/tms9918/TMS_Snake.txt`.
+2. File → Load → `software/Graphic TMS9918/TMS_Snake.txt`.
 3. Wozmon `\` prompt: type `280R` (cassette) or `7100R` (CodeTank).
 
 ## Author / License

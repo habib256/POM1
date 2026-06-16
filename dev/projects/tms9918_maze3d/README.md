@@ -17,23 +17,23 @@ down map toggle, turn-based combat against three monster archetypes.
 - `apple1_maze3d.cfg` — local linker config (CODE `$0280`, 6.25 KB;
   GRID, STK, MOBS bss segments)
 - `emit_TMS_Maze3D_txt.py` — assemble + emit Woz hex `.txt`
-- libs used: `dev/lib/apple1/`
+- libs used: `dev/lib/apple1/`, `dev/lib/tms9918/`
 
 ## Build
 
-    make                          # produces ../../../software/tms9918/TMS_Maze3D.{bin,txt}
+    make                          # produces ../../../software/Graphic TMS9918/TMS_Maze3D.{bin,txt}
 
 By hand:
 
-    ca65 -I ../../lib/apple1 TMS_Maze3D.asm
+    ca65 -I ../../lib/apple1 -I ../../lib/tms9918 TMS_Maze3D.asm
     ld65 -C apple1_maze3d.cfg TMS_Maze3D.o \
-        -o ../../../software/tms9918/TMS_Maze3D.bin
+        -o ../../../software/Graphic TMS9918/TMS_Maze3D.bin
     python3 emit_TMS_Maze3D_txt.py
 
 ## Run in POM1
 
 1. POM1 → Presets → preset 7 (P-LAB TMS9918 + CodeTank).
-2. File → Load → `software/tms9918/TMS_Maze3D.txt`.
+2. File → Load → `software/Graphic TMS9918/TMS_Maze3D.txt`.
 3. Wozmon `\` prompt: type `280R`.
 
 ## Author / License

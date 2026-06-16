@@ -205,7 +205,7 @@ python3 tools/build_codetank_rom.py --rom=2     # writes roms/codetank/Codetank_
 # Then 4000R from Wozmon to start.
 ```
 
-Local compile-check (writes `software/tms9918/TMS_Rogue.bin` linked at
+Local compile-check (writes `software/Graphic TMS9918/TMS_Rogue.bin` linked at
 `$4000`, not loadable as-is — use `build_codetank_rom.py --rom=2` for the ROM
 image):
 ```bash

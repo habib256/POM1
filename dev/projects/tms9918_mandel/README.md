@@ -83,8 +83,8 @@ output one-for-one.
 
 - Machine: Apple 1 (stock 4 KB DRAM at `$0000-$0FFF`)
 - Card: P-LAB TMS9918 Graphic Card
-- Recommended POM1 preset: any TMS9918-enabled preset (presets 8-14
-  including CodeTank or Multiplexing Fantasy).
+- Recommended POM1 preset: 7 (P-LAB TMS9918 + CodeTank), or the P-LAB
+  Multiplexing Fantasy preset 11.
 
 ## Memory map
 
@@ -105,13 +105,13 @@ output one-for-one.
 
 ## Build
 
-    make                      # → ../../../software/tms9918/TMS_Mandel.{bin,txt}
+    make                      # → ../../../software/Graphic TMS9918/TMS_Mandel.{bin,txt}
 
 ## Run in POM1
 
 1. POM1 → Hardware → plug the TMS9918 card (auto-enabled when loading
-   from `software/tms9918/`).
-2. File → Load → `software/tms9918/TMS_Mandel.txt`.
+   from `software/Graphic TMS9918/`).
+2. File → Load → `software/Graphic TMS9918/TMS_Mandel.txt`.
 3. Wozmon `\` prompt: type `280R`.
 4. Watch the cells fill in, top-to-bottom. The classic Mandelbrot
    silhouette emerges as the central rows render.

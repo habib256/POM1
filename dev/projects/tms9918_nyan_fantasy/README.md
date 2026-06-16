@@ -7,7 +7,7 @@ embedded in the binary instead of a 2-frame delta. The cat bobs
 smoothly and the rainbow scroll cycles through all 4 phases.
 
 The 18 KB animation can't fit in a stock 4 KB Apple-1, so this build
-**only loads in POM1's Multiplexing Fantasy preset** (12 or 14 — POM1 Fantasy is the default) where
+**only loads in POM1's Multiplexing Fantasy preset** (11 or 13 — POM1 Fantasy is the default) where
 the full 64 KB RAM is available. Uses `apple1_nyan_fantasy.cfg`, a
 local trim of [`dev/cc65/pom1_fantasy.cfg`](../../cc65/pom1_fantasy.cfg).
 
@@ -16,7 +16,7 @@ local trim of [`dev/cc65/pom1_fantasy.cfg`](../../cc65/pom1_fantasy.cfg).
 1. Load **preset 13** (POM1 Multiplexing Fantasy 2026).
 2. Hardware menu → plug the **TMS9918** Graphic Card (it's off by
    default in this preset; preset 11 has it on).
-3. File → Load Memory → `software/tms9918/TMS_Nyan_Fantasy.txt`.
+3. File → Load Memory → `software/Graphic TMS9918/TMS_Nyan_Fantasy.txt`.
 4. Wozmon `\` prompt → type `280R`.
 5. Cat appears, bobs at ~20 fps with the full rainbow scroll.
 6. ESC returns to Wozmon.
@@ -27,7 +27,7 @@ $6000-$9FFF span.)
 
 ## Build
 
-    make                 # → ../../../software/tms9918/TMS_Nyan_Fantasy.{bin,txt}
+    make                 # → ../../../software/Graphic TMS9918/TMS_Nyan_Fantasy.{bin,txt}
 
 Image size: ~19 KB (18 886 bytes). Loading the `.txt` via Wozmon hex
 takes a moment — File → Load Memory is much faster.

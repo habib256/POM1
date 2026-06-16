@@ -60,11 +60,11 @@ POM1 silicon-strict modélise les comportements TMS9918 documentés dans Nouspik
 ## 1. Contexte & cible matérielle
 
 - **Plateforme cible** : Apple-1 + carte TMS9918 (P-LAB Graphic Card) + daughterboard CodeTank (piggyback).
-- **Preset POM1 équivalent** : **#8** — *P-LAB Apple-1 with TMS9918 (CodeTank daughterboard)* (voir [`README.md`](../README.md) § Machine Presets).
+- **Preset POM1 équivalent** : **#7** — *P-LAB Apple-1 with TMS9918 (CodeTank daughterboard)* (voir [`README.md`](../README.md) § Machine Presets).
 - **Référence "OK partout" (silicium + POM1)** : `TMS_Logo v1.7` — interpréteur LOGO en Mode 2 bitmap, pas de sprites. Validation du sous-système VRAM/registres/modes graphiques.
 - **Référence "OK POM1, KO silicium"** : `A1Galaga` — Mode 1 + sprites animés à 60 Hz. Sur silicium, sprites-artefacts et damiers parasites apparaissent autour des sprites légitimes dès l'écran de titre.
 
-### Map mémoire utilisable (preset **#8**)
+### Map mémoire utilisable (preset **#7**)
 
 ```
 $0000-$00FF   Zero page (Apple-1 standard)

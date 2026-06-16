@@ -19,18 +19,18 @@ via `dev/lib/games/sokoban/`, swapping the text renderer for HGR sprites.
 
 ## Build
 
-    make                          # produces ../../../software/hgr/HGR_Sokoban.bin
+    make                          # produces ../../../software/Graphic HGR/HGR_Sokoban.bin
 
 By hand:
 
     ca65 -I ../../lib/apple1 -I ../../lib/hgr -I ../../lib/games/sokoban HGR_Sokoban.asm
     ld65 -C ../games_sokoban/apple1_sok_hgr.cfg HGR_Sokoban.o \
-        -o ../../../software/hgr/HGR_Sokoban.bin
+        -o ../../../software/Graphic HGR/HGR_Sokoban.bin
 
 ## Run in POM1
 
 1. POM1 → Presets → preset 12 (Uncle Bernie's GEN2 HGR Color).
-2. File → Load → `software/hgr/HGR_Sokoban.bin`.
+2. File → Load → `software/Graphic HGR/HGR_Sokoban.bin`.
 3. Wozmon `\` prompt: type `280R`.
 
 ## Author / License

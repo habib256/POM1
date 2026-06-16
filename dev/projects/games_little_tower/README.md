@@ -19,17 +19,17 @@ in stock 8 KB DRAM (~6 KB binary, no expansion cards required).
 
 ## Build
 
-    make                          # produces ../../../software/games/LittleTower-1.0.bin
+    make                          # produces ../../../software/Apple-1 games/LittleTower-1.0.bin
 
 By hand:
 
     ca65 -I ../../lib/apple1 LittleTower-1.0.asm
-    ld65 -C apple1_little_tower.cfg LittleTower-1.0.o -o ../../../software/games/LittleTower-1.0.bin
+    ld65 -C apple1_little_tower.cfg LittleTower-1.0.o -o ../../../software/Apple-1 games/LittleTower-1.0.bin
 
 ## Run in POM1
 
 1. POM1 → Presets → preset 1 (Apple-1 with ACI & BASIC).
-2. File → Load → `software/games/LittleTower-1.0.bin`.
+2. File → Load → `software/Apple-1 games/LittleTower-1.0.bin`.
 3. Wozmon `\` prompt: type `280R`.
 
 ## Author / License

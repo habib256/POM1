@@ -29,7 +29,7 @@ upload to fit one scan line.
 
 - Machine: Apple 1 (stock 4 KB DRAM)
 - Card: P-LAB TMS9918 Graphic Card
-- Recommended POM1 preset: any TMS9918-enabled preset (8-14)
+- Recommended POM1 preset: 7 (P-LAB TMS9918 + CodeTank), or the P-LAB Multiplexing Fantasy preset 11
 
 ## Sources
 
@@ -41,12 +41,12 @@ upload to fit one scan line.
 
 ## Build
 
-    make                      # → ../../../software/tms9918/TMS_Split.{bin,txt}
+    make                      # → ../../../software/Graphic TMS9918/TMS_Split.{bin,txt}
 
 ## Run in POM1
 
 1. POM1 → Hardware → plug TMS9918.
-2. File → Load → `software/tms9918/TMS_Split.txt`.
+2. File → Load → `software/Graphic TMS9918/TMS_Split.txt`.
 3. Wozmon `\` prompt: `280R`.
 4. Watch for the horizontal palette boundary around row 12.
 5. ESC returns to Wozmon.

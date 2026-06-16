@@ -7,8 +7,7 @@ next preset pattern; `SPACE` pauses; `.` single-steps when paused.
 
 Two linker-config variants:
 
-- Default cassette build at `$0280` (uses `dev/cc65/apple1_gen2.cfg` —
-  reserves the GEN2 framebuffer window).
+- Default cassette build at `$0280` (uses `dev/cc65/apple1_4k.cfg`).
 - `apple1_life_codetank_bank.cfg` — CodeTank lower-bank slot at `$7A00`
   inside the multi-game ROM image.
 
@@ -27,7 +26,7 @@ Two linker-config variants:
 
 ## Build
 
-    make                          # default = cassette → ../../../software/tms9918/TMS_Life.{bin,txt}
+    make                          # default = cassette → ../../../software/Graphic TMS9918/TMS_Life.{bin,txt}
 
 Override the linker config from the command line:
 
@@ -36,7 +35,7 @@ Override the linker config from the command line:
 ## Run in POM1
 
 1. POM1 → Presets → preset 7 (P-LAB TMS9918 + CodeTank).
-2. File → Load → `software/tms9918/TMS_Life.txt`.
+2. File → Load → `software/Graphic TMS9918/TMS_Life.txt`.
 3. Wozmon `\` prompt: type `280R` (cassette) or `7A00R` (CodeTank).
 
 ## Author / License

@@ -39,7 +39,7 @@ exactly 1 536 output bytes per frame.
 
 ## Build
 
-    make             # → software/tms9918/TMS_Nyan_CodeTank.bin (~7 KB)
+    make             # → software/Graphic TMS9918/TMS_Nyan_CodeTank.bin (~7 KB)
                      # → roms/codetank/Codetank_Nyan.rom (32 KB padded)
 
 The Makefile also runs `build_rom.py`, which pads the ≤16 KB linker
@@ -82,7 +82,7 @@ back to "Lower" to recover.
 - `nyan_rle.asm` — auto-generated 12-frame compressed stream
 - `apple1_nyan_codetank.cfg` — ld65 config (CODE at $4000, 16 KB)
 - `build_rom.py` — pad the linker output to a 32 KB CodeTank ROM
-- Output: `../../../software/tms9918/TMS_Nyan_CodeTank.bin` (raw 7 KB)
+- Output: `../../../software/Graphic TMS9918/TMS_Nyan_CodeTank.bin` (raw 7 KB)
           `../../../roms/codetank/Codetank_Nyan.rom` (32 KB ROM image)
           `../../../roms/codetank/Codetank_Nyan.txt` (Library blurb)
 

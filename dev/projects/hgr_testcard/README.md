@@ -17,18 +17,18 @@ reference image for tuning monitor / emulator colour.
 
 ## Build
 
-    make                          # produces ../../../software/hgr/HGR_TestCard.bin
+    make                          # produces ../../../software/Graphic HGR/HGR_TestCard.bin
 
 By hand:
 
     ca65 -I ../../lib/apple1 -I ../../lib/hgr HGR_TestCard.asm
     ld65 -C ../../cc65/apple1_gen2.cfg HGR_TestCard.o \
-        -o ../../../software/hgr/HGR_TestCard.bin
+        -o ../../../software/Graphic HGR/HGR_TestCard.bin
 
 ## Run in POM1
 
 1. POM1 → Presets → preset 12 (Uncle Bernie's GEN2 HGR Color).
-2. File → Load → `software/hgr/HGR_TestCard.bin`.
+2. File → Load → `software/Graphic HGR/HGR_TestCard.bin`.
 3. Wozmon `\` prompt: type `E000R`.
 
 ## Author / License
