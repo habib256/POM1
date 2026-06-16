@@ -371,7 +371,7 @@ POM1 ships a complete cc65-based dev tree under [`dev/`](dev/):
 - [`dev/Programming_Apple1_ASM.md`](dev/Programming_Apple1_ASM.md) — guide ASM (~790 lignes, FR) : 6502, cc65, HGR, TMS9918 (trilogies Sokoban + Connect 4).
 - [`dev/Programming_Apple1_C.md`](dev/Programming_Apple1_C.md) — C guide (cc65): one shared Apple-1 text base + the GEN2 HGR / TMS9918 graphics layers.
 - [`dev/projects/<name>/`](dev/projects/) — per-program README + Makefile + sources for everything POM1 ships.
-- [`dev/lib/`](dev/lib/) — reusable libraries: **asm** (`apple1`, `m6502`, `tms9918`, `hgr`, `games/{chess,sokoban}`) + **C** (`apple1c` shared text/keyboard base, `gen2c` HGR runtime).
+- [`dev/lib/`](dev/lib/) — reusable libraries: **asm** (`apple1`, `m6502`, `tms9918`, `hgr`, `games/{chess,sokoban}`) + **C** (`apple1c` shared text/keyboard base, `gen2c` GEN2 HGR runtime). The TMS9918 C runtime is [`dev/apple1-videocard-lib/`](dev/apple1-videocard-lib/) (Nippur72's lib, CodeTank-ported).
 - [`dev/cc65/*.cfg`](dev/cc65/) — shared linker configs.
 
 Quick build:
