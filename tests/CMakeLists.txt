@@ -107,6 +107,28 @@ add_test(NAME cpu_harte_smoke
          COMMAND test_cpu_harte "${CMAKE_SOURCE_DIR}/tests/cpu/harte_6502.bin")
 set_tests_properties(cpu_harte_smoke PROPERTIES TIMEOUT 60)
 
+# -- IRQ/NMI line-timing oracle (Route A) -------------------------------------
+# Self-contained: pins the interrupt entry sequence (7-cycle cost, vectors,
+# pushed-P B bit, NMI non-maskable + edge-cleared, RTI) that Harte's opcode
+# cases can't reach. Same POM1 core as the Klaus/Harte runners.
+add_executable(test_cpu_interrupt
+    cpu_interrupt_test.cpp
+    ${POM1_TEST_CORE_SOURCES}
+)
+target_include_directories(test_cpu_interrupt PRIVATE
+    ${CMAKE_SOURCE_DIR}/src
+    ${CMAKE_SOURCE_DIR}/imgui
+)
+target_link_libraries(test_cpu_interrupt PRIVATE libresidfp_static)
+if(APPLE)
+    target_compile_definitions(test_cpu_interrupt PRIVATE GL_SILENCE_DEPRECATION)
+endif()
+if(WIN32)
+    target_link_libraries(test_cpu_interrupt PRIVATE ws2_32)
+endif()
+add_test(NAME cpu_interrupt_smoke COMMAND test_cpu_interrupt)
+set_tests_properties(cpu_interrupt_smoke PROPERTIES TIMEOUT 30)
+
 # -- PeripheralBus dispatch smoke test ----------------------------------------
 # Self-contained: the bus has no dependency on Memory, peripherals, or
 # libresidfp. The test registers a handful of fake handlers and asserts the
