@@ -75,6 +75,11 @@ public:
     void softReset();
     void hardReset();
     void stepCpu();
+    // Deterministic capture helper: pause the emulation thread, then run the CPU
+    // for exactly `cycles` cycles synchronously (no real-time pacing) and publish
+    // a snapshot. Lets the headless graphics-regression dump capture a frame at a
+    // host-independent point in emulated time. Leaves the CPU stopped.
+    void runCyclesSync(uint64_t cycles);
 
     // Debug: toggle the M6502 BRK trace (CPU state + stack + recent
     // control-flow transfers, logged at WARN on every BRK). Off by default.

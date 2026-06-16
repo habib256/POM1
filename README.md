@@ -85,7 +85,7 @@ F000R    ; cold-start whatever ROM is currently mapped at $F000
 ```bash
 git clone https://github.com/gistarcade/POM1.git
 cd POM1
-./setup_imgui.sh                    # fetch Dear ImGui + install deps (one-time)
+./setup_pom1.sh                    # fetch Dear ImGui + install deps (one-time)
 cd build && cmake .. && make
 cd .. && ./run_emulator.sh
 ```
@@ -97,7 +97,7 @@ Prereqs: [Visual Studio](https://visualstudio.microsoft.com/) (C++ workload), [C
 ```batch
 git clone https://github.com/gistarcade/POM1.git
 cd POM1
-setup_imgui.bat
+setup_pom1.bat
 cd build && cmake --build . --config Release
 cd .. && run_emulator.bat
 ```
@@ -117,7 +117,7 @@ emrun POM1.html
 ```
 </details>
 
-<details><summary>Manual dependency install (if <code>setup_imgui.sh</code> can't)</summary>
+<details><summary>Manual dependency install (if <code>setup_pom1.sh</code> can't)</summary>
 
 | OS | Command |
 |---|---|
