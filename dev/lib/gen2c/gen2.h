@@ -15,16 +15,22 @@
 #ifndef GEN2_H
 #define GEN2_H
 
-/* Soft switches — each macro is a READ that selects that state. */
+/* Soft switches — each macro is a READ that selects that state (the read IS the
+ * toggle; the value read is meaningless). The result is stored into gen2_ss_sink
+ * rather than cast to void: cc65 -Oirs ELIDES a volatile read whose value is
+ * discarded by (void), which silently turned these into no-ops. A store to a
+ * global it cannot prove dead forces the load. (The full-mode initialisers
+ * gen2_hgr_init / gen2_lores_init are in asm for the same reason.) */
+extern volatile unsigned char gen2_ss_sink;
 #define GEN2_SS         ((volatile unsigned char*)0xC250)
-#define gen2_graphics() ((void)GEN2_SS[0])   /* $C250  TEXT off -> graphics    */
-#define gen2_text()     ((void)GEN2_SS[1])   /* $C251  TEXT on                 */
-#define gen2_full()     ((void)GEN2_SS[2])   /* $C252  MIXED off (full screen) */
-#define gen2_mixed()    ((void)GEN2_SS[3])   /* $C253  MIXED on (4 text rows)  */
-#define gen2_page1()    ((void)GEN2_SS[4])   /* $C254  page 1 (HIRES $2000)    */
-#define gen2_page2()    ((void)GEN2_SS[5])   /* $C255  page 2 (HIRES $4000)    */
-#define gen2_lores()    ((void)GEN2_SS[6])   /* $C256  RES latch = LORES       */
-#define gen2_hires()    ((void)GEN2_SS[7])   /* $C257  RES latch = HIRES       */
+#define gen2_graphics() (gen2_ss_sink = GEN2_SS[0])  /* $C250 TEXT off->graphics */
+#define gen2_text()     (gen2_ss_sink = GEN2_SS[1])  /* $C251 TEXT on            */
+#define gen2_full()     (gen2_ss_sink = GEN2_SS[2])  /* $C252 MIXED off (full)   */
+#define gen2_mixed()    (gen2_ss_sink = GEN2_SS[3])  /* $C253 MIXED on (4 rows)  */
+#define gen2_page1()    (gen2_ss_sink = GEN2_SS[4])  /* $C254 page 1             */
+#define gen2_page2()    (gen2_ss_sink = GEN2_SS[5])  /* $C255 page 2             */
+#define gen2_lores()    (gen2_ss_sink = GEN2_SS[6])  /* $C256 RES latch = LORES  */
+#define gen2_hires()    (gen2_ss_sink = GEN2_SS[7])  /* $C257 RES latch = HIRES  */
 
 /* HST0 (bit 7) = 1 while blanking. Reading $C257 re-asserts HIRES, so it is a
  * HIRES-safe poll. ALWAYS mask 0x80 — the low 7 bits are garbage. */
@@ -32,6 +38,9 @@
 #define gen2_hst0() (GEN2_SS[7] & GEN2_HST0)
 
 #define GEN2_HGR1   ((unsigned char*)0x2000) /* HIRES page-1 framebuffer (8 KB) */
+#define GEN2_HGR2   ((unsigned char*)0x4000) /* HIRES page-2 framebuffer (8 KB) */
+#define GEN2_LORES1 ((unsigned char*)0x0400) /* TEXT/LORES page-1 (shared, 1 KB) */
+#define GEN2_LORES2 ((unsigned char*)0x0800) /* TEXT/LORES page-2 (shared, 1 KB) */
 
 /* graphics + hires + page 1 + full screen. */
 void gen2_hgr_init(void);
@@ -96,9 +105,56 @@ void gen2_hgr_blit(unsigned x, unsigned char y, unsigned char w, unsigned char h
  * + gen2_hgr_clear first. Non-printable chars render as a space. */
 void gen2_hgr_puts(unsigned x, unsigned char y, const char *s);
 
+/* Same Beautiful Boot font at its NATIVE 8x8 size (no pixel doubling): 7px glyph
+ * cells on an 8px pitch, 8px tall. ~3-4x more text per line and faster than the
+ * 16x16 gen2_hgr_puts — use it for dense HUDs / status lines. White into HIRES
+ * page 1. Clips at y<=184 / x<=273. gen2_hgr_putu8 is the small-font number twin. */
+void gen2_hgr_puts8(unsigned x, unsigned char y, const char *s);
+void gen2_hgr_putu8(unsigned x, unsigned char y, unsigned value);
+
 /* Draw `value` as unsigned decimal at (x, y), same 16x16 white cells / font as
  * gen2_hgr_puts (1-5 digits, no leading zeros). Handy for scores and counters. */
 void gen2_hgr_putu(unsigned x, unsigned char y, unsigned value);
+
+/* Fixed-width, right-aligned unsigned decimal — the flicker-free HUD number.
+ * The field is `width` glyph cells wide (18px pitch); the call ERASES exactly
+ * that box, then draws the digits flush-right in it. So an updating counter never
+ * needs a separate clear_pixrect — a shrinking value leaves no stale digits and
+ * the self-bounded wipe can't clip an adjacent label (the trap a hand-rolled
+ * erase rectangle falls into). Values wider than the field overflow right, so
+ * pick width >= the maximum digit count (e.g. width 5 for a 0..65535 score).
+ * width is clamped to 1..14. Page-aware (works while double buffering). */
+void gen2_hgr_putu_field(unsigned x, unsigned char y, unsigned value,
+                         unsigned char width);
+
+/* Signed decimal at (x, y): leading '-' then magnitude. OR-drawn (transparent,
+ * no field erase) — use gen2_hgr_putu_field when you need flicker-free updates. */
+void gen2_hgr_puti(unsigned x, unsigned char y, int value);
+
+/* Unsigned hexadecimal at (x, y), uppercase, 1-4 digits, no leading zeros.
+ * OR-drawn like gen2_hgr_putu (addresses, bit masks). */
+void gen2_hgr_putx(unsigned x, unsigned char y, unsigned value);
+
+/* --- Vector primitives (white, HIRES) -------------------------------------
+ * Inclusive pixel endpoints (x:0..279, y:0..191), clipped to the screen. The
+ * straight runs use the fast pixel-rectangle path; line/circle walk the LUT
+ * plot. The Light Corridor demo hand-rolled all of these in raw asm — here they
+ * are once, in the lib. */
+
+/* Horizontal / vertical runs (inclusive). Fast: one STA run per scanline. */
+void gen2_hgr_hline(unsigned x0, unsigned x1, unsigned char y);
+void gen2_hgr_vline(unsigned x, unsigned char y0, unsigned char y1);
+
+/* Bresenham line between two endpoints (both drawn). Horizontal/vertical lines
+ * auto-shortcut to hline/vline. */
+void gen2_hgr_line(unsigned x0, unsigned char y0, unsigned x1, unsigned char y1);
+
+/* Rectangle OUTLINE through opposite corners (inclusive); interior untouched
+ * (fill it with gen2_hgr_fill_pixrect for a solid box). */
+void gen2_hgr_rect(unsigned x0, unsigned char y0, unsigned x1, unsigned char y1);
+
+/* Midpoint circle OUTLINE, centre (xc, yc), radius r; off-screen arcs clipped. */
+void gen2_hgr_circle(unsigned xc, unsigned char yc, unsigned char r);
 
 /* Draw a string in one of the four NTSC artifact COLOURS the GEN2 HIRES screen
  * can show (it has no per-pixel colour). Drawn in ONE tinted pass (gen2_blit.s
@@ -120,9 +176,98 @@ void gen2_hgr_puts_color(unsigned x, unsigned char y, const char *s, unsigned ch
 void gen2_hgr_colorize(unsigned x, unsigned char y, unsigned char w,
                        unsigned char h, unsigned char color);
 
+/* ===========================================================================
+ * LORES — 40×48 blocks of 16 colours (GEN2 low-resolution graphics)
+ * ===========================================================================
+ * Unlike HIRES, LORES has REAL per-block colour (it is not an NTSC artifact):
+ * a 40-wide × 48-tall grid of 7px×4px coloured blocks. It shares the TEXT
+ * page memory ($0400 page 1, Apple II row interleave): each text byte holds
+ * TWO vertically-stacked blocks — the LOW nibble is the upper block (even
+ * block-row), the HIGH nibble the lower one (odd block-row). So block (x, y)
+ * with x:0..39, y:0..47 lives in nibble (y&1) of text-page byte
+ * row(y>>1)+x. Colour is a 4-bit index 0..15 into the card's fixed palette
+ * (the GEN2_LO_* names below; same 16 colours as Apple II LORES). Mode is
+ * selected by gen2_lores_init(). Renderer truth: GraphicsCard::renderLoRes. */
+
+/* The fixed 16-colour LORES palette (GraphicsCard kApple2Palette order). */
+#define GEN2_LO_BLACK      0u
+#define GEN2_LO_MAGENTA    1u   /* dark red / magenta */
+#define GEN2_LO_DARKBLUE   2u
+#define GEN2_LO_PURPLE     3u
+#define GEN2_LO_DARKGREEN  4u
+#define GEN2_LO_GRAY1      5u   /* dark gray  */
+#define GEN2_LO_MEDBLUE    6u
+#define GEN2_LO_LIGHTBLUE  7u
+#define GEN2_LO_BROWN      8u
+#define GEN2_LO_ORANGE     9u
+#define GEN2_LO_GRAY2      10u  /* light gray */
+#define GEN2_LO_PINK       11u
+#define GEN2_LO_GREEN      12u  /* light green */
+#define GEN2_LO_YELLOW     13u
+#define GEN2_LO_AQUA       14u  /* aquamarine */
+#define GEN2_LO_WHITE      15u
+
+/* graphics + LORES + page 1 + full screen (call before drawing). */
+void gen2_lores_init(void);
+
+/* Fill the whole 40×48 LORES screen with one colour (0..15). Fast: writes the
+ * text page ($0400-$07FF) a page at a time with an 8-bit index — NOT a naïve
+ * 16-bit pointer loop (see gen2_hgr_clear's note). */
+void gen2_lores_clear(unsigned char color);
+
+/* Set / read one block. x:0..39, y:0..47, color:0..15 (a GEN2_LO_* index).
+ * Out-of-range plots are dropped; gen2_lores_getblock returns 0 off-screen. */
+void gen2_lores_setblock(unsigned char x, unsigned char y, unsigned char color);
+unsigned char gen2_lores_getblock(unsigned char x, unsigned char y);
+
+/* Horizontal / vertical runs of blocks, both endpoints INCLUSIVE (Apple II
+ * Applesoft HLIN/VLIN convention). Clipped to the 40×48 grid; an empty span
+ * (x0>x1 / y0>y1) draws nothing. */
+void gen2_lores_hlin(unsigned char x0, unsigned char x1, unsigned char y,
+                     unsigned char color);
+void gen2_lores_vlin(unsigned char x, unsigned char y0, unsigned char y1,
+                     unsigned char color);
+
+/* Fill a w×h block rectangle whose top-left is (x, y) with `color`. Clipped to
+ * the grid (w/h past the edge are trimmed). */
+void gen2_lores_fill_rect(unsigned char x, unsigned char y,
+                          unsigned char w, unsigned char h, unsigned char color);
+
 /* Coarse spin until vertical blank (NOT cycle-exact — for tight beam-racing use
  * the ASM dev/lib/gen2 gen2_beam_lock). Double-samples HST0 to skip the colour-
  * burst notch and tells V-blank from H-blank by how long the blank lasts. */
 void gen2_wait_vbl(void);
+
+/* ===========================================================================
+ * Double buffering — draw page vs display page (PAGE2)
+ * ===========================================================================
+ * The card has TWO framebuffers: page 1 (HIRES $2000 / LORES $0400) and page 2
+ * (HIRES $4000 / LORES $0800). For flicker/tear-free full-screen animation you
+ * draw the next frame into the HIDDEN page while the card shows the other, then
+ * flip — the viewer never sees a half-drawn frame.
+ *
+ *   gen2_set_draw_page(page)  picks where EVERY drawing primitive writes (HIRES
+ *                             and LORES alike); page is 1 or 2. Cheap but not
+ *                             free — it re-derives the scanline tables, so set it
+ *                             ONCE per frame, not per primitive. The per-pixel
+ *                             plot/blit/fill hot paths are unchanged.
+ *   gen2_show_page()          flips the card to display the CURRENT draw page
+ *                             (the $C254/$C255 soft switch).
+ *
+ * Both pages share one mode — select it once (gen2_hgr_init / gen2_lores_init,
+ * which also display page 1). The classic loop:
+ *
+ *     unsigned char draw = 2;
+ *     gen2_hgr_init();
+ *     for (;;) {
+ *         gen2_set_draw_page(draw);
+ *         gen2_hgr_clear(0);
+ *         ...draw the frame...
+ *         gen2_show_page();                  // freshly drawn page goes live
+ *         draw = (draw == 1u) ? 2u : 1u;     // next frame -> the other page
+ *     }
+ */
+void gen2_set_draw_page(unsigned char page);   /* 1 or 2 (out-of-range -> 1) */
+void gen2_show_page(void);                      /* display the current draw page */
 
 #endif /* GEN2_H */

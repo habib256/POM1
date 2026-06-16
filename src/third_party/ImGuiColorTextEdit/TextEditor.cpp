@@ -847,6 +847,13 @@ void TextEditor::HandleMouseInputs()
 				SetSelection(mInteractiveStart, mInteractiveEnd, mSelectionMode);
 			}
 		}
+
+		// Right (second) mouse button click copies the current selection to the
+		// clipboard without disturbing the cursor/selection (POM1 addition). Only
+		// acts when text is selected, so a stray right-click is a no-op rather than
+		// copying the whole current line (Copy()'s no-selection fallback).
+		if (ImGui::IsMouseClicked(1) && HasSelection())
+			Copy();
 	}
 }
 

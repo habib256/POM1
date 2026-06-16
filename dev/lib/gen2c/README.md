@@ -22,8 +22,37 @@ mode itself (`gen2_hgr_init()` does this).
 | `gen2_hgr_puts(x, y, s)`     | draw a white string (Beautiful Boot 8×8 font, 16×16 cells) — **asm** |
 | `gen2_hgr_puts_color(x,y,s,c)` | draw a string in an NTSC artifact colour (`GEN2_VIOLET/GREEN/ORANGE/BLUE`) — **asm** |
 | `gen2_hgr_putu(x, y, value)` | draw `value` as unsigned decimal (scores/counters) — **asm** |
+| `gen2_hgr_putu_field(x,y,value,width)` | fixed-width, right-aligned decimal that **self-erases its field** (flicker-free HUD counter) |
+| `gen2_hgr_puti(x, y, value)` / `gen2_hgr_putx(x, y, value)` | signed decimal / uppercase hex |
+| `gen2_hgr_hline(x0,x1,y)` / `gen2_hgr_vline(x,y0,y1)` | horizontal / vertical run (inclusive, fast pixrect path) |
+| `gen2_hgr_line(x0,y0,x1,y1)` | Bresenham line (auto-shortcuts straight runs) |
+| `gen2_hgr_rect(x0,y0,x1,y1)` / `gen2_hgr_circle(xc,yc,r)` | rectangle outline / midpoint circle |
 | `gen2_wait_vbl()`            | coarse spin until vertical blank |
+| `gen2_set_draw_page(p)` / `gen2_show_page()` | **double buffering**: pick the draw page (1/2), then flip the display to it |
 | `gen2_text()` … `gen2_hires()` | the eight `$C25x` soft-switch macros |
+
+### Double buffering (PAGE2)
+
+The card has two framebuffers — page 1 (HIRES `$2000` / LORES `$0400`) and page 2
+(HIRES `$4000` / LORES `$0800`). For tear-free full-screen animation, draw the
+next frame into the hidden page, then flip:
+
+```c
+unsigned char draw = 2u;
+gen2_hgr_init();
+for (;;) {
+    gen2_set_draw_page(draw);     /* every primitive now writes the hidden page */
+    gen2_hgr_clear(0u);
+    /* ...render the frame... */
+    gen2_show_page();             /* the freshly-drawn page goes live ($C254/5) */
+    draw = (draw == 1u) ? 2u : 1u;
+}
+```
+
+`gen2_set_draw_page` redirects **all** primitives (HIRES + LORES) by re-deriving
+the scanline tables they index — so it is set **once per frame**, not per call,
+and the per-pixel hot paths stay byte-for-byte identical (the page costs a table
+refresh at the flip, never a cycle per pixel). Demo: `dev/projects/gen2_dbuf_demo`.
 
 ### Assembly fast paths (`gen2_blit.s`)
 

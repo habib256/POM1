@@ -26,9 +26,13 @@
 ; The caller guarantees the whole 16x16 cell is on-screen (the C wrapper clips),
 ; so no bounds checking is done here.
 
+        .export   _gen2_hgr_init
+        .export   _gen2_lores_init
         .export   _gen2_hgr_clear
         .export   _gen2_blit_glyph
         .export   _gen2_blit_glyph_color
+        .export   _gen2_blit_glyph8
+        .export   _gen2_puts_run8
         .export   _gen2_fill_rect_asm
         .export   _gen2_plot_asm, _gen2_unplot_asm
         .export   _gen2_pixrect_asm
@@ -48,6 +52,7 @@
         .exportzp _gen2_z_col0, _gen2_z_ncols, _gen2_z_y0, _gen2_z_rows
         .exportzp _gen2_z_ce, _gen2_z_co, _gen2_z_hi
         .import   _gen2_rowlo, _gen2_rowhi, _gen2_col7, _gen2_mask7
+        .import   _gen2_hgr_base          ; HIRES draw-page hi base ($20/$40)
         .importzp ptr1, ptr2, tmp1, tmp2, tmp3, tmp4
 
 ; --- interface variables (zero page) ----------------------------------------
@@ -122,6 +127,37 @@ rowcnt  = tmp4               ; row counter 0..7
 ; ptr1 = base of scanline yy ; ptr2 = base of scanline yy+1
 
         .segment "CODE"
+
+; --- mode init: fully determine the $C250-$C257 latch -------------------------
+; Bernie Q8: the card's soft-switch latch is INDETERMINATE at power-on (the PLD
+; POR is untrustworthy) and the Apple-1 RESET line never touches it. A program
+; MUST therefore set EVERY switch pair itself before drawing — we cannot know
+; the card's state. These two routines touch all four pairs (TEXT, MIXED, PAGE,
+; RES), so whatever junk the latch held, the mode is clean and known afterwards.
+;
+; Why asm and not C: a read of a soft switch is the toggle; its VALUE is
+; discarded. cc65's optimiser (-Oirs) drops a volatile read whose result is
+; cast to void — so the C `(void)GEN2_SS[n]` macros compiled to NOTHING and the
+; old C gen2_hgr_init was silently an empty `rts`. HIRES only ever "worked" by
+; luck (POM1's documented cold latch happens to be GRAPHICS+HIRES+PAGE1). An
+; absolute `LDA $C25x` here can never be elided. Each LDA is one real bus read =
+; one switch toggle; A/X/Y/flags are scratch (leaf routine, nothing reads them).
+
+; void gen2_hgr_init(void): GRAPHICS + HIRES + PAGE1 + FULL screen.
+_gen2_hgr_init:
+        lda $C250            ; TEXT off  -> graphics
+        lda $C257            ; RES = HIRES
+        lda $C254            ; PAGE 1
+        lda $C252            ; MIXED off -> full screen
+        rts
+
+; void gen2_lores_init(void): GRAPHICS + LORES + PAGE1 + FULL screen.
+_gen2_lores_init:
+        lda $C250            ; TEXT off  -> graphics
+        lda $C256            ; RES = LORES
+        lda $C254            ; PAGE 1
+        lda $C252            ; MIXED off -> full screen
+        rts
 
 ; --- plot one pixel at (curcol, curmask) on BOTH scanlines, then advance ------
 plot_one:
@@ -358,6 +394,135 @@ _gen2_puts_run:
         dec _gen2_t_n
         jmp @loop
 
+; --- _gen2_blit_glyph8 : draw the 8x8 glyph at NATIVE size (no pixel doubling) -
+; The Beautiful Boot font is 7px wide (bit 0 = leftmost, bit 7 always 0), so each
+; glyph is a 7px cell; gen2_puts_run8 advances the pen 8px (one blank column =
+; inter-char gap). One source bit -> one screen pixel on ONE scanline (vs.
+; gen2_blit_glyph's 2x2 doubling). Same gen2_g_glyph/col/mask/y param block.
+_gen2_blit_glyph8:
+        lda #0
+        sta rowcnt
+@rowloop:
+        ; ptr1 = gen2_row(g_y + row)   (single scanline — no paired ptr2)
+        lda rowcnt
+        clc
+        adc _gen2_g_y
+        tay
+        lda _gen2_rowlo,y
+        sta ptr1
+        lda _gen2_rowhi,y
+        sta ptr1+1
+        ; load this row's 8 source bits
+        ldy rowcnt
+        lda (_gen2_g_glyph),y
+        sta curbits
+        ; reset pen to the glyph's left edge
+        lda _gen2_g_col
+        sta curcol
+        lda _gen2_g_mask
+        sta curmask
+        ldx #8                ; 8 bits (bit 7 is blank -> a no-op plot)
+@bitloop:
+        lsr curbits           ; bit 0 (leftmost) -> carry
+        bcc @skip
+        ldy curcol            ; lit: one pixel on this scanline
+        lda curmask
+        ora (ptr1),y
+        sta (ptr1),y
+@skip:
+        asl curmask           ; advance the pen one pixel
+        lda curmask
+        cmp #$80
+        bne @nextbit
+        lda #$01
+        sta curmask
+        inc curcol
+@nextbit:
+        dex
+        bne @bitloop
+        inc rowcnt
+        lda rowcnt
+        cmp #8
+        bne @rowloop
+        rts
+
+; --- _gen2_puts_run8 : native 8x8 string render (8px pitch) ------------------
+; Same param block as _gen2_puts_run (gen2_t_col/bit/n/s/font); draws each glyph
+; with gen2_blit_glyph8 and steps the pen 8px (= 1 byte column + 1 bit).
+_gen2_puts_run8:
+@loop:
+        lda _gen2_t_n
+        beq @done
+        ldy #0
+        lda (_gen2_t_s),y       ; c = *s
+        bne @go
+@done:
+        rts
+@go:
+        cmp #$20                ; clamp non-printable -> space
+        bcc @space
+        cmp #$80
+        bcc @okc
+@space:
+        lda #$20
+@okc:
+        sec                     ; gen2_g_glyph = font + (c-$20)*8
+        sbc #$20
+        sta tmp1
+        lda #0
+        sta tmp2
+        asl tmp1
+        rol tmp2
+        asl tmp1
+        rol tmp2
+        asl tmp1
+        rol tmp2
+        lda tmp1
+        clc
+        adc _gen2_t_font
+        sta _gen2_g_glyph
+        lda tmp2
+        adc _gen2_t_font+1
+        sta _gen2_g_glyph+1
+        lda _gen2_t_col
+        sta _gen2_g_col
+        ldx _gen2_t_bit         ; gen2_g_mask = 1 << bit
+        lda #1
+@mk:
+        dex
+        bmi @mkd
+        asl a
+        jmp @mk
+@mkd:
+        sta _gen2_g_mask
+        jsr _gen2_blit_glyph8
+        ; pen += 8px: bit += 1 (+ carry into col on the 7px wrap)
+        lda _gen2_t_bit
+        clc
+        adc #1
+        cmp #7
+        bcc @nowrap
+        sbc #7                  ; carry set by cmp (>=7): A = bit+1-7
+        sta _gen2_t_bit
+        lda _gen2_t_col
+        clc
+        adc #2                  ; col += 1, +1 for the bit wrap
+        sta _gen2_t_col
+        jmp @adv2
+@nowrap:
+        sta _gen2_t_bit
+        lda _gen2_t_col
+        clc
+        adc #1
+        sta _gen2_t_col
+@adv2:
+        inc _gen2_t_s           ; ++s
+        bne @sok
+        inc _gen2_t_s+1
+@sok:
+        dec _gen2_t_n
+        jmp @loop
+
 ; --- _gen2_utoa : 16-bit unsigned (gen2_u_lo/hi) -> decimal ASCII at gen2_u_ptr
 ; NUL-terminated, no leading zeros ("0" for zero). Division-free: subtract each
 ; power of ten as many times as it fits. Replaces cc65's 16-bit software /10+%10.
@@ -493,18 +658,18 @@ blit_apply:
 ; high byte ($20..$3F). This is the explicit asm form of the old cc65 C loop —
 ; the tightest 8 KB fill the 6502 can do (STA (ptr),Y / INY / BNE).
 _gen2_hgr_clear:
-        ldx #$20             ; first page high byte ($2000)
+        ldx _gen2_hgr_base   ; draw-page high byte ($20 page1 / $40 page2)
         stx ptr1+1
         ldy #$00
-        sty ptr1             ; ptr1 = $2000, Y = 0
+        sty ptr1             ; ptr1 = base<<8, Y = 0
+        ldx #$20             ; 32 pages = 8 KB (page-base independent)
 @page:
         sta (ptr1),y         ; store the fill byte (A preserved throughout)
         iny
         bne @page            ; 256 bytes of this page (Y wraps back to 0)
         inc ptr1+1           ; next page
-        ldx ptr1+1
-        cpx #$40             ; past $3Fxx -> done ($2000 + 8 KB)
-        bne @page
+        dex
+        bne @page            ; 32 pages -> done (8 KB framebuffer)
         rts
 
 ; --- _gen2_fill_rect_asm : fill a byte-aligned rectangle of HIRES page 1 ------
