@@ -300,6 +300,38 @@ std::optional<CliPlan> parseCli(int argc, char* argv[], bool& listPresetsOut)
             plan.telemetryLogPath = argv[++i];
             continue;
         }
+        if (arg == "--dump-gen2-frame") {
+            if (!needArg(i, "--dump-gen2-frame")) return std::nullopt;
+            plan.dumpGen2Path = argv[++i];
+            plan.headless = true;   // a frame capture is a headless one-shot
+            continue;
+        }
+        if (arg == "--dump-tms-frame") {
+            if (!needArg(i, "--dump-tms-frame")) return std::nullopt;
+            plan.dumpTmsPath = argv[++i];
+            plan.headless = true;
+            continue;
+        }
+        if (arg == "--dump-settle-ms") {
+            if (!needArg(i, "--dump-settle-ms")) return std::nullopt;
+            int ms = 0;
+            if (!parseIntPositive(argv[++i], ms)) {
+                logAndFail("--dump-settle-ms expects a positive integer (milliseconds)");
+                return std::nullopt;
+            }
+            plan.dumpSettleMs = ms;
+            continue;
+        }
+        if (arg == "--dump-after-cycles") {
+            if (!needArg(i, "--dump-after-cycles")) return std::nullopt;
+            int n = 0;
+            if (!parseIntPositive(argv[++i], n)) {
+                logAndFail("--dump-after-cycles expects a positive integer (CPU cycles)");
+                return std::nullopt;
+            }
+            plan.dumpAfterCycles = n;
+            continue;
+        }
         if (arg == "--preset" || arg == "-p") {
             if (!needArg(i, "--preset")) return std::nullopt;
             const std::string val = argv[++i];

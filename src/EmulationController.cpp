@@ -176,6 +176,22 @@ void EmulationController::stepCpu()
     publisher.publish(*memory, *cpu, runRequested.load());
 }
 
+void EmulationController::runCyclesSync(uint64_t cycles)
+{
+    stopCpu();                               // pause the async emulation thread
+    std::lock_guard<PriorityMutex> lock(stateMutex);
+    cpu->start();                            // clear the CPU stop flag so run() executes
+    uint64_t done = 0;
+    while (done < cycles) {
+        const int slice = static_cast<int>(
+            std::min<uint64_t>(cycles - done, static_cast<uint64_t>(kMaxSliceCycles)));
+        const int actual = cpu->run(slice);  // run() returns the actual cycle count
+        if (actual <= 0) break;              // CPU jammed — avoid an infinite loop
+        done += static_cast<uint64_t>(actual);
+    }
+    publisher.publish(*memory, *cpu, runRequested.load());
+}
+
 void EmulationController::setCpuBrkTraceEnabled(bool enabled)
 {
     std::lock_guard<PriorityMutex> lock(stateMutex);

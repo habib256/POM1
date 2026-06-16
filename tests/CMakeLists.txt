@@ -682,3 +682,23 @@ target_include_directories(test_d64_parse PRIVATE ${CMAKE_SOURCE_DIR}/src)
 add_test(NAME d64_parse_smoke COMMAND test_d64_parse)
 set_tests_properties(d64_parse_smoke PROPERTIES TIMEOUT 5)
 
+# ── Graphics golden-image regression (headless --dump-*-frame) ───────────────
+# Renders the GEN2 HGR test card with no display and compares the captured PNG
+# (sha256) to a committed golden. Deterministic via --dump-after-cycles (a host-
+# independent point in emulated time). Skips (77) when Python3 or the POM1 binary
+# is unavailable. Frozen fixtures + regen instructions: tests/gfx/. See doc/CLI.md.
+find_package(Python3 COMPONENTS Interpreter QUIET)
+if(Python3_FOUND)
+    add_test(NAME gfx_regress_gen2_testcard
+             COMMAND ${Python3_EXECUTABLE}
+                     "${CMAKE_SOURCE_DIR}/tools/test_gfx_regress.py"
+                     --pom1 "$<TARGET_FILE:pom1_imgui>"
+                     --card gen2 --preset 12
+                     --load "0xE000:${CMAKE_SOURCE_DIR}/tests/gfx/hgr_testcard.bin"
+                     --run 0xE000 --after-cycles 2000000
+                     --golden "${CMAKE_SOURCE_DIR}/tests/gfx/hgr_testcard_gen2.png"
+             WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
+    set_tests_properties(gfx_regress_gen2_testcard PROPERTIES
+                         TIMEOUT 60 SKIP_RETURN_CODE 77)
+endif()
+

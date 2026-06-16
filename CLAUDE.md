@@ -17,12 +17,12 @@ Apple 1 emulator (Dear ImGui, MOS 6502 + display + keyboard + ACI cassette) plus
 ## Build & Run
 
 ```bash
-./setup_imgui.sh             # one-time deps (Linux/macOS)
+./setup_pom1.sh             # one-time deps (Linux/macOS)
 cd build && cmake .. && make # build → build/POM1
 ./run_emulator.sh            # runs from repo root
 ```
 
-Windows: `setup_imgui.bat` + vcpkg + `cmake --build . --config Release`. `compile_commands.json` symlinked for clangd.
+Windows: `setup_pom1.bat` + vcpkg + `cmake --build . --config Release`. `compile_commands.json` symlinked for clangd.
 
 ### CLI
 
@@ -177,7 +177,7 @@ $FF00-$FFFF  Woz Monitor ROM + vectors ($FFFA-$FFFF)
 - **CMake** — `find_package(glfw3 CONFIG)` first (vcpkg, Homebrew), falls back to `pkg_check_modules`.
 - **Windows** — VS C++ workload + CMake + Git + vcpkg. MSVC: `/utf-8`, `_CRT_SECURE_NO_WARNINGS`. `package_windows_release.bat` → release ZIP.
 - **macOS** — links Cocoa + IOKit + CoreVideo. `package_macos_release.sh` puts read-only assets in `POM1.app/Contents/Resources/`. At startup, `pom1_macos_provision_user_data_dir()` creates `~/Library/Application Support/POM1/` with symlinks for read-only dirs + seeded `sdcard/`/`cfcard/`/`ini/`, then chdirs there. Symlinks refresh each launch (handles Gatekeeper App Translocation + `/Applications` drag-installs). Dev flow falls back to bundle-parent chdir when `Contents/Resources/roms` absent. DMG carries `.VolumeIcon.icns` + `SetFile -a C`.
-- **Linux** — `setup_imgui.sh` supports apt, dnf, pacman.
+- **Linux** — `setup_pom1.sh` supports apt, dnf, pacman.
 
 `build/`, `build-wasm/`, `imgui/` gitignored.
 
@@ -207,6 +207,7 @@ ctest -R klaus -V
 - **`gen2_softswitch_msb_smoke`** — GEN2 release soft switches: read-toggles + HST0-in-D7 (writes blocked), Bernie decode mask (mirrors `$C2/$C3/$C6/$C7xx` A4=1 vs `$C4xx`/A4=0 plain RAM), verbatim `hst0State` bounds (HBL / burst notch / live / VBL / 50 Hz), journal publication at the video-frame rollover, RESET leaving the latch alone. Full Memory core; runs from repo root.
 - **`gen2_beam_race_smoke`** — `GraphicsCard::render` mode renders (TEXT/LORES/HIRES/MIXED/PAGE2) + vertical beam split at scanline 96 (top == HGR ref, bottom == TEXT ref pixel-exact), one-direction-PAGE2 double-buffer heuristic, VBL events invisible. Self-contained (GraphicsCard + Gen2VideoScanner).
 - **`gen2_horizontal_split_smoke`** — Bernie's mid-scanline split: TEXT_ON at byteCol 20 → left half HGR / right half TEXT on the same line, repeating "color peg" band, NTSC-artifact context intact at the boundary byte (whole-line decode, clipped write-back). Self-contained.
+- **`gfx_regress_gen2_testcard`** — headless golden-image graphics regression: `--dump-gen2-frame` renders the frozen `tests/gfx/hgr_testcard.bin` (preset 12) with no display after a deterministic `--dump-after-cycles` settle, then sha256 vs the committed golden PNG. Python harness `tools/test_gfx_regress.py` (skips if Python3/`build/POM1` absent); TMS9918 counterpart = `--dump-tms-frame`. See `tests/gfx/`.
 - **`jukebox_paged_rom_smoke`** — `roms/jukebox.rom`, `$CA00`, flash vs EEPROM behaviour.
 - **`codetank_smoke`** / **`codetank_tms9918_dependency`** / **`codetank_game4_smoke`** — ROM size, jumper offsets, read-only, TMS9918 cascade; GAME4 (Light Corridor) cartridge layout.
 - **`tms9918_sprite_status`** / **`tms9918_silicon_strict_runtime`** / **`tms9918_per_scanline`** / **`tms9918_advanced_silicium`** — VDP behaviour + strict timing pins (`dev/SILICONBUGS.md`).

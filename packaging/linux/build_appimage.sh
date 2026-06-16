@@ -2,7 +2,7 @@
 # Build d'un AppImage POM1 pour Linux x86_64.
 #
 # Stratégie :
-#   1. Compilation classique (./setup_imgui.sh + cmake/make) — l'utilisateur
+#   1. Compilation classique (./setup_pom1.sh + cmake/make) — l'utilisateur
 #      doit l'avoir déjà fait, sinon on la déclenche.
 #   2. Layout AppDir miroir d'une install /usr classique :
 #        usr/bin/POM1                  binaire stripé
