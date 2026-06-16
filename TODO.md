@@ -134,6 +134,17 @@ Sections ordered by actionability: implementable first, externally-blocked last.
 
 ---
 
+## 🔤 BASIC dans le Bench — lancer du BASIC via les interpréteurs (Applesoft Lite / Integer)
+
+> **Contexte** (juin 2026) : **aucune compilation** ici — on **tokenise / injecte** un listing BASIC dans les interpréteurs que POM1 embarque **déjà** : **Integer BASIC** (`$E000`, cold-start `E000R`) et **Applesoft Lite** (`$6000`, preset microSD, `6000R`). Avantages : natif, **zéro dépendance externe**, fidélité Applesoft maximale, et **ça marche aussi en WASM** (contrairement au reste du Bench qui shell-out cc65). C'est le pendant *interactif* de la route *BASIC compilé natif* (CrustyBASIC) — laquelle est de l'Apple **II** et resterait en *Deferred* (exige une cible Apple 1 + une CLI). Nouvel axe langage « BASIC » dans le Bench, 3ᵉ langage à côté de asm/C.
+
+- [ ] **Axe langage « BASIC » + Run par injection** `[M · solid]` — nouveau langage dans la matrice Bench (`kBenchTargets[]`, `src/Pom1BenchHost.cpp`) dont l'**Upload** ne compile pas mais **alimente l'interpréteur** : la cible choisit l'interpréteur + son preset (auto-plug), fait le cold-start (`E000R` / `6000R`), puis envoie le listing. **MVP = streaming clavier** : réutilise le pipeline paste→clavier existant (`KeyboardController`, cap 4096) pour « taper » le programme ligne à ligne au prompt, puis `RUN`. Marche en WASM.
+- [ ] **Cibles BASIC (machine + interpréteur)** `[S · solid]` — au moins deux : **Integer BASIC** (ROM `$E000`, présente dans la plupart des presets) et **Applesoft Lite** (preset microSD, ROM `$6000`). Sélectionner la cible plugge la bonne machine, exactement comme les cibles asm/C actuelles.
+- [ ] **Tokenizer natif (v2, optionnel)** `[M · nice]` — au lieu du streaming clavier (lent + plafond 4096), **tokeniser** le source en format interne et l'écrire directement en mémoire + fixer les pointeurs programme (début/fin programme, `LOMEM`/`HIMEM`). Bien documenté pour Applesoft ; Integer BASIC plus retors. Supprime la limite de taille et la lenteur de saisie ; garder le streaming en fallback.
+- [ ] **Exemple BASIC intégré** `[S · nice]` — un sketch « Hello BASIC » (`10 PRINT "HELLO, APPLE-1"` / `20 GOTO 10`) dans le menu *Examples* du Bench, cible Integer BASIC par défaut. Point d'entrée immédiat.
+
+---
+
 ## 🔬 Debug & profiling — inspiré de 8bitworkshop (sonde CRT, profiler, debug source)
 
 > **Contexte** (juin 2026) : analyse comparative de l'IDE [8bitworkshop](https://8bitworkshop.com/docs/docs/ide.html) (Steven Hugg). Son point fort = le **débogage *visuel*** (CRT Probe, Memory Probe, Symbol Profiler, Probe Log) + le **tout-navigateur** (toolchains compilées en WASM via Emscripten). POM1 gagne déjà sur le **test automatisé** (telemetry + lock-step + `--headless`) et la **fidélité matérielle** (GEN2 beam-raced, HST0). Le delta exploitable = lui emprunter ses outils de debug visuel/profiling et les **marier au moteur beam + telemetry de POM1** — ce que 8bitworkshop ne peut pas égaler sur l'Apple-1. Tout est **desktop-only** (extension du Bench), sauf l'embed / playable-link (WASM). **Pistes, pas un engagement** — à promouvoir si la communauté dev Apple-1 décolle.
