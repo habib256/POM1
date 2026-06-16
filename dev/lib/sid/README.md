@@ -78,8 +78,7 @@ In your project Makefile:
 A1-SID must be plugged. POM1 presets that ship with SID enabled:
 
 - `--preset 6` — A1-SID alone
-- `--preset 10` — Juke-Box (coexists with SID)
-- `--preset 11` / `--preset 13` — multiplexing fantasy
+- `--preset 11` / `--preset 13` — multiplexing fantasy (A1-SID + other cards)
 
 If you load a SID program under a preset without the card, all the
 register stores are no-ops and you hear silence (no error).

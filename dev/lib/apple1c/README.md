@@ -6,7 +6,7 @@ the WOZ Monitor `ECHO` routine (`$FFEF`); input reads the PIA keyboard
 graphics runtimes sit *on top* of this shared base:
 
 ```
-                 apple1c  (this lib — woz_puts / woz_getkey / woz_mon)
+                 apple1c  (this lib — woz_puts / apple1_getkey / woz_mon)
                 /        \
    GEN2 HGR (gen2c)       TMS9918 (apple1-videocard-lib: screen1 / tms9918)
    Uncle Bernie           Antonino "Nino" Porcino

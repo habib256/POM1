@@ -6,7 +6,7 @@ transport and Hayes-style AT framing. From the 6502's view it's a
 plain serial UART.
 
 Until now no asm in this tree talked to the ACIA directly — the only
-shipped consumer is `software/net/ATmodem.txt`, a pre-assembled ROM.
+shipped consumer is `software/NET/ATmodem.txt`, a pre-assembled ROM.
 This lib unblocks scripted BBS sessions and a future minimal Telnet
 client in pure 6502.
 

@@ -59,7 +59,7 @@ emit(
     asm_files=["MyProject.asm"],         # one or more sources
     lib_dirs=["apple1", "hgr"],          # resolves to dev/lib/<name>/ -I paths
     cfg="apple1_gen2.cfg",                # project-local OR dev/cc65/ relative
-    out_dir_software="hgr",               # software/<dir>/ for the .bin/.txt
+    out_dir_software="Graphic HGR",       # software/<dir>/ for the .bin/.txt
     start_addr=0x0280,                    # load address used in the .txt suffix
     header_lines=["// optional banner"],  # prepended to the .txt
     project_dir=PROJ,                     # absolute path of the calling script
@@ -83,7 +83,7 @@ python3 ../../cc65/emit_woz.py \
     --asm MyProject.asm \
     --lib apple1 --lib hgr \
     --cfg apple1_gen2.cfg \
-    --out-software hgr \
+    --out-software "Graphic HGR" \
     --start 0x0280
 ```
 
@@ -149,7 +149,7 @@ lines plus an include:
 # HGR Mandelbrot
 PROJECT  := HGR_Mandelbrot
 LOAD_CFG := ../../cc65/apple1_gen2.cfg
-OUT_DIR  := ../../../software/hgr
+OUT_DIR  := ../../../software/Graphic HGR
 LIB      := -I ../../lib/apple1 -I ../../lib/hgr -I ../../lib/m6502
 EMIT_TXT := 1
 
