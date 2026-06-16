@@ -83,15 +83,24 @@ void gen2_hgr_puts(unsigned x, unsigned char y, const char *s);
 void gen2_hgr_putu(unsigned x, unsigned char y, unsigned value);
 
 /* Draw a string in one of the four NTSC artifact COLOURS the GEN2 HIRES screen
- * can show (it has no per-pixel colour). The text is drawn white, then an asm
- * pass (gen2_blit.s gen2_colorize_asm) masks it to the colour's carrier. There
- * is NO red on HIRES — orange is the warm tone. Keep coloured labels clear of
- * other content (the whole text box is tinted). See gen2_hgr_puts for layout. */
+ * can show (it has no per-pixel colour). Drawn in ONE tinted pass (gen2_blit.s
+ * gen2_blit_glyph_color ORs the colour's carrier bit per pixel directly — no
+ * white-then-recolorize round trip), and only the glyph itself is touched, so a
+ * coloured label can sit right next to other content without bleeding a tint
+ * over it. There is NO red on HIRES — orange is the warm tone. See gen2_hgr_puts
+ * for layout. */
 #define GEN2_VIOLET  1u   /* mauve / purple */
 #define GEN2_GREEN   2u
 #define GEN2_ORANGE  3u   /* the closest thing HIRES has to "red" */
 #define GEN2_BLUE    4u
 void gen2_hgr_puts_color(unsigned x, unsigned char y, const char *s, unsigned char color);
+
+/* Tint an arbitrary PIXEL rectangle to one of the four artifact colours (the
+ * graphics analogue of gen2_hgr_puts_color): draw a shape white, then recolour
+ * [x..x+w) x [y..y+h). HIRES colour is byte-granular, so keep coloured shapes
+ * ~1 empty cell apart. Black stays black, so an isolated shape tints cleanly. */
+void gen2_hgr_colorize(unsigned x, unsigned char y, unsigned char w,
+                       unsigned char h, unsigned char color);
 
 /* Coarse spin until vertical blank (NOT cycle-exact — for tight beam-racing use
  * the ASM dev/lib/gen2 gen2_beam_lock). Double-samples HST0 to skip the colour-

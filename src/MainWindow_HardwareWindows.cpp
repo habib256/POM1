@@ -727,32 +727,42 @@ static std::string teleDecodeValue(TeleFieldType type, const unsigned char* p, s
 }
 
 // Render the schema-driven "Decoded state" table from the accumulated wire bytes.
-// Game-agnostic: every row name/type/value comes from the game's own schema. If
-// no schema frame has been seen yet, show a greyed hint (the raw Serial Monitor
-// below still carries the bytes).
+// Game-agnostic: every named row comes from the game's own schema. The table
+// ADAPTS THE SCHEMA TO THE RECEIVED DATA so it always reflects the actual frame:
+//  - declared fields are decoded by name/type (or "--" if the frame is short);
+//  - any data byte the schema does NOT cover (a frame longer than the schema, or
+//    a frame with no schema at all) is shown as an inferred raw U8 row, so no
+//    received byte is ever silently hidden. The raw Serial Monitor still follows.
 static void renderTelemetryDecodedState(const std::vector<unsigned char>& schemaFrame,
                                         const std::vector<unsigned char>& bytes)
 {
     ImGui::SeparatorText("Decoded state");
 
-    if (schemaFrame.empty()) {
+    std::size_t dataBegin = 0, dataLen = 0;
+    const bool haveData = teleFindLastFrame(bytes, TelemetryPort::kFrameSentinel, dataBegin, dataLen);
+
+    std::vector<TeleField> fields;
+    if (!schemaFrame.empty())
+        teleParseSchema(schemaFrame.data(), schemaFrame.size(), fields);
+    const bool haveSchema = !fields.empty();
+
+    // Bytes the declared fields account for (the schema's expected frame length).
+    std::size_t expected = 0;
+    for (const TeleField& f : fields) expected += teleTypeSize(f.type);
+
+    // Nothing to show only when there is neither a usable schema nor any data.
+    if (!haveSchema && !(haveData && dataLen > 0)) {
         ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.6f, 0.6f, 0.6f, 1.0f));
-        ImGui::TextWrapped("No schema frame — showing raw bytes below. A game can emit a "
-                           "schema frame (TELE_CTRL=$03) so its fields appear here by name. "
-                           "See doc/TELEMETRY_SIDE_CHANNEL.md.");
+        if (!schemaFrame.empty())
+            ImGui::TextWrapped("Schema frame seen but no valid field descriptors decoded — "
+                               "data bytes, if any, will appear here as raw rows.");
+        else
+            ImGui::TextWrapped("No schema frame yet — a game can emit one (TELE_CTRL=$03) to "
+                               "name its fields. Until then, any data frame is shown here as "
+                               "raw bytes. See doc/TELEMETRY_SIDE_CHANNEL.md.");
         ImGui::PopStyleColor();
         return;
     }
-
-    std::vector<TeleField> fields;
-    teleParseSchema(schemaFrame.data(), schemaFrame.size(), fields);
-    if (fields.empty()) {
-        ImGui::TextDisabled("Schema frame seen but no valid field descriptors decoded.");
-        return;
-    }
-
-    std::size_t dataBegin = 0, dataLen = 0;
-    const bool haveData = teleFindLastFrame(bytes, TelemetryPort::kFrameSentinel, dataBegin, dataLen);
 
     if (ImGui::BeginTable("##telemetry_decoded", 3,
                           ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg |
@@ -763,6 +773,7 @@ static void renderTelemetryDecodedState(const std::vector<unsigned char>& schema
         ImGui::TableHeadersRow();
 
         std::size_t off = 0;            // offset into the data payload
+        // 1) Declared schema fields, decoded by their type.
         for (const TeleField& f : fields) {
             const std::size_t span = teleTypeSize(f.type);
             ImGui::TableNextRow();
@@ -775,27 +786,45 @@ static void renderTelemetryDecodedState(const std::vector<unsigned char>& schema
                 const std::string v = teleDecodeValue(f.type, bytes.data() + dataBegin + off, span);
                 ImGui::TextUnformatted(v.c_str());
             } else {
-                ImGui::TextDisabled("--");   // no value for this field yet
+                ImGui::TextDisabled("--");   // frame too short for this field
             }
             off += span;
+        }
+        // 2) Adapt to the data: surface every byte the schema did not cover (extra
+        //    trailing bytes, or the whole frame when no schema) as inferred raw rows.
+        for (std::size_t k = 0; haveData && off < dataLen; ++off, ++k) {
+            char name[24], val[24];
+            std::snprintf(name, sizeof(name), haveSchema ? "extra[%zu]" : "byte[%zu]", k);
+            const unsigned char b = bytes[dataBegin + off];
+            std::snprintf(val, sizeof(val), "$%02X (%u)", b, static_cast<unsigned>(b));
+            ImGui::TableNextRow();
+            ImGui::TableSetColumnIndex(0);
+            ImGui::TextUnformatted(name);
+            ImGui::TableSetColumnIndex(1);
+            ImGui::TextDisabled("raw");
+            ImGui::TableSetColumnIndex(2);
+            ImGui::TextUnformatted(val);
         }
         ImGui::EndTable();
     }
 
-    // Length-mismatch note: the data frame is shorter or longer than the schema.
-    if (haveData) {
-        std::size_t expected = 0;
-        for (const TeleField& f : fields) expected += teleTypeSize(f.type);
-        if (dataLen != expected) {
-            ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 0.75f, 0.3f, 1.0f));
-            ImGui::TextWrapped("Note: data frame is %zu B but schema expects %zu B "
-                               "(%s) — showing what fits.",
-                               dataLen, expected,
-                               dataLen < expected ? "fields truncated" : "extra trailing bytes");
-            ImGui::PopStyleColor();
-        }
-    } else {
+    // Status line: describe how the view adapted to the frame.
+    if (!haveData) {
         ImGui::TextDisabled("No data frame yet — fields will fill in as the game emits state.");
+    } else if (!haveSchema) {
+        ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.6f, 0.6f, 0.6f, 1.0f));
+        ImGui::TextWrapped("No schema — inferred %zu raw byte(s) from the data frame.", dataLen);
+        ImGui::PopStyleColor();
+    } else if (dataLen > expected) {
+        ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 0.75f, 0.3f, 1.0f));
+        ImGui::TextWrapped("Adapted: schema covers %zu B, frame is %zu B — %zu extra byte(s) "
+                           "shown as raw.", expected, dataLen, dataLen - expected);
+        ImGui::PopStyleColor();
+    } else if (dataLen < expected) {
+        ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 0.75f, 0.3f, 1.0f));
+        ImGui::TextWrapped("Note: frame is %zu B but schema expects %zu B — trailing fields "
+                           "shown as \"--\".", dataLen, expected);
+        ImGui::PopStyleColor();
     }
 }
 

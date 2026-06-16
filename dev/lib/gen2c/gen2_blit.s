@@ -26,11 +26,18 @@
 ; The caller guarantees the whole 16x16 cell is on-screen (the C wrapper clips),
 ; so no bounds checking is done here.
 
+        .export   _gen2_hgr_clear
         .export   _gen2_blit_glyph
+        .export   _gen2_blit_glyph_color
         .export   _gen2_fill_rect_asm
         .export   _gen2_plot_asm, _gen2_unplot_asm
         .export   _gen2_pixrect_asm
         .export   _gen2_colorize_asm
+        .export   _gen2_puts_run
+        .export   _gen2_utoa
+        .exportzp _gen2_t_col, _gen2_t_bit, _gen2_t_n, _gen2_t_color
+        .exportzp _gen2_t_s, _gen2_t_font
+        .exportzp _gen2_u_lo, _gen2_u_hi, _gen2_u_ptr
         .exportzp _gen2_g_glyph, _gen2_g_col, _gen2_g_mask, _gen2_g_y
         .exportzp _gen2_f_y0, _gen2_f_rows, _gen2_f_col0, _gen2_f_cols, _gen2_f_val
         .exportzp _gen2_p_x, _gen2_p_y
@@ -81,6 +88,18 @@ gr_setL:  .res 1             ; left  byte: OR  mask
 gr_setF:  .res 1             ; full bytes: stored directly ($7F fill / $00 erase)
 gr_keepR: .res 1             ; right byte: AND mask
 gr_setR:  .res 1             ; right byte: OR  mask
+gr_or:    .res 1             ; direct-colour glyph: per-pixel OR value (carrier|hi)
+; gen2_puts (asm string renderer) parameter block:
+_gen2_t_col:   .res 1        ; current byte column of the pen
+_gen2_t_bit:   .res 1        ; current bit within the column (0..6)
+_gen2_t_n:     .res 1        ; glyph cells left to draw (C precomputes the fit)
+_gen2_t_color: .res 1        ; 0 = white blitter, else colour blitter
+_gen2_t_s:     .res 2        ; string pointer
+_gen2_t_font:  .res 2        ; glyph table base (kBBFontAscii)
+; gen2_utoa (16-bit unsigned -> decimal ASCII) parameter block:
+_gen2_u_lo:    .res 1        ; value low byte  (consumed by the subtraction)
+_gen2_u_hi:    .res 1        ; value high byte
+_gen2_u_ptr:   .res 2        ; output buffer pointer
 
 ; zero-page scratch aliases (cc65 leaves tmp1..tmp4 free for leaf asm routines):
 curcol  = tmp1               ; current byte column   (also Y during a store)
@@ -113,6 +132,33 @@ advance:
         inc curcol
 @done:
         rts
+
+; --- plot_one_color : like plot_one, but writes the pixel already TINTED ------
+; Instead of the solid white doubled bit, OR only the carrier bit for THIS
+; column's parity (so the NTSC artifact colour is produced directly — no second
+; colorize pass, and the black background between strokes is never touched).
+; Reads the same gen2_z_ce/co/hi carrier block gen2_colorize_asm uses. The pen
+; still walks every doubled pixel; the carrier mask drops the half that is not
+; lit for this colour. Falls through (via jmp) to advance.
+plot_one_color:
+        lda curcol
+        and #1
+        beq @even
+        lda _gen2_z_co       ; odd  byte column -> co carrier
+        jmp @have
+@even:
+        lda _gen2_z_ce       ; even byte column -> ce carrier
+@have:
+        and curmask          ; keep this pixel only if the carrier lights it
+        ora _gen2_z_hi       ; + palette high bit (orange/blue) or nothing
+        ldy curcol
+        sta gr_or            ; OR value for this byte (carrier bit | hi)
+        ora (ptr1),y         ; scanline yy
+        sta (ptr1),y
+        lda gr_or
+        ora (ptr2),y         ; scanline yy+1
+        sta (ptr2),y
+        jmp advance          ; step the pen one pixel, then rts
 
 ; --- _gen2_blit_glyph : draw the 8x8 glyph, pixel-doubled to 16x16 -----------
 _gen2_blit_glyph:
@@ -162,6 +208,210 @@ _gen2_blit_glyph:
         lda rowcnt
         cmp #8
         bne @rowloop
+        rts
+
+; --- _gen2_blit_glyph_color : same walk as _gen2_blit_glyph, but each pixel is
+;     drawn already tinted via plot_one_color (carrier in gen2_z_ce/co/hi). ONE
+;     pass: no white draw + colorize box, and nothing outside the glyph is touched
+;     (no background tint, so coloured labels can sit next to other content). -----
+_gen2_blit_glyph_color:
+        lda #0
+        sta rowcnt
+@crow:
+        lda rowcnt
+        asl a                ; row * 2
+        clc
+        adc _gen2_g_y        ; yy = y + 2*row
+        tay
+        lda _gen2_rowlo,y
+        sta ptr1
+        lda _gen2_rowhi,y
+        sta ptr1+1
+        iny                  ; yy + 1
+        lda _gen2_rowlo,y
+        sta ptr2
+        lda _gen2_rowhi,y
+        sta ptr2+1
+        ldy rowcnt
+        lda (_gen2_g_glyph),y
+        sta curbits
+        lda _gen2_g_col
+        sta curcol
+        lda _gen2_g_mask
+        sta curmask
+        ldx #8
+@cbit:
+        lsr curbits          ; bit 0 (leftmost) -> carry
+        bcc @cskip
+        jsr plot_one_color   ; lit: 2 doubled pixels, drawn tinted
+        jsr plot_one_color
+        jmp @cnext
+@cskip:
+        jsr advance          ; clear: skip 2 pixels (no tint on the background)
+        jsr advance
+@cnext:
+        dex
+        bne @cbit
+        inc rowcnt
+        lda rowcnt
+        cmp #8
+        bne @crow
+        rts
+
+; --- _gen2_puts_run : draw a whole NUL-terminated string in ONE asm loop -------
+; Replaces the per-character C loop of gen2_hgr_puts / gen2_hgr_puts_color. Walks
+; gen2_t_s, drawing at most gen2_t_n glyph cells (the C wrapper precomputes how
+; many fit from x, so there is NO per-char 16-bit clip here). Per glyph: form the
+; font address font+(c-$20)*8, set gen2_g_col/mask, then JSR the white or colour
+; blitter — chosen ONCE per char via gen2_t_color (not per pixel: a per-pixel
+; dispatch would cost more than keeping the two blitters separate saves). Then
+; step the 18px pen (bit+=4, col+=2, +1 col on wrap). gen2_g_y set by the caller.
+_gen2_puts_run:
+@loop:
+        lda _gen2_t_n
+        beq @done
+        ldy #0
+        lda (_gen2_t_s),y       ; c = *s
+        bne @go
+@done:
+        rts
+@go:
+        cmp #$20                ; clamp non-printable -> space
+        bcc @space
+        cmp #$80
+        bcc @okc
+@space:
+        lda #$20
+@okc:
+        sec                     ; gen2_g_glyph = font + (c-$20)*8
+        sbc #$20
+        sta tmp1
+        lda #0
+        sta tmp2
+        asl tmp1
+        rol tmp2
+        asl tmp1
+        rol tmp2
+        asl tmp1
+        rol tmp2
+        lda tmp1
+        clc
+        adc _gen2_t_font
+        sta _gen2_g_glyph
+        lda tmp2
+        adc _gen2_t_font+1
+        sta _gen2_g_glyph+1
+        lda _gen2_t_col
+        sta _gen2_g_col
+        ldx _gen2_t_bit         ; gen2_g_mask = 1 << bit
+        lda #1
+@mk:
+        dex
+        bmi @mkd
+        asl a
+        jmp @mk
+@mkd:
+        sta _gen2_g_mask
+        lda _gen2_t_color       ; draw white or colour
+        beq @white
+        jsr _gen2_blit_glyph_color
+        jmp @adv
+@white:
+        jsr _gen2_blit_glyph
+@adv:
+        lda _gen2_t_bit         ; pen: bit += 4 (+ carry into col on wrap)
+        clc
+        adc #4
+        cmp #7
+        bcc @nowrap
+        sbc #7                  ; carry set by cmp (>=7): A = bit+4-7
+        sta _gen2_t_bit
+        lda _gen2_t_col
+        clc
+        adc #3                  ; col += 2, +1 for the bit wrap
+        sta _gen2_t_col
+        jmp @adv2
+@nowrap:
+        sta _gen2_t_bit
+        lda _gen2_t_col
+        clc
+        adc #2
+        sta _gen2_t_col
+@adv2:
+        inc _gen2_t_s           ; ++s
+        bne @sok
+        inc _gen2_t_s+1
+@sok:
+        dec _gen2_t_n
+        jmp @loop
+
+; --- _gen2_utoa : 16-bit unsigned (gen2_u_lo/hi) -> decimal ASCII at gen2_u_ptr
+; NUL-terminated, no leading zeros ("0" for zero). Division-free: subtract each
+; power of ten as many times as it fits. Replaces cc65's 16-bit software /10+%10.
+_gen2_utoa:
+        ldx #0                  ; power index 0..4
+        lda #0
+        sta tmp3                ; tmp3 != 0 once a digit has been emitted
+        ldy #0                  ; output index
+@pw:
+        lda #0
+        sta tmp4                ; digit for this power
+@sub:
+        lda _gen2_u_lo          ; value -= power (16-bit), while it fits
+        sec
+        sbc utoa_pw_lo,x
+        sta tmp1
+        lda _gen2_u_hi
+        sbc utoa_pw_hi,x
+        bcc @pwdone             ; borrow -> value < power -> next power
+        sta _gen2_u_hi
+        lda tmp1
+        sta _gen2_u_lo
+        inc tmp4
+        jmp @sub
+@pwdone:
+        lda tmp4                ; emit if nonzero, already-emitting, or units
+        bne @emit
+        lda tmp3
+        bne @emit
+        cpx #4
+        bne @skip
+@emit:
+        lda tmp4
+        ora #$30
+        sta (_gen2_u_ptr),y
+        iny
+        lda #1
+        sta tmp3
+@skip:
+        inx
+        cpx #5
+        bne @pw
+        lda #0
+        sta (_gen2_u_ptr),y     ; NUL terminator
+        rts
+
+utoa_pw_lo: .byte $10, $E8, $64, $0A, $01   ; 10000, 1000, 100, 10, 1  (low byte)
+utoa_pw_hi: .byte $27, $03, $00, $00, $00   ; 10000, 1000, 100, 10, 1  (high byte)
+
+; --- _gen2_hgr_clear(fill in A) : fill the whole HIRES page-1 framebuffer ------
+; Clears/fills $2000-$3FFF (32 pages x 256 bytes) with the byte in A. The byte
+; stays in A for every STA, so nothing reloads it; ptr1 walks the pages by its
+; high byte ($20..$3F). This is the explicit asm form of the old cc65 C loop —
+; the tightest 8 KB fill the 6502 can do (STA (ptr),Y / INY / BNE).
+_gen2_hgr_clear:
+        ldx #$20             ; first page high byte ($2000)
+        stx ptr1+1
+        ldy #$00
+        sty ptr1             ; ptr1 = $2000, Y = 0
+@page:
+        sta (ptr1),y         ; store the fill byte (A preserved throughout)
+        iny
+        bne @page            ; 256 bytes of this page (Y wraps back to 0)
+        inc ptr1+1           ; next page
+        ldx ptr1+1
+        cpx #$40             ; past $3Fxx -> done ($2000 + 8 KB)
+        bne @page
         rts
 
 ; --- _gen2_fill_rect_asm : fill a byte-aligned rectangle of HIRES page 1 ------

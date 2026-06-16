@@ -26,6 +26,16 @@
  * fills a 6x6 block inside its cell (a 1px gap on the right + bottom keeps the
  * grid readable). Top + bottom walls only (1px rules); the left/right sides are
  * OPEN — the snake wraps horizontally from one edge to the other.
+ *
+ * --- Visuals & gameplay ----------------------------------------------------
+ * Snake = white blocks; the apple = a SOLID RED disk (orange is HIRES's warmest
+ * tone — there is no true red); the bonus = a SOLID GREEN block; the score reads
+ * in BLUE, top-left; the "HGR SNAKE" label sits top-right in violet. HIRES colour
+ * is a byte-pattern artifact (the tint keeps only ~half the pixels), so the game
+ * sprites are drawn FILLED — a hollow outline gets halved into scattered dots.
+ * Gameplay extra: every BONUS_EVERY apples a time-limited bonus gem appears for
+ * BONUS_TTL ticks — grab it before it fades for BONUS_POINTS extra points (no
+ * growth, so it is pure risk/reward).
  * ---------------------------------------------------------------------------
  */
 #include "gen2.h"
@@ -40,6 +50,11 @@
 #define MAXLEN    96u           /* snake body ring-buffer capacity               */
 #define TOP_WALL  2u            /* top wall row; rows 0-1 above it are the score HUD,
                                  * which the snake (rows 3..ROWS-2) can never reach */
+
+/* --- Bonus gem (gameplay extra) --- */
+#define BONUS_EVERY  4u         /* drop a bonus every Nth apple                  */
+#define BONUS_TTL    36u        /* bonus lifetime in ticks before it fades       */
+#define BONUS_POINTS 20u        /* score for grabbing a bonus (4x a normal apple)*/
 
 /* --- Direction codes (also the harness TELE_IN protocol) --- */
 #define DIR_UP    1
@@ -59,6 +74,14 @@ static unsigned char alive;        /* 1 = playing, 0 = dead */
 static unsigned char foodx, foody; /* food cell */
 static unsigned int  score;        /* food eaten */
 static unsigned int  score_shown;  /* last score value drawn to the HUD (redraw-on-change) */
+static unsigned char apples;       /* apples eaten this game (drives the bonus cadence)   */
+/* Time-limited bonus gem. Logic in tick() sets the flags; the main loop does the
+ * drawing (keeps tick() free of framebuffer writes, like the rest of the game). */
+static unsigned char bonus_active; /* 1 = a bonus is currently on the field */
+static unsigned char bonusx, bonusy; /* bonus cell */
+static unsigned char bonus_ttl;    /* ticks left before the bonus fades        */
+static unsigned char bonus_new;    /* set the tick a bonus spawns  -> loop draws it  */
+static unsigned char bonus_gone;   /* set the tick a bonus expires -> loop erases it */
 static unsigned char layout = 1u;  /* keyboard: 1 = QWERTY (WASD), 2 = AZERTY (ZQSD) */
 /* Throttle iterations; lower = faster, shrinks per apple. The starting value is
  * tuned so the per-tick busy-wait is HALF the original 9000-constant loop (a
@@ -91,25 +114,34 @@ static void erase_cell(unsigned char cx, unsigned char cy)
     gen2_hgr_clear_pixrect((unsigned)cx * CELL, cy * (unsigned char)CELL, BLOCK, BLOCK);
 }
 
-/* Draw the food as a small hollow diamond (a 6x6 block with corners clipped) so
- * it reads differently from the solid snake segments. */
+/* Draw the apple as a SOLID round RED disk. HIRES colour is a byte-pattern
+ * artifact: the tint ANDs each byte with a half-density carrier, so it KEEPS
+ * only ~half the pixels. A FILLED, symmetric disk stays a full red blob through
+ * that; the old "fill block + knock the corners off" left an asymmetric pattern
+ * the carrier turned into a half-circle. Built as filled rows (orange = HIRES's
+ * warmest tone, the closest it has to red). */
 static void draw_food(unsigned char cx, unsigned char cy)
 {
     unsigned px = (unsigned)cx * CELL;
     unsigned char py = cy * (unsigned char)CELL;
-    /* a plus / diamond shape inside the 6x6 cell */
-    gen2_hgr_plot(px + 2, (unsigned char)(py + 0));
-    gen2_hgr_plot(px + 3, (unsigned char)(py + 0));
-    gen2_hgr_plot(px + 1, (unsigned char)(py + 1));
-    gen2_hgr_plot(px + 4, (unsigned char)(py + 1));
-    gen2_hgr_plot(px + 0, (unsigned char)(py + 2));
-    gen2_hgr_plot(px + 5, (unsigned char)(py + 2));
-    gen2_hgr_plot(px + 0, (unsigned char)(py + 3));
-    gen2_hgr_plot(px + 5, (unsigned char)(py + 3));
-    gen2_hgr_plot(px + 1, (unsigned char)(py + 4));
-    gen2_hgr_plot(px + 4, (unsigned char)(py + 4));
-    gen2_hgr_plot(px + 2, (unsigned char)(py + 5));
-    gen2_hgr_plot(px + 3, (unsigned char)(py + 5));
+    gen2_hgr_fill_pixrect(px + 2u, py,                       2u, 1u);  /* ..##.. */
+    gen2_hgr_fill_pixrect(px + 1u, (unsigned char)(py + 1u), 4u, 1u);  /* .####. */
+    gen2_hgr_fill_pixrect(px,      (unsigned char)(py + 2u), 6u, 2u);  /* ###### */
+    gen2_hgr_fill_pixrect(px + 1u, (unsigned char)(py + 4u), 4u, 1u);  /* .####. */
+    gen2_hgr_fill_pixrect(px + 2u, (unsigned char)(py + 5u), 2u, 1u);  /* ..##.. */
+    gen2_hgr_colorize(px, py, BLOCK, BLOCK, GEN2_ORANGE);
+}
+
+/* Draw the bonus gem as a SOLID GREEN block. The old hollow diamond outline was
+ * halved by the tint into a few scattered dots — "not very visible, not a closed
+ * figure". A filled cell stays a clearly visible, closed green gem: its GREEN
+ * tells it apart from the white snake, and the round RED apple is its own shape. */
+static void draw_bonus(unsigned char cx, unsigned char cy)
+{
+    unsigned px = (unsigned)cx * CELL;
+    unsigned char py = cy * (unsigned char)CELL;
+    gen2_hgr_fill_pixrect(px, py, BLOCK, BLOCK);
+    gen2_hgr_colorize(px, py, BLOCK, BLOCK, GEN2_GREEN);
 }
 
 /* Top and bottom walls only — the left/right sides are OPEN so the snake wraps
@@ -136,8 +168,25 @@ static void place_food(void)
         foodx = (unsigned char)(1u + prng() % (COLS - 2u));               /* cols 1..COLS-2 */
         foody = (unsigned char)((TOP_WALL + 1u) + prng() % (ROWS - TOP_WALL - 2u)); /* rows TOP_WALL+1..ROWS-2 */
         ok = 1;
-        for (i = 0; i < slen; ++i) {
+        if (bonus_active && foodx == bonusx && foody == bonusy) ok = 0;   /* not on the bonus */
+        else for (i = 0; i < slen; ++i) {
             if (sx[i] == foodx && sy[i] == foody) { ok = 0; break; }
+        }
+    } while (!ok);
+}
+
+/* Place the bonus on an empty playable cell — same bounds as place_food, but it
+ * must also avoid the apple. */
+static void place_bonus(void)
+{
+    unsigned char ok, i;
+    do {
+        bonusx = (unsigned char)(1u + prng() % (COLS - 2u));
+        bonusy = (unsigned char)((TOP_WALL + 1u) + prng() % (ROWS - TOP_WALL - 2u));
+        ok = 1;
+        if (bonusx == foodx && bonusy == foody) ok = 0;                   /* not on the apple */
+        else for (i = 0; i < slen; ++i) {
+            if (sx[i] == bonusx && sy[i] == bonusy) { ok = 0; break; }
         }
     } while (!ok);
 }
@@ -179,6 +228,10 @@ static void new_game(void)
     score = 0;
     score_shown = 0;           /* redraw() draws score 0; the loop redraws only on change */
     tick_spins = 3565u;        /* reset to the (genuine x2) starting speed (layout kept) */
+    apples = 0;
+    bonus_active = 0;          /* no bonus until the cadence drops one */
+    bonus_new = 0;
+    bonus_gone = 0;
     place_food();
 }
 
@@ -249,6 +302,13 @@ static void tick(void)
         }
     }
 
+    /* Bonus pickup: worth BONUS_POINTS but no growth. The new head lands on the
+     * gem and draw_cell() will paint over it, so just clear the flag (no erase). */
+    if (bonus_active && nx == bonusx && ny == bonusy) {
+        score += BONUS_POINTS;
+        bonus_active = 0u;
+    }
+
     grow = (nx == foodx && ny == foody) ? 1u : 0u;
 
     /* Shift the body down by one, then write the new head at index 0. */
@@ -262,12 +322,27 @@ static void tick(void)
 
     if (grow) {
         score += 5u;                  /* each apple is worth 5 points */
+        ++apples;
         /* Each apple speeds the snake up: shorten the throttle. Low floor + a
          * gentle step so the speed keeps climbing for many apples instead of
          * capping early (3565 -> ~365 over ~16 apples) — the end game gets
          * genuinely fast. The floor stays > 0 so the throttle never vanishes. */
         if (tick_spins > 400u) tick_spins -= 200u;
         place_food();
+        /* Every BONUS_EVERY apples, drop a time-limited bonus gem (if one is not
+         * already out). Drawing is the main loop's job, so just flag it. */
+        if (!bonus_active && (apples % BONUS_EVERY) == 0u) {
+            place_bonus();
+            bonus_active = 1u;
+            bonus_ttl    = BONUS_TTL;
+            bonus_new    = 1u;
+        }
+    }
+
+    /* Age an active bonus; when its timer runs out, flag it for erasure. */
+    if (bonus_active) {
+        --bonus_ttl;
+        if (bonus_ttl == 0u) { bonus_active = 0u; bonus_gone = 1u; }
     }
 }
 
@@ -278,8 +353,16 @@ static void tick(void)
  * so clearing it never touches the playfield. */
 static void draw_score(void)
 {
-    gen2_hgr_clear_pixrect(8u, 0u, 90u, 16u);   /* erase old digits (up to 5) */
-    gen2_hgr_putu(8, 0, score);
+    char buf[6];
+    unsigned char i = 6;
+    unsigned v = score;
+    gen2_hgr_clear_pixrect(8u, 0u, 72u, 16u);   /* erase old digits (up to 4; stays
+                                                 * clear of the HGR SNAKE label at x=96) */
+    /* Build the decimal string (no leading zeros) so we can colour it BLUE with
+     * gen2_hgr_puts_color — gen2_hgr_putu only draws white. */
+    buf[--i] = 0;
+    do { buf[--i] = (char)('0' + v % 10u); v /= 10u; } while (v != 0u);
+    gen2_hgr_puts_color(8, 0, buf + i, GEN2_BLUE);
 }
 
 /* Full draw — clear + walls/border + food + whole snake + score. Called ONCE
@@ -292,9 +375,13 @@ static void redraw(void)
     gen2_hgr_clear(0);
     draw_border();
     draw_food(foodx, foody);
+    if (bonus_active) draw_bonus(bonusx, bonusy);
     for (i = 0; i < slen; ++i) draw_cell(sx[i], sy[i]);
-    draw_score();                       /* score, top-left (BBFont 16x16 cells) */
-    gen2_hgr_puts_color(184, 0, "SNAKE", GEN2_ORANGE);  /* top-right label in orange (HIRES's "red") */
+    draw_score();                       /* score, top-left, BLUE (BBFont 16x16 cells) */
+    /* "HGR SNAKE" HUD label, top-right, in VIOLET (mauve). 9 glyphs x 18px pitch
+     * = 160px wide; x=96 ends the label at pixel 255 (clear of the cropped right
+     * edge) and leaves the left-hand score room. */
+    gen2_hgr_puts_color(96, 0, "HGR SNAKE", GEN2_VIOLET);
 }
 
 /* Plain CPU-spin throttle for a playable tick rate. We deliberately do NOT call
@@ -320,14 +407,24 @@ void main(void)
      * key that selects it. Press 1 for QWERTY (WASD) or 2 for AZERTY (ZQSD). ---- */
     gen2_hgr_init();
     gen2_hgr_clear(0);
-    gen2_hgr_puts_color(56, 16, "GEN2 SNAKE", GEN2_VIOLET);   /* title in mauve */
-    gen2_hgr_puts(10,  64, "1 QWERTY  WASD");
-    gen2_hgr_puts(10,  96, "2 AZERTY  ZQSD");
-    gen2_hgr_puts(38, 150, "PRESS 1 OR 2");
+    /* Title card: Apple-1  "SNAKE HGR", split over two lines so the whole name
+     * stays on screen, with every line in a different artifact colour for a
+     * livelier look (HIRES's four colours: violet / green / orange / blue). */
+    gen2_hgr_puts_color(114, 12, "A-1",           GEN2_GREEN);   /* line 1, centred */
+    gen2_hgr_puts_color(42,  40, "\"SNAKE HGR\"", GEN2_VIOLET);  /* line 2: game name */
+    gen2_hgr_puts_color(10,  72, "1 QWERTY  WASD", GEN2_BLUE);
+    gen2_hgr_puts_color(10, 102, "2 AZERTY  ZQSD", GEN2_ORANGE);
+    gen2_hgr_puts_color(38, 150, "PRESS 1 OR 2",   GEN2_GREEN);
 
     /* Telemetry: declare the schema once, then run free (live play, fire-hose). */
     emit_schema();
     tele_freerun();
+    /* This is a free-running tap: it never arms lock-step (tele_arm) nor reads the
+     * status byte (tele_stat), so cc65 — which has no unused-func pragma — would
+     * warn they are "defined but never used". Reference them so it stays quiet; a
+     * discarded function value emits no code. */
+    (void)tele_arm;
+    (void)tele_stat;
 
     /* Hold the title until the player picks a layout with '1' or '2', or AUTO-START
      * with the QWERTY default after the timeout (under the DevBench the Apple-1
@@ -373,6 +470,10 @@ void main(void)
                     draw_food(foodx, foody);       /* grew: show the new food     */
                 }
                 draw_cell(sx[0], sy[0]);           /* draw the new head           */
+                /* Bonus gem: tick() flags a spawn or a time-out; do the drawing
+                 * here. (Eating it needs no erase — the head already covers it.) */
+                if (bonus_new)  { draw_bonus(bonusx, bonusy); bonus_new  = 0u; }
+                if (bonus_gone) { erase_cell(bonusx, bonusy); bonus_gone = 0u; }
                 /* Score: redraw ONLY when it actually changes — not every frame. */
                 if (score != score_shown) {
                     draw_score();
@@ -386,7 +487,11 @@ void main(void)
              * pause so the telemetry / UI registers it, then AUTO-RESTART (a key
              * or harness byte restarts early) — the demo never gets stuck. */
             unsigned int hold;
-            gen2_hgr_puts(40, 80, "GAME OVER");
+            /* Clear a black panel BEHIND the banner first — otherwise "GAME OVER"
+             * is OR'd straight over the snake/apple under it and smears into
+             * garbage. The 9-glyph word spans x=40..199 at y=80..95; pad it. */
+            gen2_hgr_clear_pixrect(36u, 78u, 168u, 20u);
+            gen2_hgr_puts_color(40, 80, "GAME OVER", GEN2_ORANGE);
             for (hold = 0; hold < 50u; ++hold) {
                 emit_state();
                 if (apple1_readkey() != 0 || tele_inlen() != 0) break;
