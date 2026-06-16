@@ -290,6 +290,7 @@ private:
     // the Hardware menu toggle. Drives the Hardware menu checkbox state and
     // the STRICT/FANTASY status-bar tag.
     bool siliconStrictModeEnabled = true;
+    bool cpuDecimalBugEnabled = true;     // NMOS decimal ADC/SBC bug (Silicon window): strict=on, fantasy=off
     // Silicon Strict Inspector window — opens from the Hardware menu just
     // below the timing toggle. Surfaces drop-diagnostics live + lets the
     // user pick faithful silicon profile toggles (VRAM/RAM cold-boot noise).

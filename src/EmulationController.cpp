@@ -514,6 +514,19 @@ bool EmulationController::isSiliconStrictMode() const
     return memory->isSiliconStrictMode();
 }
 
+void EmulationController::setCpuDecimalBugNMOS(bool enabled)
+{
+    std::lock_guard<PriorityMutex> lock(stateMutex);
+    cpu->setDecimalBugNMOS(enabled);
+    publisher.publish(*memory, *cpu, runRequested.load());
+}
+
+bool EmulationController::isCpuDecimalBugNMOS() const
+{
+    std::lock_guard<PriorityMutex> lock(stateMutex);
+    return cpu->isDecimalBugNMOS();
+}
+
 void EmulationController::setVramNoiseOnReset(bool enabled)
 {
     std::lock_guard<PriorityMutex> lock(stateMutex);
