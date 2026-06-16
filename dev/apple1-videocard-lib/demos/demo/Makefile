@@ -1,5 +1,7 @@
 # demo — CodeTank @ $4000 (menu TMS9918 minimal)
 LIBDIR  := ../../lib
+GFXDIR  := ../../../lib/gfx
+GFXLIB  := $(GFXDIR)/gfx-tms.lib
 CFG     := ../../cc65/codetank_c.cfg
 EMIT    := ../../tools/emit_codetank_txt.py
 empty   :=
@@ -20,9 +22,16 @@ SOURCES := main.c \
 
 all: $(OUTDIR_T)/$(NAME).bin $(OUTDIR_T)/$(NAME).txt
 
-$(OUTDIR_T)/$(NAME).bin: $(SOURCES) $(CFG) Makefile FORCE
+# Card-neutral gfx layer (dev/lib/gfx), linked as an ar65 ARCHIVE so ld65 pulls
+# only the modules referenced. main.c still calls screen2_line/circle/ellipse
+# today, so gfx-tms.lib contributes 0 bytes (the .bin is byte-identical with vs
+# without it) — purely additive until the screen2.c→gfx_* rewiring lands.
+$(GFXLIB):
+	$(MAKE) -C $(GFXDIR) tms
+
+$(OUTDIR_T)/$(NAME).bin: $(SOURCES) $(GFXLIB) $(CFG) Makefile FORCE
 	@mkdir -p "$(OUTDIR)"
-	cl65 -t none -Oirs -C $(CFG) -I $(LIBDIR) $(SOURCES) -o "$(OUTDIR)/$(NAME).bin"
+	cl65 -t none -Oirs -C $(CFG) -I $(LIBDIR) -I $(GFXDIR) $(SOURCES) $(GFXLIB) -o "$(OUTDIR)/$(NAME).bin"
 
 $(OUTDIR_T)/$(NAME).txt: $(OUTDIR_T)/$(NAME).bin $(EMIT)
 	@python3 "$(EMIT)" --bin "$(OUTDIR)/$(NAME).bin" --txt "$(OUTDIR)/$(NAME).txt" --start 0x4000

@@ -63,29 +63,55 @@ available and a sample build is green:
 3. Keep the old public names as wrappers so existing programs/demos compile
    unchanged (`gen2_hgr_line`, `screen2_line`, …).
 
-## Build integration (per project)
+## Build integration
 
-- Add `dev/lib/gfx` to the cc65 include path (`-I dev/lib/gfx`).
-- Compile `gfx_draw.c` + `gfx_num.c` + the matching `gfx_backend_*.c`.
-- GEN2 projects also need `-I dev/lib/gen2c`; TMS projects `-I dev/apple1-videocard-lib/lib`.
-- Touch points that build these libs today:
-  - the Bench cl65 line in `src/Pom1BenchHost.cpp` (compiles `gen2.c`);
-  - per-project Makefiles / `emit_*` scripts under `dev/projects/*`;
-  - `dev/apple1-videocard-lib/Makefile`.
-
-## Verification (REQUIRED before claiming axis 1 done)
-
-This code is **not yet compile-verified** — it was authored while the sandbox
-shell was unavailable. Before relying on it:
+The layer ships as **two cc65 library archives** built by the `Makefile` here:
 
 ```bash
-# 1. assemble the shared TUs against each backend (needs cc65: cl65/ca65/ld65)
-cl65 -t none -c -I dev/lib/gfx -I dev/lib/gen2c \
-     dev/lib/gfx/gfx_draw.c dev/lib/gfx/gfx_num.c dev/lib/gfx/gfx_backend_gen2.c
-cl65 -t none -c -I dev/lib/gfx -I dev/apple1-videocard-lib/lib \
-     dev/lib/gfx/gfx_draw.c dev/lib/gfx/gfx_num.c dev/lib/gfx/gfx_backend_tms.c
-# 2. build a sample GEN2 project (e.g. a1_crazycycle) and a TMS bitmap demo,
-#    swapping their line/circle calls to gfx_* ; run the gfx regression test
-#    (tools/test_gfx_regress.py) to confirm pixel-identical output.
-# 3. ctest -R gfx   (and the gen2_* / tms9918_* smokes) must stay green.
+make -C dev/lib/gfx           # -> gfx-gen2.lib + gfx-tms.lib
+make -C dev/lib/gfx check     # compile-verify every TU against both backends
+make -C dev/lib/gfx clean
 ```
+
+**Why an archive, not a list of `.c` on the link line.** `ld65` pulls only the
+modules a program *references* out of a `.lib`. Until the destructive rewiring
+lands (`gen2.c` / `screen2.c` forwarding to `gfx_*`), nothing references
+`gfx_line`/`gfx_circle`/`gfx_utoa`/…, so linking `gfx-<card>.lib` adds **0 bytes**
+(measured: `GEN2Snake.bin` and the videocard `demo.bin` are byte-identical with
+vs without the lib on their link line). Force-listing the `.c` sources instead
+force-links the whole layer — **+2888 bytes** of dead code (cc65's soft
+mul/divide for the ellipse + `gfx_num`). So the archive is the only *purely
+additive* way to wire gfx into a size-sensitive build path before rewiring.
+
+To wire a program:
+
+- Add `-I dev/lib/gfx` to its cc65 include path (so it can `#include "gfx.h"`).
+- Put the matching archive **after** the program's own sources on the cl65/ld65
+  line: GEN2 → `gfx-gen2.lib`; TMS9918 bitmap → `gfx-tms.lib`.
+- GEN2 builds still need `-I dev/lib/gen2c`; TMS builds `-I dev/apple1-videocard-lib/lib`.
+
+Wired touch points (copy these as the template for the rest):
+
+- **`src/Pom1BenchHost.cpp`** — the Bench's *Uncle Bernie GEN2 HGR (C)* line.
+  The Bench compiles the gfx sources **from source** (like `gen2.c`) so edits
+  apply live and a sketch can immediately `#include "gfx.h"` and draw vectors;
+  its binaries are throwaway, so the dead-code trade-off doesn't matter there.
+- **`dev/projects/gen2_vectors_demo/Makefile`** — GEN2 example (links `gfx-gen2.lib`).
+- **`dev/apple1-videocard-lib/demos/demo/Makefile`** — TMS example (links `gfx-tms.lib`);
+  `dev/apple1-videocard-lib/Makefile` exposes `make gfx` to build the TMS archive.
+
+## Verification
+
+Compile-verified 2026-06-16 (cc65 6502, Homebrew):
+
+- `make check` builds both archives → every shared TU compiles against both backends.
+- End-to-end link smoke passed for **both** cards: a consumer that references
+  `gfx_line`/`rect`/`circle`/`ellipse` + `gfx_utoa`/`itoa`/`hexstr` links cleanly
+  against the GEN2 runtime (`gen2.c` → `gfx_plot`/`hline`/`vline` resolve to
+  `gen2_hgr_plot`/…) and against the TMS runtime (`screen2.c` → `screen2_plot`),
+  with no unresolved or duplicate symbols.
+
+Still open (the *destructive* rewiring — separate TODO items, NOT done here):
+swap `gen2_hgr_line`/`screen2_line` bodies to forward to `gfx_*` and run
+`tools/test_gfx_regress.py` to confirm pixel-identical output, then `ctest -R gfx`
+plus the `gen2_*` / `tms9918_*` smokes stay green.

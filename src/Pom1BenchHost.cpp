@@ -732,6 +732,12 @@ void Pom1BenchHost::probe() const
         // just an include dir, folded into every C build below.
         const fs::path tele = fs::path(devRoot) / "lib" / "telemetry";
         if (fs::exists(tele, ec)) telemetryLib_ = fs::absolute(tele, ec).string();
+        // Card-neutral geometry/number layer (dev/lib/gfx, factoring axis 1):
+        // gfx_line/rect/circle/ellipse + gfx_utoa/itoa/hexstr, with a per-card
+        // backend resolved at link time. Folded into the GEN2 HGR C target below
+        // so a sketch can #include "gfx.h" and draw vectors on the GEN2 card.
+        const fs::path gfx = fs::path(devRoot) / "lib" / "gfx";
+        if (fs::exists(gfx, ec)) gfxLib_ = fs::absolute(gfx, ec).string();
     }
     gen2COk_  = !cl65_.empty() && !gen2cLib_.empty() && !gen2Cfg_.empty();
     plainCOk_ = !cl65_.empty() && !apple1cLib_.empty() && !plainCfg_.empty();
@@ -920,8 +926,20 @@ bench::BuildResult Pom1BenchHost::build(int target, const std::string& src, cons
                 a1c = " -I " + bench::shellQuote(apple1cLib_) +
                       " " + bench::shellQuote(apple1cLib_ + "/apple1io.c") +
                       " " + bench::shellQuote(apple1cLib_ + "/apple1io_asm.s");
+            // Card-neutral gfx layer (dev/lib/gfx). Compiled FROM SOURCE here —
+            // same as gen2.c — so edits apply live; the GEN2 backend's gfx_plot
+            // resolves to gen2_hgr_plot (gen2.c is on the line). A sketch can
+            // #include "gfx.h" and call gfx_line/circle/ellipse/utoa. (Shipped
+            // builds under dev/projects use the pruning gfx-gen2.lib instead so
+            // an unused layer costs 0 bytes; a Bench binary is throwaway.)
+            std::string gfx;
+            if (!gfxLib_.empty())
+                gfx = " -I " + bench::shellQuote(gfxLib_) +
+                      " " + bench::shellQuote(gfxLib_ + "/gfx_draw.c") +
+                      " " + bench::shellQuote(gfxLib_ + "/gfx_num.c") +
+                      " " + bench::shellQuote(gfxLib_ + "/gfx_backend_gen2.c");
             cmd = bench::shellQuote(cl65_) + " -t none -Oirs -C " + bench::shellQuote(gen2Cfg_) +
-                " -I " + bench::shellQuote(gen2cLib_) + a1c + tele + " " + bench::shellQuote(srcC.string()) +
+                " -I " + bench::shellQuote(gen2cLib_) + a1c + gfx + tele + " " + bench::shellQuote(srcC.string()) +
                 " " + bench::shellQuote(gen2cLib_ + "/gen2.c") +
                 " " + bench::shellQuote(gen2cLib_ + "/gen2_blit.s") +
                 " -o " + bench::shellQuote(binB.string());
