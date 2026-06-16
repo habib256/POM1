@@ -288,12 +288,11 @@ void MainWindow_ImGui::renderMenuBar()
         }
 
         if (ImGui::BeginMenu("DevBench")) {
-#if !POM1_IS_WASM
-            // POM1 Bench is a desktop-only dev tool: it shells out to the cc65
-            // toolchain (ca65/ld65/cl65), which cannot run in the browser. No
-            // dev authoring toolchain in the WASM build by design.
+            // POM1 Bench. Desktop: full cc65 (asm/C) + Wozmon-hex authoring. Web
+            // (WASM): no cc65 toolchain in the browser, so the Bench is restricted
+            // to the Wozmon-hex target (editor + Upload + Serial Monitor) — see
+            // Pom1BenchHost, whose targets() is Woz-hex-only under POM1_IS_WASM.
             ImGui::MenuItem("POM1 Bench (sketch editor)...", nullptr, &showBench);
-#endif
             ImGui::MenuItem("Telemetry Side Channel...", nullptr, &showTelemetry);
             // Always available here (unlike the card windows, which only appear
             // when the TMS9918 is plugged) — a dev-side VDP inspector. Opening it

@@ -1,0 +1,34 @@
+# Minimal CI: build POM1 on Linux, run the ctest suite (Klaus functional test +
+# every smoke test + the GEN2 graphics-regression golden), and assemble all the
+# dev/ 6502 projects. Single Linux job by design — see CLAUDE.md / TODO.md.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  linux:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake g++ libglfw3-dev libgl1-mesa-dev cc65
+
+      - name: Fetch Dear ImGui (pinned to the tested release)
+        run: git clone --depth 1 --branch v1.92.7 https://github.com/ocornut/imgui.git
+
+      - name: Build POM1
+        run: |
+          cmake -S . -B build
+          cmake --build build -j"$(nproc)"
+
+      - name: Run ctest (Klaus, smoke tests, graphics regression)
+        run: ctest --test-dir build --output-on-failure
+
+      - name: Assemble all dev/ 6502 projects
+        run: make -C dev/projects

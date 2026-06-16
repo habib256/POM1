@@ -132,13 +132,13 @@ void M6502::Zero(void)
 void M6502::ZeroX(void)
 {
     op = (memory->memRead(programCounter++) + xRegister) & 0xFF;
-    cycles++;
+    cycles += 2;   // zp base read (1) + index-add dummy read (1)
 }
 
 void M6502::ZeroY(void)
 {
     op = (memory->memRead(programCounter++) + yRegister) & 0xFF;
-    cycles++;
+    cycles += 2;   // zp base read (1) + index-add dummy read (1)
 }
 
 void M6502::Abs(void)
@@ -183,7 +183,7 @@ void M6502::IndZeroX(void)
     uint8_t zp = (memory->memRead(programCounter++) + xRegister) & 0xFF;
     op = memory->memRead(zp);
     op |= (uint16_t)memory->memRead((uint8_t)((zp + 1) & 0xFF)) << 8;
-    cycles += 3;
+    cycles += 4;   // ptr fetch (1) + index dummy (1) + 2 pointer reads
 }
 
 void M6502::IndZeroY(void)
@@ -299,36 +299,35 @@ void M6502::ADC(void)
 
     if (statusRegister & M6502::Status::D)
     {
-    if (!((Op1 + Op2 + (statusRegister & M6502::Status::C ? 1 : 0)) & 0xFF))
-       statusRegister |= M6502::Status::Z;
-     else
-    statusRegister &= ~M6502::Status::Z;
+        // Decimal ADC. The accumulator result follows the canonical NMOS
+        // algorithm (Bruce Clark) for every input incl. invalid BCD. The N/Z
+        // FLAGS depend on the selected mode:
+        //   decimalBugNMOS  -> original NMOS chip: Z from the binary sum, N from
+        //                      the pre-adjust intermediate (the documented bug).
+        //   !decimalBugNMOS -> 65C02 "corrected": N/Z reflect the BCD result.
+        const int c = (statusRegister & M6502::Status::C) ? 1 : 0;
+        int al = (Op1 & 0x0F) + (Op2 & 0x0F) + c;
+        if (al >= 0x0A) al = ((al + 0x06) & 0x0F) + 0x10;
+        int a = (Op1 & 0xF0) + (Op2 & 0xF0) + al;   // high sum; may exceed 0xFF
 
-   tmp = (Op1 & 0x0F) + (Op2 & 0x0F) + (statusRegister & M6502::Status::C ? 1 : 0);
-        accumulator = tmp < 0x0A ? tmp : tmp + 6;
- // BCD low→high carry lives in bit 4 of the adjusted accumulator after the +6.
- // Reading it from `tmp` instead drops the carry whenever the unadjusted sum is in $0A-$0F.
- tmp = (Op1 & 0xF0) + (Op2 & 0xF0) + (accumulator & 0xF0);
+        // V (overflow) from the pre-adjust sum — same value in both modes.
+        if ((~(Op1 ^ Op2)) & (Op1 ^ a) & 0x80) statusRegister |= M6502::Status::V;
+        else                                    statusRegister &= ~M6502::Status::V;
 
-        if (tmp & 0x80)
-            statusRegister |= M6502::Status::N;
-        else
-            statusRegister &= ~M6502::Status::N;
+        const int preAdjust = a;
+        if (a >= 0xA0) a += 0x60;
+        if (a >= 0x100) statusRegister |= M6502::Status::C;
+        else            statusRegister &= ~M6502::Status::C;
+        accumulator = (uint8_t)(a & 0xFF);
 
- // V flag in BCD mode is undefined on NMOS 6502; this matches real hardware behavior
- if (((Op1 ^ tmp) & ~(Op1 ^ Op2)) & 0x80)
-      statusRegister |= M6502::Status::V;
- else
-    statusRegister &= ~M6502::Status::V;
-
-        tmp = (accumulator & 0x0F) | (tmp < 0xA0 ? tmp : tmp + 0x60);
-
-        if (tmp & 0x100)
-            statusRegister |= M6502::Status::C;
-        else
-            statusRegister &= ~M6502::Status::C;
-
-        accumulator = tmp & 0xFF;
+        if (decimalBugNMOS) {
+            if (!((Op1 + Op2 + c) & 0xFF)) statusRegister |= M6502::Status::Z;
+            else                            statusRegister &= ~M6502::Status::Z;
+            if (preAdjust & 0x80) statusRegister |= M6502::Status::N;
+            else                  statusRegister &= ~M6502::Status::N;
+        } else {
+            setStatusRegisterNZ(accumulator);
+        }
     }
     else
     {
@@ -360,14 +359,23 @@ uint8_t Op1 = accumulator, Op2 = memory->memRead(op);
 
     if (statusRegister & M6502::Status::D)
     {
-       // V flag in BCD mode is undefined on NMOS 6502; N/Z set from binary result
-       tmp = (Op1 & 0x0F) - (Op2 & 0x0F) - (statusRegister & M6502::Status::C ? 0 : 1);
-        accumulator = !(tmp & 0x10) ? tmp : tmp - 6;
-      tmp = (Op1 & 0xF0) - (Op2 & 0xF0) - (accumulator & 0x10);
-        accumulator = (accumulator & 0x0F) | (!(tmp & 0x100) ? tmp : tmp - 0x60);
-     tmp = Op1 - Op2 - (statusRegister & M6502::Status::C ? 0 : 1);
-        setFlagBorrow(tmp);
-        setStatusRegisterNZ((uint8_t)tmp);
+        // Canonical NMOS 6502 decimal SBC (Bruce Clark): the stored result is
+        // BCD-adjusted, but N/Z/V/C are set exactly like a binary SBC — that is
+        // the real-hardware behaviour (and why decimal SBC flags are "normal").
+        const int c   = (statusRegister & M6502::Status::C) ? 1 : 0;
+        const int bin = Op1 - Op2 + c - 1;          // binary result drives the flags
+        int al = (Op1 & 0x0F) - (Op2 & 0x0F) + c - 1;
+        if (al < 0) al = ((al - 0x06) & 0x0F) - 0x10;
+        int a = (Op1 & 0xF0) - (Op2 & 0xF0) + al;
+        if (a < 0) a -= 0x60;
+
+        if (!(bin & 0x100)) statusRegister |= M6502::Status::C;
+        else                statusRegister &= ~M6502::Status::C;
+        if (((Op1 ^ Op2) & (Op1 ^ bin)) & 0x80) statusRegister |= M6502::Status::V;
+        else                                     statusRegister &= ~M6502::Status::V;
+        accumulator = (uint8_t)(a & 0xFF);
+        // NMOS bug: N/Z from the binary result. 65C02 corrected: from the BCD result.
+        setStatusRegisterNZ(decimalBugNMOS ? (uint8_t)bin : accumulator);
     }
     else
     {
@@ -537,7 +545,7 @@ void M6502::INC(void)
     val++;
     setStatusRegisterNZ(val);
     memory->memWrite(op, val);
-    cycles += 2;
+    cycles += 3;   // read + modify + write-back (RMW)
 }
 
 void M6502::DEC(void)
@@ -546,7 +554,7 @@ void M6502::DEC(void)
     val--;
     setStatusRegisterNZ(val);
     memory->memWrite(op, val);
-    cycles += 2;
+    cycles += 3;   // read + modify + write-back (RMW)
 }
 
 void M6502::INX(void)
@@ -626,7 +634,9 @@ accumulator = memory->memRead((uint16_t)(stackPointer + 0x100));
 void M6502::PLP(void)
 {
     stackPointer++;
-  statusRegister = memory->memRead((uint16_t)(stackPointer + 0x100));
+  // bit 5 reads as 1 and bit 4 (B) is not a real register flag — the pulled
+  // byte's bits 4/5 are discarded: force bit5=1, bit4=0 (matches real 6502).
+  statusRegister = (memory->memRead((uint16_t)(stackPointer + 0x100)) | 0x20) & ~0x10;
     cycles += 2;
 }
 
@@ -668,14 +678,14 @@ void M6502::BRK(void)
     stackPointer--;
     statusRegister |= M6502::Status::I;
     programCounter = memReadAbsolute(0xFFFE);
-    cycles += 5;            // total 7 (base 1 + Imp 1 + 5): BRK = 7 cycles
+    cycles += 3;            // base 1 + Imp 1 + pushPC 2 + 3 = 7: BRK = 7 cycles
 }
 
 void M6502::RTI(void)
 {
     PLP();                  // pulls status, adds 2 cycles
-    popProgramCounter();
-    cycles += 2;            // total 6 (base 1 + Imp 1 + PLP 2 + 2): RTI = 6 cycles
+    popProgramCounter();    // adds 2 cycles
+    // base 1 + Imp 1 + PLP 2 + popPC 2 = 6: RTI = 6 cycles (no extra)
 }
 
 void M6502::JMP(void)
@@ -687,7 +697,7 @@ void M6502::RTS(void)
 {
     popProgramCounter();
     programCounter++;
-    cycles += 4;            // total 6 (base 1 + Imp 1 + 4): RTS = 6 cycles
+    cycles += 2;            // base 1 + Imp 1 + popPC 2 + 2 = 6: RTS = 6 cycles
 }
 
 void M6502::JSR(void)
@@ -695,7 +705,7 @@ void M6502::JSR(void)
     uint8_t lo = memory->memRead(programCounter++);
     pushProgramCounter();
     programCounter = lo + (memory->memRead(programCounter) << 8);
-    cycles += 5;            // total 6 (base fetch 1 + 5): JSR = 6 cycles
+    cycles += 3;            // base fetch 1 + pushPC 2 + 3 = 6: JSR = 6 cycles
 }
 
 void M6502::branch(void)

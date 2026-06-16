@@ -144,6 +144,11 @@ public:
     void setPresetRamKB(int kb);
     void setSiliconStrictMode(bool enabled);
     bool isSiliconStrictMode() const;
+    // NMOS decimal-mode ADC/SBC flag bug (original Apple-1 6502) vs the 65C02
+    // "corrected" flags. Selectable in the Silicon window (strict = bug,
+    // fantasy = corrected). Forwards to M6502::setDecimalBugNMOS.
+    void setCpuDecimalBugNMOS(bool enabled);
+    bool isCpuDecimalBugNMOS() const;
     // Silicon fidelity profile knobs. Each takes effect on the next
     // hardReset (or Memory::resetMemory). Defaults are OFF — historic
     // POM1 behaviour (MSX1 bistable VRAM, zero-init RAM) is preserved.
