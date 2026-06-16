@@ -21,7 +21,7 @@ across both integration paths used by the libraries:
 make
 ```
 
-Produces `software/dev/LibSmoke.bin` (~970 bytes) and the matching Woz hex
+Produces `software/Apple-1 dev/LibSmoke.bin` (~970 bytes) and the matching Woz hex
 `.txt` for paste-load.
 
 ## Run
@@ -29,7 +29,7 @@ Produces `software/dev/LibSmoke.bin` (~970 bytes) and the matching Woz hex
 In POM1, stock Apple-1 preset (#0):
 
 ```
-File > Load Memory → software/dev/LibSmoke.txt
+File > Load Memory → software/Apple-1 dev/LibSmoke.txt
 280R
 ```
 
@@ -68,5 +68,5 @@ line editor) rather than the silent `$FF1F`.
 ## Cleaning up
 
 `make clean` removes the local `.o` files. The output `.bin` / `.txt` in
-`software/dev/` are kept (they're part of the shipped tree for users who
+`software/Apple-1 dev/` are kept (they're part of the shipped tree for users who
 want to re-validate the convention without rebuilding cc65 themselves).

@@ -14,22 +14,24 @@ fringing on cell borders).
 ## Sources
 
 - `HGR_Maze.asm` — main entry, loads at `$E000`
-- libs used: `dev/lib/apple1/`
+- `emit_HGR_Maze_txt.py` — assemble + emit Woz hex `.txt`
+- libs used: `dev/lib/apple1/`, `dev/lib/m6502/`, `dev/lib/hgr/`
 
 ## Build
 
-    make                          # produces ../../../software/hgr/HGR_Maze.bin
+    make                          # produces ../../../software/Graphic HGR/HGR_Maze.{bin,txt}
 
 By hand:
 
-    ca65 -I ../../lib/apple1 HGR_Maze.asm
+    ca65 -I ../../lib/apple1 -I ../../lib/m6502 -I ../../lib/hgr HGR_Maze.asm
     ld65 -C ../../cc65/apple1_gen2.cfg HGR_Maze.o \
-        -o ../../../software/hgr/HGR_Maze.bin
+        -o ../../../software/Graphic HGR/HGR_Maze.bin
+    python3 emit_HGR_Maze_txt.py
 
 ## Run in POM1
 
 1. POM1 → Presets → preset 12 (Uncle Bernie's GEN2 HGR Color).
-2. File → Load → `software/hgr/HGR_Maze.bin`.
+2. File → Load → `software/Graphic HGR/HGR_Maze.txt`.
 3. Wozmon `\` prompt: type `E000R`.
 
 ## Author / License

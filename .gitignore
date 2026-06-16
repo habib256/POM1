@@ -20,7 +20,7 @@ build-wasm/*
 !build-wasm/shell.html
 !build-wasm/pic/
 
-# Dear ImGui library (downloaded by setup_imgui.sh)
+# Dear ImGui library (downloaded by setup_pom1.sh)
 imgui/
 
 # ImGui layout state (legacy global + per-preset directory)

@@ -17,12 +17,12 @@ Apple 1 emulator (Dear ImGui, MOS 6502 + display + keyboard + ACI cassette) plus
 ## Build & Run
 
 ```bash
-./setup_imgui.sh             # one-time deps (Linux/macOS)
+./setup_pom1.sh             # one-time deps (Linux/macOS)
 cd build && cmake .. && make # build → build/POM1
 ./run_emulator.sh            # runs from repo root
 ```
 
-Windows: `setup_imgui.bat` + vcpkg + `cmake --build . --config Release`. `compile_commands.json` symlinked for clangd.
+Windows: `setup_pom1.bat` + vcpkg + `cmake --build . --config Release`. `compile_commands.json` symlinked for clangd.
 
 ### CLI
 
@@ -83,8 +83,8 @@ Claudio PARMIGIANI (P-LAB designer): on real hardware exactly ONE P-LAB card is 
   - Auto-enable by source dir of loaded file: `software/Graphic HGR/` → GEN2, `Graphic TMS9918/` → TMS9918, `software/Apple-1_TMS_CC65/` → TMS9918 (cc65 CodeTank drop-ins), `SOUND SID/` → A1-SID (evicts A1-AUDIO SE + Juke-Box per the menu mutex), `NET/` → Wi-Fi Modem (resets on reload), `sdcard/` → microSD, `a1io_rtc/` → A1-IO & RTC, `Graphic gt-6144/` → GT-6144. Each branch always raises the corresponding `show*` window flag (even when the card was already plugged) so loading from the folder pops the panel — required because the Fantasy preset leaves graphic cards unplugged by default.
 - **Screen_ImGui** — 40×24 grid. Two `characterRenderMode` (Apple1Charmap via `roms/charmap.rom`, HostAscii). Three `monitorMode` tints (Green/Amber/Mono). CRT effect = `drawCRTBackdrop()` phosphor-tint + `drawCRTScanlines()` 1-px `AddRectFilled` every 2 display pixels at integer Y (default `crtScanlineAlpha = 0.50`). `AddLine` avoided — its AA on macOS GL 3.2 / WebGL2 splits sub-2-px thickness across two rows and halves alpha.
 - **CassetteDeck_ImGui** — procedural (`ImDrawList`, no textures). Transport: REC alone = REC+PLAY, PAUSE latches only on Play/Rec, STOP releases, EJECT only from Stopped, REW/FF release PLAY. Forwards to `CassetteDevice` via `EmulationController`.
-- **DevBench menu** (`MainWindow_Menu.cpp`) — top-level menu grouping dev tooling: POM1 Bench (**desktop-only** — menu entry + window gated `#if !POM1_IS_WASM`; no DEV toolchain in the web build, the cc65 shell-out can't run there), Telemetry Side Channel, **TMS9918 VDP Inspector**, Silicon Strict Inspector. The VDP Inspector is **always available** (render gate in `MainWindow_ImGui.cpp` is now just `showTMS9918Inspector`; it reads the value snapshot `uiSnapshot.tms9918`, safe with the card unplugged) and **opening it auto-plugs the TMS9918** (evicts A1-AUDIO SE per the `$CC00` mutex).
-- **Bench** (`CodeBench.cpp` + `Pom1BenchHost.cpp`, iface `IBenchHost.h`) — sketch editor, **desktop-only** (not exposed in WASM; the `ca65`/`ld65`/`cl65` shell-out has no browser equivalent). New-sketch dialog is a **2 languages × 4 machines** matrix (target = `lang*4 + machine`): languages asm/C; machines = Apple-1 dual-4K/8K text, P-LAB TMS9918, GEN2 HGR (BBFont), **Bernie GEN2 TXT** (native 40×24 text at `$0400`). `IBenchHost` exposes optional `languageHints()`/`machineHints()` rendered inline in the dialog (no floating tooltips). Compiles `dev/lib/gen2c/gen2.c` at upload time, so gen2c edits apply without rebuilding POM1.
+- **DevBench menu** (`MainWindow_Menu.cpp`) — top-level menu grouping dev tooling: POM1 Bench (cc65 asm/C is **desktop-only**; the web/WASM build still offers the Bench, restricted to the **Wozmon-hex** target — editor + Upload + Serial Monitor), Telemetry Side Channel, **TMS9918 VDP Inspector**, Silicon Strict Inspector. The VDP Inspector is **always available** (render gate in `MainWindow_ImGui.cpp` is now just `showTMS9918Inspector`; it reads the value snapshot `uiSnapshot.tms9918`, safe with the card unplugged) and **opening it auto-plugs the TMS9918** (evicts A1-AUDIO SE per the `$CC00` mutex).
+- **Bench** (`Pom1BenchHost.cpp` under `src/`; portable `CodeBench.cpp` + `BenchLang.cpp` + iface `IBenchHost.h` live under repo-root `bench/`, not `src/`) — sketch editor. The cc65 (`ca65`/`ld65`/`cl65`) asm/C path is **desktop-only** (no browser shell-out); in **WASM `Pom1BenchHost` exposes only the Wozmon-hex target** (`targetMap_` maps it back to `kP1Targets[8]`; no examples / language×machine matrix) — a Woz-hex editor + uploader + Serial Monitor. On desktop the New-sketch dialog is a **2 languages × 4 machines** matrix (target = `lang*4 + machine`): languages asm/C; machines = Apple-1 dual-4K/8K text, P-LAB TMS9918, GEN2 HGR (BBFont), **Bernie GEN2 TXT** (native 40×24 text at `$0400`). `IBenchHost` exposes optional `languageHints()`/`machineHints()` rendered inline in the dialog (no floating tooltips). Compiles `dev/lib/gen2c/gen2.c` at upload time, so gen2c edits apply without rebuilding POM1. **Bundled cc65 (binary packages):** `Pom1BenchHost::probe()` resolves `ca65/ld65/cl65` exe-relative FIRST (`bench::executableDir()` → `<exe>/cc65/bin`, macOS `<exe>/../Resources/cc65/bin`, AppImage `<exe>/../share/POM1/cc65/bin`) + the `POM1_CC65_DIR` override, so a packaged build is self-contained with no system cc65 on `$PATH`; `ensureCc65Home()` points `CC65_HOME` at the bundle's `share/cc65` (cl65 C runtime). The Bench's linker cfgs/libs (`dev/{cc65,lib,apple1-videocard-lib}`, ~1.8 MB) are probed exe-relative too and shipped in the bundle (release tarballs otherwise omit `dev/`). Build the relocatable tree with `tools/build_cc65_bundle.sh` (`<out>/cc65/{bin,share/cc65}` + LICENSE, self-tests cl65); the three packagers stage it conditionally (`$POM1_CC65_BUNDLE` / `dist/cc65-bundle/cc65` / auto-build) — AppRun also exports `POM1_CC65_DIR`+`CC65_HOME`. **WASM** has no subprocesses: the asm/C path is unavailable, `headerNote()` shows a "desktop only — download the app" CTA (rendered by `CodeBench` at the window top via the `IBenchHost::headerNote()` seam).
 
 ### Peripherals
 
@@ -177,7 +177,7 @@ $FF00-$FFFF  Woz Monitor ROM + vectors ($FFFA-$FFFF)
 - **CMake** — `find_package(glfw3 CONFIG)` first (vcpkg, Homebrew), falls back to `pkg_check_modules`.
 - **Windows** — VS C++ workload + CMake + Git + vcpkg. MSVC: `/utf-8`, `_CRT_SECURE_NO_WARNINGS`. `package_windows_release.bat` → release ZIP.
 - **macOS** — links Cocoa + IOKit + CoreVideo. `package_macos_release.sh` puts read-only assets in `POM1.app/Contents/Resources/`. At startup, `pom1_macos_provision_user_data_dir()` creates `~/Library/Application Support/POM1/` with symlinks for read-only dirs + seeded `sdcard/`/`cfcard/`/`ini/`, then chdirs there. Symlinks refresh each launch (handles Gatekeeper App Translocation + `/Applications` drag-installs). Dev flow falls back to bundle-parent chdir when `Contents/Resources/roms` absent. DMG carries `.VolumeIcon.icns` + `SetFile -a C`.
-- **Linux** — `setup_imgui.sh` supports apt, dnf, pacman.
+- **Linux** — `setup_pom1.sh` supports apt, dnf, pacman.
 
 `build/`, `build-wasm/`, `imgui/` gitignored.
 
@@ -191,7 +191,9 @@ ctest --output-on-failure
 ctest -R klaus -V
 ```
 
-- **`klaus_6502_functional`** — [Klaus Dormann's 6502 test](https://github.com/Klaus2m5/6502_65C02_functional_tests) vs M6502. SHA-256-pinned download. `setTestMode(true)` (flat RAM), `PC = $0400`, step until `JMP *`; success = final PC `$3469`. Gates all CPU refactors.
+- **`klaus_6502_functional`** — [Klaus Dormann's 6502 test](https://github.com/Klaus2m5/6502_65C02_functional_tests) vs M6502. SHA-256-pinned download. `setTestMode(true)` (flat RAM), `PC = $0400`, step until `JMP *`; success = final PC `$3469`. Gates all CPU refactors (functional only — no cycle counts).
+- **`cpu_harte_smoke`** — **cycle-exact** oracle: Tom Harte "65x02 ProcessorTests" (`tests/cpu/harte_6502.bin`, 100 cases × 151 documented opcodes, built by `tools/gen_harte_fixture.py`). Seeds CPU+RAM, steps one instruction, asserts final regs + RAM + **cycle count**. Complements Klaus (functional) by pinning per-opcode cycles incl. page-cross/branch penalties + decimal-mode ADC/SBC + PLP/RTI P-bits. See `tests/cpu/`.
+- **`cpu_interrupt_smoke`** — IRQ/NMI **line timing** (the async entry sequence Harte's opcode cases can't reach): 7-cycle entry, vectors `$FFFE`/`$FFFA`, pushed-P B bit (0 for IRQ/NMI, 1 for BRK), I-mask of IRQ, NMI non-maskable + edge-cleared, RTI restore. Self-contained.
 - **`preset_ram_profiles_smoke`** — parses `MainWindow_Presets.cpp`: `ramKB`, `BasicType`, and Fantasy/non-Fantasy presets obey the documented rules (see test source).
 - **`memory_dualram_smoke`** — 8 KB dual-bank strict map: `$0000-$0FFF` + `$E000-$EFFF` writable; gap OOR-strict (`$FF` reads).
 - **`reset_vectors_smoke`** — `Memory::configureResetVectors(addr)` only writes `$FFFC/$FFFD` (RES). NMI (`$FFFA/$FFFB`=$0F00) and IRQ (`$FFFE/$FFFF`=$0000) stay at the authentic WozMonitor.rom values so P-LAB programs installing an IRQ trampoline at `$0000` route correctly.
@@ -199,6 +201,7 @@ ctest -R klaus -V
 - **`iec_bus_wired_and_smoke`** — IECBus open-collector wired-AND truth table: any device pulled = LOW; both released = HIGH.
 - **`iec_snapshot_smoke`** — IEC daughterboard round-trips through `saveSnapshot`/`loadSnapshot`. Pins `kFlagIECCard` (bit 15) + cascade `kFlagMicroSD` + `Drive1541` error-channel survival.
 - **`peripheral_bus_smoke`** — page-mask miss, read routing, SID↔TMS9918 priority, `setEnabled` round-trip, sniffer pass-through.
+- **`process_util_smoke`** — `bench::executableDir()` + `whichExe(name, extraDirs)`: caller dirs win over `$PATH` (positional precedence), empty entries skipped, unknown tool → "". Pins the exe-relative cc65-bundle probe a packaged DevBench depends on. Self-contained (`bench/ProcessUtil.cpp`).
 - **`sid_audio_smoke`** — cycle-driven SID ring non-silent after bus writes + CPU clocks.
 - **`aci_tape_loading`** / **`aci_tape_saving`** — load path on `cassettes/APPLE50TH.ogg` (`${CMAKE_SOURCE_DIR}` cwd); save `.aci`/`.wav` round-trip.
 - **`pr40_printer_smoke`** — DPDT / PB7 merge, FIFO, mechanical delay.
@@ -207,8 +210,9 @@ ctest -R klaus -V
 - **`gen2_softswitch_msb_smoke`** — GEN2 release soft switches: read-toggles + HST0-in-D7 (writes blocked), Bernie decode mask (mirrors `$C2/$C3/$C6/$C7xx` A4=1 vs `$C4xx`/A4=0 plain RAM), verbatim `hst0State` bounds (HBL / burst notch / live / VBL / 50 Hz), journal publication at the video-frame rollover, RESET leaving the latch alone. Full Memory core; runs from repo root.
 - **`gen2_beam_race_smoke`** — `GraphicsCard::render` mode renders (TEXT/LORES/HIRES/MIXED/PAGE2) + vertical beam split at scanline 96 (top == HGR ref, bottom == TEXT ref pixel-exact), one-direction-PAGE2 double-buffer heuristic, VBL events invisible. Self-contained (GraphicsCard + Gen2VideoScanner).
 - **`gen2_horizontal_split_smoke`** — Bernie's mid-scanline split: TEXT_ON at byteCol 20 → left half HGR / right half TEXT on the same line, repeating "color peg" band, NTSC-artifact context intact at the boundary byte (whole-line decode, clipped write-back). Self-contained.
+- **`gfx_regress_gen2_testcard`** — headless golden-image graphics regression: `--dump-gen2-frame` renders the frozen `tests/gfx/hgr_testcard.bin` (preset 12) with no display after a deterministic `--dump-after-cycles` settle, then sha256 vs the committed golden PNG. Python harness `tools/test_gfx_regress.py` (skips if Python3/`build/POM1` absent); TMS9918 counterpart = `--dump-tms-frame`. See `tests/gfx/`.
 - **`jukebox_paged_rom_smoke`** — `roms/jukebox.rom`, `$CA00`, flash vs EEPROM behaviour.
-- **`codetank_smoke`** / **`codetank_tms9918_dependency`** — ROM size, jumper offsets, read-only, TMS9918 cascade.
+- **`codetank_smoke`** / **`codetank_tms9918_dependency`** / **`codetank_game4_smoke`** — ROM size, jumper offsets, read-only, TMS9918 cascade; GAME4 (Light Corridor) cartridge layout.
 - **`tms9918_sprite_status`** / **`tms9918_silicon_strict_runtime`** / **`tms9918_per_scanline`** / **`tms9918_advanced_silicium`** — VDP behaviour + strict timing pins (`dev/SILICONBUGS.md`).
 - **`snapshot_smoke`** — `SnapshotIO` + selected card flags / RAM round-trip; extend when peripherals gain `serialize`.
 - **`rewind_buffer_smoke`** — `RewindBuffer`: in-memory `SnapshotWriter`/`Reader` round-trip, COPY/FULL/CHUNKED section deltas, keyframe-boundary replay, budget eviction (oldest segment dropped, rest still reconstructable), `truncateAfter`, plus end-to-end `Memory::saveSnapshotToBuffer` → `reconstruct` → `loadSnapshotFromBuffer`.

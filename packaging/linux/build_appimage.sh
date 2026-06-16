@@ -2,7 +2,7 @@
 # Build d'un AppImage POM1 pour Linux x86_64.
 #
 # Stratégie :
-#   1. Compilation classique (./setup_imgui.sh + cmake/make) — l'utilisateur
+#   1. Compilation classique (./setup_pom1.sh + cmake/make) — l'utilisateur
 #      doit l'avoir déjà fait, sinon on la déclenche.
 #   2. Layout AppDir miroir d'une install /usr classique :
 #        usr/bin/POM1                  binaire stripé
@@ -77,6 +77,32 @@ for d in roms fonts software pic cassettes sdcard cfcard; do
         cp -r "${REPO_ROOT}/${d}" "${RESOURCES}/${d}"
     fi
 done
+
+# 3b. cc65 toolchain bundle (optionnel) → DevBench autonome, sans cc65 système.
+# Source : $POM1_CC65_BUNDLE, sinon dist/cc65-bundle/cc65, sinon auto-build si
+# cc65 est installé. POM1 le trouve via <exe>/../share/POM1/cc65/bin (sonde
+# relative à l'exe) ; AppRun exporte aussi POM1_CC65_DIR + CC65_HOME.
+CC65_TREE=""
+if [ -n "${POM1_CC65_BUNDLE:-}" ] && [ -d "${POM1_CC65_BUNDLE}/bin" ]; then
+    CC65_TREE="${POM1_CC65_BUNDLE}"
+elif [ -d "${REPO_ROOT}/dist/cc65-bundle/cc65/bin" ]; then
+    CC65_TREE="${REPO_ROOT}/dist/cc65-bundle/cc65"
+elif command -v ca65 >/dev/null 2>&1; then
+    echo "[appimage] cc65 détecté — génération du bundle…"
+    "${REPO_ROOT}/tools/build_cc65_bundle.sh" --out "${REPO_ROOT}/dist/cc65-bundle" >/dev/null \
+        && CC65_TREE="${REPO_ROOT}/dist/cc65-bundle/cc65"
+fi
+if [ -n "${CC65_TREE}" ]; then
+    echo "[appimage] cc65 bundle : ${CC65_TREE}"
+    cp -r "${CC65_TREE}" "${RESOURCES}/cc65"
+    # The DevBench's linker cfgs + libs (release bundles otherwise omit dev/).
+    mkdir -p "${RESOURCES}/dev"
+    for d in cc65 lib apple1-videocard-lib; do
+        [ -d "${REPO_ROOT}/dev/${d}" ] && cp -r "${REPO_ROOT}/dev/${d}" "${RESOURCES}/dev/${d}"
+    done
+else
+    echo "[appimage] (pas de cc65 bundle — DevBench limité au Woz-hex sans cc65 système)"
+fi
 
 # 4. linuxdeploy : bundle les libs (rpath = $ORIGIN/../lib) + recopie
 # desktop/icone aux emplacements standards. NO_STRIP=1 : on a déjà strippé.

@@ -83,6 +83,52 @@ set_tests_properties(klaus_6502_functional PROPERTIES
     TIMEOUT 30    # wallclock cap; the CPU-bound inner loop usually completes in 2-4 s
 )
 
+# -- Tom Harte 65x02 cycle-exact oracle (Route B) -----------------------------
+# Replays the committed Harte fixture (tests/cpu/harte_6502.bin, built once by
+# tools/gen_harte_fixture.py from SingleStepTests/ProcessorTests) one instruction
+# per case: seed CPU + RAM, step, compare final regs + RAM + cycle count. Same
+# POM1 core as the Klaus runner.
+add_executable(test_cpu_harte
+    cpu_harte_test.cpp
+    ${POM1_TEST_CORE_SOURCES}
+)
+target_include_directories(test_cpu_harte PRIVATE
+    ${CMAKE_SOURCE_DIR}/src
+    ${CMAKE_SOURCE_DIR}/imgui
+)
+target_link_libraries(test_cpu_harte PRIVATE libresidfp_static)
+if(APPLE)
+    target_compile_definitions(test_cpu_harte PRIVATE GL_SILENCE_DEPRECATION)
+endif()
+if(WIN32)
+    target_link_libraries(test_cpu_harte PRIVATE ws2_32)
+endif()
+add_test(NAME cpu_harte_smoke
+         COMMAND test_cpu_harte "${CMAKE_SOURCE_DIR}/tests/cpu/harte_6502.bin")
+set_tests_properties(cpu_harte_smoke PROPERTIES TIMEOUT 60)
+
+# -- IRQ/NMI line-timing oracle (Route A) -------------------------------------
+# Self-contained: pins the interrupt entry sequence (7-cycle cost, vectors,
+# pushed-P B bit, NMI non-maskable + edge-cleared, RTI) that Harte's opcode
+# cases can't reach. Same POM1 core as the Klaus/Harte runners.
+add_executable(test_cpu_interrupt
+    cpu_interrupt_test.cpp
+    ${POM1_TEST_CORE_SOURCES}
+)
+target_include_directories(test_cpu_interrupt PRIVATE
+    ${CMAKE_SOURCE_DIR}/src
+    ${CMAKE_SOURCE_DIR}/imgui
+)
+target_link_libraries(test_cpu_interrupt PRIVATE libresidfp_static)
+if(APPLE)
+    target_compile_definitions(test_cpu_interrupt PRIVATE GL_SILENCE_DEPRECATION)
+endif()
+if(WIN32)
+    target_link_libraries(test_cpu_interrupt PRIVATE ws2_32)
+endif()
+add_test(NAME cpu_interrupt_smoke COMMAND test_cpu_interrupt)
+set_tests_properties(cpu_interrupt_smoke PROPERTIES TIMEOUT 30)
+
 # -- PeripheralBus dispatch smoke test ----------------------------------------
 # Self-contained: the bus has no dependency on Memory, peripherals, or
 # libresidfp. The test registers a handful of fake handlers and asserts the
@@ -97,6 +143,18 @@ target_include_directories(test_peripheral_bus PRIVATE ${CMAKE_SOURCE_DIR}/src)
 add_test(NAME peripheral_bus_smoke
          COMMAND test_peripheral_bus)
 set_tests_properties(peripheral_bus_smoke PROPERTIES TIMEOUT 5)
+
+# -- bench process helpers (toolchain discovery) ------------------------------
+# Self-contained: executableDir() + whichExe(name, extraDirs) underpin the
+# exe-relative / POM1_CC65_DIR cc65 probe a packaged DevBench relies on.
+add_executable(test_process_util
+    process_util_smoke_test.cpp
+    ${CMAKE_SOURCE_DIR}/bench/ProcessUtil.cpp
+)
+target_include_directories(test_process_util PRIVATE ${CMAKE_SOURCE_DIR}/bench)
+
+add_test(NAME process_util_smoke COMMAND test_process_util)
+set_tests_properties(process_util_smoke PROPERTIES TIMEOUT 5)
 
 # -- GEN2 release video scanner / floating bus --------------------------------
 # Self-contained: Gen2VideoScanner has no dependency on Memory, peripherals, or
@@ -681,4 +739,24 @@ target_include_directories(test_d64_parse PRIVATE ${CMAKE_SOURCE_DIR}/src)
 
 add_test(NAME d64_parse_smoke COMMAND test_d64_parse)
 set_tests_properties(d64_parse_smoke PROPERTIES TIMEOUT 5)
+
+# ── Graphics golden-image regression (headless --dump-*-frame) ───────────────
+# Renders the GEN2 HGR test card with no display and compares the captured PNG
+# (sha256) to a committed golden. Deterministic via --dump-after-cycles (a host-
+# independent point in emulated time). Skips (77) when Python3 or the POM1 binary
+# is unavailable. Frozen fixtures + regen instructions: tests/gfx/. See doc/CLI.md.
+find_package(Python3 COMPONENTS Interpreter QUIET)
+if(Python3_FOUND)
+    add_test(NAME gfx_regress_gen2_testcard
+             COMMAND ${Python3_EXECUTABLE}
+                     "${CMAKE_SOURCE_DIR}/tools/test_gfx_regress.py"
+                     --pom1 "$<TARGET_FILE:pom1_imgui>"
+                     --card gen2 --preset 12
+                     --load "0xE000:${CMAKE_SOURCE_DIR}/tests/gfx/hgr_testcard.bin"
+                     --run 0xE000 --after-cycles 2000000
+                     --golden "${CMAKE_SOURCE_DIR}/tests/gfx/hgr_testcard_gen2.png"
+             WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
+    set_tests_properties(gfx_regress_gen2_testcard PROPERTIES
+                         TIMEOUT 60 SKIP_RETURN_CODE 77)
+endif()
 

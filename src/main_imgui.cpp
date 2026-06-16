@@ -16,6 +16,7 @@
 // via stb_image_write so an LLM piloting POM1 over telnet can read all
 // rendered screens (Apple 1 text, GraphicsCard, TMS9918, GT6144, dialogs).
 #include "TerminalCard.h"
+#include "GraphicsCard.h"
 #define STB_IMAGE_WRITE_IMPLEMENTATION
 #if defined(__clang__) || defined(__GNUC__)
 #pragma GCC diagnostic push
@@ -384,6 +385,37 @@ static void applyHeadlessCardOverride(EmulationController& emu, pom1::CliCard ca
     }
 }
 
+// ── Headless graphics-regression capture (--dump-gen2-frame / --dump-tms-frame) ──
+// FNV-1a 64 over the RGBA bytes — a stable golden value logged with each PNG so
+// CI can assert a frame hash without diffing image files.
+static uint64_t fnv1a64(const void* data, size_t n)
+{
+    const uint8_t* p = static_cast<const uint8_t*>(data);
+    uint64_t h = 1469598103934665603ULL;
+    for (size_t i = 0; i < n; ++i) { h ^= p[i]; h *= 1099511628211ULL; }
+    return h;
+}
+
+// Write a top-down RGBA8 buffer (software-renderer order — no Y-flip, unlike
+// glReadPixels) to a PNG; log its dimensions + hash. Returns false on failure.
+static bool dumpRgbaPng(const char* tag, const std::string& path,
+                        const uint32_t* rgba, int w, int h)
+{
+    if (stbi_write_png(path.c_str(), w, h, 4, rgba, w * 4) == 0) {
+        pom1::log().error("GFX", "stbi_write_png failed for " + path +
+                                 " (does the directory exist / is it writable?)");
+        return false;
+    }
+    char msg[256];
+    std::snprintf(msg, sizeof(msg), "%s frame %dx%d hash=0x%016llx -> %s",
+                  tag, w, h,
+                  static_cast<unsigned long long>(
+                      fnv1a64(rgba, static_cast<size_t>(w) * h * 4)),
+                  path.c_str());
+    pom1::log().info("GFX", msg);
+    return true;
+}
+
 static int runHeadless(pom1::CliPlan& plan)
 {
     pom1::log().info("POM1", "headless mode — no window (Ctrl-C / SIGTERM to exit)");
@@ -415,6 +447,42 @@ static int runHeadless(pom1::CliPlan& plan)
 
     // Phase-C deferred verbs (load / run / paste / step / sd-* / rtc / snapshot / break).
     pom1::runDeferredActions(plan.deferredActions, emu);
+
+    // Graphics-regression capture: let the loaded program render a settled
+    // frame, snapshot it, render the card's framebuffer with no display, write a
+    // PNG, and exit. The render path is the same CPU software renderer the UI
+    // uses (GraphicsCard::render / the TMS9918 progressive raster), so a headless
+    // capture is pixel-identical to the GUI — the basis for automated graphics
+    // regression (golden-image diff). The logged FNV hash is a file-free golden.
+    if (!plan.dumpGen2Path.empty() || !plan.dumpTmsPath.empty()) {
+        // Settle the frame: deterministic (run exactly N emulated cycles —
+        // host-independent) when --dump-after-cycles is given, else a wall-clock
+        // sleep. The cycle path is the one to use for golden-image regression.
+        if (plan.dumpAfterCycles > 0)
+            emu.runCyclesSync(static_cast<uint64_t>(plan.dumpAfterCycles));
+        else if (plan.dumpSettleMs > 0)
+            std::this_thread::sleep_for(std::chrono::milliseconds(plan.dumpSettleMs));
+        EmulationSnapshot snap;
+        emu.copySnapshot(snap);
+        bool ok = true;
+        if (!plan.dumpGen2Path.empty()) {
+            if (!snap.gen2Enabled)
+                pom1::log().warn("GFX", "--dump-gen2-frame: GEN2 card not plugged "
+                                        "(use --preset 12 or --enable hgr) — capturing anyway");
+            GraphicsCard gc;
+            gc.render(snap.memory.data(), snap.gen2DisplayState, snap.gen2FrameStartState,
+                      snap.gen2VideoEvents,
+                      snap.gen2FiftyHz ? Gen2VideoScanner::kLinesPerFrame50Hz
+                                       : Gen2VideoScanner::kLinesPerFrame);
+            ok &= dumpRgbaPng("GEN2", plan.dumpGen2Path, gc.pixels(),
+                              GraphicsCard::kHiresWidth, GraphicsCard::kHiresHeight);
+        }
+        if (!plan.dumpTmsPath.empty()) {
+            ok &= dumpRgbaPng("TMS9918", plan.dumpTmsPath, snap.tms9918.framebuffer.data(),
+                              TMS9918::kFullWidth, TMS9918::kFullHeight);
+        }
+        return ok ? 0 : 1;
+    }
 
     std::signal(SIGINT,  pom1_headless_signal_handler);
     std::signal(SIGTERM, pom1_headless_signal_handler);

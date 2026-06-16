@@ -20,5 +20,5 @@ ROM_OUT := ../../../roms/codetank/Codetank_Nyan.rom
 
 all: $(ROM_OUT)
 
-$(ROM_OUT): $(OUT_DIR)/$(PROJECT).bin
-	python3 build_rom.py $< $@
+$(ROM_OUT): $(OUT_DIR_T)/$(PROJECT).bin
+	python3 build_rom.py "$(OUT_DIR)/$(PROJECT).bin" "$@"

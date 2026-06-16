@@ -38,23 +38,23 @@ text variant is the chequered board pattern visible on the HGR display
 make
 ```
 
-Produces `software/hgr/HGR_Chess.bin` and `HGR_Chess.txt`.
+Produces `software/Graphic HGR/HGR_Chess.bin` and `HGR_Chess.txt`.
 
 ## Run
 
 ```
 ./POM1
-File → Load Memory → software/hgr/HGR_Chess.txt
+File → Load Memory → software/Graphic HGR/HGR_Chess.txt
 ```
 
-The `software/hgr/` directory auto-enables the GEN2 card on load.
+The `software/Graphic HGR/` directory auto-enables the GEN2 card on load.
 
 Or via CLI:
 
 ```
 ./POM1 --preset 12 --terminal --cpu-max \
-       --load 0x0280:software/hgr/HGR_Chess.bin.lo \
-       --load 0xE000:software/hgr/HGR_Chess.bin.hi --run 0xE000
+       --load 0x0280:software/Graphic HGR/HGR_Chess.bin.lo \
+       --load 0xE000:software/Graphic HGR/HGR_Chess.bin.hi --run 0xE000
 ```
 
 ## Controls
@@ -69,7 +69,7 @@ GEN2 HGR claims `$2000-$3FFF` for its framebuffer. This conflicts with:
 - Juke-Box ROM-32 jumper extends to $4000-$BFFF (no overlap with $2000-$3FFF
   but the chess engine's BSS lives at $1F00 which is fine)
 
-Recommended preset for chess: **#13 Uncle Bernie's Apple-1 with GEN2 HGR**.
+Recommended preset for chess: **#12 Uncle Bernie's Apple-1 with GEN2 HGR**.
 
 ## Status — v0.1
 

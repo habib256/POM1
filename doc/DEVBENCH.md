@@ -60,7 +60,7 @@ the WOZ Monitor.
   `.include "apple1.inc"` / `hgr_tables.inc` / `tms9918.inc` / `gen2.inc` … just
   works; `ld65` links with the cfg above.
 - **C / Apple-1 text**: the shared **`dev/lib/apple1c/`** base
-  (`apple1io.h` — `woz_puts` / `woz_getkey` / `woz_mon`).
+  (`apple1io.h` — `woz_puts` / `apple1_getkey` / `woz_mon`).
 - **C / GEN2 HGR**: **`dev/lib/gen2c/`** (`gen2.h` — `gen2_hgr_*`) **plus** the
   shared `apple1c` base, so a GEN2 C program can draw HIRES *and* print to the
   terminal / read the keyboard.

@@ -17,18 +17,18 @@ Graphic Card. Companion of `games_connect4` (text mode) and
 
 ## Build
 
-    make                          # produces ../../../software/tms9918/TMS_Connect4.bin
+    make                          # produces ../../../software/Graphic TMS9918/TMS_Connect4.bin
 
 By hand:
 
     ca65 -I ../../lib/apple1 -I ../../lib/tms9918 TMS_Connect4.asm
     ld65 -C ../../cc65/apple1_4k.cfg TMS_Connect4.o \
-        -o ../../../software/tms9918/TMS_Connect4.bin
+        -o ../../../software/Graphic TMS9918/TMS_Connect4.bin
 
 ## Run in POM1
 
 1. POM1 → Presets → preset 7 (P-LAB TMS9918 + CodeTank).
-2. File → Load → `software/tms9918/TMS_Connect4.bin`.
+2. File → Load → `software/Graphic TMS9918/TMS_Connect4.bin`.
 3. Wozmon `\` prompt: type `280R`.
 
 ## Author / License

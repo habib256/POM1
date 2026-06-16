@@ -1,6 +1,6 @@
 /*
  * chrome_dino — mini clone du T-Rex hors-ligne (saut + obstacles).
- * Preset POM1 8 (TMS9918 + CodeTank), Wozmon 4000R.
+ * Preset POM1 7 (TMS9918 + CodeTank), Wozmon 4000R.
  */
 #include "tms9918.h"
 #include "screen1.h"

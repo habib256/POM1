@@ -233,8 +233,8 @@ const MachineConfig kMachinePresets[] = {
         "(Parmigiani's standard 8 KB layout — same as 99% of Originals; with no BASIC "
         "loaded the upper bank is free RAM). The CodeTank piggybacks the Graphic Card "
         "on real P-LAB silicon - it has no edge connector. Type 4000R: Lower jumper "
-        "boots the 4-game menu (1=Galaga, 2=Sokoban, 3=Snake, 4=Life); Upper jumper "
-        "boots the 1=Tetris / 2=LOGO V1.7 picker.",
+        "boots the 3-game menu (1=Galaga, 2=Sokoban, 3=Snake); Upper jumper "
+        "runs TMS LOGO V2.6 directly.",
         false, false, false, true, false, false, false,
         /*pr40*/ false,
         false, false, false, 8, BasicType::None,
@@ -639,6 +639,10 @@ void MainWindow_ImGui::applyMachineConfig(int presetIndex)
     emulation->setSiliconStrictMode(!fantasyPreset);
     siliconStrictModeEnabled = !fantasyPreset;
     emulation->setOutOfRangeStrictMode(!fantasyPreset);
+    // NMOS decimal ADC/SBC flag bug: original-chip behaviour on strict presets,
+    // 65C02-corrected on the (fantasy) Multiplexing presets.
+    emulation->setCpuDecimalBugNMOS(!fantasyPreset);
+    cpuDecimalBugEnabled = !fantasyPreset;
 
     // UI flags reflect the preset's target state immediately (the menu
     // checkmarks and toolbar chips are driven by these). The actual

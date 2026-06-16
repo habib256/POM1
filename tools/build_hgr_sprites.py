@@ -30,7 +30,7 @@ dev/lib/hgr/sprites/<basename>_hgr.asm with matching labels and a trailing
 collective `<category>_hgr_data` base label for index-based loops.
 
 Usage:
-    python3 tools/build_hgr_sprites.py            # rebuild all 14 categories
+    python3 tools/build_hgr_sprites.py            # rebuild all 15 categories
     python3 tools/build_hgr_sprites.py --only fauna
     python3 tools/build_hgr_sprites.py --check    # diff against existing files
 """

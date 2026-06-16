@@ -29,7 +29,7 @@ besides the TMS9918 (which both targets need).
 
 - Machine: Apple 1 (8 KB dual-bank motherboard RAM — preset default)
 - Cards: P-LAB TMS9918, P-LAB CodeTank (**upper-bank** jumper)
-- Recommended POM1 preset: **8** (*P-LAB Apple-1 with TMS9918 (CodeTank daughterboard)*,
+- Recommended POM1 preset: **7** (*P-LAB Apple-1 with TMS9918 (CodeTank daughterboard)*,
   `MainWindow_Presets.cpp`) — set the CodeTank jumper to *Upper* via the
   Hardware → CodeTank dialog.
 
@@ -42,20 +42,20 @@ besides the TMS9918 (which both targets need).
 
 ## Build
 
-    make                          # produces ../../../software/tms9918/codetank_menu_upper.bin
+    make                          # produces ../../../software/Graphic TMS9918/codetank_menu_upper.bin
 
 By hand:
 
     ca65 -I ../../lib/apple1 codetank_menu_upper.asm
     ld65 -C apple1_codetank_menu_upper.cfg codetank_menu_upper.o \
-        -o ../../../software/tms9918/codetank_menu_upper.bin
+        -o ../../../software/Graphic TMS9918/codetank_menu_upper.bin
 
 The 128 B `.bin` then ships embedded inside `roms/codetank/Codetank_GAME1.rom`
 (upper half) — see `tools/build_codetank_logo_rom.py`.
 
 ## Run in POM1
 
-1. POM1 → Presets → **8** (TMS9918 + CodeTank).
+1. POM1 → Presets → **7** (TMS9918 + CodeTank).
 2. Hardware → CodeTank → jumper = **Upper**, ROM = `Codetank_GAME1.rom`.
 3. Wozmon `\` prompt: type `4000R`, then `1` for Tetris or `2` for LOGO.
 

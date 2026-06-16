@@ -19,7 +19,7 @@ cd dev/projects/tms9918_asteroids
 make
 ```
 
-Output lands in `software/tms9918/TMS_Asteroids.{bin,txt}`. V0.1 weighs
+Output lands in `software/Graphic TMS9918/TMS_Asteroids.{bin,txt}`. V0.1 weighs
 about 2 kB out of the 15.5 kB CODE budget — plenty of headroom for the
 next milestones.
 
@@ -29,7 +29,7 @@ next milestones.
 ./build/POM1 --preset 7       # P-LAB Apple-1 with TMS9918 + CodeTank
 ```
 
-In Wozmon, paste the contents of `software/tms9918/TMS_Asteroids.txt`
+In Wozmon, paste the contents of `software/Graphic TMS9918/TMS_Asteroids.txt`
 and type `0280R`.
 
 ## Controls (AZERTY ZQSD, hold-to-act)
@@ -149,7 +149,7 @@ BRK over a 3-second smoke window:
 
 ```bash
 timeout 3 build/POM1 --preset 7 \
-    --load 0280:software/tms9918/TMS_Asteroids.bin \
+    --load 0280:software/Graphic TMS9918/TMS_Asteroids.bin \
     --run 0280 \
     --snapshot-save /tmp/asteroids.snap
 # exit 143 (SIGTERM from timeout = healthy), snapshot 64 KB written.

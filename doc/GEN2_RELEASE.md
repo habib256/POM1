@@ -139,7 +139,7 @@ program's `.txt` via `extra_zones` — one Wozmon load installs everything.
 `dev/lib/gen2c/gen2.h` (`gen2_hgr_init` / `gen2_hgr_clear` / `gen2_hgr_plot` /
 `gen2_hgr_puts` / `gen2_hgr_putu`) linked with `dev/cc65/apple1_gen2_c.cfg`
 (CODE at `$6000`, both HGR pages reserved), plus the shared Apple-1 text/keyboard
-base `dev/lib/apple1c/` (`woz_puts`, `woz_getkey`). Full C guide:
+base `dev/lib/apple1c/` (`woz_puts`, `apple1_getkey`). Full C guide:
 [`Programming_Apple1_C.md`](../dev/Programming_Apple1_C.md).
 
 ## 5. Sound: the ACI is the speaker (Q7)

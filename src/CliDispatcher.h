@@ -105,6 +105,14 @@ struct CliPlan {
     std::optional<int>                 executionSpeed;     // cycles/frame
     std::optional<int>                 telemetryPort;      // --telemetry-port N: open the dev telemetry side channel on localhost:N (1-65535)
     std::string                        telemetryLogPath;   // --telemetry-log PATH: tee the outbound frame stream to a file (golden-trace); implies enabling the port
+    // --dump-gen2-frame / --dump-tms-frame PATH: headless one-shot — render the
+    // card's framebuffer to a PNG after a settle delay, then exit (automated
+    // graphics regression). Setting either forces --headless. --dump-settle-ms
+    // tunes how long the loaded program runs before the capture.
+    std::string                        dumpGen2Path;
+    std::string                        dumpTmsPath;
+    int                                dumpAfterCycles = 0;   // --dump-after-cycles N: run exactly N emulated cycles before the capture (deterministic, host-independent regression); 0 = fall back to wall-clock --dump-settle-ms
+    int                                dumpSettleMs = 1000;
     std::string                        initialTapePath;
     bool                               initialTapeAutoPlay = false;
     std::string                        saveTapePath;

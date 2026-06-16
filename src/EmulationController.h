@@ -75,6 +75,11 @@ public:
     void softReset();
     void hardReset();
     void stepCpu();
+    // Deterministic capture helper: pause the emulation thread, then run the CPU
+    // for exactly `cycles` cycles synchronously (no real-time pacing) and publish
+    // a snapshot. Lets the headless graphics-regression dump capture a frame at a
+    // host-independent point in emulated time. Leaves the CPU stopped.
+    void runCyclesSync(uint64_t cycles);
 
     // Debug: toggle the M6502 BRK trace (CPU state + stack + recent
     // control-flow transfers, logged at WARN on every BRK). Off by default.
@@ -139,6 +144,11 @@ public:
     void setPresetRamKB(int kb);
     void setSiliconStrictMode(bool enabled);
     bool isSiliconStrictMode() const;
+    // NMOS decimal-mode ADC/SBC flag bug (original Apple-1 6502) vs the 65C02
+    // "corrected" flags. Selectable in the Silicon window (strict = bug,
+    // fantasy = corrected). Forwards to M6502::setDecimalBugNMOS.
+    void setCpuDecimalBugNMOS(bool enabled);
+    bool isCpuDecimalBugNMOS() const;
     // Silicon fidelity profile knobs. Each takes effect on the next
     // hardReset (or Memory::resetMemory). Defaults are OFF — historic
     // POM1 behaviour (MSX1 bistable VRAM, zero-init RAM) is preserved.

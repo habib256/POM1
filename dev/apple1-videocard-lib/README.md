@@ -2,7 +2,7 @@
 
 Port C **cc65** de la bibliothèque originale **[nippur72/apple1-videocard-lib](https://github.com/nippur72/apple1-videocard-lib)** par **Antonino "Nino" Porcino** (KickC). Toute amélioration sous cet arbre conserve l'attribution upstream (header dans chaque `.c` / `.h` / `.s`) — voir [Licence / attribution](#licence--attribution).
 
-Cible POM1 : **P-LAB CodeTank**, image ROM **16 Ko @ `$4000-$7FFF`**, démarrage **Wozmon `4000R`**, preset **8** (TMS9918 + CodeTank).
+Cible POM1 : **P-LAB CodeTank**, image ROM **16 Ko @ `$4000-$7FFF`**, démarrage **Wozmon `4000R`**, preset **7** (TMS9918 + CodeTank).
 
 ## Carte mémoire (linker `cc65/codetank_c.cfg`)
 
@@ -23,7 +23,7 @@ Pas de variante programme en RAM `$0280` seul ; pas de cible Fantasy.
 
 ```bash
 cd dev/apple1-videocard-lib
-make            # … + tetris, text_adventure, sprite_animals (voir tableau)
+make            # … + tetris, text_adventure, sprite_animals, chrome_dino (voir tableau)
 ```
 
 Ou une démo seule :
@@ -47,12 +47,15 @@ Sorties (chaque démo) : `software/Apple-1_TMS_CC65/<nom>.{bin,txt}` — image 1
 | `tetris` | `demos/tetris` | Tetris écran 1 (jeu complet) |
 | `text_adventure` | (inspiré Little Tower) | Aventure textuelle 32 colonnes |
 | `sprite_animals` | `dev/lib/tms9918/sprites_fauna.asm` | 4 sprites 16×16 Fauna fixes, taille native (sans MAG×2) |
+| `chrome_dino` | (clone T-Rex hors-ligne) | Mini-jeu saut + obstacles (dans la cible `make all`) |
+| `frogger_codetank` | (inspiré Frogger) | Grenouille en sprite matériel, eau animée — `make` local |
+| `rogue_c` | `dev/projects/tms9918_rogue/` | Port C partiel de TMS_Rogue — `make` local (voir `demos/rogue_c/README.md`) |
 
 Non portés ici (KickC / `.c` volumineux / matériel autre) : `anagram`, `tapemon`, `sdcard`, `montyr`, `life-src`, `iec`, `viatimer` (le dépôt amont reste la reference pour ces demos).
 
 ## Test dans POM1
 
-1. Preset **8** (Apple-1 + TMS9918 + CodeTank).
+1. Preset **7** (Apple-1 + TMS9918 + CodeTank).
 2. **Fichier → Charger la mémoire** depuis `software/Apple-1_TMS_CC65/` (auto-branchement TMS9918), ou coller le `.txt`, puis **`4000R`**.
 
 ## Modules `lib/`

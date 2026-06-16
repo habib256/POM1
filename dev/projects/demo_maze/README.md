@@ -21,17 +21,17 @@ Apple 1 terminal. Each shows a title screen and marks `S` (start) and
 
 ## Build
 
-    make                          # builds both → ../../../software/games/
+    make                          # builds both → ../../../software/Apple-1 games/
 
 By hand (one program at a time):
 
     ca65 -I ../../lib/apple1 Maze_Sidewinder.asm
-    ld65 -C ../../cc65/apple1_4k.cfg Maze_Sidewinder.o -o ../../../software/games/Maze_Sidewinder.bin
+    ld65 -C ../../cc65/apple1_4k.cfg Maze_Sidewinder.o -o ../../../software/Apple-1 games/Maze_Sidewinder.bin
 
 ## Run in POM1
 
 1. POM1 → Presets → preset 1 (Apple-1 with ACI & BASIC).
-2. File → Load → `software/games/Maze_Sidewinder.bin` (or `Maze2_Backtracker.bin`).
+2. File → Load → `software/Apple-1 games/Maze_Sidewinder.txt` (or `Maze2_Backtracker.txt`).
 3. Wozmon `\` prompt: type `280R`.
 
 ## Author / License

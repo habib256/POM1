@@ -14,23 +14,23 @@ Inspired by Fred Stark's text-mode `mandelbrot-65`.
 
 - `HGR_Mandelbrot.asm` — main entry, loads at `$E000`
 - `emit_HGR_Mandelbrot_txt.py` — assemble + emit Woz hex `.txt`
-- libs used: `dev/lib/apple1/`, `dev/lib/hgr/`
+- libs used: `dev/lib/apple1/`, `dev/lib/hgr/`, `dev/lib/m6502/`
 
 ## Build
 
-    make                          # produces ../../../software/hgr/HGR_Mandelbrot.{bin,txt}
+    make                          # produces ../../../software/Graphic HGR/HGR_Mandelbrot.{bin,txt}
 
 By hand:
 
-    ca65 -I ../../lib/apple1 -I ../../lib/hgr HGR_Mandelbrot.asm
+    ca65 -I ../../lib/apple1 -I ../../lib/hgr -I ../../lib/m6502 HGR_Mandelbrot.asm
     ld65 -C ../../cc65/apple1_gen2.cfg HGR_Mandelbrot.o \
-        -o ../../../software/hgr/HGR_Mandelbrot.bin
+        -o ../../../software/Graphic HGR/HGR_Mandelbrot.bin
     python3 emit_HGR_Mandelbrot_txt.py
 
 ## Run in POM1
 
 1. POM1 → Presets → preset 12 (Uncle Bernie's GEN2 HGR Color).
-2. File → Load → `software/hgr/HGR_Mandelbrot.txt`.
+2. File → Load → `software/Graphic HGR/HGR_Mandelbrot.txt`.
 3. Wozmon `\` prompt: type `E000R`.
 
 ## Author / License

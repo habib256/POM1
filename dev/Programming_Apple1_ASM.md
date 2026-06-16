@@ -70,7 +70,7 @@ Le binaire compilé et son `.txt` Woz hex sont déposés sous `software/<dir>/` 
 | Config | CODE range | Taille | Usage typique |
 |--------|-----------|--------|---------------|
 | `dev/cc65/apple1_4k.cfg` | `$0280-$127F` | 4 096 B | Jeux texte ou TMS9918 (VRAM hors bus) — config par défaut |
-| `dev/cc65/apple1_gen2.cfg` | `$0280-$1FFF` | 7 552 B | Jeux HGR (réserve `$2000-$3FFF` pour le framebuffer) ; peut servir pour TMS9918 si tu réutilises la même fenêtre CODE — mutex GEN2/TMS9918 sauf presets Fantasy |
+| `dev/cc65/apple1_gen2.cfg` | `$E000-$EFFF` | 4 096 B | Jeux HGR : code dans la banque haute (lancer avec `E000R`), le framebuffer `$2000-$3FFF` reste réservé (writes directs). Programmes > 4 Ko : cfg split-bank dédié (cf. `hgr_chess/apple1_chess_hgr.cfg`, `games_sokoban/apple1_sok_hgr.cfg`) |
 | `dev/cc65/pom1_fantasy.cfg` | configurable | — | Preset Multiplexing Fantasy (POM1-only) |
 
 La syntaxe minimale d'un `.cfg` :
@@ -313,13 +313,14 @@ Le pixel est au final :
 ### Table de lookup hgr_tables.inc
 
 Le fichier `dev/lib/hgr/hgr_tables.inc` (inclus via `-I ../../lib/hgr` dans les Makefiles projet) fournit (896 octets + 30 d'code) :
-- `hgr_lo[192]`, `hgr_hi[192]` : adresse de chaque scanline (gère l'interleave Apple II)
-- `hgr_col[256]`, `hgr_mask[256]` : pour un pixel à screenX x, donne la colonne d'octet et le bitmask
-- `plot_pixel` : routine ~45 cycles qui pose un pixel à (cur_x, cur_y)
-- `clear_hgr` : zéro `$2000-$3FFF`
-- `umul8` : multiplication 8×8 → 16-bit
+- `hgr_lo[192]`, `hgr_hi[192]` : adresse de chaque scanline (gère l'interleave Apple II) — via `hgr_scanline.inc`
+- `hgr_col[256]`, `hgr_mask[256]` : pour un pixel à screenX x, donne la colonne d'octet et le bitmask — via `hgr_plot_tables.inc`
+- `plot_pixel` : routine ~45 cycles qui pose un pixel à (cur_x, cur_y) — via `hgr_plot.asm`
+- `clear_hgr` : zéro `$2000-$3FFF` — via `hgr_clear.asm`
 
-**Piège** : même si vous n'utilisez pas `plot_pixel` ou `umul8`, leurs variables ZP (`cur_x`, `cur_y`, `mul_tmp`, `mul_res0`) doivent être déclarées, sinon l'assembleur échoue.
+C'est désormais un *bundle ombrelle* qui `.include` ces quatre modules ; pour n'en prendre qu'une partie, inclure les modules directement. `umul8` (multiplication 8×8 → 16-bit) **n'est plus dans ce bundle** : il vit dans `dev/lib/m6502/multiply.asm`, à inclure séparément si besoin.
+
+**Piège** : même si vous n'utilisez pas `plot_pixel`, ses variables ZP (`cur_x`, `cur_y`, `ptr_lo`, `ptr_hi`) doivent être déclarées, sinon l'assembleur échoue.
 
 ### Tuiles alignées sur les octets
 
