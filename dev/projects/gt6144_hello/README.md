@@ -32,7 +32,7 @@ By hand:
 ## Run in POM1
 
 1. POM1 → Presets → preset 2 (Apple-1 + SWTPC GT-6144).
-2. File → Load → `software/Graphic gt-6144/GT1_Hello.bin`.
+2. File → Load → `software/Graphic gt-6144/GT1_Hello.txt`.
 3. Wozmon `\` prompt: type `300R`.
 
 ## Author / License

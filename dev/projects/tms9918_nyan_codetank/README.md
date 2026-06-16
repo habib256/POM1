@@ -37,6 +37,11 @@ exactly 1 536 output bytes per frame.
 5. Watch the cat bob and the rainbow scroll at ~20 fps.
 6. ESC returns to Wozmon.
 
+> Note: `Codetank_Nyan.rom` is **built locally** (see Build below) — only
+> `Codetank_GAME1..4.rom` + `Codetank_TEST.rom` ship pre-built. Nyan also
+> ships ready-to-run as **`Codetank_GAME2.rom`'s upper bank** (Jumper →
+> Upper, then `4000R`).
+
 ## Build
 
     make             # → software/Graphic TMS9918/TMS_Nyan_CodeTank.bin (~7 KB)

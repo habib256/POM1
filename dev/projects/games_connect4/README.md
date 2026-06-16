@@ -27,7 +27,7 @@ By hand:
 ## Run in POM1
 
 1. POM1 → Presets → preset 1 (Apple-1 with ACI & BASIC).
-2. File → Load → `software/Apple-1 games/Connect4.bin`.
+2. File → Load → `software/Apple-1 games/Connect4.txt`.
 3. Wozmon `\` prompt: type `280R`.
 
 ## Author / License

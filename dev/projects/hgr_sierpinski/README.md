@@ -28,7 +28,7 @@ By hand:
 ## Run in POM1
 
 1. POM1 → Presets → preset 12 (Uncle Bernie's GEN2 HGR Color).
-2. File → Load → `software/Graphic HGR/HGR_Sierpinski.bin`.
+2. File → Load → `software/Graphic HGR/HGR_Sierpinski.txt`.
 3. Wozmon `\` prompt: type `E000R`.
 
 ## Author / License

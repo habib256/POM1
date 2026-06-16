@@ -1,6 +1,6 @@
 # TMS Nyan Fantasy — full 12-frame Nyan Cat (POM1 Fantasy preset)
 
-XXL variant of [`tms9918_nyan/`](../tms9918_nyan/) — same algorithm,
+XXL variant of the stock 4 KB Nyan build — same algorithm,
 but ships the FULL 12-frame animation (18 432 bytes from
 [jblang's `nyan/nyan.bin`](https://github.com/jblang/TMS9918A/raw/master/examples/nyan/nyan.bin))
 embedded in the binary instead of a 2-frame delta. The cat bobs
@@ -34,7 +34,7 @@ takes a moment — File → Load Memory is much faster.
 
 ## What changed vs the 4 KB variant
 
-| | `tms9918_nyan/` | `tms9918_nyan_fantasy/` (here) |
+| | stock 4 KB build | `tms9918_nyan_fantasy/` (here) |
 |---|---|---|
 | Frames | 2 (anchors + delta) | 12 (full animation) |
 | Image size | 2.4 KB | ~19 KB |
