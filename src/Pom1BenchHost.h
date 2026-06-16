@@ -51,10 +51,15 @@ private:
     void               probe() const;   // lazy cc65 toolchain detection
     bench::BuildResult build(int target, const std::string& src, const std::string& addrHex, bool run);
     bench::BuildResult directLoad(int target, const std::string& src, const std::string& addrHex);
+    // Map a bench targets_ index -> kP1Targets[] index. Identity on desktop; on
+    // WASM targets_ holds only the Wozmon-hex entry, so 0 maps back to
+    // kP1Targets[8]. All kP1Targets[] lookups in the .cpp go through this.
+    int p1(int t) const { return (t >= 0 && t < static_cast<int>(targetMap_.size())) ? targetMap_[t] : 0; }
 
     MainWindow_ImGui* mw_;
 
     std::vector<bench::Target>  targets_;
+    std::vector<int>            targetMap_;   // targets_ index -> kP1Targets[] index (identity desktop; Woz-hex only on WASM)
     std::vector<bench::Example> examples_;
     std::vector<std::string>    languages_;
     std::vector<std::string>    machines_;

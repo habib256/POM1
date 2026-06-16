@@ -659,9 +659,7 @@ void MainWindow_ImGui::render()
     if (wifiModemEnabled && showWiFiModem) renderWiFiModemWindow();
     if (terminalCardEnabled && showTerminalCard) renderTerminalCardWindow();
     if (showTelemetry) renderTelemetryWindow();
-#if !POM1_IS_WASM
-    if (showBench) renderBenchWindow();   // desktop-only dev tool (cc65 toolchain)
-#endif
+    if (showBench) renderBenchWindow();   // WASM: Wozmon-hex only (no cc65) — see Pom1BenchHost
     if (pr40Enabled && showPR40) renderPR40Window();
     if (a1ioRtcEnabled && showA1IO_RTC) renderA1IO_RTCWindow();
     if (jukeBoxEnabled && showJukeBox) renderJukeBoxWindow();
