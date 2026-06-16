@@ -83,6 +83,30 @@ set_tests_properties(klaus_6502_functional PROPERTIES
     TIMEOUT 30    # wallclock cap; the CPU-bound inner loop usually completes in 2-4 s
 )
 
+# -- Tom Harte 65x02 cycle-exact oracle (Route B) -----------------------------
+# Replays the committed Harte fixture (tests/cpu/harte_6502.bin, built once by
+# tools/gen_harte_fixture.py from SingleStepTests/ProcessorTests) one instruction
+# per case: seed CPU + RAM, step, compare final regs + RAM + cycle count. Same
+# POM1 core as the Klaus runner.
+add_executable(test_cpu_harte
+    cpu_harte_test.cpp
+    ${POM1_TEST_CORE_SOURCES}
+)
+target_include_directories(test_cpu_harte PRIVATE
+    ${CMAKE_SOURCE_DIR}/src
+    ${CMAKE_SOURCE_DIR}/imgui
+)
+target_link_libraries(test_cpu_harte PRIVATE libresidfp_static)
+if(APPLE)
+    target_compile_definitions(test_cpu_harte PRIVATE GL_SILENCE_DEPRECATION)
+endif()
+if(WIN32)
+    target_link_libraries(test_cpu_harte PRIVATE ws2_32)
+endif()
+add_test(NAME cpu_harte_smoke
+         COMMAND test_cpu_harte "${CMAKE_SOURCE_DIR}/tests/cpu/harte_6502.bin")
+set_tests_properties(cpu_harte_smoke PROPERTIES TIMEOUT 60)
+
 # -- PeripheralBus dispatch smoke test ----------------------------------------
 # Self-contained: the bus has no dependency on Memory, peripherals, or
 # libresidfp. The test registers a handful of fake handlers and asserts the

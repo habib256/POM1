@@ -105,6 +105,14 @@ public:
     /// sets its reset vector to an error trap and expects callers to jump
     /// directly into $0400).
     void setProgramCounter(uint16_t pc) { programCounter = pc; }
+    // Register write back-doors for the cycle-oracle test harnesses
+    // (cpu_cycle_count + cpu_harte): seed the CPU to a known state, run one
+    // instruction, then compare. Not used by the emulator proper.
+    void setAccumulator(uint8_t v)    { accumulator = v; }
+    void setXRegister(uint8_t v)      { xRegister = v; }
+    void setYRegister(uint8_t v)      { yRegister = v; }
+    void setStatusRegister(uint8_t v) { statusRegister = v; }
+    void setStackPointer(uint8_t v)   { stackPointer = v; }
 
     /// PC-matched halt for headless/scripted debugging. When `active` is
     /// true and `programCounter == address` at the top of `run()`'s loop,
