@@ -607,15 +607,26 @@ std::string humanizeCc65(const std::string& out)
 
 Pom1BenchHost::Pom1BenchHost(MainWindow_ImGui* mw) : mw_(mw)
 {
-    for (int i = 0; i < kP1TargetCount; ++i)
+#if POM1_IS_WASM
+    // The browser has no cc65 toolchain, so the Bench is restricted to the
+    // toolchain-free Wozmon-hex target (kP1Targets[8]) for now — no cc65 asm/C
+    // targets, no examples, no language x machine matrix.
+    targets_.push_back({ kP1Targets[8].label, kP1Targets[8].label,
+                         kP1Targets[8].lang, kP1Targets[8].wantsAddr });
+    targetMap_.push_back(8);
+#else
+    for (int i = 0; i < kP1TargetCount; ++i) {
         targets_.push_back({ kP1Targets[i].label, kP1Targets[i].label,
                              kP1Targets[i].lang, kP1Targets[i].wantsAddr });
+        targetMap_.push_back(i);
+    }
     for (int i = 0; i < kP1ExampleCount; ++i)
         examples_.push_back({ kP1Examples[i].label });
     for (const char* l : kP1Languages)     languages_.push_back(l);
     for (const char* m : kP1Machines)      machines_.push_back(m);
     for (const char* h : kP1LanguageHints) languageHints_.push_back(h);
     for (const char* h : kP1MachineHints)  machineHints_.push_back(h);
+#endif
 }
 
 void Pom1BenchHost::probe() const
@@ -674,14 +685,18 @@ void Pom1BenchHost::probe() const
 
 int Pom1BenchHost::defaultTargetIndex() const
 {
+#if POM1_IS_WASM
+    return 0;   // the only target = Wozmon hex
+#else
     probe();
     return toolchainOk_ ? 0 : 8;   // asm dual-4k if cc65 present, else Wozmon hex
+#endif
 }
 
 std::string Pom1BenchHost::starterSketch(int target) const
 {
     if (target < 0 || target >= kP1TargetCount) return "";
-    return kP1Targets[target].sketch ? kP1Targets[target].sketch : "";
+    return kP1Targets[p1(target)].sketch ? kP1Targets[p1(target)].sketch : "";
 }
 
 const std::vector<std::string>& Pom1BenchHost::languages()     const { return languages_; }
@@ -698,7 +713,7 @@ int Pom1BenchHost::targetFor(int language, int machine) const
 void Pom1BenchHost::onTargetSelected(int target)
 {
     if (target < 0 || target >= kP1TargetCount) return;
-    const P1T& t = kP1Targets[target];
+    const P1T& t = kP1Targets[p1(target)];
     if (t.preset >= 0 && t.preset != mw_->activePresetIndex)
         mw_->applyMachineConfig(t.preset);
 }
@@ -762,7 +777,7 @@ bench::BuildResult Pom1BenchHost::directLoad(int target, const std::string& src,
     TempFileSweeper sweep;
     auto* emu = mw_->emulation.get();
     std::string error; int bytesLoaded = 0; bool ok = false; uint16_t entry = 0;
-    if (kP1Targets[target].mode == 1) {   // Wozmon hex
+    if (kP1Targets[p1(target)].mode == 1) {   // Wozmon hex
         const fs::path tmp = dir / "pom1_bench_sketch.txt";
         sweep.add(tmp);
         std::ofstream(tmp, std::ios::binary).write(src.data(), static_cast<std::streamsize>(src.size()));
@@ -792,7 +807,7 @@ bench::BuildResult Pom1BenchHost::build(int target, const std::string& src, cons
 {
     bench::BuildResult r;
     if (target < 0 || target >= kP1TargetCount) { r.status = "bad target"; return r; }
-    const P1T& t = kP1Targets[target];
+    const P1T& t = kP1Targets[p1(target)];
 
     if (t.mode == 1 || t.mode == 2) {     // hex/raw: no compile
         if (!run) { r.status = "Nothing to verify (hex/raw)"; r.showConsole = false; return r; }
@@ -987,7 +1002,7 @@ bench::BuildResult Pom1BenchHost::build(int target, const std::string& src, cons
 bool Pom1BenchHost::toolchainReady(int target) const
 {
     if (target < 0 || target >= kP1TargetCount) return false;
-    const P1T& t = kP1Targets[target];
+    const P1T& t = kP1Targets[p1(target)];
     if (t.mode == 1 || t.mode == 2) return true;
     probe();
     if (!t.needsCl65) return toolchainOk_;
@@ -1000,7 +1015,7 @@ bool Pom1BenchHost::toolchainReady(int target) const
 std::string Pom1BenchHost::toolchainHint(int target) const
 {
     if (target < 0 || target >= kP1TargetCount) return "";
-    const P1T& t = kP1Targets[target];
+    const P1T& t = kP1Targets[p1(target)];
     if (t.mode == 1 || t.mode == 2) return "";
     probe();
     if (!t.needsCl65) return toolchainOk_ ? "ca65/ld65 ready" : "needs cc65 (ca65/ld65)";
