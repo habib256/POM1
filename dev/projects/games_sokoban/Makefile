@@ -6,4 +6,7 @@ LOAD_CFG := $(CFG)
 OUT_DIR  := ../../../software/Apple-1 games
 LIB      := -I ../../lib/apple1 -I ../../lib/games/sokoban
 
+# Boot-smoke: load headless via the Terminal Card, assert the title prints.
+TEST_CMD := python3 ../../../tools/test_game_smoke.py --pom1 ../../../build/POM1 --bin "$(OUT_DIR)/$(PROJECT).bin" --addr 0x0280 --expect "SOKOBAN"
+
 include ../../cc65/Makefile.common
