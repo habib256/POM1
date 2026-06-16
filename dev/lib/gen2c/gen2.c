@@ -118,6 +118,7 @@ extern unsigned char gen2_b_col, gen2_b_mask, gen2_b_w, gen2_b_h;
 extern unsigned char gen2_b_stride, gen2_b_y, gen2_b_mode;
 extern const unsigned char *gen2_b_src;
 extern void gen2_blit_run(void);        /* asm: pixel-walk blit, mode-aware         */
+extern void gen2_blit7_run(void);       /* asm: byte-aligned 7px/byte blit (fast)   */
 /* The parameter blocks live in the zero page (gen2_blit.s) — tell cc65 so it
  * emits zp stores instead of absolute (smaller/faster, and no ld65 warning). */
 #pragma zpsym("gen2_g_glyph")
@@ -606,6 +607,34 @@ void gen2_hgr_blit(unsigned x, unsigned char y, unsigned char w, unsigned char h
     if ((unsigned)y + h > 192u) gen2_b_h = (unsigned char)(192u - y);  /* bottom clip */
     if ((unsigned)x + w > 280u) gen2_b_w = (unsigned char)(280u - x);  /* right clip  */
     gen2_blit_run();
+}
+
+/* Fast BYTE-ALIGNED blit of a sprite pre-packed in the framebuffer's 7px/byte
+ * layout (each byte = 7 horizontal pixels, bit 0 = leftmost, bit 7 = 0). Because
+ * source and destination share that layout, whole bytes are SET/CLEAR/XOR'd
+ * straight in — ~7x fewer memory ops than gen2_hgr_blit for a solid sprite, the
+ * way to move big shapes (a 48px ball) at speed. The trade-off: the sprite snaps
+ * to a 7px column grid (x is floored to x/7), so move it in steps of 7 to stay
+ * put under an XOR erase. `wbytes` = source bytes per row (ceil(width/7)); `mode`
+ * is GEN2_SET/CLEAR/XOR. Clipped to the right/bottom edges. Build the packed
+ * bitmap with bit k of byte j = pixel (j*7+k). */
+void gen2_hgr_blit7(unsigned x, unsigned char y, unsigned char wbytes,
+                    unsigned char h, const unsigned char *src, unsigned char mode)
+{
+    unsigned char col;
+    gen2_build_tables();
+    if (wbytes == 0u || h == 0u || y > 191u) return;
+    col = (unsigned char)(x / 7u);
+    if (col >= 40u) return;
+    gen2_b_col    = col;
+    gen2_b_stride = wbytes;                                  /* full source row     */
+    if ((unsigned)col + wbytes > 40u) wbytes = (unsigned char)(40u - col);/* R clip */
+    gen2_b_w      = wbytes;
+    gen2_b_y      = y;
+    gen2_b_h      = ((unsigned)y + h > 192u) ? (unsigned char)(192u - y) : h;
+    gen2_b_mode   = mode;
+    gen2_b_src    = src;
+    gen2_blit7_run();
 }
 
 /* ===========================================================================

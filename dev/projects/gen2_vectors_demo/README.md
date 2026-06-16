@@ -1,35 +1,44 @@
-# GEN2Vectors — primitives vectorielles + nombres HUD (double buffering)
+# GEN2Vectors — sprites XOR rapides + vectoriel + HUD (double buffering)
 
-Petit programme **C** qui réunit trois briques de `dev/lib/gen2c` ajoutées pour
-les jeux GEN2 : une balle (**cercle**) rebondit dans un **cadre** (contour de
-rectangle), avec un **compteur de rebonds** en HUD largeur fixe, le tout en
-**double buffering** → animation fluide, compteur sans scintillement.
+Démo **C** qui réunit cinq briques de `dev/lib/gen2c` et montre comment animer
+plein écran vite sur la carte GEN2 : **quatre balles** (une grosse 48×48, trois
+petites 16×16) rebondissent dans un cadre **et s'entrechoquent** (toutes les
+paires), avec un compteur de rebonds en HUD et une légende en police 8×8.
 
-Briques montrées :
+Briques :
 
-- **Vectoriel (E)** — `gen2_hgr_rect`, `gen2_hgr_circle`, `gen2_hgr_line`
-  (Bresenham ; les tracés H/V passent par le chemin rapide `pixrect`).
-- **Nombre HUD (D)** — `gen2_hgr_putu_field(x,y,value,width)` : champ largeur
-  fixe, aligné à droite, qui **efface exactement sa propre boîte** avant de
-  réécrire. Un compteur qui change de largeur (9 → 10 → 100…) ne laisse aucun
-  chiffre fantôme et n'a pas besoin d'un `clear_pixrect` externe (lequel, mal
-  dimensionné, mordait sur le label voisin — le bug du score de HGR Snake).
-  Voir aussi `gen2_hgr_puti` (signé) et `gen2_hgr_putx` (hexa).
+- **Sprites XOR rapides (B)** — `gen2_hgr_blit7(..., GEN2_XOR)`. Les balles sont
+  pré-empaquetées en **7px/octet** (le format du framebuffer), donc le blit XOR
+  des **octets entiers** au lieu de pixels. Effacement = re-blit XOR au même
+  endroit (fond restauré pixel-parfait). Contrepartie : x aligné sur 7px (pas
+  horizontal de 7).
 - **Double buffering (C)** — `gen2_set_draw_page` / `gen2_show_page` : on dessine
   la frame dans la page cachée puis on la bascule.
+- **Nombre HUD + texte 8×8 (D)** — `gen2_hgr_putu_field` (compteur largeur fixe
+  auto-effaçant) + `gen2_hgr_puts8` (légende dense en police native 8×8).
+- **Vectoriel (E)** — `gen2_hgr_rect` + `gen2_hgr_line` pour le décor.
 
-## Build
+## Les trois leviers de vitesse
+
+1. **Pas de redessin du décor** : cadre, séparateur, label, légende tracés UNE
+   FOIS par page.
+2. **Effacement XOR** des balles : pas de boîte d'effacement à laver.
+3. **Blit aligné-octet** (`gen2_hgr_blit7`) : ~7× moins d'écritures que le blit
+   pixel-par-pixel. Mesuré sur une scène (grosse + petite balle) : **42 → 223
+   frames** pour un même budget de cycles, soit **×5.3**.
+
+## Collision balle-balle
+
+Pour chaque paire : si les centres sont à moins de `R_i + R_j` **et** se
+rapprochent (`dx·Δvx + dy·Δvy < 0`), on échange les vitesses. Toutes les balles
+vont à la même vitesse, donc l'échange préserve l'alignement octet.
+
+## Build / Run
 
 ```sh
 make            # -> "software/Graphic HGR/GEN2Vectors.bin" (+ .txt Woz-hex)
 make clean
 ```
-
-Le `Makefile` reprend l'invocation `cl65` du POM1 Bench (config linker
-`dev/cc65/apple1_gen2_c.cfg`, `gen2.c` + `gen2_blit.s` + `apple1io.*`, origine
-`$6000`).
-
-## Run
 
 ```sh
 build/POM1 --preset 12 \
@@ -37,10 +46,3 @@ build/POM1 --preset 12 \
 ```
 
 ou DevBench → POM1 Bench → cible *C / GEN2 HGR*, coller, compiler, uploader.
-
-## Note couleur
-
-Sur les traits d'**un pixel** de large, on voit du frangé violet/vert : c'est
-l'artefact NTSC normal du HIRES (la couleur y est un effet du motif de bits, pas
-une vraie couleur par pixel). Pour des traits blancs francs, dessiner épais (2
-px) ; pour de la vraie couleur par bloc, voir le mode **LORES** (`gen2_lores_*`).

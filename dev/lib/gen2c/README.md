@@ -19,7 +19,10 @@ mode itself (`gen2_hgr_init()` does this).
 | `gen2_hgr_fill_pixrect(x,y,w,h)` / `gen2_hgr_clear_pixrect(...)` | **asm** fill / erase a PIXEL rectangle (solid blocks/sprites) |
 | `gen2_hgr_plot(x, y)` / `gen2_hgr_unplot(x, y)` | set / clear a white pixel, `x:0..279 y:0..191` — **asm** |
 | `gen2_hgr_row(y)`            | base address of scanline `y` (Apple II interleave) |
-| `gen2_hgr_puts(x, y, s)`     | draw a white string (Beautiful Boot 8×8 font, 16×16 cells) — **asm** |
+| `gen2_hgr_blit(x,y,w,h,bmp,mode)` | 1bpp sprite at any x, `GEN2_SET/CLEAR/XOR` (XOR twice = flicker-free erase) — pixel-walk |
+| `gen2_hgr_blit7(x,y,wbytes,h,bmp,mode)` | **fast** byte-aligned blit (sprite pre-packed 7px/byte; x snaps to 7px) — ~7× fewer ops for big solid sprites |
+| `gen2_hgr_puts(x, y, s)`     | draw a white string (Beautiful Boot 8×8 font, 16×16 doubled cells) — **asm** |
+| `gen2_hgr_puts8(x, y, s)` / `gen2_hgr_putu8(...)` | same font at **native 8×8** (dense HUDs / status lines) — **asm** |
 | `gen2_hgr_puts_color(x,y,s,c)` | draw a string in an NTSC artifact colour (`GEN2_VIOLET/GREEN/ORANGE/BLUE`) — **asm** |
 | `gen2_hgr_putu(x, y, value)` | draw `value` as unsigned decimal (scores/counters) — **asm** |
 | `gen2_hgr_putu_field(x,y,value,width)` | fixed-width, right-aligned decimal that **self-erases its field** (flicker-free HUD counter) |

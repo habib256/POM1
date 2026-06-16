@@ -40,6 +40,7 @@
         .export   _gen2_puts_run
         .export   _gen2_utoa
         .export   _gen2_blit_run
+        .export   _gen2_blit7_run
         .exportzp _gen2_b_col, _gen2_b_mask, _gen2_b_w, _gen2_b_h
         .exportzp _gen2_b_stride, _gen2_b_y, _gen2_b_mode, _gen2_b_src
         .exportzp _gen2_t_col, _gen2_t_bit, _gen2_t_n, _gen2_t_color
@@ -651,6 +652,60 @@ blit_apply:
         eor (ptr1),y
         sta (ptr1),y
         jmp advance
+
+; --- _gen2_blit7_run : BYTE-ALIGNED blit of a 7px/byte sprite (fast path) ------
+; The source is pre-packed in the framebuffer's own 7px/byte layout (bit 0 =
+; leftmost, bit 7 = 0), so each source byte XOR/OR/ANDs STRAIGHT into a byte
+; column — no per-pixel mask walk, no cross-byte shift. The pen is therefore
+; byte-aligned: the C wrapper passes b_col = x/7. For a solid sprite this is ~7x
+; fewer memory ops than _gen2_blit_run (one op per 7px byte vs one per pixel).
+; Reuses the gen2_b_* block: b_col start byte column, b_w bytes drawn per row,
+; b_stride source bytes per row, b_h rows, b_y top scanline, b_src source,
+; b_mode 0 SET / 1 CLEAR / 2 XOR. Y indexes src[j] AND dest[col+j] together
+; (ptr1 already points at rowbase+col), so one counter drives the whole row.
+_gen2_blit7_run:
+@row:
+        ldy _gen2_b_y           ; ptr1 = rowbase(y) + col
+        lda _gen2_rowlo,y
+        clc
+        adc _gen2_b_col
+        sta ptr1
+        lda _gen2_rowhi,y
+        adc #0
+        sta ptr1+1
+        ldy #0                  ; Y = byte index within the row (src and dest)
+@col:
+        lda (_gen2_b_src),y
+        ldx _gen2_b_mode
+        beq @oset
+        cpx #2
+        beq @oxor
+        eor #$FF                ; CLEAR: dest &= ~src
+        and (ptr1),y
+        sta (ptr1),y
+        jmp @cnext
+@oset:
+        ora (ptr1),y            ; SET: dest |= src
+        sta (ptr1),y
+        jmp @cnext
+@oxor:
+        eor (ptr1),y            ; XOR: dest ^= src
+        sta (ptr1),y
+@cnext:
+        iny
+        cpy _gen2_b_w
+        bne @col
+        clc                     ; src += stride ; y += 1 ; rows--
+        lda _gen2_b_src
+        adc _gen2_b_stride
+        sta _gen2_b_src
+        bcc @nyc
+        inc _gen2_b_src+1
+@nyc:
+        inc _gen2_b_y
+        dec _gen2_b_h
+        bne @row
+        rts
 
 ; --- _gen2_hgr_clear(fill in A) : fill the whole HIRES page-1 framebuffer ------
 ; Clears/fills $2000-$3FFF (32 pages x 256 bytes) with the byte in A. The byte

@@ -99,6 +99,17 @@ void gen2_hgr_unplot(unsigned x, unsigned char y);
 void gen2_hgr_blit(unsigned x, unsigned char y, unsigned char w, unsigned char h,
                    const unsigned char *bitmap, unsigned char mode);
 
+/* FAST byte-aligned blit for big solid sprites. The bitmap is pre-packed in the
+ * framebuffer's 7px/byte layout (byte j, bit k = pixel j*7+k, bit 0 = leftmost,
+ * bit 7 = 0), so whole bytes are SET/CLEAR/XOR'd in directly — ~7x fewer ops
+ * than gen2_hgr_blit. Cost: the sprite snaps to a 7px column grid (x floored to
+ * x/7), so move it in steps of 7 to keep XOR-erase aligned. `wbytes` = source
+ * bytes per row = ceil(width/7). Same SET/CLEAR/XOR modes. Use this for a large
+ * ball / paddle / tile; use gen2_hgr_blit when you need 1px positioning or
+ * transparency at an arbitrary x. */
+void gen2_hgr_blit7(unsigned x, unsigned char y, unsigned char wbytes,
+                    unsigned char h, const unsigned char *src, unsigned char mode);
+
 /* Draw an ASCII string at pixel (x, y) using the built-in Beautiful Boot 8x8
  * font, pixel-doubled so the text is solid white (no NTSC colour artifacts) in
  * 16x16 cells on an 18px pitch. Renders into HIRES page 1; call gen2_hgr_init
