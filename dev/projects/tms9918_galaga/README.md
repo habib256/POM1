@@ -7,11 +7,12 @@ three player lives.
 
 Four linker-config variants ship for different deployment scenarios:
 
-- `apple1_galaga.cfg` — stock cassette/`.txt` load at `$0280` (default).
+- `apple1_galaga.cfg` — stock cassette/`.txt` load at `$0280`.
 - `apple1_galaga_codetank.cfg` — full 16 kB CodeTank ROM image at `$4000`
   (used by `--layout=split`).
 - `apple1_galaga_codetank_bank.cfg` — 7 424 B lower-bank slot (`$4100`)
-  inside the multi-game menu CodeTank bank (`--layout=menu`).
+  inside the multi-game menu CodeTank bank (`--layout=menu`). **Makefile
+  default** (`CFG ?= apple1_galaga_codetank_bank.cfg`).
 - `apple1_galaga_codetank_8k.cfg` — 8 kB lower-bank slot at `$4000` paired
   with Sokoban at `$6000` in the same bank (`--layout=dualslot8k`). The
   recommended config for **Silicon Strict** mode — see below.
@@ -37,15 +38,17 @@ stitched from four quadrants (`P_SUPER_{TL,TR,BL,BR}`).
 
 - `TMS_Galaga.asm` — main entry, loads at `$0280` (or `$4000`/`$4100`
   for the CodeTank variants)
-- `apple1_galaga.cfg` — default cassette config (`CODE` at `$0280`)
+- `apple1_galaga.cfg` — cassette config (`CODE` at `$0280`)
 - `apple1_galaga_codetank.cfg` — standalone CodeTank ROM (`$4000`, 16 kB)
-- `apple1_galaga_codetank_bank.cfg` — slot inside the menu bank (`$4100`)
+- `apple1_galaga_codetank_bank.cfg` — slot inside the menu bank (`$4100`,
+  Makefile default)
 - `emit_TMS_Galaga_txt.py` — assemble + emit Woz hex `.txt`
-- libs used: `dev/lib/apple1/`, `dev/lib/tms9918/`
+- libs used: `dev/lib/apple1/`, `dev/lib/m6502/`, `dev/lib/tms9918/`
 
 ## Build
 
-    make                          # default = cassette → ../../../software/tms9918/TMS_Galaga.{bin,txt}
+    make                          # default = CodeTank menu-bank slot ($4100) → ../../../software/Graphic TMS9918/TMS_Galaga.{bin,txt}
+    make CFG=apple1_galaga.cfg    # stock cassette build at $0280
 
 Override the linker config from the command line:
 
@@ -54,7 +57,7 @@ Override the linker config from the command line:
 ## Run in POM1
 
 1. POM1 → Presets → preset 7 (P-LAB TMS9918 + CodeTank).
-2. File → Load → `software/tms9918/TMS_Galaga.txt`.
+2. File → Load → `software/Graphic TMS9918/TMS_Galaga.txt`.
 3. Wozmon `\` prompt: type `280R` (cassette), `4000R` (CodeTank lower —
    menu/split/dualslot8k all map Galaga at or near `$4000`).
 

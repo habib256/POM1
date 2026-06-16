@@ -75,7 +75,7 @@ POM1 game-port idiom (matches Sokoban / Connect 4 trilogies).
 make
 ```
 
-Produces three artefacts under `software/games/`:
+Produces three artefacts under `software/Apple-1 games/`:
 - `Chess.bin.lo` (~2.6 KB) — lower-bank code at $0280-$0FFF
 - `Chess.bin.hi` (~2.7 KB) — upper-bank engine + state at $E000-$EFFF
 - `Chess.txt` — combined Wozmon-hex with both blocks + autorun
@@ -99,7 +99,7 @@ on a 4K-only Apple-1 (POM1 preset 0 is 4K-only).
 
 ```
 ./POM1                                       # any preset with the upper bank
-File → Load Memory → software/games/Chess.txt
+File → Load Memory → software/Apple-1 games/Chess.txt
 ```
 
 Wozmon will auto-run via the trailing `0280R`.
@@ -108,8 +108,8 @@ Or via CLI (loads both banks separately):
 
 ```
 ./POM1 --preset 1 --terminal --cpu-max \
-       --load 0x0280:software/games/Chess.bin.lo \
-       --load 0xE000:software/games/Chess.bin.hi --run 0x0280
+       --load 0x0280:software/Apple-1 games/Chess.bin.lo \
+       --load 0xE000:software/Apple-1 games/Chess.bin.hi --run 0x0280
 ```
 
 **Recommended preset**: 1 (Apple-1 with ACI & Integer BASIC). POM1 lets

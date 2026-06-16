@@ -133,4 +133,4 @@ In your project Makefile:
 
 Validation: `dev/projects/lib_smoke/` exercises every routine here plus
 the cross-object `math.o` link, and shipped `.bin` is in
-`software/dev/LibSmoke.bin` for one-shot regression.
+`software/Apple-1 dev/LibSmoke.bin` for one-shot regression.

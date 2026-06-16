@@ -14,7 +14,7 @@ Usage as a module (typical project script):
         cfg="apple1_gen2.cfg",          # relative to project OR cc65/
         out_bin="MyProject.bin",
         out_txt="MyProject.txt",
-        out_dir_software="hgr",          # software/<dir>/
+        out_dir_software="Graphic HGR",  # software/<dir>/
         start_addr=0x0280,
         header_lines=["// optional banner"],
     )

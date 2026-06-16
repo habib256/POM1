@@ -22,22 +22,22 @@ Inspired by StewBC/cc65-Chess (algorithm reference). Shares
 make
 ```
 
-Produces `software/tms9918/TMS_Chess.bin` (~3.5 KB) and `TMS_Chess.txt`.
+Produces `software/Graphic TMS9918/TMS_Chess.bin` (~3.5 KB) and `TMS_Chess.txt`.
 
 ## Run
 
 ```
 ./POM1                                       # any preset works
-File → Load Memory → software/tms9918/TMS_Chess.txt
+File → Load Memory → software/Graphic TMS9918/TMS_Chess.txt
 ```
 
-The `software/tms9918/` directory auto-enables the TMS9918 card on load.
+The `software/Graphic TMS9918/` directory auto-enables the TMS9918 card on load.
 
 Or via CLI:
 
 ```
 ./POM1 --preset 7 --terminal --cpu-max \
-       --load 0x0280:software/tms9918/TMS_Chess.bin --run 0x0280
+       --load 0x0280:software/Graphic TMS9918/TMS_Chess.bin --run 0x0280
 ```
 
 ## Display layout
@@ -88,7 +88,7 @@ The TMS9918 in POM1 conflicts at the bus level with:
 - A1-AUDIO SE (different I/O range but evicts the TMS9918)
 - A1-SID at $CC00-$CC01 (TMS9918 wins via priority 10)
 
-Recommended preset for chess: **#8 P-LAB Apple-1 with TMS9918** (which
+Recommended preset for chess: **#7 P-LAB Apple-1 with TMS9918** (which
 also auto-plugs the CodeTank daughterboard, but that doesn't conflict
 with chess running from $0280-$3FFF).
 

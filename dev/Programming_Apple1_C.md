@@ -36,7 +36,7 @@ graphics card adds its own drawing layer on top. Learn the text API once; reuse
 it everywhere.
 
 ```
-                 apple1c   (woz_puts / woz_getkey / woz_mon — the WOZ terminal)
+                 apple1c   (woz_puts / apple1_getkey / woz_mon — the WOZ terminal)
                 /         \
    GEN2 HGR (gen2c)        TMS9918 (apple1-videocard-lib: screen1 / tms9918)
    280x192 colour          256x192, 32 sprites
@@ -49,7 +49,7 @@ it everywhere.
 | **TMS9918 sprites/colour** | `screen1.h` / `tms9918.h` | `apple1-videocard-lib/cc65/codetank_c.cfg` | `4000R` |
 
 Libraries:
-- `dev/lib/apple1c/` — the shared text/keyboard base ([README](lib/apple1c/README.md)).
+- `dev/lib/apple1c/` — the shared text/keyboard base (`woz_puts` / `apple1_getkey` / `woz_mon`) ([README](lib/apple1c/README.md)).
 - `dev/lib/gen2c/` — GEN2 HGR runtime ([README](lib/gen2c/README.md)).
 - `dev/apple1-videocard-lib/` — Nino Porcino's TMS9918 runtime + demos.
 
@@ -134,7 +134,7 @@ the `$C25x` soft switches, and always clear with `gen2_hgr_clear()` (a naïve
 
 Uses Nino Porcino's `apple1-videocard-lib` (`screen1.h`, `tms9918.h`,
 `screen2.h`). The Bench's **TMS9918 (C)** target builds a 16 KB CodeTank ROM and
-boots `4000R`. ~17 worked demos live in `dev/apple1-videocard-lib/demos/`
+boots `4000R`. 13 worked demos live in `dev/apple1-videocard-lib/demos/`
 (`hello_world`, `hello_screen1`, `tetris`, `rogue_c`, `sprite_animals`…).
 
 ```c

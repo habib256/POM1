@@ -33,19 +33,19 @@ re-validate the other.
 
 ## Build
 
-    make                          # produces ../../../software/hgr/HGR_OrbitalPool.{bin,txt}
+    make                          # produces ../../../software/Graphic HGR/HGR_OrbitalPool.{bin,txt}
 
 By hand:
 
     ca65 -I ../../lib/apple1 HGR_OrbitalPool.asm
     ld65 -C ../../cc65/apple1_gen2.cfg HGR_OrbitalPool.o \
-        -o ../../../software/hgr/HGR_OrbitalPool.bin
+        -o ../../../software/Graphic HGR/HGR_OrbitalPool.bin
     python3 emit_HGR_OrbitalPool_txt.py
 
 ## Run in POM1
 
 1. POM1 → Presets → preset 12 (Uncle Bernie's GEN2 HGR Color).
-2. File → Load → `software/hgr/HGR_OrbitalPool.txt`.
+2. File → Load → `software/Graphic HGR/HGR_OrbitalPool.txt`.
 3. Wozmon `\` prompt: type `E000R`.
 
 ## Author / License

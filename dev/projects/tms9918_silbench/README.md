@@ -88,12 +88,12 @@ cd dev/projects/tms9918_silbench
 make
 ```
 
-Produces `software/tms9918/TMS_SilBench.bin` + `.txt` (Woz hex).
+Produces `software/Graphic TMS9918/TMS_SilBench.bin` + `.txt` (Woz hex).
 
 To roll into a CodeTank ROM image:
 
 ```
-python3 tools/build_codetank_rom.py --add software/tms9918/TMS_SilBench.bin
+python3 tools/build_codetank_rom.py --add software/Graphic TMS9918/TMS_SilBench.bin
 ```
 
 (check `tools/build_codetank_rom.py --help` for the layout option.)

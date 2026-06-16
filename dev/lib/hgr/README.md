@@ -6,8 +6,18 @@ the Apple II non-linear scanline addressing.
 
 ## Files
 
-- **`hgr_tables.inc`** — row-address LUT mapping scanline `Y (0..191)` → base
-  address inside `$2000-$3FFF`. Apple-II compatible non-linear ordering.
+- **`hgr_tables.inc`** — umbrella bundle: `.include`s `hgr_plot.asm`,
+  `hgr_clear.asm`, `hgr_scanline.inc`, and `hgr_plot_tables.inc` in the original
+  order so legacy consumers stay byte-for-byte unchanged. Needs ZP `cur_x`,
+  `cur_y`, `ptr_lo`, `ptr_hi`. Pull in a single module directly to adopt only
+  part of it.
+- **`hgr_scanline.inc`** — row-address LUTs `hgr_lo[192]` / `hgr_hi[192]`
+  mapping scanline `Y (0..191)` → base address inside `$2000-$3FFF`. Apple-II
+  compatible non-linear ordering. (Split out of `hgr_tables.inc`.)
+- **`hgr_plot_tables.inc`** — `hgr_col` / `hgr_mask` x-lookup tables for
+  `plot_pixel`.
+- **`hgr_plot.asm`** — `plot_pixel` (needs `cur_x`/`cur_y`/`ptr_*` + both table
+  sets). **`hgr_clear.asm`** — `clear_hgr` (needs ZP `ptr_lo`/`ptr_hi`).
 - **`smiley.inc`** — sample 16×16 smiley sprite (legacy, no current consumer).
 - **`bbfont_cp437.inc`** — Beautiful Boot 8×8 font, full CP437 (256 glyphs,
   2 KB). Encoding: `AND #$7F`, 8 rows top→bottom, bit 0 = left. Source:
@@ -63,13 +73,13 @@ non-linear layout — within a group, consecutive scanlines are at
 ```asm
 .include "apple1.inc"
 .include "zp.inc"            ; provides tmp / tmp2
-.include "hgr_tables.inc"    ; scanline LUTs
+.include "hgr_scanline.inc"  ; hgr_lo / hgr_hi scanline LUTs
 .include "subbyte4.inc"      ; 7-phase mask data
 .include "subbyte_fill.asm"  ; subbyte_fill_4 routine
 
 draw_wall_at_gx_y:
         LDX gx                    ; grid column (0..68)
-        ; Look up first scanline base via hgr_tables for row gy*4
+        ; Look up first scanline base via hgr_scanline for row gy*4
         LDA hgr_lo,Y
         STA sb_ptr_lo
         LDA hgr_hi,Y

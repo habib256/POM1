@@ -24,17 +24,17 @@ with no expansion RAM.
 
 ## Build
 
-    make                          # default = 4K → ../../../software/games/Sokoban.bin
+    make                          # default = 4K → ../../../software/Apple-1 games/Sokoban.bin
 
 By hand (any of the three variants):
 
     ca65 -I ../../lib/apple1 -I ../../lib/games/sokoban Sokoban.asm
-    ld65 -C apple1_sok_4k.cfg Sokoban.o -o ../../../software/games/Sokoban.bin
+    ld65 -C apple1_sok_4k.cfg Sokoban.o -o ../../../software/Apple-1 games/Sokoban.bin
 
 ## Run in POM1
 
 1. POM1 → Presets → preset 1 (Apple-1 with ACI & BASIC).
-2. File → Load → `software/games/Sokoban.bin`.
+2. File → Load → `software/Apple-1 games/Sokoban.txt`.
 3. Wozmon `\` prompt: type `280R`.
 
 ## Author / License

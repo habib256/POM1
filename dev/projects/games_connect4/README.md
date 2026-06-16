@@ -17,17 +17,17 @@ first to align four wins.
 
 ## Build
 
-    make                          # produces ../../../software/games/Connect4.bin
+    make                          # produces ../../../software/Apple-1 games/Connect4.bin
 
 By hand:
 
     ca65 -I ../../lib/apple1 Connect4.asm
-    ld65 -C ../../cc65/apple1_4k.cfg Connect4.o -o ../../../software/games/Connect4.bin
+    ld65 -C ../../cc65/apple1_4k.cfg Connect4.o -o ../../../software/Apple-1 games/Connect4.bin
 
 ## Run in POM1
 
 1. POM1 → Presets → preset 1 (Apple-1 with ACI & BASIC).
-2. File → Load → `software/games/Connect4.bin`.
+2. File → Load → `software/Apple-1 games/Connect4.txt`.
 3. Wozmon `\` prompt: type `280R`.
 
 ## Author / License

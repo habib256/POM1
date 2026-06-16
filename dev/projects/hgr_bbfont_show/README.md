@@ -15,22 +15,22 @@ non-Wozmon characters.
 
 - `HGR_BBFontShow.asm` — main entry, loads at `$E000`
 - `bbfont_cp437.inc` (in `dev/lib/hgr/`) — full CP437 8×8 font
-- libs used: `dev/lib/apple1/`, `dev/lib/hgr/`
+- libs used: `dev/lib/apple1/`, `dev/lib/hgr/`, `dev/lib/m6502/`
 
 ## Build
 
-    make                          # produces ../../../software/hgr/HGR_BBFontShow.bin
+    make                          # produces ../../../software/Graphic HGR/HGR_BBFontShow.bin
 
 By hand:
 
-    ca65 -I ../../lib/apple1 -I ../../lib/hgr HGR_BBFontShow.asm
+    ca65 -I ../../lib/apple1 -I ../../lib/hgr -I ../../lib/m6502 HGR_BBFontShow.asm
     ld65 -C ../../cc65/apple1_gen2.cfg HGR_BBFontShow.o \
-        -o ../../../software/hgr/HGR_BBFontShow.bin
+        -o ../../../software/Graphic HGR/HGR_BBFontShow.bin
 
 ## Run in POM1
 
 1. POM1 → Presets → preset 12 (Uncle Bernie's GEN2 HGR Color).
-2. File → Load → `software/hgr/HGR_BBFontShow.bin`.
+2. File → Load → `software/Graphic HGR/HGR_BBFontShow.bin`.
 3. Wozmon `\` prompt: type `E000R`.
 
 ## Author / License

@@ -48,10 +48,10 @@ POM1 silicon-strict modélise les comportements TMS9918 documentés dans Nouspik
 - 🔑 OPEN — comportement silicon réellement inconnu, POM1 prend un parti
 - 🔴 NON MODÉLISÉ — comportement silicon connu mais POM1 ne le simule pas
 
-**Couverture par tests** :
-- 19 ctest unit tests (auto, ~9 sec total)
-- 20 6502-asm tests dans TMS_SilTest auto-vérifiables
-- 3 tests interactifs visuels (T15, T16, T17)
+**Couverture par tests** (chiffres = état 2026-04-30) :
+- tests ctest dédiés TMS9918 : `tms9918_sprite_status`, `tms9918_silicon_strict_runtime`, `tms9918_per_scanline`, `tms9918_advanced_silicium` (les ~19 ctest de l'époque couvraient aussi les autres sous-systèmes — pas seulement le VDP)
+- ~20 sous-tests 6502-asm dans la ROM TMS_SilBench, auto-vérifiables
+- tests interactifs visuels standalone (`tms9918_clone` T12, `tms9918_split`)
 - Stress benchmark Galaga-class (~30 sec)
 - Démo finale 6 phases (~30 sec) avec sprites fauna réels
 
@@ -60,11 +60,11 @@ POM1 silicon-strict modélise les comportements TMS9918 documentés dans Nouspik
 ## 1. Contexte & cible matérielle
 
 - **Plateforme cible** : Apple-1 + carte TMS9918 (P-LAB Graphic Card) + daughterboard CodeTank (piggyback).
-- **Preset POM1 équivalent** : **#8** — *P-LAB Apple-1 with TMS9918 (CodeTank daughterboard)* (voir [`README.md`](../README.md) § Machine Presets).
+- **Preset POM1 équivalent** : **#7** — *P-LAB Apple-1 with TMS9918 (CodeTank daughterboard)* (voir [`README.md`](../README.md) § Machine Presets).
 - **Référence "OK partout" (silicium + POM1)** : `TMS_Logo v1.7` — interpréteur LOGO en Mode 2 bitmap, pas de sprites. Validation du sous-système VRAM/registres/modes graphiques.
 - **Référence "OK POM1, KO silicium"** : `A1Galaga` — Mode 1 + sprites animés à 60 Hz. Sur silicium, sprites-artefacts et damiers parasites apparaissent autour des sprites légitimes dès l'écran de titre.
 
-### Map mémoire utilisable (preset **#8**)
+### Map mémoire utilisable (preset **#7**)
 
 ```
 $0000-$00FF   Zero page (Apple-1 standard)
@@ -848,7 +848,6 @@ passés sous le tool. Compte des NOPs insérés :
 | `tms9918_chess` | 0 | 1 | 0 | 1 |
 | `tms9918_codetank_menu` | 0 | 0 | 0 | 0 |
 | `tms9918_codetank_menu_upper` | 0 | 0 | 0 | 0 |
-| `tms9918_tetris_loader` | 0 | 0 | 0 | 0 |
 | `lib/tms9918/tms9918m1.asm` | 0 | 3 | 1 | 4 |
 | `lib/tms9918/tms9918m2.asm` | 0 | 5 | 1 | 6 |
 | **Total** | **68** | **264** | **19** | **351** |

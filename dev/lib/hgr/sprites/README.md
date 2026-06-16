@@ -8,7 +8,7 @@ clear for the NTSC group selector).
 Regenerate via:
 
 ```
-python3 tools/build_hgr_sprites.py             # all 14 categories
+python3 tools/build_hgr_sprites.py             # all 15 categories
 python3 tools/build_hgr_sprites.py --only fauna
 python3 tools/build_hgr_sprites.py --check     # exit 1 if anything is stale
 ```
