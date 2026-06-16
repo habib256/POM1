@@ -82,6 +82,17 @@ void gen2_hgr_puts(unsigned x, unsigned char y, const char *s);
  * gen2_hgr_puts (1-5 digits, no leading zeros). Handy for scores and counters. */
 void gen2_hgr_putu(unsigned x, unsigned char y, unsigned value);
 
+/* Draw a string in one of the four NTSC artifact COLOURS the GEN2 HIRES screen
+ * can show (it has no per-pixel colour). The text is drawn white, then an asm
+ * pass (gen2_blit.s gen2_colorize_asm) masks it to the colour's carrier. There
+ * is NO red on HIRES — orange is the warm tone. Keep coloured labels clear of
+ * other content (the whole text box is tinted). See gen2_hgr_puts for layout. */
+#define GEN2_VIOLET  1u   /* mauve / purple */
+#define GEN2_GREEN   2u
+#define GEN2_ORANGE  3u   /* the closest thing HIRES has to "red" */
+#define GEN2_BLUE    4u
+void gen2_hgr_puts_color(unsigned x, unsigned char y, const char *s, unsigned char color);
+
 /* Coarse spin until vertical blank (NOT cycle-exact — for tight beam-racing use
  * the ASM dev/lib/gen2 gen2_beam_lock). Double-samples HST0 to skip the colour-
  * burst notch and tells V-blank from H-blank by how long the blank lasts. */

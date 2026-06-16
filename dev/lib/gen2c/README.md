@@ -20,6 +20,7 @@ mode itself (`gen2_hgr_init()` does this).
 | `gen2_hgr_plot(x, y)` / `gen2_hgr_unplot(x, y)` | set / clear a white pixel, `x:0..279 y:0..191` — **asm** |
 | `gen2_hgr_row(y)`            | base address of scanline `y` (Apple II interleave) |
 | `gen2_hgr_puts(x, y, s)`     | draw a white string (Beautiful Boot 8×8 font, 16×16 cells) — **asm** |
+| `gen2_hgr_puts_color(x,y,s,c)` | draw a string in an NTSC artifact colour (`GEN2_VIOLET/GREEN/ORANGE/BLUE`) — **asm** |
 | `gen2_hgr_putu(x, y, value)` | draw `value` as unsigned decimal (scores/counters) — **asm** |
 | `gen2_wait_vbl()`            | coarse spin until vertical blank |
 | `gen2_text()` … `gen2_hires()` | the eight `$C25x` soft-switch macros |
@@ -47,6 +48,13 @@ cost millions of cycles for one line of text):
   clips and passes `x/xr/y/h/mode`; the asm derives columns + edge masks. **~10×
   faster than a per-pixel `gen2_hgr_plot` double loop** — a 6×6 block is one call
   instead of 36. This is the primitive for block/tile/sprite games like Snake.
+- **`gen2_colorize_asm`** — behind `gen2_hgr_puts_color`. GEN2 HIRES has NO
+  per-pixel colour; colour is an NTSC artifact of the bit pattern + the byte's
+  high bit. So colour text is drawn WHITE, then this pass rewrites each byte
+  `b = (b & carrier[col&1]) | hibit`, masking it down to the colour's carrier.
+  The 4 reachable colours (verified against the renderer): **violet/mauve**
+  (`even=$55 odd=$2A`), **green** (`$2A/$55`), **orange** (green `| $80`), **blue**
+  (violet `| $80`). There is no red — orange is the warm tone.
 
 These read scanline base addresses from the `gen2_rowlo`/`gen2_rowhi` tables —
 and `plot`/`unplot` also the `gen2_col7`/`gen2_mask7` x-lookup tables — that

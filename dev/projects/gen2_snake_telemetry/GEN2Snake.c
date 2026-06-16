@@ -294,7 +294,7 @@ static void redraw(void)
     draw_food(foodx, foody);
     for (i = 0; i < slen; ++i) draw_cell(sx[i], sy[i]);
     draw_score();                       /* score, top-left (BBFont 16x16 cells) */
-    gen2_hgr_puts(184, 0, "SNAKE");    /* title, top-right (white — see note on colour) */
+    gen2_hgr_puts_color(184, 0, "SNAKE", GEN2_ORANGE);  /* top-right label in orange (HIRES's "red") */
 }
 
 /* Plain CPU-spin throttle for a playable tick rate. We deliberately do NOT call
@@ -320,7 +320,7 @@ void main(void)
      * key that selects it. Press 1 for QWERTY (WASD) or 2 for AZERTY (ZQSD). ---- */
     gen2_hgr_init();
     gen2_hgr_clear(0);
-    gen2_hgr_puts(56,  16, "GEN2 SNAKE");
+    gen2_hgr_puts_color(56, 16, "GEN2 SNAKE", GEN2_VIOLET);   /* title in mauve */
     gen2_hgr_puts(10,  64, "1 QWERTY  WASD");
     gen2_hgr_puts(10,  96, "2 AZERTY  ZQSD");
     gen2_hgr_puts(38, 150, "PRESS 1 OR 2");

@@ -98,6 +98,10 @@ extern unsigned gen2_r_x, gen2_r_xr;    /* left / right pixel x (0..279)        
 extern unsigned char gen2_r_y0, gen2_r_rows;
 extern unsigned char gen2_r_mode;       /* 1 = fill white, 0 = clear             */
 extern void gen2_pixrect_asm(void);     /* asm: derive cols/masks + (byte&keep)|set */
+/* gen2_colorize parameter block (zero page, gen2_blit.s) — see gen2_hgr_puts_color. */
+extern unsigned char gen2_z_col0, gen2_z_ncols, gen2_z_y0, gen2_z_rows;
+extern unsigned char gen2_z_ce, gen2_z_co, gen2_z_hi;
+extern void gen2_colorize_asm(void);    /* asm: (byte & carrier[col&1]) | hibit   */
 /* The parameter blocks live in the zero page (gen2_blit.s) — tell cc65 so it
  * emits zp stores instead of absolute (smaller/faster, and no ld65 warning). */
 #pragma zpsym("gen2_g_glyph")
@@ -116,6 +120,13 @@ extern void gen2_pixrect_asm(void);     /* asm: derive cols/masks + (byte&keep)|
 #pragma zpsym("gen2_r_y0")
 #pragma zpsym("gen2_r_rows")
 #pragma zpsym("gen2_r_mode")
+#pragma zpsym("gen2_z_col0")
+#pragma zpsym("gen2_z_ncols")
+#pragma zpsym("gen2_z_y0")
+#pragma zpsym("gen2_z_rows")
+#pragma zpsym("gen2_z_ce")
+#pragma zpsym("gen2_z_co")
+#pragma zpsym("gen2_z_hi")
 
 /* Build the lookup tables once (all the asm fast paths read them): the
  * non-linear Apple II HIRES scanline bases (gen2_rowlo/gen2_rowhi) and the
@@ -246,6 +257,45 @@ void gen2_hgr_puts(unsigned x, unsigned char y, const char *s)
         bit += 4u; col += 2u;
         if (bit >= 7u) { bit -= 7u; ++col; }
     }
+}
+
+/* Draw a string in an NTSC artifact COLOUR (GEN2 HIRES has no per-pixel colour).
+ * The glyph is drawn WHITE first, then gen2_colorize_asm masks each byte to the
+ * colour's carrier (and sets the palette high bit for orange/blue):
+ *   GEN2_VIOLET / GEN2_GREEN / GEN2_ORANGE / GEN2_BLUE  (see gen2.h).
+ * Caveat: colour halves the horizontal carrier, so coloured text looks slightly
+ * finer than white; and the box is tinted as a block, so keep coloured labels
+ * clear of other content (don't overlap the white score, etc.). */
+void gen2_hgr_puts_color(unsigned x, unsigned char y, const char *s, unsigned char color)
+{
+    unsigned char len = 0;
+    unsigned right;
+    const char *p = s;
+
+    gen2_hgr_puts(x, y, s);                 /* 1) draw the glyphs white */
+    if (y > 176u) return;
+    while (*p++) ++len;
+    if (len == 0u) return;
+
+    /* Carrier + high bit per colour (verified against the GEN2 renderer):
+     * violet even=$55 odd=$2A hi=0 ; green even=$2A odd=$55 hi=0 ;
+     * orange = green|hi ; blue = violet|hi. */
+    switch (color) {
+        case GEN2_GREEN:  gen2_z_ce = 0x2Au; gen2_z_co = 0x55u; gen2_z_hi = 0x00u; break;
+        case GEN2_ORANGE: gen2_z_ce = 0x2Au; gen2_z_co = 0x55u; gen2_z_hi = 0x80u; break;
+        case GEN2_BLUE:   gen2_z_ce = 0x55u; gen2_z_co = 0x2Au; gen2_z_hi = 0x80u; break;
+        case GEN2_VIOLET: gen2_z_ce = 0x55u; gen2_z_co = 0x2Au; gen2_z_hi = 0x00u; break;
+        default: return;                    /* unknown / white -> leave as drawn */
+    }
+
+    /* Byte-column box covering the text (last glyph spans to x+(len-1)*18+15). */
+    right = x + (unsigned)(len - 1u) * 18u + 15u;
+    if (right > 279u) right = 279u;
+    gen2_z_col0  = (unsigned char)(x / 7u);
+    gen2_z_ncols = (unsigned char)(right / 7u - x / 7u + 1u);
+    gen2_z_y0    = y;
+    gen2_z_rows  = 16u;                      /* glyph cell height */
+    gen2_colorize_asm();
 }
 
 /* Unsigned decimal at (x, y) via gen2_hgr_puts. Builds the digits right-to-left
