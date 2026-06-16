@@ -83,6 +83,12 @@ static unsigned char bonus_ttl;    /* ticks left before the bonus fades        *
 static unsigned char bonus_new;    /* set the tick a bonus spawns  -> loop draws it  */
 static unsigned char bonus_gone;   /* set the tick a bonus expires -> loop erases it */
 static unsigned char layout = 1u;  /* keyboard: 1 = QWERTY (WASD), 2 = AZERTY (ZQSD) */
+/* "HGR SNAKE" title colour, cycled through the four NTSC artifact colours on every
+ * apple — a little visual reward. The recolour is all-asm: gen2_hgr_clear_pixrect
+ * (gen2_pixrect_asm) wipes the label box, gen2_hgr_puts_color draws it again with
+ * the one-pass tinted glyph blitter (gen2_blit_glyph_color). */
+static const unsigned char title_hues[4] = { GEN2_VIOLET, GEN2_GREEN, GEN2_ORANGE, GEN2_BLUE };
+static unsigned char title_hue;    /* index into title_hues, advanced per apple */
 /* Throttle iterations; lower = faster, shrinks per apple. The starting value is
  * tuned so the per-tick busy-wait is HALF the original 9000-constant loop (a
  * genuine x2 start speed): the variable-bound loop costs ~96 cyc/iter vs ~76 for
@@ -229,6 +235,7 @@ static void new_game(void)
     score_shown = 0;           /* redraw() draws score 0; the loop redraws only on change */
     tick_spins = 3565u;        /* reset to the (genuine x2) starting speed (layout kept) */
     apples = 0;
+    title_hue = 0;             /* HGR SNAKE starts violet, shifts colour per apple */
     bonus_active = 0;          /* no bonus until the cadence drops one */
     bonus_new = 0;
     bonus_gone = 0;
@@ -365,6 +372,16 @@ static void draw_score(void)
     gen2_hgr_puts_color(8, 0, buf + i, GEN2_BLUE);
 }
 
+/* Draw the "HGR SNAKE" label, top-right, in the current cycling colour. 9 glyphs x
+ * 18px pitch = 160px wide; x=96 ends it at pixel 255 (clear of the cropped right
+ * edge) and leaves the left-hand score room. Wipe the box first so the new colour's
+ * pixels do not OR-mix with the old one's (both passes are asm). */
+static void draw_title(void)
+{
+    gen2_hgr_clear_pixrect(96u, 0u, 160u, 16u);
+    gen2_hgr_puts_color(96, 0, "HGR SNAKE", title_hues[title_hue]);
+}
+
 /* Full draw — clear + walls/border + food + whole snake + score. Called ONCE
  * per game (start / restart), NOT per tick: the per-tick loop only erases the
  * vacated tail and draws the new head, so the expensive clear + border don't
@@ -378,10 +395,7 @@ static void redraw(void)
     if (bonus_active) draw_bonus(bonusx, bonusy);
     for (i = 0; i < slen; ++i) draw_cell(sx[i], sy[i]);
     draw_score();                       /* score, top-left, BLUE (BBFont 16x16 cells) */
-    /* "HGR SNAKE" HUD label, top-right, in VIOLET (mauve). 9 glyphs x 18px pitch
-     * = 160px wide; x=96 ends the label at pixel 255 (clear of the cropped right
-     * edge) and leaves the left-hand score room. */
-    gen2_hgr_puts_color(96, 0, "HGR SNAKE", GEN2_VIOLET);
+    draw_title();                       /* "HGR SNAKE", top-right, current cycling hue */
 }
 
 /* Plain CPU-spin throttle for a playable tick rate. We deliberately do NOT call
@@ -468,6 +482,8 @@ void main(void)
                     erase_cell(otx, oty);          /* snake moved: clear old tail */
                 } else {
                     draw_food(foodx, foody);       /* grew: show the new food     */
+                    title_hue = (unsigned char)((title_hue + 1u) & 3u);
+                    draw_title();                  /* apple eaten: shift HGR SNAKE colour */
                 }
                 draw_cell(sx[0], sy[0]);           /* draw the new head           */
                 /* Bonus gem: tick() flags a spawn or a time-out; do the drawing
