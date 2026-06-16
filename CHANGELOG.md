@@ -203,3 +203,52 @@ demonstrated end-to-end with no human and no display.
   deterministic frames — verified headless (no `DISPLAY`).
 - `tools/test_telemetry_lockstep.py` refactored onto the library (dogfood) and
   switched to `--headless`.
+
+### Added — POM1 Bench (in-app Arduino-style cc65 / Wozmon IDE)
+
+An in-app sketch editor + build + upload + serial-monitor loop — the author
+front-end for Bernie's "dream SDK". **Desktop-only** for the cc65 asm/C path (no
+subprocess in WASM); the web build keeps the Wozmon-hex target + a "desktop
+only — download the app" CTA banner (`IBenchHost::headerNote()`).
+
+- **Serial Monitor (= telemetry)** — the *Telemetry Side Channel* panel became a
+  real serial monitor: TX tap (`txMonitorRing`, hex/ASCII view, autoscroll,
+  Clear), RX injection line (ASCII/Hex → `TelemetryPort::injectInbound`), a
+  *Step frame* button (releases exactly one lock-step frame), and a *Log to
+  file* field (same stream as `--telemetry-log`).
+- **Editor + Upload** — *DevBench → POM1 Bench*: a 6502/cc65 editor (vendored
+  ImGuiColorTextEdit, MIT, with a 6502 syntax definition), Open/Save, and Upload
+  as Wozmon-hex or raw-bytes@$ (both stop → reset-vectors → hardReset → run).
+- **Verify / Build & Run via cc65** (desktop) — toolchain probe (`whichExe`,
+  exe-relative then `$PATH`), a *Board*/*Target* selector, `ca65`/`ld65`/`cl65`
+  output captured into a Build-output console with clickable error lines
+  (`parseBenchErrorMarkers` → `TextEditor::SetErrorMarkers`).
+- **Arduino-style chrome** — teal toolbar with round Verify/Upload/New/Open/Save
+  + Serial-monitor buttons, Source/Board selectors, a sketch tab, cream editor,
+  dark console (orange error lines), teal status bar.
+- **Targets = machine + build** — `kBenchTargets[]` bundles a POM1 preset
+  (`applyMachineConfig`), a cc65 `.cfg`, a source mode, and an optional companion
+  asset; selecting a target plugs the machine it runs on. Includes the
+  TMS9918-C-as-CodeTank-ROM path (16K@$4000 → pad 32K → `loadCodeTankRom` →
+  `4000R`). The New-sketch dialog is a 2 languages × 4 machines matrix
+  (Apple-1 dual-4K/8K · P-LAB TMS9918 · Uncle Bernie GEN2 HGR · Bernie GEN2 TXT).
+- **Built-in Examples** — Blink (asm/hex), Hello world (C/TMS9918),
+  A-1-CrazyCycle (GEN2 HGR), Telemetry demo.
+- **Bundled cc65 (packaging)** — `Pom1BenchHost::probe()` resolves
+  `ca65/ld65/cl65` exe-relative first (`<exe>/cc65/bin`, macOS `Resources`,
+  AppImage `share/POM1`) + a `POM1_CC65_DIR` override; `ensureCc65Home()` points
+  `CC65_HOME` at the bundle's `share/cc65`. `tools/build_cc65_bundle.sh` stages a
+  relocatable tree (self-tests `cl65`); the three packagers stage it
+  conditionally (warn + continue if absent). Pinned by `process_util_smoke`.
+
+### Added — CI + cycle-exact CPU test
+
+- **GitHub Actions CI** (`.github/workflows/ci.yml`, Linux) — build → `ctest`
+  (Klaus + Harte cycle-exact + smoke + graphics regression) →
+  `make -C dev/projects` (build-all). Verified green on GitHub infra.
+- **Per-opcode cycle-exact CPU oracle** (`cpu_harte_smoke`) — Tom Harte "65x02
+  ProcessorTests", 100 cases × 151 documented opcodes, asserting final regs +
+  RAM **and** cycle count (15100/15100). Fixed several `M6502.cpp` cycle counts
+  (`zp,X`/`zp,Y`/`(zp,X)`/INC-DEC memory/JSR/RTS/BRK/RTI), decimal ADC/SBC
+  (Bruce-Clark NMOS), and the PLP/RTI B-bits. Klaus stays green; IRQ/NMI/BRK line
+  timing covered by `cpu_interrupt_smoke`.
