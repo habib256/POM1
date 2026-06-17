@@ -11,7 +11,13 @@
 #include <cstring>
 #include <filesystem>
 #include <fstream>
+#include <sstream>
 #include <vector>
+
+#include "POM1Build.h"             // POM1_IS_WASM
+#if POM1_IS_WASM
+#include <emscripten.h>            // EM_ASM / EM_ASM_INT for the in-browser cc65 path
+#endif
 
 // ─────────────────────────────────────────────────────────────
 // Static data: starter sketches, the embedded asm cfg, target + example tables
@@ -609,12 +615,16 @@ std::string humanizeCc65(const std::string& out)
 Pom1BenchHost::Pom1BenchHost(MainWindow_ImGui* mw) : mw_(mw)
 {
 #if POM1_IS_WASM
-    // The browser has no cc65 toolchain, so the Bench is restricted to the
-    // toolchain-free Wozmon-hex target (kP1Targets[8]) for now — no cc65 asm/C
-    // targets, no examples, no language x machine matrix.
-    targets_.push_back({ kP1Targets[8].label, kP1Targets[8].label,
-                         kP1Targets[8].lang, kP1Targets[8].wantsAddr });
-    targetMap_.push_back(8);
+    // The browser now has cc65 compiled to WASM (build-wasm/cc65/, driven by
+    // window.POM1cc65 via the async pollBuild path), so expose the ASM targets
+    // that load+run a flat binary — dual-4k text, GEN2 HGR, GEN2 TXT — plus the
+    // toolchain-free hex/raw targets. The C targets (need cc65's version-matched
+    // runtime libs) and the TMS9918 ROM-flash asm target stay desktop-only for now.
+    for (int i : { 0, 2, 3, 8, 9 }) {
+        targets_.push_back({ kP1Targets[i].label, kP1Targets[i].label,
+                             kP1Targets[i].lang, kP1Targets[i].wantsAddr });
+        targetMap_.push_back(i);
+    }
 #else
     for (int i = 0; i < kP1TargetCount; ++i) {
         targets_.push_back({ kP1Targets[i].label, kP1Targets[i].label,
@@ -876,9 +886,65 @@ bench::BuildResult Pom1BenchHost::build(int target, const std::string& src, cons
     }
 
 #if POM1_IS_WASM
-    r.console = "cc65 build is desktop-only - the in-browser POM1 has no ca65/ld65/cl65.\n"
-                "Compile in the desktop build, or paste a Wozmon hex dump (hex/raw target) instead.\n";
-    r.status = "cc65 build is desktop-only"; return r;
+    // In-browser cc65 (build-wasm/cc65, driven by window.POM1cc65). The compile is
+    // an async JS Promise, so kick it off here and return pending=true; CodeBench
+    // then drives pollBuild() each frame until the .bin is ready. C targets (need
+    // cc65's version-matched runtime libs) + the TMS9918 ROM-flash asm target stay
+    // desktop-only — available() doesn't expose them on WASM, so only mode-0 asm
+    // (dual-4k / GEN2 HGR / GEN2 TXT) reaches here.
+    if (t.mode == 3) {
+        r.console = "C compilation isn't wired into the web build yet (needs cc65's "
+                    "runtime libs). Use an asm target, or the desktop app.\n";
+        r.status = "C build: desktop-only on web"; return r;
+    }
+    if (EM_ASM_INT({ return (window.POM1cc65 && window.POM1cc65.available()) ? 1 : 0; }) == 0) {
+        r.console = "In-browser cc65 not available yet (build-wasm/cc65 missing, or POM1 "
+                    "still loading). Reload once the page has finished loading.\n";
+        r.status = "web cc65 not ready"; return r;
+    }
+    {
+        const std::string cfg = std::string("/dev/cc65/") + (t.cfg ? t.cfg : "");
+        uint16_t entry = parseCfgLoadAddr(cfg);   // std::ifstream works on MEMFS
+        if (entry == 0) { try { entry = static_cast<uint16_t>(std::stoul(addrHex, nullptr, 16)); } catch (...) { entry = 0x0300; } }
+        wasmJobActive_ = true; wasmJobVerifyOnly_ = !run;
+        wasmJobTarget_ = target; wasmJobEntry_ = entry;
+        // Mirror the desktop libFlags_ (-I every dev/lib subdir) in JS, then drive
+        // POM1cc65.buildAsm; on resolve write .bin + .log into POM1's MEMFS where
+        // pollBuild() reads them. Module.__benchJob carries the running/done state.
+        // NB: no top-level commas in this EM_ASM body — the C preprocessor would
+        // split them as macro args (only () protects commas, not {} or []). So
+        // multi-var decls are separate statements and bare object literals are
+        // parenthesised; commas inside (...) calls are already safe.
+        EM_ASM({
+            var src = UTF8ToString($0);
+            var cfg = UTF8ToString($1);
+            var FS = Module.FS;
+            var incDirs = [];
+            try {
+                for (var n of FS.readdir('/dev/lib')) {
+                    if (n === '.' || n === '..') continue;
+                    var p = '/dev/lib/' + n;
+                    if (FS.isDir(FS.stat(p).mode)) incDirs.push(p);
+                }
+            } catch (e) {}
+            incDirs.push('/dev/apple1-videocard-lib/lib');
+            Module.__benchJob = ({ state: 'running', code: -1 });
+            window.POM1cc65.buildAsm(src, ({ cfg: cfg, incDirs: incDirs }))
+                .then(function (res) {
+                    try { FS.writeFile('/tmp/pom1_bench.bin', res.bin || new Uint8Array(0)); } catch (e) {}
+                    try { FS.writeFile('/tmp/pom1_bench.log', res.log || ''); } catch (e) {}
+                    Module.__benchJob = { state: 'done', code: res.code | 0 };
+                })
+                .catch(function (e) {
+                    try { FS.writeFile('/tmp/pom1_bench.log', 'web cc65 error: ' + (e && e.stack || e)); } catch (_) {}
+                    Module.__benchJob = { state: 'done', code: 99 };
+                });
+        }, src.c_str(), cfg.c_str());
+        r.pending = true; r.showConsole = true;
+        r.console = "Compiling with in-browser cc65 (WASM)…\n";
+        r.status = run ? "Building (web cc65)…" : "Compiling (web cc65)…";
+        return r;
+    }
 #else
     probe();
     namespace fs = std::filesystem;
@@ -1079,17 +1145,65 @@ bench::BuildResult Pom1BenchHost::build(int target, const std::string& src, cons
 #endif
 }
 
+// Drive the WASM async cc65 build started by build() (no-op on desktop). Called
+// every frame by CodeBench while pending: returns pending=true until the JS
+// Promise resolves, then reads the .bin/.log out of MEMFS and loads+runs it.
+bench::BuildResult Pom1BenchHost::pollBuild()
+{
+    bench::BuildResult r;
+#if POM1_IS_WASM
+    if (!wasmJobActive_) return r;                 // nothing in flight (pending stays false)
+    const int state = EM_ASM_INT({
+        return (Module.__benchJob && Module.__benchJob.state === 'done') ? 1
+             : (Module.__benchJob ? 0 : -1);
+    });
+    if (state != 1) { r.pending = true; r.showConsole = true; r.status = "Building (web cc65)…"; return r; }
+
+    wasmJobActive_ = false;
+    const int code = EM_ASM_INT({ return Module.__benchJob.code | 0; });
+    std::string log;
+    { std::ifstream f("/tmp/pom1_bench.log", std::ios::binary);
+      std::ostringstream ss; ss << f.rdbuf(); log = ss.str(); }
+    r.showConsole = true;
+    r.console = "$ cc65 (in-browser WASM)\n" + log + "\n";
+    if (code != 0) {
+        parseErrorMarkers(log, r.errors);
+        r.console += humanizeCc65(log);
+        r.status = "cc65 failed (see Build output)"; r.ok = false; return r;
+    }
+    r.console += "[ok] assembled + linked (web cc65)\n";
+    if (wasmJobVerifyOnly_) { r.status = "Verify OK"; r.ok = true; return r; }
+
+    // load + run (the exposed WASM asm targets all loadBinary at the cfg entry)
+    const P1T& t = kP1Targets[p1(wasmJobTarget_)];
+    auto* emu = mw_->emulation.get();
+    std::string error; int bytesLoaded = 0;
+    if (emu->loadBinary("/tmp/pom1_bench.bin", wasmJobEntry_, error, &bytesLoaded)) {
+        emu->copySnapshot(mw_->uiSnapshot);
+        const char* where = "";
+        if (t.preset == 12) { mw_->showGraphicsCard = true; where = " - see the GEN2 HGR window"; }
+        char msg[160]; std::snprintf(msg, sizeof(msg), "Built %d B - running @ $%04X%s", bytesLoaded, wasmJobEntry_, where);
+        r.status = msg; r.ok = true;
+    } else { r.status = "load failed: " + error; r.ok = false; }
+#endif
+    return r;
+}
+
 bool Pom1BenchHost::toolchainReady(int target) const
 {
     if (target < 0 || target >= kP1TargetCount) return false;
     const P1T& t = kP1Targets[p1(target)];
     if (t.mode == 1 || t.mode == 2) return true;
+#if POM1_IS_WASM
+    return t.mode == 0;   // asm compiles via the bundled WASM cc65; C not yet wired
+#else
     probe();
     if (!t.needsCl65) return toolchainOk_;
     const std::string cfg = t.cfg ? t.cfg : "";
     if (cfg == "C-gen2")  return gen2COk_;
     if (cfg == "C-plain") return plainCOk_;
     return cl65Ok_;
+#endif
 }
 
 std::string Pom1BenchHost::toolchainHint(int target) const
@@ -1097,9 +1211,13 @@ std::string Pom1BenchHost::toolchainHint(int target) const
     if (target < 0 || target >= kP1TargetCount) return "";
     const P1T& t = kP1Targets[p1(target)];
     if (t.mode == 1 || t.mode == 2) return "";
+#if POM1_IS_WASM
+    return t.mode == 0 ? "cc65 (WASM) ready" : "C: desktop app only";
+#else
     probe();
     if (!t.needsCl65) return toolchainOk_ ? "ca65/ld65 ready" : "needs cc65 (ca65/ld65)";
     return toolchainReady(target) ? "cl65 ready" : "needs cl65 + dev/";
+#endif
 }
 
 std::string Pom1BenchHost::toolchainReport() const
@@ -1136,12 +1254,12 @@ std::string Pom1BenchHost::toolchainReport() const
 std::string Pom1BenchHost::headerNote() const
 {
 #if POM1_IS_WASM
-    // The web build has no cc65 (no subprocesses in the browser): it can only
-    // type Woz-hex into the emulator. Point users at the desktop app for the
-    // full asm/C SDK rather than leaving a silently-crippled toolbar.
-    return "Web build: Woz-hex upload only - assembling 6502 asm / compiling C "
-           "needs the desktop app (bundled cc65). Download POM1 for "
-           "Windows / macOS / Linux: https://github.com/habib256/POM1/releases";
+    // The web build now bundles cc65 compiled to WASM, so the 6502 ASM targets
+    // assemble + run in-browser. C targets still need the desktop app (cc65's
+    // version-matched C runtime libs aren't bundled yet).
+    return "Web build: 6502 asm compiles + runs in-browser (cc65 in WASM). "
+           "C targets still need the desktop app (bundled cc65). Download POM1: "
+           "https://github.com/habib256/POM1/releases";
 #else
     return "";
 #endif

@@ -60,6 +60,15 @@ void CodeBench::render(const char* title, bool* open)
 {
     ensureEditor();
 
+    // Drive any in-flight async build (web/WASM cc65). The host's verify()/upload()
+    // returned pending=true and started a background compile; poll it each frame
+    // until it finishes, then show the final result. No-op on desktop (pending is
+    // never set, so buildPolling_ stays false and pollBuild() is never called).
+    if (buildPolling_) {
+        BuildResult pr = host_->pollBuild();
+        if (!pr.pending) { applyResult(pr); buildPolling_ = false; }
+    }
+
     const auto& targets = host_->targets();
     if (targetIndex_ < 0 || targetIndex_ >= static_cast<int>(targets.size())) targetIndex_ = 0;
 
@@ -143,8 +152,10 @@ void CodeBench::render(const char* title, bool* open)
         browseSave_ = save;
         openBrowse = true;
     };
-    auto doVerify = [&]() { applyResult(host_->verify(targetIndex_, editor_->GetText(), rawAddr_)); };
-    auto doUpload = [&]() { applyResult(host_->upload(targetIndex_, editor_->GetText(), rawAddr_)); };
+    // A pending result means the host started an async (web/WASM) build; remember
+    // to poll it each frame (above) until it resolves.
+    auto doVerify = [&]() { BuildResult r = host_->verify(targetIndex_, editor_->GetText(), rawAddr_); buildPolling_ = r.pending; applyResult(r); };
+    auto doUpload = [&]() { BuildResult r = host_->upload(targetIndex_, editor_->GetText(), rawAddr_); buildPolling_ = r.pending; applyResult(r); };
 
     // ---- Teal toolbar with labelled action pills + circular icon buttons ----
     bool openExamplesPopup = false;

@@ -58,9 +58,10 @@ if [[ -z "$SRC" ]]; then
   fi
 fi
 [[ -d "$SRC/src/common" ]] || { echo "ERROR: $SRC/src/common not found (bad --src?)" >&2; exit 1; }
+mkdir -p "$OUT"
+OUT="$(cd "$OUT" && pwd)"   # absolute — emcc runs after `cd $SRC/src` below
 echo "[cc65-wasm] source : $SRC"
 echo "[cc65-wasm] out    : $OUT"
-mkdir -p "$OUT"
 
 # ---- 2. compile each tool to WASM ------------------------------------------
 # Runtime default search paths, baked in as C string literals (the tools fall

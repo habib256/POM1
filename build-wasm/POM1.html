@@ -134,6 +134,48 @@
       (event.reason && (event.reason.stack || event.reason.message || event.reason));
   });
 </script>
+
+<!-- ── DevBench cc65 toolchain, compiled to WASM (doc/CC65_WASM.md) ──────────
+     Loads the generic orchestrator (cc65_wasm.js), the POM1 glue (cc65_bench.js)
+     and the four tool factories (build-wasm/cc65/*.js, which set window.{ca65,
+     ld65,cc65,ar65}). Missing files just 404 → POM1cc65.available()===false, so
+     the page still works without the toolchain. The .wasm are fetched lazily on
+     first compile, so these tags don't slow the initial load. -->
+<script src="cc65_wasm.js"></script>
+<script src="cc65_bench.js"></script>
+<script src="cc65/ca65.js"></script>
+<script src="cc65/ld65.js"></script>
+<script src="cc65/cc65.js"></script>
+<script src="cc65/ar65.js"></script>
+<script>
+  // window.POM1cc65 — in-browser cc65 for the DevBench. Reads the dev/ toolchain
+  // preloaded into POM1's MEMFS (needs FS exported) and drives the WASM tools.
+  window.POM1cc65 = {
+    available() {
+      return !!(window.CC65 && window.POM1cc65Bench && window.ca65 && window.ld65 &&
+                window.Module && window.Module.FS);
+    },
+    _bench: null,
+    _ensure() {
+      if (this._bench) return this._bench;
+      const FS = window.Module.FS, B = window.POM1cc65Bench;
+      this._bench = B.createBench({
+        CC65: window.CC65,
+        getFactory: (n) => window[n],
+        readFile: (p) => FS.readFile(p),
+        listDir: (d) => B.listEmscriptenDir(FS, d),
+      });
+      return this._bench;
+    },
+    // Assemble + link an asm program. opts:{cfg, incDirs, asmArgs, ldArgs} (paths
+    // under /dev). Resolves to {code, bin:Uint8Array, log}. Byte-identical to
+    // native cc65 (verified). Example (Apple-1 dual-4k text):
+    //   await POM1cc65.buildAsm(src, {cfg:'/dev/cc65/apple1_4k.cfg', incDirs:['/dev/lib/apple1']})
+    async buildAsm(source, opts) { return this._ensure().buildAsm(source, opts); },
+  };
+  console.log('[POM1] cc65 WASM toolchain script loaded — POM1cc65.buildAsm(src,{cfg,incDirs}) ' +
+              'is available once POM1 finishes loading (POM1cc65.available()).');
+</script>
 <script async type="text/javascript" src="POM1.js"></script>
 </body>
 </html>

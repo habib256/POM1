@@ -39,6 +39,7 @@ private:
     bool statusOk_ = true;
     bool showConsole_ = false;
     bool inited_ = false;
+    bool buildPolling_ = false;      // an async (web/WASM) build is in flight
     std::string status_;
     char rawAddr_[8] = "0300";
     // In-app file browser (Open/Save), rooted at the host's browseDir().

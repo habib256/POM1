@@ -271,9 +271,20 @@ if(EMSCRIPTEN)
         # cassette deck on first boot; the rest are available from the file
         # dialog).
         "--preload-file ${PRELOAD_DIR}/cassettes@cassettes"
+        # DevBench cc65-in-WASM: preload the toolchain data (linker cfgs + asm
+        # includes + libs, ~1.8 MB) so the bundled WASM cc65 tools can read the
+        # dev/ tree from POM1's MEMFS when assembling in-browser. The tools
+        # themselves (build-wasm/cc65/*.wasm) are loaded on demand by JS, NOT
+        # preloaded here. See doc/CC65_WASM.md. Build them once with
+        # tools/build_cc65_wasm.sh --out build-wasm/cc65.
+        "--preload-file ${PRELOAD_DIR}/dev/cc65@dev/cc65"
+        "--preload-file ${PRELOAD_DIR}/dev/lib@dev/lib"
+        "--preload-file ${PRELOAD_DIR}/dev/apple1-videocard-lib@dev/apple1-videocard-lib"
         "--shell-file ${SHELL_FILE}"
         "-s EXPORTED_FUNCTIONS=[${POM1_MAIN_EXPORT}_pom1_fillAudioBuffer,_malloc,_free]"
-        "-s EXPORTED_RUNTIME_METHODS=['ccall','HEAPF32']"
+        # FS is exported so the cc65 glue (shell.html) can read the preloaded
+        # dev/ files out of POM1's MEMFS and feed them to the cc65 tool modules.
+        "-s EXPORTED_RUNTIME_METHODS=['ccall','HEAPF32','FS']"
     )
     # Join list into a single space-separated string for linker flags
     list(JOIN EM_LINK_FLAGS " " EM_LINK_FLAGS_STR)
@@ -298,6 +309,24 @@ if(EMSCRIPTEN)
             "$<TARGET_FILE_DIR:${PROJECT_NAME}>/pic/icon.png"
         VERBATIM
     )
+
+    # DevBench cc65-in-WASM: stage the hand-written glue next to POM1.html so the
+    # shell.html <script> tags resolve. The cc65 tool modules (build-wasm/cc65/*)
+    # are produced separately by tools/build_cc65_wasm.sh and already live in the
+    # output dir; warn if they're missing so the asm path is known-unavailable.
+    add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            "${CMAKE_CURRENT_SOURCE_DIR}/tools/cc65_wasm.js"
+            "$<TARGET_FILE_DIR:${PROJECT_NAME}>/cc65_wasm.js"
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            "${CMAKE_CURRENT_SOURCE_DIR}/tools/cc65_bench.js"
+            "$<TARGET_FILE_DIR:${PROJECT_NAME}>/cc65_bench.js"
+        VERBATIM
+    )
+    if(NOT EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/build-wasm/cc65/ca65.wasm")
+        message(STATUS "POM1: build-wasm/cc65/ not found — run tools/build_cc65_wasm.sh "
+                       "to enable the in-browser DevBench asm path (cc65 in WASM).")
+    endif()
 
 else()
     # ── Native build (Linux / macOS / Windows) ────────────────────────

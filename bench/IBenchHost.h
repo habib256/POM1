@@ -38,6 +38,11 @@ struct BuildResult {
     std::string console;
     std::string status;
     std::vector<std::pair<int, std::string>> errors;  // 1-based line, message
+    // Async build (web/WASM): when a host can't finish synchronously (the browser
+    // build compiles via async WASM cc65), verify()/upload() return pending=true
+    // with a "building…" status; CodeBench then calls pollBuild() each frame until
+    // it returns a result with pending=false. Desktop hosts never set this.
+    bool pending = false;
 };
 
 // Result of loading a built-in example: the source to drop into the editor plus
@@ -77,6 +82,12 @@ public:
     virtual ExampleLoad loadExample(int exampleIndex)                                    = 0;
     virtual BuildResult verify(int target, const std::string& src, const std::string& addrHex) = 0;
     virtual BuildResult upload(int target, const std::string& src, const std::string& addrHex) = 0;
+
+    // Poll a pending async build (see BuildResult::pending). Called every frame by
+    // CodeBench while a build is in flight; returns pending=true until the build
+    // finishes, then the final result (which CodeBench applies). Default: no async
+    // builds — returns a finished empty result. Only the WASM host overrides this.
+    virtual BuildResult pollBuild() { return {}; }
 
     // ---- Toolchain availability hint shown next to the Target combo ----
     virtual bool        toolchainReady(int target) const = 0;

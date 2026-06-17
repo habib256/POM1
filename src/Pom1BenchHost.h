@@ -32,6 +32,7 @@ public:
     bench::ExampleLoad  loadExample(int exampleIndex) override;
     bench::BuildResult  verify(int target, const std::string& src, const std::string& addrHex) override;
     bench::BuildResult  upload(int target, const std::string& src, const std::string& addrHex) override;
+    bench::BuildResult  pollBuild() override;   // WASM: drive the async cc65 build
 
     bool        toolchainReady(int target) const override;
     std::string toolchainHint (int target) const override;
@@ -82,6 +83,14 @@ private:
     mutable std::string telemetryLib_;   // header-only telemetry.h include dir (all C targets)
     mutable std::string gfxLib_;          // dev/lib/gfx — card-neutral geometry/number layer (GEN2 + TMS)
     mutable std::string devRoot_;        // resolved dev/ tree (source or bundled); reused at build time
+
+    // WASM async build job (see pollBuild): the in-browser cc65 compile runs via a
+    // JS Promise, so build() kicks it off + returns pending and pollBuild() picks
+    // up the result. Unused on desktop.
+    bool     wasmJobActive_     = false;
+    bool     wasmJobVerifyOnly_ = false;
+    int      wasmJobTarget_     = -1;     // kP1Targets index being built
+    uint16_t wasmJobEntry_      = 0;      // load/run address from the linker cfg
 };
 
 #endif // POM1_BENCH_HOST_H
