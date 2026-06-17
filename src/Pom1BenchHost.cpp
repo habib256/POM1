@@ -616,11 +616,11 @@ Pom1BenchHost::Pom1BenchHost(MainWindow_ImGui* mw) : mw_(mw)
 {
 #if POM1_IS_WASM
     // The browser now has cc65 compiled to WASM (build-wasm/cc65/, driven by
-    // window.POM1cc65 via the async pollBuild path), so expose the ASM targets
-    // that load+run a flat binary — dual-4k text, GEN2 HGR, GEN2 TXT — plus the
+    // window.POM1cc65 via the async pollBuild path), so expose every ASM target
+    // — dual-4k text, TMS9918 (CodeTank ROM flash), GEN2 HGR, GEN2 TXT — plus the
     // toolchain-free hex/raw targets. The C targets (need cc65's version-matched
-    // runtime libs) and the TMS9918 ROM-flash asm target stay desktop-only for now.
-    for (int i : { 0, 2, 3, 8, 9 }) {
+    // runtime libs, not bundled yet) stay desktop-only for now.
+    for (int i : { 0, 1, 2, 3, 8, 9 }) {
         targets_.push_back({ kP1Targets[i].label, kP1Targets[i].label,
                              kP1Targets[i].lang, kP1Targets[i].wantsAddr });
         targetMap_.push_back(i);
@@ -1174,9 +1174,38 @@ bench::BuildResult Pom1BenchHost::pollBuild()
     r.console += "[ok] assembled + linked (web cc65)\n";
     if (wasmJobVerifyOnly_) { r.status = "Verify OK"; r.ok = true; return r; }
 
-    // load + run (the exposed WASM asm targets all loadBinary at the cfg entry)
     const P1T& t = kP1Targets[p1(wasmJobTarget_)];
     auto* emu = mw_->emulation.get();
+    namespace fs = std::filesystem;
+    std::error_code ec;
+
+    if (t.codetankRom) {
+        // TMS9918 asm: wrap the .bin into a CodeTank dev ROM, flash it, jumper to
+        // the lower 16K bank, reset + boot 4000R (mirrors the desktop path).
+        std::ifstream in("/tmp/pom1_bench.bin", std::ios::binary);
+        std::vector<unsigned char> rom(0x8000, 0xFF);
+        in.read(reinterpret_cast<char*>(rom.data()), 0x4000);
+        fs::path romPath;
+        for (const char* pre : {"roms/codetank", "/roms/codetank"})
+            if (fs::exists(fs::path(pre), ec)) { romPath = fs::path(pre) / "CODETANKDEV.rom"; break; }
+        if (romPath.empty()) romPath = "/tmp/CODETANKDEV.rom";
+        std::ofstream(romPath, std::ios::binary)
+            .write(reinterpret_cast<const char*>(rom.data()), static_cast<std::streamsize>(rom.size()));
+        std::string error;
+        if (!emu->loadCodeTankRom(romPath.string(), error)) { r.status = "CODETANKDEV.rom load failed: " + error; r.ok = false; return r; }
+        mw_->codeTankJumper = CodeTank::Jumper::Lower16;
+        emu->setCodeTankJumper(mw_->codeTankJumper);
+        if (!mw_->tms9918Enabled) { mw_->tms9918Enabled = true; mw_->showTMS9918 = true; emu->setTMS9918Enabled(true); }
+        if (!mw_->codeTankEnabled) { mw_->codeTankEnabled = true; emu->setCodeTankEnabled(true); }
+        emu->hardReset();
+        mw_->codeTankPendingWozRunAt = ImGui::GetTime() + 1.0;
+        emu->copySnapshot(mw_->uiSnapshot);
+        r.console += "[ok] flashed CODETANKDEV.rom (lower bank) - 4000R\n";
+        r.status = "CODETANKDEV.rom flashed - booting 4000R - see the TMS9918 window"; r.ok = true;
+        return r;
+    }
+
+    // other asm targets: loadBinary at the cfg entry + run
     std::string error; int bytesLoaded = 0;
     if (emu->loadBinary("/tmp/pom1_bench.bin", wasmJobEntry_, error, &bytesLoaded)) {
         emu->copySnapshot(mw_->uiSnapshot);
