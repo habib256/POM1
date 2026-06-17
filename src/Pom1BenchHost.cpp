@@ -614,28 +614,27 @@ std::string humanizeCc65(const std::string& out)
 
 Pom1BenchHost::Pom1BenchHost(MainWindow_ImGui* mw) : mw_(mw)
 {
-#if POM1_IS_WASM
     // The browser now has the full cc65 toolchain compiled to WASM
-    // (build-wasm/cc65/ + the bundled C runtime, driven by window.POM1cc65 via
-    // the async pollBuild path), so expose every target: the four asm targets,
-    // the four C targets (cc65 + none.lib runtime), and hex/raw — same as desktop.
+    // (build-wasm/cc65/ + the bundled C runtime, driven by window.POM1cc65 via the
+    // async pollBuild path), so the web build exposes every target + the New-sketch
+    // (language x machine) matrix, same as desktop.
     for (int i = 0; i < kP1TargetCount; ++i) {
         targets_.push_back({ kP1Targets[i].label, kP1Targets[i].label,
                              kP1Targets[i].lang, kP1Targets[i].wantsAddr });
         targetMap_.push_back(i);
     }
-#else
-    for (int i = 0; i < kP1TargetCount; ++i) {
-        targets_.push_back({ kP1Targets[i].label, kP1Targets[i].label,
-                             kP1Targets[i].lang, kP1Targets[i].wantsAddr });
-        targetMap_.push_back(i);
-    }
-    for (int i = 0; i < kP1ExampleCount; ++i)
-        examples_.push_back({ kP1Examples[i].label });
+    // New-sketch matrix — works on web + desktop (the starter sketches are
+    // compiled-in strings, no file access).
     for (const char* l : kP1Languages)     languages_.push_back(l);
     for (const char* m : kP1Machines)      machines_.push_back(m);
     for (const char* h : kP1LanguageHints) languageHints_.push_back(h);
     for (const char* h : kP1MachineHints)  machineHints_.push_back(h);
+#if !POM1_IS_WASM
+    // Examples load their source from dev/projects/, which the WASM build does NOT
+    // preload (only dev/{cc65,lib,apple1-videocard-lib} for the toolchain) — so
+    // the Examples popup stays desktop-only.
+    for (int i = 0; i < kP1ExampleCount; ++i)
+        examples_.push_back({ kP1Examples[i].label });
 #endif
 }
 
