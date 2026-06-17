@@ -1,5 +1,7 @@
 # TMS Snake — classic snake on TMS9918
 
+*[← POM1 documentation index](../../../doc/README.md)*
+
 Eat the apples, grow longer, don't bite yourself or hit the wall. Score
 = food eaten. 32×24 Graphics I mode on the P-LAB TMS9918 Graphic Card;
 row 0 is the score HUD, rows 1..23 form the playfield (30×21 playable

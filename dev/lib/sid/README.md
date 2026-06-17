@@ -1,5 +1,7 @@
 # lib/sid — P-LAB A1-SID sound card primitives
 
+*[← POM1 documentation index](../../../doc/README.md)*
+
 Equates + initialisation + note-trigger helpers for the P-LAB A1-SID
 (MOS 6581 / 8580 at `$C800-$CFFF`). Replaces the inline-everywhere
 register storage you see in `dev/projects/sid_piano/` and unblocks

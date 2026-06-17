@@ -1,5 +1,7 @@
 # Apple 1 Chess (TMS9918 variant) — v0.1 (engine v0.5)
 
+*[← POM1 documentation index](../../../doc/README.md)*
+
 Pure 6502 asm chess for the original Apple 1 + P-LAB TMS9918 Graphic Card.
 Two-player human vs human on an 8×8 board with 16×16-pixel piece glyphs
 displayed on the TMS9918 screen; status text and move input on the

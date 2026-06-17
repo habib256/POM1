@@ -1,5 +1,7 @@
 # HGR Mandelbrot — fixed-point explorer
 
+*[← POM1 documentation index](../../../doc/README.md)*
+
 Mandelbrot set on the GEN2 Color Graphics Card. 4.12 fixed-point math,
 byte-column rendering, six preset positions selectable at runtime.
 Inspired by Fred Stark's text-mode `mandelbrot-65`.

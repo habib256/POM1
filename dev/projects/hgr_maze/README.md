@@ -1,5 +1,7 @@
 # HGR Maze — Recursive Backtracker on full HGR
 
+*[← POM1 documentation index](../../../doc/README.md)*
+
 Full-screen maze generator on the GEN2 Color Graphics Card. Recursive
 Backtracker (DFS) algorithm, 34×23 cells mapped to the 280×192 HGR
 buffer with sub-byte rendering via lookup tables (no NTSC artifact

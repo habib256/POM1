@@ -1,5 +1,7 @@
 # cc65/ — shared cc65 linker configs + Woz-hex emitter
 
+*[← POM1 documentation index](../../doc/README.md)*
+
 Shared linker configs reusable across projects, plus a single `emit_woz.py`
 module that replaces the per-project `emit_*_txt.py` boilerplate.
 

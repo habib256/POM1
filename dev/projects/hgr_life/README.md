@@ -1,5 +1,7 @@
 # HGR Life — Conway's Game of Life (multi-pattern)
 
+*[← POM1 documentation index](../../../doc/README.md)*
+
 Conway's Game of Life on the GEN2 Color Graphics Card. 40×40 cell grid,
 7×4 pixels per cell, double-buffered. B3/S23 rules with dead borders
 (gliders die at the edge). Press any key to cycle to the next preset

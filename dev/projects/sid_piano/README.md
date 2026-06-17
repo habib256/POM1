@@ -1,5 +1,7 @@
 # SID Piano (AZERTY) — Claudio Parmigiani
 
+*[← POM1 documentation index](../../../doc/README.md)*
+
 The original P-LAB A1-SID keyboard piano by Claudio Parmigiani (2019),
 ported to ca65 for POM1 with an AZERTY layout (DAW-standard middle/top
 row mapping). Press a row key to play a note, `1`-`8` to change octave,

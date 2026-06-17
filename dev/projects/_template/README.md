@@ -1,5 +1,7 @@
 # _template — minimal Apple-1 "hello world" (copy me)
 
+*[← POM1 documentation index](../../../doc/README.md)*
+
 The smallest useful Apple-1 program, in both **assembly** and **C**. Copy this
 whole folder, rename, and start editing. Sorts to the top of `dev/projects/`
 thanks to the leading `_`.

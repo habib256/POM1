@@ -1,5 +1,7 @@
 # TMS Plasma — Cruzer / jblang plasma effect (6502 port)
 
+*[← POM1 documentation index](../../../doc/README.md)*
+
 6502 port of [J.B. Langston's TMS9918 plasma demo](https://github.com/jblang/TMS9918A/blob/master/examples/plasma.asm)
 for the P-LAB Apple-1 TMS9918 Graphic Card. The demo data and algorithm
 are themselves a Z80 port of *Plascii Petsma* (Cruzer / Camelot, C64 —

@@ -1,5 +1,7 @@
 # HGR Connect 4 — graphical port
 
+*[← POM1 documentation index](../../../doc/README.md)*
+
 Two-player Connect 4 (drop-piece, 7×6 grid) on the GEN2 Color Graphics
 Card.
 

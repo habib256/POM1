@@ -1,5 +1,7 @@
 # TMS Orbital Pool — gravitational billiards
 
+*[← POM1 documentation index](../../../doc/README.md)*
+
 Aim, charge, fire — bend the trajectory of your ball around 1..3
 gravity wells to hit the target. 32×24 char-cell grid (native 8×8 TMS
 chars), three levels, on the P-LAB TMS9918 Graphic Card. Companion of

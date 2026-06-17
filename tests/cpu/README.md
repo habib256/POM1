@@ -1,5 +1,7 @@
 # tests/cpu — CPU cycle-exact oracle fixture
 
+*[← POM1 documentation index](../../doc/README.md)*
+
 `harte_6502.bin` is a compact binary distilled from the Tom Harte **"65x02
 ProcessorTests"** suite (github.com/SingleStepTests/ProcessorTests, `6502/v1`)
 — the real-hardware-validated 6502 reference. Built by

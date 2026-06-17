@@ -1,5 +1,7 @@
 # TMS Mandel — Mandelbrot set on TMS9918 Mode II (6502 port)
 
+*[← POM1 documentation index](../../../doc/README.md)*
+
 6502 port of [J.B. Langston's TMS9918 Mandelbrot demo](https://github.com/jblang/TMS9918A/blob/master/examples/mandel.asm)
 for the P-LAB Apple-1 TMS9918 Graphic Card. The fixed-point iteration is
 [Rosetta Code's Z80 implementation](https://rosettacode.org/wiki/Mandelbrot_set#Z80_Assembly);

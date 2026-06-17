@@ -1,5 +1,7 @@
 # apple1-videocard-lib (cc65, CodeTank uniquement)
 
+*[← POM1 documentation index](../../doc/README.md)*
+
 Port C **cc65** de la bibliothèque originale **[nippur72/apple1-videocard-lib](https://github.com/nippur72/apple1-videocard-lib)** par **Antonino "Nino" Porcino** (KickC). Toute amélioration sous cet arbre conserve l'attribution upstream (header dans chaque `.c` / `.h` / `.s`) — voir [Licence / attribution](#licence--attribution).
 
 Cible POM1 : **P-LAB CodeTank**, image ROM **16 Ko @ `$4000-$7FFF`**, démarrage **Wozmon `4000R`**, preset **7** (TMS9918 + CodeTank).

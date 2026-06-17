@@ -1,5 +1,7 @@
 # TMS Connect 4 — graphical port
 
+*[← POM1 documentation index](../../../doc/README.md)*
+
 Two-player Connect 4 (drop-piece, 7×6 grid) on the P-LAB TMS9918
 Graphic Card. Companion of `games_connect4` (text mode) and
 `hgr_connect4` (GEN2 HGR).

@@ -1,5 +1,7 @@
 # lib/m6502 — generic 6502 utilities
 
+*[← POM1 documentation index](../../../doc/README.md)*
+
 Machine-agnostic helpers usable on any 6502 system. They use `apple1.inc`'s
 `ECHO` for output (so today they're tied to Apple-1), but the math/RNG/division
 routines have no Apple-1-specific addresses and can be relocated.

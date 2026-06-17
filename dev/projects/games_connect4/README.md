@@ -1,5 +1,7 @@
 # Connect 4 — text mode
 
+*[← POM1 documentation index](../../../doc/README.md)*
+
 Two-player drop-piece game on a 7×6 grid, rendered in 40×24 text mode on
 the stock Apple 1 terminal. Players alternate dropping `X` and `O`; the
 first to align four wins.

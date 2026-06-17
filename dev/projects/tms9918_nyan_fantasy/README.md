@@ -1,5 +1,7 @@
 # TMS Nyan Fantasy — full 12-frame Nyan Cat (POM1 Fantasy preset)
 
+*[← POM1 documentation index](../../../doc/README.md)*
+
 XXL variant of the stock 4 KB Nyan build — same algorithm,
 but ships the FULL 12-frame animation (18 432 bytes from
 [jblang's `nyan/nyan.bin`](https://github.com/jblang/TMS9918A/raw/master/examples/nyan/nyan.bin))

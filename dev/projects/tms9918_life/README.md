@@ -1,5 +1,7 @@
 # TMS Life — Conway's Game of Life (multi-pattern)
 
+*[← POM1 documentation index](../../../doc/README.md)*
+
 Conway's Game of Life on the P-LAB TMS9918 Graphic Card. 32×24 cells
 (one 8×8 char per cell) in TMS9918 Graphics I mode, double-buffered,
 B3/S23 rules with dead borders. Press any key (or `K`) to cycle to the

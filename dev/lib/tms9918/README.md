@@ -1,5 +1,7 @@
 # lib/tms9918 — P-LAB TMS9918 Graphic Card driver
 
+*[← POM1 documentation index](../../../doc/README.md)*
+
 Equates + drivers for the P-LAB Apple-1 TMS9918 card. Two modes shipped,
 mutually exclusive (you pick one per project — links the matching `.o`).
 

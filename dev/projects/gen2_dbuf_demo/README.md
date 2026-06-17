@@ -1,5 +1,7 @@
 # GEN2DBuf — double buffering (PAGE2) sur carte GEN2
 
+*[← POM1 documentation index](../../../doc/README.md)*
+
 Petit programme **C** qui montre le **double buffering** de la carte couleur GEN2
 d'Uncle Bernie : un bloc 16×16 rebondit sur tout l'écran HIRES 280×192, **sans
 scintillement ni déchirure**.

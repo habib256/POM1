@@ -1,5 +1,7 @@
 # lib/sd — P-LAB microSD card byte-level handshake
 
+*[← POM1 documentation index](../../../doc/README.md)*
+
 Direct VIA-level access to the microSD MCU, bypassing the SD CARD OS
 ROM at `$8000-$9FFF`. The ROM is fine for interactive use (Wozmon
 prompt, `D`/`LOAD`/`CD` commands) but for utility programs that want

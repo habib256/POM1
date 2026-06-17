@@ -1,5 +1,7 @@
 # GEN2Vectors — sprites XOR rapides + vectoriel + HUD (double buffering)
 
+*[← POM1 documentation index](../../../doc/README.md)*
+
 Démo **C** qui réunit cinq briques de `dev/lib/gen2c` et montre comment animer
 plein écran vite sur la carte GEN2 : **quatre balles** (une grosse 48×48, trois
 petites 16×16) rebondissent dans un cadre **et s'entrechoquent** (toutes les

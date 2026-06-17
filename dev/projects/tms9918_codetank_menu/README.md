@@ -1,5 +1,7 @@
 # CodeTank Lower-Bank Menu
 
+*[← POM1 documentation index](../../../doc/README.md)*
+
 256-byte launcher that lives at the start of the CodeTank lower 16 kB
 bank (`$4000-$40FF`). Lets the user pick between four games packed into
 the same bank:

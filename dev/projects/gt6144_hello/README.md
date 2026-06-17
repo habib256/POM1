@@ -1,5 +1,7 @@
 # GT-6144 Hello — clear + centred 2-line text
 
+*[← POM1 documentation index](../../../doc/README.md)*
+
 Smallest possible program for the SWTPC GT-6144 Graphic Terminal (1976,
 $98.50). Clears the 64×96 monochrome framebuffer (Intel 2102 bistable
 SRAM powers up with random bits — visible as the classic "petits

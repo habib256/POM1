@@ -1,5 +1,7 @@
 # lib/wifi — Wi-Fi Modem (W65C51N ACIA + ESP8266) primitives
 
+*[← POM1 documentation index](../../../doc/README.md)*
+
 Byte-level + AT-command helpers for the P-LAB Wi-Fi Modem card. The
 card pairs a 65C51 ACIA at `$B000-$B003` with an ESP8266 doing TCP
 transport and Hayes-style AT framing. From the 6502's view it's a

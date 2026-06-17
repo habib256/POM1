@@ -1,5 +1,7 @@
 # Little Tower v1.0 — text adventure
 
+*[← POM1 documentation index](../../../doc/README.md)*
+
 Apple 1 text adventure originally written September 2000, refreshed
 April 2026. A short fantasy crawl in the early-`80s` style: read room
 descriptions, type single-letter directions, hunt for the tower's

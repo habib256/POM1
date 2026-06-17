@@ -1,5 +1,7 @@
 # TMS Sokoban — graphical port
 
+*[← POM1 documentation index](../../../doc/README.md)*
+
 Sokoban with a 16×16-block playfield (2×2 grid of 8×8 chars per tile)
 on the P-LAB TMS9918 Graphic Card. Re-uses the level pack and core
 push logic from `dev/lib/games/sokoban/` (Microban I #1..#44 by D.W. Skinner

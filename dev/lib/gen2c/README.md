@@ -1,5 +1,7 @@
 # gen2c/ — C runtime for Uncle Bernie's GEN2 HGR card (cc65)
 
+*[← POM1 documentation index](../../../doc/README.md)*
+
 Minimal C over the GEN2 colour graphics card's **280×192 HIRES** framebuffer.
 Pairs with the shared [`apple1c`](../apple1c/) text base, so a GEN2 C program can
 draw HIRES *and* print to the WOZ terminal / read the keyboard.

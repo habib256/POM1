@@ -1,5 +1,7 @@
 # TMS Split — palette split mid-frame via 5th-sprite-overflow trigger
 
+*[← POM1 documentation index](../../../doc/README.md)*
+
 Smallest possible consumer for `dev/lib/tms9918/tms9918_5strigger.asm`.
 Demonstrates that, on P-LAB stock (no /INT wired), the 6502 can still
 schedule a mid-frame event by placing 5 invisible sprites at a chosen

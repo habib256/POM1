@@ -1,5 +1,7 @@
 # lib/gt6144 — SWTPC GT-6144 Graphic Terminal primitives
 
+*[← POM1 documentation index](../../../doc/README.md)*
+
 The Apple-1's first commercial graphics card (1976): 64×96 mono pixels
 on six Intel 2102 SRAMs, write-only port at `$D00A`. Replaces the
 inline clear + plot logic in `dev/projects/gt6144_hello` and

@@ -1,5 +1,7 @@
 # dev/lib/gfx — card-neutral graphics primitives (factoring axis 1)
 
+*[← POM1 documentation index](../../../doc/README.md)*
+
 One implementation of the **card-independent** 2D logic shared by the GEN2 HGR
 card and the P-LAB TMS9918 card. Only the per-pixel store and the screen width
 differ between the two; the geometry and the integer→ASCII conversions are

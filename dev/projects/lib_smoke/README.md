@@ -1,5 +1,7 @@
 # LibSmoke — unified ZP convention validation
 
+*[← POM1 documentation index](../../../doc/README.md)*
+
 This project is **not a user program**. It exists to validate that
 `dev/lib/apple1/zp.inc` and the factored helpers (`kbd.asm`, `delay.asm`,
 `print_num.asm`, the corrected `WOZMON = $FF1A` equate) compose correctly

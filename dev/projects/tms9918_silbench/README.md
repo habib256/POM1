@@ -1,5 +1,7 @@
 # TMS SilBench — TMS9918 silicon benchmark suite (29 tests)
 
+*[← POM1 documentation index](../../../doc/README.md)*
+
 Replacement for the legacy `tms9918_siltest`. SilBench is a **menu-driven
 visual + transcribable** benchmark battery for the P-LAB TMS9918
 Graphic Card. Each of the 29 tests:

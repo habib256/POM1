@@ -1,5 +1,7 @@
 # HGR Bestiary
 
+*[← POM1 documentation index](../../../doc/README.md)*
+
 A browser for the pre-baked **HGR sprite bestiary** (`dev/lib/hgr/sprites/`) on
 Uncle Bernie's GEN2 Color Graphics Card. It pages through six of the
 SCROLL-O-SPRITES fantasy-adventure categories — the GEN2 HGR mirror of the

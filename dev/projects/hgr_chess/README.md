@@ -1,5 +1,7 @@
 # Apple 1 Chess (GEN2 HGR variant) — v0.1 (engine v0.5)
 
+*[← POM1 documentation index](../../../doc/README.md)*
+
 Pure 6502 asm chess for the original Apple 1 + Uncle Bernie's GEN2
 Color Graphics Card. Two-player human vs human, with the chess engine +
 piece display on the regular Apple-1 40×24 text screen, AND a chequered

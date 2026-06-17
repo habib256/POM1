@@ -1,5 +1,7 @@
 # Sokoban — text mode
 
+*[← POM1 documentation index](../../../doc/README.md)*
+
 Classic push-boxes puzzle in 40×24 text. 45 levels: 3 teaching levels
 plus Microban I #1..#42 by David W. Skinner (2000). Keyboard W/A/S/D
 (QWERTY) or Z/Q/S/D (AZERTY). `U` = undo, `R` = reset level, `N` = next

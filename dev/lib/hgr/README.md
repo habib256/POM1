@@ -1,5 +1,7 @@
 # lib/hgr — Uncle Bernie's GEN2 HGR data tables + sub-byte rendering
 
+*[← POM1 documentation index](../../../doc/README.md)*
+
 Lookup tables for the GEN2 HGR card (passive RAM-mapped framebuffer at
 `$2000-$3FFF`). The card is 280×192 NTSC artifact-color; pixel layout follows
 the Apple II non-linear scanline addressing.

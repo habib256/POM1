@@ -1,5 +1,7 @@
 # CodeTank Upper-Bank Dispatcher Menu
 
+*[← POM1 documentation index](../../../doc/README.md)*
+
 128-byte launcher that lives at the start of the CodeTank **upper** 16 kB
 bank (`$4000-$407F`). Replaces the Tetris-only auto-loader at `$4000` with
 a 1-key prompt:

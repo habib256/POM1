@@ -1,5 +1,7 @@
 # A1-IO RTC Clock — text mode
 
+*[← POM1 documentation index](../../../doc/README.md)*
+
 Centred date+time line driven by the P-LAB A1-IO & RTC card (DS3231).
 Forty-column layout, English month names (`JANUARY..DECEMBER`), 5-second
 refresh. Reads broadcast registers from the emulated ATMEGA32 over the

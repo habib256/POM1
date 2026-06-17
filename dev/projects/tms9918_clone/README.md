@@ -1,5 +1,7 @@
 # TMS Clone — sprite cloning bug exhibition (Bug N°8)
 
+*[← POM1 documentation index](../../../doc/README.md)*
+
 Visual regression fixture for POM1's port of meisei `vdp.c:591-670`
 (2026-05) — the silicon-faithful sprite cloning algorithm by hap.
 6502 port of the BASIC test program from

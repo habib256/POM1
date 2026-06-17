@@ -1,5 +1,7 @@
 # GEN2Countdown — compteur 20 → 0 sur carte GEN2 HGR
 
+*[← POM1 documentation index](../../../doc/README.md)*
+
 Petit programme **C** pour la carte couleur GEN2 d'Uncle Bernie : il affiche un
 grand chiffre centré sur l'écran HIRES 280×192 et décompte de **20 à 0** (un
 nombre par ~seconde), affiche `LIFTOFF!` à zéro, puis **rend la main au WOZ

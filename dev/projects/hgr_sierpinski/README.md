@@ -1,5 +1,7 @@
 # HGR Sierpinski — bitwise fractal
 
+*[← POM1 documentation index](../../../doc/README.md)*
+
 Full-screen, centred Sierpinski triangle on the GEN2 Color Graphics
 Card. Deterministic bitwise rendering — each lit pixel obeys the
 classic `(x AND y) == 0` rule.

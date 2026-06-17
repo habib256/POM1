@@ -1,5 +1,7 @@
 # tests/gfx — golden-image regression fixtures
 
+*[← POM1 documentation index](../../doc/README.md)*
+
 Frozen inputs + reference renders for POM1's headless graphics-regression
 capture (`--dump-gen2-frame` / `--dump-tms-frame`, see [`doc/CLI.md`](../../doc/CLI.md)).
 Driven by [`tools/test_gfx_regress.py`](../../tools/test_gfx_regress.py) and the

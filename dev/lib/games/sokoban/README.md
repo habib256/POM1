@@ -1,5 +1,7 @@
 # lib/games/sokoban — Sokoban shared data
 
+*[← POM1 documentation index](../../../../doc/README.md)*
+
 Level data and common structures shared between Sokoban variants. The same
 levels back the text-mode 4 KB build, the GEN2 HGR build, and the TMS9918
 build, so the level encoding is deliberately neutral.

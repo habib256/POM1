@@ -1,5 +1,7 @@
 # HGR Orbital Pool — gravitational billiards
 
+*[← POM1 documentation index](../../../doc/README.md)*
+
 Aim, charge, fire — bend the trajectory of your ball around 1..3
 gravity wells to hit the target. 32×24 cell grid (7×8-pixel cells),
 three levels, on the GEN2 Color Graphics Card. Companion of

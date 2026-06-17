@@ -1,5 +1,7 @@
 # TMS_Asteroids — vector-style ship + bullet (V0.2)
 
+*[← POM1 documentation index](../../../doc/README.md)*
+
 Foundation milestone for an Asteroids-style game on the Apple-1 +
 TMS9918. V0.2 has a single rotating ship sprite with classic Asteroids
 physics (thrust adds velocity in the heading direction, no friction,

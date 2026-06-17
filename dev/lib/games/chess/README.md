@@ -1,5 +1,7 @@
 # lib/games/chess — Apple-1 Chess engine (shared across text/TMS9918/HGR variants)
 
+*[← POM1 documentation index](../../../../doc/README.md)*
+
 Pure 6502 asm chess engine, designed for the POM1 Apple 1 emulator. The engine
 itself is platform-agnostic — variants (text, TMS9918, HGR) supply their own
 renderer + input glue and link against `chess_engine.o`.

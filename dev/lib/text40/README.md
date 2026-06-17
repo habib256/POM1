@@ -1,5 +1,7 @@
 # lib/text40 — Apple-1 40×24 text-mode UI primitives
 
+*[← POM1 documentation index](../../../doc/README.md)*
+
 Small, mode-neutral UI helpers used by every text/HGR/TMS9918 game in
 this tree. Each `.asm` is a textual `.include` (no separate compilation),
 follows the `lib/apple1/zp.inc` convention, and lives next to the other

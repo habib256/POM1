@@ -1,5 +1,7 @@
 # GEN2Lores — démo couleur LORES 40×48 sur carte GEN2
 
+*[← POM1 documentation index](../../../doc/README.md)*
+
 Petit programme **C** pour la carte couleur GEN2 d'Uncle Bernie qui montre le
 mode **LORES** : une grille **40×48 de blocs 7px×4px, 16 vraies couleurs**.
 Contrairement au HIRES (où la couleur est un artefact NTSC du motif de bits),

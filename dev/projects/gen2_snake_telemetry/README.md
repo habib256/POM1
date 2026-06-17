@@ -1,5 +1,7 @@
 # GEN2 Snake — telemetry-reporting Snake on Uncle Bernie's GEN2 HGR card
 
+*[← POM1 documentation index](../../../doc/README.md)*
+
 Classic **Snake**, in C (cc65), on Uncle Bernie's **GEN2 HGR colour graphics
 card** (280×192 HIRES) — and it reports its state live over POM1's
 **telemetry side channel** using the new *self-describing schema* frames.

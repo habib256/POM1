@@ -1,5 +1,7 @@
 # tms9918_rogue — Roguelike for the P-LAB TMS9918
 
+*[← POM1 documentation index](../../../doc/README.md)*
+
 A Berlin-Interpretation roguelike for the Apple-1 + P-LAB TMS9918
 Graphic Card. Custom 8x8 tileset sliced from Quale's SCROLL-O-SPRITES
 (CC-BY-3.0), 16x16 hardware sprite for the player, dual-bank Parmigiani

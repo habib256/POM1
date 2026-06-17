@@ -1,5 +1,7 @@
 # TMS Maze 3D — wire-frame dungeon crawler
 
+*[← POM1 documentation index](../../../doc/README.md)*
+
 A 1976-style first-person dungeon crawler with monsters, on the P-LAB
 TMS9918 Graphic Card. Recursive-Backtracker maze (11×7 cells),
 pseudo-3D wire-frame view with depth shading (stipple/hatching), top-

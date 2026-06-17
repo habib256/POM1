@@ -1,5 +1,7 @@
 # apple1c/ — shared Apple-1 text + keyboard I/O for C (cc65)
 
+*[← POM1 documentation index](../../../doc/README.md)*
+
 The **card-neutral base** every Apple-1 C program builds on. Output goes through
 the WOZ Monitor `ECHO` routine (`$FFEF`); input reads the PIA keyboard
 (`$D010`/`$D011`). It has **no dependency on any graphics card** — the two C

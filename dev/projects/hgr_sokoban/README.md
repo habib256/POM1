@@ -1,5 +1,7 @@
 # HGR Sokoban — graphical port
 
+*[← POM1 documentation index](../../../doc/README.md)*
+
 Sokoban with a graphical playfield on the GEN2 Color Graphics Card.
 Re-uses the level pack and core push logic from `dev/projects/games_sokoban/`
 via `dev/lib/games/sokoban/`, swapping the text renderer for HGR sprites.

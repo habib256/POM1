@@ -1,5 +1,7 @@
 # A1 Telemetry Demo — the POM1 game-testing SDK in ~30 lines
 
+*[← POM1 documentation index](../../../doc/README.md)*
+
 A minimal **homing game** that exists only to demonstrate the full automated
 test loop Uncle Bernie described as the "dream SDK": *compile → load into the
 emulator → run an automated test that sees the game state and decides the

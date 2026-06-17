@@ -1,5 +1,7 @@
 # Apple 1 Chess (text mode) — v0.5
 
+*[← POM1 documentation index](../../../doc/README.md)*
+
 Pure 6502 asm chess for the original Apple 1, text mode (40×24).
 Inspired by StewBC/cc65-Chess but rewritten from scratch in the
 POM1 game-port idiom (matches Sokoban / Connect 4 trilogies).

@@ -1,5 +1,7 @@
 # TMS Galaga — hardware-sprite shoot-'em-up
 
+*[← POM1 documentation index](../../../doc/README.md)*
+
 Hardware-sprite Galaga on the P-LAB TMS9918 Graphic Card: a player ship
 at the bottom plus three increasingly tough alien types hovering in
 formation that periodically dive at the player. HP per type 2 / 4 / 6,

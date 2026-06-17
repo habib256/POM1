@@ -1,5 +1,7 @@
 # lib/a1io — P-LAB A1-IO & RTC card primitives
 
+*[← POM1 documentation index](../../../doc/README.md)*
+
 The A1-IO card pairs a 65C22 VIA at `$2000-$200F` with an emulated
 ATMEGA32 driving a DS3231 RTC, optional DS18B20 probe, 8 analog inputs,
 4 digital inputs, and a cascaded 74HC164 shift register output. The

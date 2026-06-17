@@ -1,5 +1,7 @@
 # HGR BB Font Show — CP437 font sheet
 
+*[← POM1 documentation index](../../../doc/README.md)*
+
 Displays all 256 code points from `fonts/font_codepage_437_8x8.png` in
 linear CP437 order (index = IBM code point) on the GEN2 Color Graphics
 Card. Useful as a glyph reference for HGR programs that need

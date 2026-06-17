@@ -1,5 +1,7 @@
 # TMS LOGO — turtle interpreter
 
+*[← POM1 documentation index](../../../doc/README.md)*
+
 Apple 1 LOGO interpreter targeting the P-LAB TMS9918 Graphic Card.
 Mode-2 bitmap turtle, REPL with line editor, error reporting, user
 procedures with parameters and tail-recursive calls, IF / IFELSE / STOP

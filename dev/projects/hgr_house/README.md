@@ -1,5 +1,7 @@
 # HGR House — scene drawing
 
+*[← POM1 documentation index](../../../doc/README.md)*
+
 Draws a simple house and tree scene using fills and lines on the GEN2
 Color Graphics Card, exercising the NTSC artifact-colour palette.
 

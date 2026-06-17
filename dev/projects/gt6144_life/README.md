@@ -1,5 +1,7 @@
 # GT-6144 Life — Conway's Game of Life
 
+*[← POM1 documentation index](../../../doc/README.md)*
+
 40×60 cell grid, centred on the 64×96 GT-6144 matrix. Byte-per-cell
 storage with a ghost border (so neighbour counting skips the bounds
 check) and a B3/S23 rule LUT. Display writes only the cells that change
