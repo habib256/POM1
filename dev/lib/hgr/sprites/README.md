@@ -25,8 +25,15 @@ Each category produces two files:
   `.include` because cc65 cannot resolve `.import`ed symbols in
   immediate addressing mode (`CMP #N`).
 
+Consumers: `dev/projects/hgr_symbols/` (one category, catalogue viewer) and
+`dev/projects/hgr_bestiary/` (a 6-category browser — creatures / trollkind /
+unliving / fauna / magick / music — that pages between categories). Both blit
+via the byte-aligned STA fast path (16 rows × 3 bytes straight into the
+framebuffer through `hgr_lo`/`hgr_hi`).
+
 Recommended project Makefile + .asm pattern (see
-`dev/projects/hgr_symbols/` for a working example):
+`dev/projects/hgr_symbols/` or `dev/projects/hgr_bestiary/` for working
+examples):
 
 ```makefile
 LIB := -I ../../lib/apple1 -I ../../lib/hgr -I ../../lib/hgr/sprites
