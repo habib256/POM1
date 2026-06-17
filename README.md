@@ -390,6 +390,8 @@ python3 tools/build_codetank_rom.py --rom=2    # rebuild only GAME2
 
 Open work on the 6502 software side: [`dev/TODO6502.md`](dev/TODO6502.md). On the emulator side: [`TODO.md`](TODO.md).
 
+**Looking for a specific doc?** The complete index of everything written about POM1 — guides, card references, CLI, architecture — is [`doc/README.md`](doc/README.md).
+
 ---
 
 ## 🧰 DevBench — in-app developer tools

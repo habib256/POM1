@@ -12,6 +12,7 @@ Agent-facing playbook for writing **new Apple 1 software** that runs under POM1.
 | [`doc/CLI.md`](../doc/CLI.md) | Table complète des flags CLI (`CliDispatcher.cpp`). |
 | [`CLAUDE.md`](../CLAUDE.md) | Architecture émulateur (mutex bus, orchestration, `ctest`). |
 | [`README.md`](../README.md) | Guide utilisateur, tableau des presets, index logiciels. |
+| [`doc/README.md`](../doc/README.md) | **Index de toute la doc** (guides, références cartes, CLI, architecture). |
 
 **Sommaire :** sections **§1–§12** numérotées ci-dessous (parcourir les titres).
 

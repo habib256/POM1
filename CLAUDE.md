@@ -1,6 +1,6 @@
 # CLAUDE.md
 
-Architecture / invariants / gotchas for the **emulator side** of POM1. User walkthrough → `README.md`; open work → `TODO.md`; history → `git log`.
+Architecture / invariants / gotchas for the **emulator side** of POM1. User walkthrough → `README.md`; open work → `TODO.md`; history → `CHANGELOG.md` / `git log`; **full doc map → [`doc/README.md`](doc/README.md)**.
 
 **Contents:** [Overview](#project-overview) · [Build](#build--run) · [CLI](doc/CLI.md) · [WASM / cc65](#wasm-build) · [Architecture](#architecture) · [MMIO / CPU](#key-implementation-details) · [Memory map](#memory-map) · [Platforms](#platform-notes) · [Testing](#testing) · [Version bump](#version-string-locations)
 

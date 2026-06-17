@@ -1,12 +1,63 @@
 # Changelog
 
-Notable **emulator** changes, lifted from `TODO.md` as work ships. The
-authoritative commit-level history is `git log`; the user-facing feature tour is
-`README.md`; open work lives in `TODO.md`. Format loosely follows
+Notable shipped work, recorded as it ships — both the **emulator** (lifted from
+`TODO.md`) and the **6502 software** under `dev/` (libraries + `dev/projects/`
+programs, lifted from `dev/TODO6502.md`). The authoritative commit-level history
+is `git log`; the user-facing feature tour is `README.md`; open work lives in
+`TODO.md` (emulator) and `dev/TODO6502.md` (6502). Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/). Versions track the string in
 `src/main_imgui.cpp` / `README.md`.
 
 ## [Unreleased]
+
+### Added — 6502 software (`dev/`): shared graphics library, shared font, TMS9918 demos
+
+6502-side work that ships under `dev/` (libraries + `dev/projects/` programs),
+lifted from `dev/TODO6502.md`. The programs build to `software/<dir>/` via the
+per-project Makefiles; dev loop → `dev/APPLE1DEV.md`.
+
+- **Shared geometry/number library `dev/lib/gfx/`** (2026-06-16/17) — additive
+  layer factoring the line/circle/rect/ellipse + integer→ASCII routines that GEN2
+  HGR and the TMS9918 bitmap card each duplicated. Backend resolved at link time
+  (Parmigiani "one card at a time"): `gfx-gen2.lib` (280×192) and `gfx-tms.lib`
+  (256×192) link-on-demand `ar65` archives. **GEN2 rewired** — `gen2_hgr_line/
+  rect/circle` forward to `gfx_*`, `gen2_hgr_putx` → `gfx_hexstr`, new
+  `gen2_hgr_ellipse`; **TMS9918 rewired** — `screen2_line/circle/ellipse` +
+  `printlib` dec/hex route through `gfx_*`, TMS gains `screen2_rect`. Wired into
+  the 5 GEN2 Makefiles, the 4 `screen2` TMS demos, and the Bench's GEN2-C cl65
+  line; `make -C dev/lib/gfx check` compiles every TU against both backends.
+- **Fast byte-aligned TMS rectangle fill** (2026-06-17) — `screen2_filled_rect`
+  (`dev/apple1-videocard-lib/lib/screen_ext.c`) replaced its per-pixel
+  `screen2_line` loop with a scanline left-partial / full-byte-run / right-partial
+  fill (the TMS analogue of GEN2's `fill_pixrect`); ~10–14× fewer VRAM-port
+  accesses, verified pixel-identical to a reference fill on 14 edge cases.
+- **Shared Beautiful Boot font, multi-format emitter** (2026-06-17) —
+  `tools/build_shared_font.py` emits one master (`dev/lib/hgr/bbfont_cp437.inc`)
+  to both cards: HGR (`gen2_bbfont.inc`, bit 0 = left pixel) and TMS
+  (`bbfont_tms.inc`, pattern table, bit 7 = left = bit-reversed HGR byte), plus
+  the 37-glyph HUD subset (`font_hud8x8.inc`) now generated from the same master
+  (Snake/Sokoban HUD text becomes BB). `--check` mode; `emit_bbfont.py` is now a
+  compat shim.
+- **TMS9918 Mode 2 (bitmap) graphics** — `init_vdp_g2`
+  (`dev/lib/tms9918/tms9918m2.asm`), exercised by 7 programs (`tms9918_mandel`,
+  `_asteroids`, `_maze3d`, `_light_corridor`, `_clone`, `_logo`).
+- **TMS9918 Mode 1 demoscene** (2026-05-08) — `dev/projects/tms9918_plasma/`, a
+  6502 port of Cruzer/jblang's *Plascii Petsma*: 12 effects × 16 palettes,
+  auto-cycling, 1 433 B, stock 4 KB layout.
+- **5th-sprite-overflow raster trap** (2026-05-08) —
+  `dev/lib/tms9918/tms9918_5strigger.asm` (`arm_5s_trigger` / `wait_5s_trigger`,
+  `WAIT_5S` macro): schedule a mid-frame palette/name-table swap without /INT (the
+  TMS9918 has no line interrupt). Demo `dev/projects/tms9918_split/` (palette split
+  at scanline 96).
+- **Sprite-cloning (Bug N°8) visual fixture** (2026-05-08) —
+  `dev/projects/tms9918_clone/`: SPACE toggles the illegal M1+M2 hybrid so the
+  sprite-clone cascade appears/disappears for side-by-side comparison; validates
+  the cloning model (`dev/SILICONBUGS.md` §17).
+- **Silicon-strict port of every TMS9918 program** (2026-04-30) —
+  `tools/silicon_strict_patch.py` injected 351 `tms9918_pad12` NOPs across all
+  TMS9918 projects + `lib/tms9918/*.asm`; all 3 CodeTank ROM layouts rebuild clean
+  (`dev/SILICONBUGS.md` §17).
+- **`dev/projects/*/README.md` TODO placeholders resolved** (2026-06-16).
 
 ### Added — DevBench menu + Bench GEN2 text target
 
