@@ -1,5 +1,7 @@
 # Rapport d'audit POM1 — passe 2
 
+> **Statut (mis à jour 2026-06-17) — document historique.** Les **2 trouvailles « Moyenne »** (sous-comptage de cycles `JSR`/`RTS`) ont depuis été **corrigées** et pinnées par `cpu_harte_smoke` (oracle cycle-exact Tom Harte — cf. `CHANGELOG.md`). Les **2 « Faibles »** restent ouvertes, suivies dans `TODO.md` › *Durcissement désérialisation*. Conservé tel quel pour la traçabilité.
+
 > Audit automatisé du code C++ de `src/` (42 fichiers `.cpp`, hors `third_party`), 2e passage.
 > 15 grappes d'audit en parallèle → vérification adversariale → synthèse, puis **re-vérification manuelle** des trouvailles confirmées dans le code réel.
 > Brut : **52 trouvailles → 3 confirmées par le workflow** (49 rejetées). La re-vérification manuelle confirme les 3 **et ajoute 1** (RTS, raté par le workflow). Généré le 2026-05-29.

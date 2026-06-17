@@ -1580,7 +1580,7 @@ void MainWindow_ImGui::renderSoftwareReferenceWindow()
             hwKeyValue("Zero page buffers:", "Declare with .segment \"LEVELBUF\": zeropage to force zp,X addressing.");
             hwKeyValue("PIA bit 7:", "ORA #$80 before JSR ECHO for DSP, AND #$7F after reading KBD.");
             hwKeyValue("Uppercase:", "Real keyboard forces uppercase - only compare against uppercase literals.");
-            hwKeyValue("Deeper guide:", "doc/Programming_Apple1_ASM.md (modes texte / HGR / TMS9918, Sokoban porting notes).");
+            hwKeyValue("Deeper guide:", "dev/Programming_Apple1_ASM.md (modes texte / HGR / TMS9918, Sokoban porting notes).");
         }
 
         if (ImGui::CollapsingHeader("Building a Juke-Box ROM (P-LAB EPROM_CREATOR)")) {
