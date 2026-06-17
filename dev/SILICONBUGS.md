@@ -924,7 +924,7 @@ Cfgs : `apple1_galaga_codetank_8k.cfg` (link à `$4000`, slot 8 kB) et
 
 ### Validation visuelle
 
-POM1 `--preset 7 --terminal --silicon-strict`, `4000R`, choisir QWERTY :
+POM1 `--preset 6 --terminal --silicon-strict`, `4000R`, choisir QWERTY :
 - Page de garde `A1GALAGA / APPLE-1 TMS9918 / BY VERHILLE ARNAUD` complète.
 - 3 alien sprites SCOUT/FIGHTER/BOSS avec labels HP.
 - Menu keyboard `1 QWERTY (A D S) / 2 AZERTY (Q D S) / SPACE FIRE` propre.

@@ -39,7 +39,7 @@ origine `$6000`. La page LORES partage la RAM de la page texte (`$0400-$07FF`).
   source, compiler, uploader.
 - **CLI** :
   ```sh
-  build/POM1 --preset 12 \
+  build/POM1 --preset 8 \
       --load 6000:"software/Graphic HGR/GEN2Lores.bin" --run 6000
   ```
 - Charger le `.bin`/`.txt` depuis le dossier `software/Graphic HGR/` auto-branche
@@ -50,7 +50,7 @@ origine `$6000`. La page LORES partage la RAM de la page texte (`$0400-$07FF`).
 Le rendu se contrôle sans GUI (mêmes pixels que l'affichage) :
 
 ```sh
-build/POM1 --preset 12 \
+build/POM1 --preset 8 \
     --load 6000:"software/Graphic HGR/GEN2Lores.bin" --run 6000 \
     --dump-after-cycles 2000000 --dump-gen2-frame /tmp/lores.png
 ```

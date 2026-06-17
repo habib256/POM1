@@ -11,7 +11,7 @@ non-Wozmon characters.
 
 - Machine: Apple 1 (8 KB DRAM)
 - Cards: GEN2 HGR
-- Recommended POM1 preset: 12 (Uncle Bernie's GEN2 HGR Color).
+- Recommended POM1 preset: 8 (Uncle Bernie's GEN2 HGR Color).
 
 ## Sources
 
@@ -31,7 +31,7 @@ By hand:
 
 ## Run in POM1
 
-1. POM1 → Presets → preset 12 (Uncle Bernie's GEN2 HGR Color).
+1. POM1 → Presets → preset 8 (Uncle Bernie's GEN2 HGR Color).
 2. File → Load → `software/Graphic HGR/HGR_BBFontShow.bin`.
 3. Wozmon `\` prompt: type `E000R`.
 

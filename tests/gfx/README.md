@@ -20,13 +20,13 @@ PNG matches byte-for-byte on any machine.
 
 - `hgr_testcard.bin` — frozen GEN2 HGR test card (built from
   `dev/projects/hgr_testcard/`, loads + runs at `$E000`).
-- `hgr_testcard_gen2.png` — golden render (280×192) of the above on preset 12
+- `hgr_testcard_gen2.png` — golden render (280×192) of the above on preset 8
   (Uncle Bernie GEN2 HGR) after 2,000,000 emulated cycles.
 
 ## Regenerate a golden (after an intended renderer change)
 
 ```sh
-python3 tools/test_gfx_regress.py --card gen2 --preset 12 \
+python3 tools/test_gfx_regress.py --card gen2 --preset 8 \
     --load 0xE000:tests/gfx/hgr_testcard.bin --run 0xE000 \
     --golden tests/gfx/hgr_testcard_gen2.png --update
 ```

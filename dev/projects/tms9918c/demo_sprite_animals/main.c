@@ -1,5 +1,5 @@
 /*
- * sprite_animals — TMS9918 sprites (CodeTank preset 7, Wozmon 4000R).
+ * sprite_animals — TMS9918 sprites (CodeTank preset 6, Wozmon 4000R).
  *
  * Quatre silhouettes Fauna fixes (chien, poulpe, chauve-souris, lion),
  * 16×16 sans grossissement (1 pixel écran = 1 pixel sprite).

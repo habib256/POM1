@@ -42,7 +42,7 @@ make            # -> "software/Graphic HGR/HGR_Bestiary.{bin,txt}"
 make clean
 ```
 
-Run in POM1 with the GEN2 card (preset 12): load the `.txt`, then `E000R`.
+Run in POM1 with the GEN2 card (preset 8): load the `.txt`, then `E000R`.
 The intro/category text prints at emulated terminal speed, so the first grid
 appears a moment after the text scrolls by.
 

@@ -29,7 +29,7 @@ By hand:
 
 ## Run in POM1
 
-1. POM1 → Presets → preset 8 (P-LAB I/O Board & RTC).
+1. POM1 → Presets → the A1-IO & RTC card (`--enable rtc`).
 2. File → Load → `software/a1io_rtc/RtcClock.bin` (or the matching `.txt`).
 3. Wozmon `\` prompt: type `280R`.
 

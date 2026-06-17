@@ -205,28 +205,6 @@ const MachineConfig kMachinePresets[] = {
         }, 3
     },
     {   //                                  GEN2  uSD  SID  TMS  RTC  WiFi Term Krus CFFA ACI
-        "P-LAB Apple-1 with A1-SID Sound Card",
-        "P-LAB A1-SID Sound Card (MOS 6581/8580). Default I/O window $C800-$CFFF; "
-        "switch to the A1-AUDIO Special Edition window ($CC00-$CC1F, excludes "
-        "TMS9918) from Settings -> A1-SID version & addresses. 8 KB dual-bank RAM "
-        "(4 KB at $0000-$0FFF + 4 KB at $E000-$EFFF — Parmigiani's standard layout).",
-        false, false, true, false, false, false, false,
-        /*pr40*/ false,
-        false, false, false, 8, BasicType::None,
-        /*sidSE*/ false,
-        /*jukeBox*/ false, JukeBox::Jumper::RAM16_ROM32, JukeBox::ChipMode::Flash,
-        /*codeTank*/ false, CodeTank::Jumper::Lower16, /*codeTankRom*/ nullptr,
-        /*gt6144*/ false,
-        /*iecCard*/ false,
-        {
-            // A1-SID has no dedicated window (audio-only). Tutorial fills
-            // the right column full height so there's room for the full
-            // register-poke example.
-            {"Apple 1 Screen",                  {10,  61}, {843, 701}},
-            {"Tutorial: A1-SID / A1-AUDIO SE", {858, 61}, {338, 703}},
-        }, 2
-    },
-    {   //                                  GEN2  uSD  SID  TMS  RTC  WiFi Term Krus CFFA ACI
         "P-LAB Apple-1 with TMS9918 (CodeTank daughterboard)",
         "P-LAB Graphic Card (TMS9918A VDP) with the CodeTank 28c256 ROM daughterboard "
         "(Codetank_GAME1.rom) at $4000-$7FFF, no BASIC (CodeTank ROM is the program). "
@@ -246,75 +224,13 @@ const MachineConfig kMachinePresets[] = {
         /*gt6144*/ false,
         /*iecCard*/ false,
         {
-            // Factory layout matches ini_defaults/imgui_preset_08.ini (also
+            // Factory layout matches ini_defaults/imgui_preset_06.ini (also
             // seeded as build/ini/ when pre-generating preset layouts).
             {"Apple 1 Screen",                {4,   60},  {404, 342}},
             {"P-LAB CodeTank Library",        {4,   200}, {630, 597}},
             {"P-LAB Graphic Card (TMS9918)",  {410, 61},  {795, 628}},
             {"Memory Map Bar (Horizontal)",   {2,   690}, {1202, 105}},
         }, 4
-    },
-    {   //                                  GEN2  uSD  SID  TMS  RTC  WiFi Term Krus CFFA ACI
-        "P-LAB Apple-1 with I/O Board & RTC",
-        "P-LAB A1-IO Board & RTC (DS3231, DS18B20, analog/digital I/O). "
-        "8 KB dual-bank RAM (4 KB at $0000-$0FFF + 4 KB at "
-        "$E000-$EFFF — Parmigiani's standard layout). The A1-IO VIA at "
-        "$2000-$200F is on the peripheral bus (not main RAM).",
-        false, false, false, false, true, false, false,
-        /*pr40*/ false,
-        false, false, false, 8, BasicType::None,
-        /*sidSE*/ false,
-        /*jukeBox*/ false, JukeBox::Jumper::RAM16_ROM32, JukeBox::ChipMode::Flash,
-        /*codeTank*/ false, CodeTank::Jumper::Lower16, /*codeTankRom*/ nullptr,
-        /*gt6144*/ false,
-        /*iecCard*/ false,
-        {
-            {"Apple 1 Screen",              {10,  61},  {843, 701}},
-            {"P-LAB I/O Board & RTC",       {858, 61},  {340, 268}},
-            {"Tutorial: P-LAB A1-IO & RTC", {859, 332}, {340, 431}},
-        }, 3
-    },
-    {   //                                  GEN2  uSD  SID  TMS  RTC  WiFi Term Krus CFFA ACI
-        "P-LAB Apple-1 with Wi-Fi Modem BBS",
-        "P-LAB MODEM BBS WIFI (65C51 ACIA, ESP8266 AT, TCP/TELNET). "
-        "8 KB dual-bank RAM (4 KB at $0000-$0FFF + 4 KB at $E000-$EFFF — "
-        "Parmigiani's standard layout). The ACIA at $B000-$B003 is on the "
-        "peripheral bus.",
-        false, false, false, false, false, true, false,
-        /*pr40*/ false,
-        false, false, false, 8, BasicType::None,
-        /*sidSE*/ false,
-        /*jukeBox*/ false, JukeBox::Jumper::RAM16_ROM32, JukeBox::ChipMode::Flash,
-        /*codeTank*/ false, CodeTank::Jumper::Lower16, /*codeTankRom*/ nullptr,
-        /*gt6144*/ false,
-        /*iecCard*/ false,
-        {
-            {"Apple 1 Screen",            {10,  61},  {843, 701}},
-            {"P-LAB Wi-Fi Modem",         {858, 61},  {339, 238}},
-            {"Tutorial: Wi-Fi Modem BBS", {858, 303}, {344, 459}},
-        }, 3
-    },
-    {   //                                  GEN2  uSD  SID  TMS  RTC  WiFi Term Krus CFFA ACI
-        "P-LAB Apple-1 with Juke-Box",
-        "Minimal Juke-Box configuration: 32 kB EEPROM ROM library at $4000-$BFFF, "
-        "no ACI cassette. The Juke-Box's EEPROM replaces tape loading entirely. "
-        "Type BD00R from the Woz Monitor to launch the Program Manager (& "
-        "prompt). 8 KB dual-bank RAM (4 KB at $0000-$0FFF + 4 KB at $E000-$EFFF "
-        "— Parmigiani's standard layout); $E000-$EFFF stays free RAM by default. "
-        "Use the Juke-Box LA command to load BASIC from EEPROM when needed.",
-        false, false, false, false, false, false, false,
-        /*pr40*/ false,
-        false, false, /*aci*/ false, /*ramKB*/ 8, BasicType::None,
-        /*sidSE*/ false,
-        /*jukeBox*/ true, JukeBox::Jumper::RAM16_ROM32, JukeBox::ChipMode::Flash,
-        /*codeTank*/ false, CodeTank::Jumper::Lower16, /*codeTankRom*/ nullptr,
-        /*gt6144*/ false,
-        /*iecCard*/ false,
-        {
-            {"Apple 1 Screen",           {10,  61},  {843, 701}},
-            {"P-LAB Juke-Box",           {857, 61},  {344, 321}},
-            {"Tutorial: P-LAB Juke-Box", {857, 386}, {345, 378}},
-        }, 3
     },
     {   //                                  GEN2  uSD  SID  TMS  RTC  WiFi Term Krus CFFA ACI
         "P-LAB Apple-1 Multiplexing Fantasy",
@@ -383,8 +299,8 @@ const MachineConfig kMachinePresets[] = {
         "Graphic cards and the PR-40 printer off by default — plug them from the toolbar. "
         "ACI plugged by default so the cassette deck can load/save tapes. Boots with the "
         "Cassette Deck + Welcome panels already open to the right of the Apple 1 screen; "
-        "your layout customisations persist under ini/imgui_preset_13.ini "
-        "(plus ini/preset_13.size for the OS window frame).",
+        "your layout customisations persist under ini/imgui_preset_09.ini "
+        "(plus ini/preset_09.size for the OS window frame).",
         false, true, true, false, false, true, true,
         /*pr40*/ false,
         false, false, true, 64, BasicType::ApplesoftLite,
@@ -395,7 +311,7 @@ const MachineConfig kMachinePresets[] = {
         /*iecCard*/ false,
         {
             // Positions / sizes match the shipped POM1 Fantasy screenshot
-            // so the first launch (no saved ini/imgui_preset_13.ini yet)
+            // so the first launch (no saved ini/imgui_preset_09.ini yet)
             // snaps straight to that layout.
             {"Apple 1 Screen",         {10,  61},  {843, 701}},
             {"Welcome",                {858, 61},  {338, 223}},
@@ -988,7 +904,7 @@ std::string windowsPathForPreset(int idx)
     return std::string(buf);
 }
 
-/** Shipped under repo `ini_defaults/` (tracked in git). Used to seed preset 7
+/** Shipped under repo `ini_defaults/` (tracked in git). Used to seed preset 6
  *  (CodeTank) layout files so they match the reviewed snapshot; cwd may be
  *  repo root or `build/` (try ../ini_defaults/, etc.). */
 std::string findIniDefaultsFile(const char* basename)
@@ -1375,9 +1291,9 @@ void MainWindow_ImGui::resetAllPresetLayouts()
 // pregenerateMissingPresetLayouts -- write out default ini/imgui_preset_NN.ini
 // + ini/preset_NN.size for every preset that doesn't have one yet, using the
 // hard-coded `kMachinePresets[i].layout` defaults (window name + pos + size).
-// Preset 7 (CodeTank): when `ini_defaults/imgui_preset_07.ini` and
-// `ini_defaults/preset_07.size` are found, those files are copied — they are
-// the canonical factory defaults (keep in sync with kMachinePresets[7]).
+// Preset 6 (CodeTank): when `ini_defaults/imgui_preset_06.ini` and
+// `ini_defaults/preset_06.size` are found, those files are copied — they are
+// the canonical factory defaults (keep in sync with kMachinePresets[6]).
 //
 // Called once at boot. Ensures the ini/ directory is fully populated even
 // before the user visits each preset, so that:
@@ -1417,8 +1333,8 @@ void MainWindow_ImGui::pregenerateMissingPresetLayouts()
 
         // Write the .ini file with one [Window][...] section per layout entry.
         if (!iniExists) {
-            bool seededFromDefaults = (idx == 7)
-                && copyIniDefaultsFileTo("imgui_preset_07.ini", iniPath);
+            bool seededFromDefaults = (idx == 6)
+                && copyIniDefaultsFileTo("imgui_preset_06.ini", iniPath);
             if (!seededFromDefaults) {
                 std::ofstream f(iniPath);
                 if (!f) continue;
@@ -1440,8 +1356,8 @@ void MainWindow_ImGui::pregenerateMissingPresetLayouts()
         // small floor matching the canonical Fantasy preset (last entry) so
         // that no preset starts smaller than the reference frame.
         if (!sizeExists) {
-            bool seededFromDefaults = (idx == 7)
-                && copyIniDefaultsFileTo("preset_07.size", sizePath);
+            bool seededFromDefaults = (idx == 6)
+                && copyIniDefaultsFileTo("preset_06.size", sizePath);
             if (!seededFromDefaults) {
                 // Need a fallback Apple-1 screen size — use the spec's size if
                 // present, else a reasonable 843x701 baseline.

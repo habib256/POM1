@@ -232,7 +232,7 @@ Every byte `STA $D012` (with bit 7 set, normal display rules) also lands in PR-4
 
 1. **Memory load** (default for dev iteration) — ship `.txt` Woz hex or `.bin`, user does **File > Load Memory** then `280R`. The Load dialog auto-enables the matching card from the file's folder: `software/Graphic HGR/` (GEN2), `software/SOUND SID/` (A1-SID), `software/Graphic TMS9918/` or `software/Apple-1_TMS_CC65/` (TMS9918), `software/Graphic gt-6144/` (GT-6144), `software/a1io_rtc/` (A1-IO & RTC), `software/NET/` (Wi-Fi modem), or `sdcard/` (microSD). Each match also pops the card's window.
 2. **microSD tagged file** — drop `NAME#TTAAAA` into `sdcard/` (optionally a sub-dir users `CD` into). Persists across sessions, also in WASM (preloaded MEMFS).
-3. **Juke-Box ROM bundle** — rebuild `roms/jukebox.rom` with your program baked, pick preset #10, type `BD00R`, choose from `&` prompt.
+3. **Juke-Box ROM bundle** — rebuild `roms/jukebox.rom` with your program baked, enable the Juke-Box card (`--enable jukebox`), type `BD00R`, choose from `&` prompt.
 4. **Cassette tape** — dump capture as `.aci`/`.wav`/`.mp3`/`.ogg`, drop in `cassettes/`. Add a line in `cassettes/tapeinfo.txt` (`MYPROG.ogg = 0280.04FF`) so the deck jaquette prints *"Type 0280.04FFR"*. Works in pulse mode (ACI plugged) and audio-stream mode (firmware-less).
 
 Applesoft programs: `SAVE "NAME"` writes `sdcard/NAME#F80801` directly — no manual dump.
@@ -295,11 +295,11 @@ Full example: `tools/test_sdcard_subdir_navigation_telnet.py`.
 |---|---|
 | microSD + Applesoft + telnet, MAX speed | `./POM1 --preset 5 --terminal --cpu-max` |
 | Load + run + drive | `./POM1 -p 1 --terminal --load 0300:prog.bin --run 0300 --paste keys.txt` |
-| Swap cards | `./POM1 -p 13 --disable hgr --enable sid --sid-chip 8580 --speed 34091` |
+| Swap cards | `./POM1 -p 9 --disable hgr --enable sid --sid-chip 8580 --speed 34091` |
 | Seed microSD fixture | `./POM1 -p 5 --sd-mkdir BASIC --sd-put host/PROG#F80801:BASIC/PROG#F80801` |
-| Capture SID to `.wav` | `./POM1 -p 6 --rec --save-tape /tmp/out --save-tape-format wav` |
+| Capture SID to `.wav` | `./POM1 --enable sid --rec --save-tape /tmp/out --save-tape-format wav` |
 | Step + BRK trace | `./POM1 -p 0 --trace-brk --step 10` |
-| Freeze RTC | `./POM1 -p 8 --rtc-freeze "2000-01-01 00:00:00"` |
+| Freeze RTC | `./POM1 --enable rtc --rtc-freeze "2000-01-01 00:00:00"` |
 
 Complete verb table (all phases): [`doc/CLI.md`](../doc/CLI.md).
 

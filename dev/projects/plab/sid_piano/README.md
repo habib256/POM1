@@ -34,7 +34,7 @@ By hand:
 
 ## Run in POM1
 
-1. POM1 → Presets → preset 6 (P-LAB A1-SID).
+1. POM1 → Presets → the A1-SID card (`--enable sid`).
 2. File → Load → `software/SOUND SID/Claudio_PARMIGIANI_SID_PIANO_AZERTY.bin`.
 3. Wozmon `\` prompt: type `600R`.
 

@@ -543,18 +543,17 @@ void MainWindow_ImGui::renderMenuBar()
             presetItem(3);   // Replica-1 with ACI, Krusader (Briel)
             presetItem(4);   // Replica-1 with CFFA1 & Applesoft Lite (Dreher)
             ImGui::Separator();
-            // All P-LAB presets grouped together (indices 5..11)
+            // P-LAB presets grouped together (indices 5..7). The A1-SID,
+            // I/O & RTC, Wi-Fi Modem and Juke-Box cards no longer have a
+            // dedicated preset — plug them from the Hardware menu or via
+            // --enable on any preset.
             presetItem(5);   // P-LAB microSD + Applesoft Lite
-            presetItem(6);   // P-LAB A1-SID (address selectable in Settings)
-            presetItem(7);   // P-LAB TMS9918
-            presetItem(8);   // P-LAB I/O Board & RTC
-            presetItem(9);   // P-LAB Wi-Fi Modem BBS
-            presetItem(10);  // P-LAB Juke-Box (16 kB RAM)
-            presetItem(11);  // P-LAB Multiplexing Fantasy
+            presetItem(6);   // P-LAB TMS9918 + CodeTank
+            presetItem(7);   // P-LAB Multiplexing Fantasy
             ImGui::Separator();
-            presetItem(12);  // Uncle Bernie's GEN2 HGR Color
+            presetItem(8);   // Uncle Bernie's GEN2 HGR Color
             ImGui::Separator();
-            presetItem(13);  // POM1 Multiplexing Fantasy (last -> banner)
+            presetItem(9);   // POM1 Multiplexing Fantasy (last -> banner)
             ImGui::EndMenu();
         }
 

@@ -8,7 +8,7 @@
 #   make            -> "software/Graphic HGR/HGR_Bestiary.{bin,txt}"
 #   make clean
 #
-# Run: load the .txt in POM1 (preset 12 / GEN2 enabled), then  E000R.
+# Run: load the .txt in POM1 (preset 8 / GEN2 enabled), then  E000R.
 PROJECT  := HGR_Bestiary
 LOAD_CFG := ../../../cc65/apple1_gen2.cfg
 OUT_DIR  := ../../../../software/Graphic HGR

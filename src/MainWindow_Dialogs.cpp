@@ -2479,7 +2479,7 @@ void MainWindow_ImGui::renderTutorialA1IORTCWindow()
             "\"YYYY-MM-DD HH:MM:SS\" to pin the emulated clock for "
             "scripted runs (time continues ticking at host rate — good "
             "for sub-minute tests).");
-        tutCode("./POM1 --preset 8 --rtc-freeze \"1976-07-10 12:00:00\"");
+        tutCode("./POM1 --enable rtc --rtc-freeze \"1976-07-10 12:00:00\"");
 
         tutStep(4, "Analog / digital inputs");
         ImGui::TextWrapped(

@@ -2,7 +2,7 @@
 """
 test_logo_telnet.py -- Smoke test for the P-LAB LOGO interpreter.
 
-Auto-launches POM1 with preset 7 (P-LAB Apple-1 with TMS9918 + CodeTank),
+Auto-launches POM1 with preset 6 (P-LAB Apple-1 with TMS9918 + CodeTank),
 the Terminal Card on localhost:6502, and the LOGO binary pre-loaded at
 $0280 with reset vector pointing at $0280.
 
@@ -54,7 +54,7 @@ def launch_pom1(log_path: str):
     proc = subprocess.Popen(
         [
             str(exe),
-            "--preset", "8",
+            "--preset", "6",
             "--terminal",
             "--cpu-max",
             "--load", f"0280:{LOGO_BIN}",

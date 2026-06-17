@@ -86,7 +86,7 @@ In your project Makefile:
 
 A1-IO must be plugged. POM1:
 
-- `--preset 8` — A1-IO & RTC alone
+- `--enable rtc` — A1-IO & RTC alone
 - `--enable a1io-rtc` — adds A1-IO to any other preset (mutex with GEN2
   HGR which also lives at `$2000+`)
 

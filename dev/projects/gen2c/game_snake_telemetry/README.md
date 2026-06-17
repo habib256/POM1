@@ -45,14 +45,14 @@ shared `apple1c` text/keyboard base + `dev/lib/telemetry/telemetry.h`).
 ## Run in the DevBench
 
 **DevBench → POM1 Bench → Examples → *Snake telemetry*** — target = **C / GEN2
-HGR**. The example selects preset 12 (GEN2 plugged) and runs from `$6000`. Open
+HGR**. The example selects preset 8 (GEN2 plugged) and runs from `$6000`. Open
 the **DevBench → Telemetry Side Channel** window (or the Bench *Serial Monitor*)
 to watch the decoded **named** table: `head_x`, `head_y`, `length`, `alive`.
 
 Headless, with a harness:
 
 ```bash
-build/POM1 --headless --telemetry-port 6602 --preset 12 \
+build/POM1 --headless --telemetry-port 6602 --preset 8 \
            --load 6000:software/Telemetry/GEN2Snake.bin --run 6000
 ```
 

@@ -18,7 +18,7 @@
 ;   ld65 -C software/tms9918/apple1_logo.cfg -o build/TMS_Logo.bin build/TMS_Logo.o
 ;   python3 software/tms9918/emit_TMS_Logo_txt.py
 ;
-; Run on POM1:  ./POM1 --preset 7       (P-LAB Apple-1 with TMS9918 + CodeTank)
+; Run on POM1:  ./POM1 --preset 6       (P-LAB Apple-1 with TMS9918 + CodeTank)
 ;   then in Woz Monitor paste TMS_Logo.txt and type 280R.
 ;
 ; Language summary (V1.8):

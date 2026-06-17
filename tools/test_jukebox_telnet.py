@@ -3,10 +3,11 @@
 test_jukebox_telnet.py -- Test complet du P-LAB Apple-1 Juke-Box via Terminal Card telnet.
 
 Pre-requis :
-  - POM1 en cours d'execution avec le preset "P-LAB Apple-1 with Juke-Box (16 kB RAM)"
+  - POM1 en cours d'execution avec la carte Juke-Box activee (Hardware menu ou
+    --enable jukebox ; il n'y a plus de preset Juke-Box dedie)
     + Terminal Card active (--terminal en CLI ou Hardware menu)
   - Le Terminal Card ecoute sur localhost:6502
-  - Lancement CLI recommande :  ./POM1 --preset 10 --terminal &
+  - Lancement CLI recommande :  ./POM1 --preset 1 --enable jukebox --terminal &
   - La ROM roms/jukebox.rom generee par tools/../doc/JUKEBOX_ROM_CREATOR/build_jukebox_rom.py
 
 Le test suit le manuel officiel P-LAB Apple-1 Juke-Box v1.09 :

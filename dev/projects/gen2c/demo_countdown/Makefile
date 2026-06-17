@@ -8,7 +8,7 @@
 #   make            -> "software/Graphic HGR/GEN2Countdown.bin" (+ .txt)
 #   make clean
 #
-# Run: build/POM1 --preset 12 \
+# Run: build/POM1 --preset 8 \
 #          --load 6000:"software/Graphic HGR/GEN2Countdown.bin" --run 6000
 
 PROJECT  := GEN2Countdown

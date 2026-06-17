@@ -9,7 +9,7 @@
 #   make clean
 #
 # Run: DevBench -> POM1 Bench -> Examples -> Snake telemetry  (target = C/GEN2 HGR)
-#  or  build/POM1 --headless --telemetry-port 6602 --preset 12 \
+#  or  build/POM1 --headless --telemetry-port 6602 --preset 8 \
 #                 --load 6000:software/Telemetry/GEN2Snake.bin --run 6000
 
 PROJECT  := GEN2Snake

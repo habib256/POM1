@@ -43,7 +43,7 @@ make clean
 ```
 
 ```sh
-build/POM1 --preset 12 \
+build/POM1 --preset 8 \
     --load 6000:"software/Graphic HGR/GEN2Vectors.bin" --run 6000
 ```
 

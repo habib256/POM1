@@ -751,7 +751,7 @@ if(Python3_FOUND)
              COMMAND ${Python3_EXECUTABLE}
                      "${CMAKE_SOURCE_DIR}/tools/test_gfx_regress.py"
                      --pom1 "$<TARGET_FILE:pom1_imgui>"
-                     --card gen2 --preset 12
+                     --card gen2 --preset 8
                      --load "0xE000:${CMAKE_SOURCE_DIR}/tests/gfx/hgr_testcard.bin"
                      --run 0xE000 --after-cycles 2000000
                      --golden "${CMAKE_SOURCE_DIR}/tests/gfx/hgr_testcard_gen2.png"
