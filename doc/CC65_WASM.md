@@ -104,17 +104,22 @@ for a Wozmon-hex upload.
      entry. `toolchainReady`/`Hint`/`headerNote` updated.
    - *(EM_ASM gotcha: no top-level commas in the JS body — only `()` protects them
      from the C preprocessor, not `{}`/`[]`.)*
-   - **Remaining here: C targets.** `build()` returns "desktop-only" for `mode==3`
-     and `available()` doesn't expose them (need item 4). The **TMS9918 asm** target
-     (ROM-flash path) is also still desktop-only.
+   - **All four asm targets** (incl. TMS9918 ROM-flash) and **all four C targets**
+     are wired now (see item 4). `available()` exposes the whole matrix; the
+     "desktop only" `headerNote()` CTA is gone.
 
-4. **C path runtime libs + version pin.** The asm path needs no libraries. The C
-   path links cc65's C runtime; the WASM `cc65` is **2.19 git master**, so bundle
-   the matching 2.19 `.lib`/runtime (the `sp`→`c_sp` rename means 2.18 libs won't
-   link). Pin `build_cc65_wasm.sh` to the cc65 revision whose libs you bundle.
-   POM1's C targets use custom `apple1c`/`gen2c`/videocard libs built from source
-   at upload time — those compile through the same WASM `cc65`/`ca65`, so the main
-   external dependency is cc65's own crt0/libc for `-t none`.
+4. ~~**C path runtime libs.**~~ **Done.** The asm path needs no libraries; the C
+   path links cc65's `-t none` runtime (`none.lib`), and the WASM `cc65` emits the
+   **`c_sp`** zero-page ABI, so a stock (older `sp`) `none.lib` won't link. Fix:
+   `build_cc65_wasm.sh` now also **native-builds `none.lib` from the same cc65
+   source** as the WASM tools (`make -C src` + `make -C libsrc none`) and stages
+   `asminc/` (ca65's `.macpack` files — cc65's generated `.s` does `.macpack
+   longbranch`), `include/`, and `lib/none.lib` into `build-wasm/cc65/`; CMake
+   preloads them at `/cc65`. `buildC` (in `cc65_bench.js`) runs cc65 per `.c` →
+   ca65 per `.s` (seeding `asminc`) → ld65 + `none.lib`; `Pom1BenchHost::build()`
+   feeds it the per-target file spec (the C-gen2 target rides the gfx layer too,
+   matching the desktop command). **Verified byte-identical to native cc65 2.19**
+   for plain-C (399 B) and the multi-file GEN2-C+gfx target (9557 B).
 
 5. **Verify in a browser.** Build (`tools/build_cc65_wasm.sh --out build-wasm/cc65`,
    then `emcmake cmake .. && emmake make`), open `POM1.html`, pick an asm target in

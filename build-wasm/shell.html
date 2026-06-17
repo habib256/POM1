@@ -172,6 +172,9 @@
     // native cc65 (verified). Example (Apple-1 dual-4k text):
     //   await POM1cc65.buildAsm(src, {cfg:'/dev/cc65/apple1_4k.cfg', incDirs:['/dev/lib/apple1']})
     async buildAsm(source, opts) { return this._ensure().buildAsm(source, opts); },
+    // Compile + link a C program. opts:{cfg, incDirs, cSources, asmSources, runtimeLib}.
+    // Needs the cc65 C runtime preloaded at /cc65 (asminc + include + lib/none.lib).
+    async buildC(source, opts) { return this._ensure().buildC(source, opts); },
   };
   console.log('[POM1] cc65 WASM toolchain script loaded — POM1cc65.buildAsm(src,{cfg,incDirs}) ' +
               'is available once POM1 finishes loading (POM1cc65.available()).');

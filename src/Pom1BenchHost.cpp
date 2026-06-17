@@ -615,12 +615,11 @@ std::string humanizeCc65(const std::string& out)
 Pom1BenchHost::Pom1BenchHost(MainWindow_ImGui* mw) : mw_(mw)
 {
 #if POM1_IS_WASM
-    // The browser now has cc65 compiled to WASM (build-wasm/cc65/, driven by
-    // window.POM1cc65 via the async pollBuild path), so expose every ASM target
-    // — dual-4k text, TMS9918 (CodeTank ROM flash), GEN2 HGR, GEN2 TXT — plus the
-    // toolchain-free hex/raw targets. The C targets (need cc65's version-matched
-    // runtime libs, not bundled yet) stay desktop-only for now.
-    for (int i : { 0, 1, 2, 3, 8, 9 }) {
+    // The browser now has the full cc65 toolchain compiled to WASM
+    // (build-wasm/cc65/ + the bundled C runtime, driven by window.POM1cc65 via
+    // the async pollBuild path), so expose every target: the four asm targets,
+    // the four C targets (cc65 + none.lib runtime), and hex/raw — same as desktop.
+    for (int i = 0; i < kP1TargetCount; ++i) {
         targets_.push_back({ kP1Targets[i].label, kP1Targets[i].label,
                              kP1Targets[i].lang, kP1Targets[i].wantsAddr });
         targetMap_.push_back(i);
@@ -892,15 +891,60 @@ bench::BuildResult Pom1BenchHost::build(int target, const std::string& src, cons
     // cc65's version-matched runtime libs) + the TMS9918 ROM-flash asm target stay
     // desktop-only — available() doesn't expose them on WASM, so only mode-0 asm
     // (dual-4k / GEN2 HGR / GEN2 TXT) reaches here.
-    if (t.mode == 3) {
-        r.console = "C compilation isn't wired into the web build yet (needs cc65's "
-                    "runtime libs). Use an asm target, or the desktop app.\n";
-        r.status = "C build: desktop-only on web"; return r;
-    }
     if (EM_ASM_INT({ return (window.POM1cc65 && window.POM1cc65.available()) ? 1 : 0; }) == 0) {
         r.console = "In-browser cc65 not available yet (build-wasm/cc65 missing, or POM1 "
                     "still loading). Reload once the page has finished loading.\n";
         r.status = "web cc65 not ready"; return r;
+    }
+    if (t.mode == 3) {
+        // C target: a per-target file spec (cfg + runtime lib .c/.s + include dirs)
+        // matching the desktop cl65 command, fed to POM1cc65.buildC. pollBuild then
+        // loadBinary+runs (or ROM-flashes the TMS9918 C target) just like asm.
+        const std::string cfgTag = t.cfg ? t.cfg : "";
+        std::string cfg, spec;
+        if (cfgTag == "C-plain") {
+            cfg  = "/dev/cc65/apple1_c.cfg";
+            spec = R"({"cfg":"/dev/cc65/apple1_c.cfg","incDirs":["/dev/lib/apple1c"],)"
+                   R"("cSources":[{"path":"/dev/lib/apple1c/apple1io.c","name":"apple1io.c"}],)"
+                   R"("asmSources":[{"path":"/dev/lib/apple1c/apple1io_asm.s","name":"apple1io_asm.s"}]})";
+        } else if (cfgTag == "C-gen2") {
+            // gen2.c forwards to the card-neutral gfx layer (Axe 1), so its
+            // sources ride along — matching the desktop GEN2 C Bench command.
+            cfg  = "/dev/cc65/apple1_gen2_c.cfg";
+            spec = R"({"cfg":"/dev/cc65/apple1_gen2_c.cfg","incDirs":["/dev/lib/gen2c","/dev/lib/apple1c","/dev/lib/gfx"],)"
+                   R"("cSources":[{"path":"/dev/lib/gen2c/gen2.c","name":"gen2.c"},{"path":"/dev/lib/apple1c/apple1io.c","name":"apple1io.c"},)"
+                   R"({"path":"/dev/lib/gfx/gfx_draw.c","name":"gfx_draw.c"},{"path":"/dev/lib/gfx/gfx_num.c","name":"gfx_num.c"},{"path":"/dev/lib/gfx/gfx_backend_gen2.c","name":"gfx_backend_gen2.c"}],)"
+                   R"("asmSources":[{"path":"/dev/lib/gen2c/gen2_blit.s","name":"gen2_blit.s"},{"path":"/dev/lib/apple1c/apple1io_asm.s","name":"apple1io_asm.s"}]})";
+        } else {   // "C" = TMS9918 CodeTank ROM
+            cfg  = "/dev/apple1-videocard-lib/cc65/codetank_c.cfg";
+            spec = R"({"cfg":"/dev/apple1-videocard-lib/cc65/codetank_c.cfg","incDirs":["/dev/apple1-videocard-lib/lib"],)"
+                   R"("cSources":[{"path":"/dev/apple1-videocard-lib/lib/tms9918.c","name":"tms9918.c"},{"path":"/dev/apple1-videocard-lib/lib/screen1.c","name":"screen1.c"},{"path":"/dev/apple1-videocard-lib/lib/c64font.c","name":"c64font.c"}],)"
+                   R"("asmSources":[{"path":"/dev/apple1-videocard-lib/lib/apple1_asm.s","name":"apple1_asm.s"}]})";
+        }
+        uint16_t entry = parseCfgLoadAddr(cfg);
+        if (entry == 0) entry = (cfgTag == "C-plain") ? 0x0300 : (cfgTag == "C-gen2") ? 0x6000 : 0x4000;
+        wasmJobActive_ = true; wasmJobVerifyOnly_ = !run;
+        wasmJobTarget_ = target; wasmJobEntry_ = entry;
+        EM_ASM({
+            var src = UTF8ToString($0);
+            var spec = JSON.parse(UTF8ToString($1));
+            var FS = Module.FS;
+            Module.__benchJob = ({ state: 'running', code: -1 });
+            window.POM1cc65.buildC(src, spec)
+                .then(function (res) {
+                    try { FS.writeFile('/tmp/pom1_bench.bin', res.bin || new Uint8Array(0)); } catch (e) {}
+                    try { FS.writeFile('/tmp/pom1_bench.log', res.log || ''); } catch (e) {}
+                    Module.__benchJob = ({ state: 'done', code: res.code | 0 });
+                })
+                .catch(function (e) {
+                    try { FS.writeFile('/tmp/pom1_bench.log', 'web cc65 error: ' + (e && e.stack || e)); } catch (_) {}
+                    Module.__benchJob = ({ state: 'done', code: 99 });
+                });
+        }, src.c_str(), spec.c_str());
+        r.pending = true; r.showConsole = true;
+        r.console = "Compiling C with in-browser cc65 (WASM)…\n";
+        r.status = run ? "Building (web cc65 C)…" : "Compiling (web cc65 C)…";
+        return r;
     }
     {
         const std::string cfg = std::string("/dev/cc65/") + (t.cfg ? t.cfg : "");
@@ -1224,7 +1268,7 @@ bool Pom1BenchHost::toolchainReady(int target) const
     const P1T& t = kP1Targets[p1(target)];
     if (t.mode == 1 || t.mode == 2) return true;
 #if POM1_IS_WASM
-    return t.mode == 0;   // asm compiles via the bundled WASM cc65; C not yet wired
+    return t.mode == 0 || t.mode == 3;   // asm + C compile via the bundled WASM cc65
 #else
     probe();
     if (!t.needsCl65) return toolchainOk_;
@@ -1241,7 +1285,7 @@ std::string Pom1BenchHost::toolchainHint(int target) const
     const P1T& t = kP1Targets[p1(target)];
     if (t.mode == 1 || t.mode == 2) return "";
 #if POM1_IS_WASM
-    return t.mode == 0 ? "cc65 (WASM) ready" : "C: desktop app only";
+    return "cc65 (WASM) ready";
 #else
     probe();
     if (!t.needsCl65) return toolchainOk_ ? "ca65/ld65 ready" : "needs cc65 (ca65/ld65)";
@@ -1283,12 +1327,10 @@ std::string Pom1BenchHost::toolchainReport() const
 std::string Pom1BenchHost::headerNote() const
 {
 #if POM1_IS_WASM
-    // The web build now bundles cc65 compiled to WASM, so the 6502 ASM targets
-    // assemble + run in-browser. C targets still need the desktop app (cc65's
-    // version-matched C runtime libs aren't bundled yet).
-    return "Web build: 6502 asm compiles + runs in-browser (cc65 in WASM). "
-           "C targets still need the desktop app (bundled cc65). Download POM1: "
-           "https://github.com/habib256/POM1/releases";
+    // The web build bundles the full cc65 toolchain compiled to WASM (compiler,
+    // assembler, linker + the -t none C runtime), so both 6502 asm and C compile
+    // + run entirely in-browser — no desktop app needed.
+    return "";
 #else
     return "";
 #endif

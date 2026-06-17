@@ -280,6 +280,13 @@ if(EMSCRIPTEN)
         "--preload-file ${PRELOAD_DIR}/dev/cc65@dev/cc65"
         "--preload-file ${PRELOAD_DIR}/dev/lib@dev/lib"
         "--preload-file ${PRELOAD_DIR}/dev/apple1-videocard-lib@dev/apple1-videocard-lib"
+        # cc65 C runtime for the in-browser C path: asminc (ca65 .macpack files),
+        # include (system headers), and the matching `none.lib` (-t none runtime,
+        # built from the same cc65 source as the WASM tools). Mounted at /cc65 so
+        # the tools' compiled-in CA65_INC/CC65_INC/LD65_LIB defaults resolve.
+        "--preload-file ${PRELOAD_DIR}/build-wasm/cc65/asminc@cc65/asminc"
+        "--preload-file ${PRELOAD_DIR}/build-wasm/cc65/include@cc65/include"
+        "--preload-file ${PRELOAD_DIR}/build-wasm/cc65/lib@cc65/lib"
         "--shell-file ${SHELL_FILE}"
         "-s EXPORTED_FUNCTIONS=[${POM1_MAIN_EXPORT}_pom1_fillAudioBuffer,_malloc,_free]"
         # FS is exported so the cc65 glue (shell.html) can read the preloaded

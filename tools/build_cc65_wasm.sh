@@ -96,4 +96,24 @@ for tool in $TOOLS; do
   echo "[cc65-wasm]   -> $OUT/$tool.js ($(wc -c <"$OUT/$tool.wasm") B wasm)"
 done
 
-echo "[cc65-wasm] done: $TOOLS"
+# ---- 3. C runtime: asminc + cc65 headers + the `none` target lib ------------
+# The asm path needs nothing extra, but the C path does: ca65 opens .macpack
+# files (longbranch.mac …) from asminc/, cc65 reads system headers from include/,
+# and ld65 links the `-t none` C runtime (none.lib). none.lib must be built from
+# THIS cc65 source so its zero-page ABI (c_sp) matches the WASM cc65 — a stock
+# (older) none.lib won't link. We build it with the native tools (one `make`).
+echo "[cc65-wasm] staging C runtime (asminc + include) ..."
+cp -R "$SRC/asminc"  "$OUT/asminc"
+cp -R "$SRC/include" "$OUT/include"
+
+if [[ ! -f "$OUT/lib/none.lib" ]]; then
+  echo "[cc65-wasm] building none.lib (native cc65 from the same source) ..."
+  make -C "$SRC/src" -j"$(getconf _NPROCESSORS_ONLN 2>/dev/null || echo 4)" >/dev/null
+  mkdir -p "$SRC/lib"                      # libsrc expects ../lib to exist
+  make -C "$SRC/libsrc" none >/dev/null
+  mkdir -p "$OUT/lib"
+  cp "$SRC/lib/none.lib" "$OUT/lib/none.lib"
+fi
+echo "[cc65-wasm]   -> $OUT/{asminc,include,lib/none.lib} ($(wc -c <"$OUT/lib/none.lib") B lib)"
+
+echo "[cc65-wasm] done: $TOOLS + C runtime"
