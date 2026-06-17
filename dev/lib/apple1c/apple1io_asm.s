@@ -17,7 +17,10 @@
 
 ECHO    = $FFEF
 PRBYTE  = $FFDC
-WOZMON  = $FF1F
+; $FF1A is the Wozmon prompt entry: prints "\" + CR then drops into the line
+; editor — so woz_mon() leaves the familiar "\" prompt (matches dev/lib/apple1's
+; WOZMON). $FF1F is the silent post-prompt warm-restart (no "\").
+WOZMON  = $FF1A
 KEYCR   = $D011
 KEYDATA = $D010
 

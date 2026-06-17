@@ -279,7 +279,6 @@ if(EMSCRIPTEN)
         # tools/build_cc65_wasm.sh --out build-wasm/cc65.
         "--preload-file ${PRELOAD_DIR}/dev/cc65@dev/cc65"
         "--preload-file ${PRELOAD_DIR}/dev/lib@dev/lib"
-        "--preload-file ${PRELOAD_DIR}/dev/apple1-videocard-lib@dev/apple1-videocard-lib"
         # cc65 C runtime for the in-browser C path: asminc (ca65 .macpack files),
         # include (system headers), and the matching `none.lib` (-t none runtime,
         # built from the same cc65 source as the WASM tools). Mounted at /cc65 so

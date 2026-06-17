@@ -18,7 +18,7 @@
 #ifndef APPLE1IO_H
 #define APPLE1IO_H
 
-#define WOZMON    0xFF1FU
+#define WOZMON    0xFF1AU   /* Wozmon prompt entry — prints "\" + CR, then line editor */
 #define ECHO      0xFFEFU
 #define KBD_DATA  0xD010U
 #define KBD_CTRL  0xD011U
@@ -28,7 +28,7 @@ void woz_putc(unsigned char c);          /* print one character                 
 void woz_puts(const unsigned char *s);   /* print a NUL-terminated string        */
 void woz_print_hex(unsigned char c);     /* print a byte as two hex digits       */
 void woz_print_hexword(unsigned w);      /* print a 16-bit word as four hex digits*/
-void woz_mon(void);                      /* return control to the WOZ Monitor    */
+void woz_mon(void);                      /* return to the WOZ Monitor "\" prompt  */
 
 /* ---- Keyboard (PIA $D010 data / $D011 control) ---- */
 unsigned char apple1_iskeypressed(void); /* nonzero (bit 7) if a key is waiting   */

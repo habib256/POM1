@@ -14,13 +14,13 @@ Four ROMs are produced (in roms/codetank/):
   Codetank_GAME2.rom (32 kB)
     Lower 16 kB: TMS_Rogue alone (full bank, run-in-place from $4000)
     Upper 16 kB: TMS_Nyan_CodeTank (full bank, run-in-place from $4000)
-                 — drop-in image from
-                 software/Apple-1_TMS_CC65/TMS_Nyan_CodeTank.bin.
+                 — rebuilt from dev/projects/tms9918/demo_nyan_cat/ into
+                 software/Graphic TMS9918/TMS_Nyan_CodeTank.bin.
     Jumper Lower → 4000R boots Rogue; jumper Upper → 4000R animates Nyan.
 
   Codetank_GAME3.rom (32 kB)
     Lower 16 kB: TMS_Tetris/CodeTank (full bank, run-in-place from $4000)
-                 — drop-in image from
+                 — external drop-in (from GitHub) at
                  software/Apple-1_TMS_CC65/tetris_codetank.bin.
     Upper 16 kB: menu → Life, Mandel, Plasma (run-in-place)
                  ($4000 menu / $4100 Life / $4900 Mandel / $5100 Plasma)
@@ -28,31 +28,20 @@ Four ROMs are produced (in roms/codetank/):
     picker.
 
   Codetank_TEST.rom (32 kB)
-    Lower 16 kB: TMS_SilBench (full bank, run-in-place from $4000)
-                 — silicon-validation 29-test benchmark suite.
+    Lower 16 kB: reserved ($FF fill — SilBench abandoned May 2026).
     Upper 16 kB: menu → Clone, Split (run-in-place)
                  ($4000 menu / $4100 Clone / $4500 Split)
-    Jumper Lower → 4000R boots SilBench; jumper Upper → 4000R brings up
-    the test picker.
-
-  Codetank_GAME4.rom (32 kB)
-    Lower 16 kB: TMS_LightCorridor (full bank, run-in-place from $4000)
-                 — wireframe perspective tunnel + paddle + ball, 3
-                 difficulty levels. Original implementation inspired by
-                 the Light Corridor (Infogrames 1990) concept.
-    Upper 16 kB: reserved ($FF fill — future expansion).
-    Jumper Lower → 4000R boots Light Corridor.
+    Jumper Upper → 4000R brings up the test picker.
 
 Each game's slot is sized to fit its current assembled binary (see the
 .cfg `size = $xxxx` field). `slot()` enforces the boundary and prints a
 clear deficit message if a game outgrows its slot.
 
 Usage:
-    python3 tools/build_codetank_rom.py            # build all 5
+    python3 tools/build_codetank_rom.py            # build all 4
     python3 tools/build_codetank_rom.py --rom=1    # only GAME1
     python3 tools/build_codetank_rom.py --rom=2    # only GAME2
     python3 tools/build_codetank_rom.py --rom=3    # only GAME3
-    python3 tools/build_codetank_rom.py --rom=4    # only GAME4
     python3 tools/build_codetank_rom.py --rom=test # only TEST
 """
 from __future__ import annotations
@@ -75,22 +64,23 @@ LIB_APPLE1        = ROOT / "dev" / "lib" / "apple1"
 LIB_M6502         = ROOT / "dev" / "lib" / "m6502"
 LIB_TMS           = ROOT / "dev" / "lib" / "tms9918"
 LIB_SOKOBAN       = ROOT / "dev" / "lib" / "games" / "sokoban"
-LIB_HGR           = ROOT / "dev" / "lib" / "hgr"
+LIB_GEN2          = ROOT / "dev" / "lib" / "gen2"
 LIB_CHESS         = ROOT / "dev" / "lib" / "games" / "chess"
+LIB_ROGUE         = ROOT / "dev" / "lib" / "games" / "rogue"
 
 # --- GAME1 sources (menu + Galaga + Sokoban + Snake lower; LOGO upper) -----
-MENU_ASM          = DEV / "tms9918_codetank_menu" / "codetank_menu.asm"
-MENU_CFG          = DEV / "tms9918_codetank_menu" / "apple1_codetank_menu.cfg"
-GALAGA_ASM        = DEV / "tms9918_galaga"        / "TMS_Galaga.asm"
-GALAGA_BANK_CFG   = DEV / "tms9918_galaga"        / "apple1_galaga_codetank_bank.cfg"
-SOKOBAN_ASM       = DEV / "tms9918_sokoban"       / "TMS_Sokoban.asm"
-SOKOBAN_BANK_CFG  = DEV / "tms9918_sokoban"       / "apple1_sokoban_codetank_bank.cfg"
-SNAKE_ASM         = DEV / "tms9918_snake"         / "TMS_Snake.asm"
-SNAKE_BANK_CFG    = DEV / "tms9918_snake"         / "apple1_snake_codetank_bank.cfg"
+MENU_ASM          = DEV / "codetank" / "game1_menu" / "codetank_menu.asm"
+MENU_CFG          = DEV / "codetank" / "game1_menu" / "apple1_codetank_menu.cfg"
+GALAGA_ASM        = DEV / "tms9918" / "game_galaga"  / "TMS_Galaga.asm"
+GALAGA_BANK_CFG   = DEV / "tms9918" / "game_galaga"  / "apple1_galaga_codetank_bank.cfg"
+SOKOBAN_ASM       = DEV / "tms9918" / "game_sokoban" / "TMS_Sokoban.asm"
+SOKOBAN_BANK_CFG  = DEV / "tms9918" / "game_sokoban" / "apple1_sokoban_codetank_bank.cfg"
+SNAKE_ASM         = DEV / "tms9918" / "game_snake"   / "TMS_Snake.asm"
+SNAKE_BANK_CFG    = DEV / "tms9918" / "game_snake"   / "apple1_snake_codetank_bank.cfg"
 
 # --- LOGO V2 (GAME1 upper) -------------------------------------------------
-LOGO_V2_ASM        = DEV / "tms9918_logo" / "TMS_Logo_16k.asm"
-LOGO_V2_BANK_CFG   = DEV / "tms9918_logo" / "apple1_logo_v2_codetank_bank.cfg"
+LOGO_V2_ASM        = DEV / "tms9918" / "tool_logo" / "TMS_Logo_16k.asm"
+LOGO_V2_BANK_CFG   = DEV / "tms9918" / "tool_logo" / "apple1_logo_v2_codetank_bank.cfg"
 LOGO_V2_MATH_ASM   = LIB_M6502   / "math.asm"
 LOGO_V2_VDP_ASM    = LIB_TMS     / "tms9918m2.asm"
 LOGO_V2_EMOTE_ASM  = LIB_TMS     / "sprites_emotes.asm"
@@ -100,65 +90,53 @@ LOGO_V2_BUFED_ASM  = LIB_TMS     / "buffer_editor.asm"
 LOGO_V2_SPRH_ASM   = LIB_TMS     / "sprite_helpers.asm"
 
 # --- GAME2 sources (Rogue lower; Nyan/CodeTank prebuilt upper) -------------
-ROGUE_ASM          = DEV / "tms9918_rogue" / "TMS_Rogue.asm"
-ROGUE_BOSS_ASM     = DEV / "tms9918_rogue" / "sprites_boss.asm"
-ROGUE_CODETANK_CFG = DEV / "tms9918_rogue" / "apple1_rogue.cfg"
+ROGUE_ASM          = DEV / "tms9918" / "game_rogue" / "TMS_Rogue.asm"
+ROGUE_BOSS_ASM     = DEV / "tms9918" / "game_rogue" / "sprites_boss.asm"
+ROGUE_CODETANK_CFG = DEV / "tms9918" / "game_rogue" / "apple1_rogue.cfg"
 ROGUE_M1_ASM       = LIB_TMS / "tms9918m1.asm"
 
-# Nyan/CodeTank (GAME2 upper) — drop-in 16 KB image. The .bin in
-# software/Apple-1_TMS_CC65/ is assembled by the project's own
-# Makefile (cf. dev/projects/tms9918_nyan_codetank/) at $4000 and pads
-# itself to fill the bank; we splat it verbatim into the upper half.
-NYAN_CT_BIN       = CODETANK_CC65_BIN / "TMS_Nyan_CodeTank.bin"
+# Nyan/CodeTank (GAME2 upper) — drop-in image assembled from source by the
+# project's own Makefile (dev/projects/tms9918/demo_nyan_cat/) at $4000; we
+# splat it verbatim into the upper half (splat_full_bank pads to 16 KB).
+# Build it first:  make -C dev/projects/tms9918/demo_nyan_cat
+NYAN_CT_BIN       = ROOT / "software" / "Graphic TMS9918" / "TMS_Nyan_CodeTank.bin"
 
 # --- GAME3 sources (Tetris/CodeTank lower; menu+Life+Mandel+Plasma upper) --
-# Tetris/CodeTank — drop-in 16 KB image (full upper-bank-style binary,
-# no source / no assembly: we splat the bytes into the lower bank).
+# Tetris/CodeTank — external drop-in 16 KB image (no in-repo source; fetched
+# from GitHub). Drop it at software/Apple-1_TMS_CC65/tetris_codetank.bin, then
+# we splat the bytes verbatim into the lower bank.
 TETRIS_CT_BIN     = CODETANK_CC65_BIN / "tetris_codetank.bin"
 
 # GAME3 upper menu + 3 demo programs (Life, Mandel, Plasma) sharing the
 # upper bank via the menu pattern.
-GAME3_MENU_ASM    = DEV / "tms9918_codetank_game3_menu" / "codetank_game3_menu.asm"
-GAME3_MENU_CFG    = DEV / "tms9918_codetank_game3_menu" / "apple1_codetank_game3_menu.cfg"
+GAME3_MENU_ASM    = DEV / "codetank" / "game3_menu" / "codetank_game3_menu.asm"
+GAME3_MENU_CFG    = DEV / "codetank" / "game3_menu" / "apple1_codetank_game3_menu.cfg"
 
-LIFE_ASM          = DEV / "tms9918_life"   / "TMS_Life.asm"
-LIFE_BANK_CFG     = DEV / "tms9918_life"   / "apple1_life_codetank_game3_bank.cfg"
+LIFE_ASM          = DEV / "tms9918" / "demo_life"   / "TMS_Life.asm"
+LIFE_BANK_CFG     = DEV / "tms9918" / "demo_life"   / "apple1_life_codetank_game3_bank.cfg"
 
-MANDEL_ASM        = DEV / "tms9918_mandel" / "TMS_Mandel.asm"
-MANDEL_BANK_CFG   = DEV / "tms9918_mandel" / "apple1_mandel_codetank_bank.cfg"
+MANDEL_ASM        = DEV / "tms9918" / "demo_mandel" / "TMS_Mandel.asm"
+MANDEL_BANK_CFG   = DEV / "tms9918" / "demo_mandel" / "apple1_mandel_codetank_bank.cfg"
 MANDEL_VDP_ASM    = LIB_TMS / "tms9918m2.asm"
 
-PLASMA_ASM        = DEV / "tms9918_plasma" / "TMS_Plasma.asm"
-PLASMA_BANK_CFG   = DEV / "tms9918_plasma" / "apple1_plasma_codetank_bank.cfg"
+PLASMA_ASM        = DEV / "tms9918" / "demo_plasma" / "TMS_Plasma.asm"
+PLASMA_BANK_CFG   = DEV / "tms9918" / "demo_plasma" / "apple1_plasma_codetank_bank.cfg"
 PLASMA_VDP_ASM    = LIB_TMS / "tms9918m1.asm"
 
-# --- TEST sources (SilBench lower; menu+Clone+Split upper) -----------------
-# Lower bank = TMS_SilBench (29-test silicon benchmark suite, canonical
-# regression fixture for the May 2026 silicon model).
-SILBENCH_ASM        = DEV / "tms9918_silbench" / "TMS_SilBench.asm"
-SILBENCH_BANK_CFG   = DEV / "tms9918_silbench" / "apple1_silbench_codetank.cfg"
-SILBENCH_M1_ASM     = LIB_TMS / "tms9918m1.asm"
-SILBENCH_5S_ASM     = LIB_TMS / "tms9918_5strigger.asm"
+# --- TEST sources (menu + Clone + Split upper; lower bank reserved) --------
+# SilBench was abandoned (May 2026 reshuffle) — the TEST cart's lower bank is
+# now $FF-reserved; the two silicon-bug mini-tests live in the upper bank.
+TEST_MENU_ASM       = DEV / "codetank" / "test_menu" / "codetank_test_menu.asm"
+TEST_MENU_CFG       = DEV / "codetank" / "test_menu" / "apple1_codetank_test_menu.cfg"
 
-# Upper bank = menu + Clone + Split (two TMS9918 silicon-bug mini-tests).
-TEST_MENU_ASM       = DEV / "tms9918_codetank_test_menu" / "codetank_test_menu.asm"
-TEST_MENU_CFG       = DEV / "tms9918_codetank_test_menu" / "apple1_codetank_test_menu.cfg"
-
-CLONE_ASM           = DEV / "tms9918_clone" / "TMS_Clone.asm"
-CLONE_BANK_CFG      = DEV / "tms9918_clone" / "apple1_clone_codetank_bank.cfg"
+CLONE_ASM           = DEV / "tms9918" / "demo_clone" / "TMS_Clone.asm"
+CLONE_BANK_CFG      = DEV / "tms9918" / "demo_clone" / "apple1_clone_codetank_bank.cfg"
 CLONE_VDP_ASM       = LIB_TMS / "tms9918m2.asm"
 
-SPLIT_ASM           = DEV / "tms9918_split" / "TMS_Split.asm"
-SPLIT_BANK_CFG      = DEV / "tms9918_split" / "apple1_split_codetank_bank.cfg"
+SPLIT_ASM           = DEV / "tms9918" / "demo_split" / "TMS_Split.asm"
+SPLIT_BANK_CFG      = DEV / "tms9918" / "demo_split" / "apple1_split_codetank_bank.cfg"
 SPLIT_M1_ASM        = LIB_TMS / "tms9918m1.asm"
 SPLIT_5S_ASM        = LIB_TMS / "tms9918_5strigger.asm"
-
-# --- GAME4 sources (Light Corridor — full lower 16 kB; upper reserved) -----
-LIGHT_CORRIDOR_ASM     = DEV / "tms9918_light_corridor" / "TMS_LightCorridor.asm"
-LIGHT_CORRIDOR_BANK_CFG = (
-    DEV / "tms9918_light_corridor" / "apple1_light_corridor_codetank_bank.cfg"
-)
-LIGHT_CORRIDOR_VDP_ASM = LIB_TMS / "tms9918m2.asm"
 
 
 # ---------------------------------------------------------------------------
@@ -172,8 +150,8 @@ def need(tool: str) -> None:
 def _common_includes(asm: pathlib.Path) -> list[str]:
     return [
         "-I", str(LIB_APPLE1), "-I", str(LIB_M6502), "-I", str(LIB_TMS),
-        "-I", str(LIB_SOKOBAN), "-I", str(LIB_HGR), "-I", str(LIB_CHESS),
-        "-I", str(asm.parent),
+        "-I", str(LIB_SOKOBAN), "-I", str(LIB_GEN2), "-I", str(LIB_CHESS),
+        "-I", str(LIB_ROGUE), "-I", str(asm.parent),
     ]
 
 
@@ -408,16 +386,12 @@ def build_game3_upper_bank() -> bytes:
 # TEST — TMS_SilBench (lower) + menu + Clone + Split (upper)
 # ---------------------------------------------------------------------------
 def build_test_lower_bank() -> bytes:
-    """Lower 16 kB: TMS_SilBench run-in-place from $4000-$7FFF.
-    29-test silicon benchmark — each test renders a visual on the
-    TMS9918 then prints a transcribable line on the Apple-1 PIA display
-    so an operator can diff Replica-1+P-LAB silicon vs POM1 strict."""
-    print("[TEST] Lower bank (TMS_SilBench, full 16 kB):", file=sys.stderr)
-    silbench = assemble_multi(
-        [SILBENCH_ASM, SILBENCH_M1_ASM, SILBENCH_5S_ASM],
-        SILBENCH_BANK_CFG, "TEST_SilBench", HALF_SIZE)
+    """Lower 16 kB: reserved ($FF fill). SilBench was abandoned in the
+    May 2026 reshuffle; the test mini-suite now lives in the upper bank."""
+    print("[TEST] Lower bank (reserved, $FF fill):", file=sys.stderr)
     bank = bytearray(b"\xFF" * HALF_SIZE)
-    slot(bank, 0x0000, silbench, HALF_SIZE, "SilBench  ($4000-$7FFF)")
+    print(f"  Reserved lower bank          0 B / {HALF_SIZE:5d} B slot "
+          f"(  0.0%, {HALF_SIZE:5d} B free)", file=sys.stderr)
     return bytes(bank)
 
 
@@ -441,33 +415,6 @@ def build_test_upper_bank() -> bytes:
     slot(bank, 0x0000, menu,  0x0100, "Menu      ($4000-$40FF)")
     slot(bank, 0x0100, clone, 0x0400, "Clone     ($4100-$44FF)")
     slot(bank, 0x0500, split, 0x0400, "Split     ($4500-$48FF)")
-    return bytes(bank)
-
-
-# ---------------------------------------------------------------------------
-# GAME4 — Light Corridor (lower) + reserved (upper)
-# ---------------------------------------------------------------------------
-def build_game4_lower_bank() -> bytes:
-    """Lower 16 kB: TMS_LightCorridor alone, full $4000-$7FFF, run-in-place.
-    Original implementation inspired by Infogrames' Light Corridor (1990):
-    wireframe perspective tunnel + paddle + ball with z-scaled sprite
-    swap, 3 difficulty levels."""
-    print("[GAME4] Lower bank (TMS_LightCorridor, full 16 kB):",
-          file=sys.stderr)
-    lc = assemble_multi(
-        [LIGHT_CORRIDOR_ASM, LIGHT_CORRIDOR_VDP_ASM],
-        LIGHT_CORRIDOR_BANK_CFG, "G4_LightCorridor", HALF_SIZE)
-    bank = bytearray(b"\xFF" * HALF_SIZE)
-    slot(bank, 0x0000, lc, HALF_SIZE, "LightCorr ($4000-$7FFF)")
-    return bytes(bank)
-
-
-def build_game4_upper_bank() -> bytes:
-    """Upper 16 kB: reserved for future expansion (currently $FF fill)."""
-    print("\n[GAME4] Upper bank (reserved, $FF fill):", file=sys.stderr)
-    bank = bytearray(b"\xFF" * HALF_SIZE)
-    print(f"  Reserved upper bank          0 B / {HALF_SIZE:5d} B slot "
-          f"(  0.0%, {HALF_SIZE:5d} B free)", file=sys.stderr)
     return bytes(bank)
 
 
@@ -508,15 +455,6 @@ def build_test() -> bytes:
     return rom
 
 
-def build_game4() -> bytes:
-    print("\n========== Codetank_GAME4.rom ==========", file=sys.stderr)
-    lower = build_game4_lower_bank()
-    upper = build_game4_upper_bank()
-    rom = lower + upper
-    assert len(rom) == ROM_SIZE
-    return rom
-
-
 def write_rom(rom: bytes, out: pathlib.Path, sidecar: str) -> None:
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_bytes(rom)
@@ -546,27 +484,9 @@ SIDECAR_GAME3 = (
 
 SIDECAR_TEST = (
     "Codetank_TEST.rom — TMS9918 silicon-validation utilities\n"
-    "  Lower jumper: 4000R → TMS_SilBench (29-test silicon benchmark\n"
-    "                suite — interactive menu (A=run all, 1..9=single\n"
-    "                test, ESC=exit). Each test renders a visual on the\n"
-    "                TMS9918 then prints a transcribable line on the\n"
-    "                Apple-1 native PIA display. Canonical regression\n"
-    "                fixture for the May 2026 silicon model — see\n"
-    "                dev/projects/tms9918_silbench/README.md)\n"
+    "  Lower jumper: reserved ($FF fill — SilBench abandoned).\n"
     "  Upper jumper: 4000R → menu → 1=Clone (sprite-clone bug N.8)\n"
     "                              2=Split (5th-sprite palette split)\n"
-)
-
-SIDECAR_GAME4 = (
-    "Codetank_GAME4.rom — TMS9918 P-LAB CodeTank cartridge\n"
-    "  Lower jumper: 4000R → TMS_LightCorridor (wireframe perspective\n"
-    "                tunnel + paddle + ball, 3 difficulty levels).\n"
-    "                Controls: A/Q D = left/right, W/Z S = up/down,\n"
-    "                SPACE = launch, ESC = exit to Wozmon.\n"
-    "                Original implementation inspired by Infogrames'\n"
-    "                Light Corridor (1990) concept — original code,\n"
-    "                original assets.\n"
-    "  Upper jumper: reserved ($FF fill — future expansion).\n"
 )
 
 
@@ -576,8 +496,8 @@ def main() -> int:
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     ap.add_argument(
-        "--rom", choices=("1", "2", "3", "4", "test", "all"), default="all",
-        help="Which CodeTank ROM to build (default: all 5)",
+        "--rom", choices=("1", "2", "3", "test", "all"), default="all",
+        help="Which CodeTank ROM to build (default: all 4)",
     )
     args = ap.parse_args()
 
@@ -601,10 +521,6 @@ def main() -> int:
     if args.rom in ("test", "all"):
         romT = build_test()
         write_rom(romT, out_dir / "Codetank_TEST.rom", SIDECAR_TEST)
-
-    if args.rom in ("4", "all"):
-        rom4 = build_game4()
-        write_rom(rom4, out_dir / "Codetank_GAME4.rom", SIDECAR_GAME4)
 
     return 0
 

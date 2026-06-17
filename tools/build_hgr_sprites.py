@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Mirror dev/lib/tms9918/sprites_*.asm into dev/lib/hgr/sprites/sprites_*_hgr.asm
+Mirror dev/lib/tms9918/sprites_*.asm into dev/lib/gen2/sprites/sprites_*_hgr.asm
 so the same SCROLL-O-SPRITES bank can be linked into either a TMS9918 or a
 GEN2 HGR project with identical ergonomics.
 
@@ -26,7 +26,7 @@ collision) — pick one variant per build. If you ever need both, alias the
 labels in your project's local copy.
 
 Sources scanned: every dev/lib/tms9918/sprites_*.asm. Each becomes
-dev/lib/hgr/sprites/<basename>_hgr.asm with matching labels and a trailing
+dev/lib/gen2/sprites/<basename>_hgr.asm with matching labels and a trailing
 collective `<category>_hgr_data` base label for index-based loops.
 
 Usage:
@@ -44,7 +44,7 @@ from typing import List, Tuple
 
 REPO = pathlib.Path(__file__).resolve().parents[1]
 TMS_DIR = REPO / "dev" / "lib" / "tms9918"
-HGR_DIR = REPO / "dev" / "lib" / "hgr" / "sprites"
+HGR_DIR = REPO / "dev" / "lib" / "gen2" / "sprites"
 
 # TMS peut préfixer les labels « C/cc65 » par _ (ex. _fauna_dog_pat).
 LABEL_RE = re.compile(r"^(_?[a-z][a-z0-9_]*):\s*$")
@@ -184,7 +184,7 @@ def emit_hgr_inc(category: str, title: str, n: int) -> str:
         f"; this header to get the count constants in immediate-mode form\n"
         f"; (e.g. `LDA #{cap}_HGR_COUNT`), then `.import` the data labels from the\n"
         f"; sister sprites_{category}_hgr.asm linked in via EXTRA_ASM. Same\n"
-        f"; convention applies to every other category in dev/lib/hgr/sprites/.\n"
+        f"; convention applies to every other category in dev/lib/gen2/sprites/.\n"
         f"; ============================================================================\n"
         f"\n"
         f"{cap}_HGR_COUNT             = {n}\n"

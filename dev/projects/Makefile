@@ -17,7 +17,8 @@
 # absent, so `make test` stays green on a box without a built emulator; CI
 # builds POM1 first so the wired tests actually exercise it.
 
-PROJECTS := $(sort $(patsubst %/,%,$(dir $(wildcard */Makefile))))
+# Projects are grouped by card: dev/projects/<card>/<project>/Makefile.
+PROJECTS := $(sort $(patsubst %/,%,$(dir $(wildcard */*/Makefile))))
 
 .PHONY: all test clean list
 

@@ -144,7 +144,7 @@ static const char* kSketchAsmGen2 =      // asm x GEN2 HGR (BBFont text)
     "; pixel becomes two adjacent HGR pixels (a >=2px run shows as white, never an\n"
     "; NTSC colour fringe), and each row is drawn on two scanlines -> 16x16 cells.\n"
     "; plot_pixel handles the 7px/byte packing, so glyphs may straddle byte\n"
-    "; boundaries freely. Pulls in dev/lib/gen2 + dev/lib/hgr.\n"
+    "; boundaries freely. Pulls in dev/lib/gen2.\n"
     ".include \"gen2.inc\"\n"
     "\n"
     "TOP_ROW = 88            ; top scanline of the text band (0..191)\n"
@@ -249,55 +249,6 @@ static const char* kSketchAsmGen2 =      // asm x GEN2 HGR (BBFont text)
     "\n"
     ".include \"bbfont_cp437.inc\"\n"
     ".include \"hgr_tables.inc\"\n";
-static const char* kSketchTxtGen2Asm =   // asm x GEN2 native TEXT mode ($0400)
-    "; HELLO WORLD - GEN2 native TEXT mode (40x24, page $0400, the card's built-in\n"
-    "; font). $C251 turns TEXT on; bytes land in the Apple-II-interleaved text page.\n"
-    "; Normal (non-inverse/flash) glyphs need bit 7 set, so ORA #$80 each char.\n"
-    ".include \"gen2.inc\"\n"
-    "ROW12 = $0628          ; row 12 base = $0400 + $80*(12&7) + $28*(12>>3)\n"
-    ".code\n"
-    "start:\n"
-    "    bit GEN2_TEXTON        ; TEXT mode (disables all graphics)\n"
-    "    bit GEN2_PAGE1         ; page 1 ($0400)\n"
-    "    bit GEN2_MIXOFF        ; full screen\n"
-    "    lda #$A0               ; clear page to spaces ($A0 = ' ' | $80)\n"
-    "    ldx #0\n"
-    "clr:\n"
-    "    sta $0400,x\n"
-    "    sta $0500,x\n"
-    "    sta $0600,x\n"
-    "    sta $0700,x\n"
-    "    inx\n"
-    "    bne clr\n"
-    "    ldx #0                 ; write centred message at row 12, col 14\n"
-    "msg:\n"
-    "    lda message,x\n"
-    "    beq done\n"
-    "    ora #$80               ; normal video (bit 7 set)\n"
-    "    sta ROW12+14,x\n"
-    "    inx\n"
-    "    bne msg\n"
-    "done:\n"
-    "    jmp *\n"
-    "message:\n"
-    "    .byte \"HELLO WORLD\", 0\n";
-static const char* kSketchTxtGen2C =     // C x GEN2 native TEXT mode ($0400)
-    "/* HELLO WORLD in GEN2 native TEXT mode (40x24, page $0400, built-in font).\n"
-    "   gen2_text() turns TEXT on; normal glyphs need bit 7 set. Upload runs @ $6000. */\n"
-    "#include \"gen2.h\"\n"
-    "\n"
-    "void main(void) {\n"
-    "    unsigned char *scr = (unsigned char *)(0x0628 + 14);  /* row 12, col 14 */\n"
-    "    unsigned char *page = (unsigned char *)0x0400;\n"
-    "    const char *s = \"HELLO WORLD\";\n"
-    "    unsigned i;\n"
-    "    gen2_text();                    /* TEXT on (disables graphics) */\n"
-    "    gen2_page1();\n"
-    "    gen2_full();\n"
-    "    for (i = 0; i < 0x400u; ++i) page[i] = 0xA0;   /* clear to spaces */\n"
-    "    while (*s) *scr++ = (unsigned char)(*s++ | 0x80);\n"
-    "    for (;;) { /* idle */ }\n"
-    "}\n";
 static const char* kSketchCText =        // C x Apple dual-4k/8k (WozMon I/O)
     "/* HELLO WORLD in C on a plain text Apple-1, using the shared apple1c text\n"
     "   base (woz_puts/woz_getkey). The same apple1io.h works on the GEN2 card. */\n"
@@ -372,9 +323,9 @@ struct TempFileSweeper {
 
 // POM1 target: machine preset + linker cfg + source mode (0 asm/1 hex/2 raw/3 C)
 // + the HELLO-WORLD starter for it. The New dialog picks a (language x machine)
-// pair; the first 8 entries are that matrix, ordered language-major:
-//   0..3 = asm x {dual-4k, TMS9918, GEN2 HGR, Bernie TXT},
-//   4..7 = C   x {dual-4k, TMS9918, GEN2 HGR, Bernie TXT}.
+// pair; the first 6 entries are that matrix, ordered language-major:
+//   0..2 = asm x {dual-4k, TMS9918, GEN2 HGR},
+//   3..5 = C   x {dual-4k, TMS9918, GEN2 HGR}.
 // (preset indices: dual-4k = 1, TMS9918+CodeTank = 7, GEN2 = 12.)
 struct P1T { const char* label; int preset; const char* cfg; const char* lang; int mode;
              bool needsCl65; bool wantsAddr; bool codetankRom; const char* sketch; };
@@ -382,30 +333,27 @@ const P1T kP1Targets[] = {
     { "Apple-1 dual 4K/8K (asm)",         1, "apple1_4k.cfg",   "6502", 0, false, false, false, kSketchAsm       },
     { "P-LAB TMS9918 Graphic Card (asm)", 7, "codetank.cfg",    "6502", 0, false, false, true,  kSketchAsmTms    },
     { "Uncle Bernie GEN2 HGR (asm)",     12, "apple1_gen2.cfg", "6502", 0, false, false, false, kSketchAsmGen2   },
-    { "Bernie GEN2 TXT (asm)",           12, "apple1_gen2.cfg", "6502", 0, false, false, false, kSketchTxtGen2Asm},
     { "Apple-1 dual 4K/8K (C)",           1, "C-plain",         "C",    3, true,  false, false, kSketchCText     },
     { "P-LAB TMS9918 CodeTank ROM (C)",   7, "C",               "C",    3, true,  false, true,  kSketchC         },
     { "Uncle Bernie GEN2 HGR (C)",       12, "C-gen2",          "C",    3, true,  false, false, kSketchGen2C     },
-    { "Bernie GEN2 TXT (C)",             12, "C-gen2",          "C",    3, true,  false, false, kSketchTxtGen2C  },
     { "Wozmon hex (any machine)",        -1, "",                "hex",  1, false, false, false, kSketchHex       },
     { "Raw bytes @ $ (any machine)",     -1, "",                "raw",  2, false, true,  false, kSketchRaw       },
 };
 const int kP1TargetCount = static_cast<int>(sizeof(kP1Targets) / sizeof(kP1Targets[0]));
 
-// New-dialog axes (language x machine -> target index = lang*4 + machine).
+// New-dialog axes (language x machine -> target index = lang*3 + machine).
 // kP1*Hints are parallel to the labels and surface as combo-entry tooltips.
 const char* const kP1Languages[] = { "Assembly  —  ca65 / ld65", "C  —  cc65 / cl65" };
 const char* const kP1LanguageHints[] = {
     "MOS 6502 assembler (cc65's ca65 + ld65). Links against the apple1 / tms9918 /\n"
     "gen2 equate libraries under dev/lib via the per-target linker .cfg.",
     "C cross-compiler (cc65's cl65). Pulls in the apple1.c runtime, or the\n"
-    "apple1-videocard-lib (TMS9918) / gen2 C runtime depending on the target.",
+    "tms9918c (TMS9918) / gen2 C runtime depending on the target.",
 };
 const char* const kP1Machines[]  = {
     "Apple-1 dual 4K/8K  (text) - start here",
     "P-LAB Graphic Card  (TMS9918)",
     "Uncle Bernie GEN2 HGR  (colour)",
-    "Bernie GEN2 TXT  (40x24 text)",
 };
 const char* const kP1MachineHints[] = {
     "Stock Apple-1: 40x24 text printed through the WozMon ECHO routine ($FFEF).\n"
@@ -415,8 +363,6 @@ const char* const kP1MachineHints[] = {
     "into CODETANKDEV.rom and boots 4000R (all TMS9918 code runs from CodeTank).",
     "Uncle Bernie's GEN2 colour card — Apple II-style HIRES (280x192) driven by\n"
     "the soft switches $C250-$C257. Hello world uses the BBFont. Preset 12.",
-    "Uncle Bernie's GEN2 in native TEXT mode — 40x24, page $0400, the card's\n"
-    "built-in font ($C251 TEXT on). Preset 12.",
 };
 
 // Graduated learning examples (inline sources) on the Apple-1 text target. They
@@ -511,12 +457,12 @@ const P1Ex kP1Examples[] = {
     { "2 - Print a string (asm)",          false, kEx_string,     0, "", 0 },
     { "3 - Count 0 to 9 (asm)",            false, kEx_loop,       0, "", 0 },
     { "4 - Echo the keyboard (asm)",       false, kEx_keyboard,   0, "", 0 },
-    { "5 - Hello in C",                    false, kEx_c_hello,    4, "", 0 },
-    { "6 - Keyboard echo in C",            false, kEx_c_keyboard, 4, "", 0 },
-    { "A-1-CrazyCycle  (Bernie GEN2 HGR)", true,  "dev/projects/a1_crazycycle/A-1-CrazyCycle.asm", 2,
+    { "5 - Hello in C",                    false, kEx_c_hello,    3, "", 0 },
+    { "6 - Keyboard echo in C",            false, kEx_c_keyboard, 3, "", 0 },
+    { "A-1-CrazyCycle  (Bernie GEN2 HGR)", true,  "dev/projects/gen2/demo_a1_crazycycle/A-1-CrazyCycle.asm", 2,
       "sdcard/NONO/HGR/UBERNIE#062000", 0x2000 },
-    { "Telemetry demo  (SDK harness)",     true,  "dev/projects/a1_telemetry_demo/A1_TelemetryDemo.asm", 0, "", 0 },
-    { "Snake telemetry  (Bernie GEN2 HGR)", true, "dev/projects/gen2_snake_telemetry/GEN2Snake.c", 6, "", 0 },
+    { "Telemetry demo  (SDK harness)",     true,  "dev/projects/apple1/demo_telemetry/A1_TelemetryDemo.asm", 0, "", 0 },
+    { "Snake telemetry  (Bernie GEN2 HGR)", true, "dev/projects/gen2c/game_snake_telemetry/GEN2Snake.c", 5, "", 0 },
 };
 const int kP1ExampleCount = static_cast<int>(sizeof(kP1Examples) / sizeof(kP1Examples[0]));
 
@@ -631,7 +577,7 @@ Pom1BenchHost::Pom1BenchHost(MainWindow_ImGui* mw) : mw_(mw)
     for (const char* h : kP1MachineHints)  machineHints_.push_back(h);
 #if !POM1_IS_WASM
     // Examples load their source from dev/projects/, which the WASM build does NOT
-    // preload (only dev/{cc65,lib,apple1-videocard-lib} for the toolchain) — so
+    // preload (only dev/{cc65,lib} for the toolchain) — so
     // the Examples popup stays desktop-only.
     for (int i = 0; i < kP1ExampleCount; ++i)
         examples_.push_back({ kP1Examples[i].label });
@@ -715,8 +661,9 @@ void Pom1BenchHost::probe() const
     }
     cl65_ = bench::whichExe("cl65");
     if (!devRoot.empty()) {
-        const fs::path vroot = fs::path(devRoot) / "apple1-videocard-lib";
-        if (fs::exists(vroot / "lib", ec)) videocardLib_ = fs::absolute(vroot / "lib", ec).string();
+        // The TMS9918 C lib (ex-apple1-videocard-lib) now lives flat under dev/lib/tms9918c.
+        const fs::path vroot = fs::path(devRoot) / "lib" / "tms9918c";
+        if (fs::exists(vroot, ec)) videocardLib_ = fs::absolute(vroot, ec).string();
         const fs::path cfg = vroot / "cc65" / "codetank_c.cfg";
         if (fs::exists(cfg, ec)) codetankCfg_ = fs::absolute(cfg, ec).string();
     }
@@ -775,8 +722,8 @@ const std::vector<std::string>& Pom1BenchHost::machineHints()  const { return ma
 
 int Pom1BenchHost::targetFor(int language, int machine) const
 {
-    if (language < 0 || language > 1 || machine < 0 || machine > 3) return -1;
-    return language * 4 + machine;   // matches the kP1Targets matrix ordering
+    if (language < 0 || language > 1 || machine < 0 || machine > 2) return -1;
+    return language * 3 + machine;   // matches the kP1Targets matrix ordering
 }
 
 void Pom1BenchHost::onTargetSelected(int target)
@@ -814,7 +761,7 @@ bench::ExampleLoad Pom1BenchHost::loadExample(int i)
     // Telemetry Side Channel window so its schema-driven "Decoded state" table
     // is visible the moment the user loads it. Keyed on the source path so other
     // examples are untouched (a friend of MainWindow_ImGui reaches showTelemetry).
-    if (e.data && std::strstr(e.data, "gen2_snake_telemetry")) {
+    if (e.data && std::strstr(e.data, "game_snake_telemetry")) {
         mw_->showTelemetry = true;
         mw_->emulation->setTelemetryEnabled(true);   // open the port so the
         // "Decoded state" table updates live without the user ticking Enabled
@@ -915,10 +862,10 @@ bench::BuildResult Pom1BenchHost::build(int target, const std::string& src, cons
                    R"({"path":"/dev/lib/gfx/gfx_draw.c","name":"gfx_draw.c"},{"path":"/dev/lib/gfx/gfx_num.c","name":"gfx_num.c"},{"path":"/dev/lib/gfx/gfx_backend_gen2.c","name":"gfx_backend_gen2.c"}],)"
                    R"("asmSources":[{"path":"/dev/lib/gen2c/gen2_blit.s","name":"gen2_blit.s"},{"path":"/dev/lib/apple1c/apple1io_asm.s","name":"apple1io_asm.s"}]})";
         } else {   // "C" = TMS9918 CodeTank ROM
-            cfg  = "/dev/apple1-videocard-lib/cc65/codetank_c.cfg";
-            spec = R"({"cfg":"/dev/apple1-videocard-lib/cc65/codetank_c.cfg","incDirs":["/dev/apple1-videocard-lib/lib"],)"
-                   R"("cSources":[{"path":"/dev/apple1-videocard-lib/lib/tms9918.c","name":"tms9918.c"},{"path":"/dev/apple1-videocard-lib/lib/screen1.c","name":"screen1.c"},{"path":"/dev/apple1-videocard-lib/lib/c64font.c","name":"c64font.c"}],)"
-                   R"("asmSources":[{"path":"/dev/apple1-videocard-lib/lib/apple1_asm.s","name":"apple1_asm.s"}]})";
+            cfg  = "/dev/lib/tms9918c/cc65/codetank_c.cfg";
+            spec = R"({"cfg":"/dev/lib/tms9918c/cc65/codetank_c.cfg","incDirs":["/dev/lib/tms9918c"],)"
+                   R"("cSources":[{"path":"/dev/lib/tms9918c/tms9918.c","name":"tms9918.c"},{"path":"/dev/lib/tms9918c/screen1.c","name":"screen1.c"},{"path":"/dev/lib/tms9918c/c64font.c","name":"c64font.c"}],)"
+                   R"("asmSources":[{"path":"/dev/lib/tms9918c/apple1_asm.s","name":"apple1_asm.s"}]})";
         }
         uint16_t entry = parseCfgLoadAddr(cfg);
         if (entry == 0) entry = (cfgTag == "C-plain") ? 0x0300 : (cfgTag == "C-gen2") ? 0x6000 : 0x4000;
@@ -970,7 +917,7 @@ bench::BuildResult Pom1BenchHost::build(int target, const std::string& src, cons
                     if (FS.isDir(FS.stat(p).mode)) incDirs.push(p);
                 }
             } catch (e) {}
-            incDirs.push('/dev/apple1-videocard-lib/lib');
+            incDirs.push('/dev/lib/tms9918c');
             Module.__benchJob = ({ state: 'running', code: -1 });
             window.POM1cc65.buildAsm(src, ({ cfg: cfg, incDirs: incDirs }))
                 .then(function (res) {

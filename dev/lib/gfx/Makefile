@@ -39,7 +39,7 @@ CFLAGS ?= -t none -c -Oirs
 
 GFXINC  := -I .
 GEN2INC := -I ../gen2c                       # gen2.h  (GEN2 backend)
-TMSINC  := -I ../../apple1-videocard-lib/lib  # screen2.h (TMS backend)
+TMSINC  := -I ../tms9918c  # screen2.h (TMS backend)
 
 .PHONY: all gen2 tms check clean
 

@@ -37,7 +37,7 @@ is plain text, GEN2 HGR colour, or TMS9918 sprites.
 | `woz_puts(s)`          | print a NUL-terminated string |
 | `woz_print_hex(b)`     | print a byte as two hex digits |
 | `woz_print_hexword(w)` | print a 16-bit word as four hex digits |
-| `woz_mon()`            | return control to the WOZ Monitor (`$FF1F`) |
+| `woz_mon()`            | return to the WOZ Monitor `\` prompt (`$FF1A`) |
 | `apple1_iskeypressed()`| nonzero (bit 7) if a key is waiting |
 | `apple1_getkey()`      | **block** until a key, return `key & 0x7F` |
 | `apple1_readkey()`     | `0` if no key, else `key & 0x7F` (no wait) |
