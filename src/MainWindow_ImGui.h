@@ -24,6 +24,7 @@
 
 class Pom1BenchHost;                 // POM1 host for the portable bench editor
 namespace bench { class CodeBench; } // bench/CodeBench.h
+struct ImGuiSettingsHandler;         // imgui_internal.h — custom .ini section handler
 
 class MainWindow_ImGui
 {
@@ -91,21 +92,52 @@ public:
     // preset switch, and from the main loop on clean shutdown so the
     // user's last layout survives across sessions. Public because
     // main_imgui.cpp's cleanup path must call savePresetLayout() before
-    // ImGui::DestroyContext(). savePresetLayout also writes a
-    // ini/preset_NN.windows sidecar capturing which "desktop" panels (Bench,
-    // Telemetry, inspectors, card windows…) are open, so loadPresetLayout can
-    // restore the whole arrangement — not just window geometry. Not const: it
-    // reads the live show* flags through persistentWindowFlags().
+    // ImGui::DestroyContext().
+    //
+    // Window *presence* (which windows are open) is no longer a separate
+    // ini/preset_NN.windows sidecar: it is folded into the same preset .ini
+    // via a custom ImGuiSettingsHandler that writes a [POM1Windows][Open]
+    // section, driven by the window registry below — so geometry AND presence
+    // round-trip through one file, in lockstep. loadPresetLayout still reads a
+    // legacy .windows sidecar as a one-time migration when the .ini carries no
+    // presence section (then savePresetLayout removes the stale sidecar).
     void savePresetLayout(int presetIndex);
     bool loadPresetLayout(int presetIndex);  // returns true if a file was found
 
-    // The curated set of persistent "desktop" panels whose open/closed state is
-    // saved with the layout (tool + peripheral windows; transient dialogs,
-    // tutorials and photos are intentionally excluded). Maps a stable key to the
-    // backing show* flag. Shared by save/loadWindowFlags.
+    // ── Window registry — single source of truth for every dismissable window.
+    // One row per window: a stable persistence key, the ImGui Begin() title
+    // (the geometry key ImGui already stores in the .ini), the backing show*
+    // flag, a kind, and whether the window's open/closed state belongs in a
+    // saved profile. Presence persistence and persistentWindowFlags() both
+    // derive from this table, so adding a window means adding exactly one row
+    // here — tutorials, peripheral panels and info/photo windows are covered
+    // automatically; only the transient file/config dialogs opt out via
+    // persistPresence=false (excluded by data, never by silent omission).
+    enum class WindowKind { Tool, Peripheral, Tutorial, Info, Dialog };
+    struct WindowDescriptor {
+        const char* key;                 // stable persistence key (never rename)
+        const char* title;               // ImGui Begin() title
+        bool MainWindow_ImGui::* show;   // backing show* flag
+        WindowKind  kind;
+        bool        persistPresence;     // open/closed saved in the per-preset profile?
+    };
+    static const std::vector<WindowDescriptor>& windowRegistry();
+
+    // The subset of windowRegistry() whose presence is persisted, as a
+    // {stable key → live show* flag} list bound to this instance. Consumed by
+    // the [POM1Windows] settings handler and the legacy-sidecar reader.
     std::vector<std::pair<const char*, bool*>> persistentWindowFlags();
-    void saveWindowFlags(int presetIndex);   // → ini/preset_NN.windows
-    bool loadWindowFlags(int presetIndex);   // applies the sidecar if present
+    bool loadWindowFlags(int presetIndex);   // legacy ini/preset_NN.windows reader (migration/seed)
+
+    // Custom ImGuiSettingsHandler round-tripping window presence inside the
+    // preset .ini (the [POM1Windows][Open] section). Registered once, lazily,
+    // before the first Load/SaveIniSettingsFromDisk.
+    void ensureWindowSettingsHandler();
+    bool windowSettingsHandlerRegistered_ = false;
+    bool iniHadPresenceSection_ = false;   // set when the loaded .ini supplied [POM1Windows]
+    static void* windowSettings_ReadOpen(ImGuiContext* ctx, ImGuiSettingsHandler* h, const char* name);
+    static void  windowSettings_ReadLine(ImGuiContext* ctx, ImGuiSettingsHandler* h, void* entry, const char* line);
+    static void  windowSettings_WriteAll(ImGuiContext* ctx, ImGuiSettingsHandler* h, ImGuiTextBuffer* out_buf);
 
     // Write default ini/imgui_preset_NN.ini + ini/preset_NN.size for every
     // preset that doesn't have one yet, using the hard-coded defaults from

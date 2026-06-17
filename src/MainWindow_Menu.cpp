@@ -185,12 +185,12 @@ void MainWindow_ImGui::renderMenuBar()
             if (ImGui::IsItemHovered())
                 ImGui::SetTooltip(
                     "Snapshot the current desktop for THIS preset: every window's\n"
-                    "position + size AND which panels are open (Bench, Telemetry,\n"
-                    "inspectors, memory/debug, card windows). The whole arrangement\n"
+                    "position + size AND which windows are open (tools, peripheral\n"
+                    "panels, tutorials, info/photo windows). The whole arrangement\n"
                     "reappears when you return to this preset. Writes\n"
-                    "ini/imgui_preset_%02d.ini + preset_%02d.size + preset_%02d.windows;\n"
+                    "ini/imgui_preset_%02d.ini (geometry + open windows) + preset_%02d.size;\n"
                     "copy those into ini_defaults/ to ship them as the default baseline.",
-                    activePresetIndex, activePresetIndex, activePresetIndex);
+                    activePresetIndex, activePresetIndex);
             if (ImGui::BeginMenu("Reset Windows Layout")) {
                 if (ImGui::MenuItem("This preset")) {
                     resetActivePresetLayout();

@@ -21,6 +21,7 @@
 
 #include <algorithm>
 #include <cstdio>
+#include <cstring>
 #include <filesystem>
 #include <fstream>
 #include <string>
@@ -1096,8 +1097,10 @@ void MainWindow_ImGui::savePresetLayout(int idx)
                            memoryBarLastPos, memoryBarLastSize);
     syncMemoryBarIniToDisk("Memory Map Bar (Horizontal)", memoryBarHLastGeomValid,
                            memoryBarHLastPos, memoryBarHLastSize);
-    ImGui::SaveIniSettingsToDisk(iniPath.c_str());
-    saveWindowFlags(idx);   // ini/preset_NN.windows: which desktop panels are open
+    ensureWindowSettingsHandler();  // so SaveIniSettingsToDisk emits [POM1Windows]
+    ImGui::SaveIniSettingsToDisk(iniPath.c_str());  // geometry + window presence
+    // Presence now lives in the .ini; drop any migrated legacy sidecar.
+    std::filesystem::remove(windowsPathForPreset(idx), ec);
     pom1::log().debug("Layout",
         "Saved preset " + std::to_string(idx) + " → " + iniPath);
 #if !POM1_IS_WASM
@@ -1115,9 +1118,15 @@ bool MainWindow_ImGui::loadPresetLayout(int idx)
     const std::string path = iniPathForPreset(idx);
     std::error_code ec;
     if (!std::filesystem::exists(path, ec)) return false;
-    ImGui::LoadIniSettingsFromDisk(path.c_str());
-    loadWindowFlags(idx);   // restore which desktop panels are open (overrides
-                            // the card-driven defaults applyMachineConfig set)
+    ensureWindowSettingsHandler();   // register before parsing presence
+    iniHadPresenceSection_ = false;
+    ImGui::LoadIniSettingsFromDisk(path.c_str());  // geometry + [POM1Windows] presence
+    // Migrate a pre-existing ini/preset_NN.windows sidecar (or an ini_defaults/
+    // seed) only when the .ini itself carried no presence section. Overrides the
+    // card-driven defaults applyMachineConfig set; savePresetLayout then folds it
+    // into the .ini and removes the sidecar.
+    if (!iniHadPresenceSection_)
+        loadWindowFlags(idx);
 #if !POM1_IS_WASM
     if (window) {
         int w = 0, h = 0;
@@ -1130,51 +1139,162 @@ bool MainWindow_ImGui::loadPresetLayout(int idx)
 }
 
 // ---------------------------------------------------------------------------
-// Window open/closed persistence (ini/preset_NN.windows)
+// Window registry — single source of truth for every dismissable window.
 //
-// ImGui's own ini stores each window's position/size/collapsed state, but NOT
-// whether the app currently has that window *open* (the show* bool flags live
-// in app state). This sidecar captures the open/closed state of the curated
-// "desktop" panels so a saved arrangement — Bench + Telemetry + inspectors laid
-// out just so — reappears wholesale when the preset is selected again.
+// Adding a window means adding ONE row here. Presence persistence (the
+// [POM1Windows][Open] section the settings handler writes into each preset
+// .ini) and persistentWindowFlags() are both derived from this table, so the
+// open/closed state of tutorials, peripheral panels and info/photo windows is
+// covered automatically — no hand-maintained allow-list to drift out of sync.
+// Only the transient file/config dialogs opt out (persistPresence=false):
+// re-opening a half-finished "Save As" on a preset switch would be a bug, so
+// they are excluded by data, explicitly, rather than by silent omission.
+//
+// `key` is the stable persistence token (never rename it — it is what lands in
+// the .ini); `title` documents the ImGui Begin() title ImGui already keys the
+// window's geometry by. `kind` is informational/grouping only today.
 // ---------------------------------------------------------------------------
-std::vector<std::pair<const char*, bool*>> MainWindow_ImGui::persistentWindowFlags()
+const std::vector<MainWindow_ImGui::WindowDescriptor>&
+MainWindow_ImGui::windowRegistry()
 {
-    // Stable keys → backing flags. Tool + peripheral panels only; transient
-    // dialogs, tutorials, photos and config popups are intentionally excluded.
-    return {
-        { "Bench",             &showBench },
-        { "Telemetry",         &showTelemetry },
-        { "TMS9918Inspector",  &showTMS9918Inspector },
-        { "SiliconStrict",     &showSiliconStrictWindow },
-        { "MemoryViewer",      &showMemoryViewer },
-        { "Debugger",          &showDebugger },
-        { "RewindTimeline",    &showRewindTimeline },
-        { "MemoryMapGrid",     &showMemoryMapGrid },
-        { "MemoryBar",         &showMemoryBar },
-        { "MemoryBarH",        &showMemoryBarH },
-        { "CassetteDeck",      &showCassetteDeck },
-        { "GraphicsCard",      &showGraphicsCard },
-        { "TMS9918",           &showTMS9918 },
-        { "GT6144",            &showGT6144 },
-        { "IECCard",           &showIECCard },
-        { "WiFiModem",         &showWiFiModem },
-        { "TerminalCard",      &showTerminalCard },
-        { "PR40",              &showPR40 },
-        { "JukeBox",           &showJukeBox },
-        { "CodeTankLibrary",   &showCodeTankLibrary },
+    using K  = WindowKind;
+    using MW = MainWindow_ImGui;
+    static const std::vector<WindowDescriptor> kReg = {
+        // key                    title                                        show flag                    kind            persist
+        // ── Tools ───────────────────────────────────────────────────────────────────────────────────────────────────────────
+        { "Bench",                "POM1 Bench",                                &MW::showBench,              K::Tool,        true  },
+        { "Telemetry",            "Telemetry Side Channel",                    &MW::showTelemetry,          K::Tool,        true  },
+        { "TMS9918Inspector",     "TMS9918 VDP Inspector",                     &MW::showTMS9918Inspector,   K::Tool,        true  },
+        { "SiliconStrict",        "Silicon Strict Inspector",                  &MW::showSiliconStrictWindow,K::Tool,        true  },
+        { "MemoryViewer",         "Memory Viewer",                             &MW::showMemoryViewer,       K::Tool,        true  },
+        { "Debugger",             "CPU Debug Console",                         &MW::showDebugger,           K::Tool,        true  },
+        { "RewindTimeline",       "State Rewind",                              &MW::showRewindTimeline,     K::Tool,        true  },
+        { "MemoryMapGrid",        "Memory Map Grid",                           &MW::showMemoryMapGrid,      K::Tool,        true  },
+        { "MemoryBar",            "Memory Map Bar",                            &MW::showMemoryBar,          K::Tool,        true  },
+        { "MemoryBarH",           "Memory Map Bar (Horizontal)",               &MW::showMemoryBarH,         K::Tool,        true  },
+        // ── Peripheral / card panels ──────────────────────────────────────────────────────────────────────────────────────────
+        { "CassetteDeck",         "Apple-1 Cassette Deck",                     &MW::showCassetteDeck,       K::Peripheral,  true  },
+        { "GraphicsCard",         "Uncle Bernie's GEN2 HGR Graphic Card",      &MW::showGraphicsCard,       K::Peripheral,  true  },
+        { "TMS9918",              "P-LAB Graphic Card (TMS9918)",              &MW::showTMS9918,            K::Peripheral,  true  },
+        { "GT6144",               "SWTPC GT-6144 Graphic Terminal",            &MW::showGT6144,             K::Peripheral,  true  },
+        { "IECCard",              "IEC Disk",                                  &MW::showIECCard,            K::Peripheral,  true  },
+        { "WiFiModem",            "P-LAB Wi-Fi Modem",                         &MW::showWiFiModem,          K::Peripheral,  true  },
+        { "TerminalCard",         "P-LAB Terminal Card",                       &MW::showTerminalCard,       K::Peripheral,  true  },
+        { "PR40",                 "SWTPC PR-40 Printer",                       &MW::showPR40,               K::Peripheral,  true  },
+        { "A1IO_RTC",             "P-LAB I/O Board & RTC",                     &MW::showA1IO_RTC,           K::Peripheral,  true  },
+        { "JukeBox",              "P-LAB Juke-Box",                            &MW::showJukeBox,            K::Peripheral,  true  },
+        { "CodeTankLibrary",      "P-LAB CodeTank Library",                    &MW::showCodeTankLibrary,    K::Peripheral,  true  },
+        // ── Tutorials (Help > Tutorials) ──────────────────────────────────────────────────────────────────────────────────────
+        { "TutorialIntegerBasic", "Tutorial: Integer BASIC",                   &MW::showTutorialIntegerBasic, K::Tutorial,  true },
+        { "TutorialApplesoft",    "Tutorial: Applesoft Lite",                  &MW::showTutorialApplesoft,  K::Tutorial,    true  },
+        { "TutorialMicroSD",      "Tutorial: microSD",                         &MW::showTutorialMicroSD,    K::Tutorial,    true  },
+        { "TutorialCassette",     "Tutorial: Cassette (ACI)",                  &MW::showTutorialCassette,   K::Tutorial,    true  },
+        { "TutorialModemBBS",     "Tutorial: Wi-Fi Modem BBS",                 &MW::showTutorialModemBBS,   K::Tutorial,    true  },
+        { "TutorialGT6144",       "Tutorial: SWTPC GT-6144",                   &MW::showTutorialGT6144,     K::Tutorial,    true  },
+        { "TutorialIECCard",      "Tutorial: IEC",                             &MW::showTutorialIECCard,    K::Tutorial,    true  },
+        { "TutorialPR40",         "Tutorial: SWTPC PR-40 Printer",             &MW::showTutorialPR40,       K::Tutorial,    true  },
+        { "TutorialTMS9918",      "Tutorial: P-LAB TMS9918",                   &MW::showTutorialTMS9918,    K::Tutorial,    true  },
+        { "TutorialA1IORTC",      "Tutorial: P-LAB A1-IO & RTC",               &MW::showTutorialA1IORTC,    K::Tutorial,    true  },
+        { "TutorialSID",          "Tutorial: A1-SID / A1-AUDIO SE",            &MW::showTutorialSID,        K::Tutorial,    true  },
+        { "TutorialGEN2HGR",      "Tutorial: Uncle Bernie's GEN2 HGR",         &MW::showTutorialGEN2HGR,    K::Tutorial,    true  },
+        { "TutorialCFFA1",        "Tutorial: CFFA1 CompactFlash",              &MW::showTutorialCFFA1,      K::Tutorial,    true  },
+        { "TutorialJukeBox",      "Tutorial: P-LAB Juke-Box",                  &MW::showTutorialJukeBox,    K::Tutorial,    true  },
+        { "TutorialTerminalCard", "Tutorial: P-LAB Terminal Card",             &MW::showTutorialTerminalCard, K::Tutorial,  true },
+        { "TutorialKrusader",     "Tutorial: Krusader",                        &MW::showTutorialKrusader,   K::Tutorial,    true  },
+        // ── Info / credits / photos ───────────────────────────────────────────────────────────────────────────────────────────
+        { "About",                "About POM1",                                &MW::showAbout,              K::Info,        true  },
+        { "SpecialThanks",        "Ports & acknowledgements",                  &MW::showSpecialThanks,      K::Info,        true  },
+        { "HardwareReference",    "Hardware Reference",                        &MW::showHardwareReference,  K::Info,        true  },
+        { "SoftwareReference",    "Software Reference",                        &MW::showSoftwareReference,  K::Info,        true  },
+        { "Welcome",              "Welcome",                                   &MW::showWelcome,            K::Info,        true  },
+        { "WozJobsPhoto",         "Woz & Jobs (1976)",                         &MW::showWozJobsPhoto,       K::Info,        true  },
+        { "WozJobsRectPhoto",     "Apple-1 Demo Session (1976)",               &MW::showWozJobsRectPhoto,   K::Info,        true  },
+        { "TmsBoardPhoto",        "P-LAB TMS9918 Card (Photo)",                &MW::showTmsBoardPhoto,      K::Info,        true  },
+        // ── Transient dialogs — NOT persisted (would re-pop a file/config op) ─────────────────────────────────────────────────
+        { "ScreenConfig",         "Display Settings",                          &MW::showScreenConfig,       K::Dialog,      false },
+        { "MemoryConfig",         "Memory Settings",                           &MW::showMemoryConfig,       K::Dialog,      false },
+        { "LoadDialog",           "Load Program",                              &MW::showLoadDialog,         K::Dialog,      false },
+        { "LoadTapeDialog",       "Load Tape",                                 &MW::showLoadTapeDialog,     K::Dialog,      false },
+        { "SaveDialog",           "Save Memory",                               &MW::showSaveDialog,         K::Dialog,      false },
+        { "SaveTapeDialog",       "Save Tape",                                 &MW::showSaveTapeDialog,     K::Dialog,      false },
+        { "LoadSnapshotDialog",   "Load Snapshot",                             &MW::showLoadSnapshotDialog, K::Dialog,      false },
+        { "SaveSnapshotDialog",   "Save Snapshot",                             &MW::showSaveSnapshotDialog, K::Dialog,      false },
     };
+    return kReg;
 }
 
-void MainWindow_ImGui::saveWindowFlags(int idx)
+std::vector<std::pair<const char*, bool*>> MainWindow_ImGui::persistentWindowFlags()
 {
-    if (idx < 0 || idx >= kMachinePresetCount) return;
-    std::error_code ec;
-    std::filesystem::create_directories("ini", ec);
-    std::ofstream f(windowsPathForPreset(idx));
-    if (!f) return;
-    for (const auto& wf : persistentWindowFlags())
-        f << wf.first << '=' << (*wf.second ? 1 : 0) << '\n';
+    // Derived from windowRegistry(): every row whose presence is part of a
+    // saved profile, as a {stable key → this instance's live show* flag} pair.
+    std::vector<std::pair<const char*, bool*>> out;
+    for (const auto& d : windowRegistry())
+        if (d.persistPresence)
+            out.push_back({ d.key, &(this->*d.show) });
+    return out;
+}
+
+// ---------------------------------------------------------------------------
+// Presence persistence — folded into the preset .ini via a custom ImGui
+// settings handler. ImGui's own ini stores each window's position/size/
+// collapsed state but NOT whether the app has it *open* (that lives in the
+// show* bools). This handler writes a [POM1Windows][Open] section into the
+// same file, so geometry + presence round-trip together through Load/Save-
+// IniSettingsFromDisk. Replaces the former ini/preset_NN.windows sidecar.
+// ---------------------------------------------------------------------------
+void* MainWindow_ImGui::windowSettings_ReadOpen(ImGuiContext*, ImGuiSettingsHandler* h, const char* name)
+{
+    // Single entry: [POM1Windows][Open]. Returning non-null makes ImGui feed
+    // each following line to ReadLine. Record that the .ini carried presence
+    // so loadPresetLayout skips the legacy-sidecar migration.
+    auto* self = static_cast<MainWindow_ImGui*>(h->UserData);
+    if (self && std::strcmp(name, "Open") == 0) {
+        self->iniHadPresenceSection_ = true;
+        return self;
+    }
+    return nullptr;
+}
+
+void MainWindow_ImGui::windowSettings_ReadLine(ImGuiContext*, ImGuiSettingsHandler* h, void* entry, const char* line)
+{
+    auto* self = static_cast<MainWindow_ImGui*>(entry ? entry : h->UserData);
+    if (!self) return;
+    const char* eq = std::strchr(line, '=');
+    if (!eq) return;
+    const std::string key(line, static_cast<std::size_t>(eq - line));
+    const char c = eq[1];
+    const bool val = (c == '1' || c == 't' || c == 'T' || c == 'y' || c == 'Y');
+    for (const auto& wf : self->persistentWindowFlags())
+        if (key == wf.first) { *wf.second = val; break; }
+}
+
+void MainWindow_ImGui::windowSettings_WriteAll(ImGuiContext*, ImGuiSettingsHandler* h, ImGuiTextBuffer* out_buf)
+{
+    auto* self = static_cast<MainWindow_ImGui*>(h->UserData);
+    if (!self) return;
+    out_buf->appendf("[%s][Open]\n", h->TypeName);
+    for (const auto& wf : self->persistentWindowFlags())
+        out_buf->appendf("%s=%d\n", wf.first, *wf.second ? 1 : 0);
+    out_buf->append("\n");
+}
+
+void MainWindow_ImGui::ensureWindowSettingsHandler()
+{
+    if (windowSettingsHandlerRegistered_) return;
+    if (ImGui::GetCurrentContext() == nullptr) return;        // need a live context
+    if (ImGui::FindSettingsHandler("POM1Windows") != nullptr) {
+        windowSettingsHandlerRegistered_ = true;              // already added this session
+        return;
+    }
+    ImGuiSettingsHandler ini_handler;                         // ctor zero-inits the optional fns
+    ini_handler.TypeName   = "POM1Windows";
+    ini_handler.TypeHash   = ImHashStr("POM1Windows");
+    ini_handler.ReadOpenFn = windowSettings_ReadOpen;
+    ini_handler.ReadLineFn = windowSettings_ReadLine;
+    ini_handler.WriteAllFn = windowSettings_WriteAll;
+    ini_handler.UserData   = this;
+    ImGui::AddSettingsHandler(&ini_handler);                  // ImGui copies it by value
+    windowSettingsHandlerRegistered_ = true;
 }
 
 bool MainWindow_ImGui::loadWindowFlags(int idx)
