@@ -52,9 +52,11 @@ What runs *inside* the emulated Apple 1 — the libraries and `dev/projects/` pr
 
 ## Reference assets (binary — not prose)
 
-`doc/` also holds **non-prose reference material**, ignore it for code understanding:
-original hardware manuals (PDFs — `ColorGraphicsCard_doc_for_Arnaud.pdf` is the GEN2
+All **non-prose reference material** lives under [`doc/reference/`](reference/) — ignore it
+for code understanding (the `doc/` top level is prose docs only). It holds the original
+hardware manuals (PDFs — `doc/reference/ColorGraphicsCard_doc_for_Arnaud.pdf` is the GEN2
 spec source, plus Apple-1 Graphic Card / SID / microSD / CFFA1 / Cassette / Jukebox /
 Preliminary Apple BASIC / Terrapin & Turtle Geometry Logo), photos & screenshots
 (`*.jpg` / `*.png`), media (`*.mp4`), software archives (`*.zip`), and original-software
-readmes / game instructions (`*.txt`).
+readmes / game instructions (`*.txt`). The `doc/JUKEBOX_ROM_CREATOR/` toolkit (ROM-packing
+scripts + its own manuals) stays in place.

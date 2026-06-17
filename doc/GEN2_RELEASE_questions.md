@@ -8,7 +8,7 @@ switches + HST0 flag (Memory's `GEN2_softswitch` bus handler, full
 beam-raced renderer in `GraphicsCard` (TEXT/LORES/HIRES/MIXED/PAGE2, vertical
 bands + horizontal mid-scanline splits via `frameCycleToPos` +
 `forEachBeamSegment`). All built from Bernie's bit-exact reference
-`doc/ColorGraphicsCard_doc_for_Arnaud.pdf` (transcribed under *Answers* below;
+`doc/reference/ColorGraphicsCard_doc_for_Arnaud.pdf` (transcribed under *Answers* below;
 **every question Q1–Q10 RESOLVED**). Pinned by `gen2_floatingbus_smoke`,
 `gen2_softswitch_msb_smoke`, `gen2_beam_race_smoke`,
 `gen2_horizontal_split_smoke`. Key decided semantics: soft switches are
@@ -300,7 +300,7 @@ offered to sanity-check a test build against the real board.
 
 ### 2026-06-12 — PDF: *Apple-1 Color Graphics Card, 2nd Gen — Documentation for Arnaud*
 
-File: `doc/ColorGraphicsCard_doc_for_Arnaud.pdf` (7 pp., written for POM1).
+File: `doc/reference/ColorGraphicsCard_doc_for_Arnaud.pdf` (7 pp., written for POM1).
 This is the bit-exact reference the post-#6 prose deferred to. **All Phase-2
 `// SPEC PENDING BERNIE` markers can now be resolved from the facts below.**
 Bernie's contact for follow-ups: `appleonedoc@gmail.com`. He wants a **Linux Mint

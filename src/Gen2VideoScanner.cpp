@@ -87,7 +87,7 @@ uint16_t Gen2VideoScanner::scannerAddress(uint64_t frameCycle, const DisplayStat
 // ─── HST0 — Bernie's H/V-blank flag ─────────────────────────────────────────
 //
 // Verbatim port of the behavioural model in Bernie's PDF
-// (`doc/ColorGraphicsCard_doc_for_Arnaud.pdf`, Appendix 1 / Listing 2,
+// (`doc/reference/ColorGraphicsCard_doc_for_Arnaud.pdf`, Appendix 1 / Listing 2,
 // transcribed in doc/GEN2_RELEASE_questions.md Q3):
 //
 //   int hst0_state(int line, int hcnt)

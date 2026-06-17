@@ -1,7 +1,7 @@
 # A-1-CrazyCycle — démo beam-raced de la carte GEN2 *release* d'Uncle Bernie
 
 Démo de validation des soft switches `$C250-$C257` + drapeau HST0 de la carte
-release (spec : `doc/ColorGraphicsCard_doc_for_Arnaud.pdf`, transcrite dans
+release (spec : `doc/reference/ColorGraphicsCard_doc_for_Arnaud.pdf`, transcrite dans
 `doc/GEN2_RELEASE_questions.md`), avec **musique 2 voix par l'ACI**. C'est le
 livrable « démo de validation Bernie » du TODO Phase 5.
 

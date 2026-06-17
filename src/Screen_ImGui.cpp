@@ -386,7 +386,7 @@ void Screen_ImGui::drawCRTBackdrop(float x0, float y0, float x1, float y1, bool 
 }
 
 // DRAM refresh crosstalk artefact — matched to the real Apple-1 photo
-// (doc/Artefacts.jpg). Layout reported by direct observation:
+// (doc/reference/Artefacts.jpg). Layout reported by direct observation:
 //
 //   - Row 0 (top)        : 4 dots — refresh-slot crosstalk only.
 //   - Rows 1..24 (24)    : 20 dots — refresh slots + bus crosstalk on

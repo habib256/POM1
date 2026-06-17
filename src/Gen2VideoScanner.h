@@ -12,7 +12,7 @@
  * H/V-blank flag and the noise generator for the low 7 bits of a $C25x
  * read. Phase 3 consumes `Event` records for beam-raced rendering.
  *
- * Spec source: Bernie's PDF `doc/ColorGraphicsCard_doc_for_Arnaud.pdf`,
+ * Spec source: Bernie's PDF `doc/reference/ColorGraphicsCard_doc_for_Arnaud.pdf`,
  * transcribed in `doc/GEN2_RELEASE_questions.md` (Q1-Q10 all RESOLVED
  * 2026-06-12). Key decided semantics:
  *

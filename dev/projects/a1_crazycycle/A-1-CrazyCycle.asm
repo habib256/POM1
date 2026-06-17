@@ -4,7 +4,7 @@
 ; =============================================================================
 ;
 ; Validation demo for the GEN2 release card soft switches + HST0 flag
-; (doc/ColorGraphicsCard_doc_for_Arnaud.pdf / doc/GEN2_RELEASE_questions.md).
+; (doc/reference/ColorGraphicsCard_doc_for_Arnaud.pdf / doc/GEN2_RELEASE_questions.md).
 ;
 ; Sequence:
 ;   1. Initialise the soft-switch latch (power-on state is INDETERMINATE on

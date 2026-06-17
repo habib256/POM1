@@ -2,7 +2,7 @@
 // Emulates Rich Dreher's CFFA1 card: 8 KB EEPROM firmware ($9000-$AFFF)
 // with ATA/IDE registers ($AFE0-$AFFF) backed by a ProDOS .po disk image.
 //
-// Reference: CFFA1 Manual v1.1, firmware source (cc65), doc/CFFA1_cdromv1.1.zip
+// Reference: CFFA1 Manual v1.1, firmware source (cc65), doc/reference/CFFA1_cdromv1.1.zip
 
 #ifndef CFFA1_H
 #define CFFA1_H

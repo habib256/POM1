@@ -138,7 +138,7 @@ GEN2 moves from a passive `$2000-$3FFF` framebuffer + end-of-frame MAME
 rasteriser to a cycle-accurate, beam-raced video subsystem driven by the
 release card's `$C250-$C257` soft switches.
 
-- **Hardware spec resolved** — Bernie's `doc/ColorGraphicsCard_doc_for_Arnaud.pdf`
+- **Hardware spec resolved** — Bernie's `doc/reference/ColorGraphicsCard_doc_for_Arnaud.pdf`
   transcribed; Q1–Q10 closed in `doc/GEN2_RELEASE_questions.md`. Read-only
   switches (a read toggles + returns HST0 in D7; writes are no-ops), HST0 high in
   H/V-blank with a notch during the 3-cycle colour burst, HIRES page 2

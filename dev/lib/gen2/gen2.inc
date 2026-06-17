@@ -1,7 +1,7 @@
 ; ============================================================================
 ; gen2.inc -- Uncle Bernie GEN2 *release* Color Graphics Card equates
 ; ============================================================================
-; Hardware reference: doc/ColorGraphicsCard_doc_for_Arnaud.pdf, transcribed
+; Hardware reference: doc/reference/ColorGraphicsCard_doc_for_Arnaud.pdf, transcribed
 ; in doc/GEN2_RELEASE_questions.md (Q1-Q10 resolved). Developer guide:
 ; doc/GEN2_RELEASE.md. Reference implementation: dev/projects/a1_crazycycle/.
 ;

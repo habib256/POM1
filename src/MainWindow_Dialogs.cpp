@@ -1949,7 +1949,7 @@ void MainWindow_ImGui::renderTutorialIntegerBasicWindow()
         bulletWrapped("Integers only: -32767..32767. No SIN, no strings, no FOR step.");
         bulletWrapped("POKE / PEEK use signed 16-bit values. $C800 is -14336, $E000 is -8192.");
         bulletWrapped("PRINT chains with commas (tab) or semicolons (concatenate).");
-        bulletWrapped("See doc/Preliminary_Apple_Basic_Users_Manual.pdf for the full reference.");
+        bulletWrapped("See doc/reference/Preliminary_Apple_Basic_Users_Manual.pdf for the full reference.");
         ImGui::EndChild();
     }
     ImGui::End();
