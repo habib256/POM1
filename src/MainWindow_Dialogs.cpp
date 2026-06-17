@@ -1595,7 +1595,7 @@ void MainWindow_ImGui::renderSoftwareReferenceWindow()
             hwKeyValue("Strip:", "./1-stripper.sh  (removes padding from source .bin/.pat files).");
             hwKeyValue("Pack:", "./2-packer.sh  (bundles into 16 kB or 32 kB MYROM_N.BIN output files).");
             hwKeyValue("Install:", "Copy MYROM_0.BIN to roms/jukebox.rom (next to the executable or in ../roms).");
-            hwKeyValue("Launch:", "Select the 'P-LAB Apple-1 with Juke-Box' preset (or plug the card from Hardware menu), then type BD00R in the Woz Monitor.");
+            hwKeyValue("Launch:", "Plug the Juke-Box card from the Hardware menu (or --enable jukebox), then type BD00R in the Woz Monitor.");
             hwHeading("Notes");
             ImGui::TextWrapped(
                 "The packer doesn't bundle programs itself; you bring the .bin "
@@ -2462,10 +2462,10 @@ void MainWindow_ImGui::renderTutorialA1IORTCWindow()
             "digital output.");
         ImGui::BeginChild("tut_a1io_scroll", ImVec2(0, 0), true);
 
-        tutStep(1, "Pick the preset");
+        tutStep(1, "Plug the card");
         ImGui::TextWrapped(
-            "Presets > #8 'P-LAB Apple-1 with I/O Board & RTC', or "
-            "Hardware > P-LAB I/O Board & RTC.");
+            "Hardware > P-LAB I/O Board & RTC (or --enable rtc). The A1-IO "
+            "& RTC card no longer has a dedicated preset.");
 
         tutStep(2, "Understand the broadcast protocol");
         ImGui::TextWrapped(
@@ -2720,11 +2720,11 @@ void MainWindow_ImGui::renderTutorialJukeBoxWindow()
             "entirely for the stored programs.");
         ImGui::BeginChild("tut_jk_scroll", ImVec2(0, 0), true);
 
-        tutStep(1, "Pick the preset");
+        tutStep(1, "Plug the card");
         ImGui::TextWrapped(
-            "Presets > #10 'P-LAB Apple-1 with Juke-Box (16 kB RAM)'. "
-            "The preset opens the Juke-Box window with the current RAM / "
-            "ROM jumper setting.");
+            "Hardware > P-LAB Juke-Box (or --enable jukebox). The Juke-Box "
+            "card no longer has a dedicated preset; plugging it opens the "
+            "Juke-Box window with the current RAM / ROM jumper setting.");
 
         tutStep(2, "Launch the Program Manager");
         tutCode("BD00R");
