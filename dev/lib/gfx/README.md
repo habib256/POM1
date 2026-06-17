@@ -40,28 +40,44 @@ Each program links **`gfx_draw.o` + `gfx_num.o` + exactly one backend**.
 - Card-specific strengths untouched: GEN2 double-buffering / NTSC colour / blit,
   TMS hardware sprites / collision / true colour. Those are axis 3 territory.
 
-## Rewiring checklist (the actual de-duplication — DO AFTER a clean build)
+## Rewiring (the de-duplication) — DONE 2026-06-17
 
-The files above are **additive**: until the steps below are applied, the card
-libs still carry their own copies, so nothing is broken but nothing is removed
-yet. To complete the factoring (remove the duplicates), once the toolchain is
-available and a sample build is green:
+The card libs now forward to `gfx_*`; their local copies are gone. The old
+public names are kept as thin wrappers, so existing programs compile unchanged —
+they just need `gfx-<card>.lib` on the link line now (see Build integration).
 
-1. **GEN2 — `dev/lib/gen2c/gen2.c`:** replace the bodies of `gen2_hgr_line`,
-   `gen2_hgr_rect`, `gen2_hgr_circle` with one-line forwards to `gfx_line` /
-   `gfx_rect` / `gfx_circle` (include `gfx.h`). Keep `gen2_hgr_hline` /
-   `gen2_hgr_vline` as the real primitives (they ARE the backend). `gen2_hgr_putx`
-   → build via `gfx_hexstr` then `gen2_hgr_puts`. Optionally add a `gen2_hgr_ellipse`
-   thin wrapper (new capability).
-2. **TMS — `dev/apple1-videocard-lib/lib/screen2.c`:** replace `screen2_line`,
-   `screen2_circle`, `screen2_ellipse_rect` bodies with forwards to `gfx_line` /
-   `gfx_circle` / `gfx_ellipse`. Drop the local `kEllipseCos64/Sin64` tables and
-   `math_abs` (now in `gfx_draw.c`). `screen2_filled_rect` can stay but the
-   fast-fill gap is an axis-1.5 follow-up (GEN2 has `fill_pixrect`; TMS does not).
-   Route `printlib` decimal/hex through `gfx_utoa`/`gfx_hexstr` (keep the
-   `pl_putc_fn` callback wrappers).
-3. Keep the old public names as wrappers so existing programs/demos compile
-   unchanged (`gen2_hgr_line`, `screen2_line`, …).
+1. **GEN2 — `dev/lib/gen2c/gen2.c`:** `gen2_hgr_line` / `gen2_hgr_rect` /
+   `gen2_hgr_circle` are one-line forwards to `gfx_line` / `gfx_rect` /
+   `gfx_circle` (pixel-identical — `gfx_draw.c` was ported verbatim from them);
+   the local `gen2_hgr_plot_clip` was removed (`gfx_circle` clips internally to
+   the same bounds). `gen2_hgr_putx` builds via `gfx_hexstr` then `gen2_hgr_puts`.
+   **Kept:** `gen2_hgr_hline` / `gen2_hgr_vline` (they ARE the backend) and the
+   asm `gen2_utoa` for `gen2_hgr_putu_field` (flicker-free HUD). **Added:**
+   `gen2_hgr_ellipse` → `gfx_ellipse` (new capability).
+2. **TMS — `dev/apple1-videocard-lib/lib/screen2.c`:** `screen2_line` /
+   `screen2_circle` / `screen2_ellipse_rect` forward to `gfx_line` / `gfx_circle`
+   / `gfx_ellipse`; the local `kEllipseCos64/Sin64` tables, `math_abs`, and
+   `screen2_clamp_*` were removed (now in `gfx_draw.c`). Added `screen2_rect`
+   (outline → `gfx_rect`). `printlib.c` dec/hex route through `gfx_utoa` /
+   `gfx_hexstr` (the `pl_putc_fn` wrappers stay; hex is now minimal-width, which
+   matches `printlib.h`'s documented "no leading zeros" contract).
+   `screen2_filled_rect` (in `screen_ext.c`) was rewritten as a byte-aligned fast
+   fill (axis 1.5, done) — the TMS analogue of GEN2's `fill_pixrect`.
+
+**Cost note.** Because `gen2.c` / `screen2.c` are force-linked whole, forwarding
+pulls the referenced `gfx_*` modules into every program that links the card lib.
+On GEN2 that is ≈ **+1.5 KB/binary** (the `gen2_hgr_ellipse` wrapper always drags
+`gfx_ellipse`'s soft 16-bit mul/div + cos/sin tables; `gen2_hgr_putx` drags
+`gfx_num.o`, whose `gfx_utoa`/`itoa` soft-`/10` are dead in GEN2 since it keeps
+its asm `gen2_utoa`). Everything still fits (no ROM overflow). Splitting
+`gfx_hexstr` into its own module would recover the `gfx_num` part — tracked in
+`dev/TODO6502.md`.
+
+**Behaviour.** GEN2 output is pixel-identical (verbatim ports). On TMS,
+`gfx_line`/`gfx_circle` are the GEN2-derived Bresenham variant (not screen2's
+original): lines are visually identical for on-screen endpoints, circles may
+differ by ≤1 px at some octant boundaries; the ellipse is byte-identical
+(`gfx_ellipse` was ported from `screen2.c`).
 
 ## Build integration
 

@@ -38,11 +38,8 @@ SRCS := $(PROJECT).c \
 all: $(PROJECT).bin
 	python3 emit_$(PROJECT)_txt.py
 
-# Card-neutral gfx layer (dev/lib/gfx), linked as an ar65 ARCHIVE so ld65 pulls
-# only the modules the sketch references. GEN2Vectors still calls gen2_hgr_line/
-# circle today, so the archive contributes 0 bytes (the .bin is byte-identical
-# with vs without it) — purely additive until the gen2.c→gfx_* rewiring lands,
-# at which point gfx_line/ellipse/utoa link in with no further build change.
+# gfx-gen2.lib: card-neutral geometry/numbers (gen2.c now forwards line/rect/
+# circle/ellipse + putx there). Link-on-demand archive — see dev/lib/gfx/README.md.
 $(GFXLIB):
 	$(MAKE) -C $(GFX) gen2
 

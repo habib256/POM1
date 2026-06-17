@@ -1,5 +1,6 @@
 /* gen2.c — minimal C runtime for Uncle Bernie's GEN2 HGR. See gen2.h. */
 #include "gen2.h"
+#include "gfx.h"   /* card-neutral geometry/numbers (dev/lib/gfx); link gfx-gen2.lib */
 
 /* Sink for the individual soft-switch macros. A soft-switch READ is the toggle;
  * its value is meaningless. cc65 -Oirs drops a volatile read cast to void, so
@@ -57,9 +58,10 @@ void gen2_wait_vbl(void)
 
 /* --- Beautiful Boot 8x8 font, ASCII 0x20-0x7F (96 glyphs).
  * gen2_bbfont.inc is GENERATED from the single source dev/lib/hgr/bbfont_cp437.inc
- * by tools/emit_bbfont.py (re-run after editing the font) — so the C copy can't
- * drift from the asm table. bit 0 = leftmost pixel, rows top->bottom; values stay
- * <= 0x7F so each glyph fits HGR's 7 px/byte. */
+ * by tools/build_shared_font.py (re-run after editing the font) — so the C copy
+ * can't drift from the asm table, and the TMS9918 side gets the same font from the
+ * same master (bbfont_tms.inc). bit 0 = leftmost pixel, rows top->bottom; values
+ * stay <= 0x7F so each glyph fits HGR's 7 px/byte. */
 static const unsigned char kBBFontAscii[96u * 8u] = {
 #include "gen2_bbfont.inc"
 };
@@ -431,17 +433,10 @@ void gen2_hgr_puti(unsigned x, unsigned char y, int value)
  * OR-drawn like gen2_hgr_putu. Handy for addresses / bit masks in a HUD. */
 void gen2_hgr_putx(unsigned x, unsigned char y, unsigned value)
 {
-    static const char hexd[16] = {
-        '0','1','2','3','4','5','6','7','8','9','A','B','C','D','E','F'
-    };
+    /* Build the hex string with the shared gfx_hexstr (byte-identical output:
+     * uppercase, no leading zeros), then draw it with our own font path. */
     char buf[5];
-    unsigned char i = 0u, started = 0u, nyb;
-    signed char sh;
-    for (sh = 12; sh >= 0; sh = (signed char)(sh - 4)) {
-        nyb = (unsigned char)((value >> sh) & 0x0Fu);
-        if (nyb != 0u || started || sh == 0) { buf[i++] = hexd[nyb]; started = 1u; }
-    }
-    buf[i] = 0;
+    gfx_hexstr(buf, value);
     gen2_hgr_puts(x, y, buf);
 }
 
@@ -511,68 +506,37 @@ void gen2_hgr_vline(unsigned x, unsigned char y0, unsigned char y1)
     gen2_hgr_fill_pixrect(x, y0, 1u, (unsigned char)(y1 - y0 + 1u));
 }
 
-/* Bresenham line between two endpoints (both drawn). Pure horizontal / vertical
- * lines shortcut to the hline/vline fast paths; the diagonal case walks plot.
- * Stays within the endpoints' bounding box, so no point ever leaves the screen. */
+/* Vector primitives now forward to the card-neutral gfx layer (dev/lib/gfx,
+ * factoring axis 1). gfx_line / gfx_rect were ported VERBATIM from the bodies
+ * that lived here, and gfx_plot / gfx_hline / gfx_vline resolve (via the GEN2
+ * backend, gfx_backend_gen2.c) straight back to gen2_hgr_plot / hline / vline —
+ * so output is pixel-identical and the hline/vline STA-run fast path is kept.
+ * gfx_circle clips to [0,280) x [0,192), matching the old gen2_hgr_plot_clip
+ * exactly. The public names below stay as thin wrappers so existing programs
+ * compile unchanged. */
 void gen2_hgr_line(unsigned x0, unsigned char y0, unsigned x1, unsigned char y1)
 {
-    int x, y, xe, ye, dx, dy, sx, sy, err, e2;
-    if (y0 == y1) { gen2_hgr_hline(x0, x1, y0); return; }
-    if (x0 == x1) { gen2_hgr_vline(x0, y0, y1); return; }
-    x = (int)x0; y = (int)y0; xe = (int)x1; ye = (int)y1;
-    dx = xe - x; if (dx < 0) { dx = -dx; sx = -1; } else sx = 1;
-    dy = ye - y; if (dy < 0) { dy = -dy; sy = -1; } else sy = 1;
-    err = dx - dy;
-    for (;;) {
-        gen2_hgr_plot((unsigned)x, (unsigned char)y);
-        if (x == xe && y == ye) break;
-        e2 = err + err;                          /* 2*err */
-        if (e2 > -dy) { err -= dy; x += sx; }
-        if (e2 <  dx) { err += dx; y += sy; }
-    }
+    gfx_line(x0, y0, x1, y1);
 }
 
 /* Rectangle OUTLINE through opposite corners (inclusive). The interior is left
  * untouched — fill with gen2_hgr_fill_pixrect if you want it solid. */
 void gen2_hgr_rect(unsigned x0, unsigned char y0, unsigned x1, unsigned char y1)
 {
-    if (x1 < x0) { unsigned t = x0; x0 = x1; x1 = t; }
-    if (y1 < y0) { unsigned char t = y0; y0 = y1; y1 = t; }
-    gen2_hgr_hline(x0, x1, y0);
-    gen2_hgr_hline(x0, x1, y1);
-    gen2_hgr_vline(x0, y0, y1);
-    gen2_hgr_vline(x1, y0, y1);
+    gfx_rect(x0, y0, x1, y1);
 }
 
-/* Plot (x, y) only if on-screen — int coords so a centre±radius that runs off an
- * edge is dropped, not wrapped (a uchar cast of a negative y would alias into a
- * valid row). Used by the circle's 8-way symmetry. */
-static void gen2_hgr_plot_clip(int x, int y)
-{
-    if (x >= 0 && x <= 279 && y >= 0 && y <= 191)
-        gen2_hgr_plot((unsigned)x, (unsigned char)y);
-}
-
-/* Midpoint (Bresenham) circle outline, centre (xc, yc), radius r. The 8 octant-
- * symmetric points are plotted per step; parts off-screen are clipped. */
+/* Midpoint circle outline, centre (xc, yc), radius r; off-screen points clipped. */
 void gen2_hgr_circle(unsigned xc, unsigned char yc, unsigned char r)
 {
-    int cx = (int)xc, cy = (int)yc;
-    int x = 0, y = (int)r;
-    int d = 1 - (int)r;
-    while (x <= y) {
-        gen2_hgr_plot_clip(cx + x, cy + y);
-        gen2_hgr_plot_clip(cx - x, cy + y);
-        gen2_hgr_plot_clip(cx + x, cy - y);
-        gen2_hgr_plot_clip(cx - x, cy - y);
-        gen2_hgr_plot_clip(cx + y, cy + x);
-        gen2_hgr_plot_clip(cx - y, cy + x);
-        gen2_hgr_plot_clip(cx + y, cy - x);
-        gen2_hgr_plot_clip(cx - y, cy - x);
-        if (d < 0) { d += (x << 1) + 3; }
-        else       { d += ((x - y) << 1) + 5; --y; }
-        ++x;
-    }
+    gfx_circle(xc, yc, r);
+}
+
+/* Ellipse inscribed in the (x0,y0)-(x1,y1) box — capability gained for free from
+ * the shared layer (GEN2 previously had circle only). 64-segment polyline. */
+void gen2_hgr_ellipse(unsigned x0, unsigned char y0, unsigned x1, unsigned char y1)
+{
+    gfx_ellipse(x0, y0, x1, y1);
 }
 
 /* Blit a 1-bit-per-pixel sprite (MSB-first, see gen2.h) at pixel (x, y) in one of

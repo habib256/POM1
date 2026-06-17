@@ -22,10 +22,8 @@ SOURCES := main.c \
 
 all: $(OUTDIR_T)/$(NAME).bin $(OUTDIR_T)/$(NAME).txt
 
-# Card-neutral gfx layer (dev/lib/gfx), linked as an ar65 ARCHIVE so ld65 pulls
-# only the modules referenced. main.c still calls screen2_line/circle/ellipse
-# today, so gfx-tms.lib contributes 0 bytes (the .bin is byte-identical with vs
-# without it) — purely additive until the screen2.c→gfx_* rewiring lands.
+# Card-neutral gfx layer (dev/lib/gfx) as a link-on-demand ar65 archive. screen2.c
+# now forwards line/circle/ellipse there, so this lib must be on the link line.
 $(GFXLIB):
 	$(MAKE) -C $(GFXDIR) tms
 

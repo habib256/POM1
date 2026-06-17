@@ -167,6 +167,10 @@ void gen2_hgr_rect(unsigned x0, unsigned char y0, unsigned x1, unsigned char y1)
 /* Midpoint circle OUTLINE, centre (xc, yc), radius r; off-screen arcs clipped. */
 void gen2_hgr_circle(unsigned xc, unsigned char yc, unsigned char r);
 
+/* Ellipse OUTLINE inscribed in the (x0,y0)-(x1,y1) box (64-segment polyline).
+ * Gained from the shared gfx layer (dev/lib/gfx); needs gfx-gen2.lib at link. */
+void gen2_hgr_ellipse(unsigned x0, unsigned char y0, unsigned x1, unsigned char y1);
+
 /* Draw a string in one of the four NTSC artifact COLOURS the GEN2 HIRES screen
  * can show (it has no per-pixel colour). Drawn in ONE tinted pass (gen2_blit.s
  * gen2_blit_glyph_color ORs the colour's carrier bit per pixel directly — no

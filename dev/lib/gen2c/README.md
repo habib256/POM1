@@ -136,5 +136,7 @@ Full C guide: [`dev/Programming_Apple1_C.md`](../../Programming_Apple1_C.md).
 
 ## Credit
 
-Beautiful Boot 8×8 font extracted from `dev/lib/hgr/bbfont_cp437.inc`. GEN2 card
-by Uncle Bernie. HIRES interleave modelled on cc65's apple2 target.
+Beautiful Boot 8×8 font extracted from `dev/lib/hgr/bbfont_cp437.inc` (the shared
+font master) by `tools/build_shared_font.py` → `gen2_bbfont.inc`. The same tool
+emits the TMS9918 pattern tables from that master, so both cards share one font.
+GEN2 card by Uncle Bernie. HIRES interleave modelled on cc65's apple2 target.

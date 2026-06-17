@@ -9,53 +9,41 @@
 #include "printlib.h"
 #include "apple1.h"
 #include "screen1.h"
+#include "gfx.h"   /* shared int->ASCII builders (dev/lib/gfx); link gfx-tms.lib */
+
+/* These now build the digits with the card-neutral gfx_utoa / gfx_hexstr (the
+ * de-dup: gfx_num.c is the single implementation, replacing the per-card copies)
+ * and emit the result through the caller's pl_putc_fn. Output matches printlib's
+ * documented contract — "no leading zeros, no width control" (printlib.h) — so
+ * hex is now minimal-width, like the decimal path always was. */
+static void pl_emit(pl_putc_fn putc, const char *s) {
+    while (*s != 0) {
+        putc((unsigned char)*s++);
+    }
+}
 
 void pl_print_dec_u8(pl_putc_fn putc, unsigned char v) {
-    unsigned char h = (unsigned char)(v / 100U);
-    unsigned char r = (unsigned char)(v - h * 100U);
-    unsigned char t = (unsigned char)(r / 10U);
-    unsigned char u = (unsigned char)(r - t * 10U);
-    unsigned char emit = 0;
-    if (h != 0) {
-        putc((unsigned char)('0' + h));
-        emit = 1;
-    }
-    if (emit || t != 0) {
-        putc((unsigned char)('0' + t));
-    }
-    putc((unsigned char)('0' + u));
+    char buf[6];
+    gfx_utoa(buf, v);
+    pl_emit(putc, buf);
 }
 
 void pl_print_dec_u16(pl_putc_fn putc, unsigned int v) {
-    /* 65535 = 5 digits max. Build digits in reverse, then emit. */
-    unsigned char digits[5];
-    unsigned char n = 0;
-    if (v == 0) {
-        putc('0');
-        return;
-    }
-    while (v != 0 && n < 5) {
-        digits[n++] = (unsigned char)('0' + (v % 10U));
-        v /= 10U;
-    }
-    while (n != 0) {
-        putc(digits[--n]);
-    }
-}
-
-static unsigned char nibble_to_hex(unsigned char n) {
-    n &= 0x0FU;
-    return (unsigned char)(n < 10U ? '0' + n : 'A' + (n - 10U));
+    char buf[6];
+    gfx_utoa(buf, v);
+    pl_emit(putc, buf);
 }
 
 void pl_print_hex_u8(pl_putc_fn putc, unsigned char v) {
-    putc(nibble_to_hex((unsigned char)(v >> 4)));
-    putc(nibble_to_hex(v));
+    char buf[5];
+    gfx_hexstr(buf, v);
+    pl_emit(putc, buf);
 }
 
 void pl_print_hex_u16(pl_putc_fn putc, unsigned int v) {
-    pl_print_hex_u8(putc, (unsigned char)(v >> 8));
-    pl_print_hex_u8(putc, (unsigned char)v);
+    char buf[5];
+    gfx_hexstr(buf, v);
+    pl_emit(putc, buf);
 }
 
 /* --- Wozmon wrappers --- */

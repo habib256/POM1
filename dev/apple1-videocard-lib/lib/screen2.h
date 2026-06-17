@@ -28,6 +28,9 @@ unsigned char screen2_point(unsigned char x, unsigned char y);
 void screen2_line(unsigned char x0, unsigned char y0, unsigned char x1, unsigned char y1);
 void screen2_ellipse_rect(unsigned char x0, unsigned char y0, unsigned char x1, unsigned char y1);
 void screen2_circle(unsigned char xm, unsigned char ym, unsigned char r);
+/* Rectangle OUTLINE through opposite corners (interior untouched). Gained from
+ * the shared gfx layer (dev/lib/gfx); needs gfx-tms.lib at link time. */
+void screen2_rect(unsigned char x0, unsigned char y0, unsigned char x1, unsigned char y1);
 
 /* --- Extended helpers (screen_ext.c) ------------------------------------ */
 
@@ -36,7 +39,10 @@ void screen2_circle(unsigned char xm, unsigned char ym, unsigned char r);
 void screen2_clear(void);
 
 /* Fill rectangle (x0,y0)-(x1,y1) inclusive using the current plot_mode.
- * Implemented as scanline-loop of screen2_line — slow but plot_mode-aware. */
+ * Byte-aligned fast fill (left-partial / full-byte run / right-partial per
+ * scanline) — the TMS analogue of GEN2's fill_pixrect; ~10x fewer VRAM port ops
+ * than a per-pixel plot loop. SET/RESET write full bytes with no read; INVERT
+ * still reads (XOR). */
 void screen2_filled_rect(unsigned char x0, unsigned char y0,
                          unsigned char x1, unsigned char y1);
 

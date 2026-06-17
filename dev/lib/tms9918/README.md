@@ -12,6 +12,21 @@ mutually exclusive (you pick one per project — links the matching `.o`).
   (TMS_Sokoban, TMS_Connect4, TMS_Snake, TMS_Galaga) currently re-derive.
 - **`tms9918m2.asm`** — Mode 2 (bitmap, 256×192) driver. Used by TMS_Logo.
 
+### Fonts (shared with the GEN2 HGR card — Axe 2 of the lib factoring)
+
+The Beautiful Boot 8×8 font now comes from ONE master, `dev/lib/hgr/bbfont_cp437.inc`,
+emitted per format by `tools/build_shared_font.py` (`--check` to verify no drift):
+
+- **`bbfont_tms.inc`** — *generated.* Full ASCII (0x20-0x7F, 96 glyphs) TMS9918
+  pattern table, **bit 7 = leftmost pixel** (the bit-reverse of the HGR
+  `gen2_bbfont.inc`). Inline fragment with a `tms_bbfont:` label — `.include` it
+  at the pattern-table location and index `(ch-0x20)*8`.
+- **`font_hud8x8.inc`** — *generated.* The 37-glyph HUD subset (char codes
+  56..92) Snake/Sokoban draw for score/title text, now the BB font (was a
+  separate hand-tuned font). Same on-ROM order/codes, so the games are
+  unchanged; rebuild them to refresh the shipped artifacts.
+- **`font_quale.asm`** — Quale's display font (independent, not from the master).
+
 ## Mode 1 (`tms9918m1.asm`) — public symbols
 
 | Symbol            | Description                                              |

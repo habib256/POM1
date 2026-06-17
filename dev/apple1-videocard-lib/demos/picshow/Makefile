@@ -20,8 +20,8 @@ SOURCES := main.c \
 
 all: $(OUTDIR_T)/$(NAME).bin $(OUTDIR_T)/$(NAME).txt
 
-# Card-neutral gfx layer (dev/lib/gfx) as a link-on-demand ar65 archive — 0 bytes
-# until main.c/screen2.c reference gfx_* (see dev/lib/gfx/README.md).
+# Card-neutral gfx layer (dev/lib/gfx) as a link-on-demand ar65 archive. screen2.c
+# now forwards line/circle/ellipse there, so this lib must be on the link line.
 $(GFXLIB):
 	$(MAKE) -C $(GFXDIR) tms
 

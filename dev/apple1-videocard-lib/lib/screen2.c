@@ -7,6 +7,7 @@
 #include "screen2.h"
 #include "c64font.h"
 #include "sprites.h"
+#include "gfx.h"   /* card-neutral geometry (dev/lib/gfx); link gfx-tms.lib */
 
 const unsigned char SCREEN2_TABLE[8] = {
     0x02U, 0xC0U, 0x0EU, 0xFFU, 0x03U, 0x76U, 0x03U, 0x25U
@@ -18,10 +19,6 @@ unsigned char screen2_plot_mode = PLOT_MODE_SET;
 static const unsigned char pow2_table_reversed[8] = {
     128U, 64U, 32U, 16U, 8U, 4U, 2U, 1U
 };
-
-static signed int math_abs(signed int x) {
-    return x < 0 ? -x : x;
-}
 
 void screen2_init_bitmap(unsigned char color) {
     unsigned i;
@@ -117,122 +114,26 @@ unsigned char screen2_point(unsigned char x, unsigned char y) {
     return (unsigned char)((data & mask) != 0 ? 1 : 0);
 }
 
-void screen2_line(unsigned char _x0, unsigned char _y0, unsigned char _x1, unsigned char _y1) {
-    signed int x0 = (signed int)_x0;
-    signed int x1 = (signed int)_x1;
-    signed int y0 = (signed int)_y0;
-    signed int y1 = (signed int)_y1;
-    signed int dx = math_abs(x1 - x0);
-    signed int dy = -math_abs(y1 - y0);
-    signed int err = dx + dy;
-    unsigned char ix = (unsigned char)(x0 < x1 ? 1 : 0);
-    unsigned char iy = (unsigned char)(y0 < y1 ? 1 : 0);
-    signed int e2;
-
-    for (;;) {
-        screen2_plot((unsigned char)x0, (unsigned char)y0);
-        if (x0 == x1 && y0 == y1) {
-            break;
-        }
-        e2 = err + err;
-        if (e2 >= dy) {
-            err += dy;
-            if (ix) {
-                ++x0;
-            } else {
-                --x0;
-            }
-        }
-        if (e2 <= dx) {
-            err += dx;
-            if (iy) {
-                ++y0;
-            } else {
-                --y0;
-            }
-        }
-    }
+/* Vector primitives now forward to the card-neutral gfx layer (dev/lib/gfx,
+ * factoring axis 1). gfx_plot resolves (via the TMS backend, gfx_backend_tms.c)
+ * straight back to screen2_plot, so the current plot mode (SET/RESET/INVERT) is
+ * honoured. The ellipse's cos/sin tables + math_abs that lived here are now in
+ * gfx_draw.c — removed from this file (the dedup). The public names below stay
+ * as thin wrappers so existing demos compile unchanged. Link gfx-tms.lib. */
+void screen2_line(unsigned char x0, unsigned char y0, unsigned char x1, unsigned char y1) {
+    gfx_line(x0, y0, x1, y1);
 }
 
-void screen2_circle(unsigned char _xm, unsigned char _ym, unsigned char _r) {
-    signed int xm = (signed int)_xm;
-    signed int ym = (signed int)_ym;
-    signed int r = (signed int)_r;
-    signed int x = -r;
-    signed int y = 0;
-    signed int err = 2 - 2 * r;
-    signed int r2;
-
-    do {
-        screen2_plot((unsigned char)(xm - x), (unsigned char)(ym + y));
-        screen2_plot((unsigned char)(xm - y), (unsigned char)(ym - x));
-        screen2_plot((unsigned char)(xm + x), (unsigned char)(ym - y));
-        screen2_plot((unsigned char)(xm + y), (unsigned char)(ym + x));
-        r2 = err;
-        if (r2 <= y) {
-            err += ++y * 2 + 1;
-        }
-        if (r2 > x || err > y) {
-            err += ++x * 2 + 1;
-        }
-    } while (x < 0);
-}
-
-/* cos/sin * 64 for parametric angle i/64 * 2pi (same scale as upstream ellipse.s). */
-static const signed char kEllipseCos64[64] = {
-    64, 64, 63, 61, 59, 56, 53, 49, 45, 41, 36, 30, 24, 19, 12, 6,
-    0, -6, -12, -19, -24, -30, -36, -41, -45, -49, -53, -56, -59, -61, -63, -64,
-    -64, -64, -63, -61, -59, -56, -53, -49, -45, -41, -36, -30, -24, -19, -12, -6,
-    0, 6, 12, 19, 24, 30, 36, 41, 45, 49, 53, 56, 59, 61, 63, 64
-};
-static const signed char kEllipseSin64[64] = {
-    0, 6, 12, 19, 24, 30, 36, 41, 45, 49, 53, 56, 59, 61, 63, 64,
-    64, 64, 63, 61, 59, 56, 53, 49, 45, 41, 36, 30, 24, 19, 12, 6,
-    0, -6, -12, -19, -24, -30, -36, -41, -45, -49, -53, -56, -59, -61, -63, -64,
-    -64, -64, -63, -61, -59, -56, -53, -49, -45, -41, -36, -30, -24, -19, -12, -6
-};
-
-static unsigned char screen2_clamp_x(signed int v) {
-    if (v < 0) {
-        return 0;
-    }
-    if (v > 255) {
-        return 255;
-    }
-    return (unsigned char)v;
-}
-
-static unsigned char screen2_clamp_y(signed int v) {
-    if (v < 0) {
-        return 0;
-    }
-    if (v > 191) {
-        return 191;
-    }
-    return (unsigned char)v;
+void screen2_circle(unsigned char xm, unsigned char ym, unsigned char r) {
+    gfx_circle(xm, ym, r);
 }
 
 void screen2_ellipse_rect(unsigned char x0, unsigned char y0, unsigned char x1, unsigned char y1) {
-    signed int xc = (((signed int)x0 + (signed int)x1) >> 1);
-    signed int yc = (((signed int)y0 + (signed int)y1) >> 1);
-    signed int rx = math_abs((signed int)x1 - (signed int)x0) >> 1;
-    signed int ry = math_abs((signed int)y1 - (signed int)y0) >> 1;
-    unsigned char i;
+    gfx_ellipse(x0, y0, x1, y1);
+}
 
-    if (rx < 1) {
-        rx = 1;
-    }
-    if (ry < 1) {
-        ry = 1;
-    }
-
-    for (i = 0; i < 64U; ++i) {
-        unsigned char j = (unsigned char)((i + 1U) & 63U);
-        signed int x0s = xc + ((signed int)kEllipseCos64[i] * rx) / 64;
-        signed int y0s = yc + ((signed int)kEllipseSin64[i] * ry) / 64;
-        signed int x1s = xc + ((signed int)kEllipseCos64[j] * rx) / 64;
-        signed int y1s = yc + ((signed int)kEllipseSin64[j] * ry) / 64;
-        screen2_line(screen2_clamp_x(x0s), screen2_clamp_y(y0s),
-                     screen2_clamp_x(x1s), screen2_clamp_y(y1s));
-    }
+/* Rectangle OUTLINE through opposite corners — capability gained from the shared
+ * layer (screen2 previously had only the slow screen2_filled_rect). */
+void screen2_rect(unsigned char x0, unsigned char y0, unsigned char x1, unsigned char y1) {
+    gfx_rect(x0, y0, x1, y1);
 }
