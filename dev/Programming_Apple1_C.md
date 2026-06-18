@@ -114,7 +114,7 @@ void main(void) {
 
 **GEN2 HGR colour (`gen2c`)** is covered in [`Programming_GEN2C.md`](Programming_GEN2C.md).
 
-**TMS9918 sprites & colour** is covered in [`Programming_TMS9918C.md`](Programming_TMS9918C.md). Before optimising VRAM loops, read [`SILICONBUGS.md`](SILICONBUGS.md).
+**TMS9918 sprites & colour** is covered in [`Programming_TMS9918C.md`](Programming_TMS9918C.md). Before optimising VRAM loops, read its silicon-handling section §3 and [`Programming_TMS9918.md`](Programming_TMS9918.md) Part 5.
 
 ---
 

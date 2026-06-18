@@ -287,7 +287,7 @@ If you only print `X |` (3 chars), the `|` visibly shift away from the `+`. Clas
 
 **HGR colour (GEN2 card)** is covered in [`Programming_GEN2.md`](Programming_GEN2.md).
 
-**TMS9918 (P-LAB Graphic Card)** is covered in [`Programming_TMS9918.md`](Programming_TMS9918.md). Before optimising VRAM loops, read [`SILICONBUGS.md`](SILICONBUGS.md).
+**TMS9918 (P-LAB Graphic Card)** is covered in [`Programming_TMS9918.md`](Programming_TMS9918.md). Before optimising VRAM loops, read its Part 5 (timing and synchronisation) — Bugs N°1, N°2, N°9 in particular.
 
 ---
 
@@ -475,7 +475,7 @@ Reusable libraries (`dev/lib/`):
 
 ## 9. External resources
 
-- **[`SILICONBUGS.md`](SILICONBUGS.md)** / **[`APPLE1DEV.md`](APPLE1DEV.md)** — TMS9918 pitfalls and POM1 deployment (prefer these files over scattered summaries).
+- **[`Programming_TMS9918.md`](Programming_TMS9918.md)** / **[`APPLE1DEV.md`](APPLE1DEV.md)** — TMS9918 pitfalls and POM1 deployment (prefer these files over scattered summaries).
 - **Microban I (David W. Skinner, 2000)** — 155 progressive Sokoban levels, small and pedagogical.
   Raw sources: `https://github.com/martin-t/sokoban-solver/tree/master/levels/microban1/N.txt`
 - **Sokoban Wiki (level format)**: http://sokobano.de/wiki/index.php?title=Level_format
