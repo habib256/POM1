@@ -111,6 +111,16 @@ public:
     void setDisplayState(const DisplayState& s) { display = s; }
     const DisplayState& displayState() const { return display; }
 
+    // Power-on state for the soft-switch latch, the floating-bus xorshift seed
+    // and the vertical scanner phase. `randomized=true` (Silicon Strict default
+    // — Bernie's PLD POR is genuinely indeterminate) re-seeds all three from
+    // `seed`; `randomized=false` (Silicon Strict OFF) restores the documented
+    // cold state every pre-Phase-2 POM1 demo assumed: GRAPHICS + HIRES + PAGE1
+    // + MIX off, fixed xorshift seed, cycleCounter = 0. Called from the cold
+    // plug path in Memory::setHgrFramebufferAttached. Implementation in
+    // Gen2VideoScanner.cpp so <random> stays out of this header.
+    void applyPowerOnState(bool randomized, uint32_t seed);
+
     // ── HST0 — Bernie's H/V-blank flag (read back in D7 of a $C25x read) ──
     //
     // Verbatim behavioural model from the PDF (Appendix 1, Listing 2):

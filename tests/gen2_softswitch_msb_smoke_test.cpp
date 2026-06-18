@@ -77,6 +77,12 @@ int main()
 
     // ── Memory-level soft-switch behaviour ────────────────────────────────
     Memory mem;
+    // This test pins the DOCUMENTED cold state (GRAPHICS+HIRES+PAGE1, MIX off,
+    // cycleCounter=0). Bernie's PLD POR is genuinely indeterminate on real
+    // hardware, so POM1 ships gen2RandomPowerOn=ON by default and randomises
+    // latch + xorshift seed + scanner phase at cold plug — explicitly turn it
+    // off here so the assertions below reach the deterministic branch.
+    mem.setGen2RandomPowerOn(false);
     mem.setHgrFramebufferAttached(true);   // cold plug: scanner cycle = 0
     uint64_t cur = 0;
 

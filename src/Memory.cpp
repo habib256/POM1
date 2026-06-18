@@ -389,12 +389,12 @@ uint8_t Memory::gen2SoftSwitchRead(uint16_t address)
 
     // HST0 in D7 (sampled at the access cycle). The low 7 bits are the
     // floating data bus, which Bernie's spec says software must NEVER rely on.
-    // In silicon-strict mode we hand back xorshift32 garbage so that
-    // unreliability is impossible to miss — his explicit recommendation, to
-    // "show rookie programmers they do something they shouldn't." With
-    // silicon-strict off we instead expose the deterministic byte the video
-    // scanner is actually presenting (reproducible — useful for debugging).
-    const uint8_t low7 = siliconStrictMode
+    // With "GEN2 random power-on" ON (Silicon Strict default) we hand back
+    // xorshift32 garbage so that unreliability is impossible to miss —
+    // Bernie's explicit recommendation, to "show rookie programmers they do
+    // something they shouldn't." OFF, we expose the deterministic byte the
+    // video scanner is presenting (reproducible — headless tests / debugging).
+    const uint8_t low7 = gen2RandomPowerOn
         ? static_cast<uint8_t>(gen2Scanner.nextNoise() & 0x7F)
         : static_cast<uint8_t>(gen2Scanner.floatingBus(mem.data()) & 0x7F);
     return static_cast<uint8_t>((gen2Scanner.hst0At(emuCycle) << 7) | low7);
@@ -636,14 +636,24 @@ void Memory::setHgrFramebufferAttached(bool e)
         resetGen2VideoEventJournal();
     }
     if (e && !wasAttached) {
-        // Cold plug: restart the video scanner at a deterministic frame phase
-        // so the floating bus / beam timing is reproducible from power-on.
-        gen2Scanner.resetCycle();
+        // Cold plug: re-seed the soft-switch latch + xorshift noise + scanner
+        // phase + 8 KB framebuffer DRAM. With gen2RandomPowerOn ON (the Silicon
+        // Strict default) every piece is randomized so the card behaves like
+        // Bernie's release silicon — PLD POR indeterminate, DRAM bistable
+        // bytes, scanner starting somewhere in the middle of a frame. OFF,
+        // everything starts from the documented cold state (GRAPHICS+HIRES+
+        // PAGE1 latch, fixed xorshift seed, cycleCounter=0, zeroed DRAM) so
+        // headless tests and pre-Phase-2 demos stay reproducible.
         std::random_device rd;
         std::mt19937 gen(rd());
-        std::uniform_int_distribution<int> dist(0, 255);
-        for (int i = 0x2000; i < 0x4000; ++i) {
-            mem[i] = static_cast<uint8_t>(dist(gen));
+        gen2Scanner.applyPowerOnState(gen2RandomPowerOn, gen());
+        if (gen2RandomPowerOn) {
+            std::uniform_int_distribution<int> dist(0, 255);
+            for (int i = 0x2000; i < 0x4000; ++i) {
+                mem[i] = static_cast<uint8_t>(dist(gen));
+            }
+        } else {
+            for (int i = 0x2000; i < 0x4000; ++i) mem[i] = 0;
         }
         markPagesDirty(0x2000, 0x2000);
     }
@@ -670,15 +680,21 @@ void Memory::resetMemory(void)
     }
     // GEN2 HGR carries its own 8 KB DRAM at $2000-$3FFF. Real Uncle Bernie
     // hardware shows bistable noise on cold boot (matches GT-6144 and the
-    // TMS9918 VRAM model). When the card is plugged, force noise on this
-    // region regardless of systemRamNoiseOnReset — the HGR DRAM is independent
-    // of the Apple-1 main-RAM bank and never starts cleared on real silicon.
+    // TMS9918 VRAM model). When the card is plugged AND gen2RandomPowerOn is
+    // on (Silicon Strict default), force noise on this region regardless of
+    // systemRamNoiseOnReset — HGR DRAM is independent of the Apple-1 main-RAM
+    // bank and never starts cleared on real silicon. Strict OFF zeros the
+    // bank instead — useful for headless tests / pre-Phase-2 demos.
     if (hgrFramebufferAttached) {
-        std::random_device rd;
-        std::mt19937 gen(rd());
-        std::uniform_int_distribution<int> dist(0, 255);
-        for (int i = 0x2000; i < 0x4000; ++i) {
-            mem[i] = static_cast<uint8_t>(dist(gen));
+        if (gen2RandomPowerOn) {
+            std::random_device rd;
+            std::mt19937 gen(rd());
+            std::uniform_int_distribution<int> dist(0, 255);
+            for (int i = 0x2000; i < 0x4000; ++i) {
+                mem[i] = static_cast<uint8_t>(dist(gen));
+            }
+        } else {
+            for (int i = 0x2000; i < 0x4000; ++i) mem[i] = 0;
         }
     }
     markAllPagesDirty();

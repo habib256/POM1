@@ -1,5 +1,7 @@
 #include "Gen2VideoScanner.h"
 
+#include <random>
+
 // ─── MAME `apple2video.cpp:124-201 scanner_address` ─────────────────────────
 //
 // Verbatim port of POM2 `Memory::floatingBus()` (which is itself a verbatim
@@ -107,4 +109,22 @@ int Gen2VideoScanner::hst0State(int line, int hcnt)
     if (line > 191) return 1;                  // in VBLANK
     if (hcnt > 24) return 0;                   // in live scan
     return 1;                                  // in HBLANK
+}
+
+void Gen2VideoScanner::applyPowerOnState(bool randomized, uint32_t seed)
+{
+    if (randomized) {
+        std::mt19937 rng(seed ? seed : 0xDEADBEEFu);
+        std::uniform_int_distribution<int> bit(0, 1);
+        display.textMode  = bit(rng) != 0;
+        display.mixedMode = bit(rng) != 0;
+        display.page2     = bit(rng) != 0;
+        display.hiRes     = bit(rng) != 0;
+        do { noiseState = rng(); } while (noiseState == 0u);
+        cycleCounter = static_cast<uint64_t>(rng()) % cyclesPerFrame();
+    } else {
+        display = DisplayState{};      // hiRes=true, others false (Bernie's documented cold pick)
+        noiseState  = 0x1D872B41u;
+        cycleCounter = 0;
+    }
 }

@@ -731,8 +731,14 @@ void Pom1BenchHost::onTargetSelected(int target)
 {
     if (target < 0 || target >= kP1TargetCount) return;
     const P1T& t = kP1Targets[p1(target)];
-    if (t.preset >= 0 && t.preset != mw_->activePresetIndex)
+    if (t.preset >= 0 && t.preset != mw_->activePresetIndex) {
+        // The bench is driving the preset change here — the user already picked
+        // a target (which sets the bench's own sketch). Do not let the DevBench
+        // preset auto-load overwrite that with the asm starter.
+        mw_->suppressDevBenchAutoload = true;
         mw_->applyMachineConfig(t.preset);
+        mw_->suppressDevBenchAutoload = false;
+    }
 }
 
 bench::ExampleLoad Pom1BenchHost::loadExample(int i)

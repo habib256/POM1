@@ -156,6 +156,11 @@ public:
     bool isVramNoiseOnReset() const;
     void setSystemRamNoiseOnReset(bool enabled);
     bool isSystemRamNoiseOnReset() const;
+    // GEN2 HGR "Random power-on state" — one knob for soft-switch latch,
+    // floating-bus noise, scanner phase and DRAM ($2000-$3FFF) at cold plug
+    // / hard reset. Defaults to !fantasyPreset in applyMachineConfig.
+    void setGen2RandomPowerOn(bool enabled);
+    bool isGen2RandomPowerOn() const;
     // Juke-Box EEPROM 28c256 write-cycle timing knobs (no-op when chip is
     // in Flash mode or card is unplugged). All take a lock on stateMutex.
     void setJukeBoxEepromWriteCycleCpu(int cycles);

@@ -299,6 +299,12 @@ private:
     // Pom1BenchHost (cc65 toolchain, presets, CodeTank/loadBinary deploy). Both
     // are created lazily on first open. See bench/IBenchHost.h.
     bool showBench = false;
+    // Suppresses the DevBench-preset auto-load (open Bench + load asm starter)
+    // when applyMachineConfig is being driven BY the Bench's own target picker.
+    // Set true by Pom1BenchHost::onTargetSelected around its applyMachineConfig
+    // call so the user's current sketch (especially C targets, which still map
+    // to DevBench preset 0/1/2) is not overwritten by the asm starter.
+    bool suppressDevBenchAutoload = false;
     std::unique_ptr<Pom1BenchHost>     benchHost_;
     std::unique_ptr<bench::CodeBench>  codeBench_;
     bool pr40Enabled = false;
@@ -330,6 +336,12 @@ private:
     bool vramNoiseOnResetEnabled = false;
     bool systemRamNoiseOnResetEnabled = false;
     bool dramRefreshEnabled = false;
+    // UI mirror of Memory::isGen2RandomPowerOn(). Defaulted from !fantasyPreset
+    // in applyMachineConfig (matches siliconStrictMode), surfaced as a single
+    // "Random power-on state" checkbox in the Silicon Strict Inspector's GEN2
+    // section. Gates the four GEN2 cold-boot uncertainties at once — see
+    // Memory::setGen2RandomPowerOn for the full list.
+    bool gen2RandomPowerOnEnabled = true;
     // GEN2 HGR cosmetic monitor controls — per-window state, not silicon.
     int  gen2MonitorMode = 0;       // 0=Colour, 1=Green, 2=Amber, 3=Mono
     float gen2PhosphorPersistence = 0.0f;
@@ -435,6 +447,7 @@ private:
     void renderTerminalCardWindow();
     void renderTelemetryWindow();
     void renderBenchWindow();   // thin delegator → codeBench_->render()
+    void ensureBench();         // lazy-create benchHost_ + codeBench_
     void renderA1IO_RTCWindow();
     void renderJukeBoxWindow();
     void renderCodeTankLibraryWindow();

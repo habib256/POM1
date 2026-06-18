@@ -26,6 +26,15 @@ public:
     // Render the Bench window. `open` is the show flag (toggled by the close box).
     void render(const char* title, bool* open);
 
+    // Switch the active target (syntax highlighter + starter sketch) WITHOUT
+    // notifying the host — used when the bench is being driven BY a preset
+    // change (so we don't bounce back through onTargetSelected and re-trigger
+    // applyMachineConfig). Returns true if the starter was loaded; returns
+    // false (and leaves the editor alone) if the buffer is dirty or the index
+    // is out of range. Safe to call before the first render — lazily creates
+    // the editor.
+    bool loadStarterForTargetIfClean(int targetIndex);
+
 private:
     void ensureEditor();
     void applyTargetSyntax();

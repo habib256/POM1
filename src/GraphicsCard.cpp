@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <array>
 #include <cstring>
+#include <fstream>
 
 // ─── MAME palette + artifact LUT ──────────────────────────────────────────
 //
@@ -156,12 +157,21 @@ inline uint32_t lerpRgba(uint32_t newPix, uint32_t prevPix, float persistence)
     return (uint32_t(0xFFu) << 24) | (bl << 16) | (g << 8) | r;
 }
 
-// ─── Built-in 5×7 text font (port of POM2 Apple2Display) ──────────────────
+// ─── Apple IIe Enhanced text char ROM (loaded from roms/apple2e_char.rom) ─
 //
-// Bernie's release card carries a 2716 char-gen EPROM with the full-ASCII
-// IIe-style encoding; no dump is published yet, so the GEN2 TEXT mode uses
-// the same built-in 5×7 monospaced font POM2 falls back to without a char
-// ROM. Packed 8 bytes per glyph (top→bottom), bits 0-4 = pixel pattern,
+// Bernie's release card carries a 2716 char-gen EPROM physically derived from
+// the Apple-1's Signetics 2513 footprint, but reprogrammed with the Apple IIe
+// full-ASCII glyph set (uppercase + lowercase with descenders, 7×8 cells).
+// The exact 2716 dump is not published — POM1 ships the Apple IIe Enhanced US
+// 4 KB char ROM (apple2e_char.rom, same file POM2 uses) which carries the
+// same primary glyph table in its first 2 KB; we ignore the alt set (MouseText
+// — the GEN2 has no alt-set selector). If the file is missing, fall back to
+// the historic built-in 5×7 ASCII font below so headless tests and minimal
+// builds keep rendering text. See loadApple2eCharRom() below for the csbits
+// normalization (verbatim port of POM2's Memory::loadCharRom).
+//
+// kAscii5x7 = the legacy POM2 fallback font, kept as a no-roms-found safety
+// net. Packed 8 bytes per glyph (top→bottom), bits 0-4 = pixel pattern,
 // MSB-left: bit 4 is the leftmost dot. Printable range $20-$7F; lowercase
 // inherits the uppercase glyphs (matches the original Apple II look).
 const uint8_t kAscii5x7[96 * 8] = {
@@ -298,6 +308,43 @@ const uint8_t kAscii5x7[96 * 8] = {
     // $61-$7F zero-filled: lowercase remaps to uppercase in resolveGlyph().
 };
 
+// Apple IIe Enhanced US character ROM, normalized to AppleWin's "csbits"
+// convention (each byte = one scanline of 7 pixels, bit 0 leftmost, 1 = lit;
+// the inverse range $00-$3F is pre-flipped to white-on-black). Indexed BY THE
+// SCREEN BYTE directly: rows = &gApple2eCharRom[screenByte * 8] gives the 8
+// scanlines for that cell, no ASCII translation needed. Loaded lazily on the
+// first TEXT render so the cwd is whatever launched POM1 (Memory probes the
+// same set of roms/ candidates). gApple2eCharRomOk drives the fallback to
+// kAscii5x7 below.
+std::array<uint8_t, 4096> gApple2eCharRom{};
+bool gApple2eCharRomOk      = false;
+bool gApple2eCharRomTried   = false;
+
+void loadApple2eCharRom()
+{
+    if (gApple2eCharRomTried) return;
+    gApple2eCharRomTried = true;
+    static const char* kCandidates[] = {
+        "roms/apple2e_char.rom",
+        "../roms/apple2e_char.rom",
+        "../../roms/apple2e_char.rom",
+    };
+    for (const char* path : kCandidates) {
+        std::ifstream f(path, std::ios::binary);
+        if (!f) continue;
+        f.read(reinterpret_cast<char*>(gApple2eCharRom.data()), 4096);
+        if (f.gcount() != 4096) { gApple2eCharRom.fill(0); continue; }
+        // 4 KB Apple IIe Enhanced ROM stores pixels with INVERTED polarity
+        // (1 = OFF) and bit 0 = leftmost natively. XOR with 0xFF flips to
+        // (1 = ON). Verbatim from POM2::Memory::loadCharRom (4K branch).
+        for (auto& b : gApple2eCharRom) b ^= 0xFF;
+        gApple2eCharRomOk = true;
+        return;
+    }
+    // Not found: gApple2eCharRomOk stays false, glyphRows7 falls back to
+    // the kAscii5x7 built-in font below.
+}
+
 // Map a screen byte to a glyph row pattern + video attributes (Apple II
 // text encoding — the GEN2 char-gen follows the same convention):
 //   $00-$3F  inverse   ─ low 6 bits = char index (always inverse)
@@ -330,9 +377,23 @@ void resolveGlyph(uint8_t screenByte, uint8_t out[8], bool& invert, bool& flash)
 
 // Resolve a screen byte into the cell's 8 rows as 7-bit lit masks: bit `gx`
 // (0 = leftmost) set ⇔ pixel gx is lit, with inverse + flash applied.
+// Primary path: direct lookup into the Apple IIe Enhanced char ROM (csbits
+// format, already inverse-flipped + bit-ordered). For the flashing range
+// $40-$7F the stored pattern is the normal-looking glyph; XOR with 0x7F when
+// the flash phase is ON to alternate to inverse video. Fallback path: the
+// built-in kAscii5x7 5×7 font centred in the 7-pixel cell.
 std::array<uint8_t, 8> glyphRows7(uint8_t screenByte, bool flashPhase)
 {
+    loadApple2eCharRom();
     std::array<uint8_t, 8> rows{};
+    if (gApple2eCharRomOk) {
+        const bool flashRange = screenByte >= 0x40 && screenByte <= 0x7F;
+        const uint8_t mask = (flashRange && flashPhase) ? 0x7F : 0x00;
+        const size_t off = static_cast<size_t>(screenByte) * 8u;
+        for (int gy = 0; gy < 8; ++gy)
+            rows[gy] = static_cast<uint8_t>(gApple2eCharRom[off + gy] ^ mask);
+        return rows;
+    }
     uint8_t glyph[8];
     bool invert = false, flash = false;
     resolveGlyph(screenByte, glyph, invert, flash);

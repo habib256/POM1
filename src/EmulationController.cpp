@@ -539,6 +539,18 @@ bool EmulationController::isVramNoiseOnReset() const
     return memory->isVramNoiseOnReset();
 }
 
+void EmulationController::setGen2RandomPowerOn(bool enabled)
+{
+    std::lock_guard<PriorityMutex> lock(stateMutex);
+    memory->setGen2RandomPowerOn(enabled);
+}
+
+bool EmulationController::isGen2RandomPowerOn() const
+{
+    std::lock_guard<PriorityMutex> lock(stateMutex);
+    return memory->isGen2RandomPowerOn();
+}
+
 void EmulationController::setSystemRamNoiseOnReset(bool enabled)
 {
     std::lock_guard<PriorityMutex> lock(stateMutex);

@@ -14,9 +14,12 @@
  *                          --load 6000:"software/Graphic HGR/GEN2Countdown.bin" \
  *                          --run 6000
  *
- * Rendu INCREMENTAL : le décor statique (le titre) n'est tracé QU'UNE FOIS,
- * avant la boucle. Chaque tick efface UNIQUEMENT la bande du chiffre puis y
- * dessine le nouveau ; le titre n'est jamais retouché.
+ * Rendu INCREMENTAL : le décor statique (le titre + un GRAND CERCLE autour
+ * du chiffre) n'est tracé QU'UNE FOIS, avant la boucle. Chaque tick efface
+ * UNIQUEMENT la bande du chiffre puis y dessine le nouveau ; ni le titre ni
+ * le cercle ne sont retouchés. Le cercle est dimensionné pour rester
+ * entièrement à l'extérieur de la bande d'effacement (rayon > 28 px = demi-
+ * largeur de la bande), donc clear_band() ne mord jamais dessus.
  *
  * ATTENTION (leçon apprise) : l'effacement passe par gen2_hgr_fill_rect — un
  * remplissage d'OCTETS entiers du framebuffer écrit en ASSEMBLEUR (gen2_blit.s),
@@ -72,11 +75,15 @@ void main(void)
     unsigned char n;
     unsigned char s;
 
-    /* --- Décor STATIQUE : tracé UNE SEULE FOIS. Le titre est à y=16, loin de
-     * la bande du chiffre (y=88..103). --- */
+    /* --- Décor STATIQUE : tracé UNE SEULE FOIS. Titre à y=16 et grand cercle
+     * (centré sur la bande du chiffre, rayon 55) — tous deux hors de la bande
+     * d'effacement (y=88..103, x=112..167), donc jamais redessinés. Le cercle
+     * fait 110 px de diamètre, le titre BBFont occupe y=16..31 -> 9 px de gap
+     * entre le sommet de l'arc (y=41) et le bas du titre. --- */
     gen2_hgr_init();
     gen2_hgr_clear(0);
     gen2_hgr_puts(15, 16, "GEN2 COUNTDOWN");   /* 14 car., centré, hors bande */
+    gen2_hgr_circle(140u, 96u, 30u);           /* grand cercle autour du chiffre */
 
     /* Settle : re-asserter le mode le temps que la carte GEN2 finisse son
      * branchement différé (le DevBench branche les cartes ~15 images après le
@@ -97,3 +104,4 @@ void main(void)
     spin(TICK_SPINS);
     woz_mon();
 }
+

@@ -1047,13 +1047,19 @@ void MainWindow_ImGui::renderTelemetryWindow()
 
 // The POM1 Bench editor is the portable bench/CodeBench, driven by a
 // Pom1BenchHost (cc65 toolchain, presets, CodeTank/loadBinary deploy, telemetry
-// Serial Monitor). See bench/IBenchHost.h. Host + bench are created lazily.
+// Serial Monitor). See bench/IBenchHost.h. Host + bench are created lazily —
+// either on first render or when a DevBench preset is applied (see
+// applyMachineConfig in MainWindow_Presets.cpp).
+void MainWindow_ImGui::ensureBench()
+{
+    if (benchHost_) return;
+    benchHost_ = std::make_unique<Pom1BenchHost>(this);
+    codeBench_ = std::make_unique<bench::CodeBench>(benchHost_.get());
+}
+
 void MainWindow_ImGui::renderBenchWindow()
 {
-    if (!benchHost_) {
-        benchHost_ = std::make_unique<Pom1BenchHost>(this);
-        codeBench_ = std::make_unique<bench::CodeBench>(benchHost_.get());
-    }
+    ensureBench();
     codeBench_->render("POM1 Bench", &showBench);
 }
 
@@ -2435,6 +2441,46 @@ void MainWindow_ImGui::renderSiliconStrictWindow()
             emulation->dumpTms9918DropDiagnostics(stderr, 16);
             setStatusMessage("TMS9918 drop diagnostics written to stderr", 3.0f);
         }
+    }
+
+    // -------- 4a. GEN2 HGR Graphic Card ----------------------------------
+    if (ImGui::CollapsingHeader("GEN2 HGR Graphic Card",
+                                ImGuiTreeNodeFlags_DefaultOpen)) {
+        ImGui::SeparatorText("Cold-boot");
+        bool gen2Flag = gen2RandomPowerOnEnabled;
+        if (ImGui::Checkbox("Random power-on state##gen2randompoweron",
+                            &gen2Flag)) {
+            gen2RandomPowerOnEnabled = gen2Flag;
+            emulation->setGen2RandomPowerOn(gen2Flag);
+            setStatusMessage(gen2Flag
+                ? "GEN2 random power-on ON - latch/phase/noise/DRAM random at next plug"
+                : "GEN2 random power-on OFF - documented cold state + zeroed DRAM",
+                3.0f);
+        }
+        if (ImGui::IsItemHovered()) {
+            ImGui::SetTooltip(
+                "Bernie's release card: the PLD power-on reset is GENUINELY\n"
+                "indeterminate and the Apple-1 RESET line never touches the\n"
+                "soft-switch latch. One checkbox covers all four cold-boot\n"
+                "uncertainties:\n"
+                "  - $C250-$C257 soft-switch latch random at cold plug\n"
+                "    (vs documented GRAPHICS + HIRES + PAGE1 + MIX off)\n"
+                "  - Floating-bus xorshift32 noise on $C25x D6..D0 reads\n"
+                "    (vs deterministic byte the video scanner is fetching)\n"
+                "  - 8 KB framebuffer DRAM mt19937 fill at cold plug + F5\n"
+                "    (vs zeroed bank — useful for headless tests)\n"
+                "  - Vertical scanner phase random at cold plug\n"
+                "    (vs cycleCounter = 0 — reproducible frame timing)\n"
+                "\n"
+                "Default: ON for every preset except 'POM1 Fantasy' (same rule\n"
+                "as silicon-strict). Takes effect on the next cold plug of the\n"
+                "card — unplug + replug from the Hardware menu to re-roll.");
+        }
+        ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.7f, 0.7f, 0.7f, 1.0f));
+        ImGui::TextWrapped(
+            "Pinned by gen2_softswitch_msb_smoke + gen2_floatingbus_smoke "
+            "(both mask the low 7 bits so either gate stays green).");
+        ImGui::PopStyleColor();
     }
 
     // -------- 4b. Active Parmigiani conflicts -----------------------------

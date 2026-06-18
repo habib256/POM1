@@ -44,6 +44,22 @@ void CodeBench::applyTargetSyntax()
     }
 }
 
+bool CodeBench::loadStarterForTargetIfClean(int targetIndex)
+{
+    ensureEditor();
+    const auto& targets = host_->targets();
+    if (targetIndex < 0 || targetIndex >= static_cast<int>(targets.size())) return false;
+    targetIndex_ = targetIndex;
+    applyTargetSyntax();
+    if (dirty_) return false;
+    editor_->SetText(host_->starterSketch(targetIndex_));
+    editor_->SetErrorMarkers({}); errorLines_.clear();
+    loadedPath_.clear();
+    lastSavedText_ = editor_->GetText(); dirty_ = false;
+    status_ = "Starter loaded for new preset"; statusOk_ = true;
+    return true;
+}
+
 void CodeBench::applyResult(const BuildResult& r)
 {
     console_ = r.console;

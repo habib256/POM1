@@ -297,6 +297,18 @@ public:
     void setVramNoiseOnReset(bool enabled);
     bool isVramNoiseOnReset() const;
 
+    // GEN2 HGR Graphic Card — random power-on state. Gates four behaviours
+    // together: soft-switch latch + scanner phase randomized at cold plug,
+    // floating-bus xorshift noise on $C250-$C257 D6..D0 reads, and DRAM
+    // mt19937 fill at cold plug + hard reset. ON (default for every preset
+    // except the Fantasy ones) matches Bernie's release card: PLD POR is
+    // genuinely indeterminate and the floating bus must look untrustworthy
+    // so software never grows a dependency. OFF gives the documented
+    // GRAPHICS + HIRES + PAGE1 cold state + zeroed DRAM + deterministic
+    // floating bus — useful for headless tests and pre-Phase-2 demos.
+    void setGen2RandomPowerOn(bool enabled) { gen2RandomPowerOn = enabled; }
+    bool isGen2RandomPowerOn() const { return gen2RandomPowerOn; }
+
     // P-LAB A1-SID Sound Card (MOS 6581/8580)
     pom1::SID& getSID() { return *sid; }
     const pom1::SID& getSID() const { return *sid; }
@@ -495,6 +507,7 @@ private :
     bool oorStrictMode = false;       // true: enforce bounds (reads→$FF, writes dropped)
     bool systemRamNoiseOnReset = false; // see setSystemRamNoiseOnReset()
     bool hgrFramebufferAttached = false;  // GEN2 HGR card supplies RAM at $2000-$3FFF
+    bool gen2RandomPowerOn = true;        // Silicon Strict: random latch/phase/noise/DRAM at plug
     Gen2VideoScanner gen2Scanner;         // GEN2 release video address generator (floating bus)
     // GEN2 soft-switch journal — recording half (current video frame) and
     // published half (last completed frame). See gen2PublishedVideoEvents().

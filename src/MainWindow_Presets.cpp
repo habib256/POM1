@@ -11,6 +11,7 @@
 #include "MainWindow_Internal.h"
 #include "POM1Build.h"
 #include "Logger.h"
+#include "CodeBench.h"   // codeBench_->loadStarterForTargetIfClean() in DevBench presets
 
 #include "imgui.h"
 #include "imgui_internal.h"
@@ -628,6 +629,11 @@ void MainWindow_ImGui::applyMachineConfig(int presetIndex)
     // 65C02-corrected on the (fantasy) Multiplexing presets.
     emulation->setCpuDecimalBugNMOS(!fantasyPreset);
     cpuDecimalBugEnabled = !fantasyPreset;
+    // GEN2 HGR random power-on state. Same Fantasy-OFF rule as siliconStrictMode;
+    // when the card plugs (deferred 15 frames below), Memory consults this flag
+    // to decide between random / documented latch + DRAM + scanner phase.
+    emulation->setGen2RandomPowerOn(!fantasyPreset);
+    gen2RandomPowerOnEnabled = !fantasyPreset;
 
     // UI flags reflect the preset's target state immediately (the menu
     // checkmarks and toolbar chips are driven by these). The actual
@@ -862,6 +868,27 @@ void MainWindow_ImGui::applyMachineConfig(int presetIndex)
 #endif
 
     activePresetIndex = presetIndex;
+
+    // Indices 0-2 are the DevBench profiles (CC65 / TMS9918 / GEN2 HGR). When
+    // the user picks one from the Presets menu, open the POM1 Bench and load
+    // the matching ASM starter sketch. DevBench preset N maps identically to
+    // ASM target N in kP1Targets[] (Pom1BenchHost.cpp). If the editor is
+    // dirty, keep the user's code and just log a notice — they can pick New
+    // from the toolbar to force-reset. Skipped when applyMachineConfig is
+    // being driven BY the Bench's own target picker (otherwise picking a C
+    // target — which also maps to preset 0/1/2 — would wipe the C sketch back
+    // to asm); see Pom1BenchHost::onTargetSelected.
+    if (presetIndex >= 0 && presetIndex <= 2 && !suppressDevBenchAutoload) {
+        ensureBench();
+        showBench = true;
+        if (!codeBench_->loadStarterForTargetIfClean(presetIndex)) {
+            pom1::log().info("DevBench",
+                             std::string("Preset switched to '") + cfg.name +
+                             "' but the Bench sketch was modified - kept "
+                             "user's code (use New in the Bench to reset).");
+        }
+    }
+
     setStatusMessage(std::string("Preset: ") + cfg.name, 3.0f);
 }
 
@@ -883,6 +910,13 @@ void MainWindow_ImGui::applyHeadlessConfig(EmulationController& emu, int presetI
     const bool fantasy = std::string_view(cfg.name).find("Fantasy") != std::string_view::npos;
     emu.setSiliconStrictMode(!fantasy);
     emu.setOutOfRangeStrictMode(!fantasy);
+    // Headless = tests / golden-image regression / CI: force the deterministic
+    // GEN2 cold state (documented latch + zeroed DRAM + cycleCounter=0 + fixed
+    // xorshift seed) regardless of the preset's Fantasy bit. The GUI path
+    // mirrors !fantasyPreset because users want hardware fidelity there;
+    // headless callers want reproducibility (--dump-gen2-frame /
+    // gfx_regress_gen2_testcard depend on it).
+    emu.setGen2RandomPowerOn(false);
 
     // Jumpers before the cards that read them.
     emu.setJukeBoxJumper(cfg.jukeBoxJumper);
