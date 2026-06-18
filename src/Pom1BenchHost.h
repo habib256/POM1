@@ -34,6 +34,11 @@ public:
     bench::BuildResult  upload(int target, const std::string& src, const std::string& addrHex) override;
     bench::BuildResult  pollBuild() override;   // WASM: drive the async cc65 build
 
+    // CodeBench tells us the path of the source open in the editor before each
+    // build; when it sits in a dev/projects/ dir with a sibling Makefile, build()
+    // compiles it as a real project (own .cfg, -I projectdir, EXTRA_ASM, dual-bank).
+    void setActiveSourcePath(const std::string& path) override { activeSourcePath_ = path; }
+
     bool        toolchainReady(int target) const override;
     std::string toolchainHint (int target) const override;
     std::string toolchainReport() const override;
@@ -71,6 +76,10 @@ private:
     // Companion asset staged before an asm build runs (set by loadExample).
     std::string extraAsset_;
     uint16_t    extraAssetAddr_ = 0;
+
+    // Full path of the file open in the bench editor (CodeBench sets it via
+    // setActiveSourcePath). Empty = untitled scratch / inline example -> bare sketch.
+    std::string activeSourcePath_;
 
     // cc65 toolchain — lazily probed (mutable: probe() runs from const methods).
     mutable bool        probed_      = false;

@@ -83,6 +83,12 @@ public:
     virtual BuildResult verify(int target, const std::string& src, const std::string& addrHex) = 0;
     virtual BuildResult upload(int target, const std::string& src, const std::string& addrHex) = 0;
 
+    // Tell the host the full path of the file currently open in the editor
+    // ("" = untitled scratch). Lets a host build a real project from its sibling
+    // Makefile (its own .cfg, -I projectdir for sibling .inc, EXTRA_ASM, dual-bank)
+    // instead of a bare sketch. Called before verify()/upload(). No-op by default.
+    virtual void setActiveSourcePath(const std::string& /*path*/) {}
+
     // Poll a pending async build (see BuildResult::pending). Called every frame by
     // CodeBench while a build is in flight; returns pending=true until the build
     // finishes, then the final result (which CodeBench applies). Default: no async

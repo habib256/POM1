@@ -500,6 +500,109 @@ uint16_t parseCfgLoadAddr(const std::string& cfgPath)
     return 0;
 }
 
+// ---------------------------------------------------------------------------
+// Project-context build. When the bench editor has a real dev/projects/ file
+// open, compile it the way `make` would instead of as a bare sketch: its
+// sibling Makefile's LOAD_CFG, the EXTRA_ASM siblings, the project dir on the
+// ca65 include path (so sibling `.inc` data like tileset_rogue.inc resolve),
+// and (dual-bank cfgs) lo/hi halves loaded separately.
+// ---------------------------------------------------------------------------
+struct AsmProjectCtx {
+    bool ok = false;
+    std::filesystem::path dir;
+    std::string cfg;                       // absolute linker .cfg
+    std::vector<std::string> extraAsm;     // absolute EXTRA_ASM siblings
+    bool dualBank = false;
+    uint16_t loAddr = 0x0280, hiAddr = 0xE000;
+};
+
+static std::string benchTrim(const std::string& s)
+{
+    const size_t a = s.find_first_not_of(" \t\r\n");
+    if (a == std::string::npos) return "";
+    const size_t b = s.find_last_not_of(" \t\r\n");
+    return s.substr(a, b - a + 1);
+}
+
+// Parse "NAME := value" / "NAME ?= value" (the Makefile.common convention). On a
+// match, strips any inline `# comment` and returns the trimmed RHS in `out`.
+static bool benchMakeVar(const std::string& line, const char* name, std::string& out)
+{
+    const std::string t = benchTrim(line);
+    const std::string nm(name);
+    if (t.compare(0, nm.size(), nm) != 0) return false;
+    size_t p = nm.size();
+    while (p < t.size() && (t[p] == ' ' || t[p] == '\t')) ++p;
+    if (p + 1 >= t.size() || !((t[p] == ':' || t[p] == '?') && t[p + 1] == '=')) return false;
+    std::string rhs = t.substr(p + 2);
+    const size_t h = rhs.find('#');
+    if (h != std::string::npos) rhs = rhs.substr(0, h);
+    out = benchTrim(rhs);
+    return true;
+}
+
+static AsmProjectCtx probeAsmProject(const std::string& sourcePath)
+{
+    namespace fs = std::filesystem;
+    AsmProjectCtx p;
+    if (sourcePath.empty()) return p;
+    std::error_code ec;
+    const fs::path src = fs::absolute(fs::path(sourcePath), ec);
+    p.dir = src.parent_path();
+    const fs::path mk = p.dir / "Makefile";
+    if (!fs::exists(mk, ec)) return p;
+
+    std::ifstream f(mk);
+    std::string line, loadCfg, cfgDefault, extra, v;
+    while (std::getline(f, line)) {
+        if      (benchMakeVar(line, "LOAD_CFG",  v)) loadCfg    = v;
+        else if (benchMakeVar(line, "EXTRA_ASM", v)) extra      = v;
+        else if (benchMakeVar(line, "CFG",       v)) cfgDefault = v;
+    }
+    if (loadCfg == "$(CFG)") loadCfg = cfgDefault;     // CFG ?= default + LOAD_CFG := $(CFG)
+    if (loadCfg.empty()) return p;
+
+    fs::path cfgPath(loadCfg);
+    if (cfgPath.is_relative()) cfgPath = p.dir / cfgPath;
+    cfgPath = fs::weakly_canonical(cfgPath, ec);
+    if (ec || !fs::exists(cfgPath, ec)) return p;
+    p.cfg = cfgPath.string();
+
+    // EXTRA_ASM tokens (whitespace-separated) -> existing absolute paths.
+    for (size_t i = 0; i < extra.size(); ) {
+        while (i < extra.size() && (extra[i] == ' ' || extra[i] == '\t')) ++i;
+        const size_t start = i;
+        while (i < extra.size() && extra[i] != ' ' && extra[i] != '\t') ++i;
+        if (i == start) break;
+        fs::path ep(extra.substr(start, i - start));
+        if (ep.is_relative()) ep = p.dir / ep;
+        ep = fs::weakly_canonical(ep, ec);
+        if (!ec && fs::exists(ep, ec)) p.extraAsm.push_back(ep.string());
+    }
+
+    // Dual-bank cfgs split the image into low/high files (file = "%O.lo" /
+    // "%O.hi"); pull each region's load address from its MEMORY line.
+    {
+        std::ifstream cf(p.cfg);
+        std::string cl; bool lo = false, hi = false;
+        auto startAddr = [](const std::string& s, uint16_t& dst) {
+            const size_t sp = s.find("start");
+            if (sp == std::string::npos) return;
+            const size_t d = s.find('$', sp);
+            if (d == std::string::npos) return;
+            try { dst = static_cast<uint16_t>(std::stoul(s.substr(d + 1, 4), nullptr, 16)); } catch (...) {}
+        };
+        while (std::getline(cf, cl)) {
+            if (cl.find("%O.lo") != std::string::npos) { lo = true; startAddr(cl, p.loAddr); }
+            if (cl.find("%O.hi") != std::string::npos) { hi = true; startAddr(cl, p.hiAddr); }
+        }
+        p.dualBank = lo && hi;
+    }
+
+    p.ok = true;
+    return p;
+}
+
 void parseErrorMarkers(const std::string& out, std::vector<std::pair<int, std::string>>& markers)
 {
     size_t start = 0;
@@ -1070,8 +1173,31 @@ bench::BuildResult Pom1BenchHost::build(int target, const std::string& src, cons
         const fs::path objO = dir / "pom1_bench.o";
         sweep.add(srcS); sweep.add(objO);
         std::ofstream(srcS, std::ios::binary).write(src.data(), static_cast<std::streamsize>(src.size()));
+        // If the editor's file is a real dev/projects/ source (sibling Makefile),
+        // build it in context: its own LOAD_CFG, -I <projectdir> for sibling .inc,
+        // and the EXTRA_ASM siblings. Empty path / no Makefile -> bare sketch path.
+        const AsmProjectCtx proj = probeAsmProject(activeSourcePath_);
+        std::string asmFlags = libFlags_;
+        std::string extraObjs;   // " obj ..." appended to the ld65 link line
         std::string cfgPath;
-        if (!t.cfg[0]) {
+        if (proj.ok) {
+            cfgPath  = proj.cfg;
+            asmFlags += "-I " + bench::shellQuote(proj.dir.string()) + " ";
+            int n = 0;
+            for (const std::string& ea : proj.extraAsm) {
+                const fs::path eo = dir / ("pom1_bench_x" + std::to_string(n++) + ".o");
+                sweep.add(eo);
+                std::string eout;
+                const std::string eca = bench::shellQuote(ca65_) + " " + asmFlags +
+                    bench::shellQuote(ea) + " -o " + bench::shellQuote(eo.string());
+                if (bench::runCapture(eca, eout) != 0) {
+                    parseErrorMarkers(eout, r.errors);
+                    r.console += "$ ca65 [" + fs::path(ea).filename().string() + "]\n" + eout + humanizeCc65(eout);
+                    r.status = "ca65 failed (EXTRA_ASM, see Build output)"; return r;
+                }
+                extraObjs += " " + bench::shellQuote(eo.string());
+            }
+        } else if (!t.cfg[0]) {
             const fs::path e2 = dir / "pom1_bench_default.cfg";
             sweep.add(e2);
             std::ofstream(e2, std::ios::binary) << kBenchEmbeddedCfg;
@@ -1091,13 +1217,42 @@ bench::BuildResult Pom1BenchHost::build(int target, const std::string& src, cons
             if (cfgPath.empty()) { r.console = std::string("linker cfg not found (needs dev/): ") + t.cfg + "\n"; r.status = "ld65 cfg missing"; return r; }
         }
         std::string out;
-        const std::string ca = bench::shellQuote(ca65_) + " " + libFlags_ +
+        const std::string ca = bench::shellQuote(ca65_) + " " + asmFlags +
             bench::shellQuote(srcS.string()) + " -o " + bench::shellQuote(objO.string());
         int rc = bench::runCapture(ca, out);
-        r.console = "$ ca65 [" + std::string(t.label) + "]\n" + out;
+        r.console += "$ ca65 [" + std::string(t.label) + (proj.ok ? " + project" : "") + "]\n" + out;
         if (rc != 0) { parseErrorMarkers(out, r.errors); r.console += humanizeCc65(out); r.status = "ca65 failed (see Build output)"; return r; }
+
+        if (proj.ok && proj.dualBank) {
+            // Dual-bank: ld65 writes <base>.lo + <base>.hi. Load lo into RAM, then
+            // load+run hi — the 6502 hard reset in loadBinary() preserves lo's RAM.
+            const fs::path base = dir / "pom1_bench_db.bin";
+            const std::string loP = base.string() + ".lo", hiP = base.string() + ".hi";
+            sweep.add(base); sweep.add(fs::path(loP)); sweep.add(fs::path(hiP));
+            const std::string ld = bench::shellQuote(ld65_) + " -C " + bench::shellQuote(cfgPath) + " " +
+                bench::shellQuote(objO.string()) + extraObjs + " -o " + bench::shellQuote(base.string());
+            rc = bench::runCapture(ld, out);
+            r.console += "$ ld65 -C " + cfgPath + " (dual-bank)\n" + out;
+            if (rc != 0) { r.console += humanizeCc65(out); r.status = "ld65 failed (see Build output)"; return r; }
+            r.console += "[ok] assembled + linked (dual-bank)\n";
+            if (!run) { r.status = "Verify OK"; r.ok = true; return r; }
+            mw_->finalizePendingCardPlugs();
+            auto* emu = mw_->emulation.get();
+            std::string error; int loaded = 0;
+            if (!emu->loadBinaryToRam(loP, proj.loAddr, error)) { r.status = "lo-bank load failed: " + error; r.ok = false; return r; }
+            if (emu->loadBinary(hiP, proj.hiAddr, error, &loaded)) {
+                emu->copySnapshot(mw_->uiSnapshot);
+                const char* where = "";
+                if (t.preset == 2) { mw_->showGraphicsCard = true; where = " - see the GEN2 HGR window"; }
+                char msg[176]; std::snprintf(msg, sizeof(msg), "Built dual-bank ($%04X+$%04X) - running @ $%04X%s",
+                                             proj.loAddr, proj.hiAddr, proj.hiAddr, where);
+                r.status = msg; r.ok = true;
+            } else { r.status = "hi-bank load failed: " + error; r.ok = false; }
+            return r;
+        }
+
         const std::string ld = bench::shellQuote(ld65_) + " -C " + bench::shellQuote(cfgPath) + " " +
-            bench::shellQuote(objO.string()) + " -o " + bench::shellQuote(binB.string());
+            bench::shellQuote(objO.string()) + extraObjs + " -o " + bench::shellQuote(binB.string());
         rc = bench::runCapture(ld, out);
         r.console += "$ ld65 -C " + cfgPath + "\n" + out;
         if (rc != 0) { r.console += humanizeCc65(out); r.status = "ld65 failed (see Build output)"; return r; }
