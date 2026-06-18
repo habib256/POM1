@@ -495,15 +495,24 @@ void main(void)
             emit_state();          /* one DATA frame per tick */
             throttle();
         } else {
-            /* Death: show GAME OVER and emit alive=0 frames for a short, visible
-             * pause so the telemetry / UI registers it, then AUTO-RESTART (a key
-             * or harness byte restarts early) — the demo never gets stuck. */
+            /* Death: show GAME OVER and emit alive=0 frames. A minimum hold of
+             * ~4 seconds applies first (no early-exit) so the banner is always
+             * readable, then a second window polls for a key / harness byte to
+             * restart early. The minimum is timing-stable because we lock
+             * tick_spins to its max (new_game() will reset it anyway). */
             unsigned int hold;
             /* Clear a black panel BEHIND the banner first — otherwise "GAME OVER"
              * is OR'd straight over the snake/apple under it and smears into
              * garbage. The 9-glyph word spans x=40..199 at y=80..95; pad it. */
             gen2_hgr_clear_pixrect(36u, 78u, 168u, 20u);
             gen2_hgr_puts_color(40, 80, "GAME OVER", GEN2_ORANGE);
+            tick_spins = 3565u;             /* pin the throttle to its slow cadence */
+            /* Phase 1 — ~4-second mandatory hold (no input read). */
+            for (hold = 0; hold < 40u; ++hold) {
+                emit_state();
+                throttle();
+            }
+            /* Phase 2 — extra window where a key or harness byte ends the pause. */
             for (hold = 0; hold < 50u; ++hold) {
                 emit_state();
                 if (apple1_readkey() != 0 || tele_inlen() != 0) break;

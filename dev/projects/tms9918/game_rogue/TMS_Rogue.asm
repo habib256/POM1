@@ -1205,7 +1205,7 @@ gen_dungeon:
 ; Stairs-up at the top-right interior cell (14, 2) so its east
 ; neighbour is the screen-edge wall (col 15). Player spawns one cell
 ; WEST of the stairs at (13, 2) — the "arrived from above" anchor —
-; matching the spec rule "le personnage arrive à gauche de l'escalier".
+; matching the spec rule "the character arrives to the left of the stairs".
 ;
 ; Stairs-down at bottom-left interior corner (1, 8) — west neighbour
 ; is the screen frame, so the descent sprite sits with a wall on its
@@ -1448,7 +1448,7 @@ gen_two_rooms:
         ; Iter 0: save room 0's top-right interior corner as the
         ;         stairs-up location (rx+rw-1, ry). Player spawns ONE
         ;         CELL WEST of the stairs (rx+rw-2, ry) per the spec —
-        ;         "arrive à gauche de l'escalier". Row ry ≠ cy keeps
+        ;         "arrives to the left of the stairs". Row ry ≠ cy keeps
         ;         the cell west of stairs from sitting on the corridor,
         ;         so the spawn cell is always plain interior floor.
         ; Iter 1: dig the L-corridor from the previous centre.

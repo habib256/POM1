@@ -1,13 +1,13 @@
 ; =============================================================
-; RtcClock.asm — horloge P-LAB texte (référence)
-; Même logique que l’ancienne RtcBigClock « une ligne » : mois anglais,
-; 40 colonnes, pause 5 s. Voir RtcBigClock.asm pour la version « BIG ».
+; RtcClock.asm — P-LAB text clock (reference)
+; Same logic as the old "single-line" RtcBigClock: English month names,
+; 40 columns, 5 s pause. See RtcBigClock.asm for the "BIG" version.
 ; =============================================================
-; Horloge P-LAB (A1-IO / DS3231) — month names (English), 40 cols, 5 s
+; P-LAB clock (A1-IO / DS3231) — month names (English), 40 cols, 5 s
 ; =============================================================
-; Ligne centrée : JJ MONTH YYYY HH:MM:SS  (longueur variable)
-; Mois : JANUARY … DECEMBER (ASCII majuscules)
-; Année 20xx (registre 5 = années depuis 2000)
+; Centred line: DD MONTH YYYY HH:MM:SS  (variable length)
+; Month: JANUARY ... DECEMBER (uppercase ASCII)
+; Year 20xx (register 5 = years since 2000)
 ;
 ;   ca65 -o build/RtcBigClock.o software/a1io_rtc/RtcBigClock.asm
 ;   ld65 -C software/apple1_4k.cfg -o build/RtcBigClock.bin build/RtcBigClock.o
@@ -257,9 +257,9 @@ print_month_name:
         LDA #>m_jan
         STA str_hi
         LDY #$00
-        BEQ @pm                 ; toujours — afficher JANUARY
+        BEQ @pm                 ; always — print JANUARY
 
-; --- DD MONTH YYYY HH:MM:SS centré sur 40 colonnes ---
+; --- DD MONTH YYYY HH:MM:SS centred on 40 columns ---
 print_datetime40:
         JSR compute_padding
         JSR print_spaces_padl
@@ -372,7 +372,7 @@ poll_key_quit:
 @no:    CLC
         RTS
 
-; Longueurs : January..December
+; Lengths: January..December
 month_lens:
         .byte 7, 8, 5, 5, 3, 4, 4, 6, 9, 7, 8, 8
 

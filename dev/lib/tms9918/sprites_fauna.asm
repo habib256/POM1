@@ -1,7 +1,7 @@
 ; ============================================================================
 ; sprites_fauna.asm  --  13 sprites (16x16, TMS9918 sprite mode)
-; Labels _fauna_* : export cc65/C (voir demos/sprite_animals). Régénérer
-; dev/lib/hgr/sprites/sprites_fauna_hgr.asm après édition :
+; Labels _fauna_*: cc65/C export (see demos/sprite_animals). Regenerate
+; dev/lib/hgr/sprites/sprites_fauna_hgr.asm after editing:
 ;   python3 tools/build_hgr_sprites.py --only fauna
 ; ----------------------------------------------------------------------------
 ; SCROLL-O-SPRITES "Fauna" by Quale, May 2013, CC-BY-3.0.
@@ -12,7 +12,7 @@
 ; Native TMS9918 16x16 sprite layout: stream the 32 bytes into a
 ; sprite-pattern slot starting at base $3800 + slot*32.
 ; ============================================================================
-; Symboles avec préfixe _ pour linkage cc65 / C.
+; Symbols with _ prefix for cc65 / C linkage.
 .export _fauna_dog_pat, _fauna_rabbit_pat, _fauna_spider_pat, _fauna_octopus_pat, _fauna_cat_pat
 .export _fauna_snake_pat, _fauna_bat_pat, _fauna_kitten_pat, _fauna_bear_pat, _fauna_snail_pat
 .export _fauna_lion_pat, _fauna_tiger_pat, _fauna_horse_pat

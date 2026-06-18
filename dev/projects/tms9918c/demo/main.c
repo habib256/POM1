@@ -1,12 +1,12 @@
 /*
- * demo — menu TMS9918 minimaliste (port minimal upstream demos/demo).
+ * demo — minimal TMS9918 menu (minimal port of upstream demos/demo).
  * Keys:
  *   1 : Screen 1 demo
  *   2 : Screen 2 demo
- *   3/A/I/E/F/B/H : messages "pas porte"
- *   0 : quitter (wozmon)
+ *   3/A/I/E/F/B/H : "not ported" messages
+ *   0 : quit (wozmon)
  *
- * But: assurer une démo "tms9918 touché" pour toutes les entrées.
+ * Goal: provide a "tms9918 touched" demo for every entry.
  */
 #include "apple1.h"
 #include "screen1.h"
@@ -21,7 +21,7 @@ static unsigned char key_upper(unsigned char k) {
 
 static void wait_return(void) {
     while (apple1_getkey() != 13U) {
-        /* attente */
+        /* wait */
     }
 }
 
@@ -51,7 +51,7 @@ static void screen2_demo(void) {
     screen2_ellipse_rect(10U, 10U, 150U, 100U);
 
     while (apple1_getkey() != 13U) {
-        /* attente */
+        /* wait */
     }
 }
 
@@ -107,7 +107,7 @@ void main(void) {
         } else {
             stub_msg("Touche inconnue.");
         }
-        /* retour au menu */
+        /* back to menu */
         tms_init_regs(SCREEN1_TABLE);
         screen1_prepare();
         screen1_load_font();

@@ -1,28 +1,28 @@
 /*
- * GEN2Vectors.c — vitrine vectoriel + nombres HUD + sprites XOR de gen2c, en
- *                 double buffering avec rendu INCRÉMENTAL et blit RAPIDE.
+ * GEN2Vectors.c — vector showcase + HUD numbers + XOR sprites from gen2c, in
+ *                 double buffering with INCREMENTAL rendering and FAST blit.
  *
- *   Démo Vecteurs/HUD GEN2 / VERHILLE Arnaud 2026
+ *   GEN2 Vectors/HUD demo / VERHILLE Arnaud 2026
  *
- * QUATRE balles (sprites disques) — une grosse 48x48 et trois petites 16x16 —
- * rebondissent dans un cadre ET s'entrechoquent (toutes les paires) ; compteur de
- * rebonds en HUD, légende dense en police 8x8. Réunit :
- *   E  gen2_hgr_rect / gen2_hgr_line                     (décor vectoriel)
- *   B  gen2_hgr_blit7(..., GEN2_XOR)                     (sprites XOR rapides)
- *   D  gen2_hgr_putu_field + gen2_hgr_puts8              (nombre HUD + texte 8x8)
+ * FOUR balls (disc sprites) — one big 48x48 and three small 16x16 —
+ * bounce inside a frame AND collide pairwise (every pair); bounce counter
+ * in HUD, dense caption in 8x8 font. Combines:
+ *   E  gen2_hgr_rect / gen2_hgr_line                     (vector decor)
+ *   B  gen2_hgr_blit7(..., GEN2_XOR)                     (fast XOR sprites)
+ *   D  gen2_hgr_putu_field + gen2_hgr_puts8              (HUD number + 8x8 text)
  *   C  gen2_set_draw_page / gen2_show_page               (double buffering)
  *
- * VITESSE — trois leviers cumulés :
- *   1. On ne redessine PAS le décor (tracé une fois par page).
- *   2. Chaque balle est effacée par XOR (re-blit au même endroit -> fond restauré,
- *      pas de boîte à laver).
- *   3. Les balles sont blittées par gen2_hgr_blit7 : sprites pré-empaquetés en
- *      7px/octet -> on XOR des OCTETS entiers (~7x moins d'écritures que le blit
- *      pixel-par-pixel). Contrepartie : x aligné sur 7px (pas horizontal de 7).
+ * SPEED — three cumulative levers:
+ *   1. The decor is NOT redrawn (drawn once per page).
+ *   2. Each ball is erased by XOR (re-blit at the same spot -> background
+ *      restored, no box to scrub).
+ *   3. Balls are blitted via gen2_hgr_blit7: sprites pre-packed at
+ *      7px/byte -> we XOR whole BYTES (~7x fewer writes than pixel-by-pixel
+ *      blit). Trade-off: x aligned on 7px (horizontal step of 7).
  *
- * Collision : pour chaque paire, centres à moins de (Ri+Rj) ET qui se rapprochent
- * (dx.dvx + dy.dvy < 0) -> échange des vitesses. Toutes les balles vont à la même
- * vitesse, donc l'échange préserve l'alignement octet.
+ * Collision: for each pair, centres within (Ri+Rj) AND closing in
+ * (dx.dvx + dy.dvy < 0) -> swap velocities. All balls move at the same
+ * speed, so the swap preserves byte alignment.
  *
  *   Build : make    -> "software/Graphic HGR/GEN2Vectors.bin" (+ .txt)
  *   Run   : build/POM1 --preset 11 \
@@ -30,14 +30,14 @@
  */
 #include "gen2.h"
 
-/* Petite balle : disque plein 16x16, 7px/octet, 3 octets/ligne. */
+/* Small ball: filled disc 16x16, 7px/byte, 3 bytes/row. */
 static const unsigned char kBall7[48] = {
     0x00,0x00,0x00, 0x70,0x1F,0x00, 0x78,0x3F,0x00, 0x7C,0x7F,0x00,
     0x7E,0x7F,0x01, 0x7E,0x7F,0x01, 0x7E,0x7F,0x01, 0x7E,0x7F,0x01,
     0x7E,0x7F,0x01, 0x7E,0x7F,0x01, 0x7E,0x7F,0x01, 0x7E,0x7F,0x01,
     0x7C,0x7F,0x00, 0x78,0x3F,0x00, 0x70,0x1F,0x00, 0x00,0x00,0x00,
 };
-/* Grosse balle : disque plein 48x48 (3x), 7px/octet, 7 octets/ligne. */
+/* Big ball: filled disc 48x48 (3x), 7px/byte, 7 bytes/row. */
 static const unsigned char kBig7[336] = {
     0x00,0x00,0x00,0x00,0x00,0x00,0x00, 0x00,0x00,0x78,0x7F,0x07,0x00,0x00,
     0x00,0x00,0x7E,0x7F,0x1F,0x00,0x00, 0x00,0x40,0x7F,0x7F,0x7F,0x00,0x00,
@@ -64,19 +64,19 @@ static const unsigned char kBig7[336] = {
     0x00,0x40,0x7F,0x7F,0x7F,0x00,0x00, 0x00,0x00,0x7E,0x7F,0x1F,0x00,0x00,
     0x00,0x00,0x78,0x7F,0x07,0x00,0x00, 0x00,0x00,0x00,0x00,0x00,0x00,0x00,
 };
-#define NB    4                       /* 1 grosse + 3 petites                  */
+#define NB    4                       /* 1 big + 3 small                       */
 
-#define FL    4                       /* cadre                                */
+#define FL    4                       /* frame                                 */
 #define FT    4
 #define FR  275
 #define FB  150
-#define HSTEP 7                       /* pas horizontal = 1 octet (aligné)     */
+#define HSTEP 7                       /* horizontal step = 1 byte (aligned)    */
 #define VSTEP 7
 #define HUDX 150u
 #define HUDY 162u
 #define HUDW   5u
 
-/* Par balle : bitmap 7px/octet, octets/ligne, côté (px), rayon (=côté/2). */
+/* Per ball: bitmap 7px/byte, bytes/row, side (px), radius (=side/2). */
 static const unsigned char *const spr[NB] = { kBig7, kBall7, kBall7, kBall7 };
 static const unsigned char       wb[NB]   = { 7u, 3u, 3u, 3u };
 static const unsigned char       sz[NB]   = { 48u, 16u, 16u, 16u };
@@ -90,7 +90,7 @@ static void draw_static(void)
     gen2_hgr_puts8(FL, 182u, "4 XOR BALLS - DBL BUFFER - FAST 7PX BLIT");
 }
 
-static void ball(unsigned char b, unsigned x, unsigned char y)   /* XOR-blit rapide */
+static void ball(unsigned char b, unsigned x, unsigned char y)   /* fast XOR-blit  */
 {
     gen2_hgr_blit7(x, y, wb[b], sz[b], spr[b], GEN2_XOR);
 }
@@ -98,7 +98,7 @@ static void ball(unsigned char b, unsigned x, unsigned char y)   /* XOR-blit rap
 void main(void)
 {
     unsigned char page = 1u, pidx, huddirty = 2u, i, j;
-    int  x[NB]  = { 119, 21, 238, 35 };       /* coin haut-gauche (x mult. de 7) */
+    int  x[NB]  = { 119, 21, 238, 35 };       /* top-left corner (x mult. of 7)  */
     int  y[NB]  = {  49, 21,  28, 119 };
     int  vx[NB] = { HSTEP,  HSTEP, -HSTEP,  HSTEP };
     int  vy[NB] = { VSTEP,  HSTEP,  VSTEP, -VSTEP };
@@ -134,7 +134,7 @@ void main(void)
         gen2_show_page();
         page = (page == 1u) ? 2u : 1u;
 
-        /* Murs : bornes alignées sur 7 en x (l'alignement octet est préservé). */
+        /* Walls: bounds aligned on 7 in x (byte alignment preserved). */
         for (i = 0u; i < NB; ++i) {
             bxmax = ((FR - 2 - (int)sz[i]) / 7) * 7;
             bymax = FB - 2 - (int)sz[i];
@@ -146,7 +146,7 @@ void main(void)
             else if (y[i] >= bymax) { y[i] = bymax;  vy[i] = -vy[i]; ++bounces; huddirty = 2u; }
         }
 
-        /* Collision : toutes les paires (i<j). */
+        /* Collision: all pairs (i<j). */
         for (i = 0u; i < NB; ++i) {
             for (j = (unsigned char)(i + 1u); j < NB; ++j) {
                 dx  = (x[i] + rad[i]) - (x[j] + rad[j]);
@@ -155,7 +155,7 @@ void main(void)
                 ady = (dy < 0) ? -dy : dy;
                 thr = rad[i] + rad[j];
                 if (adx < thr && ady < thr && (adx * adx + ady * ady) < thr * thr) {
-                    if (dx * (vx[i] - vx[j]) + dy * (vy[i] - vy[j]) < 0) {  /* approche */
+                    if (dx * (vx[i] - vx[j]) + dy * (vy[i] - vy[j]) < 0) {  /* closing  */
                         int t;
                         t = vx[i]; vx[i] = vx[j]; vx[j] = t;
                         t = vy[i]; vy[i] = vy[j]; vy[j] = t;

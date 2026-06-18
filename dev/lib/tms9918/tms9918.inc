@@ -65,38 +65,38 @@ VDP_CTRL = $CC01        ; VDP register / address port (write twice = setup)
 ; ---------------------------------------------------------------------------
 ; VBlank synchronisation — polling-only on P-LAB. **DO NOT use IRQs.**
 ;
-; Pourquoi : la carte P-LAB Apple-1 **câble** /INT du TMS9918 vers /IRQ du
-; 6502 (trace vérifiée sur le vrai matériel par Parmigiani), mais le soft
-; Nippur72 ne s'en sert pas. L'usage canonique est de poller le bit 7 (F
-; flag) du status register en lisant $CC01 — c'est plus simple, portable, et
-; indépendant du flag I. L'IRQ frame est bien disponible (default POM1
-; `irqStrapped=true`) : un `CLI` + handler au vecteur $FFFE fonctionne, mais
-; le polling reste recommandé. Cf. dev/SILICONBUGS.md Bug N°2.
+; Why: the P-LAB Apple-1 card **wires** /INT of the TMS9918 to /IRQ of the
+; 6502 (trace verified on the real hardware by Parmigiani), but the
+; Nippur72 software does not use it. The canonical usage is to poll bit 7
+; (F flag) of the status register by reading $CC01 — simpler, portable,
+; and independent of the I flag. The frame IRQ is indeed available
+; (default POM1 `irqStrapped=true`): a `CLI` + handler at vector $FFFE
+; works, but polling remains recommended. See dev/SILICONBUGS.md Bug N°2.
 ;
-; Idiome standard :
+; Standard idiom:
 ;
-;       LDA VDP_CTRL          ; ou BIT VDP_CTRL — drain stale F flag
+;       LDA VDP_CTRL          ; or BIT VDP_CTRL — drain stale F flag
 ;   @v: BIT VDP_CTRL
-;       BPL @v                ; bit 7 = 0 → pas encore VBlank, on tourne
-;       ; ici on est dans la fenêtre VBlank ; F a été cleared par la lecture
-;       ; → ~4 554c de bande passante VRAM "gate 2c" disponibles avant que
-;       ; le faisceau ne reprenne l'active display sur la frame suivante.
+;       BPL @v                ; bit 7 = 0 -> not yet VBlank, keep spinning
+;       ; here we are in the VBlank window; F has been cleared by the read
+;       ; -> ~4 554c of "gate 2c" VRAM bandwidth available before the
+;       ; beam resumes active display on the next frame.
 ;
-; Side effect : la lecture de $CC01 efface AUSSI les bits 5 (collision) et
-; 6 (5S overflow). Si le programme dépend de ces flags, il doit les lire
-; AVANT le wait_vblank, ou utiliser un autre snapshot du status. La
-; majorité des jeux Apple-1 / POM1 (Galaga, Sokoban, Snake, Life, Rogue)
-; ne polle que F → le clobber sur 5/C est sans conséquence.
+; Side effect: reading $CC01 ALSO clears bits 5 (collision) and 6 (5S
+; overflow). If the program depends on these flags, it must read them
+; BEFORE wait_vblank, or use another snapshot of the status. Most
+; Apple-1 / POM1 games (Galaga, Sokoban, Snake, Life, Rogue) only poll F
+; -> the clobber on 5/C is inconsequential.
 ;
-; Coût : ~13c par tour de boucle (BIT VDP_CTRL = 4c, BPL pris = 3c, autres
-; instructions). Worst-case wait = 17 062c (1 frame entière) = ~1 312 tours.
-; Quand R1 bit 5 est laissé à 0 (cas par défaut, P-LAB stock), tirer la
-; broche /INT côté chip est sans effet — le polling reste la seule voie
-; pour synchroniser sur la frame.
+; Cost: ~13c per loop iteration (BIT VDP_CTRL = 4c, BPL taken = 3c, other
+; instructions). Worst-case wait = 17 062c (1 full frame) = ~1 312
+; iterations. When R1 bit 5 is left at 0 (default case, P-LAB stock),
+; pulling the /INT pin on the chip side has no effect — polling stays the
+; only way to synchronise on the frame.
 ;
-; Macro : encapsule le pattern en 7 octets (pas de label visible côté
-; appelant grâce au label local @vbl_wait — réutilisable dans la même
-; routine sans collision).
+; Macro: wraps the pattern in 7 bytes (no caller-visible label thanks to
+; the local label @vbl_wait — reusable within the same routine without
+; collision).
 ; ---------------------------------------------------------------------------
 
 .macro WAIT_VBLANK

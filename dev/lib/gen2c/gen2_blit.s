@@ -927,6 +927,10 @@ _gen2_unplot_asm:
 ; the left step runs). One uniform op does fill (mode=1, set pixels) or erase
 ; (mode=0, clear pixels). Replaces a per-pixel gen2_hgr_plot loop: a 6x6 block is
 ; one call instead of 36, and the inner run is a tight STA loop.
+; Note: every keep mask is ANDed with $7F so bit 7 (the byte's HIRES palette
+; bit) is ALWAYS cleared on both edges — without this, a previous draw's
+; orange/blue palette would survive a clear and ghost into the next colour cycle
+; (the row-at-a-time colour blitter only sets the palette bit when hi != 0).
 _gen2_pixrect_asm:
         ; --- left edge: gr_colL = col7[x], leftMask (bits x%7..6) -> tmp1 ----
         lda _gen2_r_x+1
@@ -976,14 +980,15 @@ _gen2_pixrect_asm:
         sta tmp1             ; tmp1 = combined mask
         lda _gen2_r_mode
         bne @one_set
-        lda tmp1             ; clear: keepL = ~mask, setL = 0
+        lda tmp1             ; clear: keepL = ~mask & $7F (also drops palette bit)
         eor #$ff
+        and #$7f
         sta gr_keepL
         lda #0
         sta gr_setL
         jmp @fill
 @one_set:
-        lda #$ff             ; fill: keepL = $FF, setL = mask
+        lda #$7f             ; fill: keepL = $7F (clears palette), setL = mask
         sta gr_keepL
         lda tmp1
         sta gr_setL
@@ -991,12 +996,14 @@ _gen2_pixrect_asm:
 @multi:
         lda _gen2_r_mode
         bne @multi_set
-        ; clear: keep = ~mask, set/full = 0
+        ; clear: keep = ~mask & $7F (drop palette too), set/full = 0
         lda tmp1
         eor #$ff
+        and #$7f
         sta gr_keepL
         lda tmp2
         eor #$ff
+        and #$7f
         sta gr_keepR
         lda #0
         sta gr_setL
@@ -1004,7 +1011,7 @@ _gen2_pixrect_asm:
         sta gr_setR
         jmp @fill
 @multi_set:
-        lda #$ff             ; fill: keep edges, OR edge masks, full = $7F
+        lda #$7f             ; fill: clear palette + OR edge masks, full = $7F
         sta gr_keepL
         sta gr_keepR
         lda tmp1

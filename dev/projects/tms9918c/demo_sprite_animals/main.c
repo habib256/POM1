@@ -1,9 +1,9 @@
 /*
  * sprite_animals — TMS9918 sprites (CodeTank preset 9, Wozmon 4000R).
  *
- * Quatre silhouettes Fauna fixes (chien, poulpe, chauve-souris, lion),
- * 16×16 sans grossissement (1 pixel écran = 1 pixel sprite).
- * dev/lib/tms9918/sprites_fauna.asm — SCROLL-O-SPRITES « Fauna », CC-BY Quale.
+ * Four fixed Fauna silhouettes (dog, octopus, bat, lion),
+ * 16x16 with no magnification (1 screen pixel = 1 sprite pixel).
+ * dev/lib/tms9918/sprites_fauna.asm — SCROLL-O-SPRITES "Fauna", CC-BY Quale.
  */
 #include "tms9918.h"
 #include "screen2.h"
@@ -63,7 +63,7 @@ void main(void) {
 
     screen2_puts((const char *)"Fauna  dog oct bat lion", 1U, 1U, FG_BG(COLOR_WHITE, COLOR_DARK_GREEN));
 
-    /* 16×16 natif : pas de grossissement (REG1 bit MAG = 0). */
+    /* Native 16x16: no magnification (REG1 MAG bit = 0). */
     tms_set_sprite_double_size(1U);
     tms_set_sprite_magnification(0U);
     tms_clear_collisions();

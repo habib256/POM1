@@ -1,52 +1,52 @@
-# Programmation Apple 1 en assembleur 6502
+# Apple 1 6502 Assembly Programming
 
-**Guide pratique — modes texte, HGR (GEN2 Color Graphics Card), TMS9918 (P-LAB Graphic Card)**  
+**Practical guide — text mode, HGR (GEN2 Color Graphics Card), TMS9918 (P-LAB Graphic Card)**  
 VERHILLE Arnaud — 2026
 
-Ce document récapitule tout ce qu'il faut savoir pour programmer l'Apple 1 émulé par POM1, dans les trois modes vidéo disponibles. Il est tiré de l'expérience concrète du portage de **Sokoban** (47-72 niveaux par mode) et **Connect 4** (les trois modes).
+This document summarises everything you need to program the Apple 1 emulated by POM1, in the three available video modes. It is drawn from the concrete experience of porting **Sokoban** (47-72 levels per mode) and **Connect 4** (all three modes).
 
-**Documents voisins**
+**Related documents**
 
-| Fichier | Contenu |
+| File | Contents |
 |---------|---------|
-| [`APPLE1DEV.md`](APPLE1DEV.md) | Playbook agent : presets, déploiement, CLI examples, pièges courts |
-| [`SILICONBUGS.md`](SILICONBUGS.md) | TMS9918 réel vs POM1, timings VRAM strict, sprites |
-| [`doc/CLI.md`](../doc/CLI.md) | Liste exhaustive des flags (`--preset`, `--silicon-strict`, …) |
-| [`TODO6502.md`](TODO6502.md) | Backlog projets sous `dev/projects/` |
+| [`APPLE1DEV.md`](APPLE1DEV.md) | Agent playbook: presets, deployment, CLI examples, short pitfalls |
+| [`SILICONBUGS.md`](SILICONBUGS.md) | Real TMS9918 vs POM1, strict VRAM timing, sprites |
+| [`doc/CLI.md`](../doc/CLI.md) | Exhaustive list of flags (`--preset`, `--silicon-strict`, …) |
+| [`TODO6502.md`](TODO6502.md) | Project backlog under `dev/projects/` |
 
-**Sommaire (titres §1–§11)** — toolchain · matériel commun · pièges 6502 · mode texte · HGR · TMS9918 · patterns jeux · zero page · implémentations de référence · ressources externes · checklist.
+**Contents (titles §1–§11)** — toolchain · common hardware · 6502 pitfalls · text mode · HGR · TMS9918 · game patterns · zero page · reference implementations · external resources · checklist.
 
 ---
 
-## 1. Toolchain et workflow
+## 1. Toolchain and workflow
 
-### Outils
+### Tools
 
-- **ca65** — assembleur 6502 de la suite cc65
-- **ld65** — linker, prend un `.cfg` pour placer segments et ZP
-- **python3** — génère le hex dump Woz Monitor à partir du binaire
+- **ca65** — 6502 assembler from the cc65 suite
+- **ld65** — linker, takes a `.cfg` to place segments and ZP
+- **python3** — generates the Woz Monitor hex dump from the binary
 
-**Installer cc65** : `sudo apt install cc65` (Debian/Ubuntu) · `sudo dnf install cc65`
+**Install cc65**: `sudo apt install cc65` (Debian/Ubuntu) · `sudo dnf install cc65`
 (Fedora) · `sudo pacman -S cc65` (Arch) · `brew install cc65` (macOS) ·
-<https://cc65.github.io/> (Windows/autres). Vérifier avec `ca65 --version`.
+<https://cc65.github.io/> (Windows/other). Verify with `ca65 --version`.
 
-> **Le plus simple pour débuter** : le **POM1 Bench** intégré (*DevBench → POM1
-> Bench*, desktop) édite, assemble/compile (asm **ou** C) et lance en un clic, avec
-> un squelette `HELLO WORLD` par cible. Copie `dev/projects/_template/` pour un
-> point de départ minimal. En C → [`Programming_Apple1_C.md`](Programming_Apple1_C.md).
+> **Simplest way to get started**: the built-in **POM1 Bench** (*DevBench → POM1
+> Bench*, desktop) edits, assembles/compiles (asm **or** C) and launches in one click, with
+> a `HELLO WORLD` skeleton per target. Copy `dev/projects/_template/` for a
+> minimal starting point. In C → [`Programming_Apple1_C.md`](Programming_Apple1_C.md).
 
-### Commandes standard
+### Standard commands
 
-Les sources vivent sous `dev/projects/<name>/` (chacun a son `Makefile`). Workflow manuel si besoin :
+Sources live under `dev/projects/<name>/` (each has its own `Makefile`). Manual workflow if needed:
 
 ```bash
-# Assemblage
+# Assemble
 ca65 -o build/MyGame.o dev/projects/<name>/MyGame.asm
 
-# Linker avec config spécifique
+# Link with specific config
 ld65 -C dev/cc65/apple1_4k.cfg -o build/MyGame.bin build/MyGame.o
 
-# Conversion binaire → Woz Monitor (hex dump 16 octets par ligne, adresses en hex)
+# Binary → Woz Monitor conversion (hex dump 16 bytes per line, hex addresses)
 python3 -c "
 data = open('build/MyGame.bin','rb').read()
 base = 0x0280
@@ -56,24 +56,24 @@ for i in range(0, len(data), 16):
 " > software/<dir>/MyGame.txt
 ```
 
-Le binaire compilé et son `.txt` Woz hex sont déposés sous `software/<dir>/` — c'est là que POM1 va les lire (les hooks d'auto-activation de carte sont câblés sur `software/Graphic HGR/`, `software/Graphic TMS9918/`, etc.).
+The compiled binary and its Woz hex `.txt` are deposited under `software/<dir>/` — that's where POM1 reads them (the card auto-enable hooks are wired to `software/Graphic HGR/`, `software/Graphic TMS9918/`, etc.).
 
-### Chargement dans POM1
+### Loading into POM1
 
-1. Choisir un preset avec la carte voulue — tableau **Machine Presets** dans [`README.md`](../README.md) (ex. TMS9918 + CodeTank → **preset 9**, GEN2 HGR → **12**).
-2. (Ou auto-enable : placer le livrable sous `software/hgr/`, `software/tms9918/`, etc. — voir [`APPLE1DEV.md`](APPLE1DEV.md) §8.)
-3. **File > Load Memory** → sélectionner le `.txt`
-4. Dans le Woz Monitor, taper `280R` (ou l’adresse de démarrage du linker)
+1. Pick a preset with the desired card — **Machine Presets** table in [`README.md`](../README.md) (e.g. TMS9918 + CodeTank → **preset 9**, GEN2 HGR → **12**).
+2. (Or auto-enable: place the deliverable under `software/hgr/`, `software/tms9918/`, etc. — see [`APPLE1DEV.md`](APPLE1DEV.md) §8.)
+3. **File > Load Memory** → select the `.txt`
+4. In the Woz Monitor, type `280R` (or the linker's start address)
 
-### Configs linker disponibles
+### Available linker configs
 
-| Config | CODE range | Taille | Usage typique |
+| Config | CODE range | Size | Typical use |
 |--------|-----------|--------|---------------|
-| `dev/cc65/apple1_4k.cfg` | `$0280-$127F` | 4 096 B | Jeux texte ou TMS9918 (VRAM hors bus) — config par défaut |
-| `dev/cc65/apple1_gen2.cfg` | `$E000-$EFFF` | 4 096 B | Jeux HGR : code dans la banque haute (lancer avec `E000R`), le framebuffer `$2000-$3FFF` reste réservé (writes directs). Programmes > 4 Ko : cfg split-bank dédié (cf. `hgr_chess/apple1_chess_hgr.cfg`, `games_sokoban/apple1_sok_hgr.cfg`) |
-| `dev/cc65/pom1_fantasy.cfg` | configurable | — | Preset Multiplexing Fantasy (POM1-only) |
+| `dev/cc65/apple1_4k.cfg` | `$0280-$127F` | 4 096 B | Text or TMS9918 games (VRAM off the bus) — default config |
+| `dev/cc65/apple1_gen2.cfg` | `$E000-$EFFF` | 4 096 B | HGR games: code in the high bank (launch with `E000R`), the framebuffer `$2000-$3FFF` stays reserved (direct writes). Programs > 4 KB: dedicated split-bank cfg (cf. `hgr_chess/apple1_chess_hgr.cfg`, `games_sokoban/apple1_sok_hgr.cfg`) |
+| `dev/cc65/pom1_fantasy.cfg` | configurable | — | Multiplexing Fantasy preset (POM1-only) |
 
-La syntaxe minimale d'un `.cfg` :
+Minimal `.cfg` syntax:
 
 ```
 MEMORY {
@@ -88,46 +88,46 @@ SEGMENTS {
 
 ---
 
-## 2. Matériel Apple 1 commun à tous les modes
+## 2. Apple 1 hardware common to all modes
 
-### Adresses I/O
+### I/O addresses
 
-| Adresse | Rôle |
+| Address | Role |
 |---------|------|
-| `$D010` | `KBD` — données clavier (bit 7 = 1 quand touche pressée, reste ASCII sur 7 bits) |
-| `$D011` | `KBDCR` — registre de contrôle clavier, bit 7 = 1 quand touche disponible |
-| `$D012` | `DSP` — afficher un caractère, bit 7 doit être à 1 ; bit 7 de la lecture = 0 quand prêt |
-| `$FFEF` | `ECHO` — routine Woz Monitor pour imprimer A à l'écran (utilise DSP) |
-| `$FFFC-$FFFF` | Vecteurs Reset/IRQ (en ROM Woz Monitor) |
+| `$D010` | `KBD` — keyboard data (bit 7 = 1 when key pressed, remaining 7 bits = ASCII) |
+| `$D011` | `KBDCR` — keyboard control register, bit 7 = 1 when key available |
+| `$D012` | `DSP` — display a character, bit 7 must be set; bit 7 on read = 0 when ready |
+| `$FFEF` | `ECHO` — Woz Monitor routine to print A to the screen (uses DSP) |
+| `$FFFC-$FFFF` | Reset/IRQ vectors (in Woz Monitor ROM) |
 
-### Convention PIA bit 7
+### PIA bit 7 convention
 
-L'Apple 1 utilise le **bit 7 comme "data valid"** sur la PIA 6821 :
-- **Écriture vers ECHO** : le caractère doit avoir bit 7 à 1 → `ORA #$80` avant `JSR ECHO`
-- **Lecture depuis KBD** : le bit 7 est toujours à 1, on le retire avec `AND #$7F`
-- Le caractère `CR` envoyé à ECHO est donc `$8D` (`$0D | $80`)
+The Apple 1 uses **bit 7 as "data valid"** on the 6821 PIA:
+- **Write to ECHO**: the character must have bit 7 set → `ORA #$80` before `JSR ECHO`
+- **Read from KBD**: bit 7 is always set, strip it with `AND #$7F`
+- The `CR` character sent to ECHO is therefore `$8D` (`$0D | $80`)
 
-### Majuscules forcées
+### Forced uppercase
 
-Le clavier Apple 1 force les majuscules par défaut (matériel). Ne comparez qu'aux majuscules :
+The Apple 1 keyboard forces uppercase by default (hardware). Only compare against uppercase:
 
 ```asm
-CMP #'W'          ; OK, toujours vrai si l'utilisateur tape 'w' ou 'W'
-; CMP #'w'        ; jamais vrai
+CMP #'W'          ; OK, always true whether the user types 'w' or 'W'
+; CMP #'w'        ; never true
 ```
 
-### Boucle d'attente touche standard
+### Standard key wait loop
 
 ```asm
 wait_key:
 @wk:    LDA KBDCR
-        BPL @wk           ; bit 7 = 0 → pas de touche, on attend
+        BPL @wk           ; bit 7 = 0 → no key, keep waiting
         LDA KBD
-        AND #$7F          ; retire le bit 7 PIA
+        AND #$7F          ; strip the PIA bit 7
         RTS
 ```
 
-### Routine d'impression de chaîne
+### String printing routine
 
 ```asm
 print_str_ax:
@@ -136,39 +136,39 @@ print_str_ax:
         LDY #$00
 @lp:    LDA (str_lo),Y
         BEQ @dn
-        ORA #$80          ; bit 7 pour ECHO
+        ORA #$80          ; bit 7 for ECHO
         JSR ECHO
         INY
         BNE @lp
 @dn:    RTS
 ```
 
-Appel : `LDA #<str_title; LDX #>str_title; JSR print_str_ax`.
+Call: `LDA #<str_title; LDX #>str_title; JSR print_str_ax`.
 
 ---
 
-## 3. Pièges 6502 qui m'ont mordu
+## 3. 6502 pitfalls that bit me
 
-### Portée de branche ±127 octets
+### Branch range ±127 bytes
 
-Les instructions de branchement (`BEQ`, `BNE`, `BCC`, `BCS`, `BPL`, `BMI`, etc.) ne peuvent atteindre qu'une cible à ±127 octets de l'instruction suivante. Les routines longues (check_win, execute_move) sortent rapidement de cette portée.
+Branch instructions (`BEQ`, `BNE`, `BCC`, `BCS`, `BPL`, `BMI`, etc.) can only reach a target at ±127 bytes from the next instruction. Long routines (check_win, execute_move) quickly exceed this range.
 
-**Solution 1** : inverser la condition et `JMP` :
+**Solution 1**: invert the condition and `JMP`:
 ```asm
         BCC @skip
         JMP @target_too_far
 @skip:
 ```
 
-**Solution 2** : trampoline au milieu de la routine :
+**Solution 2**: trampoline in the middle of the routine:
 ```asm
 @blk_tr:
-        JMP @blocked       ; visible depuis les deux moitiés
+        JMP @blocked       ; visible from both halves
 ```
 
-### ADC sans CLC
+### ADC without CLC
 
-`ADC` ajoute le carry en plus de l'opérande. Si le carry n'est pas maîtrisé, on additionne `0` ou `1` aléatoirement. **Règle** : `CLC` avant chaque premier `ADC` d'une somme. Dans une chaîne multi-précision (16-bit +, 16-bit +), on laisse le carry se propager naturellement pour les ADCs suivants.
+`ADC` adds the carry on top of the operand. If the carry is not controlled, you randomly add `0` or `1`. **Rule**: `CLC` before every first `ADC` of a sum. In a multi-precision chain (16-bit +, 16-bit +), let the carry propagate naturally for the following ADCs.
 
 ```asm
         CLC               ; indispensable
@@ -176,13 +176,13 @@ Les instructions de branchement (`BEQ`, `BNE`, `BCC`, `BCS`, `BPL`, `BMI`, etc.)
         ADC lo2
         STA result_lo
         LDA hi1
-        ADC hi2           ; pas de CLC ici : on propage le carry
+        ADC hi2           ; no CLC here: propagate the carry
         STA result_hi
 ```
 
-### TAX clobber X — règle d'or
+### TAX clobbers X — golden rule
 
-Quand un helper retourne une valeur en A via une lookup table, la tentation est d'écrire :
+When a helper returns a value in A via a lookup table, the temptation is to write:
 
 ```asm
 helper:
@@ -191,9 +191,9 @@ helper:
         RTS
 ```
 
-**Ça casse silencieusement** l'appelant qui tenait un index dans X. Le `STA ARR,X` qui suit va écrire n'importe où. Dans Sokoban, ce bug a fait "disparaître" le joueur au retour sur sa case de départ.
+**This silently breaks** the caller that held an index in X. The following `STA ARR,X` will write anywhere. In Sokoban, this bug caused the player to "disappear" when returning to its starting square.
 
-**Règle** : toujours utiliser `TAY` pour la lookup dans un helper, jamais `TAX` :
+**Rule**: always use `TAY` for the lookup in a helper, never `TAX`:
 
 ```asm
 helper:
@@ -202,25 +202,25 @@ helper:
         RTS
 ```
 
-Y est rarement utilisé par l'appelant pour des index d'array (c'est plutôt X), donc on le clobbère sans risque.
+Y is rarely used by the caller for array indices (that's typically X), so we clobber it without risk.
 
-### Accès aux tableaux > 256 octets
+### Accessing tables > 256 bytes
 
-`LDA $4000,Y` avec Y=0..255 couvre une page. Au-delà, deux approches :
+`LDA $4000,Y` with Y=0..255 covers one page. Beyond that, two approaches:
 
-**Tableau aligné page** à `$XX00` : utiliser `(zp),Y` avec un pointeur dont le high byte est incrémenté par index :
+**Page-aligned table** at `$XX00`: use `(zp),Y` with a pointer whose high byte is incremented by index:
 ```asm
         LDA #>ARRAY        ; = $40
         CLC
         ADC index_hi
         STA ptr_hi
-        LDA #<ARRAY        ; = $00 si page-aligned
+        LDA #<ARRAY        ; = $00 if page-aligned
         STA ptr_lo
         LDY index_lo
         LDA (ptr_lo),Y
 ```
 
-**Tables lo/hi parallèles** : pratique pour ~20 entrées 16-bit (ex. HGR scanlines, row*128 lookup) :
+**Parallel lo/hi tables**: handy for ~20 16-bit entries (e.g. HGR scanlines, row*128 lookup):
 ```asm
         LDX row
         LDA offset_lo,X
@@ -229,108 +229,108 @@ Y est rarement utilisé par l'appelant pour des index d'array (c'est plutôt X),
         STA ptr_hi
 ```
 
-### `.include` relatif
+### Relative `.include`
 
-En ca65, `.include "fichier.inc"` résout par rapport au fichier source. Donc placez le `.inc` dans le même dossier.
+In ca65, `.include "file.inc"` resolves relative to the source file. So put the `.inc` in the same folder.
 
 ---
 
-## 4. Mode texte — terminal 40×24
+## 4. Text mode — 40×24 terminal
 
-### Philosophie
+### Philosophy
 
-L'écran texte Apple 1 est **append-only** : pas d'adressage direct du curseur, les caractères s'affichent à la position courante et `$0D` passe à la ligne suivante (en scrollant si nécessaire).
+The Apple 1 text screen is **append-only**: no direct cursor addressing, characters appear at the current position and `$0D` moves to the next line (scrolling if necessary).
 
-Conséquence : **pas de refresh partiel**. Pour "redessiner", on réimprime toute la scène et on laisse le scroll faire son travail — les frames précédentes sortent naturellement par le haut.
+Consequence: **no partial refresh**. To "redraw", you reprint the whole scene and let the scroll do its work — previous frames naturally exit from the top.
 
-### Structure d'une frame minimaliste
+### Minimal frame structure
 
 ```asm
 render_screen:
-        ; Ligne blanche en entrée (sépare de la frame précédente)
+        ; Blank line on entry (separates from the previous frame)
         LDA #$8D
         JSR ECHO
 
-        ; Contenu du jeu (ex: 12 rangées de grille)
-        ; ... loop d'impression ...
+        ; Game content (e.g. 12 grid rows)
+        ; ... print loop ...
 
-        ; Pied de page avec touches dispo
+        ; Footer with available keys
         LDA #<str_footer
         LDX #>str_footer
         JSR print_str_ax
         RTS
 ```
 
-**Ce qu'il ne faut pas faire** :
-- Réimprimer le titre `* SOKOBAN *` à chaque coup (pollution de l'historique, user voit défiler du texte inutile)
-- Effacer avec 24 `CR` à chaque frame (gaspille du temps et fait clignoter)
+**What not to do**:
+- Reprint the `* SOKOBAN *` title every move (history pollution, the user sees useless text scrolling by)
+- Clear with 24 `CR` every frame (wastes time and causes flicker)
 
-### Alignement texte avec séparateurs
+### Text alignment with separators
 
-Attention à la cohérence des largeurs de cellule entre les lignes de séparation et les lignes de données :
+Watch cell-width consistency between separator lines and data lines:
 
 ```
-       +---+---+---+    ← 4 chars par segment (1 '+' + 3 '-')
-       | X | Y | Z |    ← doit aussi faire 4 chars par cellule ( ' X |' )
+       +---+---+---+    ← 4 chars per segment (1 '+' + 3 '-')
+       | X | Y | Z |    ← must also be 4 chars per cell ( ' X |' )
        +---+---+---+
 ```
 
-Si on imprime seulement `X |` (3 chars), les `|` se décalent visiblement des `+`. Bug classique du Connect 4 premier jet.
+If you only print `X |` (3 chars), the `|` visibly shift away from the `+`. Classic Connect 4 first-draft bug.
 
-### Exemple d'implémentation
+### Implementation example
 
-`dev/projects/games_sokoban/Sokoban.asm` — grille ASCII 20×12, redraw plein à chaque coup, ~4 KB binaire avec 47 niveaux.
+`dev/projects/games_sokoban/Sokoban.asm` — 20×12 ASCII grid, full redraw every move, ~4 KB binary with 47 levels.
 
 ---
 
-## 5. Mode HGR — GEN2 Color Graphics Card
+## 5. HGR mode — GEN2 Color Graphics Card
 
-### Caractéristiques
+### Characteristics
 
-- **Résolution** : 280×192 pixels
-- **Framebuffer** : `$2000-$3FFF` (8 KB)
-- **Disposition scanline** : non-linéaire Apple II (3 groupes de 64 lignes, interleave par 8)
-- **Format** : 7 pixels par octet, **bit 7 = sélecteur de groupe NTSC** (pas un pixel !)
+- **Resolution**: 280×192 pixels
+- **Framebuffer**: `$2000-$3FFF` (8 KB)
+- **Scanline layout**: non-linear Apple II (3 groups of 64 lines, interleaved by 8)
+- **Format**: 7 pixels per byte, **bit 7 = NTSC group selector** (not a pixel!)
 
-### Couleurs NTSC par artéfact
+### NTSC colours by artefact
 
-Le bit 7 de chaque octet détermine le "groupe" :
-- Groupe 0 (bit 7 = 0) : violet/vert
-- Groupe 2 (bit 7 = 1) : bleu/orange
+Bit 7 of each byte determines the "group":
+- Group 0 (bit 7 = 0): violet/green
+- Group 2 (bit 7 = 1): blue/orange
 
-Le pixel est au final :
-- **Blanc** si le pixel allumé a un voisin allumé (à gauche ou à droite — `resolveColor` : `prevOn || nextOn`)
-- **Couleur** si le pixel est isolé :
-  - Position screenX paire, groupe 0 → violet
-  - Position screenX impaire, groupe 0 → vert
-  - Paire, groupe 2 → bleu
-  - Impaire, groupe 2 → orange
+The pixel ends up as:
+- **White** if the lit pixel has a lit neighbour (left or right — `resolveColor`: `prevOn || nextOn`)
+- **Coloured** if the pixel is isolated:
+  - screenX even, group 0 → violet
+  - screenX odd, group 0 → green
+  - Even, group 2 → blue
+  - Odd, group 2 → orange
 
-### Pour avoir du blanc propre
+### Getting clean white
 
-**Règle** : chaque pixel allumé doit avoir un voisin allumé à côté, dans le même octet ou à la frontière. Un trait vertical 1-pixel d'épaisseur rendra toujours en violet/vert/bleu/orange selon la position. **Un trait 2 pixels d'épaisseur rendra blanc**.
+**Rule**: each lit pixel must have a lit neighbour next to it, in the same byte or across a boundary. A 1-pixel-thick vertical line will always render as violet/green/blue/orange depending on position. **A 2-pixel-thick line will render white**.
 
-### Table de lookup hgr_tables.inc
+### Lookup table hgr_tables.inc
 
-Le fichier `dev/lib/hgr/hgr_tables.inc` (inclus via `-I ../../lib/hgr` dans les Makefiles projet) fournit (896 octets + 30 d'code) :
-- `hgr_lo[192]`, `hgr_hi[192]` : adresse de chaque scanline (gère l'interleave Apple II) — via `hgr_scanline.inc`
-- `hgr_col[256]`, `hgr_mask[256]` : pour un pixel à screenX x, donne la colonne d'octet et le bitmask — via `hgr_plot_tables.inc`
-- `plot_pixel` : routine ~45 cycles qui pose un pixel à (cur_x, cur_y) — via `hgr_plot.asm`
-- `clear_hgr` : zéro `$2000-$3FFF` — via `hgr_clear.asm`
+The file `dev/lib/hgr/hgr_tables.inc` (included via `-I ../../lib/hgr` in the project Makefiles) provides (896 bytes + 30 of code):
+- `hgr_lo[192]`, `hgr_hi[192]`: address of each scanline (handles the Apple II interleave) — via `hgr_scanline.inc`
+- `hgr_col[256]`, `hgr_mask[256]`: for a pixel at screenX x, gives the byte column and the bitmask — via `hgr_plot_tables.inc`
+- `plot_pixel`: ~45-cycle routine that plots a pixel at (cur_x, cur_y) — via `hgr_plot.asm`
+- `clear_hgr`: zeros `$2000-$3FFF` — via `hgr_clear.asm`
 
-C'est désormais un *bundle ombrelle* qui `.include` ces quatre modules ; pour n'en prendre qu'une partie, inclure les modules directement. `umul8` (multiplication 8×8 → 16-bit) **n'est plus dans ce bundle** : il vit dans `dev/lib/m6502/multiply.asm`, à inclure séparément si besoin.
+It is now an *umbrella bundle* that `.include`s these four modules; to take only part of it, include the modules directly. `umul8` (8×8 → 16-bit multiplication) **is no longer in this bundle**: it lives in `dev/lib/m6502/multiply.asm`, to include separately if needed.
 
-**Piège** : même si vous n'utilisez pas `plot_pixel`, ses variables ZP (`cur_x`, `cur_y`, `ptr_lo`, `ptr_hi`) doivent être déclarées, sinon l'assembleur échoue.
+**Pitfall**: even if you don't use `plot_pixel`, its ZP variables (`cur_x`, `cur_y`, `ptr_lo`, `ptr_hi`) must be declared, otherwise the assembler fails.
 
-### Tuiles alignées sur les octets
+### Byte-aligned tiles
 
-Pour simplifier, utilisez des tuiles dont la largeur est un multiple de 7 : **7, 14, 21, 28 pixels**. Chaque ligne de la tuile s'écrit en 1, 2, 3 ou 4 octets entiers.
+For simplicity, use tiles whose width is a multiple of 7: **7, 14, 21, 28 pixels**. Each row of the tile writes in 1, 2, 3 or 4 whole bytes.
 
-Exemple 14×16 : 2 octets × 16 scanlines = 32 octets par tuile.
+Example 14×16: 2 bytes × 16 scanlines = 32 bytes per tile.
 
-### Tuiles non-alignées — sub-byte rendering
+### Non-aligned tiles — sub-byte rendering
 
-Si la largeur n'est pas multiple de 7 (ex. maze avec murs 4 pixels), il faut des **tables de lookup répétant un motif de 7**. Pour un bloc à la grille gx :
+If the width is not a multiple of 7 (e.g. maze with 4-pixel walls), you need **lookup tables repeating a pattern of 7**. For a block at grid gx:
 
 | gx%7 | col_byte offset | col_mask1 | col_mask2 |
 |------|-----------------|-----------|-----------|
@@ -342,17 +342,17 @@ Si la largeur n'est pas multiple de 7 (ex. maze avec murs 4 pixels), il faut des
 | 5 | +2 | $40 | $07 |
 | 6 | +3 | $78 | $00 |
 
-`fill_block` fait un read-modify-write : `byte |= mask1`, et si `mask2 ≠ 0`, `byte+1 |= mask2`. Voir `dev/projects/hgr_maze/HGR_Maze.asm`.
+`fill_block` does a read-modify-write: `byte |= mask1`, and if `mask2 ≠ 0`, `byte+1 |= mask2`. See `dev/projects/hgr_maze/HGR_Maze.asm`.
 
-### Astuce scanline stride +$0400
+### Scanline stride +$0400 trick
 
-Dans un groupe de 8 scanlines consécutives (Apple II HGR), la suivante est à `+$0400`. Utilisable pour écrire une tuile de 8 scanlines sans lookup :
+Within a group of 8 consecutive scanlines (Apple II HGR), the next is at `+$0400`. Usable to write an 8-scanline tile without a lookup:
 
 ```asm
         LDA #$04
         STA stride_counter
 @loop:
-        ; écrire la scanline
+        ; write the scanline
         LDA ptr_hi
         CLC
         ADC #$04          ; +$0400
@@ -361,64 +361,64 @@ Dans un groupe de 8 scanlines consécutives (Apple II HGR), la suivante est à `
         BNE @loop
 ```
 
-**Attention** : ça casse quand on franchit une frontière de groupe (scanline 8, 16, 24…). Pour des tuiles de plus de 8 scanlines, utilisez `hgr_lo`/`hgr_hi` à chaque ligne.
+**Caution**: this breaks when crossing a group boundary (scanline 8, 16, 24…). For tiles larger than 8 scanlines, use `hgr_lo`/`hgr_hi` on every line.
 
-### Initialisation et effacement
+### Initialisation and clearing
 
 ```asm
-.include "hgr_tables.inc"  ; à la fin du fichier
+.include "hgr_tables.inc"  ; at the end of the file
 
-; au début du programme
-JSR clear_hgr              ; zéro le framebuffer
+; at the start of the program
+JSR clear_hgr              ; zero the framebuffer
 ```
 
-### Exemple d'implémentation
+### Implementation example
 
-- `dev/projects/hgr_maze/HGR_Maze.asm` — maze sub-byte rendering (murs 4 pixels)
-- `dev/projects/hgr_sokoban/HGR_Sokoban.asm` — jeu complet 72 niveaux, 14×16 tuiles, delta rendering
-- `dev/projects/hgr_mandelbrot/HGR_Mandelbrot.asm` — calcul + pixel plotting
-- `dev/projects/hgr_house/HGR_House.asm` — dessin de formes
+- `dev/projects/hgr_maze/HGR_Maze.asm` — sub-byte rendering maze (4-pixel walls)
+- `dev/projects/hgr_sokoban/HGR_Sokoban.asm` — full 72-level game, 14×16 tiles, delta rendering
+- `dev/projects/hgr_mandelbrot/HGR_Mandelbrot.asm` — computation + pixel plotting
+- `dev/projects/hgr_house/HGR_House.asm` — shape drawing
 
 ---
 
-## 6. Mode TMS9918 — P-LAB Graphic Card
+## 6. TMS9918 mode — P-LAB Graphic Card
 
-### Caractéristiques
+### Characteristics
 
-- **Résolution** : 256×192 pixels (Graphics I : 32×24 caractères 8×8)
-- **VRAM** : 16 KB **séparée** de la RAM principale (communication par I/O seulement)
-- **I/O** : `$CC00` (données) et `$CC01` (contrôle)
+- **Resolution**: 256×192 pixels (Graphics I: 32×24 characters 8×8)
+- **VRAM**: 16 KB **separate** from main RAM (communication via I/O only)
+- **I/O**: `$CC00` (data) and `$CC01` (control)
 
-### Mode Graphics I (le sweet spot pour les jeux tuile)
+### Graphics I mode (the sweet spot for tile games)
 
-Tables en VRAM :
-| Table | Adresse VRAM | Taille | Contenu |
+VRAM tables:
+| Table | VRAM address | Size | Contents |
 |-------|-------------|--------|---------|
-| Pattern table | `$0000-$07FF` | 2048 B | 256 glyphes 8×8 (8 octets chacun) |
-| Name table | `$1800-$1AFF` | 768 B | 32×24 codes de caractère |
-| Colour table | `$2000-$201F` | 32 B | **Une entrée par groupe de 8 caractères** |
-| Sprite attr | `$1B00-$1B7F` | 128 B | 32 sprites × 4 octets |
-| Sprite pattern | `$3800-$3FFF` | 2048 B | 256 patterns sprites |
+| Pattern table | `$0000-$07FF` | 2048 B | 256 8×8 glyphs (8 bytes each) |
+| Name table | `$1800-$1AFF` | 768 B | 32×24 character codes |
+| Colour table | `$2000-$201F` | 32 B | **One entry per group of 8 characters** |
+| Sprite attr | `$1B00-$1B7F` | 128 B | 32 sprites × 4 bytes |
+| Sprite pattern | `$3800-$3FFF` | 2048 B | 256 sprite patterns |
 
-### Séquence d'initialisation
+### Initialisation sequence
 
 ```asm
 init_vdp:
-        ; 1. Programmer les 8 registres
+        ; 1. Program the 8 registers
         LDX #$00
 @rl:    LDA vdp_regs,X
-        STA $CC01             ; valeur
+        STA $CC01             ; value
         TXA
-        ORA #$80              ; flag d'écriture registre
-        STA $CC01             ; numéro de registre + $80
+        ORA #$80              ; register-write flag
+        STA $CC01             ; register number + $80
         INX
         CPX #$08
         BNE @rl
 
-        ; 2. Uploader les patterns (voir ci-dessous)
-        ; 3. Uploader la colour table
-        ; 4. Effacer la name table
-        ; 5. Désactiver les sprites (IMPORTANT)
+        ; 2. Upload patterns (see below)
+        ; 3. Upload the colour table
+        ; 4. Clear the name table
+        ; 5. Disable sprites (IMPORTANT)
 
 vdp_regs:
         .byte $00, $C0, $06, $80, $00, $36, $07, $01
@@ -426,26 +426,26 @@ vdp_regs:
         ; R4=pattern@$0000, R5=sprite attr@$1B00, R6=sprite pattern@$3800, R7=backdrop black
 ```
 
-### Latch d'adresse VRAM sur $CC01 (deux écritures)
+### VRAM address latch on $CC01 (two writes)
 
 ```asm
-; Pour écrire à l'adresse V en VRAM :
+; To write at VRAM address V:
         LDA #<V
         STA $CC01             ; low byte
         LDA #>V
-        ORA #$40              ; flag write (sans bit $40 = read)
+        ORA #$40              ; write flag (without bit $40 = read)
         STA $CC01             ; high byte | $40
 
-; Puis écrire les données (auto-incrémentation) :
+; Then write the data (auto-increment):
         LDA data
         STA $CC00
         LDA data2
-        STA $CC00             ; va à V+1 automatiquement
+        STA $CC00             ; goes to V+1 automatically
 ```
 
-### Désactiver les sprites — obligatoire
+### Disable sprites — mandatory
 
-Graphics I active toujours les sprites. Par défaut, la sprite attribute table a des valeurs aléatoires → des sprites poubelle apparaissent. Écrire `$D0` au premier octet Y (adresse `$1B00`) arrête la chaîne de sprites :
+Graphics I always enables sprites. By default, the sprite attribute table contains random values → garbage sprites appear. Writing `$D0` to the first Y byte (address `$1B00`) stops the sprite chain:
 
 ```asm
         LDA #$00
@@ -456,169 +456,169 @@ Graphics I active toujours les sprites. Par défaut, la sprite attribute table a
         STA $CC00
 ```
 
-### Astuce colour-group pour les couleurs gratuites
+### Colour-group trick for free colours
 
-La colour table a **une couleur fg/bg par groupe de 8 caractères**. Astuce : placez chaque type de tuile au premier caractère de son groupe :
+The colour table has **one fg/bg colour per group of 8 characters**. Trick: place each tile type at the first character of its group:
 
-| Tuile | Char code | Groupe | Couleur |
+| Tile | Char code | Group | Colour |
 |-------|-----------|--------|---------|
-| Tuile 0 | 0 | 0 (chars 0-7) | Couleur A |
-| Tuile 1 | 8 | 1 (chars 8-15) | Couleur B |
-| Tuile 2 | 16 | 2 (chars 16-23) | Couleur C |
-| Tuile 3 | 24 | 3 (chars 24-31) | Couleur D |
+| Tile 0 | 0 | 0 (chars 0-7) | Colour A |
+| Tile 1 | 8 | 1 (chars 8-15) | Colour B |
+| Tile 2 | 16 | 2 (chars 16-23) | Colour C |
+| Tile 3 | 24 | 3 (chars 24-31) | Colour D |
 | etc. | | | |
 
-Chaque tuile a alors sa propre couleur sans effort. Les chars intermédiaires (1-7, 9-15, ...) restent inutilisés.
+Each tile then has its own colour for free. The intermediate chars (1-7, 9-15, ...) stay unused.
 
-Sokoban TMS utilise cette technique pour 7 tuiles colorées (mur gris, cible rouge, caisse jaune, caisse-sur-cible verte, joueur bleu, joueur-sur-cible vert médium).
+TMS Sokoban uses this technique for 7 coloured tiles (grey wall, red target, yellow crate, green crate-on-target, blue player, medium-green player-on-target).
 
-### Grosses tuiles — pièces 4×4 cases
+### Big tiles — 4×4-cell pieces
 
-Pour des sprites plus gros, utilisez plusieurs caractères par pièce :
+For larger sprites, use multiple characters per piece:
 
-- **2×2 chars** (16×16 px) : 4 glyphes par pièce, tient dans 1 groupe couleur
-- **3×3 chars** (24×24 px) : 9 glyphes, s'étale sur 2 groupes — forcez les deux groupes à la même couleur
-- **4×4 chars** (32×32 px) : 16 glyphes = **2 groupes exactement** → 1 triplet de groupes par type de pièce
+- **2×2 chars** (16×16 px): 4 glyphs per piece, fits in 1 colour group
+- **3×3 chars** (24×24 px): 9 glyphs, spans 2 groups — force both groups to the same colour
+- **4×4 chars** (32×32 px): 16 glyphs = **exactly 2 groups** → 1 group triplet per piece type
 
-Connect 4 TMS utilise 4×4 (32×32 px par pion) : plateau 28×24 cases = 224×192 pixels, remplit l'écran presque entièrement. Trois triplets de groupes (empty, red, yellow) × 16 glyphes = 48 chars, 7 entrées couleur.
+TMS Connect 4 uses 4×4 (32×32 px per token): 28×24-cell board = 224×192 pixels, fills the screen almost entirely. Three group triplets (empty, red, yellow) × 16 glyphs = 48 chars, 7 colour entries.
 
-### Format octet couleur
+### Colour byte format
 
-`(fg << 4) | bg` — fg et bg sont des index palette (0-15).
+`(fg << 4) | bg` — fg and bg are palette indices (0-15).
 
-Palette TMS9918 :
-| # | Couleur |
+TMS9918 palette:
+| # | Colour |
 |---|---------|
-| 0 | Transparent (voir backdrop R7) |
-| 1 | Noir |
-| 2 | Vert moyen |
-| 3 | Vert clair |
-| 4 | Bleu foncé |
-| 5 | Bleu clair |
-| 6 | Rouge foncé |
+| 0 | Transparent (see R7 backdrop) |
+| 1 | Black |
+| 2 | Medium green |
+| 3 | Light green |
+| 4 | Dark blue |
+| 5 | Light blue |
+| 6 | Dark red |
 | 7 | Cyan |
-| 8 | Rouge moyen |
-| 9 | Rouge clair |
-| 10 | Jaune foncé (bois) |
-| 11 | Jaune clair |
-| 12 | Vert foncé |
+| 8 | Medium red |
+| 9 | Light red |
+| 10 | Dark yellow (wood) |
+| 11 | Light yellow |
+| 12 | Dark green |
 | 13 | Magenta |
-| 14 | Gris |
-| 15 | Blanc |
+| 14 | Grey |
+| 15 | White |
 
-### Delta rendering sur TMS
+### Delta rendering on TMS
 
-Trivial comparé à HGR : calculez l'adresse name table `$1800 + row*32 + col`, latchez sur `$CC01`, écrivez un seul code caractère sur `$CC00`. Pas besoin d'effacer, pas besoin de redessiner les voisins.
+Trivial compared to HGR: compute the name-table address `$1800 + row*32 + col`, latch it on `$CC01`, write a single character code to `$CC00`. No clearing needed, no neighbour redraw.
 
-### Indépendance des écrans
+### Screen independence
 
-L'écran texte Apple 1 et la fenêtre TMS9918 sont **deux afficheurs indépendants**. Convention : utilisez le texte pour le titre, le prompt clavier (QWERTY/AZERTY), les messages de victoire ; utilisez le TMS pour le jeu lui-même.
+The Apple 1 text screen and the TMS9918 window are **two independent displays**. Convention: use the text for the title, the keyboard prompt (QWERTY/AZERTY), the victory messages; use TMS for the game itself.
 
-### Synchronisation frame — POLLING recommandé (l'IRQ marche aussi)
+### Frame synchronisation — POLLING recommended (IRQ also works)
 
-**Règle d'or P-LAB** : la carte P-LAB Apple-1 **câble** la broche `/INT` du TMS9918 vers `/IRQ` du 6502 (trace vérifiée sur le vrai matériel par Parmigiani). Le soft Nippur72 ne s'en sert pas : la convention est de synchroniser les frames par **polling** du status register — c'est plus simple, portable, et indépendant du flag I. L'IRQ-on-VBlank fonctionne néanmoins (R1 bit 5 + `CLI` + handler au vecteur `$FFFE` lisant `$CC01` atomiquement), mais reste l'option à éviter sauf besoin précis.
+**P-LAB golden rule**: the P-LAB Apple-1 card **wires** the TMS9918 `/INT` pin to the 6502 `/IRQ` (trace verified on real hardware by Parmigiani). The Nippur72 software doesn't use it: the convention is to synchronise frames via **polling** of the status register — it's simpler, portable, and independent of the I flag. IRQ-on-VBlank works nevertheless (R1 bit 5 + `CLI` + handler at vector `$FFFE` reading `$CC01` atomically), but remains the option to avoid unless specifically needed.
 
-C'est le pattern que ciblent les libs Nippur72 et que tous les jeux POM1 (Galaga, Sokoban, Snake, Life, Rogue, Asteroids, Connect4, etc.) utilisent.
+This is the pattern that the Nippur72 libs target and that all POM1 games (Galaga, Sokoban, Snake, Life, Rogue, Asteroids, Connect4, etc.) use.
 
-#### Idiome standard
+#### Standard idiom
 
 ```asm
         ; Wait for next VBlank — silicon-correct polling pattern
         BIT $CC01             ; drain stale F flag (clears bits 5/6/7)
 @v_wait:
         BIT $CC01
-        BPL @v_wait           ; bit 7 = 0 → pas encore VBlank
-        ; ici : on est dans VBlank, ~4 554 cycles de bande passante VRAM
-        ; "gate 2c" disponibles avant l'active display de la prochaine frame
+        BPL @v_wait           ; bit 7 = 0 → not yet VBlank
+        ; here: we're in VBlank, ~4 554 cycles of VRAM bandwidth
+        ; "gate 2c" available before the next frame's active display
 ```
 
-Ou avec la macro `WAIT_VBLANK` partagée dans `dev/lib/tms9918/tms9918.inc` :
+Or with the shared `WAIT_VBLANK` macro in `dev/lib/tms9918/tms9918.inc`:
 
 ```asm
 .include "tms9918.inc"
 
-        WAIT_VBLANK           ; expanse au pattern ci-dessus, 7 octets
+        WAIT_VBLANK           ; expands to the pattern above, 7 bytes
         ; ... upload SAT, sprites, animations …
 ```
 
-#### Pourquoi pas d'IRQ
+#### Why no IRQ
 
-Cas qui **deadlocke sur silicon P-LAB et sur POM1 par défaut** :
+Case that **deadlocks on P-LAB silicon and POM1 by default**:
 
 ```asm
         LDA #$E0              ; R1 = display ON + IRQ enable + 16K
         STA $CC01
         LDA #$81              ; reg 1
         STA $CC01
-        CLI                   ; autoriser /IRQ
-@loop:  JMP @loop             ; attendre IRQ frame en $FFFE
+        CLI                   ; allow /IRQ
+@loop:  JMP @loop             ; wait for frame IRQ at $FFFE
 ```
 
-Le 6502 attendra éternellement parce que la broche `/INT` du chip n'est pas connectée à `/IRQ`. POM1 émule ce comportement fidèlement (`TMS9918::irqAsserted()` retourne `false` tant que `setIrqStrapped(true)` n'a pas été appelé — et personne ne l'appelle dans la chaîne par défaut).
+The 6502 will wait forever because the chip's `/INT` pin isn't connected to `/IRQ`. POM1 emulates this behaviour faithfully (`TMS9918::irqAsserted()` returns `false` until `setIrqStrapped(true)` is called — and nobody calls it in the default chain).
 
-#### Side effect du polling sur les bits 5/6
+#### Polling side effect on bits 5/6
 
-Lire `$CC01` efface bits 5 (collision), 6 (5S overflow) **et** 7 (F flag) en bloc. Si tu utilises ces flags, lis-les **avant** le `WAIT_VBLANK`, ou snapshot-les dans une variable :
+Reading `$CC01` clears bits 5 (collision), 6 (5S overflow) **and** 7 (F flag) together. If you use these flags, read them **before** the `WAIT_VBLANK`, or snapshot them into a variable:
 
 ```asm
-        LDA $CC01             ; snapshot complet
+        LDA $CC01             ; full snapshot
         STA last_status
-        AND #$80              ; isole F
-        BEQ @nope             ; pas de VBlank cette fois
+        AND #$80              ; isolate F
+        BEQ @nope             ; no VBlank this time
         LDA last_status
         AND #$20              ; bit 5 collision
         ; …
 ```
 
-Pour les jeux qui ne lisent que F (cas majoritaire), le clobber de 5/6 n'a aucune conséquence visible.
+For games that only read F (the majority), the 5/6 clobber has no visible consequence.
 
-#### Cas particulier : strap FPGA community
+#### Special case: community FPGA strap
 
-Certains utilisateurs ont **modifié leur réplica Apple-1 / replica-1 P-LAB** pour bridger `int_n_o` (VDP) → `irq_n` (6502) avec inverseur. Cette modif **n'est pas P-LAB d'origine**. POM1 expose `TMS9918::setIrqStrapped(true)` pour émuler ce mod. Tant que tu écris du code qui doit tourner sur **P-LAB stock**, ignore cette branche : poll, c'est tout. (Détails dans [`SILICONBUGS.md`](SILICONBUGS.md) Bug N°2.)
+Some users have **modified their Apple-1 replica / P-LAB replica-1** to bridge `int_n_o` (VDP) → `irq_n` (6502) with an inverter. This mod **is not stock P-LAB**. POM1 exposes `TMS9918::setIrqStrapped(true)` to emulate it. As long as you write code intended to run on **stock P-LAB**, ignore this branch: poll, that's it. (Details in [`SILICONBUGS.md`](SILICONBUGS.md) Bug N°2.)
 
-#### Strict silicon — écritures VRAM trop rapides
+#### Strict silicon — VRAM writes too fast
 
-Quand **Silicon Strict** est actif (défaut hors presets Multiplexing Fantasy), POM1 peut **ignorer** des octets si les accès `$CC00`/`$CC01` arrivent plus vite que le modèle slot-table — même comportement que le trop rapide sur puce réelle. Voir [`SILICONBUGS.md`](SILICONBUGS.md) §2 (Bug N°1), helpers `tms9918_pad12`, patcher `tools/silicon_strict_patch.py`. Toggle : menu Hardware ou [`doc/CLI.md`](../doc/CLI.md) (`--silicon-strict` / `--no-silicon-strict`).
+When **Silicon Strict** is active (default outside the Multiplexing Fantasy presets), POM1 may **drop** bytes if `$CC00`/`$CC01` accesses arrive faster than the slot-table model — same behaviour as too-fast access on real silicon. See [`SILICONBUGS.md`](SILICONBUGS.md) §2 (Bug N°1), `tms9918_pad12` helpers, `tools/silicon_strict_patch.py` patcher. Toggle: Hardware menu or [`doc/CLI.md`](../doc/CLI.md) (`--silicon-strict` / `--no-silicon-strict`).
 
-### Exemples d'implémentation
+### Implementation examples
 
-- `dev/projects/tms9918_sokoban/TMS_Sokoban.asm` — 47 niveaux, tuiles 8×8 avec 7 couleurs
-- `dev/projects/tms9918_connect4/TMS_Connect4.asm` — pions 32×32 sur plateau bleu plein écran
-- `dev/projects/tms9918_galaga/TMS_Galaga.asm:2593-2600` — pattern de polling commenté en place
+- `dev/projects/tms9918_sokoban/TMS_Sokoban.asm` — 47 levels, 8×8 tiles with 7 colours
+- `dev/projects/tms9918_connect4/TMS_Connect4.asm` — 32×32 tokens on full-screen blue board
+- `dev/projects/tms9918_galaga/TMS_Galaga.asm:2593-2600` — polling pattern commented in place
 
 ---
 
-## 7. Patterns partagés pour les jeux
+## 7. Shared patterns for games
 
-### Grille d'état à `$4000`
+### State grid at `$4000`
 
-Sur les presets **Fantasy** (RAM plate 64 Ko) ou quand la fenêtre `$4000-$7FFF` n’est pas occupée par la ROM CodeTank / Juke-Box, `$4000+` peut tenir une grille ou des buffers volumineux. Sur les presets **dual-bank 8+8 Ko**, la même zone peut être ROM ou hors périmètre selon la carte — vérifier le preset dans [`README.md`](../README.md) ou tester sur la cible. Pour une grille **20×12** (240 octets), une page dans la RAM utilisateur basse ou **`GRID_BASE = $4000`** (quand disponible) suffisent :
+On the **Fantasy** presets (flat 64 KB RAM) or when the `$4000-$7FFF` window is not occupied by the CodeTank / Juke-Box ROM, `$4000+` can hold a grid or sizeable buffers. On the **dual-bank 8+8 KB** presets, the same area may be ROM or out of scope depending on the card — check the preset in [`README.md`](../README.md) or test on the target. For a **20×12** grid (240 bytes), a page in low user RAM or **`GRID_BASE = $4000`** (when available) is enough:
 
 ```asm
 GRID_BASE = $4000
 
-; Accès rapide :
+; Fast access:
         LDY cell_index              ; 0..239
         LDA GRID_BASE,Y             ; indexed absolute
 ```
 
-Pour calculer l'index d'une cellule `(row, col)`, utilisez une lookup au lieu de multiplier :
+To compute a cell's index `(row, col)`, use a lookup instead of multiplying:
 
 ```asm
 row_x20:
         .byte 0, 20, 40, 60, 80, 100, 120, 140, 160, 180, 200, 220
 
-; idx = row*20 + col :
+; idx = row*20 + col:
         LDX row
         LDA row_x20,X
         CLC
         ADC col
-        TAX                         ; ou TAY pour lookup ensuite
+        TAX                         ; or TAY for a lookup next
 ```
 
-### Format niveau portable
+### Portable level format
 
-Header 4 octets puis ASCII :
+4-byte header then ASCII:
 
 ```asm
 level1:
@@ -628,20 +628,20 @@ level1:
         .byte "#####"
 ```
 
-L'offset permet de centrer les petits niveaux dans une grille plus grande (20×12 par exemple).
+The offset lets you centre small levels inside a larger grid (20×12 for example).
 
-Convention Sokoban : `#` mur, `.` cible, `$` caisse, `@` joueur, `*` caisse sur cible, `+` joueur sur cible, ` ` sol.
+Sokoban convention: `#` wall, `.` target, `$` crate, `@` player, `*` crate on target, `+` player on target, ` ` floor.
 
-Pour des niveaux non-rectangulaires (ex. Microban), padder les lignes courtes avec des espaces avant de compiler.
+For non-rectangular levels (e.g. Microban), pad short lines with spaces before compiling.
 
-### Prompt clavier QWERTY/AZERTY
+### QWERTY/AZERTY keyboard prompt
 
-Les touches `1` et `2` sont à la même position physique sur les deux layouts, idéales comme prompt. Stockez les touches variables en zero-page :
+The `1` and `2` keys are at the same physical position on both layouts, ideal as a prompt. Store the variable keys in zero-page:
 
 ```asm
 .zeropage
-key_up_code:   .res 1   ; 'W' (QWERTY) ou 'Z' (AZERTY)
-key_left_code: .res 1   ; 'A' ou 'Q'
+key_up_code:   .res 1   ; 'W' (QWERTY) or 'Z' (AZERTY)
+key_left_code: .res 1   ; 'A' or 'Q'
 
 .code
         LDA #<str_layout
@@ -668,10 +668,10 @@ key_left_code: .res 1   ; 'A' ou 'Q'
 @start:
         ; ...
 
-; Dans move_loop :
+; In move_loop:
         CMP key_up_code
         BEQ key_up
-        CMP #'S'                    ; S et D partagent la position physique
+        CMP #'S'                    ; S and D share the physical position
         BEQ key_down
         CMP key_left_code
         BEQ key_left
@@ -679,51 +679,51 @@ key_left_code: .res 1   ; 'A' ou 'Q'
         BEQ key_right
 ```
 
-### Séparation logique / rendu
+### Logic / rendering separation
 
-La logique de jeu (collision, règles, condition de victoire, etc.) est **100% partageable** entre les trois modes. Seules changent :
+The game logic (collision, rules, victory condition, etc.) is **100% shareable** across the three modes. Only these change:
 
-- `init_display` : `clear_hgr` (HGR) vs `init_vdp` (TMS) vs rien (texte)
-- `render_all` : boucle qui dessine la grille complète
-- `draw_cell` : dessine une seule cellule à une position grille donnée
-- Les données visuelles : bitmap HGR, patterns TMS, caractères ASCII
+- `init_display`: `clear_hgr` (HGR) vs `init_vdp` (TMS) vs nothing (text)
+- `render_all`: loop that draws the full grid
+- `draw_cell`: draws a single cell at a given grid position
+- The visual data: HGR bitmap, TMS patterns, ASCII characters
 
-**Modèle** :
+**Template**:
 ```
 main → init_display → game_loop → {
-    init_level             ; logique commune
-    render_all             ; spécifique mode
+    init_level             ; common logic
+    render_all             ; mode-specific
     move_loop → {
         wait_key
-        execute_move       ; logique commune ; modifie la grille
-        if moved: draw_cell(s)  ; spécifique mode ; redessine 1-4 tuiles
-        check_win          ; logique commune
+        execute_move       ; common logic; modifies the grid
+        if moved: draw_cell(s)  ; mode-specific; redraws 1-4 tiles
+        check_win          ; common logic
     }
 }
 ```
 
 ### Delta rendering
 
-Après un coup, le nombre de cellules modifiées est borné (2-4 pour Sokoban : ancienne et nouvelle position du joueur, + éventuellement la caisse poussée). **Ne redessiner que ces cellules** fait passer le temps de rendu de ~80 ms (frame complète) à < 1 ms. Gameplay fluide garanti.
+After a move, the number of modified cells is bounded (2-4 for Sokoban: old and new player position, + possibly the pushed crate). **Only redrawing these cells** brings rendering time from ~80 ms (full frame) down to < 1 ms. Smooth gameplay guaranteed.
 
-### Condition de victoire : attention aux cases indirectes
+### Victory condition: watch out for indirect cases
 
-Sokoban : une cible est "vide" si elle contient encore `TILE_TARGET` (2) **ou** `TILE_PLAYER_TARGET` (6, joueur debout dessus sans caisse). Vérifier seulement la valeur 2 cause un faux positif quand le joueur marche sur la dernière cible.
+Sokoban: a target is "empty" if it still contains `TILE_TARGET` (2) **or** `TILE_PLAYER_TARGET` (6, player standing on it without a crate). Checking only value 2 yields a false positive when the player walks onto the last target.
 
 ---
 
-## 8. Zero page — rappel
+## 8. Zero page — reminder
 
-La zero page Apple 1 va de `$0000` à `$00FF`, mais les configs cc65 en réservent typiquement 32 à 35 octets pour l'utilisateur (`$0000-$001F` ou `$0000-$0022`). Le monitor Woz et BASIC utilisent le reste.
+The Apple 1 zero page runs from `$0000` to `$00FF`, but cc65 configs typically reserve 32 to 35 bytes for the user (`$0000-$001F` or `$0000-$0022`). The Woz monitor and BASIC use the rest.
 
-Usage typique pour un jeu :
+Typical use for a game:
 ```asm
 .zeropage
 temp:           .res 1
 temp2:          .res 1
-ptr_lo:         .res 1  ; pointeur générique 1
+ptr_lo:         .res 1  ; generic pointer 1
 ptr_hi:         .res 1
-src_lo:         .res 1  ; pointeur source (patterns, strings)
+src_lo:         .res 1  ; source pointer (patterns, strings)
 src_hi:         .res 1
 current_player: .res 1
 move_count:     .res 1
@@ -732,70 +732,70 @@ row_cnt:        .res 1
 col_cnt:        .res 1
 draw_row:       .res 1
 draw_col:       .res 1
-; ... variables spécifiques jeu
+; ... game-specific variables
 ```
 
 ---
 
-## 9. Implémentations de référence
+## 9. Reference implementations
 
-Les trois ports de **Sokoban** partagent la même grille, la même logique de coup (`execute_move`, `leave_tile`, `enter_player`, `check_win`), le même format de niveau. Seul le rendu diffère :
+The three **Sokoban** ports share the same grid, the same move logic (`execute_move`, `leave_tile`, `enter_player`, `check_win`), the same level format. Only the rendering differs:
 
-| Fichier | Mode | Taille | Niveaux |
+| File | Mode | Size | Levels |
 |---------|------|--------|---------|
-| `dev/projects/games_sokoban/Sokoban.asm` | Texte | 4054 B | 47 |
+| `dev/projects/games_sokoban/Sokoban.asm` | Text | 4054 B | 47 |
 | `dev/projects/hgr_sokoban/HGR_Sokoban.asm` | HGR GEN2 | 7399 B | 72 |
 | `dev/projects/tms9918_sokoban/TMS_Sokoban.asm` | TMS9918 | 4354 B | 47 |
 
-Les trois ports de **Connect 4** de même :
+The three **Connect 4** ports likewise:
 
-| Fichier | Mode | Taille |
+| File | Mode | Size |
 |---------|------|--------|
-| `dev/projects/games_connect4/Connect4.asm` | Texte | 1021 B |
+| `dev/projects/games_connect4/Connect4.asm` | Text | 1021 B |
 | `dev/projects/hgr_connect4/HGR_Connect4.asm` | HGR GEN2 | 2003 B |
 | `dev/projects/tms9918_connect4/TMS_Connect4.asm` | TMS9918 | 1230 B |
 
-Autres programmes GEN2 utiles comme modèle :
-- `dev/projects/hgr_maze/HGR_Maze.asm` : maze sub-byte rendering (4-px walls)
-- `dev/projects/hgr_mandelbrot/HGR_Mandelbrot.asm` : calcul + pixel plotting
-- `dev/projects/hgr_house/HGR_House.asm` : dessin de formes
+Other GEN2 programs useful as templates:
+- `dev/projects/hgr_maze/HGR_Maze.asm`: maze sub-byte rendering (4-px walls)
+- `dev/projects/hgr_mandelbrot/HGR_Mandelbrot.asm`: computation + pixel plotting
+- `dev/projects/hgr_house/HGR_House.asm`: shape drawing
 
-Bibliothèques réutilisables (`dev/lib/`) :
-- `dev/lib/apple1/apple1.inc` — équates Wozmon + PIA
-- `dev/lib/m6502/math.asm` — trig point-fixe, RNG LFSR, impression décimale
-- `dev/lib/tms9918/{tms9918.inc,tms9918m2.asm}` — équates VDP + driver Mode 2
-- `dev/lib/hgr/{hgr_tables.inc,smiley.inc}` — tables HGR
-- `dev/lib/games/sokoban/sokoban_*.inc` — données niveaux Sokoban partagées
-- `dev/lib/games/chess/{chess_engine.asm,chess_text_io.asm,chess_*.inc}` — moteur d'échecs partagé (text/HGR/TMS9918)
-
----
-
-## 10. Ressources externes
-
-- **[`SILICONBUGS.md`](SILICONBUGS.md)** / **[`APPLE1DEV.md`](APPLE1DEV.md)** — pièges TMS9918 et déploiement POM1 (préférer ces fichiers aux résumés dispersés).
-- **Microban I (David W. Skinner, 2000)** — 155 niveaux Sokoban progressifs, petits et pédagogiques.
-  Sources brutes : `https://github.com/martin-t/sokoban-solver/tree/master/levels/microban1/N.txt`
-- **Sokoban Wiki (format des niveaux)** : http://sokobano.de/wiki/index.php?title=Level_format
-- **cc65 documentation** : https://cc65.github.io/doc/
-- **TMS9918 datasheet / reference** : pour les détails de registres et timings
-- **Apple II HGR memory layout** : documentation Apple II (le GEN2 est Apple II-compatible)
-- **P-LAB cards** : documentation PDF dans `doc/` (Graphic Card ENG, SID, microSD, etc.)
+Reusable libraries (`dev/lib/`):
+- `dev/lib/apple1/apple1.inc` — Wozmon + PIA equates
+- `dev/lib/m6502/math.asm` — fixed-point trig, LFSR RNG, decimal printing
+- `dev/lib/tms9918/{tms9918.inc,tms9918m2.asm}` — VDP equates + Mode 2 driver
+- `dev/lib/hgr/{hgr_tables.inc,smiley.inc}` — HGR tables
+- `dev/lib/games/sokoban/sokoban_*.inc` — shared Sokoban level data
+- `dev/lib/games/chess/{chess_engine.asm,chess_text_io.asm,chess_*.inc}` — shared chess engine (text/HGR/TMS9918)
 
 ---
 
-## 11. Checklist avant de commencer un nouveau jeu
+## 10. External resources
 
-1. Choisir le(s) mode(s) cible(s) — texte, HGR, TMS, ou les trois
-2. Dimensionner la grille de jeu (tient dans 256 octets ? page-alignée à `$4000` ?)
-3. Choisir la config linker selon le budget code
-4. Partager la logique pure (pas d'I/O) d'un mode à l'autre
-5. Implémenter `draw_cell` avant `render_all` — pour tester visuellement
-6. Ajouter le delta rendering après avoir validé le rendu complet
-7. Pour HGR : dessiner les tuiles byte-alignées (largeur multiple de 7) si possible
-8. Pour TMS : utiliser l'astuce colour-group dès le début si besoin de multi-couleurs
-9. Gérer le layout clavier (prompt `1`/`2`, stocker les touches en ZP)
-10. Tester les cas limites : grille pleine, bordures, condition de victoire exotique
+- **[`SILICONBUGS.md`](SILICONBUGS.md)** / **[`APPLE1DEV.md`](APPLE1DEV.md)** — TMS9918 pitfalls and POM1 deployment (prefer these files over scattered summaries).
+- **Microban I (David W. Skinner, 2000)** — 155 progressive Sokoban levels, small and pedagogical.
+  Raw sources: `https://github.com/martin-t/sokoban-solver/tree/master/levels/microban1/N.txt`
+- **Sokoban Wiki (level format)**: http://sokobano.de/wiki/index.php?title=Level_format
+- **cc65 documentation**: https://cc65.github.io/doc/
+- **TMS9918 datasheet / reference**: for register and timing details
+- **Apple II HGR memory layout**: Apple II documentation (GEN2 is Apple II-compatible)
+- **P-LAB cards**: PDF documentation in `doc/` (Graphic Card ENG, SID, microSD, etc.)
 
 ---
 
-*Document rédigé à partir des mémoires agent et du code des jeux Sokoban et Connect 4 (3 ports chacun).*
+## 11. Checklist before starting a new game
+
+1. Pick the target mode(s) — text, HGR, TMS, or all three
+2. Size the game grid (fits in 256 bytes? page-aligned at `$4000`?)
+3. Pick the linker config according to the code budget
+4. Share the pure logic (no I/O) across modes
+5. Implement `draw_cell` before `render_all` — to test visually
+6. Add delta rendering after validating the full rendering
+7. For HGR: draw byte-aligned tiles (width multiple of 7) if possible
+8. For TMS: use the colour-group trick from the start if multiple colours are needed
+9. Handle the keyboard layout (prompt `1`/`2`, store the keys in ZP)
+10. Test edge cases: full grid, borders, exotic victory condition
+
+---
+
+*Document drawn from agent memories and from the Sokoban and Connect 4 game code (3 ports each).*
