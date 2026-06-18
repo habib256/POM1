@@ -28,22 +28,30 @@ guide rather than duplicate.
 
 Uses Nino Porcino's `apple1-videocard-lib` (`screen1.h`, `tms9918.h`,
 `screen2.h`). The Bench's **TMS9918 (C)** target builds a 16 KB CodeTank
-ROM and boots `4000R`. 13 worked demos live in `dev/projects/tms9918c/`
-(`hello_world`, `hello_screen1`, `tetris`, `rogue_c`, `sprite_animals`,
-…).
+ROM and boots `4000R`. `dev/projects/tms9918c/` holds 7 directories —
+`demo`, `demo_hello_world`, `demo_hello_screen1`, `demo_screen1`,
+`demo_picshow`, `demo_sprite_animals`, and the `tool_checksum` utility —
+so **6 worked demos** (the last entry is a tool, not a demo).
 
 ```c
 #include "tms9918.h"
 #include "screen1.h"
 void main(void) {
     tms_init_regs(SCREEN1_TABLE);
-    tms_set_color(COLOR_CYAN);
+    tms_set_color(COLOR_CYAN);   /* R7 = border colour in Graphics I; per-tile text
+                                    colours come from the table screen1_prepare() sets */
     screen1_prepare();
     screen1_load_font();
     screen1_puts((const unsigned char *)"HELLO TMS9918");
     for (;;) { }
 }
 ```
+
+> **VRAM layout note.** This cc65 runtime uses the nippur72 table placement —
+> name table `$3800`, sprite patterns `$1800`, SAT `$3B00`, colour `$2000` —
+> which differs from the ASM playbook in `Programming_TMS9918.md` §2 (name
+> `$1800`, SAT `$1B00`). The base addresses are register-configurable, so the two
+> guides' memory maps are **not** interchangeable.
 
 ## 2. C-level entry points
 

@@ -57,7 +57,7 @@ for (;;) {
 `gen2_set_draw_page` redirects **all** primitives (HIRES + LORES) by re-deriving
 the scanline tables they index — so it is set **once per frame**, not per call,
 and the per-pixel hot paths stay byte-for-byte identical (the page costs a table
-refresh at the flip, never a cycle per pixel). Demo: `dev/projects/gen2_dbuf_demo`.
+refresh at the flip, never a cycle per pixel). Demo: `dev/projects/gen2c/demo_dbuf`.
 
 ### Assembly fast paths (`gen2_blit.s`)
 

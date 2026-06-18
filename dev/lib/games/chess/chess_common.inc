@@ -121,11 +121,13 @@ ERR_NOT_IMPL     = 5        ; reserved: no longer returned (castling + en-passan
 ;   fullmove_number        increments after each Black move
 ;   king_sq_white          for fast in-check
 ;   king_sq_black
+;
+; Planned for v1.2 alpha-beta (not yet present — the engine currently uses a
+; single-level undo, so none of these labels are declared):
 ;   ply_index              current ply during search (0 = root)
 ;   move_count_per_ply[16] number of pseudo-legal moves at each ply
 ;   history[8 * 6]         undo entries (captured, ep, castling, halfmove,
 ;                          king_sq_white, king_sq_black) per ply
-;
-; The search-stack 4 KB region (SEARCHBUF) holds move_list[ply][i] arrays.
+;   SEARCHBUF (4 KB)       search-stack holding move_list[ply][i] arrays
 
 .endif  ; _CHESS_COMMON_INC_LOADED_

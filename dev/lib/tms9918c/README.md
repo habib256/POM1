@@ -1,6 +1,6 @@
 # tms9918c — cc65 port of apple1-videocard-lib (CodeTank only)
 
-*[← POM1 documentation index](../../doc/README.md)*
+*[← POM1 documentation index](../../../doc/README.md)*
 
 C **cc65** port of the original **[nippur72/apple1-videocard-lib](https://github.com/nippur72/apple1-videocard-lib)** library by **Antonino "Nino" Porcino** (KickC). Every improvement under this tree preserves the upstream attribution (header in every `.c` / `.h` / `.s`) — see [License / attribution](#licence--attribution).
 
@@ -21,37 +21,35 @@ No `$0280`-only program variant; no Fantasy target.
 
 - [cc65](https://cc65.github.io/) (`cl65`, `ca65`, `ld65`) on the `PATH`.
 
-## Build — all demos
+## Build
+
+Each demo carries its own `Makefile`. Build one:
 
 ```bash
-cd dev/projects/tms9918c
-make -j         # builds all demo + tool subprojects
+make -C dev/projects/tms9918c/demo_hello_world
 ```
 
-Or a single demo:
+Or build every project at once via the CI gate (it globs `*/*/Makefile`, so all
+demos below are covered):
 
 ```bash
-cd dev/projects/tms9918c/demo_hello_screen1
-make
+make -C dev/projects
 ```
 
 Outputs (per demo): `software/Apple-1_TMS_CC65/<name>.{bin,txt}` — 16 KB image (`$FF` padding), Wozmon hex + `4000R`.
 
-| Demo (cc65) | Upstream source | Role |
-|-------------|-----------------|------|
-| `hello_screen1` | equivalent of `hello-world` + TMS | TMS text mode (screen 1) |
-| `hello_world` | `demos/hello-world` | Wozmon message, no TMS |
-| `checksum` | `demos/checksum` | Byte sum over a hex range |
-| `graphs` | `demos/graphs` | Screen 2 bitmap: circle + ellipse |
-| `demo_screen1` | `demos/demo/demo_screen1.h` | Text demo + reverse + sprites + input |
-| `picshow` | `demos/picshow` | Stub variant (Screen 2 + drawing, not the large upstream image) |
-| `demo` | `demos/demo` | Minimal menu: `SCREEN1` / `SCREEN2` (other options are stubs) |
-| `tetris` | `demos/tetris` | Screen-1 Tetris (full game) |
-| `text_adventure` | (inspired by Little Tower) | 32-column text adventure |
-| `sprite_animals` | `dev/lib/tms9918/sprites_fauna.asm` | 4 static 16×16 Fauna sprites at native size (no MAG×2) |
-| `chrome_dino` | (offline T-Rex clone) | Mini-game: jump + obstacles (part of the `make all` target) |
-| `frogger_codetank` | (inspired by Frogger) | Hardware-sprite frog, animated water — local `make` |
-| `rogue_c` | `dev/projects/tms9918/game_rogue/` | Partial C port of TMS_Rogue — local `make` (see `demos/rogue_c/README.md`) |
+> The seven C projects below share this single README (no per-project README);
+> each demo's `main.c` header documents its own specifics.
+
+| Demo (cc65) | Role |
+|-------------|------|
+| `demo_hello_world` | Wozmon "hello" message, no TMS (port of upstream `demos/hello-world`) |
+| `demo_hello_screen1` | Minimal CodeTank + TMS text mode (Screen 1) |
+| `demo_screen1` | Screen 1 text + reverse + charset + sprites + input line (port of `demos/demo/demo_screen1.h`) |
+| `demo` | Minimal menu: `SCREEN1` / `SCREEN2` (other keys print "not ported") |
+| `demo_picshow` | Screen 2 geometry demo (text + circle + ellipse). The full upstream `picshow` image does not fit the 16 KB CodeTank ROM, so this ships a geometric stand-in. |
+| `demo_sprite_animals` | Four fixed 16×16 Fauna sprites at native size, from `dev/lib/tms9918/sprites_fauna.asm` (SCROLL-O-SPRITES "Fauna", CC-BY Quale) |
+| `tool_checksum` | Byte sum over a hex range, Wozmon (port of `demos/checksum`) |
 
 Not ported here (KickC / big `.c` / other hardware): `anagram`, `tapemon`, `sdcard`, `montyr`, `life-src`, `iec`, `viatimer` (the upstream repo remains the reference for these demos).
 
@@ -70,7 +68,7 @@ Not ported here (KickC / big `.c` / other hardware): `anagram`, `tapemon`, `sdca
 | `tms9918.*`    | Registers / VRAM (`$CC00` / `$CC01`) |
 | `apple1.*` + `apple1_asm.s` | Wozmon ECHO / PRBYTE / keyboard |
 | `screen1.*`    | TMS text mode (screen 1) |
-| `screen2.*`    | Bitmap (screen 2); `screen2_ellipse_rect` in **C** (64 segments, cos/sin tables, segments via `screen2_line`) — no `screen2_ellipse.s` file required |
+| `screen2_*` (+ `screen2.h`) | Bitmap (screen 2), split per feature for ld65 dead-strip: `screen2_init.c` (bitmap setup), `screen2_pixel.c` (plot), `screen2_geom.c` (line / circle / `screen2_ellipse_rect` — 64-chord parametric in **C**, no `screen2_ellipse.s`), `screen2_text.c`, `screen2_ext.c` |
 | `sprites.*`    | Sprite attributes (direct VRAM write) |
 | `interrupt.*`  | `install_interrupt` / `wait_interrupt` stubs (no wired TMS IRQ in this port; the upstream dead counters were removed) |
 | `c64font.c`    | 8×8 font (768 bytes) derived from upstream |
@@ -86,7 +84,7 @@ These modules are port-specific additions; the code stays faithful to Nino's spi
 | `random.*`          | 8-bit LFSR (period 255) + 16-bit Galois (period 65535) — `rand8`, `rand16`, `srand8/16`, `rand8_below(limit)`. |
 | `vsync.*`           | Polling frame counter (`tms_wait_end_of_frame` → `vsync_frames`) — ~60 Hz NTSC time base in the absence of a wired TMS IRQ. |
 | `printlib.*`        | Decimal / hex helpers via `putc` function pointer; Wozmon wrappers (`woz_print_dec_u8/u16`, `woz_print_hex_u16`) and screen 1 (`screen1_print_*`). |
-| `screen_ext.c`      | Optional extended helpers: `screen1_putcharxy(x,y,c)`, `screen1_fill_color_attr(c)`, `screen2_clear()`, `screen2_filled_rect(x0,y0,x1,y1)`. The last two pull in `tms_fast.s`. |
+| `screen1_ext.c` / `screen2_ext.c` | Optional extended helpers, split per card so a Screen-1-only program no longer drags in the Screen-2 bitmap helpers: `screen1_putcharxy(x,y,c)`, `screen1_fill_color_attr(c)` (screen1_ext); `screen2_clear()`, `screen2_filled_rect(x0,y0,x1,y1)` (screen2_ext, pulls `tms_fast.s`). |
 
 ### Example opt-in in a demo `Makefile`
 

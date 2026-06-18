@@ -1,5 +1,5 @@
-// Pom1 Save : LittleTower.txt
-// Little Tower v1.0 - Apple 1 Adventure Game
+// Little Tower v1.0 - Apple 1 adventure game
+// Built from dev/projects/apple1/game_little_tower/ - load + run at $0280
 0280: D8 20 F0 0A A9 01 85 10 A9 00 85 11 85 15 85 12
 0290: 85 13 85 14 A9 FF 85 16 A9 00 85 04 4C 9F 02 A5
 02A0: 04 D0 03 20 CF 08 20 A5 0A 20 AF 02 4C 9F 02 A9
@@ -374,3 +374,4 @@
 19B0: 20 20 20 20 20 20 20 20 20 2A 26 20 20 20 20 2A
 19C0: 2A 2A 2A 2A 2A 2A 2A 2A 2A 2A 2A 2A 2A 2A 2A 2A
 19D0: 2A 2A 26 26 25
+0280R

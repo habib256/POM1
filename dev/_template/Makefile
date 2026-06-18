@@ -2,8 +2,8 @@
 # `make` assembles Hello.asm -> software/Apple-1 demos/Hello.bin (+ .txt with
 # EMIT_TXT). For the C variant (hello.c) see the cl65 line in README.md.
 PROJECT  := Hello
-LOAD_CFG := ../../cc65/apple1_4k.cfg
-OUT_DIR  := ../../../software/Apple-1 demos
-LIB      := -I ../../lib/apple1
+LOAD_CFG := ../cc65/apple1_4k.cfg
+OUT_DIR  := ../../software/Apple-1 demos
+LIB      := -I ../lib/apple1
 
-include ../../cc65/Makefile.common
+include ../cc65/Makefile.common

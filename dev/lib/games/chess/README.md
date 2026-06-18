@@ -16,8 +16,9 @@ conventions (Sokoban, Connect 4 trilogies).
   move-flag bits, castling-rights bits, material values. Idempotent
   (`.ifndef _CHESS_COMMON_INC_LOADED_`).
 - `chess_tables.inc` — direction tables (`knight_offsets`, `king_offsets`,
-  `rook_offsets`, `bishop_offsets`), `material_table`, `starting_position`
+  `rook_offsets`, `bishop_offsets`), `starting_position`
   (rank-major 64-byte initial board), `piece_letters` (ASCII glyph per piece).
+  (Material values now live as `mat_simple` inside `chess_engine.asm`.)
 - `chess_engine.asm` — the engine. Separately assembled to `chess_engine.o`.
   Public symbols below.
 - `chess_text_io.asm` — algebraic input parser (`E2E4`, optional `E7E8Q`),
@@ -50,8 +51,8 @@ mv_flags`.
 
 `tmp` and `tmp2` (from `lib/apple1/zp.inc`) — reserved by caller.
 Engine-private slots: `ce_sq, ce_dir, ce_target, ce_piece, ce_color,
-ce_dirs_left, ce_dir_ptr, ce_match, attacker_color, attacked_sq` — these
-are declared inside the engine's `.segment "ZEROPAGE"` and consume 10
+ce_dirs_left, ce_dir_ptr, ce_match, attacker_color, attacked_sq, atk_piece` —
+these are declared inside the engine's `.segment "ZEROPAGE"` and consume 11
 bytes contiguously after the caller's own ZP. Linker config must give
 ZP at least 32 bytes (`size = $0040` recommended).
 
@@ -91,7 +92,7 @@ is retained as a reserved error code but is no longer returned.
 | **AI 1-ply + Static Exchange Evaluation** (v0.5)    | ✅ refuses obvious blunders (queen for defended pawn etc.) |
 | **AI random tie-break via 8-bit LFSR** (v0.5)       | ✅ AvA games diverge by move 2–3 |
 | **AI strategy toggle** (NAIVE / SMART, v0.5)        | ✅ via the `D` command at the prompt |
-| **AI thinking indicator** (`.` per 32 nodes, v0.5)  | ✅ |
+| **AI thinking indicator** (`.` per 32 nodes, v0.5)  | ➖ removed — `do_ai` prints "COMPUTER THINKING..." once instead (per-node dots cost ~10 ms each via the ECHO busy-wait) |
 | Undo (single-level via compact engine state save)   | ✅ — note: `H` (hint) consumes the slot |
 | **Perft (depth 1)** — returns 20 for initial pos    | ✅ pinned by `chess_engine_perft_smoke` ctest |
 | **Mode cycling (`M`)** — HvH / WAI / BAI / AvA in text variant | ✅ |
@@ -124,7 +125,7 @@ Helpers `find_min_attacker` and `see_estimate` are added; `is_pseudo_legal`,
 `do_list_moves`, `do_hint`) can enumerate legal moves without re-implementing
 move-gen.
 
-## Perft expected counts (for v0.2 self-test)
+## Perft reference counts
 
 From the standard test positions (https://www.chessprogramming.org/Perft_Results):
 

@@ -42,5 +42,9 @@ void tms_set_sprite_magnification(unsigned char m) {
 }
 
 void tms_clear_collisions(void) {
-    (void)tms_read_status();
+    /* Reading the status port clears the collision / 5th-sprite / frame flags.
+     * Store the result into tms_io_sink rather than casting to void: cc65 -Oirs
+     * ELIDES a volatile read whose value is discarded by (void), which silently
+     * turned this into a no-op (same trap fixed in gen2c via gen2_ss_sink). */
+    tms_io_sink = tms_read_status();
 }

@@ -23,12 +23,19 @@ ambiguity to resolve at runtime.
 | File | Role |
 |------|------|
 | `gfx.h` | card-neutral API + the backend contract |
-| `gfx_draw.c` | `gfx_line` / `gfx_rect` / `gfx_circle` / `gfx_ellipse` (shared) |
-| `gfx_num.c` | `gfx_utoa` / `gfx_itoa` / `gfx_hexstr` (shared string builders) |
+| `gfx_line.c` | `gfx_line` (shared geometry) |
+| `gfx_rect.c` | `gfx_rect` (shared geometry) |
+| `gfx_circle.c` | `gfx_circle` (shared geometry) |
+| `gfx_ellipse.c` | `gfx_ellipse` (shared geometry) |
+| `gfx_num_dec.c` | `gfx_utoa` / `gfx_itoa` (shared int→ASCII, decimal) |
+| `gfx_num_hex.c` | `gfx_hexstr` (shared int→ASCII, hex, divide-free) |
 | `gfx_backend_gen2.c` | GEN2 backend — wraps `gen2_hgr_plot/hline/vline`, 280×192 |
+| `gfx_backend_gen2_rect.c` | GEN2 `gfx_filled_rect` / `gfx_clear` — wraps `gen2_hgr_fill_pixrect` / `gen2_hgr_clear` (split out so a lines-only program dead-strips the fill path) |
 | `gfx_backend_tms.c` | TMS9918 backend — wraps `screen2_plot`, 256×192 |
+| `gfx_backend_tms_rect.c` | TMS9918 `gfx_filled_rect` / `gfx_clear` — wraps `screen2_filled_rect` / `screen2_clear` (same dead-strip split; `gfx_clear` ignores `color`, TMS bitmap clear is always 0) |
 
-Each program links **`gfx_draw.o` + `gfx_num.o` + exactly one backend**.
+Each program links **only the `gfx_*` modules it references (ld65 dead-strips
+the rest) + exactly one backend**.
 
 ## What stays per-card (deliberately NOT unified here)
 
@@ -48,32 +55,35 @@ The card libs now forward to `gfx_*`; their local copies are gone. The old
 public names are kept as thin wrappers, so existing programs compile unchanged —
 they just need `gfx-<card>.lib` on the link line now (see Build integration).
 
-1. **GEN2 — `dev/lib/gen2c/gen2.c`:** `gen2_hgr_line` / `gen2_hgr_rect` /
+1. **GEN2 — `dev/lib/gen2c/gen2_geom.c`:** `gen2_hgr_line` / `gen2_hgr_rect` /
    `gen2_hgr_circle` are one-line forwards to `gfx_line` / `gfx_rect` /
-   `gfx_circle` (pixel-identical — `gfx_draw.c` was ported verbatim from them);
-   the local `gen2_hgr_plot_clip` was removed (`gfx_circle` clips internally to
-   the same bounds). `gen2_hgr_putx` builds via `gfx_hexstr` then `gen2_hgr_puts`.
-   **Kept:** `gen2_hgr_hline` / `gen2_hgr_vline` (they ARE the backend) and the
-   asm `gen2_utoa` for `gen2_hgr_putu_field` (flicker-free HUD). **Added:**
-   `gen2_hgr_ellipse` → `gfx_ellipse` (new capability).
-2. **TMS — `dev/lib/tms9918c/screen2.c`:** `screen2_line` /
+   `gfx_circle` (pixel-identical — `gfx_line.c` / `gfx_rect.c` / `gfx_circle.c`
+   were ported verbatim from them); the local `gen2_hgr_plot_clip` was removed
+   (`gfx_circle` clips internally to the same bounds). `gen2_hgr_putx` builds via
+   `gfx_hexstr` then `gen2_hgr_puts`. **Kept:** `gen2_hgr_hline` / `gen2_hgr_vline`
+   (they ARE the backend) and the asm `gen2_utoa` for `gen2_hgr_putu_field`
+   (flicker-free HUD). **Added:** `gen2_hgr_ellipse` → `gfx_ellipse`.
+2. **TMS — `dev/lib/tms9918c/screen2_geom.c`:** `screen2_line` /
    `screen2_circle` / `screen2_ellipse_rect` forward to `gfx_line` / `gfx_circle`
    / `gfx_ellipse`; the local `kEllipseCos64/Sin64` tables, `math_abs`, and
-   `screen2_clamp_*` were removed (now in `gfx_draw.c`). Added `screen2_rect`
-   (outline → `gfx_rect`). `printlib.c` dec/hex route through `gfx_utoa` /
+   `screen2_clamp_*` were removed (now in `gfx_line.c` / `gfx_circle.c` /
+   `gfx_ellipse.c`). `printlib.c` dec/hex route through `gfx_utoa` /
    `gfx_hexstr` (the `pl_putc_fn` wrappers stay; hex is now minimal-width, which
    matches `printlib.h`'s documented "no leading zeros" contract).
-   `screen2_filled_rect` (in `screen_ext.c`) was rewritten as a byte-aligned fast
+   `screen2_filled_rect` (in `screen2_ext.c`) was rewritten as a byte-aligned fast
    fill (axis 1.5, done) — the TMS analogue of GEN2's `fill_pixrect`.
 
-**Cost note.** Because `gen2.c` / `screen2.c` are force-linked whole, forwarding
-pulls the referenced `gfx_*` modules into every program that links the card lib.
-On GEN2 that is ≈ **+1.5 KB/binary** (the `gen2_hgr_ellipse` wrapper always drags
-`gfx_ellipse`'s soft 16-bit mul/div + cos/sin tables; `gen2_hgr_putx` drags
-`gfx_num.o`, whose `gfx_utoa`/`itoa` soft-`/10` are dead in GEN2 since it keeps
-its asm `gen2_utoa`). Everything still fits (no ROM overflow). Splitting
-`gfx_hexstr` into its own module would recover the `gfx_num` part — tracked in
-`dev/TODO6502.md`.
+**Cost note.** When the card libs were monolithic (`gen2.c` / `screen2.c`),
+forwarding pulled the referenced `gfx_*` modules into every program. The
+per-family split (`gen2_geom.c` / `screen2_geom.c` as their own `.o`) now lets
+ld65 dead-strip the geometry forwards in a program that never draws vectors.
+On GEN2 the monolithic cost was ≈ **+1.5 KB/binary** (the `gen2_hgr_ellipse` wrapper always drags
+`gfx_ellipse`'s soft 16-bit mul/div + cos/sin tables; `gen2_hgr_putx` dragged the
+decimal soft-`/10` of `gfx_utoa`/`itoa`, which are dead in GEN2 since it keeps
+its asm `gen2_utoa`). Splitting `gfx_hexstr` into its own divide-free module
+(`gfx_num_hex.c`, separate from `gfx_num_dec.c`) recovered that part: `gen2_hgr_putx`
+now drags only `gfx_num_hex.c` and leaves the decimal soft-`/10` dead-stripped.
+Everything still fits (no ROM overflow).
 
 **Behaviour.** GEN2 output is pixel-identical (verbatim ports). On TMS,
 `gfx_line`/`gfx_circle` are the GEN2-derived Bresenham variant (not screen2's
@@ -92,14 +102,14 @@ make -C dev/lib/gfx clean
 ```
 
 **Why an archive, not a list of `.c` on the link line.** `ld65` pulls only the
-modules a program *references* out of a `.lib`. Until the destructive rewiring
-lands (`gen2.c` / `screen2.c` forwarding to `gfx_*`), nothing references
-`gfx_line`/`gfx_circle`/`gfx_utoa`/…, so linking `gfx-<card>.lib` adds **0 bytes**
-(measured: `GEN2Snake.bin` and the videocard `demo.bin` are byte-identical with
-vs without the lib on their link line). Force-listing the `.c` sources instead
-force-links the whole layer — **+2888 bytes** of dead code (cc65's soft
-mul/divide for the ellipse + `gfx_num`). So the archive is the only *purely
-additive* way to wire gfx into a size-sensitive build path before rewiring.
+modules a program *references* out of a `.lib`. The card libs now forward to
+`gfx_*` (see Rewiring below), so a program references exactly the `gfx_*` modules
+its draw calls reach and ld65 dead-strips the rest. Force-listing the `.c` sources
+instead force-links the whole layer — **+2888 bytes** of dead code (cc65's soft
+mul/divide for the ellipse + `gfx_num`). The per-family split (`gfx_num_hex.c`
+separate from `gfx_num_dec.c`; `gfx_backend_*_rect.c` separate from the line
+backend) keeps a lines-only or hex-only program from dragging the decimal
+soft-`/10` or the fill path.
 
 To wire a program:
 
@@ -129,7 +139,9 @@ Compile-verified 2026-06-16 (cc65 6502, Homebrew):
   `gen2_hgr_plot`/…) and against the TMS runtime (`screen2.c` → `screen2_plot`),
   with no unresolved or duplicate symbols.
 
-Still open (the *destructive* rewiring — separate TODO items, NOT done here):
-swap `gen2_hgr_line`/`screen2_line` bodies to forward to `gfx_*` and run
-`tools/test_gfx_regress.py` to confirm pixel-identical output, then `ctest -R gfx`
-plus the `gen2_*` / `tms9918_*` smokes stay green.
+Done (2026-06-17): `gen2_hgr_line` / `gen2_hgr_rect` / `gen2_hgr_circle` /
+`gen2_hgr_ellipse` (in `gen2_geom.c`) and `screen2_line` / `screen2_circle` /
+`screen2_ellipse_rect` (in `screen2_geom.c`) now forward to `gfx_*`; the gen2c and
+tms9918c demos link `gfx-<card>.lib` and the `make -C dev/projects` gate is green.
+When touching the shared geometry, re-run `tools/test_gfx_regress.py` (pixel-identical
+output) and `ctest -R gfx` plus the `gen2_*` / `tms9918_*` smokes.

@@ -176,8 +176,12 @@ void main(void)
    JSRs adds cycles and bytes. Prefer `#define` macros or `static`
    helpers (cc65 may inline tiny `static`s under `-Oirs`).
 4. **ld65 strips by `.o`, not by function.** A text-only demo that drags
-   in `gen2.c` (when it was one big file) used to pull pixel + blit +
-   lores. Use the per-family Makefile variables.
+   in the old monolithic `gen2.c` used to pull pixel + blit + lores.
+   That runtime is now split into per-family modules — `gen2_init.c`,
+   `gen2_pixel.c`, `gen2_rect.c`, `gen2_text.c`, `gen2_sprites.c`,
+   `gen2_geom.c`, `gen2_lores.c`, plus the hot `gen2_blit.s` (see
+   `dev/lib/gen2c/gen2c.mk`) — so you link only the families you use.
+   Use the per-family Makefile variables.
 5. **Soft-switch reads must STORE, not (void)-cast.** cc65 `-Oirs`
    elides a `(void)volatile_read`. `gen2.h`'s macros use `gen2_ss_sink`
    so the read survives. Roll your own macro the wrong way and you'll

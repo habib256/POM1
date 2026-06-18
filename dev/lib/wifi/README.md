@@ -102,8 +102,8 @@ In your project Makefile:
 
 The Wi-Fi Modem must be plugged. POM1 presets:
 
-- `--enable wifi` — Wi-Fi Modem alone
-- `--enable wifi` — adds the modem to any other preset
+- `--enable wifi` plugs the modem on top of whatever preset is active
+  (there is no dedicated Wi-Fi preset).
 
 POM1 implements only desktop builds; WASM stubs return `NO CARRIER`.
 

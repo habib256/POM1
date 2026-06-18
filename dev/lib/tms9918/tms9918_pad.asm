@@ -9,16 +9,14 @@
 ;   JSR + RTS  = 12 cycles in 3 bytes at the call site, helper itself = 1 byte
 ;                (ratio 4 c/B at the call site — twice as dense as NOP)
 ;
-; **Hardened contract (May 2026 v2)**: the silicon-strict floor is now 40
-; cycles (was 24, originally 16). Real silicon's "1 slot per 16 VDP cycles"
-; worst case is the underlying spec, but at warm-NMOS phase corners and with
-; CPU↔VDP drift the visible window shrinks past 24c — Galaga sprite tables
-; still corrupted at 24c and LOGO BIRD/Demo* turtle redraws still showed
-; pixel artefacts. The pad40 helper delivers a 40c idle at the call site
-; (call-site density 6.67 c/B), so back-to-back STA VDP_DATA pairs land with
-; a 48c gap — well over the slot period at any phase alignment.
+; **Active contract**: the libs pad to 12 cycles (JSR tms9918_pad12). With the
+; STA on each side that is a 4 + 12 + 4 = 20c gap between back-to-back
+; STA VDP_DATA, comfortably above real silicon's "1 slot per 16 VDP cycles"
+; worst case — 12c is sufficient (see tms9918.inc). pad24 / pad40 remain
+; available for hot paths that want extra headroom, but they are NOT the floor:
+; the WRT_DATA_* macros in tms9918.inc and the lib code all use pad12.
 ;
-; Reference: dev/Programming_TMS9918.md §17 Bug N°1 (paranoid 40c contract).
+; Reference: dev/Programming_TMS9918.md §17, dev/lib/tms9918/tms9918.inc.
 ; ============================================================================
 
 .include "tms9918.inc"

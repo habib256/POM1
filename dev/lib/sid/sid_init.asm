@@ -22,7 +22,7 @@ sid_init:
         LDX     #29
         LDA     #$00
 @zr:    DEX
-        STA     $C800,X         ; first iter writes $C81C; last writes $C800
+        STA     SID_BASE,X      ; first iter writes $C81C; last writes $C800
         BNE     @zr             ; DEX set Z when X reached 0
 
         ; Master volume = $0F (max), no filter routing.

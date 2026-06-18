@@ -10,8 +10,8 @@
 ;     .include "prng8.asm"
 ;
 ;   random  -- 8-bit shift LFSR, polynomial $2D.
-;              Returns A = new prng_lo. Side-effect: advances prng_lo,
-;              shifts prng_hi (does not store back to prng_hi).
+;              Returns A = new prng_lo. Side-effect: advances prng_lo
+;              and shifts prng_hi (ROL prng_hi writes it back).
 ;              Caller must seed the state to nonzero somewhere — zeroed
 ;              state stays zero forever.
 ; ============================================================================

@@ -126,8 +126,10 @@ text_blit_glyph:
 
 ; ============================================================================
 ; charmap_table: 1024-byte 8x8 monochrome ASCII font, lifted verbatim
-;   from roms/charmap.rom. Format: 1 byte per row, MSB = leftmost pixel,
-;   8 rows per glyph, 128 glyphs (codes 0..127). Local label (not
+;   from roms/charmap.rom. Format: 1 byte per row, LSB = leftmost pixel
+;   (Apple-1 native order; the upload bit-reverses on the fly because the
+;   TMS9918 reads bit 7 = leftmost), 8 rows per glyph, 128 glyphs (codes
+;   0..127). Local label (not
 ;   exported) -- callers blit through the API, not through direct font
 ;   reads.
 ; ============================================================================

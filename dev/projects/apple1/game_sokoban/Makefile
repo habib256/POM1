@@ -5,6 +5,9 @@ CFG      ?= apple1_sok_4k.cfg
 LOAD_CFG := $(CFG)
 OUT_DIR  := ../../../../software/Apple-1 games
 LIB      := -I ../../../lib/apple1 -I ../../../lib/games/sokoban
+# Canonical Sokoban.txt tracks the default 4K variant; emit_Sokoban_txt.py
+# hardcodes apple1_sok_4k.cfg so `make` stays reproducible regardless of CFG=.
+EMIT_TXT := 1
 
 # Boot-smoke: load headless via the Terminal Card, assert the title prints.
 TEST_CMD := python3 ../../../../tools/test_game_smoke.py --pom1 ../../../../build/POM1 --bin "$(OUT_DIR)/$(PROJECT).bin" --addr 0x0280 --expect "SOKOBAN"

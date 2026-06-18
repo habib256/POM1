@@ -10,13 +10,15 @@ card** (280×192 HIRES) — and it reports its state live over POM1's
 
 ## What it does
 
-- Draws the snake, the food and a border on the GEN2 HIRES screen, with the
-  score printed via the Beautiful Boot font (`gen2_hgr_putu`).
-- **Telemetry:** at startup it emits a **schema frame** declaring exactly four
-  fields — `head_x:U8`, `head_y:U8`, `length:U8`, `alive:BOOL` — then a
-  **data frame** `[head_x, head_y, length, alive]` every game tick. It runs in
-  **FREE-RUN** (no lock-step), so the game plays live and the UI shows state in
-  real time.
+- Draws the snake, the food and the top/bottom walls on the GEN2 HIRES screen,
+  with the score printed top-right via the flicker-free `gen2_hgr_putu_field`
+  HUD renderer (Beautiful Boot font) and a cycling-colour "HGR Snake" label
+  top-left.
+- **Telemetry:** at startup it emits a **schema frame** declaring exactly five
+  fields, in order — `head_x:U8`, `head_y:U8`, `length:U8`, `alive:BOOL`,
+  `score:U16` — then a **data frame** `[head_x, head_y, length, alive, score]`
+  every game tick. It runs in **FREE-RUN** (no lock-step), so the game plays
+  live and the UI shows state in real time.
 - **Controls:** `WASD` *and* `ZQSD` (both layouts) set the heading; 180° reversal
   is forbidden. A test harness can also drive the snake by pushing a direction
   byte to `TELE_IN`: `1`=up, `2`=down, `3`=left, `4`=right.
@@ -27,14 +29,17 @@ card** (280×192 HIRES) — and it reports its state live over POM1's
 
 The 280×192 screen is an **8×8-pixel cell grid: 35 columns (0..34) × 24 rows
 (0..23)** — cell `(cx, cy)` lives at pixel `(cx*8, cy*8)`. Each snake segment is
-a solid **6×6 block** inside its cell (1px gap on the right/bottom for grid
-readability); the food is a 6×6 **diamond** so it reads differently. A 1px white
-border rings the field; the playable cells are `1..33 × 1..22`.
+a solid white **6×6 block** inside its cell (1px gap on the right/bottom for grid
+readability). The apple is a solid **red disk** (orange — HIRES's warmest tone),
+and every few apples a time-limited **green bonus gem** appears for extra points.
+Only the **top and bottom walls** exist (1px rules); the left/right sides are
+**open**, so the snake **wraps horizontally** edge to edge. Rows 0–1 above the
+top wall hold the score HUD; the playable rows are `TOP_WALL+1 .. ROWS-2`.
 
 ## Build
 
 ```bash
-make -C dev/projects/gen2_snake_telemetry
+make -C dev/projects/gen2c/game_snake_telemetry
 # -> software/Telemetry/GEN2Snake.bin (+ GEN2Snake.txt, Wozmon hex), origin $6000
 ```
 
@@ -47,7 +52,7 @@ shared `apple1c` text/keyboard base + `dev/lib/telemetry/telemetry.h`).
 **DevBench → POM1 Bench → Examples → *Snake telemetry*** — target = **C / GEN2
 HGR**. The example selects preset 11 (GEN2 plugged) and runs from `$6000`. Open
 the **DevBench → Telemetry Side Channel** window (or the Bench *Serial Monitor*)
-to watch the decoded **named** table: `head_x`, `head_y`, `length`, `alive`.
+to watch the decoded **named** table: `head_x`, `head_y`, `length`, `alive`, `score`.
 
 Headless, with a harness:
 
@@ -60,7 +65,7 @@ build/POM1 --headless --telemetry-port 6602 --preset 11 \
 from pom1_telemetry import launch_headless
 with launch_headless("software/Telemetry/GEN2Snake.bin",
                      load_addr=0x6000, port=6602, extra=["--preset", "11"]) as tc:
-    st = tc.read_named()              # {"head_x":.., "head_y":.., "length":.., "alive":True}
+    st = tc.read_named()              # {"head_x":.., "head_y":.., "length":.., "alive":True, "score":..}
     tc.send(b"\x04")                  # steer right (1=up 2=down 3=left 4=right)
     st = tc.read_named()
 ```
@@ -75,4 +80,4 @@ with launch_headless("software/Telemetry/GEN2Snake.bin",
 | Apple-1 text/keyboard C base | `dev/lib/apple1c/apple1io.h` |
 | Python harness (schema decode) | `tools/pom1_telemetry.py` |
 
-Protocol + schema-frame spec: [`doc/TELEMETRY_SIDE_CHANNEL.md`](../../../doc/TELEMETRY_SIDE_CHANNEL.md).
+Protocol + schema-frame spec: [`doc/TELEMETRY_SIDE_CHANNEL.md`](../../../../doc/TELEMETRY_SIDE_CHANNEL.md).

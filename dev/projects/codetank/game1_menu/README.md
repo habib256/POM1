@@ -3,16 +3,16 @@
 *[← POM1 documentation index](../../../../doc/README.md)*
 
 256-byte launcher that lives at the start of the CodeTank lower 16 kB
-bank (`$4000-$40FF`). Lets the user pick between four games packed into
+bank (`$4000-$40FF`). Lets the user pick between three games packed into
 the same bank:
 
     $4100  TMS_A1GALAGA
-    $5E00  TMS_SOKOBAN
-    $7100  TMS_SNAKE
-    $7A00  TMS_LIFE
+    $6200  TMS_SOKOBAN
+    $7600  TMS_SNAKE
 
-Tetris lives in the *upper* bank — flip the CodeTank board jumper to
-"Upper" then `4000R` to launch it via `tms9918_tetris_loader`.
+TMS_LOGO V2.6 (turtle interpreter REPL) lives in the *upper* bank — flip
+the CodeTank board jumper to "Upper" then `4000R` to launch it. Life
+moved to its own cartridge (`Codetank_GAME3.rom`).
 
 The menu only touches `$D010/$D011/$D012` and the JMP target — no RAM
 use, no other cards required besides the TMS9918 (which the games need).
@@ -42,7 +42,7 @@ By hand:
 
 ## Run in POM1
 
-1. POM1 → Presets → **7** (TMS9918 + CodeTank).
+1. POM1 → Presets → **9** (TMS9918 + CodeTank).
 2. CodeTank board jumper = Lower; the menu ships in `roms/codetank/Codetank_GAME1.rom` (lower half).
 3. Wozmon `\` prompt: type `4000R`.
 

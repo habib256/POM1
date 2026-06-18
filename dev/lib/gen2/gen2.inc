@@ -3,7 +3,7 @@
 ; ============================================================================
 ; Hardware reference: doc/reference/ColorGraphicsCard_doc_for_Arnaud.pdf, transcribed
 ; in doc/GEN2_RELEASE_questions.md (Q1-Q10 resolved). Developer guide:
-; doc/GEN2_RELEASE.md. Reference implementation: dev/projects/a1_crazycycle/.
+; doc/GEN2_RELEASE.md. Reference implementation: dev/projects/gen2/demo_a1_crazycycle/.
 ;
 ; THE ONE RULE THAT IS DIFFERENT FROM THE APPLE II: the soft switches are
 ; READ-ONLY. A read of a decoded location toggles the addressed switch AND

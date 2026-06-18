@@ -220,4 +220,4 @@ exit_to_wozmon:
         JSR tms9918_pad12
         JSR disable_sprites
         LDA KBD                   ; drain ESC
-        JMP $FF00
+        JMP WOZMON

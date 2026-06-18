@@ -9,6 +9,10 @@
 volatile unsigned char *const VDP_DATA = (volatile unsigned char *)0xCC00u;
 volatile unsigned char *const VDP_REG  = (volatile unsigned char *)0xCC01u;
 
+/* Sink for observed status-port reads (TMS_IO_DELAY / tms_clear_collisions).
+ * See utils.h for the cc65 -Oirs volatile-read-elision rationale. */
+volatile unsigned char tms_io_sink;
+
 unsigned char tms_regs_latch[8];
 unsigned char tms_cursor_x;
 unsigned char tms_cursor_y;

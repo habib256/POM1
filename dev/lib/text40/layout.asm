@@ -1,9 +1,11 @@
 ; ============================================================================
 ; layout.asm -- QWERTY/AZERTY keyboard layout selector for WASD-style games
 ; ============================================================================
-; Promoted from inline copies in 6+ projects (games_sokoban, hgr_sokoban,
-; tms9918_sokoban, tms9918_snake, tms9918_galaga, tms9918_connect4 — all
-; with the same 17-line dispatch). Two entry points:
+; Models the WASD-layout dispatch inlined in 6+ projects (the apple1 / gen2 /
+; tms9918 Sokoban variants, tms9918 Snake / Galaga, Connect 4 — same ~17-line
+; pattern). STATUS: not yet adopted — those projects still carry inline copies;
+; a future migration will replace each with `.include "layout.asm"`. Two entry
+; points:
 ;
 ;   prompt_wasd_layout -- print the canned " 1=QWERTY  2=AZERTY" prompt
 ;                         then run select_wasd_layout. Use when the

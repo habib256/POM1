@@ -9,6 +9,9 @@
 
 #include "utils.h"
 
+/* NOTE: this runtime's woz_mon() jumps $FF1F — the silent warm-restart, no "\"
+ * prompt — unlike dev/lib/apple1c and dev/lib/gen2c whose woz_mon() jumps $FF1A
+ * and prints the prompt. Same API name, intentionally different return UX. */
 #define WOZMON    0xFF1FU
 #define ECHO      0xFFEFU
 #define PRBYTE    0xFFDCU

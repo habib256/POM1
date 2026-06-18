@@ -37,7 +37,7 @@ Agent-facing playbook for writing **new Apple 1 software** that runs under POM1.
 | **Prefer C?** Sprite/tile game | C + TMS9918 | Graphics I/II | `dev/lib/tms9918c/cc65/codetank_c.cfg` + `dev/lib/tms9918c/` |
 
 > **Writing in C?** All three C targets share one card-neutral Apple-1
-> text/keyboard base (`dev/lib/apple1c/` — `woz_puts` / `woz_getkey` / `woz_mon`),
+> text/keyboard base (`dev/lib/apple1c/` — `woz_puts` / `apple1_getkey` / `woz_mon`),
 > with the graphics runtime (`gen2c` for GEN2, the videocard-lib for TMS9918)
 > layered on top. Full guide: [`Programming_Apple1_C.md`](Programming_Apple1_C.md).
 
@@ -297,7 +297,7 @@ Full example: `tools/test_sdcard_subdir_navigation_telnet.py`.
 |---|---|
 | microSD + Applesoft + telnet, MAX speed | `./POM1 --preset 8 --terminal --cpu-max` |
 | Load + run + drive | `./POM1 -p 4 --terminal --load 0300:prog.bin --run 0300 --paste keys.txt` |
-| Swap cards | `./POM1 -p 12 --disable hgr --enable sid --sid-chip 8580 --speed 34091` |
+| Swap cards | `./POM1 -p 11 --disable hgr --enable sid --sid-chip 8580 --speed 34091` |
 | Seed microSD fixture | `./POM1 -p 8 --sd-mkdir BASIC --sd-put host/PROG#F80801:BASIC/PROG#F80801` |
 | Capture SID to `.wav` | `./POM1 --enable sid --rec --save-tape /tmp/out --save-tape-format wav` |
 | Step + BRK trace | `./POM1 -p 3 --trace-brk --step 10` |
@@ -348,7 +348,7 @@ Add a C++ test in `tests/`. Template: `tests/peripheral_bus_smoke_test.cpp` — 
 | SID from C64 conversion | `python3 tools/sid2apple1.py Music.sid` |
 | RTC / sensors | `dev/projects/plab/io_rtc_clock/RtcClock.asm` |
 | Shared logic across modes | `dev/lib/games/sokoban/sokoban_*.inc` (mode-neutral routines), `dev/lib/games/chess/chess_engine.asm` (separately-linked engine .o) |
-| Separately-linked engine module | `dev/lib/games/chess/chess_engine.asm` + per-variant Makefile linking 3 `.o` (text/TMS9918/HGR all share the same `chess_engine.o`) |
+| Separately-linked engine module | `dev/lib/games/chess/chess_engine.asm` — renderer-agnostic engine `.o`; currently ships a text variant only (the HGR / TMS9918 front-ends are historical, not in-tree) |
 | Algebraic move parser | `dev/lib/games/chess/chess_text_io.asm` (parses 4-5 char input like `E2E4`, `E7E8Q`) |
 | New linker config | `dev/cc65/apple1_4k.cfg` (4 096 B, code @ `$0280`) / `apple1_gen2.cfg` (4 096 B, code @ `$E000`, HGR fb `$2000-$3FFF` reserved) / `pom1_fantasy.cfg` (Multiplexing Fantasy preset) |
 

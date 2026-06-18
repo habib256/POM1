@@ -9,10 +9,11 @@ build, so the level encoding is deliberately neutral.
 ## Files
 
 - **`sokoban_common.inc`** — shared cell encoding, ZP slot equates,
-  level-buffer layout. Assumes the caller defines a `LEVELBUF` zeropage segment
-  (see `dev/cc65/` linker configs that reserve it).
+  level-buffer layout. Expects the caller to define `LEVEL_BUF` — the absolute
+  address of a >=240 byte scratch buffer (not a zeropage segment).
 - **`sokoban_levels.inc`** — base level pack (Microban-style packing).
-- **`sokoban_levels_ext.inc`** — extended level pack.
+- **`sokoban_levels_ext.inc`** — extended level pack. Not currently linked by
+  any project (kept for reference).
 
 ## Use
 

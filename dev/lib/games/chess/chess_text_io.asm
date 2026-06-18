@@ -323,11 +323,6 @@ read_player_move:
         JSR ECHO
         JMP @c5
 
-        ; Trampoline for the early-exit @bad path (BCS branches above
-        ; otherwise overshoot the ±127 byte branch range).
-@bad_tr:
-        JMP @bad
-
         ; --- char 5: promotion piece (Q R B N), only reached if needed ---
 @c5:    JSR wait_key
         CMP #'Q'

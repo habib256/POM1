@@ -16,6 +16,9 @@
 .ifndef _SID_INC_LOADED_
 _SID_INC_LOADED_ = 1
 
+; --- Card base address -----------------------------------------------------
+SID_BASE        = $C800     ; first register of the A1-SID window
+
 ; --- Voice 1 ($C800 + 0..6) ------------------------------------------------
 SID_V1_FREQLO   = $C800     ; 16-bit frequency, low byte
 SID_V1_FREQHI   = $C801     ; 16-bit frequency, high byte

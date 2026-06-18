@@ -185,7 +185,7 @@ exit_to_wozmon:
         LDA #$81                  ; cmd = $80 | reg-1
         STA VDP_CTRL
         LDA KBD                   ; drain ESC
-        JMP $FF00
+        JMP WOZMON
 
 
 ; ----------------------------------------------------------------------------

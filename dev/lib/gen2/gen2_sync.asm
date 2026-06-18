@@ -2,7 +2,7 @@
 ; gen2_sync.asm -- HST0 beam synchronisation for the GEN2 release card
 ; ============================================================================
 ; Reusable extraction of the sync engine proven in
-; dev/projects/a1_crazycycle/A-1-CrazyCycle.asm (the GEN2 validation demo).
+; dev/projects/gen2/demo_a1_crazycycle/A-1-CrazyCycle.asm (the GEN2 validation demo).
 ; Provides two JSR-able routines:
 ;
 ;   gen2_waitvbl    Coarse V-blank sync. Returns shortly after V-blank

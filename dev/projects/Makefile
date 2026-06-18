@@ -18,7 +18,10 @@
 # builds POM1 first so the wired tests actually exercise it.
 
 # Projects are grouped by card: dev/projects/<card>/<project>/Makefile.
-PROJECTS := $(sort $(patsubst %/,%,$(dir $(wildcard */*/Makefile))))
+# The three copy-me starters (dev/_template*/) are folded in too so the CI gate
+# catches them if their relative paths ever drift (a broken template used to slip
+# through because it sat outside this glob).
+PROJECTS := $(sort $(patsubst %/,%,$(dir $(wildcard */*/Makefile ../_template*/Makefile))))
 
 .PHONY: all test clean list
 

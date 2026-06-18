@@ -744,13 +744,8 @@ slide_check:
         LDX #$00
 @dloop:
         ; Load offset for direction X.
-        STX tmp2                ; preserve dir index
-        LDA ce_dir_ptr
-        STA tmp
-        LDX tmp2
-        ; tmp = base ptr low byte; we read tables[base + X] inline
-        ; Use indirect-Y via a built pointer at zp.
-        ; Simpler: hard-fork by table.
+        STX tmp2                ; preserve dir index across the @step walk (TAX below)
+        ; Read tables[base + X] directly, forking by table low byte.
         LDA ce_dir_ptr
         CMP #<bishop_offsets
         BEQ @use_bishop

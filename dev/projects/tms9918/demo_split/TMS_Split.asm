@@ -221,7 +221,7 @@ do_exit:
         JSR disable_sprites
         ; Drain ESC keystroke so Wozmon doesn't see it as input
         LDA KBD
-        JMP $FF00
+        JMP WOZMON
 
 ; ----------------------------------------------------------------------------
 ; Palette tables. TMS9918 colour byte = (FG << 4) | BG.

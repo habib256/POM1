@@ -82,51 +82,12 @@ point multiply that adds its own `mul_res1..3` accumulator slots),
 `umul4` is used by `shadowcast.asm` for its slope
 cross-multiplications.
 
-## shadowcast.asm — recursive shadowcasting field-of-view
+## shadowcast.asm + dungeon.asm — moved to lib/games/rogue
 
-Display-agnostic Björn Bergström FOV (RogueBasin 2002) for grid-based
-games: roguelikes, stealth, board games with line-of-sight. Partitions
-the plane around the player into 8 octants and processes each one
-recursively, narrowing the visible cone every time a wall is encountered.
-Result: mathematically symmetric FOV, no slope artifacts, no coverage
-holes.
-
-| Symbol               | Description                                            |
-|----------------------|--------------------------------------------------------|
-| `shadowcast_octants` | Cast FOV from `(player_col, player_row)` over 8 octants|
-
-The lib walks an abstract 1-byte-per-cell map; the caller wires up two
-callbacks (`mark_visible_at_cur` and `is_opaque_at_cur`) and supplies
-the grid dimensions as `SHADOW_COLS` / `SHADOW_ROWS` constants. All
-slope numerators / denominators stay in `0..2*radius+1 ≤ 15`, so slope
-comparisons go through `umul4` (caller must `.include "multiply.asm"`
-first). Recursion depth ≤ radius (≤ 7 typical), ~11 bytes of frame per
-level on the hardware stack — peak ~80 bytes, fits comfortably.
-
-Reserves its own ZP slots `oct_xx/xy/yx/yy`, `oct_idx`, `cast_depth/col/
-blocked/start_n,d/end_n,d/save_n,d/lslope_n,d/rslope_n,d/xprod` via
-`.ifndef cast_depth` guard. `cur_x/cur_y` are gated by a separate
-`.ifndef cur_x` guard so callers that already use them as scratch (e.g.
-the rogue's dagger-throw animation) can pre-declare them.
-
-Used by `tms9918_rogue`. See its `compute_fov` wrapper for the canonical
-4-phase setup (pick radius, wipe vis_buffer, light player cell,
-`JSR shadowcast_octants`, post-pass).
-
-## dungeon.asm — procedural dungeon-gen primitives
-
-Today: just `rand_mod` (uniform `[0, max)` PRNG wrapper around
-`prng16`). The bigger BSP-light pattern from `tms9918_rogue` (room
-placement, L-corridor with marker tiles, neighbour-based door
-classification, three-pass corridor finalisation) stays inline in the
-project because it bakes in 16-wide grid math (`AND #$0F` + `LSR×4`
-for index → (col, row)) and tile codes. Promotion will land here when
-a second rogue / dungeon-crawler shows up — see the lib's header for
-the shopping list of parametrisations.
-
-| Symbol     | Description                                                  |
-|------------|--------------------------------------------------------------|
-| `rand_mod` | A = max → A in `[0, max)`. Clobbers `tmp`; calls `prng16`.   |
+The recursive shadowcasting FOV (`shadowcast.asm`) and the procedural
+dungeon-gen primitives (`dungeon.asm`) now live in `dev/lib/games/rogue/`;
+include them with `-I ../../lib/games/rogue`. See that directory's README
+for the API and ZP usage.
 
 ## prng16.asm — 16-bit Galois LFSR ($B400 tap)
 

@@ -255,14 +255,15 @@ the right NOP padding between consecutive `STA VDP_DATA`:
 
 ```asm
 ; A already loaded with the byte to push (typical loop body).
-WRT_DATA_REG     ; expands to: STA VDP_DATA / NOP / NOP
+WRT_DATA_REG     ; expands to: STA VDP_DATA / JSR tms9918_pad12
 
 ; Or load-immediate then push.
-WRT_DATA_VAL #$AA  ; expands to: LDA #$AA / STA VDP_DATA / NOP
+WRT_DATA_VAL #$AA  ; expands to: LDA #$AA / STA VDP_DATA / JSR tms9918_pad12
 ```
 
-Both leave ≥ 8 cycles between the previous `STA VDP_DATA` and the next,
-which matches the worst-case window in Graphic I + sprites. Use them in
+Both append a 12-cycle pad (a 4 + 12 + 4 = 20c gap between back-to-back
+`STA VDP_DATA`), comfortably above the worst-case window in Graphic I +
+sprites. Callers must `.import tms9918_pad12`. Use them in
 new code; for an existing project, the patching playbook
 ([`dev/Programming_TMS9918.md`](../../Programming_TMS9918.md) §25) covers
 mechanical NOP insertion across all back-to-back VDP stores. Reference

@@ -76,7 +76,7 @@ output one-for-one.
   the table approach. (jblang's auto-detect Z80/Z180 split runs ~3×
   faster on Z180; not relevant here.)
 - BDOS strings / Z180 register save-restore. Replaced by Wozmon ECHO
-  for the boot greeting and a clean `JMP $FF00` on ESC.
+  for the boot greeting and a clean `JMP WOZMON` on ESC.
 - Real-time keypress polling inside the iteration loop. We poll only
   between cells (~64 pixels apart, fast enough for ESC to feel
   responsive).

@@ -1,6 +1,6 @@
 # _template — minimal Apple-1 "hello world" (copy me)
 
-*[← POM1 documentation index](../../../doc/README.md)*
+*[← POM1 documentation index](../../doc/README.md)*
 
 The smallest useful Apple-1 program, in both **assembly** and **C**. Copy this
 whole folder, rename, and start editing. Sorts to the top of `dev/projects/`
@@ -15,8 +15,8 @@ make                    # -> ../../../software/Apple-1 demos/Hello.bin
 By hand:
 
 ```bash
-ca65 -I ../../lib/apple1 Hello.asm -o Hello.o
-ld65 -C ../../cc65/apple1_4k.cfg Hello.o -o Hello.bin
+ca65 -I ../lib/apple1 Hello.asm -o Hello.o
+ld65 -C ../cc65/apple1_4k.cfg Hello.o -o Hello.bin
 ```
 
 Run in POM1: **File > Load Memory > Hello.bin**, then `280R`.
@@ -24,8 +24,8 @@ Run in POM1: **File > Load Memory > Hello.bin**, then `280R`.
 ## C (`hello.c`)
 
 ```bash
-cl65 -t none -Oirs -C ../../cc65/apple1_c.cfg -I ../../lib/apple1c \
-     hello.c ../../lib/apple1c/apple1io.c ../../lib/apple1c/apple1io_asm.s \
+cl65 -t none -Oirs -C ../cc65/apple1_c.cfg -I ../lib/apple1c \
+     hello.c ../lib/apple1c/apple1io.c ../lib/apple1c/apple1io_asm.s \
      -o hello.bin
 ```
 

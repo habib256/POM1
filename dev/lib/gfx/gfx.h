@@ -61,7 +61,7 @@ extern const unsigned      gfx_width;     /* 280 (GEN2) / 256 (TMS9918) */
 extern const unsigned char gfx_height;    /* 192 on both                */
 
 /* ===========================================================================
- * Shared geometry (gfx_draw.c) — implemented ONCE, used by both cards.
+ * Shared geometry (gfx_line/rect/circle/ellipse.c) — implemented ONCE, used by both cards.
  * ===========================================================================
  * All endpoints inclusive. */
 
@@ -83,7 +83,7 @@ void gfx_circle(unsigned xc, unsigned char yc, unsigned char r);
 void gfx_ellipse(unsigned x0, unsigned char y0, unsigned x1, unsigned char y1);
 
 /* ===========================================================================
- * Shared integer -> ASCII (gfx_num.c) — STRING BUILDERS only.
+ * Shared integer -> ASCII (gfx_num_dec/hex.c) — STRING BUILDERS only.
  * ===========================================================================
  * These produce a NUL-terminated string; they do NOT draw. Each card draws the
  * result its own way (GEN2: gen2_hgr_puts at a pixel; TMS9918: screen_putc at a

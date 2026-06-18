@@ -3,6 +3,7 @@ PROJECT  := Connect4
 LOAD_CFG := ../../../cc65/apple1_4k.cfg
 OUT_DIR  := ../../../../software/Apple-1 games
 LIB      := -I ../../../lib/apple1
+EMIT_TXT := 1            # regenerate the canonical Wozmon-hex Connect4.txt
 
 # Boot-smoke: load headless via the Terminal Card, assert the title prints.
 TEST_CMD := python3 ../../../../tools/test_game_smoke.py --pom1 ../../../../build/POM1 --bin "$(OUT_DIR)/$(PROJECT).bin" --addr 0x0280 --expect "CONNECT 4"

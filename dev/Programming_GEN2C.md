@@ -24,7 +24,7 @@ into your cc65 program.
 
 ```c
 #include "gen2.h"
-#include "apple1io.h"
+#include "apple1c.h"    /* umbrella header (aliases apple1io.h); gen2.h already pulls it in */
 void main(void) {
     gen2_hgr_init();                       /* graphics+hires+page1+full */
     gen2_hgr_clear(0);                      /* black */

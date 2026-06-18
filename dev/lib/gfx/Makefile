@@ -3,8 +3,8 @@
 #
 # Output = two cc65 LIBRARY ARCHIVES (ar65), one per video card:
 #
-#   gfx-gen2.lib = gfx_draw + gfx_num + gfx_backend_gen2   (GEN2 HGR,   280x192)
-#   gfx-tms.lib  = gfx_draw + gfx_num + gfx_backend_tms    (TMS9918 bm, 256x192)
+#   gfx-gen2.lib = gfx geometry (line/rect/circle/ellipse) + gfx_num (dec/hex) + gfx_backend_gen2   (GEN2 HGR,   280x192)
+#   gfx-tms.lib  = gfx geometry (line/rect/circle/ellipse) + gfx_num (dec/hex) + gfx_backend_tms    (TMS9918 bm, 256x192)
 #
 # WHY AN ARCHIVE (not a list of .o on the link line). ld65 pulls only the
 # modules a program actually references out of a .lib. Until the destructive

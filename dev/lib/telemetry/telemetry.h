@@ -1,10 +1,13 @@
 /*
  * telemetry.h — C companion to telemetry.inc for POM1's telemetry side channel.
  *
- * Header-only (cc65, C89-friendly): every helper is a `static` inline-ish
- * function so a C program can emit telemetry frames with the same register
- * window the asm macros drive ($C440-$C443). Mirrors dev/lib/telemetry/
- * telemetry.inc byte-for-byte. Full design: doc/TELEMETRY_SIDE_CHANNEL.md.
+ * Header-only (cc65, C89-friendly): the trivial register pokes are function-like
+ * MACROS (cc65 has no inliner and rejects `static inline`, so a plain `static`
+ * function would cost a JSR + cc65 parameter setup per one-instruction call —
+ * see dev/lib/tms9918c/README.md). The two multi-statement helpers (tele_put16,
+ * tele_field) stay as `static` functions. All drive the same register window the
+ * asm macros use ($C440-$C443). Mirrors dev/lib/telemetry/telemetry.inc
+ * byte-for-byte. Full design: doc/TELEMETRY_SIDE_CHANNEL.md.
  * Python harness: tools/pom1_telemetry.py.
  *
  * ----------------------------------------------------------------------------
@@ -75,36 +78,43 @@
 #define TELE_T_BOOL     5       /* 1 byte, 0 = false, else true                   */
 #define TELE_T_CHAR     6       /* 1 byte ASCII                                   */
 
-/* Push one byte into the current frame's payload. */
-static void tele_put(unsigned char v)
-{
-    TELE_DATA_REG = v;
-}
+/* --- Frame / field emitters --------------------------------------------------
+ * Trivial single-poke helpers are function-like macros (no JSR + cc65 param
+ * setup per call); only the multi-statement ones below are real functions. */
 
-/* Push a 16-bit value little-endian (low byte first) — for U16 / S16 fields. */
+/* Push one byte into the current frame's payload. */
+#define tele_put(v)         (TELE_DATA_REG = (unsigned char)(v))
+
+/* Close the current DATA frame: delimit (0xAA) + flush. In lock-step this parks
+ * the CPU on this write until the harness ACKs. */
+#define tele_frame()        (TELE_CTRL_REG = TELE_END)
+
+/* Arm deterministic lock-step (one frame per harness ACK). */
+#define tele_arm()          (TELE_CTRL_REG = TELE_LOCKSTEP)
+
+/* Disarm lock-step — free-running fire-hose tap (live play). */
+#define tele_freerun()      (TELE_CTRL_REG = TELE_FREERUN)
+
+/* Close the schema frame: delimit (0xA5) + flush. Never parks lock-step. */
+#define tele_schema_close() (TELE_CTRL_REG = TELE_SCHEMA)
+
+/* Read the status byte (bit7 = harness connected, bit0 = inbound available). */
+#define tele_stat()         (TELE_STAT_REG)
+
+/* Pop one inbound byte from the harness. Returns 0 when none is waiting — which
+ * cannot be told apart from a legitimately-received 0x00; gate on tele_inlen()
+ * first if NUL is a valid inbound payload byte. */
+#define tele_in()           (TELE_IN_REG)
+
+/* Number of inbound bytes pending (saturates at 255). */
+#define tele_inlen()        (TELE_INLEN_REG)
+
+/* Push a 16-bit value little-endian (low byte first) — for U16 / S16 fields.
+ * A function (not a macro) so the argument is evaluated exactly once. */
 static void tele_put16(unsigned v)
 {
     TELE_DATA_REG = (unsigned char)(v & 0xFFU);
     TELE_DATA_REG = (unsigned char)((v >> 8) & 0xFFU);
-}
-
-/* Close the current DATA frame: delimit (0xAA) + flush. In lock-step this parks
- * the CPU on this write until the harness ACKs. */
-static void tele_frame(void)
-{
-    TELE_CTRL_REG = TELE_END;
-}
-
-/* Arm deterministic lock-step (one frame per harness ACK). */
-static void tele_arm(void)
-{
-    TELE_CTRL_REG = TELE_LOCKSTEP;
-}
-
-/* Disarm lock-step — free-running fire-hose tap (live play). */
-static void tele_freerun(void)
-{
-    TELE_CTRL_REG = TELE_FREERUN;
 }
 
 /* Push one schema field descriptor into the (schema) frame: [type][name][0x00].
@@ -117,30 +127,6 @@ static void tele_field(unsigned char type, const char *name)
         ++name;
     }
     TELE_DATA_REG = 0x00;        /* name terminator */
-}
-
-/* Close the schema frame: delimit (0xA5) + flush. Never parks lock-step. */
-static void tele_schema_close(void)
-{
-    TELE_CTRL_REG = TELE_SCHEMA;
-}
-
-/* Read the status byte (bit7 = harness connected, bit0 = inbound available). */
-static unsigned char tele_stat(void)
-{
-    return TELE_STAT_REG;
-}
-
-/* Pop one inbound byte from the harness (0 if none). */
-static unsigned char tele_in(void)
-{
-    return TELE_IN_REG;
-}
-
-/* Number of inbound bytes pending (saturates at 255). */
-static unsigned char tele_inlen(void)
-{
-    return TELE_INLEN_REG;
 }
 
 #endif /* TELEMETRY_H */

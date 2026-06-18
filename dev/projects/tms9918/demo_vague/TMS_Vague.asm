@@ -273,7 +273,7 @@ exit:
         JSR tms9918_pad12
         JSR disable_sprites
         LDA KBD
-        JMP $FF00
+        JMP WOZMON
 
 
 ; ----------------------------------------------------------------------------

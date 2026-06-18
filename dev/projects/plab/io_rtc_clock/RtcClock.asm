@@ -375,20 +375,20 @@ month_lens:
         .byte 7, 8, 5, 5, 3, 4, 4, 6, 9, 7, 8, 8
 
 month_lo:
-        .byte <m_jan,<m_fev,<m_mar,<m_avr,<m_mai,<m_juin
-        .byte <m_juil,<m_aou,<m_sep,<m_oct,<m_nov,<m_dec
+        .byte <m_jan,<m_feb,<m_mar,<m_apr,<m_may,<m_jun
+        .byte <m_jul,<m_aug,<m_sep,<m_oct,<m_nov,<m_dec
 month_hi:
-        .byte >m_jan,>m_fev,>m_mar,>m_avr,>m_mai,>m_juin
-        .byte >m_juil,>m_aou,>m_sep,>m_oct,>m_nov,>m_dec
+        .byte >m_jan,>m_feb,>m_mar,>m_apr,>m_may,>m_jun
+        .byte >m_jul,>m_aug,>m_sep,>m_oct,>m_nov,>m_dec
 
 m_jan:  .asciiz "JANUARY"
-m_fev:  .asciiz "FEBRUARY"
+m_feb:  .asciiz "FEBRUARY"
 m_mar:  .asciiz "MARCH"
-m_avr:  .asciiz "APRIL"
-m_mai:  .asciiz "MAY"
-m_juin: .asciiz "JUNE"
-m_juil: .asciiz "JULY"
-m_aou:  .asciiz "AUGUST"
+m_apr:  .asciiz "APRIL"
+m_may:  .asciiz "MAY"
+m_jun:  .asciiz "JUNE"
+m_jul:  .asciiz "JULY"
+m_aug:  .asciiz "AUGUST"
 m_sep:  .asciiz "SEPTEMBER"
 m_oct:  .asciiz "OCTOBER"
 m_nov:  .asciiz "NOVEMBER"
@@ -398,5 +398,5 @@ msg_title:
         .byte $8D
         .asciiz "=== P-LAB RTC  English month names ==="
         .byte $8D
-        .asciiz "  Touche : quitter"
+        .asciiz "  Press a key to quit"
         .byte $8D, $8D, $00

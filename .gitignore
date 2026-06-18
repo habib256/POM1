@@ -82,6 +82,9 @@ dev/**/*.map
 dev/**/*.lib
 # Template scratch binaries — only the source (.c, Makefile) belongs in git
 dev/_template_*/*.bin
+# Per-project cl65 build outputs (deleted by `make clean`) — only the source and
+# the canonical artefact under software/ belong in git, never the in-tree .bin.
+dev/projects/**/*.bin
 # Redundant flat binaries under software/ — the Wozmon .txt is the canonical form
 software/**/*.bin
 # DevBench scratch CodeTank ROM — regenerated into roms/codetank/ on TMS9918 upload

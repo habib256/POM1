@@ -60,13 +60,7 @@ $(OUT_DIR_T)/TMS_Logo_16k.bin: $(OBJS_16K)
 	ld65 -C apple1_logo_16k.cfg $^ -o "$@"
 
 $(OUT_DIR_T)/TMS_Logo_16k.txt: $(OUT_DIR_T)/TMS_Logo_16k.bin
-	@python3 -c "import sys; \
-data = open('$(OUT_DIR)/TMS_Logo_16k.bin','rb').read(); \
-lines = []; addr = 0x0280; \
-[ (lines.append(f'{addr+i:04X}: ' + ' '.join(f'{b:02X}' for b in data[i:i+8])), None)[1] for i in range(0, len(data), 8) ]; \
-lines.append('0280R'); \
-open('$(OUT_DIR)/TMS_Logo_16k.txt','w').write('\n'.join(lines)+'\n'); \
-print(f'Wrote $(OUT_DIR)/TMS_Logo_16k.txt ({len(data)} bytes)')"
+	@python3 ../../../cc65/emit_codetank_txt.py --bin "$(OUT_DIR)/TMS_Logo_16k.bin" --txt "$(OUT_DIR)/TMS_Logo_16k.txt" --start 0x0280
 
 .PHONY: all clean v18 v20
 all: v18

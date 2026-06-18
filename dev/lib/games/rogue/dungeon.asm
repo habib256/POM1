@@ -18,7 +18,7 @@
 ;      would parametrise these via `.import` or pre-`.include` aliases.
 ;
 ; Promotion will land here when the second consumer shows up — see the
-; "Rule of Three" note in dev/lib/README.md.  In the meantime the hooks
+; "Rule of Three" note in dev/lib/games/README.md.  In the meantime the hooks
 ; for that promotion are documented in the `gen_dungeon` / `finalize_doors`
 ; comment blocks of TMS_Rogue.asm.
 ;

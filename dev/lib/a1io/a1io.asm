@@ -41,7 +41,8 @@ a1io_read_reg:
         STX     a1io_target
 @poll:  LDA     VIA_IRA                 ; consumes strobe; A bit 7 = strobe
         BPL     @poll                   ; loop while strobe = 0 (no new reg yet)
-        AND     #$1F                    ; low 5 bits = reg index (0..23 fits)
+        AND     #$1F                    ; low 5 bits = reg index; protocol broadcasts
+                                        ; only 0..23, the spare codes are headroom
         CMP     a1io_target
         BNE     @poll                   ; not the reg we want; wait next period
         LDA     VIA_IRB                 ; latch the value

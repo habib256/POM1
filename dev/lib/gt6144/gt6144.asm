@@ -1,10 +1,11 @@
 ; ============================================================================
 ; gt6144.asm -- SWTPC GT-6144 plotter primitives
 ; ============================================================================
-; Mutualises the clear + plot + control-opcode patterns currently inlined
-; in dev/projects/gt6144/gt6144_demo_hello and gt6144_demo_life. Each routine is a tight
-; few-instruction wrapper around the $D00A protocol — no ZP usage,
-; small footprint.
+; Intended to mutualise the clear + plot + control-opcode patterns inlined in
+; dev/projects/gt6144/gt6144_demo_hello and gt6144_demo_life. Each routine is a
+; tight few-instruction wrapper around the $D00A protocol — no ZP usage, small
+; footprint. STATUS: not yet adopted — both demos still carry inline copies;
+; migrate them onto this module (see README) or retire it.
 ;
 ;   gt_clear     -- paint every pixel OFF (64*96 = 6144 latch+commit pairs)
 ;   gt_plot_on   -- A=x (0..63), Y=y (0..95) → set pixel ON at (x,y)

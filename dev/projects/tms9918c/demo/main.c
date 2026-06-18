@@ -79,7 +79,7 @@ void main(void) {
         screen1_puts((const unsigned char *)"1 SCREEN1\n");
         screen1_puts((const unsigned char *)"2 SCREEN2\n");
         screen1_puts((const unsigned char *)"0 EXIT\n\n");
-        screen1_puts((const unsigned char *)"Autres touches -> messages.\n");
+        screen1_puts((const unsigned char *)"Other keys -> messages.\n");
 
         k = key_upper(apple1_getkey());
 
@@ -105,7 +105,7 @@ void main(void) {
         } else if (k == 'H') {
             stub_msg("HELP : not ported");
         } else {
-            stub_msg("Touche inconnue.");
+            stub_msg("Unknown key.");
         }
         /* back to menu */
         tms_init_regs(SCREEN1_TABLE);

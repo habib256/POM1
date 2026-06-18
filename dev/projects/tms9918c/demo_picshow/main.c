@@ -1,7 +1,8 @@
 /*
- * picshow — port minimal upstream (demos/picshow) pour TMS9918 (Screen 2).
- * Affiche une image convertie (pic_c / pic_p) en copiant couleur + motifs
- * vers les tables VRAM (avec chunking pour rester compatible silicon-strict).
+ * picshow — Screen 2 (Graphics II) geometry demo for TMS9918.
+ * The full upstream demos/picshow image (color + pattern tables) does not fit
+ * the 16 KB CodeTank ROM, so this ships a geometric stand-in: title text, a
+ * circle and an ellipse, then returns to Wozmon on RETURN.
  */
 #include "tms9918.h"
 #include "screen2.h"
@@ -30,7 +31,7 @@ void main(void) {
     screen2_circle(128U, 76U, 30U);
     screen2_ellipse_rect(20U, 10U, 140U, 150U);
     while (!key_is_return(apple1_getkey())) {
-        /* attente */
+        /* wait */
     }
     woz_puts_simple("BYE!\r");
     woz_mon();

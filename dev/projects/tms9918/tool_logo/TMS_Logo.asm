@@ -11,7 +11,7 @@
 ; Future feature work targets a 16 KB variant (CodeTank-friendly) and
 ; should NOT bloat this file. If you're adding a feature here just to
 ; shave bytes elsewhere, that's fine; if you're growing the binary, fork
-; into a TMS_Logo16k.asm with its own cfg.
+; into a TMS_Logo_16k.asm with its own cfg.
 ;
 ; Build:
 ;   Build: make

@@ -493,8 +493,9 @@ sprite_buf_line:
 ;   Clobbers: A, X, Y.
 ; ----------------------------------------------------------------------------
 sprite_buf_upload:
-        ; pat_addr = $3800 + slot*32. Decompose:
-        ;   addr_hi = $38 + (slot >> 3)
+        ; pat_addr = (SPRITE_PATBASE_HI<<8) + slot*32; $1800 default (Mode 2),
+        ; $3800 when SPRITE_PATBASE_HI is overridden to $38 for Mode 1. Decompose:
+        ;   addr_hi = SPRITE_PATBASE_HI + (slot >> 3)
         ;   addr_lo = (slot & 7) << 5
         ; Y holds slot across the address-byte computations.
         TAY                      ; Y = slot (preserve)

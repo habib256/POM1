@@ -1,6 +1,6 @@
 /*
- * hello_world — port minimal de demos/hello-world (upstream).
- * Wozmon uniquement (pas de TMS). CodeTank @ $4000, Wozmon 4000R.
+ * hello_world — minimal port of demos/hello-world (upstream).
+ * Wozmon only (no TMS). CodeTank @ $4000, Wozmon 4000R.
  */
 #include "apple1.h"
 

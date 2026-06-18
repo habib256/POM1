@@ -32,6 +32,12 @@ The Makefile only links the families this program calls:
 `VSYNC`, `PRINTLIB`, `RANDOM`, `INTERRUPT` and `SCREEN_EXT` are skipped. See
 `dev/lib/tms9918c/tms9918c.mk` for every variable.
 
+> **Shipping note.** This starter builds `main.bin` in place for quick iteration.
+> The shipping projects under `dev/projects/tms9918c/` instead emit a Woz-hex
+> `.txt` into `software/Apple-1_TMS_CC65/` via `emit_codetank_txt.py` and
+> hand-list their `SOURCES` — copy `dev/projects/tms9918c/demo_sprite_animals/`
+> when you want that canonical flow.
+
 ## Further reading
 
 - `dev/Programming_C_Quickstart.md` — beginner cheat sheet.

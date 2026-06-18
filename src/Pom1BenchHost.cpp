@@ -251,8 +251,8 @@ static const char* kSketchAsmGen2 =      // asm x GEN2 HGR (BBFont text)
     ".include \"hgr_tables.inc\"\n";
 static const char* kSketchCText =        // C x Apple dual-4k/8k (WozMon I/O)
     "/* HELLO WORLD in C on a plain text Apple-1, using the shared apple1c text\n"
-    "   base (woz_puts/woz_getkey). The same apple1io.h works on the GEN2 card. */\n"
-    "#include \"apple1io.h\"\n"
+    "   base (woz_puts/apple1_getkey). The same apple1c.h works on the GEN2 card. */\n"
+    "#include \"apple1c.h\"\n"
     "\n"
     "void main(void) {\n"
     "    woz_puts((const unsigned char *)\"\\rHELLO WORLD (C / Apple-1)\\r\");\n"
@@ -655,7 +655,12 @@ void Pom1BenchHost::probe() const
         if (fs::exists(fs::path(p) / "cc65", ec)) { devRoot = p; break; }
     if (!devRoot.empty()) {
         std::string flags;
-        for (const auto& e : fs::directory_iterator(fs::path(devRoot) / "lib", ec))
+        // Recurse: nested lib dirs (e.g. lib/games/sokoban, lib/games/chess,
+        // lib/gen2/sprites, lib/tms9918c/cc65) hold .inc/.asm includes too, so a
+        // shallow one-level scan would miss them and ca65 would fail with
+        // "Cannot open include file 'sokoban_common.inc'". Add every directory
+        // under dev/lib as a -I search path (ca65 dedups; over-including is free).
+        for (const auto& e : fs::recursive_directory_iterator(fs::path(devRoot) / "lib", ec))
             if (e.is_directory(ec))
                 flags += "-I " + bench::shellQuote(fs::absolute(e.path(), ec).string()) + " ";
         libFlags_ = flags;
@@ -679,7 +684,7 @@ void Pom1BenchHost::probe() const
         // Plain text C uses dev/cc65/apple1_c.cfg + the shared apple1c text base.
         const fs::path pcfg = fs::path(devRoot) / "cc65" / "apple1_c.cfg";
         if (fs::exists(pcfg, ec)) plainCfg_ = fs::absolute(pcfg, ec).string();
-        // Shared Apple-1 text/keyboard C base (woz_puts/woz_getkey) — card-neutral,
+        // Shared Apple-1 text/keyboard C base (woz_puts/apple1_getkey) — card-neutral,
         // linked by both the plain-text and GEN2 HGR C targets so either can do
         // terminal I/O. The graphics runtimes (gen2c / videocard-lib) sit on top.
         const fs::path a1c = fs::path(devRoot) / "lib" / "apple1c";
@@ -878,7 +883,10 @@ bench::BuildResult Pom1BenchHost::build(int target, const std::string& src, cons
                    R"({"path":"/dev/lib/gen2c/gen2_rect.c","name":"gen2_rect.c"},{"path":"/dev/lib/gen2c/gen2_text.c","name":"gen2_text.c"},)"
                    R"({"path":"/dev/lib/gen2c/gen2_sprites.c","name":"gen2_sprites.c"},{"path":"/dev/lib/gen2c/gen2_geom.c","name":"gen2_geom.c"},)"
                    R"({"path":"/dev/lib/gen2c/gen2_lores.c","name":"gen2_lores.c"},{"path":"/dev/lib/apple1c/apple1io.c","name":"apple1io.c"},)"
-                   R"({"path":"/dev/lib/gfx/gfx_draw.c","name":"gfx_draw.c"},{"path":"/dev/lib/gfx/gfx_num.c","name":"gfx_num.c"},{"path":"/dev/lib/gfx/gfx_backend_gen2.c","name":"gfx_backend_gen2.c"}],)"
+                   R"({"path":"/dev/lib/gfx/gfx_line.c","name":"gfx_line.c"},{"path":"/dev/lib/gfx/gfx_rect.c","name":"gfx_rect.c"},)"
+                   R"({"path":"/dev/lib/gfx/gfx_circle.c","name":"gfx_circle.c"},{"path":"/dev/lib/gfx/gfx_ellipse.c","name":"gfx_ellipse.c"},)"
+                   R"({"path":"/dev/lib/gfx/gfx_num_dec.c","name":"gfx_num_dec.c"},{"path":"/dev/lib/gfx/gfx_num_hex.c","name":"gfx_num_hex.c"},)"
+                   R"({"path":"/dev/lib/gfx/gfx_backend_gen2.c","name":"gfx_backend_gen2.c"},{"path":"/dev/lib/gfx/gfx_backend_gen2_rect.c","name":"gfx_backend_gen2_rect.c"}],)"
                    R"("asmSources":[{"path":"/dev/lib/gen2c/gen2_blit.s","name":"gen2_blit.s"},{"path":"/dev/lib/apple1c/apple1io_asm.s","name":"apple1io_asm.s"}]})";
         } else {   // "C" = TMS9918 CodeTank ROM
             cfg  = "/dev/lib/tms9918c/cc65/codetank_c.cfg";
@@ -1010,9 +1018,14 @@ bench::BuildResult Pom1BenchHost::build(int target, const std::string& src, cons
             std::string gfx;
             if (!gfxLib_.empty())
                 gfx = " -I " + bench::shellQuote(gfxLib_) +
-                      " " + bench::shellQuote(gfxLib_ + "/gfx_draw.c") +
-                      " " + bench::shellQuote(gfxLib_ + "/gfx_num.c") +
-                      " " + bench::shellQuote(gfxLib_ + "/gfx_backend_gen2.c");
+                      " " + bench::shellQuote(gfxLib_ + "/gfx_line.c") +
+                      " " + bench::shellQuote(gfxLib_ + "/gfx_rect.c") +
+                      " " + bench::shellQuote(gfxLib_ + "/gfx_circle.c") +
+                      " " + bench::shellQuote(gfxLib_ + "/gfx_ellipse.c") +
+                      " " + bench::shellQuote(gfxLib_ + "/gfx_num_dec.c") +
+                      " " + bench::shellQuote(gfxLib_ + "/gfx_num_hex.c") +
+                      " " + bench::shellQuote(gfxLib_ + "/gfx_backend_gen2.c") +
+                      " " + bench::shellQuote(gfxLib_ + "/gfx_backend_gen2_rect.c");
             // The gen2c runtime is split into per-family modules so ld65 can
             // dead-strip per family; the Bench links the lot since a sketch may
             // call anything. Order is link-order irrelevant; kept stable for

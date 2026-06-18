@@ -31,9 +31,7 @@
 
 ; --- Apple 1 I/O ---
         .import tms9918_pad12  ; silicon-strict pad12-v3 (helper from tms9918_pad.asm)
-ECHO     = $FFEF
-KBD      = $D010
-KBDCR    = $D011
+.include "apple1.inc"          ; ECHO / KBD / KBDCR (and the rest of the PIA map)
 
 ; --- TMS9918 I/O (VDP_DATA / VDP_CTRL + WAIT_VBLANK macro) ---
 .include "tms9918.inc"

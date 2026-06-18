@@ -74,7 +74,7 @@ static unsigned char dir;          /* current heading   */
 static unsigned char pending;      /* queued heading (applied next tick) */
 static unsigned char alive;        /* 1 = playing, 0 = dead */
 static unsigned char foodx, foody; /* food cell */
-static unsigned int  score;        /* food eaten */
+static unsigned int  score;        /* total points (5/apple + 20/bonus) */
 static unsigned int  score_shown;  /* last score value drawn to the HUD (redraw-on-change) */
 static unsigned char apples;       /* apples eaten this game (drives the bonus cadence)   */
 /* Time-limited bonus gem. Logic in tick() sets the flags; the main loop does the
@@ -206,7 +206,7 @@ static void emit_schema(void)
     tele_field(TELE_T_U8,   "head_y");
     tele_field(TELE_T_U8,   "length");
     tele_field(TELE_T_BOOL, "alive");
-    tele_field(TELE_T_U16,  "score");    /* apples eaten (0..65535)              */
+    tele_field(TELE_T_U16,  "score");    /* total points (5/apple + 20/bonus)    */
     tele_schema_close();
 }
 
@@ -426,15 +426,11 @@ void main(void)
     gen2_hgr_puts_color(10, 102, "2 AZERTY  ZQSD", GEN2_ORANGE);
     gen2_hgr_puts_color(38, 150, "PRESS 1 OR 2",   GEN2_GREEN);
 
-    /* Telemetry: declare the schema once, then run free (live play, fire-hose). */
+    /* Telemetry: declare the schema once, then run free (live play, fire-hose).
+     * tele_arm / tele_stat are unused in this free-running tap but cost nothing:
+     * they are function-like macros (telemetry.h), not real functions. */
     emit_schema();
     tele_freerun();
-    /* This is a free-running tap: it never arms lock-step (tele_arm) nor reads the
-     * status byte (tele_stat), so cc65 — which has no unused-func pragma — would
-     * warn they are "defined but never used". Reference them so it stays quiet; a
-     * discarded function value emits no code. */
-    (void)tele_arm;
-    (void)tele_stat;
 
     /* Hold the title until the player picks a layout with '1' or '2', or AUTO-START
      * with the QWERTY default after the timeout (under the DevBench the Apple-1

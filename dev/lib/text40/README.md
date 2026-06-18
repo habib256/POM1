@@ -74,7 +74,8 @@ In your project Makefile:
 
 ## Validation
 
-The shipped CodeTank menus (`dev/projects/codetank/*_menu*/`) and games
-exercise `menu_select` and `repeat_char_ax`. The `select_wasd_layout` pattern is verified against
-the existing project consumers — a future migration will replace each
-project's inline copy with `.include "layout.asm"`.
+**Status: not yet adopted by any shipping project.** The CodeTank menus
+(`dev/projects/codetank/*_menu*/`) and the WASD games still carry their own
+inline copies of these patterns; `menu_select`, `repeat_char_ax` and
+`select_wasd_layout` are correct by inspection but a future migration will
+replace each project's inline copy with `.include "layout.asm"` (etc.).

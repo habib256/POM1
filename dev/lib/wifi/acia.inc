@@ -32,7 +32,13 @@ ACIA_ST_IRQ         = $80   ; bit 7 — IRQ pending
 ; --- Command register bits -------------------------------------------------
 ACIA_CMD_DTR        = $01   ; bit 0 — Data Terminal Ready (set this to enable Tx/Rx)
 ACIA_CMD_IRQ_DIS    = $02   ; bit 1 — disable Rx IRQ (we poll, so keep this set)
-ACIA_CMD_TX_BREAK   = $0C   ; bits 2-3 — Tx control (0=disable, 4=normal, 8=break, C=normal+IRQ off)
+                            ; bits 2-3 — Transmitter Interrupt Control (W65C51N):
+                            ;   00 ($00) Tx IRQ off, RTS high (Tx disabled)
+                            ;   01 ($04) Tx IRQ on,  RTS low
+                            ;   10 ($08) Tx IRQ off, RTS low  (normal polled Tx)
+                            ;   11 ($0C) Tx IRQ off, RTS low, TRANSMIT BREAK
+ACIA_CMD_TX_NORMAL  = $08   ; normal transmit, Tx IRQ disabled, RTS low (polled)
+ACIA_CMD_TX_BREAK   = $0C   ; transmit a continuous BREAK (diagnostic only)
 ACIA_CMD_ECHO       = $10   ; bit 4 — local echo
 ACIA_CMD_PARITY_EN  = $20   ; bit 5 — parity enable
                             ; bits 6-7 = parity type (00=odd, 01=even, 10=mark, 11=space)

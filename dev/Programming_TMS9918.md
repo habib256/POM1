@@ -20,7 +20,7 @@ standard programming model with the silicon-handling guidance you need
 | [`APPLE1DEV.md`](APPLE1DEV.md) §4 TMS9918 | Agent summary and pad / strict cross-links |
 
 **Hardware target** — Apple-1 + TMS9918 card (P-LAB Graphic Card) + CodeTank
-daughterboard (piggyback). Equivalent POM1 preset: **#7 — P-LAB Apple-1 with
+daughterboard (piggyback). Equivalent POM1 preset: **#9 — P-LAB Apple-1 with
 TMS9918 (CodeTank daughterboard)** (see [`README.md`](../README.md) § Machine
 Presets).
 
@@ -131,7 +131,9 @@ POM1 ignores R1 bit 7 (`TMS9918.cpp` treats VRAM as an unconditional 16 KB
 buffer), so code that forgets bit 7 still appears to work on the emulator
 and only breaks on the target. Always OR `$80` when writing R1.
 
-**Recommended `R1` constants** (also in `dev/lib/tms9918/tms9918.inc`):
+**Recommended `R1` constants** (illustrative — `dev/lib/tms9918/tms9918.inc`
+ships only the `VDP_DATA` / `VDP_CTRL` port and timing equates, not these R1
+bit names; define them locally if you want symbolic names):
 
 ```asm
 VDP_R1_BASE = $80        ; bit 7 = 16K, MANDATORY on silicon
@@ -143,9 +145,11 @@ VDP_R1_LRG  = $02        ; sprites 16×16
 VDP_R1_MAG  = $01        ; sprites magnified ×2
 ```
 
-Typical safe values: `$E0` (display on + IRQ enable + 16K, Mode 0), `$D0`
-(display on + 16K + sprites 16×16), `$F0` (display on + IRQ + 16K + Mode 1
-text). **Never** `$C0` — that one omits bit 7.
+Typical safe values: `$E0` (display on + IRQ enable + 16K, Mode 0), `$C2`
+(display on + 16K + sprites 16×16, bit 1 = LRG), `$F0` (display on + IRQ +
+16K + Mode 1 text). `$C0` is the canonical Graphics-I value (16K + display
+on, 8×8 sprites) — perfectly valid. The trap is omitting bit 7 entirely
+(any R1 value `< $80`), which drops the chip back to 4K mode.
 
 ### 4. VRAM address latch and the two-write protocol
 

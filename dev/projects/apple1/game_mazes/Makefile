@@ -8,8 +8,13 @@ LIB      := -I ../../../lib/apple1 -I ../../../lib/m6502
 PROGS    := Maze_Sidewinder Maze2_Backtracker
 BINS     := $(addprefix $(OUT_DIR_T)/,$(addsuffix .bin,$(PROGS)))
 
-.PHONY: all clean
-all: $(BINS)
+.PHONY: all clean txt
+# .txt (Wozmon-hex) is the canonical committed artefact; regenerate it from
+# source via emit_Mazes_txt.py (which also re-emits both .bin under software/).
+all: txt
+
+txt: $(BINS)
+	python3 emit_Mazes_txt.py
 
 $(OUT_DIR_T)/%.bin: %.asm
 	ca65 $(LIB) $<

@@ -49,7 +49,7 @@ acia_str_hi:    .res 1
 acia_init:
         ORA     #ACIA_CTL_8N1_INT       ; OR in 8N1 + internal clock framing
         STA     ACIA_CONTROL
-        LDA     #ACIA_CMD_DTR | ACIA_CMD_IRQ_DIS | ACIA_CMD_TX_BREAK
+        LDA     #ACIA_CMD_DTR | ACIA_CMD_IRQ_DIS | ACIA_CMD_TX_NORMAL
         STA     ACIA_COMMAND
         ; Drain a possible stale Rx byte by reading data once.
         LDA     ACIA_DATA
@@ -85,7 +85,8 @@ acia_recv_avail:
         AND     #ACIA_ST_RDRF
         BEQ     @none                   ; no byte
         LDA     ACIA_DATA
-        RTS                             ; A = byte (likely nonzero), Z reflects
+        RTS                             ; A = byte (a received $00 is indistinguishable
+                                        ; from @none — gate on ACIA_ST_RDRF if NUL is valid)
 @none:  LDA     #$00
         RTS                             ; A = 0, Z = 1
 

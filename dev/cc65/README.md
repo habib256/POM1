@@ -12,7 +12,13 @@ module that replaces the per-project `emit_*_txt.py` boilerplate.
 | **`apple1_4k.cfg`**     | $0000-$0022 (35 B) | $0280 | 4 096 B | — | Default text-mode (also TMS9918 — VRAM off-bus) |
 | **`apple1_gen2.cfg`**   | $0000-$001F (32 B) | $0280 | 7 552 B | $2000-$3FFF (HGR FB) | GEN2 HGR projects |
 | **`codetank.cfg`**      | $0000-$00FF (256 B) | $4000 | 16 384 B | — | Standalone CodeTank ROM (16 KB image, runs in place from ROM window) |
+| **`apple1_c.cfg`**      | $0000-$00FF (256 B) | $0300 | 2 816 B ($0300-$0DFF) | $0E00-$0FFF (C stack) | cc65 **C** text-mode — run `0300R` |
+| **`apple1_gen2_c.cfg`** | $0000-$00FF (256 B) | $6000 | 24 320 B ($6000-$BEFF) | $2000/$4000 (HGR FB) | cc65 **C** GEN2 HGR, preset 11 — run `6000R` |
 | **`pom1_fantasy.cfg`**  | configurable | configurable | — | — | Multiplexing Fantasy preset (POM1-only) |
+
+> The cc65 **C** TMS9918/CodeTank target uses `dev/lib/tms9918c/cc65/codetank_c.cfg`
+> (16 KB ROM @ `$4000`, dual-bank `.bss` in `$E000-$EFFF`); it lives next to that
+> runtime rather than in this directory.
 
 ### Decision rule
 
@@ -29,8 +35,9 @@ module that replaces the per-project `emit_*_txt.py` boilerplate.
    slots (`$5E00`, `$7100`, etc.) or 8 KB jumper, keep a project-local
    `.cfg` (sokoban_codetank_bank.cfg, galaga_codetank.cfg, etc.).
 5. **Dual-bank / large programs**: project-local `.cfg` that splits low
-   ($0280-$0FFF) + high ($E000-$EFFF) — see `games_chess`, `hgr_chess`,
-   `tms9918_chess`, `hgr_sokoban`, `games_sokoban` for canonical
+   ($0280-$0FFF) + high ($E000-$EFFF) — see
+   `projects/apple1/game_chess/apple1_chess_text.cfg` (text) and
+   `projects/gen2/game_sokoban/apple1_sok_hgr.cfg` (HGR) for the canonical
    examples. The Multiplexing Fantasy preset uses `pom1_fantasy.cfg`.
 
 ### Project-local configs

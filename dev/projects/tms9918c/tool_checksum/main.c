@@ -1,6 +1,6 @@
 /*
- * checksum — port de demos/checksum (upstream), sans stdlib.
- * Somme des octets entre deux adresses hex (Wozmon).
+ * checksum — port of demos/checksum (upstream), without stdlib.
+ * Sum of the bytes between two hex addresses (Wozmon).
  */
 #include "apple1.h"
 #include "utils.h"

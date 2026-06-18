@@ -50,9 +50,9 @@ it everywhere.
 
 | You want… | Include | Linker cfg | Runs at |
 |---|---|---|---|
-| **Plain text** (40×24 terminal) | `apple1io.h` | `dev/cc65/apple1_c.cfg` | `0300R` |
-| **GEN2 HGR colour** (+ text) | `gen2.h` (+ `apple1io.h`) | `dev/cc65/apple1_gen2_c.cfg` | `6000R` |
-| **TMS9918 sprites/colour** | `screen1.h` / `tms9918.h` | `dev/lib/tms9918c/cc65/codetank_c.cfg` | `4000R` |
+| **Plain text** (40×24 terminal) | `apple1c.h` | `dev/cc65/apple1_c.cfg` | `0300R` |
+| **GEN2 HGR colour** (+ text) | `gen2.h` (+ `apple1c.h`) | `dev/cc65/apple1_gen2_c.cfg` | `6000R` |
+| **TMS9918 sprites/colour** | `tms9918c.h` | `dev/lib/tms9918c/cc65/codetank_c.cfg` | `4000R` |
 
 Libraries:
 - `dev/lib/apple1c/` — the shared text/keyboard base (`woz_puts` / `apple1_getkey` / `woz_mon`) ([README](lib/apple1c/README.md)).
@@ -64,7 +64,7 @@ Libraries:
 ## 3. Your first program
 
 ```c
-#include "apple1io.h"
+#include "apple1c.h"          /* umbrella header (aliases apple1io.h) */
 
 void main(void) {
     woz_puts((const unsigned char *)"\rHELLO WORLD\r");
@@ -90,7 +90,8 @@ Two non-obvious rules you just used:
 
 ## 4. Text & keyboard (`apple1c`)
 
-`#include "apple1io.h"` — works on every machine.
+`#include "apple1c.h"` (the umbrella header; it pulls in the `apple1io.h`
+implementation) — works on every machine.
 
 | Function | Effect |
 |---|---|
@@ -102,7 +103,7 @@ Two non-obvious rules you just used:
 | `apple1_iskeypressed()` | nonzero if a key is waiting |
 
 ```c
-#include "apple1io.h"
+#include "apple1c.h"
 void main(void) {
     unsigned char k;
     woz_puts((const unsigned char *)"\rPRESS A KEY: ");
@@ -124,8 +125,9 @@ void main(void) {
 
 ## 6. Memory budget — the #1 gotcha
 
-`apple1_c.cfg` (plain text) gives C only **`$0300-$0FFF` ≈ 2.75 KB** for
-code + data + the C stack. A few hundred bytes of global arrays and the linker
+`apple1_c.cfg` (plain text) gives C only **`$0300-$0DFF` ≈ 2.75 KB** for
+code + data (the C stack sits above, `__STACKSTART__` = `$1000` growing down
+through `$0E00-$0FFF`). A few hundred bytes of global arrays and the linker
 overflows with a cryptic `ld65: Range error`. If you hit it:
 - move work into smaller functions / fewer globals, **or**
 - target **GEN2** (`apple1_gen2_c.cfg`, code at `$6000-$BEFF` ≈ 24 KB), **or**
@@ -133,7 +135,7 @@ overflows with a cryptic `ld65: Range error`. If you hit it:
 
 | cfg | C code+data space | Notes |
 |---|---|---|
-| `apple1_c.cfg` | ~2.75 KB (`$0300-$0FFF`) | tight — small programs only |
+| `apple1_c.cfg` | ~2.75 KB (`$0300-$0DFF`) | tight — small programs only (C stack at `$1000`↓) |
 | `apple1_gen2_c.cfg` | ~24 KB (`$6000-$BEFF`) | roomy, above the HGR framebuffer |
 | `codetank_c.cfg` | 16 KB ROM image (`$4000`) | TMS9918, runs from ROM |
 

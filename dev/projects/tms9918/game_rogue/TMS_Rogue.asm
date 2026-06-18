@@ -40,7 +40,7 @@ COL_LT_BLUE    = 5
 COL_PLAYER     = COL_LT_BLUE
 LOGICAL_COLS   = 16
 LOGICAL_ROWS   = 10
-; Aliases consumed by lib/m6502/shadowcast.asm (declared before its
+; Aliases consumed by lib/games/rogue/shadowcast.asm (declared before its
 ; .include at EOF; the lib references SHADOW_COLS / SHADOW_ROWS in its
 ; OOR check inside apply_octant).
 SHADOW_COLS    = LOGICAL_COLS
@@ -599,7 +599,7 @@ throw_step:     .res 1          ; remaining flight cells (0..THROW_RANGE).
 
 ; --- FOV scratch (compute_fov / shadowcaster lib) ---------------------
 ; oct_*, cast_* and the cross-product scratch (cast_xprod) live in
-; `lib/m6502/shadowcast.asm` — its `.ifndef cast_depth` guard allocates
+; `lib/games/rogue/shadowcast.asm` — its `.ifndef cast_depth` guard allocates
 ; them inside this project's ZP segment when the file is .include'd at
 ; the bottom. cur_x/cur_y are pre-declared here (instead of letting the
 ; lib do it) so every site that uses them — including the dagger-throw
@@ -1762,7 +1762,7 @@ pick_random_room:
         RTS
 
 
-; rand_mod -- uniform [0, A) pseudorandom — promoted to lib/m6502/dungeon.asm
+; rand_mod -- uniform [0, A) pseudorandom — promoted to lib/games/rogue/dungeon.asm
 ; (.include'd at EOF). It depends on prng16, hence the include order at the
 ; bottom of the file (prng16 first, dungeon next).
 
@@ -6764,7 +6764,7 @@ expl_torch_pat:                                 ; slot 52 — torch
 
 
 ; ============================================================================
-; dungeon -- procedural-generation primitives (lib/m6502/dungeon.asm).
+; dungeon -- procedural-generation primitives (lib/games/rogue/dungeon.asm).
 ; Currently exposes `rand_mod` (uniform [0, A) PRNG wrapper). The bigger
 ; BSP-light pattern (room placement + L-corridor + door classification)
 ; stays inline in this file since it bakes in the 16×10 grid layout —
@@ -6782,7 +6782,7 @@ expl_torch_pat:                                 ; slot 52 — torch
 
 
 ; ============================================================================
-; shadowcast -- recursive shadowcasting FOV (lib/m6502/shadowcast.asm).
+; shadowcast -- recursive shadowcasting FOV (lib/games/rogue/shadowcast.asm).
 ; Expects the caller to provide:
 ;   - player_col, player_row, fov_r       (ZP — declared above)
 ;   - SHADOW_COLS, SHADOW_ROWS            (constants — declared above)

@@ -72,7 +72,7 @@ The compiled binary and its Woz hex `.txt` are deposited under `software/<dir>/`
 | Config | CODE range | Size | Typical use |
 |--------|-----------|--------|---------------|
 | `dev/cc65/apple1_4k.cfg` | `$0280-$127F` | 4 096 B | Text or TMS9918 games (VRAM off the bus) — default config |
-| `dev/cc65/apple1_gen2.cfg` | `$E000-$EFFF` | 4 096 B | HGR games: code in the high bank (launch with `E000R`), the framebuffer `$2000-$3FFF` stays reserved (direct writes). Programs > 4 KB: dedicated split-bank cfg (cf. `hgr_chess/apple1_chess_hgr.cfg`, `games_sokoban/apple1_sok_hgr.cfg`) |
+| `dev/cc65/apple1_gen2.cfg` | `$E000-$EFFF` | 4 096 B | HGR games: code in the high bank (launch with `E000R`), the framebuffer `$2000-$3FFF` stays reserved (direct writes). Programs > 4 KB: dedicated split-bank cfg (cf. `projects/gen2/game_sokoban/apple1_sok_hgr.cfg`) |
 | `dev/cc65/pom1_fantasy.cfg` | configurable | — | Multiplexing Fantasy preset (POM1-only) |
 
 Minimal `.cfg` syntax:
@@ -465,7 +465,7 @@ Reusable libraries (`dev/lib/`):
 - `dev/lib/tms9918/{tms9918.inc,tms9918m2.asm}` — VDP equates + Mode 2 driver
 - `dev/lib/gen2/{hgr_tables.inc,smiley.inc}` — HGR tables
 - `dev/lib/games/sokoban/sokoban_*.inc` — shared Sokoban level data
-- `dev/lib/games/chess/{chess_engine.asm,chess_text_io.asm,chess_*.inc}` — shared chess engine (text/HGR/TMS9918)
+- `dev/lib/games/chess/{chess_engine.asm,chess_text_io.asm,chess_*.inc}` — renderer-agnostic chess engine; ships a text variant only in-tree (the HGR / TMS9918 front-ends are historical, not in-tree)
 
 ---
 

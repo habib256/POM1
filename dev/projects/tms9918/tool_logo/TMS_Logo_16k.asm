@@ -2,7 +2,7 @@
 ; TMS_Logo_16k.asm  --  APPLE-1 LOGO V2.6 for TMS9918 (16 KB variant)
 ;                       (c) 2026 VERHILLE Arnaud
 ; ============================================================================
-; *** V2.0 -- 16 KB BUILD (active development) ***
+; *** V2.6 -- 16 KB BUILD (active development) ***
 ;
 ; Forked from V1.8 (the final 8 KB build, frozen). This variant assumes a
 ; 16 KB Apple-1 (or future CodeTank ROM) and uses the headroom for:

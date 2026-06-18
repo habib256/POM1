@@ -1,6 +1,6 @@
 /*
- * demo_screen1 — port de demos/demo/demo_screen1.h (upstream).
- * Texte screen1 + reverse + charset + sprites + ligne saisie.
+ * demo_screen1 — port of demos/demo/demo_screen1.h (upstream).
+ * screen1 text + reverse + charset + sprites + input line.
  */
 #include "tms9918.h"
 #include "screen1.h"

@@ -20,13 +20,13 @@ and loops. The player converges on the target, driven entirely by the test.
 | Python harness library | `tools/pom1_telemetry.py` |
 | The automated test (worked example) | `tools/test_telemetry_demo.py` |
 
-Mechanism + protocol: [`doc/TELEMETRY_SIDE_CHANNEL.md`](../../../doc/TELEMETRY_SIDE_CHANNEL.md).
+Mechanism + protocol: [`doc/TELEMETRY_SIDE_CHANNEL.md`](../../../../doc/TELEMETRY_SIDE_CHANNEL.md).
 
 ## Build · run · test
 
 ```bash
 # 1. assemble (cc65) -> software/Telemetry/A1_TelemetryDemo.bin (origin $0280)
-make -C dev/projects/a1_telemetry_demo
+make -C dev/projects/apple1/demo_telemetry
 
 # 2. (optional) run it by hand and connect your own harness
 build/POM1 --headless --telemetry-port 6601 \

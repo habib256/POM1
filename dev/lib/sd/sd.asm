@@ -111,7 +111,9 @@ sd_send_str:
         STX     sd_str_hi
         LDY     #$00
 @lp:    LDA     (sd_str_lo),Y
-        JSR     sd_send_byte
+        PHA                             ; save byte: sd_send_byte returns A=$00
+        JSR     sd_send_byte            ; (Z=1) unconditionally, so the loaded
+        PLA                             ; byte must be tested, not the result
         BEQ     @done                   ; stop AFTER sending the NUL
         INY
         BNE     @lp

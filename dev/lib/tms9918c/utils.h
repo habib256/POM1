@@ -17,6 +17,13 @@ typedef unsigned long dword;
 #define HIBYTE(c) ((unsigned char)(((unsigned)(c)) >> 8))
 #define LOBYTE(c) ((unsigned char)(((unsigned)(c)) & 0xFF))
 
-#define TMS_IO_DELAY() ((void)(*(volatile unsigned char *)0xCC01))
+/* Inter-access pacing read of the VDP status port ($CC01). On real TMS9918
+ * silicon this gives the VDP time to finish its VRAM cycle between back-to-back
+ * accesses; POM1 tolerates burst writes so it is functionally optional here.
+ * The read is stored into tms_io_sink rather than cast to void: cc65 -Oirs
+ * ELIDES a volatile read whose value is discarded by (void), which silently
+ * turned this macro into a no-op (same trap fixed in gen2c via gen2_ss_sink). */
+extern volatile unsigned char tms_io_sink;
+#define TMS_IO_DELAY() (tms_io_sink = *(volatile unsigned char *)0xCC01)
 
 #endif
