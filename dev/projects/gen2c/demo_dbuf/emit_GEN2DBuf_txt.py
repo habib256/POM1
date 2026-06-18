@@ -29,13 +29,14 @@ def main() -> int:
     emit_cl65(
         c_files=["GEN2DBuf.c"],
         extra_sources=[
+            # Trimmed to the families this demo calls. ld65 links explicit
+            # objects in FULL (only library members are dead-stripped), so
+            # listing unused families wastes ROM/RAM. Here: CORE + rect
+            # (fill_pixrect) + text (puts, pulls rect). Dropped: pixel,
+            # sprites, geom, lores.
             f"{GEN2C}/gen2_init.c",
-            f"{GEN2C}/gen2_pixel.c",
             f"{GEN2C}/gen2_rect.c",
             f"{GEN2C}/gen2_text.c",
-            f"{GEN2C}/gen2_sprites.c",
-            f"{GEN2C}/gen2_geom.c",
-            f"{GEN2C}/gen2_lores.c",
             f"{GEN2C}/gen2_blit.s",
             f"{APPLE1C}/apple1io.c",
             f"{APPLE1C}/apple1io_asm.s",

@@ -572,9 +572,10 @@ At 1.022 MHz: 1 cycle ≈ 0.978 µs.
 | Tetris loop (`LDA / STA $CC00 / DEX / BNE`) | 11c | **OK** (silicon-validated) |
 | Loop `LDA tab,X / STA $CC00,X / DEX / BNE` | 14c | **OK** comfortable |
 
-`JSR tms9918_pad12` (16c gap, 3 bytes at the call site) is the dense
-winner: 4c/byte ratio, twice as dense as NOP×6 (2c/byte). `pad24` and
-`pad40` are cushion variants for routines called from multiple sites.
+`JSR tms9918_pad12` (12c pad → 16c STA→STA gap, 3 bytes at the call site)
+is the dense winner: 4c/byte ratio, twice as dense as NOP×6 (2c/byte).
+`pad24` is an optional cushion; `pad40` is a legacy paranoid variant
+(superseded by the 12c contract — do not use in new code).
 
 #### Init trick: blank the display during massive uploads
 
@@ -605,17 +606,17 @@ STA VDP_CTRL
 **Option A — `WRT_DATA_REG` / `WRT_DATA_VAL` macros on the lib side
 (recommended)**
 
-`dev/lib/tms9918/tms9918.inc` provides (paranoid 16c):
+`dev/lib/tms9918/tms9918.inc` provides (12c contract — 16c STA→STA gap):
 
 ```asm
 .import tms9918_pad12, tms9918_pad24
 
-.macro WRT_DATA_REG             ; A already loaded, 16c gap on exit
+.macro WRT_DATA_REG             ; A already loaded, 16c STA→STA gap on exit
         STA     VDP_DATA        ; 4c
-        JSR     tms9918_pad12   ; 12c, 3 bytes — next write lands 16c later
+        JSR     tms9918_pad12   ; 12c pad — next write lands 12c later
 .endmacro
 
-.macro WRT_DATA_VAL val          ; immediate val, 16c gap on exit
+.macro WRT_DATA_VAL val          ; immediate val, 16c STA→STA gap on exit
         LDA     #val            ; 2c
         STA     VDP_DATA        ; 4c
         JSR     tms9918_pad12   ; 12c, 3 bytes

@@ -20,17 +20,19 @@ VDP_CTRL = $CC01        ; VDP register / address port (write twice = setup)
 ; index ORed with $80 in CTRL — see tms9918m2.asm:init_vdp_g2 for an example.
 
 ; ---------------------------------------------------------------------------
-; VRAM access timing — silicon-strict back-to-back gating (hardened 40c).
+; VRAM access timing — silicon-strict back-to-back gating. Contract: 12c.
 ;
-; Real TMS9918A silicon opens a CPU access window only every ~6 µs in Mode I
-; with sprites active (cf. dev/Programming_TMS9918.md §17 Bug N°1). Phase alignment +
-; warm-NMOS drift can shrink the visible window past the original 8c margin
-; — the May 2026 hardening ramp went 16c → 24c → 40c after Galaga sprite
-; tables and LOGO turtle redraws kept showing artefacts at every previous
-; openMSX slot-table model (May 2026): silicon worst-case Mode I+sprites is
-; ~7.5c. The 12c floor (via JSR tms9918_pad12) gives a 1.6× safety margin —
-; gap STA→STA = 4 + 12 + 4 = 20c, well above silicon contract. pad24/pad40
-; stay available for hand-coded cushions on cross-routine call paths.
+; Real TMS9918A silicon opens a CPU access window only periodically in Mode I
+; with sprites active (cf. dev/Programming_TMS9918.md §17 Bug N°1). The openMSX
+; slot-table model (May 2026) puts the worst case at ~7.5c. The contract is a
+; single JSR tms9918_pad12 between back-to-back VDP writes: a 12c minimum gap
+; (the pad alone), or 16c measured STA→STA (4c store + 12c pad) — a ~1.6×
+; margin over the ~7.5c worst case. 12c is the floor and the default: the
+; WRT_DATA_* macros below and all lib code use pad12.
+;
+; tms9918_pad24 stays as an optional cushion. tms9918_pad40 is LEGACY (a
+; paranoid 40c holdover the openMSX model made unnecessary — still used by
+; TMS_Rogue and the silicon_strict patcher's hardened mode; see tms9918_pad.asm).
 ;
 ; POM1 enforces this when Hardware → Silicon Strict is ON (default for every
 ; preset except Multiplexing Fantasy). Writes that arrive too fast are
