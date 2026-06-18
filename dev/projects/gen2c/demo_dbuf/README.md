@@ -40,7 +40,7 @@ framebuffers GEN2 `$2000`/`$4000`) + `gen2.c` + `gen2_blit.s` +
   source, compiler, uploader.
 - **CLI** :
   ```sh
-  build/POM1 --preset 8 \
+  build/POM1 --preset 11 \
       --load 6000:"software/Graphic HGR/GEN2DBuf.bin" --run 6000
   ```
 

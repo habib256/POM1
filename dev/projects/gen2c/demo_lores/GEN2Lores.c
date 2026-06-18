@@ -13,7 +13,7 @@
  * puis garde l'image affichée.
  *
  *   Build : make    -> "software/Graphic HGR/GEN2Lores.bin" (+ .txt)
- *   Run   : build/POM1 --preset 8 \
+ *   Run   : build/POM1 --preset 11 \
  *               --load 6000:"software/Graphic HGR/GEN2Lores.bin" --run 6000
  *           ou : DevBench -> POM1 Bench -> nouveau sketch C / GEN2 HGR,
  *                coller ce fichier (le runtime gen2c gère LORES et HIRES).

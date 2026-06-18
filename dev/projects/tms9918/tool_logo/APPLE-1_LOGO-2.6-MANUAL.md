@@ -54,7 +54,7 @@ CodeTank daughterboard (upper bank). Flip the CodeTank jumper to
 
 ### In POM1
 
-1. Launch POM1 and pick **Preset 6** (P-LAB Apple-1 with TMS9918 +
+1. Launch POM1 and pick **Preset 9** (P-LAB Apple-1 with TMS9918 +
    CodeTank daughterboard).
 2. Flip the CodeTank jumper to **Upper** in the Hardware menu, then in
    Wozmon (the `\` prompt) type:

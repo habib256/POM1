@@ -14,7 +14,7 @@ rectangles") and draws two centred lines with a 3×5-pixel font:
 
 - Machine: Apple 1 (stock 4 KB)
 - Cards: SWTPC GT-6144 (write-only port at `$D00A`)
-- Recommended POM1 preset: 2 (Apple-1 + SWTPC GT-6144).
+- Recommended POM1 preset: 5 (Apple-1 + SWTPC GT-6144).
 
 ## Sources
 
@@ -33,7 +33,7 @@ By hand:
 
 ## Run in POM1
 
-1. POM1 → Presets → preset 2 (Apple-1 + SWTPC GT-6144).
+1. POM1 → Presets → preset 5 (Apple-1 + SWTPC GT-6144).
 2. File → Load → `software/Graphic gt-6144/GT1_Hello.txt`.
 3. Wozmon `\` prompt: type `300R`.
 

@@ -50,7 +50,7 @@ from pathlib import Path
 HOST = "127.0.0.1"
 PORT = 6502
 CTRL_R = 18  # Apple 1 hard reset via Terminal Card
-ACI_PRESET = 1  # "Apple-1 with ACI & Integer BASIC (October 1976)"
+ACI_PRESET = 4  # "Apple-1 with ACI & Integer BASIC (October 1976)"
 
 # Test pattern planted in phase B/C. 64 bytes at $0300-$033F. Avoids long
 # constant runs so any framing bug corrupts visible nibbles first.
@@ -85,7 +85,7 @@ def pom1_bin() -> Path:
 
 
 def launch_pom1(extra_args: list[str], log_path: Path) -> subprocess.Popen:
-    """Launch POM1 in the background with --preset 1 --terminal --cpu-max.
+    """Launch POM1 in the background with --preset 4 --terminal --cpu-max.
     Returns the Popen once the Terminal Card is listening on PORT (verified by
     actually opening a TCP connection — the log message order is not
     reliable enough on slower boxes). --cpu-max is critical: at the default

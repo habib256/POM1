@@ -19,7 +19,7 @@
  *   3. alterne la page de dessin pour la frame suivante.
  *
  *   Build : make    -> "software/Graphic HGR/GEN2DBuf.bin" (+ .txt)
- *   Run   : build/POM1 --preset 8 \
+ *   Run   : build/POM1 --preset 11 \
  *               --load 6000:"software/Graphic HGR/GEN2DBuf.bin" --run 6000
  *
  * On ré-asserte le mode (graphics/hires/full) à chaque frame : c'est instantané

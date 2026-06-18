@@ -536,24 +536,32 @@ void MainWindow_ImGui::renderMenuBar()
                 if (ImGui::MenuItem(kMachinePresets[i].name, ramLabel))
                     applyMachineConfig(i);
             };
-            presetItem(0);   // Bare Apple-1 (July 1976)
-            presetItem(1);   // Apple-1 with ACI & Integer BASIC (Oct 1976)
-            presetItem(2);   // Apple-1 + SWTPC GT-6144 Graphic Terminal (1976)
+            // Greyed, non-clickable section titles (DevBench profiles first,
+            // then the real machine configurations).
+            ImGui::TextDisabled("Apple-1 Development");
+            presetItem(0);   // Apple-1 CC65 Development Bench
+            presetItem(1);   // Apple-1 TMS9918 Development Bench
+            presetItem(2);   // Apple-1 GEN2 HGR Development Bench
             ImGui::Separator();
-            presetItem(3);   // Replica-1 with ACI, Krusader (Briel)
-            presetItem(4);   // Replica-1 with CFFA1 & Applesoft Lite (Dreher)
+            ImGui::TextDisabled("Apple-1 Configurations");
+            presetItem(3);   // Bare Apple-1 (July 1976)
+            presetItem(4);   // Apple-1 with ACI & Integer BASIC (Oct 1976)
+            presetItem(5);   // Apple-1 + SWTPC GT-6144 Graphic Terminal (1976)
             ImGui::Separator();
-            // P-LAB presets grouped together (indices 5..7). The A1-SID,
+            presetItem(6);   // Replica-1 with ACI, Krusader (Briel)
+            presetItem(7);   // Replica-1 with CFFA1 & Applesoft Lite (Dreher)
+            ImGui::Separator();
+            // P-LAB presets grouped together (indices 8..10). The A1-SID,
             // I/O & RTC, Wi-Fi Modem and Juke-Box cards no longer have a
             // dedicated preset — plug them from the Hardware menu or via
             // --enable on any preset.
-            presetItem(5);   // P-LAB microSD + Applesoft Lite
-            presetItem(6);   // P-LAB TMS9918 + CodeTank
-            presetItem(7);   // P-LAB Multiplexing Fantasy
+            presetItem(8);   // P-LAB microSD + Applesoft Lite
+            presetItem(9);   // P-LAB TMS9918 + CodeTank
+            presetItem(10);  // P-LAB Multiplexing Fantasy
             ImGui::Separator();
-            presetItem(8);   // Uncle Bernie's GEN2 HGR Color
+            presetItem(11);  // Uncle Bernie's GEN2 HGR Color
             ImGui::Separator();
-            presetItem(9);   // POM1 Multiplexing Fantasy (last -> banner)
+            presetItem(12);  // POM1 Multiplexing Fantasy (last -> banner)
             ImGui::EndMenu();
         }
 

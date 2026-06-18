@@ -1907,7 +1907,7 @@ void MainWindow_ImGui::renderTutorialIntegerBasicWindow()
         ImGui::TextWrapped(
             "Presets menu > any preset except the Applesoft-Lite ones "
             "(#4 CFFA1, #5 microSD, #11 P-LAB Fantasy, #13 POM1 Fantasy). "
-            "Preset #1 'Apple-1 with ACI & Integer BASIC' is the "
+            "Preset #4 'Apple-1 with ACI & Integer BASIC' is the "
             "historical default.");
 
         tutStep(2, "Cold-start BASIC from the Woz Monitor");
@@ -1970,14 +1970,14 @@ void MainWindow_ImGui::renderTutorialApplesoftWindow()
             "loaded at a different address.");
         ImGui::BeginChild("tut_asf_scroll", ImVec2(0, 0), true);
         tutStep(1, "Pick the right preset");
-        bulletWrapped("Preset #5 'P-LAB microSD & Applesoft Lite' - Applesoft at $6000-$7FFF.");
-        bulletWrapped("Preset #4 'Replica-1 with CFFA1 & Applesoft Lite' - Applesoft at $E000-$FFFF (includes Woz Monitor).");
+        bulletWrapped("Preset #8 'P-LAB microSD & Applesoft Lite' - Applesoft at $6000-$7FFF.");
+        bulletWrapped("Preset #7 'Replica-1 with CFFA1 & Applesoft Lite' - Applesoft at $E000-$FFFF (includes Woz Monitor).");
 
         tutStep(2, "Cold-start Applesoft");
         ImGui::TextWrapped("From the Woz Monitor '\\' prompt:");
         tutCode(
-            "6000R        (microSD variant, preset #5)\n"
-            "E000R        (CFFA1 variant, preset #4)");
+            "6000R        (microSD variant, preset #8)\n"
+            "E000R        (CFFA1 variant, preset #7)");
         ImGui::TextWrapped(
             "The banner ends with ']' on a new line - that is the "
             "Applesoft prompt. Integer BASIC stays untouched at $E000 "
@@ -2043,7 +2043,7 @@ void MainWindow_ImGui::renderTutorialMicroSDWindow()
         ImGui::BeginChild("tut_sd_scroll", ImVec2(0, 0), true);
         tutStep(1, "Pick the microSD preset");
         ImGui::TextWrapped(
-            "Presets menu > #4 'P-LAB microSD & Applesoft Lite'. Or any "
+            "Presets menu > #8 'P-LAB microSD & Applesoft Lite'. Or any "
             "preset where the microSD box is ticked in the Hardware menu.");
 
         tutStep(2, "Launch the shell");
@@ -2122,8 +2122,8 @@ void MainWindow_ImGui::renderTutorialCassetteWindow()
         ImGui::BeginChild("tut_aci_scroll", ImVec2(0, 0), true);
         tutStep(1, "Pick a preset with the ACI");
         ImGui::TextWrapped(
-            "Presets menu > #1 'Apple-1 with ACI & Integer BASIC' or "
-            "#13 'POM1 Apple-1 Multiplexing Fantasy (2026)' (the default). The ACI ROM "
+            "Presets menu > #4 'Apple-1 with ACI & Integer BASIC' or "
+            "#12 'POM1 Apple-1 Multiplexing Fantasy (2026)' (the default). The ACI ROM "
             "is at $C100-$C1FF, I/O at $C000 / $C081.");
 
         tutStep(2, "Open the deck and load a tape");
@@ -2194,9 +2194,10 @@ void MainWindow_ImGui::renderTutorialModemBBSWindow()
             "you dial real TCP hosts with ATDT and chat with BBSes like "
             "it is 1985. Desktop only (WASM has no raw sockets).");
         ImGui::BeginChild("tut_modem_scroll", ImVec2(0, 0), true);
-        tutStep(1, "Pick the Wi-Fi Modem preset");
+        tutStep(1, "Plug the Wi-Fi Modem card");
         ImGui::TextWrapped(
-            "Presets menu > #9 'P-LAB Wi-Fi Modem BBS'. The ACIA sits at "
+            "Hardware > P-LAB Wi-Fi Modem (or --enable wifi). The Wi-Fi "
+            "Modem no longer has a dedicated preset. The ACIA sits at "
             "$B000-$B003.");
 
         tutStep(2, "Load the ATmodem ACIA driver");
@@ -2278,7 +2279,7 @@ void MainWindow_ImGui::renderTutorialGT6144Window()
 
         tutStep(1, "Pick a preset with the GT-6144");
         ImGui::TextWrapped(
-            "Presets > #2 'Apple-1 + SWTPC GT-6144 (1976)' — Apple 1 "
+            "Presets > #5 'Apple-1 + SWTPC GT-6144 (1976)' — Apple 1 "
             "Screen on the left, the GT-6144 CRT panel on the right. Or "
             "plug the card manually via Hardware > SWTPC GT-6144 Graphic "
             "Terminal (1976).");
@@ -2404,7 +2405,7 @@ void MainWindow_ImGui::renderTutorialTMS9918Window()
 
         tutStep(1, "Pick a preset with the TMS9918");
         ImGui::TextWrapped(
-            "Presets > #7 'P-LAB Apple-1 with TMS9918 (CodeTank daughterboard)', or "
+            "Presets > #9 'P-LAB Apple-1 with TMS9918 (CodeTank daughterboard)', or "
             "plug Hardware > P-LAB Graphic Card (TMS9918).");
 
         tutStep(2, "Know the two I/O ports");
@@ -2584,7 +2585,7 @@ void MainWindow_ImGui::renderTutorialGEN2HGRWindow()
 
         tutStep(1, "Pick the preset");
         ImGui::TextWrapped(
-            "Presets > #12 'Uncle Bernie's Apple-1 with GEN2 HGR Color'. It "
+            "Presets > #11 'Uncle Bernie's Apple-1 with GEN2 HGR Color'. It "
             "plugs the card and opens the GEN2 output window plus this "
             "tutorial. You can also click HGR on the toolbar, or use Hardware "
             "> Uncle Bernie's GEN2 HGR Graphic Card.");
@@ -2666,7 +2667,7 @@ void MainWindow_ImGui::renderTutorialCFFA1Window()
 
         tutStep(1, "Pick the preset");
         ImGui::TextWrapped(
-            "Presets > #4 'Replica-1 with CFFA1 & Applesoft Lite "
+            "Presets > #7 'Replica-1 with CFFA1 & Applesoft Lite "
             "(Dreher 2007)'. Applesoft Lite loads at $E000-$FFFF (CFFA1 "
             "flavour).");
 
@@ -2844,7 +2845,7 @@ void MainWindow_ImGui::renderTutorialKrusaderWindow()
         ImGui::TextWrapped(
             "Krusader is Ken WESSEN's 6502 mini-assembler + disassembler "
             "+ mini-debugger, rolled into an 8 KB ROM at $A000-$BFFF on "
-            "Vince Briel's Replica-1. POM1 ships the v1.3 ROM; preset #3 "
+            "Vince Briel's Replica-1. POM1 ships the v1.3 ROM; preset #6 "
             "loads it next to Integer BASIC.");
         ImGui::BeginChild("tut_krus_scroll", ImVec2(0, 0), true);
 
@@ -2913,9 +2914,9 @@ void MainWindow_ImGui::renderTutorialIECCardWindow()
 
         tutStep(1, "Enable microSD + IEC");
         ImGui::TextWrapped(
-            "Presets > #5 'P-LAB Apple-1 with microSD & Applesoft Lite', then "
+            "Presets > #8 'P-LAB Apple-1 with microSD & Applesoft Lite', then "
             "Hardware > enable 'P-LAB IEC Add-on (microSD daughterboard)'. "
-            "Or CLI: --preset 5 --enable iec. Without microSD plugged the IEC "
+            "Or CLI: --preset 8 --enable iec. Without microSD plugged the IEC "
             "menu entry is greyed out.");
 
         tutStep(2, "Boot SD CARD OS 1.3");

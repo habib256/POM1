@@ -6,7 +6,7 @@ a user typing `LOAD YUM` at `/PLAB>` while YUM actually lived in
 `/PLAB/MCODE`.
 
 Scenario ("CD before LOAD/DEL"):
-  1. Boot with --preset 5 (P-LAB microSD + Applesoft), --terminal, --cpu-max.
+  1. Boot with --preset 8 (P-LAB microSD + Applesoft), --terminal, --cpu-max.
   2. Drop a throwaway tagged file at sdcard/testdir/HELLO#040300 (harmless
      NOP bytes that load at $0300 without bricking anything).
   3. 8000R -> SD CARD OS prompt at /.
@@ -154,7 +154,7 @@ def launch_pom1(log_path: str):
     exe = ensure_pom1_binary()
     log = open(log_path, "w")
     proc = subprocess.Popen(
-        [str(exe), "--preset", "5", "--terminal", "--cpu-max"],
+        [str(exe), "--preset", "8", "--terminal", "--cpu-max"],
         stdout=log, stderr=subprocess.STDOUT, start_new_session=True,
     )
     # Boot + applyMachineConfig + 15-frame card-enable defer + first CPU slice.

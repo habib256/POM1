@@ -85,8 +85,8 @@ output one-for-one.
 
 - Machine: Apple 1 (stock 4 KB DRAM at `$0000-$0FFF`)
 - Card: P-LAB TMS9918 Graphic Card
-- Recommended POM1 preset: 6 (P-LAB TMS9918 + CodeTank), or the P-LAB
-  Multiplexing Fantasy preset 7.
+- Recommended POM1 preset: 9 (P-LAB TMS9918 + CodeTank), or the P-LAB
+  Multiplexing Fantasy preset 10.
 
 ## Memory map
 

@@ -30,7 +30,7 @@
 ; The release card deliberately leaves $C0xx to the ACI: Apple II game ports
 ; keep their $C030 SPEAKER accesses and the sound comes out of the ACI TAPE
 ; OUT flip-flop (ANY read of $C0xx toggles it — 1-bit Apple II speaker
-; audio; preset 8 plugs the ACI alongside the GEN2 for exactly this).
+; audio; preset 11 plugs the ACI alongside the GEN2 for exactly this).
 ;
 ; The frame loop is built from 65-cycle scanline slots, so the square wave
 ; rides the raster: every slot runs a constant-cost "music tick" that
@@ -129,8 +129,8 @@
 ; .assert; both lookup tables are .assert'ed page-aligned.
 ;
 ; Build: make   ->  software/Graphic HGR/A-1-CrazyCycle.{bin,txt}
-; Run:   POM1 preset 8 (GEN2 HGR), load the .txt (code + image), `E000R`.
-;        CLI: ./build/POM1 --preset 8 \
+; Run:   POM1 preset 11 (GEN2 HGR), load the .txt (code + image), `E000R`.
+;        CLI: ./build/POM1 --preset 11 \
 ;                 --load 'E000:software/Graphic HGR/A-1-CrazyCycle.txt'
 ; NOTE:  60 Hz vertical only (the frame loop counts 17030 cycles); leave the
 ;        GEN2 window's "50 Hz vertical" checkbox off. The free-run assumes

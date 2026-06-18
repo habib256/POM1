@@ -52,7 +52,7 @@
 ;   ca65 -o build/GT1_Life.o  software/gt-6144/GT1_Life.asm
 ;   ld65 -C software/gt-6144/gt6144.cfg -o build/GT1_Life.bin build/GT1_Life.o
 ;
-; Preset: ./POM1 --preset 2 --cpu-max --load 0300:build/GT1_Life.bin --run 0300
+; Preset: ./POM1 --preset 5 --cpu-max --load 0300:build/GT1_Life.bin --run 0300
 ; =============================================
 
 ; ----- Apple 1 I/O -----

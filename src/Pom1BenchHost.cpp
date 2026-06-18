@@ -326,16 +326,17 @@ struct TempFileSweeper {
 // pair; the first 6 entries are that matrix, ordered language-major:
 //   0..2 = asm x {dual-4k, TMS9918, GEN2 HGR},
 //   3..5 = C   x {dual-4k, TMS9918, GEN2 HGR}.
-// (preset indices: dual-4k = 1, TMS9918+CodeTank = 7, GEN2 = 12.)
+// (preset indices = the development benches: CC65 bench = 0, TMS9918 bench = 1,
+//  GEN2 HGR bench = 2 — the profiles the DevBench loads per machine target.)
 struct P1T { const char* label; int preset; const char* cfg; const char* lang; int mode;
              bool needsCl65; bool wantsAddr; bool codetankRom; const char* sketch; };
 const P1T kP1Targets[] = {
-    { "Apple-1 dual 4K/8K (asm)",         1, "apple1_4k.cfg",   "6502", 0, false, false, false, kSketchAsm       },
-    { "P-LAB TMS9918 Graphic Card (asm)", 7, "codetank.cfg",    "6502", 0, false, false, true,  kSketchAsmTms    },
-    { "Uncle Bernie GEN2 HGR (asm)",     12, "apple1_gen2.cfg", "6502", 0, false, false, false, kSketchAsmGen2   },
-    { "Apple-1 dual 4K/8K (C)",           1, "C-plain",         "C",    3, true,  false, false, kSketchCText     },
-    { "P-LAB TMS9918 CodeTank ROM (C)",   7, "C",               "C",    3, true,  false, true,  kSketchC         },
-    { "Uncle Bernie GEN2 HGR (C)",       12, "C-gen2",          "C",    3, true,  false, false, kSketchGen2C     },
+    { "Apple-1 dual 4K/8K (asm)",         0, "apple1_4k.cfg",   "6502", 0, false, false, false, kSketchAsm       },
+    { "P-LAB TMS9918 Graphic Card (asm)", 1, "codetank.cfg",    "6502", 0, false, false, true,  kSketchAsmTms    },
+    { "Uncle Bernie GEN2 HGR (asm)",      2, "apple1_gen2.cfg", "6502", 0, false, false, false, kSketchAsmGen2   },
+    { "Apple-1 dual 4K/8K (C)",           0, "C-plain",         "C",    3, true,  false, false, kSketchCText     },
+    { "P-LAB TMS9918 CodeTank ROM (C)",   1, "C",               "C",    3, true,  false, true,  kSketchC         },
+    { "Uncle Bernie GEN2 HGR (C)",        2, "C-gen2",          "C",    3, true,  false, false, kSketchGen2C     },
     { "Wozmon hex (any machine)",        -1, "",                "hex",  1, false, false, false, kSketchHex       },
     { "Raw bytes @ $ (any machine)",     -1, "",                "raw",  2, false, true,  false, kSketchRaw       },
 };
@@ -1127,7 +1128,7 @@ bench::BuildResult Pom1BenchHost::build(int target, const std::string& src, cons
     if (emu->loadBinary(binB.string(), entry, error, &bytesLoaded)) {
         emu->copySnapshot(mw_->uiSnapshot);
         const char* where = "";   // GEN2 asm targets render in the graphics window
-        if (t.preset == 12) { mw_->showGraphicsCard = true; where = " - see the GEN2 HGR window"; }
+        if (t.preset == 2) { mw_->showGraphicsCard = true; where = " - see the GEN2 HGR window"; }
         char msg[160]; std::snprintf(msg, sizeof(msg), "Built %d B - running @ $%04X%s", bytesLoaded, entry, where);
         r.status = msg; r.ok = true;
     } else { r.status = "load failed: " + error; r.ok = false; }
@@ -1200,7 +1201,7 @@ bench::BuildResult Pom1BenchHost::pollBuild()
     if (emu->loadBinary("/tmp/pom1_bench.bin", wasmJobEntry_, error, &bytesLoaded)) {
         emu->copySnapshot(mw_->uiSnapshot);
         const char* where = "";
-        if (t.preset == 12) { mw_->showGraphicsCard = true; where = " - see the GEN2 HGR window"; }
+        if (t.preset == 2) { mw_->showGraphicsCard = true; where = " - see the GEN2 HGR window"; }
         char msg[160]; std::snprintf(msg, sizeof(msg), "Built %d B - running @ $%04X%s", bytesLoaded, wasmJobEntry_, where);
         r.status = msg; r.ok = true;
     } else { r.status = "load failed: " + error; r.ok = false; }

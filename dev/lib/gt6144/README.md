@@ -75,7 +75,7 @@ In your project Makefile:
 
 GT-6144 must be plugged. POM1 presets:
 
-- `--preset 2` — SWTPC GT-6144 with stock Apple-1 (recommended)
+- `--preset 5` — SWTPC GT-6144 with stock Apple-1 (recommended)
 - `--enable gt6144` — adds GT-6144 to any other preset
 
 If the card isn't plugged, all `STA $D00A` writes hit RAM at `$D00A`

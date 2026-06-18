@@ -11,7 +11,7 @@ that's normal. Let's make it do something.
 
 The friendliest way in. **BASIC needs no toolchain and runs instantly.**
 
-1. Boot POM1 on **preset #1** (*Apple-1 with ACI & BASIC*) — the menu bar
+1. Boot POM1 on **preset #4** (*Apple-1 with ACI & BASIC*) — the menu bar
    *Presets* list, or it may already be selected.
 2. At the `\` prompt, type:  **`E000R`**  ↵   — this cold-starts **Integer BASIC**.
    The prompt changes to `>`.

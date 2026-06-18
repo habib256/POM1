@@ -10,7 +10,7 @@ classic `(x AND y) == 0` rule.
 
 - Machine: Apple 1 (8 KB DRAM — GEN2 framebuffer at `$2000-$3FFF`)
 - Cards: GEN2 HGR
-- Recommended POM1 preset: 8 (Uncle Bernie's GEN2 HGR Color).
+- Recommended POM1 preset: 11 (Uncle Bernie's GEN2 HGR Color).
 
 ## Sources
 
@@ -29,7 +29,7 @@ By hand:
 
 ## Run in POM1
 
-1. POM1 → Presets → preset 8 (Uncle Bernie's GEN2 HGR Color).
+1. POM1 → Presets → preset 11 (Uncle Bernie's GEN2 HGR Color).
 2. File → Load → `software/Graphic HGR/HGR_Sierpinski.txt`.
 3. Wozmon `\` prompt: type `E000R`.
 

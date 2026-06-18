@@ -340,7 +340,7 @@ loop:   TELE_PUT player          ; per frame: push the state bytes
 ```
 
 > **Note:** `--headless --preset N` applies the preset's machine config (RAM +
-> cards + BASIC ROM) with no display — e.g. `--preset 8` plugs Uncle Bernie's
+> cards + BASIC ROM) with no display — e.g. `--preset 11` plugs Uncle Bernie's
 > GEN2 for HGR game tests (`tools/test_headless_preset.py` verifies it).
 
 ---

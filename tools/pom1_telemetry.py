@@ -37,7 +37,7 @@ Self-describing (schema) use — decode by field name:
 
     from pom1_telemetry import launch_headless
     with launch_headless("software/Telemetry/GEN2Snake.bin",
-                         load_addr=0x6000, port=6602, extra=["--preset", "12"]) as tc:
+                         load_addr=0x6000, port=6602, extra=["--preset", "11"]) as tc:
         st = tc.read_named()                    # {"head_x":.., "alive":True, ...}
         print(st["head_x"], st["length"], st["alive"])
 """

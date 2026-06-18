@@ -424,7 +424,7 @@ static int runHeadless(pom1::CliPlan& plan)
 
     // Machine config: apply the preset (RAM + cards + BASIC ROM) immediately —
     // no GUI deferred plug — then explicit --enable/--disable overrides, then
-    // the --terminal override. So `--headless --preset 8` plugs GEN2 + 48K for
+    // the --terminal override. So `--headless --preset 11` plugs GEN2 + 48K for
     // an HGR game test, with no display.
     if (plan.presetIndex >= 0)
         MainWindow_ImGui::applyHeadlessConfig(emu, plan.presetIndex);
@@ -468,7 +468,7 @@ static int runHeadless(pom1::CliPlan& plan)
         if (!plan.dumpGen2Path.empty()) {
             if (!snap.gen2Enabled)
                 pom1::log().warn("GFX", "--dump-gen2-frame: GEN2 card not plugged "
-                                        "(use --preset 8 or --enable hgr) — capturing anyway");
+                                        "(use --preset 11 or --enable hgr) — capturing anyway");
             GraphicsCard gc;
             gc.render(snap.memory.data(), snap.gen2DisplayState, snap.gen2FrameStartState,
                       snap.gen2VideoEvents,

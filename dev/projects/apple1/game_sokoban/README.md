@@ -14,7 +14,7 @@ with no expansion RAM.
   Larger budgets (`apple1_sok_8k.cfg`, `apple1_sok_hgr.cfg`) ship for
   variants that target 8 KB / GEN2 HGR setups respectively.
 - Cards: none (the HGR variant is consumed by `dev/projects/hgr_sokoban/`)
-- Recommended POM1 preset: 1 (Apple-1 with ACI & BASIC; any text preset works).
+- Recommended POM1 preset: 4 (Apple-1 with ACI & BASIC; any text preset works).
 
 ## Sources
 
@@ -35,7 +35,7 @@ By hand (any of the three variants):
 
 ## Run in POM1
 
-1. POM1 → Presets → preset 1 (Apple-1 with ACI & BASIC).
+1. POM1 → Presets → preset 4 (Apple-1 with ACI & BASIC).
 2. File → Load → `software/Apple-1 games/Sokoban.txt`.
 3. Wozmon `\` prompt: type `280R`.
 

@@ -69,6 +69,74 @@ namespace pom1::mainwindow::detail {
 //     right column instead of a tutorial.
 const MachineConfig kMachinePresets[] = {
     //                                  GEN2  uSD  SID  TMS  RTC  WiFi Term Krus CFFA ACI  RAM  BASIC              SID-SE
+    // ── Development benches (indices 0-2) ─────────────────────────────────────
+    // The profiles the in-app DevBench loads when you pick a (language x machine)
+    // target (kP1Targets[].preset in Pom1BenchHost.cpp). Each MIRRORS the machine
+    // config of an existing preset (cards + RAM + BASIC): CC65 = "ACI & BASIC
+    // cassette" (8 KB dual-bank + ACI + Integer cassette), TMS9918 = "TMS9918
+    // (CodeTank)" (8 KB + TMS9918 + CodeTank), GEN2 = "GEN2 HGR Color" (48 KB +
+    // GEN2 + ACI). Listed FIRST in the Presets menu; the array still ends with
+    // POM1 Fantasy so "default = last" holds.
+    {   // 0 — cc65 / asm text development
+        "Apple-1 CC65 Development Bench",
+        "Development bench for cc65 (C / 6502 asm) Apple-1 text programs. Same "
+        "machine config as 'Apple-1 with ACI & BASIC cassette': 8 KB dual-bank RAM "
+        "(4 KB at $0000-$0FFF + 4 KB at $E000-$EFFF), ACI, Integer BASIC ready to "
+        "load from cassette, WOZ Monitor. The in-app DevBench loads this profile "
+        "for the Apple-1 asm/C targets.",
+        false, false, false, false, false, false, false,
+        /*pr40*/ false,
+        false, false, /*aci*/ true, /*ramKB*/ 8, BasicType::IntegerCassette,
+        /*sidSE*/ false,
+        /*jukeBox*/ false, JukeBox::Jumper::RAM16_ROM32, JukeBox::ChipMode::Flash,
+        /*codeTank*/ false, CodeTank::Jumper::Lower16, /*codeTankRom*/ nullptr,
+        /*gt6144*/ false,
+        /*iecCard*/ false,
+        {
+            {"Apple 1 Screen", {10, 61}, {843, 701}},
+        }, 1
+    },
+    {   // 1 — TMS9918 + CodeTank graphic development
+        "Apple-1 TMS9918 Development Bench",
+        "Development bench for P-LAB TMS9918 graphics. Same machine config as "
+        "'P-LAB Apple-1 with TMS9918 (CodeTank daughterboard)': 8 KB dual-bank RAM, "
+        "TMS9918A VDP ($CC00/$CC01) + the CodeTank 28c256 ROM daughterboard "
+        "($4000-$7FFF) so the DevBench can flash built programs as a CodeTank dev "
+        "cartridge. The in-app DevBench loads this profile for the TMS9918 asm/C targets.",
+        false, false, false, true, false, false, false,
+        /*pr40*/ false,
+        false, false, /*aci*/ false, /*ramKB*/ 8, BasicType::None,
+        /*sidSE*/ false,
+        /*jukeBox*/ false, JukeBox::Jumper::RAM16_ROM32, JukeBox::ChipMode::Flash,
+        /*codeTank*/ true, CodeTank::Jumper::Lower16,
+        /*codeTankRom*/ "roms/codetank/Codetank_GAME1.rom",
+        /*gt6144*/ false,
+        /*iecCard*/ false,
+        {
+            {"Apple 1 Screen",               {10,  61}, {843, 701}},
+            {"P-LAB Graphic Card (TMS9918)", {858, 61}, {338, 300}},
+        }, 2
+    },
+    {   // 2 — Uncle Bernie's GEN2 HGR graphic development
+        "Apple-1 GEN2 HGR Development Bench",
+        "Development bench for Uncle Bernie's GEN2 280x192 HGR colour card. Same "
+        "machine config as 'Uncle Bernie's Apple-1 with GEN2 HGR Color': 48 KB RAM "
+        "(the GEN2 card's DRAM doubles as the RAM expansion; HGR pages $2000/$4000 "
+        "are RAM-backed), GEN2 HGR + ACI plugged. The in-app DevBench loads this "
+        "profile for the GEN2 HGR asm/C targets.",
+        true, false, false, false, false, false, false,
+        /*pr40*/ false,
+        false, false, /*aci*/ true, /*ramKB*/ 48, BasicType::None,
+        /*sidSE*/ false,
+        /*jukeBox*/ false, JukeBox::Jumper::RAM16_ROM32, JukeBox::ChipMode::Flash,
+        /*codeTank*/ false, CodeTank::Jumper::Lower16, /*codeTankRom*/ nullptr,
+        /*gt6144*/ false,
+        /*iecCard*/ false,
+        {
+            {"Apple 1 Screen",                       {10,  61}, {843, 701}},
+            {"Uncle Bernie's GEN2 HGR Graphic Card", {858, 60}, {338, 264}},
+        }, 2
+    },
     {
         "Bare Apple-1 (July 1976)",
         "Pre-ACI original: 6502, 4 KB RAM, PIA 6821, WOZ Monitor.",
@@ -224,7 +292,7 @@ const MachineConfig kMachinePresets[] = {
         /*gt6144*/ false,
         /*iecCard*/ false,
         {
-            // Factory layout matches ini_defaults/imgui_preset_06.ini (also
+            // Factory layout matches ini_defaults/imgui_preset_09.ini (also
             // seeded as build/ini/ when pre-generating preset layouts).
             {"Apple 1 Screen",                {4,   60},  {404, 342}},
             {"P-LAB CodeTank Library",        {4,   200}, {630, 597}},
@@ -299,8 +367,8 @@ const MachineConfig kMachinePresets[] = {
         "Graphic cards and the PR-40 printer off by default — plug them from the toolbar. "
         "ACI plugged by default so the cassette deck can load/save tapes. Boots with the "
         "Cassette Deck + Welcome panels already open to the right of the Apple 1 screen; "
-        "your layout customisations persist under ini/imgui_preset_09.ini "
-        "(plus ini/preset_09.size for the OS window frame).",
+        "your layout customisations persist under ini/imgui_preset_12.ini "
+        "(plus ini/preset_12.size for the OS window frame).",
         false, true, true, false, false, true, true,
         /*pr40*/ false,
         false, false, true, 64, BasicType::ApplesoftLite,
@@ -311,7 +379,7 @@ const MachineConfig kMachinePresets[] = {
         /*iecCard*/ false,
         {
             // Positions / sizes match the shipped POM1 Fantasy screenshot
-            // so the first launch (no saved ini/imgui_preset_09.ini yet)
+            // so the first launch (no saved ini/imgui_preset_12.ini yet)
             // snaps straight to that layout.
             {"Apple 1 Screen",         {10,  61},  {843, 701}},
             {"Welcome",                {858, 61},  {338, 223}},
@@ -904,7 +972,7 @@ std::string windowsPathForPreset(int idx)
     return std::string(buf);
 }
 
-/** Shipped under repo `ini_defaults/` (tracked in git). Used to seed preset 6
+/** Shipped under repo `ini_defaults/` (tracked in git). Used to seed preset 9
  *  (CodeTank) layout files so they match the reviewed snapshot; cwd may be
  *  repo root or `build/` (try ../ini_defaults/, etc.). */
 std::string findIniDefaultsFile(const char* basename)
@@ -1291,9 +1359,9 @@ void MainWindow_ImGui::resetAllPresetLayouts()
 // pregenerateMissingPresetLayouts -- write out default ini/imgui_preset_NN.ini
 // + ini/preset_NN.size for every preset that doesn't have one yet, using the
 // hard-coded `kMachinePresets[i].layout` defaults (window name + pos + size).
-// Preset 6 (CodeTank): when `ini_defaults/imgui_preset_06.ini` and
-// `ini_defaults/preset_06.size` are found, those files are copied — they are
-// the canonical factory defaults (keep in sync with kMachinePresets[6]).
+// Preset 9 (CodeTank): when `ini_defaults/imgui_preset_09.ini` and
+// `ini_defaults/preset_09.size` are found, those files are copied — they are
+// the canonical factory defaults (keep in sync with kMachinePresets[9]).
 //
 // Called once at boot. Ensures the ini/ directory is fully populated even
 // before the user visits each preset, so that:
@@ -1333,8 +1401,8 @@ void MainWindow_ImGui::pregenerateMissingPresetLayouts()
 
         // Write the .ini file with one [Window][...] section per layout entry.
         if (!iniExists) {
-            bool seededFromDefaults = (idx == 6)
-                && copyIniDefaultsFileTo("imgui_preset_06.ini", iniPath);
+            bool seededFromDefaults = (idx == 9)
+                && copyIniDefaultsFileTo("imgui_preset_09.ini", iniPath);
             if (!seededFromDefaults) {
                 std::ofstream f(iniPath);
                 if (!f) continue;
@@ -1356,8 +1424,8 @@ void MainWindow_ImGui::pregenerateMissingPresetLayouts()
         // small floor matching the canonical Fantasy preset (last entry) so
         // that no preset starts smaller than the reference frame.
         if (!sizeExists) {
-            bool seededFromDefaults = (idx == 6)
-                && copyIniDefaultsFileTo("preset_06.size", sizePath);
+            bool seededFromDefaults = (idx == 9)
+                && copyIniDefaultsFileTo("preset_09.size", sizePath);
             if (!seededFromDefaults) {
                 // Need a fallback Apple-1 screen size — use the spec's size if
                 // present, else a reasonable 843x701 baseline.

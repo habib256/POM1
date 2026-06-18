@@ -56,7 +56,7 @@ et lancer l'interpréteur avec `4000R` depuis Wozmon.
 
 ### Dans POM1
 
-1. Lancer POM1 et choisir le **Preset 6** (P-LAB Apple-1 with TMS9918
+1. Lancer POM1 et choisir le **Preset 9** (P-LAB Apple-1 with TMS9918
    + CodeTank daughterboard).
 2. Basculer le jumper CodeTank sur **Upper** dans le menu Hardware,
    puis dans Wozmon (le prompt `\`) taper :

@@ -24,7 +24,7 @@
 ;   300R
 ;
 ; Requires the GT-6144 to be plugged:
-;   ./POM1 --preset 2               (SWTPC preset)
+;   ./POM1 --preset 5               (SWTPC preset)
 ;   ./POM1 --enable gt6144          (any other preset)
 ;
 ; Protocol recap (see GT6144.h):

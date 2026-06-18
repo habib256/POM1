@@ -12,7 +12,7 @@
  *   Build : make                 -> software/Telemetry/GEN2Snake.bin (+ .txt)
  *   Run   : DevBench -> POM1 Bench -> Examples -> Snake telemetry  (C / GEN2 HGR)
  *           or  build/POM1 --headless --telemetry-port 6602 \
- *                          --preset 8 --load 6000:<bin> --run 6000
+ *                          --preset 11 --load 6000:<bin> --run 6000
  *
  * Telemetry: FREE-RUN (no lock-step) so the game plays live. Schema declares
  * EXACTLY 5 fields, in order: head_x:U8, head_y:U8, length:U8, alive:BOOL,

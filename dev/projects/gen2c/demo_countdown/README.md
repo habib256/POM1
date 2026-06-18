@@ -29,7 +29,7 @@ framebuffers GEN2) + `gen2.c` + `apple1io.c`/`apple1io_asm.s`, origine `$6000`.
   source, compiler, uploader.
 - **CLI** :
   ```sh
-  build/POM1 --preset 8 \
+  build/POM1 --preset 11 \
       --load 6000:"software/Graphic HGR/GEN2Countdown.bin" --run 6000
   ```
 - Charger le `.bin`/`.txt` depuis le dossier `software/Graphic HGR/` auto-branche

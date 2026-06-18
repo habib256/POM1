@@ -104,8 +104,8 @@ In your project Makefile:
 
 microSD must be plugged. POM1:
 
-- `--preset 5` — microSD + Applesoft Lite (most common)
-- `--preset 7` / `9` — multiplexing fantasy (microSD + other cards)
+- `--preset 8` — microSD + Applesoft Lite (most common)
+- `--preset 10` / `9` — multiplexing fantasy (microSD + other cards)
 - `--enable microsd` — adds it to any preset
 
 (Juke-Box (`--enable jukebox`) is mutually exclusive with microSD — they share the

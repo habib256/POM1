@@ -12,7 +12,7 @@ in stock 8 KB DRAM (~6 KB binary, no expansion cards required).
 
 - Machine: Apple 1 (stock 4 KB DRAM is enough)
 - Cards: none
-- Recommended POM1 preset: 1 (Apple-1 with ACI & BASIC; any text preset works).
+- Recommended POM1 preset: 4 (Apple-1 with ACI & BASIC; any text preset works).
 
 ## Sources
 
@@ -30,7 +30,7 @@ By hand:
 
 ## Run in POM1
 
-1. POM1 → Presets → preset 1 (Apple-1 with ACI & BASIC).
+1. POM1 → Presets → preset 4 (Apple-1 with ACI & BASIC).
 2. File → Load → `software/Apple-1 games/LittleTower-1.0.txt`.
 3. Wozmon `\` prompt: type `280R`.
 

@@ -11,7 +11,7 @@ refresh. Reads broadcast registers from the emulated ATMEGA32 over the
 
 - Machine: Apple 1 (4 KB DRAM is enough)
 - Cards: P-LAB A1-IO & RTC
-- Recommended POM1 preset: 8 (P-LAB I/O Board & RTC).
+- Recommended POM1 preset: 11 (P-LAB I/O Board & RTC).
 
 ## Sources
 

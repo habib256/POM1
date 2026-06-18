@@ -51,7 +51,7 @@ Donc par round :
   5. prog imprime CRLF + "#NN+1 "
 
 Pré-requis :
-  ./POM1 --preset 0 --terminal --cpu-max \\
+  ./POM1 --preset 3 --terminal --cpu-max \\
          --load 0800:sdcard/PLAB/MCODE/CODEBREAKERUB#060800 --run 0800
 Ou, plus simple :
       python3 tools/play_codebreaker_telnet.py --autolaunch
@@ -411,7 +411,7 @@ def maybe_autolaunch(repo_root: str) -> Optional[subprocess.Popen]:
     exe = os.path.join(repo_root, "build", "POM1")
     if not os.path.isfile(exe):
         raise FileNotFoundError(f"{exe} — build POM1 first")
-    cmd = [exe, "--preset", "0", "--terminal", "--cpu-max",
+    cmd = [exe, "--preset", "3", "--terminal", "--cpu-max",
            "--load", f"0800:{rom}", "--run", "0800"]
     LOG(f"[launch] {' '.join(cmd)}")
     proc = subprocess.Popen(cmd, cwd=repo_root,

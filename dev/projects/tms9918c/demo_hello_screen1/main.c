@@ -1,5 +1,5 @@
 /*
- * hello_screen1 — minimal CodeTank + TMS9918 demo (preset 6).
+ * hello_screen1 — minimal CodeTank + TMS9918 demo (preset 9).
  * Build: make   → software/Apple-1_TMS_CC65/hello_screen1.{bin,txt}
  * Run:   Wozmon 4000R
  */

@@ -17,7 +17,7 @@ Two linker-config variants:
 
 - Machine: Apple 1 (4 KB DRAM for cassette; 8 KB to play comfortably)
 - Cards: P-LAB TMS9918 (CodeTank for the bank variant)
-- Recommended POM1 preset: 6 (P-LAB TMS9918 + CodeTank).
+- Recommended POM1 preset: 9 (P-LAB TMS9918 + CodeTank).
 
 ## Sources
 
@@ -36,7 +36,7 @@ Override the linker config from the command line:
 
 ## Run in POM1
 
-1. POM1 → Presets → preset 6 (P-LAB TMS9918 + CodeTank).
+1. POM1 → Presets → preset 9 (P-LAB TMS9918 + CodeTank).
 2. File → Load → `software/Graphic TMS9918/TMS_Life.txt`.
 3. Wozmon `\` prompt: type `280R` (cassette) or `7A00R` (CodeTank).
 

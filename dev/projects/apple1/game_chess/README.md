@@ -95,7 +95,7 @@ $EF00-$EFFF   BOARDST — 0x88 board + state + AI/undo BSS          ← upper 4K
 
 This matches the canonical 1976+ Apple-1 / Replica-1 RAM layout
 (8 KB total, split into two 4 KB banks). The chess program does NOT fit
-on a 4K-only Apple-1 (POM1 preset 0 is 4K-only).
+on a 4K-only Apple-1 (POM1 preset 3 is 4K-only).
 
 ## Run in POM1
 
@@ -109,7 +109,7 @@ Wozmon will auto-run via the trailing `0280R`.
 Or via CLI (loads both banks separately):
 
 ```
-./POM1 --preset 1 --terminal --cpu-max \
+./POM1 --preset 4 --terminal --cpu-max \
        --load 0x0280:software/Apple-1 games/Chess.bin.lo \
        --load 0xE000:software/Apple-1 games/Chess.bin.hi --run 0x0280
 ```

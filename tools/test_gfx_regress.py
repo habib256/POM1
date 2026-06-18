@@ -60,7 +60,7 @@ def main():
     ap.add_argument("--golden", required=True, help="path to the committed golden PNG")
     ap.add_argument("--load", default="", help="ADDR:binary to load (e.g. 0xE000:prog.bin)")
     ap.add_argument("--run", default="", help="ADDR to run after loading")
-    ap.add_argument("--preset", default=None, help="machine preset (8=GEN2, 6=TMS9918)")
+    ap.add_argument("--preset", default=None, help="machine preset (11=GEN2, 9=TMS9918)")
     ap.add_argument("--after-cycles", type=int, default=2_000_000,
                     help="deterministic settle in emulated cycles (default 2,000,000)")
     ap.add_argument("--settle-ms", type=int, default=0,

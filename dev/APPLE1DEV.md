@@ -244,7 +244,7 @@ Applesoft programs: `SAVE "NAME"` writes `sdcard/NAME#F80801` directly — no ma
 ### Manual
 
 ```bash
-./POM1 --preset 5 --terminal --cpu-max     # microSD + Applesoft Lite + telnet :6502
+./POM1 --preset 8 --terminal --cpu-max     # microSD + Applesoft Lite + telnet :6502
 # File > Load Memory → my.txt → `280R` (or whatever start)
 ```
 
@@ -293,12 +293,12 @@ Full example: `tools/test_sdcard_subdir_navigation_telnet.py`.
 
 | Goal | Command |
 |---|---|
-| microSD + Applesoft + telnet, MAX speed | `./POM1 --preset 5 --terminal --cpu-max` |
-| Load + run + drive | `./POM1 -p 1 --terminal --load 0300:prog.bin --run 0300 --paste keys.txt` |
-| Swap cards | `./POM1 -p 9 --disable hgr --enable sid --sid-chip 8580 --speed 34091` |
-| Seed microSD fixture | `./POM1 -p 5 --sd-mkdir BASIC --sd-put host/PROG#F80801:BASIC/PROG#F80801` |
+| microSD + Applesoft + telnet, MAX speed | `./POM1 --preset 8 --terminal --cpu-max` |
+| Load + run + drive | `./POM1 -p 4 --terminal --load 0300:prog.bin --run 0300 --paste keys.txt` |
+| Swap cards | `./POM1 -p 12 --disable hgr --enable sid --sid-chip 8580 --speed 34091` |
+| Seed microSD fixture | `./POM1 -p 8 --sd-mkdir BASIC --sd-put host/PROG#F80801:BASIC/PROG#F80801` |
 | Capture SID to `.wav` | `./POM1 --enable sid --rec --save-tape /tmp/out --save-tape-format wav` |
-| Step + BRK trace | `./POM1 -p 0 --trace-brk --step 10` |
+| Step + BRK trace | `./POM1 -p 3 --trace-brk --step 10` |
 | Freeze RTC | `./POM1 --enable rtc --rtc-freeze "2000-01-01 00:00:00"` |
 
 Complete verb table (all phases): [`doc/CLI.md`](../doc/CLI.md).

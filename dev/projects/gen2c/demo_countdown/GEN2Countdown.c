@@ -10,7 +10,7 @@
  *
  *   Build : make            -> "software/Graphic HGR/GEN2Countdown.bin" (+ .txt)
  *   Run   : DevBench -> POM1 Bench -> nouveau sketch C / GEN2 HGR
- *           ou  build/POM1 --preset 8 \
+ *           ou  build/POM1 --preset 11 \
  *                          --load 6000:"software/Graphic HGR/GEN2Countdown.bin" \
  *                          --run 6000
  *

@@ -31,7 +31,7 @@ upload to fit one scan line.
 
 - Machine: Apple 1 (stock 4 KB DRAM)
 - Card: P-LAB TMS9918 Graphic Card
-- Recommended POM1 preset: 6 (P-LAB TMS9918 + CodeTank), or the P-LAB Multiplexing Fantasy preset 7
+- Recommended POM1 preset: 9 (P-LAB TMS9918 + CodeTank), or the P-LAB Multiplexing Fantasy preset 10
 
 ## Sources
 

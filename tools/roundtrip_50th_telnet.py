@@ -4,7 +4,7 @@ roundtrip_50th_telnet.py — End-to-end ACI round-trip of the 50th-birthday
 demo driven entirely through the Terminal Card.
 
 Flow:
-  1. Launch POM1 with `--preset 1 --terminal --cpu-max --save-tape
+  1. Launch POM1 with `--preset 4 --terminal --cpu-max --save-tape
      /tmp/50th.wav`.
   2. Telnet in, hard-reset, paste `software/demos/50th.apl.txt` (minus
      its trailing `000280R` auto-run line) so the program sits in RAM.
@@ -48,7 +48,7 @@ from pathlib import Path
 HOST = "127.0.0.1"
 PORT = 6502
 CTRL_R = 18
-ACI_PRESET = 1                    # "Apple-1 with ACI & Integer BASIC"
+ACI_PRESET = 4                    # "Apple-1 with ACI & Integer BASIC"
 PROG_FROM = 0x0280
 PROG_TO   = 0x0FFF                # covers the full 50th demo (3456 bytes spanning $0280-$0FFF — running past $0BFF is what made the earlier roundtrips crash mid-animation after the Macintosh frame)
 WOZMON_PROMPT = "\\"              # Woz Monitor prompt character

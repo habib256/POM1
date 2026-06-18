@@ -13,7 +13,7 @@ Apple 1 terminal. Each shows a title screen and marks `S` (start) and
 
 - Machine: Apple 1 (stock 4 KB DRAM)
 - Cards: none
-- Recommended POM1 preset: 1 (Apple-1 with ACI & BASIC; any text preset works).
+- Recommended POM1 preset: 4 (Apple-1 with ACI & BASIC; any text preset works).
 
 ## Sources
 
@@ -32,7 +32,7 @@ By hand (one program at a time):
 
 ## Run in POM1
 
-1. POM1 → Presets → preset 1 (Apple-1 with ACI & BASIC).
+1. POM1 → Presets → preset 4 (Apple-1 with ACI & BASIC).
 2. File → Load → `software/Apple-1 games/Maze_Sidewinder.txt` (or `Maze2_Backtracker.txt`).
 3. Wozmon `\` prompt: type `280R`.
 

@@ -4,7 +4,7 @@
 
 ### *The 1976 personal computer revolution, faithfully reborn — with 50 years of expansion cards bolted on.*
 
-🎂 **Celebrating 50 years of Apple (1976 → 2026)** with the most complete Apple 1 emulator ever shipped: 10 one-click machine presets, 16 expansion cards, 60+ ready-to-run programs, **cycle-accurate libresidfp SID engine** with hot-swappable 6581/8580 chips, and a 1976 SWTPC GT-6144 graphics card sitting next to a 2026 Wi-Fi modem & TMS9918 cartridge library.
+🎂 **Celebrating 50 years of Apple (1976 → 2026)** with the most complete Apple 1 emulator ever shipped: 13 one-click machine presets, 16 expansion cards, 60+ ready-to-run programs, **cycle-accurate libresidfp SID engine** with hot-swappable 6581/8580 chips, and a 1976 SWTPC GT-6144 graphics card sitting next to a 2026 Wi-Fi modem & TMS9918 cartridge library.
 
 Built with Dear ImGui & OpenGL — fast, lightweight, cross-platform.
 
@@ -13,7 +13,7 @@ Built with Dear ImGui & OpenGL — fast, lightweight, cross-platform.
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](LICENSE)
 [![Platform](https://img.shields.io/badge/Linux%20•%20macOS%20•%20Windows%20•%20Web-lightgrey.svg)](#-quick-start)
 [![C++17](https://img.shields.io/badge/C%2B%2B-17-orange.svg)](#)
-[![10 presets](https://img.shields.io/badge/Presets-10-success.svg)](#%EF%B8%8F-machine-presets)
+[![13 presets](https://img.shields.io/badge/Presets-13-success.svg)](#%EF%B8%8F-machine-presets)
 [![Programs](https://img.shields.io/badge/Software-60%2B-yellowgreen.svg)](#-software-library)
 
 ![POM1 Screenshot](doc/reference/screenshot.png)
@@ -45,17 +45,17 @@ Five things to try **right after first boot** (every preset boots into WOZ Monit
 F000R    ; cold-start whatever ROM is currently mapped at $F000
 ```
 
-1. **Write your first BASIC program** → preset **#1**, type `E000R` (cold-start Integer BASIC), then `10 PRINT "HELLO WORLD"` and `RUN`. Welcome to 1976.
-2. **Play the A1-SID piano** → preset **#9** (default — A1-SID plugged; or *Hardware → A1-SID* on any preset), *File → Load Memory* → `software/SOUND SID/Claudio_PARMIGIANI_SID_PIANO_ORIG.txt`, type `C400R`, then press keys to play. Real SID synthesis on Apple 1 hardware.
-3. **Plug a TMS9918 cartridge** → preset **#6** (CodeTank), *File → P-LAB CodeTank Library* → `Codetank_GAME2.rom` → flip *upper jumper* → `4000R`. Mode-III Nyan Cat at 20 fps.
-4. **BBS over real TCP** → preset **#9** (default — Wi-Fi Modem plugged; or *Hardware → Wi-Fi Modem* on any preset), `0280R` to load ATmodem, then `ATDT bbs.fozztexx.com:23`. Browse a 2026-era BBS in WOZ Monitor.
+1. **Write your first BASIC program** → preset **#4**, type `E000R` (cold-start Integer BASIC), then `10 PRINT "HELLO WORLD"` and `RUN`. Welcome to 1976.
+2. **Play the A1-SID piano** → preset **#12** (default — A1-SID plugged; or *Hardware → A1-SID* on any preset), *File → Load Memory* → `software/SOUND SID/Claudio_PARMIGIANI_SID_PIANO_ORIG.txt`, type `C400R`, then press keys to play. Real SID synthesis on Apple 1 hardware.
+3. **Plug a TMS9918 cartridge** → preset **#9** (CodeTank), *File → P-LAB CodeTank Library* → `Codetank_GAME2.rom` → flip *upper jumper* → `4000R`. Mode-III Nyan Cat at 20 fps.
+4. **BBS over real TCP** → preset **#12** (default — Wi-Fi Modem plugged; or *Hardware → Wi-Fi Modem* on any preset), `0280R` to load ATmodem, then `ATDT bbs.fozztexx.com:23`. Browse a 2026-era BBS in WOZ Monitor.
 5. **Live debugging** → `F1` opens the memory viewer, `F7` single-steps the 6502, `F3` opens the BRK trace. Watch Microchess plan its move.
 
 ---
 
 ## ✨ Hardware
 
-**Core machine** — Authentic 40×24 display (`charmap.rom` bitmap, three CRT phosphors, scanlines, glow), cycle-accurate **6502** (all official opcodes, ~1.022727 MHz / 2× / MAX), paste-code, step debugger, live memory editor + visual map, **10 one-click presets** from *Bare Apple-1 (July 1976)* to *POM1 Multiplexing Fantasy (2026)*.
+**Core machine** — Authentic 40×24 display (`charmap.rom` bitmap, three CRT phosphors, scanlines, glow), cycle-accurate **6502** (all official opcodes, ~1.022727 MHz / 2× / MAX), paste-code, step debugger, live memory editor + visual map, **13 one-click presets** (3 DevBench profiles + 10 machines) from *Bare Apple-1 (July 1976)* to *POM1 Multiplexing Fantasy (2026)*.
 
 | Card | Year | Highlights |
 |---|---:|---|
@@ -134,10 +134,10 @@ POM1 ships ~30 CLI flags for headless / scripted runs. Full reference → [`doc/
 
 ```bash
 ./POM1 --list-presets
-./POM1 --preset 1 --enable jukebox --terminal &   # Juke-Box + telnet on :6502
+./POM1 --preset 4 --enable jukebox --terminal &   # Juke-Box + telnet on :6502
 ./POM1 --enable sid --terminal --cpu-max          # plug A1-SID on the default preset
 ./POM1 --tape cassettes/APPLE50TH.ogg             # auto-press Play
-./POM1 --preset 6 \
+./POM1 --preset 9 \
        --codetank-rom roms/codetank/Codetank_GAME2.rom \
        --codetank-jumper upper                     # boot directly into Nyan/CodeTank
 ```
@@ -162,18 +162,21 @@ Indices match `--preset N`. Per-preset window layouts persist under `ini/imgui_p
 
 | # | Preset | RAM | BASIC | Cards |
 |:-:|:-------|:---:|:------|:------|
-| 0 | **Bare Apple-1 (July 1976)** | 4 KB | — | — |
-| 1 | **Apple-1 with ACI & BASIC cassette (Oct 1976)** | 8 KB | Integer cassette | ACI |
-| 2 | **Apple-1 + SWTPC GT-6144 (1976)** | 8 KB | — | ACI, GT-6144, PR-40 |
-| 3 | **Replica-1 with ACI & Krusader (Briel 2003)** | 8 KB | — | ACI, Krusader |
-| 4 | **Replica-1 with CFFA1 & Applesoft Lite (Dreher 2007)** | 8 KB | Applesoft Lite | CFFA1 |
-| 5 | **P-LAB microSD & Applesoft Lite (Apr 2022)** | 8 KB | Applesoft Lite | microSD |
-| 6 | **P-LAB Apple-1 with TMS9918 + CodeTank** | 8 KB | — | TMS9918, CodeTank |
-| 7 | **P-LAB Multiplexing Fantasy** | 64 KB | Applesoft Lite | microSD, A1-SID, TMS9918 + CodeTank, I/O & RTC, Wi-Fi, Terminal |
-| 8 | **Uncle Bernie's GEN2 HGR Color (Apr 2026)** | 48 KB | — | GEN2 HGR, ACI |
-| 9 | **POM1 Multiplexing Fantasy (2026)** ⭐ | 64 KB | Applesoft Lite | ACI, microSD, A1-SID, Wi-Fi, Terminal |
+| 0 | **Apple-1 CC65 Development Bench** 🛠 | 8 KB | Integer cassette | ACI |
+| 1 | **Apple-1 TMS9918 Development Bench** 🛠 | 8 KB | — | TMS9918, CodeTank |
+| 2 | **Apple-1 GEN2 HGR Development Bench** 🛠 | 48 KB | — | GEN2 HGR, ACI |
+| 3 | **Bare Apple-1 (July 1976)** | 4 KB | — | — |
+| 4 | **Apple-1 with ACI & BASIC cassette (Oct 1976)** | 8 KB | Integer cassette | ACI |
+| 5 | **Apple-1 + SWTPC GT-6144 (1976)** | 8 KB | — | ACI, GT-6144, PR-40 |
+| 6 | **Replica-1 with ACI & Krusader (Briel 2003)** | 8 KB | — | ACI, Krusader |
+| 7 | **Replica-1 with CFFA1 & Applesoft Lite (Dreher 2007)** | 8 KB | Applesoft Lite | CFFA1 |
+| 8 | **P-LAB microSD & Applesoft Lite (Apr 2022)** | 8 KB | Applesoft Lite | microSD |
+| 9 | **P-LAB Apple-1 with TMS9918 + CodeTank** | 8 KB | — | TMS9918, CodeTank |
+| 10 | **P-LAB Multiplexing Fantasy** | 64 KB | Applesoft Lite | microSD, A1-SID, TMS9918 + CodeTank, I/O & RTC, Wi-Fi, Terminal |
+| 11 | **Uncle Bernie's GEN2 HGR Color (Apr 2026)** | 48 KB | — | GEN2 HGR, ACI |
+| 12 | **POM1 Multiplexing Fantasy (2026)** ⭐ | 64 KB | Applesoft Lite | ACI, microSD, A1-SID, Wi-Fi, Terminal |
 
-⭐ = default. **Bare (0)** is the pre-ACI July-1976 shipping config. **RAM** = motherboard `ramKB` from [`MainWindow_Presets.cpp`](MainWindow_Presets.cpp) (`kMachinePresets[]`). Non-fantasy presets **1–6** use Parmigiani **8 KB dual-bank** (`$0000-$0FFF` + `$E000-$EFFF`). **GEN2 (8)** mirrors Uncle Bernie's real release setup: the card doubles as a **48 KB RAM expansion** (`$0000-$BFFF` card DRAM + motherboard `$E000-$EFFF` — Bernie's "54 KB" spec, Q9) with the ACI plugged alongside. **Integer BASIC** remains loadable from cassette on presets **1–3** when `BasicType::None`. The **A1-SID, I/O & RTC, Wi-Fi Modem and Juke-Box** cards no longer have a dedicated preset — plug them from the **Hardware** menu, or via `--enable {sid,rtc,wifi,jukebox}` on any preset. **IEC daughterboard**: enable from **Hardware** after picking **preset 5** (microSD), or CLI `--preset 5 --enable iec`.
+⭐ = default. 🛠 **Development benches (0–2)** are the profiles the in-app **DevBench** loads per (language × machine) target; each mirrors an existing preset's machine config — CC65 = *ACI & BASIC cassette* (8 KB), TMS9918 = *TMS9918 + CodeTank* (8 KB), GEN2 = *GEN2 HGR Color* (48 KB). **Bare (3)** is the pre-ACI July-1976 shipping config. **RAM** = motherboard `ramKB` from [`MainWindow_Presets.cpp`](MainWindow_Presets.cpp) (`kMachinePresets[]`). Non-fantasy hardware presets **4–9** use Parmigiani **8 KB dual-bank** (`$0000-$0FFF` + `$E000-$EFFF`). **GEN2 (11)** mirrors Uncle Bernie's real release setup: the card doubles as a **48 KB RAM expansion** (`$0000-$BFFF` card DRAM + motherboard `$E000-$EFFF` — Bernie's "54 KB" spec, Q9) with the ACI plugged alongside. **Integer BASIC** remains loadable from cassette on presets **4–6** when `BasicType::None`. The **A1-SID, I/O & RTC, Wi-Fi Modem and Juke-Box** cards have no dedicated preset — plug them from the **Hardware** menu, or via `--enable {sid,rtc,wifi,jukebox}` on any preset. **IEC daughterboard**: enable from **Hardware** after picking **preset 8** (microSD), or CLI `--preset 8 --enable iec`.
 
 ---
 
@@ -183,7 +186,7 @@ Indices match `--preset N`. Per-preset window layouts persist under `ini/imgui_p
 
 ### 🃏 P-LAB CodeTank cartridge library *(new in v1.9.0, GAME4 added v1.9.1)*
 
-Plug the CodeTank daughterboard (preset 6 or *Hardware → CodeTank*), open *File → P-LAB CodeTank Library*, pick a `.rom`, choose a jumper. **5 cartridges shipped**, all rebuilt from source via `python3 tools/build_codetank_rom.py`:
+Plug the CodeTank daughterboard (preset 9 or *Hardware → CodeTank*), open *File → P-LAB CodeTank Library*, pick a `.rom`, choose a jumper. **5 cartridges shipped**, all rebuilt from source via `python3 tools/build_codetank_rom.py`:
 
 | ROM | Lower jumper (`4000R`) | Upper jumper (`4000R`) |
 |---|---|---|

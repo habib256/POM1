@@ -14,7 +14,7 @@ fixed-position screen buffer at `$0850`.
 
 - Machine: Apple 1 (4 KB DRAM is enough)
 - Cards: P-LAB A1-SID
-- Recommended POM1 preset: 6 (P-LAB A1-SID).
+- Recommended POM1 preset: 9 (P-LAB A1-SID).
 
 ## Sources
 

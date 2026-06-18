@@ -25,7 +25,7 @@
  * vitesse, donc l'échange préserve l'alignement octet.
  *
  *   Build : make    -> "software/Graphic HGR/GEN2Vectors.bin" (+ .txt)
- *   Run   : build/POM1 --preset 8 \
+ *   Run   : build/POM1 --preset 11 \
  *               --load 6000:"software/Graphic HGR/GEN2Vectors.bin" --run 6000
  */
 #include "gen2.h"
