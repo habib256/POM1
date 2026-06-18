@@ -10,7 +10,9 @@ machine, press **Upload**. The Bench wires the toolchain, the linker config and
 the libraries for you. This guide is for when you want to understand or build by
 hand.
 
-**Contents:** [Install](#1-install-cc65) · [Architecture](#2-architecture--one-text-base-two-graphics-layers) · [Your first program](#3-your-first-program) · [Text & keyboard](#4-text--keyboard-apple1c) · [GEN2 HGR](#5-gen2-hgr-colour-gen2c) · [TMS9918](#6-tms9918-sprites--colour) · [Memory budget](#7-memory-budget--the-1-gotcha) · [Gotchas](#8-gotchas)
+**Contents:** [Install](#1-install-cc65) · [Architecture](#2-architecture--one-text-base-two-graphics-layers) · [Your first program](#3-your-first-program) · [Text & keyboard](#4-text--keyboard-apple1c) · [Graphics cards](#5-graphics-cards--separate-guides) · [Memory budget](#6-memory-budget--the-1-gotcha) · [Gotchas](#7-gotchas)
+
+Card-specific guides: [`Programming_GEN2C.md`](Programming_GEN2C.md) (HGR) and [`Programming_TMS9918C.md`](Programming_TMS9918C.md).
 
 ---
 
@@ -108,51 +110,15 @@ void main(void) {
 
 ---
 
-## 5. GEN2 HGR colour (`gen2c`)
+## 5. Graphics cards — separate guides
 
-`#include "gen2.h"` — 280×192 HIRES. Full API + gotchas: [lib/gen2c/README.md](lib/gen2c/README.md).
+**GEN2 HGR colour (`gen2c`)** is covered in [`Programming_GEN2C.md`](Programming_GEN2C.md).
 
-```c
-#include "gen2.h"
-#include "apple1io.h"
-void main(void) {
-    gen2_hgr_init();                       /* graphics+hires+page1+full */
-    gen2_hgr_clear(0);                      /* black */
-    gen2_hgr_puts(42, 80, "SCORE");
-    gen2_hgr_putu(120, 80, 1234u);          /* a number */
-    for (;;) { }
-}
-```
-
-Build with `apple1_gen2_c.cfg`, run `6000R`. The two GEN2 rules: never *write*
-the `$C25x` soft switches, and always clear with `gen2_hgr_clear()` (a naïve
-16-bit loop is ~20× slower and blanks the screen).
+**TMS9918 sprites & colour** is covered in [`Programming_TMS9918C.md`](Programming_TMS9918C.md). Before optimising VRAM loops, read [`SILICONBUGS.md`](SILICONBUGS.md).
 
 ---
 
-## 6. TMS9918 sprites & colour
-
-Uses Nino Porcino's `apple1-videocard-lib` (`screen1.h`, `tms9918.h`,
-`screen2.h`). The Bench's **TMS9918 (C)** target builds a 16 KB CodeTank ROM and
-boots `4000R`. 13 worked demos live in `dev/apple1-videocard-lib/demos/`
-(`hello_world`, `hello_screen1`, `tetris`, `rogue_c`, `sprite_animals`…).
-
-```c
-#include "tms9918.h"
-#include "screen1.h"
-void main(void) {
-    tms_init_regs(SCREEN1_TABLE);
-    tms_set_color(COLOR_CYAN);
-    screen1_prepare();
-    screen1_load_font();
-    screen1_puts((const unsigned char *)"HELLO TMS9918");
-    for (;;) { }
-}
-```
-
----
-
-## 7. Memory budget — the #1 gotcha
+## 6. Memory budget — the #1 gotcha
 
 `apple1_c.cfg` (plain text) gives C only **`$0300-$0FFF` ≈ 2.75 KB** for
 code + data + the C stack. A few hundred bytes of global arrays and the linker
