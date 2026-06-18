@@ -10,7 +10,7 @@ in stock 8 KB DRAM (~6 KB binary, no expansion cards required).
 
 ## Hardware
 
-- Machine: Apple 1 (stock 4 KB DRAM is enough)
+- Machine: Apple 1 (stock 8 KB DRAM required — the ~6 KB binary spans $0280-$19D5, past the 4 KB $0FFF ceiling)
 - Cards: none
 - Recommended POM1 preset: 4 (Apple-1 with ACI & BASIC; any text preset works).
 

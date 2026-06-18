@@ -124,13 +124,16 @@ void main(void) {
 }
 ```
 
-Build (run `6000R`):
+Build (run `6000R`). The `text` and `geom` families call `gfx_*`, so build the
+GEN2 gfx archive once and link it (and add `-I ../gfx` for `gfx.h`):
 
 ```bash
-cl65 -t none -Oirs -C ../../cc65/apple1_gen2_c.cfg -I . -I ../apple1c \
+make -C ../gfx gen2          # builds ../gfx/gfx-gen2.lib (once)
+
+cl65 -t none -Oirs -C ../../cc65/apple1_gen2_c.cfg -I . -I ../apple1c -I ../gfx \
      hello.c gen2_init.c gen2_pixel.c gen2_rect.c gen2_text.c gen2_sprites.c \
      gen2_geom.c gen2_lores.c gen2_blit.s \
-     ../apple1c/apple1io.c ../apple1c/apple1io_asm.s -o hello.bin
+     ../apple1c/apple1io.c ../apple1c/apple1io_asm.s ../gfx/gfx-gen2.lib -o hello.bin
 ```
 
 For minimal binaries, list only the families you actually call (see

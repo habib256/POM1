@@ -9,7 +9,7 @@
 ;   Build: make
 ;
 ; Load in POM1 via File > Load Memory (Maze.txt)
-; or load binary at $0300, then type 300R in Woz Monitor.
+; or load binary at $0280, then type 280R in Woz Monitor.
 ; =============================================
 
 ; --- Constants ---
@@ -41,7 +41,7 @@ run_len:    .res 1      ; $08 - Sidewinder: length of current run
             .res 7      ; $09-$0F unused
 choices:    .res 19     ; $10-$22 - choices[19] bitfield per cell column
 
-; --- Code at $0300 ---
+; --- Code at $0280 ---
 .code
 
 ; ======================================================

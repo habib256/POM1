@@ -9,7 +9,7 @@
 ;   Build: make
 ;
 ; Load in POM1 via File > Load Memory (Maze2.txt)
-; or load binary at $0300, then type 300R in Woz Monitor.
+; or load binary at $0280, then type 280R in Woz Monitor.
 ; =============================================
 
 ; --- Constants ---
@@ -56,7 +56,7 @@ cell_idx:   .res 1      ; $0C - DFS: current cell index (row*19+col)
 row_base:   .res 1      ; $0D - rendering: row_offset[cell_row]
 dir_buf:    .res 4      ; $0E-$11 - DFS: direction candidates
 
-; --- Code at $0300 ---
+; --- Code at $0280 ---
 .code
 
 ; ======================================================

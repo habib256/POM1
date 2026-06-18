@@ -49,7 +49,11 @@ $(OUT_DIR_T)/$(PROJECT).bin: $(PROJECT).asm $(EXTRA_O) $(LOAD_CFG)
 	ca65 $(LIB) $<
 	ld65 -C $(LOAD_CFG) $(OBJ) $(EXTRA_O) -o "$(OUT_DIR)/$(PROJECT).bin"
 
-ifeq ($(EMIT_TXT),1)
+# $(strip) guards against trailing whitespace when the project Makefile writes
+# `EMIT_TXT := 1   # comment` — with := the spaces before the comment are kept
+# in the value, so a bare `$(EMIT_TXT)` would compare as "1   " and silently
+# fall through to the .bin-only branch (the .txt would never be regenerated).
+ifeq ($(strip $(EMIT_TXT)),1)
 $(OUT_DIR_T)/$(PROJECT).txt: $(OUT_DIR_T)/$(PROJECT).bin
 	python3 emit_$(PROJECT)_txt.py
 ALL_TARGETS := $(OUT_DIR_T)/$(PROJECT).txt

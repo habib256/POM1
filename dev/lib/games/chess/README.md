@@ -94,7 +94,7 @@ is retained as a reserved error code but is no longer returned.
 | **AI strategy toggle** (NAIVE / SMART, v0.5)        | ✅ via the `D` command at the prompt |
 | **AI thinking indicator** (`.` per 32 nodes, v0.5)  | ➖ removed — `do_ai` prints "COMPUTER THINKING..." once instead (per-node dots cost ~10 ms each via the ECHO busy-wait) |
 | Undo (single-level via compact engine state save)   | ✅ — note: `H` (hint) consumes the slot |
-| **Perft (depth 1)** — returns 20 for initial pos    | ✅ pinned by `chess_engine_perft_smoke` ctest |
+| **Perft (depth 1)** — returns 20 for initial pos    | ✅ verified manually (no automated ctest yet — `perft1` + `Chess.sym` are emitted so one can be wired) |
 | **Mode cycling (`M`)** — HvH / WAI / BAI / AvA in text variant | ✅ |
 | AI (alpha-beta 2-3 ply)                             | ⏳ v1.2 |
 | Perft (depth ≥2, recursive)                         | ⏳ v0.6 (needs ply-stacked saved_*) |

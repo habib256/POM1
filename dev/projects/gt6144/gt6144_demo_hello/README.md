@@ -12,14 +12,14 @@ random rectangles) and draws two centred lines with a 3×5-pixel font:
 
 ## Hardware
 
-- Machine: Apple 1 (stock 4 KB)
+- Machine: Apple 1 (8 KB RAM — the SWTPC GT-6144 preset ships 8 KB, $0000-$1FFF)
 - Cards: SWTPC GT-6144 (write-only port at `$D00A`)
 - Recommended POM1 preset: 5 (Apple-1 + SWTPC GT-6144).
 
 ## Sources
 
 - `GT1_Hello.asm` — main entry, `.org $0300`
-- `gt6144.cfg` — local linker config (`CODE` at `$0300`, 4 KB cap)
+- `gt6144.cfg` — local linker config (`CODE` at `$0300-$0FFF`, ~3.3 KB) within the preset's 8 KB RAM
 - libs used: `dev/lib/apple1/`, `dev/lib/gt6144/`
 
 ## Build

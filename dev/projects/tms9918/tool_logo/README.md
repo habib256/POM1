@@ -26,7 +26,7 @@ happens on the 16 KB variant.
 - Machine: Apple 1 (8 KB DRAM for V1.8, 16 KB DRAM **or** CodeTank ROM
   for V2.6).
 - Cards: P-LAB TMS9918.
-- Recommended POM1 preset: **7** — *P-LAB Apple-1 with TMS9918 (CodeTank
+- Recommended POM1 preset: **9** — *P-LAB Apple-1 with TMS9918 (CodeTank
   daughterboard)* (`MainWindow_Presets.cpp`). Flip the CodeTank jumper to **Upper** and
   type `4000R` from Wozmon to launch the V2.6 interpreter.
 
@@ -56,7 +56,7 @@ cp roms/codetank/galaga_sokoban_menu.txt  roms/codetank/Codetank_GAME1.txt
 
 ## Run
 
-1. POM1 → Presets → **7** (TMS9918 + CodeTank).
+1. POM1 → Presets → **9** (TMS9918 + CodeTank).
 2. **Cassette / DRAM build (V1.8 or V2.6 standalone)**: File → Load →
    `software/Graphic TMS9918/TMS_Logo.txt` (or `TMS_Logo_16k.txt`), then `280R`
    from Wozmon.

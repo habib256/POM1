@@ -49,7 +49,7 @@ in one click (it needs `cc65` installed — it'll tell you how if it's missing).
 
 - Machine: Apple 1 (stock 4 KB is enough)
 - Cards: none
-- Recommended POM1 preset: **1** (Apple-1 with ACI & BASIC) — any text preset works.
+- Recommended POM1 preset: **4** (Apple-1 with ACI & BASIC cassette) — any text preset works.
 
 ## License
 

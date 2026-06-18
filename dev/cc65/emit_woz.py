@@ -10,12 +10,12 @@ Usage as a module (typical project script):
     from emit_woz import emit
     emit(
         asm_files=["MyProject.asm"],
-        lib_dirs=["apple1", "hgr"],
+        lib_dirs=["apple1", "gen2"],
         cfg="apple1_gen2.cfg",          # relative to project OR cc65/
         out_bin="MyProject.bin",
         out_txt="MyProject.txt",
         out_dir_software="Graphic HGR",  # software/<dir>/
-        start_addr=0x0280,
+        start_addr=0xE000,              # must match the cfg ($E000 for GEN2)
         header_lines=["// optional banner"],
     )
 
@@ -23,10 +23,10 @@ Usage as a CLI (one-shot projects without a custom script):
 
     python3 ../../cc65/emit_woz.py \\
         --asm MyProject.asm \\
-        --lib apple1 --lib hgr \\
+        --lib apple1 --lib gen2 \\
         --cfg apple1_gen2.cfg \\
-        --out-software hgr \\
-        --start 0x0280
+        --out-software "Graphic HGR" \\
+        --start 0xE000
 
 Multi-module projects (e.g. TMS_Logo with TMS_Logo.asm + math.asm +
 tms9918m2.asm) pass multiple `asm_files`. Sources outside the project
@@ -120,7 +120,7 @@ def emit(
 
     Returns the path of the written `.txt` file.
 
-    `lib_dirs` is a list of library names (`"apple1"`, `"hgr"`, …) — they
+    `lib_dirs` is a list of library names (`"apple1"`, `"gen2"`, …) — they
     are looked up in `dev/lib/<name>/` for the `-I` include path. Pass
     `lib_dirs=[]` for projects that use no library.
 

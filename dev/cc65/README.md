@@ -10,7 +10,7 @@ module that replaces the per-project `emit_*_txt.py` boilerplate.
 | Config | ZP | CODE start | CODE size | Reserved RAM | Use case |
 |---|---|---|---|---|---|
 | **`apple1_4k.cfg`**     | $0000-$0022 (35 B) | $0280 | 4 096 B | — | Default text-mode (also TMS9918 — VRAM off-bus) |
-| **`apple1_gen2.cfg`**   | $0000-$001F (32 B) | $0280 | 7 552 B | $2000-$3FFF (HGR FB) | GEN2 HGR projects |
+| **`apple1_gen2.cfg`**   | $0000-$003F (64 B) | $E000 | 4 096 B | $2000-$3FFF (HGR FB) | GEN2 HGR projects (high bank — run `E000R`) |
 | **`codetank.cfg`**      | $0000-$00FF (256 B) | $4000 | 16 384 B | — | Standalone CodeTank ROM (16 KB image, runs in place from ROM window) |
 | **`apple1_c.cfg`**      | $0000-$00FF (256 B) | $0300 | 2 816 B ($0300-$0DFF) | $0E00-$0FFF (C stack) | cc65 **C** text-mode — run `0300R` |
 | **`apple1_gen2_c.cfg`** | $0000-$00FF (256 B) | $6000 | 24 320 B ($6000-$BEFF) | $2000/$4000 (HGR FB) | cc65 **C** GEN2 HGR, preset 11 — run `6000R` |
@@ -69,7 +69,8 @@ emit(
     lib_dirs=["apple1", "gen2"],         # resolves to dev/lib/<name>/ -I paths
     cfg="apple1_gen2.cfg",                # project-local OR dev/cc65/ relative
     out_dir_software="Graphic HGR",       # software/<dir>/ for the .bin/.txt
-    start_addr=0x0280,                    # load address used in the .txt suffix
+    start_addr=0xE000,                    # load address used in the .txt suffix
+                                          # (must match the cfg: $E000 for GEN2)
     header_lines=["// optional banner"],  # prepended to the .txt
     project_dir=PROJ,                     # absolute path of the calling script
 )
@@ -90,10 +91,10 @@ For one-shot projects without a custom shim:
 ```bash
 python3 ../../cc65/emit_woz.py \
     --asm MyProject.asm \
-    --lib apple1 --lib hgr \
+    --lib apple1 --lib gen2 \
     --cfg apple1_gen2.cfg \
     --out-software "Graphic HGR" \
-    --start 0x0280
+    --start 0xE000
 ```
 
 ### Multi-module link order
@@ -131,7 +132,7 @@ def main() -> int:
         lib_dirs=["apple1", "gen2"],
         cfg="apple1_gen2.cfg",
         out_dir_software="Graphic HGR",
-        start_addr=0x0280,
+        start_addr=0xE000,
         project_dir=PROJ,
     )
     return 0

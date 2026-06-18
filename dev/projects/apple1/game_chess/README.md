@@ -175,16 +175,14 @@ canonical reference.
 
 ## Tests
 
-`tests/chess_engine_perft_smoke_test.cpp` (registered as
-`chess_engine_perft_smoke` in ctest) builds these artefacts via the
-project Makefile, parses `Chess.sym` (VICE label file produced by
-`ld65 -Ln`), drives the 6502 through `init_board` then `perft1`, and
-asserts the count is exactly 20 for the initial position. Run with:
+There is **no automated ctest for the chess engine yet** — perft(1)=20 for
+the initial position is verified manually for now. The plumbing for a future
+test is already in place: the Makefile emits `Chess.sym` (VICE label file via
+`ld65 -Ln`) alongside the binary, and the engine exposes `init_board` and
+`perft1` (which leaves the count in `perft_count_lo:hi`). A smoke test would
+load the binary, parse `Chess.sym`, drive the 6502 through `init_board` then
+`perft1`, and assert the count is exactly 20.
 
-```
-cd build && ctest -R chess --output-on-failure
-```
-
-Any change to move generation, the `is_attacked_runner / atk_piece`
-aliasing, or the perft enumeration loop will move this number off 20
-and fail the test.
+Until that test lands, exercise the engine manually in POM1 (any 1-ply move
+that changes the count signals a regression in move generation, the
+`is_attacked_runner / atk_piece` aliasing, or the perft enumeration loop).
