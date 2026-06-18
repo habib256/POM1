@@ -30,8 +30,8 @@
  * --- Visuals & gameplay ----------------------------------------------------
  * Snake = white blocks; the apple = a SOLID RED disk (orange is HIRES's warmest
  * tone — there is no true red); the bonus = a SOLID GREEN block; the score reads
- * in WHITE via the flicker-free gen2_hgr_putu_field HUD renderer (top-left);
- * the "HGR Snake" label sits top-right in cycling violet/green/orange/blue
+ * in WHITE via the flicker-free gen2_hgr_putu_field HUD renderer (top-right);
+ * the "HGR Snake" label sits top-left in cycling violet/green/orange/blue
  * (mixed case shows off BBFont's lowercase glyphs). HIRES colour
  * is a byte-pattern artifact (the tint keeps only ~half the pixels), so the game
  * sprites are drawn FILLED — a hollow outline gets halved into scattered dots.
@@ -355,29 +355,27 @@ static void tick(void)
     }
 }
 
-/* Draw the score HUD (top-left) with the OPTIMIZED number renderer:
+/* Draw the score HUD (top-right) with the OPTIMIZED number renderer:
  * gen2_hgr_putu_field is the flicker-free HUD path — it wipes EXACTLY its own
  * 5-cell field (no separate gen2_hgr_clear_pixrect — the self-bounded wipe
- * can't bleed into the HGR Snake label that starts at x=96) and draws the
+ * can't bleed into the HGR Snake label that ends at x=170) and draws the
  * digits right-aligned in one pass. We pick width 5 so 0..65535 always fits
- * with no leading-zero leak from the shrinking case. Trade-off vs the old
- * blue puts_color path: the score now reads white, in exchange for one
- * asm call replacing clear_pixrect + manual decimal build + glyph blits. */
+ * with no leading-zero leak from the shrinking case. Field width = 4*18+16 =
+ * 88px; x=184 leaves an 8px right margin (mirrors the title's left margin). */
 static void draw_score(void)
 {
-    gen2_hgr_putu_field(8u, 0u, score, 5u);
+    gen2_hgr_putu_field(184u, 0u, score, 5u);
 }
 
-/* Draw the "HGR Snake" label, top-right, in the current cycling colour. 9 glyphs
- * x 18px pitch = 162px wide; x=96 ends it at pixel 257 (just past the cropped
- * right edge — the last column clips harmlessly) and leaves the left-hand
- * score room. Mixed-case showcases BBFont's lowercase glyphs. Wipe the box
- * first so the new colour's pixels do not OR-mix with the old one's (both
- * passes are asm). */
+/* Draw the "HGR Snake" label, top-left, in the current cycling colour. 9 glyphs
+ * x 18px pitch = 162px wide; x=8 ends it at pixel 170, leaving 14px of gap
+ * before the right-hand score field. Mixed-case showcases BBFont's lowercase
+ * glyphs. Wipe the box first so the new colour's pixels do not OR-mix with
+ * the old one's (both passes are asm). */
 static void draw_title(void)
 {
-    gen2_hgr_clear_pixrect(96u, 0u, 160u, 16u);
-    gen2_hgr_puts_color(96, 0, "HGR Snake", title_hues[title_hue]);
+    gen2_hgr_clear_pixrect(8u, 0u, 162u, 16u);
+    gen2_hgr_puts_color(8, 0, "HGR Snake", title_hues[title_hue]);
 }
 
 /* Full draw — clear + walls/border + food + whole snake + score. Called ONCE
@@ -392,8 +390,8 @@ static void redraw(void)
     draw_food(foodx, foody);
     if (bonus_active) draw_bonus(bonusx, bonusy);
     for (i = 0; i < slen; ++i) draw_cell(sx[i], sy[i]);
-    draw_score();                       /* score, top-left, WHITE via optimized putu_field */
-    draw_title();                       /* "HGR Snake", top-right, current cycling hue */
+    draw_score();                       /* score, top-right, WHITE via optimized putu_field */
+    draw_title();                       /* "HGR Snake", top-left, current cycling hue */
 }
 
 /* Plain CPU-spin throttle for a playable tick rate. We deliberately do NOT call

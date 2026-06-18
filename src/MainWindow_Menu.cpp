@@ -1336,12 +1336,6 @@ void MainWindow_ImGui::renderStatusBar()
         }
 
         std::string audioText = !uiSnapshot.cassetteAudioAvailable ? "| AUDIO OFF" : "";
-        std::string keyText;
-        if (uiSnapshot.keyReady) {
-            std::ostringstream oss;
-            oss << "| KEY: '" << uiSnapshot.lastKey << "'";
-            keyText = oss.str();
-        }
 
         std::string siliconText;
         if (siliconStrictModeEnabled) {
@@ -1363,7 +1357,6 @@ void MainWindow_ImGui::renderStatusBar()
             ImGui::CalcTextSize(siliconText.c_str()).x +
             ImGui::CalcTextSize(tapeText.c_str()).x +
             (audioText.empty() ? 0.0f : ImGui::CalcTextSize(audioText.c_str()).x) +
-            (keyText.empty() ? 0.0f : ImGui::CalcTextSize(keyText.c_str()).x) +
             spacing * 6.0f;
 
         ImGui::SameLine();
@@ -1403,12 +1396,6 @@ void MainWindow_ImGui::renderStatusBar()
             ImGui::TextColored(ImVec4(1.0f, 0.45f, 0.45f, 1.0f), "%s", audioText.c_str());
         }
 
-        // État du clavier
-        if (uiSnapshot.keyReady) {
-            ImGui::SameLine();
-            ImGui::TextColored(ImVec4(1.0f, 1.0f, 0.0f, 1.0f),
-                               "%s", keyText.c_str());
-        }
     }
     ImGui::End();
 }
