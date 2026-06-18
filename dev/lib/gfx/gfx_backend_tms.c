@@ -55,3 +55,8 @@ void gfx_vline(unsigned x, unsigned char y0, unsigned char y1)
         ++yy;
     }
 }
+
+/* gfx_filled_rect + gfx_clear forward to screen2_ext / tms_fast (screen2_clear,
+ * screen2_filled_rect) — those live in their own TUs so a program that never
+ * calls them shouldn't drag them in. Park the forwarders in
+ * gfx_backend_tms_rect.c to honour that dead-strip path. */

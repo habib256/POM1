@@ -10,8 +10,10 @@ NAME    := demo_screen1
 
 SOURCES := main.c \
 	$(LIBDIR)/apple1_asm.s \
+	$(LIBDIR)/apple1.c \
 	$(LIBDIR)/tms9918.c \
 	$(LIBDIR)/screen1.c \
+	$(LIBDIR)/screen1_input.c \
 	$(LIBDIR)/c64font.c
 
 .PHONY: all clean FORCE

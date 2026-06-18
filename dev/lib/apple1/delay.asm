@@ -34,3 +34,8 @@ delay_ms_a:
         DEX
         BNE     @o
         RTS
+        ; Inner BNE staying in the same page is part of the 1 ms calibration:
+        ; a page-cross adds 1 cycle per iteration (~+20% drift). Assert that
+        ; the assembled location keeps the cycle-exact contract.
+        .assert >(@i+2) = >@i, error, "delay_ms_a inner branch crosses a page"
+        .assert >(@o+2) = >@o, error, "delay_ms_a outer branch crosses a page"

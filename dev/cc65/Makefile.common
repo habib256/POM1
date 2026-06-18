@@ -14,6 +14,17 @@
 
 .DEFAULT_GOAL := all
 
+# Toolchain guard — fail fast with an actionable message if ca65 is missing
+# (otherwise the first build line dies with `make: ca65: command not found`
+# which doesn't tell the user how to fix it). Override CC65_BIN to point at
+# an out-of-PATH cc65 install.
+CC65_BIN ?= $(shell command -v ca65 2>/dev/null)
+ifeq ($(CC65_BIN),)
+$(error cc65 not found on PATH. Install with: brew install cc65 (macOS) / \
+apt-get install cc65 (Debian/Ubuntu) / pkg install cc65 (FreeBSD) / \
+vcpkg install cc65 (Windows), or set CC65_BIN=/path/to/ca65)
+endif
+
 # OUT_DIR_T — Make-target form of $(OUT_DIR) (backslash-escapes spaces).
 # See space.mk for the rationale.
 include $(dir $(lastword $(MAKEFILE_LIST)))space.mk

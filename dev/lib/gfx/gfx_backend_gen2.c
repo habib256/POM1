@@ -15,6 +15,9 @@
  *        -I dev/lib/gfx (for gfx.h).
  */
 #include "gfx.h"
+/* The backend needs gen2_hgr_* prototypes only — skip gen2.h's apple1c
+ * include so this TU compiles without -I dev/lib/apple1c. */
+#define GEN2_NO_APPLE1
 #include "gen2.h"          /* -I dev/lib/gen2c */
 
 const unsigned      gfx_width  = 280u;
@@ -23,3 +26,7 @@ const unsigned char gfx_height = 192u;
 void gfx_plot(unsigned x, unsigned char y)                 { gen2_hgr_plot(x, y); }
 void gfx_hline(unsigned x0, unsigned x1, unsigned char y)  { gen2_hgr_hline(x0, x1, y); }
 void gfx_vline(unsigned x, unsigned char y0, unsigned char y1) { gen2_hgr_vline(x, y0, y1); }
+
+/* gfx_filled_rect + gfx_clear forwarders live in gfx_backend_gen2_rect.c so
+ * the dead-strip is symmetric with the TMS side: a gen2 program that never
+ * calls them won't drag gen2_hgr_fill_pixrect / gen2_hgr_clear in. */

@@ -13,7 +13,10 @@ NAME    := sprite_animals
 SOURCES := main.c \
 	$(LIBDIR)/apple1_asm.s \
 	$(LIBDIR)/tms9918.c \
-	$(LIBDIR)/screen2.c \
+	$(LIBDIR)/screen2_init.c \
+	$(LIBDIR)/screen2_text.c \
+	$(LIBDIR)/screen2_pixel.c \
+	$(LIBDIR)/screen2_geom.c \
 	$(LIBDIR)/sprites.c \
 	$(LIBDIR)/c64font.c \
 	../../../lib/tms9918/sprites_fauna.asm

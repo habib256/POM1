@@ -41,6 +41,19 @@ void gfx_plot(unsigned x, unsigned char y);
 void gfx_hline(unsigned x0, unsigned x1, unsigned char y);
 void gfx_vline(unsigned x, unsigned char y0, unsigned char y1);
 
+/* Filled rectangle through opposite corners. Each card wires this to its
+ * byte-aligned fast path (GEN2: gen2_hgr_fill_pixrect, TMS9918:
+ * screen2_filled_rect). Coordinates are inclusive on both ends; both
+ * backends sort / bounds-check internally. */
+void gfx_filled_rect(unsigned x0, unsigned char y0,
+                     unsigned x1, unsigned char y1);
+
+/* Clear the active draw surface. `color` is the per-pixel fill byte the
+ * card uses to wipe the framebuffer — GEN2 takes 0x00 (off) or 0x7F (on,
+ * all 7 visible bits of a HIRES byte); TMS9918 bitmap mode ignores the
+ * value (its hardware clear is always 0). Pass 0 for portable behaviour. */
+void gfx_clear(unsigned char color);
+
 /* Screen extent, in pixels. Compile-time constants on each card (GEN2 280x192,
  * TMS9918 256x192); gfx_circle reads them to clip in signed space BEFORE the
  * cast to unsigned (a negative coord cast to unsigned would alias on-screen). */

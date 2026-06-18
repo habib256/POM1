@@ -40,10 +40,12 @@ TMS9918C_SCREEN2_SRCS := $(TMS9918C_SCREEN2_INIT_SRCS) \
                         $(TMS9918C_SCREEN2_PIXEL_SRCS) \
                         $(TMS9918C_SCREEN2_GEOM_SRCS)
 
-# Extension helpers (screen1_putcharxy, screen1_fill_color_attr, screen2_clear,
-# screen2_filled_rect). Optional. screen_ext.c references screen2_plot_mode, so
-# adding it also pulls TMS9918C_SCREEN2_SRCS even in a screen1-only program.
-TMS9918C_SCREEN_EXT_SRCS := $(TMS9918C)/screen_ext.c
+# Extension helpers split per card so a screen1-only program no longer pulls
+# the screen2 bitmap helpers (and vice versa) — fixes the long-standing
+# screen_ext.c bundling penalty.
+TMS9918C_SCREEN1_EXT_SRCS := $(TMS9918C)/screen1_ext.c
+TMS9918C_SCREEN2_EXT_SRCS := $(TMS9918C)/screen2_ext.c
+TMS9918C_SCREEN_EXT_SRCS  := $(TMS9918C_SCREEN1_EXT_SRCS) $(TMS9918C_SCREEN2_EXT_SRCS)
 
 # Sprite engine + shadow attribute table (tms_set_sprite, tms_shadow_*).
 TMS9918C_SPRITES_SRCS := $(TMS9918C)/sprites.c $(TMS9918C)/sprite_shadow.c

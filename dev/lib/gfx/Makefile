@@ -48,22 +48,49 @@ gen2: gfx-gen2.lib
 tms:  gfx-tms.lib
 
 # --- card-neutral translation units (include only gfx.h, backend-agnostic) ---
-gfx_draw.o: gfx_draw.c gfx.h
+# Geometry split per primitive — a rect-only program skips line + circle +
+# ellipse code via ld65 dead-strip (per-.o granularity).
+gfx_line.o: gfx_line.c gfx.h
 	$(CL65) $(CFLAGS) $(GFXINC) -o $@ $<
-gfx_num.o: gfx_num.c gfx.h
+gfx_rect.o: gfx_rect.c gfx.h
+	$(CL65) $(CFLAGS) $(GFXINC) -o $@ $<
+gfx_circle.o: gfx_circle.c gfx.h
+	$(CL65) $(CFLAGS) $(GFXINC) -o $@ $<
+gfx_ellipse.o: gfx_ellipse.c gfx.h
+	$(CL65) $(CFLAGS) $(GFXINC) -o $@ $<
+# Number formatters split per base — a hex-only program skips the cc65
+# 16-bit soft-divide via gfx_num_dec.o.
+gfx_num_dec.o: gfx_num_dec.c gfx.h
+	$(CL65) $(CFLAGS) $(GFXINC) -o $@ $<
+gfx_num_hex.o: gfx_num_hex.c gfx.h
 	$(CL65) $(CFLAGS) $(GFXINC) -o $@ $<
 
 # --- per-card backends (need the card's header) ---
+# Each card has TWO backend TUs: a "core" with the per-pixel + span primitives
+# (plot/hline/vline + extents) and a "rect" with the filled_rect + clear
+# forwarders. A program that only draws lines/circles links the core but not
+# the rect TU — ld65 dead-strips the rect TU and the heavier card helpers
+# (gen2_hgr_fill_pixrect or screen2_filled_rect/screen2_clear) it would
+# otherwise drag in.
 gfx_backend_gen2.o: gfx_backend_gen2.c gfx.h
+	$(CL65) $(CFLAGS) $(GFXINC) $(GEN2INC) -o $@ $<
+gfx_backend_gen2_rect.o: gfx_backend_gen2_rect.c gfx.h
 	$(CL65) $(CFLAGS) $(GFXINC) $(GEN2INC) -o $@ $<
 gfx_backend_tms.o: gfx_backend_tms.c gfx.h
 	$(CL65) $(CFLAGS) $(GFXINC) $(TMSINC) -o $@ $<
+gfx_backend_tms_rect.o: gfx_backend_tms_rect.c gfx.h
+	$(CL65) $(CFLAGS) $(GFXINC) $(TMSINC) -o $@ $<
+
+# Shared per-card object list (every program either gets these via dead-strip
+# or skips them — that's the whole point of the split).
+GFX_NEUTRAL_OBJS := gfx_line.o gfx_rect.o gfx_circle.o gfx_ellipse.o \
+                    gfx_num_dec.o gfx_num_hex.o
 
 # --- archives (rm first so ar65 a never accumulates stale members) ---
-gfx-gen2.lib: gfx_draw.o gfx_num.o gfx_backend_gen2.o
+gfx-gen2.lib: $(GFX_NEUTRAL_OBJS) gfx_backend_gen2.o gfx_backend_gen2_rect.o
 	rm -f $@
 	$(AR65) a $@ $^
-gfx-tms.lib: gfx_draw.o gfx_num.o gfx_backend_tms.o
+gfx-tms.lib: $(GFX_NEUTRAL_OBJS) gfx_backend_tms.o gfx_backend_tms_rect.o
 	rm -f $@
 	$(AR65) a $@ $^
 

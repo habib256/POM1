@@ -205,51 +205,39 @@ vdp_set_read:
         RTS
 
 ; ----------------------------------------------------------------------------
-; name_at_rc_text: compute name-table VRAM address for (vdp_row, vdp_col)
-;   in 40-column arithmetic, store in vdp_lo:hi (high byte gets bit 6 set
-;   to mark write).
+; name_at_rc_text: compute name-table VRAM address for (vdp_row, vdp_col),
+;   store in vdp_lo:hi (vdp_set_write/read OR in the bit 6 write flag later).
 ;     addr = $0800 + 40 * row + col
 ;   Inputs:   vdp_row (0..23), vdp_col (0..39)
 ;   Output:   vdp_lo:hi loaded.
-;   Clobbers: A, tmp.
+;   Clobbers: A, X.
+;
+;   Now LUT-driven (was: 32*row + 8*row shift-and-add, ~46 cycles). 24-entry
+;   tables pre-bake `$0800 + 40*row`; the call cost drops to ~21 cycles. Over
+;   a full console_scroll (23 row reads + 23 row writes + 1 blank = 47 calls)
+;   that is ~1175 cycles saved per scroll. Net ROM: +24 bytes (48-byte LUT
+;   minus ~24 bytes of dropped arithmetic + the freed `tmp` clobber).
 ; ----------------------------------------------------------------------------
 name_at_rc_text:
-        ; Compute 40 * row using 32 * row + 8 * row.
-        LDA     vdp_row
-        STA     tmp             ; tmp = row
-        ; A = row * 32: low byte = (row & 7) << 5, high byte = row >> 3
-        AND     #$07
-        ASL
-        ASL
-        ASL
-        ASL
-        ASL                     ; A = (row & 7) << 5
-        STA     vdp_lo
-        LDA     tmp
-        LSR
-        LSR
-        LSR
-        STA     vdp_hi          ; high(row*32) = row >> 3
-        ; Add 8 * row  (a.k.a. row << 3) to (vdp_lo:hi).
-        LDA     tmp
-        ASL
-        ASL
-        ASL                     ; row * 8 (max 23 * 8 = 184, fits in A)
-        CLC
-        ADC     vdp_lo
-        STA     vdp_lo
-        BCC     :+
-        INC     vdp_hi
-:
-        ; Add col into low byte, carry into high.
-        LDA     vdp_lo
+        LDX     vdp_row
+        LDA     name_row_lo,X
         CLC
         ADC     vdp_col
         STA     vdp_lo
-        LDA     vdp_hi
-        ADC     #$08            ; carry from low + name-table base $0800
+        LDA     name_row_hi,X
+        ADC     #0              ; just propagate the col-carry
         STA     vdp_hi
         RTS
+
+; 24-entry tables: name_row_lo[i] / name_row_hi[i] = lo/hi of ($0800 + 40*i).
+name_row_lo:
+        .byte $00, $28, $50, $78, $A0, $C8, $F0, $18
+        .byte $40, $68, $90, $B8, $E0, $08, $30, $58
+        .byte $80, $A8, $D0, $F8, $20, $48, $70, $98
+name_row_hi:
+        .byte $08, $08, $08, $08, $08, $08, $08, $09
+        .byte $09, $09, $09, $09, $09, $0A, $0A, $0A
+        .byte $0A, $0A, $0A, $0A, $0B, $0B, $0B, $0B
 
 ; ----------------------------------------------------------------------------
 ; print_at_rc_text: write char A at (vdp_row, vdp_col) -- full sequence.

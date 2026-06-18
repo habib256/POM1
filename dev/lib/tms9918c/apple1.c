@@ -3,6 +3,18 @@
  * Derived from nippur72/apple1-videocard-lib (Antonino "Nino" Porcino).
  *   https://github.com/nippur72/apple1-videocard-lib
  * Upstream license: unspecified at time of fork (2026-05). Preserve attribution.
+ *
+ * Almost identical to dev/lib/apple1c/apple1io.c. The intentional differences
+ * (preserved to keep upstream attribution + the CodeTank's preferred Wozmon
+ * warm-restart):
+ *   - WOZMON entry: $FF1F here (silent post-prompt) vs $FF1A in apple1c
+ *     (prints "\" + CR before line editor). A future merge would parameterise
+ *     this via a single WOZMON_ENTRY macro.
+ *   - PIA defines: KEY_DATA/KEY_CTRL here vs KBD_DATA/KBD_CTRL in apple1c.
+ *   - Accessor idiom: PEEK(addr) macro here vs *(volatile unsigned char *)addr
+ *     in apple1c (functionally equivalent under cc65).
+ *   - Extra helpers: apple1_input_line / apple1_input_line_prompt are
+ *     tms9918c-only (Nino's line-editor heritage).
  */
 #include "apple1.h"
 

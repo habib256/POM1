@@ -1,41 +1,28 @@
 /* tms9918_internal.h — private declarations shared by the tms9918c modules.
  * NOT included by any public *.h, NOT intended for consumer code.
  *
- * Mirror of gen2c/gen2_internal.h. As the upstream nippur72/apple1-videocard-lib
- * port grew, several mutable globals leaked into the public headers
- * (random.h, vsync.h, tms9918.h). This header centralises the cross-module
- * `extern` declarations + matching `#pragma zpsym` so they can be migrated to
- * the zero page (faster indexed access) without touching the public surface.
+ * Mirror of gen2c/gen2_internal.h. Currently a scaffolding header: the
+ * tms9918c port has no C↔asm ZP parameter blocks (its asm fast paths in
+ * tms_fast.s use the cc65 software stack via popa/popax, not ZEROPAGE
+ * parameters like gen2_blit.s does). The header is in place so a future
+ * sprint can park `#pragma zpsym` directives for the hot-path globals
+ * (tms_cursor_x/y/reverse, vsync_frames, rand*_state) once each one is
+ * migrated to ZEROPAGE via `#pragma bss-name(push, "ZEROPAGE")` in its
+ * defining .c + a tested runtime on preset 7 (CodeTank+TMS9918).
  *
- * Anything declared here is a maintenance contract between the .c files of
- * dev/lib/tms9918c/. Consumer code keeps using the public headers
+ * The ZP move is a real win (~2 cycles per indexed access on the hot
+ * scroll path) but it lives in a shared 256-byte address space with
+ * Wozmon ($24-$2B) and the cc65 runtime, so it must be benchmarked
+ * empirically, not just compiled.
+ *
+ * Anything declared here is a maintenance contract between the .c files
+ * of dev/lib/tms9918c/. Consumer code keeps using the public headers
  * (random.h, vsync.h, sprite_shadow.h, tms9918.h, screen1.h, screen2.h).
  */
 
 #ifndef TMS9918_INTERNAL_H
 #define TMS9918_INTERNAL_H
 
-/* Zero-page hot globals are declared in the public headers (random.h,
- * vsync.h, tms9918.h) for the consumer-facing API; the matching
- * `#pragma zpsym` directives live here so the .c files producing those
- * globals see them as ZEROPAGE storage rather than .bss.
- *
- * The actual ZP placement is done by the project's linker config via
- * `#pragma bss-name(push, "ZEROPAGE")` around the definition (see each
- * .c file). cc65 still needs `zpsym` in *every* TU that references the
- * symbol indexed.
- */
-
-/* tms9918.c — text cursor + last-written register cache */
-#pragma zpsym("tms_cursor_x")
-#pragma zpsym("tms_cursor_y")
-#pragma zpsym("tms_reverse")
-
-/* vsync.c — frame counter (updated on every vsync_wait()) */
-#pragma zpsym("vsync_frames")
-
-/* random.c — LFSR state for rand8 / rand16 */
-#pragma zpsym("rand8_state")
-#pragma zpsym("rand16_state")
+/* (no entries yet — see header comment) */
 
 #endif /* TMS9918_INTERNAL_H */

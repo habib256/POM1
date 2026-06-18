@@ -20,7 +20,7 @@ void screen2_putc(unsigned char ch, unsigned char x, unsigned char y, unsigned c
     addr = (unsigned)x * 8U + (unsigned)y * 256U;
     tms_set_vram_write_addr(TMS_PATTERN_TABLE + addr);
     {
-        const unsigned char *glyph = FONT + (unsigned)(ch - 32U) * 8U;
+        const unsigned char *glyph = tms_c64font + (unsigned)(ch - 32U) * 8U;
         for (i = 0; i < 8U; ++i) {
             TMS_WRITE_DATA_PORT(glyph[i]);
             TMS_IO_DELAY();

@@ -22,7 +22,7 @@ void screen1_load_font(void) {
     for (g = 0U; g < 96U; ++g) {
         tms_set_vram_write_addr(addr);
         for (i = 0U; i < 8U; ++i) {
-            TMS_WRITE_DATA_PORT(FONT[(unsigned)g * 8U + i]);
+            TMS_WRITE_DATA_PORT(tms_c64font[(unsigned)g * 8U + i]);
             TMS_IO_DELAY();
         }
         addr += 8U;
@@ -32,7 +32,7 @@ void screen1_load_font(void) {
     for (g = 0U; g < 96U; ++g) {
         tms_set_vram_write_addr(addr);
         for (i = 0U; i < 8U; ++i) {
-            TMS_WRITE_DATA_PORT((unsigned char)~FONT[(unsigned)g * 8U + i]);
+            TMS_WRITE_DATA_PORT((unsigned char)~tms_c64font[(unsigned)g * 8U + i]);
             TMS_IO_DELAY();
         }
         addr += 8U;

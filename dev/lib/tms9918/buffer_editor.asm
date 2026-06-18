@@ -135,16 +135,10 @@ bufed_run:
 @exit:
         RTS
 
-; ============================================================================
-; ed_wait_key: blocking polled keyboard read, NO echo. Returns A = ASCII
-;   (bit 7 stripped).
-; ============================================================================
-ed_wait_key:
-        LDA KBDCR
-        BPL ed_wait_key
-        LDA KBD
-        AND #$7F
-        RTS
+; ed_wait_key is now an alias for lib/apple1/kbd.asm:wait_key (same routine,
+; bit 7 stripped, X/Y preserved). The consumer (.asm) MUST .include "kbd.asm"
+; for the symbol to resolve.
+ed_wait_key := wait_key
 
 ; ============================================================================
 ; ed_draw: full-screen redraw. Clears bitmap, disables sprite, blits

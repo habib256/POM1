@@ -44,6 +44,13 @@
 ; roll_lfsr: advance the 16-bit Galois LFSR (taps $B400 -> bits 16,14,13,11).
 ;   Standard right-shift Galois variant: shift the 16-bit value right by 1;
 ;   if the bit shifted out (= old bit 0 of lfsr_lo) was 1, XOR taps into hi.
+;
+;   Intentional duplicate of lib/m6502/prng16.asm:prng16 (same $B400
+;   polynomial). Kept distinct because the two consumers have different state
+;   placement contracts: roll_lfsr's lfsr_lo/hi lives in BSS (TMS_Logo's
+;   LINEBUF), prng16's prng_lo/hi lives in ZEROPAGE (arcade games' tight
+;   loops). Merging would require migrating TMS_Logo's seed slots to ZP —
+;   gain is 12 bytes ROM + 4 bytes state, not worth the test surface today.
 ; ----------------------------------------------------------------------------
 roll_lfsr:
         LSR lfsr_hi          ; bit 0 of lfsr_hi -> C
@@ -303,11 +310,12 @@ negate_prod:
         RTS
 
 ; ============================================================================
-; sine table: sin_q[i] = round(sin(i degrees) * 64), for i in 0..104.
-;             We need 0..90 in principle, but signed_sin's q3 high-half path
-;             reaches up to index 104 (76+28? 76+14=90 actually). Indices
-;             beyond 90 are zero-valued so the upper bits of the cosine
-;             machinery never overshoot.
+; sine table: sin_q[i] = round(sin(i degrees) * 64), for i in 0..90.
+;             Worst-case index across signed_sin's 5 paths is 90 (q1 a=90 or
+;             @hi_q3 tmp=14 → 76+14). Was historically padded to 104 entries;
+;             the 14 trailing zeros saved no path (audited 2026-06-18). If a
+;             future caller needs indices > 90, re-extend here AND update the
+;             range comment in signed_sin.
 ; ============================================================================
 sin_q:
         ; 0  1  2  3  4  5  6  7  8  9
@@ -320,6 +328,4 @@ sin_q:
         .byte 55,56,56,57,57,58,58,59,59,60
         .byte 60,60,61,61,61,62,62,62,63,63
         .byte 63,63,63,64,64,64,64,64,64,64
-        .byte 64,0,0,0,0,0,0,0,0,0,0,0,0,0,0
-        ; padding (indices 91..104) stays at 0; signed_sin's q3-high path
-        ; never reads here for valid headings <360, but keep a margin.
+        .byte 64                                ; index 90 (sin(90°)=1 → 64)

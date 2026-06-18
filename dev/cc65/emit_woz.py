@@ -52,9 +52,25 @@ from __future__ import annotations
 
 import argparse
 import pathlib
+import shutil
 import subprocess
 import sys
 from typing import Iterable, Sequence
+
+
+_INSTALL_HINT = (
+    "Install with: brew install cc65 (macOS) / apt-get install cc65 "
+    "(Debian/Ubuntu) / pkg install cc65 (FreeBSD) / vcpkg install cc65 "
+    "(Windows)."
+)
+
+
+def _require_tool(name: str) -> None:
+    """Verify a cc65 toolchain binary is on PATH; raise SystemExit with an
+    actionable install hint otherwise. Cheaper than letting subprocess crash
+    later with a generic FileNotFoundError."""
+    if shutil.which(name) is None:
+        raise SystemExit(f"error: '{name}' not found on PATH. {_INSTALL_HINT}")
 
 
 def _find_root() -> pathlib.Path:
@@ -114,6 +130,8 @@ def emit(
     8 KB HGR image at $2000 alongside the $E000 code — without bloating the
     flat `.bin`. Paths resolve relative to the repo root.
     """
+    _require_tool("ca65")
+    _require_tool("ld65")
     if project_dir is None:
         # Caller didn't specify; assume CWD or the calling script's dir.
         project_dir = pathlib.Path.cwd()
@@ -269,6 +287,7 @@ def emit_cl65(
 
     Returns the path of the written ``.txt`` file.
     """
+    _require_tool("cl65")
     if project_dir is None:
         project_dir = pathlib.Path.cwd()
     project_dir = pathlib.Path(project_dir).resolve()
