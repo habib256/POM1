@@ -133,6 +133,6 @@ In your project Makefile:
 
     LIB := -I ../../lib/apple1
 
-Validation: `dev/projects/lib_smoke/` exercises every routine here plus
-the cross-object `math.o` link, and shipped `.bin` is in
-`software/Apple-1 dev/LibSmoke.bin` for one-shot regression.
+Validation: every routine here is exercised by shipping projects under
+`dev/projects/apple1/` (e.g. `game_sokoban`, `game_chess`) and by
+`tools/test_*.py` smoke harnesses.

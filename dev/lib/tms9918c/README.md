@@ -1,4 +1,4 @@
-# apple1-videocard-lib (cc65, CodeTank only)
+# tms9918c — cc65 port of apple1-videocard-lib (CodeTank only)
 
 *[← POM1 documentation index](../../doc/README.md)*
 
@@ -6,7 +6,7 @@ C **cc65** port of the original **[nippur72/apple1-videocard-lib](https://github
 
 POM1 target: **P-LAB CodeTank**, **16 KB ROM image @ `$4000-$7FFF`**, boot from **Wozmon `4000R`**, preset **7** (TMS9918 + CodeTank).
 
-## Memory map (linker `cc65/codetank_c.cfg`)
+## Memory map (linker `dev/lib/tms9918c/cc65/codetank_c.cfg`)
 
 | Region    | Address        | Role |
 |-----------|----------------|------|
@@ -24,14 +24,14 @@ No `$0280`-only program variant; no Fantasy target.
 ## Build — all demos
 
 ```bash
-cd dev/apple1-videocard-lib
-make            # … + tetris, text_adventure, sprite_animals, chrome_dino (see table)
+cd dev/projects/tms9918c
+make -j         # builds all demo + tool subprojects
 ```
 
 Or a single demo:
 
 ```bash
-cd dev/apple1-videocard-lib/demos/hello_screen1
+cd dev/projects/tms9918c/demo_hello_screen1
 make
 ```
 
@@ -51,7 +51,7 @@ Outputs (per demo): `software/Apple-1_TMS_CC65/<name>.{bin,txt}` — 16 KB image
 | `sprite_animals` | `dev/lib/tms9918/sprites_fauna.asm` | 4 static 16×16 Fauna sprites at native size (no MAG×2) |
 | `chrome_dino` | (offline T-Rex clone) | Mini-game: jump + obstacles (part of the `make all` target) |
 | `frogger_codetank` | (inspired by Frogger) | Hardware-sprite frog, animated water — local `make` |
-| `rogue_c` | `dev/projects/tms9918_rogue/` | Partial C port of TMS_Rogue — local `make` (see `demos/rogue_c/README.md`) |
+| `rogue_c` | `dev/projects/tms9918/game_rogue/` | Partial C port of TMS_Rogue — local `make` (see `demos/rogue_c/README.md`) |
 
 Not ported here (KickC / big `.c` / other hardware): `anagram`, `tapemon`, `sdcard`, `montyr`, `life-src`, `iec`, `viatimer` (the upstream repo remains the reference for these demos).
 

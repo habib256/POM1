@@ -33,7 +33,7 @@ DSPCR    = $D013        ; PIA: display control
 ; but visually equivalent to a hang from the user's POV (no prompt
 ; visible). Use WOZ_RST only for explicit warm-restart paths where the
 ; caller has just printed its own status line. The gotcha is documented
-; inline in dev/projects/gt6144_hello/GT1_Hello.asm:39-43.
+; inline in dev/projects/gt6144/gt6144_demo_hello/GT1_Hello.asm:39-43.
 WOZMON   = $FF1A        ; Wozmon prompt entry — prints "\" + CR
 WOZ_RST  = $FF1F        ; Wozmon warm-restart (post-prompt entry, silent)
 

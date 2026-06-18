@@ -211,7 +211,7 @@ Local compile-check (writes `software/Graphic TMS9918/TMS_Rogue.bin` linked at
 `$4000`, not loadable as-is — use `build_codetank_rom.py --rom=2` for the ROM
 image):
 ```bash
-cd dev/projects/tms9918_rogue
+cd dev/projects/tms9918/game_rogue
 make
 ```
 

@@ -80,6 +80,8 @@ C64Music/
 dev/**/*.o
 dev/**/*.map
 dev/**/*.lib
+# Template scratch binaries — only the source (.c, Makefile) belongs in git
+dev/_template_*/*.bin
 # Redundant flat binaries under software/ — the Wozmon .txt is the canonical form
 software/**/*.bin
 # DevBench scratch CodeTank ROM — regenerated into roms/codetank/ on TMS9918 upload

@@ -32,8 +32,10 @@ This document summarises everything you need to program the Apple 1 emulated by 
 
 > **Simplest way to get started**: the built-in **POM1 Bench** (*DevBench → POM1
 > Bench*, desktop) edits, assembles/compiles (asm **or** C) and launches in one click, with
-> a `HELLO WORLD` skeleton per target. Copy `dev/projects/_template/` for a
-> minimal starting point. In C → [`Programming_Apple1_C.md`](Programming_Apple1_C.md).
+> a `HELLO WORLD` skeleton per target. Copy `dev/_template/` for a minimal
+> asm or text-mode-C starting point (and `dev/_template_gen2c/`,
+> `dev/_template_tms9918c/` for the cc65 graphics-card flavours). In C →
+> [`Programming_Apple1_C.md`](Programming_Apple1_C.md).
 
 ### Standard commands
 
@@ -279,7 +281,7 @@ If you only print `X |` (3 chars), the `|` visibly shift away from the `+`. Clas
 
 ### Implementation example
 
-`dev/projects/games_sokoban/Sokoban.asm` — 20×12 ASCII grid, full redraw every move, ~4 KB binary with 47 levels.
+`dev/projects/apple1/game_sokoban/Sokoban.asm` — 20×12 ASCII grid, full redraw every move, ~4 KB binary with 47 levels.
 
 ---
 
@@ -446,28 +448,22 @@ The three **Sokoban** ports share the same grid, the same move logic (`execute_m
 
 | File | Mode | Size | Levels |
 |---------|------|--------|---------|
-| `dev/projects/games_sokoban/Sokoban.asm` | Text | 4054 B | 47 |
-| `dev/projects/hgr_sokoban/HGR_Sokoban.asm` | HGR GEN2 | 7399 B | 72 |
-| `dev/projects/tms9918_sokoban/TMS_Sokoban.asm` | TMS9918 | 4354 B | 47 |
+| `dev/projects/apple1/game_sokoban/Sokoban.asm` | Text | 4054 B | 47 |
+| `dev/projects/gen2/game_sokoban/HGR_Sokoban.asm` | HGR GEN2 | 7399 B | 72 |
+| `dev/projects/tms9918/game_sokoban/TMS_Sokoban.asm` | TMS9918 | 4354 B | 47 |
 
-The three **Connect 4** ports likewise:
-
-| File | Mode | Size |
-|---------|------|--------|
-| `dev/projects/games_connect4/Connect4.asm` | Text | 1021 B |
-| `dev/projects/hgr_connect4/HGR_Connect4.asm` | HGR GEN2 | 2003 B |
-| `dev/projects/tms9918_connect4/TMS_Connect4.asm` | TMS9918 | 1230 B |
+**Connect 4** ships as a text-only port today (HGR / TMS9918 variants existed historically but are no longer in-tree — only `dev/projects/apple1/game_connect4/Connect4.asm`, ~1 KB, currently ships).
 
 Other GEN2 programs useful as templates:
-- `dev/projects/hgr_maze/HGR_Maze.asm`: maze sub-byte rendering (4-px walls)
-- `dev/projects/hgr_mandelbrot/HGR_Mandelbrot.asm`: computation + pixel plotting
-- `dev/projects/hgr_house/HGR_House.asm`: shape drawing
+- `dev/projects/gen2/game_maze/HGR_Maze.asm`: maze sub-byte rendering (4-px walls)
+- `dev/projects/gen2/demo_mandelbrot/HGR_Mandelbrot.asm`: computation + pixel plotting
+- `dev/projects/gen2/demo_house/HGR_House.asm`: shape drawing
 
 Reusable libraries (`dev/lib/`):
 - `dev/lib/apple1/apple1.inc` — Wozmon + PIA equates
 - `dev/lib/m6502/math.asm` — fixed-point trig, LFSR RNG, decimal printing
 - `dev/lib/tms9918/{tms9918.inc,tms9918m2.asm}` — VDP equates + Mode 2 driver
-- `dev/lib/hgr/{hgr_tables.inc,smiley.inc}` — HGR tables
+- `dev/lib/gen2/{hgr_tables.inc,smiley.inc}` — HGR tables
 - `dev/lib/games/sokoban/sokoban_*.inc` — shared Sokoban level data
 - `dev/lib/games/chess/{chess_engine.asm,chess_text_io.asm,chess_*.inc}` — shared chess engine (text/HGR/TMS9918)
 

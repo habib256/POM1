@@ -1,7 +1,8 @@
 ; =============================================
 ; TMS_Nyan_CodeTank — RLE-compressed 12-frame Nyan Cat for CodeTank.
 ;
-; Same algorithm as dev/projects/tms9918_nyan_fantasy/, packed for the
+; Same algorithm as the original Multiplexing-Fantasy port (no longer
+; in-tree), packed for the
 ; 16 KB CodeTank ROM slot at $4000-$7FFF. Run-in-place from ROM —
 ; no RAM copy of the animation.
 ;

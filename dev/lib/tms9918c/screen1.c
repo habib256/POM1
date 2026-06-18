@@ -6,7 +6,6 @@
  */
 #include "screen1.h"
 #include "c64font.h"
-#include "apple1.h"
 #include "sprites.h"
 
 const unsigned char SCREEN1_TABLE[8] = {
@@ -180,33 +179,5 @@ void screen1_locate(unsigned char x, unsigned char y) {
     tms_cursor_y = y;
 }
 
-void screen1_strinput(unsigned char *buffer, unsigned char max_length) {
-    unsigned char pos = 0;
-    screen1_putc(CHR_REVSPACE);
-    screen1_putc(CHR_BACKSPACE);
-    for (;;) {
-        unsigned char key = apple1_getkey();
-        if (key == CHR_RETURN) {
-            buffer[pos] = 0;
-            screen1_putc(CHR_SPACE);
-            screen1_putc(CHR_BACKSPACE);
-            return;
-        } else if (key == CHR_BACKSPACE) {
-            if (pos != 0) {
-                --pos;
-                screen1_putc(CHR_BACKSPACE);
-                screen1_putc(CHR_REVSPACE);
-                screen1_putc(CHR_SPACE);
-                screen1_putc(CHR_BACKSPACE);
-                screen1_putc(CHR_BACKSPACE);
-            }
-        } else if (key >= 32U && key <= 128U) {
-            if (pos < max_length) {
-                buffer[pos++] = key;
-                screen1_putc(key);
-                screen1_putc(CHR_REVSPACE);
-                screen1_putc(CHR_BACKSPACE);
-            }
-        }
-    }
-}
+/* screen1_strinput lives in screen1_input.c so a program without text input
+ * doesn't drag in apple1_getkey + the input-echo dance. */

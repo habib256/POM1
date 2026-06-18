@@ -3,7 +3,7 @@
 ; on Uncle Bernie's GEN2 Color Graphics Card
 ; -----------------------------------------------------------------------------
 ; Sprite data is pulled from the shared HGR sprite library at
-;   dev/lib/hgr/sprites/sprites_symbols_hgr.asm
+;   dev/lib/gen2/sprites/sprites_symbols_hgr.asm
 ; (auto-generated from dev/lib/tms9918/sprites_symbols.asm by
 ;  tools/build_hgr_sprites.py — same labels, just the HGR pixel format).
 ;

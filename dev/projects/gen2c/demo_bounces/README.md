@@ -1,39 +1,38 @@
-# GEN2Vectors — sprites XOR rapides + vectoriel + HUD (double buffering)
+# GEN2Vectors — fast XOR sprites + vectors + HUD (double buffering)
 
 *[← POM1 documentation index](../../../../doc/README.md)*
 
-Démo **C** qui réunit cinq briques de `dev/lib/gen2c` et montre comment animer
-plein écran vite sur la carte GEN2 : **quatre balles** (une grosse 48×48, trois
-petites 16×16) rebondissent dans un cadre **et s'entrechoquent** (toutes les
-paires), avec un compteur de rebonds en HUD et une légende en police 8×8.
+A **C** demo combining five `dev/lib/gen2c` building blocks to show how to
+animate full-screen fast on the GEN2 card: **four balls** (one large 48×48,
+three small 16×16) bounce inside a frame **and collide pairwise**, with a
+bounce counter HUD and an 8×8 caption.
 
-Briques :
+Building blocks:
 
-- **Sprites XOR rapides (B)** — `gen2_hgr_blit7(..., GEN2_XOR)`. Les balles sont
-  pré-empaquetées en **7px/octet** (le format du framebuffer), donc le blit XOR
-  des **octets entiers** au lieu de pixels. Effacement = re-blit XOR au même
-  endroit (fond restauré pixel-parfait). Contrepartie : x aligné sur 7px (pas
-  horizontal de 7).
-- **Double buffering (C)** — `gen2_set_draw_page` / `gen2_show_page` : on dessine
-  la frame dans la page cachée puis on la bascule.
-- **Nombre HUD + texte 8×8 (D)** — `gen2_hgr_putu_field` (compteur largeur fixe
-  auto-effaçant) + `gen2_hgr_puts8` (légende dense en police native 8×8).
-- **Vectoriel (E)** — `gen2_hgr_rect` + `gen2_hgr_line` pour le décor.
+- **Fast XOR sprites (B)** — `gen2_hgr_blit7(..., GEN2_XOR)`. The balls are
+  pre-packed in the **7px/byte** framebuffer format, so the blit XORs **whole
+  bytes** instead of pixels. Erase = re-blit XOR at the same spot (background
+  restored pixel-perfect). Trade-off: x is aligned to 7px (horizontal step of 7).
+- **Double buffering (C)** — `gen2_set_draw_page` / `gen2_show_page`: draw the
+  frame on the hidden page, then flip.
+- **HUD number + 8×8 text (D)** — `gen2_hgr_putu_field` (auto-erasing
+  fixed-width counter) + `gen2_hgr_puts8` (dense caption in the native 8×8 font).
+- **Vectors (E)** — `gen2_hgr_rect` + `gen2_hgr_line` for the scenery.
 
-## Les trois leviers de vitesse
+## The three speed levers
 
-1. **Pas de redessin du décor** : cadre, séparateur, label, légende tracés UNE
-   FOIS par page.
-2. **Effacement XOR** des balles : pas de boîte d'effacement à laver.
-3. **Blit aligné-octet** (`gen2_hgr_blit7`) : ~7× moins d'écritures que le blit
-   pixel-par-pixel. Mesuré sur une scène (grosse + petite balle) : **42 → 223
-   frames** pour un même budget de cycles, soit **×5.3**.
+1. **Don't redraw the scenery**: frame, separator, label, caption drawn ONCE
+   per page.
+2. **XOR erase** of balls: no clear-box to scrub.
+3. **Byte-aligned blit** (`gen2_hgr_blit7`): ~7× fewer writes than a
+   pixel-by-pixel blit. Measured on one scene (large + small ball):
+   **42 → 223 frames** for the same cycle budget, i.e. **×5.3**.
 
-## Collision balle-balle
+## Ball-vs-ball collision
 
-Pour chaque paire : si les centres sont à moins de `R_i + R_j` **et** se
-rapprochent (`dx·Δvx + dy·Δvy < 0`), on échange les vitesses. Toutes les balles
-vont à la même vitesse, donc l'échange préserve l'alignement octet.
+For each pair: if centres are closer than `R_i + R_j` **and** are approaching
+(`dx·Δvx + dy·Δvy < 0`), swap velocities. All balls move at the same speed, so
+swapping preserves the byte alignment.
 
 ## Build / Run
 
@@ -47,4 +46,4 @@ build/POM1 --preset 11 \
     --load 6000:"software/Graphic HGR/GEN2Vectors.bin" --run 6000
 ```
 
-ou DevBench → POM1 Bench → cible *C / GEN2 HGR*, coller, compiler, uploader.
+or DevBench → POM1 Bench → target *C / GEN2 HGR*, paste, compile, upload.

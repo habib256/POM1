@@ -42,8 +42,8 @@ in one click (it needs `cc65` installed — it'll tell you how if it's missing).
 - Assembly → [`dev/Programming_Apple1_ASM.md`](../../Programming_Apple1_ASM.md),
   playbook [`dev/APPLE1DEV.md`](../../APPLE1DEV.md).
 - C → [`dev/Programming_Apple1_C.md`](../../Programming_Apple1_C.md).
-- Add graphics: HGR (`dev/lib/gen2c/`), TMS9918 (`dev/apple1-videocard-lib/`),
-  or GT-6144 (`dev/projects/gt6144_hello/`).
+- Add graphics: HGR (`dev/lib/gen2c/`), TMS9918 (`dev/lib/tms9918c/`),
+  or GT-6144 (`dev/projects/gt6144/gt6144_demo_hello/`).
 
 ## Hardware
 

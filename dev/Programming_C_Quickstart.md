@@ -160,7 +160,7 @@ void main(void)
 
 ---
 
-## Top 10 pitfalls
+## Top pitfalls
 
 1. **String literals are `const char *`**, but the raw API (`woz_puts`,
    `screen1_puts`) takes `const unsigned char *`. Use the `puts_apple1`

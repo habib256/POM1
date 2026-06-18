@@ -107,9 +107,9 @@ If POM1 renders clones IN LEGAL Mode I (where it shouldn't),
 
 - `dev/Programming_TMS9918.md` §15 (Bug N°8) — sprite cloning spec, POM1 implementation notes,
   thermal drift caveat
-- `dev/projects/tms9918_silbench/` T12 (SPRITE CLONING) — same test
-  inside the silicon-strict validation suite (this demo is the
-  standalone visual variant, with toggle for direct comparison)
+- SilBench T12 (SPRITE CLONING) — same test inside the silicon-strict
+  validation suite (this demo is the standalone visual variant, with
+  toggle for direct comparison)
 - `tms9918_silicon_strict_runtime` — POM1 lock-step regression (ctest)
 - openMSX issue [#593](https://github.com/openMSX/openMSX/issues/593) —
   upstream discussion of the cloning model

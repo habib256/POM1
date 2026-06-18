@@ -13,7 +13,7 @@ with no expansion RAM.
 - Machine: Apple 1 (4 KB stock — `apple1_sok_4k.cfg`, default).
   Larger budgets (`apple1_sok_8k.cfg`, `apple1_sok_hgr.cfg`) ship for
   variants that target 8 KB / GEN2 HGR setups respectively.
-- Cards: none (the HGR variant is consumed by `dev/projects/hgr_sokoban/`)
+- Cards: none (the HGR variant is consumed by `dev/projects/gen2/game_sokoban/`)
 - Recommended POM1 preset: 4 (Apple-1 with ACI & BASIC; any text preset works).
 
 ## Sources

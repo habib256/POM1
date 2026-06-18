@@ -1,9 +1,7 @@
 # Apple 1 Chess (text) — dual-bank build (lower 4K + upper 4K, per Parmegiani)
 .DEFAULT_GOAL := all
 OUT_DIR  := ../../../../software/Apple-1 games
-empty     :=
-space     := $(empty) $(empty)
-OUT_DIR_T := $(subst $(space),\$(space),$(OUT_DIR))
+include ../../../cc65/space.mk    # OUT_DIR_T (escaped form for make targets)
 LIB      := -I ../../../lib/apple1 -I ../../../lib/games/chess
 
 OBJS := Chess.o chess_engine.o chess_text_io.o

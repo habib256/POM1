@@ -35,7 +35,4 @@ void apple1_input_line_prompt(unsigned char *buffer, unsigned char max);
 #define INPUT_LINE_PROMPT_CHAR '>'
 #endif
 
-/* KickC jukebox helper — no-op under cc65 (DATA copied by crt0). */
-void apple1_eprom_init(void);
-
 #endif

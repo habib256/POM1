@@ -151,9 +151,10 @@ It links three 6502-asm objects:
 2. `chess_engine.o` (lib/games/chess/) — board, move-gen, make/unmake, check
 3. `chess_text_io.o` (lib/games/chess/) — algebraic move parser
 
-The TMS9918 variant (`dev/projects/tms9918_chess/`) and the HGR
-variant (`dev/projects/hgr_chess/`) reuse the same `chess_engine.o`
-+ `chess_text_io.o` and only swap the renderer (`Chess.o`).
+TMS9918 and HGR variants existed historically (each reused the shared
+`chess_engine.o` + `chess_text_io.o`, swapping only the renderer); they
+are no longer in-tree as of 2026. The text variant here is the
+canonical reference.
 
 ## Known constraints
 

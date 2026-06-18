@@ -4,7 +4,7 @@
 #   PROJECT   — basename, e.g. HGR_Mandelbrot (drives <PROJECT>.asm + <PROJECT>.o)
 #   LOAD_CFG  — path to ld65 .cfg
 #   OUT_DIR   — where the .bin (and optional .txt) lands under software/
-#   LIB       — ca65 -I flags, e.g. "-I ../../lib/apple1 -I ../../lib/hgr"
+#   LIB       — ca65 -I flags, e.g. "-I ../../lib/apple1 -I ../../lib/gen2"
 #   EMIT_TXT  — optional, set to 1 to also emit Wozmon-hex via emit_<PROJECT>_txt.py
 #   CFG       — optional override knob; set "CFG ?= default.cfg" + "LOAD_CFG := $(CFG)"
 #               in the project Makefile to allow `make CFG=variant.cfg`
@@ -14,14 +14,9 @@
 
 .DEFAULT_GOAL := all
 
-# OUT_DIR_T — Make-target form of $(OUT_DIR) (backslash-escapes spaces) so
-# `$(OUT_DIR_T)/foo: deps` parses as a single filename even when the
-# directory name contains spaces (e.g. "software/Apple-1 games"). Use
-# $(OUT_DIR_T) in target/prerequisite positions and "$(OUT_DIR)" (quoted)
-# in shell commands.
-empty     :=
-space     := $(empty) $(empty)
-OUT_DIR_T := $(subst $(space),\$(space),$(OUT_DIR))
+# OUT_DIR_T — Make-target form of $(OUT_DIR) (backslash-escapes spaces).
+# See space.mk for the rationale.
+include $(dir $(lastword $(MAKEFILE_LIST)))space.mk
 
 OBJ := $(PROJECT).o
 

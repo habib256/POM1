@@ -13,7 +13,6 @@
 extern const unsigned char SCREEN2_TABLE[8];
 #define SCREEN2_SIZE (32U * 24U)
 
-extern unsigned char tms_global_mulf_initialized;
 extern unsigned char screen2_plot_mode;
 
 #define PLOT_MODE_RESET  0U

@@ -59,7 +59,7 @@ parameters.
 from emit_woz import emit
 emit(
     asm_files=["MyProject.asm"],         # one or more sources
-    lib_dirs=["apple1", "hgr"],          # resolves to dev/lib/<name>/ -I paths
+    lib_dirs=["apple1", "gen2"],         # resolves to dev/lib/<name>/ -I paths
     cfg="apple1_gen2.cfg",                # project-local OR dev/cc65/ relative
     out_dir_software="Graphic HGR",       # software/<dir>/ for the .bin/.txt
     start_addr=0x0280,                    # load address used in the .txt suffix
@@ -121,9 +121,9 @@ from emit_woz import emit  # noqa: E402
 def main() -> int:
     emit(
         asm_files=["Foo.asm"],
-        lib_dirs=["apple1", "hgr"],
+        lib_dirs=["apple1", "gen2"],
         cfg="apple1_gen2.cfg",
-        out_dir_software="hgr",
+        out_dir_software="Graphic HGR",
         start_addr=0x0280,
         project_dir=PROJ,
     )
@@ -133,12 +133,10 @@ if __name__ == "__main__":
     raise SystemExit(main())
 ```
 
-Projects shipping with this convention:
-`hgr_life`, `hgr_mandelbrot`, `hgr_sierpinski`, `hgr_testcard`,
-`hgr_house`, `hgr_connect4`, `hgr_bbfont_show`, `hgr_orbital_pool`,
-`tms9918_galaga`, `tms9918_life`, `tms9918_logo`, `tms9918_maze3d`,
-`tms9918_orbital_pool`, `tms9918_snake`. Their pre-migration scripts
-(60+ lines each) compressed to 23 lines apiece.
+Most projects under `dev/projects/gen2/`, `dev/projects/tms9918/`, and
+`dev/projects/codetank/` ship with this convention (their pre-migration
+`emit_*_txt.py` scripts of 60+ lines compressed to ~23 lines apiece).
+Discoverable via `find dev/projects -name 'emit_*_txt.py'`.
 
 ## Makefile.common — shared Makefile fragment
 
@@ -152,7 +150,7 @@ lines plus an include:
 PROJECT  := HGR_Mandelbrot
 LOAD_CFG := ../../cc65/apple1_gen2.cfg
 OUT_DIR  := ../../../software/Graphic HGR
-LIB      := -I ../../lib/apple1 -I ../../lib/hgr -I ../../lib/m6502
+LIB      := -I ../../lib/apple1 -I ../../lib/gen2 -I ../../lib/m6502
 EMIT_TXT := 1
 
 include ../../cc65/Makefile.common

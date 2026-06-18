@@ -1,7 +1,8 @@
 # HGR Sokoban — split-bank build (4 KB low + 4 KB high) for the
 # Parmigiani 8 KB dual-bank Apple-1 + GEN2 HGR card.
 #
-# Pattern lifted from dev/projects/hgr_chess/Makefile: ld65 emits two .bin
+# Pattern lifted from the original HGR Chess dual-bank Makefile (no longer
+# in-tree): ld65 emits two .bin
 # files (one per memory region), then a Python one-liner stitches both
 # into a single Wozmon-hex .txt that loads both halves and runs E000R.
 .DEFAULT_GOAL := all
@@ -9,9 +10,7 @@
 PROJECT  := HGR_Sokoban
 LOAD_CFG := apple1_sok_hgr.cfg
 OUT_DIR  := ../../../../software/Graphic HGR
-empty     :=
-space     := $(empty) $(empty)
-OUT_DIR_T := $(subst $(space),\$(space),$(OUT_DIR))
+include ../../../cc65/space.mk    # OUT_DIR_T (escaped form for make targets)
 LIB      := -I ../../../lib/apple1 -I ../../../lib/gen2 -I ../../../lib/games/sokoban -I ../../../lib/m6502
 
 OBJS := $(PROJECT).o

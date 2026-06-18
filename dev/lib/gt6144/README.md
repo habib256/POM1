@@ -4,8 +4,8 @@
 
 The Apple-1's first commercial graphics card (1976): 64×96 mono pixels
 on six Intel 2102 SRAMs, write-only port at `$D00A`. Replaces the
-inline clear + plot logic in `dev/projects/gt6144_hello` and
-`gt6144_life`, gives future SWTPC demos a 10-line head-start.
+inline clear + plot logic in `dev/projects/gt6144/gt6144_demo_hello` and
+`gt6144_demo_life`, gives future SWTPC demos a 10-line head-start.
 
 ## Files
 
@@ -83,8 +83,8 @@ silently — no error, just no graphics.
 
 ## Migration path for existing projects
 
-`gt6144_hello/GT1_Hello.asm` (CLR_SCREEN, ~14 lines) and
-`gt6144_life/GT1_Life.asm` (clear_gt, identical). Replace each local
+`gt6144/gt6144_demo_hello/GT1_Hello.asm` (CLR_SCREEN, ~14 lines) and
+`gt6144/gt6144_demo_life/GT1_Life.asm` (clear_gt, identical). Replace each local
 copy with `.include "gt6144.asm"` + `JSR gt_clear`. ~14 lines saved per
 project, plus consistency.
 

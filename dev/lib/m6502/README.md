@@ -37,7 +37,7 @@ resolve at link time:
     ; BSS
     prod_lo, prod_hi, sign_flag, lfsr_lo, lfsr_hi
 
-See `dev/projects/tms9918_logo/TMS_Logo.asm` for a working example.
+See `dev/projects/tms9918/tool_logo/TMS_Logo.asm` for a working example.
 
 ## prng8.asm — 8-bit shift LFSR ($2D tap)
 
@@ -61,7 +61,7 @@ Used by: `demo_maze/Maze_Sidewinder`, `demo_maze/Maze2_Backtracker`,
 ## multiply.asm — unsigned shift-and-add multiplies
 
 Standard 6502 shift-and-add multiplies (ref: 6502.org). Promoted out of
-`dev/lib/hgr/hgr_tables.inc` so projects that don't need multiply
+`dev/lib/gen2/hgr_tables.inc` so projects that don't need multiply
 (HGR_Sierpinski, HGR_TestCard) no longer pay for the ZP slots.
 
 | Symbol  | Description                                                       |
@@ -168,4 +168,4 @@ The libs' own `.ifndef` guards detect the pre-declaration and skip
 duplicate allocation. The same `zp.inc` `.exportzp`s `tmp / tmp2` so
 `math.asm` (separately compiled into `math.o`) can `.importzp` them at
 link without manual project boilerplate. See
-`dev/projects/lib_smoke/LibSmoke.asm` for a worked example.
+`dev/projects/tms9918/tool_logo/TMS_Logo.asm` for a worked example (math.asm separately compiled, see its Makefile).

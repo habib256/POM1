@@ -1,7 +1,7 @@
 ; ============================================================================
 ; multiply.asm -- 6502 unsigned multiply primitives (shift-and-add)
 ; ============================================================================
-; Promoted out of `dev/lib/hgr/hgr_tables.inc` (where it was wedged among the
+; Promoted out of `dev/lib/gen2/hgr_tables.inc` (where it was wedged among the
 ; HGR pixel tables). Two reasons for the move:
 ;   (1) Multiply is generic 6502, not HGR-specific — it belongs in m6502/.
 ;   (2) Old layout forced every hgr_tables.inc consumer to also declare

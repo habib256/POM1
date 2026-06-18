@@ -21,7 +21,7 @@
 ;     Constraint: the 4 scanlines must lie in the SAME HGR group (Apple
 ;       II non-linear layout). Within a group, consecutive scanlines are
 ;       at +$400. Crossing a group boundary needs full hgr_lo/hi lookup
-;       per row — see dev/lib/hgr/hgr_tables.inc for the table.
+;       per row — see dev/lib/gen2/hgr_tables.inc for the table.
 ;
 ; ZP usage:
 ;   sb_ptr_lo, sb_ptr_hi  -- caller-declared pointer (alias to your own

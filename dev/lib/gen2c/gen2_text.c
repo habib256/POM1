@@ -9,7 +9,7 @@
 #include "gfx.h"   /* gfx_hexstr for the uppercase / no-leading-zero hex string */
 
 /* --- Beautiful Boot 8x8 font, ASCII 0x20-0x7F (96 glyphs).
- * gen2_bbfont.inc is GENERATED from the single source dev/lib/hgr/bbfont_cp437.inc
+ * gen2_bbfont.inc is GENERATED from the single source dev/lib/gen2/bbfont_cp437.inc
  * by tools/build_shared_font.py (re-run after editing the font) — so the C copy
  * can't drift from the asm table, and the TMS9918 side gets the same font from the
  * same master (bbfont_tms.inc). bit 0 = leftmost pixel, rows top->bottom; values

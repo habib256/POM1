@@ -233,6 +233,111 @@ def emit(
     return out_txt
 
 
+def emit_cl65(
+    c_files: Sequence[str | pathlib.Path],
+    extra_sources: Sequence[str | pathlib.Path] = (),
+    lib_dirs: Sequence[str] = (),
+    cfg: str | pathlib.Path = "",
+    out_dir_software: str | None = None,
+    extra_libs: Sequence[str | pathlib.Path] = (),
+    start_addr: int = 0x6000,
+    cflags: Sequence[str] = ("-t", "none", "-Oirs"),
+    project_dir: pathlib.Path | None = None,
+    quiet: bool = False,
+    header_lines: Iterable[str] = (),
+) -> pathlib.Path:
+    """Compile + link a cc65 C project via cl65, then emit Wozmon-hex .txt.
+
+    The companion of ``emit()``: same Wozmon-hex serialisation, but invokes
+    ``cl65`` (one-shot compile + assemble + link) instead of separate
+    ``ca65`` / ``ld65`` calls. Used by gen2c / tms9918c demos that mix
+    C and asm sources.
+
+    Args:
+        c_files: primary sketch sources (relative to project_dir).
+        extra_sources: runtime sources (apple1c, gen2c, asm blitters…),
+            resolved against repo root like ``emit()``'s asm_files.
+        lib_dirs: library include names (resolved to ``dev/lib/<name>/``).
+        cfg: linker config (relative to project, dev/cc65/, or absolute).
+        out_dir_software: ``software/<dir>/`` subfolder for final .bin/.txt.
+        extra_libs: pre-built .lib archives to link (e.g. gfx-gen2.lib).
+        start_addr: load address used in the trailing ``AAAA R`` line.
+        cflags: extra cl65 flags (default ``-t none -Oirs``).
+        project_dir: project root (default: caller's CWD).
+        quiet: suppress the echoed command line.
+        header_lines: comment lines to prepend to the .txt.
+
+    Returns the path of the written ``.txt`` file.
+    """
+    if project_dir is None:
+        project_dir = pathlib.Path.cwd()
+    project_dir = pathlib.Path(project_dir).resolve()
+    root = _find_root()
+
+    inc_args: list[str] = []
+    for lib in lib_dirs:
+        lib_path = root / "dev" / "lib" / lib
+        if not lib_path.is_dir():
+            raise FileNotFoundError(f"lib not found: dev/lib/{lib}")
+        inc_args.extend(["-I", str(lib_path)])
+
+    cfg_path = _resolve_cfg(cfg, project_dir, root)
+
+    src_paths: list[pathlib.Path] = []
+    primary_stem = pathlib.Path(c_files[0]).stem
+    for src in list(c_files) + list(extra_sources):
+        sp = pathlib.Path(src)
+        if not sp.is_absolute():
+            # c_files are project-local, extras are root-or-absolute.
+            for candidate in (project_dir / sp, root / "dev" / sp, root / sp, sp):
+                if candidate.exists():
+                    sp = candidate.resolve()
+                    break
+        if not sp.exists():
+            raise FileNotFoundError(f"source not found: {src}")
+        src_paths.append(sp)
+
+    lib_paths: list[pathlib.Path] = []
+    for archive in extra_libs:
+        ap = pathlib.Path(archive)
+        if not ap.is_absolute():
+            for candidate in (project_dir / ap, root / "dev" / ap, root / ap, ap):
+                if candidate.exists():
+                    ap = candidate.resolve()
+                    break
+        lib_paths.append(ap)
+
+    if out_dir_software:
+        out_dir = root / "software" / out_dir_software
+        out_bin = out_dir / f"{primary_stem}.bin"
+        out_txt = out_dir / f"{primary_stem}.txt"
+    else:
+        out_bin = project_dir / f"{primary_stem}.bin"
+        out_txt = project_dir / f"{primary_stem}.txt"
+    out_bin.parent.mkdir(parents=True, exist_ok=True)
+
+    cmd = ["cl65", *cflags, "-C", str(cfg_path), *inc_args,
+           *(str(p) for p in src_paths), *(str(p) for p in lib_paths),
+           "-o", str(out_bin)]
+    if not quiet:
+        print("$ " + " ".join(cmd), file=sys.stderr)
+    subprocess.run(cmd, check=True, cwd=str(root))
+
+    data = out_bin.read_bytes()
+    lines: list[str] = list(header_lines)
+    addr = start_addr
+    for i in range(0, len(data), 8):
+        chunk = data[i : i + 8]
+        lines.append(f"{addr:04X}: " + " ".join(f"{b:02X}" for b in chunk))
+        addr += len(chunk)
+    lines.append(f"{start_addr:04X}R")
+    out_txt.write_text("\n".join(lines) + "\n", encoding="ascii")
+    if not quiet:
+        print(f"Wrote {out_bin} ({len(data)} bytes)", file=sys.stderr)
+        print(f"Wrote {out_txt}", file=sys.stderr)
+    return out_txt
+
+
 def _cli(argv: Sequence[str] | None = None) -> int:
     p = argparse.ArgumentParser(description="Shared Woz-hex emitter.")
     p.add_argument("--asm", action="append", required=True,

@@ -1271,8 +1271,6 @@ constants: `HBLANK_LEN_TXT = 404`, `HBLANK_LEN_GFX = 312` ticks;
 
 - `dev/projects/tms9918/game_sokoban/TMS_Sokoban.asm` — 47 levels, 8×8
   tiles with 7 colours.
-- `dev/projects/tms9918/game_connect4/TMS_Connect4.asm` — 32×32 tokens
-  on full-screen blue board.
 - `dev/projects/tms9918/game_galaga/TMS_Galaga.asm:2593-2600` — polling
   pattern commented in place.
 - `dev/projects/tms9918/demo_clone/` — Mode II + R4 = 0 + sprite #31,

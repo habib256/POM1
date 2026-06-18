@@ -1,7 +1,7 @@
 ; ============================================================================
 ; sprites_fauna.asm  --  13 sprites (16x16, TMS9918 sprite mode)
 ; Labels _fauna_*: cc65/C export (see demos/sprite_animals). Regenerate
-; dev/lib/hgr/sprites/sprites_fauna_hgr.asm after editing:
+; dev/lib/gen2/sprites/sprites_fauna_hgr.asm after editing:
 ;   python3 tools/build_hgr_sprites.py --only fauna
 ; ----------------------------------------------------------------------------
 ; SCROLL-O-SPRITES "Fauna" by Quale, May 2013, CC-BY-3.0.

@@ -82,7 +82,3 @@ void apple1_input_line_prompt(unsigned char *buffer, unsigned char max) {
     }
     buffer[x] = 0;
 }
-
-void apple1_eprom_init(void) {
-    /* cc65 copydata handles .data — reserved for API compatibility. */
-}

@@ -74,7 +74,7 @@ In your project Makefile:
 
 ## Validation
 
-`dev/projects/lib_smoke/LibSmoke.asm` exercises `menu_select` and
-`repeat_char_ax`. The `select_wasd_layout` pattern is verified against
+The shipped CodeTank menus (`dev/projects/codetank/*_menu*/`) and games
+exercise `menu_select` and `repeat_char_ax`. The `select_wasd_layout` pattern is verified against
 the existing project consumers — a future migration will replace each
 project's inline copy with `.include "layout.asm"`.

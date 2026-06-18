@@ -15,7 +15,7 @@
 ; Geometry: each of the glyph's 8 source rows is drawn on TWO scanlines and each
 ; set source bit lights TWO horizontal pixels (pixel-doubling -> solid white,
 ; no NTSC colour fringe), giving 16x16 white cells. bit 0 of each glyph byte is
-; the leftmost pixel (matches dev/lib/hgr/bbfont_cp437.inc).
+; the leftmost pixel (matches dev/lib/gen2/bbfont_cp437.inc).
 ;
 ; Interface — the C wrapper sets these (defined here, in the zero page) then
 ; JSRs _gen2_blit_glyph once per glyph:

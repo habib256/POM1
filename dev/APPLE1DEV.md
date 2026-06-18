@@ -29,12 +29,12 @@ Agent-facing playbook for writing **new Apple 1 software** that runs under POM1.
 | Apple-1-movie text mode | asm | Text | `dev/cc65/apple1_4k.cfg` |
 | Colour pixel art, fractals | asm + GEN2 | HGR 280×192 | `dev/cc65/apple1_gen2.cfg` |
 | Sprite/tile game, multi-colour | asm + TMS9918 | Graphics I 32×24 | `dev/cc65/apple1_4k.cfg` (VRAM off-bus). Do not assume GEN2 + TMS9918 on one board — preset-level mutex except Multiplexing Fantasy (`README.md` / `CLAUDE.md`). |
-| 1976 SWTPC graphics | asm + GT-6144 | 64×96 mono | `dev/projects/gt6144_hello/gt6144.cfg` |
+| 1976 SWTPC graphics | asm + GT-6144 | 64×96 mono | `dev/projects/gt6144/gt6144_demo_hello/gt6144.cfg` |
 | SID jingle | asm @ `$C800` regs | — | any |
 | Shell tool, file manager | asm + microSD shell | Text | `dev/cc65/apple1_4k.cfg` |
 | **Prefer C?** Text program | **C (cc65)** | Text 40×24 | `dev/cc65/apple1_c.cfg` + `dev/lib/apple1c/` |
 | **Prefer C?** Colour pixel art | C + GEN2 | HGR 280×192 | `dev/cc65/apple1_gen2_c.cfg` + `dev/lib/gen2c/` |
-| **Prefer C?** Sprite/tile game | C + TMS9918 | Graphics I/II | `apple1-videocard-lib/cc65/codetank_c.cfg` |
+| **Prefer C?** Sprite/tile game | C + TMS9918 | Graphics I/II | `dev/lib/tms9918c/cc65/codetank_c.cfg` + `dev/lib/tms9918c/` |
 
 > **Writing in C?** All three C targets share one card-neutral Apple-1
 > text/keyboard base (`dev/lib/apple1c/` — `woz_puts` / `woz_getkey` / `woz_mon`),
@@ -59,8 +59,9 @@ Agent-facing playbook for writing **new Apple 1 software** that runs under POM1.
 **Easiest authoring loop:** the in-app **POM1 Bench** (*DevBench → POM1 Bench*,
 desktop only) edits, assembles/compiles (asm **or** C) and runs in one click, with
 a `HELLO WORLD` starter per target — no Makefile needed (per-target reference:
-[`../doc/DEVBENCH.md`](../doc/DEVBENCH.md)). Copy `dev/projects/_template/` for a
-minimal asm or C starting point. The manual flow below is for batch/CI.
+[`../doc/DEVBENCH.md`](../doc/DEVBENCH.md)). Copy `dev/_template/` for an asm
+or text-mode-C starting point (and `dev/_template_gen2c/`, `dev/_template_tms9918c/`
+for the cc65 graphics-card flavours). The manual flow below is for batch/CI.
 
 Per-project Makefiles under `dev/projects/<name>/` already wire `ca65` + `ld65` + Woz-hex emit. Manual flow if you need it:
 
@@ -107,13 +108,13 @@ wait_key:
 ## 4. Display modes — one paragraph each (then go to Programming_Apple1_ASM.md)
 
 ### Text 40×24 (default)
-Append-only terminal, no cursor addressing. To "refresh", reprint the frame — scroll does the work. Min viable game frame ≈ 12×20 chars + footer fits in 24 lines. `ECHO` at `$FFEF` with `ORA #$80`. See `dev/projects/games_sokoban/Sokoban.asm`.
+Append-only terminal, no cursor addressing. To "refresh", reprint the frame — scroll does the work. Min viable game frame ≈ 12×20 chars + footer fits in 24 lines. `ECHO` at `$FFEF` with `ORA #$80`. See `dev/projects/apple1/game_sokoban/Sokoban.asm`.
 
 ### GEN2 HGR (280×192, Uncle Bernie)
-Framebuffer **`$2000-$3FFF`** (8 KB, non-linear Apple II layout). 7 px/byte; **bit 7 = NTSC group selector**, not a pixel. Isolated lit pixel = colour (violet/green/blue/orange depending on group + screenX parity); **adjacent lit pixels = white**. Use `dev/lib/hgr/hgr_tables.inc` (`plot_pixel`, `clear_hgr`, scanline tables). Byte-aligned tile widths (7/14/21/28 px) avoid sub-byte work; for arbitrary widths use the sub-byte mask LUT pattern (see `dev/projects/hgr_maze/HGR_Maze.asm`). **Full reference: `dev/Programming_Apple1_ASM.md` §5.**
+Framebuffer **`$2000-$3FFF`** (8 KB, non-linear Apple II layout). 7 px/byte; **bit 7 = NTSC group selector**, not a pixel. Isolated lit pixel = colour (violet/green/blue/orange depending on group + screenX parity); **adjacent lit pixels = white**. Use `dev/lib/gen2/hgr_tables.inc` (`plot_pixel`, `clear_hgr`, scanline tables). Byte-aligned tile widths (7/14/21/28 px) avoid sub-byte work; for arbitrary widths use the sub-byte mask LUT pattern (see `dev/projects/gen2/game_maze/HGR_Maze.asm`). **Full reference: `dev/Programming_Apple1_ASM.md` §5.**
 
 ### TMS9918 (256×192, P-LAB Graphic Card)
-I/O at `$CC00` (data) + `$CC01` (control). VRAM is **separate** (16 KB, I/O-only). Graphics I = 32×24 cells of 8×8 px. Layout: pattern `$0000`, name `$1800`, colour `$2000` (**one colour byte per group of 8 chars** — exploit by placing each tile type at char `0, 8, 16, …`). **Must disable sprites on init** (write `$D0` to first sprite-Y at `$1B00`) or garbage appears. **VBlank sync = polling recommandé** (`BIT $CC01 / BPL` or the `WAIT_VBLANK` macro in `lib/tms9918/tms9918.inc`) — P-LAB câble bien /INT → /IRQ (vérifié par Parmigiani), mais le polling est plus simple et portable ; l'IRQ-on-VBlank marche si tu installes un handler au vecteur `$FFFE` lisant `$CC01` atomiquement (voir [`Programming_TMS9918.md`](Programming_TMS9918.md#bug-n2-int-irq) Bug N°2). **Silicon strict** drops too-fast VRAM writes (`--silicon-strict` / Hardware menu — [`doc/CLI.md`](../doc/CLI.md)); tuning & pad helpers → [`Programming_TMS9918.md`](Programming_TMS9918.md) §17 / §25, `dev/lib/tms9918/tms9918_pad.asm`. **Full ASM tutorial: [`Programming_Apple1_ASM.md`](Programming_Apple1_ASM.md) §6.**
+I/O at `$CC00` (data) + `$CC01` (control). VRAM is **separate** (16 KB, I/O-only). Graphics I = 32×24 cells of 8×8 px. Layout: pattern `$0000`, name `$1800`, colour `$2000` (**one colour byte per group of 8 chars** — exploit by placing each tile type at char `0, 8, 16, …`). **Must disable sprites on init** (write `$D0` to first sprite-Y at `$1B00`) or garbage appears. **VBlank sync = polling preferred** (`BIT $CC01 / BPL` or the `WAIT_VBLANK` macro in `lib/tms9918/tms9918.inc`) — P-LAB wires /INT → /IRQ (confirmed by Parmigiani), but polling is simpler and more portable; IRQ-on-VBlank also works if you install a handler at vector `$FFFE` reading `$CC01` atomically (see [`Programming_TMS9918.md`](Programming_TMS9918.md#bug-n2-int-irq) Bug N°2). **Silicon strict** drops too-fast VRAM writes (`--silicon-strict` / Hardware menu — [`doc/CLI.md`](../doc/CLI.md)); tuning & pad helpers → [`Programming_TMS9918.md`](Programming_TMS9918.md) §17 / §25, `dev/lib/tms9918/tms9918_pad.asm`. **Full ASM tutorial: [`Programming_Apple1_ASM.md`](Programming_Apple1_ASM.md) §6.**
 
 ### SWTPC GT-6144 (64×96 mono, 1976 — first commercial Apple-1 graphics card)
 **Write-only** I/O at `$D00A`, 4-phase FSM on a single byte:
@@ -122,7 +123,7 @@ I/O at `$CC00` (data) + `$CC01` (control). VRAM is **separate** (16 KB, I/O-only
 - `128..223` → commit **Y** (actual plot uses latched X + state)
 - `224..255` → control opcode (`byte & 0x07`: 0=invert, 1=normal, 4=unblank, 5=blank)
 
-No read-back, no main-RAM framebuffer (lives in 6× Intel 2102 SRAM). Plot `(x,y)` ON: `STA $D00A` with `x|64`, then `y|128`. Inversion + blanking affect video path only. Power-on = visible bistable noise — clear before drawing. Examples: `dev/projects/gt6144_hello/`, `dev/projects/gt6144_life/`. Linker: `dev/projects/gt6144_hello/gt6144.cfg`.
+No read-back, no main-RAM framebuffer (lives in 6× Intel 2102 SRAM). Plot `(x,y)` ON: `STA $D00A` with `x|64`, then `y|128`. Inversion + blanking affect video path only. Power-on = visible bistable noise — clear before drawing. Examples: `dev/projects/gt6144/gt6144_demo_hello/`, `dev/projects/gt6144/gt6144_demo_life/`. Linker: `dev/projects/gt6144/gt6144_demo_hello/gt6144.cfg`.
 
 ---
 
@@ -178,7 +179,7 @@ Global: `$C818` volume + filter mode, `$C815-$C817` filter cutoff/resonance, `$C
 
 From Applesoft: `POKE &HC818,16 : POKE &HC805,8 : POKE &HC804,65`.
 
-Reference: `dev/projects/sid_piano/Claudio_PARMIGIANI_SID_PIANO_AZERTY.asm`. **C64 `.sid` conversion**: `tools/sid2apple1.py` rewrites `$D400` → `$C800`, neutralises CIA/VIC, emits `.bin` for `$0280`. Source tunes at [HVSC](https://www.exotica.org.uk/wiki/High_Voltage_SID_Collection).
+Reference: `dev/projects/plab/sid_piano/Claudio_PARMIGIANI_SID_PIANO_AZERTY.asm`. **C64 `.sid` conversion**: `tools/sid2apple1.py` rewrites `$D400` → `$C800`, neutralises CIA/VIC, emits `.bin` for `$0280`. Source tunes at [HVSC](https://www.exotica.org.uk/wiki/High_Voltage_SID_Collection).
 
 ---
 
@@ -221,7 +222,7 @@ ATDT BBS.FOZZTEXX.COM:23
 
 ### A1-IO & RTC (`$2000-$200F` VIA — mutex with GEN2 HGR)
 
-24-reg broadcast on 100-cycle period with PORTB STROBE. Regs 0-5 = RTC (H/M/S/D/M/Y), reg 6 = DS3231 die temp, ADC + digital in/out follow. Demo: `dev/projects/a1io_rtc_clock/RtcClock.asm`.
+24-reg broadcast on 100-cycle period with PORTB STROBE. Regs 0-5 = RTC (H/M/S/D/M/Y), reg 6 = DS3231 die temp, ADC + digital in/out follow. Demo: `dev/projects/plab/io_rtc_clock/RtcClock.asm`.
 
 ### SWTPC PR-40 (passive `$D012` sniffer, Jobs 1976)
 
@@ -334,18 +335,18 @@ Add a C++ test in `tests/`. Template: `tests/peripheral_bus_smoke_test.cpp` — 
 
 | Want… | Copy from |
 |---|---|
-| Text-mode game, ASCII tiles | `dev/projects/games_sokoban/Sokoban.asm` |
+| Text-mode game, ASCII tiles | `dev/projects/apple1/game_sokoban/Sokoban.asm` |
 | Text-mode BASIC | `software/Integer_basic/mini-startrek.apl.txt` (Integer) or write fresh Applesoft |
-| HGR pixel plotter | `dev/projects/hgr_mandelbrot/HGR_Mandelbrot.asm` + `dev/lib/hgr/hgr_tables.inc` |
-| HGR byte-aligned tiles | `dev/projects/hgr_sokoban/HGR_Sokoban.asm` (14 px wide) |
-| HGR sub-byte tiles (≠ 7 px) | `dev/projects/hgr_maze/HGR_Maze.asm` (4-px walls) |
-| HGR shape drawing | `dev/projects/hgr_house/HGR_House.asm` |
-| TMS9918 multi-colour tiles | `dev/projects/tms9918_sokoban/TMS_Sokoban.asm` (colour-group trick) |
-| TMS9918 full-screen board | `dev/projects/tms9918_connect4/TMS_Connect4.asm` (32×32 px pieces) |
-| GT-6144 plotter | `dev/projects/gt6144_hello/GT1_Hello.asm`, `dev/projects/gt6144_life/GT1_Life.asm` |
-| SID direct register play | `dev/projects/sid_piano/Claudio_PARMIGIANI_SID_PIANO_AZERTY.asm` |
+| HGR pixel plotter | `dev/projects/gen2/demo_mandelbrot/HGR_Mandelbrot.asm` + `dev/lib/gen2/hgr_tables.inc` |
+| HGR byte-aligned tiles | `dev/projects/gen2/game_sokoban/HGR_Sokoban.asm` (14 px wide) |
+| HGR sub-byte tiles (≠ 7 px) | `dev/projects/gen2/game_maze/HGR_Maze.asm` (4-px walls) |
+| HGR shape drawing | `dev/projects/gen2/demo_house/HGR_House.asm` |
+| TMS9918 multi-colour tiles | `dev/projects/tms9918/game_sokoban/TMS_Sokoban.asm` (colour-group trick) |
+| TMS9918 full-screen sprite game | `dev/projects/tms9918/game_galaga/TMS_Galaga.asm` |
+| GT-6144 plotter | `dev/projects/gt6144/gt6144_demo_hello/GT1_Hello.asm`, `dev/projects/gt6144/gt6144_demo_life/GT1_Life.asm` |
+| SID direct register play | `dev/projects/plab/sid_piano/Claudio_PARMIGIANI_SID_PIANO_AZERTY.asm` |
 | SID from C64 conversion | `python3 tools/sid2apple1.py Music.sid` |
-| RTC / sensors | `dev/projects/a1io_rtc_clock/RtcClock.asm` |
+| RTC / sensors | `dev/projects/plab/io_rtc_clock/RtcClock.asm` |
 | Shared logic across modes | `dev/lib/games/sokoban/sokoban_*.inc` (mode-neutral routines), `dev/lib/games/chess/chess_engine.asm` (separately-linked engine .o) |
 | Separately-linked engine module | `dev/lib/games/chess/chess_engine.asm` + per-variant Makefile linking 3 `.o` (text/TMS9918/HGR all share the same `chess_engine.o`) |
 | Algebraic move parser | `dev/lib/games/chess/chess_text_io.asm` (parses 4-5 char input like `E2E4`, `E7E8Q`) |

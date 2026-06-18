@@ -6,7 +6,7 @@
 ; TMS_Rogue dungeon generator: `rand_mod`. The bigger BSP-light pattern
 ; (room placement, L-corridor with marker tiles, 4-cardinal-neighbour door
 ; classification, three-pass corridor finalisation) still lives inline in
-; `dev/projects/tms9918_rogue/TMS_Rogue.asm` because it bakes in two
+; `dev/projects/tms9918/game_rogue/TMS_Rogue.asm` because it bakes in two
 ; rogue-specific assumptions:
 ;
 ;   1. Logical grid is 16-wide so `index → (col, row)` collapses to one

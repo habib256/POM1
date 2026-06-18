@@ -2,9 +2,7 @@
 # Link order matters so the entry point lands at $0280.
 .DEFAULT_GOAL := all
 OUT_DIR  := ../../../../software/Graphic TMS9918
-empty     :=
-space     := $(empty) $(empty)
-OUT_DIR_T := $(subst $(space),\$(space),$(OUT_DIR))
+include ../../../cc65/space.mk    # OUT_DIR_T (escaped form for make targets)
 LIB      := -I ../../../lib/apple1 -I ../../../lib/m6502 -I ../../../lib/tms9918
 
 # --- V1.8 (8 KB, frozen) ---

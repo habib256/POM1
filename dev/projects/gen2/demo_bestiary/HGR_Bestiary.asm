@@ -2,7 +2,7 @@
 ; HGR_Bestiary.asm  --  browse the SCROLL-O-SPRITES "bestiary" on Uncle Bernie's
 ; GEN2 Color Graphics Card.
 ; -----------------------------------------------------------------------------
-; A consumer for the pre-baked HGR sprite library (dev/lib/hgr/sprites/, the
+; A consumer for the pre-baked HGR sprite library (dev/lib/gen2/sprites/, the
 ; auto-generated GEN2 mirror of the TMS9918 SCROLL-O-SPRITES that TMS_Rogue uses
 ; on the TMS side). Before this, only hgr_symbols consumed one category; this
 ; pages through SIX of the fantasy-adventure categories:

@@ -44,7 +44,7 @@ it everywhere.
 ```
                  apple1c   (woz_puts / apple1_getkey / woz_mon — the WOZ terminal)
                 /         \
-   GEN2 HGR (gen2c)        TMS9918 (apple1-videocard-lib: screen1 / tms9918)
+   GEN2 HGR (gen2c)        TMS9918 (tms9918c: screen1 / tms9918)
    280x192 colour          256x192, 32 sprites
 ```
 
@@ -52,12 +52,12 @@ it everywhere.
 |---|---|---|---|
 | **Plain text** (40×24 terminal) | `apple1io.h` | `dev/cc65/apple1_c.cfg` | `0300R` |
 | **GEN2 HGR colour** (+ text) | `gen2.h` (+ `apple1io.h`) | `dev/cc65/apple1_gen2_c.cfg` | `6000R` |
-| **TMS9918 sprites/colour** | `screen1.h` / `tms9918.h` | `apple1-videocard-lib/cc65/codetank_c.cfg` | `4000R` |
+| **TMS9918 sprites/colour** | `screen1.h` / `tms9918.h` | `dev/lib/tms9918c/cc65/codetank_c.cfg` | `4000R` |
 
 Libraries:
 - `dev/lib/apple1c/` — the shared text/keyboard base (`woz_puts` / `apple1_getkey` / `woz_mon`) ([README](lib/apple1c/README.md)).
 - `dev/lib/gen2c/` — GEN2 HGR runtime ([README](lib/gen2c/README.md)).
-- `dev/apple1-videocard-lib/` — Nino Porcino's TMS9918 runtime + demos.
+- `dev/lib/tms9918c/` — Nino Porcino's TMS9918 runtime (vendored from nippur72/apple1-videocard-lib). Projects: `dev/projects/tms9918c/`.
 
 ---
 
@@ -139,7 +139,7 @@ overflows with a cryptic `ld65: Range error`. If you hit it:
 
 ---
 
-## 8. Gotchas
+## 7. Gotchas
 
 | Gotcha | Fix |
 |---|---|

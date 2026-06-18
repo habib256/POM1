@@ -16,7 +16,7 @@ mutually exclusive (you pick one per project — links the matching `.o`).
 
 ### Fonts (shared with the GEN2 HGR card — Axe 2 of the lib factoring)
 
-The Beautiful Boot 8×8 font now comes from ONE master, `dev/lib/hgr/bbfont_cp437.inc`,
+The Beautiful Boot 8×8 font now comes from ONE master, `dev/lib/gen2/bbfont_cp437.inc`,
 emitted per format by `tools/build_shared_font.py` (`--check` to verify no drift):
 
 - **`bbfont_tms.inc`** — *generated.* Full ASCII (0x20-0x7F, 96 glyphs) TMS9918
@@ -87,7 +87,7 @@ ln_x1, ln_y1, ln_dx, ln_dy, ln_sx, ln_sy, ln_err, ln_err_hi`
 ### Caller imports
 
 `tmp`, `tmp2` (1 ZP byte each) and `plot_mode` (1 BSS byte: 0 = OR,
-1 = XOR). See `dev/projects/tms9918_logo/TMS_Logo.asm` for the
+1 = XOR). See `dev/projects/tms9918/tool_logo/TMS_Logo.asm` for the
 caller-side declaration template.
 
 ## Use
@@ -165,29 +165,29 @@ Snake, Life, Rogue, …) suivent le pattern polling.
         BPL @vbl_wait
 ```
 
-Side effect : la lecture de `$CC01` efface aussi les bits 5 (collision) et 6
-(5S overflow). Si ton code dépend de ces flags, lis-les **avant** d'appeler
-`WAIT_VBLANK` (ou snapshot le status register dans une variable). Pour les
-jeux qui ne pollent que F, le clobber 5/6 est sans conséquence.
+Side effect: reading `$CC01` also clears bits 5 (collision) and 6
+(5S overflow). If your code depends on these flags, read them **before**
+calling `WAIT_VBLANK` (or snapshot the status register into a variable).
+For games polling only F, clobbering 5/6 is harmless.
 
-L'IRQ frame est câblée par défaut (`irqStrapped=true`) ; `TMS9918::setIrqStrapped(false)`
-modélise au besoin une carte hypothétique non câblée. Si tu écris du code
-pour P-LAB stock, le plus simple reste de poller — pas de configuration
-nécessaire. Détails complets dans [`dev/Programming_TMS9918.md`](../../Programming_TMS9918.md#bug-n2-int-irq) §18 (Bug N°2).
+The frame IRQ is strapped by default (`irqStrapped=true`); use
+`TMS9918::setIrqStrapped(false)` to model a hypothetical unstrapped card.
+For code targeting stock P-LAB, polling is the simplest path — no
+configuration needed. Full details in
+[`dev/Programming_TMS9918.md`](../../Programming_TMS9918.md#bug-n2-int-irq) §18 (Bug N°2).
 
 ## Mid-frame raster trap — 5th-sprite-overflow primitive (`tms9918_5strigger.asm`)
 
-Le polling V-blank donne **un** point de synchronisation par frame (la
-dernière ligne / fin de l'active display). Pour planifier un événement
-**au milieu** de la frame — palette split, name-table swap, upload de
-patterns supplémentaires pendant la moitié basse — on peut détourner le
-flag bit 6 du status register (5S = "5th sprite overflow") en plaçant 5
-sprites invisibles à la ligne où on veut piéger le faisceau.
+V-blank polling gives **one** sync point per frame (the last line / end of
+active display). To schedule an event **mid-frame** — palette split,
+name-table swap, extra pattern uploads during the bottom half — you can
+hijack the status register's bit 6 (5S = "5th sprite overflow") by placing
+5 invisible sprites on the line where you want to trap the beam.
 
-C'est exactement la technique de Daniel Vik dans la démo MSX *Waves*,
-adaptée au polling pur — le TMS9918 n'a pas d'interruption ligne (seulement
-le /INT frame), donc le mid-frame se polle quel que soit le câblage de /INT
-(voir Bug N°2 dans `Programming_TMS9918.md` §18).
+This is exactly Daniel Vik's technique in the MSX demo *Waves*, adapted to
+pure polling — the TMS9918 has no scanline interrupt (only the /INT frame),
+so the mid-frame must be polled regardless of how /INT is wired
+(see Bug N°2 in `Programming_TMS9918.md` §18).
 
 ### Public symbols
 
@@ -267,7 +267,7 @@ which matches the worst-case window in Graphic I + sprites. Use them in
 new code; for an existing project, the patching playbook
 ([`dev/Programming_TMS9918.md`](../../Programming_TMS9918.md) §25) covers
 mechanical NOP insertion across all back-to-back VDP stores. Reference
-implementation: `dev/projects/tms9918_galaga/TMS_Galaga.asm` carries
+implementation: `dev/projects/tms9918/game_galaga/TMS_Galaga.asm` carries
 ~219 NOPs across its sprite / HUD / title / help routines.
 
 The macros only matter when the program writes back-to-back during
@@ -293,7 +293,7 @@ without any padding:
 ;                STA→STA gap = INY + BNE + LDA = 2 + 3 + 5 = 10 c (3.3× floor)
 ```
 
-Reference implementation: `dev/projects/tms9918_plasma/TMS_Plasma.asm`'s
+Reference implementation: `dev/projects/tms9918/demo_plasma/TMS_Plasma.asm`'s
 `render_frame` and `upload_patterns` deliberately drop `JSR
 tms9918_pad12` in the hot path, taking the demo from ~22 fps to ~60 fps
 without dropping any writes. The lib's `init_vdp_g1` / `vdp_set_write`

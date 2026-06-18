@@ -1,8 +1,8 @@
 ; ============================================================================
 ; menu.asm -- numbered menu selector with bounds + echo
 ; ============================================================================
-; Promoted from inline copies in tms9918_codetank_menu, codetank_menu_upper,
-; tms9918_tetris_loader, plus the layout-select pattern in every game.
+; Promoted from inline copies in the CodeTank menus (now under
+; dev/projects/codetank/) and the layout-select pattern in every game.
 ;
 ;   menu_select -- block on a digit in [min..max], echo it, return.
 ;     Inputs:   A = min digit (e.g. '1')

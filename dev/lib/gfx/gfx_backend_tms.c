@@ -14,11 +14,11 @@
  * become wrappers around gfx_line / gfx_circle / gfx_ellipse, and the TMS bitmap
  * mode GAINS gfx_rect (outline) for free.
  *
- * Build: compiled in a TMS9918 project with -I dev/apple1-videocard-lib/lib
+ * Build: compiled in a TMS9918 project with -I dev/lib/tms9918c
  *        (for screen2.h) and -I dev/lib/gfx (for gfx.h).
  */
 #include "gfx.h"
-#include "screen2.h"       /* -I dev/apple1-videocard-lib/lib */
+#include "screen2.h"       /* -I dev/lib/tms9918c */
 
 const unsigned      gfx_width  = 256u;
 const unsigned char gfx_height = 192u;

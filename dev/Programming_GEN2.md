@@ -43,7 +43,7 @@ The pixel ends up as:
 
 ## 4. Lookup table hgr_tables.inc
 
-The file `dev/lib/hgr/hgr_tables.inc` (included via `-I ../../lib/hgr` in the project Makefiles) provides (896 bytes + 30 of code):
+The file `dev/lib/gen2/hgr_tables.inc` (included via `-I ../../lib/gen2` in the project Makefiles) provides (896 bytes + 30 of code):
 - `hgr_lo[192]`, `hgr_hi[192]`: address of each scanline (handles the Apple II interleave) — via `hgr_scanline.inc`
 - `hgr_col[256]`, `hgr_mask[256]`: for a pixel at screenX x, gives the byte column and the bitmask — via `hgr_plot_tables.inc`
 - `plot_pixel`: ~45-cycle routine that plots a pixel at (cur_x, cur_y) — via `hgr_plot.asm`
@@ -73,7 +73,7 @@ If the width is not a multiple of 7 (e.g. maze with 4-pixel walls), you need **l
 | 5 | +2 | $40 | $07 |
 | 6 | +3 | $78 | $00 |
 
-`fill_block` does a read-modify-write: `byte |= mask1`, and if `mask2 ≠ 0`, `byte+1 |= mask2`. See `dev/projects/hgr_maze/HGR_Maze.asm`.
+`fill_block` does a read-modify-write: `byte |= mask1`, and if `mask2 ≠ 0`, `byte+1 |= mask2`. See `dev/projects/gen2/game_maze/HGR_Maze.asm`.
 
 ## 7. Scanline stride +$0400 trick
 
@@ -105,7 +105,7 @@ JSR clear_hgr              ; zero the framebuffer
 
 ## 9. Implementation example
 
-- `dev/projects/hgr_maze/HGR_Maze.asm` — sub-byte rendering maze (4-pixel walls)
-- `dev/projects/hgr_sokoban/HGR_Sokoban.asm` — full 72-level game, 14×16 tiles, delta rendering
-- `dev/projects/hgr_mandelbrot/HGR_Mandelbrot.asm` — computation + pixel plotting
-- `dev/projects/hgr_house/HGR_House.asm` — shape drawing
+- `dev/projects/gen2/game_maze/HGR_Maze.asm` — sub-byte rendering maze (4-pixel walls)
+- `dev/projects/gen2/game_sokoban/HGR_Sokoban.asm` — full 72-level game, 14×16 tiles, delta rendering
+- `dev/projects/gen2/demo_mandelbrot/HGR_Mandelbrot.asm` — computation + pixel plotting
+- `dev/projects/gen2/demo_house/HGR_House.asm` — shape drawing

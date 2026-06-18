@@ -13,7 +13,6 @@ const unsigned char SCREEN2_TABLE[8] = {
     0x02U, 0xC0U, 0x0EU, 0xFFU, 0x03U, 0x76U, 0x03U, 0x25U
 };
 
-unsigned char tms_global_mulf_initialized = 0;
 unsigned char screen2_plot_mode = PLOT_MODE_SET;
 
 static const unsigned char pow2_table_reversed[8] = {

@@ -18,7 +18,6 @@ Each menu directory is named after the cartridge ROM it ships in
 | Project             | ROM / role                                               |
 |---------------------|----------------------------------------------------------|
 | `game1_menu/`       | GAME1 lower-bank launcher ($4000-$40FF) → Galaga/Sokoban/Snake/Life |
-| `game1_menu_upper/` | GAME1 upper-bank launcher → Tetris + LOGO (legacy design; the current GAME1 upper bank ships LOGO alone, so this menu is not wired into `build_codetank_rom.py`) |
 | `game3_menu/`       | GAME3 upper-bank launcher → Life/Mandel/Plasma           |
 | `test_menu/`        | TEST upper-bank launcher → Clone/Split (silicon-bug demos) |
 

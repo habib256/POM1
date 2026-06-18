@@ -649,6 +649,6 @@ table_palette_idx:
 ; print_str_ax helper — placed at the END of CODE segment so the binary's
 ; entry point ($0280) lands on `start:` (the first label in source order
 ; under .segment "CODE" above), NOT on the print routine. Galaga uses the
-; same pattern (cf. dev/projects/tms9918_galaga/TMS_Galaga.asm:4455).
+; same pattern (cf. dev/projects/tms9918/game_galaga/TMS_Galaga.asm:4455).
 ; ============================================================================
 .include "print.asm"

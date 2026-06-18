@@ -56,7 +56,7 @@ they just need `gfx-<card>.lib` on the link line now (see Build integration).
    **Kept:** `gen2_hgr_hline` / `gen2_hgr_vline` (they ARE the backend) and the
    asm `gen2_utoa` for `gen2_hgr_putu_field` (flicker-free HUD). **Added:**
    `gen2_hgr_ellipse` → `gfx_ellipse` (new capability).
-2. **TMS — `dev/apple1-videocard-lib/lib/screen2.c`:** `screen2_line` /
+2. **TMS — `dev/lib/tms9918c/screen2.c`:** `screen2_line` /
    `screen2_circle` / `screen2_ellipse_rect` forward to `gfx_line` / `gfx_circle`
    / `gfx_ellipse`; the local `kEllipseCos64/Sin64` tables, `math_abs`, and
    `screen2_clamp_*` were removed (now in `gfx_draw.c`). Added `screen2_rect`
@@ -106,7 +106,7 @@ To wire a program:
 - Add `-I dev/lib/gfx` to its cc65 include path (so it can `#include "gfx.h"`).
 - Put the matching archive **after** the program's own sources on the cl65/ld65
   line: GEN2 → `gfx-gen2.lib`; TMS9918 bitmap → `gfx-tms.lib`.
-- GEN2 builds still need `-I dev/lib/gen2c`; TMS builds `-I dev/apple1-videocard-lib/lib`.
+- GEN2 builds still need `-I dev/lib/gen2c`; TMS builds `-I dev/lib/tms9918c`.
 
 Wired touch points (copy these as the template for the rest):
 
@@ -114,9 +114,9 @@ Wired touch points (copy these as the template for the rest):
   The Bench compiles the gfx sources **from source** (like `gen2.c`) so edits
   apply live and a sketch can immediately `#include "gfx.h"` and draw vectors;
   its binaries are throwaway, so the dead-code trade-off doesn't matter there.
-- **`dev/projects/gen2_vectors_demo/Makefile`** — GEN2 example (links `gfx-gen2.lib`).
-- **`dev/apple1-videocard-lib/demos/demo/Makefile`** — TMS example (links `gfx-tms.lib`);
-  `dev/apple1-videocard-lib/Makefile` exposes `make gfx` to build the TMS archive.
+- **`dev/projects/gen2c/demo_bounces/Makefile`** — GEN2 example (links `gfx-gen2.lib`).
+- **`dev/projects/tms9918c/demo/Makefile`** — TMS example (links `gfx-tms.lib`).
+- `dev/lib/gfx/Makefile` builds both archives via `ar65` (run from this dir).
 
 ## Verification
 

@@ -1,4 +1,4 @@
-# lib/hgr/sprites — SCROLL-O-SPRITES, GEN2 HGR flavor
+# lib/gen2/sprites — SCROLL-O-SPRITES, GEN2 HGR flavor
 
 *[← POM1 documentation index](../../../../doc/README.md)*
 
@@ -27,18 +27,18 @@ Each category produces two files:
   `.include` because cc65 cannot resolve `.import`ed symbols in
   immediate addressing mode (`CMP #N`).
 
-Consumers: `dev/projects/hgr_symbols/` (one category, catalogue viewer) and
-`dev/projects/hgr_bestiary/` (a 6-category browser — creatures / trollkind /
+Consumers: `dev/projects/gen2/demo_symbols/` (one category, catalogue viewer) and
+`dev/projects/gen2/demo_bestiary/` (a 6-category browser — creatures / trollkind /
 unliving / fauna / magick / music — that pages between categories). Both blit
 via the byte-aligned STA fast path (16 rows × 3 bytes straight into the
 framebuffer through `hgr_lo`/`hgr_hi`).
 
 Recommended project Makefile + .asm pattern (see
-`dev/projects/hgr_symbols/` or `dev/projects/hgr_bestiary/` for working
+`dev/projects/gen2/demo_symbols/` or `dev/projects/gen2/demo_bestiary/` for working
 examples):
 
 ```makefile
-LIB := -I ../../lib/apple1 -I ../../lib/hgr -I ../../lib/hgr/sprites
+LIB := -I ../../lib/apple1 -I ../../lib/gen2 -I ../../lib/gen2/sprites
 ```
 
 ```asm

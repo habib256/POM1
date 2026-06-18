@@ -2,7 +2,7 @@
 ; gt6144.asm -- SWTPC GT-6144 plotter primitives
 ; ============================================================================
 ; Mutualises the clear + plot + control-opcode patterns currently inlined
-; in dev/projects/gt6144_hello and gt6144_life. Each routine is a tight
+; in dev/projects/gt6144/gt6144_demo_hello and gt6144_demo_life. Each routine is a tight
 ; few-instruction wrapper around the $D00A protocol — no ZP usage,
 ; small footprint.
 ;

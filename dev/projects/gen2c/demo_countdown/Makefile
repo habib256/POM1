@@ -1,15 +1,5 @@
-# GEN2Countdown — compteur 20 -> 0 sur la carte GEN2 HGR d'Uncle Bernie.
-#
-# Cible C / GEN2 HGR : reprend l'invocation cl65 du POM1 Bench pour la cible
-# "Uncle Bernie GEN2 HGR (C)" (src/Pom1BenchHost.cpp) : le linker config GEN2 C
-# + the gen2c runtime (per-family modules) + apple1c text/keyboard base, compiled at $6000.
-# Pas de télémétrie ici (simple décompte).
-#
-#   make            -> "software/Graphic HGR/GEN2Countdown.bin" (+ .txt)
-#   make clean
-#
-# Run: build/POM1 --preset 11 \
-#          --load 6000:"software/Graphic HGR/GEN2Countdown.bin" --run 6000
+# GEN2Countdown — 20 -> 0 counter on Uncle Bernie's GEN2 HGR card.
+# See README + emit_GEN2Countdown_txt.py for the shipping flow.
 
 PROJECT  := GEN2Countdown
 CC65DIR  := ../../../cc65
@@ -19,42 +9,26 @@ GEN2C    := $(LIBDIR)/gen2c
 APPLE1C  := $(LIBDIR)/apple1c
 GFX      := $(LIBDIR)/gfx
 GFXLIB   := $(GFX)/gfx-gen2.lib
-OUT_DIR  := ../../../../software/Graphic HGR
 
-CL65     := cl65
-CFLAGS   := -t none -Oirs
-INCS     := -I $(GEN2C) -I $(APPLE1C) -I $(GFX)
+include $(APPLE1C)/apple1c.mk
+include $(GEN2C)/gen2c.mk
 
-# Sources : le sketch + le runtime C GEN2 (+ son blitter asm) + apple1c (woz_mon).
-SRCS := $(PROJECT).c \
-        $(GEN2C)/gen2_init.c \
-        $(GEN2C)/gen2_pixel.c \
-        $(GEN2C)/gen2_rect.c \
-        $(GEN2C)/gen2_text.c \
-        $(GEN2C)/gen2_sprites.c \
-        $(GEN2C)/gen2_geom.c \
-        $(GEN2C)/gen2_lores.c \
-        $(GEN2C)/gen2_blit.s \
-        $(APPLE1C)/apple1io.c \
-        $(APPLE1C)/apple1io_asm.s
+CL65   := cl65
+CFLAGS := -t none -Oirs
+INCS   := $(GEN2C_INCS) $(APPLE1C_INCS) -I $(GFX)
+SRCS   := $(PROJECT).c $(GEN2C_ALL_SRCS) $(APPLE1C_SRCS)
 
 .PHONY: all clean
 .DEFAULT_GOAL := all
 
-# Construit le .bin localement, puis lance le script d'émission qui dépose
-# .bin + .txt (sidecar Woz-hex) sous "software/Graphic HGR/".
 all: $(PROJECT).bin
 	python3 emit_$(PROJECT)_txt.py
 
-# gfx-gen2.lib: card-neutral geometry/numbers (gen2_geom.c forwards line/rect/
-# circle/ellipse + putx there). Link-on-demand archive — see dev/lib/gfx/README.md.
 $(GFXLIB):
 	$(MAKE) -C $(GFX) gen2
 
-$(PROJECT).bin: $(PROJECT).c $(GEN2C)/gen2.h $(GEN2C)/gen2_internal.h $(GEN2C)/gen2_blit.s \
-                $(APPLE1C)/apple1io.c $(APPLE1C)/apple1io.h \
-                $(APPLE1C)/apple1io_asm.s $(GFX)/gfx.h $(GFXLIB) $(GEN2CFG)
+$(PROJECT).bin: $(PROJECT).c $(GEN2C)/gen2.h $(GFXLIB) $(GEN2CFG)
 	$(CL65) $(CFLAGS) -C $(GEN2CFG) $(INCS) $(SRCS) $(GFXLIB) -o $(PROJECT).bin
 
 clean:
-	rm -f $(PROJECT).bin $(PROJECT).o gen2.o gen2_blit.o apple1io.o apple1io_asm.o
+	rm -f $(PROJECT).bin *.o

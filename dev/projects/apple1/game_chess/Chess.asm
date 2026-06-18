@@ -10,8 +10,8 @@
 ; This file is the text-mode renderer + game loop.
 ;
 ; Build:
-;   cd dev/projects/games_chess && make
-;   -> software/games/Chess.bin and Chess.txt
+;   cd dev/projects/apple1/game_chess && make
+;   -> software/Apple-1 games/Chess.{bin,txt}
 ;
 ; Run in POM1: File > Load Memory > Chess.txt, then 280R.
 ;

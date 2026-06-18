@@ -1,107 +1,104 @@
-# A-1-CrazyCycle — démo beam-raced de la carte GEN2 *release* d'Uncle Bernie
+# A-1-CrazyCycle — beam-raced demo for Uncle Bernie's *release* GEN2 card
 
 *[← POM1 documentation index](../../../../doc/README.md)*
 
-Démo de validation des soft switches `$C250-$C257` + drapeau HST0 de la carte
-release (spec : `doc/reference/ColorGraphicsCard_doc_for_Arnaud.pdf`, transcrite dans
-`doc/GEN2_RELEASE_questions.md`), avec **musique 2 voix par l'ACI**. C'est le
-livrable « démo de validation Bernie » du TODO Phase 5.
+Validation demo for the `$C250-$C257` soft switches + HST0 flag on the release
+card (spec: `doc/reference/ColorGraphicsCard_doc_for_Arnaud.pdf`, transcribed in
+`doc/GEN2_RELEASE_questions.md`), with **2-voice music via the ACI**. This is the
+"Bernie validation demo" deliverable from TODO Phase 5.
 
-## Déroulé
+## Flow
 
-1. **Init du latch** — l'état power-on des switches est *indéterminé* sur les
-   vrais PLD et le RESET Apple-1 n'y touche jamais (Q8) : le logiciel
-   initialise MIX_OFF, PAGE_ONE, HIRES par **lectures** (les switches sont
-   read-only : une lecture bascule + retourne HST0 en D7, une écriture est
-   ignorée).
-2. **TEXT** — la page texte 1 ($0400) est remplie avec
-   `Uncle Bernie HGR COLOR CARD` répété sur les 40×24, puis révélée
-   (`$C251`) pendant ~3 s.
-3. **Image UBERNIE** — l'image HGR `sdcard/NONO/HGR/UBERNIE#062000` est
-   intégrée au build comme **seconde zone hex à $2000** du `.txt`
-   (dump Wozmon multi-zones via `emit_woz.py extra_zones`) : elle est déjà
-   dans le framebuffer au lancement. Révélée par `$C250` (TEXT off → HIRES),
-   ~3 s. (Le `.bin` seul affiche le bruit DRAM power-on de la carte.)
-4. **Fenêtre beam-raced rebondissante + musique** — un rectangle de
-   168×64 px au travers duquel on voit la page TEXT, qui se déplace en
-   rebondissant sur les quatre bords : sur chaque scanline de la bande,
-   `LDA $C251` est lue au cycle exact où le faisceau entre dans la fenêtre
-   et `LDA $C250` au cycle exact où il en sort (split horizontal
-   mid-scanline — la fonctionnalité phare de la carte release) — pendant
-   qu'un chiptune 2 voix sort du TAPE OUT de l'ACI. Une touche → Wozmon.
+1. **Latch init** — power-on state of the switches is *undefined* on real PLDs
+   and the Apple-1 RESET never touches them (Q8): software initialises MIX_OFF,
+   PAGE_ONE, HIRES by **reads** (the switches are read-only: a read toggles
+   and returns HST0 in D7, a write is ignored).
+2. **TEXT** — text page 1 ($0400) is filled with
+   `Uncle Bernie HGR COLOR CARD` repeated across 40×24, then revealed
+   (`$C251`) for ~3 s.
+3. **UBERNIE image** — the HGR picture `sdcard/NONO/HGR/UBERNIE#062000` is
+   embedded in the build as a **second hex zone at $2000** of the `.txt`
+   (multi-zone Wozmon dump via `emit_woz.py extra_zones`): it is already
+   in the framebuffer at start-up. Revealed by `$C250` (TEXT off → HIRES),
+   ~3 s. (The `.bin` alone shows the DRAM power-on noise of the card.)
+4. **Beam-raced bouncing window + music** — a 168×64 px rectangle through
+   which the TEXT page is visible, moving and bouncing off the four edges:
+   on each scanline of the band, `LDA $C251` is read at the exact cycle the
+   beam enters the window and `LDA $C250` at the exact cycle it leaves
+   (horizontal mid-scanline split — the flagship feature of the release card),
+   while a 2-voice chiptune is output through the ACI's TAPE OUT. A keypress
+   returns to Wozmon.
 
-## Synchronisation cycle-exacte (60 Hz : 262 lignes × 65 cycles = 17030)
+## Cycle-exact synchronisation (60 Hz: 262 lines × 65 cycles = 17030)
 
-Trois étages, détaillés en commentaires dans le source :
+Three stages, detailed in source comments:
 
-1. **WAITVBL** (grossier) — détection du VBL par double échantillonnage ORé
-   de HST0 (le notch burst de 3 cycles, hcnt 13-15, ne peut pas mettre à
-   zéro deux lectures espacées de 4 cycles — Listing 1 de Bernie) ; un blank
-   qui persiste au-delà des 25 cycles d'un H-blank est le V-blank.
-2. **Scan de phase** (exact à ±0 cycle) — un échantillon HST0 tous les
-   66 cycles (une ligne + 1) glisse de +1 cycle par ligne le long du
-   scanline ; le 4ᵉ zéro consécutif identifie le front H-blank→live :
-   son accès bus a touché hcnt 28 exactement (zéros à 25,26,27,28). Le
-   compteur de zéros démarre empoisonné ($80) pour qu'un démarrage en plein
-   scan vivant ne déclenche jamais de faux verrouillage, et le scan tourne
-   lignes ~5-80, loin du V-blank.
-3. **Verrouillage ligne** — phase horizontale connue, on échantillonne
-   hcnt 45 (jamais blanké, jamais dans le burst) toutes les 65 cycles :
-   0 → lignes vivantes, 1 → V-blank, premier 0 suivant = ligne 0.
+1. **WAITVBL** (coarse) — VBL detection via ORed double sampling of HST0 (the
+   3-cycle notch burst, hcnt 13-15, cannot zero two reads spaced 4 cycles apart
+   — Bernie's Listing 1); a blank that persists past the 25 cycles of an
+   H-blank is the V-blank.
+2. **Phase scan** (exact to ±0 cycle) — one HST0 sample every 66 cycles
+   (one line + 1) slides by +1 cycle per line along the scanline; the 4th
+   consecutive zero identifies the H-blank→live edge: its bus access touched
+   hcnt 28 exactly (zeros at 25,26,27,28). The zero counter starts poisoned
+   ($80) so a start mid-live-scan never triggers a false lock, and the scan
+   runs on lines ~5-80, away from V-blank.
+3. **Line lock** — with horizontal phase known, sample hcnt 45 (never blanked,
+   never in the burst) every 65 cycles: 0 → live lines, 1 → V-blank, first
+   following 0 = line 0.
 
-Ensuite la boucle de frame tourne en **free-run à exactement 17030
-cycles/frame**, jamais resynchronisée — zéro jitter.
+Then the frame loop runs **free-run at exactly 17030 cycles/frame**, never
+re-synced — zero jitter.
 
-## Fenêtre mobile à coût constant
+## Constant-cost moving window
 
-- **Vertical** : burners pré/post-fenêtre à nombre de lignes variable
-  (somme constante : `vpos` + `195-vpos`). `vpos` = vtab[fcnt], forme
-  d'onde par morceaux (traversée complète, double rebond rapide à
-  mi-hauteur, retour, petit rebond en haut — période 256 frames).
-- **Horizontal** : chaque scanline traverse deux glissières de 8 NOP via
-  `JMP (ind)` ; les offsets d'entrée (8-H et H) se compensent — délais
-  2H et 16-2H, somme constante. `hoff` = htab[hidx], **compteur séparé à
-  période 192** (wrap par branchement équilibré) : lcm(256,192) = 1536
-  frames ≈ 25,6 s avant que la trajectoire combinée ne se répète.
-- Les branchements pris des boucles chronométrées sont verrouillés
-  même-page par des `.assert` ld65 (deux « layout shims » ajustables) ; les
-  tables sont page-alignées (lecture indexée à 4 cycles constants).
+- **Vertical**: pre/post-window burners with variable line counts (constant
+  sum: `vpos` + `195-vpos`). `vpos` = vtab[fcnt], piecewise waveform (full
+  traversal, fast double bounce at mid-height, return, small top bounce —
+  256-frame period).
+- **Horizontal**: every scanline goes through two 8-NOP slides via
+  `JMP (ind)`; entry offsets (8-H and H) cancel — delays 2H and 16-2H,
+  constant sum. `hoff` = htab[hidx], **separate 192-period counter** (wrap
+  via balanced branch): lcm(256,192) = 1536 frames ≈ 25.6 s before the
+  combined trajectory repeats.
+- Taken branches in the timed loops are locked same-page by ld65 `.assert`
+  (two adjustable "layout shims"); tables are page-aligned (4-cycle constant
+  indexed reads).
 
-## Musique 2 voix sur l'ACI (Bernie Q7)
+## 2-voice music via the ACI (Bernie Q7)
 
-Tout accès `$C0xx` bascule le flip-flop TAPE OUT de l'ACI — la convention
-SPEAKER `$C030` des ports Apple II (la carte release a déplacé ses switches
-en `$C25x` précisément pour laisser `$C0xx` à l'ACI ; le preset 11 de POM1
-branche l'ACI à côté de la GEN2, comme le PCB réel avec sa découpe jacks).
+Any `$C0xx` access toggles the ACI's TAPE OUT flip-flop — the SPEAKER `$C030`
+convention from Apple II ports (the release card moved its switches to
+`$C25x` precisely so that `$C0xx` stays available for the ACI; POM1's preset
+11 plugs the ACI alongside GEN2, mirroring the real PCB with its jack
+cut-out).
 
-- **Tick par slot de scanline** : chaque slot de 65 cycles (lignes burner ET
-  scanlines de la fenêtre — le tick loge dans le gap de 20 cycles entre
-  TEXT_ON et TEXT_OFF, le compte à rebours passant dans Y) décrémente un
-  compteur et bascule `$C030` à zéro. Demi-période = N slots →
-  f = 7867/N Hz, justesse au cycle près.
-- **2 voix sur 1 bit (polyphonie virtuelle)** : le séquenceur (branchless,
-  index = fcnt>>2 dans une table de 64 notes) alterne BASSE et MÉLODIE
-  toutes les 4 frames (~66 ms) — l'oreille sépare la walking bass
-  (C3/G3 · A2/E3 · F2/C3 · G2/D3) des arpèges (I-vi-IV-V en Do). Boucle de
-  4 mesures = 256 frames, en phase avec le rebond vertical.
-- L'ACI **enregistre** le morceau en le jouant (comportement réel) :
-  `--save-tape sortie.aci` à la fermeture de POM1 donne une cassette
-  rejouable. La justesse a été vérifiée en analysant les durées d'impulsion
-  de la cassette : plateaux exacts à N×65 cycles, séquence
-  basse/mélodie conforme aux 4 mesures.
+- **Tick per scanline slot**: each 65-cycle slot (both burner lines AND
+  window scanlines — the tick fits in the 20-cycle gap between TEXT_ON and
+  TEXT_OFF, with the countdown carried in Y) decrements a counter and
+  toggles `$C030` on zero. Half-period = N slots → f = 7867/N Hz,
+  cycle-accurate.
+- **2 voices on 1 bit (virtual polyphony)**: the sequencer (branchless,
+  index = fcnt>>2 into a 64-note table) alternates BASS and MELODY every 4
+  frames (~66 ms) — the ear separates the walking bass
+  (C3/G3 · A2/E3 · F2/C3 · G2/D3) from the arpeggios (I-vi-IV-V in C). A
+  4-bar loop = 256 frames, in phase with the vertical bounce.
+- The ACI **records** the tune while playing it (real behaviour):
+  `--save-tape output.aci` on POM1 exit gives back a playable cassette.
+  Accuracy verified by analysing the cassette pulse durations: exact
+  plateaus at N×65 cycles, bass/melody sequence matching the 4 bars.
 
 ## Caveats
 
-- **60 Hz uniquement** — laisser la checkbox « 50 Hz vertical » de la fenêtre
-  HGR décochée (la boucle compte 17030 cycles ; en 312 lignes il en faudrait
-  20280).
-- **Matériel réel** : le free-run suppose 1 cycle CPU = 1 cycle vidéo — vrai
-  sur les répliques SRAM (Briel) et dans POM1 ; sur un Apple-1 d'origine le
-  refresh DRAM vole 4 cycles sur 65 et ferait dériver la boucle (caveat
-  documenté par Bernie). Le poll HST0 lit `$C254` (PAGE_ONE) : le programme
-  vit en page 1, donc le toggle du poll est toujours un no-op.
-- `INC`/`DEC` zp évités dans le code chronométré (POM1 les compte à 4 cycles,
-  le vrai 6502 à 5) — remplacés par LDA/ADC/STA, identiques des deux côtés.
+- **60 Hz only** — leave the HGR window's "50 Hz vertical" checkbox unchecked
+  (the loop counts 17030 cycles; at 312 lines it would need 20280).
+- **Real hardware**: free-run assumes 1 CPU cycle = 1 video cycle — true on
+  SRAM replicas (Briel) and in POM1; on an original Apple-1 the DRAM refresh
+  steals 4 cycles out of 65 and would drift the loop (caveat documented by
+  Bernie). The HST0 poll reads `$C254` (PAGE_ONE): the program lives on
+  page 1, so the poll toggle is always a no-op.
+- `INC`/`DEC` zp avoided in timed code (POM1 counts them at 4 cycles, real
+  6502 at 5) — replaced by LDA/ADC/STA, identical on both sides.
 
 ## Build & run
 
@@ -109,10 +106,10 @@ branche l'ACI à côté de la GEN2, comme le PCB réel avec sa découpe jacks).
 make          # → software/Graphic HGR/A-1-CrazyCycle.{bin,txt}
 ```
 
-POM1 : preset 11 (GEN2 HGR + ACI), charger `A-1-CrazyCycle.txt` (le dossier
-`Graphic HGR/` auto-active la carte), puis `E000R`. Ou en CLI :
+POM1: preset 11 (GEN2 HGR + ACI), load `A-1-CrazyCycle.txt` (the
+`Graphic HGR/` folder auto-enables the card), then `E000R`. Or from CLI:
 
 ```bash
 ./build/POM1 --preset 11 --load 'E000:software/Graphic HGR/A-1-CrazyCycle.txt'
-# (le .txt charge code + image ; --save-tape musique.aci pour garder le morceau)
+# (the .txt loads code + image; --save-tape music.aci to keep the tune)
 ```
