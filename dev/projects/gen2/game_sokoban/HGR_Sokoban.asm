@@ -4,8 +4,7 @@
 ; Classic push-boxes puzzle game
 ; =============================================
 ; Assemble with cc65:
-;   ca65 -o build/HGR_Sokoban.o software/hgr/HGR_Sokoban.asm
-;   ld65 -C software/games/apple1_sok_hgr.cfg -o build/HGR_Sokoban.bin build/HGR_Sokoban.o
+;   Build: make
 ;
 ; Controls (uppercase — Apple 1 forces uppercase):
 ;   W/S/A/D  - move up/down/left/right

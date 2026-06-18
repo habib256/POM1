@@ -5,8 +5,7 @@
 ; Displays all 6 NTSC artifact colors
 ; =============================================
 ; Assemble with cc65:
-;   ca65 -o build/HGR_TestCard.o software/hgr/HGR_TestCard.asm
-;   ld65 -C software/hgr/apple1_gen2.cfg -o build/HGR_TestCard.bin build/HGR_TestCard.o
+;   Build: make
 ;
 ; In POM1: plug GEN2 card, File > Load Memory (HGR_TestCard.txt)
 ; then type E000R in Woz Monitor.

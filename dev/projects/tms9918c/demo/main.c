@@ -36,7 +36,7 @@ static void screen1_demo(void) {
     screen1_puts((const unsigned char *)"REVERSE TEXT");
     screen1_puts((const unsigned char *)REVERSE_OFF);
     screen1_puts((const unsigned char *)"\n\n");
-    screen1_puts((const unsigned char *)"Entrer pour revenir.\n");
+    screen1_puts((const unsigned char *)"Press Return to go back.\n");
     wait_return();
 }
 
@@ -61,7 +61,7 @@ static void stub_msg(const char *s) {
     screen1_load_font();
     screen1_putc(CHR_CLS);
     screen1_puts((const unsigned char *)s);
-    screen1_puts((const unsigned char *)"\n\nEntrer pour revenir.\n");
+    screen1_puts((const unsigned char *)"\n\nPress Return to go back.\n");
     wait_return();
 }
 
@@ -91,19 +91,19 @@ void main(void) {
         } else if (k == '2') {
             screen2_demo();
         } else if (k == '3') {
-            stub_msg("BALLOON : non porte");
+            stub_msg("BALLOON : not ported");
         } else if (k == 'A') {
-            stub_msg("AMIGA HAND : non porte");
+            stub_msg("AMIGA HAND : not ported");
         } else if (k == 'I') {
-            stub_msg("INTERRUPT : non porte");
+            stub_msg("INTERRUPT : not ported");
         } else if (k == 'E') {
-            stub_msg("FLIP EXT VID : non porte");
+            stub_msg("FLIP EXT VID : not ported");
         } else if (k == 'F') {
-            stub_msg("TEST END-OF-FRAME : non porte");
+            stub_msg("TEST END-OF-FRAME : not ported");
         } else if (k == 'B') {
-            stub_msg("BLANK ON/OFF : non porte");
+            stub_msg("BLANK ON/OFF : not ported");
         } else if (k == 'H') {
-            stub_msg("HELP : non porte");
+            stub_msg("HELP : not ported");
         } else {
             stub_msg("Touche inconnue.");
         }

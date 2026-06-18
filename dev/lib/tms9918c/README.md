@@ -4,7 +4,7 @@
 
 C **cc65** port of the original **[nippur72/apple1-videocard-lib](https://github.com/nippur72/apple1-videocard-lib)** library by **Antonino "Nino" Porcino** (KickC). Every improvement under this tree preserves the upstream attribution (header in every `.c` / `.h` / `.s`) — see [License / attribution](#licence--attribution).
 
-POM1 target: **P-LAB CodeTank**, **16 KB ROM image @ `$4000-$7FFF`**, boot from **Wozmon `4000R`**, preset **7** (TMS9918 + CodeTank).
+POM1 target: **P-LAB CodeTank**, **16 KB ROM image @ `$4000-$7FFF`**, boot from **Wozmon `4000R`**, preset **9** (TMS9918 + CodeTank).
 
 ## Memory map (linker `dev/lib/tms9918c/cc65/codetank_c.cfg`)
 
@@ -57,7 +57,7 @@ Not ported here (KickC / big `.c` / other hardware): `anagram`, `tapemon`, `sdca
 
 ## Testing under POM1
 
-1. Preset **7** (Apple-1 + TMS9918 + CodeTank).
+1. Preset **9** (Apple-1 + TMS9918 + CodeTank).
 2. **File → Load Memory** from `software/Apple-1_TMS_CC65/` (TMS9918 auto-plugs), or paste the `.txt`, then **`4000R`**.
 
 ## Modules `lib/`
@@ -72,8 +72,7 @@ Not ported here (KickC / big `.c` / other hardware): `anagram`, `tapemon`, `sdca
 | `screen1.*`    | TMS text mode (screen 1) |
 | `screen2.*`    | Bitmap (screen 2); `screen2_ellipse_rect` in **C** (64 segments, cos/sin tables, segments via `screen2_line`) — no `screen2_ellipse.s` file required |
 | `sprites.*`    | Sprite attributes (direct VRAM write) |
-| `interrupt.*`  | Stubs (no wired TMS IRQ in this port) |
-| `via.*`        | VIA `$A000` symbols (microSD — unchanged vs upstream) |
+| `interrupt.*`  | `install_interrupt` / `wait_interrupt` stubs (no wired TMS IRQ in this port; the upstream dead counters were removed) |
 | `c64font.c`    | 8×8 font (768 bytes) derived from upstream |
 
 ### POM1 extensions (beyond upstream)

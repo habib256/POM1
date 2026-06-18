@@ -31,8 +31,7 @@
 ;  13 Thunderbird         (6-cell methuselah, ~243 generations)
 ; =============================================
 ; Assemble:
-;   ca65 -o build/TMS_Life.o software/tms9918/TMS_Life.asm
-;   ld65 -C software/hgr/apple1_gen2.cfg \
+;   Build: make
 ;        -o build/TMS_Life.bin build/TMS_Life.o
 ;
 ; Or just:

@@ -34,6 +34,12 @@
 ; Burns 12 cycles (= 6c JSR + 6c RTS), 3 bytes at the call site, helper
 ; itself = 1 byte. Kept for niche callers that genuinely want only 12c idle
 ; (status-register polls, address-latch settling).
+;
+; INVARIANT — flag-transparent: pad12 is a bare RTS, so it leaves every
+; processor flag untouched. Hot loops place `JSR tms9918_pad12` BETWEEN a
+; CPX/CMP and its branch (see sprite_triangle.asm and tms9918_text.asm) and
+; rely on the compare's Z/C surviving the call. Any future pad12 body MUST
+; stay flag-transparent or those loops break silently.
 tms9918_pad12:
         rts                     ; 6c, JSR adds 6c, total = 12c
 

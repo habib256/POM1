@@ -46,8 +46,11 @@ test: all
 	      *)                 printf '  PASS  %s\n' "$$d" ;; \
 	    esac; \
 	  else \
-	    printf '  FAIL  %s\n' "$$d"; printf '%s\n' "$$out" | sed 's/^/          | /'; \
-	    fail="$$fail $$d"; \
+	    case "$$out" in \
+	      *"No rule to make target"*) printf '  --    %s (no test target)\n' "$$d" ;; \
+	      *) printf '  FAIL  %s\n' "$$d"; printf '%s\n' "$$out" | sed 's/^/          | /'; \
+	         fail="$$fail $$d" ;; \
+	    esac; \
 	  fi; \
 	done; \
 	if [ -n "$$fail" ]; then printf '\ntest: FAILED:%s\n' "$$fail"; exit 1; \

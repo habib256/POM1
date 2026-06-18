@@ -44,10 +44,21 @@ unsigned int rand16(void) {
 }
 
 unsigned char rand8_below(unsigned char limit) {
+    unsigned char mask, r;
     if (limit < 2U) {
         return 0U;
     }
-    /* Wider modulo by intent — accept bias rather than rejection-sample, since
-     * games here use limit in 2..32 where bias < 5%. */
-    return (unsigned char)(rand8() % limit);
+    /* Rejection-sample against the smallest (2^k - 1) >= limit-1, using only
+     * shift / AND / compare. This avoids cc65's runtime modulo helper (the
+     * kind of hidden code-size cost the Apple-1 budget rule rules out) and is
+     * unbiased; expected iterations < 2 for the limit<=32 range these games
+     * use. */
+    mask = (unsigned char)(limit - 1U);
+    mask |= (unsigned char)(mask >> 1);
+    mask |= (unsigned char)(mask >> 2);
+    mask |= (unsigned char)(mask >> 4);
+    do {
+        r = (unsigned char)(rand8() & mask);
+    } while (r >= limit);
+    return r;
 }

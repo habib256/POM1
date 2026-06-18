@@ -8,7 +8,7 @@
  * sprint can park `#pragma zpsym` directives for the hot-path globals
  * (tms_cursor_x/y/reverse, vsync_frames, rand*_state) once each one is
  * migrated to ZEROPAGE via `#pragma bss-name(push, "ZEROPAGE")` in its
- * defining .c + a tested runtime on preset 7 (CodeTank+TMS9918).
+ * defining .c + a tested runtime on preset 9 (CodeTank+TMS9918).
  *
  * The ZP move is a real win (~2 cycles per indexed access on the hot
  * scroll path) but it lives in a shared 256-byte address space with

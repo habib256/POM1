@@ -14,8 +14,7 @@
 ; into a TMS_Logo16k.asm with its own cfg.
 ;
 ; Build:
-;   ca65 -I software/tms9918 -o build/TMS_Logo.o software/tms9918/TMS_Logo.asm
-;   ld65 -C software/tms9918/apple1_logo.cfg -o build/TMS_Logo.bin build/TMS_Logo.o
+;   Build: make
 ;   python3 software/tms9918/emit_TMS_Logo_txt.py
 ;
 ; Run on POM1:  ./POM1 --preset 9       (P-LAB Apple-1 with TMS9918 + CodeTank)

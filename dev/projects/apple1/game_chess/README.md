@@ -32,9 +32,9 @@ POM1 game-port idiom (matches Sokoban / Connect 4 trilogies).
   board only when one side is ahead — suppressed entirely while material
   is equal so the slow Apple-1 display doesn't pay for a no-info line on
   every redraw of the opening / quiet middle game.
-- **AI thinking dots** — `ai_play_move` emits `.` every 32 candidates
-  evaluated. Replaces the silent ~300 ms freeze at 1 MHz with a visible
-  progress signal.
+- **"COMPUTER THINKING..." message** — printed once before the AI searches
+  so the ~300 ms freeze at 1 MHz isn't silent. (An earlier per-candidate `.`
+  dot was dropped: at ~10 ms each it cost more than the search it narrated.)
 
 **Carry-over from v0.4:**
 
@@ -169,8 +169,8 @@ canonical reference.
 - The `H` (hint) command consumes the single-level undo slot. After
   a hint the player's prior `U` is no longer available. Multi-level
   undo (v1.2) will fix this.
-- v0.5 UX features (highlight, MAT, H, L, anti-scroll, AI dots) live
-  in `Chess.asm` and don't propagate to the HGR / TMS9918 variants.
+- v0.5 UX features (highlight, MAT, H, L, anti-scroll, COMPUTER THINKING
+  message) live in `Chess.asm` and don't propagate to the HGR / TMS9918 variants.
   Those variants benefit from the stronger AI via the shared engine.
 
 ## Tests

@@ -17,10 +17,17 @@ Each menu directory is named after the cartridge ROM it ships in
 
 | Project             | ROM / role                                               |
 |---------------------|----------------------------------------------------------|
-| `game1_menu/`       | GAME1 lower-bank launcher ($4000-$40FF) → Galaga/Sokoban/Snake/Life |
+| `game1_menu/`       | GAME1 lower-bank launcher ($4000-$40FF) → Galaga/Sokoban/Snake |
 | `game3_menu/`       | GAME3 upper-bank launcher → Life/Mandel/Plasma           |
 | `test_menu/`        | TEST upper-bank launcher → Clone/Split (silicon-bug demos) |
 
-The 5 shipped cartridge ROMs (`roms/codetank/*.rom`) are assembled by
-**`tools/build_codetank_rom.py`**, which pulls these menus plus the TMS9918
-cart sources and lands the result under `roms/codetank/`.
+Not every bank has a menu — some hold a single run-in-place program selected
+by the lower/upper jumper:
+
+- **GAME1 upper bank** — TMS LOGO V2.6 (jumper Upper → `4000R` boots it directly).
+- **GAME2** — Rogue alone (lower) / Nyan (upper); jumper-selected, no menu.
+
+The cartridge ROMs (`roms/codetank/*.rom`) are assembled by
+**`tools/build_codetank_rom.py`** (`--rom=1|2|3|test`; GAME4 is frozen — see
+`CLAUDE.md`), which pulls these menus plus the TMS9918 cart sources and lands
+the result under `roms/codetank/`.

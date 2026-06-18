@@ -6,8 +6,7 @@
 ; Sub-byte rendering with lookup tables
 ; =============================================
 ; Assemble with cc65:
-;   ca65 -o build/HGR_Maze.o software/hgr/HGR_Maze.asm
-;   ld65 -C software/hgr/apple1_gen2.cfg -o build/HGR_Maze.bin build/HGR_Maze.o
+;   Build: make
 ;
 ; The GEN2 linker config reserves $2000-$3FFF for the HGR
 ; framebuffer; BSS (grid, DFS stacks) is page-aligned in the

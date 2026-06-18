@@ -17,8 +17,7 @@
 ;   5 Four Gliders                      (spaceships colliding in center)
 ; =============================================
 ; Assemble:
-;   ca65 -o build/HGR_Life.o software/hgr/HGR_Life.asm
-;   ld65 -C software/hgr/apple1_gen2.cfg \
+;   Build: make
 ;        -o build/HGR_Life.bin build/HGR_Life.o
 ;
 ; Or just:

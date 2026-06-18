@@ -1,7 +1,6 @@
 ; =============================================================
 ; RtcClock.asm — P-LAB text clock (reference)
-; Same logic as the old "single-line" RtcBigClock: English month names,
-; 40 columns, 5 s pause. See RtcBigClock.asm for the "BIG" version.
+; English month names, 40 columns, 5 s pause.
 ; =============================================================
 ; P-LAB clock (A1-IO / DS3231) — month names (English), 40 cols, 5 s
 ; =============================================================
@@ -9,8 +8,7 @@
 ; Month: JANUARY ... DECEMBER (uppercase ASCII)
 ; Year 20xx (register 5 = years since 2000)
 ;
-;   ca65 -o build/RtcBigClock.o software/a1io_rtc/RtcBigClock.asm
-;   ld65 -C software/apple1_4k.cfg -o build/RtcBigClock.bin build/RtcBigClock.o
+;   Build: make   (ca65 + ld65 via apple1_4k.cfg; see this directory's Makefile)
 ; =============================================================
 
 .include "apple1.inc"

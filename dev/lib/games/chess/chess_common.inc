@@ -82,15 +82,8 @@ CR_WHITE_Q = $02
 CR_BLACK_K = $04
 CR_BLACK_Q = $08
 
-; --- Material values (1 byte signed, scaled down so Q+R+R+... fits) --------
-; Values divided by 10 vs classic (P=10, N=32, B=33, R=50, Q=90, K=127)
-; so total material fits inside 8-bit accumulator for fast eval.
-MAT_PAWN   = 10
-MAT_KNIGHT = 32
-MAT_BISHOP = 33
-MAT_ROOK   = 50
-MAT_QUEEN  = 90
-MAT_KING   = 127            ; pseudo-infinity for king (never captured legally)
+; Material values live in the engine as `mat_simple` (0,1,3,3,5,9,0,0); a
+; separate scaled-by-10 set used to live here but was unreferenced and removed.
 
 ; --- Side codes ------------------------------------------------------------
 SIDE_WHITE = $00
@@ -112,7 +105,8 @@ ERR_EMPTY        = 1
 ERR_WRONG_COLOR  = 2
 ERR_BAD_GEOMETRY = 3
 ERR_KING_IN_CHECK= 4
-ERR_NOT_IMPL     = 5
+ERR_NOT_IMPL     = 5        ; reserved: no longer returned (castling + en-passant
+                            ; are implemented); kept for the text-IO error switch
 
 ; --- BSS layout ------------------------------------------------------------
 ; A 256-byte BOARDST segment is reserved by the linker config (one of

@@ -156,14 +156,14 @@ Three voices, each 7-register block:
 | +1 | `$C801` | `$C808` | `$C80F` | Frequency MSB |
 | +2 | `$C802` | `$C809` | `$C810` | PWM LSB |
 | +3 | `$C803` | `$C80A` | `$C811` | PWM MSB (4 bits) |
-| +4 | `$C804` | `$C80B` | `$C812` | Control: gate + waveform (`01` triangle, `02` saw, `04` pulse, `08` noise) |
+| +4 | `$C804` | `$C80B` | `$C812` | Control: bit 0 = gate (`01`); waveform bits `10` triangle, `20` saw, `40` pulse, `80` noise |
 | +5 | `$C805` | `$C80C` | `$C813` | Attack / Decay |
 | +6 | `$C806` | `$C80D` | `$C814` | Sustain / Release |
 
 Global: `$C818` volume + filter mode, `$C815-$C817` filter cutoff/resonance, `$C819`/`$C81A` paddle inputs.
 
 ```asm
-        LDA #$10           ; master volume = 1 (0..15)
+        LDA #$0F           ; master volume = 15 (low nibble of $C818, 0..15)
         STA $C818
         LDA #$08            \ A=0, D=8
         STA $C805           /
@@ -173,11 +173,11 @@ Global: `$C818` volume + filter mode, `$C815-$C817` filter cutoff/resonance, `$C
         STA $C800
         LDA #>freq
         STA $C801
-        LDA #$41            ; gate on + triangle
+        LDA #$11            ; gate ($01) + triangle ($10)
         STA $C804
 ```
 
-From Applesoft: `POKE &HC818,16 : POKE &HC805,8 : POKE &HC804,65`.
+From Applesoft: `POKE &HC818,15 : POKE &HC805,8 : POKE &HC804,17`.
 
 Reference: `dev/projects/plab/sid_piano/Claudio_PARMIGIANI_SID_PIANO_AZERTY.asm`. **C64 `.sid` conversion**: `tools/sid2apple1.py` rewrites `$D400` → `$C800`, neutralises CIA/VIC, emits `.bin` for `$0280`. Source tunes at [HVSC](https://www.exotica.org.uk/wiki/High_Voltage_SID_Collection).
 
@@ -235,7 +235,7 @@ Every byte `STA $D012` (with bit 7 set, normal display rules) also lands in PR-4
 1. **Memory load** (default for dev iteration) — ship `.txt` Woz hex or `.bin`, user does **File > Load Memory** then `280R`. The Load dialog auto-enables the matching card from the file's folder: `software/Graphic HGR/` (GEN2), `software/SOUND SID/` (A1-SID), `software/Graphic TMS9918/` or `software/Apple-1_TMS_CC65/` (TMS9918), `software/Graphic gt-6144/` (GT-6144), `software/a1io_rtc/` (A1-IO & RTC), `software/NET/` (Wi-Fi modem), or `sdcard/` (microSD). Each match also pops the card's window.
 2. **microSD tagged file** — drop `NAME#TTAAAA` into `sdcard/` (optionally a sub-dir users `CD` into). Persists across sessions, also in WASM (preloaded MEMFS).
 3. **Juke-Box ROM bundle** — rebuild `roms/jukebox.rom` with your program baked, enable the Juke-Box card (`--enable jukebox`), type `BD00R`, choose from `&` prompt.
-4. **Cassette tape** — dump capture as `.aci`/`.wav`/`.mp3`/`.ogg`, drop in `cassettes/`. Add a line in `cassettes/tapeinfo.txt` (`MYPROG.ogg = 0280.04FF`) so the deck jaquette prints *"Type 0280.04FFR"*. Works in pulse mode (ACI plugged) and audio-stream mode (firmware-less).
+4. **Cassette tape** — dump capture as `.aci`/`.wav`/`.mp3`/`.ogg`, drop in `cassettes/`. Add a line in `cassettes/tapeinfo.txt` (`MYPROG.ogg = 0280.04FF`) so the deck sleeve prints *"Type 0280.04FFR"*. Works in pulse mode (ACI plugged) and audio-stream mode (firmware-less).
 
 Applesoft programs: `SAVE "NAME"` writes `sdcard/NAME#F80801` directly — no manual dump.
 
@@ -278,7 +278,7 @@ def send(sock, cmd, wait=0.3, t=4.0):
     sock.sendall((cmd + "\r").encode("ascii")); time.sleep(wait)
     return recv_avail(sock, total=t)
 
-proc = subprocess.Popen([str(REPO/"build"/"POM1"), "--preset", "5", "--terminal", "--cpu-max"],
+proc = subprocess.Popen([str(REPO/"build"/"POM1"), "--preset", "8", "--terminal", "--cpu-max"],
                        stdout=open("/tmp/pom1.log","w"), stderr=subprocess.STDOUT,
                        start_new_session=True)
 time.sleep(3.0)   # boot + 15-frame card defer

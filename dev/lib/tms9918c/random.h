@@ -29,7 +29,8 @@ void srand16(unsigned int seed);
 unsigned char rand8(void);
 unsigned int  rand16(void);
 
-/* Uniform-ish byte in [0..max] inclusive. Bias is bounded by max/255. */
+/* Uniform byte in [0..limit-1] (rejection-sampled, unbiased; no runtime
+ * modulo). limit < 2 returns 0. */
 unsigned char rand8_below(unsigned char limit);
 
 #endif

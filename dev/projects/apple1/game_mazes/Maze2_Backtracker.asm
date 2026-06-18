@@ -6,8 +6,7 @@
 ; With title screen and S/E markers
 ; =============================================
 ; Assemble with cc65:
-;   ca65 -o build/Maze2.o software/demos/Maze2.asm
-;   ld65 -C software/apple1_4k.cfg -o build/Maze2.bin build/Maze2.o
+;   Build: make
 ;
 ; Load in POM1 via File > Load Memory (Maze2.txt)
 ; or load binary at $0300, then type 300R in Woz Monitor.
@@ -31,9 +30,13 @@ NORTH_BIT = $01
 EAST_BIT  = $02
 VISITED   = $80
 
-; RAM areas (outside code, not saved in binary)
-GRID    = $2000         ; 209 bytes: cell data
-DFS_STK = $2100         ; 209 bytes: backtracking stack (cell indices)
+; RAM areas (outside code, not saved in binary). Kept inside the low 4 KB
+; (code is ~933 B at $0280, ending near $0625) so the program runs on a
+; stock 4 KB Apple-1 -- $2000 would need a 16 KB+ contiguous RAM machine,
+; which the standard 8 KB dual-bank presets ($0000-$0FFF + $E000-$EFFF)
+; are not.
+GRID    = $0700         ; 209 bytes: cell data
+DFS_STK = $0800         ; 209 bytes: backtracking stack (cell indices)
 
 ; --- Zero page variables ---
 .zeropage

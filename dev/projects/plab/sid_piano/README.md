@@ -14,7 +14,9 @@ fixed-position screen buffer at `$0850`.
 
 - Machine: Apple 1 (4 KB DRAM is enough)
 - Cards: P-LAB A1-SID
-- Recommended POM1 preset: 9 (P-LAB A1-SID).
+- Recommended POM1 preset: no dedicated preset for A1-SID — enable with
+  `--enable sid` on any text preset, or use a Multiplexing Fantasy preset
+  (10 = P-LAB, 12 = POM1), both of which plug the A1-SID card.
 
 ## Sources
 

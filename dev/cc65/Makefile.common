@@ -45,7 +45,7 @@ $(notdir $(1:.asm=.o)): $(1)
 endef
 $(foreach src,$(EXTRA_ASM),$(eval $(call EXTRA_RULE,$(src))))
 
-$(OUT_DIR_T)/$(PROJECT).bin: $(PROJECT).asm $(EXTRA_O)
+$(OUT_DIR_T)/$(PROJECT).bin: $(PROJECT).asm $(EXTRA_O) $(LOAD_CFG)
 	ca65 $(LIB) $<
 	ld65 -C $(LOAD_CFG) $(OBJ) $(EXTRA_O) -o "$(OUT_DIR)/$(PROJECT).bin"
 

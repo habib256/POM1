@@ -16,8 +16,7 @@
 ; never $D00A.
 ;
 ; Assemble:
-;   ca65 -o build/GT1_Hello.o software/GT-6144/GT1_Hello.asm
-;   ld65 -C software/GT-6144/gt6144.cfg -o build/GT1_Hello.bin build/GT1_Hello.o
+;   Build: make
 ;
 ; Load via Wozmon (once built):
 ;   300: <paste hex>

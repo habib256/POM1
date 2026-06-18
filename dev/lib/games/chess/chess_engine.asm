@@ -18,10 +18,10 @@
 ;   mv_from, mv_to, mv_promo, mv_flags  (input/output of apply_user_move)
 ;
 ; Notes:
-;   - v0.1 supports: all 6 piece types, captures, promotion to queen.
-;   - v0.1 does NOT yet implement en-passant, castling. Those are stubbed.
-;     The user's move parser accepts them but apply_user_move rejects with
-;     ERR_NOT_IMPLEMENTED. This is documented in the README.
+;   - Supports: all 6 piece types, captures, promotion to queen, castling
+;     (king- and queen-side, with right / occupancy / pass-through-check
+;     validation in apply_castle_move) and en-passant capture (ep_square
+;     tracking + MV_FLAG_ENPASSANT, removed in make_move).
 ;   - Check detection IS active: a move that leaves your own king in check
 ;     is rejected (ERR_KING_IN_CHECK).
 ;   - Stalemate / checkmate detection runs after every successful move via
@@ -178,12 +178,6 @@ init_board:
         LDX #$00            ; X = source index 0..63
 @cplp:
         TXA
-        AND #$F8            ; rank * 8 -> rank<<3 in upper bits
-        ASL A               ; rank<<4 (after the implicit shift)
-        ; Wait: TXA / AND #$F8 keeps bits 3..7 (rank<<3); ASL once puts
-        ; rank<<4 in bits 4..7. That overflows for rank>=4. Easier: split.
-        ; Restart with a clearer approach via tmp.
-        TXA
         LSR A
         LSR A
         LSR A               ; A = rank (0..7)
@@ -264,7 +258,8 @@ toggle_side:
 ;       2  source piece is opponent's
 ;       3  pseudo-illegal move for this piece type
 ;       4  move would leave own king in check
-;       5  not yet implemented (en-passant / castling stubs)
+;       5  reserved (ERR_NOT_IMPL — no longer returned; en-passant and
+;          castling are implemented. Kept for the text-IO error switch.)
 ; (ERR_* constants now live in chess_common.inc so all TUs see them as
 ;  immediate compile-time values without 8-bit range warnings.)
 

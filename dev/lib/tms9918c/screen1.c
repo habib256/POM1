@@ -52,10 +52,15 @@ void screen1_cls(void) {
 /*
  * Burst VRAM in VBlank: POM1 silicon-strict uses a dense slot table while
  * frameCycleCounter is in vertical blank (TMS9918.cpp). Chunks must stay
- * under one VBlank budget (~4.5k cyc @ 1x); 128 B/rafale is conservative.
+ * under one VBlank budget (~4.5k cyc @ 1x); 128 B/burst is conservative.
  */
 #define SCREEN1_SCROLL_VBLANK_CHUNK 128U
 
+/* RAM cost: 768 B (~9% of the 8 KB CodeTank machine), allocated whenever a
+ * program links screen1_putc/screen1_scroll. It mirrors one full text page so
+ * the scroll can copy VRAM->RAM->VRAM in VBlank-sized bursts; a line-by-line
+ * scroll through a 32 B buffer would reclaim most of it at the cost of more
+ * VBlank round-trips. */
 static unsigned char screen1_scroll_buf[768];
 
 static void screen1_vblank_burst_read(unsigned base, unsigned char *dst, unsigned total) {

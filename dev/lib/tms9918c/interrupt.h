@@ -9,13 +9,9 @@
 
 #include "utils.h"
 
-/* KickC IRQ wiring is not ported — counters kept for API compatibility. */
-extern volatile unsigned char irq_ticks;
-extern volatile unsigned char irq_seconds;
-extern volatile unsigned char irq_minutes;
-extern volatile unsigned char irq_hours;
-extern volatile unsigned char irq_trigger;
-
+/* KickC IRQ wiring is not ported. The upstream irq_ticks/seconds/minutes/
+ * hours/trigger counters were dropped: nothing on POM1 drives them, so they
+ * were pure dead RAM (5 bytes) in every program that linked this stub. */
 void install_interrupt(unsigned addr);
 void wait_interrupt(void);
 

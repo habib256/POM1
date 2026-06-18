@@ -4,8 +4,7 @@
 ; Two-player drop-piece game, 7x6 grid
 ; =============================================
 ; Assemble:
-;   ca65 -o build/Connect4.o software/games/Connect4.asm
-;   ld65 -C software/apple1_4k.cfg -o build/Connect4.bin build/Connect4.o
+;   Build: make
 ;
 ; Load via File > Load Memory (Connect4.txt), 280R.
 ;
@@ -41,7 +40,7 @@ str_hi:         .res 1  ; $05
 current_player: .res 1  ; $06
 move_count:     .res 1  ; $07
 winner:         .res 1  ; $08
-last_row:       .res 1  ; $09
+last_row:       .res 1  ; $09  (reserved — no current reader; see @place)
 last_col:       .res 1  ; $0A
 row_cnt:        .res 1  ; $0B
 col_cnt:        .res 1  ; $0C
@@ -161,7 +160,6 @@ drop_piece:
         LDA #$00
         RTS
 @place:
-        STX last_row
         LDA current_player
         STA GRID_BASE,Y
         LDA #$01

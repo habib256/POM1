@@ -81,6 +81,20 @@ def strip_iac(buf):
     return bytes(out), bytearray()
 
 
+def send_keys(sock, text, per_char=0.08):
+    """Drip-feed `text` to the Apple-1 keyboard one byte at a time.
+
+    The Apple-1 keyboard is a single-byte latch ($D010): a byte injected
+    before the program/monitor has read the previous one is overwritten and
+    lost. Sending the whole string at once over loopback overruns the latch
+    and mangles the typed address (e.g. `0280R` -> `28R`), so the program
+    runs at the wrong place or not at all. An ~80 ms inter-byte gap lets the
+    6502 poll KBDCR between keys."""
+    for ch in text.encode("latin-1"):
+        sock.sendall(bytes([ch]))
+        time.sleep(per_char)
+
+
 def read_for_marker(sock, marker, timeout):
     """Read from `sock` up to `timeout` s, accumulating decoded terminal text;
     return (found, text)."""
@@ -130,13 +144,47 @@ def main():
         return 1
 
     addr = int(args.addr, 0)
+    # POM1 locates its data dirs (roms/ holding the WOZ Monitor, fonts/, the
+    # seed for the macOS app-support symlinks) relative to its launch CWD. Tests
+    # run from dev/projects/<name>/, where those dirs are unreachable -- the
+    # Terminal Card still answers (card init is CPU-independent) but the Monitor
+    # ROM never loads, so typed commands do nothing. Launch from the repo root
+    # (two levels above build/POM1) when it actually holds roms/, and pass the
+    # binary as an absolute path so --load survives POM1's own chdir.
+    pom1 = os.path.abspath(pom1)
+    launch_cwd = os.path.dirname(os.path.dirname(pom1))
+    if not os.path.isdir(os.path.join(launch_cwd, "roms")):
+        launch_cwd = None  # non-standard layout: launch in-place, hope roms/ is found
+    bin_abs = os.path.abspath(args.bin)
+
+    # Load the program at startup but do NOT --run it yet: the program prints
+    # its title once, and the Terminal Card does not replay scrollback to a
+    # client that connects later. Running at startup would emit the title
+    # seconds before this script's socket attaches, so the marker would be
+    # missed. Instead we boot into WOZ Monitor and run the program *after*
+    # connecting, by typing `<addr>R` over the socket (the Terminal Card feeds
+    # received bytes to the Apple-1 keyboard) -- see the run command below.
     cmd = [pom1, "--headless", "--terminal",
-           "--load", f"{addr:04X}:{args.bin}",
-           "--run", f"{addr:04X}"]
+           "--load", f"{addr:04X}:{bin_abs}"]
     if args.preset is not None:
         cmd += ["--preset", str(args.preset)]
 
-    proc = subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    # A POM1 from an adjacent test may still be tearing down and holding :6502.
+    # If we launch now, the new instance can't bind the port (Terminal Card
+    # silently disabled) and our socket attaches to the dying instance, which
+    # has no program loaded -> only the welcome banner, spurious FAIL. Wait for
+    # the port to be free (connection refused) before launching.
+    free_deadline = time.monotonic() + 5.0
+    while time.monotonic() < free_deadline:
+        try:
+            probe = socket.create_connection((HOST, TERMINAL_PORT), 0.3)
+            probe.close()
+            time.sleep(0.2)  # still held by a previous instance
+        except OSError:
+            break            # refused -> port is free
+
+    proc = subprocess.Popen(cmd, cwd=launch_cwd,
+                            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     try:
         sock = None
         deadline = time.monotonic() + 10.0
@@ -153,11 +201,38 @@ def main():
             print(f"FAIL: Terminal Card port {TERMINAL_PORT} never opened")
             return 1
         try:
-            if args.keys:
-                time.sleep(0.5)
-                keys = args.keys.replace("\\r", "\r").replace("\\n", "\n")
-                sock.sendall(keys.encode("latin-1"))
-            ok, text = read_for_marker(sock, args.expect, args.timeout)
+            # Warm-reset the CPU into WOZ Monitor (Ctrl-R) before running. On a
+            # rapid relaunch the boot-time monitor state can race with the macOS
+            # data-dir provisioning (refreshed each launch), leaving the CPU not
+            # polling the keyboard -- the Terminal Card still answers (welcome)
+            # but typed commands do nothing. A warm reset forces a known-good
+            # monitor state and does NOT clear RAM, so the loaded program at
+            # <addr> survives. Then run it by typing `<addr>R` (send_keys
+            # drip-feeds so the single-byte keyboard latch is not overrun).
+            time.sleep(0.6)
+            sock.sendall(b"\x12")  # Ctrl-R: warm reset into WOZ Monitor
+            time.sleep(0.6)
+            # Re-issue the run command until the marker shows or we run out of
+            # time. On a slow relaunch the monitor may not be polling the
+            # keyboard yet when we first type, so the keystrokes are dropped and
+            # the program never starts -- only the Terminal Card welcome comes
+            # back. Re-running `<addr>R` from the monitor just reprints the
+            # title, so retrying is safe; we only retry while the marker is
+            # still absent (i.e. the program has not started).
+            ok, text = False, ""
+            run_cmd = f"{addr:04X}R\r"
+            sent_extra = False
+            overall_deadline = time.monotonic() + args.timeout
+            while not ok and time.monotonic() < overall_deadline:
+                send_keys(sock, run_cmd)
+                if args.keys and not sent_extra:
+                    time.sleep(0.3)
+                    send_keys(sock, args.keys.replace("\\r", "\r").replace("\\n", "\n"))
+                    sent_extra = True
+                window = max(1.0, min(2.5, overall_deadline - time.monotonic()))
+                found, chunk = read_for_marker(sock, args.expect, window)
+                text += chunk
+                ok = found
         finally:
             sock.close()
         if ok:

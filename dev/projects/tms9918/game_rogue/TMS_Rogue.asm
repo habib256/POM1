@@ -4283,8 +4283,9 @@ place_all_sprites:
         JSR     tms9918_pad12   ; +12c silicon-strict pad12-v3 (before LDA #imm bridge)
         LDA     #$5B            ; $1B | $40 -> write at $1B00
         STA     VDP_CTRL
-        JSR     tms9918_pad12   ; addr-cmd → first STA VDP_DATA: only 11c (now bumped to 40c via pad24)
-                                ; without this (LDA zp + 4*ASL + STA = 15c)
+        JSR     tms9918_pad12   ; addr-cmd → first STA VDP_DATA was only 11c;
+                                ; pad12 lifts the gap to >=12c (address-latch
+                                ; settle case, not the STA/STA-pair 40c contract)
 
         ; --- Slot 0: player ---
         LDA     player_row

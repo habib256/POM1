@@ -6,8 +6,7 @@
 ; Inspired by TMS_Sokoban.asm (same TMS9918 boilerplate, char map).
 ; =============================================
 ; Assemble with cc65:
-;   ca65 -o build/TMS_Snake.o software/tms9918/TMS_Snake.asm
-;   ld65 -C software/tms9918/apple1_snake.cfg \
+;   Build: make
 ;        -o build/TMS_Snake.bin build/TMS_Snake.o
 ;
 ; Or just: python3 software/tms9918/emit_TMS_Snake_txt.py

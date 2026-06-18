@@ -138,25 +138,25 @@ In your project Makefile (Mode 1 example, multi-object link):
 
 ## VBlank synchronisation macro (`WAIT_VBLANK`)
 
-**P-LAB câble /INT → /IRQ** (trace vérifiée sur le vrai matériel par
-Parmigiani), mais le soft Nippur72 ne s'en sert pas. Recommandation :
-**synchroniser les frames par polling** plutôt que par IRQ — c'est plus
-simple et indépendant du flag I. L'IRQ frame est bien disponible (R1 bit 5 +
-`CLI` + handler au vecteur $FFFE), mais tous les jeux POM1 (Galaga, Sokoban,
-Snake, Life, Rogue, …) suivent le pattern polling.
+**The P-LAB board wires /INT → /IRQ** (trace verified on real hardware by
+Parmigiani), but the Nippur72 software does not use it. Recommendation:
+**synchronise frames by polling** rather than by IRQ — it is simpler and
+independent of the I flag. The frame IRQ is available (R1 bit 5 + `CLI` +
+a handler at vector $FFFE), but every POM1 game (Galaga, Sokoban, Snake,
+Life, Rogue, …) follows the polling pattern.
 
 ```asm
 .include "tms9918.inc"
 
         ; … main game loop …
 @frame:
-        WAIT_VBLANK            ; spin sur bit 7 de $CC01 jusqu'à F=1
-        JSR render_sprites     ; ~4 554c "gate 2c" de bande passante VRAM
-        JSR update_logic       ; …puis logique pendant que le faisceau redescend
+        WAIT_VBLANK            ; spin on bit 7 of $CC01 until F=1
+        JSR render_sprites     ; ~4,554c of VRAM bandwidth ("gate 2c")
+        JSR update_logic       ; …then logic while the beam scans back down
         JMP @frame
 ```
 
-`WAIT_VBLANK` se déroule en 7 octets :
+`WAIT_VBLANK` expands to 7 bytes:
 
 ```asm
         BIT VDP_CTRL           ; drain stale F (clears bits 5/6/7)
@@ -193,58 +193,57 @@ so the mid-frame must be polled regardless of how /INT is wired
 
 | Symbol            | Description                                              |
 |-------------------|----------------------------------------------------------|
-| `arm_5s_trigger`  | A = scan line (1..192) → écrit 5 sprites invisibles à cette ligne. SAT[0..4] consommés, SAT[5].Y = $D0 terminator. |
-| `wait_5s_trigger` | spin `BIT $CC01 / BVC` jusqu'à ce que 5S = 1. Coût ~6c/itération. Préserve A. |
-| `WAIT_5S`         | macro inline équivalente à `wait_5s_trigger` (4 octets, pas de `JSR`). Dans `tms9918.inc`. |
+| `arm_5s_trigger`  | A = scan line (1..192) → writes 5 invisible sprites on that line. SAT[0..4] consumed, SAT[5].Y = $D0 terminator. |
+| `wait_5s_trigger` | spin `BIT $CC01 / BVC` until 5S = 1. Cost ~6c/iteration. Preserves A. |
+| `WAIT_5S`         | inline macro equivalent to `wait_5s_trigger` (4 bytes, no `JSR`). In `tms9918.inc`. |
 
-### Usage canonique
+### Canonical usage
 
 ```asm
         .import arm_5s_trigger, wait_5s_trigger
-        .import disable_sprites          ; tms9918m1.asm — pour désarmer
+        .import disable_sprites          ; tms9918m1.asm — to disarm
 .include "tms9918.inc"
 
 @frame:
-        WAIT_VBLANK                       ; clean les flags 5/6/7
+        WAIT_VBLANK                       ; clears flags 5/6/7
         LDA #96                           ; mid-screen scan line
-        JSR arm_5s_trigger                ; 5 sprites invisibles à Y=95
-        JSR upload_top_palette            ; couleurs pour la moitié haute
-        WAIT_5S                           ; (ou JSR wait_5s_trigger)
+        JSR arm_5s_trigger                ; 5 invisible sprites at Y=95
+        JSR upload_top_palette            ; colours for the top half
+        WAIT_5S                           ; (or JSR wait_5s_trigger)
         JSR upload_bottom_palette         ; swap mid-frame
-        JSR disable_sprites               ; désarme avant la prochaine frame
+        JSR disable_sprites               ; disarm before the next frame
         JMP @frame
 ```
 
-### Caveats — à lire une fois
+### Caveats — read once
 
-1. **Toute lecture de `$CC01` efface les bits 5/6/7 ensemble**. N'intercale
-   PAS de `WAIT_VBLANK` entre `arm_5s_trigger` et `WAIT_5S` — le
-   polling V-blank consommerait bit 6 au passage.
-2. Le flag 5S **se latch sur la première ligne** où le 5e sprite est
-   trouvé. Les lignes suivantes avec encore 5+ sprites ne le re-lèvent
-   pas. Pour piéger plusieurs lignes dans une même frame, désarmer +
-   ré-armer entre les deux waits.
-3. Le chip compte sur la coordonnée Y uniquement. La position X et le
-   pattern n'entrent pas dans le compteur — `arm_5s_trigger` utilise
-   early-clock + couleur 0 (transparent) pour rendre les sprites
-   invisibles indépendamment du contenu de la pattern table.
-4. Si le programme utilise déjà des sprites pour le gameplay,
-   `arm_5s_trigger` écrase les SAT[0..5]. Soit sauvegarder/restaurer
-   autour de l'appel, soit réserver les 5 premiers slots du SAT comme
-   "trigger sprites" maintenus à Y=$D0 par défaut, bumpés à la vraie Y
-   uniquement au moment d'armer.
-5. Désarmer après usage : `disable_sprites` (lib mode 1 ou 2) écrit
-   Y=$D0 à SAT[0], le chip arrête tout scan SAT à partir de cette
-   entrée. Sans désarmement, le 5S re-déclenchera à chaque frame.
+1. **Any read of `$CC01` clears bits 5/6/7 together**. Do NOT interleave a
+   `WAIT_VBLANK` between `arm_5s_trigger` and `WAIT_5S` — the V-blank
+   poll would consume bit 6 along the way.
+2. The 5S flag **latches on the first line** where the 5th sprite is
+   found. Later lines that still have 5+ sprites do not re-raise it. To
+   trap several lines in the same frame, disarm + re-arm between the two
+   waits.
+3. The chip counts on the Y coordinate only. The X position and the
+   pattern do not enter the counter — `arm_5s_trigger` uses early-clock
+   + colour 0 (transparent) to make the sprites invisible regardless of
+   the pattern table contents.
+4. If the program already uses sprites for gameplay, `arm_5s_trigger`
+   overwrites SAT[0..5]. Either save/restore around the call, or reserve
+   the first 5 SAT slots as "trigger sprites" held at Y=$D0 by default,
+   bumped to the real Y only when arming.
+5. Disarm after use: `disable_sprites` (lib mode 1 or 2) writes Y=$D0 to
+   SAT[0]; the chip stops all SAT scanning from that entry on. Without
+   disarming, 5S will re-trigger every frame.
 
-### Coût
+### Cost
 
-- `arm_5s_trigger` : ~25 stores VDP avec pad12 entre chaque ≈ 600 cycles.
-  À faire 1× par frame, négligeable.
-- `WAIT_5S` : ~6c × (lignes restantes jusqu'au trigger). Worst case
-  ~12 000c quand on déclenche peu après un V-blank (ligne 8). C'est
-  une perte sèche de bande passante CPU pendant l'attente — utiliser
-  des splits **bas** dans la frame quand possible.
+- `arm_5s_trigger`: ~25 VDP stores with pad12 between each ≈ 600 cycles.
+  Done 1× per frame, negligible.
+- `WAIT_5S`: ~6c × (lines remaining until the trigger). Worst case
+  ~12,000c when triggering shortly after a V-blank (line 8). That is a
+  dead loss of CPU bandwidth during the wait — use splits **low** in the
+  frame when possible.
 
 ## Silicon-strict timing macros (`WRT_DATA_REG`, `WRT_DATA_VAL`)
 

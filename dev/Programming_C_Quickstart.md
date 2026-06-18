@@ -12,13 +12,17 @@ Programming_GEN2C.md, Programming_TMS9918C.md) are linked at the end.
 
 | You want… | Copy this folder | Linker preset | Read this header |
 |---|---|---|---|
-| Plain text I/O (Wozmon) | `dev/_template/` | `apple1_4k.cfg` | `apple1c.h` |
+| Plain text I/O (Wozmon) | `dev/_template/` | `apple1_c.cfg` | `apple1c.h` |
 | GEN2 HGR colour graphics | `dev/_template_gen2c/` | `apple1_gen2_c.cfg` | `gen2.h` |
 | TMS9918 sprites / colour | `dev/_template_tms9918c/` | `codetank_c.cfg` | `tms9918c.h` |
 
 Then `make` in the copy. The Makefile already has the right cc65 flags,
 linker config and the **per-family** library variables (only the .o files
 you call are linked).
+
+> Note: `dev/_template/`'s default `make` builds the **asm** `Hello.asm`
+> (linked with `apple1_4k.cfg`). For a C program use `apple1_c.cfg` (the C
+> runtime config) — see the `cl65` line in `dev/_template/README.md`.
 
 ---
 

@@ -49,8 +49,7 @@
 ;   Any key → return to the Woz Monitor.
 ;
 ; Assemble:
-;   ca65 -o build/GT1_Life.o  software/gt-6144/GT1_Life.asm
-;   ld65 -C software/gt-6144/gt6144.cfg -o build/GT1_Life.bin build/GT1_Life.o
+;   Build: make
 ;
 ; Preset: ./POM1 --preset 5 --cpu-max --load 0300:build/GT1_Life.bin --run 0300
 ; =============================================

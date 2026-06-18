@@ -5,8 +5,7 @@
 ; Deterministic bitwise fractal
 ; =============================================
 ; Assemble:
-;   ca65 -o build/HGR_Sierpinski.o software/hgr/HGR_Sierpinski.asm
-;   ld65 -C software/hgr/apple1_gen2.cfg -o build/HGR_Sierpinski.bin build/HGR_Sierpinski.o
+;   Build: make
 ;
 ; Centered symmetric Sierpinski triangle pointing UP:
 ;   tx = |x - 128|, ty = 191 - y

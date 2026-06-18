@@ -95,7 +95,7 @@ gfx-tms.lib: $(GFX_NEUTRAL_OBJS) gfx_backend_tms.o gfx_backend_tms_rect.o
 	$(AR65) a $@ $^
 
 # Compile-verification: building both archives compiles every shared TU against
-# both backends (the blocking "compiler-vérifier les TUs partagées" step). The
+# both backends (the blocking "compile-check the shared TUs" step). The
 # module dump confirms the expected exports are present.
 check: gfx-gen2.lib gfx-tms.lib
 	@echo "== gfx-gen2.lib modules =="; $(AR65) t gfx-gen2.lib

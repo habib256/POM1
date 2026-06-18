@@ -6,8 +6,7 @@
 ; NTSC artifact colors
 ; =============================================
 ; Assemble:
-;   ca65 -o build/HGR_House.o software/hgr/HGR_House.asm
-;   ld65 -C software/hgr/apple1_gen2.cfg -o build/HGR_House.bin build/HGR_House.o
+;   Build: make
 ;
 ; Scene: house with triangular roof, door, windows,
 ; chimney, pine tree, ground, sky, sun.

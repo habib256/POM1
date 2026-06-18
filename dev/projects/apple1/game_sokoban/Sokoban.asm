@@ -5,8 +5,7 @@
 ; Levels 4-23 = Microban I by David W. Skinner
 ; =============================================
 ; Assemble with cc65:
-;   ca65 -o build/Sokoban.o software/games/Sokoban.asm
-;   ld65 -C software/games/apple1_sok_4k.cfg -o build/Sokoban.bin build/Sokoban.o
+;   Build: make
 ;
 ; Target: real Apple 1, stock 4 KB DRAM — no cards required.
 ;   - LEVEL_BUF at $0020 (128 B, zero page)
@@ -542,7 +541,7 @@ render_screen:
         LDA #$8D
         JSR ECHO
 
-        ; Grid (12 rows x 20 cols)
+        ; Grid (12 rows x 16 cols, NCOLS)
         LDA #$00
         STA render_r
 @rowlp:

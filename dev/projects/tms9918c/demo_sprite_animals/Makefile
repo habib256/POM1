@@ -1,4 +1,4 @@
-# sprite_animals — CodeTank @ $4000 : sprites TMS (réf. dev/sprites PNG)
+# sprite_animals — CodeTank @ $4000 : TMS sprites (see dev/sprites PNG)
 LIBDIR  := ../../../lib/tms9918c
 GFXDIR  := ../../../lib/gfx
 GFXLIB  := $(GFXDIR)/gfx-tms.lib

@@ -6,7 +6,6 @@
 ; Tables provided:
 ;   - knight_offsets, king_offsets, rook_offsets, bishop_offsets
 ;     (8 / 8 / 4 / 4 signed bytes added to a 0x88 square)
-;   - material_table[piece_type] (indexed 0..6)
 ;   - starting_position[64] (rank 1 .. rank 8 in 0x88 layout)
 ; ============================================================================
 
@@ -38,10 +37,8 @@ bishop_offsets:
 ; Queen uses king_offsets (same 8 directions, but slides).
 ; Pawn moves are inlined in chess_engine (asymmetric per colour).
 
-; --- Material values indexed by piece type (0..6) --------------------------
-; material_table[PIECE_NONE] = 0
-material_table:
-        .byte 0, MAT_PAWN, MAT_KNIGHT, MAT_BISHOP, MAT_ROOK, MAT_QUEEN, MAT_KING, 0
+; (Material values live in the engine as `mat_simple`; the old scaled
+;  material_table here was unreferenced and was removed.)
 
 ; --- Starting position ---------------------------------------------------
 ; 64 entries in rank-major order: rank 1, rank 2, ..., rank 8

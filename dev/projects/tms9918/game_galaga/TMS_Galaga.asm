@@ -6,8 +6,7 @@
 ; player. HP per type: 2 / 4 / 6. Three player lives.
 ; =============================================
 ; Assemble with cc65:
-;   ca65 -o build/TMS_Galaga.o software/tms9918/TMS_Galaga.asm
-;   ld65 -C software/tms9918/apple1_galaga.cfg \
+;   Build: make
 ;        -o build/TMS_Galaga.bin build/TMS_Galaga.o
 ;
 ; Or just: python3 software/tms9918/emit_TMS_Galaga_txt.py
@@ -32,7 +31,6 @@
 
 ; --- Apple 1 I/O ---
         .import tms9918_pad12  ; silicon-strict pad12-v3 (helper from tms9918_pad.asm)
-        .import tms9918_pad12  ; small VBlank-sync cushion (12c, 3 B at call site)
 ECHO     = $FFEF
 KBD      = $D010
 KBDCR    = $D011

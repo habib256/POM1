@@ -4,8 +4,8 @@
 
 Smallest possible program for the SWTPC GT-6144 Graphic Terminal (1976,
 $98.50). Clears the 64×96 monochrome framebuffer (Intel 2102 bistable
-SRAM powers up with random bits — visible as the classic "petits
-rectangles") and draws two centred lines with a 3×5-pixel font:
+SRAM powers up with random bits — visible as the classic "snow" of
+random rectangles) and draws two centred lines with a 3×5-pixel font:
 
     APPLE-1
     GT-6144

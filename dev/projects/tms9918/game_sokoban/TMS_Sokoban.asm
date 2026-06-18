@@ -5,8 +5,7 @@
 ; Levels 4-47 = Microban I #1..#44 by David W. Skinner
 ; =============================================
 ; Assemble with cc65:
-;   ca65 -o build/TMS_Sokoban.o software/tms9918/TMS_Sokoban.asm
-;   ld65 -C software/games/apple1_sok_8k.cfg -o build/TMS_Sokoban.bin build/TMS_Sokoban.o
+;   Build: make
 ;
 ; Load in POM1 via File > Load Memory (TMS_Sokoban.txt), then 280R.
 ; The TMS9918 card must be enabled (Hardware menu).

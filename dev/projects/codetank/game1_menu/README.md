@@ -19,9 +19,9 @@ use, no other cards required besides the TMS9918 (which the games need).
 
 ## Hardware
 
-- Machine: Apple 1 (8 KB dual-bank motherboard RAM — preset **7** default)
+- Machine: Apple 1 (8 KB dual-bank motherboard RAM — preset **9** default)
 - Cards: P-LAB TMS9918, P-LAB CodeTank (lower-bank jumper)
-- Recommended POM1 preset: **7** — *P-LAB Apple-1 with TMS9918 (CodeTank daughterboard)* (`MainWindow_Presets.cpp`).
+- Recommended POM1 preset: **9** — *P-LAB Apple-1 with TMS9918 (CodeTank daughterboard)* (`MainWindow_Presets.cpp`).
 
 ## Sources
 

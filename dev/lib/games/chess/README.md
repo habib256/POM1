@@ -68,8 +68,9 @@ Every move is 3 bytes: `(from, to, flags)`. Flags layout (`mv_flags`):
 | 6 | Short castle (O-O) |
 | 7 | Long castle (O-O-O) |
 
-In v0.1 only bits 0-3 are produced; en-passant + castling are stubbed
-(parsed but rejected with `ERR_NOT_IMPL`).
+All eight flag values are produced: en-passant and castling are fully
+implemented (the engine validates and executes both). `ERR_NOT_IMPL`
+is retained as a reserved error code but is no longer returned.
 
 ## Status — v0.5 (current)
 

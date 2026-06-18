@@ -1,4 +1,4 @@
-# GEN2Vectors — fast XOR sprites + vectors + HUD (double buffering)
+# GEN2Bounces — fast XOR sprites + vectors + HUD (double buffering)
 
 *[← POM1 documentation index](../../../../doc/README.md)*
 
@@ -37,13 +37,13 @@ swapping preserves the byte alignment.
 ## Build / Run
 
 ```sh
-make            # -> "software/Graphic HGR/GEN2Vectors.bin" (+ .txt Woz-hex)
+make            # -> "software/Graphic HGR/GEN2Bounces.bin" (+ .txt Woz-hex)
 make clean
 ```
 
 ```sh
 build/POM1 --preset 11 \
-    --load 6000:"software/Graphic HGR/GEN2Vectors.bin" --run 6000
+    --load 6000:"software/Graphic HGR/GEN2Bounces.bin" --run 6000
 ```
 
 or DevBench → POM1 Bench → target *C / GEN2 HGR*, paste, compile, upload.

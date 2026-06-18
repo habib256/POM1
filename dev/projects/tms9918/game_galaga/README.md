@@ -11,13 +11,14 @@ Four linker-config variants ship for different deployment scenarios:
 
 - `apple1_galaga.cfg` — stock cassette/`.txt` load at `$0280`.
 - `apple1_galaga_codetank.cfg` — full 16 kB CodeTank ROM image at `$4000`
-  (used by `--layout=split`).
-- `apple1_galaga_codetank_bank.cfg` — 7 424 B lower-bank slot (`$4100`)
-  inside the multi-game menu CodeTank bank (`--layout=menu`). **Makefile
-  default** (`CFG ?= apple1_galaga_codetank_bank.cfg`).
-- `apple1_galaga_codetank_8k.cfg` — 8 kB lower-bank slot at `$4000` paired
-  with Sokoban at `$6000` in the same bank (`--layout=dualslot8k`). The
-  recommended config for **Silicon Strict** mode — see below.
+  (Galaga alone in a bank).
+- `apple1_galaga_codetank_bank.cfg` — 7 424 B lower-bank slot at `$4100`
+  inside the GAME1 multi-game menu bank. **Makefile default**
+  (`CFG ?= apple1_galaga_codetank_bank.cfg`); this is the layout that ships
+  in `roms/codetank/Codetank_GAME1.rom` (menu → Galaga `$4100`, Sokoban
+  `$6200`, Snake `$7600`; TMS LOGO V2.6 in the upper bank).
+- `apple1_galaga_codetank_8k.cfg` — 8 kB lower-bank slot at `$4000`, a
+  roomier alternative (pairs with Sokoban at `$6000` in a custom bank).
 
 ## Sprite layout
 
@@ -60,8 +61,10 @@ Override the linker config from the command line:
 
 1. POM1 → Presets → preset 9 (P-LAB TMS9918 + CodeTank).
 2. File → Load → `software/Graphic TMS9918/TMS_Galaga.txt`.
-3. Wozmon `\` prompt: type `280R` (cassette), `4000R` (CodeTank lower —
-   menu/split/dualslot8k all map Galaga at or near `$4000`).
+3. Wozmon `\` prompt: type `280R` (cassette build), or — when running the
+   `roms/codetank/Codetank_GAME1.rom` cartridge — `4000R` to bring up the
+   GAME1 menu and pick **1 = Galaga**. Rebuild that ROM with
+   `python3 tools/build_codetank_rom.py --rom=1`.
 
 ## Silicon Strict mode
 
@@ -78,15 +81,12 @@ Inline `hide_slot_4` was factored out as a JSR helper to free ~100 B for
 the NOP padding. Without it the patched binary overflows the 7 424 B
 menu-bank slot.
 
-For the cleanest port with extra headroom, use the **dualslot8k** layout
-(see `tools/build_codetank_rom.py --layout=dualslot8k`):
-
-    Lower bank: $4000 = Galaga (8 kB), $6000 = Sokoban (8 kB)
-    Upper bank: Tetris launcher (unchanged)
-
-The shipped `roms/codetank/Codetank_GAME1.rom` uses `dualslot8k`. Older
-Snake / Life entries are dropped from this ROM but can be revived via
-`--layout=menu`.
+The shipped `roms/codetank/Codetank_GAME1.rom` packs Galaga into the
+7 424 B menu-bank slot at `$4100` (alongside Sokoban `$6200` and Snake
+`$7600`), so the NOP padding above must fit that slot — hence the
+`hide_slot_4` factoring. If you rebuild a custom bank and need more
+headroom, `apple1_galaga_codetank_8k.cfg` gives Galaga a full 8 kB at
+`$4000`.
 
 ## Author / License
 

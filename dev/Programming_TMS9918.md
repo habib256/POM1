@@ -44,7 +44,7 @@ appears in the appendix table.
   60 Hz. PAL = 50 Hz exact. See §17 below for the timing implication on SAT
   multiplexing.
 
-#### Usable memory map (preset #7)
+#### Usable memory map (preset #9)
 
 ```
 $0000-$00FF   Zero page (Apple-1 standard)

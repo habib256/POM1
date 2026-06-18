@@ -34,7 +34,7 @@ origin `$6000`.
       --load 6000:"software/Graphic HGR/GEN2Countdown.bin" --run 6000
   ```
 - Loading the `.bin`/`.txt` from `software/Graphic HGR/` auto-plugs the GEN2
-  card and opens its window (preset 12 = Apple-1 + GEN2 HGR).
+  card and opens its window (preset 11 = Uncle Bernie's GEN2 HGR Color).
 
 ## Cadence tuning
 

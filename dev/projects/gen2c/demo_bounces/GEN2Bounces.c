@@ -1,8 +1,8 @@
 /*
- * GEN2Vectors.c — vector showcase + HUD numbers + XOR sprites from gen2c, in
+ * GEN2Bounces.c — vector showcase + HUD numbers + XOR sprites from gen2c, in
  *                 double buffering with INCREMENTAL rendering and FAST blit.
  *
- *   GEN2 Vectors/HUD demo / VERHILLE Arnaud 2026
+ *   GEN2 Bounces (vectors/HUD demo) / VERHILLE Arnaud 2026
  *
  * FOUR balls (disc sprites) — one big 48x48 and three small 16x16 —
  * bounce inside a frame AND collide pairwise (every pair); bounce counter
@@ -24,9 +24,9 @@
  * (dx.dvx + dy.dvy < 0) -> swap velocities. All balls move at the same
  * speed, so the swap preserves byte alignment.
  *
- *   Build : make    -> "software/Graphic HGR/GEN2Vectors.bin" (+ .txt)
+ *   Build : make    -> "software/Graphic HGR/GEN2Bounces.bin" (+ .txt)
  *   Run   : build/POM1 --preset 11 \
- *               --load 6000:"software/Graphic HGR/GEN2Vectors.bin" --run 6000
+ *               --load 6000:"software/Graphic HGR/GEN2Bounces.bin" --run 6000
  */
 #include "gen2.h"
 

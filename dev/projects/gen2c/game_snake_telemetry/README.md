@@ -59,7 +59,7 @@ build/POM1 --headless --telemetry-port 6602 --preset 11 \
 ```python
 from pom1_telemetry import launch_headless
 with launch_headless("software/Telemetry/GEN2Snake.bin",
-                     load_addr=0x6000, port=6602, extra=["--preset", "12"]) as tc:
+                     load_addr=0x6000, port=6602, extra=["--preset", "11"]) as tc:
     st = tc.read_named()              # {"head_x":.., "head_y":.., "length":.., "alive":True}
     tc.send(b"\x04")                  # steer right (1=up 2=down 3=left 4=right)
     st = tc.read_named()

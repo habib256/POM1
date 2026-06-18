@@ -7,8 +7,7 @@
 ; (linear CP437 order, index = IBM code point).
 ;
 ; Assemble with cc65:
-;   ca65 -o build/HGR_BBFontShow.o software/hgr/HGR_BBFontShow.asm
-;   ld65 -C software/hgr/apple1_gen2.cfg -o build/HGR_BBFontShow.bin build/HGR_BBFontShow.o
+;   Build: make
 ;
 ; In POM1: enable GEN2, File > Load Memory (HGR_BBFontShow.txt),
 ; then type E000R in Woz Monitor.

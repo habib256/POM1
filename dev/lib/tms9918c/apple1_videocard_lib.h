@@ -18,7 +18,6 @@
 #include "screen1.h"
 #include "screen2.h"
 #include "interrupt.h"
-#include "via.h"
 #include "random.h"
 #include "vsync.h"
 #include "printlib.h"
