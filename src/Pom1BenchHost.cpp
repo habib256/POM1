@@ -799,6 +799,12 @@ bench::BuildResult Pom1BenchHost::directLoad(int target, const std::string& src,
     if (ec || dir.empty()) { r.status = "no temp directory available"; r.ok = false; return r; }
     TempFileSweeper sweep;
     auto* emu = mw_->emulation.get();
+    // Same deferred-plug fix as build() / pollBuild(): drain pending plugs so
+    // the new preset's cards are on the bus before the CPU runs the freshly
+    // loaded binary. Otherwise a `New` + `directLoad` (e.g. hex / raw modes)
+    // immediately after a preset switch races the card-enable countdown and
+    // the first frame of execution writes into RAM instead of the card.
+    mw_->finalizePendingCardPlugs();
     std::string error; int bytesLoaded = 0; bool ok = false; uint16_t entry = 0;
     if (kP1Targets[p1(target)].mode == 1) {   // Wozmon hex
         const fs::path tmp = dir / "pom1_bench_sketch.txt";
@@ -1090,6 +1096,13 @@ bench::BuildResult Pom1BenchHost::build(int target, const std::string& src, cons
     if (!run) { r.status = "Verify OK"; r.ok = true; return r; }
 
     auto* emu = mw_->emulation.get();
+    // Close the deferred-card-plug race: applyMachineConfig() queues a 15-frame
+    // delay before the new preset's cards actually plug onto the bus, so a
+    // synchronous cl65 build + loadBinary that runs immediately after a New
+    // (which switches preset) would start the CPU BEFORE the GEN2 / TMS9918
+    // card is on the bus — early writes to $2000-$3FFF or $CC00/$CC01 vanish
+    // into RAM. File > Load drains the same queue here; we do the same.
+    mw_->finalizePendingCardPlugs();
     if (gen2c || plainc) {
         // GEN2 HGR / plain text C: load + run (the target's preset already plugged
         // the right card). loadBinary resets + runs at the cfg's entry.
@@ -1191,6 +1204,12 @@ bench::BuildResult Pom1BenchHost::pollBuild()
     auto* emu = mw_->emulation.get();
     namespace fs = std::filesystem;
     std::error_code ec;
+
+    // Same deferred-plug fix as the desktop path in build() — drain any pending
+    // card plugs that applyMachineConfig() queued so the new preset's GEN2 /
+    // TMS9918 card is on the bus before the CPU starts the freshly loaded
+    // binary. Otherwise the program's early writes can land before the card.
+    mw_->finalizePendingCardPlugs();
 
     if (t.codetankRom) {
         // TMS9918 asm: wrap the .bin into a CodeTank dev ROM, flash it, jumper to
