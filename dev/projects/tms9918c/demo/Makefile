@@ -15,7 +15,10 @@ SOURCES := main.c \
 	$(LIBDIR)/apple1.c \
 	$(LIBDIR)/tms9918.c \
 	$(LIBDIR)/screen1.c \
-	$(LIBDIR)/screen2.c \
+	$(LIBDIR)/screen2_init.c \
+	$(LIBDIR)/screen2_text.c \
+	$(LIBDIR)/screen2_pixel.c \
+	$(LIBDIR)/screen2_geom.c \
 	$(LIBDIR)/c64font.c
 
 .PHONY: all clean FORCE

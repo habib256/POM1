@@ -23,11 +23,22 @@
 # fast paths in tms_fast.s. Always link this. (utils.h is macros only — no .c.)
 TMS9918C_CORE_SRCS    := $(TMS9918C)/tms9918.c $(TMS9918C)/tms_fast.s
 
-# Graphics-I text mode helpers (screen1_*).
-TMS9918C_SCREEN1_SRCS := $(TMS9918C)/screen1.c $(TMS9918C)/c64font.c
+# Graphics-I text mode helpers (screen1_*). screen1_input.c carries the
+# interactive line-input prompt (apple1_getkey + echo); a program without a
+# text-input prompt can omit it to save ~150 bytes ROM.
+TMS9918C_SCREEN1_SRCS       := $(TMS9918C)/screen1.c $(TMS9918C)/c64font.c
+TMS9918C_SCREEN1_INPUT_SRCS := $(TMS9918C)/screen1_input.c
 
-# Graphics-II bitmap mode helpers (screen2_*).
-TMS9918C_SCREEN2_SRCS := $(TMS9918C)/screen2.c
+# Graphics-II bitmap mode helpers (screen2_*). Split per feature so a sprite
+# demo that never plots doesn't drag in the pixel/geometry code.
+TMS9918C_SCREEN2_INIT_SRCS  := $(TMS9918C)/screen2_init.c
+TMS9918C_SCREEN2_TEXT_SRCS  := $(TMS9918C)/screen2_text.c
+TMS9918C_SCREEN2_PIXEL_SRCS := $(TMS9918C)/screen2_pixel.c
+TMS9918C_SCREEN2_GEOM_SRCS  := $(TMS9918C)/screen2_geom.c
+TMS9918C_SCREEN2_SRCS := $(TMS9918C_SCREEN2_INIT_SRCS) \
+                        $(TMS9918C_SCREEN2_TEXT_SRCS) \
+                        $(TMS9918C_SCREEN2_PIXEL_SRCS) \
+                        $(TMS9918C_SCREEN2_GEOM_SRCS)
 
 # Extension helpers (screen1_putcharxy, screen1_fill_color_attr, screen2_clear,
 # screen2_filled_rect). Optional. screen_ext.c references screen2_plot_mode, so
@@ -56,6 +67,7 @@ TMS9918C_INTERRUPT_SRCS:= $(TMS9918C)/interrupt.c
 # Umbrella — every family at once. Matches what the existing demos link.
 TMS9918C_ALL_SRCS := $(TMS9918C_CORE_SRCS) \
                      $(TMS9918C_SCREEN1_SRCS) \
+                     $(TMS9918C_SCREEN1_INPUT_SRCS) \
                      $(TMS9918C_SCREEN2_SRCS) \
                      $(TMS9918C_SCREEN_EXT_SRCS) \
                      $(TMS9918C_SPRITES_SRCS) \
