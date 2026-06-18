@@ -27,7 +27,7 @@ Built with Dear ImGui & OpenGL — fast, lightweight, cross-platform.
 > *Every other Apple 1 emulator stops at the WOZ Monitor. POM1 keeps going for 50 years.*
 
 - 🎵 **Real chiptune sound on a 1976 board.** Drop a `.sid` from the [HVSC archive](https://www.exotica.org.uk/wiki/High_Voltage_SID_Collection) onto `tools/sid2apple1.py`, swap between MOS 6581 and CSG 8580 *while it plays*, and hear genuine SID through libresidfp.
-- 🎨 **Three independent graphics cards across half a century.** The 1976 SWTPC GT-6144 (with bistable SRAM noise on power-up), Uncle Bernie's GEN2 HGR (NTSC artifact colours), and the P-LAB TMS9918 (256×192 + 32 sprites + silicon-strict timing model documented in [`SILICONBUGS.md`](dev/SILICONBUGS.md)).
+- 🎨 **Three independent graphics cards across half a century.** The 1976 SWTPC GT-6144 (with bistable SRAM noise on power-up), Uncle Bernie's GEN2 HGR (NTSC artifact colours), and the P-LAB TMS9918 (256×192 + 32 sprites + silicon-strict timing model documented in [`Programming_TMS9918.md`](dev/Programming_TMS9918.md)).
 - 📡 **Wi-Fi modem dialing real BBSes.** Flip on the P-LAB Wi-Fi card, type `ATDT bbs.fozztexx.com:23` in WOZ Monitor and you're on a 2026-era BBS. Or run `telnet localhost 6502` to drive the Apple 1 from any modern terminal.
 - 💾 **Cartridge ecosystem unique to POM1.** The P-LAB CodeTank ships **5 ready-to-flip cartridges** (GAME1/GAME2/GAME3/GAME4/TEST) covering arcade games, dungeon crawlers, demos and silicon validation suites — all built from `dev/projects/` source you can hack and rebuild with `python3 tools/build_codetank_rom.py`.
 - 🔬 **Cycle-accurate down to the bus.** The SID, TMS9918, ACI cassette and modem all run on the same `POM1_CPU_CLOCK_HZ = 1 022 727` clock; tempo follows emulation speed, not wall-clock. Klaus Dormann's 6502 functional test pinned in CI.
@@ -253,7 +253,7 @@ $98.50, demoed by Woz in *Interface Age*. **64×96** mono framebuffer on 6× Int
 
 ### P-LAB Graphic Card (TMS9918)
 
-[P-LAB Apple-1 Graphic Card](https://p-l4b.github.io/graphic/) — TMS9918A VDP, **256×192**, 15 colours + transparent, 32 hardware sprites, 4 modes. I/O at `$CC00` (data) / `$CC01` (control), 16 KB dedicated VRAM. Compatible with [nippur72's apple1-videocard-lib](https://github.com/nippur72/apple1-videocard-lib). **Silicon Strict** mode enforces the VRAM timing model — drops "too fast" writes; tune it from the *DevBench → Silicon Strict Inspector*. Chip quirks documented in [`dev/SILICONBUGS.md`](dev/SILICONBUGS.md). Default ON for every preset except the Multiplexing Fantasies.
+[P-LAB Apple-1 Graphic Card](https://p-l4b.github.io/graphic/) — TMS9918A VDP, **256×192**, 15 colours + transparent, 32 hardware sprites, 4 modes. I/O at `$CC00` (data) / `$CC01` (control), 16 KB dedicated VRAM. Compatible with [nippur72's apple1-videocard-lib](https://github.com/nippur72/apple1-videocard-lib). **Silicon Strict** mode enforces the VRAM timing model — drops "too fast" writes; tune it from the *DevBench → Silicon Strict Inspector*. Chip quirks documented in [`dev/Programming_TMS9918.md`](dev/Programming_TMS9918.md). Default ON for every preset except the Multiplexing Fantasies.
 
 The CodeTank daughterboard (above) ships a **5-cartridge library** built from `dev/projects/tms9918_*` source.
 

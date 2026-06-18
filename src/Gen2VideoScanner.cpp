@@ -111,20 +111,28 @@ int Gen2VideoScanner::hst0State(int line, int hcnt)
     return 1;                                  // in HBLANK
 }
 
-void Gen2VideoScanner::applyPowerOnState(bool randomized, uint32_t seed)
+void Gen2VideoScanner::applyPowerOnState(bool randomizeLatch,
+                                         bool randomizeScannerPhase,
+                                         uint32_t seed)
 {
-    if (randomized) {
-        std::mt19937 rng(seed ? seed : 0xDEADBEEFu);
+    std::mt19937 rng(seed ? seed : 0xDEADBEEFu);
+    // Soft-switch latch ($C250-$C257): random vs Bernie's documented cold pick.
+    if (randomizeLatch) {
         std::uniform_int_distribution<int> bit(0, 1);
         display.textMode  = bit(rng) != 0;
         display.mixedMode = bit(rng) != 0;
         display.page2     = bit(rng) != 0;
         display.hiRes     = bit(rng) != 0;
-        do { noiseState = rng(); } while (noiseState == 0u);
-        cycleCounter = static_cast<uint64_t>(rng()) % cyclesPerFrame();
     } else {
-        display = DisplayState{};      // hiRes=true, others false (Bernie's documented cold pick)
-        noiseState  = 0x1D872B41u;
-        cycleCounter = 0;
+        display = DisplayState{};        // hiRes=true, others false (documented cold pick)
     }
+    // Floating-bus xorshift32 seed: re-seed from rng so subsequent $C25x reads
+    // produce a different stream when the cold plug rolls. The seed is
+    // independent of whether random latch / random phase is on — the floating
+    // bus has its OWN knob (gen2RandomFloatingBus, applied at the read site).
+    do { noiseState = rng(); } while (noiseState == 0u);
+    // Vertical scanner phase (cycleCounter): random frame position vs 0.
+    cycleCounter = randomizeScannerPhase
+        ? static_cast<uint64_t>(rng()) % cyclesPerFrame()
+        : 0;
 }

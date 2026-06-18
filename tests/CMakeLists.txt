@@ -525,7 +525,7 @@ add_test(NAME tms9918_per_scanline COMMAND test_tms9918_per_scanline)
 set_tests_properties(tms9918_per_scanline PROPERTIES TIMEOUT 5)
 
 # -- TMS9918A advanced silicon-fidelity edge cases ---------------------------
-# Direct API-level coverage for behaviours documented in SILICONBUGS.md
+# Direct API-level coverage for behaviours documented in dev/Programming_TMS9918.md
 # but not previously locked-in by ctest:
 #   - Bug N°8 isIllegalModeRegs detector (M1+M2/M1+M3/M2+M3/all triple)
 #   - Bug N°5 $D0 mid-SAT terminator stops scan

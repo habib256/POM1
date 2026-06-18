@@ -13,6 +13,7 @@
 #include <vector>
 
 #include "CpuClock.h"
+#include "Gen2VideoScanner.h"
 #include "POM1Build.h"
 #if !POM1_IS_WASM
 #include <thread>
@@ -161,6 +162,21 @@ public:
     // / hard reset. Defaults to !fantasyPreset in applyMachineConfig.
     void setGen2RandomPowerOn(bool enabled);
     bool isGen2RandomPowerOn() const;
+    // Individual sub-knobs for each cold-plug aspect (SILICON STRICT inspector
+    // exposes each one separately; setGen2RandomPowerOn() above is the bundle).
+    void setGen2RandomLatch(bool enabled);
+    void setGen2RandomFloatingBus(bool enabled);
+    void setGen2RandomScannerPhase(bool enabled);
+    void setGen2RandomDramNoise(bool enabled);
+    bool isGen2RandomLatch() const;
+    bool isGen2RandomFloatingBus() const;
+    bool isGen2RandomScannerPhase() const;
+    bool isGen2RandomDramNoise() const;
+    // GEN2 HGR live state (for the SILICON STRICT inspector readout).
+    Gen2VideoScanner::DisplayState getGen2DisplayState() const;
+    uint64_t getGen2ScannerCycle() const;
+    uint64_t getGen2CyclesPerFrame() const;
+    bool     isGen2InBlanking() const;          // HST0 = 1 outside the burst notch
     // Juke-Box EEPROM 28c256 write-cycle timing knobs (no-op when chip is
     // in Flash mode or card is unplugged). All take a lock on stateMutex.
     void setJukeBoxEepromWriteCycleCpu(int cycles);

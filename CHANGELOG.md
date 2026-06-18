@@ -52,11 +52,11 @@ per-project Makefiles; dev loop → `dev/APPLE1DEV.md`.
 - **Sprite-cloning (Bug N°8) visual fixture** (2026-05-08) —
   `dev/projects/tms9918_clone/`: SPACE toggles the illegal M1+M2 hybrid so the
   sprite-clone cascade appears/disappears for side-by-side comparison; validates
-  the cloning model (`dev/SILICONBUGS.md` §17).
+  the cloning model (`dev/Programming_TMS9918.md` §15 Bug N°8).
 - **Silicon-strict port of every TMS9918 program** (2026-04-30) —
   `tools/silicon_strict_patch.py` injected 351 `tms9918_pad12` NOPs across all
   TMS9918 projects + `lib/tms9918/*.asm`; all 3 CodeTank ROM layouts rebuild clean
-  (`dev/SILICONBUGS.md` §17).
+  (`dev/Programming_TMS9918.md` §25).
 - **`dev/projects/*/README.md` TODO placeholders resolved** (2026-06-16).
 
 ### Added — DevBench menu + Bench GEN2 text target

@@ -49,7 +49,7 @@ public:
 
     // /IRQ line state. 65C22 standard semantics: any IRQ source unmasked
     // in IER and active in IFR pulls /IRQ. Wired to the Memory-side
-    // aggregator (cf. dev/SILICONBUGS.md Bug N°2). Most microSD shell
+    // aggregator (cf. dev/Programming_TMS9918.md §18 Bug N°2). Most microSD shell
     // workflows poll PORTB STROBE bits rather than enable timer/SR
     // interrupts, so this is dormant in typical use — but a future SD
     // shell or assembler that uses Timer 1 for byte-time delays would

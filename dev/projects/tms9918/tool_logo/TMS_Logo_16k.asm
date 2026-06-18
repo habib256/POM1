@@ -4696,4 +4696,4 @@ mnem_tab:
                                   ; (was padded with 6 redundant $FF bytes;
                                   ;  reclaimed May 2026 to absorb the +6 B
                                   ;  growth from 24c silicon-strict pad24
-                                  ;  insertions — see CLAUDE.md / SILICONBUGS.md).
+                                  ;  insertions — see CLAUDE.md / Programming_TMS9918.md).

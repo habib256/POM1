@@ -71,8 +71,8 @@ menu → Silicon Strict / `--silicon-strict`). 219 NOPs across
 `draw_title_tms`, `draw_help_sprites`, `draw_victory_tms`,
 `draw_wave_clear_tms`, `draw_str_tms`, `emit_2digit_tms`, `plot_star`, and
 `init_vdp` cover every back-to-back VDP write that would otherwise drop a
-byte under the silicon timing window (cf. [`dev/SILICONBUGS.md`](../../SILICONBUGS.md)
-Bug N°1 + Annexe E for the full bringup notes and patching toolchain).
+byte under the silicon timing window (cf. [`dev/Programming_TMS9918.md`](../../../Programming_TMS9918.md#bug-n1-vram-timing)
+§17 Bug N°1 + §25 for the full bringup notes and patching toolchain).
 
 Inline `hide_slot_4` was factored out as a JSR helper to free ~100 B for
 the NOP padding. Without it the patched binary overflows the 7 424 B

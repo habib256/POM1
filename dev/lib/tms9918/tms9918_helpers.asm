@@ -16,7 +16,7 @@
 ; Both helpers integrate the silicon-strict NOP padding so callers don't
 ; have to. The JSR/RTS round-trip plus the helper's internal NOPs guarantees
 ; ≥ 8 cycles between the helper's last STA VDP_* latch and the caller's
-; next VDP store (cf. dev/SILICONBUGS.md §1, §17).
+; next VDP store (cf. dev/Programming_TMS9918.md §17, §25).
 ;
 ; Sized to ~12 bytes total in ROM. ~204 sites across all TMS9918 projects
 ; refactor through these two entries (tools/silicon_strict_refactor.py).

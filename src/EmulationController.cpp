@@ -551,6 +551,85 @@ bool EmulationController::isGen2RandomPowerOn() const
     return memory->isGen2RandomPowerOn();
 }
 
+void EmulationController::setGen2RandomLatch(bool enabled)
+{
+    std::lock_guard<PriorityMutex> lock(stateMutex);
+    memory->setGen2RandomLatch(enabled);
+}
+
+void EmulationController::setGen2RandomFloatingBus(bool enabled)
+{
+    std::lock_guard<PriorityMutex> lock(stateMutex);
+    memory->setGen2RandomFloatingBus(enabled);
+}
+
+void EmulationController::setGen2RandomScannerPhase(bool enabled)
+{
+    std::lock_guard<PriorityMutex> lock(stateMutex);
+    memory->setGen2RandomScannerPhase(enabled);
+}
+
+void EmulationController::setGen2RandomDramNoise(bool enabled)
+{
+    std::lock_guard<PriorityMutex> lock(stateMutex);
+    memory->setGen2RandomDramNoise(enabled);
+}
+
+bool EmulationController::isGen2RandomLatch() const
+{
+    std::lock_guard<PriorityMutex> lock(stateMutex);
+    return memory->isGen2RandomLatch();
+}
+
+bool EmulationController::isGen2RandomFloatingBus() const
+{
+    std::lock_guard<PriorityMutex> lock(stateMutex);
+    return memory->isGen2RandomFloatingBus();
+}
+
+bool EmulationController::isGen2RandomScannerPhase() const
+{
+    std::lock_guard<PriorityMutex> lock(stateMutex);
+    return memory->isGen2RandomScannerPhase();
+}
+
+bool EmulationController::isGen2RandomDramNoise() const
+{
+    std::lock_guard<PriorityMutex> lock(stateMutex);
+    return memory->isGen2RandomDramNoise();
+}
+
+Gen2VideoScanner::DisplayState EmulationController::getGen2DisplayState() const
+{
+    std::lock_guard<PriorityMutex> lock(stateMutex);
+    return memory->gen2DisplayState();
+}
+
+uint64_t EmulationController::getGen2ScannerCycle() const
+{
+    std::lock_guard<PriorityMutex> lock(stateMutex);
+    return memory->peekGen2VideoCycle();
+}
+
+uint64_t EmulationController::getGen2CyclesPerFrame() const
+{
+    std::lock_guard<PriorityMutex> lock(stateMutex);
+    // 65 cycles/line × (262 @ 60 Hz / 312 @ 50 Hz).
+    return memory->isGen2FiftyHz()
+        ? Gen2VideoScanner::kCyclesPerLine * Gen2VideoScanner::kLinesPerFrame50Hz
+        : Gen2VideoScanner::kCyclesPerLine * Gen2VideoScanner::kLinesPerFrame;
+}
+
+bool EmulationController::isGen2InBlanking() const
+{
+    std::lock_guard<PriorityMutex> lock(stateMutex);
+    const uint64_t fc = memory->peekGen2VideoCycle();
+    const uint64_t line = fc / Gen2VideoScanner::kCyclesPerLine;
+    const uint64_t hcnt = fc % Gen2VideoScanner::kCyclesPerLine;
+    return Gen2VideoScanner::hst0State(static_cast<int>(line),
+                                       static_cast<int>(hcnt)) != 0;
+}
+
 void EmulationController::setSystemRamNoiseOnReset(bool enabled)
 {
     std::lock_guard<PriorityMutex> lock(stateMutex);

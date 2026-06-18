@@ -102,7 +102,7 @@ public:
     // enabled, and the video scanner advances from advanceCycles(). On every
     // off→on transition the page-1 framebuffer is seeded with mt19937 noise
     // to mimic real DRAM bistable power-on state (see resetMemory() and
-    // dev/SILICONBUGS.md); the soft-switch journal resets on any transition.
+    // dev/Programming_TMS9918.md §27 VRAM power-on init); the soft-switch journal resets on any transition.
     void setHgrFramebufferAttached(bool e);
     bool isHgrFramebufferAttached(void) const { return hgrFramebufferAttached; }
 
@@ -297,17 +297,45 @@ public:
     void setVramNoiseOnReset(bool enabled);
     bool isVramNoiseOnReset() const;
 
-    // GEN2 HGR Graphic Card — random power-on state. Gates four behaviours
-    // together: soft-switch latch + scanner phase randomized at cold plug,
-    // floating-bus xorshift noise on $C250-$C257 D6..D0 reads, and DRAM
-    // mt19937 fill at cold plug + hard reset. ON (default for every preset
-    // except the Fantasy ones) matches Bernie's release card: PLD POR is
-    // genuinely indeterminate and the floating bus must look untrustworthy
-    // so software never grows a dependency. OFF gives the documented
-    // GRAPHICS + HIRES + PAGE1 cold state + zeroed DRAM + deterministic
-    // floating bus — useful for headless tests and pre-Phase-2 demos.
-    void setGen2RandomPowerOn(bool enabled) { gen2RandomPowerOn = enabled; }
-    bool isGen2RandomPowerOn() const { return gen2RandomPowerOn; }
+    // GEN2 HGR Graphic Card — power-on fidelity. The release card has four
+    // independent cold-boot uncertainties, each individually toggleable so a
+    // user can mix-and-match Silicon-Strict aspects (e.g. random latch but
+    // zeroed DRAM for headless tests). The grouped setter sets all four; the
+    // grouped getter returns true iff all four are on.
+    //
+    //   gen2RandomLatch        : soft-switch latch ($C250-$C257) randomized
+    //                            at cold plug vs documented GRAPHICS + HIRES
+    //                            + PAGE1 + MIX off pick.
+    //   gen2RandomFloatingBus  : $C250-$C257 D6..D0 reads return xorshift32
+    //                            noise vs the byte the video scanner is
+    //                            presenting at that cycle.
+    //   gen2RandomScannerPhase : vertical scanner phase (cycleCounter)
+    //                            randomized at cold plug vs reset to 0.
+    //   gen2RandomDramNoise    : 8 KB framebuffer DRAM at $2000-$3FFF seeded
+    //                            with mt19937 noise at cold plug + hard
+    //                            reset vs zeroed.
+    //
+    // All four default ON (Silicon Strict baseline) for every preset except
+    // the Fantasy ones; setGen2RandomPowerOn flips all four together so
+    // preset code and the master button still work as before.
+    void setGen2RandomLatch(bool enabled)        { gen2RandomLatch        = enabled; }
+    void setGen2RandomFloatingBus(bool enabled)  { gen2RandomFloatingBus  = enabled; }
+    void setGen2RandomScannerPhase(bool enabled) { gen2RandomScannerPhase = enabled; }
+    void setGen2RandomDramNoise(bool enabled)    { gen2RandomDramNoise    = enabled; }
+    bool isGen2RandomLatch()        const { return gen2RandomLatch; }
+    bool isGen2RandomFloatingBus()  const { return gen2RandomFloatingBus; }
+    bool isGen2RandomScannerPhase() const { return gen2RandomScannerPhase; }
+    bool isGen2RandomDramNoise()    const { return gen2RandomDramNoise; }
+    void setGen2RandomPowerOn(bool enabled) {
+        gen2RandomLatch        = enabled;
+        gen2RandomFloatingBus  = enabled;
+        gen2RandomScannerPhase = enabled;
+        gen2RandomDramNoise    = enabled;
+    }
+    bool isGen2RandomPowerOn() const {
+        return gen2RandomLatch && gen2RandomFloatingBus
+            && gen2RandomScannerPhase && gen2RandomDramNoise;
+    }
 
     // P-LAB A1-SID Sound Card (MOS 6581/8580)
     pom1::SID& getSID() { return *sid; }
@@ -449,7 +477,7 @@ public:
     // /IRQ aggregator — see Memory::advanceCycles() for the wire-OR logic.
     // EmulationController calls this once at startup so peripherals can
     // pull /IRQ on the 6502 (TMS9918 vblank, 65C22 timers, 65C51 Rx, …).
-    // TMS9918 /INT is wired by default (cf. dev/SILICONBUGS.md Bug N°2);
+    // TMS9918 /INT is wired by default (cf. dev/Programming_TMS9918.md §18 Bug N°2);
     // polling-only programs keep working because they leave interrupts
     // masked (never CLI) or never set R1 bit 5.
     void setCpuForIrq(M6502* c) { cpuForIrq = c; }
@@ -507,7 +535,12 @@ private :
     bool oorStrictMode = false;       // true: enforce bounds (reads→$FF, writes dropped)
     bool systemRamNoiseOnReset = false; // see setSystemRamNoiseOnReset()
     bool hgrFramebufferAttached = false;  // GEN2 HGR card supplies RAM at $2000-$3FFF
-    bool gen2RandomPowerOn = true;        // Silicon Strict: random latch/phase/noise/DRAM at plug
+    // GEN2 HGR cold-boot fidelity — four independent knobs (Silicon Strict
+    // bundles all four ON; the SILICON STRICT inspector exposes each one).
+    bool gen2RandomLatch        = true;   // soft-switch latch random at cold plug
+    bool gen2RandomFloatingBus  = true;   // $C25x D6..D0 reads = xorshift32 noise
+    bool gen2RandomScannerPhase = true;   // vertical scanner cycle counter random
+    bool gen2RandomDramNoise    = true;   // 8 KB framebuffer DRAM mt19937 vs zeroed
     Gen2VideoScanner gen2Scanner;         // GEN2 release video address generator (floating bus)
     // GEN2 soft-switch journal — recording half (current video frame) and
     // published half (last completed frame). See gen2PublishedVideoEvents().

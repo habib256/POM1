@@ -1388,7 +1388,7 @@ void TMS9918::renderSprites(uint32_t* pixels, const Snapshot& s)
 //                 overlap, even when one or both sprites have color = 0).
 //                 Collision detection extends into the overscan zone
 //                 [-32, 288) to catch early-clock sprites colliding off
-//                 the visible screen (cf. dev/SILICONBUGS.md Bug N°4).
+//                 the visible screen (cf. dev/Programming_TMS9918.md §11 Bug N°4).
 //   bit 6 ($40) — 5th-sprite-on-scanline overflow.
 //   bits 0..4   — when bit 6 is latched, the SAT index of the 5th sprite.
 //                 Otherwise, the index of the last sprite the chip walked

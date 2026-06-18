@@ -119,7 +119,9 @@ public:
     // + MIX off, fixed xorshift seed, cycleCounter = 0. Called from the cold
     // plug path in Memory::setHgrFramebufferAttached. Implementation in
     // Gen2VideoScanner.cpp so <random> stays out of this header.
-    void applyPowerOnState(bool randomized, uint32_t seed);
+    void applyPowerOnState(bool randomizeLatch,
+                           bool randomizeScannerPhase,
+                           uint32_t seed);
 
     // ── HST0 — Bernie's H/V-blank flag (read back in D7 of a $C25x read) ──
     //

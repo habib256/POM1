@@ -36,8 +36,8 @@ public:
     // 256×192 image sits centred inside a 288×216 frame (12-line top/bottom,
     // 16-px left/right border bands — half of openMSX's 24/32 overscan to
     // give the active image more prominence in the Hardware → Graphic Card
-    // window). R7 lower 4 bits paints the border (cf. dev/SILICONBUGS.md,
-    // "border colour" overscan rendering).
+    // window). R7 lower 4 bits paints the border (cf. dev/Programming_TMS9918.md
+    // §27 "Text mode borders" and overscan rendering).
     static constexpr int kBorderTop    = 12;
     static constexpr int kBorderBottom = 12;
     static constexpr int kBorderLeft   = 16;
@@ -132,7 +132,7 @@ public:
     // until the program does CLI, so polling-only Nippur72 code is
     // unaffected. The toggle is kept so a hypothetical un-wired card can
     // be modelled with `setIrqStrapped(false)`.
-    // Cf. dev/SILICONBUGS.md Bug N°2.
+    // Cf. dev/Programming_TMS9918.md §18 Bug N°2.
     bool irqAsserted() const {
         if (!irqStrapped) return false;
         return (regs[1] & 0x20) && (statusReg & 0x80);
@@ -240,7 +240,7 @@ private:
     // Per-scanline progressive-raster helpers. Read state directly from
     // `vram` and `regs` (LIVE), so mid-frame register / VRAM changes only
     // affect lines crossed *after* the change — silicon-correct rasterisation
-    // (cf. dev/SILICONBUGS.md "rainbow demo" use cases).
+    // (cf. dev/Programming_TMS9918.md §17 "rainbow demo" use cases).
     void renderActiveLine(int line);
     void paintLeftRightBorderForActiveLine(int line);
     void paintTopBorder();
@@ -292,8 +292,8 @@ private:
     // not set, the index of the last sprite the chip walked). Bit-pattern
     // based (color=0 sprites still collide). Invoked from advanceCycles
     // every time the simulated raster crosses an active scanline boundary,
-    // so collision/5S latch silicon-correctly mid-frame (cf. dev/SILICONBUGS.md
-    // Bug N°5 / N°6 / N°10). Source-of-truth: openMSX SpriteChecker::checkSprites1.
+    // so collision/5S latch silicon-correctly mid-frame (cf. dev/Programming_TMS9918.md
+    // §12 / §13 / §12 Bug N°5 / N°6 / N°10). Source-of-truth: openMSX SpriteChecker::checkSprites1.
     void scanSpritesForLine(int line);
 
     // Legacy 1×/frame scan kept as a VBlank-edge fallback for the case where

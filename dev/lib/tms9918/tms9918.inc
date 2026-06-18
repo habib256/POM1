@@ -23,7 +23,7 @@ VDP_CTRL = $CC01        ; VDP register / address port (write twice = setup)
 ; VRAM access timing — silicon-strict back-to-back gating (hardened 40c).
 ;
 ; Real TMS9918A silicon opens a CPU access window only every ~6 µs in Mode I
-; with sprites active (cf. dev/SILICONBUGS.md Bug N°1). Phase alignment +
+; with sprites active (cf. dev/Programming_TMS9918.md §17 Bug N°1). Phase alignment +
 ; warm-NMOS drift can shrink the visible window past the original 8c margin
 ; — the May 2026 hardening ramp went 16c → 24c → 40c after Galaga sprite
 ; tables and LOGO turtle redraws kept showing artefacts at every previous
@@ -49,7 +49,7 @@ VDP_CTRL = $CC01        ; VDP register / address port (write twice = setup)
 ; ---------------------------------------------------------------------------
 ; Note: WRT_DATA_REG / WRT_DATA_VAL reference tms9918_pad12; callers using
 ; these macros must `.import tms9918_pad12` themselves (the patcher does
-; this automatically when injecting JSR tms9918_pad12 — see SILICONBUGS.md).
+; this automatically when injecting JSR tms9918_pad12 — see Programming_TMS9918.md §25).
 
 .macro WRT_DATA_REG
         STA     VDP_DATA        ; 4c
@@ -71,7 +71,7 @@ VDP_CTRL = $CC01        ; VDP register / address port (write twice = setup)
 ; (F flag) of the status register by reading $CC01 — simpler, portable,
 ; and independent of the I flag. The frame IRQ is indeed available
 ; (default POM1 `irqStrapped=true`): a `CLI` + handler at vector $FFFE
-; works, but polling remains recommended. See dev/SILICONBUGS.md Bug N°2.
+; works, but polling remains recommended. See dev/Programming_TMS9918.md §18 Bug N°2.
 ;
 ; Standard idiom:
 ;

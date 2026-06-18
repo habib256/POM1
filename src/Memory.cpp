@@ -389,12 +389,12 @@ uint8_t Memory::gen2SoftSwitchRead(uint16_t address)
 
     // HST0 in D7 (sampled at the access cycle). The low 7 bits are the
     // floating data bus, which Bernie's spec says software must NEVER rely on.
-    // With "GEN2 random power-on" ON (Silicon Strict default) we hand back
+    // With "Floating-bus noise" ON (Silicon Strict default) we hand back
     // xorshift32 garbage so that unreliability is impossible to miss —
     // Bernie's explicit recommendation, to "show rookie programmers they do
     // something they shouldn't." OFF, we expose the deterministic byte the
     // video scanner is presenting (reproducible — headless tests / debugging).
-    const uint8_t low7 = gen2RandomPowerOn
+    const uint8_t low7 = gen2RandomFloatingBus
         ? static_cast<uint8_t>(gen2Scanner.nextNoise() & 0x7F)
         : static_cast<uint8_t>(gen2Scanner.floatingBus(mem.data()) & 0x7F);
     return static_cast<uint8_t>((gen2Scanner.hst0At(emuCycle) << 7) | low7);
@@ -637,17 +637,19 @@ void Memory::setHgrFramebufferAttached(bool e)
     }
     if (e && !wasAttached) {
         // Cold plug: re-seed the soft-switch latch + xorshift noise + scanner
-        // phase + 8 KB framebuffer DRAM. With gen2RandomPowerOn ON (the Silicon
-        // Strict default) every piece is randomized so the card behaves like
-        // Bernie's release silicon — PLD POR indeterminate, DRAM bistable
-        // bytes, scanner starting somewhere in the middle of a frame. OFF,
-        // everything starts from the documented cold state (GRAPHICS+HIRES+
-        // PAGE1 latch, fixed xorshift seed, cycleCounter=0, zeroed DRAM) so
-        // headless tests and pre-Phase-2 demos stay reproducible.
+        // phase + 8 KB framebuffer DRAM. Each of the four aspects is gated by
+        // its own knob (Silicon Strict default = all four ON, so the card
+        // behaves like Bernie's release silicon: PLD POR indeterminate, DRAM
+        // bistable bytes, scanner starting somewhere in the middle of a
+        // frame). Any knob OFF restores the documented cold state for that
+        // aspect — useful for headless tests and pre-Phase-2 demos that need
+        // reproducible behaviour piece by piece.
         std::random_device rd;
         std::mt19937 gen(rd());
-        gen2Scanner.applyPowerOnState(gen2RandomPowerOn, gen());
-        if (gen2RandomPowerOn) {
+        gen2Scanner.applyPowerOnState(gen2RandomLatch,
+                                      gen2RandomScannerPhase,
+                                      gen());
+        if (gen2RandomDramNoise) {
             std::uniform_int_distribution<int> dist(0, 255);
             for (int i = 0x2000; i < 0x4000; ++i) {
                 mem[i] = static_cast<uint8_t>(dist(gen));
@@ -680,13 +682,13 @@ void Memory::resetMemory(void)
     }
     // GEN2 HGR carries its own 8 KB DRAM at $2000-$3FFF. Real Uncle Bernie
     // hardware shows bistable noise on cold boot (matches GT-6144 and the
-    // TMS9918 VRAM model). When the card is plugged AND gen2RandomPowerOn is
-    // on (Silicon Strict default), force noise on this region regardless of
-    // systemRamNoiseOnReset — HGR DRAM is independent of the Apple-1 main-RAM
-    // bank and never starts cleared on real silicon. Strict OFF zeros the
-    // bank instead — useful for headless tests / pre-Phase-2 demos.
+    // TMS9918 VRAM model). When the card is plugged AND gen2RandomDramNoise
+    // is on (Silicon Strict default), force noise on this region regardless
+    // of systemRamNoiseOnReset — HGR DRAM is independent of the Apple-1
+    // main-RAM bank and never starts cleared on real silicon. Knob OFF zeros
+    // the bank instead — useful for headless tests / pre-Phase-2 demos.
     if (hgrFramebufferAttached) {
-        if (gen2RandomPowerOn) {
+        if (gen2RandomDramNoise) {
             std::random_device rd;
             std::mt19937 gen(rd());
             std::uniform_int_distribution<int> dist(0, 255);
@@ -1813,7 +1815,7 @@ void Memory::advanceCycles(int cycles)
     // re-evaluated after every opcode, so a peripheral that lowers its
     // request between two CPU ticks naturally de-asserts /IRQ.
     //
-    // Sources currently wired (per dev/SILICONBUGS.md Bug N°2):
+    // Sources currently wired (per dev/Programming_TMS9918.md §18 Bug N°2):
     //   - TMS9918  : default = WIRED. The P-LAB card connects /INT → /IRQ
     //                (trace verified on real hardware by Parmigiani), so
     //                irqAsserted() = R1.5 (IRQ enable) AND status.7 (F flag);

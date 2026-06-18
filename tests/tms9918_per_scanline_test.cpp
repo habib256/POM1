@@ -2,7 +2,7 @@
 //
 // Pins the silicon-correct timing of statusReg bits 5/6/0..4 implemented
 // in TMS9918::scanSpritesForLine (port of openMSX SpriteChecker::checkSprites1
-// at line-major granularity). Cf. dev/SILICONBUGS.md Bug N°4/N°5/N°6/N°10/N°11.
+// at line-major granularity). Cf. dev/Programming_TMS9918.md §11/§12/§13/§21 (Bug N°4/N°5/N°6/N°10/N°11).
 //
 // Strict mode stays OFF for this test (the default after reset) so VDP
 // register/data writes land immediately without needing cushioning

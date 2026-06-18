@@ -6,7 +6,7 @@ Visual regression fixture for POM1's port of meisei `vdp.c:591-670`
 (2026-05) — the silicon-faithful sprite cloning algorithm by hap.
 6502 port of the BASIC test program from
 [openMSX issue #593](https://github.com/openMSX/openMSX/issues/593).
-See [`dev/SILICONBUGS.md`](../../SILICONBUGS.md) §9 for the full
+See [`dev/Programming_TMS9918.md`](../../../Programming_TMS9918.md#bug-n8-sprite-cloning) §15 (Bug N°8) for the full
 silicon spec.
 
 ## Background
@@ -105,7 +105,7 @@ If POM1 renders clones IN LEGAL Mode I (where it shouldn't),
 
 ## Cross-references
 
-- `dev/SILICONBUGS.md` §9 — Bug N°8 spec, POM1 implementation notes,
+- `dev/Programming_TMS9918.md` §15 (Bug N°8) — sprite cloning spec, POM1 implementation notes,
   thermal drift caveat
 - `dev/projects/tms9918_silbench/` T12 (SPRITE CLONING) — same test
   inside the silicon-strict validation suite (this demo is the

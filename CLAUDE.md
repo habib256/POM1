@@ -59,7 +59,7 @@ Claudio PARMIGIANI (P-LAB designer): on real hardware exactly ONE P-LAB card is 
 One `.cpp/.h` pair per card under `src/`. Bus windows + priorities are listed in the [Memory map](#memory-map) below; cycle/timing details live in each peripheral header. Card-specific docs:
 
 - **GEN2 HGR** beam-race renderer + soft-switches → `doc/GEN2_RELEASE.md`, `doc/GEN2_RELEASE_questions.md`. Pinned by `gen2_floatingbus_smoke`, `gen2_softswitch_msb_smoke`, `gen2_beam_race_smoke`, `gen2_horizontal_split_smoke`.
-- **TMS9918** sprite rules → `doc/TMS9918-SPRITE_BEST_PRACTICES.md`, `doc/TMS9918-SPRITE_INIT.md`, `dev/SILICONBUGS.md`.
+- **TMS9918** sprite rules → `doc/TMS9918-SPRITE_BEST_PRACTICES.md`, `doc/TMS9918-SPRITE_INIT.md`, `dev/Programming_TMS9918.md`.
 - **CodeTank** — P-LAB ROM **daughterboard** of the TMS9918 card (no standalone bus presence). `Memory::setCodeTankEnabled(true)` cascade-plugs TMS9918; `setTMS9918Enabled(false)` cascade-unplugs CodeTank. ROM library at `roms/codetank/` rebuilt by `tools/build_codetank_rom.py` (GAME4 frozen).
 - **SWTPC GT-6144 / PR-40** → `doc/SWTPC_GT-6144.md`, `doc/SWTPC_PR-40.md`.
 - **IEC daughterboard** — no new MMIO; piggybacks on microSD's VIA PORTB bits 2-6 (SN7406 inverters). Wired-AND open-collector in `IECBus`; virtual 1541 in `Drive1541` backed by 174 848 B `.d64` files. Enabling IEC cascade-enables microSD.

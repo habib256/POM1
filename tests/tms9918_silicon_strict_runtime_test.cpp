@@ -1,7 +1,7 @@
 // TMS9918 Silicon Strict (siliconStrictMode) runtime test — openMSX slot-table model.
 //
 // Pins the silicon-strict drop behaviour after the port from min-distance threshold
-// to openMSX's `slotsMsx1*` slot-table model (cf. dev/SILICONBUGS.md Bug N°1 and
+// to openMSX's `slotsMsx1*` slot-table model (cf. dev/Programming_TMS9918.md §17 Bug N°1 and
 // the comment block in TMS9918.cpp above the slot tables).
 //
 // What's covered:
@@ -19,7 +19,7 @@
 //
 // References:
 //   - TMS9918.cpp `slotsMsx1*` arrays (verbatim from openMSX VDPAccessSlots.cc)
-//   - dev/SILICONBUGS.md §2 "BUG N°1 — Timing VRAM (slot-table model)"
+//   - dev/Programming_TMS9918.md §17 "Bug N°1 — VRAM access timing (slot-table model)"
 
 #include "TMS9918.h"
 

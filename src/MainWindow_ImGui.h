@@ -342,6 +342,14 @@ private:
     // section. Gates the four GEN2 cold-boot uncertainties at once — see
     // Memory::setGen2RandomPowerOn for the full list.
     bool gen2RandomPowerOnEnabled = true;
+    // Individual sub-knobs mirrored from EmulationController (kept in sync by
+    // the SILICON STRICT inspector and the master button). The master flag
+    // above is left in place for the toolbar/preset path; the 4 below are
+    // what the inspector binds to.
+    bool gen2RandomLatchEnabled        = true;
+    bool gen2RandomFloatingBusEnabled  = true;
+    bool gen2RandomScannerPhaseEnabled = true;
+    bool gen2RandomDramNoiseEnabled    = true;
     // GEN2 HGR cosmetic monitor controls — per-window state, not silicon.
     int  gen2MonitorMode = 0;       // 0=Colour, 1=Green, 2=Amber, 3=Mono
     float gen2PhosphorPersistence = 0.0f;

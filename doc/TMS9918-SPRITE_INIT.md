@@ -151,7 +151,7 @@ Signature typique dans le log POM1 :
 
 1. **`vdp_display_off` autour de la boucle.** Désactiver le bit *blank* de VR1 (`REG1_BLANK_MASK = 0x40`) avant le burst, le rétablir après. En blank, POM1 bascule sur la table `slotsMsx1ScreenOff` (~107 slots / ligne) : la contention disparaît. C’est exactement la stratégie adoptée par les setups SAT de TMS_SilBench (tests T14 / T15) — l’étendre aux setups SPGT (motifs sprites) et à toute init de table volumineuse.
 
-2. **`BIT $CC01` (ou `LDA $CC01`) entre chaque écriture.** Macro `TMS_IO_DELAY()` côté nippur72 (`dev/apple1-videocard-lib/lib/utils.h:14`). Coût : 4 cycles CPU + un accès bus qui passe par la machine à slots du VDP, donc « cale » la boucle sur la cadence du chip. Effet collatéral : **efface F/5S/C et reset le flip-flop** (cf. *Bug N°9* dans `dev/SILICONBUGS.md`). À éviter quand le code surveille le statut, sûr partout ailleurs.
+2. **`BIT $CC01` (ou `LDA $CC01`) entre chaque écriture.** Macro `TMS_IO_DELAY()` côté nippur72 (`dev/apple1-videocard-lib/lib/utils.h:14`). Coût : 4 cycles CPU + un accès bus qui passe par la machine à slots du VDP, donc « cale » la boucle sur la cadence du chip. Effet collatéral : **efface F/5S/C et reset le flip-flop** (cf. *Bug N°9* dans `dev/Programming_TMS9918.md` §19). À éviter quand le code surveille le statut, sûr partout ailleurs.
 
 3. **Burst chunké en VBLANK.** Pattern complet : `tms_wait_end_of_frame()` puis ≤ 128 octets dans une boucle serrée, recommencer à la trame suivante au besoin. Référence : `dev/apple1-videocard-lib/lib/screen1.c:47-90` (scroll vertical), commentaire explicite sur la fenêtre strict-mode (~4 500 cycles de slots `slotsMsx1ScreenOff` disponibles par trame). Adapté aux gros transferts (scroll, refresh complet d’écran).
 
@@ -238,7 +238,7 @@ Une vidéo de validation enregistrée par **Claudio Parmigiani** (designer P‑L
 
 - Les correctifs accumulés passent sur silicium : scan ligne‑par‑ligne, terminateur **0xD0**, **Early Clock** en arithmétique signée, plafond **4 / ligne** avec **5S** *sticky*, collision en arithmétique pixel hors couleur.
 - Les échecs sont partagés : **Galaga**, les démos **Logo**, **Rogue**, **Mandelbrot** s’affichent de la même façon défectueuse sur silicium et sous POM1. Les correctifs doivent donc viser les sources cc65 / ASM (§ 6.4 ci‑dessus, § 9 pour l’init des données), **pas** l’émulateur.
-- **/INT câblé mais jamais asservi** : à l’oscilloscope la ligne reste à +5 V solide pendant Tetris, Plasma, Galaga — non parce qu’elle est déconnectée (Parmigiani a vérifié le câblage /INT → /IRQ), mais parce que ces programmes pollent `$CC01` sans jamais démasquer l’IRQ (`CLI`), donc /INT n’est jamais tiré bas durablement. Cohérent avec § 8 (pattern de polling `LDA $CC01 / BPL`) et `dev/SILICONBUGS.md` Bug N°2.
+- **/INT câblé mais jamais asservi** : à l’oscilloscope la ligne reste à +5 V solide pendant Tetris, Plasma, Galaga — non parce qu’elle est déconnectée (Parmigiani a vérifié le câblage /INT → /IRQ), mais parce que ces programmes pollent `$CC01` sans jamais démasquer l’IRQ (`CLI`), donc /INT n’est jamais tiré bas durablement. Cohérent avec § 8 (pattern de polling `LDA $CC01 / BPL`) et `dev/Programming_TMS9918.md` §18 (Bug N°2).
 
 ---
 
@@ -262,4 +262,4 @@ Référence : fil applefritter *RAM refresh cycle details* (Antonino Porcino + U
 - Fil **applefritter** « RAM refresh cycle details » (Porcino + Uncle Bernie) — voir § 12.
 - Validation silicium **Replica‑1 1:1** par **Claudio Parmigiani** (design P‑LAB), 12 mai 2026 — voir § 11.
 
-Pour le détail des bugs silicon et tests de régression dans POM1, voir aussi `dev/SILICONBUGS.md` et les tests `tms9918_*` listés dans `CLAUDE.md`.
+Pour le détail des bugs silicon et tests de régression dans POM1, voir aussi `dev/Programming_TMS9918.md` et les tests `tms9918_*` listés dans `CLAUDE.md`.

@@ -2446,36 +2446,156 @@ void MainWindow_ImGui::renderSiliconStrictWindow()
     // -------- 4a. GEN2 HGR Graphic Card ----------------------------------
     if (ImGui::CollapsingHeader("GEN2 HGR Graphic Card",
                                 ImGuiTreeNodeFlags_DefaultOpen)) {
-        ImGui::SeparatorText("Cold-boot");
-        bool gen2Flag = gen2RandomPowerOnEnabled;
-        if (ImGui::Checkbox("Random power-on state##gen2randompoweron",
-                            &gen2Flag)) {
-            gen2RandomPowerOnEnabled = gen2Flag;
-            emulation->setGen2RandomPowerOn(gen2Flag);
-            setStatusMessage(gen2Flag
-                ? "GEN2 random power-on ON - latch/phase/noise/DRAM random at next plug"
-                : "GEN2 random power-on OFF - documented cold state + zeroed DRAM",
+        // Resync UI flags from the controller so a master-button cycle, a
+        // preset switch or a snapshot restore are reflected without delay.
+        gen2RandomLatchEnabled        = emulation->isGen2RandomLatch();
+        gen2RandomFloatingBusEnabled  = emulation->isGen2RandomFloatingBus();
+        gen2RandomScannerPhaseEnabled = emulation->isGen2RandomScannerPhase();
+        gen2RandomDramNoiseEnabled    = emulation->isGen2RandomDramNoise();
+        gen2RandomPowerOnEnabled =
+              gen2RandomLatchEnabled
+           && gen2RandomFloatingBusEnabled
+           && gen2RandomScannerPhaseEnabled
+           && gen2RandomDramNoiseEnabled;
+
+        // ---- Master shortcut: bundle all four ON / OFF -------------------
+        ImGui::SeparatorText("Cold-boot — master shortcut");
+        bool gen2Master = gen2RandomPowerOnEnabled;
+        if (ImGui::Checkbox("Random power-on state (bundle all four)##gen2randompoweron",
+                            &gen2Master)) {
+            gen2RandomPowerOnEnabled       = gen2Master;
+            gen2RandomLatchEnabled         = gen2Master;
+            gen2RandomFloatingBusEnabled   = gen2Master;
+            gen2RandomScannerPhaseEnabled  = gen2Master;
+            gen2RandomDramNoiseEnabled     = gen2Master;
+            emulation->setGen2RandomPowerOn(gen2Master);
+            setStatusMessage(gen2Master
+                ? "GEN2 random power-on ON — latch/phase/noise/DRAM all random at next plug"
+                : "GEN2 random power-on OFF — documented cold state + zeroed DRAM",
                 3.0f);
         }
         if (ImGui::IsItemHovered()) {
             ImGui::SetTooltip(
-                "Bernie's release card: the PLD power-on reset is GENUINELY\n"
-                "indeterminate and the Apple-1 RESET line never touches the\n"
-                "soft-switch latch. One checkbox covers all four cold-boot\n"
-                "uncertainties:\n"
-                "  - $C250-$C257 soft-switch latch random at cold plug\n"
-                "    (vs documented GRAPHICS + HIRES + PAGE1 + MIX off)\n"
-                "  - Floating-bus xorshift32 noise on $C25x D6..D0 reads\n"
-                "    (vs deterministic byte the video scanner is fetching)\n"
-                "  - 8 KB framebuffer DRAM mt19937 fill at cold plug + F5\n"
-                "    (vs zeroed bank — useful for headless tests)\n"
-                "  - Vertical scanner phase random at cold plug\n"
-                "    (vs cycleCounter = 0 — reproducible frame timing)\n"
-                "\n"
-                "Default: ON for every preset except 'POM1 Fantasy' (same rule\n"
-                "as silicon-strict). Takes effect on the next cold plug of the\n"
-                "card — unplug + replug from the Hardware menu to re-roll.");
+                "Quick toggle for all four GEN2 cold-boot uncertainties. The\n"
+                "four checkboxes below let you mix-and-match (e.g. random\n"
+                "latch but zeroed DRAM for headless tests). This box reads\n"
+                "checked iff every sub-knob below is ON.\n\n"
+                "Takes effect on the next cold plug of the card — unplug +\n"
+                "replug from the Hardware menu to re-roll.");
         }
+
+        // ---- Sub-knobs (one per cold-boot uncertainty) -------------------
+        ImGui::SeparatorText("Cold-boot — individual knobs");
+
+        bool latchFlag = gen2RandomLatchEnabled;
+        if (ImGui::Checkbox("Soft-switch latch random##gen2latch", &latchFlag)) {
+            gen2RandomLatchEnabled = latchFlag;
+            emulation->setGen2RandomLatch(latchFlag);
+            setStatusMessage(latchFlag
+                ? "GEN2 latch ON — $C250-$C257 random at next cold plug"
+                : "GEN2 latch OFF — documented GRAPHICS + HIRES + PAGE1 + MIX off",
+                3.0f);
+        }
+        if (ImGui::IsItemHovered()) {
+            ImGui::SetTooltip(
+                "Soft-switch latch ($C250-$C257) random at cold plug vs\n"
+                "Bernie's documented cold pick (GRAPHICS + HIRES + PAGE1 +\n"
+                "MIX off). Real PLD power-on reset is genuinely indeterminate\n"
+                "and the Apple-1 RESET line never touches the latch — software\n"
+                "must initialise the switches itself. Turn OFF for pre-Phase-2\n"
+                "POM1 demos that assume the documented cold state.");
+        }
+
+        bool fbFlag = gen2RandomFloatingBusEnabled;
+        if (ImGui::Checkbox("Floating-bus noise on $C25x D6..D0##gen2fb", &fbFlag)) {
+            gen2RandomFloatingBusEnabled = fbFlag;
+            emulation->setGen2RandomFloatingBus(fbFlag);
+            setStatusMessage(fbFlag
+                ? "GEN2 floating-bus ON — $C25x low 7 bits = xorshift32 noise"
+                : "GEN2 floating-bus OFF — $C25x low 7 bits = byte the scanner is fetching",
+                3.0f);
+        }
+        if (ImGui::IsItemHovered()) {
+            ImGui::SetTooltip(
+                "Each $C250-$C257 read returns HST0 in D7. The low 7 bits are\n"
+                "the floating data bus — Bernie's spec says software must\n"
+                "NEVER rely on them. ON (default) hands back xorshift32 garbage\n"
+                "so any dependency surfaces immediately; OFF returns the\n"
+                "deterministic byte the video scanner is presenting at that\n"
+                "cycle (matches MAME apple2video.cpp scanner_address) — useful\n"
+                "for the headless gen2_floatingbus_smoke test.");
+        }
+
+        bool phaseFlag = gen2RandomScannerPhaseEnabled;
+        if (ImGui::Checkbox("Vertical scanner phase random##gen2phase", &phaseFlag)) {
+            gen2RandomScannerPhaseEnabled = phaseFlag;
+            emulation->setGen2RandomScannerPhase(phaseFlag);
+            setStatusMessage(phaseFlag
+                ? "GEN2 scanner phase ON — cycleCounter random at next cold plug"
+                : "GEN2 scanner phase OFF — cycleCounter resets to 0 at cold plug",
+                3.0f);
+        }
+        if (ImGui::IsItemHovered()) {
+            ImGui::SetTooltip(
+                "Vertical scanner phase (cycleCounter) is random at cold plug\n"
+                "vs reset to 0. Real silicon starts somewhere inside a frame\n"
+                "depending on plug timing; OFF gives reproducible frame timing\n"
+                "for beam-race tests (gen2_beam_race_smoke).");
+        }
+
+        bool dramFlag = gen2RandomDramNoiseEnabled;
+        if (ImGui::Checkbox("Framebuffer DRAM mt19937 noise##gen2dram", &dramFlag)) {
+            gen2RandomDramNoiseEnabled = dramFlag;
+            emulation->setGen2RandomDramNoise(dramFlag);
+            setStatusMessage(dramFlag
+                ? "GEN2 DRAM noise ON — 8 KB framebuffer seeded at cold plug + hard reset"
+                : "GEN2 DRAM noise OFF — 8 KB framebuffer zeroed",
+                3.0f);
+        }
+        if (ImGui::IsItemHovered()) {
+            ImGui::SetTooltip(
+                "8 KB framebuffer DRAM at $2000-$3FFF: mt19937 fill at cold\n"
+                "plug + hard reset (matches Bernie's release silicon — DRAM\n"
+                "bistable bytes) vs zeroed bank. OFF is useful for headless\n"
+                "tests and pre-Phase-2 demos that draw on top of a clean bank.");
+        }
+
+        // ---- Live state readout ------------------------------------------
+        if (graphicsCardEnabled) {
+            ImGui::SeparatorText("Live state");
+            const auto& ds = emulation->getGen2DisplayState();
+            ImGui::Text("Latch     : %s · %s · %s · %s",
+                        ds.textMode  ? "TEXT"   : "GRAPHICS",
+                        ds.hiRes     ? "HIRES"  : "LORES",
+                        ds.page2     ? "PAGE2"  : "PAGE1",
+                        ds.mixedMode ? "MIX ON" : "MIX OFF");
+            const uint64_t sc = emulation->getGen2ScannerCycle();
+            const uint64_t cpf = emulation->getGen2CyclesPerFrame();
+            const uint64_t fc = cpf ? (sc % cpf) : 0;
+            const uint64_t line = fc / 65;
+            const uint64_t hcnt = fc % 65;
+            ImGui::Text("Scanner   : abs cycle = %llu",
+                        (unsigned long long)sc);
+            ImGui::Text("Frame pos : line %llu / hcnt %llu  (%llu cycles/frame, %s)",
+                        (unsigned long long)line,
+                        (unsigned long long)hcnt,
+                        (unsigned long long)cpf,
+                        uiSnapshot.gen2FiftyHz ? "50 Hz" : "60 Hz");
+            const bool blanking = emulation->isGen2InBlanking();
+            ImGui::TextColored(blanking
+                                  ? ImVec4(0.55f, 0.95f, 0.55f, 1.0f)
+                                  : ImVec4(0.95f, 0.85f, 0.45f, 1.0f),
+                               "HST0      : %s",
+                               blanking ? "1 (blanking — software-safe window)"
+                                        : "0 (live scan)");
+        } else {
+            ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.6f, 0.6f, 0.6f, 1.0f));
+            ImGui::TextWrapped(
+                "(GEN2 HGR card unplugged — plug it from Hardware menu to see "
+                "the latch / scanner / HST0 live state.)");
+            ImGui::PopStyleColor();
+        }
+
         ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.7f, 0.7f, 0.7f, 1.0f));
         ImGui::TextWrapped(
             "Pinned by gen2_softswitch_msb_smoke + gen2_floatingbus_smoke "

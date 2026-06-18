@@ -173,7 +173,7 @@ jeux qui ne pollent que F, le clobber 5/6 est sans conséquence.
 L'IRQ frame est câblée par défaut (`irqStrapped=true`) ; `TMS9918::setIrqStrapped(false)`
 modélise au besoin une carte hypothétique non câblée. Si tu écris du code
 pour P-LAB stock, le plus simple reste de poller — pas de configuration
-nécessaire. Détails complets dans [`dev/SILICONBUGS.md`](../../SILICONBUGS.md) Bug N°2.
+nécessaire. Détails complets dans [`dev/Programming_TMS9918.md`](../../Programming_TMS9918.md#bug-n2-int-irq) §18 (Bug N°2).
 
 ## Mid-frame raster trap — 5th-sprite-overflow primitive (`tms9918_5strigger.asm`)
 
@@ -187,7 +187,7 @@ sprites invisibles à la ligne où on veut piéger le faisceau.
 C'est exactement la technique de Daniel Vik dans la démo MSX *Waves*,
 adaptée au polling pur — le TMS9918 n'a pas d'interruption ligne (seulement
 le /INT frame), donc le mid-frame se polle quel que soit le câblage de /INT
-(voir Bug N°2 dans `SILICONBUGS.md`).
+(voir Bug N°2 dans `Programming_TMS9918.md` §18).
 
 ### Public symbols
 
@@ -265,7 +265,7 @@ WRT_DATA_VAL #$AA  ; expands to: LDA #$AA / STA VDP_DATA / NOP
 Both leave ≥ 8 cycles between the previous `STA VDP_DATA` and the next,
 which matches the worst-case window in Graphic I + sprites. Use them in
 new code; for an existing project, the patching playbook
-([`dev/SILICONBUGS.md`](../../SILICONBUGS.md) §17 Annexe E) covers
+([`dev/Programming_TMS9918.md`](../../Programming_TMS9918.md) §25) covers
 mechanical NOP insertion across all back-to-back VDP stores. Reference
 implementation: `dev/projects/tms9918_galaga/TMS_Galaga.asm` carries
 ~219 NOPs across its sprite / HUD / title / help routines.

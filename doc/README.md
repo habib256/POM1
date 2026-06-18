@@ -27,7 +27,7 @@ What runs *inside* the emulated Apple 1 — the libraries and `dev/projects/` pr
 | [`dev/APPLE1DEV.md`](../dev/APPLE1DEV.md) | **Agent playbook** — decision tree (which card/language), I/O cheat sheet, deployment, gotchas, example index. Read this first for `dev/` work. |
 | [`dev/Programming_Apple1_ASM.md`](../dev/Programming_Apple1_ASM.md) | Detailed ASM guide (FR): 6502, cc65, text, HGR, TMS9918 (Sokoban + Connect 4 trilogies). |
 | [`dev/Programming_Apple1_C.md`](../dev/Programming_Apple1_C.md) | C guide (cc65): the shared Apple-1 text base + GEN2 HGR / TMS9918 graphics layers. |
-| [`dev/SILICONBUGS.md`](../dev/SILICONBUGS.md) | **TMS9918 vs real silicon** — strict VRAM timing, sprite quirks. *Mandatory before optimising any VRAM loop.* Referenced from ~10 source files. |
+| [`dev/Programming_TMS9918.md`](../dev/Programming_TMS9918.md) | **TMS9918 vs real silicon** — strict VRAM timing, sprite quirks, full programming guide. *Mandatory before optimising any VRAM loop.* Referenced from ~10 source files. |
 | [`dev/TODO6502.md`](../dev/TODO6502.md) | Open **6502-software** work / `dev/projects` backlog. |
 | `dev/lib/*/README.md` | Per-library docs — `apple1` (equates), `m6502` (math), `tms9918`, `hgr`, `gen2`/`gen2c`, `gfx` (shared geometry/numbers), `sid`, `sd`, `gt6144`, `a1io`, `wifi`, `games/*`, `text40`, `apple1c`, `telemetry`. |
 | `dev/projects/*/README.md` | Per-program docs — ~50 ready-to-run programs (one folder each; `dev/projects/_template/` is the starting point). |
@@ -43,7 +43,7 @@ What runs *inside* the emulated Apple 1 — the libraries and `dev/projects/` pr
 | [`GEN2_RELEASE_questions.md`](GEN2_RELEASE_questions.md) | GEN2 hardware spec Q&A (Q1–Q10, from Bernie's PDF). Referenced from `Gen2VideoScanner` / `GraphicsCard`. |
 | [`TELEMETRY_SIDE_CHANNEL.md`](TELEMETRY_SIDE_CHANNEL.md) | The `$C440-$C443` automated-testing bridge (protocol, lock-step, CLI). Referenced from `TelemetryPort`. |
 | [`TMS9918-SPRITE_INIT.md`](TMS9918-SPRITE_INIT.md) | Canonical TMS9918 sprite-init semantics. Referenced from `TMS9918.cpp`. |
-| [`TMS9918-SPRITE_BEST_PRACTICES.md`](TMS9918-SPRITE_BEST_PRACTICES.md) | Operational sprite checklist (complements SPRITE_INIT; timing → `SILICONBUGS.md`). |
+| [`TMS9918-SPRITE_BEST_PRACTICES.md`](TMS9918-SPRITE_BEST_PRACTICES.md) | Operational sprite checklist (complements SPRITE_INIT; timing → `dev/Programming_TMS9918.md`). |
 | [`TMS9918_Sprite_Emulation_FR.md`](TMS9918_Sprite_Emulation_FR.md) | French deep-dive: TMS9918 sprite-emulation problems & references. |
 | [`SWTPC_GT-6144.md`](SWTPC_GT-6144.md) · [`SWTPC_PR-40.md`](SWTPC_PR-40.md) | Research on the two 1976 SWTPC cards POM1 emulates. |
 | [`Apple1_Peripherals_Inventory_FR.md`](Apple1_Peripherals_Inventory_FR.md) | French deep-dive: complete Apple-I peripheral inventory. |

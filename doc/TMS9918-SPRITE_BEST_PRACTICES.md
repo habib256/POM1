@@ -8,7 +8,7 @@ CodeTank) **doit** appliquer pour éviter les classes de bugs déjà
 diagnostiquées sur silicium et sur POM1 silicon-strict.
 
 > **Référence canonique pour la sémantique** : `doc/TMS9918-SPRITE_INIT.md`.
-> **Référence canonique pour le timing** : `dev/SILICONBUGS.md` §1 et §17,
+> **Référence canonique pour le timing** : `dev/Programming_TMS9918.md` §17 et §25,
 > et `dev/lib/tms9918/tms9918_pad.asm`.
 > **Validation silicium réel** : Replica-1 1:1 Parmigiani, 2026-05-12 (vidéo).
 

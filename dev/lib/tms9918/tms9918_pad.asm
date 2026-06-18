@@ -18,7 +18,7 @@
 ; (call-site density 6.67 c/B), so back-to-back STA VDP_DATA pairs land with
 ; a 48c gap — well over the slot period at any phase alignment.
 ;
-; Reference: dev/SILICONBUGS.md Bug N°1 §2 (paranoid 40c contract).
+; Reference: dev/Programming_TMS9918.md §17 Bug N°1 (paranoid 40c contract).
 ; ============================================================================
 
 .include "tms9918.inc"

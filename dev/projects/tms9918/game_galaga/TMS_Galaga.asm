@@ -2602,7 +2602,7 @@ hide_slot_4:
 render_sprites:
         ; VBlank-gated SAT rebuild. The 2-step F-flag dance at entry
         ; (drain stale + wait fresh) puts us at the START of the chip's
-        ; vertical retrace (cf. dev/SILICONBUGS.md §16 F-flag timing fix,
+        ; vertical retrace (cf. dev/Programming_TMS9918.md §17 F-flag timing fix,
         ; corrected May 2026 in TMS9918::advanceCycles). The full 4554c
         ; (60Hz NTSC) VBlank budget is then available for the SAT
         ; rebuild; this leaves comfortable headroom even with the
