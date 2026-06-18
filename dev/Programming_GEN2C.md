@@ -9,6 +9,8 @@ into your cc65 program.
 
 | Doc | Use |
 |-----|-----|
+| [`Programming_C_Quickstart.md`](Programming_C_Quickstart.md) | **Beginner cheat sheet** — start here if you're new to cc65 on Apple-1 |
+| [`_template_gen2c/`](_template_gen2c/) | Copy-paste starter project for GEN2 colour graphics |
 | [`Programming_Apple1_C.md`](Programming_Apple1_C.md) | Base cc65 / Apple-1 text + keyboard layer |
 | [`Programming_GEN2.md`](Programming_GEN2.md) | 6502 assembly version of this guide |
 | [`dev/lib/gen2c/README.md`](lib/gen2c/README.md) | Full `gen2c` API reference + gotchas |

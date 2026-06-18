@@ -861,11 +861,17 @@ bench::BuildResult Pom1BenchHost::build(int target, const std::string& src, cons
                    R"("cSources":[{"path":"/dev/lib/apple1c/apple1io.c","name":"apple1io.c"}],)"
                    R"("asmSources":[{"path":"/dev/lib/apple1c/apple1io_asm.s","name":"apple1io_asm.s"}]})";
         } else if (cfgTag == "C-gen2") {
-            // gen2.c forwards to the card-neutral gfx layer (Axe 1), so its
-            // sources ride along — matching the desktop GEN2 C Bench command.
+            // The gen2c runtime is split into per-family modules (init/pixel/
+            // rect/text/sprites/geom/lores) so ld65 can dead-strip per family;
+            // the Bench links the lot since a sketch may call anything. gen2_geom
+            // forwards to the card-neutral gfx layer (Axis 1), so its sources
+            // ride along — matching the desktop GEN2 C Bench command.
             cfg  = "/dev/cc65/apple1_gen2_c.cfg";
             spec = R"({"cfg":"/dev/cc65/apple1_gen2_c.cfg","incDirs":["/dev/lib/gen2c","/dev/lib/apple1c","/dev/lib/gfx"],)"
-                   R"("cSources":[{"path":"/dev/lib/gen2c/gen2.c","name":"gen2.c"},{"path":"/dev/lib/apple1c/apple1io.c","name":"apple1io.c"},)"
+                   R"("cSources":[{"path":"/dev/lib/gen2c/gen2_init.c","name":"gen2_init.c"},{"path":"/dev/lib/gen2c/gen2_pixel.c","name":"gen2_pixel.c"},)"
+                   R"({"path":"/dev/lib/gen2c/gen2_rect.c","name":"gen2_rect.c"},{"path":"/dev/lib/gen2c/gen2_text.c","name":"gen2_text.c"},)"
+                   R"({"path":"/dev/lib/gen2c/gen2_sprites.c","name":"gen2_sprites.c"},{"path":"/dev/lib/gen2c/gen2_geom.c","name":"gen2_geom.c"},)"
+                   R"({"path":"/dev/lib/gen2c/gen2_lores.c","name":"gen2_lores.c"},{"path":"/dev/lib/apple1c/apple1io.c","name":"apple1io.c"},)"
                    R"({"path":"/dev/lib/gfx/gfx_draw.c","name":"gfx_draw.c"},{"path":"/dev/lib/gfx/gfx_num.c","name":"gfx_num.c"},{"path":"/dev/lib/gfx/gfx_backend_gen2.c","name":"gfx_backend_gen2.c"}],)"
                    R"("asmSources":[{"path":"/dev/lib/gen2c/gen2_blit.s","name":"gen2_blit.s"},{"path":"/dev/lib/apple1c/apple1io_asm.s","name":"apple1io_asm.s"}]})";
         } else {   // "C" = TMS9918 CodeTank ROM
@@ -989,21 +995,31 @@ bench::BuildResult Pom1BenchHost::build(int target, const std::string& src, cons
                 a1c = " -I " + bench::shellQuote(apple1cLib_) +
                       " " + bench::shellQuote(apple1cLib_ + "/apple1io.c") +
                       " " + bench::shellQuote(apple1cLib_ + "/apple1io_asm.s");
-            // Card-neutral gfx layer (dev/lib/gfx). Compiled FROM SOURCE here —
-            // same as gen2.c — so edits apply live; the GEN2 backend's gfx_plot
-            // resolves to gen2_hgr_plot (gen2.c is on the line). A sketch can
-            // #include "gfx.h" and call gfx_line/circle/ellipse/utoa. (Shipped
-            // builds under dev/projects use the pruning gfx-gen2.lib instead so
-            // an unused layer costs 0 bytes; a Bench binary is throwaway.)
+            // Card-neutral gfx layer (dev/lib/gfx). Compiled FROM SOURCE here so
+            // edits apply live; the GEN2 backend's gfx_plot resolves to
+            // gen2_hgr_plot (in gen2_pixel.c). A sketch can #include "gfx.h"
+            // and call gfx_line/circle/ellipse/utoa. (Shipped builds under
+            // dev/projects use the pruning gfx-gen2.lib instead so an unused
+            // layer costs 0 bytes; a Bench binary is throwaway.)
             std::string gfx;
             if (!gfxLib_.empty())
                 gfx = " -I " + bench::shellQuote(gfxLib_) +
                       " " + bench::shellQuote(gfxLib_ + "/gfx_draw.c") +
                       " " + bench::shellQuote(gfxLib_ + "/gfx_num.c") +
                       " " + bench::shellQuote(gfxLib_ + "/gfx_backend_gen2.c");
+            // The gen2c runtime is split into per-family modules so ld65 can
+            // dead-strip per family; the Bench links the lot since a sketch may
+            // call anything. Order is link-order irrelevant; kept stable for
+            // readability.
             cmd = bench::shellQuote(cl65_) + " -t none -Oirs -C " + bench::shellQuote(gen2Cfg_) +
                 " -I " + bench::shellQuote(gen2cLib_) + a1c + gfx + tele + " " + bench::shellQuote(srcC.string()) +
-                " " + bench::shellQuote(gen2cLib_ + "/gen2.c") +
+                " " + bench::shellQuote(gen2cLib_ + "/gen2_init.c") +
+                " " + bench::shellQuote(gen2cLib_ + "/gen2_pixel.c") +
+                " " + bench::shellQuote(gen2cLib_ + "/gen2_rect.c") +
+                " " + bench::shellQuote(gen2cLib_ + "/gen2_text.c") +
+                " " + bench::shellQuote(gen2cLib_ + "/gen2_sprites.c") +
+                " " + bench::shellQuote(gen2cLib_ + "/gen2_geom.c") +
+                " " + bench::shellQuote(gen2cLib_ + "/gen2_lores.c") +
                 " " + bench::shellQuote(gen2cLib_ + "/gen2_blit.s") +
                 " -o " + bench::shellQuote(binB.string());
         } else if (plainc) {

@@ -92,10 +92,21 @@ cost millions of cycles for one line of text):
 
 These read scanline base addresses from the `gen2_rowlo`/`gen2_rowhi` tables —
 and `plot`/`unplot` also the `gen2_col7`/`gen2_mask7` x-lookup tables — that
-`gen2.c` builds once. **Any project that compiles `gen2.c` must also assemble
-`gen2_blit.s`** (the per-project Makefile / emit script and the POM1 Bench
-already do). Parameters travel through a zero-page block (`#pragma zpsym`), so
-no cc65 stack juggling.
+`gen2_init.c` builds once. **Any project that compiles any of the per-family C
+modules (see `gen2c.mk`) must also assemble `gen2_blit.s`** (the per-project
+Makefile / emit script and the POM1 Bench already do). Parameters travel
+through a zero-page block (`#pragma zpsym`), so no cc65 stack juggling.
+
+### Per-family split (ld65 dead-strip)
+
+The runtime is split into 7 small `.c` modules (`gen2_init.c`, `gen2_pixel.c`,
+`gen2_rect.c`, `gen2_text.c`, `gen2_sprites.c`, `gen2_geom.c`, `gen2_lores.c`)
+plus a private `gen2_internal.h`. cc65's ld65 strips at the `.o`-file
+granularity, not per function — splitting per family lets a text-only demo skip
+the pixel + sprite + lores code. `gen2c.mk` exposes the matching `GEN2C_*_SRCS`
+variables so a project picks only what it calls. The new `dev/_template_gen2c/`
+shows a ~6 KB program using only CORE + TEXT + RECT — about 5 KB smaller than
+the same demo with `GEN2C_ALL_SRCS`.
 
 ## Minimal program
 
@@ -117,10 +128,14 @@ Build (run `6000R`):
 
 ```bash
 cl65 -t none -Oirs -C ../../cc65/apple1_gen2_c.cfg -I . -I ../apple1c \
-     hello.c gen2.c gen2_blit.s ../apple1c/apple1io.c ../apple1c/apple1io_asm.s -o hello.bin
+     hello.c gen2_init.c gen2_pixel.c gen2_rect.c gen2_text.c gen2_sprites.c \
+     gen2_geom.c gen2_lores.c gen2_blit.s \
+     ../apple1c/apple1io.c ../apple1c/apple1io_asm.s -o hello.bin
 ```
 
-Or just pick **GEN2 HGR (C)** in the *POM1 Bench* — it wires all of this for you.
+For minimal binaries, list only the families you actually call (see
+`gen2c.mk`). Or just pick **GEN2 HGR (C)** in the *POM1 Bench* — it wires
+everything for you.
 
 ## Two gotchas (read these)
 
@@ -130,8 +145,8 @@ Or just pick **GEN2 HGR (C)** in the *POM1 Bench* — it wires all of this for y
 2. **Don't clear the framebuffer with a naïve 16-bit pointer loop.**
    `for (i = 0; i < 8192; i++) p[i] = 0;` is ~20× slower (it drags in cc65's
    16-bit pointer-increment helper) and blanks the screen for seconds. Use
-   `gen2_hgr_clear()`, which fills a page at a time with an 8-bit index (see the
-   comment in `gen2.c`).
+   `gen2_hgr_clear()` (asm in `gen2_blit.s`), which fills a page at a time
+   with an 8-bit index.
 
 Full card reference (soft switches, HST0, beam timing): [`doc/GEN2_RELEASE.md`](../../../doc/GEN2_RELEASE.md).
 Full C guide: [`dev/Programming_Apple1_C.md`](../../Programming_Apple1_C.md).

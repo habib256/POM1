@@ -1,95 +1,95 @@
-# apple1-videocard-lib (cc65, CodeTank uniquement)
+# apple1-videocard-lib (cc65, CodeTank only)
 
 *[← POM1 documentation index](../../doc/README.md)*
 
-Port C **cc65** de la bibliothèque originale **[nippur72/apple1-videocard-lib](https://github.com/nippur72/apple1-videocard-lib)** par **Antonino "Nino" Porcino** (KickC). Toute amélioration sous cet arbre conserve l'attribution upstream (header dans chaque `.c` / `.h` / `.s`) — voir [Licence / attribution](#licence--attribution).
+C **cc65** port of the original **[nippur72/apple1-videocard-lib](https://github.com/nippur72/apple1-videocard-lib)** library by **Antonino "Nino" Porcino** (KickC). Every improvement under this tree preserves the upstream attribution (header in every `.c` / `.h` / `.s`) — see [License / attribution](#licence--attribution).
 
-Cible POM1 : **P-LAB CodeTank**, image ROM **16 Ko @ `$4000-$7FFF`**, démarrage **Wozmon `4000R`**, preset **7** (TMS9918 + CodeTank).
+POM1 target: **P-LAB CodeTank**, **16 KB ROM image @ `$4000-$7FFF`**, boot from **Wozmon `4000R`**, preset **7** (TMS9918 + CodeTank).
 
-## Carte mémoire (linker `cc65/codetank_c.cfg`)
+## Memory map (linker `cc65/codetank_c.cfg`)
 
-| Région   | Adresse        | Rôle |
-|----------|----------------|------|
-| ZP       | `$0000-$00FF`  | cc65 ZEROPAGE |
-| RAM basse | `$0280-$0FFF` | `.data` (run), pile C (`__STACKSTART__` = `$1000`) |
-| RAM haute | `$E000-$EFFF` | `.bss` — banque haute dual-bank (« zone BASIC » libre tant que le BASIC n’y est pas cartographié) |
-| ROM      | `$4000-$7FFF`  | `CODE`, `RODATA`, image load de `.data` |
+| Region    | Address        | Role |
+|-----------|----------------|------|
+| ZP        | `$0000-$00FF`  | cc65 ZEROPAGE |
+| Low RAM   | `$0280-$0FFF`  | `.data` (run), C stack (`__STACKSTART__` = `$1000`) |
+| High RAM  | `$E000-$EFFF`  | `.bss` — high dual-bank bank (the "BASIC area" stays free as long as BASIC is not mapped there) |
+| ROM       | `$4000-$7FFF`  | `CODE`, `RODATA`, load image for `.data` |
 
-Pas de variante programme en RAM `$0280` seul ; pas de cible Fantasy.
+No `$0280`-only program variant; no Fantasy target.
 
-## Prérequis
+## Requirements
 
-- [cc65](https://cc65.github.io/) (`cl65`, `ca65`, `ld65`) dans le `PATH`.
+- [cc65](https://cc65.github.io/) (`cl65`, `ca65`, `ld65`) on the `PATH`.
 
-## Build — toutes les démos
+## Build — all demos
 
 ```bash
 cd dev/apple1-videocard-lib
-make            # … + tetris, text_adventure, sprite_animals, chrome_dino (voir tableau)
+make            # … + tetris, text_adventure, sprite_animals, chrome_dino (see table)
 ```
 
-Ou une démo seule :
+Or a single demo:
 
 ```bash
 cd dev/apple1-videocard-lib/demos/hello_screen1
 make
 ```
 
-Sorties (chaque démo) : `software/Apple-1_TMS_CC65/<nom>.{bin,txt}` — image 16 Ko (padding `$FF`), hex Wozmon + `4000R`.
+Outputs (per demo): `software/Apple-1_TMS_CC65/<name>.{bin,txt}` — 16 KB image (`$FF` padding), Wozmon hex + `4000R`.
 
-| Démo (cc65) | Source upstream | Rôle |
-|-------------|-------------------|------|
-| `hello_screen1` | équivalent `hello-world` + TMS | Texte TMS écran 1 |
-| `hello_world` | `demos/hello-world` | Message Wozmon, sans TMS |
-| `checksum` | `demos/checksum` | Somme d’octets sur plage hex |
-| `graphs` | `demos/graphs` | Bitmap écran 2 : cercle + ellipse |
-| `demo_screen1` | `demos/demo/demo_screen1.h` | Démo texte + reverse + sprites + saisie |
-| `picshow` | `demos/picshow` | Version stub (Screen 2 + dessin, pas la grosse image upstream) |
-| `demo` | `demos/demo` | Menu minimal : `SCREEN1` / `SCREEN2` (autres options = stubs) |
-| `tetris` | `demos/tetris` | Tetris écran 1 (jeu complet) |
-| `text_adventure` | (inspiré Little Tower) | Aventure textuelle 32 colonnes |
-| `sprite_animals` | `dev/lib/tms9918/sprites_fauna.asm` | 4 sprites 16×16 Fauna fixes, taille native (sans MAG×2) |
-| `chrome_dino` | (clone T-Rex hors-ligne) | Mini-jeu saut + obstacles (dans la cible `make all`) |
-| `frogger_codetank` | (inspiré Frogger) | Grenouille en sprite matériel, eau animée — `make` local |
-| `rogue_c` | `dev/projects/tms9918_rogue/` | Port C partiel de TMS_Rogue — `make` local (voir `demos/rogue_c/README.md`) |
+| Demo (cc65) | Upstream source | Role |
+|-------------|-----------------|------|
+| `hello_screen1` | equivalent of `hello-world` + TMS | TMS text mode (screen 1) |
+| `hello_world` | `demos/hello-world` | Wozmon message, no TMS |
+| `checksum` | `demos/checksum` | Byte sum over a hex range |
+| `graphs` | `demos/graphs` | Screen 2 bitmap: circle + ellipse |
+| `demo_screen1` | `demos/demo/demo_screen1.h` | Text demo + reverse + sprites + input |
+| `picshow` | `demos/picshow` | Stub variant (Screen 2 + drawing, not the large upstream image) |
+| `demo` | `demos/demo` | Minimal menu: `SCREEN1` / `SCREEN2` (other options are stubs) |
+| `tetris` | `demos/tetris` | Screen-1 Tetris (full game) |
+| `text_adventure` | (inspired by Little Tower) | 32-column text adventure |
+| `sprite_animals` | `dev/lib/tms9918/sprites_fauna.asm` | 4 static 16×16 Fauna sprites at native size (no MAG×2) |
+| `chrome_dino` | (offline T-Rex clone) | Mini-game: jump + obstacles (part of the `make all` target) |
+| `frogger_codetank` | (inspired by Frogger) | Hardware-sprite frog, animated water — local `make` |
+| `rogue_c` | `dev/projects/tms9918_rogue/` | Partial C port of TMS_Rogue — local `make` (see `demos/rogue_c/README.md`) |
 
-Non portés ici (KickC / `.c` volumineux / matériel autre) : `anagram`, `tapemon`, `sdcard`, `montyr`, `life-src`, `iec`, `viatimer` (le dépôt amont reste la reference pour ces demos).
+Not ported here (KickC / big `.c` / other hardware): `anagram`, `tapemon`, `sdcard`, `montyr`, `life-src`, `iec`, `viatimer` (the upstream repo remains the reference for these demos).
 
-## Test dans POM1
+## Testing under POM1
 
 1. Preset **7** (Apple-1 + TMS9918 + CodeTank).
-2. **Fichier → Charger la mémoire** depuis `software/Apple-1_TMS_CC65/` (auto-branchement TMS9918), ou coller le `.txt`, puis **`4000R`**.
+2. **File → Load Memory** from `software/Apple-1_TMS_CC65/` (TMS9918 auto-plugs), or paste the `.txt`, then **`4000R`**.
 
 ## Modules `lib/`
 
-### Base (port direct upstream)
+### Base (direct upstream port)
 
-| Fichier        | Rôle |
+| File           | Role |
 |----------------|------|
-| `utils.h`      | Types `byte`/`word`, `PEEK`/`POKE`, délai I/O TMS |
-| `tms9918.*`    | Registres / VRAM (`$CC00`/`$CC01`) |
-| `apple1.*` + `apple1_asm.s` | Wozmon ECHO / PRBYTE / clavier |
-| `screen1.*`    | Mode texte TMS (écran 1) |
-| `screen2.*`    | Bitmap (écran 2) ; `screen2_ellipse_rect` en **C** (64 segments, tables cos/sin, segments = `screen2_line`) — plus de fichier `screen2_ellipse.s` requis |
-| `sprites.*`    | Attributs sprites (écriture directe VRAM) |
-| `interrupt.*`  | Stubs (pas d’IRQ TMS câblée dans ce port) |
-| `via.*`        | Symboles VIA `$A000` (microSD — inchangé vs upstream) |
-| `c64font.c`    | Police 8×8 (768 octets) dérivée de l’upstream |
+| `utils.h`      | `byte` / `word` types, `PEEK` / `POKE`, TMS I/O delay |
+| `tms9918.*`    | Registers / VRAM (`$CC00` / `$CC01`) |
+| `apple1.*` + `apple1_asm.s` | Wozmon ECHO / PRBYTE / keyboard |
+| `screen1.*`    | TMS text mode (screen 1) |
+| `screen2.*`    | Bitmap (screen 2); `screen2_ellipse_rect` in **C** (64 segments, cos/sin tables, segments via `screen2_line`) — no `screen2_ellipse.s` file required |
+| `sprites.*`    | Sprite attributes (direct VRAM write) |
+| `interrupt.*`  | Stubs (no wired TMS IRQ in this port) |
+| `via.*`        | VIA `$A000` symbols (microSD — unchanged vs upstream) |
+| `c64font.c`    | 8×8 font (768 bytes) derived from upstream |
 
-### Extensions POM1 (au-delà de l'upstream)
+### POM1 extensions (beyond upstream)
 
-Ces modules sont des ajouts spécifiques à ce port ; le code reste fidèle à l'esprit Nino (KickC) mais sort de l'arbre upstream. Chacun est opt-in via `SOURCES` du `Makefile` de la démo, donc les démos historiques continuent de compiler sans changement.
+These modules are port-specific additions; the code stays faithful to Nino's spirit (KickC) but leaves the upstream tree. Each is opt-in via the demo `Makefile`'s `SOURCES`, so the historical demos keep compiling unchanged.
 
-| Fichier             | Rôle |
+| File                | Role |
 |---------------------|------|
-| `tms_fast.s`        | **ca65 fast-paths VRAM** — `tms_fill_vram(addr,val,count)`, `tms_copy_to_vram_fast(src,size,dest)`, `tms_shadow_flush()`. Pas de `TMS_IO_DELAY` per-byte (cadence KickC upstream). |
-| `sprite_shadow.*`   | **Pattern shadow SAT** (cf. `doc/TMS9918-SPRITE_INIT.md §3.2 / §6) — 128 octets `tms_sprite_shadow[]` en RAM, API `tms_shadow_set/move/clear/set_terminator`, flush blocs en VBlank via `tms_shadow_flush`. |
-| `random.*`          | LFSR 8 bits (période 255) + Galois 16 bits (période 65535) — `rand8`, `rand16`, `srand8/16`, `rand8_below(limit)`. |
-| `vsync.*`           | Compteur de frames polling (`tms_wait_end_of_frame` → `vsync_frames`) — base temps ~60 Hz NTSC en l'absence de câblage IRQ TMS. |
-| `printlib.*`        | Helpers décimal / hex via pointeur de fonction `putc` ; wrappers Wozmon (`woz_print_dec_u8/u16`, `woz_print_hex_u16`) et écran 1 (`screen1_print_*`). |
-| `screen_ext.c`      | Helpers étendus opt-in : `screen1_putcharxy(x,y,c)`, `screen1_fill_color_attr(c)`, `screen2_clear()`, `screen2_filled_rect(x0,y0,x1,y1)`. Les deux derniers tirent `tms_fast.s`. |
+| `tms_fast.s`        | **ca65 VRAM fast-paths** — `tms_fill_vram(addr,val,count)`, `tms_copy_to_vram_fast(src,size,dest)`, `tms_shadow_flush()`. No per-byte `TMS_IO_DELAY` (upstream KickC cadence). |
+| `sprite_shadow.*`   | **SAT shadow pattern** (cf. `doc/TMS9918-SPRITE_INIT.md §3.2 / §6) — 128-byte `tms_sprite_shadow[]` in RAM, `tms_shadow_set/move/clear/set_terminator` API, burst flush at VBlank via `tms_shadow_flush`. |
+| `random.*`          | 8-bit LFSR (period 255) + 16-bit Galois (period 65535) — `rand8`, `rand16`, `srand8/16`, `rand8_below(limit)`. |
+| `vsync.*`           | Polling frame counter (`tms_wait_end_of_frame` → `vsync_frames`) — ~60 Hz NTSC time base in the absence of a wired TMS IRQ. |
+| `printlib.*`        | Decimal / hex helpers via `putc` function pointer; Wozmon wrappers (`woz_print_dec_u8/u16`, `woz_print_hex_u16`) and screen 1 (`screen1_print_*`). |
+| `screen_ext.c`      | Optional extended helpers: `screen1_putcharxy(x,y,c)`, `screen1_fill_color_attr(c)`, `screen2_clear()`, `screen2_filled_rect(x0,y0,x1,y1)`. The last two pull in `tms_fast.s`. |
 
-### Exemple d'opt-in dans un `Makefile` de démo
+### Example opt-in in a demo `Makefile`
 
 ```make
 SOURCES := main.c \
@@ -102,10 +102,10 @@ SOURCES := main.c \
     $(LIBDIR)/random.c
 ```
 
-Puis dans le `main.c` :
+Then in `main.c`:
 
 ```c
-#include "apple1_videocard_lib.h"   /* umbrella : tire tous les modules */
+#include "apple1_videocard_lib.h"   /* umbrella: pulls every module */
 
 void main(void) {
     tms_init_regs(SCREEN1_TABLE);
@@ -125,19 +125,19 @@ void main(void) {
             tms_shadow_set(i, &s);
         }
         tms_shadow_set_terminator(4);
-        vsync_wait();        /* attendre fin-de-frame */
-        tms_shadow_flush();  /* 128 B VRAM en burst, pas de tearing */
+        vsync_wait();        /* wait for end-of-frame */
+        tms_shadow_flush();  /* 128 B to VRAM in one burst, no tearing */
     }
 }
 ```
 
-## Licence / attribution
+## License / attribution
 
-Code **dérivé** du dépôt **[nippur72/apple1-videocard-lib](https://github.com/nippur72/apple1-videocard-lib)** par **Antonino "Nino" Porcino** (alias *nippur72* sur GitHub). À ma connaissance le dépôt upstream **ne déclare pas de licence** (vérifié 2026-05) : à ce titre la redistribution hors arbre POM1 doit obtenir l'accord de l'auteur. Chaque `.c` / `.h` / `.s` de `lib/` porte un en-tête d'attribution — **ne pas le retirer** dans les forks. Les modules d'extension ci-dessus sont des contributions POM1 et conservent la même mention par respect de la chaîne dérivée.
+Code **derived** from the **[nippur72/apple1-videocard-lib](https://github.com/nippur72/apple1-videocard-lib)** repository by **Antonino "Nino" Porcino** (aka *nippur72* on GitHub). To my knowledge the upstream repo **declares no license** (checked 2026-05): consequently any redistribution outside the POM1 tree requires the author's agreement. Every `.c` / `.h` / `.s` in `lib/` carries an attribution header — **do not remove it** in forks. The extension modules above are POM1 contributions and keep the same notice out of respect for the derived chain.
 
-## Écarts KickC → cc65
+## KickC → cc65 deltas
 
-- Pas de pragmas KickC, pas d’`asm { }` : routines sensibles en **`apple1_asm.s`** (ca65).
-- Pas de `static inline` cc65 : `tms_read_status` → macro.
-- `screen2_ellipse_rect` : **C** — approximation paramétrique (64 cordes) ; nécessite le **mode screen 2** (`tms_init_regs(SCREEN2_TABLE)` + `screen2_init_bitmap`…).
-- `install_interrupt` : stub — ne modifie pas la zone reset `$0000` sur Apple-1 réel.
+- No KickC pragmas, no `asm { }` blocks: sensitive routines live in **`apple1_asm.s`** (ca65).
+- No `static inline` in cc65: `tms_read_status` → macro.
+- `screen2_ellipse_rect`: **C** — parametric approximation (64 chords); requires **screen 2 mode** (`tms_init_regs(SCREEN2_TABLE)` + `screen2_init_bitmap`…).
+- `install_interrupt`: stub — does not touch the reset zone `$0000` on a real Apple-1.

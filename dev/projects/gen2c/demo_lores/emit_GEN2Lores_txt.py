@@ -4,7 +4,7 @@
 Comme GEN2Countdown, c'est un build C / cc65 : on appelle directement `cl65`
 avec la MEME invocation que le POM1 Bench pour la cible "Uncle Bernie GEN2 HGR
 (C)" — le linker config GEN2 C + le runtime gen2c + la base texte apple1c, le
-tout à $6000. Le mode LORES partage le même runtime gen2c (gen2.c gère HIRES et
+all at $6000. LORES mode shares the same gen2c runtime (per-family modules cover HIRES and
 LORES), donc la cible "GEN2 HGR" convient telle quelle.
 
 Sorties sous "software/Graphic HGR/":
@@ -42,7 +42,13 @@ def main() -> int:
         "-C", str(GEN2CFG),
         "-I", str(GEN2C), "-I", str(APPLE1C), "-I", str(GFX),
         str(PROJ / "GEN2Lores.c"),
-        str(GEN2C / "gen2.c"),
+        str(GEN2C / "gen2_init.c"),
+        str(GEN2C / "gen2_pixel.c"),
+        str(GEN2C / "gen2_rect.c"),
+        str(GEN2C / "gen2_text.c"),
+        str(GEN2C / "gen2_sprites.c"),
+        str(GEN2C / "gen2_geom.c"),
+        str(GEN2C / "gen2_lores.c"),
         str(GEN2C / "gen2_blit.s"),
         str(APPLE1C / "apple1io.c"),
         str(APPLE1C / "apple1io_asm.s"),

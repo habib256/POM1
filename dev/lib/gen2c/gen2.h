@@ -15,6 +15,73 @@
 #ifndef GEN2_H
 #define GEN2_H
 
+/* Pull in the Apple-1 text/keyboard base by default. The GEN2 card sits on
+ * top of the Apple-1 bus, so most programs need woz_puts / apple1_getkey too.
+ * #define GEN2_NO_APPLE1 before including gen2.h to skip (e.g. for a headless
+ * VRAM dumper that does no I/O). Pure preprocessor — zero bytes added. */
+#ifndef GEN2_NO_APPLE1
+#include "apple1c.h"
+#endif
+
+/* ===========================================================================
+ * Function chooser — pick the right helper for the job (no extra cost: the
+ * decision is yours, the code that ships is just the one you call).
+ * ---------------------------------------------------------------------------
+ * Text:
+ *   gen2_hgr_puts       — 16x16 doubled glyphs, OR-drawn (overdraws background)
+ *   gen2_hgr_puts_color — same, in one of VIOLET/GREEN/ORANGE/BLUE
+ *   gen2_hgr_puts8      — native 8x8, 3-4x denser, no doubling
+ *   gen2_hgr_putu       — unsigned decimal, OR-drawn, variable width
+ *   gen2_hgr_putu_field — unsigned decimal, FIXED-width HUD (erases its box)
+ *   gen2_hgr_puti       — signed decimal (-32768..32767)
+ *   gen2_hgr_putx       — hex (uppercase, no leading zeros)
+ *   gen2_hgr_putu8      — small-font decimal twin of putu
+ *
+ * Rectangle fill / clear (HIRES):
+ *   gen2_hgr_fill_pixrect    — fill pixels (x, y, w, h)         <- pick this
+ *   gen2_hgr_clear_pixrect   — erase pixels (x, y, w, h)        <- pick this
+ *   gen2_hgr_fill_rect       — byte-column fill (col0, ncols)   <- only if you
+ *                              already think in 7-px columns
+ *
+ * Sprite blit (HIRES):
+ *   gen2_hgr_blit            — pixel-precise position, ANY width  <- pick this
+ *   gen2_hgr_blit7           — 7-px column snap, BYTE-aligned src <- only when
+ *                              you control the sprite layout and want max speed
+ *
+ * Vector primitives forward to the shared dev/lib/gfx layer (link
+ * gfx-gen2.lib): gen2_hgr_line / rect / circle / ellipse + hline / vline.
+ *
+ * Double buffering:
+ *   gen2_set_draw_page(p)    — pick where the next draws WRITE (1 or 2)
+ *   gen2_show_page()         — flip the card to DISPLAY the current draw page
+ *   GEN2_FLIP_PAGE(p)        — macro: p = (p == 1) ? 2 : 1
+ * =========================================================================== */
+
+/* Zero-cost macro helpers (pure preprocessor, expand to nothing if unused). */
+#define GEN2_FLIP_PAGE(p)     ((p) = ((p) == 1u ? 2u : 1u))
+#define GEN2_PIX_TO_COL(x)    ((unsigned char)((x) / 7u))
+#define GEN2_PIX_TO_BIT(x)    ((unsigned char)((x) % 7u))
+/* (x, y, w, h, val) wrapper around gen2_hgr_fill_rect — restores the
+ * standard (x, y, w, h) argument order for byte-aligned fills. Still
+ * byte-granular: pixel x is rounded down to its byte column, pixel w is
+ * rounded UP to whole byte columns. Use gen2_hgr_fill_pixrect for pixel-
+ * precise white blocks. Zero cost (macro). */
+#define GEN2_HGR_FILL_RECT_XY(x, y, w, h, val) \
+    gen2_hgr_fill_rect((y), (h), GEN2_PIX_TO_COL(x), \
+                       (unsigned char)(((w) + 6u) / 7u), (val))
+
+/* "Init forgotten" trap (read once, save your day): every drawing function
+ * silently calls gen2_build_tables() so the column / bit / row tables come
+ * up on first use — but NONE of them set the card mode. If you call
+ * gen2_hgr_clear() / gen2_hgr_plot() / etc. BEFORE gen2_hgr_init() (or
+ * gen2_lores_init()), they happily write to the framebuffer, but the card
+ * is still in TEXT mode (or whatever state the latch held at cold plug) —
+ * and you see a blank screen. Same trap with gen2_set_draw_page(2):
+ * primitives now write to page 2, but the display is still page 1 (no flip
+ * until gen2_show_page()), and worse, the card mode hasn't moved. Pattern:
+ * **always** call gen2_hgr_init() (or gen2_lores_init()) once before any
+ * draw, even when you only mean to flip pages. */
+
 /* Soft switches — each macro is a READ that selects that state (the read IS the
  * toggle; the value read is meaningless). The result is stored into gen2_ss_sink
  * rather than cast to void: cc65 -Oirs ELIDES a volatile read whose value is

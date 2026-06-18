@@ -25,9 +25,13 @@ What runs *inside* the emulated Apple 1 — the libraries and `dev/projects/` pr
 | Doc | What |
 |---|---|
 | [`dev/APPLE1DEV.md`](../dev/APPLE1DEV.md) | **Agent playbook** — decision tree (which card/language), I/O cheat sheet, deployment, gotchas, example index. Read this first for `dev/` work. |
-| [`dev/Programming_Apple1_ASM.md`](../dev/Programming_Apple1_ASM.md) | Detailed ASM guide (FR): 6502, cc65, text, HGR, TMS9918 (Sokoban + Connect 4 trilogies). |
-| [`dev/Programming_Apple1_C.md`](../dev/Programming_Apple1_C.md) | C guide (cc65): the shared Apple-1 text base + GEN2 HGR / TMS9918 graphics layers. |
-| [`dev/Programming_TMS9918.md`](../dev/Programming_TMS9918.md) | **TMS9918 vs real silicon** — strict VRAM timing, sprite quirks, full programming guide. *Mandatory before optimising any VRAM loop.* Referenced from ~10 source files. |
+| [`dev/Programming_C_Quickstart.md`](../dev/Programming_C_Quickstart.md) | **C beginner cheat sheet** — 30-second decision, 3 side-by-side hello-worlds, function-chooser per library, top-10 pitfalls. Read this first for cc65 work. |
+| [`dev/Programming_Apple1_ASM.md`](../dev/Programming_Apple1_ASM.md) | Detailed ASM guide: 6502, cc65, text, HGR, TMS9918 (Sokoban + Connect 4 trilogies). |
+| [`dev/Programming_Apple1_C.md`](../dev/Programming_Apple1_C.md) | C guide (cc65): the shared Apple-1 text base. Card layers split into the four files below. |
+| [`dev/Programming_GEN2.md`](../dev/Programming_GEN2.md) | GEN2 HGR colour graphics in 6502 assembly. |
+| [`dev/Programming_GEN2C.md`](../dev/Programming_GEN2C.md) | GEN2 HGR colour graphics in C (`gen2c` runtime). |
+| [`dev/Programming_TMS9918.md`](../dev/Programming_TMS9918.md) | **TMS9918 vs real silicon** — strict VRAM timing, sprite quirks, full ASM programming guide. *Mandatory before optimising any VRAM loop.* Referenced from ~10 source files. |
+| [`dev/Programming_TMS9918C.md`](../dev/Programming_TMS9918C.md) | TMS9918 C runtime (`tms9918c`, nippur72 port) — the C-side surface plus the silicon-handling that leaks through. |
 | [`dev/TODO6502.md`](../dev/TODO6502.md) | Open **6502-software** work / `dev/projects` backlog. |
 | `dev/lib/*/README.md` | Per-library docs — `apple1` (equates), `m6502` (math), `tms9918`, `hgr`, `gen2`/`gen2c`, `gfx` (shared geometry/numbers), `sid`, `sd`, `gt6144`, `a1io`, `wifi`, `games/*`, `text40`, `apple1c`, `telemetry`. |
 | `dev/projects/*/README.md` | Per-program docs — ~50 ready-to-run programs (one folder each; `dev/projects/_template/` is the starting point). |

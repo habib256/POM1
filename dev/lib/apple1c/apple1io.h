@@ -35,4 +35,18 @@ unsigned char apple1_iskeypressed(void); /* nonzero (bit 7) if a key is waiting 
 unsigned char apple1_getkey(void);       /* block until a key, return key & 0x7F  */
 unsigned char apple1_readkey(void);      /* 0 if no key, else key & 0x7F (no wait) */
 
+/* ---- Beginner-friendly macros (zero-cost: preprocessor, no JSR added) ------
+ * String literals in C are `const char *`, but woz_puts() takes
+ * `const unsigned char *`. The wrappers below let beginner code write
+ *     puts_apple1("HELLO\r");
+ * without the cast (or having to learn what cc65 expects). They are macros,
+ * not functions, so they expand at the call site — no extra .o linked, no
+ * extra cycles, no "static defined but unused" warnings from cc65.
+ *
+ * The macros evaluate their argument exactly once, so passing a side-effect
+ * expression is safe (e.g. `puts_apple1(buf++)` is well-defined). */
+#define puts_apple1(s)     woz_puts((const unsigned char *)(s))
+#define println_apple1(s)  do { woz_puts((const unsigned char *)(s)); woz_putc('\r'); } while (0)
+#define getchar_apple1()   ((char)apple1_getkey())
+
 #endif /* APPLE1IO_H */

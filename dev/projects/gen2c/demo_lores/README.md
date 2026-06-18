@@ -1,25 +1,26 @@
-# GEN2Lores — démo couleur LORES 40×48 sur carte GEN2
+# GEN2Lores — LORES 40×48 colour demo on the GEN2 card
 
 *[← POM1 documentation index](../../../../doc/README.md)*
 
-Petit programme **C** pour la carte couleur GEN2 d'Uncle Bernie qui montre le
-mode **LORES** : une grille **40×48 de blocs 7px×4px, 16 vraies couleurs**.
-Contrairement au HIRES (où la couleur est un artefact NTSC du motif de bits),
-LORES a une **vraie couleur par bloc** — propre, sans demi-densité ni masque
-porteur. La démo :
+Tiny **C** program for Uncle Bernie's GEN2 colour card that exercises the
+**LORES** mode: a **40×48 grid of 7px×4px blocks, 16 true colours**. Unlike
+HIRES (where colour is an NTSC artifact of the bit pattern), LORES gives
+**real per-block colour** — clean, no half-density, no carrier mask. The
+demo:
 
-1. affiche les **16 couleurs** de la palette en barres verticales,
-2. trace un **cadre blanc** tout autour de l'écran,
-3. dessine une **diagonale arc-en-ciel** bloc par bloc,
+1. displays the **16 palette colours** as vertical bars,
+2. draws a **white frame** around the screen,
+3. paints a **rainbow diagonal** block by block,
 
-puis garde l'image en ré-assertant le mode LORES en boucle (instantané — ça
-couvre aussi le branchement *différé* de la carte par le DevBench).
+then holds the image by re-asserting LORES in a loop (instantaneous — this
+also covers the DevBench's *deferred* card plug).
 
-C'est un exemple minimal de la cible **« Uncle Bernie GEN2 HGR (C) »** : même
-runtime `dev/lib/gen2c` (`gen2.c` gère HIRES *et* LORES) + base texte
-`dev/lib/apple1c` (`woz_mon`). API LORES utilisée :
-`gen2_lores_init` / `gen2_lores_clear` / `gen2_lores_setblock` /
-`gen2_lores_hlin` / `gen2_lores_vlin` (voir `dev/lib/gen2c/gen2.h`).
+It's a minimal example of the **"Uncle Bernie GEN2 HGR (C)"** target: same
+gen2c runtime under `dev/lib/gen2c` (per-family modules, see `gen2c.mk`;
+LORES lives in `gen2_lores.c`) + the apple1c text base under `dev/lib/apple1c`
+(`woz_mon`). LORES API used: `gen2_lores_init` / `gen2_lores_clear` /
+`gen2_lores_setblock` / `gen2_lores_hlin` / `gen2_lores_vlin` (see
+`dev/lib/gen2c/gen2.h`).
 
 ## Build
 
@@ -28,26 +29,27 @@ make            # -> "software/Graphic HGR/GEN2Lores.bin" (+ .txt Woz-hex)
 make clean
 ```
 
-Le `Makefile` reprend l'invocation `cl65` du POM1 Bench : config linker
-`dev/cc65/apple1_gen2_c.cfg` (code + pile C en `$6000-$BEFF`, au-dessus des
-framebuffers GEN2) + `gen2.c` + `gen2_blit.s` + `apple1io.c`/`apple1io_asm.s`,
-origine `$6000`. La page LORES partage la RAM de la page texte (`$0400-$07FF`).
+The `Makefile` reuses the POM1 Bench `cl65` invocation: linker config
+`dev/cc65/apple1_gen2_c.cfg` (code + C stack at `$6000-$BEFF`, above the GEN2
+framebuffers) + the gen2c per-family modules + `gen2_blit.s` +
+`apple1io.c`/`apple1io_asm.s`, origin `$6000`. The LORES page shares RAM with
+the text page (`$0400-$07FF`).
 
 ## Run
 
-- **DevBench → POM1 Bench** : nouveau sketch, cible *C / GEN2 HGR*, coller le
-  source, compiler, uploader.
-- **CLI** :
+- **DevBench → POM1 Bench**: new sketch, target *C / GEN2 HGR*, paste the
+  source, compile, upload.
+- **CLI**:
   ```sh
   build/POM1 --preset 11 \
       --load 6000:"software/Graphic HGR/GEN2Lores.bin" --run 6000
   ```
-- Charger le `.bin`/`.txt` depuis le dossier `software/Graphic HGR/` auto-branche
-  la carte GEN2 et ouvre sa fenêtre (préréglage 12 = Apple-1 + GEN2 HGR).
+- Loading the `.bin`/`.txt` from `software/Graphic HGR/` auto-plugs the GEN2
+  card and opens its window (preset 12 = Apple-1 + GEN2 HGR).
 
-## Vérification headless
+## Headless verification
 
-Le rendu se contrôle sans GUI (mêmes pixels que l'affichage) :
+The rendering can be checked without the GUI (same pixels as the display):
 
 ```sh
 build/POM1 --preset 11 \
@@ -55,5 +57,5 @@ build/POM1 --preset 11 \
     --dump-after-cycles 2000000 --dump-gen2-frame /tmp/lores.png
 ```
 
-→ PNG 280×192 : 16 barres de couleurs nettes, cadre blanc (bords haut/bas/gauche/
-droite à 255,255,255), diagonale arc-en-ciel. Zéro artefact NTSC.
+→ PNG 280×192: 16 sharp colour bars, white frame (top/bottom/left/right
+edges at 255,255,255), rainbow diagonal. Zero NTSC artefact.

@@ -3,7 +3,7 @@
 sidecar Woz-hex.
 
 Même invocation cl65 que le POM1 Bench pour la cible "Uncle Bernie GEN2 HGR (C)"
-— le linker config GEN2 C + le runtime gen2c (gen2.c, qui gère le double
+— the GEN2 C linker config + the gen2c runtime (per-family modules, double
 buffering PAGE2) + la base texte apple1c, le tout à $6000.
 
 Sorties sous "software/Graphic HGR/":
@@ -41,7 +41,13 @@ def main() -> int:
         "-C", str(GEN2CFG),
         "-I", str(GEN2C), "-I", str(APPLE1C), "-I", str(GFX),
         str(PROJ / "GEN2DBuf.c"),
-        str(GEN2C / "gen2.c"),
+        str(GEN2C / "gen2_init.c"),
+        str(GEN2C / "gen2_pixel.c"),
+        str(GEN2C / "gen2_rect.c"),
+        str(GEN2C / "gen2_text.c"),
+        str(GEN2C / "gen2_sprites.c"),
+        str(GEN2C / "gen2_geom.c"),
+        str(GEN2C / "gen2_lores.c"),
         str(GEN2C / "gen2_blit.s"),
         str(APPLE1C / "apple1io.c"),
         str(APPLE1C / "apple1io_asm.s"),

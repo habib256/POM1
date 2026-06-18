@@ -4,8 +4,8 @@
  * One implementation of the binary->decimal / binary->hex conversion that was
  * previously written THREE times:
  *   - dev/lib/gen2c/gen2_blit.s  gen2_utoa   (asm, decimal)
- *   - dev/lib/gen2c/gen2.c       gen2_hgr_putx (hex builder, inline)
- *   - dev/apple1-videocard-lib/lib/printlib.c  pl_print_dec_* / pl_print_hex_*
+ *   - dev/lib/gen2c/gen2_text.c  gen2_hgr_putx (hex builder, inline)
+ *   - dev/lib/tms9918c/printlib.c  pl_print_dec_* / pl_print_hex_*
  *
  * These build a NUL-terminated string; drawing it is each card's job (the
  * text-positioning model differs — see gfx.h / README). Logic ported from

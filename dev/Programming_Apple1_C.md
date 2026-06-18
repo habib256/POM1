@@ -10,6 +10,10 @@ machine, press **Upload**. The Bench wires the toolchain, the linker config and
 the libraries for you. This guide is for when you want to understand or build by
 hand.
 
+**Brand-new to cc65 on Apple-1?** Read [`Programming_C_Quickstart.md`](Programming_C_Quickstart.md)
+first — it's a one-page cheat sheet with three side-by-side hello-worlds,
+function-chooser tables for each library, and the top-10 pitfalls.
+
 **Contents:** [Install](#1-install-cc65) · [Architecture](#2-architecture--one-text-base-two-graphics-layers) · [Your first program](#3-your-first-program) · [Text & keyboard](#4-text--keyboard-apple1c) · [Graphics cards](#5-graphics-cards--separate-guides) · [Memory budget](#6-memory-budget--the-1-gotcha) · [Gotchas](#7-gotchas)
 
 Card-specific guides: [`Programming_GEN2C.md`](Programming_GEN2C.md) (HGR) and [`Programming_TMS9918C.md`](Programming_TMS9918C.md).

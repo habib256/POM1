@@ -3,8 +3,8 @@
  *
  * Ported verbatim (sign conventions preserved) from the two card libraries it
  * replaces, so behaviour is identical to what each card shipped:
- *   - line / rect / circle  <- dev/lib/gen2c/gen2.c (gen2_hgr_line/rect/circle)
- *   - ellipse               <- dev/apple1-videocard-lib/lib/screen2.c
+ *   - line / rect / circle  <- dev/lib/gen2c/gen2_geom.c (gen2_hgr_line/rect/circle)
+ *   - ellipse               <- dev/lib/tms9918c/screen2.c
  * The ONLY change is that the per-pixel store and the screen extent are now
  * backend symbols (gfx_plot / gfx_hline / gfx_vline / gfx_width / gfx_height)
  * resolved at link time to whichever card the program links against.
