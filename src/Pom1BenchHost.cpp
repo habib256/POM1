@@ -1109,7 +1109,6 @@ void Pom1BenchHost::probe() const
                 flags += "-I " + bench::shellQuote(fs::absolute(e.path(), ec).string()) + " ";
         libFlags_ = flags;
     }
-    cl65_ = bench::whichExe("cl65");
     if (!devRoot.empty()) {
         // The TMS9918 C lib (ex-apple1-videocard-lib) now lives flat under dev/lib/tms9918c.
         const fs::path vroot = fs::path(devRoot) / "lib" / "tms9918c";
@@ -1117,7 +1116,6 @@ void Pom1BenchHost::probe() const
         const fs::path cfg = vroot / "cc65" / "codetank_c.cfg";
         if (fs::exists(cfg, ec)) codetankCfg_ = fs::absolute(cfg, ec).string();
     }
-    cl65Ok_ = !cl65_.empty() && !videocardLib_.empty() && !codetankCfg_.empty() && !gfxLib_.empty();
 
     // GEN2 HGR C: the gen2c lib + its cfg under dev/.
     if (!devRoot.empty()) {
@@ -1144,6 +1142,7 @@ void Pom1BenchHost::probe() const
         const fs::path gfx = fs::path(devRoot) / "lib" / "gfx";
         if (fs::exists(gfx, ec)) gfxLib_ = fs::absolute(gfx, ec).string();
     }
+    cl65Ok_ = !cl65_.empty() && !videocardLib_.empty() && !codetankCfg_.empty() && !gfxLib_.empty();
     gen2COk_  = !cl65_.empty() && !gen2cLib_.empty() && !gen2Cfg_.empty();
     plainCOk_ = !cl65_.empty() && !apple1cLib_.empty() && !plainCfg_.empty();
 #endif
@@ -1487,7 +1486,13 @@ bench::BuildResult Pom1BenchHost::build(int target, const std::string& src, cons
         if (!ready) {
             r.console = gen2c ? "cl65 / gen2c lib not found (needs dev/)\n"
                       : plainc ? "cl65 / apple1c lib not found (needs dev/)\n"
-                               : "cl65 / videocard-lib not found (needs dev/)\n";
+                               : "cl65 / tms9918c runtime not found (needs dev/lib/tms9918c + dev/lib/gfx)\n";
+            if (!cl65_.empty() && !devRoot_.empty()) {
+                if (videocardLib_.empty() || codetankCfg_.empty())
+                    r.console += "  missing: dev/lib/tms9918c (or cc65/codetank_c.cfg)\n";
+                if (gfxLib_.empty())
+                    r.console += "  missing: dev/lib/gfx\n";
+            }
             r.console += "The dev/ source tree must be present (clone the repo; release bundles omit dev/).\n";
             r.console += kCc65InstallHint;
             r.status = "cc65 cl65 missing"; return r;
@@ -1946,6 +1951,9 @@ std::string Pom1BenchHost::toolchainReport() const
     s += line("ca65 (assembler)", ca65_);
     s += line("ld65 (linker)   ", ld65_);
     s += line("cl65 (C driver) ", cl65_);
+    s += line("tms9918c lib     ", videocardLib_);
+    s += line("gfx lib          ", gfxLib_);
+    s += line("codetank_c.cfg   ", codetankCfg_);
     if (const char* home = std::getenv("CC65_HOME"); home && *home)
         s += std::string("CC65_HOME       : ") + home + "\n";
     s += std::string("dev/ tree        : ") +
