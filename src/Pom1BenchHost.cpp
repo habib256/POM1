@@ -595,10 +595,17 @@ static std::filesystem::path resolveRepoRelativePath(const std::filesystem::path
     std::error_code ec;
     fs::path p(rel);
     if (p.is_absolute() && fs::exists(p, ec)) return fs::weakly_canonical(p, ec);
-    for (const fs::path& root : { baseDir, baseDir.parent_path(), baseDir.parent_path().parent_path() }) {
-        if (root.empty()) continue;
+    // Local sidecar first (e.g. "apple1_sok_hgr.cfg" next to the .asm).
+    {
+        const fs::path cand = baseDir / p;
+        if (fs::exists(cand, ec)) return fs::weakly_canonical(cand, ec);
+    }
+    // Walk up toward the repo root (sidecars often use repo-relative paths
+    // like "sketchs/gen2/foo/apple1_sok_hgr.cfg" or "dev/lib/.../foo.cfg").
+    for (fs::path root = baseDir; !root.empty(); root = root.parent_path()) {
         const fs::path cand = root / p;
         if (fs::exists(cand, ec)) return fs::weakly_canonical(cand, ec);
+        if (root == root.parent_path()) break;
     }
     return {};
 }
