@@ -11,8 +11,8 @@
 ;
 ; Or just: python3 software/tms9918/emit_TMS_Galaga_txt.py
 ;
-; Load via File > Load Memory (TMS_Galaga.txt), then 280R. The TMS9918
-; card must be enabled (Hardware menu).
+; DevBench flashes CODETANKDEV lower bank and starts at 4000R.
+; The shipped menu-bank TMS_Galaga.txt starts at 4100R.
 ;
 ; Display: TMS9918 Graphics I, 16x16 sprites, no magnify (R1 = $C2).
 ;   Sprite Attribute Table at $1B00 (R5=$36).
