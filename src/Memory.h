@@ -102,7 +102,7 @@ public:
     // enabled, and the video scanner advances from advanceCycles(). On every
     // off→on transition the page-1 framebuffer is seeded with mt19937 noise
     // to mimic real DRAM bistable power-on state (see resetMemory() and
-    // dev/Programming_TMS9918.md §27 VRAM power-on init); the soft-switch journal resets on any transition.
+    // sketchs/doc/Programming_TMS9918.md §27 VRAM power-on init); the soft-switch journal resets on any transition.
     void setHgrFramebufferAttached(bool e);
     bool isHgrFramebufferAttached(void) const { return hgrFramebufferAttached; }
 
@@ -477,7 +477,7 @@ public:
     // /IRQ aggregator — see Memory::advanceCycles() for the wire-OR logic.
     // EmulationController calls this once at startup so peripherals can
     // pull /IRQ on the 6502 (TMS9918 vblank, 65C22 timers, 65C51 Rx, …).
-    // TMS9918 /INT is wired by default (cf. dev/Programming_TMS9918.md §18 Bug N°2);
+    // TMS9918 /INT is wired by default (cf. sketchs/doc/Programming_TMS9918.md §18 Bug N°2);
     // polling-only programs keep working because they leave interrupts
     // masked (never CLI) or never set R1 bit 5.
     void setCpuForIrq(M6502* c) { cpuForIrq = c; }

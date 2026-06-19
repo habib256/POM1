@@ -66,23 +66,18 @@ the WOZ Monitor.
 - **C / TMS9918**: the TMS9918 C runtime under **`dev/lib/tms9918c/`**
   (`screen1.h` / `tms9918.h`).
 
-### Starter Files
+### Starter files & sketch layout
 
-The built-in *New* dialog still embeds the default starters in `src/Pom1BenchHost.cpp`.
-Editable copies live under `dev/sketchs/`, grouped by DevBench machine profile first,
-then by source type:
-
-- `dev/sketchs/apple1/{asm,c,hex,raw}/`
-- `dev/sketchs/tms9918/{asm,c}/`
-- `dev/sketchs/gen2/{asm,c}/`
+The built-in *New* dialog embeds default starters in `src/Pom1BenchHost.cpp`.
+Editable copies, sidecar metadata, and copy-me templates → [`SKETCHS.md`](SKETCHS.md).
 
 Opening a file from DevBench auto-selects the matching environment: `.c` files use
-the C target, `.s`/`.asm` files use the assembly target, paths containing `tms9918`
-or `codetank` select the TMS9918 profile, paths containing `gen2` or `hgr` select
-GEN2, and everything else defaults to Apple-1 text.
+the C target, `.s`/`.asm` files use the assembly target, paths under `sketchs/tms9918`
+select the TMS9918 profile, paths under `sketchs/gen2` select GEN2, and everything
+else defaults to Apple-1 text.
 
-ASM guide → [`dev/Programming_Apple1_ASM.md`](../dev/Programming_Apple1_ASM.md) ·
-C guide → [`dev/Programming_Apple1_C.md`](../dev/Programming_Apple1_C.md).
+ASM guide → [`Programming_Apple1_ASM.md`](../sketchs/doc/Programming_Apple1_ASM.md) ·
+C guide → [`Programming_Apple1_C.md`](../sketchs/doc/Programming_Apple1_C.md).
 
 ---
 
@@ -135,7 +130,7 @@ defaults to **Wozmon hex** when it can't find cc65):
   range error, segment overflow, unknown identifier).
 - **Out of room?** The Apple-1 text C target (`apple1_c.cfg`) gives C only
   ~2.75 KB (`$0300-$0FFF`); a `ld65: Range error` there means switch to a roomier
-  target (GEN2 = ~24 KB) — see [`Programming_Apple1_C.md`](../dev/Programming_Apple1_C.md) §7.
+  target (GEN2 = ~24 KB) — see [`Programming_Apple1_C.md`](../sketchs/doc/Programming_Apple1_C.md) §7.
 
 The Bench module is portable (`bench/`); POM1 wires the targets above in
 `src/Pom1BenchHost.cpp` (`kP1Targets[]`).

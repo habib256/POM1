@@ -1,0 +1,6 @@
+{
+  "profile": "gen2",
+  "language": "asm",
+  "cfg": "sketchs/gen2/demo_hgr_mire/apple1_gen2.cfg",
+  "dualBank": true
+}

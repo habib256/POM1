@@ -26,7 +26,7 @@ No `$0280`-only program variant; no Fantasy target.
 Each demo carries its own `Makefile`. Build one:
 
 ```bash
-make -C dev/projects/tms9918c/demo_hello_world
+make -C sketchs/tms9918/demo_hello_world
 ```
 
 Or build every project at once via the CI gate (it globs `*/*/Makefile`, so all
@@ -80,7 +80,7 @@ These modules are port-specific additions; the code stays faithful to Nino's spi
 | File                | Role |
 |---------------------|------|
 | `tms_fast.s`        | **ca65 VRAM fast-paths** — `tms_fill_vram(addr,val,count)`, `tms_copy_to_vram_fast(src,size,dest)`, `tms_shadow_flush()`. No per-byte `TMS_IO_DELAY` (upstream KickC cadence). |
-| `sprite_shadow.*`   | **SAT shadow pattern** (cf. `doc/TMS9918-SPRITE_INIT.md §3.2 / §6) — 128-byte `tms_sprite_shadow[]` in RAM, `tms_shadow_set/move/clear/set_terminator` API, burst flush at VBlank via `tms_shadow_flush`. |
+| `sprite_shadow.*`   | **SAT shadow pattern** (cf. `sketchs/doc/TMS9918-SPRITE_INIT.md §3.2 / §6) — 128-byte `tms_sprite_shadow[]` in RAM, `tms_shadow_set/move/clear/set_terminator` API, burst flush at VBlank via `tms_shadow_flush`. |
 | `random.*`          | 8-bit LFSR (period 255) + 16-bit Galois (period 65535) — `rand8`, `rand16`, `srand8/16`, `rand8_below(limit)`. |
 | `vsync.*`           | Polling frame counter (`tms_wait_end_of_frame` → `vsync_frames`) — ~60 Hz NTSC time base in the absence of a wired TMS IRQ. |
 | `printlib.*`        | Decimal / hex helpers via `putc` function pointer; Wozmon wrappers (`woz_print_dec_u8/u16`, `woz_print_hex_u16`) and screen 1 (`screen1_print_*`). |

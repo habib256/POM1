@@ -174,7 +174,7 @@ The frame IRQ is strapped by default (`irqStrapped=true`); use
 `TMS9918::setIrqStrapped(false)` to model a hypothetical unstrapped card.
 For code targeting stock P-LAB, polling is the simplest path — no
 configuration needed. Full details in
-[`dev/Programming_TMS9918.md`](../../Programming_TMS9918.md#bug-n2-int-irq) §18 (Bug N°2).
+[`sketchs/doc/Programming_TMS9918.md`](../../sketchs/doc/Programming_TMS9918.md#bug-n2-int-irq) §18 (Bug N°2).
 
 ## Mid-frame raster trap — 5th-sprite-overflow primitive (`tms9918_5strigger.asm`)
 
@@ -265,9 +265,9 @@ Both append a 12-cycle pad (a 4 + 12 + 4 = 20c gap between back-to-back
 `STA VDP_DATA`), comfortably above the worst-case window in Graphic I +
 sprites. Callers must `.import tms9918_pad12`. Use them in
 new code; for an existing project, the patching playbook
-([`dev/Programming_TMS9918.md`](../../Programming_TMS9918.md) §25) covers
+([`sketchs/doc/Programming_TMS9918.md`](../../sketchs/doc/Programming_TMS9918.md) §25) covers
 mechanical NOP insertion across all back-to-back VDP stores. Reference
-implementation: `dev/projects/tms9918/game_galaga/TMS_Galaga.asm` carries
+implementation: `sketchs/tms9918/game_galaga/TMS_Galaga.asm` carries
 ~219 NOPs across its sprite / HUD / title / help routines.
 
 The macros only matter when the program writes back-to-back during
@@ -293,7 +293,7 @@ without any padding:
 ;                STA→STA gap = INY + BNE + LDA = 2 + 3 + 5 = 10 c (3.3× floor)
 ```
 
-Reference implementation: `dev/projects/tms9918/demo_plasma/TMS_Plasma.asm`'s
+Reference implementation: `sketchs/tms9918/demo_plasma/TMS_Plasma.asm`'s
 `render_frame` and `upload_patterns` deliberately drop `JSR
 tms9918_pad12` in the hot path, taking the demo from ~22 fps to ~60 fps
 without dropping any writes. The lib's `init_vdp_g1` / `vdp_set_write`

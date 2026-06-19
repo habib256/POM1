@@ -4,7 +4,7 @@ Architecture / invariants / gotchas for the **emulator side** of POM1. User walk
 
 **Contents:** [Overview](#project-overview) · [Build](#build--run) · [Architecture](#architecture) · [Invariants](#invariants--gotchas) · [Memory map](#memory-map) · [Testing](#testing) · [Version bump](#version-string-locations)
 
-- Apple 1 software (BASIC, SID tunes, microSD shell tools, games) → `dev/APPLE1DEV.md` + `dev/Programming_Apple1_ASM.md`.
+- Apple 1 software (BASIC, SID tunes, microSD shell tools, games) → `sketchs/doc/APPLE1DEV.md` + `sketchs/doc/Programming_Apple1_ASM.md`.
 - CLI flags → [`doc/CLI.md`](doc/CLI.md) (impl: `CliDispatcher.cpp`).
 - DevBench / cc65 details → [`doc/DEVBENCH.md`](doc/DEVBENCH.md) + [`doc/CC65_WASM.md`](doc/CC65_WASM.md).
 - GEN2 HGR card → [`doc/GEN2_RELEASE.md`](doc/GEN2_RELEASE.md).
@@ -59,7 +59,7 @@ Claudio PARMIGIANI (P-LAB designer): on real hardware exactly ONE P-LAB card is 
 One `.cpp/.h` pair per card under `src/`. Bus windows + priorities are listed in the [Memory map](#memory-map) below; cycle/timing details live in each peripheral header. Card-specific docs:
 
 - **GEN2 HGR** beam-race renderer + soft-switches → `doc/GEN2_RELEASE.md`, `doc/GEN2_RELEASE_questions.md`. Pinned by `gen2_floatingbus_smoke`, `gen2_softswitch_msb_smoke`, `gen2_beam_race_smoke`, `gen2_horizontal_split_smoke`.
-- **TMS9918** sprite rules → `doc/TMS9918-SPRITE_BEST_PRACTICES.md`, `doc/TMS9918-SPRITE_INIT.md`, `dev/Programming_TMS9918.md`.
+- **TMS9918** sprite rules → `sketchs/doc/TMS9918-SPRITE_BEST_PRACTICES.md`, `sketchs/doc/TMS9918-SPRITE_INIT.md`, `sketchs/doc/Programming_TMS9918.md`.
 - **CodeTank** — P-LAB ROM **daughterboard** of the TMS9918 card (no standalone bus presence). `Memory::setCodeTankEnabled(true)` cascade-plugs TMS9918; `setTMS9918Enabled(false)` cascade-unplugs CodeTank. ROM library at `roms/codetank/` rebuilt by `tools/build_codetank_rom.py` (GAME4 frozen).
 - **SWTPC GT-6144 / PR-40** → `doc/SWTPC_GT-6144.md`, `doc/SWTPC_PR-40.md`.
 - **IEC daughterboard** — no new MMIO; piggybacks on microSD's VIA PORTB bits 2-6 (SN7406 inverters). Wired-AND open-collector in `IECBus`; virtual 1541 in `Drive1541` backed by 174 848 B `.d64` files. Enabling IEC cascade-enables microSD.

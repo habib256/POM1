@@ -4,7 +4,7 @@
 
 Equates + initialisation + note-trigger helpers for the P-LAB A1-SID
 (MOS 6581 / 8580 at `$C800-$CFFF`). Replaces the inline-everywhere
-register storage you see in `dev/projects/plab/sid_piano/` and unblocks
+register storage you see in `sketchs/apple1/sid_piano/` and unblocks
 jingles + SFX in any future game.
 
 ## Files

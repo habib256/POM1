@@ -2,7 +2,7 @@
 """
 silicon_strict_patch.py — insert JSR-based padding into a 6502 .asm so back-
 to-back TMS9918 VDP stores respect the silicon-strict access window of
-12 cycles (cf. dev/Programming_TMS9918.md §17 Bug N°1).
+12 cycles (cf. sketchs/doc/Programming_TMS9918.md §17 Bug N°1).
 
 Since the TMS9918 timing model migrated from a 40c min-distance threshold
 to the openMSX slot-table port (May 2026), the silicon worst-case in
@@ -15,7 +15,7 @@ Idempotent: re-running on an already-patched file leaves it unchanged. Old
 v1 markers (NOPs), v2-pad16 markers, v2-pad24 markers and v2-pad40 markers
 are all stripped before re-insertion of the v3-pad12 form.
 
-Rules applied (per dev/Programming_TMS9918.md §25):
+Rules applied (per sketchs/doc/Programming_TMS9918.md §25):
 
     A — ST? VDP_*                 / ST? VDP_*    → 1 JSR tms9918_pad12 between
                                                    gap = 4 + 12 + 4 = 20c

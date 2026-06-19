@@ -134,5 +134,5 @@ In your project Makefile:
     LIB := -I ../../lib/apple1
 
 Validation: every routine here is exercised by shipping projects under
-`dev/projects/apple1/` (e.g. `game_sokoban`, `game_chess`) and by
+`sketchs/apple1/` (e.g. `game_sokoban`, `game_chess`) and by
 `tools/test_*.py` smoke harnesses.

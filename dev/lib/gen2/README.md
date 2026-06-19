@@ -15,7 +15,7 @@ support.) The C runtime for the same card is in [`../gen2c/`](../gen2c/).
   `doc/GEN2_RELEASE_questions.md`; developer guide `doc/GEN2_RELEASE.md`.
 - **`gen2_sync.asm`** — HST0 beam synchronisation (`gen2_waitvbl` coarse V-blank
   sync, `gen2_beam_lock`), extracted from the validation demo
-  `dev/projects/gen2/demo_a1_crazycycle/`.
+  `sketchs/gen2/demo_a1_crazycycle/`.
 
 ## HGR data tables + sub-byte rendering
 
@@ -39,7 +39,7 @@ Lookup tables for the GEN2 HGR framebuffer (passive RAM-mapped at `$2000-$3FFF`,
   2 KB). Encoding: `AND #$7F`, 8 rows top→bottom, bit 0 = left. Source:
   Michael Pohoreski's `apple2_hgr_font_tutorial`. Label: `HGR_BBFont`,
   constants `HGR_BBFONT_BYTES_PER_GLYPH` / `HGR_BBFONT_GLYPH_COUNT`.
-  Used by `dev/projects/gen2/demo_hgr_bbfont_show/`. **This is the single font
+  Used by `sketchs/gen2/demo_hgr_bbfont_show/`. **This is the single font
   master** (Axe 2 of the lib factoring): `tools/build_shared_font.py` emits the
   HGR C slice (`dev/lib/gen2c/gen2_bbfont.inc`, bit 0 = left) *and* the TMS9918
   pattern tables (`dev/lib/tms9918/bbfont_tms.inc` + `font_hud8x8.inc`,
@@ -47,7 +47,7 @@ Lookup tables for the GEN2 HGR framebuffer (passive RAM-mapped at `$2000-$3FFF`,
 - **`bbfont_subset.inc`** — 38-glyph subset of the same font, hand-curated
   for the HGR Sokoban HUD/title (digits, "MOVES:", "PUSHES:", "SOKOBAN",
   letters). Label: `HGR_Sokoban_bbfont`. Used by
-  `dev/projects/gen2/game_sokoban/`. Drop-in compatible with `bbfont_cp437.inc`
+  `sketchs/gen2/game_sokoban/`. Drop-in compatible with `bbfont_cp437.inc`
   glyph layout.
 - **`subbyte4.inc`** — 7-phase sub-byte mask LUTs for **4-pixel-wide**
   blocks. Three tables (`sb4_byte_off`, `sb4_mask1`, `sb4_mask2`) cover

@@ -1,0 +1,5 @@
+{
+  "profile": "tms9918",
+  "language": "c",
+  "cfg": "dev/lib/tms9918c/cc65/codetank_c.cfg"
+}

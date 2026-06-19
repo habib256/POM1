@@ -4,7 +4,7 @@
 
 The Apple-1's first commercial graphics card (1976): 64×96 mono pixels
 on six Intel 2102 SRAMs, write-only port at `$D00A`. Replaces the
-inline clear + plot logic in `dev/projects/gt6144/gt6144_demo_hello` and
+inline clear + plot logic in `sketchs/apple1/gt6144_demo_hello` and
 `gt6144_demo_life`, gives future SWTPC demos a 10-line head-start.
 
 ## Files

@@ -23,7 +23,7 @@ VDP_CTRL = $CC01        ; VDP register / address port (write twice = setup)
 ; VRAM access timing — silicon-strict back-to-back gating. Contract: 12c.
 ;
 ; Real TMS9918A silicon opens a CPU access window only periodically in Mode I
-; with sprites active (cf. dev/Programming_TMS9918.md §17 Bug N°1). The openMSX
+; with sprites active (cf. sketchs/doc/Programming_TMS9918.md §17 Bug N°1). The openMSX
 ; slot-table model (May 2026) puts the worst case at ~7.5c. The contract is a
 ; single JSR tms9918_pad12 between back-to-back VDP writes: a 12c minimum gap
 ; (the pad alone), or 16c measured STA→STA (4c store + 12c pad) — a ~1.6×
@@ -73,7 +73,7 @@ VDP_CTRL = $CC01        ; VDP register / address port (write twice = setup)
 ; (F flag) of the status register by reading $CC01 — simpler, portable,
 ; and independent of the I flag. The frame IRQ is indeed available
 ; (default POM1 `irqStrapped=true`): a `CLI` + handler at vector $FFFE
-; works, but polling remains recommended. See dev/Programming_TMS9918.md §18 Bug N°2.
+; works, but polling remains recommended. See sketchs/doc/Programming_TMS9918.md §18 Bug N°2.
 ;
 ; Standard idiom:
 ;

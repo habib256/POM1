@@ -242,7 +242,7 @@ void CodeBench::render(const char* title, bool* open)
     ImGui::SameLine(0, 6);
     if (circleBtn(ICON_FA_FILE,          "##benchnew",      "New sketch (pick language + target)")) doNewChoose();
     ImGui::SameLine(0, 6);
-    if (circleBtn(ICON_FA_FOLDER_OPEN,   "##benchopen",     "Open file (browse dev/sketchs/)")) browse(false);
+    if (circleBtn(ICON_FA_FOLDER_OPEN,   "##benchopen",     "Open file (browse sketchs/)")) browse(false);
     ImGui::SameLine(0, 6);
     if (circleBtn(ICON_FA_FLOPPY_DISK,   "##benchsave",     "Save file (browse)"))      browse(true);
     if (!host_->examples().empty()) {

@@ -1,0 +1,10 @@
+{
+  "profile": "apple1",
+  "language": "asm",
+  "cfg": "sketchs/apple1/game_chess/apple1_chess_text.cfg",
+  "dualBank": true,
+  "extraAsm": [
+    "dev/lib/games/chess/chess_engine.asm",
+    "dev/lib/games/chess/chess_text_io.asm"
+  ]
+}

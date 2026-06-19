@@ -182,7 +182,7 @@ clear_bitmap:
 ;   SETSHAPE turtle), SAT[1].Y = $D1 aborts visible rendering of slot 1+.
 ;   Mode II SAT base = $3B00 (R5 = $76 in vdp2_regs).
 ;   Pattern is the Rogue gold-standard from
-;   doc/TMS9918-SPRITE_INIT.md §4.2 — single $D0 at SAT[0] was observed
+;   sketchs/doc/TMS9918-SPRITE_INIT.md §4.2 — single $D0 at SAT[0] was observed
 ;   insufficient in May 2026 silicon-strict POM1 testing (LOGO demo2 +
 ;   Life CodeTank showed ghost sprites from noise SAT entries past slot 0).
 disable_sprites:

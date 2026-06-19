@@ -1,5 +1,5 @@
 # Makefile — build the card-neutral gfx layer (axis 1 of the GEN2/TMS9918
-# graphics-library factoring; see README.md and dev/TODO6502.md).
+# graphics-library factoring; see README.md and sketchs/doc/TODO6502.md).
 #
 # Output = two cc65 LIBRARY ARCHIVES (ar65), one per video card:
 #

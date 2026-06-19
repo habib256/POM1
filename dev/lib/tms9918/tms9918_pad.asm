@@ -21,7 +21,7 @@
 ; the silicon_strict patcher's hardened mode still call it; do NOT use it in
 ; new code (slated for removal once those migrate to pad12).
 ;
-; Reference: dev/Programming_TMS9918.md §17, dev/lib/tms9918/tms9918.inc.
+; Reference: sketchs/doc/Programming_TMS9918.md §17, dev/lib/tms9918/tms9918.inc.
 ; ============================================================================
 
 .include "tms9918.inc"
@@ -79,7 +79,7 @@ tms9918_pad40:
 ; left display ON. Strict-mode active-display slot density (Gfx12 ~19
 ; slots/line) drops bytes from tight loops even with pad12 between writes;
 ; blanking flips POM1 to slotsMsx1ScreenOff (~107 slots/line, ~2c apart)
-; where bursts always fit. See doc/TMS9918-SPRITE_INIT.md § 6.4.
+; where bursts always fit. See sketchs/doc/TMS9918-SPRITE_INIT.md § 6.4.
 ;
 ; Callers that need a non-default ON value (e.g. R1 = $C2 for 16x16 sprites,
 ; or $C3 for 16x16+mag) must do their own write and skip vdp_display_on.

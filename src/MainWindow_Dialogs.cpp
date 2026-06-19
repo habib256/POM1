@@ -928,7 +928,7 @@ void MainWindow_ImGui::renderHardwareReferenceWindow()
             hwKeyValue("Timing:", "65 cycles/line; 262 lines @ 60 Hz or 312 @ 50 Hz (jumper in the HGR window). ~4200 cycles of VBL budget for page flips.");
             hwKeyValue("Colour:", "NTSC artifact colour - violet/green (group 1) and blue/orange (group 2) with white between (MAME-calibrated LUT).");
             hwKeyValue("Porting Apple II games:", "Rewrite $C05x to $C25x; keep $C030-$C03F (SPEAKER via ACI TAPE OUT); poll HST0 instead of vaporlock. Spec: doc/GEN2_RELEASE_questions.md.");
-            hwKeyValue("Tooling:", "cc65 config dev/cc65/apple1_gen2.cfg reserves the framebuffer ($2000-$3FFF); includes dev/lib/{apple1,gen2}. Reference demo: dev/projects/gen2/demo_a1_crazycycle/.");
+            hwKeyValue("Tooling:", "cc65 config dev/cc65/apple1_gen2.cfg reserves the framebuffer ($2000-$3FFF); includes dev/lib/{apple1,gen2}. Reference demo: sketchs/gen2/demo_a1_crazycycle/.");
             hwKeyValue("Demos:", "File > Open anything under software/Graphic HGR/ (CrazyCycle, Life, Mandelbrot, Maze, Sierpinski, Sokoban) - opening from that folder auto-plugs GEN2.");
         }
 
@@ -1376,10 +1376,10 @@ static const char kSoftwareReferenceCc65Cmd[] =
     "ld65 -C dev/cc65/apple1_gen2.cfg  -o build/program.bin build/program.o  # GEN2 HGR\n"
     "ld65 -C dev/cc65/pom1_fantasy.cfg -o build/program.bin build/program.o\n"
     "\n"
-    "# Sokoban (real-hardware variants; text cfgs in dev/projects/apple1/game_sokoban/, HGR in dev/projects/gen2/game_sokoban/)\n"
-    "ld65 -C dev/projects/apple1/game_sokoban/apple1_sok_4k.cfg  -o build/sok.bin build/sok.o  # stock 4K (text)\n"
-    "ld65 -C dev/projects/apple1/game_sokoban/apple1_sok_8k.cfg  -o build/sok.bin build/sok.o  # TMS9918 variant\n"
-    "ld65 -C dev/projects/gen2/game_sokoban/apple1_sok_hgr.cfg -o build/sok.bin build/sok.o  # GEN2 HGR variant\n";
+    "# Sokoban (real-hardware variants; text cfgs in sketchs/apple1/game_sokoban/, HGR in sketchs/gen2/game_sokoban/)\n"
+    "ld65 -C sketchs/apple1/game_sokoban/apple1_sok_4k.cfg  -o build/sok.bin build/sok.o  # stock 4K (text)\n"
+    "ld65 -C sketchs/apple1/game_sokoban/apple1_sok_8k.cfg  -o build/sok.bin build/sok.o  # TMS9918 variant\n"
+    "ld65 -C sketchs/gen2/game_sokoban/apple1_sok_hgr.cfg -o build/sok.bin build/sok.o  # GEN2 HGR variant\n";
 
 } // namespace
 
@@ -1580,7 +1580,7 @@ void MainWindow_ImGui::renderSoftwareReferenceWindow()
             hwKeyValue("Zero page buffers:", "Declare with .segment \"LEVELBUF\": zeropage to force zp,X addressing.");
             hwKeyValue("PIA bit 7:", "ORA #$80 before JSR ECHO for DSP, AND #$7F after reading KBD.");
             hwKeyValue("Uppercase:", "Real keyboard forces uppercase - only compare against uppercase literals.");
-            hwKeyValue("Deeper guide:", "dev/Programming_Apple1_ASM.md (modes texte / HGR / TMS9918, Sokoban porting notes).");
+            hwKeyValue("Deeper guide:", "sketchs/doc/Programming_Apple1_ASM.md (modes texte / HGR / TMS9918, Sokoban porting notes).");
         }
 
         if (ImGui::CollapsingHeader("Building a Juke-Box ROM (P-LAB EPROM_CREATOR)")) {
@@ -2644,7 +2644,7 @@ void MainWindow_ImGui::renderTutorialGEN2HGRWindow()
         bulletWrapped("Beam-raced: mid-frame and mid-scanline mode switches render where the beam was, so Bernie's split-screen tricks work.");
         bulletWrapped("Soft switches are READ-ONLY at $C250-$C257, mirrored across $C2/$C3/$C6/$C7xx wherever A4=1. A read returns HST0 in bit 7; a write is a no-op.");
         bulletWrapped("Mutually exclusive with A1-IO & RTC — its VIA at $2000-$200F sits inside the HGR framebuffer.");
-        bulletWrapped("Full developer guide: doc/GEN2_RELEASE.md (the 'Bernie SDK'); beam-raced reference demo in dev/projects/gen2/demo_a1_crazycycle/.");
+        bulletWrapped("Full developer guide: doc/GEN2_RELEASE.md (the 'Bernie SDK'); beam-raced reference demo in sketchs/gen2/demo_a1_crazycycle/.");
         bulletWrapped("See Hardware Reference > Uncle Bernie's GEN2 HGR Graphic Card for the register map and timing.");
         ImGui::EndChild();
     }

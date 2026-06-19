@@ -8,7 +8,7 @@ inline constexpr int POM1_CPU_CLOCK_HZ = 1022727;
 // 1022727 / 59.94005994 ≈ 17062.49 → 17062 cycles/frame (rounded to nearest).
 // Was 17045 cycles/frame (60 Hz round); le drift de ~0.1% s'aligne avec le
 // silicon réel pour les démos audio fines et les multiplexages SAT timing
-// -critiques (cf. dev/Programming_TMS9918.md §21 Bug N°11). Le nom de la constante
+// -critiques (cf. sketchs/doc/Programming_TMS9918.md §21 Bug N°11). Le nom de la constante
 // reste 60HZ pour compat avec les call-sites historiques.
 inline constexpr int POM1_CPU_CYCLES_PER_FRAME_1X_60HZ = (1001 * POM1_CPU_CLOCK_HZ + 30000) / 60000;
 inline constexpr int POM1_CPU_CYCLES_PER_FRAME_2X_60HZ = (1001 * 2 * POM1_CPU_CLOCK_HZ + 30000) / 60000;

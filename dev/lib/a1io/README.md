@@ -8,7 +8,7 @@ ATMEGA32 driving a DS3231 RTC, optional DS18B20 probe, 8 analog inputs,
 ATMEGA continuously broadcasts 24 virtual registers via PORTA STROBE
 + PORTB DATA on a 100-cycle period.
 
-Replaces the inline `read_rtc_reg` in `dev/projects/plab/io_rtc_clock`,
+Replaces the inline `read_rtc_reg` in `sketchs/apple1/io_rtc_clock`,
 unblocks a future **sensor logger** project (TODO6502.md).
 
 ## Files
@@ -107,7 +107,7 @@ of the per-frame path.
 
 ## Migration path
 
-`dev/projects/plab/io_rtc_clock/RtcClock.asm` already has an inline
+`sketchs/apple1/io_rtc_clock/RtcClock.asm` already has an inline
 `read_rtc_reg` (lines 65-74) identical to `a1io_read_reg`. Migration:
 
 1. `.include "a1io.inc"` and `.include "a1io.asm"`.

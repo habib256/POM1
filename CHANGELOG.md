@@ -14,7 +14,7 @@ is `git log`; the user-facing feature tour is `README.md`; open work lives in
 
 6502-side work that ships under `dev/` (libraries + `dev/projects/` programs),
 lifted from `dev/TODO6502.md`. The programs build to `software/<dir>/` via the
-per-project Makefiles; dev loop → `dev/APPLE1DEV.md`.
+per-project Makefiles; dev loop → `sketchs/doc/APPLE1DEV.md`.
 
 - **Shared geometry/number library `dev/lib/gfx/`** (2026-06-16/17) — additive
   layer factoring the line/circle/rect/ellipse + integer→ASCII routines that GEN2
@@ -52,11 +52,11 @@ per-project Makefiles; dev loop → `dev/APPLE1DEV.md`.
 - **Sprite-cloning (Bug N°8) visual fixture** (2026-05-08) —
   `dev/projects/tms9918_clone/`: SPACE toggles the illegal M1+M2 hybrid so the
   sprite-clone cascade appears/disappears for side-by-side comparison; validates
-  the cloning model (`dev/Programming_TMS9918.md` §15 Bug N°8).
+  the cloning model (`sketchs/doc/Programming_TMS9918.md` §15 Bug N°8).
 - **Silicon-strict port of every TMS9918 program** (2026-04-30) —
   `tools/silicon_strict_patch.py` injected 351 `tms9918_pad12` NOPs across all
   TMS9918 projects + `lib/tms9918/*.asm`; all 3 CodeTank ROM layouts rebuild clean
-  (`dev/Programming_TMS9918.md` §25).
+  (`sketchs/doc/Programming_TMS9918.md` §25).
 - **`dev/projects/*/README.md` TODO placeholders resolved** (2026-06-16).
 
 ### Added — DevBench menu + Bench GEN2 text target

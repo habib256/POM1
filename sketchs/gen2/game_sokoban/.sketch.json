@@ -1,0 +1,6 @@
+{
+  "profile": "gen2",
+  "language": "asm",
+  "cfg": "sketchs/gen2/game_sokoban/apple1_sok_hgr.cfg",
+  "dualBank": true
+}

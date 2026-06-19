@@ -25,5 +25,5 @@ In your project Makefile:
 
     LIB := -I ../../lib/apple1 -I ../../lib/games/sokoban
 
-Used by `dev/projects/apple1/game_sokoban/`, `dev/projects/gen2/game_sokoban/`,
-`dev/projects/tms9918/game_sokoban/`.
+Used by `sketchs/apple1/game_sokoban/`, `sketchs/gen2/game_sokoban/`,
+`sketchs/tms9918/game_sokoban/`.

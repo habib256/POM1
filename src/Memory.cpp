@@ -1815,7 +1815,7 @@ void Memory::advanceCycles(int cycles)
     // re-evaluated after every opcode, so a peripheral that lowers its
     // request between two CPU ticks naturally de-asserts /IRQ.
     //
-    // Sources currently wired (per dev/Programming_TMS9918.md §18 Bug N°2):
+    // Sources currently wired (per sketchs/doc/Programming_TMS9918.md §18 Bug N°2):
     //   - TMS9918  : default = WIRED. The P-LAB card connects /INT → /IRQ
     //                (trace verified on real hardware by Parmigiani), so
     //                irqAsserted() = R1.5 (IRQ enable) AND status.7 (F flag);

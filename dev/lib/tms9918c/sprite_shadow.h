@@ -6,7 +6,7 @@
  *
  * sprite_shadow.{c,h} — 128-byte RAM-side Sprite Attribute Table (SAT).
  *
- * Pattern recommended by doc/TMS9918-SPRITE_INIT.md (§3.2, §6) and by the
+ * Pattern recommended by sketchs/doc/TMS9918-SPRITE_INIT.md (§3.2, §6) and by the
  * MSX / SMS toolchains Nino draws from: maintain a host-RAM copy of the
  * 32×4 SAT, mutate it freely (no VRAM lock contention), then push the
  * whole 128 bytes to VRAM $3B00 inside VBLANK.

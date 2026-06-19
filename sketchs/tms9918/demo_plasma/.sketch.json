@@ -1,0 +1,9 @@
+{
+  "profile": "tms9918",
+  "language": "asm",
+  "cfg": "sketchs/tms9918/demo_plasma/apple1_plasma.cfg",
+  "extraAsm": [
+    "dev/lib/tms9918/tms9918m1.asm",
+    "dev/lib/tms9918/tms9918_pad.asm"
+  ]
+}

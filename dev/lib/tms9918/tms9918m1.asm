@@ -112,7 +112,7 @@ init_vdp_g1:
 ; disable_sprites: defensive SAT init at VRAM $1B00 (Mode I SAT base, R5=$36).
 ;   Single $D0 at SAT[0].Y was observed insufficient under POM1 silicon-strict
 ;   (LOGO demo2 + Life CodeTank ghost sprites from noise SAT entries past
-;   slot 0, May 2026). Adopt the Rogue gold-standard (doc/TMS9918-SPRITE_INIT.md
+;   slot 0, May 2026). Adopt the Rogue gold-standard (sketchs/doc/TMS9918-SPRITE_INIT.md
 ;   §4.2): write $D0 to SAT[0].Y then 127× $D1 (off-screen Y, NOT terminator)
 ;   via auto-increment to cover all 32 SAT entries. Even if SAT[0] is ever
 ;   overwritten with a real sprite later, SAT[1].Y = $D1 aborts visible

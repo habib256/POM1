@@ -1111,7 +1111,7 @@ override_r1_16x16:
 ; clear_sat_y removed May 2026 — the defensive SAT.Y init is now part of
 ; tms9918m1.asm::disable_sprites (called internally by init_vdp_g1). Same
 ; $D0+127×$D1 pattern, in lib so all Mode I consumers benefit (Rogue, Chess,
-; Snake, OrbitalPool). See doc/TMS9918-SPRITE_INIT.md §4.2.
+; Snake, OrbitalPool). See sketchs/doc/TMS9918-SPRITE_INIT.md §4.2.
 
 
 ; ----------------------------------------------------------------------------
@@ -4264,7 +4264,7 @@ clear_hurt_flags:
 ; ----------------------------------------------------------------------------
 place_all_sprites:
         ; VBlank-gated SAT rebuild — best-practice §6 of
-        ; doc/TMS9918-SPRITE_BEST_PRACTICES.md. Eliminates 1-frame sprite
+        ; sketchs/doc/TMS9918-SPRITE_BEST_PRACTICES.md. Eliminates 1-frame sprite
         ; tearing on cell-transition turns (old positions above the raster
         ; intersection, new positions below) and drops every SAT write
         ; into the wide ScreenOff slot table so silicon-strict POM1 never

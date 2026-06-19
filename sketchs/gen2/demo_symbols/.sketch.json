@@ -1,0 +1,10 @@
+{
+  "profile": "gen2",
+  "language": "asm",
+  "cfg": "sketchs/gen2/demo_symbols/apple1_gen2.cfg",
+  "dualBank": true,
+  "extraAsm": [
+    "dev/lib/gen2/sprites/sprites_symbols_hgr.asm",
+    "dev/lib/tms9918/sprites_symbols.asm"
+  ]
+}

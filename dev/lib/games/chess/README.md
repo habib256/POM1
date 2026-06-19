@@ -157,4 +157,4 @@ main:
         JMP @loop
 ```
 
-See `dev/projects/apple1/game_chess/Chess.asm` for the canonical text-mode caller.
+See `sketchs/apple1/game_chess/Chess.asm` for the canonical text-mode caller.

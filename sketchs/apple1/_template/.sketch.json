@@ -1,0 +1,5 @@
+{
+  "profile": "apple1",
+  "language": "asm",
+  "cfg": "dev/cc65/apple1_4k.cfg"
+}

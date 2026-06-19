@@ -70,9 +70,9 @@ IDE that compiles and runs without leaving the window. Full target reference:
 > Upload — it loads raw bytes with no compiler.
 
 From here:
-- **Assembly** → [`dev/Programming_Apple1_ASM.md`](dev/Programming_Apple1_ASM.md)
-  (and the playbook [`dev/APPLE1DEV.md`](dev/APPLE1DEV.md)).
-- **C** → [`dev/Programming_Apple1_C.md`](dev/Programming_Apple1_C.md).
+- **Assembly** → [`sketchs/doc/Programming_Apple1_ASM.md`](sketchs/doc/Programming_Apple1_ASM.md)
+  (and the playbook [`sketchs/doc/APPLE1DEV.md`](sketchs/doc/APPLE1DEV.md)).
+- **C** → [`sketchs/doc/Programming_Apple1_C.md`](sketchs/doc/Programming_Apple1_C.md).
 - Browse 60+ ready-to-run programs in `software/` (*File → Load Memory*).
 
 ---

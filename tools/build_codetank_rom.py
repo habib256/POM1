@@ -60,6 +60,7 @@ ROM_SIZE  = 0x8000   # 32 kB (28c256)
 HALF_SIZE = 0x4000   # 16 kB
 
 DEV               = ROOT / "dev" / "projects"
+SK                = ROOT / "sketchs" / "tms9918"   # mono-source DevBench sketches
 LIB_APPLE1        = ROOT / "dev" / "lib" / "apple1"
 LIB_M6502         = ROOT / "dev" / "lib" / "m6502"
 LIB_TMS           = ROOT / "dev" / "lib" / "tms9918"
@@ -69,14 +70,14 @@ LIB_CHESS         = ROOT / "dev" / "lib" / "games" / "chess"
 LIB_ROGUE         = ROOT / "dev" / "lib" / "games" / "rogue"
 
 # --- GAME1 sources (menu + Galaga + Sokoban + Snake lower; LOGO upper) -----
-MENU_ASM          = DEV / "codetank" / "game1_menu" / "codetank_menu.asm"
-MENU_CFG          = DEV / "codetank" / "game1_menu" / "apple1_codetank_menu.cfg"
-GALAGA_ASM        = DEV / "tms9918" / "game_galaga"  / "TMS_Galaga.asm"
-GALAGA_BANK_CFG   = DEV / "tms9918" / "game_galaga"  / "apple1_galaga_codetank_bank.cfg"
-SOKOBAN_ASM       = DEV / "tms9918" / "game_sokoban" / "TMS_Sokoban.asm"
-SOKOBAN_BANK_CFG  = DEV / "tms9918" / "game_sokoban" / "apple1_sokoban_codetank_bank.cfg"
-SNAKE_ASM         = DEV / "tms9918" / "game_snake"   / "TMS_Snake.asm"
-SNAKE_BANK_CFG    = DEV / "tms9918" / "game_snake"   / "apple1_snake_codetank_bank.cfg"
+MENU_ASM          = SK / "game1_menu" / "codetank_menu.asm"
+MENU_CFG          = SK / "game1_menu" / "apple1_codetank_menu.cfg"
+GALAGA_ASM        = SK / "game_galaga"  / "TMS_Galaga.asm"
+GALAGA_BANK_CFG   = SK / "game_galaga"  / "apple1_galaga_codetank_bank.cfg"
+SOKOBAN_ASM       = SK / "game_sokoban" / "TMS_Sokoban.asm"
+SOKOBAN_BANK_CFG  = SK / "game_sokoban" / "apple1_sokoban_codetank_bank.cfg"
+SNAKE_ASM         = SK / "game_snake"   / "TMS_Snake.asm"
+SNAKE_BANK_CFG    = SK / "game_snake"   / "apple1_snake_codetank_bank.cfg"
 
 # --- LOGO V2 (GAME1 upper) -------------------------------------------------
 LOGO_V2_ASM        = DEV / "tms9918" / "tool_logo" / "TMS_Logo_16k.asm"
@@ -109,32 +110,32 @@ TETRIS_CT_BIN     = CODETANK_CC65_BIN / "tetris_codetank.bin"
 
 # GAME3 upper menu + 3 demo programs (Life, Mandel, Plasma) sharing the
 # upper bank via the menu pattern.
-GAME3_MENU_ASM    = DEV / "codetank" / "game3_menu" / "codetank_game3_menu.asm"
-GAME3_MENU_CFG    = DEV / "codetank" / "game3_menu" / "apple1_codetank_game3_menu.cfg"
+GAME3_MENU_ASM    = SK / "game3_menu" / "codetank_game3_menu.asm"
+GAME3_MENU_CFG    = SK / "game3_menu" / "apple1_codetank_game3_menu.cfg"
 
-LIFE_ASM          = DEV / "tms9918" / "demo_life"   / "TMS_Life.asm"
-LIFE_BANK_CFG     = DEV / "tms9918" / "demo_life"   / "apple1_life_codetank_game3_bank.cfg"
+LIFE_ASM          = SK / "demo_life"   / "TMS_Life.asm"
+LIFE_BANK_CFG     = SK / "demo_life"   / "apple1_life_codetank_game3_bank.cfg"
 
-MANDEL_ASM        = DEV / "tms9918" / "demo_mandel" / "TMS_Mandel.asm"
-MANDEL_BANK_CFG   = DEV / "tms9918" / "demo_mandel" / "apple1_mandel_codetank_bank.cfg"
+MANDEL_ASM        = SK / "demo_mandel" / "TMS_Mandel.asm"
+MANDEL_BANK_CFG   = SK / "demo_mandel" / "apple1_mandel_codetank_bank.cfg"
 MANDEL_VDP_ASM    = LIB_TMS / "tms9918m2.asm"
 
-PLASMA_ASM        = DEV / "tms9918" / "demo_plasma" / "TMS_Plasma.asm"
-PLASMA_BANK_CFG   = DEV / "tms9918" / "demo_plasma" / "apple1_plasma_codetank_bank.cfg"
+PLASMA_ASM        = SK / "demo_plasma" / "TMS_Plasma.asm"
+PLASMA_BANK_CFG   = SK / "demo_plasma" / "apple1_plasma_codetank_bank.cfg"
 PLASMA_VDP_ASM    = LIB_TMS / "tms9918m1.asm"
 
 # --- TEST sources (menu + Clone + Split upper; lower bank reserved) --------
 # SilBench was abandoned (May 2026 reshuffle) — the TEST cart's lower bank is
 # now $FF-reserved; the two silicon-bug mini-tests live in the upper bank.
-TEST_MENU_ASM       = DEV / "codetank" / "test_menu" / "codetank_test_menu.asm"
-TEST_MENU_CFG       = DEV / "codetank" / "test_menu" / "apple1_codetank_test_menu.cfg"
+TEST_MENU_ASM       = SK / "test_menu" / "codetank_test_menu.asm"
+TEST_MENU_CFG       = SK / "test_menu" / "apple1_codetank_test_menu.cfg"
 
-CLONE_ASM           = DEV / "tms9918" / "demo_clone" / "TMS_Clone.asm"
-CLONE_BANK_CFG      = DEV / "tms9918" / "demo_clone" / "apple1_clone_codetank_bank.cfg"
+CLONE_ASM           = SK / "demo_clone" / "TMS_Clone.asm"
+CLONE_BANK_CFG      = SK / "demo_clone" / "apple1_clone_codetank_bank.cfg"
 CLONE_VDP_ASM       = LIB_TMS / "tms9918m2.asm"
 
-SPLIT_ASM           = DEV / "tms9918" / "demo_split" / "TMS_Split.asm"
-SPLIT_BANK_CFG      = DEV / "tms9918" / "demo_split" / "apple1_split_codetank_bank.cfg"
+SPLIT_ASM           = SK / "demo_split" / "TMS_Split.asm"
+SPLIT_BANK_CFG      = SK / "demo_split" / "apple1_split_codetank_bank.cfg"
 SPLIT_M1_ASM        = LIB_TMS / "tms9918m1.asm"
 SPLIT_5S_ASM        = LIB_TMS / "tms9918_5strigger.asm"
 

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """build_shared_font.py — one Beautiful Boot glyph master → per-card font tables.
 
-Axis 2 of the GEN2/TMS9918 library factoring (see dev/TODO6502.md). The single
+Axis 2 of the GEN2/TMS9918 library factoring (see sketchs/doc/TODO6502.md). The single
 source of truth for the Beautiful Boot 8x8 font is the asm glyph master
 
     dev/lib/gen2/bbfont_cp437.inc  (256 glyphs, 8 rows, bit 0 = LEFTMOST pixel,

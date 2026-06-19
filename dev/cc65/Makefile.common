@@ -71,6 +71,6 @@ clean:
 # defines TEST_CMD (typically a tools/test_*_telnet.py invocation against
 # software/<dir>/<PROJECT>.{bin,txt}). Default = no-op stub so `make test`
 # never fails at the suite level; projects opt in by setting TEST_CMD.
-TEST_CMD ?= @echo "[$(PROJECT)] no smoke test wired — see dev/TODO6502.md"
+TEST_CMD ?= @echo "[$(PROJECT)] no smoke test wired — see sketchs/doc/TODO6502.md"
 test: all
 	$(TEST_CMD)

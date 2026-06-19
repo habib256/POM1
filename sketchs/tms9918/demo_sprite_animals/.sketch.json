@@ -1,0 +1,8 @@
+{
+  "profile": "tms9918",
+  "language": "c",
+  "cfg": "sketchs/tms9918/demo_sprite_animals/codetank_c.cfg",
+  "extraAsm": [
+    "dev/lib/tms9918/sprites_fauna.asm"
+  ]
+}

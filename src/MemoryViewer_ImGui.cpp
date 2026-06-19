@@ -585,7 +585,7 @@ const char* MemoryViewer_ImGui::getRegionName(int address) const
     // $E000-$EFFF on real Apple-1 is RAM (Integer BASIC was distributed on
     // cassette and loaded into RAM via Wozmon `E000.EFFR`). POM1 pre-seeds
     // this RAM from basic.rom at boot, but writes are not blocked — programs
-    // can use this region as scratch (e.g. dev/projects/apple1/game_chess/ engine).
+    // can use this region as scratch (e.g. sketchs/apple1/game_chess/ engine).
     if (address >= 0xE000 && address <= 0xEFFF) return "Integer BASIC (RAM)";
     if (address >= 0xFF00) return "Woz Monitor ROM";
     return "User RAM";

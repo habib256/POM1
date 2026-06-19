@@ -461,10 +461,10 @@ const P1Ex kP1Examples[] = {
     { "4 - Echo the keyboard (asm)",       false, kEx_keyboard,   0, "", 0 },
     { "5 - Hello in C",                    false, kEx_c_hello,    3, "", 0 },
     { "6 - Keyboard echo in C",            false, kEx_c_keyboard, 3, "", 0 },
-    { "A-1-CrazyCycle  (Bernie GEN2 HGR)", true,  "dev/projects/gen2/demo_a1_crazycycle/A-1-CrazyCycle.asm", 2,
+    { "A-1-CrazyCycle  (Bernie GEN2 HGR)", true,  "sketchs/gen2/demo_a1_crazycycle/A-1-CrazyCycle.asm", 2,
       "sdcard/NONO/HGR/UBERNIE#062000", 0x2000 },
-    { "Telemetry demo  (SDK harness)",     true,  "dev/projects/apple1/demo_telemetry/A1_TelemetryDemo.asm", 0, "", 0 },
-    { "Snake telemetry  (Bernie GEN2 HGR)", true, "dev/projects/gen2c/game_snake_telemetry/GEN2Snake.c", 5, "", 0 },
+    { "Telemetry demo  (SDK harness)",     true,  "sketchs/apple1/demo_telemetry/A1_TelemetryDemo.asm", 0, "", 0 },
+    { "Snake telemetry  (Bernie GEN2 HGR)", true, "sketchs/gen2/game_snake_telemetry/GEN2Snake.c", 5, "", 0 },
 };
 const int kP1ExampleCount = static_cast<int>(sizeof(kP1Examples) / sizeof(kP1Examples[0]));
 
@@ -542,11 +542,143 @@ static bool benchMakeVar(const std::string& line, const char* name, std::string&
     return true;
 }
 
+// Minimal .sketch.json field extraction (sidecars are tiny, hand-written JSON).
+static std::string sketchJsonString(const std::string& json, const char* key)
+{
+    const std::string needle = std::string("\"") + key + "\"";
+    size_t pos = json.find(needle);
+    if (pos == std::string::npos) return "";
+    pos = json.find(':', pos + needle.size());
+    if (pos == std::string::npos) return "";
+    pos = json.find('"', pos + 1);
+    if (pos == std::string::npos) return "";
+    const size_t end = json.find('"', pos + 1);
+    if (end == std::string::npos) return "";
+    return json.substr(pos + 1, end - pos - 1);
+}
+
+static bool sketchJsonBool(const std::string& json, const char* key)
+{
+    const std::string needle = std::string("\"") + key + "\"";
+    size_t pos = json.find(needle);
+    if (pos == std::string::npos) return false;
+    pos = json.find(':', pos + needle.size());
+    if (pos == std::string::npos) return false;
+    return json.find("true", pos + 1) < json.find('\n', pos + 1);
+}
+
+static std::vector<std::string> sketchJsonStringArray(const std::string& json, const char* key)
+{
+    std::vector<std::string> out;
+    const std::string needle = std::string("\"") + key + "\"";
+    size_t pos = json.find(needle);
+    if (pos == std::string::npos) return out;
+    pos = json.find('[', pos);
+    if (pos == std::string::npos) return out;
+    const size_t end = json.find(']', pos);
+    if (end == std::string::npos) return out;
+    const std::string slice = json.substr(pos + 1, end - pos - 1);
+    for (size_t i = 0; i < slice.size(); ) {
+        const size_t q1 = slice.find('"', i);
+        if (q1 == std::string::npos) break;
+        const size_t q2 = slice.find('"', q1 + 1);
+        if (q2 == std::string::npos) break;
+        out.push_back(slice.substr(q1 + 1, q2 - q1 - 1));
+        i = q2 + 1;
+    }
+    return out;
+}
+
+static std::filesystem::path resolveRepoRelativePath(const std::filesystem::path& baseDir, const std::string& rel)
+{
+    namespace fs = std::filesystem;
+    std::error_code ec;
+    fs::path p(rel);
+    if (p.is_absolute() && fs::exists(p, ec)) return fs::weakly_canonical(p, ec);
+    for (const fs::path& root : { baseDir, baseDir.parent_path(), baseDir.parent_path().parent_path() }) {
+        if (root.empty()) continue;
+        const fs::path cand = root / p;
+        if (fs::exists(cand, ec)) return fs::weakly_canonical(cand, ec);
+    }
+    return {};
+}
+
+static AsmProjectCtx probeSketchProject(const std::string& sourcePath)
+{
+    namespace fs = std::filesystem;
+    AsmProjectCtx p;
+    if (sourcePath.empty()) return p;
+    std::error_code ec;
+    const fs::path src = fs::absolute(fs::path(sourcePath), ec);
+    p.dir = src.parent_path();
+    const fs::path sidecar = p.dir / ".sketch.json";
+    if (!fs::exists(sidecar, ec)) return p;
+
+    std::ifstream in(sidecar);
+    if (!in) return p;
+    const std::string json((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+
+    const std::string cfgRel = sketchJsonString(json, "cfg");
+    if (cfgRel.empty()) return p;
+    const fs::path cfgPath = resolveRepoRelativePath(p.dir, cfgRel);
+    if (cfgPath.empty()) return p;
+    p.cfg = cfgPath.string();
+
+    for (const std::string& ea : sketchJsonStringArray(json, "extraAsm")) {
+        const fs::path ep = resolveRepoRelativePath(p.dir, ea);
+        if (!ep.empty()) p.extraAsm.push_back(ep.string());
+    }
+
+    if (sketchJsonBool(json, "dualBank")) {
+        p.dualBank = true;
+    } else {
+        std::ifstream cf(p.cfg);
+        std::string cl;
+        bool lo = false, hi = false;
+        auto startAddr = [](const std::string& s, uint16_t& dst) {
+            const size_t sp = s.find("start");
+            if (sp == std::string::npos) return;
+            const size_t d = s.find('$', sp);
+            if (d == std::string::npos) return;
+            try { dst = static_cast<uint16_t>(std::stoul(s.substr(d + 1, 4), nullptr, 16)); } catch (...) {}
+        };
+        while (std::getline(cf, cl)) {
+            if (cl.find("%O.lo") != std::string::npos) { lo = true; startAddr(cl, p.loAddr); }
+            if (cl.find("%O.hi") != std::string::npos) { hi = true; startAddr(cl, p.hiAddr); }
+        }
+        p.dualBank = lo && hi;
+    }
+
+    p.ok = true;
+    return p;
+}
+
+static void applySketchAssets(const std::string& sourcePath, std::string& asset, uint16_t& addr)
+{
+    namespace fs = std::filesystem;
+    if (sourcePath.empty()) return;
+    std::error_code ec;
+    const fs::path sidecar = fs::absolute(fs::path(sourcePath), ec).parent_path() / ".sketch.json";
+    if (!fs::exists(sidecar, ec)) return;
+    std::ifstream in(sidecar);
+    if (!in) return;
+    const std::string json((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+    const std::string a = sketchJsonString(json, "asset");
+    if (!a.empty()) asset = a;
+    const std::string addrStr = sketchJsonString(json, "assetAddr");
+    if (!addrStr.empty()) {
+        try { addr = static_cast<uint16_t>(std::stoul(addrStr, nullptr, 16)); } catch (...) {}
+    }
+}
+
 static AsmProjectCtx probeAsmProject(const std::string& sourcePath)
 {
     namespace fs = std::filesystem;
     AsmProjectCtx p;
     if (sourcePath.empty()) return p;
+    p = probeSketchProject(sourcePath);
+    if (p.ok) return p;
+
     std::error_code ec;
     const fs::path src = fs::absolute(fs::path(sourcePath), ec);
     p.dir = src.parent_path();
@@ -852,11 +984,13 @@ int Pom1BenchHost::targetForPath(const std::string& path) const
     const bool asmMode = (ext == ".s" || ext == ".asm");
     if (!cMode && !asmMode) return -1;
 
-    const bool tms  = p.find("/tms9918") != std::string::npos ||
+    const bool tms  = p.find("/sketchs/tms9918") != std::string::npos ||
+                      p.find("/tms9918") != std::string::npos ||
                       p.find("/tms9918c") != std::string::npos ||
                       p.find("/codetank") != std::string::npos ||
                       p.find("graphic tms9918") != std::string::npos;
-    const bool gen2 = p.find("/gen2") != std::string::npos ||
+    const bool gen2 = p.find("/sketchs/gen2") != std::string::npos ||
+                      p.find("/gen2") != std::string::npos ||
                       p.find("/gen2c") != std::string::npos ||
                       p.find("/hgr") != std::string::npos ||
                       p.find("graphic hgr") != std::string::npos;
@@ -1203,8 +1337,8 @@ bench::BuildResult Pom1BenchHost::build(int target, const std::string& src, cons
         const fs::path objO = dir / "pom1_bench.o";
         sweep.add(srcS); sweep.add(objO);
         std::ofstream(srcS, std::ios::binary).write(src.data(), static_cast<std::streamsize>(src.size()));
-        // If the editor's file is a real dev/projects/ source (sibling Makefile),
-        // build it in context: its own LOAD_CFG, -I <projectdir> for sibling .inc,
+        // If the editor's file is a real sketch or dev/projects/ source (sidecar
+        // .sketch.json or sibling Makefile), build it in context: its own cfg,
         // and the EXTRA_ASM siblings. Empty path / no Makefile -> bare sketch path.
         const AsmProjectCtx proj = probeAsmProject(activeSourcePath_);
         std::string asmFlags = libFlags_;
@@ -1292,6 +1426,8 @@ bench::BuildResult Pom1BenchHost::build(int target, const std::string& src, cons
     }
 
     if (!run) { r.status = "Verify OK"; r.ok = true; return r; }
+
+    applySketchAssets(activeSourcePath_, extraAsset_, extraAssetAddr_);
 
     auto* emu = mw_->emulation.get();
     // Close the deferred-card-plug race: applyMachineConfig() queues a 15-frame
@@ -1563,7 +1699,8 @@ std::string Pom1BenchHost::browseDir() const
 {
     namespace fs = std::filesystem;
     std::error_code ec;
-    for (const char* p : {"dev/sketchs", "../dev/sketchs", "../../dev/sketchs"})
+    for (const char* p : {"sketchs", "../sketchs", "../../sketchs",
+                          "dev/sketchs", "../dev/sketchs", "../../dev/sketchs"})
         if (fs::exists(p, ec)) return fs::absolute(p, ec).string();
     for (const char* p : {"dev", "../dev", "../../dev"})
         if (fs::exists(p, ec)) return fs::absolute(p, ec).string();

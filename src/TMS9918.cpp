@@ -138,7 +138,7 @@ void TMS9918::reset()
     //     existing tests and recorded snapshots.
     //   - vramNoiseOnReset == true: true mt19937 noise, which is what
     //     the warm P-LAB DRAM actually shows on cold boot. Surfaces the
-    //     class of bugs from doc/TMS9918-SPRITE_INIT.md §4.2 (uninit SAT,
+    //     class of bugs from sketchs/doc/TMS9918-SPRITE_INIT.md §4.2 (uninit SAT,
     //     ghost terminators, etc.) under POM1's silicon-strict mode.
     if (vramNoiseOnReset) {
         std::random_device rd;
@@ -1388,7 +1388,7 @@ void TMS9918::renderSprites(uint32_t* pixels, const Snapshot& s)
 //                 overlap, even when one or both sprites have color = 0).
 //                 Collision detection extends into the overscan zone
 //                 [-32, 288) to catch early-clock sprites colliding off
-//                 the visible screen (cf. dev/Programming_TMS9918.md §11 Bug N°4).
+//                 the visible screen (cf. sketchs/doc/Programming_TMS9918.md §11 Bug N°4).
 //   bit 6 ($40) — 5th-sprite-on-scanline overflow.
 //   bits 0..4   — when bit 6 is latched, the SAT index of the 5th sprite.
 //                 Otherwise, the index of the last sprite the chip walked

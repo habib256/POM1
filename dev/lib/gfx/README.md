@@ -124,8 +124,8 @@ Wired touch points (copy these as the template for the rest):
   The Bench compiles the gfx sources **from source** (like `gen2.c`) so edits
   apply live and a sketch can immediately `#include "gfx.h"` and draw vectors;
   its binaries are throwaway, so the dead-code trade-off doesn't matter there.
-- **`dev/projects/gen2c/demo_bounces/Makefile`** — GEN2 example (links `gfx-gen2.lib`).
-- **`dev/projects/tms9918c/demo/Makefile`** — TMS example (links `gfx-tms.lib`).
+- **`sketchs/gen2/demo_bounces/Makefile`** — GEN2 example (links `gfx-gen2.lib`).
+- **`sketchs/tms9918/demo/Makefile`** — TMS example (links `gfx-tms.lib`).
 - `dev/lib/gfx/Makefile` builds both archives via `ar65` (run from this dir).
 
 ## Verification

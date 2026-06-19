@@ -2385,7 +2385,7 @@ void MainWindow_ImGui::renderSiliconStrictWindow()
                 "Real P-LAB Graphic Card boots with random DRAM noise in its\n"
                 "16 KB VRAM. POM1 default is the MSX1 bistable $FF/$00 pattern\n"
                 "(per meisei). Turn ON to seed VRAM with true mt19937 noise so\n"
-                "uninitialised-SAT bugs (doc/TMS9918-SPRITE_INIT.md §4.2) show\n"
+                "uninitialised-SAT bugs (sketchs/doc/TMS9918-SPRITE_INIT.md §4.2) show\n"
                 "up here — exactly as on real silicon.");
         }
 
