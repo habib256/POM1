@@ -148,27 +148,9 @@ rowcnt  = tmp4               ; row counter 0..7
 ;
 ; Why asm and not C: a read of a soft switch is the toggle; its VALUE is
 ; discarded. cc65's optimiser (-Oirs) drops a volatile read whose result is
-; cast to void — so the C `(void)GEN2_SS[n]` macros compiled to NOTHING and the
-; old C gen2_hgr_init was silently an empty `rts`. HIRES only ever "worked" by
-; luck (POM1's documented cold latch happens to be GRAPHICS+HIRES+PAGE1). An
-; absolute `LDA $C25x` here can never be elided. Each LDA is one real bus read =
-; one switch toggle; A/X/Y/flags are scratch (leaf routine, nothing reads them).
+; cast to void — routines live in dev/lib/gen2/gen2_init.asm (included below).
 
-; void gen2_hgr_init(void): GRAPHICS + HIRES + PAGE1 + FULL screen.
-_gen2_hgr_init:
-        lda $C250            ; TEXT off  -> graphics
-        lda $C257            ; RES = HIRES
-        lda $C254            ; PAGE 1
-        lda $C252            ; MIXED off -> full screen
-        rts
-
-; void gen2_lores_init(void): GRAPHICS + LORES + PAGE1 + FULL screen.
-_gen2_lores_init:
-        lda $C250            ; TEXT off  -> graphics
-        lda $C256            ; RES = LORES
-        lda $C254            ; PAGE 1
-        lda $C252            ; MIXED off -> full screen
-        rts
+.include "../gen2/gen2_init.asm"
 
 ; --- plot one pixel at (curcol, curmask) on BOTH scanlines, then advance ------
 plot_one:

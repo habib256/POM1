@@ -2130,7 +2130,7 @@ void MainWindow_ImGui::renderTutorialCassetteWindow()
         ImGui::TextWrapped(
             "File menu > Cassette Deck to open the procedural deck. File "
             "> Load Tape... to pick an .aci / .wav / .mp3 / .ogg. "
-            "cassettes/WOZ_talk.mp3 is auto-loaded by default.");
+            "cassettes/WOZ_talk.mp3 is preloaded when you select the POM1 Fantasy preset.");
         ImGui::TextWrapped(
             "If the tape has a sidecar entry in cassettes/tapeinfo.txt, "
             "the jaquette prints the Wozmon command to type (e.g. "

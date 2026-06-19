@@ -83,6 +83,7 @@ temp_hi:     .res 1     ; $18
 ; MAIN
 ; =============================================
 main:
+        JSR gen2_hgr_init
         ; Initialize grid pointer low byte (always $00 for page-aligned access)
         LDA #$00
         STA gptr_lo
@@ -653,6 +654,7 @@ dfs_loop:
 
 ; print_str_ax — promoted to dev/lib/apple1/print.asm (Tier 2 mutualization).
 .include "print.asm"
+.include "gen2_init.asm"
 
 ; =============================================
 ; DATA TABLES

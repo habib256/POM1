@@ -70,6 +70,7 @@ cr_step_hi: .res 1          ; $1F
 ; MAIN
 ; =============================================
 main:
+        JSR gen2_hgr_init
         CLD                 ; ensure binary arithmetic (in case BASIC left D=1)
         LDA #$FF            ; so the first "next view" wraps to 0 (FULL)
         STA view_index
@@ -564,3 +565,4 @@ name_north:    .byte "NORTH SHORE", 0
 ; =============================================
 .include "hgr_tables.inc"
 .include "multiply.asm"
+.include "gen2_init.asm"

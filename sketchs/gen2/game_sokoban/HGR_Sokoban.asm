@@ -124,6 +124,7 @@ mul_res0 = had_push
 ; MAIN
 ; =============================================
 main:
+        JSR gen2_hgr_init
         ; Graphical splash on the GEN2 framebuffer (visible while the
         ; Apple-1 text screen shows the credits + layout prompt).
         JSR clear_hgr
@@ -1341,3 +1342,4 @@ str_win:
 
 .include "hgr_tables.inc"
 .include "multiply.asm"
+.include "gen2_init.asm"

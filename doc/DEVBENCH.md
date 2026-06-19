@@ -104,11 +104,8 @@ the Beautiful Boot font via `plot_pixel`; the C starter uses `gen2_hgr_puts` /
 `gen2_hgr_putu`. Card reference → [`GEN2_RELEASE.md`](GEN2_RELEASE.md).
 
 **ACI speaker / chiptune demos** (*A-1-CrazyCycle*, any program toggling `$C030`):
-the bundled `WOZ_talk.mp3` loads in **audio-stream** deck mode, which does not
-mix live ACI TAPE OUT pulses — the tune stays silent until the cassette is ejected.
-DevBench **Run** on GEN2 (and any ACI preset without the Integer-BASIC program tape)
-auto-ejects; switching to the GEN2 dev bench / GEN2 HGR Color preset also skips
-re-inserting `WOZ_talk.mp3`.
+`WOZ_talk.mp3` is inserted only on the **POM1 Fantasy** preset; in audio-stream mode it
+blocks live ACI TAPE OUT pulses. DevBench **Run** on GEN2 auto-ejects before load.
 
 ## Toolchain-free quick targets (hex / raw)
 

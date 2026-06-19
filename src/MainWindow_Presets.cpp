@@ -766,15 +766,18 @@ void MainWindow_ImGui::applyMachineConfig(int presetIndex)
             pom1::log().warn("POM1",
                 "Integer BASIC cassette asset not found (expected cassettes/BASIC.aci or BASIC.ogg)");
         }
+    } else if (presetIndex == kMachinePresetCount - 1) {
+        // POM1 Multiplexing Fantasy (2026) — shipped default; deck opens with
+        // Woz's talk inserted (Play is user-driven). No other preset preloads it.
+        pendingPresetTapePath = findFirstExistingPath({
+            "cassettes/WOZ_talk.mp3", "../cassettes/WOZ_talk.mp3",
+            "../../cassettes/WOZ_talk.mp3",
+        });
+        if (pendingPresetTapePath.empty()) {
+            pom1::log().warn("POM1",
+                "WOZ_talk.mp3 not found (expected cassettes/WOZ_talk.mp3)");
+        }
     }
-    // Bundled WOZ_talk.mp3 loads in audio-stream mode; that path never drains the
-    // pulse queue from live $C0xx toggles, so GEN2 chiptunes (A-1-CrazyCycle) and
-    // any program driving the ACI TAPE OUT flip-flop stay silent until ejected.
-    pendingSkipBundledTalkPreload =
-        cfg.aci && cfg.basicType != BasicType::IntegerCassette &&
-        pendingPresetTapePath.empty();
-    if (pendingSkipBundledTalkPreload)
-        emulation->ejectTape();
     pendingCardEnableFrames     = kCardEnableDeferFrames;
 
     // Load the appropriate BASIC ROM for this preset and track in loadedRoms

@@ -52,6 +52,7 @@ slot_row:   .res 1                  ; current slot row (0..GRID_ROWS-1)
 .include "sprites_symbols_hgr.inc"
 
 main:
+        JSR gen2_hgr_init
         LDA #<str_title
         LDX #>str_title
         JSR print_str_ax
@@ -230,3 +231,4 @@ str_footer:
 
 .include "sprites/sprites_symbols_hgr.asm"
 .include "hgr_tables.inc"
+.include "gen2_init.asm"

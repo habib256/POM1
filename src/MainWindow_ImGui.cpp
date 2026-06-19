@@ -191,23 +191,22 @@ void MainWindow_ImGui::finalizePendingCardPlugs()
     // (ACI plugged → program tape) vs the audio-stream path (ACI unplugged
     // → raw playback). Running this before the deferred ACI enable would
     // lock every preload into audio-stream mode regardless of preset. No
-    // longer gated on pendingAciEnable: audio-stream mode is a first-class
-    // path now, and the default bundled WOZ_talk.mp3 needs to load even on
-    // ACI-less presets. --tape auto-plays as before; the default bundled
-    // tape just loads (user-driven Play). Gated on pendingCassetteAudioActive
-    // so that calling finalize mid-session (e.g. from File → Load) does not
-    // reload the tape when no preset switch is in flight.
-    std::string preloadTapePath = initialTapePath;
-    bool preloadTapeAutoPlay = initialTapeAutoPlay;
+    // Cassette preload: preset-specific tape only (POM1 Fantasy → WOZ_talk,
+    // Integer-BASIC presets → BASIC.aci) or an explicit CLI --tape auto-play.
+    // Other presets leave the deck alone on switch.
+    std::string preloadTapePath;
+    bool preloadTapeAutoPlay = false;
     bool preloadTapeForceProgramMode = false;
-    if (runCassettePreload && !pendingPresetTapePath.empty() && !initialTapeAutoPlay) {
+    if (runCassettePreload && initialTapeAutoPlay && !initialTapePath.empty()) {
+        preloadTapePath = initialTapePath;
+        preloadTapeAutoPlay = true;
+    } else if (runCassettePreload && !pendingPresetTapePath.empty()) {
         preloadTapePath = pendingPresetTapePath;
         preloadTapeAutoPlay = pendingPresetTapeAutoPlay;
         preloadTapeForceProgramMode = pendingPresetTapeForceProgramMode;
     }
 
-    if (runCassettePreload && !preloadTapePath.empty() &&
-        !(pendingSkipBundledTalkPreload && pendingPresetTapePath.empty())) {
+    if (runCassettePreload && !preloadTapePath.empty()) {
         std::string err;
         const bool ok = preloadTapeForceProgramMode
             ? emulation->loadProgramTape(preloadTapePath, err)
@@ -276,7 +275,6 @@ void MainWindow_ImGui::finalizePendingCardPlugs()
     pendingPresetTapePath.clear();
     pendingPresetTapeForceProgramMode = false;
     pendingPresetTapeAutoPlay = false;
-    pendingSkipBundledTalkPreload = false;
 
     // CLI phase-C: run deferred verbs right after the preset's cards are
     // fully plugged. Gated on the one-shot flag so a later

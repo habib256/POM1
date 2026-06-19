@@ -15,7 +15,7 @@ Three phases: **A** boot-time, **B** first-frame preset overrides, **C** deferre
 | `--dump-tms-frame <path>` | A | Same, for the TMS9918 framebuffer (288×216, incl. the R7 border). Pair with `--preset 9` (or `--enable tms9918`). |
 | `--dump-after-cycles <N>` | A | Deterministic settle for `--dump-*-frame`: run exactly N emulated cycles (host-independent) before the capture, instead of the wall-clock `--dump-settle-ms`. **Use this for regression** so the golden is stable across machines (e.g. `2000000`). |
 | `--dump-settle-ms <N>` | A | Wall-clock settle (default 1000) before a `--dump-*-frame` capture. Quick/interactive; non-deterministic — prefer `--dump-after-cycles` for CI. |
-| `--tape <path>` | A | Preload + auto-Play. Default probe: `cassettes/WOZ_talk.mp3`. |
+| `--tape <path>` | A | Preload + auto-Play on boot (any preset). Default WOZ talk loads only with the POM1 Fantasy preset. |
 | `--save-tape <path>` / `--save-tape-format <aci\|wav>` | A | Dump deck on clean shutdown. SIGINT/SIGTERM triggers `~MainWindow_ImGui`. |
 | `--cpu-max` | A | Pin `executionSpeed = 1 000 000` cycles/frame. Beats `--speed`. |
 | `--headless` | A | Run with **no GLFW window / GL / ImGui** — for CI & scripted runs on a display-less box. Default 64K machine + execution speed + telemetry + all Phase-C deferred verbs (`--load`/`--run`/`--paste`/`--step`/`--sd-*`/`--snapshot`/`--break`); idles until SIGINT/SIGTERM. Applies `--preset` / `--enable` / `--disable` (RAM + cards + BASIC ROM, plugged immediately) — e.g. `--preset 11` plugs GEN2 for headless HGR game tests. Pairs with `--telemetry-port` / `--telemetry-log` (see `tools/test_telemetry_lockstep.py`, `tools/test_headless_preset.py`). |

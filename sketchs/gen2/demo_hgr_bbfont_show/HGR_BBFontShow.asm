@@ -38,6 +38,7 @@ mul_res0:   .res 1
 .code
 
 main:
+        JSR gen2_hgr_init
         LDA #<str_title
         LDX #>str_title
         JSR print_str_ax
@@ -149,3 +150,4 @@ str_footer:
 .include "bbfont_cp437.inc"
 .include "hgr_tables.inc"
 .include "multiply.asm"
+.include "gen2_init.asm"

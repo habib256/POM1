@@ -17,7 +17,8 @@
 ;
 ; Power-on state is INDETERMINATE (PLD POR is untrustworthy) and the Apple-1
 ; RESET line never touches the latch: ALWAYS initialise every switch your
-; program relies on before displaying anything.
+; program relies on before displaying anything. JSR gen2_hgr_init or
+; gen2_lores_init from dev/lib/gen2/gen2_init.asm (or link gen2_blit.s from C).
 ;
 ; cc65 include path: dev/lib/gen2/
 ; ============================================================================

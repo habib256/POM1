@@ -97,6 +97,7 @@ pat_hi:     .res 1
 ; MAIN: boot, then infinite render/step loop
 ; =============================================
 main:
+        JSR gen2_hgr_init
         LDA #0
         STA pat_idx
         JSR clear_hgr
@@ -557,3 +558,4 @@ row_ofs_hi:
 ;                   + ((y/8) mod 8)*$80
 ;                   + (y/64)*$28
 .include "hgr_scanline.inc"
+.include "gen2_init.asm"

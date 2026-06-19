@@ -16,6 +16,9 @@ support.) The C runtime for the same card is in [`../gen2c/`](../gen2c/).
 - **`gen2_sync.asm`** — HST0 beam synchronisation (`gen2_waitvbl` coarse V-blank
   sync, `gen2_beam_lock`), extracted from the validation demo
   `sketchs/gen2/demo_a1_crazycycle/`.
+- **`gen2_init.asm`** — `gen2_hgr_init` / `gen2_lores_init`: read all four GEN2
+  soft-switch pairs into a known state (Bernie Q8 — latch survives RESET). Call
+  before any HGR/LORES drawing in asm; C links the same routines via `gen2_blit.s`.
 
 ## HGR data tables + sub-byte rendering
 

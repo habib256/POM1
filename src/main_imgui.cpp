@@ -523,25 +523,9 @@ int main(int argc, char* argv[])
         return runHeadless(plan);
 #endif
 
-    // Default bundled cassette: preload cassettes/WOZ_talk.mp3 when --tape
-    // was not supplied. Probes the same cwd-relative locations as the
-    // in-app file browser (build/ vs repo-root launches). Not auto-played
-    // — the user presses Play when they want Woz to speak.
-    if (plan.initialTapePath.empty()) {
-        const char* probes[] = {
-            "cassettes/WOZ_talk.mp3",
-            "../cassettes/WOZ_talk.mp3",
-            "../../cassettes/WOZ_talk.mp3",
-        };
-        for (const char* p : probes) {
-            if (std::filesystem::exists(p)) {
-                plan.initialTapePath = p;
-                break;
-            }
-        }
-        // Default bundled cassette loads silently; only --tape auto-plays.
-        plan.initialTapeAutoPlay = false;
-    }
+    // --tape: optional explicit cassette path (auto-play). Bundled WOZ_talk is
+    // NOT loaded globally — only the POM1 Fantasy preset preloads it (see
+    // applyMachineConfig in MainWindow_Presets.cpp).
 
     // --save-tape-format: append .aci/.wav only if the path has no extension.
     if (!plan.saveTapePath.empty()) {

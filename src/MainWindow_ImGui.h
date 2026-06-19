@@ -587,7 +587,7 @@ private:
     bool terminalCardOverride = false;    // --terminal: enable Terminal Card on top of any preset
     int  telemetryPortOverride = -1;      // --telemetry-port N: open dev telemetry side channel on localhost:N (-1 = off)
     std::string telemetryLogPath;         // --telemetry-log PATH: golden-trace file tap (implies enabling the port)
-    std::string initialTapePath;          // --tape: preload this file after the first-frame preset applies
+    std::string initialTapePath;          // --tape: explicit path (+ auto-play when set)
     bool initialTapeAutoPlay = false;     // --tape presses PLAY; default bundled cassette only loads, waiting for the user
     std::string saveTapePath;             // --save-tape: dump the deck's recording on clean shutdown
     bool cpuMaxSpeedOnBoot = false;       // --cpu-max: pin executionSpeed to MAX (1e6) on first frame
@@ -651,9 +651,6 @@ private:
     std::string pendingPresetTapePath;
     bool pendingPresetTapeForceProgramMode = false;
     bool pendingPresetTapeAutoPlay = false;
-    // ACI plugged without Integer-BASIC cassette: skip bundled WOZ_talk.mp3
-    // preload — audio-stream mode blocks live $C0xx TAPE OUT toggles ($C030).
-    bool pendingSkipBundledTalkPreload = false;
 
     struct TapeDialogState {
         char filePath[512] = "cassette.aci";

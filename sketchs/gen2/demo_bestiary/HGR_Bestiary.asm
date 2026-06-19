@@ -65,6 +65,7 @@ nm_hi:      .res 1
 .include "sprites_music_hgr.inc"
 
 main:
+        JSR gen2_hgr_init
         LDA #<str_intro
         LDX #>str_intro
         JSR print_str_ax
@@ -296,3 +297,4 @@ name_music:
 .include "sprites/sprites_fauna_hgr.asm"
 .include "sprites/sprites_magick_hgr.asm"
 .include "sprites/sprites_music_hgr.asm"
+.include "gen2_init.asm"

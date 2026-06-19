@@ -32,6 +32,7 @@ ptr_hi:     .res 1      ; $05  (required by hgr_tables.inc)
 ; MAIN
 ; =============================================
 main:
+        JSR gen2_hgr_init
         LDA #<str_title
         LDX #>str_title
         JSR print_str_ax
@@ -110,3 +111,4 @@ str_legend:
 ; HGR TABLES (shared include — only hgr_lo/hgr_hi used here)
 ; =============================================
 .include "hgr_tables.inc"
+.include "gen2_init.asm"

@@ -1,0 +1,20 @@
+---
+description: GEN2 soft switches survive RESET — always call gen2_hgr_init before HGR draw
+globs: sketchs/gen2/**/*,dev/lib/gen2/**/*
+alwaysApply: false
+---
+
+# GEN2 soft-switch init (Bernie Q8)
+
+The `$C250-$C257` latch is **indeterminate at power-on** and **not cleared by Apple-1 RESET**. A prior sketch, DevBench Run, or POM1 cold latch can leave TEXT, MIXED, PAGE2, or LORES active — HGR demos then draw off-screen or crash.
+
+**Before any GEN2 graphics:**
+
+- **Asm:** `.include "gen2_init.asm"` then `JSR gen2_hgr_init` (or `gen2_lores_init`) at `main` entry.
+- **C:** `gen2_hgr_init()` / `gen2_lores_init()` from `gen2.h` (implemented in `gen2_init.asm` via `gen2_blit.s`).
+
+Touches all four switch pairs: graphics (TEXT off), RES, PAGE1, MIXED off. Read-only toggles — use `LDA`/`BIT`, never `STA`.
+
+*A-1-CrazyCycle* uses a custom sequence (TEXT first, then HGR) — do not replace with a blind `gen2_hgr_init` at entry.
+
+Reference: `dev/lib/gen2/gen2.inc`, `dev/lib/gen2/gen2_init.asm`, `doc/GEN2_RELEASE.md`.

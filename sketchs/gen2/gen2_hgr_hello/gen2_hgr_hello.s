@@ -24,10 +24,7 @@ tmp:     .res 1
 .code
 
 start:
-    bit GEN2_TEXTOFF
-    bit GEN2_HIRES
-    bit GEN2_PAGE1
-    bit GEN2_MIXOFF
+    jsr gen2_hgr_init
     jsr clear_hgr
     lda #START_X
     sta gx
@@ -110,4 +107,5 @@ message:
 
 .include "bbfont_cp437.inc"
 .include "hgr_tables.inc"
+.include "gen2_init.asm"
 
