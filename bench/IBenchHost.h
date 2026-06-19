@@ -103,6 +103,10 @@ public:
     // ---- Toolchain availability hint shown next to the Target combo ----
     virtual bool        toolchainReady(int target) const = 0;
     virtual std::string toolchainHint (int target) const = 0;   // short status text
+    virtual std::string modeLabel(int target) const {
+        const auto& ts = targets();
+        return (target >= 0 && target < static_cast<int>(ts.size())) ? ts[target].label : "";
+    }
 
     // Multi-line "what the toolchain probe found" report (paths, dev/ tree,
     // per-runtime readiness) for a diagnostics popup. Empty = nothing to show.

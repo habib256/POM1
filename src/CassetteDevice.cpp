@@ -802,6 +802,13 @@ bool CassetteDevice::loadTape(const std::string& path)
         return loadAciTape(path);
     }
 
+    // MP3 is treated as deck audio, never as an ACI program tape. Compressed MP3
+    // music/speech should not flip the UI into PROGRAM mode just because the ACI
+    // card is currently plugged.
+    if (ext == ".mp3") {
+        return loadAudioStream(path);
+    }
+
     // ACI card plugged: user is loading a program tape. Use the pulse
     // path so the CPU can read bits from $C081. 30-minute cap applies
     // (pulse extraction allocates per-transition state).
@@ -829,6 +836,9 @@ bool CassetteDevice::loadProgramTape(const std::string& path)
 {
     const std::string ext = lowerExtension(path);
     loadInfo = lookupTapeInfo(path);
+    if (ext == ".mp3") {
+        return loadAudioStream(path);
+    }
     closeAudioStream();
     audioStreamMode = false;
 

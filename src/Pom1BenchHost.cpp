@@ -1479,6 +1479,21 @@ std::string Pom1BenchHost::toolchainHint(int target) const
 #endif
 }
 
+std::string Pom1BenchHost::modeLabel(int target) const
+{
+    if (target < 0 || target >= kP1TargetCount) return "";
+    const int idx = p1(target);
+    const P1T& t = kP1Targets[idx];
+    if (t.mode == 1) return "Mode: HEX + Apple-1";
+    if (t.mode == 2) return "Mode: RAW + Apple-1";
+
+    const char* language = (t.mode == 3) ? "C" : "ASM";
+    const char* machine = "Apple-1";
+    if (idx == 1 || idx == 4) machine = "TMS9918";
+    else if (idx == 2 || idx == 5) machine = "GEN2 HGR";
+    return std::string("Mode: ") + language + " + " + machine;
+}
+
 std::string Pom1BenchHost::toolchainReport() const
 {
     probe();

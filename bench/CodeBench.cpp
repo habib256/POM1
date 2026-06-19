@@ -529,13 +529,14 @@ void CodeBench::render(const char* title, bool* open)
         ImGui::PopStyleColor();
     }
 
-    // ---- Teal status bar (selected target on the right) ----
+    // ---- Teal status bar (active mode combination on the right) ----
     ImGui::PushStyleColor(ImGuiCol_ChildBg, kTeal);
     ImGui::BeginChild("##benchstatus", ImVec2(0, 24), false, ImGuiWindowFlags_NoScrollbar);
     ImGui::PushStyleColor(ImGuiCol_Text, kWhite);
     ImGui::SetCursorPos(ImVec2(8, 4));
     ImGui::TextUnformatted(status_.empty() ? "Ready" : status_.c_str());
-    const std::string right = targets[targetIndex_].label + " on host";
+    std::string right = host_->modeLabel(targetIndex_);
+    if (right.empty()) right = targets[targetIndex_].label;
     const float rw = ImGui::CalcTextSize(right.c_str()).x;
     ImGui::SetCursorPos(ImVec2(ImGui::GetWindowWidth() - rw - 8, 4));
     ImGui::TextUnformatted(right.c_str());

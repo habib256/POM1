@@ -42,6 +42,7 @@ public:
 
     bool        toolchainReady(int target) const override;
     std::string toolchainHint (int target) const override;
+    std::string modeLabel(int target) const override;
     std::string toolchainReport() const override;
     std::string headerNote() const override;
 
