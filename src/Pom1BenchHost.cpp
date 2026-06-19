@@ -726,6 +726,86 @@ static AsmProjectCtx probeSketchProject(const std::string& sourcePath)
     return p;
 }
 
+// Full tms9918c runtime for the Bench C target (ld65 dead-strips unused .o files,
+// but we link every family so any sketch under sketchs/tms9918/*.c builds).
+static std::string tms9918cBenchRuntimeCl65Args(const std::string& lib, const std::string& gfxLib)
+{
+    auto qf = [&](const std::string& base, const char* name) {
+        return " " + bench::shellQuote(base + "/" + name);
+    };
+    std::string s =
+        qf(lib, "apple1.c") + qf(lib, "apple1_asm.s") +
+        qf(lib, "tms9918.c") + qf(lib, "tms_fast.s") +
+        qf(lib, "screen1.c") + qf(lib, "c64font.c") + qf(lib, "screen1_input.c") +
+        qf(lib, "screen2_init.c") + qf(lib, "screen2_text.c") + qf(lib, "screen2_pixel.c") +
+        qf(lib, "screen2_geom.c") + qf(lib, "screen1_ext.c") + qf(lib, "screen2_ext.c") +
+        qf(lib, "sprites.c") + qf(lib, "sprite_shadow.c") +
+        qf(lib, "vsync.c") + qf(lib, "printlib.c") + qf(lib, "random.c");
+    if (!gfxLib.empty()) {
+        s += qf(gfxLib, "gfx_line.c") + qf(gfxLib, "gfx_rect.c") + qf(gfxLib, "gfx_circle.c") +
+             qf(gfxLib, "gfx_ellipse.c") + qf(gfxLib, "gfx_num_dec.c") + qf(gfxLib, "gfx_num_hex.c") +
+             qf(gfxLib, "gfx_backend_tms.c") + qf(gfxLib, "gfx_backend_tms_rect.c");
+    }
+    return s;
+}
+
+static std::string benchAbsToWasmDev(const std::string& absPath)
+{
+    const std::string needle = "/dev/";
+    const size_t p = absPath.find(needle);
+    return (p != std::string::npos) ? absPath.substr(p) : std::string{};
+}
+
+static std::string jsonQuoted(const std::string& s)
+{
+    std::string o = "\"";
+    for (char c : s) {
+        if (c == '\\' || c == '"') o += '\\';
+        o += c;
+    }
+    o += '"';
+    return o;
+}
+
+static std::string wasmTms9918cBuildSpec(const std::vector<std::string>& extraAsmAbs)
+{
+    std::ostringstream spec;
+    spec << R"({"cfg":"/dev/lib/tms9918c/cc65/codetank_c.cfg","incDirs":["/dev/lib/tms9918c","/dev/lib/gfx"],)"
+         << R"("cSources":[{"path":"/dev/lib/tms9918c/apple1.c","name":"apple1.c"},)"
+         << R"({"path":"/dev/lib/tms9918c/tms9918.c","name":"tms9918.c"},)"
+         << R"({"path":"/dev/lib/tms9918c/screen1.c","name":"screen1.c"},)"
+         << R"({"path":"/dev/lib/tms9918c/c64font.c","name":"c64font.c"},)"
+         << R"({"path":"/dev/lib/tms9918c/screen1_input.c","name":"screen1_input.c"},)"
+         << R"({"path":"/dev/lib/tms9918c/screen2_init.c","name":"screen2_init.c"},)"
+         << R"({"path":"/dev/lib/tms9918c/screen2_text.c","name":"screen2_text.c"},)"
+         << R"({"path":"/dev/lib/tms9918c/screen2_pixel.c","name":"screen2_pixel.c"},)"
+         << R"({"path":"/dev/lib/tms9918c/screen2_geom.c","name":"screen2_geom.c"},)"
+         << R"({"path":"/dev/lib/tms9918c/screen1_ext.c","name":"screen1_ext.c"},)"
+         << R"({"path":"/dev/lib/tms9918c/screen2_ext.c","name":"screen2_ext.c"},)"
+         << R"({"path":"/dev/lib/tms9918c/sprites.c","name":"sprites.c"},)"
+         << R"({"path":"/dev/lib/tms9918c/sprite_shadow.c","name":"sprite_shadow.c"},)"
+         << R"({"path":"/dev/lib/tms9918c/vsync.c","name":"vsync.c"},)"
+         << R"({"path":"/dev/lib/tms9918c/printlib.c","name":"printlib.c"},)"
+         << R"({"path":"/dev/lib/gfx/gfx_line.c","name":"gfx_line.c"},)"
+         << R"({"path":"/dev/lib/gfx/gfx_rect.c","name":"gfx_rect.c"},)"
+         << R"({"path":"/dev/lib/gfx/gfx_circle.c","name":"gfx_circle.c"},)"
+         << R"({"path":"/dev/lib/gfx/gfx_ellipse.c","name":"gfx_ellipse.c"},)"
+         << R"({"path":"/dev/lib/gfx/gfx_num_dec.c","name":"gfx_num_dec.c"},)"
+         << R"({"path":"/dev/lib/gfx/gfx_num_hex.c","name":"gfx_num_hex.c"},)"
+         << R"({"path":"/dev/lib/gfx/gfx_backend_tms.c","name":"gfx_backend_tms.c"},)"
+         << R"({"path":"/dev/lib/gfx/gfx_backend_tms_rect.c","name":"gfx_backend_tms_rect.c"}],)"
+         << R"("asmSources":[{"path":"/dev/lib/tms9918c/apple1_asm.s","name":"apple1_asm.s"},)"
+         << R"({"path":"/dev/lib/tms9918c/tms_fast.s","name":"tms_fast.s"})";
+    for (const std::string& ea : extraAsmAbs) {
+        const std::string wp = benchAbsToWasmDev(ea);
+        if (wp.empty()) continue;
+        spec << ",{\"path\":" << jsonQuoted(wp) << ",\"name\":"
+             << jsonQuoted(std::filesystem::path(ea).filename().string()) << "}";
+    }
+    spec << "]}";
+    return spec.str();
+}
+
 static void applySketchAssets(const std::string& sourcePath, std::string& asset, uint16_t& addr)
 {
     asset.clear();
@@ -1037,7 +1117,7 @@ void Pom1BenchHost::probe() const
         const fs::path cfg = vroot / "cc65" / "codetank_c.cfg";
         if (fs::exists(cfg, ec)) codetankCfg_ = fs::absolute(cfg, ec).string();
     }
-    cl65Ok_ = !cl65_.empty() && !videocardLib_.empty() && !codetankCfg_.empty();
+    cl65Ok_ = !cl65_.empty() && !videocardLib_.empty() && !codetankCfg_.empty() && !gfxLib_.empty();
 
     // GEN2 HGR C: the gen2c lib + its cfg under dev/.
     if (!devRoot.empty()) {
@@ -1303,9 +1383,10 @@ bench::BuildResult Pom1BenchHost::build(int target, const std::string& src, cons
                    R"("asmSources":[{"path":"/dev/lib/gen2c/gen2_blit.s","name":"gen2_blit.s"},{"path":"/dev/lib/apple1c/apple1io_asm.s","name":"apple1io_asm.s"}]})";
         } else {   // "C" = TMS9918 CodeTank ROM
             cfg  = "/dev/lib/tms9918c/cc65/codetank_c.cfg";
-            spec = R"({"cfg":"/dev/lib/tms9918c/cc65/codetank_c.cfg","incDirs":["/dev/lib/tms9918c"],)"
-                   R"("cSources":[{"path":"/dev/lib/tms9918c/apple1.c","name":"apple1.c"},{"path":"/dev/lib/tms9918c/tms9918.c","name":"tms9918.c"},{"path":"/dev/lib/tms9918c/screen1.c","name":"screen1.c"},{"path":"/dev/lib/tms9918c/c64font.c","name":"c64font.c"}],)"
-                   R"("asmSources":[{"path":"/dev/lib/tms9918c/apple1_asm.s","name":"apple1_asm.s"}]})";
+            {
+                const AsmProjectCtx proj = probeSketchProject(activeSourcePath_);
+                spec = wasmTms9918cBuildSpec(proj.extraAsm);
+            }
         }
         uint16_t entry = parseCfgLoadAddr(cfg);
         if (entry == 0) entry = (cfgTag == "C-plain") ? 0x0300 : (cfgTag == "C-gen2") ? 0x6000 : 0x4000;
@@ -1471,13 +1552,36 @@ bench::BuildResult Pom1BenchHost::build(int target, const std::string& src, cons
                 " -o " + bench::shellQuote(binB.string());
         } else {
             tag = "CodeTank ROM";
-            logMeta.cfgPath = codetankCfg_;
+            const AsmProjectCtx proj = probeSketchProject(activeSourcePath_);
+            std::string cfgUse = codetankCfg_;
+            if (proj.ok && !proj.cfg.empty()) {
+                cfgUse = proj.cfg;
+                logMeta.cfgPath = cfgUse;
+            } else {
+                logMeta.cfgPath = codetankCfg_;
+            }
             const std::string& lib = videocardLib_;
-            cmd = bench::shellQuote(cl65_) + " -t none -Oirs -C " + bench::shellQuote(codetankCfg_) +
-                " -I " + bench::shellQuote(lib) + tele + " " + bench::shellQuote(srcC.string()) +
-                " " + bench::shellQuote(lib + "/apple1.c") + " " + bench::shellQuote(lib + "/apple1_asm.s") +
-                " " + bench::shellQuote(lib + "/tms9918.c") + " " + bench::shellQuote(lib + "/screen1.c") +
-                " " + bench::shellQuote(lib + "/c64font.c") +
+            std::string gfxInc;
+            if (!gfxLib_.empty()) gfxInc = " -I " + bench::shellQuote(gfxLib_);
+            std::string extraObjs;
+            int xn = 0;
+            for (const std::string& ea : proj.extraAsm) {
+                const fs::path eo = dir / ("pom1_bench_x" + std::to_string(xn++) + ".o");
+                sweep.add(eo);
+                std::string eout;
+                const std::string eca = bench::shellQuote(ca65_) + " " + libFlags_ +
+                    bench::shellQuote(ea) + " -o " + bench::shellQuote(eo.string());
+                if (bench::runCapture(eca, eout) != 0) {
+                    parseErrorMarkers(eout, r.errors);
+                    r.console = std::string("$ cl65 -t none [") + tag + "]\n$ ca65 [" +
+                        fs::path(ea).filename().string() + "]\n" + eout + humanizeCc65(eout);
+                    r.status = "ca65 failed (extraAsm, see Build output)"; return r;
+                }
+                extraObjs += " " + bench::shellQuote(eo.string());
+            }
+            cmd = bench::shellQuote(cl65_) + " -t none -Oirs -C " + bench::shellQuote(cfgUse) +
+                " -I " + bench::shellQuote(lib) + gfxInc + tele + " " + bench::shellQuote(srcC.string()) +
+                tms9918cBenchRuntimeCl65Args(lib, gfxLib_) + extraObjs +
                 " -o " + bench::shellQuote(binB.string());
         }
         std::string out;
