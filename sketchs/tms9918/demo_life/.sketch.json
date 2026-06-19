@@ -1,7 +1,7 @@
 {
   "profile": "tms9918",
   "language": "asm",
-  "cfg": "sketchs/tms9918/demo_life/apple1_4k.cfg",
+  "cfg": "sketchs/tms9918/demo_life/apple1_life_codetank_full.cfg",
   "extraAsm": [
     "dev/lib/tms9918/tms9918_pad.asm"
   ]

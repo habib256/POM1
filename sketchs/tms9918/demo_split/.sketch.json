@@ -1,7 +1,7 @@
 {
   "profile": "tms9918",
   "language": "asm",
-  "cfg": "sketchs/tms9918/demo_split/apple1_split.cfg",
+  "cfg": "sketchs/tms9918/demo_split/apple1_split_codetank.cfg",
   "extraAsm": [
     "dev/lib/tms9918/tms9918m1.asm",
     "dev/lib/tms9918/tms9918_5strigger.asm",

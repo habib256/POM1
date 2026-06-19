@@ -1675,28 +1675,13 @@ std::vector<CodeTankLibraryEntry> scanCodeTankLibrary()
     return out;
 }
 
-void drawCodeTankStatusPill(const char* label, bool enabled, ImU32 onColor)
-{
-    const ImVec2 pos = ImGui::GetCursorScreenPos();
-    const ImVec2 textSize = ImGui::CalcTextSize(label);
-    const ImVec2 size(textSize.x + 18.0f, ImGui::GetFrameHeight());
-    ImDrawList* dl = ImGui::GetWindowDrawList();
-    dl->AddRectFilled(pos, ImVec2(pos.x + size.x, pos.y + size.y),
-                      enabled ? onColor : IM_COL32(55, 55, 62, 255), 5.0f);
-    dl->AddText(ImVec2(pos.x + 9.0f, pos.y + (size.y - textSize.y) * 0.5f),
-                enabled ? IM_COL32(12, 16, 18, 255)
-                        : IM_COL32(150, 150, 156, 255),
-                label);
-    ImGui::Dummy(size);
-}
-
 void drawCodeTankConsoleHeader(bool codeTankOnline,
                                bool tmsOnline,
                                size_t romCount)
 {
     const ImVec2 start = ImGui::GetCursorScreenPos();
     const float width = std::max(360.0f, ImGui::GetContentRegionAvail().x);
-    const ImVec2 size(width, 98.0f);
+    const ImVec2 size(width, 76.0f);
     ImDrawList* dl = ImGui::GetWindowDrawList();
 
     const ImVec2 end(start.x + size.x, start.y + size.y);
@@ -1717,24 +1702,12 @@ void drawCodeTankConsoleHeader(bool codeTankOnline,
                 IM_COL32(240, 245, 255, 255), "APPLE-1 GAME CONSOLE");
 
     char stats[128];
-    std::snprintf(stats, sizeof(stats), "%zu ROMS  |  BOOT 4000R  |  WINDOW $4000-$7FFF",
-                  romCount);
-    dl->AddText(ImVec2(start.x + 18.0f, start.y + 66.0f),
+    std::snprintf(stats, sizeof(stats), "%zu ROMS | 28C256 OK | TMS %s | CODETANK %s | 4000R",
+                  romCount,
+                  tmsOnline ? "ON" : "OFF",
+                  codeTankOnline ? "ON" : "OFF");
+    dl->AddText(ImVec2(start.x + 18.0f, start.y + 58.0f),
                 IM_COL32(255, 206, 94, 255), stats);
-
-    const float panelW = 210.0f;
-    const ImVec2 panelMin(end.x - panelW - 16.0f, start.y + 16.0f);
-    const ImVec2 panelMax(end.x - 16.0f, end.y - 16.0f);
-    dl->AddRectFilled(panelMin, panelMax, IM_COL32(4, 6, 10, 170), 6.0f);
-    dl->AddRect(panelMin, panelMax, IM_COL32(255, 206, 94, 160), 6.0f);
-    dl->AddText(ImVec2(panelMin.x + 12.0f, panelMin.y + 12.0f),
-                codeTankOnline ? IM_COL32(80, 245, 120, 255)
-                               : IM_COL32(170, 170, 176, 255),
-                codeTankOnline ? "CODETANK ONLINE" : "CODETANK STANDBY");
-    dl->AddText(ImVec2(panelMin.x + 12.0f, panelMin.y + 34.0f),
-                tmsOnline ? IM_COL32(80, 245, 220, 255)
-                          : IM_COL32(170, 170, 176, 255),
-                tmsOnline ? "TMS9918 HOST READY" : "TMS9918 HOST OFFLINE");
 
     ImGui::Dummy(size);
 }
@@ -1767,14 +1740,6 @@ void MainWindow_ImGui::renderCodeTankLibraryWindow()
         // Currently-loaded ROM (highlighted in green).
         const std::string& currentRom = uiSnapshot.codeTank.romPath;
         drawCodeTankConsoleHeader(codeTankEnabled, tms9918Enabled, entries.size());
-        ImGui::Spacing();
-        drawCodeTankStatusPill("28C256 ROM", true, IM_COL32(255, 206, 94, 255));
-        ImGui::SameLine();
-        drawCodeTankStatusPill("TMS9918", tms9918Enabled, IM_COL32(80, 245, 220, 255));
-        ImGui::SameLine();
-        drawCodeTankStatusPill("CODETANK", codeTankEnabled, IM_COL32(80, 245, 120, 255));
-        ImGui::SameLine();
-        ImGui::TextDisabled("Type 4000R to RUN");
         ImGui::Spacing();
 
         ImGui::BeginChild("##codetank_lib_scroll",
