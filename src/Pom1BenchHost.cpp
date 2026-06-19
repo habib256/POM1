@@ -1304,7 +1304,7 @@ bench::BuildResult Pom1BenchHost::build(int target, const std::string& src, cons
         } else {   // "C" = TMS9918 CodeTank ROM
             cfg  = "/dev/lib/tms9918c/cc65/codetank_c.cfg";
             spec = R"({"cfg":"/dev/lib/tms9918c/cc65/codetank_c.cfg","incDirs":["/dev/lib/tms9918c"],)"
-                   R"("cSources":[{"path":"/dev/lib/tms9918c/tms9918.c","name":"tms9918.c"},{"path":"/dev/lib/tms9918c/screen1.c","name":"screen1.c"},{"path":"/dev/lib/tms9918c/c64font.c","name":"c64font.c"}],)"
+                   R"("cSources":[{"path":"/dev/lib/tms9918c/apple1.c","name":"apple1.c"},{"path":"/dev/lib/tms9918c/tms9918.c","name":"tms9918.c"},{"path":"/dev/lib/tms9918c/screen1.c","name":"screen1.c"},{"path":"/dev/lib/tms9918c/c64font.c","name":"c64font.c"}],)"
                    R"("asmSources":[{"path":"/dev/lib/tms9918c/apple1_asm.s","name":"apple1_asm.s"}]})";
         }
         uint16_t entry = parseCfgLoadAddr(cfg);
@@ -1475,8 +1475,9 @@ bench::BuildResult Pom1BenchHost::build(int target, const std::string& src, cons
             const std::string& lib = videocardLib_;
             cmd = bench::shellQuote(cl65_) + " -t none -Oirs -C " + bench::shellQuote(codetankCfg_) +
                 " -I " + bench::shellQuote(lib) + tele + " " + bench::shellQuote(srcC.string()) +
-                " " + bench::shellQuote(lib + "/apple1_asm.s") + " " + bench::shellQuote(lib + "/tms9918.c") +
-                " " + bench::shellQuote(lib + "/screen1.c") + " " + bench::shellQuote(lib + "/c64font.c") +
+                " " + bench::shellQuote(lib + "/apple1.c") + " " + bench::shellQuote(lib + "/apple1_asm.s") +
+                " " + bench::shellQuote(lib + "/tms9918.c") + " " + bench::shellQuote(lib + "/screen1.c") +
+                " " + bench::shellQuote(lib + "/c64font.c") +
                 " -o " + bench::shellQuote(binB.string());
         }
         std::string out;
