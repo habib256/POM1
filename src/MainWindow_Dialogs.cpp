@@ -1378,7 +1378,7 @@ static const char kSoftwareReferenceCc65Cmd[] =
     "\n"
     "# Sokoban (real-hardware variants; text cfgs in sketchs/apple1/game_sokoban/, HGR in sketchs/gen2/game_sokoban/)\n"
     "ld65 -C sketchs/apple1/game_sokoban/apple1_sok_4k.cfg  -o build/sok.bin build/sok.o  # stock 4K (text)\n"
-    "ld65 -C sketchs/apple1/game_sokoban/apple1_sok_8k.cfg  -o build/sok.bin build/sok.o  # TMS9918 variant\n"
+    "ld65 -C sketchs/apple1/game_sokoban/apple1_sok_4k.cfg  -o build/sok.bin build/sok.o  # Apple-1 4K\n"
     "ld65 -C sketchs/gen2/game_sokoban/apple1_sok_hgr.cfg -o build/sok.bin build/sok.o  # GEN2 HGR variant\n";
 
 } // namespace
@@ -1574,7 +1574,6 @@ void MainWindow_ImGui::renderSoftwareReferenceWindow()
             hwKeyValue("dev/cc65/pom1_fantasy.cfg:", "Multiplexing Fantasy preset (POM1-only). Configurable layout.");
             hwHeading("Sokoban-specific (real Apple-1, dev/projects/{apple1,gen2}/game_sokoban/)");
             hwKeyValue("apple1_sok_4k.cfg:", "Stock 4K - text variant. LEVELBUF in zero page, STATEGRID in bss at $0F00.");
-            hwKeyValue("apple1_sok_8k.cfg:", "Stock 8K + TMS9918. STATEGRID moved to $1F00.");
             hwKeyValue("apple1_sok_hgr.cfg:", "8K + GEN2 HGR. Same discipline but HGR framebuffer reserved.");
             hwHeading("Tips");
             hwKeyValue("Zero page buffers:", "Declare with .segment \"LEVELBUF\": zeropage to force zp,X addressing.");

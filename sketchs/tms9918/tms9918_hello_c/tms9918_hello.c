@@ -16,10 +16,11 @@ void main(void) {
     tms_set_color(COLOR_CYAN);
     screen1_prepare();
     screen1_load_font();
-    screen1_puts((const unsigned char *)"HELLO WORLD (C / TMS9918)\nPOM1 Bench");
-
+    screen1_puts((const unsigned char *)"HELLO WORLD (C / TMS9918)\nPOM1 Bench\n\n");
+	screen1_puts((const unsigned char *)"apple1-videocard-lib (cc65)\nCodeTank+TMS");
     for (;;) {
         /* idle */
     }
 }
+
 

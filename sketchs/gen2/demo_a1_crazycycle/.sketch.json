@@ -1,7 +1,7 @@
 {
   "profile": "gen2",
   "language": "asm",
-  "cfg": "sketchs/gen2/demo_a1_crazycycle/apple1_gen2.cfg",
+  "cfg": "dev/cc65/apple1_gen2.cfg",
   "asset": "sdcard/NONO/HGR/UBERNIE#062000",
   "assetAddr": "0x2000"
 }

@@ -1162,8 +1162,9 @@ Builder:
 python3 tools/build_codetank_rom.py --layout=dualslot8k -o roms/codetank/Codetank_GAME1.rom
 ```
 
-Cfgs: `apple1_galaga_codetank_8k.cfg` (link at `$4000`, 8 kB slot) and
-`apple1_sokoban_codetank_8k.cfg` (link at `$6000`).
+Cfgs: `apple1_galaga_codetank.cfg` / `apple1_sokoban_codetank.cfg` (DevBench,
+16 KB CodeTank @ `$4000`) and `apple1_*_codetank_bank.cfg` slots for
+`tools/build_codetank_rom.py`.
 
 #### Visual validation
 

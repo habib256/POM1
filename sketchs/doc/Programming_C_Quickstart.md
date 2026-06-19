@@ -14,7 +14,7 @@ Programming_GEN2C.md, Programming_TMS9918C.md) are linked at the end.
 |---|---|---|---|
 | Plain text I/O (Wozmon) | `sketchs/apple1/_template/` | `apple1_c.cfg` | `apple1c.h` |
 | GEN2 HGR colour graphics | `sketchs/gen2/_template_gen2c/` | `apple1_gen2_c.cfg` | `gen2.h` |
-| TMS9918 sprites / colour | `sketchs/tms9918/_template_tms9918c/` | `codetank_c.cfg` | `tms9918c.h` |
+| TMS9918 sprites / colour | `sketchs/tms9918/_template_tms9918c/` | `dev/lib/tms9918c/cc65/codetank_c.cfg` | `tms9918c.h` |
 
 Then `make` in the copy. The Makefile already has the right cc65 flags,
 linker config and the **per-family** library variables (only the .o files
