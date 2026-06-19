@@ -99,16 +99,6 @@ main:
         LDX #>str_title
         JSR print_str_ax
 
-        ; Wait for key (seeds PRNG with timing)
-@wait:  INC prng_lo
-        BNE @no_hi
-        INC prng_hi
-@no_hi: LDA KBDCR
-        BPL @wait
-        LDA KBD
-        EOR prng_lo
-        STA prng_lo
-
 ; =============================================
 ; RESTART: generate and display a new maze
 ; =============================================
@@ -313,7 +303,7 @@ generate_maze:
         LDA #$00
         TAY
         STA gptr_lo
-        LDX #$40
+        LDX #>GRID
         STX gptr_hi
         LDX #$04
 @clr:   STA (gptr_lo),Y
@@ -744,7 +734,7 @@ str_title:
         .byte $0D, " * HGR MAZE *", $0D
         .byte " GEN2 COLOR GRAPHICS CARD", $0D
         .byte " 34X23 CELLS - 4X4 PX", $0D
-        .byte $0D, " PRESS ANY KEY...", $0D, 0
+        .byte $0D, " GENERATING...", $0D, 0
 
 str_new:
         .byte " ANY KEY = NEW MAZE", $0D, 0

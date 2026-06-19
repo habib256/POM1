@@ -62,9 +62,6 @@ main:
         LDA #<str_title
         LDX #>str_title
         JSR print_str_ax
-@wait:  LDA KBDCR
-        BPL @wait
-        LDA KBD
 
 draw:
         JSR clear_hgr
@@ -404,7 +401,7 @@ str_title:
         .byte $0D, " * HGR HOUSE & TREE *", $0D
         .byte " GEN2 COLOR GRAPHICS CARD", $0D
         .byte " NTSC ARTIFACT COLORS", $0D
-        .byte $0D, " PRESS ANY KEY...", $0D, 0
+        .byte $0D, " DRAWING...", $0D, 0
 str_done:
         .byte " DONE. KEY=REDRAW", $0D, 0
 

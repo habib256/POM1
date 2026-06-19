@@ -1104,13 +1104,12 @@ int Pom1BenchHost::targetForPath(const std::string& path) const
     return (cMode ? 3 : 0) + machine;                  // kP1Targets language-major order
 }
 
-static void enableSketchSidecarCards(MainWindow_ImGui* mw, EmulationController* emu,
-                                     const std::string& sourcePath)
+void Pom1BenchHost::enableSketchSidecarCards(EmulationController* emu)
 {
-    if (!mw || !emu) return;
-    if (sourcePathLooksGT6144(sourcePath)) {
-        mw->gt6144Enabled = true;
-        mw->showGT6144 = true;
+    if (!mw_ || !emu) return;
+    if (sourcePathLooksGT6144(activeSourcePath_)) {
+        mw_->gt6144Enabled = true;
+        mw_->showGT6144 = true;
         emu->setGT6144Enabled(true);
     }
 }
@@ -1578,7 +1577,7 @@ bench::BuildResult Pom1BenchHost::build(int target, const std::string& src, cons
     // card is on the bus — early writes to $2000-$3FFF or $CC00/$CC01 vanish
     // into RAM. File > Load drains the same queue here; we do the same.
     mw_->finalizePendingCardPlugs();
-    enableSketchSidecarCards(mw_, emu, activeSourcePath_);
+    enableSketchSidecarCards(emu);
     ejectTapeForAciProgramOutput(emu, r, t.preset);
     if (gen2c || plainc) {
         // GEN2 HGR / plain text C: load + run (the target's preset already plugged
@@ -1621,26 +1620,26 @@ bench::BuildResult Pom1BenchHost::build(int target, const std::string& src, cons
         return r;
     }
 
-    // asm: load program, then stage companion asset only when .sketch.json asks
-    // for one (CrazyCycle's UBERNIE @ $2000). Asset after loadBinary so a prior
-    // sketch's sidecar cannot leak across Run.
+    // asm: stage companion assets before load+run. loadBinaryToRam() pauses the
+    // CPU and does not resume it, while loadBinary() resets + starts it; therefore
+    // the program load must be the final memory load in this Run path.
     std::string error; int bytesLoaded = 0;
-    if (emu->loadBinary(binB.string(), entry, error, &bytesLoaded)) {
-        if (!extraAsset_.empty()) {
-            const std::string ap = resolveAssetPath(extraAsset_, activeSourcePath_, devRoot_);
-            std::string aerr;
-            if (!ap.empty() && emu->loadBinaryToRam(ap, extraAssetAddr_, aerr)) {
-                std::error_code ec3;
-                const auto sz = fs::file_size(ap, ec3);
-                char addr[8]; std::snprintf(addr, sizeof(addr), "$%04X", extraAssetAddr_);
-                r.console += std::string("[ok] asset -> ") + addr + "  "
-                    + std::to_string(ec3 ? 0 : sz) + " B\n    " + ap + "\n";
-            } else {
-                r.console += "[warn] asset not loaded: " + extraAsset_;
-                if (!aerr.empty()) r.console += " (" + aerr + ")";
-                r.console += "\n";
-            }
+    if (!extraAsset_.empty()) {
+        const std::string ap = resolveAssetPath(extraAsset_, activeSourcePath_, devRoot_);
+        std::string aerr;
+        if (!ap.empty() && emu->loadBinaryToRam(ap, extraAssetAddr_, aerr)) {
+            std::error_code ec3;
+            const auto sz = fs::file_size(ap, ec3);
+            char addr[8]; std::snprintf(addr, sizeof(addr), "$%04X", extraAssetAddr_);
+            r.console += std::string("[ok] asset -> ") + addr + "  "
+                + std::to_string(ec3 ? 0 : sz) + " B\n    " + ap + "\n";
+        } else {
+            r.console += "[warn] asset not loaded: " + extraAsset_;
+            if (!aerr.empty()) r.console += " (" + aerr + ")";
+            r.console += "\n";
         }
+    }
+    if (emu->loadBinary(binB.string(), entry, error, &bytesLoaded)) {
         emu->copySnapshot(mw_->uiSnapshot);
         if (t.preset == 2) mw_->showGraphicsCard = true;
         char msg[160]; std::snprintf(msg, sizeof(msg), "Built %d B run @ $%04X", bytesLoaded, entry);
@@ -1706,7 +1705,7 @@ bench::BuildResult Pom1BenchHost::pollBuild()
     // TMS9918 card is on the bus before the CPU starts the freshly loaded
     // binary. Otherwise the program's early writes can land before the card.
     mw_->finalizePendingCardPlugs();
-    enableSketchSidecarCards(mw_, emu, activeSourcePath_);
+    enableSketchSidecarCards(emu);
     ejectTapeForAciProgramOutput(emu, r, t.preset);
 
     if (t.codetankRom) {

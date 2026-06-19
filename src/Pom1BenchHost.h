@@ -12,6 +12,7 @@
 #include <vector>
 
 class MainWindow_ImGui;
+class EmulationController;
 
 class Pom1BenchHost : public bench::IBenchHost
 {
@@ -58,6 +59,7 @@ public:
 
 private:
     void               probe() const;   // lazy cc65 toolchain detection
+    void               enableSketchSidecarCards(EmulationController* emu);
     bench::BuildResult build(int target, const std::string& src, const std::string& addrHex, bool run);
     bench::BuildResult directLoad(int target, const std::string& src, const std::string& addrHex);
     // Map a bench targets_ index -> kP1Targets[] index. Identity on desktop; on
