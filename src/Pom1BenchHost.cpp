@@ -557,16 +557,6 @@ static std::string sketchJsonString(const std::string& json, const char* key)
     return json.substr(pos + 1, end - pos - 1);
 }
 
-static bool sketchJsonBool(const std::string& json, const char* key)
-{
-    const std::string needle = std::string("\"") + key + "\"";
-    size_t pos = json.find(needle);
-    if (pos == std::string::npos) return false;
-    pos = json.find(':', pos + needle.size());
-    if (pos == std::string::npos) return false;
-    return json.find("true", pos + 1) < json.find('\n', pos + 1);
-}
-
 static std::vector<std::string> sketchJsonStringArray(const std::string& json, const char* key)
 {
     std::vector<std::string> out;
@@ -636,9 +626,10 @@ static AsmProjectCtx probeSketchProject(const std::string& sourcePath)
         if (!ep.empty()) p.extraAsm.push_back(ep.string());
     }
 
-    if (sketchJsonBool(json, "dualBank")) {
-        p.dualBank = true;
-    } else {
+    // Dual-bank is defined by the linker cfg (%O.lo + %O.hi), not the sidecar.
+    // A stale "dualBank": true on a single-bank apple1_gen2.cfg sketch would
+    // make DevBench look for a missing .lo file after ld65.
+    {
         std::ifstream cf(p.cfg);
         std::string cl;
         bool lo = false, hi = false;
@@ -742,6 +733,71 @@ static AsmProjectCtx probeAsmProject(const std::string& sourcePath)
     p.ok = true;
     return p;
 }
+
+// Machine-readable header prepended to DevBench "Build output" so humans and
+// agents (IDE assistants, CI triage) can interpret the log without UI context.
+struct BuildLogMeta {
+    const char* action = "verify";   // verify | run
+    const P1T*  target = nullptr;
+    std::string sourcePath;
+    std::string cfgPath;
+    const AsmProjectCtx* proj = nullptr;
+    const char* host = nullptr;      // desktop | wasm
+    const char* toolchain = nullptr;   // ca65+ld65 | cl65 | wasm-cc65
+};
+
+static const char* buildLogSourceMode(int mode)
+{
+    switch (mode) {
+    case 1: return "hex";
+    case 2: return "raw";
+    case 3: return "c";
+    default: return "asm";
+    }
+}
+
+static std::string formatBuildLogHeader(const BuildLogMeta& m)
+{
+    std::ostringstream os;
+    os << "# POM1 DevBench build log (schema pom1-devbench/1)\n";
+    os << "# host: " << (m.host ? m.host : "desktop") << "\n";
+    os << "# action: " << (m.action ? m.action : "verify") << "\n";
+    if (m.target) {
+        os << "# target_label: " << (m.target->label ? m.target->label : "?") << "\n";
+        os << "# preset_index: " << m.target->preset << "\n";
+        os << "# source_mode: " << buildLogSourceMode(m.target->mode) << "\n";
+        if (m.target->cfg && m.target->cfg[0])
+            os << "# target_default_cfg: dev/cc65/" << m.target->cfg << "\n";
+        if (m.target->codetankRom) os << "# deploy: codetank_rom_flash_4000R\n";
+    }
+    if (!m.sourcePath.empty()) os << "# source_path: " << m.sourcePath << "\n";
+    else                       os << "# source_path: (untitled scratch)\n";
+    if (!m.cfgPath.empty())    os << "# linker_cfg: " << m.cfgPath << "\n";
+    if (m.proj && m.proj->ok) {
+        os << "# project_ctx: sketch_sidecar_or_makefile\n";
+        if (m.proj->dualBank)
+            os << "# load_map: dual_bank lo=$" << std::hex << m.proj->loAddr
+               << " hi=$" << m.proj->hiAddr << std::dec << "\n";
+    }
+    if (m.toolchain) os << "# toolchain: " << m.toolchain << "\n";
+    os << "# interpreter: cc65/ca65/ld65 compiler output below; status bar = human summary\n";
+    os << "# ---\n";
+    return os.str();
+}
+
+static void prependBuildLogHeader(bench::BuildResult& r, const BuildLogMeta& m)
+{
+    if (!r.showConsole || r.console.empty()) return;
+    const std::string hdr = formatBuildLogHeader(m);
+    if (r.console.compare(0, 24, "# POM1 DevBench build log") != 0)
+        r.console.insert(0, hdr);
+}
+
+struct BuildLogFinalizer {
+    bench::BuildResult& r;
+    BuildLogMeta& m;
+    ~BuildLogFinalizer() { prependBuildLogHeader(r, m); }
+};
 
 void parseErrorMarkers(const std::string& out, std::vector<std::pair<int, std::string>>& markers)
 {
@@ -1105,7 +1161,7 @@ bench::BuildResult Pom1BenchHost::directLoad(int target, const std::string& src,
     }
     if (ok) {
         emu->copySnapshot(mw_->uiSnapshot);
-        char m[128]; std::snprintf(m, sizeof(m), "Uploaded %d B - running @ $%04X", bytesLoaded, entry);
+        char m[128]; std::snprintf(m, sizeof(m), "Uploaded %d B run @ $%04X", bytesLoaded, entry);
         r.status = m; r.ok = true;
     } else { r.status = "Upload failed: " + error; r.ok = false; }
     return r;
@@ -1116,6 +1172,17 @@ bench::BuildResult Pom1BenchHost::build(int target, const std::string& src, cons
     bench::BuildResult r;
     if (target < 0 || target >= kP1TargetCount) { r.status = "bad target"; return r; }
     const P1T& t = kP1Targets[p1(target)];
+
+    BuildLogMeta logMeta;
+    logMeta.action = run ? "run" : "verify";
+    logMeta.target = &t;
+    logMeta.sourcePath = activeSourcePath_;
+#if POM1_IS_WASM
+    logMeta.host = "wasm";
+#else
+    logMeta.host = "desktop";
+#endif
+    BuildLogFinalizer logFin{r, logMeta};
 
     if (t.mode == 1 || t.mode == 2) {     // hex/raw: no compile
         if (!run) { r.status = "Nothing to verify (hex/raw)"; r.showConsole = false; return r; }
@@ -1189,6 +1256,8 @@ bench::BuildResult Pom1BenchHost::build(int target, const std::string& src, cons
                 });
         }, src.c_str(), spec.c_str());
         r.pending = true; r.showConsole = true;
+        logMeta.toolchain = "wasm-cc65";
+        logMeta.cfgPath = cfg;
         r.console = "Compiling C with in-browser cc65 (WASM)…\n";
         r.status = run ? "Building (web cc65 C)…" : "Compiling (web cc65 C)…";
         return r;
@@ -1199,6 +1268,8 @@ bench::BuildResult Pom1BenchHost::build(int target, const std::string& src, cons
         if (entry == 0) { try { entry = static_cast<uint16_t>(std::stoul(addrHex, nullptr, 16)); } catch (...) { entry = 0x0300; } }
         wasmJobActive_ = true; wasmJobVerifyOnly_ = !run;
         wasmJobTarget_ = target; wasmJobEntry_ = entry;
+        logMeta.toolchain = "wasm-cc65";
+        logMeta.cfgPath = cfg;
         // Mirror the desktop libFlags_ (-I every dev/lib subdir) in JS, then drive
         // POM1cc65.buildAsm; on resolve write .bin + .log into POM1's MEMFS where
         // pollBuild() reads them. Module.__benchJob carries the running/done state.
@@ -1232,6 +1303,7 @@ bench::BuildResult Pom1BenchHost::build(int target, const std::string& src, cons
                 });
         }, src.c_str(), cfg.c_str());
         r.pending = true; r.showConsole = true;
+        logMeta.toolchain = "wasm-cc65";
         r.console = "Compiling with in-browser cc65 (WASM)…\n";
         r.status = run ? "Building (web cc65)…" : "Compiling (web cc65)…";
         return r;
@@ -1254,6 +1326,7 @@ bench::BuildResult Pom1BenchHost::build(int target, const std::string& src, cons
     // (cmode && !gen2c && !plainc) is the TMS9918 C target; its deploy goes through
     // the shared t.codetankRom path below, same as the TMS9918 asm target.
     r.showConsole = true;
+    logMeta.toolchain = cmode ? "cl65" : "ca65+ld65";
     uint16_t entry = 0;
 
     if (cmode) {
@@ -1276,6 +1349,7 @@ bench::BuildResult Pom1BenchHost::build(int target, const std::string& src, cons
             : " -I " + bench::shellQuote(telemetryLib_);
         if (gen2c) {
             tag = "GEN2 HGR";
+            logMeta.cfgPath = gen2Cfg_;
             // Optionally fold in the shared apple1c text base so GEN2 C programs
             // can also print to the WOZ terminal / read the keyboard.
             std::string a1c;
@@ -1317,6 +1391,7 @@ bench::BuildResult Pom1BenchHost::build(int target, const std::string& src, cons
                 " -o " + bench::shellQuote(binB.string());
         } else if (plainc) {
             tag = "Apple-1 text";
+            logMeta.cfgPath = plainCfg_;
             const std::string& lib = apple1cLib_;   // shared, card-neutral text base
             cmd = bench::shellQuote(cl65_) + " -t none -Oirs -C " + bench::shellQuote(plainCfg_) +
                 " -I " + bench::shellQuote(lib) + tele + " " + bench::shellQuote(srcC.string()) +
@@ -1324,6 +1399,7 @@ bench::BuildResult Pom1BenchHost::build(int target, const std::string& src, cons
                 " -o " + bench::shellQuote(binB.string());
         } else {
             tag = "CodeTank ROM";
+            logMeta.cfgPath = codetankCfg_;
             const std::string& lib = videocardLib_;
             cmd = bench::shellQuote(cl65_) + " -t none -Oirs -C " + bench::shellQuote(codetankCfg_) +
                 " -I " + bench::shellQuote(lib) + tele + " " + bench::shellQuote(srcC.string()) +
@@ -1353,6 +1429,8 @@ bench::BuildResult Pom1BenchHost::build(int target, const std::string& src, cons
         std::string cfgPath;
         if (proj.ok) {
             cfgPath  = proj.cfg;
+            logMeta.cfgPath = cfgPath;
+            logMeta.proj = &proj;
             asmFlags += "-I " + bench::shellQuote(proj.dir.string()) + " ";
             int n = 0;
             for (const std::string& ea : proj.extraAsm) {
@@ -1387,6 +1465,8 @@ bench::BuildResult Pom1BenchHost::build(int target, const std::string& src, cons
                 }
             if (cfgPath.empty()) { r.console = std::string("linker cfg not found (needs dev/): ") + t.cfg + "\n"; r.status = "ld65 cfg missing"; return r; }
         }
+        if (!cfgPath.empty() && logMeta.cfgPath.empty())
+            logMeta.cfgPath = cfgPath;
         std::string out;
         const std::string ca = bench::shellQuote(ca65_) + " " + asmFlags +
             bench::shellQuote(srcS.string()) + " -o " + bench::shellQuote(objO.string());
@@ -1409,14 +1489,19 @@ bench::BuildResult Pom1BenchHost::build(int target, const std::string& src, cons
             if (!run) { r.status = "Verify OK"; r.ok = true; return r; }
             mw_->finalizePendingCardPlugs();
             auto* emu = mw_->emulation.get();
+            std::error_code ec2;
+            if (!fs::exists(loP, ec2) || !fs::exists(hiP, ec2)) {
+                r.console += "[error] dual-bank outputs missing after ld65 (expected "
+                    + loP + " + " + hiP + ")\n";
+                r.status = "dual-bank .lo/.hi missing after ld65"; r.ok = false; return r;
+            }
             std::string error; int loaded = 0;
             if (!emu->loadBinaryToRam(loP, proj.loAddr, error)) { r.status = "lo-bank load failed: " + error; r.ok = false; return r; }
             if (emu->loadBinary(hiP, proj.hiAddr, error, &loaded)) {
                 emu->copySnapshot(mw_->uiSnapshot);
-                const char* where = "";
-                if (t.preset == 2) { mw_->showGraphicsCard = true; where = " - see the GEN2 HGR window"; }
-                char msg[176]; std::snprintf(msg, sizeof(msg), "Built dual-bank ($%04X+$%04X) - running @ $%04X%s",
-                                             proj.loAddr, proj.hiAddr, proj.hiAddr, where);
+                if (t.preset == 2) mw_->showGraphicsCard = true;
+                char msg[176]; std::snprintf(msg, sizeof(msg), "Built dual-bank ($%04X+$%04X) run @ $%04X",
+                                             proj.loAddr, proj.hiAddr, proj.hiAddr);
                 r.status = msg; r.ok = true;
             } else { r.status = "hi-bank load failed: " + error; r.ok = false; }
             return r;
@@ -1450,9 +1535,8 @@ bench::BuildResult Pom1BenchHost::build(int target, const std::string& src, cons
         std::string error; int bytesLoaded = 0;
         if (emu->loadBinary(binB.string(), entry, error, &bytesLoaded)) {
             emu->copySnapshot(mw_->uiSnapshot);
-            const char* where = "";   // point the user at where the output appears
-            if (gen2c) { mw_->showGraphicsCard = true; where = " - see the GEN2 HGR window"; }
-            char msg[160]; std::snprintf(msg, sizeof(msg), "Built %d B - running @ $%04X%s", bytesLoaded, entry, where);
+            if (gen2c && t.preset == 2) mw_->showGraphicsCard = true;
+            char msg[160]; std::snprintf(msg, sizeof(msg), "Built %d B run @ $%04X", bytesLoaded, entry);
             r.status = msg; r.ok = true;
         } else { r.status = "load failed: " + error; r.ok = false; }
         return r;
@@ -1482,7 +1566,7 @@ bench::BuildResult Pom1BenchHost::build(int target, const std::string& src, cons
         mw_->codeTankPendingWozRunAt = ImGui::GetTime() + 1.0;
         emu->copySnapshot(mw_->uiSnapshot);
         r.console += "[ok] flashed CODETANKDEV.rom (lower bank) - 4000R\n";
-        r.status = "CODETANKDEV.rom flashed - booting 4000R - see the TMS9918 window"; r.ok = true;
+        r.status = "CODETANKDEV.rom flashed - boot 4000R"; r.ok = true;
         return r;
     }
 
@@ -1503,9 +1587,8 @@ bench::BuildResult Pom1BenchHost::build(int target, const std::string& src, cons
     std::string error; int bytesLoaded = 0;
     if (emu->loadBinary(binB.string(), entry, error, &bytesLoaded)) {
         emu->copySnapshot(mw_->uiSnapshot);
-        const char* where = "";   // GEN2 asm targets render in the graphics window
-        if (t.preset == 2) { mw_->showGraphicsCard = true; where = " - see the GEN2 HGR window"; }
-        char msg[160]; std::snprintf(msg, sizeof(msg), "Built %d B - running @ $%04X%s", bytesLoaded, entry, where);
+        if (t.preset == 2) mw_->showGraphicsCard = true;
+        char msg[160]; std::snprintf(msg, sizeof(msg), "Built %d B run @ $%04X", bytesLoaded, entry);
         r.status = msg; r.ok = true;
     } else { r.status = "load failed: " + error; r.ok = false; }
     return r;
@@ -1533,6 +1616,24 @@ bench::BuildResult Pom1BenchHost::pollBuild()
       std::ostringstream ss; ss << f.rdbuf(); log = ss.str(); }
     r.showConsole = true;
     r.console = "$ cc65 (in-browser WASM)\n" + log + "\n";
+
+    const P1T& t = kP1Targets[p1(wasmJobTarget_)];
+    BuildLogMeta logMeta;
+    logMeta.action = wasmJobVerifyOnly_ ? "verify" : "run";
+    logMeta.target = &t;
+    logMeta.sourcePath = activeSourcePath_;
+    logMeta.host = "wasm";
+    logMeta.toolchain = "wasm-cc65";
+    if (t.mode == 0 && t.cfg && t.cfg[0])
+        logMeta.cfgPath = std::string("/dev/cc65/") + t.cfg;
+    else if (t.mode == 3) {
+        const std::string cfgTag = t.cfg ? t.cfg : "";
+        if (cfgTag == "C-plain") logMeta.cfgPath = "/dev/cc65/apple1_c.cfg";
+        else if (cfgTag == "C-gen2") logMeta.cfgPath = "/dev/cc65/apple1_gen2_c.cfg";
+        else logMeta.cfgPath = "/dev/lib/tms9918c/cc65/codetank_c.cfg";
+    }
+    BuildLogFinalizer logFin{r, logMeta};
+
     if (code != 0) {
         parseErrorMarkers(log, r.errors);
         r.console += humanizeCc65(log);
@@ -1541,7 +1642,6 @@ bench::BuildResult Pom1BenchHost::pollBuild()
     r.console += "[ok] assembled + linked (web cc65)\n";
     if (wasmJobVerifyOnly_) { r.status = "Verify OK"; r.ok = true; return r; }
 
-    const P1T& t = kP1Targets[p1(wasmJobTarget_)];
     auto* emu = mw_->emulation.get();
     namespace fs = std::filesystem;
     std::error_code ec;
@@ -1574,7 +1674,7 @@ bench::BuildResult Pom1BenchHost::pollBuild()
         mw_->codeTankPendingWozRunAt = ImGui::GetTime() + 1.0;
         emu->copySnapshot(mw_->uiSnapshot);
         r.console += "[ok] flashed CODETANKDEV.rom (lower bank) - 4000R\n";
-        r.status = "CODETANKDEV.rom flashed - booting 4000R - see the TMS9918 window"; r.ok = true;
+        r.status = "CODETANKDEV.rom flashed - boot 4000R"; r.ok = true;
         return r;
     }
 
@@ -1582,9 +1682,8 @@ bench::BuildResult Pom1BenchHost::pollBuild()
     std::string error; int bytesLoaded = 0;
     if (emu->loadBinary("/tmp/pom1_bench.bin", wasmJobEntry_, error, &bytesLoaded)) {
         emu->copySnapshot(mw_->uiSnapshot);
-        const char* where = "";
-        if (t.preset == 2) { mw_->showGraphicsCard = true; where = " - see the GEN2 HGR window"; }
-        char msg[160]; std::snprintf(msg, sizeof(msg), "Built %d B - running @ $%04X%s", bytesLoaded, wasmJobEntry_, where);
+        if (t.preset == 2) mw_->showGraphicsCard = true;
+        char msg[160]; std::snprintf(msg, sizeof(msg), "Built %d B run @ $%04X", bytesLoaded, wasmJobEntry_);
         r.status = msg; r.ok = true;
     } else { r.status = "load failed: " + error; r.ok = false; }
 #endif

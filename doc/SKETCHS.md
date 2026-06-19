@@ -32,7 +32,7 @@ DevBench reads at compile time:
 - `language` — `asm`, `c`, `hex`, or `raw`
 - `cfg` — linker config when not the target default
 - `extraAsm` — additional `.asm` files from `dev/lib/`
-- `dualBank` — dual-bank load layout (lo/hi addresses inferred from cfg)
+- Dual-bank load (`.lo` @ `$0280` + `.hi` @ `$E000`) is inferred automatically when the linker cfg declares `%O.lo` and `%O.hi` (e.g. HGR Sokoban, text Chess). Single-bank GEN2 sketches use `apple1_gen2.cfg` (`file = %O` @ `$E000` only).
 - `asset` / `assetAddr` — companion binary loaded alongside the program
 
 Sketches without a sidecar still work: profile from path, language from extension,

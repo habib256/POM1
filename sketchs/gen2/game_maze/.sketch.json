@@ -1,6 +1,5 @@
 {
   "profile": "gen2",
   "language": "asm",
-  "cfg": "sketchs/gen2/game_maze/apple1_gen2.cfg",
-  "dualBank": true
+  "cfg": "sketchs/gen2/game_maze/apple1_gen2.cfg"
 }

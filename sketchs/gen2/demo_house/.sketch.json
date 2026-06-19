@@ -1,6 +1,5 @@
 {
   "profile": "gen2",
   "language": "asm",
-  "cfg": "sketchs/gen2/demo_house/apple1_gen2.cfg",
-  "dualBank": true
+  "cfg": "sketchs/gen2/demo_house/apple1_gen2.cfg"
 }
