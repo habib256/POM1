@@ -37,7 +37,7 @@ public:
     // CodeBench tells us the path of the source open in the editor before each
     // build; when it sits in a dev/projects/ dir with a sibling Makefile, build()
     // compiles it as a real project (own .cfg, -I projectdir, EXTRA_ASM, dual-bank).
-    void setActiveSourcePath(const std::string& path) override { activeSourcePath_ = path; }
+    void setActiveSourcePath(const std::string& path) override;
     int targetForPath(const std::string& path) const override;
 
     bool        toolchainReady(int target) const override;

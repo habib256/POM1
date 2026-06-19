@@ -2,6 +2,7 @@
 #include "Pom1BenchHost.h"
 
 #include "MainWindow_ImGui.h"     // mw_ members (friend) + EmulationController
+#include "MainWindow_Internal.h"  // kMachinePresets / BasicType (ACI program-output presets)
 #include "ProcessUtil.h"          // bench::shellQuote / runCapture / whichExe
 #include "imgui.h"                // ImGui::GetTime for the CodeTank cold-boot
 
@@ -322,6 +323,26 @@ struct TempFileSweeper {
     }
 };
 
+// Presets with ACI but no Integer-BASIC program tape (GEN2 dev bench, GEN2 HGR
+// Color, …): live speaker output uses $C0xx TAPE OUT toggles. A loaded
+// WOZ_talk.mp3 sits in audio-stream mode and the deck never plays the pulse
+// queue — eject before Run so CrazyCycle-style chiptunes are audible.
+namespace md = pom1::mainwindow::detail;
+
+static bool presetUsesAciProgramOutput(int presetIndex)
+{
+    if (presetIndex < 0 || presetIndex >= md::kMachinePresetCount) return false;
+    const md::MachineConfig& cfg = md::kMachinePresets[presetIndex];
+    return cfg.aci && cfg.basicType != md::BasicType::IntegerCassette;
+}
+
+static void ejectTapeForAciProgramOutput(EmulationController* emu, bench::BuildResult& r, int preset)
+{
+    if (!emu || !presetUsesAciProgramOutput(preset)) return;
+    emu->ejectTape();
+    r.console += "[ok] cassette ejected (ACI program output / $C030 speaker)\n";
+}
+
 // POM1 target: machine preset + linker cfg + source mode (0 asm/1 hex/2 raw/3 C)
 // + the HELLO-WORLD starter for it. The New dialog picks a (language x machine)
 // pair; the first 6 entries are that matrix, ordered language-major:
@@ -600,6 +621,67 @@ static std::filesystem::path resolveRepoRelativePath(const std::filesystem::path
     return {};
 }
 
+// cc65 dual-bank cfgs declare `file = "%O.lo"` / `file = "%O.hi"` on MEMORY lines.
+// apple1_gen2.cfg mentions those tokens only in comments — ignore comment text.
+static std::string cfgCodePortion(const std::string& line)
+{
+    const size_t h = line.find('#');
+    return (h == std::string::npos) ? line : line.substr(0, h);
+}
+
+static bool cfgDeclaresOutputFile(const std::string& line, const char* token)
+{
+    const std::string code = cfgCodePortion(line);
+    if (code.find("file") == std::string::npos) return false;
+    return code.find(token) != std::string::npos;
+}
+
+static void probeDualBankFromCfg(const std::string& cfgPath, AsmProjectCtx& p)
+{
+    std::ifstream cf(cfgPath);
+    std::string cl;
+    bool lo = false, hi = false;
+    auto startAddr = [](const std::string& s, uint16_t& dst) {
+        const size_t sp = s.find("start");
+        if (sp == std::string::npos) return;
+        const size_t d = s.find('$', sp);
+        if (d == std::string::npos) return;
+        try { dst = static_cast<uint16_t>(std::stoul(s.substr(d + 1, 4), nullptr, 16)); } catch (...) {}
+    };
+    while (std::getline(cf, cl)) {
+        if (cfgDeclaresOutputFile(cl, "%O.lo")) { lo = true; startAddr(cl, p.loAddr); }
+        if (cfgDeclaresOutputFile(cl, "%O.hi")) { hi = true; startAddr(cl, p.hiAddr); }
+    }
+    p.dualBank = lo && hi;
+}
+
+static std::string resolveAssetPath(const std::string& rel, const std::string& sourcePath,
+                                    const std::string& devRoot)
+{
+    namespace fs = std::filesystem;
+    if (rel.empty()) return {};
+    std::error_code ec;
+    fs::path p(rel);
+    if (p.is_absolute() && fs::exists(p, ec))
+        return fs::weakly_canonical(p, ec).string();
+    if (!sourcePath.empty()) {
+        const fs::path base = fs::absolute(fs::path(sourcePath), ec).parent_path();
+        if (!ec) {
+            const fs::path hit = resolveRepoRelativePath(base, rel);
+            if (!hit.empty()) return hit.string();
+        }
+    }
+    if (!devRoot.empty()) {
+        const fs::path cand = fs::path(devRoot).parent_path() / rel;
+        if (fs::exists(cand, ec)) return fs::weakly_canonical(cand, ec).string();
+    }
+    for (const char* pre : {"", "../", "../../", "../../../"}) {
+        const fs::path cand = fs::path(pre) / rel;
+        if (fs::exists(cand, ec)) return fs::absolute(cand, ec).string();
+    }
+    return {};
+}
+
 static AsmProjectCtx probeSketchProject(const std::string& sourcePath)
 {
     namespace fs = std::filesystem;
@@ -626,26 +708,8 @@ static AsmProjectCtx probeSketchProject(const std::string& sourcePath)
         if (!ep.empty()) p.extraAsm.push_back(ep.string());
     }
 
-    // Dual-bank is defined by the linker cfg (%O.lo + %O.hi), not the sidecar.
-    // A stale "dualBank": true on a single-bank apple1_gen2.cfg sketch would
-    // make DevBench look for a missing .lo file after ld65.
-    {
-        std::ifstream cf(p.cfg);
-        std::string cl;
-        bool lo = false, hi = false;
-        auto startAddr = [](const std::string& s, uint16_t& dst) {
-            const size_t sp = s.find("start");
-            if (sp == std::string::npos) return;
-            const size_t d = s.find('$', sp);
-            if (d == std::string::npos) return;
-            try { dst = static_cast<uint16_t>(std::stoul(s.substr(d + 1, 4), nullptr, 16)); } catch (...) {}
-        };
-        while (std::getline(cf, cl)) {
-            if (cl.find("%O.lo") != std::string::npos) { lo = true; startAddr(cl, p.loAddr); }
-            if (cl.find("%O.hi") != std::string::npos) { hi = true; startAddr(cl, p.hiAddr); }
-        }
-        p.dualBank = lo && hi;
-    }
+    // Dual-bank is defined by the linker cfg (MEMORY lines with file=%O.lo/hi).
+    probeDualBankFromCfg(p.cfg, p);
 
     p.ok = true;
     return p;
@@ -653,6 +717,8 @@ static AsmProjectCtx probeSketchProject(const std::string& sourcePath)
 
 static void applySketchAssets(const std::string& sourcePath, std::string& asset, uint16_t& addr)
 {
+    asset.clear();
+    addr = 0;
     namespace fs = std::filesystem;
     if (sourcePath.empty()) return;
     std::error_code ec;
@@ -711,24 +777,7 @@ static AsmProjectCtx probeAsmProject(const std::string& sourcePath)
         if (!ec && fs::exists(ep, ec)) p.extraAsm.push_back(ep.string());
     }
 
-    // Dual-bank cfgs split the image into low/high files (file = "%O.lo" /
-    // "%O.hi"); pull each region's load address from its MEMORY line.
-    {
-        std::ifstream cf(p.cfg);
-        std::string cl; bool lo = false, hi = false;
-        auto startAddr = [](const std::string& s, uint16_t& dst) {
-            const size_t sp = s.find("start");
-            if (sp == std::string::npos) return;
-            const size_t d = s.find('$', sp);
-            if (d == std::string::npos) return;
-            try { dst = static_cast<uint16_t>(std::stoul(s.substr(d + 1, 4), nullptr, 16)); } catch (...) {}
-        };
-        while (std::getline(cf, cl)) {
-            if (cl.find("%O.lo") != std::string::npos) { lo = true; startAddr(cl, p.loAddr); }
-            if (cl.find("%O.hi") != std::string::npos) { hi = true; startAddr(cl, p.hiAddr); }
-        }
-        p.dualBank = lo && hi;
-    }
+    probeDualBankFromCfg(p.cfg, p);
 
     p.ok = true;
     return p;
@@ -857,6 +906,12 @@ std::string humanizeCc65(const std::string& out)
 // ─────────────────────────────────────────────────────────────
 // Pom1BenchHost
 // ─────────────────────────────────────────────────────────────
+
+void Pom1BenchHost::setActiveSourcePath(const std::string& path)
+{
+    activeSourcePath_ = path;
+    applySketchAssets(activeSourcePath_, extraAsset_, extraAssetAddr_);
+}
 
 Pom1BenchHost::Pom1BenchHost(MainWindow_ImGui* mw) : mw_(mw)
 {
@@ -1487,6 +1542,7 @@ bench::BuildResult Pom1BenchHost::build(int target, const std::string& src, cons
             if (rc != 0) { r.console += humanizeCc65(out); r.status = "ld65 failed (see Build output)"; return r; }
             r.console += "[ok] assembled + linked (dual-bank)\n";
             if (!run) { r.status = "Verify OK"; r.ok = true; return r; }
+            if (t.preset >= 0) onTargetSelected(target);
             mw_->finalizePendingCardPlugs();
             auto* emu = mw_->emulation.get();
             std::error_code ec2;
@@ -1519,6 +1575,11 @@ bench::BuildResult Pom1BenchHost::build(int target, const std::string& src, cons
 
     if (!run) { r.status = "Verify OK"; r.ok = true; return r; }
 
+    // Keep the live machine aligned with the DevBench target (GEN2 + ACI for
+    // CrazyCycle). A Presets-menu switch after picking a target leaves the
+    // cards unplugged — beam sync then hangs and the ACI speaker stays silent.
+    if (t.preset >= 0) onTargetSelected(target);
+
     applySketchAssets(activeSourcePath_, extraAsset_, extraAssetAddr_);
 
     auto* emu = mw_->emulation.get();
@@ -1529,6 +1590,7 @@ bench::BuildResult Pom1BenchHost::build(int target, const std::string& src, cons
     // card is on the bus — early writes to $2000-$3FFF or $CC00/$CC01 vanish
     // into RAM. File > Load drains the same queue here; we do the same.
     mw_->finalizePendingCardPlugs();
+    ejectTapeForAciProgramOutput(emu, r, t.preset);
     if (gen2c || plainc) {
         // GEN2 HGR / plain text C: load + run (the target's preset already plugged
         // the right card). loadBinary resets + runs at the cfg's entry.
@@ -1570,22 +1632,26 @@ bench::BuildResult Pom1BenchHost::build(int target, const std::string& src, cons
         return r;
     }
 
-    // asm: stage companion asset (e.g. CrazyCycle's UBERNIE @ $2000), then run.
-    if (!extraAsset_.empty()) {
-        std::string ap;
-        for (const char* pre : {"", "../", "../../"}) {
-            const fs::path p = fs::path(pre) / extraAsset_;
-            if (fs::exists(p, ec)) { ap = p.string(); break; }
-        }
-        std::string aerr; char amsg[160];
-        if (!ap.empty() && emu->loadBinaryToRam(ap, extraAssetAddr_, aerr))
-            std::snprintf(amsg, sizeof(amsg), "[ok] asset -> $%04X (%s)\n", extraAssetAddr_, extraAsset_.c_str());
-        else
-            std::snprintf(amsg, sizeof(amsg), "[warn] asset not loaded: %s\n", extraAsset_.c_str());
-        r.console += amsg;
-    }
+    // asm: load program, then stage companion asset only when .sketch.json asks
+    // for one (CrazyCycle's UBERNIE @ $2000). Asset after loadBinary so a prior
+    // sketch's sidecar cannot leak across Run.
     std::string error; int bytesLoaded = 0;
     if (emu->loadBinary(binB.string(), entry, error, &bytesLoaded)) {
+        if (!extraAsset_.empty()) {
+            const std::string ap = resolveAssetPath(extraAsset_, activeSourcePath_, devRoot_);
+            std::string aerr;
+            if (!ap.empty() && emu->loadBinaryToRam(ap, extraAssetAddr_, aerr)) {
+                std::error_code ec3;
+                const auto sz = fs::file_size(ap, ec3);
+                char addr[8]; std::snprintf(addr, sizeof(addr), "$%04X", extraAssetAddr_);
+                r.console += std::string("[ok] asset -> ") + addr + "  "
+                    + std::to_string(ec3 ? 0 : sz) + " B\n    " + ap + "\n";
+            } else {
+                r.console += "[warn] asset not loaded: " + extraAsset_;
+                if (!aerr.empty()) r.console += " (" + aerr + ")";
+                r.console += "\n";
+            }
+        }
         emu->copySnapshot(mw_->uiSnapshot);
         if (t.preset == 2) mw_->showGraphicsCard = true;
         char msg[160]; std::snprintf(msg, sizeof(msg), "Built %d B run @ $%04X", bytesLoaded, entry);
@@ -1651,6 +1717,7 @@ bench::BuildResult Pom1BenchHost::pollBuild()
     // TMS9918 card is on the bus before the CPU starts the freshly loaded
     // binary. Otherwise the program's early writes can land before the card.
     mw_->finalizePendingCardPlugs();
+    ejectTapeForAciProgramOutput(emu, r, t.preset);
 
     if (t.codetankRom) {
         // TMS9918 asm: wrap the .bin into a CodeTank dev ROM, flash it, jumper to

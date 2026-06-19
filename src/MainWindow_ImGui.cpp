@@ -206,7 +206,8 @@ void MainWindow_ImGui::finalizePendingCardPlugs()
         preloadTapeForceProgramMode = pendingPresetTapeForceProgramMode;
     }
 
-    if (runCassettePreload && !preloadTapePath.empty()) {
+    if (runCassettePreload && !preloadTapePath.empty() &&
+        !(pendingSkipBundledTalkPreload && pendingPresetTapePath.empty())) {
         std::string err;
         const bool ok = preloadTapeForceProgramMode
             ? emulation->loadProgramTape(preloadTapePath, err)
@@ -275,6 +276,7 @@ void MainWindow_ImGui::finalizePendingCardPlugs()
     pendingPresetTapePath.clear();
     pendingPresetTapeForceProgramMode = false;
     pendingPresetTapeAutoPlay = false;
+    pendingSkipBundledTalkPreload = false;
 
     // CLI phase-C: run deferred verbs right after the preset's cards are
     // fully plugged. Gated on the one-shot flag so a later

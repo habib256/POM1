@@ -767,6 +767,14 @@ void MainWindow_ImGui::applyMachineConfig(int presetIndex)
                 "Integer BASIC cassette asset not found (expected cassettes/BASIC.aci or BASIC.ogg)");
         }
     }
+    // Bundled WOZ_talk.mp3 loads in audio-stream mode; that path never drains the
+    // pulse queue from live $C0xx toggles, so GEN2 chiptunes (A-1-CrazyCycle) and
+    // any program driving the ACI TAPE OUT flip-flop stay silent until ejected.
+    pendingSkipBundledTalkPreload =
+        cfg.aci && cfg.basicType != BasicType::IntegerCassette &&
+        pendingPresetTapePath.empty();
+    if (pendingSkipBundledTalkPreload)
+        emulation->ejectTape();
     pendingCardEnableFrames     = kCardEnableDeferFrames;
 
     // Load the appropriate BASIC ROM for this preset and track in loadedRoms

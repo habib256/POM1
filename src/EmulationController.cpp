@@ -252,10 +252,13 @@ void EmulationController::writeMemory(uint16_t address, uint8_t value)
 
 bool EmulationController::loadBinaryToRam(const std::string& path, uint16_t address, std::string& error)
 {
+    stopCpu();
     std::lock_guard<PriorityMutex> lock(stateMutex);
+
     int result = memory->loadBinary(path.c_str(), address);
     if (result != 0) {
-        error = "Cannot load file";
+        error = std::string("Cannot open: ") + path;
+        publisher.publish(*memory, *cpu, runRequested.load());
         return false;
     }
     publisher.publish(*memory, *cpu, runRequested.load());

@@ -651,6 +651,9 @@ private:
     std::string pendingPresetTapePath;
     bool pendingPresetTapeForceProgramMode = false;
     bool pendingPresetTapeAutoPlay = false;
+    // ACI plugged without Integer-BASIC cassette: skip bundled WOZ_talk.mp3
+    // preload — audio-stream mode blocks live $C0xx TAPE OUT toggles ($C030).
+    bool pendingSkipBundledTalkPreload = false;
 
     struct TapeDialogState {
         char filePath[512] = "cassette.aci";

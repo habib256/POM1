@@ -103,6 +103,13 @@ the framebuffer, so program code sits above it. The asm starter draws text with
 the Beautiful Boot font via `plot_pixel`; the C starter uses `gen2_hgr_puts` /
 `gen2_hgr_putu`. Card reference → [`GEN2_RELEASE.md`](GEN2_RELEASE.md).
 
+**ACI speaker / chiptune demos** (*A-1-CrazyCycle*, any program toggling `$C030`):
+the bundled `WOZ_talk.mp3` loads in **audio-stream** deck mode, which does not
+mix live ACI TAPE OUT pulses — the tune stays silent until the cassette is ejected.
+DevBench **Run** on GEN2 (and any ACI preset without the Integer-BASIC program tape)
+auto-ejects; switching to the GEN2 dev bench / GEN2 HGR Color preset also skips
+re-inserting `WOZ_talk.mp3`.
+
 ## Toolchain-free quick targets (hex / raw)
 
 Two targets need **no compiler** — handy when cc65 isn't installed (the Bench

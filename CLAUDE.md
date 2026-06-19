@@ -99,6 +99,7 @@ One `.cpp/.h` pair per card under `src/`. Bus windows + priorities are listed in
 - **`AudioDevice::getActualSampleRate()` returns the miniaudio-negotiated rate** (44.1 kHz requested, often 48 kHz on Apple Silicon) — cycle-driven sources must use this or tempo drifts. WASM always 44.1 kHz.
 - **OOR (`ramKB < 64`)**: strict mode returns `$FF` and drops writes in `[ramKB*1024, $8000)` — matches real Apple-1 with no RAM board. Status bar: `OOR:N!` or `[strict]`.
 - **`loadHexDump`** supports comments (`//` `#` `;`, strips inline — prevents `LDA`/`DEX` mnemonics being parsed as data), continuation lines, `T` prefix (turbo), `X` marker, `R` suffix (run address), and single-line files where data merges with addresses (`ED0300:` → data `ED` + addr `0300`).
+- **ACI TAPE OUT vs bundled cassette** — default `WOZ_talk.mp3` loads in **audio-stream** mode; while inserted, live `$C0xx` toggles (`$C030` chiptune in GEN2 *A-1-CrazyCycle*) stay silent because `CassetteDevice::fillAudioBuffer()` never mixes the pulse queue. Eject the deck (or use a preset that skips the bundled talk tape). DevBench Run auto-ejects on ACI presets without the Integer-BASIC program tape; preset switch sets `pendingSkipBundledTalkPreload`.
 - macOS: `pom1_macos_provision_user_data_dir()` creates `~/Library/Application Support/POM1/` with symlinks for read-only dirs + seeded `sdcard/`/`cfcard/`/`ini/` then chdirs there. Refreshed each launch (handles Gatekeeper App Translocation + `/Applications` drag-installs).
 
 ## Memory Map

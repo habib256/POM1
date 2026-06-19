@@ -1,0 +1,16 @@
+---
+description: ACI TAPE OUT ($C030) requires empty cassette deck — WOZ_talk blocks program output
+globs: sketchs/gen2/**/*,src/Pom1BenchHost.cpp,src/CassetteDevice.cpp,src/MainWindow_Presets.cpp
+alwaysApply: false
+---
+
+# ACI program output vs cassette deck mode
+
+Programs that drive the **ACI TAPE OUT flip-flop** (any read/write of `$C0xx`, e.g. `$C030` speaker in GEN2 *A-1-CrazyCycle*) need the deck in **program / pulse** mode, not **audio-stream** mode.
+
+- Bundled `cassettes/WOZ_talk.mp3` always loads as **audio-stream**. While inserted, `CassetteDevice::fillAudioBuffer()` takes the stream path and **never drains the pulse queue** built by `toggleOutput()` — chiptunes are silent.
+- **Integer BASIC cassette** presets load `BASIC.aci` as a **program tape** (pulse mode); that does not block live `$C030` toggles the same way.
+- **DevBench Run** on presets with ACI and no Integer-BASIC tape (GEN2 dev bench = preset 2, GEN2 HGR Color, …): `ejectTapeForAciProgramOutput()` in `Pom1BenchHost.cpp`.
+- **Preset switch**: `pendingSkipBundledTalkPreload` in `applyMachineConfig()` — do not re-insert `WOZ_talk.mp3` on those presets; eject any stream tape left from the previous preset.
+
+Manual test: if a GEN2 demo has graphics but no ACI sound, eject the cassette in the Cassette Deck window.
