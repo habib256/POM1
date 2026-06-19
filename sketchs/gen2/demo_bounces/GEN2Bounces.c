@@ -8,7 +8,7 @@
  * bounce inside a frame AND collide pairwise (every pair); bounce counter
  * in HUD, dense caption in 8x8 font. Combines:
  *   E  gen2_hgr_rect / gen2_hgr_line                     (vector decor)
- *   B  gen2_hgr_blit7(..., GEN2_XOR)                     (fast XOR sprites)
+ *   B  gen2_hgr_blit7(..., GEN2_XOR)                     (fast tinted XOR sprites)
  *   D  gen2_hgr_putu_field + gen2_hgr_puts8              (HUD number + 8x8 text)
  *   C  gen2_set_draw_page / gen2_show_page               (double buffering)
  *
@@ -19,6 +19,8 @@
  *   3. Balls are blitted via gen2_hgr_blit7: sprites pre-packed at
  *      7px/byte -> we XOR whole BYTES (~7x fewer writes than pixel-by-pixel
  *      blit). Trade-off: x aligned on 7px (horizontal step of 7).
+ *   4. Colour costs nothing per frame: the four artifact-colour sprites are
+ *      pre-tinted once at startup, in both byte-column phases, then XOR-blitted.
  *
  * Collision: for each pair, centres within (Ri+Rj) AND closing in
  * (dx.dvx + dy.dvy < 0) -> swap velocities. All balls move at the same
@@ -77,10 +79,53 @@ static const unsigned char kBig7[336] = {
 #define HUDW   5u
 
 /* Per ball: bitmap 7px/byte, bytes/row, side (px), radius (=side/2). */
-static const unsigned char *const spr[NB] = { kBig7, kBall7, kBall7, kBall7 };
 static const unsigned char       wb[NB]   = { 7u, 3u, 3u, 3u };
 static const unsigned char       sz[NB]   = { 48u, 16u, 16u, 16u };
 static const int                 rad[NB]  = { 24, 8, 8, 8 };
+static const unsigned char       colr[NB] = { GEN2_ORANGE, GEN2_VIOLET, GEN2_GREEN, GEN2_BLUE };
+
+/* Pre-tinted runtime sprite tables. The second dimension is the absolute
+ * byte-column phase: phase 0 starts on an even HGR byte column, phase 1 on odd.
+ * Bounces moves in 7px steps, so phase is just toggled with horizontal motion. */
+static unsigned char kBigTint[2][336];
+static unsigned char kBallTint[3][2][48];
+
+static void carrier_for(unsigned char color, unsigned char *even, unsigned char *odd, unsigned char *hi)
+{
+    switch (color) {
+        case GEN2_GREEN:  *even = 0x2Au; *odd = 0x55u; *hi = 0x00u; break;
+        case GEN2_ORANGE: *even = 0x2Au; *odd = 0x55u; *hi = 0x80u; break;
+        case GEN2_BLUE:   *even = 0x55u; *odd = 0x2Au; *hi = 0x80u; break;
+        default:          *even = 0x55u; *odd = 0x2Au; *hi = 0x00u; break; /* violet */
+    }
+}
+
+static void tint_sprite(const unsigned char *src, unsigned char *dst,
+                        unsigned char rows, unsigned char wbytes,
+                        unsigned char phase, unsigned char color)
+{
+    unsigned char even, odd, hi, y, x, b, carrier;
+    carrier_for(color, &even, &odd, &hi);
+    for (y = 0u; y < rows; ++y) {
+        for (x = 0u; x < wbytes; ++x) {
+            b = *src++;
+            carrier = ((x + phase) & 1u) ? odd : even;
+            *dst++ = b ? (unsigned char)((b & carrier) | hi) : 0u;
+        }
+    }
+}
+
+static void prep_tinted_sprites(void)
+{
+    tint_sprite(kBig7,  kBigTint[0],       48u, 7u, 0u, colr[0]);
+    tint_sprite(kBig7,  kBigTint[1],       48u, 7u, 1u, colr[0]);
+    tint_sprite(kBall7, kBallTint[0][0],   16u, 3u, 0u, colr[1]);
+    tint_sprite(kBall7, kBallTint[0][1],   16u, 3u, 1u, colr[1]);
+    tint_sprite(kBall7, kBallTint[1][0],   16u, 3u, 0u, colr[2]);
+    tint_sprite(kBall7, kBallTint[1][1],   16u, 3u, 1u, colr[2]);
+    tint_sprite(kBall7, kBallTint[2][0],   16u, 3u, 0u, colr[3]);
+    tint_sprite(kBall7, kBallTint[2][1],   16u, 3u, 1u, colr[3]);
+}
 
 static void draw_static(void)
 {
@@ -90,9 +135,10 @@ static void draw_static(void)
     gen2_hgr_puts8(FL, 182u, "4 XOR BALLS - DBL BUFFER - FAST 7PX BLIT");
 }
 
-static void ball(unsigned char b, unsigned x, unsigned char y)   /* fast XOR-blit  */
+static void ball(unsigned char b, unsigned x, unsigned char y, unsigned char phase)
 {
-    gen2_hgr_blit7(x, y, wb[b], sz[b], spr[b], GEN2_XOR);
+    const unsigned char *sprite = (b == 0u) ? kBigTint[phase] : kBallTint[b - 1u][phase];
+    gen2_hgr_blit7(x, y, wb[b], sz[b], sprite, GEN2_XOR);
 }
 
 void main(void)
@@ -103,18 +149,22 @@ void main(void)
     int  vx[NB] = { HSTEP,  HSTEP, -HSTEP,  HSTEP };
     int  vy[NB] = { VSTEP,  HSTEP,  VSTEP, -VSTEP };
     int  ox[NB][2], oy[NB][2];
+    unsigned char phase[NB] = { 1u, 1u, 0u, 1u };       /* (initial x/7) & 1 */
+    unsigned char ophase[NB][2];
     int  bxmax, bymax, dx, dy, adx, ady, thr;
     unsigned bounces = 0u;
 
     gen2_hgr_init();
+    prep_tinted_sprites();
 
     gen2_set_draw_page(1u); gen2_hgr_clear(0u); draw_static();
-    for (i = 0u; i < NB; ++i) ball(i, (unsigned)x[i], (unsigned char)y[i]);
+    for (i = 0u; i < NB; ++i) ball(i, (unsigned)x[i], (unsigned char)y[i], phase[i]);
     gen2_set_draw_page(2u); gen2_hgr_clear(0u); draw_static();
-    for (i = 0u; i < NB; ++i) ball(i, (unsigned)x[i], (unsigned char)y[i]);
+    for (i = 0u; i < NB; ++i) ball(i, (unsigned)x[i], (unsigned char)y[i], phase[i]);
     for (i = 0u; i < NB; ++i) {
         ox[i][0] = ox[i][1] = x[i];
         oy[i][0] = oy[i][1] = y[i];
+        ophase[i][0] = ophase[i][1] = phase[i];
     }
 
     for (;;) {
@@ -123,10 +173,11 @@ void main(void)
         gen2_set_draw_page(page);
 
         for (i = 0u; i < NB; ++i) {
-            ball(i, (unsigned)ox[i][pidx], (unsigned char)oy[i][pidx]);  /* XOR erase */
-            ball(i, (unsigned)x[i], (unsigned char)y[i]);                /* XOR draw  */
+            ball(i, (unsigned)ox[i][pidx], (unsigned char)oy[i][pidx], ophase[i][pidx]); /* XOR erase */
+            ball(i, (unsigned)x[i], (unsigned char)y[i], phase[i]);                       /* XOR draw  */
             ox[i][pidx] = x[i];
             oy[i][pidx] = y[i];
+            ophase[i][pidx] = phase[i];
         }
 
         if (huddirty) { gen2_hgr_putu_field(HUDX, HUDY, bounces, HUDW); --huddirty; }
@@ -139,8 +190,9 @@ void main(void)
             bxmax = ((FR - 2 - (int)sz[i]) / 7) * 7;
             bymax = FB - 2 - (int)sz[i];
             x[i] += vx[i];
-            if (x[i] <= 7)          { x[i] = 7;     vx[i] = -vx[i]; ++bounces; huddirty = 2u; }
-            else if (x[i] >= bxmax) { x[i] = bxmax; vx[i] = -vx[i]; ++bounces; huddirty = 2u; }
+            phase[i] ^= 1u;
+            if (x[i] <= 7)          { x[i] = 7;     phase[i] = 1u; vx[i] = -vx[i]; ++bounces; huddirty = 2u; }
+            else if (x[i] >= bxmax) { x[i] = bxmax; phase[i] = 0u; vx[i] = -vx[i]; ++bounces; huddirty = 2u; }
             y[i] += vy[i];
             if (y[i] <= FT + 2)     { y[i] = FT + 2; vy[i] = -vy[i]; ++bounces; huddirty = 2u; }
             else if (y[i] >= bymax) { y[i] = bymax;  vy[i] = -vy[i]; ++bounces; huddirty = 2u; }
