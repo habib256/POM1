@@ -300,8 +300,6 @@ if(EMSCRIPTEN)
         LINK_FLAGS "${EM_LINK_FLAGS_STR}"
         LINK_DEPENDS "${SHELL_FILE}"
     )
-    # Compile flags needed for the GLFW port header resolution
-    target_compile_options(${PROJECT_NAME} PRIVATE "SHELL:-s USE_GLFW=3")
 
     # Copy pic/icon.png next to the .html so the favicon in shell.html
     # resolves when the page is served (emrun, nginx, github-pages, ...).

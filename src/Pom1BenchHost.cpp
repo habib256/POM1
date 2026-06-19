@@ -1404,7 +1404,7 @@ bench::BuildResult Pom1BenchHost::build(int target, const std::string& src, cons
             window.POM1cc65.buildC(src, spec)
                 .then(function (res) {
                     try { FS.writeFile('/tmp/pom1_bench.bin', res.bin || new Uint8Array(0)); } catch (e) {}
-                    try { FS.writeFile('/tmp/pom1_bench.log', res.log || ''); } catch (e) {}
+                    try { FS.writeFile('/tmp/pom1_bench.log', res.log || ""); } catch (e) {}
                     Module.__benchJob = ({ state: 'done', code: res.code | 0 });
                 })
                 .catch(function (e) {
@@ -1451,7 +1451,7 @@ bench::BuildResult Pom1BenchHost::build(int target, const std::string& src, cons
             window.POM1cc65.buildAsm(src, ({ cfg: cfg, incDirs: incDirs }))
                 .then(function (res) {
                     try { FS.writeFile('/tmp/pom1_bench.bin', res.bin || new Uint8Array(0)); } catch (e) {}
-                    try { FS.writeFile('/tmp/pom1_bench.log', res.log || ''); } catch (e) {}
+                    try { FS.writeFile('/tmp/pom1_bench.log', res.log || ""); } catch (e) {}
                     Module.__benchJob = { state: 'done', code: res.code | 0 };
                 })
                 .catch(function (e) {
