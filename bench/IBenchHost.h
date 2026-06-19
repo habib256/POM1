@@ -89,6 +89,11 @@ public:
     // instead of a bare sketch. Called before verify()/upload(). No-op by default.
     virtual void setActiveSourcePath(const std::string& /*path*/) {}
 
+    // Optional auto-targeting when a file is opened. Return a target index, or -1
+    // to keep the current target. Hosts can infer language/machine from extension
+    // and directory names (e.g. dev/sketchs/tms9918/c/*.c).
+    virtual int targetForPath(const std::string& /*path*/) const { return -1; }
+
     // Poll a pending async build (see BuildResult::pending). Called every frame by
     // CodeBench while a build is in flight; returns pending=true until the build
     // finishes, then the final result (which CodeBench applies). Default: no async

@@ -1,0 +1,5 @@
+; POM1 Bench - raw bytes.
+; Set the DevBench address field to 0300, then Upload.
+
+A9 A1 20 EF FF 4C 00 03
+

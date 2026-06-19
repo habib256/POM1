@@ -140,6 +140,12 @@ void CodeBench::render(const char* title, bool* open)
         editor_->SetText(data);
         editor_->SetErrorMarkers({}); errorLines_.clear();
         loadedPath_ = path;
+        const int inferredTarget = host_->targetForPath(path);
+        if (inferredTarget >= 0 && inferredTarget < static_cast<int>(targets.size())) {
+            targetIndex_ = inferredTarget;
+            host_->onTargetSelected(targetIndex_);
+            applyTargetSyntax();
+        }
         lastSavedText_ = editor_->GetText(); dirty_ = false;
         status_ = "Opened " + path + " (" + std::to_string(data.size()) + " B)";
         statusOk_ = true;
@@ -236,7 +242,7 @@ void CodeBench::render(const char* title, bool* open)
     ImGui::SameLine(0, 6);
     if (circleBtn(ICON_FA_FILE,          "##benchnew",      "New sketch (pick language + target)")) doNewChoose();
     ImGui::SameLine(0, 6);
-    if (circleBtn(ICON_FA_FOLDER_OPEN,   "##benchopen",     "Open file (browse dev/)")) browse(false);
+    if (circleBtn(ICON_FA_FOLDER_OPEN,   "##benchopen",     "Open file (browse dev/sketchs/)")) browse(false);
     ImGui::SameLine(0, 6);
     if (circleBtn(ICON_FA_FLOPPY_DISK,   "##benchsave",     "Save file (browse)"))      browse(true);
     if (!host_->examples().empty()) {

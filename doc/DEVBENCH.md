@@ -5,11 +5,12 @@ Arduino-style code editor: write 6502 **assembly** or **C**, **Verify** (compile
 or **Upload** (compile **and** run) without leaving the window. Each *New* sketch
 drops in a working `HELLO WORLD` starter for the chosen target.
 
-> **Desktop only.** The Bench shells out to the **cc65** toolchain
-> (`ca65`/`ld65`/`cl65`), which can't run in the browser, so it's absent from the
-> WebAssembly build. Install cc65 first: `sudo apt install cc65` (Debian/Ubuntu) ·
-> `brew install cc65` (macOS) · `pacman -S cc65` (Arch) · <https://cc65.github.io/>.
-> The *New* dialog shows **green** (ready) or **orange** (needs cc65) per target.
+Desktop shells out to the **cc65** toolchain (`ca65`/`ld65`/`cl65`). The WebAssembly
+build uses the bundled cc65 WASM tools, so the same asm/C starter targets compile
+in-browser. Install cc65 for desktop builds: `sudo apt install cc65` (Debian/Ubuntu) ·
+`brew install cc65` (macOS) · `pacman -S cc65` (Arch) · <https://cc65.github.io/>.
+The *New* dialog shows **green** (ready) or **orange** (needs cc65/dev files) per
+target.
 
 New to this? Start with [`QUICKSTART.md`](../QUICKSTART.md) §3.
 
@@ -35,28 +36,26 @@ Save dialog for a new sketch.
 
 ---
 
-## Target matrix (Language × Machine)
+## Target Matrix
 
-The *New* dialog is a 2 × 4 grid. Each cell = one target with its own linker
+The *New* dialog is a 2 × 3 grid. Each cell = one target with its own linker
 config, libraries and run mechanism:
 
 | Language | Machine | Preset | Linker cfg | Runs from | (re-)run in Wozmon |
 |---|---|---|---|---|---|
-| **asm** | Apple-1 dual 4K/8K (text) | 1 | `apple1_4k.cfg` | RAM `$0280` | `280R` |
-| **asm** | P-LAB TMS9918 | 7 | `codetank.cfg` | **CODETANKDEV.rom** (ROM `$4000`) | `4000R` |
-| **asm** | Uncle Bernie GEN2 HGR | 12 | `apple1_gen2.cfg` | RAM `$E000` (HGR fb `$2000-$3FFF`) | `E000R` |
-| **asm** | Bernie GEN2 TXT (40×24) | 12 | `apple1_gen2.cfg` | RAM `$E000` (text page `$0400`) | `E000R` |
-| **C** | Apple-1 dual 4K/8K (text) | 1 | `apple1_c.cfg` | RAM `$0300` | `0300R` |
-| **C** | P-LAB TMS9918 | 7 | `codetank_c.cfg` | **CODETANKDEV.rom** (ROM `$4000`) | `4000R` |
-| **C** | Uncle Bernie GEN2 HGR | 12 | `apple1_gen2_c.cfg` | RAM `$6000` (HGR fb `$2000-$3FFF`) | `6000R` |
-| **C** | Bernie GEN2 TXT (40×24) | 12 | `apple1_gen2_c.cfg` | RAM `$6000` (text page `$0400`) | `6000R` |
+| **asm** | Apple-1 dual 4K/8K (text) | 0 | `apple1_4k.cfg` | RAM `$0280` | `280R` |
+| **asm** | P-LAB TMS9918 | 1 | `codetank.cfg` | **CODETANKDEV.rom** (ROM `$4000`) | `4000R` |
+| **asm** | Uncle Bernie GEN2 HGR | 2 | `apple1_gen2.cfg` | RAM `$E000` (HGR fb `$2000-$3FFF`) | `E000R` |
+| **C** | Apple-1 dual 4K/8K (text) | 0 | `apple1_c.cfg` | RAM `$0300` | `0300R` |
+| **C** | P-LAB TMS9918 | 1 | `codetank_c.cfg` | **CODETANKDEV.rom** (ROM `$4000`) | `4000R` |
+| **C** | Uncle Bernie GEN2 HGR | 2 | `apple1_gen2_c.cfg` | RAM `$6000` (HGR fb `$2000-$3FFF`) | `6000R` |
 
 **Apple-1 dual 4K/8K (text) is the place to start** — no graphics card, output via
 the WOZ Monitor.
 
-### Libraries each target links
+### Libraries Each Target Links
 
-- **asm** (all four): `ca65` sees `-I` for every `dev/lib/<name>/`, so any
+- **asm** (all three): `ca65` sees `-I` for every directory under `dev/lib/`, so any
   `.include "apple1.inc"` / `hgr_tables.inc` / `tms9918.inc` / `gen2.inc` … just
   works; `ld65` links with the cfg above.
 - **C / Apple-1 text**: the shared **`dev/lib/apple1c/`** base
@@ -64,8 +63,23 @@ the WOZ Monitor.
 - **C / GEN2 HGR**: **`dev/lib/gen2c/`** (`gen2.h` — `gen2_hgr_*`) **plus** the
   shared `apple1c` base, so a GEN2 C program can draw HIRES *and* print to the
   terminal / read the keyboard.
-- **C / TMS9918**: Nino Porcino's **`dev/apple1-videocard-lib/`**
+- **C / TMS9918**: the TMS9918 C runtime under **`dev/lib/tms9918c/`**
   (`screen1.h` / `tms9918.h`).
+
+### Starter Files
+
+The built-in *New* dialog still embeds the default starters in `src/Pom1BenchHost.cpp`.
+Editable copies live under `dev/sketchs/`, grouped by DevBench machine profile first,
+then by source type:
+
+- `dev/sketchs/apple1/{asm,c,hex,raw}/`
+- `dev/sketchs/tms9918/{asm,c}/`
+- `dev/sketchs/gen2/{asm,c}/`
+
+Opening a file from DevBench auto-selects the matching environment: `.c` files use
+the C target, `.s`/`.asm` files use the assembly target, paths containing `tms9918`
+or `codetank` select the TMS9918 profile, paths containing `gen2` or `hgr` select
+GEN2, and everything else defaults to Apple-1 text.
 
 ASM guide → [`dev/Programming_Apple1_ASM.md`](../dev/Programming_Apple1_ASM.md) ·
 C guide → [`dev/Programming_Apple1_C.md`](../dev/Programming_Apple1_C.md).
@@ -93,13 +107,6 @@ Uncle Bernie's 280×192 HIRES card. `apple1_gen2*.cfg` reserves `$2000-$3FFF` fo
 the framebuffer, so program code sits above it. The asm starter draws text with
 the Beautiful Boot font via `plot_pixel`; the C starter uses `gen2_hgr_puts` /
 `gen2_hgr_putu`. Card reference → [`GEN2_RELEASE.md`](GEN2_RELEASE.md).
-
-### GEN2 TXT (asm `$E000` / C `$6000`)
-The GEN2 card's **native 40×24 text mode** — writes land in the Apple-II-interleaved
-text page at `$0400` (normal glyphs need bit 7 set). Lighter than HGR when you only
-need text on the colour card.
-
----
 
 ## Toolchain-free quick targets (hex / raw)
 

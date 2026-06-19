@@ -38,6 +38,7 @@ public:
     // build; when it sits in a dev/projects/ dir with a sibling Makefile, build()
     // compiles it as a real project (own .cfg, -I projectdir, EXTRA_ASM, dual-bank).
     void setActiveSourcePath(const std::string& path) override { activeSourcePath_ = path; }
+    int targetForPath(const std::string& path) const override;
 
     bool        toolchainReady(int target) const override;
     std::string toolchainHint (int target) const override;

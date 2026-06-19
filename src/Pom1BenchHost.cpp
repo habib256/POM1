@@ -5,6 +5,7 @@
 #include "ProcessUtil.h"          // bench::shellQuote / runCapture / whichExe
 #include "imgui.h"                // ImGui::GetTime for the CodeTank cold-boot
 
+#include <algorithm>
 #include <cctype>
 #include <cstdio>
 #include <cstdlib>
@@ -835,6 +836,35 @@ int Pom1BenchHost::targetFor(int language, int machine) const
     return language * 3 + machine;   // matches the kP1Targets matrix ordering
 }
 
+int Pom1BenchHost::targetForPath(const std::string& path) const
+{
+    namespace fs = std::filesystem;
+    std::string p = path;
+    std::replace(p.begin(), p.end(), '\\', '/');
+    std::transform(p.begin(), p.end(), p.begin(),
+                   [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+
+    const std::string ext = fs::path(p).extension().string();
+    if (ext == ".hex" || ext == ".txt") return 6;      // Wozmon hex quick-load
+    if (ext == ".raw") return 7;                       // raw bytes @ address field
+
+    const bool cMode   = (ext == ".c");
+    const bool asmMode = (ext == ".s" || ext == ".asm");
+    if (!cMode && !asmMode) return -1;
+
+    const bool tms  = p.find("/tms9918") != std::string::npos ||
+                      p.find("/tms9918c") != std::string::npos ||
+                      p.find("/codetank") != std::string::npos ||
+                      p.find("graphic tms9918") != std::string::npos;
+    const bool gen2 = p.find("/gen2") != std::string::npos ||
+                      p.find("/gen2c") != std::string::npos ||
+                      p.find("/hgr") != std::string::npos ||
+                      p.find("graphic hgr") != std::string::npos;
+
+    const int machine = tms ? 1 : gen2 ? 2 : 0;        // default = Apple-1
+    return (cMode ? 3 : 0) + machine;                  // kP1Targets language-major order
+}
+
 void Pom1BenchHost::onTargetSelected(int target)
 {
     if (target < 0 || target >= kP1TargetCount) return;
@@ -1518,6 +1548,8 @@ std::string Pom1BenchHost::browseDir() const
 {
     namespace fs = std::filesystem;
     std::error_code ec;
+    for (const char* p : {"dev/sketchs", "../dev/sketchs", "../../dev/sketchs"})
+        if (fs::exists(p, ec)) return fs::absolute(p, ec).string();
     for (const char* p : {"dev", "../dev", "../../dev"})
         if (fs::exists(p, ec)) return fs::absolute(p, ec).string();
     return ".";
