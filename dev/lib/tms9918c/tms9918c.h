@@ -1,4 +1,7 @@
-/* tms9918c.h — umbrella header for the P-LAB TMS9918 C runtime (nippur72 port).
+/* tms9918c.h — umbrella header for the P-LAB TMS9918 C runtime.
+ * Hardware: P-LAB TMS9918 graphic card, Claudio Parmigiani (P-LAB).
+ * Software: cc65 port of Antonino "Nino" Porcino's apple1-videocard-lib
+ *   (https://github.com/nippur72/apple1-videocard-lib).
  *
  * One include for a TMS9918 C program:
  *     #include "tms9918c.h"

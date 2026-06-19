@@ -1,7 +1,8 @@
 /*
- * apple1-videocard-lib — POM1 CodeTank cc65 port
- * Derived from nippur72/apple1-videocard-lib (Antonino "Nino" Porcino).
- *   https://github.com/nippur72/apple1-videocard-lib
+ * P-LAB TMS9918 (Apple-1) — cc65 C runtime, POM1 CodeTank port
+ * Hardware: P-LAB TMS9918 graphic card, Claudio Parmigiani (P-LAB).
+ * Software: derived from Antonino "Nino" Porcino's apple1-videocard-lib
+ *   (https://github.com/nippur72/apple1-videocard-lib).
  * Upstream license: unspecified at time of fork (2026-05). Preserve attribution.
  */
 #ifndef SCREEN1_H

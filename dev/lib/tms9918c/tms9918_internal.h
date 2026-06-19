@@ -1,4 +1,6 @@
 /* tms9918_internal.h — private declarations shared by the tms9918c modules.
+ * Hardware: P-LAB TMS9918 graphic card, Claudio Parmigiani (P-LAB).
+ * Software: cc65 port of Antonino "Nino" Porcino's apple1-videocard-lib.
  * NOT included by any public *.h, NOT intended for consumer code.
  *
  * Mirror of gen2c/gen2_internal.h. Currently a scaffolding header: the

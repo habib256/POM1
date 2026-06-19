@@ -1,4 +1,9 @@
 /*
+ * P-LAB TMS9918 (Apple-1) — cc65 C program for POM1 CodeTank ($4000, 4000R)
+ * Hardware: P-LAB TMS9918 graphic card, Claudio Parmigiani (P-LAB).
+ * Software: dev/lib/tms9918c — cc65 port of Antonino "Nino" Porcino's
+ *   apple1-videocard-lib (https://github.com/nippur72/apple1-videocard-lib).
+ *
  * nino-democ — minimal TMS9918 menu (minimal port of upstream demos/demo).
  * Keys:
  *   1 : Screen 1 demo

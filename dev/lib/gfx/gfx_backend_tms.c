@@ -1,4 +1,9 @@
 /*
+ * P-LAB TMS9918 (Apple-1) — gfx layer backend (Graphics II bitmap)
+ * Hardware: P-LAB TMS9918 graphic card, Claudio Parmigiani (P-LAB).
+ * Software: forwards to screen2 via Antonino "Nino" Porcino's tms9918c runtime
+ *   (apple1-videocard-lib, https://github.com/nippur72/apple1-videocard-lib).
+ *
  * gfx_backend_tms.c — TMS9918 (Graphics II bitmap) backend for the gfx layer.
  *
  * Fills in the gfx.h backend contract by forwarding to apple1-videocard-lib's

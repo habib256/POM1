@@ -265,8 +265,13 @@ static const char* kSketchHex =
     "0300: A9 A1 20 EF FF 4C 00 03\n"
     "0300R\n";
 static const char* kSketchC =
-    "/* Hello world in C for the TMS9918 (apple1-videocard-lib, cc65).\n"
-    "   Upload builds a CodeTank ROM with cl65, flashes it and boots 4000R. */\n"
+    "/* P-LAB TMS9918 (Apple-1) — cc65 C program for POM1 CodeTank ($4000, 4000R)\n"
+    " * Hardware: P-LAB TMS9918 graphic card, Claudio Parmigiani (P-LAB).\n"
+    " * Software: dev/lib/tms9918c — cc65 port of Antonino \"Nino\" Porcino's\n"
+    " *   apple1-videocard-lib (https://github.com/nippur72/apple1-videocard-lib).\n"
+    " *\n"
+    " * HELLO WORLD — minimal Screen 1 text demo.\n"
+    " * DevBench builds a CodeTank ROM with cl65, flashes it and boots 4000R. */\n"
     "#include \"tms9918.h\"\n"
     "#include \"screen1.h\"\n"
     "\n"
