@@ -5,7 +5,8 @@
 Reusable, display-agnostic asm building blocks for the Apple-1 games shipped
 by POM1. Each subdirectory holds the data and routines shared across that
 game's text / TMS9918 / HGR / GT-6144 variants; the per-variant renderer and
-input glue stay in `dev/projects/<card>/<name>/`.
+input glue stay in `sketchs/<profile>/<name>/` (DevBench sketches) or
+`dev/projects/<card>/<name>/` (multi-file builds).
 
 ## Game libs
 

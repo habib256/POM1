@@ -4,7 +4,7 @@ tiles. Three columns (door / stairs_down / stairs_up), each showing
 4-8 sprites from dev/lib/tms9918/sprites_*.asm at the same colour as
 their target tile group, so the user can pick a swap-in quickly.
 
-Output: dev/projects/tms9918_rogue/sprite_candidates.png
+Output: dev/projects/tms9918/game_rogue/sprite_candidates.png
 """
 from __future__ import annotations
 

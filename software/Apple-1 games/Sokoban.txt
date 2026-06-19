@@ -1,5 +1,5 @@
 // Sokoban (text mode) for Apple 1 - stock 4K compatible (apple1_sok_4k.cfg)
-// Built from dev/projects/apple1/game_sokoban/ - load + run at $0280
+// Built from sketchs/apple1/game_sokoban/ - load + run at $0280
 0280: A9 9A A2 06 20 F7 05 A9 CC A2 06 20 F7 05 20 DE
 0290: 05 C9 31 F0 07 C9 32 F0 0E 4C 8E 02 A9 57 85 15
 02A0: A9 41 85 16 4C AF 02 A9 5A 85 15 A9 51 85 16 A9

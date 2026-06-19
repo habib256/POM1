@@ -2,7 +2,7 @@
 ; gt6144.asm -- SWTPC GT-6144 plotter primitives
 ; ============================================================================
 ; Intended to mutualise the clear + plot + control-opcode patterns inlined in
-; dev/projects/gt6144/gt6144_demo_hello and gt6144_demo_life. Each routine is a
+; sketchs/apple1/gt6144_demo_hello and gt6144_demo_life. Each routine is a
 ; tight few-instruction wrapper around the $D00A protocol — no ZP usage, small
 ; footprint. STATUS: not yet adopted — both demos still carry inline copies;
 ; migrate them onto this module (see README) or retire it.

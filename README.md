@@ -29,9 +29,9 @@ Built with Dear ImGui & OpenGL — fast, lightweight, cross-platform.
 - 🎵 **Real chiptune sound on a 1976 board.** Drop a `.sid` from the [HVSC archive](https://www.exotica.org.uk/wiki/High_Voltage_SID_Collection) onto `tools/sid2apple1.py`, swap between MOS 6581 and CSG 8580 *while it plays*, and hear genuine SID through libresidfp.
 - 🎨 **Three independent graphics cards across half a century.** The 1976 SWTPC GT-6144 (with bistable SRAM noise on power-up), Uncle Bernie's GEN2 HGR (NTSC artifact colours), and the P-LAB TMS9918 (256×192 + 32 sprites + silicon-strict timing model documented in [`Programming_TMS9918.md`](sketchs/doc/Programming_TMS9918.md)).
 - 📡 **Wi-Fi modem dialing real BBSes.** Flip on the P-LAB Wi-Fi card, type `ATDT bbs.fozztexx.com:23` in WOZ Monitor and you're on a 2026-era BBS. Or run `telnet localhost 6502` to drive the Apple 1 from any modern terminal.
-- 💾 **Cartridge ecosystem unique to POM1.** The P-LAB CodeTank ships **5 ready-to-flip cartridges** (GAME1/GAME2/GAME3/GAME4/TEST) covering arcade games, dungeon crawlers, demos and silicon validation suites — all built from `dev/projects/` source you can hack and rebuild with `python3 tools/build_codetank_rom.py`.
+- 💾 **Cartridge ecosystem unique to POM1.** The P-LAB CodeTank ships **5 ready-to-flip cartridges** (GAME1/GAME2/GAME3/GAME4/TEST) covering arcade games, dungeon crawlers, demos and silicon validation suites — rebuilt from [`sketchs/`](sketchs/) + [`dev/projects/`](dev/projects/) sources via `python3 tools/build_codetank_rom.py`.
 - 🔬 **Cycle-accurate down to the bus.** The SID, TMS9918, ACI cassette and modem all run on the same `POM1_CPU_CLOCK_HZ = 1 022 727` clock; tempo follows emulation speed, not wall-clock. Klaus Dormann's 6502 functional test pinned in CI.
-- 🛠️ **A complete cc65 dev tree.** Every shipped program has source under [`dev/projects/`](dev/) — Galaga, Sokoban, Snake, Logo, Rogue, Tetris, Mandelbrot, Plasma, Light Corridor, Connect-4 trilogy, two Sokoban trilogies, and more. Modify, `make`, watch it run.
+- 🛠️ **A complete cc65 dev tree.** Shipped program sources live in [`sketchs/`](sketchs/) (DevBench sketches) and [`dev/projects/`](dev/projects/) (multi-file builds) — Galaga, Sokoban, Snake, Logo, Rogue, Tetris, Mandelbrot, Plasma, Connect-4 trilogy, two Sokoban trilogies, and more.
 - ⌨️ **TTL-faithful keyboard** (no autorepeat by default, like the real ASCII keyboard ROM) — toggle to host autorepeat from *Settings* if you can't take it.
 
 ---
@@ -182,7 +182,7 @@ Indices match `--preset N`. Per-preset window layouts persist under `ini/imgui_p
 
 ## 🎮 Software Library
 
-`software/` ships **60+ ready-to-run programs** — load via *File → Load Memory*. Most come from [apple1software.com](https://apple1software.com/), the reference archive. 6502 ASM sources for the bundled programs live in [`dev/projects/`](dev/) in the **git checkout** (not in release archives). Auto-enable: load a file from `software/Graphic HGR/`, `software/Graphic TMS9918/`, `software/Apple-1_TMS_CC65/` (cc65 CodeTank images), `software/SOUND SID/`, `software/NET/`, `software/a1io_rtc/` or `software/Graphic gt-6144/` and POM1 plugs the matching card + opens its window.
+`software/` ships **60+ ready-to-run programs** — load via *File → Load Memory*. Most come from [apple1software.com](https://apple1software.com/), the reference archive. 6502 sources for the bundled programs live in [`sketchs/`](sketchs/) and [`dev/projects/`](dev/projects/) in the **git checkout** (not in release archives). Auto-enable: load a file from `software/Graphic HGR/`, `software/Graphic TMS9918/`, `software/Apple-1_TMS_CC65/` (cc65 CodeTank images), `software/SOUND SID/`, `software/NET/`, `software/a1io_rtc/` or `software/Graphic gt-6144/` and POM1 plugs the matching card + opens its window.
 
 ### 🃏 P-LAB CodeTank cartridge library *(new in v1.9.0, GAME4 added v1.9.1)*
 
@@ -196,19 +196,19 @@ Plug the CodeTank daughterboard (preset 9 or *Hardware → CodeTank*), open *Fil
 | **`Codetank_GAME4.rom`** | TMS_LightCorridor (wireframe perspective tunnel, 3 levels) | *reserved (`$FF` fill — future expansion)* |
 | **`Codetank_TEST.rom`** | TMS_SilBench (29-test silicon validation) | menu → 1=Clone (sprite bug N.8) 2=Split (5th-sprite trigger) |
 
-Per-cart menu sources under `dev/projects/tms9918_codetank_{menu,game3_menu,test_menu}/`. Per-program bank cfgs stamp slot offsets that `slot()` enforces in `build_codetank_rom.py` — outgrow your slot, get a clear deficit message instead of a corrupt ROM.
+Per-cart menu sources under [`sketchs/tms9918/game1_menu/`](sketchs/tms9918/game1_menu/), [`game3_menu/`](sketchs/tms9918/game3_menu/) and [`test_menu/`](sketchs/tms9918/test_menu/). Per-program bank cfgs stamp slot offsets that `slot()` enforces in `build_codetank_rom.py` — outgrow your slot, get a clear deficit message instead of a corrupt ROM.
 
 <details><summary><b>🕹️ Other games & demos</b></summary>
 
 | Program | Notes |
 |---------|-------|
 | ♟️ **Microchess** | Peter Jennings' chess engine — first commercial microcomputer game |
-| ♟️ **Chess** trilogy | Pure-asm chess inspired by [StewBC/cc65-Chess](https://github.com/StewBC/cc65-Chess), three variants ([text](dev/projects/games_chess/Chess.asm), [TMS9918](dev/projects/tms9918_chess/TMS_Chess.asm), [HGR](dev/projects/hgr_chess/HGR_Chess.asm)). v0.1: HvH, full move-gen + check/mate. AI v1.2 |
-| 🏰 **LittleTower** | Text adventure ([asm](dev/projects/games_little_tower/LittleTower-1.0.asm)) |
+| ♟️ **Chess** | Pure-asm chess inspired by [StewBC/cc65-Chess](https://github.com/StewBC/cc65-Chess) — text source ([asm](sketchs/apple1/game_chess/Chess.asm)), TMS9918 build shipped as [`software/Graphic TMS9918/TMS_Chess.txt`](software/Graphic%20TMS9918/TMS_Chess.txt). v0.1: HvH, full move-gen + check/mate. AI v1.2 |
+| 🏰 **LittleTower** | Text adventure ([asm](sketchs/apple1/game_little_tower/LittleTower-1.0.asm)) |
 | 🌙 **Lunar Lander** · 🔢 **2048** · 🔐 **Codebreaker** / 🧠 **Mastermind** · 🎲 **Shut the Box** · 🔵 **Peg Solitaire** · 🧩 **15-Puzzle** · 📝 **Worple** | Classics |
 | 🧬 **Game of Life** · 🎂 **30th** · 🐱 **ASCII Cat** · 🍺 **99 Bottles** | Demos |
-| 🌀 **Maze** / **Maze 2** | Sidewinder ([asm](dev/projects/demo_maze/Maze_Sidewinder.asm)) and Recursive Backtracker ([asm](dev/projects/demo_maze/Maze2_Backtracker.asm)) |
-| 🎨 **HGR Maze** | GEN2 HIRES maze generator ([asm](dev/projects/hgr_maze/HGR_Maze.asm)) |
+| 🌀 **Maze** / **Maze 2** | Sidewinder ([asm](dev/projects/apple1/game_mazes/Maze_Sidewinder.asm)) and Recursive Backtracker ([asm](dev/projects/apple1/game_mazes/Maze2_Backtracker.asm)) |
+| 🎨 **HGR Maze** | GEN2 HIRES maze generator ([asm](sketchs/gen2/game_maze/HGR_Maze.asm)) |
 | 🌌 **Mandelbrot** · 📊 **Cellular** · 🎨 **PasArt** | Fractal, 1D CA, parametric ASCII |
 </details>
 
@@ -249,13 +249,13 @@ $98.50, demoed by Woz in *Interface Age*. **64×96** mono framebuffer on 6× Int
 
 ### Uncle Bernie's GEN2 Color Graphics Card
 
-**280×192** HIRES, Apple II-compatible memory at `$2000-$3FFF`, **NTSC artifact colour** (violet, green, blue, orange, white, black + glow). Auto-loads `software/Graphic HGR/GEN2.HGR.BIN`; includes [HGR Maze](dev/projects/hgr_maze/HGR_Maze.asm).
+**280×192** HIRES, Apple II-compatible memory at `$2000-$3FFF`, **NTSC artifact colour** (violet, green, blue, orange, white, black + glow). Auto-loads `software/Graphic HGR/GEN2.HGR.BIN`; includes [HGR Maze](sketchs/gen2/game_maze/HGR_Maze.asm).
 
 ### P-LAB Graphic Card (TMS9918)
 
 [P-LAB Apple-1 Graphic Card](https://p-l4b.github.io/graphic/) — TMS9918A VDP, **256×192**, 15 colours + transparent, 32 hardware sprites, 4 modes. I/O at `$CC00` (data) / `$CC01` (control), 16 KB dedicated VRAM. Compatible with [nippur72's apple1-videocard-lib](https://github.com/nippur72/apple1-videocard-lib). **Silicon Strict** mode enforces the VRAM timing model — drops "too fast" writes; tune it from the *DevBench → Silicon Strict Inspector*. Chip quirks documented in [`sketchs/doc/Programming_TMS9918.md`](sketchs/doc/Programming_TMS9918.md). Default ON for every preset except the Multiplexing Fantasies.
 
-The CodeTank daughterboard (above) ships a **5-cartridge library** built from `dev/projects/tms9918_*` source.
+The CodeTank daughterboard (above) ships a **5-cartridge library** built from [`sketchs/tms9918/`](sketchs/tms9918/) sketches plus [`dev/projects/tms9918/`](dev/projects/tms9918/) multi-file sources (Rogue, Nyan, Logo).
 
 ---
 
@@ -364,20 +364,21 @@ For asm/C, install the **cc65** toolchain first: `sudo apt install cc65`
 (Debian/Ubuntu) · `sudo dnf install cc65` (Fedora) · `sudo pacman -S cc65` (Arch) ·
 `brew install cc65` (macOS) · <https://cc65.github.io/> (Windows/other).
 
-POM1 ships a complete cc65-based dev tree under [`dev/`](dev/):
+POM1 ships a complete cc65-based dev tree:
 
 - [`sketchs/doc/APPLE1DEV.md`](sketchs/doc/APPLE1DEV.md) — agent-facing playbook (decision tree, I/O cheat sheet, deployment, gotchas, example index).
 - [`sketchs/doc/Programming_Apple1_ASM.md`](sketchs/doc/Programming_Apple1_ASM.md) — guide ASM (~790 lignes, FR) : 6502, cc65, HGR, TMS9918 (trilogies Sokoban + Connect 4).
 - [`sketchs/doc/Programming_Apple1_C.md`](sketchs/doc/Programming_Apple1_C.md) — C guide (cc65): one shared Apple-1 text base + the GEN2 HGR / TMS9918 graphics layers.
-- [`dev/projects/<name>/`](dev/projects/) — per-program README + Makefile + sources for everything POM1 ships.
-- [`dev/lib/`](dev/lib/) — reusable libraries: **asm** (`apple1`, `m6502`, `tms9918`, `hgr`, `games/{chess,sokoban}`) + **C** (`apple1c` shared text/keyboard base, `gen2c` GEN2 HGR runtime). The TMS9918 C runtime is [`dev/apple1-videocard-lib/`](dev/apple1-videocard-lib/) (Nippur72's lib, CodeTank-ported).
+- [`sketchs/`](sketchs/) — DevBench sketches (mono-source programs; open from the Bench or edit directly).
+- [`dev/projects/`](dev/projects/) — multi-file projects with Makefiles (Rogue, Nyan, Logo, Mazes, …) — CI gate: `make -C dev/projects`.
+- [`dev/lib/`](dev/lib/) — reusable libraries: **asm** (`apple1`, `m6502`, `tms9918`, `hgr`, `games/{chess,sokoban}`) + **C** (`apple1c`, `gen2c`, `tms9918c`). TMS9918 C runtime: [`dev/lib/tms9918c/`](dev/lib/tms9918c/).
 - [`dev/cc65/*.cfg`](dev/cc65/) — shared linker configs.
 
-Quick build:
+Quick build (multi-file projects):
 
 ```bash
-cd dev/projects/<name> && make    # → software/<dir>/<name>.{bin,txt}
-# In POM1: File > Load Memory → the .txt → `280R` (or whatever start)
+make -C dev/projects/<card>/<name>    # → software/<dir>/<name>.{bin,txt}
+# DevBench sketches: open in POM1 Bench → Verify / Run (no Makefile needed)
 ```
 
 **Build the CodeTank cartridges from source:**

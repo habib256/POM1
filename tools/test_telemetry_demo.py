@@ -4,7 +4,7 @@
 # human (CI-friendly via --headless). This is the end-to-end demonstration of
 # the "dream SDK" loop: read game state -> decide input -> game converges.
 #
-#   Build : make -C dev/projects/a1_telemetry_demo
+#   Build : open sketchs/apple1/demo_telemetry/ in DevBench, or assemble A1_TelemetryDemo.asm
 #   Run   : python3 tools/test_telemetry_demo.py [path/to/POM1]
 # Exits 77 (skip) if POM1 or the demo binary is missing.
 
@@ -23,7 +23,7 @@ def main():
     if not os.path.exists(pom1):
         print(f"SKIP: {pom1} not found (build first)"); return 77
     if not os.path.exists(PROG):
-        print(f"SKIP: {PROG} not found (make -C dev/projects/a1_telemetry_demo)"); return 77
+        print(f"SKIP: {PROG} not found (build sketchs/apple1/demo_telemetry via DevBench)"); return 77
 
     try:
         with launch_headless(PROG, load_addr=0x0280, port=PORT, pom1=pom1) as tc:

@@ -1,8 +1,8 @@
 # Changelog
 
 Notable shipped work, recorded as it ships — both the **emulator** (lifted from
-`TODO.md`) and the **6502 software** under `dev/` (libraries + `dev/projects/`
-programs, lifted from `dev/TODO6502.md`). The authoritative commit-level history
+`TODO.md`) and the **6502 software** under `dev/` (libraries + `sketchs/` +
+`dev/projects/` programs, lifted from `dev/TODO6502.md`). The authoritative commit-level history
 is `git log`; the user-facing feature tour is `README.md`; open work lives in
 `TODO.md` (emulator) and `dev/TODO6502.md` (6502). Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/). Versions track the string in
@@ -12,7 +12,7 @@ is `git log`; the user-facing feature tour is `README.md`; open work lives in
 
 ### Added — 6502 software (`dev/`): shared graphics library, shared font, TMS9918 demos
 
-6502-side work that ships under `dev/` (libraries + `dev/projects/` programs),
+6502-side work that ships under `dev/` (libraries + `sketchs/` + `dev/projects/` programs),
 lifted from `dev/TODO6502.md`. The programs build to `software/<dir>/` via the
 per-project Makefiles; dev loop → `sketchs/doc/APPLE1DEV.md`.
 
@@ -41,16 +41,16 @@ per-project Makefiles; dev loop → `sketchs/doc/APPLE1DEV.md`.
 - **TMS9918 Mode 2 (bitmap) graphics** — `init_vdp_g2`
   (`dev/lib/tms9918/tms9918m2.asm`), exercised by 7 programs (`tms9918_mandel`,
   `_asteroids`, `_maze3d`, `_light_corridor`, `_clone`, `_logo`).
-- **TMS9918 Mode 1 demoscene** (2026-05-08) — `dev/projects/tms9918_plasma/`, a
+- **TMS9918 Mode 1 demoscene** (2026-05-08) — `sketchs/tms9918/demo_plasma/`, a
   6502 port of Cruzer/jblang's *Plascii Petsma*: 12 effects × 16 palettes,
   auto-cycling, 1 433 B, stock 4 KB layout.
 - **5th-sprite-overflow raster trap** (2026-05-08) —
   `dev/lib/tms9918/tms9918_5strigger.asm` (`arm_5s_trigger` / `wait_5s_trigger`,
   `WAIT_5S` macro): schedule a mid-frame palette/name-table swap without /INT (the
-  TMS9918 has no line interrupt). Demo `dev/projects/tms9918_split/` (palette split
+  TMS9918 has no line interrupt). Demo `sketchs/tms9918/demo_split/` (palette split
   at scanline 96).
 - **Sprite-cloning (Bug N°8) visual fixture** (2026-05-08) —
-  `dev/projects/tms9918_clone/`: SPACE toggles the illegal M1+M2 hybrid so the
+  `sketchs/tms9918/demo_clone/`: SPACE toggles the illegal M1+M2 hybrid so the
   sprite-clone cascade appears/disappears for side-by-side comparison; validates
   the cloning model (`sketchs/doc/Programming_TMS9918.md` §15 Bug N°8).
 - **Silicon-strict port of every TMS9918 program** (2026-04-30) —
@@ -172,7 +172,7 @@ release card's `$C250-$C257` soft switches.
   carve-out extended to `$2000-$5FFF` (card DRAM behind both HGR pages).
 - **Product integration** — preset 13 plugs the engine via
   `setHgrFramebufferAttached`; Hardware Reference + tooltips + memory map
-  updated; CLAUDE.md updated; validation demo `dev/projects/a1_crazycycle/`
+  updated; CLAUDE.md updated; validation demo `sketchs/gen2/demo_a1_crazycycle/`
   (→ `software/Graphic HGR/A-1-CrazyCycle.{bin,txt}`, `E000R`) — latch init by
   reads, HGR colour test card, then a beam-raced TEXT window mid-pattern with
   cycle-exact HST0 sync and per-line horizontal splits.
@@ -247,7 +247,7 @@ demonstrated end-to-end with no human and no display.
   (connect-with-retry, `read_frame`, `send`, `ack`, `step`) + a `launch_headless`
   context manager (boots POM1 `--headless`, connects, tears down). Tests reason
   over frames + inputs instead of parsing sockets.
-- **Worked example** — `dev/projects/a1_telemetry_demo/` (a "homing" game built
+- **Worked example** — [`sketchs/apple1/demo_telemetry/`](sketchs/apple1/demo_telemetry/) (a "homing" game built
   on `telemetry.inc`, → `software/Telemetry/A1_TelemetryDemo.bin`) +
   `tools/test_telemetry_demo.py`: the harness reads `[player, target, won]`,
   sends a direction each frame, and the player converges on the target in 15

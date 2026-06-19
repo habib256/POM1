@@ -37,7 +37,8 @@ Guides live in [`sketchs/doc/`](../sketchs/doc/). Source, libraries and build co
 | [`dev/TODO6502.md`](../dev/TODO6502.md) | Open **6502-software** work / `dev/projects` backlog. |
 | [`sketchs/doc/CC65.md`](../sketchs/doc/CC65.md) | cc65 linker configs, `Makefile.common`, emit scripts. |
 | `dev/lib/*/README.md` | Per-library docs — `apple1` (equates), `m6502` (math), `tms9918`, `hgr`, `gen2`/`gen2c`, `gfx` (shared geometry/numbers), `sid`, `sd`, `gt6144`, `a1io`, `wifi`, `games/*`, `text40`, `apple1c`, `telemetry`. |
-| `dev/projects/*/README.md` | Per-program docs for complex multi-file projects under `dev/projects/`. Sketchs + starters → [`doc/SKETCHS.md`](SKETCHS.md). |
+| `sketchs/<profile>/*/README.md` | Per-sketch notes (starters under `_template*`). |
+| `dev/projects/*/README.md` | Per-program docs for complex multi-file projects under `dev/projects/`. Layout + sidecars → [`doc/SKETCHS.md`](SKETCHS.md). |
 
 ## Emulator & card reference (`doc/`)
 

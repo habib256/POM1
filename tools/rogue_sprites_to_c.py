@@ -31,8 +31,8 @@ def extract_block(text: str, start_marker: str, end_marker: str) -> list[int]:
 
 def main() -> int:
     root = Path(__file__).resolve().parents[1]
-    rogue_asm = (root / "dev/projects/tms9918_rogue/TMS_Rogue.asm").read_text(encoding="utf-8")
-    boss_asm = (root / "dev/projects/tms9918_rogue/sprites_boss.asm").read_text(encoding="utf-8")
+    rogue_asm = (root / "dev/projects/tms9918/game_rogue/TMS_Rogue.asm").read_text(encoding="utf-8")
+    boss_asm = (root / "dev/projects/tms9918/game_rogue/sprites_boss.asm").read_text(encoding="utf-8")
     out_c = root / "dev/apple1-videocard-lib/demos/rogue_c/rogue_sprites_data.c"
 
     # sprite_pats: from label through last torch .byte block (before prng16 include)

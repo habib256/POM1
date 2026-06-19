@@ -28,7 +28,7 @@ guide rather than duplicate.
 
 Uses Nino Porcino's `apple1-videocard-lib` (`screen1.h`, `tms9918.h`,
 `screen2.h`). The Bench's **TMS9918 (C)** target builds a 16 KB CodeTank
-ROM and boots `4000R`. `dev/projects/tms9918c/` holds 7 directories —
+ROM and boots `4000R`. `sketchs/tms9918/` holds 7 directories —
 `demo`, `demo_hello_world`, `demo_hello_screen1`, `demo_screen1`,
 `demo_picshow`, `demo_sprite_animals`, and the `tool_checksum` utility —
 so **6 worked demos** (the last entry is a tool, not a demo).

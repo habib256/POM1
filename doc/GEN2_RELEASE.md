@@ -7,7 +7,7 @@ Graphics Card on the Apple-1, using POM1 as the development machine.
 Apple II HGR software to the Apple-1. **Hardware truth:** Bernie's PDF
 `doc/reference/ColorGraphicsCard_doc_for_Arnaud.pdf`, transcribed with full Q&A status
 in [`GEN2_RELEASE_questions.md`](GEN2_RELEASE_questions.md) (Q1–Q10 all
-resolved). **Reference implementation:** `dev/projects/a1_crazycycle/` —
+resolved). **Reference implementation:** [`sketchs/gen2/demo_a1_crazycycle/`](sketchs/gen2/demo_a1_crazycycle/) —
 beam-raced bouncing window + 2-voice ACI music, every cycle accounted for.
 
 ---
@@ -159,7 +159,8 @@ plays, `--save-tape tune.aci` keeps the music as a playable tape.
   the card on load.
 - **Dev loop:**
   ```bash
-  cd dev/projects/<yours> && make        # ca65 + ld65 + Woz-hex .txt
+  make -C dev/projects/<card>/<name>    # multi-file projects only
+  # DevBench sketches: open sketchs/<profile>/<name>/ → Verify / Run
   ./build/POM1 --preset 11 --load 'E000:software/Graphic HGR/<P>.txt'
   ```
   `.txt` loads run automatically (trailing `E000R`). Useful flags:

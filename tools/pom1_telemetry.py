@@ -21,7 +21,7 @@ last schema seen.
 
 Protocol + design: doc/TELEMETRY_SIDE_CHANNEL.md. 6502 side: dev/lib/telemetry/
 telemetry.inc + telemetry.h. Worked examples: tools/test_telemetry_demo.py,
-dev/projects/gen2_snake_telemetry/.
+sketchs/gen2/game_snake_telemetry/.
 
 Typical use (self-launching, headless — CI-friendly):
 

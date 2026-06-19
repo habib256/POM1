@@ -19,7 +19,7 @@ PNG matches byte-for-byte on any machine.
 ## Files
 
 - `hgr_testcard.bin` — frozen GEN2 HGR test card (built from
-  `dev/projects/hgr_testcard/`, loads + runs at `$E000`).
+  `sketchs/gen2/demo_hgr_mire/`, loads + runs at `$E000`).
 - `hgr_testcard_gen2.png` — golden render (280×192) of the above on preset 11
   (Uncle Bernie GEN2 HGR) after 2,000,000 emulated cycles.
 

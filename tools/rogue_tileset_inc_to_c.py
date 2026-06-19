@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Emit C byte arrays from dev/projects/tms9918_rogue/tileset_rogue.inc."""
+"""Emit C byte arrays from dev/projects/tms9918/game_rogue/tileset_rogue.inc."""
 from __future__ import annotations
 
 import re
@@ -28,7 +28,7 @@ def parse_bytes(block: str) -> list[int]:
 
 def main() -> int:
     root = Path(__file__).resolve().parents[1]
-    inc = root / "dev/projects/tms9918_rogue/tileset_rogue.inc"
+    inc = root / "dev/projects/tms9918/game_rogue/tileset_rogue.inc"
     out_c = root / "dev/apple1-videocard-lib/demos/rogue_c/rogue_gfx_data.c"
     text = inc.read_text(encoding="utf-8")
     if "tileset_rogue:" not in text or "tileset_color_table:" not in text:

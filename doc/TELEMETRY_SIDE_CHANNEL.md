@@ -5,7 +5,7 @@
 > Side Channel* panel and the Bench Serial Monitor, and driven by the
 > `--telemetry-port` / `--telemetry-log` / `--headless` CLI flags. The reusable
 > kit (`dev/lib/telemetry/telemetry.inc`, `tools/pom1_telemetry.py`,
-> `dev/projects/a1_telemetry_demo/`) ships too. Sections still tagged *proposed*
+> [`sketchs/apple1/demo_telemetry/`](sketchs/apple1/demo_telemetry/) ships too. Sections still tagged *proposed*
 > below are the original design rationale, kept for context; the ✅ markers flag
 > what landed.
 
@@ -211,7 +211,7 @@ immediately regardless of mode. The UI shows a **decoded named table** (field
 name → value) once it has a schema.
 
 It stays **fully generalizable**: any game declares its own fields. For example,
-[`dev/projects/gen2_snake_telemetry`](../dev/projects/gen2_snake_telemetry)
+[`sketchs/gen2/game_snake_telemetry`](../sketchs/gen2/game_snake_telemetry)
 (Snake on the GEN2 HGR card) declares exactly four fields —
 `head_x:U8`, `head_y:U8`, `length:U8`, `alive:BOOL` — and runs free-run so it
 plays live while the Telemetry window shows the decoded state.
@@ -305,13 +305,13 @@ The CLI flags exist (`--telemetry-port`, `--telemetry-log`) plus `--headless`
   `TELE_PUT*` / `TELE_FRAME` macros).
 - **Harness side** — `tools/pom1_telemetry.py` (`TelemetryClient` +
   `launch_headless`).
-- **Worked example** — `dev/projects/a1_telemetry_demo/` (a homing game) +
+- **Worked example** — [`sketchs/apple1/demo_telemetry/`](sketchs/apple1/demo_telemetry/) (a homing game) +
   `tools/test_telemetry_demo.py`.
 
 Bernie's "dream SDK" loop, end to end — no display, no human:
 
 ```bash
-make -C dev/projects/a1_telemetry_demo      # cc65 -> software/Telemetry/A1_TelemetryDemo.bin
+# Build via DevBench (Verify/Run) or assemble manually — see sketchs/apple1/demo_telemetry/A1_TelemetryDemo.asm
 python3 tools/test_telemetry_demo.py        # boots POM1 --headless, drives it, asserts
 ```
 

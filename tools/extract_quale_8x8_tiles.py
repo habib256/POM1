@@ -31,7 +31,7 @@ suitable for streaming verbatim into VRAM at $0000 via vdp_set_write
 + vdp_upload loop. Unused chars are padded with $00 bytes.
 
 Output:
-  dev/projects/tms9918_rogue/tileset_rogue.inc
+  dev/projects/tms9918/game_rogue/tileset_rogue.inc
 
 Usage:
   python3 tools/extract_quale_8x8_tiles.py

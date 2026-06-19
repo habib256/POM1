@@ -25,7 +25,7 @@
 ;
 ; Idempotent: outer .ifndef guard.
 ;
-; Lifted out of dev/projects/gen2/game_maze/HGR_Maze.asm:711-749 (TODO6502 §HGR
+; Lifted out of sketchs/gen2/game_maze/HGR_Maze.asm:711-749 (TODO6502 §HGR
 ; sub-byte sprite library). To use a different block width, copy this
 ; file as a template — the structure is the same but the mask values
 ; change.

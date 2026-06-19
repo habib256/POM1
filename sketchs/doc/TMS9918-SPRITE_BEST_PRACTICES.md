@@ -164,7 +164,7 @@ Pour tout nouveau code touchant à des sprites, vérifier :
 
 ### 10. Projets de référence
 
-- **Init canonique** : `dev/projects/tms9918_rogue/TMS_Rogue.asm`
+- **Init canonique** : `dev/projects/tms9918/game_rogue/TMS_Rogue.asm`
   (utilise `init_vdp_g1` + `vdp_display_off` + uploads + `override_r1_16x16`).
 - **SAT rebuild VBlank-gated** : `TMS_Rogue.asm::place_all_sprites`,
   `TMS_Galaga.asm::render_sprites`.

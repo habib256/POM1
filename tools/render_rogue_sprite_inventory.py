@@ -7,7 +7,7 @@ group as it appears in-game. Run after editing the PALETTE in
 tools/extract_quale_8x8_tiles.py to preview the result without booting
 POM1.
 
-Output: dev/projects/tms9918_rogue/sprite_inventory.png
+Output: dev/projects/tms9918/game_rogue/sprite_inventory.png
 """
 from __future__ import annotations
 

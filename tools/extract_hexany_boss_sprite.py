@@ -22,7 +22,7 @@ both the X and Y axes to compose the full 32x32 boss visual.
 Usage:
   python3 tools/extract_hexany_boss_sprite.py \\
       "/path/to/creature_024.png" \\
-      dev/projects/tms9918_rogue/sprites_boss.asm
+      dev/projects/tms9918/game_rogue/sprites_boss.asm
 """
 from __future__ import annotations
 
@@ -91,7 +91,7 @@ def fmt_bytes(label: str, raw: list[int]) -> str:
 def main(argv: list[str]) -> int:
     src = Path(argv[1]) if len(argv) > 1 else Path(SOURCE_DEFAULT)
     dst = Path(argv[2]) if len(argv) > 2 else Path(
-        "dev/projects/tms9918_rogue/sprites_boss.asm"
+        "dev/projects/tms9918/game_rogue/sprites_boss.asm"
     )
 
     if not src.is_file():
