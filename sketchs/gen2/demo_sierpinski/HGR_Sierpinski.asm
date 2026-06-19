@@ -43,10 +43,6 @@ main:
         LDX #>str_title
         JSR print_str_ax
 
-@wait:  LDA KBDCR
-        BPL @wait
-        LDA KBD
-
 ; =============================================
 ; DRAW: centered symmetric Sierpinski triangle
 ; =============================================
@@ -122,7 +118,7 @@ str_title:
         .byte $0D, " * HGR SIERPINSKI *", $0D
         .byte " GEN2 COLOR GRAPHICS CARD", $0D
         .byte " CENTERED BITWISE FRACTAL", $0D
-        .byte $0D, " PRESS ANY KEY...", $0D, 0
+        .byte $0D, " DRAWING...", $0D, 0
 
 str_draw:
         .byte " DRAWING...", $0D, 0

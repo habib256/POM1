@@ -23,7 +23,7 @@
 ; sokoban_common.inc.
 ;
 ; In POM1: plug GEN2 card, File > Load Memory (HGR_Sokoban.txt),
-; then type 280R in Woz Monitor.
+; then type E000R in Woz Monitor.
 ; =============================================
 
 ; --- Apple 1 I/O ---

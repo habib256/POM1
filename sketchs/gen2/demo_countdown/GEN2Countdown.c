@@ -5,8 +5,9 @@
  *   GEN2 HGR Countdown / VERHILLE Arnaud 2026
  *
  * Displays a large centred digit on the GEN2 card's 280x192 HIRES screen,
- * counting down from 20 to 0 (one digit per ~second), then returns to the
- * Wozniak monitor (the "\" prompt on the Apple-1 text screen).
+ * counting down from 20 to 0 (one digit per ~second), then plays a small
+ * colour fireworks finale before returning to the Wozniak monitor (the "\"
+ * prompt on the Apple-1 text screen).
  *
  *   Build : make            -> "software/Graphic HGR/GEN2Countdown.bin" (+ .txt)
  *   Run   : DevBench -> POM1 Bench -> new C sketch / GEN2 HGR
@@ -70,6 +71,122 @@ static void clear_band(void)
     gen2_hgr_fill_rect(BAND_Y0, BAND_Y1 - BAND_Y0, BAND_C0, BAND_C1 - BAND_C0, 0);
 }
 
+static void firework_pause(void)
+{
+    spin(TICK_SPINS / 5u);
+}
+
+static void sparkle(unsigned x, unsigned char y)
+{
+    gen2_hgr_fill_pixrect(x, y, 2u, 2u);
+}
+
+static void flash_core(unsigned cx, unsigned char cy, unsigned char color)
+{
+    gen2_hgr_fill_pixrect(cx - 3u, cy - 3u, 7u, 7u);
+    gen2_hgr_colorize(cx - 5u, cy - 5u, 11u, 11u, color);
+}
+
+static void firework_stage(unsigned cx, unsigned char cy,
+                           unsigned char radius, unsigned char color,
+                           unsigned char ring)
+{
+    unsigned x0;
+    unsigned x1;
+    unsigned char y0;
+    unsigned char y1;
+
+    x0 = cx - radius;
+    x1 = cx + radius;
+    y0 = cy - radius;
+    y1 = cy + radius;
+
+    if (ring) {
+        gen2_hgr_circle(cx, cy, radius);
+        gen2_hgr_circle(cx, cy, radius + 3u);
+    }
+
+    gen2_hgr_line(cx, cy, x0, cy);
+    gen2_hgr_line(cx, cy, x1, cy);
+    gen2_hgr_line(cx, cy, cx, y0);
+    gen2_hgr_line(cx, cy, cx, y1);
+    gen2_hgr_line(cx, cy, cx - (radius / 2u), cy - radius);
+    gen2_hgr_line(cx, cy, cx + (radius / 2u), cy - radius);
+    gen2_hgr_line(cx, cy, cx - radius, cy - (radius / 2u));
+    gen2_hgr_line(cx, cy, cx + radius, cy - (radius / 2u));
+    gen2_hgr_line(cx, cy, cx - radius, cy + (radius / 2u));
+    gen2_hgr_line(cx, cy, cx + radius, cy + (radius / 2u));
+    gen2_hgr_line(cx, cy, cx - (radius / 2u), cy + radius);
+    gen2_hgr_line(cx, cy, cx + (radius / 2u), cy + radius);
+
+    sparkle(cx - radius - 4u, cy);
+    sparkle(cx + radius + 2u, cy);
+    sparkle(cx, cy - radius - 4u);
+    sparkle(cx, cy + radius + 2u);
+    sparkle(cx - (radius / 2u) - 3u, cy - (radius / 2u) - 3u);
+    sparkle(cx + (radius / 2u) + 1u, cy - (radius / 2u) - 3u);
+    sparkle(cx - (radius / 2u) - 3u, cy + (radius / 2u) + 1u);
+    sparkle(cx + (radius / 2u) + 1u, cy + (radius / 2u) + 1u);
+
+    if (radius >= 18u) {
+        sparkle(cx - (radius / 3u), cy - radius - 9u);
+        sparkle(cx + (radius / 3u), cy - radius - 9u);
+        sparkle(cx - radius - 10u, cy - (radius / 3u));
+        sparkle(cx + radius + 8u, cy - (radius / 3u));
+        sparkle(cx - radius - 10u, cy + (radius / 3u));
+        sparkle(cx + radius + 8u, cy + (radius / 3u));
+        sparkle(cx - (radius / 3u), cy + radius + 7u);
+        sparkle(cx + (radius / 3u), cy + radius + 7u);
+    }
+
+    gen2_hgr_colorize(x0 - 10u, y0 - 10u,
+                      (unsigned char)((radius * 2u) + 22u),
+                      (unsigned char)((radius * 2u) + 22u),
+                      color);
+}
+
+static void firework(unsigned cx, unsigned char cy, unsigned char radius, unsigned char color)
+{
+    flash_core(cx, cy, GEN2_ORANGE);
+    firework_pause();
+    firework_stage(cx, cy, radius / 2u, color, 0u);
+    firework_pause();
+    firework_stage(cx, cy, radius, color, 1u);
+}
+
+static void fireworks_finale(void)
+{
+    gen2_hgr_clear(0);
+    gen2_hgr_puts_color(40u, 12u, "HAPPY COLOR", GEN2_ORANGE);
+    gen2_hgr_puts_color(70u, 32u, "GEN2 HGR", GEN2_BLUE);
+    gen2_hgr_puts_color(34u, 152u, "THANKS UNCLE", GEN2_VIOLET);
+    gen2_hgr_puts_color(76u, 172u, "BERNIE!", GEN2_GREEN);
+
+    firework(70u, 76u, 26u, GEN2_VIOLET);
+    firework_pause();
+    firework(206u, 76u, 28u, GEN2_GREEN);
+    firework_pause();
+    firework(140u, 104u, 36u, GEN2_ORANGE);
+    firework_pause();
+
+    gen2_hgr_clear(0);
+    firework_stage(58u, 60u, 24u, GEN2_BLUE, 1u);
+    firework_stage(142u, 82u, 32u, GEN2_VIOLET, 1u);
+    firework_stage(224u, 64u, 24u, GEN2_GREEN, 1u);
+    gen2_hgr_puts_color(34u, 154u, "COUNTDOWN COMPLETE", GEN2_ORANGE);
+    firework_pause();
+    firework_pause();
+
+    gen2_hgr_clear(0);
+    flash_core(140u, 96u, GEN2_ORANGE);
+    firework_stage(92u, 94u, 34u, GEN2_GREEN, 1u);
+    firework_stage(188u, 94u, 34u, GEN2_BLUE, 1u);
+    firework_stage(140u, 96u, 46u, GEN2_ORANGE, 1u);
+    gen2_hgr_puts_color(76u, 20u, "BOOM!", GEN2_VIOLET);
+    firework_pause();
+    firework_pause();
+}
+
 void main(void)
 {
     unsigned char n;
@@ -99,9 +216,10 @@ void main(void)
         if (n == 0u) break;
     }
 
-    /* Keep the "0" on screen for a moment, then hand back to the WOZ Monitor
-     * (no-return jump to $FF1F — nothing runs after). */
+    /* Keep the "0" on screen for a moment, play the fireworks finale, then hand
+     * back to the WOZ Monitor (no-return jump to $FF1F — nothing runs after). */
     spin(TICK_SPINS);
+    fireworks_finale();
     woz_mon();
 }
 

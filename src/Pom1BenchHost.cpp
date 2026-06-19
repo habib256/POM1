@@ -515,7 +515,7 @@ struct AsmProjectCtx {
     std::string cfg;                       // absolute linker .cfg
     std::vector<std::string> extraAsm;     // absolute EXTRA_ASM siblings
     bool dualBank = false;
-    uint16_t loAddr = 0x0280, hiAddr = 0xE000;
+    uint16_t loAddr = 0x0280, hiAddr = 0xE000, entryAddr = 0x0280;
 };
 
 static std::string benchTrim(const std::string& s)
@@ -616,11 +616,36 @@ static bool cfgDeclaresOutputFile(const std::string& line, const char* token)
     return code.find(token) != std::string::npos;
 }
 
+static std::string cfgNameBeforeColon(const std::string& line)
+{
+    const std::string code = cfgCodePortion(line);
+    const size_t colon = code.find(':');
+    if (colon == std::string::npos) return "";
+    return benchTrim(code.substr(0, colon));
+}
+
+static std::string cfgSegmentLoadName(const std::string& line, const char* segment)
+{
+    const std::string code = cfgCodePortion(line);
+    const std::string prefix = std::string(segment) + ":";
+    const std::string trimmed = benchTrim(code);
+    if (trimmed.compare(0, prefix.size(), prefix) != 0) return "";
+    const size_t load = trimmed.find("load");
+    if (load == std::string::npos) return "";
+    const size_t eq = trimmed.find('=', load);
+    if (eq == std::string::npos) return "";
+    size_t pos = eq + 1;
+    while (pos < trimmed.size() && (trimmed[pos] == ' ' || trimmed[pos] == '\t')) ++pos;
+    const size_t end = trimmed.find_first_of(" \t,;", pos);
+    return benchTrim(trimmed.substr(pos, end == std::string::npos ? std::string::npos : end - pos));
+}
+
 static void probeDualBankFromCfg(const std::string& cfgPath, AsmProjectCtx& p)
 {
     std::ifstream cf(cfgPath);
     std::string cl;
     bool lo = false, hi = false;
+    std::string loMem, hiMem, codeMem;
     auto startAddr = [](const std::string& s, uint16_t& dst) {
         const size_t sp = s.find("start");
         if (sp == std::string::npos) return;
@@ -629,10 +654,16 @@ static void probeDualBankFromCfg(const std::string& cfgPath, AsmProjectCtx& p)
         try { dst = static_cast<uint16_t>(std::stoul(s.substr(d + 1, 4), nullptr, 16)); } catch (...) {}
     };
     while (std::getline(cf, cl)) {
-        if (cfgDeclaresOutputFile(cl, "%O.lo")) { lo = true; startAddr(cl, p.loAddr); }
-        if (cfgDeclaresOutputFile(cl, "%O.hi")) { hi = true; startAddr(cl, p.hiAddr); }
+        if (cfgDeclaresOutputFile(cl, "%O.lo")) { lo = true; loMem = cfgNameBeforeColon(cl); startAddr(cl, p.loAddr); }
+        if (cfgDeclaresOutputFile(cl, "%O.hi")) { hi = true; hiMem = cfgNameBeforeColon(cl); startAddr(cl, p.hiAddr); }
+        const std::string loadName = cfgSegmentLoadName(cl, "CODE");
+        if (!loadName.empty()) codeMem = loadName;
     }
     p.dualBank = lo && hi;
+    if (p.dualBank) {
+        if (!codeMem.empty() && codeMem == hiMem) p.entryAddr = p.hiAddr;
+        else p.entryAddr = p.loAddr;
+    }
 }
 
 static std::string resolveAssetPath(const std::string& rel, const std::string& sourcePath,
@@ -1539,14 +1570,19 @@ bench::BuildResult Pom1BenchHost::build(int target, const std::string& src, cons
                 r.status = "dual-bank .lo/.hi missing after ld65"; r.ok = false; return r;
             }
             std::string error; int loaded = 0;
-            if (!emu->loadBinaryToRam(hiP, proj.hiAddr, error)) { r.status = "hi-bank load failed: " + error; r.ok = false; return r; }
-            if (emu->loadBinary(loP, proj.loAddr, error, &loaded)) {
+            const bool runHigh = (proj.entryAddr == proj.hiAddr);
+            const auto& stagePath = runHigh ? loP : hiP;
+            const auto& runPath = runHigh ? hiP : loP;
+            const uint16_t stageAddr = runHigh ? proj.loAddr : proj.hiAddr;
+            const uint16_t runAddr = runHigh ? proj.hiAddr : proj.loAddr;
+            if (!emu->loadBinaryToRam(stagePath, stageAddr, error)) { r.status = "dual-bank stage load failed: " + error; r.ok = false; return r; }
+            if (emu->loadBinary(runPath, runAddr, error, &loaded)) {
                 emu->copySnapshot(mw_->uiSnapshot);
                 if (t.preset == 2) mw_->showGraphicsCard = true;
                 char msg[176]; std::snprintf(msg, sizeof(msg), "Built dual-bank ($%04X+$%04X) run @ $%04X",
-                                             proj.loAddr, proj.hiAddr, proj.loAddr);
+                                             proj.loAddr, proj.hiAddr, runAddr);
                 r.status = msg; r.ok = true;
-            } else { r.status = "lo-bank load failed: " + error; r.ok = false; }
+            } else { r.status = "dual-bank run load failed: " + error; r.ok = false; }
             return r;
         }
 
