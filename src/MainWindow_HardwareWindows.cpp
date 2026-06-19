@@ -555,7 +555,7 @@ void MainWindow_ImGui::renderA1IO_RTCWindow()
 }
 
 // Parse whitespace/comma-separated hex byte tokens ("06 41 0D", "AA,BB") into
-// bytes. Shared by the Serial Monitor send line and the Bench "Raw bytes" upload.
+// bytes for the Serial Monitor send line.
 static void parseHexTokens(const char* s, std::vector<unsigned char>& out)
 {
     const char* p = s;

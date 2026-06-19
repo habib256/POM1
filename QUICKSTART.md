@@ -67,7 +67,7 @@ IDE that compiles and runs without leaving the window. Full target reference:
 
 > The Bench needs the **cc65** toolchain for asm/C (it tells you how to install
 > it if missing). Prefer no toolchain at all? Pick the **Wozmon hex** target and
-> Upload — it loads raw bytes with no compiler.
+> Upload — it loads Woz Monitor hex dumps with no compiler.
 
 From here:
 - **Assembly** → [`sketchs/doc/Programming_Apple1_ASM.md`](sketchs/doc/Programming_Apple1_ASM.md)

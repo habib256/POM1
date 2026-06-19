@@ -4,8 +4,8 @@ play_littletower_telnet.py — Win Little Tower via POM1 Terminal Card.
 
 Pré-requis :
   - Dans POM1 : activer Hardware > P-LAB Terminal Card
-  - Charger le jeu : File > Load Memory > software/games/LittleTower-1.0.txt
-  - Le programme est ensuite exécutable via 300R
+  - Charger le jeu : File > Load Memory > software/Apple-1 games/LittleTower-1.0.txt
+  - Le programme est ensuite exécutable via 0280R
 
 Ce script se connecte à localhost:6502, lance le jeu, puis envoie la séquence
 de commandes qui mène à la victoire.
@@ -63,8 +63,8 @@ def main() -> int:
         time.sleep(0.9)
         out += recv_avail(sock, total=1.2)
 
-        # Launch from Woz: 300R + CR
-        out += send_line(sock, "300R", wait=0.7, read_t=4.0)
+        # Launch from Woz: 0280R + CR
+        out += send_line(sock, "0280R", wait=0.7, read_t=4.0)
 
         # Intro choice: press '1' (single key, no CR).
         sock.sendall(b"1")

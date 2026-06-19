@@ -107,14 +107,13 @@ the Beautiful Boot font via `plot_pixel`; the C starter uses `gen2_hgr_puts` /
 `WOZ_talk.mp3` is inserted only on the **POM1 Fantasy** preset; in audio-stream mode it
 blocks live ACI TAPE OUT pulses. DevBench **Run** on GEN2 auto-ejects before load.
 
-## Toolchain-free quick targets (hex / raw)
+## Toolchain-free quick target (hex)
 
-Two targets need **no compiler** — handy when cc65 isn't installed (the Bench
+One target needs **no compiler** — handy when cc65 isn't installed (the Bench
 defaults to **Wozmon hex** when it can't find cc65):
 
 - **Wozmon hex** — paste a Woz-Monitor hex dump (`AAAA: BB BB …`, optional trailing
   `xxxxR`); Upload loads it (and auto-runs if the `R` line is present). No build step.
-- **Raw bytes @ $** — paste bare hex bytes; Upload loads them flat at `$0300` and runs.
 
 ---
 

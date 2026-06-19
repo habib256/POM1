@@ -22,8 +22,7 @@ namespace bench {
 struct Target {
     std::string id;        // host-defined key
     std::string label;     // shown in the Target combo + status bar
-    std::string language;  // "6502" | "68000" | "C" | "hex" | "raw" → drives syntax
-    bool        wantsAddr = false;  // show the "@ $" load-address field (raw bytes)
+    std::string language;  // "6502" | "68000" | "C" | "hex" → drives syntax
 };
 
 struct Example {

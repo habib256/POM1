@@ -13,7 +13,7 @@ Workflow (Verify, Upload, target matrix) → [`DEVBENCH.md`](DEVBENCH.md).
 
 | Path | Contents |
 |---|---|
-| `sketchs/apple1/<sketch>/` | Apple-1 text, GT-6144, P-LAB SID/RTC, hex/raw starters |
+| `sketchs/apple1/<sketch>/` | Apple-1 text, GT-6144, P-LAB SID/RTC, Wozmon-hex starters |
 | `sketchs/tms9918/<sketch>/` | P-LAB TMS9918, TMS9918C and CodeTank sketches |
 | `sketchs/gen2/<sketch>/` | Uncle Bernie GEN2 HGR (asm and gen2c C) |
 

@@ -1,5 +1,6 @@
 {
   "profile": "apple1",
   "language": "asm",
-  "cfg": "sketchs/apple1/game_little_tower/apple1_little_tower.cfg"
+  "cfg": "sketchs/apple1/game_little_tower/apple1_little_tower.cfg",
+  "dualBank": true
 }

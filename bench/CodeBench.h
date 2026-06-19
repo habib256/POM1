@@ -50,7 +50,7 @@ private:
     bool inited_ = false;
     bool buildPolling_ = false;      // an async (web/WASM) build is in flight
     std::string status_;
-    char rawAddr_[8] = "0300";
+    char fallbackAddr_[8] = "0300";
     // In-app file browser (Open/Save), rooted at the host's browseDir().
     std::string browseDir_;          // current directory shown in the browser
     std::string loadedPath_;         // full path of the open file ("" = untitled)

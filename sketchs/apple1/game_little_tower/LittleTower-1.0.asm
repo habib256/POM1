@@ -42,7 +42,7 @@
 ;**************** VARIABLES *****************
 ;********************************************
 
-.org $0280	; Type 280R to run
+.segment "CODE"	; Type 280R to run
 
 ;******* Hardware Variables ************
 
@@ -618,6 +618,8 @@ INTEND:		printString LetBegin
 ;********************************************
 ;************** DATA ADDRESS ****************
 ;********************************************
+
+.segment "RODATA"
 
 ;Data Txt Format : EOF = % = 0x25, CR = & = 0x26
 ;Beware Data must be under 0xFF byte long

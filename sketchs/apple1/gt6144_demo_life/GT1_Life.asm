@@ -28,12 +28,11 @@
 ;     generation, so GT-6144 traffic stays well under 200 $D00A pokes
 ;     per frame (vs. 4800 if we naively repainted everything).
 ;
-; Memory footprint (fits the 8 KB Apple-1+GT-6144 preset):
+; Memory footprint (fits the real 8 KB dual-bank Apple-1+GT-6144 preset):
 ;   $0000-$001F     zero page (ca65-allocated)
-;   $0300-~$0900    code + tables (this .bin file)
-;   $0A00-$142B     grid_a (42 * 62 = 2604 bytes, ghost-bordered)
-;   $1500-$1F2B     grid_b (same layout)
-;   -> ends at $1F2B, under the 8 KB ceiling at $1FFF.
+;   $0300-~$050C    code + tables (this .bin file)
+;   $0580-$0FAB     grid_a (42 * 62 = 2604 bytes, ghost-bordered)
+;   $E000-$EA2B     grid_b (same layout, upper 4 KB bank)
 ;
 ; Cell layout:
 ;   cell (r, c), r in 1..60, c in 1..40
@@ -68,8 +67,10 @@ COL_OFS  = 12              ; GT-6144 x of cell col 1 (centred: 12+40+12 = 64)
 ROW_OFS  = 18              ; GT-6144 y of cell row 1 (centred: 18+60+18 = 96)
 
 ; ----- Grid buffers -----
-grid_a  := $0A00
-grid_b  := $1500
+; POM1 models the real 8 KB layout as $0000-$0FFF + $E000-$EFFF, not
+; contiguous $0000-$1FFF RAM. Keep one Life buffer in each bank.
+grid_a  := $0580
+grid_b  := $E000
 
 ; ----- Zero page -----
 .zeropage
@@ -197,15 +198,15 @@ clear_2604:
 ; =============================================
 seed_into_b:
         ; row 30 → r*42 = 1260 = $04EC, +c
-        ; grid_b + $04EC = $1500 + $04EC = $19EC
+        ; grid_b + $04EC = $E000 + $04EC = $E4EC
         lda #1                  ; (30,20)
-        sta $19EC + 20
-        sta $19EC + 21          ; (30,21)
-        ; row 31 → 31*42 = 1302 = $0516; grid_b + $0516 = $1A16
-        sta $1A16 + 19          ; (31,19)
-        sta $1A16 + 20          ; (31,20)
-        ; row 32 → 32*42 = 1344 = $0540; grid_b + $0540 = $1A40
-        sta $1A40 + 20          ; (32,20)
+        sta grid_b + $04EC + 20
+        sta grid_b + $04EC + 21 ; (30,21)
+        ; row 31 → 31*42 = 1302 = $0516; grid_b + $0516 = $E516
+        sta grid_b + $0516 + 19 ; (31,19)
+        sta grid_b + $0516 + 20 ; (31,20)
+        ; row 32 → 32*42 = 1344 = $0540; grid_b + $0540 = $E540
+        sta grid_b + $0540 + 20 ; (32,20)
         rts
 
 ; =============================================

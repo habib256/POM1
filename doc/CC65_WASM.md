@@ -95,8 +95,8 @@ for a Wozmon-hex upload.
      (default no-op). `CodeBench` remembers `verify()`/`upload()` returning
      `pending=true` and calls `pollBuild()` every frame until it resolves, then
      applies the final result. On desktop `pending` is never set → inert.
-   - `Pom1BenchHost` (WASM): `available()` exposes the asm targets (dual-4k / GEN2
-     HGR / GEN2 TXT) + hex/raw; `build()` kicks off `window.POM1cc65.buildAsm` via
+  - `Pom1BenchHost` (WASM): `available()` exposes the asm targets (dual-4k / GEN2
+    HGR / GEN2 TXT) + Wozmon hex; `build()` kicks off `window.POM1cc65.buildAsm` via
      `EM_ASM` (writing `.bin`/`.log` to MEMFS + a `Module.__benchJob` state) and
      returns `pending=true`; `pollBuild()` reads `Module.__benchJob`, and on
      completion reads the `.bin`/`.log` out of MEMFS, routes the log through the

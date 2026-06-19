@@ -179,8 +179,8 @@ void CodeBench::render(const char* title, bool* open)
     // Hand the host the open file's path so it can build a project in context
     // (its own .cfg, project-dir includes, EXTRA_ASM, dual-bank). "" for an
     // untitled scratch or an inline example, which keeps the bare-sketch path.
-    auto doVerify = [&]() { host_->setActiveSourcePath(loadedPath_); BuildResult r = host_->verify(targetIndex_, editor_->GetText(), rawAddr_); buildPolling_ = r.pending; applyResult(r); };
-    auto doUpload = [&]() { host_->setActiveSourcePath(loadedPath_); BuildResult r = host_->upload(targetIndex_, editor_->GetText(), rawAddr_); buildPolling_ = r.pending; applyResult(r); };
+    auto doVerify = [&]() { host_->setActiveSourcePath(loadedPath_); BuildResult r = host_->verify(targetIndex_, editor_->GetText(), fallbackAddr_); buildPolling_ = r.pending; applyResult(r); };
+    auto doUpload = [&]() { host_->setActiveSourcePath(loadedPath_); BuildResult r = host_->upload(targetIndex_, editor_->GetText(), fallbackAddr_); buildPolling_ = r.pending; applyResult(r); };
 
     // ---- Teal toolbar with labelled action pills + circular icon buttons ----
     bool openExamplesPopup = false;

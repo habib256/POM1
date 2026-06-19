@@ -62,7 +62,7 @@ private:
     bench::BuildResult directLoad(int target, const std::string& src, const std::string& addrHex);
     // Map a bench targets_ index -> kP1Targets[] index. Identity on desktop; on
     // WASM targets_ holds only the Wozmon-hex entry, so 0 maps back to
-    // kP1Targets[8]. All kP1Targets[] lookups in the .cpp go through this.
+    // kP1Targets[6]. All kP1Targets[] lookups in the .cpp go through this.
     int p1(int t) const { return (t >= 0 && t < static_cast<int>(targetMap_.size())) ? targetMap_[t] : 0; }
 
     MainWindow_ImGui* mw_;

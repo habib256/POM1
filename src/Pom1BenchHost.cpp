@@ -264,9 +264,6 @@ static const char* kSketchHex =
     "; POM1 Bench - Wozmon hex. Upload loads + runs (addresses are in the text).\n"
     "0300: A9 A1 20 EF FF 4C 00 03\n"
     "0300R\n";
-static const char* kSketchRaw =
-    "; Raw bytes - loaded flat at the $ address. '!' via WozMon ECHO.\n"
-    "A9 A1 20 EF FF 4C 00 03\n";
 static const char* kSketchC =
     "/* Hello world in C for the TMS9918 (apple1-videocard-lib, cc65).\n"
     "   Upload builds a CodeTank ROM with cl65, flashes it and boots 4000R. */\n"
@@ -343,7 +340,7 @@ static void ejectTapeForAciProgramOutput(EmulationController* emu, bench::BuildR
     r.console += "[ok] cassette ejected (ACI program output / $C030 speaker)\n";
 }
 
-// POM1 target: machine preset + linker cfg + source mode (0 asm/1 hex/2 raw/3 C)
+// POM1 target: machine preset + linker cfg + source mode (0 asm/1 hex/3 C)
 // + the HELLO-WORLD starter for it. The New dialog picks a (language x machine)
 // pair; the first 6 entries are that matrix, ordered language-major:
 //   0..2 = asm x {dual-4k, TMS9918, GEN2 HGR},
@@ -351,16 +348,15 @@ static void ejectTapeForAciProgramOutput(EmulationController* emu, bench::BuildR
 // (preset indices = the development benches: CC65 bench = 0, TMS9918 bench = 1,
 //  GEN2 HGR bench = 2 — the profiles the DevBench loads per machine target.)
 struct P1T { const char* label; int preset; const char* cfg; const char* lang; int mode;
-             bool needsCl65; bool wantsAddr; bool codetankRom; const char* sketch; };
+             bool needsCl65; bool codetankRom; const char* sketch; };
 const P1T kP1Targets[] = {
-    { "Apple-1 dual 4K/8K (asm)",         0, "apple1_4k.cfg",   "6502", 0, false, false, false, kSketchAsm       },
-    { "P-LAB TMS9918 Graphic Card (asm)", 1, "codetank.cfg",    "6502", 0, false, false, true,  kSketchAsmTms    },
-    { "Uncle Bernie GEN2 HGR (asm)",      2, "apple1_gen2.cfg", "6502", 0, false, false, false, kSketchAsmGen2   },
-    { "Apple-1 dual 4K/8K (C)",           0, "C-plain",         "C",    3, true,  false, false, kSketchCText     },
-    { "P-LAB TMS9918 CodeTank ROM (C)",   1, "C",               "C",    3, true,  false, true,  kSketchC         },
-    { "Uncle Bernie GEN2 HGR (C)",        2, "C-gen2",          "C",    3, true,  false, false, kSketchGen2C     },
-    { "Wozmon hex (any machine)",        -1, "",                "hex",  1, false, false, false, kSketchHex       },
-    { "Raw bytes @ $ (any machine)",     -1, "",                "raw",  2, false, true,  false, kSketchRaw       },
+    { "Apple-1 dual 4K/8K (asm)",         0, "apple1_4k.cfg",   "6502", 0, false, false, kSketchAsm       },
+    { "P-LAB TMS9918 Graphic Card (asm)", 1, "codetank.cfg",    "6502", 0, false, true,  kSketchAsmTms    },
+    { "Uncle Bernie GEN2 HGR (asm)",      2, "apple1_gen2.cfg", "6502", 0, false, false, kSketchAsmGen2   },
+    { "Apple-1 dual 4K/8K (C)",           0, "C-plain",         "C",    3, true,  false, kSketchCText     },
+    { "P-LAB TMS9918 CodeTank ROM (C)",   1, "C",               "C",    3, true,  true,  kSketchC         },
+    { "Uncle Bernie GEN2 HGR (C)",        2, "C-gen2",          "C",    3, true,  false, kSketchGen2C     },
+    { "Wozmon hex (any machine)",        -1, "",                "hex",  1, false, false, kSketchHex       },
 };
 const int kP1TargetCount = static_cast<int>(sizeof(kP1Targets) / sizeof(kP1Targets[0]));
 
@@ -488,22 +484,6 @@ const P1Ex kP1Examples[] = {
     { "Snake telemetry  (Bernie GEN2 HGR)", true, "sketchs/gen2/game_snake_telemetry/GEN2Snake.c", 5, "", 0 },
 };
 const int kP1ExampleCount = static_cast<int>(sizeof(kP1Examples) / sizeof(kP1Examples[0]));
-
-void parseHexTokens(const char* s, std::vector<unsigned char>& out)
-{
-    const char* p = s;
-    while (*p) {
-        while (*p && !std::isxdigit((unsigned char)*p)) ++p;
-        if (!*p) break;
-        int v = 0, digits = 0;
-        while (*p && std::isxdigit((unsigned char)*p) && digits < 2) {
-            char c = *p++;
-            int d = (c <= '9') ? c - '0' : (c | 0x20) - 'a' + 10;
-            v = v * 16 + d; ++digits;
-        }
-        out.push_back(static_cast<unsigned char>(v & 0xFF));
-    }
-}
 
 uint16_t parseCfgLoadAddr(const std::string& cfgPath)
 {
@@ -799,7 +779,6 @@ static const char* buildLogSourceMode(int mode)
 {
     switch (mode) {
     case 1: return "hex";
-    case 2: return "raw";
     case 3: return "c";
     default: return "asm";
     }
@@ -921,7 +900,7 @@ Pom1BenchHost::Pom1BenchHost(MainWindow_ImGui* mw) : mw_(mw)
     // (language x machine) matrix, same as desktop.
     for (int i = 0; i < kP1TargetCount; ++i) {
         targets_.push_back({ kP1Targets[i].label, kP1Targets[i].label,
-                             kP1Targets[i].lang, kP1Targets[i].wantsAddr });
+                             kP1Targets[i].lang });
         targetMap_.push_back(i);
     }
     // New-sketch matrix — works on web + desktop (the starter sketches are
@@ -1065,7 +1044,7 @@ int Pom1BenchHost::defaultTargetIndex() const
     return 0;   // the only target = Wozmon hex
 #else
     probe();
-    return toolchainOk_ ? 0 : 8;   // asm dual-4k if cc65 present, else Wozmon hex
+    return toolchainOk_ ? 0 : 6;   // asm dual-4k if cc65 present, else Wozmon hex
 #endif
 }
 
@@ -1086,6 +1065,16 @@ int Pom1BenchHost::targetFor(int language, int machine) const
     return language * 3 + machine;   // matches the kP1Targets matrix ordering
 }
 
+static bool sourcePathLooksGT6144(const std::string& path)
+{
+    std::string p = path;
+    std::replace(p.begin(), p.end(), '\\', '/');
+    std::transform(p.begin(), p.end(), p.begin(),
+                   [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+    return p.find("/gt6144") != std::string::npos ||
+           p.find("graphic gt-6144") != std::string::npos;
+}
+
 int Pom1BenchHost::targetForPath(const std::string& path) const
 {
     namespace fs = std::filesystem;
@@ -1096,8 +1085,6 @@ int Pom1BenchHost::targetForPath(const std::string& path) const
 
     const std::string ext = fs::path(p).extension().string();
     if (ext == ".hex" || ext == ".txt") return 6;      // Wozmon hex quick-load
-    if (ext == ".raw") return 7;                       // raw bytes @ address field
-
     const bool cMode   = (ext == ".c");
     const bool asmMode = (ext == ".s" || ext == ".asm");
     if (!cMode && !asmMode) return -1;
@@ -1115,6 +1102,17 @@ int Pom1BenchHost::targetForPath(const std::string& path) const
 
     const int machine = tms ? 1 : gen2 ? 2 : 0;        // default = Apple-1
     return (cMode ? 3 : 0) + machine;                  // kP1Targets language-major order
+}
+
+static void enableSketchSidecarCards(MainWindow_ImGui* mw, EmulationController* emu,
+                                     const std::string& sourcePath)
+{
+    if (!mw || !emu) return;
+    if (sourcePathLooksGT6144(sourcePath)) {
+        mw->gt6144Enabled = true;
+        mw->showGT6144 = true;
+        emu->setGT6144Enabled(true);
+    }
 }
 
 void Pom1BenchHost::onTargetSelected(int target)
@@ -1180,7 +1178,7 @@ bench::BuildResult Pom1BenchHost::upload(int target, const std::string& src, con
     return build(target, src, addrHex, true);
 }
 
-bench::BuildResult Pom1BenchHost::directLoad(int target, const std::string& src, const std::string& addrHex)
+bench::BuildResult Pom1BenchHost::directLoad(int target, const std::string& src, const std::string& /*addrHex*/)
 {
     namespace fs = std::filesystem;
     bench::BuildResult r; r.showConsole = false;
@@ -1191,7 +1189,7 @@ bench::BuildResult Pom1BenchHost::directLoad(int target, const std::string& src,
     auto* emu = mw_->emulation.get();
     // Same deferred-plug fix as build() / pollBuild(): drain pending plugs so
     // the new preset's cards are on the bus before the CPU runs the freshly
-    // loaded binary. Otherwise a `New` + `directLoad` (e.g. hex / raw modes)
+    // loaded binary. Otherwise a `New` + `directLoad` (Wozmon hex mode)
     // immediately after a preset switch races the card-enable countdown and
     // the first frame of execution writes into RAM instead of the card.
     mw_->finalizePendingCardPlugs();
@@ -1202,17 +1200,6 @@ bench::BuildResult Pom1BenchHost::directLoad(int target, const std::string& src,
         std::ofstream(tmp, std::ios::binary).write(src.data(), static_cast<std::streamsize>(src.size()));
         std::vector<std::pair<uint16_t, uint16_t>> zones;
         ok = emu->loadHexDump(tmp.string(), entry, error, &bytesLoaded, &zones);
-    } else {                              // raw bytes
-        std::vector<unsigned char> bytes; parseHexTokens(src.c_str(), bytes);
-        try { entry = static_cast<uint16_t>(std::stoul(addrHex, nullptr, 16)); } catch (...) { entry = 0x0300; }
-        if (bytes.empty()) error = "no hex bytes parsed";
-        else {
-            const fs::path tmp = dir / "pom1_bench_sketch.bin";
-            sweep.add(tmp);
-            std::ofstream(tmp, std::ios::binary).write(reinterpret_cast<const char*>(bytes.data()),
-                                                       static_cast<std::streamsize>(bytes.size()));
-            ok = emu->loadBinary(tmp.string(), entry, error, &bytesLoaded);
-        }
     }
     if (ok) {
         emu->copySnapshot(mw_->uiSnapshot);
@@ -1239,8 +1226,8 @@ bench::BuildResult Pom1BenchHost::build(int target, const std::string& src, cons
 #endif
     BuildLogFinalizer logFin{r, logMeta};
 
-    if (t.mode == 1 || t.mode == 2) {     // hex/raw: no compile
-        if (!run) { r.status = "Nothing to verify (hex/raw)"; r.showConsole = false; return r; }
+    if (t.mode == 1) {     // Wozmon hex: no compile
+        if (!run) { r.status = "Nothing to verify (hex)"; r.showConsole = false; return r; }
         return directLoad(target, src, addrHex);
     }
 
@@ -1530,8 +1517,9 @@ bench::BuildResult Pom1BenchHost::build(int target, const std::string& src, cons
         if (rc != 0) { parseErrorMarkers(out, r.errors); r.console += humanizeCc65(out); r.status = "ca65 failed (see Build output)"; return r; }
 
         if (proj.ok && proj.dualBank) {
-            // Dual-bank: ld65 writes <base>.lo + <base>.hi. Load lo into RAM, then
-            // load+run hi — the 6502 hard reset in loadBinary() preserves lo's RAM.
+            // Dual-bank: ld65 writes <base>.lo + <base>.hi. Stage the high bank
+            // first, then load+run the low bank, whose start address is the real
+            // entry point for text Chess and other dual-bank Apple-1 sketches.
             const fs::path base = dir / "pom1_bench_db.bin";
             const std::string loP = base.string() + ".lo", hiP = base.string() + ".hi";
             sweep.add(base); sweep.add(fs::path(loP)); sweep.add(fs::path(hiP));
@@ -1552,14 +1540,14 @@ bench::BuildResult Pom1BenchHost::build(int target, const std::string& src, cons
                 r.status = "dual-bank .lo/.hi missing after ld65"; r.ok = false; return r;
             }
             std::string error; int loaded = 0;
-            if (!emu->loadBinaryToRam(loP, proj.loAddr, error)) { r.status = "lo-bank load failed: " + error; r.ok = false; return r; }
-            if (emu->loadBinary(hiP, proj.hiAddr, error, &loaded)) {
+            if (!emu->loadBinaryToRam(hiP, proj.hiAddr, error)) { r.status = "hi-bank load failed: " + error; r.ok = false; return r; }
+            if (emu->loadBinary(loP, proj.loAddr, error, &loaded)) {
                 emu->copySnapshot(mw_->uiSnapshot);
                 if (t.preset == 2) mw_->showGraphicsCard = true;
                 char msg[176]; std::snprintf(msg, sizeof(msg), "Built dual-bank ($%04X+$%04X) run @ $%04X",
-                                             proj.loAddr, proj.hiAddr, proj.hiAddr);
+                                             proj.loAddr, proj.hiAddr, proj.loAddr);
                 r.status = msg; r.ok = true;
-            } else { r.status = "hi-bank load failed: " + error; r.ok = false; }
+            } else { r.status = "lo-bank load failed: " + error; r.ok = false; }
             return r;
         }
 
@@ -1590,6 +1578,7 @@ bench::BuildResult Pom1BenchHost::build(int target, const std::string& src, cons
     // card is on the bus — early writes to $2000-$3FFF or $CC00/$CC01 vanish
     // into RAM. File > Load drains the same queue here; we do the same.
     mw_->finalizePendingCardPlugs();
+    enableSketchSidecarCards(mw_, emu, activeSourcePath_);
     ejectTapeForAciProgramOutput(emu, r, t.preset);
     if (gen2c || plainc) {
         // GEN2 HGR / plain text C: load + run (the target's preset already plugged
@@ -1717,6 +1706,7 @@ bench::BuildResult Pom1BenchHost::pollBuild()
     // TMS9918 card is on the bus before the CPU starts the freshly loaded
     // binary. Otherwise the program's early writes can land before the card.
     mw_->finalizePendingCardPlugs();
+    enableSketchSidecarCards(mw_, emu, activeSourcePath_);
     ejectTapeForAciProgramOutput(emu, r, t.preset);
 
     if (t.codetankRom) {
@@ -1761,7 +1751,7 @@ bool Pom1BenchHost::toolchainReady(int target) const
 {
     if (target < 0 || target >= kP1TargetCount) return false;
     const P1T& t = kP1Targets[p1(target)];
-    if (t.mode == 1 || t.mode == 2) return true;
+    if (t.mode == 1) return true;
 #if POM1_IS_WASM
     return t.mode == 0 || t.mode == 3;   // asm + C compile via the bundled WASM cc65
 #else
@@ -1778,7 +1768,7 @@ std::string Pom1BenchHost::toolchainHint(int target) const
 {
     if (target < 0 || target >= kP1TargetCount) return "";
     const P1T& t = kP1Targets[p1(target)];
-    if (t.mode == 1 || t.mode == 2) return "";
+    if (t.mode == 1) return "";
 #if POM1_IS_WASM
     return "cc65 (WASM) ready";
 #else
@@ -1794,7 +1784,6 @@ std::string Pom1BenchHost::modeLabel(int target) const
     const int idx = p1(target);
     const P1T& t = kP1Targets[idx];
     if (t.mode == 1) return "Mode: HEX + Apple-1";
-    if (t.mode == 2) return "Mode: RAW + Apple-1";
 
     const char* language = (t.mode == 3) ? "C" : "ASM";
     const char* machine = "Apple-1";

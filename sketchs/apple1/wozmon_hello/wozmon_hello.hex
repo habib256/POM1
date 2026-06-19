@@ -1,6 +1,0 @@
-; POM1 Bench - Wozmon hex.
-; Upload loads the bytes at $0300 and runs because of the trailing R line.
-
-0300: A9 A1 20 EF FF 4C 00 03
-0300R
-
