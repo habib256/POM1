@@ -125,7 +125,7 @@ Wired touch points (copy these as the template for the rest):
   apply live and a sketch can immediately `#include "gfx.h"` and draw vectors;
   its binaries are throwaway, so the dead-code trade-off doesn't matter there.
 - **`sketchs/gen2/demo_bounces/Makefile`** — GEN2 example (links `gfx-gen2.lib`).
-- **`sketchs/tms9918/demo/Makefile`** — TMS example (links `gfx-tms.lib`).
+- **`sketchs/tms9918/nino-democ/`** — TMS C menu demo (links `gfx-tms.lib` via DevBench).
 - `dev/lib/gfx/Makefile` builds both archives via `ar65` (run from this dir).
 
 ## Verification

@@ -1,5 +1,5 @@
 /*
- * demo — minimal TMS9918 menu (minimal port of upstream demos/demo).
+ * nino-democ — minimal TMS9918 menu (minimal port of upstream demos/demo).
  * Keys:
  *   1 : Screen 1 demo
  *   2 : Screen 2 demo

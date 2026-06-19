@@ -1282,7 +1282,7 @@ void Memory::memWrite(uint16_t address, uint8_t value)
     // otherwise paint a spurious '_' on every soft reset.
     //
     // POM1 however has been historically permissive: emulator-era demos
-    // (e.g. software/Apple-1_TMS_CC65/demo.bin, whose startup banner uses the WOZ
+    // (e.g. software/Apple-1_TMS_CC65/nino-democ.bin, whose startup banner uses the WOZ
     // Monitor ECHO routine with plain ASCII in the accumulator — bit 7
     // clear) print correctly on POM1 even though a real Apple-1 would keep
     // the 74LS164 silent. Breaking that compatibility regresses every

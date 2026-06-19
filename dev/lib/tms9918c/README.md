@@ -46,7 +46,7 @@ Outputs (per demo): `software/Apple-1_TMS_CC65/<name>.{bin,txt}` — 16 KB image
 | `demo_hello_world` | Wozmon "hello" message, no TMS (port of upstream `demos/hello-world`) |
 | `demo_hello_screen1` | Minimal CodeTank + TMS text mode (Screen 1) |
 | `demo_screen1` | Screen 1 text + reverse + charset + sprites + input line (port of `demos/demo/demo_screen1.h`) |
-| `demo` | Minimal menu: `SCREEN1` / `SCREEN2` (other keys print "not ported") |
+| `nino-democ` | Minimal menu: `SCREEN1` / `SCREEN2` (other keys print "not ported") |
 | `demo_picshow` | Screen 2 geometry demo (text + circle + ellipse). The full upstream `picshow` image does not fit the 16 KB CodeTank ROM, so this ships a geometric stand-in. |
 | `demo_sprite_animals` | Four fixed 16×16 Fauna sprites at native size, from `dev/lib/tms9918/sprites_fauna.asm` (SCROLL-O-SPRITES "Fauna", CC-BY Quale) |
 | `tool_checksum` | Byte sum over a hex range, Wozmon (port of `demos/checksum`) |
