@@ -126,6 +126,57 @@ This record exists so the duplication reads as a chosen tradeoff, reviewable on
 its merits, rather than as rot someone forgot to clean up. If that calculus ever
 changes (a third card would triple the cost, say), revisit it here.
 
+## At the C level: three pieces, not one runtime (a decision, not debt)
+
+**Status: accepted.** Applies to the C track — [`gen2c`](gen2c/),
+[`tms9918c`](tms9918c/), [`gfx`](gfx/).
+
+**Context.** The alternative considered was to make `gen2c` / `tms9918c` *backends*
+of one shared C runtime and push the [`gfx/`](gfx/) link-time-backend model up into
+init and mode management, so a card-neutral runtime drives both cards.
+
+**Decision.** Keep the three pieces distinct, by design:
+
+- **`gen2c`** — the rich GEN2 runtime (HIRES + NTSC artifact colour, LORES
+  16-colour blocks, double-buffer pages).
+- **`tms9918c`** — the rich TMS9918 runtime (cell mode, bitmap mode, hardware
+  sprites, per-cell colour).
+- **`gfx`** — the card-neutral, **additive** layer (geometry, numbers, the
+  `gfx_text` cursor façade), bound to one card at link time.
+
+Do **not** merge the two rich runtimes into backends, and do **not** grow `gfx`
+past its neutral boundary into init / mode / colour / sprites.
+
+**Why.** Geometry, numbers and monospaced text are *genuinely* card-neutral —
+that is exactly `gfx`'s scope, and why it works. Init, the mode model, the
+double-buffer story, colour (GEN2 NTSC-artifact + LORES vs TMS per-cell) and
+sprites (TMS hardware, GEN2 has none) are where the two cards are *most*
+different. A shared interface there is either the lowest common denominator
+(throws away each card's reason to exist) or a fat union of per-card no-ops
+(worse than honest separation). `gfx` already says this of itself: *additive and
+deliberately neutral — it does not level down the rich per-card APIs.*
+
+**Already true today (the proof, not the promise).**
+[`sketchs/portable/hello_gfx_text/`](../../sketchs/portable/hello_gfx_text/)
+compiles **one** drawing source for **both** cards: every draw call is neutral
+(`gfx_gotoxy` / `gfx_text` / `gfx_putu` / `gfx_putx`), and only the one-time card
+bring-up is `#ifdef`'d (`gen2_hgr_init()` vs `tms_init_regs(SCREEN2_TABLE)` +
+`screen2_init_bitmap()`). That residual `#ifdef` is the *honest* expression of
+where the cards genuinely differ, not debt to factor away — and bring-up is
+exactly the wrong thing to neutralise: **GEN2 is double-buffered**
+(`gen2_set_draw_page` / `gen2_show_page`) while **TMS9918 is single-buffered,
+draw-straight-to-VRAM** (no page flip at all). A neutral `vid_present()` would be
+a real flip on one card and a silent no-op on the other — the fat-union trap, in
+one function.
+
+**The boundary (explicit).** Neutral = `gfx` (geometry + numbers + `gfx_text`).
+Per-card = init, mode, double-buffer, colour, sprites — kept in `gen2c` /
+`tms9918c`. A portable **mono** program links `gfx` + the one card's init it
+needs; a program that wants colour or sprites calls that card's runtime directly.
+If a future card lands that shares GEN2's *or* TMS's model closely enough to make
+a neutral init/present pay off, revisit it here — until then the neutral layer
+stops at `gfx`'s current edge.
+
 ## Directory map
 
 | Lib | Track | What |
