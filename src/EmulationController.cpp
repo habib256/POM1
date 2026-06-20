@@ -135,7 +135,7 @@ void EmulationController::softReset()
     wakeCv.notify_all();
 }
 
-void EmulationController::hardReset()
+void EmulationController::hardReset(bool animateBoot)
 {
     stopCpu();
     std::lock_guard<PriorityMutex> lock(stateMutex);
@@ -162,7 +162,10 @@ void EmulationController::hardReset()
     if (sidWasPlugged) memory->setSIDEnabled(true);
 
     if (screen) {
-        screen->resetDisplay(); // garbage screen → auto-clear → welcome
+        if (animateBoot)
+            screen->resetDisplay(); // garbage screen → auto-clear → welcome
+        else
+            screen->clear();        // DevBench: skip the ~3 s power-on scenario
     }
     publisher.publish(*memory, *cpu, runRequested.load());
     wakeCv.notify_all();

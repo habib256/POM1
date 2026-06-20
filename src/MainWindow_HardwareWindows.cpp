@@ -908,6 +908,32 @@ void MainWindow_ImGui::renderTelemetryWindow()
             ImGui::SameLine();
             ImGui::TextDisabled(snap.awaitingAck ? "(parked)" : snap.lockstep ? "(armed)" : "(free)");
 
+            // ---- Inbound injection (Serial Monitor → game) ----
+            auto sendInput = [&]() {
+                std::vector<unsigned char> out;
+                if (telemetrySendHex) {
+                    parseHexTokens(telemetrySendBuf, out);
+                } else {
+                    for (const char* p = telemetrySendBuf; *p; ++p)
+                        out.push_back(static_cast<unsigned char>(*p));
+                }
+                if (!out.empty())
+                    emulation->telemetryInject(out.data(), out.size());
+                telemetrySendBuf[0] = '\0';
+            };
+
+            ImGui::SetNextItemWidth(-160.0f);
+            bool entered = ImGui::InputText("##telemetry_send", telemetrySendBuf,
+                                            sizeof(telemetrySendBuf),
+                                            ImGuiInputTextFlags_EnterReturnsTrue);
+            ImGui::SameLine();
+            if (ImGui::Button("Send") || entered) sendInput();
+            ImGui::SameLine();
+            ImGui::Checkbox("Hex##send", &telemetrySendHex);
+            ImGui::TextDisabled("→ TELE_IN ($C442). %s",
+                                telemetrySendHex ? "Bytes: e.g. \"06 41 0D\"."
+                                                 : "ASCII text.");
+
             // ---- Consume the TX tap (delta vs last seen total) ----
             uint64_t total = snap.txTotal;
             if (total < telemetryLastTxTotal) telemetryLastTxTotal = 0; // port was reset
@@ -987,32 +1013,6 @@ void MainWindow_ImGui::renderTelemetryWindow()
                 ImGui::GetScrollY() >= ImGui::GetScrollMaxY() - 1.0f)
                 ImGui::SetScrollHereY(1.0f);
             ImGui::EndChild();
-
-            // ---- Inbound injection (Serial Monitor → game) ----
-            auto sendInput = [&]() {
-                std::vector<unsigned char> out;
-                if (telemetrySendHex) {
-                    parseHexTokens(telemetrySendBuf, out);
-                } else {
-                    for (const char* p = telemetrySendBuf; *p; ++p)
-                        out.push_back(static_cast<unsigned char>(*p));
-                }
-                if (!out.empty())
-                    emulation->telemetryInject(out.data(), out.size());
-                telemetrySendBuf[0] = '\0';
-            };
-
-            ImGui::SetNextItemWidth(-160.0f);
-            bool entered = ImGui::InputText("##telemetry_send", telemetrySendBuf,
-                                            sizeof(telemetrySendBuf),
-                                            ImGuiInputTextFlags_EnterReturnsTrue);
-            ImGui::SameLine();
-            if (ImGui::Button("Send") || entered) sendInput();
-            ImGui::SameLine();
-            ImGui::Checkbox("Hex##send", &telemetrySendHex);
-            ImGui::TextDisabled("→ TELE_IN ($C442). %s",
-                                telemetrySendHex ? "Bytes: e.g. \"06 41 0D\"."
-                                                 : "ASCII text.");
 
             // ---- Golden-trace log ----
             ImGui::Separator();

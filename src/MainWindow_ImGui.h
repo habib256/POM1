@@ -292,7 +292,7 @@ private:
     bool telemetryMonitorAutoScroll = true;
     bool telemetryMonitorDirty = false;                // rebuild text cache this frame
     char telemetrySendBuf[256] = {0};                  // Serial Monitor input line
-    bool telemetrySendHex = false;                     // interpret input as hex bytes
+    bool telemetrySendHex = true;                      // interpret input as hex bytes
     char telemetryLogPathBuf[256] = "telemetry_trace.bin";
 
     // "POM1 Bench" — the portable bench/CodeBench editor driven by a

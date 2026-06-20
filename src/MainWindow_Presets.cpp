@@ -609,7 +609,11 @@ void MainWindow_ImGui::applyMachineConfig(int presetIndex)
     // hardReset is mandatory: we need to wipe RAM, reload default ROMs,
     // and reset every peripheral before applying the new preset.
     if (presetAppliedOnce) {
-        emulation->hardReset();
+        // DevBench profiles (indices 0-2) are a compile-and-run workflow, not a
+        // cold-boot demo: skip the ~3 s power-on scenarization so the reset lands
+        // on a cleared screen immediately.
+        const bool isDevBench = (presetIndex >= 0 && presetIndex <= 2);
+        emulation->hardReset(/*animateBoot=*/!isDevBench);
     } else {
         presetAppliedOnce = true;
     }

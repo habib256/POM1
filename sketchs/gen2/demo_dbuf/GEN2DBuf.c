@@ -53,7 +53,6 @@ static void draw_static_page(unsigned char page, unsigned x, unsigned char y)
     gen2_set_draw_page(page);
     gen2_hgr_clear(0u);
     gen2_hgr_puts(8u, 4u, "XOR DBUF");
-    gen2_hgr_puts8(8u, 174u, "static once; each frame: xor old + xor new");
     xor_ball(x, y);
 }
 
@@ -102,3 +101,4 @@ void main(void)
         else      { if (by < STEP) { by = 0u; ypos = 1u; } else by -= STEP; }
     }
 }
+

@@ -1763,7 +1763,7 @@ bench::BuildResult Pom1BenchHost::build(int target, const std::string& src, cons
         emu->setCodeTankJumper(mw_->codeTankJumper);
         if (!mw_->tms9918Enabled) { mw_->tms9918Enabled = true; mw_->showTMS9918 = true; emu->setTMS9918Enabled(true); }
         if (!mw_->codeTankEnabled) { mw_->codeTankEnabled = true; emu->setCodeTankEnabled(true); }
-        emu->hardReset();
+        emu->hardReset(/*animateBoot=*/false); // DevBench: no ~3 s power-on scenario
         mw_->codeTankPendingWozRunAt = ImGui::GetTime() + 1.0;
         emu->copySnapshot(mw_->uiSnapshot);
         r.console += "[ok] flashed CODETANKDEV.rom (lower bank) - 4000R\n";
@@ -1877,7 +1877,7 @@ bench::BuildResult Pom1BenchHost::pollBuild()
         emu->setCodeTankJumper(mw_->codeTankJumper);
         if (!mw_->tms9918Enabled) { mw_->tms9918Enabled = true; mw_->showTMS9918 = true; emu->setTMS9918Enabled(true); }
         if (!mw_->codeTankEnabled) { mw_->codeTankEnabled = true; emu->setCodeTankEnabled(true); }
-        emu->hardReset();
+        emu->hardReset(/*animateBoot=*/false); // DevBench: no ~3 s power-on scenario
         mw_->codeTankPendingWozRunAt = ImGui::GetTime() + 1.0;
         emu->copySnapshot(mw_->uiSnapshot);
         r.console += "[ok] flashed CODETANKDEV.rom (lower bank) - 4000R\n";

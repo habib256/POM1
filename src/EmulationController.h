@@ -74,7 +74,11 @@ public:
     void startCpu();
     void stopCpu();
     void softReset();
-    void hardReset();
+    // animateBoot=true replays the cosmetic power-on scenario (garbage → black →
+    // welcome, ~3 s of NE555-paced blinks). DevBench presets pass false so a
+    // compile-and-run reset lands on a cleared screen immediately instead of
+    // burning three seconds on the startup theatre.
+    void hardReset(bool animateBoot = true);
     void stepCpu();
     // Deterministic capture helper: pause the emulation thread, then run the CPU
     // for exactly `cycles` cycles synchronously (no real-time pacing) and publish
