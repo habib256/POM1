@@ -138,3 +138,15 @@ Code **derived** from the **[nippur72/apple1-videocard-lib](https://github.com/n
 - No `static inline` in cc65: `tms_read_status` → macro.
 - `screen2_ellipse_rect`: **C** — parametric approximation (64 chords); requires **screen 2 mode** (`tms_init_regs(SCREEN2_TABLE)` + `screen2_init_bitmap`…).
 - `install_interrupt`: stub — does not touch the reset zone `$0000` on a real Apple-1.
+
+## Source of truth (asm ↔ C)
+
+The VDP port addresses in `tms9918.c` (`VDP_DATA` = `$CC00`, `VDP_REG` = `$CC01`)
+**mirror** the canonical asm equates in [`../tms9918/tms9918.inc`](../tms9918/tms9918.inc)
+(`VDP_DATA`, `VDP_CTRL`). Edit the `.inc` first; this port follows. Pinned by
+`tools/check_lib_equates.py` (`make -C dev/lib check`).
+
+Note: this lib also ships its **own** Wozmon I/O (`apple1.c` / `apple1_asm.s`),
+distinct from [`../apple1c/`](../apple1c/) — the upstream nippur72 port predates
+the shared base and was kept intact to preserve attribution. New C cards should
+build on `apple1c` instead.

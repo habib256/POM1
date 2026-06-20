@@ -82,6 +82,14 @@ Both expose the same `woz_*` API, so code reads the same either way. See the
 audit follow-up (Sprint 4 of the dev/ refactor plan) for a planned single-source
 merge parameterised by `WOZMON_ENTRY`.
 
+## Source of truth (asm ↔ C)
+
+The hardware addresses here (`ECHO`, `KBD_DATA`, `KBD_CTRL` in `apple1io.h`)
+**mirror** the canonical asm equates in [`../apple1/apple1.inc`](../apple1/apple1.inc)
+(`ECHO`, `KBD`, `KBDCR`). Edit the `.inc` first; this header follows.
+`tools/check_lib_equates.py` (run by `make -C dev/lib check`) pins the two
+together.
+
 ## Credit
 
 Asm shim + keyboard helpers ported verbatim from

@@ -136,3 +136,12 @@ In your project Makefile:
 Validation: every routine here is exercised by shipping projects under
 `sketchs/apple1/` (e.g. `game_sokoban`, `game_chess`) and by
 `tools/test_*.py` smoke harnesses.
+
+## Source of truth (asm ↔ C)
+
+The Apple-1 hardware addresses live in **two** tracks: the asm equates in
+**`apple1.inc`** (`ECHO`, `KBD`, `KBDCR`, …) and the cc65 mirror in
+[`../apple1c/apple1io.h`](../apple1c/apple1io.h) (`ECHO`, `KBD_DATA`,
+`KBD_CTRL`). **`apple1.inc` is canonical** — lowest level, closest to the bus.
+Edit it first, then sync the C header. `tools/check_lib_equates.py` (run by
+`make -C dev/lib check`) fails if the two ever disagree.

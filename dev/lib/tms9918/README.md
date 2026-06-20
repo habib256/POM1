@@ -331,3 +331,17 @@ their own copy of `init_vdp` (~70 lines), `vdp_set_write` (~6 lines),
    factors away duplicated code).
 
 Each migration drops ~80 lines of boilerplate from a project.
+
+## Source of truth (asm ↔ C)
+
+Shared with the C runtime in [`../tms9918c/`](../tms9918c/):
+
+- **VDP port addresses** — canonical in **`tms9918.inc`** (`VDP_DATA` = `$CC00`,
+  `VDP_CTRL` = `$CC01`); `tms9918c/tms9918.c` mirrors them (`VDP_DATA`,
+  `VDP_REG`). Edit the `.inc` first. Pinned by `tools/check_lib_equates.py`.
+- **Beautiful Boot font** (`bbfont_tms.inc`, `font_hud8x8.inc`) — *generated*
+  from the GEN2 master `../gen2/bbfont_cp437.inc` by `tools/build_shared_font.py`
+  (bit-reversed for the TMS pattern table). Never hand-edit; pinned by
+  `build_shared_font.py --check`.
+
+Both checks run under `make -C dev/lib check`.

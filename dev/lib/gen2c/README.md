@@ -154,6 +154,15 @@ everything for you.
 Full card reference (soft switches, HST0, beam timing): [`doc/GEN2_RELEASE.md`](../../../doc/GEN2_RELEASE.md).
 Full C guide: [`sketchs/doc/Programming_Apple1_C.md`](../../sketchs/doc/Programming_Apple1_C.md).
 
+## Source of truth (asm ↔ C)
+
+The soft-switch / framebuffer addresses in `gen2.h` (`GEN2_SS` = `$C250`,
+`GEN2_HGR1` = `$2000`, `GEN2_HGR2` = `$4000`) **mirror** the canonical asm
+equates in [`../gen2/gen2.inc`](../gen2/gen2.inc) (`GEN2_TEXTOFF`, `GEN2_HGR1/2`).
+Edit the `.inc` first; this header follows. Pinned by
+`tools/check_lib_equates.py` (`make -C dev/lib check`). The shared font is
+likewise generated from the asm master — see Credit below.
+
 ## Credit
 
 Beautiful Boot 8×8 font extracted from `dev/lib/gen2/bbfont_cp437.inc` (the shared

@@ -110,3 +110,18 @@ project under `dev/projects/<card>/<name>/`):
 
     LIB := -I ../../../lib/apple1 -I ../../../lib/gen2
     LOAD_CFG := ../../../cc65/apple1_gen2.cfg
+
+## Source of truth (asm ↔ C)
+
+Two things are written once and shared with the C runtime in
+[`../gen2c/`](../gen2c/):
+
+- **Soft-switch / framebuffer addresses** — canonical in **`gen2.inc`**
+  (`GEN2_TEXTOFF` = `$C250`, `GEN2_HGR1` = `$2000`, `GEN2_HGR2` = `$4000`);
+  `gen2c/gen2.h` mirrors them (`GEN2_SS`, `GEN2_HGR1/2`). Edit `gen2.inc` first.
+  Pinned by `tools/check_lib_equates.py`.
+- **Beautiful Boot font** — canonical in **`bbfont_cp437.inc`** (the 256-glyph
+  master); `tools/build_shared_font.py` emits the HGR and TMS9918 tables from it.
+  Pinned by `build_shared_font.py --check`.
+
+Both checks run under `make -C dev/lib check`.

@@ -1,7 +1,10 @@
 # dev/projects/Makefile -- build (and smoke-test) every 6502 project.
 #
 # Release / CI gate: `make -C dev/projects` must be green before shipping a
-# POM1 DEV Edition. Every subdirectory that has its own Makefile is built via
+# POM1 DEV Edition. Companion gate `make -C dev/lib check` validates the
+# libraries themselves (asm/C equate drift, zp.inc layout, every source
+# compiles decoupled from its consumers) -- run both.
+# Every subdirectory that has its own Makefile is built via
 # its `all` target. A failure does NOT stop the run -- failures are collected
 # and printed at the end and the recipe exits non-zero, so CI surfaces every
 # broken project in a single pass (requires cc65: `apt install cc65`).

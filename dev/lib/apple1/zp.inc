@@ -1,6 +1,16 @@
 ; ============================================================================
 ; zp.inc -- shared zero-page convention for lib/apple1 + lib/m6502
 ; ============================================================================
+; *** DANGER -- POSITIONAL CONTRACT. ***  This file is a shared GLOBAL resource:
+; it claims the 8 zero-page bytes $00-$07, in the fixed declaration order below.
+; A collision does NOT raise an assembler/linker error -- it silently corrupts
+; whoever else parked a variable in that range, surfacing as a runtime memory
+; bug. The two rules that keep you safe: (1) `.include "zp.inc"` BEFORE any
+; other ZP `.res`, so the layout still starts at $00; (2) if ZP is tight, ALIAS
+; a slot onto existing scratch BEFORE the include (the `.ifndef` guards detect
+; it). The fixed $00-$07 layout is PINNED by dev/lib/apple1/test/ (zp_layout) --
+; if you reorder or insert a slot here, that test must move in lockstep.
+; ----------------------------------------------------------------------------
 ; Optional, opt-in. Include ONCE near the top of your .asm to declare the
 ; canonical scratch slots used across the .include-style libs (print, kbd,
 ; delay, print_num, multiply, prng8, prng16) AND to .exportzp them so
