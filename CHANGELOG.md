@@ -31,6 +31,16 @@ per-project Makefiles; dev loop → `sketchs/doc/APPLE1DEV.md`.
   `screen2_line` loop with a scanline left-partial / full-byte-run / right-partial
   fill (the TMS analogue of GEN2's `fill_pixrect`); ~10–14× fewer VRAM-port
   accesses, verified pixel-identical to a reference fill on 14 edge cases.
+- **Card-neutral text façade `gfx_text` (axis 3)** (2026-06-20) — an 8×8
+  cell-cursor model so a program positions text/numbers and compiles for either
+  card by backend choice alone: `gfx_gotoxy` / `gfx_putc` / `gfx_text` /
+  `gfx_putu` / `gfx_puti` / `gfx_putx`. Shared `gfx_text.c` owns the cursor +
+  advance/wrap + formatting; per-card cell backends map a cell to the native blit
+  (`gfx_text_backend_gen2.c` → `gen2_hgr_puts8`, 35×24; `gfx_text_backend_tms.c`
+  → `screen2_putc`, 32×24 with `FG_BG` colour). Additive — the rich per-card text
+  (GEN2 16×16 + NTSC colour, TMS sprites/true-colour) is untouched.
+  `sketchs/portable/hello_gfx_text/` builds the SAME source for both cards and
+  pins the façade; GEN2 render verified under POM1.
 - **Shared Beautiful Boot font, multi-format emitter** (2026-06-17) —
   `tools/build_shared_font.py` emits one master (`dev/lib/hgr/bbfont_cp437.inc`)
   to both cards: HGR (`gen2_bbfont.inc`, bit 0 = left pixel) and TMS

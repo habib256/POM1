@@ -19,9 +19,7 @@ Grouped by subsystem; deferred / externally-blocked last.
 - [ ] **Chemin GPU shader (desktop)** `[L · nice]` — optionnel : porter `NtscPostProcessor` POM2 si le *Shared video texture layer* (→ Visuals & UX) est en place ; sinon reporter.
 - [ ] **Portage pilote d'un jeu Apple II HGR** `[M · nice]` — Taipan / Breakout sur la carte release, pour exercer le moteur beam sur du vrai logiciel de jeu.
 
-### Factorisation des libs graphiques GEN2 ↔ TMS9918
-
-- [ ] **Intégration build de la couche `dev/lib/gfx/`** `[S · solid]` — l'axe 1 pose une couche partagée additive (géométrie ligne/cercle/rect/ellipse + conversion entier→ASCII, backend résolu au lien) à compiler puis brancher aux chemins de build cc65, dont la ligne cl65 du Bench (`src/Pom1BenchHost.cpp`). Travail 6502/cc65 + axes 2-3 (fonte partagée, façade) → [`dev/TODO6502.md`](dev/TODO6502.md) § *Factoriser les libs graphiques GEN2 HGR ↔ TMS9918*.
+> **Factorisation des libs graphiques GEN2 ↔ TMS9918 — livrée** (axes 1-3) → [`CHANGELOG.md`](CHANGELOG.md). Couche partagée `dev/lib/gfx/` (géométrie + nombres), fonte BB partagée, façade texte `gfx_text` ; branchée aux chemins cc65 dont la ligne cl65 du Bench. Items de queue (régression pixel, vérif TMS, etc.) → [`dev/TODO6502.md`](dev/TODO6502.md).
 
 ---
 
