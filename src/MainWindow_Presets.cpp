@@ -1408,9 +1408,11 @@ void MainWindow_ImGui::resetAllPresetLayouts()
 // pregenerateMissingPresetLayouts -- write out default ini/imgui_preset_NN.ini
 // + ini/preset_NN.size for every preset that doesn't have one yet, using the
 // hard-coded `kMachinePresets[i].layout` defaults (window name + pos + size).
-// Preset 9 (CodeTank): when `ini_defaults/imgui_preset_09.ini` and
-// `ini_defaults/preset_09.size` are found, those files are copied — they are
-// the canonical factory defaults (keep in sync with kMachinePresets[9]).
+// For any index, when `ini_defaults/imgui_preset_NN.ini` and
+// `ini_defaults/preset_NN.size` ship under the tracked `ini_defaults/` dir,
+// those curated files are copied instead — they are the canonical factory
+// defaults (keep in sync with kMachinePresets[NN]). Currently shipped for the
+// DevBench presets 0-2 (CC65 / TMS9918 / GEN2 HGR) and preset 9 (CodeTank).
 //
 // Called once at boot. Ensures the ini/ directory is fully populated even
 // before the user visits each preset, so that:
@@ -1450,8 +1452,9 @@ void MainWindow_ImGui::pregenerateMissingPresetLayouts()
 
         // Write the .ini file with one [Window][...] section per layout entry.
         if (!iniExists) {
-            bool seededFromDefaults = (idx == 9)
-                && copyIniDefaultsFileTo("imgui_preset_09.ini", iniPath);
+            char iniBase[48];
+            std::snprintf(iniBase, sizeof(iniBase), "imgui_preset_%02d.ini", idx);
+            bool seededFromDefaults = copyIniDefaultsFileTo(iniBase, iniPath);
             if (!seededFromDefaults) {
                 std::ofstream f(iniPath);
                 if (!f) continue;
@@ -1473,8 +1476,9 @@ void MainWindow_ImGui::pregenerateMissingPresetLayouts()
         // small floor matching the canonical Fantasy preset (last entry) so
         // that no preset starts smaller than the reference frame.
         if (!sizeExists) {
-            bool seededFromDefaults = (idx == 9)
-                && copyIniDefaultsFileTo("preset_09.size", sizePath);
+            char sizeBase[48];
+            std::snprintf(sizeBase, sizeof(sizeBase), "preset_%02d.size", idx);
+            bool seededFromDefaults = copyIniDefaultsFileTo(sizeBase, sizePath);
             if (!seededFromDefaults) {
                 // Need a fallback Apple-1 screen size — use the spec's size if
                 // present, else a reasonable 843x701 baseline.
