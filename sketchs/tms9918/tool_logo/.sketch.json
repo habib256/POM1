@@ -1,0 +1,15 @@
+{
+  "profile": "tms9918",
+  "language": "asm",
+  "cfg": "sketchs/tms9918/tool_logo/apple1_logo_codetank.cfg",
+  "extraAsm": [
+    "dev/lib/m6502/math.asm",
+    "dev/lib/tms9918/tms9918m2.asm",
+    "dev/lib/tms9918/sprites_emotes.asm",
+    "dev/lib/tms9918/text_bitmap.asm",
+    "dev/lib/tms9918/bubble.asm",
+    "dev/lib/tms9918/buffer_editor.asm",
+    "dev/lib/tms9918/sprite_helpers.asm",
+    "dev/lib/tms9918/tms9918_pad.asm"
+  ]
+}

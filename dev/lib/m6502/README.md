@@ -37,7 +37,7 @@ resolve at link time:
     ; BSS
     prod_lo, prod_hi, sign_flag, lfsr_lo, lfsr_hi
 
-See `dev/projects/tms9918/tool_logo/TMS_Logo.asm` for a working example.
+See `sketchs/tms9918/tool_logo/TMS_Logo_16k.asm` for a working example.
 
 ## prng8.asm — 8-bit shift LFSR ($2D tap)
 
@@ -129,4 +129,4 @@ The libs' own `.ifndef` guards detect the pre-declaration and skip
 duplicate allocation. The same `zp.inc` `.exportzp`s `tmp / tmp2` so
 `math.asm` (separately compiled into `math.o`) can `.importzp` them at
 link without manual project boilerplate. See
-`dev/projects/tms9918/tool_logo/TMS_Logo.asm` for a worked example (math.asm separately compiled, see its Makefile).
+`sketchs/tms9918/tool_logo/TMS_Logo_16k.asm` for a worked example (math.asm separately compiled, see its `.sketch.json` extraAsm).

@@ -1,0 +1,10 @@
+{
+  "profile": "tms9918",
+  "language": "asm",
+  "cfg": "sketchs/tms9918/game_rogue/apple1_rogue.cfg",
+  "extraAsm": [
+    "dev/lib/tms9918/tms9918_pad.asm",
+    "dev/lib/tms9918/tms9918m1.asm",
+    "sketchs/tms9918/game_rogue/sprites_boss.asm"
+  ]
+}

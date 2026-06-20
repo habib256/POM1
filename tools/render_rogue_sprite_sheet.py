@@ -4,7 +4,7 @@ single labelled PNG, grouped by source file. Used to pick replacement
 tiles for TMS_Rogue and to spot mis-labelled entries (the user can
 visually verify name → sprite correspondence).
 
-Output: dev/projects/tms9918/game_rogue/sprite_sheet_all.png
+Output: sketchs/tms9918/game_rogue/sprite_sheet_all.png
 """
 from __future__ import annotations
 

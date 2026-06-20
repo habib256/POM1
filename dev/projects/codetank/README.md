@@ -20,6 +20,15 @@ Each menu directory is named after the cartridge ROM it ships in
 | `game1_menu/`       | GAME1 lower-bank launcher ($4000-$40FF) → Galaga/Sokoban/Snake |
 | `game3_menu/`       | GAME3 upper-bank launcher → Life/Mandel/Plasma           |
 | `test_menu/`        | TEST upper-bank launcher → Clone/Split (silicon-bug demos) |
+| `bank_cfgs/`        | per-game ld65 **bank-layout** cfgs (`apple1_*_codetank_bank.cfg`) — pin each game at its fixed cartridge offset |
+
+The games/demos themselves are standalone DevBench programs under
+[`../../../sketchs/tms9918/`](../../../sketchs/tms9918/); each keeps only its
+own **standalone** `*_codetank.cfg` (run-in-place at the load address it would
+use on its own). The cartridge-only bank-layout variants live here in
+`bank_cfgs/` so the composition glue stays out of `sketchs/`. (Run-in-place
+full-bank programs like Rogue/Nyan have a single cfg that doubles as both, so
+it stays with the sketch.)
 
 Not every bank has a menu — some hold a single run-in-place program selected
 by the lower/upper jumper:

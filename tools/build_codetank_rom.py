@@ -14,8 +14,7 @@ Four ROMs are produced (in roms/codetank/):
   Codetank_GAME2.rom (32 kB)
     Lower 16 kB: TMS_Rogue alone (full bank, run-in-place from $4000)
     Upper 16 kB: TMS_Nyan_CodeTank (full bank, run-in-place from $4000)
-                 — rebuilt from dev/projects/tms9918/demo_nyan_cat/ into
-                 software/Graphic TMS9918/TMS_Nyan_CodeTank.bin.
+                 — assembled from sketchs/tms9918/demo_nyan_cat/.
     Jumper Lower → 4000R boots Rogue; jumper Upper → 4000R animates Nyan.
 
   Codetank_GAME3.rom (32 kB)
@@ -61,6 +60,12 @@ HALF_SIZE = 0x4000   # 16 kB
 
 DEV               = ROOT / "dev" / "projects"
 SK                = ROOT / "sketchs" / "tms9918"   # mono-source DevBench sketches
+# CodeTank "best-of" cartridge composition layer (launcher menus + per-game
+# ROM bank-layout cfgs) — kept OUT of sketchs/, which holds only standalone
+# DevBench-runnable programs. The games/demos themselves live under SK; the
+# cartridge just packages them at fixed bank offsets.
+CT                = DEV / "codetank"
+CT_BANK           = CT / "bank_cfgs"
 LIB_APPLE1        = ROOT / "dev" / "lib" / "apple1"
 LIB_M6502         = ROOT / "dev" / "lib" / "m6502"
 LIB_TMS           = ROOT / "dev" / "lib" / "tms9918"
@@ -70,18 +75,18 @@ LIB_CHESS         = ROOT / "dev" / "lib" / "games" / "chess"
 LIB_ROGUE         = ROOT / "dev" / "lib" / "games" / "rogue"
 
 # --- GAME1 sources (menu + Galaga + Sokoban + Snake lower; LOGO upper) -----
-MENU_ASM          = SK / "game1_menu" / "codetank_menu.asm"
-MENU_CFG          = SK / "game1_menu" / "apple1_codetank_menu.cfg"
+MENU_ASM          = CT / "game1_menu" / "codetank_menu.asm"
+MENU_CFG          = CT / "game1_menu" / "apple1_codetank_menu.cfg"
 GALAGA_ASM        = SK / "game_galaga"  / "TMS_Galaga.asm"
-GALAGA_BANK_CFG   = SK / "game_galaga"  / "apple1_galaga_codetank_bank.cfg"
+GALAGA_BANK_CFG   = CT_BANK / "apple1_galaga_codetank_bank.cfg"
 SOKOBAN_ASM       = SK / "game_sokoban" / "TMS_Sokoban.asm"
-SOKOBAN_BANK_CFG  = SK / "game_sokoban" / "apple1_sokoban_codetank_bank.cfg"
+SOKOBAN_BANK_CFG  = CT_BANK / "apple1_sokoban_codetank_bank.cfg"
 SNAKE_ASM         = SK / "game_snake"   / "TMS_Snake.asm"
-SNAKE_BANK_CFG    = SK / "game_snake"   / "apple1_snake_codetank_bank.cfg"
+SNAKE_BANK_CFG    = CT_BANK / "apple1_snake_codetank_bank.cfg"
 
 # --- LOGO V2 (GAME1 upper) -------------------------------------------------
-LOGO_V2_ASM        = DEV / "tms9918" / "tool_logo" / "TMS_Logo_16k.asm"
-LOGO_V2_BANK_CFG   = DEV / "tms9918" / "tool_logo" / "apple1_logo_v2_codetank_bank.cfg"
+LOGO_V2_ASM        = SK / "tool_logo" / "TMS_Logo_16k.asm"
+LOGO_V2_BANK_CFG   = CT_BANK / "apple1_logo_v2_codetank_bank.cfg"
 LOGO_V2_MATH_ASM   = LIB_M6502   / "math.asm"
 LOGO_V2_VDP_ASM    = LIB_TMS     / "tms9918m2.asm"
 LOGO_V2_EMOTE_ASM  = LIB_TMS     / "sprites_emotes.asm"
@@ -91,16 +96,16 @@ LOGO_V2_BUFED_ASM  = LIB_TMS     / "buffer_editor.asm"
 LOGO_V2_SPRH_ASM   = LIB_TMS     / "sprite_helpers.asm"
 
 # --- GAME2 sources (Rogue lower; Nyan/CodeTank prebuilt upper) -------------
-ROGUE_ASM          = DEV / "tms9918" / "game_rogue" / "TMS_Rogue.asm"
-ROGUE_BOSS_ASM     = DEV / "tms9918" / "game_rogue" / "sprites_boss.asm"
-ROGUE_CODETANK_CFG = DEV / "tms9918" / "game_rogue" / "apple1_rogue.cfg"
+ROGUE_ASM          = SK / "game_rogue" / "TMS_Rogue.asm"
+ROGUE_BOSS_ASM     = SK / "game_rogue" / "sprites_boss.asm"
+ROGUE_CODETANK_CFG = SK / "game_rogue" / "apple1_rogue.cfg"
 ROGUE_M1_ASM       = LIB_TMS / "tms9918m1.asm"
 
-# Nyan/CodeTank (GAME2 upper) — drop-in image assembled from source by the
-# project's own Makefile (dev/projects/tms9918/demo_nyan_cat/) at $4000; we
-# splat it verbatim into the upper half (splat_full_bank pads to 16 KB).
-# Build it first:  make -C dev/projects/tms9918/demo_nyan_cat
-NYAN_CT_BIN       = ROOT / "software" / "Graphic TMS9918" / "TMS_Nyan_CodeTank.bin"
+# Nyan/CodeTank (GAME2 upper) — assembled from source at $4000 (mono-source
+# DevBench sketch), then splatted into the upper half (pads to 16 KB).
+NYAN_ASM          = SK / "demo_nyan_cat" / "TMS_Nyan_CodeTank.asm"
+NYAN_RLE_ASM      = SK / "demo_nyan_cat" / "nyan_rle.asm"
+NYAN_CFG          = SK / "demo_nyan_cat" / "apple1_nyan_codetank.cfg"
 
 # --- GAME3 sources (Tetris/CodeTank lower; menu+Life+Mandel+Plasma upper) --
 # Tetris/CodeTank — external drop-in 16 KB image (no in-repo source; fetched
@@ -110,32 +115,32 @@ TETRIS_CT_BIN     = CODETANK_CC65_BIN / "tetris_codetank.bin"
 
 # GAME3 upper menu + 3 demo programs (Life, Mandel, Plasma) sharing the
 # upper bank via the menu pattern.
-GAME3_MENU_ASM    = SK / "game3_menu" / "codetank_game3_menu.asm"
-GAME3_MENU_CFG    = SK / "game3_menu" / "apple1_codetank_game3_menu.cfg"
+GAME3_MENU_ASM    = CT / "game3_menu" / "codetank_game3_menu.asm"
+GAME3_MENU_CFG    = CT / "game3_menu" / "apple1_codetank_game3_menu.cfg"
 
 LIFE_ASM          = SK / "demo_life"   / "TMS_Life.asm"
-LIFE_BANK_CFG     = SK / "demo_life"   / "apple1_life_codetank_game3_bank.cfg"
+LIFE_BANK_CFG     = CT_BANK / "apple1_life_codetank_game3_bank.cfg"
 
 MANDEL_ASM        = SK / "demo_mandel" / "TMS_Mandel.asm"
-MANDEL_BANK_CFG   = SK / "demo_mandel" / "apple1_mandel_codetank_bank.cfg"
+MANDEL_BANK_CFG   = CT_BANK / "apple1_mandel_codetank_bank.cfg"
 MANDEL_VDP_ASM    = LIB_TMS / "tms9918m2.asm"
 
 PLASMA_ASM        = SK / "demo_plasma" / "TMS_Plasma.asm"
-PLASMA_BANK_CFG   = SK / "demo_plasma" / "apple1_plasma_codetank_bank.cfg"
+PLASMA_BANK_CFG   = CT_BANK / "apple1_plasma_codetank_bank.cfg"
 PLASMA_VDP_ASM    = LIB_TMS / "tms9918m1.asm"
 
 # --- TEST sources (menu + Clone + Split upper; lower bank reserved) --------
 # SilBench was abandoned (May 2026 reshuffle) — the TEST cart's lower bank is
 # now $FF-reserved; the two silicon-bug mini-tests live in the upper bank.
-TEST_MENU_ASM       = SK / "test_menu" / "codetank_test_menu.asm"
-TEST_MENU_CFG       = SK / "test_menu" / "apple1_codetank_test_menu.cfg"
+TEST_MENU_ASM       = CT / "test_menu" / "codetank_test_menu.asm"
+TEST_MENU_CFG       = CT / "test_menu" / "apple1_codetank_test_menu.cfg"
 
 CLONE_ASM           = SK / "demo_clone" / "TMS_Clone.asm"
-CLONE_BANK_CFG      = SK / "demo_clone" / "apple1_clone_codetank_bank.cfg"
+CLONE_BANK_CFG      = CT_BANK / "apple1_clone_codetank_bank.cfg"
 CLONE_VDP_ASM       = LIB_TMS / "tms9918m2.asm"
 
 SPLIT_ASM           = SK / "demo_split" / "TMS_Split.asm"
-SPLIT_BANK_CFG      = SK / "demo_split" / "apple1_split_codetank_bank.cfg"
+SPLIT_BANK_CFG      = CT_BANK / "apple1_split_codetank_bank.cfg"
 SPLIT_M1_ASM        = LIB_TMS / "tms9918m1.asm"
 SPLIT_5S_ASM        = LIB_TMS / "tms9918_5strigger.asm"
 
@@ -340,13 +345,16 @@ def build_game2_lower_bank() -> bytes:
 
 
 def build_game2_upper_bank() -> bytes:
-    """Upper 16 kB: TMS_Nyan_CodeTank prebuilt binary, full $4000-$7FFF.
-    Drop-in image from software/Apple-1_TMS_CC65/ — assembled by
-    dev/projects/tms9918_nyan_codetank's own Makefile and padded to fill
-    the bank."""
+    """Upper 16 kB: TMS_Nyan_CodeTank, full $4000-$7FFF, run-in-place.
+    Assembled from the mono-source sketch (TMS_Nyan_CodeTank.asm + nyan_rle
+    data; tms9918_pad auto-linked) and padded to fill the bank."""
     print("\n[GAME2] Upper bank (TMS_Nyan_CodeTank, full 16 kB):",
           file=sys.stderr)
-    return splat_full_bank(NYAN_CT_BIN, "Nyan/CT   ($4000-$7FFF)")
+    nyan = assemble_multi([NYAN_ASM, NYAN_RLE_ASM], NYAN_CFG,
+                          "G2_Nyan", HALF_SIZE)
+    bank = bytearray(b"\xFF" * HALF_SIZE)
+    slot(bank, 0x0000, nyan, HALF_SIZE, "Nyan/CT   ($4000-$7FFF)")
+    return bytes(bank)
 
 
 # ---------------------------------------------------------------------------

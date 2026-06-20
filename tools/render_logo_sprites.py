@@ -15,7 +15,7 @@ tools/extract_speedboat_sprites.py before integrating them.
 
 Usage:
   python3 tools/render_logo_sprites.py
-  python3 tools/render_logo_sprites.py --src dev/projects/tms9918_logo/TMS_Logo_16k.asm
+  python3 tools/render_logo_sprites.py --src sketchs/tms9918/tool_logo/TMS_Logo_16k.asm
                                         --out screenshots/logo_sprites.png
                                         --scale 8
 
@@ -34,7 +34,7 @@ from PIL import Image, ImageDraw, ImageFont
 
 
 REPO = pathlib.Path(__file__).resolve().parents[1]
-DEFAULT_ASM = REPO / "dev" / "projects" / "tms9918_logo" / "TMS_Logo_16k.asm"
+DEFAULT_ASM = REPO / "sketchs" / "tms9918" / "tool_logo" / "TMS_Logo_16k.asm"
 DEFAULT_OUT = REPO / "screenshots" / "logo_sprites.png"
 
 # Render rows: each tuple is (heading-row title, [labels], [display names]).

@@ -1,4 +1,4 @@
-# tms9918_rogue — Roguelike for the P-LAB TMS9918
+# game_rogue — Roguelike for the P-LAB TMS9918
 
 *[← POM1 documentation index](../../../../doc/README.md)*
 
@@ -207,13 +207,14 @@ python3 tools/build_codetank_rom.py --rom=2     # writes roms/codetank/Codetank_
 # Then 4000R from Wozmon to start.
 ```
 
-Local compile-check (writes `software/Graphic TMS9918/TMS_Rogue.bin` linked at
-`$4000`, not loadable as-is — use `build_codetank_rom.py --rom=2` for the ROM
-image):
+Build the ROM image (assembles `TMS_Rogue.asm` from this directory and links
+it into the `$4000` lower bank of `roms/codetank/Codetank_GAME2.rom`):
 ```bash
-cd dev/projects/tms9918/game_rogue
-make
+python3 tools/build_codetank_rom.py --rom=2
 ```
+This sketch is also discoverable in DevBench (mono-source `.sketch.json`);
+there is no per-project `Makefile` — it migrated out of `dev/projects/` into
+`sketchs/tms9918/game_rogue/`.
 
 ## Tileset regeneration
 

@@ -6,7 +6,7 @@ as a 4x4 grid per color block) and emit them as ca65 .byte directives
 in TMS9918 sprite-pattern order (TL, BL, TR, BR -- 32 bytes per sprite).
 
 The shipped boat_*.byte tables in
-  dev/projects/tms9918_logo/TMS_Logo_16k.asm
+  sketchs/tms9918/tool_logo/TMS_Logo_16k.asm
 were produced by:
   python3 tools/extract_speedboat_sprites.py \\
       --src ~/Téléchargements/SpeedboatRip.png \\

@@ -21,7 +21,6 @@
 ; =============================================
 
         .import tms9918_pad12  ; silicon-strict pad12-v3 (helper from tms9918_pad.asm)
-        .import tms9918_pad40  ; silicon-strict pad40 (hot upload loops)
         .import vdp_display_off ; lib helper — blank display for burst windows
 .include "apple1.inc"
 .include "tms9918.inc"
@@ -1118,11 +1117,12 @@ override_r1_16x16:
 ; upload_tileset: stream tileset_rogue (2048 bytes, 256 chars * 8) into
 ; the pattern table at VRAM $0000. Auto-increment write — one big block.
 ;
-; Real-silicon adaptation (May 2026): the inner write loop uses pad40
-; instead of the macro's pad12 to satisfy the hardened 40c slot contract
-; documented in dev/lib/tms9918/tms9918_pad.asm. Caller runs this with
-; display OFF so the slot is the wide 2c gate, but the pad40 gives us
-; headroom even if a future caller forgets the OFF discipline.
+; Real-silicon adaptation (May 2026): the inner write loop uses the
+; standard 12c silicon-strict gap (pad12) documented in
+; dev/lib/tms9918/tms9918_pad.asm. Caller runs this with display OFF so
+; the slot is the wide 2c gate, where pad12 (the openMSX-certified floor)
+; is comfortably sufficient. (Was pad40 — a paranoid holdover retired once
+; the 12c contract was certified.)
 ; ----------------------------------------------------------------------------
 upload_tileset:
         LDA     #$00
@@ -1140,7 +1140,7 @@ upload_tileset:
 @page:  LDY     #0
 @byte:  LDA     (vdp_src_lo),Y
         STA     VDP_DATA
-        JSR     tms9918_pad40   ; 40c silicon-strict gap (was WRT_DATA_REG/pad12)
+        JSR     tms9918_pad12   ; 12c silicon-strict gap (display OFF; openMSX floor)
         INY
         BNE     @byte
         INC     vdp_src_hi
@@ -1151,7 +1151,7 @@ upload_tileset:
 
 ; ----------------------------------------------------------------------------
 ; upload_colour_table: stream 32 colour bytes to VRAM $2000. Inner loop
-; uses pad40 — same rationale as upload_tileset.
+; uses pad12 — same rationale as upload_tileset.
 ; ----------------------------------------------------------------------------
 upload_colour_table:
         LDA     #$00
@@ -1163,7 +1163,7 @@ upload_colour_table:
         LDX     #0
 @lp:    LDA     tileset_color_table,X
         STA     VDP_DATA
-        JSR     tms9918_pad40   ; 40c silicon-strict gap (was WRT_DATA_REG/pad12)
+        JSR     tms9918_pad12   ; 12c silicon-strict gap (display OFF; openMSX floor)
         INX
         CPX     #32
         BNE     @lp
@@ -4188,19 +4188,19 @@ upload_sprite_pats:
         STA     VDP_CTRL
         JSR     tms9918_pad12   ; cmd → first STA VDP_DATA cushion
         ; First 256 bytes (slots 0..31, offsets 0..255 of sprite_pats).
-        ; Inner loops use pad40 (hardened 40c silicon contract) instead
-        ; of WRT_DATA_REG/pad12 — see upload_tileset rationale.
+        ; Inner loops use the 12c silicon-strict gap (pad12, openMSX floor)
+        ; — see upload_tileset rationale. (Was pad40.)
         LDX     #0
 @lp1:   LDA     sprite_pats,X
         STA     VDP_DATA
-        JSR     tms9918_pad40
+        JSR     tms9918_pad12
         INX
         BNE     @lp1
         ; Next 192 bytes (slots 32..55, offsets 256..447 of sprite_pats)
         LDX     #0
 @lp2:   LDA     sprite_pats+256,X
         STA     VDP_DATA
-        JSR     tms9918_pad40
+        JSR     tms9918_pad12
         INX
         CPX     #192
         BNE     @lp2
@@ -4210,7 +4210,7 @@ upload_sprite_pats:
         LDX     #0
 @lp3:   LDA     boss_sprite_pats,X
         STA     VDP_DATA
-        JSR     tms9918_pad40
+        JSR     tms9918_pad12
         INX
         CPX     #128
         BNE     @lp3

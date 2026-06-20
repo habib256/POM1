@@ -1,0 +1,9 @@
+{
+  "profile": "tms9918",
+  "language": "asm",
+  "cfg": "sketchs/tms9918/demo_nyan_cat/apple1_nyan_codetank.cfg",
+  "extraAsm": [
+    "dev/lib/tms9918/tms9918_pad.asm",
+    "sketchs/tms9918/demo_nyan_cat/nyan_rle.asm"
+  ]
+}

@@ -12,19 +12,32 @@ three modules together (TMS_Logo[_16k] + math + tms9918m2).
 
 Two builds ship side-by-side:
 
-| Build | Source | Linker config | Target |
-|-------|--------|---------------|--------|
-| **V1.8** (frozen, 8 KB) | `TMS_Logo.asm` | `apple1_logo.cfg` | stock 8 KB Apple-1 (cassette / Woz hex paste) |
-| **V2.6** (active, 16 KB) | `TMS_Logo_16k.asm` | `apple1_logo_16k.cfg` (DRAM) / `apple1_logo_v2_codetank_bank.cfg` (CodeTank ROM) | 16 KB Apple-1 *or* CodeTank upper bank |
+| Build | Linker config | Target |
+|-------|---------------|--------|
+| **DevBench / CodeTank run-in-place** | `apple1_logo_codetank.cfg` (`$4000-$7FFF` + PROC `$E000`) | the `.sketch.json` cfg — fits the in-app 8 KB dual-bank + CodeTank profile, entry `4000R` |
+| **16 KB linear-DRAM standalone** | `apple1_logo_16k.cfg` (CODE `$0280`, PROC `$3000`) | a **real** 16 KB Apple-1 only (needs `$0280-$3FFF` contiguous RAM — not the 8 KB bench) |
+| **GAME1 cartridge ROM** | `dev/projects/codetank/bank_cfgs/apple1_logo_v2_codetank_bank.cfg` + `-D CODETANK_BUILD` | upper bank of `Codetank_GAME1.rom`, full feature superset |
 
-V1.8 is at the absolute byte limit of the 8 KB CODE/PROC areas — it
-only receives bug fixes that don't grow the binary. Active development
-happens on the 16 KB variant.
+All three link `TMS_Logo_16k.asm` (V2.6). The DevBench / standalone
+builds compile **without** `CODETANK_BUILD`: the core turtle/REPL
+interpreter (text via WozMon `ECHO`, turtle graphics via the bitmap)
+runs and fits; the `CODETANK_BUILD` extras (on-bitmap `text_bitmap`/SAY,
+speech bubbles, the buffer editor) are the cartridge-only superset baked
+into the GAME1 ROM by `build_codetank_rom.py`.
+
+> **Why not `apple1_logo_16k.cfg` in DevBench?** That `$0280` build needs
+> 16 KB of contiguous linear DRAM; the bench's TMS9918 profile is an 8 KB
+> *dual-bank* machine (`$0000-$0FFF` + `$E000-$EFFF`) + the CodeTank ROM
+> window, so the 16 KB image lands partly out of RAM and the screen stays
+> blank. The `$4000` run-in-place cfg above is the one that boots there.
+
+Only the active V2.6 is kept here as a sketch. The frozen 8 KB V1.8
+source (`TMS_Logo.asm`) was retired on migration into `sketchs/`; its
+committed artefacts remain under `software/Graphic TMS9918/TMS_Logo.{bin,txt}`.
 
 ## Hardware
 
-- Machine: Apple 1 (8 KB DRAM for V1.8, 16 KB DRAM **or** CodeTank ROM
-  for V2.6).
+- Machine: Apple 1 (16 KB DRAM **or** CodeTank ROM for V2.6).
 - Cards: P-LAB TMS9918.
 - Recommended POM1 preset: **9** — *P-LAB Apple-1 with TMS9918 (CodeTank
   daughterboard)* (`MainWindow_Presets.cpp`). Flip the CodeTank jumper to **Upper** and
@@ -32,34 +45,28 @@ happens on the 16 KB variant.
 
 ## Build
 
-```sh
-make            # V1.8 (8 KB), writes ../../../../software/Graphic TMS9918/TMS_Logo.{bin,txt}
-make v20        # V2.6 (16 KB), writes ../../../../software/Graphic TMS9918/TMS_Logo_16k.{bin,txt}
-```
+Build V2.6 in DevBench (mono-source `.sketch.json`, cfg
+`apple1_logo_codetank.cfg`, lib modules pulled in via `extraAsm`) — there
+is no per-project `Makefile`. It flashes into the CodeTank ROM window and
+runs at `4000R`.
 
-CodeTank ROM (bundles Galaga / Sokoban / Snake / Life lower bank +
-TMS_LOGO V2.6 upper bank):
+CodeTank ROM (GAME1: Galaga / Sokoban / Snake lower bank + TMS_LOGO V2.6
+upper bank):
 
 ```sh
-python3 tools/build_codetank_rom.py --layout=menu
-# writes roms/codetank/galaga_sokoban_menu.rom (32 KB)
+python3 tools/build_codetank_rom.py --rom=1
+# writes roms/codetank/Codetank_GAME1.rom (32 KB)
 ```
 
 The shipped library image is `roms/codetank/Codetank_GAME1.rom` —
-re-sync it from the menu build after touching anything that ends up in
-the V2.6 ROM:
-
-```sh
-cp roms/codetank/galaga_sokoban_menu.rom  roms/codetank/Codetank_GAME1.rom
-cp roms/codetank/galaga_sokoban_menu.txt  roms/codetank/Codetank_GAME1.txt
-```
+`build_codetank_rom.py --rom=1` writes it in place after touching
+anything that ends up in the V2.6 ROM.
 
 ## Run
 
 1. POM1 → Presets → **9** (TMS9918 + CodeTank).
-2. **Cassette / DRAM build (V1.8 or V2.6 standalone)**: File → Load →
-   `software/Graphic TMS9918/TMS_Logo.txt` (or `TMS_Logo_16k.txt`), then `280R`
-   from Wozmon.
+2. **DRAM build (V2.6 standalone)**: File → Load →
+   `software/Graphic TMS9918/TMS_Logo_16k.txt`, then `280R` from Wozmon.
 3. **CodeTank ROM (V2.6)**: jumper Upper → `4000R`. Lower jumper boots
    the games menu instead.
 
@@ -221,27 +228,29 @@ help strings, (c) move data to PROCBSS, or (d) bump version + grow the
 CodeTank slot if there's room in the bank layout (unlikely without
 displacing a game).
 
-The 8 KB V1.8 CODE area is even tighter (`$0280-$1FFF` ≈ 7 552 B) and
-the lib `tms9918m2.asm` is shared, so **lib changes that grow plot_set
-or line_xy break V1.8** — keep the lib changes off the hot path. V2.6
-does its colour-only repaint locally (vertex-toggle in `paint_turtle_*`
-was retired with option B; the lib stays pristine).
+The lib `tms9918m2.asm` is shared with other demos — keep lib changes
+that grow `plot_set` / `line_xy` off the hot path. V2.6 does its
+colour-only repaint locally (vertex-toggle in `paint_turtle_*` was
+retired with option B; the lib stays pristine).
 
 ## Sources
 
-- `TMS_Logo.asm` — V1.8, 8 KB, frozen.
-- `TMS_Logo_16k.asm` — V2.6, active.
-- `apple1_logo.cfg` — V1.8 cassette / DRAM linker config.
-- `apple1_logo_16k.cfg` — V2.6 standalone DRAM config (CODE at
-  `$0280-$2FFF`, PROCBSS at `$3000-$3FFF`).
-- `apple1_logo_v2_codetank_bank.cfg` — V2.6 CodeTank ROM config (CODE
-  at `$4000-$7FFF`, PROCBSS at `$E000-$EFFF`).
-- `apple1_logo_codetank_bank.cfg` — legacy V1.8 CodeTank slot
-  (alongside Tetris).
-- `emit_TMS_Logo_txt.py` — V1.8 hex emit. The 16 KB build uses an
-  inline Python snippet in the Makefile.
-- Libs: `dev/lib/apple1/`, `dev/lib/m6502/`, `dev/lib/tms9918/`. The
-  `math.asm` and `tms9918m2.asm` modules are linked separately.
+- `TMS_Logo_16k.asm` — V2.6, active (the only source kept here; the
+  frozen 8 KB V1.8 `TMS_Logo.asm` was retired on migration into
+  `sketchs/`, its `software/Graphic TMS9918/TMS_Logo.{bin,txt}` remain).
+- `apple1_logo_codetank.cfg` — **the `.sketch.json` cfg.** CodeTank
+  run-in-place (CODE `$4000-$7FFF`, PROCBSS `$E000-$EFFF`); boots in the
+  DevBench 8 KB dual-bank + CodeTank profile at `4000R`.
+- `apple1_logo_16k.cfg` — 16 KB linear-DRAM standalone (CODE `$0280-$2FFF`,
+  PROCBSS `$3000-$3FFF`); for a real 16 KB Apple-1, **not** the bench.
+- `dev/projects/codetank/bank_cfgs/apple1_logo_v2_codetank_bank.cfg` —
+  V2.6 GAME1-ROM bank config (CODE `$4000-$7FFF`, PROCBSS `$E000-$EFFF`,
+  built with `-D CODETANK_BUILD`); lives with the cartridge composition layer.
+- `scroll_expressions_extract.asm` — generated `.byte` paste-fragment
+  (emote shape_table) from `tools/extract_scroll_expressions.py`.
+- Lib modules linked via `.sketch.json` `extraAsm`: `math.asm`,
+  `tms9918m2.asm`, `sprites_emotes.asm`, `text_bitmap.asm`, `bubble.asm`,
+  `buffer_editor.asm`, `sprite_helpers.asm`, `tms9918_pad.asm`.
 
 ## Author / License
 

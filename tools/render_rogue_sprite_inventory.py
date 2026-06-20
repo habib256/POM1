@@ -7,7 +7,7 @@ group as it appears in-game. Run after editing the PALETTE in
 tools/extract_quale_8x8_tiles.py to preview the result without booting
 POM1.
 
-Output: dev/projects/tms9918/game_rogue/sprite_inventory.png
+Output: sketchs/tms9918/game_rogue/sprite_inventory.png
 """
 from __future__ import annotations
 
@@ -18,7 +18,7 @@ from PIL import Image, ImageDraw, ImageFont
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 LIB_TMS = ROOT / "dev" / "lib" / "tms9918"
-PROJECT = ROOT / "dev" / "projects" / "tms9918_rogue"
+PROJECT = ROOT / "sketchs" / "tms9918" / "game_rogue"
 OUT_PNG = PROJECT / "sprite_inventory.png"
 
 # Well-known TMS9918 palette → RGB approximation.

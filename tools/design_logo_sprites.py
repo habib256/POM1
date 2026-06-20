@@ -33,7 +33,7 @@ from PIL import Image, ImageDraw, ImageFont
 
 
 REPO = pathlib.Path(__file__).resolve().parents[1]
-ASM = REPO / "dev" / "projects" / "tms9918_logo" / "TMS_Logo_16k.asm"
+ASM = REPO / "sketchs" / "tms9918" / "tool_logo" / "TMS_Logo_16k.asm"
 PREVIEW = REPO / "screenshots" / "logo_sprites_proposed.png"
 
 

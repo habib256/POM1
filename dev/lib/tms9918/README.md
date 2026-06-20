@@ -87,7 +87,7 @@ ln_x1, ln_y1, ln_dx, ln_dy, ln_sx, ln_sy, ln_err, ln_err_hi`
 ### Caller imports
 
 `tmp`, `tmp2` (1 ZP byte each) and `plot_mode` (1 BSS byte: 0 = OR,
-1 = XOR). See `dev/projects/tms9918/tool_logo/TMS_Logo.asm` for the
+1 = XOR). See `sketchs/tms9918/tool_logo/TMS_Logo_16k.asm` for the
 caller-side declaration template.
 
 ## Use

@@ -31,7 +31,7 @@ suitable for streaming verbatim into VRAM at $0000 via vdp_set_write
 + vdp_upload loop. Unused chars are padded with $00 bytes.
 
 Output:
-  dev/projects/tms9918/game_rogue/tileset_rogue.inc
+  sketchs/tms9918/game_rogue/tileset_rogue.inc
 
 Usage:
   python3 tools/extract_quale_8x8_tiles.py
@@ -44,7 +44,7 @@ import sys
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 LIB_TMS = ROOT / "dev" / "lib" / "tms9918"
-OUT_INC = ROOT / "dev" / "projects" / "tms9918_rogue" / "tileset_rogue.inc"
+OUT_INC = ROOT / "sketchs" / "tms9918" / "game_rogue" / "tileset_rogue.inc"
 FONT_ASM = LIB_TMS / "font_quale.asm"
 
 
