@@ -140,6 +140,10 @@ void CodeBench::render(const char* title, bool* open)
         editor_->SetText(data);
         editor_->SetErrorMarkers({}); errorLines_.clear();
         loadedPath_ = path;
+        // Tell the host which file is now active BEFORE inferring/applying the
+        // target — the inference may depend on the path (e.g. a card-agnostic
+        // "portable" sketch keeps the current preset instead of switching).
+        host_->setActiveSourcePath(path);
         const int inferredTarget = host_->targetForPath(path);
         if (inferredTarget >= 0 && inferredTarget < static_cast<int>(targets.size())) {
             targetIndex_ = inferredTarget;

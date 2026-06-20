@@ -1190,6 +1190,20 @@ static bool sourcePathLooksGT6144(const std::string& path)
            p.find("graphic gt-6144") != std::string::npos;
 }
 
+// A "portable" sketch lives under sketchs/portable/ — it draws through the
+// card-neutral gfx façade and builds for either graphics card. Opening one must
+// NOT yank the user off their current preset: it follows whatever card is live
+// (TMS by default on a bare Apple-1). See targetForPath / onTargetSelected.
+static bool sourcePathLooksPortable(const std::string& path)
+{
+    std::string p = path;
+    std::replace(p.begin(), p.end(), '\\', '/');
+    std::transform(p.begin(), p.end(), p.begin(),
+                   [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+    return p.find("/sketchs/portable/") != std::string::npos ||
+           p.find("/portable/") != std::string::npos;
+}
+
 int Pom1BenchHost::targetForPath(const std::string& path) const
 {
     namespace fs = std::filesystem;
@@ -1215,7 +1229,15 @@ int Pom1BenchHost::targetForPath(const std::string& path) const
                       p.find("/hgr") != std::string::npos ||
                       p.find("graphic hgr") != std::string::npos;
 
-    const int machine = tms ? 1 : gen2 ? 2 : 0;        // default = Apple-1
+    // Portable (card-agnostic) sketch: don't impose a card — follow the one
+    // that's already live so the build links the matching backend and the
+    // current preset is left alone. A bare Apple-1 (no graphics card) gets TMS.
+    // sourcePathLooksPortable wins over the tms/gen2 path hints below.
+    int machine;
+    if (sourcePathLooksPortable(p))
+        machine = (mw_ && mw_->graphicsCardEnabled) ? 2 : 1;   // GEN2 if live, else TMS
+    else
+        machine = tms ? 1 : gen2 ? 2 : 0;                      // default = Apple-1
     return (cMode ? 3 : 0) + machine;                  // kP1Targets language-major order
 }
 
@@ -1233,14 +1255,25 @@ void Pom1BenchHost::onTargetSelected(int target)
 {
     if (target < 0 || target >= kP1TargetCount) return;
     const P1T& t = kP1Targets[p1(target)];
-    if (t.preset >= 0 && t.preset != mw_->activePresetIndex) {
-        // The bench is driving the preset change here — the user already picked
-        // a target (which sets the bench's own sketch). Do not let the DevBench
-        // preset auto-load overwrite that with the asm starter.
-        mw_->suppressDevBenchAutoload = true;
-        mw_->applyMachineConfig(t.preset);
-        mw_->suppressDevBenchAutoload = false;
+    if (t.preset < 0 || t.preset == mw_->activePresetIndex) return;
+
+    // Portable (card-agnostic) sketch: keep the user's CURRENT preset whenever
+    // it already provides the target's graphics card (t.preset 2 = GEN2 HGR,
+    // 1 = TMS9918). Only fall through to a preset switch when the live machine
+    // lacks the card — e.g. a bare Apple-1, which targetForPath routes to TMS.
+    if (sourcePathLooksPortable(activeSourcePath_)) {
+        const bool haveCard = (t.preset == 2) ? mw_->graphicsCardEnabled
+                            : (t.preset == 1) ? mw_->tms9918Enabled
+                            : true;
+        if (haveCard) return;
     }
+
+    // The bench is driving the preset change here — the user already picked a
+    // target (which sets the bench's own sketch). Do not let the DevBench preset
+    // auto-load overwrite that with the asm starter.
+    mw_->suppressDevBenchAutoload = true;
+    mw_->applyMachineConfig(t.preset);
+    mw_->suppressDevBenchAutoload = false;
 }
 
 bench::ExampleLoad Pom1BenchHost::loadExample(int i)
