@@ -8,20 +8,21 @@
  * card — only the one-time card bring-up is #ifdef'd, because powering up a video
  * card is inherently card-specific (Parmigiani's "one board at a time").
  *
- * Build (see Makefile): -DCARD_GEN2 links gfx-gen2.lib + the gen2c runtime;
- * the default (TMS) links gfx-tms.lib + the tms9918c runtime. The cell glyph
- * backend is chosen entirely at link time — no source change, no dispatch.
+ * The card is selected by a compile-time define the POM1 Bench (and the Makefile)
+ * set per target: POM1_GFX_GEN2 for the GEN2 HGR (C) target, POM1_GFX_TMS for
+ * the TMS9918 (C) target. The cell-glyph backend is then chosen at link time —
+ * no source change, no runtime dispatch.
  */
 #include "gfx.h"
 
-#ifdef CARD_GEN2
+#if defined(POM1_GFX_GEN2)
 #include "gen2.h"
 static void card_init(void)
 {
     gen2_hgr_init();
     gen2_hgr_clear(0u);
 }
-#else
+#elif defined(POM1_GFX_TMS)
 #include "tms9918.h"
 #include "screen2.h"
 static void card_init(void)
@@ -31,6 +32,8 @@ static void card_init(void)
     screen2_init_bitmap(FG_BG(COLOR_WHITE, COLOR_BLACK));
     screen2_plot_mode = PLOT_MODE_SET;
 }
+#else
+#error "Define POM1_GFX_GEN2 or POM1_GFX_TMS (the POM1 Bench / Makefile set it per card)."
 #endif
 
 void main(void)

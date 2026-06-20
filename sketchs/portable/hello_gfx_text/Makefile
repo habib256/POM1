@@ -39,7 +39,7 @@ gen2: $(PROJECT)_gen2.bin
 $(GFX)/gfx-gen2.lib:
 	$(MAKE) -C $(GFX) gen2
 $(PROJECT)_gen2.bin: $(PROJECT).c $(GFX)/gfx-gen2.lib $(GEN2CFG)
-	$(CL65) $(CFLAGS) -DCARD_GEN2 -C $(GEN2CFG) \
+	$(CL65) $(CFLAGS) -DPOM1_GFX_GEN2 -C $(GEN2CFG) \
 	    $(GEN2C_INCS) $(APPLE1C_INCS) -I $(GFX) \
 	    $(PROJECT).c $(GEN2C_ALL_SRCS) $(APPLE1C_SRCS) $(GFX)/gfx-gen2.lib -o $@
 	@ls -l $@
@@ -49,7 +49,7 @@ tms: $(PROJECT)_tms.bin
 $(GFX)/gfx-tms.lib:
 	$(MAKE) -C $(GFX) tms
 $(PROJECT)_tms.bin: $(PROJECT).c $(GFX)/gfx-tms.lib $(TMSCFG)
-	$(CL65) $(CFLAGS) -C $(TMSCFG) \
+	$(CL65) $(CFLAGS) -DPOM1_GFX_TMS -C $(TMSCFG) \
 	    $(TMS9918C_INCS) -I $(GFX) \
 	    $(PROJECT).c $(TMS9918C_ALL_SRCS) $(GFX)/gfx-tms.lib -o $@
 	@ls -l $@

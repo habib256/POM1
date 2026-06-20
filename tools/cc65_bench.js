@@ -70,6 +70,7 @@
 
       async function compileC(name, data) {
         const argv = ['-t', 'none', '-O'];
+        for (const d of (opts.defines || [])) argv.push('-D', d);
         for (const d of incDirs) argv.push('-I', d);
         const sName = '/' + name.replace(/\.c$/, '.s');
         argv.push('-o', sName, '/' + name);

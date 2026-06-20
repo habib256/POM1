@@ -749,7 +749,9 @@ static std::string tms9918cBenchRuntimeCl65Args(const std::string& lib, const st
     if (!gfxLib.empty()) {
         s += qf(gfxLib, "gfx_line.c") + qf(gfxLib, "gfx_rect.c") + qf(gfxLib, "gfx_circle.c") +
              qf(gfxLib, "gfx_ellipse.c") + qf(gfxLib, "gfx_num_dec.c") + qf(gfxLib, "gfx_num_hex.c") +
-             qf(gfxLib, "gfx_backend_tms.c") + qf(gfxLib, "gfx_backend_tms_rect.c");
+             qf(gfxLib, "gfx_text.c") +
+             qf(gfxLib, "gfx_backend_tms.c") + qf(gfxLib, "gfx_backend_tms_rect.c") +
+             qf(gfxLib, "gfx_text_backend_tms.c");
     }
     return s;
 }
@@ -775,7 +777,7 @@ static std::string jsonQuoted(const std::string& s)
 static std::string wasmTms9918cBuildSpec(const std::vector<std::string>& extraAsmAbs)
 {
     std::ostringstream spec;
-    spec << R"({"cfg":"/dev/lib/tms9918c/cc65/codetank_c.cfg","incDirs":["/dev/lib/tms9918c","/dev/lib/gfx"],)"
+    spec << R"({"cfg":"/dev/lib/tms9918c/cc65/codetank_c.cfg","defines":["POM1_GFX_TMS"],"incDirs":["/dev/lib/tms9918c","/dev/lib/gfx"],)"
          << R"("cSources":[{"path":"/dev/lib/tms9918c/apple1.c","name":"apple1.c"},)"
          << R"({"path":"/dev/lib/tms9918c/tms9918.c","name":"tms9918.c"},)"
          << R"({"path":"/dev/lib/tms9918c/screen1.c","name":"screen1.c"},)"
@@ -797,8 +799,10 @@ static std::string wasmTms9918cBuildSpec(const std::vector<std::string>& extraAs
          << R"({"path":"/dev/lib/gfx/gfx_ellipse.c","name":"gfx_ellipse.c"},)"
          << R"({"path":"/dev/lib/gfx/gfx_num_dec.c","name":"gfx_num_dec.c"},)"
          << R"({"path":"/dev/lib/gfx/gfx_num_hex.c","name":"gfx_num_hex.c"},)"
+         << R"({"path":"/dev/lib/gfx/gfx_text.c","name":"gfx_text.c"},)"
          << R"({"path":"/dev/lib/gfx/gfx_backend_tms.c","name":"gfx_backend_tms.c"},)"
-         << R"({"path":"/dev/lib/gfx/gfx_backend_tms_rect.c","name":"gfx_backend_tms_rect.c"}],)"
+         << R"({"path":"/dev/lib/gfx/gfx_backend_tms_rect.c","name":"gfx_backend_tms_rect.c"},)"
+         << R"({"path":"/dev/lib/gfx/gfx_text_backend_tms.c","name":"gfx_text_backend_tms.c"}],)"
          << R"("asmSources":[{"path":"/dev/lib/tms9918c/apple1_asm.s","name":"apple1_asm.s"},)"
          << R"({"path":"/dev/lib/tms9918c/tms_fast.s","name":"tms_fast.s"})";
     for (const std::string& ea : extraAsmAbs) {
@@ -1408,7 +1412,7 @@ bench::BuildResult Pom1BenchHost::build(int target, const std::string& src, cons
             // forwards to the card-neutral gfx layer (Axis 1), so its sources
             // ride along — matching the desktop GEN2 C Bench command.
             cfg  = "/dev/cc65/apple1_gen2_c.cfg";
-            spec = R"({"cfg":"/dev/cc65/apple1_gen2_c.cfg","incDirs":["/dev/lib/gen2c","/dev/lib/apple1c","/dev/lib/gfx"],)"
+            spec = R"({"cfg":"/dev/cc65/apple1_gen2_c.cfg","defines":["POM1_GFX_GEN2"],"incDirs":["/dev/lib/gen2c","/dev/lib/apple1c","/dev/lib/gfx"],)"
                    R"("cSources":[{"path":"/dev/lib/gen2c/gen2_init.c","name":"gen2_init.c"},{"path":"/dev/lib/gen2c/gen2_pixel.c","name":"gen2_pixel.c"},)"
                    R"({"path":"/dev/lib/gen2c/gen2_rect.c","name":"gen2_rect.c"},{"path":"/dev/lib/gen2c/gen2_text.c","name":"gen2_text.c"},)"
                    R"({"path":"/dev/lib/gen2c/gen2_sprites.c","name":"gen2_sprites.c"},{"path":"/dev/lib/gen2c/gen2_geom.c","name":"gen2_geom.c"},)"
@@ -1416,7 +1420,9 @@ bench::BuildResult Pom1BenchHost::build(int target, const std::string& src, cons
                    R"({"path":"/dev/lib/gfx/gfx_line.c","name":"gfx_line.c"},{"path":"/dev/lib/gfx/gfx_rect.c","name":"gfx_rect.c"},)"
                    R"({"path":"/dev/lib/gfx/gfx_circle.c","name":"gfx_circle.c"},{"path":"/dev/lib/gfx/gfx_ellipse.c","name":"gfx_ellipse.c"},)"
                    R"({"path":"/dev/lib/gfx/gfx_num_dec.c","name":"gfx_num_dec.c"},{"path":"/dev/lib/gfx/gfx_num_hex.c","name":"gfx_num_hex.c"},)"
-                   R"({"path":"/dev/lib/gfx/gfx_backend_gen2.c","name":"gfx_backend_gen2.c"},{"path":"/dev/lib/gfx/gfx_backend_gen2_rect.c","name":"gfx_backend_gen2_rect.c"}],)"
+                   R"({"path":"/dev/lib/gfx/gfx_text.c","name":"gfx_text.c"},)"
+                   R"({"path":"/dev/lib/gfx/gfx_backend_gen2.c","name":"gfx_backend_gen2.c"},{"path":"/dev/lib/gfx/gfx_backend_gen2_rect.c","name":"gfx_backend_gen2_rect.c"},)"
+                   R"({"path":"/dev/lib/gfx/gfx_text_backend_gen2.c","name":"gfx_text_backend_gen2.c"}],)"
                    R"("asmSources":[{"path":"/dev/lib/gen2c/gen2_blit.s","name":"gen2_blit.s"},{"path":"/dev/lib/apple1c/apple1io_asm.s","name":"apple1io_asm.s"}]})";
         } else {   // "C" = TMS9918 CodeTank ROM
             cfg  = "/dev/lib/tms9918c/cc65/codetank_c.cfg";
@@ -1568,13 +1574,18 @@ bench::BuildResult Pom1BenchHost::build(int target, const std::string& src, cons
                       " " + bench::shellQuote(gfxLib_ + "/gfx_ellipse.c") +
                       " " + bench::shellQuote(gfxLib_ + "/gfx_num_dec.c") +
                       " " + bench::shellQuote(gfxLib_ + "/gfx_num_hex.c") +
+                      " " + bench::shellQuote(gfxLib_ + "/gfx_text.c") +
                       " " + bench::shellQuote(gfxLib_ + "/gfx_backend_gen2.c") +
-                      " " + bench::shellQuote(gfxLib_ + "/gfx_backend_gen2_rect.c");
+                      " " + bench::shellQuote(gfxLib_ + "/gfx_backend_gen2_rect.c") +
+                      " " + bench::shellQuote(gfxLib_ + "/gfx_text_backend_gen2.c");
             // The gen2c runtime is split into per-family modules so ld65 can
             // dead-strip per family; the Bench links the lot since a sketch may
             // call anything. Order is link-order irrelevant; kept stable for
             // readability.
-            cmd = bench::shellQuote(cl65_) + " -t none -Oirs -C " + bench::shellQuote(gen2Cfg_) +
+            // -DPOM1_GFX_GEN2: lets a card-agnostic ("portable") sketch pick the
+            // GEN2 bring-up with #if defined(POM1_GFX_GEN2) (the TMS target sets
+            // POM1_GFX_TMS) without the author passing -D by hand.
+            cmd = bench::shellQuote(cl65_) + " -t none -Oirs -DPOM1_GFX_GEN2 -C " + bench::shellQuote(gen2Cfg_) +
                 " -I " + bench::shellQuote(gen2cLib_) + a1c + gfx + tele + " " + bench::shellQuote(srcC.string()) +
                 " " + bench::shellQuote(gen2cLib_ + "/gen2_init.c") +
                 " " + bench::shellQuote(gen2cLib_ + "/gen2_pixel.c") +
@@ -1622,7 +1633,9 @@ bench::BuildResult Pom1BenchHost::build(int target, const std::string& src, cons
                 }
                 extraObjs += " " + bench::shellQuote(eo.string());
             }
-            cmd = bench::shellQuote(cl65_) + " -t none -Oirs -C " + bench::shellQuote(cfgUse) +
+            // -DPOM1_GFX_TMS: the TMS twin of the GEN2 target's define above, so
+            // a portable sketch selects the TMS bring-up at compile time.
+            cmd = bench::shellQuote(cl65_) + " -t none -Oirs -DPOM1_GFX_TMS -C " + bench::shellQuote(cfgUse) +
                 " -I " + bench::shellQuote(lib) + gfxInc + tele + " " + bench::shellQuote(srcC.string()) +
                 tms9918cBenchRuntimeCl65Args(lib, gfxLib_) + extraObjs +
                 " -o " + bench::shellQuote(binB.string());
