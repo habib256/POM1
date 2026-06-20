@@ -20,6 +20,7 @@
 #if POM1_IS_WASM
 #include <emscripten.h>
 #include <emscripten/html5.h>
+#include "imgui_internal.h"   // ImGuiWindow / GetCurrentContext() — live window extent for the canvas
 #endif
 
 namespace {
@@ -693,18 +694,25 @@ void MainWindow_ImGui::render()
             float sh = cell.y * Screen_ImGui::kApple1Rows * screen->scale + kApple1ImGuiWinPadH;
             wasmCanvasPixelW = (int)sw + kApple1GlfwExtraW;
             wasmCanvasPixelH = (int)std::ceil(sh + apple1LayoutVerticalChrome());
-            // Grow the canvas to fit the active preset's multi-window layout
-            // (Welcome + Cassette Deck on the POM1 default preset, etc.)
-            // so side panels are fully visible on first boot in the browser.
-            const int idx = (defaultPresetIndex >= 0 && defaultPresetIndex < kMachinePresetCount)
-                            ? defaultPresetIndex : (kMachinePresetCount - 1);
-            const ImVec2 extent = computePresetLayoutExtent(
-                kMachinePresets[idx], ImVec2(sw, sh));
-            const float rightPad  = 10.0f;
-            const float bottomPad = kStatusBarBandHeight + kApple1WindowDecorationSlop;
-            if (extent.x > 0.0f && extent.y > 0.0f) {
-                wasmCanvasPixelW = std::max(wasmCanvasPixelW, (int)std::ceil(extent.x + rightPad));
-                wasmCanvasPixelH = std::max(wasmCanvasPixelH, (int)std::ceil(extent.y + bottomPad));
+            // Grow the canvas to fit the ACTUAL ImGui desktop — the bounding box
+            // of every visible top-level window (the live, user-tuned ini layout,
+            // not the hard-coded preset default) — so the canvas matches the
+            // arrangement exactly (no clipping, no empty margin) and tracks the
+            // windows as they are moved/resized. This block runs at end-of-frame,
+            // so every window's Pos/Size is already settled.
+            ImVec2 live(0.0f, 0.0f);
+            const ImGuiContext& g = *ImGui::GetCurrentContext();
+            for (ImGuiWindow* w : g.Windows) {
+                if (!w->WasActive) continue;                     // hidden/closed this frame
+                if (w->Flags & (ImGuiWindowFlags_ChildWindow |   // children live inside parents
+                                ImGuiWindowFlags_Popup |         // transient — must not grow the canvas
+                                ImGuiWindowFlags_Tooltip)) continue;
+                live.x = ImMax(live.x, w->Pos.x + w->Size.x);
+                live.y = ImMax(live.y, w->Pos.y + w->Size.y);
+            }
+            if (live.x > 0.0f && live.y > 0.0f) {
+                wasmCanvasPixelW = std::max(wasmCanvasPixelW, (int)std::ceil(live.x + 8.0f));
+                wasmCanvasPixelH = std::max(wasmCanvasPixelH, (int)std::ceil(live.y + 8.0f));
             }
         }
         if (wasmCanvasPixelW < 320) {
