@@ -60,6 +60,7 @@ cp -R fonts     "$DATA_ROOT/fonts"
 cp -R software  "$DATA_ROOT/software"
 cp -R cassettes "$DATA_ROOT/cassettes"
 cp -R pic       "$DATA_ROOT/pic"
+cp -R ini_defaults "$DATA_ROOT/ini_defaults"  # curated per-preset layout baseline (found exe-relative)
 
 # sdcard + cfcard ship as *seeds* — the first-launch provisioner copies
 # them into ~/Library/Application Support/POM1/ and subsequent writes

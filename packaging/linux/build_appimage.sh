@@ -71,8 +71,10 @@ cp "${REPO_ROOT}/packaging/linux/POM1.desktop" "${APPDIR}/POM1.desktop"
 cp "${REPO_ROOT}/packaging/linux/hicolor/128x128/apps/POM1.png" "${APPDIR}/POM1.png"
 ln -sf POM1.png "${APPDIR}/.DirIcon"
 
-# Données embarquées : tout ce que les probes cwd-relatives cherchent.
-for d in roms fonts software pic cassettes sdcard cfcard; do
+# Données embarquées : tout ce que les probes cwd/exe-relatives cherchent.
+# ini_defaults/ = baseline des layouts par preset (résolu exe-relatif :
+# <exe>/../share/POM1/ini_defaults).
+for d in roms fonts software pic cassettes sdcard cfcard ini_defaults; do
     if [ -d "${REPO_ROOT}/${d}" ]; then
         cp -r "${REPO_ROOT}/${d}" "${RESOURCES}/${d}"
     fi

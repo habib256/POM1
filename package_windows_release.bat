@@ -190,6 +190,9 @@ xcopy /E /I /Q "pic" "%OUTDIR%\pic\" >nul || exit /b 1
 echo Copie roms\ ...
 xcopy /E /I /Q "roms" "%OUTDIR%\roms\" >nul || exit /b 1
 
+echo Copie ini_defaults\ ...
+xcopy /E /I /Q "ini_defaults" "%OUTDIR%\ini_defaults\" >nul || exit /b 1
+
 if exist "software\" (
     echo Copie software\ ...
     xcopy /E /I /Q "software" "%OUTDIR%\software\" >nul

@@ -12,6 +12,7 @@
 #include "POM1Build.h"
 #include "Logger.h"
 #include "CodeBench.h"   // codeBench_->loadStarterForTargetIfClean() in DevBench presets
+#include "ProcessUtil.h" // bench::executableDir() for exe-relative ini_defaults/
 
 #include "imgui.h"
 #include "imgui_internal.h"
@@ -1021,9 +1022,14 @@ std::string windowsPathForPreset(int idx)
     return std::string(buf);
 }
 
-/** Shipped under repo `ini_defaults/` (tracked in git). Used to seed preset 9
- *  (CodeTank) layout files so they match the reviewed snapshot; cwd may be
- *  repo root or `build/` (try ../ini_defaults/, etc.). */
+/** Shipped under repo `ini_defaults/` (tracked in git) — the curated factory
+ *  layout baseline for every preset on a fresh, config-less install. Resolved
+ *  cwd-relative first (dev: repo root or `build/`), then exe-relative so the
+ *  packaged builds find it regardless of working directory:
+ *    Windows   <exe>/ini_defaults/
+ *    macOS     <exe>/../Resources/ini_defaults/    (Contents/MacOS → Resources)
+ *    AppImage  <exe>/../share/POM1/ini_defaults/   (usr/bin → usr/share/POM1)
+ *  Mirrors the cc65 bundle resolution. */
 std::string findIniDefaultsFile(const char* basename)
 {
     namespace fs = std::filesystem;
@@ -1038,6 +1044,18 @@ std::string findIniDefaultsFile(const char* basename)
         const std::string p = std::string(pre) + basename;
         if (fs::is_regular_file(p, ec))
             return p;
+    }
+    const std::string exeDir = bench::executableDir();
+    if (!exeDir.empty()) {
+        const fs::path e(exeDir);
+        const fs::path cands[] = {
+            e / "ini_defaults" / basename,
+            e.parent_path() / "Resources" / "ini_defaults" / basename,
+            e.parent_path() / "share" / "POM1" / "ini_defaults" / basename,
+        };
+        for (const fs::path& c : cands)
+            if (fs::is_regular_file(c, ec))
+                return c.string();
     }
     return {};
 }
@@ -1431,8 +1449,9 @@ void MainWindow_ImGui::resetAllPresetLayouts()
 // For any index, when `ini_defaults/imgui_preset_NN.ini` and
 // `ini_defaults/preset_NN.size` ship under the tracked `ini_defaults/` dir,
 // those curated files are copied instead — they are the canonical factory
-// defaults (keep in sync with kMachinePresets[NN]). Currently shipped for the
-// DevBench presets 0-2 (CC65 / TMS9918 / GEN2 HGR) and preset 9 (CodeTank).
+// defaults (keep in sync with kMachinePresets[NN]). Shipped for all 13 presets
+// (0-12): the curated layouts under ini_defaults/ are the default baseline for
+// every profile on a fresh, config-less install.
 //
 // Called once at boot. Ensures the ini/ directory is fully populated even
 // before the user visits each preset, so that:
