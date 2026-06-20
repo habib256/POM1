@@ -1370,6 +1370,26 @@ void MainWindow_ImGui::resetActivePresetLayout()
     memoryBarLastGeomValid  = false;
     memoryBarHLastGeomValid = false;
 
+    // Curated factory layout: when ini_defaults/ ships a snapshot for this
+    // preset (DevBench 0-2, CodeTank 9), re-seed and load it so reset restores
+    // the FULL reviewed arrangement — every window's geometry, the open/closed
+    // set and the OS window size — rather than the sparse hard-coded
+    // kMachinePresets[].layout. loadPresetLayout's LoadIniSettingsFromDisk
+    // force-applies geometry to live windows and seeds late-materialised ones
+    // at creation, exactly like a normal preset switch.
+    char iniBase[48], sizeBase[48];
+    std::snprintf(iniBase, sizeof(iniBase), "imgui_preset_%02d.ini", idx);
+    std::snprintf(sizeBase, sizeof(sizeBase), "preset_%02d.size", idx);
+    copyIniDefaultsFileTo(sizeBase, sizePathForPreset(idx));  // OS window size sidecar
+    if (copyIniDefaultsFileTo(iniBase, iniPathForPreset(idx)) && loadPresetLayout(idx)) {
+        pendingLayout.clear();
+        layoutResetForceFrames = 0;             // ini already force-applied via ApplyAll
+        setStatusMessage("Window layout reset to factory default", 2.5f);
+        return;
+    }
+
+    // No curated seed — rebuild from the hard-coded layout table and force it
+    // onto live windows for a couple of frames.
     pendingLayout.clear();
     for (int i = 0; i < cfg.layoutCount; ++i) {
         const auto& p = cfg.layout[i];
