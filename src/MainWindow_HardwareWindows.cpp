@@ -909,6 +909,7 @@ void MainWindow_ImGui::renderTelemetryWindow()
             ImGui::TextDisabled(snap.awaitingAck ? "(parked)" : snap.lockstep ? "(armed)" : "(free)");
 
             // ---- Inbound injection (Serial Monitor → game) ----
+            ImGui::SeparatorText("Send");
             auto sendInput = [&]() {
                 std::vector<unsigned char> out;
                 if (telemetrySendHex) {
