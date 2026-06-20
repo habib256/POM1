@@ -55,6 +55,19 @@ void gen2_hgr_clear_pixrect(unsigned x, unsigned char y, unsigned char w, unsign
     gen2_pixrect(x, y, w, h, 0u);
 }
 
+/* Fill (set=1, white) or erase (set=0) a 6x6 block inside the 8x8 grid cell
+ * (cx, cy). One call: the cx*8 / cy*8 happen in asm (no cc65 aslax3 16-bit
+ * shift helper) and the pixrect clip is skipped (grid cells are always
+ * on-screen). For 8px-grid games (Snake, tiles) that draw one cell at a time. */
+void gen2_hgr_cell(unsigned char cx, unsigned char cy, unsigned char set)
+{
+    gen2_build_tables();
+    gen2_c_cx  = cx;
+    gen2_c_cy  = cy;
+    gen2_c_set = set;
+    gen2_cell_asm();
+}
+
 /* Map a GEN2_* colour constant onto the colorize carrier parameter block
  * (carrier bytes + palette high bit, verified against the GEN2 renderer):
  *   violet even=$55 odd=$2A hi=0 ; green even=$2A odd=$55 hi=0 ;

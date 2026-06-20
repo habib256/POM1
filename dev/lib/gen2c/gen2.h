@@ -140,6 +140,9 @@ unsigned char *gen2_hgr_row(unsigned char y);
  * (byte-aligned) or gen2_hgr_clear. */
 void gen2_hgr_fill_pixrect(unsigned x, unsigned char y, unsigned char w, unsigned char h);
 void gen2_hgr_clear_pixrect(unsigned x, unsigned char y, unsigned char w, unsigned char h);
+/* Fill (set=1) / erase (set=0) a 6x6 block in the 8x8 grid cell (cx, cy).
+ * cx*8/cy*8 done in asm, no clip — for 8px-grid games drawing one cell/call. */
+void gen2_hgr_cell(unsigned char cx, unsigned char cy, unsigned char set);
 
 /* Set a white pixel. x: 0..279, y: 0..191. Apple II interleaved HIRES layout. */
 void gen2_hgr_plot(unsigned x, unsigned char y);

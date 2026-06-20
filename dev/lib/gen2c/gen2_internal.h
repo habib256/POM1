@@ -35,6 +35,10 @@ extern unsigned gen2_r_x, gen2_r_xr;
 extern unsigned char gen2_r_y0, gen2_r_rows, gen2_r_mode;
 extern void gen2_pixrect_asm(void);
 
+/* gen2_hgr_cell parameter block (8x8-grid cell blitter, see gen2_rect.c). */
+extern unsigned char gen2_c_cx, gen2_c_cy, gen2_c_set;
+extern void gen2_cell_asm(void);
+
 extern unsigned char gen2_z_col0, gen2_z_ncols, gen2_z_y0, gen2_z_rows;
 extern unsigned char gen2_z_ce, gen2_z_co, gen2_z_hi;
 extern void gen2_colorize_asm(void);
@@ -71,6 +75,9 @@ extern void gen2_blit7_run(void);
 #pragma zpsym("gen2_r_y0")
 #pragma zpsym("gen2_r_rows")
 #pragma zpsym("gen2_r_mode")
+#pragma zpsym("gen2_c_cx")
+#pragma zpsym("gen2_c_cy")
+#pragma zpsym("gen2_c_set")
 #pragma zpsym("gen2_z_col0")
 #pragma zpsym("gen2_z_ncols")
 #pragma zpsym("gen2_z_y0")

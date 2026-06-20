@@ -112,18 +112,18 @@ static unsigned int prng(void)
     return rng_state;
 }
 
-/* Fill a BLOCK x BLOCK white square at cell (cx, cy) in ONE asm call
- * (gen2_hgr_fill_pixrect) instead of a 36-plot double loop — ~10x faster. */
+/* Fill / erase the 6x6 block of grid cell (cx, cy) in ONE asm call. gen2_hgr_cell
+ * is the dedicated 8x8-grid blitter: it does cx*8/cy*8 in asm (no cc65 aslax3)
+ * and skips the pixrect clip, so the per-tick head-draw + tail-erase shed the C
+ * wrapper glue. (8x8 cell / 6x6 block matches CELL=8, BLOCK=6.) */
 static void draw_cell(unsigned char cx, unsigned char cy)
 {
-    gen2_hgr_fill_pixrect((unsigned)cx * CELL, cy * (unsigned char)CELL, BLOCK, BLOCK);
+    gen2_hgr_cell(cx, cy, 1u);
 }
 
-/* Erase a cell — clears the BLOCK x BLOCK area (asm gen2_hgr_clear_pixrect) so
- * the snake's vacated tail goes without touching the walls or the rest. */
 static void erase_cell(unsigned char cx, unsigned char cy)
 {
-    gen2_hgr_clear_pixrect((unsigned)cx * CELL, cy * (unsigned char)CELL, BLOCK, BLOCK);
+    gen2_hgr_cell(cx, cy, 0u);
 }
 
 /* Draw the apple as a SOLID round RED disk. HIRES colour is a byte-pattern

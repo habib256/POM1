@@ -50,6 +50,7 @@
         .exportzp _gen2_f_y0, _gen2_f_rows, _gen2_f_col0, _gen2_f_cols, _gen2_f_val
         .exportzp _gen2_p_x, _gen2_p_y
         .exportzp _gen2_r_x, _gen2_r_xr, _gen2_r_y0, _gen2_r_rows, _gen2_r_mode
+        .exportzp _gen2_c_cx, _gen2_c_cy, _gen2_c_set
         .exportzp _gen2_z_col0, _gen2_z_ncols, _gen2_z_y0, _gen2_z_rows
         .exportzp _gen2_z_ce, _gen2_z_co, _gen2_z_hi
         .import   _gen2_rowlo, _gen2_rowhi, _gen2_col7, _gen2_mask7
@@ -80,6 +81,12 @@ _gen2_r_xr:    .res 2        ; right pixel x (0..279, clipped)
 _gen2_r_y0:    .res 1        ; top scanline
 _gen2_r_rows:  .res 1        ; number of scanlines (>= 1)
 _gen2_r_mode:  .res 1        ; 1 = fill (white), 0 = clear (black)
+; gen2_hgr_cell parameter block (8x8-grid cell blitter; the C wrapper stores
+; these bytes, then gen2_cell_asm derives the 6x6 pixel rect + falls into the
+; pixrect fill — no cc65 16-bit shift helper, no per-call clip).
+_gen2_c_cx:    .res 1        ; cell column (px = cx*8)
+_gen2_c_cy:    .res 1        ; cell row    (py = cy*8)
+_gen2_c_set:   .res 1        ; 1 = fill, 0 = clear
 ; gen2_colorize parameter block — recolour an already-drawn (white) glyph region
 ; to an NTSC artifact colour: each byte becomes (byte & carrier[col&1]) | hibit.
 _gen2_z_col0:  .res 1        ; first byte column of the text box
@@ -899,6 +906,42 @@ _gen2_unplot_asm:
         and (ptr1),y
         sta (ptr1),y
         rts
+
+; --- _gen2_cell_asm : fill/erase a 6x6 block inside an 8x8 grid cell ---------
+; The C wrapper (gen2_hgr_cell) stored cx/cy/set as bytes. Derive the pixel rect
+; (cx*8 .. cx*8+5, y=cy*8, 6 rows) directly with shifts — no cc65 aslax3 16-bit
+; helper — and FALL THROUGH into _gen2_pixrect_asm. No clip: grid cells are
+; always on-screen (cx<=34 -> xr<=277 ; cy<=23 -> y0+5<=189). gen2_hgr_cell()
+; builds the tables before calling, so the col7/mask7/row LUTs are ready.
+        .export   _gen2_cell_asm
+_gen2_cell_asm:
+        lda     _gen2_c_cx
+        sta     _gen2_r_x
+        lda     #0
+        sta     _gen2_r_x+1
+        asl     _gen2_r_x
+        rol     _gen2_r_x+1
+        asl     _gen2_r_x
+        rol     _gen2_r_x+1
+        asl     _gen2_r_x
+        rol     _gen2_r_x+1          ; gen2_r_x = cx*8
+        clc
+        lda     _gen2_r_x
+        adc     #5
+        sta     _gen2_r_xr
+        lda     _gen2_r_x+1
+        adc     #0
+        sta     _gen2_r_xr+1         ; gen2_r_xr = gen2_r_x + 5
+        lda     _gen2_c_cy
+        asl     a
+        asl     a
+        asl     a
+        sta     _gen2_r_y0           ; gen2_r_y0 = cy*8
+        lda     #6
+        sta     _gen2_r_rows         ; 6-row block
+        lda     _gen2_c_set
+        sta     _gen2_r_mode
+        ; fall through into _gen2_pixrect_asm
 
 ; --- _gen2_pixrect_asm : fill/erase a PIXEL rectangle ------------------------
 ; Derives the byte columns + edge masks for the rectangle [x..xr] from the
