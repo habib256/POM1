@@ -701,12 +701,20 @@ void MainWindow_ImGui::render()
             // windows as they are moved/resized. This block runs at end-of-frame,
             // so every window's Pos/Size is already settled.
             ImVec2 live(0.0f, 0.0f);
+            const ImVec2 disp = wasmIo.DisplaySize;
             const ImGuiContext& g = *ImGui::GetCurrentContext();
             for (ImGuiWindow* w : g.Windows) {
                 if (!w->WasActive) continue;                     // hidden/closed this frame
                 if (w->Flags & (ImGuiWindowFlags_ChildWindow |   // children live inside parents
                                 ImGuiWindowFlags_Popup |         // transient — must not grow the canvas
                                 ImGuiWindowFlags_Tooltip)) continue;
+                // CRITICAL: skip viewport-SPANNING chrome — the main menu bar and
+                // the status bar are full-width, so their right edge tracks the
+                // canvas; counting them would grow the canvas by the pad every
+                // frame (runaway → "bar extends to infinity"). Only sub-viewport
+                // content (the Apple-1 screen + floating panels) drives the size.
+                if (disp.x > 0.0f && w->Size.x >= disp.x - 1.0f) continue;
+                if (disp.y > 0.0f && w->Size.y >= disp.y - 1.0f) continue;
                 live.x = ImMax(live.x, w->Pos.x + w->Size.x);
                 live.y = ImMax(live.y, w->Pos.y + w->Size.y);
             }
@@ -714,6 +722,9 @@ void MainWindow_ImGui::render()
                 wasmCanvasPixelW = std::max(wasmCanvasPixelW, (int)std::ceil(live.x + 8.0f));
                 wasmCanvasPixelH = std::max(wasmCanvasPixelH, (int)std::ceil(live.y + 8.0f));
             }
+            // Hard safety cap: never let the canvas run away, whatever the layout.
+            wasmCanvasPixelW = std::min(wasmCanvasPixelW, 4096);
+            wasmCanvasPixelH = std::min(wasmCanvasPixelH, 4096);
         }
         if (wasmCanvasPixelW < 320) {
             wasmCanvasPixelW = 320;
