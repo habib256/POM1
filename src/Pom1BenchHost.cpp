@@ -519,6 +519,7 @@ struct AsmProjectCtx {
     std::filesystem::path dir;
     std::string cfg;                       // absolute linker .cfg
     std::vector<std::string> extraAsm;     // absolute EXTRA_ASM siblings
+    std::vector<std::string> defines;      // ca65 -D symbols (e.g. CODETANK_BUILD)
     bool dualBank = false;
     uint16_t loAddr = 0x0280, hiAddr = 0xE000, entryAddr = 0x0280;
 };
@@ -723,6 +724,12 @@ static AsmProjectCtx probeSketchProject(const std::string& sourcePath)
         const fs::path ep = resolveRepoRelativePath(p.dir, ea);
         if (!ep.empty()) p.extraAsm.push_back(ep.string());
     }
+
+    // Optional ca65 -D symbols (e.g. CODETANK_BUILD for the full TMS LOGO /
+    // CodeTank cartridge feature set). Applied to the main source AND every
+    // extraAsm module so gated lib code (.ifdef) compiles consistently.
+    for (const std::string& d : sketchJsonStringArray(json, "defines"))
+        if (!d.empty()) p.defines.push_back(d);
 
     // Dual-bank is defined by the linker cfg (MEMORY lines with file=%O.lo/hi).
     probeDualBankFromCfg(p.cfg, p);
@@ -1665,6 +1672,8 @@ bench::BuildResult Pom1BenchHost::build(int target, const std::string& src, cons
             logMeta.cfgPath = cfgPath;
             logMeta.proj = &proj;
             asmFlags += "-I " + bench::shellQuote(proj.dir.string()) + " ";
+            for (const std::string& d : proj.defines)
+                asmFlags += "-D " + bench::shellQuote(d) + " ";
             int n = 0;
             for (const std::string& ea : proj.extraAsm) {
                 const fs::path eo = dir / ("pom1_bench_x" + std::to_string(n++) + ".o");

@@ -1279,8 +1279,6 @@ constants: `HBLANK_LEN_TXT = 404`, `HBLANK_LEN_GFX = 312` ticks;
   tiles with 7 colours.
 - `sketchs/tms9918/game_galaga/TMS_Galaga.asm:2593-2600` — polling
   pattern commented in place.
-- `sketchs/tms9918/demo_clone/` — Mode II + R4 = 0 + sprite #31,
-  hap-style — fires the cloning algorithm (§15) without M1.
 
 ### 30. POM1 fidelity status table
 

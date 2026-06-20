@@ -12,14 +12,12 @@ ROMs. The actual games/demos they dispatch to are plain TMS9918 programs and
 live under [`../tms9918/`](../tms9918/) with their `*_codetank*.cfg` link
 variants — CodeTank just packages them.
 
-Each menu directory is named after the cartridge ROM it ships in
-(`Codetank_GAMEn.rom` / `Codetank_TEST.rom`):
+Each menu directory is named after the cartridge ROM it ships in:
 
 | Project             | ROM / role                                               |
 |---------------------|----------------------------------------------------------|
-| `game1_menu/`       | GAME1 lower-bank launcher ($4000-$40FF) → Galaga/Sokoban/Snake |
+| `game1_menu/`       | GAME1 **upper**-bank launcher ($4000-$40FF) → Galaga/Sokoban/Snake |
 | `game3_menu/`       | GAME3 upper-bank launcher → Life/Mandel/Plasma           |
-| `test_menu/`        | TEST upper-bank launcher → Clone/Split (silicon-bug demos) |
 | `bank_cfgs/`        | per-game ld65 **bank-layout** cfgs (`apple1_*_codetank_bank.cfg`) — pin each game at its fixed cartridge offset |
 
 The games/demos themselves are standalone DevBench programs under
@@ -37,6 +35,6 @@ by the lower/upper jumper:
 - **GAME2** — Rogue alone (lower) / Nyan (upper); jumper-selected, no menu.
 
 The cartridge ROMs (`roms/codetank/*.rom`) are assembled by
-**`tools/build_codetank_rom.py`** (`--rom=1|2|3|test`; GAME4 is frozen — see
-`CLAUDE.md`), which pulls these menus plus the TMS9918 cart sources and lands
-the result under `roms/codetank/`.
+**`tools/build_codetank_rom.py`** (`--rom=1|2|3`), which pulls these menus
+plus the TMS9918 cart sources and lands the result under `roms/codetank/`.
+(The TEST and GAME4/LightCorridor carts were retired June 2026.)

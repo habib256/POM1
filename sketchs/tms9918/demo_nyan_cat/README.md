@@ -30,29 +30,22 @@ exactly 1 536 output bytes per frame.
 
 1. Load **preset 9** (P-LAB Apple-1 with TMS9918 + CodeTank
    daughterboard) — TMS9918 is plugged by default, CodeTank too.
-2. Hardware → CodeTank → ROM Library → select **Codetank_Nyan.rom**
-   (it appears automatically because POM1 scans `roms/codetank/*.rom`
-   on startup).
-3. Hardware → CodeTank → Jumper → **Lower** (Nyan is in the lower
-   16 KB half; upper half is `$FF`-padded reserved space).
+2. Hardware → CodeTank → ROM Library → select **Codetank_GAME2.rom**
+   (Nyan is its upper-bank program).
+3. Hardware → CodeTank → Jumper → **Upper**.
 4. Wozmon `\` prompt → type `4000R`.
 5. Watch the cat bob and the rainbow scroll at ~20 fps.
 6. ESC returns to Wozmon.
 
-> Note: `Codetank_Nyan.rom` is **built locally** (see Build below) — only
-> `Codetank_GAME1..4.rom` + `Codetank_TEST.rom` ship pre-built. Nyan also
-> ships ready-to-run as **`Codetank_GAME2.rom`'s upper bank** (Jumper →
-> Upper, then `4000R`).
+> Or just open this sketch in DevBench and **Run**.
 
 ## Build
 
-    make             # → software/Graphic TMS9918/TMS_Nyan_CodeTank.bin (~7 KB)
-                     # → roms/codetank/Codetank_Nyan.rom (32 KB padded)
+Mono-source DevBench sketch (no Makefile). It ships in
+`Codetank_GAME2.rom`'s upper bank, assembled from `TMS_Nyan_CodeTank.asm`
++ `nyan_rle.asm` (with `tms9918_pad` auto-linked) by:
 
-The Makefile also runs `build_rom.py`, which pads the ≤16 KB linker
-output to 32 KB ($FF fill in the upper half) and drops it into
-`roms/codetank/`. POM1's CodeTank Library scanner picks it up on
-the next launch.
+    python3 tools/build_codetank_rom.py --rom=2
 
 ## Why it fits when the Fantasy variant ships 19 KB raw
 
@@ -75,23 +68,20 @@ Same data — the RLE compression pays for itself entirely:
     Host Apple-1:
       $0000-$007F  Zero page (~80 B)
       $0100-$01FF  6502 stack
-    CodeTank ROM (lower half of 28c256 EEPROM):
+    CodeTank ROM (GAME2 upper half of the 28c256 EEPROM):
       $4000-$7FFF  CODE — code (~700 B) + nyan_rle.asm (~6.8 KB)
                           + lib/tms9918_pad (~50 B)
 
-Upper 16 KB of the ROM image is `$FF`-padded — operators flipping the
-jumper to "Upper" will see a blank screen (no code there). They flip
-back to "Lower" to recover.
+Nyan runs in place from $4000 regardless of which physical half holds it;
+in `Codetank_GAME2.rom` it is the **upper** bank (lower bank = Rogue).
 
 ## Sources
 
 - `TMS_Nyan_CodeTank.asm` — Mode III init + RLE decoder + animation loop
 - `nyan_rle.asm` — auto-generated 12-frame compressed stream
 - `apple1_nyan_codetank.cfg` — ld65 config (CODE at $4000, 16 KB)
-- `build_rom.py` — pad the linker output to a 32 KB CodeTank ROM
-- Output: `../../../../software/Graphic TMS9918/TMS_Nyan_CodeTank.bin` (raw 7 KB)
-          `../../../../roms/codetank/Codetank_Nyan.rom` (32 KB ROM image)
-          `../../../../roms/codetank/Codetank_Nyan.txt` (Library blurb)
+- `.sketch.json` — DevBench metadata (cfg + extraAsm `nyan_rle.asm` + `tms9918_pad.asm`)
+- Output: shipped as `Codetank_GAME2.rom`'s upper bank (via `build_codetank_rom.py --rom=2`)
 
 ## Author / License
 

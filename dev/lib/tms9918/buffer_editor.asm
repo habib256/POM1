@@ -59,6 +59,8 @@
 .import   text_blit_glyph
 .import   line_xy, clear_bitmap, disable_sprites
 .import   line_buf
+.import   wait_key               ; lib/apple1/kbd.asm — the consumer .includes
+                                 ; kbd.asm and .exports it (see Chess.asm pattern)
 .importzp line_idx
 .importzp shape_pat_lo, shape_pat_hi
 .importzp pix_x, pix_y
@@ -90,7 +92,7 @@ bufed_run:
 @redraw:
         JSR ed_draw
 @key_loop:
-        JSR ed_wait_key            ; A = ASCII (no echo)
+        JSR wait_key            ; A = ASCII (no echo)
         CMP #$1B                   ; ESC -> save & exit
         BEQ @exit
         CMP #'Q'                   ; Q = save & exit
@@ -135,10 +137,6 @@ bufed_run:
 @exit:
         RTS
 
-; ed_wait_key is now an alias for lib/apple1/kbd.asm:wait_key (same routine,
-; bit 7 stripped, X/Y preserved). The consumer (.asm) MUST .include "kbd.asm"
-; for the symbol to resolve.
-ed_wait_key := wait_key
 
 ; ============================================================================
 ; ed_draw: full-screen redraw. Clears bitmap, disables sprite, blits
@@ -411,7 +409,7 @@ ed_replace_line:
         LDA #8
         STA pix_x
 @in_loop:
-        JSR ed_wait_key
+        JSR wait_key
         CMP #$0D
         BEQ @commit
         CMP #$1B

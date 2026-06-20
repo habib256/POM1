@@ -12,18 +12,20 @@ three modules together (TMS_Logo[_16k] + math + tms9918m2).
 
 Two builds ship side-by-side:
 
-| Build | Linker config | Target |
-|-------|---------------|--------|
-| **DevBench / CodeTank run-in-place** | `apple1_logo_codetank.cfg` (`$4000-$7FFF` + PROC `$E000`) | the `.sketch.json` cfg — fits the in-app 8 KB dual-bank + CodeTank profile, entry `4000R` |
-| **16 KB linear-DRAM standalone** | `apple1_logo_16k.cfg` (CODE `$0280`, PROC `$3000`) | a **real** 16 KB Apple-1 only (needs `$0280-$3FFF` contiguous RAM — not the 8 KB bench) |
-| **GAME1 cartridge ROM** | `dev/projects/codetank/bank_cfgs/apple1_logo_v2_codetank_bank.cfg` + `-D CODETANK_BUILD` | upper bank of `Codetank_GAME1.rom`, full feature superset |
+| Build | Linker config | `CODETANK_BUILD` | Target |
+|-------|---------------|:---:|--------|
+| **DevBench / CodeTank run-in-place** | `apple1_logo_codetank.cfg` (`$4000-$7FFF` + PROC `$E000`) | ✅ (via `.sketch.json` `defines`) | the `.sketch.json` cfg — **full** feature set, fits the in-app 8 KB dual-bank + CodeTank profile, entry `4000R` |
+| **GAME1 cartridge ROM** | `dev/projects/codetank/bank_cfgs/apple1_logo_v2_codetank_bank.cfg` | ✅ (`build_codetank_rom.py`) | upper bank of `Codetank_GAME1.rom` |
+| **16 KB linear-DRAM standalone** | `apple1_logo_16k.cfg` (CODE `$0280`, PROC `$3000`) | ❌ | a **real** 16 KB Apple-1 only (core interpreter, no editor; needs `$0280-$3FFF` contiguous RAM — not the 8 KB bench) |
 
-All three link `TMS_Logo_16k.asm` (V2.6). The DevBench / standalone
-builds compile **without** `CODETANK_BUILD`: the core turtle/REPL
-interpreter (text via WozMon `ECHO`, turtle graphics via the bitmap)
-runs and fits; the `CODETANK_BUILD` extras (on-bitmap `text_bitmap`/SAY,
-speech bubbles, the buffer editor) are the cartridge-only superset baked
-into the GAME1 ROM by `build_codetank_rom.py`.
+All three link `TMS_Logo_16k.asm` (V2.6). DevBench builds the **full**
+cartridge feature set: `.sketch.json` carries `"defines":
+["CODETANK_BUILD"]`, which the bench passes to `ca65` for the main source
+and every `extraAsm` module — so the on-bitmap `text_bitmap`/SAY, speech
+bubbles, and the buffer editor are all present, exactly like the GAME1
+ROM. The lib `buffer_editor.asm` `.import`s `wait_key` and this sketch
+`.export`s it from its `.include "kbd.asm"` (the Chess.asm separate-object
+pattern) so the editor links as its own module.
 
 > **Why not `apple1_logo_16k.cfg` in DevBench?** That `$0280` build needs
 > 16 KB of contiguous linear DRAM; the bench's TMS9918 profile is an 8 KB
@@ -65,10 +67,14 @@ anything that ends up in the V2.6 ROM.
 ## Run
 
 1. POM1 → Presets → **9** (TMS9918 + CodeTank).
-2. **DRAM build (V2.6 standalone)**: File → Load →
-   `software/Graphic TMS9918/TMS_Logo_16k.txt`, then `280R` from Wozmon.
+2. **DevBench**: open this sketch and Run — it builds with
+   `apple1_logo_codetank.cfg`, flashes the CodeTank window, and boots at
+   `4000R`.
 3. **CodeTank ROM (V2.6)**: jumper Upper → `4000R`. Lower jumper boots
    the games menu instead.
+4. **16 KB linear-DRAM Apple-1 only**: Load
+   `software/Graphic TMS9918/TMS_Logo_16k.txt`, then `280R` (needs a real
+   16 KB machine, not the 8 KB bench).
 
 ## Language summary (V2.6)
 

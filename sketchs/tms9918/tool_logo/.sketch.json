@@ -2,6 +2,7 @@
   "profile": "tms9918",
   "language": "asm",
   "cfg": "sketchs/tms9918/tool_logo/apple1_logo_codetank.cfg",
+  "defines": ["CODETANK_BUILD"],
   "extraAsm": [
     "dev/lib/m6502/math.asm",
     "dev/lib/tms9918/tms9918m2.asm",

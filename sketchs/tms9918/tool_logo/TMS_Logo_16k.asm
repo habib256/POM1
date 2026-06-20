@@ -78,6 +78,9 @@
         jmp main
 
 .include "kbd.asm"              ; lib/apple1/kbd.asm: wait_key + poll_key
+.ifdef CODETANK_BUILD
+.export wait_key                ; resolve buffer_editor.o's .import (Chess.asm pattern)
+.endif
 
 ; --- Imports from sibling modules -----------------------------------------
 ;
