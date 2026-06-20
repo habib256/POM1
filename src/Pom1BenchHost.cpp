@@ -787,7 +787,7 @@ static std::string jsonQuoted(const std::string& s)
 static std::string wasmTms9918cBuildSpec(const std::vector<std::string>& extraAsmAbs)
 {
     std::ostringstream spec;
-    spec << R"({"cfg":"/dev/lib/tms9918c/cc65/codetank_c.cfg","defines":["POM1_GFX_TMS"],"incDirs":["/dev/lib/tms9918c","/dev/lib/gfx"],)"
+    spec << R"({"cfg":"/dev/lib/tms9918c/cc65/codetank_c.cfg","defines":["POM1_GFX_TMS"],"incDirs":["/dev/lib/tms9918c","/dev/lib/gfx","/dev/lib/telemetry"],)"
          << R"("cSources":[{"path":"/dev/lib/tms9918c/apple1.c","name":"apple1.c"},)"
          << R"({"path":"/dev/lib/tms9918c/tms9918.c","name":"tms9918.c"},)"
          << R"({"path":"/dev/lib/tms9918c/screen1.c","name":"screen1.c"},)"
@@ -1413,7 +1413,7 @@ bench::BuildResult Pom1BenchHost::build(int target, const std::string& src, cons
         std::string cfg, spec;
         if (cfgTag == "C-plain") {
             cfg  = "/dev/cc65/apple1_c.cfg";
-            spec = R"({"cfg":"/dev/cc65/apple1_c.cfg","incDirs":["/dev/lib/apple1c"],)"
+            spec = R"({"cfg":"/dev/cc65/apple1_c.cfg","incDirs":["/dev/lib/apple1c","/dev/lib/telemetry"],)"
                    R"("cSources":[{"path":"/dev/lib/apple1c/apple1io.c","name":"apple1io.c"}],)"
                    R"("asmSources":[{"path":"/dev/lib/apple1c/apple1io_asm.s","name":"apple1io_asm.s"}]})";
         } else if (cfgTag == "C-gen2") {
@@ -1423,7 +1423,7 @@ bench::BuildResult Pom1BenchHost::build(int target, const std::string& src, cons
             // forwards to the card-neutral gfx layer (Axis 1), so its sources
             // ride along — matching the desktop GEN2 C Bench command.
             cfg  = "/dev/cc65/apple1_gen2_c.cfg";
-            spec = R"({"cfg":"/dev/cc65/apple1_gen2_c.cfg","defines":["POM1_GFX_GEN2"],"incDirs":["/dev/lib/gen2c","/dev/lib/apple1c","/dev/lib/gfx"],)"
+            spec = R"({"cfg":"/dev/cc65/apple1_gen2_c.cfg","defines":["POM1_GFX_GEN2"],"incDirs":["/dev/lib/gen2c","/dev/lib/apple1c","/dev/lib/gfx","/dev/lib/telemetry"],)"
                    R"("cSources":[{"path":"/dev/lib/gen2c/gen2_init.c","name":"gen2_init.c"},{"path":"/dev/lib/gen2c/gen2_pixel.c","name":"gen2_pixel.c"},)"
                    R"({"path":"/dev/lib/gen2c/gen2_rect.c","name":"gen2_rect.c"},{"path":"/dev/lib/gen2c/gen2_text.c","name":"gen2_text.c"},)"
                    R"({"path":"/dev/lib/gen2c/gen2_sprites.c","name":"gen2_sprites.c"},{"path":"/dev/lib/gen2c/gen2_geom.c","name":"gen2_geom.c"},)"
@@ -1518,14 +1518,23 @@ bench::BuildResult Pom1BenchHost::build(int target, const std::string& src, cons
             var spec = JSON.parse(UTF8ToString($1));
             var FS = Module.FS;
             var incDirs = [];
-            try {
-                for (var n of FS.readdir('/dev/lib')) {
+            // RECURSIVE walk of /dev/lib — mirror the desktop libFlags_ so nested
+            // lib dirs (games/chess, games/sokoban, games/rogue, gen2/sprites,
+            // tms9918c, ...) are on the ca65 -I search path. A shallow readdir
+            // (first level only) made every sketch that .include's a nested
+            // common/sprite file fail to assemble in the browser.
+            var walk = function (dir) {
+                var ents;
+                try { ents = FS.readdir(dir); } catch (e) { return; }
+                incDirs.push(dir);
+                for (var i = 0; i < ents.length; i++) {
+                    var n = ents[i];
                     if (n === '.' || n === '..') continue;
-                    var p = '/dev/lib/' + n;
-                    if (FS.isDir(FS.stat(p).mode)) incDirs.push(p);
+                    var p = dir + '/' + n;
+                    try { if (FS.isDir(FS.stat(p).mode)) walk(p); } catch (e) {}
                 }
-            } catch (e) {}
-            incDirs.push('/dev/lib/tms9918c');
+            };
+            walk('/dev/lib');
             if (spec.sketchDir) incDirs.push(spec.sketchDir);
             Module.__benchJob = ({ state: 'running', code: -1 });
             window.POM1cc65.buildAsm(src, ({ cfg: spec.cfg, incDirs: incDirs, asmSources: spec.asmSources || [], defines: spec.defines || [] }))
