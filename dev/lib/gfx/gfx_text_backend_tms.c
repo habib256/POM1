@@ -23,14 +23,24 @@
 const unsigned char gfx_text_cols = 32u;   /* 256 / 8 */
 const unsigned char gfx_text_rows = 24u;   /* 192 / 8 */
 
-static unsigned char s_color = FG_BG(COLOR_WHITE, COLOR_BLACK);
+/* 0 = GFX_TEXT_DEFAULT (white-on-black), resolved at DRAW time. Deliberately a
+ * ZERO initial value: a CodeTank ROM target (apple1-videocard-lib cfg) does not
+ * copy the .data segment, so a non-zero static initializer here would arrive as
+ * garbage and the text would render in an invisible colour. .bss IS zeroed by
+ * crt0, so a 0 default is the only value we can trust without the caller first
+ * calling gfx_cell_color(). */
+static unsigned char s_color = 0u;
 
 void gfx_cell_color(unsigned char color)
 {
-    s_color = color ? color : (unsigned char)FG_BG(COLOR_WHITE, COLOR_BLACK);
+    s_color = color;
 }
 
 void gfx_cell_glyph(char ch, unsigned char col, unsigned char row)
 {
-    screen2_putc((unsigned char)ch, col, row, s_color);
+    /* Materialise the default as a runtime literal (not a .data static) so it is
+     * correct even when .data was not initialised — see s_color above. */
+    const unsigned char col_attr =
+        s_color ? s_color : (unsigned char)FG_BG(COLOR_WHITE, COLOR_BLACK);
+    screen2_putc((unsigned char)ch, col, row, col_attr);
 }
