@@ -87,5 +87,7 @@ dev/_template_*/*.bin
 dev/projects/**/*.bin
 # Redundant flat binaries under software/ — the Wozmon .txt is the canonical form
 software/**/*.bin
+# Exception: SID tunes ship only as .bin (no .txt twin), so keep them tracked
+!software/SOUND SID/**/*.bin
 # DevBench scratch CodeTank ROM — regenerated into roms/codetank/ on TMS9918 upload
 roms/codetank/CODETANKDEV.rom
