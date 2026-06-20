@@ -64,12 +64,16 @@
 #define DIR_LEFT  3
 #define DIR_RIGHT 4
 
-/* Snake body as parallel ring-buffer arrays of cell coordinates. Index 0..len-1
- * are live segments; segment 0 is the head. We rebuild the body each move by
- * shifting, which is trivial at MAXLEN<=96 and keeps the code obvious. */
+/* Snake body as a TRUE circular ring buffer of cell coordinates. `head` is the
+ * array index of segment 0 (the head); `tail` the index of the last segment.
+ * Live segments walk FORWARD tail -> head (wrapping at MAXLEN). Moving the snake
+ * is O(1): write the new head one slot past `head`, then advance `tail` to drop
+ * the old tail (unless we grew) — no per-segment shift (was O(length)/tick). */
 static unsigned char sx[MAXLEN];   /* body cell columns */
 static unsigned char sy[MAXLEN];   /* body cell rows    */
 static unsigned char slen;         /* current length    */
+static unsigned char head;         /* array index of the head segment       */
+static unsigned char tail;         /* array index of the tail segment       */
 static unsigned char dir;          /* current heading   */
 static unsigned char pending;      /* queued heading (applied next tick) */
 static unsigned char alive;        /* 1 = playing, 0 = dead */
@@ -169,17 +173,28 @@ static void draw_border(void)
  * the score HUD above the top wall, and the snake body). The playable rows are
  * TOP_WALL+1 .. ROWS-2 — same bounds the wall-collision test enforces — so food
  * can never land in the HUD strip above the top wall. */
+/* Is cell (cx,cy) on the snake body? skip_tail=1 ignores the tail segment (the
+ * self-collision case: the tail vacates this tick unless we grow). Walks the
+ * ring tail->head — the single body scan every caller shares. */
+static unsigned char body_hits(unsigned char cx, unsigned char cy, unsigned char skip_tail)
+{
+    unsigned char idx = tail, k;
+    for (k = 0; k < slen; ++k) {
+        if (!(skip_tail && k == 0u) && sx[idx] == cx && sy[idx] == cy) return 1u;
+        if (++idx == MAXLEN) idx = 0u;
+    }
+    return 0u;
+}
+
 static void place_food(void)
 {
-    unsigned char ok, i;
+    unsigned char ok;
     do {
         foodx = (unsigned char)(1u + prng() % (COLS - 2u));               /* cols 1..COLS-2 */
         foody = (unsigned char)((TOP_WALL + 1u) + prng() % (ROWS - TOP_WALL - 2u)); /* rows TOP_WALL+1..ROWS-2 */
         ok = 1;
         if (bonus_active && foodx == bonusx && foody == bonusy) ok = 0;   /* not on the bonus */
-        else for (i = 0; i < slen; ++i) {
-            if (sx[i] == foodx && sy[i] == foody) { ok = 0; break; }
-        }
+        else if (body_hits(foodx, foody, 0u)) ok = 0;
     } while (!ok);
 }
 
@@ -187,15 +202,13 @@ static void place_food(void)
  * must also avoid the apple. */
 static void place_bonus(void)
 {
-    unsigned char ok, i;
+    unsigned char ok;
     do {
         bonusx = (unsigned char)(1u + prng() % (COLS - 2u));
         bonusy = (unsigned char)((TOP_WALL + 1u) + prng() % (ROWS - TOP_WALL - 2u));
         ok = 1;
         if (bonusx == foodx && bonusy == foody) ok = 0;                   /* not on the apple */
-        else for (i = 0; i < slen; ++i) {
-            if (sx[i] == bonusx && sy[i] == bonusy) { ok = 0; break; }
-        }
+        else if (body_hits(bonusx, bonusy, 0u)) ok = 0;
     } while (!ok);
 }
 
@@ -213,8 +226,8 @@ static void emit_schema(void)
 /* Emit one per-tick DATA frame: [head_x, head_y, length, alive, score]. */
 static void emit_state(void)
 {
-    tele_put(sx[0]);
-    tele_put(sy[0]);
+    tele_put(sx[head]);
+    tele_put(sy[head]);
     tele_put(slen);
     tele_put(alive);
     tele_put16(score);                   /* 2 bytes LE, matches TELE_T_U16       */
@@ -225,9 +238,12 @@ static void emit_state(void)
 static void new_game(void)
 {
     unsigned char i;
-    slen = 3;
+    slen = 3u;
+    tail = 0u;
+    head = (unsigned char)(slen - 1u);            /* ring: index 0 = tail .. slen-1 = head */
     for (i = 0; i < slen; ++i) {
-        sx[i] = (unsigned char)(COLS / 2u - i);   /* head ... tail going left */
+        /* i=0 is the tail (leftmost); i=slen-1 the head (rightmost), heading right */
+        sx[i] = (unsigned char)(COLS / 2u - (slen - 1u) + i);
         sy[i] = (unsigned char)(ROWS / 2u);
     }
     dir = DIR_RIGHT;
@@ -281,11 +297,11 @@ static void read_input(void)
 /* Advance one logical tick: move the head, resolve collisions / food. */
 static void tick(void)
 {
-    unsigned char nx, ny, i, grow;
+    unsigned char nx, ny, grow;
 
     dir = pending;
-    nx = sx[0];
-    ny = sy[0];
+    nx = sx[head];
+    ny = sy[head];
     switch (dir) {
         case DIR_UP:    --ny; break;
         case DIR_DOWN:  ++ny; break;
@@ -305,11 +321,7 @@ static void tick(void)
         return;
     }
     /* Self collision (skip the tail, which is about to move unless we grow). */
-    for (i = 0; i < slen; ++i) {
-        if (sx[i] == nx && sy[i] == ny) {
-            if (!(i == slen - 1u)) { alive = 0; return; }
-        }
-    }
+    if (body_hits(nx, ny, 1u)) { alive = 0; return; }
 
     /* Bonus pickup: worth BONUS_POINTS but no growth. The new head lands on the
      * gem and draw_cell() will paint over it, so just clear the flag (no erase). */
@@ -320,14 +332,17 @@ static void tick(void)
 
     grow = (nx == foodx && ny == foody) ? 1u : 0u;
 
-    /* Shift the body down by one, then write the new head at index 0. */
-    if (grow && slen < MAXLEN) ++slen;
-    for (i = (unsigned char)(slen - 1u); i > 0; --i) {
-        sx[i] = sx[i - 1u];
-        sy[i] = sy[i - 1u];
+    /* O(1) ring move: append the new head one slot past `head`; drop the old
+     * tail by advancing `tail` (the main loop erased its cell) — unless we grew,
+     * in which case the tail stays and the body gets one segment longer. */
+    if (++head == MAXLEN) head = 0u;
+    sx[head] = nx;
+    sy[head] = ny;
+    if (grow && slen < MAXLEN) {
+        ++slen;                                   /* grew: keep the tail */
+    } else {
+        if (++tail == MAXLEN) tail = 0u;          /* moved: drop the old tail */
     }
-    sx[0] = nx;
-    sy[0] = ny;
 
     if (grow) {
         score += 5u;                  /* each apple is worth 5 points */
@@ -384,12 +399,15 @@ static void draw_title(void)
  * run every frame. */
 static void redraw(void)
 {
-    unsigned char i;
+    unsigned char idx = tail, k;
     gen2_hgr_clear(0);
     draw_border();
     draw_food(foodx, foody);
     if (bonus_active) draw_bonus(bonusx, bonusy);
-    for (i = 0; i < slen; ++i) draw_cell(sx[i], sy[i]);
+    for (k = 0; k < slen; ++k) {        /* walk the ring tail -> head */
+        draw_cell(sx[idx], sy[idx]);
+        if (++idx == MAXLEN) idx = 0u;
+    }
     draw_score();                       /* score, top-right, WHITE via optimized putu_field */
     draw_title();                       /* "HGR Snake", top-left, current cycling hue */
 }
@@ -463,7 +481,7 @@ void main(void)
         if (alive) {
             /* Remember the tail BEFORE the move so we can erase exactly the cell
              * it vacates — the only cell that changes besides the new head. */
-            unsigned char otx = sx[slen - 1u], oty = sy[slen - 1u];
+            unsigned char otx = sx[tail], oty = sy[tail];
             unsigned char olen = slen;
             read_input();
             tick();
@@ -477,7 +495,7 @@ void main(void)
                     title_hue = (unsigned char)((title_hue + 1u) & 3u);
                     draw_title();                  /* apple eaten: shift HGR Snake colour */
                 }
-                draw_cell(sx[0], sy[0]);           /* draw the new head           */
+                draw_cell(sx[head], sy[head]);     /* draw the new head           */
                 /* Bonus gem: tick() flags a spawn or a time-out; do the drawing
                  * here. (Eating it needs no erase — the head already covers it.) */
                 if (bonus_new)  { draw_bonus(bonusx, bonusy); bonus_new  = 0u; }
