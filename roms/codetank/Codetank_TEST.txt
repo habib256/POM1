@@ -1,4 +1,0 @@
-Codetank_TEST.rom — TMS9918 silicon-validation utilities
-  Lower jumper: reserved ($FF fill — SilBench abandoned).
-  Upper jumper: 4000R → menu → 1=Clone (sprite-clone bug N.8)
-                              2=Split (5th-sprite palette split)

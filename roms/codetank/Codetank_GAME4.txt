@@ -1,9 +1,0 @@
-Codetank_GAME4.rom — TMS9918 P-LAB CodeTank cartridge
-  Lower jumper: 4000R → TMS_LightCorridor (wireframe perspective
-                tunnel + paddle + ball, 3 difficulty levels).
-                Controls: A/Q D = left/right, W/Z S = up/down,
-                SPACE = launch, ESC = exit to Wozmon.
-                Original implementation inspired by Infogrames'
-                Light Corridor (1990) concept — original code,
-                original assets.
-  Upper jumper: reserved ($FF fill — future expansion).
