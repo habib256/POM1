@@ -107,4 +107,55 @@ unsigned char gfx_itoa(char *buf, int value);
 /* Unsigned hex, uppercase, no leading zeros (1..4 digits). `buf` >= 5 bytes. */
 unsigned char gfx_hexstr(char *buf, unsigned value);
 
+/* ===========================================================================
+ * Shared positioned-text façade (gfx_text.c) — AXIS 3 of the factoring.
+ * ===========================================================================
+ * A card-NEUTRAL cell-cursor model: an 8x8 character grid with a single
+ * cursor, so a program can `gfx_gotoxy` + `gfx_text` / `gfx_putu` and compile
+ * for GEN2 *or* TMS9918 by backend choice alone. The shared layer here owns the
+ * cursor, advance/wrap and the number formatting; each card supplies the two
+ * one-line cell primitives below (gfx_text_backend_<card>.c) that map a cell to
+ * its native glyph blit (GEN2 8x8 gen2_hgr_puts8 / TMS9918 screen2_putc).
+ *
+ * This is ADDITIVE and deliberately NEUTRAL — it does NOT replace or "level
+ * down" the rich per-card text APIs. GEN2's 16x16 doubled glyphs + NTSC artifact
+ * colour (gen2_hgr_puts_color) and TMS's per-cell colour attributes remain the
+ * way to get card-specific richness; the façade is the lowest common denominator
+ * (monospaced 8x8 white-or-default cells) for portable HUDs / menus / demos. */
+
+/* Cell grid extent in CHARACTERS — compile-time constants per card
+ * (GEN2 35x24 over 280x192; TMS9918 32x24 over 256x192; 24 rows on both). */
+extern const unsigned char gfx_text_cols;
+extern const unsigned char gfx_text_rows;
+
+/* Backend cell primitives (gfx_text_backend_<card>.c). gfx_cell_glyph draws ONE
+ * printable 8x8 glyph at cell (col,row) in the current text colour; the shared
+ * layer guarantees col<gfx_text_cols, row<gfx_text_rows and ch>=0x20. */
+void gfx_cell_glyph(char ch, unsigned char col, unsigned char row);
+
+/* Set the text colour for subsequent cells. The byte is card-specific:
+ * 0 = GFX_TEXT_DEFAULT (each card's readable default — white). On TMS9918 pass
+ * FG_BG(fg,bg) for a coloured cell; on GEN2 the 8x8 cell path is white-only
+ * (the value is ignored — use gen2_hgr_puts_color for NTSC artifact colour). */
+#define GFX_TEXT_DEFAULT 0u
+void gfx_cell_color(unsigned char color);
+
+/* Move the text cursor to cell (col,row); clamped into the grid. */
+void gfx_gotoxy(unsigned char col, unsigned char row);
+
+/* Draw one character at the cursor and advance. '\n' = next row / column 0,
+ * '\r' = column 0, other control chars (<0x20) are skipped. Advancing past the
+ * right margin wraps to column 0 of the next row; the last row does not scroll
+ * (further glyphs stay clamped on it). */
+void gfx_putc(char ch);
+
+/* Draw a NUL-terminated string from the cursor (gfx_putc per character). */
+void gfx_text(const char *s);
+
+/* Numbers AT THE CURSOR — build via gfx_utoa / gfx_itoa / gfx_hexstr then
+ * gfx_text. Decimal has no leading zeros; hex is uppercase, no leading zeros. */
+void gfx_putu(unsigned value);
+void gfx_puti(int value);
+void gfx_putx(unsigned value);
+
 #endif /* GFX_H */

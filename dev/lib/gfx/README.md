@@ -29,6 +29,9 @@ ambiguity to resolve at runtime.
 | `gfx_ellipse.c` | `gfx_ellipse` (shared geometry) |
 | `gfx_num_dec.c` | `gfx_utoa` / `gfx_itoa` (shared int→ASCII, decimal) |
 | `gfx_num_hex.c` | `gfx_hexstr` (shared int→ASCII, hex, divide-free) |
+| `gfx_text.c` | **axis 3** — shared 8×8 cell-cursor façade (`gfx_gotoxy` / `gfx_putc` / `gfx_text` / `gfx_putu` / `gfx_puti` / `gfx_putx`); owns the cursor + advance/wrap, draws via the per-card cell backend |
+| `gfx_text_backend_gen2.c` | GEN2 cell backend — `gfx_cell_glyph` → `gen2_hgr_puts8` (native 8×8), 35×24; `gfx_cell_color` is a no-op (8×8 cells are white) |
+| `gfx_text_backend_tms.c` | TMS9918 cell backend — `gfx_cell_glyph` → `screen2_putc`, 32×24; `gfx_cell_color` maps to the per-cell `FG_BG` attribute |
 | `gfx_backend_gen2.c` | GEN2 backend — wraps `gen2_hgr_plot/hline/vline`, 280×192 |
 | `gfx_backend_gen2_rect.c` | GEN2 `gfx_filled_rect` / `gfx_clear` — wraps `gen2_hgr_fill_pixrect` / `gen2_hgr_clear` (split out so a lines-only program dead-strips the fill path) |
 | `gfx_backend_tms.c` | TMS9918 backend — wraps `screen2_plot`, 256×192 |
@@ -37,17 +40,39 @@ ambiguity to resolve at runtime.
 Each program links **only the `gfx_*` modules it references (ld65 dead-strips
 the rest) + exactly one backend**.
 
-## What stays per-card (deliberately NOT unified here)
+## Positioned text — the axis-3 cell-cursor façade (`gfx_text.c`)
 
-- **Number *drawing position*.** GEN2 draws digits as a pixel-addressed graphics
-  font (`gen2_hgr_puts` at x,y); TMS bitmap draws at 8px char cells
-  (`screen2_putc`); TMS text mode at name-table cells. Only the *conversion*
-  (`gfx_utoa`/`gfx_hexstr`) is shared — each card still draws the string.
+`gfx_text.c` adds a card-NEUTRAL 8×8 **cell cursor** so a program can position
+text/numbers and compile for either card by backend choice alone:
+
+```c
+gfx_gotoxy(2u, 2u);  gfx_text("SCORE ");  gfx_putu(score);   /* same on both cards */
+```
+
+The shared layer owns the cursor, the advance/wrap, and the number formatting
+(via `gfx_utoa`/`gfx_itoa`/`gfx_hexstr`); each card supplies just `gfx_cell_glyph`
+(one 8×8 blit) + `gfx_cell_color` + the `gfx_text_cols`/`gfx_text_rows` extent.
+GEN2 maps a cell to `gen2_hgr_puts8` (35×24); TMS to `screen2_putc` (32×24).
+The `sketchs/portable/hello_gfx_text/` demo builds the SAME source for both
+cards and pins the façade.
+
+It is **additive and neutral**, NOT a replacement — it does not "level down" the
+rich per-card text:
+
+- **Colour.** TMS honours a per-cell `FG_BG` attribute via `gfx_cell_color`; GEN2
+  8×8 cells are white (its colour is the NTSC artifact trick on the 16×16 doubled
+  glyphs — reach for `gen2_hgr_puts_color` directly).
 - **GEN2's hot HUD path.** `gen2_hgr_putu_field` keeps its hand-written asm
   `gen2_utoa` (avoids cc65's runtime 16-bit soft-divide). Do **not** reroute it
-  through `gfx_utoa` — that would regress the flicker-free HUD primitive.
-- Card-specific strengths untouched: GEN2 double-buffering / NTSC colour / blit,
-  TMS hardware sprites / collision / true colour. Those are axis 3 territory.
+  through `gfx_putu`/`gfx_utoa` — that would regress the flicker-free HUD primitive.
+- **16×16 doubled glyphs** (`gen2_hgr_puts`) and TMS **name-table text mode** stay
+  card-specific; the façade is the lowest common denominator (monospaced 8×8).
+
+## What stays per-card (deliberately NOT unified)
+
+- Card-specific strengths untouched: GEN2 double-buffering / NTSC colour / blit /
+  16×16 glyphs, TMS hardware sprites / collision / true colour. The façade above
+  is the ONLY text unification — and it is additive (the rich APIs are intact).
 
 ## Rewiring (the de-duplication) — DONE 2026-06-17
 

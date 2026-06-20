@@ -64,6 +64,10 @@ gfx_num_dec.o: gfx_num_dec.c gfx.h
 	$(CL65) $(CFLAGS) $(GFXINC) -o $@ $<
 gfx_num_hex.o: gfx_num_hex.c gfx.h
 	$(CL65) $(CFLAGS) $(GFXINC) -o $@ $<
+# Positioned-text cursor façade (axis 3). Card-neutral: the cursor + advance/wrap
+# + number formatting; the per-card cell blit is in gfx_text_backend_<card>.c.
+gfx_text.o: gfx_text.c gfx.h
+	$(CL65) $(CFLAGS) $(GFXINC) -o $@ $<
 
 # --- per-card backends (need the card's header) ---
 # Each card has TWO backend TUs: a "core" with the per-pixel + span primitives
@@ -80,17 +84,23 @@ gfx_backend_tms.o: gfx_backend_tms.c gfx.h
 	$(CL65) $(CFLAGS) $(GFXINC) $(TMSINC) -o $@ $<
 gfx_backend_tms_rect.o: gfx_backend_tms_rect.c gfx.h
 	$(CL65) $(CFLAGS) $(GFXINC) $(TMSINC) -o $@ $<
+# Per-card cell-glyph backends for the gfx_text façade (axis 3): a cell -> the
+# card's native 8x8 blit (GEN2 gen2_hgr_puts8 / TMS9918 screen2_putc).
+gfx_text_backend_gen2.o: gfx_text_backend_gen2.c gfx.h
+	$(CL65) $(CFLAGS) $(GFXINC) $(GEN2INC) -o $@ $<
+gfx_text_backend_tms.o: gfx_text_backend_tms.c gfx.h
+	$(CL65) $(CFLAGS) $(GFXINC) $(TMSINC) -o $@ $<
 
 # Shared per-card object list (every program either gets these via dead-strip
 # or skips them — that's the whole point of the split).
 GFX_NEUTRAL_OBJS := gfx_line.o gfx_rect.o gfx_circle.o gfx_ellipse.o \
-                    gfx_num_dec.o gfx_num_hex.o
+                    gfx_num_dec.o gfx_num_hex.o gfx_text.o
 
 # --- archives (rm first so ar65 a never accumulates stale members) ---
-gfx-gen2.lib: $(GFX_NEUTRAL_OBJS) gfx_backend_gen2.o gfx_backend_gen2_rect.o
+gfx-gen2.lib: $(GFX_NEUTRAL_OBJS) gfx_backend_gen2.o gfx_backend_gen2_rect.o gfx_text_backend_gen2.o
 	rm -f $@
 	$(AR65) a $@ $^
-gfx-tms.lib: $(GFX_NEUTRAL_OBJS) gfx_backend_tms.o gfx_backend_tms_rect.o
+gfx-tms.lib: $(GFX_NEUTRAL_OBJS) gfx_backend_tms.o gfx_backend_tms_rect.o gfx_text_backend_tms.o
 	rm -f $@
 	$(AR65) a $@ $^
 
