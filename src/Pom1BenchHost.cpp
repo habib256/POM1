@@ -475,18 +475,21 @@ static const char* kEx_c_keyboard =
     "    woz_mon();\n"
     "}\n";
 
-struct P1Ex { const char* label; bool file; const char* data; int target; const char* asset; uint16_t addr; };
+// `group` = section header shown before this entry in the Examples popup
+// (nullptr → continues the current section). Showcases first (the "wow" for
+// newcomers), then the inline asm + C basics.
+struct P1Ex { const char* group; const char* label; bool file; const char* data; int target; const char* asset; uint16_t addr; };
 const P1Ex kP1Examples[] = {
-    { "1 - Print a character (asm)",       false, kEx_char,       0, "", 0 },
-    { "2 - Print a string (asm)",          false, kEx_string,     0, "", 0 },
-    { "3 - Count 0 to 9 (asm)",            false, kEx_loop,       0, "", 0 },
-    { "4 - Echo the keyboard (asm)",       false, kEx_keyboard,   0, "", 0 },
-    { "5 - Hello in C",                    false, kEx_c_hello,    3, "", 0 },
-    { "6 - Keyboard echo in C",            false, kEx_c_keyboard, 3, "", 0 },
-    { "A-1-CrazyCycle  (Bernie GEN2 HGR)", true,  "sketchs/gen2/demo_a1_crazycycle/A-1-CrazyCycle.asm", 2,
+    { "Showcases",       "A-1-CrazyCycle  (Bernie GEN2 HGR)",  true,  "sketchs/gen2/demo_a1_crazycycle/A-1-CrazyCycle.asm", 2,
       "sdcard/NONO/HGR/UBERNIE#062000", 0x2000 },
-    { "Telemetry demo  (SDK harness)",     true,  "sketchs/apple1/demo_telemetry/A1_TelemetryDemo.asm", 0, "", 0 },
-    { "Snake telemetry  (Bernie GEN2 HGR)", true, "sketchs/gen2/game_snake_telemetry/GEN2Snake.c", 5, "", 0 },
+    { nullptr,           "Snake telemetry  (Bernie GEN2 HGR)", true,  "sketchs/gen2/game_snake_telemetry/GEN2Snake.c", 5, "", 0 },
+    { nullptr,           "Telemetry demo  (SDK harness)",      true,  "sketchs/apple1/demo_telemetry/A1_TelemetryDemo.asm", 0, "", 0 },
+    { "Assembly basics", "Print a character",                  false, kEx_char,       0, "", 0 },
+    { nullptr,           "Print a string",                     false, kEx_string,     0, "", 0 },
+    { nullptr,           "Count 0 to 9",                       false, kEx_loop,       0, "", 0 },
+    { nullptr,           "Echo the keyboard",                  false, kEx_keyboard,   0, "", 0 },
+    { "C basics",        "Hello world",                        false, kEx_c_hello,    3, "", 0 },
+    { nullptr,           "Keyboard echo",                      false, kEx_c_keyboard, 3, "", 0 },
 };
 const int kP1ExampleCount = static_cast<int>(sizeof(kP1Examples) / sizeof(kP1Examples[0]));
 
@@ -1036,13 +1039,14 @@ Pom1BenchHost::Pom1BenchHost(MainWindow_ImGui* mw) : mw_(mw)
     for (const char* m : kP1Machines)      machines_.push_back(m);
     for (const char* h : kP1LanguageHints) languageHints_.push_back(h);
     for (const char* h : kP1MachineHints)  machineHints_.push_back(h);
-#if !POM1_IS_WASM
-    // Examples load their source from dev/projects/, which the WASM build does NOT
-    // preload (only dev/{cc65,lib} for the toolchain) — so
-    // the Examples popup stays desktop-only.
+    // File-based examples load their source from sketchs/, which the WASM build
+    // now preloads into MEMFS (see CMakeLists `--preload-file sketchs`), so the
+    // Examples popup works on web too — loadExample()'s cwd-relative ifstream
+    // resolves "sketchs/..." against the MEMFS root. (Inline examples 1-6 never
+    // needed a file.)
     for (int i = 0; i < kP1ExampleCount; ++i)
-        examples_.push_back({ kP1Examples[i].label });
-#endif
+        examples_.push_back({ kP1Examples[i].label,
+                              kP1Examples[i].group ? kP1Examples[i].group : "" });
 }
 
 // Make a relocatable cc65 bundle self-locate its runtime (include/, lib/,

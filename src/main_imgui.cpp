@@ -605,7 +605,6 @@ int main(int argc, char* argv[])
     // MainWindow_ImGui::savePresetLayout / loadPresetLayout — called on
     // every applyMachineConfig and on clean shutdown.
     io.IniFilename = nullptr;
-#if !POM1_IS_WASM
     // Create the per-preset ini directory up front so the first preset
     // load/save doesn't race the lazy path and so users can see the folder
     // exists before they start dragging windows around.
@@ -617,13 +616,16 @@ int main(int argc, char* argv[])
                 "could not create ini/: " + ec.message());
         }
     }
-    // Pre-populate every preset's layout file with its hard-coded defaults
-    // (window pos/size from kMachinePresets[].layout + computed GLFW window
-    // size). Existing files are left alone, so user customisations persist.
-    // After this call, ini/imgui_preset_NN.ini exists for every preset 0..N
-    // even before the user has visited each one.
+    // Pre-populate every preset's layout file with its curated defaults (from
+    // the preloaded ini_defaults/, falling back to kMachinePresets[].layout).
+    // Existing files are left alone, so user customisations persist. After this
+    // call, ini/imgui_preset_NN.ini exists for every preset, so each profile's
+    // window positions are applied on first visit — including under WASM, where
+    // this used to be skipped (the layouts then defaulted to garbage). The WASM
+    // ini/ lives in MEMFS, so it survives preset switches within a session but
+    // not a page reload (an IDBFS mount + FS.syncfs would add cross-reload
+    // persistence — separate follow-up).
     MainWindow_ImGui::pregenerateMissingPresetLayouts();
-#endif
 
     // Charger les polices
     ImFontConfig fontConfig;

@@ -295,6 +295,11 @@ if(EMSCRIPTEN)
         # DevBench sketches (build-only staging, see SKETCHS_STAGE above) so the
         # in-browser bench can load repo sketches with their own cfg/extraAsm/defines.
         "--preload-file ${SKETCHS_STAGE}/sketchs@sketchs"
+        # Curated per-preset window layouts — pregenerateMissingPresetLayouts()
+        # seeds ini/imgui_preset_NN.ini from here on boot, so every profile gets
+        # its window positions under WASM too (findIniDefaultsFile probes the
+        # cwd-relative ini_defaults/, which maps to this MEMFS mount).
+        "--preload-file ${PRELOAD_DIR}/ini_defaults@ini_defaults"
         # cc65 C runtime for the in-browser C path: asminc (ca65 .macpack files),
         # include (system headers), and the matching `none.lib` (-t none runtime,
         # built from the same cc65 source as the WASM tools). Mounted at /cc65 so

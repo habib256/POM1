@@ -27,6 +27,7 @@ struct Target {
 
 struct Example {
     std::string label;     // shown in the Examples popup
+    std::string group;     // section header to render before this item ("" = same section)
 };
 
 // Result of a verify/upload: console text + status line + per-line errors that

@@ -305,6 +305,10 @@ void CodeBench::render(const char* title, bool* open)
         ImGui::TextDisabled("Examples"); ImGui::Separator();
         const auto& ex = host_->examples();
         for (int i = 0; i < static_cast<int>(ex.size()); ++i) {
+            if (!ex[i].group.empty()) {              // section header before this item
+                if (i != 0) ImGui::Spacing();
+                ImGui::TextDisabled("%s", ex[i].group.c_str());
+            }
             if (ImGui::Selectable(ex[i].label.c_str())) {
                 ExampleLoad el = host_->loadExample(i);
                 if (el.ok) {
