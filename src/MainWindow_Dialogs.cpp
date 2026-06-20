@@ -54,6 +54,7 @@ static const char kAppIconFile[] = "icon.png";
 static const char kWozJobsPhotoFile[] = "woz_jobs_apple1.jpg";
 static const char kWozJobsRectPhotoFile[] = "woz_jobs_apple1-rect.jpg";
 static const char kTmsBoardPhotoFile[] = "Parmigiani.jpg";
+static const char kGen2WorkbenchPhotoFile[] = "Gen2_Video_Workbench.jpg";
 static const char kPR40MechPhotoFile[] = "SWTPC PR-40 Printer.png";
 
 /** Generic cwd + exe-relative probe for files expected under pic/. */
@@ -441,6 +442,44 @@ void MainWindow_ImGui::ensureTmsBoardPhotoTexture()
     tmsBoardPhotoHeight = h;
 }
 
+void MainWindow_ImGui::ensureGen2WorkbenchPhotoTexture()
+{
+    if (gen2WorkbenchPhotoTexture != 0 || gen2WorkbenchPhotoLoadTried)
+        return;
+    gen2WorkbenchPhotoLoadTried = true;
+
+    const std::string path = find_pic_file_path(kGen2WorkbenchPhotoFile);
+    if (path.empty()) {
+        pom1::log().warn("Images",
+            std::string("GEN2 workbench photo not found (expected pic/") + kGen2WorkbenchPhotoFile + ")");
+        return;
+    }
+
+    int w = 0, h = 0, channels = 0;
+    unsigned char* pixels = stbi_load(path.c_str(), &w, &h, &channels, 4);
+    if (!pixels || w <= 0 || h <= 0) {
+        if (pixels) stbi_image_free(pixels);
+        pom1::log().warn("Images", "Could not decode GEN2 workbench photo: " + path);
+        return;
+    }
+
+    GLuint tex = 0;
+    glGenTextures(1, &tex);
+    glBindTexture(GL_TEXTURE_2D, tex);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, w, h, 0, GL_RGBA, GL_UNSIGNED_BYTE, pixels);
+    glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
+    stbi_image_free(pixels);
+
+    gen2WorkbenchPhotoTexture = tex;
+    gen2WorkbenchPhotoWidth = w;
+    gen2WorkbenchPhotoHeight = h;
+}
+
 void MainWindow_ImGui::ensurePR40MechPhotoTexture()
 {
     if (pr40MechPhotoTexture != 0 || pr40MechPhotoLoadTried)
@@ -494,6 +533,25 @@ void MainWindow_ImGui::renderTmsBoardPhotoWindow()
         } else {
             ImGui::TextWrapped(
                 "P-LAB TMS9918 board photo not found (expected pic/%s).", kTmsBoardPhotoFile);
+        }
+    }
+    ImGui::End();
+}
+
+void MainWindow_ImGui::renderGen2WorkbenchPhotoWindow()
+{
+    ensureGen2WorkbenchPhotoTexture();
+
+    // Uncle Bernie's real GEN2 release bench (Gen2_Video_Workbench.jpg) —
+    // companion to the live "Uncle Bernie's GEN2 HGR Graphic Card" viewer.
+    applyPendingLayout("GEN2 Video Workbench (Photo)");
+    ImGui::SetNextWindowSizeConstraints(ImVec2(200, 200), ImVec2(FLT_MAX, FLT_MAX));
+    if (ImGui::Begin("GEN2 Video Workbench (Photo)", &showGen2WorkbenchPhoto)) {
+        if (gen2WorkbenchPhotoTexture != 0 && gen2WorkbenchPhotoWidth > 0 && gen2WorkbenchPhotoHeight > 0) {
+            drawFittedCenteredImage(gen2WorkbenchPhotoTexture, gen2WorkbenchPhotoWidth, gen2WorkbenchPhotoHeight);
+        } else {
+            ImGui::TextWrapped(
+                "GEN2 workbench photo not found (expected pic/%s).", kGen2WorkbenchPhotoFile);
         }
     }
     ImGui::End();

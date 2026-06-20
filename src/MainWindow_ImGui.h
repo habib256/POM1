@@ -256,6 +256,11 @@ private:
     int tmsBoardPhotoHeight = 0;
     bool tmsBoardPhotoLoadTried = false;
     bool showTmsBoardPhoto = false;
+    GLuint gen2WorkbenchPhotoTexture = 0;
+    int gen2WorkbenchPhotoWidth = 0;
+    int gen2WorkbenchPhotoHeight = 0;
+    bool gen2WorkbenchPhotoLoadTried = false;
+    bool showGen2WorkbenchPhoto = false;
     GLuint pr40MechPhotoTexture = 0;
     int pr40MechPhotoWidth = 0;
     int pr40MechPhotoHeight = 0;
@@ -409,6 +414,8 @@ private:
     void renderWozJobsRectPhotoWindow();
     void ensureTmsBoardPhotoTexture();
     void renderTmsBoardPhotoWindow();
+    void ensureGen2WorkbenchPhotoTexture();
+    void renderGen2WorkbenchPhotoWindow();
     void ensurePR40MechPhotoTexture();
     void renderSpecialThanksWindow();
     void renderHardwareReferenceWindow();

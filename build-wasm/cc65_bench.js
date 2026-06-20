@@ -31,21 +31,48 @@
       return files;
     }
 
-    // Assemble + link one .s program (the Bench's asm targets).
-    //   source   : the editor text (string)
-    //   opts.cfg : absolute path to the ld65 linker config under /dev
-    //   opts.incDirs : absolute -I dirs under /dev (their files are seeded)
+    // Assemble + link an asm program (the Bench's asm targets).
+    //   source   : the editor text (string) — the main module
+    //   opts.cfg : absolute path to the ld65 linker config (under /dev or /sketchs)
+    //   opts.incDirs : absolute -I dirs (their files are seeded for .include)
+    //   opts.asmSources : [{path,name}] extra .asm/.s modules to assemble + link
+    //                     (the sketch's extraAsm — read from MEMFS), so multi-
+    //                     module sketches (e.g. TMS LOGO) link like on desktop.
+    //   opts.defines : ca65 -D symbols (e.g. CODETANK_BUILD) — applied to the
+    //                  main source AND every extra module.
     //   opts.asmArgs / opts.ldArgs : extra flags
     async function buildAsm(source, opts) {
       opts = opts || {};
       const incDirs = opts.incDirs || [];
       const includes = gather(incDirs);
-      const a = await CC65.assemble(getFactory, source, 'prog.s', includes, incDirs, opts.asmArgs);
-      if (a.code !== 0 || !a.obj) return { code: a.code || 1, bin: null, log: '[ca65]\n' + a.log };
+      const asmArgs = (opts.asmArgs || []).slice();
+      for (const d of (opts.defines || [])) asmArgs.push('-D', d);
+
+      const objs = {};
+      let log = '';
+
+      // main module (editor text)
+      const a = await CC65.assemble(getFactory, source, 'prog.s', includes, incDirs, asmArgs);
+      if (a.log) log += '[ca65 prog]\n' + a.log + '\n';
+      if (a.code !== 0 || !a.obj) return { code: a.code || 1, bin: null, log };
+      objs['/prog.o'] = a.obj;
+
+      // extra modules (proj.extraAsm) — assemble each, add to the link set
+      let i = 0;
+      for (const s of (opts.asmSources || [])) {
+        const data = readFile(s.path);
+        if (!data) return { code: 1, bin: null, log: log + '[ca65] missing source: ' + s.path + '\n' };
+        const nm = 'x' + (i++) + '.s';
+        const r = await CC65.assemble(getFactory, data, nm, includes, incDirs, asmArgs);
+        if (r.log) log += '[ca65 ' + (s.name || s.path) + ']\n' + r.log + '\n';
+        if (r.code !== 0 || !r.obj) return { code: r.code || 1, bin: null, log };
+        objs['/' + nm.replace(/\.s$/, '.o')] = r.obj;
+      }
+
       const cfgData = readFile(opts.cfg);
       const cfgName = opts.cfg.slice(opts.cfg.lastIndexOf('/') + 1);
-      const l = await CC65.link(getFactory, { '/prog.o': a.obj }, cfgData, cfgName, opts.ldArgs);
-      const log = (a.log ? '[ca65]\n' + a.log + '\n' : '') + (l.log ? '[ld65]\n' + l.log : '');
+      const l = await CC65.link(getFactory, objs, cfgData, cfgName, opts.ldArgs);
+      if (l.log) log += '[ld65]\n' + l.log;
       return { code: l.code, bin: l.bin, log };
     }
 
@@ -70,6 +97,7 @@
 
       async function compileC(name, data) {
         const argv = ['-t', 'none', '-O'];
+        for (const d of (opts.defines || [])) argv.push('-D', d);
         for (const d of incDirs) argv.push('-I', d);
         const sName = '/' + name.replace(/\.c$/, '.s');
         argv.push('-o', sName, '/' + name);

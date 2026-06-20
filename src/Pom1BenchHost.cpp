@@ -1466,23 +1466,52 @@ bench::BuildResult Pom1BenchHost::build(int target, const std::string& src, cons
         return r;
     }
     {
-        const std::string cfg = std::string("/dev/cc65/") + (t.cfg ? t.cfg : "");
+        // Prefer the loaded sketch's own linker cfg + extra modules + defines —
+        // probeSketchProject reads /sketchs/<dir>/.sketch.json from MEMFS (now
+        // preloaded), so multi-module CodeTank sketches (e.g. TMS LOGO, with
+        // -D CODETANK_BUILD) build in-browser exactly like desktop. Fall back to
+        // the target's default /dev/cc65 cfg for a bare editor snippet.
+        const AsmProjectCtx proj = probeSketchProject(activeSourcePath_);
+        auto memfsAbs = [](std::string p) {
+            if (!p.empty() && p[0] != '/') p = "/" + p; return p;
+        };
+        std::string cfg;
+        std::string specExtra;   // ,"asmSources":[...],"defines":[...],"sketchDir":"..."
+        if (proj.ok && !proj.cfg.empty()) {
+            cfg = memfsAbs(proj.cfg);
+            std::string srcs = "[";
+            for (size_t i = 0; i < proj.extraAsm.size(); ++i) {
+                const std::string p = memfsAbs(proj.extraAsm[i]);
+                const std::string name = std::filesystem::path(p).filename().string();
+                srcs += (i ? "," : "") + std::string("{\"path\":\"") + p + "\",\"name\":\"" + name + "\"}";
+            }
+            srcs += "]";
+            std::string defs = "[";
+            for (size_t i = 0; i < proj.defines.size(); ++i)
+                defs += (i ? "," : "") + std::string("\"") + proj.defines[i] + "\"";
+            defs += "]";
+            specExtra = ",\"asmSources\":" + srcs + ",\"defines\":" + defs
+                      + ",\"sketchDir\":\"" + memfsAbs(proj.dir.string()) + "\"";
+        } else {
+            cfg = std::string("/dev/cc65/") + (t.cfg ? t.cfg : "");
+        }
         uint16_t entry = parseCfgLoadAddr(cfg);   // std::ifstream works on MEMFS
         if (entry == 0) { try { entry = static_cast<uint16_t>(std::stoul(addrHex, nullptr, 16)); } catch (...) { entry = 0x0300; } }
         wasmJobActive_ = true; wasmJobVerifyOnly_ = !run;
         wasmJobTarget_ = target; wasmJobEntry_ = entry;
         logMeta.toolchain = "wasm-cc65";
         logMeta.cfgPath = cfg;
-        // Mirror the desktop libFlags_ (-I every dev/lib subdir) in JS, then drive
-        // POM1cc65.buildAsm; on resolve write .bin + .log into POM1's MEMFS where
-        // pollBuild() reads them. Module.__benchJob carries the running/done state.
+        const std::string spec = std::string("{\"cfg\":\"") + cfg + "\"" + specExtra + "}";
+        // Mirror the desktop libFlags_ (-I every dev/lib subdir) in JS + the sketch
+        // dir, then drive POM1cc65.buildAsm with the sketch's cfg/asmSources/defines.
+        // On resolve write .bin + .log into POM1's MEMFS where pollBuild() reads them.
         // NB: no top-level commas in this EM_ASM body — the C preprocessor would
         // split them as macro args (only () protects commas, not {} or []). So
         // multi-var decls are separate statements and bare object literals are
         // parenthesised; commas inside (...) calls are already safe.
         EM_ASM({
             var src = UTF8ToString($0);
-            var cfg = UTF8ToString($1);
+            var spec = JSON.parse(UTF8ToString($1));
             var FS = Module.FS;
             var incDirs = [];
             try {
@@ -1493,8 +1522,9 @@ bench::BuildResult Pom1BenchHost::build(int target, const std::string& src, cons
                 }
             } catch (e) {}
             incDirs.push('/dev/lib/tms9918c');
+            if (spec.sketchDir) incDirs.push(spec.sketchDir);
             Module.__benchJob = ({ state: 'running', code: -1 });
-            window.POM1cc65.buildAsm(src, ({ cfg: cfg, incDirs: incDirs }))
+            window.POM1cc65.buildAsm(src, ({ cfg: spec.cfg, incDirs: incDirs, asmSources: spec.asmSources || [], defines: spec.defines || [] }))
                 .then(function (res) {
                     try { FS.writeFile('/tmp/pom1_bench.bin', res.bin || new Uint8Array(0)); } catch (e) {}
                     try { FS.writeFile('/tmp/pom1_bench.log', res.log || ""); } catch (e) {}
@@ -1504,7 +1534,7 @@ bench::BuildResult Pom1BenchHost::build(int target, const std::string& src, cons
                     try { FS.writeFile('/tmp/pom1_bench.log', 'web cc65 error: ' + (e && e.stack || e)); } catch (_) {}
                     Module.__benchJob = { state: 'done', code: 99 };
                 });
-        }, src.c_str(), cfg.c_str());
+        }, src.c_str(), spec.c_str());
         r.pending = true; r.showConsole = true;
         logMeta.toolchain = "wasm-cc65";
         r.console = "Compiling with in-browser cc65 (WASM)…\n";

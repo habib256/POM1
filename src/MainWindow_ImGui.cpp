@@ -162,6 +162,13 @@ void MainWindow_ImGui::destroyPom1()
         tmsBoardPhotoHeight = 0;
     }
     tmsBoardPhotoLoadTried = false;
+    if (gen2WorkbenchPhotoTexture) {
+        glDeleteTextures(1, &gen2WorkbenchPhotoTexture);
+        gen2WorkbenchPhotoTexture = 0;
+        gen2WorkbenchPhotoWidth = 0;
+        gen2WorkbenchPhotoHeight = 0;
+    }
+    gen2WorkbenchPhotoLoadTried = false;
     if (pr40MechPhotoTexture) {
         glDeleteTextures(1, &pr40MechPhotoTexture);
         pr40MechPhotoTexture = 0;
@@ -641,6 +648,7 @@ void MainWindow_ImGui::render()
     if (showWozJobsPhoto) renderWozJobsPhotoWindow();
     if (showWozJobsRectPhoto) renderWozJobsRectPhotoWindow();
     if (showTmsBoardPhoto) renderTmsBoardPhotoWindow();
+    if (showGen2WorkbenchPhoto) renderGen2WorkbenchPhotoWindow();
     if (showScreenConfig) renderScreenConfigDialog();
     if (showMemoryConfig) renderMemoryConfigDialog();
     if (showLoadDialog) renderLoadDialog();

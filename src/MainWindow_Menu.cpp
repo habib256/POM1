@@ -615,6 +615,7 @@ void MainWindow_ImGui::renderMenuBar()
                 ImGui::MenuItem("Woz & Jobs (1976)", nullptr, &showWozJobsPhoto);
                 ImGui::MenuItem("Apple-1 Demo Session (1976)", nullptr, &showWozJobsRectPhoto);
                 ImGui::MenuItem("P-LAB TMS9918 Card (Photo)", nullptr, &showTmsBoardPhoto);
+                ImGui::MenuItem("GEN2 Video Workbench (Photo)", nullptr, &showGen2WorkbenchPhoto);
                 ImGui::EndMenu();
             }
             ImGui::MenuItem("Ports & acknowledgements", nullptr, &showSpecialThanks);

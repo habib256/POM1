@@ -210,6 +210,19 @@ if(EMSCRIPTEN)
     set(PRELOAD_DIR ${CMAKE_CURRENT_SOURCE_DIR})
     set(SHELL_FILE ${CMAKE_CURRENT_SOURCE_DIR}/build-wasm/shell.html)
 
+    # DevBench WASM needs the sketchs/ tree in MEMFS so probeSketchProject can
+    # read each .sketch.json (cfg + extraAsm + defines) and ld65 the per-sketch
+    # cfgs — exactly like desktop. Stage a *build-only* copy (sources + cfgs +
+    # metadata) so the ~1.3 MB of tool_logo PDFs + game_rogue PNGs stay out of
+    # the web payload. Configure-time copy (rebuild WASM after touching sketchs/).
+    set(SKETCHS_STAGE ${CMAKE_BINARY_DIR}/wasm_preload)
+    file(REMOVE_RECURSE ${SKETCHS_STAGE}/sketchs)
+    file(COPY ${CMAKE_CURRENT_SOURCE_DIR}/sketchs
+         DESTINATION ${SKETCHS_STAGE}
+         FILES_MATCHING
+           PATTERN "*.asm" PATTERN "*.s"   PATTERN "*.c"   PATTERN "*.h"
+           PATTERN "*.inc" PATTERN "*.cfg" PATTERN "*.json")
+
     # Stack-size linker flag was renamed in Emscripten 3.1.27 (TOTAL_STACK
     # → STACK_SIZE). Both spellings are accepted on their respective
     # versions, but the wrong one is a hard error. Probe emcc's version
@@ -279,6 +292,9 @@ if(EMSCRIPTEN)
         # tools/build_cc65_wasm.sh --out build-wasm/cc65.
         "--preload-file ${PRELOAD_DIR}/dev/cc65@dev/cc65"
         "--preload-file ${PRELOAD_DIR}/dev/lib@dev/lib"
+        # DevBench sketches (build-only staging, see SKETCHS_STAGE above) so the
+        # in-browser bench can load repo sketches with their own cfg/extraAsm/defines.
+        "--preload-file ${SKETCHS_STAGE}/sketchs@sketchs"
         # cc65 C runtime for the in-browser C path: asminc (ca65 .macpack files),
         # include (system headers), and the matching `none.lib` (-t none runtime,
         # built from the same cc65 source as the WASM tools). Mounted at /cc65 so

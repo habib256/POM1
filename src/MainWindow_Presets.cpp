@@ -137,7 +137,8 @@ const MachineConfig kMachinePresets[] = {
         {
             {"Apple 1 Screen",                       {10,  61}, {843, 701}},
             {"Uncle Bernie's GEN2 HGR Graphic Card", {858, 60}, {338, 264}},
-        }, 2
+            {"GEN2 Video Workbench (Photo)",         {862, 329}, {342, 354}},
+        }, 3
     },
     {
         "Bare Apple-1 (July 1976)",
@@ -358,9 +359,10 @@ const MachineConfig kMachinePresets[] = {
         /*iecCard*/ false,
         {
             {"Apple 1 Screen",                       {10,  61},  {843, 701}},
-            {"Uncle Bernie's GEN2 HGR Graphic Card", {858, 60},  {338, 264}},
-            {"Tutorial: Uncle Bernie's GEN2 HGR",    {858, 329}, {339, 432}},
-        }, 3
+            {"Uncle Bernie's GEN2 HGR Graphic Card", {858, 60},  {338, 180}},
+            {"GEN2 Video Workbench (Photo)",         {862, 245}, {342, 240}},
+            {"Tutorial: Uncle Bernie's GEN2 HGR",    {858, 490}, {339, 271}},
+        }, 4
     },
     {
         "POM1 Apple-1 Multiplexing Fantasy (2026)",
@@ -540,6 +542,7 @@ void MainWindow_ImGui::applyMachineConfig(int presetIndex)
     showWozJobsPhoto         = false;
     showWozJobsRectPhoto     = false;
     showTmsBoardPhoto        = false;
+    showGen2WorkbenchPhoto   = false;
     showScreenConfig         = false;
     showMemoryConfig         = false;
     showLoadDialog           = false;
@@ -709,6 +712,7 @@ void MainWindow_ImGui::applyMachineConfig(int presetIndex)
         else if (n == "Woz & Jobs (1976)")                    showWozJobsPhoto = true;
         else if (n == "Apple-1 Demo Session (1976)")          showWozJobsRectPhoto = true;
         else if (n == "P-LAB TMS9918 Card (Photo)")           showTmsBoardPhoto = true;
+        else if (n == "GEN2 Video Workbench (Photo)")         showGen2WorkbenchPhoto = true;
         // Tutorial windows — names MUST match the titles used in
         // renderTutorialXxxWindow() calls (MainWindow_Dialogs.cpp).
         else if (n == "Tutorial: Integer BASIC")              showTutorialIntegerBasic = true;
@@ -1261,6 +1265,7 @@ MainWindow_ImGui::windowRegistry()
         { "WozJobsPhoto",         "Woz & Jobs (1976)",                         &MW::showWozJobsPhoto,       K::Info,        true  },
         { "WozJobsRectPhoto",     "Apple-1 Demo Session (1976)",               &MW::showWozJobsRectPhoto,   K::Info,        true  },
         { "TmsBoardPhoto",        "P-LAB TMS9918 Card (Photo)",                &MW::showTmsBoardPhoto,      K::Info,        true  },
+        { "Gen2WorkbenchPhoto",   "GEN2 Video Workbench (Photo)",              &MW::showGen2WorkbenchPhoto, K::Info,        true  },
         // ── Transient dialogs — NOT persisted (would re-pop a file/config op) ─────────────────────────────────────────────────
         { "ScreenConfig",         "Display Settings",                          &MW::showScreenConfig,       K::Dialog,      false },
         { "MemoryConfig",         "Memory Settings",                           &MW::showMemoryConfig,       K::Dialog,      false },
