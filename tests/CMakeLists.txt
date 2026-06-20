@@ -448,22 +448,8 @@ add_test(NAME codetank_smoke
                  "${CMAKE_SOURCE_DIR}/roms/jukebox.rom")
 set_tests_properties(codetank_smoke PROPERTIES TIMEOUT 5)
 
-# -- P-LAB CodeTank GAME4 (Light Corridor) smoke test -------------------------
-# Pins the GAME4 cartridge layout: lower = TMS_LightCorridor entry $4000
-# starts with SEI/CLD/LDX #$FF (the project's start: prologue); upper = $FF
-# reserved bank.
-add_executable(test_codetank_game4
-    codetank_game4_smoke_test.cpp
-    ${CMAKE_SOURCE_DIR}/src/CodeTank.cpp
-    ${CMAKE_SOURCE_DIR}/src/Logger.cpp
-    ${CMAKE_SOURCE_DIR}/src/SnapshotIO.cpp
-)
-target_include_directories(test_codetank_game4 PRIVATE ${CMAKE_SOURCE_DIR}/src)
-
-add_test(NAME codetank_game4_smoke
-         COMMAND test_codetank_game4
-                 "${CMAKE_SOURCE_DIR}/roms/codetank/Codetank_GAME4.rom")
-set_tests_properties(codetank_game4_smoke PROPERTIES TIMEOUT 5)
+# (GAME4 / Light Corridor cartridge smoke test removed June 2026 — the GAME4
+#  cart was retired with the LightCorridor source.)
 
 # -- TMS9918A sprite-engine status-flag test ----------------------------------
 # Self-contained: TMS9918 only. Pins per-VBLANK sticky bits 5 (collision)
