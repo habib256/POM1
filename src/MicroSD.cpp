@@ -1257,8 +1257,13 @@ void MicroSD::deserialize(pom1::SnapshotReader& r)
     t1Running = r.readU8() != 0;
     cpuStrobeHigh = r.readU8() != 0;
     mcuStrobeHigh = r.readU8() != 0;
-    mcuPhase               = static_cast<McuPhase>(r.readU8());
-    nextPhaseAfterResponse = static_cast<McuPhase>(r.readU8());
+    // Clamp the MCU FSM phases restored from (possibly corrupt) snapshot bytes
+    // back to IDLE — handleByteFromCPU() switches on mcuPhase with no default,
+    // so an out-of-range value would silently drop every command byte and wedge
+    // the MCU until a hard reset. McuPhase is IDLE..TEST_ECHO (0..6). Mirrors
+    // the enum clamps in IECCard/Drive1541::deserialize.
+    { uint8_t v = r.readU8(); mcuPhase = (v <= 6) ? static_cast<McuPhase>(v) : McuPhase::IDLE; }
+    { uint8_t v = r.readU8(); nextPhaseAfterResponse = (v <= 6) ? static_cast<McuPhase>(v) : McuPhase::IDLE; }
     currentCommand         = r.readU8();
     stringBuffer    = r.readString();
     responseBuffer  = r.readByteVector();

@@ -482,6 +482,13 @@ void Drive1541::deserialize(SnapshotReader& r) {
     errMsg_    = r.readString();
     errTrack_  = r.readU8();
     errSector_ = r.readU8();
+    // The in-flight channel-15 error-read buffer/cursor are not serialized;
+    // reset them so the next talkByte() re-derives the buffer cleanly from the
+    // restored errCode_/errMsg_ (a stale cursor would duplicate/restart bytes
+    // and desync the host's byte-accurate ACPTR handshake).
+    errBuffer_.clear();
+    errCursor_ = 0;
+    errBuilt_  = false;
     std::string p = r.readString();
     if (!p.empty()) image_.mount(p);
 }

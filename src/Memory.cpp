@@ -582,6 +582,10 @@ void Memory::initMemory(){
     // fillAudioBuffer in a few ms of tail audio.
     sid->resetChip();
     microSD->reset();
+    // The IEC daughterboard rides on microSD's VIA PORTB — reset its serial-bus
+    // FSM too, or it desyncs from the freshly-cleared VIA after a mid-transfer
+    // reset (busReset is only otherwise called on plug/unplug).
+    if (iecCard) iecCard->busReset();
     wifiModem->reset();
     terminalCard->reset();
     a1ioRtc->reset();
@@ -710,6 +714,9 @@ void Memory::resetMemory(void)
     // SID stays registered as an audio source across hardReset.
     sid->resetChip();
     microSD->reset();
+    // Keep the IEC daughterboard FSM in sync with the microSD VIA it rides on
+    // (see resetMemory) — otherwise an F5 mid-transfer leaves it desynced.
+    if (iecCard) iecCard->busReset();
     wifiModem->reset();
     terminalCard->reset();
     a1ioRtc->reset();
