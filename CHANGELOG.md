@@ -91,6 +91,59 @@ Built clean; all 32 `ctest` pass (Klaus, Harte cycle-exact, `cpu_interrupt`,
   addresses like `"12G4"` instead of silently using a truncated value, matching
   `parseIntPositive()`.
 
+### Changed — emulator (`src/`): GEN2 silicon params follow the SILICON/FANTASY buttons
+
+- **GEN2 HGR silicon-fidelity knobs are now armed/disarmed by the silicon
+  profile toggle** (`MainWindow_Menu.cpp` toolbar ruler/horse button,
+  `MainWindow_HardwareWindows.cpp` master `SILICON STRICT`/`MULTIPLEXING FANTASY`
+  button, `MainWindow_Presets.cpp` preset apply). All four GEN2 power-on knobs
+  (`setGen2RandomPowerOn` → random latch / floating-bus noise / vertical scanner
+  phase / framebuffer DRAM noise) now flip with the master profile, and the four
+  individual Silicon Strict Inspector checkboxes track it. Previously only the
+  preset path touched them; the toggle buttons left GEN2 out of sync. The
+  headless path stays deterministic.
+
+### Fixed — emulator (`src/`): bug-hunt sweep (continued — passes 3-4)
+
+Further adversarial bug-hunt passes over real-time audio, host I/O error
+handling, the DRAM-refresh CLI feature, and snapshot/reset robustness of the
+storage cards. Built clean; all 32 `ctest` pass (2026-06-21).
+
+- **Tape export checks write errors** (`CassetteDevice.cpp` `saveAciTape` /
+  `saveWavTape`) — both now `flush()` + verify stream state after writing, so a
+  full/failing disk reports an error instead of silently leaving a truncated
+  `.aci`/`.wav` reported as success.
+- **`--dram-refresh` / `--no-dram-refresh` now honoured in GUI mode**
+  (`main_imgui.cpp`, `MainWindow_ImGui.{h,cpp}`) — the override was applied only
+  on the headless path; the GUI launch dropped it so the preset default always
+  won. Added `setDramRefreshOverride()` + an apply branch mirroring
+  `--silicon-strict`.
+- **Cassette ramp-in counter is now atomic** (`CassetteDevice.{h,cpp}`) —
+  `audioRampInSamplesRemaining` was reachable from the realtime audio-callback
+  thread and main-thread resets under two different mutexes (a data race). Made
+  `std::atomic<uint32_t>`; `clearLiveAudioState()` no longer needs a mode-specific
+  lock (which would have dead-locked callers already holding `audioStreamMutex`).
+- **microSD write-finish reports I/O errors** (`MicroSD.cpp` `cmdWriteFinish()`) —
+  a failed/truncated host write now returns `I/O ERROR` to the guest instead of
+  acknowledging the SAVE as OK.
+- **DRAM-refresh stall counter cleared on reset** (`M6502.cpp` `hardReset()`) —
+  `hardReset()` now calls `resetDramRefreshStallCount()` so the inspector's
+  "stall cycles since reset" readout matches its label after a reset/preset switch.
+- **microSD MCU FSM phases validated on snapshot load** (`MicroSD.cpp`
+  `deserialize()`) — `mcuPhase`/`nextPhaseAfterResponse` are clamped to `IDLE`
+  if out of range; a forged snapshot could otherwise wedge the MCU (the
+  command-byte switch has no `default`). Mirrors the IEC/Drive1541/CFFA1 clamps.
+- **IEC daughterboard FSM reset with the microSD VIA** (`Memory.cpp`
+  `resetMemory`/`initMemory`) — `iecCard->busReset()` now runs alongside
+  `microSD->reset()`, so an F5 hard reset mid-transfer no longer leaves the IEC
+  serial-bus FSM desynced from the freshly-cleared VIA it rides on.
+- **1541 error-channel read state reset on snapshot load** (`Drive1541.cpp`
+  `deserialize()`) — the in-flight channel-15 `errBuffer_`/`errCursor_`/`errBuilt_`
+  (not serialized) are now reset on load so the next read re-derives a clean
+  stream from the restored `errCode_` instead of duplicating/restarting bytes.
+- **`--dram-refresh` documented** (`doc/CLI.md`) — added the flag row next to
+  `--silicon-strict` (it was missing from the canonical CLI reference).
+
 ### Added — 6502 software (`dev/`): shared graphics library, shared font, TMS9918 demos
 
 6502-side work that ships under `dev/` (libraries + `sketchs/` + `dev/projects/` programs),
