@@ -2176,6 +2176,16 @@ void MainWindow_ImGui::renderSiliconStrictWindow()
             emulation->setOutOfRangeStrictMode(turnOn);
             cpuDecimalBugEnabled           = turnOn;
             emulation->setCpuDecimalBugNMOS(turnOn);
+            // GEN2 HGR silicon-fidelity knobs (latch / floating-bus /
+            // scanner-phase / DRAM noise) are part of the master bundle — arm
+            // or disarm all four and keep their individual checkbox flags below
+            // in sync. Mirrors the preset apply path's setGen2RandomPowerOn().
+            gen2RandomPowerOnEnabled       = turnOn;
+            gen2RandomLatchEnabled         = turnOn;
+            gen2RandomFloatingBusEnabled   = turnOn;
+            gen2RandomScannerPhaseEnabled  = turnOn;
+            gen2RandomDramNoiseEnabled     = turnOn;
+            emulation->setGen2RandomPowerOn(turnOn);
             // Strict-mode RAM topology: real Apple-1 has 8 KB dual-bank RAM
             // ($0000-$0FFF + $E000-$EFFF) with $1000-$7FFF floating. Force
             // the preset RAM ceiling to 8 KB when strict is armed; restore

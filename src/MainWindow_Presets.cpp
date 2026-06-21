@@ -633,6 +633,21 @@ void MainWindow_ImGui::applyMachineConfig(int presetIndex)
     emulation->setSiliconStrictMode(!fantasyPreset);
     siliconStrictModeEnabled = !fantasyPreset;
     emulation->setOutOfRangeStrictMode(!fantasyPreset);
+    oorStrictModeEnabled = !fantasyPreset;
+    // Silicon Strict is an all-or-nothing master switch: a non-Fantasy preset
+    // ARMS every silicon-fidelity knob at once, Fantasy (the default, last
+    // preset) DISARMS them all. After the preset lands the user can flip any
+    // individual knob in the Silicon Strict window and that override sticks
+    // until the next preset switch or master toggle. The same bundle is armed
+    // by the master button in MainWindow_HardwareWindows.cpp — keep them in
+    // sync. DRAM refresh (4/65 CPU steal) is part of the bundle, so a Silicon
+    // preset reproduces the real-DRAM beam-race drift out of the box.
+    dramRefreshEnabled = !fantasyPreset;
+    emulation->setDramRefreshEnabled(!fantasyPreset);
+    vramNoiseOnResetEnabled = !fantasyPreset;
+    emulation->setVramNoiseOnReset(!fantasyPreset);
+    systemRamNoiseOnResetEnabled = !fantasyPreset;
+    emulation->setSystemRamNoiseOnReset(!fantasyPreset);
     // NMOS decimal ADC/SBC flag bug: original-chip behaviour on strict presets,
     // 65C02-corrected on the (fantasy) Multiplexing presets.
     emulation->setCpuDecimalBugNMOS(!fantasyPreset);
@@ -642,6 +657,12 @@ void MainWindow_ImGui::applyMachineConfig(int presetIndex)
     // to decide between random / documented latch + DRAM + scanner phase.
     emulation->setGen2RandomPowerOn(!fantasyPreset);
     gen2RandomPowerOnEnabled = !fantasyPreset;
+    // Keep the four individual Silicon Strict Inspector checkboxes in sync with
+    // the master power-on flag (setGen2RandomPowerOn flips all four together).
+    gen2RandomLatchEnabled        = !fantasyPreset;
+    gen2RandomFloatingBusEnabled  = !fantasyPreset;
+    gen2RandomScannerPhaseEnabled = !fantasyPreset;
+    gen2RandomDramNoiseEnabled    = !fantasyPreset;
 
     // UI flags reflect the preset's target state immediately (the menu
     // checkmarks and toolbar chips are driven by these). The actual

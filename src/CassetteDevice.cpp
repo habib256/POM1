@@ -264,6 +264,9 @@ void CassetteDevice::clearLiveAudioState()
     std::lock_guard<std::mutex> lock(audioMutex);
     audioSampleRemainder = 0.0;
     audioPlaybackSample = 0.0f;
+    // audioRampInSamplesRemaining is atomic — safe to store here even though
+    // some callers (e.g. rewindTape) already hold audioStreamMutex; no extra
+    // lock and no two-mutex race with the audio-callback thread.
     audioRampInSamplesRemaining = kAudioRampInSamples;
     audioQueue.clear();
 }
@@ -931,6 +934,14 @@ bool CassetteDevice::saveAciTape(const std::string& path) const
         writeLe32(file, duration);
     }
 
+    // Surface a write failure (disk full / media error / flush error) instead
+    // of reporting success on a truncated file. Matches D64Image::save,
+    // PR40Printer::savePaperRoll, Memory::saveSnapshot.
+    file.flush();
+    if (!file.good()) {
+        lastError = "Write error on tape file: " + path;
+        return false;
+    }
     lastError.clear();
     return true;
 }
@@ -1232,6 +1243,12 @@ bool CassetteDevice::saveWavTape(const std::string& path) const
     writeLe32(file, dataSize);
     file.write(reinterpret_cast<const char*>(pcm.data()), static_cast<std::streamsize>(dataSize));
 
+    // Surface a write failure rather than reporting success on a truncated file.
+    file.flush();
+    if (!file.good()) {
+        lastError = "Write error on tape file: " + path;
+        return false;
+    }
     lastError.clear();
     return true;
 }

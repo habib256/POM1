@@ -541,6 +541,14 @@ void MainWindow_ImGui::render()
             emulation->setCpuDecimalBugNMOS(v);
             cpuDecimalBugEnabled = v;
         }
+        if (dramRefreshOverride) {
+            // --dram-refresh / --no-dram-refresh: override the preset default
+            // (applyMachineConfig sets dramRefreshEnabled = !fantasyPreset).
+            // Mirror the headless path so the flag works in GUI mode too.
+            const bool v = *dramRefreshOverride;
+            emulation->setDramRefreshEnabled(v);
+            dramRefreshEnabled = v;
+        }
         if (initialExecutionSpeed) {
             executionSpeed = *initialExecutionSpeed;
             emulation->setExecutionSpeedCyclesPerFrame(executionSpeed);

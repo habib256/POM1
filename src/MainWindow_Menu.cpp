@@ -1212,10 +1212,20 @@ void MainWindow_ImGui::renderToolbar()
                 emulation->setSystemRamNoiseOnReset(turnOn);
                 emulation->setDramRefreshEnabled(turnOn);
                 emulation->setOutOfRangeStrictMode(turnOn);
+                // GEN2 HGR silicon-fidelity knobs are part of the bundle too —
+                // arm/disarm all four (latch / floating-bus / scanner-phase /
+                // DRAM noise) with the master profile, and keep the Inspector
+                // checkbox flags in sync. Mirrors the preset apply path.
+                gen2RandomPowerOnEnabled      = turnOn;
+                gen2RandomLatchEnabled        = turnOn;
+                gen2RandomFloatingBusEnabled  = turnOn;
+                gen2RandomScannerPhaseEnabled = turnOn;
+                gen2RandomDramNoiseEnabled    = turnOn;
+                emulation->setGen2RandomPowerOn(turnOn);
                 showSiliconStrictWindow = true;
                 setStatusMessage(turnOn
-                    ? "SILICON STRICT ON — strict Apple-1 timing + VRAM/RAM noise + DRAM refresh + OOR armed"
-                    : "MULTIPLEXING FANTASY — every silicon-fidelity knob OFF",
+                    ? "SILICON STRICT ON — strict Apple-1 timing + VRAM/RAM noise + DRAM refresh + GEN2 power-on + OOR armed"
+                    : "MULTIPLEXING FANTASY — every silicon-fidelity knob OFF (incl. GEN2)",
                     3.5f);
             }
             if (strict) {

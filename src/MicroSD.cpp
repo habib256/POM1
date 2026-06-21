@@ -693,6 +693,14 @@ void MicroSD::cmdWriteFinish()
     }
     file.close();
 
+    // A write/flush failure (disk full, quota, media removed) must be reported
+    // to the guest, not acknowledged as OK — otherwise a SAVE silently leaves a
+    // truncated file. The error path already exists (open-failure above).
+    if (!file.good()) {
+        sendError("I/O ERROR");
+        return;
+    }
+
     sendOK(McuPhase::IDLE);
 }
 

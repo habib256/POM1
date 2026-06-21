@@ -77,6 +77,7 @@ public:
     // *after* the preset's default (!fantasyPreset) so the override wins.
     // Subsequent preset switches reset to default - this is intentional.
     void setSiliconStrictModeOverride(bool enabled) { siliconStrictModeOverride = enabled; }
+    void setDramRefreshOverride(bool enabled) { dramRefreshOverride = enabled; }
     // CLI phase-C verbs. Applied once, the frame after pendingCardEnableFrames
     // reaches zero (the same frame the deferred plug commits).
     void setDeferredCliActions(std::vector<pom1::CliAction> actions)
@@ -606,6 +607,7 @@ private:
     std::optional<CodeTank::Jumper>     codeTankJumperOverride;  // --codetank-jumper
     std::string                         codeTankRomPathOverride; // --codetank-rom
     std::optional<bool>                 siliconStrictModeOverride; // --silicon-strict / --no-silicon-strict
+    std::optional<bool>                 dramRefreshOverride;       // --dram-refresh / --no-dram-refresh
     std::vector<pom1::CliAction>        deferredCliActions; // phase-C queue
     bool deferredCliActionsConsumed = false;
     // applyMachineConfig() normally triggers emulation->hardReset() to wipe

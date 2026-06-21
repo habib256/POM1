@@ -254,7 +254,12 @@ private:
     mutable std::mutex audioMutex;
     std::deque<AudioSegment> audioQueue;
     float audioPlaybackSample = 0.0f;
-    uint32_t audioRampInSamplesRemaining = 0;
+    // Touched by the realtime audio-callback thread (decrement, under
+    // audioStreamMutex/audioMutex depending on mode) and by main-thread resets
+    // through several paths guarded by different mutexes — atomic so those can
+    // never race regardless of which lock the caller holds. Only the audio
+    // thread decrements; main thread only stores kAudioRampInSamples.
+    std::atomic<uint32_t> audioRampInSamplesRemaining{0};
 
     // Mechanical "clunk" that fires when the deck mode transitions
     // (NoTape ↔ ProgramTape ↔ AudioStream). Pre-synthesised into

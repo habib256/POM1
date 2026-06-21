@@ -1218,6 +1218,11 @@ void M6502::hardReset(void)
     // against a previous preset's address space is meaningless after.
     breakpointActive  = false;
     breakpointTripped = false;
+
+    // The DRAM-refresh stall telemetry is labelled "stall cycles since reset"
+    // in the Silicon Strict inspector — clear it (and the sub-instruction
+    // accumulator) so the readout matches its label after a reset/preset switch.
+    resetDramRefreshStallCount();
 }
 void M6502::softReset(void)
 {

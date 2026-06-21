@@ -1,3 +1,9 @@
+;  A-1-CrazyCycle-SILICON.asm  -  GENERATED from A-1-CrazyCycle.asm.
+;  SILICON build: 61 CPU cycles + 4 DRAM refresh stalls = 65 beam cycles
+;  per scanline, for a real DRAM Apple-1 / POM1 with refresh ON.
+;  DO NOT EDIT here - edit A-1-CrazyCycle.asm and re-run build.py.
+;  Assemble: ca65 -I <apple1> -I <gen2> A-1-CrazyCycle-SILICON.asm
+
 ; =============================================================================
 ; A-1-CrazyCycle — Uncle Bernie GEN2 *release* card demo (beam-raced)
 ; VERHILLE Arnaud - 2026
@@ -209,10 +215,6 @@ mhalf:      .res 1      ; current note half-period in slots (notes[fcnt>>3])
         LDX #6          ; 2 \
 @inner: DEX             ; 2  | 2 + 6*5-1 = 31
 @bi:    BNE @inner      ; 3 /
-.ifndef SILICON
-        NOP             ; 2 \  FANTASY (1:1 / SRAM host): pad to 65 CPU = 65 beam
-        NOP             ; 2 /  SILICON drops these -> 61 CPU + 4 refresh = 65 beam
-.endif
         DEY             ; 2 -> 62 (FANTASY) / 58 (SILICON)
 @bo:    BNE @outer      ; 3 -> 65 (FANTASY) / 61 (SILICON) per line
         ; Taken branches must not cross a page (the 6502 +1 penalty would
@@ -379,28 +381,16 @@ sc_b1:  BMI s_one               ; 2 nt / 3 t
         CPX #4                  ; 2   4th consecutive zero?
 sc_b2:  BEQ locked              ; 2 nt (3 when it finally locks)
         LDA zp_dummy            ; 3   } cadence (FANTASY 66 / SILICON 62 CPU):
-.ifdef SILICON
         NOPS 22                 ; 44  } 12+3+44+3 = 62 CPU = 66 beam
-.else
-        NOPS 24                 ; 48  } 12+3+48+3 = 66 CPU = 66 beam
-.endif
         JMP scan                ; 3   }
 s_one:  LDX #0                  ; 2   blank sample: arm the zero counter
-.ifdef SILICON
         NOPS 25                 ; 50  } 9+50+3 = 62 CPU = 66 beam
-.else
-        NOPS 27                 ; 54  } 9+54+3 = 66 CPU = 66 beam
-.endif
         JMP scan                ; 3   }
         .assert >(sc_b1+2) = >(s_one),  error, "scan: BMI s_one crosses a page"
         .assert >(sc_b2+2) = >(locked), error, "scan: BEQ locked crosses a page"
         ; LAYOUT SHIM 2 — dead space (the block above ends in JMP scan, never
         ; falls through). Retune with shim 1 if a page .assert fires.
-.ifdef SILICON
         .res 66                 ; LAYOUT SHIM 2 (SILICON: +10 for the shorter sync NOPS)
-.else
-        .res 56                 ; LAYOUT SHIM 2 — retune with shim 1 if a page .assert fires
-.endif
 
         ; LOCKED: the 4th zero's bus access hit hcnt 28 (zeros at 25,26,27,28).
         ; Cycles consumed this iteration: LDA(4)+BMI(2)+INX(2)+CPX(2)+BEQ(3)
@@ -416,25 +406,13 @@ locked:
         ; 192 (V-blank), then the first 0 again is line 0.
 lscan1: LDA SS_POLL             ; 4   bus at hcnt ~45
 ls_b1:  BMI l_vbl               ; 2 nt (3 t when V-blank arrives)
-.ifdef SILICON
         NOPS 26                 ; 52  } 6+52+3 = 61 CPU = 65 beam = one line
-.else
-        NOPS 28                 ; 56  } 6+56+3 = 65 CPU = 65 beam = one line
-.endif
         JMP lscan1              ; 3   }
 l_vbl:                          ; consumed 4+3 = 7 -> (line 192)
-.ifdef SILICON
         NOPS 27                 ; 54 -> 7+54 = 61 CPU: keep the SILICON cadence
-.else
-        NOPS 29                 ; 58 -> 7+58 = 65 CPU: keep the cadence
-.endif
 lscan2: LDA SS_POLL             ; 4   bus at hcnt ~45 (V-blank lines read 1)
 ls_b2:  BPL l_live              ; 2 nt (3 t at line 0)
-.ifdef SILICON
         NOPS 26                 ; 52  } 6+52+3 = 61 CPU = 65 beam
-.else
-        NOPS 28                 ; 56  } 6+56+3 = 65 CPU = 65 beam
-.endif
         JMP lscan2              ; 3   }
         .assert >(ls_b1+2) = >(l_vbl),  error, "lscan1: BMI l_vbl crosses a page"
         .assert >(ls_b2+2) = >(l_live), error, "lscan2: BPL l_live crosses a page"
@@ -504,11 +482,7 @@ hw_wj:  STA hidx                ; 3
         BURN_LINES_Y            ; 65*T' - 1
         LDY mcnt                ; 3   music countdown rides Y inside the window
         LDA zp_dummy            ; 3
-.ifdef SILICON
         NOPS 23                 ; 46  SILICON: -12 = the 3 const overhead slots x4
-.else
-        NOPS 29                 ; 58  FANTASY
-.endif
         LDX #SQ_LINES           ; 2   -> anchor + 95+3-1+pad + SLOT*T' = SLOT(T'+3)+17
 
         ; ---- square: SQ_LINES lines, 65 (FANTASY) / 61 (SILICON) cycles each --
@@ -540,9 +514,6 @@ mq_no:  NOPS 6                  ; 12   (no-toggle path: 3 + 12 = 15)
 mq_join:                        ;      tick = DEY 2 + 15 = 17 cycles, both paths
         ; ---- tail pad (graphics region): bring the line to one scanline-slot --
         LDA zp_dummy            ; 3
-.ifndef SILICON
-        NOPS 2                  ; 4   FANTASY: line = 36+17+3+4+5 = 65 CPU = 65 beam
-.endif                          ;     SILICON: line = 36+17+3+0+5 = 61 CPU = 65 beam
         DEX                     ; 2
 sq_b:   BNE sqline              ; 3
         .assert >(sq_b+2)  = >(sqline),  error, "sqline: BNE crosses a page"

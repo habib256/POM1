@@ -716,6 +716,8 @@ int main(int argc, char* argv[])
     }
     if (plan.siliconStrictModeOverride)
         mainWindow.setSiliconStrictModeOverride(*plan.siliconStrictModeOverride);
+    if (plan.dramRefreshOverride)
+        mainWindow.setDramRefreshOverride(*plan.dramRefreshOverride);
     if (!plan.deferredActions.empty())
         mainWindow.setDeferredCliActions(std::move(plan.deferredActions));
     mainWindow.setWindow(window);
