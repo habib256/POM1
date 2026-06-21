@@ -58,7 +58,8 @@
 #define FIRE_COOLDOWN 5u            /* frames between shots                    */
 
 #define GRAV    6                   /* gravity, 1/16 px per frame^2          */
-#define MAXB   16u                  /* bubble slots                          */
+#define MAXB   12u                  /* bubble slots (peak alive is 8: 2 big   */
+                                    /* balloons -> 4 med -> 8 small)          */
 
 /* HUD (above the ceiling, bubbles never reach here) */
 #define HUDY     3u
@@ -536,7 +537,8 @@ static unsigned char step_world(void)
             if (ny < (int)PLAYER_Y)             ny = (int)PLAYER_Y;
             else if (ny > (int)FB)              ny = (int)FB;
             cx -= nx; cy -= ny;
-            if (cx * cx + cy * cy < r * r) hit = 1u;
+            if (cx < r && cx > -r && cy < r && cy > -r &&  /* box reject first */
+                cx * cx + cy * cy < r * r) hit = 1u;
         }
     }
     return hit;
@@ -556,16 +558,35 @@ static void fire(void)
     }
 }
 
+/* CIRCLE collision pellet(ucx,ucy) vs bubble j, with a cheap bounding-box reject
+ * first (compares only) so the 16-bit squared-distance multiply runs only for
+ * genuinely-near pairs. */
+static unsigned char pellet_hits(unsigned char j, int ucx, int ucy)
+{
+    int r  = (int)tsz[tier[j]] / 2;
+    int rr = r + (int)BULLET_W / 2;
+    int dx = bx[j] + r - ucx;
+    int dy;
+    if (dx > rr || dx < -rr) return 0u;
+    dy = by[j] + r - ucy;
+    if (dy > rr || dy < -rr) return 0u;
+    return (unsigned char)(dx * dx + dy * dy <= rr * rr);
+}
+
 /* Move bullets up. The pellet is fast (BULLET_SPEED px/frame), so it advances in
- * small sub-steps (<= BULLET_STEP) and tests collisions each one — otherwise a
- * single jump could tunnel through a 16px bubble or a 3px platform between
- * frames. A hit splits the bubble / erodes the platform and consumes the pellet. */
+ * sub-steps (<= BULLET_STEP) testing the thin platforms and the SMALL bubbles
+ * each one — those are narrower than a frame's jump and would otherwise tunnel.
+ * MEDIUM and BIG bubbles are wider than the jump, so they cannot be skipped:
+ * they are tested just ONCE per frame at the final position (lever 1 — cuts the
+ * per-bubble work for the common big targets by ~4x). A hit splits the bubble /
+ * erodes the platform and consumes the pellet. */
 static void update_bullets(void)
 {
     unsigned char i, j, p;
-    int left, st;
+    int left, st, ucx;
     for (i = 0u; i < (unsigned char)MAXBUL; ++i) {
         if (!bul_a[i]) continue;
+        ucx = bul_x[i] + (int)BULLET_W / 2;        /* pellet centre x (fixed)  */
         for (left = BULLET_SPEED; left > 0 && bul_a[i]; left -= st) {
             st = (left > BULLET_STEP) ? BULLET_STEP : left;
             bul_y[i] -= st;
@@ -587,18 +608,21 @@ static void update_bullets(void)
             }
             if (!bul_a[i]) break;
 
+            /* small bubbles only (tier 2): they can tunnel, so test every step */
             for (j = 0u; j < (unsigned char)MAXB; ++j) {
-                int r, dx, dy, rr;
-                if (!alive[j]) continue;
-                /* CIRCLE collision: bubble (radius sz/2) vs pellet (radius W/2) */
-                r  = (int)tsz[tier[j]] / 2;
-                dx = (bx[j] + r) - (bul_x[i] + (int)BULLET_W / 2);
-                dy = (by[j] + r) - (bul_y[i] + (int)BULLET_H / 2);
-                rr = r + (int)BULLET_W / 2;
-                if (dx * dx + dy * dy <= rr * rr) {
-                    bul_a[i] = 0u;
-                    split(j);
-                    break;
+                if (alive[j] && tier[j] == 2u &&
+                    pellet_hits(j, ucx, bul_y[i] + (int)BULLET_H / 2)) {
+                    bul_a[i] = 0u; split(j); break;
+                }
+            }
+        }
+
+        /* medium + big bubbles: one test per frame at the final position */
+        if (bul_a[i]) {
+            int ucy = bul_y[i] + (int)BULLET_H / 2;
+            for (j = 0u; j < (unsigned char)MAXB; ++j) {
+                if (alive[j] && tier[j] < 2u && pellet_hits(j, ucx, ucy)) {
+                    bul_a[i] = 0u; split(j); break;
                 }
             }
         }
