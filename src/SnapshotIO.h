@@ -61,7 +61,7 @@ inline constexpr char     kSnapshotMagic[8] = {'P','O','M','1','S','N','A','P'};
 //     GEN2 bit reading as 0 (HGR detached). Older readers see an unknown 4-byte
 //     FLAGS payload — they read the low 2 bytes (legacy bits intact) and the
 //     section-boundary realign skips the extra 2.
-inline constexpr uint32_t kSnapshotVersion  = 3;
+inline constexpr uint32_t kSnapshotVersion  = 4;
 
 /// Section names are 8 bytes, NUL-padded. 8 bytes keeps the file aligned
 /// and reads cheaply via fixed-size buffers. Names beyond 8 chars are
@@ -137,6 +137,15 @@ public:
     /// reaching EOF after consuming all sections is the normal loop
     /// terminator (`nextSection` returns false at EOF).
     bool     good() const { return ok && !in.fail(); }
+    /// Force the reader into a failed state so a downstream `good()` check
+    /// rejects the snapshot. Used by section handlers that detect an
+    /// inconsistent declared length before reading (mirrors the internal
+    /// failbit guard in readString/readByteVector).
+    void     fail() { in.setstate(std::ios::failbit); }
+    /// Bytes still available in the underlying stream. Lets a section handler
+    /// reject a forged element count before a huge allocation, mirroring the
+    /// internal guard in readString/readByteVector.
+    std::streamoff bytesAvailable() { return remainingBytes(); }
     uint32_t version() const { return ver; }
     const std::string& error() const { return errorMsg; }
 

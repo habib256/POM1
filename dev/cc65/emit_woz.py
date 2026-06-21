@@ -115,6 +115,7 @@ def emit(
     project_dir: pathlib.Path | None = None,
     quiet: bool = False,
     extra_zones: Sequence[tuple[int, "str | pathlib.Path"]] = (),
+    asflags: Iterable[str] = (),
 ) -> pathlib.Path:
     """Build a cc65 project and emit its Wozmon-hex `.txt` sidecar.
 
@@ -181,7 +182,7 @@ def emit(
     for asm_name in asm_files:
         asm_path = _resolve_asm(asm_name, project_dir, root)
         obj_path = build_dir / (asm_path.stem + ".o")
-        cmd = ["ca65", *inc_args, "-o", str(obj_path), str(asm_path)]
+        cmd = ["ca65", *inc_args, *asflags, "-o", str(obj_path), str(asm_path)]
         if not quiet:
             print("$ " + " ".join(cmd), file=sys.stderr)
         subprocess.run(cmd, check=True, cwd=str(root))

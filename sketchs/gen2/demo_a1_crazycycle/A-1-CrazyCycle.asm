@@ -209,10 +209,12 @@ mhalf:      .res 1      ; current note half-period in slots (notes[fcnt>>3])
         LDX #6          ; 2 \
 @inner: DEX             ; 2  | 2 + 6*5-1 = 31
 @bi:    BNE @inner      ; 3 /
-        NOP             ; 2 \  -> 60
-        NOP             ; 2 /
-        DEY             ; 2 -> 62
-@bo:    BNE @outer      ; 3 -> 65 per line (last iteration 64)
+.ifndef SILICON
+        NOP             ; 2 \  FANTASY (1:1 / SRAM host): pad to 65 CPU = 65 beam
+        NOP             ; 2 /  SILICON drops these -> 61 CPU + 4 refresh = 65 beam
+.endif
+        DEY             ; 2 -> 62 (FANTASY) / 58 (SILICON)
+@bo:    BNE @outer      ; 3 -> 65 (FANTASY) / 61 (SILICON) per line
         ; Taken branches must not cross a page (the 6502 +1 penalty would
         ; stretch the line to 66 cycles). Link-time checked:
         .assert >(@mb+2) = >(@no),    error, "BURN_LINES_Y tick branch crosses a page"
@@ -480,8 +482,12 @@ hw_wj:  STA hidx                ; 3
         BURN_LINES_Y            ; 65*T' - 1
         LDY mcnt                ; 3   music countdown rides Y inside the window
         LDA zp_dummy            ; 3
-        NOPS 29                 ; 58
-        LDX #SQ_LINES           ; 2   -> anchor + 95+3-1+66 + 65T' = 65(T'+3)+17
+.ifdef SILICON
+        NOPS 23                 ; 46  SILICON: -12 = the 3 const overhead slots x4
+.else
+        NOPS 29                 ; 58  FANTASY
+.endif
+        LDX #SQ_LINES           ; 2   -> anchor + 95+3-1+pad + SLOT*T' = SLOT(T'+3)+17
 
         ; ---- square: 64 lines, 65 cycles each --------------------------------
         ; Line iteration starts at hcnt 17 (inside H-blank). TEXT_ON bus at
@@ -510,7 +516,11 @@ gq_join:
         LDA GEN2_TEXTOFF          ; 4    bus 24 after TEXT_ON -> beam leaves
         JMP (ptr2)              ; 5    -> slide2 + H: executes 8-H NOPs
 slide2: NOPS 8                  ; 16-2*H executed
-        NOPS 3                  ; 6
+.ifdef SILICON
+        NOPS 1                  ; 2   SILICON: line = 61 CPU + 4 refresh = 65 beam
+.else
+        NOPS 3                  ; 6   FANTASY: line = 65 CPU = 65 beam
+.endif
         DEX                     ; 2
 sq_b:   BNE sqline              ; 3    -> 5+16+4+20+4+5+6+2+3 = 65 per line
         .assert >(sq_b+2)  = >(sqline),  error, "sqline: BNE crosses a page"

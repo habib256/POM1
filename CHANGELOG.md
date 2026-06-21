@@ -10,6 +10,87 @@ is `git log`; the user-facing feature tour is `README.md`; open work lives in
 
 ## [Unreleased]
 
+### Fixed — emulator (`src/`): bug-hunt sweep
+
+Emulator-side fixes lifted from `TODO.md` — a defensive pass over snapshot/rewind
+deserialisation, the CPU core, the TMS9918, the peripheral/storage stack, and a
+second pass over the ImGui UI threading, card-conflict gating, and CLI parsing.
+Built clean; all 32 `ctest` pass (Klaus, Harte cycle-exact, `cpu_interrupt`,
+`snapshot_smoke`, `iec_snapshot_smoke`) (2026-06-21).
+
+- **HIGH — heap overflow from a forged snapshot** (`Memory.cpp`
+  `readSnapshotSections()`, MEM handler) — `ramSize` / `presetRamKB` restored
+  from a `.snap`/rewind blob are now `std::clamp`'d (0..64 / 4..64). An
+  unvalidated `ramSize` previously drove an out-of-bounds heap write of up to
+  ~64 MB in `resetMemory()` / `clearMemory()`.
+- **MEM section length validated** (`Memory.cpp`) — the declared `sectionLen`
+  (`0x10000` + 12 scalar bytes) is checked before reading; a truncated/forged
+  length now fails cleanly instead of loading garbage into RAM/state. Added
+  `SnapshotReader::fail()` helper (`SnapshotIO.h`).
+- **`loadBinary()` unseekable-file guard** (`Memory.cpp`) — checks
+  `file.tellg() < 0` (procfs/FIFO/unseekable paths) before casting to `size_t`,
+  mirroring `loadROM`; previously `SIZE_MAX` wrapped the size guard and threw an
+  uncaught `std::length_error`.
+- **CPU IRQ/NMI mutual exclusion** (`M6502.cpp` `step()`) — IRQ and NMI are now
+  mutually exclusive with NMI taking priority (one interrupt per instruction
+  boundary, 7 cycles, 3 bytes). A simultaneous IRQ+NMI previously ran BOTH
+  handlers (14 cycles, 6 bytes pushed, wrong priority). Latent today (no
+  production `setNMI()` caller); vectors unchanged (`$FFFA` NMI, `$FFFE` IRQ).
+- **Undocumented multi-byte opcode lengths** (`M6502.cpp`,
+  `Disassembler6502.cpp`) — 63 undocumented multi-byte opcodes that were
+  dispatched to `Unoff()` (which never advanced PC, desyncing the instruction
+  stream) are now mapped to `Unoff2` (2-byte) / `Unoff3` (3-byte) by their real
+  NMOS addressing-mode length; the disassembler carries the matching addressing
+  mode (mnemonic stays `???`). Documented opcodes untouched; Harte cycle-exact
+  still passes.
+- **TMS9918 5th-sprite latch independent of F** (`TMS9918.cpp`) — the per-line
+  5th-sprite (5S) latch no longer gates on the F (frame) flag; 5S and F are
+  independent status latches on silicon, matching the VBlank fallback path.
+- **TMS9918 F (VBlank) edge across large slices** (`TMS9918.cpp`
+  `advanceCycles()`) — the F flag is set by counting VBlank entries across the
+  whole cycle span, so an oversized single `advanceCycles()` slice no longer
+  drops the F edge.
+- **microSD Timer-2 running flag persisted — SNAPSHOT FORMAT v3 → v4**
+  (`MicroSD.cpp`, `SnapshotIO.h` `kSnapshotVersion`) — `t2Running` is now
+  cleared in `reset()` and serialised/deserialised. The byte is appended at the
+  end of the MicroSD section, gated on `r.version() >= 4`, so older v3 snapshots
+  still load (`t2Running` defaults false). Independent of the POM1 application
+  version string.
+- **IEC card enum range-check on load** (`IECCard.cpp` `deserialize()`) —
+  `role_`, `rxPhase_`, `txPhase_` restored from a snapshot are range-validated
+  and fall back to `Idle` if out of range, mirroring `Drive1541`/`CFFA1`.
+- **WiFiModem escape-guard '+' flush** (`WiFiModem.cpp` `advanceCycles()`) — the
+  escape-guard timeout branch now flushes buffered `'+'` chars to the socket
+  (1–2 trailing `'+'` followed by an idle pause were silently dropped from the
+  TCP stream).
+- **D64 fallback allocation spirals from the directory track** (`D64Image.cpp`
+  `allocateSector()`) — fallback allocation now spirals outward from track 18,
+  alternating below/above — authentic CBM DOS order — instead of packing from
+  track 1; misleading comment corrected.
+- **DevBench build-log header idempotency** (`Pom1BenchHost.cpp`
+  `prependBuildLogHeader()`) — the guard used `compare(0, 24, …)` on a 25-char
+  marker and never matched; now uses `rfind(marker, 0)`.
+- **MEDIUM — screen-init data race** (`Screen_ImGui.cpp` `initializeScreen()`) —
+  the power-on grid rewrite now holds `bufferMutex`. Reachable via
+  `resetDisplay()` → `hardReset()` on the emulation thread (TerminalCard telnet
+  hard-reset) concurrently with the UI thread's `render()` copy of `screenBuffer`;
+  every sibling mutator already locked, this one didn't.
+- **Toolbar honours the silicon-strict card-conflict gate** (`MainWindow_Menu.cpp`
+  `renderToolbar()`) — the A1-SID / TMS9918 / GEN2 / A1-IO-RTC toolbar buttons now
+  route through `gateStrictPlug()` like the Hardware menu, so a conflicting P-LAB
+  pair (Parmigiani "one board at a time") can no longer be created from the toolbar
+  in silicon-strict mode.
+- **Cassette deserialize validates its element count** (`CassetteDevice.cpp`
+  `deserialize()`) — the recorded-transition `count` is checked against the bytes
+  actually present before `assign()`, mirroring `readByteVector()`; a forged
+  `.snap`/rewind blob can no longer drive a multi-GB allocation attempt. Added
+  `SnapshotReader::bytesAvailable()` accessor (`SnapshotIO.h`).
+- **CLI address parser rejects trailing garbage** (`CliDispatcher.cpp`
+  `parseAddr16()`) — both `std::stol` calls now verify the whole string was
+  consumed (`idx == size()`), so `--load`/`--run`/`--break` reject malformed
+  addresses like `"12G4"` instead of silently using a truncated value, matching
+  `parseIntPositive()`.
+
 ### Added — 6502 software (`dev/`): shared graphics library, shared font, TMS9918 demos
 
 6502-side work that ships under `dev/` (libraries + `sketchs/` + `dev/projects/` programs),

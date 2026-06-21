@@ -432,6 +432,11 @@ static int runHeadless(pom1::CliPlan& plan)
         applyHeadlessCardOverride(emu, o.card, o.enable);
     if (plan.terminalOverride)
         emu.setTerminalCardEnabled(true);
+    // DRAM refresh stall override (the preset path leaves it off so 1:1-timed
+    // demos stay exact). --dram-refresh arms the 4/65 CPU steal — the beam keeps
+    // running, so beam-race code drifts as on real DRAM silicon.
+    if (plan.dramRefreshOverride)
+        emu.setDramRefreshEnabled(*plan.dramRefreshOverride);
 
     if (plan.cpuMax)
         emu.setExecutionSpeedCyclesPerFrame(1000000);
@@ -462,6 +467,14 @@ static int runHeadless(pom1::CliPlan& plan)
             emu.runCyclesSync(static_cast<uint64_t>(plan.dumpAfterCycles));
         else if (plan.dumpSettleMs > 0)
             std::this_thread::sleep_for(std::chrono::milliseconds(plan.dumpSettleMs));
+        if (emu.isDramRefreshEnabled()) {
+            char dbg[128];
+            std::snprintf(dbg, sizeof(dbg),
+                          "DRAM refresh ON — %llu CPU cycles stolen (beam keeps "
+                          "running; beam-race code drifts)",
+                          (unsigned long long)emu.getDramRefreshStallCount());
+            pom1::log().info("GFX", dbg);
+        }
         EmulationSnapshot snap;
         emu.copySnapshot(snap);
         bool ok = true;

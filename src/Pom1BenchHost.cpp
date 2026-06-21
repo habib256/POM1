@@ -947,7 +947,10 @@ static void prependBuildLogHeader(bench::BuildResult& r, const BuildLogMeta& m)
 {
     if (!r.showConsole || r.console.empty()) return;
     const std::string hdr = formatBuildLogHeader(m);
-    if (r.console.compare(0, 24, "# POM1 DevBench build log") != 0)
+    // Only prepend if the header marker isn't already at the front. Using rfind
+    // at pos 0 is length-agnostic (the marker is 25 chars; the old compare(0,24,…)
+    // mismatched the literal's length and so never matched, defeating the guard).
+    if (r.console.rfind("# POM1 DevBench build log", 0) != 0)
         r.console.insert(0, hdr);
 }
 

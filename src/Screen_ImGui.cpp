@@ -313,6 +313,12 @@ void Screen_ImGui::initializeScreen()
     // all '@' glyphs blinking in phase at the NE555 cursor rate until
     // CLRSCR wipes the registers. Never random — always this exact
     // pattern on every real machine he's worked on since 2010.
+    //
+    // Lock bufferMutex: reachable via resetDisplay() → hardReset() on the
+    // emulation thread (TerminalCard telnet hard-reset), concurrently with the
+    // UI thread's render() copy of screenBuffer. Matches clear()/scrollUp()/etc.
+    // The constructor path is pre-thread so the lock is uncontended there.
+    std::lock_guard<std::mutex> lock(bufferMutex);
     screenBuffer.resize(BUFFER_SIZE);
     topRow = 0;
     cursorX = 0;

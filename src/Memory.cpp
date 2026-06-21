@@ -921,8 +921,19 @@ int Memory::loadBinary(const char* filename, uint16_t startAddress, int* bytesLo
     }
 
     file.seekg(0, std::ios::end);
-    size_t fileSize = file.tellg();
+    const std::streamoff rawSize = file.tellg();
     file.seekg(0, std::ios::beg);
+
+    // tellg() returns -1 on an openable-but-unseekable path (e.g. a procfs
+    // node or FIFO). Assigning that straight into size_t yields SIZE_MAX, which
+    // both wraps the size guard below and triggers a huge std::vector allocation
+    // (uncaught std::length_error). Reject it cleanly, mirroring loadROM.
+    if (rawSize < 0) {
+        pom1::log().error("Mem", std::string("Cannot determine file size: ") + filename);
+        file.close();
+        return 1;
+    }
+    const size_t fileSize = static_cast<size_t>(rawSize);
 
     if (startAddress + fileSize > 0x10000) {
         std::ostringstream oss;
@@ -2065,12 +2076,32 @@ bool Memory::readSnapshotSections(pom1::SnapshotReader& r, std::string& error, M
             continue;
         }
         if (sectionName == "MEM") {
+            // Validate the declared section length before reading: the MEM
+            // payload is a fixed 64 KB RAM image plus 12 bytes of trailing
+            // scalars. A truncated/forged shorter length would otherwise make
+            // readBytes consume bytes belonging to the next section and load
+            // garbage into RAM and the machine-state scalars while reporting
+            // success. Mirror readString's remainingBytes guard.
+            constexpr uint32_t kMemSectionLen =
+                0x10000u + 1 + 1 + 4 + 2 + 2 + 1 + 1; // RAM + scalars
+            if (sectionLen != kMemSectionLen) {
+                error = "corrupt snapshot: MEM section length "
+                      + std::to_string(sectionLen) + " (expected "
+                      + std::to_string(kMemSectionLen) + ")";
+                r.fail();
+                return false;
+            }
             r.readBytes(mem.data(), mem.size());
             lastKey            = static_cast<char>(r.readU8());
             keyReady           = r.readU8() != 0;
             displayBusyCycles  = static_cast<int>(r.readU32());
-            ramSize            = static_cast<int>(r.readU16());
-            presetRamKB        = static_cast<int>(r.readU16());
+            // Clamp restored RAM sizing: resetMemory()/clearMemory() loop over
+            // ramSize*1024 into the fixed 64 KB mem[] buffer, so an unvalidated
+            // value from a corrupt/forged blob would drive an out-of-bounds
+            // heap write (the surrounding try/catch cannot catch UB). presetRamKB
+            // would likewise bypass setPresetRamKB()'s clamp.
+            ramSize            = std::clamp(static_cast<int>(r.readU16()), 0, 64);
+            presetRamKB        = std::clamp(static_cast<int>(r.readU16()), 4, 64);
             oorStrictMode      = r.readU8() != 0;
             writeInRom         = r.readU8() != 0;
             markAllPagesDirty();

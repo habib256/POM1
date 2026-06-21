@@ -59,7 +59,6 @@ Guides live in [`sketchs/doc/`](../sketchs/doc/). Source, libraries and build co
 | [`SWTPC_GT-6144.md`](SWTPC_GT-6144.md) · [`SWTPC_PR-40.md`](SWTPC_PR-40.md) | Research on the two 1976 SWTPC cards POM1 emulates. |
 | [`Apple1_Peripherals_Inventory_FR.md`](Apple1_Peripherals_Inventory_FR.md) | French deep-dive: complete Apple-I peripheral inventory. |
 | [`Apple1_Software_Catalog_FR.md`](Apple1_Software_Catalog_FR.md) | French deep-dive: Apple-1 software catalog for the emulator. |
-| [`AUDIT.md`](AUDIT.md) | Historical C++ audit (2026-05-29). The 2 *Medium* findings (JSR/RTS cycles) were since fixed by `cpu_harte_smoke`; the 2 *Low* ones are tracked in `TODO.md`. |
 
 ## Reference assets (binary — not prose)
 

@@ -295,6 +295,14 @@ void CassetteDevice::deserialize(pom1::SnapshotReader& r)
     currentCycle             = r.readU64();
     lastOutputToggleCycle    = r.readU64();
     const uint32_t count     = r.readU32();
+    // Validate the declared count against the bytes actually present before
+    // allocating — a forged/corrupt snapshot could otherwise drive a multi-GB
+    // assign(). Mirrors readByteVector()'s length guard.
+    if (static_cast<std::streamoff>(count) * static_cast<std::streamoff>(sizeof(uint32_t))
+            > r.bytesAvailable()) {
+        r.fail();
+        return;
+    }
     recordedDurations.assign(count, 0);
     if (count) {
         r.readBytes(recordedDurations.data(), count * sizeof(uint32_t));

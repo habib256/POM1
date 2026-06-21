@@ -122,8 +122,14 @@ bool D64Image::allocateSector(uint8_t preferTrack, uint8_t& outTrack, uint8_t& o
         return false;
     };
     if (preferTrack >= 1 && preferTrack <= 35 && tryTrack(preferTrack)) return true;
-    // Spiral outward from track 17 (CBM convention prefers low tracks first).
-    for (uint8_t t = 1; t <= 35; ++t) if (tryTrack(t)) return true;
+    // Authentic CBM DOS allocation: spiral outward from the directory track
+    // (18), trying the track just below then just above at each step, so files
+    // stay clustered near the directory. tryTrack() skips the directory track
+    // and out-of-range tracks.
+    for (uint8_t d = 1; d <= 17; ++d) {
+        if (tryTrack(static_cast<uint8_t>(kDirTrack - d))) return true;
+        if (tryTrack(static_cast<uint8_t>(kDirTrack + d))) return true;
+    }
     return false;
 }
 

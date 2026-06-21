@@ -500,7 +500,18 @@ void TMS9918::advanceCycles(int cycles)
         }
     }
 
-    if (prevCounter < kActiveDisplayCycles && frameCycleCounter >= kActiveDisplayCycles) {
+    // Count VBlank entries (boundaries at kActiveDisplayCycles + n*kCyclesPerFrame)
+    // at or below an absolute counter value. Comparing the count before and
+    // after this slice detects a VBlank entry even when a single oversized
+    // advanceCycles() spans a whole frame — the old `prevCounter < active &&
+    // counter >= active` edge test silently dropped F whenever prevCounter was
+    // already inside the VBlank window (headless/test callers batching many
+    // cycles per call).
+    auto vblankEntriesUpTo = [](int x) -> int {
+        return x < kActiveDisplayCycles ? 0
+             : (x - kActiveDisplayCycles) / kCyclesPerFrame + 1;
+    };
+    if (vblankEntriesUpTo(frameCycleCounter) > vblankEntriesUpTo(prevCounter)) {
         // F flag rises at VBlank entry. Per-scanline scan above has already
         // updated bits 5/6/0..4 progressively; if display was blanked the
         // whole active period (no scanSpritesForLine work happened),
@@ -1451,8 +1462,11 @@ void TMS9918::scanSpritesForLine(int line)
 
         // Visible on this line.
         if (visible == 4) {
-            if (!fiveAlreadyLatched && (statusReg & 0x80) == 0) {
-                // Per TMS9918.pdf: 5S detection only when F flag is zero.
+            if (!fiveAlreadyLatched) {
+                // 5S (fifth-sprite) and F (frame) are independent status
+                // latches on real silicon — the per-line sprite comparator
+                // does not gate on F. (Matches scanSpritesForStatus, the
+                // VBlank fallback, which never checked F either.)
                 statusReg = (uint8_t)((statusReg & 0xE0) | (i & 0x1F));
                 statusReg |= 0x40;
                 fiveAlreadyLatched = true;

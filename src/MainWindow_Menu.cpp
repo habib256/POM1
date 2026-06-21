@@ -793,12 +793,16 @@ void MainWindow_ImGui::renderToolbar()
             sidEnabled ? ImVec4(0.2f, 0.4f, 0.8f, 1.0f) : ImVec4(0.3f, 0.3f, 0.3f, 1.0f));
         if (ImGui::Button(ICON_FA_MUSIC, btnSize)) {
             sidEnabled = !sidEnabled;
-            emulation->setSIDEnabled(sidEnabled);
-            if (sidEnabled) {
-                sidSpecialEditionEnabled = false;
-                jukeBoxEnabled = false;
+            // Honour the silicon-strict Parmigiani gate like the Hardware menu —
+            // gateStrictPlug reverts sidEnabled and refuses on a bus conflict.
+            if (!gateStrictPlug("A1-SID", sidEnabled)) {
+                emulation->setSIDEnabled(sidEnabled);
+                if (sidEnabled) {
+                    sidSpecialEditionEnabled = false;
+                    jukeBoxEnabled = false;
+                }
+                setStatusMessage(sidEnabled ? "P-LAB A1-SID plugged" : "P-LAB A1-SID unplugged", 2.0f);
             }
-            setStatusMessage(sidEnabled ? "P-LAB A1-SID plugged" : "P-LAB A1-SID unplugged", 2.0f);
         }
         ImGui::PopStyleColor();
         showHardwareTooltip(
@@ -816,10 +820,12 @@ void MainWindow_ImGui::renderToolbar()
         if (ImGui::Button(ICON_FA_TV, btnSize)) {
             if (!tms9918Enabled) {
                 tms9918Enabled = true;
-                showTMS9918 = true;
-                emulation->setTMS9918Enabled(true);
-                sidSpecialEditionEnabled = false;
-                setStatusMessage("P-LAB TMS9918 plugged", 2.0f);
+                if (!gateStrictPlug("TMS9918", tms9918Enabled)) {
+                    showTMS9918 = true;
+                    emulation->setTMS9918Enabled(true);
+                    sidSpecialEditionEnabled = false;
+                    setStatusMessage("P-LAB TMS9918 plugged", 2.0f);
+                }
             } else {
                 showTMS9918 = !showTMS9918;
                 if (!showTMS9918) {
@@ -855,11 +861,13 @@ void MainWindow_ImGui::renderToolbar()
         if (ImGui::Button("##hgrToolbar", btnSize)) {
             if (!graphicsCardEnabled) {
                 graphicsCardEnabled = true;
-                emulation->setHgrFramebufferAttached(true);
-                showGraphicsCard = true;
-                // Plug only — load a demo via File > Open from "software/Graphic HGR/"
-                // (the folder auto-plugs GEN2 too).
-                setStatusMessage("GEN2 plugged", 2.0f);
+                if (!gateStrictPlug("GEN2", graphicsCardEnabled)) {
+                    emulation->setHgrFramebufferAttached(true);
+                    showGraphicsCard = true;
+                    // Plug only — load a demo via File > Open from "software/Graphic HGR/"
+                    // (the folder auto-plugs GEN2 too).
+                    setStatusMessage("GEN2 plugged", 2.0f);
+                }
             } else {
                 showGraphicsCard = !showGraphicsCard;
                 if (!showGraphicsCard) {
@@ -914,9 +922,11 @@ void MainWindow_ImGui::renderToolbar()
         if (ImGui::Button(ICON_FA_CLOCK, btnSize)) {
             if (!a1ioRtcEnabled) {
                 a1ioRtcEnabled = true;
-                showA1IO_RTC = true;
-                emulation->setA1IO_RTCEnabled(true);
-                setStatusMessage("P-LAB I/O Board & RTC plugged at $2000", 3.0f);
+                if (!gateStrictPlug("A1-IO-RTC", a1ioRtcEnabled)) {
+                    showA1IO_RTC = true;
+                    emulation->setA1IO_RTCEnabled(true);
+                    setStatusMessage("P-LAB I/O Board & RTC plugged at $2000", 3.0f);
+                }
             } else {
                 showA1IO_RTC = !showA1IO_RTC;
                 if (!showA1IO_RTC) {
