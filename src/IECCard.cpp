@@ -677,15 +677,19 @@ void IECCard::deserialize(SnapshotReader& r) {
     prevAtnLow_    = r.readU8() != 0;
     prevClkLow_    = r.readU8() != 0;
     prevDataLow_   = r.readU8() != 0;
-    role_          = static_cast<Role>(r.readU8());
+    // Clamp FSM enums restored from (possibly corrupt) snapshot bytes back to
+    // a known-good Idle, mirroring the validation in Drive1541/CFFA1::deserialize.
+    // Role: Idle..Talker (0..2); RxPhase: Idle..ByteAck (0..6);
+    // TxPhase: Idle..AllSent (0..10).
+    { uint8_t v = r.readU8(); role_ = (v <= 2) ? static_cast<Role>(v) : Role::Idle; }
     lastSecondary_ = r.readU8();
     wasOpenSecondary_ = r.readU8() != 0;
-    rxPhase_       = static_cast<RxPhase>(r.readU8());
+    { uint8_t v = r.readU8(); rxPhase_ = (v <= 6) ? static_cast<RxPhase>(v) : RxPhase::Idle; }
     rxByte_        = r.readU8();
     rxBitCount_    = static_cast<int>(r.readU32());
     rxEoi_         = r.readU8() != 0;
     rxEoiTimerCycles_ = static_cast<int>(r.readU32());
-    txPhase_       = static_cast<TxPhase>(r.readU8());
+    { uint8_t v = r.readU8(); txPhase_ = (v <= 10) ? static_cast<TxPhase>(v) : TxPhase::Idle; }
     txByte_        = r.readU8();
     txBitIndex_    = static_cast<int>(r.readU32());
     txEoi_         = r.readU8() != 0;

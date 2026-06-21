@@ -177,7 +177,12 @@ void WiFiModem::advanceCycles(int cycles)
     if (escapeCount > 0 && escapeCount < 3) {
         escapeGuardCycles += cycles;
         if (escapeGuardCycles > ESCAPE_GUARD_CYCLES) {
-            // Timeout — partial escape sequence, send buffered '+' chars as data
+            // Timeout — partial escape sequence (1-2 '+'), so these were data,
+            // not an escape. processDataByte() withheld them from the socket
+            // waiting for this resolution; flush them now or they are lost.
+            for (int i = 0; i < escapeCount && i < 3; i++) {
+                sendToSocket('+');
+            }
             escapeCount = 0;
             escapeGuardCycles = 0;
             escapeArmed = false;

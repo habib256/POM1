@@ -66,8 +66,9 @@ bool parseAddr16(const std::string& s, int& out)
             // decimal literal the user typed by accident — reject it.
             if (v.size() > 4) {
                 try {
-                    long n = std::stol(v, nullptr, 10);
-                    if (n < 0 || n > 0xFFFF) return false;
+                    size_t idx = 0;
+                    long n = std::stol(v, &idx, 10);
+                    if (idx != v.size() || n < 0 || n > 0xFFFF) return false;
                     out = static_cast<int>(n);
                     return true;
                 } catch (...) { return false; }
@@ -76,8 +77,9 @@ bool parseAddr16(const std::string& s, int& out)
     }
     if (v.empty() || v.size() > 4) return false;
     try {
-        long n = std::stol(v, nullptr, 16);
-        if (n < 0 || n > 0xFFFF) return false;
+        size_t idx = 0;
+        long n = std::stol(v, &idx, 16);
+        if (idx != v.size() || n < 0 || n > 0xFFFF) return false;
         out = static_cast<int>(n);
         return true;
     } catch (...) { return false; }
@@ -381,6 +383,14 @@ std::optional<CliPlan> parseCli(int argc, char* argv[], bool& listPresetsOut)
         }
         if (arg == "--no-silicon-strict") {
             plan.siliconStrictModeOverride = false;
+            continue;
+        }
+        if (arg == "--dram-refresh") {
+            plan.dramRefreshOverride = true;
+            continue;
+        }
+        if (arg == "--no-dram-refresh") {
+            plan.dramRefreshOverride = false;
             continue;
         }
         if (arg == "--sid-chip") {

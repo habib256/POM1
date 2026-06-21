@@ -46,6 +46,10 @@ void MicroSD::reset()
     t1Counter = 0;
     t1Running = false;
 
+    // Timer 2 — must be cleared here too, else an armed T2 keeps counting
+    // across a hardware reset and spuriously raises IFR bit 5 on a fresh machine.
+    t2Running = false;
+
     // Handshake
     cpuStrobeHigh = false;
     mcuStrobeHigh = false;
@@ -1229,6 +1233,9 @@ void MicroSD::serialize(pom1::SnapshotWriter& w) const
     w.writeU32(static_cast<uint32_t>(testIdleCycles));
     // Cursor
     w.writeString(currentDirectory);
+    // Timer 2 run flag (snapshot v4+). Appended at the end so v3 readers that
+    // ignore it still parse the rest of the section.
+    w.writeU8 (t2Running ? 1 : 0);
 }
 
 void MicroSD::deserialize(pom1::SnapshotReader& r)
@@ -1267,4 +1274,7 @@ void MicroSD::deserialize(pom1::SnapshotReader& r)
     dirIdleCycles   = static_cast<int>(r.readU32());
     testIdleCycles  = static_cast<int>(r.readU32());
     currentDirectory = r.readString();
+    // Timer 2 run flag (snapshot v4+). Older snapshots never stored it; leave
+    // the reset default (false) rather than reading a byte that isn't there.
+    t2Running = (r.version() >= 4) ? (r.readU8() != 0) : false;
 }

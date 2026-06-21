@@ -129,6 +129,10 @@ struct CliPlan {
     // honour the preset; the override survives the first render but does NOT
     // resist a later applyMachineConfig() (preset switch resets to default).
     std::optional<bool>                siliconStrictModeOverride;
+    // --dram-refresh / --no-dram-refresh: Apple-1 DRAM refresh stall (4/65
+    // cycles stolen from the CPU; the video beam keeps running). Independent of
+    // siliconStrictModeOverride so headless beam-race captures can isolate it.
+    std::optional<bool>                dramRefreshOverride;
 
     // Phase-C — consumed after the card deferred-plug timer fires.
     std::vector<CliAction>             deferredActions;
