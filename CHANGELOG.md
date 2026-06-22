@@ -54,6 +54,42 @@ is `git log`; the user-facing feature tour is `README.md`; open work lives in
   `presetRamKB=8` + strict but the real ROM byte under 64 KB Fantasy — so nobody
   re-points the Applesoft target at an 8 KB / strict machine.
 
+### Added — Bench: four Applesoft BASIC machines + BASIC editor without gutter
+
+- **`New` → BASIC now offers four Applesoft machines** (`Pom1BenchHost.cpp`
+  `kP1Machines`/`targetFor`/`injectBasic`): **Applesoft Lite (Apple-1)** =
+  `roms/applesoft-lite-cffa1.rom` @ `$E000` (`E000R`, 64 KB-relaxed);
+  **Applesoft Lite + microSD** = `applesoft-lite-microsd.rom` @ `$6000`;
+  **Applesoft GEN2 HGR** = `sketchs/gen2/applesoft_gen2` @ `$6000` (preset 2);
+  **Applesoft TMS9918** = `sketchs/tms9918/applesoft_tms9918`, flashed as a
+  CodeTank ROM cartridge @ `$4000` (`4000R`, preset 1). `injectBasic` dispatches
+  the ROM load per variant (reloadApplesoftLite{CFFA1,SDCard} / loadInterpreterRom
+  for GEN2 / CodeTank flash for TMS9918). `.bas`/`.apf` files route to the GEN2 or
+  TMS9918 variant by path. (Integer BASIC drops out of the New grid but is still
+  reachable via `.ibas`.) The committed `applesoft-tms9918.bin` ships under
+  `software/Apple-1_TMS_CC65/`.
+- **BASIC editor hides the gutter line numbers** (`TextEditor` gains
+  `SetShowLineNumbers`; CodeBench disables it for BASIC docs) — a BASIC program's
+  own line numbers (10, 20, …) are what matter, so the editor gutter is just noise.
+- **`applesoft_gen2_smoke` extended** to also cold-start and run the **TMS9918**
+  (`4000R`) and **CFFA1** (`E000R`) interpreter cores (`APRINT`/`PRINT 1000+7` →
+  `1007`), proving all four renumbered interpreters execute. 35/35 ctest pass.
+
+### Fixed — Applesoft TMS9918: sprite garbage + clipped HPLOT
+
+- **`HGR`/`GR` now park the sprites** (`sketchs/tms9918/applesoft_tms9918/tmsgfx.inc`)
+  — the Sprite Attribute Table sat uninitialised (Graphics II SAT `$3B00`, and the
+  Multicolor `mc_regs` even pointed it at `$0000` over the framebuffer), so 32
+  garbage sprites floated over the bitmap. Both setups now write `$D0` to the
+  SAT's first sprite Y (terminates the sprite scan → all hidden); Multicolor's SAT
+  moved to `$0B00`.
+- **`HPLOT` clamps x to the 256-wide screen** — x came straight from the low byte
+  of the 16-bit coordinate, so a GEN2-style `HPLOT … TO 279,191` wrapped to x=23
+  and drew a narrow line. `clampx` now pins x≥256 to 255, so the same listing
+  draws a full-width line. Pinned by the new `tms9918-hgr` check in
+  `applesoft_gen2_smoke` (asserts SAT `$3B00`==`$D0` and the line reaches the
+  right-edge cells, via the real VDP).
+
 ### Added — Bench: file-type routing, tab-aware mode, markdown hyperlinks
 
 - **The file extension drives the action, re-evaluated on every tab switch**

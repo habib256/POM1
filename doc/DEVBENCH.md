@@ -81,15 +81,32 @@ time you switch tabs (the status-bar mode and the toolbar follow the front tab):
 | `.s` / `.asm` | assemble (ca65 / ld65) |
 | `.c` | compile (cc65 / cl65) |
 | `.hex` / `.txt` | load Woz-Monitor hex |
-| `.bas` / `.apf` | inject **Applesoft** BASIC (no compiler) — GEN2-aware (see below) |
+| `.bas` / `.apf` | inject **Applesoft** BASIC (no compiler) — interpreter follows the path (see below) |
 | `.ibas` | inject **Integer** BASIC |
 | `.md` / `.markdown` | render as a document (Edit/Preview toggle) — see below |
 | anything else | **do nothing** (Verify/Run report "nothing to build") |
 
-The machine still follows the path for code: `sketchs/tms9918…` → TMS9918,
-`sketchs/gen2…` → GEN2, otherwise Apple-1 text. For BASIC, a `.bas`/`.apf` in a
-GEN2/HGR path injects into **Applesoft GEN2** (the `applesoft_gen2` interpreter on
-the GEN2 card, `6000R`); elsewhere into the stock microSD Applesoft.
+The machine follows the path: `sketchs/tms9918…` → TMS9918, `sketchs/gen2…` →
+GEN2, otherwise Apple-1 text. A `.bas`/`.apf` in a TMS9918 path injects into
+**Applesoft TMS9918**, in a GEN2/HGR path into **Applesoft GEN2**, elsewhere into
+the stock microSD Applesoft.
+
+### BASIC — four Applesoft machines
+
+*New* → language **BASIC** offers four machines (each cold-starts the matching
+interpreter and types your listing — no compiler):
+
+| Machine | Interpreter | Boot |
+|---|---|---|
+| Applesoft Lite (Apple-1) | `roms/applesoft-lite-cffa1.rom` (`$E000`) | `E000R` |
+| Applesoft Lite + microSD | `roms/applesoft-lite-microsd.rom` (`$6000`) | `6000R` |
+| Applesoft GEN2 HGR | `sketchs/gen2/applesoft_gen2` (`$6000`, GEN2 card) | `6000R` |
+| Applesoft TMS9918 | `sketchs/tms9918/applesoft_tms9918` (CodeTank ROM `$4000`) | `4000R` |
+
+The graphics variants (GEN2/TMS9918) add the Apple II graphics command set
+(`TEXT/GR/HGR/COLOR=/HCOLOR=/PLOT/HLIN/VLIN/HPLOT`, `PRINT` → the card's screen,
+`APRINT` → the Apple-1 terminal). The BASIC editor **hides the gutter line
+numbers** — the program's own line numbers (10, 20, …) are what count.
 
 ### Markdown documents
 

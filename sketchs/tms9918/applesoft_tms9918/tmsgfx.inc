@@ -371,8 +371,21 @@ hgr_setup:
         jsr     g2_name_table   ; $3800 = 0,1,..255 x3 (linear bitmap)
         jsr     g2_clear        ; zero 6144-byte pattern table $0000
         jsr     g2_color_clear  ; colour table $2000 -> $F1 (white fg / black bg)
+        lda     #$00            ; park sprites: SAT $3B00 (R5=$76), sprite-0 Y=$D0
+        sta     GVL             ; (Y=$D0 stops the sprite scan -> all 32 hidden;
+        lda     #$3B            ;  the SAT sits just past the name table and is
+        sta     GVH             ;  never cleared otherwise -> garbage sprites)
+        jsr     park_sat
         lda     #$C0            ; R1 = Graphics II, display ON
         jmp     display_on
+
+; park_sat -- hide all sprites: write $D0 to sprite 0's Y at the SAT base in
+; GVL/GVH. The VDP stops scanning sprites at the first Y=$D0.
+park_sat:
+        jsr     vdp_waddr
+        lda     #$D0
+        sta     VDP_DATA
+        rts
 
 g2_name_table:
         lda     #$00
@@ -432,8 +445,8 @@ GFX_HCOLOR:                     ; HCOLOR= n  (0..15 TMS palette; 0..7 Apple-like
         rts
 
 GFX_HPLOT:                      ; HPLOT x,y  [TO x2,y2]...
-        jsr     GTNUM           ; "x,y": x -> LINNUM (use low byte), y -> X
-        lda     LINNUM
+        jsr     GTNUM           ; "x,y": x -> LINNUM (16-bit), y -> X
+        jsr     clampx          ; A = min(x, 255) for the 256-wide screen
         sta     PIXX
         stx     PIXY
         jsr     hplot_pt
@@ -446,7 +459,7 @@ GFX_HPLOT:                      ; HPLOT x,y  [TO x2,y2]...
         lda     PIXY
         sta     LY0
         jsr     GTNUM
-        lda     LINNUM
+        jsr     clampx
         sta     LX1
         stx     LY1
         jsr     line_xy
@@ -456,6 +469,18 @@ GFX_HPLOT:                      ; HPLOT x,y  [TO x2,y2]...
         sta     PIXY
         jmp     @to
 @rts:   rts
+
+; clampx -- A := min(LINNUM, 255). The TMS9918 bitmap is 256 wide, so an x from a
+;   GEN2-dimensioned listing (0..279) is clamped to the right edge rather than
+;   wrapping to its low byte (which made HPLOT 279,.. draw a narrow x=23 line).
+;   Preserves X (GTNUM left y there).
+clampx:
+        lda     LINNUM+1
+        beq     @lo
+        lda     #255
+        rts
+@lo:    lda     LINNUM
+        rts
 
 ; hplot_pt -- set pixel (PIXX,PIXY) in PENCOL on the Graphics II bitmap. Guards
 ;   y < 192 (x is a byte, always 0..255 on the 256-wide screen).
@@ -626,6 +651,11 @@ gr_setup:
         jsr     load_regs_off
         jsr     mc_name_table   ; banded name table at $0800
         jsr     mc_clear        ; zero 1536-byte pattern (colour) table $0000
+        lda     #$00            ; park sprites: SAT $0B00 (R5=$16), sprite-0 Y=$D0
+        sta     GVL
+        lda     #$0B
+        sta     GVH
+        jsr     park_sat
         lda     #$C8            ; R1 = Multicolor, display ON
         jmp     display_on
 
@@ -940,8 +970,8 @@ vdp2_regs:
 
 ; Multicolor: R1=$C8 MC/on, R2=$02 name $0800, R4=$00 pattern $0000,
 ;             R7=$01 black border.
-mc_regs:
-        .byte   $00,$C8,$02,$00,$00,$00,$00,$01
+mc_regs:                        ; R5=$16 -> sprite attr table $0B00 (clear of the
+        .byte   $00,$C8,$02,$00,$00,$16,$00,$01   ; $0000 pattern + $0800 name)
 
 ; bbfont -- Beautiful Boot 8x8 ASCII font ($20-$7F), already in TMS pattern
 ; bit order (MSB = leftmost). Uploaded by upload_font to pattern $0100.

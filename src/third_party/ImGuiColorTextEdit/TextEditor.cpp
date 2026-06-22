@@ -36,6 +36,7 @@ TextEditor::TextEditor()
 	, mColorizerEnabled(true)
 	, mTextStart(20.0f)
 	, mLeftMargin(10)
+	, mShowLineNumbers(true)
 	, mCursorPositionChanged(false)
 	, mColorRangeMin(0)
 	, mColorRangeMax(0)
@@ -894,7 +895,11 @@ void TextEditor::Render()
 	// Deduce mTextStart by evaluating mLines size (global lineMax) plus two spaces as text width
 	char buf[16];
 	snprintf(buf, 16, " %d ", globalLineMax);
-	mTextStart = ImGui::GetFont()->CalcTextSizeA(ImGui::GetFontSize(), FLT_MAX, -1.0f, buf, nullptr, nullptr).x + mLeftMargin;
+	// With the gutter hidden (e.g. BASIC, where the program's own line numbers are
+	// what matter) text starts at the left margin and no line numbers are drawn.
+	mTextStart = mShowLineNumbers
+		? ImGui::GetFont()->CalcTextSizeA(ImGui::GetFontSize(), FLT_MAX, -1.0f, buf, nullptr, nullptr).x + mLeftMargin
+		: (float)mLeftMargin;
 
 	if (!mLines.empty())
 	{
@@ -961,11 +966,14 @@ void TextEditor::Render()
 				}
 			}
 
-			// Draw line number (right aligned)
+			// Draw line number (right aligned) — unless the gutter is hidden.
+			if (mShowLineNumbers)
+			{
 			snprintf(buf, 16, "%d  ", lineNo + 1);
 
 			auto lineNoWidth = ImGui::GetFont()->CalcTextSizeA(ImGui::GetFontSize(), FLT_MAX, -1.0f, buf, nullptr, nullptr).x;
 			drawList->AddText(ImVec2(lineStartScreenPos.x + mTextStart - lineNoWidth, lineStartScreenPos.y), mPalette[(int)PaletteIndex::LineNumber], buf);
+			}
 
 			if (mState.mCursorPosition.mLine == lineNo)
 			{

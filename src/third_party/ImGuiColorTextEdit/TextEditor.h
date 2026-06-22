@@ -235,6 +235,11 @@ public:
 	inline void SetShowWhitespaces(bool aValue) { mShowWhitespaces = aValue; }
 	inline bool IsShowingWhitespaces() const { return mShowWhitespaces; }
 
+	// Gutter line numbers. Hidden for BASIC, where the program's own line numbers
+	// (10, 20, ...) are what matter and an editor gutter is just noise.
+	inline void SetShowLineNumbers(bool aValue) { mShowLineNumbers = aValue; }
+	inline bool IsShowingLineNumbers() const { return mShowLineNumbers; }
+
 	void SetTabSize(int aValue);
 	inline int GetTabSize() const { return mTabSize; }
 
@@ -377,6 +382,7 @@ private:
 	bool mHandleRightClickCopy = true;   // POM1: right-click-on-selection quick-copy
 	bool mIgnoreImGuiChild;
 	bool mShowWhitespaces;
+	bool mShowLineNumbers;               // POM1: hidden for BASIC (program line numbers count)
 
 	Palette mPaletteBase;
 	Palette mPalette;

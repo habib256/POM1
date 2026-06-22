@@ -31,7 +31,8 @@ public:
     std::string text;
 };
 
-std::string runProgram(Memory& mem, const char* listing, const std::string& token)
+std::string runProgram(Memory& mem, const char* listing, const std::string& token,
+                       const char* coldStart = "6000R")
 {
     CaptureDisplay disp;
     mem.setDisplayDevice(&disp);
@@ -42,7 +43,7 @@ std::string runProgram(Memory& mem, const char* listing, const std::string& toke
 
     auto type = [&](const char* s) { for (const char* p = s; *p; ++p) mem.setKeyPressed(*p); };
     type("\r");
-    type("6000R\r");                 // cold-start Applesoft GEN2
+    type(coldStart); type("\r");      // cold-start the interpreter (6000R/E000R/4000R)
     type(listing);
     type("RUN\r");
 
@@ -69,6 +70,16 @@ bool loadRom(Memory& mem)
         return false;
     }
     return true;
+}
+
+// Load any interpreter image into RAM at `addr` (write-protect lifted). Returns
+// false if the file isn't present (so the caller can skip).
+bool loadRomAt(Memory& mem, const char* path, uint16_t addr)
+{
+    mem.setWriteInRom(true);
+    const int rc = mem.loadBinary(path, addr, nullptr);
+    mem.setWriteInRom(false);
+    return rc == 0;
 }
 
 int countNonZero(const uint8_t* m, int lo, int hi)
@@ -190,6 +201,55 @@ int main()
         } else {
             std::printf("tortue.apf: skipped (file not present)\n");
         }
+    }
+
+    // I) Applesoft TMS9918 interpreter core runs: load its CodeTank image at $4000
+    // (bare RAM here — the VDP card isn't needed for a non-graphics core check),
+    // cold-start 4000R, APRINT 1000+7 -> 1007 on the Apple-1 display.
+    {
+        Memory mem; mem.initMemory();
+        if (loadRomAt(mem, "software/Apple-1_TMS_CC65/applesoft-tms9918.bin", 0x4000)) {
+            const std::string out = runProgram(mem, "10 APRINT 1000+7\r20 END\r", "1007", "4000R");
+            if (out.find("1007") == std::string::npos)
+                return fail("TMS9918 core FAILED: '1007' not printed (renumber/interpreter broken?).");
+            std::printf("tms9918-core: OK (4000R + APRINT 1000+7 -> 1007)\n");
+        } else std::printf("tms9918-core: skipped (applesoft-tms9918.bin not built)\n");
+    }
+
+    // K) Applesoft TMS9918 HGR with the real VDP: HGR must park the sprites (SAT
+    // $3B00 sprite-0 Y = $D0) and HPLOT to x=279 must clamp to the 256-wide screen
+    // (reach the right-edge cells) rather than wrapping to a narrow x=23 line. The
+    // interpreter runs from $4000 RAM here (no CodeTank card needed for the bitmap).
+    {
+        Memory mem; mem.initMemory();
+        mem.setTMS9918Enabled(true);
+        if (loadRomAt(mem, "software/Apple-1_TMS_CC65/applesoft-tms9918.bin", 0x4000)) {
+            runProgram(mem, "10 HGR : HCOLOR=3\r20 HPLOT 0,0 TO 279,191\r", "", "4000R");
+            TMS9918::Snapshot snap;
+            mem.getTMS9918().copySnapshot(snap);
+            if (snap.vram[0x3B00] != 0xD0)
+                return fail("TMS9918 HGR FAILED: sprites not parked (SAT $3B00 != $D0).");
+            int rightLit = 0;                       // rightmost cell column (addr lo $F8-$FF)
+            for (int hi = 0; hi <= 0x17; ++hi)
+                for (int lo = 0xF8; lo <= 0xFF; ++lo)
+                    if (snap.vram[(hi << 8) | lo]) ++rightLit;
+            if (rightLit == 0)
+                return fail("TMS9918 HGR FAILED: X did not reach the right edge "
+                            "(x=279 not clamped to 255).");
+            std::printf("tms9918-hgr: OK (sprites parked; X reaches right edge, %d bytes)\n", rightLit);
+        } else std::printf("tms9918-hgr: skipped\n");
+    }
+
+    // J) Applesoft Lite (Apple-1, CFFA1 flavour) core: stock Applesoft, PRINT goes
+    // to the Apple-1 terminal. Load roms/applesoft-lite-cffa1.rom at $E000, E000R.
+    {
+        Memory mem; mem.initMemory();
+        if (loadRomAt(mem, "roms/applesoft-lite-cffa1.rom", 0xE000)) {
+            const std::string out = runProgram(mem, "10 PRINT 1000+7\r20 END\r", "1007", "E000R");
+            if (out.find("1007") == std::string::npos)
+                return fail("CFFA1 Applesoft core FAILED: '1007' not printed.");
+            std::printf("cffa1-core: OK (E000R + PRINT 1000+7 -> 1007)\n");
+        } else std::printf("cffa1-core: skipped (rom not present)\n");
     }
 
     std::printf("applesoft_gen2_smoke: OK\n");

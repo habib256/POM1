@@ -402,10 +402,15 @@ const P1T kP1Targets[] = {
     { "Wozmon hex (any machine)",        -1, "",                "hex",   1, false, false, kSketchHex            },
     { "Integer BASIC (Apple-1 DevBench, E000R)", 0, "E000R",    "BASIC", 4, false, false, kSketchBasicInteger   },
     { "Applesoft Lite (microSD, 6000R)",         8, "6000R",    "BASIC", 4, false, false, kSketchBasicApplesoft },
-    // Target 9: Applesoft GEN2 — same BASIC injection, but on the GEN2 card
-    // (preset 2) with the applesoft-gen2 interpreter ROM. Reached only via
-    // targetForPath for .apf/.bas files in a GEN2 path (not in the New grid).
+    // Target 9: Applesoft GEN2 — BASIC injection on the GEN2 card (preset 2),
+    // applesoft-gen2 interpreter ROM at $6000.
     { "Applesoft GEN2 (GEN2 card, 6000R)",       2, "6000R",    "BASIC", 4, false, false, kSketchBasicApplesoftGen2 },
+    // Target 10: Applesoft Lite on a bare Apple-1 — the CFFA1 flavour ROM at
+    // $E000 (roms/applesoft-lite-cffa1.rom), cold start E000R, 64 KB-relaxed.
+    { "Applesoft Lite (Apple-1, E000R)",         0, "E000R",    "BASIC", 4, false, false, kSketchBasicApplesoft     },
+    // Target 11: Applesoft TMS9918 — the applesoft-tms9918 interpreter as a
+    // CodeTank ROM cartridge ($4000-$7FFF), preset 1, cold start 4000R.
+    { "Applesoft TMS9918 (CodeTank, 4000R)",     1, "4000R",    "BASIC", 4, false, true,  kSketchBasicApplesoftGen2 },
 };
 const int kP1TargetCount = static_cast<int>(sizeof(kP1Targets) / sizeof(kP1Targets[0]));
 
@@ -420,18 +425,20 @@ const char* const kP1LanguageHints[] = {
     "tms9918c (TMS9918) / gen2 C runtime depending on the target.",
     "No compiler: POM1 cold-starts the in-ROM interpreter and TYPES your listing\n"
     "at the prompt, then RUN. Pure keyboard injection, so it works in the web\n"
-    "(WASM) build too. Integer BASIC ($E000) or Applesoft Lite ($6000).",
+    "(WASM) build too. Four Applesoft machines: Apple-1, microSD, GEN2 HGR, TMS9918.",
 };
 // The "Target" combo is per-language: asm/C show the three machines, BASIC shows
 // its two interpreters (CodeBench filters by targetFor()). Integer BASIC and
 // Applesoft Lite are their own entries so New > BASIC reads as the interpreter
 // choice, not a graphics machine.
 const char* const kP1Machines[]  = {
-    "Apple-1 dual 4K/8K  (text) - start here",
-    "P-LAB Graphic Card  (TMS9918)",
-    "Uncle Bernie GEN2 HGR  (colour)",
-    "Integer BASIC  ($E000, Apple-1 text)",
-    "Applesoft Lite  ($6000, P-LAB microSD)",
+    "Apple-1 dual 4K/8K  (text) - start here",   // 0  asm/C
+    "P-LAB Graphic Card  (TMS9918)",             // 1  asm/C
+    "Uncle Bernie GEN2 HGR  (colour)",           // 2  asm/C
+    "Applesoft Lite  (Apple-1)",                 // 3  BASIC -> target 10
+    "Applesoft Lite + microSD",                  // 4  BASIC -> target 8
+    "Applesoft GEN2 HGR",                        // 5  BASIC -> target 9
+    "Applesoft TMS9918",                         // 6  BASIC -> target 11
 };
 const char* const kP1MachineHints[] = {
     "Stock Apple-1: 40x24 text printed through the WozMon ECHO routine ($FFEF).\n"
@@ -441,14 +448,18 @@ const char* const kP1MachineHints[] = {
     "into CODETANKDEV.rom and boots 4000R (all TMS9918 code runs from CodeTank).",
     "Uncle Bernie's GEN2 colour card — Apple II-style HIRES (280x192) driven by\n"
     "the soft switches $C250-$C257. Hello world uses the BBFont. Preset 12.",
-    "Integer BASIC, the original Apple-1 4 KB BASIC (ROM at $E000, cold start\n"
-    "E000R). Integer arithmetic only. Runs on the authentic 8 KB CC65 DevBench\n"
-    "machine — no graphics card.",
-    "Applesoft Lite, the floating-point BASIC (ROM at $6000-$7FFF, cold start\n"
-    "6000R), on the P-LAB microSD + Applesoft Lite machine (preset 8). The Bench\n"
-    "relaxes that 8 KB preset to a permissive 64 KB view for the run, because $6000\n"
-    "sits inside its out-of-range window (reads return $FF under silicon-strict, so\n"
-    "a bare 6000R would crash to WozMon).",
+    "Applesoft Lite (floating-point BASIC) on a bare Apple-1 — the CFFA1-flavour\n"
+    "ROM at $E000-$FFFF, cold start E000R. No graphics; LOAD/SAVE error without a\n"
+    "CFFA1 card. The Bench relaxes RAM to 64 KB so $F000-$FEFF is live.",
+    "Applesoft Lite on the P-LAB microSD machine — ROM at $6000-$7FFF, cold start\n"
+    "6000R, SD-OS LOAD/SAVE at $8000. The Bench relaxes the 8 KB preset to 64 KB\n"
+    "for the run ($6000 is inside its out-of-range window).",
+    "Applesoft GEN2 — Applesoft with the GEN2 colour graphics commands (TEXT/GR/\n"
+    "HGR/COLOR=/HCOLOR=/PLOT/HLIN/VLIN/HPLOT, PRINT->GEN2 screen). Interpreter at\n"
+    "$6000 on the GEN2 card (preset 2). sketchs/gen2/applesoft_gen2.",
+    "Applesoft TMS9918 — Applesoft with the same graphics commands driving the\n"
+    "P-LAB TMS9918 VDP ($CC00/$CC01). The interpreter is a CodeTank ROM cartridge\n"
+    "($4000-$7FFF), cold start 4000R. sketchs/tms9918/applesoft_tms9918.",
 };
 
 // Graduated learning examples (inline sources) on the Apple-1 text target. They
@@ -1259,15 +1270,19 @@ const std::vector<std::string>& Pom1BenchHost::machineHints()  const { return ma
 
 int Pom1BenchHost::targetFor(int language, int machine) const
 {
-    // languages: 0=asm, 1=C, 2=BASIC.  machines: 0=Apple-1 text, 1=TMS9918,
-    // 2=GEN2 HGR, 3=Integer BASIC, 4=Applesoft Lite. asm/C use the three machines;
-    // BASIC uses its two dedicated interpreter entries (CodeBench's New dialog
-    // shows only the machines valid for the chosen language).
+    // languages: 0=asm, 1=C, 2=BASIC. machines: 0=Apple-1 text, 1=TMS9918,
+    // 2=GEN2 HGR (asm/C use these three); 3=Applesoft Lite (Apple-1), 4=Applesoft
+    // Lite + microSD, 5=Applesoft GEN2 HGR, 6=Applesoft TMS9918 (BASIC uses these
+    // four). CodeBench's New dialog shows only the machines valid for the language.
     if (language == 0) return (machine >= 0 && machine <= 2) ? machine     : -1;  // asm 0..2
     if (language == 1) return (machine >= 0 && machine <= 2) ? 3 + machine : -1;  // C   3..5
-    if (language == 2) {                                                          // BASIC
-        if (machine == 3) return 7;   // Integer BASIC  ($E000, E000R)
-        if (machine == 4) return 8;   // Applesoft Lite ($6000, 6000R)
+    if (language == 2) {                                                          // BASIC: 4 Applesoft
+        switch (machine) {
+            case 3: return 10;   // Applesoft Lite (Apple-1, CFFA1 $E000)
+            case 4: return 8;    // Applesoft Lite + microSD ($6000)
+            case 5: return 9;    // Applesoft GEN2 HGR
+            case 6: return 11;   // Applesoft TMS9918 (CodeTank $4000)
+        }
         return -1;
     }
     return -1;
@@ -1308,15 +1323,18 @@ int Pom1BenchHost::targetForPath(const std::string& path) const
     const std::string ext = fs::path(p).extension().string();
     if (ext == ".hex" || ext == ".txt") return 6;      // Wozmon hex quick-load
 
-    // BASIC source -> keyboard injection (no compiler). A .apf/.bas in a GEN2/HGR
-    // path injects into Applesoft GEN2 (target 9: the applesoft-gen2 interpreter on
-    // the GEN2 card, 6000R); elsewhere the stock microSD Applesoft (target 8).
+    // BASIC source -> keyboard injection (no compiler). The interpreter follows the
+    // path: a TMS9918 path -> Applesoft TMS9918 (11), a GEN2/HGR path -> Applesoft
+    // GEN2 (9), otherwise the stock microSD Applesoft (8).
     if (ext == ".apf" || ext == ".bas") {
+        const bool tmspath  = p.find("/tms9918") != std::string::npos ||
+                              p.find("applesoft_tms9918") != std::string::npos ||
+                              p.find("/codetank") != std::string::npos;
         const bool gen2path = p.find("/gen2") != std::string::npos ||
                               p.find("applesoft_gen2") != std::string::npos ||
                               p.find("/hgr") != std::string::npos ||
                               p.find("graphic hgr") != std::string::npos;
-        return gen2path ? 9 : 8;
+        return tmspath ? 11 : gen2path ? 9 : 8;
     }
     if (ext == ".ibas") return 7;                      // Integer BASIC inject
 
@@ -1476,58 +1494,84 @@ bench::BuildResult Pom1BenchHost::injectBasic(int target, const std::string& src
     auto* emu = mw_ ? mw_->emulation.get() : nullptr;
     if (!emu) { r.status = "no emulator"; r.ok = false; return r; }
 
-    const bool applesoft     = (t.cfg && std::string(t.cfg) == "6000R");
-    const bool gen2Applesoft = applesoft && t.preset == 2;   // applesoft-gen2 interpreter on the GEN2 card
-    const char* coldStart = (t.cfg && t.cfg[0]) ? t.cfg : (applesoft ? "6000R" : "E000R");
-    const char* interp    = gen2Applesoft ? "Applesoft GEN2" : applesoft ? "Applesoft Lite" : "Integer BASIC";
+    // BASIC variant by target index (set in kP1Targets):
+    //   7 Integer  8 Applesoft+microSD  9 Applesoft GEN2  10 Applesoft (Apple-1/CFFA1)
+    //   11 Applesoft TMS9918.  The cold-start command is t.cfg (E000R/6000R/4000R).
+    const int idx = p1(target);
+    const bool tms = (idx == 11);
+    const char* coldStart = (t.cfg && t.cfg[0]) ? t.cfg : "E000R";
+    const char* interp =
+        idx == 8  ? "Applesoft Lite (microSD)" :
+        idx == 9  ? "Applesoft GEN2" :
+        idx == 10 ? "Applesoft Lite (Apple-1)" :
+        idx == 11 ? "Applesoft TMS9918" : "Integer BASIC";
+
+    namespace fs = std::filesystem;
+    std::error_code ec;
+    auto findRom = [&](std::initializer_list<const char*> cands) -> std::string {
+        for (const char* c : cands) if (fs::exists(c, ec)) return c;
+        return {};
+    };
 
     // 1) Plug the interpreter's machine, draining the deferred card plugs.
-    //    Integer  -> preset 0 (Apple-1 CC65 DevBench).
-    //    Applesoft -> preset 8 (P-LAB microSD + Applesoft Lite), which owns the
-    //    $6000 Applesoft ROM + $8000 SD-OS.
     onTargetSelected(target);
     mw_->finalizePendingCardPlugs();
 
-    // 1b) Applesoft only: the microSD preset is 8 KB with silicon/OOR-strict armed,
-    //     so $6000-$7FFF (the Applesoft ROM, inside the $1000..$7FFF out-of-range
-    //     window) reads back $FF and 6000R crashes to WozMon. Relax the machine to a
-    //     permissive 64 KB view for the run — presetRamKB=64 makes isOorAddress()
-    //     always false, so $6000 and Applesoft's whole RAM workspace are live. The
-    //     microSD card itself stays plugged; only OOR enforcement is lifted. (UI
-    //     flags mirrored so Settings reflects the relaxed state.)
-    if (applesoft && !gen2Applesoft) {   // GEN2 preset 2 is 48 KB — $6000 is already live RAM
+    // 1b) Relax to a permissive 64 KB view for variants whose interpreter / RAM
+    //     workspace sits inside an out-of-range window on the strict preset:
+    //     microSD (8 KB, $6000 ROM), CFFA1 Apple-1 ($E000-$FEFF needs $F000+ RAM),
+    //     TMS9918 (8 KB program RAM). GEN2 (preset 2, 48 KB) needs none. The cards
+    //     keep their MMIO/ROM windows — only OOR enforcement is lifted.
+    if (idx == 8 || idx == 10 || idx == 11) {
         emu->setOutOfRangeStrictMode(false);
         emu->setPresetRamKB(64);
         mw_->oorStrictModeEnabled = false;
         mw_->presetRamKB = 64;
     }
 
-    // 2) Clean boot to the WOZ Monitor (no ~3 s power-on scenario). hardReset
-    //    zero-fills RAM then reloads Integer BASIC / WOZ / SD-OS, but NOT the
-    //    Applesoft ROM at $6000 — so (re)load it here. reloadBasic() is idempotent
-    //    (Integer is already back at $E000 after the reset). Surface a reload
-    //    failure instead of silently letting 6000R/E000R crash into the monitor.
-    emu->hardReset(/*animateBoot=*/false);
+    // 2) Place the interpreter, then hard-reset so a clean WOZ Monitor processes
+    //    the cold-start. RAM-resident ROMs (Integer/microSD/CFFA1/GEN2) load AFTER
+    //    the reset (which zero-fills RAM); the TMS9918 interpreter is a CodeTank ROM
+    //    cartridge — flash it, jumper + enable, THEN reset so 4000R sees it.
     std::string romErr;
-    bool romOk;
-    if (gen2Applesoft) {
-        // Applesoft GEN2: the interpreter is the sketch's built artefact, not a
-        // preset ROM. Load it at $6000 (no reset/run — the cold-start 6000R does
-        // that). Search the committed software/ tree relative to the run dir.
-        namespace fs = std::filesystem;
-        std::error_code ec;
-        std::string rom;
-        for (const char* c : {"software/Graphic HGR/applesoft-gen2.bin",
-                              "../software/Graphic HGR/applesoft-gen2.bin",
-                              "../../software/Graphic HGR/applesoft-gen2.bin"})
-            if (fs::exists(c, ec)) { rom = c; break; }
-        if (rom.empty()) { romErr = "software/Graphic HGR/applesoft-gen2.bin not found "
-                                    "(build the applesoft_gen2 sketch first)"; romOk = false; }
-        else romOk = emu->loadInterpreterRom(rom, 0x6000, romErr);
-    } else if (applesoft) {
-        romOk = emu->reloadApplesoftLiteSDCard(romErr);
+    bool romOk = true;
+    if (tms) {
+        const std::string rom = findRom({"software/Apple-1_TMS_CC65/applesoft-tms9918.bin",
+                                         "../software/Apple-1_TMS_CC65/applesoft-tms9918.bin",
+                                         "../../software/Apple-1_TMS_CC65/applesoft-tms9918.bin"});
+        if (rom.empty()) { romErr = "software/Apple-1_TMS_CC65/applesoft-tms9918.bin not found"; romOk = false; }
+        else {
+            std::ifstream in(rom, std::ios::binary);
+            std::vector<unsigned char> buf(0x8000, 0xFF);
+            in.read(reinterpret_cast<char*>(buf.data()), 0x4000);   // lower 16 KB of the 28C256
+            fs::path romPath = findRom({"roms/codetank", "../roms/codetank", "../../roms/codetank"});
+            romPath = romPath.empty() ? fs::path("CODETANKDEV.rom") : romPath / "CODETANKDEV.rom";
+            std::ofstream(romPath, std::ios::binary)
+                .write(reinterpret_cast<const char*>(buf.data()), static_cast<std::streamsize>(buf.size()));
+            romOk = emu->loadCodeTankRom(romPath.string(), romErr);
+            if (romOk) {
+                mw_->codeTankJumper = CodeTank::Jumper::Lower16;
+                emu->setCodeTankJumper(mw_->codeTankJumper);
+                if (!mw_->tms9918Enabled)  { mw_->tms9918Enabled = true; mw_->showTMS9918 = true; emu->setTMS9918Enabled(true); }
+                if (!mw_->codeTankEnabled) { mw_->codeTankEnabled = true; emu->setCodeTankEnabled(true); }
+                emu->hardReset(/*animateBoot=*/false);
+            }
+        }
     } else {
-        romOk = emu->reloadBasic(romErr);
+        emu->hardReset(/*animateBoot=*/false);
+        if (idx == 9) {
+            const std::string rom = findRom({"software/Graphic HGR/applesoft-gen2.bin",
+                                             "../software/Graphic HGR/applesoft-gen2.bin",
+                                             "../../software/Graphic HGR/applesoft-gen2.bin"});
+            if (rom.empty()) { romErr = "software/Graphic HGR/applesoft-gen2.bin not found"; romOk = false; }
+            else romOk = emu->loadInterpreterRom(rom, 0x6000, romErr);
+        } else if (idx == 8) {
+            romOk = emu->reloadApplesoftLiteSDCard(romErr);
+        } else if (idx == 10) {
+            romOk = emu->reloadApplesoftLiteCFFA1(romErr);
+        } else {
+            romOk = emu->reloadBasic(romErr);   // Integer BASIC
+        }
     }
     if (!romOk) {
         emu->copySnapshot(mw_->uiSnapshot);
@@ -2237,10 +2281,14 @@ std::string Pom1BenchHost::modeLabel(int target) const
     const int idx = p1(target);
     const P1T& t = kP1Targets[idx];
     if (t.mode == 1) return "Mode: HEX + Apple-1";
-    if (t.mode == 4) {   // BASIC: interpreter named by the target's cold-start cmd
-        const bool applesoft = (t.cfg && std::string(t.cfg) == "6000R");
-        if (applesoft && t.preset == 2) return "Mode: Applesoft GEN2 + GEN2 HGR";
-        return std::string("Mode: ") + (applesoft ? "Applesoft Lite" : "Integer BASIC") + " + Apple-1";
+    if (t.mode == 4) {   // BASIC: interpreter named by the target index
+        switch (idx) {
+            case 8:  return "Mode: Applesoft Lite + microSD";
+            case 9:  return "Mode: Applesoft GEN2 + GEN2 HGR";
+            case 10: return "Mode: Applesoft Lite + Apple-1";
+            case 11: return "Mode: Applesoft TMS9918 + CodeTank";
+            default: return "Mode: Integer BASIC + Apple-1";
+        }
     }
 
     const char* language = (t.mode == 3) ? "C" : "ASM";

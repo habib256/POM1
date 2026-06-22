@@ -51,6 +51,9 @@ void CodeBench::applyDocSyntax(Doc& d)
         d.editor->SetLanguageDefinition(langDef(lang));
         d.language = lang;
     }
+    // BASIC programs carry their own line numbers (10, 20, …) — the editor's
+    // gutter line numbers are just noise, so hide them for BASIC documents.
+    d.editor->SetShowLineNumbers(lang != "BASIC");
 }
 
 CodeBench::Doc& CodeBench::newDoc(const std::string& path, const std::string& text, int targetIndex)
