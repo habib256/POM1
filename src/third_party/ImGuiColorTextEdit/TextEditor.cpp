@@ -852,7 +852,7 @@ void TextEditor::HandleMouseInputs()
 		// clipboard without disturbing the cursor/selection (POM1 addition). Only
 		// acts when text is selected, so a stray right-click is a no-op rather than
 		// copying the whole current line (Copy()'s no-selection fallback).
-		if (ImGui::IsMouseClicked(1) && HasSelection())
+		if (mHandleRightClickCopy && ImGui::IsMouseClicked(1) && HasSelection())
 			Copy();
 	}
 }
@@ -2323,7 +2323,15 @@ void TextEditor::ColorizeInternal()
 					if (firstChar && c == mLanguageDefinition.mPreprocChar)
 						withinPreproc = true;
 
-					if (c == '\"')
+					// POM1: do NOT open a string while already inside a block
+					// comment. A '"' in a /* */ header (e.g. the "\" prompt in
+					// GEN2Countdown.c) must stay comment text; entering string
+					// mode here let the withinString branch swallow the closing
+					// '*/' (it only scans for '"' / '\'), so the comment never
+					// closed and the rest of the file mis-colored. With !inComment
+					// the '"' falls through to the else block below, which keeps
+					// flagging it as comment AND still detects the '*/' end.
+					if (c == '\"' && !inComment)
 					{
 						withinString = true;
 						line[currentIndex].mMultiLineComment = inComment;
@@ -2335,9 +2343,28 @@ void TextEditor::ColorizeInternal()
 						auto& startStr = mLanguageDefinition.mCommentStart;
 						auto& singleStartStr = mLanguageDefinition.mSingleLineComment;
 
+						// POM1: word-aware single-line-comment match. When the marker
+						// is alphabetic (BASIC "REM") match case-insensitively for
+						// case-insensitive languages and require word boundaries so a
+						// variable like REMARK doesn't open a comment. Markers made of
+						// punctuation (";", "//") are unaffected: cmtPred == pred and
+						// the boundary guards are skipped.
+						bool wordy = singleStartStr.size() > 0 &&
+							(isalnum((unsigned char)singleStartStr[0]) || singleStartStr[0] == '_');
+						auto isIdentCh = [](char c) { return isalnum((unsigned char)c) || c == '_'; };
+						bool ci = !mLanguageDefinition.mCaseSensitive;
+						auto cmtPred = [ci](const char& a, const Glyph& b) {
+							return ci ? (::toupper((unsigned char)a) == ::toupper((unsigned char)b.mChar))
+								: (a == b.mChar);
+						};
+						size_t afterIdx = currentIndex + singleStartStr.size();
+						bool leftOk  = !wordy || currentIndex == 0 || !isIdentCh(line[currentIndex - 1].mChar);
+						bool rightOk = !wordy || afterIdx >= line.size() || !isIdentCh(line[afterIdx].mChar);
+
 						if (singleStartStr.size() > 0 &&
 							currentIndex + singleStartStr.size() <= line.size() &&
-							equals(singleStartStr.begin(), singleStartStr.end(), from, from + singleStartStr.size(), pred))
+							leftOk && rightOk &&
+							equals(singleStartStr.begin(), singleStartStr.end(), from, from + singleStartStr.size(), cmtPred))
 						{
 							withinSingleLineComment = true;
 						}

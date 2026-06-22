@@ -62,6 +62,9 @@ private:
     void               enableSketchSidecarCards(EmulationController* emu);
     bench::BuildResult build(int target, const std::string& src, const std::string& addrHex, bool run);
     bench::BuildResult directLoad(int target, const std::string& src, const std::string& addrHex);
+    // BASIC deploy (mode 4): cold-start the in-ROM interpreter + type the listing
+    // via the keyboard FIFO (no compiler — identical on desktop and WASM).
+    bench::BuildResult injectBasic(int target, const std::string& src, bool run);
     // Map a bench targets_ index -> kP1Targets[] index. Identity on desktop; on
     // WASM targets_ holds only the Wozmon-hex entry, so 0 maps back to
     // kP1Targets[6]. All kP1Targets[] lookups in the .cpp go through this.

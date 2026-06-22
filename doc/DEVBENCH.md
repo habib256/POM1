@@ -71,10 +71,32 @@ the WOZ Monitor.
 The built-in *New* dialog embeds default starters in `src/Pom1BenchHost.cpp`.
 Editable copies, sidecar metadata, and copy-me templates → [`SKETCHS.md`](SKETCHS.md).
 
-Opening a file from DevBench auto-selects the matching environment: `.c` files use
-the C target, `.s`/`.asm` files use the assembly target, paths under `sketchs/tms9918`
-select the TMS9918 profile, paths under `sketchs/gen2` select GEN2, and everything
-else defaults to Apple-1 text.
+### File extension → action
+
+The **file extension drives what Verify/Run does**, and it is re-evaluated every
+time you switch tabs (the status-bar mode and the toolbar follow the front tab):
+
+| Extension | Action |
+|---|---|
+| `.s` / `.asm` | assemble (ca65 / ld65) |
+| `.c` | compile (cc65 / cl65) |
+| `.hex` / `.txt` | load Woz-Monitor hex |
+| `.bas` / `.apf` | inject **Applesoft** BASIC (no compiler) — GEN2-aware (see below) |
+| `.ibas` | inject **Integer** BASIC |
+| `.md` / `.markdown` | render as a document (Edit/Preview toggle) — see below |
+| anything else | **do nothing** (Verify/Run report "nothing to build") |
+
+The machine still follows the path for code: `sketchs/tms9918…` → TMS9918,
+`sketchs/gen2…` → GEN2, otherwise Apple-1 text. For BASIC, a `.bas`/`.apf` in a
+GEN2/HGR path injects into **Applesoft GEN2** (the `applesoft_gen2` interpreter on
+the GEN2 card, `6000R`); elsewhere into the stock microSD Applesoft.
+
+### Markdown documents
+
+Opening a `.md` shows a formatted **Preview** (toggle to **Edit** to see the
+source). Links `[text](file.md)` are **clickable** — a link to another local file
+that exists (resolved relative to the document) opens it in a new tab; external
+`http(s)://` links are copied to the clipboard.
 
 ASM guide → [`Programming_Apple1_ASM.md`](../sketchs/doc/Programming_Apple1_ASM.md) ·
 C guide → [`Programming_Apple1_C.md`](../sketchs/doc/Programming_Apple1_C.md).

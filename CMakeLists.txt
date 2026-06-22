@@ -90,6 +90,7 @@ set(SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/bench/ProcessUtil.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/bench/BenchLang.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/bench/CodeBench.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/bench/Markdown.cpp
 )
 
 set(HEADERS

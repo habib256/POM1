@@ -224,6 +224,11 @@ public:
 	inline void SetHandleKeyboardInputs (bool aValue){ mHandleKeyboardInputs = aValue;}
 	inline bool IsHandleKeyboardInputsEnabled() const { return mHandleKeyboardInputs; }
 
+	// POM1: when false, a right-click on a selection no longer auto-copies — the
+	// host owns the right mouse button (e.g. to open a copy/paste context menu).
+	inline void SetHandleRightClickCopy (bool aValue){ mHandleRightClickCopy = aValue;}
+	inline bool IsHandleRightClickCopyEnabled() const { return mHandleRightClickCopy; }
+
 	inline void SetImGuiChildIgnored    (bool aValue){ mIgnoreImGuiChild     = aValue;}
 	inline bool IsImGuiChildIgnored() const { return mIgnoreImGuiChild; }
 
@@ -369,6 +374,7 @@ private:
 	SelectionMode mSelectionMode;
 	bool mHandleKeyboardInputs;
 	bool mHandleMouseInputs;
+	bool mHandleRightClickCopy = true;   // POM1: right-click-on-selection quick-copy
 	bool mIgnoreImGuiChild;
 	bool mShowWhitespaces;
 

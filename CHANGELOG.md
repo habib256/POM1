@@ -10,6 +10,191 @@ is `git log`; the user-facing feature tour is `README.md`; open work lives in
 
 ## [Unreleased]
 
+### Added — emulator (`src/`): BASIC language axis in the Bench
+
+- **Bench "BASIC" language — Run by injection** (`Pom1BenchHost.cpp`,
+  `Pom1BenchHost.h`) — a third Bench language beside asm and C that compiles
+  nothing: it cold-starts the in-ROM interpreter through the WOZ Monitor and
+  TYPES the listing at the prompt over the Apple-1 keyboard FIFO (`$D010`), then
+  `RUN`. New source mode 4 + `injectBasic()`; `build()` dispatches mode 4 before
+  the cc65 split, so the path is byte-identical on desktop and the web (WASM)
+  build — **no compiler in the loop, so both BASICs run in-browser**. The
+  keyboard FIFO self-paces on the program's reads (same pipeline as Ctrl-V
+  paste, 4096-char budget).
+- **Two BASIC targets (machine + interpreter)** — **Integer BASIC** (Apple-1
+  CC65 DevBench machine, preset 0, ROM at `$E000`, cold start `E000R`) and
+  **Applesoft Lite** (P-LAB **microSD + Applesoft Lite** machine, preset 8, ROM at
+  `$6000`, cold start `6000R`). The microSD preset owns the `$6000` Applesoft ROM +
+  the `$8000` SD-OS, but is 8 KB with silicon/OOR-strict armed, so `$6000-$7FFF`
+  (inside the `$1000..$7FFF` out-of-range window) reads back `$FF` and a bare
+  `6000R` jumped into `$FF` garbage and fell back to the WOZ Monitor (which then
+  parsed each program line as a hex address). `injectBasic` therefore **relaxes
+  the microSD preset to a permissive 64 KB view for the Applesoft run**
+  (`presetRamKB=64` → `isOorAddress` always false → `$6000` and Applesoft's RAM
+  workspace live; the microSD card stays plugged, only OOR enforcement is lifted).
+  Integer BASIC `$E000` is OOR-exempt (≥ `$8000`) so it needs no relaxation and
+  stays on the authentic 8 KB DevBench. `hardReset` reloads Integer automatically;
+  `injectBasic` re-loads the Applesoft `$6000` ROM (zeroed by the reset) and
+  surfaces a reload failure instead of
+  letting the cold-start crash silently. The New-sketch dialog gains a "BASIC"
+  language whose Target combo is now **per-language**: picking BASIC offers just
+  the two interpreters — "Integer BASIC ($E000)" and "Applesoft Lite ($6000,
+  P-LAB microSD)" — as dedicated machine entries, while asm/C still show the three
+  graphics machines (`CodeBench` filters the combo by `targetFor()` and snaps the
+  selection when the language changes).
+- **Built-in BASIC examples + starters** — "Hello (Integer BASIC)" and
+  "Hello (Applesoft Lite)" in the Bench *Examples* popup, plus the per-target
+  HELLO-WORLD starters used by *New*.
+- **Pinned by `bench_basic_inject_smoke`** (`tests/bench_basic_inject_smoke_test.cpp`)
+  — boots WOZ headlessly, injects `E000R`/`6000R` + a listing + `RUN` for both
+  interpreters and asserts the program's *computed* PRINT result reaches the
+  `$D012` display (e.g. `1000+7 → 1007`, `100/8 → 12.5`), proving the
+  interpreter executed the injected program rather than echoing the source. A
+  third block pins the OOR root cause: `$6000` reads back `$FF` under
+  `presetRamKB=8` + strict but the real ROM byte under 64 KB Fantasy — so nobody
+  re-points the Applesoft target at an 8 KB / strict machine.
+
+### Added — Bench: file-type routing, tab-aware mode, markdown hyperlinks
+
+- **The file extension drives the action, re-evaluated on every tab switch**
+  (`Pom1BenchHost::targetForPath`, `bench/CodeBench.cpp`): `.s`/`.asm` → assemble,
+  `.c` → compile, `.hex`/`.txt` → Woz-hex, `.bas`/`.apf` → inject Applesoft,
+  `.ibas` → inject Integer, `.md` → document, **anything else → do nothing**
+  (Verify/Run report "nothing to build" instead of silently building a non-source
+  file as asm). Switching tabs now refreshes the host's active-source context and
+  re-derives the mode from the front tab's extension, so the status bar + toolbar
+  always match the tab you're looking at. `targetIndex == -1` is a first-class
+  "no build target" state (markdown / unknown), guarded in the status bar.
+- **`.apf`/`.bas` BASIC injection is GEN2-aware** — a BASIC file in a GEN2/HGR
+  path injects into **Applesoft GEN2** (new target: the `applesoft_gen2`
+  interpreter loaded at `$6000` on the GEN2 card, preset 2) so a turtle/graphics
+  listing runs with the GEN2 commands; elsewhere it uses the stock microSD
+  Applesoft. New `EmulationController::loadInterpreterRom` drops the sketch-built
+  interpreter into RAM without resetting the running WOZ Monitor; `injectBasic`
+  loads `software/Graphic HGR/applesoft-gen2.bin` for the GEN2 target.
+- **Markdown links are clickable** (`bench/Markdown.cpp` — `RenderMarkdown` now
+  returns the clicked URL): `[text](other.md)` resolved relative to the document
+  opens the target in a new tab when it exists; `http(s)://` links copy to the
+  clipboard. Covered by the expanded `applesoft_gen2_smoke` (PRINT→GEN2 /
+  APRINT→Apple-1, HGR/HGR2/lo-res, HOME/HTAB/VTAB, SCRN, and end-to-end injection
+  of the shipped `Tortue.apf` lo-res drawing).
+
+### Added — 6502 software (`sketchs/`): Applesoft Lite interpreter sketch
+
+- **`sketchs/apple1/applesoft_lite/`** — the full **Applesoft Lite** (Microsoft
+  6502 BASIC, floating-point) interpreter source from `txgx42/applesoft-lite`,
+  packaged as a DevBench sketch so it assembles in the Bench (Verify) like any
+  other Apple-1 ASM sketch. Sources verbatim (`applesoft-lite.s`, `io.s`,
+  `cffa1.s`, `wozmon.s`, `macros.s`, `zeropage.s`); the only edit is one
+  `.feature force_range` line so modern ca65 (≥ 2.18) accepts the 2008 source's
+  negative immediates / `<label-1` precedence. `.sketch.json` drives the build
+  (`cfg` + `extraAsm`), and `applesoft_lite.cfg` links the canonical
+  `$E000-$FFFF` 8 KB ROM image (BASIC `$E000-$FEFF` + Woz Monitor `$FF00`).
+  **The DevBench build is byte-identical to the shipped
+  `roms/applesoft-lite-cffa1.rom`** — i.e. this sketch is the editable source of
+  the same interpreter that backs the Bench "Applesoft Lite" BASIC runtime
+  (relocated to `$6000` as `roms/applesoft-lite-microsd.rom`). Verify/compile is
+  preset-neutral; faithful run needs `$E000-$FEFF` backed (the CFFA1 flavour this
+  build targets).
+
+### Added — 6502 software (`sketchs/`): Applesoft GEN2 (the BASIC for the GEN2 card)
+
+- **`sketchs/gen2/applesoft_gen2/`** — Applesoft Lite turned into the BASIC for
+  Uncle Bernie's GEN2 colour card: CFFA1 disk I/O removed, a full Apple II-style
+  graphics + console command set added, and **`PRINT` retargeted to the GEN2
+  screen**. New statements: `TEXT GR GR2 HGR HGR2 MIX NOMIX SHOW VBL COLOR=
+  HCOLOR= PLOT HLIN..AT VLIN..AT HPLOT..TO HOME HTAB VTAB APRINT` plus the
+  `SCRN(x,y)` function. The three freed CFFA tokens become TEXT/GR/HGR and the
+  rest are inserted as new statement tokens ($A2-$B1), renumbering every operator
+  + function token; dispatch is robust to this (`MATHTBL` off `TOKEN_PLUS`,
+  `UNFNC` off `TOKEN_SGN`, positional tokenizer). Handlers + tables in
+  `gen2gfx.inc`: lo-res on the `$0400` page (Apple II interleave), hi-res on
+  `$2000`/`$4000` via a ÷7 byte/bit calc + the `dev/lib/gen2` scanline tables + a
+  16-bit Bresenham for `HPLOT TO`.
+- **Output model — `PRINT` → GEN2, `APRINT` → Apple-1.** An Apple II-style `CSW`
+  char-out vector (`io.s` `OUTDO` does `JMP (CSW)`): it defaults to the Apple-1
+  WOZ ECHO `$FFEF` (so prompt/`LIST`/errors/`INPUT` echo stay on the terminal),
+  the `PRINT` wrapper points it at a GEN2 text console (`GCOUT`: cursor, CR, wrap,
+  scroll on the `$0400` page) for its output, and `APRINT` forces it back.
+  `HOME`/`HTAB`/`VTAB` drive the GEN2 cursor.
+- **Pages + sync.** `HGR2`/`GR2` draw on page 2 (`$4000`/`$0800`); `SHOW n`
+  displays page n and routes drawing to the hidden page (tear-free double
+  buffering); `VBL` is a coarse vertical-blank wait. COLDSTART pins HIMEM at
+  `$2000` so BASIC storage (`$0800-$1FFF`) can't grow into the HGR framebuffer.
+  Builds to `software/Graphic HGR/applesoft-gen2.bin` (~9.6 KB at `$6000`, run
+  `6000R` on preset 2).
+- **Pinned by `applesoft_gen2_smoke`** (`tests/applesoft_gen2_smoke_test.cpp`) —
+  boots the ROM headlessly and asserts: the renumbered core runs and `APRINT`
+  reaches `$D012` (`1000+7 → 1007`); `PRINT` writes screen codes to `$0400`;
+  `HGR`/`HPLOT` fill `$2000`; `GR`/`COLOR=`/`PLOT`/`HLIN`/`VLIN` fill `$0400`;
+  `HGR2` fills page 2 `$4000`; `HOME`/`VTAB`/`HTAB` place a glyph; `SCRN(5,5)`
+  reads back the plotted colour.
+
+### Added / Fixed — Bench: editor syntax highlighting
+
+- **`langBasic()` syntax definition** (`bench/BenchLang.cpp`) for the BASIC editor
+  targets — union of Integer BASIC + Applesoft keywords (statements, numeric +
+  string `$` functions, word operators), `REM` line comments, Applesoft float /
+  scientific numbers, and `$`/`%` variable suffixes, case-insensitive. Wired via
+  `langDef("BASIC")`, so picking either BASIC target colours the listing.
+- **Highlighting accuracy pass** (multi-agent audit) — `langBasic`: removed three
+  non-existent keywords (`ELSE`, `MOD`, `SQRT` — Apple BASIC has no `IF/THEN/ELSE`,
+  no `MOD`, and uses `SQR`), added the Applesoft slot-I/O `PR#`/`IN#` tokens, and
+  swapped the `/* */` block-comment sentinels for an un-typeable `\x01` marker so a
+  literal `A/*B` can't start a phantom block comment. `lang6502`: added ca65
+  character literals (`'A'`) and cheap-local labels (`@name`) as proper tokens.
+- **`REM` comment false-positive fixed** (`TextEditor.cpp` tokenizer) — the shared
+  single-line-comment matcher is now word-aware and case-insensitive-aware: an
+  alphabetic marker like `REM` only starts a comment at word boundaries (so a
+  variable `REMARK`/`REMOTE` no longer blanks the rest of the line) and matches
+  case-insensitively when the language is case-insensitive (lowercase `rem`). No-op
+  for `;` (6502) and `//` (C), which legitimately appear mid-token.
+- **C block-comment / string desync fixed** (`TextEditor.cpp` Colorize pass) — a
+  `"` INSIDE a `/* */` block comment (e.g. the `the "\"` prompt in the
+  `GEN2Countdown.c` header) used to open string mode; the `withinString` branch
+  never scans for `*/`, so the comment "never closed" and the opened string
+  swallowed every line down to the next `"` (`#include "gen2.h"`), wrecking the
+  colouring of the whole file. The sole `withinString = true` site is now guarded
+  with `&& !inComment`, so a quote inside a block comment stays comment text and
+  `*/` end-detection still runs. No-op for normal strings/char-literals/line
+  continuations and for asm/BASIC.
+- **Bench-specific `langC()`** (`bench/BenchLang.cpp`) — `langDef("C")` now copies
+  the upstream C definition (keeping its custom tokenizer + libc built-ins) and
+  adds ~115 real POM1 cc65 library entry points (`woz_puts`/`woz_mon`,
+  `gen2_hgr_*`, `apple1_getkey`/`apple1_input_line`, `tms_*`/`screen1_*`,
+  `gfx_*`, `telemetry_*`) as KnownIdentifiers plus the cc65 qualifiers
+  (`__fastcall__`, `__A__`/`__X__`/`__Y__`, `__asm__`, …) as keywords — names
+  sourced verbatim from `dev/lib` headers — so library calls in sketches stand out.
+
+### Added — Bench: editor right-click context menu
+
+- **Right-click context menu in the DevBench code editor** (`bench/CodeBench.cpp`)
+  — Cut / Copy / Paste / Delete / Select All / Undo / Redo, each enabled by the
+  live editor state (selection, read-only, clipboard, undo/redo depth). Extension
+  point for later actions (comment block, go-to-error, snippet insert). The
+  editor's built-in right-click-on-selection quick-copy is now gated by a new
+  `TextEditor::SetHandleRightClickCopy(bool)` (ImGuiColorTextEdit) and disabled by
+  the Bench so the right button cleanly owns the menu.
+
+### Added — Bench: multi-file tabs + Markdown preview/edit
+
+- **Multi-document tabs** (`bench/CodeBench.{h,cpp}`) — the DevBench editor went
+  from one buffer to a set of open documents rendered in a real tab bar. Each tab
+  is an independent `Doc` (its own `TextEditor`, path, target, dirty flag, error
+  markers, syntax). New / Open / Examples open in a tab (Open focuses the tab if
+  the file is already open); a trailing **`+`** button and per-tab close box (with
+  an unsaved-dot) manage the set; closing the last tab respawns a fresh sketch.
+  Build / Run / status / toolchain reflect the **active** tab. Reference-stable via
+  `vector<unique_ptr<Doc>>` so opening a file mid-frame can't dangle the active doc.
+- **Markdown presentation + editing** (`bench/Markdown.{h,cpp}`, new `RenderMarkdown`)
+  — opening a `.md`/`.markdown` file gives a **Preview / Edit** toggle: Preview is a
+  lightweight rendered view (ATX headings sized via ImGui 1.92 `PushFont(NULL,size)`,
+  **bold**/*italic*/`code`/[links], fenced code blocks as read-only selectable
+  boxes, bullet/ordered lists, blockquotes, horizontal rules); Edit drops back to
+  the text editor. Links copy their URL to the clipboard on click. Verify/Run are
+  no-ops on a Markdown doc ("nothing to build"). `Markdown.cpp` added to the bench
+  sources (desktop + WASM).
+
 ### Fixed — emulator (`src/`): bug-hunt sweep
 
 Emulator-side fixes lifted from `TODO.md` — a defensive pass over snapshot/rewind

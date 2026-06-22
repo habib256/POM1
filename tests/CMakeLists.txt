@@ -291,6 +291,79 @@ add_test(NAME reset_vectors_smoke COMMAND test_reset_vectors
          WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
 set_tests_properties(reset_vectors_smoke PROPERTIES TIMEOUT 10)
 
+# -- DevBench BASIC injection smoke test --------------------------------------
+# Pins the Bench "BASIC" language path (Pom1BenchHost::injectBasic, mode 4):
+# cold-start the in-ROM interpreter through WOZ and TYPE the listing at the
+# prompt over the keyboard FIFO, then RUN — no compiler, so it runs on WASM too.
+# Boots WOZ, injects "E000R"/"6000R" + a listing + RUN for Integer BASIC ($E000)
+# and Applesoft Lite ($6000), and asserts the COMPUTED PRINT result reaches the
+# $D012 display (proving the interpreter executed, not just echoed, the source).
+# Needs roms/ -> WORKING_DIRECTORY is the repo root.
+add_executable(test_bench_basic_inject
+    bench_basic_inject_smoke_test.cpp
+    ${POM1_TEST_CORE_SOURCES}
+)
+target_include_directories(test_bench_basic_inject PRIVATE
+    ${CMAKE_SOURCE_DIR}/src
+    ${CMAKE_SOURCE_DIR}/imgui
+)
+target_link_libraries(test_bench_basic_inject PRIVATE libresidfp_static)
+if(APPLE)
+    target_compile_definitions(test_bench_basic_inject PRIVATE GL_SILENCE_DEPRECATION)
+endif()
+if(WIN32)
+    target_link_libraries(test_bench_basic_inject PRIVATE ws2_32)
+endif()
+add_test(NAME bench_basic_inject_smoke COMMAND test_bench_basic_inject
+         WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+set_tests_properties(bench_basic_inject_smoke PROPERTIES TIMEOUT 60)
+
+# -- Applesoft GEN2 interpreter smoke test -----------------------------------
+# Boots the sketchs/gen2/applesoft_gen2 ROM and checks the renumbered core runs
+# (PRINT 1000+7 -> 1007) plus HGR/HPLOT and GR/PLOT draw into the framebuffers.
+add_executable(test_applesoft_gen2
+    applesoft_gen2_smoke_test.cpp
+    ${POM1_TEST_CORE_SOURCES}
+)
+target_include_directories(test_applesoft_gen2 PRIVATE
+    ${CMAKE_SOURCE_DIR}/src
+    ${CMAKE_SOURCE_DIR}/imgui
+)
+target_link_libraries(test_applesoft_gen2 PRIVATE libresidfp_static)
+if(APPLE)
+    target_compile_definitions(test_applesoft_gen2 PRIVATE GL_SILENCE_DEPRECATION)
+endif()
+if(WIN32)
+    target_link_libraries(test_applesoft_gen2 PRIVATE ws2_32)
+endif()
+add_test(NAME applesoft_gen2_smoke COMMAND test_applesoft_gen2
+         WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+set_tests_properties(applesoft_gen2_smoke PROPERTIES TIMEOUT 120)
+
+# -- Applesoft TMS9918 interpreter smoke test --------------------------------
+# Boots the sketchs/tms9918/applesoft_tms9918 CodeTank ROM (4000R) with the
+# TMS9918 card PLUGGED and checks the renumbered core runs (APRINT 1000+7 ->
+# 1007) plus PRINT->TMS text, HGR/HPLOT, GR/PLOT, HOME/HTAB/VTAB and SCRN draw
+# into / read back the VDP's private VRAM (inspected via copySnapshot).
+add_executable(test_applesoft_tms9918
+    applesoft_tms9918_smoke_test.cpp
+    ${POM1_TEST_CORE_SOURCES}
+)
+target_include_directories(test_applesoft_tms9918 PRIVATE
+    ${CMAKE_SOURCE_DIR}/src
+    ${CMAKE_SOURCE_DIR}/imgui
+)
+target_link_libraries(test_applesoft_tms9918 PRIVATE libresidfp_static)
+if(APPLE)
+    target_compile_definitions(test_applesoft_tms9918 PRIVATE GL_SILENCE_DEPRECATION)
+endif()
+if(WIN32)
+    target_link_libraries(test_applesoft_tms9918 PRIVATE ws2_32)
+endif()
+add_test(NAME applesoft_tms9918_smoke COMMAND test_applesoft_tms9918
+         WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+set_tests_properties(applesoft_tms9918_smoke PROPERTIES TIMEOUT 120)
+
 # -- SID audio production smoke test ------------------------------------------
 # Needs the full Memory+peripheral core to exercise the PeripheralBus path.
 add_executable(test_sid_audio

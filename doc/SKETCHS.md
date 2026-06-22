@@ -88,6 +88,18 @@ Run in POM1: **File → Load Memory → hello.bin**, then `0300R`.
 - Graphics: HGR (`dev/lib/gen2c/`), TMS9918 (`dev/lib/tms9918c/`),
   GT-6144 (`sketchs/apple1/gt6144_demo_hello/`)
 
+### A bigger real-world example — Applesoft Lite
+
+[`sketchs/apple1/applesoft_lite/`](../sketchs/apple1/applesoft_lite/) packages the
+full **Applesoft Lite** floating-point BASIC interpreter
+([txgx42/applesoft-lite](https://github.com/txgx42/applesoft-lite)) as a
+multi-file ASM sketch — its `.sketch.json` lists the linked modules
+(`extraAsm`: `io.s`, `cffa1.s`, `wozmon.s`) and a local `applesoft_lite.cfg` that
+links the canonical `$E000-$FFFF` ROM. Open `applesoft-lite.s` and **Verify**;
+the result is byte-identical to the shipped `roms/applesoft-lite-cffa1.rom`. (This
+is the *source* of the interpreter behind the Bench's **BASIC → Applesoft Lite**
+runtime, which boots the same code relocated to `$6000`.)
+
 ---
 
 ## `_template_gen2c` — GEN2 HGR C
@@ -112,6 +124,20 @@ copy [`sketchs/gen2/demo_bounces/`](../sketchs/gen2/demo_bounces/) for that flow
 
 Further reading: [`Programming_C_Quickstart.md`](../sketchs/doc/Programming_C_Quickstart.md),
 [`Programming_GEN2C.md`](../sketchs/doc/Programming_GEN2C.md).
+
+### Applesoft GEN2 — floating-point BASIC with GEN2 graphics
+
+[`sketchs/gen2/applesoft_gen2/`](../sketchs/gen2/applesoft_gen2/) is Applesoft
+Lite turned into the BASIC for Uncle Bernie's card: CFFA1 disk I/O dropped, a
+full Apple II-style graphics + console command set added — `TEXT GR GR2 HGR HGR2
+MIX NOMIX SHOW VBL COLOR= HCOLOR= PLOT HLIN..AT VLIN..AT HPLOT..TO HOME HTAB
+VTAB` and the `SCRN(x,y)` function — and **`PRINT` retargeted to the GEN2
+screen** (`APRINT` keeps the Apple-1 terminal). **Run** cold-starts the
+interpreter at `$6000`; you type BASIC on the Apple-1 terminal and program
+output + graphics appear on the GEN2 card. `SHOW n` does tear-free page-flip
+double buffering. The README covers the command set, the `PRINT`/`APRINT` output
+model, double buffering and the memory map. Pinned by the `applesoft_gen2_smoke`
+ctest.
 
 ---
 

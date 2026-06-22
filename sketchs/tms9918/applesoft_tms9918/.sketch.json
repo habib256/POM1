@@ -1,0 +1,8 @@
+{
+  "profile": "tms9918",
+  "language": "asm",
+  "cfg": "sketchs/tms9918/applesoft_tms9918/applesoft_tms9918.cfg",
+  "extraAsm": [
+    "sketchs/tms9918/applesoft_tms9918/io.s"
+  ]
+}

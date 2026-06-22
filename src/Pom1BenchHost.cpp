@@ -297,6 +297,31 @@ static const char* kSketchGen2C =
     "    for (;;) { /* idle */ }\n"
     "}\n";
 
+// BASIC starters. No compiler in the loop: the Bench cold-starts the in-ROM
+// interpreter and TYPES the listing at the prompt, then RUN (see injectBasic).
+// Because it is pure keyboard injection, both run in the web (WASM) build too.
+static const char* kSketchBasicInteger =     // Integer BASIC ($E000, Apple-1 text)
+    "10 PRINT \"HELLO FROM INTEGER BASIC\"\n"
+    "20 FOR I=1 TO 5\n"
+    "30 PRINT \"  LINE \";I\n"
+    "40 NEXT I\n"
+    "50 END\n";
+static const char* kSketchBasicApplesoft =   // Applesoft Lite ($6000, microSD)
+    "10 PRINT \"HELLO FROM APPLESOFT LITE\"\n"
+    "20 FOR I = 1 TO 5\n"
+    "30 PRINT \"  1/\"; I; \" = \"; 1 / I\n"
+    "40 NEXT I\n"
+    "50 END\n";
+// Applesoft GEN2 ($6000 on the GEN2 card): the sketchs/gen2/applesoft_gen2
+// interpreter — Applesoft with the GEN2 graphics command set. Injected into the
+// built applesoft-gen2.bin. PRINT goes to the GEN2 screen, APRINT to the Apple-1.
+static const char* kSketchBasicApplesoftGen2 =
+    "10 HGR : HCOLOR=3\n"
+    "20 HPLOT 0,0 TO 279,191\n"
+    "30 HPLOT 0,191 TO 279,0\n"
+    "40 GR : COLOR=13 : PLOT 20,20\n"
+    "50 TEXT : HOME : VTAB 12 : HTAB 12 : PRINT \"HELLO GEN2\"\n";
+
 static const char* kBenchEmbeddedCfg =
     "MEMORY {\n"
     "    ZP:  start = $0000, size = $0030, type = rw, define = yes;\n"
@@ -345,39 +370,68 @@ static void ejectTapeForAciProgramOutput(EmulationController* emu, bench::BuildR
     r.console += "[ok] cassette ejected (ACI program output / $C030 speaker)\n";
 }
 
-// POM1 target: machine preset + linker cfg + source mode (0 asm/1 hex/3 C)
-// + the HELLO-WORLD starter for it. The New dialog picks a (language x machine)
-// pair; the first 6 entries are that matrix, ordered language-major:
+// POM1 target: machine preset + linker cfg + source mode
+//   (0 asm / 1 hex / 3 C / 4 BASIC injected) + the HELLO-WORLD starter for it.
+// The New dialog picks a (language x machine) pair (see targetFor):
 //   0..2 = asm x {dual-4k, TMS9918, GEN2 HGR},
-//   3..5 = C   x {dual-4k, TMS9918, GEN2 HGR}.
+//   3..5 = C   x {dual-4k, TMS9918, GEN2 HGR},
+//   6    = Wozmon hex (any machine),
+//   7..8 = BASIC x {Integer ($E000, Apple-1 CC65 DevBench), Applesoft Lite ($6000, microSD)}.
 // (preset indices = the development benches: CC65 bench = 0, TMS9918 bench = 1,
 //  GEN2 HGR bench = 2 — the profiles the DevBench loads per machine target.)
+// For mode-4 BASIC targets `cfg` holds the WOZ-Monitor cold-start command
+// (E000R / 6000R) the host types to bring the interpreter up — no compiler.
+//
+// Applesoft Lite runs on the **microSD + Applesoft Lite preset (8)** — the P-LAB
+// machine that owns the $6000 Applesoft ROM + the $8000 SD-OS. That preset is 8 KB
+// with silicon/OOR-strict armed, which makes $6000-$7FFF (inside the $1000..$7FFF
+// out-of-range window) read back $FF, so a bare 6000R would jump into $FF garbage
+// and fall back to WozMon. injectBasic() therefore relaxes the machine to a
+// permissive 64 KB view for the BASIC run (OOR off → $6000 and Applesoft's RAM
+// workspace live), keeping the microSD card. Integer BASIC ($E000) is OOR-exempt
+// (>= $8000) so it stays on the authentic CC65 DevBench (preset 0).
 struct P1T { const char* label; int preset; const char* cfg; const char* lang; int mode;
              bool needsCl65; bool codetankRom; const char* sketch; };
 const P1T kP1Targets[] = {
-    { "Apple-1 dual 4K/8K (asm)",         0, "apple1_4k.cfg",   "6502", 0, false, false, kSketchAsm       },
-    { "P-LAB TMS9918 Graphic Card (asm)", 1, "codetank.cfg",    "6502", 0, false, true,  kSketchAsmTms    },
-    { "Uncle Bernie GEN2 HGR (asm)",      2, "apple1_gen2.cfg", "6502", 0, false, false, kSketchAsmGen2   },
-    { "Apple-1 dual 4K/8K (C)",           0, "C-plain",         "C",    3, true,  false, kSketchCText     },
-    { "P-LAB TMS9918 CodeTank ROM (C)",   1, "C",               "C",    3, true,  true,  kSketchC         },
-    { "Uncle Bernie GEN2 HGR (C)",        2, "C-gen2",          "C",    3, true,  false, kSketchGen2C     },
-    { "Wozmon hex (any machine)",        -1, "",                "hex",  1, false, false, kSketchHex       },
+    { "Apple-1 dual 4K/8K (asm)",         0, "apple1_4k.cfg",   "6502",  0, false, false, kSketchAsm            },
+    { "P-LAB TMS9918 Graphic Card (asm)", 1, "codetank.cfg",    "6502",  0, false, true,  kSketchAsmTms         },
+    { "Uncle Bernie GEN2 HGR (asm)",      2, "apple1_gen2.cfg", "6502",  0, false, false, kSketchAsmGen2        },
+    { "Apple-1 dual 4K/8K (C)",           0, "C-plain",         "C",     3, true,  false, kSketchCText          },
+    { "P-LAB TMS9918 CodeTank ROM (C)",   1, "C",               "C",     3, true,  true,  kSketchC              },
+    { "Uncle Bernie GEN2 HGR (C)",        2, "C-gen2",          "C",     3, true,  false, kSketchGen2C          },
+    { "Wozmon hex (any machine)",        -1, "",                "hex",   1, false, false, kSketchHex            },
+    { "Integer BASIC (Apple-1 DevBench, E000R)", 0, "E000R",    "BASIC", 4, false, false, kSketchBasicInteger   },
+    { "Applesoft Lite (microSD, 6000R)",         8, "6000R",    "BASIC", 4, false, false, kSketchBasicApplesoft },
+    // Target 9: Applesoft GEN2 — same BASIC injection, but on the GEN2 card
+    // (preset 2) with the applesoft-gen2 interpreter ROM. Reached only via
+    // targetForPath for .apf/.bas files in a GEN2 path (not in the New grid).
+    { "Applesoft GEN2 (GEN2 card, 6000R)",       2, "6000R",    "BASIC", 4, false, false, kSketchBasicApplesoftGen2 },
 };
 const int kP1TargetCount = static_cast<int>(sizeof(kP1Targets) / sizeof(kP1Targets[0]));
 
-// New-dialog axes (language x machine -> target index = lang*3 + machine).
+// New-dialog axes (language x machine -> target index, resolved by targetFor).
 // kP1*Hints are parallel to the labels and surface as combo-entry tooltips.
-const char* const kP1Languages[] = { "Assembly  —  ca65 / ld65", "C  —  cc65 / cl65" };
+const char* const kP1Languages[] = { "Assembly  —  ca65 / ld65", "C  —  cc65 / cl65",
+                                     "BASIC  —  injected listing" };
 const char* const kP1LanguageHints[] = {
     "MOS 6502 assembler (cc65's ca65 + ld65). Links against the apple1 / tms9918 /\n"
     "gen2 equate libraries under dev/lib via the per-target linker .cfg.",
     "C cross-compiler (cc65's cl65). Pulls in the apple1.c runtime, or the\n"
     "tms9918c (TMS9918) / gen2 C runtime depending on the target.",
+    "No compiler: POM1 cold-starts the in-ROM interpreter and TYPES your listing\n"
+    "at the prompt, then RUN. Pure keyboard injection, so it works in the web\n"
+    "(WASM) build too. Integer BASIC ($E000) or Applesoft Lite ($6000).",
 };
+// The "Target" combo is per-language: asm/C show the three machines, BASIC shows
+// its two interpreters (CodeBench filters by targetFor()). Integer BASIC and
+// Applesoft Lite are their own entries so New > BASIC reads as the interpreter
+// choice, not a graphics machine.
 const char* const kP1Machines[]  = {
     "Apple-1 dual 4K/8K  (text) - start here",
     "P-LAB Graphic Card  (TMS9918)",
     "Uncle Bernie GEN2 HGR  (colour)",
+    "Integer BASIC  ($E000, Apple-1 text)",
+    "Applesoft Lite  ($6000, P-LAB microSD)",
 };
 const char* const kP1MachineHints[] = {
     "Stock Apple-1: 40x24 text printed through the WozMon ECHO routine ($FFEF).\n"
@@ -387,6 +441,14 @@ const char* const kP1MachineHints[] = {
     "into CODETANKDEV.rom and boots 4000R (all TMS9918 code runs from CodeTank).",
     "Uncle Bernie's GEN2 colour card — Apple II-style HIRES (280x192) driven by\n"
     "the soft switches $C250-$C257. Hello world uses the BBFont. Preset 12.",
+    "Integer BASIC, the original Apple-1 4 KB BASIC (ROM at $E000, cold start\n"
+    "E000R). Integer arithmetic only. Runs on the authentic 8 KB CC65 DevBench\n"
+    "machine — no graphics card.",
+    "Applesoft Lite, the floating-point BASIC (ROM at $6000-$7FFF, cold start\n"
+    "6000R), on the P-LAB microSD + Applesoft Lite machine (preset 8). The Bench\n"
+    "relaxes that 8 KB preset to a permissive 64 KB view for the run, because $6000\n"
+    "sits inside its out-of-range window (reads return $FF under silicon-strict, so\n"
+    "a bare 6000R would crash to WozMon).",
 };
 
 // Graduated learning examples (inline sources) on the Apple-1 text target. They
@@ -490,6 +552,8 @@ const P1Ex kP1Examples[] = {
     { nullptr,           "Echo the keyboard",                  false, kEx_keyboard,   0, "", 0 },
     { "C basics",        "Hello world",                        false, kEx_c_hello,    3, "", 0 },
     { nullptr,           "Keyboard echo",                      false, kEx_c_keyboard, 3, "", 0 },
+    { "BASIC",           "Hello (Integer BASIC)",              false, kSketchBasicInteger,   7, "", 0 },
+    { nullptr,           "Hello (Applesoft Lite)",             false, kSketchBasicApplesoft, 8, "", 0 },
 };
 const int kP1ExampleCount = static_cast<int>(sizeof(kP1Examples) / sizeof(kP1Examples[0]));
 
@@ -910,6 +974,7 @@ static const char* buildLogSourceMode(int mode)
     switch (mode) {
     case 1: return "hex";
     case 3: return "c";
+    case 4: return "basic";
     default: return "asm";
     }
 }
@@ -1174,7 +1239,7 @@ void Pom1BenchHost::probe() const
 int Pom1BenchHost::defaultTargetIndex() const
 {
 #if POM1_IS_WASM
-    return 0;   // the only target = Wozmon hex
+    return 0;   // asm dual-4K (WASM bundles the full cc65 toolchain; all targets exposed)
 #else
     probe();
     return toolchainOk_ ? 0 : 6;   // asm dual-4k if cc65 present, else Wozmon hex
@@ -1194,8 +1259,18 @@ const std::vector<std::string>& Pom1BenchHost::machineHints()  const { return ma
 
 int Pom1BenchHost::targetFor(int language, int machine) const
 {
-    if (language < 0 || language > 1 || machine < 0 || machine > 2) return -1;
-    return language * 3 + machine;   // matches the kP1Targets matrix ordering
+    // languages: 0=asm, 1=C, 2=BASIC.  machines: 0=Apple-1 text, 1=TMS9918,
+    // 2=GEN2 HGR, 3=Integer BASIC, 4=Applesoft Lite. asm/C use the three machines;
+    // BASIC uses its two dedicated interpreter entries (CodeBench's New dialog
+    // shows only the machines valid for the chosen language).
+    if (language == 0) return (machine >= 0 && machine <= 2) ? machine     : -1;  // asm 0..2
+    if (language == 1) return (machine >= 0 && machine <= 2) ? 3 + machine : -1;  // C   3..5
+    if (language == 2) {                                                          // BASIC
+        if (machine == 3) return 7;   // Integer BASIC  ($E000, E000R)
+        if (machine == 4) return 8;   // Applesoft Lite ($6000, 6000R)
+        return -1;
+    }
+    return -1;
 }
 
 static bool sourcePathLooksGT6144(const std::string& path)
@@ -1232,9 +1307,22 @@ int Pom1BenchHost::targetForPath(const std::string& path) const
 
     const std::string ext = fs::path(p).extension().string();
     if (ext == ".hex" || ext == ".txt") return 6;      // Wozmon hex quick-load
+
+    // BASIC source -> keyboard injection (no compiler). A .apf/.bas in a GEN2/HGR
+    // path injects into Applesoft GEN2 (target 9: the applesoft-gen2 interpreter on
+    // the GEN2 card, 6000R); elsewhere the stock microSD Applesoft (target 8).
+    if (ext == ".apf" || ext == ".bas") {
+        const bool gen2path = p.find("/gen2") != std::string::npos ||
+                              p.find("applesoft_gen2") != std::string::npos ||
+                              p.find("/hgr") != std::string::npos ||
+                              p.find("graphic hgr") != std::string::npos;
+        return gen2path ? 9 : 8;
+    }
+    if (ext == ".ibas") return 7;                      // Integer BASIC inject
+
     const bool cMode   = (ext == ".c");
     const bool asmMode = (ext == ".s" || ext == ".asm");
-    if (!cMode && !asmMode) return -1;
+    if (!cMode && !asmMode) return -1;                 // unknown type -> "do nothing"
 
     const bool tms  = p.find("/sketchs/tms9918") != std::string::npos ||
                       p.find("/tms9918") != std::string::npos ||
@@ -1374,6 +1462,115 @@ bench::BuildResult Pom1BenchHost::directLoad(int target, const std::string& src,
     return r;
 }
 
+// BASIC deploy (mode 4): no toolchain. Bring up the interpreter's (non-graphical)
+// Apple-1 machine, cold-start the in-ROM interpreter, then TYPE the listing line
+// by line at the prompt and optionally RUN. Everything rides the keyboard FIFO
+// ($D010), which self-paces on the program's reads — so this is byte-for-byte the
+// same on desktop and the web (WASM) build (no cc65, no async compile). Integer
+// BASIC lives at $E000 (loaded by initMemory on reset); Applesoft Lite at $6000
+// (zeroed by the reset, so we reload it before typing 6000R).
+bench::BuildResult Pom1BenchHost::injectBasic(int target, const std::string& src, bool run)
+{
+    bench::BuildResult r; r.showConsole = true;
+    const P1T& t = kP1Targets[p1(target)];
+    auto* emu = mw_ ? mw_->emulation.get() : nullptr;
+    if (!emu) { r.status = "no emulator"; r.ok = false; return r; }
+
+    const bool applesoft     = (t.cfg && std::string(t.cfg) == "6000R");
+    const bool gen2Applesoft = applesoft && t.preset == 2;   // applesoft-gen2 interpreter on the GEN2 card
+    const char* coldStart = (t.cfg && t.cfg[0]) ? t.cfg : (applesoft ? "6000R" : "E000R");
+    const char* interp    = gen2Applesoft ? "Applesoft GEN2" : applesoft ? "Applesoft Lite" : "Integer BASIC";
+
+    // 1) Plug the interpreter's machine, draining the deferred card plugs.
+    //    Integer  -> preset 0 (Apple-1 CC65 DevBench).
+    //    Applesoft -> preset 8 (P-LAB microSD + Applesoft Lite), which owns the
+    //    $6000 Applesoft ROM + $8000 SD-OS.
+    onTargetSelected(target);
+    mw_->finalizePendingCardPlugs();
+
+    // 1b) Applesoft only: the microSD preset is 8 KB with silicon/OOR-strict armed,
+    //     so $6000-$7FFF (the Applesoft ROM, inside the $1000..$7FFF out-of-range
+    //     window) reads back $FF and 6000R crashes to WozMon. Relax the machine to a
+    //     permissive 64 KB view for the run — presetRamKB=64 makes isOorAddress()
+    //     always false, so $6000 and Applesoft's whole RAM workspace are live. The
+    //     microSD card itself stays plugged; only OOR enforcement is lifted. (UI
+    //     flags mirrored so Settings reflects the relaxed state.)
+    if (applesoft && !gen2Applesoft) {   // GEN2 preset 2 is 48 KB — $6000 is already live RAM
+        emu->setOutOfRangeStrictMode(false);
+        emu->setPresetRamKB(64);
+        mw_->oorStrictModeEnabled = false;
+        mw_->presetRamKB = 64;
+    }
+
+    // 2) Clean boot to the WOZ Monitor (no ~3 s power-on scenario). hardReset
+    //    zero-fills RAM then reloads Integer BASIC / WOZ / SD-OS, but NOT the
+    //    Applesoft ROM at $6000 — so (re)load it here. reloadBasic() is idempotent
+    //    (Integer is already back at $E000 after the reset). Surface a reload
+    //    failure instead of silently letting 6000R/E000R crash into the monitor.
+    emu->hardReset(/*animateBoot=*/false);
+    std::string romErr;
+    bool romOk;
+    if (gen2Applesoft) {
+        // Applesoft GEN2: the interpreter is the sketch's built artefact, not a
+        // preset ROM. Load it at $6000 (no reset/run — the cold-start 6000R does
+        // that). Search the committed software/ tree relative to the run dir.
+        namespace fs = std::filesystem;
+        std::error_code ec;
+        std::string rom;
+        for (const char* c : {"software/Graphic HGR/applesoft-gen2.bin",
+                              "../software/Graphic HGR/applesoft-gen2.bin",
+                              "../../software/Graphic HGR/applesoft-gen2.bin"})
+            if (fs::exists(c, ec)) { rom = c; break; }
+        if (rom.empty()) { romErr = "software/Graphic HGR/applesoft-gen2.bin not found "
+                                    "(build the applesoft_gen2 sketch first)"; romOk = false; }
+        else romOk = emu->loadInterpreterRom(rom, 0x6000, romErr);
+    } else if (applesoft) {
+        romOk = emu->reloadApplesoftLiteSDCard(romErr);
+    } else {
+        romOk = emu->reloadBasic(romErr);
+    }
+    if (!romOk) {
+        emu->copySnapshot(mw_->uiSnapshot);
+        r.console = std::string("[bench] ") + interp + ": ROM (re)load FAILED — "
+                    + (romErr.empty() ? "unknown error" : romErr) + "\n"
+                    "[bench] cold-start " + coldStart + " would jump into unmapped "
+                    "memory and drop back to the WOZ Monitor; aborting injection.\n";
+        r.status = std::string(interp) + ": ROM load failed";
+        r.ok = false;
+        return r;
+    }
+
+    // 3) Compose the keystroke script: a leading CR for a fresh monitor line, the
+    //    cold-start command, the listing (LF/CR -> CR, tabs -> space, printable
+    //    only), then RUN. queueKey() pushes into the same pipeline as Ctrl-V paste.
+    std::string script = "\r";
+    script += coldStart; script += "\r";
+    int programChars = 0;
+    const int kMaxProgramChars = 4096;   // same budget as Ctrl-V paste
+    for (char c : src) {
+        if (programChars >= kMaxProgramChars) break;
+        if (c == '\n' || c == '\r') { script += '\r'; ++programChars; }
+        else if (c == '\t')         { script += ' '; ++programChars; }
+        else if (c >= 32 && c <= 126){ script += c;  ++programChars; }
+        // other control chars dropped
+    }
+    if (script.empty() || script.back() != '\r') script += '\r';
+    if (run) script += "RUN\r";
+    for (char c : script) emu->queueKey(c);
+    emu->copySnapshot(mw_->uiSnapshot);
+
+    const bool truncated = (programChars >= kMaxProgramChars);
+    r.console = std::string("[bench] ") + interp + ": cold-start " + coldStart +
+                ", typed " + std::to_string(programChars) + " program chars" +
+                (truncated ? " (truncated at 4096)" : "") +
+                (run ? " + RUN\n" : " (program entered; type RUN to start)\n") +
+                "[bench] no compiler — keyboard injection (desktop + WASM identical)\n";
+    r.status = run ? (std::string(interp) + " running")
+                   : (std::string(interp) + " program entered");
+    r.ok = true;
+    return r;
+}
+
 bench::BuildResult Pom1BenchHost::build(int target, const std::string& src, const std::string& addrHex, bool run)
 {
     bench::BuildResult r;
@@ -1394,6 +1591,10 @@ bench::BuildResult Pom1BenchHost::build(int target, const std::string& src, cons
     if (t.mode == 1) {     // Wozmon hex: no compile
         if (!run) { r.status = "Nothing to verify (hex)"; r.showConsole = false; return r; }
         return directLoad(target, src, addrHex);
+    }
+
+    if (t.mode == 4) {     // BASIC: no compile — type the listing into the in-ROM
+        return injectBasic(target, src, run);   // interpreter (works on WASM too).
     }
 
 #if POM1_IS_WASM
@@ -2002,7 +2203,7 @@ bool Pom1BenchHost::toolchainReady(int target) const
 {
     if (target < 0 || target >= kP1TargetCount) return false;
     const P1T& t = kP1Targets[p1(target)];
-    if (t.mode == 1) return true;
+    if (t.mode == 1 || t.mode == 4) return true;   // hex + BASIC need no toolchain
 #if POM1_IS_WASM
     return t.mode == 0 || t.mode == 3;   // asm + C compile via the bundled WASM cc65
 #else
@@ -2020,6 +2221,7 @@ std::string Pom1BenchHost::toolchainHint(int target) const
     if (target < 0 || target >= kP1TargetCount) return "";
     const P1T& t = kP1Targets[p1(target)];
     if (t.mode == 1) return "";
+    if (t.mode == 4) return "BASIC — no compiler (injected)";   // desktop + WASM
 #if POM1_IS_WASM
     return "cc65 (WASM) ready";
 #else
@@ -2035,6 +2237,11 @@ std::string Pom1BenchHost::modeLabel(int target) const
     const int idx = p1(target);
     const P1T& t = kP1Targets[idx];
     if (t.mode == 1) return "Mode: HEX + Apple-1";
+    if (t.mode == 4) {   // BASIC: interpreter named by the target's cold-start cmd
+        const bool applesoft = (t.cfg && std::string(t.cfg) == "6000R");
+        if (applesoft && t.preset == 2) return "Mode: Applesoft GEN2 + GEN2 HGR";
+        return std::string("Mode: ") + (applesoft ? "Applesoft Lite" : "Integer BASIC") + " + Apple-1";
+    }
 
     const char* language = (t.mode == 3) ? "C" : "ASM";
     const char* machine = "Apple-1";

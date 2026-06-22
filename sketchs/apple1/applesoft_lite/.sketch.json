@@ -1,0 +1,10 @@
+{
+  "profile": "apple1",
+  "language": "asm",
+  "cfg": "sketchs/apple1/applesoft_lite/applesoft_lite.cfg",
+  "extraAsm": [
+    "sketchs/apple1/applesoft_lite/io.s",
+    "sketchs/apple1/applesoft_lite/cffa1.s",
+    "sketchs/apple1/applesoft_lite/wozmon.s"
+  ]
+}

@@ -268,6 +268,21 @@ bool EmulationController::loadBinaryToRam(const std::string& path, uint16_t addr
     return true;
 }
 
+bool EmulationController::loadInterpreterRom(const std::string& path, uint16_t address, std::string& error)
+{
+    // No stopCpu()/reset: drop the image into RAM under the state lock while the
+    // CPU keeps running (the BASIC injector relies on the WOZ Monitor staying live
+    // to process the cold-start command). Lift write-protect like the ROM reloaders.
+    std::lock_guard<PriorityMutex> lock(stateMutex);
+    const bool prev = memory->getWriteInRom();
+    memory->setWriteInRom(true);
+    const int result = memory->loadBinary(path.c_str(), address);
+    memory->setWriteInRom(prev);
+    publisher.publish(*memory, *cpu, runRequested.load());
+    if (result != 0) { error = std::string("Cannot open: ") + path; return false; }
+    return true;
+}
+
 bool EmulationController::loadHexDump(const std::string& path, uint16_t& startAddress, std::string& error,
                                       int* bytesLoaded,
                                       std::vector<std::pair<uint16_t,uint16_t>>* zones)
