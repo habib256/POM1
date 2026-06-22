@@ -33,9 +33,16 @@ APPDIR="${WORK}/AppDir"
 TOOLS="${WORK}/tools"
 RESOURCES="${APPDIR}/usr/share/POM1"
 
-# 1. Build du binaire si absent.
-if [ ! -f "${REPO_ROOT}/build/POM1" ]; then
+# 1. Build du binaire — TOUJOURS recompiler pour empiler la dernière version.
+#    (Un simple test d'existence laissait passer un binaire périmé : make
+#    n'étant jamais relancé, l'AppImage embarquait une vieille build.)
+#    Mettre POM1_APPIMAGE_SKIP_BUILD=1 pour packager le binaire tel quel.
+if [ "${POM1_APPIMAGE_SKIP_BUILD:-0}" != "1" ]; then
     echo "[appimage] Build POM1 (cmake/make)…"
+    mkdir -p "${REPO_ROOT}/build"
+    (cd "${REPO_ROOT}/build" && cmake .. >/dev/null && make -j"$(nproc)")
+elif [ ! -f "${REPO_ROOT}/build/POM1" ]; then
+    echo "[appimage] POM1_APPIMAGE_SKIP_BUILD=1 mais build/POM1 absent — build forcé."
     mkdir -p "${REPO_ROOT}/build"
     (cd "${REPO_ROOT}/build" && cmake .. >/dev/null && make -j"$(nproc)")
 fi
@@ -70,6 +77,27 @@ chmod +x "${APPDIR}/AppRun"
 cp "${REPO_ROOT}/packaging/linux/POM1.desktop" "${APPDIR}/POM1.desktop"
 cp "${REPO_ROOT}/packaging/linux/hicolor/128x128/apps/POM1.png" "${APPDIR}/POM1.png"
 ln -sf POM1.png "${APPDIR}/.DirIcon"
+
+# 3a. ROMs générées à la demande : CODETANKDEV.rom n'est PAS commitée (seul son
+# sidecar .txt l'est) — elle est produite par tools/build_codetank_rom.py et la
+# DevBench TMS9918 (Applesoft .apf) l'exige à roms/codetank/CODETANKDEV.rom.
+# On la (re)génère ici, avec ca65/ld65 issus du bundle cc65 si besoin, pour
+# qu'elle finisse bien dans l'AppImage.
+CC65_BIN=""
+if [ -n "${POM1_CC65_BUNDLE:-}" ] && [ -d "${POM1_CC65_BUNDLE}/bin" ]; then
+    CC65_BIN="${POM1_CC65_BUNDLE}/bin"
+elif [ -d "${REPO_ROOT}/dist/cc65-bundle/cc65/bin" ]; then
+    CC65_BIN="${REPO_ROOT}/dist/cc65-bundle/cc65/bin"
+fi
+if PATH="${CC65_BIN:+${CC65_BIN}:}${PATH}" command -v ca65 >/dev/null 2>&1; then
+    echo "[appimage] Génération de roms/codetank/CODETANKDEV.rom…"
+    PATH="${CC65_BIN:+${CC65_BIN}:}${PATH}" \
+        python3 "${REPO_ROOT}/tools/build_codetank_rom.py" --rom dev >/dev/null
+elif [ ! -f "${REPO_ROOT}/roms/codetank/CODETANKDEV.rom" ]; then
+    echo "[appimage] ATTENTION : ca65 introuvable et CODETANKDEV.rom absente —" \
+         "la DevBench TMS9918 Applesoft échouera. Installez cc65 ou fournissez" \
+         "POM1_CC65_BUNDLE, puis relancez."
+fi
 
 # Données embarquées : tout ce que les probes cwd/exe-relatives cherchent.
 # ini_defaults/ = baseline des layouts par preset (résolu exe-relatif :

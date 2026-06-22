@@ -89,5 +89,6 @@ dev/projects/**/*.bin
 software/**/*.bin
 # Exception: SID tunes ship only as .bin (no .txt twin), so keep them tracked
 !software/SOUND SID/**/*.bin
-# DevBench scratch CodeTank ROM — regenerated into roms/codetank/ on TMS9918 upload
-roms/codetank/CODETANKDEV.rom
+# NOTE: roms/codetank/CODETANKDEV.rom IS tracked (canonical cartridge — blank $FF
+# flash slot + Applesoft TMS9918 upper bank). The DevBench rewrites its lower bank
+# at runtime, but the clean image ships so the TMS9918 DevBench works out of the box.
