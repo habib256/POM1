@@ -58,6 +58,10 @@ DATA_ROOT="$STAGING/Contents/Resources"
 cp -R roms      "$DATA_ROOT/roms"
 cp -R fonts     "$DATA_ROOT/fonts"
 cp -R software  "$DATA_ROOT/software"
+# DevBench source tree: the "browse sketchs/" picker and the built-in examples
+# (kP1Examples) open paths cwd-relative ("sketchs/gen2/…"), so the tree must ship
+# AND be symlinked into the user-data cwd by the startup provisioner.
+cp -R sketchs   "$DATA_ROOT/sketchs"
 cp -R cassettes "$DATA_ROOT/cassettes"
 cp -R pic       "$DATA_ROOT/pic"
 cp -R ini_defaults "$DATA_ROOT/ini_defaults"  # curated per-preset layout baseline (found exe-relative)
