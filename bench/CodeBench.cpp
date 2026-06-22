@@ -264,65 +264,30 @@ void CodeBench::drawModeMenu()
         return s;
     };
 
-    // Merge languages that build for the SAME set of machines into one group, so
-    // Assembly and C — both targeting Apple-1 / TMS9918 / GEN2 — share a header
-    // and each machine's asm + C variants sit side by side. BASIC, whose "machines"
-    // are interpreters, forms its own group.
-    std::vector<bool> done(langs.size(), false);
-    bool firstGroup = true;
+    // One section per language, one full-width Selectable per machine it can build
+    // for. Uniform rows (no inline buttons) keep the switcher clean and scannable;
+    // the active target is highlighted via the Selectable's selected state. asm and
+    // C list the same three machines, each under its own header; BASIC's "machines"
+    // are its interpreters.
+    bool firstSection = true;
     for (int l = 0; l < (int)langs.size(); ++l) {
-        if (done[l]) continue;
-        std::vector<int> group = { l };
-        done[l] = true;
-        for (int l2 = l + 1; l2 < (int)langs.size(); ++l2) {
-            if (done[l2]) continue;
-            bool same = true;
-            for (int m = 0; m < (int)machs.size(); ++m)
-                if ((host_->targetFor(l, m) >= 0) != (host_->targetFor(l2, m) >= 0)) { same = false; break; }
-            if (same) { group.push_back(l2); done[l2] = true; }
-        }
-        std::string header;
-        for (size_t gi = 0; gi < group.size(); ++gi)
-            header += (gi ? " / " : "") + shortLang(group[gi]);
-        if (!firstGroup) ImGui::Spacing();
-        firstGroup = false;
-        ImGui::TextDisabled("%s", header.c_str());
+        bool anyMachine = false;
+        for (int m = 0; m < (int)machs.size(); ++m)
+            if (host_->targetFor(l, m) >= 0) { anyMachine = true; break; }
+        if (!anyMachine) continue;   // language builds for nothing — no header
 
-        // One row per machine — NO duplicates. When the group merged several
-        // languages (Assembly + C), the machine name shows once and the languages
-        // sit together as inline tags on that same row; the active one is teal.
-        const bool multi = group.size() > 1;
+        if (!firstSection) ImGui::Spacing();
+        firstSection = false;
+        ImGui::TextDisabled("%s", shortLang(l).c_str());
+
+        ImGui::Indent();
         for (int m = 0; m < (int)machs.size(); ++m) {
-            bool any = false;
-            for (size_t gi = 0; gi < group.size(); ++gi)
-                if (host_->targetFor(group[gi], m) >= 0) { any = true; break; }
-            if (!any) continue;
-
-            ImGui::Indent();
-            if (!multi) {
-                const int t = host_->targetFor(group[0], m);
-                const std::string lbl = machs[m] + "##mode" + std::to_string(t);
-                if (ImGui::Selectable(lbl.c_str(), t == curTarget)) pick(t);
-            } else {
-                ImGui::AlignTextToFramePadding();
-                ImGui::TextUnformatted(machs[m].c_str());
-                for (size_t gi = 0; gi < group.size(); ++gi) {
-                    const int t = host_->targetFor(group[gi], m);
-                    if (t < 0) continue;
-                    ImGui::SameLine();
-                    const bool sel = (t == curTarget);
-                    if (sel) {
-                        ImGui::PushStyleColor(ImGuiCol_Button,        ImVec4(0.00f, 0.60f, 0.62f, 1.0f));
-                        ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.00f, 0.68f, 0.70f, 1.0f));
-                        ImGui::PushStyleColor(ImGuiCol_ButtonActive,  ImVec4(0.00f, 0.55f, 0.57f, 1.0f));
-                    }
-                    const std::string tag = shortLang(group[gi]) + "##mode" + std::to_string(t);
-                    if (ImGui::SmallButton(tag.c_str())) pick(t);
-                    if (sel) ImGui::PopStyleColor(3);
-                }
-            }
-            ImGui::Unindent();
+            const int t = host_->targetFor(l, m);
+            if (t < 0) continue;
+            const std::string lbl = machs[m] + "##mode" + std::to_string(t);
+            if (ImGui::Selectable(lbl.c_str(), t == curTarget)) pick(t);
         }
+        ImGui::Unindent();
     }
     ImGui::EndPopup();
 }

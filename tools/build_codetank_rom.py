@@ -456,7 +456,7 @@ SIDECAR_GAME3 = (
 SIDECAR_CODETANKDEV = (
     "CODETANKDEV.rom — TMS9918 P-LAB unified DevBench cartridge\n"
     "  Lower jumper: 4000R → the DevBench's flashed asm/C build (blank $FF here)\n"
-    "  Upper jumper: 4000R → Applesoft TMS9918 (for BASIC .apf injection)\n"
+    "  Upper jumper: 4000R → Applesoft TMS9918 upper bank\n"
 )
 
 
