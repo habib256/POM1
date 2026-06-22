@@ -78,8 +78,10 @@ Contents
   pic\                  About dialog photo (schlumberger-2-apple-1.jpg)
   roms\                 Apple 1 and expansion ROMs
                         (WozMonitor, Integer BASIC, Applesoft Lite,
-                         ACI, Krusader, SD CARD OS, CFFA1, Juke-Box,
-                         charmap)
+                         applesoft-gen2, ACI, Krusader, SD CARD OS,
+                         CFFA1, Juke-Box, charmap, codetank/CODETANKDEV)
+  sketchs\              DevBench source sketches (asm, C, BASIC .apf)
+  dev\                  cc65 linker configs, runtime libs, project sources
   software\             Sample programs - File > Load Memory
   sdcard\               Host folder for the P-LAB microSD card
                         (virtual FAT32; tag files as NAME#TTAAAA)

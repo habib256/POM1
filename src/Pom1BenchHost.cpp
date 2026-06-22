@@ -2373,7 +2373,7 @@ bench::BuildResult Pom1BenchHost::build(int target, const std::string& src, cons
         // Flash the lower bank, preserving the Applesoft TMS9918 upper bank; abort
         // loudly if the write didn't land instead of booting a stale cartridge.
         std::string error;
-        if (!flashCodeTankDevRom(binB, romPath.string(), error)) {
+        if (!flashCodeTankDevRom(binB.string(), romPath.string(), error)) {
             r.status = "CODETANKDEV.rom flash failed: " + error; r.ok = false; return r;
         }
         if (!emu->loadCodeTankRom(romPath.string(), error)) { r.status = "CODETANKDEV.rom load failed: " + error; return r; }

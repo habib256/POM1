@@ -51,6 +51,33 @@ if not exist "roms\WozMonitor.rom" (
     exit /b 1
 )
 
+REM ---- ROMs DevBench (generees a la demande si ca65 dispo) ------------------
+REM CODETANKDEV.rom : cartouche TMS9918 unifiee (asm/C + Applesoft .apf).
+REM applesoft-gen2.rom : interpreteur Applesoft GEN2 HGR (DevBench BASIC .apf).
+set "CC65_BIN="
+if defined POM1_CC65_BUNDLE if exist "%POM1_CC65_BUNDLE%\bin\ca65.exe" set "CC65_BIN=%POM1_CC65_BUNDLE%\bin"
+if not defined CC65_BIN if exist "dist\cc65-bundle\cc65\bin\ca65.exe" set "CC65_BIN=dist\cc65-bundle\cc65\bin"
+if not defined CC65_BIN (
+    for /f "usebackq delims=" %%T in (`where ca65 2^>nul`) do (
+        if not defined CC65_BIN for %%D in ("%%~dpT.") do set "CC65_BIN=%%~fD"
+    )
+)
+if defined CC65_BIN (
+    if not exist "roms\codetank\CODETANKDEV.rom" (
+        echo Generation de roms\codetank\CODETANKDEV.rom...
+        set "PATH=!CC65_BIN!;!PATH!"
+        python tools\build_codetank_rom.py --rom dev || (
+            echo ERREUR: echec generation CODETANKDEV.rom
+            exit /b 1
+        )
+    )
+) else if not exist "roms\codetank\CODETANKDEV.rom" (
+    echo AVERTISSEMENT: CODETANKDEV.rom absente et ca65 introuvable — DevBench TMS9918 limite.
+)
+if not exist "roms\applesoft-gen2.rom" (
+    echo AVERTISSEMENT: roms\applesoft-gen2.rom absente — DevBench Applesoft GEN2 limite.
+)
+
 set "OUTDIR=dist\POM1-Windows"
 set "ZIPNAME=POM1-Windows-v1.9.2.zip"
 set "ZIPPATH=dist\%ZIPNAME%"
@@ -86,6 +113,10 @@ if not defined GLFW_DLL_SRC if defined VPKGINST (
         if exist "!VPKGINST!\!TRIPLET!\debug\bin\glfw3.dll" set "GLFW_DLL_SRC=!VPKGINST!\!TRIPLET!\debug\bin\glfw3.dll"
     )
     if not defined GLFW_DLL_SRC if exist "!VPKGINST!\!TRIPLET!\bin\glfw3.dll" set "GLFW_DLL_SRC=!VPKGINST!\!TRIPLET!\bin\glfw3.dll"
+)
+
+if not defined GLFW_DLL_SRC if exist "dist\POM1-Windows\glfw3.dll" (
+    set "GLFW_DLL_SRC=dist\POM1-Windows\glfw3.dll"
 )
 
 if not defined GLFW_DLL_SRC (
@@ -221,6 +252,23 @@ if exist "cassettes\" (
     echo AVERTISSEMENT: dossier cassettes\ absent — omis.
 )
 
+REM DevBench source tree: le selecteur sketchs/ et les exemples integres
+REM ouvrent des chemins relatifs au cwd (sketchs/gen2/...).
+if exist "sketchs\" (
+    echo Copie sketchs\ ...
+    xcopy /E /I /Q "sketchs" "%OUTDIR%\sketchs\" >nul
+) else (
+    echo AVERTISSEMENT: dossier sketchs\ absent — omis.
+)
+
+REM Arbre dev/ complet (linker cfgs, libs, projects) pour DevBench asm/C.
+if exist "dev\" (
+    echo Copie dev\ ...
+    xcopy /E /I /Q "dev" "%OUTDIR%\dev\" >nul
+) else (
+    echo AVERTISSEMENT: dossier dev\ absent — omis.
+)
+
 REM ---- Optional cc65 toolchain bundle (self-contained DevBench) --------------
 REM Stage a relocatable cc65 tree (bin\ + share\cc65\) so the DevBench builds
 REM asm/C with no system cc65 on PATH. POM1 finds it exe-relative at cc65\bin
@@ -234,10 +282,6 @@ if not defined CC65_TREE if exist "dist\cc65-bundle\cc65\bin" set "CC65_TREE=dis
 if defined CC65_TREE (
     echo Copie cc65 bundle ^(!CC65_TREE!^)...
     xcopy /E /I /Q "!CC65_TREE!" "%OUTDIR%\cc65\" >nul
-    echo Copie dev\ ^(sous-ensemble DevBench^)...
-    if exist "dev\cc65" xcopy /E /I /Q "dev\cc65" "%OUTDIR%\dev\cc65\" >nul
-    if exist "dev\lib" xcopy /E /I /Q "dev\lib" "%OUTDIR%\dev\lib\" >nul
-    if exist "dev\apple1-videocard-lib" xcopy /E /I /Q "dev\apple1-videocard-lib" "%OUTDIR%\dev\apple1-videocard-lib\" >nul
 ) else (
     echo AVERTISSEMENT: pas de cc65 bundle — DevBench limite au Woz-hex sans cc65 systeme.
 )
