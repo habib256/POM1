@@ -17,7 +17,7 @@
 //     GR   : colour $0000  name table $0800 (multicolor 64x48 nibble buffer)
 //     HGR  : pattern $0000  colour $2000  name $3800 (Graphics II 256x192)
 //
-// ROM path: $POM1_ASTMS_ROM, else software/Apple-1_TMS_CC65/applesoft-tms9918.bin.
+// ROM path: $POM1_ASTMS_ROM, else roms/codetank/CODETANKDEV.rom (upper bank).
 #include "TMS9918.h"
 #include "WiFiModem.h"    // IWYU pragma: keep
 #include "TerminalCard.h" // IWYU pragma: keep
@@ -29,7 +29,12 @@
 
 #include <cstdio>
 #include <cstdlib>
+#include <cstring>
 #include <string>
+#include <vector>
+#include <fstream>
+#include <iterator>
+#include <algorithm>
 
 namespace {
 
@@ -41,16 +46,23 @@ public:
 
 bool loadRom(Memory& mem)
 {
+    // The interpreter lives in the UPPER bank of CODETANKDEV.rom (the unified TMS
+    // DevBench cartridge); take bytes [$4000:$8000] into the $4000 CodeTank window.
+    // A <=16 KB standalone .bin (via POM1_ASTMS_ROM) is taken whole.
     const char* env = std::getenv("POM1_ASTMS_ROM");
-    const char* path = env ? env : "software/Apple-1_TMS_CC65/applesoft-tms9918.bin";
-    mem.setWriteInRom(true);
-    const int rc = mem.loadBinary(path, 0x4000, nullptr);  // CodeTank ROM window
-    mem.setWriteInRom(false);
-    if (rc != 0) {
-        std::fprintf(stderr, "cannot load Applesoft TMS9918 ROM '%s' (rc=%d). Build the "
-                             "sketch and/or set POM1_ASTMS_ROM.\n", path, rc);
+    const std::string path = env ? env : "roms/codetank/CODETANKDEV.rom";
+    std::ifstream f(path, std::ios::binary);
+    std::vector<unsigned char> buf;
+    if (f) buf.assign(std::istreambuf_iterator<char>(f), std::istreambuf_iterator<char>());
+    if (buf.empty()) {
+        std::fprintf(stderr, "cannot load Applesoft TMS9918 ROM '%s'. Build it with "
+                             "tools/build_codetank_rom.py --rom dev (or set POM1_ASTMS_ROM).\n",
+                             path.c_str());
         return false;
     }
+    const size_t off = (buf.size() >= 0x8000) ? 0x4000 : 0;   // 32K cart -> upper bank
+    const size_t n   = std::min<size_t>(buf.size() - off, 0x4000);
+    std::memcpy(mem.getMemoryPointerMutable() + 0x4000, buf.data() + off, n);
     return true;
 }
 

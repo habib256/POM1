@@ -5683,15 +5683,15 @@ COLDSTART:
 ; ----------------------------------------------------------------------------
 ; FIND HIGH END OF RAM
 ; ----------------------------------------------------------------------------
-	; TMS: HIMEM is FIXED at $2000 (top of the 8 KB dual-bank RAM) instead
-	; of probing RAM upward. The TMS9918 has NO memory-mapped framebuffer
-	; (all pixels live in the card's private 16 KB VRAM behind $CC00/$CC01),
-	; so unlike the GEN2 build no RAM framebuffer needs reserving — but the
-	; interpreter is ROM-resident in the CodeTank window ($4000-$7FFF) and a
-	; bare probe would run off the 8 KB RAM into OOR ($FF) territory. Program
-	; + variables + strings live in $0800-$1FFF (6 KB), the full dual-bank.
-	lda	#>$2000		; HIMEM hi byte
-	ldy	#<$2000		; HIMEM lo byte ($00)
+	; TMS: HIMEM is PINNED at $4000 — the floor of the CodeTank ROM cart
+	; ($4000-$7FFF), where this interpreter runs in place. The TMS9918 has NO
+	; memory-mapped framebuffer (all pixels live in the card's private 16 KB
+	; VRAM behind $CC00/$CC01), so no RAM framebuffer needs reserving and BASIC
+	; owns the whole low RAM below the cart: program + variables + strings live
+	; in $0801-$3FFF (~14 KB) on a real 16 KB Apple-1 + TMS9918 + CodeTank
+	; machine. (Pinned, not probed: a probe would run into the cart ROM.)
+	lda	#>$4000		; HIMEM hi byte — ceiling = CodeTank ROM cart at $4000
+	ldy	#<$4000		; HIMEM lo byte ($00)
 	sty	MEMSIZ
 	sta	MEMSIZ+1
 	sty	FRETOP		; SET HIMEM AND BOTTOM OF STRINGS

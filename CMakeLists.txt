@@ -214,15 +214,18 @@ if(EMSCRIPTEN)
     # DevBench WASM needs the sketchs/ tree in MEMFS so probeSketchProject can
     # read each .sketch.json (cfg + extraAsm + defines) and ld65 the per-sketch
     # cfgs — exactly like desktop. Stage a *build-only* copy (sources + cfgs +
-    # metadata) so the ~1.3 MB of tool_logo PDFs + game_rogue PNGs stay out of
-    # the web payload. Configure-time copy (rebuild WASM after touching sketchs/).
+    # metadata + BASIC listings) so the ~1.3 MB of tool_logo PDFs + game_rogue
+    # PNGs stay out of the web payload. The BASIC .apf/.ibas/.bas listings are
+    # tiny text, so they ride along (browsable + injectable in the web DevBench
+    # like on desktop). Configure-time copy (rebuild WASM after touching sketchs/).
     set(SKETCHS_STAGE ${CMAKE_BINARY_DIR}/wasm_preload)
     file(REMOVE_RECURSE ${SKETCHS_STAGE}/sketchs)
     file(COPY ${CMAKE_CURRENT_SOURCE_DIR}/sketchs
          DESTINATION ${SKETCHS_STAGE}
          FILES_MATCHING
            PATTERN "*.asm" PATTERN "*.s"   PATTERN "*.c"   PATTERN "*.h"
-           PATTERN "*.inc" PATTERN "*.cfg" PATTERN "*.json")
+           PATTERN "*.inc" PATTERN "*.cfg" PATTERN "*.json"
+           PATTERN "*.apf" PATTERN "*.ibas" PATTERN "*.bas")
 
     # Stack-size linker flag was renamed in Emscripten 3.1.27 (TOTAL_STACK
     # → STACK_SIZE). Both spellings are accepted on their respective

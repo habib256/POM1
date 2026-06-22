@@ -401,6 +401,31 @@ def build_game3() -> bytes:
     return rom
 
 
+def build_codetankdev() -> bytes:
+    """CODETANKDEV.rom — the unified TMS9918 DevBench cartridge.
+
+      Lower 16 kB: blank ($FF) flash slot. The in-app DevBench writes the
+                   current asm / C TMS9918 build here at runtime and boots
+                   jumper Lower -> 4000R (it preserves this upper bank).
+      Upper 16 kB: the Applesoft TMS9918 interpreter (run-in-place at $4000),
+                   loaded for BASIC .apf injection via jumper Upper -> 4000R.
+    """
+    print("\n========== CODETANKDEV.rom ==========", file=sys.stderr)
+    print("[CODETANKDEV] Lower bank: blank $FF (runtime asm/C flash slot)",
+          file=sys.stderr)
+    lower = b"\xFF" * HALF_SIZE
+    print("[CODETANKDEV] Upper bank (Applesoft TMS9918):", file=sys.stderr)
+    ad = SK / "applesoft_tms9918"
+    asoft = assemble_multi(
+        [ad / "applesoft-tms9918.s", ad / "io.s"],
+        ad / "applesoft_tms9918.cfg", "applesoft_tms9918", HALF_SIZE)
+    upper = bytearray(b"\xFF" * HALF_SIZE)
+    slot(upper, 0, asoft, HALF_SIZE, "applesoft-tms9918 (upper)")
+    rom = lower + bytes(upper)
+    assert len(rom) == ROM_SIZE
+    return rom
+
+
 def write_rom(rom: bytes, out: pathlib.Path, sidecar: str) -> None:
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_bytes(rom)
@@ -428,6 +453,12 @@ SIDECAR_GAME3 = (
     "  Upper jumper: 4000R → menu → 1=Life 2=Mandel 3=Plasma\n"
 )
 
+SIDECAR_CODETANKDEV = (
+    "CODETANKDEV.rom — TMS9918 P-LAB unified DevBench cartridge\n"
+    "  Lower jumper: 4000R → the DevBench's flashed asm/C build (blank $FF here)\n"
+    "  Upper jumper: 4000R → Applesoft TMS9918 (for BASIC .apf injection)\n"
+)
+
 
 def main() -> int:
     ap = argparse.ArgumentParser(
@@ -435,8 +466,8 @@ def main() -> int:
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     ap.add_argument(
-        "--rom", choices=("1", "2", "3", "all"), default="all",
-        help="Which CodeTank ROM to build (default: all 3)",
+        "--rom", choices=("1", "2", "3", "dev", "all"), default="all",
+        help="Which CodeTank ROM to build (default: all — GAME1-3 + CODETANKDEV)",
     )
     args = ap.parse_args()
 
@@ -456,6 +487,10 @@ def main() -> int:
     if args.rom in ("3", "all"):
         rom3 = build_game3()
         write_rom(rom3, out_dir / "Codetank_GAME3.rom", SIDECAR_GAME3)
+
+    if args.rom in ("dev", "all"):
+        romd = build_codetankdev()
+        write_rom(romd, out_dir / "CODETANKDEV.rom", SIDECAR_CODETANKDEV)
 
     return 0
 

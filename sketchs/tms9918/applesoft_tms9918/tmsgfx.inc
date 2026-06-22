@@ -536,8 +536,9 @@ clampx:
 hplot_pt:
         lda     PIXY
         cmp     #192
-        bcs     @skip
-        lda     PIXX            ; addr lo = (x & $F8) | (y & 7)
+        bcc     @ok             ; y < 192 -> in range
+        rts                     ; y >= 192 -> off-screen, skip
+@ok:    lda     PIXX            ; addr lo = (x & $F8) | (y & 7)
         and     #$F8
         sta     GTMP
         lda     PIXY
@@ -560,10 +561,19 @@ hplot_pt:
         sta     GVH
         jsr     vdp_raddr
         jsr     vpad
-        lda     VDP_DATA
-        ora     PMASK
+        lda     VDP_DATA        ; current pattern byte
         sta     PBYTE
-        lda     PADDRL          ; write it back
+        lda     PENCOL          ; Apple-1 HGR: pen 0 = black = ERASE the pixel;
+        beq     @erase          ; any non-zero pen draws it (set the bit)
+        lda     PBYTE
+        ora     PMASK           ; foreground -> set bit
+        sta     PBYTE
+        jmp     @wrpat
+@erase: lda     PMASK           ; background -> clear bit (AND with ~mask)
+        eor     #$FF
+        and     PBYTE
+        sta     PBYTE
+@wrpat: lda     PADDRL          ; write it back
         sta     GVL
         lda     PADDRH
         sta     GVH
@@ -571,6 +581,8 @@ hplot_pt:
         lda     PBYTE
         sta     VDP_DATA
         jsr     vpad
+        lda     PENCOL          ; erase (pen 0) leaves the row colour untouched
+        beq     @skip           ; (else it would clobber the row's foreground colour)
         lda     PADDRL          ; colour cell at $2000 + addr = pen<<4 | black
         sta     GVL
         lda     PADDRH

@@ -10,11 +10,14 @@ control) instead of Uncle Bernie's memory-mapped GEN2 card.
 It ships as a **CodeTank ROM cartridge**: the interpreter runs in place from the
 `$4000-$7FFF` ROM window (like Tetris / LOGO V2.6), so cold-start with **`4000R`**
 from the WOZ Monitor. Because the interpreter is ROM-resident (Applesoft descends
-from Apple II's ROM Applesoft, so its body is ROM-clean), the **entire 8 KB
-dual-bank RAM is free for the user's BASIC program** — there is no $6000 RAM image
-to squeeze in like the GEN2 build. Runs on POM1 preset **1 "Apple-1 TMS9918
-Development Bench"** (8 KB dual-bank RAM + TMS9918A + CodeTank daughterboard); the
-DevBench can flash this image as a CodeTank dev cartridge.
+from Apple II's ROM Applesoft, so its body is ROM-clean) **and the TMS9918 keeps
+all pixels in its own external VRAM**, the **entire RAM below the cart is free for
+the user's BASIC program**: HIMEM is pinned at `$4000` (the cart floor), so BASIC
+owns `$0801-$3FFF` (~14 KB). The Bench backs this with a real 16 KB low-RAM machine
+(`$0000-$3FFF` RAM + CodeTank ROM `$4000-$7FFF`) — no non-physical 64 KB view — so
+it matches a buildable Apple-1 + TMS9918 + CodeTank. Runs on POM1 preset **1
+"Apple-1 TMS9918 Development Bench"**; the DevBench flashes this image as a CodeTank
+dev cartridge.
 
 Base: [txgx42/applesoft-lite](https://github.com/txgx42/applesoft-lite) (see the
 shared interpreter notes in `sketchs/apple1/applesoft_lite/`).
@@ -97,7 +100,7 @@ The command surface is identical, but the chip is not an Apple-II framebuffer:
 ```
 $0000-$00FF  ZP (Applesoft + TMS plot scratch $06-$0C, $0300 state, CSW @ $031E)
 $0200-$02FF  WOZ / Applesoft input buffer       $0400-$07FF  text-scroll scratch
-$0800-$1FFF  USER BASIC program + vars (HIMEM=$2000, the full 8 KB dual-bank RAM)
+$0800-$3FFF  USER BASIC program + vars + strings (HIMEM=$4000; real 16 KB low RAM)
 $4000-$7FFF  interpreter image — CodeTank ROM, runs in place (4000R)
 $CC00/$CC01  TMS9918 VDP data / control          $FF00-$FFFF  WOZ Monitor (ECHO)
 ```

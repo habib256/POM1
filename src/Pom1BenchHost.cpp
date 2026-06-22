@@ -312,7 +312,7 @@ static const char* kSketchBasicApplesoft =   // Applesoft Lite ($6000, microSD)
     "30 PRINT \"  1/\"; I; \" = \"; 1 / I\n"
     "40 NEXT I\n"
     "50 END\n";
-// Applesoft GEN2 ($6000 on the GEN2 card): the sketchs/gen2/applesoft_gen2
+// Applesoft GEN2 ($9800 on the GEN2 card): the sketchs/gen2/applesoft_gen2
 // interpreter — Applesoft with the GEN2 graphics command set. Injected into the
 // built applesoft-gen2.bin. PRINT goes to the GEN2 screen, APRINT to the Apple-1.
 static const char* kSketchBasicApplesoftGen2 =
@@ -403,8 +403,9 @@ const P1T kP1Targets[] = {
     { "Integer BASIC (Apple-1 DevBench, E000R)", 0, "E000R",    "BASIC", 4, false, false, kSketchBasicInteger   },
     { "Applesoft Lite (microSD, 6000R)",         8, "6000R",    "BASIC", 4, false, false, kSketchBasicApplesoft },
     // Target 9: Applesoft GEN2 — BASIC injection on the GEN2 card (preset 2),
-    // applesoft-gen2 interpreter ROM at $6000.
-    { "Applesoft GEN2 (GEN2 card, 6000R)",       2, "6000R",    "BASIC", 4, false, false, kSketchBasicApplesoftGen2 },
+    // applesoft-gen2 interpreter ROM loaded HIGH in RAM at $9800 (HIMEM just
+    // below it) so BASIC owns ~37 KB of $0801-$97FF — real-silicon faithful.
+    { "Applesoft GEN2 (GEN2 card, 9800R)",       2, "9800R",    "BASIC", 4, false, false, kSketchBasicApplesoftGen2 },
     // Target 10: Applesoft Lite on a bare Apple-1 — the CFFA1 flavour ROM at
     // $E000 (roms/applesoft-lite-cffa1.rom), cold start E000R, 64 KB-relaxed.
     { "Applesoft Lite (Apple-1, E000R)",         0, "E000R",    "BASIC", 4, false, false, kSketchBasicApplesoft     },
@@ -425,20 +426,22 @@ const char* const kP1LanguageHints[] = {
     "tms9918c (TMS9918) / gen2 C runtime depending on the target.",
     "No compiler: POM1 cold-starts the in-ROM interpreter and TYPES your listing\n"
     "at the prompt, then RUN. Pure keyboard injection, so it works in the web\n"
-    "(WASM) build too. Four Applesoft machines: Apple-1, microSD, GEN2 HGR, TMS9918.",
+    "(WASM) build too. Integer BASIC (Apple-1 dual-rom) + Applesoft on microSD /\n"
+    "GEN2 HGR / TMS9918.",
 };
-// The "Target" combo is per-language: asm/C show the three machines, BASIC shows
-// its two interpreters (CodeBench filters by targetFor()). Integer BASIC and
-// Applesoft Lite are their own entries so New > BASIC reads as the interpreter
-// choice, not a graphics machine.
+// The "Target" combo is per-language: asm/C show the three graphics machines,
+// BASIC shows its four interpreters (CodeBench filters by targetFor()). Each is
+// its own entry so New > BASIC reads as the interpreter choice, not a graphics
+// machine. Bare-Apple-1 BASIC is Integer (the dual-ROM $E000 bank) — Applesoft
+// needs a card (microSD / GEN2 / TMS), so there is no "Applesoft on bare Apple-1".
 const char* const kP1Machines[]  = {
     "Apple-1 dual 4K/8K  (text) - start here",   // 0  asm/C
     "P-LAB Graphic Card  (TMS9918)",             // 1  asm/C
     "Uncle Bernie GEN2 HGR  (colour)",           // 2  asm/C
-    "Applesoft Lite  (Apple-1)",                 // 3  BASIC -> target 10
-    "Applesoft Lite + microSD",                  // 4  BASIC -> target 8
-    "Applesoft GEN2 HGR",                        // 5  BASIC -> target 9
-    "Applesoft TMS9918",                         // 6  BASIC -> target 11
+    "Applesoft Lite + microSD",                  // 3  BASIC -> target 8
+    "Applesoft GEN2 HGR",                        // 4  BASIC -> target 9
+    "Applesoft TMS9918",                         // 5  BASIC -> target 11
+    "Integer BASIC (Apple-1 dual-rom)",          // 6  BASIC -> target 7
 };
 const char* const kP1MachineHints[] = {
     "Stock Apple-1: 40x24 text printed through the WozMon ECHO routine ($FFEF).\n"
@@ -448,18 +451,18 @@ const char* const kP1MachineHints[] = {
     "CodeTank dev cartridge and boots 4000R (all TMS9918 code runs from CodeTank).",
     "Uncle Bernie's GEN2 colour card — Apple II-style HIRES (280x192) driven by\n"
     "the soft switches $C250-$C257. Hello world uses the BBFont.",
-    "Applesoft Lite (floating-point BASIC) on a bare Apple-1 — the CFFA1-flavour\n"
-    "ROM at $E000-$FFFF, cold start E000R. No graphics; LOAD/SAVE error without a\n"
-    "CFFA1 card. The Bench relaxes RAM to 64 KB so $F000-$FEFF is live.",
     "Applesoft Lite on the P-LAB microSD machine — ROM at $6000-$7FFF, cold start\n"
     "6000R, SD-OS LOAD/SAVE at $8000. The Bench relaxes the 8 KB preset to 64 KB\n"
     "for the run ($6000 is inside its out-of-range window).",
     "Applesoft GEN2 — Applesoft with the GEN2 colour graphics commands (TEXT/GR/\n"
     "HGR/COLOR=/HCOLOR=/PLOT/HLIN/VLIN/HPLOT, PRINT->GEN2 screen). Interpreter at\n"
-    "$6000 on the GEN2 card (preset 2). sketchs/gen2/applesoft_gen2.",
+    "$9800 (top of RAM) on the GEN2 card (preset 2). sketchs/gen2/applesoft_gen2.",
     "Applesoft TMS9918 — Applesoft with the same graphics commands driving the\n"
     "P-LAB TMS9918 VDP ($CC00/$CC01). The interpreter is a CodeTank ROM cartridge\n"
     "($4000-$7FFF), cold start 4000R. sketchs/tms9918/applesoft_tms9918.",
+    "Integer BASIC — Wozniak's 6502 Integer BASIC in the Apple-1 dual-ROM second\n"
+    "bank ($E000-$EFFF), cold start E000R. No graphics, no floating point — the\n"
+    "classic Apple-1 BASIC. Keyboard-injected listing, no compiler.",
 };
 
 // Graduated learning examples (inline sources) on the Apple-1 text target. They
@@ -1271,17 +1274,17 @@ const std::vector<std::string>& Pom1BenchHost::machineHints()  const { return ma
 int Pom1BenchHost::targetFor(int language, int machine) const
 {
     // languages: 0=asm, 1=C, 2=BASIC. machines: 0=Apple-1 text, 1=TMS9918,
-    // 2=GEN2 HGR (asm/C use these three); 3=Applesoft Lite (Apple-1), 4=Applesoft
-    // Lite + microSD, 5=Applesoft GEN2 HGR, 6=Applesoft TMS9918 (BASIC uses these
-    // four). CodeBench's New dialog shows only the machines valid for the language.
+    // 2=GEN2 HGR (asm/C use these three); 3=Applesoft Lite + microSD, 4=Applesoft
+    // GEN2 HGR, 5=Applesoft TMS9918, 6=Integer BASIC (Apple-1 dual-rom) (BASIC uses
+    // these four). CodeBench's New dialog shows only the machines valid for the lang.
     if (language == 0) return (machine >= 0 && machine <= 2) ? machine     : -1;  // asm 0..2
     if (language == 1) return (machine >= 0 && machine <= 2) ? 3 + machine : -1;  // C   3..5
-    if (language == 2) {                                                          // BASIC: 4 Applesoft
+    if (language == 2) {                                                          // BASIC
         switch (machine) {
-            case 3: return 10;   // Applesoft Lite (Apple-1, CFFA1 $E000)
-            case 4: return 8;    // Applesoft Lite + microSD ($6000)
-            case 5: return 9;    // Applesoft GEN2 HGR
-            case 6: return 11;   // Applesoft TMS9918 (CodeTank $4000)
+            case 3: return 8;    // Applesoft Lite + microSD ($6000)
+            case 4: return 9;    // Applesoft GEN2 HGR ($9800)
+            case 5: return 11;   // Applesoft TMS9918 (CodeTank $4000)
+            case 6: return 7;    // Integer BASIC (Apple-1 dual-rom, $E000)
         }
         return -1;
     }
@@ -1359,7 +1362,7 @@ int Pom1BenchHost::targetForPath(const std::string& path) const
         // never switches the user's profile (see onTargetSelected). Path-tagged files
         // (under /gen2, /tms9918, …) still pin their own card.
         if (sourcePathLooksApplesoftSketch(p)) {
-            if (mw_ && mw_->graphicsCardEnabled) return 9;    // Applesoft GEN2 ($6000)
+            if (mw_ && mw_->graphicsCardEnabled) return 9;    // Applesoft GEN2 ($9800)
             if (mw_ && mw_->tms9918Enabled)      return 11;   // Applesoft TMS9918 ($4000)
             if (mw_ && mw_->microSDEnabled)      return 8;    // Applesoft Lite + microSD
             return 10;                                        // Applesoft Lite (Apple-1, $E000)
@@ -1621,35 +1624,22 @@ bench::BuildResult Pom1BenchHost::injectBasic(int target, const std::string& src
         return {};
     };
 
-    // 1) For the TMS9918 Applesoft cartridge, build + validate the 32 KB CodeTank
-    //    image UP FRONT (in memory, no temp file) before touching the machine. A
-    //    missing/short ROM then aborts with the machine completely unchanged — no
-    //    preset switch, no half-plugged card, no default GAME1 cartridge.
-    std::vector<uint8_t> tmsCart;
+    // 1) For the TMS9918 Applesoft, the interpreter lives in the UPPER bank of the
+    //    unified CODETANKDEV cartridge (roms/codetank/CODETANKDEV.rom) — the lower
+    //    bank is the DevBench's asm/C flash slot. Resolve + validate the image UP
+    //    FRONT so a missing ROM aborts with the machine completely unchanged (no
+    //    preset switch, no half-plugged card, no default GAME1 cartridge).
+    std::string tmsCartPath;
     if (tms) {
-        const std::string rom = findRom({"software/Apple-1_TMS_CC65/applesoft-tms9918.bin",
-                                         "../software/Apple-1_TMS_CC65/applesoft-tms9918.bin",
-                                         "../../software/Apple-1_TMS_CC65/applesoft-tms9918.bin"});
-        std::string err;
-        if (rom.empty()) err = "software/Apple-1_TMS_CC65/applesoft-tms9918.bin not found";
-        else {
-            std::ifstream in(rom, std::ios::binary);
-            if (!in.is_open()) err = "cannot open " + rom;
-            else {
-                tmsCart.assign(0x8000, 0xFF);   // 32 KB 28C256; unused bytes stay $FF
-                in.read(reinterpret_cast<char*>(tmsCart.data()), 0x4000);   // up to 16 KB (lower bank)
-                // The cartridge cold-starts at 4000R, so its CODE sits at offset 0
-                // ($4000) and need NOT fill the whole 16 KB bank — ld65 emits only the
-                // actual code (the interpreter is ~10.7 KB; the rest of the bank stays
-                // $FF). Only an empty file is invalid.
-                if (in.gcount() <= 0)
-                    err = rom + " is empty";
-            }
-        }
-        if (!err.empty()) {
-            r.console = std::string("[bench] ") + interp + ": cartridge ROM load FAILED — " + err + "\n"
-                        "[bench] aborting injection; machine left unchanged.\n";
-            r.status = std::string(interp) + ": ROM load failed";
+        tmsCartPath = findRom({"roms/codetank/CODETANKDEV.rom",
+                               "../roms/codetank/CODETANKDEV.rom",
+                               "../../roms/codetank/CODETANKDEV.rom"});
+        if (tmsCartPath.empty()) {
+            r.console = std::string("[bench] ") + interp +
+                ": CODETANKDEV.rom not found — build it with "
+                "tools/build_codetank_rom.py --rom dev\n"
+                "[bench] aborting injection; machine left unchanged.\n";
+            r.status = std::string(interp) + ": ROM not found";
             r.ok = false;
             return r;
         }
@@ -1661,8 +1651,8 @@ bench::BuildResult Pom1BenchHost::injectBasic(int target, const std::string& src
     onTargetSelected(target);
     if (tms) {
         std::string err;
-        if (!emu->loadCodeTankRomBuffer(tmsCart, "applesoft-tms9918 (CodeTank)", err)) {
-            r.console = std::string("[bench] ") + interp + ": CodeTank flash FAILED — " + err + "\n";
+        if (!emu->loadCodeTankRom(tmsCartPath, err)) {
+            r.console = std::string("[bench] ") + interp + ": CODETANKDEV.rom load FAILED — " + err + "\n";
             r.status = std::string(interp) + ": ROM load failed";
             r.ok = false;
             return r;
@@ -1676,13 +1666,20 @@ bench::BuildResult Pom1BenchHost::injectBasic(int target, const std::string& src
     }
     mw_->finalizePendingCardPlugs();
 
-    // 2b) Relax to a permissive 64 KB view for variants whose interpreter / RAM
-    //     workspace sits inside an out-of-range window on the strict preset:
-    //     microSD (8 KB, $6000 ROM), CFFA1 Apple-1 ($E000-$FEFF needs $F000+ RAM),
-    //     TMS9918 (8 KB program RAM). GEN2 (preset 2, 48 KB) needs none. The cards
-    //     keep their MMIO/ROM windows — only OOR enforcement is lifted. The original
-    //     RAM/OOR is saved here and restored on abort / when the next non-BASIC target
-    //     runs (build() calls restoreRelaxedMachine), so the relax never leaks.
+    // 2b) Give BASIC enough backed RAM for its interpreter + workspace. Two cases:
+    //
+    //   * TMS9918 + CodeTank (idx 11): a REAL, buildable machine — 16 KB low RAM
+    //     ($0000-$3FFF) under the CodeTank ROM cart ($4000-$7FFF). HIMEM is pinned
+    //     at $4000, so BASIC ($0801-$3FFF) is wholly in range with OOR strict left
+    //     ON (no non-physical 64 KB view). The TMS VRAM is external ($CC00/$CC01),
+    //     so no framebuffer RAM is reserved; the cart window is served by the
+    //     PeripheralBus ahead of the OOR check, so strict mode never starves it.
+    //   * microSD ($6000 ROM) / CFFA1 Apple-1 ($E000-$FEFF needs $F000+ RAM): the
+    //     interpreter sits in an OOR window on the strict preset, so relax to a flat
+    //     64 KB view. GEN2 (preset 2, 48 KB, interpreter high at $9800) needs none.
+    //
+    // The original RAM/OOR is saved here and restored on abort / when the next
+    // non-BASIC target runs (build() calls restoreRelaxedMachine), so it never leaks.
     if (idx == 8 || idx == 10 || idx == 11) {
         if (!injectRelaxed_) {
             injectSavedRamKB_     = mw_->presetRamKB;
@@ -1690,10 +1687,17 @@ bench::BuildResult Pom1BenchHost::injectBasic(int target, const std::string& src
         }
         injectRelaxed_       = true;
         injectRelaxedPreset_ = mw_->activePresetIndex;
-        emu->setOutOfRangeStrictMode(false);
-        emu->setPresetRamKB(64);
-        mw_->oorStrictModeEnabled = false;
-        mw_->presetRamKB = 64;
+        if (idx == 11) {
+            emu->setOutOfRangeStrictMode(true);
+            emu->setPresetRamKB(16);
+            mw_->oorStrictModeEnabled = true;
+            mw_->presetRamKB = 16;
+        } else {
+            emu->setOutOfRangeStrictMode(false);
+            emu->setPresetRamKB(64);
+            mw_->oorStrictModeEnabled = false;
+            mw_->presetRamKB = 64;
+        }
     }
 
     // 3) Place the interpreter, then hard-reset so a clean WOZ Monitor processes the
@@ -1703,7 +1707,7 @@ bench::BuildResult Pom1BenchHost::injectBasic(int target, const std::string& src
     std::string romErr;
     bool romOk = true;
     if (tms) {
-        mw_->codeTankJumper = CodeTank::Jumper::Lower16;
+        mw_->codeTankJumper = CodeTank::Jumper::Upper16;   // Applesoft lives in the upper bank
         emu->setCodeTankJumper(mw_->codeTankJumper);
         if (!mw_->tms9918Enabled)  { mw_->tms9918Enabled = true; mw_->showTMS9918 = true; emu->setTMS9918Enabled(true); }
         if (!mw_->codeTankEnabled) { mw_->codeTankEnabled = true; emu->setCodeTankEnabled(true); }
@@ -1711,11 +1715,11 @@ bench::BuildResult Pom1BenchHost::injectBasic(int target, const std::string& src
     } else {
         emu->hardReset(/*animateBoot=*/false);
         if (idx == 9) {
-            const std::string rom = findRom({"software/Graphic HGR/applesoft-gen2.bin",
-                                             "../software/Graphic HGR/applesoft-gen2.bin",
-                                             "../../software/Graphic HGR/applesoft-gen2.bin"});
-            if (rom.empty()) { romErr = "software/Graphic HGR/applesoft-gen2.bin not found"; romOk = false; }
-            else romOk = emu->loadInterpreterRom(rom, 0x6000, romErr);
+            const std::string rom = findRom({"roms/applesoft-gen2.rom",
+                                             "../roms/applesoft-gen2.rom",
+                                             "../../roms/applesoft-gen2.rom"});
+            if (rom.empty()) { romErr = "roms/applesoft-gen2.rom not found"; romOk = false; }
+            else romOk = emu->loadInterpreterRom(rom, 0x9800, romErr);
         } else if (idx == 8) {
             romOk = emu->reloadApplesoftLiteSDCard(romErr);
         } else if (idx == 10) {
@@ -1738,12 +1742,14 @@ bench::BuildResult Pom1BenchHost::injectBasic(int target, const std::string& src
 
     // 3) Compose the listing keystrokes: newlines (LF, CR, and CRLF/LFCR pairs)
     //    collapse to a single CR; tabs -> space; only printable ASCII is kept. The
-    //    4096-char cap matches Ctrl-V paste; the leading CR, the cold-start command
-    //    and the trailing RUN are framing and are NOT counted against it.
+    //    cap covers the largest BASIC workspace (GEN2 ~37 KB, TMS ~14 KB) so big
+    //    listings like SteveJobs inject whole; the leading CR, the cold-start
+    //    command and the trailing RUN are framing and are NOT counted against it.
+    //    The keyboard queue is unbounded, so no character is dropped at this size.
     std::string listing;
     int  programChars = 0;
-    bool dropped      = false;            // listing hit the 4096-char cap
-    const int kMaxProgramChars = 4096;
+    bool dropped      = false;            // listing hit the kMaxProgramChars cap
+    const int kMaxProgramChars = 32768;
     char prev = '\0';
     for (char c : src) {
         if (programChars >= kMaxProgramChars) { dropped = true; break; }
@@ -1784,7 +1790,8 @@ bench::BuildResult Pom1BenchHost::injectBasic(int target, const std::string& src
     const bool willRun = run && !dropped;
     r.console = std::string("[bench] ") + interp + ": cold-start " + coldStart +
                 ", typed " + std::to_string(programChars) + " program chars" +
-                (dropped ? " (truncated at 4096 — trimmed to the last full line, RUN skipped)" : "") +
+                (dropped ? " (truncated at " + std::to_string(kMaxProgramChars) +
+                           " — trimmed to the last full line, RUN skipped)" : "") +
                 (willRun ? " + RUN\n" : " (program entered; type RUN to start)\n") +
                 (longestLine > 127
                      ? "[bench] WARNING: longest line is " + std::to_string(longestLine) +
@@ -2297,13 +2304,19 @@ bench::BuildResult Pom1BenchHost::build(int target, const std::string& src, cons
         // jumper to the lower 16K bank, reset and boot 4000R. Living under
         // roms/codetank/ means the dev cartridge also shows up in
         // File > P-LAB CodeTank Library, so it's reusable across uploads.
-        std::ifstream in(binB, std::ios::binary);
-        std::vector<unsigned char> rom(0x8000, 0xFF);
-        in.read(reinterpret_cast<char*>(rom.data()), 0x4000);
         fs::path romPath;
         for (const char* pre : {"roms/codetank", "../roms/codetank", "../../roms/codetank"})
             if (fs::exists(fs::path(pre), ec)) { romPath = fs::path(pre) / "CODETANKDEV.rom"; break; }
         if (romPath.empty()) romPath = dir / "CODETANKDEV.rom";   // fallback: no roms/codetank/ dir
+        // Seed from the existing cartridge so the UPPER bank (Applesoft TMS9918,
+        // used by BASIC .apf injection) survives, then overwrite ONLY the lower
+        // 16 K with the fresh asm/C build. (Was: blank 32 K -> wiped Applesoft.)
+        std::vector<unsigned char> rom(0x8000, 0xFF);
+        { std::ifstream prev(romPath, std::ios::binary);
+          if (prev) prev.read(reinterpret_cast<char*>(rom.data()), 0x8000); }
+        std::fill_n(rom.begin(), 0x4000, 0xFF);   // clear lower bank only
+        { std::ifstream in(binB, std::ios::binary);
+          in.read(reinterpret_cast<char*>(rom.data()), 0x4000); }
         std::ofstream(romPath, std::ios::binary)
             .write(reinterpret_cast<const char*>(rom.data()), static_cast<std::streamsize>(rom.size()));
         std::string error;
@@ -2440,13 +2453,18 @@ bench::BuildResult Pom1BenchHost::pollBuild()
     if (t.codetankRom) {
         // TMS9918 asm: wrap the .bin into a CodeTank dev ROM, flash it, jumper to
         // the lower 16K bank, reset + boot 4000R (mirrors the desktop path).
-        std::ifstream in("/tmp/pom1_bench.bin", std::ios::binary);
-        std::vector<unsigned char> rom(0x8000, 0xFF);
-        in.read(reinterpret_cast<char*>(rom.data()), 0x4000);
         fs::path romPath;
         for (const char* pre : {"roms/codetank", "/roms/codetank"})
             if (fs::exists(fs::path(pre), ec)) { romPath = fs::path(pre) / "CODETANKDEV.rom"; break; }
         if (romPath.empty()) romPath = "/tmp/CODETANKDEV.rom";
+        // Preserve the upper bank (Applesoft TMS9918) — seed from the existing
+        // cartridge, then overwrite ONLY the lower 16 K with the fresh build.
+        std::vector<unsigned char> rom(0x8000, 0xFF);
+        { std::ifstream prev(romPath, std::ios::binary);
+          if (prev) prev.read(reinterpret_cast<char*>(rom.data()), 0x8000); }
+        std::fill_n(rom.begin(), 0x4000, 0xFF);
+        { std::ifstream in("/tmp/pom1_bench.bin", std::ios::binary);
+          in.read(reinterpret_cast<char*>(rom.data()), 0x4000); }
         std::ofstream(romPath, std::ios::binary)
             .write(reinterpret_cast<const char*>(rom.data()), static_cast<std::streamsize>(rom.size()));
         std::string error;

@@ -8,7 +8,7 @@
 // (GEN2 card UNPLUGGED, so all display pages are plain RAM we can inspect) and
 // asserts the renumbered core runs and each new command writes the right memory.
 //
-// ROM path: $POM1_ASGEN2_ROM, else software/Graphic HGR/applesoft-gen2.bin.
+// ROM path: $POM1_ASGEN2_ROM, else roms/applesoft-gen2.rom.
 #include "TMS9918.h"      // IWYU pragma: keep
 #include "WiFiModem.h"    // IWYU pragma: keep
 #include "TerminalCard.h" // IWYU pragma: keep
@@ -21,7 +21,12 @@
 #include <cassert>
 #include <cstdio>
 #include <cstdlib>
+#include <cstring>
 #include <string>
+#include <vector>
+#include <fstream>
+#include <iterator>
+#include <algorithm>
 
 namespace {
 
@@ -32,7 +37,7 @@ public:
 };
 
 std::string runProgram(Memory& mem, const char* listing, const std::string& token,
-                       const char* coldStart = "6000R")
+                       const char* coldStart = "9800R")
 {
     CaptureDisplay disp;
     mem.setDisplayDevice(&disp);
@@ -43,7 +48,7 @@ std::string runProgram(Memory& mem, const char* listing, const std::string& toke
 
     auto type = [&](const char* s) { for (const char* p = s; *p; ++p) mem.setKeyPressed(*p); };
     type("\r");
-    type(coldStart); type("\r");      // cold-start the interpreter (6000R/E000R/4000R)
+    type(coldStart); type("\r");      // cold-start the interpreter (9800R/E000R/4000R)
     type(listing);
     type("RUN\r");
 
@@ -60,9 +65,9 @@ std::string runProgram(Memory& mem, const char* listing, const std::string& toke
 bool loadRom(Memory& mem)
 {
     const char* env = std::getenv("POM1_ASGEN2_ROM");
-    const char* path = env ? env : "software/Graphic HGR/applesoft-gen2.bin";
+    const char* path = env ? env : "roms/applesoft-gen2.rom";
     mem.setWriteInRom(true);
-    const int rc = mem.loadBinary(path, 0x6000, nullptr);
+    const int rc = mem.loadBinary(path, 0x9800, nullptr);
     mem.setWriteInRom(false);
     if (rc != 0) {
         std::fprintf(stderr, "cannot load Applesoft GEN2 ROM '%s' (rc=%d). Build the "
@@ -80,6 +85,25 @@ bool loadRomAt(Memory& mem, const char* path, uint16_t addr)
     const int rc = mem.loadBinary(path, addr, nullptr);
     mem.setWriteInRom(false);
     return rc == 0;
+}
+
+// Load the TMS9918 Applesoft interpreter into the $4000-$7FFF window. It lives in
+// the UPPER bank of the unified CODETANKDEV cartridge, so we take bytes
+// [$4000:$8000] of the 32 KB image (a <=16 KB standalone .bin is taken whole).
+// Returns false if the cartridge isn't present (so the caller can skip).
+bool loadTmsApplesoft(Memory& mem)
+{
+    const char* env = std::getenv("POM1_ASTMS_ROM");
+    const std::string path = env ? env : "roms/codetank/CODETANKDEV.rom";
+    std::ifstream f(path, std::ios::binary);
+    if (!f) return false;
+    std::vector<unsigned char> buf((std::istreambuf_iterator<char>(f)),
+                                   std::istreambuf_iterator<char>());
+    if (buf.empty()) return false;
+    const size_t off = (buf.size() >= 0x8000) ? 0x4000 : 0;   // 32K cart -> upper bank
+    const size_t n   = std::min<size_t>(buf.size() - off, 0x4000);
+    std::memcpy(mem.getMemoryPointerMutable() + 0x4000, buf.data() + off, n);
+    return true;
 }
 
 int countNonZero(const uint8_t* m, int lo, int hi)
@@ -208,7 +232,7 @@ int main()
     // cold-start 4000R, APRINT 1000+7 -> 1007 on the Apple-1 display.
     {
         Memory mem; mem.initMemory();
-        if (loadRomAt(mem, "software/Apple-1_TMS_CC65/applesoft-tms9918.bin", 0x4000)) {
+        if (loadTmsApplesoft(mem)) {
             const std::string out = runProgram(mem, "10 APRINT 1000+7\r20 END\r", "1007", "4000R");
             if (out.find("1007") == std::string::npos)
                 return fail("TMS9918 core FAILED: '1007' not printed (renumber/interpreter broken?).");
@@ -223,7 +247,7 @@ int main()
     {
         Memory mem; mem.initMemory();
         mem.setTMS9918Enabled(true);
-        if (loadRomAt(mem, "software/Apple-1_TMS_CC65/applesoft-tms9918.bin", 0x4000)) {
+        if (loadTmsApplesoft(mem)) {
             runProgram(mem, "10 HGR : HCOLOR=3\r20 HPLOT 0,0 TO 279,191\r", "", "4000R");
             TMS9918::Snapshot snap;
             mem.getTMS9918().copySnapshot(snap);
@@ -311,7 +335,7 @@ int main()
     // ROM-resident at $4000): trig + DEF FN run. SIN(1)*1000->841, FN D(21)->42.
     {
         Memory mem; mem.initMemory();
-        if (loadRomAt(mem, "software/Apple-1_TMS_CC65/applesoft-tms9918.bin", 0x4000)) {
+        if (loadTmsApplesoft(mem)) {
             const std::string out = runProgram(mem,
                 "10 APRINT INT(SIN(1)*1000)\r20 DEF FN D(X) = X + X\r30 APRINT FN D(21)\r",
                 "42", "4000R");
@@ -328,7 +352,7 @@ int main()
     {
         Memory mem; mem.initMemory();
         mem.setTMS9918Enabled(true);
-        if (loadRomAt(mem, "software/Apple-1_TMS_CC65/applesoft-tms9918.bin", 0x4000)) {
+        if (loadTmsApplesoft(mem)) {
             runProgram(mem, "10 HOME\r20 INVERSE\r30 PRINT \"A\"\r", "", "4000R");
             TMS9918::Snapshot snap;
             mem.getTMS9918().copySnapshot(snap);
@@ -357,7 +381,7 @@ int main()
             CaptureDisplay disp; mem.setDisplayDevice(&disp);
             M6502 cpu(&mem); cpu.setProgramCounter(0xFF00); cpu.start(); cpu.run(400000);
             auto type = [&](const char* s) { for (const char* p = s; *p; ++p) mem.setKeyPressed(*p); };
-            type("\r"); type("6000R\r"); type(prog.c_str()); type("RUN\r");
+            type("\r"); type("9800R\r"); type(prog.c_str()); type("RUN\r");
             const uint8_t* m = mem.getMemoryPointer();
             bool pickedOpt = false, found = false;
             for (long long c = 0; c < 2000000000LL; c += 200000) {
@@ -381,7 +405,7 @@ int main()
             std::string prog((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
             for (char& ch : prog) if (ch == '\n') ch = '\r';
             Memory mem; mem.initMemory(); mem.setTMS9918Enabled(true);
-            if (loadRomAt(mem, "software/Apple-1_TMS_CC65/applesoft-tms9918.bin", 0x4000)) {
+            if (loadTmsApplesoft(mem)) {
                 M6502 cpu(&mem); cpu.setProgramCounter(0xFF00); cpu.start(); cpu.run(400000);
                 auto type = [&](const char* s) { for (const char* p = s; *p; ++p) mem.setKeyPressed(*p); };
                 type("\r"); type("4000R\r"); type(prog.c_str()); type("RUN\r");

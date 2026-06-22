@@ -100,8 +100,8 @@ interpreter and types your listing — no compiler):
 |---|---|---|
 | Applesoft Lite (Apple-1) | `roms/applesoft-lite-cffa1.rom` (`$E000`) | `E000R` |
 | Applesoft Lite + microSD | `roms/applesoft-lite-microsd.rom` (`$6000`) | `6000R` |
-| Applesoft GEN2 HGR | `sketchs/gen2/applesoft_gen2` (`$6000`, GEN2 card) | `6000R` |
-| Applesoft TMS9918 | `sketchs/tms9918/applesoft_tms9918` (CodeTank ROM `$4000`) | `4000R` |
+| Applesoft GEN2 HGR | `roms/applesoft-gen2.rom` (`$9800`, GEN2 card) | `9800R` |
+| Applesoft TMS9918 | `roms/codetank/CODETANKDEV.rom` upper bank (CodeTank `$4000`, jumper Upper) | `4000R` |
 
 The graphics variants (GEN2/TMS9918) add the Apple II graphics command set
 (`TEXT/GR/HGR/COLOR=/HCOLOR=/PLOT/HLIN/VLIN/HPLOT`, `PRINT` → the card's screen,
