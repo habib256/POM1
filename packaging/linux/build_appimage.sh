@@ -8,7 +8,7 @@
 #        usr/bin/POM1                  binaire stripé
 #        usr/lib/                      glfw + GLU + libX* déployés par
 #                                      linuxdeploy, rpath = $ORIGIN/../lib
-#        usr/share/POM1/{roms,fonts,software,pic,cassettes,sdcard,cfcard}
+#        usr/share/POM1/{roms,fonts,software,sketchs,dev,pic,cassettes,sdcard,cfcard}
 #        usr/share/applications/POM1.desktop
 #        usr/share/icons/hicolor/128x128/apps/POM1.png
 #   3. AppRun (packaging/linux/AppRun) qui :
@@ -74,7 +74,7 @@ ln -sf POM1.png "${APPDIR}/.DirIcon"
 # Données embarquées : tout ce que les probes cwd/exe-relatives cherchent.
 # ini_defaults/ = baseline des layouts par preset (résolu exe-relatif :
 # <exe>/../share/POM1/ini_defaults).
-for d in roms fonts software pic cassettes sdcard cfcard ini_defaults; do
+for d in roms fonts software sketchs pic cassettes sdcard cfcard ini_defaults; do
     if [ -d "${REPO_ROOT}/${d}" ]; then
         cp -r "${REPO_ROOT}/${d}" "${RESOURCES}/${d}"
     fi
@@ -97,11 +97,8 @@ fi
 if [ -n "${CC65_TREE}" ]; then
     echo "[appimage] cc65 bundle : ${CC65_TREE}"
     cp -r "${CC65_TREE}" "${RESOURCES}/cc65"
-    # The DevBench's linker cfgs + libs (release bundles otherwise omit dev/).
-    mkdir -p "${RESOURCES}/dev"
-    for d in cc65 lib apple1-videocard-lib; do
-        [ -d "${REPO_ROOT}/dev/${d}" ] && cp -r "${REPO_ROOT}/dev/${d}" "${RESOURCES}/dev/${d}"
-    done
+    # DevBench linker cfgs + runtime libs (release bundles otherwise omit dev/).
+    cp -r "${REPO_ROOT}/dev" "${RESOURCES}/dev"
 else
     echo "[appimage] (pas de cc65 bundle — DevBench limité au Woz-hex sans cc65 système)"
 fi
