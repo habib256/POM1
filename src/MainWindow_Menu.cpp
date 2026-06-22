@@ -791,7 +791,7 @@ void MainWindow_ImGui::renderToolbar()
         ImGui::SameLine();
         ImGui::PushStyleColor(ImGuiCol_Button,
             sidEnabled ? ImVec4(0.2f, 0.4f, 0.8f, 1.0f) : ImVec4(0.3f, 0.3f, 0.3f, 1.0f));
-        if (ImGui::Button(ICON_FA_MUSIC, btnSize)) {
+        if (ImGui::Button(ICON_FA_VOLUME_HIGH, btnSize)) {
             sidEnabled = !sidEnabled;
             // Honour the silicon-strict Parmigiani gate like the Hardware menu —
             // gateStrictPlug reverts sidEnabled and refuses on a bus conflict.

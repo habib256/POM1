@@ -105,6 +105,10 @@ public:
     bool     isCpuBreakpointTripped() const;
 
     void queueKey(char key);
+    /// True while keystrokes queued via queueKey() are still pending delivery to
+    /// the CPU (either not yet drained into Memory, or buffered awaiting a read).
+    /// Locks stateMutex for a consistent snapshot — call from the UI thread.
+    bool hasPendingInjectedInput();
     void writeMemory(uint16_t address, uint8_t value);
 
     bool loadHexDump(const std::string& path, uint16_t& startAddress, std::string& error,
@@ -336,6 +340,9 @@ public:
     void setCodeTankJumper(CodeTank::Jumper jumper);
     CodeTank::Jumper getCodeTankJumper() const;
     bool loadCodeTankRom(const std::string& path, std::string& error);
+    // Load a 32 kB CodeTank ROM straight from memory (no temp file) — host-agnostic,
+    // used by the DevBench Applesoft-TMS9918 BASIC injection.
+    bool loadCodeTankRomBuffer(const std::vector<uint8_t>& data, const std::string& label, std::string& error);
 
     // P-LAB Apple-1 Wi-Fi Modem
     void setWiFiModemEnabled(bool enabled);

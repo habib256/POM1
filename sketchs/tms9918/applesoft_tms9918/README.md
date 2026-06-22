@@ -26,7 +26,7 @@ modes:
 
 | Command | TMS9918 mode | Effect |
 |---|---|---|
-| `TEXT` | Text Mode F1 | 40×24 mono text (bbfont uploaded to VRAM); the console screen |
+| `TEXT` | Text Mode F1 | 40×24 mono text (thin C64 font uploaded to VRAM); the console screen |
 | `GR` | Multicolor | 64×48 of 4×4 colour blocks (use x 0–63, y 0–47), cleared |
 | `HGR` | Graphics II | 256×192 bitmap, cleared (1 foreground colour per 8-px row) |
 | `COLOR= n` | Multicolor | set block colour 0–15 (TMS palette) |
@@ -38,7 +38,12 @@ modes:
 | `HPLOT x1,y1 TO x2,y2 [TO …]` | Graphics II | line(s), 8-bit Bresenham |
 | `SCRN(x,y)` | Multicolor | read back a lo-res block colour |
 | `HOME` `HTAB c` `VTAB r` | Text | clear / position the TMS text cursor |
+| `NORMAL` `INVERSE` `FLASH` | Text | video attribute for `PRINT`. INVERSE renders white-on-black via a second (EOR $FF) glyph set uploaded at pattern $0500 = name codes $A0–$FF. FLASH ⇒ inverse (steady): Text Mode F1 has no per-cell blink attribute and only one spare name-table bit |
 | `VBL` | any | wait for vertical blank (polls the VDP status register) |
+
+This interpreter shares the exact renumbered BASIC body of the GEN2 sibling, so
+the math2026 additions are identical: `SIN COS TAN ATN`, `DEF FN … / FN`, and
+`PRINT TAB(n)`. See [`sketchs/gen2/applesoft_gen2/README.md`](../../gen2/applesoft_gen2/README.md).
 
 ```basic
 10 HGR : HCOLOR=3
@@ -104,3 +109,12 @@ VRAM (inside the card) per mode: **TEXT** font `$0100` + name `$0800`;
 Pinned by the `applesoft_tms9918_smoke` ctest (core + PRINT→TMS text +
 HGR/HPLOT + GR/PLOT/HLIN/VLIN + HOME/HTAB/VTAB + SCRN, all inspected in VRAM
 with the card plugged).
+
+## Example programs
+
+- `FeatureDemo.apf` — the same 12-option demo as the GEN2 sibling (trig Function
+  tests, Lissajous, Mandelbrot, Hires, Video/TAB, …), adapted to this card: lo-res
+  PLOT uses 0–63, HPLOT clamps x to 255, and the Video page's INVERSE shows
+  white-on-black (FLASH falls back to inverse). The full 21-option jsbasic demo is
+  trimmed to 12 to fit the 6 KB program/variable RAM. Pinned by
+  `applesoft_gen2_smoke` (`featuredemo-tms`).

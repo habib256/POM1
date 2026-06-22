@@ -1769,6 +1769,19 @@ int Memory::loadCodeTankRom(const std::string& path)
     return 1;
 }
 
+int Memory::loadCodeTankRomBuffer(const std::vector<uint8_t>& data, const std::string& label)
+{
+    lastError.clear();
+    std::string error;
+    if (!codeTank->loadRomBuffer(data, label, error)) {
+        lastError = error;
+        pom1::log().warn("Mem", lastError);
+        return 1;
+    }
+    if (codeTankEnabled) applyCodeTankFlatMemoryMirror();
+    return 0;
+}
+
 void Memory::setJukeBoxBankRegister(uint8_t value)
 {
     jukeBox->writeBankRegister(value);

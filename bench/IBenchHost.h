@@ -79,6 +79,15 @@ public:
     // ---- Machine + build (the emulator-specific work) ----
     // Apply the machine (preset/cards) a target runs on + adopt its source mode.
     virtual void        onTargetSelected(int target)                                     = 0;
+    // Explicit profile switch via the bench's Mode selector. Unlike onTargetSelected
+    // (driven by opening a file, where "machine-neutral" sketches deliberately keep
+    // the current profile), this ALWAYS applies the target's profile — the user asked
+    // for it. The editor's code is left untouched. The host should also PREPARE the
+    // target's runtime so it is immediately usable (cold-start the matching BASIC
+    // interpreter / ready the compile toolchain) and may report it via the returned
+    // BuildResult (status + optional console on failure). Default: same as
+    // onTargetSelected, no preparation.
+    virtual BuildResult selectTargetExplicit(int target) { onTargetSelected(target); return {}; }
     virtual ExampleLoad loadExample(int exampleIndex)                                    = 0;
     virtual BuildResult verify(int target, const std::string& src, const std::string& addrHex) = 0;
     virtual BuildResult upload(int target, const std::string& src, const std::string& addrHex) = 0;
@@ -88,6 +97,12 @@ public:
     // Makefile (its own .cfg, -I projectdir for sibling .inc, EXTRA_ASM, dual-bank)
     // instead of a bare sketch. Called before verify()/upload(). No-op by default.
     virtual void setActiveSourcePath(const std::string& /*path*/) {}
+
+    // Forward the bench's user-facing status line to the host so it can surface it
+    // in the application's MAIN status bar — the bench window is narrow and long
+    // paths ("Opened /a/b/c.s (1234 B)") overflow its own bottom bar. ok=false
+    // marks an error/warning. No-op by default. Called once per status change.
+    virtual void onStatus(const std::string& /*msg*/, bool /*ok*/) {}
 
     // Optional auto-targeting when a file is opened. Return a target index, or -1
     // to keep the current target. Hosts can infer language/machine from extension

@@ -252,6 +252,161 @@ int main()
         } else std::printf("cffa1-core: skipped (rom not present)\n");
     }
 
+    // L) math2026 trig: SIN/COS/TAN/ATN restored. APRINT INT(fn*1000) to the
+    // Apple-1 terminal. SIN(1)=.8414->841, COS(0)=1->1000, ATN(1)=.7853->785,
+    // TAN(1)=1.5574->1557. Wrong constants would miss these by a wide margin.
+    {
+        Memory mem; mem.initMemory();
+        if (!loadRom(mem)) return 1;
+        const std::string out = runProgram(mem,
+            "10 APRINT INT(SIN(1)*1000)\r20 APRINT INT(COS(0)*1000)\r"
+            "30 APRINT INT(ATN(1)*1000)\r40 APRINT INT(TAN(1)*1000)\r", "1557");
+        if (out.find("841") == std::string::npos || out.find("1000") == std::string::npos ||
+            out.find("785") == std::string::npos || out.find("1557") == std::string::npos)
+            return fail("TRIG FAILED: SIN/COS/ATN/TAN did not yield 841/1000/785/1557.");
+        std::printf("trig: OK (SIN/COS/ATN/TAN)\n");
+    }
+
+    // M) math2026 DEF FN / FN user functions: FN SQ(7) = 49.
+    {
+        Memory mem; mem.initMemory();
+        if (!loadRom(mem)) return 1;
+        const std::string out = runProgram(mem,
+            "10 DEF FN SQ(X) = X * X\r20 APRINT FN SQ(7)\r", "49");
+        if (out.find("49") == std::string::npos)
+            return fail("DEF FN FAILED: FN SQ(7) did not yield 49.");
+        std::printf("def fn: OK (FN SQ(7) -> 49)\n");
+    }
+
+    // N) math2026 TAB( in PRINT: TAB(5) pads to column 5 (1-based) -> 0-based col 4
+    // on row 0 -> $0404. 'Z' = $5A -> screen code $DA.
+    {
+        Memory mem; mem.initMemory();
+        if (!loadRom(mem)) return 1;
+        runProgram(mem, "10 HOME\r20 PRINT TAB(5);\"Z\"\r", "");
+        const uint8_t got = mem.getMemoryPointer()[0x0404];
+        if (got != 0xDA) {
+            std::fprintf(stderr, "TAB( FAILED: $0404 = %02X (expected DA = 'Z' at col 4).\n", got);
+            return 1;
+        }
+        std::printf("tab(: OK ('Z' tabbed to col 4 -> $0404)\n");
+    }
+
+    // O) math2026 INVERSE/NORMAL: INVERSE 'A' lands as screen code $01 ($C1 & $3F);
+    // NORMAL restores so 'B' on row 1 ($0480) is $C2.
+    {
+        Memory mem; mem.initMemory();
+        if (!loadRom(mem)) return 1;
+        runProgram(mem, "10 HOME\r20 INVERSE\r30 PRINT \"A\"\r40 NORMAL\r50 PRINT \"B\"\r", "");
+        const uint8_t* m = mem.getMemoryPointer();
+        if (m[0x0400] != 0x01 || m[0x0480] != 0xC2) {
+            std::fprintf(stderr, "INVERSE/NORMAL FAILED: $0400=%02X (want 01), $0480=%02X (want C2).\n",
+                         m[0x0400], m[0x0480]);
+            return 1;
+        }
+        std::printf("inverse/normal: OK (inverse 'A'=$01, normal 'B'=$C2)\n");
+    }
+
+    // P) math2026 on the TMS9918 interpreter (same renumbered body as GEN2,
+    // ROM-resident at $4000): trig + DEF FN run. SIN(1)*1000->841, FN D(21)->42.
+    {
+        Memory mem; mem.initMemory();
+        if (loadRomAt(mem, "software/Apple-1_TMS_CC65/applesoft-tms9918.bin", 0x4000)) {
+            const std::string out = runProgram(mem,
+                "10 APRINT INT(SIN(1)*1000)\r20 DEF FN D(X) = X + X\r30 APRINT FN D(21)\r",
+                "42", "4000R");
+            if (out.find("841") == std::string::npos || out.find("42") == std::string::npos)
+                return fail("TMS9918 math2026 FAILED: SIN/DEF FN not working on TMS port.");
+            std::printf("tms9918-math2026: OK (SIN(1)->841, FN D(21)->42)\n");
+        } else std::printf("tms9918-math2026: skipped\n");
+    }
+
+    // Q) math2026 INVERSE on the TMS9918 (with the VDP): INVERSE 'A' writes name
+    // byte $C1 ('A'|$80), and TMS_BOOT uploads the inverse glyph set at pattern
+    // $0500 (space->$FF). No C++ renderer change: inverse is real white-on-black
+    // glyphs in VRAM. (FLASH falls back to inverse on this card — see tmsgfx.inc.)
+    {
+        Memory mem; mem.initMemory();
+        mem.setTMS9918Enabled(true);
+        if (loadRomAt(mem, "software/Apple-1_TMS_CC65/applesoft-tms9918.bin", 0x4000)) {
+            runProgram(mem, "10 HOME\r20 INVERSE\r30 PRINT \"A\"\r", "", "4000R");
+            TMS9918::Snapshot snap;
+            mem.getTMS9918().copySnapshot(snap);
+            if (snap.vram[0x0800] != 0xC1)
+                return fail("TMS INVERSE FAILED: name $0800 != C1 (inverse 'A').");
+            int invGlyph = 0;
+            for (int a = 0x0500; a < 0x0800; ++a) if (snap.vram[a]) ++invGlyph;
+            if (invGlyph == 0)
+                return fail("TMS INVERSE FAILED: inverse font missing at pattern $0500.");
+            std::printf("tms9918-inverse: OK (name=$C1; inverse font %d bytes @ $0500)\n", invGlyph);
+        } else std::printf("tms9918-inverse: skipped\n");
+    }
+
+    // R) Ported FeatureDemo subset runs on GEN2 end-to-end: inject it, RUN, pick
+    // menu option 6 (Function tests — exercises the math2026 trig + every BASIC
+    // function), confirm its output reaches the GEN2 text page. The full 21-option
+    // jsbasic demo overflows the 6 KB program/var RAM ($0800-$1FFF), so the ported
+    // sketch is a 12-option subset; this pins that it loads + runs end-to-end.
+    {
+        std::ifstream in("sketchs/gen2/applesoft_gen2/FeatureDemo.apf", std::ios::binary);
+        if (in) {
+            std::string prog((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+            for (char& ch : prog) if (ch == '\n') ch = '\r';   // Apple-1 GETLN wants CR
+            Memory mem; mem.initMemory();
+            if (!loadRom(mem)) return 1;
+            CaptureDisplay disp; mem.setDisplayDevice(&disp);
+            M6502 cpu(&mem); cpu.setProgramCounter(0xFF00); cpu.start(); cpu.run(400000);
+            auto type = [&](const char* s) { for (const char* p = s; *p; ++p) mem.setKeyPressed(*p); };
+            type("\r"); type("6000R\r"); type(prog.c_str()); type("RUN\r");
+            const uint8_t* m = mem.getMemoryPointer();
+            bool pickedOpt = false, found = false;
+            for (long long c = 0; c < 2000000000LL; c += 200000) {
+                cpu.run(200000);
+                if (!pickedOpt && findScreenCodes(m, 0x0400, 0x0800, "(12)")) { type("6\r"); pickedOpt = true; }
+                if (findScreenCodes(m, 0x0400, 0x0800, "VAL")) { found = true; break; }
+            }
+            mem.setDisplayDevice(nullptr);
+            if (!found) return fail("FeatureDemo GEN2 FAILED: menu + option 6 (Function tests) "
+                                    "never reached $0400 (program-size/RAM or syntax issue?).");
+            std::printf("featuredemo-gen2: OK (12-option subset; menu + Function tests ran)\n");
+        } else std::printf("featuredemo-gen2: skipped (FeatureDemo.apf not present)\n");
+    }
+
+    // S) Ported FeatureDemo subset runs on the TMS9918 too (same program, ROM at
+    // $4000). TMS text PRINT lands as raw ASCII in the VDP name table ($0800 in
+    // VRAM); drive menu option 6 (Function tests) and look for its output there.
+    {
+        std::ifstream in("sketchs/tms9918/applesoft_tms9918/FeatureDemo.apf", std::ios::binary);
+        if (in) {
+            std::string prog((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+            for (char& ch : prog) if (ch == '\n') ch = '\r';
+            Memory mem; mem.initMemory(); mem.setTMS9918Enabled(true);
+            if (loadRomAt(mem, "software/Apple-1_TMS_CC65/applesoft-tms9918.bin", 0x4000)) {
+                M6502 cpu(&mem); cpu.setProgramCounter(0xFF00); cpu.start(); cpu.run(400000);
+                auto type = [&](const char* s) { for (const char* p = s; *p; ++p) mem.setKeyPressed(*p); };
+                type("\r"); type("4000R\r"); type(prog.c_str()); type("RUN\r");
+                auto vramHas = [&](const char* s) {
+                    TMS9918::Snapshot sn; mem.getTMS9918().copySnapshot(sn);
+                    const int len = (int)std::string(s).size();
+                    for (int a = 0x0800; a + len <= 0x0C00; ++a) {
+                        bool ok = true;
+                        for (int i = 0; i < len; ++i) if (sn.vram[a + i] != (uint8_t)s[i]) { ok = false; break; }
+                        if (ok) return true;
+                    }
+                    return false;
+                };
+                bool pickedOpt = false, found = false;
+                for (long long c = 0; c < 2000000000LL; c += 1000000) {
+                    cpu.run(1000000);
+                    if (!pickedOpt && vramHas("(12)")) { type("6\r"); pickedOpt = true; }
+                    if (vramHas("VAL")) { found = true; break; }
+                }
+                if (!found) return fail("FeatureDemo TMS FAILED: menu + option 6 never reached VDP VRAM.");
+                std::printf("featuredemo-tms: OK (12-option subset; menu + Function tests ran)\n");
+            } else std::printf("featuredemo-tms: skipped\n");
+        } else std::printf("featuredemo-tms: skipped (FeatureDemo.apf not present)\n");
+    }
+
     std::printf("applesoft_gen2_smoke: OK\n");
     return 0;
 }

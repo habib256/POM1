@@ -20,7 +20,7 @@
 ;     MIX/NOMIX are no-ops. VBL is a real status-register vblank poll.
 ;
 ; Mode mapping (Apple statement -> TMS9918 display mode):
-;   TEXT  -> Text Mode F1   40x24 mono   (bbfont uploaded to pattern $0000)
+;   TEXT  -> Text Mode F1   40x24 mono   (C64 font uploaded to pattern $0100)
 ;   GR    -> Multicolor      64x48 / 16c  (PLOT/HLIN/VLIN/COLOR=, SCRN reads it)
 ;   HGR   -> Graphics II    256x192       (HPLOT/HCOLOR=, 1 fg colour per 8 px row)
 ;
@@ -70,6 +70,9 @@ LERR      = GST+19              ; Bresenham error (16-bit signed)
 LERRH     = GST+20
 GCSX      = GST+21              ; GCOUT saved X
 GCSY      = GST+22              ; GCOUT saved Y
+INVFLG    = GST+23              ; math2026 video mask: $00 normal, $80 inverse/flash
+CH        = CURCH               ; alias for the shared PRINT TAB( code (main file)
+CV        = CURCV
 
 SCRLBUF   = $0400               ; 40-byte text-scroll buffer (free RAM on TMS:
                                 ; the card has no memory-mapped framebuffer, so
@@ -90,6 +93,7 @@ TMS_BOOT:
         sta     CURCH
         sta     CURCV
         sta     MODEFLG         ; boot into TEXT mode
+        sta     INVFLG          ; math2026: default video = NORMAL
         jmp     text_setup      ; init VDP text mode + font + clear, rts
 
 ; ============================================================================
@@ -146,7 +150,8 @@ GCOUT:
         and     #$7F
         cmp     #$0D            ; CR -> newline
         beq     @nl
-        sta     GTMP            ; stash glyph (ASCII $20-$7F)
+        ora     INVFLG          ; math2026: bit7 set => INVERSE/FLASH cell
+        sta     GTMP            ; stash glyph (ASCII $20-$7F, or $A0-$FF inverse)
         ldx     CURCV
         lda     name_row_lo,x
         clc
@@ -190,11 +195,16 @@ text_setup:
         lda     #>vdpt_regs
         sta     GSRCH
         jsr     load_regs_off
-        lda     #<tms_bbfont    ; upload font to pattern $0100 (= ASCII $20*8)
+        lda     #<tms_c64font   ; upload font to pattern $0100 (= ASCII $20*8)
         sta     GSRCL
-        lda     #>tms_bbfont
+        lda     #>tms_c64font
         sta     GSRCH
         jsr     upload_font
+        lda     #<tms_c64font   ; math2026: INVERSE glyphs at pattern $0500
+        sta     GSRCL           ; (name codes $A0-$FF) = EOR $FF of the font, so
+        lda     #>tms_c64font   ; INVERSE text renders white-on-black
+        sta     GSRCH
+        jsr     upload_font_inv
         jsr     text_clear      ; blank the name table (display still off)
         lda     #$D0            ; R1 = text mode, display ON
         jsr     display_on
@@ -203,10 +213,11 @@ text_setup:
         sta     CURCV
         rts
 
-; upload_font -- copy the 768-byte bbfont ($20-$7F) to pattern table $0100.
-;   bbfont is already in TMS bit order (MSB = leftmost), so no bit-reversal:
-;   ASCII code C in the name table fetches pattern at C*8, and C=$20 maps to
-;   $0100, exactly where this upload lands the first glyph.
+; upload_font -- copy the 768-byte C64 font ($20-$7F) to pattern table $0100.
+;   The font is already in TMS bit order (MSB = leftmost) and pre-shifted into
+;   the 6-px Text-Mode cell (see c64font_tms.inc), so no bit-reversal: ASCII code
+;   C in the name table fetches pattern at C*8, and C=$20 maps to $0100, exactly
+;   where this upload lands the first glyph.
 upload_font:
         lda     #$00
         sta     GVL
@@ -216,6 +227,28 @@ upload_font:
         ldx     #3              ; 3 * 256 = 768 bytes
 @pg:    ldy     #0
 @by:    lda     (GSRCL),y
+        sta     VDP_DATA
+        jsr     vpad
+        iny
+        bne     @by
+        inc     GSRCH
+        dex
+        bne     @pg
+        rts
+
+; upload_font_inv -- math2026: copy the C64 font EOR $FF (inverse video) to pattern
+;   $0500, the glyphs for name codes $A0-$FF. INVERSE/FLASH set bit 7 of the
+;   name byte, so 'A'=$41 -> $C1 -> pattern $C1*8=$0608 fetches the inverse 'A'.
+upload_font_inv:
+        lda     #$00
+        sta     GVL
+        lda     #$05            ; pattern $0500 = $A0*8
+        sta     GVH
+        jsr     vdp_waddr
+        ldx     #3              ; 3 * 256 = 768 bytes
+@pg:    ldy     #0
+@by:    lda     (GSRCL),y
+        eor     #$FF            ; invert glyph bits -> inverse video cell
         sta     VDP_DATA
         jsr     vpad
         iny
@@ -329,6 +362,22 @@ GFX_VTAB:                       ; VTAB r  (1..24 -> row 0..23)
         bcc     @ok
         lda     #23
 @ok:    sta     CURCV
+        rts
+
+; ============================================================================
+; math2026 video attributes. TMS9918 Text Mode has no per-character attribute,
+; so we encode INVERSE in bit 7 of the name-table byte; the POM1 TMS text
+; renderer swaps fg/bg for those cells. FLASH falls back to INVERSE (steady):
+; the name-table byte has only one spare bit, so a separate per-cell blink is
+; not representable on this card.
+; ============================================================================
+GFX_NORMAL:                     ; NORMAL
+        lda     #$00
+        .byte   $2C             ; TRICK: skip next LDA (BIT abs)
+GFX_INVERSE:                    ; INVERSE
+GFX_FLASH:                      ; FLASH (-> inverse on TMS, see note above)
+        lda     #$80
+        sta     INVFLG
         rts
 
 ; ============================================================================
@@ -973,6 +1022,8 @@ vdp2_regs:
 mc_regs:                        ; R5=$16 -> sprite attr table $0B00 (clear of the
         .byte   $00,$C8,$02,$00,$00,$16,$00,$01   ; $0000 pattern + $0800 name)
 
-; bbfont -- Beautiful Boot 8x8 ASCII font ($20-$7F), already in TMS pattern
-; bit order (MSB = leftmost). Uploaded by upload_font to pattern $0100.
-        .include "bbfont_tms.inc"
+; C64 font -- thin C64-style 8x8 ASCII font ($20-$7F), already in TMS pattern
+; bit order (MSB = leftmost) and pre-shifted into the 6-px Text-Mode cell.
+; Uploaded by upload_font to pattern $0100. (Replaces the heavier bbfont, which
+; rendered too thick on this card.)
+        .include "c64font_tms.inc"

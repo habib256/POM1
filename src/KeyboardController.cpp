@@ -10,6 +10,19 @@ void KeyboardController::queueKey(char key)
     queuedKeys.push(key);
 }
 
+bool KeyboardController::hasQueuedKeys()
+{
+    std::lock_guard<std::mutex> lock(keyMutex);
+    return !queuedKeys.empty();
+}
+
+void KeyboardController::clear()
+{
+    std::lock_guard<std::mutex> lock(keyMutex);
+    std::queue<char> empty;
+    std::swap(queuedKeys, empty);
+}
+
 void KeyboardController::drainTo(Memory& mem)
 {
     // Swap-out pattern: release keyMutex before touching `mem`, so the UI

@@ -60,6 +60,7 @@ private:
     void  closeOtherDocs(int keepUid);   // close every tab except `keepUid`
     void  closeAllDocs();                // close every tab → New chooser (see renderNewPhase)
     void  drawNewDialog();               // the "New sketch" chooser popup body
+    void  drawModeMenu();                // status-bar "Mode" click → switch profile popup
     void  renderNewPhase(const char* title, bool* open);  // empty-bench state: New chooser only
     int   findDocByPath(const std::string& path) const;
     static bool pathIsMarkdown(const std::string& path);
@@ -80,6 +81,7 @@ private:
     bool inited_ = false;
     bool buildPolling_ = false;      // an async (web/WASM) build is in flight
     std::string status_;
+    std::string lastForwardedStatus_;  // last status pushed to host_->onStatus (dedup)
     char fallbackAddr_[8] = "0300";
     // In-app file browser (Open/Save), rooted at the host's browseDir().
     std::string browseDir_;          // current directory shown in the browser
@@ -87,6 +89,12 @@ private:
     char saveName_[128] = "sketch.s";
     int newLang_ = 0;                // New-dialog selection: language x machine
     int newMachine_ = 0;
+    // Markdown link navigation: stack of source paths to return to via the Back
+    // arrow in the preview/edit toolbar (each link jump pushes the doc it left).
+    std::vector<std::string> mdNavBack_;
+    // Tab "Rename…" context-menu action: target doc + the in-flight input buffer.
+    int  renameUid_      = -1;
+    char renameBuf_[128] = "";
 };
 
 } // namespace bench

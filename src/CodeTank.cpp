@@ -46,6 +46,20 @@ bool CodeTank::loadRomFile(const std::string& path, std::string& error)
     return true;
 }
 
+bool CodeTank::loadRomBuffer(const std::vector<uint8_t>& data, const std::string& label, std::string& error)
+{
+    error.clear();
+    if (data.size() != kRomSize) {
+        error = "CodeTank ROM must be exactly 32 kB (got " +
+                std::to_string(data.size()) + " bytes)";
+        return false;
+    }
+    rom.assign(data.begin(), data.end());
+    romPath = label.empty() ? "<memory>" : label;   // non-empty => hasRom() == true
+    pom1::log().info("CodeTank", "ROM loaded from memory: " + romPath + " (32 kB)");
+    return true;
+}
+
 void CodeTank::clearRom()
 {
     rom.assign(kRomSize, 0xFF);

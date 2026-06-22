@@ -59,6 +59,7 @@ CH        = GST+23             ; GEN2 text cursor column 0..39
 CV        = GST+24             ; GEN2 text cursor row 0..23
 GCSX      = GST+25             ; GCOUT saved X
 GCSY      = GST+26             ; GCOUT saved Y
+INVFLG    = GST+27             ; math2026 video mask: $FF normal, $3F inverse, $7F flash
 
 ; ============================================================================
 ; Cold-start init (called from COLDSTART)
@@ -74,6 +75,8 @@ GEN2_BOOT:
         sta     LRCOLOR
         sta     CH
         sta     CV
+        lda     #$FF            ; math2026: default video = NORMAL
+        sta     INVFLG
         lda     #3
         sta     HCOLORVAL       ; default hi-res colour = white
         lda     GEN2_TEXTON     ; GEN2 to text mode, page 1
@@ -124,7 +127,8 @@ GCOUT:
         and     #$7F
         cmp     #$0D            ; CR -> newline
         beq     @nl
-        ora     #$80            ; normal-video screen code
+        ora     #$80            ; to normal screen-code range $80-$FF
+        and     INVFLG          ; math2026: NORMAL=$FF, INVERSE=$3F, FLASH=$7F
         pha
         ldx     CV
         lda     lores_lo,x      ; text row base (page 1)
@@ -229,6 +233,22 @@ GFX_VTAB:                       ; VTAB r  (1..24 -> row 0..23)
         bcc     @ok
         lda     #23
 @ok:    sta     CV
+        rts
+
+; ============================================================================
+; math2026 video attributes -- set the screen-code mask applied in GCOUT.
+; The GEN2 renderer interprets $00-$3F as inverse, $40-$7F as flashing,
+; $80-$FF as normal video.
+; ============================================================================
+GFX_NORMAL:                     ; NORMAL
+        lda     #$FF
+        .byte   $2C             ; TRICK: skip next LDA (BIT abs)
+GFX_INVERSE:                    ; INVERSE
+        lda     #$3F
+        .byte   $2C             ; TRICK: skip next LDA (BIT abs)
+GFX_FLASH:                      ; FLASH
+        lda     #$7F
+        sta     INVFLG
         rts
 
 ; ============================================================================

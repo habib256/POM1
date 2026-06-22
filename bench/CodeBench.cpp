@@ -215,6 +215,118 @@ void CodeBench::drawNewDialog()
     ImGui::EndPopup();
 }
 
+// Quick profile switcher: opened by clicking the "Mode:" label in the status bar.
+// Same language x machine axes as the New dialog, but it switches the ACTIVE tab's
+// target in place — one click, no new tab. The starter is reloaded only on a clean
+// buffer (loadStarterForTargetIfClean keeps the user's code if the tab is dirty).
+void CodeBench::drawModeMenu()
+{
+    if (!ImGui::BeginPopup("##benchmodepopup")) return;
+    const Doc* d = cur();
+    const int  curTarget = d ? d->targetIndex : -1;
+
+    auto pick = [&](int t) {
+        if (t < 0) return;
+        // Switch the profile AND prepare the target's runtime (cold-start the matching
+        // BASIC / ready the toolchain). The editor's code is left untouched.
+        BuildResult pr = host_->selectTargetExplicit(t);
+        if (Doc* dd = cur()) {                 // retarget the tab IN PLACE: the code in
+            dd->targetIndex = t;               // the editor stays exactly as it is —
+            applyDocSyntax(*dd);               // only the build target + syntax change.
+        }
+        status_   = pr.status.empty() ? ("Mode: " + host_->targets()[t].label) : pr.status;
+        statusOk_ = pr.ok || pr.status.empty();
+        if (pr.showConsole) { console_ = pr.console; showConsole_ = true; }
+        ImGui::CloseCurrentPopup();
+    };
+
+    ImGui::TextDisabled("Switch mode / profile"); ImGui::Separator();
+
+    const auto& langs = host_->languages();
+    const auto& machs = host_->machines();
+    if (langs.empty() || machs.empty()) {
+        // Host without language/machine axes: flat list of every target.
+        const auto& targets = host_->targets();
+        for (int t = 0; t < (int)targets.size(); ++t) {
+            std::string ml = host_->modeLabel(t);
+            if (ml.empty()) ml = targets[t].label;
+            if (ImGui::Selectable(ml.c_str(), t == curTarget)) pick(t);
+        }
+        ImGui::EndPopup();
+        return;
+    }
+
+    // Short language name: trim the "  —  toolchain" tail (e.g. "Assembly").
+    auto shortLang = [&](int l) {
+        std::string s = langs[l];
+        const size_t dash = s.find("  \xE2\x80\x94");   // "  —"
+        if (dash != std::string::npos) s.resize(dash);
+        return s;
+    };
+
+    // Merge languages that build for the SAME set of machines into one group, so
+    // Assembly and C — both targeting Apple-1 / TMS9918 / GEN2 — share a header
+    // and each machine's asm + C variants sit side by side. BASIC, whose "machines"
+    // are interpreters, forms its own group.
+    std::vector<bool> done(langs.size(), false);
+    bool firstGroup = true;
+    for (int l = 0; l < (int)langs.size(); ++l) {
+        if (done[l]) continue;
+        std::vector<int> group = { l };
+        done[l] = true;
+        for (int l2 = l + 1; l2 < (int)langs.size(); ++l2) {
+            if (done[l2]) continue;
+            bool same = true;
+            for (int m = 0; m < (int)machs.size(); ++m)
+                if ((host_->targetFor(l, m) >= 0) != (host_->targetFor(l2, m) >= 0)) { same = false; break; }
+            if (same) { group.push_back(l2); done[l2] = true; }
+        }
+        std::string header;
+        for (size_t gi = 0; gi < group.size(); ++gi)
+            header += (gi ? " / " : "") + shortLang(group[gi]);
+        if (!firstGroup) ImGui::Spacing();
+        firstGroup = false;
+        ImGui::TextDisabled("%s", header.c_str());
+
+        // One row per machine — NO duplicates. When the group merged several
+        // languages (Assembly + C), the machine name shows once and the languages
+        // sit together as inline tags on that same row; the active one is teal.
+        const bool multi = group.size() > 1;
+        for (int m = 0; m < (int)machs.size(); ++m) {
+            bool any = false;
+            for (size_t gi = 0; gi < group.size(); ++gi)
+                if (host_->targetFor(group[gi], m) >= 0) { any = true; break; }
+            if (!any) continue;
+
+            ImGui::Indent();
+            if (!multi) {
+                const int t = host_->targetFor(group[0], m);
+                const std::string lbl = machs[m] + "##mode" + std::to_string(t);
+                if (ImGui::Selectable(lbl.c_str(), t == curTarget)) pick(t);
+            } else {
+                ImGui::AlignTextToFramePadding();
+                ImGui::TextUnformatted(machs[m].c_str());
+                for (size_t gi = 0; gi < group.size(); ++gi) {
+                    const int t = host_->targetFor(group[gi], m);
+                    if (t < 0) continue;
+                    ImGui::SameLine();
+                    const bool sel = (t == curTarget);
+                    if (sel) {
+                        ImGui::PushStyleColor(ImGuiCol_Button,        ImVec4(0.00f, 0.60f, 0.62f, 1.0f));
+                        ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.00f, 0.68f, 0.70f, 1.0f));
+                        ImGui::PushStyleColor(ImGuiCol_ButtonActive,  ImVec4(0.00f, 0.55f, 0.57f, 1.0f));
+                    }
+                    const std::string tag = shortLang(group[gi]) + "##mode" + std::to_string(t);
+                    if (ImGui::SmallButton(tag.c_str())) pick(t);
+                    if (sel) ImGui::PopStyleColor(3);
+                }
+            }
+            ImGui::Unindent();
+        }
+    }
+    ImGui::EndPopup();
+}
+
 // Empty bench (every tab closed): render the window with only the "New sketch"
 // chooser. Create makes the first tab and normal rendering resumes next frame.
 void CodeBench::renderNewPhase(const char* title, bool* open)
@@ -347,6 +459,48 @@ void CodeBench::render(const char* title, bool* open)
         doc.lastSavedText = text; doc.dirty = false;
         status_ = "Saved " + path + " (" + std::to_string(text.size()) + " B)";
         statusOk_ = true;
+    };
+    // Rename the doc with `uid` to `rawName`. A path-backed doc is renamed on disk
+    // (same directory); an untitled doc just gets a new tab label. The build target
+    // + syntax + markdown mode are re-derived from the (possibly new) extension.
+    auto renameDoc = [&](int uid, const char* rawName) {
+        Doc* d = nullptr;
+        for (auto& up : docs_) if (up->uid == uid) { d = up.get(); break; }
+        if (!d) return;
+
+        std::string name = rawName ? rawName : "";
+        while (!name.empty() && (name.front() == ' ' || name.front() == '\t')) name.erase(name.begin());
+        while (!name.empty() && (name.back()  == ' ' || name.back()  == '\t')) name.pop_back();
+        if (name.empty()) { status_ = "Rename: empty name"; statusOk_ = false; return; }
+        if (name.find('/') != std::string::npos || name.find('\\') != std::string::npos) {
+            status_ = "Rename: name cannot contain a path separator"; statusOk_ = false; return;
+        }
+        if (name == d->title) return;   // unchanged
+
+        if (!d->path.empty()) {
+            namespace fs = std::filesystem;
+            std::error_code ec;
+            const fs::path oldP(d->path);
+            const fs::path newP = oldP.parent_path() / name;
+            if (fs::exists(newP, ec)) { status_ = "Rename: '" + name + "' already exists"; statusOk_ = false; return; }
+            fs::rename(oldP, newP, ec);
+            if (ec) { status_ = "Rename failed: " + ec.message(); statusOk_ = false; return; }
+            d->path = newP.string();
+            status_ = "Renamed to " + name; statusOk_ = true;
+        } else {
+            status_ = "Tab renamed to " + name; statusOk_ = true;
+        }
+        d->title = name;
+        // Re-derive mode + build target from the (possibly new) extension.
+        const bool wasMd = d->isMarkdown;
+        d->isMarkdown = pathIsMarkdown(d->path.empty() ? name : d->path);
+        if (d->isMarkdown && !wasMd) d->mdPreview = true;
+        if (!d->path.empty() && !d->isMarkdown) {
+            const int ti = host_->targetForPath(d->path);
+            d->targetIndex = (ti >= 0 && ti < static_cast<int>(targets.size())) ? ti : -1;
+        }
+        applyDocSyntax(*d);
+        lastActiveUid_ = -1;   // force the front tab to re-sync host context next frame
     };
     // New: pick a (language x machine) target, then load its HELLO WORLD into a
     // NEW tab. If the host offers no axes, New just adds a starter tab.
@@ -572,6 +726,7 @@ void CodeBench::render(const char* title, bool* open)
     int  closeUid       = -1;
     int  closeOthersUid = -1;
     bool closeAllReq    = false;
+    bool openRename     = false;
     if (ImGui::BeginTabBar("##benchtabs", ImGuiTabBarFlags_AutoSelectNewTabs |
                                           ImGuiTabBarFlags_Reorderable |
                                           ImGuiTabBarFlags_FittingPolicyScroll |
@@ -588,8 +743,14 @@ void CodeBench::render(const char* title, bool* open)
                 active_ = i;
                 ImGui::EndTabItem();
             }
-            // Right-click the tab header for close actions (the tab is the last item).
+            // Right-click the tab header for rename + close actions (the tab is the last item).
             if (ImGui::BeginPopupContextItem()) {
+                if (ImGui::MenuItem(ICON_FA_PEN_TO_SQUARE "  Rename...")) {
+                    renameUid_ = d.uid;
+                    std::snprintf(renameBuf_, sizeof(renameBuf_), "%s", d.title.c_str());
+                    openRename = true;
+                }
+                ImGui::Separator();
                 if (ImGui::MenuItem(ICON_FA_XMARK "  Close"))                       closeUid = d.uid;
                 if (ImGui::MenuItem("Close others", nullptr, false, tabCount > 1))  closeOthersUid = d.uid;
                 if (ImGui::MenuItem("Close all"))                                   closeAllReq = true;
@@ -597,11 +758,39 @@ void CodeBench::render(const char* title, bool* open)
             }
             if (!tabOpen) closeUid = d.uid;
         }
-        if (ImGui::TabItemButton(ICON_FA_PLUS, ImGuiTabItemFlags_Trailing | ImGuiTabItemFlags_NoTooltip))
-            doNewChoose();
+        // The trailing "+" opens a fresh BLANK tab in the current target (no
+        // chooser) — quick scratch buffer. The toolbar's New button still offers
+        // the language x machine picker for a different mode.
+        if (ImGui::TabItemButton(ICON_FA_PLUS, ImGuiTabItemFlags_Trailing | ImGuiTabItemFlags_NoTooltip)) {
+            int ti = cur()->targetIndex;
+            if (ti < 0) ti = host_->defaultTargetIndex();   // markdown/unknown → sane default
+            newDoc("", "", ti);
+            status_ = "New blank tab"; statusOk_ = true;
+        }
         ImGui::EndTabBar();
     }
     focusUid_ = -1;
+
+    // Rename popup, opened from a tab's right-click context menu.
+    if (openRename) ImGui::OpenPopup("##benchrename");
+    if (ImGui::BeginPopupModal("##benchrename", nullptr,
+                               ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoTitleBar)) {
+        ImGui::TextDisabled(ICON_FA_PEN_TO_SQUARE "  Rename tab");
+        ImGui::Separator();
+        ImGui::SetNextItemWidth(280.0f);
+        if (openRename) ImGui::SetKeyboardFocusHere();   // focus + select the field on open
+        const bool enter = ImGui::InputText("##renamebuf", renameBuf_, sizeof(renameBuf_),
+                                            ImGuiInputTextFlags_EnterReturnsTrue |
+                                            ImGuiInputTextFlags_AutoSelectAll);
+        ImGui::Spacing();
+        bool doRename = enter;
+        if (ImGui::Button("Rename", ImVec2(120, 0))) doRename = true;
+        ImGui::SameLine();
+        if (ImGui::Button("Cancel", ImVec2(120, 0)) || ImGui::IsKeyPressed(ImGuiKey_Escape))
+            ImGui::CloseCurrentPopup();
+        if (doRename) { renameDoc(renameUid_, renameBuf_); ImGui::CloseCurrentPopup(); }
+        ImGui::EndPopup();
+    }
     // Apply at most one structural change per frame, most destructive first.
     if (closeAllReq)              closeAllDocs();
     else if (closeOthersUid >= 0) closeOtherDocs(closeOthersUid);
@@ -622,7 +811,26 @@ void CodeBench::render(const char* title, bool* open)
     float editorH = avail.y - consoleBlock - kStatusBarH - spacingY - mdToggleBlock;
     if (editorH < 100.0f) editorH = 100.0f;
 
+    std::string mdBack;   // a Back-arrow click → reopen this path after render
     if (act.isMarkdown) {
+        // Back arrow: return to the doc a link jumped from (disabled when the
+        // navigation history is empty).
+        const bool canBack = !mdNavBack_.empty();
+        std::string backName;
+        if (canBack) {
+            const std::string& dest = mdNavBack_.back();
+            const size_t slash = dest.find_last_of("/\\");
+            backName = (slash == std::string::npos) ? dest : dest.substr(slash + 1);
+        }
+        ImGui::BeginDisabled(!canBack);
+        if (ImGui::Button(ICON_FA_ARROW_LEFT "##mdback")) {
+            mdBack = mdNavBack_.back();
+            mdNavBack_.pop_back();
+        }
+        ImGui::EndDisabled();
+        if (canBack && ImGui::IsItemHovered())
+            ImGui::SetTooltip("Retour : %s", backName.c_str());
+        ImGui::SameLine();
         if (ImGui::RadioButton("Preview", act.mdPreview)) act.mdPreview = true;
         ImGui::SameLine();
         if (ImGui::RadioButton("Edit", !act.mdPreview)) act.mdPreview = false;
@@ -756,26 +964,62 @@ void CodeBench::render(const char* title, bool* open)
         ImGui::PopStyleColor();
     }
 
+    // Mirror the bench status line into the host's MAIN status bar (full width —
+    // the bench's own bar is too narrow for long file paths). Forward only on
+    // change so it doesn't re-arm the host's status timeout every frame.
+    if (status_ != lastForwardedStatus_) {
+        lastForwardedStatus_ = status_;
+        host_->onStatus(status_, statusOk_);
+    }
+
     // ---- Teal status bar ----
+    // The left half is intentionally empty: status text now lives in the app's
+    // main status bar (see onStatus above). This bar carries only the clickable
+    // Mode/profile switcher on the right.
+    bool openModePopup = false;
     ImGui::PushStyleColor(ImGuiCol_ChildBg, kTeal);
     ImGui::BeginChild("##benchstatus", ImVec2(0, 24), false, ImGuiWindowFlags_NoScrollbar);
     ImGui::PushStyleColor(ImGuiCol_Text, kWhite);
-    ImGui::SetCursorPos(ImVec2(8, 4));
-    ImGui::TextUnformatted(status_.empty() ? "Ready" : status_.c_str());
     std::string right = act.isMarkdown      ? std::string("Markdown")
                       : act.targetIndex < 0 ? std::string("Document (no build)")
                                             : host_->modeLabel(act.targetIndex);
     if (right.empty() && act.targetIndex >= 0) right = targets[act.targetIndex].label;
-    const float rw = ImGui::CalcTextSize(right.c_str()).x;
-    ImGui::SetCursorPos(ImVec2(ImGui::GetWindowWidth() - rw - 8, 4));
-    ImGui::TextUnformatted(right.c_str());
+    // A real build target makes the Mode label a one-click profile switcher (see
+    // drawModeMenu). Markdown / unknown files have nothing to switch → static text.
+    const bool modeSwitchable = !act.isMarkdown && act.targetIndex >= 0 && targets.size() > 1;
+    if (modeSwitchable) {
+        const std::string label = std::string(ICON_FA_CARET_UP " ") + right;
+        const float lw = ImGui::CalcTextSize(label.c_str()).x;
+        ImGui::SetCursorPos(ImVec2(ImGui::GetWindowWidth() - lw - 8, 2));
+        ImGui::PushStyleColor(ImGuiCol_HeaderHovered, kTealDark);
+        ImGui::PushStyleColor(ImGuiCol_HeaderActive,  kTealDark);
+        if (ImGui::Selectable(label.c_str(), false, 0, ImVec2(lw, 20))) openModePopup = true;
+        ImGui::PopStyleColor(2);
+        if (ImGui::IsItemHovered()) ImGui::SetTooltip("Switch mode / profile");
+    } else {
+        const float rw = ImGui::CalcTextSize(right.c_str()).x;
+        ImGui::SetCursorPos(ImVec2(ImGui::GetWindowWidth() - rw - 8, 4));
+        ImGui::TextUnformatted(right.c_str());
+    }
     ImGui::PopStyleColor();
     ImGui::EndChild();
     ImGui::PopStyleColor();
 
+    if (openModePopup) ImGui::OpenPopup("##benchmodepopup");
+    drawModeMenu();
+
     // Follow a clicked markdown link last: openFile() mutates docs_/active_, so do
-    // it after every reference to `act`/`doc` for this frame is done.
-    if (!mdFollow.empty()) openFile(mdFollow);
+    // it after every reference to `act`/`doc` for this frame is done. A link jump
+    // remembers the doc it left (for the Back arrow); Back reopens without pushing.
+    if (!mdFollow.empty()) {
+        if (!act.path.empty() && mdFollow != act.path) {
+            mdNavBack_.push_back(act.path);
+            if (mdNavBack_.size() > 128) mdNavBack_.erase(mdNavBack_.begin());
+        }
+        openFile(mdFollow);
+    } else if (!mdBack.empty()) {
+        openFile(mdBack);
+    }
 
     ImGui::End();
 }

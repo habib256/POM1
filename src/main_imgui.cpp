@@ -119,12 +119,12 @@ static std::string find_app_icon_path()
 }
 #endif  // !defined(__APPLE__)
 
-/// Cherche fa-solid-900.ttf : le chemin relatif « ../fonts » dépend du répertoire de travail ;
-/// sans ce fichier, ImGui affiche « ? » à la place des icônes Font Awesome.
-static std::string find_fa_solid_font_path()
+/// Cherche un fichier de police `kFile` (fa-solid-900.ttf, DejaVuSans.ttf, …) dans
+/// les emplacements habituels : d'abord relatifs au répertoire de travail, puis à
+/// côté de l'exécutable (Windows). Renvoie {} si introuvable.
+static std::string find_font_path(const char* kFile)
 {
     namespace fs = std::filesystem;
-    static const char kFile[] = "fa-solid-900.ttf";
 
     auto try_path = [](const fs::path& p) -> std::string {
         std::error_code ec;
@@ -133,15 +133,11 @@ static std::string find_fa_solid_font_path()
         return {};
     };
 
-    static const char* const rel_candidates[] = {
-        "fonts/fa-solid-900.ttf",
-        "../fonts/fa-solid-900.ttf",
-        "../../fonts/fa-solid-900.ttf",
-        "../../../fonts/fa-solid-900.ttf",
-        "build/fonts/fa-solid-900.ttf",
+    static const char* const rel_dirs[] = {
+        "fonts", "../fonts", "../../fonts", "../../../fonts", "build/fonts",
     };
-    for (const char* r : rel_candidates) {
-        std::string s = try_path(fs::path(r));
+    for (const char* d : rel_dirs) {
+        std::string s = try_path(fs::path(d) / kFile);
         if (!s.empty())
             return s;
     }
@@ -165,6 +161,9 @@ static std::string find_fa_solid_font_path()
 #endif
     return {};
 }
+
+/// sans fa-solid-900.ttf, ImGui affiche « ? » à la place des icônes Font Awesome.
+static std::string find_fa_solid_font_path() { return find_font_path("fa-solid-900.ttf"); }
 
 /// Read the entire back-buffer with glReadPixels and write a top-down PNG
 /// at `screenshots/pom1_latest.png`. Called from the render loop *after*
@@ -640,10 +639,28 @@ int main(int argc, char* argv[])
     // persistence — separate follow-up).
     MainWindow_ImGui::pregenerateMissingPresetLayouts();
 
-    // Charger les polices
+    // Charger les polices. Police d'UI : DejaVuSans.ttf (fonts/) — une vraie fonte
+    // vectorielle à large couverture Unicode (accents latins de l'UI FR, puces,
+    // flèches, ☐/☑…) qui reste nette à toute taille. ImGui 1.92 raster les glyphes
+    // à la demande (backend à textures), donc pas besoin de glyph-ranges : toute la
+    // fonte est disponible. Repli sur la fonte intégrée (ProggyClean) si absente —
+    // elle scale mal, ce que l'aperçu Markdown (titres agrandis) rend visible.
     ImFontConfig fontConfig;
     fontConfig.SizePixels = 15.0f;
-    ImFont* defaultFont = io.Fonts->AddFontDefault(&fontConfig);
+    ImFont* defaultFont = nullptr;
+#if POM1_IS_WASM
+    const std::string uiFontPath = "fonts/DejaVuSans.ttf";   // preloaded in MEMFS
+#else
+    const std::string uiFontPath = find_font_path("DejaVuSans.ttf");
+#endif
+    if (!uiFontPath.empty())
+        defaultFont = io.Fonts->AddFontFromFileTTF(uiFontPath.c_str(), 15.0f, &fontConfig);
+    if (!defaultFont) {
+        if (!uiFontPath.empty())
+            fprintf(stderr, "Warning: Could not load UI font '%s' - falling back to the built-in font\n",
+                    uiFontPath.c_str());
+        defaultFont = io.Fonts->AddFontDefault(&fontConfig);
+    }
     if (defaultFont) defaultFont->FallbackChar = (ImWchar)' ';
 
     // Fusionner la police d'icônes FontAwesome

@@ -11,11 +11,11 @@ ImGui Bench **Upload button** calling this — that needs the Bench's synchronou
 a main-loop app, so a sync `EM_ASM`-await is unsafe). See "Remaining" below.
 
 The desktop DevBench shells out to native `ca65`/`ld65`/`cc65`/`cl65`. The web
-(Emscripten) build has no subprocesses, so today it exposes only the Wozmon-hex
-target and shows a "desktop only — download the app" CTA (`IBenchHost::headerNote()`).
-This document is the plan + the proven pieces for making the full asm/C Bench run
-in-browser by compiling the cc65 toolchain itself to WASM (the approach
-8bitworkshop uses).
+(Emscripten) build has no subprocesses; the original limitation was that it could
+expose only the Wozmon-hex target. **That plan is now implemented** — the cc65
+toolchain is compiled to WASM (`build-wasm/cc65/`, driven by `window.POM1cc65`), so
+the web build exposes the full asm/C/hex/BASIC target matrix, same as desktop. This
+document keeps the plan + the proven pieces (the approach 8bitworkshop uses).
 
 ## What is done and verified
 

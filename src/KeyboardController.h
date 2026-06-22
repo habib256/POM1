@@ -21,6 +21,14 @@ public:
     /// Thread-safe: takes only its own keyMutex. Safe to call from the UI thread.
     void queueKey(char key);
 
+    /// True if keystrokes are still waiting to be drained into Memory. Thread-safe
+    /// (takes only keyMutex). Used to detect when an injected listing has been typed.
+    bool hasQueuedKeys();
+
+    /// Drop every pending keystroke. Thread-safe (takes only keyMutex). Called on
+    /// reset so stale keys from a prior run can't corrupt the next cold-start.
+    void clear();
+
     /// Pre: caller holds the mutex protecting `mem` (typically
     /// EmulationController::stateMutex). Drains the pending queue into
     /// Memory::setKeyPressed(). keyMutex is released before touching `mem`.

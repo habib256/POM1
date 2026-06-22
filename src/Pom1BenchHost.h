@@ -30,6 +30,7 @@ public:
     std::string starterSketch(int target)    const override;
 
     void                onTargetSelected(int target) override;
+    bench::BuildResult  selectTargetExplicit(int target) override;   // Mode selector: switch + prepare runtime
     bench::ExampleLoad  loadExample(int exampleIndex) override;
     bench::BuildResult  verify(int target, const std::string& src, const std::string& addrHex) override;
     bench::BuildResult  upload(int target, const std::string& src, const std::string& addrHex) override;
@@ -40,6 +41,7 @@ public:
     // compiles it as a real project (own .cfg, -I projectdir, EXTRA_ASM, dual-bank).
     void setActiveSourcePath(const std::string& path) override;
     int targetForPath(const std::string& path) const override;
+    void onStatus(const std::string& msg, bool ok) override;   // -> main status bar
 
     bool        toolchainReady(int target) const override;
     std::string toolchainHint (int target) const override;
@@ -59,21 +61,23 @@ public:
 
 private:
     void               probe() const;   // lazy cc65 toolchain detection
+    void               applyTargetPreset(int target, bool force);   // onTargetSelected / selectTargetExplicit core
     void               enableSketchSidecarCards(EmulationController* emu);
     bench::BuildResult build(int target, const std::string& src, const std::string& addrHex, bool run);
     bench::BuildResult directLoad(int target, const std::string& src, const std::string& addrHex);
     // BASIC deploy (mode 4): cold-start the in-ROM interpreter + type the listing
     // via the keyboard FIFO (no compiler — identical on desktop and WASM).
     bench::BuildResult injectBasic(int target, const std::string& src, bool run);
-    // Map a bench targets_ index -> kP1Targets[] index. Identity on desktop; on
-    // WASM targets_ holds only the Wozmon-hex entry, so 0 maps back to
-    // kP1Targets[6]. All kP1Targets[] lookups in the .cpp go through this.
+    // Map a bench targets_ index -> kP1Targets[] index. The browser now ships the
+    // full cc65-in-WASM toolchain, so targets_ exposes EVERY target on both desktop
+    // and WASM and targetMap_ is the identity map. Kept as an indirection so a future
+    // platform could expose a subset again. All kP1Targets[] lookups go through this.
     int p1(int t) const { return (t >= 0 && t < static_cast<int>(targetMap_.size())) ? targetMap_[t] : 0; }
 
     MainWindow_ImGui* mw_;
 
     std::vector<bench::Target>  targets_;
-    std::vector<int>            targetMap_;   // targets_ index -> kP1Targets[] index (identity desktop; Woz-hex only on WASM)
+    std::vector<int>            targetMap_;   // targets_ index -> kP1Targets[] index (identity on desktop AND WASM)
     std::vector<bench::Example> examples_;
     std::vector<std::string>    languages_;
     std::vector<std::string>    machines_;
@@ -107,6 +111,24 @@ private:
     bool     wasmJobVerifyOnly_ = false;
     int      wasmJobTarget_     = -1;     // kP1Targets index being built
     uint16_t wasmJobEntry_      = 0;      // load/run address from the linker cfg
+
+    // BASIC injection (see injectBasic/pollBuild): the listing is typed at max CPU
+    // speed so it lands instantly; pollBuild() restores the user's speed and fires
+    // RUN once the keystrokes drain. Run-only (verify just enters the program).
+    bool injectAwaitingRun_   = false;   // a RUN is pending behind the draining keys
+    int  injectSavedSpeed_    = 0;       // executionSpeed to restore before RUN
+    int  injectDrainedFrames_ = 0;       // consecutive polls with an empty key queue
+    int  injectPollFrames_    = 0;       // total polls — safety cap against a stuck run
+
+    // OOR/RAM relax (idx 8/10/11): a BASIC run loosens the strict 8 KB preset to a
+    // permissive 64 KB view. The original values are saved so the relax is undone on
+    // an aborted injection and when the next non-BASIC target runs on the same preset
+    // (otherwise an asm/hex run there would silently see the relaxed machine).
+    bool injectRelaxed_        = false;
+    int  injectRelaxedPreset_  = -1;     // preset active when relaxed (guards a preset change)
+    int  injectSavedRamKB_     = 0;
+    bool injectSavedOorStrict_ = false;
+    void restoreRelaxedMachine();        // revert a pending OOR/RAM relax (no-op if none)
 };
 
 #endif // POM1_BENCH_HOST_H

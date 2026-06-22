@@ -255,6 +255,12 @@ public:
     void setKeyPressed(char key);
     void setKeyPressedRaw(char key);
     bool isKeyReady() const { return keyReady; }
+    // True while injected/typed keystrokes are still pending delivery to the CPU
+    // (one ready in the PIA latch and/or more queued in keyBuffer).
+    bool hasBufferedInput() const { return keyReady || !keyBuffer.empty(); }
+    // Drop any pending keystroke (latched + buffered). Called on reset so stale
+    // injected keys can't be read by the freshly reset monitor / interpreter.
+    void clearKeyboardInput() { keyReady = false; lastKey = 0; std::queue<char> e; std::swap(keyBuffer, e); }
     char getLastKey() const { return lastKey; }
 
     // Vitesse du terminal (caractères par seconde)
@@ -429,6 +435,9 @@ public:
     // Hot-load a 32 kB CodeTank ROM by path (used by the CodeTank Library
     // window). Empty path falls back to the default probe candidates.
     int loadCodeTankRom(const std::string& path = std::string());
+    // Hot-load a 32 kB CodeTank ROM straight from memory (no file). Returns 0 on
+    // success, 1 on failure (getLastError() set). Used by the DevBench BASIC inject.
+    int loadCodeTankRomBuffer(const std::vector<uint8_t>& data, const std::string& label);
 
     // P-LAB Apple-1 Wi-Fi Modem (65C51 ACIA + ESP8266)
     WiFiModem& getWiFiModem() { return *wifiModem; }

@@ -153,6 +153,11 @@ void EmulationController::hardReset(bool animateBoot)
 
     memory->resetMemory();
     memory->initMemory();
+    // Flush any keystrokes still queued/buffered from a prior run so they can't be
+    // read by the freshly reset monitor and corrupt the next cold-start (e.g. a
+    // BASIC injection's leftover keys mangling the next E000R/6000R).
+    keyboard.clear();
+    memory->clearKeyboardInput();
     preferredSoftResetVector = kDefaultResetVector;
     memory->configureResetVectors(kDefaultResetVector);
     cpu->hardReset();
@@ -244,6 +249,16 @@ void EmulationController::queueKey(char key)
 {
     keyboard.queueKey(key);
     wakeCv.notify_all();
+}
+
+bool EmulationController::hasPendingInjectedInput()
+{
+    // stateMutex serialises against the emulation thread's drainTo()/cpu->run(),
+    // both of which mutate the keyboard/Memory key state under the same lock — so
+    // this observes a consistent snapshot (no mid-drain false-empty window). Mutex
+    // order stateMutex > keyMutex is honoured (hasQueuedKeys takes keyMutex).
+    std::lock_guard<PriorityMutex> lock(stateMutex);
+    return keyboard.hasQueuedKeys() || memory->hasBufferedInput();
 }
 
 void EmulationController::writeMemory(uint16_t address, uint8_t value)
@@ -1269,6 +1284,19 @@ bool EmulationController::loadCodeTankRom(const std::string& path, std::string& 
 {
     std::lock_guard<PriorityMutex> lock(stateMutex);
     int rc = memory->loadCodeTankRom(path);
+    if (rc != 0) {
+        error = memory->getLastError();
+        return false;
+    }
+    publisher.publish(*memory, *cpu, runRequested.load());
+    return true;
+}
+
+bool EmulationController::loadCodeTankRomBuffer(const std::vector<uint8_t>& data,
+                                                const std::string& label, std::string& error)
+{
+    std::lock_guard<PriorityMutex> lock(stateMutex);
+    int rc = memory->loadCodeTankRomBuffer(data, label);
     if (rc != 0) {
         error = memory->getLastError();
         return false;

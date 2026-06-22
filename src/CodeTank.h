@@ -72,6 +72,10 @@ public:
     // rejected with `error` populated; previous contents are preserved on
     // failure. Empty file path resets to the blank $FF buffer.
     bool loadRomFile(const std::string& path, std::string& error);
+    // Load a 32 kB ROM straight from memory (no file). `label` becomes the visible
+    // romPath so hasRom() reports true. Used by the DevBench BASIC injection so the
+    // CodeTank cartridge flash needs no temp file and behaves identically on WASM.
+    bool loadRomBuffer(const std::vector<uint8_t>& data, const std::string& label, std::string& error);
     // Empty the buffer to all $FF (a "freshly programmed" 28c256 baseline)
     // and drop the romPath. Used when the user explicitly unloads the card.
     void clearRom();

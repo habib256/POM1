@@ -442,12 +442,12 @@ const char* const kP1Machines[]  = {
 };
 const char* const kP1MachineHints[] = {
     "Stock Apple-1: 40x24 text printed through the WozMon ECHO routine ($FFEF).\n"
-    "Easiest place to start - no graphics card needed. Preset 1 (dual 4K/8K RAM).",
+    "Easiest place to start - no graphics card needed.",
     "P-LAB Graphic Card by Claudio Parmigiani — TMS9918 VDP, Graphics I mode,\n"
-    "256x192, data port $CC00 / control $CC01. Preset 7. Upload flashes the build\n"
-    "into CODETANKDEV.rom and boots 4000R (all TMS9918 code runs from CodeTank).",
+    "256x192, data port $CC00 / control $CC01. Upload flashes the build into the\n"
+    "CodeTank dev cartridge and boots 4000R (all TMS9918 code runs from CodeTank).",
     "Uncle Bernie's GEN2 colour card — Apple II-style HIRES (280x192) driven by\n"
-    "the soft switches $C250-$C257. Hello world uses the BBFont. Preset 12.",
+    "the soft switches $C250-$C257. Hello world uses the BBFont.",
     "Applesoft Lite (floating-point BASIC) on a bare Apple-1 — the CFFA1-flavour\n"
     "ROM at $E000-$FFFF, cold start E000R. No graphics; LOAD/SAVE error without a\n"
     "CFFA1 card. The Bench relaxes RAM to 64 KB so $F000-$FEFF is live.",
@@ -1312,6 +1312,33 @@ static bool sourcePathLooksPortable(const std::string& path)
            p.find("/portable/") != std::string::npos;
 }
 
+// A generic Applesoft sketch lives under sketchs/basic_applesoft/ — Applesoft BASIC
+// that runs on ANY Applesoft-capable machine. Opening one must NOT switch the user's
+// profile: it follows whatever Applesoft machine is already live (see targetForPath /
+// onTargetSelected). The user chooses the machine via the Mode switcher, not by
+// opening a file.
+static bool sourcePathLooksApplesoftSketch(const std::string& path)
+{
+    std::string p = path;
+    std::replace(p.begin(), p.end(), '\\', '/');
+    std::transform(p.begin(), p.end(), p.begin(),
+                   [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+    return p.find("/basic_applesoft/") != std::string::npos;
+}
+
+// An Integer BASIC sketch lives under sketchs/basic_integer/. Integer BASIC has a
+// single machine (the Apple-1 $E000 ROM, no graphics variants), so "machine-neutral"
+// here means the same as for Applesoft: opening one keeps the user's current profile
+// rather than forcing the Integer DevBench preset.
+static bool sourcePathLooksIntegerSketch(const std::string& path)
+{
+    std::string p = path;
+    std::replace(p.begin(), p.end(), '\\', '/');
+    std::transform(p.begin(), p.end(), p.begin(),
+                   [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+    return p.find("/basic_integer/") != std::string::npos;
+}
+
 int Pom1BenchHost::targetForPath(const std::string& path) const
 {
     namespace fs = std::filesystem;
@@ -1327,6 +1354,16 @@ int Pom1BenchHost::targetForPath(const std::string& path) const
     // path: a TMS9918 path -> Applesoft TMS9918 (11), a GEN2/HGR path -> Applesoft
     // GEN2 (9), otherwise the stock microSD Applesoft (8).
     if (ext == ".apf" || ext == ".bas") {
+        // Generic Applesoft sketches (sketchs/basic_applesoft/) are machine-neutral:
+        // follow whatever Applesoft-capable machine is already live so opening one
+        // never switches the user's profile (see onTargetSelected). Path-tagged files
+        // (under /gen2, /tms9918, …) still pin their own card.
+        if (sourcePathLooksApplesoftSketch(p)) {
+            if (mw_ && mw_->graphicsCardEnabled) return 9;    // Applesoft GEN2 ($6000)
+            if (mw_ && mw_->tms9918Enabled)      return 11;   // Applesoft TMS9918 ($4000)
+            if (mw_ && mw_->microSDEnabled)      return 8;    // Applesoft Lite + microSD
+            return 10;                                        // Applesoft Lite (Apple-1, $E000)
+        }
         const bool tmspath  = p.find("/tms9918") != std::string::npos ||
                               p.find("applesoft_tms9918") != std::string::npos ||
                               p.find("/codetank") != std::string::npos;
@@ -1375,19 +1412,58 @@ void Pom1BenchHost::enableSketchSidecarCards(EmulationController* emu)
     }
 }
 
-void Pom1BenchHost::onTargetSelected(int target)
+// File-open / Run targeting: machine-neutral sketches keep the user's profile.
+void Pom1BenchHost::onTargetSelected(int target) { applyTargetPreset(target, /*force=*/false); }
+
+// Mode selector: an explicit user choice — always switch to the target's profile,
+// then PREPARE its runtime so it's immediately usable: cold-start the matching
+// BASIC interpreter (ROM loaded + prompt up, no program typed — that happens on
+// Run), or probe the cc65 toolchain for asm/C. Returns a concise status (and, on a
+// BASIC ROM failure, the console) for the bench to surface.
+bench::BuildResult Pom1BenchHost::selectTargetExplicit(int target)
+{
+    bench::BuildResult r; r.showConsole = false;
+    restoreRelaxedMachine();                       // clear any prior BASIC OOR/RAM relax
+    applyTargetPreset(target, /*force=*/true);     // switch the profile (preset)
+    if (target < 0 || target >= kP1TargetCount) { r.status = "bad target"; return r; }
+    const P1T& t = kP1Targets[p1(target)];
+
+    if (t.mode == 4) {
+        // BASIC: cold-start the matching interpreter (empty listing, no RUN) so its
+        // prompt is ready. injectBasic loads the ROM, resets and types the cold-start.
+        bench::BuildResult ib = injectBasic(target, std::string(), /*run=*/false);
+        r.ok = ib.ok;
+        r.status = ib.ok ? (std::string(t.label) + " — ready") : ib.status;
+        if (!ib.ok) { r.console = ib.console; r.showConsole = true; }   // surface ROM errors
+    } else if (t.mode == 0 || t.mode == 3) {
+        // asm / C: make the cc65 toolchain ready so Verify/Run work immediately.
+        probe();
+        r.ok = toolchainReady(target);
+        const std::string hint = toolchainHint(target);
+        r.status = std::string(t.label) + (hint.empty() ? "" : (" — " + hint));
+    } else {
+        r.status = t.label; r.ok = true;           // hex / other: nothing to prepare
+    }
+    return r;
+}
+
+void Pom1BenchHost::applyTargetPreset(int target, bool force)
 {
     if (target < 0 || target >= kP1TargetCount) return;
     const P1T& t = kP1Targets[p1(target)];
     if (t.preset < 0 || t.preset == mw_->activePresetIndex) return;
 
-    // Portable (card-agnostic) sketch: keep the user's CURRENT preset whenever
-    // it already provides the target's graphics card (t.preset 2 = GEN2 HGR,
-    // 1 = TMS9918). Only fall through to a preset switch when the live machine
-    // lacks the card — e.g. a bare Apple-1, which targetForPath routes to TMS.
-    if (sourcePathLooksPortable(activeSourcePath_)) {
+    // Portable (card-agnostic) and machine-neutral BASIC sketches (Applesoft /
+    // Integer) keep the user's CURRENT preset whenever it already provides the
+    // target's machine (t.preset 2 = GEN2 HGR, 1 = TMS9918, 8 = microSD; preset 0 /
+    // bare Apple-1 always has it) — so OPENING such a file never yanks the user off
+    // their chosen profile. The Mode selector passes force=true to bypass this.
+    if (!force && (sourcePathLooksPortable(activeSourcePath_)        ||
+                   sourcePathLooksApplesoftSketch(activeSourcePath_) ||
+                   sourcePathLooksIntegerSketch(activeSourcePath_))) {
         const bool haveCard = (t.preset == 2) ? mw_->graphicsCardEnabled
                             : (t.preset == 1) ? mw_->tms9918Enabled
+                            : (t.preset == 8) ? mw_->microSDEnabled
                             : true;
         if (haveCard) return;
     }
@@ -1398,6 +1474,15 @@ void Pom1BenchHost::onTargetSelected(int target)
     mw_->suppressDevBenchAutoload = true;
     mw_->applyMachineConfig(t.preset);
     mw_->suppressDevBenchAutoload = false;
+}
+
+// The bench echoes its status line (Opened/Saved/Build…) into the app's main
+// status bar at the bottom of the window — full width, so long file paths that
+// would overflow the narrow Bench window read cleanly. (Errors linger a touch.)
+void Pom1BenchHost::onStatus(const std::string& msg, bool ok)
+{
+    if (msg.empty()) return;
+    mw_->setStatusMessage(msg, ok ? 4.0f : 6.0f);
 }
 
 bench::ExampleLoad Pom1BenchHost::loadExample(int i)
@@ -1487,6 +1572,29 @@ bench::BuildResult Pom1BenchHost::directLoad(int target, const std::string& src,
 // same on desktop and the web (WASM) build (no cc65, no async compile). Integer
 // BASIC lives at $E000 (loaded by initMemory on reset); Applesoft Lite at $6000
 // (zeroed by the reset, so we reload it before typing 6000R).
+//
+// Speed handling: the listing is typed at the CPU menu's "Max" rate so it lands
+// instantly, then the user's speed is restored before RUN (pollBuild drives this).
+static constexpr int kInjectMaxCyclesPerFrame = 1000000;  // matches CPU menu "Max"
+static constexpr int kInjectDrainGraceFrames  = 2;        // consecutive empty polls
+static constexpr int kInjectMaxPollFrames     = 1800;     // ~30 s @ 60 fps safety cap
+
+// Undo the OOR/RAM relax a BASIC run applied (idx 8/10/11). No-op if nothing was
+// relaxed, or if the preset has since changed (applyMachineConfig already reset
+// RAM/OOR for the new preset — we'd otherwise restore a stale value).
+void Pom1BenchHost::restoreRelaxedMachine()
+{
+    if (!injectRelaxed_) return;
+    auto* emu = mw_ ? mw_->emulation.get() : nullptr;
+    if (emu && mw_->activePresetIndex == injectRelaxedPreset_) {
+        emu->setPresetRamKB(injectSavedRamKB_);
+        emu->setOutOfRangeStrictMode(injectSavedOorStrict_);
+        mw_->presetRamKB = injectSavedRamKB_;
+        mw_->oorStrictModeEnabled = injectSavedOorStrict_;
+    }
+    injectRelaxed_ = false;
+}
+
 bench::BuildResult Pom1BenchHost::injectBasic(int target, const std::string& src, bool run)
 {
     bench::BuildResult r; r.showConsole = true;
@@ -1513,50 +1621,93 @@ bench::BuildResult Pom1BenchHost::injectBasic(int target, const std::string& src
         return {};
     };
 
-    // 1) Plug the interpreter's machine, draining the deferred card plugs.
+    // 1) For the TMS9918 Applesoft cartridge, build + validate the 32 KB CodeTank
+    //    image UP FRONT (in memory, no temp file) before touching the machine. A
+    //    missing/short ROM then aborts with the machine completely unchanged — no
+    //    preset switch, no half-plugged card, no default GAME1 cartridge.
+    std::vector<uint8_t> tmsCart;
+    if (tms) {
+        const std::string rom = findRom({"software/Apple-1_TMS_CC65/applesoft-tms9918.bin",
+                                         "../software/Apple-1_TMS_CC65/applesoft-tms9918.bin",
+                                         "../../software/Apple-1_TMS_CC65/applesoft-tms9918.bin"});
+        std::string err;
+        if (rom.empty()) err = "software/Apple-1_TMS_CC65/applesoft-tms9918.bin not found";
+        else {
+            std::ifstream in(rom, std::ios::binary);
+            if (!in.is_open()) err = "cannot open " + rom;
+            else {
+                tmsCart.assign(0x8000, 0xFF);   // 32 KB 28C256; unused bytes stay $FF
+                in.read(reinterpret_cast<char*>(tmsCart.data()), 0x4000);   // up to 16 KB (lower bank)
+                // The cartridge cold-starts at 4000R, so its CODE sits at offset 0
+                // ($4000) and need NOT fill the whole 16 KB bank — ld65 emits only the
+                // actual code (the interpreter is ~10.7 KB; the rest of the bank stays
+                // $FF). Only an empty file is invalid.
+                if (in.gcount() <= 0)
+                    err = rom + " is empty";
+            }
+        }
+        if (!err.empty()) {
+            r.console = std::string("[bench] ") + interp + ": cartridge ROM load FAILED — " + err + "\n"
+                        "[bench] aborting injection; machine left unchanged.\n";
+            r.status = std::string(interp) + ": ROM load failed";
+            r.ok = false;
+            return r;
+        }
+    }
+
+    // 2) Plug the interpreter's machine. For TMS, pre-load the cartridge from memory
+    //    BEFORE draining the deferred plugs so enabling CodeTank doesn't auto-probe
+    //    the default GAME1 image (hasRom() is already true).
     onTargetSelected(target);
+    if (tms) {
+        std::string err;
+        if (!emu->loadCodeTankRomBuffer(tmsCart, "applesoft-tms9918 (CodeTank)", err)) {
+            r.console = std::string("[bench] ") + interp + ": CodeTank flash FAILED — " + err + "\n";
+            r.status = std::string(interp) + ": ROM load failed";
+            r.ok = false;
+            return r;
+        }
+        // When the switch to preset 1 was applied fresh (e.g. the Mode selector, or a
+        // Run from another preset), applyMachineConfig queued the preset's DEFAULT
+        // CodeTank ROM (Codetank_GAME1.rom) for the still-pending plug. Clear that path
+        // now so finalizePendingCardPlugs() does NOT reload GAME1 over the Applesoft
+        // cartridge we just flashed.
+        mw_->pendingCodeTankRomPath.clear();
+    }
     mw_->finalizePendingCardPlugs();
 
-    // 1b) Relax to a permissive 64 KB view for variants whose interpreter / RAM
+    // 2b) Relax to a permissive 64 KB view for variants whose interpreter / RAM
     //     workspace sits inside an out-of-range window on the strict preset:
     //     microSD (8 KB, $6000 ROM), CFFA1 Apple-1 ($E000-$FEFF needs $F000+ RAM),
     //     TMS9918 (8 KB program RAM). GEN2 (preset 2, 48 KB) needs none. The cards
-    //     keep their MMIO/ROM windows — only OOR enforcement is lifted.
+    //     keep their MMIO/ROM windows — only OOR enforcement is lifted. The original
+    //     RAM/OOR is saved here and restored on abort / when the next non-BASIC target
+    //     runs (build() calls restoreRelaxedMachine), so the relax never leaks.
     if (idx == 8 || idx == 10 || idx == 11) {
+        if (!injectRelaxed_) {
+            injectSavedRamKB_     = mw_->presetRamKB;
+            injectSavedOorStrict_ = mw_->oorStrictModeEnabled;
+        }
+        injectRelaxed_       = true;
+        injectRelaxedPreset_ = mw_->activePresetIndex;
         emu->setOutOfRangeStrictMode(false);
         emu->setPresetRamKB(64);
         mw_->oorStrictModeEnabled = false;
         mw_->presetRamKB = 64;
     }
 
-    // 2) Place the interpreter, then hard-reset so a clean WOZ Monitor processes
-    //    the cold-start. RAM-resident ROMs (Integer/microSD/CFFA1/GEN2) load AFTER
-    //    the reset (which zero-fills RAM); the TMS9918 interpreter is a CodeTank ROM
-    //    cartridge — flash it, jumper + enable, THEN reset so 4000R sees it.
+    // 3) Place the interpreter, then hard-reset so a clean WOZ Monitor processes the
+    //    cold-start. RAM-resident ROMs (Integer/microSD/CFFA1/GEN2) load AFTER the
+    //    reset (which zero-fills RAM); the TMS9918 cartridge is already flashed (step
+    //    1/2) — just jumper + enable, THEN reset so 4000R sees it.
     std::string romErr;
     bool romOk = true;
     if (tms) {
-        const std::string rom = findRom({"software/Apple-1_TMS_CC65/applesoft-tms9918.bin",
-                                         "../software/Apple-1_TMS_CC65/applesoft-tms9918.bin",
-                                         "../../software/Apple-1_TMS_CC65/applesoft-tms9918.bin"});
-        if (rom.empty()) { romErr = "software/Apple-1_TMS_CC65/applesoft-tms9918.bin not found"; romOk = false; }
-        else {
-            std::ifstream in(rom, std::ios::binary);
-            std::vector<unsigned char> buf(0x8000, 0xFF);
-            in.read(reinterpret_cast<char*>(buf.data()), 0x4000);   // lower 16 KB of the 28C256
-            fs::path romPath = findRom({"roms/codetank", "../roms/codetank", "../../roms/codetank"});
-            romPath = romPath.empty() ? fs::path("CODETANKDEV.rom") : romPath / "CODETANKDEV.rom";
-            std::ofstream(romPath, std::ios::binary)
-                .write(reinterpret_cast<const char*>(buf.data()), static_cast<std::streamsize>(buf.size()));
-            romOk = emu->loadCodeTankRom(romPath.string(), romErr);
-            if (romOk) {
-                mw_->codeTankJumper = CodeTank::Jumper::Lower16;
-                emu->setCodeTankJumper(mw_->codeTankJumper);
-                if (!mw_->tms9918Enabled)  { mw_->tms9918Enabled = true; mw_->showTMS9918 = true; emu->setTMS9918Enabled(true); }
-                if (!mw_->codeTankEnabled) { mw_->codeTankEnabled = true; emu->setCodeTankEnabled(true); }
-                emu->hardReset(/*animateBoot=*/false);
-            }
-        }
+        mw_->codeTankJumper = CodeTank::Jumper::Lower16;
+        emu->setCodeTankJumper(mw_->codeTankJumper);
+        if (!mw_->tms9918Enabled)  { mw_->tms9918Enabled = true; mw_->showTMS9918 = true; emu->setTMS9918Enabled(true); }
+        if (!mw_->codeTankEnabled) { mw_->codeTankEnabled = true; emu->setCodeTankEnabled(true); }
+        emu->hardReset(/*animateBoot=*/false);
     } else {
         emu->hardReset(/*animateBoot=*/false);
         if (idx == 9) {
@@ -1574,6 +1725,7 @@ bench::BuildResult Pom1BenchHost::injectBasic(int target, const std::string& src
         }
     }
     if (!romOk) {
+        restoreRelaxedMachine();              // undo the OOR/RAM relax on abort
         emu->copySnapshot(mw_->uiSnapshot);
         r.console = std::string("[bench] ") + interp + ": ROM (re)load FAILED — "
                     + (romErr.empty() ? "unknown error" : romErr) + "\n"
@@ -1584,33 +1736,79 @@ bench::BuildResult Pom1BenchHost::injectBasic(int target, const std::string& src
         return r;
     }
 
-    // 3) Compose the keystroke script: a leading CR for a fresh monitor line, the
-    //    cold-start command, the listing (LF/CR -> CR, tabs -> space, printable
-    //    only), then RUN. queueKey() pushes into the same pipeline as Ctrl-V paste.
+    // 3) Compose the listing keystrokes: newlines (LF, CR, and CRLF/LFCR pairs)
+    //    collapse to a single CR; tabs -> space; only printable ASCII is kept. The
+    //    4096-char cap matches Ctrl-V paste; the leading CR, the cold-start command
+    //    and the trailing RUN are framing and are NOT counted against it.
+    std::string listing;
+    int  programChars = 0;
+    bool dropped      = false;            // listing hit the 4096-char cap
+    const int kMaxProgramChars = 4096;
+    char prev = '\0';
+    for (char c : src) {
+        if (programChars >= kMaxProgramChars) { dropped = true; break; }
+        if (c == '\n' || c == '\r') {
+            // Collapse a CRLF / LFCR pair onto the single CR already emitted.
+            if ((c == '\n' && prev == '\r') || (c == '\r' && prev == '\n')) { prev = '\0'; continue; }
+            listing += '\r'; ++programChars;
+        } else if (c == '\t')          { listing += ' '; ++programChars; }
+        else if (c >= 32 && c <= 126)  { listing += c;   ++programChars; }
+        // other control chars dropped
+        prev = c;
+    }
+    // On truncation, trim back to the last COMPLETE line so we never enter (and
+    // certainly never RUN) a half-typed final line.
+    if (dropped) {
+        const size_t lastCR = listing.find_last_of('\r');
+        listing = (lastCR == std::string::npos) ? std::string() : listing.substr(0, lastCR + 1);
+    }
+
+    // Longest line: the Apple-1 input editor (WOZ GETLN buffer = 127 chars) silently
+    // truncates anything longer, so warn the user rather than entering a mangled line.
+    size_t longestLine = 0, lineLen = 0;
+    for (char c : listing) {
+        if (c == '\r') { if (lineLen > longestLine) longestLine = lineLen; lineLen = 0; }
+        else ++lineLen;
+    }
+    if (lineLen > longestLine) longestLine = lineLen;
+
     std::string script = "\r";
     script += coldStart; script += "\r";
-    int programChars = 0;
-    const int kMaxProgramChars = 4096;   // same budget as Ctrl-V paste
-    for (char c : src) {
-        if (programChars >= kMaxProgramChars) break;
-        if (c == '\n' || c == '\r') { script += '\r'; ++programChars; }
-        else if (c == '\t')         { script += ' '; ++programChars; }
-        else if (c >= 32 && c <= 126){ script += c;  ++programChars; }
-        // other control chars dropped
-    }
-    if (script.empty() || script.back() != '\r') script += '\r';
-    if (run) script += "RUN\r";
-    for (char c : script) emu->queueKey(c);
+    script += listing;
+    if (script.back() != '\r') script += '\r';   // submit a final line with no trailing newline
+    for (char c : script) emu->queueKey(c);       // cold-start + listing; RUN deferred below
     emu->copySnapshot(mw_->uiSnapshot);
 
-    const bool truncated = (programChars >= kMaxProgramChars);
+    // RUN only when asked AND the listing wasn't truncated — a partial program would
+    // syntax-error or run garbage. Truncated => leave it entered for the user to fix.
+    const bool willRun = run && !dropped;
     r.console = std::string("[bench] ") + interp + ": cold-start " + coldStart +
                 ", typed " + std::to_string(programChars) + " program chars" +
-                (truncated ? " (truncated at 4096)" : "") +
-                (run ? " + RUN\n" : " (program entered; type RUN to start)\n") +
+                (dropped ? " (truncated at 4096 — trimmed to the last full line, RUN skipped)" : "") +
+                (willRun ? " + RUN\n" : " (program entered; type RUN to start)\n") +
+                (longestLine > 127
+                     ? "[bench] WARNING: longest line is " + std::to_string(longestLine) +
+                       " chars — the Apple-1 input buffer truncates past 127.\n"
+                     : "") +
                 "[bench] no compiler — keyboard injection (desktop + WASM identical)\n";
-    r.status = run ? (std::string(interp) + " running")
-                   : (std::string(interp) + " program entered");
+
+    if (willRun) {
+        // Type the listing at MAX CPU speed so it lands instantly, then restore the
+        // user's speed and fire RUN once the keystrokes drain (see pollBuild). Keep
+        // the saved speed across a re-trigger so a double-Run can't lose the original.
+        if (!injectAwaitingRun_) injectSavedSpeed_ = mw_->executionSpeed;
+        injectAwaitingRun_   = true;
+        injectDrainedFrames_ = 0;
+        injectPollFrames_    = 0;
+        mw_->executionSpeed  = kInjectMaxCyclesPerFrame;
+        emu->setExecutionSpeedCyclesPerFrame(kInjectMaxCyclesPerFrame);
+        r.console += "[bench] injecting at max speed; CPU speed restored before RUN\n";
+        r.pending  = true;
+        r.status   = std::string(interp) + ": injecting…";
+    } else {
+        r.status = std::string(interp) +
+                   (dropped ? ": truncated — program entered, RUN skipped" : " program entered");
+    }
     r.ok = true;
     return r;
 }
@@ -1620,6 +1818,11 @@ bench::BuildResult Pom1BenchHost::build(int target, const std::string& src, cons
     bench::BuildResult r;
     if (target < 0 || target >= kP1TargetCount) { r.status = "bad target"; return r; }
     const P1T& t = kP1Targets[p1(target)];
+
+    // Undo any OOR/RAM relax a previous BASIC run left on this preset before doing
+    // anything else, so an asm/hex/C build never inherits the loosened 64 KB view.
+    // (A BASIC target re-applies the relax inside injectBasic.)
+    restoreRelaxedMachine();
 
     BuildLogMeta logMeta;
     logMeta.action = run ? "run" : "verify";
@@ -2151,6 +2354,35 @@ bench::BuildResult Pom1BenchHost::build(int target, const std::string& src, cons
 // Promise resolves, then reads the .bin/.log out of MEMFS and loads+runs it.
 bench::BuildResult Pom1BenchHost::pollBuild()
 {
+    // BASIC injection: the listing was typed at max speed; wait for the keystrokes
+    // to drain, then restore the user's CPU speed and fire RUN (desktop + WASM).
+    if (injectAwaitingRun_) {
+        bench::BuildResult ir; ir.showConsole = true;
+        auto* emu = mw_ ? mw_->emulation.get() : nullptr;
+        if (!emu) { injectAwaitingRun_ = false; ir.ok = false; ir.status = "no emulator"; return ir; }
+
+        ++injectPollFrames_;
+        const bool drained = !emu->hasPendingInjectedInput();
+        injectDrainedFrames_ = drained ? (injectDrainedFrames_ + 1) : 0;
+        const bool timedOut  = injectPollFrames_ >= kInjectMaxPollFrames;
+
+        if (injectDrainedFrames_ < kInjectDrainGraceFrames && !timedOut) {
+            ir.pending = true; ir.status = "BASIC injecting…"; return ir;
+        }
+        // Drained (or timed out): restore the user's speed, then send RUN.
+        injectAwaitingRun_ = false;
+        mw_->executionSpeed = injectSavedSpeed_;
+        emu->setExecutionSpeedCyclesPerFrame(injectSavedSpeed_);
+        for (char c : std::string("RUN\r")) emu->queueKey(c);
+        emu->copySnapshot(mw_->uiSnapshot);
+        ir.pending = false; ir.ok = true;
+        ir.status  = timedOut ? "BASIC: RUN sent (injection timed out)" : "BASIC running";
+        ir.console = timedOut
+            ? "[bench] injection timed out; CPU speed restored, RUN sent anyway\n"
+            : "[bench] injection drained; CPU speed restored, RUN sent\n";
+        return ir;
+    }
+
     bench::BuildResult r;
 #if POM1_IS_WASM
     if (!wasmJobActive_) return r;                 // nothing in flight (pending stays false)

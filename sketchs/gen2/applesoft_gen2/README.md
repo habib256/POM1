@@ -41,7 +41,23 @@ back. To see `PRINT` output you must be in `TEXT` (or `MIX`) mode.
 | `HPLOT x,y [TO x2,y2 …]` | hi-res | point / Bresenham line(s) |
 | `HOME` | text | clear GEN2 text page + cursor home |
 | `HTAB c` / `VTAB r` | text | cursor column (1–40) / row (1–24) |
+| `NORMAL` / `INVERSE` / `FLASH` | text | video attribute for subsequent `PRINT` (FLASH blinks ~2 Hz) |
 | `SCRN(x,y)` | lo-res | **function** — read the colour at (x,y), 0–15 |
+
+### math2026 additions (also on the TMS9918 sibling)
+
+Restored from full Applesoft, so ported BASIC programs (jsbasic etc.) run without
+hitting `?SYNTAX ERROR` on these:
+
+| Feature | Notes |
+|---|---|
+| `SIN COS TAN ATN` | floating-point trig (radians), byte-exact Microsoft polynomials |
+| `DEF FN name(v)=expr` / `FN name(x)` | user-defined numeric functions |
+| `PRINT TAB(n)` | tab to absolute column n (1-based); `SPC(n)` is relative, as before |
+| `NORMAL` / `INVERSE` / `FLASH` | GEN2: full inverse + flash blink (Apple II screen-code ranges). TMS9918: INVERSE renders white-on-black; FLASH falls back to inverse (no per-cell blink attribute on that card) |
+
+Still **not** present (no hardware on either card): `PR#`/`IN#` slot I/O, `PDL`
+paddles, DOS 3.3 `CHR$(4)` file commands.
 
 ```basic
 10 HGR : HCOLOR=3
@@ -86,3 +102,15 @@ PRINT→GEN2, HGR/HGR2/lo-res draw, HOME/HTAB/VTAB, SCRN).
 > in one renumber pass (operators index off `TOKEN_PLUS`, functions off
 > `TOKEN_SGN`). Keywords that are prefixes of others must come first in the name
 > table (e.g. `HGR2` before `HGR`).
+
+## Example programs
+
+- `Tortue.apf` — lo-res sprite drawing (pinned by `applesoft_gen2_smoke`).
+- `FeatureDemo.apf` — 12-option demo menu adapted from jsbasic's FeatureDemo:
+  GOSUB/POP, I/O, Fibonacci, guessing game, Pi, **Function tests** (trig + every
+  function), Madlibs, Lissajous, Screen Test, Mandelbrot, Hires, and a
+  **Video/TAB** page (NORMAL/INVERSE/FLASH + `TAB(`). The original 21-option demo
+  is trimmed to 12 because the full program overflows the 6 KB program/variable
+  RAM (`$0800-$1FFF`); `PR#`/`TRACE`/DOS/paddle options are dropped or adapted and
+  keyboard polls are repointed to the Apple-1 PIA (`$D010/$D011`). Load it, then
+  `RUN`; type the option number on the Apple-1 keyboard.

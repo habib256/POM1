@@ -51,24 +51,31 @@ TOKEN_GOTO	= $8E
 TOKEN_GOSUB	= $92
 TOKEN_REM	= $94
 TOKEN_PRINT	= $98
-; GEN2: graphics statement tokens inserted at $A2-$B1 (16 of them), so every
-; operator and function token below is +16 vs stock Applesoft Lite. Dispatch is
-; unaffected: MATHTBL is indexed off TOKEN_PLUS, UNFNC off TOKEN_SGN, and the
+; GEN2: graphics statement tokens at $9E-$B1, then the math2026 statement tokens
+; NORMAL/INVERSE/FLASH/DEF at $B2-$B5. Every operator and function token below is
+; shifted up accordingly; TAB( sits beside SPC(, FN just below SGN, and the trig
+; functions SIN/COS/TAN/ATN are inserted among the functions (before LEFT$, so
+; UNARY still classifies them as single-arg numeric). Dispatch is unaffected:
+; MATHTBL is indexed off TOKEN_PLUS, UNFNC off TOKEN_SGN, and the
 ; tokenizer/detokenizer walk the name table positionally.
-;   $A2-$A7  COLOR= HCOLOR= PLOT HLIN VLIN HPLOT   (Phase 0)
-;   $A8-$B1  HGR2 GR2 SHOW VBL HOME HTAB VTAB APRINT MIX NOMIX  (Phases 1-2)
-TOKEN_TO	= $B2
-TOKEN_SPC	= $B3
-TOKEN_THEN	= $B4
-TOKEN_NOT	= $B5
-TOKEN_STEP	= $B6
-TOKEN_PLUS	= $B7
-TOKEN_MINUS	= $B8
-TOKEN_GREATER	= $BE
-TOKEN_EQUAL	= $BF
-TOKEN_SGN	= $C1
-TOKEN_LEFTSTR	= $CF
-TOKEN_SCRN	= $D2		; SCRN(x,y) function (last function token)
+;   $9E-$A1  HGR2 HGR GR2 GR        $A2-$A3  TEXT CLS
+;   $A4-$A9  COLOR= HCOLOR= PLOT HLIN VLIN HPLOT
+;   $AA-$B1  SHOW VBL HOME HTAB VTAB APRINT MIX NOMIX
+;   $B2-$B5  NORMAL INVERSE FLASH DEF     (math2026)
+TOKEN_TO	= $B6
+TOKEN_SPC	= $B7
+TOKEN_TAB	= $B8		; TAB( in PRINT lists (math2026)
+TOKEN_THEN	= $B9
+TOKEN_NOT	= $BA
+TOKEN_STEP	= $BB
+TOKEN_PLUS	= $BC
+TOKEN_MINUS	= $BD
+TOKEN_GREATER	= $C3
+TOKEN_EQUAL	= $C4
+TOKEN_FN	= $C6		; FN user-function call (math2026)
+TOKEN_SGN	= $C7
+TOKEN_LEFTSTR	= $D9
+TOKEN_SCRN	= $DC		; SCRN(x,y) function (last function token)
 
 
 ; ----------------------------------------------------------------------------
@@ -134,16 +141,24 @@ TOKEN_ADDRESS_TABLE:
 	.addr	GFX_APRINT - 1	; $AF... APRINT (print to Apple-1 terminal)
 	.addr	GFX_MIX - 1	; $B0... MIX   (mixed graphics+text)
 	.addr	GFX_NOMIX - 1	; $B1... NOMIX (full screen)
+	.addr	GFX_NORMAL - 1	; $B2... NORMAL  (math2026 video attribute)
+	.addr	GFX_INVERSE - 1	; $B3... INVERSE
+	.addr	GFX_FLASH - 1	; $B4... FLASH
+	.addr	DEF - 1		; $B5... DEF FN  (math2026 user function)
 ; ----------------------------------------------------------------------------
-UNFNC:  .addr	SGN		; $C1... SGN
+UNFNC:  .addr	SGN		; $C7... SGN
 	.addr	INT		; $B2... 178... INT
 	.addr	ABS		; $B3... 179... ABS
 	.addr	FRE		; $B4... 180... FRE
 	.addr	SQR		; $B5... 181... SQR
 	.addr	RND		; $B6... 182... RND
-	.addr	LOG		; $B7... 183... LOG
-	.addr	EXP		; $B8... 184... EXP
-	.addr	PEEK		; $B9... 185... PEEK
+	.addr	LOG		; $CD... LOG
+	.addr	EXP		; $CE... EXP
+	.addr	SIN		; $CF... SIN  (math2026)
+	.addr	COS		; $D0... COS  (math2026)
+	.addr	TAN		; $D1... TAN  (math2026)
+	.addr	ATN		; $D2... ATN  (math2026)
+	.addr	PEEK		; $D3... PEEK
 	.addr	LEN		; $BA... 186... LEN
 	.addr	STR		; $BB... 187... STR$
 	.addr	VAL		; $BC... 188... VAL
@@ -246,39 +261,49 @@ TOKEN_NAME_TABLE:
 	htasc	"APRINT"	; $AF... print to the Apple-1 terminal
 	htasc	"MIX"		; $B0... GEN2: mixed graphics + text
 	htasc	"NOMIX"		; $B1... GEN2: full-screen graphics
-	htasc	"TO"		; $A2... 162
-	htasc	"SPC("		; $A3... 163
-	htasc	"THEN"		; $A4... 164
-	htasc	"NOT"		; $A5... 165
-	htasc	"STEP"		; $A6... 166
-	htasc	"+"		; $A7... 167
-	htasc	"-"		; $A8... 168
-	htasc	"*"		; $A9... 169
-	htasc	"/"		; $AA... 170
-	htasc	"^"		; $AB... 171
-	htasc	"AND"		; $AC... 172
-	htasc	"OR"		; $AD... 173
-	htasc	">"		; $AE... 174
-	htasc	"="		; $AF... 175
-	htasc	"<"		; $B0... 176
-	htasc	"SGN"		; $B1... 177
-	htasc	"INT"		; $B2... 178
-	htasc	"ABS"		; $B3... 179
-	htasc	"FRE"		; $B4... 180
-	htasc	"SQR"		; $B5... 181
-	htasc	"RND"		; $B6... 182
-	htasc	"LOG"		; $B7... 183
-	htasc	"EXP"		; $B8... 184
-	htasc	"PEEK"		; $B9... 185
-	htasc	"LEN"		; $BA... 186
-	htasc	"STR$"		; $BB... 187
-	htasc	"VAL"		; $BC... 188
-	htasc	"ASC"		; $BD... 189
-	htasc	"CHR$"		; $BE... 190
-	htasc	"LEFT$"		; $BF... 191
-	htasc	"RIGHT$"	; $D0... RIGHT$
-	htasc	"MID$"		; $D1... MID$
-	htasc	"SCRN"		; $D2... SCRN(x,y)  GEN2 lo-res read
+	htasc	"NORMAL"	; $B2... math2026: normal video
+	htasc	"INVERSE"	; $B3... math2026: inverse video
+	htasc	"FLASH"		; $B4... math2026: flashing video
+	htasc	"DEF"		; $B5... math2026: DEF FN
+	htasc	"TO"		; $B6... 162
+	htasc	"SPC("		; $B7... 163
+	htasc	"TAB("		; $B8... math2026: TAB( in PRINT
+	htasc	"THEN"		; $B9... 164
+	htasc	"NOT"		; $BA... 165
+	htasc	"STEP"		; $BB... 166
+	htasc	"+"		; $BC... 167
+	htasc	"-"		; $BD... 168
+	htasc	"*"		; $BE... 169
+	htasc	"/"		; $BF... 170
+	htasc	"^"		; $C0... 171
+	htasc	"AND"		; $C1... 172
+	htasc	"OR"		; $C2... 173
+	htasc	">"		; $C3... 174
+	htasc	"="		; $C4... 175
+	htasc	"<"		; $C5... 176
+	htasc	"FN"		; $C6... math2026: FN call
+	htasc	"SGN"		; $C7... 177
+	htasc	"INT"		; $C8... 178
+	htasc	"ABS"		; $C9... 179
+	htasc	"FRE"		; $CA... 180
+	htasc	"SQR"		; $CB... 181
+	htasc	"RND"		; $CC... 182
+	htasc	"LOG"		; $CD... 183
+	htasc	"EXP"		; $CE... 184
+	htasc	"SIN"		; $CF... math2026
+	htasc	"COS"		; $D0... math2026
+	htasc	"TAN"		; $D1... math2026
+	htasc	"ATN"		; $D2... math2026
+	htasc	"PEEK"		; $D3... 185
+	htasc	"LEN"		; $D4... 186
+	htasc	"STR$"		; $D5... 187
+	htasc	"VAL"		; $D6... 188
+	htasc	"ASC"		; $D7... 189
+	htasc	"CHR$"		; $D8... 190
+	htasc	"LEFT$"		; $D9... 191  (TOKEN_LEFTSTR)
+	htasc	"RIGHT$"	; $DA... RIGHT$
+	htasc	"MID$"		; $DB... MID$
+	htasc	"SCRN"		; $DC... SCRN(x,y)  GEN2 lo-res read
 	.byte   $00		; END OF TOKEN NAME TABLE
 
 
@@ -337,6 +362,9 @@ ERR_CANTCONT	:= <(*-ERROR_MESSAGES)
 
 ERR_NOCFFA	:= <(*-ERROR_MESSAGES)	; New error message for CFFA1 I/O
 	htasc	"NO CFFA"
+
+ERR_UNDEFFUNC	:= <(*-ERROR_MESSAGES)	; math2026: FN used before DEF FN
+	htasc	"UNDEF FUNC"
 ; ----------------------------------------------------------------------------
 QT_ERROR:
 	.byte	" ERR"
@@ -1576,9 +1604,10 @@ PRINTCORE:
 	beq	GOCR		; NO MORE LIST, PRINT <RETURN>
 ; ----------------------------------------------------------------------------
 PRINT2: beq	RTS8		; NO MORE LIST, DON'T PRINT <RETURN>
+	cmp	#TOKEN_TAB	; math2026: TAB( absolute column?
+	beq	PR_DO_TAB
 	cmp	#TOKEN_SPC
-	clc
-	beq	PR_TAB_OR_SPC	; C=0 FOR SPC(
+	beq	PR_DO_SPC	; SPC( relative spaces
 	cmp	#','
 	beq	PR_NEXT_CHAR
 	cmp	#';'
@@ -1593,12 +1622,28 @@ PRINT2: beq	RTS8		; NO MORE LIST, DON'T PRINT <RETURN>
 GOCR:	jmp	CRDO
 
 ; ----------------------------------------------------------------------------
+PR_DO_SPC:
+	clc			; C=0 FOR SPC(  (relative spaces)
+	bcc	PR_TAB_OR_SPC	; ...ALWAYS
+PR_DO_TAB:
+	sec			; C=1 FOR TAB(  (absolute column)
 PR_TAB_OR_SPC:
-	jsr	GTBYTC		; GET VALUE
+	php			; REMEMBER SPC vs TAB
+	jsr	GTBYTC		; GET VALUE INTO X (skips token, evals "(expr")
 	cmp	#')'		; TRAILING PARENTHESIS
 	beq	@2		; GOOD
+	plp
 	jmp	SYNERR		; NO, SYNTAX ERROR
-@2:	inx
+@2:	plp
+	bcc	@spc		; C=0: SPC( -> print X spaces
+	dex			; TAB( n : convert 1-based column to 0-based target
+	txa
+	sec
+	sbc	CH		; spaces = (n-1) - current column
+	bcc	PR_NEXT_CHAR	; cursor already at/past column -> none
+	beq	PR_NEXT_CHAR
+	tax
+@spc:	inx
 NXSPC:  dex
 	bne	DOSPC		; MORE SPACES TO PRINT
 ; ----------------------------------------------------------------------------
@@ -2203,9 +2248,13 @@ STRTXT:	lda	TXTPTR		; ADD (CARRY) TO GET ADDRESS OF 1ST CHAR
 ; IF FAC<>0, RETURN FAC=0
 ; ----------------------------------------------------------------------------
 NOT_:	cmp	#TOKEN_NOT
-	bne	SGN_		; NOT "NOT", TRY "SGN"
+	bne	ISFN_		; NOT "NOT", TRY "FN" THEN "SGN"
 	ldy	#M_EQU-MATHTBL	; POINT AT = COMPARISON
 	bne	EQUL		; ...ALWAYS
+; ----------------------------------------------------------------------------
+ISFN_:	cmp	#TOKEN_FN	; math2026: "FN name(expr)" user-function call?
+	bne	SGN_		; NO, TRY "SGN" (function dispatch)
+	jmp	FUNCT		; YES, EVALUATE THE USER FUNCTION
 
 
 ; ----------------------------------------------------------------------------
@@ -5311,6 +5360,246 @@ RND:	jsr	SIGN		; REDUCE ARGUMENT TO -1, 0, OR +1
 	ldx	#<RNDSEED	; MOVE FAC TO RND SEED
 	ldy	#>RNDSEED
 	jmp	STORE_FAC_AT_YX_ROUNDED
+
+
+; ----------------------------------------------------------------------------
+; math2026: TRIGONOMETRIC FUNCTIONS  (restored from Applesoft, S-C DocuMentor)
+; ----------------------------------------------------------------------------
+; "COS" FUNCTION:  COS(X) = SIN(X + PI/2)
+; ----------------------------------------------------------------------------
+COS:	lda	#<CON_PI_HALF
+	ldy	#>CON_PI_HALF
+	jsr	FADD
+; ----------------------------------------------------------------------------
+; "SIN" FUNCTION
+; ----------------------------------------------------------------------------
+SIN:	jsr	COPY_FAC_TO_ARG_ROUNDED
+	lda	#<CON_PI_DOUB	; REMOVE MULTIPLES OF 2*PI BY DIVIDING
+	ldy	#>CON_PI_DOUB	; AND KEEPING THE FRACTIONAL PART
+	ldx	ARGSIGN		; USE SIGN OF ARGUMENT
+	jsr	DIV		; FAC = ANGLE / 2PI
+	jsr	COPY_FAC_TO_ARG_ROUNDED
+	jsr	INT		; TAKE INTEGER PART
+	lda	#0
+	sta	SGNCPR
+	jsr	FSUBT		; SUBTRACT TO GET FRACTIONAL PART
+	lda	#<QUARTER	; 1/4 - FRACTION GIVES -3/4 <= FRAC < 1/4
+	ldy	#>QUARTER
+	jsr	FSUB
+	lda	FACSIGN		; TEST SIGN OF RESULT
+	pha			; SAVE SIGN FOR LATER UNFOLDING
+	bpl	SIN_1		; ALREADY 0...1/4
+	jsr	FADDH		; ADD 1/2 -> SHIFT TO -1/4...1/2
+	lda	FACSIGN
+	bmi	SIN_2		; -1/4...0
+	lda	SIGNFLG		; 0...1/2 : TOGGLE TAN SIGN FLAG
+	eor	#$FF
+	sta	SIGNFLG
+SIN_1:	jsr	NEGOP
+SIN_2:	lda	#<QUARTER	; ADD 1/4 -> SHIFT TO -1/4...1/4
+	ldy	#>QUARTER
+	jsr	FADD
+	pla			; GET SAVED SIGN
+	bpl	L_SIN_2_1
+	jsr	NEGOP		; MAKE RANGE 0...1/4
+L_SIN_2_1:
+	lda	#<POLY_SIN	; STANDARD SIN SERIES
+	ldy	#>POLY_SIN
+	jmp	POLYNOMIAL_ODD
+; ----------------------------------------------------------------------------
+; "TAN" FUNCTION:  TAN(X) = SIN(X) / COS(X)
+; ----------------------------------------------------------------------------
+TAN:	jsr	STORE_FAC_IN_TEMP1_ROUNDED
+	lda	#0		; SIGNFLG TOGGLED IF 2ND OR 3RD QUADRANT
+	sta	SIGNFLG
+	jsr	SIN		; GET SIN(X)
+	ldx	#<TEMP3		; SAVE SIN(X) IN TEMP3
+	ldy	#>TEMP3
+	jsr	STORE_FAC_AT_YX_ROUNDED
+	lda	#<TEMP1		; RETRIEVE X
+	ldy	#>TEMP1
+	jsr	LOAD_FAC_FROM_YA
+	lda	#0		; AND COMPUTE COS(X)
+	sta	FACSIGN
+	lda	SIGNFLG
+	jsr	TAN_1		; WEIRD WAY TO RE-ENTER SIN FOR COS
+	lda	#<TEMP3		; NOW FORM SIN / COS
+	ldy	#>TEMP3
+	jmp	FDIV
+; ----------------------------------------------------------------------------
+TAN_1:	pha
+	jmp	SIN_1
+; ----------------------------------------------------------------------------
+CON_PI_HALF:	.byte	$81,$49,$0F,$DA,$A2	; PI/2
+CON_PI_DOUB:	.byte	$83,$49,$0F,$DA,$A2	; 2*PI
+QUARTER:	.byte	$7F,$00,$00,$00,$00	; 0.25
+POLY_SIN:	.byte	5			; POWER OF POLYNOMIAL
+	.byte	$84,$E6,$1A,$2D,$1B		; (2PI)^11/11!
+	.byte	$86,$28,$07,$FB,$F8		; (2PI)^9/9!
+	.byte	$87,$99,$68,$89,$01		; (2PI)^7/7!
+	.byte	$87,$23,$35,$DF,$E1		; (2PI)^5/5!
+	.byte	$86,$A5,$5D,$E7,$28		; (2PI)^3/3!
+	.byte	$83,$49,$0F,$DA,$A2		; 2PI
+; ----------------------------------------------------------------------------
+; "ATN" FUNCTION
+; ----------------------------------------------------------------------------
+ATN:	lda	FACSIGN		; FOLD THE ARGUMENT RANGE
+	pha			; SAVE SIGN FOR UNFOLDING
+	bpl	ATN_1
+	jsr	NEGOP		; X < 0 -> COMPLEMENT
+ATN_1:	lda	FAC		; IF X >= 1, FORM RECIPROCAL
+	pha			; SAVE FOR UNFOLDING
+	cmp	#$81		; EXPONENT FOR >= 1
+	bcc	ATN_2
+	lda	#<CON_ONE	; FORM 1/X
+	ldy	#>CON_ONE
+	jsr	FDIV
+ATN_2:	lda	#<POLY_ATN	; POLYNOMIAL APPROXIMATION
+	ldy	#>POLY_ATN
+	jsr	POLYNOMIAL_ODD
+	pla			; START TO UNFOLD
+	cmp	#$81		; WAS IT >= 1?
+	bcc	ATN_3
+	lda	#<CON_PI_HALF	; YES, SUBTRACT FROM PI/2
+	ldy	#>CON_PI_HALF
+	jsr	FSUB
+ATN_3:	pla			; WAS IT NEGATIVE?
+	bpl	ATN_RTS
+	jmp	NEGOP		; YES, COMPLEMENT
+ATN_RTS:
+	rts
+; ----------------------------------------------------------------------------
+POLY_ATN:	.byte	11		; POWER OF POLYNOMIAL
+	.byte	$76,$B3,$83,$BD,$D3
+	.byte	$79,$1E,$F4,$A6,$F5
+	.byte	$7B,$83,$FC,$B0,$10
+	.byte	$7C,$0C,$1F,$67,$CA
+	.byte	$7C,$DE,$53,$CB,$C1
+	.byte	$7D,$14,$64,$70,$4C
+	.byte	$7D,$B7,$EA,$51,$7A
+	.byte	$7D,$63,$30,$88,$7E
+	.byte	$7E,$92,$44,$99,$3A
+	.byte	$7E,$4C,$CC,$91,$C7
+	.byte	$7F,$AA,$AA,$AA,$13
+	.byte	$81,$00,$00,$00,$00
+
+
+; ----------------------------------------------------------------------------
+; math2026: USER-DEFINED FUNCTIONS  (DEF FN / FN, restored from Applesoft)
+; ----------------------------------------------------------------------------
+; "DEF" STATEMENT:  DEF FN name(var) = expression
+; ----------------------------------------------------------------------------
+DEF:	jsr	FNC_		; PARSE "FN", FUNCTION NAME
+	jsr	ERRDIR		; ERROR IF IN DIRECT MODE
+	jsr	CHKOPN		; NEED "("
+	lda	#$80		; FLAG PTRGET: CALLED FROM DEF FN
+	sta	SUBFLG		; (ALLOW ONLY SIMPLE FP VAR FOR ARG)
+	jsr	PTRGET		; GET PNTR TO ARGUMENT VARIABLE
+	jsr	CHKNUM		; MUST BE NUMERIC
+	jsr	CHKCLS		; NEED ")"
+	lda	#TOKEN_EQUAL	; NEED "="
+	jsr	SYNCHR
+	pha			; SAVE CHAR AFTER "="
+	lda	VARPNT+1	; SAVE PNTR TO ARGUMENT
+	pha
+	lda	VARPNT
+	pha
+	lda	TXTPTR+1	; SAVE TXTPTR (POINTS AT FN BODY)
+	pha
+	lda	TXTPTR
+	pha
+	jsr	DATA		; SCAN TO END OF STATEMENT
+	jmp	FNCDATA		; STORE THOSE 5 BYTES IN THE FN VARIABLE
+; ----------------------------------------------------------------------------
+; COMMON TO "DEF" AND "FN": PARSE "FN" AND THE FUNCTION NAME
+; ----------------------------------------------------------------------------
+FNC_:	lda	#TOKEN_FN	; MUST NOW SEE "FN" TOKEN
+	jsr	SYNCHR
+	ora	#$80		; SET SIGN BIT ON 1ST CHAR OF NAME
+	sta	SUBFLG		; TELLS PTRGET WHO CALLED
+	jsr	PTRGET3
+	sta	FNCNAM		; SAVE FUNCTION VARIABLE ADDRESS
+	sty	FNCNAM+1
+	jmp	CHKNUM		; MUST BE NUMERIC
+; ----------------------------------------------------------------------------
+; "FN" FUNCTION CALL
+; ----------------------------------------------------------------------------
+FUNCT:	jsr	FNC_		; PARSE "FN", FUNCTION NAME
+	lda	FNCNAM+1	; STACK FUNCTION ADDRESS
+	pha			; (IN CASE OF NESTED FN CALL)
+	lda	FNCNAM
+	pha
+	jsr	PARCHK		; MUST NOW HAVE "(EXPRESSION)"
+	jsr	CHKNUM		; MUST BE NUMERIC
+	pla
+	sta	FNCNAM
+	pla
+	sta	FNCNAM+1
+	ldy	#2		; POINT AT ADDR OF ARGUMENT VARIABLE
+	lda	(FNCNAM),y
+	sta	VARPNT
+	tax
+	iny
+	lda	(FNCNAM),y
+	beq	UNDFNC		; UNDEFINED FUNCTION
+	sta	VARPNT+1
+	iny			; Y = 4 NOW
+L_FUNCT_1:
+	lda	(VARPNT),y	; SAVE OLD VALUE OF ARG VARIABLE
+	pha			; ON STACK (IT MAY ALSO BE A NORMAL VAR)
+	dey
+	bpl	L_FUNCT_1
+	ldy	VARPNT+1	; (Y,X) = ADDRESS, STORE FAC IN VARIABLE
+	jsr	STORE_FAC_AT_YX_ROUNDED
+	lda	TXTPTR+1	; REMEMBER TXTPTR AFTER THE FN CALL
+	pha
+	lda	TXTPTR
+	pha
+	lda	(FNCNAM),y	; Y = 0 NOW
+	sta	TXTPTR		; POINT TO FUNCTION DEFINITION
+	iny
+	lda	(FNCNAM),y
+	sta	TXTPTR+1
+	lda	VARPNT+1	; SAVE ADDR OF ARGUMENT VARIABLE
+	pha
+	lda	VARPNT
+	pha
+	jsr	FRMNUM		; EVALUATE THE FUNCTION EXPRESSION
+	pla			; GET ADDR OF ARGUMENT VARIABLE
+	sta	FNCNAM
+	pla
+	sta	FNCNAM+1
+	jsr	CHRGOT		; MUST BE AT ":" OR EOL
+	beq	L_FUNCT_2
+	jmp	SYNERR
+L_FUNCT_2:
+	pla			; RETRIEVE TXTPTR AFTER THE FN CALL
+	sta	TXTPTR
+	pla
+	sta	TXTPTR+1
+; ----------------------------------------------------------------------------
+; STORE FIVE BYTES FROM STACK AT (FNCNAM)
+; ----------------------------------------------------------------------------
+FNCDATA:
+	ldy	#0
+	pla
+	sta	(FNCNAM),y
+	pla
+	iny
+	sta	(FNCNAM),y
+	pla
+	iny
+	sta	(FNCNAM),y
+	pla
+	iny
+	sta	(FNCNAM),y
+	pla
+	iny
+	sta	(FNCNAM),y
+	rts
+; ----------------------------------------------------------------------------
+UNDFNC:	ldx	#ERR_UNDEFFUNC	; UNDEFINED FUNCTION ERROR
+	jmp	ERROR
 
 
 ; ----------------------------------------------------------------------------

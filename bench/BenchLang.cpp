@@ -103,6 +103,9 @@ static const TextEditor::LanguageDefinition& langBasic()
         "INVERSE","NORMAL","FLASH","SPEED","POKE","CALL","WAIT","POP","CONT","RUN",
         "LIST","NEW","CLEAR","CLR","DEL","TRACE","NOTRACE","STORE","RECALL","HIMEM",
         "LOMEM","ONERR","RESUME","AUTO","MAN","DSP","NODSP","SPC","TAB",
+        // Applesoft GEN2 / TMS9918 graphics-dialect statements (Bench targets 9/11):
+        // APRINT prints to the Apple-1 terminal, GR2/MIX/NOMIX/SHOW/VBL drive the card.
+        "APRINT","GR2","MIX","NOMIX","SHOW","VBL",
         // operators (word form)
         "AND","OR","NOT",
         // numeric functions

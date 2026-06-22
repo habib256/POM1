@@ -1,8 +1,10 @@
 // Bench portable module — a lightweight Markdown preview renderer for the
 // DevBench editor (the "presentation" half of opening a .md file). NOT a full
 // CommonMark parser: it covers the constructs the project's docs actually use —
-// ATX headings (#..######), bold/italic, inline `code`, [links](url), fenced
-// code blocks (``` / ~~~), unordered (- * +) and ordered (1.) lists,
+// ATX (#..######) and setext (===/---) headings, bold/italic/***bold-italic***,
+// ~~strikethrough~~, inline `code`, [links](url), \-escapes, fenced code blocks
+// (``` / ~~~, with a language-tag header bar), unordered (- * +) / ordered (1.) /
+// GitHub task-list (- [ ] / - [x]) lists, pipe tables (with :--:/--: alignment),
 // blockquotes (>), and horizontal rules (--- *** ___). Depends only on ImGui.
 #ifndef BENCH_MARKDOWN_H
 #define BENCH_MARKDOWN_H

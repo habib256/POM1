@@ -14,6 +14,7 @@ GARFLG		:= $0013	; Used in GARBAG
 SUBFLG		:= $0014
 INPUTFLG	:= $0015	; = $40 for GET, $98 for READ
 CPRMASK		:= $0016	; Receives CPRTYP in FRMEVL
+SIGNFLG		:= $0016	; math2026: TAN sign flag (free during trig, = CPRMASK)
 PROMPT		:= $0033
 LINNUM		:= $0050	; Converted line #
 TEMPPT		:= $0052	; Last used temp string desc
