@@ -118,7 +118,7 @@ public:
     bool loadBinaryToRam(const std::string& path, uint16_t address, std::string& error);
     /// Load a binary into RAM at `address` WITHOUT resetting/stopping the CPU
     /// (write-protect briefly lifted, like the ROM reloaders). Used by the BASIC
-    /// injector to drop a sketch-built interpreter (e.g. applesoft-gen2.bin) in
+    /// injector to drop a sketch-built interpreter (e.g. roms/applesoft-gen2.rom) in
     /// place while the WOZ Monitor keeps running so a cold-start command can boot it.
     bool loadInterpreterRom(const std::string& path, uint16_t address, std::string& error);
     bool saveMemoryRange(const std::string& path, uint16_t startAddress, uint16_t endAddress, bool binaryFormat, std::string& error);

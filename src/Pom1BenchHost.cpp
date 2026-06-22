@@ -313,8 +313,8 @@ static const char* kSketchBasicApplesoft =   // Applesoft Lite ($6000, microSD)
     "40 NEXT I\n"
     "50 END\n";
 // Applesoft GEN2 ($9800 on the GEN2 card): the sketchs/gen2/applesoft_gen2
-// interpreter — Applesoft with the GEN2 graphics command set. Injected into the
-// built applesoft-gen2.bin. PRINT goes to the GEN2 screen, APRINT to the Apple-1.
+// interpreter — Applesoft with the GEN2 graphics command set, built into
+// roms/applesoft-gen2.rom. PRINT goes to the GEN2 screen, APRINT to the Apple-1.
 static const char* kSketchBasicApplesoftGen2 =
     "10 HGR : HCOLOR=3\n"
     "20 HPLOT 0,0 TO 279,191\n"
