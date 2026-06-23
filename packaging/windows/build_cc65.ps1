@@ -110,33 +110,45 @@ function Stage-Pom1Bundle([string]$cc65Root, [string]$bundleRoot) {
 }
 
 function Test-Pom1Bundle([string]$bundleRoot, [string]$cc65Root) {
-    $ca65 = Join-Path $bundleRoot "bin\ca65.exe"
-    cmd /c "`"$ca65`" --version >nul 2>&1"
-    if ($LASTEXITCODE -ne 0) { throw "ca65 --version failed" }
-
-    foreach ($need in @(
-        (Join-Path $bundleRoot "share\cc65\asminc\longbranch.mac"),
-        (Join-Path $bundleRoot "share\cc65\include\stddef.h"),
-        (Join-Path $bundleRoot "share\cc65\lib\none.lib")
-    )) {
-        if (-not (Test-Path $need)) { throw "bundle incomplete: $need" }
-    }
-
-    $testDir = Join-Path ([IO.Path]::GetTempPath()) ("pom1-cc65-test-" + [Guid]::NewGuid().ToString("N"))
-    New-Item -ItemType Directory -Force -Path $testDir | Out-Null
+    # Run the STAGED tools with a minimal PATH (System32 only — no MinGW, no cc65
+    # build dir) so a binary that is NOT self-contained (needs a MinGW runtime DLL
+    # absent from a base Windows install) fails the build HERE in CI instead of
+    # silently for the user. POM1 invokes cc65 by absolute path + CC65_HOME and
+    # never puts cc65\bin on PATH; cl65 finds its sibling ca65/ld65/cc65 by its own
+    # directory — so an empty PATH faithfully mirrors the end-user environment.
+    $savedPath = $env:Path
+    $env:Path = "$env:SystemRoot\System32;$env:SystemRoot"
     try {
-        $testC = Join-Path $testDir "t.c"
-        $testBin = Join-Path $testDir "t.bin"
-        $noneCfg = Join-Path $cc65Root "cfg\none.cfg"
-        if (-not (Test-Path $noneCfg)) { throw "self-test cfg missing: $noneCfg" }
-        Set-Content -Path $testC -Value "int main(void){ return 0; }" -Encoding ascii
-        $homeAbs = (Resolve-Path (Join-Path $bundleRoot "share\cc65")).Path
-        $cl65 = Join-Path $bundleRoot "bin\cl65.exe"
-        cmd /c "set CC65_HOME=$homeAbs&& `"$cl65`" -t none -C `"$noneCfg`" -o `"$testBin`" `"$testC`" >nul 2>&1"
-        if ($LASTEXITCODE -ne 0) { throw "cl65 self-test failed (exit $LASTEXITCODE)" }
-        if (-not (Test-Path $testBin)) { throw "cl65 self-test produced no output" }
+        $ca65 = Join-Path $bundleRoot "bin\ca65.exe"
+        cmd /c "`"$ca65`" --version >nul 2>&1"
+        if ($LASTEXITCODE -ne 0) { throw "ca65 --version failed (not self-contained? missing runtime DLL on a base Windows)" }
+
+        foreach ($need in @(
+            (Join-Path $bundleRoot "share\cc65\asminc\longbranch.mac"),
+            (Join-Path $bundleRoot "share\cc65\include\stddef.h"),
+            (Join-Path $bundleRoot "share\cc65\lib\none.lib")
+        )) {
+            if (-not (Test-Path $need)) { throw "bundle incomplete: $need" }
+        }
+
+        $testDir = Join-Path ([IO.Path]::GetTempPath()) ("pom1-cc65-test-" + [Guid]::NewGuid().ToString("N"))
+        New-Item -ItemType Directory -Force -Path $testDir | Out-Null
+        try {
+            $testC = Join-Path $testDir "t.c"
+            $testBin = Join-Path $testDir "t.bin"
+            $noneCfg = Join-Path $cc65Root "cfg\none.cfg"
+            if (-not (Test-Path $noneCfg)) { throw "self-test cfg missing: $noneCfg" }
+            Set-Content -Path $testC -Value "int main(void){ return 0; }" -Encoding ascii
+            $homeAbs = (Resolve-Path (Join-Path $bundleRoot "share\cc65")).Path
+            $cl65 = Join-Path $bundleRoot "bin\cl65.exe"
+            cmd /c "set CC65_HOME=$homeAbs&& `"$cl65`" -t none -C `"$noneCfg`" -o `"$testBin`" `"$testC`" >nul 2>&1"
+            if ($LASTEXITCODE -ne 0) { throw "cl65 self-test failed (exit $LASTEXITCODE) — missing runtime DLL on a base Windows?" }
+            if (-not (Test-Path $testBin)) { throw "cl65 self-test produced no output" }
+        } finally {
+            Remove-Item -Recurse -Force $testDir -ErrorAction SilentlyContinue
+        }
     } finally {
-        Remove-Item -Recurse -Force $testDir -ErrorAction SilentlyContinue
+        $env:Path = $savedPath
     }
 }
 
@@ -167,8 +179,12 @@ if (-not (Test-Path (Join-Path $Src ".git"))) {
 $env:Path = "$(Join-Path $Src bin);$mingw;$env:Path"
 $make = Join-Path $mingw "mingw32-make.exe"
 
-Write-Host "[build_cc65] building tools..."
-& $make -C (Join-Path $Src "src") @bins
+Write-Host "[build_cc65] building tools (static runtime)..."
+# LDFLAGS=-static so the staged tools link the MinGW runtime statically and end
+# up depending ONLY on in-box system DLLs (UCRT / kernel32 on Win10+), never on
+# libwinpthread-1.dll / libunwind etc. that a freshly-installed Windows lacks.
+# The in-app DevBench must compile asm AND C with nothing else installed.
+& $make -C (Join-Path $Src "src") 'LDFLAGS=-static' @bins
 if ($LASTEXITCODE -ne 0) { throw "cc65 tool build failed" }
 
 if (-not (Test-Path (Join-Path $Src "lib"))) {
