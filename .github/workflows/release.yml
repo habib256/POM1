@@ -1,0 +1,168 @@
+# Release packaging — build POM1 on each native OS and produce a distributable
+# that BUNDLES the cc65 toolchain so the in-app DevBench (Pom1BenchHost) compiles
+# both of its native languages out of the box, with no system cc65 on PATH:
+#
+#   asm  →  ca65 + ld65
+#   C    →  cl65 + cc65  (+ the share/cc65 runtime, resolved via CC65_HOME)
+#
+# cc65 binaries can't be cross-built, so there is one native job per OS. Each job
+# stages the toolchain, runs the matching packager in STRICT mode
+# (POM1_REQUIRE_CC65=1 → the packager fails if cc65 didn't make it in), verifies
+# the staged tree, and uploads the artifact. On a v* tag the three packages are
+# attached to the GitHub Release.
+#
+# Triggers: push a v* tag to cut a release; "Run workflow" for a dry run
+# (artifacts only, no Release).
+name: Release packages
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write          # publish job attaches packages to the Release
+
+env:
+  POM1_REQUIRE_CC65: "1"   # every packager must end with a verified asm+C cc65 bundle
+  IMGUI_TAG: v1.92.7       # pinned Dear ImGui release (matches ci.yml)
+
+jobs:
+  # ---------------------------------------------------------------- Linux ----
+  linux:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install deps (build + cc65 + AppImage tooling)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake g++ libglfw3-dev libgl1-mesa-dev \
+                                  cc65 python3 wget file desktop-file-utils
+
+      - name: Fetch Dear ImGui (pinned)
+        run: git clone --depth 1 --branch "$IMGUI_TAG" https://github.com/ocornut/imgui.git
+
+      - name: Stage cc65 bundle (asm ca65/ld65 + C cl65/cc65)
+        run: tools/build_cc65_bundle.sh --out dist/cc65-bundle
+
+      - name: Build POM1
+        run: |
+          cmake -S . -B build
+          cmake --build build -j"$(nproc)"
+
+      - name: Package AppImage (cc65 bundled, strict)
+        env:
+          POM1_VERSION: ${{ github.ref_type == 'tag' && github.ref_name || '' }}
+          POM1_APPIMAGE_SKIP_BUILD: "1"
+          APPIMAGE_EXTRACT_AND_RUN: "1"   # CI runners have no FUSE
+        run: packaging/linux/build_appimage.sh
+
+      - name: Verify cc65 inside the staged AppDir (asm + C)
+        run: tools/verify_cc65_bundle.sh build-appimage/AppDir/usr/share/POM1/cc65
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: POM1-linux-AppImage
+          path: dist/*.AppImage
+          if-no-files-found: error
+
+  # ---------------------------------------------------------------- macOS ----
+  macos:
+    runs-on: macos-13          # Intel build — runs on Apple Silicon via Rosetta too
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install deps (glfw + cc65)
+        run: brew install glfw cc65
+
+      - name: Fetch Dear ImGui (pinned)
+        run: git clone --depth 1 --branch "$IMGUI_TAG" https://github.com/ocornut/imgui.git
+
+      - name: Stage cc65 bundle (asm ca65/ld65 + C cl65/cc65)
+        run: tools/build_cc65_bundle.sh --out dist/cc65-bundle
+
+      - name: Package .app + .dmg (cc65 bundled, strict)
+        env:
+          POM1_VERSION: ${{ github.ref_type == 'tag' && github.ref_name || '' }}
+        run: ./package_macos_release.sh
+
+      - name: Verify cc65 inside the staged .app (asm + C)
+        run: tools/verify_cc65_bundle.sh dist/POM1.app/Contents/Resources/cc65
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: POM1-macOS-dmg
+          path: dist/*.dmg
+          if-no-files-found: error
+
+  # -------------------------------------------------------------- Windows ----
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Fetch Dear ImGui (pinned)
+        run: git clone --depth 1 --branch ${{ env.IMGUI_TAG }} https://github.com/ocornut/imgui.git
+
+      - name: Install GLFW via vcpkg
+        run: vcpkg install glfw3:x64-windows
+
+      - name: Stage cc65 bundle (official Windows snapshot; asm + C)
+        shell: pwsh
+        env:
+          # Override centrally via a repo variable if the snapshot URL ever moves;
+          # empty → fetch_cc65.ps1 falls back to the canonical cc65.github.io nightly.
+          POM1_CC65_WIN_URL: ${{ vars.POM1_CC65_WIN_URL }}
+        run: .\packaging\windows\fetch_cc65.ps1 -Out dist\cc65-bundle
+
+      - name: Configure + build (Release, vcpkg toolchain)
+        shell: cmd
+        run: |
+          cmake -S . -B build -DCMAKE_TOOLCHAIN_FILE="%VCPKG_INSTALLATION_ROOT%\scripts\buildsystems\vcpkg.cmake" -DVCPKG_TARGET_TRIPLET=x64-windows
+          cmake --build build --config Release -j
+
+      - name: Package ZIP (cc65 bundled, strict)
+        shell: cmd
+        env:
+          POM1_VERSION: ${{ github.ref_type == 'tag' && github.ref_name || '' }}
+        run: |
+          set "VCPKG_ROOT=%VCPKG_INSTALLATION_ROOT%"
+          set "CC65_HOME=%CD%\dist\cc65-bundle\cc65\share\cc65"
+          call package_windows_release.bat
+
+      - name: Verify cc65 inside the staged package (asm + C)
+        shell: bash
+        run: tools/verify_cc65_bundle.sh dist/POM1-Windows/cc65
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: POM1-Windows-zip
+          path: dist/*.zip
+          if-no-files-found: error
+
+  # ------------------------------------------------ attach to the Release ----
+  publish:
+    needs: [linux, macos, windows]
+    runs-on: ubuntu-latest
+    if: github.ref_type == 'tag'
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Attach packages to the GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -eu
+          # Flatten the per-job artifact dirs into one upload list.
+          find artifacts -type f \( -name '*.AppImage' -o -name '*.dmg' -o -name '*.zip' \) -print
+          mapfile -t FILES < <(find artifacts -type f \( -name '*.AppImage' -o -name '*.dmg' -o -name '*.zip' \))
+          if [ "${#FILES[@]}" -eq 0 ]; then echo "No packages found to publish."; exit 1; fi
+          if gh release view "$TAG" >/dev/null 2>&1; then
+              gh release upload "$TAG" "${FILES[@]}" --clobber
+          else
+              gh release create "$TAG" "${FILES[@]}" --generate-notes --title "POM1 $TAG"
+          fi

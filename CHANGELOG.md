@@ -10,6 +10,30 @@ is `git log`; the user-facing feature tour is `README.md`; open work lives in
 
 ## [Unreleased]
 
+### Added — packaging: release builds bundle the cc65 toolchain (asm + C)
+
+- **Every release package now ships cc65 next to POM1** so the DevBench
+  (`Pom1BenchHost`) compiles **both** of its native languages out of the box,
+  with no system cc65 on PATH — asm (`ca65`/`ld65`) **and** C (`cl65`/`cc65`)
+  plus the `share/cc65` runtime (resolved via `CC65_HOME`, see `ensureCc65Home`).
+  The exe-relative probe (`<exe>/cc65/bin`, macOS `Resources/cc65/bin`, AppImage
+  `share/POM1/cc65/bin`) already existed; this wires the *producers*.
+- **`tools/verify_cc65_bundle.sh`** (new) — asserts a staged tree carries
+  ca65+ld65+cl65+cc65 + `share/cc65/{include,lib,target}`. The three packagers
+  (`packaging/linux/build_appimage.sh`, `package_macos_release.sh`,
+  `package_windows_release.bat`) call it through a **`POM1_REQUIRE_CC65=1`**
+  strict gate so a missing/partial bundle is a hard failure, not a silent
+  Woz-hex-only package.
+- **`packaging/windows/fetch_cc65.ps1`** (new) — pure-PowerShell fetch of the
+  official cc65 Windows snapshot, re-homed to the relocatable `cc65/bin` +
+  `cc65/share/cc65` layout (`POM1_CC65_WIN_URL` overrides the URL). The Windows
+  packager auto-runs it when no bundle is staged.
+- **`.github/workflows/release.yml`** (new) — one native job per OS (cc65 can't
+  be cross-built): Linux AppImage, macOS `.dmg`, Windows ZIP, each built with
+  cc65 bundled + verified, uploaded as an artifact and attached to the GitHub
+  Release on a `v*` tag. `package_macos_release.sh` / `package_windows_release.bat`
+  now honor `POM1_VERSION` (tag → artifact name) with the shipped default kept.
+
 ### Added — emulator (`src/`): BASIC language axis in the Bench
 
 - **Bench "BASIC" language — Run by injection** (`Pom1BenchHost.cpp`,

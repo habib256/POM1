@@ -360,9 +360,12 @@ in 5 minutes (BASIC, then the Bench). The easiest authoring path is the in-app
 6502 asm or compiles C and runs it in one click, with a `HELLO WORLD` starter per
 target.
 
-For asm/C, install the **cc65** toolchain first: `sudo apt install cc65`
-(Debian/Ubuntu) · `sudo dnf install cc65` (Fedora) · `sudo pacman -S cc65` (Arch) ·
-`brew install cc65` (macOS) · <https://cc65.github.io/> (Windows/other).
+The **official release packages (Windows ZIP / macOS `.dmg` / Linux AppImage)
+bundle cc65** — both asm (`ca65`/`ld65`) and C (`cl65`/`cc65`) compile out of the
+box, no install needed. Only a **source/git build** needs a system cc65 for asm/C:
+`sudo apt install cc65` (Debian/Ubuntu) · `sudo dnf install cc65` (Fedora) ·
+`sudo pacman -S cc65` (Arch) · `brew install cc65` (macOS) ·
+<https://cc65.github.io/> (Windows/other).
 
 POM1 ships a complete cc65-based dev tree:
 

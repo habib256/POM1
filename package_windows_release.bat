@@ -78,8 +78,13 @@ if not exist "roms\applesoft-gen2.rom" (
     echo AVERTISSEMENT: roms\applesoft-gen2.rom absente — DevBench Applesoft GEN2 limite.
 )
 
+REM Version: honor POM1_VERSION (release workflow sets it from the git tag),
+REM else the shipped default. Keep this default in lockstep with the other
+REM version-string locations (see CLAUDE.md).
+set "POM1_VER=%POM1_VERSION%"
+if not defined POM1_VER set "POM1_VER=1.9.2"
 set "OUTDIR=dist\POM1-Windows"
-set "ZIPNAME=POM1-Windows-v1.9.2.zip"
+set "ZIPNAME=POM1-Windows-v%POM1_VER%.zip"
 set "ZIPPATH=dist\%ZIPNAME%"
 
 if exist "%OUTDIR%" rd /s /q "%OUTDIR%"
@@ -279,11 +284,38 @@ REM or set POM1_CC65_BUNDLE to a dir holding bin\ + share\cc65\.
 set "CC65_TREE="
 if defined POM1_CC65_BUNDLE if exist "%POM1_CC65_BUNDLE%\bin" set "CC65_TREE=%POM1_CC65_BUNDLE%"
 if not defined CC65_TREE if exist "dist\cc65-bundle\cc65\bin" set "CC65_TREE=dist\cc65-bundle\cc65"
+
+REM No staged bundle? Download the official cc65 Windows snapshot and stage one
+REM (pure PowerShell, no bash/WSL needed) so the DevBench compiles asm (ca65/ld65)
+REM AND C (cl65/cc65) out of the box. Override the URL with POM1_CC65_WIN_URL;
+REM skip the auto-fetch entirely with POM1_CC65_NO_FETCH=1.
+if not defined CC65_TREE if not "%POM1_CC65_NO_FETCH%"=="1" (
+    echo Telechargement du toolchain cc65 ^(snapshot officiel Windows^)...
+    powershell -NoProfile -ExecutionPolicy Bypass -File "packaging\windows\fetch_cc65.ps1" -Out "dist\cc65-bundle" || (
+        echo AVERTISSEMENT: telechargement cc65 echoue — DevBench limite.
+    )
+    if exist "dist\cc65-bundle\cc65\bin\ca65.exe" set "CC65_TREE=dist\cc65-bundle\cc65"
+)
+
 if defined CC65_TREE (
     echo Copie cc65 bundle ^(!CC65_TREE!^)...
     xcopy /E /I /Q "!CC65_TREE!" "%OUTDIR%\cc65\" >nul
 ) else (
     echo AVERTISSEMENT: pas de cc65 bundle — DevBench limite au Woz-hex sans cc65 systeme.
+)
+
+REM Verifie que le toolchain embarque couvre asm (ca65+ld65) ET C (cl65+cc65).
+REM POM1_REQUIRE_CC65=1 (workflow release) -> echec dur si absent/incomplet.
+set "CC65_OK=1"
+for %%T in (ca65 ld65 cl65 cc65) do if not exist "%OUTDIR%\cc65\bin\%%T.exe" set "CC65_OK=0"
+if "!CC65_OK!"=="0" (
+    if "%POM1_REQUIRE_CC65%"=="1" (
+        echo ERREUR: POM1_REQUIRE_CC65=1 mais le bundle cc65 est absent/incomplet ^(asm+C requis^).
+        rd /s /q "%OUTDIR%"
+        exit /b 1
+    ) else (
+        echo AVERTISSEMENT: bundle cc65 incomplet — DevBench limite au Woz-hex.
+    )
 )
 
 copy /Y "packaging\windows\README.txt" "%OUTDIR%\README.txt" >nul

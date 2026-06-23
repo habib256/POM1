@@ -18,7 +18,7 @@ set -euo pipefail
 
 cd "$(dirname "$0")"
 
-VERSION="1.9.2"
+VERSION="${POM1_VERSION:-1.9.2}"   # release workflow overrides from the git tag
 STAGING="dist/POM1.app"
 DMG_STAGE="dist/dmg-staging"
 DMGPATH="dist/POM1-macOS-v${VERSION}.dmg"
@@ -97,6 +97,17 @@ if [[ -n "$CC65_TREE" ]]; then
     done
 else
     echo "==> (no cc65 bundle — DevBench limited to Woz-hex without system cc65)"
+fi
+
+# Verify the staged toolchain covers BOTH DevBench languages — asm (ca65+ld65)
+# AND C (cl65+cc65) + runtime. POM1_REQUIRE_CC65=1 (set by the release workflow)
+# turns a missing/partial bundle into a hard failure instead of a Woz-hex-only app.
+if [[ -d "$DATA_ROOT/cc65" ]] && tools/verify_cc65_bundle.sh "$DATA_ROOT/cc65"; then
+    :
+elif [[ "${POM1_REQUIRE_CC65:-0}" == "1" ]]; then
+    echo "ERROR: POM1_REQUIRE_CC65=1 but the cc65 bundle is missing/incomplete (asm+C required)." >&2
+    echo "       Install cc65 (brew install cc65) or provide POM1_CC65_BUNDLE." >&2
+    exit 1
 fi
 
 # ---------- 4. DMG staging: POM1.app + /Applications shortcut + README -------

@@ -7,10 +7,14 @@ drops in a working `HELLO WORLD` starter for the chosen target.
 
 Desktop shells out to the **cc65** toolchain (`ca65`/`ld65`/`cl65`). The WebAssembly
 build uses the bundled cc65 WASM tools, so the same asm/C starter targets compile
-in-browser. Install cc65 for desktop builds: `sudo apt install cc65` (Debian/Ubuntu) ·
-`brew install cc65` (macOS) · `pacman -S cc65` (Arch) · <https://cc65.github.io/>.
-The *New* dialog shows **green** (ready) or **orange** (needs cc65/dev files) per
-target.
+in-browser. **Official release packages (Windows ZIP / macOS `.dmg` / Linux AppImage)
+ship a bundled cc65 next to POM1** — both asm (`ca65`/`ld65`) and C (`cl65`/`cc65`)
+work out of the box with nothing to install. POM1 finds it exe-relative and points
+`CC65_HOME` at the bundled runtime (see `ensureCc65Home` in `Pom1BenchHost.cpp`).
+Only a **git-checkout / source build** needs a system cc65: `sudo apt install cc65`
+(Debian/Ubuntu) · `brew install cc65` (macOS) · `pacman -S cc65` (Arch) ·
+<https://cc65.github.io/>. The *New* dialog shows **green** (ready) or **orange**
+(needs cc65/dev files) per target.
 
 New to this? Start with [`QUICKSTART.md`](../QUICKSTART.md) §3.
 

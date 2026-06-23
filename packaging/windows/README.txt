@@ -82,6 +82,8 @@ Contents
                          CFFA1, Juke-Box, charmap, codetank/CODETANKDEV)
   sketchs\              DevBench source sketches (asm, C, BASIC .apf)
   dev\                  cc65 linker configs, runtime libs, project sources
+  cc65\                 Bundled cc65 toolchain (ca65/ld65/cl65/cc65 + runtime)
+                        so the DevBench compiles asm AND C with no install
   software\             Sample programs - File > Load Memory
   sdcard\               Host folder for the P-LAB microSD card
                         (virtual FAT32; tag files as NAME#TTAAAA)

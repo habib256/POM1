@@ -131,6 +131,18 @@ else
     echo "[appimage] (pas de cc65 bundle — DevBench limité au Woz-hex sans cc65 système)"
 fi
 
+# Verify the staged toolchain covers BOTH DevBench languages — asm (ca65+ld65)
+# AND C (cl65+cc65) + runtime. POM1_REQUIRE_CC65=1 (set by the release workflow)
+# turns a missing/partial bundle into a hard failure rather than a silently
+# Woz-hex-only package.
+if [ -d "${RESOURCES}/cc65" ] && "${REPO_ROOT}/tools/verify_cc65_bundle.sh" "${RESOURCES}/cc65"; then
+    :
+elif [ "${POM1_REQUIRE_CC65:-0}" = "1" ]; then
+    echo "[appimage] ERREUR : POM1_REQUIRE_CC65=1 mais le bundle cc65 est absent/incomplet" \
+         "(asm+C requis). Installez cc65 (apt install cc65) ou fournissez POM1_CC65_BUNDLE." >&2
+    exit 1
+fi
+
 # 4. linuxdeploy : bundle les libs (rpath = $ORIGIN/../lib) + recopie
 # desktop/icone aux emplacements standards. NO_STRIP=1 : on a déjà strippé.
 NO_STRIP=1 "${TOOLS}/linuxdeploy.AppDir/AppRun" \
