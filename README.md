@@ -70,7 +70,7 @@ F000R    ; cold-start whatever ROM is currently mapped at $F000
 | 🎵 **A1-AUDIO Special Edition** | — | Same chip relocated to `$CC00-$CC1F` (excludes TMS9918) |
 | 🎨 **[Uncle Bernie's GEN2 HGR](https://www.applefritter.com/content/uncle-bernies-gen2-color-graphics-card-apple-1)** | 2026 | 280×192 Apple-II-style framebuffer with NTSC artifact colour |
 | 🎨 **[P-LAB TMS9918](https://p-l4b.github.io/graphic/)** | — | TMS9918A VDP, 256×192, 32 sprites, 4 modes. Silicon-strict timing model |
-| 💾 **P-LAB CodeTank** | — | Daughterboard of the TMS9918 card. **5 cartridges shipped** (see Software) |
+| 💾 **P-LAB CodeTank** | — | Daughterboard of the TMS9918 card. **3 cartridges shipped** (see Software) |
 | 💾 **[P-LAB Juke-Box](https://p-l4b.github.io/jukebox/)** | — | Paged 16 KB–512 KB flash + writable 28c256 EEPROM. `$CA00` bank latch |
 | ⏰ **[P-LAB I/O Board & RTC](https://p-l4b.github.io/A1-IO_RTC/)** | — | DS3231, DS18B20, ADC + digital I/O |
 | 📡 **[P-LAB Wi-Fi Modem](https://p-l4b.github.io/wifi/)** | — | 65C51 + ESP8266, Hayes AT, real TCP/TELNET (desktop only) |
@@ -255,7 +255,7 @@ $98.50, demoed by Woz in *Interface Age*. **64×96** mono framebuffer on 6× Int
 
 [P-LAB Apple-1 Graphic Card](https://p-l4b.github.io/graphic/) — TMS9918A VDP, **256×192**, 15 colours + transparent, 32 hardware sprites, 4 modes. I/O at `$CC00` (data) / `$CC01` (control), 16 KB dedicated VRAM. Compatible with [nippur72's apple1-videocard-lib](https://github.com/nippur72/apple1-videocard-lib). **Silicon Strict** mode enforces the VRAM timing model — drops "too fast" writes; tune it from the *DevBench → Silicon Strict Inspector*. Chip quirks documented in [`sketchs/doc/Programming_TMS9918.md`](sketchs/doc/Programming_TMS9918.md). Default ON for every preset except the Multiplexing Fantasies.
 
-The CodeTank daughterboard (above) ships a **5-cartridge library** built from [`sketchs/tms9918/`](sketchs/tms9918/) sketches plus [`dev/projects/tms9918/`](dev/projects/tms9918/) multi-file sources (Rogue, Nyan, Logo).
+The CodeTank daughterboard ships a **3-cartridge library** (GAME1/2/3 — see [Software Library](#-software-library)) built from [`sketchs/tms9918/`](sketchs/tms9918/) sketches plus [`dev/projects/tms9918/`](dev/projects/tms9918/) multi-file sources (Rogue, Nyan, Logo).
 
 ---
 
@@ -314,7 +314,7 @@ Parmigiani & Rosselli's [P-LAB Juke-Box](https://p-l4b.github.io/jukebox/) — m
 
 ### P-LAB CodeTank
 
-ROM **daughterboard** of the P-LAB TMS9918 Graphic Card (piggyback; not a standalone bus card — in POM1, enabling CodeTank auto-enables TMS9918). Single 32 KB 28c256, jumper picks which 16 KB half maps to `$4000-$7FFF`; no `$CA00`, no paging, no Juke-Box Program Manager. **CT** toolbar + *File → P-LAB CodeTank Library* (`roms/codetank/*.{rom,bin}`). Mutex with Juke-Box on the `$4000-$7FFF` window; stacks with microSD, CFFA1, etc. CLI: `--enable codetank`, `--codetank-jumper lower|upper`, `--codetank-rom <path>`. The **5-cartridge library** is described in *Software Library* above. Architecture & build pipeline → [`CLAUDE.md`](CLAUDE.md), [`tools/build_codetank_rom.py`](tools/build_codetank_rom.py).
+ROM **daughterboard** of the P-LAB TMS9918 Graphic Card (piggyback; not a standalone bus card — in POM1, enabling CodeTank auto-enables TMS9918). Single 32 KB 28c256, jumper picks which 16 KB half maps to `$4000-$7FFF`; no `$CA00`, no paging, no Juke-Box Program Manager. **CT** toolbar + *File → P-LAB CodeTank Library* (`roms/codetank/*.{rom,bin}`). Mutex with Juke-Box on the `$4000-$7FFF` window; stacks with microSD, CFFA1, etc. CLI: `--enable codetank`, `--codetank-jumper lower|upper`, `--codetank-rom <path>`. The **3-cartridge library** is described in [Software Library](#-software-library) above. Architecture & build pipeline → [`CLAUDE.md`](CLAUDE.md), [`tools/build_codetank_rom.py`](tools/build_codetank_rom.py).
 
 ---
 

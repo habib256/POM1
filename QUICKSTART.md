@@ -11,8 +11,8 @@ that's normal. Let's make it do something.
 
 The friendliest way in. **BASIC needs no toolchain and runs instantly.**
 
-1. Boot POM1 on **preset #4** (*Apple-1 with ACI & BASIC*) — the menu bar
-   *Presets* list, or it may already be selected.
+1. Boot POM1 on **preset #4** (*Apple-1 with ACI & BASIC cassette*) — from the
+   menu bar *Presets* list, or it may already be selected.
 2. At the `\` prompt, type:  **`E000R`**  ↵   — this cold-starts **Integer BASIC**.
    The prompt changes to `>`.
 3. Now type a program (BASIC numbers each line):
@@ -65,9 +65,11 @@ IDE that compiles and runs without leaving the window. Full target reference:
    assembles/compiles and runs on the emulator. Watch the screen.
 4. Edit the message, Upload again. That's the whole loop.
 
-> The Bench needs the **cc65** toolchain for asm/C (it tells you how to install
-> it if missing). Prefer no toolchain at all? Pick the **Wozmon hex** target and
-> Upload — it loads Woz Monitor hex dumps with no compiler.
+> The Bench needs the **cc65** toolchain for asm/C — **release packages ship it
+> bundled** (nothing to install); only source/git builds add it via the system
+> package manager (see [`doc/DEVBENCH.md`](doc/DEVBENCH.md)). Prefer no toolchain
+> at all? Pick the **Wozmon hex** target and Upload — it loads Woz Monitor hex
+> dumps with no compiler.
 
 From here:
 - **Assembly** → [`sketchs/doc/Programming_Apple1_ASM.md`](sketchs/doc/Programming_Apple1_ASM.md)
@@ -82,13 +84,13 @@ From here:
 | Term | Meaning |
 |---|---|
 | **WOZ Monitor** | The `\`-prompt ROM you boot into. `xxxxR` runs code at `xxxx`. |
-| **Preset** | A one-click machine config (RAM + expansion cards). 14 of them; see the [README](README.md#%EF%B8%8F-machine-presets) table. |
+| **Preset** | A one-click machine config (RAM + expansion cards). 13 of them; see the [README](README.md#%EF%B8%8F-machine-presets) table. |
 | **Integer BASIC** | Apple's 1976 BASIC at `$E000`. Cold-start `E000R`, warm re-entry `E2B3R`. Integers only. |
 | **Applesoft Lite** | Floats + strings BASIC (`$6000`, `6000R`) on the microSD/CFFA1 presets. No `HOME`/`VTAB` — scroll-text only. |
 | **Load Memory** | *File → Load Memory* — pastes a `.bin` or Woz-hex `.txt` into RAM. A `.txt` ending in `xxxxR` auto-runs. |
 | **Woz hex / `.txt`** | A program as `AAAA: BB BB …` hex lines — exactly what you'd type at the Monitor, loadable in one go. |
 | **bit 7 rule** | The Apple-1 keyboard/display use bit 7 as a "data valid" flag. Matters in asm; the libraries handle it for you. |
-| **cc65** | The C/assembler toolchain (`ca65`/`ld65`/`cl65`) the Bench shells out to. `sudo apt install cc65` etc. |
+| **cc65** | The C/assembler toolchain (`ca65`/`ld65`/`cl65`) the Bench shells out to. **Bundled in every release package** — nothing to install; only source/git builds need system cc65. Detail: [`doc/DEVBENCH.md`](doc/DEVBENCH.md). |
 | **POM1 Bench** | The in-app code editor (*DevBench* menu). Write asm/C, compile, run — desktop only. |
 
 ---

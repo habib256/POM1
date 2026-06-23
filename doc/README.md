@@ -12,7 +12,7 @@ to the repo root.
 
 | Doc | For | What |
 |---|---|---|
-| [`README.md`](../README.md) | users | Feature tour, the 14 machine presets, software library, per-card hardware reference. |
+| [`README.md`](../README.md) | users | Feature tour, the 13 presets (3 DevBench + 10 machines), software library, per-card hardware reference. |
 | [`QUICKSTART.md`](../QUICKSTART.md) | new users | Your first Apple-1 program in 5 minutes (BASIC → Wozmon → the Bench). |
 | [`CLAUDE.md`](../CLAUDE.md) | AI / contributors | **Emulator-side architecture, invariants, gotchas.** The auto-loaded entry point: memory map, MMIO, peripheral bus, mutex order, presets, testing. |
 | [`CHANGELOG.md`](../CHANGELOG.md) | everyone | Shipped work — emulator (from `TODO.md`) + 6502 software (from [`dev/TODO6502.md`](../dev/TODO6502.md)). |
@@ -37,7 +37,7 @@ Guides live in [`sketchs/doc/`](../sketchs/doc/). Source, libraries and build co
 | [`dev/TODO6502.md`](../dev/TODO6502.md) | Open **6502-software** work / `dev/projects` backlog. |
 | [`sketchs/doc/CC65.md`](../sketchs/doc/CC65.md) | cc65 linker configs, `Makefile.common`, emit scripts. |
 | [`dev/lib/README.md`](../dev/lib/README.md) | **6502 library root** — the two integration models (textual `.include` vs separately-compiled `.o`/archive), the **"two tracks per card" decision record** (why asm+C duplication is chosen, not debt), directory map, ZP convention, validation gate. Read before consuming any lib. |
-| `dev/lib/*/README.md` | Per-library docs — `apple1` (equates), `m6502` (math), `tms9918`, `hgr`, `gen2`/`gen2c`, `gfx` (shared geometry/numbers), `sid`, `sd`, `gt6144`, `a1io`, `wifi`, `games/*`, `text40`, `apple1c`, `telemetry`. Each asm/C pair names its **source of truth** for shared equates/fonts. |
+| `dev/lib/*/README.md` | Per-library docs — `apple1` (equates), `m6502` (math), `tms9918`/`tms9918c`, `gen2`/`gen2c`, `gfx` (shared geometry/numbers), `sid`, `sd`, `gt6144`, `a1io`, `wifi`, `games/*`, `text40`, `apple1c`, `telemetry`. Each asm/C pair names its **source of truth** for shared equates/fonts. |
 | [`dev/lib/Makefile`](../dev/lib/Makefile) | **Library self-validation gate** — `make -C dev/lib check`: asm↔C hardware-equate drift (`tools/check_lib_equates.py`), font-master drift (`tools/build_shared_font.py --check`), `zp.inc` `$00-$07` layout pin, and a compile of every C/asm source **decoupled from its consumers**. Companion to `make -C dev/projects`; both must be green to ship. |
 | `sketchs/<profile>/*/README.md` | Per-sketch notes (starters under `_template*`). |
 | `dev/projects/*/README.md` | Per-program docs for complex multi-file projects under `dev/projects/`. Layout + sidecars → [`doc/SKETCHS.md`](SKETCHS.md). |
@@ -47,7 +47,7 @@ Guides live in [`sketchs/doc/`](../sketchs/doc/). Source, libraries and build co
 | Doc | What |
 |---|---|
 | [`CLI.md`](CLI.md) | **Full CLI flag table** (headless / scripted runs). Implementation: `CliDispatcher.cpp`. |
-| [`DEVBENCH.md`](DEVBENCH.md) | POM1 Bench (in-app cc65/Wozmon IDE) — the language×machine target matrix. |
+| [`DEVBENCH.md`](DEVBENCH.md) | POM1 Bench (in-app cc65/Wozmon IDE) — the language×machine target matrix; how release packages bundle cc65. |
 | [`SKETCHS.md`](SKETCHS.md) | `sketchs/` folder layout, `.sketch.json` sidecars, copy-me `_template*` starters. |
 | [`CC65_WASM.md`](CC65_WASM.md) | Running the cc65 toolchain in the browser (WASM build) — architecture + status. |
 | [`GEN2_RELEASE.md`](GEN2_RELEASE.md) | Uncle Bernie GEN2 colour card developer guide ("Bernie SDK") — `$C25x` switches, HST0, porting. |
