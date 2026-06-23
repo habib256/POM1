@@ -2,6 +2,8 @@
 
 *[← lib/ index](../README.md)*
 
+*Tutorial: [step-by-step Apple-1 assembly guide](../../../sketchs/doc/Programming_Apple1_ASM.md) — covers game / Sokoban-porting patterns.*
+
 Reusable, display-agnostic asm building blocks for the Apple-1 games shipped
 by POM1. Each subdirectory holds the data and routines shared across that
 game's text / TMS9918 / HGR / GT-6144 variants; the per-variant renderer and

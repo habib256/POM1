@@ -1,6 +1,6 @@
 # game_rogue — Roguelike for the P-LAB TMS9918
 
-*[← POM1 documentation index](../../../../doc/README.md)*
+*[← POM1 documentation index](../../doc/README.md)*
 
 A Berlin-Interpretation roguelike for the Apple-1 + P-LAB TMS9918
 Graphic Card. Custom 8x8 tileset sliced from Quale's SCROLL-O-SPRITES

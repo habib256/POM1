@@ -2,6 +2,8 @@
 
 *[← dev/lib index](../README.md)*
 
+*Tutorials: [step-by-step TMS9918 assembly guide](../../../sketchs/doc/Programming_TMS9918.md) · [TMS9918 sprite init](../../../sketchs/doc/TMS9918-SPRITE_INIT.md) · [TMS9918 sprite best practices](../../../sketchs/doc/TMS9918-SPRITE_BEST_PRACTICES.md).*
+
 Equates + drivers for the P-LAB Apple-1 TMS9918 card. Two modes shipped,
 mutually exclusive (you pick one per project — links the matching `.o`).
 

@@ -10,7 +10,7 @@ routines have no Apple-1-specific addresses and can be relocated.
 (asm) / [`../apple1c/`](../apple1c/) (C). The shared zero-page slot pool and the
 two integration models (textual `.include` vs separately-linked `.o`) are owned
 by the [library hub](../README.md) — this doc only notes which slots each routine
-claims.
+claims. **Tutorial:** [step-by-step Apple-1 assembly guide](../../../sketchs/doc/Programming_Apple1_ASM.md).
 
 ## math.asm
 

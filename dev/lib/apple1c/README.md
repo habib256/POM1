@@ -4,7 +4,7 @@
 
 **Siblings:** [`../apple1/`](../apple1/) is the asm-track equivalent of this
 base; [`../tms9918c/`](../tms9918c/) is the TMS9918 C runtime that carries its
-own copy of this text base (see *Relation to the TMS9918* below).
+own copy of this text base (see *Relation to the TMS9918* below). **Tutorials:** [Apple-1 C programming guide](../../../sketchs/doc/Programming_Apple1_C.md) · [C quickstart cheat sheet](../../../sketchs/doc/Programming_C_Quickstart.md).
 
 The **card-neutral base** every Apple-1 C program builds on. Output goes through
 the WOZ Monitor `ECHO` routine (`$FFEF`); input reads the PIA keyboard

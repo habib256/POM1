@@ -2,6 +2,8 @@
 
 *[← dev/lib library hub](../README.md)*
 
+*Tutorial: [step-by-step Apple-1 assembly guide](../../../sketchs/doc/Programming_Apple1_ASM.md).*
+
 Small, mode-neutral UI helpers (keyboard-layout picker, numbered menu,
 repeat-char) factored from the patterns that recur across the text / HGR /
 TMS9918 games in this tree. Each `.asm` is a textual `.include` (Model A — no

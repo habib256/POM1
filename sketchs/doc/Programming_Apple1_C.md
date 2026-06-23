@@ -55,7 +55,7 @@ it everywhere.
 | **TMS9918 sprites/colour** | `tms9918c.h` | `dev/lib/tms9918c/cc65/codetank_c.cfg` | `4000R` |
 
 Libraries:
-- `dev/lib/apple1c/` — the shared text/keyboard base (`woz_puts` / `apple1_getkey` / `woz_mon`) ([README](lib/apple1c/README.md)).
+- `dev/lib/apple1c/` — the shared text/keyboard base (`woz_puts` / `apple1_getkey` / `woz_mon`) ([README](../../dev/lib/apple1c/README.md)).
 - `dev/lib/gen2c/` — GEN2 HGR runtime ([README](../../dev/lib/gen2c/README.md)).
 - `dev/lib/tms9918c/` — Nino Porcino's TMS9918 runtime (vendored from nippur72/apple1-videocard-lib). Projects: `sketchs/tms9918/`.
 

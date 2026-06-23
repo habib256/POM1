@@ -2,6 +2,8 @@
 
 *[← dev/ index](../README.md)*  ·  build layer: [`../cc65/`](../cc65/README.md)  ·  projects: [`../projects/codetank/`](../projects/codetank/README.md)
 
+*Tutorial: [6502 developer guides index](../../sketchs/doc/README.md) — step-by-step programming guides for every track in this tree.*
+
 Reusable 6502 code shared by the Apple-1 programs POM1 ships (`sketchs/<profile>/`
 DevBench sketches and `dev/projects/<card>/` multi-file builds). The compiled
 artefacts land under `software/<dir>/` — that's what POM1 loads; release bundles

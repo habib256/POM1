@@ -22,7 +22,7 @@ you call are linked).
 
 > Note: `sketchs/apple1/_template/`'s default `make` builds the **asm** `Hello.asm`
 > (linked with `apple1_4k.cfg`). For a C program use `apple1_c.cfg` (the C
-> runtime config) — see the `cl65` line in [`doc/SKETCHS.md`](SKETCHS.md).
+> runtime config) — see the `cl65` line in [the sketch index](README.md).
 
 ---
 

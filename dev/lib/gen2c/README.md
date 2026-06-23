@@ -8,7 +8,7 @@ draw HIRES *and* print to the WOZ terminal / read the keyboard.
 
 Siblings: the asm support for the same card (equates, beam-sync, HGR tables) is
 [`../gen2/`](../gen2/); the card-neutral 2D + numbers + cell-text layer this
-runtime forwards to is [`../gfx/`](../gfx/).
+runtime forwards to is [`../gfx/`](../gfx/). **Tutorial:** [step-by-step GEN2 HGR C guide](../../../sketchs/doc/Programming_GEN2C.md).
 
 The GEN2 is the Apple II video subsystem on the Apple-1 bus. Mode is driven by
 **READ-ONLY** soft switches at `$C250-$C257` (a 1:1 port of Apple II

@@ -1,8 +1,8 @@
 # TMS Nyan CodeTank — RLE-compressed 12-frame Nyan in 16 KB
 
-*[← POM1 documentation index](../../../../doc/README.md)*
+*[← POM1 documentation index](../../doc/README.md)*
 
-CodeTank-resident variant of [`tms9918_nyan_fantasy/`](../tms9918_nyan_fantasy/):
+CodeTank-resident variant of the Fantasy-preset Nyan demo:
 same 12-frame animation (the FULL one from jblang's `nyan.bin`), but
 RLE-compressed so the whole binary fits in a 16 KB CodeTank ROM slot
 at $4000-$7FFF. Run-in-place from ROM — no RAM needed for the data.

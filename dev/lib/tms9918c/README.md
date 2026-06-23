@@ -2,6 +2,8 @@
 
 *[← dev/lib index](../README.md)* · asm sibling: [`../tms9918/`](../tms9918/)
 
+*Tutorials: [TMS9918 C programming guide](../../../sketchs/doc/Programming_TMS9918C.md) · [TMS9918 sprite init](../../../sketchs/doc/TMS9918-SPRITE_INIT.md).*
+
 C **cc65** port of the original **[nippur72/apple1-videocard-lib](https://github.com/nippur72/apple1-videocard-lib)** library by **Antonino "Nino" Porcino** (KickC). Every improvement under this tree preserves the upstream attribution (header in every `.c` / `.h` / `.s`) — see [License / attribution](#licence--attribution).
 
 POM1 target: **P-LAB CodeTank**, **16 KB ROM image @ `$4000-$7FFF`**, boot from **Wozmon `4000R`**, preset **9** (TMS9918 + CodeTank).

@@ -1,6 +1,6 @@
 # Maze generators — text mode
 
-*[← POM1 documentation index](../../../../doc/README.md)*
+*[← POM1 documentation index](../../doc/README.md)*
 
 Two stand-alone maze generators rendered as 19×11 cells on the 40×24
 Apple 1 terminal. Each shows a title screen and marks `S` (start) and

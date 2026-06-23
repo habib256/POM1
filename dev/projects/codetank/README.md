@@ -2,6 +2,8 @@
 
 *[← dev/ index](../../README.md)*
 
+*Tutorials: [TMS9918 assembly guide](../../../sketchs/doc/Programming_TMS9918.md) · [TMS9918 C guide](../../../sketchs/doc/Programming_TMS9918C.md).*
+
 CodeTank is a ROM **daughterboard of the P-LAB TMS9918 Graphic Card**: a
 single 32 kB 28c256 whose lower/upper 16 kB half is jumper-mapped to
 `$4000-$7FFF`. It has no edge connector, address decoder, or standalone bus

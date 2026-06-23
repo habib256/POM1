@@ -4,7 +4,7 @@
 
 Siblings: the GEN2 HGR cards this layer backs are [`../gen2/`](../gen2/) (asm)
 and [`../gen2c/`](../gen2c/) (C); the TMS9918 bitmap runtime is
-[`../tms9918c/`](../tms9918c/).
+[`../tms9918c/`](../tms9918c/). **Tutorials:** [GEN2 HGR C guide](../../../sketchs/doc/Programming_GEN2C.md) · [TMS9918 C guide](../../../sketchs/doc/Programming_TMS9918C.md) (neutral layer backs both C runtimes).
 
 One implementation of the **card-independent** 2D logic shared by the GEN2 HGR
 card and the P-LAB TMS9918 card. Only the per-pixel store and the screen width

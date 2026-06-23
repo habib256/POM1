@@ -41,3 +41,5 @@ Single-source DevBench **sketches** (one `.asm` or `.c` per program, edited and
 built inside the in-app Bench) live outside `dev/`, under the per-profile
 `sketchs/` tree; their starters are the `_template*` folders there. Projects
 under `dev/projects/` are the multi-file counterpart.
+
+*Tutorial: [6502 developer guides index](../sketchs/doc/README.md) — step-by-step programming guides for every track in this tree.*

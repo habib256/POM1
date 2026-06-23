@@ -10,7 +10,7 @@ from a C program. It builds a 16 KB CodeTank ROM image that boots at `4000R`.
 | Doc | Use |
 |-----|-----|
 | [`Programming_C_Quickstart.md`](Programming_C_Quickstart.md) | **Beginner cheat sheet** — start here if you're new to cc65 on Apple-1 |
-| [`_template_tms9918c/`](../tms9918/_template_tms9918c/) | Copy-paste starter project (sprites + shadow workflow) |
+| [`tms9918_hello_c/`](../tms9918/tms9918_hello_c/) | C starter project (sprites + shadow workflow) |
 | [`Programming_Apple1_C.md`](Programming_Apple1_C.md) | Base cc65 / Apple-1 text + keyboard layer |
 | [`Programming_TMS9918.md`](Programming_TMS9918.md) | 6502 assembly version of this guide, **mandatory reference for the silicon-timing model** |
 | [`dev/lib/tms9918c/README.md`](../../dev/lib/tms9918c/README.md) | `tms9918c` library reference, demos, build flags |

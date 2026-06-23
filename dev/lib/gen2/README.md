@@ -10,7 +10,7 @@ support.)
 
 Siblings: the C runtime for the same card is in [`../gen2c/`](../gen2c/); the
 card-neutral 2D layer it shares with TMS9918 is [`../gfx/`](../gfx/); HGR sprite
-data is in [`sprites/`](sprites/).
+data is in [`sprites/`](sprites/). **Tutorial:** [step-by-step GEN2 HGR assembly guide](../../../sketchs/doc/Programming_GEN2.md).
 
 ## Release equates & sync
 

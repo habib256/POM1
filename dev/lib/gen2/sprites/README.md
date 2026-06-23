@@ -2,6 +2,8 @@
 
 *[← lib/gen2 (GEN2 card)](../README.md)*
 
+*Tutorial: [step-by-step GEN2 HGR assembly guide](../../../../sketchs/doc/Programming_GEN2.md).*
+
 Auto-generated mirror of `dev/lib/tms9918/sprites_*.asm`. Same labels, same
 sprite catalog, but the bytes are pre-baked in the GEN2 HGR pixel format
 (16 rows × 3 bytes = 48 B per sprite, bit 0 = leftmost pixel, bit 7 stays

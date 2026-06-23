@@ -2,6 +2,8 @@
 
 *[← dev/ index](../README.md)* · libraries: [`../lib/`](../lib/README.md) · projects: [`../projects/codetank/`](../projects/codetank/README.md)
 
+*Tutorials: [cc65 toolchain guide](../../sketchs/doc/CC65.md) · [C quickstart cheat sheet](../../sketchs/doc/Programming_C_Quickstart.md).*
+
 The cc65 build plumbing every `dev/` program shares: `ld65` memory-layout
 `.cfg` files, the `Makefile.common` fragment that drives `ca65`+`ld65`, the
 space-escaping helper `space.mk`, and the Woz-hex `.txt` emitters. A project's

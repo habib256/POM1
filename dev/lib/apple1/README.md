@@ -8,7 +8,7 @@ Drop each `.asm` in via `.include`; pure-data `.inc` files via the same.
 
 **Siblings:** [`../apple1c/`](../apple1c/) is the cc65 **C** mirror of this
 base; [`../m6502/`](../m6502/) adds machine-agnostic math / PRNG that share
-this directory's [`zp.inc`](zp.inc) slot pool.
+this directory's [`zp.inc`](zp.inc) slot pool. **Tutorial:** [step-by-step Apple-1 assembly guide](../../../sketchs/doc/Programming_Apple1_ASM.md).
 
 ## ZP convention — `zp.inc` (opt-in)
 
