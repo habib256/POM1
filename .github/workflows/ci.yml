@@ -14,6 +14,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Verify the committed WASM cc65 toolchain is present
+        run: tools/verify_wasm_cc65.sh
+
       - name: Install dependencies
         run: |
           sudo apt-get update
