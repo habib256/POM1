@@ -1,6 +1,6 @@
 # lib/sid — P-LAB A1-SID sound card primitives
 
-*[← POM1 documentation index](../../../doc/README.md)*
+*[← dev/lib index](../README.md)*
 
 Equates + initialisation + note-trigger helpers for the P-LAB A1-SID
 (MOS 6581 / 8580 at `$C800-$CFFF`). Replaces the inline-everywhere
@@ -91,6 +91,52 @@ register stores are no-ops and you hear silence (no error).
 routines into your project and rewrite each `SID_V1_*` reference to
 `SID_V2_*` or `SID_V3_*`. A future revision could parameterise on a
 voice-base ZP slot, but most jingles use one voice — premature for now.
+
+### Multi-voice pattern (voice-base offset)
+
+The three voice blocks are **identical and 7 registers apart**:
+`SID_V1_FREQLO = $C800`, `SID_V2_FREQLO = $C807`, `SID_V3_FREQLO = $C80E`
+(`SID_BASE + voice*7`). Each register keeps a fixed offset inside its block
+(`FREQLO`=+0, `FREQHI`=+1, `PWMLO`=+2, `PWMHI`=+3, `CR`=+4, `AD`=+5,
+`SR`=+6 — see `sid.inc`). So one routine drives any voice by computing the
+block base once into a ZP pointer (`sid.inc`'s equates are zero-ZP; you
+supply your own slot pair) and indexing with `Y`:
+
+```asm
+; ZP: vbase_lo / vbase_hi — set to SID_BASE + voice*7 before calling.
+; Worked once for voice N (N = 0,1,2): vbase = $C800 + N*7.
+;   voice 0 → $C800   voice 1 → $C807   voice 2 → $C80E
+
+; --- set this voice's 16-bit frequency from note index in A ---
+voice_note:                 ; A = note index, vbase_lo/hi = voice block
+        TAX
+        LDA sid_notes_lo,X
+        LDY #0              ; +0 = FREQLO
+        STA (vbase_lo),Y
+        LDA sid_notes_hi,X
+        INY                 ; +1 = FREQHI
+        STA (vbase_lo),Y
+        RTS
+
+; --- gate this voice (A = waveform mask, e.g. SID_TRI) ---
+voice_gate:                 ; A = waveform mask
+        ORA #SID_GATE
+        LDY #4             ; +4 = CR (gate + waveform)
+        STA (vbase_lo),Y
+        RTS
+
+; --- release this voice ---
+voice_off:
+        LDA #0
+        LDY #4
+        STA (vbase_lo),Y
+        RTS
+```
+
+Per-voice state (note pointer, envelope phase, duration counter) lives in
+your own arrays indexed by voice number; only `vbase_lo/hi` and `Y` differ
+between voices. ADSR (`AD`=+5, `SR`=+6) and pulse width (`PWMLO/HI`=+2/+3)
+follow the same offset table if a voice needs a custom envelope.
 
 ## Note table accuracy
 

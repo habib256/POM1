@@ -1,11 +1,11 @@
 # lib/games/rogue — roguelike shared primitives
 
-*[← POM1 documentation index](../../../../doc/README.md)*
+*[← lib/games index](../README.md)*
 
 Display-agnostic 6502 building blocks for grid-based dungeon-crawlers, shared
 across the rogue variants (TMS9918, and any future HGR / GT-6144 port). The
-per-variant renderer, map storage and input glue stay in
-`dev/projects/<card>/game_rogue/`.
+per-variant renderer, map storage and input glue stay in the consuming
+DevBench sketch (`sketchs/tms9918/game_rogue/`).
 
 ## Files
 
@@ -39,5 +39,5 @@ Then, respecting the include order (PRNG / multiply before the consumers):
     .include "dungeon.asm"
     .include "shadowcast.asm"
 
-See `dev/projects/tms9918/game_rogue/TMS_Rogue.asm` for the canonical caller
+See `sketchs/tms9918/game_rogue/TMS_Rogue.asm` for the canonical caller
 (`compute_fov` wrapper, `gen_dungeon` / `finalize_doors`).

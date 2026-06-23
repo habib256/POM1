@@ -1,6 +1,10 @@
 # dev/lib/gfx — card-neutral graphics primitives (factoring axis 1)
 
-*[← POM1 documentation index](../../../doc/README.md)*
+*[← dev/lib index](../README.md)*
+
+Siblings: the GEN2 HGR cards this layer backs are [`../gen2/`](../gen2/) (asm)
+and [`../gen2c/`](../gen2c/) (C); the TMS9918 bitmap runtime is
+[`../tms9918c/`](../tms9918c/).
 
 One implementation of the **card-independent** 2D logic shared by the GEN2 HGR
 card and the P-LAB TMS9918 card. Only the per-pixel store and the screen width
@@ -10,8 +14,10 @@ identical, and were previously written twice (geometry) or three times
 
 ## Why a link-time backend (not a function pointer)
 
-Parmigiani's *"one board at a time"* rule (CLAUDE.md) means a single binary ever
-talks to exactly **one** video card. So the backend symbols (`gfx_plot`,
+Parmigiani's *"one board at a time"* rule — on real Apple-1 hardware exactly one
+P-LAB video card is plugged at a time (the unarbitrated 6502 bus makes two cards
+in overlapping windows a hardware conflict) — means a single binary ever talks
+to exactly **one** video card. So the backend symbols (`gfx_plot`,
 `gfx_hline`, `gfx_vline`, `gfx_width`, `gfx_height`) are resolved by the **linker**
 to the one card the program links against — a direct `JSR`, no per-pixel
 indirection, no runtime dispatch. A GEN2 program links `gfx_backend_gen2`; a
@@ -152,6 +158,27 @@ Wired touch points (copy these as the template for the rest):
 - **`sketchs/gen2/demo_bounces/Makefile`** — GEN2 example (links `gfx-gen2.lib`).
 - **`sketchs/tms9918/nino-democ/`** — TMS C menu demo (links `gfx-tms.lib` via DevBench).
 - `dev/lib/gfx/Makefile` builds both archives via `ar65` (run from this dir).
+
+## Troubleshooting
+
+- **`ld65: Unresolved external 'gfx_…'`** (`gfx_plot`, `gfx_hline`, `gfx_vline`,
+  `gfx_width`, `gfx_height`, `gfx_line`, `gfx_rect`, `gfx_circle`, `gfx_ellipse`,
+  `gfx_utoa`, `gfx_itoa`, `gfx_hexstr`, `gfx_cell_glyph`, `gfx_cell_color`). The
+  matching archive is missing from the link line. Add `gfx-gen2.lib` (GEN2) or
+  `gfx-tms.lib` (TMS9918) **after** your own sources on the `cl65`/`ld65` line,
+  and build it first with `make -C dev/lib/gfx` (the card libs forward to `gfx_*`
+  now, so the archive is mandatory once a draw call reaches the shared layer).
+  Order matters: ld65 only pulls a `.lib` member to satisfy an *already-seen*
+  reference, so the archive listed before its consumers contributes nothing and
+  the symbols stay unresolved.
+- **Unresolved `gfx_filled_rect` / `gfx_clear`** specifically: those live in the
+  separate `gfx_backend_<card>_rect.o` member (split out so a lines-only program
+  dead-strips the fill path) — they are inside the same archive, so the fix is
+  the same: the archive is on the line, after the consumer.
+- **Wrong backend / pixels off-screen**: linking `gfx-tms.lib` into a GEN2
+  program (or vice-versa) resolves `gfx_width`/`gfx_height` to the other card's
+  extent (280×192 vs 256×192) and the per-pixel store targets the wrong card.
+  One card per binary — match the archive to the card.
 
 ## Verification
 

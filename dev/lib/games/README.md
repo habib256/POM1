@@ -1,6 +1,6 @@
 # lib/games — shared 6502 game libraries
 
-*[← POM1 documentation index](../../../doc/README.md)*
+*[← lib/ index](../README.md)*
 
 Reusable, display-agnostic asm building blocks for the Apple-1 games shipped
 by POM1. Each subdirectory holds the data and routines shared across that
@@ -24,7 +24,7 @@ promotion to a `lib/games/<name>/` module lands when the **third** would
 originating project with its parametrisation hooks documented in the relevant
 comment blocks — see, for example, `dungeon.asm`, which only exposes the
 truly grid-agnostic `rand_mod` while the project-specific BSP-light generator
-remains inline in `dev/projects/tms9918/game_rogue/TMS_Rogue.asm`.
+remains inline in its consumer (`sketchs/tms9918/game_rogue/TMS_Rogue.asm`).
 
 Include any of these libs by adding the directory to your project's `-I`
 search path, e.g. `-I ../../lib/games/rogue`.

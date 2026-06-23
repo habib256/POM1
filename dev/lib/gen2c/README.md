@@ -1,10 +1,14 @@
 # gen2c/ — C runtime for Uncle Bernie's GEN2 HGR card (cc65)
 
-*[← POM1 documentation index](../../../doc/README.md)*
+*[← dev/lib index](../README.md)*
 
 Minimal C over the GEN2 colour graphics card's **280×192 HIRES** framebuffer.
 Pairs with the shared [`apple1c`](../apple1c/) text base, so a GEN2 C program can
 draw HIRES *and* print to the WOZ terminal / read the keyboard.
+
+Siblings: the asm support for the same card (equates, beam-sync, HGR tables) is
+[`../gen2/`](../gen2/); the card-neutral 2D + numbers + cell-text layer this
+runtime forwards to is [`../gfx/`](../gfx/).
 
 The GEN2 is the Apple II video subsystem on the Apple-1 bus. Mode is driven by
 **READ-ONLY** soft switches at `$C250-$C257` (a 1:1 port of Apple II
@@ -108,6 +112,39 @@ variables so a project picks only what it calls. The new `sketchs/gen2/_template
 shows a ~6 KB program using only CORE + TEXT + RECT — about 5 KB smaller than
 the same demo with `GEN2C_ALL_SRCS`.
 
+### Build integration (`gen2c.mk`)
+
+A project's Makefile pulls the family source sets from `gen2c.mk` rather than
+hand-listing the `.c` modules, so it stays in lockstep with the split. Point
+`GEN2C` (and `APPLE1C`) at the lib dirs, `include` the fragment, then compose
+`SRCS` from the `GEN2C_*_SRCS` variables for exactly the families you call:
+
+```make
+LIBDIR  := ../../../lib
+GEN2C   := $(LIBDIR)/gen2c
+APPLE1C := $(LIBDIR)/apple1c
+GFX     := $(LIBDIR)/gfx
+include $(APPLE1C)/apple1c.mk
+include $(GEN2C)/gen2c.mk
+
+# Smallest HIRES binary — CORE + TEXT + RECT only:
+SRCS := main.c $(GEN2C_CORE_SRCS) $(GEN2C_TEXT_SRCS) $(GEN2C_RECT_SRCS) $(APPLE1C_SRCS)
+# …or every family (matches the existing demos):
+# SRCS := main.c $(GEN2C_ALL_SRCS) $(APPLE1C_SRCS)
+
+INCS := $(GEN2C_INCS) $(APPLE1C_INCS) -I $(GFX)
+```
+
+`gen2c.mk` exports: `GEN2C_CORE_SRCS` (always link — tables + soft-switch sink +
+draw-page setter + `gen2_blit.s`), `GEN2C_PIXEL_SRCS`, `GEN2C_RECT_SRCS`,
+`GEN2C_TEXT_SRCS`, `GEN2C_SPRITES_SRCS`, `GEN2C_GEOM_SRCS`, `GEN2C_LORES_SRCS`,
+the `GEN2C_ALL_SRCS` umbrella, and `GEN2C_INCS`. **`GEN2C_GEOM_SRCS` and
+`GEN2C_TEXT_SRCS` call `gfx_*`**, so a project that includes either must also
+link `gfx-gen2.lib` (`make -C ../gfx gen2`) — see [`../gfx/`](../gfx/). The
+generic asm/C build pattern (Makefile skeleton, emit script, linker cfgs) is in
+[`../README.md`](../README.md); this section covers only the gen2c-specific
+`.mk` knobs.
+
 ## Minimal program
 
 ```c
@@ -151,8 +188,10 @@ everything for you.
    `gen2_hgr_clear()` (asm in `gen2_blit.s`), which fills a page at a time
    with an 8-bit index.
 
-Full card reference (soft switches, HST0, beam timing): [`doc/GEN2_RELEASE.md`](../../../doc/GEN2_RELEASE.md).
-Full C guide: [`sketchs/doc/Programming_Apple1_C.md`](../../sketchs/doc/Programming_Apple1_C.md).
+Card hardware reference (soft switches, HST0, beam timing) lives in the POM1
+documentation set; for asm-level detail and the canonical equates see the asm
+sibling [`../gen2/`](../gen2/). The shared geometry / number / cell-text logic
+this runtime forwards to is documented in [`../gfx/`](../gfx/).
 
 ## Source of truth (asm ↔ C)
 

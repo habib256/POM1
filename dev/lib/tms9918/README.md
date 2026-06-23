@@ -1,6 +1,6 @@
 # lib/tms9918 — P-LAB TMS9918 Graphic Card driver
 
-*[← POM1 documentation index](../../../doc/README.md)*
+*[← dev/lib index](../README.md)*
 
 Equates + drivers for the P-LAB Apple-1 TMS9918 card. Two modes shipped,
 mutually exclusive (you pick one per project — links the matching `.o`).
@@ -173,8 +173,9 @@ For games polling only F, clobbering 5/6 is harmless.
 The frame IRQ is strapped by default (`irqStrapped=true`); use
 `TMS9918::setIrqStrapped(false)` to model a hypothetical unstrapped card.
 For code targeting stock P-LAB, polling is the simplest path — no
-configuration needed. Full details in
-[`sketchs/doc/Programming_TMS9918.md`](../../sketchs/doc/Programming_TMS9918.md#bug-n2-int-irq) §18 (Bug N°2).
+configuration needed. The /INT → /IRQ wiring quirk (P-LAB straps it, the
+Nippur72 software ignores it) is why polling — not the frame IRQ — is the
+recommended sync model.
 
 ## Mid-frame raster trap — 5th-sprite-overflow primitive (`tms9918_5strigger.asm`)
 
@@ -186,8 +187,26 @@ hijack the status register's bit 6 (5S = "5th sprite overflow") by placing
 
 This is exactly Daniel Vik's technique in the MSX demo *Waves*, adapted to
 pure polling — the TMS9918 has no scanline interrupt (only the /INT frame),
-so the mid-frame must be polled regardless of how /INT is wired
-(see Bug N°2 in `Programming_TMS9918.md` §18).
+so the mid-frame must be polled regardless of how /INT is wired (the IRQ
+strap buys nothing here).
+
+### When to use the mid-frame raster trap
+
+V-blank polling hands you one event per frame, at end-of-display. Reach
+for the 5S trap when you need a *second*, programmable trip point partway
+down the screen:
+
+- **Palette / colour split** — rewrite the colour table (Mode 1) so the
+  top and bottom bands of the screen use different colours from one frame.
+- **Name-table swap** — flip R2 (name-table base) at the trap line for an
+  instant top/bottom status-bar-over-playfield split with no extra VRAM.
+- **Mid-frame pattern upload** — push fresh patterns to VRAM during the
+  active-display half-frame instead of waiting for the next V-blank window,
+  doubling the per-frame VRAM bandwidth budget for a costly update.
+
+Skip it for anything that only needs once-per-frame timing (regular
+animation, input, logic) — plain `WAIT_VBLANK` is cheaper and never burns
+CPU spinning toward the trap line.
 
 ### Public symbols
 
@@ -263,12 +282,12 @@ WRT_DATA_VAL #$AA  ; expands to: LDA #$AA / STA VDP_DATA / JSR tms9918_pad12
 
 Both append a 12-cycle pad (a 4 + 12 + 4 = 20c gap between back-to-back
 `STA VDP_DATA`), comfortably above the worst-case window in Graphic I +
-sprites. Callers must `.import tms9918_pad12`. Use them in
-new code; for an existing project, the patching playbook
-([`sketchs/doc/Programming_TMS9918.md`](../../sketchs/doc/Programming_TMS9918.md) §25) covers
-mechanical NOP insertion across all back-to-back VDP stores. Reference
-implementation: `sketchs/tms9918/game_galaga/TMS_Galaga.asm` carries
-~219 NOPs across its sprite / HUD / title / help routines.
+sprites. Callers must `.import tms9918_pad12`. Use them in new code; for an
+existing project, retrofitting is mechanical — insert a `pad12` (or the
+equivalent NOP run) between every back-to-back VDP store that can fire
+during active display. Reference implementation:
+`sketchs/tms9918/game_galaga/TMS_Galaga.asm` carries ~219 NOPs across its
+sprite / HUD / title / help routines.
 
 The macros only matter when the program writes back-to-back during
 *active display* (R1 bit 6 = 1). VRAM uploads done with display blanked

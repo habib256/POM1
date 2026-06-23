@@ -1,6 +1,6 @@
 # tms9918c — cc65 port of apple1-videocard-lib (CodeTank only)
 
-*[← POM1 documentation index](../../../doc/README.md)*
+*[← dev/lib index](../README.md)* · asm sibling: [`../tms9918/`](../tms9918/)
 
 C **cc65** port of the original **[nippur72/apple1-videocard-lib](https://github.com/nippur72/apple1-videocard-lib)** library by **Antonino "Nino" Porcino** (KickC). Every improvement under this tree preserves the upstream attribution (header in every `.c` / `.h` / `.s`) — see [License / attribution](#licence--attribution).
 
@@ -60,6 +60,16 @@ Not ported here (KickC / big `.c` / other hardware): `anagram`, `tapemon`, `sdca
 
 ## Modules `lib/`
 
+**Not monolithic — per-family objects, same dead-strip story as `gen2c`.**
+`tms9918c.mk` exposes per-family source sets (`TMS9918C_CORE_SRCS`,
+`TMS9918C_SCREEN1_SRCS`, `TMS9918C_SCREEN2_*_SRCS`, `TMS9918C_SPRITES_SRCS`,
+`TMS9918C_VSYNC_SRCS`, `TMS9918C_PRINTLIB_SRCS`, `TMS9918C_RANDOM_SRCS`,
+`TMS9918C_APPLE1_SRCS`, …) so a program lists only the families it calls;
+`ld65` strips at `.o` granularity, not per-function, so an unlisted family
+costs zero ROM. `TMS9918C_ALL_SRCS` links the lot (what the historical demos
+do). For the Model-A/Model-B split and why object-level granularity matters,
+see [`../README.md`](../README.md).
+
 ### Base (direct upstream port)
 
 | File           | Role |
@@ -80,7 +90,7 @@ These modules are port-specific additions; the code stays faithful to Nino's spi
 | File                | Role |
 |---------------------|------|
 | `tms_fast.s`        | **ca65 VRAM fast-paths** — `tms_fill_vram(addr,val,count)`, `tms_copy_to_vram_fast(src,size,dest)`, `tms_shadow_flush()`. No per-byte `TMS_IO_DELAY` (upstream KickC cadence). |
-| `sprite_shadow.*`   | **SAT shadow pattern** (cf. `sketchs/doc/TMS9918-SPRITE_INIT.md §3.2 / §6) — 128-byte `tms_sprite_shadow[]` in RAM, `tms_shadow_set/move/clear/set_terminator` API, burst flush at VBlank via `tms_shadow_flush`. |
+| `sprite_shadow.*`   | **SAT shadow pattern** — a 128-byte `tms_sprite_shadow[]` mirror of the 32×4 Sprite Attribute Table held in RAM; mutate it freely (no VRAM-lock contention), `tms_shadow_set/move/clear/set_terminator`, then burst-flush all 128 B to VRAM `$3B00` inside VBlank via `tms_shadow_flush` (no mid-frame tearing; the `$D0` terminator never flickers through a transient VRAM value). |
 | `random.*`          | 8-bit LFSR (period 255) + 16-bit Galois (period 65535) — `rand8`, `rand16`, `srand8/16`, `rand8_below(limit)`. |
 | `vsync.*`           | Polling frame counter (`tms_wait_end_of_frame` → `vsync_frames`) — ~60 Hz NTSC time base in the absence of a wired TMS IRQ. |
 | `printlib.*`        | Decimal / hex helpers via `putc` function pointer; Wozmon wrappers (`woz_print_dec_u8/u16`, `woz_print_hex_u16`) and screen 1 (`screen1_print_*`). |

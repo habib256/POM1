@@ -1,6 +1,6 @@
 # lib/a1io — P-LAB A1-IO & RTC card primitives
 
-*[← POM1 documentation index](../../../doc/README.md)*
+*[← dev/lib index](../README.md)* · sibling VIA card: [`../sd/`](../sd/) (microSD)
 
 The A1-IO card pairs a 65C22 VIA at `$2000-$200F` with an emulated
 ATMEGA32 driving a DS3231 RTC, optional DS18B20 probe, 8 analog inputs,
@@ -9,7 +9,7 @@ ATMEGA continuously broadcasts 24 virtual registers via PORTA STROBE
 + PORTB DATA on a 100-cycle period.
 
 Replaces the inline `read_rtc_reg` in `sketchs/apple1/io_rtc_clock`,
-unblocks a future **sensor logger** project (TODO6502.md).
+unblocks a future **sensor logger** project ([`../../TODO6502.md`](../../TODO6502.md)).
 
 ## Files
 

@@ -1,10 +1,14 @@
 # lib/apple1 — Apple-1 hardware equates + shared primitives
 
-*[← POM1 documentation index](../../../doc/README.md)*
+*[← dev/lib library hub](../README.md)*
 
 Equates for Apple-1 ROM + PIA 6821 I/O (`apple1.inc` — pure equates, no
 segments) plus small utility routines used across most projects.
 Drop each `.asm` in via `.include`; pure-data `.inc` files via the same.
+
+**Siblings:** [`../apple1c/`](../apple1c/) is the cc65 **C** mirror of this
+base; [`../m6502/`](../m6502/) adds machine-agnostic math / PRNG that share
+this directory's [`zp.inc`](zp.inc) slot pool.
 
 ## ZP convention — `zp.inc` (opt-in)
 

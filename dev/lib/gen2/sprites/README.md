@@ -1,6 +1,6 @@
 # lib/gen2/sprites — SCROLL-O-SPRITES, GEN2 HGR flavor
 
-*[← POM1 documentation index](../../../../doc/README.md)*
+*[← lib/gen2 (GEN2 card)](../README.md)*
 
 Auto-generated mirror of `dev/lib/tms9918/sprites_*.asm`. Same labels, same
 sprite catalog, but the bytes are pre-baked in the GEN2 HGR pixel format

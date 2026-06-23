@@ -1,6 +1,6 @@
 # lib/telemetry — POM1 dev telemetry side channel (`$C440-$C443`)
 
-*[← POM1 documentation index](../../../doc/README.md)*
+*[← dev/lib index](../README.md)*
 
 Helpers to drive POM1's **dev-only** telemetry side channel: a virtual register
 window at `$C440-$C443` (not real hardware) that lets a 6502 program stream its
@@ -8,8 +8,9 @@ per-frame state to an external test harness over TCP, and — in lock-step — b
 until the harness ACKs to advance exactly one frame. This turns a game into a
 deterministic, scriptable fixture (the Snake / Sokoban smoke harnesses use it).
 
-Full protocol + C++ side: [`doc/TELEMETRY_SIDE_CHANNEL.md`](../../../doc/TELEMETRY_SIDE_CHANNEL.md).
-Python harness: `tools/pom1_telemetry.py`.
+This README is the 6502-side reference; the register window, wire format and
+control protocol below are complete on their own. The host-side decoder is the
+Python harness `tools/pom1_telemetry.py`.
 
 ## Files
 

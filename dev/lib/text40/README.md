@@ -1,11 +1,18 @@
 # lib/text40 — Apple-1 40×24 text-mode UI primitives
 
-*[← POM1 documentation index](../../../doc/README.md)*
+*[← dev/lib library hub](../README.md)*
 
-Small, mode-neutral UI helpers used by every text/HGR/TMS9918 game in
-this tree. Each `.asm` is a textual `.include` (no separate compilation),
-follows the `lib/apple1/zp.inc` convention, and lives next to the other
-`.include`-style libs.
+Small, mode-neutral UI helpers (keyboard-layout picker, numbered menu,
+repeat-char) factored from the patterns that recur across the text / HGR /
+TMS9918 games in this tree. Each `.asm` is a textual `.include` (Model A — no
+separate compilation; see the [library hub](../README.md)), builds on
+[`../apple1/`](../apple1/)'s `print_str_ax` / `wait_key` / `ECHO`, and parks its
+scratch in that directory's [`zp.inc`](../apple1/zp.inc) slot pool.
+
+**Status: available, not yet adopted.** These are extracted, validated helpers
+that no shipping project links *yet* — the games they were modelled on still
+carry their own inline copies (see *Adoption* below). They are ready to drop in;
+the snippet under *Use* is all it takes.
 
 ## Files
 
@@ -72,10 +79,22 @@ In your project Makefile:
 
     LIB := -I ../../lib/apple1 -I ../../lib/text40
 
-## Validation
+The `-I ../../lib/apple1` is mandatory, not optional: every routine here calls
+into `print.asm` / `kbd.asm` / `apple1.inc`. `make -C dev/lib check` compiles all
+three sources so they can't rot before the first project adopts them.
 
-**Status: not yet adopted by any shipping project.** The CodeTank menus
-(`sketchs/tms9918/*_menu*/`) and the WASD games still carry their own
-inline copies of these patterns; `menu_select`, `repeat_char_ax` and
-`select_wasd_layout` are correct by inspection but a future migration will
-replace each project's inline copy with `.include "layout.asm"` (etc.).
+## Adoption
+
+No shipping project links text40 *yet* — the games these helpers were modelled
+on still carry their own inline copies of the same patterns:
+
+- `select_wasd_layout` ⟵ the ~17-line WASD-layout dispatch in the apple1 / gen2 /
+  tms9918 Sokoban variants, tms9918 Snake / Galaga, and Connect 4.
+- `menu_select` ⟵ the CodeTank menu prompts (now under `dev/projects/codetank/`).
+- `repeat_char_ax` ⟵ the grid/border build-up in Little Tower and Connect 4.
+
+Each is correct by inspection and exercised by the `make -C dev/lib check`
+compile. Adopting one is a mechanical swap: delete the project's inline copy, add
+`.include "layout.asm"` (etc.) plus `-I ../../lib/text40`, and confirm the symbol
+names line up with the *Public routines* table above. New 40×24 UI code should
+prefer these over hand-rolling the loop again.

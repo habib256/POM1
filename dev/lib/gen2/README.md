@@ -1,18 +1,22 @@
 # lib/gen2 — Uncle Bernie's GEN2 release card (equates, beam-sync, HGR tables)
 
-*[← POM1 documentation index](../../../doc/README.md)*
+*[← dev/lib index](../README.md)*
 
 Assembly support for the GEN2 *release* Color Graphics Card: the soft-switch /
 hardware equates, the HST0 beam-synchronisation engine, and the HGR data tables
 plus sub-byte rendering primitives. (Folded in from the former `lib/hgr` — HGR
 *is* the GEN2 card, so its tables live here alongside the rest of the GEN2
-support.) The C runtime for the same card is in [`../gen2c/`](../gen2c/).
+support.)
+
+Siblings: the C runtime for the same card is in [`../gen2c/`](../gen2c/); the
+card-neutral 2D layer it shares with TMS9918 is [`../gfx/`](../gfx/); HGR sprite
+data is in [`sprites/`](sprites/).
 
 ## Release equates & sync
 
-- **`gen2.inc`** — GEN2 release soft-switch / hardware equates. Hardware ref:
-  `doc/reference/ColorGraphicsCard_doc_for_Arnaud.pdf`, transcribed in
-  `doc/GEN2_RELEASE_questions.md`; developer guide `doc/GEN2_RELEASE.md`.
+- **`gen2.inc`** — GEN2 release soft-switch / hardware equates (canonical
+  card-hardware spec + soft-switch reference is transcribed in the POM1
+  documentation set; the equates here are the single source of truth for asm).
 - **`gen2_sync.asm`** — HST0 beam synchronisation (`gen2_waitvbl` coarse V-blank
   sync, `gen2_beam_lock`), extracted from the validation demo
   `sketchs/gen2/demo_a1_crazycycle/`.
@@ -37,7 +41,8 @@ Lookup tables for the GEN2 HGR framebuffer (passive RAM-mapped at `$2000-$3FFF`,
   `plot_pixel`.
 - **`hgr_plot.asm`** — `plot_pixel` (needs `cur_x`/`cur_y`/`ptr_*` + both table
   sets). **`hgr_clear.asm`** — `clear_hgr` (needs ZP `ptr_lo`/`ptr_hi`).
-- **`smiley.inc`** — sample 16×16 smiley sprite (legacy, no current consumer).
+- **`smiley.inc`** — sample 28×28 HGR emoji sheet (`hgr_smiley28_font`,
+  6 glyphs × 112 B; legacy, no current consumer).
 - **`bbfont_cp437.inc`** — Beautiful Boot 8×8 font, full CP437 (256 glyphs,
   2 KB). Encoding: `AND #$7F`, 8 rows top→bottom, bit 0 = left. Source:
   Michael Pohoreski's `apple2_hgr_font_tutorial`. Label: `HGR_BBFont`,
@@ -62,9 +67,31 @@ Lookup tables for the GEN2 HGR framebuffer (passive RAM-mapped at `$2000-$3FFF`,
   4-pixel × 4-row block at `(gx, scanline_ptr)`. Uses the LUTs from
   `subbyte4.inc`.
 - **`sprites/`** — HGR sprite data (`.asm` + `.inc` per category), mirrored from
-  the TMS9918 sprite sources by `tools/build_hgr_sprites.py`.
+  the TMS9918 sprite sources by `tools/build_hgr_sprites.py`. See
+  [`sprites/README.md`](sprites/).
 - **`fonts/`** — font source slices (`font7x8.s`, `fontbb.s`). The reference PNG
   sheets live in `dev/assets/`.
+
+## Exported symbols quick-reference
+
+Scannable list of the labels / equates / constants each include actually
+provides (real names — `.import` them or `.include` the file, then `JSR`).
+
+| Provider | Symbols |
+|---|---|
+| `gen2.inc` | switches `GEN2_TEXTOFF/TEXTON/MIXOFF/MIXON/PAGE1/PAGE2/LORES/HIRES` (`$C250-$C257`); framebuffers `GEN2_TEXT1/TEXT2` (`$0400/$0800`), `GEN2_HGR1/HGR2` (`$2000/$4000`); speaker `GEN2_SPEAKER` (`$C030`); timing `GEN2_CYC_PER_LINE`, `GEN2_LINES_60HZ/50HZ`, `GEN2_CYC_FRAME_60HZ/50HZ`, `GEN2_VISIBLE_LINES` |
+| `gen2_init.asm` | `gen2_hgr_init`, `gen2_lores_init` (C aliases `_gen2_hgr_init` / `_gen2_lores_init`) |
+| `gen2_sync.asm` | `gen2_waitvbl` (coarse VBL), `gen2_beam_lock` (cycle-exact); config equates `GEN2_POLL` (default `GEN2_PAGE1`), `GEN2_ZP3`, `GEN2_SYNC_SHIM` |
+| `hgr_scanline.inc` | tables `hgr_lo[192]`, `hgr_hi[192]` (scanline `Y` → base) |
+| `hgr_plot_tables.inc` | tables `hgr_col[256]` (`x/7`), `hgr_mask[256]` (`1<<x%7`) |
+| `hgr_plot.asm` | `plot_pixel` (needs ZP `cur_x/cur_y/ptr_lo/ptr_hi` + both table sets) |
+| `hgr_clear.asm` | `clear_hgr` (zeroes `$2000-$3FFF`; needs ZP `ptr_lo/ptr_hi`) |
+| `hgr_tables.inc` | umbrella — re-exports all of the four above |
+| `subbyte4.inc` | tables `sb4_byte_off`, `sb4_mask1`, `sb4_mask2` (7-phase, 4-px blocks) |
+| `subbyte_fill.asm` | `subbyte_fill_4` (ZP `sb_ptr_lo/sb_ptr_hi`, `tmp`, `tmp2`) |
+| `bbfont_cp437.inc` | `HGR_BBFont` + `HGR_BBFONT_BYTES_PER_GLYPH` (8) / `HGR_BBFONT_GLYPH_COUNT` (256) |
+| `bbfont_subset.inc` | `HGR_Sokoban_bbfont` + `BBFONT_SOKOBAN_BYTES_PER_GLYPH` (8) / `BBFONT_SOKOBAN_GLYPH_COUNT` (38) |
+| `smiley.inc` | `hgr_smiley28_font` + `HGR_SMILEY_BYTES_PER_GLYPH` (112) / `HGR_SMILEY_GLYPH_COUNT` (6) |
 
 ## Sub-byte rendering quick reference
 

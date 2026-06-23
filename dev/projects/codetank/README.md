@@ -1,16 +1,18 @@
 # P-LAB CodeTank — cartridge menus
 
-*[← POM1 documentation index](../../../doc/README.md)*
+*[← dev/ index](../../README.md)*
 
 CodeTank is a ROM **daughterboard of the P-LAB TMS9918 Graphic Card**: a
 single 32 kB 28c256 whose lower/upper 16 kB half is jumper-mapped to
-`$4000-$7FFF`. It has no edge connector or address decoder of its own — it
-rides the TMS9918 (see the daughterboard rule in `CLAUDE.md`).
+`$4000-$7FFF`. It has no edge connector, address decoder, or standalone bus
+presence of its own — it rides the TMS9918 card's slot, so enabling CodeTank in
+POM1 cascade-plugs the TMS9918 and unplugging the TMS9918 cascade-unplugs it.
 
-This group holds only the **launcher menus** that ship inside the cartridge
-ROMs. The actual games/demos they dispatch to are plain TMS9918 programs and
-live under [`../tms9918/`](../tms9918/) with their `*_codetank*.cfg` link
-variants — CodeTank just packages them.
+This group holds only the **launcher menus** + per-game bank-layout cfgs that
+compose the cartridge ROMs. The actual games/demos they dispatch to are plain
+TMS9918 programs that live as standalone DevBench sketches under
+[`../../../sketchs/tms9918/`](../../../sketchs/tms9918/) — CodeTank just packages
+them at fixed bank offsets.
 
 Each menu directory is named after the cartridge ROM it ships in:
 
@@ -38,3 +40,26 @@ The cartridge ROMs (`roms/codetank/*.rom`) are assembled by
 **`tools/build_codetank_rom.py`** (`--rom=1|2|3`), which pulls these menus
 plus the TMS9918 cart sources and lands the result under `roms/codetank/`.
 (The TEST and GAME4/LightCorridor carts were retired June 2026.)
+
+## Creating a new game ROM entry
+
+A cart game is just a TMS9918 sketch given a fixed bank slot. Two cases:
+
+- **Menu game (shares an upper bank with siblings)** — needs a bank-layout cfg.
+  Copy an existing template from `bank_cfgs/` (e.g. `apple1_snake_codetank_bank.cfg`)
+  to `apple1_<game>_codetank_bank.cfg` and edit the `CODE:` line: set `start` to
+  the game's fixed cartridge offset and `size` to its reserved slot (the standalone
+  `sketchs/tms9918/<game>/*_codetank.cfg` keeps the run-in-place `$4000`/`$4000`
+  full-bank layout — the bank cfg only differs in those two fields). Disambiguate
+  when the same program is pinned at a different offset on another cart by adding a
+  `_<rom>` infix — `apple1_life_codetank_game3_bank.cfg` is GAME3's Life slot.
+  Add a corresponding entry to the menu's `codetank_menu.asm` /
+  `codetank_game3_menu.asm` dispatch table.
+- **Full-bank run-in-place program (owns a whole lower/upper bank, no menu)** —
+  needs **no** bank cfg: its standalone `*_codetank.cfg` already loads at `$4000`
+  and fills 16 kB, so it doubles as the cartridge layout (Rogue, Nyan, LOGO V2.6).
+
+Then wire it into `tools/build_codetank_rom.py`: add module-level `*_ASM` /
+`*_BANK_CFG` constants for the source + cfg (mirroring the `GALAGA_*` /
+`LIFE_*` blocks) and reference them from the target ROM's assembly list. Bank
+overflow is caught by the tool's `slot()` boundary check, not by ld65.

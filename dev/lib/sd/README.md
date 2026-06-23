@@ -1,12 +1,12 @@
 # lib/sd — P-LAB microSD card byte-level handshake
 
-*[← POM1 documentation index](../../../doc/README.md)*
+*[← dev/lib index](../README.md)*
 
 Direct VIA-level access to the microSD MCU, bypassing the SD CARD OS
 ROM at `$8000-$9FFF`. The ROM is fine for interactive use (Wozmon
 prompt, `D`/`LOAD`/`CD` commands) but for utility programs that want
 to integrate file I/O into a larger flow without tearing down the
-prompt — `CAT` / `XCOPY` / `HEXDUMP` per TODO6502.md — you need to
+prompt — `CAT` / `XCOPY` / `HEXDUMP` per [`../../TODO6502.md`](../../TODO6502.md) — you need to
 talk to the MCU yourself.
 
 This lib delivers the byte-level handshake. Higher-level command
@@ -63,6 +63,13 @@ sends) and $00 (CPU receives) per byte.
 Above this, command framing follows: send `SD_CMD_*` byte, then
 arguments per the MCU spec, then receive response. See `sd.inc`'s
 command table.
+
+> **Shared VIA.** The microSD card's 65C22 is also where the IEC
+> daughterboard lives — the IEC 1541 wiring piggybacks on this VIA's spare
+> PORTB lines (no new MMIO), which is why enabling IEC cascade-enables the
+> microSD. For a VIA driven as a register *broadcast* peripheral instead of
+> this half-duplex handshake, see the sibling [`../a1io/`](../a1io/) (A1-IO &
+> RTC) card.
 
 ## Use — minimal LOAD
 

@@ -1,6 +1,6 @@
 # dev/lib — POM1 6502 software libraries
 
-*[← POM1 documentation index](../../doc/README.md)*
+*[← dev/ index](../README.md)*  ·  build layer: [`../cc65/`](../cc65/README.md)  ·  projects: [`../projects/codetank/`](../projects/codetank/README.md)
 
 Reusable 6502 code shared by the Apple-1 programs POM1 ships (`sketchs/<profile>/`
 DevBench sketches and `dev/projects/<card>/` multi-file builds). The compiled
@@ -71,7 +71,7 @@ whichever objects your program never references. Cross-TU zero-page is shared vi
 
 When in doubt, **the lib's own README says** (e.g. `apple1` "Drop each `.asm` in
 via `.include`"; `tms9918` "links the matching `.o`"). Per-card programming
-guides live under `sketchs/doc/Programming_*.md`.
+tutorials ship with POM1's user documentation.
 
 ## Why two tracks per card (a decision, not debt)
 
@@ -87,11 +87,11 @@ generate one track from the other.
 stale copy:
 
 - The **asm track** expresses the bare metal — smallest ROM, cycle-exact hot
-  paths, beam-racing (`gen2_blit.s`, `gen2_sync.asm`), and the Apple-1-as-
-  teaching-machine guides (`sketchs/doc/Programming_*ASM*`, `Programming_GEN2`,
-  `Programming_TMS9918`).
+  paths, beam-racing (`gen2_blit.s`, `gen2_sync.asm`), and pairs with the
+  Apple-1-as-teaching-machine assembly tutorials in POM1's user documentation.
 - The **C track** (cc65) lowers the barrier: a beginner writes a GEN2 / TMS9918
-  game without learning 6502 (`Programming_GEN2C`, `Programming_TMS9918C`).
+  game without learning 6502, backed by the matching cc65 tutorials in that same
+  user documentation.
 
 Neither derives mechanically from the other — cc65 output is not the idiomatic
 teaching asm, and hand-tuned beam-race asm does not lower to portable C.
@@ -179,17 +179,112 @@ stops at `gfx`'s current edge.
 
 ## Directory map
 
+Every cell links to that lib's own README (the per-lib API + ZP detail).
+
 | Lib | Track | What |
 |---|---|---|
-| [`apple1`](apple1/) / [`apple1c`](apple1c/) | asm / C | Apple-1 ROM+PIA base: equates, text out (WOZ `ECHO`), keyboard |
-| [`m6502`](m6502/) | asm | machine-agnostic math / trig / LFSR / division |
-| [`gen2`](gen2/) / [`gen2c`](gen2c/) | asm / C | Uncle Bernie GEN2 HGR card (280×192 HIRES, LORES, beam-sync) |
-| [`tms9918`](tms9918/) / [`tms9918c`](tms9918c/) | asm / C | P-LAB TMS9918 card (modes 1/2, sprites) |
-| [`gfx`](gfx/) | C | card-neutral geometry + number formatting (link-time backend) |
-| [`sid`](sid/) [`sd`](sd/) [`wifi`](wifi/) [`a1io`](a1io/) [`gt6144`](gt6144/) | asm | peripheral drivers: A1-SID, microSD, Wi-Fi modem, A1-IO/RTC, SWTPC GT-6144 |
-| [`text40`](text40/) | asm | 40×24 text-mode UI helpers (layout / menu / repeat) |
-| [`games`](games/) | asm | display-agnostic game engines (chess, rogue, sokoban) |
-| [`telemetry`](telemetry/) | asm + C | dev telemetry side channel (`$C440-$C443`) |
+| [`apple1`](apple1/README.md) / [`apple1c`](apple1c/README.md) | asm / C | Apple-1 ROM+PIA base: equates, text out (WOZ `ECHO`), keyboard |
+| [`m6502`](m6502/README.md) | asm | machine-agnostic math / trig / LFSR / division |
+| [`gen2`](gen2/README.md) / [`gen2c`](gen2c/README.md) | asm / C | Uncle Bernie GEN2 HGR card (280×192 HIRES, LORES, beam-sync) |
+| └ [`gen2/sprites`](gen2/sprites/README.md) | asm | GEN2 sprite data + blit tables |
+| [`tms9918`](tms9918/README.md) / [`tms9918c`](tms9918c/README.md) | asm / C | P-LAB TMS9918 card (modes 1/2, sprites) |
+| [`gfx`](gfx/README.md) | C | card-neutral geometry + number formatting (link-time backend) |
+| [`sid`](sid/README.md) [`sd`](sd/README.md) [`wifi`](wifi/README.md) [`a1io`](a1io/README.md) [`gt6144`](gt6144/README.md) | asm | peripheral drivers: A1-SID, microSD, Wi-Fi modem, A1-IO/RTC, SWTPC GT-6144 |
+| [`text40`](text40/README.md) | asm | 40×24 text-mode UI helpers (layout / menu / repeat) |
+| [`games`](games/README.md) | asm | display-agnostic game engines — see per-game READMEs below |
+| └ [`games/chess`](games/chess/README.md) · [`games/rogue`](games/rogue/README.md) · [`games/sokoban`](games/sokoban/README.md) | asm | chess engine, roguelike FOV/dungeon-gen, Sokoban core |
+| [`telemetry`](telemetry/README.md) | asm + C | dev telemetry side channel (`$C440-$C443`) |
+
+## Consuming a library (build integration)
+
+How a lib reaches your program, mechanically — the integration *model* (A vs B)
+is decided above; this is the build wiring. Project Makefiles set these and
+`include ../../cc65/Makefile.common` (linker configs + that fragment are
+documented in [`../cc65/`](../cc65/README.md)).
+
+- **`.include`-style asm (Model A).** Add the lib's directory to `LIB` as a
+  `ca65 -I` flag and `.include "<file>"` in your source. `ca65` searches every
+  `-I` path, so `.include "apple1.inc"` / `.include "print.asm"` resolves once
+  the dir is on the line:
+
+      LIB := -I ../../lib/apple1 -I ../../lib/m6502 -I ../../lib/gen2
+
+  Then in the `.asm`: `.include "apple1.inc"` / `.include "zp.inc"` /
+  `.include "print.asm"` … Nothing is dead-stripped — you assemble all of it.
+
+- **Separately-compiled asm objects (Model B).** Heavy `.asm` carrying
+  `.export`/`.import` (e.g. `tms9918m1.asm`, `math.asm`, `gen2_blit.s`) go in
+  `EXTRA_ASM`. `Makefile.common` assembles each to its own `.o` with the same
+  `$(LIB)` includes and puts it on the `ld65` line, so `ld65` dead-strips it if
+  unreferenced:
+
+      EXTRA_ASM := ../../lib/tms9918/tms9918m1.asm
+
+  Cross-TU zero-page is shared by `.importzp` in the lib and `.exportzp` in your
+  TU — `zp.inc` emits the matching exports for the baseline slots; heavy libs
+  that need more (`math.asm`, `tms9918m2.asm`) list them in their own README.
+
+- **cc65 C track (Model B).** The C runtimes ship a `.mk` fragment
+  (`apple1c.mk`, `gen2c.mk`, `tms9918c.mk`) exposing **per-family** source sets.
+  Set the dir variables, `include` the fragment, and put only the families you
+  call into `SRCS`; `ld65` strips whole families you omit. Link the card-neutral
+  `gfx` layer as its prebuilt archive (`gfx-<card>.lib`). Sketch:
+
+      GEN2C := ../../lib/gen2c
+      APPLE1C := ../../lib/apple1c
+      include $(APPLE1C)/apple1c.mk
+      include $(GEN2C)/gen2c.mk
+      SRCS := main.c $(GEN2C_CORE_SRCS) $(GEN2C_TEXT_SRCS) $(APPLE1C_SRCS)
+      INCS := $(GEN2C_INCS) $(APPLE1C_INCS) -I ../../lib/gfx
+      cl65 -t none -Oirs -C $(GEN2CFG) $(INCS) $(SRCS) ../../lib/gfx/gfx-gen2.lib -o main.bin
+
+  Build the `gfx-<card>.lib` archive once with `make -C ../../lib/gfx <card>`.
+
+## Cross-library zero-page map
+
+ZP is the scarce shared resource and **collisions raise no error** — they
+silently corrupt the other claimant (see the DANGER banner in
+[`apple1/zp.inc`](apple1/zp.inc)). This table lists every slot a lib *reserves
+by name* so you can spot overlaps before they bite. Slots come in two flavours:
+**fixed-address** (the `zp.inc` baseline, `$00-$07` in declaration order) and
+**floating** (a `.res 1` / `.importzp` whose address is wherever the linker lays
+the `ZEROPAGE` segment — these don't collide by *address*, they collide by
+*name*: two libs reserving the same symbol share one byte, which is intended for
+the `zp.inc` baseline and accidental otherwise).
+
+**Baseline — `apple1/zp.inc`, fixed `$00-$07`** (opt-in; `.include` once before
+any other ZP `.res`; `.exportzp`'d for cross-object use):
+
+| Addr | Symbol | Owner / users |
+|---|---|---|
+| `$00` | `tmp` | general scratch — `kbd.asm`, `math.asm`, `tms9918*.asm`, chess |
+| `$01` | `tmp2` | general scratch — `math.asm`, `tms9918m2.asm`, chess |
+| `$02`/`$03` | `print_ptr_lo`/`hi` | `apple1/print.asm` |
+| `$04`/`$05` | `mul_tmp`/`mul_res0` | `m6502/multiply.asm` |
+| `$06`/`$07` | `prng_lo`/`hi` | `m6502/prng8.asm` **and** `prng16.asm` (shared pair) |
+
+**Floating slots each lib reserves** (own `.res` in `ZEROPAGE`, or `.importzp`
+the caller must declare). Each *track is used by one card at a time*, so the
+real collision risk is mixing a peripheral driver with a graphics track that
+both park names in the same low region — check before combining:
+
+| Lib | Slots | Notes |
+|---|---|---|
+| `m6502/math.asm` | imports `tmp`,`tmp2`,`arg_lo/hi`,`arg2_lo/hi`,`th_lo/hi` (+ BSS `prod_lo/hi`,`sign_flag`,`lfsr_lo/hi`) | caller-declared/`.exportzp`'d; owns no ZP itself |
+| `tms9918/tms9918m1.asm` · `_text.asm` · `_console.asm` | `vdp_lo`,`vdp_hi`,`vdp_src_lo`,`vdp_src_hi`,`vdp_row`,`vdp_col` (console adds `cur_row`,`cur_col`,`con_tmp`) | `.exportzp`'d so `m2`/console/text share them |
+| `tms9918/tms9918m2.asm` | `pix_x`,`pix_y`,`pix_addr_lo/hi`,`pix_mask`,`pix_byte`,`ln_x0/y0/x1/y1`,`ln_dx/dy/sx/sy`,`ln_err`,`ln_err_hi`,`pen_color` | bitmap/line raster state; imports `tmp`,`tmp2` |
+| `gen2/subbyte_fill.asm` | `sb_ptr_lo`,`sb_ptr_hi` | sub-byte HGR fill pointer |
+| `text40/layout.asm` | `key_up_code`,`key_left_code` | arrow-key remap |
+| `sd/sd.asm` | `sd_str_lo`,`sd_str_hi` | string pointer |
+| `wifi/acia.asm` | `acia_str_lo`,`acia_str_hi` | string pointer |
+| `a1io/a1io.asm` | `a1io_target` | register selector |
+| `games/chess/chess_engine.asm` | `ce_sq`,`ce_dir`,`ce_target`,`ce_piece`,`ce_color`,`ce_dirs_left`,`ce_dir_ptr`,`ce_match`,`attacker_color`,`attacked_sq`,`atk_piece` | 11 B engine-private; imports `tmp`,`tmp2` |
+
+`gen2`/`gen2c`/`tms9918c` keep their ZP convention in their own READMEs; the
+`.res`-bearing TMS helpers (`sprite_triangle.asm`, `buffer_editor.asm`,
+`tms9918_5strigger.asm`) declare project-private state documented at their use
+sites. When ZP is tight, **alias** a slot onto existing scratch *before* the
+include — the `.ifndef` guards detect it (recipe in `apple1/zp.inc`).
 
 ## Validation
 
