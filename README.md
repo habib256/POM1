@@ -31,7 +31,7 @@ Built with Dear ImGui & OpenGL — fast, lightweight, cross-platform.
 - 📡 **Wi-Fi modem dialing real BBSes.** Flip on the P-LAB Wi-Fi card, type `ATDT bbs.fozztexx.com:23` in WOZ Monitor and you're on a 2026-era BBS. Or run `telnet localhost 6502` to drive the Apple 1 from any modern terminal.
 - 💾 **Cartridge ecosystem unique to POM1.** The P-LAB CodeTank ships **3 ready-to-flip cartridges** (GAME1/GAME2/GAME3) covering arcade games, a dungeon crawler, a LOGO turtle interpreter and graphics demos — rebuilt from [`sketchs/`](sketchs/) + [`dev/projects/`](dev/projects/) sources via `python3 tools/build_codetank_rom.py`.
 - 🔬 **Cycle-accurate down to the bus.** The SID, TMS9918, ACI cassette and modem all run on the same `POM1_CPU_CLOCK_HZ = 1 022 727` clock; tempo follows emulation speed, not wall-clock. Klaus Dormann's 6502 functional test pinned in CI.
-- 🛠️ **A complete cc65 dev tree.** Shipped program sources live in [`sketchs/`](sketchs/) (DevBench sketches) and [`dev/projects/`](dev/projects/) (multi-file builds) — Galaga, Sokoban, Snake, Logo, Rogue, Tetris, Mandelbrot, Plasma, Connect-4 trilogy, two Sokoban trilogies, and more.
+- 🛠️ **Write your own — without leaving the app.** The in-app **DevBench** assembles 6502 **asm**, compiles **C**, or runs **BASIC**, then boots it in one click. Including an Apple-1 **Applesoft with Apple II graphics commands** (`HGR` / `HPLOT` / `HCOLOR`) that draws on *both* the GEN2 HGR and TMS9918 colour cards — type a graphics one-liner on Woz's 1976 machine and watch it paint. Backed by a full cc65 source tree (Galaga, Sokoban, Snake, Logo, Rogue, Tetris, Mandelbrot, Plasma, Connect-4 …).
 - ⌨️ **TTL-faithful keyboard** (no autorepeat by default, like the real ASCII keyboard ROM) — toggle to host autorepeat from *Settings* if you can't take it.
 
 ---
@@ -352,20 +352,53 @@ Steve Jobs' October-1976 *Interface Age* hack: tee the SWTPC PR-40 40-column mat
 
 ---
 
-## 🔧 Writing your own Apple 1 software
+## 🔧 Write your own Apple 1 software — 3 machines, 4 languages, 1 click
 
-**New here?** Start with **[`QUICKSTART.md`](QUICKSTART.md)** — your first program
-in 5 minutes (BASIC, then the Bench). The easiest authoring path is the in-app
-**POM1 Bench** (*DevBench → POM1 Bench*): an Arduino-style editor that assembles
-6502 asm or compiles C and runs it in one click, with a `HELLO WORLD` starter per
-target.
+Boot POM1, open **DevBench → POM1 Bench**, type code, hit **▶ Run**. No SDK, no
+Makefile, no command line — the Bench assembles/compiles/injects your program and
+boots it on the emulator for you, with a `HELLO WORLD` starter for every target.
+New here? → **[`QUICKSTART.md`](QUICKSTART.md)** (first program in 5 minutes).
 
-The **official release packages (Windows ZIP / macOS `.dmg` / Linux AppImage)
-bundle cc65** — both asm (`ca65`/`ld65`) and C (`cl65`/`cc65`) compile out of the
-box, no install needed. Only a **source/git build** needs a system cc65 for asm/C:
-`sudo apt install cc65` (Debian/Ubuntu) · `sudo dnf install cc65` (Fedora) ·
-`sudo pacman -S cc65` (Arch) · `brew install cc65` (macOS) ·
-<https://cc65.github.io/> (Windows/other).
+**Pick a machine** — Run auto-switches to its preset:
+
+| Target | Canvas |
+|---|---|
+| 🍎 **Apple-1 (text)** | The 1976 original — 40×24 through the WOZ Monitor. *Start here.* |
+| 🎨 **P-LAB TMS9918** | 256×192, 15 colours, **32 hardware sprites** — flashed into a CodeTank cartridge |
+| 🌈 **Uncle Bernie GEN2 HGR** | 280×192 Apple-II-style **HIRES colour** |
+
+**Pick a language:**
+
+- **Assembly** — `ca65`/`ld65`, auto-linked against the `apple1` / `tms9918` / `gen2` equate libraries.
+- **C** — `cc65`/`cl65`, with the `apple1c` runtime plus the `gen2c` / `tms9918c` graphics layers.
+- **BASIC** — *no compiler*: POM1 cold-starts the in-ROM interpreter and **types your listing** at the prompt (works in the browser build too). **Integer BASIC** (Wozniak's original) or **Applesoft**.
+- **Woz hex** — paste a Monitor hex dump and go. Zero toolchain.
+
+### 🌈 The party trick: graphics BASIC on a 1976 machine
+
+POM1 ships an Apple-1 **Applesoft** (Microsoft floating-point BASIC) extended with
+the **Apple II graphics command set** — `HGR`, `HCOLOR=`, `HPLOT … TO …`, `GR`,
+`COLOR=`, `PLOT`, `HLIN`/`VLIN`, `SCRN()` — and the **same listing** runs on
+**both** colour cards:
+
+```basic
+10 HGR : HCOLOR= 3
+20 FOR X = 0 TO 255 STEP 8
+30 HPLOT X,0 TO 255 - X,191
+40 NEXT X
+```
+
+Run it as **Applesoft GEN2 HGR** (`9800R`) → it draws on Uncle Bernie's colour
+card; run the byte-identical program as **Applesoft TMS9918** (`4000R`) → it draws
+on the P-LAB VDP. `PRINT` paints the graphics screen, `APRINT` talks to the Apple-1
+terminal. Ready-made demos in [`sketchs/basic_applesoft/`](sketchs/basic_applesoft/)
+— Mandelbrot, Sierpinski, 3D Hat, Boy Surface… Pinned in CI by `applesoft_gen2_smoke`
++ `applesoft_tms9918_smoke`.
+
+**Toolchain?** The official release packages **bundle cc65**, so asm and C compile
+out of the box — nothing to install. Only a source/git build needs a system cc65
+(`apt install cc65` · `dnf install cc65` · `pacman -S cc65` · `brew install cc65` ·
+<https://cc65.github.io/>). Full target matrix → **[`doc/DEVBENCH.md`](doc/DEVBENCH.md)**.
 
 POM1 ships a complete cc65-based dev tree:
 
@@ -401,7 +434,7 @@ Open work on the 6502 software side: [`dev/TODO6502.md`](dev/TODO6502.md). On th
 
 The top-level **DevBench** menu groups POM1's developer tools:
 
-- **POM1 Bench** — an in-app cc65/ca65 sketch editor: write 6502 asm or C, assemble/compile, and run on the emulator without leaving the window. Full target reference → **[`doc/DEVBENCH.md`](doc/DEVBENCH.md)**. **New sketch** picks a **Language** (Assembly · ca65/ld65, or C · cc65/cl65) × **Machine**, and drops in a matching "HELLO WORLD" starter:
+- **POM1 Bench** — an in-app cc65/ca65 sketch editor: write 6502 asm or C, assemble/compile, and run on the emulator without leaving the window. Full target reference → **[`doc/DEVBENCH.md`](doc/DEVBENCH.md)**. **New sketch** picks a **Language** (Assembly · `ca65`/`ld65`, C · `cc65`/`cl65`, or BASIC — Integer / Applesoft incl. the GEN2 HGR & TMS9918 graphics dialects) × **Machine**, and drops in a matching "HELLO WORLD" starter:
   - **Apple-1 dual 4K/8K** — plain text via WozMon ECHO (asm) / `woz_puts` (C).
   - **P-LAB Graphic Card (TMS9918)** — Graphics I text (credit: Claudio Parmigiani's card). Both the asm and C targets flash the build into a persistent `roms/CODETANKDEV.rom` CodeTank dev cartridge and boot `4000R` — all TMS9918 code runs from CodeTank.
   - **Uncle Bernie GEN2 HGR** — HIRES text drawn with the Beautiful Boot font, pixel-doubled to solid white (no NTSC colour artifacts); the C starter calls the new `gen2_hgr_puts()` from the gen2c runtime.

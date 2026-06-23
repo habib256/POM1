@@ -77,6 +77,8 @@ chmod +x "${APPDIR}/AppRun"
 cp "${REPO_ROOT}/packaging/linux/POM1.desktop" "${APPDIR}/POM1.desktop"
 cp "${REPO_ROOT}/packaging/linux/hicolor/128x128/apps/POM1.png" "${APPDIR}/POM1.png"
 ln -sf POM1.png "${APPDIR}/.DirIcon"
+# User-facing release note (parity with the Windows ZIP / macOS DMG READMEs).
+cp "${REPO_ROOT}/packaging/linux/README.txt" "${APPDIR}/README.txt"
 
 # 3a. ROMs générées à la demande : CODETANKDEV.rom n'est PAS commitée (seul son
 # sidecar .txt l'est) — elle est produite par tools/build_codetank_rom.py et la

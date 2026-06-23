@@ -162,6 +162,17 @@ To fully uninstall:
    Trash POM1.app
    rm -rf ~/Library/Application\ Support/POM1
 
+Build your own software (in-app DevBench)
+-----------------------------------------
+POM1 bundles the cc65 toolchain, so the in-app DevBench works out of the box -
+nothing to install. Open DevBench > POM1 Bench, click New, pick a Language
+(6502 assembly, C, BASIC, or Woz hex) x Machine (Apple-1 text, P-LAB TMS9918
+256x192 + sprites, or Uncle Bernie GEN2 HGR 280x192 colour), then hit Run -
+POM1 builds and boots it for you. POM1 even ships an Apple-1 Applesoft with the
+Apple II graphics command set (HGR / HCOLOR= / HPLOT ... TO) that draws on BOTH
+the GEN2 HGR and TMS9918 colour cards from the same listing - graphics-BASIC
+demos in the bundled sketchs/basic_applesoft/ (Mandelbrot, Sierpinski, 3D Hat).
+
 Credits + full docs: https://github.com/habib256/POM1
 Play in your browser: https://habib256.github.io/POM1/build-wasm/POM1.html
 
