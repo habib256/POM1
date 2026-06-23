@@ -195,6 +195,13 @@ target_link_libraries(${PROJECT_NAME} libresidfp_static)
 set(POM1_IMGUI_PREINCLUDE "${POM1_SRC_DIR}/POM1ImGuiPreinclude.h")
 if(MSVC)
     target_compile_options(${PROJECT_NAME} PRIVATE "/FI${POM1_IMGUI_PREINCLUDE}")
+    # Larger main-thread stack reserve (64 MB). Some NVIDIA OpenGL drivers
+    # (nvoglv64.dll) consume far more than the 1 MB MSVC default deep inside
+    # wglCreateContext during glfwCreateWindow — on a fresh driver this
+    # overflowed the stack (0xC00000FD) at a fixed offset and POM1 died before
+    # the window ever appeared. Reserving a roomy stack lets that bounded-but-
+    # deep driver call complete. Harmless on driver versions that don't need it.
+    target_link_options(${PROJECT_NAME} PRIVATE "/STACK:67108864")
 else()
     target_compile_options(${PROJECT_NAME} PRIVATE -include "${POM1_IMGUI_PREINCLUDE}")
 endif()
