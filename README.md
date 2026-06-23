@@ -4,7 +4,7 @@
 
 ### *The 1976 personal computer revolution, faithfully reborn — with 50 years of expansion cards bolted on.*
 
-🎂 **Celebrating 50 years of Apple (1976 → 2026)** with the most complete Apple 1 emulator ever shipped: 13 one-click machine presets, 16 expansion cards, 60+ ready-to-run programs, and a **cycle-accurate libresidfp SID engine** with hot-swappable 6581/8580 chips — a 1976 SWTPC GT-6144 graphics card sitting next to a 2026 Wi-Fi modem.
+🎂 **Celebrating 50 years of Apple (1976 → 2026)** with the most complete Apple 1 emulator ever shipped: 13 one-click machine presets, 16 expansion cards, 60+ ready-to-run programs, and a cycle-accurate libresidfp SID engine with hot-swappable 6581/8580 chips — a 1976 SWTPC GT-6144 graphics card sitting next to a 2026 Wi-Fi modem.
 
 **Two colour graphics cards, one graphics BASIC.** Paint in colour on **Uncle Bernie's GEN2 HGR Card** (280×192) *and* the **P-LAB TMS9918** (256×192 + 32 sprites) — then drive *both* from an **Apple-1 Applesoft** whose Apple II graphics commands (`HGR` · `HPLOT` · `HCOLOR`) run the **same listing** on either card.
 
@@ -28,8 +28,8 @@ Built with Dear ImGui & OpenGL — fast, lightweight, cross-platform.
 
 > *Every other Apple 1 emulator stops at the WOZ Monitor. POM1 keeps going for 50 years.*
 
+- 🎨 **Three independent graphics cards across half a century** — **Uncle Bernie's GEN2 HGR** (280×192 Apple-II-style colour) and the **P-LAB TMS9918** (256×192 + 32 hardware sprites), plus the 1976 SWTPC GT-6144. Drive both colour cards from graphics BASIC, C, or asm.
 - 🎵 **Real chiptune sound on a 1976 board** — genuine MOS 6581 / CSG 8580 SID through libresidfp, swap chips *while it plays*.
-- 🎨 **Three independent graphics cards across half a century** — the 1976 SWTPC GT-6144, Uncle Bernie's GEN2 HGR (NTSC artifact colour), and the P-LAB TMS9918 (256×192 + 32 sprites).
 - 📡 **Wi-Fi modem dialing real BBSes** — `ATDT bbs.fozztexx.com:23` in WOZ Monitor and you're online, on a 1976 machine.
 - 💾 **A cartridge ecosystem unique to POM1** — the P-LAB CodeTank ships **3 ready-to-flip cartridges** (GAME1/2/3): arcade games, a dungeon crawler, a LOGO turtle, graphics demos.
 - 🔬 **Cycle-accurate down to the bus** — SID, TMS9918, cassette and modem all run on the same 1.022727 MHz clock; tempo follows emulation speed, not wall-clock. Klaus Dormann's 6502 test pinned in CI.
