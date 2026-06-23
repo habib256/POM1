@@ -822,15 +822,17 @@ void MainWindow_ImGui::renderSaveTapeDialog()
     ImGui::End();
 }
 
-void MainWindow_ImGui::pasteCode()
+// Feed text through the Apple-1 keyboard FIFO: CR-normalise, drop non-printables,
+// cap at 4096 chars. Shared by desktop Ctrl+V (reads the GLFW clipboard) and the
+// WASM browser-paste hook (pom1_paste_text in main_imgui.cpp), which is the only
+// way to reach the browser clipboard on Emscripten.
+void MainWindow_ImGui::pasteText(const char* text)
 {
-    const char* clipboard = glfwGetClipboardString(window);
-    if (!clipboard || strlen(clipboard) == 0) {
+    if (!text || !*text) {
         setStatusMessage("Clipboard is empty", 2.0f);
         return;
     }
-
-    const char* p = clipboard;
+    const char* p = text;
     int charCount = 0;
     const int MAX_PASTE_CHARS = 4096;
     while (*p && charCount < MAX_PASTE_CHARS) {
@@ -846,4 +848,15 @@ void MainWindow_ImGui::pasteCode()
     ss << "Pasted " << charCount << " characters";
     if (*p) ss << " (truncated at " << MAX_PASTE_CHARS << ")";
     setStatusMessage(ss.str(), 2.0f);
+}
+
+void MainWindow_ImGui::pasteCode()
+{
+#if defined(__EMSCRIPTEN__)
+    // glfwGetClipboardString returns only GLFW's *internal* clipboard on
+    // Emscripten, never the browser's — so Ctrl+V is serviced by the shell.html
+    // 'paste' DOM listener (→ pom1_paste_text → pasteText). Nothing to do here.
+#else
+    pasteText(glfwGetClipboardString(window));
+#endif
 }

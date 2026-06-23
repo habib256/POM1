@@ -312,7 +312,7 @@ if(EMSCRIPTEN)
         "--preload-file ${PRELOAD_DIR}/build-wasm/cc65/include@cc65/include"
         "--preload-file ${PRELOAD_DIR}/build-wasm/cc65/lib@cc65/lib"
         "--shell-file ${SHELL_FILE}"
-        "-s EXPORTED_FUNCTIONS=[${POM1_MAIN_EXPORT}_pom1_fillAudioBuffer,_malloc,_free]"
+        "-s EXPORTED_FUNCTIONS=[${POM1_MAIN_EXPORT}_pom1_fillAudioBuffer,_pom1_paste_text,_malloc,_free]"
         # FS is exported so the cc65 glue (shell.html) can read the preloaded
         # dev/ files out of POM1's MEMFS and feed them to the cc65 tool modules.
         "-s EXPORTED_RUNTIME_METHODS=['ccall','HEAPF32','FS']"

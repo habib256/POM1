@@ -31,6 +31,20 @@
 #if POM1_IS_WASM
 #include <emscripten.h>
 #include <emscripten/html5.h>
+
+// WASM browser-paste bridge. Emscripten's GLFW clipboard can't read text copied
+// from outside the tab, so shell.html installs a native 'paste' DOM listener
+// that ccall's this with the pasted text; we feed it through the Apple-1 keyboard
+// FIFO (same path as desktop Ctrl+V). Target is set in main() once the window
+// exists. Mirrors g_wasmAudioDevice / pom1_fillAudioBuffer in AudioDevice.cpp.
+static MainWindow_ImGui* g_wasmPasteTarget = nullptr;
+extern "C" {
+EMSCRIPTEN_KEEPALIVE
+void pom1_paste_text(const char* s)
+{
+    if (g_wasmPasteTarget && s) g_wasmPasteTarget->pasteText(s);
+}
+}
 #else
 #include <atomic>
 #include <chrono>
@@ -763,6 +777,7 @@ int main(int argc, char* argv[])
     static LoopContext ctx;
     ctx.window = window;
     ctx.mainWindow = &mainWindow;
+    g_wasmPasteTarget = &mainWindow;   // wire the browser-paste bridge (pom1_paste_text)
 
     emscripten_set_main_loop_arg([](void* arg) {
         LoopContext* c = static_cast<LoopContext*>(arg);
