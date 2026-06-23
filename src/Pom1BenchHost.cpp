@@ -2109,7 +2109,9 @@ bench::BuildResult Pom1BenchHost::build(int target, const std::string& src, cons
                 if (gfxLib_.empty())
                     r.console += "  missing: dev/lib/gfx\n";
             }
-            r.console += "The dev/ source tree must be present (clone the repo; release bundles omit dev/).\n";
+            r.console += "Release packages bundle cc65 + the dev/ tree, so asm AND C build "
+                         "out of the box; for a source build, install cc65 and run from the "
+                         "cloned repo so dev/ resolves.\n";
             r.console += kCc65InstallHint;
             r.status = "cc65 cl65 missing"; return r;
         }
@@ -2617,7 +2619,7 @@ std::string Pom1BenchHost::toolchainReport() const
     if (const char* home = std::getenv("CC65_HOME"); home && *home)
         s += std::string("CC65_HOME       : ") + home + "\n";
     s += std::string("dev/ tree        : ") +
-         (devRoot_.empty() ? "NOT found (clone the repo - release bundles omit dev/)"
+         (devRoot_.empty() ? "NOT found (run from the cloned repo; release packages bundle dev/)"
                            : (devRoot_ + "  (resolved)")) + "\n";
     s += "\nPer-target runtime:\n";
     s += std::string("  asm (any machine)   : ") + yn(toolchainOk_) + "\n";

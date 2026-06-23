@@ -8,7 +8,7 @@ Architecture / invariants / gotchas for the **emulator side** of POM1. User walk
 - CLI flags → [`doc/CLI.md`](doc/CLI.md) (impl: `CliDispatcher.cpp`).
 - DevBench / cc65 details → [`doc/DEVBENCH.md`](doc/DEVBENCH.md) + [`doc/CC65_WASM.md`](doc/CC65_WASM.md).
 - GEN2 HGR card → [`doc/GEN2_RELEASE.md`](doc/GEN2_RELEASE.md).
-- 6502 ASM sources for every shipped program → `dev/` (`lib/{apple1,m6502,tms9918,gen2,gen2c,games,…}/`, `projects/<card>/<name>/`, `cc65/`). Compiled artefacts land under `software/<dir>/` — that's what POM1 loads. Release bundles omit `dev/`.
+- 6502 ASM sources for every shipped program → `dev/` (`lib/{apple1,m6502,tms9918,gen2,gen2c,games,…}/`, `projects/<card>/<name>/`, `cc65/`). Compiled artefacts land under `software/<dir>/` — that's what POM1 loads. Official release packages bundle `dev/` (linker cfgs + runtime libs) next to the cc65 toolchain so the in-app DevBench compiles asm/C; a bare source build without cc65 omits both.
 
 ## Project Overview
 
