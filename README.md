@@ -4,7 +4,7 @@
 
 ### *The 1976 personal computer revolution, faithfully reborn — with 50 years of expansion cards bolted on.*
 
-🎂 **Celebrating 50 years of Apple (1976 → 2026)** with the most complete Apple 1 emulator ever shipped: 13 one-click machine presets, 16 expansion cards, 60+ ready-to-run programs, and a cycle-accurate libresidfp SID engine with hot-swappable 6581/8580 chips — a 1976 SWTPC GT-6144 graphics card sitting next to a 2026 Wi-Fi modem.
+🎂 **Celebrating 50 years of Apple (1976 → 2026)** with the most complete Apple 1 emulator ever shipped: 13 one-click machine presets, 16 expansion cards, 60+ ready-to-run programs — a 1976 SWTPC GT-6144 graphics card sitting next to a 2026 Wi-Fi modem.
 
 **Two colour graphics cards, one graphics BASIC.** Paint in colour on **Uncle Bernie's GEN2 HGR Card** (280×192) *and* the **P-LAB TMS9918** (256×192 + 32 sprites) — then drive *both* from an **Apple-1 Applesoft** whose Apple II graphics commands (`HGR` · `HPLOT` · `HCOLOR`) run the **same listing** on either card.
 
@@ -47,9 +47,9 @@ F000R    ; cold-start whatever ROM is currently mapped at $F000
 ```
 
 1. **Write your first BASIC program** → preset **#4**, type `E000R` (cold-start Integer BASIC), then `10 PRINT "HELLO WORLD"` and `RUN`. Welcome to 1976.
-2. **Play the A1-SID piano** → preset **#12** (default), *File → Load Memory* → `software/SOUND SID/Claudio_PARMIGIANI_SID_PIANO_ORIG.txt`, type `C400R`, then press keys to play.
-3. **Plug a TMS9918 cartridge** → preset **#9** (CodeTank), *File → P-LAB CodeTank Library* → `Codetank_GAME2.rom` → flip *upper jumper* → `4000R`. Mode-III Nyan Cat at 20 fps.
-4. **BBS over real TCP** → preset **#12** (default), `0280R` to load ATmodem, then `ATDT bbs.fozztexx.com:23`. Browse a 2026-era BBS in WOZ Monitor.
+2. **Plug a TMS9918 cartridge** → preset **#9** (CodeTank), *File → P-LAB CodeTank Library* → `Codetank_GAME2.rom` → flip *upper jumper* → `4000R`. Mode-III Nyan Cat at 20 fps.
+3. **Draw in colour from BASIC** → preset **#2** (GEN2 HGR), inject a `.apf` from `sketchs/basic_applesoft/` (Mandelbrot, Sierpinski…), `9800R` — `HPLOT`/`HGR`/`HCOLOR` on a 1976 machine.
+4. **Play the A1-SID piano** → preset **#12** (default), *File → Load Memory* → `software/SOUND SID/Claudio_PARMIGIANI_SID_PIANO_ORIG.txt`, type `C400R`, then press keys to play.
 5. **Live debugging** → `F1` opens the memory viewer, `F7` single-steps the 6502, `F3` opens the BRK trace. Watch Microchess plan its move.
 
 ---
