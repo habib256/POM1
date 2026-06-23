@@ -343,7 +343,7 @@ static void pom1_macos_provision_user_data_dir()
     // ---- Seed writable dirs on first launch --------------------------------
     // Never overwrite existing user data — only copy when the destination dir
     // doesn't exist at all.
-    static constexpr const char* kWritableDirs[] = { "sdcard", "cfcard" };
+    static constexpr const char* kWritableDirs[] = { "sdcard", "cfcard", "disks" };
     for (const char* name : kWritableDirs) {
         fs::path dst = userDataDir / name;
         if (fs::exists(dst, ec)) continue;
@@ -582,6 +582,17 @@ int main(int argc, char* argv[])
 #endif
 
     // Create window
+    // Stable WM_CLASS / app-id so the Linux .desktop entry (StartupWMClass=POM1)
+    // binds to the window — correct taskbar icon + grouping. Without it GLFW
+    // derives WM_CLASS from the (version-laden) title and the entry won't match.
+    // Harmless on macOS/Windows (the X11/Wayland hints are ignored).
+#if !POM1_IS_WASM
+    glfwWindowHintString(GLFW_X11_CLASS_NAME,    "POM1");
+    glfwWindowHintString(GLFW_X11_INSTANCE_NAME, "POM1");
+#ifdef GLFW_WAYLAND_APP_ID
+    glfwWindowHintString(GLFW_WAYLAND_APP_ID,    "POM1");
+#endif
+#endif
     GLFWwindow* window = glfwCreateWindow(1274, 801, "POM1 v1.9.2 - Apple 1 Emulator", NULL, NULL);
     if (window == NULL)
         return -1;

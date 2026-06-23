@@ -6,9 +6,11 @@
 #     l'AppDir,
 #     ce qui permet aux probes cwd-relatives existants (ROM loader, fonts,
 #     icone, mémoire par défaut, jaquettes K7) de résoudre correctement.
-#   - les répertoires en lecture/écriture (sdcard, cfcard, ini) sont
+#   - les répertoires en lecture/écriture (sdcard, cfcard, disks, ini) sont
 #     amorcés depuis l'AppDir lors de la première exécution puis conservés
 #     entre lancements dans $XDG_DATA_HOME/POM1.
+#   (ini_defaults/ et cc65/ ne sont PAS liés ici : POM1 les résout relatifs à
+#    l'exécutable, <exe>/../share/POM1/{ini_defaults,cc65}, via /proc/self/exe.)
 
 set -e
 
@@ -31,8 +33,10 @@ done
 
 # Writable seeds: copiés au premier lancement, ensuite laissés à
 # l'utilisateur (parties Sokoban sauvées sur la microSD virtuelle, fichiers
-# ProDOS sur le CF, layouts ImGui par préset, etc.).
-for d in sdcard cfcard; do
+# ProDOS sur le CF, image .d64 du 1541 IEC réinscriptible, layouts ImGui par
+# préset, etc.). disks/ doit être inscriptible : D64Image::save() réécrit
+# disks/iec/dev8.d64 en place (formatage / sauvegarde depuis le drive virtuel).
+for d in sdcard cfcard disks; do
     if [ ! -e "${DATADIR}/${d}" ] && [ -d "${RES}/${d}" ]; then
         cp -r "${RES}/${d}" "${DATADIR}/${d}"
     fi

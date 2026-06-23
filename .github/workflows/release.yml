@@ -8,16 +8,21 @@
 # cc65 binaries can't be cross-built, so there is one native job per OS. Each job
 # stages the toolchain, runs the matching packager in STRICT mode
 # (POM1_REQUIRE_CC65=1 → the packager fails if cc65 didn't make it in), verifies
-# the staged tree, and uploads the artifact. On a v* tag the three packages are
-# attached to the GitHub Release.
+# the staged tree, and uploads the artifact. On a version tag the three packages
+# (plus a SHA256SUMS.txt manifest) are attached to the GitHub Release.
 #
-# Triggers: push a v* tag to cut a release; "Run workflow" for a dry run
-# (artifacts only, no Release).
+# Triggers: push a version tag to cut a release; "Run workflow" for a dry run
+# (artifacts only, no Release). Both tag conventions used on this repo fire:
+# the `v`-prefixed form (v1.8.6) AND the bare numeric form (1.9.2, 1.9.0) — the
+# two most recent releases were tagged WITHOUT the `v`, so a `v*`-only filter
+# would have skipped them.
 name: Release packages
 
 on:
   push:
-    tags: ['v*']
+    tags:
+      - 'v[0-9]*'        # v1.9.2
+      - '[0-9]*'         # 1.9.2  (bare numeric tag — current convention)
   workflow_dispatch:
 
 permissions:
@@ -28,8 +33,32 @@ env:
   IMGUI_TAG: v1.92.7       # pinned Dear ImGui release (matches ci.yml)
 
 jobs:
+  # ---------------------------------------------------- normalize version ----
+  # Single source of truth for the package version. Strips a leading `v` from
+  # the tag so the value is the bare number (1.9.2) regardless of which tag
+  # convention was pushed (v1.9.2 vs 1.9.2) — each packager prepends its own
+  # `v`, so without this a v-prefixed tag would yield POM1-macOS-vv1.9.2.dmg.
+  # Empty on workflow_dispatch (no tag) → packagers fall back to their default.
+  version:
+    runs-on: ubuntu-latest
+    outputs:
+      pom1_version: ${{ steps.v.outputs.pom1_version }}
+    steps:
+      - id: v
+        env:
+          REF_TYPE: ${{ github.ref_type }}
+          REF_NAME: ${{ github.ref_name }}
+        run: |
+          set -eu
+          if [ "$REF_TYPE" = "tag" ]; then
+              echo "pom1_version=${REF_NAME#v}" >> "$GITHUB_OUTPUT"
+          else
+              echo "pom1_version=" >> "$GITHUB_OUTPUT"
+          fi
+
   # ---------------------------------------------------------------- Linux ----
   linux:
+    needs: version
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -53,7 +82,7 @@ jobs:
 
       - name: Package AppImage (cc65 bundled, strict)
         env:
-          POM1_VERSION: ${{ github.ref_type == 'tag' && github.ref_name || '' }}
+          POM1_VERSION: ${{ needs.version.outputs.pom1_version }}
           POM1_APPIMAGE_SKIP_BUILD: "1"
           APPIMAGE_EXTRACT_AND_RUN: "1"   # CI runners have no FUSE
         run: packaging/linux/build_appimage.sh
@@ -69,6 +98,7 @@ jobs:
 
   # ---------------------------------------------------------------- macOS ----
   macos:
+    needs: version
     runs-on: macos-13          # Intel build — runs on Apple Silicon via Rosetta too
     steps:
       - uses: actions/checkout@v4
@@ -84,7 +114,7 @@ jobs:
 
       - name: Package .app + .dmg (cc65 bundled, strict)
         env:
-          POM1_VERSION: ${{ github.ref_type == 'tag' && github.ref_name || '' }}
+          POM1_VERSION: ${{ needs.version.outputs.pom1_version }}
         run: ./package_macos_release.sh
 
       - name: Verify cc65 inside the staged .app (asm + C)
@@ -98,6 +128,7 @@ jobs:
 
   # -------------------------------------------------------------- Windows ----
   windows:
+    needs: version
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
@@ -125,7 +156,7 @@ jobs:
       - name: Package ZIP (cc65 bundled, strict)
         shell: cmd
         env:
-          POM1_VERSION: ${{ github.ref_type == 'tag' && github.ref_name || '' }}
+          POM1_VERSION: ${{ needs.version.outputs.pom1_version }}
         run: |
           set "VCPKG_ROOT=%VCPKG_INSTALLATION_ROOT%"
           set "CC65_HOME=%CD%\dist\cc65-bundle\cc65\share\cc65"
@@ -151,16 +182,27 @@ jobs:
         with:
           path: artifacts
 
-      - name: Attach packages to the GitHub Release
+      - name: Attach packages + checksums to the GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ github.ref_name }}
         run: |
           set -eu
-          # Flatten the per-job artifact dirs into one upload list.
-          find artifacts -type f \( -name '*.AppImage' -o -name '*.dmg' -o -name '*.zip' \) -print
-          mapfile -t FILES < <(find artifacts -type f \( -name '*.AppImage' -o -name '*.dmg' -o -name '*.zip' \))
+          # Flatten the per-job artifact dirs into one staging dir (clean basenames
+          # so the checksum file lists e.g. "POM1-macOS-v1.9.2.dmg", not a nested
+          # download path). Each package basename is already unique per OS.
+          mkdir -p staging
+          find artifacts -type f \( -name '*.AppImage' -o -name '*.dmg' -o -name '*.zip' \) \
+               -exec cp -v {} staging/ \;
+          shopt -s nullglob
+          FILES=(staging/*.AppImage staging/*.dmg staging/*.zip)
           if [ "${#FILES[@]}" -eq 0 ]; then echo "No packages found to publish."; exit 1; fi
+          # SHA-256 manifest so downloaders can verify integrity (sha256sum -c).
+          # List only the basenames actually present (cd into staging so the
+          # manifest carries bare filenames).
+          ( cd staging && sha256sum -- "${FILES[@]#staging/}" > SHA256SUMS.txt )
+          cat staging/SHA256SUMS.txt
+          FILES+=(staging/SHA256SUMS.txt)
           if gh release view "$TAG" >/dev/null 2>&1; then
               gh release upload "$TAG" "${FILES[@]}" --clobber
           else

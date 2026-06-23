@@ -48,6 +48,13 @@ done
 CC65_BINS=(ca65 ld65 cl65 cc65 ar65 co65)
 EXESUF=""
 
+# Single cleanup trap for every mktemp dir we create below. (A per-call
+# `trap … EXIT` would clobber any earlier one — bash keeps only the last EXIT
+# trap — so the unzip scratch dir used to leak once the self-test added its own.)
+CLEANUP_DIRS=()
+cleanup() { for d in "${CLEANUP_DIRS[@]:-}"; do [[ -n "$d" ]] && rm -rf "$d"; done; }
+trap cleanup EXIT
+
 # ---- 1. Resolve source bin dir + share/cc65 data dir ------------------------
 SRC_BIN="${CC65_BIN_DIR:-}"
 SRC_SHARE="${CC65_SHARE_DIR:-}"
@@ -55,7 +62,7 @@ SRC_SHARE="${CC65_SHARE_DIR:-}"
 if [[ -n "$FROM" ]]; then
     SNAP="$FROM"
     if [[ "$FROM" == *.zip ]]; then
-        TMP="$(mktemp -d)"; trap 'rm -rf "$TMP"' EXIT
+        TMP="$(mktemp -d)"; CLEANUP_DIRS+=("$TMP")
         echo "[cc65-bundle] unzip $FROM"
         unzip -q "$FROM" -d "$TMP"
         # official snapshots unzip to a single top dir (e.g. cc65/) — descend if so
@@ -132,7 +139,7 @@ fi
 
 # ---- 4. Self-test: the bundled cl65 must resolve its runtime via CC65_HOME ---
 echo "[cc65-bundle] self-test (cl65 -t none, CC65_HOME=bundle)…"
-TESTDIR="$(mktemp -d)"; trap 'rm -rf "$TESTDIR"' EXIT
+TESTDIR="$(mktemp -d)"; CLEANUP_DIRS+=("$TESTDIR")
 cat > "$TESTDIR/t.c" <<'EOF'
 int main(void){ return 0; }
 EOF

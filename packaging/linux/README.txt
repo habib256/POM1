@@ -20,8 +20,9 @@ On first launch POM1 seeds a data directory at:
   ~/.local/share/POM1/
 
 with the bundled ROMs / fonts / software / demos as read-only links, plus
-writable sdcard/, cfcard/ and ini/ folders for your saves and window layouts.
-These survive AppImage updates.
+writable sdcard/, cfcard/, disks/ and ini/ folders for your saves (microSD,
+CompactFlash, the IEC 1541 .d64) and window layouts. These survive AppImage
+updates.
 
 
 Build your own software (in-app DevBench)

@@ -97,6 +97,7 @@ Contents
                         (WozMonitor, Integer BASIC, Applesoft Lite,
                          applesoft-gen2, ACI, Krusader, SD CARD OS,
                          CFFA1, Juke-Box, charmap, codetank/CODETANKDEV)
+  ini_defaults\         Curated per-preset window layouts (factory baseline)
   sketchs\              DevBench source sketches (asm, C, BASIC .apf)
   dev\                  cc65 linker configs, runtime libs, project sources
   cc65\                 Bundled cc65 toolchain (ca65/ld65/cl65/cc65 + runtime)
@@ -105,7 +106,9 @@ Contents
   sdcard\               Host folder for the P-LAB microSD card
                         (virtual FAT32; tag files as NAME#TTAAAA)
   cfcard\               CFFA1 disk image - expects cfcard.po (ProDOS)
-  cassettes\bundled\    Default tape loaded on boot (WOZ_talk.mp3)
+  disks\                IEC daughterboard 1541 disk image (disks\iec\dev8.d64)
+  cassettes\            Tapes; WOZ_talk.mp3 is loaded on boot with the
+                        POM1 Multiplexing Fantasy preset
 
 
 Requirements

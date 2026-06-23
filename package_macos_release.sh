@@ -73,6 +73,10 @@ cp -R ini_defaults "$DATA_ROOT/ini_defaults"  # curated per-preset layout baseli
 cp -R sdcard    "$DATA_ROOT/sdcard"
 mkdir -p        "$DATA_ROOT/cfcard"
 [[ -f cfcard/cfcard.po ]] && cp cfcard/cfcard.po "$DATA_ROOT/cfcard/"
+# disks/ = IEC virtual-1541 .d64 seed (writable, like sdcard/cfcard) — parity
+# with the Windows ZIP + Linux AppImage. The first-launch provisioner seeds it
+# into the user-data dir (kWritableDirs in main_imgui.cpp); Drive1541 writes there.
+[[ -d disks ]] && cp -R disks "$DATA_ROOT/disks"
 
 # cc65 toolchain bundle (optional) → self-contained DevBench, no system cc65.
 # POM1 finds it exe-relative at Contents/Resources/cc65/bin and points CC65_HOME
@@ -91,8 +95,14 @@ if [[ -n "$CC65_TREE" ]]; then
     echo "==> cc65 bundle: $CC65_TREE"
     cp -R "$CC65_TREE" "$DATA_ROOT/cc65"
     # DevBench linker cfgs + libs (release bundles otherwise omit dev/).
+    # Pom1BenchHost probes dev/ exe-relative at Contents/Resources/dev and needs
+    # exactly dev/cc65 (the .cfg linker configs) + dev/lib (recursed for ca65 -I,
+    # incl. tms9918c/gen2c/apple1c/gfx/telemetry). dev/projects is a
+    # developer-only build tree — never loaded by a packaged app — so it stays
+    # out. (The old apple1-videocard-lib line was dead: that C lib moved under
+    # dev/lib/tms9918c, already covered by dev/lib below.)
     mkdir -p "$DATA_ROOT/dev"
-    for d in cc65 lib apple1-videocard-lib; do
+    for d in cc65 lib; do
         [[ -d "dev/$d" ]] && cp -R "dev/$d" "$DATA_ROOT/dev/$d"
     done
 else

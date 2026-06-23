@@ -250,6 +250,15 @@ if exist "cfcard\" (
     echo AVERTISSEMENT: dossier cfcard\ absent — omis.
 )
 
+REM disks\ : image .d64 du 1541 virtuel (carte IEC), montee au demarrage depuis
+REM disks\iec\dev8.d64 (chemin relatif au cwd — cf. Memory.cpp). Parite AppImage.
+if exist "disks\" (
+    echo Copie disks\ ...
+    xcopy /E /I /Q "disks" "%OUTDIR%\disks\" >nul
+) else (
+    echo AVERTISSEMENT: dossier disks\ absent — omis.
+)
+
 if exist "cassettes\" (
     echo Copie cassettes\ ...
     xcopy /E /I /Q "cassettes" "%OUTDIR%\cassettes\" >nul

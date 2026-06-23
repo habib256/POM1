@@ -8,7 +8,8 @@
 #        usr/bin/POM1                  binaire stripé
 #        usr/lib/                      glfw + GLU + libX* déployés par
 #                                      linuxdeploy, rpath = $ORIGIN/../lib
-#        usr/share/POM1/{roms,fonts,software,sketchs,dev,pic,cassettes,sdcard,cfcard}
+#        usr/share/POM1/{roms,fonts,software,sketchs,dev,pic,cassettes,sdcard,
+#                        cfcard,disks,ini_defaults,cc65}
 #        usr/share/applications/POM1.desktop
 #        usr/share/icons/hicolor/128x128/apps/POM1.png
 #   3. AppRun (packaging/linux/AppRun) qui :
@@ -80,11 +81,12 @@ ln -sf POM1.png "${APPDIR}/.DirIcon"
 # User-facing release note (parity with the Windows ZIP / macOS DMG READMEs).
 cp "${REPO_ROOT}/packaging/linux/README.txt" "${APPDIR}/README.txt"
 
-# 3a. ROMs générées à la demande : CODETANKDEV.rom n'est PAS commitée (seul son
-# sidecar .txt l'est) — elle est produite par tools/build_codetank_rom.py et la
-# DevBench TMS9918 (Applesoft .apf) l'exige à roms/codetank/CODETANKDEV.rom.
-# On la (re)génère ici, avec ca65/ld65 issus du bundle cc65 si besoin, pour
-# qu'elle finisse bien dans l'AppImage.
+# 3a. CODETANKDEV.rom : produite par tools/build_codetank_rom.py et exigée par la
+# DevBench TMS9918 (Applesoft .apf) à roms/codetank/CODETANKDEV.rom. On la
+# (re)génère ici, avec ca65/ld65 issus du bundle cc65 si besoin, pour garantir
+# qu'une copie FRAÎCHE finit dans l'AppImage même si le checkout est périmé.
+# (Le binaire est tracké en plus de son sidecar .txt ; la régénération est
+# idempotente quand les sources dev/ n'ont pas bougé.)
 CC65_BIN=""
 if [ -n "${POM1_CC65_BUNDLE:-}" ] && [ -d "${POM1_CC65_BUNDLE}/bin" ]; then
     CC65_BIN="${POM1_CC65_BUNDLE}/bin"
@@ -104,7 +106,9 @@ fi
 # Données embarquées : tout ce que les probes cwd/exe-relatives cherchent.
 # ini_defaults/ = baseline des layouts par preset (résolu exe-relatif :
 # <exe>/../share/POM1/ini_defaults).
-for d in roms fonts software sketchs pic cassettes sdcard cfcard ini_defaults; do
+# disks/ = image .d64 du 1541 virtuel (carte IEC) ; comme sdcard/cfcard c'est un
+# seed inscriptible (le Drive1541 peut formater/écrire), copié par AppRun.
+for d in roms fonts software sketchs pic cassettes sdcard cfcard disks ini_defaults; do
     if [ -d "${REPO_ROOT}/${d}" ]; then
         cp -r "${REPO_ROOT}/${d}" "${RESOURCES}/${d}"
     fi
