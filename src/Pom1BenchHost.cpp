@@ -337,6 +337,72 @@ static const char* kBenchEmbeddedCfg =
 
 namespace {
 
+// CODETANKDEV.rom (the unified TMS9918 DevBench cartridge: blank flash slot in the
+// lower bank, Applesoft TMS9918 in the upper) normally lives under roms/codetank/.
+// On a dev checkout that tree is writable, so asm/C uploads reflash the lower bank
+// in place. In a packaged AppImage, roms/ is a read-only squashfs symlink — writes
+// there fail silently and the DevBench reboots a stale cartridge. AppRun exports
+// POM1_CODETANK_DEV_DIR pointing at a writable, pre-seeded copy; we prefer it for
+// both reads and writes, falling back to the cwd/exe-relative roms/codetank/ tree.
+
+// Best existing CODETANKDEV.rom to read (writable copy first, then the bundled
+// read-only one). Returns "" if none is found anywhere.
+std::string codeTankDevRomReadPath() {
+    namespace fs = std::filesystem;
+    std::error_code ec;
+    if (const char* env = std::getenv("POM1_CODETANK_DEV_DIR"); env && *env) {
+        std::string p = (fs::path(env) / "CODETANKDEV.rom").string();
+        if (fs::exists(p, ec)) return p;
+    }
+    for (const char* c : {"roms/codetank/CODETANKDEV.rom",
+                          "../roms/codetank/CODETANKDEV.rom",
+                          "../../roms/codetank/CODETANKDEV.rom"})
+        if (fs::exists(c, ec)) return c;
+    return {};
+}
+
+// Writable CODETANKDEV.rom target for the asm/C DevBench flash. Prefers the
+// explicit writable dir (AppImage), else the roms/codetank/ tree on a dev
+// checkout. Returns "" if neither is available (caller picks a temp fallback).
+std::string codeTankDevRomWritePath() {
+    namespace fs = std::filesystem;
+    std::error_code ec;
+    if (const char* env = std::getenv("POM1_CODETANK_DEV_DIR"); env && *env) {
+        fs::create_directories(env, ec);
+        return (fs::path(env) / "CODETANKDEV.rom").string();
+    }
+    for (const char* pre : {"roms/codetank", "../roms/codetank", "../../roms/codetank"})
+        if (fs::exists(fs::path(pre), ec)) return (fs::path(pre) / "CODETANKDEV.rom").string();
+    return {};
+}
+
+// Flash the asm/C build at `binPath` into the LOWER 16 KB of CODETANKDEV.rom while
+// preserving the upper bank (Applesoft TMS9918) seeded from the best existing copy,
+// write it to `outPath`, and report whether the write actually landed (the old
+// code ignored ofstream failures, so a read-only roms/ booted a stale cartridge).
+bool flashCodeTankDevRom(const std::string& binPath, const std::string& outPath,
+                         std::string& err) {
+    namespace fs = std::filesystem;
+    std::vector<unsigned char> rom(0x8000, 0xFF);
+    // Seed the whole 32 KB from the best existing cartridge so the Applesoft upper
+    // bank survives, then clear + overwrite only the lower 16 KB with the build.
+    if (std::string seed = codeTankDevRomReadPath(); !seed.empty()) {
+        std::ifstream prev(seed, std::ios::binary);
+        if (prev) prev.read(reinterpret_cast<char*>(rom.data()), 0x8000);
+    }
+    std::fill_n(rom.begin(), 0x4000, 0xFF);
+    { std::ifstream in(binPath, std::ios::binary);
+      in.read(reinterpret_cast<char*>(rom.data()), 0x4000); }
+    std::error_code ec;
+    fs::create_directories(fs::path(outPath).parent_path(), ec);
+    std::ofstream out(outPath, std::ios::binary | std::ios::trunc);
+    out.write(reinterpret_cast<const char*>(rom.data()),
+              static_cast<std::streamsize>(rom.size()));
+    out.flush();
+    if (!out) { err = "cannot write " + outPath + " (read-only location?)"; return false; }
+    return true;
+}
+
 // RAII sweeper for Bench's temp staging files: collect every scratch path we
 // write, delete them all in the destructor so cleanup runs on every return /
 // early-exit path (build() has many) without threading remove() calls through
@@ -1631,9 +1697,7 @@ bench::BuildResult Pom1BenchHost::injectBasic(int target, const std::string& src
     //    preset switch, no half-plugged card, no default GAME1 cartridge).
     std::string tmsCartPath;
     if (tms) {
-        tmsCartPath = findRom({"roms/codetank/CODETANKDEV.rom",
-                               "../roms/codetank/CODETANKDEV.rom",
-                               "../../roms/codetank/CODETANKDEV.rom"});
+        tmsCartPath = codeTankDevRomReadPath();
         if (tmsCartPath.empty()) {
             r.console = std::string("[bench] ") + interp +
                 ": CODETANKDEV.rom not found — build it with "
@@ -2300,26 +2364,18 @@ bench::BuildResult Pom1BenchHost::build(int target, const std::string& src, cons
     }
     if (t.codetankRom) {
         // Unified CODETANKDEV path (TMS9918 asm + C targets): wrap the build into a
-        // persistent CodeTank dev ROM (roms/codetank/CODETANKDEV.rom), flash it,
-        // jumper to the lower 16K bank, reset and boot 4000R. Living under
-        // roms/codetank/ means the dev cartridge also shows up in
-        // File > P-LAB CodeTank Library, so it's reusable across uploads.
-        fs::path romPath;
-        for (const char* pre : {"roms/codetank", "../roms/codetank", "../../roms/codetank"})
-            if (fs::exists(fs::path(pre), ec)) { romPath = fs::path(pre) / "CODETANKDEV.rom"; break; }
-        if (romPath.empty()) romPath = dir / "CODETANKDEV.rom";   // fallback: no roms/codetank/ dir
-        // Seed from the existing cartridge so the UPPER bank (Applesoft TMS9918,
-        // used by BASIC .apf injection) survives, then overwrite ONLY the lower
-        // 16 K with the fresh asm/C build. (Was: blank 32 K -> wiped Applesoft.)
-        std::vector<unsigned char> rom(0x8000, 0xFF);
-        { std::ifstream prev(romPath, std::ios::binary);
-          if (prev) prev.read(reinterpret_cast<char*>(rom.data()), 0x8000); }
-        std::fill_n(rom.begin(), 0x4000, 0xFF);   // clear lower bank only
-        { std::ifstream in(binB, std::ios::binary);
-          in.read(reinterpret_cast<char*>(rom.data()), 0x4000); }
-        std::ofstream(romPath, std::ios::binary)
-            .write(reinterpret_cast<const char*>(rom.data()), static_cast<std::streamsize>(rom.size()));
+        // persistent CodeTank dev ROM (CODETANKDEV.rom), flash it, jumper to the
+        // lower 16K bank, reset and boot 4000R. The write target is a WRITABLE copy
+        // (POM1_CODETANK_DEV_DIR in an AppImage, else the roms/codetank/ tree), so a
+        // read-only packaged roms/ no longer makes the flash fail silently.
+        fs::path romPath = codeTankDevRomWritePath();
+        if (romPath.empty()) romPath = dir / "CODETANKDEV.rom";   // fallback: temp build dir
+        // Flash the lower bank, preserving the Applesoft TMS9918 upper bank; abort
+        // loudly if the write didn't land instead of booting a stale cartridge.
         std::string error;
+        if (!flashCodeTankDevRom(binB, romPath.string(), error)) {
+            r.status = "CODETANKDEV.rom flash failed: " + error; r.ok = false; return r;
+        }
         if (!emu->loadCodeTankRom(romPath.string(), error)) { r.status = "CODETANKDEV.rom load failed: " + error; return r; }
         mw_->codeTankJumper = CodeTank::Jumper::Lower16;
         emu->setCodeTankJumper(mw_->codeTankJumper);
@@ -2452,22 +2508,15 @@ bench::BuildResult Pom1BenchHost::pollBuild()
 
     if (t.codetankRom) {
         // TMS9918 asm: wrap the .bin into a CodeTank dev ROM, flash it, jumper to
-        // the lower 16K bank, reset + boot 4000R (mirrors the desktop path).
-        fs::path romPath;
-        for (const char* pre : {"roms/codetank", "/roms/codetank"})
-            if (fs::exists(fs::path(pre), ec)) { romPath = fs::path(pre) / "CODETANKDEV.rom"; break; }
+        // the lower 16K bank, reset + boot 4000R (mirrors the desktop path). Write
+        // target is a writable copy (POM1_CODETANK_DEV_DIR in an AppImage), so a
+        // read-only packaged roms/ no longer makes the flash fail silently.
+        fs::path romPath = codeTankDevRomWritePath();
         if (romPath.empty()) romPath = "/tmp/CODETANKDEV.rom";
-        // Preserve the upper bank (Applesoft TMS9918) — seed from the existing
-        // cartridge, then overwrite ONLY the lower 16 K with the fresh build.
-        std::vector<unsigned char> rom(0x8000, 0xFF);
-        { std::ifstream prev(romPath, std::ios::binary);
-          if (prev) prev.read(reinterpret_cast<char*>(rom.data()), 0x8000); }
-        std::fill_n(rom.begin(), 0x4000, 0xFF);
-        { std::ifstream in("/tmp/pom1_bench.bin", std::ios::binary);
-          in.read(reinterpret_cast<char*>(rom.data()), 0x4000); }
-        std::ofstream(romPath, std::ios::binary)
-            .write(reinterpret_cast<const char*>(rom.data()), static_cast<std::streamsize>(rom.size()));
         std::string error;
+        if (!flashCodeTankDevRom("/tmp/pom1_bench.bin", romPath.string(), error)) {
+            r.status = "CODETANKDEV.rom flash failed: " + error; r.ok = false; return r;
+        }
         if (!emu->loadCodeTankRom(romPath.string(), error)) { r.status = "CODETANKDEV.rom load failed: " + error; r.ok = false; return r; }
         mw_->codeTankJumper = CodeTank::Jumper::Lower16;
         emu->setCodeTankJumper(mw_->codeTankJumper);

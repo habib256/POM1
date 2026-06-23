@@ -39,6 +39,13 @@ for d in sdcard cfcard; do
 done
 mkdir -p "${DATADIR}/ini"
 
+# Writable CodeTank dev-cartridge dir: roms/ is a read-only squashfs symlink, so the
+# TMS9918 asm/C DevBench cannot reflash roms/codetank/CODETANKDEV.rom in place.
+# Point POM1 at a writable copy; it lazily seeds the Applesoft upper bank from the
+# bundled read-only cartridge on the first flash.
+mkdir -p "${DATADIR}/codetank"
+export POM1_CODETANK_DEV_DIR="${DATADIR}/codetank"
+
 export LD_LIBRARY_PATH="${HERE}/usr/lib:${LD_LIBRARY_PATH}"
 
 # Bundled cc65 toolchain (if present): point the DevBench probe + cl65 runtime
