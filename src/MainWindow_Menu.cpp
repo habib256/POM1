@@ -1061,6 +1061,11 @@ void MainWindow_ImGui::renderToolbar()
 
 #if !POM1_IS_WASM
         // --- Vitesse CPU (x1 / x2 / Max) - masqué en WASM (rythme imposé par le navigateur)
+        // Render the x1/x2/Max labels a touch smaller than the icon buttons
+        // (owner request). Only the three labels are scaled; the button boxes
+        // (fixed mhzBtnSize/btnSize) and the tooltips (separate windows) keep
+        // their size. Reset to 1.0 right after the Max button.
+        ImGui::SetWindowFontScale(0.85f);
         {
             bool is1M = (executionSpeed == POM1_CPU_CYCLES_PER_FRAME_1X_60HZ);
             if (is1M) ImGui::PushStyleColor(ImGuiCol_Button, activeColor);
@@ -1097,6 +1102,7 @@ void MainWindow_ImGui::renderToolbar()
             if (isMax) ImGui::PopStyleColor();
             if (ImGui::IsItemHovered()) ImGui::SetTooltip("Max");
         }
+        ImGui::SetWindowFontScale(1.0f);
 
         ImGui::SameLine(0, 12);
         ImGui::SeparatorEx(ImGuiSeparatorFlags_Vertical);
