@@ -479,8 +479,11 @@ private:
     void saveSnapshot();
     void pasteCode();
     // Feed text through the Apple-1 keyboard FIFO (CR-normalised, printable,
-    // capped at 4096). Shared by desktop Ctrl+V and the WASM browser-paste hook.
+    // capped at 4096). Public: the WASM browser-paste hook (pom1_paste_text in
+    // main_imgui.cpp) calls it from outside the class; desktop Ctrl+V uses it too.
+public:
     void pasteText(const char* text);
+private:
     void quit();
     void reset();
     void hardReset();
