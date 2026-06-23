@@ -91,6 +91,9 @@ Contents
 --------
   POM1.exe        Main program
   glfw3.dll             GLFW (OpenGL window)
+  vcruntime140.dll      Microsoft Visual C++ runtime, bundled app-local so
+  vcruntime140_1.dll    POM1 starts on a freshly installed Windows with no
+  msvcp140.dll          Visual C++ Redistributable to install
   fonts\                Font Awesome (toolbar icons)
   pic\                  About dialog photo (schlumberger-2-apple-1.jpg)
   roms\                 Apple 1 and expansion ROMs
@@ -113,8 +116,13 @@ Contents
 
 Requirements
 ------------
-Windows 10 or 11, 64-bit. If you get VCRUNTIME/MSVCP errors, install the
-Visual C++ Redistributable (x64) for VS 2019 or 2022:
+Windows 10 or 11, 64-bit. Nothing to install: the Visual C++ runtime POM1 needs
+(vcruntime140 / msvcp140) ships next to POM1.exe, and the cc65 toolchain (cc65\)
+is bundled too - so POM1 runs and the DevBench compiles asm AND C out of the box
+on a base Windows, offline, with no PowerShell or extra download.
+
+If you ever still see a VCRUNTIME/MSVCP error (e.g. after moving the exe out of
+its folder), install the Visual C++ Redistributable (x64):
 https://learn.microsoft.com/cpp/windows/latest-supported-vc-redist
 
 

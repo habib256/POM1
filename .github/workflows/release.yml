@@ -165,6 +165,15 @@ jobs:
         shell: bash
         run: tools/verify_cc65_bundle.sh dist/POM1-Windows/cc65
 
+      - name: Verify VC++ runtime is bundled app-local (base-Windows launch)
+        shell: bash
+        run: |
+          set -eu
+          for d in vcruntime140.dll vcruntime140_1.dll msvcp140.dll; do
+            test -f "dist/POM1-Windows/$d" || { echo "MISSING app-local VC++ runtime: $d"; exit 1; }
+          done
+          echo "VC++ runtime bundled app-local: OK"
+
       - uses: actions/upload-artifact@v4
         with:
           name: POM1-Windows-zip

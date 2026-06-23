@@ -212,6 +212,32 @@ if "!DO_SIGN!"=="1" (
     )
 )
 
+REM ---- Runtime Microsoft Visual C++ (deploiement app-local) -----------------
+REM POM1.exe et glfw3.dll dependent du runtime VC++ (vcruntime140 / msvcp140).
+REM L'UCRT est in-box (Win10/11) mais PAS ces DLL : on les place a cote de l'exe
+REM (app-local, autorise par la licence du redistribuable) pour que POM1 demarre
+REM sur un Windows fraichement installe, sans VC++ Redistributable a installer.
+set "VCRT_DLLS=vcruntime140.dll vcruntime140_1.dll msvcp140.dll"
+set "VCRT_SRC="
+REM 1) Dossier redist exact du toolset MSVC (present en invite developpeur VS).
+if defined VCToolsRedistDir for /d %%D in ("%VCToolsRedistDir%x64\Microsoft.VC*.CRT") do (
+    if exist "%%D\vcruntime140.dll" set "VCRT_SRC=%%D"
+)
+REM 2) Repli : la copie installee dans System32 (>= version du toolset, compatible).
+if not defined VCRT_SRC if exist "%SystemRoot%\System32\vcruntime140.dll" set "VCRT_SRC=%SystemRoot%\System32"
+if defined VCRT_SRC (
+    echo Copie runtime VC++ ^(!VCRT_SRC!^)...
+    for %%F in (%VCRT_DLLS%) do (
+        if exist "!VCRT_SRC!\%%F" (
+            copy /Y "!VCRT_SRC!\%%F" "%OUTDIR%\%%F" >nul
+        ) else (
+            echo AVERTISSEMENT: %%F absente de !VCRT_SRC! — POM1 pourra exiger le VC++ Redistributable.
+        )
+    )
+) else (
+    echo AVERTISSEMENT: runtime VC++ introuvable — POM1 pourra exiger le VC++ Redistributable sur un Windows nu.
+)
+
 echo Copie fonts\ ...
 xcopy /E /I /Q "fonts" "%OUTDIR%\fonts\" >nul || exit /b 1
 
