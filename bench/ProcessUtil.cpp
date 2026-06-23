@@ -39,10 +39,21 @@ int runCapture(const std::string& cmd, std::string& out)
     (void)cmd;
     return -1;   // no subprocesses in the browser
 #else
-    const std::string full = cmd + " 2>&1";
   #ifdef _WIN32
+    // _popen runs the command through `cmd.exe /c`, which strips the OUTERMOST
+    // quote pair from its argument. Our commands start with a quoted program path
+    // AND carry quoted arguments (-I "<dir>", "<src>", -o "<obj>"), so that strip
+    // desyncs the remaining quotes: a cc65 path containing a space — e.g.
+    // "C:\...\POM1-Windows-v1.9.2 (1)\cc65\bin\ca65.exe", a OneDrive "Bureau",
+    // "Program Files", … — then gets split at the space and cmd reports
+    // "'C:\...' n'est pas reconnu en tant que commande …". Wrapping the whole
+    // command in one extra quote pair makes cmd strip THOSE and pass the original
+    // command through intact (the same `cmd /c "…"` idiom the packaging
+    // PowerShell already uses — see packaging/windows/fetch_cc65.ps1).
+    const std::string full = "\"" + cmd + " 2>&1\"";
     FILE* pipe = _popen(full.c_str(), "r");
   #else
+    const std::string full = cmd + " 2>&1";
     FILE* pipe = popen(full.c_str(), "r");
   #endif
     if (!pipe) return -1;
