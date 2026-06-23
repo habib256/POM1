@@ -3,9 +3,9 @@
 # everything the POM1 DevBench (Pom1BenchHost) needs at runtime to compile BOTH
 # of its native languages with no system cc65 on PATH:
 #
-#   asm  →  ca65 (assembler) + ld65 (linker)
+#   asm  →  ca65 (assembler) + ld65 (linker) + ar65 (static libs, e.g. gfx-*.lib)
 #   C    →  cl65 (driver) + cc65 (compiler)
-#   runtime data  →  share/cc65/{include,lib,target}
+#   runtime data  →  share/cc65/{asminc,include,lib/none.lib}
 #
 # Exit 0 = complete bundle. Non-zero + a diagnostic listing the missing pieces
 # otherwise. Windows .exe suffixes are accepted transparently.
@@ -29,24 +29,24 @@ BIN="$DIR/bin"
 fail=0
 note() { echo "  MISSING: $*" >&2; fail=1; }
 
-# Binaries: ca65+ld65 cover asm, cl65+cc65 cover C. A native exe or a Windows
-# .exe both count.
-for t in ca65 ld65 cl65 cc65; do
+# Binaries: ca65+ld65 cover asm, cl65+cc65 cover C, ar65 builds gfx-*.lib archives.
+for t in ca65 ld65 cl65 cc65 ar65; do
     if [ -f "$BIN/$t" ] || [ -f "$BIN/$t.exe" ]; then
         :
     else
-        note "bin/$t (asm needs ca65+ld65, C needs cl65+cc65)"
+        note "bin/$t (asm: ca65+ld65+ar65, C: cl65+cc65)"
     fi
 done
 
 # Runtime data the linker/compiler resolve through CC65_HOME=<cc65>/share/cc65.
-for d in include lib target; do
+for d in asminc include lib; do
     [ -d "$DIR/share/cc65/$d" ] || note "share/cc65/$d"
 done
+[ -f "$DIR/share/cc65/lib/none.lib" ] || note "share/cc65/lib/none.lib (-t none C runtime)"
 
 if [ "$fail" != 0 ]; then
     echo "verify_cc65_bundle: INCOMPLETE cc65 bundle at '$DIR'" >&2
     exit 1
 fi
 
-echo "verify_cc65_bundle: OK — asm (ca65+ld65) + C (cl65+cc65) + runtime present at '$DIR'"
+echo "verify_cc65_bundle: OK — asm (ca65+ld65+ar65) + C (cl65+cc65) + runtime present at '$DIR'"

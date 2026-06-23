@@ -287,21 +287,23 @@ REM ---- Optional cc65 toolchain bundle (self-contained DevBench) --------------
 REM Stage a relocatable cc65 tree (bin\ + share\cc65\) so the DevBench builds
 REM asm/C with no system cc65 on PATH. POM1 finds it exe-relative at cc65\bin
 REM and points CC65_HOME at cc65\share\cc65 (no launcher script needed).
-REM Produce one on a POSIX box (WSL / git-bash):
-REM   tools\build_cc65_bundle.sh --from cc65-snapshot-win64.zip --out dist\cc65-bundle
-REM or set POM1_CC65_BUNDLE to a dir holding bin\ + share\cc65\.
+REM Default: compile cc65 from source (packaging\windows\build_cc65.ps1).
+REM Fallback: snapshot download (fetch_cc65.ps1) when POM1_CC65_FETCH=1.
+REM Override tree: set POM1_CC65_BUNDLE to a dir holding bin\ + share\cc65\.
 set "CC65_TREE="
 if defined POM1_CC65_BUNDLE if exist "%POM1_CC65_BUNDLE%\bin" set "CC65_TREE=%POM1_CC65_BUNDLE%"
 if not defined CC65_TREE if exist "dist\cc65-bundle\cc65\bin" set "CC65_TREE=dist\cc65-bundle\cc65"
 
-REM No staged bundle? Download the official cc65 Windows snapshot and stage one
-REM (pure PowerShell, no bash/WSL needed) so the DevBench compiles asm (ca65/ld65)
-REM AND C (cl65/cc65) out of the box. Override the URL with POM1_CC65_WIN_URL;
-REM skip the auto-fetch entirely with POM1_CC65_NO_FETCH=1.
-if not defined CC65_TREE if not "%POM1_CC65_NO_FETCH%"=="1" (
+if not defined CC65_TREE if "%POM1_CC65_FETCH%"=="1" (
     echo Telechargement du toolchain cc65 ^(snapshot officiel Windows^)...
     powershell -NoProfile -ExecutionPolicy Bypass -File "packaging\windows\fetch_cc65.ps1" -Out "dist\cc65-bundle" || (
         echo AVERTISSEMENT: telechargement cc65 echoue — DevBench limite.
+    )
+    if exist "dist\cc65-bundle\cc65\bin\ca65.exe" set "CC65_TREE=dist\cc65-bundle\cc65"
+) else if not defined CC65_TREE (
+    echo Compilation du toolchain cc65 pour POM1 ^(sources GitHub^)...
+    powershell -NoProfile -ExecutionPolicy Bypass -File "packaging\windows\build_cc65.ps1" -Out "dist\cc65-bundle" || (
+        echo AVERTISSEMENT: compilation cc65 echouee — DevBench limite.
     )
     if exist "dist\cc65-bundle\cc65\bin\ca65.exe" set "CC65_TREE=dist\cc65-bundle\cc65"
 )
@@ -316,7 +318,7 @@ if defined CC65_TREE (
 REM Verifie que le toolchain embarque couvre asm (ca65+ld65) ET C (cl65+cc65).
 REM POM1_REQUIRE_CC65=1 (workflow release) -> echec dur si absent/incomplet.
 set "CC65_OK=1"
-for %%T in (ca65 ld65 cl65 cc65) do if not exist "%OUTDIR%\cc65\bin\%%T.exe" set "CC65_OK=0"
+for %%T in (ca65 ld65 cl65 cc65 ar65) do if not exist "%OUTDIR%\cc65\bin\%%T.exe" set "CC65_OK=0"
 if "!CC65_OK!"=="0" (
     if "%POM1_REQUIRE_CC65%"=="1" (
         echo ERREUR: POM1_REQUIRE_CC65=1 mais le bundle cc65 est absent/incomplet ^(asm+C requis^).

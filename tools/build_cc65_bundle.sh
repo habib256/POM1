@@ -5,8 +5,8 @@
 #
 # Output layout (a self-contained cc65 prefix):
 #
-#   <out>/cc65/bin/{ca65,ld65,cl65,cc65,ar65,co65}[.exe]
-#   <out>/cc65/share/cc65/{asminc,cfg,include,lib,target}
+#   <out>/cc65/bin/{ca65,ld65,cl65,cc65,ar65}[.exe]
+#   <out>/cc65/share/cc65/{asminc,include,lib/none.lib}
 #   <out>/cc65/LICENSE
 #
 # POM1 finds it exe-relative (see bench/ProcessUtil.cpp whichExe + Pom1BenchHost
@@ -45,7 +45,7 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
-CC65_BINS=(ca65 ld65 cl65 cc65 ar65 co65)
+CC65_BINS=(ca65 ld65 cl65 cc65 ar65)
 EXESUF=""
 
 # Single cleanup trap for every mktemp dir we create below. (A per-call
@@ -116,10 +116,17 @@ for b in "${CC65_BINS[@]}"; do
     fi
 done
 
-# Data: the four dirs cc65 needs at runtime (skip samples/ to save space).
-for d in asminc cfg include lib target; do
+# Data: copy the full cc65 runtime tree, then prune to what POM1's DevBench uses.
+for d in asminc include lib; do
     [[ -d "$SRC_SHARE/$d" ]] && cp -r "$SRC_SHARE/$d" "$DST/share/cc65/$d"
 done
+rm -rf "$DST/share/cc65/cfg" "$DST/share/cc65/target"
+if [[ -f "$DST/share/cc65/lib/none.lib" ]]; then
+    shopt -s nullglob
+    for f in "$DST/share/cc65/lib"/*; do
+        [[ "$(basename "$f")" == "none.lib" ]] || rm -rf "$f"
+    done
+fi
 
 # ---- 3. LICENSE (zlib) ------------------------------------------------------
 LIC=""
@@ -138,12 +145,17 @@ EOF
 fi
 
 # ---- 4. Self-test: the bundled cl65 must resolve its runtime via CC65_HOME ---
-echo "[cc65-bundle] self-test (cl65 -t none, CC65_HOME=bundle)…"
+echo "[cc65-bundle] self-test (cl65 -t none -C none.cfg)…"
 TESTDIR="$(mktemp -d)"; CLEANUP_DIRS+=("$TESTDIR")
 cat > "$TESTDIR/t.c" <<'EOF'
 int main(void){ return 0; }
 EOF
-if CC65_HOME="$DST/share/cc65" "$DST/bin/cl65" -t none -o "$TESTDIR/t.bin" "$TESTDIR/t.c" 2>"$TESTDIR/err"; then
+NONECFG=""
+for c in "$SRC_SHARE/cfg/none.cfg" "$SRC_SHARE/../cfg/none.cfg" /usr/share/cc65/cfg/none.cfg; do
+    [[ -f "$c" ]] && { NONECFG="$c"; break; }
+done
+[[ -n "$NONECFG" ]] || { echo "ERROR: none.cfg not found for self-test" >&2; exit 1; }
+if CC65_HOME="$DST/share/cc65" "$DST/bin/cl65" -t none -C "$NONECFG" -o "$TESTDIR/t.bin" "$TESTDIR/t.c" 2>"$TESTDIR/err"; then
     echo "[cc65-bundle] self-test OK ($(wc -c <"$TESTDIR/t.bin") bytes)"
 else
     echo "[cc65-bundle] self-test FAILED:" >&2; cat "$TESTDIR/err" >&2; exit 1

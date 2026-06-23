@@ -139,13 +139,12 @@ jobs:
       - name: Install GLFW via vcpkg
         run: vcpkg install glfw3:x64-windows
 
-      - name: Stage cc65 bundle (official Windows snapshot; asm + C)
+      - name: Install LLVM MinGW (compile cc65 from source)
+        run: winget install -e --id MartinStorsjo.LLVM-MinGW.UCRT --accept-package-agreements --accept-source-agreements
+
+      - name: Stage cc65 bundle (compile from source; asm + C + ar65)
         shell: pwsh
-        env:
-          # Override centrally via a repo variable if the snapshot URL ever moves;
-          # empty → fetch_cc65.ps1 falls back to the canonical cc65.github.io nightly.
-          POM1_CC65_WIN_URL: ${{ vars.POM1_CC65_WIN_URL }}
-        run: .\packaging\windows\fetch_cc65.ps1 -Out dist\cc65-bundle
+        run: .\packaging\windows\build_cc65.ps1 -Out dist\cc65-bundle
 
       - name: Configure + build (Release, vcpkg toolchain)
         shell: cmd
