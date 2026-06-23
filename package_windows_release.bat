@@ -24,7 +24,7 @@ REM
 REM Optional:
 REM   set POM1_CODESIGN_TIMESTAMP_URL=http://timestamp.digicert.com
 REM   set POM1_CODESIGN_DESC=POM1 Apple 1 Emulator
-REM   set POM1_CODESIGN_URL=https://github.com/gistarcade/POM1
+REM   set POM1_CODESIGN_URL=https://github.com/habib256/POM1
 REM
 REM If none is set, packaging proceeds unsigned (SmartScreen may warn).
 REM ---------------------------------------------------------------------------
@@ -158,7 +158,7 @@ set "SIGNDESC=%POM1_CODESIGN_DESC%"
 if not defined SIGNDESC set "SIGNDESC=POM1 - Apple 1 Emulator"
 
 set "SIGNURL=%POM1_CODESIGN_URL%"
-if not defined SIGNURL set "SIGNURL=https://github.com/gistarcade/POM1"
+if not defined SIGNURL set "SIGNURL=https://github.com/habib256/POM1"
 
 set "DO_SIGN=0"
 if defined POM1_CODESIGN_PFX set "DO_SIGN=1"

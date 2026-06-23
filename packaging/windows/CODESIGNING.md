@@ -45,7 +45,7 @@ Variables facultatives :
 ```bat
 set POM1_CODESIGN_TIMESTAMP_URL=http://timestamp.digicert.com
 set POM1_CODESIGN_DESC=POM1 - Apple 1 Emulator
-set POM1_CODESIGN_URL=https://github.com/gistarcade/POM1
+set POM1_CODESIGN_URL=https://github.com/habib256/POM1
 ```
 
 ### Notes

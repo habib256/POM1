@@ -72,7 +72,7 @@ Two zero-effort ways to start — no toolchain, no build:
 #### 🐧 Linux / 🍏 macOS
 
 ```bash
-git clone https://github.com/gistarcade/POM1.git
+git clone https://github.com/habib256/POM1.git
 cd POM1
 ./setup_pom1.sh                    # fetch Dear ImGui + install deps (one-time)
 cd build && cmake .. && make
@@ -84,7 +84,7 @@ cd .. && ./run_emulator.sh
 Prereqs: [Visual Studio](https://visualstudio.microsoft.com/) (C++ workload), [CMake](https://cmake.org/download/), [Git](https://git-scm.com/download/win), [vcpkg](https://vcpkg.io/).
 
 ```batch
-git clone https://github.com/gistarcade/POM1.git
+git clone https://github.com/habib256/POM1.git
 cd POM1
 setup_pom1.bat
 cd build && cmake --build . --config Release

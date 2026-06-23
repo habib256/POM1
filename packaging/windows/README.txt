@@ -131,4 +131,4 @@ Apple 1 ROMs are included under the terms published by their authors
 Rich Dreher's CFFA1 firmware, Antonino Porcino's apple1-sdcard).
 
 Built by Arnaud Verhille (2000-2026). Project page, full credits and
-source: https://github.com/gistarcade/POM1
+source: https://github.com/habib256/POM1
