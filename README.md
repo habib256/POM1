@@ -66,6 +66,8 @@ Two zero-effort ways to start — no toolchain, no build:
 
 **[Grab the latest build →](https://github.com/habib256/POM1/releases)** for Windows (`.zip`), macOS (`.dmg`) or Linux (AppImage). The desktop packages **bundle everything** — including the cc65 DevBench toolchain — so it works out of the box with nothing else to install.
 
+> **🍏 macOS — "POM1.app is damaged and can't be opened"?** It isn't. POM1 is ad-hoc signed but not notarized, so a browser download gets quarantined and macOS shows this misleading dialog. **Don't trash it** — clear the quarantine flag once: `xattr -cr /Applications/POM1.app` (or right-click POM1.app → **Open** → **Open**). It opens normally afterwards.
+
 <details>
 <summary><b>🔧 Build from source</b> (developers)</summary>
 

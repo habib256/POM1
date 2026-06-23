@@ -120,6 +120,26 @@ elif [[ "${POM1_REQUIRE_CC65:-0}" == "1" ]]; then
     exit 1
 fi
 
+# ---------- 3b. Ad-hoc codesign --------------------------------------------
+# Without ANY signature, a quarantined download trips the misleading
+# "POM1.app is damaged and can't be opened" Gatekeeper dialog (and on Apple
+# Silicon an unsigned arm64 binary won't execute at all). An ad-hoc signature
+# ("-" = no identity, no cert/$99 Apple account needed) downgrades that to the
+# normal, recoverable "unidentified developer" prompt and makes the binary
+# valid on arm64. It does NOT notarize — users still clear quarantine on first
+# launch (right-click → Open, or `xattr -cr`; see README.txt below).
+# --deep signs nested code too (the cc65 toolchain binaries under
+# Contents/Resources/cc65/bin); inside-out so containers verify.
+echo "==> Ad-hoc codesigning $STAGING (deep)"
+if command -v codesign >/dev/null 2>&1; then
+    codesign --force --deep --sign - "$STAGING" \
+        && codesign --verify --deep --strict "$STAGING" \
+        && echo "    signed (ad-hoc)" \
+        || echo "    WARNING: ad-hoc codesign failed — bundle ships unsigned."
+else
+    echo "    WARNING: codesign not found — bundle ships unsigned."
+fi
+
 # ---------- 4. DMG staging: POM1.app + /Applications shortcut + README -------
 echo "==> Preparing DMG staging in $DMG_STAGE"
 rm -rf "$DMG_STAGE"
@@ -141,11 +161,24 @@ POM1 — Apple 1 Emulator (macOS), version ${VERSION}
 
 Install: drag POM1.app onto the Applications shortcut in this window.
 
-The app is unsigned. On first run, macOS Gatekeeper blocks it:
+First launch -- "POM1.app is damaged and can't be opened"?
+--------------------------------------------------------
+POM1 is ad-hoc signed but NOT notarized (notarization needs a paid Apple
+Developer account). When your browser downloads the DMG, macOS tags it
+"quarantined". On a quarantined, non-notarized app Gatekeeper shows the
+MISLEADING "is damaged and can't be opened / move it to the Trash" dialog.
+The app is NOT damaged -- do NOT trash it. Clear the quarantine flag:
 
-   1. Right-click POM1.app → Open → Open (confirm the warning).
+   1. Open Terminal and run (drag POM1.app onto the Terminal window to
+      fill in the path):
+
+         xattr -cr /Applications/POM1.app
+
+      Then double-click POM1.app -- it opens normally.
       -- or --
-   2. System Settings → Privacy & Security → scroll to the blocked-app
+   2. Right-click POM1.app → Open → Open (confirm the warning).
+      -- or --
+   3. System Settings → Privacy & Security → scroll to the blocked-app
       notice → "Open Anyway" → confirm.
 
 After one successful launch, Gatekeeper remembers the decision.
