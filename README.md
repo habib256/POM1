@@ -4,7 +4,9 @@
 
 ### *The 1976 personal computer revolution, faithfully reborn — with 50 years of expansion cards bolted on.*
 
-🎂 **Celebrating 50 years of Apple (1976 → 2026)** with the most complete Apple 1 emulator ever shipped: 13 one-click machine presets, 16 expansion cards, 60+ ready-to-run programs, **cycle-accurate libresidfp SID engine** with hot-swappable 6581/8580 chips, and a 1976 SWTPC GT-6144 graphics card sitting next to a 2026 Wi-Fi modem & TMS9918 cartridge library.
+🎂 **Celebrating 50 years of Apple (1976 → 2026)** with the most complete Apple 1 emulator ever shipped: 13 one-click machine presets, 16 expansion cards, 60+ ready-to-run programs, and a **cycle-accurate libresidfp SID engine** with hot-swappable 6581/8580 chips — a 1976 SWTPC GT-6144 graphics card sitting next to a 2026 Wi-Fi modem.
+
+**Two colour graphics cards, one graphics BASIC.** Paint in colour on **Uncle Bernie's GEN2 HGR Card** (280×192) *and* the **P-LAB TMS9918** (256×192 + 32 sprites) — then drive *both* from an **Apple-1 Applesoft** whose Apple II graphics commands (`HGR` · `HPLOT` · `HCOLOR`) run the **same listing** on either card.
 
 Built with Dear ImGui & OpenGL — fast, lightweight, cross-platform.
 
