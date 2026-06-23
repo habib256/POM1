@@ -128,6 +128,20 @@
     },
   };
 
+  // Bridge the browser clipboard into the emulator: Emscripten's GLFW clipboard
+  // can't read text copied from outside the tab, so capture the native paste
+  // event (Ctrl+V / right-click paste) and feed it to the Apple-1 keyboard FIFO
+  // via the exported pom1_paste_text (see main_imgui.cpp).
+  window.addEventListener('paste', event => {
+    try {
+      const t = (event.clipboardData || window.clipboardData).getData('text');
+      if (t && window.Module && window.Module.ccall) {
+        window.Module.ccall('pom1_paste_text', null, ['string'], [t]);
+        event.preventDefault();
+      }
+    } catch (_) {}
+  });
+
   window.addEventListener('unhandledrejection', event => {
     errEl.style.display = 'block';
     errEl.textContent = "POM1 failed while loading or initializing:\n" +
