@@ -1,9 +1,9 @@
 ; Applesoft TMS9918
 ;
 ; Applesoft Lite (Microsoft 6502 BASIC) + P-LAB TMS9918 colour graphics.
-; Base = txgx42/applesoft-lite; identical token layout to the sibling
-; sketchs/gen2/applesoft_gen2/ (same BASIC dialect, "raccord"), but the graphics
-; statements drive the P-LAB TMS9918 VDP ($CC00/$CC01) instead of Uncle Bernie's
+; Base = txgx42/applesoft-lite; identical token layout to the sibling GEN2
+; Applesoft (roms/applesoft-gen2.rom; same BASIC dialect, "raccord"), but the
+; graphics statements drive the P-LAB TMS9918 VDP ($CC00/$CC01), not Uncle Bernie's
 ; GEN2 card. Lives in the CodeTank ROM window ($4000-$7FFF): the interpreter is
 ; ROM-resident (like Apple II's ROM Applesoft) and the user's BASIC program +
 ; variables live in the 8 KB dual-bank RAM ($0800-$1FFF). The graphics handlers

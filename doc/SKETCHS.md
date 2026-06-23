@@ -127,16 +127,18 @@ Further reading: [`Programming_C_Quickstart.md`](../sketchs/doc/Programming_C_Qu
 
 ### Applesoft GEN2 — floating-point BASIC with GEN2 graphics
 
-[`sketchs/gen2/applesoft_gen2/`](../sketchs/gen2/applesoft_gen2/) is Applesoft
-Lite turned into the BASIC for Uncle Bernie's card: CFFA1 disk I/O dropped, a
-full Apple II-style graphics + console command set added — `TEXT GR GR2 HGR HGR2
-MIX NOMIX SHOW VBL COLOR= HCOLOR= PLOT HLIN..AT VLIN..AT HPLOT..TO HOME HTAB
-VTAB` and the `SCRN(x,y)` function — and **`PRINT` retargeted to the GEN2
-screen** (`APRINT` keeps the Apple-1 terminal). **Run** cold-starts the
-interpreter at `$6000`; you type BASIC on the Apple-1 terminal and program
-output + graphics appear on the GEN2 card. `SHOW n` does tear-free page-flip
-double buffering. The README covers the command set, the `PRINT`/`APRINT` output
-model, double buffering and the memory map. Pinned by the `applesoft_gen2_smoke`
+The **applesoft-gen2** interpreter is Applesoft Lite turned into the BASIC for
+Uncle Bernie's card: CFFA1 disk I/O dropped, a full Apple II-style graphics +
+console command set added — `TEXT GR GR2 HGR HGR2 MIX NOMIX SHOW VBL COLOR=
+HCOLOR= PLOT HLIN..AT VLIN..AT HPLOT..TO HOME HTAB VTAB` and the `SCRN(x,y)`
+function — and **`PRINT` retargeted to the GEN2 screen** (`APRINT` keeps the
+Apple-1 terminal). It ships **prebuilt** as
+[`roms/applesoft-gen2.rom`](../roms/applesoft-gen2.rom) (no source sketch in the
+repo); **Run** loads it HIGH in RAM and cold-starts at `$9800` (`9800R`). You type
+BASIC on the Apple-1 terminal and program output + graphics appear on the GEN2
+card; `SHOW n` does tear-free page-flip double buffering. Ready-made graphics-BASIC
+programs live in [`sketchs/basic_applesoft/`](../sketchs/basic_applesoft/)
+(Mandelbrot, Sierpinski, 3D Hat, Boy Surface…). Pinned by the `applesoft_gen2_smoke`
 ctest.
 
 ---

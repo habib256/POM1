@@ -1,11 +1,12 @@
 # applesoft_tms9918 — Applesoft + P-LAB TMS9918 graphics (CodeTank cartridge)
 
 **Applesoft Lite** (Microsoft 6502 floating-point BASIC) with the **same command
-set and token layout** as the sibling
-[`sketchs/gen2/applesoft_gen2/`](../../gen2/applesoft_gen2/) — the two BASIC
-dialects are deliberately *raccord* (a program tokenizes identically) — but every
-graphics statement drives the **P-LAB TMS9918 VDP** (`$CC00` data / `$CC01`
-control) instead of Uncle Bernie's memory-mapped GEN2 card.
+set and token layout** as the sibling **GEN2 Applesoft** (shipped prebuilt as
+[`roms/applesoft-gen2.rom`](../../../roms/applesoft-gen2.rom); graphics-BASIC demos
+in [`sketchs/basic_applesoft/`](../../basic_applesoft/)) — the two BASIC dialects
+are deliberately *raccord* (a program tokenizes identically) — but every graphics
+statement drives the **P-LAB TMS9918 VDP** (`$CC00` data / `$CC01` control) instead
+of Uncle Bernie's memory-mapped GEN2 card.
 
 It ships as a **CodeTank ROM cartridge**: the interpreter runs in place from the
 `$4000-$7FFF` ROM window (like Tetris / LOGO V2.6), so cold-start with **`4000R`**
@@ -46,7 +47,7 @@ modes:
 
 This interpreter shares the exact renumbered BASIC body of the GEN2 sibling, so
 the math2026 additions are identical: `SIN COS TAN ATN`, `DEF FN … / FN`, and
-`PRINT TAB(n)`. See [`sketchs/gen2/applesoft_gen2/README.md`](../../gen2/applesoft_gen2/README.md).
+`PRINT TAB(n)`. The GEN2 sibling ships prebuilt as `roms/applesoft-gen2.rom`.
 
 ```basic
 10 HGR : HCOLOR=3

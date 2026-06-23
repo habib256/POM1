@@ -312,9 +312,10 @@ static const char* kSketchBasicApplesoft =   // Applesoft Lite ($6000, microSD)
     "30 PRINT \"  1/\"; I; \" = \"; 1 / I\n"
     "40 NEXT I\n"
     "50 END\n";
-// Applesoft GEN2 ($9800 on the GEN2 card): the sketchs/gen2/applesoft_gen2
-// interpreter — Applesoft with the GEN2 graphics command set, built into
-// roms/applesoft-gen2.rom. PRINT goes to the GEN2 screen, APRINT to the Apple-1.
+// Applesoft GEN2 ($9800 on the GEN2 card): the applesoft-gen2 interpreter —
+// Applesoft with the GEN2 graphics command set, shipped prebuilt as
+// roms/applesoft-gen2.rom (graphics-BASIC demos under sketchs/basic_applesoft).
+// PRINT goes to the GEN2 screen, APRINT to the Apple-1.
 static const char* kSketchBasicApplesoftGen2 =
     "10 HGR : HCOLOR=3\n"
     "20 HPLOT 0,0 TO 279,191\n"
@@ -522,7 +523,7 @@ const char* const kP1MachineHints[] = {
     "for the run ($6000 is inside its out-of-range window).",
     "Applesoft GEN2 — Applesoft with the GEN2 colour graphics commands (TEXT/GR/\n"
     "HGR/COLOR=/HCOLOR=/PLOT/HLIN/VLIN/HPLOT, PRINT->GEN2 screen). Interpreter at\n"
-    "$9800 (top of RAM) on the GEN2 card (preset 2). sketchs/gen2/applesoft_gen2.",
+    "$9800 (top of RAM) on the GEN2 card (preset 2). Demos: sketchs/basic_applesoft.",
     "Applesoft TMS9918 — Applesoft with the same graphics commands driving the\n"
     "P-LAB TMS9918 VDP ($CC00/$CC01). The interpreter is a CodeTank ROM cartridge\n"
     "($4000-$7FFF), cold start 4000R. sketchs/tms9918/applesoft_tms9918.",
