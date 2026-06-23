@@ -13,7 +13,7 @@ Built with Dear ImGui & OpenGL — fast, lightweight, cross-platform.
 [![▶ Play in browser (no install)](https://img.shields.io/badge/▶%20Play%20in%20browser-WebAssembly-blueviolet?style=for-the-badge)](https://habib256.github.io/POM1/build-wasm/POM1.html)
 
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](LICENSE)
-[![Platform](https://img.shields.io/badge/Linux%20•%20macOS%20•%20Windows%20•%20Web-lightgrey.svg)](#-quick-start)
+[![Platform](https://img.shields.io/badge/Linux%20•%20macOS%20•%20Windows%20•%20Web-lightgrey.svg)](#-get-pom1)
 [![C++17](https://img.shields.io/badge/C%2B%2B-17-orange.svg)](#)
 [![13 presets](https://img.shields.io/badge/Presets-13-success.svg)](#%EF%B8%8F-machine-presets)
 [![Programs](https://img.shields.io/badge/Software-60%2B-yellowgreen.svg)](#-software-library)
@@ -28,13 +28,12 @@ Built with Dear ImGui & OpenGL — fast, lightweight, cross-platform.
 
 > *Every other Apple 1 emulator stops at the WOZ Monitor. POM1 keeps going for 50 years.*
 
-- 🎵 **Real chiptune sound on a 1976 board.** Drop a `.sid` from the [HVSC archive](https://www.exotica.org.uk/wiki/High_Voltage_SID_Collection) onto `tools/sid2apple1.py`, swap between MOS 6581 and CSG 8580 *while it plays*, and hear genuine SID through libresidfp.
-- 🎨 **Three independent graphics cards across half a century.** The 1976 SWTPC GT-6144 (with bistable SRAM noise on power-up), Uncle Bernie's GEN2 HGR (NTSC artifact colours), and the P-LAB TMS9918 (256×192 + 32 sprites + silicon-strict timing model documented in [`Programming_TMS9918.md`](sketchs/doc/Programming_TMS9918.md)).
-- 📡 **Wi-Fi modem dialing real BBSes.** Flip on the P-LAB Wi-Fi card, type `ATDT bbs.fozztexx.com:23` in WOZ Monitor and you're on a 2026-era BBS. Or run `telnet localhost 6502` to drive the Apple 1 from any modern terminal.
-- 💾 **Cartridge ecosystem unique to POM1.** The P-LAB CodeTank ships **3 ready-to-flip cartridges** (GAME1/GAME2/GAME3) covering arcade games, a dungeon crawler, a LOGO turtle interpreter and graphics demos — rebuilt from [`sketchs/`](sketchs/) + [`dev/projects/`](dev/projects/) sources via `python3 tools/build_codetank_rom.py`.
-- 🔬 **Cycle-accurate down to the bus.** The SID, TMS9918, ACI cassette and modem all run on the same `POM1_CPU_CLOCK_HZ = 1 022 727` clock; tempo follows emulation speed, not wall-clock. Klaus Dormann's 6502 functional test pinned in CI.
-- 🛠️ **Write your own — without leaving the app.** The in-app **DevBench** assembles 6502 **asm**, compiles **C**, or runs **BASIC**, then boots it in one click. Including an Apple-1 **Applesoft with Apple II graphics commands** (`HGR` / `HPLOT` / `HCOLOR`) that draws on *both* the GEN2 HGR and TMS9918 colour cards — type a graphics one-liner on Woz's 1976 machine and watch it paint. Backed by a full cc65 source tree (Galaga, Sokoban, Snake, Logo, Rogue, Tetris, Mandelbrot, Plasma, Connect-4 …).
-- ⌨️ **TTL-faithful keyboard** (no autorepeat by default, like the real ASCII keyboard ROM) — toggle to host autorepeat from *Settings* if you can't take it.
+- 🎵 **Real chiptune sound on a 1976 board** — genuine MOS 6581 / CSG 8580 SID through libresidfp, swap chips *while it plays*.
+- 🎨 **Three independent graphics cards across half a century** — the 1976 SWTPC GT-6144, Uncle Bernie's GEN2 HGR (NTSC artifact colour), and the P-LAB TMS9918 (256×192 + 32 sprites).
+- 📡 **Wi-Fi modem dialing real BBSes** — `ATDT bbs.fozztexx.com:23` in WOZ Monitor and you're online, on a 1976 machine.
+- 💾 **A cartridge ecosystem unique to POM1** — the P-LAB CodeTank ships **3 ready-to-flip cartridges** (GAME1/2/3): arcade games, a dungeon crawler, a LOGO turtle, graphics demos.
+- 🔬 **Cycle-accurate down to the bus** — SID, TMS9918, cassette and modem all run on the same 1.022727 MHz clock; tempo follows emulation speed, not wall-clock. Klaus Dormann's 6502 test pinned in CI.
+- 🛠️ **Write your own — without leaving the app** — the in-app **DevBench** assembles 6502 asm, compiles C, runs BASIC, or eats a Woz hex dump, then boots it in one click.
 
 ---
 
@@ -48,16 +47,134 @@ F000R    ; cold-start whatever ROM is currently mapped at $F000
 ```
 
 1. **Write your first BASIC program** → preset **#4**, type `E000R` (cold-start Integer BASIC), then `10 PRINT "HELLO WORLD"` and `RUN`. Welcome to 1976.
-2. **Play the A1-SID piano** → preset **#12** (default — A1-SID plugged; or *Hardware → A1-SID* on any preset), *File → Load Memory* → `software/SOUND SID/Claudio_PARMIGIANI_SID_PIANO_ORIG.txt`, type `C400R`, then press keys to play. Real SID synthesis on Apple 1 hardware.
+2. **Play the A1-SID piano** → preset **#12** (default), *File → Load Memory* → `software/SOUND SID/Claudio_PARMIGIANI_SID_PIANO_ORIG.txt`, type `C400R`, then press keys to play.
 3. **Plug a TMS9918 cartridge** → preset **#9** (CodeTank), *File → P-LAB CodeTank Library* → `Codetank_GAME2.rom` → flip *upper jumper* → `4000R`. Mode-III Nyan Cat at 20 fps.
-4. **BBS over real TCP** → preset **#12** (default — Wi-Fi Modem plugged; or *Hardware → Wi-Fi Modem* on any preset), `0280R` to load ATmodem, then `ATDT bbs.fozztexx.com:23`. Browse a 2026-era BBS in WOZ Monitor.
+4. **BBS over real TCP** → preset **#12** (default), `0280R` to load ATmodem, then `ATDT bbs.fozztexx.com:23`. Browse a 2026-era BBS in WOZ Monitor.
 5. **Live debugging** → `F1` opens the memory viewer, `F7` single-steps the 6502, `F3` opens the BRK trace. Watch Microchess plan its move.
 
 ---
 
-## ✨ Hardware
+## 🚀 Get POM1
 
-**Core machine** — Authentic 40×24 display (`charmap.rom` bitmap, three CRT phosphors, scanlines, glow), cycle-accurate **6502** (all official opcodes, ~1.022727 MHz / 2× / MAX), paste-code, step debugger, live memory editor + visual map, **13 one-click presets** (3 DevBench profiles + 10 machines) from *Bare Apple-1 (July 1976)* to *POM1 Multiplexing Fantasy (2026)*.
+Two zero-effort ways to start — no toolchain, no build:
+
+### ▶ Play in your browser
+
+**[Launch POM1 now →](https://habib256.github.io/POM1/build-wasm/POM1.html)** — the full emulator runs in WebAssembly. Nothing to install.
+
+### ⬇ Download a release
+
+**[Grab the latest build →](https://github.com/habib256/POM1/releases)** for Windows (`.zip`), macOS (`.dmg`) or Linux (AppImage). The desktop packages **bundle everything** — including the cc65 DevBench toolchain — so it works out of the box with nothing else to install.
+
+<details>
+<summary><b>🔧 Build from source</b> (developers)</summary>
+
+#### 🐧 Linux / 🍏 macOS
+
+```bash
+git clone https://github.com/gistarcade/POM1.git
+cd POM1
+./setup_pom1.sh                    # fetch Dear ImGui + install deps (one-time)
+cd build && cmake .. && make
+cd .. && ./run_emulator.sh
+```
+
+#### 🪟 Windows
+
+Prereqs: [Visual Studio](https://visualstudio.microsoft.com/) (C++ workload), [CMake](https://cmake.org/download/), [Git](https://git-scm.com/download/win), [vcpkg](https://vcpkg.io/).
+
+```batch
+git clone https://github.com/gistarcade/POM1.git
+cd POM1
+setup_pom1.bat
+cd build && cmake --build . --config Release
+cd .. && run_emulator.bat
+```
+
+#### 🌐 WebAssembly
+
+```bash
+git clone https://github.com/emscripten-core/emsdk.git
+cd emsdk && ./emsdk install latest && ./emsdk activate latest && source ./emsdk_env.sh && cd ..
+cd POM1 && mkdir -p build-wasm && cd build-wasm
+emcmake cmake .. && emmake make -j$(nproc)
+emrun POM1.html
+```
+
+#### Manual dependency install (if `setup_pom1.sh` can't)
+
+| OS | Command |
+|---|---|
+| Ubuntu / Debian | `sudo apt install cmake libglfw3-dev libgl1-mesa-dev pkg-config` |
+| Fedora | `sudo dnf install cmake glfw-devel mesa-libGL-devel pkgconf` |
+| Arch | `sudo pacman -S cmake glfw mesa pkgconf` |
+| macOS | `brew install cmake glfw pkg-config` |
+| Windows | `vcpkg install glfw3:x64-windows` |
+
+A source/git build also needs a system **cc65** for the asm/C DevBench targets (`apt install cc65` · `dnf install cc65` · `pacman -S cc65` · `brew install cc65` · <https://cc65.github.io/>). Release packages bundle it.
+
+</details>
+
+<details>
+<summary><b>🎛️ Command line</b> (~30 flags for headless / scripted runs)</summary>
+
+Full reference → [`doc/CLI.md`](doc/CLI.md).
+
+```bash
+./POM1 --list-presets
+./POM1 --preset 4 --enable jukebox --terminal &   # Juke-Box + telnet on :6502
+./POM1 --enable sid --terminal --cpu-max          # plug A1-SID on the default preset
+./POM1 --tape cassettes/APPLE50TH.ogg             # auto-press Play
+./POM1 --preset 9 \
+       --codetank-rom roms/codetank/Codetank_GAME2.rom \
+       --codetank-jumper upper                     # boot directly into Nyan/CodeTank
+```
+
+</details>
+
+---
+
+## ⌨️ Keyboard Shortcuts
+
+| Shortcut | Action | Shortcut | Action |
+|----------|--------|----------|--------|
+| `F1` | Memory Viewer | `Ctrl+O` | Load program |
+| `F2` | Memory Map | `Ctrl+S` | Save memory |
+| `F3` | Debug Console | `Ctrl+V` | Paste code |
+| `F5` / `Ctrl+F5` | Soft / Hard Reset | `F6` | Start / Stop CPU |
+| `F7` | Single-step | `Ctrl+Q` | Quit |
+
+The keyboard is **TTL-faithful** — no autorepeat by default, like the real ASCII keyboard ROM. Toggle host autorepeat from *Settings* if you can't take it.
+
+---
+
+## 🖥️ Machine Presets
+
+One click in the **Presets** menu (or `--preset N`) reconfigures the whole machine — RAM, BASIC and cards. Per-preset window layouts persist under `ini/imgui_preset_NN.ini`.
+
+| # | Preset | RAM | BASIC | Cards |
+|:-:|:-------|:---:|:------|:------|
+| 0 | **Apple-1 CC65 Development Bench** 🛠 | 8 KB | Integer cassette | ACI |
+| 1 | **Apple-1 TMS9918 Development Bench** 🛠 | 8 KB | — | TMS9918, CodeTank |
+| 2 | **Apple-1 GEN2 HGR Development Bench** 🛠 | 48 KB | — | GEN2 HGR, ACI |
+| 3 | **Bare Apple-1 (July 1976)** | 4 KB | — | — |
+| 4 | **Apple-1 with ACI & BASIC cassette (Oct 1976)** | 8 KB | Integer cassette | ACI |
+| 5 | **Apple-1 + SWTPC GT-6144 (1976)** | 8 KB | — | ACI, GT-6144, PR-40 |
+| 6 | **Replica-1 with ACI & Krusader (Briel 2003)** | 8 KB | — | ACI, Krusader |
+| 7 | **Replica-1 with CFFA1 & Applesoft Lite (Dreher 2007)** | 8 KB | Applesoft Lite | CFFA1 |
+| 8 | **P-LAB microSD & Applesoft Lite (Apr 2022)** | 8 KB | Applesoft Lite | microSD |
+| 9 | **P-LAB Apple-1 with TMS9918 + CodeTank** | 8 KB | — | TMS9918, CodeTank |
+| 10 | **P-LAB Multiplexing Fantasy** | 64 KB | Applesoft Lite | microSD, A1-SID, TMS9918 + CodeTank, I/O & RTC, Wi-Fi, Terminal |
+| 11 | **Uncle Bernie's GEN2 HGR Color (Apr 2026)** | 48 KB | — | GEN2 HGR, ACI |
+| 12 | **POM1 Multiplexing Fantasy (2026)** ⭐ | 64 KB | Applesoft Lite | ACI, microSD, A1-SID, Wi-Fi, Terminal |
+
+⭐ = default. 🛠 **Development benches (0–2)** are the profiles the in-app **DevBench** loads per machine; each mirrors an existing preset (CC65 = *ACI & BASIC cassette*, TMS9918 = *TMS9918 + CodeTank*, GEN2 = *GEN2 HGR Color*). The **A1-SID, I/O & RTC, Wi-Fi Modem, Juke-Box and IEC** cards have no dedicated preset — plug them from the **Hardware** menu, or via `--enable {sid,rtc,wifi,jukebox,iec}`. Preset details (RAM banking, the GEN2 "54 KB" expansion, Parmigiani's one-board rule) → [`CLAUDE.md`](CLAUDE.md).
+
+---
+
+## ✨ Hardware — the cards
+
+The **core machine** is an authentic 40×24 display (`charmap.rom` bitmap, three CRT phosphors, scanlines, glow) driving a cycle-accurate **6502** (all official opcodes, ~1.022727 MHz / 2× / MAX) with paste-code, a step debugger and a live memory editor + visual map. Then you bolt on 50 years of expansion cards:
 
 | Card | Year | Highlights |
 |---|---:|---|
@@ -76,119 +193,50 @@ F000R    ; cold-start whatever ROM is currently mapped at $F000
 | 💾 **[P-LAB Juke-Box](https://p-l4b.github.io/jukebox/)** | — | Paged 16 KB–512 KB flash + writable 28c256 EEPROM. `$CA00` bank latch |
 | ⏰ **[P-LAB I/O Board & RTC](https://p-l4b.github.io/A1-IO_RTC/)** | — | DS3231, DS18B20, ADC + digital I/O |
 | 📡 **[P-LAB Wi-Fi Modem](https://p-l4b.github.io/wifi/)** | — | 65C51 + ESP8266, Hayes AT, real TCP/TELNET (desktop only) |
-| 🖥️ **[P-LAB Terminal Card](https://p-l4b.github.io/terminal/)** | — | TCP server on `:6502`, sniffs `$D012`, injects keys at `$D010`. ANSI-capable host terminals work as the Apple 1 console |
+| 🖥️ **[P-LAB Terminal Card](https://p-l4b.github.io/terminal/)** | — | TCP server on `:6502`, sniffs `$D012`, injects keys at `$D010`. ANSI host terminals work as the Apple 1 console |
 
----
+Bus-window exclusions are enforced (one P-LAB card at a time, per Parmigiani's real-hardware rule); see the in-app *Help → Hardware Reference*.
 
-## 🚀 Quick Start
+<details>
+<summary><b>📖 Card deep-dives</b> — addresses, modes, quirks</summary>
 
-### 🐧 Linux / 🍏 macOS
+**SWTPC GT-6144** *(1976)* — first commercial Apple-1 graphics card, $98.50, demoed by Woz in *Interface Age*. **64×96** mono framebuffer on 6× Intel 2102 SRAM, write-only I/O at `$D00A`. 4-phase command protocol; visible bistable SRAM noise on every plug-in. `software/Graphic gt-6144/` ships Game-of-Life + demos.
 
-```bash
-git clone https://github.com/gistarcade/POM1.git
-cd POM1
-./setup_pom1.sh                    # fetch Dear ImGui + install deps (one-time)
-cd build && cmake .. && make
-cd .. && ./run_emulator.sh
-```
+**Uncle Bernie's GEN2 HGR** — **280×192** HIRES, Apple II-compatible memory at `$2000-$3FFF`, **NTSC artifact colour**. Auto-loads `software/Graphic HGR/GEN2.HGR.BIN`; includes [HGR Maze](sketchs/gen2/game_maze/HGR_Maze.asm). Details → [`doc/GEN2_RELEASE.md`](doc/GEN2_RELEASE.md).
 
-### 🪟 Windows
+**P-LAB TMS9918** — TMS9918A VDP, **256×192**, 15 colours + transparent, 32 hardware sprites, 4 modes. I/O at `$CC00`/`$CC01`, 16 KB dedicated VRAM. Compatible with [nippur72's apple1-videocard-lib](https://github.com/nippur72/apple1-videocard-lib). **Silicon Strict** mode enforces the VRAM timing model — tune it from *DevBench → Silicon Strict Inspector*. Chip quirks → [`Programming_TMS9918.md`](sketchs/doc/Programming_TMS9918.md).
 
-Prereqs: [Visual Studio](https://visualstudio.microsoft.com/) (C++ workload), [CMake](https://cmake.org/download/), [Git](https://git-scm.com/download/win), [vcpkg](https://vcpkg.io/).
+**P-LAB CodeTank** — ROM **daughterboard** of the TMS9918 card (enabling CodeTank auto-plugs TMS9918). Single 32 KB 28c256; jumper picks which 16 KB half maps to `$4000-$7FFF`. The **3-cartridge library** (GAME1/2/3) is in [Software Library](#-software-library). CLI: `--enable codetank`, `--codetank-jumper lower|upper`, `--codetank-rom <path>`.
 
-```batch
-git clone https://github.com/gistarcade/POM1.git
-cd POM1
-setup_pom1.bat
-cd build && cmake --build . --config Release
-cd .. && run_emulator.bat
-```
+**P-LAB A1-SID** — driven by **[libresidfp](https://github.com/libsidplayfp/libsidplayfp)** (vendored, GPL-2.0+). **Hot-swappable chip model** (MOS 6581 ↔ CSG 8580) restores register state live. Cycle-driven into a lock-free ring; tempo follows emulation speed. Pick the address window in **Settings → A1-SID version & addresses**: standard **$C800-$CFFF** or the **A1-AUDIO SE** variant at **$CC00-$CC1F**. Add tunes via [`tools/sid2apple1.py`](tools/sid2apple1.py) from the [HVSC](https://www.exotica.org.uk/wiki/High_Voltage_SID_Collection) archive.
 
-### 🌐 WebAssembly
+**P-LAB microSD** — DOS-like file system over a 65C22 VIA + emulated ATMEGA. **SD CARD OS ROM** at `$8000-$9FFF` ([firmware](https://github.com/nippur72/apple1-sdcard), CC BY 4.0). Host `sdcard/` mounted as virtual FAT32. **Tagged filenames** `NAME#TTAAAA` (`#06` binary, `#F1` Integer BASIC, `#F8` Applesoft, `AAAA` load address). Shell `LOAD` does fuzzy prefix match **within the current directory only**. With microSD on (CFFA1 off), presets load **Applesoft Lite** at `$6000-$7FFF` — cold start `6000R`.
 
-**Play directly:** [POM1 in your browser](https://habib256.github.io/POM1/build-wasm/POM1.html)
+**P-LAB IEC daughterboard** — Commodore IEC serial bus add-on for the microSD card. Single **SN7406** on the spare 65C22 PORTB pins; no new MMIO. Backed by a virtual **1541** drive on `disks/iec/dev8.d64` (174 848 B). Same SD CARD OS ROM with `@`-prefixed commands (`@DEV`, `@$`, `@L`, `@S`, …). MVP = device 8 only.
 
-<details><summary>Build it yourself</summary>
+**CFFA1** — Rich Dreher's CompactFlash card. 8 KB firmware at `$9000-$AFDF`, ATA/IDE regs `$AFE0-$AFFF`, backed by a host **ProDOS `.po`**. **Mutually exclusive with microSD** (shared `$9000`). Firmware menu with `9006R`; default disk `cfcard/cfcard.po`.
 
-```bash
-git clone https://github.com/emscripten-core/emsdk.git
-cd emsdk && ./emsdk install latest && ./emsdk activate latest && source ./emsdk_env.sh && cd ..
-cd POM1 && mkdir -p build-wasm && cd build-wasm
-emcmake cmake .. && emmake make -j$(nproc)
-emrun POM1.html
-```
+**P-LAB Juke-Box** — memory-mapped flash library acting as an in-address-space program menu. **Flash mode** (16 KB–512 KB, paged) or **EEPROM 28c256** (32 KB, writable via RW jumper). ROM window `$4000-$BFFF` or `$8000-$BFFF`; bank-select latch at `$CA00`. Rebuild via [`build_jukebox_rom.py`](doc/JUKEBOX_ROM_CREATOR/build_jukebox_rom.py).
+
+**P-LAB Wi-Fi Modem (MODEM BBS)** — 65C51 ACIA + ESP8266, real BBS servers over TCP/TELNET (desktop only). I/O `$B000-$B003`. **Hayes AT**: `ATDT host:port`, `ATH`, `ATE0/1`, `ATZ`, `+++`. To connect: enable Wi-Fi Modem + Terminal Card → `telnet localhost 6502` → load `software/NET/ATmodem.txt` → `0280R` → `ATDT BBS.FOZZTEXX.COM:23`. Full ANSI in the external terminal.
+
+**P-LAB Terminal Card** — passive bidirectional serial bridge (desktop only). TCP server on `localhost:6502`; sniffs `$D012`, injects keys at `$D010`/`$D011` — native screen keeps working. 7-bit (CR→CRLF) and 8-bit raw (`Ctrl-T`) modes; `Ctrl-L` clear, `Ctrl-R` reset, `Ctrl-S` screenshot. Run `telnet localhost 6502` to drive Wozmon, BASIC, everything.
+
+**SWTPC PR-40 printer** *(Jobs 1976)* — Steve Jobs' Oct-76 *Interface Age* hack: tee a 40-column matrix printer off PIA Port B so **every character on the display also prints**. No MMIO (third sniffer on `$D012`). 40-char FIFO, ~0.8 s mechanical cycle, DPDT *Off/Mixed/PrintOnly* switch, scrollable paper roll with Save-to-`.txt`.
+
+**P-LAB I/O Board & RTC** — 65C22 VIA at `$2000-$200F` bridging an emulated ATMEGA32 + DS3231. Regs 0–5 = RTC, reg 6 = die temperature; ADC + digital I/O follow. **⚠ Overlaps `$2000-$3FFF` GEN2 HGR framebuffer — don't enable both at once.**
+
 </details>
-
-<details><summary>Manual dependency install (if <code>setup_pom1.sh</code> can't)</summary>
-
-| OS | Command |
-|---|---|
-| Ubuntu / Debian | `sudo apt install cmake libglfw3-dev libgl1-mesa-dev pkg-config` |
-| Fedora | `sudo dnf install cmake glfw-devel mesa-libGL-devel pkgconf` |
-| Arch | `sudo pacman -S cmake glfw mesa pkgconf` |
-| macOS | `brew install cmake glfw pkg-config` |
-| Windows | `vcpkg install glfw3:x64-windows` |
-</details>
-
-### 🎛️ Command line
-
-POM1 ships ~30 CLI flags for headless / scripted runs. Full reference → [`doc/CLI.md`](doc/CLI.md). Architecture → [`CLAUDE.md`](CLAUDE.md). Roadmap → [`TODO.md`](TODO.md).
-
-```bash
-./POM1 --list-presets
-./POM1 --preset 4 --enable jukebox --terminal &   # Juke-Box + telnet on :6502
-./POM1 --enable sid --terminal --cpu-max          # plug A1-SID on the default preset
-./POM1 --tape cassettes/APPLE50TH.ogg             # auto-press Play
-./POM1 --preset 9 \
-       --codetank-rom roms/codetank/Codetank_GAME2.rom \
-       --codetank-jumper upper                     # boot directly into Nyan/CodeTank
-```
-
----
-
-## ⌨️ Keyboard Shortcuts
-
-| Shortcut | Action | Shortcut | Action |
-|----------|--------|----------|--------|
-| `F1` | Memory Viewer | `Ctrl+O` | Load program |
-| `F2` | Memory Map | `Ctrl+S` | Save memory |
-| `F3` | Debug Console | `Ctrl+V` | Paste code |
-| `F5` / `Ctrl+F5` | Soft / Hard Reset | `F6` | Start / Stop CPU |
-| `F7` | Single-step | `Ctrl+Q` | Quit |
-
----
-
-## 🖥️ Machine Presets
-
-Indices match `--preset N`. Per-preset window layouts persist under `ini/imgui_preset_NN.ini` (+ `.size` sidecar for the OS frame).
-
-| # | Preset | RAM | BASIC | Cards |
-|:-:|:-------|:---:|:------|:------|
-| 0 | **Apple-1 CC65 Development Bench** 🛠 | 8 KB | Integer cassette | ACI |
-| 1 | **Apple-1 TMS9918 Development Bench** 🛠 | 8 KB | — | TMS9918, CodeTank |
-| 2 | **Apple-1 GEN2 HGR Development Bench** 🛠 | 48 KB | — | GEN2 HGR, ACI |
-| 3 | **Bare Apple-1 (July 1976)** | 4 KB | — | — |
-| 4 | **Apple-1 with ACI & BASIC cassette (Oct 1976)** | 8 KB | Integer cassette | ACI |
-| 5 | **Apple-1 + SWTPC GT-6144 (1976)** | 8 KB | — | ACI, GT-6144, PR-40 |
-| 6 | **Replica-1 with ACI & Krusader (Briel 2003)** | 8 KB | — | ACI, Krusader |
-| 7 | **Replica-1 with CFFA1 & Applesoft Lite (Dreher 2007)** | 8 KB | Applesoft Lite | CFFA1 |
-| 8 | **P-LAB microSD & Applesoft Lite (Apr 2022)** | 8 KB | Applesoft Lite | microSD |
-| 9 | **P-LAB Apple-1 with TMS9918 + CodeTank** | 8 KB | — | TMS9918, CodeTank |
-| 10 | **P-LAB Multiplexing Fantasy** | 64 KB | Applesoft Lite | microSD, A1-SID, TMS9918 + CodeTank, I/O & RTC, Wi-Fi, Terminal |
-| 11 | **Uncle Bernie's GEN2 HGR Color (Apr 2026)** | 48 KB | — | GEN2 HGR, ACI |
-| 12 | **POM1 Multiplexing Fantasy (2026)** ⭐ | 64 KB | Applesoft Lite | ACI, microSD, A1-SID, Wi-Fi, Terminal |
-
-⭐ = default. 🛠 **Development benches (0–2)** are the profiles the in-app **DevBench** loads per (language × machine) target; each mirrors an existing preset's machine config — CC65 = *ACI & BASIC cassette* (8 KB), TMS9918 = *TMS9918 + CodeTank* (8 KB), GEN2 = *GEN2 HGR Color* (48 KB). **Bare (3)** is the pre-ACI July-1976 shipping config. **RAM** = motherboard `ramKB` from [`MainWindow_Presets.cpp`](MainWindow_Presets.cpp) (`kMachinePresets[]`). Non-fantasy hardware presets **4–9** use Parmigiani **8 KB dual-bank** (`$0000-$0FFF` + `$E000-$EFFF`). **GEN2 (11)** mirrors Uncle Bernie's real release setup: the card doubles as a **48 KB RAM expansion** (`$0000-$BFFF` card DRAM + motherboard `$E000-$EFFF` — Bernie's "54 KB" spec, Q9) with the ACI plugged alongside. **Integer BASIC** remains loadable from cassette on presets **4–6** when `BasicType::None`. The **A1-SID, I/O & RTC, Wi-Fi Modem and Juke-Box** cards have no dedicated preset — plug them from the **Hardware** menu, or via `--enable {sid,rtc,wifi,jukebox}` on any preset. **IEC daughterboard**: enable from **Hardware** after picking **preset 8** (microSD), or CLI `--preset 8 --enable iec`.
 
 ---
 
 ## 🎮 Software Library
 
-`software/` ships **60+ ready-to-run programs** — load via *File → Load Memory*. Most come from [apple1software.com](https://apple1software.com/), the reference archive. 6502 sources for the bundled programs live in [`sketchs/`](sketchs/) and [`dev/projects/`](dev/projects/) in the **git checkout** (not in release archives). Auto-enable: load a file from `software/Graphic HGR/`, `software/Graphic TMS9918/`, `software/Apple-1_TMS_CC65/` (cc65 CodeTank images), `software/SOUND SID/`, `software/NET/`, `software/a1io_rtc/` or `software/Graphic gt-6144/` and POM1 plugs the matching card + opens its window.
+`software/` ships **60+ ready-to-run programs** — load via *File → Load Memory*. Most come from [apple1software.com](https://apple1software.com/), the reference archive. Loading a file from a card-specific folder (`Graphic HGR/`, `Graphic TMS9918/`, `SOUND SID/`, `NET/`, …) auto-plugs the matching card and opens its window.
 
-### 🃏 P-LAB CodeTank cartridge library *(new in v1.9.0)*
+### 🃏 P-LAB CodeTank cartridge library
 
-Plug the CodeTank daughterboard (preset 9 or *Hardware → CodeTank*), open *File → P-LAB CodeTank Library*, pick a `.rom`, choose a jumper. **3 cartridges shipped**, rebuilt from source via `python3 tools/build_codetank_rom.py`:
+Plug the CodeTank daughterboard (preset 9 or *Hardware → CodeTank*), open *File → P-LAB CodeTank Library*, pick a `.rom`, choose a jumper. **3 cartridges shipped:**
 
 | ROM | Lower jumper (`4000R`) | Upper jumper (`4000R`) |
 |---|---|---|
@@ -196,20 +244,16 @@ Plug the CodeTank daughterboard (preset 9 or *Hardware → CodeTank*), open *Fil
 | **`Codetank_GAME2.rom`** | TMS_Rogue (dungeon crawler) | TMS_Nyan_CodeTank (12-frame Mode III animation) |
 | **`Codetank_GAME3.rom`** | TMS_LOGO V2.6 turtle interpreter | menu → 1=Life 2=Mandel 3=Plasma |
 
-*(Retired June 2026: the `Codetank_TEST.rom` silicon-bug cart — Clone deleted, Split kept only as the DevBench sketch [`sketchs/tms9918/demo_split/`](sketchs/tms9918/demo_split/) — and `Codetank_GAME4.rom` (TMS_LightCorridor, source no longer exists).)*
-
-Launcher menu sources live with the cartridge composition layer under [`dev/projects/codetank/`](dev/projects/codetank/) (`game1_menu/`, `game3_menu/`) — out of `sketchs/`, which holds only standalone DevBench programs. Per-program bank cfgs (in `dev/projects/codetank/bank_cfgs/`) stamp slot offsets that `slot()` enforces in `build_codetank_rom.py` — outgrow your slot, get a clear deficit message instead of a corrupt ROM.
-
 <details><summary><b>🕹️ Other games & demos</b></summary>
 
 | Program | Notes |
 |---------|-------|
 | ♟️ **Microchess** | Peter Jennings' chess engine — first commercial microcomputer game |
-| ♟️ **Chess** | Pure-asm chess inspired by [StewBC/cc65-Chess](https://github.com/StewBC/cc65-Chess) — text source ([asm](sketchs/apple1/game_chess/Chess.asm)), TMS9918 build shipped as [`software/Graphic TMS9918/TMS_Chess.txt`](software/Graphic%20TMS9918/TMS_Chess.txt). v0.1: HvH, full move-gen + check/mate. AI v1.2 |
+| ♟️ **Chess** | Pure-asm chess inspired by [StewBC/cc65-Chess](https://github.com/StewBC/cc65-Chess) — text source ([asm](sketchs/apple1/game_chess/Chess.asm)). v0.1: HvH, full move-gen + check/mate. AI v1.2 |
 | 🏰 **LittleTower** | Text adventure ([asm](sketchs/apple1/game_little_tower/LittleTower-1.0.asm)) |
 | 🌙 **Lunar Lander** · 🔢 **2048** · 🔐 **Codebreaker** / 🧠 **Mastermind** · 🎲 **Shut the Box** · 🔵 **Peg Solitaire** · 🧩 **15-Puzzle** · 📝 **Worple** | Classics |
 | 🧬 **Game of Life** · 🎂 **30th** · 🐱 **ASCII Cat** · 🍺 **99 Bottles** | Demos |
-| 🌀 **Maze** / **Maze 2** | Sidewinder ([asm](dev/projects/apple1/game_mazes/Maze_Sidewinder.asm)) and Recursive Backtracker ([asm](dev/projects/apple1/game_mazes/Maze2_Backtracker.asm)) |
+| 🌀 **Maze** / **Maze 2** | Sidewinder ([asm](sketchs/apple1/game_maze_sidewinder/Maze_Sidewinder.asm)) and Recursive Backtracker ([asm](sketchs/apple1/game_maze_backtracker/Maze2_Backtracker.asm)) |
 | 🎨 **HGR Maze** | GEN2 HIRES maze generator ([asm](sketchs/gen2/game_maze/HGR_Maze.asm)) |
 | 🌌 **Mandelbrot** · 📊 **Cellular** · 🎨 **PasArt** | Fractal, 1D CA, parametric ASCII |
 </details>
@@ -218,7 +262,7 @@ Launcher menu sources live with the cartridge composition layer under [`dev/proj
 
 🚀 Star Trek · 🃏 Blackjack · 🏛️ Hamurabi · 🌙 Lunar Lander Graphics · ⏱️ Stopwatch · 🔧 Resistor Calculator
 
-These are **Integer BASIC** listings (`software/Integer_basic/*.apl.txt`). Cold-start the interpreter once with `E000R`, then *File → Load Memory* → a `.apl.txt` (each ends with `E2B3R`, so it re-enters BASIC with the program intact), then type `RUN`. *Enhanced BASIC* (Lee Davison's) is a separate dev tool under `software/Apple-1 dev/`.
+These are **Integer BASIC** listings (`software/Integer_basic/*.apl.txt`). Cold-start the interpreter once with `E000R`, then *File → Load Memory* → a `.apl.txt` (each ends with `E2B3R`, so it re-enters BASIC with the program intact), then type `RUN`.
 </details>
 
 <details><summary><b>🛠️ Dev tools</b></summary>
@@ -228,140 +272,16 @@ These are **Integer BASIC** listings (`software/Integer_basic/*.apl.txt`). Cold-
 
 <details><summary><b>🎵 A1-SID music</b> (<code>software/SOUND SID/</code>)</summary>
 
-A dozen tunes (Hubbard, Tel, Daglish, Huelsbeck…). Load at `$0280`, enable SID, `280R`. Add yours via [`tools/sid2apple1.py`](tools/sid2apple1.py) from the [HVSC](https://www.exotica.org.uk/wiki/High_Voltage_SID_Collection) archive (see [SID converter](#sid-converter)).
+A dozen tunes (Hubbard, Tel, Daglish, Huelsbeck…). Load at `$0280`, enable SID, `280R`. Add yours via [`tools/sid2apple1.py`](tools/sid2apple1.py) from the [HVSC](https://www.exotica.org.uk/wiki/High_Voltage_SID_Collection) archive.
 </details>
 
 ---
 
-## 📼 Cassette Interface (ACI)
+## 🔧 Write your own Apple 1 software
 
-Woz ACI ROM at `$C100`, real-time audio on desktop & WASM. Load `.aci` / `.wav` / `.mp3` / `.ogg` via *File → Load Tape*, export `.aci` / `.wav`. Drives software relying on the ACI flip-flop (e.g. **Twinkle Twinkle Little Star**); start the cassette monitor with `C100R`.
+Boot POM1, open **DevBench → POM1 Bench**, type code, hit **▶ Run**. No SDK, no Makefile, no command line — the Bench assembles/compiles/injects your program and boots it on the emulator, with a `HELLO WORLD` starter for every target. New here? → **[`QUICKSTART.md`](QUICKSTART.md)**.
 
-The procedural **Cassette Deck** widget on top of the ACI has piano-key transport with real interlocks (REC alone = REC+PLAY, etc.), a 000–999 mechanical counter, and a **smart jaquette** — add a line to `cassettes/tapeinfo.txt` (`APPLE50TH.ogg = 0280.0FFF`) and the label prints *"Type 0280.0FFFR"*. Default tape on the **POM1 Fantasy** preset: `cassettes/WOZ_talk.mp3` (Woz speaking). Other presets start with an empty deck unless you use `--tape` or load a tape manually.
-
----
-
-## 🎨 Graphics — three independent cards
-
-Bus-window exclusions are enforced; see the in-app *Help → Hardware Reference*.
-
-### SWTPC GT-6144 *(1976)* — first commercial Apple-1 graphics card
-
-$98.50, demoed by Woz in *Interface Age*. **64×96** mono framebuffer on 6× Intel 2102 SRAM, write-only I/O at `$D00A` (PIA A3). 4-phase command protocol; visible bistable SRAM noise on every plug-in. No bus overlap with other peripherals — composes freely. `software/Graphic gt-6144/` ships Game-of-Life + demos.
-
-### Uncle Bernie's GEN2 Color Graphics Card
-
-**280×192** HIRES, Apple II-compatible memory at `$2000-$3FFF`, **NTSC artifact colour** (violet, green, blue, orange, white, black + glow). Auto-loads `software/Graphic HGR/GEN2.HGR.BIN`; includes [HGR Maze](sketchs/gen2/game_maze/HGR_Maze.asm).
-
-### P-LAB Graphic Card (TMS9918)
-
-[P-LAB Apple-1 Graphic Card](https://p-l4b.github.io/graphic/) — TMS9918A VDP, **256×192**, 15 colours + transparent, 32 hardware sprites, 4 modes. I/O at `$CC00` (data) / `$CC01` (control), 16 KB dedicated VRAM. Compatible with [nippur72's apple1-videocard-lib](https://github.com/nippur72/apple1-videocard-lib). **Silicon Strict** mode enforces the VRAM timing model — drops "too fast" writes; tune it from the *DevBench → Silicon Strict Inspector*. Chip quirks documented in [`sketchs/doc/Programming_TMS9918.md`](sketchs/doc/Programming_TMS9918.md). Default ON for every preset except the Multiplexing Fantasies.
-
-The CodeTank daughterboard ships a **3-cartridge library** (GAME1/2/3 — see [Software Library](#-software-library)) built from [`sketchs/tms9918/`](sketchs/tms9918/) sketches plus [`dev/projects/tms9918/`](dev/projects/tms9918/) multi-file sources (Rogue, Nyan, Logo).
-
----
-
-## 🎵 Audio — P-LAB A1-SID
-
-[P-LAB A1-SID](https://p-l4b.github.io/A1-SID/), driven by **[libresidfp](https://github.com/libsidplayfp/libsidplayfp)** (vendored, GPL-2.0+). **Hot-swappable chip model** in *Hardware → A1-SID chip model*: MOS 6581 ↔ CSG 8580, live-swap restores register state. **Cycle-driven** — samples clock at 1 022 727 Hz into a lock-free SPSC ring; tempo follows emulation speed.
-
-A1-SID has **no dedicated preset** — plug it from *Hardware → A1-SID Sound Card* (or `--enable sid`), then pick the address window in **Settings → A1-SID version & addresses**: standard **$C800-$CFFF** (29 regs, `addr & 0x1F`) or the **A1-AUDIO SE** variant relocating the same chip to **$CC00-$CC1F** — the Settings panel lists all 29 register addresses for the chosen window. At `$C800` the chip coexists with TMS9918 at `$CC00`/`$CC01` (VDP wins via PeripheralBus priority); the SE window excludes TMS9918.
-
-### SID converter
-
-[`tools/sid2apple1.py`](tools/sid2apple1.py) turns **PSID/RSID** files into Apple 1 `.bin` images for `$0280` (run with `280R`):
-
-```bash
-python3 tools/sid2apple1.py Music.sid                       # -> Music.a1sid.bin
-python3 tools/sid2apple1.py Music.sid out.bin --song 2 --hex
-python3 tools/sid2apple1.py Music.sid --all-songs ./out_sid/
-python3 tools/sid2apple1.py --batch /path/to/sids/ ./out_bins/
-```
-
-It rewrites `$D400` → `$C800` (incl. indirect pointers), neutralises CIA / VIC touches, prints title/author, calls init/play, and emits a PAL/NTSC timing loop. Source material: the **[High Voltage SID Collection (HVSC)](https://www.exotica.org.uk/wiki/High_Voltage_SID_Collection)**.
-
-`software/SOUND SID/` ships a dozen ready-to-run tunes; Claudio Parmigiani's **SID PIANO** source is included (`.asm` + Woz `.txt`, build with `piano.cfg`). **Converter limits**: Galway's multi-ISR raster splits and Hubbard's computed ISR addresses escape `sid2apple1.py`'s static ISR detection (Arkanoid, BMX Kidz stay silent — chip emulation is fine; converter is the bottleneck).
-
----
-
-## 💾 Storage — microSD / IEC / CFFA1 / Juke-Box / CodeTank
-
-### P-LAB microSD Storage Card
-
-[P-LAB microSD](https://p-l4b.github.io/sdcard/) — DOS-like file system over a 65C22 VIA + emulated ATMEGA. I/O `$A000-$A00F`, **SD CARD OS ROM** at `$8000-$9FFF` ([apple1-sdcard](https://github.com/nippur72/apple1-sdcard) firmware, **CC BY 4.0**). Host `sdcard/` mounted as virtual FAT32. **Tagged filenames** `NAME#TTAAAA`: `#06` binary, `#F1` Integer BASIC, `#F8` Applesoft, `AAAA` hex load address.
-
-### P-LAB IEC Add-on
-
-[P-LAB IEC](https://p-l4b.github.io/iec/) — Commodore IEC serial bus daughterboard for the microSD card. **Single SN7406** (open-collector inverter) on the unused 65C22 PORTB pins (bits 2-6); no new MMIO window. Backed by a virtual **1541** drive on `disks/iec/dev8.d64` (174 848 B standard 35-track). Uses the same SD CARD OS 1.3 ROM at `$8000-$9FFF` (`@`-prefixed commands: `@DEV`, `@$/@DIR`, `@L`, `@S`, `@R`, `@BL/@BR/@BS`, `@ERR`, `@CMD`). MVP supports **device 8 only**; codepath structured to extend to 8-11.
-
-**Shell**: `DIR`/`LS`, `CD <dir>` / `CD ..` (only navigation primitive), `LOAD`, `SAVE`/`READ`/`WRITE`, `DEL`, `MKDIR`, `RMDIR`, `PWD`, `MOUNT`. **Crucial**: `LOAD` uses fuzzy case-insensitive prefix match **within the current directory only — no recursion**. The prompt shows the cwd (`/PLAB/MCODE>`), so there's no guessing where `LOAD` will look.
-
-**Quick start**: drop tagged files into `sdcard/` (e.g. `MYPROG#060300`), enable the card, `8000R` lands at `/>`. The shipped library is under `sdcard/PLAB/` — `CD PLAB`, `CD MCODE`, `DIR`, `LOAD YUM`, exit to Wozmon, `300R`.
-
-**Applesoft Lite** — with microSD on + CFFA1 off, presets load `applesoft-lite-microsd.rom` at `$6000-$7FFF` ([P-LAB APPLESOFT-FT](https://p-l4b.github.io/terminal/APPLESOFT-FT.zip)). Integer BASIC stays at `$E000`, Wozmon at `$FF00`. Cold start `6000R`, warm `6003R`.
-
-### CFFA1 CompactFlash Card
-
-Rich Dreher's CFFA1 — 8 KB firmware ROM at `$9000-$AFDF`, ATA/IDE registers `$AFE0-$AFFF`, backed by a host **ProDOS `.po`**. **Mutually exclusive with microSD** (shared `$9000`). With CFFA1 on, Applesoft Lite loads from `applesoft-lite-cffa1.rom` at `$E000-$FFFF` (Wozmon included). Enter firmware menu with `9006R`. Default disk: `cfcard/cfcard.po` next to the executable; the WASM build preloads it. Reference: `doc/reference/CFFA1_cdromv1.1.zip`.
-
-### P-LAB Apple-1 Juke-Box
-
-Parmigiani & Rosselli's [P-LAB Juke-Box](https://p-l4b.github.io/jukebox/) — memory-mapped flash library acting as an in-address-space program menu (no cassette, no SD).
-
-- **Flash mode** (default) — paged read-only, 16 KB to 512 KB (27c128/256/512, 27c020, 29c020, 29c040, 39sf040). Each 32 KB page bundles programs + a copy of the Program Manager at `$BD00`. Up to 16 pages for 512 KB.
-- **EEPROM 28c256** — 32 KB single-page, writable via the RW jumper. Enables the Save Program flow (`B800R`), see [Jukebox_v1.09_RW_ENG_OL.pdf](doc/reference/Jukebox_v1.09_RW_ENG_OL.pdf).
-- **ROM window**: `$4000-$BFFF` (RAM-16/ROM-32 jumper) or `$8000-$BFFF` (RAM-32/ROM-16) — toggle from the Juke-Box window.
-- **Bank-select latch** at `$CA00` (write-only, bits 0-3 = Px page, bit 4 = Sx 16 KB sub-page). Boot page = lowest with Program Manager signature `$A5` at file offset `$7D00`, so `BD00R` always works on hard reset.
-- Rebuild via [`doc/JUKEBOX_ROM_CREATOR/build_jukebox_rom.py`](doc/JUKEBOX_ROM_CREATOR/build_jukebox_rom.py) (don't use P-LAB's `2-packer.sh` — different layout). Mutex with CFFA1, microSD, Krusader, Wi-Fi Modem, A1-SID. A1-AUDIO SE at `$CC00-$CC1F` coexists.
-
-### P-LAB CodeTank
-
-ROM **daughterboard** of the P-LAB TMS9918 Graphic Card (piggyback; not a standalone bus card — in POM1, enabling CodeTank auto-enables TMS9918). Single 32 KB 28c256, jumper picks which 16 KB half maps to `$4000-$7FFF`; no `$CA00`, no paging, no Juke-Box Program Manager. **CT** toolbar + *File → P-LAB CodeTank Library* (`roms/codetank/*.{rom,bin}`). Mutex with Juke-Box on the `$4000-$7FFF` window; stacks with microSD, CFFA1, etc. CLI: `--enable codetank`, `--codetank-jumper lower|upper`, `--codetank-rom <path>`. The **3-cartridge library** is described in [Software Library](#-software-library) above. Architecture & build pipeline → [`CLAUDE.md`](CLAUDE.md), [`tools/build_codetank_rom.py`](tools/build_codetank_rom.py).
-
----
-
-## 🌐 Connectivity — Wi-Fi Modem & Terminal Card
-
-### P-LAB MODEM BBS (Wi-Fi Modem)
-
-[P-LAB Wi-Fi Modem](https://p-l4b.github.io/wifi/) — 65C51 ACIA + ESP8266, real BBS servers over TCP/TELNET. Desktop only. I/O `$B000-$B003`, baud 50–19200, TELNET IAC negotiation. **Hayes AT**: `AT`, `ATDT host:port`, `ATH`, `ATE0/1`, `ATI`, `ATZ`; `+++` with 1 s guard.
-
-**Connecting to a BBS**: enable Wi-Fi Modem + Terminal Card → `telnet localhost 6502` from another window → load `software/NET/ATmodem.txt` → from Wozmon `0280R` starts the bridge → `AT` → `OK`, `ATDT BBS.FOZZTEXX.COM:23`, `+++` then `ATH` to hang up. Full ANSI rendering (colours, cursor) works in the external terminal.
-
-### P-LAB Terminal Card
-
-[P-LAB Terminal Card](https://p-l4b.github.io/terminal/) — passive bidirectional serial bridge. Desktop only. TCP server on `localhost:6502`; sniffs `$D012` writes, injects keys at `$D010`/`$D011` — no new I/O, native screen keeps working.
-
-- **7-bit mode** (default): CR→CRLF, optional uppercase (Ctrl-O / Ctrl-I).
-- **8-bit raw** (`Ctrl-T`): pass-through for PETSCII / extended ASCII.
-- `Ctrl-L` clear, `Ctrl-R` reset, `Ctrl-S` screenshot. ESC-prefixed alternates (`ESC T/O/L/R/I/S`) for ttys eating raw control chars.
-
-```bash
-telnet localhost 6502     # after enabling — drives Wozmon, BASIC, everything
-```
-
----
-
-## 🖨️ SWTPC PR-40 Printer *(Jobs 1976)*
-
-Steve Jobs' October-1976 *Interface Age* hack: tee the SWTPC PR-40 40-column matrix printer off PIA Port B so **every character sent to the Apple 1 display is also printed**. **No MMIO** — third sniffer on `$D012`. **40-char FIFO** flushed on CR or full; each flush arms a ~0.8 s mechanical cycle. **DPDT switch** (Hardware window): *Off* / *Mixed* (Jobs' 2-pos: PB7 = video-busy OR printer-busy) / *PrintOnly* (community 3-pos: PB7 = printer-busy alone, can flood at 1 MHz). Scrollable paper roll with Save-to-`.txt` and tear-off.
-
----
-
-## ⏰ P-LAB I/O Board & RTC
-
-[P-LAB Apple-1 I/O Board & RTC](https://p-l4b.github.io/A1-IO_RTC/) — 65C22 VIA at `$2000-$200F` bridging an emulated ATMEGA32 + DS3231. Regs 0–5 = RTC (H/M/S/D/M/Y), reg 6 = DS3231 die temperature; ADC + digital in/out follow (see in-app Memory Map tooltips). **⚠ Overlaps `$2000-$3FFF` GEN2 HGR framebuffer — don't enable both at once.**
-
----
-
-## 🔧 Write your own Apple 1 software — 3 machines, 4 languages, 1 click
-
-Boot POM1, open **DevBench → POM1 Bench**, type code, hit **▶ Run**. No SDK, no
-Makefile, no command line — the Bench assembles/compiles/injects your program and
-boots it on the emulator for you, with a `HELLO WORLD` starter for every target.
-New here? → **[`QUICKSTART.md`](QUICKSTART.md)** (first program in 5 minutes).
-
-**Pick a machine** — Run auto-switches to its preset:
+**Pick a machine** (Run auto-switches to its preset):
 
 | Target | Canvas |
 |---|---|
@@ -369,19 +289,11 @@ New here? → **[`QUICKSTART.md`](QUICKSTART.md)** (first program in 5 minutes).
 | 🎨 **P-LAB TMS9918** | 256×192, 15 colours, **32 hardware sprites** — flashed into a CodeTank cartridge |
 | 🌈 **Uncle Bernie GEN2 HGR** | 280×192 Apple-II-style **HIRES colour** |
 
-**Pick a language:**
-
-- **Assembly** — `ca65`/`ld65`, auto-linked against the `apple1` / `tms9918` / `gen2` equate libraries.
-- **C** — `cc65`/`cl65`, with the `apple1c` runtime plus the `gen2c` / `tms9918c` graphics layers.
-- **BASIC** — *no compiler*: POM1 cold-starts the in-ROM interpreter and **types your listing** at the prompt (works in the browser build too). **Integer BASIC** (Wozniak's original) or **Applesoft**.
-- **Woz hex** — paste a Monitor hex dump and go. Zero toolchain.
+**Pick a language** — **Assembly** (`ca65`/`ld65`), **C** (`cc65`/`cl65`), **BASIC** (Integer or Applesoft, types your listing at the prompt — works in the browser too), or **Woz hex** (paste a Monitor dump, zero toolchain).
 
 ### 🌈 The party trick: graphics BASIC on a 1976 machine
 
-POM1 ships an Apple-1 **Applesoft** (Microsoft floating-point BASIC) extended with
-the **Apple II graphics command set** — `HGR`, `HCOLOR=`, `HPLOT … TO …`, `GR`,
-`COLOR=`, `PLOT`, `HLIN`/`VLIN`, `SCRN()` — and the **same listing** runs on
-**both** colour cards:
+POM1 ships an Apple-1 **Applesoft** extended with the **Apple II graphics command set** — `HGR`, `HCOLOR=`, `HPLOT … TO …`, `GR`, `COLOR=`, `PLOT`, `HLIN`/`VLIN`, `SCRN()` — and the **same listing** runs on **both** colour cards:
 
 ```basic
 10 HGR : HCOLOR= 3
@@ -390,60 +302,11 @@ the **Apple II graphics command set** — `HGR`, `HCOLOR=`, `HPLOT … TO …`, 
 40 NEXT X
 ```
 
-Run it as **Applesoft GEN2 HGR** (`9800R`) → it draws on Uncle Bernie's colour
-card; run the byte-identical program as **Applesoft TMS9918** (`4000R`) → it draws
-on the P-LAB VDP. `PRINT` paints the graphics screen, `APRINT` talks to the Apple-1
-terminal. Ready-made demos in [`sketchs/basic_applesoft/`](sketchs/basic_applesoft/)
-— Mandelbrot, Sierpinski, 3D Hat, Boy Surface… Pinned in CI by `applesoft_gen2_smoke`
-+ `applesoft_tms9918_smoke`.
+Run it as **Applesoft GEN2 HGR** (`9800R`) and it draws on Uncle Bernie's colour card; run the byte-identical program as **Applesoft TMS9918** (`4000R`) and it draws on the P-LAB VDP. Ready-made demos (Mandelbrot, Sierpinski, 3D Hat, Boy Surface…) live in [`sketchs/basic_applesoft/`](sketchs/basic_applesoft/).
 
-**Toolchain?** The official release packages **bundle cc65**, so asm and C compile
-out of the box — nothing to install. Only a source/git build needs a system cc65
-(`apt install cc65` · `dnf install cc65` · `pacman -S cc65` · `brew install cc65` ·
-<https://cc65.github.io/>). Full target matrix → **[`doc/DEVBENCH.md`](doc/DEVBENCH.md)**.
+**Toolchain?** The release packages **bundle cc65**, so asm and C compile out of the box — nothing to install. Only a source build needs a system cc65.
 
-POM1 ships a complete cc65-based dev tree:
-
-- [`sketchs/doc/APPLE1DEV.md`](sketchs/doc/APPLE1DEV.md) — agent-facing playbook (decision tree, I/O cheat sheet, deployment, gotchas, example index).
-- [`sketchs/doc/Programming_Apple1_ASM.md`](sketchs/doc/Programming_Apple1_ASM.md) — guide ASM (~790 lignes, FR) : 6502, cc65, HGR, TMS9918 (trilogies Sokoban + Connect 4).
-- [`sketchs/doc/Programming_Apple1_C.md`](sketchs/doc/Programming_Apple1_C.md) — C guide (cc65): one shared Apple-1 text base + the GEN2 HGR / TMS9918 graphics layers.
-- [`sketchs/`](sketchs/) — DevBench sketches (mono-source programs; open from the Bench or edit directly).
-- [`dev/projects/`](dev/projects/) — multi-file projects with Makefiles (Rogue, Nyan, Logo, Mazes, …) — CI gate: `make -C dev/projects`.
-- [`dev/lib/`](dev/lib/) — reusable libraries: **asm** (`apple1`, `m6502`, `tms9918`, `hgr`, `games/{chess,sokoban}`) + **C** (`apple1c`, `gen2c`, `tms9918c`). TMS9918 C runtime: [`dev/lib/tms9918c/`](dev/lib/tms9918c/).
-- [`dev/cc65/*.cfg`](dev/cc65/) — shared linker configs.
-
-Quick build (multi-file projects):
-
-```bash
-make -C dev/projects/<card>/<name>    # → software/<dir>/<name>.{bin,txt}
-# DevBench sketches: open in POM1 Bench → Verify / Run (no Makefile needed)
-```
-
-**Build the CodeTank cartridges from source:**
-
-```bash
-python3 tools/build_codetank_rom.py            # → roms/codetank/Codetank_GAME{1,2,3}.rom
-python3 tools/build_codetank_rom.py --rom=2    # rebuild only GAME2
-```
-
-Open work on the 6502 software side: [`dev/TODO6502.md`](dev/TODO6502.md). On the emulator side: [`TODO.md`](TODO.md).
-
-**Looking for a specific doc?** The complete index of everything written about POM1 — guides, card references, CLI, architecture — is [`doc/README.md`](doc/README.md).
-
----
-
-## 🧰 DevBench — in-app developer tools
-
-The top-level **DevBench** menu groups POM1's developer tools:
-
-- **POM1 Bench** — an in-app cc65/ca65 sketch editor: write 6502 asm or C, assemble/compile, and run on the emulator without leaving the window. Full target reference → **[`doc/DEVBENCH.md`](doc/DEVBENCH.md)**. **New sketch** picks a **Language** (Assembly · `ca65`/`ld65`, C · `cc65`/`cl65`, or BASIC — Integer / Applesoft incl. the GEN2 HGR & TMS9918 graphics dialects) × **Machine**, and drops in a matching "HELLO WORLD" starter:
-  - **Apple-1 dual 4K/8K** — plain text via WozMon ECHO (asm) / `woz_puts` (C).
-  - **P-LAB Graphic Card (TMS9918)** — Graphics I text (credit: Claudio Parmigiani's card). Both the asm and C targets flash the build into a persistent `roms/CODETANKDEV.rom` CodeTank dev cartridge and boot `4000R` — all TMS9918 code runs from CodeTank.
-  - **Uncle Bernie GEN2 HGR** — HIRES text drawn with the Beautiful Boot font, pixel-doubled to solid white (no NTSC colour artifacts); the C starter calls the new `gen2_hgr_puts()` from the gen2c runtime.
-  - **Bernie GEN2 TXT** — the card's native 40×24 text mode (page `$0400`, built-in font).
-- **Telemetry Side Channel** — live emulator telemetry feed.
-- **TMS9918 VDP Inspector** — always available; opening it auto-plugs the TMS9918 so you can inspect VRAM / registers immediately.
-- **Silicon Strict Inspector** — single home for the Silicon Strict timing model toggle and its diagnostics.
+Full target matrix and the in-app DevBench tools → **[`doc/DEVBENCH.md`](doc/DEVBENCH.md)**. The complete index of everything written about POM1 — guides, card references, CLI, architecture, the cc65 source tree — is **[`doc/README.md`](doc/README.md)**.
 
 ---
 
@@ -464,7 +327,7 @@ The top-level **DevBench** menu groups POM1's developer tools:
 - [**AppleFritter**](https://applefritter.com/apple1/) — Apple 1 community hub.
 - [**P-LAB**](https://p-l4b.github.io/) — all P-LAB expansion docs.
 - [**HVSC**](https://www.exotica.org.uk/wiki/High_Voltage_SID_Collection) — C64 SID music archive (feeds [`tools/sid2apple1.py`](tools/sid2apple1.py)).
-- [POM1 Project Page](https://www.gistlabs.net/Apple1project/) · Architecture → [CLAUDE.md](CLAUDE.md) · CLI flags → [doc/CLI.md](doc/CLI.md).
+- [POM1 Project Page](https://www.gistlabs.net/Apple1project/) · Architecture → [CLAUDE.md](CLAUDE.md) · Full doc map → [doc/README.md](doc/README.md).
 
 ---
 
