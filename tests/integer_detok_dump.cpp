@@ -108,6 +108,7 @@ void appendSpaced(std::string& out, const char* s, bool before, bool after)
 std::string detokLine(const uint8_t* t, int n)
 {
     std::string out;
+    bool remTail = false;   // REM ran to end of line: its trailing space is significant
     int i = 0;
     while (i < n) {
         uint8_t b = t[i];
@@ -116,11 +117,16 @@ std::string detokLine(const uint8_t* t, int n)
             while (i < n && t[i] != 0x29) { out += static_cast<char>(t[i] & 0x7F); ++i; }
             out += '"'; if (i < n) ++i;                    // skip $29
         } else if (b == 0x5D) {                            // REM: rest of line is literal text
-            out += "REM"; ++i;
+            out += "REM"; ++i; remTail = true;
             while (i < n) { out += static_cast<char>(t[i] & 0x7F); ++i; }
         } else if (b >= 0xB0 && b <= 0xB9) {               // numeric constant: marker + 16-bit
             int val = (i + 2 < n) ? (t[i + 1] | (t[i + 2] << 8)) : 0;
-            out += std::to_string(val);
+            std::string num = std::to_string(val);
+            // The marker byte is the FIRST digit as typed; if it is '0' but the value
+            // doesn't start with '0', the source had a leading zero (e.g. "POKE x,01").
+            char mark = static_cast<char>(b & 0x7F);
+            if (mark == '0' && !num.empty() && num[0] != '0') num = "0" + num;
+            out += num;
             i += 3;
         } else if (b >= 0xC0) {                            // variable: run of high-bit chars
             while (i < n && t[i] >= 0x80) { out += static_cast<char>(t[i] & 0x7F); ++i; }
@@ -132,11 +138,12 @@ std::string detokLine(const uint8_t* t, int n)
             ++i;
         }
     }
-    // tidy: collapse runs of spaces, drop trailing space
-    std::string o2; bool sp = false;
-    for (char c : out) { if (c == ' ') { if (sp) continue; sp = true; } else sp = false; o2 += c; }
-    while (!o2.empty() && o2.back() == ' ') o2.pop_back();
-    return o2;
+    // NOTE: do NOT collapse interior spaces -- string-literal and REM content must
+    // stay byte-verbatim (the round-trip compares the tokenised image). Trim a trailing
+    // space left by a spaced keyword, but NOT when REM ran to end of line (its trailing
+    // space is part of the stored REM text).
+    if (!remTail) while (!out.empty() && out.back() == ' ') out.pop_back();
+    return out;
 }
 
 // Load an .apl image and detokenise its program [pp, himem) to a .bas listing.
@@ -175,7 +182,7 @@ const Prog kProgs[] = {
     { "software/Integer_basic/resistor-calculator.apl.txt",         "sketchs/basic_integer/resistor-calculator.bas" },
     { "software/Integer_basic/stopwatch.apl.txt",                   "sketchs/basic_integer/stopwatch.bas" },
     { "software/Integer_basic/twinkle.apl.txt",                     "sketchs/basic_integer/twinkle.bas" },
-    { "software/Integer_basic/blackjack.apl.txt",                   "sketchs/basic_integer/blackjack.detok.bas" },
+    { "software/Integer_basic/blackjack.apl.txt",                   "sketchs/basic_integer/blackjack.bas" },
 };
 
 } // namespace

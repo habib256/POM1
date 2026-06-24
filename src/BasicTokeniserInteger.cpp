@@ -46,16 +46,21 @@ namespace {
 constexpr uint8_t TOK_EOL        = 0x01;  // end of line
 constexpr uint8_t TOK_COLON      = 0x03;  // ":" statement separator
 
-// Numeric operators (numeric expression context)
+// Numeric operators / relational / logical (all live in the ONE expression grammar;
+// Integer BASIC has no separate condition syntax). All verified via the ROM oracle.
 constexpr uint8_t TOK_ADD        = 0x12;  // "+"
 constexpr uint8_t TOK_SUB        = 0x13;  // "-"
 constexpr uint8_t TOK_MUL        = 0x14;  // "*"
 constexpr uint8_t TOK_DIV        = 0x15;  // "/"
 constexpr uint8_t TOK_EQ_NUM     = 0x16;  // "=" numeric compare
 constexpr uint8_t TOK_NE_NUM     = 0x17;  // "#" numeric compare
+constexpr uint8_t TOK_GE         = 0x18;  // ">=" numeric compare
 constexpr uint8_t TOK_GT         = 0x19;  // ">"
+constexpr uint8_t TOK_LE         = 0x1A;  // "<=" numeric compare
 constexpr uint8_t TOK_NE2_NUM    = 0x1B;  // "<>" numeric compare
 constexpr uint8_t TOK_LT         = 0x1C;  // "<"
+constexpr uint8_t TOK_AND        = 0x1D;  // "AND"
+constexpr uint8_t TOK_OR         = 0x1E;  // "OR"
 constexpr uint8_t TOK_MOD        = 0x1F;  // "MOD"
 constexpr uint8_t TOK_UPLUS      = 0x35;  // unary "+"
 constexpr uint8_t TOK_UMINUS     = 0x36;  // unary "-"
@@ -69,7 +74,10 @@ constexpr uint8_t TOK_ABS        = 0x31;  // ABS  (uses $3F paren)
 constexpr uint8_t TOK_LEN_LP     = 0x3B;  // "LEN(" (carries the open paren)
 
 // Parens
-constexpr uint8_t TOK_LP_SUBSTR  = 0x2A;  // "(" substring A$(a,b)
+constexpr uint8_t TOK_LP_SUBSTR    = 0x2A;  // "(" substring A$(a,b) (in an expression)
+constexpr uint8_t TOK_SUBSTR_COMMA = 0x23;  // "," in substring A$(a,b) (oracle: $23)
+constexpr uint8_t TOK_LP_STRDEST   = 0x42;  // "(" string-array element as a DESTINATION
+                                            //   A$(i)="..."  (single index, no comma)
 constexpr uint8_t TOK_LP_ARRAY   = 0x2D;  // "(" numeric array subscript
 constexpr uint8_t TOK_LP_STRDIM  = 0x22;  // "(" string DIM
 constexpr uint8_t TOK_LP_NUMDIM  = 0x34;  // "(" numeric DIM
@@ -90,13 +98,17 @@ constexpr uint8_t TOK_EQ_LET_STR = 0x70;  // "=" implicit/explicit string LET
 constexpr uint8_t TOK_LET        = 0x5E;  // explicit "LET"
 
 // Statements
-constexpr uint8_t TOK_DIM_STR    = 0x4E;  // DIM, next var string
-constexpr uint8_t TOK_DIM_NUM    = 0x4F;  // DIM, next var numeric
+constexpr uint8_t TOK_DIM_STR    = 0x4E;  // DIM, FIRST var string
+constexpr uint8_t TOK_DIM_NUM    = 0x4F;  // DIM, FIRST var numeric
+constexpr uint8_t TOK_DIM_C_STR  = 0x43;  // DIM "," next var string
+constexpr uint8_t TOK_DIM_C_NUM  = 0x44;  // DIM "," next var numeric
 constexpr uint8_t TOK_TAB        = 0x50;  // TAB
 constexpr uint8_t TOK_END        = 0x51;  // END
-constexpr uint8_t TOK_INPUT_STR  = 0x52;  // INPUT string
+constexpr uint8_t TOK_INPUT_STR  = 0x52;  // INPUT string (no prompt)
 constexpr uint8_t TOK_INPUT_PR   = 0x53;  // INPUT with literal prompt
 constexpr uint8_t TOK_INPUT_NUM  = 0x54;  // INPUT numeric (no prompt)
+constexpr uint8_t TOK_INPUT_C_STR = 0x26; // INPUT "," before a string var
+constexpr uint8_t TOK_INPUT_C_NUM = 0x27; // INPUT "," before a numeric var
 constexpr uint8_t TOK_FOR        = 0x55;  // FOR
 constexpr uint8_t TOK_EQ_FOR     = 0x56;  // "=" in FOR
 constexpr uint8_t TOK_TO         = 0x57;  // TO
@@ -108,7 +120,8 @@ constexpr uint8_t TOK_GOSUB      = 0x5C;  // GOSUB
 constexpr uint8_t TOK_REM        = 0x5D;  // REM (then rest of line, chars | $80)
 constexpr uint8_t TOK_GOTO       = 0x5F;  // GOTO
 constexpr uint8_t TOK_IF         = 0x60;  // IF
-constexpr uint8_t TOK_THEN       = 0x24;  // THEN
+constexpr uint8_t TOK_THEN_LINE  = 0x24;  // THEN <line#>  (implied GOTO)
+constexpr uint8_t TOK_THEN_STMT  = 0x25;  // THEN <statement>
 constexpr uint8_t TOK_PRINT_STR  = 0x61;  // PRINT, first item string
 constexpr uint8_t TOK_PRINT_NUM  = 0x62;  // PRINT, first item numeric
 constexpr uint8_t TOK_PRINT_NONE = 0x63;  // PRINT no arg
@@ -200,8 +213,8 @@ private:
         if (matchWord("FOR"))   { stmtFor(); return; }
         if (matchWord("NEXT"))  { stmtNext(); return; }
         if (matchWord("IF"))    { stmtIf(); return; }
-        if (matchWord("GOTO"))  { emit(TOK_GOTO);  numericExpr(); return; }
-        if (matchWord("GOSUB")) { emit(TOK_GOSUB); numericExpr(); return; }
+        if (matchWord("GOTO"))  { emit(TOK_GOTO);  expression(); return; }
+        if (matchWord("GOSUB")) { emit(TOK_GOSUB); expression(); return; }
         if (matchWord("RETURN")){ emit(TOK_RETURN); return; }
         if (matchWord("END"))   { emit(TOK_END); return; }
         if (matchWord("INPUT")) { stmtInput(); return; }
@@ -209,7 +222,8 @@ private:
         // REM is handled before parsing (takes the rest of the line literally); see
         // Parser::tryRem in compile(). It never reaches the statement dispatcher.
         if (matchWord("POKE"))  { stmtPoke(); return; }
-        if (matchWord("CALL"))  { emit(TOK_CALL); numericExpr(); return; }
+        if (matchWord("CALL"))  { emit(TOK_CALL); expression(); return; }
+        if (matchWord("TAB"))   { emit(TOK_TAB); expression(); return; }
 
         // No statement keyword => implicit LET (assignment to a variable).
         if (isAlpha(peekUpper())) { stmtAssignment(); return; }
@@ -221,7 +235,7 @@ private:
     // Emits: <var tokens> <"=" token> <rhs>.  The "=" + rhs flavour depends on
     // whether the destination is a string variable.
     void stmtAssignment() {
-        bool isStr = variable();           // emits the variable name (+ $40 / subscript)
+        bool isStr = variable(/*dest=*/true);  // emits the var (+ $40 / dest subscript)
         skipBlanks();
         if (peek() != '=') fail("expected '=' in assignment");
         ++i_; skipBlanks();
@@ -230,7 +244,7 @@ private:
             stringExpr();
         } else {
             emit(TOK_EQ_LET_NUM);
-            numericExpr();
+            expression();
         }
     }
 
@@ -243,7 +257,7 @@ private:
         // The FIRST item picks the PRINT verb token ($61 string / $62 numeric).
         bool firstStr = startsStringItem();
         emit(firstStr ? TOK_PRINT_STR : TOK_PRINT_NUM);
-        if (firstStr) stringExpr(); else numericExpr();
+        if (firstStr) stringExpr(); else expression();
 
         // Subsequent items separated by ';' or ','. The separator token is chosen by
         // the type of the item that FOLLOWS it (verified via the ROM oracle):
@@ -265,7 +279,7 @@ private:
             // A trailing "," (e.g. PRINT A,) just tabs and ends the statement.
             if (eol() || peek() == ':') break;
 
-            if (nextStr) stringExpr(); else numericExpr();
+            if (nextStr) stringExpr(); else expression();
         }
     }
 
@@ -280,15 +294,15 @@ private:
         if (peek() != '=') fail("expected '=' in FOR");
         ++i_; skipBlanks();
         emit(TOK_EQ_FOR);
-        numericExpr();
+        expression();
         skipBlanks();
         if (!matchWord("TO")) fail("expected TO in FOR");
         emit(TOK_TO);
-        numericExpr();
+        expression();
         skipBlanks();
         if (matchWord("STEP")) {
             emit(TOK_STEP);
-            numericExpr();
+            expression();
         }
     }
 
@@ -307,73 +321,96 @@ private:
     // --- IF ----------------------------------------------------------------
     void stmtIf() {
         emit(TOK_IF);
-        // condition is a (possibly string) relational/numeric expression
-        conditionExpr();
+        // The condition is just an ordinary expression (relational/logical ops are
+        // numeric operators). A bare numeric expression with no relop is legal, e.g.
+        // "IF B THEN 35".
+        expression();
         skipBlanks();
         if (!matchWord("THEN")) fail("expected THEN in IF");
-        emit(TOK_THEN);
-        skipBlanks();
-        // After THEN: a bare line number is an implied GOTO (tokenised as a NUMBER);
-        // otherwise a statement follows.
+        // THEN before a LINE NUMBER (implied GOTO) is $24; THEN before a STATEMENT
+        // is $25 (verified via the oracle).
         if (isDigit(peek())) {
+            emit(TOK_THEN_LINE);
             numberConstant();
         } else {
+            emit(TOK_THEN_STMT);
             statement();
         }
     }
 
     // --- INPUT -------------------------------------------------------------
+    // INPUT with a literal prompt:  $53 "prompt" <comma> var [<comma> var]...
+    //   The comma BEFORE each var picks $26 (string var) / $27 (numeric var).
+    // INPUT with no prompt: the FIRST var picks the verb $54 (numeric) / $52 (string),
+    //   then subsequent vars are separated by the same $26/$27 commas.
     void stmtInput() {
         skipBlanks();
-        // INPUT "prompt"; var ...   -> $53 then literal then ; ...
         if (peek() == '"') {
             emit(TOK_INPUT_PR);
             stringLiteral();
             skipBlanks();
-            if (peek() == ',' || peek() == ';') { ++i_; skipBlanks(); }
-            inputVarList();
+            // The prompt is followed by a comma (or ';') then the variable list. The
+            // separator token is the $26/$27 picked by the first var's type.
+            if (peek() == ',' || peek() == ';') ++i_;
+            inputVarList(/*emitFirstSep=*/true);
             return;
         }
-        // First var picks numeric ($54) vs string ($52).
-        // Peek the variable type without consuming.
-        size_t save = i_;
+        // No prompt: the first var's type picks the INPUT verb token.
         bool isStr = peekVariableIsString();
-        i_ = save;
         emit(isStr ? TOK_INPUT_STR : TOK_INPUT_NUM);
-        inputVarList();
+        inputVarList(/*emitFirstSep=*/false);
     }
 
-    void inputVarList() {
-        variable();
-        skipBlanks();
-        while (peek() == ',') {
-            ++i_; skipBlanks();
-            // "," in numeric input is $27; we only have a handful of samples, keep it
-            // simple: emit comma var.  (Extend with $26 string-input comma later.)
-            emit(0x27);
-            variable();
+    // Parse the comma-separated variable list of an INPUT. If `emitFirstSep`, a
+    // separator token ($26/$27, chosen by the first var) precedes the first var
+    // (used after a literal prompt).
+    void inputVarList(bool emitFirstSep) {
+        bool first = true;
+        for (;;) {
             skipBlanks();
+            if (!emitFirstSep && first) {
+                // first var after the verb token: no separator
+            } else {
+                bool isStr = peekVariableIsString();
+                emit(isStr ? TOK_INPUT_C_STR : TOK_INPUT_C_NUM);
+            }
+            variable();
+            first = false;
+            skipBlanks();
+            if (peek() != ',') break;
+            ++i_;
+            emitFirstSep = true;   // every subsequent var gets a separator
         }
     }
 
     // --- DIM ---------------------------------------------------------------
+    // DIM var(n)[,var(n)]...  The FIRST var's keyword is $4E (string) / $4F (numeric);
+    // subsequent vars are introduced by the comma tokens $43 (string) / $44 (numeric),
+    // NOT a repeated $4E/$4F. "(" is $22 (string DIM) / $34 (numeric DIM).
     void stmtDim() {
+        bool first = true;
         for (;;) {
             skipBlanks();
             bool isStr = peekVariableIsString();
-            emit(isStr ? TOK_DIM_STR : TOK_DIM_NUM);
-            // variable name (no subscript parsing here -- DIM uses its own paren tokens)
+            if (first) emit(isStr ? TOK_DIM_STR : TOK_DIM_NUM);
+            else       emit(isStr ? TOK_DIM_C_STR : TOK_DIM_C_NUM);
+            // variable name (DIM uses its own paren tokens, no subscript parsing here)
             varNameOnly();
-            if (isStr) emit(TOK_STR_VAR);
             skipBlanks();
+            if (isStr) {
+                if (peek() != '$') fail("expected '$' on string DIM variable");
+                ++i_; emit(TOK_STR_VAR);
+                skipBlanks();
+            }
             if (peek() != '(') fail("expected '(' in DIM");
             ++i_; skipBlanks();
             emit(isStr ? TOK_LP_STRDIM : TOK_LP_NUMDIM);
-            numericExpr();
+            expression();
             skipBlanks();
             if (peek() != ')') fail("expected ')' in DIM");
             ++i_; emit(TOK_RP);
             skipBlanks();
+            first = false;
             if (peek() == ',') { ++i_; continue; }
             break;
         }
@@ -382,68 +419,116 @@ private:
     // --- POKE --------------------------------------------------------------
     void stmtPoke() {
         emit(TOK_POKE);
-        numericExpr();
+        expression();
         skipBlanks();
         if (peek() != ',') fail("expected ',' in POKE");
         ++i_; skipBlanks();
         emit(TOK_POKE_COMMA);
-        numericExpr();
+        expression();
     }
 
     // --- expressions -------------------------------------------------------
-    // Numeric expression: precedence handled loosely; the ROM flattens to a token
-    // stream where operators are interleaved with operands (it relies on a runtime
-    // operator-precedence stack, not parenthesised AST). For the image we only need
-    // the LINEAR token sequence, so we emit operands and operators left-to-right.
-    void numericExpr() {
-        numericTerm();
+    // Integer BASIC has NO separate "condition" grammar: relational (=,#,<,>,<=,>=,
+    // <>) and logical (AND,OR,NOT) operators are ordinary numeric operators in the
+    // ONE expression grammar. The ROM emits operators interleaved with operands and
+    // resolves precedence at RUN time via an operator stack -- the stored image is
+    // just the LINEAR token sequence, so we emit operands + operators left-to-right
+    // (verified byte-exact against the oracle, including nested "(...)").
+    //
+    // An operand may be a STRING (literal / string var); after a string operand the
+    // only legal operators are "="/"#", which emit the STRING-compare tokens
+    // ($39/$3A) and consume a string operand; the comparison RESULT is numeric, so
+    // any following operators are numeric again. expression() returns true if the
+    // value it just produced is (still) a string -- i.e. a bare string with no
+    // comparison applied (callers use it to pick string vs numeric token flavours).
+    bool expression() {
+        bool lhsStr = primary();
         for (;;) {
             skipBlanks();
             char c = peek();
+
+            // "="/"#": string-compare if the left operand is a string, else numeric.
+            if (c == '=' || c == '#') {
+                ++i_;
+                if (lhsStr) {
+                    emit(c == '=' ? TOK_EQ_STR : TOK_NE_STR);
+                    bool rhsStr = primary();
+                    if (!rhsStr) fail("expected a string operand after string comparison");
+                } else {
+                    emit(c == '=' ? TOK_EQ_NUM : TOK_NE_NUM);
+                    primary();
+                }
+                lhsStr = false;                 // comparison result is numeric
+                continue;
+            }
+
+            // Everything else is a numeric operator (Integer BASIC has no string '+').
             uint8_t op = 0;
-            if (c == '+') op = TOK_ADD;
-            else if (c == '-') op = TOK_SUB;
-            else if (c == '*') op = TOK_MUL;
-            else if (c == '/') op = TOK_DIV;
-            else if (matchWord("MOD")) { emit(TOK_MOD); numericTerm(); continue; }
+            if (c == '+') { op = TOK_ADD; ++i_; }
+            else if (c == '-') { op = TOK_SUB; ++i_; }
+            else if (c == '*') { op = TOK_MUL; ++i_; }
+            else if (c == '/') { op = TOK_DIV; ++i_; }
+            else if (c == '>') { ++i_; if (peek() == '=') { ++i_; op = TOK_GE; } else op = TOK_GT; }
+            else if (c == '<') { ++i_; if (peek() == '=') { ++i_; op = TOK_LE; }
+                                       else if (peek() == '>') { ++i_; op = TOK_NE2_NUM; }
+                                       else op = TOK_LT; }
+            else if (matchWord("AND")) op = TOK_AND;
+            else if (matchWord("OR"))  op = TOK_OR;
+            else if (matchWord("MOD")) op = TOK_MOD;
             else break;
-            ++i_; emit(op);
-            numericTerm();
+
+            if (lhsStr) fail("a string value cannot be used in a numeric expression");
+            emit(op);
+            // The operand that follows may itself be a STRING (e.g. the right-hand
+            // side of "OR" in `D$="N" OR D$="NO"`), about to be string-compared on the
+            // next "="/"#". Track its type so that comparison picks $39/$3A, not $16.
+            lhsStr = primary();
         }
+        return lhsStr;
     }
 
-    void numericTerm() {
+    // A primary operand. Returns true if it is a STRING value.
+    bool primary() {
         skipBlanks();
         char c = peek();
-        // unary operators
-        if (c == '-') { ++i_; emit(TOK_UMINUS); numericTerm(); return; }
-        if (c == '+') { ++i_; emit(TOK_UPLUS);  numericTerm(); return; }
-        if (matchWord("NOT")) { emit(TOK_NOT); numericTerm(); return; }
 
-        if (c == '(') { ++i_; emit(TOK_LP_EXPR); numericExpr(); skipBlanks();
-                        if (peek() != ')') fail("expected ')'"); ++i_; emit(TOK_RP); return; }
+        // Unary operators (numeric only).
+        if (c == '-') { ++i_; emit(TOK_UMINUS); primary(); return false; }
+        if (c == '+') { ++i_; emit(TOK_UPLUS);  primary(); return false; }
+        if (matchWord("NOT")) { emit(TOK_NOT); primary(); return false; }
 
-        if (isDigit(c)) { numberConstant(); return; }
+        // Grouping "(" expr ")" -- numeric grouping token $38.
+        if (c == '(') {
+            ++i_; emit(TOK_LP_EXPR);
+            expression();
+            skipBlanks();
+            if (peek() != ')') fail("expected ')'");
+            ++i_; emit(TOK_RP);
+            return false;
+        }
 
-        // functions
-        if (matchWord("PEEK")) { fnCall(TOK_PEEK); return; }
-        if (matchWord("RND"))  { fnCall(TOK_RND);  return; }
-        if (matchWord("SGN"))  { fnCall(TOK_SGN);  return; }
-        if (matchWord("ABS"))  { fnCall(TOK_ABS);  return; }
-        if (matchWord("LEN"))  { // LEN( carries its own paren token ($3B)
+        if (c == '"') { stringLiteral(); return true; }
+        if (isDigit(c)) { numberConstant(); return false; }
+
+        // Functions (numeric).
+        if (matchWord("PEEK")) { fnCall(TOK_PEEK); return false; }
+        if (matchWord("RND"))  { fnCall(TOK_RND);  return false; }
+        if (matchWord("SGN"))  { fnCall(TOK_SGN);  return false; }
+        if (matchWord("ABS"))  { fnCall(TOK_ABS);  return false; }
+        if (matchWord("LEN"))  {                 // LEN( carries its own paren ($3B)
             skipBlanks();
             if (peek() != '(') fail("expected '(' after LEN");
             ++i_; emit(TOK_LEN_LP);
-            stringExpr();
+            expression();
             skipBlanks();
             if (peek() != ')') fail("expected ')' after LEN(");
             ++i_; emit(TOK_RP);
-            return;
+            return false;
         }
 
-        if (isAlpha(c)) { variable(); return; }
+        if (isAlpha(c)) return variable();       // numeric or string variable
 
-        fail("expected a numeric term");
+        fail("expected an operand");
     }
 
     void fnCall(uint8_t fnTok) {
@@ -451,51 +536,19 @@ private:
         skipBlanks();
         if (peek() != '(') fail("expected '(' after function");
         ++i_; emit(TOK_LP_FN);
-        numericExpr();
+        expression();
         skipBlanks();
         if (peek() != ')') fail("expected ')' after function");
         ++i_; emit(TOK_RP);
     }
 
-    // String expression: a string literal, a string variable, or (later) concatenation
-    // -- Integer BASIC has no string '+'; concatenation is not supported.  For now a
-    // single string literal or string variable.
+    // A string operand specifically (INPUT / assignment RHS). Integer BASIC has no
+    // string concatenation, so this is a single string literal or string variable.
     void stringExpr() {
         skipBlanks();
         if (peek() == '"') { stringLiteral(); return; }
         if (isAlpha(peekUpper())) { bool isStr = variable(); if (!isStr) fail("expected string operand"); return; }
         fail("expected a string operand");
-    }
-
-    // A condition for IF: relational over numeric or string operands.
-    void conditionExpr() {
-        skipBlanks();
-        bool lhsStr = startsStringItem();
-        if (lhsStr) {
-            stringExpr();
-            skipBlanks();
-            char c = peek();
-            if (c == '=') { ++i_; emit(TOK_EQ_STR); stringExpr(); }
-            else if (c == '#') { ++i_; emit(TOK_NE_STR); stringExpr(); }
-            else fail("expected string relational operator in IF");
-            return;
-        }
-        // numeric condition: lhs <op> rhs (op may be =,#,<,>,<>)
-        numericExpr();
-        skipBlanks();
-        char c = peek();
-        uint8_t op = 0;
-        if (c == '=') { ++i_; op = TOK_EQ_NUM; }
-        else if (c == '#') { ++i_; op = TOK_NE_NUM; }
-        else if (c == '<') {
-            ++i_;
-            if (peek() == '>') { ++i_; op = TOK_NE2_NUM; }
-            else op = TOK_LT;
-        }
-        else if (c == '>') { ++i_; op = TOK_GT; }
-        else fail("expected relational operator in IF");
-        emit(op);
-        numericExpr();
     }
 
     // --- literals / variables / numbers -----------------------------------
@@ -558,8 +611,10 @@ private:
     }
 
     // Parse a full variable reference: name (+ "$" for string) (+ subscript/substring).
-    // Emits the var tokens and returns true if it is a STRING variable.
-    bool variable() {
+    // Emits the var tokens and returns true if it is a STRING variable. `dest` marks
+    // an assignment DESTINATION, where a string element  A$(i)="..."  uses the string-
+    // array-dest paren ($42, single index) rather than the substring paren ($2A).
+    bool variable(bool dest = false) {
         varNameOnly();
         bool isStr = false;
         skipBlanks();
@@ -567,18 +622,25 @@ private:
         skipBlanks();
         if (peek() == '(') {
             ++i_; skipBlanks();
-            if (isStr) {
-                // A$(a) or A$(a,b) -- substring.  "(" = $2A, "," = $2B.
-                emit(TOK_LP_SUBSTR);
-                numericExpr();
+            if (isStr && dest) {
+                // A$(i) = ... -- string-array element destination.  "(" = $42.
+                emit(TOK_LP_STRDEST);
+                expression();
                 skipBlanks();
-                if (peek() == ',') { ++i_; skipBlanks(); emit(0x2B); numericExpr(); skipBlanks(); }
+                if (peek() != ')') fail("expected ')' in string-array destination");
+                ++i_; emit(TOK_RP);
+            } else if (isStr) {
+                // A$(a) or A$(a,b) -- substring (read).  "(" = $2A, "," = $23, ")" = $72.
+                emit(TOK_LP_SUBSTR);
+                expression();
+                skipBlanks();
+                if (peek() == ',') { ++i_; skipBlanks(); emit(TOK_SUBSTR_COMMA); expression(); skipBlanks(); }
                 if (peek() != ')') fail("expected ')' in substring");
                 ++i_; emit(TOK_RP);
             } else {
                 // numeric array subscript "(" = $2D
                 emit(TOK_LP_ARRAY);
-                numericExpr();
+                expression();
                 skipBlanks();
                 if (peek() != ')') fail("expected ')' in array subscript");
                 ++i_; emit(TOK_RP);

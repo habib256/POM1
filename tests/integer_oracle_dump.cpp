@@ -104,6 +104,28 @@ const char* const kSamples[] = {
     "10 PRINT \"A\",B\n",             // string , numeric
     "10 PRINT A;\"B\"\n",             // numeric ; string
     "10 PRINT A,\"B\"\n",             // numeric , string
+    // --- REM leading-space probes ---
+    "1 REM HI\n",                     // REM with single space before text (no space before REM)
+    "1  REM HI\n",                    // extra space BEFORE rem
+    "1 REM  HI\n",                    // two spaces after REM
+    // --- TAB with parens ---
+    "10 TAB (4): PRINT \"X\"\n",      // TAB (n) parenthesised
+    "10 TAB 11\n",                    // TAB n bare
+    // --- string array element dest A$(1)="FOO" ---
+    "10 A$(1)=\"FOO\"\n",             // string-array dest "(" $42
+    "10 A$(I)=\"X\"\n",
+    // --- resistor / startrek style constructs ---
+    "10 IF A=1 THEN PRINT \"X\": PRINT \"Y\"\n", // THEN stmt then : stmt
+    "10 PRINT \"VAL=\",A\n",
+    "10 A=B*C/D\n",
+    "10 FOR I=1 TO N STEP 2\n",
+    "10 IF A<>B THEN 50\n",
+    // --- EXACT failing source lines (verify .bas vs .apl drift) ---
+    "1 REM \"STOPWATCH\"\n",                                  // stopwatch L1 (no trailing space in src)
+    "11 PRINT \" --- 4 BAND CODE ---\"\n",                   // resistor L11 (1 leading space in src)
+    "210 PRINT \"YOU'D BETTER TRY HARDER,\";C$;\".\"\n",     // blackjack L210 (no trailing space in src)
+    "900 POKE 751,1: CALL 750: RETURN\n",                    // lunar L900 (,1 in src)
+    "20 Q=640:S=704:D$=\" * >!<+++<*>\"\n",                   // startrek L20 (1 leading space in src)
 };
 
 } // namespace
