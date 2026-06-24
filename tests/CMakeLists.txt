@@ -439,6 +439,45 @@ add_test(NAME bench_basic_tokenize_integer_smoke COMMAND test_bench_basic_tokeni
          WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
 set_tests_properties(bench_basic_tokenize_integer_smoke PROPERTIES TIMEOUT 120 SKIP_RETURN_CODE 77)
 
+# -- Integer BASIC DE-tokeniser (dev tool, not a ctest) ----------------------
+# Loads software/Integer_basic/*.apl.txt into the real $E000 ROM, LISTs each, and
+# writes the source back to sketchs/basic_integer/*.bas. Run from the repo root.
+add_executable(test_integer_detok EXCLUDE_FROM_ALL
+    integer_detok_dump.cpp
+    ${POM1_TEST_CORE_SOURCES}
+)
+target_include_directories(test_integer_detok PRIVATE
+    ${CMAKE_SOURCE_DIR}/src
+    ${CMAKE_SOURCE_DIR}/imgui
+)
+target_link_libraries(test_integer_detok PRIVATE libresidfp_static)
+if(APPLE)
+    target_compile_definitions(test_integer_detok PRIVATE GL_SILENCE_DEPRECATION)
+endif()
+if(WIN32)
+    target_link_libraries(test_integer_detok PRIVATE ws2_32)
+endif()
+
+# -- Integer BASIC tokeniser ROUND-TRIP (dev tool, not a ctest) --------------
+# Tokenises each sketchs/basic_integer/*.bas and compares to the matching .apl's
+# program image — "test blackjack.bas with the tokeniser" + guide for extending it.
+add_executable(test_integer_roundtrip EXCLUDE_FROM_ALL
+    integer_roundtrip_dump.cpp
+    ${CMAKE_SOURCE_DIR}/src/BasicTokeniserInteger.cpp
+    ${POM1_TEST_CORE_SOURCES}
+)
+target_include_directories(test_integer_roundtrip PRIVATE
+    ${CMAKE_SOURCE_DIR}/src
+    ${CMAKE_SOURCE_DIR}/imgui
+)
+target_link_libraries(test_integer_roundtrip PRIVATE libresidfp_static)
+if(APPLE)
+    target_compile_definitions(test_integer_roundtrip PRIVATE GL_SILENCE_DEPRECATION)
+endif()
+if(WIN32)
+    target_link_libraries(test_integer_roundtrip PRIVATE ws2_32)
+endif()
+
 # -- Integer BASIC tokenisation ORACLE (dev dumper, not a ctest) -------------
 # Tokenises sample programs through the real $E000 ROM and prints the byte-exact
 # image — ground truth for the BasicTokeniserInteger port. Built but not added as
