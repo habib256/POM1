@@ -289,7 +289,24 @@ comparisons, `AND/OR/NOT`, `ABS`, `FOR/NEXT`, `IF/THEN`, `GOTO`, `GOSUB/RETURN`,
 `END`, `REM`, `PRINT` (string literals + signed integers, `;`/`,` separators,
 trailing-`;` newline suppression — via the WOZ terminal), and integer graphics
 `HGR/HGR2`, `HCOLOR=`, `HPLOT` (point + `TO`-chains) at the **full GEN2 hi-res
-width 0..279** (16-bit X; TMS is natively 0..255). Float literals are rejected. **Phase 2 (future):** a standalone floating-point runtime
+width 0..279** (16-bit X; TMS is natively 0..255). Float literals are rejected.
+
+### Phase 2 — standalone floating point (in progress)
+
+**Phase 2a (done): a tested binary32 software-float runtime** —
+`dev/lib/basicrt/basicrt_float.s`, the autonomous FP core (no Applesoft ROM). It
+stores values as 4-byte IEEE-754 single and implements `fp_fromint16`,
+`fp_toint16`, `fp_add`, `fp_sub`, `fp_mul`, `fp_div`, `fp_cmp` (operands in the
+zero-page slots `FA`/`FB`). Internally a value unpacks to `{sign, E, SG}` with the
+24-bit significand `SG ∈ [2^23, 2^24)` and `value = SG·2^E`, computes, and repacks.
+Pinned by `basic_float_runtime` (cc65-gated): every op is checked against the
+host's IEEE `float` over a value grid + 4000 randomised pairs spanning 2^±20.
+
+**Phase 2b (next): wire it into the compiler.** Applesoft is float-by-default, so
+this needs a small type layer (float storage/temps; int↔float coercion; `FOR`
+indices stay int where provably integral), the float forms of the expression and
+graphics codegen (coords via `fp_toint16`), and `SIN/COS/SQR/INT` (polynomial /
+Newton). That is what lets `3DHat.apf` compile to **native** code with no ROM. **Phase 2 (future):** a standalone floating-point runtime
 (`FADD/FMUL/.../SIN/SQR`) so float programs like `3DHat.apf` compile to native
 code with no ROM either — the harder, larger half, where FP speed only improves if
 the float library itself is faster than the ROM's.

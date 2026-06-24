@@ -439,6 +439,28 @@ add_test(NAME basic_native_run COMMAND test_basic_native_run
          WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
 set_tests_properties(basic_native_run PROPERTIES TIMEOUT 180 SKIP_RETURN_CODE 77)
 
+# -- Standalone binary32 float runtime (FP phase foundation; cc65-gated) ------
+# Assembles dev/lib/basicrt/basicrt_float.s and checks fromint/toint/add/sub/mul/
+# div/cmp against the host's IEEE float over a value grid. Skips (77) without cc65.
+add_executable(test_basic_float_runtime
+    basic_float_runtime_test.cpp
+    ${POM1_TEST_CORE_SOURCES}
+)
+target_include_directories(test_basic_float_runtime PRIVATE
+    ${CMAKE_SOURCE_DIR}/src
+    ${CMAKE_SOURCE_DIR}/imgui
+)
+target_link_libraries(test_basic_float_runtime PRIVATE libresidfp_static)
+if(APPLE)
+    target_compile_definitions(test_basic_float_runtime PRIVATE GL_SILENCE_DEPRECATION)
+endif()
+if(WIN32)
+    target_link_libraries(test_basic_float_runtime PRIVATE ws2_32)
+endif()
+add_test(NAME basic_float_runtime COMMAND test_basic_float_runtime
+         WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+set_tests_properties(basic_float_runtime PROPERTIES TIMEOUT 120 SKIP_RETURN_CODE 77)
+
 # -- SID audio production smoke test ------------------------------------------
 # Needs the full Memory+peripheral core to exercise the PeripheralBus path.
 add_executable(test_sid_audio

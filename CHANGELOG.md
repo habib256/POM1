@@ -10,6 +10,18 @@ is `git log`; the user-facing feature tour is `README.md`; open work lives in
 
 ## [Unreleased]
 
+### Added — native compiler Phase 2a: standalone binary32 software-float runtime
+
+- **`dev/lib/basicrt/basicrt_float.s`** — the autonomous floating-point core (no
+  Applesoft ROM) for the native compiler's FP phase. 4-byte IEEE-754 single
+  storage; `fp_fromint16/fp_toint16/fp_add/fp_sub/fp_mul/fp_div/fp_cmp` over the
+  zero-page slots `FA`/`FB`, computing on an unpacked `{sign, E, 24-bit SG}` form.
+  Pinned by **`basic_float_runtime`** (cc65-gated), which assembles the runtime and
+  checks every op against the host IEEE `float` over a value grid **and 4000
+  randomised pairs spanning 2^±20** — all exact within float tolerance. Phase 2b
+  (compiler type-system integration + `SIN/SQR` → compile `3DHat.apf` to native)
+  is the documented next step. See [`doc/BASIC_COMPILER.md`](doc/BASIC_COMPILER.md).
+
 ### Added — native BASIC compiler: standalone 6502 machine code (~20× faster, no interpreter)
 
 - **`src/BasicNativeCompiler.{h,cpp}` + `dev/lib/basicrt/` runtime + `basicc
