@@ -559,6 +559,32 @@ add_test(NAME basic_native_run COMMAND test_basic_native_run
          WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
 set_tests_properties(basic_native_run PROPERTIES TIMEOUT 180 SKIP_RETURN_CODE 77)
 
+# -- DevBench native-compile launch path (mode 5, GEN2; cc65-gated) ------------
+# Pins the recipe Pom1BenchHost::compileBasicNative runs for the Applesoft GEN2
+# (native) target: basicnative::compile -> ca65 program + minimal GEN2 runtime
+# (-D RT_xxx) -> ld65 (basicc_native.cfg). Loads the standalone .bin at $0300 with
+# the GEN2 card UNPLUGGED and asserts the HGR page-1 framebuffer fills. Skips (77)
+# without cc65 or the dev/lib/basicrt tree.
+add_executable(test_bench_basic_native
+    bench_basic_native_smoke_test.cpp
+    ${CMAKE_SOURCE_DIR}/src/BasicCompilerApplesoft.cpp
+    ${POM1_TEST_CORE_SOURCES}
+)
+target_include_directories(test_bench_basic_native PRIVATE
+    ${CMAKE_SOURCE_DIR}/src
+    ${CMAKE_SOURCE_DIR}/imgui
+)
+target_link_libraries(test_bench_basic_native PRIVATE libresidfp_static)
+if(APPLE)
+    target_compile_definitions(test_bench_basic_native PRIVATE GL_SILENCE_DEPRECATION)
+endif()
+if(WIN32)
+    target_link_libraries(test_bench_basic_native PRIVATE ws2_32)
+endif()
+add_test(NAME bench_basic_native_smoke COMMAND test_bench_basic_native
+         WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+set_tests_properties(bench_basic_native_smoke PROPERTIES TIMEOUT 180 SKIP_RETURN_CODE 77)
+
 # -- Standalone binary32 float runtime (FP phase foundation; cc65-gated) ------
 # Assembles dev/lib/basicrt/basicrt_float.s and checks fromint/toint/add/sub/mul/
 # div/cmp against the host's IEEE float over a value grid. Skips (77) without cc65.

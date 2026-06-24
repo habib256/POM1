@@ -3,6 +3,7 @@
 
 #include "BasicTokeniserApplesoft.h"        // basic::compile — Applesoft tokeniser (GEN2/TMS)
 #include "BasicTokeniserInteger.h"          // ibasic::compile — Integer BASIC tokeniser ($E000)
+#include "BasicCompilerApplesoft.h"         // basicnative::compile — native standalone 6502
 #include "MainWindow_ImGui.h"     // mw_ members (friend) + EmulationController
 #include "MainWindow_Internal.h"  // kMachinePresets / BasicType (ACI program-output presets)
 #include "ProcessUtil.h"          // bench::shellQuote / runCapture / whichExe
@@ -481,6 +482,16 @@ const P1T kP1Targets[] = {
     // Target 11: Applesoft TMS9918 — the applesoft-tms9918 interpreter as a
     // CodeTank ROM cartridge ($4000-$7FFF), preset 1, cold start 4000R.
     { "Applesoft TMS9918 (CodeTank, 4000R)",     1, "4000R",    "BASIC", 4, false, true,  kSketchBasicApplesoftGen2 },
+    // Targets 12-13: NATIVE Applesoft compiler (basicnative::compile) — standalone
+    // 6502, NO interpreter (~20x faster). Mode 5 routes to compileBasicNative(),
+    // which mirrors tools/basicc_native.sh (ca65 prog + minimal runtime + optional
+    // float, then ld65 against basicc_native.cfg) and loadBinary+runs the result at
+    // $0300. cfg=nullptr (the native build hardcodes basicc_native.cfg). DESKTOP
+    // only — guarded out of the WASM target table (see the ctor). GEN2 = preset 2
+    // (HGR page 1 framebuffer); TMS = preset 1 (code runs from $0300 RAM, draws to
+    // the VDP at $CC00/$CC01 — NOT a CodeTank cartridge, so codetankRom = false).
+    { "Applesoft GEN2 (native, 0300R)",          2, nullptr,    "BASIC", 5, false, false, kSketchBasicApplesoftGen2 },
+    { "Applesoft TMS9918 (native, 0300R)",       1, nullptr,    "BASIC", 5, false, false, kSketchBasicApplesoftGen2 },
 };
 const int kP1TargetCount = static_cast<int>(sizeof(kP1Targets) / sizeof(kP1Targets[0]));
 
@@ -511,6 +522,8 @@ const char* const kP1Machines[]  = {
     "Applesoft GEN2 HGR",                        // 4  BASIC -> target 9
     "Applesoft TMS9918",                         // 5  BASIC -> target 11
     "Integer BASIC (Apple-1 dual-rom)",          // 6  BASIC -> target 7
+    "Applesoft GEN2 HGR  (native compile)",      // 7  BASIC -> target 12 (desktop only)
+    "Applesoft TMS9918  (native compile)",       // 8  BASIC -> target 13 (desktop only)
 };
 const char* const kP1MachineHints[] = {
     "Stock Apple-1: 40x24 text printed through the WozMon ECHO routine ($FFEF).\n"
@@ -532,6 +545,12 @@ const char* const kP1MachineHints[] = {
     "Integer BASIC — Wozniak's 6502 Integer BASIC in the Apple-1 dual-ROM second\n"
     "bank ($E000-$EFFF), cold start E000R. No graphics, no floating point — the\n"
     "classic Apple-1 BASIC. Keyboard-injected listing, no compiler.",
+    "Applesoft GEN2 (native compile) — COMPILES the listing to standalone 6502\n"
+    "(no interpreter, ~20x faster) via the native compiler, links the minimal GEN2\n"
+    "runtime, loads + runs at $0300 on the GEN2 card (preset 2). Desktop only.",
+    "Applesoft TMS9918 (native compile) — COMPILES the listing to standalone 6502\n"
+    "(no interpreter, ~20x faster), links the minimal TMS9918 runtime + VDP lib,\n"
+    "loads + runs at $0300 on the TMS9918 card (preset 1). Desktop only.",
 };
 
 // Graduated learning examples (inline sources) on the Apple-1 text target. They
@@ -1354,6 +1373,10 @@ int Pom1BenchHost::targetFor(int language, int machine) const
             case 4: return 9;    // Applesoft GEN2 HGR ($9800)
             case 5: return 11;   // Applesoft TMS9918 (CodeTank $4000)
             case 6: return 7;    // Integer BASIC (Apple-1 dual-rom, $E000)
+#if !POM1_IS_WASM
+            case 7: return 12;   // Applesoft GEN2 (native compile, $0300) — desktop only
+            case 8: return 13;   // Applesoft TMS9918 (native compile, $0300) — desktop only
+#endif
         }
         return -1;
     }
@@ -1508,8 +1531,9 @@ bench::BuildResult Pom1BenchHost::selectTargetExplicit(int target)
         r.ok = ib.ok;
         r.status = ib.ok ? (std::string(t.label) + " — ready") : ib.status;
         if (!ib.ok) { r.console = ib.console; r.showConsole = true; }   // surface ROM errors
-    } else if (t.mode == 0 || t.mode == 3) {
-        // asm / C: make the cc65 toolchain ready so Verify/Run work immediately.
+    } else if (t.mode == 0 || t.mode == 3 || t.mode == 5) {
+        // asm / C / native BASIC: make the cc65 toolchain ready so Verify/Run work
+        // immediately (mode 5 drives ca65/ld65 directly, same toolchain as asm).
         probe();
         r.ok = toolchainReady(target);
         const std::string hint = toolchainHint(target);
@@ -2038,6 +2062,181 @@ bench::BuildResult Pom1BenchHost::injectBasic(int target, const std::string& src
     return r;
 }
 
+#if !POM1_IS_WASM
+// BASIC native compile (mode 5, DESKTOP). basicnative::compile turns the Applesoft
+// listing into ca65 assembly for a STANDALONE 6502 program (no interpreter, ~20x
+// faster than the tokeniser). This mirrors tools/basicc_native.sh exactly:
+//   1. write asmText to prog.s
+//   2. ca65 -I dev/lib/<gen2|tms9918> -I dev/lib/apple1 -I dev/lib/basicrt  prog.s
+//   3. derive -D RT_xxx from Result.runtimeFeatures (uppercased rt_* symbols) and
+//      assemble the card runtime basicrt_<gen2|tms>.s with those defines
+//   4. if usesFloat: assemble basicrt_float.s with -D FP_INT/FP_SQRT/FP_SIN for the
+//      transcendentals the program imports (grep asmText)
+//   5. TMS + draws (RT_HGR/RT_PLOT/RT_LINE/RT_HCOLOR): also assemble the VDP lib
+//      (tms9918m2.asm + tms9918_pad.asm)
+//   6. ld65 -C basicc_native.cfg  prog.o rt.o [fp.o] [vdp objs]
+// The binary loads + runs at $0300 on BOTH cards (TMS draws to the VDP at $CC00/
+// $CC01 but the CODE runs from $0300 RAM — it is NOT a CodeTank cartridge).
+bench::BuildResult Pom1BenchHost::compileBasicNative(int target, const std::string& src, bool run)
+{
+    namespace fs = std::filesystem;
+    bench::BuildResult r; r.showConsole = true;
+    const P1T& t = kP1Targets[p1(target)];
+    const bool gen2 = (t.preset == 2);   // GEN2 HGR card; else TMS9918 (preset 1)
+
+    probe();
+    if (!toolchainOk_) {
+        r.console = std::string("cc65 (ca65/ld65) not found.\n") + kCc65InstallHint;
+        r.status = "cc65 missing"; return r;
+    }
+    if (devRoot_.empty()) {
+        r.console = "native BASIC compile needs the dev/ tree (dev/lib/basicrt + the "
+                    "card runtime). Run from the cloned repo or a release bundle.\n";
+        r.status = "dev/ tree missing"; return r;
+    }
+    const fs::path rtDir = fs::path(devRoot_) / "lib" / "basicrt";
+    const fs::path cfg   = rtDir / "basicc_native.cfg";
+    std::error_code ec;
+    if (!fs::exists(cfg, ec)) {
+        r.console = "linker cfg not found: " + cfg.string() + " (needs dev/lib/basicrt)\n";
+        r.status = "basicc_native.cfg missing"; return r;
+    }
+
+    // 1) Compile the listing to ca65 asm via the native compiler.
+    basicnative::Result nr = basicnative::compile(
+        src, gen2 ? basicnative::Card::Gen2 : basicnative::Card::Tms);
+    if (!nr.ok) {
+        r.console = "[native compiler] " + nr.error + "\n";
+        // Surface the offending Applesoft line in the editor gutter if it parses.
+        if (const size_t lp = nr.error.find("line "); lp != std::string::npos) {
+            int ln = 0;
+            try { ln = std::stoi(nr.error.substr(lp + 5)); } catch (...) { ln = 0; }
+            if (ln > 0) r.errors.emplace_back(ln, nr.error);
+        }
+        r.status = "native compile failed (" + nr.error + ")"; r.ok = false; return r;
+    }
+    r.console = std::string("$ basicnative::compile (") + (gen2 ? "GEN2" : "TMS9918") + ")\n"
+              + "[ok] " + std::to_string(nr.lineCount) + " lines -> ca65 asm"
+              + (nr.usesFloat ? " (binary32 float)" : " (16-bit integer)") + "\n";
+
+    const fs::path dir = fs::temp_directory_path(ec);
+    if (ec || dir.empty()) { r.console += "no temp directory available\n"; r.status = "no temp directory"; return r; }
+    TempFileSweeper sweep;
+    const fs::path progS = dir / "pom1_bench_native.s";
+    const fs::path progO = dir / "pom1_bench_native_prog.o";
+    const fs::path rtO   = dir / "pom1_bench_native_rt.o";
+    const fs::path fpO   = dir / "pom1_bench_native_fp.o";
+    const fs::path m2O   = dir / "pom1_bench_native_m2.o";
+    const fs::path padO  = dir / "pom1_bench_native_pad.o";
+    const fs::path binB  = dir / "pom1_bench_native.bin";
+    sweep.add(progS); sweep.add(progO); sweep.add(rtO); sweep.add(fpO);
+    sweep.add(m2O); sweep.add(padO); sweep.add(binB);
+    std::ofstream(progS, std::ios::binary).write(nr.asmText.data(),
+                  static_cast<std::streamsize>(nr.asmText.size()));
+
+    // Shared -I flags: the card's equate lib + apple1 + basicrt (matches basicc_native.sh).
+    const fs::path cardLib = fs::path(devRoot_) / "lib" / (gen2 ? "gen2" : "tms9918");
+    const fs::path a1Lib   = fs::path(devRoot_) / "lib" / "apple1";
+    const std::string I = " -I " + bench::shellQuote(cardLib.string()) +
+                          " -I " + bench::shellQuote(a1Lib.string()) +
+                          " -I " + bench::shellQuote(rtDir.string()) + " ";
+
+    // 3) Derive -D RT_xxx from the rt_* runtime features the program imports, so the
+    // card runtime assembles ONLY those routines (unused routines + tables drop).
+    std::string rtDefs;
+    for (std::string f : nr.runtimeFeatures) {
+        if (f.rfind("rt_", 0) != 0) continue;          // skip fp_* (handled below)
+        for (char& c : f) c = static_cast<char>(std::toupper(static_cast<unsigned char>(c)));
+        rtDefs += " -D " + f;
+    }
+    // VDP graphics lib is linked (TMS only) when the program actually draws.
+    const bool draws = rtDefs.find("RT_HGR")   != std::string::npos ||
+                       rtDefs.find("RT_PLOT")  != std::string::npos ||
+                       rtDefs.find("RT_LINE")  != std::string::npos ||
+                       rtDefs.find("RT_HCOLOR")!= std::string::npos;
+
+    auto step = [&](const std::string& cmd, const char* tag) -> bool {
+        std::string out;
+        const int rc = bench::runCapture(cmd, out);
+        r.console += std::string("$ ") + tag + "\n" + out;
+        if (rc != 0) {
+            parseErrorMarkers(out, r.errors);
+            r.console += humanizeCc65(out);
+            r.status = std::string(tag) + " failed (see Build output)";
+            return false;
+        }
+        return true;
+    };
+
+    // 2) Assemble the program.
+    if (!step(bench::shellQuote(ca65_) + I + "-o " + bench::shellQuote(progO.string()) +
+              " " + bench::shellQuote(progS.string()), "ca65 [program]"))
+        return r;
+    // 3) Assemble the minimal card runtime with the RT_xxx defines.
+    const fs::path rtSrc = rtDir / (gen2 ? "basicrt_gen2.s" : "basicrt_tms.s");
+    if (!step(bench::shellQuote(ca65_) + rtDefs + I + "-o " + bench::shellQuote(rtO.string()) +
+              " " + bench::shellQuote(rtSrc.string()), "ca65 [runtime]"))
+        return r;
+
+    std::string linkObjs = bench::shellQuote(progO.string()) + " " + bench::shellQuote(rtO.string());
+
+    // 4) Float runtime, gated transcendentals (-D FP_INT/FP_SQRT/FP_SIN) by what the
+    // program imports (grep the generated asm, same as basicc_native.sh).
+    if (nr.usesFloat) {
+        std::string fpDefs;
+        if (nr.asmText.find("fp_int")  != std::string::npos) fpDefs += " -D FP_INT";
+        if (nr.asmText.find("fp_sqrt") != std::string::npos) fpDefs += " -D FP_SQRT";
+        if (nr.asmText.find("fp_sin")  != std::string::npos) fpDefs += " -D FP_SIN";
+        const fs::path fpSrc = rtDir / "basicrt_float.s";
+        if (!step(bench::shellQuote(ca65_) + fpDefs + " -o " + bench::shellQuote(fpO.string()) +
+                  " " + bench::shellQuote(fpSrc.string()), "ca65 [float runtime]"))
+            return r;
+        linkObjs += " " + bench::shellQuote(fpO.string());
+    }
+
+    // 5) TMS only, and only if the program draws: the VDP graphics lib.
+    if (!gen2 && draws) {
+        const std::string tI = " -I " + bench::shellQuote(cardLib.string()) +
+                               " -I " + bench::shellQuote(a1Lib.string()) + " ";
+        const fs::path m2Src  = cardLib / "tms9918m2.asm";
+        const fs::path padSrc = cardLib / "tms9918_pad.asm";
+        if (!step(bench::shellQuote(ca65_) + tI + "-o " + bench::shellQuote(m2O.string()) +
+                  " " + bench::shellQuote(m2Src.string()), "ca65 [tms9918m2]"))
+            return r;
+        if (!step(bench::shellQuote(ca65_) + tI + "-o " + bench::shellQuote(padO.string()) +
+                  " " + bench::shellQuote(padSrc.string()), "ca65 [tms9918_pad]"))
+            return r;
+        linkObjs += " " + bench::shellQuote(m2O.string()) + " " + bench::shellQuote(padO.string());
+    }
+
+    // 6) Link the standalone binary (loads + runs at $0300).
+    if (!step(bench::shellQuote(ld65_) + " -C " + bench::shellQuote(cfg.string()) +
+              " -o " + bench::shellQuote(binB.string()) + " " + linkObjs, "ld65"))
+        return r;
+    r.console += "[ok] assembled + linked (native, run @ $0300)\n";
+
+    if (!run) { r.status = "Verify OK"; r.ok = true; return r; }
+
+    // Deploy: switch to the target's card profile, drain the deferred card plug so
+    // the GEN2/TMS card is on the bus before the CPU runs, then loadBinary resets +
+    // runs at $0300 (NOT a CodeTank flash — the code runs from $0300 RAM).
+    if (t.preset >= 0) onTargetSelected(target);
+    mw_->finalizePendingCardPlugs();
+    auto* emu = mw_->emulation.get();
+    if (!emu) { r.status = "no emulator"; r.ok = false; return r; }
+    if (gen2) mw_->showGraphicsCard = true;
+    else if (!mw_->showTMS9918) mw_->showTMS9918 = true;
+    std::string error; int bytesLoaded = 0;
+    if (emu->loadBinary(binB.string(), 0x0300, error, &bytesLoaded)) {
+        emu->copySnapshot(mw_->uiSnapshot);
+        char msg[160]; std::snprintf(msg, sizeof(msg),
+            "Built %d B (native %s) run @ $0300", bytesLoaded, gen2 ? "GEN2" : "TMS9918");
+        r.status = msg; r.ok = true;
+    } else { r.status = "load failed: " + error; r.ok = false; }
+    return r;
+}
+#endif // !POM1_IS_WASM
+
 bench::BuildResult Pom1BenchHost::build(int target, const std::string& src, const std::string& addrHex, bool run)
 {
     bench::BuildResult r;
@@ -2067,6 +2266,19 @@ bench::BuildResult Pom1BenchHost::build(int target, const std::string& src, cons
 
     if (t.mode == 4) {     // BASIC: no compile — type the listing into the in-ROM
         return injectBasic(target, src, run);   // interpreter (works on WASM too).
+    }
+
+    if (t.mode == 5) {     // BASIC native compile -> standalone 6502, no interpreter.
+#if POM1_IS_WASM
+        // The native compile drives the bundled ca65/ld65 binaries directly; the
+        // in-browser cc65 (POM1cc65) path is a follow-up. Not exposed on WASM
+        // (targetFor returns -1 there), but guard the dispatch all the same.
+        r.console = "Native BASIC compile is desktop-only for now "
+                    "(the in-browser cc65 native path is a follow-up).\n";
+        r.status = "native compile is desktop-only"; r.ok = false; return r;
+#else
+        return compileBasicNative(target, src, run);
+#endif
     }
 
 #if POM1_IS_WASM
@@ -2707,6 +2919,7 @@ bool Pom1BenchHost::toolchainReady(int target) const
     return t.mode == 0 || t.mode == 3;   // asm + C compile via the bundled WASM cc65
 #else
     probe();
+    if (t.mode == 5) return toolchainOk_;   // native BASIC compile: ca65/ld65
     if (!t.needsCl65) return toolchainOk_;
     const std::string cfg = t.cfg ? t.cfg : "";
     if (cfg == "C-gen2")  return gen2COk_;
@@ -2722,9 +2935,12 @@ std::string Pom1BenchHost::toolchainHint(int target) const
     if (t.mode == 1) return "";
     if (t.mode == 4) return "BASIC — no compiler (injected)";   // desktop + WASM
 #if POM1_IS_WASM
+    if (t.mode == 5) return "native compile is desktop-only";
     return "cc65 (WASM) ready";
 #else
     probe();
+    if (t.mode == 5) return toolchainOk_ ? "native compile (ca65/ld65) ready"
+                                         : "needs cc65 (ca65/ld65)";
     if (!t.needsCl65) return toolchainOk_ ? "ca65/ld65 ready" : "needs cc65 (ca65/ld65)";
     return toolchainReady(target) ? "cl65 ready" : "needs cl65 + dev/";
 #endif
@@ -2745,6 +2961,9 @@ std::string Pom1BenchHost::modeLabel(int target) const
             default: return "Mode: Integer BASIC + Apple-1";
         }
     }
+    if (t.mode == 5)     // BASIC native compile: standalone 6502 by card
+        return (idx == 13) ? "Mode: Applesoft TMS9918 (native)"
+                           : "Mode: Applesoft GEN2 (native)";
 
     const char* language = (t.mode == 3) ? "C" : "ASM";
     const char* machine = "Apple-1";

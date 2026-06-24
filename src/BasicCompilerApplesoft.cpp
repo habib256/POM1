@@ -777,7 +777,23 @@ bool Codegen::statement()
     // assignment: [LET] var = expr
     if (isKw("LET")) adv();
     if (cur().t == T::Ident) {
-        std::string v = cur().s; adv();
+        std::string v = cur().s;
+        // An Applesoft reserved word the native compiler doesn't implement (lo-res
+        // graphics, error trapping, I/O, …) lexes as a variable here; flag it clearly
+        // rather than the cryptic "expected '='". These all run via the Applesoft
+        // TOKENISER (Inject / "compile (tokeniser)" mode), which drives the full ROM
+        // command set. The native compiler targets the HGR/integer/float fast path.
+        static const std::set<std::string> kUnsupported = {
+            "GR","COLOR","PLOT","HLIN","VLIN","TEXT","HOME","ONERR","RESUME",
+            "INPUT","GET","READ","DATA","DIM","DEF","ON","POKE","CALL","WAIT","POP",
+            "VTAB","HTAB","INVERSE","NORMAL","FLASH","DRAW","XDRAW","SCALE","ROT",
+            "STORE","RECALL","TRACE","NOTRACE","SPEED","DEL","CLEAR","HIMEM","LOMEM"
+        };
+        if (kUnsupported.count(v))
+            return fail("'" + v + "' is not supported by the native compiler — use the "
+                        "Applesoft tokeniser (Inject / tokenise mode) for lo-res graphics, "
+                        "ONERR, INPUT and the rest of the ROM command set");
+        adv();
         if (!isOp("=")) return fail("expected '=' in assignment");
         adv();
         if (!expr(0)) return false;

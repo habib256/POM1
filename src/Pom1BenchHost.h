@@ -6,6 +6,7 @@
 #define POM1_BENCH_HOST_H
 
 #include "IBenchHost.h"
+#include "POM1Build.h"   // POM1_IS_WASM (native-compile path is desktop-only)
 
 #include <cstdint>
 #include <string>
@@ -68,6 +69,13 @@ private:
     // BASIC deploy (mode 4): cold-start the in-ROM interpreter + type the listing
     // via the keyboard FIFO (no compiler — identical on desktop and WASM).
     bench::BuildResult injectBasic(int target, const std::string& src, bool run);
+#if !POM1_IS_WASM
+    // BASIC native compile (mode 5, DESKTOP only): basicnative::compile -> ca65 prog
+    // + minimal card runtime (+ float runtime if used), ld65 against basicc_native.cfg,
+    // then loadBinary + run at $0300. Mirrors tools/basicc_native.sh. Verify = build
+    // only ("Verify OK"). Reached from build() for the Applesoft GEN2/TMS native targets.
+    bench::BuildResult compileBasicNative(int target, const std::string& src, bool run);
+#endif
     // Map a bench targets_ index -> kP1Targets[] index. The browser now ships the
     // full cc65-in-WASM toolchain, so targets_ exposes EVERY target on both desktop
     // and WASM and targetMap_ is the identity map. Kept as an indirection so a future
