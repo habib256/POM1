@@ -27,7 +27,10 @@ is `git log`; the user-facing feature tour is `README.md`; open work lives in
   GEN2 HGR card and the TMS9918 card**, drawing into each framebuffer — verified
   injection-free (cold-start the ROM, poke the image, jump to the launcher). The
   test re-pins the two interpreter entry points (`SETPTRS`/`NEWSTT`), so a ROM
-  rebuild that shifts them fails loudly.
+  rebuild that shifts them fails loudly. A second pure unit test
+  (`basic_compiler_tokenize`) pins the exact tokenized bytes (links, `REM`/`DATA`/
+  string/`?`→`PRINT`, ascending-line sort, launcher stub) against the Applesoft
+  on-disk layout, independent of any ROM.
 
 ### Added — packaging: release builds bundle the cc65 toolchain (asm + C)
 

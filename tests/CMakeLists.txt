@@ -390,6 +390,18 @@ add_test(NAME basic_compiler_smoke COMMAND test_basic_compiler
          WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
 set_tests_properties(basic_compiler_smoke PROPERTIES TIMEOUT 180 SKIP_RETURN_CODE 77)
 
+# -- BASIC compiler tokenizer unit test --------------------------------------
+# Byte-exact pin for the tokenizer + image layout. Pure (only BasicCompiler.cpp,
+# no emulator core / ROM), so it always runs and is fast.
+add_executable(test_basic_compiler_tokenize
+    basic_compiler_tokenize_test.cpp
+    ${CMAKE_SOURCE_DIR}/src/BasicCompiler.cpp
+)
+target_include_directories(test_basic_compiler_tokenize PRIVATE ${CMAKE_SOURCE_DIR}/src)
+add_test(NAME basic_compiler_tokenize COMMAND test_basic_compiler_tokenize
+         WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+set_tests_properties(basic_compiler_tokenize PROPERTIES TIMEOUT 30)
+
 # -- SID audio production smoke test ------------------------------------------
 # Needs the full Memory+peripheral core to exercise the PeripheralBus path.
 add_executable(test_sid_audio
