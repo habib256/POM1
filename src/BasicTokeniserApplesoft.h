@@ -1,4 +1,4 @@
-// BasicCompiler.h -- Applesoft Lite "BASIC compiler" for POM1.
+// BasicTokeniserApplesoft.h -- Applesoft Lite "BASIC compiler" for POM1.
 //
 // Turns an Applesoft listing (.apf / .bas, the GEN2 or TMS9918 graphics dialect)
 // into a ready-to-run 6502 MEMORY IMAGE, so a program can be COMPILED AHEAD OF
@@ -31,8 +31,8 @@
 // Pure: depends on <string>/<vector>/<cstdint> only, so it links into the bench
 // (desktop + WASM), the CLI, and the headless tests alike.
 
-#ifndef POM1_BASIC_COMPILER_H
-#define POM1_BASIC_COMPILER_H
+#ifndef POM1_BASIC_TOKENISER_APPLESOFT_H
+#define POM1_BASIC_TOKENISER_APPLESOFT_H
 
 #include <cstdint>
 #include <string>
@@ -47,6 +47,15 @@ struct Zone {
     std::vector<uint8_t> bytes;
 };
 
+// Reserved-word table a target tokenizes against. The GEN2 and TMS9918 graphics
+// interpreters share one table (graphics keywords HGR/HPLOT/COLOR=/…); the
+// Applesoft Lite flavours (microSD/CFFA1) use a different, reduced table (no
+// graphics, no trig; adds MENU/SAVE/LOAD/CLS) where operators and functions land
+// at DIFFERENT token bytes. Tokenizing against the wrong table only agrees on the
+// common $80-$98 prefix, then diverges (e.g. `*` is $A9 on Lite, elsewhere on the
+// graphics table) — so the dialect MUST match the target ROM.
+enum class Dialect { Graphics, Lite };
+
 // Per-interpreter constants the launcher needs. The two ROM entry points are the
 // only card-specific addresses; everything else (zero-page TXTTAB/VARTAB, the
 // $0801 program origin) is shared Applesoft layout. Addresses were extracted from
@@ -56,12 +65,17 @@ struct Target {
     uint16_t    setptrs = 0;  // SETPTRS: TXTPTR=TXTTAB-1, clear vars, reset stack
     uint16_t    newstt  = 0;  // NEWSTT: main statement loop entry (runs from TXTTAB)
     uint16_t    himem   = 0;  // MEMSIZ the cold ROM pins (informational / sanity)
+    Dialect     dialect = Dialect::Graphics;  // reserved-word table to tokenize with
 };
 
 // GEN2 Applesoft (roms/applesoft-gen2.rom @ $9800, cold start 9800R).
 Target targetGen2();
 // Applesoft TMS9918 (CodeTank cart upper bank @ $4000, cold start 4000R).
 Target targetTms();
+// Applesoft Lite, microSD flavour (roms/applesoft-lite-microsd.rom @ $6000, 6000R).
+Target targetMicrosd();
+// Applesoft Lite, CFFA1 flavour (roms/applesoft-lite-cffa1.rom @ $E000, E000R).
+Target targetCffa1();
 
 struct Result {
     bool                 ok = false;
@@ -86,4 +100,4 @@ constexpr uint16_t kProgramOrigin = 0x0801;
 
 } // namespace basic
 
-#endif // POM1_BASIC_COMPILER_H
+#endif // POM1_BASIC_TOKENISER_APPLESOFT_H

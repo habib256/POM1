@@ -86,6 +86,15 @@ public:
     // host-independent point in emulated time. Leaves the CPU stopped.
     void runCyclesSync(uint64_t cycles);
 
+    // Cold-start a resident ROM routine synchronously: set PC=`entry` and run up
+    // to `maxCycles` on the calling thread (the async emulation loop is paused),
+    // leaving the emulation paused with RAM + zero page intact. Unlike
+    // hardReset(), it does NOT clear memory — the routine's own initialisation is
+    // what populates zero page. Used by the BASIC tokenizer (Pom1BenchHost) to
+    // bring the in-ROM Applesoft interpreter to its `]` prompt (zero page set up)
+    // before a compiled program image is loaded + launched.
+    void runFromSync(uint16_t entry, uint64_t maxCycles);
+
     // Debug: toggle the M6502 BRK trace (CPU state + stack + recent
     // control-flow transfers, logged at WARN on every BRK). Off by default.
     void setCpuBrkTraceEnabled(bool enabled);

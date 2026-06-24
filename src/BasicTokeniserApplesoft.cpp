@@ -1,4 +1,4 @@
-// BasicCompiler.cpp -- see BasicCompiler.h for the design.
+// BasicTokeniserApplesoft.cpp -- see BasicTokeniserApplesoft.h for the design.
 //
 // The tokenizer reproduces applesoft-{tms9918,gen2}.s : PARSE_INPUT_LINE exactly:
 //   * the input line is upper-cased (the Apple-1 keyboard the ROM reads is
@@ -14,7 +14,7 @@
 // The reserved-word table and token values are identical for the GEN2 and TMS9918
 // interpreters, so one table drives both.
 
-#include "BasicCompiler.h"
+#include "BasicTokeniserApplesoft.h"
 
 #include <algorithm>
 #include <cctype>
@@ -48,13 +48,31 @@ const char* const kKeywords[] = {
 };
 constexpr int kKeywordCount = static_cast<int>(sizeof(kKeywords) / sizeof(kKeywords[0]));
 
+// Applesoft Lite reserved words (microSD / CFFA1), token byte 0x80 + index, in the
+// exact order of TOKEN_NAME_TABLE in sketchs/apple1/applesoft_lite/applesoft-lite.s.
+// Shares the $80-$98 prefix with the graphics table but then diverges: no graphics
+// keywords, adds MENU/SAVE/LOAD/CLS, and a reduced function set (no TAB(/FN/DEF/
+// COS/TAN/ATN/SCRN). `ONERR` precedes `ON` so the prefix-greedy scan is correct.
+const char* const kKeywordsLite[] = {
+    "END", "FOR", "NEXT", "DATA", "INPUT", "DIM", "READ", "CALL", "POP",
+    "HIMEM:", "LOMEM:", "ONERR", "RESUME", "LET", "GOTO", "RUN", "IF",
+    "RESTORE", "GOSUB", "RETURN", "REM", "STOP", "ON", "POKE", "PRINT",
+    "CONT", "LIST", "CLEAR", "GET", "NEW", "MENU", "SAVE", "LOAD", "CLS",
+    "TO", "SPC(", "THEN", "NOT", "STEP",
+    "+", "-", "*", "/", "^", "AND", "OR", ">", "=", "<",
+    "SGN", "INT", "ABS", "FRE", "SQR", "RND", "LOG", "EXP",
+    "PEEK", "LEN", "STR$", "VAL", "ASC", "CHR$", "LEFT$", "RIGHT$", "MID$",
+};
+constexpr int kKeywordLiteCount = static_cast<int>(sizeof(kKeywordsLite) / sizeof(kKeywordsLite[0]));
+
 // Try to match a reserved word at s[i]. On success returns the token byte and
 // sets `consumed` to the number of input chars eaten (blanks included). Scans the
 // table in order and takes the first full prefix match, exactly like the ROM.
-bool matchKeyword(const std::string& s, size_t i, uint8_t& token, size_t& consumed)
+bool matchKeyword(const std::string& s, size_t i, uint8_t& token, size_t& consumed,
+                  const char* const* keywords, int keywordCount)
 {
-    for (int k = 0; k < kKeywordCount; ++k) {
-        const char* kw = kKeywords[k];
+    for (int k = 0; k < keywordCount; ++k) {
+        const char* kw = keywords[k];
         size_t j = i;
         bool ok = true;
         for (const char* p = kw; *p; ++p) {
@@ -71,8 +89,10 @@ bool matchKeyword(const std::string& s, size_t i, uint8_t& token, size_t& consum
     return false;
 }
 
-// Tokenize one statement body (the text AFTER the line number) into `out`.
-void tokenizeBody(const std::string& s, std::vector<uint8_t>& out)
+// Tokenize one statement body (the text AFTER the line number) into `out`, against
+// the given reserved-word table (graphics or Lite — see Dialect).
+void tokenizeBody(const std::string& s, std::vector<uint8_t>& out,
+                  const char* const* keywords, int keywordCount)
 {
     bool dataMode = false;
     size_t i = 0;
@@ -105,7 +125,7 @@ void tokenizeBody(const std::string& s, std::vector<uint8_t>& out)
 
         uint8_t tok = 0;
         size_t consumed = 0;
-        if (matchKeyword(s, i, tok, consumed)) {
+        if (matchKeyword(s, i, tok, consumed, keywords, keywordCount)) {
             out.push_back(tok);
             i += consumed;
             if (tok == TOK_DATA) dataMode = true;
@@ -168,9 +188,40 @@ Target targetTms()
     return t;
 }
 
+Target targetMicrosd()
+{
+    // Extracted via ld65 -Ln from applesoft-lite.s relinked at $6000 (the microSD
+    // flavour = the Apple-1 Applesoft Lite relocated). Matches the regenerated
+    // roms/applesoft-lite-microsd.rom byte-for-byte (see applesoft_lite_microsd.cfg).
+    Target t;
+    t.name = "Applesoft Lite microSD (6000R)";
+    t.setptrs = 0x64EC;
+    t.newstt  = 0x6648;
+    t.himem   = 0x6000;   // probed at cold start; the $6000 ROM floor (informational)
+    t.dialect = Dialect::Lite;
+    return t;
+}
+
+Target targetCffa1()
+{
+    // Extracted via ld65 -Ln from applesoft-lite.s + cffa1.s built at $E000;
+    // byte-for-byte identical to roms/applesoft-lite-cffa1.rom.
+    Target t;
+    t.name = "Applesoft Lite CFFA1 (E000R)";
+    t.setptrs = 0xE4EC;
+    t.newstt  = 0xE648;
+    t.himem   = 0xE000;   // probed at cold start; the $E000 ROM floor (informational)
+    t.dialect = Dialect::Lite;
+    return t;
+}
+
 Result compile(const std::string& source, const Target& tgt)
 {
     Result r;
+
+    // Pick the reserved-word table for this target's interpreter dialect.
+    const char* const* keywords = (tgt.dialect == Dialect::Lite) ? kKeywordsLite : kKeywords;
+    const int keywordCount       = (tgt.dialect == Dialect::Lite) ? kKeywordLiteCount : kKeywordCount;
 
     // 1) Split into lines, parse the leading line number, tokenize the body.
     std::vector<Line> lines;
@@ -213,7 +264,7 @@ Result compile(const std::string& source, const Target& tgt)
 
         Line L;
         L.number = static_cast<int>(num);
-        tokenizeBody(line.substr(j), L.tokens);
+        tokenizeBody(line.substr(j), L.tokens, keywords, keywordCount);
         lines.push_back(std::move(L));
     }
 

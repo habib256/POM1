@@ -42,8 +42,8 @@ set(POM1_SRC_DIR ${CMAKE_CURRENT_SOURCE_DIR}/src)
 set(SOURCES
     ${POM1_SRC_DIR}/A1IO_RTC.cpp
     ${POM1_SRC_DIR}/AudioDevice.cpp
-    ${POM1_SRC_DIR}/BasicCompiler.cpp
-    ${POM1_SRC_DIR}/BasicNativeCompiler.cpp
+    ${POM1_SRC_DIR}/BasicTokeniserApplesoft.cpp
+    ${POM1_SRC_DIR}/BasicCompilerApplesoft.cpp
     ${POM1_SRC_DIR}/CassetteDevice.cpp
     ${POM1_SRC_DIR}/CassetteDeck_ImGui.cpp
     ${POM1_SRC_DIR}/CliDispatcher.cpp
@@ -98,8 +98,8 @@ set(SOURCES
 set(HEADERS
     ${POM1_SRC_DIR}/A1IO_RTC.h
     ${POM1_SRC_DIR}/AudioDevice.h
-    ${POM1_SRC_DIR}/BasicCompiler.h
-    ${POM1_SRC_DIR}/BasicNativeCompiler.h
+    ${POM1_SRC_DIR}/BasicTokeniserApplesoft.h
+    ${POM1_SRC_DIR}/BasicCompilerApplesoft.h
     ${POM1_SRC_DIR}/CassetteDevice.h
     ${POM1_SRC_DIR}/CassetteDeck_ImGui.h
     ${POM1_SRC_DIR}/CliDispatcher.h
@@ -448,14 +448,14 @@ else()
     endif()
 
     # basicc — standalone Applesoft "BASIC compiler" host tool. Pure (only
-    # BasicCompiler.cpp), so it builds without GL/ImGui. Emits a Wozmon-hex image
+    # BasicTokeniserApplesoft.cpp), so it builds without GL/ImGui. Emits a Wozmon-hex image
     # (tokenized program + launcher) loadable by POM1. See doc/BASIC_COMPILER.md.
     option(POM1_BUILD_BASICC "Build the basicc Applesoft->image compiler tool" ON)
     if(POM1_BUILD_BASICC)
         add_executable(basicc
             ${CMAKE_CURRENT_SOURCE_DIR}/tools/basicc.cpp
-            ${POM1_SRC_DIR}/BasicCompiler.cpp
-            ${POM1_SRC_DIR}/BasicNativeCompiler.cpp)
+            ${POM1_SRC_DIR}/BasicTokeniserApplesoft.cpp
+            ${POM1_SRC_DIR}/BasicCompilerApplesoft.cpp)
         target_include_directories(basicc PRIVATE ${POM1_SRC_DIR})
     endif()
 

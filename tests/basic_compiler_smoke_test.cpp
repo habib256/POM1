@@ -1,5 +1,5 @@
 // basic_compiler_smoke_test.cpp -- pin the Applesoft "BASIC compiler" (src/
-// BasicCompiler.cpp): an Applesoft listing is COMPILED ahead of time into a 6502
+// BasicTokeniserApplesoft.cpp): an Applesoft listing is COMPILED ahead of time into a 6502
 // memory image (tokenized program at $0801 + a launcher stub) and LOADED + RUN
 // directly, with NO keyboard "injection" of the listing into the interpreter.
 //
@@ -18,7 +18,7 @@
 //
 // ROM paths mirror the sibling smoke tests (POM1_ASTMS_ROM / POM1_ASGEN2_ROM).
 
-#include "BasicCompiler.h"
+#include "BasicTokeniserApplesoft.h"
 #include "TMS9918.h"
 #include "WiFiModem.h"    // IWYU pragma: keep
 #include "TerminalCard.h" // IWYU pragma: keep

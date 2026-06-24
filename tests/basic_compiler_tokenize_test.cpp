@@ -1,6 +1,6 @@
 // basic_compiler_tokenize_test.cpp -- byte-exact unit pin for the Applesoft
-// "BASIC compiler" tokenizer + image layout (src/BasicCompiler.cpp). Pure: links
-// only BasicCompiler.cpp (no emulator core, no ROM), so it always runs and is
+// "BASIC compiler" tokenizer + image layout (src/BasicTokeniserApplesoft.cpp). Pure: links
+// only BasicTokeniserApplesoft.cpp (no emulator core, no ROM), so it always runs and is
 // fast. The sibling basic_compiler_smoke test proves end-to-end EXECUTION on the
 // GEN2/TMS interpreters; this one pins the exact tokenized bytes so a tokenizer
 // regression is caught precisely, independent of any ROM.
@@ -12,7 +12,7 @@
 // first (only) line's link is the end-marker address. Token values mirror
 // TOKEN_NAME_TABLE in applesoft-{tms9918,gen2}.s.
 
-#include "BasicCompiler.h"
+#include "BasicTokeniserApplesoft.h"
 
 #include <cstdint>
 #include <cstdio>

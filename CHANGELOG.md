@@ -88,7 +88,7 @@ is `git log`; the user-facing feature tour is `README.md`; open work lives in
 
 ### Added — native BASIC compiler: standalone 6502 machine code (~20× faster, no interpreter)
 
-- **`src/BasicNativeCompiler.{h,cpp}` + `dev/lib/basicrt/` runtime + `basicc
+- **`src/BasicCompilerApplesoft.{h,cpp}` + `dev/lib/basicrt/` runtime + `basicc
   --native` + `tools/basicc_native.sh`.** A **real** native-code compiler (not a
   tokenizer): recursive-descent / precedence-climbing parser → standalone ca65
   assembly with native control flow (`GOTO`→`JMP`, `GOSUB`/`RETURN`→`JSR`/`RTS`,
@@ -114,7 +114,7 @@ is `git log`; the user-facing feature tour is `README.md`; open work lives in
 
 ### Added — Applesoft "BASIC compiler": compile an `.apf` to a 6502 image (no injection)
 
-- **`src/BasicCompiler.{h,cpp}` + `basicc` tool + `doc/BASIC_COMPILER.md`.**
+- **`src/BasicTokeniserApplesoft.{h,cpp}` + `basicc` tool + `doc/BASIC_COMPILER.md`.**
   Compiles an Applesoft Lite listing (GEN2 or TMS9918 dialect) **ahead of time**
   into a 6502 memory image — a tokenized program at `$0801` (Applesoft's own
   on-disk layout, byte-for-byte what `PARSE` builds) plus a 14-byte launcher at

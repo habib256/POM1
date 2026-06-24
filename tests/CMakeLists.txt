@@ -372,7 +372,7 @@ set_tests_properties(applesoft_tms9918_smoke PROPERTIES TIMEOUT 120)
 # or the source sketch is absent.
 add_executable(test_basic_compiler
     basic_compiler_smoke_test.cpp
-    ${CMAKE_SOURCE_DIR}/src/BasicCompiler.cpp
+    ${CMAKE_SOURCE_DIR}/src/BasicTokeniserApplesoft.cpp
     ${POM1_TEST_CORE_SOURCES}
 )
 target_include_directories(test_basic_compiler PRIVATE
@@ -390,12 +390,37 @@ add_test(NAME basic_compiler_smoke COMMAND test_basic_compiler
          WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
 set_tests_properties(basic_compiler_smoke PROPERTIES TIMEOUT 180 SKIP_RETURN_CODE 77)
 
+# -- DevBench tokenizer launch path (GEN2) -----------------------------------
+# Pins the data path Pom1BenchHost::injectBasic uses for the GEN2/TMS Applesoft
+# targets: compile -> cold-start -> Memory::loadHexDump(prog.hex) -> jump to the
+# launcher, asserting the program plots into the GEN2 page-2 framebuffer. Skips
+# (77) if roms/applesoft-gen2.rom is absent.
+add_executable(test_bench_basic_tokenize
+    bench_basic_tokenize_smoke_test.cpp
+    ${CMAKE_SOURCE_DIR}/src/BasicTokeniserApplesoft.cpp
+    ${POM1_TEST_CORE_SOURCES}
+)
+target_include_directories(test_bench_basic_tokenize PRIVATE
+    ${CMAKE_SOURCE_DIR}/src
+    ${CMAKE_SOURCE_DIR}/imgui
+)
+target_link_libraries(test_bench_basic_tokenize PRIVATE libresidfp_static)
+if(APPLE)
+    target_compile_definitions(test_bench_basic_tokenize PRIVATE GL_SILENCE_DEPRECATION)
+endif()
+if(WIN32)
+    target_link_libraries(test_bench_basic_tokenize PRIVATE ws2_32)
+endif()
+add_test(NAME bench_basic_tokenize_smoke COMMAND test_bench_basic_tokenize
+         WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+set_tests_properties(bench_basic_tokenize_smoke PROPERTIES TIMEOUT 120 SKIP_RETURN_CODE 77)
+
 # -- BASIC compiler tokenizer unit test --------------------------------------
-# Byte-exact pin for the tokenizer + image layout. Pure (only BasicCompiler.cpp,
+# Byte-exact pin for the tokenizer + image layout. Pure (only BasicTokeniserApplesoft.cpp,
 # no emulator core / ROM), so it always runs and is fast.
 add_executable(test_basic_compiler_tokenize
     basic_compiler_tokenize_test.cpp
-    ${CMAKE_SOURCE_DIR}/src/BasicCompiler.cpp
+    ${CMAKE_SOURCE_DIR}/src/BasicTokeniserApplesoft.cpp
 )
 target_include_directories(test_basic_compiler_tokenize PRIVATE ${CMAKE_SOURCE_DIR}/src)
 add_test(NAME basic_compiler_tokenize COMMAND test_basic_compiler_tokenize
@@ -403,11 +428,11 @@ add_test(NAME basic_compiler_tokenize COMMAND test_basic_compiler_tokenize
 set_tests_properties(basic_compiler_tokenize PROPERTIES TIMEOUT 30)
 
 # -- Native BASIC compiler: codegen unit test --------------------------------
-# Pure asm-text assertions on BasicNativeCompiler (strength reduction, FOR/NEXT,
+# Pure asm-text assertions on BasicCompilerApplesoft (strength reduction, FOR/NEXT,
 # GOTO/GOSUB, graphics ABI). No cc65, no emulator -> always runs, fast.
 add_executable(test_basic_native_codegen
     basic_native_codegen_test.cpp
-    ${CMAKE_SOURCE_DIR}/src/BasicNativeCompiler.cpp
+    ${CMAKE_SOURCE_DIR}/src/BasicCompilerApplesoft.cpp
 )
 target_include_directories(test_basic_native_codegen PRIVATE ${CMAKE_SOURCE_DIR}/src)
 add_test(NAME basic_native_codegen COMMAND test_basic_native_codegen
@@ -420,8 +445,8 @@ set_tests_properties(basic_native_codegen PROPERTIES TIMEOUT 30)
 # Skips (77) if cc65 or the GEN2 Applesoft ROM is absent.
 add_executable(test_basic_native_run
     basic_native_run_test.cpp
-    ${CMAKE_SOURCE_DIR}/src/BasicNativeCompiler.cpp
-    ${CMAKE_SOURCE_DIR}/src/BasicCompiler.cpp
+    ${CMAKE_SOURCE_DIR}/src/BasicCompilerApplesoft.cpp
+    ${CMAKE_SOURCE_DIR}/src/BasicTokeniserApplesoft.cpp
     ${POM1_TEST_CORE_SOURCES}
 )
 target_include_directories(test_basic_native_run PRIVATE
@@ -468,8 +493,8 @@ set_tests_properties(basic_float_runtime PROPERTIES TIMEOUT 120 SKIP_RETURN_CODE
 # and native-vs-interpreter cycles. Skips (77) without cc65 or the GEN2 ROM.
 add_executable(test_basic_native_bench
     basic_native_bench_test.cpp
-    ${CMAKE_SOURCE_DIR}/src/BasicNativeCompiler.cpp
-    ${CMAKE_SOURCE_DIR}/src/BasicCompiler.cpp
+    ${CMAKE_SOURCE_DIR}/src/BasicCompilerApplesoft.cpp
+    ${CMAKE_SOURCE_DIR}/src/BasicTokeniserApplesoft.cpp
     ${POM1_TEST_CORE_SOURCES}
 )
 target_include_directories(test_basic_native_bench PRIVATE

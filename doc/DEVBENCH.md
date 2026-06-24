@@ -85,7 +85,7 @@ time you switch tabs (the status-bar mode and the toolbar follow the front tab):
 | `.s` / `.asm` | assemble (ca65 / ld65) |
 | `.c` | compile (cc65 / cl65) |
 | `.hex` / `.txt` | load Woz-Monitor hex |
-| `.bas` / `.apf` | inject **Applesoft** BASIC (no compiler) — interpreter follows the path (see below) |
+| `.bas` / `.apf` | **Applesoft** BASIC — interpreter follows the path (see below). All four targets **compile** (tokeniser) |
 | `.ibas` | inject **Integer** BASIC |
 | `.md` / `.markdown` | render as a document (Edit/Preview toggle) — see below |
 | anything else | **do nothing** (Verify/Run report "nothing to build") |
@@ -97,15 +97,24 @@ the stock microSD Applesoft.
 
 ### BASIC — four Applesoft machines
 
-*New* → language **BASIC** offers four machines (each cold-starts the matching
-interpreter and types your listing — no compiler):
+*New* → language **BASIC** offers four machines, each cold-starting the matching
+in-ROM interpreter. **All four now COMPILE** the listing with the host-side
+tokeniser (`BasicTokeniserApplesoft`): the program is tokenised ahead of time into a `$0801`
+image + a `$0280` launcher and loaded directly, then the launcher is entered — no
+per-character keyboard typing, no 127-char line cap, instant, and identical on
+WASM (the tokeniser is pure C++). The resident interpreter ROM still supplies the
+runtime (FP, `SIN`/`SQR`, `HPLOT`…). Two reserved-word tables are used: the GEN2/
+TMS9918 graphics dialect (HGR/HPLOT/COLOR=…) and the reduced Applesoft Lite dialect
+for the microSD/CFFA1 ROMs (no graphics/trig; MENU/SAVE/LOAD/CLS — token bytes
+diverge past `$98`). (For *native* 6502 codegen — no interpreter at runtime — see
+[`BASIC_COMPILER.md`](BASIC_COMPILER.md). Integer BASIC still injects.)
 
-| Machine | Interpreter | Boot |
-|---|---|---|
-| Applesoft Lite (Apple-1) | `roms/applesoft-lite-cffa1.rom` (`$E000`) | `E000R` |
-| Applesoft Lite + microSD | `roms/applesoft-lite-microsd.rom` (`$6000`) | `6000R` |
-| Applesoft GEN2 HGR | `roms/applesoft-gen2.rom` (`$9800`, GEN2 card) | `9800R` |
-| Applesoft TMS9918 | `roms/codetank/CODETANKDEV.rom` upper bank (CodeTank `$4000`, jumper Upper) | `4000R` |
+| Machine | Interpreter | Boot | Deploy |
+|---|---|---|---|
+| Applesoft Lite (Apple-1) | `roms/applesoft-lite-cffa1.rom` (`$E000`) | `E000R` | **compile (tokeniser, Lite)** |
+| Applesoft Lite + microSD | `roms/applesoft-lite-microsd.rom` (`$6000`) | `6000R` | **compile (tokeniser, Lite)** |
+| Applesoft GEN2 HGR | `roms/applesoft-gen2.rom` (`$9800`, GEN2 card) | `9800R` | **compile (tokeniser, graphics)** |
+| Applesoft TMS9918 | `roms/codetank/CODETANKDEV.rom` upper bank (CodeTank `$4000`, jumper Upper) | `4000R` | **compile (tokeniser, graphics)** |
 
 The graphics variants (GEN2/TMS9918) add the Apple II graphics command set
 (`TEXT/GR/HGR/COLOR=/HCOLOR=/PLOT/HLIN/VLIN/HPLOT`, `PRINT` → the card's screen,

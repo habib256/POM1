@@ -1,10 +1,10 @@
 // basic_native_codegen_test.cpp -- pure unit pin for the NATIVE BASIC compiler
-// (src/BasicNativeCompiler.cpp): asserts properties of the generated 6502 asm
+// (src/BasicCompilerApplesoft.cpp): asserts properties of the generated 6502 asm
 // without assembling it (no cc65 needed), so it always runs and is fast. The
 // sibling basic_native_run test (cc65-gated) proves the asm actually executes and
 // is faster than the interpreter.
 
-#include "BasicNativeCompiler.h"
+#include "BasicCompilerApplesoft.h"
 
 #include <cstdio>
 #include <string>

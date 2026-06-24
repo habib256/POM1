@@ -1,6 +1,6 @@
-// BasicNativeCompiler.h -- a REAL native-code Applesoft compiler for POM1.
+// BasicCompilerApplesoft.h -- a REAL native-code Applesoft compiler for POM1.
 //
-// Unlike BasicCompiler (which only tokenizes a listing for the interpreter to
+// Unlike BasicTokeniserApplesoft (which only tokenizes a listing for the interpreter to
 // run), this generates standalone 6502 assembly: native control flow, native
 // variable storage at fixed addresses, expressions compiled once into straight-
 // line code. The output binary runs with NO Applesoft interpreter -- it only
@@ -24,8 +24,8 @@
 // compile() returns ca65 assembly text; assemble with ca65 + ld65 against the
 // matching runtime + linker config to get a standalone .bin.
 
-#ifndef POM1_BASIC_NATIVE_COMPILER_H
-#define POM1_BASIC_NATIVE_COMPILER_H
+#ifndef POM1_BASIC_COMPILER_APPLESOFT_H
+#define POM1_BASIC_COMPILER_APPLESOFT_H
 
 #include <string>
 #include <vector>
@@ -60,4 +60,4 @@ Result compile(const std::string& source, Card card, FpMode mode = FpMode::Auto)
 
 } // namespace basicnative
 
-#endif // POM1_BASIC_NATIVE_COMPILER_H
+#endif // POM1_BASIC_COMPILER_APPLESOFT_H

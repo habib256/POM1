@@ -6,7 +6,7 @@
 // having its listing typed into the live interpreter one keystroke at a time.
 //
 // Build (host tool, no emulator deps):
-//     g++ -std=c++17 -I src tools/basicc.cpp src/BasicCompiler.cpp -o basicc
+//     g++ -std=c++17 -I src tools/basicc.cpp src/BasicTokeniserApplesoft.cpp -o basicc
 //
 // Usage:
 //     basicc --target {gen2|tms} INPUT.apf [-o OUTPUT.hex]
@@ -19,8 +19,8 @@
 //   * GEN2 HGR: preset "GEN2 HGR Color",                    cold start 9800R
 // See doc/BASIC_COMPILER.md for the full pipeline and the in-app DevBench hook.
 
-#include "BasicCompiler.h"
-#include "BasicNativeCompiler.h"
+#include "BasicTokeniserApplesoft.h"
+#include "BasicCompilerApplesoft.h"
 
 #include <cstdio>
 #include <fstream>

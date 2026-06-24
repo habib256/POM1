@@ -1,6 +1,7 @@
 // POM1 host for the portable bench. See Pom1BenchHost.h.
 #include "Pom1BenchHost.h"
 
+#include "BasicTokeniserApplesoft.h"        // basic::compile — Applesoft tokenizer (GEN2/TMS)
 #include "MainWindow_ImGui.h"     // mw_ members (friend) + EmulationController
 #include "MainWindow_Internal.h"  // kMachinePresets / BasicType (ACI program-output presets)
 #include "ProcessUtil.h"          // bench::shellQuote / runCapture / whichExe
@@ -1802,6 +1803,93 @@ bench::BuildResult Pom1BenchHost::injectBasic(int target, const std::string& src
                     "memory and drop back to the WOZ Monitor; aborting injection.\n";
         r.status = std::string(interp) + ": ROM load failed";
         r.ok = false;
+        return r;
+    }
+
+    // 2c) Tokenizer path (every Applesoft target) — COMPILE the listing instead of
+    //     injecting it. BasicTokeniserApplesoft tokenizes the program ahead of time into a
+    //     $0801 memory image + a $0280 launcher, byte-for-byte what the interpreter's
+    //     PARSE would build; the resident ROM (loaded above) supplies the runtime.
+    //     We cold-start the interpreter so its zero page is set up, then load the
+    //     image and jump to the launcher — no per-character keyboard typing, no
+    //     127-char line cap, instant, and identical on WASM (the compiler is pure
+    //     C++). idx: 8 microSD ($6000), 9 GEN2 ($9800), 10 CFFA1 ($E000), 11 TMS
+    //     ($4000). Integer BASIC (idx 7) has a different token set and still injects.
+    if (idx == 8 || idx == 9 || idx == 10 || idx == 11) {
+        basic::Target tgt; uint16_t coldEntry;
+        switch (idx) {
+            case 8:  tgt = basic::targetMicrosd(); coldEntry = 0x6000; break;
+            case 9:  tgt = basic::targetGen2();    coldEntry = 0x9800; break;
+            case 10: tgt = basic::targetCffa1();   coldEntry = 0xE000; break;
+            default: tgt = basic::targetTms();     coldEntry = 0x4000; break;  // idx 11
+        }
+        // Cold-start to the `]` prompt is well under 1M cycles; this cap is a safe
+        // ceiling — extra cycles just spin harmlessly in the interpreter's GETLN.
+        constexpr uint64_t  kColdStartCycles = 12'000'000;
+
+        // basic::compile splits on '\n' (and skips a '\r' inside a line, so CRLF is
+        // fine) but treats a CR-only file as a single line. The keyboard-injection
+        // path normalised every newline flavour, so do the same here: fold CRLF and
+        // lone CR to LF before tokenizing.
+        std::string norm; norm.reserve(src.size());
+        for (size_t i = 0; i < src.size(); ++i) {
+            if (src[i] == '\r') { norm += '\n'; if (i + 1 < src.size() && src[i + 1] == '\n') ++i; }
+            else norm += src[i];
+        }
+        basic::Result prog = basic::compile(norm, tgt);
+        if (!prog.ok) {
+            restoreRelaxedMachine();
+            emu->copySnapshot(mw_->uiSnapshot);
+            r.console = std::string("[bench] ") + interp + ": BASIC tokenise FAILED — "
+                        + prog.error + "\n";
+            r.status  = std::string(interp) + ": tokenise error";
+            r.ok = false;
+            return r;
+        }
+
+        char buf[192];
+        if (!run) {  // Verify = compile-check only; don't disturb the machine further.
+            restoreRelaxedMachine();
+            emu->copySnapshot(mw_->uiSnapshot);
+            std::snprintf(buf, sizeof(buf),
+                "[bench] %s: tokenised OK — %d lines, program $0801-$%04X, launcher $%04X "
+                "(Run to load + launch)\n", interp, prog.lineCount,
+                prog.progEnd ? prog.progEnd - 1 : 0x0800, prog.entry);
+            r.console = buf;
+            std::snprintf(buf, sizeof(buf), "%s: tokenised (%d lines)", interp, prog.lineCount);
+            r.status  = buf; r.ok = true;
+            return r;
+        }
+
+        // Cold-start the interpreter ROM (initialises CHRGET, HIMEM/FRETOP, output
+        // vector, FP scratch), then load the compiled image + launcher and jump to
+        // the launcher. loadHexDump preserves the cold-started zero page
+        // (cpu->hardReset clears only the stack, never RAM) and starts the async
+        // CPU at the launcher's run address.
+        emu->runFromSync(coldEntry, kColdStartCycles);
+
+        std::string err; uint16_t loadedEntry = 0; int loaded = 0;
+        const fs::path tmp = fs::temp_directory_path(ec) / "pom1_basic_tokenized.txt";
+        { std::ofstream o(tmp, std::ios::binary);
+          o.write(prog.hex.data(), static_cast<std::streamsize>(prog.hex.size())); }
+        const bool ok = emu->loadHexDump(tmp.string(), loadedEntry, err, &loaded);
+        fs::remove(tmp, ec);
+        if (!ok) {
+            restoreRelaxedMachine();
+            emu->copySnapshot(mw_->uiSnapshot);
+            r.console = std::string("[bench] ") + interp + ": tokenised image load FAILED — "
+                        + err + "\n";
+            r.status  = std::string(interp) + ": load failed";
+            r.ok = false;
+            return r;
+        }
+        emu->copySnapshot(mw_->uiSnapshot);
+        std::snprintf(buf, sizeof(buf),
+            "[bench] %s: tokenised %d lines → loaded %d B, launched @ $%04X\n",
+            interp, prog.lineCount, loaded, prog.entry);
+        r.console = buf;
+        std::snprintf(buf, sizeof(buf), "%s: running (tokenised)", interp);
+        r.status  = buf; r.ok = true;
         return r;
     }
 

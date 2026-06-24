@@ -11,8 +11,8 @@
 //
 //   ctest -R basic_native_bench -V        # see the table
 
-#include "BasicNativeCompiler.h"
-#include "BasicCompiler.h"
+#include "BasicCompilerApplesoft.h"
+#include "BasicTokeniserApplesoft.h"
 #include "Memory.h"
 #include "M6502.h"
 #include "DisplayDevice.h"

@@ -3,15 +3,15 @@
 // for BOTH the integer phase and the floating-point phase.
 //
 // For each program it builds (a) the native standalone binary via
-// BasicNativeCompiler -> ca65/ld65 against dev/lib/basicrt (linking the float
-// runtime in float mode), and (b) the interpreter path via BasicCompiler
+// BasicCompilerApplesoft -> ca65/ld65 against dev/lib/basicrt (linking the float
+// runtime in float mode), and (b) the interpreter path via BasicTokeniserApplesoft
 // (tokenized + the Applesoft GEN2 ROM). It runs both headless and asserts they
 // draw the same picture (exactly for integer; within tolerance for float, whose
 // binary32 rounding differs from the ROM's) and that native is faster. Skips
 // (ctest code 77) if cc65 or the GEN2 Applesoft ROM is absent.
 
-#include "BasicNativeCompiler.h"
-#include "BasicCompiler.h"
+#include "BasicCompilerApplesoft.h"
+#include "BasicTokeniserApplesoft.h"
 #include "Memory.h"
 #include "M6502.h"
 #include "DisplayDevice.h"

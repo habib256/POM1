@@ -2,7 +2,7 @@
 
 POM1 has **two** Applesoft compilers, for two different goals:
 
-| | `src/BasicCompiler.*` (tokenizer) | `src/BasicNativeCompiler.*` (**native**) |
+| | `src/BasicTokeniserApplesoft.*` (tokenizer) | `src/BasicCompilerApplesoft.*` (**native**) |
 |---|---|---|
 | Output | tokenized program + launcher | **standalone 6502 machine code** |
 | Runtime | the Applesoft **interpreter ROM** | **none** — only the graphics card |
@@ -72,7 +72,7 @@ replaces.
 
 ## Pipeline
 
-`src/BasicCompiler.{h,cpp}` — pure (`<string>/<vector>/<cstdint>` only), so it
+`src/BasicTokeniserApplesoft.{h,cpp}` — pure (`<string>/<vector>/<cstdint>` only), so it
 links into the bench (desktop + WASM), the CLI, the `basicc` tool and the tests.
 
 ```
@@ -172,7 +172,7 @@ grep -iwE 'SETPTRS|NEWSTT' /tmp/labels.txt
 #   git show 72b39a7^:sketchs/gen2/applesoft_gen2/<file>   (build at origin $9800)
 ```
 
-Then update `targetTms()` / `targetGen2()` in `src/BasicCompiler.cpp`.
+Then update `targetTms()` / `targetGen2()` in `src/BasicTokeniserApplesoft.cpp`.
 
 ## Usage
 
@@ -180,7 +180,7 @@ Then update `targetTms()` / `targetGen2()` in `src/BasicCompiler.cpp`.
 
 ```bash
 # built by CMake (target basicc), or directly:
-g++ -std=c++17 -I src tools/basicc.cpp src/BasicCompiler.cpp -o basicc
+g++ -std=c++17 -I src tools/basicc.cpp src/BasicTokeniserApplesoft.cpp -o basicc
 
 basicc --target tms  sketchs/basic_applesoft/3DHat.apf -o 3DHat_tms.hex
 basicc --target gen2 sketchs/basic_applesoft/3DHat.apf -o 3DHat_gen2.hex
@@ -193,7 +193,7 @@ its `]` prompt, then load the hex and jump to `$0280`.
 ### Library
 
 ```cpp
-#include "BasicCompiler.h"
+#include "BasicTokeniserApplesoft.h"
 basic::Result r = basic::compile(listing, basic::targetGen2());
 if (r.ok) {
     for (const basic::Zone& z : r.zones) /* memcpy z.bytes -> RAM @ z.addr */;
@@ -238,7 +238,7 @@ and the restored `sketchs/gen2/applesoft_gen2/` (interpreter sources),
 
 ## Native compiler — standalone machine code (real speedup)
 
-`src/BasicNativeCompiler.*` is a **real native-code compiler**: it generates
+`src/BasicCompilerApplesoft.*` is a **real native-code compiler**: it generates
 standalone 6502 assembly with native control flow, variables at fixed addresses,
 and expressions compiled once into straight-line code. The output binary runs
 with **no Applesoft interpreter** — only the graphics card. Every interpreter tax
