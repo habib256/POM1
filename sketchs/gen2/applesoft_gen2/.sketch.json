@@ -1,0 +1,8 @@
+{
+  "profile": "gen2",
+  "language": "asm",
+  "cfg": "sketchs/gen2/applesoft_gen2/applesoft_gen2.cfg",
+  "extraAsm": [
+    "sketchs/gen2/applesoft_gen2/io.s"
+  ]
+}

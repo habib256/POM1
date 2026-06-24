@@ -25,6 +25,7 @@
 #include <iterator>
 #include <string>
 #include <vector>
+#include <unistd.h>  // mkdtemp (POSIX; macOS needs the explicit include)
 
 namespace {
 constexpr int kSkip = 77;
