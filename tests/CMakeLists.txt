@@ -415,6 +415,26 @@ add_test(NAME bench_basic_tokenize_smoke COMMAND test_bench_basic_tokenize
          WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
 set_tests_properties(bench_basic_tokenize_smoke PROPERTIES TIMEOUT 120 SKIP_RETURN_CODE 77)
 
+# -- Integer BASIC tokenisation ORACLE (dev dumper, not a ctest) -------------
+# Tokenises sample programs through the real $E000 ROM and prints the byte-exact
+# image — ground truth for the BasicTokeniserInteger port. Built but not added as
+# a test; run ./tests/test_integer_oracle by hand.
+add_executable(test_integer_oracle EXCLUDE_FROM_ALL
+    integer_oracle_dump.cpp
+    ${POM1_TEST_CORE_SOURCES}
+)
+target_include_directories(test_integer_oracle PRIVATE
+    ${CMAKE_SOURCE_DIR}/src
+    ${CMAKE_SOURCE_DIR}/imgui
+)
+target_link_libraries(test_integer_oracle PRIVATE libresidfp_static)
+if(APPLE)
+    target_compile_definitions(test_integer_oracle PRIVATE GL_SILENCE_DEPRECATION)
+endif()
+if(WIN32)
+    target_link_libraries(test_integer_oracle PRIVATE ws2_32)
+endif()
+
 # -- BASIC compiler tokenizer unit test --------------------------------------
 # Byte-exact pin for the tokenizer + image layout. Pure (only BasicTokeniserApplesoft.cpp,
 # no emulator core / ROM), so it always runs and is fast.
