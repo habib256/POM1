@@ -364,6 +364,129 @@ add_test(NAME applesoft_tms9918_smoke COMMAND test_applesoft_tms9918
          WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
 set_tests_properties(applesoft_tms9918_smoke PROPERTIES TIMEOUT 120)
 
+# -- BASIC compiler smoke test -----------------------------------------------
+# Compiles sketchs/basic_applesoft/3DHat.apf ahead of time (tokenized image +
+# launcher, no keyboard injection), loads it into RAM and runs it on BOTH the
+# TMS9918 (CodeTank ROM, VRAM inspected) and the GEN2 HGR card (page-2 RAM),
+# asserting the floating-point 3D plot fills the framebuffer. Skips (77) if a ROM
+# or the source sketch is absent.
+add_executable(test_basic_compiler
+    basic_compiler_smoke_test.cpp
+    ${CMAKE_SOURCE_DIR}/src/BasicCompiler.cpp
+    ${POM1_TEST_CORE_SOURCES}
+)
+target_include_directories(test_basic_compiler PRIVATE
+    ${CMAKE_SOURCE_DIR}/src
+    ${CMAKE_SOURCE_DIR}/imgui
+)
+target_link_libraries(test_basic_compiler PRIVATE libresidfp_static)
+if(APPLE)
+    target_compile_definitions(test_basic_compiler PRIVATE GL_SILENCE_DEPRECATION)
+endif()
+if(WIN32)
+    target_link_libraries(test_basic_compiler PRIVATE ws2_32)
+endif()
+add_test(NAME basic_compiler_smoke COMMAND test_basic_compiler
+         WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+set_tests_properties(basic_compiler_smoke PROPERTIES TIMEOUT 180 SKIP_RETURN_CODE 77)
+
+# -- BASIC compiler tokenizer unit test --------------------------------------
+# Byte-exact pin for the tokenizer + image layout. Pure (only BasicCompiler.cpp,
+# no emulator core / ROM), so it always runs and is fast.
+add_executable(test_basic_compiler_tokenize
+    basic_compiler_tokenize_test.cpp
+    ${CMAKE_SOURCE_DIR}/src/BasicCompiler.cpp
+)
+target_include_directories(test_basic_compiler_tokenize PRIVATE ${CMAKE_SOURCE_DIR}/src)
+add_test(NAME basic_compiler_tokenize COMMAND test_basic_compiler_tokenize
+         WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+set_tests_properties(basic_compiler_tokenize PROPERTIES TIMEOUT 30)
+
+# -- Native BASIC compiler: codegen unit test --------------------------------
+# Pure asm-text assertions on BasicNativeCompiler (strength reduction, FOR/NEXT,
+# GOTO/GOSUB, graphics ABI). No cc65, no emulator -> always runs, fast.
+add_executable(test_basic_native_codegen
+    basic_native_codegen_test.cpp
+    ${CMAKE_SOURCE_DIR}/src/BasicNativeCompiler.cpp
+)
+target_include_directories(test_basic_native_codegen PRIVATE ${CMAKE_SOURCE_DIR}/src)
+add_test(NAME basic_native_codegen COMMAND test_basic_native_codegen
+         WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+set_tests_properties(basic_native_codegen PROPERTIES TIMEOUT 30)
+
+# -- Native BASIC compiler: end-to-end run + speedup (cc65-gated) -------------
+# Builds the standalone native binary (ca65/ld65 against dev/lib/basicrt) and the
+# interpreter path, runs both, asserts identical output and that native is faster.
+# Skips (77) if cc65 or the GEN2 Applesoft ROM is absent.
+add_executable(test_basic_native_run
+    basic_native_run_test.cpp
+    ${CMAKE_SOURCE_DIR}/src/BasicNativeCompiler.cpp
+    ${CMAKE_SOURCE_DIR}/src/BasicCompiler.cpp
+    ${POM1_TEST_CORE_SOURCES}
+)
+target_include_directories(test_basic_native_run PRIVATE
+    ${CMAKE_SOURCE_DIR}/src
+    ${CMAKE_SOURCE_DIR}/imgui
+)
+target_link_libraries(test_basic_native_run PRIVATE libresidfp_static)
+if(APPLE)
+    target_compile_definitions(test_basic_native_run PRIVATE GL_SILENCE_DEPRECATION)
+endif()
+if(WIN32)
+    target_link_libraries(test_basic_native_run PRIVATE ws2_32)
+endif()
+add_test(NAME basic_native_run COMMAND test_basic_native_run
+         WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+set_tests_properties(basic_native_run PROPERTIES TIMEOUT 180 SKIP_RETURN_CODE 77)
+
+# -- Standalone binary32 float runtime (FP phase foundation; cc65-gated) ------
+# Assembles dev/lib/basicrt/basicrt_float.s and checks fromint/toint/add/sub/mul/
+# div/cmp against the host's IEEE float over a value grid. Skips (77) without cc65.
+add_executable(test_basic_float_runtime
+    basic_float_runtime_test.cpp
+    ${POM1_TEST_CORE_SOURCES}
+)
+target_include_directories(test_basic_float_runtime PRIVATE
+    ${CMAKE_SOURCE_DIR}/src
+    ${CMAKE_SOURCE_DIR}/imgui
+)
+target_link_libraries(test_basic_float_runtime PRIVATE libresidfp_static)
+if(APPLE)
+    target_compile_definitions(test_basic_float_runtime PRIVATE GL_SILENCE_DEPRECATION)
+endif()
+if(WIN32)
+    target_link_libraries(test_basic_float_runtime PRIVATE ws2_32)
+endif()
+add_test(NAME basic_float_runtime COMMAND test_basic_float_runtime
+         WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+set_tests_properties(basic_float_runtime PROPERTIES TIMEOUT 120 SKIP_RETURN_CODE 77)
+
+# -- Native compiler benchmarks (size + speed across program types) -----------
+# Measurement harness: builds the standalone native image for representative
+# Applesoft program types (integer arith, raster, float, transcendental, lines,
+# 3-D HAT) and prints a markdown table of binary size, linked runtime routines,
+# and native-vs-interpreter cycles. Skips (77) without cc65 or the GEN2 ROM.
+add_executable(test_basic_native_bench
+    basic_native_bench_test.cpp
+    ${CMAKE_SOURCE_DIR}/src/BasicNativeCompiler.cpp
+    ${CMAKE_SOURCE_DIR}/src/BasicCompiler.cpp
+    ${POM1_TEST_CORE_SOURCES}
+)
+target_include_directories(test_basic_native_bench PRIVATE
+    ${CMAKE_SOURCE_DIR}/src
+    ${CMAKE_SOURCE_DIR}/imgui
+)
+target_link_libraries(test_basic_native_bench PRIVATE libresidfp_static)
+if(APPLE)
+    target_compile_definitions(test_basic_native_bench PRIVATE GL_SILENCE_DEPRECATION)
+endif()
+if(WIN32)
+    target_link_libraries(test_basic_native_bench PRIVATE ws2_32)
+endif()
+add_test(NAME basic_native_bench COMMAND test_basic_native_bench
+         WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+set_tests_properties(basic_native_bench PROPERTIES TIMEOUT 300 SKIP_RETURN_CODE 77)
+
 # -- SID audio production smoke test ------------------------------------------
 # Needs the full Memory+peripheral core to exercise the PeripheralBus path.
 add_executable(test_sid_audio

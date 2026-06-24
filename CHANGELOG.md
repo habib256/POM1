@@ -10,6 +10,130 @@ is `git log`; the user-facing feature tour is `README.md`; open work lives in
 
 ## [Unreleased]
 
+### Added — native compiler: `SIN`/`SQR`/`INT`, peephole optimizer, `3DHat.apf` runs native
+
+- **Transcendentals in the float runtime** (`dev/lib/basicrt/basicrt_float.s`):
+  `fp_int` (truncate toward zero), `fp_sqrt` (Newton–Raphson, 5 iterations) and
+  `fp_sin` (2π range reduction → fold to [-π/2,π/2] → 4-term Taylor). Each is
+  **feature-gated** (`-D FP_INT`/`FP_SQRT`/`FP_SIN`) so it links only when the
+  program calls it. The compiler compiles `SIN`/`SQR`/`INT` to these, and
+  auto-precision forces the float phase when `SIN`/`SQR` appear. Logical `AND`/`OR`
+  on floats fixed (had fallen through to the comparison path). Pinned by
+  `basic_float_runtime` (now 5736 cases vs host `sinf`/`sqrtf`).
+- **`3DHat.apf` compiles and runs native on GEN2 and TMS9918** — the MTU/Micro
+  May-1981 hidden-line 3-D HAT (HGR2, nested `FOR`, `IF/GOTO`, `GOSUB/RETURN`,
+  `INT`/`SQR`/`SIN`, decimal literals, `HCOLOR=0` column erase) draws the sombrero
+  with proper hidden-line removal, standalone, **no ROM**. This meets the project
+  goal. Pinned by `basic_native_run` (native-only 3DHat case).
+- **`HCOLOR=0` erase** in the GEN2 runtime: `rt_plot` is pen-aware (`AND ~mask` to
+  clear vs `OR mask` to set), so the hidden-line "plot point then erase column
+  below" trick works; `rt_hgr` seeds a non-zero default pen.
+- **Peephole optimizer** (`Codegen::optimizePeephole`): fuses the codegen's
+  "define a temp, then copy it elsewhere" chains by retargeting the store straight
+  into the destination (temp vanishes; self-copies dropped). Intra-block liveness;
+  runtime `jsr fp_*`/`rt_*` transparent. Trims ~640 B — enough that the full 3DHat
+  fits GEN2's `$0300–$1FFF` window (`basicc_native.cfg` moves BSS to `$0200` to give
+  code the whole window up to the framebuffer at `$2000`).
+- **Benchmarks** (`basic_native_bench`): a size+speed-by-program-type table —
+  int-arith **21×**, int-raster **14×**, lines **2.4×**, float-arith **2.0×**,
+  transcend **1.4×** vs the interpreter; binary 354 B–7157 B with dead-stripping
+  (4 runtime routines for integer programs, 13 for 3DHat).
+
+### Added — native compiler: auto-precision, dead-stripping (minimal size), clear diagnostics
+
+- **Auto precision** (`FpMode::Auto`, the `basicc --native` default): the compiler
+  picks the **smallest sufficient** numeric type — 16-bit integer unless a line
+  needs a fraction (a decimal literal or a `/`), then binary32. A program that
+  uses no floats **never links the float runtime**. `--int`/`--float` force a tier.
+- **Minimal code size (dead-stripping):** the compiler emits only the runtime
+  symbols it uses, and the runtime (`basicrt_*.s`) gates each routine on a `-D
+  RT_xxx` flag the build derives from those imports — unused routines and the
+  560-byte hi-res pixel tables never reach the binary. Measured GEN2 sizes:
+  `X=5+2:X=X+1` **1695 → 89 B**, `PRINT`+`FOR` **1746 → 265 B**, `HGR:HPLOT` 1686
+  → 1165 B. Pinned by `basic_native_run` (size assertion) + `basic_native_codegen`.
+- **Clear, line-precise diagnostics** for authoring new programs: every error
+  names the exact Applesoft line (`line 20: FOR expects a variable`), `GOTO`/
+  `GOSUB`/`THEN` targets are validated at compile time (`GOTO 99: no such line
+  number`), float literals are rejected in the integer phase, and `NEXT` without
+  `FOR` is caught.
+
+### Added — native compiler Phase 2b: float codegen (compile + run a float program, no ROM)
+
+- **The native compiler now emits floating-point code** (`basicnative::compile(…,
+  floatMode=true)`, `basicc --native --float`, `basicc_native.sh --float`):
+  binary32 variables/temps, `+ - * /` and comparisons via the `fp_*` runtime,
+  float `FOR/NEXT`/`IF`, and `HPLOT`/`HCOLOR` coords converted with `fp_toint16`.
+  A float program (parabola) compiles to a standalone binary that runs **with no
+  interpreter and no ROM float**, drawing the same picture.
+- **`basic_native_run`** now pins **both** phases. Measured (native vs same source
+  on the interpreter, identical output): integer compute loop **~22×** (16.8M vs
+  368M), integer line-draw **~4.5×**, **float parabola ~2.0×** (2.8M vs 5.6M). The
+  ~2× float ceiling is honest — binary32 work isn't cheaper than the ROM's float,
+  so the gain there is only from removing interpreter overhead; control/integer
+  code wins an order of magnitude more. `basic_native_codegen` adds float pins.
+- **Remaining for native `3DHat.apf`:** `SIN/COS/SQR/INT` on the proven `fp_*`
+  core + `FOR`-index type inference. See [`doc/BASIC_COMPILER.md`](doc/BASIC_COMPILER.md).
+
+### Added — native compiler Phase 2a: standalone binary32 software-float runtime
+
+- **`dev/lib/basicrt/basicrt_float.s`** — the autonomous floating-point core (no
+  Applesoft ROM) for the native compiler's FP phase. 4-byte IEEE-754 single
+  storage; `fp_fromint16/fp_toint16/fp_add/fp_sub/fp_mul/fp_div/fp_cmp` over the
+  zero-page slots `FA`/`FB`, computing on an unpacked `{sign, E, 24-bit SG}` form.
+  Pinned by **`basic_float_runtime`** (cc65-gated), which assembles the runtime and
+  checks every op against the host IEEE `float` over a value grid **and 4000
+  randomised pairs spanning 2^±20** — all exact within float tolerance. Phase 2b
+  (compiler type-system integration + `SIN/SQR` → compile `3DHat.apf` to native)
+  is the documented next step. See [`doc/BASIC_COMPILER.md`](doc/BASIC_COMPILER.md).
+
+### Added — native BASIC compiler: standalone 6502 machine code (~20× faster, no interpreter)
+
+- **`src/BasicNativeCompiler.{h,cpp}` + `dev/lib/basicrt/` runtime + `basicc
+  --native` + `tools/basicc_native.sh`.** A **real** native-code compiler (not a
+  tokenizer): recursive-descent / precedence-climbing parser → standalone ca65
+  assembly with native control flow (`GOTO`→`JMP`, `GOSUB`/`RETURN`→`JSR`/`RTS`,
+  `FOR`/`NEXT`/`IF` as native branches, line numbers → labels), 16-bit variables
+  at fixed addresses (no name lookup), and **constant-multiply strength reduction**
+  (`X*3` → shifts+adds, not a 16-iteration multiply). The output binary runs with
+  **no Applesoft interpreter** — only the graphics card — via a tiny per-card
+  runtime (`rt_*`) wrapping the project's graphics asm (GEN2 `plot_pixel`/
+  `clear_hgr`; TMS `plot_set`/`line_xy`) + shared 16-bit math. Loads + runs at
+  `$0300`; both GEN2 and TMS9918.
+- **Measured (POM1 core, identical output):** ~**4.5×** on pixel-plot-bound code,
+  **~20×** on arithmetic/control-bound code (e.g. 19.2 M vs 368 M cycles). Pinned
+  by `basic_native_run` (cc65-gated: builds native + interpreter, asserts same
+  framebuffer **and** native faster) and `basic_native_codegen` (pure asm-text
+  unit pin: strength reduction, FOR/NEXT, GOTO/GOSUB, graphics ABI).
+- Integer phase (16-bit signed: `+ - * /`, comparisons, `AND/OR/NOT`, `ABS`,
+  `FOR/NEXT`, `IF/THEN`, `GOTO`, `GOSUB/RETURN`, `PRINT`, `HGR/HCOLOR/HPLOT`).
+  **Phase-1 polish:** variables/temporaries moved to **zero page** (~20→25× on the
+  arith benchmark), **full 16-bit X** (GEN2 hi-res 0..279, verified exact), `PRINT`
+  of strings + signed integers via the WOZ terminal, and a clean TMS link. A
+  standalone floating-point runtime (so `3DHat.apf` compiles to native code with
+  no ROM) is the documented next phase. See [`doc/BASIC_COMPILER.md`](doc/BASIC_COMPILER.md).
+
+### Added — Applesoft "BASIC compiler": compile an `.apf` to a 6502 image (no injection)
+
+- **`src/BasicCompiler.{h,cpp}` + `basicc` tool + `doc/BASIC_COMPILER.md`.**
+  Compiles an Applesoft Lite listing (GEN2 or TMS9918 dialect) **ahead of time**
+  into a 6502 memory image — a tokenized program at `$0801` (Applesoft's own
+  on-disk layout, byte-for-byte what `PARSE` builds) plus a 14-byte launcher at
+  `$0280` (`install VARTAB; JSR SETPTRS; JMP NEWSTT`). The resident interpreter
+  ROM supplies every runtime (FP, `SIN/SQR/INT`, `FOR/GOSUB`, `HGR/HPLOT`), so
+  the program **loads and runs directly** instead of having its listing typed in
+  one keystroke at a time. Pure C++ (no GL/ImGui) → links into the bench
+  (desktop + WASM), the CLI and the tests; wired into the app `SOURCES` and a
+  standalone `basicc` host tool (`--target {gen2|tms}` → Wozmon-hex image).
+- **Pinned by `basic_compiler_smoke`** (ctest): the floating-point
+  `sketchs/basic_applesoft/3DHat.apf` 3-D hat compiles and **executes on both the
+  GEN2 HGR card and the TMS9918 card**, drawing into each framebuffer — verified
+  injection-free (cold-start the ROM, poke the image, jump to the launcher). The
+  test re-pins the two interpreter entry points (`SETPTRS`/`NEWSTT`), so a ROM
+  rebuild that shifts them fails loudly. A second pure unit test
+  (`basic_compiler_tokenize`) pins the exact tokenized bytes (links, `REM`/`DATA`/
+  string/`?`→`PRINT`, ascending-line sort, launcher stub) against the Applesoft
+  on-disk layout, independent of any ROM.
+
 ### Added — packaging: release builds bundle the cc65 toolchain (asm + C)
 
 - **Every release package now ships cc65 next to POM1** so the DevBench

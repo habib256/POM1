@@ -1,0 +1,106 @@
+// basicc -- standalone Applesoft Lite "BASIC compiler" for POM1.
+//
+// Compiles an Applesoft listing (.apf / .bas, the GEN2 or TMS9918 graphics
+// dialect) AHEAD OF TIME into a 6502 memory image -- a tokenized program at $0801
+// plus a launcher stub -- so the program can be LOADED + RUN directly instead of
+// having its listing typed into the live interpreter one keystroke at a time.
+//
+// Build (host tool, no emulator deps):
+//     g++ -std=c++17 -I src tools/basicc.cpp src/BasicCompiler.cpp -o basicc
+//
+// Usage:
+//     basicc --target {gen2|tms} INPUT.apf [-o OUTPUT.hex]
+//
+// The output is a Wozmon-style hex dump (Memory::loadHexDump format) whose run
+// address is the launcher. To run it in POM1, boot the matching interpreter to
+// its `]` prompt first (so its zero page / vectors are set up), then load the hex
+// and jump to the launcher:
+//   * TMS9918:  preset "Apple-1 TMS9918 Development Bench", cold start 4000R
+//   * GEN2 HGR: preset "GEN2 HGR Color",                    cold start 9800R
+// See doc/BASIC_COMPILER.md for the full pipeline and the in-app DevBench hook.
+
+#include "BasicCompiler.h"
+#include "BasicNativeCompiler.h"
+
+#include <cstdio>
+#include <fstream>
+#include <iterator>
+#include <string>
+
+static std::string readAll(const std::string& path)
+{
+    std::ifstream f(path, std::ios::binary);
+    if (!f) return {};
+    return std::string((std::istreambuf_iterator<char>(f)), std::istreambuf_iterator<char>());
+}
+
+int main(int argc, char** argv)
+{
+    std::string target, input, output, card;
+    bool native = false;
+    basicnative::FpMode fpMode = basicnative::FpMode::Auto;
+    for (int i = 1; i < argc; ++i) {
+        std::string a = argv[i];
+        if (a == "--target" && i + 1 < argc)      target = argv[++i];
+        else if (a == "-o" && i + 1 < argc)       output = argv[++i];
+        else if (a == "--native")                 native = true;
+        else if (a == "--float")                  fpMode = basicnative::FpMode::Float;
+        else if (a == "--int")                    fpMode = basicnative::FpMode::Int;
+        else if (a == "--card" && i + 1 < argc)   card = argv[++i];
+        else if (!a.empty() && a[0] != '-')       input = a;
+        else { std::fprintf(stderr, "unknown argument: %s\n", a.c_str()); return 2; }
+    }
+
+    // --native: emit standalone 6502 ASSEMBLY (no interpreter). Assemble it with
+    // ca65+ld65 against dev/lib/basicrt (see tools/basicc_native.sh).
+    if (native) {
+        if (card.empty() && (target == "gen2" || target == "tms")) card = target;
+        if (input.empty() || (card != "gen2" && card != "tms")) {
+            std::fprintf(stderr, "usage: basicc --native --card {gen2|tms} INPUT.bas [-o OUT.s]\n");
+            return 2;
+        }
+        const std::string src = readAll(input);
+        if (src.empty()) { std::fprintf(stderr, "cannot read %s\n", input.c_str()); return 1; }
+        const basicnative::Card c = (card == "gen2") ? basicnative::Card::Gen2 : basicnative::Card::Tms;
+        const basicnative::Result nr = basicnative::compile(src, c, fpMode);
+        if (!nr.ok) { std::fprintf(stderr, "compile error: %s\n", nr.error.c_str()); return 1; }
+        if (output.empty()) std::fputs(nr.asmText.c_str(), stdout);
+        else { std::ofstream o(output, std::ios::binary);
+               if (!o) { std::fprintf(stderr, "cannot write %s\n", output.c_str()); return 1; }
+               o << nr.asmText; }
+        std::string feats;
+        for (const auto& f : nr.runtimeFeatures) feats += " " + f;
+        std::fprintf(stderr, "compiled %s -> native %s %s asm: %d lines, %d vars; runtime:%s\n",
+                     input.c_str(), card.c_str(), nr.usesFloat ? "float" : "integer",
+                     nr.lineCount, nr.varCount, feats.empty() ? " (none)" : feats.c_str());
+        return 0;
+    }
+
+    if (input.empty() || (target != "gen2" && target != "tms")) {
+        std::fprintf(stderr,
+            "usage: basicc --target {gen2|tms} INPUT.apf [-o OUTPUT.hex]   (tokenize for the interpreter)\n"
+            "       basicc --native --card {gen2|tms} INPUT.bas [-o OUT.s] (compile to native 6502 asm)\n");
+        return 2;
+    }
+
+    const std::string src = readAll(input);
+    if (src.empty()) { std::fprintf(stderr, "cannot read %s\n", input.c_str()); return 1; }
+
+    const basic::Target tgt = (target == "gen2") ? basic::targetGen2() : basic::targetTms();
+    const basic::Result r = basic::compile(src, tgt);
+    if (!r.ok) { std::fprintf(stderr, "compile error: %s\n", r.error.c_str()); return 1; }
+
+    if (output.empty()) {
+        std::fputs(r.hex.c_str(), stdout);
+    } else {
+        std::ofstream o(output, std::ios::binary);
+        if (!o) { std::fprintf(stderr, "cannot write %s\n", output.c_str()); return 1; }
+        o << r.hex;
+    }
+
+    std::fprintf(stderr,
+        "compiled %s for %s: %d lines, run @ $%04X, VARTAB $%04X (boot %s first)\n",
+        input.c_str(), tgt.name, r.lineCount, r.entry, r.progEnd,
+        (target == "gen2") ? "9800R" : "4000R");
+    return 0;
+}

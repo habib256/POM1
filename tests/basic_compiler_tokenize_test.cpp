@@ -1,0 +1,123 @@
+// basic_compiler_tokenize_test.cpp -- byte-exact unit pin for the Applesoft
+// "BASIC compiler" tokenizer + image layout (src/BasicCompiler.cpp). Pure: links
+// only BasicCompiler.cpp (no emulator core, no ROM), so it always runs and is
+// fast. The sibling basic_compiler_smoke test proves end-to-end EXECUTION on the
+// GEN2/TMS interpreters; this one pins the exact tokenized bytes so a tokenizer
+// regression is caught precisely, independent of any ROM.
+//
+// Expected bytes are the Applesoft on-disk layout: a $00 guard sits at $0800;
+// each line is [linkLo][linkHi][numLo][numHi][tokens...][$00] where the forward
+// link is the absolute address of the next line (= start + 4 + #tokens + 1); the
+// program ends with a $00 $00 link. Single-line programs start at $0801, so the
+// first (only) line's link is the end-marker address. Token values mirror
+// TOKEN_NAME_TABLE in applesoft-{tms9918,gen2}.s.
+
+#include "BasicCompiler.h"
+
+#include <cstdint>
+#include <cstdio>
+#include <string>
+#include <vector>
+
+namespace {
+
+int failures = 0;
+
+const std::vector<uint8_t>* zoneAt(const basic::Result& r, uint16_t addr)
+{
+    for (const basic::Zone& z : r.zones) if (z.addr == addr) return &z.bytes;
+    return nullptr;
+}
+
+void expectBytes(const char* what, const std::vector<uint8_t>& got,
+                 const std::vector<uint8_t>& want)
+{
+    if (got == want) { std::printf("ok: %s\n", what); return; }
+    ++failures;
+    std::printf("FAIL: %s\n  got :", what);
+    for (uint8_t b : got)  std::printf(" %02X", b);
+    std::printf("\n  want:");
+    for (uint8_t b : want) std::printf(" %02X", b);
+    std::printf("\n");
+}
+
+// Compile a single source line for TMS and return the $0800 program zone.
+std::vector<uint8_t> prog(const std::string& src)
+{
+    basic::Result r = basic::compile(src, basic::targetTms());
+    if (!r.ok) { ++failures; std::printf("FAIL compile: %s\n", r.error.c_str()); return {}; }
+    const std::vector<uint8_t>* z = zoneAt(r, 0x0800);
+    return z ? *z : std::vector<uint8_t>{};
+}
+
+} // namespace
+
+int main()
+{
+    // 4 tokens (9E 3A A5 33) -> line = 4+4+1 = 9 bytes, link = $0801+9 = $080A.
+    expectBytes("HGR2 : HCOLOR=3",
+        prog("10 HGR2 : HCOLOR=3"),
+        {0x00, 0x0A,0x08, 0x0A,0x00, 0x9E,0x3A,0xA5,0x33, 0x00, 0x00,0x00});
+
+    // ?-shorthand becomes PRINT ($98); the string is copied verbatim with quotes.
+    // 5 tokens -> link = $0801+10 = $080B.
+    expectBytes("?\"HI\" -> PRINT",
+        prog("20 ?\"HI\""),
+        {0x00, 0x0B,0x08, 0x14,0x00, 0x98,0x22,0x48,0x49,0x22, 0x00, 0x00,0x00});
+
+    // GOTO=$8E then the target line number stays ASCII "150" (never tokenized).
+    // 4 tokens -> link = $080A.
+    expectBytes("GOTO keeps ASCII line number",
+        prog("70 GOTO 150"),
+        {0x00, 0x0A,0x08, 0x46,0x00, 0x8E,0x31,0x35,0x30, 0x00, 0x00,0x00});
+
+    // REM=$94 copies the rest of the line literally (upper-cased), spaces kept.
+    // 6 tokens (94 20 48 49 20 58) -> link = $0801+11 = $080C.
+    expectBytes("REM literal tail",
+        prog("5 REM hi x"),
+        {0x00, 0x0C,0x08, 0x05,0x00, 0x94,0x20,0x48,0x49,0x20,0x58, 0x00, 0x00,0x00});
+
+    // DATA=$83 copies literally (spaces kept) up to ':'; PRINT=$98 after the colon.
+    // 8 tokens -> link = $0801+13 = $080E.
+    expectBytes("DATA literal until colon",
+        prog("30 DATA 1, 2:PRINT"),
+        {0x00, 0x0E,0x08, 0x1E,0x00, 0x83,0x20,0x31,0x2C,0x20,0x32,0x3A,0x98, 0x00, 0x00,0x00});
+
+    // Prefix-greedy + operators: FOR=$81, '='=$C4, TO=$B6, STEP=$BB.
+    // 8 tokens -> link = $080E.
+    expectBytes("FOR I=1 TO 9 STEP 2",
+        prog("40 FOR I=1 TO 9 STEP 2"),
+        {0x00, 0x0E,0x08, 0x28,0x00,
+         0x81,0x49,0xC4,0x31,0xB6,0x39,0xBB,0x32, 0x00, 0x00,0x00});
+
+    // Lines are emitted ascending regardless of source order; links chain across
+    // two lines. line10 HGR(9F): 6 bytes @ $0801, link=$0807. line20 END(80): 6
+    // bytes @ $0807, link=$080D. End marker at $080D.
+    {
+        basic::Result r = basic::compile("20 END\n10 HGR", basic::targetTms());
+        const std::vector<uint8_t>* z = zoneAt(r, 0x0800);
+        expectBytes("ascending sort + links",
+            z ? *z : std::vector<uint8_t>{},
+            {0x00,
+             0x07,0x08, 0x0A,0x00, 0x9F, 0x00,
+             0x0D,0x08, 0x14,0x00, 0x80, 0x00,
+             0x00,0x00});
+    }
+
+    // Launcher: LDA #<end;STA $69;LDA #>end;STA $6A;JSR SETPTRS;JMP NEWSTT.
+    {
+        basic::Result r = basic::compile("10 HGR", basic::targetTms());
+        const std::vector<uint8_t>* L = zoneAt(r, basic::kLauncherAddr);
+        const uint16_t e = r.progEnd, s = basic::targetTms().setptrs, n = basic::targetTms().newstt;
+        expectBytes("launcher stub (TMS targets)",
+            L ? *L : std::vector<uint8_t>{},
+            {0xA9, (uint8_t)(e & 0xFF), 0x85, 0x69,
+             0xA9, (uint8_t)(e >> 8),   0x85, 0x6A,
+             0x20, (uint8_t)(s & 0xFF), (uint8_t)(s >> 8),
+             0x4C, (uint8_t)(n & 0xFF), (uint8_t)(n >> 8)});
+    }
+
+    if (failures) { std::printf("basic_compiler_tokenize: %d FAILED\n", failures); return 1; }
+    std::printf("basic_compiler_tokenize: OK\n");
+    return 0;
+}
