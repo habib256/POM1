@@ -1814,13 +1814,21 @@ bench::BuildResult Pom1BenchHost::injectBasic(int target, const std::string& src
     //     enters at $EFEC (clr + run_warm). The interpreter ROM (reloaded above) is
     //     cold-started first so its zero page (lomem/himem/pp) is set up.
     if (idx == 7) {
+        // Lower LOMEM from the ROM's $0800 cold default to $0300 — the program is
+        // stored DOWN from HIMEM ($1000) and variables UP from LOMEM, so this widens
+        // the BASIC area to $0300-$1000 (~3.25 KB, "a bit under 4 KB"). It matches how
+        // these programs were actually saved (their .apl images set LOMEM=$0300,
+        // HIMEM=$1000) and fits the big ones (mini-startrek 3024 B → pp $0430 > $0300);
+        // the $0800 default leaves only 2 KB and a >2 KB listing MEM-ERRORs. $0300 sits
+        // just above the WOZ input buffer ($0200); no RAM relax — all within the 8 KB.
+        constexpr uint16_t kIntLomem = 0x0300;
         std::string norm;  // ibasic::compile splits on '\n' — fold CRLF/CR to LF
         norm.reserve(src.size());
         for (size_t i = 0; i < src.size(); ++i) {
             if (src[i] == '\r') { norm += '\n'; if (i + 1 < src.size() && src[i + 1] == '\n') ++i; }
             else norm += src[i];
         }
-        ibasic::Result prog = ibasic::compile(norm);   // HIMEM $1000 (the ROM's cold default)
+        ibasic::Result prog = ibasic::compile(norm);   // HIMEM $1000 (matches the .apl images)
         if (!prog.ok) {
             emu->copySnapshot(mw_->uiSnapshot);
             r.console = std::string("[bench] Integer BASIC: tokenise FAILED — ") + prog.error + "\n";
@@ -1844,6 +1852,10 @@ bench::BuildResult Pom1BenchHost::injectBasic(int target, const std::string& src
         // the ROM's RUN handler ($EFEC = clr + run_warm) live.
         constexpr uint64_t kColdCycles = 12'000'000;
         emu->runFromSync(ibasic::kColdStart, kColdCycles);
+        // Lower LOMEM ($4A/$4B) below the cold default so variables + program fit
+        // (HIMEM stays at the cold $1000). $EFEC's CLR re-reads LOMEM for the var base.
+        emu->writeMemory(0x004A, static_cast<uint8_t>(kIntLomem & 0xFF));
+        emu->writeMemory(0x004B, static_cast<uint8_t>((kIntLomem >> 8) & 0xFF));
         for (size_t i = 0; i < prog.image.size(); ++i)
             emu->writeMemory(static_cast<uint16_t>(prog.pp + i), prog.image[i]);
         emu->writeMemory(ibasic::kPpZp,     static_cast<uint8_t>(prog.pp & 0xFF));
