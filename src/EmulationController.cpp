@@ -219,6 +219,19 @@ void EmulationController::runFromSync(uint16_t entry, uint64_t maxCycles)
     publisher.publish(*memory, *cpu, runRequested.load());
 }
 
+void EmulationController::runFromAsync(uint16_t entry)
+{
+    stopCpu();                               // settle the thread before re-pointing PC
+    {
+        std::lock_guard<PriorityMutex> lock(stateMutex);
+        cpu->setProgramCounter(entry);       // jump into the resident ROM routine
+        cpu->start();
+        runRequested.store(true);
+        publisher.publish(*memory, *cpu, runRequested.load());
+    }
+    wakeCv.notify_all();                     // wake the emulation thread to run live
+}
+
 void EmulationController::setCpuBrkTraceEnabled(bool enabled)
 {
     std::lock_guard<PriorityMutex> lock(stateMutex);

@@ -1,7 +1,8 @@
 // POM1 host for the portable bench. See Pom1BenchHost.h.
 #include "Pom1BenchHost.h"
 
-#include "BasicTokeniserApplesoft.h"        // basic::compile — Applesoft tokenizer (GEN2/TMS)
+#include "BasicTokeniserApplesoft.h"        // basic::compile — Applesoft tokeniser (GEN2/TMS)
+#include "BasicTokeniserInteger.h"          // ibasic::compile — Integer BASIC tokeniser ($E000)
 #include "MainWindow_ImGui.h"     // mw_ members (friend) + EmulationController
 #include "MainWindow_Internal.h"  // kMachinePresets / BasicType (ACI program-output presets)
 #include "ProcessUtil.h"          // bench::shellQuote / runCapture / whichExe
@@ -1421,10 +1422,11 @@ int Pom1BenchHost::targetForPath(const std::string& path) const
     const std::string ext = fs::path(p).extension().string();
     if (ext == ".hex" || ext == ".txt") return 6;      // Wozmon hex quick-load
 
-    // BASIC source -> keyboard injection (no compiler). The interpreter follows the
+    // BASIC source. ".apf" = Applesoft (tokenised). The interpreter follows the
     // path: a TMS9918 path -> Applesoft TMS9918 (11), a GEN2/HGR path -> Applesoft
-    // GEN2 (9), otherwise the stock microSD Applesoft (8).
-    if (ext == ".apf" || ext == ".bas") {
+    // GEN2 (9), otherwise the stock microSD Applesoft (8). ".bas"/".ibas" = Integer
+    // BASIC (idx 7, tokenised) -- see below.
+    if (ext == ".apf") {
         // Generic Applesoft sketches (sketchs/basic_applesoft/) are machine-neutral:
         // follow whatever Applesoft-capable machine is already live so opening one
         // never switches the user's profile (see onTargetSelected). Path-tagged files
@@ -1444,7 +1446,7 @@ int Pom1BenchHost::targetForPath(const std::string& path) const
                               p.find("graphic hgr") != std::string::npos;
         return tmspath ? 11 : gen2path ? 9 : 8;
     }
-    if (ext == ".ibas") return 7;                      // Integer BASIC inject
+    if (ext == ".bas" || ext == ".ibas") return 7;     // Integer BASIC (tokenised)
 
     const bool cMode   = (ext == ".c");
     const bool asmMode = (ext == ".s" || ext == ".asm");
@@ -1803,6 +1805,57 @@ bench::BuildResult Pom1BenchHost::injectBasic(int target, const std::string& src
                     "memory and drop back to the WOZ Monitor; aborting injection.\n";
         r.status = std::string(interp) + ": ROM load failed";
         r.ok = false;
+        return r;
+    }
+
+    // 2b) Integer BASIC ($E000, idx 7) — tokenise host-side, then load + run via the
+    //     ROM's RUN handler. Unlike Applesoft there is no $0801 launcher: the program
+    //     lives HIGH (down from HIMEM $1000), pp ($CA) points at it, and execution
+    //     enters at $EFEC (clr + run_warm). The interpreter ROM (reloaded above) is
+    //     cold-started first so its zero page (lomem/himem/pp) is set up.
+    if (idx == 7) {
+        std::string norm;  // ibasic::compile splits on '\n' — fold CRLF/CR to LF
+        norm.reserve(src.size());
+        for (size_t i = 0; i < src.size(); ++i) {
+            if (src[i] == '\r') { norm += '\n'; if (i + 1 < src.size() && src[i + 1] == '\n') ++i; }
+            else norm += src[i];
+        }
+        ibasic::Result prog = ibasic::compile(norm);   // HIMEM $1000 (the ROM's cold default)
+        if (!prog.ok) {
+            emu->copySnapshot(mw_->uiSnapshot);
+            r.console = std::string("[bench] Integer BASIC: tokenise FAILED — ") + prog.error + "\n";
+            r.status  = "Integer BASIC: tokenise error";
+            r.ok = false;
+            return r;
+        }
+        char buf[192];
+        if (!run) {  // Verify = tokenise-check only
+            emu->copySnapshot(mw_->uiSnapshot);
+            std::snprintf(buf, sizeof(buf),
+                "[bench] Integer BASIC: tokenised OK — %d lines, image $%04X-$%04X (%zu B) "
+                "(Run to load + run)\n", prog.lineCount, prog.pp, prog.himem - 1, prog.image.size());
+            r.console = buf;
+            std::snprintf(buf, sizeof(buf), "Integer BASIC: tokenised (%d lines)", prog.lineCount);
+            r.status  = buf; r.ok = true;
+            return r;
+        }
+        // Cold-start Integer BASIC to its `>` prompt (inits lomem=$0800, himem=$1000,
+        // zero page), then poke the program image at pp, set pp ($CA/$CB), and enter
+        // the ROM's RUN handler ($EFEC = clr + run_warm) live.
+        constexpr uint64_t kColdCycles = 12'000'000;
+        emu->runFromSync(ibasic::kColdStart, kColdCycles);
+        for (size_t i = 0; i < prog.image.size(); ++i)
+            emu->writeMemory(static_cast<uint16_t>(prog.pp + i), prog.image[i]);
+        emu->writeMemory(ibasic::kPpZp,     static_cast<uint8_t>(prog.pp & 0xFF));
+        emu->writeMemory(ibasic::kPpZp + 1, static_cast<uint8_t>((prog.pp >> 8) & 0xFF));
+        emu->runFromAsync(0xEFEC);   // RUN command handler: clr + run_warm
+        emu->copySnapshot(mw_->uiSnapshot);
+        std::snprintf(buf, sizeof(buf),
+            "[bench] Integer BASIC: tokenised %d lines → loaded %zu B @ $%04X, running "
+            "(tokeniser — no keyboard injection)\n", prog.lineCount, prog.image.size(), prog.pp);
+        r.console = buf;
+        r.status  = "Integer BASIC: running (tokenised)";
+        r.ok = true;
         return r;
     }
 

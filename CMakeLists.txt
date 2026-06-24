@@ -43,6 +43,7 @@ set(SOURCES
     ${POM1_SRC_DIR}/A1IO_RTC.cpp
     ${POM1_SRC_DIR}/AudioDevice.cpp
     ${POM1_SRC_DIR}/BasicTokeniserApplesoft.cpp
+    ${POM1_SRC_DIR}/BasicTokeniserInteger.cpp
     ${POM1_SRC_DIR}/BasicCompilerApplesoft.cpp
     ${POM1_SRC_DIR}/CassetteDevice.cpp
     ${POM1_SRC_DIR}/CassetteDeck_ImGui.cpp

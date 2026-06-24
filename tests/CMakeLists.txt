@@ -415,6 +415,30 @@ add_test(NAME bench_basic_tokenize_smoke COMMAND test_bench_basic_tokenize
          WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
 set_tests_properties(bench_basic_tokenize_smoke PROPERTIES TIMEOUT 120 SKIP_RETURN_CODE 77)
 
+# -- Integer BASIC tokeniser RUN path (idx 7) --------------------------------
+# Drives the injectBasic idx-7 sequence at the Memory level: cold-start the $E000
+# ROM, poke the tokenised image at pp, set pp, enter the RUN handler ($EFEC), and
+# assert a compiled PRINT reaches the display. Skips (77) if roms/basic.rom absent.
+add_executable(test_bench_basic_tokenize_integer
+    bench_basic_tokenize_integer_smoke_test.cpp
+    ${CMAKE_SOURCE_DIR}/src/BasicTokeniserInteger.cpp
+    ${POM1_TEST_CORE_SOURCES}
+)
+target_include_directories(test_bench_basic_tokenize_integer PRIVATE
+    ${CMAKE_SOURCE_DIR}/src
+    ${CMAKE_SOURCE_DIR}/imgui
+)
+target_link_libraries(test_bench_basic_tokenize_integer PRIVATE libresidfp_static)
+if(APPLE)
+    target_compile_definitions(test_bench_basic_tokenize_integer PRIVATE GL_SILENCE_DEPRECATION)
+endif()
+if(WIN32)
+    target_link_libraries(test_bench_basic_tokenize_integer PRIVATE ws2_32)
+endif()
+add_test(NAME bench_basic_tokenize_integer_smoke COMMAND test_bench_basic_tokenize_integer
+         WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+set_tests_properties(bench_basic_tokenize_integer_smoke PROPERTIES TIMEOUT 120 SKIP_RETURN_CODE 77)
+
 # -- Integer BASIC tokenisation ORACLE (dev dumper, not a ctest) -------------
 # Tokenises sample programs through the real $E000 ROM and prints the byte-exact
 # image — ground truth for the BasicTokeniserInteger port. Built but not added as

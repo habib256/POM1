@@ -95,6 +95,13 @@ public:
     // before a compiled program image is loaded + launched.
     void runFromSync(uint16_t entry, uint64_t maxCycles);
 
+    // Resume the LIVE (async) emulation at `entry`: set PC=`entry` and start the
+    // emulation thread running there, RAM/zero-page left intact (no reset). The
+    // counterpart of runFromSync for handing control to a resident ROM routine that
+    // should keep running interactively — e.g. the Integer BASIC tokeniser writes a
+    // program image + pp, then runFromAsync($EFEC) enters the ROM's RUN handler.
+    void runFromAsync(uint16_t entry);
+
     // Debug: toggle the M6502 BRK trace (CPU state + stack + recent
     // control-flow transfers, logged at WARN on every BRK). Off by default.
     void setCpuBrkTraceEnabled(bool enabled);

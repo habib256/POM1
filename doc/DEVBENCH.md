@@ -85,15 +85,15 @@ time you switch tabs (the status-bar mode and the toolbar follow the front tab):
 | `.s` / `.asm` | assemble (ca65 / ld65) |
 | `.c` | compile (cc65 / cl65) |
 | `.hex` / `.txt` | load Woz-Monitor hex |
-| `.bas` / `.apf` | **Applesoft** BASIC — interpreter follows the path (see below). All four targets **compile** (tokeniser) |
-| `.ibas` | inject **Integer** BASIC |
+| `.apf` | **Applesoft** BASIC — interpreter follows the path (see below). All four targets **compile** (tokeniser) |
+| `.bas` / `.ibas` | **Integer** BASIC ($E000) — **compile** (tokeniser); cold-start + image @ `pp` + RUN ($EFEC) |
 | `.md` / `.markdown` | render as a document (Edit/Preview toggle) — see below |
 | anything else | **do nothing** (Verify/Run report "nothing to build") |
 
 The machine follows the path: `sketchs/tms9918…` → TMS9918, `sketchs/gen2…` →
-GEN2, otherwise Apple-1 text. A `.bas`/`.apf` in a TMS9918 path injects into
+GEN2, otherwise Apple-1 text. An `.apf` in a TMS9918 path tokenises into
 **Applesoft TMS9918**, in a GEN2/HGR path into **Applesoft GEN2**, elsewhere into
-the stock microSD Applesoft.
+the stock microSD Applesoft. A `.bas`/`.ibas` always tokenises into **Integer BASIC**.
 
 ### BASIC — four Applesoft machines
 
@@ -107,7 +107,10 @@ runtime (FP, `SIN`/`SQR`, `HPLOT`…). Two reserved-word tables are used: the GE
 TMS9918 graphics dialect (HGR/HPLOT/COLOR=…) and the reduced Applesoft Lite dialect
 for the microSD/CFFA1 ROMs (no graphics/trig; MENU/SAVE/LOAD/CLS — token bytes
 diverge past `$98`). (For *native* 6502 codegen — no interpreter at runtime — see
-[`BASIC_COMPILER.md`](BASIC_COMPILER.md). Integer BASIC still injects.)
+[`BASIC_COMPILER.md`](BASIC_COMPILER.md).) **Integer BASIC** (`.bas`/`.ibas`) also
+tokenises now — its own context-sensitive tokeniser (`BasicTokeniserInteger`,
+`namespace ibasic`): program stored down from HIMEM, cold-start then image @ `pp` +
+RUN ($EFEC). Source: `sketchs/apple1/integer_basic/integer-basic.s` (== `roms/basic.rom`).
 
 | Machine | Interpreter | Boot | Deploy |
 |---|---|---|---|
