@@ -43,6 +43,7 @@ set(SOURCES
     ${POM1_SRC_DIR}/A1IO_RTC.cpp
     ${POM1_SRC_DIR}/AudioDevice.cpp
     ${POM1_SRC_DIR}/BasicCompiler.cpp
+    ${POM1_SRC_DIR}/BasicNativeCompiler.cpp
     ${POM1_SRC_DIR}/CassetteDevice.cpp
     ${POM1_SRC_DIR}/CassetteDeck_ImGui.cpp
     ${POM1_SRC_DIR}/CliDispatcher.cpp
@@ -98,6 +99,7 @@ set(HEADERS
     ${POM1_SRC_DIR}/A1IO_RTC.h
     ${POM1_SRC_DIR}/AudioDevice.h
     ${POM1_SRC_DIR}/BasicCompiler.h
+    ${POM1_SRC_DIR}/BasicNativeCompiler.h
     ${POM1_SRC_DIR}/CassetteDevice.h
     ${POM1_SRC_DIR}/CassetteDeck_ImGui.h
     ${POM1_SRC_DIR}/CliDispatcher.h
@@ -452,7 +454,8 @@ else()
     if(POM1_BUILD_BASICC)
         add_executable(basicc
             ${CMAKE_CURRENT_SOURCE_DIR}/tools/basicc.cpp
-            ${POM1_SRC_DIR}/BasicCompiler.cpp)
+            ${POM1_SRC_DIR}/BasicCompiler.cpp
+            ${POM1_SRC_DIR}/BasicNativeCompiler.cpp)
         target_include_directories(basicc PRIVATE ${POM1_SRC_DIR})
     endif()
 

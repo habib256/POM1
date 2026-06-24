@@ -1,4 +1,23 @@
-# BASIC Compiler — Applesoft Lite → 6502 image (GEN2 / TMS9918)
+# BASIC Compiler — Applesoft Lite → 6502 (GEN2 / TMS9918)
+
+POM1 has **two** Applesoft compilers, for two different goals:
+
+| | `src/BasicCompiler.*` (tokenizer) | `src/BasicNativeCompiler.*` (**native**) |
+|---|---|---|
+| Output | tokenized program + launcher | **standalone 6502 machine code** |
+| Runtime | the Applesoft **interpreter ROM** | **none** — only the graphics card |
+| Speed of the program | same as the interpreter | **~20× faster** (integer/control code) |
+| Coverage | full Applesoft (FP, SIN/SQR, …) | integer subset (FP = future phase) |
+| Win | skips slow keyboard injection | **optimises + accelerates execution** |
+
+The first half of this document covers the **tokenizer** (load-without-injection);
+[the native compiler](#native-compiler--standalone-machine-code-real-speedup) is
+covered at the end — that is the one that *optimises and accelerates execution
+without the interpreter*.
+
+---
+
+## Tokenizer — load without injection
 
 Compile an Applesoft listing **ahead of time** into a ready-to-run 6502 memory
 image, so a program is **loaded and run directly** instead of having its listing
@@ -214,3 +233,71 @@ It skips (ctest code 77) if a ROM or the source sketch is absent.
 See also: `CLAUDE.md` (memory map, presets), `sketchs/tms9918/applesoft_tms9918/`
 and the restored `sketchs/gen2/applesoft_gen2/` (interpreter sources),
 `doc/DEVBENCH.md` (the bench that hosts the BASIC targets).
+
+---
+
+## Native compiler — standalone machine code (real speedup)
+
+`src/BasicNativeCompiler.*` is a **real native-code compiler**: it generates
+standalone 6502 assembly with native control flow, variables at fixed addresses,
+and expressions compiled once into straight-line code. The output binary runs
+with **no Applesoft interpreter** — only the graphics card. Every interpreter tax
+disappears: token dispatch, per-iteration expression re-parsing, variable-name
+string search, GOTO line search, and (for integer code) the float pack/unpack on
+every operation.
+
+### Why it's faster (measured)
+
+Benchmarked on POM1's own 6502 core, native vs the same source on the interpreter
+(both draw the **identical** picture):
+
+| Program | native | interpreter | speedup |
+|---|---|---|---|
+| line-draw (pixel-plot bound) | 2.6 M cyc | 11.6 M cyc | **4.5×** |
+| compute-heavy inner loop (arith + control) | 19–35 M cyc | 368–705 M cyc | **~20×** |
+
+Pixel-bound code wins less (the per-pixel plot cost is shared); **control- and
+arithmetic-bound code wins big**, which is exactly where the interpreter spends
+most of its time on overhead rather than work. Pinned by `basic_native_run`
+(asserts identical output **and** native faster) + `basic_native_codegen`.
+
+### What makes it a compiler, not a tokenizer
+
+- **Strength reduction.** `X*3` compiles to shifts+adds (`asl`/`adc`), not a
+  16-iteration multiply — a classic compiler optimisation. This alone moved the
+  arithmetic benchmark from ~6× to ~20×.
+- **Native control flow.** `GOTO`→`JMP`, `GOSUB`/`RETURN`→`JSR`/`RTS`, `FOR`/`NEXT`
+  and `IF` are native branches with a signed 16-bit compare; line numbers become
+  labels (no run-time search).
+- **Fixed-address variables + temporaries** (16-bit signed), allocated by the
+  compiler — no name lookup, no float boxing.
+
+### ABI + runtime
+
+Generated code calls a tiny fixed runtime (`rt_hgr/rt_hcolor/rt_plot/rt_line/
+rt_mul/rt_div/rt_cmp16`) implemented per card in `dev/lib/basicrt/basicrt_{gen2,
+tms}.s`, which wrap the project's graphics asm leaf routines (GEN2 `plot_pixel`/
+`clear_hgr`; TMS `plot_set`/`line_xy` — not the interpreter). 16-bit math is shared
+in `basicrt_math.inc`. The program + runtime link via `basicc_native.cfg` into a
+bare image that loads + runs at `$0300`.
+
+### Scope (integer phase)
+
+Variables and arithmetic are **16-bit signed**. Supported: `+ - * /`, comparisons,
+`AND/OR/NOT`, `ABS`, `FOR/NEXT`, `IF/THEN`, `GOTO`, `GOSUB/RETURN`, `END`, `REM`,
+and integer graphics `HGR/HGR2`, `HCOLOR=`, `HPLOT` (point + `TO`-chains). Float
+literals are rejected. **Phase 2 (future):** a standalone floating-point runtime
+(`FADD/FMUL/.../SIN/SQR`) so float programs like `3DHat.apf` compile to native
+code with no ROM either — the harder, larger half, where FP speed only improves if
+the float library itself is faster than the ROM's.
+
+### Use it
+
+```bash
+# emit assembly, then assemble + link to a standalone .bin (needs cc65):
+build/basicc --native --card gen2 prog.bas -o prog.s
+tools/basicc_native.sh gen2 prog.bas prog.bin       # BASIC -> standalone $0300 image
+
+# run it with no interpreter (GEN2 card present):
+pom1 --headless --preset 11 --load 0x0300:prog.bin --run 0x0300 --dump-gen2-frame out.png
+```

@@ -20,6 +20,7 @@
 // See doc/BASIC_COMPILER.md for the full pipeline and the in-app DevBench hook.
 
 #include "BasicCompiler.h"
+#include "BasicNativeCompiler.h"
 
 #include <cstdio>
 #include <fstream>
@@ -35,17 +36,44 @@ static std::string readAll(const std::string& path)
 
 int main(int argc, char** argv)
 {
-    std::string target, input, output;
+    std::string target, input, output, card;
+    bool native = false;
     for (int i = 1; i < argc; ++i) {
         std::string a = argv[i];
         if (a == "--target" && i + 1 < argc)      target = argv[++i];
         else if (a == "-o" && i + 1 < argc)       output = argv[++i];
+        else if (a == "--native")                 native = true;
+        else if (a == "--card" && i + 1 < argc)   card = argv[++i];
         else if (!a.empty() && a[0] != '-')       input = a;
         else { std::fprintf(stderr, "unknown argument: %s\n", a.c_str()); return 2; }
     }
+
+    // --native: emit standalone 6502 ASSEMBLY (no interpreter). Assemble it with
+    // ca65+ld65 against dev/lib/basicrt (see tools/basicc_native.sh).
+    if (native) {
+        if (card.empty() && (target == "gen2" || target == "tms")) card = target;
+        if (input.empty() || (card != "gen2" && card != "tms")) {
+            std::fprintf(stderr, "usage: basicc --native --card {gen2|tms} INPUT.bas [-o OUT.s]\n");
+            return 2;
+        }
+        const std::string src = readAll(input);
+        if (src.empty()) { std::fprintf(stderr, "cannot read %s\n", input.c_str()); return 1; }
+        const basicnative::Card c = (card == "gen2") ? basicnative::Card::Gen2 : basicnative::Card::Tms;
+        const basicnative::Result nr = basicnative::compile(src, c);
+        if (!nr.ok) { std::fprintf(stderr, "compile error: %s\n", nr.error.c_str()); return 1; }
+        if (output.empty()) std::fputs(nr.asmText.c_str(), stdout);
+        else { std::ofstream o(output, std::ios::binary);
+               if (!o) { std::fprintf(stderr, "cannot write %s\n", output.c_str()); return 1; }
+               o << nr.asmText; }
+        std::fprintf(stderr, "compiled %s -> native %s asm: %d lines, %d vars\n",
+                     input.c_str(), card.c_str(), nr.lineCount, nr.varCount);
+        return 0;
+    }
+
     if (input.empty() || (target != "gen2" && target != "tms")) {
         std::fprintf(stderr,
-            "usage: basicc --target {gen2|tms} INPUT.apf [-o OUTPUT.hex]\n");
+            "usage: basicc --target {gen2|tms} INPUT.apf [-o OUTPUT.hex]   (tokenize for the interpreter)\n"
+            "       basicc --native --card {gen2|tms} INPUT.bas [-o OUT.s] (compile to native 6502 asm)\n");
         return 2;
     }
 

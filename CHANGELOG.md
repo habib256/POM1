@@ -10,6 +10,29 @@ is `git log`; the user-facing feature tour is `README.md`; open work lives in
 
 ## [Unreleased]
 
+### Added — native BASIC compiler: standalone 6502 machine code (~20× faster, no interpreter)
+
+- **`src/BasicNativeCompiler.{h,cpp}` + `dev/lib/basicrt/` runtime + `basicc
+  --native` + `tools/basicc_native.sh`.** A **real** native-code compiler (not a
+  tokenizer): recursive-descent / precedence-climbing parser → standalone ca65
+  assembly with native control flow (`GOTO`→`JMP`, `GOSUB`/`RETURN`→`JSR`/`RTS`,
+  `FOR`/`NEXT`/`IF` as native branches, line numbers → labels), 16-bit variables
+  at fixed addresses (no name lookup), and **constant-multiply strength reduction**
+  (`X*3` → shifts+adds, not a 16-iteration multiply). The output binary runs with
+  **no Applesoft interpreter** — only the graphics card — via a tiny per-card
+  runtime (`rt_*`) wrapping the project's graphics asm (GEN2 `plot_pixel`/
+  `clear_hgr`; TMS `plot_set`/`line_xy`) + shared 16-bit math. Loads + runs at
+  `$0300`; both GEN2 and TMS9918.
+- **Measured (POM1 core, identical output):** ~**4.5×** on pixel-plot-bound code,
+  **~20×** on arithmetic/control-bound code (e.g. 19.2 M vs 368 M cycles). Pinned
+  by `basic_native_run` (cc65-gated: builds native + interpreter, asserts same
+  framebuffer **and** native faster) and `basic_native_codegen` (pure asm-text
+  unit pin: strength reduction, FOR/NEXT, GOTO/GOSUB, graphics ABI).
+- Integer phase (16-bit signed: `+ - * /`, comparisons, `AND/OR/NOT`, `ABS`,
+  `FOR/NEXT`, `IF/THEN`, `GOTO`, `GOSUB/RETURN`, `HGR/HCOLOR/HPLOT`). A standalone
+  floating-point runtime (so `3DHat.apf` compiles to native code with no ROM) is
+  the documented next phase. See [`doc/BASIC_COMPILER.md`](doc/BASIC_COMPILER.md).
+
 ### Added — Applesoft "BASIC compiler": compile an `.apf` to a 6502 image (no injection)
 
 - **`src/BasicCompiler.{h,cpp}` + `basicc` tool + `doc/BASIC_COMPILER.md`.**

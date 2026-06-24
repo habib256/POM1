@@ -1,0 +1,108 @@
+; basicrt_math.inc -- card-agnostic 16-bit integer runtime for the native BASIC
+; compiler. The including file must define (in ZEROPAGE): rt_a, rt_b (ABI), and
+; the scratch m_prod, m_rem (2 bytes each) + m_sign (1 byte). CODE segment.
+
+.export rt_mul, rt_div, rt_cmp16
+
+; rt_mul: rt_a = rt_a * rt_b  (low 16 bits; correct for signed two's complement).
+rt_mul:
+        lda #0
+        sta m_prod
+        sta m_prod+1
+        ldx #16
+@l:     lsr rt_b+1
+        ror rt_b
+        bcc @noadd
+        clc
+        lda m_prod
+        adc rt_a
+        sta m_prod
+        lda m_prod+1
+        adc rt_a+1
+        sta m_prod+1
+@noadd: asl rt_a
+        rol rt_a+1
+        dex
+        bne @l
+        lda m_prod
+        sta rt_a
+        lda m_prod+1
+        sta rt_a+1
+        rts
+
+; rt_div: rt_a = rt_a / rt_b  (signed, truncate toward zero).
+rt_div:
+        lda rt_a+1
+        eor rt_b+1
+        sta m_sign
+        lda rt_a+1
+        bpl @aok
+        sec
+        lda #0
+        sbc rt_a
+        sta rt_a
+        lda #0
+        sbc rt_a+1
+        sta rt_a+1
+@aok:   lda rt_b+1
+        bpl @bok
+        sec
+        lda #0
+        sbc rt_b
+        sta rt_b
+        lda #0
+        sbc rt_b+1
+        sta rt_b+1
+@bok:   lda #0
+        sta m_rem
+        sta m_rem+1
+        ldx #16
+@dl:    asl rt_a
+        rol rt_a+1
+        rol m_rem
+        rol m_rem+1
+        sec
+        lda m_rem
+        sbc rt_b
+        tay
+        lda m_rem+1
+        sbc rt_b+1
+        bcc @skip
+        sta m_rem+1
+        sty m_rem
+        inc rt_a
+@skip:  dex
+        bne @dl
+        lda m_sign
+        bpl @done
+        sec
+        lda #0
+        sbc rt_a
+        sta rt_a
+        lda #0
+        sbc rt_a+1
+        sta rt_a+1
+@done:  rts
+
+; rt_cmp16: signed compare rt_a vs rt_b -> A = 0 (a<b) / 1 (a==b) / 2 (a>b).
+rt_cmp16:
+        lda rt_a
+        cmp rt_b
+        bne @ne
+        lda rt_a+1
+        cmp rt_b+1
+        bne @ne
+        lda #1
+        rts
+@ne:    sec
+        lda rt_a
+        sbc rt_b
+        lda rt_a+1
+        sbc rt_b+1
+        bvc @nov
+        eor #$80
+@nov:   bmi @less
+        lda #2
+        rts
+@less:  lda #0
+        rts

@@ -402,6 +402,43 @@ add_test(NAME basic_compiler_tokenize COMMAND test_basic_compiler_tokenize
          WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
 set_tests_properties(basic_compiler_tokenize PROPERTIES TIMEOUT 30)
 
+# -- Native BASIC compiler: codegen unit test --------------------------------
+# Pure asm-text assertions on BasicNativeCompiler (strength reduction, FOR/NEXT,
+# GOTO/GOSUB, graphics ABI). No cc65, no emulator -> always runs, fast.
+add_executable(test_basic_native_codegen
+    basic_native_codegen_test.cpp
+    ${CMAKE_SOURCE_DIR}/src/BasicNativeCompiler.cpp
+)
+target_include_directories(test_basic_native_codegen PRIVATE ${CMAKE_SOURCE_DIR}/src)
+add_test(NAME basic_native_codegen COMMAND test_basic_native_codegen
+         WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+set_tests_properties(basic_native_codegen PROPERTIES TIMEOUT 30)
+
+# -- Native BASIC compiler: end-to-end run + speedup (cc65-gated) -------------
+# Builds the standalone native binary (ca65/ld65 against dev/lib/basicrt) and the
+# interpreter path, runs both, asserts identical output and that native is faster.
+# Skips (77) if cc65 or the GEN2 Applesoft ROM is absent.
+add_executable(test_basic_native_run
+    basic_native_run_test.cpp
+    ${CMAKE_SOURCE_DIR}/src/BasicNativeCompiler.cpp
+    ${CMAKE_SOURCE_DIR}/src/BasicCompiler.cpp
+    ${POM1_TEST_CORE_SOURCES}
+)
+target_include_directories(test_basic_native_run PRIVATE
+    ${CMAKE_SOURCE_DIR}/src
+    ${CMAKE_SOURCE_DIR}/imgui
+)
+target_link_libraries(test_basic_native_run PRIVATE libresidfp_static)
+if(APPLE)
+    target_compile_definitions(test_basic_native_run PRIVATE GL_SILENCE_DEPRECATION)
+endif()
+if(WIN32)
+    target_link_libraries(test_basic_native_run PRIVATE ws2_32)
+endif()
+add_test(NAME basic_native_run COMMAND test_basic_native_run
+         WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+set_tests_properties(basic_native_run PROPERTIES TIMEOUT 180 SKIP_RETURN_CODE 77)
+
 # -- SID audio production smoke test ------------------------------------------
 # Needs the full Memory+peripheral core to exercise the PeripheralBus path.
 add_executable(test_sid_audio
