@@ -327,7 +327,54 @@ an order of magnitude more.
 
 **Remaining for 3DHat:** the transcendentals `SIN/COS/SQR/INT/ATN` (polynomial /
 Newton, on top of the proven `fp_*` core) and `FOR` index type inference — then
-`3DHat.apf` compiles to native code with no ROM at all. **Phase 2 (future):** a standalone floating-point runtime
+`3DHat.apf` compiles to native code with no ROM at all.
+
+### Choosing the precision (auto)
+
+There is no single "float" — the right representation is a trade-off:
+
+| representation | mantissa | bytes | notes |
+|---|---|---|---|
+| **integer 16-bit** | — | 2 | smallest + fastest; exact for whole numbers |
+| **binary32** (used) | ~7 digits | 4 | IEEE single; the FP phase's runtime |
+| Applesoft MBF (5-byte) | ~9 digits | 5 | the ROM's format — more precise, bigger/slower |
+| binary16 / fixed-point | ~3 digits | 2 | enough for bounded graphics coords; a future "fast" tier |
+
+`compile(..., FpMode::Auto)` (the default, also `basicc --native`) picks the
+**smallest sufficient**: integer unless a line needs a fraction — a decimal
+literal or a `/` (Applesoft division is real) — in which case binary32. So a
+program that doesn't use floats **never links the float runtime at all**. `--int`
+and `--float` force a tier. binary16 / fixed-point graphics tiers are a documented
+future option for when binary32 precision is overkill.
+
+### Minimal code size (dead-stripping)
+
+Code/RAM size is a first-class concern, so the compiler emits **only the runtime
+symbols it actually uses**, and the runtime (`basicrt_*.s`) gates every routine on
+a `-D RT_xxx` flag the build derives from those imports. Unused routines — and the
+560-byte hi-res pixel tables — never reach the binary. Measured GEN2 image sizes:
+
+| program | full runtime | dead-stripped |
+|---|---|---|
+| `X=5+2 : X=X+1` (no runtime) | 1695 B | **89 B** |
+| `PRINT` + `FOR` (no graphics) | 1746 B | **265 B** |
+| `HGR : HPLOT x,y` | 1686 B | 1165 B |
+| `HGR` + `HPLOT…TO` lines | 1833 B | 1606 B |
+
+### Diagnostics (writing new programs)
+
+Errors name the **exact Applesoft line** the author must fix, in plain language:
+
+```
+line 20: FOR expects a variable
+line 10: HPLOT expects 'x,y'
+line 10: GOTO 99: no such line number in the program
+line 1: every program line must start with a line number
+```
+
+`GOTO`/`GOSUB`/`THEN` targets are checked against the program's line numbers at
+compile time (not left to a cryptic link error), float literals are rejected with
+a line number in the integer phase, and `NEXT` without a matching `FOR` is caught. **Phase 2 (future):** a standalone floating-point runtime
 (`FADD/FMUL/.../SIN/SQR`) so float programs like `3DHat.apf` compile to native
 code with no ROM either — the harder, larger half, where FP speed only improves if
 the float library itself is faster than the ROM's.

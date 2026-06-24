@@ -16,6 +16,7 @@
 #include "M6502.h"
 #include "DisplayDevice.h"
 
+#include <cctype>
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
@@ -60,14 +61,21 @@ std::string g_root, g_rt;
 // Build the native binary for `src` (float links basicrt_float). Returns "" on a
 // (skippable) build failure.
 std::string buildNative(const std::string& src, bool fp, const std::string& dir) {
-    auto nr = basicnative::compile(src, basicnative::Card::Gen2, fp);
+    auto nr = basicnative::compile(src, basicnative::Card::Gen2, fp ? basicnative::FpMode::Float : basicnative::FpMode::Int);
     if (!nr.ok) { std::fprintf(stderr, "native compile failed: %s\n", nr.error.c_str()); return ""; }
     { std::ofstream o(dir + "/p.s", std::ios::binary); o << nr.asmText; }
+    // -D RT_xxx for each runtime routine the program uses -> minimal runtime.
+    std::string defs;
+    for (std::string f : nr.runtimeFeatures) {
+        if (f.rfind("rt_", 0) != 0) continue;
+        for (char& c : f) c = static_cast<char>(std::toupper(static_cast<unsigned char>(c)));
+        defs += " -D " + f;
+    }
     const std::string I = " -I " + g_root + "/dev/lib/gen2 -I " + g_root + "/dev/lib/apple1 -I " + g_rt + " ";
     auto sh = [](const std::string& c) { return std::system(c.c_str()) == 0; };
     std::string objs = dir + "/p.o " + dir + "/rt.o";
     bool ok = sh("ca65" + I + "-o " + dir + "/p.o " + dir + "/p.s") &&
-              sh("ca65" + I + "-o " + dir + "/rt.o " + g_rt + "/basicrt_gen2.s");
+              sh("ca65" + defs + I + "-o " + dir + "/rt.o " + g_rt + "/basicrt_gen2.s");
     if (fp) { ok = ok && sh("ca65 -o " + dir + "/fp.o " + g_rt + "/basicrt_float.s"); objs += " " + dir + "/fp.o"; }
     ok = ok && sh("ld65 -C " + g_rt + "/basicc_native.cfg -o " + dir + "/p.bin " + objs);
     return ok ? (dir + "/p.bin") : "";
@@ -141,7 +149,17 @@ int main()
     int r2 = runCase("float", fpSrc, true, dir);
     if (r2 == kSkip) return kSkip;
 
-    if (r1 || r2) return 1;
+    // Code size: dead-stripping leaves a program that uses no runtime routines
+    // tiny (no graphics tables, no math/print/float linked).
+    std::string mb = buildNative("10 X=5+2\n20 X=X+1\n30 END\n", false, dir);
+    int sizeFail = 0;
+    if (!mb.empty()) {
+        size_t bytes = readBin(mb).size();
+        std::printf("size           minimal no-runtime program = %zu bytes (dead-stripped)\n", bytes);
+        if (bytes > 256) { std::fprintf(stderr, "FAIL size: %zu bytes (>256) -- runtime not stripped\n", bytes); sizeFail = 1; }
+    }
+
+    if (r1 || r2 || sizeFail) return 1;
     std::printf("basic_native_run: OK\n");
     return 0;
 }

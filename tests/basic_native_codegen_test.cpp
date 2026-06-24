@@ -20,7 +20,7 @@ std::string gen(const std::string& src)
 }
 std::string genf(const std::string& src)   // float phase
 {
-    auto r = basicnative::compile(src, basicnative::Card::Gen2, /*float=*/true);
+    auto r = basicnative::compile(src, basicnative::Card::Gen2, basicnative::FpMode::Float);
     if (!r.ok) { std::printf("FAIL float compile: %s\n", r.error.c_str()); ++failures; return {}; }
     return r.asmText;
 }
@@ -84,18 +84,45 @@ int main()
     }
     // Floating-point literals are rejected in the INTEGER phase.
     {
-        auto r = basicnative::compile("10 X=1.5\n", basicnative::Card::Gen2, /*float=*/false);
+        auto r = basicnative::compile("10 X=1.5\n", basicnative::Card::Gen2, basicnative::FpMode::Int);
         check("float literal rejected (int phase)", !r.ok && r.error.find("line 1") != std::string::npos);
     }
 
     // FLOAT phase: real binary32 ops, float literals OK, HPLOT coords converted.
     {
         std::string a = genf("10 X=1.5\n20 Y=X*X/3\n30 END\n");
-        check("float phase header", has(a, "(float phase)"));
-        check("float imports the FP runtime", has(a, "fp_mul") && has(a, "fp_div") && has(a, ".importzp FA, FB"));
+        check("float phase header", has(a, "float phase"));
+        check("float imports the FP runtime", has(a, "fp_mul") && has(a, "fp_div") && has(a, "FA, FB"));
         check("float var is 4 bytes", has(a, "V_X: .res 4"));
         std::string b = genf("10 HGR\n20 HPLOT X,Y\n30 END\n");
         check("float HPLOT converts coords (fp_toint16)", has(b, "jsr fp_toint16"));
+    }
+
+    // Auto precision: integer unless a fraction is needed. A '/' or a decimal
+    // literal -> float; otherwise integer (so the float runtime is never linked).
+    {
+        auto i = basicnative::compile("10 X=5+2\n20 END\n", basicnative::Card::Gen2);   // Auto
+        check("auto: all-integer stays integer", i.ok && !i.usesFloat);
+        auto f1 = basicnative::compile("10 X=5/2\n20 END\n", basicnative::Card::Gen2);  // '/' -> float
+        check("auto: '/' picks float", f1.ok && f1.usesFloat);
+        auto f2 = basicnative::compile("10 X=1.5\n20 END\n", basicnative::Card::Gen2);  // decimal -> float
+        check("auto: decimal picks float", f2.ok && f2.usesFloat);
+    }
+    // Minimal runtime: import ONLY what's used. A pure-compute program pulls no
+    // graphics/print/float; an int program never imports fp_*.
+    {
+        std::string a = gen("10 FOR I=0 TO 9\n20 NEXT I\n30 END\n");
+        check("no HPLOT -> no rt_plot import", !has(a, ".import") || !has(a, "rt_plot"));
+        check("int program imports no fp_", !has(a, "fp_add") && !has(a, "fp_mul"));
+        std::string g = gen("10 HGR\n20 HPLOT 1,1\n30 END\n");
+        check("no PRINT -> no rt_print import", !has(g, "rt_printcr"));
+    }
+    // Clear, line-precise errors naming the exact Applesoft line.
+    {
+        auto e = basicnative::compile("10 PRINT\n20 FOR\n30 END\n", basicnative::Card::Gen2);
+        check("error names the bad Applesoft line", !e.ok && has(e.error, "line 20"));
+        auto g2 = basicnative::compile("10 GOTO 99\n20 END\n", basicnative::Card::Gen2);
+        check("GOTO to missing line is caught", !g2.ok && has(g2.error, "99") && has(g2.error, "no such line"));
     }
 
     if (failures) { std::printf("basic_native_codegen: %d FAILED\n", failures); return 1; }

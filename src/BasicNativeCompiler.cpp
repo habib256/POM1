@@ -148,6 +148,13 @@ struct Codegen {
     struct ForCtx { std::string var; int id; };
     std::vector<ForCtx> forStack;
     std::set<int>       forSlots;   // FOR ids needing limit/step BSS slots
+    std::set<int>       lineNumbers; // all program line numbers (for GOTO/GOSUB checks)
+
+    // verify a GOTO/GOSUB/THEN target exists; emit a clear error if not.
+    bool checkTarget(int n, const char* kw) {
+        if (lineNumbers.count(n)) return true;
+        return fail(std::string(kw) + " " + std::to_string(n) + ": no such line number in the program");
+    }
 
     // current line's tokens + cursor
     const std::vector<Tok>* tk = nullptr;
@@ -446,8 +453,10 @@ bool Codegen::statement()
         return true;
     }
     if (isKw("GOTO")) { adv(); if (cur().t != T::Num) return fail("GOTO expects a line number");
+        if (!checkTarget(static_cast<int>(cur().num), "GOTO")) return false;
         emit("\tjmp L" + std::to_string(cur().num)); adv(); return true; }
     if (isKw("GOSUB")) { adv(); if (cur().t != T::Num) return fail("GOSUB expects a line number");
+        if (!checkTarget(static_cast<int>(cur().num), "GOSUB")) return false;
         emit("\tjsr L" + std::to_string(cur().num)); adv(); return true; }
 
     if (isKw("IF")) {
@@ -464,11 +473,13 @@ bool Codegen::statement()
         emit(thenL + ":");
         if (isKw("THEN")) {
             adv();
-            if (cur().t == T::Num) { emit("\tjmp L" + std::to_string(cur().num)); adv(); }
+            if (cur().t == T::Num) { if (!checkTarget(static_cast<int>(cur().num), "THEN")) return false;
+                                     emit("\tjmp L" + std::to_string(cur().num)); adv(); }
             else { if (!statement()) return false;
                    while (cur().t == T::Colon) { adv(); if (!statement()) return false; } }
         } else if (isKw("GOTO")) {
             adv(); if (cur().t != T::Num) return fail("IF .. GOTO expects a line number");
+            if (!checkTarget(static_cast<int>(cur().num), "GOTO")) return false;
             emit("\tjmp L" + std::to_string(cur().num)); adv();
         } else return fail("IF expects THEN or GOTO");
         emit(skip + ":");
@@ -591,11 +602,13 @@ bool Codegen::program(const std::vector<Line>& lines)
 
 } // namespace
 
-Result compile(const std::string& source, Card card, bool floatMode)
+Result compile(const std::string& source, Card card, FpMode mode)
 {
     Result r;
 
-    // split into numbered lines
+    // split into numbered lines (the FIRST token of each line is its Applesoft
+    // line number, used verbatim in every diagnostic so an error points at the
+    // exact line the author must fix).
     std::vector<Line> lines;
     Lexer lex(source);
     int physical = 0;
@@ -605,34 +618,77 @@ Result compile(const std::string& source, Card card, bool floatMode)
         size_t before = lex.i;
         if (!lex.lexLine(toks)) { r.error = "line " + std::to_string(physical) + ": " + lex.err; return r; }
         if (toks.empty()) continue;
-        if (toks[0].t != T::Num) { r.error = "line " + std::to_string(physical) + ": program lines must start with a line number"; return r; }
+        if (toks[0].t != T::Num)
+            return (r.error = "line " + std::to_string(physical) +
+                    ": every program line must start with a line number"), r;
+        if (toks[0].isFloat)
+            return (r.error = "line " + std::to_string(physical) +
+                    ": line number must be a whole number"), r;
         Line L; L.number = static_cast<int>(toks[0].num);
         L.toks.assign(toks.begin() + 1, toks.end());
         lines.push_back(std::move(L));
         if (lex.i == before) break;   // safety
     }
-    if (lines.empty()) { r.error = "no BASIC lines to compile"; return r; }
+    if (lines.empty()) { r.error = "no BASIC lines to compile (empty program)"; return r; }
 
     // ascending by line number (GOTO/GOSUB targets resolve to labels regardless,
     // but keep source order stable for equal numbers)
     std::stable_sort(lines.begin(), lines.end(),
                      [](const Line& a, const Line& b) { return a.number < b.number; });
 
+    // Auto precision: integer unless a line uses a fraction (decimal literal) or a
+    // '/' (Applesoft division is real) -> then binary32 float. This keeps a program
+    // that needs no floats from ever linking the float runtime.
+    bool floatMode;
+    if (mode == FpMode::Float) floatMode = true;
+    else if (mode == FpMode::Int) floatMode = false;
+    else {
+        floatMode = false;
+        for (const Line& L : lines)
+            for (const Tok& t : L.toks)
+                if ((t.t == T::Num && t.isFloat) || (t.t == T::Op && t.s == "/")) floatMode = true;
+    }
+
     Codegen g; g.card = card; g.fp = floatMode;
+    for (const Line& L : lines) g.lineNumbers.insert(L.number);   // for GOTO/GOSUB checks
     if (!g.program(lines)) { r.error = g.err; return r; }
+    r.usesFloat = floatMode;
 
     const int W = floatMode ? 4 : 2;   // value width
+    const std::string body = g.out.str();
+
+    // Import ONLY the runtime symbols the generated code actually references, so the
+    // build can assemble a minimal runtime (no unused routines / tables linked).
+    auto uses = [&](const std::string& sym) {
+        // match whole-symbol token (followed by non-identifier char)
+        size_t p = 0;
+        while ((p = body.find(sym, p)) != std::string::npos) {
+            char after = (p + sym.size() < body.size()) ? body[p + sym.size()] : '\n';
+            if (!(std::isalnum(static_cast<unsigned char>(after)) || after == '_')) return true;
+            p += sym.size();
+        }
+        return false;
+    };
+    const char* codeSyms[] = {"rt_hgr","rt_hcolor","rt_plot","rt_line","rt_mul","rt_div",
+                              "rt_cmp16","rt_print","rt_printcr","rt_putc",
+                              "fp_fromint16","fp_toint16","fp_add","fp_sub","fp_mul","fp_div","fp_cmp"};
+    const char* zpSyms[]   = {"rt_px","rt_py","rt_x0","rt_y0","rt_x1","rt_y1","rt_a","rt_b","FA","FB"};
+    std::vector<std::string> codeImp, zpImp;
+    for (const char* s : codeSyms) if (uses(s)) { codeImp.push_back(s); r.runtimeFeatures.push_back(s); }
+    for (const char* s : zpSyms)   if (uses(s)) zpImp.push_back(s);
+
     std::ostringstream o;
     o << "; ---- generated by BasicNativeCompiler (" << (floatMode ? "float" : "integer")
-      << " phase) ----\n";
+      << " phase, minimal runtime) ----\n";
     o << ".setcpu \"6502\"\n";
-    o << ".import rt_hgr, rt_hcolor, rt_plot, rt_line, rt_mul, rt_div, rt_cmp16\n";
-    o << ".import rt_print, rt_printcr, rt_putc\n";
-    o << ".importzp rt_px, rt_py, rt_x0, rt_y0, rt_x1, rt_y1, rt_a, rt_b\n";
-    if (floatMode) {
-        o << ".import fp_fromint16, fp_toint16, fp_add, fp_sub, fp_mul, fp_div, fp_cmp\n";
-        o << ".importzp FA, FB\n";
-    }
+    auto emitImport = [&](const char* kind, const std::vector<std::string>& v) {
+        if (v.empty()) return;
+        o << kind << ' ';
+        for (size_t i = 0; i < v.size(); ++i) o << (i ? ", " : "") << v[i];
+        o << "\n";
+    };
+    emitImport(".import", codeImp);
+    emitImport(".importzp", zpImp);
     o << ".export basic_main\n\n";
 
     // Declare zero-page storage FIRST so ca65 knows these labels are zp when it
@@ -655,7 +711,7 @@ Result compile(const std::string& source, Card card, bool floatMode)
         if (!v.empty() && v[0] != '\0')
             for (int i = 0; i < W; ++i)
                 o << "\tsta V_" << v << (i ? "+" + std::to_string(i) : "") << "\n";
-    o << g.out.str();
+    o << body;
     o << "basic_done:\n\tjmp basic_done\n\n";
 
     // comparison truth tables (index by rt_cmp16 result 0/1/2)

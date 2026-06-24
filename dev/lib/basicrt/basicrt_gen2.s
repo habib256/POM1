@@ -44,20 +44,31 @@ ln_tmp: .res 2
 pen:    .res 1
 
 ; ---- code ------------------------------------------------------------------
+; Each routine is gated on a feature flag (-D RT_xxx) so the build assembles ONLY
+; the runtime the compiled program imports -- unused routines and the 560-byte
+; pixel tables never reach the binary. The compiler emits minimal imports and the
+; driver derives the matching -D flags.
 .segment "CODE"
-.export rt_hgr, rt_hcolor, rt_plot, rt_line
 
+.ifdef RT_HGR
+.export rt_hgr
 ; rt_hgr: A = page (ignored; plot targets page 1 $2000). Init + clear.
 rt_hgr:
         jsr gen2_hgr_init
         jsr clear_hgr
         rts
+.endif
 
+.ifdef RT_HCOLOR
+.export rt_hcolor
 ; rt_hcolor: A = colour (GEN2 HGR plot is additive; kept for parity / future).
 rt_hcolor:
         sta pen
         rts
+.endif
 
+.if .defined(RT_PLOT) .or .defined(RT_LINE)
+.export rt_plot
 ; rt_plot: set pixel at (rt_px 0..279, rt_py 0..191). 16-bit X via col/mask tables.
 rt_plot:
         lda rt_py+1             ; clip Y to 0..191 (high byte must be 0, Y<192)
@@ -103,7 +114,10 @@ rt_plot:
         ora (ptr_lo),y
         sta (ptr_lo),y
 @done:  rts
+.endif  ; RT_PLOT/RT_LINE
 
+.ifdef RT_LINE
+.export rt_line
 ; rt_line: 16-bit Bresenham (rt_x0,rt_y0)->(rt_x1,rt_y1), running point in rt_px/py.
 rt_line:
         lda rt_x0
@@ -247,12 +261,14 @@ rt_line:
         sta rt_py+1
 @skipy:
         jmp @loop
+.endif  ; RT_LINE
 
-; ---- shared 16-bit integer math (rt_mul / rt_div / rt_cmp16) ----------------
+; ---- shared 16-bit integer math (rt_mul / rt_div / rt_cmp16) gated inside -----
 .include "basicrt_math.inc"
 
-; ---- 280-wide column / mask tables (full GEN2 hi-res width) -----------------
+; ---- 280-wide column / mask tables (only when a pixel routine is built) ------
 ; col280[X] = X/7 (byte within the scanline); mask280[X] = 1 << (X mod 7).
+.if .defined(RT_PLOT) .or .defined(RT_LINE)
 .segment "RODATA"
 col280:
 .repeat 280, I
@@ -262,9 +278,13 @@ mask280:
 .repeat 280, I
         .byte 1 << (I .mod 7)
 .endrepeat
+.endif
 
-; ---- GEN2 graphics leaf routines (project libs: gen2_hgr_init, clear_hgr,
-;      hgr_lo/hgr_hi scanline tables) -----------------------------------------
+; ---- GEN2 graphics leaf routines (project libs) -- only what's referenced ----
+.ifdef RT_HGR
 .include "gen2_init.asm"
 .include "hgr_clear.asm"
+.endif
+.if .defined(RT_PLOT) .or .defined(RT_LINE)
 .include "hgr_scanline.inc"
+.endif

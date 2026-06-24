@@ -2,7 +2,11 @@
 ; compiler. The including file must define (in ZEROPAGE): rt_a, rt_b (ABI), and
 ; the scratch m_prod, m_rem (2 bytes each) + m_sign (1 byte). CODE segment.
 
-.export rt_mul, rt_div, rt_cmp16, rt_print, rt_printcr, rt_putc
+; Routines gated per feature flag (-D RT_xxx) so the build assembles only what the
+; compiled program imports.
+
+.if .defined(RT_PRINT) .or .defined(RT_PUTC) .or .defined(RT_PRINTCR)
+.export rt_print, rt_printcr, rt_putc
 
 ECHO := $FFEF           ; WOZ Monitor char output (present in POM1 at $FF00)
 
@@ -60,7 +64,10 @@ rt_print:
         bne @l
         lda m_rem
         rts
+.endif  ; PRINT/PUTC/PRINTCR
 
+.ifdef RT_MUL
+.export rt_mul
 ; rt_mul: rt_a = rt_a * rt_b  (low 16 bits; correct for signed two's complement).
 rt_mul:
         lda #0
@@ -87,6 +94,10 @@ rt_mul:
         sta rt_a+1
         rts
 
+.endif  ; RT_MUL
+
+.ifdef RT_DIV
+.export rt_div
 ; rt_div: rt_a = rt_a / rt_b  (signed, truncate toward zero).
 rt_div:
         lda rt_a+1
@@ -141,6 +152,10 @@ rt_div:
         sta rt_a+1
 @done:  rts
 
+.endif  ; RT_DIV
+
+.ifdef RT_CMP16
+.export rt_cmp16
 ; rt_cmp16: signed compare rt_a vs rt_b -> A = 0 (a<b) / 1 (a==b) / 2 (a>b).
 rt_cmp16:
         lda rt_a
@@ -163,3 +178,4 @@ rt_cmp16:
         rts
 @less:  lda #0
         rts
+.endif  ; RT_CMP16

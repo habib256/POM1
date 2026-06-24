@@ -24,6 +24,11 @@ trap 'rm -rf "$TMP"' EXIT
 
 "$BASICC" --native $FLOAT --card "$CARD" "$SRC" -o "$TMP/prog.s"
 
+# Derive -D RT_xxx flags from the runtime routines the program actually imports,
+# so the runtime assembles ONLY those (unused routines + pixel tables are dropped).
+DEFS=$(grep -E '^\.import ' "$TMP/prog.s" | grep -oE 'rt_[a-z0-9]+' | sort -u \
+       | tr 'a-z' 'A-Z' | sed 's/^/-D /' | tr '\n' ' ') || true
+
 # Float programs also link the standalone binary32 runtime.
 FP_OBJ=""
 if [ -n "$FLOAT" ]; then
@@ -34,12 +39,12 @@ fi
 case "$CARD" in
   gen2)
     ca65 -I "$ROOT/dev/lib/gen2" -I "$ROOT/dev/lib/apple1" -I "$RT" -o "$TMP/prog.o" "$TMP/prog.s"
-    ca65 -I "$ROOT/dev/lib/gen2" -I "$ROOT/dev/lib/apple1" -I "$RT" -o "$TMP/rt.o"   "$RT/basicrt_gen2.s"
+    ca65 $DEFS -I "$ROOT/dev/lib/gen2" -I "$ROOT/dev/lib/apple1" -I "$RT" -o "$TMP/rt.o" "$RT/basicrt_gen2.s"
     ld65 -C "$RT/basicc_native.cfg" -o "$OUT" "$TMP/prog.o" "$TMP/rt.o" $FP_OBJ
     ;;
   tms)
     ca65 -I "$ROOT/dev/lib/tms9918" -I "$ROOT/dev/lib/apple1" -I "$RT" -o "$TMP/prog.o" "$TMP/prog.s"
-    ca65 -I "$ROOT/dev/lib/tms9918" -I "$ROOT/dev/lib/apple1" -I "$RT" -o "$TMP/rt.o"   "$RT/basicrt_tms.s"
+    ca65 $DEFS -I "$ROOT/dev/lib/tms9918" -I "$ROOT/dev/lib/apple1" -I "$RT" -o "$TMP/rt.o" "$RT/basicrt_tms.s"
     ca65 -I "$ROOT/dev/lib/tms9918" -I "$ROOT/dev/lib/apple1" -o "$TMP/m2.o"  "$ROOT/dev/lib/tms9918/tms9918m2.asm"
     ca65 -I "$ROOT/dev/lib/tms9918" -I "$ROOT/dev/lib/apple1" -o "$TMP/pad.o" "$ROOT/dev/lib/tms9918/tms9918_pad.asm"
     ld65 -C "$RT/basicc_native.cfg" -o "$OUT" "$TMP/prog.o" "$TMP/rt.o" "$TMP/m2.o" "$TMP/pad.o" $FP_OBJ

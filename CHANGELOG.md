@@ -10,6 +10,24 @@ is `git log`; the user-facing feature tour is `README.md`; open work lives in
 
 ## [Unreleased]
 
+### Added — native compiler: auto-precision, dead-stripping (minimal size), clear diagnostics
+
+- **Auto precision** (`FpMode::Auto`, the `basicc --native` default): the compiler
+  picks the **smallest sufficient** numeric type — 16-bit integer unless a line
+  needs a fraction (a decimal literal or a `/`), then binary32. A program that
+  uses no floats **never links the float runtime**. `--int`/`--float` force a tier.
+- **Minimal code size (dead-stripping):** the compiler emits only the runtime
+  symbols it uses, and the runtime (`basicrt_*.s`) gates each routine on a `-D
+  RT_xxx` flag the build derives from those imports — unused routines and the
+  560-byte hi-res pixel tables never reach the binary. Measured GEN2 sizes:
+  `X=5+2:X=X+1` **1695 → 89 B**, `PRINT`+`FOR` **1746 → 265 B**, `HGR:HPLOT` 1686
+  → 1165 B. Pinned by `basic_native_run` (size assertion) + `basic_native_codegen`.
+- **Clear, line-precise diagnostics** for authoring new programs: every error
+  names the exact Applesoft line (`line 20: FOR expects a variable`), `GOTO`/
+  `GOSUB`/`THEN` targets are validated at compile time (`GOTO 99: no such line
+  number`), float literals are rejected in the integer phase, and `NEXT` without
+  `FOR` is caught.
+
 ### Added — native compiler Phase 2b: float codegen (compile + run a float program, no ROM)
 
 - **The native compiler now emits floating-point code** (`basicnative::compile(…,

@@ -37,13 +37,15 @@ static std::string readAll(const std::string& path)
 int main(int argc, char** argv)
 {
     std::string target, input, output, card;
-    bool native = false, floatMode = false;
+    bool native = false;
+    basicnative::FpMode fpMode = basicnative::FpMode::Auto;
     for (int i = 1; i < argc; ++i) {
         std::string a = argv[i];
         if (a == "--target" && i + 1 < argc)      target = argv[++i];
         else if (a == "-o" && i + 1 < argc)       output = argv[++i];
         else if (a == "--native")                 native = true;
-        else if (a == "--float")                  floatMode = true;
+        else if (a == "--float")                  fpMode = basicnative::FpMode::Float;
+        else if (a == "--int")                    fpMode = basicnative::FpMode::Int;
         else if (a == "--card" && i + 1 < argc)   card = argv[++i];
         else if (!a.empty() && a[0] != '-')       input = a;
         else { std::fprintf(stderr, "unknown argument: %s\n", a.c_str()); return 2; }
@@ -60,15 +62,17 @@ int main(int argc, char** argv)
         const std::string src = readAll(input);
         if (src.empty()) { std::fprintf(stderr, "cannot read %s\n", input.c_str()); return 1; }
         const basicnative::Card c = (card == "gen2") ? basicnative::Card::Gen2 : basicnative::Card::Tms;
-        const basicnative::Result nr = basicnative::compile(src, c, floatMode);
+        const basicnative::Result nr = basicnative::compile(src, c, fpMode);
         if (!nr.ok) { std::fprintf(stderr, "compile error: %s\n", nr.error.c_str()); return 1; }
         if (output.empty()) std::fputs(nr.asmText.c_str(), stdout);
         else { std::ofstream o(output, std::ios::binary);
                if (!o) { std::fprintf(stderr, "cannot write %s\n", output.c_str()); return 1; }
                o << nr.asmText; }
-        std::fprintf(stderr, "compiled %s -> native %s %s asm: %d lines, %d vars\n",
-                     input.c_str(), card.c_str(), floatMode ? "float" : "integer",
-                     nr.lineCount, nr.varCount);
+        std::string feats;
+        for (const auto& f : nr.runtimeFeatures) feats += " " + f;
+        std::fprintf(stderr, "compiled %s -> native %s %s asm: %d lines, %d vars; runtime:%s\n",
+                     input.c_str(), card.c_str(), nr.usesFloat ? "float" : "integer",
+                     nr.lineCount, nr.varCount, feats.empty() ? " (none)" : feats.c_str());
         return 0;
     }
 
