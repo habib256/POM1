@@ -57,12 +57,24 @@ int main()
         check("HPLOT..TO -> rt_line", has(a, "jsr rt_line"));
         check("HPLOT point -> rt_plot", has(a, "jsr rt_plot"));
     }
-    // Structural: entry, halt, BSS-zero prologue.
+    // PRINT emits string chars + signed-decimal numbers + a trailing newline.
     {
-        std::string a = gen("10 END\n");
+        std::string a = gen("10 PRINT \"X=\";N\n20 END\n");
+        check("PRINT string -> rt_putc", has(a, "jsr rt_putc"));
+        check("PRINT number -> rt_print", has(a, "jsr rt_print"));
+        check("PRINT newline -> rt_printcr", has(a, "jsr rt_printcr"));
+    }
+    {   // trailing ';' suppresses the newline
+        std::string a = gen("10 PRINT \"A\";\n20 END\n");
+        check("PRINT trailing ; suppresses newline", !has(a, "jsr rt_printcr"));
+    }
+
+    // Structural: entry, halt, zero-page variables.
+    {
+        std::string a = gen("10 X=5\n20 END\n");
         check("entry label basic_main", has(a, "basic_main:"));
         check("halt label basic_done", has(a, "basic_done:"));
-        check("zeroes BSS at startup", has(a, "__BSS_START__"));
+        check("variables in zero page", has(a, ".segment \"ZEROPAGE\"") && has(a, "V_X: .res 2"));
     }
     // Floating-point literals are rejected (integer phase) with a line-numbered error.
     {

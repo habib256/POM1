@@ -1,22 +1,23 @@
 ; basicrt_gen2.s -- native BASIC runtime (rt_* ABI) for the GEN2 HGR card.
 ;
-; Implements the fixed ABI that BasicNativeCompiler's generated code calls:
+; Implements the ABI BasicNativeCompiler's generated code calls:
 ;   rt_hgr / rt_hcolor / rt_plot / rt_line / rt_mul / rt_div / rt_cmp16
-; plus the zero-page scratch (rt_px/rt_py/rt_x0..rt_y1/rt_a/rt_b). Wraps the
-; project's GEN2 graphics asm (gen2_hgr_init, clear_hgr, plot_pixel) -- those are
-; leaf graphics routines, not the Applesoft interpreter. The compiled program +
-; this runtime link into a standalone binary that needs only the GEN2 card.
+; plus zero-page ABI scratch (rt_px/rt_py/rt_x0..rt_y1/rt_a/rt_b). The compiled
+; program + this runtime link into a standalone binary that needs only the GEN2
+; card -- no Applesoft interpreter.
 ;
-; Build: ca65 -I dev/lib/gen2 -I dev/lib/apple1  (see basicc_native.cfg).
-; NOTE: plot_pixel takes an 8-bit X (cur_x), so this phase draws X in 0..255
-; (the integer demos stay in range). A 16-bit-X plot is a later refinement.
+; Plot/line use a FULL 16-bit X (0..279), the real GEN2 hi-res width (the project
+; plot_pixel lib is 8-bit X / 256-wide), via local 280-entry column/mask tables.
+; Scanline base tables (hgr_lo/hgr_hi, Y-indexed) are reused from the lib.
+;
+; Build: ca65 -I dev/lib/gen2 -I dev/lib/apple1 -I dev/lib/basicrt.
 
 .setcpu "6502"
 
-; ---- zero page: ABI scratch (exported) + lib + math/line scratch -----------
+; ---- zero page -------------------------------------------------------------
 .segment "ZEROPAGE"
-rt_px:  .res 2
-rt_py:  .res 2
+rt_px:  .res 2          ; current/plot X (0..279)
+rt_py:  .res 2          ; current/plot Y (0..191, low byte)
 rt_x0:  .res 2
 rt_y0:  .res 2
 rt_x1:  .res 2
@@ -25,20 +26,18 @@ rt_a:   .res 2
 rt_b:   .res 2
 .exportzp rt_px, rt_py, rt_x0, rt_y0, rt_x1, rt_y1, rt_a, rt_b
 
-; GEN2 plot lib ZP (referenced by plot_pixel / clear_hgr)
-cur_x:  .res 1
-cur_y:  .res 1
-ptr_lo: .res 1
+ptr_lo: .res 1          ; framebuffer pointer (plot)
 ptr_hi: .res 1
+tptr:   .res 2          ; table pointer (col/mask lookup with 16-bit X)
 
-; math + line scratch
-m_prod: .res 2
+m_prod: .res 2          ; shared math scratch (basicrt_math.inc)
 m_rem:  .res 2
 m_sign: .res 1
-ln_dx:  .res 1
-ln_dy:  .res 1
-ln_sx:  .res 1
-ln_sy:  .res 1
+
+ln_dx:  .res 2          ; 16-bit Bresenham state
+ln_dy:  .res 2
+ln_sx:  .res 2
+ln_sy:  .res 2
 ln_err: .res 2
 ln_e2:  .res 2
 ln_tmp: .res 2
@@ -46,10 +45,9 @@ pen:    .res 1
 
 ; ---- code ------------------------------------------------------------------
 .segment "CODE"
+.export rt_hgr, rt_hcolor, rt_plot, rt_line
 
-.export rt_hgr, rt_hcolor, rt_plot, rt_line, rt_mul, rt_div, rt_cmp16
-
-; rt_hgr: A = page (ignored; plot_pixel always targets page 1 $2000). Init + clear.
+; rt_hgr: A = page (ignored; plot targets page 1 $2000). Init + clear.
 rt_hgr:
         jsr gen2_hgr_init
         jsr clear_hgr
@@ -60,80 +58,145 @@ rt_hcolor:
         sta pen
         rts
 
-; rt_plot: plot (rt_px, rt_py) -- low bytes (X 0..255, Y 0..191).
+; rt_plot: set pixel at (rt_px 0..279, rt_py 0..191). 16-bit X via col/mask tables.
 rt_plot:
-        lda rt_px
-        sta cur_x
+        lda rt_py+1             ; clip Y to 0..191 (high byte must be 0, Y<192)
+        bne @done
         lda rt_py
-        sta cur_y
-        jmp plot_pixel
+        cmp #192
+        bcs @done
+        lda rt_px+1             ; clip X to 0..279
+        beq @xok                ; hi==0 -> 0..255, valid
+        cmp #1
+        bne @done               ; hi>1 -> X>=512, clip
+        lda rt_px               ; hi==1 -> valid iff low < 24 (X < 280)
+        cmp #<280
+        bcs @done
+@xok:
+        ldx rt_py
+        lda hgr_lo,x
+        sta ptr_lo
+        lda hgr_hi,x
+        sta ptr_hi
+        clc                     ; tptr = col280 + X ; ptr += col
+        lda #<col280
+        adc rt_px
+        sta tptr
+        lda #>col280
+        adc rt_px+1
+        sta tptr+1
+        ldy #0
+        lda (tptr),y
+        clc
+        adc ptr_lo
+        sta ptr_lo
+        bcc @nc
+        inc ptr_hi
+@nc:    clc                     ; tptr = mask280 + X ; OR mask
+        lda #<mask280
+        adc rt_px
+        sta tptr
+        lda #>mask280
+        adc rt_px+1
+        sta tptr+1
+        lda (tptr),y
+        ora (ptr_lo),y
+        sta (ptr_lo),y
+@done:  rts
 
-; rt_line: Bresenham (rt_x0,rt_y0)->(rt_x1,rt_y1) via plot_pixel (8-bit coords).
+; rt_line: 16-bit Bresenham (rt_x0,rt_y0)->(rt_x1,rt_y1), running point in rt_px/py.
 rt_line:
         lda rt_x0
-        sta cur_x
+        sta rt_px
+        lda rt_x0+1
+        sta rt_px+1
         lda rt_y0
-        sta cur_y
+        sta rt_py
+        lda rt_y0+1
+        sta rt_py+1
         ; dx = |x1-x0|, sx
         sec
         lda rt_x1
         sbc rt_x0
-        bcs @dxp
-        eor #$FF
-        clc
-        adc #1
-        ldy #$FF
-        sty ln_sx
-        jmp @dxs
-@dxp:   ldy #$01
-        sty ln_sx
-@dxs:   sta ln_dx
-        ; dy = |y1-y0|, sy
+        sta ln_dx
+        lda rt_x1+1
+        sbc rt_x0+1
+        sta ln_dx+1
+        bpl @dxp
         sec
+        lda #0
+        sbc ln_dx
+        sta ln_dx
+        lda #0
+        sbc ln_dx+1
+        sta ln_dx+1
+        lda #$FF
+        sta ln_sx
+        sta ln_sx+1
+        jmp @dy
+@dxp:   lda #1
+        sta ln_sx
+        lda #0
+        sta ln_sx+1
+@dy:    sec
         lda rt_y1
         sbc rt_y0
-        bcs @dyp
-        eor #$FF
-        clc
-        adc #1
-        ldy #$FF
-        sty ln_sy
-        jmp @dys
-@dyp:   ldy #$01
-        sty ln_sy
-@dys:   sta ln_dy
-        ; err = dx - dy (sign-extended to 16 bits)
+        sta ln_dy
+        lda rt_y1+1
+        sbc rt_y0+1
+        sta ln_dy+1
+        bpl @dyp
         sec
+        lda #0
+        sbc ln_dy
+        sta ln_dy
+        lda #0
+        sbc ln_dy+1
+        sta ln_dy+1
+        lda #$FF
+        sta ln_sy
+        sta ln_sy+1
+        jmp @ie
+@dyp:   lda #1
+        sta ln_sy
+        lda #0
+        sta ln_sy+1
+@ie:    sec                     ; err = dx - dy
         lda ln_dx
         sbc ln_dy
         sta ln_err
-        lda #0
-        sbc #0
+        lda ln_dx+1
+        sbc ln_dy+1
         sta ln_err+1
 @loop:
-        jsr plot_pixel
-        lda cur_x
+        jsr rt_plot
+        lda rt_px               ; reached end point?
         cmp rt_x1
         bne @cont
-        lda cur_y
+        lda rt_px+1
+        cmp rt_x1+1
+        bne @cont
+        lda rt_py
         cmp rt_y1
+        bne @cont
+        lda rt_py+1
+        cmp rt_y1+1
         bne @cont
         rts
 @cont:
-        ; e2 = err * 2
-        lda ln_err
+        lda ln_err              ; e2 = err * 2
         asl
         sta ln_e2
         lda ln_err+1
         rol
         sta ln_e2+1
-        ; if e2 > -dy  (i.e. e2 + dy > 0): err -= dy; cur_x += sx
+        ; if e2 > -dy  (e2 + dy > 0): err -= dy; x += sx
         clc
         lda ln_e2
         adc ln_dy
         sta ln_tmp
         lda ln_e2+1
-        adc #0
+        adc ln_dy+1
         sta ln_tmp+1
         lda ln_tmp+1
         bmi @skipx
@@ -145,19 +208,22 @@ rt_line:
         sbc ln_dy
         sta ln_err
         lda ln_err+1
-        sbc #0
+        sbc ln_dy+1
         sta ln_err+1
-        lda cur_x
         clc
+        lda rt_px
         adc ln_sx
-        sta cur_x
+        sta rt_px
+        lda rt_px+1
+        adc ln_sx+1
+        sta rt_px+1
 @skipx:
-        ; if e2 < dx  (i.e. dx - e2 > 0): err += dx; cur_y += sy
+        ; if e2 < dx  (dx - e2 > 0): err += dx; y += sy
         sec
         lda ln_dx
         sbc ln_e2
         sta ln_tmp
-        lda #0
+        lda ln_dx+1
         sbc ln_e2+1
         sta ln_tmp+1
         lda ln_tmp+1
@@ -170,18 +236,35 @@ rt_line:
         adc ln_dx
         sta ln_err
         lda ln_err+1
-        adc #0
+        adc ln_dx+1
         sta ln_err+1
-        lda cur_y
         clc
+        lda rt_py
         adc ln_sy
-        sta cur_y
+        sta rt_py
+        lda rt_py+1
+        adc ln_sy+1
+        sta rt_py+1
 @skipy:
         jmp @loop
 
 ; ---- shared 16-bit integer math (rt_mul / rt_div / rt_cmp16) ----------------
 .include "basicrt_math.inc"
 
-; ---- GEN2 graphics leaf routines (project libs) ----------------------------
+; ---- 280-wide column / mask tables (full GEN2 hi-res width) -----------------
+; col280[X] = X/7 (byte within the scanline); mask280[X] = 1 << (X mod 7).
+.segment "RODATA"
+col280:
+.repeat 280, I
+        .byte I / 7
+.endrepeat
+mask280:
+.repeat 280, I
+        .byte 1 << (I .mod 7)
+.endrepeat
+
+; ---- GEN2 graphics leaf routines (project libs: gen2_hgr_init, clear_hgr,
+;      hgr_lo/hgr_hi scanline tables) -----------------------------------------
 .include "gen2_init.asm"
-.include "hgr_tables.inc"
+.include "hgr_clear.asm"
+.include "hgr_scanline.inc"

@@ -30,7 +30,8 @@ tmp2:   .res 1
 .exportzp tmp, tmp2
 
 ; TMS9918 lib ABI (defined in tms9918m2.asm)
-.import init_vdp_g2, disable_sprites, clear_bitmap, plot_set, line_xy
+.import init_vdp_g2: absolute, disable_sprites: absolute, clear_bitmap: absolute
+.import plot_set: absolute, line_xy: absolute
 .importzp pix_x, pix_y, pen_color, ln_x0, ln_y0, ln_x1, ln_y1
 
 .segment "BSS"

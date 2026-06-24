@@ -29,9 +29,12 @@ is `git log`; the user-facing feature tour is `README.md`; open work lives in
   framebuffer **and** native faster) and `basic_native_codegen` (pure asm-text
   unit pin: strength reduction, FOR/NEXT, GOTO/GOSUB, graphics ABI).
 - Integer phase (16-bit signed: `+ - * /`, comparisons, `AND/OR/NOT`, `ABS`,
-  `FOR/NEXT`, `IF/THEN`, `GOTO`, `GOSUB/RETURN`, `HGR/HCOLOR/HPLOT`). A standalone
-  floating-point runtime (so `3DHat.apf` compiles to native code with no ROM) is
-  the documented next phase. See [`doc/BASIC_COMPILER.md`](doc/BASIC_COMPILER.md).
+  `FOR/NEXT`, `IF/THEN`, `GOTO`, `GOSUB/RETURN`, `PRINT`, `HGR/HCOLOR/HPLOT`).
+  **Phase-1 polish:** variables/temporaries moved to **zero page** (~20→25× on the
+  arith benchmark), **full 16-bit X** (GEN2 hi-res 0..279, verified exact), `PRINT`
+  of strings + signed integers via the WOZ terminal, and a clean TMS link. A
+  standalone floating-point runtime (so `3DHat.apf` compiles to native code with
+  no ROM) is the documented next phase. See [`doc/BASIC_COMPILER.md`](doc/BASIC_COMPILER.md).
 
 ### Added — Applesoft "BASIC compiler": compile an `.apf` to a 6502 image (no injection)
 

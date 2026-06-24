@@ -2,7 +2,64 @@
 ; compiler. The including file must define (in ZEROPAGE): rt_a, rt_b (ABI), and
 ; the scratch m_prod, m_rem (2 bytes each) + m_sign (1 byte). CODE segment.
 
-.export rt_mul, rt_div, rt_cmp16
+.export rt_mul, rt_div, rt_cmp16, rt_print, rt_printcr, rt_putc
+
+ECHO := $FFEF           ; WOZ Monitor char output (present in POM1 at $FF00)
+
+; rt_putc: A = char -> Apple-1 terminal (waits for DSP, writes $D012).
+rt_putc:
+        ora #$80
+        jmp ECHO
+
+; rt_printcr: newline.
+rt_printcr:
+        lda #$0D
+        jmp rt_putc
+
+; rt_print: print rt_a as a signed decimal integer.
+rt_print:
+        lda rt_a+1
+        bpl @u
+        lda #'-'
+        jsr rt_putc
+        sec
+        lda #0
+        sbc rt_a
+        sta rt_a
+        lda #0
+        sbc rt_a+1
+        sta rt_a+1
+@u:     lda #$FF                ; stack sentinel
+        pha
+@dl:    jsr @div10              ; rt_a /= 10, A = remainder 0..9
+        ora #'0'
+        pha
+        lda rt_a
+        ora rt_a+1
+        bne @dl
+@pl:    pla
+        cmp #$FF
+        beq @end
+        jsr rt_putc
+        jmp @pl
+@end:   rts
+@div10:
+        lda #0
+        sta m_rem
+        ldx #16
+@l:     asl rt_a
+        rol rt_a+1
+        rol m_rem
+        lda m_rem
+        cmp #10
+        bcc @s
+        sbc #10
+        sta m_rem
+        inc rt_a
+@s:     dex
+        bne @l
+        lda m_rem
+        rts
 
 ; rt_mul: rt_a = rt_a * rt_b  (low 16 bits; correct for signed two's complement).
 rt_mul:

@@ -283,10 +283,13 @@ bare image that loads + runs at `$0300`.
 
 ### Scope (integer phase)
 
-Variables and arithmetic are **16-bit signed**. Supported: `+ - * /`, comparisons,
-`AND/OR/NOT`, `ABS`, `FOR/NEXT`, `IF/THEN`, `GOTO`, `GOSUB/RETURN`, `END`, `REM`,
-and integer graphics `HGR/HGR2`, `HCOLOR=`, `HPLOT` (point + `TO`-chains). Float
-literals are rejected. **Phase 2 (future):** a standalone floating-point runtime
+Variables and arithmetic are **16-bit signed**, allocated in **zero page** (so
+every op uses the short/fast zp addressing mode). Supported: `+ - * /`,
+comparisons, `AND/OR/NOT`, `ABS`, `FOR/NEXT`, `IF/THEN`, `GOTO`, `GOSUB/RETURN`,
+`END`, `REM`, `PRINT` (string literals + signed integers, `;`/`,` separators,
+trailing-`;` newline suppression — via the WOZ terminal), and integer graphics
+`HGR/HGR2`, `HCOLOR=`, `HPLOT` (point + `TO`-chains) at the **full GEN2 hi-res
+width 0..279** (16-bit X; TMS is natively 0..255). Float literals are rejected. **Phase 2 (future):** a standalone floating-point runtime
 (`FADD/FMUL/.../SIN/SQR`) so float programs like `3DHat.apf` compile to native
 code with no ROM either — the harder, larger half, where FP speed only improves if
 the float library itself is faster than the ROM's.
