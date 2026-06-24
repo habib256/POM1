@@ -40,6 +40,7 @@ bool isKeyword(const std::string& s)
     static const std::set<std::string> kw = {
         "REM","HGR","HGR2","HCOLOR","HPLOT","TO","FOR","NEXT","STEP","IF","THEN",
         "GOTO","GOSUB","RETURN","END","STOP","LET","PRINT","AND","OR","NOT","ABS",
+        "INT","SQR","SIN",
     };
     return kw.count(s) != 0;
 }
@@ -133,7 +134,7 @@ struct Line { int number; std::vector<Tok> toks; };
 struct Codegen {
     Card card;
     bool fp = false;        // floating-point phase (binary32) vs integer phase
-    std::ostringstream out;
+    std::vector<std::string> code;   // emitted lines (peephole-optimized in body())
     std::string err;
 
     int vw() const { return fp ? 4 : 2; }   // value width in bytes
@@ -161,8 +162,18 @@ struct Codegen {
     size_t p = 0;
     int curLineNo = 0;
 
-    void emit(const std::string& s) { out << s << "\n"; }
+    void emit(const std::string& s) { code.push_back(s); }
     bool fail(const std::string& m) { err = "line " + std::to_string(curLineNo) + ": " + m; return false; }
+
+    // ---- peephole optimizer (see optimizePeephole) -----------------------------
+    // Produce the final assembly body after running the peephole pass. The native
+    // codegen routes every value through 2/4-byte temp slots; the optimizer fuses
+    // the resulting "define a temp, then immediately copy it elsewhere" chains so
+    // the standalone image stays small (a hard requirement -- code shares the
+    // $0300-$1FFF window with the GEN2 framebuffer at $2000).
+    std::string body() { optimizePeephole(); std::string s;
+        for (const std::string& l : code) { s += l; s += "\n"; } return s; }
+    void optimizePeephole();
 
     const Tok& cur() { static Tok eol; return p < tk->size() ? (*tk)[p] : eol; }
     void adv() { ++p; }
@@ -294,6 +305,22 @@ bool Codegen::primary(int d)
         emit("\tsec"); emit("\tlda #0"); emit("\tsbc " + Td); emit("\tsta " + Td);
         emit("\tlda #0"); emit("\tsbc " + Td + "+1"); emit("\tsta " + Td + "+1");
         emit(done + ":"); return true; }
+    // INT(x): truncate toward zero. In the integer phase values are already whole,
+    // so INT is the identity and links nothing; in float it calls fp_int.
+    if (isKw("INT")) { adv(); if (cur().t != T::LParen) return fail("INT expects '('"); adv();
+        if (!expr(d)) return false; if (cur().t != T::RParen) return fail("expected ')'"); adv();
+        if (fp) { copyV("FA", Td); emit("\tjsr fp_int"); copyV(Td, "FA"); }
+        return true; }
+    // SQR(x) / SIN(x): transcendental, float only (the auto-precision pass forces
+    // the float phase whenever either appears, so fp is always true here).
+    if (isKw("SQR") || isKw("SIN")) {
+        const char* rt = isKw("SQR") ? "fp_sqrt" : "fp_sin";
+        const char* nm = isKw("SQR") ? "SQR" : "SIN";
+        adv(); if (cur().t != T::LParen) return fail(std::string(nm) + " expects '('"); adv();
+        if (!expr(d)) return false; if (cur().t != T::RParen) return fail("expected ')'"); adv();
+        if (!fp) return fail(std::string(nm) + " requires the floating-point phase");
+        copyV("FA", Td); emit(std::string("\tjsr ") + rt); copyV(Td, "FA");
+        return true; }
     return fail("expected a value");
 }
 
@@ -331,6 +358,33 @@ void Codegen::binOp(const std::string& op, const std::string& a, const std::stri
 // float a = a <op> b  (4-byte binary32 temps; runtime ops on FA/FB)
 void Codegen::fpBinOp(const std::string& op, const std::string& a, const std::string& b)
 {
+    // Logical AND/OR on float truth values (0.0 = false, non-zero = true).
+    // Result is the canonical float 1.0 / 0.0. Reduce each operand to a 0/1 byte
+    // (true if any of the low 3 bytes or the masked exponent/sign is non-zero),
+    // combine, then materialise the float result -- never the fp_cmp path.
+    if (op == "AND" || op == "OR") {
+        auto truthByte = [&](const std::string& t, const std::string& dst) {
+            emit("\tlda " + t + "+3"); emit("\tand #$7F");
+            emit("\tora " + t); emit("\tora " + t + "+1"); emit("\tora " + t + "+2");
+            std::string nz = "Ltb" + std::to_string(labelCounter);
+            std::string dn = "Ltd" + std::to_string(labelCounter++);
+            emit("\tbeq " + nz); emit("\tlda #1"); emit("\tjmp " + dn);
+            emit(nz + ":\tlda #0"); emit(dn + ":\tsta " + dst);
+        };
+        truthByte(a, "FA"); truthByte(b, "FB");
+        emit("\tlda FA"); emit(op == "AND" ? "\tand FB" : "\tora FB");
+        std::string fl = "Llo" + std::to_string(labelCounter);
+        std::string dn = "Lld" + std::to_string(labelCounter++);
+        emit("\tbeq " + fl);
+        emit("\tlda #$00"); emit("\tsta " + a); emit("\tsta " + a + "+1");
+        emit("\tlda #$80"); emit("\tsta " + a + "+2"); emit("\tlda #$3F"); emit("\tsta " + a + "+3");  // 1.0
+        emit("\tjmp " + dn);
+        emit(fl + ":");
+        emit("\tlda #$00"); emit("\tsta " + a); emit("\tsta " + a + "+1");
+        emit("\tsta " + a + "+2"); emit("\tsta " + a + "+3");                                          // 0.0
+        emit(dn + ":");
+        return;
+    }
     copyV("FA", a); copyV("FB", b);
     if (op == "+" || op == "-" || op == "*" || op == "/") {
         const char* rt = op == "+" ? "fp_add" : op == "-" ? "fp_sub" : op == "*" ? "fp_mul" : "fp_div";
@@ -352,6 +406,160 @@ void Codegen::fpBinOp(const std::string& op, const std::string& a, const std::st
     emit("\tlda #$00"); emit("\tsta " + a); emit("\tsta " + a + "+1");
     emit("\tsta " + a + "+2"); emit("\tsta " + a + "+3");                                          // 0.0
     emit(done + ":");
+}
+
+// ---- peephole optimizer ----------------------------------------------------
+// The codegen emits values through fixed 2/4-byte slots, producing chains like
+//   <define Tn>            ; lda <src|#imm> / sta Tn+0..w-1   (a "store block")
+//   lda Tn+0 / sta D+0 ... ; copy block  D <- Tn
+// Two transforms run to fixpoint on straight-line spans:
+//   CP: a store block to a temp Tn, immediately followed by a copy block D<-Tn
+//       with Tn dead afterwards, is rewritten to store straight into D (the
+//       intermediate temp vanishes).
+//   SC: a resulting self-copy block (D <- D) is deleted.
+// Liveness is intra-block only: any label / branch / jmp / jsr / rts ends the
+// scan conservatively (Tn assumed live), so cross-flow values are never touched.
+namespace {
+// strip a "+N" byte offset; return base operand and the offset (0 if none).
+bool splitOff(const std::string& op, std::string& base, int& off) {
+    size_t plus = op.find('+');
+    if (plus == std::string::npos) { base = op; off = 0; return true; }
+    base = op.substr(0, plus);
+    off = std::atoi(op.c_str() + plus + 1);
+    return true;
+}
+// a single-tab "  mnem operand" line (no label prefix). Returns false for labels,
+// blank lines, or label:insn lines.
+bool parseInsn(const std::string& l, std::string& mnem, std::string& operand) {
+    if (l.size() < 4 || l[0] != '\t') return false;
+    size_t sp = l.find(' ', 1);
+    if (sp == std::string::npos) { mnem = l.substr(1); operand.clear(); return true; }
+    mnem = l.substr(1, sp - 1); operand = l.substr(sp + 1);
+    return true;
+}
+bool isTempName(const std::string& s) {
+    if (s.size() < 2 || s[0] != 'T') return false;
+    for (size_t i = 1; i < s.size(); ++i) if (!std::isdigit((unsigned char)s[i])) return false;
+    return true;
+}
+bool isFlowLine(const std::string& l) {
+    std::string m, o;
+    if (!parseInsn(l, m, o)) return true;   // label / blank / label:insn -> boundary
+    return m == "jmp" || m == "jsr" || m == "rts" || m == "rti" || m == "brk" ||
+           (m.size() == 3 && m[0] == 'b' && m != "bit");   // branches
+}
+} // namespace
+
+void Codegen::optimizePeephole()
+{
+    const int w = vw();
+    // Detect a store block at index i: w consecutive (lda <any> / sta base+j) pairs
+    // writing base+0,+1,... in order. Fills base and the w source operands.
+    auto storeBlock = [&](size_t i, std::string& base, std::vector<std::string>& src) -> bool {
+        if (i + 2 * w > code.size()) return false;
+        src.clear();
+        for (int j = 0; j < w; ++j) {
+            std::string lm, lo, sm, so, sb; int soff;
+            if (!parseInsn(code[i + 2*j], lm, lo) || lm != "lda") return false;
+            if (!parseInsn(code[i + 2*j + 1], sm, so) || sm != "sta") return false;
+            splitOff(so, sb, soff);
+            if (soff != j) return false;
+            if (j == 0) base = sb; else if (sb != base) return false;
+            src.push_back(lo);
+        }
+        return true;
+    };
+    auto baseEq = [&](const std::string& op, const std::string& nm) {
+        if (op.empty() || op[0] == '#') return false;
+        std::string b; int o; splitOff(op, b, o); return b == nm;
+    };
+    // A jsr to a runtime routine (fp_*/rt_*) never touches compiler temps (Tn live
+    // in zero page that only the generated code references), so it is transparent to
+    // temp liveness; a jsr to a GOSUB target (L<num>) runs generated code and is not.
+    auto jsrTransparent = [&](const std::string& o) {
+        return o.rfind("fp_", 0) == 0 || o.rfind("rt_", 0) == 0;
+    };
+    // Tn dead from index `idx`: redefined (all w bytes stored) before any read, with
+    // no intervening control flow. Returns false (live) on any flow line or read.
+    auto deadAfter = [&](size_t idx, const std::string& M) -> bool {
+        std::set<int> redef;
+        for (size_t k = idx; k < code.size(); ++k) {
+            const std::string& l = code[k];
+            std::string m, o;
+            if (!parseInsn(l, m, o)) return false;            // label / boundary
+            if (m == "sta") { std::string b; int off; splitOff(o, b, off);
+                if (b == M) { redef.insert(off); if ((int)redef.size() == w) return true; }
+                continue; }                                   // store is a write
+            if (m == "jsr") { if (jsrTransparent(o)) continue; return false; }
+            if (isFlowLine(l)) return false;                  // branch/jmp/rts
+            if (baseEq(o, M)) return false;                   // a read of M
+        }
+        return true;                                          // fell off end: dead
+    };
+
+    bool changed = true;
+    while (changed) {
+        changed = false;
+        // SC: drop self-copy blocks (D <- D).
+        for (size_t i = 0; i + 2*w <= code.size();) {
+            std::string base; std::vector<std::string> src;
+            if (storeBlock(i, base, src)) {
+                bool self = true;
+                for (int j = 0; j < w && self; ++j)
+                    if (!baseEq(src[j], base) ||
+                        src[j] != (j ? base + "+" + std::to_string(j) : base)) self = false;
+                if (self) { code.erase(code.begin()+i, code.begin()+i+2*w); changed = true; continue; }
+            }
+            ++i;
+        }
+        // CP: store-block defining temp M, whose value's first subsequent use is a
+        // copy block D<-M (M dead after), is retargeted to store straight into D.
+        // The copy block need not be adjacent -- intervening straight-line code that
+        // never touches M or D is skipped -- so operand temps (left into Td, right
+        // into T(d+1), then both copied to FA/FB) collapse away too.
+        for (size_t i = 0; i + 2*w <= code.size(); ++i) {
+            std::string M; std::vector<std::string> src;
+            if (!storeBlock(i, M, src) || !isTempName(M)) continue;
+            size_t c = i + 2*w;
+            // Find M's first reference at/after c. It must be the head of a copy block
+            // D<-M; anything else (read in an op, write, flow) aborts the fusion.
+            size_t f = code.size(); std::string D; std::vector<std::string> csrc;
+            bool ok = false;
+            for (size_t k = c; k < code.size(); ++k) {
+                std::string m, o;
+                if (!parseInsn(code[k], m, o)) break;                       // boundary
+                if (m == "jsr") { if (jsrTransparent(o)) continue; break; } // GOSUB: stop
+                if (isFlowLine(code[k])) break;
+                if (m == "sta") { std::string b; int off; splitOff(o, b, off);
+                    if (b == M) break; else continue; }                     // write
+                if (baseEq(o, M)) {                                         // first read of M
+                    if (storeBlock(k, D, csrc)) {
+                        bool isCopy = true;
+                        for (int j = 0; j < w && isCopy; ++j)
+                            if (csrc[j] != (j ? M + "+" + std::to_string(j) : M)) isCopy = false;
+                        if (isCopy) { f = k; ok = true; }
+                    }
+                    break;                                                  // resolved (copy or not)
+                }
+            }
+            if (!ok) continue;
+            // D must not be aliased by M's def sources, nor touched between c and f
+            // (we are hoisting D's assignment up to i).
+            bool bad = false;
+            for (const std::string& a : src) if (baseEq(a, D)) { bad = true; break; }
+            for (size_t k = c; k < f && !bad; ++k) {
+                std::string m, o; if (!parseInsn(code[k], m, o)) { bad = true; break; }
+                if (baseEq(o, D)) bad = true;
+                else if (m == "sta") { std::string b; int off; splitOff(o, b, off); if (b == D) bad = true; }
+            }
+            if (bad) continue;
+            if (!deadAfter(f + 2*w, M)) continue;
+            for (int j = 0; j < w; ++j)                        // retarget stores to D
+                code[i + 2*j + 1] = "\tsta " + D + (j ? "+" + std::to_string(j) : "");
+            code.erase(code.begin()+f, code.begin()+f+2*w);   // drop the copy block
+            changed = true; break;
+        }
+    }
 }
 
 // Td = Td * k, decomposed into shifts + adds over the set bits of |k| (no runtime
@@ -646,7 +854,8 @@ Result compile(const std::string& source, Card card, FpMode mode)
         floatMode = false;
         for (const Line& L : lines)
             for (const Tok& t : L.toks)
-                if ((t.t == T::Num && t.isFloat) || (t.t == T::Op && t.s == "/")) floatMode = true;
+                if ((t.t == T::Num && t.isFloat) || (t.t == T::Op && t.s == "/") ||
+                    (t.t == T::Kw && (t.s == "SQR" || t.s == "SIN"))) floatMode = true;
     }
 
     Codegen g; g.card = card; g.fp = floatMode;
@@ -655,7 +864,7 @@ Result compile(const std::string& source, Card card, FpMode mode)
     r.usesFloat = floatMode;
 
     const int W = floatMode ? 4 : 2;   // value width
-    const std::string body = g.out.str();
+    const std::string body = g.body();
 
     // Import ONLY the runtime symbols the generated code actually references, so the
     // build can assemble a minimal runtime (no unused routines / tables linked).
@@ -671,7 +880,8 @@ Result compile(const std::string& source, Card card, FpMode mode)
     };
     const char* codeSyms[] = {"rt_hgr","rt_hcolor","rt_plot","rt_line","rt_mul","rt_div",
                               "rt_cmp16","rt_print","rt_printcr","rt_putc",
-                              "fp_fromint16","fp_toint16","fp_add","fp_sub","fp_mul","fp_div","fp_cmp"};
+                              "fp_fromint16","fp_toint16","fp_add","fp_sub","fp_mul","fp_div","fp_cmp",
+                              "fp_int","fp_sqrt","fp_sin"};
     const char* zpSyms[]   = {"rt_px","rt_py","rt_x0","rt_y0","rt_x1","rt_y1","rt_a","rt_b","FA","FB"};
     std::vector<std::string> codeImp, zpImp;
     for (const char* s : codeSyms) if (uses(s)) { codeImp.push_back(s); r.runtimeFeatures.push_back(s); }

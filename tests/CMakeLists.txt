@@ -461,6 +461,32 @@ add_test(NAME basic_float_runtime COMMAND test_basic_float_runtime
          WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
 set_tests_properties(basic_float_runtime PROPERTIES TIMEOUT 120 SKIP_RETURN_CODE 77)
 
+# -- Native compiler benchmarks (size + speed across program types) -----------
+# Measurement harness: builds the standalone native image for representative
+# Applesoft program types (integer arith, raster, float, transcendental, lines,
+# 3-D HAT) and prints a markdown table of binary size, linked runtime routines,
+# and native-vs-interpreter cycles. Skips (77) without cc65 or the GEN2 ROM.
+add_executable(test_basic_native_bench
+    basic_native_bench_test.cpp
+    ${CMAKE_SOURCE_DIR}/src/BasicNativeCompiler.cpp
+    ${CMAKE_SOURCE_DIR}/src/BasicCompiler.cpp
+    ${POM1_TEST_CORE_SOURCES}
+)
+target_include_directories(test_basic_native_bench PRIVATE
+    ${CMAKE_SOURCE_DIR}/src
+    ${CMAKE_SOURCE_DIR}/imgui
+)
+target_link_libraries(test_basic_native_bench PRIVATE libresidfp_static)
+if(APPLE)
+    target_compile_definitions(test_basic_native_bench PRIVATE GL_SILENCE_DEPRECATION)
+endif()
+if(WIN32)
+    target_link_libraries(test_basic_native_bench PRIVATE ws2_32)
+endif()
+add_test(NAME basic_native_bench COMMAND test_basic_native_bench
+         WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+set_tests_properties(basic_native_bench PROPERTIES TIMEOUT 300 SKIP_RETURN_CODE 77)
+
 # -- SID audio production smoke test ------------------------------------------
 # Needs the full Memory+peripheral core to exercise the PeripheralBus path.
 add_executable(test_sid_audio

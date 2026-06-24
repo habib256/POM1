@@ -29,10 +29,16 @@ trap 'rm -rf "$TMP"' EXIT
 DEFS=$(grep -E '^\.import ' "$TMP/prog.s" | grep -oE 'rt_[a-z0-9]+' | sort -u \
        | tr 'a-z' 'A-Z' | sed 's/^/-D /' | tr '\n' ' ') || true
 
-# Float programs also link the standalone binary32 runtime.
+# Float programs also link the standalone binary32 runtime. The transcendental
+# routines (fp_int/fp_sqrt/fp_sin) are themselves gated, so assemble them ONLY
+# when the program imports them -- a plain +-*/ float program drops them.
 FP_OBJ=""
 if [ -n "$FLOAT" ]; then
-  ca65 -o "$TMP/fp.o" "$RT/basicrt_float.s"
+  FPDEFS=""
+  grep -q 'fp_int\b'  "$TMP/prog.s" && FPDEFS="$FPDEFS -D FP_INT"
+  grep -q 'fp_sqrt\b' "$TMP/prog.s" && FPDEFS="$FPDEFS -D FP_SQRT"
+  grep -q 'fp_sin\b'  "$TMP/prog.s" && FPDEFS="$FPDEFS -D FP_SIN"
+  ca65 $FPDEFS -o "$TMP/fp.o" "$RT/basicrt_float.s"
   FP_OBJ="$TMP/fp.o"
 fi
 

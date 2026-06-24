@@ -59,7 +59,7 @@ struct Fp {
         const std::string s   = root + "/dev/lib/basicrt/basicrt_float.s";
         const std::string cfg = root + "/dev/lib/basicrt/basicrt_float.cfg";
         const std::string o = dir + "/f.o", bin = dir + "/f.bin", lbl = dir + "/f.lbl";
-        if (std::system(("ca65 -o " + o + " " + s + " 2>/dev/null").c_str()) != 0) return false;
+        if (std::system(("ca65 -DFP_INT -DFP_SQRT -DFP_SIN -o " + o + " " + s + " 2>/dev/null").c_str()) != 0) return false;
         if (std::system(("ld65 -C " + cfg + " -Ln " + lbl + " -o " + bin + " " + o + " 2>/dev/null").c_str()) != 0) return false;
         std::ifstream bf(bin, std::ios::binary);
         std::vector<unsigned char> b((std::istreambuf_iterator<char>(bf)), std::istreambuf_iterator<char>());
@@ -132,6 +132,22 @@ int main()
         uint8_t got = fp.run("fp_cmp");
         uint8_t exp = (a < b) ? 0 : (a == b) ? 1 : 2;
         ++total; if (got != exp) { ++fails; if (fails <= 15) std::printf("FAIL cmp %g,%g: got %d exp %d\n", a, b, got, exp); }
+    }
+
+    // INT (truncate toward zero)
+    for (float a : vals) { fp.wf(fp.FA, a); fp.run("fp_int"); ck("int", fp.rf(fp.FA), std::trunc(a)); }
+    for (int k = -500; k <= 500; ++k) { float f = k * 0.37f; fp.wf(fp.FA, f); fp.run("fp_int"); ck("int", fp.rf(fp.FA), std::trunc(f)); }
+
+    // SQRT (Newton-Raphson) -- defined for a >= 0
+    for (float a : vals) if (a >= 0) { fp.wf(fp.FA, a); fp.run("fp_sqrt"); ck("sqrt", fp.rf(fp.FA), std::sqrt(a)); }
+    for (int k = 0; k <= 4000; k += 3) { float f = k * 0.5f; fp.wf(fp.FA, f); fp.run("fp_sqrt"); ck("sqrt", fp.rf(fp.FA), std::sqrt(f)); }
+
+    // SIN (range reduction + Taylor); args within ~+-5000 (k must fit 16 bits)
+    for (int k = -3140; k <= 3140; k += 7) {
+        float f = k * 0.01f; fp.wf(fp.FA, f); fp.run("fp_sin"); ck("sin", fp.rf(fp.FA), std::sin(f));
+    }
+    for (float f : {-4000.f,-1000.f,-12.5f,-6.28318f,-3.14159f,-1.f,0.f,1.f,3.14159f,6.28318f,12.5f,100.f,1000.f,4000.f}) {
+        fp.wf(fp.FA, f); fp.run("fp_sin"); ck("sin", fp.rf(fp.FA), std::sin(f));
     }
 
     if (fails) { std::printf("basic_float_runtime: %d/%d FAILED\n", fails, total); return 1; }

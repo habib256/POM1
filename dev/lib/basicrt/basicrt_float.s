@@ -762,3 +762,255 @@ fp_cmp:
         rts
 @less:  lda #0
         rts
+
+; ============================================================================
+; Transcendentals -- built on the fp_* core above. Gated per feature (-D FP_xxx)
+; so a program that doesn't use them never links them.
+; ============================================================================
+.if .defined(FP_SQRT) .or .defined(FP_SIN) .or .defined(FP_INT)
+.segment "ZEROPAGE"
+sA: .res 4              ; scratch float a / argument
+sY: .res 4              ; scratch float y
+sR: .res 4              ; scratch float (sin: reduced angle / accumulators)
+sR2: .res 4
+.segment "CODE"
+.endif
+
+; ---- fp_int: FA = truncate-toward-zero(FA)  (Applesoft INT for >= 0) ---------
+.ifdef FP_INT
+.export fp_int
+fp_int:
+        jsr unpackA
+        lda amnt+0
+        ora amnt+1
+        ora amnt+2
+        bne @nz
+@zero:  lda #0
+        sta FA+0
+        sta FA+1
+        sta FA+2
+        sta FA+3
+        rts
+@nz:    lda aexp+1
+        bpl @keep               ; E >= 0 -> already integer
+        sec                     ; k = -E
+        lda #0
+        sbc aexp
+        sta fcnt
+        cmp #24
+        bcs @zero               ; |x| < 1 -> 0
+        ldx fcnt                ; clear low k bits: >>k then <<k
+@sr:    lsr amnt+2
+        ror amnt+1
+        ror amnt+0
+        dex
+        bne @sr
+        ldx fcnt
+@sl:    asl amnt+0
+        rol amnt+1
+        rol amnt+2
+        dex
+        bne @sl
+        lda amnt+0
+        ora amnt+1
+        ora amnt+2
+        beq @zero
+        lda asgn
+        sta rsgn
+        lda aexp
+        sta rexp
+        lda aexp+1
+        sta rexp+1
+        lda amnt+0
+        sta rmnt+0
+        lda amnt+1
+        sta rmnt+1
+        lda amnt+2
+        sta rmnt+2
+        lda #0
+        sta rmnt+3
+        jmp packA
+@keep:  rts
+.endif
+
+; ---- fp_sqrt: FA = sqrt(FA)  (Newton-Raphson; <=0 -> 0) ----------------------
+.ifdef FP_SQRT
+.export fp_sqrt
+fp_sqrt:
+        lda FA+3
+        bmi @z0                 ; negative -> 0
+        lda FA+0
+        ora FA+1
+        ora FA+2
+        ora FA+3
+        bne @go
+@z0:    lda #0
+        sta FA+0
+        sta FA+1
+        sta FA+2
+        sta FA+3
+        rts
+@go:    ldx #3                  ; sA = a
+@cpa:   lda FA,x
+        sta sA,x
+        dex
+        bpl @cpa
+        ; initial guess y0: ef_y0 = (ef + 127) >> 1, keep mantissa
+        lda FA+2
+        asl
+        lda FA+3
+        rol                     ; A = ef
+        clc
+        adc #127
+        ror                     ; A = (ef+127)>>1 = ef_y0
+        sta fcnt
+        lsr
+        sta FA+3                ; sign 0 | ef_y0>>1
+        lda FA+2
+        and #$7F
+        sta FA+2
+        lda fcnt
+        and #1
+        beq @it0
+        lda FA+2
+        ora #$80
+        sta FA+2
+@it0:   ldx #5                  ; 5 Newton iterations: y = (y + a/y) * 0.5
+@it:    lda FA+0
+        sta sY+0
+        lda FA+1
+        sta sY+1
+        lda FA+2
+        sta sY+2
+        lda FA+3
+        sta sY+3
+        ; FA = a / y
+        lda sA+0
+        sta FA+0
+        lda sA+1
+        sta FA+1
+        lda sA+2
+        sta FA+2
+        lda sA+3
+        sta FA+3
+        lda sY+0
+        sta FB+0
+        lda sY+1
+        sta FB+1
+        lda sY+2
+        sta FB+2
+        lda sY+3
+        sta FB+3
+        txa
+        pha
+        jsr fp_div
+        ; FA = FA + y
+        lda sY+0
+        sta FB+0
+        lda sY+1
+        sta FB+1
+        lda sY+2
+        sta FB+2
+        lda sY+3
+        sta FB+3
+        jsr fp_add
+        ; FA = FA * 0.5
+        lda #$00
+        sta FB+0
+        sta FB+1
+        sta FB+2
+        lda #$3F
+        sta FB+3
+        jsr fp_mul
+        pla
+        tax
+        dex
+        bne @it
+        rts
+.endif
+
+; ---- fp_sin: FA = sin(FA) radians ------------------------------------------
+; Range-reduce to [-pi/2, pi/2] then a 4-term Taylor series. Args within ~+-5000
+; (k = round(x/2pi) must fit 16 bits). Built entirely on fp_add/sub/mul/cmp.
+.ifdef FP_SIN
+.macro LDF reg, b0,b1,b2,b3
+        lda #b0
+        sta reg+0
+        lda #b1
+        sta reg+1
+        lda #b2
+        sta reg+2
+        lda #b3
+        sta reg+3
+.endmacro
+.macro CPF dst, src
+        lda src+0
+        sta dst+0
+        lda src+1
+        sta dst+1
+        lda src+2
+        sta dst+2
+        lda src+3
+        sta dst+3
+.endmacro
+.export fp_sin
+fp_sin:
+        CPF sA, FA                      ; sA = x
+        LDF FB, $83,$F9,$22,$3E         ; 1/2pi
+        jsr fp_mul                      ; FA = x/2pi
+        lda FA+3                        ; FB = copysign(0.5, FA)
+        and #$80
+        ora #$3F
+        sta FB+3
+        lda #0
+        sta FB+0
+        sta FB+1
+        sta FB+2
+        jsr fp_add
+        jsr fp_toint16                  ; round(x/2pi)
+        jsr fp_fromint16                ; FA = k
+        LDF FB, $DB,$0F,$C9,$40         ; 2pi
+        jsr fp_mul                      ; FA = k*2pi
+        CPF FB, FA
+        CPF FA, sA                      ; FA = x
+        jsr fp_sub                      ; FA = r in [-pi,pi]
+        CPF sR, FA
+        LDF FB, $DB,$0F,$C9,$3F         ; pi/2
+        jsr fp_cmp
+        cmp #2
+        bne @lo
+        LDF FA, $DB,$0F,$49,$40         ; pi
+        CPF FB, sR
+        jsr fp_sub                      ; pi - r
+        jmp @red
+@lo:    CPF FA, sR
+        LDF FB, $DB,$0F,$C9,$BF         ; -pi/2
+        jsr fp_cmp
+        cmp #0
+        bne @keepr
+        LDF FA, $DB,$0F,$49,$C0         ; -pi
+        CPF FB, sR
+        jsr fp_sub                      ; -pi - r
+        jmp @red
+@keepr: CPF FA, sR
+@red:   CPF sR, FA                      ; sR = reduced r
+        CPF FB, sR
+        jsr fp_mul                      ; FA = r^2
+        CPF sR2, FA
+        LDF FA, $01,$0D,$50,$B9         ; -1/5040
+        CPF FB, sR2
+        jsr fp_mul
+        LDF FB, $89,$88,$08,$3C         ; +1/120
+        jsr fp_add
+        CPF FB, sR2
+        jsr fp_mul
+        LDF FB, $AB,$AA,$2A,$BE         ; -1/6
+        jsr fp_add
+        CPF FB, sR2
+        jsr fp_mul
+        LDF FB, $00,$00,$80,$3F         ; +1
+        jsr fp_add
+        CPF FB, sR
+        jsr fp_mul                      ; FA = sin(x)
+        rts
+.endif

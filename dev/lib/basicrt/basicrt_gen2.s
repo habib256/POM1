@@ -56,6 +56,8 @@ pen:    .res 1
 rt_hgr:
         jsr gen2_hgr_init
         jsr clear_hgr
+        lda #3                  ; default pen non-zero so HPLOT before HCOLOR draws
+        sta pen
         rts
 .endif
 
@@ -110,8 +112,14 @@ rt_plot:
         lda #>mask280
         adc rt_px+1
         sta tptr+1
-        lda (tptr),y
+        lda (tptr),y            ; A = pixel mask
+        ldx pen                 ; HCOLOR 0 = erase (AND ~mask), else set (OR mask)
+        beq @clr
         ora (ptr_lo),y
+        sta (ptr_lo),y
+        rts
+@clr:   eor #$FF
+        and (ptr_lo),y
         sta (ptr_lo),y
 @done:  rts
 .endif  ; RT_PLOT/RT_LINE

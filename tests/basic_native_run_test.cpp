@@ -43,6 +43,10 @@ std::vector<unsigned char> readBin(const std::string& p) {
     std::ifstream f(p, std::ios::binary);
     return std::vector<unsigned char>((std::istreambuf_iterator<char>(f)), std::istreambuf_iterator<char>());
 }
+std::string readText(const std::string& p) {
+    std::ifstream f(p);
+    return std::string((std::istreambuf_iterator<char>(f)), std::istreambuf_iterator<char>());
+}
 int countFb(const uint8_t* m) { int n = 0; for (int a = 0x2000; a < 0x4000; ++a) if (m[a]) ++n; return n; }
 
 long long runStable(Memory& mem, M6502& cpu, int& finalCount) {
@@ -64,9 +68,13 @@ std::string buildNative(const std::string& src, bool fp, const std::string& dir)
     auto nr = basicnative::compile(src, basicnative::Card::Gen2, fp ? basicnative::FpMode::Float : basicnative::FpMode::Int);
     if (!nr.ok) { std::fprintf(stderr, "native compile failed: %s\n", nr.error.c_str()); return ""; }
     { std::ofstream o(dir + "/p.s", std::ios::binary); o << nr.asmText; }
-    // -D RT_xxx for each runtime routine the program uses -> minimal runtime.
-    std::string defs;
+    // -D RT_xxx for each runtime routine the program uses -> minimal runtime, and
+    // -D FP_xxx for each gated transcendental (fp_int/fp_sqrt/fp_sin) it imports.
+    std::string defs, fpdefs;
     for (std::string f : nr.runtimeFeatures) {
+        if (f == "fp_int")  { fpdefs += " -D FP_INT";  continue; }
+        if (f == "fp_sqrt") { fpdefs += " -D FP_SQRT"; continue; }
+        if (f == "fp_sin")  { fpdefs += " -D FP_SIN";  continue; }
         if (f.rfind("rt_", 0) != 0) continue;
         for (char& c : f) c = static_cast<char>(std::toupper(static_cast<unsigned char>(c)));
         defs += " -D " + f;
@@ -76,9 +84,32 @@ std::string buildNative(const std::string& src, bool fp, const std::string& dir)
     std::string objs = dir + "/p.o " + dir + "/rt.o";
     bool ok = sh("ca65" + I + "-o " + dir + "/p.o " + dir + "/p.s") &&
               sh("ca65" + defs + I + "-o " + dir + "/rt.o " + g_rt + "/basicrt_gen2.s");
-    if (fp) { ok = ok && sh("ca65 -o " + dir + "/fp.o " + g_rt + "/basicrt_float.s"); objs += " " + dir + "/fp.o"; }
+    if (fp) { ok = ok && sh("ca65" + fpdefs + " -o " + dir + "/fp.o " + g_rt + "/basicrt_float.s"); objs += " " + dir + "/fp.o"; }
     ok = ok && sh("ld65 -C " + g_rt + "/basicc_native.cfg -o " + dir + "/p.bin " + objs);
     return ok ? (dir + "/p.bin") : "";
+}
+
+// Build + run ONLY the native binary (no interpreter); assert it drew a substantial
+// picture. Used for the heavy 3-D HAT demo, where a full interpreter run would be far
+// too slow for a unit test (native/interpreter equivalence is pinned by the lighter
+// float case above). Returns 0 ok, 1 fail, kSkip skip.
+int runNativeOnly(const char* name, const std::string& src, int minPx, long long budget,
+                  const std::string& dir) {
+    std::string bin = buildNative(src, true, dir);
+    if (bin.empty()) { std::fprintf(stderr, "SKIP: cc65 build failed (%s)\n", name); return kSkip; }
+    auto b = readBin(bin);
+    if (b.empty()) { std::fprintf(stderr, "native binary empty (%s)\n", name); return 1; }
+    int nC = 0;
+    { Memory mem; mem.initMemory();
+      std::memcpy(mem.getMemoryPointerMutable() + 0x0300, b.data(), b.size());
+      M6502 cpu(&mem); cpu.setProgramCounter(0x0300); cpu.start();
+      const int slice = 200000;
+      for (long long t = 0; t < budget; t += slice) cpu.run(slice);
+      nC = countFb(mem.getMemoryPointerMutable()); }
+    std::printf("%-14s drew %d px in %lldM cyc (%zu B binary)  [native-only]\n",
+                name, nC, budget / 1000000, b.size());
+    if (nC < minPx) { std::fprintf(stderr, "FAIL %s: drew %d px (<%d)\n", name, nC, minPx); return 1; }
+    return 0;
 }
 
 // returns 0 ok, 1 fail, kSkip skip
@@ -149,6 +180,21 @@ int main()
     int r2 = runCase("float", fpSrc, true, dir);
     if (r2 == kSkip) return kSkip;
 
+    // The goal program: MTU's 3-D HAT (Micro, May 1981) -- HGR2 + FOR/IF/GOSUB +
+    // INT/SQR/SIN + decimal arithmetic + HCOLOR=0 hidden-line erase. Proves the full
+    // float pipeline (transcendentals, nested loops, subroutines, erase) compiles AND
+    // runs the real demo standalone. The hidden-line algorithm redraws+erases a lot,
+    // so we run a fixed budget and assert the hat outline is being drawn (rather than
+    // wait out the many-hundred-Mcycle full surface).
+    int r3 = 0;
+    std::string hat = readText(g_root + "/sketchs/basic_applesoft/3DHat.apf");
+    if (!hat.empty()) {
+        r3 = runNativeOnly("3dhat", hat, 150, 150000000LL, dir);
+        if (r3 == kSkip) return kSkip;
+    } else {
+        std::fprintf(stderr, "SKIP 3dhat: 3DHat.apf not found\n");
+    }
+
     // Code size: dead-stripping leaves a program that uses no runtime routines
     // tiny (no graphics tables, no math/print/float linked).
     std::string mb = buildNative("10 X=5+2\n20 X=X+1\n30 END\n", false, dir);
@@ -159,7 +205,7 @@ int main()
         if (bytes > 256) { std::fprintf(stderr, "FAIL size: %zu bytes (>256) -- runtime not stripped\n", bytes); sizeFail = 1; }
     }
 
-    if (r1 || r2 || sizeFail) return 1;
+    if (r1 || r2 || r3 || sizeFail) return 1;
     std::printf("basic_native_run: OK\n");
     return 0;
 }

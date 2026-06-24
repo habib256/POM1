@@ -10,6 +10,35 @@ is `git log`; the user-facing feature tour is `README.md`; open work lives in
 
 ## [Unreleased]
 
+### Added — native compiler: `SIN`/`SQR`/`INT`, peephole optimizer, `3DHat.apf` runs native
+
+- **Transcendentals in the float runtime** (`dev/lib/basicrt/basicrt_float.s`):
+  `fp_int` (truncate toward zero), `fp_sqrt` (Newton–Raphson, 5 iterations) and
+  `fp_sin` (2π range reduction → fold to [-π/2,π/2] → 4-term Taylor). Each is
+  **feature-gated** (`-D FP_INT`/`FP_SQRT`/`FP_SIN`) so it links only when the
+  program calls it. The compiler compiles `SIN`/`SQR`/`INT` to these, and
+  auto-precision forces the float phase when `SIN`/`SQR` appear. Logical `AND`/`OR`
+  on floats fixed (had fallen through to the comparison path). Pinned by
+  `basic_float_runtime` (now 5736 cases vs host `sinf`/`sqrtf`).
+- **`3DHat.apf` compiles and runs native on GEN2 and TMS9918** — the MTU/Micro
+  May-1981 hidden-line 3-D HAT (HGR2, nested `FOR`, `IF/GOTO`, `GOSUB/RETURN`,
+  `INT`/`SQR`/`SIN`, decimal literals, `HCOLOR=0` column erase) draws the sombrero
+  with proper hidden-line removal, standalone, **no ROM**. This meets the project
+  goal. Pinned by `basic_native_run` (native-only 3DHat case).
+- **`HCOLOR=0` erase** in the GEN2 runtime: `rt_plot` is pen-aware (`AND ~mask` to
+  clear vs `OR mask` to set), so the hidden-line "plot point then erase column
+  below" trick works; `rt_hgr` seeds a non-zero default pen.
+- **Peephole optimizer** (`Codegen::optimizePeephole`): fuses the codegen's
+  "define a temp, then copy it elsewhere" chains by retargeting the store straight
+  into the destination (temp vanishes; self-copies dropped). Intra-block liveness;
+  runtime `jsr fp_*`/`rt_*` transparent. Trims ~640 B — enough that the full 3DHat
+  fits GEN2's `$0300–$1FFF` window (`basicc_native.cfg` moves BSS to `$0200` to give
+  code the whole window up to the framebuffer at `$2000`).
+- **Benchmarks** (`basic_native_bench`): a size+speed-by-program-type table —
+  int-arith **21×**, int-raster **14×**, lines **2.4×**, float-arith **2.0×**,
+  transcend **1.4×** vs the interpreter; binary 354 B–7157 B with dead-stripping
+  (4 runtime routines for integer programs, 13 for 3DHat).
+
 ### Added — native compiler: auto-precision, dead-stripping (minimal size), clear diagnostics
 
 - **Auto precision** (`FpMode::Auto`, the `basicc --native` default): the compiler

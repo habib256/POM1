@@ -7,7 +7,7 @@ POM1 has **two** Applesoft compilers, for two different goals:
 | Output | tokenized program + launcher | **standalone 6502 machine code** |
 | Runtime | the Applesoft **interpreter ROM** | **none** — only the graphics card |
 | Speed of the program | same as the interpreter | **~20× faster** (integer/control code) |
-| Coverage | full Applesoft (FP, SIN/SQR, …) | integer subset (FP = future phase) |
+| Coverage | full Applesoft (FP, SIN/SQR, …) | integer **+ binary32 float incl. `SIN`/`SQR`/`INT`** |
 | Win | skips slow keyboard injection | **optimises + accelerates execution** |
 
 The first half of this document covers the **tokenizer** (load-without-injection);
@@ -290,17 +290,24 @@ comparisons, `AND/OR/NOT`, `ABS`, `FOR/NEXT`, `IF/THEN`, `GOTO`, `GOSUB/RETURN`,
 trailing-`;` newline suppression — via the WOZ terminal), and integer graphics
 `HGR/HGR2`, `HCOLOR=`, `HPLOT` (point + `TO`-chains) at the **full GEN2 hi-res
 width 0..279** (16-bit X; TMS is natively 0..255). Float literals are rejected.
+The float phase adds `SIN`, `SQR`, `INT` and decimal literals on top of the same
+control flow. `INT` in the integer phase is the identity (links nothing).
 
-### Phase 2 — standalone floating point (in progress)
+### Phase 2 — standalone floating point (done; 3DHat compiles + runs)
 
 **Phase 2a (done): a tested binary32 software-float runtime** —
 `dev/lib/basicrt/basicrt_float.s`, the autonomous FP core (no Applesoft ROM). It
 stores values as 4-byte IEEE-754 single and implements `fp_fromint16`,
-`fp_toint16`, `fp_add`, `fp_sub`, `fp_mul`, `fp_div`, `fp_cmp` (operands in the
-zero-page slots `FA`/`FB`). Internally a value unpacks to `{sign, E, SG}` with the
-24-bit significand `SG ∈ [2^23, 2^24)` and `value = SG·2^E`, computes, and repacks.
-Pinned by `basic_float_runtime` (cc65-gated): every op is checked against the
-host's IEEE `float` over a value grid + 4000 randomised pairs spanning 2^±20.
+`fp_toint16`, `fp_add`, `fp_sub`, `fp_mul`, `fp_div`, `fp_cmp` plus the
+transcendentals `fp_int` (truncate toward zero), `fp_sqrt` (Newton–Raphson, 5
+iterations) and `fp_sin` (2π range reduction → symmetry fold to [-π/2,π/2] → 4-term
+Taylor) — operands in the zero-page slots `FA`/`FB`. Internally a value unpacks to
+`{sign, E, SG}` with the 24-bit significand `SG ∈ [2^23, 2^24)` and `value = SG·2^E`,
+computes, and repacks. Each transcendental is **feature-gated** (`-D FP_INT` /
+`-D FP_SQRT` / `-D FP_SIN`) so it is assembled only when the program calls it. Pinned
+by `basic_float_runtime` (cc65-gated): every op — arithmetic and transcendental — is
+checked against the host's IEEE `float`/`sinf`/`sqrtf` over a value grid + randomised
+pairs (5736 cases).
 
 **Phase 2b (float codegen — validated): the compiler emits float code.**
 `basicnative::compile(src, card, /*floatMode=*/true)` (also `basicc --native
@@ -325,9 +332,37 @@ isn't cheaper than the ROM's float, so the ~2× gain is purely from removing
 interpreter overhead. Control/integer code, where that overhead dominates, wins
 an order of magnitude more.
 
-**Remaining for 3DHat:** the transcendentals `SIN/COS/SQR/INT/ATN` (polynomial /
-Newton, on top of the proven `fp_*` core) and `FOR` index type inference — then
-`3DHat.apf` compiles to native code with no ROM at all.
+**Phase 2c (done): `SIN`/`SQR`/`INT` + `3DHat.apf` runs native.** `primary()`
+compiles `SIN`/`SQR`/`INT` to a `jsr fp_sin`/`fp_sqrt`/`fp_int` (auto-precision
+forces the float phase the moment `SIN`/`SQR` appear), and logical `AND`/`OR` on
+float truth values were fixed (they previously fell through to the comparison path).
+With these, **`sketchs/basic_applesoft/3DHat.apf` — the MTU/Micro May-1981 hidden-line
+3-D HAT (HGR2, nested `FOR`, `IF/GOTO`, `GOSUB/RETURN`, `INT`/`SQR`/`SIN`, decimal
+literals, `HCOLOR=0` column erase) — compiles and runs standalone on both GEN2 and
+TMS9918, drawing the sombrero with proper hidden-line removal.** Pinned by
+`basic_native_run` (a native-only 3DHat case). It is compute-heavy (≈20 000
+transcendental evaluations + per-point erase lines), so it is genuinely slow to
+finish — but still faster than the same source on the interpreter, and with **no ROM
+at all**.
+
+#### HCOLOR=0 erase (hidden-line removal)
+
+The GEN2 runtime `rt_plot` is **pen-aware**: `HCOLOR=0` clears the pixel
+(`AND ~mask`) instead of setting it (`OR mask`), so the 3-D HAT's
+"plot the point, then erase the column below it" hidden-line trick works. `rt_hgr`
+seeds a non-zero default pen so a plain `HPLOT` before any `HCOLOR` still draws.
+
+#### Peephole optimizer (code size)
+
+Codegen routes every value through fixed 2/4-byte slots, which produces "define a
+temp, then copy it elsewhere" chains. A peephole pass (`Codegen::optimizePeephole`)
+fuses them: a store block into a temp whose value is next consumed by a copy block
+is **retargeted to store straight into the destination** (the temp vanishes), and the
+resulting self-copies are deleted. Liveness is intra-block (any label/branch/`jmp`/
+GOSUB ends the scan; runtime `jsr fp_*`/`rt_*` are transparent since they never touch
+compiler temps). This is what lets the full 3DHat fit GEN2's `$0300–$1FFF` window
+(it shares RAM with the framebuffer at `$2000`): the pass trims ~640 bytes, taking the
+image from an overflowing ~7.8 KB to **7157 B**.
 
 ### Choosing the precision (auto)
 
@@ -374,17 +409,38 @@ line 1: every program line must start with a line number
 
 `GOTO`/`GOSUB`/`THEN` targets are checked against the program's line numbers at
 compile time (not left to a cryptic link error), float literals are rejected with
-a line number in the integer phase, and `NEXT` without a matching `FOR` is caught. **Phase 2 (future):** a standalone floating-point runtime
-(`FADD/FMUL/.../SIN/SQR`) so float programs like `3DHat.apf` compile to native
-code with no ROM either — the harder, larger half, where FP speed only improves if
-the float library itself is faster than the ROM's.
+a line number in the integer phase, and `NEXT` without a matching `FOR` is caught.
+
+### Benchmarks (size + speed by program type)
+
+Generated by `basic_native_bench` (cc65 + GEN2 ROM gated; `ctest -R basic_native_bench -V`).
+Each program is compiled to a standalone GEN2 image and run on POM1's 6502 core; the
+speedup is native-vs-the-same-source-on-the-interpreter (both draw the same picture).
+
+| program | phase | binary | rt routines | native cyc | interp cyc | speedup |
+|---------|-------|-------:|------------:|-----------:|-----------:|--------:|
+| int-arith (strength-reduced `*`) | int | 1616 B | 4 | 0.2 M | 4.2 M | **21×** |
+| int-raster (nested fill) | int | 1380 B | 4 | 5.8 M | 82.6 M | **14×** |
+| float-arith (parabola, `+-*/`) | float | 2914 B | 9 | 2.8 M | 5.6 M | **2.0×** |
+| transcend (`SIN`) | float | 3415 B | 9 | 8.4 M | 11.6 M | **1.4×** |
+| lines (16-bit Bresenham) | int | 1568 B | 4 | 1.6 M | 3.8 M | **2.4×** |
+| **3dhat** (full demo) | float | 7157 B | 13 | (compute-heavy) | — | runs native |
+
+Reading the table: **size** scales with what's linked — integer programs link 4 runtime
+routines and **no** float code; the float phase adds the `fp_*` core; only 3DHat pulls in
+all 13 (incl. `fp_int`/`fp_sqrt`/`fp_sin`). **Speed**: control/integer code wins an order of
+magnitude (interpreter overhead removed); FP-bound code wins ~1.4–2× (the binary32 work
+itself isn't cheaper than the ROM's float, so the gain is purely overhead). The honest
+takeaway — native is always faster, and *much* faster the more the program is bound by
+control flow and integer arithmetic rather than raw float throughput.
 
 ### Use it
 
 ```bash
 # emit assembly, then assemble + link to a standalone .bin (needs cc65):
 build/basicc --native --card gen2 prog.bas -o prog.s
-tools/basicc_native.sh gen2 prog.bas prog.bin       # BASIC -> standalone $0300 image
+tools/basicc_native.sh gen2 prog.bas prog.bin           # integer program
+tools/basicc_native.sh --float gen2 3DHat.apf hat.bin   # float program (SIN/SQR/INT, decimals)
 
 # run it with no interpreter (GEN2 card present):
 pom1 --headless --preset 11 --load 0x0300:prog.bin --run 0x0300 --dump-gen2-frame out.png
