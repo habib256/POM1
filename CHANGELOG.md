@@ -10,6 +10,25 @@ is `git log`; the user-facing feature tour is `README.md`; open work lives in
 
 ## [Unreleased]
 
+### Added — Applesoft "BASIC compiler": compile an `.apf` to a 6502 image (no injection)
+
+- **`src/BasicCompiler.{h,cpp}` + `basicc` tool + `doc/BASIC_COMPILER.md`.**
+  Compiles an Applesoft Lite listing (GEN2 or TMS9918 dialect) **ahead of time**
+  into a 6502 memory image — a tokenized program at `$0801` (Applesoft's own
+  on-disk layout, byte-for-byte what `PARSE` builds) plus a 14-byte launcher at
+  `$0280` (`install VARTAB; JSR SETPTRS; JMP NEWSTT`). The resident interpreter
+  ROM supplies every runtime (FP, `SIN/SQR/INT`, `FOR/GOSUB`, `HGR/HPLOT`), so
+  the program **loads and runs directly** instead of having its listing typed in
+  one keystroke at a time. Pure C++ (no GL/ImGui) → links into the bench
+  (desktop + WASM), the CLI and the tests; wired into the app `SOURCES` and a
+  standalone `basicc` host tool (`--target {gen2|tms}` → Wozmon-hex image).
+- **Pinned by `basic_compiler_smoke`** (ctest): the floating-point
+  `sketchs/basic_applesoft/3DHat.apf` 3-D hat compiles and **executes on both the
+  GEN2 HGR card and the TMS9918 card**, drawing into each framebuffer — verified
+  injection-free (cold-start the ROM, poke the image, jump to the launcher). The
+  test re-pins the two interpreter entry points (`SETPTRS`/`NEWSTT`), so a ROM
+  rebuild that shifts them fails loudly.
+
 ### Added — packaging: release builds bundle the cc65 toolchain (asm + C)
 
 - **Every release package now ships cc65 next to POM1** so the DevBench

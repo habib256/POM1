@@ -151,6 +151,7 @@ Load-bearing pins worth knowing:
 - **`cpu_harte_smoke`** — Tom Harte "65x02 ProcessorTests" (`tests/cpu/harte_6502.bin`, 100 cases × 151 documented opcodes). **Cycle-exact** per-opcode oracle; complements Klaus by pinning page-cross/branch penalties + decimal-mode ADC/SBC + PLP/RTI P-bits.
 - **`cpu_interrupt_smoke`** — IRQ/NMI line timing (7-cycle entry, vectors, pushed-P B bit, edge-cleared NMI, RTI restore).
 - **`gfx_regress_gen2_testcard`** — headless golden-image graphics regression (`--dump-gen2-frame` + sha256 vs committed golden PNG; TMS9918 counterpart `--dump-tms-frame`). Harness `tools/test_gfx_regress.py` skips if Python3 / `build/POM1` absent.
+- **`basic_compiler_smoke`** — the Applesoft "BASIC compiler" (`src/BasicCompiler.*`, `basicc` tool, [`doc/BASIC_COMPILER.md`](doc/BASIC_COMPILER.md)): compiles `3DHat.apf` to a 6502 image (tokenized program `$0801` + launcher `$0280` = `JSR SETPTRS;JMP NEWSTT`) and runs it injection-free on **both** GEN2 HGR and TMS9918, asserting the float 3-D plot fills the framebuffer. Re-pins the two interpreter entry points per card (TMS `$4596`/`$46F2`, GEN2 `$9D96`/`$9EF2`) — a ROM rebuild that shifts them fails here.
 
 New invariant tests follow `tests/peripheral_bus_smoke_test.cpp` — `<cassert>` + `add_test` suffices; GTest/Catch2 only once multi-threaded tests land.
 

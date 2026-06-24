@@ -48,6 +48,7 @@ Guides live in [`sketchs/doc/`](../sketchs/doc/). Source, libraries and build co
 |---|---|
 | [`CLI.md`](CLI.md) | **Full CLI flag table** (headless / scripted runs). Implementation: `CliDispatcher.cpp`. |
 | [`DEVBENCH.md`](DEVBENCH.md) | POM1 Bench (in-app cc65/Wozmon IDE) — the language×machine target matrix; how release packages bundle cc65. |
+| [`BASIC_COMPILER.md`](BASIC_COMPILER.md) | **Applesoft Lite → 6502 image compiler** (`src/BasicCompiler.*`, `basicc` tool) — tokenize-and-launch an `.apf` ahead of time so it loads + runs with no keyboard injection (GEN2 / TMS9918). |
 | [`SKETCHS.md`](SKETCHS.md) | `sketchs/` folder layout, `.sketch.json` sidecars, copy-me `_template*` starters. |
 | [`CC65_WASM.md`](CC65_WASM.md) | Running the cc65 toolchain in the browser (WASM build) — architecture + status. |
 | [`GEN2_RELEASE.md`](GEN2_RELEASE.md) | Uncle Bernie GEN2 colour card developer guide ("Bernie SDK") — `$C25x` switches, HST0, porting. |

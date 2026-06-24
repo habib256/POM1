@@ -364,6 +364,32 @@ add_test(NAME applesoft_tms9918_smoke COMMAND test_applesoft_tms9918
          WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
 set_tests_properties(applesoft_tms9918_smoke PROPERTIES TIMEOUT 120)
 
+# -- BASIC compiler smoke test -----------------------------------------------
+# Compiles sketchs/basic_applesoft/3DHat.apf ahead of time (tokenized image +
+# launcher, no keyboard injection), loads it into RAM and runs it on BOTH the
+# TMS9918 (CodeTank ROM, VRAM inspected) and the GEN2 HGR card (page-2 RAM),
+# asserting the floating-point 3D plot fills the framebuffer. Skips (77) if a ROM
+# or the source sketch is absent.
+add_executable(test_basic_compiler
+    basic_compiler_smoke_test.cpp
+    ${CMAKE_SOURCE_DIR}/src/BasicCompiler.cpp
+    ${POM1_TEST_CORE_SOURCES}
+)
+target_include_directories(test_basic_compiler PRIVATE
+    ${CMAKE_SOURCE_DIR}/src
+    ${CMAKE_SOURCE_DIR}/imgui
+)
+target_link_libraries(test_basic_compiler PRIVATE libresidfp_static)
+if(APPLE)
+    target_compile_definitions(test_basic_compiler PRIVATE GL_SILENCE_DEPRECATION)
+endif()
+if(WIN32)
+    target_link_libraries(test_basic_compiler PRIVATE ws2_32)
+endif()
+add_test(NAME basic_compiler_smoke COMMAND test_basic_compiler
+         WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+set_tests_properties(basic_compiler_smoke PROPERTIES TIMEOUT 180 SKIP_RETURN_CODE 77)
+
 # -- SID audio production smoke test ------------------------------------------
 # Needs the full Memory+peripheral core to exercise the PeripheralBus path.
 add_executable(test_sid_audio

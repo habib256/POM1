@@ -42,6 +42,7 @@ set(POM1_SRC_DIR ${CMAKE_CURRENT_SOURCE_DIR}/src)
 set(SOURCES
     ${POM1_SRC_DIR}/A1IO_RTC.cpp
     ${POM1_SRC_DIR}/AudioDevice.cpp
+    ${POM1_SRC_DIR}/BasicCompiler.cpp
     ${POM1_SRC_DIR}/CassetteDevice.cpp
     ${POM1_SRC_DIR}/CassetteDeck_ImGui.cpp
     ${POM1_SRC_DIR}/CliDispatcher.cpp
@@ -96,6 +97,7 @@ set(SOURCES
 set(HEADERS
     ${POM1_SRC_DIR}/A1IO_RTC.h
     ${POM1_SRC_DIR}/AudioDevice.h
+    ${POM1_SRC_DIR}/BasicCompiler.h
     ${POM1_SRC_DIR}/CassetteDevice.h
     ${POM1_SRC_DIR}/CassetteDeck_ImGui.h
     ${POM1_SRC_DIR}/CliDispatcher.h
@@ -441,6 +443,17 @@ else()
     # Compiler flags (pkg-config only)
     if(NOT glfw3_FOUND)
         target_compile_options(${PROJECT_NAME} PRIVATE ${GLFW3_CFLAGS_OTHER})
+    endif()
+
+    # basicc — standalone Applesoft "BASIC compiler" host tool. Pure (only
+    # BasicCompiler.cpp), so it builds without GL/ImGui. Emits a Wozmon-hex image
+    # (tokenized program + launcher) loadable by POM1. See doc/BASIC_COMPILER.md.
+    option(POM1_BUILD_BASICC "Build the basicc Applesoft->image compiler tool" ON)
+    if(POM1_BUILD_BASICC)
+        add_executable(basicc
+            ${CMAKE_CURRENT_SOURCE_DIR}/tools/basicc.cpp
+            ${POM1_SRC_DIR}/BasicCompiler.cpp)
+        target_include_directories(basicc PRIVATE ${POM1_SRC_DIR})
     endif()
 
     # Tests — native-only (Emscripten runs in the browser, ctest on host).
