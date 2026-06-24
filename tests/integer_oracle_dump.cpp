@@ -78,6 +78,32 @@ const char* const kSamples[] = {
     "10 FOR I=1 TO 10\n20 PRINT I\n30 NEXT I\n",
     "10 IF A#3 THEN 100\n",
     "10 PRINT \"HELLO\"\n",
+    "10 A=5\n",                       // implicit LET
+    "10 GOTO 100\n",
+    "10 GOSUB 200\n20 RETURN\n",
+    "10 END\n",
+    "20 PRINT A;B\n",                 // ; separator + multiple numeric
+    "30 PRINT \"X=\";A\n",            // string then ; then numeric
+    "10 A=B+C-D\n",                   // arithmetic chain
+    "10 IF A<3 THEN 100\n",           // < comparison
+    "10 IF A>3 THEN 100\n",           // > comparison
+    "10 A=A+1: PRINT A\n",            // multi-statement (':')
+    "10 INPUT A\n",
+    "10 DIM A(5)\n",
+    "10 PRINT A(3)\n",                // array subscript
+    "10 REM HELLO\n",                 // REM
+    "10 POKE 0,1\n",
+    "10 A$=\"HI\"\n",                 // string assignment
+    "10 A=PEEK(0)\n",                 // PEEK function
+    // --- PRINT separator probes ($45/$46/$47/$48/$49) ---
+    "10 PRINT A,B\n",                 // numeric , numeric
+    "10 PRINT \"A\",\"B\"\n",         // string , string
+    "10 PRINT \"A\";\"B\"\n",         // string ; string
+    "10 PRINT A;\n",                  // trailing ; after numeric
+    "10 PRINT \"A\";\n",              // trailing ; after string
+    "10 PRINT \"A\",B\n",             // string , numeric
+    "10 PRINT A;\"B\"\n",             // numeric ; string
+    "10 PRINT A,\"B\"\n",             // numeric , string
 };
 
 } // namespace

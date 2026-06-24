@@ -447,6 +447,18 @@ add_test(NAME basic_compiler_tokenize COMMAND test_basic_compiler_tokenize
          WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
 set_tests_properties(basic_compiler_tokenize PROPERTIES TIMEOUT 30)
 
+# -- Integer BASIC (Woz) tokeniser unit test ---------------------------------
+# Byte-exact pin for src/BasicTokeniserInteger.cpp against the $E000 ROM oracle.
+# Pure (only BasicTokeniserInteger.cpp, no emulator core / ROM), so it always runs.
+add_executable(test_basic_tokenise_integer
+    basic_tokenise_integer_test.cpp
+    ${CMAKE_SOURCE_DIR}/src/BasicTokeniserInteger.cpp
+)
+target_include_directories(test_basic_tokenise_integer PRIVATE ${CMAKE_SOURCE_DIR}/src)
+add_test(NAME basic_tokenise_integer COMMAND test_basic_tokenise_integer
+         WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+set_tests_properties(basic_tokenise_integer PROPERTIES TIMEOUT 30)
+
 # -- Native BASIC compiler: codegen unit test --------------------------------
 # Pure asm-text assertions on BasicCompilerApplesoft (strength reduction, FOR/NEXT,
 # GOTO/GOSUB, graphics ABI). No cc65, no emulator -> always runs, fast.
