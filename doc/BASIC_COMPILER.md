@@ -302,11 +302,32 @@ zero-page slots `FA`/`FB`). Internally a value unpacks to `{sign, E, SG}` with t
 Pinned by `basic_float_runtime` (cc65-gated): every op is checked against the
 host's IEEE `float` over a value grid + 4000 randomised pairs spanning 2^±20.
 
-**Phase 2b (next): wire it into the compiler.** Applesoft is float-by-default, so
-this needs a small type layer (float storage/temps; int↔float coercion; `FOR`
-indices stay int where provably integral), the float forms of the expression and
-graphics codegen (coords via `fp_toint16`), and `SIN/COS/SQR/INT` (polynomial /
-Newton). That is what lets `3DHat.apf` compile to **native** code with no ROM. **Phase 2 (future):** a standalone floating-point runtime
+**Phase 2b (float codegen — validated): the compiler emits float code.**
+`basicnative::compile(src, card, /*floatMode=*/true)` (also `basicc --native
+--float`) compiles in **binary32**: variables/temporaries are 4-byte floats, the
+expression codegen routes `+ - * /` and comparisons through `fp_*`, `FOR/NEXT`
+loops on floats, `IF` tests a float, and `HPLOT`/`HCOLOR` coordinates are
+converted with `fp_toint16`. A float program (e.g. a parabola `Y=(X-140)*(X-140)
+/140`) compiles to a standalone binary that runs **with no interpreter and no ROM
+float** and draws the same picture as the interpreter. Pinned by
+`basic_native_run` (now covers an integer **and** a float program).
+
+Measured (native vs the same source on the interpreter, identical output):
+
+| Program | bound by | native | interpreter | speedup |
+|---|---|---|---|---|
+| integer compute loop | arith + control | 16.8 M | 368 M | **~22×** |
+| integer line-draw | pixel plotting | 2.6 M | 11.6 M | **~4.5×** |
+| **float** parabola | floating-point | 2.8 M | 5.6 M | **~2.0×** |
+
+The float case is the honest ceiling for FP-bound code: the binary32 work itself
+isn't cheaper than the ROM's float, so the ~2× gain is purely from removing
+interpreter overhead. Control/integer code, where that overhead dominates, wins
+an order of magnitude more.
+
+**Remaining for 3DHat:** the transcendentals `SIN/COS/SQR/INT/ATN` (polynomial /
+Newton, on top of the proven `fp_*` core) and `FOR` index type inference — then
+`3DHat.apf` compiles to native code with no ROM at all. **Phase 2 (future):** a standalone floating-point runtime
 (`FADD/FMUL/.../SIN/SQR`) so float programs like `3DHat.apf` compile to native
 code with no ROM either — the harder, larger half, where FP speed only improves if
 the float library itself is faster than the ROM's.

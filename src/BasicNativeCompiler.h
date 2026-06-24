@@ -41,9 +41,11 @@ struct Result {
     int         varCount  = 0;
 };
 
-// Compile an Applesoft (integer-subset) listing to ca65 assembly for `card`.
-// Never throws; structural errors return ok=false with a line-numbered message.
-Result compile(const std::string& source, Card card);
+// Compile an Applesoft listing to ca65 assembly for `card`. With floatMode=false
+// (default) it is the integer phase (16-bit signed); with floatMode=true it is the
+// binary32 float phase (links dev/lib/basicrt/basicrt_float.s). Never throws;
+// structural errors return ok=false with a line-numbered message.
+Result compile(const std::string& source, Card card, bool floatMode = false);
 
 } // namespace basicnative
 

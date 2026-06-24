@@ -10,6 +10,23 @@ is `git log`; the user-facing feature tour is `README.md`; open work lives in
 
 ## [Unreleased]
 
+### Added — native compiler Phase 2b: float codegen (compile + run a float program, no ROM)
+
+- **The native compiler now emits floating-point code** (`basicnative::compile(…,
+  floatMode=true)`, `basicc --native --float`, `basicc_native.sh --float`):
+  binary32 variables/temps, `+ - * /` and comparisons via the `fp_*` runtime,
+  float `FOR/NEXT`/`IF`, and `HPLOT`/`HCOLOR` coords converted with `fp_toint16`.
+  A float program (parabola) compiles to a standalone binary that runs **with no
+  interpreter and no ROM float**, drawing the same picture.
+- **`basic_native_run`** now pins **both** phases. Measured (native vs same source
+  on the interpreter, identical output): integer compute loop **~22×** (16.8M vs
+  368M), integer line-draw **~4.5×**, **float parabola ~2.0×** (2.8M vs 5.6M). The
+  ~2× float ceiling is honest — binary32 work isn't cheaper than the ROM's float,
+  so the gain there is only from removing interpreter overhead; control/integer
+  code wins an order of magnitude more. `basic_native_codegen` adds float pins.
+- **Remaining for native `3DHat.apf`:** `SIN/COS/SQR/INT` on the proven `fp_*`
+  core + `FOR`-index type inference. See [`doc/BASIC_COMPILER.md`](doc/BASIC_COMPILER.md).
+
 ### Added — native compiler Phase 2a: standalone binary32 software-float runtime
 
 - **`dev/lib/basicrt/basicrt_float.s`** — the autonomous floating-point core (no

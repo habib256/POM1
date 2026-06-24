@@ -18,6 +18,12 @@ std::string gen(const std::string& src)
     if (!r.ok) { std::printf("FAIL compile: %s\n", r.error.c_str()); ++failures; return {}; }
     return r.asmText;
 }
+std::string genf(const std::string& src)   // float phase
+{
+    auto r = basicnative::compile(src, basicnative::Card::Gen2, /*float=*/true);
+    if (!r.ok) { std::printf("FAIL float compile: %s\n", r.error.c_str()); ++failures; return {}; }
+    return r.asmText;
+}
 bool has(const std::string& hay, const std::string& needle) { return hay.find(needle) != std::string::npos; }
 void check(const char* what, bool ok) { std::printf("%s: %s\n", ok ? "ok" : "FAIL", what); if (!ok) ++failures; }
 }
@@ -76,10 +82,20 @@ int main()
         check("halt label basic_done", has(a, "basic_done:"));
         check("variables in zero page", has(a, ".segment \"ZEROPAGE\"") && has(a, "V_X: .res 2"));
     }
-    // Floating-point literals are rejected (integer phase) with a line-numbered error.
+    // Floating-point literals are rejected in the INTEGER phase.
     {
-        auto r = basicnative::compile("10 X=1.5\n", basicnative::Card::Gen2);
-        check("float literal rejected", !r.ok && r.error.find("line 1") != std::string::npos);
+        auto r = basicnative::compile("10 X=1.5\n", basicnative::Card::Gen2, /*float=*/false);
+        check("float literal rejected (int phase)", !r.ok && r.error.find("line 1") != std::string::npos);
+    }
+
+    // FLOAT phase: real binary32 ops, float literals OK, HPLOT coords converted.
+    {
+        std::string a = genf("10 X=1.5\n20 Y=X*X/3\n30 END\n");
+        check("float phase header", has(a, "(float phase)"));
+        check("float imports the FP runtime", has(a, "fp_mul") && has(a, "fp_div") && has(a, ".importzp FA, FB"));
+        check("float var is 4 bytes", has(a, "V_X: .res 4"));
+        std::string b = genf("10 HGR\n20 HPLOT X,Y\n30 END\n");
+        check("float HPLOT converts coords (fp_toint16)", has(b, "jsr fp_toint16"));
     }
 
     if (failures) { std::printf("basic_native_codegen: %d FAILED\n", failures); return 1; }
