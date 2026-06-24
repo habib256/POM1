@@ -45,9 +45,15 @@ case "$CARD" in
   tms)
     ca65 -I "$ROOT/dev/lib/tms9918" -I "$ROOT/dev/lib/apple1" -I "$RT" -o "$TMP/prog.o" "$TMP/prog.s"
     ca65 $DEFS -I "$ROOT/dev/lib/tms9918" -I "$ROOT/dev/lib/apple1" -I "$RT" -o "$TMP/rt.o" "$RT/basicrt_tms.s"
-    ca65 -I "$ROOT/dev/lib/tms9918" -I "$ROOT/dev/lib/apple1" -o "$TMP/m2.o"  "$ROOT/dev/lib/tms9918/tms9918m2.asm"
-    ca65 -I "$ROOT/dev/lib/tms9918" -I "$ROOT/dev/lib/apple1" -o "$TMP/pad.o" "$ROOT/dev/lib/tms9918/tms9918_pad.asm"
-    ld65 -C "$RT/basicc_native.cfg" -o "$OUT" "$TMP/prog.o" "$TMP/rt.o" "$TMP/m2.o" "$TMP/pad.o" $FP_OBJ
+    # Link the VDP graphics lib only when the program actually draws.
+    VDP_OBJ=""
+    case "$DEFS" in
+      *RT_HGR*|*RT_PLOT*|*RT_LINE*|*RT_HCOLOR*)
+        ca65 -I "$ROOT/dev/lib/tms9918" -I "$ROOT/dev/lib/apple1" -o "$TMP/m2.o"  "$ROOT/dev/lib/tms9918/tms9918m2.asm"
+        ca65 -I "$ROOT/dev/lib/tms9918" -I "$ROOT/dev/lib/apple1" -o "$TMP/pad.o" "$ROOT/dev/lib/tms9918/tms9918_pad.asm"
+        VDP_OBJ="$TMP/m2.o $TMP/pad.o" ;;
+    esac
+    ld65 -C "$RT/basicc_native.cfg" -o "$OUT" "$TMP/prog.o" "$TMP/rt.o" $VDP_OBJ $FP_OBJ
     ;;
   *) echo "unknown card '$CARD' (use gen2 or tms)" >&2; exit 2 ;;
 esac
