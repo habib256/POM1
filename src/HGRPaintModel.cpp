@@ -116,4 +116,23 @@ bool byteHasPaletteSeam(const uint8_t* page, int byteCol, int y)
     return (a & 0x80u) != (b & 0x80u);
 }
 
+int setBytePalette(uint8_t* page, int byteCol, int y, int msb)
+{
+    // Flip only the shared high bit (palette select) of one byte — recolours its
+    // 7 pixels (orange<->green, blue<->violet) WITHOUT lighting/clearing any
+    // pixel. msb: 0 = clear, 1 = set, anything else = toggle. Returns the changed
+    // page offset, or -1 if out of range / no change. The HGR-unique "transparent"
+    // palette-shift fadden exposes as HI_BIT_CLEAR/HI_BIT_SET patterns.
+    if (byteCol < 0 || byteCol > 39 || y < 0 || y > 191) return -1;
+    const int off = hgrByteOffset(0, y) + byteCol;
+    const uint8_t b = page[off];
+    uint8_t nb = b;
+    if (msb == 0)      nb &= 0x7Fu;
+    else if (msb == 1) nb |= 0x80u;
+    else               nb ^= 0x80u;
+    if (nb == b) return -1;
+    page[off] = nb;
+    return off;
+}
+
 } // namespace hgrpaint

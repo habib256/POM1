@@ -71,6 +71,12 @@ HgrColor colorAt(const uint8_t* page, int x, int y);
 // the boundary where NTSC artifact-colour bleed occurs.
 bool byteHasPaletteSeam(const uint8_t* page, int byteCol, int y);
 
+// Flip only the shared high bit (palette) of byte column `byteCol` (0..39) at
+// row y — recolours its 7 pixels without touching any pixel bit. msb: 0=clear,
+// 1=set, else toggle. Returns the changed page offset, or -1 if unchanged / out
+// of range.
+int setBytePalette(uint8_t* page, int byteCol, int y, int msb);
+
 } // namespace hgrpaint
 
 class HGRPaintEditor_ImGui
@@ -84,6 +90,7 @@ public:
     // Load/save a raw 8 KB HGR image at the given base address. Return success.
     void setLoadCallback(std::function<bool(const std::string&, uint16_t, std::string&)> cb) { loadCallback = std::move(cb); }
     void setSaveCallback(std::function<bool(const std::string&, uint16_t, std::string&)> cb) { saveCallback = std::move(cb); }
+    void setSavePngCallback(std::function<bool(const std::string&, const uint32_t*, int, int, std::string&)> cb) { savePngCallback = std::move(cb); }
 
     // Draw the window body (caller wraps in Begin/End). `memory` is the live
     // 64 KB UI snapshot used as the read source for the canvas + shadow.
@@ -93,14 +100,23 @@ public:
     bool targetsPage2() const { return page2; }
 
 private:
-    enum class Tool : uint8_t { Pencil = 0, Eraser, Line, Rectangle, Ellipse, Fill, Eyedropper };
+    // Order is append-only: the toolbar/status name tables and shortcuts index
+    // by these values, so new tools go at the end.
+    enum class Tool : uint8_t { Pencil = 0, Eraser, Line, Rectangle, Ellipse, Fill,
+                                Eyedropper, Select, PaletteShift };
 
     // One byte change: lets us replay forward (redo) or reverse (undo).
     struct ByteEdit { uint16_t addr; uint8_t oldVal, newVal; };
 
+    // A copied region, stored as LOGICAL colours (not raw bytes) so paste
+    // re-snaps column parity correctly at any destination (HGR-06).
+    struct Clip { int w = 0, h = 0; std::vector<hgrpaint::HgrColor> px; };
+
     std::function<void(uint16_t, uint8_t)> writeCallback;
     std::function<bool(const std::string&, uint16_t, std::string&)> loadCallback;
     std::function<bool(const std::string&, uint16_t, std::string&)> saveCallback;
+    // Export the current NTSC render (RGBA `w*h`) to a PNG. Return success.
+    std::function<bool(const std::string&, const uint32_t*, int, int, std::string&)> savePngCallback;
 
     // Canvas rendering (own NTSC pipeline + GL texture).
     GraphicsCard gfx;
@@ -120,6 +136,23 @@ private:
     bool rectFilled = false;
     bool showConflicts = false;     // palette-seam overlay (HGR-07)
     bool wantFit = false;           // queued zoom-to-fit (HGR-09)
+    int  paletteMsbMode = 2;        // PaletteShift sub-mode: 0=clear,1=set,2=toggle
+    bool showMinimap = true;        // navigator overlay (HGR-10)
+    bool stampMeta = false;         // stamp a POM1HGR tag into screen holes on save (HGR-12)
+
+    // Selection + clipboard (HGR-06).
+    bool hasSel = false;
+    int  selX0 = 0, selY0 = 0, selX1 = 0, selY1 = 0;   // normalized on commit
+    Clip clip;
+    bool pasting = false;           // floating-paste mode active
+    int  pasteX = 0, pasteY = 0;    // floating clip top-left (logical)
+
+    // Canvas scroll plumbing for the minimap (HGR-10): captured each frame,
+    // a pending value is applied at the next canvas draw.
+    float canvasScrollX = 0, canvasScrollY = 0;
+    float canvasScrollMaxX = 0, canvasScrollMaxY = 0;
+    float canvasViewW = 0, canvasViewH = 0;
+    float pendingScrollX = -1, pendingScrollY = -1;
 
     // 8 KB shadow of the current page, refreshed from `memory` each frame.
     std::vector<uint8_t> shadow;
@@ -155,8 +188,15 @@ private:
     void clearPage();
     void handleShortcuts();
 
+    // HGR-06 selection / clipboard.
+    void copySelection(bool cut);
+    void pasteFloatingAt(int destX, int destY);   // commit the clip as one stroke
+    // HGR-11 palette-shift tool: flip a whole byte column's high bit.
+    void paintPaletteByte(int lx, int ly);
+
     void renderToolbar();
     void renderCanvas(const std::vector<uint8_t>& memory);
+    void renderMinimap(float canvasOriginX, float canvasOriginY, float scale);   // HGR-10
     void renderStatusBar(int lx, int ly, bool hovered);
     void renderFileRow();
 };

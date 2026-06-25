@@ -138,6 +138,26 @@ int main()
     assert(!hgrpaint::byteHasPaletteSeam(page.data(), 39, 60));
     assert(!hgrpaint::byteHasPaletteSeam(page.data(), 5, 192));
 
+    // ── setBytePalette (HGR-11): flips only the shared high bit ──────────
+    page.assign(page.size(), 0);
+    const int pbBase = hgrpaint::hgrByteOffset(0, 70);
+    page[pbBase + 4] = 0x2A;                 // some lit pixels, high bit clear
+    // Set palette → high bit on, pixels untouched.
+    int pbOff = hgrpaint::setBytePalette(page.data(), 4, 70, 1);
+    assert(pbOff == pbBase + 4);
+    assert(page[pbBase + 4] == 0xAA);        // 0x2A | 0x80, pixel bits intact
+    // Idempotent set is a no-op.
+    assert(hgrpaint::setBytePalette(page.data(), 4, 70, 1) == -1);
+    // Toggle flips it back to clear.
+    assert(hgrpaint::setBytePalette(page.data(), 4, 70, 2) == pbBase + 4);
+    assert(page[pbBase + 4] == 0x2A);
+    // Clear when already clear is a no-op.
+    assert(hgrpaint::setBytePalette(page.data(), 4, 70, 0) == -1);
+    // Out-of-range byte columns / rows are safe.
+    assert(hgrpaint::setBytePalette(page.data(), -1, 70, 1) == -1);
+    assert(hgrpaint::setBytePalette(page.data(), 40, 70, 1) == -1);
+    assert(hgrpaint::setBytePalette(page.data(), 4, 192, 1) == -1);
+
     std::printf("hgr_paint_plot_smoke: all assertions passed\n");
     return 0;
 }

@@ -9,6 +9,7 @@
 #include "Disassembler6502.h"
 #include "Logger.h"
 #include "imgui.h"
+#include "third_party/stb/stb_image_write.h"   // decl only; impl lives in main_imgui.cpp
 
 #include <GLFW/glfw3.h>
 
@@ -106,6 +107,16 @@ void MainWindow_ImGui::createPom1()
         return emulation->saveMemoryRange(path, addr,
                                           static_cast<uint16_t>(addr + GraphicsCard::kHiresSize - 1),
                                           /*binaryFormat=*/true, err);
+    });
+    hgrPaintEditor->setSavePngCallback([](const std::string& path, const uint32_t* rgba,
+                                          int w, int h, std::string& err) {
+        // rgba is top-down RGBA8 (software-render order), exactly what
+        // stbi_write_png expects with stride = w*4. Impl linked from main_imgui.cpp.
+        if (stbi_write_png(path.c_str(), w, h, 4, rgba, w * 4) == 0) {
+            err = "stbi_write_png failed (directory writable?)";
+            return false;
+        }
+        return true;
     });
     // Republie cpuRunning=true (le constructeur publie une fois avant runRequested.store(true)).
     emulation->startCpu();
