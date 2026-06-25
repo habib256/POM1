@@ -42,11 +42,16 @@ unsigned char apple1_readkey(void) {
     return (unsigned char)(PEEK(KEY_DATA) & 0x7FU);
 }
 
+/* `max` is the total buffer size INCLUDING the NUL terminator: at most max-1
+ * characters are stored and buffer[0..max-1] is the only range touched, so
+ * apple1_input_line(buf, sizeof buf) is safe. (The previous version wrote
+ * buffer[x] unconditionally before the bounds check, so a buffer sized exactly
+ * `max` took a 1-byte out-of-bounds write.) */
 void apple1_input_line(unsigned char *buffer, unsigned char max) {
     unsigned char x = 0;
+    if (max == 0) return;
     for (;;) {
         unsigned char c = apple1_getkey();
-        buffer[x] = c;
         if (c == 13) {
             break;
         } else if (c == 27) {
@@ -58,7 +63,8 @@ void apple1_input_line(unsigned char *buffer, unsigned char max) {
                 --x;
             }
         } else {
-            if (x < max) {
+            if (x + 1u < max) {
+                buffer[x] = c;
                 woz_putc(c);
                 ++x;
             }
@@ -67,12 +73,14 @@ void apple1_input_line(unsigned char *buffer, unsigned char max) {
     buffer[x] = 0;
 }
 
+/* `max` is the total buffer size INCLUDING the NUL terminator (see
+ * apple1_input_line above). */
 void apple1_input_line_prompt(unsigned char *buffer, unsigned char max) {
     unsigned char x = 0;
+    if (max == 0) return;
     woz_putc((unsigned char)INPUT_LINE_PROMPT_CHAR);
     for (;;) {
         unsigned char c = apple1_getkey();
-        buffer[x] = c;
         if (c == 13) {
             break;
         } else if (c == 27) {
@@ -87,7 +95,8 @@ void apple1_input_line_prompt(unsigned char *buffer, unsigned char max) {
                 woz_puts(buffer);
             }
         } else {
-            if (x < max) {
+            if (x + 1u < max) {
+                buffer[x] = c;
                 woz_putc(c);
                 ++x;
             }

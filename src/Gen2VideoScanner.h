@@ -165,6 +165,14 @@ public:
         return mem[scannerAddress(peekVideoCycle(), display, linesPerFrame)];
     }
 
+    // Floating-bus byte at an explicit absolute scanner cycle (mod frame
+    // internally) — lets a $C25x read sample the data bus at the SAME beam
+    // position as hst0At(), instead of the instruction-start position
+    // peekVideoCycle() returns.
+    uint8_t floatingBusAt(const uint8_t* mem, uint64_t absCycle) const {
+        return mem[scannerAddress(absCycle % cyclesPerFrame(), display, linesPerFrame)];
+    }
+
 private:
     uint64_t     cycleCounter  = 0;
     uint64_t     linesPerFrame = kLinesPerFrame;

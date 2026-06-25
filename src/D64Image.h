@@ -63,9 +63,18 @@ public:
 
     std::vector<DirEntry> directory(std::string_view pattern = "*") const;
     std::vector<uint8_t>  readFile(std::string_view name) const;
+    // Distinct write outcomes so callers can map the right CBM DOS error
+    // (e.g. 72 DISK FULL vs 63 FILE EXISTS) instead of collapsing every
+    // failure to one code.
+    enum class WriteResult { Ok, NotReady, FileExists, BadData, DiskFull };
+    WriteResult writeFileEx(std::string_view name,
+                            const std::vector<uint8_t>& data,
+                            FileType type = FileType::Prg);
     bool writeFile(std::string_view name,
                    const std::vector<uint8_t>& data,
-                   FileType type = FileType::Prg);
+                   FileType type = FileType::Prg) {
+        return writeFileEx(name, data, type) == WriteResult::Ok;
+    }
     bool deleteFile(std::string_view name);
     bool format(const std::string& label, const std::string& id);
 

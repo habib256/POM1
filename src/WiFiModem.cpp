@@ -8,6 +8,7 @@
 #include "WiFiModem.h"
 #include "Logger.h"
 #include <cstring>
+#include <cerrno>
 #include <memory>
 #include <thread>
 
@@ -89,11 +90,13 @@ uint8_t WiFiModem::readRegister(uint16_t address)
 
     switch (reg) {
     case REG_DATA: {
-        // Reading data register returns received byte and clears RDRF
+        // Reading data register returns received byte and clears RDRF.
+        // Do NOT load the next byte here: advanceCycles() reloads once
+        // rxCycleAccum elapses, which enforces the emulated baud pacing.
+        // Loading immediately would let back-to-back CPU reads drain the rx
+        // buffer at CPU speed instead of line speed.
         uint8_t val = dataRegRx;
         rdrfFlag = false;
-        // Load next byte from buffer if available
-        loadNextRxByte();
         return val;
     }
     case REG_STATUS: {
@@ -111,6 +114,10 @@ uint8_t WiFiModem::readRegister(uint16_t address)
         if (connState != ConnState::CONNECTED) status |= ST_DCD;
         // DSR: always active (low) — modem is always ready
         // (bit 6 = 0)
+        // IRQ (bit 7): reflects the /IRQ line so a driver can poll bit 7 to
+        // detect a pending interrupt (a standard 65C51 idiom). Cleared on this
+        // status read along with OVERRUN.
+        if (irqAsserted()) status |= ST_IRQ;
         overrunFlag = false;
         return status;
     }
@@ -133,8 +140,13 @@ void WiFiModem::writeRegister(uint16_t address, uint8_t value)
         processTransmittedByte(value);
         break;
     case REG_STATUS:
-        // Writing to status register is a programmed reset (W65C51N)
+        // Writing to status register is a programmed reset (W65C51N): it clears
+        // the command register and the receiver status (OVERRUN/RDRF). Without
+        // this a stale OVERRUN would persist across a programmed reset, since
+        // OVERRUN is otherwise cleared only on a status read.
         commandReg = 0;
+        overrunFlag = false;
+        rdrfFlag = false;
         break;
     case REG_COMMAND:
         commandReg = value;
@@ -162,6 +174,12 @@ void WiFiModem::advanceCycles(int cycles)
         }
     }
 
+    // Leading-guard idle timer for +++ (capped so it can't overflow on a long
+    // idle connection). Reset whenever a data byte arrives (processDataByte).
+    if (guardIdleCycles < ESCAPE_GUARD_CYCLES * 2) {
+        guardIdleCycles += cycles;
+    }
+
     // Poll socket periodically (~1 ms at CPU clock)
     pollCycleAccum += cycles;
     if (pollCycleAccum >= POM1_CPU_CYCLES_PER_MILLISECOND) {
@@ -171,6 +189,8 @@ void WiFiModem::advanceCycles(int cycles)
             connState == ConnState::RESOLVING) {
             updateConnection();
         }
+        // Retry any outbound bytes left queued by earlier backpressure.
+        flushTxBuffer();
     }
 
     // Escape sequence guard time
@@ -279,27 +299,31 @@ void WiFiModem::processDataByte(uint8_t byte)
 {
     // Check for +++ escape sequence
     char ch = static_cast<char>(byte & 0x7F);
-    if (ch == '+') {
+
+    // Hayes leading guard time: the *first* '+' only begins an escape if it was
+    // preceded by >= guard-time of DTE silence. A '+' embedded in a data stream
+    // (no preceding idle) is ordinary data and must be forwarded, not swallowed.
+    const bool leadingGuardOk = (guardIdleCycles >= ESCAPE_GUARD_CYCLES);
+    guardIdleCycles = 0;   // a data byte just arrived from the DTE
+
+    if (ch == '+' && (escapeCount > 0 || leadingGuardOk)) {
         if (escapeCount == 0) {
-            escapeArmed = true;
+            escapeArmed = true;   // leading guard qualified this escape attempt
         }
         escapeCount++;
         escapeGuardCycles = 0;
-        if (escapeCount >= 3) {
-            // Don't send the '+' chars — wait for guard time
-            return;
+        // Buffer the '+' (escapeCount>=3 also waits here for the trailing guard).
+        return;
+    }
+
+    // Not an escape candidate — send any buffered '+' chars first, then forward.
+    if (escapeCount > 0) {
+        for (int i = 0; i < escapeCount && i < 3; i++) {
+            sendToSocket('+');
         }
-        return; // buffer '+', don't send yet
-    } else {
-        // Not a '+' — send any buffered '+' chars
-        if (escapeCount > 0) {
-            for (int i = 0; i < escapeCount && i < 3; i++) {
-                sendToSocket('+');
-            }
-            escapeCount = 0;
-            escapeGuardCycles = 0;
-            escapeArmed = false;
-        }
+        escapeCount = 0;
+        escapeGuardCycles = 0;
+        escapeArmed = false;
     }
 
     sendToSocket(byte & 0x7F);
@@ -442,17 +466,46 @@ void WiFiModem::requestDisconnect()
 void WiFiModem::sendToSocket(uint8_t byte)
 {
     if (!socketFd) return;
+    // Append then flush. Appending first preserves byte order when a previous
+    // flush left a tail queued by EWOULDBLOCK backpressure.
+    txBuf.push_back(byte);
+    flushTxBuffer();
+}
 
+void WiFiModem::flushTxBuffer()
+{
+    if (!socketFd || txBuf.empty()) return;
+    size_t total = 0;
+    while (total < txBuf.size()) {
 #ifdef _WIN32
-    char buf = static_cast<char>(byte);
-    const auto sent = ::send(socketFd, &buf, 1, 0);
+        const auto sent = ::send(socketFd,
+                                 reinterpret_cast<const char*>(txBuf.data() + total),
+                                 static_cast<int>(txBuf.size() - total), 0);
 #else
-    uint8_t buf = byte;
-    const ssize_t sent = ::send(socketFd, &buf, 1, MSG_NOSIGNAL);
+        const ssize_t sent = ::send(socketFd, txBuf.data() + total,
+                                    txBuf.size() - total, MSG_NOSIGNAL);
 #endif
-    // Only count a byte that actually went out — send() returns -1 on error
-    // (e.g. EWOULDBLOCK / EPIPE), and counting those over-reported the stat.
-    if (sent == 1) bytesSentCount++;
+        if (sent > 0) { total += static_cast<size_t>(sent); continue; }
+
+        // sent <= 0: the socket is non-blocking, so EWOULDBLOCK/EAGAIN is
+        // healthy flow control — keep the unsent tail and retry next poll.
+        // A real error (EPIPE etc.) tears the connection down.
+#ifdef _WIN32
+        const bool wouldBlock = (sent < 0 && WSAGetLastError() == WSAEWOULDBLOCK);
+#else
+        const bool wouldBlock = (sent < 0 && (errno == EAGAIN || errno == EWOULDBLOCK));
+#endif
+        if (wouldBlock) break;
+        // Genuine failure: drop the queue and let updateConnection observe the
+        // dead socket on its next poll.
+        txBuf.clear();
+        return;
+    }
+    bytesSentCount += static_cast<uint32_t>(total);
+    if (total >= txBuf.size())
+        txBuf.clear();
+    else if (total > 0)
+        txBuf.erase(txBuf.begin(), txBuf.begin() + static_cast<std::ptrdiff_t>(total));
 }
 
 // Try to start a non-blocking connect() on an already-resolved address.
@@ -552,6 +605,7 @@ void WiFiModem::connectToHost(const std::string& host, uint16_t port)
 void WiFiModem::disconnect()
 {
     socketFd.reset();
+    txBuf.clear();   // peer is gone — drop any unsent tail
     // Abandon any pending DNS resolution. The detached worker completes on its
     // own and the shared promise is destroyed with its result discarded.
     dnsFuture = {};
@@ -723,6 +777,7 @@ void WiFiModem::updateConnection()
 #else // POM1_IS_WASM — browsers cannot open raw TCP sockets
 
 void WiFiModem::sendToSocket(uint8_t) {}
+void WiFiModem::flushTxBuffer() {}
 
 void WiFiModem::connectToHost(const std::string&, uint16_t)
 {

@@ -558,8 +558,15 @@ private:
         if (!isDigit(peek())) fail("expected a number");
         char first = peek();
         long v = 0;
-        while (isDigit(peek())) { v = v * 10 + (peek() - '0'); ++i_; }
-        uint16_t val = static_cast<uint16_t>(v & 0xFFFF);  // 16-bit wrap (Integer BASIC)
+        // Cap during accumulation: the $E000 ROM errors ">32767" as soon as the
+        // value reaches bit 7 of the high byte. Checking inside the loop both
+        // matches that oracle and prevents signed-long overflow UB on a
+        // pathological digit run (the old post-loop mask reached it too late).
+        while (isDigit(peek())) {
+            v = v * 10 + (peek() - '0'); ++i_;
+            if (v > 32767) fail(">32767");
+        }
+        uint16_t val = static_cast<uint16_t>(v);
         emit(static_cast<uint8_t>(first) | 0x80);
         emit(val & 0xFF);
         emit((val >> 8) & 0xFF);
@@ -766,10 +773,13 @@ Result compile(const std::string& source, uint16_t himem) {
         while (j < line.size() && line[j] >= '0' && line[j] <= '9') {
             num = num * 10 + (line[j] - '0');
             ++j;
-        }
-        if (num > 65535) {
-            r.error = "line " + std::to_string(physical) + ": line number > 65535";
-            return r;
+            // Bound inside the loop: the $E000 ROM rejects line numbers > 32767
+            // (bit 7 of the high byte), and this also prevents signed-long
+            // overflow UB on an unbounded digit run.
+            if (num > 32767) {
+                r.error = "line " + std::to_string(physical) + ": line number > 32767";
+                return r;
+            }
         }
 
         Line L;
@@ -812,6 +822,14 @@ Result compile(const std::string& source, uint16_t himem) {
         image.push_back(TOK_EOL);
     }
 
+    // Reject an image that won't fit below HIMEM. Without this, himem-image.size()
+    // underflows (size_t) and truncates to a bogus 16-bit load address while
+    // still reporting ok=true — a silently-corrupt "success".
+    if (image.size() > static_cast<size_t>(himem)) {
+        r.error = "program too large: " + std::to_string(image.size()) +
+                  " bytes would underflow HIMEM (" + std::to_string(himem) + ")";
+        return r;
+    }
     r.pp = static_cast<uint16_t>(himem - image.size());
     r.image = std::move(image);
     r.lineCount = static_cast<int>(lines.size());

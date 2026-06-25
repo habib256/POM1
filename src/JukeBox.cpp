@@ -177,7 +177,11 @@ uint8_t JukeBox::getCurrentPage() const
 {
     const uint8_t requested = bankRegister & 0x0F;
     if (pageCount == 0) return 0;
-    return static_cast<uint8_t>(requested & (pageCount - 1));
+    // Use a true modulo, not `& (pageCount - 1)`: the AND-mask is only a valid
+    // wrap when pageCount is a power of two. Live paths guarantee that, but
+    // deserialize() restores pageCount from the snapshot unvalidated, so a
+    // non-power-of-two value (older/corrupt .snap) would mis-select a bank.
+    return static_cast<uint8_t>(requested % pageCount);
 }
 
 uint8_t JukeBox::getCurrentSubPage() const
@@ -212,20 +216,34 @@ void JukeBox::writeByte(uint16_t address, uint8_t value)
     if (!writable) return;                            // RW jumper off
     const size_t off = fileOffsetForAddress(address);
     if (off >= rom.size()) return;
-    if (rom[off] == value) return;                    // no-op, skip disk write
 
     // 28c256 byte-write cycle: ~10 ms during which the chip is internally
     // programming the storage cell. A second byte arriving in that window
-    // is silently rejected on real silicon. Strict mode honours this; in
-    // permissive mode every write lands instantly (legacy POM1 behaviour
-    // so the UI Page-Copy / Save-ROM tools are not throttled).
-    if (siliconStrictMode && writeBusyCycles > 0) {
-        ++eepromWritesDropped;
+    // is silently rejected on real silicon. EVERY byte write — including a
+    // same-value write — starts that program cycle, so in strict mode the
+    // busy check + arming must run BEFORE the value-equality short-circuit;
+    // otherwise a redundant write followed by a different one within the
+    // window is wrongly accepted (and the counters under-report).
+    if (siliconStrictMode) {
+        if (writeBusyCycles > 0) {
+            ++eepromWritesDropped;
+            return;
+        }
+        writeBusyCycles = writeCycleCpu;
+        ++eepromWritesTotal;          // the program cycle ran (even if same value)
+        if (rom[off] != value) {      // only touch the backing file on a real change
+            rom[off] = value;
+            flushRomToFile();
+        }
         return;
     }
+
+    // Permissive mode: writes land instantly (legacy POM1 behaviour so the UI
+    // Page-Copy / Save-ROM tools are not throttled). Skip the disk write for a
+    // redundant same-value store.
+    if (rom[off] == value) return;
     rom[off] = value;
     ++eepromWritesTotal;
-    if (siliconStrictMode) writeBusyCycles = writeCycleCpu;
     flushRomToFile();
 }
 

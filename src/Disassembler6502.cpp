@@ -24,40 +24,40 @@ struct OpcodeInfo {
 // are rendered as "???" so a decoded byte is always traceable.
 constexpr OpcodeInfo opcodeInfo[256] = {
     {"BRK",AM_IMP}, {"ORA",AM_IZX}, {"???",AM_IMP}, {"???",AM_IZX},  // 00-03
-    {"???",AM_IMP}, {"ORA",AM_ZP},  {"ASL",AM_ZP},  {"???",AM_ZP},  // 04-07
-    {"PHP",AM_IMP}, {"ORA",AM_IMM}, {"ASL",AM_IMP}, {"???",AM_IMP},  // 08-0B
-    {"???",AM_IMP}, {"ORA",AM_ABS}, {"ASL",AM_ABS}, {"???",AM_ABS},  // 0C-0F
+    {"???",AM_ZP},  {"ORA",AM_ZP},  {"ASL",AM_ZP},  {"???",AM_ZP},  // 04-07
+    {"PHP",AM_IMP}, {"ORA",AM_IMM}, {"ASL",AM_IMP}, {"???",AM_IMM},  // 08-0B
+    {"???",AM_ABS}, {"ORA",AM_ABS}, {"ASL",AM_ABS}, {"???",AM_ABS},  // 0C-0F
     {"BPL",AM_REL}, {"ORA",AM_IZY}, {"???",AM_IMP}, {"???",AM_IZY},  // 10-13
-    {"???",AM_IMP}, {"ORA",AM_ZPX}, {"ASL",AM_ZPX}, {"???",AM_ZPX},  // 14-17
+    {"???",AM_ZPX}, {"ORA",AM_ZPX}, {"ASL",AM_ZPX}, {"???",AM_ZPX},  // 14-17
     {"CLC",AM_IMP}, {"ORA",AM_ABY}, {"???",AM_IMP}, {"???",AM_ABY},  // 18-1B
-    {"???",AM_IMP}, {"ORA",AM_ABX}, {"ASL",AM_ABX}, {"???",AM_ABX},  // 1C-1F
+    {"???",AM_ABX}, {"ORA",AM_ABX}, {"ASL",AM_ABX}, {"???",AM_ABX},  // 1C-1F
     {"JSR",AM_ABS}, {"AND",AM_IZX}, {"???",AM_IMP}, {"???",AM_IZX},  // 20-23
     {"BIT",AM_ZP},  {"AND",AM_ZP},  {"ROL",AM_ZP},  {"???",AM_ZP},  // 24-27
-    {"PLP",AM_IMP}, {"AND",AM_IMM}, {"ROL",AM_IMP}, {"???",AM_IMP},  // 28-2B
+    {"PLP",AM_IMP}, {"AND",AM_IMM}, {"ROL",AM_IMP}, {"???",AM_IMM},  // 28-2B
     {"BIT",AM_ABS}, {"AND",AM_ABS}, {"ROL",AM_ABS}, {"???",AM_ABS},  // 2C-2F
     {"BMI",AM_REL}, {"AND",AM_IZY}, {"???",AM_IMP}, {"???",AM_IZY},  // 30-33
-    {"???",AM_IMP}, {"AND",AM_ZPX}, {"ROL",AM_ZPX}, {"???",AM_ZPX},  // 34-37
+    {"???",AM_ZPX}, {"AND",AM_ZPX}, {"ROL",AM_ZPX}, {"???",AM_ZPX},  // 34-37
     {"SEC",AM_IMP}, {"AND",AM_ABY}, {"???",AM_IMP}, {"???",AM_ABY},  // 38-3B
-    {"???",AM_IMP}, {"AND",AM_ABX}, {"ROL",AM_ABX}, {"???",AM_ABX},  // 3C-3F
+    {"???",AM_ABX}, {"AND",AM_ABX}, {"ROL",AM_ABX}, {"???",AM_ABX},  // 3C-3F
     {"RTI",AM_IMP}, {"EOR",AM_IZX}, {"???",AM_IMP}, {"???",AM_IZX},  // 40-43
-    {"???",AM_IMP}, {"EOR",AM_ZP},  {"LSR",AM_ZP},  {"???",AM_ZP},  // 44-47
+    {"???",AM_ZP},  {"EOR",AM_ZP},  {"LSR",AM_ZP},  {"???",AM_ZP},  // 44-47
     {"PHA",AM_IMP}, {"EOR",AM_IMM}, {"LSR",AM_IMP}, {"???",AM_IMM},  // 48-4B
     {"JMP",AM_ABS}, {"EOR",AM_ABS}, {"LSR",AM_ABS}, {"???",AM_ABS},  // 4C-4F
     {"BVC",AM_REL}, {"EOR",AM_IZY}, {"???",AM_IMP}, {"???",AM_IZY},  // 50-53
-    {"???",AM_IMP}, {"EOR",AM_ZPX}, {"LSR",AM_ZPX}, {"???",AM_ZPX},  // 54-57
+    {"???",AM_ZPX}, {"EOR",AM_ZPX}, {"LSR",AM_ZPX}, {"???",AM_ZPX},  // 54-57
     {"CLI",AM_IMP}, {"EOR",AM_ABY}, {"???",AM_IMP}, {"???",AM_ABY},  // 58-5B
-    {"???",AM_IMP}, {"EOR",AM_ABX}, {"LSR",AM_ABX}, {"???",AM_ABX},  // 5C-5F
+    {"???",AM_ABX}, {"EOR",AM_ABX}, {"LSR",AM_ABX}, {"???",AM_ABX},  // 5C-5F
     {"RTS",AM_IMP}, {"ADC",AM_IZX}, {"???",AM_IMP}, {"???",AM_IZX},  // 60-63
-    {"???",AM_IMP}, {"ADC",AM_ZP},  {"ROR",AM_ZP},  {"???",AM_ZP},  // 64-67
+    {"???",AM_ZP},  {"ADC",AM_ZP},  {"ROR",AM_ZP},  {"???",AM_ZP},  // 64-67
     {"PLA",AM_IMP}, {"ADC",AM_IMM}, {"ROR",AM_IMP}, {"???",AM_IMM},  // 68-6B
     {"JMP",AM_IND}, {"ADC",AM_ABS}, {"ROR",AM_ABS}, {"???",AM_ABS},  // 6C-6F
     {"BVS",AM_REL}, {"ADC",AM_IZY}, {"???",AM_IMP}, {"???",AM_IZY},  // 70-73
-    {"???",AM_IMP}, {"ADC",AM_ZPX}, {"ROR",AM_ZPX}, {"???",AM_ZPX},  // 74-77
+    {"???",AM_ZPX}, {"ADC",AM_ZPX}, {"ROR",AM_ZPX}, {"???",AM_ZPX},  // 74-77
     {"SEI",AM_IMP}, {"ADC",AM_ABY}, {"???",AM_IMP}, {"???",AM_ABY},  // 78-7B
-    {"???",AM_IMP}, {"ADC",AM_ABX}, {"ROR",AM_ABX}, {"???",AM_ABX},  // 7C-7F
-    {"???",AM_IMP}, {"STA",AM_IZX}, {"???",AM_IMP}, {"???",AM_IZX},  // 80-83
+    {"???",AM_ABX}, {"ADC",AM_ABX}, {"ROR",AM_ABX}, {"???",AM_ABX},  // 7C-7F
+    {"???",AM_IMM}, {"STA",AM_IZX}, {"???",AM_IMM}, {"???",AM_IZX},  // 80-83
     {"STY",AM_ZP},  {"STA",AM_ZP},  {"STX",AM_ZP},  {"???",AM_ZP},  // 84-87
-    {"DEY",AM_IMP}, {"???",AM_IMP}, {"TXA",AM_IMP}, {"???",AM_IMM},  // 88-8B
+    {"DEY",AM_IMP}, {"???",AM_IMM}, {"TXA",AM_IMP}, {"???",AM_IMM},  // 88-8B
     {"STY",AM_ABS}, {"STA",AM_ABS}, {"STX",AM_ABS}, {"???",AM_ABS},  // 8C-8F
     {"BCC",AM_REL}, {"STA",AM_IZY}, {"???",AM_IMP}, {"???",AM_IZY},  // 90-93
     {"STY",AM_ZPX}, {"STA",AM_ZPX}, {"STX",AM_ZPY}, {"???",AM_ZPY},  // 94-97
@@ -71,22 +71,22 @@ constexpr OpcodeInfo opcodeInfo[256] = {
     {"LDY",AM_ZPX}, {"LDA",AM_ZPX}, {"LDX",AM_ZPY}, {"???",AM_ZPY},  // B4-B7
     {"CLV",AM_IMP}, {"LDA",AM_ABY}, {"TSX",AM_IMP}, {"???",AM_ABY},  // B8-BB
     {"LDY",AM_ABX}, {"LDA",AM_ABX}, {"LDX",AM_ABY}, {"???",AM_ABY},  // BC-BF
-    {"CPY",AM_IMM}, {"CMP",AM_IZX}, {"???",AM_IMP}, {"???",AM_IZX},  // C0-C3
+    {"CPY",AM_IMM}, {"CMP",AM_IZX}, {"???",AM_IMM}, {"???",AM_IZX},  // C0-C3
     {"CPY",AM_ZP},  {"CMP",AM_ZP},  {"DEC",AM_ZP},  {"???",AM_ZP},  // C4-C7
     {"INY",AM_IMP}, {"CMP",AM_IMM}, {"DEX",AM_IMP}, {"???",AM_IMM},  // C8-CB
     {"CPY",AM_ABS}, {"CMP",AM_ABS}, {"DEC",AM_ABS}, {"???",AM_ABS},  // CC-CF
     {"BNE",AM_REL}, {"CMP",AM_IZY}, {"???",AM_IMP}, {"???",AM_IZY},  // D0-D3
-    {"???",AM_IMP}, {"CMP",AM_ZPX}, {"DEC",AM_ZPX}, {"???",AM_ZPX},  // D4-D7
+    {"???",AM_ZPX}, {"CMP",AM_ZPX}, {"DEC",AM_ZPX}, {"???",AM_ZPX},  // D4-D7
     {"CLD",AM_IMP}, {"CMP",AM_ABY}, {"???",AM_IMP}, {"???",AM_ABY},  // D8-DB
-    {"???",AM_IMP}, {"CMP",AM_ABX}, {"DEC",AM_ABX}, {"???",AM_ABX},  // DC-DF
-    {"CPX",AM_IMM}, {"SBC",AM_IZX}, {"???",AM_IMP}, {"???",AM_IZX},  // E0-E3
+    {"???",AM_ABX}, {"CMP",AM_ABX}, {"DEC",AM_ABX}, {"???",AM_ABX},  // DC-DF
+    {"CPX",AM_IMM}, {"SBC",AM_IZX}, {"???",AM_IMM}, {"???",AM_IZX},  // E0-E3
     {"CPX",AM_ZP},  {"SBC",AM_ZP},  {"INC",AM_ZP},  {"???",AM_ZP},  // E4-E7
-    {"INX",AM_IMP}, {"SBC",AM_IMM}, {"NOP",AM_IMP}, {"???",AM_IMP},  // E8-EB
+    {"INX",AM_IMP}, {"SBC",AM_IMM}, {"NOP",AM_IMP}, {"???",AM_IMM},  // E8-EB
     {"CPX",AM_ABS}, {"SBC",AM_ABS}, {"INC",AM_ABS}, {"???",AM_ABS},  // EC-EF
     {"BEQ",AM_REL}, {"SBC",AM_IZY}, {"???",AM_IMP}, {"???",AM_IZY},  // F0-F3
-    {"???",AM_IMP}, {"SBC",AM_ZPX}, {"INC",AM_ZPX}, {"???",AM_ZPX},  // F4-F7
+    {"???",AM_ZPX}, {"SBC",AM_ZPX}, {"INC",AM_ZPX}, {"???",AM_ZPX},  // F4-F7
     {"SED",AM_IMP}, {"SBC",AM_ABY}, {"???",AM_IMP}, {"???",AM_ABY},  // F8-FB
-    {"???",AM_IMP}, {"SBC",AM_ABX}, {"INC",AM_ABX}, {"???",AM_ABX},  // FC-FF
+    {"???",AM_ABX}, {"SBC",AM_ABX}, {"INC",AM_ABX}, {"???",AM_ABX},  // FC-FF
 };
 
 } // namespace

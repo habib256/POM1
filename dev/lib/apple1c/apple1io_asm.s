@@ -25,7 +25,8 @@ KEYCR   = $D011
 KEYDATA = $D010
 
 _woz_putc:
-        jsr     ECHO
+        ora     #$80            ; WozMon ECHO does not set bit 7; the PIA display
+        jsr     ECHO            ; latches only when PB7=1, so OR it in (cf. print.asm)
         rts
 
 _woz_print_hex:

@@ -9,6 +9,7 @@
 #include "CpuClock.h"
 #include "Logger.h"
 #include <cstring>
+#include <cerrno>
 
 namespace {
 // TELNET protocol constants (RFC 854 / RFC 857 / RFC 858).
@@ -167,6 +168,7 @@ void TerminalCard::advanceCycles(int cycles)
 
     acceptClient();
     pollClient();
+    flushOutbound();   // retry any tail left buffered by earlier backpressure
 
     // Drain any screenshot result string posted by the main render thread.
     // Pull under the dedicated mutex (released immediately) then emit while
@@ -553,6 +555,7 @@ void TerminalCard::disconnectClient()
     if (clientFd) {
         clientFd.reset();
         clientAddress.clear();
+        outBuf.clear();   // drop any unsent tail — the peer is gone
         pom1::log().info("Term", "client disconnected");
     }
 }
@@ -621,21 +624,46 @@ void TerminalCard::sendToClient(uint8_t byte)
 void TerminalCard::sendToClient(const uint8_t* data, size_t len)
 {
     if (!clientFd || len == 0) return;
+    // Append to the outbound queue and try to flush. Appending first keeps
+    // bytes in order even when a previous flush left an unsent tail.
+    outBuf.insert(outBuf.end(), data, data + len);
+    flushOutbound();
+}
 
+void TerminalCard::flushOutbound()
+{
+    if (!clientFd || outBuf.empty()) return;
+    size_t total = 0;
+    while (total < outBuf.size()) {
 #ifdef _WIN32
-    const int sent = ::send(clientFd, reinterpret_cast<const char*>(data),
-                            static_cast<int>(len), 0);
+        const int sent = ::send(clientFd,
+                                reinterpret_cast<const char*>(outBuf.data() + total),
+                                static_cast<int>(outBuf.size() - total), 0);
 #else
-    const ssize_t sent = ::send(clientFd, data, len, MSG_NOSIGNAL);
+        const ssize_t sent = ::send(clientFd, outBuf.data() + total,
+                                    outBuf.size() - total, MSG_NOSIGNAL);
 #endif
-    if (sent <= 0) {
-        // Half-open / closed / EPIPE — the peer is gone or the kernel dropped
-        // the connection. Drop the socket now so we stop buffering writes into
-        // a dead pipe; the next poll would see POLLHUP anyway.
+        if (sent > 0) { total += static_cast<size_t>(sent); continue; }
+
+        // sent <= 0: the client FD is non-blocking, so EAGAIN/EWOULDBLOCK is
+        // healthy backpressure (kernel TX buffer full) — keep the unsent tail
+        // and retry next poll, do NOT tear down the connection. Only sent == 0
+        // (peer closed) or a real error / EPIPE means the peer is gone.
+#ifdef _WIN32
+        const bool wouldBlock = (sent < 0 && WSAGetLastError() == WSAEWOULDBLOCK);
+#else
+        const bool wouldBlock = (sent < 0 && (errno == EAGAIN || errno == EWOULDBLOCK));
+#endif
+        if (wouldBlock) break;
         disconnectClient();
+        outBuf.clear();
         return;
     }
-    bytesSentCount += static_cast<uint32_t>(sent);
+    bytesSentCount += static_cast<uint32_t>(total);
+    if (total >= outBuf.size())
+        outBuf.clear();
+    else if (total > 0)
+        outBuf.erase(outBuf.begin(), outBuf.begin() + static_cast<std::ptrdiff_t>(total));
 }
 
 #else // POM1_IS_WASM — no networking
@@ -645,6 +673,7 @@ void TerminalCard::stopServer() {}
 void TerminalCard::acceptClient() {}
 void TerminalCard::disconnectClient() { clientFd.reset(); clientAddress.clear(); }
 void TerminalCard::pollClient() {}
+void TerminalCard::flushOutbound() {}
 void TerminalCard::sendToClient(uint8_t) {}
 void TerminalCard::sendToClient(const uint8_t*, size_t) {}
 

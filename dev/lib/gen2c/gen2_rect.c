@@ -100,6 +100,13 @@ void gen2_hgr_colorize(unsigned x, unsigned char y, unsigned char w,
 {
     unsigned right;
 
+    /* gen2_colorize_asm() indexes gen2_rowlo/gen2_rowhi by scanline; those
+     * tables are zero-init BSS until gen2_build_tables() fills them. Every other
+     * drawing entry point builds them first, so colorize must too — otherwise,
+     * as the first gen2c call, each scanline base reads $0000 and writes land in
+     * low RAM. Idempotent (guarded by gen2_tables_ready). */
+    gen2_build_tables();
+
     if (w == 0u || h == 0u || y > 191u) return;
     if (!gen2_set_carrier(color)) return;
     if ((unsigned)y + h > 192u) h = (unsigned char)(192u - y);

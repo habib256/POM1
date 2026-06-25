@@ -56,6 +56,7 @@ ln_err: .res 2
 ln_e2:  .res 2
 ln_tmp: .res 2
 pen:    .res 1
+.exportzp pen           ; compiler prologue seeds pen when HPLOT may run before HGR
 
 ; ---- code ------------------------------------------------------------------
 ; Each routine is gated on a feature flag (-D RT_xxx) so the build assembles ONLY

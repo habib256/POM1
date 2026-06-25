@@ -245,7 +245,14 @@ bool SnapshotReader::nextSection(std::string& name, std::uint32_t& length) {
     length = readU32();
     if (!in.good()) return false;
 
-    cursor     = in.tellg();
+    cursor = in.tellg();
+    // Reject a forged section length that overruns the bytes still present, the
+    // same guard readString()/readByteVector() apply. Without it a handler that
+    // consumes `length` bytes directly would read past the buffer.
+    if (static_cast<std::streamoff>(length) > remainingBytes()) {
+        in.setstate(std::ios::failbit);
+        return false;
+    }
     sectionEnd = cursor + static_cast<std::streamoff>(length);
     return true;
 }

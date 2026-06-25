@@ -124,6 +124,9 @@ public:
     /// True while keystrokes queued via queueKey() are still pending delivery to
     /// the CPU (either not yet drained into Memory, or buffered awaiting a read).
     /// Locks stateMutex for a consistent snapshot — call from the UI thread.
+    /// NOTE: currently unused (the DevBench keyboard-injection poller that consumed
+    /// it was retired when tokenisation replaced injection); kept as queueKey()'s
+    /// companion query for any future drain-detection caller.
     bool hasPendingInjectedInput();
     void writeMemory(uint16_t address, uint8_t value);
 

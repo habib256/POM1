@@ -16,6 +16,7 @@
 #include <functional>
 #include <mutex>
 #include <string>
+#include <vector>
 
 // SocketHandle.h already pulls the platform socket headers; desktop-only extras
 // (addrinfo, poll, fcntl) are added here.
@@ -107,6 +108,12 @@ private:
     uint16_t listenPort = kDefaultPort;
     std::string clientAddress;
 
+    // Outbound queue: a non-blocking socket can accept fewer bytes than asked
+    // (or none, on EWOULDBLOCK). We append here and flush as the kernel buffer
+    // drains, so multi-byte writes (banner, CRLF, screenshot string, ANSI
+    // sequences, TELNET negotiation) are never truncated mid-stream.
+    std::vector<uint8_t> outBuf;
+
     // Statistics
     uint32_t bytesSentCount = 0;
     uint32_t bytesReceivedCount = 0;
@@ -142,6 +149,7 @@ private:
     void acceptClient();
     void disconnectClient();
     void pollClient();
+    void flushOutbound();
     void sendToClient(const uint8_t* data, size_t len);
     void sendToClient(uint8_t byte);
     void processIncomingByte(uint8_t byte);

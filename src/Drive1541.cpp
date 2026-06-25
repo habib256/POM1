@@ -330,13 +330,27 @@ bool Drive1541::finalizeWriteChannel(Channel& ch) {
     if (pn.isAtReplace) {
         image_.deleteFile(nv);
     }
-    if (image_.writeFile(nv, ch.buffer, D64Image::FileType::Prg)) {
+    switch (image_.writeFileEx(nv, ch.buffer, D64Image::FileType::Prg)) {
+    case D64Image::WriteResult::Ok:
         image_.save();
         setError(0, "OK");
         return true;
+    case D64Image::WriteResult::FileExists:
+        setError(63, "FILE EXISTS");
+        return false;
+    case D64Image::WriteResult::DiskFull:
+        setError(72, "DISK FULL");
+        return false;
+    case D64Image::WriteResult::NotReady:
+        setError(74, "DRIVE NOT READY");
+        return false;
+    case D64Image::WriteResult::BadData:
+    default:
+        // Empty/invalid data — CBM DOS has no dedicated code; 63 keeps the
+        // historical behaviour for the degenerate "nothing to write" case.
+        setError(63, "FILE EXISTS");
+        return false;
     }
-    setError(63, "FILE EXISTS");
-    return false;
 }
 
 // ---- Directory synthesis ---------------------------------------------------

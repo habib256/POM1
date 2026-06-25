@@ -50,7 +50,7 @@ RT_GFX = .defined(RT_HGR) .or .defined(RT_PLOT) .or .defined(RT_LINE) .or .defin
 .importzp pix_x, pix_y, pen_color, ln_x0, ln_y0, ln_x1, ln_y1
 
 .segment "BSS"
-plot_mode: .res 1       ; 0 = OR (tms9918m2 .import's it); zeroed by the program prologue
+plot_mode: .res 1       ; 0 = OR (tms9918m2 .import's it); set by each rt_plot/rt_line (NOT the prologue)
 .export plot_mode
 
 .segment "CODE"

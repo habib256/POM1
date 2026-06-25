@@ -240,7 +240,10 @@ void EmulationController::setCpuBrkTraceEnabled(bool enabled)
 
 bool EmulationController::isCpuBrkTraceEnabled() const
 {
-    // Read-only access to a bool; safe without the state mutex.
+    // The emulation thread mutates these CPU fields (breakpointTripped inside
+    // cpu->run(), the rest under stateMutex), so a lock-free read here is a
+    // formal data race. Take stateMutex, matching the setters below.
+    std::lock_guard<PriorityMutex> lock(stateMutex);
     return cpu->getDebugBrkTrace();
 }
 
@@ -264,16 +267,19 @@ void EmulationController::clearCpuBreakpoint()
 
 bool EmulationController::hasCpuBreakpoint() const
 {
+    std::lock_guard<PriorityMutex> lock(stateMutex);
     return cpu->hasBreakpoint();
 }
 
 uint16_t EmulationController::getCpuBreakpoint() const
 {
+    std::lock_guard<PriorityMutex> lock(stateMutex);
     return cpu->getBreakpoint();
 }
 
 bool EmulationController::isCpuBreakpointTripped() const
 {
+    std::lock_guard<PriorityMutex> lock(stateMutex);
     return cpu->isBreakpointTripped();
 }
 
@@ -409,15 +415,19 @@ bool EmulationController::saveMemoryRange(const std::string& path, uint16_t star
             if (a == 0xFFFF) break;
         }
     } else {
-        for (uint16_t a = startAddress; a <= endAddress; a += 16) {
+        // Use a 32-bit counter so the `a += 16` step can never wrap the 16-bit
+        // address space: with a uint16_t counter, endAddress >= 0xFFF0 makes
+        // a==0xFFF0 step to 0x10000 -> wraps to 0, a <= endAddress stays true
+        // forever (infinite loop + unbounded file). The old `if (a + 16 < a)`
+        // guard was dead code (a + 16 promotes to int and never wraps).
+        for (uint32_t a = startAddress; a <= endAddress; a += 16) {
             file << std::hex << std::uppercase << std::setfill('0')
                  << std::setw(4) << a << ":";
-            int lineEnd = std::min((int)a + 16, (int)endAddress + 1);
-            for (int i = a; i < lineEnd; ++i) {
+            uint32_t lineEnd = std::min(a + 16, (uint32_t)endAddress + 1);
+            for (uint32_t i = a; i < lineEnd; ++i) {
                 file << " " << std::setfill('0') << std::setw(2) << (int)memPtr[(uint16_t)i];
             }
             file << "\n";
-            if (a + 16 < a) break;
         }
     }
     return true;
