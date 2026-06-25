@@ -1020,7 +1020,9 @@ Result compile(const std::string& source, Card card, FpMode mode)
     // A program that plots before HGR/HCOLOR would read an uninitialised pen and
     // silently take the erase path, so seed it in the prologue. (pen is GEN2-only;
     // the TMS runtime drives plotting through plot_mode instead.)
-    const bool seedPen = (g.card == Card::Gen2) && uses("rt_plot");
+    // rt_line internally calls rt_plot, which reads pen, so a line-only program
+    // (HPLOT a,b TO c,d with no single-point HPLOT) needs the seed too.
+    const bool seedPen = (g.card == Card::Gen2) && (uses("rt_plot") || uses("rt_line"));
     if (seedPen) zpImp.push_back("pen");
 
     std::ostringstream o;

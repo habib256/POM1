@@ -300,9 +300,9 @@ static const char* kSketchGen2C =
     "    for (;;) { /* idle */ }\n"
     "}\n";
 
-// BASIC starters. No compiler in the loop: the Bench cold-starts the in-ROM
-// interpreter and TYPES the listing at the prompt, then RUN (see injectBasic).
-// Because it is pure keyboard injection, both run in the web (WASM) build too.
+// BASIC starters. The Bench cold-starts the in-ROM interpreter, then tokenises/
+// compiles the listing ahead of time and loads it directly (see injectBasic) — no
+// keyboard typing. Pure C++, so both run in the web (WASM) build too.
 static const char* kSketchBasicInteger =     // Integer BASIC ($E000, Apple-1 text)
     "10 PRINT \"HELLO FROM INTEGER BASIC\"\n"
     "20 FOR I=1 TO 5\n"
@@ -504,10 +504,10 @@ const char* const kP1LanguageHints[] = {
     "gen2 equate libraries under dev/lib via the per-target linker .cfg.",
     "C cross-compiler (cc65's cl65). Pulls in the apple1.c runtime, or the\n"
     "tms9918c (TMS9918) / gen2 C runtime depending on the target.",
-    "No compiler: POM1 cold-starts the in-ROM interpreter and TYPES your listing\n"
-    "at the prompt, then RUN. Pure keyboard injection, so it works in the web\n"
-    "(WASM) build too. Integer BASIC (Apple-1 dual-rom) + Applesoft on microSD /\n"
-    "GEN2 HGR / TMS9918.",
+    "POM1 cold-starts the in-ROM interpreter, then tokenises your listing ahead of\n"
+    "time and loads it directly (instant, no per-character typing, no 127-char line\n"
+    "cap). Pure C++, so it works in the web (WASM) build too. Integer BASIC (Apple-1\n"
+    "dual-rom) + Applesoft on microSD / GEN2 HGR / TMS9918.",
 };
 // The "Target" combo is per-language: asm/C show the three graphics machines,
 // BASIC shows its four interpreters (CodeBench filters by targetFor()). Each is
@@ -544,7 +544,7 @@ const char* const kP1MachineHints[] = {
     "($4000-$7FFF), cold start 4000R. sketchs/tms9918/applesoft_tms9918.",
     "Integer BASIC — Wozniak's 6502 Integer BASIC in the Apple-1 dual-ROM second\n"
     "bank ($E000-$EFFF), cold start E000R. No graphics, no floating point — the\n"
-    "classic Apple-1 BASIC. Keyboard-injected listing, no compiler.",
+    "classic Apple-1 BASIC. Listing tokenised + loaded directly (no keyboard typing).",
     "Applesoft GEN2 (native compile) — COMPILES the listing to standalone 6502\n"
     "(no interpreter, ~20x faster) via the native compiler, links the minimal GEN2\n"
     "runtime, loads + runs at $0300 on the GEN2 card (preset 2). Desktop only.",
@@ -1826,6 +1826,22 @@ bench::BuildResult Pom1BenchHost::injectBasic(int target, const std::string& src
         return r;
     }
 
+    // Prep-only call: selectTargetExplicit passes an empty listing (run=false) just to
+    // ready the interpreter prompt when the user picks a BASIC target. Compiling an
+    // empty listing would fail with "no BASIC lines to compile" and surface as a scary
+    // selection error, so cold-start the ROM to its prompt and report success instead.
+    if (src.empty() && !run) {
+        constexpr uint64_t kColdStartCycles = 12'000'000;
+        const uint16_t coldEntry =
+            idx == 8  ? 0x6000 : idx == 9  ? 0x9800 :
+            idx == 10 ? 0xE000 : idx == 11 ? 0x4000 : ibasic::kColdStart;  // else idx 7
+        emu->runFromSync(coldEntry, kColdStartCycles);
+        emu->copySnapshot(mw_->uiSnapshot);
+        r.status = std::string(interp) + " — ready";
+        r.ok = true;
+        return r;
+    }
+
     // 2b) Integer BASIC ($E000, idx 7) — tokenise host-side, then load + run via the
     //     ROM's RUN handler. Unlike Applesoft there is no $0801 launcher: the program
     //     lives HIGH (down from HIMEM $1000), pp ($CA) points at it, and execution
@@ -1897,7 +1913,8 @@ bench::BuildResult Pom1BenchHost::injectBasic(int target, const std::string& src
     //     image and jump to the launcher — no per-character keyboard typing, no
     //     127-char line cap, instant, and identical on WASM (the compiler is pure
     //     C++). idx: 8 microSD ($6000), 9 GEN2 ($9800), 10 CFFA1 ($E000), 11 TMS
-    //     ($4000). Integer BASIC (idx 7) has a different token set and still injects.
+    //     ($4000). Integer BASIC (idx 7) has a different token set and is handled by
+    //     the ibasic::compile path above (also compiled + loaded, never keyboard-typed).
     if (idx == 8 || idx == 9 || idx == 10 || idx == 11) {
         basic::Target tgt; uint16_t coldEntry;
         switch (idx) {

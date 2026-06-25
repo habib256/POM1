@@ -37,7 +37,7 @@ DEFS=$(grep -E '^\.import ' "$TMP/prog.s" | grep -oE 'rt_[a-z0-9]+' | sort -u \
 # The transcendentals (fp_int/fp_sqrt/fp_sin/fp_cos) are themselves gated, so
 # assemble them ONLY when imported -- a plain +-*/ float program drops them.
 FP_OBJ=()
-if [ -n "$FLOAT" ] || grep -E '^\.import' "$TMP/prog.s" | grep -q 'fp_'; then
+if [ -n "$FLOAT" ] || grep -qE '^\.import .*fp_' "$TMP/prog.s"; then
   FPDEFS=""
   grep -q 'fp_int\b'  "$TMP/prog.s" && FPDEFS="$FPDEFS -D FP_INT"
   grep -q 'fp_sqrt\b' "$TMP/prog.s" && FPDEFS="$FPDEFS -D FP_SQRT"

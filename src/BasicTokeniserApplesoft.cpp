@@ -280,23 +280,28 @@ Result compile(const std::string& source, const Target& tgt)
     prog.push_back(0x00);                                 // $0800 guard
     uint16_t cur = kProgramOrigin;                        // $0801
     for (const Line& L : lines) {
-        const uint16_t lineLen = static_cast<uint16_t>(4 + L.tokens.size() + 1);
-        const uint16_t next = static_cast<uint16_t>(cur + lineLen);
-        // Guard the layout against address overflow: a program large enough to wrap
-        // the 16-bit link past $FFFF (next < cur) -- or to run past HIMEM, e.g. into
-        // the GEN2 framebuffer floor -- would otherwise emit garbage links with ok=true.
-        if (next < cur || (tgt.himem && next >= tgt.himem)) {
+        // Compute in a wide type so a single >64 KB line can't wrap lineLen/next
+        // past the check. The program is followed by a 2-byte end-of-program marker
+        // ($00 $00) at `next`/`next+1` and VARTAB at next+2, so every emitted byte
+        // must stay below the ceiling (HIMEM, e.g. the GEN2 framebuffer floor; the
+        // 16-bit space otherwise) -- guard next+2, not next, or the trailing marker
+        // can still land in the framebuffer. Otherwise garbage links emit with ok=true.
+        const size_t lineLen = 4 + L.tokens.size() + 1;
+        const size_t next = static_cast<size_t>(cur) + lineLen;
+        const size_t ceil = tgt.himem ? tgt.himem : 0x10000u;
+        if (next + 2 > ceil) {
             r.error = "program too large: line " + std::to_string(L.number) +
                       " overflows available memory";
             return r;
         }
-        prog.push_back(next & 0xFF);                      // forward link -> next line
-        prog.push_back((next >> 8) & 0xFF);
+        const uint16_t next16 = static_cast<uint16_t>(next);
+        prog.push_back(next16 & 0xFF);                    // forward link -> next line
+        prog.push_back((next16 >> 8) & 0xFF);
         prog.push_back(L.number & 0xFF);                  // line number
         prog.push_back((L.number >> 8) & 0xFF);
         for (uint8_t b : L.tokens) prog.push_back(b);     // tokens
         prog.push_back(0x00);                             // end-of-line
-        cur = next;
+        cur = next16;
     }
     prog.push_back(0x00);                                 // end-of-program link ($0000)
     prog.push_back(0x00);
