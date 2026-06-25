@@ -14,7 +14,8 @@
 #include "CodeTank.h"
 #include "JukeBox.h"
 #include "MemoryViewer_ImGui.h"
-#include "HGRPaintEditor_ImGui.h"
+#include "HgrPaintEditor.h"        // hgrpaint/ (portable editor) on the include path
+#include "Pom1HgrPaintHost.h"
 #include "Screen_ImGui.h"
 #include "GraphicsCard.h"
 #include "TMS9918.h"
@@ -170,7 +171,10 @@ private:
     std::unique_ptr<EmulationController> emulation;
     std::unique_ptr<Screen_ImGui> screen;
     std::unique_ptr<MemoryViewer_ImGui> memoryViewer;
-    std::unique_ptr<HGRPaintEditor_ImGui> hgrPaintEditor;
+    // Portable HGR Paint editor (hgrpaint/) + its POM1 host. Host is declared
+    // first so it outlives the editor that holds a raw pointer to it.
+    std::unique_ptr<Pom1HgrPaintHost> hgrPaintHost;
+    std::unique_ptr<hgrpaint::HgrPaintEditor> hgrPaintEditor;
     EmulationSnapshot uiSnapshot;
     
     // Window reference for keyboard callbacks

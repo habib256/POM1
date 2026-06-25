@@ -7,9 +7,10 @@
 //
 // assert() failures abort with a stderr trace + non-zero exit — enough for ctest.
 
-#include "HGRPaintEditor_ImGui.h"
+#include "HgrPaintModel.h"
 #include "GraphicsCard.h"
 
+#include <algorithm>
 #include <cassert>
 #include <cstdint>
 #include <cstdio>
@@ -17,9 +18,27 @@
 
 using hgrpaint::HgrColor;
 
+// Render an 8 KB HGR page through the real GEN2 NTSC pipeline — the renderer the
+// editor canvas uses — so fillRegion floods by perceived colour. (POM1 supplies
+// this via Pom1HgrPaintHost; the test wires GraphicsCard directly.)
+static GraphicsCard g_gfx;
+static void renderPage(const uint8_t* page8k, uint32_t* out)
+{
+    std::vector<uint8_t> mem(0x10000, 0);
+    std::copy(page8k, page8k + hgrpaint::kHiresSize, mem.begin() + 0x2000);
+    GraphicsCard::DisplayState st;
+    st.textMode = false; st.mixedMode = false; st.hiRes = true; st.page2 = false;
+    g_gfx.setMonitorMode(GraphicsCard::MonitorMode::Colour);
+    g_gfx.invalidate();
+    g_gfx.render(mem.data(), st, st, {});
+    std::copy(g_gfx.pixels(),
+              g_gfx.pixels() + static_cast<size_t>(hgrpaint::kHiresWidth) * hgrpaint::kHiresHeight,
+              out);
+}
+
 int main()
 {
-    std::vector<uint8_t> page(GraphicsCard::kHiresSize, 0);
+    std::vector<uint8_t> page(hgrpaint::kHiresSize, 0);
 
     // ── addressing ────────────────────────────────────────────────────────
     // Row 0 starts at $2000 → offset 0; bit = column % 7; byte = column / 7.
@@ -157,6 +176,40 @@ int main()
     assert(hgrpaint::setBytePalette(page.data(), -1, 70, 1) == -1);
     assert(hgrpaint::setBytePalette(page.data(), 40, 70, 1) == -1);
     assert(hgrpaint::setBytePalette(page.data(), 4, 192, 1) == -1);
+
+    // ── fillRegion: colour-based flood, no leak through dithered colours ─────
+    // A solid violet field is the byte pattern $55 (odd columns OFF), so a raw-bit
+    // flood of the black background would leak through those off sub-pixels into
+    // the shape. fillRegion floods by perceived colour, so it must NOT.
+    page.assign(page.size(), 0);
+    // Violet block, columns 100..140, rows 50..60.
+    for (int yy = 50; yy <= 60; ++yy)
+        for (int xx = 100; xx <= 140; ++xx)
+            hgrpaint::plotPage(page.data(), xx, yy, HgrColor::Violet);
+    // An interior byte (cols 105..111, row 55): violet lights even cols → $2A.
+    const int vByte = hgrpaint::hgrByteOffset(105, 55);
+    assert(page[vByte] == 0x2A);
+    // Fill the black background with White, seeded far from the block.
+    hgrpaint::fillRegion(page.data(), 0, 0, HgrColor::White, renderPage);
+    // Background far away is now solid white ($7F, palette untouched).
+    assert(page[hgrpaint::hgrByteOffset(0, 0)] == 0x7F);
+    assert(page[hgrpaint::hgrByteOffset(0, 100)] == 0x7F);
+    // The violet block was NOT leaked into: its interior byte is still $2A — a
+    // raw-bit flood would have flipped its odd columns on, making it $7F.
+    assert(page[vByte] == 0x2A);
+
+    // Recolour the violet block to Green: clear-then-stamp must NOT merge the old
+    // violet bits with the new green bits into white ($2A | $55 == $7F).
+    hgrpaint::fillRegion(page.data(), 105, 55, HgrColor::Green, renderPage);
+    assert(page[vByte] == 0x55);             // green pattern (odd cols), not $7F
+    assert((page[vByte] & 0x80) == 0);       // palette 0 (green), high bit clear
+
+    // Filling Black clears a region back to empty.
+    hgrpaint::fillRegion(page.data(), 105, 55, HgrColor::Black, renderPage);
+    assert(page[vByte] == 0x00);
+    // Out-of-range seed is a safe no-op.
+    assert(hgrpaint::fillRegion(page.data(), -1, 0, HgrColor::White, renderPage) == 0);
+    assert(hgrpaint::fillRegion(page.data(), 0, 192, HgrColor::White, renderPage) == 0);
 
     std::printf("hgr_paint_plot_smoke: all assertions passed\n");
     return 0;

@@ -56,8 +56,7 @@ set(SOURCES
     ${POM1_SRC_DIR}/M6502.cpp
     ${POM1_SRC_DIR}/Memory.cpp
     ${POM1_SRC_DIR}/MemoryViewer_ImGui.cpp
-    ${POM1_SRC_DIR}/HGRPaintEditor_ImGui.cpp
-    ${POM1_SRC_DIR}/HGRPaintModel.cpp
+    ${POM1_SRC_DIR}/Pom1HgrPaintHost.cpp
     ${POM1_SRC_DIR}/Screen_ImGui.cpp
     ${POM1_SRC_DIR}/SID.cpp
     ${POM1_SRC_DIR}/TMS9918.cpp
@@ -96,6 +95,8 @@ set(SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/bench/BenchLang.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/bench/CodeBench.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/bench/Markdown.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/hgrpaint/HgrPaintEditor.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/hgrpaint/HgrPaintModel.cpp
 )
 
 set(HEADERS
@@ -113,7 +114,10 @@ set(HEADERS
     ${POM1_SRC_DIR}/M6502.h
     ${POM1_SRC_DIR}/Memory.h
     ${POM1_SRC_DIR}/MemoryViewer_ImGui.h
-    ${POM1_SRC_DIR}/HGRPaintEditor_ImGui.h
+    ${POM1_SRC_DIR}/Pom1HgrPaintHost.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/hgrpaint/HgrPaintEditor.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/hgrpaint/HgrPaintModel.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/hgrpaint/IHgrPaintHost.h
     ${POM1_SRC_DIR}/MicroSD.h
     ${POM1_SRC_DIR}/JukeBox.h
     ${POM1_SRC_DIR}/CodeTank.h
@@ -191,6 +195,7 @@ target_include_directories(${PROJECT_NAME} PRIVATE
     ${POM1_SRC_DIR}
     ${POM1_SRC_DIR}/third_party/ImGuiColorTextEdit
     ${CMAKE_CURRENT_SOURCE_DIR}/bench
+    ${CMAKE_CURRENT_SOURCE_DIR}/hgrpaint
 )
 
 # libresidfp (vendored, third_party/libresidfp). PUBLIC include dir on the

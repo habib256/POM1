@@ -12,19 +12,48 @@ is `git log`; the user-facing feature tour is `README.md`; open work lives in
 
 ### Added — HGR Paint Editor window
 
-- **`HGR Paint Editor`** (`src/HGRPaintEditor_ImGui.{h,cpp}`, pure model in
-  `src/HGRPaintModel.cpp`): an Apple II hi-res paint window for the GEN2 card.
-  Draws **live** into the HGR framebuffer (`$2000` page 1 / `$4000` page 2) via
-  `EmulationController::writeMemory`, so strokes appear on the GEN2 screen in
-  real time. The canvas is rendered through `GraphicsCard`'s NTSC artifact-colour
-  pipeline, so it is pixel-identical to the emulator's output. Tools: pencil,
-  eraser, line, rectangle (filled/outline), flood fill, plus page select, brush
-  size, zoom, grid, NTSC/mono toggle, undo, clear, and load/save of 8 KB `.HGR`
-  images. **Faithful HGR colour model**: the six artifact colours obey column
-  parity and the per-byte shared high bit (painting a palette-1 colour recolours
-  the byte's other pixels — the real NTSC behaviour). Pinned by
-  `hgr_paint_plot_smoke`. Independent reimplementation inspired by fadden's
-  HGRTool (concept only, Apache-2.0).
+- **`HGR Paint Editor`**: an Apple II hi-res paint window for the GEN2 card.
+  Draws **live** into the HGR framebuffer (`$2000` page 1 / `$4000` page 2) so
+  strokes appear on the GEN2 screen in real time, and renders its canvas through
+  the GEN2 NTSC artifact-colour pipeline so it is pixel-identical to the
+  emulator's output. Tools: pencil, eraser, line, rectangle, ellipse, flood fill,
+  eyedropper, rectangular select/clipboard, palette-shift, plus page select,
+  brush size, zoom, grid, seam overlay, minimap, NTSC/mono toggle, undo/redo,
+  clear, and load/save of 8 KB `.HGR` images + PNG export. **Faithful HGR colour
+  model**: the six artifact colours obey column parity and the per-byte shared
+  high bit. Pinned by `hgr_paint_plot_smoke`. Independent reimplementation
+  inspired by fadden's HGRTool (concept only, Apache-2.0).
+  - **Portable module** (`hgrpaint/`, at the repo root alongside `bench/`): the
+    editor + pure model now depend only on ImGui/GL and a small
+    `hgrpaint::IHgrPaintHost` seam (poke / render-page / file I/O), mirroring
+    `bench/IBenchHost`. POM1 supplies `src/Pom1HgrPaintHost` (GraphicsCard +
+    `EmulationController` + stb_image_write); **POM2 can reuse `hgrpaint/`
+    verbatim** with its own host. The pure model carries its own Apple II row
+    interleave + geometry constants (cross-checked against `GraphicsCard` in the
+    test) so it pulls in no emulator headers.
+  - **Fill rewritten to flood by *perceived* artifact colour** (renders the page
+    through the host NTSC pipeline) instead of raw pixel on/off. An HGR colour
+    field is bit-dithered (solid violet is the byte pattern `$55`, odd columns
+    *off*), so the old raw-bit flood leaked through every chromatic region via
+    those off sub-pixels — filling the background flooded ~the whole canvas.
+    Recolour now clears the region first so an old colour's bits can't OR with
+    the new ones into white (`$2A | $55 = $7F`). Pinned by new
+    `hgr_paint_plot_smoke` cases (no-leak + clean recolour).
+  - **UI redesigned MacPaint-style**: a left vertical palette of **FontAwesome
+    icon tool buttons** (`IconsFontAwesome6`, same dependency as `bench/`), the
+    **colour palette along the bottom**, the **navigator thumbnail in the left
+    panel** (below the edit buttons, no longer overlaying the canvas), and a slim
+    top strip (page · file · help). The drawing canvas is now an `InvisibleButton`
+    (not an `Image`) so **dragging on it paints instead of moving the window** —
+    the window only moves from its title bar (was unusable: any stroke dragged
+    the whole window).
+  - **Ergonomics**: right-drag quick-erase (no tool switch), middle-drag pan,
+    `Shift` constrains Line to 0/45/90° and Rect/Ellipse to a square, zoom-to-fit
+    on first open, and a `(?)` controls cheat-sheet.
+  - **File picker** (portable `std::filesystem`): Load / Save / Save PNG now open
+    a modal browser instead of needing a typed path — it lists every file with its
+    byte size and highlights the 8 KB ones (raw HGR images have no standard
+    extension, e.g. `sdcard/NONO/HGR/PIC#062000`).
 
 ### Added — native compiler: `SIN`/`SQR`/`INT`, peephole optimizer, `3DHat.apf` runs native
 

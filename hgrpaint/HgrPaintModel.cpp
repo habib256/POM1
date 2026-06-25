@@ -1,21 +1,37 @@
 // Pom1 Apple 1 Emulator
 // Copyright (C) 2000-2026 Verhille Arnaud
 //
-// HGR paint model — the pure bit-plotting logic behind HGRPaintEditor_ImGui,
-// split out so it can be unit-tested (hgr_paint_plot_smoke) with no GL/ImGui
-// dependency. Reuses GraphicsCard::hgrRowAddress for the canonical Apple II
-// row interleave (no duplicated layout maths).
+// HGR paint model — the emulator-agnostic bit-plotting logic behind
+// HgrPaintEditor, split out so it can be unit-tested (hgr_paint_plot_smoke) with
+// no GL/ImGui/emulator dependency. Carries its own copy of the Apple II row
+// interleave (a hardware fact, identical on any host).
 
-#include "HGRPaintEditor_ImGui.h"
-#include "GraphicsCard.h"
+#include "HgrPaintModel.h"
+
+#include <utility>
+#include <vector>
 
 namespace hgrpaint {
+
+uint16_t hgrRowAddress(int y)
+{
+    // Apple II HIRES non-linear memory layout: 192 lines split into 3 groups of
+    // 64, each interleaved in blocks of 8 (Woz reused the row counter for DRAM
+    // refresh). Page 1 base ($2000); the model works page-relative.
+    const int group    = y / 64;          // 0, 1, 2
+    const int subGroup = (y % 64) / 8;     // 0-7
+    const int line     = y % 8;            // 0-7
+    return static_cast<uint16_t>(kHiresBase)
+         + static_cast<uint16_t>(group)    * 0x28
+         + static_cast<uint16_t>(subGroup) * 0x80
+         + static_cast<uint16_t>(line)     * 0x400;
+}
 
 int hgrByteOffset(int x, int y)
 {
     // hgrRowAddress is $2000-based; subtract the base for a page-relative
     // offset (identical interleave for both pages).
-    return (GraphicsCard::hgrRowAddress(y, false) - 0x2000) + x / 7;
+    return (hgrRowAddress(y) - kHiresBase) + x / 7;
 }
 
 int hgrBit(int x) { return x % 7; }
@@ -133,6 +149,56 @@ int setBytePalette(uint8_t* page, int byteCol, int y, int msb)
     if (nb == b) return -1;
     page[off] = nb;
     return off;
+}
+
+int fillRegion(uint8_t* page, int x, int y, HgrColor c, const RenderPageFn& render)
+{
+    if (x < 0 || x > 279 || y < 0 || y > 191 || !render) return 0;
+
+    // Render the page through the host's real NTSC pipeline so connectivity
+    // matches the displayed image (see header).
+    constexpr int W = kHiresWidth, H = kHiresHeight;
+    std::vector<uint32_t> col(static_cast<size_t>(W) * H, 0);
+    render(page, col.data());
+    auto rgb = [&](int px, int py) { return col[static_cast<size_t>(py) * W + px] & 0x00FFFFFFu; };
+    const uint32_t seed = rgb(x, y);
+
+    // 4-connected flood over equal perceived colour.
+    std::vector<uint8_t> seen(static_cast<size_t>(W) * H, 0);
+    std::vector<std::pair<int,int>> stack, region;
+    stack.emplace_back(x, y);
+    seen[static_cast<size_t>(y) * W + x] = 1;
+    while (!stack.empty()) {
+        const std::pair<int,int> p = stack.back(); stack.pop_back();
+        const int px = p.first, py = p.second;
+        region.emplace_back(px, py);
+        const int nb[4][2] = {{px - 1, py}, {px + 1, py}, {px, py - 1}, {px, py + 1}};
+        for (auto& n : nb) {
+            const int nx = n[0], ny = n[1];
+            if (nx < 0 || nx >= W || ny < 0 || ny >= H) continue;
+            const size_t idx = static_cast<size_t>(ny) * W + nx;
+            if (seen[idx]) continue;
+            if (rgb(nx, ny) != seed) continue;
+            seen[idx] = 1;
+            stack.emplace_back(nx, ny);
+        }
+    }
+
+    // Recolour: clear the whole region first (so leftover bits of the old colour
+    // can't OR with the new colour's bits into white), then stamp c's pattern.
+    // Chromatic colours only live on one column parity, so we light just the
+    // matching-parity pixels — no snap-bleed past the region edge.
+    for (auto& p : region) plotPage(page, p.first, p.second, HgrColor::Black);
+    if (c != HgrColor::Black) {
+        const int parity = (c == HgrColor::Violet || c == HgrColor::Blue)  ? 0
+                         : (c == HgrColor::Green  || c == HgrColor::Orange) ? 1
+                         : -1;   // White: parity-agnostic, light every pixel
+        for (auto& p : region) {
+            if (parity < 0)                  plotPage(page, p.first, p.second, c);   // White
+            else if ((p.first & 1) == parity) plotPage(page, p.first, p.second, c);
+        }
+    }
+    return static_cast<int>(region.size());
 }
 
 } // namespace hgrpaint

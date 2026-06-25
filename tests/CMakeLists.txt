@@ -149,11 +149,13 @@ set_tests_properties(peripheral_bus_smoke PROPERTIES TIMEOUT 5)
 # per-byte shared high-bit palette behaviour, addressing). No GL/ImGui.
 add_executable(test_hgr_paint_plot
     hgr_paint_plot_smoke_test.cpp
-    ${CMAKE_SOURCE_DIR}/src/HGRPaintModel.cpp
+    ${CMAKE_SOURCE_DIR}/hgrpaint/HgrPaintModel.cpp
     ${CMAKE_SOURCE_DIR}/src/GraphicsCard.cpp
     ${CMAKE_SOURCE_DIR}/src/Gen2VideoScanner.cpp
 )
-target_include_directories(test_hgr_paint_plot PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_include_directories(test_hgr_paint_plot PRIVATE
+    ${CMAKE_SOURCE_DIR}/src
+    ${CMAKE_SOURCE_DIR}/hgrpaint)
 
 add_test(NAME hgr_paint_plot_smoke
          COMMAND test_hgr_paint_plot)

@@ -1,17 +1,23 @@
 // Pom1 Apple 1 Emulator
 // Copyright (C) 2000-2026 Verhille Arnaud
 //
-// HGR paint editor — see HGRPaintEditor_ImGui.h. Independent reimplementation
+// HGR paint editor — see HgrPaintEditor.h. Independent reimplementation
 // inspired by fadden's HGRTool (concept only).
 
-#include "HGRPaintEditor_ImGui.h"
+#include "HgrPaintEditor.h"
 
 #include "imgui.h"
+#include "IconsFontAwesome6.h"   // FA-solid glyphs (merged into the UI font, like bench/)
 #include <GLFW/glfw3.h>
 
 #include <algorithm>
-#include <cstdlib>
 #include <cstdio>
+#include <cstdlib>
+#include <cstring>
+#include <filesystem>
+#include <system_error>
+#include <utility>
+#include <vector>
 
 using hgrpaint::HgrColor;
 
@@ -22,7 +28,8 @@ const int kZoomLadder[] = { 1, 2, 3, 4, 6, 8, 12, 16 };
 const int kZoomLadderCount = static_cast<int>(sizeof(kZoomLadder) / sizeof(kZoomLadder[0]));
 
 // Approximate sRGB for each HGR colour, for the palette swatches + tool
-// previews (the canvas itself is rendered by GraphicsCard, the source of truth).
+// previews (the canvas itself is rendered by the host NTSC pipeline, the
+// source of truth).
 ImU32 swatchColor(HgrColor c)
 {
     switch (c) {
@@ -49,25 +56,45 @@ const char* colorName(HgrColor c)
     return "?";
 }
 
+// FontAwesome-solid glyph for each tool, in Tool-enum order.
+const char* const kToolIcons[9] = {
+    ICON_FA_PENCIL,        // Pencil
+    ICON_FA_ERASER,        // Eraser
+    ICON_FA_SLASH,         // Line
+    ICON_FA_SQUARE,        // Rectangle
+    ICON_FA_CIRCLE,        // Ellipse
+    ICON_FA_FILL_DRIP,     // Fill
+    ICON_FA_EYE_DROPPER,   // Eyedropper
+    ICON_FA_VECTOR_SQUARE, // Select (marquee)
+    ICON_FA_PALETTE,       // Palette shift
+};
+
 } // namespace
 
-HGRPaintEditor_ImGui::HGRPaintEditor_ImGui()
-    : shadow(GraphicsCard::kHiresSize, 0)
+hgrpaint::HgrPaintEditor::HgrPaintEditor(IHgrPaintHost* host_)
+    : host(host_),
+      canvasRgba(static_cast<size_t>(kHiresWidth) * kHiresHeight, 0),
+      shadow(kHiresSize, 0)
 {
 }
 
-HGRPaintEditor_ImGui::~HGRPaintEditor_ImGui()
+hgrpaint::HgrPaintEditor::~HgrPaintEditor()
 {
     if (texture != 0) glDeleteTextures(1, &texture);
+}
+
+void hgrpaint::HgrPaintEditor::renderShadow(uint32_t* out, bool mono)
+{
+    if (host) host->renderHgrPage(shadow.data(), out, mono);
 }
 
 // ─────────────────────────────────────────────────────────────
 // Painting primitives (operate on the shadow, emit writes, record undo)
 // ─────────────────────────────────────────────────────────────
 
-void HGRPaintEditor_ImGui::beginStroke() { stroke.clear(); }
+void hgrpaint::HgrPaintEditor::beginStroke() { stroke.clear(); }
 
-void HGRPaintEditor_ImGui::commitStroke()
+void hgrpaint::HgrPaintEditor::commitStroke()
 {
     if (stroke.empty()) return;
     undo.push_back(std::move(stroke));
@@ -77,7 +104,7 @@ void HGRPaintEditor_ImGui::commitStroke()
     redo.clear();
 }
 
-void HGRPaintEditor_ImGui::applyPlot(int x, int y, HgrColor c)
+void hgrpaint::HgrPaintEditor::applyPlot(int x, int y, HgrColor c)
 {
     const int off = hgrpaint::targetOffset(x, y, c);
     if (off < 0) return;
@@ -86,10 +113,10 @@ void HGRPaintEditor_ImGui::applyPlot(int x, int y, HgrColor c)
     if (changed < 0) return;
     const uint16_t addr = static_cast<uint16_t>(baseAddr() + changed);
     stroke.push_back({addr, old, shadow[changed]});
-    if (writeCallback) writeCallback(addr, shadow[changed]);
+    if (host) host->pokeByte(addr, shadow[changed]);
 }
 
-void HGRPaintEditor_ImGui::paintBrush(int cx, int cy, HgrColor c)
+void hgrpaint::HgrPaintEditor::paintBrush(int cx, int cy, HgrColor c)
 {
     const int r = brushSize - 1;
     for (int dy = -r; dy <= r; ++dy)
@@ -97,7 +124,7 @@ void HGRPaintEditor_ImGui::paintBrush(int cx, int cy, HgrColor c)
             applyPlot(cx + dx, cy + dy, c);
 }
 
-void HGRPaintEditor_ImGui::paintLine(int x0, int y0, int x1, int y1, HgrColor c)
+void hgrpaint::HgrPaintEditor::paintLine(int x0, int y0, int x1, int y1, HgrColor c)
 {
     // Bresenham; stamp the brush at each step.
     int dx = std::abs(x1 - x0), dy = -std::abs(y1 - y0);
@@ -112,7 +139,7 @@ void HGRPaintEditor_ImGui::paintLine(int x0, int y0, int x1, int y1, HgrColor c)
     }
 }
 
-void HGRPaintEditor_ImGui::paintRect(int x0, int y0, int x1, int y1, HgrColor c, bool filled)
+void hgrpaint::HgrPaintEditor::paintRect(int x0, int y0, int x1, int y1, HgrColor c, bool filled)
 {
     if (x0 > x1) std::swap(x0, x1);
     if (y0 > y1) std::swap(y0, y1);
@@ -128,7 +155,7 @@ void HGRPaintEditor_ImGui::paintRect(int x0, int y0, int x1, int y1, HgrColor c,
     }
 }
 
-void HGRPaintEditor_ImGui::paintEllipse(int x0, int y0, int x1, int y1, HgrColor c, bool filled)
+void hgrpaint::HgrPaintEditor::paintEllipse(int x0, int y0, int x1, int y1, HgrColor c, bool filled)
 {
     if (x0 > x1) std::swap(x0, x1);
     if (y0 > y1) std::swap(y0, y1);
@@ -194,36 +221,28 @@ void HGRPaintEditor_ImGui::paintEllipse(int x0, int y0, int x1, int y1, HgrColor
     }
 }
 
-void HGRPaintEditor_ImGui::floodFill(int x, int y, HgrColor c)
+void hgrpaint::HgrPaintEditor::floodFill(int x, int y, HgrColor c)
 {
     if (x < 0 || x > 279 || y < 0 || y > 191) return;
-    const bool target = hgrpaint::pixelOn(shadow.data(), x, y);
-    // Collect the connected same-state region first (painting flips per-byte
-    // high bits, which can recolour neighbours but never changes their on/off
-    // state, so the region is stable). 4-connected flood.
-    std::vector<uint8_t> seen(static_cast<size_t>(280) * 192, 0);
-    std::vector<std::pair<int,int>> stack, region;
-    stack.emplace_back(x, y);
-    seen[static_cast<size_t>(y) * 280 + x] = 1;
-    while (!stack.empty()) {
-        auto [px, py] = stack.back();
-        stack.pop_back();
-        region.emplace_back(px, py);
-        const int nb[4][2] = {{px - 1, py}, {px + 1, py}, {px, py - 1}, {px, py + 1}};
-        for (auto& n : nb) {
-            const int nx = n[0], ny = n[1];
-            if (nx < 0 || nx > 279 || ny < 0 || ny > 191) continue;
-            const size_t idx = static_cast<size_t>(ny) * 280 + nx;
-            if (seen[idx]) continue;
-            if (hgrpaint::pixelOn(shadow.data(), nx, ny) != target) continue;
-            seen[idx] = 1;
-            stack.emplace_back(nx, ny);
-        }
+    // Flood by *perceived* artifact colour (hgrpaint::fillRegion renders the page
+    // through the host NTSC pipeline), which is what the eye sees — a raw-bit
+    // flood leaks through the off sub-pixels that dither every chromatic region.
+    // fillRegion mutates a page buffer directly, so snapshot the shadow, run it,
+    // then diff back into per-byte edits to keep undo + the live RAM writes working.
+    std::vector<uint8_t> before = shadow;
+    hgrpaint::fillRegion(shadow.data(), x, y, c,
+                         [this](const uint8_t* page8k, uint32_t* out) {
+                             if (host) host->renderHgrPage(page8k, out, /*mono=*/false);
+                         });
+    for (int off = 0; off < static_cast<int>(shadow.size()); ++off) {
+        if (shadow[off] == before[off]) continue;
+        const uint16_t addr = static_cast<uint16_t>(baseAddr() + off);
+        stroke.push_back({addr, before[off], shadow[off]});
+        if (host) host->pokeByte(addr, shadow[off]);
     }
-    for (auto& p : region) applyPlot(p.first, p.second, c);
 }
 
-void HGRPaintEditor_ImGui::applyOps(const std::vector<ByteEdit>& ops, bool forward)
+void hgrpaint::HgrPaintEditor::applyOps(const std::vector<ByteEdit>& ops, bool forward)
 {
     // forward = redo (write newVal, in recorded order); reverse = undo (write
     // oldVal, in reverse order so repeated touches of the same byte unwind to
@@ -231,7 +250,7 @@ void HGRPaintEditor_ImGui::applyOps(const std::vector<ByteEdit>& ops, bool forwa
     auto write = [&](const ByteEdit& e, uint8_t val) {
         const int off = e.addr - baseAddr();
         if (off >= 0 && off < static_cast<int>(shadow.size())) shadow[off] = val;
-        if (writeCallback) writeCallback(e.addr, val);
+        if (host) host->pokeByte(e.addr, val);
     };
     if (forward) {
         for (const auto& e : ops) write(e, e.newVal);
@@ -240,7 +259,7 @@ void HGRPaintEditor_ImGui::applyOps(const std::vector<ByteEdit>& ops, bool forwa
     }
 }
 
-void HGRPaintEditor_ImGui::doUndo()
+void hgrpaint::HgrPaintEditor::doUndo()
 {
     if (undo.empty()) return;
     auto ops = std::move(undo.back());
@@ -250,7 +269,7 @@ void HGRPaintEditor_ImGui::doUndo()
     if (redo.size() > 64) redo.erase(redo.begin());
 }
 
-void HGRPaintEditor_ImGui::doRedo()
+void hgrpaint::HgrPaintEditor::doRedo()
 {
     if (redo.empty()) return;
     auto ops = std::move(redo.back());
@@ -260,7 +279,7 @@ void HGRPaintEditor_ImGui::doRedo()
     if (undo.size() > 64) undo.erase(undo.begin());
 }
 
-void HGRPaintEditor_ImGui::clearPage()
+void hgrpaint::HgrPaintEditor::clearPage()
 {
     beginStroke();
     for (int off = 0; off < static_cast<int>(shadow.size()); ++off) {
@@ -268,7 +287,7 @@ void HGRPaintEditor_ImGui::clearPage()
             const uint16_t addr = static_cast<uint16_t>(baseAddr() + off);
             stroke.push_back({addr, shadow[off], 0});
             shadow[off] = 0;
-            if (writeCallback) writeCallback(addr, 0);
+            if (host) host->pokeByte(addr, 0);
         }
     }
     commitStroke();
@@ -278,7 +297,7 @@ void HGRPaintEditor_ImGui::clearPage()
 // Selection / clipboard (HGR-06) and palette-shift (HGR-11)
 // ─────────────────────────────────────────────────────────────
 
-void HGRPaintEditor_ImGui::copySelection(bool cut)
+void hgrpaint::HgrPaintEditor::copySelection(bool cut)
 {
     if (!hasSel) return;
     const int x0 = std::min(selX0, selX1), x1 = std::max(selX0, selX1);
@@ -300,7 +319,7 @@ void HGRPaintEditor_ImGui::copySelection(bool cut)
     }
 }
 
-void HGRPaintEditor_ImGui::pasteFloatingAt(int destX, int destY)
+void hgrpaint::HgrPaintEditor::pasteFloatingAt(int destX, int destY)
 {
     if (clip.w <= 0) return;
     beginStroke();
@@ -313,7 +332,7 @@ void HGRPaintEditor_ImGui::pasteFloatingAt(int destX, int destY)
     commitStroke();
 }
 
-void HGRPaintEditor_ImGui::paintPaletteByte(int lx, int ly)
+void hgrpaint::HgrPaintEditor::paintPaletteByte(int lx, int ly)
 {
     if (lx < 0 || lx > 279 || ly < 0 || ly > 191) return;
     const int byteCol = lx / 7;
@@ -323,154 +342,201 @@ void HGRPaintEditor_ImGui::paintPaletteByte(int lx, int ly)
     if (ch < 0) return;
     const uint16_t addr = static_cast<uint16_t>(baseAddr() + ch);
     stroke.push_back({addr, old, shadow[ch]});
-    if (writeCallback) writeCallback(addr, shadow[ch]);
+    if (host) host->pokeByte(addr, shadow[ch]);
 }
 
 // ─────────────────────────────────────────────────────────────
 // UI
 // ─────────────────────────────────────────────────────────────
 
-void HGRPaintEditor_ImGui::renderMinimap(float canvasOriginX, float canvasOriginY, float scale)
+void hgrpaint::HgrPaintEditor::renderMinimap()
 {
-    // Navigator overlay (HGR-10): a 0.5x-of-logical thumbnail pinned to the
-    // canvas child's top-right, with a rectangle marking the visible viewport.
-    // Click/drag recentres the view (applied next frame via pendingScroll).
-    (void)canvasOriginX; (void)canvasOriginY;
-    const float mmW = 140.0f, mmH = 96.0f;   // 280x192 / 2
-    const ImVec2 wpos = ImGui::GetWindowPos();
-    const ImVec2 wsize = ImGui::GetWindowSize();
-    // Only useful (and only drawn) when the image overflows the viewport.
-    const float imgW = GraphicsCard::kHiresWidth * scale;
-    const float imgH = GraphicsCard::kHiresHeight * scale;
-    if (!showMinimap || (imgW <= wsize.x + 1.0f && imgH <= wsize.y + 1.0f)) return;
+    // Navigator thumbnail, drawn in the LEFT tool panel (below "Clear page").
+    // Reads the canvas scroll metrics captured by renderCanvas last frame and
+    // recentres the view via pendingScroll (applied at the next canvas draw).
+    if (canvasScale <= 0.0f) return;
+    // Only useful when the image overflows the viewport (something to navigate).
+    const bool overflow = (canvasScrollMaxX > 1.0f) || (canvasScrollMaxY > 1.0f);
+    if (!overflow) return;
 
-    const ImVec2 mmMin(wpos.x + wsize.x - mmW - 10.0f, wpos.y + 10.0f);
+    const float mmW = std::min(ImGui::GetContentRegionAvail().x, 130.0f);
+    const float mmH = mmW * static_cast<float>(kHiresHeight) / static_cast<float>(kHiresWidth);
+    ImGui::TextDisabled("Navigator");
+    const ImVec2 mmMin = ImGui::GetCursorScreenPos();
+    // InvisibleButton (not Dummy): it captures the mouse so a click/drag pans the
+    // view instead of moving the editor window (same fix as the canvas).
+    ImGui::InvisibleButton("##hgrminimap", ImVec2(mmW, mmH));
+    const bool active = ImGui::IsItemActive();
     const ImVec2 mmMax(mmMin.x + mmW, mmMin.y + mmH);
-    ImDrawList* dl = ImGui::GetWindowDrawList();
-    dl->AddRectFilled(ImVec2(mmMin.x - 2, mmMin.y - 2), ImVec2(mmMax.x + 2, mmMax.y + 2),
-                      IM_COL32(0, 0, 0, 200));
-    dl->AddImage((ImTextureID)(uintptr_t)texture, mmMin, mmMax);
-    dl->AddRect(ImVec2(mmMin.x - 2, mmMin.y - 2), ImVec2(mmMax.x + 2, mmMax.y + 2),
-                IM_COL32(160, 160, 160, 255));
 
-    // Viewport rectangle (logical → minimap).
-    const float sx = ImGui::GetScrollX(), sy = ImGui::GetScrollY();
-    const float lx0 = (sx / scale), ly0 = (sy / scale);
-    const float lx1 = ((sx + wsize.x) / scale), ly1 = ((sy + wsize.y) / scale);
-    auto mmx = [&](float lx){ return mmMin.x + (lx / GraphicsCard::kHiresWidth)  * mmW; };
-    auto mmy = [&](float ly){ return mmMin.y + (ly / GraphicsCard::kHiresHeight) * mmH; };
-    dl->AddRect(ImVec2(mmx(lx0), mmy(ly0)), ImVec2(mmx(lx1), mmy(ly1)),
+    ImDrawList* dl = ImGui::GetWindowDrawList();
+    dl->AddRectFilled(mmMin, mmMax, IM_COL32(0, 0, 0, 255));
+    dl->AddImage((ImTextureID)(uintptr_t)texture, mmMin, mmMax);
+    dl->AddRect(mmMin, mmMax, IM_COL32(160, 160, 160, 255));
+
+    // Visible viewport box (logical coords) → thumbnail.
+    const float lx0 = canvasScrollX / canvasScale;
+    const float ly0 = canvasScrollY / canvasScale;
+    const float lw  = canvasViewW  / canvasScale;
+    const float lh  = canvasViewH  / canvasScale;
+    auto mmx = [&](float lx){ return mmMin.x + (lx / kHiresWidth)  * mmW; };
+    auto mmy = [&](float ly){ return mmMin.y + (ly / kHiresHeight) * mmH; };
+    dl->AddRect(ImVec2(mmx(lx0), mmy(ly0)), ImVec2(mmx(lx0 + lw), mmy(ly0 + lh)),
                 IM_COL32(255, 255, 0, 230), 0, 0, 1.5f);
 
-    // Click/drag inside the minimap recentres the viewport.
-    const ImVec2 m = ImGui::GetIO().MousePos;
-    const bool inside = m.x >= mmMin.x && m.x <= mmMax.x && m.y >= mmMin.y && m.y <= mmMax.y;
-    if (inside && ImGui::IsMouseDown(ImGuiMouseButton_Left)) {
-        const float tlx = (m.x - mmMin.x) / mmW * GraphicsCard::kHiresWidth;
-        const float tly = (m.y - mmMin.y) / mmH * GraphicsCard::kHiresHeight;
-        pendingScrollX = std::clamp(tlx * scale - wsize.x * 0.5f, 0.0f, std::max(0.0f, imgW - wsize.x));
-        pendingScrollY = std::clamp(tly * scale - wsize.y * 0.5f, 0.0f, std::max(0.0f, imgH - wsize.y));
+    // Click/drag inside the thumbnail recentres the view. Driven by the button's
+    // active (held) state, and the mouse fraction is clamped so dragging past the
+    // thumbnail edge still pans to the image border.
+    if (active) {
+        const ImVec2 m = ImGui::GetIO().MousePos;
+        const float fx = std::clamp((m.x - mmMin.x) / mmW, 0.0f, 1.0f);
+        const float fy = std::clamp((m.y - mmMin.y) / mmH, 0.0f, 1.0f);
+        pendingScrollX = std::clamp(fx * kHiresWidth  * canvasScale - canvasViewW * 0.5f, 0.0f, canvasScrollMaxX);
+        pendingScrollY = std::clamp(fy * kHiresHeight * canvasScale - canvasViewH * 0.5f, 0.0f, canvasScrollMaxY);
     }
 }
 
-void HGRPaintEditor_ImGui::renderToolbar()
+void hgrpaint::HgrPaintEditor::renderTopBar()
 {
-    // Page select.
-    int pageIdx = page2 ? 1 : 0;
-    ImGui::TextUnformatted("Page:"); ImGui::SameLine();
-    if (ImGui::RadioButton("1 ($2000)", pageIdx == 0)) page2 = false; ImGui::SameLine();
-    if (ImGui::RadioButton("2 ($4000)", pageIdx == 1)) page2 = true;
-
-    // Tools.
-    const char* toolNames[] = { "Pencil", "Eraser", "Line", "Rect", "Ellipse",
-                                "Fill", "Eyedropper", "Select", "Palette" };
-    const int kToolCount = 9;
-    int t = static_cast<int>(tool);
-    ImGui::TextUnformatted("Tool:");
-    for (int i = 0; i < kToolCount; ++i) {
-        ImGui::SameLine();
-        if (ImGui::RadioButton(toolNames[i], t == i)) { prevTool = tool; tool = static_cast<Tool>(i); }
-    }
+    // Slim top strip: page select + help on line 1, file ops on line 2. Lives
+    // above the tool palette + canvas, MacPaint-style.
+    if (ImGui::Button(page2 ? "Page 2 ($4000)" : "Page 1 ($2000)")) page2 = !page2;
+    if (ImGui::IsItemHovered()) ImGui::SetTooltip("Toggle the edited HGR page");
     ImGui::SameLine();
-    ImGui::Checkbox("Filled", &rectFilled);
-    // Palette-shift sub-mode (HGR-11): flips a whole byte's high bit, recolouring
-    // its 7 pixels without touching pixel bits.
-    if (tool == Tool::PaletteShift) {
-        ImGui::SameLine();
-        ImGui::SetNextItemWidth(150);
-        ImGui::Combo("MSB", &paletteMsbMode, "Clear (->green/violet)\0Set (->orange/blue)\0Toggle\0");
-    }
-    // Selection clipboard actions.
-    if (tool == Tool::Select) {
-        ImGui::SameLine();
-        if (ImGui::Button("Copy"))  copySelection(false);
-        ImGui::SameLine();
-        if (ImGui::Button("Cut"))   copySelection(true);
-        ImGui::SameLine();
-        if (ImGui::Button("Paste") && clip.w > 0) { pasting = true; pasteX = std::min(selX0, selX1); pasteY = std::min(selY0, selY1); }
-    }
+    ImGui::TextDisabled("(?)");
+    if (ImGui::IsItemHovered())
+        ImGui::SetTooltip(
+            "Mouse\n"
+            "  Left drag    draw with the current tool / colour\n"
+            "  Right drag   quick-erase (paint black) — no tool switch\n"
+            "  Middle drag  pan the canvas\n"
+            "  Wheel        zoom, anchored on the cursor\n"
+            "  Alt + Left   eyedropper (pick colour)\n"
+            "  Shift        constrain Line to 0/45/90 deg, Rect/Ellipse to a square\n"
+            "\n"
+            "Keys\n"
+            "  P E L R O F I S M   pencil eraser line rect ellipse fill eyedrop select palette\n"
+            "  1-6 colours   [ ] brush size   +/- zoom   G grid\n"
+            "  Ctrl+Z / Ctrl+Y undo/redo   Ctrl+C/X/V copy/cut/paste");
 
-    // Colour palette.
-    ImGui::TextUnformatted("Color:");
-    const HgrColor palette[] = { HgrColor::Black, HgrColor::White, HgrColor::Violet,
-                                 HgrColor::Green, HgrColor::Blue, HgrColor::Orange };
-    for (HgrColor c : palette) {
-        ImGui::SameLine();
-        const bool selected = (c == color);
-        ImGui::PushStyleColor(ImGuiCol_Button, swatchColor(c));
-        ImGui::PushStyleColor(ImGuiCol_ButtonHovered, swatchColor(c));
-        ImGui::PushStyleColor(ImGuiCol_ButtonActive, swatchColor(c));
-        ImVec2 sz(22, 22);
-        if (ImGui::Button(selected ? "##selcol" : (std::string("##col") + colorName(c)).c_str(), sz))
-            color = c;
-        ImGui::PopStyleColor(3);
-        if (selected) {
-            ImDrawList* dl = ImGui::GetWindowDrawList();
-            dl->AddRect(ImGui::GetItemRectMin(), ImGui::GetItemRectMax(),
-                        IM_COL32(255, 255, 0, 255), 0, 0, 2.0f);
+    renderFileRow();   // line 2: path + Load / Save / Save PNG / stamp / status
+}
+
+void hgrpaint::HgrPaintEditor::renderToolPanel()
+{
+    ImDrawList* dl = ImGui::GetWindowDrawList();
+    const ImU32 kSelTint   = IM_COL32(58, 96, 150, 255);
+    const ImU32 kSelHover  = IM_COL32(78, 116, 170, 255);
+    const ImU32 kSelBorder = IM_COL32(255, 220, 60, 255);
+
+    // ── Tool palette: 3-column grid of icon buttons ──────────────────────────
+    const char* toolTips[] = {
+        "Pencil (P)", "Eraser (E)", "Line (L)", "Rectangle (R)", "Ellipse (O)",
+        "Fill (F)", "Eyedropper (I)", "Select (S)", "Palette shift (M)" };
+    const ImVec2 btnSz(34, 34);
+    for (int i = 0; i < 9; ++i) {
+        if (i % 3 != 0) ImGui::SameLine();
+        const bool sel = (static_cast<int>(tool) == i);
+        ImGui::PushID(i);
+        if (sel) {
+            ImGui::PushStyleColor(ImGuiCol_Button, kSelTint);
+            ImGui::PushStyleColor(ImGuiCol_ButtonHovered, kSelHover);
+            ImGui::PushStyleColor(ImGuiCol_ButtonActive, kSelHover);
         }
-        if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", colorName(c));
+        if (ImGui::Button(kToolIcons[i], btnSz)) { prevTool = tool; tool = static_cast<Tool>(i); }
+        if (sel) ImGui::PopStyleColor(3);
+        if (sel) dl->AddRect(ImGui::GetItemRectMin(), ImGui::GetItemRectMax(), kSelBorder, 0, 0, 2.0f);
+        if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", toolTips[i]);
+        ImGui::PopID();
     }
-    ImGui::SameLine();
-    ImGui::Text("(%s)", colorName(color));
 
-    // Brush / zoom / display.
-    ImGui::SetNextItemWidth(120);
-    ImGui::SliderInt("Brush", &brushSize, 1, 7);
-    ImGui::SameLine();
-    // Zoom is a fixed ladder (1..16x); the slider drives the index.
-    ImGui::SetNextItemWidth(120);
-    int zi = zoomIdx;
-    if (ImGui::SliderInt("Zoom", &zi, 0, kZoomLadderCount - 1, ""))
-        zoomIdx = zi;
+    ImGui::Separator();
+
+    // ── Tool options (contextual) ────────────────────────────────────────────
+    ImGui::SetNextItemWidth(-FLT_MIN);
+    ImGui::SliderInt("##brush", &brushSize, 1, 7, "Brush %d");
+    if (tool == Tool::Rectangle || tool == Tool::Ellipse)
+        ImGui::Checkbox("Filled", &rectFilled);
+    if (tool == Tool::PaletteShift) {
+        ImGui::SetNextItemWidth(-FLT_MIN);
+        ImGui::Combo("##msb", &paletteMsbMode,
+                     "MSB: clear\0MSB: set\0MSB: toggle\0");
+    }
+    if (tool == Tool::Select) {
+        if (ImGui::Button("Copy")) copySelection(false);
+        ImGui::SameLine();
+        if (ImGui::Button("Cut"))  copySelection(true);
+        if (ImGui::Button("Paste") && clip.w > 0) {
+            pasting = true; pasteX = std::min(selX0, selX1); pasteY = std::min(selY0, selY1);
+        }
+    }
+
+    ImGui::Separator();
+
+    // ── Zoom ─────────────────────────────────────────────────────────────────
+    if (ImGui::Button("-##zoom")) zoomIdx = std::max(zoomIdx - 1, 0);
     ImGui::SameLine();
     ImGui::Text("%dx", kZoomLadder[zoomIdx]);
     ImGui::SameLine();
+    if (ImGui::Button("+##zoom")) zoomIdx = std::min(zoomIdx + 1, kZoomLadderCount - 1);
+    ImGui::SameLine();
     if (ImGui::Button("Fit")) wantFit = true;
-    ImGui::SameLine();
-    ImGui::Checkbox("Grid", &showGrid);
-    ImGui::SameLine();
-    ImGui::Checkbox("Seams", &showConflicts);
-    ImGui::SameLine();
-    ImGui::Checkbox("Map", &showMinimap);
-    ImGui::SameLine();
-    if (ImGui::Checkbox("NTSC color", &ntscColor)) { /* applied in renderCanvas */ }
 
-    ImGui::SameLine();
+    ImGui::Separator();
+
+    // ── Display toggles ──────────────────────────────────────────────────────
+    ImGui::Checkbox("Grid", &showGrid);
+    ImGui::Checkbox("Seams", &showConflicts);
+    ImGui::Checkbox("NTSC", &ntscColor);
+
+    ImGui::Separator();
+
+    // ── Edit ─────────────────────────────────────────────────────────────────
     if (ImGui::Button("Undo")) doUndo();
     ImGui::SameLine();
     if (ImGui::Button("Redo")) doRedo();
-    ImGui::SameLine();
     if (ImGui::Button("Clear page")) clearPage();
+
+    // Navigator thumbnail, below the edit buttons (only shown when the zoomed
+    // image overflows the canvas viewport).
+    ImGui::Separator();
+    renderMinimap();
 }
 
-void HGRPaintEditor_ImGui::renderCanvas(const std::vector<uint8_t>& memory)
+void hgrpaint::HgrPaintEditor::renderColorBar()
+{
+    // Horizontal colour palette along the bottom (MacPaint pattern strip).
+    ImDrawList* dl = ImGui::GetWindowDrawList();
+    const HgrColor palette[] = { HgrColor::Black, HgrColor::White, HgrColor::Violet,
+                                 HgrColor::Green, HgrColor::Blue, HgrColor::Orange };
+    const ImVec2 swSz(34, 26);
+    for (int i = 0; i < 6; ++i) {
+        if (i != 0) ImGui::SameLine();
+        const HgrColor c = palette[i];
+        const bool sel = (c == color);
+        ImGui::PushID(200 + i);
+        ImGui::PushStyleColor(ImGuiCol_Button, swatchColor(c));
+        ImGui::PushStyleColor(ImGuiCol_ButtonHovered, swatchColor(c));
+        ImGui::PushStyleColor(ImGuiCol_ButtonActive, swatchColor(c));
+        if (ImGui::Button("##sw", swSz)) color = c;
+        ImGui::PopStyleColor(3);
+        const ImVec2 a = ImGui::GetItemRectMin(), b = ImGui::GetItemRectMax();
+        if (sel) dl->AddRect(a, b, IM_COL32(255, 220, 60, 255), 0, 0, 2.5f);
+        if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s (%d)", colorName(c), i + 1);
+        ImGui::PopID();
+    }
+    ImGui::SameLine();
+    ImGui::AlignTextToFramePadding();
+    ImGui::Text("  Colour: %s", colorName(color));
+}
+
+void hgrpaint::HgrPaintEditor::renderCanvas(const std::vector<uint8_t>& memory)
 {
     // Refresh the shadow from live RAM so external program writes show, and so
     // read-modify-write paints start from the current bytes.
-    if (memory.size() >= static_cast<size_t>(baseAddr()) + GraphicsCard::kHiresSize)
+    if (memory.size() >= static_cast<size_t>(baseAddr()) + kHiresSize)
         std::copy(memory.begin() + baseAddr(),
-                  memory.begin() + baseAddr() + GraphicsCard::kHiresSize,
+                  memory.begin() + baseAddr() + kHiresSize,
                   shadow.begin());
 
     // Lazy GL texture (crisp nearest-neighbour, like the GEN2 window).
@@ -482,26 +548,21 @@ void HGRPaintEditor_ImGui::renderCanvas(const std::vector<uint8_t>& memory)
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
         glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA,
-                     GraphicsCard::kHiresWidth, GraphicsCard::kHiresHeight,
+                     kHiresWidth, kHiresHeight,
                      0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
     }
 
-    // Render the selected page through the exact NTSC pipeline. Synthesize a
-    // display state (graphics + hires + page), empty event journal → render()
-    // rasterizes that page; page 1 takes the fast path, page 2 the full path.
-    gfx.setMonitorMode(static_cast<GraphicsCard::MonitorMode>(
-        ntscColor ? 0 /*Colour*/ : 3 /*Monochrome*/));
-    GraphicsCard::DisplayState st;
-    st.textMode = false; st.mixedMode = false; st.hiRes = true; st.page2 = page2;
-    gfx.invalidate();   // always repaint: we may have just poked bytes
-    gfx.render(memory.data(), st, st, {});
+    // Render the shadow page through the host NTSC pipeline (the same renderer the
+    // emulator screen uses) so the canvas is pixel-identical. The shadow was just
+    // refreshed from live RAM and reflects any pokes we made this frame.
+    renderShadow(canvasRgba.data(), !ntscColor);
     glBindTexture(GL_TEXTURE_2D, texture);
     glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0,
-                    GraphicsCard::kHiresWidth, GraphicsCard::kHiresHeight,
-                    GL_RGBA, GL_UNSIGNED_BYTE, gfx.pixels());
+                    kHiresWidth, kHiresHeight,
+                    GL_RGBA, GL_UNSIGNED_BYTE, canvasRgba.data());
 
     float scale = static_cast<float>(kZoomLadder[zoomIdx]);
-    ImVec2 imgSize(GraphicsCard::kHiresWidth * scale, GraphicsCard::kHiresHeight * scale);
+    ImVec2 imgSize(kHiresWidth * scale, kHiresHeight * scale);
 
     ImGui::BeginChild("hgrcanvas", ImVec2(0, 0), false,
                       ImGuiWindowFlags_HorizontalScrollbar);
@@ -510,19 +571,23 @@ void HGRPaintEditor_ImGui::renderCanvas(const std::vector<uint8_t>& memory)
     if (pendingScrollX >= 0) { ImGui::SetScrollX(pendingScrollX); pendingScrollX = -1; }
     if (pendingScrollY >= 0) { ImGui::SetScrollY(pendingScrollY); pendingScrollY = -1; }
 
+    // First open: fit the image to the viewport rather than leaving a tiny 3x
+    // canvas adrift in a big window (a poor first impression).
+    if (firstFit) { firstFit = false; wantFit = true; }
+
     // ── Zoom-to-fit (HGR-09): pick the largest ladder step that fits ─────────
     if (wantFit) {
         wantFit = false;
         const ImVec2 avail = ImGui::GetContentRegionAvail();
         int best = 0;
         for (int i = 0; i < kZoomLadderCount; ++i) {
-            if (GraphicsCard::kHiresWidth  * kZoomLadder[i] <= avail.x &&
-                GraphicsCard::kHiresHeight * kZoomLadder[i] <= avail.y)
+            if (kHiresWidth  * kZoomLadder[i] <= avail.x &&
+                kHiresHeight * kZoomLadder[i] <= avail.y)
                 best = i;
         }
         zoomIdx = best;
         scale = static_cast<float>(kZoomLadder[zoomIdx]);
-        imgSize = ImVec2(GraphicsCard::kHiresWidth * scale, GraphicsCard::kHiresHeight * scale);
+        imgSize = ImVec2(kHiresWidth * scale, kHiresHeight * scale);
     }
 
     // ── Mouse-wheel zoom (HGR-09): step the ladder, recentre on the cursor ──
@@ -540,7 +605,7 @@ void HGRPaintEditor_ImGui::renderCanvas(const std::vector<uint8_t>& memory)
                 zoomIdx = ni;
                 const int newZoom = kZoomLadder[zoomIdx];
                 scale = static_cast<float>(newZoom);
-                imgSize = ImVec2(GraphicsCard::kHiresWidth * scale, GraphicsCard::kHiresHeight * scale);
+                imgSize = ImVec2(kHiresWidth * scale, kHiresHeight * scale);
                 // Keep that logical pixel under the mouse after rescaling.
                 const float mouseInChildX = io.MousePos.x - cur.x + ImGui::GetScrollX();
                 const float mouseInChildY = io.MousePos.y - cur.y + ImGui::GetScrollY();
@@ -551,19 +616,39 @@ void HGRPaintEditor_ImGui::renderCanvas(const std::vector<uint8_t>& memory)
     }
 
     const ImVec2 origin = ImGui::GetCursorScreenPos();
-    ImGui::Image((ImTextureID)(uintptr_t)texture, imgSize);
+    // The canvas is an InvisibleButton, NOT an Image: it captures the mouse so a
+    // drag PAINTS instead of moving the editor window. ImGui moves a window when
+    // you drag its background — an Image never consumes the drag, a button does.
+    // It grabs left/right/middle so erase (RMB) and pan (MMB) also keep the window
+    // put; the window now only moves from its title bar (HGR draw bug fix).
+    ImGui::InvisibleButton("##hgrcanvasimg", imgSize,
+                           ImGuiButtonFlags_MouseButtonLeft |
+                           ImGuiButtonFlags_MouseButtonRight |
+                           ImGuiButtonFlags_MouseButtonMiddle);
     const bool hovered = ImGui::IsItemHovered();
-
     ImDrawList* dl = ImGui::GetWindowDrawList();
+    dl->AddImage((ImTextureID)(uintptr_t)texture, origin,
+                 ImVec2(origin.x + imgSize.x, origin.y + imgSize.y));
+
+    // ── Middle-button drag pans the canvas at any zoom. Start when pressed over
+    // the canvas, continue via per-frame delta until release — robust while the
+    // InvisibleButton owns the mouse. ───────────────────────────────────────────
+    if (hovered && ImGui::IsMouseClicked(ImGuiMouseButton_Middle)) panning = true;
+    if (panning && ImGui::IsMouseDown(ImGuiMouseButton_Middle)) {
+        const ImVec2 d = ImGui::GetIO().MouseDelta;
+        ImGui::SetScrollX(ImGui::GetScrollX() - d.x);
+        ImGui::SetScrollY(ImGui::GetScrollY() - d.y);
+    }
+    if (ImGui::IsMouseReleased(ImGuiMouseButton_Middle)) panning = false;
 
     // Optional pixel grid (only at high zoom so it stays readable).
     if (showGrid && kZoomLadder[zoomIdx] >= 3) {
         const ImU32 gcol = IM_COL32(80, 80, 80, 90);
-        for (int x = 0; x <= GraphicsCard::kHiresWidth; x += 7) {  // byte columns
+        for (int x = 0; x <= kHiresWidth; x += 7) {  // byte columns
             const float fx = origin.x + x * scale;
             dl->AddLine(ImVec2(fx, origin.y), ImVec2(fx, origin.y + imgSize.y), gcol);
         }
-        for (int y = 0; y <= GraphicsCard::kHiresHeight; y += 8) {
+        for (int y = 0; y <= kHiresHeight; y += 8) {
             const float fy = origin.y + y * scale;
             dl->AddLine(ImVec2(origin.x, fy), ImVec2(origin.x + imgSize.x, fy), gcol);
         }
@@ -575,8 +660,8 @@ void HGRPaintEditor_ImGui::renderCanvas(const std::vector<uint8_t>& memory)
     if (showConflicts) {
         const float sx = ImGui::GetScrollX(), sy = ImGui::GetScrollY();
         const ImVec2 vis = ImGui::GetContentRegionAvail();
-        const int y0 = std::clamp(static_cast<int>(sy / scale), 0, GraphicsCard::kHiresHeight - 1);
-        const int y1 = std::clamp(static_cast<int>((sy + vis.y) / scale) + 1, 0, GraphicsCard::kHiresHeight - 1);
+        const int y0 = std::clamp(static_cast<int>(sy / scale), 0, kHiresHeight - 1);
+        const int y1 = std::clamp(static_cast<int>((sy + vis.y) / scale) + 1, 0, kHiresHeight - 1);
         const int bc0 = std::clamp(static_cast<int>((sx / scale) / 7) - 1, 0, 38);
         const int bc1 = std::clamp(static_cast<int>(((sx + vis.x) / scale) / 7) + 1, 0, 38);
         const ImU32 seamCol = IM_COL32(255, 0, 0, 110);
@@ -593,13 +678,37 @@ void HGRPaintEditor_ImGui::renderCanvas(const std::vector<uint8_t>& memory)
     const ImVec2 mouse = ImGui::GetIO().MousePos;
     int lx = static_cast<int>((mouse.x - origin.x) / scale);
     int ly = static_cast<int>((mouse.y - origin.y) / scale);
-    lx = std::clamp(lx, 0, GraphicsCard::kHiresWidth - 1);
-    ly = std::clamp(ly, 0, GraphicsCard::kHiresHeight - 1);
+    lx = std::clamp(lx, 0, kHiresWidth - 1);
+    ly = std::clamp(ly, 0, kHiresHeight - 1);
     if (hovered) { lastHoverX = lx; lastHoverY = ly; }
 
     const bool altDown = ImGui::GetIO().KeyAlt;
     const bool eyedrop = (tool == Tool::Eyedropper) || altDown;
     const HgrColor activeColor = (tool == Tool::Eraser) ? HgrColor::Black : color;
+
+    // Shift constrains shapes: Line to 0/45/90°, Rect/Ellipse to a square. Used
+    // for the live preview AND the committed geometry so they always agree.
+    auto constrainEnd = [&]() -> std::pair<int,int> {
+        int ex = lx, ey = ly;
+        if (ImGui::GetIO().KeyShift) {
+            const int ddx = ex - dragStartX, ddy = ey - dragStartY;
+            if (tool == Tool::Line) {
+                const int adx = std::abs(ddx), ady = std::abs(ddy);
+                if (adx > 2 * ady)      ey = dragStartY;            // horizontal
+                else if (ady > 2 * adx) ex = dragStartX;           // vertical
+                else { const int m = (adx + ady) / 2;              // 45°
+                       ex = dragStartX + (ddx < 0 ? -m : m);
+                       ey = dragStartY + (ddy < 0 ? -m : m); }
+            } else if (tool == Tool::Rectangle || tool == Tool::Ellipse) {
+                const int m = std::max(std::abs(ddx), std::abs(ddy));
+                ex = dragStartX + (ddx < 0 ? -m : m);
+                ey = dragStartY + (ddy < 0 ? -m : m);
+            }
+            ex = std::clamp(ex, 0, kHiresWidth - 1);
+            ey = std::clamp(ey, 0, kHiresHeight - 1);
+        }
+        return {ex, ey};
+    };
 
     // ── Brush-footprint + colour-snapped cursor preview (HGR-08) ────────────
     if (hovered && !dragging && !eyedrop &&
@@ -651,7 +760,25 @@ void HGRPaintEditor_ImGui::renderCanvas(const std::vector<uint8_t>& memory)
         }
         if (ImGui::IsMouseClicked(ImGuiMouseButton_Right)) pasting = false;   // cancel
     } else {
-        if (hovered && ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
+        // Right-button = quick freehand erase (paint black) for any drawing tool —
+        // no need to switch to the Eraser. Runs only when no left-button op is open.
+        if (!dragging && tool != Tool::Select && !eyedrop) {
+            if (hovered && ImGui::IsMouseClicked(ImGuiMouseButton_Right)) {
+                rmbErase = true; beginStroke();
+                lastX = lx; lastY = ly;
+                paintBrush(lx, ly, HgrColor::Black);
+            } else if (rmbErase && ImGui::IsMouseDown(ImGuiMouseButton_Right)) {
+                if (lx != lastX || ly != lastY) {
+                    paintLine(lastX, lastY, lx, ly, HgrColor::Black);   // interpolate
+                    lastX = lx; lastY = ly;
+                }
+            }
+            if (rmbErase && ImGui::IsMouseReleased(ImGuiMouseButton_Right)) {
+                commitStroke(); rmbErase = false;
+            }
+        }
+
+        if (!rmbErase && hovered && ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
             if (eyedrop) {
                 color = hgrpaint::colorAt(shadow.data(), lx, ly);
                 if (tool == Tool::Eyedropper) { tool = prevTool; }  // one-shot revert
@@ -684,28 +811,32 @@ void HGRPaintEditor_ImGui::renderCanvas(const std::vector<uint8_t>& memory)
             } else if (tool == Tool::Select) {
                 selX1 = lx; selY1 = ly;
             } else if (tool == Tool::Line) {
+                const auto [ex, ey] = constrainEnd();
                 const ImVec2 a(origin.x + (dragStartX + 0.5f) * scale, origin.y + (dragStartY + 0.5f) * scale);
-                const ImVec2 b(origin.x + (lx + 0.5f) * scale, origin.y + (ly + 0.5f) * scale);
+                const ImVec2 b(origin.x + (ex + 0.5f) * scale, origin.y + (ey + 0.5f) * scale);
                 dl->AddLine(a, b, swatchColor(activeColor), 1.5f);
             } else if (tool == Tool::Rectangle) {
+                const auto [ex, ey] = constrainEnd();
                 const ImVec2 a(origin.x + dragStartX * scale, origin.y + dragStartY * scale);
-                const ImVec2 b(origin.x + (lx + 1) * scale, origin.y + (ly + 1) * scale);
+                const ImVec2 b(origin.x + (ex + 1) * scale, origin.y + (ey + 1) * scale);
                 if (rectFilled) dl->AddRectFilled(a, b, (swatchColor(activeColor) & 0x00FFFFFF) | 0x80000000);
                 else            dl->AddRect(a, b, swatchColor(activeColor), 0, 0, 1.5f);
             } else if (tool == Tool::Ellipse) {
-                const ImVec2 center(origin.x + (dragStartX + lx + 1) * 0.5f * scale,
-                                    origin.y + (dragStartY + ly + 1) * 0.5f * scale);
-                const ImVec2 radius(std::abs(lx - dragStartX) * 0.5f * scale + 0.5f,
-                                    std::abs(ly - dragStartY) * 0.5f * scale + 0.5f);
+                const auto [ex, ey] = constrainEnd();
+                const ImVec2 center(origin.x + (dragStartX + ex + 1) * 0.5f * scale,
+                                    origin.y + (dragStartY + ey + 1) * 0.5f * scale);
+                const ImVec2 radius(std::abs(ex - dragStartX) * 0.5f * scale + 0.5f,
+                                    std::abs(ey - dragStartY) * 0.5f * scale + 0.5f);
                 if (rectFilled) dl->AddEllipseFilled(center, radius, (swatchColor(activeColor) & 0x00FFFFFF) | 0x80000000);
                 else            dl->AddEllipse(center, radius, swatchColor(activeColor), 0.0f, 0, 1.5f);
             }
         }
 
         if (dragging && ImGui::IsMouseReleased(ImGuiMouseButton_Left)) {
-            if (tool == Tool::Line) paintLine(dragStartX, dragStartY, lx, ly, activeColor);
-            else if (tool == Tool::Rectangle) paintRect(dragStartX, dragStartY, lx, ly, activeColor, rectFilled);
-            else if (tool == Tool::Ellipse) paintEllipse(dragStartX, dragStartY, lx, ly, activeColor, rectFilled);
+            const auto [ex, ey] = constrainEnd();
+            if (tool == Tool::Line) paintLine(dragStartX, dragStartY, ex, ey, activeColor);
+            else if (tool == Tool::Rectangle) paintRect(dragStartX, dragStartY, ex, ey, activeColor, rectFilled);
+            else if (tool == Tool::Ellipse) paintEllipse(dragStartX, dragStartY, ex, ey, activeColor, rectFilled);
             else if (tool == Tool::Select) { selX1 = lx; selY1 = ly; }
             // Commit the open stroke (no-op for Select, whose edits aren't a stroke,
             // and for Fill, which already committed on click).
@@ -714,68 +845,161 @@ void HGRPaintEditor_ImGui::renderCanvas(const std::vector<uint8_t>& memory)
         }
     }
 
-    // Minimap navigator overlay (HGR-10) + scroll metrics for next frame.
-    renderMinimap(origin.x, origin.y, scale);
+    // Capture canvas scroll/view metrics so the navigator thumbnail in the left
+    // tool panel (drawn earlier this frame, from last frame's values) can map the
+    // visible viewport and recentre on click.
+    canvasScrollX    = ImGui::GetScrollX();
+    canvasScrollY    = ImGui::GetScrollY();
+    canvasScrollMaxX = ImGui::GetScrollMaxX();
+    canvasScrollMaxY = ImGui::GetScrollMaxY();
+    canvasViewW      = ImGui::GetWindowSize().x;
+    canvasViewH      = ImGui::GetWindowSize().y;
+    canvasScale      = scale;
 
     ImGui::EndChild();
 }
 
-void HGRPaintEditor_ImGui::renderFileRow()
+void hgrpaint::HgrPaintEditor::openFileBrowser(bool forSave, int saveKind)
 {
-    ImGui::SetNextItemWidth(-360);
-    ImGui::InputTextWithHint("##hgrpath", "path to .HGR / .bin (8 KB) — or .png for export",
-                             filePath, sizeof(filePath));
-    ImGui::SameLine();
-    if (ImGui::Button("Load")) {
-        std::string err;
-        if (loadCallback && loadCallback(filePath, baseAddr(), err))
-            status = std::string("Loaded into $") + (page2 ? "4000" : "2000");
-        else
-            status = "Load failed: " + (err.empty() ? std::string("(no loader / bad path)") : err);
+    browserForSave = forSave;
+    browserSaveKind = saveKind;
+    if (browserDir.empty()) {
+        std::error_code ec;
+        browserDir = std::filesystem::current_path(ec).string();
+        if (ec || browserDir.empty()) browserDir = ".";
     }
-    ImGui::SameLine();
-    if (ImGui::Button("Save")) {
-        // Opt-in metadata stamp (HGR-12): a "POM1HGR" tag in the page's trailing
-        // screen-hole bytes ($1FF8-$1FFF), which lie past the last displayed byte
-        // ($3FF7) so they never disturb visible pixels.
-        if (stampMeta) {
-            static const char kTag[8] = { 'P','O','M','1','H','G','R','\0' };
-            for (int i = 0; i < 8; ++i) {
-                const int off = 0x1FF8 + i;
-                shadow[off] = static_cast<uint8_t>(kTag[i]);
-                if (writeCallback) writeCallback(static_cast<uint16_t>(baseAddr() + off),
-                                                 static_cast<uint8_t>(kTag[i]));
+    // Seed a default filename for Save from the current path's basename.
+    if (forSave) {
+        std::string base = std::filesystem::path(filePath).filename().string();
+        if (base.empty()) base = (saveKind == 1) ? "image.png" : "image.hgr";
+        std::snprintf(browserSaveName, sizeof(browserSaveName), "%s", base.c_str());
+    }
+    browserOpen = true;
+}
+
+void hgrpaint::HgrPaintEditor::renderFileBrowser()
+{
+    namespace fs = std::filesystem;
+    if (browserOpen) { ImGui::OpenPopup("HGR File##browser"); browserOpen = false; }
+
+    const ImVec2 vpCenter = ImGui::GetMainViewport()->GetCenter();
+    ImGui::SetNextWindowPos(vpCenter, ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
+    ImGui::SetNextWindowSize(ImVec2(600, 460), ImGuiCond_Appearing);
+    if (!ImGui::BeginPopupModal("HGR File##browser", nullptr, ImGuiWindowFlags_NoCollapse))
+        return;
+
+    ImGui::TextUnformatted(browserForSave
+        ? (browserSaveKind == 1 ? "Save PNG export" : "Save HGR image (8 KB)")
+        : "Load HGR image (pick a file — 8 KB ones are highlighted)");
+    ImGui::TextDisabled("%s", browserDir.c_str());
+    ImGui::Separator();
+
+    // ── Directory + file listing ─────────────────────────────────────────────
+    ImGui::BeginChild("##fblist", ImVec2(0, -ImGui::GetFrameHeightWithSpacing() * 2.0f), true);
+    if (ImGui::Selectable("../", false)) {
+        std::error_code ec;
+        fs::path up = fs::path(browserDir).parent_path();
+        if (!up.empty()) browserDir = up.string();
+        (void)ec;
+    }
+    std::vector<fs::directory_entry> dirs, files;
+    try {
+        for (const auto& e : fs::directory_iterator(browserDir,
+                 fs::directory_options::skip_permission_denied)) {
+            std::error_code ec;
+            if (e.is_directory(ec)) dirs.push_back(e);
+            else if (e.is_regular_file(ec)) files.push_back(e);
+        }
+    } catch (...) {
+        ImGui::TextDisabled("(cannot read this directory)");
+    }
+    auto byName = [](const fs::directory_entry& a, const fs::directory_entry& b) {
+        return a.path().filename().string() < b.path().filename().string();
+    };
+    std::sort(dirs.begin(), dirs.end(), byName);
+    std::sort(files.begin(), files.end(), byName);
+
+    for (const auto& d : dirs) {
+        const std::string name = d.path().filename().string();
+        if (ImGui::Selectable((name + "/").c_str(), false))
+            browserDir = d.path().string();
+    }
+    for (const auto& f : files) {
+        std::error_code ec;
+        const std::uintmax_t sz = f.file_size(ec);
+        const std::string name = f.path().filename().string();
+        // 8 KB (give or take a few bytes) = a raw HGR page — surface those.
+        const bool looksHgr = !ec && sz >= 8000 && sz <= 8192;
+        char label[320];
+        std::snprintf(label, sizeof(label), "%-28s %8llu B", name.c_str(),
+                      static_cast<unsigned long long>(sz));
+        if (!looksHgr) ImGui::PushStyleColor(ImGuiCol_Text, IM_COL32(150, 150, 150, 255));
+        if (ImGui::Selectable(label, false)) {
+            if (browserForSave) {
+                std::snprintf(browserSaveName, sizeof(browserSaveName), "%s", name.c_str());
+            } else {
+                std::string err;
+                std::snprintf(filePath, sizeof(filePath), "%s", f.path().string().c_str());
+                if (host && host->loadImage(filePath, baseAddr(), err))
+                    status = "Loaded " + name + " into $" + (page2 ? "4000" : "2000");
+                else
+                    status = "Load failed: " + (err.empty() ? std::string("(bad file)") : err);
+                ImGui::CloseCurrentPopup();
             }
         }
-        std::string err;
-        if (saveCallback && saveCallback(filePath, baseAddr(), err))
-            status = stampMeta ? "Saved 8 KB HGR (+POM1HGR tag)" : "Saved 8 KB HGR image";
-        else
-            status = "Save failed: " + (err.empty() ? std::string("(no saver / bad path)") : err);
+        if (!looksHgr) ImGui::PopStyleColor();
     }
-    ImGui::SameLine();
-    if (ImGui::Button("Save PNG")) {
-        // Export the exact NTSC render currently on the canvas.
-        std::string path = filePath;
-        const auto dot = path.find_last_of('.');
-        if (dot == std::string::npos) path += ".png";
-        else if (path.substr(dot) != ".png" && path.substr(dot) != ".PNG") path = path.substr(0, dot) + ".png";
-        std::string err;
-        if (savePngCallback && !path.empty() &&
-            savePngCallback(path, gfx.pixels(), GraphicsCard::kHiresWidth, GraphicsCard::kHiresHeight, err))
-            status = "Exported PNG: " + path;
-        else
-            status = "PNG export failed: " + (err.empty() ? std::string("(no exporter / bad path)") : err);
+    ImGui::EndChild();
+
+    // ── Action row ───────────────────────────────────────────────────────────
+    if (browserForSave) {
+        ImGui::SetNextItemWidth(-160);
+        ImGui::InputText("##fbname", browserSaveName, sizeof(browserSaveName));
+        ImGui::SameLine();
+        if (ImGui::Button("Save", ImVec2(70, 0)) && browserSaveName[0]) {
+            const std::string full = (fs::path(browserDir) / browserSaveName).string();
+            std::snprintf(filePath, sizeof(filePath), "%s", full.c_str());
+            std::string err;
+            bool ok = false;
+            if (browserSaveKind == 1) {                       // PNG export
+                ok = host && host->savePng(full, canvasRgba.data(),
+                                           kHiresWidth, kHiresHeight, err);
+                status = ok ? ("Exported PNG: " + full)
+                            : ("PNG export failed: " + (err.empty() ? std::string("(error)") : err));
+            } else {                                          // raw 8 KB HGR
+                // Always bake the POM1HGR tag into the unused screen-hole bytes
+                // ($1FF8-$1FFF) — past the last displayed byte, so invisible.
+                static const char kTag[8] = { 'P','O','M','1','H','G','R','\0' };
+                for (int i = 0; i < 8; ++i) {
+                    const int off = 0x1FF8 + i;
+                    shadow[off] = static_cast<uint8_t>(kTag[i]);
+                    if (host) host->pokeByte(static_cast<uint16_t>(baseAddr() + off),
+                                             static_cast<uint8_t>(kTag[i]));
+                }
+                ok = host && host->saveImage(full, baseAddr(), err);
+                status = ok ? "Saved 8 KB HGR (+POM1HGR tag)"
+                            : ("Save failed: " + (err.empty() ? std::string("(error)") : err));
+            }
+            if (ok) ImGui::CloseCurrentPopup();
+        }
+        ImGui::SameLine();
     }
+    if (ImGui::Button("Cancel", ImVec2(70, 0))) ImGui::CloseCurrentPopup();
+    ImGui::EndPopup();
+}
+
+void hgrpaint::HgrPaintEditor::renderFileRow()
+{
+    if (ImGui::Button("Load")) openFileBrowser(false);
+    if (ImGui::IsItemHovered()) ImGui::SetTooltip("Open a file picker and load a raw 8 KB HGR image");
     ImGui::SameLine();
-    ImGui::Checkbox("Stamp tag", &stampMeta);
-    if (ImGui::IsItemHovered())
-        ImGui::SetTooltip("On Save, write a 'POM1HGR' marker into the unused\n"
-                          "screen-hole bytes ($1FF8-$1FFF) — invisible, opt-in.");
+    if (ImGui::Button("Save")) openFileBrowser(true, /*kind=*/0);
+    ImGui::SameLine();
+    if (ImGui::Button("Save PNG")) openFileBrowser(true, /*kind=*/1);
     if (!status.empty()) { ImGui::SameLine(); ImGui::TextDisabled("%s", status.c_str()); }
 }
 
-void HGRPaintEditor_ImGui::renderStatusBar(int lx, int ly, bool hovered)
+void hgrpaint::HgrPaintEditor::renderStatusBar(int lx, int ly, bool hovered)
 {
     // Persistent info line (HGR-04): coords, byte, parity-snapped column, tool,
     // colour swatch, page, zoom, undo/redo depth. Survives the mouse leaving the
@@ -809,7 +1033,7 @@ void HGRPaintEditor_ImGui::renderStatusBar(int lx, int ly, bool hovered)
                 kZoomLadder[zoomIdx], undo.size(), redo.size());
 }
 
-void HGRPaintEditor_ImGui::handleShortcuts()
+void hgrpaint::HgrPaintEditor::handleShortcuts()
 {
     // Keyboard shortcuts (HGR-02). Only act when the editor window (and its
     // children) is focused and no text widget wants input, so we never steal
@@ -840,9 +1064,9 @@ void HGRPaintEditor_ImGui::handleShortcuts()
     // Arrow keys nudge a floating paste by 1px.
     if (pasting) {
         if (pressed(ImGuiKey_LeftArrow))  pasteX = std::max(pasteX - 1, 0);
-        if (pressed(ImGuiKey_RightArrow)) pasteX = std::min(pasteX + 1, GraphicsCard::kHiresWidth - 1);
+        if (pressed(ImGuiKey_RightArrow)) pasteX = std::min(pasteX + 1, kHiresWidth - 1);
         if (pressed(ImGuiKey_UpArrow))    pasteY = std::max(pasteY - 1, 0);
-        if (pressed(ImGuiKey_DownArrow))  pasteY = std::min(pasteY + 1, GraphicsCard::kHiresHeight - 1);
+        if (pressed(ImGuiKey_DownArrow))  pasteY = std::min(pasteY + 1, kHiresHeight - 1);
         if (pressed(ImGuiKey_Enter) || pressed(ImGuiKey_KeypadEnter)) {
             pasteFloatingAt(pasteX, pasteY);
             pasting = false;
@@ -882,13 +1106,43 @@ void HGRPaintEditor_ImGui::handleShortcuts()
     if (pressed(ImGuiKey_RightBracket)) brushSize = std::min(brushSize + 1, 7);
 }
 
-void HGRPaintEditor_ImGui::render(const std::vector<uint8_t>& memory)
+void hgrpaint::HgrPaintEditor::render(const std::vector<uint8_t>& memory)
 {
     handleShortcuts();
-    renderToolbar();
+
+    // MacPaint / MousePaint layout:
+    //   ┌──────────────── top bar: page · file · help ─────────────────┐
+    //   │ tools │            drawing canvas                            │
+    //   │ (left)│                                                      │
+    //   ├───────┴──────────────────────────────────────────────────────
+    //   │ colour palette (bottom) · status line                        │
+    renderTopBar();
     ImGui::Separator();
-    renderFileRow();
+
+    // Reserve the bottom strip for the colour palette + status line, then split
+    // the rest into the left tool palette and the drawing canvas.
+    const float bottomH = 30.0f
+                        + ImGui::GetTextLineHeightWithSpacing()
+                        + ImGui::GetStyle().ItemSpacing.y * 3.0f;
+    const float panelW = 146.0f;
+
+    ImGui::BeginChild("hgrbody", ImVec2(0.0f, -bottomH), false);
+    {
+        ImGui::BeginChild("hgrtools", ImVec2(panelW, 0.0f), true);
+        renderToolPanel();
+        ImGui::EndChild();
+
+        ImGui::SameLine();
+
+        ImGui::BeginChild("hgrcanvasside", ImVec2(0.0f, 0.0f), false);
+        renderCanvas(memory);
+        ImGui::EndChild();
+    }
+    ImGui::EndChild();
+
     ImGui::Separator();
+    renderColorBar();
     renderStatusBar(lastHoverX, lastHoverY, lastHoverX >= 0);
-    renderCanvas(memory);
+
+    renderFileBrowser();   // modal Load / Save / Save PNG picker
 }

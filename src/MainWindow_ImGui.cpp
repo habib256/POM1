@@ -96,28 +96,11 @@ void MainWindow_ImGui::createPom1()
     memoryViewer->setWriteCallback([this](uint16_t address, uint8_t value) {
         emulation->writeMemory(address, value);
     });
-    hgrPaintEditor = std::make_unique<HGRPaintEditor_ImGui>();
-    hgrPaintEditor->setWriteCallback([this](uint16_t address, uint8_t value) {
-        emulation->writeMemory(address, value);
-    });
-    hgrPaintEditor->setLoadCallback([this](const std::string& path, uint16_t addr, std::string& err) {
-        return emulation->loadBinaryToRam(path, addr, err);
-    });
-    hgrPaintEditor->setSaveCallback([this](const std::string& path, uint16_t addr, std::string& err) {
-        return emulation->saveMemoryRange(path, addr,
-                                          static_cast<uint16_t>(addr + GraphicsCard::kHiresSize - 1),
-                                          /*binaryFormat=*/true, err);
-    });
-    hgrPaintEditor->setSavePngCallback([](const std::string& path, const uint32_t* rgba,
-                                          int w, int h, std::string& err) {
-        // rgba is top-down RGBA8 (software-render order), exactly what
-        // stbi_write_png expects with stride = w*4. Impl linked from main_imgui.cpp.
-        if (stbi_write_png(path.c_str(), w, h, 4, rgba, w * 4) == 0) {
-            err = "stbi_write_png failed (directory writable?)";
-            return false;
-        }
-        return true;
-    });
+    // Portable HGR Paint editor (hgrpaint/) driven by its POM1 host: pokes →
+    // EmulationController, canvas render → GEN2 GraphicsCard, files → controller +
+    // stb_image_write. See hgrpaint/IHgrPaintHost.h.
+    hgrPaintHost = std::make_unique<Pom1HgrPaintHost>(emulation.get());
+    hgrPaintEditor = std::make_unique<hgrpaint::HgrPaintEditor>(hgrPaintHost.get());
     // Republie cpuRunning=true (le constructeur publie une fois avant runRequested.store(true)).
     emulation->startCpu();
     emulation->copySnapshot(uiSnapshot);
