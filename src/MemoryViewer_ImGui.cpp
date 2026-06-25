@@ -406,7 +406,10 @@ void MemoryViewer_ImGui::renderSearchDialog()
 
 void MemoryViewer_ImGui::jumpToAddress(int address)
 {
-    startAddress = std::max(0, std::min(address, 0xFFFF - (displayRows * bytesPerRow)));
+    // Clamp against 0x10000 (the address-space SIZE), not 0xFFFF, so the final
+    // row holding 0xFFF0..0xFFFF can sit on the bottom of the view — matches
+    // getViewportRange(). Using 0xFFFF leaves the last row one short of anchor.
+    startAddress = std::max(0, std::min(address, 0x10000 - (displayRows * bytesPerRow)));
     startAddress = (startAddress / bytesPerRow) * bytesPerRow;
     if (!autoRefresh) {
         takeSnapshot();
@@ -708,7 +711,7 @@ void MemoryViewer_ImGui::handleNavigation()
             jumpToAddress(0x0000);
         }
         if (ImGui::IsKeyPressed(ImGuiKey_End)) {
-            jumpToAddress(0xFFFF - (bytesPerRow * displayRows));
+            jumpToAddress(0x10000 - (bytesPerRow * displayRows));
         }
     }
 }

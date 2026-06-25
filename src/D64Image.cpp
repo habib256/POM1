@@ -411,24 +411,28 @@ bool D64Image::appendDirEntry(const std::vector<uint8_t>& padName,
     return false;
 }
 
-bool D64Image::writeFile(std::string_view name,
-                          const std::vector<uint8_t>& data,
-                          FileType type) {
-    if (bytes_.empty()) return false;
+D64Image::WriteResult D64Image::writeFileEx(std::string_view name,
+                                            const std::vector<uint8_t>& data,
+                                            FileType type) {
+    if (bytes_.empty()) return WriteResult::NotReady;
 
     // Build padded filename.
     std::vector<uint8_t> padName(kFilenameLen, kPad);
     size_t nl = std::min<size_t>(name.size(), kFilenameLen);
     std::memcpy(padName.data(), name.data(), nl);
 
-    // Refuse if name already present.
-    if (findEntry(name)) return false;
+    // Refuse if name already present. Check against the TRUNCATED effective name
+    // (the actual on-disk 16-byte key), not the raw request — otherwise a name
+    // longer than 16 chars whose first 16 match an existing file slips past the
+    // guard yet is stored under the identical key (silent duplicate entry).
+    std::string_view effName(reinterpret_cast<const char*>(padName.data()), nl);
+    if (findEntry(effName)) return WriteResult::FileExists;
 
-    if (data.empty()) return false;
+    if (data.empty()) return WriteResult::BadData;
 
     // Allocate sector chain. First sector preferred near track 17 (closest to dir).
     uint8_t firstT = 0, firstS = 0;
-    if (!allocateSector(17, firstT, firstS)) return false;
+    if (!allocateSector(17, firstT, firstS)) return WriteResult::DiskFull;
     uint8_t prevT = firstT, prevS = firstS;
     size_t pos = 0;
     uint16_t blockCount = 1;
@@ -440,12 +444,12 @@ bool D64Image::writeFile(std::string_view name,
             if (!allocateSector(prevT, nextT, nextS)) {
                 // Roll back: free what we allocated.
                 freeChain(firstT, firstS);
-                return false;
+                return WriteResult::DiskFull;
             }
             blockCount++;
         }
         uint8_t* sp = sectorPtr(prevT, prevS);
-        if (!sp) { freeChain(firstT, firstS); return false; }
+        if (!sp) { freeChain(firstT, firstS); return WriteResult::DiskFull; }
         if (last) {
             sp[0] = 0;
             sp[1] = static_cast<uint8_t>(chunk + 1); // last byte used (1-indexed inclusive)
@@ -460,14 +464,19 @@ bool D64Image::writeFile(std::string_view name,
     }
 
     if (!appendDirEntry(padName, type, firstT, firstS, blockCount)) {
+        // Directory full — no free slot for the entry.
         freeChain(firstT, firstS);
-        return false;
+        return WriteResult::DiskFull;
     }
-    return true;
+    return WriteResult::Ok;
 }
 
 bool D64Image::deleteFile(std::string_view name) {
     if (bytes_.empty()) return false;
+    // Match against the truncated effective name (the on-disk 16-byte key) so a
+    // name longer than 16 chars still resolves to its stored entry — keeps the
+    // @: replace path (delete-then-write) working for long names.
+    name = name.substr(0, std::min<size_t>(name.size(), kFilenameLen));
     DirEntry* e = findEntry(name);
     if (!e) return false;
     freeChain(e->track, e->sector);

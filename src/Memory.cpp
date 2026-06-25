@@ -396,7 +396,7 @@ uint8_t Memory::gen2SoftSwitchRead(uint16_t address)
     // video scanner is presenting (reproducible — headless tests / debugging).
     const uint8_t low7 = gen2RandomFloatingBus
         ? static_cast<uint8_t>(gen2Scanner.nextNoise() & 0x7F)
-        : static_cast<uint8_t>(gen2Scanner.floatingBus(mem.data()) & 0x7F);
+        : static_cast<uint8_t>(gen2Scanner.floatingBusAt(mem.data(), emuCycle) & 0x7F);
     return static_cast<uint8_t>((gen2Scanner.hst0At(emuCycle) << 7) | low7);
 }
 

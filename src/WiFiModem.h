@@ -18,6 +18,7 @@
 #include <future>
 #include <mutex>
 #include <string>
+#include <vector>
 
 // Networking on desktop only: WASM builds short-circuit to NO CARRIER because
 // browsers cannot open raw TCP sockets (see WiFiModem.cpp for the rationale).
@@ -147,7 +148,8 @@ private:
     // --- Escape sequence (+++) detection ---
     int  escapeCount = 0;       // consecutive '+' chars received
     int  escapeGuardCycles = 0; // guard time counter (1 s = POM1_CPU_CLOCK_HZ cycles)
-    bool escapeArmed = false;   // true after guard time before +++
+    bool escapeArmed = false;   // true once the leading guard time qualified +++
+    int  guardIdleCycles = 0;   // DTE-silence cycles since the last data byte (leading guard)
     static constexpr int ESCAPE_GUARD_CYCLES = POM1_CPU_CLOCK_HZ;
 
     // --- Connection state ---
@@ -157,6 +159,12 @@ private:
     uint16_t    remotePort = 0;
     uint32_t    bytesSentCount = 0;
     uint32_t    bytesReceivedCount = 0;
+
+    // --- Outbound TCP queue ---
+    // A non-blocking socket can refuse a byte (EWOULDBLOCK) when the kernel TX
+    // buffer is full. Queue here instead of dropping it, and retry as the
+    // buffer drains so uploads are never silently corrupted.
+    std::vector<uint8_t> txBuf;
 
     // --- Network socket ---
     SocketHandle socketFd;
@@ -206,6 +214,7 @@ private:
 
     // Network operations
     void sendToSocket(uint8_t byte);
+    void flushTxBuffer();
     void connectToHost(const std::string& host, uint16_t port);
     void disconnect();
     void updateConnection();
