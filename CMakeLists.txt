@@ -56,6 +56,8 @@ set(SOURCES
     ${POM1_SRC_DIR}/M6502.cpp
     ${POM1_SRC_DIR}/Memory.cpp
     ${POM1_SRC_DIR}/MemoryViewer_ImGui.cpp
+    ${POM1_SRC_DIR}/HGRPaintEditor_ImGui.cpp
+    ${POM1_SRC_DIR}/HGRPaintModel.cpp
     ${POM1_SRC_DIR}/Screen_ImGui.cpp
     ${POM1_SRC_DIR}/SID.cpp
     ${POM1_SRC_DIR}/TMS9918.cpp
@@ -111,6 +113,7 @@ set(HEADERS
     ${POM1_SRC_DIR}/M6502.h
     ${POM1_SRC_DIR}/Memory.h
     ${POM1_SRC_DIR}/MemoryViewer_ImGui.h
+    ${POM1_SRC_DIR}/HGRPaintEditor_ImGui.h
     ${POM1_SRC_DIR}/MicroSD.h
     ${POM1_SRC_DIR}/JukeBox.h
     ${POM1_SRC_DIR}/CodeTank.h

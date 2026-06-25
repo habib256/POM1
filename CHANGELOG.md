@@ -10,6 +10,22 @@ is `git log`; the user-facing feature tour is `README.md`; open work lives in
 
 ## [Unreleased]
 
+### Added — HGR Paint Editor window
+
+- **`HGR Paint Editor`** (`src/HGRPaintEditor_ImGui.{h,cpp}`, pure model in
+  `src/HGRPaintModel.cpp`): an Apple II hi-res paint window for the GEN2 card.
+  Draws **live** into the HGR framebuffer (`$2000` page 1 / `$4000` page 2) via
+  `EmulationController::writeMemory`, so strokes appear on the GEN2 screen in
+  real time. The canvas is rendered through `GraphicsCard`'s NTSC artifact-colour
+  pipeline, so it is pixel-identical to the emulator's output. Tools: pencil,
+  eraser, line, rectangle (filled/outline), flood fill, plus page select, brush
+  size, zoom, grid, NTSC/mono toggle, undo, clear, and load/save of 8 KB `.HGR`
+  images. **Faithful HGR colour model**: the six artifact colours obey column
+  parity and the per-byte shared high bit (painting a palette-1 colour recolours
+  the byte's other pixels — the real NTSC behaviour). Pinned by
+  `hgr_paint_plot_smoke`. Independent reimplementation inspired by fadden's
+  HGRTool (concept only, Apache-2.0).
+
 ### Added — native compiler: `SIN`/`SQR`/`INT`, peephole optimizer, `3DHat.apf` runs native
 
 - **Transcendentals in the float runtime** (`dev/lib/basicrt/basicrt_float.s`):

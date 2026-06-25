@@ -14,6 +14,7 @@
 #include "CodeTank.h"
 #include "JukeBox.h"
 #include "MemoryViewer_ImGui.h"
+#include "HGRPaintEditor_ImGui.h"
 #include "Screen_ImGui.h"
 #include "GraphicsCard.h"
 #include "TMS9918.h"
@@ -169,6 +170,7 @@ private:
     std::unique_ptr<EmulationController> emulation;
     std::unique_ptr<Screen_ImGui> screen;
     std::unique_ptr<MemoryViewer_ImGui> memoryViewer;
+    std::unique_ptr<HGRPaintEditor_ImGui> hgrPaintEditor;
     EmulationSnapshot uiSnapshot;
     
     // Window reference for keyboard callbacks
@@ -181,6 +183,7 @@ private:
 
     // Interface state
     bool showMemoryViewer = false;
+    bool showHGRPaintEditor = false;
     bool showDebugger = false;
     bool showRewindTimeline = false;   // State-rewind timeline / scrub panel
     bool rewindAutoStarted = false;    // one-shot: the toolbar timeline band auto-enables recording

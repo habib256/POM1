@@ -144,6 +144,21 @@ add_test(NAME peripheral_bus_smoke
          COMMAND test_peripheral_bus)
 set_tests_properties(peripheral_bus_smoke PROPERTIES TIMEOUT 5)
 
+# -- HGR paint editor model ---------------------------------------------------
+# Pure bit-plotting logic of the HGR Paint editor (column-parity snapping,
+# per-byte shared high-bit palette behaviour, addressing). No GL/ImGui.
+add_executable(test_hgr_paint_plot
+    hgr_paint_plot_smoke_test.cpp
+    ${CMAKE_SOURCE_DIR}/src/HGRPaintModel.cpp
+    ${CMAKE_SOURCE_DIR}/src/GraphicsCard.cpp
+    ${CMAKE_SOURCE_DIR}/src/Gen2VideoScanner.cpp
+)
+target_include_directories(test_hgr_paint_plot PRIVATE ${CMAKE_SOURCE_DIR}/src)
+
+add_test(NAME hgr_paint_plot_smoke
+         COMMAND test_hgr_paint_plot)
+set_tests_properties(hgr_paint_plot_smoke PROPERTIES TIMEOUT 5)
+
 # -- bench process helpers (toolchain discovery) ------------------------------
 # Self-contained: executableDir() + whichExe(name, extraDirs) underpin the
 # exe-relative / POM1_CC65_DIR cc65 probe a packaged DevBench relies on.
