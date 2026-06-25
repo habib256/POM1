@@ -840,7 +840,13 @@ Result compile(const std::string& source, Card card, FpMode mode)
         std::vector<Tok> toks;
         ++physical;
         size_t before = lex.i;
-        if (!lex.lexLine(toks)) { r.error = "line " + std::to_string(physical) + ": " + lex.err; return r; }
+        if (!lex.lexLine(toks)) {
+            // lexLine appends the leading line-number token before it can fail later
+            // in the line, so report the BASIC line number (what the author sees), not
+            // the physical line index — e.g. a string var on "90 ..." is line 90, not 9.
+            const int bl = (!toks.empty() && toks[0].t == T::Num) ? static_cast<int>(toks[0].num) : physical;
+            r.error = "line " + std::to_string(bl) + ": " + lex.err; return r;
+        }
         if (toks.empty()) continue;
         if (toks[0].t != T::Num)
             return (r.error = "line " + std::to_string(physical) +

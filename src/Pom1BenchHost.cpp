@@ -2107,11 +2107,24 @@ bench::BuildResult Pom1BenchHost::compileBasicNative(int target, const std::stri
         src, gen2 ? basicnative::Card::Gen2 : basicnative::Card::Tms);
     if (!nr.ok) {
         r.console = "[native compiler] " + nr.error + "\n";
-        // Surface the offending Applesoft line in the editor gutter if it parses.
+        // Surface the offending line in the editor gutter. The native error names the
+        // BASIC line number (e.g. 90); the gutter marker wants the PHYSICAL editor row,
+        // so map it to the source row whose leading number == that BASIC line.
         if (const size_t lp = nr.error.find("line "); lp != std::string::npos) {
             int ln = 0;
             try { ln = std::stoi(nr.error.substr(lp + 5)); } catch (...) { ln = 0; }
-            if (ln > 0) r.errors.emplace_back(ln, nr.error);
+            if (ln > 0) {
+                int row = 0, phys = 0;
+                std::istringstream ls(src); std::string line;
+                while (std::getline(ls, line)) {
+                    ++phys;
+                    size_t k = 0; while (k < line.size() && (line[k] == ' ' || line[k] == '\t')) ++k;
+                    int n = 0; bool dig = false;
+                    while (k < line.size() && line[k] >= '0' && line[k] <= '9') { n = n * 10 + (line[k] - '0'); ++k; dig = true; }
+                    if (dig && n == ln) { row = phys; break; }
+                }
+                r.errors.emplace_back(row > 0 ? row : ln, nr.error);
+            }
         }
         r.status = "native compile failed (" + nr.error + ")"; r.ok = false; return r;
     }
