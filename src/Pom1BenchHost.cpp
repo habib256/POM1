@@ -1662,19 +1662,13 @@ bench::BuildResult Pom1BenchHost::directLoad(int target, const std::string& src,
     return r;
 }
 
-// BASIC deploy (mode 4): no toolchain. Bring up the interpreter's (non-graphical)
-// Apple-1 machine, cold-start the in-ROM interpreter, then TYPE the listing line
-// by line at the prompt and optionally RUN. Everything rides the keyboard FIFO
-// ($D010), which self-paces on the program's reads — so this is byte-for-byte the
-// same on desktop and the web (WASM) build (no cc65, no async compile). Integer
-// BASIC lives at $E000 (loaded by initMemory on reset); Applesoft Lite at $6000
-// (zeroed by the reset, so we reload it before typing 6000R).
-//
-// Speed handling: the listing is typed at the CPU menu's "Max" rate so it lands
-// instantly, then the user's speed is restored before RUN (pollBuild drives this).
-static constexpr int kInjectMaxCyclesPerFrame = 1000000;  // matches CPU menu "Max"
-static constexpr int kInjectDrainGraceFrames  = 2;        // consecutive empty polls
-static constexpr int kInjectMaxPollFrames     = 1800;     // ~30 s @ 60 fps safety cap
+// BASIC deploy (mode 4): no toolchain. Bring up the interpreter's machine and
+// cold-start the in-ROM interpreter so its zero page / vectors are set up, then
+// COMPILE the listing ahead of time (Integer via ibasic::compile, Applesoft via
+// basic::compile) into a memory image and load+launch it — no per-character
+// keyboard typing. Pure C++, so byte-for-byte identical on desktop and WASM (no
+// cc65, no async compile). Integer BASIC lives at $E000 (loaded by initMemory on
+// reset); Applesoft Lite at $6000 (zeroed by the reset, so reloaded before 6000R).
 
 // Undo the OOR/RAM relax a BASIC run applied (idx 8/10/11). No-op if nothing was
 // relaxed, or if the preset has since changed (applyMachineConfig already reset
@@ -1982,83 +1976,14 @@ bench::BuildResult Pom1BenchHost::injectBasic(int target, const std::string& src
         return r;
     }
 
-    // 3) Compose the listing keystrokes: newlines (LF, CR, and CRLF/LFCR pairs)
-    //    collapse to a single CR; tabs -> space; only printable ASCII is kept. The
-    //    cap covers the largest BASIC workspace (GEN2 ~37 KB, TMS ~14 KB) so big
-    //    listings like SteveJobs inject whole; the leading CR, the cold-start
-    //    command and the trailing RUN are framing and are NOT counted against it.
-    //    The keyboard queue is unbounded, so no character is dropped at this size.
-    std::string listing;
-    int  programChars = 0;
-    bool dropped      = false;            // listing hit the kMaxProgramChars cap
-    const int kMaxProgramChars = 32768;
-    char prev = '\0';
-    for (char c : src) {
-        if (programChars >= kMaxProgramChars) { dropped = true; break; }
-        if (c == '\n' || c == '\r') {
-            // Collapse a CRLF / LFCR pair onto the single CR already emitted.
-            if ((c == '\n' && prev == '\r') || (c == '\r' && prev == '\n')) { prev = '\0'; continue; }
-            listing += '\r'; ++programChars;
-        } else if (c == '\t')          { listing += ' '; ++programChars; }
-        else if (c >= 32 && c <= 126)  { listing += c;   ++programChars; }
-        // other control chars dropped
-        prev = c;
-    }
-    // On truncation, trim back to the last COMPLETE line so we never enter (and
-    // certainly never RUN) a half-typed final line.
-    if (dropped) {
-        const size_t lastCR = listing.find_last_of('\r');
-        listing = (lastCR == std::string::npos) ? std::string() : listing.substr(0, lastCR + 1);
-    }
-
-    // Longest line: the Apple-1 input editor (WOZ GETLN buffer = 127 chars) silently
-    // truncates anything longer, so warn the user rather than entering a mangled line.
-    size_t longestLine = 0, lineLen = 0;
-    for (char c : listing) {
-        if (c == '\r') { if (lineLen > longestLine) longestLine = lineLen; lineLen = 0; }
-        else ++lineLen;
-    }
-    if (lineLen > longestLine) longestLine = lineLen;
-
-    std::string script = "\r";
-    script += coldStart; script += "\r";
-    script += listing;
-    if (script.back() != '\r') script += '\r';   // submit a final line with no trailing newline
-    for (char c : script) emu->queueKey(c);       // cold-start + listing; RUN deferred below
+    // Every BASIC target (mode 4 = indices 7-11) is fully handled by the Integer
+    // (idx 7) and Applesoft tokenizer (idx 8-11) paths above, each of which returns.
+    // Reaching here means an unexpected target index — fail defensively rather than
+    // fall through. (The old per-character keyboard-injection fallback and its
+    // pollBuild RUN handler were removed once tokenisation replaced it for all cards.)
     emu->copySnapshot(mw_->uiSnapshot);
-
-    // RUN only when asked AND the listing wasn't truncated — a partial program would
-    // syntax-error or run garbage. Truncated => leave it entered for the user to fix.
-    const bool willRun = run && !dropped;
-    r.console = std::string("[bench] ") + interp + ": cold-start " + coldStart +
-                ", typed " + std::to_string(programChars) + " program chars" +
-                (dropped ? " (truncated at " + std::to_string(kMaxProgramChars) +
-                           " — trimmed to the last full line, RUN skipped)" : "") +
-                (willRun ? " + RUN\n" : " (program entered; type RUN to start)\n") +
-                (longestLine > 127
-                     ? "[bench] WARNING: longest line is " + std::to_string(longestLine) +
-                       " chars — the Apple-1 input buffer truncates past 127.\n"
-                     : "") +
-                "[bench] no compiler — keyboard injection (desktop + WASM identical)\n";
-
-    if (willRun) {
-        // Type the listing at MAX CPU speed so it lands instantly, then restore the
-        // user's speed and fire RUN once the keystrokes drain (see pollBuild). Keep
-        // the saved speed across a re-trigger so a double-Run can't lose the original.
-        if (!injectAwaitingRun_) injectSavedSpeed_ = mw_->executionSpeed;
-        injectAwaitingRun_   = true;
-        injectDrainedFrames_ = 0;
-        injectPollFrames_    = 0;
-        mw_->executionSpeed  = kInjectMaxCyclesPerFrame;
-        emu->setExecutionSpeedCyclesPerFrame(kInjectMaxCyclesPerFrame);
-        r.console += "[bench] injecting at max speed; CPU speed restored before RUN\n";
-        r.pending  = true;
-        r.status   = std::string(interp) + ": injecting…";
-    } else {
-        r.status = std::string(interp) +
-                   (dropped ? ": truncated — program entered, RUN skipped" : " program entered");
-    }
-    r.ok = true;
+    r.status = std::string(interp) + ": unsupported BASIC target";
+    r.ok = false;
     return r;
 }
 
@@ -2808,7 +2733,7 @@ bench::BuildResult Pom1BenchHost::build(int target, const std::string& src, cons
         if (!flashCodeTankDevRom(binB.string(), romPath.string(), error)) {
             r.status = "CODETANKDEV.rom flash failed: " + error; r.ok = false; return r;
         }
-        if (!emu->loadCodeTankRom(romPath.string(), error)) { r.status = "CODETANKDEV.rom load failed: " + error; return r; }
+        if (!emu->loadCodeTankRom(romPath.string(), error)) { r.status = "CODETANKDEV.rom load failed: " + error; r.ok = false; return r; }
         mw_->codeTankJumper = CodeTank::Jumper::Lower16;
         emu->setCodeTankJumper(mw_->codeTankJumper);
         if (!mw_->tms9918Enabled) { mw_->tms9918Enabled = true; mw_->showTMS9918 = true; emu->setTMS9918Enabled(true); }
@@ -2855,35 +2780,6 @@ bench::BuildResult Pom1BenchHost::build(int target, const std::string& src, cons
 // Promise resolves, then reads the .bin/.log out of MEMFS and loads+runs it.
 bench::BuildResult Pom1BenchHost::pollBuild()
 {
-    // BASIC injection: the listing was typed at max speed; wait for the keystrokes
-    // to drain, then restore the user's CPU speed and fire RUN (desktop + WASM).
-    if (injectAwaitingRun_) {
-        bench::BuildResult ir; ir.showConsole = true;
-        auto* emu = mw_ ? mw_->emulation.get() : nullptr;
-        if (!emu) { injectAwaitingRun_ = false; ir.ok = false; ir.status = "no emulator"; return ir; }
-
-        ++injectPollFrames_;
-        const bool drained = !emu->hasPendingInjectedInput();
-        injectDrainedFrames_ = drained ? (injectDrainedFrames_ + 1) : 0;
-        const bool timedOut  = injectPollFrames_ >= kInjectMaxPollFrames;
-
-        if (injectDrainedFrames_ < kInjectDrainGraceFrames && !timedOut) {
-            ir.pending = true; ir.status = "BASIC injecting…"; return ir;
-        }
-        // Drained (or timed out): restore the user's speed, then send RUN.
-        injectAwaitingRun_ = false;
-        mw_->executionSpeed = injectSavedSpeed_;
-        emu->setExecutionSpeedCyclesPerFrame(injectSavedSpeed_);
-        for (char c : std::string("RUN\r")) emu->queueKey(c);
-        emu->copySnapshot(mw_->uiSnapshot);
-        ir.pending = false; ir.ok = true;
-        ir.status  = timedOut ? "BASIC: RUN sent (injection timed out)" : "BASIC running";
-        ir.console = timedOut
-            ? "[bench] injection timed out; CPU speed restored, RUN sent anyway\n"
-            : "[bench] injection drained; CPU speed restored, RUN sent\n";
-        return ir;
-    }
-
     bench::BuildResult r;
 #if POM1_IS_WASM
     if (!wasmJobActive_) return r;                 // nothing in flight (pending stays false)

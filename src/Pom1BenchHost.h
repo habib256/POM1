@@ -120,14 +120,6 @@ private:
     int      wasmJobTarget_     = -1;     // kP1Targets index being built
     uint16_t wasmJobEntry_      = 0;      // load/run address from the linker cfg
 
-    // BASIC injection (see injectBasic/pollBuild): the listing is typed at max CPU
-    // speed so it lands instantly; pollBuild() restores the user's speed and fires
-    // RUN once the keystrokes drain. Run-only (verify just enters the program).
-    bool injectAwaitingRun_   = false;   // a RUN is pending behind the draining keys
-    int  injectSavedSpeed_    = 0;       // executionSpeed to restore before RUN
-    int  injectDrainedFrames_ = 0;       // consecutive polls with an empty key queue
-    int  injectPollFrames_    = 0;       // total polls — safety cap against a stuck run
-
     // OOR/RAM relax (idx 8/10/11): a BASIC run loosens the strict 8 KB preset to a
     // permissive 64 KB view. The original values are saved so the relax is undone on
     // an aborted injection and when the next non-BASIC target runs on the same preset

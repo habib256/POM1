@@ -29,18 +29,22 @@ trap 'rm -rf "$TMP"' EXIT
 DEFS=$(grep -E '^\.import ' "$TMP/prog.s" | grep -oE 'rt_[a-z0-9]+' | sort -u \
        | tr 'a-z' 'A-Z' | sed 's/^/-D /' | tr '\n' ' ') || true
 
-# Float programs also link the standalone binary32 runtime. The transcendental
-# routines (fp_int/fp_sqrt/fp_sin) are themselves gated, so assemble them ONLY
-# when the program imports them -- a plain +-*/ float program drops them.
-FP_OBJ=""
-if [ -n "$FLOAT" ]; then
+# Float programs also link the standalone binary32 runtime. Without --float the
+# compiler runs in Auto precision and still emits float code (importing fp_*)
+# whenever the program has a decimal literal, a '/' division, or SQR/SIN/COS --
+# so key off what the generated asm actually imports, not just the --float flag,
+# otherwise an Auto float program fails to link with unresolved fp_* externals.
+# The transcendentals (fp_int/fp_sqrt/fp_sin/fp_cos) are themselves gated, so
+# assemble them ONLY when imported -- a plain +-*/ float program drops them.
+FP_OBJ=()
+if [ -n "$FLOAT" ] || grep -E '^\.import' "$TMP/prog.s" | grep -q 'fp_'; then
   FPDEFS=""
   grep -q 'fp_int\b'  "$TMP/prog.s" && FPDEFS="$FPDEFS -D FP_INT"
   grep -q 'fp_sqrt\b' "$TMP/prog.s" && FPDEFS="$FPDEFS -D FP_SQRT"
   grep -q 'fp_sin\b'  "$TMP/prog.s" && FPDEFS="$FPDEFS -D FP_SIN"
   grep -q 'fp_cos\b'  "$TMP/prog.s" && FPDEFS="$FPDEFS -D FP_COS"
   ca65 $FPDEFS -o "$TMP/fp.o" "$RT/basicrt_float.s"
-  FP_OBJ="$TMP/fp.o"
+  FP_OBJ=("$TMP/fp.o")
 fi
 
 case "$CARD" in
@@ -55,7 +59,7 @@ case "$CARD" in
       *RT_GR*|*RT_COLOR*|*RT_LORESPLOT*|*RT_HLIN*|*RT_VLIN*|*RT_TEXT*|*RT_HOME*)
         CFG="basicc_native_gen2_lores.cfg"; LOADADDR="0C00" ;;
     esac
-    ld65 -C "$RT/$CFG" -o "$OUT" "$TMP/prog.o" "$TMP/rt.o" $FP_OBJ
+    ld65 -C "$RT/$CFG" -o "$OUT" "$TMP/prog.o" "$TMP/rt.o" ${FP_OBJ[@]+"${FP_OBJ[@]}"}
     ;;
   tms)
     ca65 -I "$ROOT/dev/lib/tms9918" -I "$ROOT/dev/lib/apple1" -I "$RT" -o "$TMP/prog.o" "$TMP/prog.s"
@@ -63,18 +67,18 @@ case "$CARD" in
     # Link the VDP graphics lib only when the program actually draws. Lo-res
     # (Multicolor) needs only tms9918_pad.o (for tms9918_pad12); hi-res also pulls
     # in tms9918m2.o (init_vdp_g2 / plot_set / line_xy).
-    VDP_OBJ=""
+    VDP_OBJ=()
     case "$DEFS" in
       *RT_HGR*|*RT_PLOT*|*RT_LINE*|*RT_HCOLOR*|*RT_GR*|*RT_COLOR*|*RT_LORESPLOT*|*RT_HLIN*|*RT_VLIN*|*RT_TEXT*|*RT_HOME*)
         ca65 -I "$ROOT/dev/lib/tms9918" -I "$ROOT/dev/lib/apple1" -o "$TMP/pad.o" "$ROOT/dev/lib/tms9918/tms9918_pad.asm"
-        VDP_OBJ="$TMP/pad.o" ;;
+        VDP_OBJ=("$TMP/pad.o") ;;
     esac
     case "$DEFS" in
       *RT_HGR*|*RT_PLOT*|*RT_LINE*|*RT_HCOLOR*)
         ca65 -I "$ROOT/dev/lib/tms9918" -I "$ROOT/dev/lib/apple1" -o "$TMP/m2.o"  "$ROOT/dev/lib/tms9918/tms9918m2.asm"
-        VDP_OBJ="$TMP/m2.o $VDP_OBJ" ;;
+        VDP_OBJ=("$TMP/m2.o" ${VDP_OBJ[@]+"${VDP_OBJ[@]}"}) ;;
     esac
-    ld65 -C "$RT/basicc_native.cfg" -o "$OUT" "$TMP/prog.o" "$TMP/rt.o" $VDP_OBJ $FP_OBJ
+    ld65 -C "$RT/basicc_native.cfg" -o "$OUT" "$TMP/prog.o" "$TMP/rt.o" ${VDP_OBJ[@]+"${VDP_OBJ[@]}"} ${FP_OBJ[@]+"${FP_OBJ[@]}"}
     LOADADDR="0300"
     ;;
   *) echo "unknown card '$CARD' (use gen2 or tms)" >&2; exit 2 ;;

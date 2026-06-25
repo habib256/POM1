@@ -336,7 +336,20 @@ fp_add:
         sta FA+2
         lda FB+3
         sta FA+3
-        rts
+        ; B zero too: result sign = asgn AND bsgn (IEEE round-to-nearest), i.e. -0
+        ; only when BOTH addends are negative zero, else +0. (fp_sub already flipped
+        ; FB's sign, so bsgn carries the effective operand sign here.)
+        lda bmnt+0
+        ora bmnt+1
+        ora bmnt+2
+        bne @azd
+        lda asgn
+        and bsgn
+        lsr a                   ; bit0 -> carry
+        lda #0
+        ror a                   ; carry -> bit7 (0x80 if both neg, else 0x00)
+        sta FA+3
+@azd:   rts
 @aok:   lda bmnt+0
         ora bmnt+1
         ora bmnt+2
@@ -370,6 +383,7 @@ fp_add:
 @ashlp: lsr bmnt+2
         ror bmnt+1
         ror bmnt+0
+        ror bmnt+3              ; keep shifted-out bits as a guard byte
         dex
         bne @ashlp
 @useA:  ; result exponent = aexp
@@ -391,6 +405,7 @@ fp_add:
 @bshlp: lsr amnt+2
         ror amnt+1
         ror amnt+0
+        ror amnt+3              ; keep shifted-out bits as a guard byte
         dex
         bne @bshlp
 @useB:  lda bexp
@@ -442,7 +457,7 @@ fp_add:
         jmp @narsh
 @adone: jmp packA
 @diff:  ; subtract smaller magnitude from larger; pick sign of larger
-        ; compare amnt vs bmnt (24-bit)
+        ; compare amnt vs bmnt (32-bit incl. the guard byte tiebreak)
         lda amnt+2
         cmp bmnt+2
         bne @dc
@@ -451,9 +466,15 @@ fp_add:
         bne @dc
         lda amnt+0
         cmp bmnt+0
+        bne @dc
+        lda amnt+3
+        cmp bmnt+3
 @dc:    bcs @ag                 ; amnt >= bmnt
         ; bmnt > amnt: r = bmnt - amnt, sign = bsgn
         sec
+        lda bmnt+3
+        sbc amnt+3
+        sta rmnt+3
         lda bmnt+0
         sbc amnt+0
         sta rmnt+0
@@ -467,6 +488,9 @@ fp_add:
         sta rsgn
         jmp @dnorm
 @ag:    sec
+        lda amnt+3
+        sbc bmnt+3
+        sta rmnt+3
         lda amnt+0
         sbc bmnt+0
         sta rmnt+0
@@ -478,19 +502,21 @@ fp_add:
         sta rmnt+2
         lda asgn
         sta rsgn
-@dnorm: ; result zero?
+@dnorm: ; result zero? (guard byte counts -- cancellation may leave only guard bits)
         lda rmnt+0
         ora rmnt+1
         ora rmnt+2
+        ora rmnt+3
         bne @dn2
         lda #0                  ; zero
         sta rmnt+3
         jmp packA
-@dn2:   ; normalize left until bit23 set
+@dn2:   ; normalize left until bit23 set (guard byte feeds the LSB)
         lda rmnt+2
         and #$80
         bne @ddone
-        asl rmnt+0
+        asl rmnt+3
+        rol rmnt+0
         rol rmnt+1
         rol rmnt+2
         lda rexp
@@ -501,7 +527,7 @@ fp_add:
         sbc #0
         sta rexp+1
         jmp @dn2
-@ddone: lda #0
+@ddone: lda #0                  ; discard residual guard bits (truncate, as add does)
         sta rmnt+3
         jmp packA
 @resultA:
@@ -529,11 +555,16 @@ fp_mul:
         ora bmnt+1
         ora bmnt+2
         bne @go
-@zero:  lda #0
+@zero:  lda asgn
+        eor bsgn                ; signed zero: sign = asgn EOR bsgn
+        lsr a                   ; bit0 -> carry
+        lda #0
+        ror a                   ; carry -> bit7 (0x80 if negative, else 0x00)
+        sta FA+3
+        lda #0
         sta FA+0
         sta FA+1
         sta FA+2
-        sta FA+3
         rts
 @go:    lda asgn
         eor bsgn

@@ -282,6 +282,14 @@ Result compile(const std::string& source, const Target& tgt)
     for (const Line& L : lines) {
         const uint16_t lineLen = static_cast<uint16_t>(4 + L.tokens.size() + 1);
         const uint16_t next = static_cast<uint16_t>(cur + lineLen);
+        // Guard the layout against address overflow: a program large enough to wrap
+        // the 16-bit link past $FFFF (next < cur) -- or to run past HIMEM, e.g. into
+        // the GEN2 framebuffer floor -- would otherwise emit garbage links with ok=true.
+        if (next < cur || (tgt.himem && next >= tgt.himem)) {
+            r.error = "program too large: line " + std::to_string(L.number) +
+                      " overflows available memory";
+            return r;
+        }
         prog.push_back(next & 0xFF);                      // forward link -> next line
         prog.push_back((next >> 8) & 0xFF);
         prog.push_back(L.number & 0xFF);                  // line number

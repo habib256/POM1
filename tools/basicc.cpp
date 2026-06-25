@@ -39,14 +39,24 @@ int main(int argc, char** argv)
     std::string target, input, output, card;
     bool native = false;
     basicnative::FpMode fpMode = basicnative::FpMode::Auto;
+    // flags that take a value: match the name first, then require an operand, so a
+    // value-flag at the end of argv reports "missing value" rather than the
+    // misleading "unknown argument".
+    auto needVal = [&](const std::string& a, const char* flag, int& i, std::string& dst) -> int {
+        if (a != flag) return 0;                 // not this flag
+        if (i + 1 >= argc) { std::fprintf(stderr, "missing value for %s\n", flag); return -1; }
+        dst = argv[++i];
+        return 1;
+    };
     for (int i = 1; i < argc; ++i) {
         std::string a = argv[i];
-        if (a == "--target" && i + 1 < argc)      target = argv[++i];
-        else if (a == "-o" && i + 1 < argc)       output = argv[++i];
+        int rc;
+        if ((rc = needVal(a, "--target", i, target)) != 0) { if (rc < 0) return 2; }
+        else if ((rc = needVal(a, "-o", i, output)) != 0)  { if (rc < 0) return 2; }
+        else if ((rc = needVal(a, "--card", i, card)) != 0){ if (rc < 0) return 2; }
         else if (a == "--native")                 native = true;
         else if (a == "--float")                  fpMode = basicnative::FpMode::Float;
         else if (a == "--int")                    fpMode = basicnative::FpMode::Int;
-        else if (a == "--card" && i + 1 < argc)   card = argv[++i];
         else if (!a.empty() && a[0] != '-')       input = a;
         else { std::fprintf(stderr, "unknown argument: %s\n", a.c_str()); return 2; }
     }
