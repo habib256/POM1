@@ -89,14 +89,14 @@ rt_hcolor:
 ; applesoft_gen2/gen2gfx.inc (GFX_GR / GFX_COLOR / lores_plot / HLIN / VLIN /
 ; TEXT / HOME) but ALWAYS target lo-res PAGE 2 ($0800-$0BFF), never page 1.
 ;
-; WHY PAGE 2: the native program image loads at $0300 (basicc_native.cfg) and a
-; non-trivial lo-res program's code + the runtime already reach past $0400, so a
-; page-1 ($0400-$07FF) clear/plot would overwrite the running code. Page 2 ($0800)
-; sits above the small lo-res programs we target, so clearing/plotting it leaves
-; the code intact -- exactly as the native HGR runtime always uses HGR page 1
-; ($2000) regardless of HGR/HGR2. A lo-res program whose image grows past $0800
-; cannot run at $0300 (it would overlap its own framebuffer); that is the load-
-; address limit of the standalone native model, not a lo-res bug.
+; WHY PAGE 2: the GEN2 video scanner can only display lo-res from page 1 ($0400) or
+; page 2 ($0800), and the runtime always uses page 2. To keep the framebuffer clear
+; of the program image, a GEN2 lo-res build loads at $0C00 (basicc_native_gen2_lores.cfg)
+; instead of $0300 -- above both lo-res pages -- so GR/PLOT painting $0800-$0BFF never
+; overwrites the running code, and a lo-res program up to ~5 KB ($0C00-$1FFF) runs
+; intact. HGR (framebuffer at $2000) keeps the full $0300-$1FFF window. The TMS9918
+; keeps pixels in VRAM, so it stays at $0300. (The page-2 choice + $0C00 base are set
+; by the build/deploy; the runtime below is load-address agnostic.)
 .if .defined(RT_GR) .or .defined(RT_COLOR) .or .defined(RT_LORESPLOT) .or .defined(RT_HLIN) .or .defined(RT_VLIN) .or .defined(RT_TEXT) .or .defined(RT_HOME)
 LR_NEEDED = 1
 .include "gen2.inc"             ; GEN2_TEXTOFF..GEN2_LORES soft switches

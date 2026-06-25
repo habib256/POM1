@@ -611,6 +611,30 @@ add_test(NAME bench_basic_native_lores_smoke COMMAND test_bench_basic_native_lor
          WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
 set_tests_properties(bench_basic_native_lores_smoke PROPERTIES TIMEOUT 180 SKIP_RETURN_CODE 77)
 
+# native compiler on TMS9918: same recipe, but Multicolor lo-res lives in the card's
+# private VRAM, so this plugs the TMS9918, runs the standalone .bin at $0300, and
+# asserts the plotted nibbles land at the expected pattern-table ($0000) blocks via
+# TMS9918::copySnapshot(). Skips (77) without cc65 or dev/lib/basicrt.
+add_executable(test_bench_basic_native_lores_tms
+    bench_basic_native_lores_tms_smoke_test.cpp
+    ${CMAKE_SOURCE_DIR}/src/BasicCompilerApplesoft.cpp
+    ${POM1_TEST_CORE_SOURCES}
+)
+target_include_directories(test_bench_basic_native_lores_tms PRIVATE
+    ${CMAKE_SOURCE_DIR}/src
+    ${CMAKE_SOURCE_DIR}/imgui
+)
+target_link_libraries(test_bench_basic_native_lores_tms PRIVATE libresidfp_static)
+if(APPLE)
+    target_compile_definitions(test_bench_basic_native_lores_tms PRIVATE GL_SILENCE_DEPRECATION)
+endif()
+if(WIN32)
+    target_link_libraries(test_bench_basic_native_lores_tms PRIVATE ws2_32)
+endif()
+add_test(NAME bench_basic_native_lores_tms_smoke COMMAND test_bench_basic_native_lores_tms
+         WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+set_tests_properties(bench_basic_native_lores_tms_smoke PROPERTIES TIMEOUT 180 SKIP_RETURN_CODE 77)
+
 # -- Standalone binary32 float runtime (FP phase foundation; cc65-gated) ------
 # Assembles dev/lib/basicrt/basicrt_float.s and checks fromint/toint/add/sub/mul/
 # div/cmp against the host's IEEE float over a value grid. Skips (77) without cc65.

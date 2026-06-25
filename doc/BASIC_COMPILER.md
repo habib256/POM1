@@ -287,11 +287,38 @@ Variables and arithmetic are **16-bit signed**, allocated in **zero page** (so
 every op uses the short/fast zp addressing mode). Supported: `+ - * /`,
 comparisons, `AND/OR/NOT`, `ABS`, `FOR/NEXT`, `IF/THEN`, `GOTO`, `GOSUB/RETURN`,
 `END`, `REM`, `PRINT` (string literals + signed integers, `;`/`,` separators,
-trailing-`;` newline suppression — via the WOZ terminal), and integer graphics
-`HGR/HGR2`, `HCOLOR=`, `HPLOT` (point + `TO`-chains) at the **full GEN2 hi-res
-width 0..279** (16-bit X; TMS is natively 0..255). Float literals are rejected.
-The float phase adds `SIN`, `SQR`, `INT` and decimal literals on top of the same
-control flow. `INT` in the integer phase is the identity (links nothing).
+trailing-`;` newline suppression — via the WOZ terminal), `ONERR GOTO`, and the
+Apple II graphics command set. Hi-res: `HGR/HGR2`, `HCOLOR=`, `HPLOT` (point +
+`TO`-chains) at the **full GEN2 hi-res width 0..279** (16-bit X; TMS is natively
+0..255). Lo-res: `GR/GR2`, `COLOR=`, `PLOT`, `HLIN`/`VLIN … AT`, `TEXT`, `HOME`.
+**All graphics run on both the GEN2 HGR card and the TMS9918** (the compiler emits
+the same `rt_*` ABI either way; the per-card runtime — `basicrt_gen2.s` /
+`basicrt_tms.s` — implements it). On GEN2 lo-res is the standard 40×48 `$0800`-page
+nibble framebuffer; on TMS it is **Multicolor mode** (64×48 of 4×4 blocks) in the
+VDP's private VRAM, so an Applesoft listing written for the 40-wide screen fits
+unchanged and out-of-range plots are silently skipped (no `ONERR` trip), matching
+the ROM. `sketchs/basic_applesoft/RodColor.apf` (Rod's Color Pattern — `GR`,
+`COLOR=` with `/`, `PLOT`, `ONERR`, `TEXT`/`HOME`) is the canonical lo-res example
+and compiles + runs native on both cards.
+
+Two deploy details let a real-size lo-res program survive the framebuffer / RAM it
+would otherwise collide with. **GEN2 lo-res links + loads at `$0C00`**
+(`basicc_native_gen2_lores.cfg`) instead of `$0300`: the GEN2 scanner displays lo-res
+only from page 1 (`$0400`) or page 2 (`$0800`) and the runtime paints page 2, so a
+program at `$0300` would overwrite itself the moment `GR`/`PLOT` touches `$0800`.
+Loading above both lo-res pages keeps any program up to ~5 KB (`$0C00–$1FFF`) intact;
+HGR (framebuffer `$2000`) and TMS (pixels in VRAM) keep the full `$0300–$1FFF` window.
+**The TMS9918 (CodeTank) preset is the 8 KB Parmigiani dual-bank** (RAM only
+`$0000–$0FFF`), so the Bench deploy relaxes it to 16 KB low RAM before running a native
+binary — the standalone image owns the contiguous `$0300–$1FFF` window the linker cfg
+assumes, and without the relax anything past `$0FFF` reads `$FF` under strict OOR and
+the program crashes.
+
+Float literals are rejected in the integer phase. The float phase adds `SIN`, `COS`,
+`SQR`, `INT` and decimal literals on top of the same control flow. (`COS(x)` links
+`fp_cos`, which adds `pi/2` and reuses the `fp_sin` Taylor core — `cos(x) = sin(x +
+pi/2)`.) `INT` in the integer phase
+is the identity (links nothing).
 
 ### Phase 2 — standalone floating point (done; 3DHat compiles + runs)
 
@@ -300,11 +327,13 @@ control flow. `INT` in the integer phase is the identity (links nothing).
 stores values as 4-byte IEEE-754 single and implements `fp_fromint16`,
 `fp_toint16`, `fp_add`, `fp_sub`, `fp_mul`, `fp_div`, `fp_cmp` plus the
 transcendentals `fp_int` (truncate toward zero), `fp_sqrt` (Newton–Raphson, 5
-iterations) and `fp_sin` (2π range reduction → symmetry fold to [-π/2,π/2] → 4-term
-Taylor) — operands in the zero-page slots `FA`/`FB`. Internally a value unpacks to
+iterations), `fp_sin` (2π range reduction → symmetry fold to [-π/2,π/2] → 4-term
+Taylor) and `fp_cos` (adds π/2 and falls into the `fp_sin` core) — operands in the
+zero-page slots `FA`/`FB`. Internally a value unpacks to
 `{sign, E, SG}` with the 24-bit significand `SG ∈ [2^23, 2^24)` and `value = SG·2^E`,
 computes, and repacks. Each transcendental is **feature-gated** (`-D FP_INT` /
-`-D FP_SQRT` / `-D FP_SIN`) so it is assembled only when the program calls it. Pinned
+`-D FP_SQRT` / `-D FP_SIN` / `-D FP_COS`) so it is assembled only when the program calls
+it. Pinned
 by `basic_float_runtime` (cc65-gated): every op — arithmetic and transcendental — is
 checked against the host's IEEE `float`/`sinf`/`sqrtf` over a value grid + randomised
 pairs (5736 cases).

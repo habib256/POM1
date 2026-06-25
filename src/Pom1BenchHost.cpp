@@ -470,18 +470,18 @@ const P1T kP1Targets[] = {
     { "P-LAB TMS9918 CodeTank ROM (C)",   1, "C",               "C",     3, true,  true,  kSketchC              },
     { "Uncle Bernie GEN2 HGR (C)",        2, "C-gen2",          "C",     3, true,  false, kSketchGen2C          },
     { "Wozmon hex (any machine)",        -1, "",                "hex",   1, false, false, kSketchHex            },
-    { "Integer BASIC (Apple-1 DevBench, E000R)", 0, "E000R",    "BASIC", 4, false, false, kSketchBasicInteger   },
-    { "Applesoft Lite (microSD, 6000R)",         8, "6000R",    "BASIC", 4, false, false, kSketchBasicApplesoft },
+    { "Integer BASIC (interpreter, E000R)",      0, "E000R",    "BASIC", 4, false, false, kSketchBasicInteger   },
+    { "Applesoft Lite (interpreter, microSD 6000R)", 8, "6000R","BASIC", 4, false, false, kSketchBasicApplesoft },
     // Target 9: Applesoft GEN2 — BASIC injection on the GEN2 card (preset 2),
     // applesoft-gen2 interpreter ROM loaded HIGH in RAM at $9800 (HIMEM just
     // below it) so BASIC owns ~37 KB of $0801-$97FF — real-silicon faithful.
-    { "Applesoft GEN2 (GEN2 card, 9800R)",       2, "9800R",    "BASIC", 4, false, false, kSketchBasicApplesoftGen2 },
+    { "Applesoft GEN2 (interpreter, 9800R)",     2, "9800R",    "BASIC", 4, false, false, kSketchBasicApplesoftGen2 },
     // Target 10: Applesoft Lite on a bare Apple-1 — the CFFA1 flavour ROM at
     // $E000 (roms/applesoft-lite-cffa1.rom), cold start E000R, 64 KB-relaxed.
-    { "Applesoft Lite (Apple-1, E000R)",         0, "E000R",    "BASIC", 4, false, false, kSketchBasicApplesoft     },
+    { "Applesoft Lite (interpreter, Apple-1 E000R)", 0, "E000R","BASIC", 4, false, false, kSketchBasicApplesoft     },
     // Target 11: Applesoft TMS9918 — the applesoft-tms9918 interpreter as a
     // CodeTank ROM cartridge ($4000-$7FFF), preset 1, cold start 4000R.
-    { "Applesoft TMS9918 (CodeTank, 4000R)",     1, "4000R",    "BASIC", 4, false, true,  kSketchBasicApplesoftGen2 },
+    { "Applesoft TMS9918 (interpreter, 4000R)",  1, "4000R",    "BASIC", 4, false, true,  kSketchBasicApplesoftGen2 },
     // Targets 12-13: NATIVE Applesoft compiler (basicnative::compile) — standalone
     // 6502, NO interpreter (~20x faster). Mode 5 routes to compileBasicNative(),
     // which mirrors tools/basicc_native.sh (ca65 prog + minimal runtime + optional
@@ -518,10 +518,10 @@ const char* const kP1Machines[]  = {
     "Apple-1 dual 4K/8K  (text) - start here",   // 0  asm/C
     "P-LAB Graphic Card  (TMS9918)",             // 1  asm/C
     "Uncle Bernie GEN2 HGR  (colour)",           // 2  asm/C
-    "Applesoft Lite + microSD",                  // 3  BASIC -> target 8
-    "Applesoft GEN2 HGR",                        // 4  BASIC -> target 9
-    "Applesoft TMS9918",                         // 5  BASIC -> target 11
-    "Integer BASIC (Apple-1 dual-rom)",          // 6  BASIC -> target 7
+    "Applesoft Lite + microSD  (interpreter)",   // 3  BASIC -> target 8
+    "Applesoft GEN2 HGR  (interpreter)",         // 4  BASIC -> target 9
+    "Applesoft TMS9918  (interpreter)",          // 5  BASIC -> target 11
+    "Integer BASIC (Apple-1 dual-rom)  (interpreter)", // 6  BASIC -> target 7
     "Applesoft GEN2 HGR  (native compile)",      // 7  BASIC -> target 12 (desktop only)
     "Applesoft TMS9918  (native compile)",       // 8  BASIC -> target 13 (desktop only)
 };
@@ -2163,10 +2163,32 @@ bench::BuildResult Pom1BenchHost::compileBasicNative(int target, const std::stri
         rtDefs += " -D " + f;
     }
     // VDP graphics lib is linked (TMS only) when the program actually draws.
-    const bool draws = rtDefs.find("RT_HGR")   != std::string::npos ||
-                       rtDefs.find("RT_PLOT")  != std::string::npos ||
-                       rtDefs.find("RT_LINE")  != std::string::npos ||
-                       rtDefs.find("RT_HCOLOR")!= std::string::npos;
+    // Hi-res needs tms9918m2 (init_vdp_g2 / plot_set / line_xy); lo-res
+    // (Multicolor) needs only tms9918_pad (tms9918_pad12). Both gate on pad.
+    const bool drawsHires = rtDefs.find("RT_HGR")   != std::string::npos ||
+                            rtDefs.find("RT_PLOT")  != std::string::npos ||
+                            rtDefs.find("RT_LINE")  != std::string::npos ||
+                            rtDefs.find("RT_HCOLOR")!= std::string::npos;
+    const bool drawsLores = rtDefs.find("RT_GR")        != std::string::npos ||
+                            rtDefs.find("RT_COLOR")     != std::string::npos ||
+                            rtDefs.find("RT_LORESPLOT") != std::string::npos ||
+                            rtDefs.find("RT_HLIN")      != std::string::npos ||
+                            rtDefs.find("RT_VLIN")      != std::string::npos ||
+                            rtDefs.find("RT_TEXT")      != std::string::npos ||
+                            rtDefs.find("RT_HOME")      != std::string::npos;
+    const bool draws = drawsHires || drawsLores;
+
+    // GEN2 lo-res uses the Apple-II page-2 framebuffer ($0800-$0BFF), so a program
+    // loaded at $0300 would overwrite itself once GR/PLOT paints there. Such programs
+    // link + load at $0C00 (above both lo-res pages) via a dedicated cfg. HGR (frame-
+    // buffer at $2000) and TMS (pixels in VRAM) keep the full $0300-$1FFF window.
+    const bool gen2Lores = gen2 && drawsLores;
+    const fs::path cfgSel = gen2Lores ? (rtDir / "basicc_native_gen2_lores.cfg") : cfg;
+    const uint16_t loadAddr = gen2Lores ? 0x0C00 : 0x0300;
+    if (gen2Lores && !fs::exists(cfgSel, ec)) {
+        r.console += "linker cfg not found: " + cfgSel.string() + "\n";
+        r.status = "basicc_native_gen2_lores.cfg missing"; return r;
+    }
 
     auto step = [&](const std::string& cmd, const char* tag) -> bool {
         std::string out;
@@ -2200,6 +2222,7 @@ bench::BuildResult Pom1BenchHost::compileBasicNative(int target, const std::stri
         if (nr.asmText.find("fp_int")  != std::string::npos) fpDefs += " -D FP_INT";
         if (nr.asmText.find("fp_sqrt") != std::string::npos) fpDefs += " -D FP_SQRT";
         if (nr.asmText.find("fp_sin")  != std::string::npos) fpDefs += " -D FP_SIN";
+        if (nr.asmText.find("fp_cos")  != std::string::npos) fpDefs += " -D FP_COS";
         const fs::path fpSrc = rtDir / "basicrt_float.s";
         if (!step(bench::shellQuote(ca65_) + fpDefs + " -o " + bench::shellQuote(fpO.string()) +
                   " " + bench::shellQuote(fpSrc.string()), "ca65 [float runtime]"))
@@ -2207,26 +2230,32 @@ bench::BuildResult Pom1BenchHost::compileBasicNative(int target, const std::stri
         linkObjs += " " + bench::shellQuote(fpO.string());
     }
 
-    // 5) TMS only, and only if the program draws: the VDP graphics lib.
+    // 5) TMS only, and only if the program draws: the VDP graphics lib. Lo-res
+    // (Multicolor) needs only tms9918_pad (tms9918_pad12); hi-res also links
+    // tms9918m2 (init_vdp_g2 / plot_set / line_xy).
     if (!gen2 && draws) {
         const std::string tI = " -I " + bench::shellQuote(cardLib.string()) +
                                " -I " + bench::shellQuote(a1Lib.string()) + " ";
-        const fs::path m2Src  = cardLib / "tms9918m2.asm";
         const fs::path padSrc = cardLib / "tms9918_pad.asm";
-        if (!step(bench::shellQuote(ca65_) + tI + "-o " + bench::shellQuote(m2O.string()) +
-                  " " + bench::shellQuote(m2Src.string()), "ca65 [tms9918m2]"))
-            return r;
         if (!step(bench::shellQuote(ca65_) + tI + "-o " + bench::shellQuote(padO.string()) +
                   " " + bench::shellQuote(padSrc.string()), "ca65 [tms9918_pad]"))
             return r;
-        linkObjs += " " + bench::shellQuote(m2O.string()) + " " + bench::shellQuote(padO.string());
+        if (drawsHires) {
+            const fs::path m2Src = cardLib / "tms9918m2.asm";
+            if (!step(bench::shellQuote(ca65_) + tI + "-o " + bench::shellQuote(m2O.string()) +
+                      " " + bench::shellQuote(m2Src.string()), "ca65 [tms9918m2]"))
+                return r;
+            linkObjs += " " + bench::shellQuote(m2O.string());
+        }
+        linkObjs += " " + bench::shellQuote(padO.string());
     }
 
-    // 6) Link the standalone binary (loads + runs at $0300).
-    if (!step(bench::shellQuote(ld65_) + " -C " + bench::shellQuote(cfg.string()) +
+    // 6) Link the standalone binary (loads + runs at $0300, or $0C00 for GEN2 lo-res).
+    char addrTag[8]; std::snprintf(addrTag, sizeof(addrTag), "$%04X", loadAddr);
+    if (!step(bench::shellQuote(ld65_) + " -C " + bench::shellQuote(cfgSel.string()) +
               " -o " + bench::shellQuote(binB.string()) + " " + linkObjs, "ld65"))
         return r;
-    r.console += "[ok] assembled + linked (native, run @ $0300)\n";
+    r.console += std::string("[ok] assembled + linked (native, run @ ") + addrTag + ")\n";
 
     if (!run) { r.status = "Verify OK"; r.ok = true; return r; }
 
@@ -2237,13 +2266,35 @@ bench::BuildResult Pom1BenchHost::compileBasicNative(int target, const std::stri
     mw_->finalizePendingCardPlugs();
     auto* emu = mw_->emulation.get();
     if (!emu) { r.status = "no emulator"; r.ok = false; return r; }
+
+    // The standalone native image owns contiguous low RAM ($0300-$1FFF per the cfg),
+    // but the TMS9918 (CodeTank) preset is the 8 KB Parmigiani dual-bank — RAM only at
+    // $0000-$0FFF — so any program past $0FFF reads $FF under strict OOR and crashes.
+    // Relax to 16 KB low RAM ($0000-$3FFF, strict left ON) so the binary's full window
+    // is backed (mirrors the BASIC tokeniser path for this preset). Done unconditionally
+    // for the TMS native target (preset 1 is always the 8 KB dual-bank) so it never
+    // depends on the UI RAM mirror being current. GEN2 (48 KB) is already contiguous;
+    // restoreRelaxedMachine() (called by the next build()) reverts.
+    if (!gen2) {
+        if (!injectRelaxed_) {
+            injectSavedRamKB_     = mw_->presetRamKB;
+            injectSavedOorStrict_ = mw_->oorStrictModeEnabled;
+        }
+        injectRelaxed_       = true;
+        injectRelaxedPreset_ = mw_->activePresetIndex;
+        emu->setOutOfRangeStrictMode(true);
+        emu->setPresetRamKB(16);
+        mw_->oorStrictModeEnabled = true;
+        mw_->presetRamKB = 16;
+    }
+
     if (gen2) mw_->showGraphicsCard = true;
     else if (!mw_->showTMS9918) mw_->showTMS9918 = true;
     std::string error; int bytesLoaded = 0;
-    if (emu->loadBinary(binB.string(), 0x0300, error, &bytesLoaded)) {
+    if (emu->loadBinary(binB.string(), loadAddr, error, &bytesLoaded)) {
         emu->copySnapshot(mw_->uiSnapshot);
         char msg[160]; std::snprintf(msg, sizeof(msg),
-            "Built %d B (native %s) run @ $0300", bytesLoaded, gen2 ? "GEN2" : "TMS9918");
+            "Built %d B (native %s) run @ %s", bytesLoaded, gen2 ? "GEN2" : "TMS9918", addrTag);
         r.status = msg; r.ok = true;
     } else { r.status = "load failed: " + error; r.ok = false; }
     return r;

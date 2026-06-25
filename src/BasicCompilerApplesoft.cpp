@@ -40,7 +40,7 @@ bool isKeyword(const std::string& s)
     static const std::set<std::string> kw = {
         "REM","HGR","HGR2","HCOLOR","HPLOT","TO","FOR","NEXT","STEP","IF","THEN",
         "GOTO","GOSUB","RETURN","END","STOP","LET","PRINT","AND","OR","NOT","ABS",
-        "INT","SQR","SIN",
+        "INT","SQR","SIN","COS",
         // lo-res graphics + error trapping (native, GEN2)
         "GR","GR2","COLOR","PLOT","HLIN","VLIN","TEXT","HOME","AT","ONERR",
     };
@@ -314,11 +314,12 @@ bool Codegen::primary(int d)
         if (!expr(d)) return false; if (cur().t != T::RParen) return fail("expected ')'"); adv();
         if (fp) { copyV("FA", Td); emit("\tjsr fp_int"); copyV(Td, "FA"); }
         return true; }
-    // SQR(x) / SIN(x): transcendental, float only (the auto-precision pass forces
-    // the float phase whenever either appears, so fp is always true here).
-    if (isKw("SQR") || isKw("SIN")) {
-        const char* rt = isKw("SQR") ? "fp_sqrt" : "fp_sin";
-        const char* nm = isKw("SQR") ? "SQR" : "SIN";
+    // SQR(x) / SIN(x) / COS(x): transcendental, float only (the auto-precision pass
+    // forces the float phase whenever any appears, so fp is always true here). COS
+    // links fp_cos (cos(x) = sin(x + pi/2), built on the same Taylor core as fp_sin).
+    if (isKw("SQR") || isKw("SIN") || isKw("COS")) {
+        const char* rt = isKw("SQR") ? "fp_sqrt" : isKw("SIN") ? "fp_sin" : "fp_cos";
+        const char* nm = isKw("SQR") ? "SQR" : isKw("SIN") ? "SIN" : "COS";
         adv(); if (cur().t != T::LParen) return fail(std::string(nm) + " expects '('"); adv();
         if (!expr(d)) return false; if (cur().t != T::RParen) return fail("expected ')'"); adv();
         if (!fp) return fail(std::string(nm) + " requires the floating-point phase");
@@ -663,17 +664,15 @@ bool Codegen::statement()
         }
         return true;
     }
-    // ---- lo-res graphics (GEN2 page $0400; the native runtime plots there) ----
-    // 40-wide x 48-high, each cell a 4-bit colour nibble. TMS lo-res (Multicolor
-    // mode) is not yet ported to the native runtime -- emit a clear pending error.
+    // ---- lo-res graphics ------------------------------------------------------
+    // GEN2: 40-wide x 48-high, $0800 page, each cell a 4-bit colour nibble. TMS:
+    // Multicolor mode (64-wide x 48-high) in the VDP's private VRAM. Same rt_* ABI
+    // on both cards, so the compiler emits identical call sites either way.
     if (isKw("GR") || isKw("GR2")) {
-        if (card == Card::Tms) return fail("lo-res GR on the TMS9918 is pending in the native compiler "
-            "(Multicolor mode not yet ported) -- use the Applesoft tokeniser, or compile lo-res for GEN2");
         bool pg2 = isKw("GR2"); adv();
         emit(pg2 ? "\tlda #1" : "\tlda #0"); emit("\tjsr rt_gr"); return true;
     }
     if (isKw("COLOR")) {
-        if (card == Card::Tms) return fail("lo-res COLOR= on the TMS9918 is pending in the native compiler");
         adv(); if (!isOp("=")) return fail("COLOR expects '='"); adv();
         if (!expr(0)) return false;
         if (fp) { copyV("FA", temp(0)); emit("\tjsr fp_toint16"); emit("\tlda FA"); }
@@ -681,7 +680,6 @@ bool Codegen::statement()
         emit("\tjsr rt_color"); return true;
     }
     if (isKw("PLOT")) {
-        if (card == Card::Tms) return fail("lo-res PLOT on the TMS9918 is pending in the native compiler");
         // PLOT x,y  (coords 0..39 / 0..47; int or float like HPLOT)
         auto coord = [&](const std::string& dst) -> bool {
             if (!expr(0)) return false;
@@ -695,7 +693,6 @@ bool Codegen::statement()
         emit("\tjsr rt_loresplot"); return true;
     }
     if (isKw("HLIN") || isKw("VLIN")) {
-        if (card == Card::Tms) return fail("lo-res HLIN/VLIN on the TMS9918 is pending in the native compiler");
         bool h = isKw("HLIN");
         // HLIN x1,x2 AT y   /   VLIN y1,y2 AT x
         auto coord = [&](const std::string& dst) -> bool {
@@ -713,11 +710,9 @@ bool Codegen::statement()
         emit(h ? "\tjsr rt_hlin" : "\tjsr rt_vlin"); return true;
     }
     if (isKw("TEXT")) {
-        if (card == Card::Tms) return fail("lo-res TEXT on the TMS9918 is pending in the native compiler");
         adv(); emit("\tjsr rt_text"); return true;
     }
     if (isKw("HOME")) {
-        if (card == Card::Tms) return fail("HOME on the TMS9918 is pending in the native compiler");
         adv(); emit("\tjsr rt_home"); return true;
     }
 
@@ -967,7 +962,7 @@ Result compile(const std::string& source, Card card, FpMode mode)
         for (const Line& L : lines)
             for (const Tok& t : L.toks)
                 if ((t.t == T::Num && t.isFloat) || (t.t == T::Op && t.s == "/") ||
-                    (t.t == T::Kw && (t.s == "SQR" || t.s == "SIN"))) floatMode = true;
+                    (t.t == T::Kw && (t.s == "SQR" || t.s == "SIN" || t.s == "COS"))) floatMode = true;
     }
 
     Codegen g; g.card = card; g.fp = floatMode;
@@ -997,7 +992,7 @@ Result compile(const std::string& source, Card card, FpMode mode)
                               // them whole (rt_loresplot, not rt_lores_plot).
                               "rt_gr","rt_color","rt_loresplot","rt_hlin","rt_vlin","rt_text","rt_home",
                               "fp_fromint16","fp_toint16","fp_add","fp_sub","fp_mul","fp_div","fp_cmp",
-                              "fp_int","fp_sqrt","fp_sin"};
+                              "fp_int","fp_sqrt","fp_sin","fp_cos"};
     const char* zpSyms[]   = {"rt_px","rt_py","rt_x0","rt_y0","rt_x1","rt_y1","rt_a","rt_b","FA","FB",
                               "rt_onerr_lo","rt_onerr_hi"};
     std::vector<std::string> codeImp, zpImp;

@@ -767,7 +767,7 @@ fp_cmp:
 ; Transcendentals -- built on the fp_* core above. Gated per feature (-D FP_xxx)
 ; so a program that doesn't use them never links them.
 ; ============================================================================
-.if .defined(FP_SQRT) .or .defined(FP_SIN) .or .defined(FP_INT)
+.if .defined(FP_SQRT) .or .defined(FP_SIN) .or .defined(FP_COS) .or .defined(FP_INT)
 .segment "ZEROPAGE"
 sA: .res 4              ; scratch float a / argument
 sY: .res 4              ; scratch float y
@@ -929,10 +929,11 @@ fp_sqrt:
         rts
 .endif
 
-; ---- fp_sin: FA = sin(FA) radians ------------------------------------------
+; ---- fp_sin / fp_cos: FA = sin(FA) / cos(FA) radians ------------------------
 ; Range-reduce to [-pi/2, pi/2] then a 4-term Taylor series. Args within ~+-5000
 ; (k = round(x/2pi) must fit 16 bits). Built entirely on fp_add/sub/mul/cmp.
-.ifdef FP_SIN
+; cos(x) = sin(x + pi/2): fp_cos adds pi/2 and falls straight into fp_sin.
+.if .defined(FP_SIN) .or .defined(FP_COS)
 .macro LDF reg, b0,b1,b2,b3
         lda #b0
         sta reg+0
@@ -953,7 +954,17 @@ fp_sqrt:
         lda src+3
         sta dst+3
 .endmacro
+.ifdef FP_COS
+.export fp_cos
+; fp_cos: FA = cos(FA). cos(x) = sin(x + pi/2); add pi/2, fall into fp_sin.
+fp_cos:
+        LDF FB, $DB,$0F,$C9,$3F         ; +pi/2
+        jsr fp_add
+        ; fall through to fp_sin
+.endif
+.ifdef FP_SIN
 .export fp_sin
+.endif
 fp_sin:
         CPF sA, FA                      ; sA = x
         LDF FB, $83,$F9,$22,$3E         ; 1/2pi

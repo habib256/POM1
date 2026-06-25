@@ -38,6 +38,7 @@ if [ -n "$FLOAT" ]; then
   grep -q 'fp_int\b'  "$TMP/prog.s" && FPDEFS="$FPDEFS -D FP_INT"
   grep -q 'fp_sqrt\b' "$TMP/prog.s" && FPDEFS="$FPDEFS -D FP_SQRT"
   grep -q 'fp_sin\b'  "$TMP/prog.s" && FPDEFS="$FPDEFS -D FP_SIN"
+  grep -q 'fp_cos\b'  "$TMP/prog.s" && FPDEFS="$FPDEFS -D FP_COS"
   ca65 $FPDEFS -o "$TMP/fp.o" "$RT/basicrt_float.s"
   FP_OBJ="$TMP/fp.o"
 fi
@@ -46,22 +47,37 @@ case "$CARD" in
   gen2)
     ca65 -I "$ROOT/dev/lib/gen2" -I "$ROOT/dev/lib/apple1" -I "$RT" -o "$TMP/prog.o" "$TMP/prog.s"
     ca65 $DEFS -I "$ROOT/dev/lib/gen2" -I "$ROOT/dev/lib/apple1" -I "$RT" -o "$TMP/rt.o" "$RT/basicrt_gen2.s"
-    ld65 -C "$RT/basicc_native.cfg" -o "$OUT" "$TMP/prog.o" "$TMP/rt.o" $FP_OBJ
+    # GEN2 lo-res uses the page-2 framebuffer ($0800); a program loaded at $0300 would
+    # overwrite itself once GR/PLOT paints there, so lo-res programs link + load at
+    # $0C00 (above both lo-res pages). HGR (framebuffer $2000) stays at $0300.
+    CFG="basicc_native.cfg"; LOADADDR="0300"
+    case "$DEFS" in
+      *RT_GR*|*RT_COLOR*|*RT_LORESPLOT*|*RT_HLIN*|*RT_VLIN*|*RT_TEXT*|*RT_HOME*)
+        CFG="basicc_native_gen2_lores.cfg"; LOADADDR="0C00" ;;
+    esac
+    ld65 -C "$RT/$CFG" -o "$OUT" "$TMP/prog.o" "$TMP/rt.o" $FP_OBJ
     ;;
   tms)
     ca65 -I "$ROOT/dev/lib/tms9918" -I "$ROOT/dev/lib/apple1" -I "$RT" -o "$TMP/prog.o" "$TMP/prog.s"
     ca65 $DEFS -I "$ROOT/dev/lib/tms9918" -I "$ROOT/dev/lib/apple1" -I "$RT" -o "$TMP/rt.o" "$RT/basicrt_tms.s"
-    # Link the VDP graphics lib only when the program actually draws.
+    # Link the VDP graphics lib only when the program actually draws. Lo-res
+    # (Multicolor) needs only tms9918_pad.o (for tms9918_pad12); hi-res also pulls
+    # in tms9918m2.o (init_vdp_g2 / plot_set / line_xy).
     VDP_OBJ=""
+    case "$DEFS" in
+      *RT_HGR*|*RT_PLOT*|*RT_LINE*|*RT_HCOLOR*|*RT_GR*|*RT_COLOR*|*RT_LORESPLOT*|*RT_HLIN*|*RT_VLIN*|*RT_TEXT*|*RT_HOME*)
+        ca65 -I "$ROOT/dev/lib/tms9918" -I "$ROOT/dev/lib/apple1" -o "$TMP/pad.o" "$ROOT/dev/lib/tms9918/tms9918_pad.asm"
+        VDP_OBJ="$TMP/pad.o" ;;
+    esac
     case "$DEFS" in
       *RT_HGR*|*RT_PLOT*|*RT_LINE*|*RT_HCOLOR*)
         ca65 -I "$ROOT/dev/lib/tms9918" -I "$ROOT/dev/lib/apple1" -o "$TMP/m2.o"  "$ROOT/dev/lib/tms9918/tms9918m2.asm"
-        ca65 -I "$ROOT/dev/lib/tms9918" -I "$ROOT/dev/lib/apple1" -o "$TMP/pad.o" "$ROOT/dev/lib/tms9918/tms9918_pad.asm"
-        VDP_OBJ="$TMP/m2.o $TMP/pad.o" ;;
+        VDP_OBJ="$TMP/m2.o $VDP_OBJ" ;;
     esac
     ld65 -C "$RT/basicc_native.cfg" -o "$OUT" "$TMP/prog.o" "$TMP/rt.o" $VDP_OBJ $FP_OBJ
+    LOADADDR="0300"
     ;;
   *) echo "unknown card '$CARD' (use gen2 or tms)" >&2; exit 2 ;;
 esac
 
-echo "built $OUT ($(wc -c < "$OUT") bytes, load+run @ \$0300, $CARD${FLOAT:+, float})" >&2
+echo "built $OUT ($(wc -c < "$OUT") bytes, load+run @ \$${LOADADDR}, $CARD${FLOAT:+, float})" >&2

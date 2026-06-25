@@ -81,7 +81,10 @@ std::string buildNativeGen2(const std::string& src, const std::string& dir) {
         ok = ok && sh("ca65" + fpdefs + " -o " + dir + "/fp.o " + g_rt + "/basicrt_float.s");
         objs += " " + dir + "/fp.o";
     }
-    ok = ok && sh("ld65 -C " + g_rt + "/basicc_native.cfg -o " + dir + "/p.bin " + objs);
+    // GEN2 lo-res programs link + load at $0C00 (above the page-2 framebuffer $0800),
+    // matching the production deploy path (Pom1BenchHost / basicc_native.sh): a program
+    // at $0300 would overwrite itself once GR/PLOT paints page 2.
+    ok = ok && sh("ld65 -C " + g_rt + "/basicc_native_gen2_lores.cfg -o " + dir + "/p.bin " + objs);
     return ok ? (dir + "/p.bin") : "";
 }
 
@@ -136,13 +139,14 @@ int main()
     if (bin.empty()) { std::fprintf(stderr, "SKIP: cc65 build failed (native GEN2 lo-res)\n"); return kSkip; }
     const std::vector<unsigned char> b = readBin(bin);
     if (b.empty()) { std::fprintf(stderr, "FAIL: native binary empty\n"); return 1; }
-    std::printf("native GEN2 lo-res binary: %zu bytes, load+run @ $0300\n", b.size());
+    std::printf("native GEN2 lo-res binary: %zu bytes, load+run @ $0C00\n", b.size());
 
-    // GEN2 card UNPLUGGED so the lo-res page ($0400-$07FF) is plain RAM.
+    // GEN2 card UNPLUGGED so the lo-res page 2 ($0800-$0BFF) is plain RAM. The image
+    // loads at $0C00, so GR/PLOT painting page 2 never touches the running code.
     Memory mem; mem.initMemory();
-    std::memcpy(mem.getMemoryPointerMutable() + 0x0300, b.data(), b.size());
+    std::memcpy(mem.getMemoryPointerMutable() + 0x0C00, b.data(), b.size());
     M6502 cpu(&mem);
-    cpu.setProgramCounter(0x0300);
+    cpu.setProgramCounter(0x0C00);
     cpu.start();
 
     // The program is straight-line then spins at basic_done; a few hundred K cycles

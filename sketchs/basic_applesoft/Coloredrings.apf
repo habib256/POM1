@@ -4,7 +4,7 @@
 240 A = 65
 250 B = 10
 260 R = 80
-290 for sq=80to0 step -3.14159
+290 for sq=80 to 0 step -3.14159
 292 u=360
 293 co=int(rnd(1)*7)+1
 295 if co=4 then goto 293
