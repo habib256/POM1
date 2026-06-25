@@ -1251,6 +1251,7 @@ MainWindow_ImGui::windowRegistry()
         // ── Peripheral / card panels ──────────────────────────────────────────────────────────────────────────────────────────
         { "CassetteDeck",         "Apple-1 Cassette Deck",                     &MW::showCassetteDeck,       K::Peripheral,  true  },
         { "GraphicsCard",         "Uncle Bernie's GEN2 HGR Graphic Card",      &MW::showGraphicsCard,       K::Peripheral,  true  },
+        { "HGRPaintEditor",       "HGR Paint Editor",                          &MW::showHGRPaintEditor,     K::Tool,        true  },
         { "TMS9918",              "P-LAB Graphic Card (TMS9918)",              &MW::showTMS9918,            K::Peripheral,  true  },
         { "GT6144",               "SWTPC GT-6144 Graphic Terminal",            &MW::showGT6144,             K::Peripheral,  true  },
         { "IECCard",              "IEC Disk",                                  &MW::showIECCard,            K::Peripheral,  true  },

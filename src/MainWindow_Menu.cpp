@@ -306,6 +306,18 @@ void MainWindow_ImGui::renderMenuBar()
                     setStatusMessage("TMS9918 plugged for VDP Inspector", 2.0f);
                 }
             }
+            // HGR paint editor — draws live into the GEN2 HGR framebuffer with
+            // faithful NTSC artifact colours. Opening it plugs the GEN2 card so
+            // there is a live framebuffer to paint into (the render loop also
+            // guards this, but enabling here makes the menu action immediate).
+            if (ImGui::MenuItem("HGR Paint Editor...", nullptr, &showHGRPaintEditor)) {
+                if (showHGRPaintEditor && !graphicsCardEnabled) {
+                    graphicsCardEnabled = true;
+                    showGraphicsCard = true;
+                    emulation->setHgrFramebufferAttached(true);
+                    setStatusMessage("GEN2 HGR card plugged for HGR Paint Editor", 2.0f);
+                }
+            }
             ImGui::Separator();
             // Strict-mode toggle, drop-diagnostics dump and counter reset all
             // moved into the Silicon Strict Inspector window — single home for
