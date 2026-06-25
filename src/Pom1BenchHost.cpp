@@ -1526,7 +1526,8 @@ bench::BuildResult Pom1BenchHost::selectTargetExplicit(int target)
 
     if (t.mode == 4) {
         // BASIC: cold-start the matching interpreter (empty listing, no RUN) so its
-        // prompt is ready. injectBasic loads the ROM, resets and types the cold-start.
+        // prompt is ready. injectBasic loads the ROM, hard-resets, then cold-starts
+        // the interpreter to its prompt (the empty-listing prep path).
         bench::BuildResult ib = injectBasic(target, std::string(), /*run=*/false);
         r.ok = ib.ok;
         r.status = ib.ok ? (std::string(t.label) + " — ready") : ib.status;
@@ -2270,8 +2271,8 @@ bench::BuildResult Pom1BenchHost::build(int target, const std::string& src, cons
         return directLoad(target, src, addrHex);
     }
 
-    if (t.mode == 4) {     // BASIC: no compile — type the listing into the in-ROM
-        return injectBasic(target, src, run);   // interpreter (works on WASM too).
+    if (t.mode == 4) {     // BASIC: tokenise/compile the listing host-side and load
+        return injectBasic(target, src, run);   // the image — no typing (WASM too).
     }
 
     if (t.mode == 5) {     // BASIC native compile -> standalone 6502, no interpreter.
