@@ -69,4 +69,51 @@ bool pixelOn(const uint8_t* page, int x, int y)
     return (page[hgrByteOffset(x, y)] >> hgrBit(x)) & 1;
 }
 
+HgrColor colorAt(const uint8_t* page, int x, int y)
+{
+    if (x < 0 || x > 279 || y < 0 || y > 191) return HgrColor::Black;
+    if (!pixelOn(page, x, y)) return HgrColor::Black;
+
+    // White heuristic: a lit pixel reads white when its two same-byte horizontal
+    // neighbours are also lit (the dot pattern fills, so NTSC sees no isolated
+    // colour fringe). We restrict the test to within the SAME byte so we mirror
+    // plotPage's writer, which only flips the high bit of one byte at a time and
+    // never reasons across the byte boundary. This is a documented heuristic:
+    // true NTSC white depends on neighbours across bytes too, but matching the
+    // per-byte writer keeps colorAt round-tripping plotPage.
+    const int bit = hgrBit(x);
+    if (bit > 0 && bit < 6) {
+        const uint8_t b = page[hgrByteOffset(x, y)];
+        if (((b >> (bit - 1)) & 1) && ((b >> (bit + 1)) & 1))
+            return HgrColor::White;
+    }
+
+    // Chromatic classification: palette (byte high bit) + column parity.
+    // Mirrors snapColumn: palette0 even=Violet, palette0 odd=Green,
+    // palette1 even=Blue, palette1 odd=Orange.
+    const bool palette1 = (page[hgrByteOffset(x, y)] & 0x80u) != 0;
+    const bool even = (x & 1) == 0;
+    if (palette1) return even ? HgrColor::Blue   : HgrColor::Orange;
+    else          return even ? HgrColor::Violet : HgrColor::Green;
+}
+
+bool byteHasPaletteSeam(const uint8_t* page, int byteCol, int y)
+{
+    // A "palette seam" is the boundary at which artifact-colour bleed occurs:
+    // two horizontally adjacent bytes that both have lit pixels but disagree on
+    // the shared high bit (palette select). At that seam the NTSC renderer mixes
+    // the two palettes' colours, which surprises users. We flag the LEFT byte of
+    // any such adjacent pair (byteCol .. byteCol+1).
+    //
+    // Pure + simple by design so the overlay matches a property the test pins.
+    if (byteCol < 0 || byteCol > 38 || y < 0 || y > 191) return false;
+    const int base = hgrByteOffset(0, y);
+    const uint8_t a = page[base + byteCol];
+    const uint8_t b = page[base + byteCol + 1];
+    const bool aLit = (a & 0x7Fu) != 0;
+    const bool bLit = (b & 0x7Fu) != 0;
+    if (!aLit || !bLit) return false;
+    return (a & 0x80u) != (b & 0x80u);
+}
+
 } // namespace hgrpaint

@@ -93,6 +93,51 @@ int main()
            hgrpaint::hgrByteOffset(279, 191));
     assert(!hgrpaint::pixelOn(page.data(), -5, 0));
 
+    // ── colorAt round-trips plotPage (HGR-03) ────────────────────────────
+    page.assign(page.size(), 0);
+    // Off pixel reads Black.
+    assert(hgrpaint::colorAt(page.data(), 50, 10) == HgrColor::Black);
+    // White: plot an isolated lit bit, then ensure its neighbours read it as
+    // chromatic, and a fully-filled run reads as White.
+    hgrpaint::plotPage(page.data(), 14, 20, HgrColor::Violet);  // col 14 even, byte 2 bit 0
+    assert(hgrpaint::colorAt(page.data(), 14, 20) == HgrColor::Violet);
+    // Green snaps to an odd column; plotting at 15 (odd, palette 0) → Green.
+    hgrpaint::plotPage(page.data(), 15, 20, HgrColor::Green);
+    assert(hgrpaint::colorAt(page.data(), 15, 20) == HgrColor::Green);
+    // Blue flips the whole byte's high bit to palette 1.
+    page.assign(page.size(), 0);
+    hgrpaint::plotPage(page.data(), 16, 30, HgrColor::Blue);    // even col, palette1
+    assert(hgrpaint::colorAt(page.data(), 16, 30) == HgrColor::Blue);
+    hgrpaint::plotPage(page.data(), 17, 30, HgrColor::Orange);  // odd col, palette1
+    assert(hgrpaint::colorAt(page.data(), 17, 30) == HgrColor::Orange);
+    // White heuristic: three adjacent same-byte bits lit → the middle reads White.
+    page.assign(page.size(), 0);
+    hgrpaint::plotPage(page.data(), 22, 40, HgrColor::White);   // byte 3 bit 1
+    hgrpaint::plotPage(page.data(), 23, 40, HgrColor::White);   // byte 3 bit 2
+    hgrpaint::plotPage(page.data(), 24, 40, HgrColor::White);   // byte 3 bit 3
+    assert(hgrpaint::colorAt(page.data(), 23, 40) == HgrColor::White);
+    // Bounds.
+    assert(hgrpaint::colorAt(page.data(), -1, 0) == HgrColor::Black);
+    assert(hgrpaint::colorAt(page.data(), 0, 192) == HgrColor::Black);
+
+    // ── byteHasPaletteSeam (HGR-07) ──────────────────────────────────────
+    page.assign(page.size(), 0);
+    const int rowBase = hgrpaint::hgrByteOffset(0, 60);
+    // Two adjacent lit bytes, same palette → no seam.
+    page[rowBase + 5] = 0x7E;   // lit, high bit clear
+    page[rowBase + 6] = 0x7E;   // lit, high bit clear
+    assert(!hgrpaint::byteHasPaletteSeam(page.data(), 5, 60));
+    // Flip the right byte to palette 1 while both stay lit → seam at byte 5.
+    page[rowBase + 6] = 0xFE;   // lit, high bit set
+    assert(hgrpaint::byteHasPaletteSeam(page.data(), 5, 60));
+    // If one side has no lit pixels, no seam regardless of high bits.
+    page[rowBase + 6] = 0x80;   // only high bit set, no lit pixels
+    assert(!hgrpaint::byteHasPaletteSeam(page.data(), 5, 60));
+    // Out-of-range byte columns / rows are safe.
+    assert(!hgrpaint::byteHasPaletteSeam(page.data(), -1, 60));
+    assert(!hgrpaint::byteHasPaletteSeam(page.data(), 39, 60));
+    assert(!hgrpaint::byteHasPaletteSeam(page.data(), 5, 192));
+
     std::printf("hgr_paint_plot_smoke: all assertions passed\n");
     return 0;
 }

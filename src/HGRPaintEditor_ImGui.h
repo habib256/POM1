@@ -60,6 +60,17 @@ int plotPage(uint8_t* page, int x, int y, HgrColor c);
 // True if the logical pixel (x,y) is lit in the given 8 KB page buffer.
 bool pixelOn(const uint8_t* page, int x, int y);
 
+// Classify the artifact colour visible at logical pixel (x,y): Black if off,
+// White if its same-byte horizontal neighbours fill it in, else the chromatic
+// colour implied by the byte's high bit (palette) and the column parity. The
+// heuristic is documented in HGRPaintModel.cpp and mirrors plotPage's writer.
+HgrColor colorAt(const uint8_t* page, int x, int y);
+
+// True if byte column `byteCol` (0..38) at row y starts a "palette seam": it and
+// its right neighbour both have lit pixels but disagree on the shared high bit,
+// the boundary where NTSC artifact-colour bleed occurs.
+bool byteHasPaletteSeam(const uint8_t* page, int byteCol, int y);
+
 } // namespace hgrpaint
 
 class HGRPaintEditor_ImGui
@@ -82,7 +93,10 @@ public:
     bool targetsPage2() const { return page2; }
 
 private:
-    enum class Tool : uint8_t { Pencil = 0, Eraser, Line, Rectangle, Fill };
+    enum class Tool : uint8_t { Pencil = 0, Eraser, Line, Rectangle, Ellipse, Fill, Eyedropper };
+
+    // One byte change: lets us replay forward (redo) or reverse (undo).
+    struct ByteEdit { uint16_t addr; uint8_t oldVal, newVal; };
 
     std::function<void(uint16_t, uint8_t)> writeCallback;
     std::function<bool(const std::string&, uint16_t, std::string&)> loadCallback;
@@ -97,23 +111,29 @@ private:
     // Editing state.
     bool page2 = false;             // false = $2000, true = $4000
     Tool tool = Tool::Pencil;
+    Tool prevTool = Tool::Pencil;   // restored after a one-shot Eyedropper pick
     hgrpaint::HgrColor color = hgrpaint::HgrColor::White;
     int brushSize = 1;              // 1..7
-    int zoom = 3;                   // integer pixel scale
+    // Zoom ladder index (kZoomLadder[]). Mouse-wheel + Fit drive this.
+    int zoomIdx = 2;                // → 3x
     bool showGrid = false;
     bool rectFilled = false;
+    bool showConflicts = false;     // palette-seam overlay (HGR-07)
+    bool wantFit = false;           // queued zoom-to-fit (HGR-09)
 
     // 8 KB shadow of the current page, refreshed from `memory` each frame.
     std::vector<uint8_t> shadow;
 
     // In-progress operation.
     bool dragging = false;
-    int dragStartX = 0, dragStartY = 0;   // for Line/Rectangle
+    int dragStartX = 0, dragStartY = 0;   // for Line/Rectangle/Ellipse
     int lastX = -1, lastY = -1;           // for Pencil/Eraser interpolation
-    std::vector<std::pair<uint16_t, uint8_t>> stroke;   // (addr, oldVal) this op
+    int lastHoverX = -1, lastHoverY = -1; // persisted for the status bar
+    std::vector<ByteEdit> stroke;         // (addr, old, new) edits this op
 
-    // Undo: each entry is one operation's (addr, oldVal) list.
-    std::vector<std::vector<std::pair<uint16_t, uint8_t>>> undo;
+    // Symmetric undo/redo: each entry is one operation's ByteEdit list.
+    std::vector<std::vector<ByteEdit>> undo;
+    std::vector<std::vector<ByteEdit>> redo;
 
     char filePath[512] = {0};
     std::string status;
@@ -125,14 +145,19 @@ private:
     void paintBrush(int cx, int cy, hgrpaint::HgrColor c);
     void paintLine(int x0, int y0, int x1, int y1, hgrpaint::HgrColor c);
     void paintRect(int x0, int y0, int x1, int y1, hgrpaint::HgrColor c, bool filled);
+    void paintEllipse(int x0, int y0, int x1, int y1, hgrpaint::HgrColor c, bool filled);
     void floodFill(int x, int y, hgrpaint::HgrColor c);
     void beginStroke();
     void commitStroke();
+    void applyOps(const std::vector<ByteEdit>& ops, bool forward);
     void doUndo();
+    void doRedo();
     void clearPage();
+    void handleShortcuts();
 
     void renderToolbar();
     void renderCanvas(const std::vector<uint8_t>& memory);
+    void renderStatusBar(int lx, int ly, bool hovered);
     void renderFileRow();
 };
 
