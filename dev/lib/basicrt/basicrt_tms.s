@@ -22,6 +22,13 @@ rt_a:   .res 2
 rt_b:   .res 2
 .exportzp rt_px, rt_py, rt_x0, rt_y0, rt_x1, rt_y1, rt_a, rt_b
 
+; ONERR handler address (low/high). 0 = no handler armed. Always exported (2 ZP
+; bytes); the program .importzp's them only when it uses ONERR. Card-agnostic --
+; ONERR works on TMS even though lo-res graphics do not yet.
+rt_onerr_lo: .res 1
+rt_onerr_hi: .res 1
+.exportzp rt_onerr_lo, rt_onerr_hi
+
 m_prod: .res 2
 m_rem:  .res 2
 m_sign: .res 1

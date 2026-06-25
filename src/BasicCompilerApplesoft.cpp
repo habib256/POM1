@@ -41,6 +41,8 @@ bool isKeyword(const std::string& s)
         "REM","HGR","HGR2","HCOLOR","HPLOT","TO","FOR","NEXT","STEP","IF","THEN",
         "GOTO","GOSUB","RETURN","END","STOP","LET","PRINT","AND","OR","NOT","ABS",
         "INT","SQR","SIN",
+        // lo-res graphics + error trapping (native, GEN2)
+        "GR","GR2","COLOR","PLOT","HLIN","VLIN","TEXT","HOME","AT","ONERR",
     };
     return kw.count(s) != 0;
 }
@@ -144,6 +146,7 @@ struct Codegen {
     int                     maxTemp = 0;
     int                     forCounter = 0;
     int                     labelCounter = 0;
+    bool                    usesOnerr = false;  // program installs an ONERR handler
 
     // FOR context
     struct ForCtx { std::string var; int id; };
@@ -660,6 +663,91 @@ bool Codegen::statement()
         }
         return true;
     }
+    // ---- lo-res graphics (GEN2 page $0400; the native runtime plots there) ----
+    // 40-wide x 48-high, each cell a 4-bit colour nibble. TMS lo-res (Multicolor
+    // mode) is not yet ported to the native runtime -- emit a clear pending error.
+    if (isKw("GR") || isKw("GR2")) {
+        if (card == Card::Tms) return fail("lo-res GR on the TMS9918 is pending in the native compiler "
+            "(Multicolor mode not yet ported) -- use the Applesoft tokeniser, or compile lo-res for GEN2");
+        bool pg2 = isKw("GR2"); adv();
+        emit(pg2 ? "\tlda #1" : "\tlda #0"); emit("\tjsr rt_gr"); return true;
+    }
+    if (isKw("COLOR")) {
+        if (card == Card::Tms) return fail("lo-res COLOR= on the TMS9918 is pending in the native compiler");
+        adv(); if (!isOp("=")) return fail("COLOR expects '='"); adv();
+        if (!expr(0)) return false;
+        if (fp) { copyV("FA", temp(0)); emit("\tjsr fp_toint16"); emit("\tlda FA"); }
+        else    emit("\tlda T0");
+        emit("\tjsr rt_color"); return true;
+    }
+    if (isKw("PLOT")) {
+        if (card == Card::Tms) return fail("lo-res PLOT on the TMS9918 is pending in the native compiler");
+        // PLOT x,y  (coords 0..39 / 0..47; int or float like HPLOT)
+        auto coord = [&](const std::string& dst) -> bool {
+            if (!expr(0)) return false;
+            if (fp) fpToIntInto(dst, temp(0)); else copy16(dst, temp(0));
+            return true;
+        };
+        adv();
+        if (!coord("rt_x0")) return false;
+        if (cur().t != T::Comma) return fail("PLOT expects 'x,y'"); adv();
+        if (!coord("rt_y0")) return false;
+        emit("\tjsr rt_loresplot"); return true;
+    }
+    if (isKw("HLIN") || isKw("VLIN")) {
+        if (card == Card::Tms) return fail("lo-res HLIN/VLIN on the TMS9918 is pending in the native compiler");
+        bool h = isKw("HLIN");
+        // HLIN x1,x2 AT y   /   VLIN y1,y2 AT x
+        auto coord = [&](const std::string& dst) -> bool {
+            if (!expr(0)) return false;
+            if (fp) fpToIntInto(dst, temp(0)); else copy16(dst, temp(0));
+            return true;
+        };
+        adv();
+        if (!coord("rt_x0")) return false;                 // x1 / y1
+        if (cur().t != T::Comma) return fail(h ? "HLIN expects 'x1,x2 AT y'" : "VLIN expects 'y1,y2 AT x'");
+        adv();
+        if (!coord("rt_x1")) return false;                 // x2 / y2
+        if (!isKw("AT")) return fail(h ? "HLIN expects AT" : "VLIN expects AT"); adv();
+        if (!coord("rt_y0")) return false;                 // the fixed coordinate
+        emit(h ? "\tjsr rt_hlin" : "\tjsr rt_vlin"); return true;
+    }
+    if (isKw("TEXT")) {
+        if (card == Card::Tms) return fail("lo-res TEXT on the TMS9918 is pending in the native compiler");
+        adv(); emit("\tjsr rt_text"); return true;
+    }
+    if (isKw("HOME")) {
+        if (card == Card::Tms) return fail("HOME on the TMS9918 is pending in the native compiler");
+        adv(); emit("\tjsr rt_home"); return true;
+    }
+
+    // ---- ONERR GOTO <line> : install a native error handler address ----------
+    // The native compiler is straight-line code; this stores the handler line's
+    // label address in rt_onerr_lo/hi (0 = none). The runtime ABI reserves these two
+    // ZP bytes so a range-checking routine CAN transfer to the handler line on an
+    // Applesoft "illegal quantity" when armed (e.g. jmp (rt_onerr_lo)).
+    //
+    // SCOPE / GAP: only the GOTO-on-error install path is implemented (no RESUME, no
+    // PEEK(222) error code). Today no runtime routine actually raises an error: GEN2
+    // COLOR= masks &15 and PLOT/HLIN/VLIN silently skip out-of-range coords -- exactly
+    // like the GEN2 Applesoft ROM (GETBYT only errors on values >= 256, and lores plots
+    // out of 0..39/0..47 are no-ops). So a handler arms but never fires for the lo-res
+    // statements here. RodColor relies on that ROM behaviour: its COLOR= reaches 81
+    // (masked to a colour, no error) and its coords stay in range, so the ROM-run
+    // version never trips ONERR either -- it draws the pattern forever via GOTO 20.
+    if (isKw("ONERR")) {
+        adv();
+        if (!isKw("GOTO")) return fail("ONERR expects GOTO");
+        adv();
+        if (cur().t != T::Num) return fail("ONERR GOTO expects a line number");
+        if (!checkTarget(static_cast<int>(cur().num), "ONERR GOTO")) return false;
+        int n = static_cast<int>(cur().num); adv();
+        usesOnerr = true;
+        emit("\tlda #<L" + std::to_string(n)); emit("\tsta rt_onerr_lo");
+        emit("\tlda #>L" + std::to_string(n)); emit("\tsta rt_onerr_hi");
+        return true;
+    }
+
     if (isKw("GOTO")) { adv(); if (cur().t != T::Num) return fail("GOTO expects a line number");
         if (!checkTarget(static_cast<int>(cur().num), "GOTO")) return false;
         emit("\tjmp L" + std::to_string(cur().num)); adv(); return true; }
@@ -783,8 +871,10 @@ bool Codegen::statement()
         // rather than the cryptic "expected '='". These all run via the Applesoft
         // TOKENISER (Inject / "compile (tokeniser)" mode), which drives the full ROM
         // command set. The native compiler targets the HGR/integer/float fast path.
+        // GR/GR2/COLOR/PLOT/HLIN/VLIN/TEXT/HOME and ONERR are now native (handled
+        // above as keywords); they no longer reach this assignment fallthrough.
         static const std::set<std::string> kUnsupported = {
-            "GR","COLOR","PLOT","HLIN","VLIN","TEXT","HOME","ONERR","RESUME",
+            "RESUME",
             "INPUT","GET","READ","DATA","DIM","DEF","ON","POKE","CALL","WAIT","POP",
             "VTAB","HTAB","INVERSE","NORMAL","FLASH","DRAW","XDRAW","SCALE","ROT",
             "STORE","RECALL","TRACE","NOTRACE","SPEED","DEL","CLEAR","HIMEM","LOMEM"
@@ -902,9 +992,14 @@ Result compile(const std::string& source, Card card, FpMode mode)
     };
     const char* codeSyms[] = {"rt_hgr","rt_hcolor","rt_plot","rt_line","rt_mul","rt_div",
                               "rt_cmp16","rt_print","rt_printcr","rt_putc",
+                              // lo-res graphics (GEN2). Single-underscore symbol names so
+                              // tools/basicc_native.sh's `rt_[a-z0-9]+` -D derivation captures
+                              // them whole (rt_loresplot, not rt_lores_plot).
+                              "rt_gr","rt_color","rt_loresplot","rt_hlin","rt_vlin","rt_text","rt_home",
                               "fp_fromint16","fp_toint16","fp_add","fp_sub","fp_mul","fp_div","fp_cmp",
                               "fp_int","fp_sqrt","fp_sin"};
-    const char* zpSyms[]   = {"rt_px","rt_py","rt_x0","rt_y0","rt_x1","rt_y1","rt_a","rt_b","FA","FB"};
+    const char* zpSyms[]   = {"rt_px","rt_py","rt_x0","rt_y0","rt_x1","rt_y1","rt_a","rt_b","FA","FB",
+                              "rt_onerr_lo","rt_onerr_hi"};
     std::vector<std::string> codeImp, zpImp;
     for (const char* s : codeSyms) if (uses(s)) { codeImp.push_back(s); r.runtimeFeatures.push_back(s); }
     for (const char* s : zpSyms)   if (uses(s)) zpImp.push_back(s);
@@ -943,6 +1038,8 @@ Result compile(const std::string& source, Card card, FpMode mode)
         if (!v.empty() && v[0] != '\0')
             for (int i = 0; i < W; ++i)
                 o << "\tsta V_" << v << (i ? "+" + std::to_string(i) : "") << "\n";
+    // ONERR handler address starts cleared (0 = no handler armed). A=0 here.
+    if (g.usesOnerr) { o << "\tsta rt_onerr_lo\n\tsta rt_onerr_hi\n"; }
     o << body;
     o << "basic_done:\n\tjmp basic_done\n\n";
 

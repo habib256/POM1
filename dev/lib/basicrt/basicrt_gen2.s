@@ -26,9 +26,23 @@ rt_a:   .res 2
 rt_b:   .res 2
 .exportzp rt_px, rt_py, rt_x0, rt_y0, rt_x1, rt_y1, rt_a, rt_b
 
+; ONERR handler address (low/high). 0 = no handler armed. The compiler's program
+; prologue clears these; ONERR GOTO n stores L<n>. Range-checking runtime routines
+; that detect an Applesoft "illegal quantity" jmp through it when armed. Always
+; exported (2 ZP bytes); the program .importzp's them only when it uses ONERR, and
+; ld65 leaves them unreferenced otherwise.
+rt_onerr_lo: .res 1
+rt_onerr_hi: .res 1
+.exportzp rt_onerr_lo, rt_onerr_hi
+
 ptr_lo: .res 1          ; framebuffer pointer (plot)
 ptr_hi: .res 1
 tptr:   .res 2          ; table pointer (col/mask lookup with 16-bit X)
+
+lrcolor: .res 1         ; lo-res colour, duplicated into both nibbles
+lrtmp:   .res 1         ; lo-res plot scratch (byte being modified)
+lrvy:    .res 1         ; VLIN running Y
+lrvy2:   .res 1         ; VLIN endpoint Y
 
 m_prod: .res 2          ; shared math scratch (basicrt_math.inc)
 m_rem:  .res 2
@@ -68,6 +82,193 @@ rt_hcolor:
         sta pen
         rts
 .endif
+
+; ---- lo-res graphics (standard Apple II layout) -----------------------------
+; 40 wide x 48 high; each cell a 4-bit colour nibble (even row = low nibble, odd
+; row = high nibble; two rows share one byte). Routines mirror sketchs/gen2/
+; applesoft_gen2/gen2gfx.inc (GFX_GR / GFX_COLOR / lores_plot / HLIN / VLIN /
+; TEXT / HOME) but ALWAYS target lo-res PAGE 2 ($0800-$0BFF), never page 1.
+;
+; WHY PAGE 2: the native program image loads at $0300 (basicc_native.cfg) and a
+; non-trivial lo-res program's code + the runtime already reach past $0400, so a
+; page-1 ($0400-$07FF) clear/plot would overwrite the running code. Page 2 ($0800)
+; sits above the small lo-res programs we target, so clearing/plotting it leaves
+; the code intact -- exactly as the native HGR runtime always uses HGR page 1
+; ($2000) regardless of HGR/HGR2. A lo-res program whose image grows past $0800
+; cannot run at $0300 (it would overlap its own framebuffer); that is the load-
+; address limit of the standalone native model, not a lo-res bug.
+.if .defined(RT_GR) .or .defined(RT_COLOR) .or .defined(RT_LORESPLOT) .or .defined(RT_HLIN) .or .defined(RT_VLIN) .or .defined(RT_TEXT) .or .defined(RT_HOME)
+LR_NEEDED = 1
+.include "gen2.inc"             ; GEN2_TEXTOFF..GEN2_LORES soft switches
+.endif
+
+.ifdef RT_GR
+.export rt_gr
+; rt_gr: A = page (ignored; lo-res always targets page 2 $0800). Switch to lo-res,
+; reset colour to 0, clear the $0800-$0BFF page.
+rt_gr:
+        lda GEN2_TEXTOFF
+        lda GEN2_LORES
+        lda GEN2_PAGE2
+        lda GEN2_MIXOFF
+        lda #0
+        sta lrcolor
+        ; fall into lores_clear
+lores_clear:                    ; zero $0800-$0BFF (1 KB lo-res page 2)
+        lda #$00
+        sta ptr_lo
+        lda #$08
+        sta ptr_hi
+        ldx #$04                ; 4 pages
+        ldy #0
+        lda #0
+@l:     sta (ptr_lo),y
+        iny
+        bne @l
+        inc ptr_hi
+        dex
+        bne @l
+        rts
+.endif  ; RT_GR
+
+.ifdef RT_COLOR
+.export rt_color
+; rt_color: A = COLOR= value (0..15; Applesoft masks &15). Duplicate the low nibble
+; into both nibbles so a single store paints either row parity.
+rt_color:
+        and #$0F
+        sta lrtmp
+        asl a
+        asl a
+        asl a
+        asl a
+        ora lrtmp
+        sta lrcolor
+        rts
+.endif  ; RT_COLOR
+
+; rt_loresplot: plot (rt_x0, rt_y0) low bytes in lrcolor. Guards x<40, y<48 by
+; skipping (matches the ROM: out-of-range lo-res plots are silently ignored, so
+; ONERR is never tripped here -- the GEN2 Applesoft ROM behaves identically).
+.if .defined(RT_LORESPLOT) .or .defined(RT_HLIN) .or .defined(RT_VLIN)
+.export rt_loresplot
+rt_loresplot:
+        lda rt_x0+1             ; x must be 0..39 (hi byte 0)
+        bne @skip
+        lda rt_x0
+        cmp #40
+        bcs @skip
+        lda rt_y0+1             ; y must be 0..47 (hi byte 0)
+        bne @skip
+        lda rt_y0
+        cmp #48
+        bcs @skip
+        lsr a                   ; row = y/2 (0..23) -> $0800 page row base
+        tax
+        lda lores_lo,x
+        sta ptr_lo
+        lda lores_hi,x
+        sta ptr_hi
+        ldy rt_x0               ; column 0..39
+        lda (ptr_lo),y
+        sta lrtmp
+        lda rt_y0
+        and #$01
+        bne @odd
+        lda lrtmp               ; even y -> low nibble
+        and #$F0
+        sta lrtmp
+        lda lrcolor
+        and #$0F
+        ora lrtmp
+        jmp @wr
+@odd:   lda lrtmp               ; odd y -> high nibble
+        and #$0F
+        sta lrtmp
+        lda lrcolor
+        and #$F0
+        ora lrtmp
+@wr:    ldy rt_x0
+        sta (ptr_lo),y
+@skip:  rts
+.endif  ; LORES_PLOT/HLIN/VLIN
+
+.ifdef RT_HLIN
+.export rt_hlin
+; rt_hlin: HLIN x1,x2 AT y -- x1=rt_x0, x2=rt_x1, y=rt_y0 (low bytes).
+rt_hlin:
+@loop:  jsr rt_loresplot
+        lda rt_x0
+        cmp rt_x1
+        beq @done
+        bcc @inc
+        dec rt_x0
+        jmp @loop
+@inc:   inc rt_x0
+        jmp @loop
+@done:  rts
+.endif  ; RT_HLIN
+
+.ifdef RT_VLIN
+.export rt_vlin
+; rt_vlin: VLIN y1,y2 AT x -- the compiler emits y1=rt_x0, y2=rt_x1, x=rt_y0.
+; Stage the fixed X once into rt_x0 (what rt_loresplot reads as X) and walk the
+; running Y in rt_y0 (what it reads as Y) from y1..y2. lrtmp2 holds the loop state
+; so rt_loresplot's use of rt_x0/rt_y0 is fine each pass.
+rt_vlin:
+        lda rt_x0               ; vy = y1 (running Y)
+        sta lrvy
+        lda rt_x1               ; vy2 = y2 (endpoint, low byte)
+        sta lrvy2
+        lda rt_y0               ; vx = fixed X (low byte) -> rt_x0 for the plot
+        sta rt_x0
+        lda #0                  ; X hi byte = 0 (guarded 0..39 by rt_loresplot)
+        sta rt_x0+1
+@loop:  lda lrvy                ; rt_y0 = running Y
+        sta rt_y0
+        lda #0
+        sta rt_y0+1
+        jsr rt_loresplot
+        lda lrvy
+        cmp lrvy2
+        beq @done
+        bcc @inc
+        dec lrvy
+        jmp @loop
+@inc:   inc lrvy
+        jmp @loop
+@done:  rts
+.endif  ; RT_VLIN
+
+.ifdef RT_TEXT
+.export rt_text
+; rt_text: back to TEXT mode. Display page 2 ($0800), consistent with the page-2
+; lo-res framebuffer (so TEXT after GR doesn't re-expose the $0400 code page).
+rt_text:
+        lda GEN2_TEXTON
+        lda GEN2_PAGE2
+        rts
+.endif  ; RT_TEXT
+
+.ifdef RT_HOME
+.export rt_home
+; rt_home: clear the $0800 text page (fill spaces $A0). Page 2, matching rt_text.
+rt_home:
+        lda #$00
+        sta ptr_lo
+        lda #$08
+        sta ptr_hi
+        ldx #$04
+        ldy #0
+        lda #$A0
+@l:     sta (ptr_lo),y
+        iny
+        bne @l
+        inc ptr_hi
+        dex
+        bne @l
+        rts
+.endif  ; RT_HOME
 
 .if .defined(RT_PLOT) .or .defined(RT_LINE)
 .export rt_plot
@@ -286,6 +487,23 @@ mask280:
 .repeat 280, I
         .byte 1 << (I .mod 7)
 .endrepeat
+.endif
+
+; ---- lo-res / text row-base table ($0800 page, Apple II interleave) ----------
+; lores_lo/hi[row] = base address of byte-row `row` (0..23) in the $0800 page.
+; A lo-res cell row (0..47) maps to byte-row row/2; the two pixel rows live in the
+; low/high nibble of each byte. Same low bytes as gen2gfx.inc lores_lo; high bytes
+; are page-2 ($08-$0B) since the native lo-res runtime always uses page 2.
+.ifdef LR_NEEDED
+.segment "RODATA"
+lores_lo:
+        .byte $00,$80,$00,$80,$00,$80,$00,$80
+        .byte $28,$A8,$28,$A8,$28,$A8,$28,$A8
+        .byte $50,$D0,$50,$D0,$50,$D0,$50,$D0
+lores_hi:
+        .byte $08,$08,$09,$09,$0A,$0A,$0B,$0B
+        .byte $08,$08,$09,$09,$0A,$0A,$0B,$0B
+        .byte $08,$08,$09,$09,$0A,$0A,$0B,$0B
 .endif
 
 ; ---- GEN2 graphics leaf routines (project libs) -- only what's referenced ----
