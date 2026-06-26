@@ -120,10 +120,14 @@ private:
     // extension (e.g. `PIC#062000`), so it lists every file with its byte size and
     // highlights the 8 KB ones rather than filtering by name.
     bool browserOpen = false;          // OpenPopup requested this frame
-    bool browserForSave = false;       // false = Load, true = Save
+    bool browserForSave = false;       // false = Load/Import, true = Save
+    bool browserImport = false;        // Load mode: import+convert an image (PNG/JPG) → HGR
     int  browserSaveKind = 0;          // 0 = raw 8 KB HGR, 1 = PNG export
     std::string browserDir;            // directory currently shown
     char browserSaveName[256] = {0};   // editable filename (Save mode)
+    // Image-import (Buckshot/ii-pix-style) options.
+    bool  importStretch = false;       // false = fit + letterbox (keep aspect)
+    bool  importDither  = true;        // Floyd-Steinberg error diffusion
 
     uint16_t baseAddr() const { return page2 ? 0x4000 : 0x2000; }
 
@@ -156,7 +160,8 @@ private:
     void renderToolPanel();     // left vertical palette of icon tool buttons + options
     void renderColorBar();      // horizontal colour palette along the bottom
     void openFileBrowser(bool forSave, int saveKind = 0);
-    void renderFileBrowser();   // modal file picker for Load / Save / Save PNG
+    void renderFileBrowser();   // modal file picker for Load / Save / Save PNG / Import
+    void importImageFile(const std::string& path);   // decode + convert image → page (one stroke)
     void renderCanvas(const std::vector<uint8_t>& memory);
     void renderMinimap();       // navigator thumbnail, drawn in the left tool panel
     void renderStatusBar(int lx, int ly, bool hovered);

@@ -161,6 +161,25 @@ add_test(NAME hgr_paint_plot_smoke
          COMMAND test_hgr_paint_plot)
 set_tests_properties(hgr_paint_plot_smoke PROPERTIES TIMEOUT 5)
 
+# -- HGR image converter (ii-pix-style: CAM16-UCS + NTSC analysis-by-synthesis) --
+# Pins CAM16-UCS, the NTSC decode == GraphicsCard, and Floyd-Steinberg tone
+# conservation. No GL/ImGui; image decoding (stb) is excluded so it stays pure.
+add_executable(test_hgr_convert
+    hgr_convert_smoke_test.cpp
+    ${CMAKE_SOURCE_DIR}/hgrpaint/Cam16.cpp
+    ${CMAKE_SOURCE_DIR}/hgrpaint/HgrConvert.cpp
+    ${CMAKE_SOURCE_DIR}/hgrpaint/HgrPaintModel.cpp
+    ${CMAKE_SOURCE_DIR}/src/GraphicsCard.cpp
+    ${CMAKE_SOURCE_DIR}/src/Gen2VideoScanner.cpp
+)
+target_include_directories(test_hgr_convert PRIVATE
+    ${CMAKE_SOURCE_DIR}/src
+    ${CMAKE_SOURCE_DIR}/hgrpaint)
+
+add_test(NAME hgr_convert_smoke
+         COMMAND test_hgr_convert)
+set_tests_properties(hgr_convert_smoke PROPERTIES TIMEOUT 15)
+
 # -- bench process helpers (toolchain discovery) ------------------------------
 # Self-contained: executableDir() + whichExe(name, extraDirs) underpin the
 # exe-relative / POM1_CC65_DIR cc65 probe a packaged DevBench relies on.

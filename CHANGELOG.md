@@ -50,10 +50,22 @@ is `git log`; the user-facing feature tour is `README.md`; open work lives in
   - **Ergonomics**: right-drag quick-erase (no tool switch), middle-drag pan,
     `Shift` constrains Line to 0/45/90° and Rect/Ellipse to a square, zoom-to-fit
     on first open, and a `(?)` controls cheat-sheet.
-  - **File picker** (portable `std::filesystem`): Load / Save / Save PNG now open
-    a modal browser instead of needing a typed path — it lists every file with its
-    byte size and highlights the 8 KB ones (raw HGR images have no standard
-    extension, e.g. `sdcard/NONO/HGR/PIC#062000`).
+  - **File picker** (portable `std::filesystem`): Load / Save / Save PNG / Import
+    now open a modal browser instead of needing a typed path — it lists every file
+    with its byte size and highlights the relevant ones (8 KB raw HGR pages for
+    Load — they have no standard extension, e.g. `sdcard/NONO/HGR/PIC#062000` —
+    or images for Import).
+  - **Import PNG/JPG → HGR (ii-pix-grade)**, entirely in `hgrpaint/`
+    (`Cam16.{h,cpp}`, `HgrConvert.{h,cpp}`, `HgrImageDecode.cpp`): decode (stb) →
+    fit/letterbox resample → **analysis-by-synthesis** dithering. For each byte it
+    tries all 256 (7 pixels + palette) patterns, renders each through the module's
+    own copy of the NTSC pipeline (**byte-identical to GraphicsCard**, pinned in
+    the test), scores it in **CAM16-UCS** perceptual space (chroma-weighted so flat
+    greys dither clean black/white instead of magenta confetti), and keeps the
+    best with Floyd-Steinberg error diffusion. Beats Buckshot/bmp2dhr by dithering
+    against the *true* artifact colours incl. the sliding-window coupling. ~30 ms
+    per image. Pinned by `hgr_convert_smoke` (CAM16 sanity, decode == GraphicsCard,
+    black→empty, in-gamut reproduction, ramp tone conservation).
 
 ### Added — native compiler: `SIN`/`SQR`/`INT`, peephole optimizer, `3DHat.apf` runs native
 

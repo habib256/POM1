@@ -97,6 +97,9 @@ set(SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/bench/Markdown.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/hgrpaint/HgrPaintEditor.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/hgrpaint/HgrPaintModel.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/hgrpaint/Cam16.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/hgrpaint/HgrConvert.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/hgrpaint/HgrImageDecode.cpp
 )
 
 set(HEADERS
@@ -118,6 +121,8 @@ set(HEADERS
     ${CMAKE_CURRENT_SOURCE_DIR}/hgrpaint/HgrPaintEditor.h
     ${CMAKE_CURRENT_SOURCE_DIR}/hgrpaint/HgrPaintModel.h
     ${CMAKE_CURRENT_SOURCE_DIR}/hgrpaint/IHgrPaintHost.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/hgrpaint/Cam16.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/hgrpaint/HgrConvert.h
     ${POM1_SRC_DIR}/MicroSD.h
     ${POM1_SRC_DIR}/JukeBox.h
     ${POM1_SRC_DIR}/CodeTank.h

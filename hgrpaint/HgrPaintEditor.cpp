@@ -5,12 +5,14 @@
 // inspired by fadden's HGRTool (concept only).
 
 #include "HgrPaintEditor.h"
+#include "HgrConvert.h"          // image → HGR import (ii-pix-style, all in hgrpaint/)
 
 #include "imgui.h"
 #include "IconsFontAwesome6.h"   // FA-solid glyphs (merged into the UI font, like bench/)
 #include <GLFW/glfw3.h>
 
 #include <algorithm>
+#include <cctype>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -859,9 +861,39 @@ void hgrpaint::HgrPaintEditor::renderCanvas(const std::vector<uint8_t>& memory)
     ImGui::EndChild();
 }
 
+void hgrpaint::HgrPaintEditor::importImageFile(const std::string& path)
+{
+    int w = 0, h = 0;
+    std::vector<uint8_t> rgba;
+    std::string err;
+    if (!hgrpaint::decodeImageFile(path, w, h, rgba, err)) {
+        status = "Import failed: " + err;
+        return;
+    }
+    hgrpaint::ImportOptions opt;
+    opt.stretch = importStretch;
+    opt.dither  = importDither;
+    std::vector<uint8_t> page(kHiresSize, 0);
+    hgrpaint::imageToHgrPage(rgba.data(), w, h, opt, page.data());
+
+    // Load the converted page as one undoable operation (diff vs current shadow).
+    beginStroke();
+    for (int off = 0; off < static_cast<int>(shadow.size()); ++off) {
+        if (page[off] == shadow[off]) continue;
+        const uint16_t addr = static_cast<uint16_t>(baseAddr() + off);
+        stroke.push_back({addr, shadow[off], page[off]});
+        shadow[off] = page[off];
+        if (host) host->pokeByte(addr, page[off]);
+    }
+    commitStroke();
+    const std::string name = std::filesystem::path(path).filename().string();
+    status = "Imported " + name + " (" + std::to_string(w) + "x" + std::to_string(h) + ")";
+}
+
 void hgrpaint::HgrPaintEditor::openFileBrowser(bool forSave, int saveKind)
 {
     browserForSave = forSave;
+    browserImport = false;
     browserSaveKind = saveKind;
     if (browserDir.empty()) {
         std::error_code ec;
@@ -890,7 +922,8 @@ void hgrpaint::HgrPaintEditor::renderFileBrowser()
 
     ImGui::TextUnformatted(browserForSave
         ? (browserSaveKind == 1 ? "Save PNG export" : "Save HGR image (8 KB)")
-        : "Load HGR image (pick a file — 8 KB ones are highlighted)");
+        : (browserImport ? "Import picture (PNG / JPG / BMP) — converted to HGR"
+                         : "Load HGR image (pick a file — 8 KB ones are highlighted)"));
     ImGui::TextDisabled("%s", browserDir.c_str());
     ImGui::Separator();
 
@@ -928,18 +961,26 @@ void hgrpaint::HgrPaintEditor::renderFileBrowser()
         std::error_code ec;
         const std::uintmax_t sz = f.file_size(ec);
         const std::string name = f.path().filename().string();
-        // 8 KB (give or take a few bytes) = a raw HGR page — surface those.
-        const bool looksHgr = !ec && sz >= 8000 && sz <= 8192;
+        // Highlight the files that suit the current mode: 8 KB raw pages for
+        // Load/Save, image files for Import.
+        std::string ext = f.path().extension().string();
+        for (char& c : ext) c = static_cast<char>(std::tolower(c));
+        const bool isImg = (ext == ".png" || ext == ".jpg" || ext == ".jpeg" ||
+                            ext == ".bmp" || ext == ".gif" || ext == ".tga");
+        const bool relevant = browserImport ? isImg : (!ec && sz >= 8000 && sz <= 8192);
         char label[320];
         std::snprintf(label, sizeof(label), "%-28s %8llu B", name.c_str(),
                       static_cast<unsigned long long>(sz));
-        if (!looksHgr) ImGui::PushStyleColor(ImGuiCol_Text, IM_COL32(150, 150, 150, 255));
+        if (!relevant) ImGui::PushStyleColor(ImGuiCol_Text, IM_COL32(150, 150, 150, 255));
         if (ImGui::Selectable(label, false)) {
+            std::snprintf(filePath, sizeof(filePath), "%s", f.path().string().c_str());
             if (browserForSave) {
                 std::snprintf(browserSaveName, sizeof(browserSaveName), "%s", name.c_str());
+            } else if (browserImport) {
+                importImageFile(f.path().string());
+                ImGui::CloseCurrentPopup();
             } else {
                 std::string err;
-                std::snprintf(filePath, sizeof(filePath), "%s", f.path().string().c_str());
                 if (host && host->loadImage(filePath, baseAddr(), err))
                     status = "Loaded " + name + " into $" + (page2 ? "4000" : "2000");
                 else
@@ -947,9 +988,16 @@ void hgrpaint::HgrPaintEditor::renderFileBrowser()
                 ImGui::CloseCurrentPopup();
             }
         }
-        if (!looksHgr) ImGui::PopStyleColor();
+        if (!relevant) ImGui::PopStyleColor();
     }
     ImGui::EndChild();
+
+    // Import options (fit/letterbox vs stretch, dithering).
+    if (!browserForSave && browserImport) {
+        ImGui::Checkbox("Stretch (else fit + letterbox)", &importStretch);
+        ImGui::SameLine();
+        ImGui::Checkbox("Dither", &importDither);
+    }
 
     // ── Action row ───────────────────────────────────────────────────────────
     if (browserForSave) {
@@ -992,6 +1040,11 @@ void hgrpaint::HgrPaintEditor::renderFileRow()
 {
     if (ImGui::Button("Load")) openFileBrowser(false);
     if (ImGui::IsItemHovered()) ImGui::SetTooltip("Open a file picker and load a raw 8 KB HGR image");
+    ImGui::SameLine();
+    if (ImGui::Button("Import" ICON_FA_IMAGE)) { openFileBrowser(false); browserImport = true; }
+    if (ImGui::IsItemHovered())
+        ImGui::SetTooltip("Import a PNG/JPG picture and convert it to HGR\n"
+                          "(ii-pix-style: CAM16-UCS perceptual dithering vs the true NTSC colours)");
     ImGui::SameLine();
     if (ImGui::Button("Save")) openFileBrowser(true, /*kind=*/0);
     ImGui::SameLine();
