@@ -125,9 +125,26 @@ private:
     int  browserSaveKind = 0;          // 0 = raw 8 KB HGR, 1 = PNG export
     std::string browserDir;            // directory currently shown
     char browserSaveName[256] = {0};   // editable filename (Save mode)
-    // Image-import (Buckshot/ii-pix-style) options.
+    // Image-import (ii-pix-style) options + interactive preview dialog (decode the
+    // source once, then live-reconvert as the sliders move).
     bool  importStretch = false;       // false = fit + letterbox (keep aspect)
     bool  importDither  = true;        // Floyd-Steinberg error diffusion
+    bool  importSerpentine = true;     // alternate FS scan direction per row
+    float importDiffusion  = 1.0f;     // FS error-diffusion strength (grain dose)
+    float importBrightness = 1.0f;
+    float importContrast   = 1.0f;
+    float importGamma      = 1.0f;
+    float importColourNoise = 0.30f;   // 0 = vivid colour, 1 = clean black/white greys
+    bool  importPreviewOpen = false;   // OpenPopup requested this frame
+    bool  importDirty = true;          // reconvert the preview
+    bool  importSrcTexDirty = false;   // re-upload the source thumbnail texture
+    std::string importSrcName;         // basename, for the status line
+    std::vector<uint8_t>  importSrcRgba;   // decoded source image (RGBA)
+    int importSrcW = 0, importSrcH = 0;
+    std::vector<uint8_t>  importPage;      // last converted 8 KB page
+    std::vector<uint32_t> importPreview;   // rendered preview (kHiresWidth*Height)
+    GLuint importPreviewTex = 0;
+    GLuint importSrcTex = 0;               // source thumbnail (side-by-side preview)
 
     uint16_t baseAddr() const { return page2 ? 0x4000 : 0x2000; }
 
@@ -161,7 +178,8 @@ private:
     void renderColorBar();      // horizontal colour palette along the bottom
     void openFileBrowser(bool forSave, int saveKind = 0);
     void renderFileBrowser();   // modal file picker for Load / Save / Save PNG / Import
-    void importImageFile(const std::string& path);   // decode + convert image → page (one stroke)
+    void openImportPreview(const std::string& path); // decode + open the interactive preview
+    void renderImportPreview();                       // modal: sliders + live preview + apply
     void renderCanvas(const std::vector<uint8_t>& memory);
     void renderMinimap();       // navigator thumbnail, drawn in the left tool panel
     void renderStatusBar(int lx, int ly, bool hovered);

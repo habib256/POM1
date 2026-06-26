@@ -66,6 +66,14 @@ is `git log`; the user-facing feature tour is `README.md`; open work lives in
     against the *true* artifact colours incl. the sliding-window coupling. ~30 ms
     per image. Pinned by `hgr_convert_smoke` (CAM16 sanity, decode == GraphicsCard,
     black→empty, in-gamut reproduction, ramp tone conservation).
+  - **Interactive import preview**: picking an image opens a modal with the
+    **source and the HGR result side by side**, live-reconverting as you drag
+    **Colour noise** (the CAM16 chroma weight — left = clean black/white greys,
+    right = vivid colour), **Brightness**, **Contrast** and **Gamma**, plus
+    **Diffusion (grain)** — the Floyd-Steinberg strength (1 = full dithering,
+    lower = smoother/flatter) — plus **Serpentine** dithering (alternates the FS
+    scan direction per row to kill diagonal smear) / Dither / Stretch toggles and
+    a Reset. Apply commits it as one undoable stroke; Cancel discards.
 
 ### Added — native compiler: `SIN`/`SQR`/`INT`, peephole optimizer, `3DHat.apf` runs native
 

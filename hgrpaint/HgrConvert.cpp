@@ -99,18 +99,18 @@ inline Cam16Ucs scale(const Cam16Ucs& a, float s)
 
 inline float clampf(float v, float lo, float hi) { return v < lo ? lo : (v > hi ? hi : v); }
 
-// Perceptual cost with the chroma axes weighted up. CAM16-UCS alone makes a
+// Perceptual cost with the chroma axes weighted by `cw`. CAM16-UCS alone makes a
 // same-lightness colour "nearest" to a neutral mid-grey (e.g. bright magenta vs
 // 50% grey), so flat greys dither into magenta/green confetti instead of clean
 // black/white. Weighting chroma error makes inventing colour expensive, so
-// neutral targets dither black/white while real colours still match well.
-constexpr float kChromaWeight = 2.4f;
-inline float perceptualCost(const Cam16Ucs& rendered, const Cam16Ucs& want)
+// neutral targets dither black/white while real colours still match well. The
+// editor exposes `cw` as the "colour noise" slider.
+inline float perceptualCost(const Cam16Ucs& rendered, const Cam16Ucs& want, float cw)
 {
     const float dJ = rendered.J - want.J;
     const float da = rendered.a - want.a;
     const float db = rendered.b - want.b;
-    return dJ * dJ + kChromaWeight * (da * da + db * db);
+    return dJ * dJ + cw * (da * da + db * db);
 }
 
 } // namespace
@@ -176,10 +176,14 @@ void imageToHgrPage(const uint8_t* rgba, int srcW, int srcH,
             const float v = (oy + 0.5f) / oh * srcH - 0.5f;
             float r, g, b;
             sample(u, v, r, g, b);
-            if (opt.brightness != 1.0f) {
-                r = clampf(r * opt.brightness, 0.0f, 1.0f);
-                g = clampf(g * opt.brightness, 0.0f, 1.0f);
-                b = clampf(b * opt.brightness, 0.0f, 1.0f);
+            if (opt.contrast != 1.0f || opt.brightness != 1.0f || opt.gamma != 1.0f) {
+                auto adj = [&](float c) {
+                    c = (c - 0.5f) * opt.contrast + 0.5f;        // contrast about mid-grey
+                    c = clampf(c * opt.brightness, 0.0f, 1.0f);  // brightness
+                    if (opt.gamma != 1.0f) c = std::pow(c, 1.0f / opt.gamma);   // gamma
+                    return c;
+                };
+                r = adj(r); g = adj(g); b = adj(b);
             }
             tcam[static_cast<size_t>(oy0 + oy) * W + (ox0 + ox)] = srgbToCam16Ucs(r, g, b);
         }
@@ -208,17 +212,33 @@ void imageToHgrPage(const uint8_t* rgba, int srcW, int srcH,
         return v;   // palette 0; only feeds the right-edge sliding window
     };
 
+    uint16_t wordRow[40] = {0};   // the committed words of the row being decoded
+    auto add = [&](std::vector<Cam16Ucs>& buf, int xx, const Cam16Ucs& d) {
+        if (xx >= 0 && xx < W) { buf[xx].J += d.J; buf[xx].a += d.a; buf[xx].b += d.b; }
+    };
+
     for (int y = 0; y < H; ++y) {
         std::fill(errNext.begin(), errNext.end(), Cam16Ucs{0, 0, 0});
         const int rowBase = hgrByteOffset(0, y);
-        uint16_t wordPrev = 0;
-        int carry = 0;
-        for (int b = 0; b < 40; ++b) {
+        // Serpentine: even rows L→R, odd rows R→L, so Floyd-Steinberg's error
+        // doesn't always smear toward the same corner (kills diagonal artifacts).
+        const bool ltr = !opt.serpentine || ((y & 1) == 0);
+        const int dir = ltr ? 1 : -1;
+
+        for (int n = 0; n < 40; ++n) {
+            const int b = ltr ? n : (39 - n);
             const int px0 = b * 7;
             Cam16Ucs want[7];
             for (int k = 0; k < 7; ++k)
                 want[k] = tcam[static_cast<size_t>(y) * W + px0 + k] + errCur[px0 + k];
-            const uint8_t nextGuess = guessByte(y, b + 1);
+
+            // The NTSC half-dot carry + sliding window are physically left→right.
+            // The neighbour BEHIND us in the scan is already committed (exact); the
+            // one AHEAD is guessed from the target and corrected by diffusion.
+            uint16_t wordPrev = (b == 0)  ? 0
+                              : ltr        ? wordRow[b - 1]
+                                           : buildWord(guessByte(y, b - 1), 0);
+            const int carry = (wordPrev >> 13) & 1;
 
             float bestCost = std::numeric_limits<float>::max();
             int bestByte = 0;
@@ -226,12 +246,14 @@ void imageToHgrPage(const uint8_t* rgba, int srcW, int srcH,
             uint8_t bestIdx[7][2] = {};
             for (int cand = 0; cand < 256; ++cand) {
                 const uint16_t wCur = buildWord(static_cast<uint8_t>(cand), carry);
-                const uint16_t wNext = buildWord(nextGuess, (wCur >> 13) & 1);
+                const uint16_t wNext = (b == 39) ? 0
+                                     : !ltr        ? wordRow[b + 1]
+                                                   : buildWord(guessByte(y, b + 1), (wCur >> 13) & 1);
                 uint8_t idx[7][2];
                 decodeBytePixels(wordPrev, wCur, wNext, b, idx);
                 float cost = 0.0f;
                 for (int k = 0; k < 7; ++k)
-                    cost += perceptualCost(avgCam[idx[k][0]][idx[k][1]], want[k]);
+                    cost += perceptualCost(avgCam[idx[k][0]][idx[k][1]], want[k], opt.chromaWeight);
                 if (cost < bestCost) {
                     bestCost = cost; bestByte = cand; bestWord = wCur;
                     for (int k = 0; k < 7; ++k) { bestIdx[k][0] = idx[k][0]; bestIdx[k][1] = idx[k][1]; }
@@ -239,22 +261,21 @@ void imageToHgrPage(const uint8_t* rgba, int srcW, int srcH,
             }
 
             outPage[rowBase + b] = static_cast<uint8_t>(bestByte);
+            wordRow[b] = bestWord;
 
             if (opt.dither) {
+                // Floyd-Steinberg, mirrored for the scan direction. `diffusion`
+                // attenuates how much error is carried forward (lower = less grain).
                 for (int k = 0; k < 7; ++k) {
-                    const Cam16Ucs res = want[k] - avgCam[bestIdx[k][0]][bestIdx[k][1]];
+                    const Cam16Ucs res = scale(want[k] - avgCam[bestIdx[k][0]][bestIdx[k][1]],
+                                               opt.diffusion);
                     const int x = px0 + k;
-                    auto add = [](std::vector<Cam16Ucs>& buf, int xx, const Cam16Ucs& d) {
-                        if (xx >= 0 && xx < W) { buf[xx].J += d.J; buf[xx].a += d.a; buf[xx].b += d.b; }
-                    };
-                    add(errCur,  x + 1, scale(res, 7.0f / 16.0f));
-                    add(errNext, x - 1, scale(res, 3.0f / 16.0f));
-                    add(errNext, x,     scale(res, 5.0f / 16.0f));
-                    add(errNext, x + 1, scale(res, 1.0f / 16.0f));
+                    add(errCur,  x + dir, scale(res, 7.0f / 16.0f));   // ahead, same row
+                    add(errNext, x - dir, scale(res, 3.0f / 16.0f));
+                    add(errNext, x,       scale(res, 5.0f / 16.0f));
+                    add(errNext, x + dir, scale(res, 1.0f / 16.0f));
                 }
             }
-            wordPrev = bestWord;
-            carry = (bestWord >> 13) & 1;
         }
         std::swap(errCur, errNext);
     }

@@ -83,6 +83,8 @@ hgrpaint::HgrPaintEditor::HgrPaintEditor(IHgrPaintHost* host_)
 hgrpaint::HgrPaintEditor::~HgrPaintEditor()
 {
     if (texture != 0) glDeleteTextures(1, &texture);
+    if (importPreviewTex != 0) glDeleteTextures(1, &importPreviewTex);
+    if (importSrcTex != 0) glDeleteTextures(1, &importSrcTex);
 }
 
 void hgrpaint::HgrPaintEditor::renderShadow(uint32_t* out, bool mono)
@@ -861,7 +863,7 @@ void hgrpaint::HgrPaintEditor::renderCanvas(const std::vector<uint8_t>& memory)
     ImGui::EndChild();
 }
 
-void hgrpaint::HgrPaintEditor::importImageFile(const std::string& path)
+void hgrpaint::HgrPaintEditor::openImportPreview(const std::string& path)
 {
     int w = 0, h = 0;
     std::vector<uint8_t> rgba;
@@ -870,24 +872,140 @@ void hgrpaint::HgrPaintEditor::importImageFile(const std::string& path)
         status = "Import failed: " + err;
         return;
     }
-    hgrpaint::ImportOptions opt;
-    opt.stretch = importStretch;
-    opt.dither  = importDither;
-    std::vector<uint8_t> page(kHiresSize, 0);
-    hgrpaint::imageToHgrPage(rgba.data(), w, h, opt, page.data());
+    importSrcRgba = std::move(rgba);
+    importSrcW = w; importSrcH = h;
+    importSrcName = std::filesystem::path(path).filename().string();
+    importDirty = true;
+    importSrcTexDirty = true;
+    importPreviewOpen = true;
+}
 
-    // Load the converted page as one undoable operation (diff vs current shadow).
-    beginStroke();
-    for (int off = 0; off < static_cast<int>(shadow.size()); ++off) {
-        if (page[off] == shadow[off]) continue;
-        const uint16_t addr = static_cast<uint16_t>(baseAddr() + off);
-        stroke.push_back({addr, shadow[off], page[off]});
-        shadow[off] = page[off];
-        if (host) host->pokeByte(addr, page[off]);
+void hgrpaint::HgrPaintEditor::renderImportPreview()
+{
+    if (importPreviewOpen) { ImGui::OpenPopup("Import preview##hgr"); importPreviewOpen = false; importDirty = true; }
+
+    const ImVec2 vpCenter = ImGui::GetMainViewport()->GetCenter();
+    ImGui::SetNextWindowPos(vpCenter, ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
+    ImGui::SetNextWindowSize(ImVec2(960.0f, 600.0f), ImGuiCond_Appearing);
+    if (!ImGui::BeginPopupModal("Import preview##hgr", nullptr, ImGuiWindowFlags_NoCollapse))
+        return;
+
+    ImGui::TextUnformatted("Image \xE2\x86\x92 HGR  (ii-pix: CAM16-UCS perceptual dithering)");
+    ImGui::TextDisabled("%s  \xE2\x80\x94  %d x %d source", importSrcName.c_str(), importSrcW, importSrcH);
+    ImGui::Separator();
+
+    // ── Live controls (any change re-converts the preview) ───────────────────
+    ImGui::SetNextItemWidth(-180);
+    importDirty |= ImGui::SliderFloat("Colour noise", &importColourNoise, 0.0f, 1.0f, "%.2f");
+    if (ImGui::IsItemHovered())
+        ImGui::SetTooltip("Left: flat greys dither clean black/white.\n"
+                          "Right: more vivid colour (and more colour speckle).");
+    ImGui::SetNextItemWidth(-180);
+    importDirty |= ImGui::SliderFloat("Brightness", &importBrightness, 0.3f, 2.0f, "%.2f");
+    ImGui::SetNextItemWidth(-180);
+    importDirty |= ImGui::SliderFloat("Contrast", &importContrast, 0.4f, 2.5f, "%.2f");
+    ImGui::SetNextItemWidth(-180);
+    importDirty |= ImGui::SliderFloat("Gamma", &importGamma, 0.4f, 2.5f, "%.2f");
+    ImGui::SetNextItemWidth(-180);
+    importDirty |= ImGui::SliderFloat("Diffusion (grain)", &importDiffusion, 0.0f, 1.0f, "%.2f");
+    if (ImGui::IsItemHovered())
+        ImGui::SetTooltip("Floyd-Steinberg strength.\n"
+                          "1 = full dithering/grain, lower = smoother but flatter.");
+    importDirty |= ImGui::Checkbox("Dither", &importDither);
+    ImGui::SameLine();
+    importDirty |= ImGui::Checkbox("Serpentine", &importSerpentine);
+    if (ImGui::IsItemHovered()) ImGui::SetTooltip("Alternate dither scan direction per row\n(reduces diagonal artefacts)");
+    ImGui::SameLine();
+    importDirty |= ImGui::Checkbox("Stretch", &importStretch);
+    ImGui::SameLine();
+    if (ImGui::SmallButton("Reset")) {
+        importColourNoise = 0.30f; importBrightness = 1.0f; importContrast = 1.0f;
+        importGamma = 1.0f; importDiffusion = 1.0f; importDither = true;
+        importSerpentine = true; importStretch = false; importDirty = true;
     }
-    commitStroke();
-    const std::string name = std::filesystem::path(path).filename().string();
-    status = "Imported " + name + " (" + std::to_string(w) + "x" + std::to_string(h) + ")";
+
+    // ── Reconvert + re-render the HGR preview when anything changed ───────────
+    if (importDirty && !importSrcRgba.empty()) {
+        importDirty = false;
+        hgrpaint::ImportOptions opt;
+        opt.stretch    = importStretch;
+        opt.dither     = importDither;
+        opt.serpentine = importSerpentine;
+        opt.diffusion  = importDiffusion;
+        opt.brightness = importBrightness;
+        opt.contrast   = importContrast;
+        opt.gamma      = importGamma;
+        opt.chromaWeight = 6.0f - importColourNoise * 5.2f;   // 0→6 clean, 1→0.8 vivid
+        importPage.assign(kHiresSize, 0);
+        hgrpaint::imageToHgrPage(importSrcRgba.data(), importSrcW, importSrcH, opt, importPage.data());
+        importPreview.assign(static_cast<size_t>(kHiresWidth) * kHiresHeight, 0);
+        if (host) host->renderHgrPage(importPage.data(), importPreview.data(), false);
+        if (importPreviewTex == 0) {
+            glGenTextures(1, &importPreviewTex);
+            glBindTexture(GL_TEXTURE_2D, importPreviewTex);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+            glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, kHiresWidth, kHiresHeight,
+                         0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
+        }
+        glBindTexture(GL_TEXTURE_2D, importPreviewTex);
+        glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, kHiresWidth, kHiresHeight,
+                        GL_RGBA, GL_UNSIGNED_BYTE, importPreview.data());
+    }
+
+    // ── Upload the source thumbnail once (for the side-by-side view) ──────────
+    if (importSrcTexDirty && !importSrcRgba.empty()) {
+        importSrcTexDirty = false;
+        if (importSrcTex == 0) {
+            glGenTextures(1, &importSrcTex);
+            glBindTexture(GL_TEXTURE_2D, importSrcTex);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+        }
+        glBindTexture(GL_TEXTURE_2D, importSrcTex);
+        glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, importSrcW, importSrcH, 0,
+                     GL_RGBA, GL_UNSIGNED_BYTE, importSrcRgba.data());
+    }
+
+    // ── Side-by-side: source (left) | HGR result (right) ─────────────────────
+    ImGui::Separator();
+    const float ph = kHiresHeight * 2.0f;       // result preview height (384)
+    float sw = ph * (importSrcH ? static_cast<float>(importSrcW) / importSrcH : 1.0f), sh = ph;
+    if (sw > 360.0f) { sw = 360.0f; sh = importSrcW ? sw * importSrcH / importSrcW : ph; }
+    ImGui::BeginGroup();
+    ImGui::TextDisabled("Source");
+    if (importSrcTex != 0)
+        ImGui::Image((ImTextureID)(uintptr_t)importSrcTex, ImVec2(sw, sh));
+    ImGui::EndGroup();
+    ImGui::SameLine();
+    ImGui::BeginGroup();
+    ImGui::TextDisabled("HGR result");
+    if (importPreviewTex != 0)
+        ImGui::Image((ImTextureID)(uintptr_t)importPreviewTex, ImVec2(kHiresWidth * 2.0f, ph));
+    ImGui::EndGroup();
+    ImGui::Separator();
+
+    if (ImGui::Button("Apply to page", ImVec2(130, 0)) && !importPage.empty()) {
+        beginStroke();
+        for (int off = 0; off < static_cast<int>(shadow.size()); ++off) {
+            if (importPage[off] == shadow[off]) continue;
+            const uint16_t addr = static_cast<uint16_t>(baseAddr() + off);
+            stroke.push_back({addr, shadow[off], importPage[off]});
+            shadow[off] = importPage[off];
+            if (host) host->pokeByte(addr, importPage[off]);
+        }
+        commitStroke();
+        status = "Imported " + importSrcName;
+        ImGui::CloseCurrentPopup();
+    }
+    ImGui::SameLine();
+    if (ImGui::Button("Cancel", ImVec2(80, 0))) ImGui::CloseCurrentPopup();
+    ImGui::EndPopup();
 }
 
 void hgrpaint::HgrPaintEditor::openFileBrowser(bool forSave, int saveKind)
@@ -977,7 +1095,7 @@ void hgrpaint::HgrPaintEditor::renderFileBrowser()
             if (browserForSave) {
                 std::snprintf(browserSaveName, sizeof(browserSaveName), "%s", name.c_str());
             } else if (browserImport) {
-                importImageFile(f.path().string());
+                openImportPreview(f.path().string());
                 ImGui::CloseCurrentPopup();
             } else {
                 std::string err;
@@ -1197,5 +1315,6 @@ void hgrpaint::HgrPaintEditor::render(const std::vector<uint8_t>& memory)
     renderColorBar();
     renderStatusBar(lastHoverX, lastHoverY, lastHoverX >= 0);
 
-    renderFileBrowser();   // modal Load / Save / Save PNG picker
+    renderFileBrowser();    // modal Load / Save / Save PNG / Import picker
+    renderImportPreview();  // modal image-import preview with live sliders
 }

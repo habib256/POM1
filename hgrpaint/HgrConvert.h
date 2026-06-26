@@ -26,7 +26,14 @@ namespace hgrpaint {
 struct ImportOptions {
     bool  stretch = false;     // false = fit + letterbox (keep aspect), true = stretch
     bool  dither  = true;      // Floyd-Steinberg error diffusion
-    float brightness = 1.0f;   // linear pre-scale applied to the source (1 = none)
+    bool  serpentine = false;  // alternate FS scan direction per row (kills diagonal smear)
+    float diffusion = 1.0f;    // fraction of FS error propagated (1 = full grain, <1 = smoother)
+    float brightness = 1.0f;   // multiply the source (1 = none)
+    float contrast   = 1.0f;   // contrast around mid-grey (1 = none)
+    float gamma      = 1.0f;   // mid-tone gamma applied before conversion (>1 brightens)
+    // Perceptual chroma penalty ("colour noise" knob): low → vivid/noisy colour,
+    // high → flat greys dither clean black/white instead of magenta confetti.
+    float chromaWeight = 2.4f;
 };
 
 // Decode one HGR scanline (40 bytes) to 280 RGBA pixels through this module's
