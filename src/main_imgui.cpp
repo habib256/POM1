@@ -902,6 +902,7 @@ int main(int argc, char* argv[])
     if (mainWindow.getActivePresetIndex() >= 0) {
         mainWindow.savePresetLayout(mainWindow.getActivePresetIndex());
     }
+    mainWindow.releaseGLResources();   // delete HGR editor textures while ctx is live
     ImGui_ImplOpenGL3_Shutdown();
     ImGui_ImplGlfw_Shutdown();
     ImGui::DestroyContext();

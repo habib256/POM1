@@ -129,6 +129,11 @@ public:
     /// companion query for any future drain-detection caller.
     bool hasPendingInjectedInput();
     void writeMemory(uint16_t address, uint8_t value);
+    /// Apply many (address,value) writes as ONE locked, single-publish
+    /// transaction. Lets the HGR Paint editor commit bulk edits (fill, clear,
+    /// paste, undo/redo, image import) without one stateMutex acquire + snapshot
+    /// publish per byte (which contends with the CPU thread and hitches the UI).
+    void writeMemoryBatch(const std::vector<std::pair<uint16_t, uint8_t>>& writes);
 
     bool loadHexDump(const std::string& path, uint16_t& startAddress, std::string& error,
                      int* bytesLoaded = nullptr,

@@ -34,6 +34,10 @@ struct ImportOptions {
     // Perceptual chroma penalty ("colour noise" knob): low → vivid/noisy colour,
     // high → flat greys dither clean black/white instead of magenta confetti.
     float chromaWeight = 2.4f;
+    // Optional source crop rectangle in source pixels, [x0,x1) × [y0,y1): only this
+    // sub-region is resampled into the HGR page (its aspect drives fit/letterbox).
+    // Degenerate (x1<=x0 or y1<=y0) → use the whole image.
+    int cropX0 = 0, cropY0 = 0, cropX1 = 0, cropY1 = 0;
 };
 
 // Decode one HGR scanline (40 bytes) to 280 RGBA pixels through this module's

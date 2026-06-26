@@ -7,9 +7,12 @@
 // NTSC pipeline (IHgrPaintHost::renderHgrPage) so what you paint is pixel-
 // identical to what the emulator shows.
 //
-// Emulator-agnostic: depends only on ImGui, GL and IHgrPaintHost. Copy hgrpaint/
-// verbatim into POM2 and supply a host. The pure bit-plotting model lives in
-// HgrPaintModel.h (unit-tested without any GL/ImGui dependency).
+// Emulator-agnostic: depends on ImGui, GL, IconsFontAwesome6, the IHgrPaintHost
+// seam, and the sibling hgrpaint/ image-import modules (HgrConvert / Cam16 /
+// HgrImageDecode, which need an external stb_image decoder on the include path —
+// see IHgrPaintHost.h). Copy hgrpaint/ verbatim into POM2 and supply a host. The
+// pure bit-plotting model lives in HgrPaintModel.h (unit-tested without any
+// GL/ImGui dependency).
 //
 // Concept inspired by fadden's HGRTool (hgrtool.art, Apache-2.0) — independent
 // C++/ImGui reimplementation.
@@ -41,6 +44,10 @@ public:
 
     // Which HGR page the editor targets (false = page 1 $2000, true = page 2).
     bool targetsPage2() const { return page2; }
+
+    // Destroy GPU textures via the host. Call from the app's shutdown path BEFORE
+    // the GL context is destroyed (the destructor runs too late). Idempotent.
+    void releaseGL();
 
 private:
     // Order is append-only: the toolbar/status name tables and shortcuts index
@@ -107,6 +114,7 @@ private:
     int lastX = -1, lastY = -1;           // for Pencil/Eraser interpolation
     int lastHoverX = -1, lastHoverY = -1; // persisted for the status bar
     std::vector<ByteEdit> stroke;         // (addr, old, new) edits this op
+    bool strokeBatching = false;          // current stroke coalesces host pokes
 
     // Symmetric undo/redo: each entry is one operation's ByteEdit list.
     std::vector<std::vector<ByteEdit>> undo;
@@ -141,6 +149,12 @@ private:
     std::string importSrcName;         // basename, for the status line
     std::vector<uint8_t>  importSrcRgba;   // decoded source image (RGBA)
     int importSrcW = 0, importSrcH = 0;
+    // Source crop rectangle (in source pixels) selected interactively over the
+    // source thumbnail; degenerate/inactive → whole image is imported.
+    bool importCropActive   = false;   // a crop region is set
+    bool importCropDragging = false;   // user is dragging a new crop rect
+    int  importCropX0 = 0, importCropY0 = 0, importCropX1 = 0, importCropY1 = 0;
+    int  importCropAnchorX = 0, importCropAnchorY = 0;   // drag anchor (source px)
     std::vector<uint8_t>  importPage;      // last converted 8 KB page
     std::vector<uint32_t> importPreview;   // rendered preview (kHiresWidth*Height)
     GLuint importPreviewTex = 0;
@@ -159,7 +173,7 @@ private:
     void paintRect(int x0, int y0, int x1, int y1, HgrColor c, bool filled);
     void paintEllipse(int x0, int y0, int x1, int y1, HgrColor c, bool filled);
     void floodFill(int x, int y, HgrColor c);
-    void beginStroke();
+    void beginStroke(bool batch = false);   // batch=true coalesces the host pokes
     void commitStroke();
     void applyOps(const std::vector<ByteEdit>& ops, bool forward);
     void doUndo();

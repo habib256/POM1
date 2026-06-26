@@ -9,7 +9,8 @@
 
 #include "imgui.h"
 #include "IconsFontAwesome6.h"   // FA-solid glyphs (merged into the UI font, like bench/)
-#include <GLFW/glfw3.h>
+// No GL/GLFW include: all texture work goes through IHgrPaintHost::uploadTexture/
+// destroyTexture so this portable module stays backend-agnostic (see the header).
 
 #include <algorithm>
 #include <cctype>
@@ -82,9 +83,20 @@ hgrpaint::HgrPaintEditor::HgrPaintEditor(IHgrPaintHost* host_)
 
 hgrpaint::HgrPaintEditor::~HgrPaintEditor()
 {
-    if (texture != 0) glDeleteTextures(1, &texture);
-    if (importPreviewTex != 0) glDeleteTextures(1, &importPreviewTex);
-    if (importSrcTex != 0) glDeleteTextures(1, &importSrcTex);
+    releaseGL();   // no-op if the host already released them before context teardown
+}
+
+void hgrpaint::HgrPaintEditor::releaseGL()
+{
+    // Destroy GPU textures via the host. Call this BEFORE the GL context is torn
+    // down at shutdown — the destructor runs after that, so deleting here (and
+    // zeroing the handles) avoids GL calls on a dead context.
+    if (host) {
+        if (texture != 0)          host->destroyTexture(texture);
+        if (importPreviewTex != 0) host->destroyTexture(importPreviewTex);
+        if (importSrcTex != 0)     host->destroyTexture(importSrcTex);
+    }
+    texture = importPreviewTex = importSrcTex = 0;
 }
 
 void hgrpaint::HgrPaintEditor::renderShadow(uint32_t* out, bool mono)
@@ -96,10 +108,16 @@ void hgrpaint::HgrPaintEditor::renderShadow(uint32_t* out, bool mono)
 // Painting primitives (operate on the shadow, emit writes, record undo)
 // ─────────────────────────────────────────────────────────────
 
-void hgrpaint::HgrPaintEditor::beginStroke() { stroke.clear(); }
+void hgrpaint::HgrPaintEditor::beginStroke(bool batch)
+{
+    stroke.clear();
+    strokeBatching = batch && host;
+    if (strokeBatching) host->beginBatch();
+}
 
 void hgrpaint::HgrPaintEditor::commitStroke()
 {
+    if (strokeBatching) { host->endBatch(); strokeBatching = false; }
     if (stroke.empty()) return;
     undo.push_back(std::move(stroke));
     stroke.clear();
@@ -256,11 +274,13 @@ void hgrpaint::HgrPaintEditor::applyOps(const std::vector<ByteEdit>& ops, bool f
         if (off >= 0 && off < static_cast<int>(shadow.size())) shadow[off] = val;
         if (host) host->pokeByte(e.addr, val);
     };
+    if (host) host->beginBatch();   // one publish for the whole undo/redo replay
     if (forward) {
         for (const auto& e : ops) write(e, e.newVal);
     } else {
         for (auto it = ops.rbegin(); it != ops.rend(); ++it) write(*it, it->oldVal);
     }
+    if (host) host->endBatch();
 }
 
 void hgrpaint::HgrPaintEditor::doUndo()
@@ -285,7 +305,7 @@ void hgrpaint::HgrPaintEditor::doRedo()
 
 void hgrpaint::HgrPaintEditor::clearPage()
 {
-    beginStroke();
+    beginStroke(true);
     for (int off = 0; off < static_cast<int>(shadow.size()); ++off) {
         if (shadow[off] != 0) {
             const uint16_t addr = static_cast<uint16_t>(baseAddr() + off);
@@ -315,7 +335,7 @@ void hgrpaint::HgrPaintEditor::copySelection(bool cut)
             clip.px[static_cast<size_t>(y - y0) * clip.w + (x - x0)] =
                 hgrpaint::colorAt(shadow.data(), x, y);
     if (cut) {
-        beginStroke();
+        beginStroke(true);
         for (int y = y0; y <= y1; ++y)
             for (int x = x0; x <= x1; ++x)
                 applyPlot(x, y, HgrColor::Black);
@@ -326,7 +346,7 @@ void hgrpaint::HgrPaintEditor::copySelection(bool cut)
 void hgrpaint::HgrPaintEditor::pasteFloatingAt(int destX, int destY)
 {
     if (clip.w <= 0) return;
-    beginStroke();
+    beginStroke(true);
     for (int y = 0; y < clip.h; ++y)
         for (int x = 0; x < clip.w; ++x) {
             const HgrColor c = clip.px[static_cast<size_t>(y) * clip.w + x];
@@ -420,7 +440,7 @@ void hgrpaint::HgrPaintEditor::renderTopBar()
             "\n"
             "Keys\n"
             "  P E L R O F I S M   pencil eraser line rect ellipse fill eyedrop select palette\n"
-            "  1-6 colours   [ ] brush size   +/- zoom   G grid\n"
+            "  1-6 colours   [ ] brush size   +/- zoom   G grid   X toggle filled (rect/ellipse)\n"
             "  Ctrl+Z / Ctrl+Y undo/redo   Ctrl+C/X/V copy/cut/paste");
 
     renderFileRow();   // line 2: path + Load / Save / Save PNG / stamp / status
@@ -471,6 +491,7 @@ void hgrpaint::HgrPaintEditor::renderToolPanel()
         ImGui::SameLine();
         if (ImGui::Button("Cut"))  copySelection(true);
         if (ImGui::Button("Paste") && clip.w > 0) {
+            if (dragging) { commitStroke(); dragging = false; }   // flush an open stroke
             pasting = true; pasteX = std::min(selX0, selX1); pasteY = std::min(selY0, selY1);
         }
     }
@@ -543,27 +564,14 @@ void hgrpaint::HgrPaintEditor::renderCanvas(const std::vector<uint8_t>& memory)
                   memory.begin() + baseAddr() + kHiresSize,
                   shadow.begin());
 
-    // Lazy GL texture (crisp nearest-neighbour, like the GEN2 window).
-    if (texture == 0) {
-        glGenTextures(1, &texture);
-        glBindTexture(GL_TEXTURE_2D, texture);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA,
-                     kHiresWidth, kHiresHeight,
-                     0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
-    }
-
     // Render the shadow page through the host NTSC pipeline (the same renderer the
     // emulator screen uses) so the canvas is pixel-identical. The shadow was just
-    // refreshed from live RAM and reflects any pokes we made this frame.
+    // refreshed from live RAM and reflects any pokes we made this frame. Upload it
+    // through the host (crisp nearest-neighbour, like the GEN2 window).
     renderShadow(canvasRgba.data(), !ntscColor);
-    glBindTexture(GL_TEXTURE_2D, texture);
-    glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0,
-                    kHiresWidth, kHiresHeight,
-                    GL_RGBA, GL_UNSIGNED_BYTE, canvasRgba.data());
+    if (host)
+        texture = host->uploadTexture(texture, canvasRgba.data(),
+                                      kHiresWidth, kHiresHeight, /*linear=*/false);
 
     float scale = static_cast<float>(kZoomLadder[zoomIdx]);
     ImVec2 imgSize(kHiresWidth * scale, kHiresHeight * scale);
@@ -777,9 +785,14 @@ void hgrpaint::HgrPaintEditor::renderCanvas(const std::vector<uint8_t>& memory)
                     lastX = lx; lastY = ly;
                 }
             }
-            if (rmbErase && ImGui::IsMouseReleased(ImGuiMouseButton_Right)) {
-                commitStroke(); rmbErase = false;
-            }
+        }
+        // Terminate the RMB erase OUTSIDE the start guard, so holding Alt (eyedrop)
+        // or switching tool/Select mid-drag still commits the stroke to undo and
+        // clears the flag — otherwise rmbErase stranded true, losing undo and
+        // blocking left-button drawing (the `!rmbErase` guard below).
+        if (rmbErase && (ImGui::IsMouseReleased(ImGuiMouseButton_Right) ||
+                         !ImGui::IsMouseDown(ImGuiMouseButton_Right))) {
+            commitStroke(); rmbErase = false;
         }
 
         if (!rmbErase && hovered && ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
@@ -794,7 +807,12 @@ void hgrpaint::HgrPaintEditor::renderCanvas(const std::vector<uint8_t>& memory)
                 dragging = true;
                 dragStartX = lx; dragStartY = ly;
                 lastX = lx; lastY = ly;
-                beginStroke();
+                // Batch the bulk tools (shapes paint at release, fill floods many
+                // bytes at once); leave freehand pencil/eraser/palette unbatched so
+                // they keep updating the live host screen as you drag.
+                const bool bulk = (tool == Tool::Line || tool == Tool::Rectangle ||
+                                   tool == Tool::Ellipse || tool == Tool::Fill);
+                beginStroke(bulk);
                 if (tool == Tool::Pencil || tool == Tool::Eraser) paintBrush(lx, ly, activeColor);
                 else if (tool == Tool::PaletteShift) paintPaletteByte(lx, ly);
                 else if (tool == Tool::Fill) { floodFill(lx, ly, activeColor); commitStroke(); dragging = false; }
@@ -875,6 +893,8 @@ void hgrpaint::HgrPaintEditor::openImportPreview(const std::string& path)
     importSrcRgba = std::move(rgba);
     importSrcW = w; importSrcH = h;
     importSrcName = std::filesystem::path(path).filename().string();
+    importCropActive = false;          // fresh image → import the whole frame
+    importCropDragging = false;
     importDirty = true;
     importSrcTexDirty = true;
     importPreviewOpen = true;
@@ -882,6 +902,19 @@ void hgrpaint::HgrPaintEditor::openImportPreview(const std::string& path)
 
 void hgrpaint::HgrPaintEditor::renderImportPreview()
 {
+    // Free the (potentially tens-of-MB) decoded source + its full-res GPU texture
+    // once the dialog has closed — Apply / Cancel / Esc all land here next frame
+    // (popup not open, no pending re-open). swap() reclaims capacity, not just size.
+    if (!importPreviewOpen && !importSrcRgba.empty() &&
+        !ImGui::IsPopupOpen("Import preview##hgr")) {
+        std::vector<uint8_t>().swap(importSrcRgba);
+        std::vector<uint8_t>().swap(importPage);
+        std::vector<uint32_t>().swap(importPreview);
+        if (importSrcTex != 0 && host) { host->destroyTexture(importSrcTex); importSrcTex = 0; }
+        importSrcW = importSrcH = 0;
+        importSrcTexDirty = true;
+    }
+
     if (importPreviewOpen) { ImGui::OpenPopup("Import preview##hgr"); importPreviewOpen = false; importDirty = true; }
 
     const ImVec2 vpCenter = ImGui::GetMainViewport()->GetCenter();
@@ -894,7 +927,152 @@ void hgrpaint::HgrPaintEditor::renderImportPreview()
     ImGui::TextDisabled("%s  \xE2\x80\x94  %d x %d source", importSrcName.c_str(), importSrcW, importSrcH);
     ImGui::Separator();
 
-    // ── Live controls (any change re-converts the preview) ───────────────────
+    // Source-thumbnail dimensions (whole image): cap the long side at 360 px, but
+    // also keep a minimum extent so a pathological aspect ratio (very tall/narrow
+    // or very wide source) can't collapse to a sub-pixel, undraggable strip.
+    const float ph = kHiresHeight * 2.0f;       // result preview height (384)
+    float sw = ph * (importSrcH ? static_cast<float>(importSrcW) / importSrcH : 1.0f), sh = ph;
+    if (sw > 360.0f) { sw = 360.0f; sh = importSrcW ? sw * importSrcH / importSrcW : ph; }
+    sw = std::max(sw, 48.0f);
+    sh = std::max(sh, 48.0f);
+
+    // Click-vs-crop discriminator measured in SCREEN pixels, not source pixels, so
+    // sensitivity doesn't scale with source resolution (a 1px jitter on a 4000px
+    // image no longer becomes an accidental crop). Shared by the reconvert gate,
+    // the release commit, and the dimming overlay so they always agree.
+    auto cropUsable = [&]() {
+        if (importSrcW <= 0 || importSrcH <= 0) return false;
+        return (importCropX1 - importCropX0) * sw / importSrcW >= 5.0f &&
+               (importCropY1 - importCropY0) * sh / importSrcH >= 5.0f;
+    };
+
+    // ── Reconvert + re-render the HGR preview when anything changed ───────────
+    if (importDirty && !importSrcRgba.empty()) {
+        importDirty = false;
+        hgrpaint::ImportOptions opt;
+        opt.stretch    = importStretch;
+        opt.dither     = importDither;
+        opt.serpentine = importSerpentine;
+        opt.diffusion  = importDiffusion;
+        opt.brightness = importBrightness;
+        opt.contrast   = importContrast;
+        opt.gamma      = importGamma;
+        opt.chromaWeight = 6.0f - importColourNoise * 5.2f;   // 0→6 clean, 1→0.8 vivid
+        // Apply the crop both when committed AND while dragging (importCropActive is
+        // only set on release), so the FIRST crop drag shows a live cropped preview
+        // instead of the uncropped page. A sub-minimum rect falls through to whole.
+        if ((importCropActive || importCropDragging) && cropUsable()) {
+            opt.cropX0 = importCropX0; opt.cropY0 = importCropY0;
+            opt.cropX1 = importCropX1; opt.cropY1 = importCropY1;
+        }
+        importPage.assign(kHiresSize, 0);
+        hgrpaint::imageToHgrPage(importSrcRgba.data(), importSrcW, importSrcH, opt, importPage.data());
+        importPreview.assign(static_cast<size_t>(kHiresWidth) * kHiresHeight, 0);
+        if (host) {
+            host->renderHgrPage(importPage.data(), importPreview.data(), false);
+            importPreviewTex = host->uploadTexture(importPreviewTex, importPreview.data(),
+                                                   kHiresWidth, kHiresHeight, /*linear=*/false);
+        }
+    }
+
+    // ── Upload the source thumbnail once (for the side-by-side view) ──────────
+    if (importSrcTexDirty && !importSrcRgba.empty() && host) {
+        importSrcTexDirty = false;
+        importSrcTex = host->uploadTexture(importSrcTex, importSrcRgba.data(),
+                                           importSrcW, importSrcH, /*linear=*/true);
+    }
+
+    // ── Side-by-side: source (left) | HGR result (right) — kept at the top ────
+    ImGui::BeginGroup();
+    ImGui::TextDisabled("Source  \xE2\x80\x94  drag to select a crop region");
+    if (importSrcTex != 0 && importSrcW > 0 && importSrcH > 0) {
+        const ImVec2 imgPos = ImGui::GetCursorScreenPos();
+        ImGui::Image((ImTextureID)(uintptr_t)importSrcTex, ImVec2(sw, sh));
+
+        // Overlay an invisible button at the same spot so we capture drags
+        // without ImGui swallowing them as a window move.
+        ImGui::SetCursorScreenPos(imgPos);
+        ImGui::InvisibleButton("##cropsrc", ImVec2(sw, sh));
+        const bool hov = ImGui::IsItemHovered();
+
+        // Screen <-> source-pixel mapping (the thumbnail shows the whole image).
+        auto toSrc = [&](const ImVec2& p, int& sx, int& sy) {
+            float fx = (p.x - imgPos.x) / sw, fy = (p.y - imgPos.y) / sh;
+            fx = fx < 0.0f ? 0.0f : (fx > 1.0f ? 1.0f : fx);
+            fy = fy < 0.0f ? 0.0f : (fy > 1.0f ? 1.0f : fy);
+            sx = static_cast<int>(fx * importSrcW + 0.5f);
+            sy = static_cast<int>(fy * importSrcH + 0.5f);
+        };
+        auto toScreen = [&](int sx, int sy) {
+            return ImVec2(imgPos.x + static_cast<float>(sx) / importSrcW * sw,
+                          imgPos.y + static_cast<float>(sy) / importSrcH * sh);
+        };
+
+        if (hov && ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
+            importCropDragging = true;
+            toSrc(ImGui::GetIO().MousePos, importCropAnchorX, importCropAnchorY);
+        }
+        if (importCropDragging) {
+            int mx, my;
+            toSrc(ImGui::GetIO().MousePos, mx, my);
+            const int nx0 = std::min(importCropAnchorX, mx);
+            const int ny0 = std::min(importCropAnchorY, my);
+            const int nx1 = std::max(importCropAnchorX, mx);
+            const int ny1 = std::max(importCropAnchorY, my);
+            // Reconvert (a full ii-pix pass, tens of ms) ONLY when the rect actually
+            // changes — holding the mouse still no longer re-runs the converter.
+            if (nx0 != importCropX0 || ny0 != importCropY0 ||
+                nx1 != importCropX1 || ny1 != importCropY1) {
+                importCropX0 = nx0; importCropY0 = ny0;
+                importCropX1 = nx1; importCropY1 = ny1;
+                importDirty = true;
+            }
+            if (ImGui::IsMouseReleased(ImGuiMouseButton_Left)) {
+                importCropDragging = false;
+                // A real drag (>= ~5 screen px) selects a crop; a click clears it.
+                importCropActive = cropUsable();
+                importDirty = true;
+            }
+        }
+
+        // Draw the crop rectangle + dim the area outside it. Only dim once the rect
+        // is usable, so a not-yet-large-enough drag doesn't dim the whole image
+        // while the HGR result still previews uncropped (the two halves agreeing).
+        if (importCropActive || importCropDragging) {
+            ImDrawList* dl = ImGui::GetWindowDrawList();
+            const ImVec2 a = toScreen(importCropX0, importCropY0);
+            const ImVec2 b = toScreen(importCropX1, importCropY1);
+            if (cropUsable()) {
+                const ImVec2 tl(imgPos.x, imgPos.y), br(imgPos.x + sw, imgPos.y + sh);
+                const ImU32 dim = IM_COL32(0, 0, 0, 110);
+                dl->AddRectFilled(tl, ImVec2(br.x, a.y), dim);            // above
+                dl->AddRectFilled(ImVec2(tl.x, b.y), br, dim);            // below
+                dl->AddRectFilled(ImVec2(tl.x, a.y), ImVec2(a.x, b.y), dim);  // left
+                dl->AddRectFilled(ImVec2(b.x, a.y), ImVec2(br.x, b.y), dim);  // right
+            }
+            dl->AddRect(a, b, IM_COL32(255, 215, 0, 255), 0.0f, 0, 2.0f);
+        }
+    }
+    if (importCropActive) {
+        ImGui::Text("Crop: %d,%d  %dx%d", importCropX0, importCropY0,
+                    importCropX1 - importCropX0, importCropY1 - importCropY0);
+        ImGui::SameLine();
+        if (ImGui::SmallButton("Clear crop")) {
+            importCropActive = false; importCropDragging = false; importDirty = true;
+        }
+    } else {
+        ImGui::TextDisabled("Crop: whole image");
+    }
+    ImGui::EndGroup();
+    ImGui::SameLine();
+    ImGui::BeginGroup();
+    ImGui::TextDisabled("HGR result");
+    if (importPreviewTex != 0)
+        ImGui::Image((ImTextureID)(uintptr_t)importPreviewTex, ImVec2(kHiresWidth * 2.0f, ph));
+    ImGui::EndGroup();
+    ImGui::Separator();
+
+    // ── Live controls (any change re-converts the preview next frame) ─────────
     ImGui::SetNextItemWidth(-180);
     importDirty |= ImGui::SliderFloat("Colour noise", &importColourNoise, 0.0f, 1.0f, "%.2f");
     if (ImGui::IsItemHovered())
@@ -922,76 +1100,12 @@ void hgrpaint::HgrPaintEditor::renderImportPreview()
         importColourNoise = 0.30f; importBrightness = 1.0f; importContrast = 1.0f;
         importGamma = 1.0f; importDiffusion = 1.0f; importDither = true;
         importSerpentine = true; importStretch = false; importDirty = true;
+        importCropActive = false; importCropDragging = false;
     }
-
-    // ── Reconvert + re-render the HGR preview when anything changed ───────────
-    if (importDirty && !importSrcRgba.empty()) {
-        importDirty = false;
-        hgrpaint::ImportOptions opt;
-        opt.stretch    = importStretch;
-        opt.dither     = importDither;
-        opt.serpentine = importSerpentine;
-        opt.diffusion  = importDiffusion;
-        opt.brightness = importBrightness;
-        opt.contrast   = importContrast;
-        opt.gamma      = importGamma;
-        opt.chromaWeight = 6.0f - importColourNoise * 5.2f;   // 0→6 clean, 1→0.8 vivid
-        importPage.assign(kHiresSize, 0);
-        hgrpaint::imageToHgrPage(importSrcRgba.data(), importSrcW, importSrcH, opt, importPage.data());
-        importPreview.assign(static_cast<size_t>(kHiresWidth) * kHiresHeight, 0);
-        if (host) host->renderHgrPage(importPage.data(), importPreview.data(), false);
-        if (importPreviewTex == 0) {
-            glGenTextures(1, &importPreviewTex);
-            glBindTexture(GL_TEXTURE_2D, importPreviewTex);
-            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-            glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, kHiresWidth, kHiresHeight,
-                         0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
-        }
-        glBindTexture(GL_TEXTURE_2D, importPreviewTex);
-        glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, kHiresWidth, kHiresHeight,
-                        GL_RGBA, GL_UNSIGNED_BYTE, importPreview.data());
-    }
-
-    // ── Upload the source thumbnail once (for the side-by-side view) ──────────
-    if (importSrcTexDirty && !importSrcRgba.empty()) {
-        importSrcTexDirty = false;
-        if (importSrcTex == 0) {
-            glGenTextures(1, &importSrcTex);
-            glBindTexture(GL_TEXTURE_2D, importSrcTex);
-            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-        }
-        glBindTexture(GL_TEXTURE_2D, importSrcTex);
-        glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
-        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, importSrcW, importSrcH, 0,
-                     GL_RGBA, GL_UNSIGNED_BYTE, importSrcRgba.data());
-    }
-
-    // ── Side-by-side: source (left) | HGR result (right) ─────────────────────
-    ImGui::Separator();
-    const float ph = kHiresHeight * 2.0f;       // result preview height (384)
-    float sw = ph * (importSrcH ? static_cast<float>(importSrcW) / importSrcH : 1.0f), sh = ph;
-    if (sw > 360.0f) { sw = 360.0f; sh = importSrcW ? sw * importSrcH / importSrcW : ph; }
-    ImGui::BeginGroup();
-    ImGui::TextDisabled("Source");
-    if (importSrcTex != 0)
-        ImGui::Image((ImTextureID)(uintptr_t)importSrcTex, ImVec2(sw, sh));
-    ImGui::EndGroup();
-    ImGui::SameLine();
-    ImGui::BeginGroup();
-    ImGui::TextDisabled("HGR result");
-    if (importPreviewTex != 0)
-        ImGui::Image((ImTextureID)(uintptr_t)importPreviewTex, ImVec2(kHiresWidth * 2.0f, ph));
-    ImGui::EndGroup();
     ImGui::Separator();
 
     if (ImGui::Button("Apply to page", ImVec2(130, 0)) && !importPage.empty()) {
-        beginStroke();
+        beginStroke(true);
         for (int off = 0; off < static_cast<int>(shadow.size()); ++off) {
             if (importPage[off] == shadow[off]) continue;
             const uint16_t addr = static_cast<uint16_t>(baseAddr() + off);
@@ -1091,13 +1205,17 @@ void hgrpaint::HgrPaintEditor::renderFileBrowser()
                       static_cast<unsigned long long>(sz));
         if (!relevant) ImGui::PushStyleColor(ImGuiCol_Text, IM_COL32(150, 150, 150, 255));
         if (ImGui::Selectable(label, false)) {
-            std::snprintf(filePath, sizeof(filePath), "%s", f.path().string().c_str());
             if (browserForSave) {
+                std::snprintf(filePath, sizeof(filePath), "%s", f.path().string().c_str());
                 std::snprintf(browserSaveName, sizeof(browserSaveName), "%s", name.c_str());
             } else if (browserImport) {
+                // Don't touch filePath: openImportPreview takes the path directly,
+                // and leaving filePath as a .jpg would poison the next Save's
+                // default raw-HGR filename.
                 openImportPreview(f.path().string());
                 ImGui::CloseCurrentPopup();
             } else {
+                std::snprintf(filePath, sizeof(filePath), "%s", f.path().string().c_str());
                 std::string err;
                 if (host && host->loadImage(filePath, baseAddr(), err))
                     status = "Loaded " + name + " into $" + (page2 ? "4000" : "2000");
@@ -1110,12 +1228,11 @@ void hgrpaint::HgrPaintEditor::renderFileBrowser()
     }
     ImGui::EndChild();
 
-    // Import options (fit/letterbox vs stretch, dithering).
-    if (!browserForSave && browserImport) {
-        ImGui::Checkbox("Stretch (else fit + letterbox)", &importStretch);
-        ImGui::SameLine();
-        ImGui::Checkbox("Dither", &importDither);
-    }
+    // (No import options here: picking a file opens the preview dialog, which
+    // exposes Stretch/Dither plus the full live controls — duplicating them in
+    // this browser only pre-seeded state the preview immediately supersedes.)
+    if (!browserForSave && browserImport)
+        ImGui::TextDisabled("Pick an image \xE2\x80\x94 crop + dither options open in the preview.");
 
     // ── Action row ───────────────────────────────────────────────────────────
     if (browserForSave) {
@@ -1214,7 +1331,9 @@ void hgrpaint::HgrPaintEditor::handleShortcuts()
     if (io.WantTextInput) return;
 
     auto pressed = [](ImGuiKey k) { return ImGui::IsKeyPressed(k, false); };
-    auto pick = [&](Tool t) { prevTool = tool; tool = t; };
+    // Only remember the genuine previous tool — a redundant same-tool keypress must
+    // not set prevTool=Eyedropper, which would strand the one-shot eyedropper revert.
+    auto pick = [&](Tool t) { if (t != tool) prevTool = tool; tool = t; };
 
     if (io.KeyCtrl) {
         // Ctrl+Z = undo, Ctrl+Y or Ctrl+Shift+Z = redo, Ctrl+C/X/V = clipboard.
@@ -1223,6 +1342,7 @@ void hgrpaint::HgrPaintEditor::handleShortcuts()
         if (pressed(ImGuiKey_C)) copySelection(false);
         if (pressed(ImGuiKey_X)) copySelection(true);
         if (pressed(ImGuiKey_V) && clip.w > 0) {
+            if (dragging) { commitStroke(); dragging = false; }   // flush an open stroke
             pasting = true;
             pasteX = hasSel ? std::min(selX0, selX1) : 0;
             pasteY = hasSel ? std::min(selY0, selY1) : 0;
@@ -1263,7 +1383,10 @@ void hgrpaint::HgrPaintEditor::handleShortcuts()
     for (int i = 0; i < 6; ++i)
         if (pressed(numKeys[i])) color = palette[i];
 
-    if (pressed(ImGuiKey_X)) rectFilled = !rectFilled;
+    // X toggles Filled, but only for the tools that expose it — otherwise it
+    // silently flips hidden state with no on-screen feedback.
+    if (pressed(ImGuiKey_X) && (tool == Tool::Rectangle || tool == Tool::Ellipse))
+        rectFilled = !rectFilled;
     if (pressed(ImGuiKey_G)) showGrid = !showGrid;
 
     // Zoom +/- (main row and keypad).

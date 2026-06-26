@@ -306,6 +306,14 @@ void EmulationController::writeMemory(uint16_t address, uint8_t value)
     publisher.publish(*memory, *cpu, runRequested.load());
 }
 
+void EmulationController::writeMemoryBatch(const std::vector<std::pair<uint16_t, uint8_t>>& writes)
+{
+    if (writes.empty()) return;
+    std::lock_guard<PriorityMutex> lock(stateMutex);
+    for (const auto& w : writes) memory->memWrite(w.first, w.second);
+    publisher.publish(*memory, *cpu, runRequested.load());   // one publish for the whole batch
+}
+
 bool EmulationController::loadBinaryToRam(const std::string& path, uint16_t address, std::string& error)
 {
     stopCpu();

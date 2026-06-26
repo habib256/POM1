@@ -37,6 +37,9 @@ public:
 
     void render();
     void setWindow(GLFWwindow* win) { window = win; }
+    // Free GL resources owned by sub-widgets (the HGR Paint editor's textures)
+    // while the context is still current — call before ImGui/GLFW teardown.
+    void releaseGLResources() { if (hgrPaintEditor) hgrPaintEditor->releaseGL(); }
     static int getPresetCount();
     static const char* getPresetName(int index);
     // GUI-free preset application for --headless (no ImGui / ini / window).

@@ -9,7 +9,10 @@
 
 #include "HgrConvert.h"
 
-#include "third_party/stb/stb_image.h"   // decl only (impl linked from the app)
+// Bare include so the portable hgrpaint/ toolkit doesn't hardcode POM1's tree:
+// the host must put stb_image.h on the include path (POM1 adds
+// src/third_party/stb in CMakeLists.txt). decl only — impl linked from the app.
+#include "stb_image.h"
 
 namespace hgrpaint {
 

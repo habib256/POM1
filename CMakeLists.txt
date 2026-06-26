@@ -199,6 +199,7 @@ target_include_directories(${PROJECT_NAME} PRIVATE
     ${IMGUI_DIR}/backends
     ${POM1_SRC_DIR}
     ${POM1_SRC_DIR}/third_party/ImGuiColorTextEdit
+    ${POM1_SRC_DIR}/third_party/stb   # so portable hgrpaint/ can #include "stb_image.h" bare
     ${CMAKE_CURRENT_SOURCE_DIR}/bench
     ${CMAKE_CURRENT_SOURCE_DIR}/hgrpaint
 )

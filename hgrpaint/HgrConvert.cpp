@@ -141,23 +141,36 @@ void imageToHgrPage(const uint8_t* rgba, int srcW, int srcH,
     if (!rgba || srcW <= 0 || srcH <= 0) return;
 
     // ── 1. Resample to W×H (fit + letterbox, or stretch), in CAM16-UCS ────────
+    // Optional source crop: only [cx0,cx1) × [cy0,cy1) is resampled. A degenerate
+    // rect means "whole image"; the crop's aspect ratio drives fit/letterbox.
+    int cx0 = opt.cropX0, cy0 = opt.cropY0, cx1 = opt.cropX1, cy1 = opt.cropY1;
+    if (cx1 <= cx0 || cy1 <= cy0) { cx0 = 0; cy0 = 0; cx1 = srcW; cy1 = srcH; }
+    cx0 = std::max(0, std::min(cx0, srcW - 1));
+    cy0 = std::max(0, std::min(cy0, srcH - 1));
+    cx1 = std::max(cx0 + 1, std::min(cx1, srcW));
+    cy1 = std::max(cy0 + 1, std::min(cy1, srcH));
+    const int cropW = cx1 - cx0, cropH = cy1 - cy0;
+
     int ox0 = 0, oy0 = 0, ow = W, oh = H;
     if (!opt.stretch) {
-        const double s = std::min(static_cast<double>(W) / srcW,
-                                  static_cast<double>(H) / srcH);
-        ow = std::max(1, static_cast<int>(std::lround(srcW * s)));
-        oh = std::max(1, static_cast<int>(std::lround(srcH * s)));
+        const double s = std::min(static_cast<double>(W) / cropW,
+                                  static_cast<double>(H) / cropH);
+        ow = std::max(1, static_cast<int>(std::lround(cropW * s)));
+        oh = std::max(1, static_cast<int>(std::lround(cropH * s)));
         ox0 = (W - ow) / 2;
         oy0 = (H - oh) / 2;
     }
     const Cam16Ucs kBlackCam = srgb8ToCam16Ucs(0, 0, 0);
     std::vector<Cam16Ucs> tcam(static_cast<size_t>(W) * H, kBlackCam);
 
+    // Bilinear fetch clamped to the CROP window (not the full source), so an
+    // interior crop's edge output columns replicate the crop's own border pixels
+    // instead of bleeding ~1px of neighbouring content from outside the rect.
     auto sample = [&](float u, float v, float& r, float& g, float& b) {
-        u = clampf(u, 0.0f, srcW - 1.0f);
-        v = clampf(v, 0.0f, srcH - 1.0f);
+        u = clampf(u, static_cast<float>(cx0), cx1 - 1.0f);
+        v = clampf(v, static_cast<float>(cy0), cy1 - 1.0f);
         const int x0 = static_cast<int>(u), y0 = static_cast<int>(v);
-        const int x1 = std::min(x0 + 1, srcW - 1), y1 = std::min(y0 + 1, srcH - 1);
+        const int x1 = std::min(x0 + 1, cx1 - 1), y1 = std::min(y0 + 1, cy1 - 1);
         const float fx = u - x0, fy = v - y0;
         auto px = [&](int x, int y, int c) {
             return rgba[(static_cast<size_t>(y) * srcW + x) * 4 + c] / 255.0f;
@@ -172,8 +185,8 @@ void imageToHgrPage(const uint8_t* rgba, int srcW, int srcH,
 
     for (int oy = 0; oy < oh; ++oy) {
         for (int ox = 0; ox < ow; ++ox) {
-            const float u = (ox + 0.5f) / ow * srcW - 0.5f;
-            const float v = (oy + 0.5f) / oh * srcH - 0.5f;
+            const float u = (ox + 0.5f) / ow * cropW - 0.5f + cx0;
+            const float v = (oy + 0.5f) / oh * cropH - 0.5f + cy0;
             float r, g, b;
             sample(u, v, r, g, b);
             if (opt.contrast != 1.0f || opt.brightness != 1.0f || opt.gamma != 1.0f) {
@@ -213,13 +226,20 @@ void imageToHgrPage(const uint8_t* rgba, int srcW, int srcH,
     };
 
     uint16_t wordRow[40] = {0};   // the committed words of the row being decoded
+    // Active (non-letterbox) span: [colActiveLo,colActiveHi) × [oy0,oy0+oh). In
+    // stretch mode this is the whole frame. Confining diffusion to it stops the
+    // quantization residual from bleeding into the black letterbox bars (speckle).
+    const int colActiveLo = ox0, colActiveHi = ox0 + ow;
     auto add = [&](std::vector<Cam16Ucs>& buf, int xx, const Cam16Ucs& d) {
-        if (xx >= 0 && xx < W) { buf[xx].J += d.J; buf[xx].a += d.a; buf[xx].b += d.b; }
+        if (xx >= colActiveLo && xx < colActiveHi) { buf[xx].J += d.J; buf[xx].a += d.a; buf[xx].b += d.b; }
     };
 
     for (int y = 0; y < H; ++y) {
         std::fill(errNext.begin(), errNext.end(), Cam16Ucs{0, 0, 0});
         const int rowBase = hgrByteOffset(0, y);
+        // Letterbox row: leave the page bytes 0 and carry no error into it, so the
+        // top/bottom bars stay pure black. The swap makes the next row start clean.
+        if (y < oy0 || y >= oy0 + oh) { std::swap(errCur, errNext); continue; }
         // Serpentine: even rows L→R, odd rows R→L, so Floyd-Steinberg's error
         // doesn't always smear toward the same corner (kills diagonal artifacts).
         const bool ltr = !opt.serpentine || ((y & 1) == 0);
@@ -228,6 +248,12 @@ void imageToHgrPage(const uint8_t* rgba, int srcW, int srcH,
         for (int n = 0; n < 40; ++n) {
             const int b = ltr ? n : (39 - n);
             const int px0 = b * 7;
+            // Skip letterbox columns entirely: leave the byte 0 (pure black) and
+            // its word 0, so neighbours see black context and no error is spent.
+            if (px0 + 7 <= colActiveLo || px0 >= colActiveHi) {
+                outPage[rowBase + b] = 0; wordRow[b] = 0;
+                continue;
+            }
             Cam16Ucs want[7];
             for (int k = 0; k < 7; ++k)
                 want[k] = tcam[static_cast<size_t>(y) * W + px0 + k] + errCur[px0 + k];
@@ -240,6 +266,10 @@ void imageToHgrPage(const uint8_t* rgba, int srcW, int srcH,
                                            : buildWord(guessByte(y, b - 1), 0);
             const int carry = (wordPrev >> 13) & 1;
 
+            // guessByte(y,b+1) depends only on (y,b+1), not on the candidate — hoist
+            // it out of the 256-iteration loop (only buildWord's carry varies).
+            const uint8_t aheadByte = (ltr && b < 39) ? guessByte(y, b + 1) : 0;
+
             float bestCost = std::numeric_limits<float>::max();
             int bestByte = 0;
             uint16_t bestWord = 0;
@@ -248,7 +278,7 @@ void imageToHgrPage(const uint8_t* rgba, int srcW, int srcH,
                 const uint16_t wCur = buildWord(static_cast<uint8_t>(cand), carry);
                 const uint16_t wNext = (b == 39) ? 0
                                      : !ltr        ? wordRow[b + 1]
-                                                   : buildWord(guessByte(y, b + 1), (wCur >> 13) & 1);
+                                                   : buildWord(aheadByte, (wCur >> 13) & 1);
                 uint8_t idx[7][2];
                 decodeBytePixels(wordPrev, wCur, wNext, b, idx);
                 float cost = 0.0f;
@@ -266,15 +296,26 @@ void imageToHgrPage(const uint8_t* rgba, int srcW, int srcH,
             if (opt.dither) {
                 // Floyd-Steinberg, mirrored for the scan direction. `diffusion`
                 // attenuates how much error is carried forward (lower = less grain).
+                // The 7 pixels of a byte are quantized JOINTLY (one 256-candidate
+                // search), and errCur for the whole byte is read once up-front at
+                // line ~243. So the in-row 7/16 "ahead" term would land on errCur
+                // slots already consumed this byte for 6 of the 7 pixels and be
+                // lost — dropping ~6/7 of the horizontal error and posterizing
+                // gradients. Accumulate it into byteCarry instead and spread it
+                // over the NEXT byte's 7 target pixels, conserving horizontal error.
+                Cam16Ucs byteCarry{0, 0, 0};
                 for (int k = 0; k < 7; ++k) {
                     const Cam16Ucs res = scale(want[k] - avgCam[bestIdx[k][0]][bestIdx[k][1]],
                                                opt.diffusion);
                     const int x = px0 + k;
-                    add(errCur,  x + dir, scale(res, 7.0f / 16.0f));   // ahead, same row
+                    byteCarry = byteCarry + scale(res, 7.0f / 16.0f);   // ahead, same row
                     add(errNext, x - dir, scale(res, 3.0f / 16.0f));
                     add(errNext, x,       scale(res, 5.0f / 16.0f));
                     add(errNext, x + dir, scale(res, 1.0f / 16.0f));
                 }
+                const Cam16Ucs spread = scale(byteCarry, 1.0f / 7.0f);
+                const int nextBase = ltr ? (px0 + 7) : (px0 - 7);   // next byte in scan order
+                for (int j = 0; j < 7; ++j) add(errCur, nextBase + j, spread);
             }
         }
         std::swap(errCur, errNext);

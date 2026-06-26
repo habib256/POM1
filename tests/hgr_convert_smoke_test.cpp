@@ -130,6 +130,52 @@ int main()
         assert(prev > 200);                 // right end is bright
     }
 
+    // ── Floyd-Steinberg horizontal-error conservation ────────────────────────
+    // A flat gray whose density is not exactly achievable per 7-pixel byte must
+    // still reproduce, page-averaged, near the target: error diffusion conserves
+    // the dropped fraction by carrying it to the next byte. Regression guard for
+    // the bug where the in-row 7/16 term landed on already-read slots and ~6/7 of
+    // the horizontal error was lost (biasing flat fields and banding gradients).
+    {
+        auto meanLuma = [&](const std::vector<uint32_t>& px) {
+            long sum = 0;
+            for (uint32_t p : px)
+                sum += ((p & 0xFF) * 30 + ((p >> 8) & 0xFF) * 59 + ((p >> 16) & 0xFF) * 11) / 100;
+            return static_cast<double>(sum) / px.size();
+        };
+        opt.dither = true;
+        opt.chromaWeight = 6.0f;   // neutral target → clean black/white dither
+        for (int g : {64, 96, 160}) {
+            auto flat = solid(g, g, g);
+            imageToHgrPage(flat.data(), kHiresWidth, kHiresHeight, opt, page.data());
+            renderPage(page.data(), ren);
+            const double m = meanLuma(ren);
+            // Rendered white pixels are full 0xFFFFFF, blacks 0; a conserved dither
+            // of a gray ~g averages within ~14 luma of g (deterministic; current
+            // devs are 6.7/9.0/11.1). Dropping the horizontal error biases this far
+            // more, so this is the regression guard for the FS conservation fix.
+            assert(std::fabs(m - g) < 14.0);
+        }
+    }
+
+    // ── Letterbox bars stay pure black (no Floyd-Steinberg bleed) ─────────────
+    // A tall/narrow source in fit mode (stretch=false) centres a 100-wide image in
+    // 280, so columns [0,90) and [190,280) are letterbox. Diffusion must not leak
+    // into them. Active span [90,190) → byte cols 0..11 and 28..39 are fully out.
+    {
+        const int sW = 100, sH = 192;
+        std::vector<uint8_t> img(static_cast<size_t>(sW) * sH * 4);
+        for (size_t i = 0; i < img.size(); i += 4) { img[i] = img[i+1] = img[i+2] = 200; img[i+3] = 255; }
+        ImportOptions lo;
+        lo.stretch = false; lo.dither = true; lo.chromaWeight = 6.0f;
+        imageToHgrPage(img.data(), sW, sH, lo, page.data());
+        for (int y = 0; y < kHiresHeight; ++y) {
+            const int base = hgrByteOffset(0, y);
+            for (int b = 0; b <= 11; ++b) assert(page[base + b] == 0);
+            for (int b = 28; b < 40; ++b) assert(page[base + b] == 0);
+        }
+    }
+
     std::printf("hgr_convert_smoke: all assertions passed\n");
     return 0;
 }

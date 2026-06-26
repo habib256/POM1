@@ -9,6 +9,8 @@
 #include "HgrPaintModel.h"        // hgrpaint:: geometry constants
 #include "third_party/stb/stb_image_write.h"   // decl only; impl lives in main_imgui.cpp
 
+#include <GLFW/glfw3.h>           // GL prototypes (the host owns the graphics backend)
+
 #include <algorithm>
 
 Pom1HgrPaintHost::Pom1HgrPaintHost(EmulationController* emu)
@@ -18,7 +20,23 @@ Pom1HgrPaintHost::Pom1HgrPaintHost(EmulationController* emu)
 
 void Pom1HgrPaintHost::pokeByte(uint16_t addr, uint8_t value)
 {
+    // While batching, defer to one writeMemoryBatch() so a bulk edit costs one
+    // lock + one snapshot publish instead of thousands.
+    if (batching_) { batch_.emplace_back(addr, value); return; }
     if (emu_) emu_->writeMemory(addr, value);
+}
+
+void Pom1HgrPaintHost::beginBatch()
+{
+    batching_ = true;
+    batch_.clear();
+}
+
+void Pom1HgrPaintHost::endBatch()
+{
+    batching_ = false;
+    if (emu_) emu_->writeMemoryBatch(batch_);
+    batch_.clear();
 }
 
 void Pom1HgrPaintHost::renderHgrPage(const uint8_t* page8k, uint32_t* outRgba, bool mono)
@@ -48,6 +66,36 @@ bool Pom1HgrPaintHost::saveImage(const std::string& path, uint16_t baseAddr, std
     return emu_ && emu_->saveMemoryRange(
         path, baseAddr, static_cast<uint16_t>(baseAddr + hgrpaint::kHiresSize - 1),
         /*binaryFormat=*/true, err);
+}
+
+unsigned int Pom1HgrPaintHost::uploadTexture(unsigned int tex, const void* rgba,
+                                             int w, int h, bool linear)
+{
+    GLuint id = static_cast<GLuint>(tex);
+    if (id == 0) {
+        glGenTextures(1, &id);
+        glBindTexture(GL_TEXTURE_2D, id);
+        const GLint filt = linear ? GL_LINEAR : GL_NEAREST;
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, filt);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, filt);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    } else {
+        glBindTexture(GL_TEXTURE_2D, id);
+    }
+    // RGBA8 rows are always 4-byte aligned, but save/restore anyway so we never
+    // leave the shared context at a non-default unpack alignment.
+    GLint prevAlign = 4;
+    glGetIntegerv(GL_UNPACK_ALIGNMENT, &prevAlign);
+    glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, w, h, 0, GL_RGBA, GL_UNSIGNED_BYTE, rgba);
+    glPixelStorei(GL_UNPACK_ALIGNMENT, prevAlign);
+    return static_cast<unsigned int>(id);
+}
+
+void Pom1HgrPaintHost::destroyTexture(unsigned int tex)
+{
+    if (tex != 0) { GLuint id = static_cast<GLuint>(tex); glDeleteTextures(1, &id); }
 }
 
 bool Pom1HgrPaintHost::savePng(const std::string& path, const uint32_t* rgba,
