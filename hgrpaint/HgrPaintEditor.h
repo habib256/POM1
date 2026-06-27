@@ -53,7 +53,8 @@ private:
     // Order is append-only: the toolbar/status name tables and shortcuts index
     // by these values, so new tools go at the end.
     enum class Tool : uint8_t { Pencil = 0, Eraser, Line, Rectangle, Ellipse, Fill,
-                                Eyedropper, Select, PaletteShift };
+                                Eyedropper, Select, PaletteShift, Text };
+    static constexpr int kToolCount = 10;
 
     // One byte change: lets us replay forward (redo) or reverse (undo).
     struct ByteEdit { uint16_t addr; uint8_t oldVal, newVal; };
@@ -69,8 +70,11 @@ private:
     GLuint texture = 0;
     bool ntscColor = true;          // false → monochrome preview
 
-    // Editing state.
-    bool page2 = false;             // false = $2000, true = $4000
+    // Editing state. The top-bar selector picks one of four pages from these two
+    // flags: HGR ($2000) / HGR2 ($4000) / GR ($0400) / GR2 ($0800).
+    bool page2 = false;             // false = page 1, true = page 2
+    bool grMode = false;            // false = HIRES (7-bit NTSC), true = lo-res GR blocks
+    int  grColor = 15;              // current lo-res colour index 0..15 (15 = white)
     Tool tool = Tool::Pencil;
     Tool prevTool = Tool::Pencil;   // restored after a one-shot Eyedropper pick
     HgrColor color = HgrColor::White;
@@ -82,6 +86,13 @@ private:
     bool showConflicts = false;     // palette-seam overlay
     bool wantFit = false;           // queued zoom-to-fit
     int  paletteMsbMode = 2;        // PaletteShift sub-mode: 0=clear,1=set,2=toggle
+
+    // Text tool: a caret placed by clicking the canvas, then bbfont glyphs stamped
+    // in the current colour. textHomeX is the line-start column (carriage return /
+    // word-wrap target). The buffer is the pending string in the tool-options box.
+    bool textPlaced = false;
+    int  textX = 0, textY = 0, textHomeX = 0;
+    char textBuf[256] = {0};
     // The navigator thumbnail is always shown when the image overflows the
     // viewport, and Save always stamps the POM1HGR screen-hole tag.
 
@@ -160,7 +171,12 @@ private:
     GLuint importPreviewTex = 0;
     GLuint importSrcTex = 0;               // source thumbnail (side-by-side preview)
 
-    uint16_t baseAddr() const { return page2 ? 0x4000 : 0x2000; }
+    uint16_t baseAddr() const {
+        if (grMode) return page2 ? 0x0800 : 0x0400;   // lo-res text page
+        return page2 ? 0x4000 : 0x2000;               // hi-res page
+    }
+    // Bytes the current page occupies: 8 KB HIRES, 1 KB lo-res GR text page.
+    int pageBytes() const { return grMode ? 0x400 : kHiresSize; }
 
     // Render the shadow page through the host NTSC pipeline into a kHiresWidth×
     // kHiresHeight RGBA buffer (host-rendered, what the canvas shows).
@@ -168,6 +184,12 @@ private:
 
     // Paint helpers (operate on shadow + emit writes + accumulate undo).
     void applyPlot(int x, int y, HgrColor c);
+    // GR (lo-res) variants: map the 280×192 canvas pixel to a 40×48 block. In GR
+    // mode applyPlot routes here; HgrColor::Black erases (colour 0), anything else
+    // paints the current grColor. grFloodFill floods over equal block colour.
+    void applyGrPlot(int x, int y, HgrColor c);
+    void grFloodFill(int x, int y, int colorIndex);
+    void switchPage(bool toGr, bool toPage2);   // top-bar HGR/HGR2/GR/GR2 selector
     void paintBrush(int cx, int cy, HgrColor c);
     void paintLine(int x0, int y0, int x1, int y1, HgrColor c);
     void paintRect(int x0, int y0, int x1, int y1, HgrColor c, bool filled);
@@ -186,6 +208,8 @@ private:
     void pasteFloatingAt(int destX, int destY);   // commit the clip as one stroke
     // Palette-shift tool: flip a whole byte column's high bit.
     void paintPaletteByte(int lx, int ly);
+    // Text tool: stamp `text` as bbfont glyphs from the caret, in colour `c`.
+    void stampText(const char* text, HgrColor c);
 
     void renderTopBar();        // page select + file ops + help (MacPaint-style menu strip)
     void renderToolPanel();     // left vertical palette of icon tool buttons + options

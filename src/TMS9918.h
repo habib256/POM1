@@ -152,6 +152,32 @@ public:
 
     void reset();
 
+    // ── Editor seam (TMS9918 Paint) ──────────────────────────────────────────
+    // Direct VRAM / register writes from the host-side paint editor. Unlike a
+    // CPU-bus access these bypass the $CC00/$CC01 port protocol and the
+    // silicon-strict access-window drain entirely — they are an out-of-band UI
+    // edit, not emulated 6502 traffic, so they never count as dropped writes.
+    // Each marks the snapshot dirty; call editorRebuildFramebuffer() once after
+    // a batch to repaint the live framebuffer immediately (even while paused).
+    void editorPokeVram(uint16_t addr, uint8_t value)
+    { vram[addr & (kVramSize - 1)] = value; snapshotDirty = true; }
+    void editorSetRegister(uint8_t index, uint8_t value)
+    { if (index < 8) { regs[index] = value; snapshotDirty = true; } }
+    void editorRebuildFramebuffer() { rebuildFramebufferFromVram(); }
+    // Read-only VRAM view for the editor (16 KB).
+    const uint8_t* vramData() const { return vram.data(); }
+    const uint8_t* regsData() const { return regs.data(); }
+    // Copy the active 256×192 region of the live framebuffer (the chip's own
+    // rendered output, exactly what the Graphic Card window shows) into `out`,
+    // stripping the 16/12-px R7 border. Lets the paint editor display the real
+    // card image instead of re-deriving it from VRAM.
+    void copyActiveFramebuffer(uint32_t* out) const {
+        for (int y = 0; y < kScreenHeight; ++y) {
+            const uint32_t* src = &framebuffer[(y + kBorderTop) * kFullWidth + kBorderLeft];
+            for (int x = 0; x < kScreenWidth; ++x) out[y * kScreenWidth + x] = src[x];
+        }
+    }
+
     // Round-trip the architecturally-visible VDP state through a .snap file.
     // Captured: VRAM (16 KB) + 8 mode regs + statusReg + $CC01 two-byte
     // latch state + vramAddr + readAheadBuffer + frameCycleCounter +

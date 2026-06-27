@@ -94,6 +94,27 @@ int setBytePalette(uint8_t* page, int byteCol, int y, int msb);
 // can't combine with the new ones into white (green $2A | violet $55 = $7F).
 int fillRegion(uint8_t* page, int x, int y, HgrColor c, const RenderPageFn& render);
 
+// ── Apple II lo-res (GR) block model ─────────────────────────────────────────
+// GR is 40 columns × 48 block-rows of 16-colour blocks stored in the TEXT page
+// ($0400 page 1 / $0800 page 2). Each text byte holds TWO vertically-stacked
+// blocks: low nibble = upper block (even block-row), high nibble = lower block
+// (odd block-row). Rows use the same DRAM-refresh interleave as text, NOT the
+// HIRES one. The editor maps the 280×192 canvas to blocks (bx = px/7, by = py/4)
+// so GR shares the canvas with HGR. Page-relative (base added at the call site).
+constexpr int kGrCols = 40;
+constexpr int kGrRows = 48;
+
+// Page-relative byte offset of block (bx,by), or -1 if out of range.
+int grBlockOffset(int bx, int by);
+
+// Set block (bx,by) to colourIndex (0..15) in a lo-res page buffer. Returns the
+// changed byte offset, or -1 if unchanged / out of range. Only the block's own
+// nibble is touched; the other block sharing the byte is preserved.
+int plotGrBlock(uint8_t* page, int bx, int by, int colorIndex);
+
+// Colour index (0..15) of block (bx,by), or -1 if out of range.
+int grBlockColorAt(const uint8_t* page, int bx, int by);
+
 } // namespace hgrpaint
 
 #endif // HGRPAINT_MODEL_H

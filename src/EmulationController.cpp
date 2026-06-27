@@ -180,7 +180,58 @@ void EmulationController::stepCpu()
 {
     stopCpu();
     std::lock_guard<PriorityMutex> lock(stateMutex);
+    memory->clearWatchTrip();   // fresh slate so this step shows its own access
     cpu->step();
+    publisher.publish(*memory, *cpu, runRequested.load());
+}
+
+void EmulationController::stepOverCpu()
+{
+    stopCpu();
+    std::lock_guard<PriorityMutex> lock(stateMutex);
+
+    // Peek the opcode through memRead (NOT the raw mem[] mirror) so bus-only
+    // executable ROMs like CFFA1 firmware ($9000-$AFDF) are read correctly.
+    // Done BEFORE clearWatchTrip() so a read-watch on PC fired by this peek is
+    // immediately wiped and never shows as a spurious watchpoint hit.
+    const uint8_t opcode = memory->memRead(cpu->getProgramCounter());
+    memory->clearWatchTrip();
+
+    if (opcode != 0x20) {           // not JSR → ordinary single step
+        cpu->step();
+        publisher.publish(*memory, *cpu, runRequested.load());
+        return;
+    }
+
+    // JSR: run until the return address (PC+3), borrowing the single hardware
+    // breakpoint for the target and restoring the user's afterwards. Capped so
+    // a non-returning / very long subroutine can't wedge the UI thread; we also
+    // drain any queued keystrokes up front so stepping over a routine that
+    // consumes an already-typed key can complete (a routine blocking on input
+    // typed LATER still can't progress here — the keyboard isn't drained inside
+    // the loop — so it gives up at the cap; use plain Step for those).
+    keyboard.drainTo(*memory);
+    const uint16_t ret = static_cast<uint16_t>(cpu->getProgramCounter() + 3);
+    const bool     hadUserBp = cpu->hasBreakpoint();
+    const uint16_t userBp    = cpu->getBreakpoint();
+
+    cpu->setBreakpoint(ret);
+    cpu->start();
+    constexpr uint64_t kStepOverMaxCycles = 5'000'000;    // bound the UI-thread hold
+    uint64_t done = 0;
+    while (done < kStepOverMaxCycles) {
+        const int actual = cpu->run(kMaxSliceCycles);
+        done += static_cast<uint64_t>(actual > 0 ? actual : 0);
+        if (cpu->isBreakpointTripped()) break;     // returned to `ret`
+        if (memory->isWatchpointTripped()) break;  // watch fired inside the sub
+        if (actual <= 0) break;                     // CPU jammed
+    }
+
+    // Restore the user breakpoint (setBreakpoint/clearBreakpoint both clear the
+    // trip latch, so the temporary `ret` halt never shows as a user breakpoint).
+    if (hadUserBp) cpu->setBreakpoint(userBp);
+    else           cpu->clearBreakpoint();
+
     publisher.publish(*memory, *cpu, runRequested.load());
 }
 
@@ -283,6 +334,61 @@ bool EmulationController::isCpuBreakpointTripped() const
     return cpu->isBreakpointTripped();
 }
 
+void EmulationController::setCpuWatchpoint(uint16_t address, bool onRead, bool onWrite)
+{
+    std::lock_guard<PriorityMutex> lock(stateMutex);
+    memory->setWatchpoint(address, onRead, onWrite);
+}
+
+void EmulationController::clearCpuWatchpoint(uint16_t address)
+{
+    std::lock_guard<PriorityMutex> lock(stateMutex);
+    memory->clearWatchpoint(address);
+}
+
+void EmulationController::clearAllCpuWatchpoints()
+{
+    std::lock_guard<PriorityMutex> lock(stateMutex);
+    memory->clearAllWatchpoints();
+}
+
+int EmulationController::cpuWatchpointCount() const
+{
+    std::lock_guard<PriorityMutex> lock(stateMutex);
+    return memory->watchpointCount();
+}
+
+uint8_t EmulationController::cpuWatchpointFlags(uint16_t address) const
+{
+    std::lock_guard<PriorityMutex> lock(stateMutex);
+    return memory->watchpointFlags(address);
+}
+
+std::vector<std::pair<uint16_t, uint8_t>>
+EmulationController::listCpuWatchpoints(int maxEntries) const
+{
+    std::lock_guard<PriorityMutex> lock(stateMutex);
+    return memory->listWatchpoints(maxEntries);
+}
+
+bool EmulationController::isCpuWatchpointTripped() const
+{
+    std::lock_guard<PriorityMutex> lock(stateMutex);
+    return memory->isWatchpointTripped();
+}
+
+uint16_t EmulationController::getCpuWatchAddress() const
+{
+    std::lock_guard<PriorityMutex> lock(stateMutex);
+    return memory->watchHit().address;
+}
+
+bool EmulationController::getCpuWatchIsWrite() const
+{
+    std::lock_guard<PriorityMutex> lock(stateMutex);
+    return memory->watchHit().write;
+}
+
 void EmulationController::queueKey(char key)
 {
     keyboard.queueKey(key);
@@ -302,7 +408,11 @@ bool EmulationController::hasPendingInjectedInput()
 void EmulationController::writeMemory(uint16_t address, uint8_t value)
 {
     std::lock_guard<PriorityMutex> lock(stateMutex);
+    // A UI memory edit must be invisible to watchpoints — restore the prior
+    // trip state so a write-watch on `address` doesn't raise a false banner.
+    const bool wasTripped = memory->isWatchpointTripped();
     memory->memWrite(address, value);
+    if (!wasTripped) memory->clearWatchTrip();
     publisher.publish(*memory, *cpu, runRequested.load());
 }
 
@@ -310,8 +420,51 @@ void EmulationController::writeMemoryBatch(const std::vector<std::pair<uint16_t,
 {
     if (writes.empty()) return;
     std::lock_guard<PriorityMutex> lock(stateMutex);
+    const bool wasTripped = memory->isWatchpointTripped();   // UI edits don't trip watchpoints
     for (const auto& w : writes) memory->memWrite(w.first, w.second);
+    if (!wasTripped) memory->clearWatchTrip();
     publisher.publish(*memory, *cpu, runRequested.load());   // one publish for the whole batch
+}
+
+void EmulationController::writeTms9918Vram(uint16_t addr, uint8_t value)
+{
+    std::lock_guard<PriorityMutex> lock(stateMutex);
+    TMS9918& tms = memory->getTMS9918();
+    tms.editorPokeVram(addr, value);
+    tms.editorRebuildFramebuffer();
+    publisher.publish(*memory, *cpu, runRequested.load());
+}
+
+void EmulationController::writeTms9918VramBatch(const std::vector<std::pair<uint16_t, uint8_t>>& writes)
+{
+    if (writes.empty()) return;
+    std::lock_guard<PriorityMutex> lock(stateMutex);
+    TMS9918& tms = memory->getTMS9918();
+    for (const auto& w : writes) tms.editorPokeVram(w.first, w.second);
+    tms.editorRebuildFramebuffer();
+    publisher.publish(*memory, *cpu, runRequested.load());   // one publish for the whole batch
+}
+
+void EmulationController::applyTms9918Registers(const uint8_t regs[8])
+{
+    std::lock_guard<PriorityMutex> lock(stateMutex);
+    TMS9918& tms = memory->getTMS9918();
+    for (int i = 0; i < 8; ++i) tms.editorSetRegister(static_cast<uint8_t>(i), regs[i]);
+    tms.editorRebuildFramebuffer();
+    publisher.publish(*memory, *cpu, runRequested.load());
+}
+
+void EmulationController::readTms9918Vram(uint8_t* out16k)
+{
+    std::lock_guard<PriorityMutex> lock(stateMutex);
+    const uint8_t* v = memory->getTMS9918().vramData();
+    std::copy(v, v + TMS9918::kVramSize, out16k);
+}
+
+void EmulationController::readTms9918Framebuffer(uint32_t* out)
+{
+    std::lock_guard<PriorityMutex> lock(stateMutex);
+    memory->getTMS9918().copyActiveFramebuffer(out);
 }
 
 bool EmulationController::loadBinaryToRam(const std::string& path, uint16_t address, std::string& error)
@@ -1598,9 +1751,25 @@ void EmulationController::runEmulationSlice(double elapsedSeconds)
             // Re-vérifier sous le mutex : stopCpu()/step peut avoir eu lieu après le test du haut de boucle.
             // Sinon cpu->start() annule cpu->stop() et une tranche entière s'exécute entre deux F7.
             if (runRequested.load()) {
+                // Clear last slice's watch latch so detection re-arms; a trip
+                // set while parked (or by a UI memory edit) won't re-park us.
+                memory->clearWatchTrip();
                 cpu->start();
                 const int actualCycles = cpu->run(cyclesToRun);
                 emulationCycleBudget -= static_cast<double>(actualCycles);
+                // A PC-matched breakpoint or a memory watchpoint halts the CPU
+                // mid-slice (run() exits with the trip latched). Park the
+                // emulation thread so the halt is *sticky*: without this,
+                // runRequested stays true, the next slice's cpu->start() clears
+                // the breakpoint trip and run() re-fires immediately — a
+                // busy-spin that spams the log and never lets the UI show the
+                // stopped state. Both stay armed; the UI resumes via Continue /
+                // Resume (breakpoint: step past then run; watchpoint: just run,
+                // since the access already executed and the latch is cleared
+                // above on the next slice).
+                if (cpu->isBreakpointTripped() || memory->isWatchpointTripped()) {
+                    runRequested.store(false);
+                }
             }
         }
         publisher.publish(*memory, *cpu, runRequested.load());

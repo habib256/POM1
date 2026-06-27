@@ -90,19 +90,16 @@ HgrColor colorAt(const uint8_t* page, int x, int y)
     if (x < 0 || x > 279 || y < 0 || y > 191) return HgrColor::Black;
     if (!pixelOn(page, x, y)) return HgrColor::Black;
 
-    // White heuristic: a lit pixel reads white when its two same-byte horizontal
-    // neighbours are also lit (the dot pattern fills, so NTSC sees no isolated
-    // colour fringe). We restrict the test to within the SAME byte so we mirror
-    // plotPage's writer, which only flips the high bit of one byte at a time and
-    // never reasons across the byte boundary. This is a documented heuristic:
-    // true NTSC white depends on neighbours across bytes too, but matching the
-    // per-byte writer keeps colorAt round-tripping plotPage.
-    const int bit = hgrBit(x);
-    if (bit > 0 && bit < 6) {
-        const uint8_t b = page[hgrByteOffset(x, y)];
-        if (((b >> (bit - 1)) & 1) && ((b >> (bit + 1)) & 1))
-            return HgrColor::White;
-    }
+    // White heuristic: a lit pixel reads white when both horizontal neighbours are
+    // also lit (the dot pattern fills, so NTSC sees no isolated colour fringe).
+    // pixelOn() reads the neighbour across the byte boundary and bounds-checks the
+    // edges, so a white run crossing a byte boundary reads white on its bit-0/bit-6
+    // edge columns too (the same-byte-only test used to mis-label those as Violet/
+    // Green). For an interior bit this is identical to inspecting the two adjacent
+    // bits of the same byte; an isolated lit pixel still has both neighbours off and
+    // falls through to the chromatic classifier, so plotPage round-trips unchanged.
+    if (pixelOn(page, x - 1, y) && pixelOn(page, x + 1, y))
+        return HgrColor::White;
 
     // Chromatic classification: palette (byte high bit) + column parity.
     // Mirrors snapColumn: palette0 even=Violet, palette0 odd=Green,
@@ -199,6 +196,43 @@ int fillRegion(uint8_t* page, int x, int y, HgrColor c, const RenderPageFn& rend
         }
     }
     return static_cast<int>(region.size());
+}
+
+// ── Apple II lo-res (GR) block model ─────────────────────────────────────────
+
+// Page-relative text/lo-res row address: the same DRAM-refresh interleave the
+// GraphicsCard text/lo-res renderer uses (base $0400/$0800 added at call site).
+static uint16_t grTextRowAddr(int textRow)
+{
+    return static_cast<uint16_t>(0x80 * (textRow & 7) + 0x28 * (textRow >> 3));
+}
+
+int grBlockOffset(int bx, int by)
+{
+    if (bx < 0 || bx >= kGrCols || by < 0 || by >= kGrRows) return -1;
+    return grTextRowAddr(by / 2) + bx;   // two block-rows share one text row
+}
+
+int plotGrBlock(uint8_t* page, int bx, int by, int colorIndex)
+{
+    const int off = grBlockOffset(bx, by);
+    if (off < 0) return -1;
+    colorIndex &= 0x0F;
+    const uint8_t b = page[off];
+    // Even block-row → low nibble (upper block); odd → high nibble (lower block).
+    const uint8_t nb = (by & 1)
+        ? static_cast<uint8_t>((b & 0x0F) | (colorIndex << 4))
+        : static_cast<uint8_t>((b & 0xF0) | colorIndex);
+    if (nb == b) return -1;
+    page[off] = nb;
+    return off;
+}
+
+int grBlockColorAt(const uint8_t* page, int bx, int by)
+{
+    const int off = grBlockOffset(bx, by);
+    if (off < 0) return -1;
+    return (by & 1) ? (page[off] >> 4) : (page[off] & 0x0F);
 }
 
 } // namespace hgrpaint

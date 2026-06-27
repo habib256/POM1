@@ -2,6 +2,7 @@
 // Copyright (C) 2000-2026 Verhille Arnaud
 
 #include "Disassembler6502.h"
+#include "Symbols.h"
 
 #include <cstdio>
 
@@ -91,67 +92,74 @@ constexpr OpcodeInfo opcodeInfo[256] = {
 
 } // namespace
 
-std::string disassemble6502(const uint8_t* mem, uint16_t pc, int& instrLen)
+std::string disassemble6502(const uint8_t* mem, uint16_t pc, int& instrLen,
+                            const SymbolTable* symbols)
 {
     uint8_t opcode = mem[pc];
     const OpcodeInfo& info = opcodeInfo[opcode];
     uint8_t lo = mem[(pc + 1) & 0xFFFF];
     uint8_t hi = mem[(pc + 2) & 0xFFFF];
-    char buf[32];
+
+    // Operand address → symbol name, else raw hex ($XX for zero page, $XXXX
+    // otherwise). Immediate operands never come through here.
+    auto operand = [symbols](uint16_t addr, bool zeroPage) -> std::string {
+        if (symbols) {
+            if (const std::string* name = symbols->find(addr))
+                return *name;
+        }
+        char t[8];
+        std::snprintf(t, sizeof(t), zeroPage ? "$%02X" : "$%04X", addr);
+        return t;
+    };
+
+    const std::string m = info.mnemonic;
+    const uint16_t abs16 = static_cast<uint16_t>(lo | (hi << 8));
 
     switch (info.mode) {
     case AM_IMP:
         instrLen = 1;
-        std::snprintf(buf, sizeof(buf), "%s", info.mnemonic);
-        break;
-    case AM_IMM:
+        return m;
+    case AM_IMM: {
         instrLen = 2;
-        std::snprintf(buf, sizeof(buf), "%s #$%02X", info.mnemonic, lo);
-        break;
+        char t[8];
+        std::snprintf(t, sizeof(t), " #$%02X", lo);
+        return m + t;
+    }
     case AM_ZP:
         instrLen = 2;
-        std::snprintf(buf, sizeof(buf), "%s $%02X", info.mnemonic, lo);
-        break;
+        return m + " " + operand(lo, true);
     case AM_ZPX:
         instrLen = 2;
-        std::snprintf(buf, sizeof(buf), "%s $%02X,X", info.mnemonic, lo);
-        break;
+        return m + " " + operand(lo, true) + ",X";
     case AM_ZPY:
         instrLen = 2;
-        std::snprintf(buf, sizeof(buf), "%s $%02X,Y", info.mnemonic, lo);
-        break;
+        return m + " " + operand(lo, true) + ",Y";
     case AM_ABS:
         instrLen = 3;
-        std::snprintf(buf, sizeof(buf), "%s $%04X", info.mnemonic, lo | (hi << 8));
-        break;
+        return m + " " + operand(abs16, false);
     case AM_ABX:
         instrLen = 3;
-        std::snprintf(buf, sizeof(buf), "%s $%04X,X", info.mnemonic, lo | (hi << 8));
-        break;
+        return m + " " + operand(abs16, false) + ",X";
     case AM_ABY:
         instrLen = 3;
-        std::snprintf(buf, sizeof(buf), "%s $%04X,Y", info.mnemonic, lo | (hi << 8));
-        break;
+        return m + " " + operand(abs16, false) + ",Y";
     case AM_IND:
         instrLen = 3;
-        std::snprintf(buf, sizeof(buf), "%s ($%04X)", info.mnemonic, lo | (hi << 8));
-        break;
+        return m + " (" + operand(abs16, false) + ")";
     case AM_IZX:
         instrLen = 2;
-        std::snprintf(buf, sizeof(buf), "%s ($%02X,X)", info.mnemonic, lo);
-        break;
+        return m + " (" + operand(lo, true) + ",X)";
     case AM_IZY:
         instrLen = 2;
-        std::snprintf(buf, sizeof(buf), "%s ($%02X),Y", info.mnemonic, lo);
-        break;
+        return m + " (" + operand(lo, true) + "),Y";
     case AM_REL: {
         instrLen = 2;
-        uint16_t target = pc + 2 + static_cast<int8_t>(lo);
-        std::snprintf(buf, sizeof(buf), "%s $%04X", info.mnemonic, target);
-        break;
+        uint16_t target = static_cast<uint16_t>(pc + 2 + static_cast<int8_t>(lo));
+        return m + " " + operand(target, false);
     }
     }
-    return buf;
+    instrLen = 1;
+    return m;
 }
 
 } // namespace pom1

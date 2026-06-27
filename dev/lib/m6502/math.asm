@@ -260,6 +260,39 @@ mul_dist_by_signed:
         LDA #1
         STA sign_flag
 @abs_done:
+.ifdef LOGO_GEN2
+        ; 16x8 unsigned multiply: (arg_hi:arg_lo) * tmp -> 16-bit arg2_hi:arg2_lo,
+        ; so a GEN2 FD step can exceed 255 px and span the full 280 width. With
+        ; the distance clamped to <= 511 and tmp <= 64, the product <= 32704
+        ; fits 16 bits. MSB-first left-shift add.
+        LDA #0
+        STA arg2_lo
+        STA arg2_hi
+        LDX #8
+@m:     ASL arg2_lo
+        ROL arg2_hi
+        ASL tmp               ; multiplier bit (MSB first) -> C
+        BCC @noadd
+        CLC
+        LDA arg2_lo
+        ADC arg_lo
+        STA arg2_lo
+        LDA arg2_hi
+        ADC arg_hi
+        STA arg2_hi
+@noadd: DEX
+        BNE @m
+        ; divide by 64 (16-bit; result may exceed 255 now)
+        LDX #6
+@shr:   LSR arg2_hi
+        ROR arg2_lo
+        DEX
+        BNE @shr
+        LDA arg2_lo
+        STA prod_lo
+        LDA arg2_hi
+        STA prod_hi
+.else
         ; 8x8 unsigned multiply: arg_lo * tmp -> 16-bit in arg2_hi:arg2_lo (scratch)
         LDA #0
         STA arg2_hi
@@ -286,6 +319,7 @@ mul_dist_by_signed:
         STA prod_lo
         LDA #0
         STA prod_hi
+.endif
         ; apply sign
         LDA sign_flag
         BEQ @done

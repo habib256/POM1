@@ -1292,6 +1292,22 @@ int M6502::run(int maxCycles)
         step();
         cyclesExecuted += cycles;
 
+        // Memory watchpoint: the instruction just executed read/wrote a
+        // watched address (latched in Memory on the memRead/memWrite hot
+        // path). Halt *after* it so the caller can inspect the result — the
+        // EmulationController parks the thread and the UI reads watchHit().
+        if (memory->isWatchpointTripped()) {
+            const Memory::WatchHit& wh = memory->watchHit();
+            std::ostringstream oss;
+            oss << "watchpoint hit: " << (wh.write ? "write" : "read") << " $"
+                << std::hex << std::uppercase << std::setfill('0')
+                << std::setw(4) << static_cast<int>(wh.address)
+                << " at PC $" << std::setw(4) << static_cast<int>(programCounter);
+            pom1::log().warn("CPU", oss.str());
+            running.store(0, std::memory_order_relaxed);
+            break;
+        }
+
         // Apple-1 DRAM refresh stall — the refresh controller halts the 6502
         // during 4 of every 65 *beam* cycles per scanline (H10·H6 NAND slots,
         // see UncleBernie's applefritter post). One scanline = 65 beam cycles =

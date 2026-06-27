@@ -129,6 +129,28 @@ endif()
 add_test(NAME cpu_interrupt_smoke COMMAND test_cpu_interrupt)
 set_tests_properties(cpu_interrupt_smoke PROPERTIES TIMEOUT 30)
 
+# -- Undocumented-opcode PC-length oracle -------------------------------------
+# Pins the PC advance of all 105 illegal opcodes (Harte covers only the 151
+# documented ones) so a multi-byte undocumented opcode can never silently
+# regress to the 1-byte fallback that once desynced the stream.
+add_executable(test_cpu_pc_length
+    cpu_pc_length_test.cpp
+    ${POM1_TEST_CORE_SOURCES}
+)
+target_include_directories(test_cpu_pc_length PRIVATE
+    ${CMAKE_SOURCE_DIR}/src
+    ${CMAKE_SOURCE_DIR}/imgui
+)
+target_link_libraries(test_cpu_pc_length PRIVATE libresidfp_static)
+if(APPLE)
+    target_compile_definitions(test_cpu_pc_length PRIVATE GL_SILENCE_DEPRECATION)
+endif()
+if(WIN32)
+    target_link_libraries(test_cpu_pc_length PRIVATE ws2_32)
+endif()
+add_test(NAME cpu_pc_length_smoke COMMAND test_cpu_pc_length)
+set_tests_properties(cpu_pc_length_smoke PROPERTIES TIMEOUT 30)
+
 # -- PeripheralBus dispatch smoke test ----------------------------------------
 # Self-contained: the bus has no dependency on Memory, peripherals, or
 # libresidfp. The test registers a handful of fake handlers and asserts the
@@ -144,12 +166,27 @@ add_test(NAME peripheral_bus_smoke
          COMMAND test_peripheral_bus)
 set_tests_properties(peripheral_bus_smoke PROPERTIES TIMEOUT 5)
 
+# -- Symbol table + symbolic disassembly --------------------------------------
+# Self-contained: SymbolTable + the disassembler have no Memory/ImGui/residfp
+# dependency. Pins the built-in Apple-1 defaults, operand symbolisation, and
+# the tolerant .sym/.lbl file parser.
+add_executable(test_symbols
+    symbols_smoke_test.cpp
+    ${CMAKE_SOURCE_DIR}/src/Symbols.cpp
+    ${CMAKE_SOURCE_DIR}/src/Disassembler6502.cpp
+)
+target_include_directories(test_symbols PRIVATE ${CMAKE_SOURCE_DIR}/src)
+
+add_test(NAME symbols_smoke COMMAND test_symbols)
+set_tests_properties(symbols_smoke PROPERTIES TIMEOUT 5)
+
 # -- HGR paint editor model ---------------------------------------------------
 # Pure bit-plotting logic of the HGR Paint editor (column-parity snapping,
 # per-byte shared high-bit palette behaviour, addressing). No GL/ImGui.
 add_executable(test_hgr_paint_plot
     hgr_paint_plot_smoke_test.cpp
     ${CMAKE_SOURCE_DIR}/hgrpaint/HgrPaintModel.cpp
+    ${CMAKE_SOURCE_DIR}/hgrpaint/HgrFont.cpp
     ${CMAKE_SOURCE_DIR}/src/GraphicsCard.cpp
     ${CMAKE_SOURCE_DIR}/src/Gen2VideoScanner.cpp
 )
@@ -279,7 +316,8 @@ target_include_directories(test_preset_ram_profiles PRIVATE ${CMAKE_SOURCE_DIR}/
 
 add_test(NAME preset_ram_profiles_smoke
          COMMAND test_preset_ram_profiles
-                 "${CMAKE_SOURCE_DIR}/src/MainWindow_Presets.cpp")
+                 "${CMAKE_SOURCE_DIR}/src/MainWindow_Presets.cpp"
+                 "${CMAKE_SOURCE_DIR}/README.md")
 set_tests_properties(preset_ram_profiles_smoke PROPERTIES TIMEOUT 5)
 
 # -- Standard 8 KB dual-bank Memory mapping ------------------------------------
@@ -879,6 +917,48 @@ set_tests_properties(codetank_smoke PROPERTIES TIMEOUT 5)
 # (GAME4 / Light Corridor cartridge smoke test removed June 2026 — the GAME4
 #  cart was retired with the LightCorridor source.)
 
+# -- TMS9918 Paint model smoke test -------------------------------------------
+# Pins the pure VRAM-plotting logic of the TMS9918 Paint editor (tmspaint::
+# helpers) cross-checked against the real TMS9918 per-line renderers: it installs
+# the model's canonical Graphics II / Multicolor registers + name table, plots a
+# colour, renders the 16 KB VRAM through TMS9918::renderToBuffer, and asserts the
+# displayed pixel == kPalette[colour]. Also pins the 2-colours-per-cell clash
+# rule and colorAt() round-trips. No GL/ImGui/emulator dependency.
+add_executable(test_tms_paint_plot
+    tms_paint_plot_smoke_test.cpp
+    ${CMAKE_SOURCE_DIR}/tmspaint/TmsPaintModel.cpp
+    ${CMAKE_SOURCE_DIR}/src/TMS9918.cpp
+    ${CMAKE_SOURCE_DIR}/src/SnapshotIO.cpp
+)
+target_include_directories(test_tms_paint_plot PRIVATE
+    ${CMAKE_SOURCE_DIR}/src
+    ${CMAKE_SOURCE_DIR}/imgui
+    ${CMAKE_SOURCE_DIR}/tmspaint)
+add_test(NAME tms_paint_plot_smoke COMMAND test_tms_paint_plot)
+set_tests_properties(tms_paint_plot_smoke PROPERTIES TIMEOUT 5)
+
+# -- TMS9918 image-import smoke test ------------------------------------------
+# Pins the Cam16 metric + the TmsConvert image→VRAM pipeline (tmspaint::
+# imageToTmsVram) cross-checked against the real TMS9918 renderer: solid-palette-
+# colour round-trips, the 2-colours-per-8×1-cell Graphics II constraint, the
+# Multicolor nearest-colour path, and letterbox bars. No GL/ImGui/stb dependency
+# (calls the converter directly with synthetic RGBA, like hgr_convert_smoke).
+add_executable(test_tms_convert
+    tms_convert_smoke_test.cpp
+    ${CMAKE_SOURCE_DIR}/tmspaint/TmsConvert.cpp
+    ${CMAKE_SOURCE_DIR}/tmspaint/TmsPaintModel.cpp
+    ${CMAKE_SOURCE_DIR}/hgrpaint/Cam16.cpp
+    ${CMAKE_SOURCE_DIR}/src/TMS9918.cpp
+    ${CMAKE_SOURCE_DIR}/src/SnapshotIO.cpp
+)
+target_include_directories(test_tms_convert PRIVATE
+    ${CMAKE_SOURCE_DIR}/src
+    ${CMAKE_SOURCE_DIR}/imgui
+    ${CMAKE_SOURCE_DIR}/tmspaint
+    ${CMAKE_SOURCE_DIR}/hgrpaint)
+add_test(NAME tms_convert_smoke COMMAND test_tms_convert)
+set_tests_properties(tms_convert_smoke PROPERTIES TIMEOUT 15)
+
 # -- TMS9918A sprite-engine status-flag test ----------------------------------
 # Self-contained: TMS9918 only. Pins per-VBLANK sticky bits 5 (collision)
 # and 6 (5S overflow + index in low 5 bits) — none were set before this
@@ -1067,6 +1147,28 @@ endif()
 
 add_test(NAME cpu_breakpoint_smoke COMMAND test_cpu_breakpoint)
 set_tests_properties(cpu_breakpoint_smoke PROPERTIES TIMEOUT 5)
+
+# -- Memory watchpoint smoke test ---------------------------------------------
+# Pins read/write watch detection on the memRead/memWrite hot path and the
+# M6502 run-loop halt-after-access semantics. Same core source set as Klaus.
+add_executable(test_watchpoint
+    watchpoint_smoke_test.cpp
+    ${POM1_TEST_CORE_SOURCES}
+)
+target_include_directories(test_watchpoint PRIVATE
+    ${CMAKE_SOURCE_DIR}/src
+    ${CMAKE_SOURCE_DIR}/imgui
+)
+target_link_libraries(test_watchpoint PRIVATE libresidfp_static)
+if(APPLE)
+    target_compile_definitions(test_watchpoint PRIVATE GL_SILENCE_DEPRECATION)
+endif()
+if(WIN32)
+    target_link_libraries(test_watchpoint PRIVATE ws2_32)
+endif()
+
+add_test(NAME watchpoint_smoke COMMAND test_watchpoint)
+set_tests_properties(watchpoint_smoke PROPERTIES TIMEOUT 5)
 
 # -- IEC snapshot v2 round-trip ------------------------------------------------
 # Pins the IEC daughterboard payload through saveSnapshot/loadSnapshot:

@@ -16,6 +16,8 @@
 #include "MemoryViewer_ImGui.h"
 #include "HgrPaintEditor.h"        // hgrpaint/ (portable editor) on the include path
 #include "Pom1HgrPaintHost.h"
+#include "TmsPaintEditor.h"        // tmspaint/ (portable editor) on the include path
+#include "Pom1TmsPaintHost.h"
 #include "Screen_ImGui.h"
 #include "GraphicsCard.h"
 #include "TMS9918.h"
@@ -39,7 +41,10 @@ public:
     void setWindow(GLFWwindow* win) { window = win; }
     // Free GL resources owned by sub-widgets (the HGR Paint editor's textures)
     // while the context is still current — call before ImGui/GLFW teardown.
-    void releaseGLResources() { if (hgrPaintEditor) hgrPaintEditor->releaseGL(); }
+    void releaseGLResources() {
+        if (hgrPaintEditor) hgrPaintEditor->releaseGL();
+        if (tmsPaintEditor) tmsPaintEditor->releaseGL();
+    }
     static int getPresetCount();
     static const char* getPresetName(int index);
     // GUI-free preset application for --headless (no ImGui / ini / window).
@@ -178,6 +183,8 @@ private:
     // first so it outlives the editor that holds a raw pointer to it.
     std::unique_ptr<Pom1HgrPaintHost> hgrPaintHost;
     std::unique_ptr<hgrpaint::HgrPaintEditor> hgrPaintEditor;
+    std::unique_ptr<Pom1TmsPaintHost> tmsPaintHost;
+    std::unique_ptr<tmspaint::TmsPaintEditor> tmsPaintEditor;
     EmulationSnapshot uiSnapshot;
     
     // Window reference for keyboard callbacks
@@ -191,6 +198,7 @@ private:
     // Interface state
     bool showMemoryViewer = false;
     bool showHGRPaintEditor = false;
+    bool showTMSPaintEditor = false;
     bool showDebugger = false;
     bool showRewindTimeline = false;   // State-rewind timeline / scrub panel
     bool rewindAutoStarted = false;    // one-shot: the toolbar timeline band auto-enables recording
@@ -521,6 +529,8 @@ private:
     // ("PC: 0x1234"). Menu/F7 callers ignore the return; the DevBench
     // toolbar surfaces it so a step on a graphics target still confirms.
     std::string stepCpu();
+    // Step over: single-step, but run a JSR's subroutine to completion.
+    void stepOverCpu();
     void updateCpuExecution(float deltaTime);
     
     // Utility functions

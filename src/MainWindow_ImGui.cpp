@@ -101,6 +101,8 @@ void MainWindow_ImGui::createPom1()
     // stb_image_write. See hgrpaint/IHgrPaintHost.h.
     hgrPaintHost = std::make_unique<Pom1HgrPaintHost>(emulation.get());
     hgrPaintEditor = std::make_unique<hgrpaint::HgrPaintEditor>(hgrPaintHost.get());
+    tmsPaintHost = std::make_unique<Pom1TmsPaintHost>(emulation.get());
+    tmsPaintEditor = std::make_unique<tmspaint::TmsPaintEditor>(tmsPaintHost.get());
     // Republie cpuRunning=true (le constructeur publie une fois avant runRequested.store(true)).
     emulation->startCpu();
     emulation->copySnapshot(uiSnapshot);
@@ -345,6 +347,7 @@ void MainWindow_ImGui::render()
     // perf passes — no work for invisible widgets).
     if (showMemoryViewer) {
         memoryViewer->updateLiveMemory(uiSnapshot.memory);
+        memoryViewer->setCurrentPC(uiSnapshot.programCounter);
         memoryViewer->setGraphicsCardEnabled(graphicsCardEnabled);
         memoryViewer->setTMS9918Enabled(tms9918Enabled);
         memoryViewer->setSIDEnabled(sidEnabled);
@@ -690,6 +693,22 @@ void MainWindow_ImGui::render()
             hgrPaintEditor->render(uiSnapshot.memory);
         ImGui::End();
     }
+    if (showTMSPaintEditor) {
+        // Opening the editor implies you want the TMS9918 card live so strokes
+        // appear on screen — auto-plug it, mirroring the HGR Paint behaviour.
+        if (!tms9918Enabled) {
+            tms9918Enabled = true;
+            pendingTms9918Enable = true;
+            showTMS9918 = true;
+        }
+        const float w = TMS9918::kScreenWidth * 3.0f + 200.0f;
+        const float h = TMS9918::kScreenHeight * 3.0f + 200.0f;
+        ImGui::SetNextWindowSize(ImVec2(w, h), ImGuiCond_FirstUseEver);
+        applyPendingLayout("TMS9918 Paint Editor");
+        if (ImGui::Begin("TMS9918 Paint Editor", &showTMSPaintEditor))
+            tmsPaintEditor->render();
+        ImGui::End();
+    }
     if (tms9918Enabled && showTMS9918) renderTMS9918Window();
     // DevBench inspector: always available (reads the value snapshot, not the
     // live card) so it can be opened even when the TMS9918 is unplugged.
@@ -900,6 +919,19 @@ std::string MainWindow_ImGui::stepCpu()
     const std::string pcLabel = ss.str();
     setStatusMessage("Step - " + pcLabel, 2.0f);
     return pcLabel;
+}
+
+void MainWindow_ImGui::stepOverCpu()
+{
+    cpuRunning = false;
+    stepMode = true;
+    codeTankPendingWozRunAt = 0.0;
+    emulation->stepOverCpu();
+    emulation->copySnapshot(uiSnapshot);
+
+    std::stringstream ss;
+    ss << "Step over - PC: 0x" << std::hex << std::uppercase << uiSnapshot.programCounter;
+    setStatusMessage(ss.str(), 2.0f);
 }
 
 

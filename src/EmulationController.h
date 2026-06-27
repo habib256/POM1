@@ -120,6 +120,27 @@ public:
     uint16_t getCpuBreakpoint() const;
     bool     isCpuBreakpointTripped() const;
 
+    // Memory watchpoints — halt after an instruction reads/writes `address`.
+    // See Memory::setWatchpoint. The emulation thread parks on a trip just like
+    // a breakpoint; the UI reads isCpuWatchpointTripped()/getCpuWatch*().
+    void     setCpuWatchpoint(uint16_t address, bool onRead, bool onWrite);
+    void     clearCpuWatchpoint(uint16_t address);
+    void     clearAllCpuWatchpoints();
+    int      cpuWatchpointCount() const;
+    uint8_t  cpuWatchpointFlags(uint16_t address) const;
+    // Up to `maxEntries` armed watchpoints as (address, flags) pairs, gathered
+    // under a single stateMutex hold (the UI must not probe per-address).
+    std::vector<std::pair<uint16_t, uint8_t>> listCpuWatchpoints(int maxEntries) const;
+    bool     isCpuWatchpointTripped() const;
+    uint16_t getCpuWatchAddress() const;
+    bool     getCpuWatchIsWrite() const;
+
+    // Step over: single-step, but if the instruction at PC is a JSR, run until
+    // it returns (PC == JSR+3) under a cycle cap. Honours watchpoints; the
+    // user breakpoint is temporarily borrowed for the return target, so a
+    // breakpoint *inside* the stepped-over subroutine is skipped this step.
+    void     stepOverCpu();
+
     void queueKey(char key);
     /// True while keystrokes queued via queueKey() are still pending delivery to
     /// the CPU (either not yet drained into Memory, or buffered awaiting a read).
@@ -134,6 +155,21 @@ public:
     /// paste, undo/redo, image import) without one stateMutex acquire + snapshot
     /// publish per byte (which contends with the CPU thread and hitches the UI).
     void writeMemoryBatch(const std::vector<std::pair<uint16_t, uint8_t>>& writes);
+
+    /// TMS9918 Paint editor seam — the chip's 16 KB VRAM lives behind the
+    /// $CC00/$CC01 ports, not the 6502 bus, so these forward to TMS9918's
+    /// out-of-band editor pokes (which bypass the silicon-strict drain). Each
+    /// takes stateMutex, rebuilds the live framebuffer once, and publishes a
+    /// single snapshot. `addr` is VRAM-relative (& 0x3FFF).
+    void writeTms9918Vram(uint16_t addr, uint8_t value);
+    void writeTms9918VramBatch(const std::vector<std::pair<uint16_t, uint8_t>>& writes);
+    /// Program all 8 mode registers onto the live chip (canonical paint layout).
+    void applyTms9918Registers(const uint8_t regs[8]);
+    /// Copy the live chip's 16 KB VRAM out (for the editor / file save).
+    void readTms9918Vram(uint8_t* out16k);
+    /// Copy the live chip's active 256×192 framebuffer (what the card actually
+    /// renders) out — the paint editor displays this directly.
+    void readTms9918Framebuffer(uint32_t* out);
 
     bool loadHexDump(const std::string& path, uint16_t& startAddress, std::string& error,
                      int* bytesLoaded = nullptr,

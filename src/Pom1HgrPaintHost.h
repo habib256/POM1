@@ -29,9 +29,11 @@ public:
     void pokeByte(uint16_t addr, uint8_t value) override;
     void beginBatch() override;
     void endBatch() override;
-    void renderHgrPage(const uint8_t* page8k, uint32_t* outRgba, bool mono) override;
+    void renderHgrPage(const uint8_t* page8k, uint32_t* outRgba, bool mono,
+                       bool grMode = false) override;
     bool loadImage(const std::string& path, uint16_t baseAddr, std::string& err) override;
-    bool saveImage(const std::string& path, uint16_t baseAddr, std::string& err) override;
+    bool saveImage(const std::string& path, uint16_t baseAddr, int sizeBytes,
+                   std::string& err) override;
     bool savePng(const std::string& path, const uint32_t* rgba,
                  int w, int h, std::string& err) override;
     unsigned int uploadTexture(unsigned int tex, const void* rgba,
@@ -42,7 +44,7 @@ private:
     EmulationController* emu_;
     GraphicsCard gfx_;                 // owns the NTSC pipeline for the editor canvas
     std::vector<uint8_t> scratch_;     // 64 KB scratch the page is rendered through
-    bool batching_ = false;            // inside beginBatch()/endBatch()
+    int  batchDepth_ = 0;              // begin/endBatch nesting depth (reentrant)
     std::vector<std::pair<uint16_t, uint8_t>> batch_;   // coalesced writes
 };
 

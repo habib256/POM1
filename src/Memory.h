@@ -28,6 +28,7 @@
 #include <string>
 #include <cstdint>
 #include <memory>
+#include <utility>
 #include <unordered_set>
 #include <bitset>
 #include <cstddef>
@@ -215,6 +216,32 @@ public:
     uint8_t* getMemoryPointerMutable() { return mem.data(); }
     // Debug: diagnostic string summarising which bus handlers are enabled.
     std::string busStateSummary() const;
+
+    // --- Memory watchpoints (debug) --------------------------------------
+    // Halt the CPU after an instruction reads and/or writes a watched address.
+    // Detection lives on the memRead/memWrite hot path behind the `anyWatch_`
+    // gate (a single bool branch when nothing is armed). Session-local: never
+    // serialized. The M6502 run loop polls isWatchpointTripped() and stops;
+    // EmulationController parks the thread and the UI reads watchHit(). A
+    // read-watch on an address that also holds executed code fires on the
+    // instruction fetch too — set read-watches on data/I-O addresses.
+    struct WatchHit { bool tripped = false; uint16_t address = 0; bool write = false; };
+    void setWatchpoint(uint16_t address, bool onRead, bool onWrite);
+    void clearWatchpoint(uint16_t address);
+    void clearAllWatchpoints();
+    bool hasWatchpoints() const { return anyWatch_; }
+    int  watchpointCount() const { return watchCount_; }
+    /// Per-address armed flags: bit0 = read-watch, bit1 = write-watch, 0 = none.
+    uint8_t watchpointFlags(uint16_t address) const {
+        return watchFlags_.empty() ? 0 : watchFlags_[address];
+    }
+    bool isWatchpointTripped() const { return watchHit_.tripped; }
+    const WatchHit& watchHit() const { return watchHit_; }
+    void clearWatchTrip() { watchHit_.tripped = false; }
+    /// Collect up to `maxEntries` armed watchpoints as (address, flags) pairs in
+    /// ONE pass — callers (the UI) must use this rather than probing
+    /// watchpointFlags() per address, which would lock stateMutex 64 K times/frame.
+    std::vector<std::pair<uint16_t, uint8_t>> listWatchpoints(int maxEntries) const;
 
     /// Flip the full 64 KB address space into a "flat RAM" mode: memRead /
     /// memWrite skip the PeripheralBus, PIA 6821 aliasing, strict-OOR, ROM
@@ -535,6 +562,15 @@ private :
     // mark the affected pages dirty so the very first snapshot is complete.
     std::bitset<256> dirtyPages{};
     bool testMode = false;            // see setTestMode() — flat-RAM mode for unit tests
+
+    // Memory watchpoints — see setWatchpoint(). watchFlags_ is lazily sized to
+    // 64 KB on first arm (bit0=read, bit1=write). anyWatch_ gates the hot path;
+    // watchCount_ tracks the number of armed addresses for the UI; watchHit_
+    // latches the first watched access of a halted instruction.
+    std::vector<uint8_t> watchFlags_;
+    bool anyWatch_ = false;
+    int  watchCount_ = 0;
+    WatchHit watchHit_{};
 
 
 

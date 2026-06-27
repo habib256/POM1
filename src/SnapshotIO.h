@@ -6,7 +6,7 @@
 // Format (versioned, little-endian throughout — POM1 is host-side LE only):
 //
 //   "POM1SNAP" (8 bytes)               magic
-//   uint32_t  version                  format version (current = 1)
+//   uint32_t  version                  format version (current = kSnapshotVersion below)
 //   uint32_t  flags                    reserved, 0 for now
 //
 //   Section: "CPU\0\0\0\0\0" (8 bytes name) + uint32_t length + payload
@@ -29,10 +29,10 @@
 //   (forward compat).  Cards that haven't migrated their state yet write
 //   length==0 (no-op default in `Peripheral::serialize`).
 //
-// Everything is plain `fwrite`/`fread`. There is no compression, no checksum
-// (yet — that's a v2 sweetener); the file is small (~70 KB) and the use case
-// is "snapshot now, reload now" rather than archival cold storage. A
-// SHA-256 footer would be a one-line append in v2 if a contributor wants it.
+// Everything is plain `fwrite`/`fread`. There is no compression and no
+// checksum; the file is small (~70 KB) and the use case is "snapshot now,
+// reload now" rather than archival cold storage. A SHA-256 footer would be a
+// one-line append in a future version if a contributor wants archival use.
 
 #ifndef POM1_SNAPSHOT_IO_H
 #define POM1_SNAPSHOT_IO_H
@@ -52,15 +52,18 @@ namespace pom1 {
 /// file and assert the reader recognises it.
 inline constexpr char     kSnapshotMagic[8] = {'P','O','M','1','S','N','A','P'};
 // v1: shipped April 2026 — base format (CPU/MEM/FLAGS + per-card sections).
-// v2: May 2026 — adds IECCard section + kFlagIECCard (bit 15) + MicroSD VIA
-//     T2 timer-running bool. v1 snapshots load fine on v2 readers (unknown
-//     sections are skipped; missing kFlagIECCard reads as 0 → IEC off).
+// v2: May 2026 — adds IECCard section + kFlagIECCard (bit 15). v1 snapshots
+//     load fine on v2 readers (unknown sections are skipped; missing
+//     kFlagIECCard reads as 0 → IEC off).
 // v3: June 2026 — widens the FLAGS payload from uint16_t to uint32_t and adds
 //     the GEN2 HGR card-attach bit (bit 16). The reader switches on the FLAGS
 //     section length, so v1/v2 snapshots (2-byte FLAGS) still load with the
 //     GEN2 bit reading as 0 (HGR detached). Older readers see an unknown 4-byte
 //     FLAGS payload — they read the low 2 bytes (legacy bits intact) and the
 //     section-boundary realign skips the extra 2.
+// v4: June 2026 — appends the MicroSD VIA T2 timer-running bool to the MicroSD
+//     section, gated `r.version() >= 4` (MicroSD.cpp); pre-v4 snapshots read it
+//     as false (timer idle on load), so they still round-trip.
 inline constexpr uint32_t kSnapshotVersion  = 4;
 
 /// Section names are 8 bytes, NUL-padded. 8 bytes keeps the file aligned

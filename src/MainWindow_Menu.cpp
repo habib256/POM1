@@ -318,6 +318,17 @@ void MainWindow_ImGui::renderMenuBar()
                     setStatusMessage("GEN2 HGR card plugged for HGR Paint Editor", 2.0f);
                 }
             }
+            // TMS9918 paint editor — draws live into the P-LAB Graphic Card VRAM
+            // (Graphics II bitmap / Multicolor). Opening it plugs the TMS9918 so
+            // there is a live card to paint into (the render loop also guards this).
+            if (ImGui::MenuItem("TMS9918 Paint Editor...", nullptr, &showTMSPaintEditor)) {
+                if (showTMSPaintEditor && !tms9918Enabled) {
+                    tms9918Enabled = true;
+                    pendingTms9918Enable = true;
+                    showTMS9918 = true;
+                    setStatusMessage("TMS9918 card plugged for TMS9918 Paint Editor", 2.0f);
+                }
+            }
             ImGui::Separator();
             // Strict-mode toggle, drop-diagnostics dump and counter reset all
             // moved into the Silicon Strict Inspector window — single home for

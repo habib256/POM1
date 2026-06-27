@@ -32,7 +32,48 @@ void MainWindow_ImGui::renderDebugDialog()
     if (ImGui::Begin("CPU Debug Console", &showDebugger)) {
         ImGui::Text("6502 CPU Debugger");
         ImGui::Separator();
-        
+
+        // Breakpoint-hit banner. The bp halts *before* executing the
+        // instruction at its address, so PC == the armed address exactly at the
+        // trip; once the user steps past, PC moves on and the banner clears —
+        // that PC test keeps the banner honest after a manual Step (which does
+        // not clear the CPU's trip latch).
+        if (emulation->isCpuBreakpointTripped() &&
+            uiSnapshot.programCounter == emulation->getCpuBreakpoint()) {
+            ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 0.40f, 0.40f, 1.0f));
+            ImGui::Text(">> BREAKPOINT HIT @ $%04X", emulation->getCpuBreakpoint());
+            ImGui::PopStyleColor();
+            ImGui::SameLine();
+            if (ImGui::SmallButton("Continue")) {
+                // Step past the armed address (cpu->step() bypasses the run()
+                // entry check), then resume free-running until it's hit again.
+                stepCpu();
+                startCpu();
+            }
+            if (ImGui::IsItemHovered())
+                ImGui::SetTooltip("Step over the breakpoint address, then run\n"
+                                  "until it is reached again (breakpoint stays armed)");
+            ImGui::Separator();
+        }
+
+        // Watchpoint-hit banner. Unlike a breakpoint, a watchpoint halts *after*
+        // the accessing instruction, so Resume just runs (the run-slice clears
+        // the latch before stepping again — no immediate re-trip).
+        if (emulation->isCpuWatchpointTripped()) {
+            ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 0.55f, 0.30f, 1.0f));
+            ImGui::Text(">> WATCHPOINT: %s $%04X",
+                        emulation->getCpuWatchIsWrite() ? "WRITE" : "READ",
+                        emulation->getCpuWatchAddress());
+            ImGui::PopStyleColor();
+            ImGui::SameLine();
+            if (ImGui::SmallButton("Resume##wp")) {
+                startCpu();   // access already executed; slice re-arms detection
+            }
+            if (ImGui::IsItemHovered())
+                ImGui::SetTooltip("Resume free-running (watchpoint stays armed)");
+            ImGui::Separator();
+        }
+
         // Informations sur les registres
         if (ImGui::CollapsingHeader("Registers", ImGuiTreeNodeFlags_DefaultOpen)) {
             ImGui::Columns(2, "RegisterColumns");
@@ -87,6 +128,14 @@ void MainWindow_ImGui::renderDebugDialog()
                 ImGui::SetTooltip("Execute one CPU instruction (F7)");
             ImGui::SameLine();
 
+            if (ImGui::Button("Step Over")) {
+                stepOverCpu();
+            }
+            if (ImGui::IsItemHovered())
+                ImGui::SetTooltip("Single-step, but run a JSR's subroutine to\n"
+                                  "completion (stops at the return address)");
+            ImGui::SameLine();
+
             if (cpuRunning) {
                 if (ImGui::Button("Stop")) {
                     stopCpu();
@@ -107,7 +156,94 @@ void MainWindow_ImGui::renderDebugDialog()
             }
             if (ImGui::IsItemHovered())
                 ImGui::SetTooltip("Hard reset (clears RAM, reloads ROMs) — Ctrl+F5");
-            
+
+            // PC-matched execution breakpoint (single, by design — see
+            // M6502::setBreakpoint). The backend + CLI already existed; this is
+            // the interactive surface. Set/Clear arm the same breakpoint the
+            // emulation thread now halts on (EmulationController::runEmulationSlice).
+            ImGui::Spacing();
+            ImGui::Text("Breakpoint (PC):");
+            ImGui::SameLine();
+            static char bpAddrBuf[8] = "";
+            ImGui::SetNextItemWidth(70);
+            bool bpEnter = ImGui::InputText("##bpAddr", bpAddrBuf, sizeof(bpAddrBuf),
+                ImGuiInputTextFlags_CharsHexadecimal | ImGuiInputTextFlags_CharsUppercase |
+                ImGuiInputTextFlags_EnterReturnsTrue);
+            ImGui::SameLine();
+            if (ImGui::Button("Set##bp") || bpEnter) {
+                unsigned bpAddr = 0;
+                if (sscanf(bpAddrBuf, "%x", &bpAddr) == 1)
+                    emulation->setCpuBreakpoint(static_cast<uint16_t>(bpAddr & 0xFFFF));
+            }
+            if (ImGui::IsItemHovered())
+                ImGui::SetTooltip("Halt the CPU just before it executes the\n"
+                                  "instruction at this address");
+            ImGui::SameLine();
+            ImGui::BeginDisabled(!emulation->hasCpuBreakpoint());
+            if (ImGui::Button("Clear##bp"))
+                emulation->clearCpuBreakpoint();
+            ImGui::EndDisabled();
+            ImGui::SameLine();
+            if (emulation->hasCpuBreakpoint())
+                ImGui::Text("armed @ $%04X", emulation->getCpuBreakpoint());
+            else
+                ImGui::TextDisabled("(none armed)");
+
+            // Memory watchpoints — halt after a read/write to an address.
+            // Detection is on Memory's memRead/memWrite hot path; the emulation
+            // thread parks on a trip like a breakpoint.
+            ImGui::Spacing();
+            ImGui::Text("Watchpoint:");
+            ImGui::SameLine();
+            static char wpAddrBuf[8] = "";
+            static bool wpRead = false;
+            static bool wpWrite = true;
+            ImGui::SetNextItemWidth(70);
+            bool wpEnter = ImGui::InputText("##wpAddr", wpAddrBuf, sizeof(wpAddrBuf),
+                ImGuiInputTextFlags_CharsHexadecimal | ImGuiInputTextFlags_CharsUppercase |
+                ImGuiInputTextFlags_EnterReturnsTrue);
+            ImGui::SameLine();
+            ImGui::Checkbox("R", &wpRead);
+            ImGui::SameLine();
+            ImGui::Checkbox("W", &wpWrite);
+            ImGui::SameLine();
+            if (ImGui::Button("Set##wp") || wpEnter) {
+                unsigned wpAddr = 0;
+                if (sscanf(wpAddrBuf, "%x", &wpAddr) == 1 && (wpRead || wpWrite))
+                    emulation->setCpuWatchpoint(static_cast<uint16_t>(wpAddr & 0xFFFF),
+                                                wpRead, wpWrite);
+            }
+            if (ImGui::IsItemHovered())
+                ImGui::SetTooltip("Halt the CPU after it reads (R) and/or writes (W)\n"
+                                  "this address. A read-watch also fires if the\n"
+                                  "address is executed as code.");
+            // Pull the count + armed list ONCE per frame (each call locks
+            // stateMutex; never probe per-address in a loop).
+            const int wpCount = emulation->cpuWatchpointCount();
+            ImGui::SameLine();
+            ImGui::BeginDisabled(wpCount == 0);
+            if (ImGui::Button("Clear all##wp"))
+                emulation->clearAllCpuWatchpoints();
+            ImGui::EndDisabled();
+
+            // Armed-watchpoint list with per-address remove (capped display).
+            if (wpCount > 0) {
+                constexpr int kMaxShown = 16;
+                const auto armed = emulation->listCpuWatchpoints(kMaxShown);
+                for (const auto& [addr, f] : armed) {
+                    char rm[24];
+                    snprintf(rm, sizeof(rm), "x##wprm%04X", addr);
+                    if (ImGui::SmallButton(rm))
+                        emulation->clearCpuWatchpoint(addr);
+                    ImGui::SameLine();
+                    ImGui::Text("$%04X  %s%s", addr,
+                                (f & 0x01) ? "R" : "-", (f & 0x02) ? "W" : "-");
+                }
+                if (wpCount > static_cast<int>(armed.size()))
+                    ImGui::TextDisabled("  ... (%d more)",
+                                        wpCount - static_cast<int>(armed.size()));
+            }
+
 #if !POM1_IS_WASM
             ImGui::Spacing();
             ImGui::Text("Execution Speed:");

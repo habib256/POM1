@@ -57,6 +57,7 @@ set(SOURCES
     ${POM1_SRC_DIR}/Memory.cpp
     ${POM1_SRC_DIR}/MemoryViewer_ImGui.cpp
     ${POM1_SRC_DIR}/Pom1HgrPaintHost.cpp
+    ${POM1_SRC_DIR}/Pom1TmsPaintHost.cpp
     ${POM1_SRC_DIR}/Screen_ImGui.cpp
     ${POM1_SRC_DIR}/SID.cpp
     ${POM1_SRC_DIR}/TMS9918.cpp
@@ -79,6 +80,7 @@ set(SOURCES
     ${POM1_SRC_DIR}/RewindBuffer.cpp
     ${POM1_SRC_DIR}/PeripheralBus.cpp
     ${POM1_SRC_DIR}/Disassembler6502.cpp
+    ${POM1_SRC_DIR}/Symbols.cpp
     ${POM1_SRC_DIR}/MainWindow_Layout.cpp
     ${POM1_SRC_DIR}/MainWindow_Presets.cpp
     ${POM1_SRC_DIR}/MainWindow_Menu.cpp
@@ -96,10 +98,15 @@ set(SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/bench/CodeBench.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/bench/Markdown.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/hgrpaint/HgrPaintEditor.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/hgrpaint/HgrFont.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/hgrpaint/HgrPaintModel.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/hgrpaint/Cam16.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/hgrpaint/HgrConvert.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/hgrpaint/HgrImageDecode.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/tmspaint/TmsPaintModel.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/tmspaint/TmsPaintEditor.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/tmspaint/TmsConvert.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/tmspaint/TmsImageDecode.cpp
 )
 
 set(HEADERS
@@ -118,7 +125,13 @@ set(HEADERS
     ${POM1_SRC_DIR}/Memory.h
     ${POM1_SRC_DIR}/MemoryViewer_ImGui.h
     ${POM1_SRC_DIR}/Pom1HgrPaintHost.h
+    ${POM1_SRC_DIR}/Pom1TmsPaintHost.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/tmspaint/TmsPaintModel.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/tmspaint/ITmsPaintHost.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/tmspaint/TmsPaintEditor.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/tmspaint/TmsConvert.h
     ${CMAKE_CURRENT_SOURCE_DIR}/hgrpaint/HgrPaintEditor.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/hgrpaint/HgrFont.h
     ${CMAKE_CURRENT_SOURCE_DIR}/hgrpaint/HgrPaintModel.h
     ${CMAKE_CURRENT_SOURCE_DIR}/hgrpaint/IHgrPaintHost.h
     ${CMAKE_CURRENT_SOURCE_DIR}/hgrpaint/Cam16.h
@@ -141,6 +154,7 @@ set(HEADERS
     ${POM1_SRC_DIR}/EmulationSnapshot.h
     ${POM1_SRC_DIR}/PeripheralBus.h
     ${POM1_SRC_DIR}/Disassembler6502.h
+    ${POM1_SRC_DIR}/Symbols.h
     ${POM1_SRC_DIR}/DisplayDevice.h
     ${POM1_SRC_DIR}/MainWindow_Internal.h
     ${POM1_SRC_DIR}/Logger.h
@@ -202,6 +216,7 @@ target_include_directories(${PROJECT_NAME} PRIVATE
     ${POM1_SRC_DIR}/third_party/stb   # so portable hgrpaint/ can #include "stb_image.h" bare
     ${CMAKE_CURRENT_SOURCE_DIR}/bench
     ${CMAKE_CURRENT_SOURCE_DIR}/hgrpaint
+    ${CMAKE_CURRENT_SOURCE_DIR}/tmspaint
 )
 
 # libresidfp (vendored, third_party/libresidfp). PUBLIC include dir on the

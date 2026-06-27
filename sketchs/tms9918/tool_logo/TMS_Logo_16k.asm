@@ -87,6 +87,13 @@
 ; tms9918m2.asm  -- Mode-2 bitmap driver (init + plot + Bresenham line).
 .import   init_vdp_g2, clear_bitmap, disable_sprites, line_xy
 .import   calc_pix_addr, vdp_set_write, vdp_set_read
+.import   plot_set              ; single-pixel plotter (GEN2 emote blit;
+                                ; both backends export it)
+.ifdef LOGO_GEN2
+; 9-bit-X seam (GEN2 only): full 0..279 HGR width for the turtle + bubble.
+.import   line_xy16, plot_set_x16
+.importzp ln_x0h, ln_x1h, pix_xh
+.endif
 .importzp ln_x0, ln_y0, ln_x1, ln_y1, pix_x, pix_y
 .importzp pix_addr_lo, pix_addr_hi
 .importzp pen_color           ; lib-owned pen colour (set via SETPC)
@@ -163,7 +170,10 @@ VAR_ENTRY_SIZE    = 8     ; NAME_LEN + 2 (16-bit value)
 .segment "ZEROPAGE"
 tmp:          .res 1
 tmp2:         .res 1
-tx_lo:        .res 1     ; turtle x  (0..255, integer pixels)
+tx_lo:        .res 1     ; turtle x low byte (TMS: 0..255; GEN2 + tx_hi: 0..279)
+.ifdef LOGO_GEN2
+tx_hi:        .res 1     ; turtle x high bit (0/1) -> full 280-px HGR width
+.endif
 ty_lo:        .res 1     ; turtle y  (0..191)
 th_lo:        .res 1     ; heading low  (degrees)
 th_hi:        .res 1     ; heading high (0 or 1) -- always < 360
@@ -201,6 +211,17 @@ spr_size:    .res 1
 spr_xoff:    .res 1
 spr_yoff:    .res 1
 spr_r1:      .res 1
+.ifdef LOGO_GEN2
+; --- GEN2 software-sprite (emote) blit scratch (HGR has no HW sprites, so
+;     SETSHAPE shapes are XOR-blitted bitmaps that survive plot_set's A/X/Y
+;     clobber via these ZP loop vars). ---
+em_x0:       .res 1     ; sprite top-left X low byte (9-bit X)
+em_x0h:      .res 1     ; sprite top-left X high byte (emote can sit in 256..279)
+em_y0:       .res 1     ; sprite top-left Y
+em_row:      .res 1     ; current row 0..dim-1
+em_col:      .res 1     ; current col 0..dim-1
+em_dim:      .res 1     ; 16 (16x16) or 8 (8x8)
+.endif
 ; --- Colour ------------------------------------------------------------
 ; All colourisable surfaces (trail, bitmap arrow, sprite-0, bitmap text)
 ; share a single source of truth: pen_color, exported by tms9918m2.asm.
@@ -256,6 +277,11 @@ tx1:       .res 1         ; vertex 1 (back-left)
 ty1:       .res 1
 tx2:       .res 1         ; vertex 2 (back-right)
 ty2:       .res 1
+.ifdef LOGO_GEN2
+tx0h:      .res 1         ; turtle-vertex X high bytes (9-bit X, full 280 width)
+tx1h:      .res 1
+tx2h:      .res 1
+.endif
 ; --- Arrow background save state (option B: save/restore the 9 cells in
 ;     the 3x3 box centred on the turtle, so OR-mode draw can be cleanly
 ;     reversed without XOR's transient trail-bit inversion). The 72 byte
@@ -423,6 +449,11 @@ new_prompt:
 
 banner_msg:
         .byte $0D, "APPLE-1 LOGO V2.6 - HELP", $0D
+.ifdef LOGO_GEN2
+        ; GEN2-only extra line; the TMS build's banner stays byte-for-byte as
+        ; shipped (keeps Codetank_GAME3.rom identical).
+        .byte "GEN2 HGR COLOR CARD", $0D
+.endif
         .byte "(C) 2026 A. VERHILLE", $0D
         .byte 0
 
@@ -435,7 +466,11 @@ banner_msg:
 help_toc:
         .byte $0D
         .byte "APPLE-1 LOGO V2.6 -- HELP", $0D
+.ifdef LOGO_GEN2
+        .byte "GEN2 HGR graphics, 48K Apple-1", $0D
+.else
         .byte "TMS9918 graphics, 16K Apple-1", $0D
+.endif
         .byte $0D
         .byte "Type HELP N for a topic page:", $0D
         .byte $0D
@@ -3022,8 +3057,27 @@ cmd_seth:
 
 cmd_setxy:
         JSR erase_turtle
+.ifdef LOGO_GEN2
+        ; clamp x to the full 0..279 HGR width -> tx_lo / tx_hi
+        LDA arg_lo
+        CMP #<280
+        LDA arg_hi
+        SBC #>280
+        BCC @xok
+        LDA #<279
+        STA tx_lo
+        LDA #>279
+        STA tx_hi
+        JMP @xdone
+@xok:   LDA arg_lo
+        STA tx_lo
+        LDA arg_hi
+        STA tx_hi
+@xdone:
+.else
         LDA arg_lo
         STA tx_lo
+.endif
         LDA arg2_lo
         CMP #192
         BCC @yok
@@ -3092,6 +3146,18 @@ cmd_bk:
 
 fd_common:
         JSR erase_turtle      ; remove turtle pixels before line draw
+.ifdef LOGO_GEN2
+        ; clamp distance to 0..511 (16-bit mul_dist_by_signed handles it; the
+        ; full-width 280-px screen never needs a single step beyond ~340 px).
+        LDA arg_hi
+        CMP #2
+        BCC @ok_d             ; arg < 512
+        LDA #255
+        STA arg_lo
+        LDA #1
+        STA arg_hi            ; clamp to 511
+@ok_d:
+.else
         ; clamp distance to 0..255
         LDA arg_hi
         BEQ @ok_d
@@ -3099,7 +3165,9 @@ fd_common:
         STA arg_lo
         LDA #0
         STA arg_hi
-@ok_d:  ; --- compute dx = (distance * sin(heading)) / 64, signed ---
+@ok_d:
+.endif
+        ; --- compute dx = (distance * sin(heading)) / 64, signed ---
         LDA th_lo
         STA tmp               ; angle low
         LDA th_hi
@@ -3111,12 +3179,18 @@ fd_common:
         BEQ @no_neg_dx
         JSR negate_prod
 @no_neg_dx:
-        ; nx16 = tx + dx (signed 16-bit add: tx is 0..255 unsigned)
+        ; nx16 = tx + dx (signed 16-bit add). On GEN2 tx is a full 0..279 9-bit
+        ; value, so the high byte must be tx_hi (not 0) or a move that starts in
+        ; the 256..279 zone loses its +256 and snaps back to the low 256.
         CLC
         LDA tx_lo
         ADC prod_lo
         STA nx_save_lo
+.ifdef LOGO_GEN2
+        LDA tx_hi
+.else
         LDA #0
+.endif
         ADC prod_hi
         STA nx_save_hi
         ; --- compute dy = (distance * cos(heading)) / 64 ---
@@ -3144,6 +3218,26 @@ fd_common:
         LDA #0
         SBC prod_hi
         STA tmp2
+.ifdef LOGO_GEN2
+        ; --- clamp nx into the full [0..279] HGR width ---
+        LDA nx_save_hi
+        BPL @nx_nonneg
+        LDA #0                ; negative -> 0
+        STA nx_save_lo
+        STA nx_save_hi
+        JMP @nx_done
+@nx_nonneg:
+        LDA nx_save_lo
+        CMP #<280
+        LDA nx_save_hi
+        SBC #>280
+        BCC @nx_done          ; nx < 280 -> ok
+        LDA #<279
+        STA nx_save_lo
+        LDA #>279
+        STA nx_save_hi
+@nx_done:
+.else
         ; --- clamp nx (nx_save_lo:nx_save_hi signed) into [0..255] ---
         LDA nx_save_hi
         BPL @nx_pos
@@ -3154,6 +3248,7 @@ fd_common:
         LDA #255              ; positive overflow
         STA nx_save_lo
 @nx_done:
+.endif
         ; --- clamp ny (tmp:tmp2 signed) into [0..191] ---
         LDA tmp2
         BPL @ny_pos
@@ -3184,11 +3279,23 @@ fd_common:
         STA ln_x1
         LDA ny_save
         STA ln_y1
+.ifdef LOGO_GEN2
+        LDA tx_hi             ; old position X high byte
+        STA ln_x0h
+        LDA nx_save_hi        ; new position X high byte
+        STA ln_x1h
+        JSR line_xy16
+.else
         JSR line_xy
+.endif
 @no_draw:
         ; commit new turtle position
         LDA nx_save_lo
         STA tx_lo
+.ifdef LOGO_GEN2
+        LDA nx_save_hi
+        STA tx_hi
+.endif
         LDA ny_save
         STA ty_lo
         JSR draw_turtle
@@ -3579,6 +3686,28 @@ cmd_ifelse:
 
 ; (disable_sprites moved to tms9918m2.asm.)
 
+.ifdef LOGO_GEN2
+; add_tx_off: 16-bit (tx_lo:tx_hi) + signed 8-bit offset in A.
+;   Returns A = low byte, X = high byte. Carry from the low add is carried
+;   into the high add through the BIT-$2C sign-extend (BIT touches N/V/Z,
+;   never C). Used by the GEN2 9-bit turtle-vertex math. Stack-balanced, so
+;   it is safe to call between compute_turtle_verts' PHA/PLA arg saves.
+add_tx_off:
+        TAY                 ; save offset (Y), N flag = its sign
+        CLC
+        ADC tx_lo           ; low = tx_lo + offset (sets carry)
+        PHA
+        TYA                 ; A = offset
+        BPL @pos
+        LDA #$FF            ; negative -> sign-extend high addend = $FF
+        .byte $2C           ; BIT abs absorbs the LDA #$00 below (C untouched)
+@pos:   LDA #$00            ; positive -> high addend = $00
+        ADC tx_hi           ; high = tx_hi + signext + carry
+        TAX
+        PLA
+        RTS
+.endif
+
 ; compute_turtle_verts: from (tx_lo, ty_lo, th_lo:th_hi), compute 3 vertices
 ;   tx0..ty2 (six bytes in BSS).
 ;   uses signed_sin / mul_dist_by_signed (clobbers tmp, tmp2, sign_flag,
@@ -3642,6 +3771,49 @@ compute_turtle_verts:
         JSR mul_dist_by_signed
         LDA prod_lo
         STA c_tip
+.ifdef LOGO_GEN2
+        ; ---- 9-bit-X vertices (full 280-px width). txN = tx + offN computed
+        ;      16-bit by add_tx_off; y vertices stay 8-bit. ----
+        ; V0 tip: off = s_tip
+        LDA s_tip
+        JSR add_tx_off
+        STA tx0
+        STX tx0h
+        SEC
+        LDA ty_lo
+        SBC c_tip
+        STA ty0
+        ; V1 back-left: off = -s_back - c_back
+        SEC
+        LDA #0
+        SBC s_back
+        SEC
+        SBC c_back
+        JSR add_tx_off
+        STA tx1
+        STX tx1h
+        SEC
+        LDA ty_lo
+        SBC s_back
+        CLC
+        ADC c_back
+        STA ty1
+        ; V2 back-right: off = -s_back + c_back
+        SEC
+        LDA #0
+        SBC s_back
+        CLC
+        ADC c_back
+        JSR add_tx_off
+        STA tx2
+        STX tx2h
+        CLC
+        LDA ty_lo
+        ADC s_back
+        CLC
+        ADC c_back
+        STA ty2
+.else
         ; ---- V0 tip   = (tx + s_tip, ty - c_tip) ----
         CLC
         LDA tx_lo
@@ -3681,6 +3853,7 @@ compute_turtle_verts:
         CLC
         ADC c_back
         STA ty2
+.endif
         ; restore arg_lo/arg_hi/arg2_lo/arg2_hi
         PLA
         STA arg2_hi
@@ -3709,6 +3882,309 @@ compute_turtle_verts:
 ; address bookkeeping.
 ; ============================================================================
 
+.ifdef LOGO_GEN2
+; ============================================================================
+; GEN2 HGR turtle subsystem (replaces the TMS9918 sprite/VRAM region below).
+;   The HGR card has no hardware sprites, so the turtle is a reversible XOR
+;   triangle: draw_turtle XOR-traces it, erase_turtle re-XOR-traces the SAME
+;   verts (tx/ty unchanged between erase and the following move) to undo it --
+;   no background save/restore (arrow_save_bbox) needed. SETSHAPE emotes are a
+;   later increment; here SETSHAPE just consumes its name and keeps the
+;   classic triangle. (sprite_mode stays 0 for the whole session.)
+; ============================================================================
+
+; trace_turtle_lines: the 3 line_xy edges (tip->BL->BR->tip) in whatever
+;   plot_mode the caller set. Identical to the TMS version (pure line_xy).
+trace_turtle_lines:
+        ; tip -> back-left  (9-bit X endpoints via line_xy16)
+        LDA tx0
+        STA ln_x0
+        LDA tx0h
+        STA ln_x0h
+        LDA ty0
+        STA ln_y0
+        LDA tx1
+        STA ln_x1
+        LDA tx1h
+        STA ln_x1h
+        LDA ty1
+        STA ln_y1
+        JSR line_xy16
+        ; back-left -> back-right
+        LDA tx1
+        STA ln_x0
+        LDA tx1h
+        STA ln_x0h
+        LDA ty1
+        STA ln_y0
+        LDA tx2
+        STA ln_x1
+        LDA tx2h
+        STA ln_x1h
+        LDA ty2
+        STA ln_y1
+        JSR line_xy16
+        ; back-right -> tip
+        LDA tx2
+        STA ln_x0
+        LDA tx2h
+        STA ln_x0h
+        LDA ty2
+        STA ln_y0
+        LDA tx0
+        STA ln_x1
+        LDA tx0h
+        STA ln_x1h
+        LDA ty0
+        STA ln_y1
+        JSR line_xy16
+        RTS
+
+draw_turtle:
+        LDA turtle_visible
+        BNE @done                 ; already on screen
+        ; Only Y needs a window (ty in [9..182]); X is the full 0..279 and
+        ; plot_set_x16 clips anything past the left/right edge, so the cursor
+        ; can sit anywhere across the HGR width.
+        LDA ty_lo
+        CMP #9
+        BCC @done
+        CMP #183
+        BCS @done
+        LDA sprite_mode
+        BNE @emote
+        ; --- bitmap triangle (XOR, reversible) ---
+        JSR compute_turtle_verts
+        LDA #1
+        STA plot_mode
+        JSR trace_turtle_lines
+        LDA #0                    ; back to OR for subsequent trail draws
+        STA plot_mode
+        LDA #1
+        STA turtle_visible
+        RTS
+@emote: JSR gen2_draw_emote       ; XOR-blit the SETSHAPE bitmap
+        LDA #1
+        STA turtle_visible
+@done:  RTS
+
+erase_turtle:
+        LDA turtle_visible
+        BEQ @done
+        LDA sprite_mode
+        BNE @emote
+        ; --- bitmap triangle: re-XOR the same edges (tx/ty unchanged) ---
+        JSR compute_turtle_verts
+        LDA #1
+        STA plot_mode
+        JSR trace_turtle_lines
+        LDA #0
+        STA plot_mode
+        LDA #0
+        STA turtle_visible
+        RTS
+@emote: JSR gen2_draw_emote       ; re-XOR the same bitmap -> erased
+        LDA #0
+        STA turtle_visible
+@done:  RTS
+
+; gen2_draw_emote: XOR-blit the current SETSHAPE bitmap (shape_pat_lo:hi,
+;   spr_size = 8 or 32) at the turtle, PIXEL-DOUBLED 2x (each source pixel ->
+;   a 2x2 screen block). Doubling makes the emote solid white on HGR instead
+;   of a single-pixel mesh that NTSC-artifacts into a colour fringe, and gives
+;   the narrator a readable size next to the speech bubble. Centred top-left =
+;   (tx - 2*spr_xoff, ty - 2*spr_yoff).
+;   TMS sprite format: 16x16 = 32 B in TL/BL/TR/BR quarter-blocks (8 B each,
+;   bit 7 = leftmost); 8x8 = 8 B (bytes 0..7 = the TL quarter). The quarter
+;   math collapses to a plain linear index for the 8x8 case, so one path
+;   serves both. plot_set clobbers A/X/Y (but NOT pix_x/pix_y), so every loop
+;   var lives in ZP and the 2x2 block re-uses pix_x/pix_y via inc/dec.
+gen2_draw_emote:
+        LDA spr_size
+        CMP #32
+        BNE @dim8
+        LDA #16
+        .byte $2C                 ; BIT abs -> skip the LDA #8
+@dim8:  LDA #8
+        STA em_dim
+        ; top-left = (tx - 2*spr_xoff, ty - 2*spr_yoff)  (2x scale, centred;
+        ;   9-bit X so the emote can sit in the 256..279 zone)
+        LDA spr_xoff
+        ASL
+        STA tmp               ; 2*spr_xoff
+        SEC
+        LDA tx_lo
+        SBC tmp
+        STA em_x0
+        LDA tx_hi
+        SBC #0
+        STA em_x0h
+        LDA spr_yoff
+        ASL
+        STA tmp
+        SEC
+        LDA ty_lo
+        SBC tmp
+        STA em_y0
+        LDA #1                    ; XOR
+        STA plot_mode
+        LDA #0
+        STA em_row
+@row:   LDA #0
+        STA em_col
+@col:   ; quarter = ((col&8)?2:0) | ((row&8)?1:0)  -> tmp
+        LDA #0
+        STA tmp
+        LDA em_row
+        AND #8
+        BEQ @nr8
+        LDA #1
+        STA tmp
+@nr8:   LDA em_col
+        AND #8
+        BEQ @nc8
+        LDA tmp
+        ORA #2
+        STA tmp
+@nc8:   ; Y = quarter*8 + (row & 7)
+        LDA tmp
+        ASL
+        ASL
+        ASL
+        STA tmp2
+        LDA em_row
+        AND #7
+        ORA tmp2
+        TAY
+        LDA (shape_pat_lo),Y      ; sprite data byte
+        STA tmp
+        LDA em_col
+        AND #7
+        TAX
+        LDA gen2_em_bit,X         ; mask = $80 >> (col&7)
+        AND tmp
+        BEQ @next                 ; bit clear -> transparent
+        ; 2x2 screen block: px (9-bit) = em_x0 + col*2, py = em_y0 + row*2
+        LDA em_col
+        ASL                       ; col*2
+        CLC
+        ADC em_x0
+        STA pix_x
+        LDA em_x0h
+        ADC #0
+        STA pix_xh
+        LDA em_row
+        ASL
+        CLC
+        ADC em_y0
+        STA pix_y
+        JSR plot_set_x16          ; (px,   py)
+        INC pix_x                 ; px+1 (16-bit)
+        BNE @r1
+        INC pix_xh
+@r1:    JSR plot_set_x16          ; (px+1, py)
+        INC pix_y
+        JSR plot_set_x16          ; (px+1, py+1)
+        LDA pix_x                 ; px (16-bit dec back)
+        BNE @r2
+        DEC pix_xh
+@r2:    DEC pix_x
+        JSR plot_set_x16          ; (px,   py+1)
+@next:  INC em_col
+        LDA em_col
+        CMP em_dim
+        BNE @col
+        INC em_row
+        LDA em_row
+        CMP em_dim
+        BNE @row
+        LDA #0
+        STA plot_mode
+        RTS
+gen2_em_bit:
+        .byte $80, $40, $20, $10, $08, $04, $02, $01
+
+; cmd_setshape (GEN2): look the name up in shape_table (shared with TMS),
+;   latch the pattern pointer + size, switch to sprite mode and redraw. ARROW
+;   reverts to the bitmap triangle. No VRAM upload -- the bitmap IS the sprite.
+cmd_setshape:
+        JSR skip_spaces
+        LDX line_idx
+        LDA line_buf,X
+        AND #$7F
+        CMP #'"'
+        BNE @rd
+        INC line_idx
+@rd:    JSR read_var_name         ; mnem_buf <- shape name (padded)
+        LDA mnem_buf
+        CMP #' '
+        BEQ @ret                  ; empty -> ignore
+        ; --- ARROW sentinel: back to the triangle turtle ---
+        LDA mnem_buf
+        CMP #'A'
+        BNE @search
+        LDA mnem_buf+1
+        CMP #'R'
+        BNE @search
+        LDA mnem_buf+2
+        CMP #'R'
+        BNE @search
+        LDA mnem_buf+3
+        CMP #'O'
+        BNE @search
+        LDA mnem_buf+4
+        CMP #'W'
+        BNE @search
+        LDA sprite_mode
+        BEQ @ret                  ; already a triangle
+        JSR erase_turtle          ; erase the emote (sprite_mode still 1)
+        LDA #0
+        STA sprite_mode
+        JSR draw_turtle           ; redraw as triangle
+@ret:   RTS
+@search:
+        LDA #<shape_table
+        STA mptr_lo
+        LDA #>shape_table
+        STA mptr_hi
+@sl:    LDY #0
+        LDA (mptr_lo),Y
+        CMP #$FF
+        BEQ @bad
+@cmp:   LDA (mptr_lo),Y
+        CMP mnem_buf,Y
+        BNE @adv
+        INY
+        CPY #NAME_LEN
+        BNE @cmp
+        ; --- match: erase the OLD turtle first, then latch the new shape ---
+        JSR erase_turtle
+        LDY #NAME_LEN
+        LDA (mptr_lo),Y
+        STA spr_size
+        INY
+        LDA (mptr_lo),Y
+        STA shape_pat_lo
+        INY
+        LDA (mptr_lo),Y
+        STA shape_pat_hi
+        JSR apply_sprite_size     ; spr_xoff / spr_yoff
+        LDA #1
+        STA sprite_mode
+        JSR draw_turtle           ; blit the new emote
+        RTS
+@adv:   CLC
+        LDA mptr_lo
+        ADC #(NAME_LEN+3)
+        STA mptr_lo
+        BCC @sl
+        INC mptr_hi
+        JMP @sl
+@bad:   LDA #ERR_BAD_NAME
+        JSR print_err
+        RTS
+
+.else
 arrow_save_bbox:
         LDA #0                    ; mode 0 = save (VDP read -> BSS)
         .byte $2C                 ; BIT abs absorbs the next LDA #1 opcode
@@ -4061,6 +4537,7 @@ cmd_setshape:
         LDA #ERR_BAD_NAME
         JSR print_err
         RTS
+.endif  ; LOGO_GEN2 (HGR turtle subsystem) vs TMS9918 sprite/VRAM region
 
 ; shape_table: name (NAME_LEN = 6 bytes) + size byte (8 or 32) +
 ;   pointer to the pattern (lo, hi). 9 bytes per entry. Names are
@@ -4456,6 +4933,91 @@ blit_glyph:
 ;   Format: CR-terminated lines, $00 sentinel.
 ; ============================================================================
 demo2_script:
+.ifdef LOGO_GEN2
+        ; ====================================================================
+        ; GEN2 build: the FACTUAL story of UNCLE BERNIE'S "APRIL FOOLS'" CARD --
+        ; the GEN2 HGR Color Graphics Card this LOGO actually runs on. Bernie
+        ; has an annual tradition of unveiling a "foolish" Apple-1 project every
+        ; April 1st (both April Fools' Day AND, by lore, the Apple-1's birthday);
+        ; "foolish" = it works fine, just too niche to sell. This card was his
+        ; April 1, 2026 joke -- then community enthusiasm turned it real and the
+        ; PCBs were ordered from OSHPark. Stays on Bernie's turf (no P-LAB /
+        ; TMS9918 / CodeTank refs -- that is Claudio's card, narrated by the TMS
+        ; build in the .else branch).
+        ; Facts sourced from Applefritter: "Uncle Bernie's GEN2 color graphics
+        ; card for the Apple-1", "A glimpse on Uncle Bernie's Apple-1 color
+        ; graphics card", and "Uncle Bernie's April Fools' Day Apple-1 Riddle".
+        ; ====================================================================
+        ; --- One-time setup: clear the screen ONCE and place the narrator.
+        ;     After this the image is NEVER fully reset again. Each scene only
+        ;     swaps the emote (SETSHAPE = XOR erase old + XOR draw new) and
+        ;     refreshes the bubble band (SAY clears just scanlines 80..112).
+        ;     That is the whole point of the reversible XOR-doubled sprite:
+        ;     animate it in place, don't wipe the frame between cards. ---
+        .byte "CS", $0D
+        .byte "SETXY 140 46", $0D
+        ; --- Act 1: the card admits what it is ---
+        .byte "SETSHAPE ", $22, "HAPPY", $0D
+        .byte "SAY ", $22, "I AM A 1ST-APRIL JOKE.", $0D
+        .byte "SETSHAPE ", $22, "SHADES", $0D
+        .byte "SAY ", $22, "BY UNCLE BERNIE.", $0D
+        ; --- Act 2: the annual April Fools' tradition ---
+        .byte "SETSHAPE ", $22, "NORMAL", $0D
+        .byte "SAY ", $22, "EVERY APRIL FOOLS' DAY...", $0D
+        .byte "SETSHAPE ", $22, "HAPPY", $0D
+        .byte "SAY ", $22, "BERNIE SHOWS A FOOLISH", $0D
+        .byte "SETSHAPE ", $22, "SUPER", $0D
+        .byte "SAY ", $22, "APPLE-1 PROJECT.", $0D
+        ; --- Act 3: why April 1 -- a double meaning ---
+        .byte "SETSHAPE ", $22, "SHADES", $0D
+        .byte "SAY ", $22, "APRIL 1 = FOOLS' DAY", $0D
+        .byte "SETSHAPE ", $22, "HAPPY", $0D
+        .byte "SAY ", $22, "AND APPLE-1'S BIRTHDAY!", $0D
+        ; --- Act 4: "foolish" does not mean broken ---
+        .byte "SETSHAPE ", $22, "GRUMPY", $0D
+        .byte "SAY ", $22, "FOOLISH = NOT BROKEN!", $0D
+        .byte "SETSHAPE ", $22, "SUPER", $0D
+        .byte "SAY ", $22, "I WORK JUST FINE.", $0D
+        .byte "SETSHAPE ", $22, "SAD", $0D
+        .byte "SAY ", $22, "JUST TOO NICHE TO SELL.", $0D
+        ; --- Act 5: who is Uncle Bernie ---
+        .byte "SETSHAPE ", $22, "NORMAL", $0D
+        .byte "SAY ", $22, "BERNIE: RETIRED CHIP MAN.", $0D
+        .byte "SETSHAPE ", $22, "SUPER", $0D
+        .byte "SAY ", $22, "50 YEARS IN SILICON.", $0D
+        .byte "SETSHAPE ", $22, "HAPPY", $0D
+        .byte "SAY ", $22, "STAYS SHARP WITH THESE.", $0D
+        ; --- Act 6: what the card actually is ---
+        .byte "SETSHAPE ", $22, "NORMAL", $0D
+        .byte "SAY ", $22, "I PAINT NTSC ARTIFACTS.", $0D
+        .byte "SETSHAPE ", $22, "SUPER", $0D
+        .byte "SAY ", $22, "280 X 192, APPLE II WAY.", $0D
+        .byte "SETSHAPE ", $22, "PIRATE", $0D
+        .byte "SAY ", $22, "70S-ERA CHIPS INSIDE.", $0D
+        ; --- Act 7: the joke turned real ---
+        .byte "SETSHAPE ", $22, "HAPPY", $0D
+        .byte "SAY ", $22, "THEN THE JOKE WENT VIRAL!", $0D
+        .byte "SETSHAPE ", $22, "SUPER", $0D
+        .byte "SAY ", $22, "FANS ASKED: MAKE IT REAL!", $0D
+        .byte "SETSHAPE ", $22, "HAPPY", $0D
+        .byte "SAY ", $22, "SO PCBS CAME FROM OSHPARK.", $0D
+        ; --- Act 8: Bernie's motto ---
+        .byte "SETSHAPE ", $22, "NORMAL", $0D
+        .byte "SAY ", $22, "USE YOUR MIND...", $0D
+        .byte "SETSHAPE ", $22, "GRUMPY", $0D
+        .byte "SAY ", $22, "...OR LOSE IT.", $0D
+        .byte "SETSHAPE ", $22, "SHADES", $0D
+        .byte "SAY ", $22, "STAY HUNGRY,", $0D
+        .byte "SETSHAPE ", $22, "SUPER", $0D
+        .byte "SAY ", $22, "STAY FOOLISH.", $0D
+        .byte "SETSHAPE ", $22, "HAPPY", $0D
+        .byte "SAY ", $22, "A FOOL'S CARD, MADE REAL!", $0D
+        ; --- end of show: one final clear (not a per-frame reset) + restore
+        ;     the classic ARROW turtle so the REPL comes back clean ---
+        .byte "CS", $0D
+        .byte "SETSHAPE ", $22, "ARROW", $0D
+        .byte 0
+.else
         ; --- Act 1: identity (the emulator-dweller introduces himself) ---
         .byte "CS", $0D
         .byte "SETXY 128 64", $0D
@@ -4599,6 +5161,7 @@ demo2_script:
         .byte "CS", $0D
         .byte "SETSHAPE ", $22, "ARROW", $0D
         .byte 0
+.endif  ; LOGO_GEN2 demo2 (GEN2 HGR / Uncle Bernie) vs TMS9918 (P-LAB) story
 .endif
 
 ; ============================================================================

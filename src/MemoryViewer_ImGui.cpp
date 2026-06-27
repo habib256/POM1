@@ -12,6 +12,7 @@ MemoryViewer_ImGui::MemoryViewer_ImGui(Memory* mem)
     snapshot.resize(0x10000);
     prevMemory.resize(0x10000, 0);
     changeFrame.resize(0x10000, 0);
+    symbols.loadApple1Defaults();
 }
 
 // Read a byte: live from raw pointer (no I/O side effects) or from snapshot
@@ -176,6 +177,17 @@ void MemoryViewer_ImGui::renderControls()
     ImGui::SameLine();
     ImGui::Checkbox("Disasm", &showDisasm);
 
+    if (showDisasm) {
+        ImGui::SameLine();
+        ImGui::Checkbox("Follow PC", &followPC);
+        if (ImGui::IsItemHovered())
+            ImGui::SetTooltip("Keep the instruction at the current 6502 PC in view");
+        ImGui::SameLine();
+        ImGui::Checkbox("Symbols", &showSymbols);
+        if (ImGui::IsItemHovered())
+            ImGui::SetTooltip("Show symbolic names (e.g. JSR ECHO) for known addresses");
+    }
+
     // Quick shortcuts
     ImGui::Spacing();
     ImGui::Text("Shortcuts:");
@@ -220,6 +232,12 @@ void MemoryViewer_ImGui::renderControls()
 void MemoryViewer_ImGui::renderHexView()
 {
     ImGui::BeginChild("HexView", ImVec2(0, 0), true);
+
+    // Re-align the row anchor to a bytesPerRow boundary. The disasm "Follow PC"
+    // mode parks startAddress on the exact (usually unaligned) PC; without this
+    // the hex rows would print low bytes that don't line up with the fixed
+    // 00..1F column header after switching back to hex view.
+    startAddress -= startAddress % bytesPerRow;
 
     // Compute column positions so header and data rows are perfectly aligned
     float addrW = ImGui::CalcTextSize("0x0000  ").x;
@@ -556,42 +574,101 @@ void MemoryViewer_ImGui::redo()
 
 // --- Region context banner ---------------------------------------------------
 
-const char* MemoryViewer_ImGui::getRegionName(int address) const
+// Single priority-ordered cascade (highest priority first). The FIRST range
+// that matches wins, and it carries BOTH the name and the colour, so the two
+// can never drift apart. Ordering notes:
+//   * TMS9918 is tested BEFORE A1-SID so it wins the $CC00/$CC01 overlap —
+//     matches the PeripheralBus priority (TMS priority 10 > SID) and the
+//     Memory Map window. The old getRegionName() had SID first and so labelled
+//     $CC00 "A1-SID" while the cells rendered TMS-blue.
+//   * Order is GEN2 > CodeTank/Juke-Box > loaded ROMs. For an overlap (a
+//     loaded ROM such as Applesoft Lite $6000-$7FFF sitting under an enabled
+//     CodeTank/Juke-Box window) this makes the card window win — matching the
+//     Memory Map window (buildMemoryRegions draws the card after the ROM label
+//     so violet wins). This DELIBERATELY differs from the old MemoryViewer
+//     getColorForAddress(), which checked loaded ROMs first and so drew those
+//     cells yellow while the Memory Map drew them violet — the unification
+//     resolves that cross-surface disagreement in the map's favour. Such
+//     overlaps only arise off-preset (enabling the card from the Hardware menu
+//     after a microSD/CFFA1 preset seeded the ROM).
+//   * Anything unmatched above $BFFF falls through to "Unmapped" (grey) — the
+//     old name cascade called these mirror regions "User RAM" while the colour
+//     cascade already drew them grey; "Unmapped" makes both honest.
+MemoryViewer_ImGui::RegionInfo MemoryViewer_ImGui::resolveRegion(int address) const
 {
-    if (address <= 0x00FF) return "Zero Page";
-    if (address <= 0x01FF) return "Stack";
-    if (address <= 0x027F) return "Keyboard Buffer";
+    // CPU-reserved (always present, top priority within their pages)
+    if (address <= 0x00FF) return { "Zero Page",       ImVec4(0.39f, 0.39f, 1.0f, 1.0f) };
+    if (address <= 0x01FF) return { "Stack",           ImVec4(1.0f, 0.65f, 0.0f, 1.0f) };
+    if (address <= 0x027F) return { "Keyboard Buffer", ImVec4(0.0f, 0.78f, 1.0f, 1.0f) };
+    if (address >= 0xD000 && address <= 0xD0FF)
+        return { "I/O (KBD/DSP)", ImVec4(1.0f, 0.31f, 0.31f, 1.0f) };
+
+    // P-LAB / expansion I/O windows in the $Cxxx page
+    if (tms9918Enabled && address >= 0xCC00 && address <= 0xCC01)
+        return { "TMS9918 VDP", ImVec4(0.4f, 0.8f, 1.0f, 1.0f) };
+    if (sidEnabled && address >= 0xC800 && address <= 0xCFFF)
+        return { "A1-SID", ImVec4(0.78f, 0.39f, 1.0f, 1.0f) };
+    if (aciEnabled && address >= 0xC000 && address <= 0xC0FF)
+        return { "ACI I/O", ImVec4(1.0f, 0.50f, 0.31f, 1.0f) };
+    if (aciEnabled && address >= 0xC100 && address <= 0xC1FF)
+        return { "ACI ROM", ImVec4(1.0f, 0.70f, 0.31f, 1.0f) };
+
+    // Cards mapped lower in the address space
+    if (wifiModemEnabled && address >= 0xB000 && address <= 0xB003)
+        return { "Wi-Fi Modem ACIA", ImVec4(0.0f, 0.78f, 0.78f, 1.0f) };
+    if (microSDEnabled && address >= 0xA000 && address <= 0xA00F)
+        return { "microSD VIA 65C22", ImVec4(1.0f, 0.59f, 0.20f, 1.0f) };
+    if (microSDEnabled && address >= 0x8000 && address <= 0x9FFF)
+        return { "SD CARD OS ROM", ImVec4(1.0f, 0.78f, 0.31f, 1.0f) };
+
+    // GEN2 HGR framebuffer + TEXT pages (RAM-backed)
     if (gen2Enabled) {
-        if (address >= 0x0400 && address <= 0x07FF) return "GEN2 TEXT Page 1";
-        if (address >= 0x0800 && address <= 0x0BFF) return "GEN2 TEXT Page 2";
-        if (address >= 0x2000 && address <= 0x3FFF) return "GEN2 HGR Page 1";
-        if (address >= 0x4000 && address <= 0x5FFF) return "GEN2 HGR Page 2";
+        if (address >= 0x0400 && address <= 0x07FF)
+            return { "GEN2 TEXT Page 1", ImVec4(0.59f, 0.71f, 1.0f, 1.0f) };
+        if (address >= 0x0800 && address <= 0x0BFF)
+            return { "GEN2 TEXT Page 2", ImVec4(0.43f, 0.55f, 0.86f, 1.0f) };
+        if (address >= 0x2000 && address <= 0x3FFF)
+            return { "GEN2 HGR Page 1", ImVec4(0.0f, 1.0f, 0.78f, 1.0f) };
+        if (address >= 0x4000 && address <= 0x5FFF)
+            return { "GEN2 HGR Page 2", ImVec4(0.0f, 0.75f, 0.59f, 1.0f) };
     }
-    if (codeTankEnabled && address >= 0x4000 && address <= 0x7FFF) return "CodeTank ROM";
+
+    // P-LAB CodeTank ROM daughterboard
+    if (codeTankEnabled && address >= 0x4000 && address <= 0x7FFF)
+        return { "CodeTank ROM", ImVec4(0.47f, 0.31f, 0.71f, 1.0f) };
+
+    // P-LAB Juke-Box ROM (banked); narrower PAT/Program-Manager windows first
     if (jukeBoxEnabled) {
-        int romStart = (jbJumper == JukeBox::Jumper::RAM16_ROM32) ? 0x4000 : 0x8000;
-        if (address >= 0xBD00 && address <= 0xBFFF) return "Juke-Box Program Manager";
-        if (address >= 0xBC00 && address <= 0xBCFF) return "Juke-Box PAT (directory)";
-        if (address >= romStart && address <= 0xBBFF) return "Juke-Box ROM";
+        const int romStart = (jbJumper == JukeBox::Jumper::RAM16_ROM32) ? 0x4000 : 0x8000;
+        if (address >= 0xBD00 && address <= 0xBFFF)
+            return { "Juke-Box Program Manager", ImVec4(0.90f, 0.71f, 1.0f, 1.0f) };
+        if (address >= 0xBC00 && address <= 0xBCFF)
+            return { "Juke-Box PAT (directory)", ImVec4(0.71f, 0.51f, 0.86f, 1.0f) };
+        if (address >= romStart && address <= 0xBBFF)
+            return { "Juke-Box ROM", ImVec4(0.47f, 0.31f, 0.71f, 1.0f) };
     }
-    if (microSDEnabled && address >= 0x8000 && address <= 0x9FFF) return "SD CARD OS ROM";
-    if (microSDEnabled && address >= 0xA000 && address <= 0xA00F) return "microSD VIA 65C22";
-    if (wifiModemEnabled && address >= 0xB000 && address <= 0xB003) return "Wi-Fi Modem ACIA";
+
+    // Preset / user-loaded ROM overlays (e.g. Applesoft Lite $6000-$7FFF)
     for (const auto& rom : romRegions) {
-        if (address >= rom.start && address <= rom.end) return "Loaded ROM";
+        if (address >= rom.start && address <= rom.end)
+            return { "Loaded ROM", ImVec4(1.0f, 1.0f, 0.31f, 1.0f) };
     }
-    if (aciEnabled && address >= 0xC000 && address <= 0xC0FF) return "ACI I/O";
-    if (aciEnabled && address >= 0xC100 && address <= 0xC1FF) return "ACI ROM";
-    if (sidEnabled && address >= 0xC800 && address <= 0xCFFF) return "A1-SID";
-    if (tms9918Enabled && address >= 0xCC00 && address <= 0xCC01) return "TMS9918 VDP";
-    if (address >= 0xD000 && address <= 0xD0FF) return "I/O (KBD/DSP)";
+
     // $E000-$EFFF on real Apple-1 is RAM (Integer BASIC was distributed on
     // cassette and loaded into RAM via Wozmon `E000.EFFR`). POM1 pre-seeds
     // this RAM from basic.rom at boot, but writes are not blocked — programs
     // can use this region as scratch (e.g. sketchs/apple1/game_chess/ engine).
-    if (address >= 0xE000 && address <= 0xEFFF) return "Integer BASIC (RAM)";
-    if (address >= 0xFF00) return "Woz Monitor ROM";
-    return "User RAM";
+    // Rendered grey (like the old colour cascade) unless a loaded ROM above
+    // claims it, in which case the romRegions branch already returned yellow.
+    if (address >= 0xE000 && address <= 0xEFFF)
+        return { "Integer BASIC (RAM)", ImVec4(0.4f, 0.4f, 0.4f, 1.0f) };
+    if (address >= 0xFF00)
+        return { "Woz Monitor ROM", ImVec4(0.4f, 0.4f, 0.4f, 1.0f) };
+
+    // Base layers: low RAM is green; unmatched high mirror regions are grey.
+    if (address <= 0xBFFF)
+        return { "User RAM", ImVec4(0.31f, 0.78f, 0.31f, 1.0f) };
+    return { "Unmapped", ImVec4(0.4f, 0.4f, 0.4f, 1.0f) };
 }
 
 void MemoryViewer_ImGui::renderRegionBanner()
@@ -633,8 +710,28 @@ void MemoryViewer_ImGui::renderDisasmView()
     const uint8_t* mem = getMemoryPointer();
     if (!mem) { ImGui::EndChild(); return; }
 
-    // Column widths
-    float addrW = ImGui::CalcTextSize("$0000  ").x;
+    // Follow PC: if the current instruction isn't on a boundary within the
+    // visible window, re-anchor the view to it. Decoding the variable-length
+    // 6502 stream forward from startAddress is the only reliable way to know
+    // whether currentPC lands on an instruction boundary we actually render
+    // (a byte mid-instruction must not count as "visible"). Anchoring to the
+    // exact PC keeps the disassembly instruction-aligned at the top.
+    if (followPC) {
+        bool pcVisible = false;
+        int scan = startAddress;
+        for (int i = 0; i < displayRows && scan <= 0xFFFF; ++i) {
+            if (scan == currentPC) { pcVisible = true; break; }
+            if (scan > currentPC) break;        // skipped past it → mid-instruction
+            int len = 1;
+            pom1::disassemble6502(mem, static_cast<uint16_t>(scan), len);
+            scan += len;
+        }
+        if (!pcVisible) startAddress = currentPC;
+    }
+
+    // Column widths. The address column reserves a 2-char gutter ("> ") for the
+    // PC marker so the Bytes column stays aligned whether or not the arrow shows.
+    float addrW = ImGui::CalcTextSize("> $0000  ").x;
     float bytesColW = ImGui::CalcTextSize("00 00 00  ").x;
     float mnemonicX = addrW + bytesColW;
 
@@ -646,10 +743,20 @@ void MemoryViewer_ImGui::renderDisasmView()
     ImGui::Text("Instruction");
     ImGui::Separator();
 
+    const pom1::SymbolTable* symTab = showSymbols ? &symbols : nullptr;
+
     int pc = startAddress;
     for (int i = 0; i < displayRows && pc <= 0xFFFF; ++i) {
         int instrLen = 1;
-        std::string mnemonic = pom1::disassemble6502(mem, static_cast<uint16_t>(pc), instrLen);
+        std::string mnemonic = pom1::disassemble6502(mem, static_cast<uint16_t>(pc), instrLen, symTab);
+
+        // Symbol label line for this address (assembler-listing style).
+        if (symTab) {
+            if (const std::string* label = symTab->find(static_cast<uint16_t>(pc)))
+                ImGui::TextColored(ImVec4(0.55f, 0.90f, 0.55f, 1.0f), "%s:", label->c_str());
+        }
+
+        const bool isPC = (pc == currentPC);
 
         // Change highlight background for the instruction's first byte
         if (showChanges && frameCounter > 0) {
@@ -665,11 +772,26 @@ void MemoryViewer_ImGui::renderDisasmView()
             }
         }
 
-        // Address
-        if (colorizeRegions) {
-            ImGui::TextColored(getColorForAddress(pc), "$%04X", pc);
+        // PC marker: solid blue row highlight (drawn over any change flash so
+        // the current instruction always reads clearly).
+        if (isPC) {
+            ImVec2 pos = ImGui::GetCursorScreenPos();
+            float rowH = ImGui::GetTextLineHeight();
+            float rowW = ImGui::GetContentRegionAvail().x;
+            ImGui::GetWindowDrawList()->AddRectFilled(
+                pos, ImVec2(pos.x + rowW, pos.y + rowH),
+                IM_COL32(40, 90, 200, 130));
+        }
+
+        // Address, prefixed with a ">" arrow on the PC row (the column reserves
+        // the gutter so non-PC rows stay aligned).
+        const char arrow = isPC ? '>' : ' ';
+        if (isPC) {
+            ImGui::TextColored(ImVec4(1.0f, 1.0f, 0.4f, 1.0f), "%c $%04X", arrow, pc);
+        } else if (colorizeRegions) {
+            ImGui::TextColored(getColorForAddress(pc), "%c $%04X", arrow, pc);
         } else {
-            ImGui::Text("$%04X", pc);
+            ImGui::Text("%c $%04X", arrow, pc);
         }
 
         // Hex bytes (padded to 9 chars for alignment: "XX XX XX ")
@@ -732,61 +854,3 @@ bool MemoryViewer_ImGui::isIO(int address)
             (address >= 0xD010 && address <= 0xD013));
 }
 
-ImVec4 MemoryViewer_ImGui::getColorForAddress(int address)
-{
-    // Colors match the Memory Map window
-    if (address <= 0x00FF)
-        return ImVec4(0.39f, 0.39f, 1.0f, 1.0f);  // Zero Page - blue
-    if (address <= 0x01FF)
-        return ImVec4(1.0f, 0.65f, 0.0f, 1.0f);    // Stack - orange
-    if (address <= 0x027F)
-        return ImVec4(0.0f, 0.78f, 1.0f, 1.0f);     // Keyboard Buffer - cyan
-    if (gen2Enabled && address >= 0x0400 && address <= 0x07FF)
-        return ImVec4(0.59f, 0.71f, 1.0f, 1.0f);    // GEN2 TEXT Page 1 - light blue
-    if (gen2Enabled && address >= 0x0800 && address <= 0x0BFF)
-        return ImVec4(0.43f, 0.55f, 0.86f, 1.0f);   // GEN2 TEXT Page 2 - dim blue
-    if (gen2Enabled && address >= 0x2000 && address <= 0x3FFF)
-        return ImVec4(0.0f, 1.0f, 0.78f, 1.0f);     // GEN2 HGR Page 1 - cyan/teal
-    if (gen2Enabled && address >= 0x4000 && address <= 0x5FFF)
-        return ImVec4(0.0f, 0.75f, 0.59f, 1.0f);    // GEN2 HGR Page 2 - dim teal
-    if (microSDEnabled && address >= 0x8000 && address <= 0x9FFF)
-        return ImVec4(1.0f, 0.78f, 0.31f, 1.0f);    // SD CARD OS ROM - amber
-    if (microSDEnabled && address >= 0xA000 && address <= 0xA00F)
-        return ImVec4(1.0f, 0.59f, 0.20f, 1.0f);    // VIA 65C22 I/O - dark orange
-    if (wifiModemEnabled && address >= 0xB000 && address <= 0xB003)
-        return ImVec4(0.0f, 0.78f, 0.78f, 1.0f);    // ACIA 65C51 I/O - teal
-    // Loaded ROM overlays (e.g. Applesoft Lite $6000-$7FFF) before generic RAM bands
-    for (const auto& rom : romRegions) {
-        if (address >= rom.start && address <= rom.end)
-            return ImVec4(1.0f, 1.0f, 0.31f, 1.0f); // ROM - yellow
-    }
-    // P-LAB CodeTank ROM window (deep violet, matches Memory Map)
-    if (codeTankEnabled && address >= 0x4000 && address <= 0x7FFF)
-        return ImVec4(0.47f, 0.31f, 0.71f, 1.0f);
-    // P-LAB Juke-Box ROM window (violet shades matching Memory Map)
-    if (jukeBoxEnabled) {
-        const int romStart = (jbJumper == JukeBox::Jumper::RAM16_ROM32) ? 0x4000 : 0x8000;
-        if (address >= romStart && address <= 0xBFFF) {
-            if (address >= 0xBD00)
-                return ImVec4(0.90f, 0.71f, 1.0f, 1.0f);  // Program Manager - bright lavender
-            if (address >= 0xBC00)
-                return ImVec4(0.71f, 0.51f, 0.86f, 1.0f);  // PAT directory - medium violet
-            return ImVec4(0.47f, 0.31f, 0.71f, 1.0f);      // Programs - deep violet
-        }
-    }
-    if (address <= 0x9FFF)
-        return ImVec4(0.31f, 0.78f, 0.31f, 1.0f);   // User RAM - green
-    if (address <= 0xBFFF)
-        return ImVec4(0.31f, 0.78f, 0.31f, 1.0f);   // User RAM - green
-    if (aciEnabled && address >= 0xC000 && address <= 0xC0FF)
-        return ImVec4(1.0f, 0.50f, 0.31f, 1.0f);    // Cassette I/O - orange/red
-    if (tms9918Enabled && address >= 0xCC00 && address <= 0xCC01)
-        return ImVec4(0.4f, 0.8f, 1.0f, 1.0f);      // TMS9918 I/O - light blue
-    if (sidEnabled && address >= 0xC800 && address <= 0xCFFF)
-        return ImVec4(0.78f, 0.39f, 1.0f, 1.0f);    // A1-SID I/O - purple
-    if (aciEnabled && address >= 0xC100 && address <= 0xC1FF)
-        return ImVec4(1.0f, 0.70f, 0.31f, 1.0f);    // ACI ROM - amber
-    if (address >= 0xD000 && address <= 0xD0FF)
-        return ImVec4(1.0f, 0.31f, 0.31f, 1.0f);    // I/O (KBD/DSP) - red
-    return ImVec4(0.4f, 0.4f, 0.4f, 1.0f);          // Unused
-}

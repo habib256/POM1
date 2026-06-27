@@ -41,19 +41,25 @@ public:
     virtual void beginBatch() {}
     virtual void endBatch() {}
 
-    // Render an 8 KB HGR page (page-relative bytes, $2000-layout) into a
-    // kHiresWidth×kHiresHeight RGBA buffer through the host's real NTSC pipeline
-    // — the same renderer its screen uses, so the editor canvas is pixel-identical
-    // to the emulator. `mono` selects a monochrome render for the editor's mono
-    // preview; colour otherwise. `outRgba` holds at least kHiresWidth*kHiresHeight
-    // pixels in GL_RGBA / GL_UNSIGNED_BYTE order.
-    virtual void renderHgrPage(const uint8_t* page8k, uint32_t* outRgba, bool mono) = 0;
+    // Render an editor page into a kHiresWidth×kHiresHeight RGBA buffer through the
+    // host's real video pipeline — the same renderer its screen uses, so the canvas
+    // is pixel-identical to the emulator. `mono` selects a monochrome render for the
+    // editor's mono preview; colour otherwise. `grMode=false` renders the bytes as an
+    // 8 KB HIRES page ($2000-layout); `grMode=true` renders the first 1 KB as a
+    // lo-res (GR) text page ($0400-layout, 40×48 16-colour blocks upscaled to the
+    // same 280×192 canvas). `outRgba` holds at least kHiresWidth*kHiresHeight pixels
+    // in GL_RGBA / GL_UNSIGNED_BYTE order.
+    virtual void renderHgrPage(const uint8_t* page8k, uint32_t* outRgba, bool mono,
+                               bool grMode = false) = 0;
 
-    // Load a raw 8 KB HGR image from `path` into video RAM at absolute `baseAddr`.
-    // Save the 8 KB page at `baseAddr` to `path`. Export the supplied RGBA image
-    // (w×h, top-down) to a PNG. Each returns false + sets `err` on failure.
+    // Load a raw image dump from `path` into video RAM at absolute `baseAddr` (the
+    // file's own length is loaded — an 8 KB HIRES page or a 1 KB lo-res page). Save
+    // `sizeBytes` of video RAM at `baseAddr` to `path` (kHiresSize for HIRES, 0x400
+    // for lo-res GR). Export the supplied RGBA image (w×h, top-down) to a PNG. Each
+    // returns false + sets `err` on failure.
     virtual bool loadImage(const std::string& path, uint16_t baseAddr, std::string& err) = 0;
-    virtual bool saveImage(const std::string& path, uint16_t baseAddr, std::string& err) = 0;
+    virtual bool saveImage(const std::string& path, uint16_t baseAddr, int sizeBytes,
+                           std::string& err) = 0;
     virtual bool savePng(const std::string& path, const uint32_t* rgba,
                          int w, int h, std::string& err) = 0;
 

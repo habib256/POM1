@@ -753,6 +753,42 @@ bool Memory::getWriteInRom(void)
     return writeInRom;
 }
 
+void Memory::setWatchpoint(uint16_t address, bool onRead, bool onWrite)
+{
+    const uint8_t flags = static_cast<uint8_t>((onRead ? 0x01 : 0) | (onWrite ? 0x02 : 0));
+    if (flags == 0) { clearWatchpoint(address); return; }
+    if (watchFlags_.empty()) watchFlags_.assign(0x10000, 0);
+    if (watchFlags_[address] == 0) ++watchCount_;
+    watchFlags_[address] = flags;
+    anyWatch_ = true;
+}
+
+void Memory::clearWatchpoint(uint16_t address)
+{
+    if (watchFlags_.empty() || watchFlags_[address] == 0) return;
+    watchFlags_[address] = 0;
+    if (--watchCount_ <= 0) { watchCount_ = 0; anyWatch_ = false; }
+}
+
+void Memory::clearAllWatchpoints()
+{
+    if (!watchFlags_.empty())
+        std::fill(watchFlags_.begin(), watchFlags_.end(), static_cast<uint8_t>(0));
+    watchCount_ = 0;
+    anyWatch_ = false;
+    watchHit_.tripped = false;
+}
+
+std::vector<std::pair<uint16_t, uint8_t>> Memory::listWatchpoints(int maxEntries) const
+{
+    std::vector<std::pair<uint16_t, uint8_t>> out;
+    if (watchFlags_.empty() || maxEntries <= 0) return out;
+    for (int a = 0; a <= 0xFFFF && static_cast<int>(out.size()) < maxEntries; ++a)
+        if (watchFlags_[a])
+            out.emplace_back(static_cast<uint16_t>(a), watchFlags_[a]);
+    return out;
+}
+
 std::string Memory::busStateSummary() const
 {
     std::ostringstream oss;
@@ -1176,6 +1212,10 @@ uint8_t Memory::memRead(uint16_t address)
     // test expects the whole address space to behave as RAM).
     if (testMode) return mem[address];
 
+    // Watchpoint: latch the first read of a watched address this instruction.
+    if (anyWatch_ && !watchHit_.tripped && (watchFlags_[address] & 0x01))
+        watchHit_ = { true, address, false };
+
     // Memory-mapped peripherals (A1IO_RTC, CFFA1, microSD, WiFiModem, SID,
     // TMS9918, Cassette read) live on the PeripheralBus. The remaining
     // logic below handles the Apple-1 core that's not really a peripheral:
@@ -1259,6 +1299,10 @@ void Memory::memWrite(uint16_t address, uint8_t value)
         dirtyPages.set(static_cast<std::size_t>(address >> 8));
         return;
     }
+
+    // Watchpoint: latch the first write to a watched address this instruction.
+    if (anyWatch_ && !watchHit_.tripped && (watchFlags_[address] & 0x02))
+        watchHit_ = { true, address, true };
 
     // Peripheral bus first — same rationale as memRead().
     if (bus.tryWrite(address, value)) return;

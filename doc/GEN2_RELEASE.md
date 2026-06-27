@@ -173,9 +173,9 @@ plays, `--save-tape tune.aci` keeps the music as a playable tape.
   SRAM replica (Briel). An original Apple-1 steals 4/65 cycles for DRAM
   refresh: cycle-counted loops that free-run there must account for it
   (CPU → Settings has a DRAM-refresh stall toggle to test that case).
-  Avoid `INC/DEC zp` in cycle-counted code for now: POM1 counts them one
-  cycle short of real silicon (see `TODO.md` cycle-oracle item);
-  `LDA/ADC/STA` sequences cost the same on both.
+  Per-instruction timing is cycle-exact across the documented opcode set
+  (pinned by `cpu_harte_smoke`, 15100/15100 including the `INC/DEC` RMW
+  family) — refresh stalls are the only CPU-vs-silicon timing delta.
 - **Web build:** the WASM build (`build-wasm/POM1.html`) runs the full GEN2
   + demo bundle in a browser — no install needed to try the card.
 

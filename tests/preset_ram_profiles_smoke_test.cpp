@@ -66,11 +66,41 @@ std::string basicTypeToken(const std::string& text)
     return text.substr(begin, end - begin);
 }
 
+// Count the data rows of the README "Machine Presets" table — Markdown lines
+// of the form `| <number> | ...`. The table is found by its header row
+// (`| # | Preset | RAM | BASIC | Cards |`) and ends at the first line that no
+// longer starts with a pipe. Returns -1 if the table header is absent.
+int readmePresetRowCount(const std::string& readme)
+{
+    const std::size_t header = readme.find("| # | Preset | RAM | BASIC | Cards |");
+    if (header == std::string::npos) return -1;
+    std::istringstream rows(readme.substr(header));
+    std::string line;
+    int count = 0;
+    bool started = false;
+    while (std::getline(rows, line)) {
+        std::size_t i = 0;
+        while (i < line.size() && std::isspace(static_cast<unsigned char>(line[i]))) ++i;
+        if (i >= line.size() || line[i] != '|') {
+            if (started) break;   // table ended
+            continue;
+        }
+        started = true;
+        // Skip the header and the `|:--|` separator; count `| <digit>` rows.
+        std::size_t j = i + 1;
+        while (j < line.size() && std::isspace(static_cast<unsigned char>(line[j]))) ++j;
+        if (j < line.size() && std::isdigit(static_cast<unsigned char>(line[j]))) ++count;
+    }
+    return count;
+}
+
 } // namespace
 
 int main(int argc, char** argv)
 {
-    assert(argc == 2);
+    // argv[1] = MainWindow_Presets.cpp (required);
+    // argv[2] = README.md (optional — enables the preset-count lockstep check).
+    assert(argc >= 2);
     const std::string source = readFile(argv[1]);
 
     std::vector<std::string> failures;
@@ -143,6 +173,23 @@ int main(int argc, char** argv)
     assert(checked > 0);
     assert(nonFantasy > 0);
 
+    // README lockstep: the Machine Presets table must have exactly one data row
+    // per kMachinePresets[] entry (CLAUDE.md: "The README preset table must stay
+    // in lockstep"). preset_ram_profiles already parses the source array; this
+    // closes the doc-drift gap that the source-only parse left open.
+    int readmeRows = -1;
+    if (argc >= 3) {
+        const std::string readme = readFile(argv[2]);
+        readmeRows = readmePresetRowCount(readme);
+        if (readmeRows < 0) {
+            failures.push_back("README.md: Machine Presets table header not found");
+        } else if (readmeRows != presets) {
+            failures.push_back("README preset table has " + std::to_string(readmeRows)
+                               + " rows but kMachinePresets[] has "
+                               + std::to_string(presets) + " entries");
+        }
+    }
+
     if (!failures.empty()) {
         std::cerr << "Preset realism invariant failed:\n";
         for (const auto& failure : failures) {
@@ -154,6 +201,11 @@ int main(int argc, char** argv)
     std::cout << "Checked " << checked
               << " non-fantasy, non-bare presets; all are 8 KB dual-bank profiles. "
               << "Checked " << nonFantasy
-              << " non-fantasy presets; none preload Integer BASIC.\n";
+              << " non-fantasy presets; none preload Integer BASIC.";
+    if (readmeRows >= 0) {
+        std::cout << " README preset table matches source (" << readmeRows
+                  << " rows == " << presets << " entries).";
+    }
+    std::cout << "\n";
     return 0;
 }

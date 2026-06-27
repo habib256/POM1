@@ -8,6 +8,7 @@
 // assert() failures abort with a stderr trace + non-zero exit — enough for ctest.
 
 #include "HgrPaintModel.h"
+#include "HgrFont.h"
 #include "GraphicsCard.h"
 
 #include <algorithm>
@@ -135,6 +136,16 @@ int main()
     hgrpaint::plotPage(page.data(), 23, 40, HgrColor::White);   // byte 3 bit 2
     hgrpaint::plotPage(page.data(), 24, 40, HgrColor::White);   // byte 3 bit 3
     assert(hgrpaint::colorAt(page.data(), 23, 40) == HgrColor::White);
+    // White heuristic crosses the byte boundary: a solid white run spanning bytes 0
+    // and 1 must read White on its bit-6 (col 6) and bit-0 (col 7) edge columns too.
+    // The old same-byte-only test mis-labelled these as Violet/Green; pixelOn() now
+    // consults the neighbour in the adjacent byte.
+    page.assign(page.size(), 0);
+    for (int x = 0; x <= 14; ++x) hgrpaint::plotPage(page.data(), x, 10, HgrColor::White);
+    assert(hgrpaint::colorAt(page.data(), 6, 10) == HgrColor::White);   // bit 6, byte 0 edge
+    assert(hgrpaint::colorAt(page.data(), 7, 10) == HgrColor::White);   // bit 0, byte 1 edge
+    // Run endpoints have a neighbour off → not white (round-trip of an edge pixel).
+    assert(hgrpaint::colorAt(page.data(), 0, 10) != HgrColor::White);
     // Bounds.
     assert(hgrpaint::colorAt(page.data(), -1, 0) == HgrColor::Black);
     assert(hgrpaint::colorAt(page.data(), 0, 192) == HgrColor::Black);
@@ -210,6 +221,72 @@ int main()
     // Out-of-range seed is a safe no-op.
     assert(hgrpaint::fillRegion(page.data(), -1, 0, HgrColor::White, renderPage) == 0);
     assert(hgrpaint::fillRegion(page.data(), 0, 192, HgrColor::White, renderPage) == 0);
+
+    // ── bbfont (Text tool): glyph table orientation + chromatic parity stamp ──
+    // The font is GENERATED from dev/lib/gen2/bbfont_cp437.inc (bit 0 = leftmost
+    // pixel, 7 px/glyph). Pin the orientation so a generator/master drift fails
+    // here, and pin the Text tool's parity-gated chromatic stamping convention.
+    {
+        // Space is blank; a glyph fits 7 columns (values <= 0x7F → bit 7 never set).
+        for (int gx = 0; gx < 7; ++gx)
+            for (int gy = 0; gy < 8; ++gy) assert(!hgrpaint::bbFontPixel(' ', gx, gy));
+        for (int ch = 0; ch < 256; ++ch)
+            for (int gy = 0; gy < 8; ++gy) assert((hgrpaint::kBBFontCp437[ch][gy] & 0x80) == 0);
+        // 'A' top row is master byte 0x1E = bits 1..4 (bit 0 = left): cols 1-4 lit.
+        assert(!hgrpaint::bbFontPixel('A', 0, 0));
+        assert(hgrpaint::bbFontPixel('A', 1, 0) && hgrpaint::bbFontPixel('A', 4, 0));
+        assert(!hgrpaint::bbFontPixel('A', 5, 0) && !hgrpaint::bbFontPixel('A', 6, 0));
+
+        // White stamp lights every lit glyph pixel; chromatic (Violet) lights only
+        // even-parity columns (mirrors stampText), leaving the byte's palette bit
+        // clear (palette 0 = Violet).
+        page.assign(page.size(), 0);
+        int litWhite = 0;
+        for (int gy = 0; gy < 8; ++gy)
+            for (int gx = 0; gx < 7; ++gx)
+                if (hgrpaint::bbFontPixel('A', gx, gy)) {
+                    hgrpaint::plotPage(page.data(), gx, 0 + gy, HgrColor::White); ++litWhite;
+                }
+        int onWhite = 0;
+        for (int gy = 0; gy < 8; ++gy)
+            for (int gx = 0; gx < 7; ++gx) if (hgrpaint::pixelOn(page.data(), gx, gy)) ++onWhite;
+        assert(litWhite > 0 && onWhite == litWhite);
+
+        page.assign(page.size(), 0);
+        for (int gy = 0; gy < 8; ++gy)
+            for (int gx = 0; gx < 7; ++gx)
+                if (hgrpaint::bbFontPixel('A', gx, gy) && (gx & 1) == 0)
+                    hgrpaint::plotPage(page.data(), gx, gy, HgrColor::Violet);
+        for (int gy = 0; gy < 8; ++gy)
+            for (int x = 0; x < 7; ++x)
+                if (hgrpaint::pixelOn(page.data(), x, gy)) assert((x & 1) == 0);
+        assert((page[hgrpaint::hgrByteOffset(0, 2)] & 0x80) == 0);   // Violet → palette 0
+    }
+
+    // ── Apple II lo-res (GR) block model ─────────────────────────────────────
+    // 40×48 blocks in the TEXT page; two stacked blocks per byte (low nibble =
+    // upper/even row, high nibble = lower/odd row). The page-relative offset must
+    // match GraphicsCard's text/lo-res row interleave; a drift fails here.
+    {
+        for (int by = 0; by < hgrpaint::kGrRows; ++by)
+            for (int bx = 0; bx < hgrpaint::kGrCols; ++bx) {
+                const int expect = (GraphicsCard::textRowAddress(by / 2, false) - 0x0400) + bx;
+                assert(hgrpaint::grBlockOffset(bx, by) == expect);
+            }
+        std::vector<uint8_t> gp(0x400, 0);
+        // Blocks (5,6) even and (5,7) odd share one byte: low nibble C, high nibble 2.
+        assert(hgrpaint::plotGrBlock(gp.data(), 5, 6, 0xC) == hgrpaint::grBlockOffset(5, 6));
+        hgrpaint::plotGrBlock(gp.data(), 5, 7, 0x2);
+        assert(gp[hgrpaint::grBlockOffset(5, 6)] == 0x2C);
+        assert(hgrpaint::grBlockColorAt(gp.data(), 5, 6) == 0xC);
+        assert(hgrpaint::grBlockColorAt(gp.data(), 5, 7) == 0x2);
+        // Re-plotting the same colour is a no-op; the other nibble is preserved.
+        assert(hgrpaint::plotGrBlock(gp.data(), 5, 6, 0xC) == -1);
+        // Bounds.
+        assert(hgrpaint::grBlockOffset(-1, 0) == -1 && hgrpaint::grBlockOffset(40, 0) == -1);
+        assert(hgrpaint::grBlockOffset(0, 48) == -1);
+        assert(hgrpaint::grBlockColorAt(gp.data(), 0, 48) == -1);
+    }
 
     std::printf("hgr_paint_plot_smoke: all assertions passed\n");
     return 0;

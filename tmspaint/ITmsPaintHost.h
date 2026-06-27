@@ -1,0 +1,86 @@
+// Pom1 Apple 1 Emulator
+// Copyright (C) 2000-2026 Verhille Arnaud
+//
+// TMS9918 Paint portable module — the seam between the emulator-agnostic editor
+// (TmsPaintEditor, forthcoming) and a host emulator (POM1 / POM2). The host owns
+// the TMS9918 VRAM, its renderer and the file I/O; the editor owns the canvas,
+// tools, undo and clipboard. Mirrors hgrpaint/IHgrPaintHost — but the TMS9918's
+// 16 KB VRAM lives behind the $CC00/$CC01 ports, NOT in the 6502 address space,
+// so pokes carry a VRAM address (0..0x3FFF), not a CPU address.
+//
+// To port the editor to a new emulator: copy tmspaint/ verbatim and implement
+// one ITmsPaintHost (poke VRAM, program the mode registers, render VRAM to RGBA,
+// and the file ops). No editor change needed.
+//
+// External deps the host must provide (beyond ImGui + GL): IconsFontAwesome6.h
+// on the include path, and (for the forthcoming image-import + Save-PNG) stb on
+// the include path with STB_IMAGE*_IMPLEMENTATION compiled once in the host.
+
+#ifndef TMSPAINT_ITMSPAINT_HOST_H
+#define TMSPAINT_ITMSPAINT_HOST_H
+
+#include <cstdint>
+#include <string>
+
+namespace tmspaint {
+
+class ITmsPaintHost {
+public:
+    virtual ~ITmsPaintHost() = default;
+
+    // Poke one byte into the host's TMS9918 VRAM (16 KB, addr & 0x3FFF) so
+    // strokes appear on the live Graphic Card window in real time.
+    virtual void pokeVram(uint16_t addr, uint8_t value) = 0;
+
+    // Optional bulk-write batching — same contract as hgrpaint: between
+    // beginBatch()/endBatch() the host MAY coalesce the intervening pokeVram()
+    // writes into one transaction (single lock + single screen/snapshot update).
+    // Default = no-op. The editor brackets bulk edits (fill, clear, paste,
+    // undo/redo, image apply); interactive freehand stays unbatched. Not nested.
+    virtual void beginBatch() {}
+    virtual void endBatch() {}
+
+    // Program the canonical register set `regs[8]` onto the live chip so the
+    // poked VRAM actually displays in the chosen mode. Called when the editor
+    // selects / switches a canvas mode.
+    virtual void applyRegisters(const uint8_t regs[8]) = 0;
+
+    // Render a 16 KB VRAM image + `regs[8]` to a kGfx2Width×kGfx2Height (256×192)
+    // RGBA buffer through the host's real TMS9918 pipeline. Used for the image-
+    // import preview (a hypothetical VRAM not yet on the chip).
+    virtual void renderVram(const uint8_t* vram16k, const uint8_t regs[8],
+                            uint32_t* outRgba) = 0;
+
+    // Copy the live chip's 16 KB VRAM (the editor's read source for its drawing
+    // model — colour/flood/eyedropper), so the editor mirrors the real chip
+    // regardless of snapshot gating.
+    virtual void readVram(uint8_t* out16k) = 0;
+
+    // Copy the live chip's active 256×192 framebuffer — the chip's own rendered
+    // output, exactly what the card window shows. The editor displays this as its
+    // canvas so it never diverges from the real card. Returns false if no live
+    // framebuffer is available (e.g. a headless host); the editor then falls back
+    // to renderVram(). `outRgba` holds at least 256*192 pixels (GL_RGBA order).
+    virtual bool liveFramebuffer(uint32_t* outRgba) = 0;
+
+    // Load a raw 16 KB VRAM image from `path` into the chip / `saveVram` the
+    // current 16 KB VRAM to `path` / export the supplied RGBA image (w×h,
+    // top-down) to a PNG. Each returns false + sets `err` on failure.
+    virtual bool loadVram(const std::string& path, std::string& err) = 0;
+    virtual bool saveVram(const std::string& path, std::string& err) = 0;
+    virtual bool savePng(const std::string& path, const uint32_t* rgba,
+                         int w, int h, std::string& err) = 0;
+
+    // Texture lifecycle — the HOST owns the graphics backend (see hgrpaint for
+    // the rationale). uploadTexture: pass tex==0 to create; reuse the handle to
+    // update. `linear` = bilinear vs crisp nearest. The default no-op impls let
+    // a headless/test host link without any graphics backend.
+    virtual unsigned int uploadTexture(unsigned int tex, const void* rgba,
+                                       int w, int h, bool linear)
+    { (void)tex; (void)rgba; (void)w; (void)h; (void)linear; return 0; }
+    virtual void destroyTexture(unsigned int tex) { (void)tex; }
+};
+
+} // namespace tmspaint
+
+#endif // TMSPAINT_ITMSPAINT_HOST_H

@@ -14,11 +14,16 @@
 
 namespace pom1 {
 
+class SymbolTable;
+
 /// Disassemble the 6502 instruction at `mem[pc]`. `mem` must point to a
 /// contiguous 64 KB region (uses `(pc + N) & 0xFFFF` for operand fetches).
 /// Writes the instruction byte length (1/2/3) into `instrLen` and returns
-/// the formatted mnemonic.
-std::string disassemble6502(const uint8_t* mem, uint16_t pc, int& instrLen);
+/// the formatted mnemonic. When `symbols` is non-null, address operands that
+/// have a matching symbol render as the name (e.g. "JSR ECHO") instead of the
+/// raw hex; immediate operands (`#$xx`) are never symbolised.
+std::string disassemble6502(const uint8_t* mem, uint16_t pc, int& instrLen,
+                            const SymbolTable* symbols = nullptr);
 
 } // namespace pom1
 

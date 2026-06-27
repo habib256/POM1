@@ -22,33 +22,47 @@ void Pom1HgrPaintHost::pokeByte(uint16_t addr, uint8_t value)
 {
     // While batching, defer to one writeMemoryBatch() so a bulk edit costs one
     // lock + one snapshot publish instead of thousands.
-    if (batching_) { batch_.emplace_back(addr, value); return; }
+    if (batchDepth_ > 0) { batch_.emplace_back(addr, value); return; }
     if (emu_) emu_->writeMemory(addr, value);
 }
 
 void Pom1HgrPaintHost::beginBatch()
 {
-    batching_ = true;
-    batch_.clear();
+    // Reentrant: only the OUTERMOST begin starts a fresh batch, so a nested
+    // begin/end pair (e.g. doUndo()'s applyOps fired while a shape stroke is still
+    // open) can't clear the queue or flush it early. Pairs with endBatch's depth
+    // count. Previously a plain bool, so a nested endBatch flipped batching off
+    // and the outer stroke's remaining pokes escaped the batch (round-2 D1).
+    if (batchDepth_++ == 0) batch_.clear();
 }
 
 void Pom1HgrPaintHost::endBatch()
 {
-    batching_ = false;
-    if (emu_) emu_->writeMemoryBatch(batch_);
-    batch_.clear();
+    if (batchDepth_ > 0 && --batchDepth_ == 0) {
+        if (emu_) emu_->writeMemoryBatch(batch_);
+        batch_.clear();
+    }
 }
 
-void Pom1HgrPaintHost::renderHgrPage(const uint8_t* page8k, uint32_t* outRgba, bool mono)
+void Pom1HgrPaintHost::renderHgrPage(const uint8_t* page8k, uint32_t* outRgba, bool mono,
+                                     bool grMode)
 {
-    // Render the 8 KB page through the GEN2 NTSC pipeline. The Apple II HIRES
-    // interleave is page-independent, so we always stage the page at $2000 and
-    // render PAGE 1 — the resulting colours are identical to PAGE 2.
-    std::copy(page8k, page8k + hgrpaint::kHiresSize, scratch_.begin() + 0x2000);
+    // Render through the GEN2 pipeline. The Apple II interleaves are
+    // page-independent, so we always stage at the PAGE 1 base and render page 1 —
+    // the resulting colours are identical to page 2.
+    GraphicsCard::DisplayState st;
+    st.textMode = false; st.mixedMode = false; st.page2 = false;
+    if (grMode) {
+        // Lo-res: the first 1 KB of `page8k` is the text/lo-res page; stage it at
+        // $0400 and render LORES (hiRes=false, textMode=false → 40×48 blocks).
+        std::copy(page8k, page8k + 0x400, scratch_.begin() + 0x0400);
+        st.hiRes = false;
+    } else {
+        std::copy(page8k, page8k + hgrpaint::kHiresSize, scratch_.begin() + 0x2000);
+        st.hiRes = true;
+    }
     gfx_.setMonitorMode(mono ? GraphicsCard::MonitorMode::Monochrome
                              : GraphicsCard::MonitorMode::Colour);
-    GraphicsCard::DisplayState st;
-    st.textMode = false; st.mixedMode = false; st.hiRes = true; st.page2 = false;
     gfx_.invalidate();   // always repaint: the editor may have just poked bytes
     gfx_.render(scratch_.data(), st, st, {});
     std::copy(gfx_.pixels(),
@@ -61,10 +75,12 @@ bool Pom1HgrPaintHost::loadImage(const std::string& path, uint16_t baseAddr, std
     return emu_ && emu_->loadBinaryToRam(path, baseAddr, err);
 }
 
-bool Pom1HgrPaintHost::saveImage(const std::string& path, uint16_t baseAddr, std::string& err)
+bool Pom1HgrPaintHost::saveImage(const std::string& path, uint16_t baseAddr, int sizeBytes,
+                                 std::string& err)
 {
+    if (sizeBytes <= 0) sizeBytes = hgrpaint::kHiresSize;
     return emu_ && emu_->saveMemoryRange(
-        path, baseAddr, static_cast<uint16_t>(baseAddr + hgrpaint::kHiresSize - 1),
+        path, baseAddr, static_cast<uint16_t>(baseAddr + sizeBytes - 1),
         /*binaryFormat=*/true, err);
 }
 

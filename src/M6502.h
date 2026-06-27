@@ -78,8 +78,9 @@ public:
     // (Wozmon ACI cassette, Disk II Woz Machine).
     //
     // Implemented as a Bresenham accumulator after every instruction:
-    // refreshAccum += instrCycles * 4; while (refreshAccum >= 65)
-    // inject one stall cycle. Cumulative ratio is exactly 4:65.
+    // refreshAccum += instrCycles * 4; while (refreshAccum >= 61)
+    // inject one stall cycle. That is 4 stalls per 61 *executed* cycles,
+    // i.e. 4 of every 65 total (61 run + 4 stalled) — the 4:65 ratio above.
     void setDramRefreshEnabled(bool enabled) { dramRefreshEnabled = enabled; }
     bool isDramRefreshEnabled() const { return dramRefreshEnabled; }
     uint64_t getDramRefreshStallCount() const { return dramRefreshStallCount; }

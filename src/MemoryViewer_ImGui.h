@@ -5,6 +5,7 @@
 #include "CodeTank.h"
 #include "JukeBox.h"
 #include "Disassembler6502.h"
+#include "Symbols.h"
 #include "imgui.h"
 #include <functional>
 #include <vector>
@@ -41,6 +42,16 @@ public:
     }
     void setCodeTankEnabled(bool enabled) { codeTankEnabled = enabled; }
     void setCodeTankJumper(CodeTank::Jumper j) { codeTankJumper = j; }
+    // Current 6502 PC, pushed each frame by the host. The disassembly view
+    // highlights the instruction at this address and (with Follow PC on)
+    // re-anchors so it stays visible.
+    void setCurrentPC(uint16_t pc) { currentPC = pc; }
+    /// Merge user symbols from a file into the disassembler's table (on top of
+    /// the built-in Apple-1 defaults). Returns symbols added; sets `err` on
+    /// failure. See SymbolTable::loadFile for the accepted formats.
+    int loadSymbolsFile(const std::string& path, std::string& err) {
+        return symbols.loadFile(path, err);
+    }
 
     struct RomRegion { uint16_t start, end; };
     void setLoadedRoms(const std::vector<RomRegion>& roms) { romRegions = roms; }
@@ -75,6 +86,14 @@ private:
     bool codeTankEnabled = false;
     CodeTank::Jumper codeTankJumper = CodeTank::Jumper::Lower16;
     std::vector<RomRegion> romRegions;
+
+    // Disassembly PC marker / follow
+    uint16_t currentPC = 0;
+    bool followPC = false;
+
+    // Disassembly symbols (built-in Apple-1 defaults, loaded in the ctor).
+    pom1::SymbolTable symbols;
+    bool showSymbols = true;
 
     // Auto-refresh: snapshot taken when autoRefresh is off
     std::vector<uint8_t> snapshot;
@@ -128,8 +147,18 @@ private:
 
     // Helper functions
     char getPrintableChar(uint8_t value);
-    ImVec4 getColorForAddress(int address);
-    const char* getRegionName(int address) const;
+
+    // Single source of truth for memory-region name + colour. resolveRegion()
+    // walks ONE priority-ordered cascade (highest priority first) and returns
+    // both the display name and the colour from the same matched entry, so the
+    // hex-cell colour and the region banner can never disagree (they used to:
+    // two parallel cascades ordered differently put "A1-SID" in the banner
+    // while the cells were TMS9918-blue at $CC00). getColorForAddress() and
+    // getRegionName() are thin wrappers kept for their existing call sites.
+    struct RegionInfo { const char* name; ImVec4 color; };
+    RegionInfo resolveRegion(int address) const;
+    ImVec4 getColorForAddress(int address) const { return resolveRegion(address).color; }
+    const char* getRegionName(int address) const { return resolveRegion(address).name; }
     bool isROM(int address);
     bool isIO(int address);
 };
