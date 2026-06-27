@@ -259,8 +259,28 @@ void MainWindow_ImGui::renderLoadDialog()
                         loadedPrograms.end());
                     loadedPrograms.push_back({filename, addr, progEnd});
                 }
+                // Auto-load a sibling cc65/ld65 label file so the disassembly
+                // shows symbolic names for this program. Reset to the built-in
+                // Apple-1 defaults first (one program at a time → no stale
+                // labels), then merge "<stem>.lbl", falling back to ".sym".
+                int symbolsLoaded = 0;
+                if (memoryViewer) {
+                    memoryViewer->resetSymbolsToDefaults();
+                    std::filesystem::path base(loadDlg.filePath);
+                    for (const char* ext : {".lbl", ".sym"}) {
+                        std::filesystem::path lbl = base;
+                        lbl.replace_extension(ext);
+                        if (std::filesystem::exists(lbl)) {
+                            std::string symErr;
+                            symbolsLoaded = memoryViewer->loadSymbolsFile(lbl.string(), symErr);
+                            break;
+                        }
+                    }
+                }
                 std::stringstream ss;
                 ss << "Loaded " << filename << " at $" << std::hex << std::uppercase << addr;
+                if (symbolsLoaded > 0)
+                    ss << std::dec << "  (+" << symbolsLoaded << " symbols)";
                 setStatusMessage(ss.str(), 3.0f);
                 showLoadDialog = false;
                 loadDlg.reset();

@@ -35,7 +35,17 @@
 ;
 ;  [BOOT] texte de credit au demarrage   (1 site)
 ;    $0981 : ligne 1 ecran texte (40 octets EOR #$AB) <Boot_CreditText>
-;      credit de crack d'origine -> 'PORTAGE GEN2 HGR - UNCLE BERNIE'
+;      credit de crack d'origine -> 'GEN2 HGR PORT - UNCLE BERNIE'
+;
+;  [MENU] menu de selection des controles reecrit pour l'Apple-1   (2 sites)
+;    $102F : selecteur P/K/J/A -> 'toute touche = clavier' <Menu_AnyKeyStart>
+;    $0C7C : texte PLEASE SELECT/options -> aide touches + PRESS ANY KEY TO PLAY <Menu_DrawHelp>
+;      (seul le mode clavier est utilisable sur Apple-1 ; paddle/joystick indispo)
+;
+;  [HORS-MEMOIRE] ecritures Apple II en $D0xx (RAM carte langage / poubelle ROM)   (1 table)
+;    $1C4B : table high-byte lignes HGR <Hgr_LineHi> ; 72 entrees de clipping
+;      $D0 (poubelle ROM Applesoft sur Apple II) -> $98 (RAM libre Apple-1).
+;      Sinon les rangees de sprites clippees (via $1BF2/$1159) ecrivent dans la PIA $D0xx.
 ;
 ;  --- RELOCALISATION ---
 ;  Relocate_Engine ($09D9) copie $2800-$3FFF vers $8000 puis 'jmp $8000'.
@@ -47,7 +57,7 @@
 ; =====================================================================
 
 ; da65 V2.18 - Ubuntu 2.19-1
-; Created:    2026-06-27 19:07:58
+; Created:    2026-06-27 20:48:20
 ; Input file: buzzard_bait.bin
 ; Page:       1
 
@@ -163,6 +173,10 @@ L938B           := $938B
 L93C4           := $93C4
 L9458           := $9458
 L9470           := $9470
+mon_WAIT        := $9900
+kbd_read        := $9910
+kbd_clear       := $9930
+KEYLATCH        := $9950
 LB9A0           := $B9A0
 LBA5E           := $BA5E
 spkr            := $C030
@@ -173,10 +187,6 @@ gen2_PAGE1      := $C254
 gen2_HIRES      := $C257
 KbdData         := $D010
 KbdCtrl         := $D011
-kbd_read        := $FB00
-kbd_clear       := $FB10
-KEYLATCH        := $FB80
-mon_WAIT        := $FCA8
 ; ----------------------------------------------------------------------------
 entry:  nop                                     ; 0940 EA
         nop                                     ; 0941 EA
@@ -215,32 +225,32 @@ L0969:  lda     Boot_CreditText,x               ; 0969 BD 81 09
         cpx     #$28                            ; 0972 E0 28
         bne     L0969                           ; 0974 D0 F3
         lda     #$00                            ; 0976 A9 00
-; [PORTAGE SON] 'jsr $FCA8' (WAIT du Monitor Apple II) - adresse inchangee : routine fournie en RAM libre $FCA8 (gen2_port.s). Temporise le jingle entre deux bascules haut-parleur $C030.
+; [PORTAGE SON] 'jsr $FCA8' (WAIT Monitor Apple II) redirige -> 'jsr $9900' : routine WAIT fournie en RAM BASSE (gen2_port.s ; $F000-$FEFF non garanti sur le vrai Apple-1). Temporise le jingle entre deux bascules haut-parleur $C030.
 P_wait_0978:
-        jsr     mon_WAIT                        ; 0978 20 A8 FC
-; [PORTAGE SON] 'jsr $FCA8' (WAIT du Monitor Apple II) - adresse inchangee : routine fournie en RAM libre $FCA8 (gen2_port.s). Temporise le jingle entre deux bascules haut-parleur $C030.
+        jsr     mon_WAIT                        ; 0978 20 00 99
+; [PORTAGE SON] 'jsr $FCA8' (WAIT Monitor Apple II) redirige -> 'jsr $9900' : routine WAIT fournie en RAM BASSE (gen2_port.s ; $F000-$FEFF non garanti sur le vrai Apple-1). Temporise le jingle entre deux bascules haut-parleur $C030.
 P_wait_097B:
-        jsr     mon_WAIT                        ; 097B 20 A8 FC
+        jsr     mon_WAIT                        ; 097B 20 00 99
         .byte   $4C                             ; 097E 4C
 L097F:  lda     #$09                            ; 097F A9 09
-; [PORTAGE BOOT] Ligne de credit affichee au demarrage (ecran texte ligne 1, 40 octets, codes EOR #$AB). Le credit de crack d'origine (ALDO RESET / LAURENT RUEIL / CCB) est remplace par PORTAGE GEN2 HGR - UNCLE BERNIE.
+; [PORTAGE BOOT] Ligne de credit affichee au demarrage (ecran texte ligne 1, 40 octets, codes EOR #$AB). Le credit de crack d'origine (ALDO RESET / LAURENT RUEIL / CCB) est remplace par GEN2 HGR PORT - UNCLE BERNIE.
 Boot_CreditText:
-        .byte   $0B,$0B,$0B,$0B,$7B,$64,$79,$7F ; 0981 0B 0B 0B 0B 7B 64 79 7F
-        .byte   $6A,$6C,$6E,$0B,$6C,$6E,$65     ; 0989 6A 6C 6E 0B 6C 6E 65
-L0990:  .byte   $19                             ; 0990 19
-L0991:  .byte   $0B                             ; 0991 0B
-L0992:  .byte   $63                             ; 0992 63
-L0993:  .byte   $6C                             ; 0993 6C
-L0994:  .byte   $79,$0B,$06,$0B,$7E,$65,$68,$67 ; 0994 79 0B 06 0B 7E 65 68 67
-        .byte   $6E,$0B,$69,$6E                 ; 099C 6E 0B 69 6E
+        .byte   $0B,$0B,$0B,$0B,$0B,$0B,$6C,$6E ; 0981 0B 0B 0B 0B 0B 0B 6C 6E
+        .byte   $65,$19,$0B,$63,$6C,$79,$0B     ; 0989 65 19 0B 63 6C 79 0B
+L0990:  .byte   $7B                             ; 0990 7B
+L0991:  .byte   $64                             ; 0991 64
+L0992:  .byte   $79                             ; 0992 79
+L0993:  .byte   $7F                             ; 0993 7F
+L0994:  .byte   $0B,$06,$0B,$7E,$65,$68,$67,$6E ; 0994 0B 06 0B 7E 65 68 67 6E
+        .byte   $0B,$69,$6E,$79                 ; 099C 0B 69 6E 79
 ctl_fireA:
-        .byte   $79                             ; 09A0 79
+        .byte   $65                             ; 09A0 65
 ctl_right:
-        .byte   $65                             ; 09A1 65
+        .byte   $62                             ; 09A1 62
 ctl_left:
-        .byte   $62                             ; 09A2 62
+        .byte   $6E                             ; 09A2 6E
 ctl_keyS:
-        .byte   $6E                             ; 09A3 6E
+        .byte   $0B                             ; 09A3 0B
 ctl_flap:
         .byte   $0B                             ; 09A4 0B
 L09A5:  .byte   $0B                             ; 09A5 0B
@@ -250,9 +260,9 @@ L09A8:  .byte   $0B                             ; 09A8 0B
 ; ----------------------------------------------------------------------------
 L09A9:  ldy     #$C0                            ; 09A9 A0 C0
 L09AB:  lda     #$18                            ; 09AB A9 18
-; [PORTAGE SON] 'jsr $FCA8' (WAIT du Monitor Apple II) - adresse inchangee : routine fournie en RAM libre $FCA8 (gen2_port.s). Temporise le jingle entre deux bascules haut-parleur $C030.
+; [PORTAGE SON] 'jsr $FCA8' (WAIT Monitor Apple II) redirige -> 'jsr $9900' : routine WAIT fournie en RAM BASSE (gen2_port.s ; $F000-$FEFF non garanti sur le vrai Apple-1). Temporise le jingle entre deux bascules haut-parleur $C030.
 P_wait_09AD:
-        jsr     mon_WAIT                        ; 09AD 20 A8 FC
+        jsr     mon_WAIT                        ; 09AD 20 00 99
 L09B0:  .byte   $2C                             ; 09B0 2C
 L09B1:  .byte   $30                             ; 09B1 30
 L09B2:  .byte   $C0                             ; 09B2 C0
@@ -261,17 +271,17 @@ L09B4:  bne     L09AB                           ; 09B4 D0 F5
 L09B6:  .byte   $A0                             ; 09B6 A0
 L09B7:  .byte   $C0                             ; 09B7 C0
 L09B8:  lda     #$0C                            ; 09B8 A9 0C
-; [PORTAGE SON] 'jsr $FCA8' (WAIT du Monitor Apple II) - adresse inchangee : routine fournie en RAM libre $FCA8 (gen2_port.s). Temporise le jingle entre deux bascules haut-parleur $C030.
+; [PORTAGE SON] 'jsr $FCA8' (WAIT Monitor Apple II) redirige -> 'jsr $9900' : routine WAIT fournie en RAM BASSE (gen2_port.s ; $F000-$FEFF non garanti sur le vrai Apple-1). Temporise le jingle entre deux bascules haut-parleur $C030.
 P_wait_09BA:
-        jsr     mon_WAIT                        ; 09BA 20 A8 FC
+        jsr     mon_WAIT                        ; 09BA 20 00 99
         bit     spkr                            ; 09BD 2C 30 C0
         dey                                     ; 09C0 88
         bne     L09B8                           ; 09C1 D0 F5
         ldy     #$C0                            ; 09C3 A0 C0
 L09C5:  lda     #$06                            ; 09C5 A9 06
-; [PORTAGE SON] 'jsr $FCA8' (WAIT du Monitor Apple II) - adresse inchangee : routine fournie en RAM libre $FCA8 (gen2_port.s). Temporise le jingle entre deux bascules haut-parleur $C030.
+; [PORTAGE SON] 'jsr $FCA8' (WAIT Monitor Apple II) redirige -> 'jsr $9900' : routine WAIT fournie en RAM BASSE (gen2_port.s ; $F000-$FEFF non garanti sur le vrai Apple-1). Temporise le jingle entre deux bascules haut-parleur $C030.
 P_wait_09C7:
-        jsr     mon_WAIT                        ; 09C7 20 A8 FC
+        jsr     mon_WAIT                        ; 09C7 20 00 99
         bit     spkr                            ; 09CA 2C 30 C0
         dey                                     ; 09CD 88
         bne     L09C5                           ; 09CE D0 F5
@@ -337,7 +347,7 @@ L0A23:  bne     L0A0B                           ; 0A23 D0 E6
 ; ----------------------------------------------------------------------------
 ; [PORTAGE CLAVIER] etait 'lda $C000' (KBD Apple II). -> 'jsr kbd_read' (latch $FB80). Test 'touche pressee' (bit7).
 Poll_AbortInput:
-        jsr     kbd_read                        ; 0A26 20 00 FB
+        jsr     kbd_read                        ; 0A26 20 10 99
         bmi     L0A33                           ; 0A29 30 08
         lda     $C061                           ; 0A2B AD 61 C0
         eor     $3C                             ; 0A2E 45 3C
@@ -355,7 +365,7 @@ L0A3A:  jsr     Draw_HgrGlyph                   ; 0A3A 20 00 0A
 L0A41:  sed                                     ; 0A41 F8
 ; [PORTAGE CLAVIER] etait 'bit $C010' (KBDSTRB Apple II = efface le strobe). -> 'jsr kbd_clear' : efface le bit7 du latch logiciel.
 P_kbd_clear_0A42:
-        jsr     kbd_clear                       ; 0A42 20 10 FB
+        jsr     kbd_clear                       ; 0A42 20 30 99
 L0A45:  rts                                     ; 0A45 60
 
 ; ----------------------------------------------------------------------------
@@ -370,7 +380,7 @@ L0A4A:  cmp     L0055,x                         ; 0A4A D5 55
         tax                                     ; 0A4F AA
 ; [PORTAGE CLAVIER] etait 'bit $C010' (KBDSTRB Apple II = efface le strobe). -> 'jsr kbd_clear' : efface le bit7 du latch logiciel.
 P_kbd_clear_0A50:
-        jsr     kbd_clear                       ; 0A50 20 10 FB
+        jsr     kbd_clear                       ; 0A50 20 30 99
         lda     $C061                           ; 0A53 AD 61 C0
         sta     $3C                             ; 0A56 85 3C
         lda     #$00                            ; 0A58 A9 00
@@ -382,7 +392,7 @@ L0A5F:  ora     #$8D                            ; 0A5F 09 8D
         .byte   $09                             ; 0A62 09
 ; [PORTAGE CLAVIER] etait 'lda $C000'. -> 'jsr kbd_read' : sonde clavier dans une boucle d'attente attract-mode.
 P_kbd_read_0A63:
-        jsr     kbd_read                        ; 0A63 20 00 FB
+        jsr     kbd_read                        ; 0A63 20 10 99
         bmi     L0ABC                           ; 0A66 30 54
         lda     $C061                           ; 0A68 AD 61 C0
         eor     $3C                             ; 0A6B 45 3C
@@ -695,91 +705,58 @@ L0C6D:  lda     L6720,x                         ; 0C6D BD 20 67
         jmp     L12B8                           ; 0C79 4C B8 12
 
 ; ----------------------------------------------------------------------------
-L0C7C:  jsr     Clear_HgrPage                   ; 0C7C 20 45 1B
+; [PORTAGE MENU] Menu reecrit pour l'Apple-1 : a la place de PLEASE SELECT / (P)PADDLE / (K)KEYBOARD / (J)JOYSTICK / (A)ATARI (seul le clavier marche ici), affiche l'aide des touches en anglais (J LEFT L RIGHT / I FIRE K STOP / SPACE JUMP) + PRESS ANY KEY T
+Menu_DrawHelp:
+        jsr     Clear_HgrPage                   ; 0C7C 20 45 1B
         .byte   $A9                             ; 0C7F A9
-L0C80:  ora     $1885                           ; 0C80 0D 85 18
-        lda     #$48                            ; 0C83 A9 48
+L0C80:  .byte   $52                             ; 0C80 52
+        sta     $1A                             ; 0C81 85 1A
+        lda     #$0C                            ; 0C83 A9 0C
         .byte   $85                             ; 0C85 85
-L0C86:  .byte   $1A                             ; 0C86 1A
-        ldx     #$D4                            ; 0C87 A2 D4
+L0C86:  clc                                     ; 0C86 18
+        ldx     #$C4                            ; 0C87 A2 C4
         lda     #$0C                            ; 0C89 A9 0C
-        ldy     #$0C                            ; 0C8B A0 0C
+        ldy     #$0F                            ; 0C8B A0 0F
         jsr     L17B1                           ; 0C8D 20 B1 17
-        lda     #$0E                            ; 0C90 A9 0E
-        sta     $18                             ; 0C92 85 18
-        lda     #$5E                            ; 0C94 A9 5E
-        sta     $1A                             ; 0C96 85 1A
-        ldx     #$E1                            ; 0C98 A2 E1
+        lda     #$62                            ; 0C90 A9 62
+        sta     $1A                             ; 0C92 85 1A
+        lda     #$0C                            ; 0C94 A9 0C
+        sta     $18                             ; 0C96 85 18
+        ldx     #$D4                            ; 0C98 A2 D4
         lda     #$0C                            ; 0C9A A9 0C
-        ldy     #$08                            ; 0C9C A0 08
+        ldy     #$0E                            ; 0C9C A0 0E
         jsr     L17B1                           ; 0C9E 20 B1 17
-        lda     #$0E                            ; 0CA1 A9 0E
-        sta     $18                             ; 0CA3 85 18
-        lda     #$6A                            ; 0CA5 A9 6A
-        sta     $1A                             ; 0CA7 85 1A
-        ldx     #$EA                            ; 0CA9 A2 EA
+        lda     #$72                            ; 0CA1 A9 72
+        sta     $1A                             ; 0CA3 85 1A
+        lda     #$0E                            ; 0CA5 A9 0E
+        sta     $18                             ; 0CA7 85 18
+        ldx     #$E3                            ; 0CA9 A2 E3
         lda     #$0C                            ; 0CAB A9 0C
         ldy     #$0A                            ; 0CAD A0 0A
         jsr     L17B1                           ; 0CAF 20 B1 17
-        lda     #$0E                            ; 0CB2 A9 0E
-        sta     $18                             ; 0CB4 85 18
-        lda     #$76                            ; 0CB6 A9 76
-        sta     $1A                             ; 0CB8 85 1A
-        ldx     #$F5                            ; 0CBA A2 F5
+        lda     #$8A                            ; 0CB2 A9 8A
+        sta     $1A                             ; 0CB4 85 1A
+        lda     #$09                            ; 0CB6 A9 09
+        sta     $18                             ; 0CB8 85 18
+        ldx     #$EE                            ; 0CBA A2 EE
         lda     #$0C                            ; 0CBC A9 0C
-        ldy     #$0A                            ; 0CBE A0 0A
+        ldy     #$14                            ; 0CBE A0 14
         jsr     L17B1                           ; 0CC0 20 B1 17
-        lda     #$0E                            ; 0CC3 A9 0E
-L0CC5:  sta     $18                             ; 0CC5 85 18
-        lda     #$82                            ; 0CC7 A9 82
-        sta     $1A                             ; 0CC9 85 1A
-        ldx     #$00                            ; 0CCB A2 00
-        lda     #$0D                            ; 0CCD A9 0D
-        ldy     #$10                            ; 0CCF A0 10
-        jmp     L17B1                           ; 0CD1 4C B1 17
+        rts                                     ; 0CC3 60
 
 ; ----------------------------------------------------------------------------
-        .byte   $D4                             ; 0CD4 D4
-        .byte   $C3                             ; 0CD5 C3
-        cmp     $CC                             ; 0CD6 C5 CC
-        cmp     $D3                             ; 0CD8 C5 D3
-        .byte   $E2                             ; 0CDA E2
-        cmp     $D3                             ; 0CDB C5 D3
-        cmp     ($C5,x)                         ; 0CDD C1 C5
-        cpy     $C5D0                           ; 0CDF CC D0 C5
-        cpy     $C4C4                           ; 0CE2 CC C4 C4
-        cmp     ($E2,x)                         ; 0CE5 C1 E2
-        .byte   $DC                             ; 0CE7 DC
-        bne     L0CC5                           ; 0CE8 D0 DB
-        cpy     $D2                             ; 0CEA C4 D2
-        cmp     ($CF,x)                         ; 0CEC C1 CF
-        .byte   $C2                             ; 0CEE C2
-        cmp     $E2C5,y                         ; 0CEF D9 C5 E2
-        .byte   $DC                             ; 0CF2 DC
-        .byte   $CB                             ; 0CF3 CB
-        .byte   $DB                             ; 0CF4 DB
-        .byte   $CB                             ; 0CF5 CB
-        .byte   $C3                             ; 0CF6 C3
-        .byte   $43                             ; 0CF7 43
-        .byte   $42                             ; 0CF8 42
-        brk                                     ; 0CF9 00
-        brk                                     ; 0CFA 00
-        brk                                     ; 0CFB 00
-        brk                                     ; 0CFC 00
-        brk                                     ; 0CFD 00
-        dex                                     ; 0CFE CA
-        .byte   $DB                             ; 0CFF DB
-        .byte   $CB                             ; 0D00 CB
-        .byte   $C3                             ; 0D01 C3
-        cmp     #$D4                            ; 0D02 C9 D4
-        .byte   $D3                             ; 0D04 D3
-        cmp     $CACF,y                         ; 0D05 D9 CF CA
-        .byte   $E2                             ; 0D08 E2
-        cmp     #$D2                            ; 0D09 C9 D2
-        cmp     ($D4,x)                         ; 0D0B C1 D4
-L0D0D:  .byte   $E2                             ; 0D0D E2
-        .byte   $DC                             ; 0D0E DC
-        cmp     ($DB,x)                         ; 0D0F C1 DB
+        .byte   $D4,$C8,$C7,$C9,$D2,$E2,$CC,$E2 ; 0CC4 D4 C8 C7 C9 D2 E2 CC E2
+        .byte   $E2,$E2,$D4,$C6,$C5,$CC,$E2,$CA ; 0CCC E2 E2 D4 C6 C5 CC E2 CA
+        .byte   $D0,$CF,$D4,$D3,$E2,$CB,$E2,$E2 ; 0CD4 D0 CF D4 D3 E2 CB E2 E2
+        .byte   $E2,$C5,$D2,$C9,$C6,$E2,$C9,$D0 ; 0CDC E2 C5 D2 C9 C6 E2 C9 D0
+        .byte   $CD,$D5,$CA,$E2,$E2,$C5,$C3,$C1 ; 0CE4 CD D5 CA E2 E2 C5 C3 C1
+        .byte   $D0,$D3,$D9,$C1,$CC,$D0,$E2,$CF ; 0CEC D0 D3 D9 C1 CC D0 E2 CF
+        .byte   $D4,$E2,$D9,$C5,$CB,$E2,$D9,$CE ; 0CF4 D4 E2 D9 C5 CB E2 D9 CE
+        .byte   $C1,$E2,$D3,$D3,$C5,$D2,$D0,$00 ; 0CFC C1 E2 D3 D3 C5 D2 D0 00
+        .byte   $00,$00,$00,$00,$00,$00,$00,$00 ; 0D04 00 00 00 00 00 00 00 00
+        .byte   $00                             ; 0D0C 00
+L0D0D:  .byte   $00,$00,$00,$00                 ; 0D0D 00 00 00 00
+; ----------------------------------------------------------------------------
 L0D11:  sta     L0E3F                           ; 0D11 8D 3F 0E
         sta     L1782                           ; 0D14 8D 82 17
         sta     L0ACF                           ; 0D17 8D CF 0A
@@ -882,7 +859,7 @@ L0DA8:  ldy     $69,x                           ; 0DA8 B4 69
 L0DC7:  ldy     $0800,x                         ; 0DC7 BC 00 08
         lda     L1D52,y                         ; 0DCA B9 52 1D
         sta     $14                             ; 0DCD 85 14
-        lda     L1C4B,y                         ; 0DCF B9 4B 1C
+        lda     Hgr_LineHi,y                    ; 0DCF B9 4B 1C
         sta     L0015                           ; 0DD2 85 15
         txa                                     ; 0DD4 8A
         tay                                     ; 0DD5 A8
@@ -963,7 +940,7 @@ L0E4E:  jsr     L173F                           ; 0E4E 20 3F 17
         sta     $3E                             ; 0E53 85 3E
 ; [PORTAGE CLAVIER] etait 'bit $C010' (KBDSTRB Apple II = efface le strobe). -> 'jsr kbd_clear' : efface le bit7 du latch logiciel.
 P_kbd_clear_0E55:
-        jsr     kbd_clear                       ; 0E55 20 10 FB
+        jsr     kbd_clear                       ; 0E55 20 30 99
         rts                                     ; 0E58 60
 
 ; ----------------------------------------------------------------------------
@@ -1193,7 +1170,7 @@ L1001:  jsr     L161B                           ; 1001 20 1B 16
         rts                                     ; 1008 60
 
 ; ----------------------------------------------------------------------------
-L1009:  jsr     L0C7C                           ; 1009 20 7C 0C
+L1009:  jsr     Menu_DrawHelp                   ; 1009 20 7C 0C
         lda     #$23                            ; 100C A9 23
         sta     $28                             ; 100E 85 28
         lda     #$00                            ; 1010 A9 00
@@ -1201,7 +1178,7 @@ L1009:  jsr     L0C7C                           ; 1009 20 7C 0C
         sta     $25                             ; 1014 85 25
 ; [PORTAGE CLAVIER] etait 'bit $C010' (KBDSTRB Apple II = efface le strobe). -> 'jsr kbd_clear' : efface le bit7 du latch logiciel.
 P_kbd_clear_1016:
-        jsr     kbd_clear                       ; 1016 20 10 FB
+        jsr     kbd_clear                       ; 1016 20 30 99
 L1019:  dec     $25                             ; 1019 C6 25
         bne     L102A                           ; 101B D0 0D
         dec     $29                             ; 101D C6 29
@@ -1215,8 +1192,10 @@ L1019:  dec     $25                             ; 1019 C6 25
 ; ----------------------------------------------------------------------------
 L102A:  jsr     Get_Key                         ; 102A 20 2C 1B
         bpl     L1019                           ; 102D 10 EA
-        cmp     #$83                            ; 102F C9 83
-        beq     L105B                           ; 1031 F0 28
+; [PORTAGE MENU] Selecteur de controle : etait CMP #$83/BEQ (test ^C). -> LDX #$FF / BNE $1048 : N'IMPORTE QUELLE touche force le mode CLAVIER ($35=$FF) et lance la partie (sur Apple-1 paddle/joystick indisponibles).
+Menu_AnyKeyStart:
+        ldx     #$FF                            ; 102F A2 FF
+        bne     L1048                           ; 1031 D0 15
         ldx     #$00                            ; 1033 A2 00
         cmp     #$D0                            ; 1035 C9 D0
         beq     L1048                           ; 1037 F0 0F
@@ -1239,7 +1218,7 @@ L1048:  stx     $35                             ; 1048 86 35
 ; ----------------------------------------------------------------------------
 L1057:  ldx     #$05                            ; 1057 A2 05
         bne     L1048                           ; 1059 D0 ED
-L105B:  jsr     L9000                           ; 105B 20 00 90
+        jsr     L9000                           ; 105B 20 00 90
         jmp     L1009                           ; 105E 4C 09 10
 
 ; ----------------------------------------------------------------------------
@@ -1254,7 +1233,7 @@ L1067:  jmp     L901B                           ; 1067 4C 1B 90
 L106B:  jsr     L0F1C                           ; 106B 20 1C 0F
 ; [PORTAGE CLAVIER] etait 'lda $C000'. -> 'jsr kbd_read' : sonde clavier dans la boucle d'attente du demo/attract.
 P_kbd_read_106E:
-        jsr     kbd_read                        ; 106E 20 00 FB
+        jsr     kbd_read                        ; 106E 20 10 99
         bmi     L1067                           ; 1071 30 F4
         lda     $C061                           ; 1073 AD 61 C0
         eor     $3C                             ; 1076 45 3C
@@ -1369,6 +1348,8 @@ L1146:  lda     $28                             ; 1146 A5 28
 
 ; ----------------------------------------------------------------------------
 L1157:  and     ($14),y                         ; 1157 31 14
+; [PORTAGE HORS-MEM] STA ($14),Y : remplissage de ligne HGR ; meme table Hgr_LineHi (corrigee $D0->$98).
+Hgr_FillStore:
         sta     ($14),y                         ; 1159 91 14
         rts                                     ; 115B 60
 
@@ -2838,14 +2819,14 @@ L1B1D:  sta     $08,x                           ; 1B1D 95 08
 ; ----------------------------------------------------------------------------
 ; [PORTAGE CLAVIER] etait 'bit $C010' (KBDSTRB Apple II = efface le strobe). -> 'jsr kbd_clear' : efface le bit7 du latch logiciel.
 Wait_ForKey:
-        jsr     kbd_clear                       ; 1B23 20 10 FB
+        jsr     kbd_clear                       ; 1B23 20 30 99
 L1B26:  jsr     Get_Key                         ; 1B26 20 2C 1B
         bpl     L1B26                           ; 1B29 10 FB
         rts                                     ; 1B2B 60
 
 ; ----------------------------------------------------------------------------
 ; [PORTAGE CLAVIER] etait 'lda $C000'. -> 'jsr kbd_read'. Routine getkey : renvoie la touche (bit7=presente), passee en majuscule.
-Get_Key:jsr     kbd_read                        ; 1B2C 20 00 FB
+Get_Key:jsr     kbd_read                        ; 1B2C 20 10 99
         bpl     L1B37                           ; 1B2F 10 06
         cmp     #$E0                            ; 1B31 C9 E0
         bcc     L1B37                           ; 1B33 90 02
@@ -2965,7 +2946,7 @@ L1BD2:  ldx     #$00                            ; 1BD2 A2 00
 L1BDB:  ldy     $1A                             ; 1BDB A4 1A
         lda     L1D52,y                         ; 1BDD B9 52 1D
         sta     $14                             ; 1BE0 85 14
-        lda     L1C4B,y                         ; 1BE2 B9 4B 1C
+        lda     Hgr_LineHi,y                    ; 1BE2 B9 4B 1C
         sta     L0015                           ; 1BE5 85 15
         ldy     $18                             ; 1BE7 A4 18
 L1BE9:  cpy     #$28                            ; 1BE9 C0 28
@@ -2974,6 +2955,8 @@ L1BE9:  cpy     #$28                            ; 1BE9 C0 28
 L1BEE:  tsx                                     ; 1BEE BA
 L1BEF:  .byte   $DC                             ; 1BEF DC
         eor     ($14),y                         ; 1BF0 51 14
+; [PORTAGE HORS-MEM] STA ($14),Y : ecrit une rangee de sprite. Pour les rangees clippees en bas, $15 venait de Hgr_LineHi=$D0 -> ecrivait dans la PIA. Corrige via la table (-> $98).
+Hgr_SpriteStore:
         sta     ($14),y                         ; 1BF2 91 14
 L1BF4:  inx                                     ; 1BF4 E8
         iny                                     ; 1BF5 C8
@@ -2993,7 +2976,7 @@ L1C01:  ldx     #$00                            ; 1C01 A2 00
 L1C0A:  ldy     $1A                             ; 1C0A A4 1A
         lda     L1D52,y                         ; 1C0C B9 52 1D
         sta     $14                             ; 1C0F 85 14
-        lda     L1C4B,y                         ; 1C11 B9 4B 1C
+        lda     Hgr_LineHi,y                    ; 1C11 B9 4B 1C
         sta     L0015                           ; 1C14 85 15
         ldy     $18                             ; 1C16 A4 18
 L1C18:  lda     $1A                             ; 1C18 A5 1A
@@ -3028,160 +3011,42 @@ L1C36:  sty     $1A                             ; 1C36 84 1A
 L1C44:  jsr     L2824                           ; 1C44 20 24 28
         bit     L3430                           ; 1C47 2C 30 34
         sec                                     ; 1C4A 38
-L1C4B:  .byte   $3C                             ; 1C4B 3C
-        jsr     L2824                           ; 1C4C 20 24 28
-        bit     L3430                           ; 1C4F 2C 30 34
-        sec                                     ; 1C52 38
-        .byte   $3C                             ; 1C53 3C
-        and     ($25,x)                         ; 1C54 21 25
-        and     #$2D                            ; 1C56 29 2D
-        and     ($35),y                         ; 1C58 31 35
-        and     L213D,y                         ; 1C5A 39 3D 21
-        and     $29                             ; 1C5D 25 29
-        and     L3531                           ; 1C5F 2D 31 35
-        and     L223D,y                         ; 1C62 39 3D 22
-        rol     $2A                             ; 1C65 26 2A
-        rol     L3632                           ; 1C67 2E 32 36
-        .byte   $3A                             ; 1C6A 3A
-        rol     L2622,x                         ; 1C6B 3E 22 26
-        rol     a                               ; 1C6E 2A
-        rol     L3632                           ; 1C6F 2E 32 36
-        .byte   $3A                             ; 1C72 3A
-        rol     L2723,x                         ; 1C73 3E 23 27
-        .byte   $2B                             ; 1C76 2B
-        .byte   $2F                             ; 1C77 2F
-        .byte   $33                             ; 1C78 33
-        .byte   $37                             ; 1C79 37
-        .byte   $3B                             ; 1C7A 3B
-        .byte   $3F                             ; 1C7B 3F
-        .byte   $23                             ; 1C7C 23
-        .byte   $27                             ; 1C7D 27
-        .byte   $2B                             ; 1C7E 2B
-        .byte   $2F                             ; 1C7F 2F
-        .byte   $33                             ; 1C80 33
-        .byte   $37                             ; 1C81 37
-        .byte   $3B                             ; 1C82 3B
-        .byte   $3F                             ; 1C83 3F
-        jsr     L2824                           ; 1C84 20 24 28
-        bit     L3430                           ; 1C87 2C 30 34
-        sec                                     ; 1C8A 38
-        .byte   $3C                             ; 1C8B 3C
-        jsr     L2824                           ; 1C8C 20 24 28
-        bit     L3430                           ; 1C8F 2C 30 34
-        sec                                     ; 1C92 38
-        .byte   $3C                             ; 1C93 3C
-        and     ($25,x)                         ; 1C94 21 25
-        and     #$2D                            ; 1C96 29 2D
-        and     ($35),y                         ; 1C98 31 35
-        and     L213D,y                         ; 1C9A 39 3D 21
-        and     $29                             ; 1C9D 25 29
-        and     L3531                           ; 1C9F 2D 31 35
-        and     L223D,y                         ; 1CA2 39 3D 22
-L1CA5:  rol     $2A                             ; 1CA5 26 2A
-        rol     L3632                           ; 1CA7 2E 32 36
-        .byte   $3A                             ; 1CAA 3A
-        rol     L2622,x                         ; 1CAB 3E 22 26
-        rol     a                               ; 1CAE 2A
-        rol     L3632                           ; 1CAF 2E 32 36
-        .byte   $3A                             ; 1CB2 3A
-        rol     L2723,x                         ; 1CB3 3E 23 27
-        .byte   $2B                             ; 1CB6 2B
-        .byte   $2F                             ; 1CB7 2F
-        .byte   $33                             ; 1CB8 33
-        .byte   $37                             ; 1CB9 37
-        .byte   $3B                             ; 1CBA 3B
-        .byte   $3F                             ; 1CBB 3F
-        .byte   $23                             ; 1CBC 23
-        .byte   $27                             ; 1CBD 27
-        .byte   $2B                             ; 1CBE 2B
-        .byte   $2F                             ; 1CBF 2F
-        .byte   $33                             ; 1CC0 33
-        .byte   $37                             ; 1CC1 37
-        .byte   $3B                             ; 1CC2 3B
-        .byte   $3F                             ; 1CC3 3F
-        jsr     L2824                           ; 1CC4 20 24 28
-        bit     L3430                           ; 1CC7 2C 30 34
-        sec                                     ; 1CCA 38
-        .byte   $3C                             ; 1CCB 3C
-        jsr     L2824                           ; 1CCC 20 24 28
-        bit     L3430                           ; 1CCF 2C 30 34
-        sec                                     ; 1CD2 38
-        .byte   $3C                             ; 1CD3 3C
-        .byte   $21                             ; 1CD4 21
-L1CD5:  and     $29                             ; 1CD5 25 29
-L1CD7:  .byte   $2D                             ; 1CD7 2D
-        .byte   $31                             ; 1CD8 31
-L1CD9:  and     $39,x                           ; 1CD9 35 39
-L1CDB:  .byte   $3D                             ; 1CDB 3D
-        .byte   $21                             ; 1CDC 21
-L1CDD:  and     $29                             ; 1CDD 25 29
-L1CDF:  .byte   $2D                             ; 1CDF 2D
-        .byte   $31                             ; 1CE0 31
-L1CE1:  and     $39,x                           ; 1CE1 35 39
-L1CE3:  .byte   $3D                             ; 1CE3 3D
-        .byte   $22                             ; 1CE4 22
-L1CE5:  rol     $2A                             ; 1CE5 26 2A
-L1CE7:  .byte   $2E                             ; 1CE7 2E
-        .byte   $32                             ; 1CE8 32
-L1CE9:  rol     $3A,x                           ; 1CE9 36 3A
-L1CEB:  .byte   $3E                             ; 1CEB 3E
-        .byte   $22                             ; 1CEC 22
-L1CED:  rol     $2A                             ; 1CED 26 2A
-L1CEF:  .byte   $2E                             ; 1CEF 2E
-        .byte   $32                             ; 1CF0 32
-L1CF1:  rol     $3A,x                           ; 1CF1 36 3A
-L1CF3:  .byte   $3E                             ; 1CF3 3E
-        .byte   $23                             ; 1CF4 23
-L1CF5:  .byte   $27                             ; 1CF5 27
-        .byte   $2B                             ; 1CF6 2B
-L1CF7:  .byte   $2F                             ; 1CF7 2F
-        .byte   $33                             ; 1CF8 33
-L1CF9:  .byte   $37                             ; 1CF9 37
-        .byte   $3B                             ; 1CFA 3B
-L1CFB:  .byte   $3F                             ; 1CFB 3F
-        .byte   $23                             ; 1CFC 23
-L1CFD:  .byte   $27                             ; 1CFD 27
-        .byte   $2B                             ; 1CFE 2B
-L1CFF:  .byte   $2F                             ; 1CFF 2F
-        .byte   $33                             ; 1D00 33
-L1D01:  .byte   $37                             ; 1D01 37
-        .byte   $3B                             ; 1D02 3B
-L1D03:  bne     L1CD5                           ; 1D03 D0 D0
-L1D05:  bne     L1CD7                           ; 1D05 D0 D0
-L1D07:  bne     L1CD9                           ; 1D07 D0 D0
-L1D09:  bne     L1CDB                           ; 1D09 D0 D0
-L1D0B:  bne     L1CDD                           ; 1D0B D0 D0
-L1D0D:  bne     L1CDF                           ; 1D0D D0 D0
-L1D0F:  bne     L1CE1                           ; 1D0F D0 D0
-L1D11:  bne     L1CE3                           ; 1D11 D0 D0
-L1D13:  bne     L1CE5                           ; 1D13 D0 D0
-L1D15:  bne     L1CE7                           ; 1D15 D0 D0
-L1D17:  bne     L1CE9                           ; 1D17 D0 D0
-L1D19:  bne     L1CEB                           ; 1D19 D0 D0
-L1D1B:  bne     L1CED                           ; 1D1B D0 D0
-        bne     L1CEF                           ; 1D1D D0 D0
-        bne     L1CF1                           ; 1D1F D0 D0
-        bne     L1CF3                           ; 1D21 D0 D0
-        bne     L1CF5                           ; 1D23 D0 D0
-        bne     L1CF7                           ; 1D25 D0 D0
-        bne     L1CF9                           ; 1D27 D0 D0
-        bne     L1CFB                           ; 1D29 D0 D0
-        bne     L1CFD                           ; 1D2B D0 D0
-        bne     L1CFF                           ; 1D2D D0 D0
-        bne     L1D01                           ; 1D2F D0 D0
-        bne     L1D03                           ; 1D31 D0 D0
-        bne     L1D05                           ; 1D33 D0 D0
-        bne     L1D07                           ; 1D35 D0 D0
-        bne     L1D09                           ; 1D37 D0 D0
-        bne     L1D0B                           ; 1D39 D0 D0
-        bne     L1D0D                           ; 1D3B D0 D0
-        bne     L1D0F                           ; 1D3D D0 D0
-        bne     L1D11                           ; 1D3F D0 D0
-        bne     L1D13                           ; 1D41 D0 D0
-        bne     L1D15                           ; 1D43 D0 D0
-        bne     L1D17                           ; 1D45 D0 D0
-        bne     L1D19                           ; 1D47 D0 D0
-        bne     L1D1B                           ; 1D49 D0 D0
+; [PORTAGE HORS-MEM] Table high-byte des adresses de lignes HGR (256 entrees). Lignes 0-183 = visibles ($20-$3F) ; 184-255 = clipping hors-ecran. D'origine ces 72 entrees valent $D0 (=ROM Applesoft sur Apple II : ecriture sans effet, poubelle). Sur Apple-1 
+Hgr_LineHi:
+        .byte   $3C,$20,$24,$28,$2C,$30,$34,$38 ; 1C4B 3C 20 24 28 2C 30 34 38
+        .byte   $3C,$21,$25,$29,$2D,$31,$35,$39 ; 1C53 3C 21 25 29 2D 31 35 39
+        .byte   $3D,$21,$25,$29,$2D,$31,$35,$39 ; 1C5B 3D 21 25 29 2D 31 35 39
+        .byte   $3D,$22,$26,$2A,$2E,$32,$36,$3A ; 1C63 3D 22 26 2A 2E 32 36 3A
+        .byte   $3E,$22,$26,$2A,$2E,$32,$36,$3A ; 1C6B 3E 22 26 2A 2E 32 36 3A
+        .byte   $3E,$23,$27,$2B,$2F,$33,$37,$3B ; 1C73 3E 23 27 2B 2F 33 37 3B
+        .byte   $3F,$23,$27,$2B,$2F,$33,$37,$3B ; 1C7B 3F 23 27 2B 2F 33 37 3B
+        .byte   $3F,$20,$24,$28,$2C,$30,$34,$38 ; 1C83 3F 20 24 28 2C 30 34 38
+        .byte   $3C,$20,$24,$28,$2C,$30,$34,$38 ; 1C8B 3C 20 24 28 2C 30 34 38
+        .byte   $3C,$21,$25,$29,$2D,$31,$35,$39 ; 1C93 3C 21 25 29 2D 31 35 39
+        .byte   $3D,$21,$25,$29,$2D,$31,$35,$39 ; 1C9B 3D 21 25 29 2D 31 35 39
+        .byte   $3D,$22                         ; 1CA3 3D 22
+L1CA5:  .byte   $26,$2A,$2E,$32,$36,$3A,$3E,$22 ; 1CA5 26 2A 2E 32 36 3A 3E 22
+        .byte   $26,$2A,$2E,$32,$36,$3A,$3E,$23 ; 1CAD 26 2A 2E 32 36 3A 3E 23
+        .byte   $27,$2B,$2F,$33,$37,$3B,$3F,$23 ; 1CB5 27 2B 2F 33 37 3B 3F 23
+        .byte   $27,$2B,$2F,$33,$37,$3B,$3F,$20 ; 1CBD 27 2B 2F 33 37 3B 3F 20
+        .byte   $24,$28,$2C,$30,$34,$38,$3C,$20 ; 1CC5 24 28 2C 30 34 38 3C 20
+        .byte   $24,$28,$2C,$30,$34,$38,$3C,$21 ; 1CCD 24 28 2C 30 34 38 3C 21
+        .byte   $25,$29,$2D,$31,$35,$39,$3D,$21 ; 1CD5 25 29 2D 31 35 39 3D 21
+        .byte   $25,$29,$2D,$31,$35,$39,$3D,$22 ; 1CDD 25 29 2D 31 35 39 3D 22
+        .byte   $26,$2A,$2E,$32,$36,$3A,$3E,$22 ; 1CE5 26 2A 2E 32 36 3A 3E 22
+        .byte   $26,$2A,$2E,$32,$36,$3A,$3E,$23 ; 1CED 26 2A 2E 32 36 3A 3E 23
+        .byte   $27,$2B,$2F,$33,$37,$3B,$3F,$23 ; 1CF5 27 2B 2F 33 37 3B 3F 23
+        .byte   $27,$2B,$2F,$33,$37,$3B,$98,$98 ; 1CFD 27 2B 2F 33 37 3B 98 98
+        .byte   $98,$98,$98,$98,$98,$98,$98,$98 ; 1D05 98 98 98 98 98 98 98 98
+        .byte   $98,$98,$98,$98,$98,$98,$98,$98 ; 1D0D 98 98 98 98 98 98 98 98
+        .byte   $98,$98,$98,$98,$98,$98,$98,$98 ; 1D15 98 98 98 98 98 98 98 98
+        .byte   $98,$98,$98,$98,$98,$98,$98,$98 ; 1D1D 98 98 98 98 98 98 98 98
+        .byte   $98,$98,$98,$98,$98,$98,$98,$98 ; 1D25 98 98 98 98 98 98 98 98
+        .byte   $98,$98,$98,$98,$98,$98,$98,$98 ; 1D2D 98 98 98 98 98 98 98 98
+        .byte   $98,$98,$98,$98,$98,$98,$98,$98 ; 1D35 98 98 98 98 98 98 98 98
+        .byte   $98,$98,$98,$98,$98,$98,$98,$98 ; 1D3D 98 98 98 98 98 98 98 98
+        .byte   $98,$98,$98,$98,$98,$98         ; 1D45 98 98 98 98 98 98
+; ----------------------------------------------------------------------------
 L1D4B:  brk                                     ; 1D4B 00
         brk                                     ; 1D4C 00
         brk                                     ; 1D4D 00
@@ -3509,7 +3374,7 @@ L1ED4:  php                                     ; 1ED4 08
 L1EF5:  sta     $28                             ; 1EF5 85 28
 ; [PORTAGE CLAVIER] etait 'bit $C010' (KBDSTRB Apple II = efface le strobe). -> 'jsr kbd_clear' : efface le bit7 du latch logiciel.
 P_kbd_clear_1EF7:
-        jsr     kbd_clear                       ; 1EF7 20 10 FB
+        jsr     kbd_clear                       ; 1EF7 20 30 99
         lda     $C061                           ; 1EFA AD 61 C0
         sta     $3C                             ; 1EFD 85 3C
         rts                                     ; 1EFF 60
@@ -4079,7 +3944,7 @@ L2220:  brk                                     ; 2220 00
 L223A:  .byte   $03                             ; 223A 03
         .byte   $1B                             ; 223B 1B
         .byte   $03                             ; 223C 03
-L223D:  bmi     L2242                           ; 223D 30 03
+        bmi     L2242                           ; 223D 30 03
         .byte   $3B                             ; 223F 3B
         .byte   $0C                             ; 2240 0C
 L2241:  .byte   $30                             ; 2241 30
@@ -5075,7 +4940,7 @@ L2542:  brk                                     ; 2542 00
         brk                                     ; 261F 00
         brk                                     ; 2620 00
         brk                                     ; 2621 00
-L2622:  brk                                     ; 2622 00
+        brk                                     ; 2622 00
         brk                                     ; 2623 00
         brk                                     ; 2624 00
         brk                                     ; 2625 00
@@ -5332,7 +5197,7 @@ L2622:  brk                                     ; 2622 00
         brk                                     ; 2720 00
         brk                                     ; 2721 00
         brk                                     ; 2722 00
-L2723:  brk                                     ; 2723 00
+        brk                                     ; 2723 00
         brk                                     ; 2724 00
         brk                                     ; 2725 00
         brk                                     ; 2726 00
@@ -5586,7 +5451,7 @@ L2824:  jsr     L8A04                           ; 2824 20 04 8A
         jsr     L1721                           ; 2844 20 21 17
 ; [PORTAGE CLAVIER] etait 'bit $C010' (KBDSTRB Apple II = efface le strobe). -> 'jsr kbd_clear' : efface le bit7 du latch logiciel. (zone relocalisee: runtime $8047)
 P_kbd_clear_2847:
-        jsr     kbd_clear                       ; 2847 20 10 FB
+        jsr     kbd_clear                       ; 2847 20 30 99
         jsr     L77DC                           ; 284A 20 DC 77
         jsr     L88A6                           ; 284D 20 A6 88
         jsr     L6C1C                           ; 2850 20 1C 6C
@@ -5981,7 +5846,7 @@ L2B23:  cmp     #$93                            ; 2B23 C9 93
 ; ----------------------------------------------------------------------------
 ; [PORTAGE CLAVIER] etait 'bit $C010' (KBDSTRB Apple II = efface le strobe). -> 'jsr kbd_clear' : efface le bit7 du latch logiciel. (zone relocalisee: runtime $8332)
 P_kbd_clear_2B32:
-        jsr     kbd_clear                       ; 2B32 20 10 FB
+        jsr     kbd_clear                       ; 2B32 20 30 99
         jmp     L79C9                           ; 2B35 4C C9 79
 
 ; ----------------------------------------------------------------------------
@@ -6625,7 +6490,7 @@ L2FD1:  dec     $5C                             ; 2FD1 C6 5C
         bne     L2FDA                           ; 2FD5 D0 03
 ; [PORTAGE CLAVIER] etait 'bit $C010' (KBDSTRB Apple II = efface le strobe). -> 'jsr kbd_clear' : efface le bit7 du latch logiciel. (zone relocalisee: runtime $87D7)
 P_kbd_clear_2FD7:
-        jsr     kbd_clear                       ; 2FD7 20 10 FB
+        jsr     kbd_clear                       ; 2FD7 20 30 99
 L2FDA:  rts                                     ; 2FDA 60
 
 ; ----------------------------------------------------------------------------
@@ -6697,7 +6562,7 @@ L3041:  jsr     Get_Key                         ; 3041 20 2C 1B
         beq     L3062                           ; 3058 F0 08
 ; [PORTAGE CLAVIER] etait 'bit $C010' (KBDSTRB Apple II = efface le strobe). -> 'jsr kbd_clear' : efface le bit7 du latch logiciel. (zone relocalisee: runtime $885A)
 P_kbd_clear_305A:
-        jsr     kbd_clear                       ; 305A 20 10 FB
+        jsr     kbd_clear                       ; 305A 20 30 99
         rts                                     ; 305D 60
 
 ; ----------------------------------------------------------------------------
@@ -7520,7 +7385,7 @@ L3430:  .byte   $FF                             ; 3430 FF
         .byte   $FF                             ; 352D FF
         ora     (L0001,x)                       ; 352E 01 01
         .byte   $FF                             ; 3530 FF
-L3531:  .byte   $FF                             ; 3531 FF
+        .byte   $FF                             ; 3531 FF
         ora     (L0001,x)                       ; 3532 01 01
         .byte   $FF                             ; 3534 FF
         .byte   $FF                             ; 3535 FF
@@ -8710,7 +8575,7 @@ L3B78:  jsr     L9458                           ; 3B78 20 58 94
         sta     L0993                           ; 3B85 8D 93 09
 ; [PORTAGE CLAVIER] etait 'bit $C010' (KBDSTRB Apple II = efface le strobe). -> 'jsr kbd_clear' : efface le bit7 du latch logiciel. (zone relocalisee: runtime $9388)
 P_kbd_clear_3B88:
-        jsr     kbd_clear                       ; 3B88 20 10 FB
+        jsr     kbd_clear                       ; 3B88 20 30 99
 L3B8B:  jsr     L93C4                           ; 3B8B 20 C4 93
         ldy     #$00                            ; 3B8E A0 00
         jsr     L161B                           ; 3B90 20 1B 16
@@ -8724,7 +8589,7 @@ L3B8B:  jsr     L93C4                           ; 3B8B 20 C4 93
 ; ----------------------------------------------------------------------------
 ; [PORTAGE CLAVIER] etait 'bit $C010' (KBDSTRB Apple II = efface le strobe). -> 'jsr kbd_clear' : efface le bit7 du latch logiciel. (zone relocalisee: runtime $93A3)
 P_kbd_clear_3BA3:
-        jsr     kbd_clear                       ; 3BA3 20 10 FB
+        jsr     kbd_clear                       ; 3BA3 20 30 99
         ldx     L0993                           ; 3BA6 AE 93 09
         cmp     #$9B                            ; 3BA9 C9 9B
         beq     L3BC3                           ; 3BAB F0 16
@@ -19127,7 +18992,7 @@ L6E57:  lda     #$FF                            ; 6E57 A9 FF
         jsr     L1217                           ; 6E5B 20 17 12
 ; [PORTAGE CLAVIER] etait 'bit $C010' (KBDSTRB Apple II = efface le strobe). -> 'jsr kbd_clear' : efface le bit7 du latch logiciel.
 P_kbd_clear_6E5E:
-        jsr     kbd_clear                       ; 6E5E 20 10 FB
+        jsr     kbd_clear                       ; 6E5E 20 30 99
         lda     #$00                            ; 6E61 A9 00
         sta     $1C                             ; 6E63 85 1C
         lda     #$83                            ; 6E65 A9 83
@@ -20788,7 +20653,7 @@ L7976:  lda     $76                             ; 7976 A5 76
         bne     L798B                           ; 7986 D0 03
 ; [PORTAGE CLAVIER] etait 'bit $C010' (KBDSTRB Apple II = efface le strobe). -> 'jsr kbd_clear' : efface le bit7 du latch logiciel.
 P_kbd_clear_7988:
-        jsr     kbd_clear                       ; 7988 20 10 FB
+        jsr     kbd_clear                       ; 7988 20 30 99
 L798B:  rts                                     ; 798B 60
 
 ; ----------------------------------------------------------------------------
@@ -20833,7 +20698,7 @@ L79CE:  sta     L6D7C                           ; 79CE 8D 7C 6D
         sta     L6C0D                           ; 79D1 8D 0D 6C
 ; [PORTAGE CLAVIER] etait 'bit $C010' (KBDSTRB Apple II = efface le strobe). -> 'jsr kbd_clear' : efface le bit7 du latch logiciel.
 P_kbd_clear_79D4:
-        jsr     kbd_clear                       ; 79D4 20 10 FB
+        jsr     kbd_clear                       ; 79D4 20 30 99
         jmp     L0D11                           ; 79D7 4C 11 0D
 
 ; ----------------------------------------------------------------------------
@@ -20950,7 +20815,7 @@ L7AA1:  lda     #$00                            ; 7AA1 A9 00
         sta     $1C                             ; 7AA3 85 1C
 ; [PORTAGE CLAVIER] etait 'bit $C010' (KBDSTRB Apple II = efface le strobe). -> 'jsr kbd_clear' : efface le bit7 du latch logiciel.
 P_kbd_clear_7AA5:
-        jsr     kbd_clear                       ; 7AA5 20 10 FB
+        jsr     kbd_clear                       ; 7AA5 20 30 99
         rts                                     ; 7AA8 60
 
 ; ----------------------------------------------------------------------------

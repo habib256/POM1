@@ -162,4 +162,92 @@ std::string disassemble6502(const uint8_t* mem, uint16_t pc, int& instrLen,
     return m;
 }
 
+std::string annotateOperand6502(const uint8_t* mem, uint16_t pc,
+                                uint8_t x, uint8_t y, uint8_t status,
+                                bool evalBranch)
+{
+    const uint8_t opcode = mem[pc];
+    const OpcodeInfo& info = opcodeInfo[opcode];
+    const uint8_t lo = mem[(pc + 1) & 0xFFFF];
+    const uint8_t hi = mem[(pc + 2) & 0xFFFF];
+    const uint16_t abs16 = static_cast<uint16_t>(lo | (hi << 8));
+
+    auto rdword = [mem](uint16_t a) -> uint16_t {
+        return static_cast<uint16_t>(mem[a] |
+                                     (mem[(a + 1) & 0xFFFF] << 8));
+    };
+    // Zero-page word read wraps inside page 0 (6502 quirk shared by (zp,X)/(zp),Y).
+    auto rdzpword = [mem](uint8_t a) -> uint16_t {
+        return static_cast<uint16_t>(mem[a] |
+                                     (mem[static_cast<uint8_t>(a + 1)] << 8));
+    };
+    // Printable Apple char (high bit stripped), as a trailing " 'c'" or "".
+    auto chr = [](uint8_t v) -> std::string {
+        uint8_t c = v & 0x7F;
+        if (c >= 0x20 && c < 0x7F) {
+            char t[8];
+            std::snprintf(t, sizeof(t), " '%c'", c);
+            return t;
+        }
+        return "";
+    };
+    // "$EAEA=$VV 'c'" for a data access at effective address ea.
+    auto dataAt = [&](uint16_t ea) -> std::string {
+        uint8_t v = mem[ea];
+        char t[16];
+        std::snprintf(t, sizeof(t), "$%04X=$%02X", ea, v);
+        return t + chr(v);
+    };
+
+    switch (info.mode) {
+    case AM_IMP:
+        return "";
+    case AM_IMM: {
+        char t[16];
+        std::snprintf(t, sizeof(t), "#%d", static_cast<int8_t>(lo));
+        return t + chr(lo);
+    }
+    case AM_ZP:  return dataAt(lo);
+    case AM_ZPX: return dataAt(static_cast<uint8_t>(lo + x));
+    case AM_ZPY: return dataAt(static_cast<uint8_t>(lo + y));
+    case AM_ABS:
+        // JSR / JMP target the address itself; the mnemonic (with symbol)
+        // already names it — annotating mem[target] would just be noise.
+        if (opcode == 0x20 /*JSR*/ || opcode == 0x4C /*JMP*/) return "";
+        return dataAt(abs16);
+    case AM_ABX: return dataAt(static_cast<uint16_t>(abs16 + x));
+    case AM_ABY: return dataAt(static_cast<uint16_t>(abs16 + y));
+    case AM_IND: {                        // JMP ($abs16)
+        char t[24];
+        std::snprintf(t, sizeof(t), "-> $%04X", rdword(abs16));
+        return t;
+    }
+    case AM_IZX: return dataAt(rdzpword(static_cast<uint8_t>(lo + x)));
+    case AM_IZY: return dataAt(static_cast<uint16_t>(rdzpword(lo) + y));
+    case AM_REL: {
+        const uint16_t target = static_cast<uint16_t>(pc + 2 + static_cast<int8_t>(lo));
+        const char* arrow = (target <= pc) ? " ^" : " v";   // back-branch / forward
+        char t[24];
+        std::snprintf(t, sizeof(t), "-> $%04X%s", target, arrow);
+        std::string out = t;
+        if (evalBranch) {
+            bool taken = false;
+            switch (opcode) {
+            case 0x10: taken = !(status & 0x80); break;  // BPL N=0
+            case 0x30: taken =  (status & 0x80); break;  // BMI N=1
+            case 0x50: taken = !(status & 0x40); break;  // BVC V=0
+            case 0x70: taken =  (status & 0x40); break;  // BVS V=1
+            case 0x90: taken = !(status & 0x01); break;  // BCC C=0
+            case 0xB0: taken =  (status & 0x01); break;  // BCS C=1
+            case 0xD0: taken = !(status & 0x02); break;  // BNE Z=0
+            case 0xF0: taken =  (status & 0x02); break;  // BEQ Z=1
+            }
+            out += taken ? "  (taken)" : "  (skip)";
+        }
+        return out;
+    }
+    }
+    return "";
+}
+
 } // namespace pom1

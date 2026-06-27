@@ -18,6 +18,7 @@
 
 using pom1::SymbolTable;
 using pom1::disassemble6502;
+using pom1::annotateOperand6502;
 
 namespace {
 
@@ -73,6 +74,61 @@ int main()
         assert(len == 3);
         disassemble6502(mem.data(), 0x0320, len, &sym);
         assert(len == 2);
+    }
+
+    // ---- operand annotation (AppleWin-style effective addr + value) --------
+    // Reproduces the rows from the AppleWin //e debugger screenshot, with the
+    // same live registers (X=$65, Y=$0C) so indexed modes resolve identically.
+    {
+        const uint8_t X = 0x65, Y = 0x0C, P = 0x34;  // P: nv-Bdi-- (Z=0,C=0,N=0)
+        std::vector<uint8_t> m(0x10000, 0);
+
+        // LDX $398D,Y  with Y=$0C → $3999; mem[$3999]=$00.
+        put(m, 0x0526, {0xBE, 0x8D, 0x39});
+        m[0x3999] = 0x00;
+        assert(annotateOperand6502(m.data(), 0x0526, X, Y, P) == "$3999=$00");
+
+        // LSR $C8E8,X  with X=$65 → $C94D; mem[$C94D]=$4D → printable 'M'.
+        put(m, 0x0529, {0x5E, 0xE8, 0xC8});
+        m[0xC94D] = 0x4D;
+        assert(annotateOperand6502(m.data(), 0x0529, X, Y, P) == "$C94D=$4D 'M'");
+
+        // CPX #$BA  → signed -70, char ($BA & $7F = $3A) ':'.
+        put(m, 0x052C, {0xE0, 0xBA});
+        assert(annotateOperand6502(m.data(), 0x052C, X, Y, P) == "#-70 ':'");
+
+        // LDA $207D (absolute data) → value $35 → '5'.
+        put(m, 0x0561, {0xAD, 0x7D, 0x20});
+        m[0x207D] = 0x35;
+        assert(annotateOperand6502(m.data(), 0x0561, X, Y, P) == "$207D=$35 '5'");
+
+        // JSR/JMP abs: target is named by the mnemonic → no annotation.
+        put(m, 0x0538, {0x4C, 0x42, 0xD2});  // JMP $D242
+        assert(annotateOperand6502(m.data(), 0x0538, X, Y, P).empty());
+        put(m, 0x0570, {0x20, 0xBD, 0xD5});  // JSR $D5BD
+        assert(annotateOperand6502(m.data(), 0x0570, X, Y, P).empty());
+
+        // Branch direction arrows + taken/skip under the PC. Z=0 here.
+        // BNE forward (target > pc) → 'v', and BNE is taken (Z=0).
+        put(m, 0x0560, {0xD0, 0x20});  // BNE $0582
+        assert(annotateOperand6502(m.data(), 0x0560, X, Y, P, /*eval=*/true)
+               == "-> $0582 v  (taken)");
+        // BEQ back (target < pc) → '^', and BEQ is NOT taken (Z=0).
+        put(m, 0x0560, {0xF0, 0xF0});  // BEQ $0552
+        assert(annotateOperand6502(m.data(), 0x0560, X, Y, P, /*eval=*/true)
+               == "-> $0552 ^  (skip)");
+        // Without evalBranch: target + arrow only, no verdict.
+        assert(annotateOperand6502(m.data(), 0x0560, X, Y, P, /*eval=*/false)
+               == "-> $0552 ^");
+
+        // JMP ($FFFC): indirect → resolves the pointer, not data.
+        put(m, 0x0340, {0x6C, 0xFC, 0xFF});
+        put(m, 0xFFFC, {0x00, 0xFF});  // vector → $FF00
+        assert(annotateOperand6502(m.data(), 0x0340, X, Y, P) == "-> $FF00");
+
+        // Implied opcode (INX) → nothing to annotate.
+        m[0x055B] = 0xE8;
+        assert(annotateOperand6502(m.data(), 0x055B, X, Y, P).empty());
     }
 
     // ---- file parser (the three accepted formats + comments) ---------------

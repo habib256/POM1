@@ -348,6 +348,10 @@ void MainWindow_ImGui::render()
     if (showMemoryViewer) {
         memoryViewer->updateLiveMemory(uiSnapshot.memory);
         memoryViewer->setCurrentPC(uiSnapshot.programCounter);
+        memoryViewer->setCurrentRegisters(uiSnapshot.accumulator,
+                                          uiSnapshot.xRegister,
+                                          uiSnapshot.yRegister,
+                                          uiSnapshot.statusRegister);
         memoryViewer->setGraphicsCardEnabled(graphicsCardEnabled);
         memoryViewer->setTMS9918Enabled(tms9918Enabled);
         memoryViewer->setSIDEnabled(sidEnabled);

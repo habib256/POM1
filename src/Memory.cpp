@@ -1300,7 +1300,7 @@ void Memory::memWrite(uint16_t address, uint8_t value)
         return;
     }
 
-    // Watchpoint: latch the first write to a watched address this instruction.
+// Watchpoint: latch the first write to a watched address this instruction.
     if (anyWatch_ && !watchHit_.tripped && (watchFlags_[address] & 0x02))
         watchHit_ = { true, address, true };
 

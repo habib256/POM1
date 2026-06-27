@@ -25,6 +25,20 @@ class SymbolTable;
 std::string disassemble6502(const uint8_t* mem, uint16_t pc, int& instrLen,
                             const SymbolTable* symbols = nullptr);
 
+/// Resolve the operand of the instruction at `mem[pc]` into a human-readable
+/// annotation — the AppleWin-style "what does this actually touch right now?"
+/// hint shown to the right of the disassembly. Uses the live X/Y registers so
+/// indexed/indirect modes report their *effective* address+value (e.g.
+/// "LDA $398D,Y" with Y=$0C → "$3999=$00"); data modes append the byte's
+/// printable Apple char. Control-flow modes (branches, JMP/JMP()/—JSR is left
+/// to the symbol) report the target with a direction arrow, and when
+/// `evalBranch` is set the conditional branch is evaluated against `status`
+/// ("taken"/"skip"). Returns "" when there is nothing useful to annotate
+/// (implied/accumulator, or JSR/JMP whose target the mnemonic already names).
+std::string annotateOperand6502(const uint8_t* mem, uint16_t pc,
+                                uint8_t x, uint8_t y, uint8_t status,
+                                bool evalBranch = false);
+
 } // namespace pom1
 
 #endif // DISASSEMBLER6502_H

@@ -22,8 +22,8 @@ avec `cadius EXTRACTFILE`.
 | `buzzard_bait.bin` | Image portée de référence (entrée da65 + cible du round-trip). |
 | `buzzard_bait.info`| Fichier info da65 (labels matériels + hooks + zones de données) pour régénérer le `.s`. |
 | `buzzard_bait.cfg` | Config ld65 (segment CODE en `$0940`). |
-| `gen2_port.s`      | Routines **ajoutées** par le portage (WAIT son + latch clavier), chargées en RAM libre `$F000-$FEFF`. |
-| `gen2_port.cfg`    | Config ld65 pour `gen2_port.s` (`$FB00..$FCB3`). |
+| `gen2_port.s`      | Routines **ajoutées** par le portage (WAIT son + latch clavier), chargées en RAM basse `$9900+`. |
+| `gen2_port.cfg`    | Config ld65 pour `gen2_port.s` (`$9900..$9950`). |
 | `Makefile`         | `make` vérifie le round-trip ; `make disasm` régénère le `.s`. |
 
 ## Build / vérification
@@ -39,18 +39,20 @@ make disasm     # da65 : régénère le désassemblage (buzzard_bait.regen.s) de
 > `[PORTAGE` (ou `RELOCALISATION`). Un tableau récapitulatif de **tous** les
 > sites figure aussi en tête du listing. Les annotations sont stockées dans
 > `buzzard_bait.info` (attribut `COMMENT` des labels da65) : `make disasm` les
-> régénère. Décompte : 6 graphisme + 20 clavier + 4 touches + 5 son + 1 boot (crédit).
+> régénère. Décompte : 6 graphisme + 20 clavier + 4 touches + 5 son + 1 boot + 2 menu + 1 hors-mémoire (table 72 entrées).
 
-Le binaire d'origine est un jeu Apple II HGR autonome. Quatre familles de
-changements suffisent (toutes visibles dans `buzzard_bait.s`) :
+Le binaire d'origine est un jeu Apple II HGR autonome. Les familles de
+changements (toutes visibles dans `buzzard_bait.s`) :
 
 | Domaine | Apple II | Apple-1 + GEN2 |
 |---------|----------|----------------|
 | **Graphisme** | soft switches `$C050/51/52/54/57` | remappés `$C25x` (`bit $C251/$C254`, `lda $C250/$C252/$C254/$C257`) |
-| **Son** | `jsr $FCA8` (WAIT Monitor) + bascules `$C030` | WAIT fourni en RAM `$FCA8` (`gen2_port.s`) ; `$C030` → ACI TAPE OUT |
-| **Clavier** | `lda $C000` / `bit $C010` | latch logiciel `$FB80` : `jsr kbd_read` / `jsr kbd_clear` (`gen2_port.s`) |
+| **Son** | `jsr $FCA8` (WAIT Monitor) + bascules `$C030` | WAIT fourni en RAM `$9900` (`gen2_port.s`) ; `$C030` → ACI TAPE OUT |
+| **Clavier** | `lda $C000` / `bit $C010` | latch logiciel `$9950` : `jsr kbd_read` / `jsr kbd_clear` (`gen2_port.s`) |
 | **Touches** | ← `$88` / → `$95` / `A` tir / `S` stop | **IJKL** : I=tir (`$C9`), J=gauche (`$CA`), K=stop (`$CB`), L=droite (`$CC`) — défauts en `Init_DefaultKeys` |
-| **Boot** | crédit de crack `ALDO… CCB` | remplacé par `PORTAGE GEN2 HGR - UNCLE BERNIE` (`Boot_CreditText` @ `$0981`) |
+| **Boot** | crédit de crack `ALDO… CCB` | remplacé par `GEN2 HGR PORT - UNCLE BERNIE` (`Boot_CreditText` @ `$0981`) |
+| **Menu** | `PLEASE SELECT` (P)addle/(K)eyb/(J)oy/(A)tari | réécrit : aide des touches + `PRESS ANY KEY TO PLAY` (`Menu_DrawHelp` @ `$0C7C`) ; **toute touche** force le mode clavier (`Menu_AnyKeyStart` @ `$102F`) — seul mode jouable sur Apple-1 |
+| **Hors-mémoire** | table HGR : 72 lignes de clipping → `$D0xx` (poubelle ROM Applesoft) | redirigées vers `$98xx` (RAM libre) — `Hgr_LineHi` @ `$1C4B` ; sinon ces écritures corrompent la PIA `$D0xx` (clavier/affichage) et impriment des caractères parasites |
 
 ### Auto-relocalisation
 
@@ -67,23 +69,28 @@ $2000-$3FFF  page HGR 1 (affichee) ; $2800-$3FFF aussi copie vers $8000
 $4000-$7BFF  donnees (sprites, images HGR, tables son)
 $8000-$97FF  moteur principal (apres relocalisation)
 $09A0-$09A6  table des touches de controle
-$FB00/$FB10  kbd_read / kbd_clear      (gen2_port.s)
-$FB80        KEYLATCH                  (gen2_port.s)
-$FCA8        mon_WAIT                  (gen2_port.s)
+$9910/$9930  kbd_read / kbd_clear      (gen2_port.s)
+$9950        KEYLATCH                  (gen2_port.s)
+$9900        mon_WAIT                  (gen2_port.s)
 ```
+
+> Shims en **RAM basse** (`$9900+`, au-dessus du moteur `$8000-$97FF` et de la
+> page-poubelle `$9800`) : la zone `$F000-$FEFF` n'est pas garantie présente sur
+> le vrai Apple-1 de Bernie, contrairement au 48K (`$0000-$BFFF`).
 
 ## Jouer (dans POM1)
 
 Charger `software/Graphic HGR/BuzzardBait.txt` (active la carte GEN2
-automatiquement). Au menu **PLEASE SELECT**, choisir **(K) KEYBOARD**.
+automatiquement). L'écran d'aide affiche les touches ; **appuyer sur
+n'importe quelle touche** lance la partie (mode clavier forcé).
 
-| Touche | Action |
-|--------|--------|
-| **I** | tir |
-| **J** | gauche |
-| **K** | stop (annule la vitesse horizontale) |
-| **L** | droite |
-| **ESPACE** | saut / battre des ailes |
+| Touche | Action | Écran |
+|--------|--------|-------|
+| **I** | tir | `I FIRE` |
+| **J** | gauche | `J LEFT` |
+| **K** | stop (annule la vitesse horizontale) | `K STOP` |
+| **L** | droite | `L RIGHT` |
+| **ESPACE** | sauter / battre des ailes | `SPACE  JUMP` |
 
 Activer **Settings → « Keyboard autorepeat »** pour un déplacement continu
 (les jeux d'arcade Apple II s'appuient sur l'auto-répétition matérielle du
@@ -92,7 +99,7 @@ clavier, absente par défaut sur l'Apple-1 TTL).
 ## Limites du désassemblage
 
 `buzzard_bait.s` se ré-assemble à l'octet près. **Tous les sites du portage
-sont annotés** (graphisme / son / clavier / touches + relocalisation). En
+sont annotés** (graphisme / son / clavier / touches / boot / menu / hors-mémoire + relocalisation). En
 revanche ce **n'est pas** une reconstruction entièrement symbolique du *reste*
 du jeu : le code auto-modifiant, les données interprétées comme instructions
 (qui se ré-assemblent néanmoins identiques) et la zone relocalisée

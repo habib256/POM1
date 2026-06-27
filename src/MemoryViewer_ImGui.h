@@ -46,11 +46,24 @@ public:
     // highlights the instruction at this address and (with Follow PC on)
     // re-anchors so it stays visible.
     void setCurrentPC(uint16_t pc) { currentPC = pc; }
+    /// Live CPU registers, pushed each frame alongside setCurrentPC(). The
+    /// disassembly view uses X/Y to resolve indexed/indirect effective
+    /// addresses and the status flags to evaluate the branch under the PC.
+    void setCurrentRegisters(uint8_t a, uint8_t x, uint8_t y, uint8_t status) {
+        regA = a; regX = x; regY = y; regStatus = status;
+    }
     /// Merge user symbols from a file into the disassembler's table (on top of
     /// the built-in Apple-1 defaults). Returns symbols added; sets `err` on
     /// failure. See SymbolTable::loadFile for the accepted formats.
     int loadSymbolsFile(const std::string& path, std::string& err) {
         return symbols.loadFile(path, err);
+    }
+    /// Drop any user/program labels and restore just the built-in Apple-1
+    /// defaults. Called before merging a freshly-loaded program's sibling
+    /// label file so symbols from a previous program don't linger.
+    void resetSymbolsToDefaults() {
+        symbols.clear();
+        symbols.loadApple1Defaults();
     }
 
     struct RomRegion { uint16_t start, end; };
@@ -90,6 +103,10 @@ private:
     // Disassembly PC marker / follow
     uint16_t currentPC = 0;
     bool followPC = false;
+
+    // Live CPU registers (for operand annotation in the disassembly view).
+    uint8_t regA = 0, regX = 0, regY = 0, regStatus = 0;
+    bool showOperandAnnot = true;
 
     // Disassembly symbols (built-in Apple-1 defaults, loaded in the ctor).
     pom1::SymbolTable symbols;

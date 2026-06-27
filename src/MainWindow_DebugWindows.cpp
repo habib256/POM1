@@ -10,6 +10,7 @@
 #include "MainWindow_Internal.h"
 #include "POM1Build.h"
 #include "Logger.h"
+#include "Disassembler6502.h"
 
 #include "imgui.h"
 #include "imgui_internal.h"
@@ -270,6 +271,17 @@ void MainWindow_ImGui::renderDebugDialog()
             }
             ImGui::Text("Bytes: %s", rawBytes.str().c_str());
             ImGui::Text("  %s", disasm.c_str());
+
+            // Operand annotation: resolve the effective address + value (using
+            // the live X/Y) and, for the branch under the PC, whether it will
+            // be taken — the AppleWin-style "what does this touch right now?".
+            std::string annot = pom1::annotateOperand6502(
+                uiSnapshot.memory.data(), pc,
+                uiSnapshot.xRegister, uiSnapshot.yRegister,
+                uiSnapshot.statusRegister, /*evalBranch=*/true);
+            if (!annot.empty())
+                ImGui::TextColored(ImVec4(1.0f, 0.85f, 0.4f, 1.0f),
+                                   "  -> %s", annot.c_str());
         }
         
         // Pile

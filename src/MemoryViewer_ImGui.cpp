@@ -186,6 +186,12 @@ void MemoryViewer_ImGui::renderControls()
         ImGui::Checkbox("Symbols", &showSymbols);
         if (ImGui::IsItemHovered())
             ImGui::SetTooltip("Show symbolic names (e.g. JSR ECHO) for known addresses");
+        ImGui::SameLine();
+        ImGui::Checkbox("Operands", &showOperandAnnot);
+        if (ImGui::IsItemHovered())
+            ImGui::SetTooltip("Resolve each operand to its effective address + value\n"
+                              "(e.g. LDA $398D,Y -> $3999=$00), and show branch\n"
+                              "targets / whether the branch under the PC is taken");
     }
 
     // Quick shortcuts
@@ -734,6 +740,9 @@ void MemoryViewer_ImGui::renderDisasmView()
     float addrW = ImGui::CalcTextSize("> $0000  ").x;
     float bytesColW = ImGui::CalcTextSize("00 00 00  ").x;
     float mnemonicX = addrW + bytesColW;
+    // Annotation column sits a fixed mnemonic-width past the mnemonic so the
+    // resolved operand values line up regardless of mnemonic length.
+    float annotX = mnemonicX + ImGui::CalcTextSize("LDA ($EA,X)  ").x;
 
     // Header
     ImGui::Text("Address");
@@ -741,6 +750,10 @@ void MemoryViewer_ImGui::renderDisasmView()
     ImGui::Text("Bytes");
     ImGui::SameLine(mnemonicX);
     ImGui::Text("Instruction");
+    if (showOperandAnnot) {
+        ImGui::SameLine(annotX);
+        ImGui::Text("Operand");
+    }
     ImGui::Separator();
 
     const pom1::SymbolTable* symTab = showSymbols ? &symbols : nullptr;
@@ -806,6 +819,21 @@ void MemoryViewer_ImGui::renderDisasmView()
         // Mnemonic
         ImGui::SameLine(mnemonicX);
         ImGui::Text("%s", mnemonic.c_str());
+
+        // Operand annotation — effective address + value (AppleWin-style).
+        // Indexed/indirect modes resolve against the live X/Y; the branch
+        // under the PC is evaluated against the live status flags.
+        if (showOperandAnnot) {
+            std::string annot = pom1::annotateOperand6502(
+                mem, static_cast<uint16_t>(pc), regX, regY, regStatus,
+                /*evalBranch=*/isPC);
+            if (!annot.empty()) {
+                ImGui::SameLine(annotX);
+                ImGui::TextColored(isPC ? ImVec4(1.0f, 0.85f, 0.4f, 1.0f)
+                                        : ImVec4(0.55f, 0.65f, 0.80f, 1.0f),
+                                   "%s", annot.c_str());
+            }
+        }
 
         pc += instrLen;
     }
