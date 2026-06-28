@@ -60,7 +60,7 @@ Agent-facing playbook for writing **new Apple 1 software** that runs under POM1.
 desktop only) edits, assembles/compiles (asm **or** C) and runs in one click, with
 a `HELLO WORLD` starter per target — no Makefile needed (per-target reference:
 [`DEVBENCH.md`](../../doc/DEVBENCH.md)). Copy `sketchs/apple1/_template/` for an asm
-or text-mode-C starting point (and `sketchs/gen2/_template_gen2c/`, `sketchs/tms9918/_template_tms9918c/`
+or text-mode-C starting point (and `sketchs/gen2/_template_gen2c/`, `sketchs/tms9918/tms9918_hello_c/`
 for the cc65 graphics-card flavours). The manual flow below is for batch/CI.
 
 Per-project Makefiles under `sketchs/<profile>/<name>/` already wire `ca65` + `ld65` + Woz-hex emit. Manual flow if you need it:
@@ -90,7 +90,7 @@ The text config (`apple1_4k.cfg`) reserves **`$0000-$0022` ZP** (35 bytes); Wozm
 | `$D011` | KBDCR | Bit 7 = 1 when key ready; reading `$D010` clears the strobe |
 | `$D012` | DSP | Write a char (**bit 7 must be set** — `ORA #$80`); read bit 7 = 0 when ready |
 | `$FFEF` | ECHO | Wozmon routine: print A (expects bit 7 set) |
-| `$FFFC-$FFFF` | Vectors | Reset / IRQ / NMI in Wozmon ROM |
+| `$FFFA-$FFFF` | Vectors | NMI (`$FFFA/B`) / Reset (`$FFFC/D`) / IRQ (`$FFFE/F`) in Wozmon ROM |
 
 **Bit-7 rule** — PIA 6821 uses bit 7 as a data-valid strobe both ways. Write: `ORA #$80` first; `CR` is `$8D`, not `$0D`. Read: `AND #$7F`. **Uppercase only** — keyboard forces it in hardware. Compare `#'W'`, never `#'w'`.
 

@@ -117,6 +117,32 @@ int main()
              0x4C, (uint8_t)(n & 0xFF), (uint8_t)(n >> 8)});
     }
 
+    // page2Floor (GEN2): an HGR2-only program may extend its tokenised image into
+    // the idle page-1 region (ceiling $4000); an HGR (page-1) program of the SAME
+    // size stays capped at $2000 (it would otherwise overwrite the framebuffer it
+    // draws to). Build a listing big enough to cross $2000 but stay below $4000
+    // (~11 KB: 300 REM lines of ~37 bytes). Pins the SteveJobs.apf fix.
+    {
+        std::string pad;
+        for (int n = 10; n < 10 + 300; ++n)
+            pad += std::to_string(n) + " REM 123456789012345678901234567890\r";
+        basic::Result hgr2 = basic::compile("5 HGR2\r" + pad, basic::targetGen2());
+        if (!hgr2.ok) {
+            ++failures;
+            std::printf("FAIL: HGR2-only program should fit below $4000 (%s)\n",
+                        hgr2.error.c_str());
+        } else {
+            std::printf("ok: HGR2-only program extends past $2000 to the $4000 ceiling\n");
+        }
+        basic::Result hgr = basic::compile("5 HGR\r" + pad, basic::targetGen2());
+        if (hgr.ok) {
+            ++failures;
+            std::printf("FAIL: HGR (page-1) program of same size must be capped at $2000\n");
+        } else {
+            std::printf("ok: HGR (page-1) program of same size stays capped at $2000\n");
+        }
+    }
+
     if (failures) { std::printf("basic_compiler_tokenize: %d FAILED\n", failures); return 1; }
     std::printf("basic_compiler_tokenize: OK\n");
     return 0;

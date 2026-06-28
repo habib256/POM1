@@ -46,7 +46,7 @@ public:
 private:
     EmulationController* emu_;
     std::unique_ptr<TMS9918::Snapshot> snap_;            // staging for renderToBuffer
-    bool batching_ = false;                              // inside beginBatch()/endBatch()
+    int  batchDepth_ = 0;                                // begin/endBatch nesting depth (reentrant)
     std::vector<std::pair<uint16_t, uint8_t>> batch_;    // coalesced VRAM writes
 };
 

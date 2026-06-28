@@ -1,7 +1,7 @@
 10 REM Boy's Surface
 20 REM From the book "Topologicon" by Jean-Pierre Petit
 100 PI=3.141592:P3=PI/3:P6=PI/6:P8=PI/8
-110 HGR : POKE 49234,0
+110 HGR : POKE 49746,0
 120 HCOLOR=3
 130 FOR MU = 0 TO PI STEP 0.1
 140 D=34+4.79*SIN(6*MU-P)

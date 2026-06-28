@@ -10,7 +10,14 @@ import re
 import sys
 from pathlib import Path
 
-ROOT = Path("/Users/factory/src/POM1/software")
+# Derive paths from the script location so the regenerator runs on any checkout
+# (was hardcoded to the original author's absolute /Users/factory path, which made
+# the tool impossible to run). The level .inc files and asm sources have also
+# since moved out of software/ into dev/lib/ and sketchs/.
+REPO = Path(__file__).resolve().parents[1]
+SOKOBAN_INC_DIR = REPO / "dev" / "lib" / "games" / "sokoban"
+SOKOBAN_ASM = REPO / "sketchs" / "apple1" / "game_sokoban" / "Sokoban.asm"
+HGR_SOKOBAN_ASM = REPO / "sketchs" / "gen2" / "game_sokoban" / "HGR_Sokoban.asm"
 
 def parse_levels(asm_path, start_n, end_n):
     """Return {n: (w, h, row_off, col_off, [rows])} for level<start>..level<end>."""
@@ -121,8 +128,8 @@ def main():
     # Prefer re-parsing from the existing generated .inc files (round-trip
     # safe via RLE decoder). Falls back to the legacy .asm format if the
     # .inc files haven't been generated yet.
-    base_inc = ROOT / "games" / "sokoban_levels.inc"
-    ext_inc = ROOT / "games" / "sokoban_levels_ext.inc"
+    base_inc = SOKOBAN_INC_DIR / "sokoban_levels.inc"
+    ext_inc = SOKOBAN_INC_DIR / "sokoban_levels_ext.inc"
     full = {}
     if base_inc.exists():
         full.update(parse_levels_from_inc(base_inc, 1, 72))
@@ -130,8 +137,8 @@ def main():
         full.update(parse_levels_from_inc(ext_inc, 1, 72))
     if len(full) < 72:
         # Bootstrap path: read from the .asm sources that still hold raw data.
-        for path, hi in [(ROOT / "games" / "Sokoban.asm", 47),
-                         (ROOT / "hgr" / "HGR_Sokoban.asm", 72)]:
+        for path, hi in [(SOKOBAN_ASM, 47),
+                         (HGR_SOKOBAN_ASM, 72)]:
             if path.exists():
                 try:
                     full.update(parse_levels(path, 1, hi))

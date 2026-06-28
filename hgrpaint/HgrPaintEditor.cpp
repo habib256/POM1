@@ -381,7 +381,11 @@ void hgrpaint::HgrPaintEditor::doRedo()
 void hgrpaint::HgrPaintEditor::clearPage()
 {
     beginStroke(true);
-    for (int off = 0; off < static_cast<int>(shadow.size()); ++off) {
+    // Bound by pageBytes(), not shadow.size(): in GR (lo-res) mode baseAddr() is
+    // $0400 and the page is only 0x400 bytes, so iterating the full 0x2000 shadow
+    // would poke $0400-$23FF — clobbering GR page 2, user RAM, and HIRES page 1.
+    const int limit = std::min(pageBytes(), static_cast<int>(shadow.size()));
+    for (int off = 0; off < limit; ++off) {
         if (shadow[off] != 0) {
             const uint16_t addr = static_cast<uint16_t>(baseAddr() + off);
             stroke.push_back({addr, shadow[off], 0});
@@ -1507,7 +1511,7 @@ void hgrpaint::HgrPaintEditor::renderStatusBar(int lx, int ly, bool hovered)
     // colour swatch, page, zoom, undo/redo depth. Survives the mouse leaving the
     // canvas via the cached lastHoverX/Y.
     const char* toolNames[] = { "Pencil", "Eraser", "Line", "Rect", "Ellipse",
-                                "Fill", "Eyedropper", "Select", "Palette" };
+                                "Fill", "Eyedropper", "Select", "Palette", "Text" };
     const HgrColor activeColor = (tool == Tool::Eraser) ? HgrColor::Black : color;
 
     if (hovered && lx >= 0 && ly >= 0) {

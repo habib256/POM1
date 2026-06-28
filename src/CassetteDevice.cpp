@@ -974,7 +974,10 @@ bool CassetteDevice::loadWavTape(const std::string& path)
         const uint8_t* chunk = bytes.data() + offset;
         const uint32_t chunkSize = readLe32(chunk + 4);
         offset += 8;
-        if (offset + chunkSize > bytes.size()) {
+        // Compare against the remaining byte count rather than offset+chunkSize:
+        // on 32-bit size_t (wasm32) a crafted chunkSize near 0xFFFFFFFF would wrap
+        // offset+chunkSize below bytes.size() and slip past this guard.
+        if (chunkSize > bytes.size() - offset) {
             break;
         }
 

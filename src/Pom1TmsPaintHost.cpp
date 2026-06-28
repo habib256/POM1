@@ -23,21 +23,25 @@ void Pom1TmsPaintHost::pokeVram(uint16_t addr, uint8_t value)
 {
     // While batching, defer to one writeTms9918VramBatch() so a bulk edit costs
     // one lock + one framebuffer rebuild + one snapshot publish.
-    if (batching_) { batch_.emplace_back(static_cast<uint16_t>(addr & 0x3FFF), value); return; }
+    if (batchDepth_ > 0) { batch_.emplace_back(static_cast<uint16_t>(addr & 0x3FFF), value); return; }
     if (emu_) emu_->writeTms9918Vram(static_cast<uint16_t>(addr & 0x3FFF), value);
 }
 
 void Pom1TmsPaintHost::beginBatch()
 {
-    batching_ = true;
-    batch_.clear();
+    // Reentrant depth counter (mirrors Pom1HgrPaintHost): a nested begin/endBatch
+    // — e.g. Ctrl+Z's applyOps brackets firing while a bulk Line/Rect drag's batch
+    // is still open — must NOT clear the queue or flush it early. Only the
+    // outermost begin clears and the outermost end flushes.
+    if (batchDepth_++ == 0) batch_.clear();
 }
 
 void Pom1TmsPaintHost::endBatch()
 {
-    batching_ = false;
-    if (emu_) emu_->writeTms9918VramBatch(batch_);
-    batch_.clear();
+    if (batchDepth_ > 0 && --batchDepth_ == 0) {
+        if (emu_) emu_->writeTms9918VramBatch(batch_);
+        batch_.clear();
+    }
 }
 
 void Pom1TmsPaintHost::applyRegisters(const uint8_t regs[8])

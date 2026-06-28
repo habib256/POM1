@@ -30,7 +30,7 @@ GTMP      = $08                 ; pixel bitmask / scratch
 GBYTE     = $09                 ; framebuffer byte being modified
 GIDX      = $0A                 ; byte index within the scanline (0..39)
 
-; --- GEN2 state block ($0300-$031A; CSW lives at $031E, see zeropage.s) ------
+; --- GEN2 state block ($0300-$031C; CSW lives at $031E, see zeropage.s) ------
 GST       = $0300
 HCOLORVAL = GST+0               ; hi-res colour 0..7
 LRCOLOR   = GST+1               ; lo-res colour, duplicated into both nibbles
@@ -60,6 +60,10 @@ CV        = GST+24             ; GEN2 text cursor row 0..23
 GCSX      = GST+25             ; GCOUT saved X
 GCSY      = GST+26             ; GCOUT saved Y
 INVFLG    = GST+27             ; math2026 video mask: $FF normal, $3F inverse, $7F flash
+WNDTOP    = GST+28             ; text-window top row (Apple II WNDTOP): 0 in TEXT,
+                               ; 20 in any graphics mode so HOME/scroll touch only
+                               ; the 4-line text window, never the lo-res picture.
+                               ; ($031C; CSW is $031E, $031C/$031D were free.)
 
 ; ============================================================================
 ; Cold-start init (called from COLDSTART)
@@ -75,13 +79,14 @@ GEN2_BOOT:
         sta     LRCOLOR
         sta     CH
         sta     CV
+        sta     WNDTOP          ; boot is TEXT mode: text window = full 24 rows
         lda     #$FF            ; math2026: default video = NORMAL
         sta     INVFLG
         lda     #3
         sta     HCOLORVAL       ; default hi-res colour = white
         lda     GEN2_TEXTON     ; GEN2 to text mode, page 1
         lda     GEN2_PAGE1
-        jmp     text_clear      ; blank the $0400 text page, rts
+        jmp     clear_text_window ; WNDTOP=0 here -> blanks all 24 rows, rts
 
 ; ============================================================================
 ; PRINT (-> GEN2 text console) / APRINT (-> Apple-1 terminal)
@@ -155,27 +160,12 @@ GCOUT:
         ldy     GCSY
         rts
 
-; text_clear -- blank the $0400 text page (fill $A0 = space, normal video).
-text_clear:
-        lda     #$00
-        sta     GP
-        lda     #$04
-        sta     GP+1
-        ldx     #$04            ; 4 pages = $0400-$07FF
-        lda     #$A0
-        ldy     #0
-@l:     sta     (GP),y
-        iny
-        bne     @l
-        inc     GP+1
-        dex
-        bne     @l
-        rts
-
 ; text_scroll -- scroll the $0400 text page up one row; blank row 23.
 ; GP = dest row ptr ($06/$07); GTMP/GBYTE ($08/$09) = src row ptr (both ZP).
 text_scroll:
-        ldx     #0              ; copy row x+1 -> row x, for x = 0..22
+        ldx     WNDTOP          ; copy row x+1 -> row x, for x = WNDTOP..22
+                                ; (so a mixed-mode scroll never drags the lo-res
+                                ; picture in rows 0..19 up through the window)
 @row:   lda     lores_lo,x      ; dest = row x
         sta     GP
         lda     lores_hi,x
@@ -208,11 +198,33 @@ text_scroll:
 ; ============================================================================
 ; Text cursor commands
 ; ============================================================================
-GFX_HOME:                       ; clear GEN2 text page + cursor home
-        jsr     text_clear
+GFX_HOME:                       ; clear the text WINDOW + home cursor to its top
+        jsr     clear_text_window
         lda     #0
         sta     CH
+        lda     WNDTOP
         sta     CV
+        rts
+
+; clear_text_window -- blank text rows WNDTOP..23 (40 bytes each) with $A0. In a
+; graphics mode WNDTOP=20, so the lo-res picture (rows 0..19 = lo-res 0..39) is
+; preserved -- the Apple II HOME-respects-the-text-window semantics. (The old
+; GFX_HOME blanked the whole $0400 page, wiping the picture: AppleBite.apf draws
+; an apple, then HOME, then the COLOR=0 "bite" -- the wipe destroyed the apple.)
+clear_text_window:
+        ldx     WNDTOP
+@row:   lda     lores_lo,x
+        sta     GP
+        lda     lores_hi,x
+        sta     GP+1
+        lda     #$A0
+        ldy     #39
+@col:   sta     (GP),y
+        dey
+        bpl     @col
+        inx
+        cpx     #24
+        bcc     @row
         rts
 
 GFX_HTAB:                       ; HTAB c  (1..40 -> column 0..39)
@@ -255,6 +267,8 @@ GFX_FLASH:                      ; FLASH
 ; Mode commands
 ; ============================================================================
 GFX_TEXT:
+        lda     #0              ; full-screen text: window = all 24 rows
+        sta     WNDTOP
         lda     GEN2_TEXTON
         lda     GEN2_PAGE1
         rts
@@ -265,9 +279,15 @@ GFX_NOMIX:
 
 GFX_MIX:
         lda     GEN2_MIXON
-        rts
+        ; The bottom 4 rows now show TEXT. After GR they hold graphics-black
+        ; ($00), which the text renderer reads as inverse '@'. Blank them to
+        ; space ($A0). WNDTOP=20 (set by the preceding GR/HGR) scopes the clear
+        ; to exactly the 4-line window; the graphics rows 0..19 are untouched.
+        jmp     clear_text_window
 
 GFX_GR:                         ; lo-res, page 1
+        lda     #20             ; text window = bottom 4 rows (20..23)
+        sta     WNDTOP
         lda     #$00
         sta     DPGLR
         lda     GEN2_TEXTOFF
@@ -279,6 +299,8 @@ GFX_GR:                         ; lo-res, page 1
         jmp     lores_clear
 
 GFX_GR2:                        ; lo-res, page 2 ($0800)
+        lda     #20             ; text window = bottom 4 rows (20..23)
+        sta     WNDTOP
         lda     #$04
         sta     DPGLR
         lda     GEN2_TEXTOFF
@@ -290,6 +312,8 @@ GFX_GR2:                        ; lo-res, page 2 ($0800)
         jmp     lores_clear
 
 GFX_HGR:                        ; hi-res, page 1 ($2000)
+        lda     #20             ; text window = bottom 4 rows (20..23)
+        sta     WNDTOP
         lda     #$00
         sta     DPGHI
         lda     GEN2_TEXTOFF
@@ -301,6 +325,8 @@ GFX_HGR:                        ; hi-res, page 1 ($2000)
         jmp     clear_hgr_draw
 
 GFX_HGR2:                       ; hi-res, page 2 ($4000)
+        lda     #20             ; text window = bottom 4 rows (20..23)
+        sta     WNDTOP
         lda     #$20
         sta     DPGHI
         lda     GEN2_TEXTOFF

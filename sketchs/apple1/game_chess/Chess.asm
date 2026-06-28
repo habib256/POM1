@@ -18,17 +18,33 @@
 ; Move format: type "E2E4" + RETURN.  Promotion: "E7E8Q" (Q/R/B/N).
 ; Special at MOVE? prompt: Q quit, U undo (v0.2+), D depth toggle (v0.3+),
 ; T self-test (v0.2+), P perft (v0.2+).
+;
+; Self-play (AI vs AI): pick MODE 4 = AVA at the prompt (or cycle with M).
+; The 1-ply engine has no draw detection yet, so an AvA game is capped at
+; MOVE_CAP full moves and declared a draw — otherwise it could shuffle forever.
+; When a telemetry harness ($C440-$C443) is connected, every move is published
+; as a frame, so tools/test_chess_selfplay.py can watch a whole self-play game
+; headlessly (doc/TELEMETRY_SIDE_CHANNEL.md). The instrumentation is a no-op
+; with no harness attached, so interactive play is unchanged.
 ; =============================================
 
 .include "apple1.inc"
 .include "zp.inc"
 .include "chess_common.inc"
+.include "telemetry.inc"
+
+; --- Self-play move cap (AvA only). With no draw detection (50-move /
+; threefold / insufficient-material are v0.6), a 1-ply-vs-1-ply game can
+; shuffle forever. When fullmove_number reaches this many full moves while
+; play_mode = AvA, declare a draw so self-play always terminates. ---
+MOVE_CAP = 100
 
 ; --- Local ZP scratch (renderer-private). Declared early so they land
 ; in the standard zero-page segment, before we switch to CODE. ---
 .segment "ZEROPAGE"
 tmp3:      .res 1
 tmp4:      .res 1
+tele_schema_sent: .res 1   ; 0 until the telemetry schema frame has been emitted
 play_mode: .res 1   ; 0 = HvH, 1 = W=Hum/B=AI, 2 = W=AI/B=Hum, 3 = AvA
 last_from: .res 1   ; previous move's from-square ($88 = no highlight yet)
 last_to:   .res 1   ; previous move's to-square
@@ -48,6 +64,7 @@ list_col:  .res 1   ; cell counter for do_list_moves wrapping (0..7)
 .import perft_count_lo, perft_count_hi
 .import undo_avail
 .import ai_strategy
+.import ai_rng                  ; 8-bit LFSR seed (telemetry harness can perturb)
 .import is_pseudo_legal, make_move, unmake_move
 .importzp ce_piece
 
@@ -80,6 +97,19 @@ restart_game:
 
 new_game:
         JSR init_board
+        ; Optional RNG perturbation from the telemetry harness: if an inbound
+        ; byte is waiting, fold it into the LFSR seed so the harness can drive
+        ; many DIFFERENT self-play games (engine-quality testing wants varied
+        ; positions, not one fixed game). No harness / no byte → the fixed $AC
+        ; seed from init_board stands, so interactive play is unchanged.
+        LDA TELE_STAT
+        AND #TELE_INAVAIL
+        BEQ @no_seed
+        LDA TELE_IN
+        EOR ai_rng
+        BEQ @no_seed            ; never let the seed reach 0 (the LFSR would jam)
+        STA ai_rng
+@no_seed:
         ; Reset the last-move highlight every time we start (or restart) a
         ; game. Without this the first render of the new game would paint
         ; '*' on the squares of the previous game's final move, since
@@ -116,6 +146,24 @@ game_loop:
         BEQ @auto_ai_play
         JMP @human_input
 @auto_ai_play:
+        ; Self-play move cap: in AvA, stop a never-ending shuffle by calling
+        ; the game a draw once MOVE_CAP full moves have been played. Only AvA
+        ; (mode 3) is capped — human-involved games are never force-drawn.
+        LDA play_mode
+        CMP #$03
+        BNE @no_cap
+        LDA fullmove_number
+        CMP #MOVE_CAP
+        BCC @no_cap
+        ; Move limit reached -> draw. Emit a final telemetry frame (status=4)
+        ; so an observing harness sees the terminal state, then announce.
+        LDA #$04
+        STA tmp3
+        JSR tele_emit_move
+        JSR render_board
+        LDY #$04
+        JMP game_over_announce
+@no_cap:
         JMP do_ai
 
 @human_input:
@@ -180,13 +228,16 @@ game_loop:
         STA last_to
         ; Check terminal state.
         JSR game_status
+        STA tmp3                ; preserve status across telemetry emit
+        JSR tele_emit_move
+        LDA tmp3
         BNE @gameover_user
         JMP game_loop
 @gameover_user:
 
         ; Game over — render final board, announce reason, prompt N/H.
         JSR render_board
-        TAY                     ; Y = status code
+        LDY tmp3                ; Y = status code (render_board clobbers A)
         JMP game_over_announce
 
 show_quit:
@@ -316,11 +367,14 @@ do_ai:
         LDA #$8D
         JSR ECHO
         JSR game_status
+        STA tmp3                ; preserve status across telemetry emit
+        JSR tele_emit_move
+        LDA tmp3
         BNE @gameover
         JMP game_loop
 @gameover:
         ; Game over after AI move
-        TAY
+        LDY tmp3
         JSR render_board
         JMP game_over_announce
 
@@ -525,8 +579,8 @@ choose_mode:
 
 ; =============================================
 ; game_over_announce -- Y = status code (1=white mated, 2=black mated,
-; 3=stalemate). Prints the reason then falls through to game_over_prompt.
-; Never returns to caller (tail-jumps into restart_game).
+; 3=stalemate, 4=move-limit draw). Prints the reason then falls through to
+; game_over_prompt. Never returns to caller (tail-jumps into restart_game).
 ; =============================================
 game_over_announce:
         CPY #$01
@@ -539,8 +593,13 @@ game_over_announce:
         LDA #<msg_black_mate
         LDX #>msg_black_mate
         JMP @say
-@nbm:   LDA #<msg_stalemate
+@nbm:   CPY #$03
+        BNE @ndraw
+        LDA #<msg_stalemate
         LDX #>msg_stalemate
+        JMP @say
+@ndraw: LDA #<msg_draw_limit
+        LDX #>msg_draw_limit
 @say:   JSR print_str_ax
         ; fall through to game_over_prompt
 
@@ -550,6 +609,12 @@ game_over_announce:
 ; mode prompt). Never returns.
 ; =============================================
 game_over_prompt:
+        ; Headless self-play: when a telemetry harness is observing, don't block
+        ; on the keyboard — immediately deal a fresh game (play_mode is still
+        ; AvA), so the channel carries a continuous stream of self-play games.
+        JSR tele_connected
+        BCC @ask
+        JMP new_game
 @ask:   LDA #<msg_gameover_prompt
         LDX #>msg_gameover_prompt
         JSR print_str_ax
@@ -564,6 +629,69 @@ game_over_prompt:
         JMP @ask
 @notH:  ; Any other key starts a new game (mode prompt + init_board).
         JMP restart_game
+
+; =============================================
+; Telemetry side channel (dev-only, $C440-$C443) — lets an external harness
+; OBSERVE self-play headlessly (doc/TELEMETRY_SIDE_CHANNEL.md). Every move the
+; game emits one DATA frame; the harness reads the move stream and asserts the
+; game progresses + terminates. All three helpers are NO-OPS unless a harness
+; is actually connected (TELE_STAT bit7), so interactive / no-card play is
+; unaffected and costs only a single MMIO read per move.
+; =============================================
+
+; tele_connected -- C = 1 if a telemetry harness is connected, else C = 0.
+; Clobbers A only.
+tele_connected:
+        LDA TELE_STAT
+        AND #TELE_CONNECTED     ; $80 in A if connected, else $00
+        ASL A                   ; bit7 -> carry (A becomes 0 either way)
+        RTS
+
+; tele_emit_schema -- declare the per-move field layout ONCE so the harness
+; decodes frames by name. Five U8 fields: move, to_move, from, to, status.
+tele_emit_schema:
+        TELE_FIELD TELE_T_U8, "move"      ; fullmove_number after the move
+        TELE_FIELD TELE_T_U8, "to_move"   ; side to move now ($00=white $80=black)
+        TELE_FIELD TELE_T_U8, "from"      ; mv_from (0x88 square)
+        TELE_FIELD TELE_T_U8, "to"        ; mv_to   (0x88 square)
+        TELE_FIELD TELE_T_U8, "status"    ; 0 ongoing 1 w-mate 2 b-mate 3 stale 4 draw
+        TELE_FIELD TELE_T_U8, "legal"     ; perft(1) of resulting pos (move-gen cross-check)
+        TELE_SCHEMA_FRAME
+        RTS
+
+; tele_emit_move -- emit one DATA frame for the move just played. Expects the
+; game_status code in tmp3. No-op (and preserves tmp3) when no harness is
+; connected. Free-run: the frame flushes immediately, never parks the CPU.
+tele_emit_move:
+        LDA TELE_STAT
+        AND #TELE_CONNECTED
+        BEQ @done
+        LDA tele_schema_sent    ; emit the schema lazily on the first frame,
+        BNE @have_schema        ; so we never race the harness's TCP connect
+        JSR tele_emit_schema    ; at boot.
+        LDA #$01
+        STA tele_schema_sent
+@have_schema:
+        ; Use last_from/last_to (captured by the caller BEFORE game_status):
+        ; game_status reuses mv_from/mv_to as its own scan scratch and leaves
+        ; them holding its last-tested candidate, so mv_from/mv_to are garbage
+        ; by the time we emit. last_from/last_to are the move actually played.
+        TELE_PUT fullmove_number
+        TELE_PUT side_to_move
+        TELE_PUT last_from
+        TELE_PUT last_to
+        TELE_PUT tmp3
+        ; perft(1) of the position now on the board = number of legal moves for
+        ; the side to move. The harness cross-checks this against an independent
+        ; engine (python-chess) to catch any move-generation discrepancy. perft1
+        ; is make/unmake-balanced so it leaves the board untouched; it clobbers
+        ; only scan scratch that the next move re-initialises. Max legal moves in
+        ; any position is 218 < 256, so the low byte is exact.
+        JSR perft1
+        TELE_PUT perft_count_lo
+        TELE_FRAME
+@done:
+        RTS
 
 ; =============================================
 ; render_board -- print the 8x8 board with file/rank labels
@@ -947,12 +1075,14 @@ msg_black_mate:
         .byte $0D, " CHECKMATE - WHITE WINS!", $0D, 0
 msg_stalemate:
         .byte $0D, " STALEMATE - DRAW.", $0D, 0
+msg_draw_limit:
+        .byte $0D, " MOVE LIMIT - DRAW.", $0D, 0
 msg_mode_prompt:
         .byte $0D, " MODE? 1=HVH 2=WAI 3=BAI 4=AVA: ", 0
 msg_strat_naive:
-        .byte $0D, " AI: NAIVE (MATERIAL ONLY)", $0D, 0
+        .byte $0D, " AI: FAST (1-PLY GREEDY)", $0D, 0
 msg_strat_smart:
-        .byte $0D, " AI: SMART (SEE + RANDOM)", $0D, 0
+        .byte $0D, " AI: STRONG (2-PLY SEARCH)", $0D, 0
 msg_hint:
         .byte $0D, " HINT: ", 0
 msg_no_hint:

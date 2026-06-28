@@ -466,6 +466,13 @@ void WiFiModem::requestDisconnect()
 void WiFiModem::sendToSocket(uint8_t byte)
 {
     if (!socketFd) return;
+    // Cap the queue: the byte source is the un-rate-limited emulated CPU, so a
+    // stalled peer that stops reading would otherwise grow txBuf without bound
+    // until OOM. The serial link is lossy anyway — drop the oldest byte to make
+    // room rather than letting the buffer balloon.
+    constexpr size_t kMaxTxBuf = 256 * 1024;
+    if (txBuf.size() >= kMaxTxBuf)
+        txBuf.erase(txBuf.begin());
     // Append then flush. Appending first preserves byte order when a previous
     // flush left a tail queued by EWOULDBLOCK backpressure.
     txBuf.push_back(byte);
@@ -710,7 +717,16 @@ void WiFiModem::updateConnection()
     if (connState == ConnState::CONNECTED && FD_ISSET(socketFd, &readSet)) {
         char buf[256];
         int n = recv(socketFd, buf, sizeof(buf), 0);
-        if (n <= 0) {
+        if (n < 0) {
+            // Spurious readiness (WSAEWOULDBLOCK) — no data, keep the connection
+            // up rather than dropping carrier mid-transfer.
+            if (WSAGetLastError() == WSAEWOULDBLOCK) return;
+            disconnect();
+            enqueueRxString("\r\nNO CARRIER\r\n");
+            mode = ModemMode::COMMAND;
+            return;
+        }
+        if (n == 0) {  // orderly peer close
             disconnect();
             enqueueRxString("\r\nNO CARRIER\r\n");
             mode = ModemMode::COMMAND;
@@ -761,7 +777,16 @@ void WiFiModem::updateConnection()
     if (connState == ConnState::CONNECTED && (pfd.revents & POLLIN)) {
         uint8_t buf[256];
         ssize_t n = recv(socketFd, buf, sizeof(buf), 0);
-        if (n <= 0) {
+        if (n < 0) {
+            // Transient condition (spurious POLLIN, EINTR) — keep the connection
+            // up rather than dropping carrier mid-transfer.
+            if (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR) return;
+            disconnect();
+            enqueueRxString("\r\nNO CARRIER\r\n");
+            mode = ModemMode::COMMAND;
+            return;
+        }
+        if (n == 0) {  // orderly peer close
             disconnect();
             enqueueRxString("\r\nNO CARRIER\r\n");
             mode = ModemMode::COMMAND;
@@ -846,12 +871,12 @@ void WiFiModem::processTelnetByte(uint8_t byte)
             // Server says WILL or DO — we say DONT or WONT
             response[1] = (telnetVerb == 0xFB) ? 0xFE : 0xFC; // DONT or WONT
 #if !POM1_IS_WASM
+            // Route through txBuf so the reply respects ordering with already-
+            // queued bytes and is retried on EWOULDBLOCK instead of being dropped
+            // by a raw, result-ignoring send() on the non-blocking socket.
             if (socketFd) {
-#ifdef _WIN32
-                ::send(socketFd, reinterpret_cast<char*>(response), 3, 0);
-#else
-                ::send(socketFd, response, 3, MSG_NOSIGNAL);
-#endif
+                txBuf.insert(txBuf.end(), response, response + 3);
+                flushTxBuffer();
             }
 #endif
         }

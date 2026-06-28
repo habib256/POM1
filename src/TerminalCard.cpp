@@ -506,6 +506,10 @@ void TerminalCard::acceptClient()
 
     // Drop existing client if any (closes the old FD via SocketHandle).
     clientFd.reset(newClient);
+    // Drop any bytes still queued for the previous client — otherwise they would
+    // be flushed to this brand-new connection around its welcome banner / TELNET
+    // negotiation (cross-session data bleed).
+    outBuf.clear();
     telnetState = TelnetState::NORMAL;
     escapePending = false;
     eightBitPendingCr = false;
@@ -581,7 +585,13 @@ void TerminalCard::pollClient()
     if (FD_ISSET(clientFd, &readSet)) {
         char buf[256];
         int n = recv(clientFd, buf, sizeof(buf), 0);
-        if (n <= 0) {
+        if (n < 0) {
+            // Spurious readiness (WSAEWOULDBLOCK) — no data, keep the connection.
+            if (WSAGetLastError() == WSAEWOULDBLOCK) return;
+            disconnectClient();
+            return;
+        }
+        if (n == 0) {  // orderly peer close
             disconnectClient();
             return;
         }
@@ -605,7 +615,13 @@ void TerminalCard::pollClient()
     if (pfd.revents & POLLIN) {
         uint8_t buf[256];
         ssize_t n = recv(clientFd, buf, sizeof(buf), 0);
-        if (n <= 0) {
+        if (n < 0) {
+            // Transient condition (spurious POLLIN, EINTR) — keep the connection.
+            if (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR) return;
+            disconnectClient();
+            return;
+        }
+        if (n == 0) {  // orderly peer close
             disconnectClient();
             return;
         }
@@ -624,6 +640,16 @@ void TerminalCard::sendToClient(uint8_t byte)
 void TerminalCard::sendToClient(const uint8_t* data, size_t len)
 {
     if (!clientFd || len == 0) return;
+    // Cap the outbound queue: the byte source is the un-rate-limited emulated CPU,
+    // so a client that stops reading (stalled peer) would otherwise grow this
+    // vector without bound until OOM. The serial bridge is lossy anyway — drop the
+    // oldest queued bytes to stay under the cap.
+    constexpr size_t kMaxOutBuf = 256 * 1024;
+    if (outBuf.size() + len > kMaxOutBuf) {
+        const size_t overflow = outBuf.size() + len - kMaxOutBuf;
+        const size_t drop = std::min(overflow, outBuf.size());
+        outBuf.erase(outBuf.begin(), outBuf.begin() + static_cast<std::ptrdiff_t>(drop));
+    }
     // Append to the outbound queue and try to flush. Appending first keeps
     // bytes in order even when a previous flush left an unsent tail.
     outBuf.insert(outBuf.end(), data, data + len);

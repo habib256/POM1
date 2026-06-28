@@ -423,6 +423,18 @@ void M6502::AND(void)
     setStatusRegisterNZ(accumulator);
 }
 
+void M6502::ANC(void)
+{
+    // Undocumented ANC ($0B/$2B): AND #imm, then copy bit 7 of the result
+    // (== the N flag) into C. Plain AND leaves C untouched, which desyncs any
+    // demo/cracktro relying on the ANC carry side effect.
+    accumulator &= memory->memRead(op);
+    cycles++;
+    setStatusRegisterNZ(accumulator);
+    if (accumulator & 0x80) statusRegister |=  M6502::Status::C;
+    else                    statusRegister &= ~M6502::Status::C;
+}
+
 void M6502::ORA(void)
 {
     accumulator |= memory->memRead(op);
@@ -880,7 +892,7 @@ const M6502::OpcodeEntry M6502::opcodeTable[256] = {
     /* 0x08 */ {&M6502::Imp,       &M6502::PHP},
     /* 0x09 */ {&M6502::Imm,       &M6502::ORA},
     /* 0x0A */ {&M6502::Imp,       &M6502::ASL_A},
-    /* 0x0B */ {&M6502::Imm,       &M6502::AND},
+    /* 0x0B */ {&M6502::Imm,       &M6502::ANC},
     /* 0x0C */ {&M6502::Unoff3,    nullptr},
     /* 0x0D */ {&M6502::Abs,       &M6502::ORA},
     /* 0x0E */ {&M6502::Abs,       &M6502::ASL},
@@ -914,7 +926,7 @@ const M6502::OpcodeEntry M6502::opcodeTable[256] = {
     /* 0x28 */ {&M6502::Imp,       &M6502::PLP},
     /* 0x29 */ {&M6502::Imm,       &M6502::AND},
     /* 0x2A */ {&M6502::Imp,       &M6502::ROL_A},
-    /* 0x2B */ {&M6502::Imm,       &M6502::AND},
+    /* 0x2B */ {&M6502::Imm,       &M6502::ANC},
     /* 0x2C */ {&M6502::Abs,       &M6502::BIT},
     /* 0x2D */ {&M6502::Abs,       &M6502::AND},
     /* 0x2E */ {&M6502::Abs,       &M6502::ROL},

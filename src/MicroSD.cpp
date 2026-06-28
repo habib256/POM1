@@ -995,6 +995,14 @@ void MicroSD::cmdRmdir(const std::string& path)
     std::string dirPath = resolveHostPath(path);
 
     std::error_code ec;
+    // Never remove the SD-card mount root itself. resolveHostPath collapses an
+    // empty argument or a "../" traversal to the canonical root, so without this
+    // guard `RMDIR ""` (or `RMDIR ..`) from guest code would delete the mount.
+    std::string rootPath = fs::weakly_canonical(fs::path(sdCardRootPath), ec).string();
+    if (dirPath == rootPath) {
+        sendError("CANNOT REMOVE ROOT");
+        return;
+    }
     if (!fs::exists(dirPath, ec)) {
         sendError("PATH NOT FOUND");
         return;

@@ -18,6 +18,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cstring>
 
 namespace basic {
 
@@ -172,7 +173,8 @@ Target targetGen2()
     t.name = "Applesoft GEN2 (9800R)";
     t.setptrs = 0x9D96;
     t.newstt  = 0x9EF2;
-    t.himem   = 0x2000;
+    t.himem   = 0x2000;       // page-1 hi-res floor (default ceiling)
+    t.page2Floor = 0x4000;    // page-2 hi-res floor (HGR2-only programs may reach it)
     return t;
 }
 
@@ -256,10 +258,13 @@ Result compile(const std::string& source, const Target& tgt)
         while (j < line.size() && line[j] >= '0' && line[j] <= '9') {
             num = num * 10 + (line[j] - '0');
             ++j;
-        }
-        if (num > 63999) {
-            r.error = "line " + std::to_string(physical) + ": line number > 63999";
-            return r;
+            // Bound inside the loop: a long unbounded digit run would overflow
+            // signed long (UB) and wrap to a value that passes the post-loop
+            // check. Mirrors the Integer tokeniser's guard.
+            if (num > 63999) {
+                r.error = "line " + std::to_string(physical) + ": line number > 63999";
+                return r;
+            }
         }
 
         Line L;
@@ -278,6 +283,29 @@ Result compile(const std::string& source, const Target& tgt)
     // 2) Lay out the tokenized image at $0801 with absolute forward links.
     std::vector<uint8_t> prog;                            // bytes starting at $0800
     prog.push_back(0x00);                                 // $0800 guard
+
+    // Pick the image ceiling. Default = himem (the page-1 hi-res floor on GEN2).
+    // If the target has a page-2 framebuffer AND the program draws ONLY to page 2
+    // (uses HGR2, never HGR), the idle page-1 region is fair game for code/data, so
+    // the image may extend up to page2Floor ($4000) instead of $2000. Tokens are
+    // 0x80+index into the active keyword table; resolve HGR/HGR2 there rather than
+    // hard-coding bytes (the Lite table has no HGR2, so this stays page-1-only).
+    size_t ceiling = tgt.himem ? tgt.himem : 0x10000u;
+    if (tgt.page2Floor) {
+        uint8_t tokHGR = 0, tokHGR2 = 0;
+        for (int k = 0; k < keywordCount; ++k) {
+            if (std::strcmp(keywords[k], "HGR")  == 0) tokHGR  = static_cast<uint8_t>(0x80 + k);
+            if (std::strcmp(keywords[k], "HGR2") == 0) tokHGR2 = static_cast<uint8_t>(0x80 + k);
+        }
+        bool usesHGR = false, usesHGR2 = false;
+        for (const Line& L : lines)
+            for (uint8_t b : L.tokens) {
+                if (tokHGR  && b == tokHGR)  usesHGR  = true;
+                if (tokHGR2 && b == tokHGR2) usesHGR2 = true;
+            }
+        if (usesHGR2 && !usesHGR) ceiling = tgt.page2Floor;
+    }
+
     uint16_t cur = kProgramOrigin;                        // $0801
     for (const Line& L : lines) {
         // Compute in a wide type so a single >64 KB line can't wrap lineLen/next
@@ -288,8 +316,7 @@ Result compile(const std::string& source, const Target& tgt)
         // can still land in the framebuffer. Otherwise garbage links emit with ok=true.
         const size_t lineLen = 4 + L.tokens.size() + 1;
         const size_t next = static_cast<size_t>(cur) + lineLen;
-        const size_t ceil = tgt.himem ? tgt.himem : 0x10000u;
-        if (next + 2 > ceil) {
+        if (next + 2 > ceiling) {
             r.error = "program too large: line " + std::to_string(L.number) +
                       " overflows available memory";
             return r;

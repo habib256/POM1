@@ -94,8 +94,11 @@ ai_scan_x:              .res 1      ; from-square iterator
 ai_scan_y:              .res 1      ; to-square iterator
 ai_best_from:           .res 1
 ai_best_to:             .res 1
-ai_best_score:          .res 1      ; signed 8-bit
-ai_best_mvvlva:         .res 1      ; MVV-LVA tie-break score (signed 8-bit)
+ai_best_flags:          .res 1      ; mv_flags for the best move (0, or a castle bit)
+ai_best_score:          .res 1      ; signed 8-bit material score (primary)
+ai_best_pos:            .res 1      ; positional score of the best move (tie-break)
+cand_pos:               .res 1      ; positional score of the candidate under test
+ai_best_mvvlva:         .res 1      ; (unused since v0.6 — kept for layout stability)
 score_lo:               .res 1      ; evaluate_material output
 perft_count_lo:         .res 1
 perft_count_hi:         .res 1
@@ -108,6 +111,26 @@ see_min_sq:             .res 1      ; that attacker's square
 see_value:              .res 1      ; signed 8-bit net gain from see_estimate
 see_victim:             .res 1      ; raw victim value (mat_simple lookup) for adjustment
 see_mover:              .res 1      ; our piece byte at mv_to (cached for SEE)
+
+; --- 2-ply (negamax) search state. The outer move is preserved across the
+;     inner opponent-reply search via a 2nd undo buffer + a move snapshot, so
+;     make_move/unmake_move (single-level) can nest exactly one level deep. ---
+saved2_captured:        .res 1
+saved2_ep:              .res 1
+saved2_castling:        .res 1
+saved2_halfmove:        .res 1
+saved2_king_sq:         .res 1
+saved2_crf:             .res 1      ; mirror of saved_castle_rook_from
+saved2_crt:             .res 1      ; mirror of saved_castle_rook_to
+m_from:                 .res 1      ; outer move snapshot (inner search reuses mv_*)
+m_to:                   .res 1
+m_flags:                .res 1
+m_promo:                .res 1
+m_score:                .res 1      ; opponent's best reply eval (their perspective)
+best_reply:             .res 1      ; running max inside best_reply_eval
+reply_found:            .res 1      ; 1 once a legal opponent reply has been seen
+rscan_x:                .res 1      ; inner reply from-square iterator
+rscan_y:                .res 1      ; inner reply to-square iterator
 
 ; --- Compact undo (16 bytes; relies on unmake_move) ---
 ; After a successful user move, we copy the saved_* slots (which the engine
@@ -354,7 +377,14 @@ apply_user_move:
 ;   3. King not currently in check
 ;   4. King does not pass through an attacked square (intermediate)
 ;   5. King's destination is not attacked (handled by post-move in_check)
-apply_castle_move:
+; castle_try -- validate the castling move in mv_flags (CASTLE_K/Q) + mv_from/
+; mv_to and, on success, MAKE it on the board WITHOUT the permanent bookkeeping
+; (no save_user_state / toggle_side / fullmove bump). CC = legal and now made —
+; the caller must either finalise it (apply_castle_move) or revert it with
+; unmake_move (the move enumerators ai_play_move / game_status / perft1). CS =
+; illegal, A = error code, board left unchanged. Factored out of the old
+; apply_castle_move so the AI can actually consider castling as a candidate.
+castle_try:
         ; --- 1. Right granted? ---
         LDA mv_flags
         AND #MV_FLAG_CASTLE_K
@@ -493,6 +523,14 @@ apply_castle_move:
         SEC
         RTS
 @castle_safe:
+        CLC                     ; castle is legal and now made on the board
+        RTS
+
+; apply_castle_move -- the real (user/AI) castling move: validate+make via
+; castle_try, then the permanent bookkeeping. Entered from apply_user_move.
+apply_castle_move:
+        JSR castle_try
+        BCS @cfail              ; illegal — A already holds the error, CS set
         JSR save_user_state
         JSR toggle_side
         LDA side_to_move
@@ -500,7 +538,38 @@ apply_castle_move:
         INC fullmove_number
 @cdone:
         CLC
+@cfail:
         RTS
+
+; try_one_castle -- A = MV_FLAG_CASTLE_K or _Q. Sets mv_from/mv_to/mv_flags for
+; the side to move (king e1/e8, king-dest = from +/-2) and tail-calls castle_try.
+; Returns castle_try's result: CC = legal + made (caller must unmake_move), CS =
+; not available. Used by the enumerators to fold castling into move generation.
+try_one_castle:
+        STA mv_flags
+        PHA                     ; remember which side (K vs Q)
+        LDA #$00
+        STA mv_promo
+        LDA side_to_move
+        BNE @black
+        LDA #$04                ; white king e1
+        JMP @setfrom
+@black: LDA #$74                ; black king e8
+@setfrom:
+        STA mv_from
+        PLA
+        AND #MV_FLAG_CASTLE_K
+        BEQ @qs
+        LDA mv_from             ; kingside: king moves +2 (e->g)
+        CLC
+        ADC #$02
+        STA mv_to
+        JMP castle_try
+@qs:    LDA mv_from             ; queenside: king moves -2 (e->c)
+        SEC
+        SBC #$02
+        STA mv_to
+        JMP castle_try
 
 ; ============================================================================
 ; is_pseudo_legal -- does the from→to move match this piece type's pattern?
@@ -1510,7 +1579,22 @@ game_status:
         BNE @tloop
 @nextf: INX
         BNE @floop
-        ; No legal move → mate or stalemate.
+        ; No NORMAL legal move was found. Castling isn't produced by the
+        ; (from,to) scan, so a castle could still be the only legal move — test
+        ; both before declaring mate/stalemate, or a castle-only position would
+        ; be a false terminal.
+        LDA #MV_FLAG_CASTLE_K
+        JSR try_one_castle
+        BCC @gs_castle_ok
+        LDA #MV_FLAG_CASTLE_Q
+        JSR try_one_castle
+        BCS @gs_no_move
+@gs_castle_ok:
+        JSR unmake_move     ; revert the castle that try_one_castle made
+        LDA #$00            ; a legal move exists → game ongoing
+        RTS
+@gs_no_move:
+        ; No legal move at all → mate or stalemate.
         JSR in_check
         BEQ @stale
         ; Checkmate: side_to_move loses. White-mate=1 means white is mated.
@@ -1575,6 +1659,86 @@ evaluate_material:
 mat_simple:
         .byte 0, 1, 3, 3, 5, 9, 0, 0
 
+; cdist -- "distance from the edge" per file/rank index: a pyramid peaking at
+; the centre files/ranks. Centralisation of a square = cdist[file] + cdist[rank].
+cdist:
+        .byte 0, 1, 2, 3, 3, 2, 1, 0
+
+; ============================================================================
+; evaluate_positional -- A = (our positional - their positional), signed 8-bit.
+; ============================================================================
+; A small, material-independent score: every piece earns its centralisation
+; (cdist[file]+cdist[rank]); pawns additionally earn 2x their advance toward
+; promotion (white = rank, black = 7-rank). "Our" = side_to_move. It is used
+; ONLY as a tie-break between material-equal moves (see consider_move), so it
+; can never outweigh material or a tactic — it just gives the search a sense of
+; progress (develop, centralise, push passed pawns), which is what stops a won
+; endgame stalling at the move cap.
+evaluate_positional:
+        LDA #$00
+        STA score_lo            ; signed accumulator (our - their)
+        LDX #$00
+@ep_loop:
+        TXA
+        AND #OFFBOARD_MASK
+        BNE @ep_next
+        LDA board,X
+        BEQ @ep_next
+        STA tmp                 ; tmp = piece byte
+        ; centralisation = cdist[rank] + cdist[file]; keep rank for pawn reuse
+        TXA
+        LSR A
+        LSR A
+        LSR A
+        LSR A
+        AND #$07
+        STA ce_target           ; ce_target = rank
+        TAY
+        LDA cdist,Y
+        STA tmp2                ; cdist[rank]
+        TXA
+        AND #$07
+        TAY
+        LDA cdist,Y
+        CLC
+        ADC tmp2
+        STA tmp2                ; centralisation (0..6)
+        ; pawns: + 2 * advance toward promotion (white=rank, black=7-rank)
+        LDA tmp
+        AND #PIECE_MASK
+        CMP #PIECE_PAWN
+        BNE @ep_have
+        LDA ce_target           ; rank
+        BIT tmp                 ; N = colour bit (black -> set)
+        BPL @ep_padd            ; white: advance = rank
+        EOR #$07                ; black: advance = 7 - rank
+@ep_padd:
+        ASL A                   ; weight advancement x2
+        CLC
+        ADC tmp2
+        STA tmp2
+@ep_have:
+        ; Accumulate signed: + for our pieces, - for theirs.
+        LDA tmp
+        AND #COLOR_MASK
+        CMP side_to_move
+        BNE @ep_their
+        CLC
+        LDA score_lo
+        ADC tmp2
+        STA score_lo
+        JMP @ep_next
+@ep_their:
+        SEC
+        LDA score_lo
+        SBC tmp2
+        STA score_lo
+@ep_next:
+        INX
+        BNE @ep_loop
+        LDA score_lo
+        RTS
+
 ; ============================================================================
 ; ai_rng_step -- advance the 8-bit LFSR. Period 255 (Galois, taps $1D).
 ; ============================================================================
@@ -1592,411 +1756,330 @@ ai_rng_step:
         RTS
 
 ; ============================================================================
-; find_min_attacker -- lowest-value piece of attacker_color that attacks
-;                      attacked_sq. Reuses the engine's per-piece attack
-;                      helpers so it understands sliders + pinned-ray rules.
+; 2-ply (negamax) move search — replaces the old 1-ply + Static-Exchange
+; heuristic. ai_strategy selects depth: NAIVE = 1-ply material (fast), SMART
+; (default) = 2-ply minimax. Depth 2 sees the opponent's immediate reply, so it
+; stops hanging pieces, grabs free material, finds mate-in-1 and refuses to give
+; it — a large strength jump over the destination-only SEE it replaces.
+;
+; Nesting our move (outer) over the opponent's reply (inner) needs make_move to
+; nest one level. make_move/unmake_move keep a single saved_* slot, so the outer
+; move's undo info is copied to saved2_* across the inner reply loop (push_saved
+; / pop_saved) and the outer move bytes are snapshotted in m_* (the inner loop
+; reuses mv_from/mv_to/mv_flags).
 ; ============================================================================
-; Inputs:  attacker_color, attacked_sq (BSS) — same convention as in_check.
-; Outputs: CC + A = mat_simple value (1, 3, 5, 9), X = attacker's square.
-;          CS if no piece of attacker_color attacks attacked_sq.
-;
-; Iterates the whole 0x88 board. Keeps the cheapest match — lets see_estimate
-; assume the opponent (or our defender) will recapture with the LEAST valuable
-; piece available, which is the standard SEE simplification.
-;
-; Note: callers wanting "find a defender of mv_to" pass attacker_color =
-; side_to_move. The piece on mv_to itself is never reported because no piece
-; type attacks its own square (offsets are all non-zero).
-find_min_attacker:
-        LDA #$FF                ; sentinel "no attacker yet"
-        STA see_min_val
+
+; Positional bonus (pawn-equivalents) added to a castling move's score so the
+; otherwise material-neutral castle is preferred over a quiet move but still
+; yields to a real capture/promotion of equal-or-greater value.
+CASTLE_BONUS = 1
+
+; push_saved / pop_saved — copy the make_move undo slots to / from the 2nd
+; buffer so one nested make_move can't destroy the outer move's undo info.
+push_saved:
+        LDA saved_captured
+        STA saved2_captured
+        LDA saved_ep
+        STA saved2_ep
+        LDA saved_castling
+        STA saved2_castling
+        LDA saved_halfmove
+        STA saved2_halfmove
+        LDA saved_king_sq
+        STA saved2_king_sq
+        LDA saved_castle_rook_from
+        STA saved2_crf
+        LDA saved_castle_rook_to
+        STA saved2_crt
+        RTS
+pop_saved:
+        LDA saved2_captured
+        STA saved_captured
+        LDA saved2_ep
+        STA saved_ep
+        LDA saved2_castling
+        STA saved_castling
+        LDA saved2_halfmove
+        STA saved_halfmove
+        LDA saved2_king_sq
+        STA saved_king_sq
+        LDA saved2_crf
+        STA saved_castle_rook_from
+        LDA saved2_crt
+        STA saved_castle_rook_to
+        RTS
+
+; best_reply_eval — side_to_move is the OPPONENT and the board reflects our
+; move. Scan the opponent's legal replies; return A = the opponent's best
+; evaluate_material (their perspective = their material - ours): the most they
+; can do to us in one reply. No legal reply: A = -127 if the opponent is in
+; check (we just mated them), else 0 (stalemate). Single-level make/unmake here.
+best_reply_eval:
+        LDA #$80
+        STA best_reply          ; -128: any real reply beats it
         LDA #$00
-        STA see_min_sq
-        LDX #$00
-@loop:
+        STA reply_found
+        STA rscan_x
+@rfloop:
+        LDX rscan_x
         TXA
         AND #OFFBOARD_MASK
-        BNE @next
+        BNE @rnextf
         LDA board,X
-        BEQ @next
-        TAY
+        BEQ @rnextf
         AND #COLOR_MASK
-        CMP attacker_color
-        BNE @next
-        ; Piece of right color on-board — does it attack attacked_sq?
-        STX ce_sq
-        TYA
-        STA atk_piece
-        JSR attacks_target
-        BCS @next
-        ; It attacks. Compare value vs current minimum.
-        TYA
-        AND #PIECE_MASK
-        TAY
-        LDA mat_simple,Y
-        CMP see_min_val
-        BCS @next               ; not strictly lower
-        STA see_min_val
-        STX see_min_sq
-@next:
-        INX
-        BNE @loop
-        ; Exit
-        LDA see_min_val
-        CMP #$FF
-        BEQ @none
-        LDX see_min_sq
-        CLC
-        RTS
-@none:  SEC
-        RTS
-
-; ============================================================================
-; see_estimate -- net material gain from the exchange chain on mv_to.
-; ============================================================================
-; Inputs (set by caller, normally ai_play_move just after make_move):
-;   - mv_to: the destination square (our piece is there now).
-;   - saved_captured: piece byte that occupied mv_to before our move
-;     (0 if non-capture). make_move stored this for unmake_move; we reuse it.
-;   - side_to_move: still our side (apply_user_move toggles it later).
-;
-; Output: A = signed 8-bit net gain in pawn-equivalents (positive = we win
-; material, negative = we lose). For NAIVE strategy this is never called.
-;
-; Algorithm (depth-2 SEE — a common approximation that catches the vast
-; majority of 1-ply blunders):
-;   gain = victim_value                                  (0 if no capture)
-;   if no enemy attacker of mv_to:  return gain          (move is safe)
-;   gain -= our_piece_value                              (we'll be recaptured)
-;   if no friendly defender of mv_to: return gain
-;   gain += enemy_min_attacker_value                     (we recapture cheapest)
-;   return gain
-;
-; This is enough to make the AI refuse "Q takes pawn defended by pawn" and
-; "N to square attacked by pawn, no defender" — the two patterns that
-; dominate v0.4's blunder rate.
-see_estimate:
-        ; Cache our piece byte (the one now at mv_to) — used twice below.
-        LDX mv_to
+        CMP side_to_move
+        BNE @rnextf             ; only the side-to-move's (opponent's) pieces
+        STX mv_from
         LDA board,X
-        STA see_mover
-
-        ; gain := value(saved_captured)  (0 if non-capture)
-        LDA saved_captured
-        BEQ @vz
-        AND #PIECE_MASK
-        TAY
-        LDA mat_simple,Y
-        JMP @gset
-@vz:    LDA #$00
-@gset:  STA see_value           ; signed gain accumulator
-
-        ; --- Find the lowest enemy attacker of mv_to ---
-        LDA side_to_move
-        EOR #COLOR_BLACK
-        STA attacker_color
-        LDA mv_to
-        STA attacked_sq
-        JSR find_min_attacker
-        BCS @done               ; no enemy attacker — return raw gain
-
-        ; Save enemy_min for the recapture step.
-        STA tmp                 ; tmp = enemy_min_value
-        ; gain -= our_piece_value
-        LDA see_mover
-        AND #PIECE_MASK
-        TAY
-        SEC
-        LDA see_value
-        SBC mat_simple,Y
-        STA see_value
-
-        ; --- Find the lowest friendly defender of mv_to (other than the
-        ; piece on mv_to itself, which never appears in attacker iteration). ---
-        LDA side_to_move
-        STA attacker_color
-        LDA mv_to
-        STA attacked_sq
-        JSR find_min_attacker
-        BCS @done               ; no defender — exchange ends
-
-        ; gain += enemy_min_value (we recapture with the cheapest defender)
+        STA ce_piece
+        LDA #$00
+        STA rscan_y
+@rtloop:
+        LDY rscan_y
+        TYA
+        AND #OFFBOARD_MASK
+        BNE @rnextt
+        STY mv_to
+        CPY mv_from
+        BEQ @rnextt
+        LDA board,Y
+        BEQ @rtest
+        AND #COLOR_MASK
+        CMP side_to_move
+        BEQ @rnextt             ; can't capture own piece
+@rtest:
+        LDA #$00
+        STA mv_promo
+        STA mv_flags
+        JSR is_pseudo_legal
+        BCS @rnextt
+        JSR make_move
+        JSR in_check            ; opponent's own king left in check?
+        BNE @rillegal
+        LDA #$01
+        STA reply_found
+        JSR evaluate_material   ; A = opp - us (opponent perspective)
+        TAX                     ; preserve candidate
         CLC
-        LDA see_value
-        ADC tmp
-        STA see_value
-@done:
-        LDA see_value
+        ADC #$80
+        STA tmp                 ; biased candidate
+        LDA best_reply
+        CLC
+        ADC #$80
+        CMP tmp                 ; biased best vs biased candidate
+        BCS @rnotbetter         ; best >= candidate -> keep
+        STX best_reply          ; candidate > best -> adopt
+@rnotbetter:
+        JSR unmake_move
+        JMP @rnextt
+@rillegal:
+        JSR unmake_move
+@rnextt:
+        INC rscan_y
+        BNE @rtloop
+@rnextf:
+        INC rscan_x
+        BNE @rfloop
+        LDA reply_found
+        BNE @rhave
+        ; No normal reply — a castle could be the opponent's only legal move.
+        LDA #MV_FLAG_CASTLE_K
+        JSR try_one_castle
+        BCC @rcastle
+        LDA #MV_FLAG_CASTLE_Q
+        JSR try_one_castle
+        BCS @rnomove
+@rcastle:
+        JSR evaluate_material   ; castle is material-neutral; opp perspective
+        STA best_reply
+        JSR unmake_move
+        LDA best_reply
+        RTS
+@rnomove:
+        JSR in_check            ; opponent has NO legal move
+        BEQ @rstale
+        LDA #$81                ; -127: opponent is checkmated (we win)
+        RTS
+@rstale:
+        LDA #$00                ; stalemate ~ draw
+        RTS
+@rhave:
+        LDA best_reply
+        RTS
+
+; score_move — the move in mv_* is currently MADE on the board (our king already
+; verified safe). Return A = its score from our perspective. NAIVE = material
+; after the move; SMART = -(opponent's best reply) (2-ply). The board stays MADE
+; (caller unmakes); SMART restores saved_*/mv_* before returning.
+score_move:
+        LDA ai_strategy
+        BNE @sm_smart
+        JMP evaluate_material   ; tail: A = our - their
+@sm_smart:
+        JSR push_saved
+        LDA mv_from
+        STA m_from
+        LDA mv_to
+        STA m_to
+        LDA mv_flags
+        STA m_flags
+        LDA mv_promo
+        STA m_promo
+        JSR toggle_side         ; opponent to move
+        JSR best_reply_eval
+        STA m_score
+        JSR toggle_side         ; back to us
+        LDA m_from
+        STA mv_from
+        LDA m_to
+        STA mv_to
+        LDA m_flags
+        STA mv_flags
+        LDA m_promo
+        STA mv_promo
+        JSR pop_saved
+        SEC
+        LDA #$00
+        SBC m_score             ; A = -(opponent best) = our negamax score
+        RTS
+
+; consider_move — A = candidate score for the move in mv_*. Replace ai_best_* if
+; it strictly beats ai_best_score; on an exact tie step the LFSR and replace iff
+; bit 0 = 1 (keeps AvA self-play diverging). Stores mv_flags too (castle rides).
+consider_move:
+        PHA
+        CLC
+        ADC #$80
+        STA tmp                 ; biased candidate material
+        LDA ai_best_score
+        CLC
+        ADC #$80
+        STA tmp2                ; biased best material
+        LDA tmp
+        CMP tmp2
+        BCC @cm_keep            ; material < best
+        BEQ @cm_tie             ; material == best -> positional tie-break
+        JMP @cm_take            ; material > best
+@cm_tie:
+        ; Material tied: prefer the better positional score (cand_pos). This is
+        ; the ONLY place positional matters, so it can never override material.
+        LDA cand_pos
+        CLC
+        ADC #$80
+        STA tmp
+        LDA ai_best_pos
+        CLC
+        ADC #$80
+        STA tmp2
+        LDA tmp
+        CMP tmp2
+        BCC @cm_keep            ; positional < best -> keep
+        BNE @cm_take            ; positional > best -> take
+        JSR ai_rng_step         ; positional also tied -> LFSR coin-flip
+        AND #$01
+        BEQ @cm_keep
+@cm_take:
+        PLA
+        STA ai_best_score
+        LDA cand_pos
+        STA ai_best_pos
+        LDA mv_from
+        STA ai_best_from
+        LDA mv_to
+        STA ai_best_to
+        LDA mv_flags
+        STA ai_best_flags
+        RTS
+@cm_keep:
+        PLA
         RTS
 
 ; ============================================================================
-; ai_play_move -- pick + apply best 1-ply move for side_to_move
+; ai_play_move — pick + apply the best move for side_to_move (depth per
+; ai_strategy). CC if a move was made, CS if none (caller treats as mate/stale).
 ; ============================================================================
-; v0.5 behaviour, controlled by ai_strategy:
-;   NAIVE:  v0.4-style 1-ply max(material). Deterministic, blunders often.
-;   SMART:  same enumeration, but each candidate's score is adjusted by
-;           Static Exchange Evaluation on the destination (so hanging-piece
-;           captures get penalised), MVV-LVA breaks score ties, and an
-;           8-bit LFSR reservoir-samples among MVV-LVA-equal candidates.
-;
-; Output: applies the move (board updated, side toggled). Returns CC if a
-; move was made, CS if no legal move exists (caller should treat as mate
-; or stalemate via game_status).
 .export ai_play_move
 .export ai_best_from, ai_best_to
 .export ai_best_score
 .export ai_strategy, ai_rng
 ai_play_move:
-        ; Initialise best to "none" with score = -128 (worst), MVV-LVA = -128.
         LDA #$88
         STA ai_best_from
         STA ai_best_to
-        LDA #$80                ; -128 signed
-        STA ai_best_score
-        STA ai_best_mvvlva
-
         LDA #$00
-        STA ai_scan_x           ; scan_x = current from-square iterator
+        STA ai_best_flags
+        LDA #$80                ; -128: worst
+        STA ai_best_score
+        STA ai_best_pos         ; -128: worst positional too
+        LDA #$00
+        STA ai_scan_x
 @floop:
         LDX ai_scan_x
         TXA
         AND #OFFBOARD_MASK
-        BEQ @on_board_f
-        JMP @nextf
-@on_board_f:
+        BNE @nextf
         LDA board,X
-        BNE @has_pf
-        JMP @nextf
-@has_pf:
+        BEQ @nextf
         AND #COLOR_MASK
         CMP side_to_move
-        BEQ @same_color_f
-        JMP @nextf
-@same_color_f:
+        BNE @nextf
         STX mv_from
-        LDA board,X
-        STA ce_piece
         LDA #$00
         STA ai_scan_y
 @tloop:
         LDY ai_scan_y
         TYA
         AND #OFFBOARD_MASK
-        BEQ @on_board_t
-        JMP @nextt
-@on_board_t:
+        BNE @nextt
         STY mv_to
         CPY mv_from
-        BEQ @skip_t
+        BEQ @nextt
         LDA board,Y
         BEQ @testit
         AND #COLOR_MASK
         CMP side_to_move
-        BNE @testit             ; opposite colour → testable
-@skip_t:
-        JMP @nextt
+        BEQ @nextt              ; own piece on destination
 @testit:
+        ; Re-establish ce_piece every destination: the SMART reply search
+        ; (best_reply_eval) overwrites it while iterating the opponent's pieces.
+        LDX mv_from
+        LDA board,X
+        STA ce_piece
         LDA #$00
         STA mv_promo
         STA mv_flags
         JSR is_pseudo_legal
-        BCC @psl_ok
-        JMP @nextt
-@psl_ok:
+        BCS @nextt
         JSR make_move
-        JSR in_check
-        BEQ @move_safe
-        JMP @bad
-@move_safe:
-        ; Move is legal. Evaluate (from the moving side's perspective —
-        ; but make_move did NOT toggle side_to_move; toggle_side is done
-        ; later by apply_user_move only on real moves). So side_to_move
-        ; is still our side. evaluate_material returns OUR material -
-        ; THEIR material, which is what we want to maximise.
-        JSR evaluate_material
-        STA see_value           ; reuse slot for the raw score (will be replaced
-                                ; by SEE result in SMART path; it's fine — see_value
-                                ; isn't read across the call below)
-        ; --- SMART adjustments: SEE + MVV-LVA secondary score ---
-        LDA ai_strategy
-        BEQ @score_done         ; NAIVE path — keep raw eval as score, no MVV-LVA
-
-        ; victim_value = mat_simple[saved_captured & PIECE_MASK]  (0 if non-capture)
-        LDA saved_captured
-        BEQ @vv_zero
-        AND #PIECE_MASK
-        TAY
-        LDA mat_simple,Y
-        JMP @vv_have
-@vv_zero: LDA #$00
-@vv_have: STA see_victim
-
-        ; SEE: net gain considering possible recapture chain on mv_to.
-        ; (see_estimate stores its result in see_value and returns it in A.)
-        JSR see_estimate
-
-        ; Adjusted score = raw_eval + (see_value - see_victim).
-        ; Intuition: evaluate_material already credited us with see_victim
-        ; (the captured piece is gone from the board). SEE recomputes the
-        ; *eventual* material delta after recapture. Subtracting see_victim
-        ; isolates the "exchange continuation" delta we need to add.
-        SEC
-        LDA see_value
-        SBC see_victim
-        STA tmp                 ; tmp = see_value - see_victim (signed)
-        ; Reload raw eval (we left it in evaluate_material's score_lo too).
-        CLC
-        LDA score_lo
-        ADC tmp
-        STA see_value           ; see_value now = adjusted score (signed)
-@score_done:
-
-        ; --- Compare adjusted score against ai_best_score ---
-        ; Signed compare via +$80 bias trick (same as v0.4).
-        CLC
-        LDA see_value
-        ADC #$80
-        STA tmp                 ; candidate (unsigned)
-        CLC
-        LDA ai_best_score
-        ADC #$80
-        STA tmp2                ; best (unsigned)
-        LDA tmp
-        CMP tmp2
-        BCS @cmp_ge             ; candidate >= best
-        JMP @worse              ; candidate <  best → keep best
-@cmp_ge:
-        BEQ @cmp_eq             ; tie → MVV-LVA tie-break path
-        JMP @replace            ; candidate > best → replace
-@cmp_eq:
-        ; --- Score tied: apply MVV-LVA + reservoir-sample tie-break ---
-        ; (Only meaningful in SMART; in NAIVE, ai_best_mvvlva stays $80
-        ; and the candidate's mvvlva is computed below as the same default,
-        ; so the BNE @worse path takes over and we keep first-encountered.)
-        LDA ai_strategy
-        BNE @do_mvvlva          ; SMART → tie-break
-        JMP @worse              ; NAIVE: deterministic, keep first
-@do_mvvlva:
-
-        ; Compute MVV-LVA score for this candidate.
-        ;   if capture:  mvvlva = victim*6 - attacker_value
-        ;   else:        mvvlva = -1   (rank below all captures)
-        LDA saved_captured
-        BNE @mv_cap
-        LDA #$FF                ; -1 signed
-        STA tmp                 ; tmp will be biased below
-        JMP @mv_set
-@mv_cap:
-        ; Multiply victim_value by 6 = (v << 2) + (v << 1).
-        LDA see_victim
-        ASL A
-        ASL A                   ; v*4
-        STA tmp                 ; tmp = v*4
-        LDA see_victim
-        ASL A                   ; v*2
-        CLC
-        ADC tmp
-        STA tmp                 ; tmp = v*6
-        ; attacker_value = mat_simple[ce_piece & PIECE_MASK]  (the moving piece)
-        LDA ce_piece
-        AND #PIECE_MASK
-        TAY
-        SEC
-        LDA tmp
-        SBC mat_simple,Y
-        STA tmp                 ; tmp = mvvlva (signed)
-@mv_set:
-        ; Bias and compare against ai_best_mvvlva.
-        CLC
-        LDA tmp
-        ADC #$80
-        STA tmp                 ; candidate mvvlva (unsigned)
-        CLC
-        LDA ai_best_mvvlva
-        ADC #$80
-        STA tmp2                ; best mvvlva (unsigned)
-        LDA tmp
-        CMP tmp2
-        BCC @worse              ; mvvlva < best → keep best
-        BNE @replace_mvvlva     ; mvvlva > best → replace
-
-        ; --- Full tie: reservoir-sample. Step the LFSR; replace iff bit 0 = 1. ---
-        JSR ai_rng_step
-        AND #$01
-        BEQ @worse              ; bit 0 = 0 → keep current best
-        ; Fall through to @replace_mvvlva (replace).
-@replace_mvvlva:
-        ; Update both score and mvvlva (the score was equal anyway).
-        SEC
-        LDA tmp
-        SBC #$80                ; back to signed mvvlva
-        STA ai_best_mvvlva
-        LDA see_value           ; adjusted score
-        STA ai_best_score
-        LDA mv_from
-        STA ai_best_from
-        LDA mv_to
-        STA ai_best_to
-        JMP @after_replace
-@replace:
-        ; New best score: also recompute mvvlva and store (only meaningful in
-        ; SMART; NAIVE leaves ai_best_mvvlva at the initial $80 and the equality
-        ; path above is unreachable).
-        LDA ai_strategy
-        BEQ @nv_score
-        LDA saved_captured
-        BNE @nv_cap
-        LDA #$FF
-        STA ai_best_mvvlva
-        JMP @nv_score
-@nv_cap:
-        LDA see_victim
-        ASL A
-        ASL A
-        STA tmp
-        LDA see_victim
-        ASL A
-        CLC
-        ADC tmp
-        STA tmp
-        LDA ce_piece
-        AND #PIECE_MASK
-        TAY
-        SEC
-        LDA tmp
-        SBC mat_simple,Y
-        STA ai_best_mvvlva
-@nv_score:
-        LDA see_value
-        STA ai_best_score
-        LDA mv_from
-        STA ai_best_from
-        LDA mv_to
-        STA ai_best_to
-@after_replace:
-@worse:
-        ; v0.5 lesson: per-candidate "thinking" dots cost ~10 ms each
-        ; through the Apple-1 ECHO busy-wait. With ~50 legal moves per
-        ; position that adds ~0.5 s wallclock per AI move on top of the
-        ; SEE evaluation. Indicator removed — `do_ai` already prints
-        ; "COMPUTER THINKING..." once before calling here, which is
-        ; enough signal at --cpu-max where the search completes in tens
-        ; of ms anyway.
+        JSR in_check            ; does the move leave OUR king in check?
+        BNE @bad                ; illegal — discard
+        JSR evaluate_positional ; board = after our move; tie-break score
+        STA cand_pos
+        JSR score_move          ; A = material score (1- or 2-ply)
+        JSR consider_move       ; maybe adopt as best
         JSR unmake_move
         JMP @nextt
 @bad:
         JSR unmake_move
 @nextt:
         INC ai_scan_y
-        BEQ @end_t
-        JMP @tloop
-@end_t:
+        BNE @tloop
 @nextf:
         INC ai_scan_x
-        BEQ @end_f
-        JMP @floop
-@end_f:
-        ; Apply best move (if any).
+        BNE @floop
+
+        ; --- Castling candidates (not produced by the from/to scan). ---
+        LDA #MV_FLAG_CASTLE_K
+        JSR try_one_castle
+        BCS @try_qs
+        JSR @castle_consider
+@try_qs:
+        LDA #MV_FLAG_CASTLE_Q
+        JSR try_one_castle
+        BCS @apply
+        JSR @castle_consider
+@apply:
         LDA ai_best_from
         CMP #$88
         BEQ @no_move
@@ -2005,14 +2088,25 @@ ai_play_move:
         STA mv_to
         LDA #$00
         STA mv_promo
+        LDA ai_best_flags
         STA mv_flags
-        ; apply_user_move re-validates and toggles side. Auto-promote
-        ; queen for any pawn reaching last rank (default behaviour).
-        JSR apply_user_move
+        JSR apply_user_move     ; routes a castle bit to apply_castle_move
         RTS
 @no_move:
         SEC
         RTS
+
+; @castle_consider — the castle in mv_* is currently MADE (try_one_castle CC).
+; Score it at the same depth + CASTLE_BONUS, adopt if best, then unmake.
+@castle_consider:
+        JSR evaluate_positional ; board = after the castle
+        STA cand_pos
+        JSR score_move
+        CLC
+        ADC #CASTLE_BONUS
+        JSR consider_move
+        JMP unmake_move         ; tail: revert the castle, RTS to caller
+
 
 ; ============================================================================
 ; perft1 -- count pseudo-legal moves at the current position that pass the
@@ -2079,20 +2173,24 @@ perft1:
 @nextf:
         INC ai_scan_x
         BNE @floop
-        RTS
-
-; Perft debug helper: print "FF-FF " for the current (mv_from, mv_to)
-perft_dump_move:
-        LDA mv_from
-        JSR PRBYTE
-        LDA #'-'
-        ORA #$80
-        JSR ECHO
-        LDA mv_to
-        JSR PRBYTE
-        LDA #' '
-        ORA #$80
-        JSR ECHO
+        ; Castling isn't emitted by the (from,to) scan — add each legal castle
+        ; to the count so perft(1) matches a reference generator.
+        LDA #MV_FLAG_CASTLE_K
+        JSR try_one_castle
+        BCS @pft_qs
+        JSR unmake_move
+        INC perft_count_lo
+        BNE @pft_qs
+        INC perft_count_hi
+@pft_qs:
+        LDA #MV_FLAG_CASTLE_Q
+        JSR try_one_castle
+        BCS @pft_end
+        JSR unmake_move
+        INC perft_count_lo
+        BNE @pft_end
+        INC perft_count_hi
+@pft_end:
         RTS
 
 ; ============================================================================

@@ -46,7 +46,7 @@ Five things to try **right after first boot** (every preset boots into WOZ Monit
 F000R    ; cold-start whatever ROM is currently mapped at $F000
 ```
 
-1. **Write your first BASIC program** → preset **#4**, type `E000R` (cold-start Integer BASIC), then `10 PRINT "HELLO WORLD"` and `RUN`. Welcome to 1976.
+1. **Write your first BASIC program** → preset **#4**, load Integer BASIC from the inserted cassette (press **Play** on the deck — preset #4 mounts `BASIC.aci` but doesn't auto-play, and `$E000` is RAM until it loads), then `E000R`, `10 PRINT "HELLO WORLD"` and `RUN`. Welcome to 1976.
 2. **Plug a TMS9918 cartridge** → preset **#9** (CodeTank), *File → P-LAB CodeTank Library* → `Codetank_GAME2.rom` → flip *upper jumper* → `4000R`. Mode-III Nyan Cat at 20 fps.
 3. **Draw in colour from BASIC** → preset **#2** (GEN2 HGR), inject a `.apf` from `sketchs/basic_applesoft/` (Mandelbrot, Sierpinski…), `9800R` — `HPLOT`/`HGR`/`HCOLOR` on a 1976 machine.
 4. **Play the A1-SID piano** → preset **#12** (default), *File → Load Memory* → `software/SOUND SID/Claudio_PARMIGIANI_SID_PIANO_ORIG.txt`, type `C400R`, then press keys to play.

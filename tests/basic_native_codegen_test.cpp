@@ -63,6 +63,37 @@ int main()
         check("HPLOT..TO -> rt_line", has(a, "jsr rt_line"));
         check("HPLOT point -> rt_plot", has(a, "jsr rt_plot"));
     }
+    // POKE compiles to an indirect store through the rt_a pointer (added so ported
+    // Apple II programs that hit soft switches — e.g. POKE 49746,0 = GEN2 $C252
+    // MIX_OFF — assemble natively). The address is parked in rt_x0 across the
+    // value's evaluation, then loaded into the rt_a zero-page pointer.
+    {
+        std::string a = gen("10 POKE 768,65\n20 END\n");
+        check("POKE -> indirect store sta (rt_a),y", has(a, "sta (rt_a),y"));
+        check("POKE parks the address in rt_x0", has(a, "sta rt_x0"));
+        check("POKE loads the pointer rt_a", has(a, "sta rt_a"));
+    }
+    // POKE also works in the float phase (address/value converted via fp_toint16),
+    // which is the phase BoySurface.apf's `HGR : POKE 49746,0` compiles in.
+    {
+        std::string a = genf("10 POKE 49746,0\n20 END\n");
+        check("POKE (float phase) -> indirect store", has(a, "sta (rt_a),y"));
+        check("POKE (float phase) converts via fp_toint16", has(a, "jsr fp_toint16"));
+    }
+    // A duplicate line number emits its L<n>: label only ONCE — ca65 rejects a
+    // doubled label ("Symbol 'Lnn' is already defined"). Lines are stable-sorted so
+    // the duplicate's code still runs via fall-through, and GOTO/GOSUB resolve to
+    // the first occurrence (matching the interpreter's FNDLIN).
+    {
+        std::string a = gen("10 GR\n20 PLOT 1,1\n20 PLOT 2,2\n30 END\n");
+        size_t n = 0, p = 0;
+        while ((p = a.find("L20:", p)) != std::string::npos) { ++n; p += 4; }
+        check("duplicate line 20 -> exactly one L20: label", n == 1);
+        // both duplicate-numbered lines still emit code (two lo-res plots).
+        size_t plots = 0; p = 0;
+        while ((p = a.find("jsr rt_loresplot", p)) != std::string::npos) { ++plots; p += 1; }
+        check("duplicate line's code still runs (two PLOTs)", plots == 2);
+    }
     // PRINT emits string chars + signed-decimal numbers + a trailing newline.
     {
         std::string a = gen("10 PRINT \"X=\";N\n20 END\n");

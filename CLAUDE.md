@@ -38,9 +38,9 @@ Claudio PARMIGIANI (P-LAB designer): on real hardware exactly ONE P-LAB card is 
 
 ### Core layers
 
-- **M6502** (CPU). `op = quint16`, `tmp = int` (carry/borrow via bit 8). BCD ADC propagates low→high carry from `(A & 0xF0)`, not the unadjusted sum. `run(maxCycles)` **returns actual cycle count** (overshoot up to 6) — wallclock pacers must deduct. 12-slot PC ring + `dumpPcTrace(tag)`. `setTestMode(true)` = flat 64 KB for the Klaus harness only. **At most one interrupt per instruction boundary** — NMI takes priority over IRQ (7 cycles, 3 bytes pushed); never both. **Undocumented multi-byte opcodes advance PC by their real NMOS operand length** (`Unoff2`/`Unoff3` dispatch + matching disassembler addressing mode, mnemonic `???`) — never the no-op 1-byte fallback that desynced the stream.
+- **M6502** (CPU). `op = quint16`, `tmp = int` (carry/borrow via bit 8). BCD ADC propagates low→high carry from `(A & 0xF0)`, not the unadjusted sum. `run(maxCycles)` **returns actual cycle count** (overshoot up to 6) — wallclock pacers must deduct. 24-slot PC control-flow-edge ring + `dumpPcTrace(tag)`. `setTestMode(true)` = flat 64 KB for the Klaus harness only. **At most one interrupt per instruction boundary** — NMI takes priority over IRQ (7 cycles, 3 bytes pushed); never both. **Undocumented multi-byte opcodes advance PC by their real NMOS operand length** (`Unoff2`/`Unoff3` dispatch + matching disassembler addressing mode, mnemonic `???`) — never the no-op 1-byte fallback that desynced the stream.
 - **CpuClock.h** — `POM1_CPU_CLOCK_HZ = 1 022 727` (14.31818 MHz ÷ 14). Single source of truth.
-- **Memory** — 64 KB. Owns every peripheral (`unique_ptr` + enable flag). MMIO dispatched via **`PeripheralBus`**; `memRead/memWrite` only handle PIA `$D0xx` aliasing, ROM write-protect, OOR strict mode, the cassette write-sniffer, `DisplayDevice::onChar` + TerminalCard hook, then raw `mem[]`. **Redundant-ROM-load guards**: skip Applesoft Lite reload when `mem[$FF00..$FF01] == D8 58`; skip SD CARD OS reload when `mem[$8000..$8001] == A9 00`.
+- **Memory** — 64 KB. Owns every peripheral (`unique_ptr` + enable flag). MMIO dispatched via **`PeripheralBus`**; `memRead/memWrite` only handle PIA `$D0xx` aliasing, ROM write-protect, OOR strict mode, the cassette write-sniffer, `DisplayDevice::onChar` + TerminalCard hook, then raw `mem[]`. **Redundant-ROM-load guards**: on the microSD Applesoft Lite path, skip the **Woz Monitor** reload when `mem[$FF00..$FF01] == D8 58` (Woz Monitor's `CLD`/`CLI` signature — Applesoft Lite itself at `$6000` always loads); skip SD CARD OS reload when `mem[$8000..$8001] == A9 00`.
 - **PeripheralBus** — central MMIO dispatch. Peripherals register `(name, range, priority, onRead, onWrite)`. O(1) hot path via `pageMask[256]` bitmap. `std::stable_sort` by priority — TMS9918 wins over SID at `$CC00/$CC01` via priority 10. `onWrite = {}` → pass-through to RAM; explicit no-op = block (CFFA1 ROM).
 - **EmulationController** — façade over CPU + Memory + emulation thread. **Mutex order**: `stateMutex > keyboard.keyMutex > publisher.snapshotMutex`. `stateMutex` is a `PriorityMutex` (MAX speed yields on `hasWaiters()`). Slice cap: 6000 cycles desktop, 50 000 WASM (single-threaded). Native = dedicated thread; WASM = `pumpEmulationMainThread()`.
 - **SnapshotPublisher** — SPSC slot, page-level dirty copy (1 bit per 256 B page, contiguous runs → single memcpy). Idle Wozmon = zero copy. TMS9918's 16 KB skipped when unplugged.
@@ -139,7 +139,7 @@ $FF00-$FFFF  Woz Monitor ROM + vectors ($FFFA-$FFFF)
 
 ## Testing
 
-`ctest` from `build/` (native-only, opt-out `-DPOM1_ENABLE_TESTS=OFF`). Inventory in `tests/CMakeLists.txt`; `ctest -N` lists exact names. CMake never invokes `dev/projects/*/Makefile`; those are developer-only build steps. Tests load whatever artefact lives under `software/`.
+`ctest` from `build/` (native-only, opt-out `-DPOM1_ENABLE_TESTS=OFF`). Inventory in `tests/CMakeLists.txt`; `ctest -N` lists exact names. CMake never invokes `dev/projects/Makefile`; those are developer-only build steps. Tests load whatever artefact lives under `software/`.
 
 ```bash
 ctest                       # full suite (~5–30 s wall time; Klaus + TMS9918 tests dominate)
@@ -167,7 +167,7 @@ Bump version in **all**:
 - `src/main_imgui.cpp` (console + window title)
 - `src/MainWindow_Dialogs.cpp` (About — 2 occurrences, with-photo + no-photo branches)
 - `src/Screen_ImGui.cpp` (welcome)
-- `build-wasm/shell.html` (3 occurrences: `<meta>`, `<title>`, `<h1>`)
+- `build-wasm/shell.html` (3 occurrences: `<meta>`, `<title>`, `<div class="sub">` header)
 - `README.md` (title)
 - `CMakeLists.txt` (`MACOSX_BUNDLE_BUNDLE_VERSION` + `MACOSX_BUNDLE_SHORT_VERSION_STRING`)
 - `package_windows_release.bat` (ZIP filename)

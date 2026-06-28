@@ -209,6 +209,62 @@ int main()
         std::printf("scrn: OK (SCRN(5,5) -> 13)\n");
     }
 
+    // G2) HOME must clear only the text WINDOW (bottom 4 rows in a graphics mode),
+    // NOT the whole $0400 page. On a real Apple II, GR sets the text window to
+    // rows 20-23 and HOME respects it, preserving the lo-res picture. AppleBite.apf
+    // relies on this: it draws an apple, prints a prompt, HOME, then the COLOR=0
+    // "bite". The old GFX_HOME blanked the entire page, wiping the apple. Draw a
+    // full HLIN at lo-res y=10 in colour 13 (low nibble $D on even y), HOME, and
+    // assert the 40 line cells survive while the text window (row 20 = $0650) IS
+    // cleared. (Pre-fix: HOME blanked the whole page to $A0 -> zero $D cells left.)
+    {
+        Memory mem; mem.initMemory();
+        if (!loadRom(mem)) return 1;
+        runProgram(mem, "10 GR\r20 COLOR=13\r30 HLIN 0,39 AT 10\r40 HOME\r", "");
+        const uint8_t* m = mem.getMemoryPointer();
+        int lineCells = 0;       // the drawn line: 40 cells with low nibble $D
+        for (int a = 0x0400; a < 0x0800; ++a) if ((m[a] & 0x0F) == 0x0D) ++lineCells;
+        if (lineCells != 40) {
+            std::fprintf(stderr, "HOME-WIPES-GRAPHICS FAILED: %d/40 lo-res line cells "
+                         "survived HOME; HOME must respect the text window and not "
+                         "blank the picture.\n", lineCells);
+            return 1;
+        }
+        if (m[0x0650] != 0xA0) { // text window row 20 must have been cleared
+            std::fprintf(stderr, "HOME FAILED: text window row 20 ($0650=%02X) not "
+                         "cleared to $A0.\n", m[0x0650]);
+            return 1;
+        }
+        std::printf("home-keeps-graphics: OK (line survives, text window cleared)\n");
+    }
+
+    // G3) MIX must blank the 4-line text window to space ($A0). After GR the whole
+    // lo-res page is graphics-black ($00); when MIX turns the bottom 4 rows into
+    // text, $00 reads as inverse '@'. AppleBite.apf (TEXT:HOME:GR:MIX) showed a
+    // band of inverse '@' there. Assert rows 20-23 (text bases $0650/$06D0/$0750/
+    // $07D0) are $A0 after GR:MIX, while a graphics row ($0400) stays $00.
+    {
+        Memory mem; mem.initMemory();
+        if (!loadRom(mem)) return 1;
+        runProgram(mem, "10 GR\r20 MIX\r", "");
+        const uint8_t* m = mem.getMemoryPointer();
+        const int win[4] = {0x0650, 0x06D0, 0x0750, 0x07D0};   // text rows 20..23
+        for (int r = 0; r < 4; ++r) {
+            if (m[win[r]] != 0xA0) {
+                std::fprintf(stderr, "MIX-TEXT-WINDOW FAILED: row %d base $%04X = %02X "
+                             "(expected A0 space, not 00 inverse-'@').\n",
+                             20 + r, win[r], m[win[r]]);
+                return 1;
+            }
+        }
+        if (m[0x0400] != 0x00) {
+            std::fprintf(stderr, "MIX FAILED: graphics row 0 ($0400=%02X) should stay "
+                         "black ($00).\n", m[0x0400]);
+            return 1;
+        }
+        std::printf("mix-clears-textwindow: OK (rows 20-23 = space, graphics black)\n");
+    }
+
     // H) Inject the shipped Tortue.apf lo-res drawing end-to-end (optional — the
     // .apf is a user sketch). Proves a real multi-line GR/COLOR=/HLIN/VLIN/PLOT
     // program (with ':' separators and "COLOR= n" spacing) runs via injection.

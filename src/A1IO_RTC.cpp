@@ -252,7 +252,9 @@ void A1IO_RTC::writeRegister(uint16_t address, uint8_t value)
                     auto now = std::chrono::system_clock::now();
                     auto adjusted = now + std::chrono::seconds(rtcOffsetSeconds);
                     std::time_t tt = std::chrono::system_clock::to_time_t(adjusted);
-                    std::tm ltCopy = *std::localtime(&tt);
+                    std::tm* lt = std::localtime(&tt);
+                    if (!lt) break;  // out-of-range time_t (e.g. corrupt snapshot offset)
+                    std::tm ltCopy = *lt;
 
                     switch (regIndex) {
                     case 1: ltCopy.tm_min = dataValue; break;
@@ -273,7 +275,9 @@ void A1IO_RTC::writeRegister(uint16_t address, uint8_t value)
                     auto now = std::chrono::system_clock::now();
                     auto adjusted = now + std::chrono::seconds(rtcOffsetSeconds);
                     std::time_t tt = std::chrono::system_clock::to_time_t(adjusted);
-                    std::tm ltCopy = *std::localtime(&tt);
+                    std::tm* lt = std::localtime(&tt);
+                    if (!lt) break;  // out-of-range time_t (e.g. corrupt snapshot offset)
+                    std::tm ltCopy = *lt;
                     ltCopy.tm_hour = dataValue;
                     std::time_t newTime = std::mktime(&ltCopy);
                     std::time_t hostTime = std::chrono::system_clock::to_time_t(now);
@@ -471,6 +475,11 @@ void A1IO_RTC::deserialize(pom1::SnapshotReader& r)
     strobeConsumed = r.readU8() != 0;
     r.readBytes(virtualRegisters.data(), virtualRegisters.size());
     rtcOffsetSeconds = static_cast<int>(r.readU32());
+    // Clamp the untrusted offset to ±50 years so now()+offset stays in localtime's
+    // representable range (the write path also null-checks localtime defensively).
+    constexpr int kMaxOffset = 50 * 365 * 24 * 3600;
+    if (rtcOffsetSeconds >  kMaxOffset) rtcOffsetSeconds =  kMaxOffset;
+    if (rtcOffsetSeconds < -kMaxOffset) rtcOffsetSeconds = -kMaxOffset;
     r.readBytes(analogInputs.data(),  analogInputs.size());
     r.readBytes(digitalInputs.data(), digitalInputs.size());
     digitalOutputs   = r.readU16();

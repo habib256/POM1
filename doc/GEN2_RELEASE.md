@@ -7,7 +7,7 @@ Graphics Card on the Apple-1, using POM1 as the development machine.
 Apple II HGR software to the Apple-1. **Hardware truth:** Bernie's PDF
 `doc/reference/ColorGraphicsCard_doc_for_Arnaud.pdf`, transcribed with full Q&A status
 in [`GEN2_RELEASE_questions.md`](GEN2_RELEASE_questions.md) (Q1–Q10 all
-resolved). **Reference implementation:** [`sketchs/gen2/demo_a1_crazycycle/`](sketchs/gen2/demo_a1_crazycycle/) —
+resolved). **Reference implementation:** [`sketchs/gen2/demo_a1_crazycycle/`](../sketchs/gen2/demo_a1_crazycycle/) —
 beam-raced bouncing window + 2-voice ACI music, every cycle accounted for.
 
 ---

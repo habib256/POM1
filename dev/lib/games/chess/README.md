@@ -87,43 +87,106 @@ is retained as a reserved error code but is no longer returned.
 | Checkmate / stalemate | ✅ via brute-force scan |
 | Algebraic input parser (auto-complete on 4 chars) | ✅ |
 | Auto-detect castling from `E1G1`/`E1C1` syntax | ✅ |
-| AI 1-ply greedy (max our material - their material) | ✅ |
-| **AI 1-ply + MVV-LVA tie-break** (v0.5)             | ✅ |
-| **AI 1-ply + Static Exchange Evaluation** (v0.5)    | ✅ refuses obvious blunders (queen for defended pawn etc.) |
-| **AI random tie-break via 8-bit LFSR** (v0.5)       | ✅ AvA games diverge by move 2–3 |
-| **AI strategy toggle** (NAIVE / SMART, v0.5)        | ✅ via the `D` command at the prompt |
-| **AI thinking indicator** (`.` per 32 nodes, v0.5)  | ➖ removed — `do_ai` prints "COMPUTER THINKING..." once instead (per-node dots cost ~10 ms each via the ECHO busy-wait) |
+| **AI 2-ply minimax (negamax)** — default, v0.6        | ✅ sees the opponent's reply: stops hanging pieces, wins free material, finds mate-in-1. Blunder rate ~8 % → ~1 % vs the old 1-ply. |
+| **AI 1-ply greedy** — `D`-toggled "FAST" mode          | ✅ max `our material − their material`; instant, weaker. |
+| **AI castling** (v0.5.2)                               | ✅ the search enumerates + scores the two castles (`CASTLE_BONUS`). |
+| **AI random tie-break via 8-bit LFSR**                 | ✅ equal-scored moves diverge AvA games. |
+| **AI strategy toggle** (FAST 1-ply / STRONG 2-ply)     | ✅ via the `D` command at the prompt. |
 | Undo (single-level via compact engine state save)   | ✅ — note: `H` (hint) consumes the slot |
-| **Perft (depth 1)** — returns 20 for initial pos    | ✅ verified manually (no automated ctest yet — `perft1` + `Chess.sym` are emitted so one can be wired) |
+| **Perft (depth 1)** — returns 20 for initial pos    | ✅ cross-checked vs python-chess at every self-play ply (`tools/test_chess_quality.py`) |
 | **Mode cycling (`M`)** — HvH / WAI / BAI / AvA in text variant | ✅ |
-| AI (alpha-beta 2-3 ply)                             | ⏳ v1.2 |
-| Perft (depth ≥2, recursive)                         | ⏳ v0.6 (needs ply-stacked saved_*) |
-| 50-move / threefold-repetition / insufficient-material draws | ⏳ v0.6 |
+| **AI move legality / self-play (AvA)**              | ✅ **fixed v0.5.1** — `find_min_attacker` looped forever (see below); the AI (default) now moves. Verified end-to-end by `tools/test_chess_selfplay.py`. |
+| AI (alpha-beta, depth ≥3, killer/TT)                | ⏳ — 2-ply has no pruning yet; ~35× the 1-ply node count (a few seconds/move at 1 MHz). |
+| Perft (depth ≥2, recursive)                         | ⏳ (needs ply-stacked saved_*; the 2-ply search uses a single extra `saved2_*` buffer) |
+| 50-move / threefold-repetition / insufficient-material draws | ⏳ |
 
-### v0.5 internals
+### v0.6 internals — 2-ply search
 
-`ai_play_move` now lives behind an `ai_strategy` byte (BSS):
+`ai_play_move` enumerates our legal moves and scores each through `score_move`,
+which branches on the `ai_strategy` byte:
 
-- `AI_STRATEGY_NAIVE = 0` — bit-exact v0.4 behaviour. Picks the first
-  candidate that maximises `evaluate_material` (raw `our − their`).
-- `AI_STRATEGY_SMART = 1` (default, set in `init_board`) — for each
-  candidate computes:
-    1. **Static Exchange Evaluation** on `mv_to`. Simulates depth-2 exchange:
-       `gain = victim − our_piece + min_friendly_defender_value`. The
-       adjusted score becomes `raw_eval + (see_value − victim_value)`,
-       so capturing a defended pawn with a queen lands at roughly −8
-       and the AI prefers any quiet move scoring 0.
-    2. **MVV-LVA** secondary score = `victim_value × 6 − attacker_value`
-       (or `−1` for non-captures), used as a tie-break on equal scores.
-       Effect: at equal material delta, the AI prefers active captures.
-    3. **8-bit LFSR reservoir sample** (Galois, taps `$1D`, period 255)
-       seeded `$AC` in `init_board`. When score AND mvvlva are equal,
-       step the LFSR and replace iff bit 0 = 1. Diverges AvA games.
+- `AI_STRATEGY_NAIVE = 0` ("FAST") — score = `evaluate_material` after our move
+  (1-ply greedy). Instant but blunders.
+- `AI_STRATEGY_SMART = 1` ("STRONG", default, set in `init_board`) — **2-ply
+  negamax**: make our move, `toggle_side`, then `best_reply_eval` scans the
+  opponent's legal replies and returns the best material they can reach; our
+  score is its negation. Leaf detection returns −127 when the opponent has no
+  legal reply and is in check (we deliver mate) and 0 for stalemate, so the AI
+  finds mate-in-1 and grabs hanging material instead of getting fooled by the
+  shallow per-square exchange estimate it replaces.
 
-Helpers `find_min_attacker` and `see_estimate` are added; `is_pseudo_legal`,
-`make_move`, `unmake_move` are now exported so variant code (Chess.asm's
-`do_list_moves`, `do_hint`) can enumerate legal moves without re-implementing
-move-gen.
+The single-level `make_move`/`unmake_move` is made to nest exactly one ply by
+copying the outer move's undo slots to a second buffer (`push_saved` →
+`saved2_*`) and snapshotting the outer move bytes (`m_*`) across the inner reply
+loop, which reuses `mv_from/mv_to`. Equal-scored moves still break ties with the
+8-bit LFSR (Galois, taps `$1D`, seeded `$AC` in `init_board`) so AvA games
+diverge. This **replaced** v0.5's Static-Exchange-Evaluation + MVV-LVA heuristic
+(and its `find_min_attacker`/`see_estimate` helpers) — 2-ply subsumes them and
+is both stronger and smaller.
+
+> **v0.5.1 bug fix — `find_min_attacker` infinite loop (the old SEE; SMART AI never moved).**
+> The routine scans the 0x88 board with `X` as the index and calls
+> `attacks_target` per square — but the sliding-piece probes (`atk_rook`/
+> `atk_bishop`) walk rays with their *own* `LDX #$00 .. INX .. CPX #$04`, so they
+> return with `X` clobbered. On a hit, `X` came back as the attacker's direction
+> index (0–3), and the loop's `INX` resumed scanning from there, re-finding the
+> same attacker forever. Because `find_min_attacker` is reached **only** through
+> SMART's `see_estimate`, every AI move hung the moment SEE found a contested
+> destination — so AvA self-play (and any AI side) wedged on its first move while
+> NAIVE was unaffected. Fix: save/restore `X` around the `attacks_target` call
+> (push/pull preserves its carry result) and take the attacker piece from
+> `atk_piece` rather than the also-clobbered `Y`. Pinned by
+> `tools/test_chess_selfplay.py`.
+
+(The `find_min_attacker`/`see_estimate` helpers this bug lived in were removed in
+v0.6 when 2-ply replaced SEE.) `is_pseudo_legal`, `make_move`, `unmake_move` are
+exported so variant code (Chess.asm's `do_list_moves`, `do_hint`) can enumerate
+legal moves without re-implementing move-gen.
+
+## Engine-quality validation (`tools/test_chess_quality.py`)
+
+Beyond "does self-play run", this harness proves the engine plays *correct*
+chess by replaying every self-play move into **python-chess** (an independent
+reference) over the telemetry channel. The game now emits one extra telemetry
+field per move — `legal` = `perft(1)` of the resulting position — and folds a
+harness-supplied inbound byte into the LFSR seed at `new_game`, so each game
+diverges and the suite covers many positions. Three correctness gates:
+
+1. **Legality** — every move the engine plays is legal in python-chess.
+2. **Move generation** — the engine's `perft(1)` equals python-chess's
+   legal-move count at every ply (promotions reconciled, see the note).
+3. **Terminal** — engine mate/stalemate ⇔ `board.is_checkmate()/is_stalemate()`.
+
+Result: **legality, move generation and terminal detection are all exact.** Over
+a 12-game / 2003-ply sample (`illegal=perft_mismatch=terminal_mismatch=0`) the
+engine never plays or claims an illegal move, its `perft(1)` matches the
+reference at every ply (castling and en-passant included), and its
+mate/stalemate calls are correct.
+
+> **v0.5.2 — the AI now castles.** Previously `ai_play_move`, `perft1` and
+> `game_status` shared a `(from,to)` scan that only emits 1-square king steps, so
+> castling was never *enumerated*: the AI couldn't castle, and `game_status`
+> could mis-score a castle-only position as mate/stalemate (latent false
+> terminal). Fix: `apply_castle_move` is split into a reusable `castle_try`
+> (validate + make, no permanent bookkeeping) + the finaliser; a `try_one_castle`
+> helper feeds the two castle candidates into all three routines. `ai_play_move`
+> scores a legal castle as `material + CASTLE_BONUS` (=1) so it prefers castling
+> to a quiet move but still yields to a real capture; `perft1` counts each legal
+> castle; `game_status` checks for a legal castle before declaring a terminal.
+> Pinned by `tools/test_chess_quality.py` (the perft cross-check now *includes*
+> castling on both sides).
+
+**Counting note (not a failure):** `perft1` counts a pawn promotion as one move
+(it sets `mv_promo=0`) where standard perft counts four (Q/R/B/N); the harness
+reconciles this by collapsing promotions on a `(from,to)` square when comparing.
+
+Quality (informational, never fails the run): the harness also reports a rough
+"hangs a piece on a quiet move" rate. The default **2-ply** AI sits near **~1 %**
+(it sees the recapture); the `D`-toggled 1-ply FAST mode is the old **~8 %**.
+Promotions, en-passant and castling validate clean. 2-ply self-play games run
+markedly longer and reach checkmate far more often than the 1-ply shuffle-to-a-
+draw games (e.g. the committed `test_chess_selfplay.py` game now mates in ~92
+plies vs ~30 before).
 
 ## Perft reference counts
 

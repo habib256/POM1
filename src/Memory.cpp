@@ -1577,6 +1577,11 @@ int Memory::loadCFFA1Rom()
 void Memory::applyJukeBoxFlatMemoryMirror()
 {
     if (!jukeBoxEnabled) return;
+    // During snapshot restore the MEM section already holds the correct mirror
+    // bytes AND the real $4000-$7FFF user RAM (RAM32/ROM16 mode); re-running the
+    // mirror here would memset that restored RAM to zero. Skip it — the bus
+    // handlers serve CPU reads from jukeBox->readByte() regardless of the mirror.
+    if (snapshotRestoreInProgress) return;
     // Mirror the currently-banked page into the flat RAM shadow so the
     // memory viewer / snapshot pipeline sees ROM content at the right
     // address. The bus handler always serves CPU reads via
@@ -1641,8 +1646,13 @@ void Memory::setJukeBoxEnabled(bool b)
         // bank-switching to page 0 (where the shipped ROM has game data
         // rather than firmware). Real-world P-LAB ROMs put a PM copy in
         // every page so this wouldn't matter; POM1 tolerates partial ROMs.
-        mem[0x003F] = jukeBox->getBootPage();
-        markPagesDirty(0x0000, 0x0100);
+        // Skip the zero-page boot-page seed during snapshot restore: the MEM
+        // section already restored $3F, and overwriting it would desync a
+        // running PM from the bank it was actually executing from.
+        if (!snapshotRestoreInProgress) {
+            mem[0x003F] = jukeBox->getBootPage();
+            markPagesDirty(0x0000, 0x0100);
+        }
         applyJukeBoxFlatMemoryMirror();
     } else {
         bus.setEnabled(jukeBox32BusHandle, false);
@@ -2119,6 +2129,14 @@ bool Memory::readSnapshotSections(pom1::SnapshotReader& r, std::string& error, M
   // instead of std::terminate. The reader's own per-field length guard handles
   // the common case; this is the backstop for the count-then-reserve paths.
   try {
+    // Suppress cosmetic mem[]-rewriting side effects of card-enable setters for
+    // the duration of the restore (cleared on every exit path, incl. exceptions).
+    struct RestoreFlagGuard {
+        bool& flag;
+        explicit RestoreFlagGuard(bool& f) : flag(f) { flag = true; }
+        ~RestoreFlagGuard() { flag = false; }
+    } restoreGuard(snapshotRestoreInProgress);
+
     // Build a name → peripheral lookup so we can dispatch by section
     // name (insulates us against future card-order changes).
     std::vector<pom1::Peripheral*> cards = {

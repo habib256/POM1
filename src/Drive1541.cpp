@@ -476,11 +476,17 @@ void Drive1541::deserialize(SnapshotReader& r) {
         ch.isWrite   = r.readU8() != 0;
         ch.isCommand = r.readU8() != 0;
         ch.cursor    = r.readU32();
+        // These length-prefixed blobs are read manually (not via readString/
+        // readByteVector), so apply the same forged-length guard those helpers use:
+        // a corrupt uint32 near 0xFFFFFFFF would otherwise reserve ~4 GB and spin a
+        // multi-billion-iteration read loop. Cap to the bytes actually left.
         uint32_t fnLen = r.readU32();
+        if (static_cast<std::streamoff>(fnLen) > r.bytesAvailable()) fnLen = 0;
         ch.filename.clear();
         ch.filename.reserve(fnLen);
         for (uint32_t i = 0; i < fnLen; ++i) ch.filename.push_back(r.readU8());
         uint32_t bufLen = r.readU32();
+        if (static_cast<std::streamoff>(bufLen) > r.bytesAvailable()) bufLen = 0;
         ch.buffer.clear();
         ch.buffer.reserve(bufLen);
         for (uint32_t i = 0; i < bufLen; ++i) ch.buffer.push_back(r.readU8());

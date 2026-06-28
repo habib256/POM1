@@ -43,6 +43,7 @@ bool isKeyword(const std::string& s)
         "INT","SQR","SIN","COS",
         // lo-res graphics + error trapping (native, GEN2)
         "GR","GR2","COLOR","PLOT","HLIN","VLIN","TEXT","HOME","AT","ONERR",
+        "POKE",
     };
     return kw.count(s) != 0;
 }
@@ -71,7 +72,12 @@ struct Lexer {
                 long v = 0; bool isF = false;
                 std::string lit;
                 while (i < src.size() && std::isdigit(static_cast<unsigned char>(src[i]))) {
-                    v = v * 10 + (src[i] - '0'); lit += src[i]; ++i;
+                    // Saturate the integer accumulator to avoid signed-long
+                    // overflow UB on a long digit run; `lit` still captures every
+                    // digit for the float value (strtod) and line-number range
+                    // checks downstream mask to 16 bits anyway.
+                    if (v < 0x7FFFFFF) v = v * 10 + (src[i] - '0');
+                    lit += src[i]; ++i;
                 }
                 if (i < src.size() && src[i] == '.') {       // fractional part
                     isF = true; lit += '.'; ++i;
@@ -162,6 +168,7 @@ struct Codegen {
     std::vector<ForCtx> forStack;
     std::set<int>       forSlots;   // FOR ids needing limit/step BSS slots
     std::set<int>       lineNumbers; // all program line numbers (for GOTO/GOSUB checks)
+    std::set<int>       labelled;    // line numbers whose L<n>: label was already emitted
 
     // verify a GOTO/GOSUB/THEN target exists; emit a clear error if not.
     bool checkTarget(int n, const char* kw) {
@@ -696,6 +703,27 @@ bool Codegen::statement()
         else    emit("\tlda T0");
         emit("\tjsr rt_color"); return true;
     }
+    if (isKw("POKE")) {
+        // POKE addr,val  ->  *(addr) = val & 255. Both operands are full
+        // expressions (int, or float converted via fp_toint16). The 16-bit address
+        // is parked in rt_x0 across the value's evaluation and the value's low byte
+        // in rt_x1 — neither slot is touched by expression codegen (which only uses
+        // T*/rt_a/rt_b/m_*) — then rt_a is loaded as the indirect-store pointer.
+        adv();
+        if (!expr(0)) return false;                          // address
+        if (fp) fpToIntInto("rt_x0", temp(0)); else copy16("rt_x0", temp(0));
+        if (cur().t != T::Comma) return fail("POKE expects 'addr,value'");
+        adv();
+        if (!expr(0)) return false;                          // value
+        if (fp) { copyV("FA", temp(0)); emit("\tjsr fp_toint16"); emit("\tlda FA"); }
+        else    emit("\tlda T0");
+        emit("\tsta rt_x1");                                 // stash value low byte
+        copy16("rt_a", "rt_x0");                             // rt_a = address pointer
+        emit("\tldy #0");
+        emit("\tlda rt_x1");
+        emit("\tsta (rt_a),y");
+        return true;
+    }
     if (isKw("PLOT")) {
         // PLOT x,y  (coords 0..39 / 0..47; int or float like HPLOT)
         auto coord = [&](const std::string& dst) -> bool {
@@ -887,7 +915,7 @@ bool Codegen::statement()
         // above as keywords); they no longer reach this assignment fallthrough.
         static const std::set<std::string> kUnsupported = {
             "RESUME",
-            "INPUT","GET","READ","DATA","DIM","DEF","ON","POKE","CALL","WAIT","POP",
+            "INPUT","GET","READ","DATA","DIM","DEF","ON","CALL","WAIT","POP",
             "VTAB","HTAB","INVERSE","NORMAL","FLASH","DRAW","XDRAW","SCALE","ROT",
             "STORE","RECALL","TRACE","NOTRACE","SPEED","DEL","CLEAR","HIMEM","LOMEM"
         };
@@ -908,7 +936,15 @@ bool Codegen::statement()
 
 bool Codegen::line()
 {
-    emit("L" + std::to_string(curLineNo) + ":");
+    // Emit the L<n>: label only once per line number. A source listing with a
+    // duplicate line number (Applesoft would replace; this codebase's tokeniser
+    // keeps both and runs them in sequence — lines are stable-sorted so equal
+    // numbers are adjacent) must NOT emit the label twice or ca65 rejects it as
+    // "Symbol 'L<n>' is already defined". The duplicate's code still runs via
+    // fall-through, and GOTO/GOSUB <n> resolves to the first occurrence — matching
+    // the interpreter's FNDLIN (first match wins).
+    if (labelled.insert(curLineNo).second)
+        emit("L" + std::to_string(curLineNo) + ":");
     if (!statement()) return false;
     while (cur().t == T::Colon) { adv(); if (!statement()) return false; }
     if (cur().t != T::Eol) return fail("unexpected token after statement");

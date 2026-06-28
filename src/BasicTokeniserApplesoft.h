@@ -65,6 +65,11 @@ struct Target {
     uint16_t    setptrs = 0;  // SETPTRS: TXTPTR=TXTTAB-1, clear vars, reset stack
     uint16_t    newstt  = 0;  // NEWSTT: main statement loop entry (runs from TXTTAB)
     uint16_t    himem   = 0;  // MEMSIZ the cold ROM pins (informational / sanity)
+    // GEN2 only: floor of the page-2 hi-res framebuffer. A program that draws to
+    // page 2 (HGR2) but never page 1 (HGR) can use the otherwise-idle page-1 region
+    // ($2000-$3FFF) for its code/data, so its image ceiling rises from himem
+    // ($2000, the page-1 floor) to this ($4000). 0 = no page-2 concept.
+    uint16_t    page2Floor = 0;
     Dialect     dialect = Dialect::Graphics;  // reserved-word table to tokenize with
 };
 

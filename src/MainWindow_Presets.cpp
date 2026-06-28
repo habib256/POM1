@@ -65,7 +65,7 @@ namespace pom1::mainwindow::detail {
 //     Every other preset mirrors its geometry. First-time use writes
 //     ini/imgui_preset_NN.ini + ini/preset_NN.size (NN = index); subsequent launches
 //     load from there.
-//   - Preset 11 (P-LAB Multiplexing Fantasy) is the only exception
+//   - Preset 10 (P-LAB Multiplexing Fantasy) is the only exception
 //     that departs from the tutorial+peripheral template: it's the
 //     "everything plugged" fantasy and stacks 3 peripherals in the
 //     right column instead of a tutorial.

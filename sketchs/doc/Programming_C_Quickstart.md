@@ -14,11 +14,13 @@ Programming_GEN2C.md, Programming_TMS9918C.md) are linked at the end.
 |---|---|---|---|
 | Plain text I/O (Wozmon) | `sketchs/apple1/_template/` | `apple1_c.cfg` | `apple1c.h` |
 | GEN2 HGR colour graphics | `sketchs/gen2/_template_gen2c/` | `apple1_gen2_c.cfg` | `gen2.h` |
-| TMS9918 sprites / colour | `sketchs/tms9918/_template_tms9918c/` | `dev/lib/tms9918c/cc65/codetank_c.cfg` | `tms9918c.h` |
+| TMS9918 sprites / colour | `sketchs/tms9918/tms9918_hello_c/` | `dev/lib/tms9918c/cc65/codetank_c.cfg` | `tms9918c.h` |
 
 Then `make` in the copy. The Makefile already has the right cc65 flags,
 linker config and the **per-family** library variables (only the .o files
-you call are linked).
+you call are linked). (The TMS9918 row points at the single-file
+`tms9918_hello_c/` example — it has no Makefile yet; build it through the
+in-app DevBench or `cl65` with `codetank_c.cfg`.)
 
 > Note: `sketchs/apple1/_template/`'s default `make` builds the **asm** `Hello.asm`
 > (linked with `apple1_4k.cfg`). For a C program use `apple1_c.cfg` (the C
@@ -194,7 +196,7 @@ void main(void)
    the chooser table above.
 7. **Sprite tearing**: never call `tms_set_sprite()` per frame on the
    TMS9918. Use the `tms_shadow_*` API: mutate RAM, then burst-flush at
-   VBlank. See `sketchs/tms9918/_template_tms9918c/main.c`.
+   VBlank. See `sketchs/tms9918/tms9918_hello_c/tms9918_hello.c`.
 8. **One graphics card at a time** (Parmigiani's rule). Don't enable
    GEN2 + TMS9918 simultaneously. Silicon Strict mode auto-evicts the
    conflict; Multiplexing Fantasy doesn't (and isn't real hardware).
@@ -205,8 +207,8 @@ void main(void)
    went into `_gen2_pixrect_asm` so a clear now zeroes bit 7 on the
    edge bytes too.
 10. **Measure**: after every change, `ls -l software/<area>/*.bin` and
-    track drift. Run `make` on `sketchs/gen2/_template_gen2c` and `sketchs/tms9918/_template_tms9918c`
-    to see the per-family size win in action — about 5 KB savings on a
+    track drift. Run `make` on `sketchs/gen2/_template_gen2c` (the Makefile-equipped
+    template) to see the per-family size win in action — about 5 KB savings on a
     text + rect program vs linking the full runtime.
 11. **`(w+7)/8` codegen bug.** cc65 computes `(w+7)/8` as a 16-bit
     divide whose high byte is junk for some `w` values: `(8+7)=$010F`

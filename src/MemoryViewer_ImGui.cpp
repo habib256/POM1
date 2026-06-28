@@ -458,8 +458,11 @@ void MemoryViewer_ImGui::searchMemory()
         auto [ptr, ec] = std::from_chars(p, chunkEnd, val, 16);
         if (ec != std::errc{} || ptr == p) break;
         pattern[patternLen++] = static_cast<uint8_t>(val);
+        // from_chars already advanced past the (≤2) consumed hex digits; the
+        // leading-space skip at the top of the loop handles any separator. Do
+        // NOT skip-to-next-space here — for the concatenated form "A9008D" that
+        // would swallow "008D" and search only the first byte.
         p = ptr;
-        while (p < bufEnd && *p != ' ') p++;
     }
     if (patternLen == 0) return;
 

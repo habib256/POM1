@@ -229,6 +229,7 @@ private :
     void CPX(void);
     void CPY(void);
     void AND(void);
+    void ANC(void);   // undocumented: AND #imm, then C = bit 7 of result
     void ORA(void);
     void EOR(void);
     void ASL(void);

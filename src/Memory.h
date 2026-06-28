@@ -633,6 +633,12 @@ private :
     bool cffa1Enabled = false;
     std::unique_ptr<JukeBox> jukeBox;
     bool jukeBoxEnabled = false;
+    // True only while readSnapshotSections() is running. The MEM section restores
+    // the full 64 KB before the FLAGS section re-plugs cards, so any card-enable
+    // side effect that rewrites mem[] (e.g. the Juke-Box flat mirror's
+    // $4000-$7FFF clear, which is real user RAM in RAM32/ROM16 mode) would clobber
+    // the just-restored RAM. Suppress those cosmetic mirror writes during restore.
+    bool snapshotRestoreInProgress = false;
     std::unique_ptr<CodeTank> codeTank;
     bool codeTankEnabled = false;
     std::unique_ptr<WiFiModem> wifiModem;

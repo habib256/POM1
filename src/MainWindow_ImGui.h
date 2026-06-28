@@ -44,6 +44,13 @@ public:
     void releaseGLResources() {
         if (hgrPaintEditor) hgrPaintEditor->releaseGL();
         if (tmsPaintEditor) tmsPaintEditor->releaseGL();
+        // The MainWindow-owned textures (board/about photos, card framebuffers)
+        // and the Screen glyph atlas are otherwise deleted by ~MainWindow_ImGui /
+        // ~Screen_ImGui, which run at main()'s return — i.e. AFTER glfwTerminate(),
+        // so those glDeleteTextures hit a destroyed GL context. Delete them here
+        // while the context is live; the destructor calls then no-op (handles 0).
+        destroyPom1();
+        if (screen) screen->releaseGL();
     }
     static int getPresetCount();
     static const char* getPresetName(int index);

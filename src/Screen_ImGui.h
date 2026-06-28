@@ -26,6 +26,10 @@ public:
     ~Screen_ImGui() override;
 
     void render();
+    // Free GL resources (the glyph atlas) while the context is still current.
+    // Idempotent — the atlas rebuilds lazily on the next render. Call before
+    // GLFW teardown so ~Screen_ImGui's delete doesn't run on a dead context.
+    void releaseGL() { destroyGlyphAtlas(); }
     void writeChar(char c);
     void clear();
     void resetDisplay();     // garbage screen → auto-clear → welcome (cold boot / hard reset)
