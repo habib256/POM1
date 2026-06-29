@@ -52,7 +52,7 @@
         .import init_vdp_g1, disable_sprites
         .import vdp_set_write
         .importzp vdp_lo, vdp_hi
-        .import tms9918_pad12
+        .import tms9918_pad18
 
 .include "apple1.inc"
 .include "tms9918.inc"
@@ -183,7 +183,7 @@ main_loop:
 exit_to_wozmon:
         LDA #$80                  ; R1 high byte = display OFF
         STA VDP_CTRL
-        JSR tms9918_pad12
+        JSR tms9918_pad18
         LDA #$81                  ; cmd = $80 | reg-1
         STA VDP_CTRL
         LDA KBD                   ; drain ESC

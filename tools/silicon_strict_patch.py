@@ -83,17 +83,24 @@ V2_PAD24_MARKER = "silicon-strict pad24"
 # 5× over-padded and pad12 is now sufficient with margin.
 V2_PAD40_MARKER = "silicon-strict pad40"
 
-# v3-pad12 marker (current default JSR tms9918_pad12, 12c silicon-safe).
-V2_MARKER = "silicon-strict pad12-v3"
+# v3-pad12 marker (LEGACY default JSR tms9918_pad12, 12c). Stripped on rerun so
+# the file is re-injected with the v4-pad18 form below.
+V3_PAD12_MARKER = "silicon-strict pad12-v3"
 
-# v3 injects `.import tms9918_pad12` once near the top of any file we patch
+# v4-pad18 marker (current default JSR tms9918_pad18, 18c silicon-safe). Real
+# TMS9918A silicon drops CPU writes under ~16c during active display; the old
+# 12c pad gave only a 16c STA->STA gap (exactly at the floor), so the contract
+# moved to 18c (22c STA->STA) for margin.
+V2_MARKER = "silicon-strict pad18-v4"
+
+# v4 injects `.import tms9918_pad18` once near the top of any file we patch
 # (so cc65 resolves the symbol against tms9918_pad.asm). The marker tags
 # the line so --unpatch removes it, and re-patch is idempotent.
-V2_IMPORT = "        .import tms9918_pad12  ; silicon-strict pad12-v3 (helper from tms9918_pad.asm)\n"
+V2_IMPORT = "        .import tms9918_pad18  ; silicon-strict pad18-v4 (helper from tms9918_pad.asm)\n"
 
-JSR_BTB  = "        JSR     tms9918_pad12   ; +12c silicon-strict pad12-v3 (back-to-back VDP store)\n"
-JSR_LDAI = "        JSR     tms9918_pad12   ; +12c silicon-strict pad12-v3 (before LDA #imm bridge)\n"
-JSR_LDAZ = "        JSR     tms9918_pad12   ; +12c silicon-strict pad12-v3 (before LDA zp/abs bridge)\n"
+JSR_BTB  = "        JSR     tms9918_pad18   ; +18c silicon-strict pad18-v4 (back-to-back VDP store)\n"
+JSR_LDAI = "        JSR     tms9918_pad18   ; +18c silicon-strict pad18-v4 (before LDA #imm bridge)\n"
+JSR_LDAZ = "        JSR     tms9918_pad18   ; +18c silicon-strict pad18-v4 (before LDA zp/abs bridge)\n"
 
 RE_VDP_STORE = re.compile(
     r"^\s+(?:"
@@ -242,11 +249,12 @@ def strip_marker_lines(src: list[str]) -> list[str]:
     Without this strict check the patcher's hide_slot_4 prologue in
     TMS_Galaga.asm got eaten on every rerun (May 2026 incident)."""
     auto_re = re.compile(
-        r"^\s+(?:JSR\s+tms9918_pad(?:12|24|40)|\.import\s+tms9918_pad(?:12|24|40))\b"
+        r"^\s+(?:JSR\s+tms9918_pad(?:12|18|24|40)|\.import\s+tms9918_pad(?:12|18|24|40))\b"
         r".*?(?:" + re.escape(V1_MARKER)
         + "|" + re.escape(V2_PAD16_MARKER)
         + "|" + re.escape(V2_PAD24_MARKER)
         + "|" + re.escape(V2_PAD40_MARKER)
+        + "|" + re.escape(V3_PAD12_MARKER)
         + "|" + re.escape(V2_MARKER) + ")"
     )
     return [l for l in src if not auto_re.match(l)]

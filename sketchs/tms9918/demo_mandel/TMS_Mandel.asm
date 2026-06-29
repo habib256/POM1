@@ -61,7 +61,7 @@
         .import init_vdp_g2, disable_sprites
         .import vdp_set_write
         .importzp pix_addr_lo, pix_addr_hi
-        .import tms9918_pad12
+        .import tms9918_pad18
         .import vdp_display_off, vdp_display_on
 
 .include "apple1.inc"
@@ -240,7 +240,7 @@ check_esc:
 exit_to_wozmon:
         LDA #$80                  ; R1 = display OFF
         STA VDP_CTRL
-        JSR tms9918_pad12
+        JSR tms9918_pad18
         LDA #$81                  ; cmd = $80 | reg-1
         STA VDP_CTRL
         LDA KBD                   ; drain ESC
@@ -334,7 +334,7 @@ render_cell:
         LDX #0
 @pwr:   LDA patbuf,X
         STA VDP_DATA
-        JSR tms9918_pad12         ; silicon-strict gap (sprites disabled)
+        JSR tms9918_pad18         ; silicon-strict gap (sprites disabled)
         INX
         CPX #8
         BNE @pwr
@@ -352,7 +352,7 @@ render_cell:
         LDX #0
 @cwr:   LDA colbuf,X
         STA VDP_DATA
-        JSR tms9918_pad12
+        JSR tms9918_pad18
         INX
         CPX #8
         BNE @cwr
@@ -785,7 +785,7 @@ clear_pattern_table:
         LDY #0
 @lp:    LDA #$00
         STA VDP_DATA
-        JSR tms9918_pad12
+        JSR tms9918_pad18
         INY
         BNE @lp
         DEX

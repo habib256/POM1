@@ -59,7 +59,7 @@
 ; region). On HGR there is no VDP write-window to pad for, so resolve them to
 ; bare RTS stubs here -- the TMS build links the real ones from
 ; dev/lib/tms9918/tms9918_pad.asm and never links this file.
-.export tms9918_pad12, vdp_display_off
+.export tms9918_pad18, vdp_display_off
 
 ; ----------------------------------------------------------------------------
 .segment "ZEROPAGE"
@@ -119,12 +119,12 @@ clear_bitmap:
 
 ; disable_sprites / vdp_set_write / vdp_set_read: no-ops on HGR (kept so the
 ;   interpreter's explicit calls resolve and cost only a JSR/RTS).
-; tms9918_pad12 / vdp_display_off: TMS silicon-strict timing helpers the
+; tms9918_pad18 / vdp_display_off: TMS silicon-strict timing helpers the
 ;   interpreter imports unconditionally -- no-ops on HGR.
 disable_sprites:
 vdp_set_write:
 vdp_set_read:
-tms9918_pad12:
+tms9918_pad18:
 vdp_display_off:
         rts
 

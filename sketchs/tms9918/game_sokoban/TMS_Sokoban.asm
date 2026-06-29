@@ -23,7 +23,7 @@
 ; =============================================
 
 ; --- Apple 1 I/O ---
-        .import tms9918_pad12  ; silicon-strict pad12-v3 (helper from tms9918_pad.asm)
+        .import tms9918_pad18  ; silicon-strict pad18-v4 (helper from tms9918_pad.asm)
 .include "apple1.inc"
 
 ; --- TMS9918 I/O (VDP_DATA / VDP_CTRL + WAIT_VBLANK macro) ---
@@ -170,7 +170,7 @@ key_help:
         JSR wait_key
         JSR render_all                  ; repaint the playfield
         JSR draw_hud                    ; repaint the two-corner HUD
-        JSR     tms9918_pad12   ; +12c silicon-strict pad12-v3 (back-to-back VDP store)
+        JSR     tms9918_pad18   ; +18c silicon-strict pad18-v4 (back-to-back VDP store)
         JMP move_loop
 
 key_up:
@@ -252,11 +252,11 @@ init_vdp:
         STA VDP_CTRL
         TXA
         ORA #$80                        ; register write flag
-        JSR     tms9918_pad12   ; +12c silicon-strict pad12-v3 (back-to-back VDP store)
+        JSR     tms9918_pad18   ; +18c silicon-strict pad18-v4 (back-to-back VDP store)
         STA VDP_CTRL
         INX
         CPX #$08
-        JSR     tms9918_pad12   ; +12c silicon-strict pad12-v3 (back-to-back VDP store)
+        JSR     tms9918_pad18   ; +18c silicon-strict pad18-v4 (back-to-back VDP store)
         BNE @regloop
 
         ; --- Load 7 tile patterns at pattern-table offsets 0, 64, 128, ... ---
@@ -265,7 +265,7 @@ init_vdp:
         ; Set VRAM write addr = $00{vram_lo tbl}
         LDA tile_vram_lo,X
         STA VDP_CTRL
-        JSR     tms9918_pad12   ; +12c silicon-strict pad12-v3 (before LDA zp/abs bridge)
+        JSR     tms9918_pad18   ; +18c silicon-strict pad18-v4 (before LDA zp/abs bridge)
         LDA tile_vram_hi,X
         ORA #$40                        ; write flag
         STA VDP_CTRL
@@ -290,7 +290,7 @@ init_vdp:
         STA VDP_DATA
         INY
         CPY #$20                        ; 32 bytes per tile (4 glyphs)
-        JSR     tms9918_pad12   ; +12c silicon-strict pad12-v3 (back-to-back VDP store)
+        JSR     tms9918_pad18   ; +18c silicon-strict pad18-v4 (back-to-back VDP store)
         BCC @pb
 
         PLA
@@ -304,16 +304,16 @@ init_vdp:
         ; the loop counter is 8-bit.)
         LDA #$C0
         STA VDP_CTRL
-        JSR     tms9918_pad12   ; +12c silicon-strict pad12-v3 (before LDA #imm bridge)
+        JSR     tms9918_pad18   ; +18c silicon-strict pad18-v4 (before LDA #imm bridge)
         LDA #$41                        ; $01 | $40
         STA VDP_CTRL
         LDX #$00
 @hudpat1:
         LDA hud_patterns,X
-        JSR     tms9918_pad12   ; +12c silicon-strict pad12-v3 (back-to-back VDP store)
+        JSR     tms9918_pad18   ; +18c silicon-strict pad18-v4 (back-to-back VDP store)
         STA VDP_DATA
         INX
-        JSR     tms9918_pad12   ; +12c silicon-strict pad12-v3 (back-to-back VDP store)
+        JSR     tms9918_pad18   ; +18c silicon-strict pad18-v4 (back-to-back VDP store)
         BNE @hudpat1                    ; writes 256 bytes
         LDX #$00
 @hudpat2:
@@ -321,7 +321,7 @@ init_vdp:
         STA VDP_DATA
         INX
         CPX #56                         ; remaining 312-256 = 56 bytes
-        JSR     tms9918_pad12   ; +12c silicon-strict pad12-v3 (back-to-back VDP store)
+        JSR     tms9918_pad18   ; +18c silicon-strict pad18-v4 (back-to-back VDP store)
         BCC @hudpat2
 
         ; --- Load 12 colour bytes at colour table $2000 (groups 0..11) ---
@@ -329,32 +329,32 @@ init_vdp:
         ; (HUD + title letters, all white).
         LDA #$00
         STA VDP_CTRL
-        JSR     tms9918_pad12   ; +12c silicon-strict pad12-v3 (before LDA #imm bridge)
+        JSR     tms9918_pad18   ; +18c silicon-strict pad18-v4 (before LDA #imm bridge)
         LDA #$60                        ; $20 | $40 (write flag)
         STA VDP_CTRL
         LDX #$00
 @colloop:
         LDA tile_colors,X
-        JSR     tms9918_pad12   ; +12c silicon-strict pad12-v3 (back-to-back VDP store)
+        JSR     tms9918_pad18   ; +18c silicon-strict pad18-v4 (back-to-back VDP store)
         STA VDP_DATA
         INX
         CPX #$0C
-        JSR     tms9918_pad12   ; +12c silicon-strict pad12-v3 (back-to-back VDP store)
+        JSR     tms9918_pad18   ; +18c silicon-strict pad18-v4 (back-to-back VDP store)
         BNE @colloop
 
         ; --- Clear name table ($1800, 768 bytes = char 0 = blank floor) ---
         LDA #$00
         STA VDP_CTRL
-        JSR     tms9918_pad12   ; +12c silicon-strict pad12-v3 (before LDA #imm bridge)
+        JSR     tms9918_pad18   ; +18c silicon-strict pad18-v4 (before LDA #imm bridge)
         LDA #$58                        ; $18 | $40
         STA VDP_CTRL
         LDX #$03                        ; 3 pages
         LDA #$00
 @np:    LDY #$00
-        JSR     tms9918_pad12   ; +12c silicon-strict pad12-v3 (back-to-back VDP store)
+        JSR     tms9918_pad18   ; +18c silicon-strict pad18-v4 (back-to-back VDP store)
 @nb:    STA VDP_DATA
         INY
-        JSR     tms9918_pad12   ; +12c silicon-strict pad12-v3 (back-to-back VDP store)
+        JSR     tms9918_pad18   ; +18c silicon-strict pad18-v4 (back-to-back VDP store)
         BNE @nb
         DEX
         BNE @np
@@ -362,20 +362,20 @@ init_vdp:
         ; --- Disable sprites: first sprite Y = $D0 stops the chain ---
         LDA #$00
         STA VDP_CTRL
-        JSR     tms9918_pad12   ; +12c silicon-strict pad12-v3 (before LDA #imm bridge)
+        JSR     tms9918_pad18   ; +18c silicon-strict pad18-v4 (before LDA #imm bridge)
         LDA #$5B                        ; $1B | $40
         STA VDP_CTRL
-        JSR     tms9918_pad12   ; +12c silicon-strict pad12-v3 (before LDA #imm bridge)
+        JSR     tms9918_pad18   ; +18c silicon-strict pad18-v4 (before LDA #imm bridge)
         LDA #$D0
         STA VDP_DATA
 
         ; --- Final: re-arm R1 with display ON. Display stays OFF until the
         ;     cmd byte commits — threshold = 2c through both STAs, no pad
         ;     needed inline. The caller's next VDP write picks up 16c gating.
-        JSR     tms9918_pad12   ; +12c silicon-strict pad12-v3 (before LDA zp/abs bridge)
+        JSR     tms9918_pad18   ; +18c silicon-strict pad18-v4 (before LDA zp/abs bridge)
         LDA vdp_regs+1
         STA VDP_CTRL
-        JSR     tms9918_pad12   ; +12c silicon-strict pad12-v3 (before LDA #imm bridge)
+        JSR     tms9918_pad18   ; +18c silicon-strict pad18-v4 (before LDA #imm bridge)
         LDA #$81
         STA VDP_CTRL
         RTS
@@ -453,16 +453,16 @@ draw_cell:
         ; --- Top name row: write TL, TR ---
         LDA temp
         STA VDP_CTRL
-        JSR     tms9918_pad12   ; +12c silicon-strict pad12-v3 (before LDA zp/abs bridge)
+        JSR     tms9918_pad18   ; +18c silicon-strict pad18-v4 (before LDA zp/abs bridge)
         LDA temp2
         CLC
         ADC #$18
         ORA #$40
         STA VDP_CTRL
-        JSR     tms9918_pad12   ; +12c silicon-strict pad12-v3 (back-to-back VDP store)
+        JSR     tms9918_pad18   ; +18c silicon-strict pad18-v4 (back-to-back VDP store)
         STX VDP_DATA                    ; TL = base+0
         INX
-        JSR     tms9918_pad12   ; +12c silicon-strict pad12-v3 (back-to-back VDP store)
+        JSR     tms9918_pad18   ; +18c silicon-strict pad18-v4 (back-to-back VDP store)
         STX VDP_DATA                    ; TR = base+1
         INX
 
@@ -477,18 +477,18 @@ draw_cell:
 
         ; --- Bottom name row: write BL, BR ---
         LDA temp
-        JSR     tms9918_pad12   ; +12c silicon-strict pad12-v3 (back-to-back VDP store)
+        JSR     tms9918_pad18   ; +18c silicon-strict pad18-v4 (back-to-back VDP store)
         STA VDP_CTRL
-        JSR     tms9918_pad12   ; +12c silicon-strict pad12-v3 (before LDA zp/abs bridge)
+        JSR     tms9918_pad18   ; +18c silicon-strict pad18-v4 (before LDA zp/abs bridge)
         LDA temp2
         CLC
         ADC #$18
         ORA #$40
         STA VDP_CTRL
-        JSR     tms9918_pad12   ; +12c silicon-strict pad12-v3 (back-to-back VDP store)
+        JSR     tms9918_pad18   ; +18c silicon-strict pad18-v4 (back-to-back VDP store)
         STX VDP_DATA                    ; BL = base+2
         INX
-        JSR     tms9918_pad12   ; +12c silicon-strict pad12-v3 (back-to-back VDP store)
+        JSR     tms9918_pad18   ; +18c silicon-strict pad18-v4 (back-to-back VDP store)
         STX VDP_DATA                    ; BR = base+3
         RTS
 
@@ -822,10 +822,10 @@ execute_undo:
         LDA prev_player_col
         STA draw_col
         LDA STATE_GRID,X
-        JSR     tms9918_pad12   ; +12c silicon-strict pad12-v3 (back-to-back VDP store)
+        JSR     tms9918_pad18   ; +18c silicon-strict pad18-v4 (back-to-back VDP store)
         JSR draw_cell
 
-        JSR     tms9918_pad12   ; +12c silicon-strict pad12-v3 (before LDA zp/abs bridge)
+        JSR     tms9918_pad18   ; +18c silicon-strict pad18-v4 (before LDA zp/abs bridge)
         LDA prev_player_row
         STA player_row
         LDA prev_player_col
@@ -862,21 +862,21 @@ draw_hud:
         ; --- Row 0: "MV:HTU" at VRAM $1800 ---
         LDA #$00
         STA VDP_CTRL
-        JSR     tms9918_pad12   ; +12c silicon-strict pad12-v3 (before LDA #imm bridge)
+        JSR     tms9918_pad18   ; +18c silicon-strict pad18-v4 (before LDA #imm bridge)
         LDA #$58                        ; $18 | $40
         STA VDP_CTRL
 
-        JSR     tms9918_pad12   ; +12c silicon-strict pad12-v3 (before LDA #imm bridge)
+        JSR     tms9918_pad18   ; +18c silicon-strict pad18-v4 (before LDA #imm bridge)
         LDA #HUD_C_M
         STA VDP_DATA
-        JSR     tms9918_pad12   ; +12c silicon-strict pad12-v3 (before LDA #imm bridge)
+        JSR     tms9918_pad18   ; +18c silicon-strict pad18-v4 (before LDA #imm bridge)
         LDA #HUD_C_V
         STA VDP_DATA
-        JSR     tms9918_pad12   ; +12c silicon-strict pad12-v3 (before LDA #imm bridge)
+        JSR     tms9918_pad18   ; +18c silicon-strict pad18-v4 (before LDA #imm bridge)
         LDA #HUD_C_CL
         STA VDP_DATA
 
-        JSR     tms9918_pad12   ; +12c silicon-strict pad12-v3 (before LDA zp/abs bridge)
+        JSR     tms9918_pad18   ; +18c silicon-strict pad18-v4 (before LDA zp/abs bridge)
         LDA moves
         LDX #$00
 @h100:  CMP #100
@@ -890,7 +890,7 @@ draw_hud:
         ADC #HUD_C_D0
         STA VDP_DATA                    ; hundreds char
 
-        JSR     tms9918_pad12   ; +12c silicon-strict pad12-v3 (before LDA zp/abs bridge)
+        JSR     tms9918_pad18   ; +18c silicon-strict pad18-v4 (before LDA zp/abs bridge)
         LDA temp
         LDX #$00
 @t10:   CMP #$0A
@@ -904,43 +904,43 @@ draw_hud:
         ADC #HUD_C_D0
         STA VDP_DATA                    ; tens char
 
-        JSR     tms9918_pad12   ; +12c silicon-strict pad12-v3 (before LDA zp/abs bridge)
+        JSR     tms9918_pad18   ; +18c silicon-strict pad18-v4 (before LDA zp/abs bridge)
         LDA temp
         CLC
         ADC #HUD_C_D0
         STA VDP_DATA                    ; ones char
 
         ; --- Row 1 cols 0-5: blank floor (char 0) to hide underlying BL/BR ---
-        JSR     tms9918_pad12   ; +12c silicon-strict pad12-v3 (before LDA #imm bridge)
+        JSR     tms9918_pad18   ; +18c silicon-strict pad18-v4 (before LDA #imm bridge)
         LDA #$20                        ; $1800 + 32 = $1820 low byte
         STA VDP_CTRL
-        JSR     tms9918_pad12   ; +12c silicon-strict pad12-v3 (before LDA #imm bridge)
+        JSR     tms9918_pad18   ; +18c silicon-strict pad18-v4 (before LDA #imm bridge)
         LDA #$58
         STA VDP_CTRL
         LDX #$06
         LDA #$00
 @clr_tl:
-        JSR     tms9918_pad12   ; +12c silicon-strict pad12-v3 (back-to-back VDP store)
+        JSR     tms9918_pad18   ; +18c silicon-strict pad18-v4 (back-to-back VDP store)
         STA VDP_DATA
         DEX
-        JSR     tms9918_pad12   ; +12c silicon-strict pad12-v3 (back-to-back VDP store)
+        JSR     tms9918_pad18   ; +18c silicon-strict pad18-v4 (back-to-back VDP store)
         BNE @clr_tl
 
         ; --- Row 23 cols 28-31: "L:NN" at VRAM $1AFC ---
         LDA #$FC
         STA VDP_CTRL
-        JSR     tms9918_pad12   ; +12c silicon-strict pad12-v3 (before LDA #imm bridge)
+        JSR     tms9918_pad18   ; +18c silicon-strict pad18-v4 (before LDA #imm bridge)
         LDA #$5A                        ; $1A | $40
         STA VDP_CTRL
-        JSR     tms9918_pad12   ; +12c silicon-strict pad12-v3 (before LDA #imm bridge)
+        JSR     tms9918_pad18   ; +18c silicon-strict pad18-v4 (before LDA #imm bridge)
         LDA #HUD_C_L
         STA VDP_DATA
-        JSR     tms9918_pad12   ; +12c silicon-strict pad12-v3 (before LDA #imm bridge)
+        JSR     tms9918_pad18   ; +18c silicon-strict pad18-v4 (before LDA #imm bridge)
         LDA #HUD_C_CL
         STA VDP_DATA
 
         ; level_idx is 0-based; display as 1-based 2-digit decimal.
-        JSR     tms9918_pad12   ; +12c silicon-strict pad12-v3 (before LDA zp/abs bridge)
+        JSR     tms9918_pad18   ; +18c silicon-strict pad18-v4 (before LDA zp/abs bridge)
         LDA level_idx
         CLC
         ADC #$01
@@ -955,26 +955,26 @@ draw_hud:
         CLC
         ADC #HUD_C_D0
         STA VDP_DATA                    ; tens
-        JSR     tms9918_pad12   ; +12c silicon-strict pad12-v3 (before LDA zp/abs bridge)
+        JSR     tms9918_pad18   ; +18c silicon-strict pad18-v4 (before LDA zp/abs bridge)
         LDA temp
         CLC
         ADC #HUD_C_D0
         STA VDP_DATA                    ; ones
 
         ; --- Row 22 cols 28-31: blank to hide top-half of row-11 tiles ---
-        JSR     tms9918_pad12   ; +12c silicon-strict pad12-v3 (before LDA #imm bridge)
+        JSR     tms9918_pad18   ; +18c silicon-strict pad18-v4 (before LDA #imm bridge)
         LDA #$DC
         STA VDP_CTRL
-        JSR     tms9918_pad12   ; +12c silicon-strict pad12-v3 (before LDA #imm bridge)
+        JSR     tms9918_pad18   ; +18c silicon-strict pad18-v4 (before LDA #imm bridge)
         LDA #$5A
         STA VDP_CTRL
         LDX #$04
         LDA #$00
 @clr_br:
-        JSR     tms9918_pad12   ; +12c silicon-strict pad12-v3 (back-to-back VDP store)
+        JSR     tms9918_pad18   ; +18c silicon-strict pad18-v4 (back-to-back VDP store)
         STA VDP_DATA
         DEX
-        JSR     tms9918_pad12   ; +12c silicon-strict pad12-v3 (back-to-back VDP store)
+        JSR     tms9918_pad18   ; +18c silicon-strict pad18-v4 (back-to-back VDP store)
         BNE @clr_br
         RTS
 
@@ -995,11 +995,11 @@ draw_title_tms:
         STA sptr_hi
         LDA #$6C
         LDX #$58
-        JSR     tms9918_pad12   ; +12c silicon-strict pad12-v3 (back-to-back VDP store)
+        JSR     tms9918_pad18   ; +18c silicon-strict pad18-v4 (back-to-back VDP store)
         JSR draw_title_tms_line
 
         ; "APPLE 1" at row 7 col 12   -> $18EC
-        JSR     tms9918_pad12   ; +12c silicon-strict pad12-v3 (before LDA #imm bridge)
+        JSR     tms9918_pad18   ; +18c silicon-strict pad18-v4 (before LDA #imm bridge)
         LDA #<title_apple_tms
         STA sptr_lo
         LDA #>title_apple_tms
@@ -1009,7 +1009,7 @@ draw_title_tms:
         JSR draw_title_tms_line
 
         ; "TMS9918 VDP" at row 8 col 10 -> $190A
-        JSR     tms9918_pad12   ; +12c silicon-strict pad12-v3 (before LDA #imm bridge)
+        JSR     tms9918_pad18   ; +18c silicon-strict pad18-v4 (before LDA #imm bridge)
         LDA #<title_card_tms
         STA sptr_lo
         LDA #>title_card_tms
@@ -1019,7 +1019,7 @@ draw_title_tms:
         JSR draw_title_tms_line
 
         ; "BY VERHILLE ARNAUD" at row 11 col 7 -> $1967
-        JSR     tms9918_pad12   ; +12c silicon-strict pad12-v3 (before LDA #imm bridge)
+        JSR     tms9918_pad18   ; +18c silicon-strict pad18-v4 (before LDA #imm bridge)
         LDA #<title_author_tms
         STA sptr_lo
         LDA #>title_author_tms
@@ -1029,7 +1029,7 @@ draw_title_tms:
         JSR draw_title_tms_line
 
         ; "SELECT KEYBOARD" row 12 col 8 -> $1988 (15 chars)
-        JSR     tms9918_pad12   ; +12c silicon-strict pad12-v3 (before LDA #imm bridge)
+        JSR     tms9918_pad18   ; +18c silicon-strict pad18-v4 (before LDA #imm bridge)
         LDA #<title_select_kb_tms
         STA sptr_lo
         LDA #>title_select_kb_tms
@@ -1039,7 +1039,7 @@ draw_title_tms:
         JSR draw_title_tms_line
 
         ; "1 QWERTY (WASD)" row 15 col 8 -> $19E8
-        JSR     tms9918_pad12   ; +12c silicon-strict pad12-v3 (before LDA #imm bridge)
+        JSR     tms9918_pad18   ; +18c silicon-strict pad18-v4 (before LDA #imm bridge)
         LDA #<title_qwerty_tms
         STA sptr_lo
         LDA #>title_qwerty_tms
@@ -1049,7 +1049,7 @@ draw_title_tms:
         JSR draw_title_tms_line
 
         ; "2 AZERTY (ZQSD)" row 16 col 8 -> $1A08
-        JSR     tms9918_pad12   ; +12c silicon-strict pad12-v3 (before LDA #imm bridge)
+        JSR     tms9918_pad18   ; +18c silicon-strict pad18-v4 (before LDA #imm bridge)
         LDA #<title_azerty_tms
         STA sptr_lo
         LDA #>title_azerty_tms
@@ -1059,7 +1059,7 @@ draw_title_tms:
         JSR draw_title_tms_line
 
         ; "H HELP" row 20 col 12 -> $1A8C
-        JSR     tms9918_pad12   ; +12c silicon-strict pad12-v3 (before LDA #imm bridge)
+        JSR     tms9918_pad18   ; +18c silicon-strict pad18-v4 (before LDA #imm bridge)
         LDA #<title_h_help_tms
         STA sptr_lo
         LDA #>title_h_help_tms
@@ -1077,16 +1077,16 @@ draw_help_tms:
         ; Clear name table (3 × 256 bytes of char 0).
         LDA #$00
         STA VDP_CTRL
-        JSR     tms9918_pad12   ; +12c silicon-strict pad12-v3 (before LDA #imm bridge)
+        JSR     tms9918_pad18   ; +18c silicon-strict pad18-v4 (before LDA #imm bridge)
         LDA #$58
         STA VDP_CTRL
         LDX #$03
         LDA #$00
 @np:    LDY #$00
-        JSR     tms9918_pad12   ; +12c silicon-strict pad12-v3 (back-to-back VDP store)
+        JSR     tms9918_pad18   ; +18c silicon-strict pad18-v4 (back-to-back VDP store)
 @nb:    STA VDP_DATA
         INY
-        JSR     tms9918_pad12   ; +12c silicon-strict pad12-v3 (back-to-back VDP store)
+        JSR     tms9918_pad18   ; +18c silicon-strict pad18-v4 (back-to-back VDP store)
         BNE @nb
         DEX
         BNE @np
@@ -1101,7 +1101,7 @@ draw_help_tms:
         JSR draw_title_tms_line
 
         ; "QWERTY (WASD)" row 6 col 10 -> $18CA (align with command rows)
-        JSR     tms9918_pad12   ; +12c silicon-strict pad12-v3 (before LDA #imm bridge)
+        JSR     tms9918_pad18   ; +18c silicon-strict pad18-v4 (before LDA #imm bridge)
         LDA #<help_qwerty_tms
         STA sptr_lo
         LDA #>help_qwerty_tms
@@ -1111,7 +1111,7 @@ draw_help_tms:
         JSR draw_title_tms_line
 
         ; "AZERTY (ZQSD)" row 7 col 10 -> $18EA
-        JSR     tms9918_pad12   ; +12c silicon-strict pad12-v3 (before LDA #imm bridge)
+        JSR     tms9918_pad18   ; +18c silicon-strict pad18-v4 (before LDA #imm bridge)
         LDA #<help_azerty_tms
         STA sptr_lo
         LDA #>help_azerty_tms
@@ -1121,7 +1121,7 @@ draw_help_tms:
         JSR draw_title_tms_line
 
         ; "U UNDO" row 10 col 10 (align with R/N/H — key in col 10, verb from 12)
-        JSR     tms9918_pad12   ; +12c silicon-strict pad12-v3 (before LDA #imm bridge)
+        JSR     tms9918_pad18   ; +18c silicon-strict pad18-v4 (before LDA #imm bridge)
         LDA #<help_u_tms
         STA sptr_lo
         LDA #>help_u_tms
@@ -1131,7 +1131,7 @@ draw_help_tms:
         JSR draw_title_tms_line
 
         ; "R RESET" row 11 col 10 -> $196A
-        JSR     tms9918_pad12   ; +12c silicon-strict pad12-v3 (before LDA #imm bridge)
+        JSR     tms9918_pad18   ; +18c silicon-strict pad18-v4 (before LDA #imm bridge)
         LDA #<help_r_tms
         STA sptr_lo
         LDA #>help_r_tms
@@ -1141,7 +1141,7 @@ draw_help_tms:
         JSR draw_title_tms_line
 
         ; "N NEXT" row 12 col 10 -> $198A
-        JSR     tms9918_pad12   ; +12c silicon-strict pad12-v3 (before LDA #imm bridge)
+        JSR     tms9918_pad18   ; +18c silicon-strict pad18-v4 (before LDA #imm bridge)
         LDA #<help_n_tms
         STA sptr_lo
         LDA #>help_n_tms
@@ -1151,7 +1151,7 @@ draw_help_tms:
         JSR draw_title_tms_line
 
         ; "H HELP" row 13 col 10 -> $19AA
-        JSR     tms9918_pad12   ; +12c silicon-strict pad12-v3 (before LDA #imm bridge)
+        JSR     tms9918_pad18   ; +18c silicon-strict pad18-v4 (before LDA #imm bridge)
         LDA #<help_h_tms
         STA sptr_lo
         LDA #>help_h_tms
@@ -1161,7 +1161,7 @@ draw_help_tms:
         JSR draw_title_tms_line
 
         ; "ANY KEY BACK" at row 20 col 10 -> $1A8A
-        JSR     tms9918_pad12   ; +12c silicon-strict pad12-v3 (before LDA #imm bridge)
+        JSR     tms9918_pad18   ; +18c silicon-strict pad18-v4 (before LDA #imm bridge)
         LDA #<help_back_tms
         STA sptr_lo
         LDA #>help_back_tms
@@ -1174,16 +1174,16 @@ draw_help_tms:
 ; then emit raw char codes from (sptr_lo/hi) until $FF.
 draw_title_tms_line:
         STA VDP_CTRL
-        JSR     tms9918_pad12   ; +12c silicon-strict pad12-v3 (back-to-back VDP store)
+        JSR     tms9918_pad18   ; +18c silicon-strict pad18-v4 (back-to-back VDP store)
         STX VDP_CTRL
         LDY #$00
 @lp:    LDA (sptr_lo),Y
         CMP #$FF
-        JSR     tms9918_pad12   ; +12c silicon-strict pad12-v3 (back-to-back VDP store)
+        JSR     tms9918_pad18   ; +18c silicon-strict pad18-v4 (back-to-back VDP store)
         BEQ @done
         STA VDP_DATA
         INY
-        JSR     tms9918_pad12   ; +12c silicon-strict pad12-v3 (back-to-back VDP store)
+        JSR     tms9918_pad18   ; +18c silicon-strict pad18-v4 (back-to-back VDP store)
         JMP @lp
 @done:  RTS
 
@@ -1197,16 +1197,16 @@ draw_success_tms:
         ; Clear name table — 3 × 256 bytes of char 0 at $1800.
         LDA #$00
         STA VDP_CTRL
-        JSR     tms9918_pad12   ; +12c silicon-strict pad12-v3 (before LDA #imm bridge)
+        JSR     tms9918_pad18   ; +18c silicon-strict pad18-v4 (before LDA #imm bridge)
         LDA #$58                        ; $18 | $40
         STA VDP_CTRL
         LDX #$03
         LDA #$00
 @np:    LDY #$00
-        JSR     tms9918_pad12   ; +12c silicon-strict pad12-v3 (back-to-back VDP store)
+        JSR     tms9918_pad18   ; +18c silicon-strict pad18-v4 (back-to-back VDP store)
 @nb:    STA VDP_DATA
         INY
-        JSR     tms9918_pad12   ; +12c silicon-strict pad12-v3 (back-to-back VDP store)
+        JSR     tms9918_pad18   ; +18c silicon-strict pad18-v4 (back-to-back VDP store)
         BNE @nb
         DEX
         BNE @np
@@ -1227,7 +1227,7 @@ draw_success_tms:
         STA sptr_hi
         LDA #$AA
         LDX #$59
-        JSR     tms9918_pad12   ; +12c silicon-strict pad12-v3 (back-to-back VDP store)
+        JSR     tms9918_pad18   ; +18c silicon-strict pad18-v4 (back-to-back VDP store)
         JMP draw_title_tms_line         ; tail-call
 
 ; --- TMS title strings (raw TMS char codes, $FF terminated) ---

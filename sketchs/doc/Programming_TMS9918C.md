@@ -76,7 +76,7 @@ The library is split across `tms9918.h` (VDP-level primitives) and
 
 The runtime takes care of the slot-table model (Bug N°1 in
 [`Programming_TMS9918.md` §17](Programming_TMS9918.md#bug-n1-vram-timing))
-so you don't have to insert `JSR tms9918_pad12` by hand. But the
+so you don't have to insert `JSR tms9918_pad18` by hand. But the
 abstraction is **not airtight** — a few decisions remain on your side.
 
 ### `TMS_IO_DELAY()` between consecutive VRAM writes

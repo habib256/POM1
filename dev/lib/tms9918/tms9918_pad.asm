@@ -4,29 +4,34 @@
 ; Three RTS-based delay subroutines used by the silicon_strict_patch.py
 ; tool and by the WRT_DATA_* macros in tms9918.inc.
 ;
-; Why JSR-to-RTS instead of NOPs?
+; Why JSR-to-RTS (+ a few NOPs) instead of a NOP sled?
 ;   NOP        = 2 cycles in 1 byte (ratio 2 c/B)
 ;   JSR + RTS  = 12 cycles in 3 bytes at the call site, helper itself = 1 byte
 ;                (ratio 4 c/B at the call site — twice as dense as NOP)
 ;
-; **Active contract: 12 cycles** (JSR tms9918_pad12), full stop. That is the
-; 12c minimum gap (the pad alone), or 16c measured STA->STA (4c store + 12c
-; pad) between back-to-back STA VDP_DATA — comfortably above the openMSX
-; slot-table model's ~7.5c silicon worst case. 12c is the floor and the
-; default: the WRT_DATA_* macros in tms9918.inc and all lib code use pad12.
+; **Active contract: 18 cycles** (JSR tms9918_pad18). That is an 18c gap (the
+; pad alone), or 22c measured STA->STA (4c store + 18c pad) between back-to-back
+; STA VDP_DATA. Real TMS9918A silicon (validated on Claudio Parmigiani's
+; Replica-1) drops CPU writes spaced under ~16c during active Mode I/II
+; display — far stricter than the openMSX slot-table's ~7.5c estimate. The old
+; 12c pad gave only a 16c STA->STA gap, sitting *exactly* at the silicon floor
+; (no margin); pad18's 22c clears it. POM1 models the floor in TMS9918.cpp
+; (kMinActiveDrainCycles = 16). The WRT_DATA_* macros in tms9918.inc and all
+; lib code use pad18; `tms9918_pad12` survives as a legacy alias that now
+; resolves to pad18 (so any un-migrated call site still gets the safe 18c).
 ;
 ; tms9918_pad24 stays as an optional cushion. tms9918_pad40 is LEGACY — a
-; paranoid 40c holdover from the superseded "hardening ramp"; the openMSX
-; model made it unnecessary. Kept only because TMS_Rogue's upload loops and
-; the silicon_strict patcher's hardened mode still call it; do NOT use it in
-; new code (slated for removal once those migrate to pad12).
+; paranoid holdover from the superseded "hardening ramp". Kept only because
+; TMS_Rogue's upload loops and the silicon_strict patcher's hardened mode still
+; call it; do NOT use it in new code (slated for removal once those migrate).
 ;
 ; Reference: sketchs/doc/Programming_TMS9918.md §17, dev/lib/tms9918/tms9918.inc.
 ; ============================================================================
 
 .include "tms9918.inc"
 
-.export tms9918_pad12
+.export tms9918_pad18
+.export tms9918_pad12            ; legacy alias -> tms9918_pad18
 .export tms9918_pad24
 .export tms9918_pad40
 .export vdp_display_off
@@ -34,39 +39,43 @@
 
 .segment "CODE"
 
-; Burns 12 cycles (= 6c JSR + 6c RTS), 3 bytes at the call site, helper
-; itself = 1 byte. Kept for niche callers that genuinely want only 12c idle
-; (status-register polls, address-latch settling).
+; Burns 18 cycles (= 6c JSR + 6c NOP×3 + 6c RTS), 3 bytes at the call site,
+; helper itself = 4 bytes. This is THE silicon-strict default — a 22c STA->STA
+; gap that clears the real chip's ~16c active-display floor with margin.
 ;
-; INVARIANT — flag-transparent: pad12 is a bare RTS, so it leaves every
-; processor flag untouched. Hot loops place `JSR tms9918_pad12` BETWEEN a
-; CPX/CMP and its branch (see sprite_triangle.asm and tms9918_text.asm) and
-; rely on the compare's Z/C surviving the call. Any future pad12 body MUST
-; stay flag-transparent or those loops break silently.
-tms9918_pad12:
-        rts                     ; 6c, JSR adds 6c, total = 12c
+; INVARIANT — flag-transparent: NOP and RTS leave every processor flag
+; untouched. Hot loops place `JSR tms9918_pad18` BETWEEN a CPX/CMP and its
+; branch (see sprite_triangle.asm and tms9918_text.asm) and rely on the
+; compare's Z/C surviving the call. Any future pad body MUST stay
+; flag-transparent (NOP-only filler) or those loops break silently.
+tms9918_pad18:
+        nop                     ; +2c
+        nop                     ; +2c
+        nop                     ; +2c
+        rts                     ; +6c RTS; JSR adds 6c → total = 18c
 
-; Burns 24 cycles (= 6c JSR + 12c pad12 + 6c RTS), 3 bytes at the call site,
-; helper itself = 4 bytes. Optional cushion above the 12c contract — the
-; default everywhere is pad12.
+; Legacy 12c name. The whole codebase moved to the 18c contract; the historical
+; `JSR tms9918_pad12` call sites now resolve here so they stay silicon-safe
+; without a forced edit. New code should call tms9918_pad18 directly.
+tms9918_pad12 = tms9918_pad18
+
+; Burns 30 cycles (= 6c JSR + 18c pad18 + 6c RTS), 3 bytes at the call site.
+; Optional cushion above the 18c contract — the default everywhere is pad18.
 tms9918_pad24:
-        jsr     tms9918_pad12   ; 6c JSR + 12c pad12 = 18c so far
-        rts                     ; +6c RTS, total = 24c at caller's JSR site
+        jsr     tms9918_pad18   ; 6c JSR + 18c pad18 = 24c so far
+        rts                     ; +6c RTS, total = 30c at caller's JSR site
 
-; Burns 40 cycles (= 6c JSR + 12c pad12 + 12c pad12 + 4c (NOP×2) + 6c RTS),
-; 3 bytes at the call site, helper itself = 7 bytes.
+; Burns 48 cycles (= 6c JSR + 18c pad18 + 18c pad18 + 6c RTS), 3 bytes at the
+; call site.
 ;
-; LEGACY — do NOT use in new code. This is the paranoid 40c holdover from the
-; superseded "hardening ramp"; the 12c contract (pad12) is the floor now. It
-; survives only because TMS_Rogue's upload loops and the silicon_strict
-; patcher's hardened mode still reference it. Slated for removal once those
-; are migrated to pad12.
+; LEGACY — do NOT use in new code. Paranoid holdover from the superseded
+; "hardening ramp"; the 18c contract (pad18) is the floor now. Survives only
+; because TMS_Rogue's upload loops and the silicon_strict patcher's hardened
+; mode still reference it. Slated for removal once those are migrated.
 tms9918_pad40:
-        jsr     tms9918_pad12   ; +12c → 18c so far
-        jsr     tms9918_pad12   ; +12c → 30c so far
-        nop                     ; +2c  → 32c
-        nop                     ; +2c  → 34c
-        rts                     ; +6c RTS, total = 40c at caller's JSR site
+        jsr     tms9918_pad18   ; +18c → 24c so far
+        jsr     tms9918_pad18   ; +18c → 42c so far
+        rts                     ; +6c RTS, total = 48c at caller's JSR site
 
 ; ============================================================================
 ; Display gate helpers (R1 register manipulation).
@@ -95,8 +104,8 @@ vdp_display_on:
 vdp_display_off:
         LDA     #$80
         STA     VDP_CTRL
-        JSR     tms9918_pad12
+        JSR     tms9918_pad18
         LDA     #$81            ; cmd = $80 | reg 1 (write to R1)
         STA     VDP_CTRL
-        JSR     tms9918_pad12
+        JSR     tms9918_pad18
         RTS

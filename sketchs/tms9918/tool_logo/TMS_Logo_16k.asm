@@ -64,7 +64,7 @@
 ; ============================================================================
 
 ; --- I/O equates (Apple-1 + TMS9918 hardware) ------------------------------
-        .import tms9918_pad12  ; silicon-strict pad12-v3 (helper from tms9918_pad.asm)
+        .import tms9918_pad18  ; silicon-strict pad18-v4 (helper from tms9918_pad.asm)
         .import vdp_display_off    ; lib helper (tms9918_pad.asm)
 .include "apple1.inc"
 .include "tms9918.inc"          ; VDP_CTRL, VDP_DATA equates for SETSHAPE
@@ -991,7 +991,7 @@ parse_and_exec:
 @setshape_cmd:
         JSR mark_ok
         JSR cmd_setshape
-        JSR     tms9918_pad12   ; +12c silicon-strict pad12-v3 (back-to-back VDP store)
+        JSR     tms9918_pad18   ; +18c silicon-strict pad18-v4 (back-to-back VDP store)
         JMP @loop
 .ifdef CODETANK_BUILD
 @label_cmd:
@@ -1569,7 +1569,7 @@ cmd_setpc:
         LDA turtle_visible
         BEQ @done                  ; nothing to repaint
         JSR erase_turtle           ; restore saved bg cells
-        JSR     tms9918_pad12   ; +12c silicon-strict pad12-v3 (back-to-back VDP store)
+        JSR     tms9918_pad18   ; +18c silicon-strict pad18-v4 (back-to-back VDP store)
         JSR draw_turtle            ; re-save + OR-draw with new pen_color
 @done:  RTS
 
@@ -4259,7 +4259,7 @@ arrow_io_bbox:
         STA VDP_DATA
         INX
         DEY
-        JSR     tms9918_pad12   ; +12c silicon-strict pad12-v3 (back-to-back VDP store)
+        JSR     tms9918_pad18   ; +18c silicon-strict pad18-v4 (back-to-back VDP store)
         BNE @r_b
 @next_col:
         LDA pix_x
@@ -4322,13 +4322,13 @@ trace_turtle_lines:
 ;   attribute slot at VRAM $3B00. The TMS9918 hardware-blits the sprite
 ;   over the bitmap; no save/restore needed.
 draw_turtle:
-        JSR     tms9918_pad12   ; MANUAL caller-gap cushion (12c, was 40c pre-openMSX-port)
+        JSR     tms9918_pad18   ; MANUAL caller-gap cushion (12c, was 40c pre-openMSX-port)
         LDA sprite_mode
         BEQ @bitmap
         ; --- sprite path: write sprite-0 attribute (Y, X, name=0, color=$0F)
         LDA #$00
         STA VDP_CTRL
-        JSR     tms9918_pad12   ; +12c silicon-strict pad12-v3 (before LDA #imm bridge)
+        JSR     tms9918_pad18   ; +18c silicon-strict pad18-v4 (before LDA #imm bridge)
         LDA #$3B | $40            ; $3B00 + write enable
         STA VDP_CTRL
         ; Y = ty - spr_yoff: TMS9918 displays sprite at scanline (Y+1)
@@ -4336,20 +4336,20 @@ draw_turtle:
         ; centres on (tx,ty): 9 for 16x16 sprites, 5 for 8x8. spr_xoff
         ; mirrors on the X axis (8 vs 4). Both come from
         ; apply_sprite_size at the previous SETSHAPE.
-        JSR     tms9918_pad12   ; +12c silicon-strict pad12-v3 (before LDA zp/abs bridge)
+        JSR     tms9918_pad18   ; +18c silicon-strict pad18-v4 (before LDA zp/abs bridge)
         LDA ty_lo
         SEC
         SBC spr_yoff
         STA VDP_DATA
-        JSR     tms9918_pad12   ; +12c silicon-strict pad12-v3 (before LDA zp/abs bridge)
+        JSR     tms9918_pad18   ; +18c silicon-strict pad18-v4 (before LDA zp/abs bridge)
         LDA tx_lo
         SEC
         SBC spr_xoff
         STA VDP_DATA
-        JSR     tms9918_pad12   ; +12c silicon-strict pad12-v3 (before LDA #imm bridge)
+        JSR     tms9918_pad18   ; +18c silicon-strict pad18-v4 (before LDA #imm bridge)
         LDA #0                    ; pattern name = 0 (sprite_pattern_table[0])
         STA VDP_DATA
-        JSR     tms9918_pad12   ; +12c silicon-strict pad12-v3 (before LDA zp/abs bridge)
+        JSR     tms9918_pad18   ; +18c silicon-strict pad18-v4 (before LDA zp/abs bridge)
         LDA pen_color             ; sprite-0 colour (SETPC drives every surface)
         STA VDP_DATA
         RTS
@@ -4455,14 +4455,14 @@ cmd_setshape:
         ; Y=$D0 to sprite #0 attribute = TMS9918 sprite-list terminator.
         LDA #$00
         STA VDP_CTRL
-        JSR     tms9918_pad12   ; +12c silicon-strict pad12-v3 (before LDA #imm bridge)
+        JSR     tms9918_pad18   ; +18c silicon-strict pad18-v4 (before LDA #imm bridge)
         LDA #$3B | $40
         STA VDP_CTRL
-        JSR     tms9918_pad12   ; +12c silicon-strict pad12-v3 (before LDA #imm bridge)
+        JSR     tms9918_pad18   ; +18c silicon-strict pad18-v4 (before LDA #imm bridge)
         LDA #$D0
         STA VDP_DATA
         ; Flip back to bitmap mode and redraw the triangle.
-        JSR     tms9918_pad12   ; +12c silicon-strict pad12-v3 (before LDA #imm bridge)
+        JSR     tms9918_pad18   ; +18c silicon-strict pad18-v4 (before LDA #imm bridge)
         LDA #0
         STA sprite_mode
         JSR draw_turtle           ; bitmap path now -- triangle XOR'd in
@@ -4534,26 +4534,26 @@ cmd_setshape:
         ; Copy spr_size bytes from (shape_pat),Y to VRAM $1800 (sprite-0
         ; pattern). spr_size = 8 or 32, latched from shape_table at
         ; match time.
-        JSR     tms9918_pad12   ; +12c silicon-strict pad12-v3 (before LDA #imm bridge)
+        JSR     tms9918_pad18   ; +18c silicon-strict pad18-v4 (before LDA #imm bridge)
         LDA #$00
         STA VDP_CTRL
-        JSR     tms9918_pad12   ; +12c silicon-strict pad12-v3 (before LDA #imm bridge)
+        JSR     tms9918_pad18   ; +18c silicon-strict pad18-v4 (before LDA #imm bridge)
         LDA #$18 | $40
         STA VDP_CTRL
         LDY #0
 @cppat: LDA (shape_pat_lo),Y
-        JSR     tms9918_pad12   ; +12c silicon-strict pad12-v3 (back-to-back VDP store)
+        JSR     tms9918_pad18   ; +18c silicon-strict pad18-v4 (back-to-back VDP store)
         STA VDP_DATA
         INY
         CPY spr_size
-        JSR     tms9918_pad12   ; +12c silicon-strict pad12-v3 (back-to-back VDP store)
+        JSR     tms9918_pad18   ; +18c silicon-strict pad18-v4 (back-to-back VDP store)
         BNE @cppat
         ; --- Restore display ON with the correct sprite-size bit. spr_r1
         ;     was set by apply_sprite_size at @scmp's match site --
         ;     $C2 for 16x16 (BIRD/TURTL/BOAT), $C0 for 8x8 (HEART/…). ---
         LDA spr_r1
         STA VDP_CTRL
-        JSR     tms9918_pad12   ; +12c silicon-strict pad12-v3 (before LDA #imm bridge)
+        JSR     tms9918_pad18   ; +18c silicon-strict pad18-v4 (before LDA #imm bridge)
         LDA #$81                  ; write to register 1
         STA VDP_CTRL
 @reposition:

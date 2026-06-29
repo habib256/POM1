@@ -29,7 +29,7 @@
 ; Keys: ESC = exit to Wozmon.
 ; =============================================
 
-        .import tms9918_pad12
+        .import tms9918_pad18
         .import nyan_frame_lo, nyan_frame_hi
         .importzp nyan_num_frames
 
@@ -106,7 +106,7 @@ main_loop:
 exit_to_wozmon:
         LDA #$80
         STA VDP_CTRL
-        JSR tms9918_pad12
+        JSR tms9918_pad18
         LDA #$81
         STA VDP_CTRL
         LDA KBD
@@ -128,10 +128,10 @@ upload_current_frame:
         ; Set VDP write addr to $0000.
         LDA #$00
         STA VDP_CTRL
-        JSR tms9918_pad12
+        JSR tms9918_pad18
         LDA #$00 | $40            ; $40 = write flag (NOT $80 = register-write)
         STA VDP_CTRL
-        JSR tms9918_pad12
+        JSR tms9918_pad18
 
         ; fall through to rle_decode
 
@@ -166,7 +166,7 @@ rle_decode:
 @lit_lp:
         LDA (src_lo),Y
         STA VDP_DATA
-        JSR tms9918_pad12
+        JSR tms9918_pad18
         INY
         BNE @lit_no_inc
         INC src_hi
@@ -204,7 +204,7 @@ rle_decode:
 @rep_lp:
         LDA rle_val
         STA VDP_DATA
-        JSR tms9918_pad12
+        JSR tms9918_pad18
         LDA out_lo
         BNE @rep_no_borrow
         DEC out_hi
@@ -228,11 +228,11 @@ init_vdp_g3:
         LDX #0
 @rg:    LDA vdp3_regs,X
         STA VDP_CTRL
-        JSR tms9918_pad12
+        JSR tms9918_pad18
         TXA
         ORA #$80
         STA VDP_CTRL
-        JSR tms9918_pad12
+        JSR tms9918_pad18
         INX
         CPX #8
         BNE @rg
@@ -240,10 +240,10 @@ init_vdp_g3:
         ; Set VDP write addr to $1800 (name table base).
         LDA #$00
         STA VDP_CTRL
-        JSR tms9918_pad12
+        JSR tms9918_pad18
         LDA #$18 | $40            ; = $58 (write flag), NOT $98 (register-write)
         STA VDP_CTRL
-        JSR tms9918_pad12
+        JSR tms9918_pad18
 
         LDA #6
         STA section_cnt
@@ -259,7 +259,7 @@ init_vdp_g3:
         CLC
         ADC section_base
         STA VDP_DATA
-        JSR tms9918_pad12
+        JSR tms9918_pad18
         INX
         CPX #32
         BNE @cell
@@ -283,10 +283,10 @@ vdp3_regs:
 disable_sprites:
         LDA #$00
         STA VDP_CTRL
-        JSR tms9918_pad12
+        JSR tms9918_pad18
         LDA #$1B | $40
         STA VDP_CTRL
-        JSR tms9918_pad12
+        JSR tms9918_pad18
         LDA #$D0
         STA VDP_DATA
         RTS

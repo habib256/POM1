@@ -52,7 +52,7 @@
 ;
 ;   6. POM1 with `siliconStrictMode = ON` (default) drops VRAM writes
 ;      < ~7.5 c apart in Mode I + sprites. We use the same JSR
-;      tms9918_pad12 pattern as tms9918m1.asm — every consecutive
+;      tms9918_pad18 pattern as tms9918m1.asm — every consecutive
 ;      VDP_DATA / VDP_CTRL store is gated.
 ;
 ; Public symbols:
@@ -65,7 +65,7 @@
 ;   sprite #0 attribute, the chip stops the chain at that entry.
 ; ============================================================================
 
-        .import tms9918_pad12
+        .import tms9918_pad18
 .include "tms9918.inc"
 
 .export arm_5s_trigger, wait_5s_trigger
@@ -93,10 +93,10 @@ arm_5s_trigger:
         ; Address VDP for write at $1B00 (sprite attribute table base).
         LDA #$00
         STA VDP_CTRL
-        JSR tms9918_pad12       ; pad12 between back-to-back CTRL stores
+        JSR tms9918_pad18       ; pad12 between back-to-back CTRL stores
         LDA #$5B                ; $1B | $40 = write-mode address $1B00
         STA VDP_CTRL
-        JSR tms9918_pad12       ; cushion before first STA VDP_DATA
+        JSR tms9918_pad18       ; cushion before first STA VDP_DATA
 
         ; Five SAT entries × 4 bytes each:
         ;   byte 0: Y = scan_line - 1 (cached in _y_attr)
@@ -106,23 +106,23 @@ arm_5s_trigger:
         LDX #5
 @s_lp:  LDA _y_attr             ; byte 0
         STA VDP_DATA
-        JSR tms9918_pad12
+        JSR tms9918_pad18
         LDA #0                  ; byte 1
         STA VDP_DATA
-        JSR tms9918_pad12
+        JSR tms9918_pad18
         LDA #0                  ; byte 2
         STA VDP_DATA
-        JSR tms9918_pad12
+        JSR tms9918_pad18
         LDA #$80                ; byte 3
         STA VDP_DATA
-        JSR tms9918_pad12
+        JSR tms9918_pad18
         DEX
         BNE @s_lp
 
         ; Sprite #5 = chain terminator (Y = $D0 stops the SAT scan).
         LDA #$D0
         STA VDP_DATA
-        JSR tms9918_pad12
+        JSR tms9918_pad18
         RTS
 
 ; ----------------------------------------------------------------------------

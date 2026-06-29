@@ -67,7 +67,7 @@
 ; =============================================
 
 ; ----- Apple 1 I/O -----
-        .import tms9918_pad12  ; silicon-strict pad12-v3 (helper from tms9918_pad.asm)
+        .import tms9918_pad18  ; silicon-strict pad18-v4 (helper from tms9918_pad.asm)
 .include "apple1.inc"
 
 ; ----- TMS9918 MMIO (VDP_DATA / VDP_CTRL + WAIT_VBLANK macro) -----
@@ -331,44 +331,44 @@ init_vdp:
         STA VDP_CTRL
         TXA
         ORA #$80
-        JSR     tms9918_pad12   ; +12c silicon-strict pad12-v3 (back-to-back VDP store)
+        JSR     tms9918_pad18   ; +18c silicon-strict pad18-v4 (back-to-back VDP store)
         STA VDP_CTRL
         INX
         CPX #8
-        JSR     tms9918_pad12   ; +12c silicon-strict pad12-v3 (back-to-back VDP store)
+        JSR     tms9918_pad18   ; +18c silicon-strict pad18-v4 (back-to-back VDP store)
         BNE @regloop
 
         ; Pattern table at $0000: 16 bytes for chars 0-1.
         LDA #$00
         STA VDP_CTRL
-        JSR     tms9918_pad12   ; +12c silicon-strict pad12-v3 (before LDA #imm bridge)
+        JSR     tms9918_pad18   ; +18c silicon-strict pad18-v4 (before LDA #imm bridge)
         LDA #$40            ; $00 | $40 = write to $0000
         STA VDP_CTRL
         LDX #0
 @ptn:
         LDA patterns_chars,X
-        JSR     tms9918_pad12   ; +12c silicon-strict pad12-v3 (back-to-back VDP store)
+        JSR     tms9918_pad18   ; +18c silicon-strict pad18-v4 (back-to-back VDP store)
         STA VDP_DATA
         INX
         CPX #16
-        JSR     tms9918_pad12   ; +12c silicon-strict pad12-v3 (back-to-back VDP store)
+        JSR     tms9918_pad18   ; +18c silicon-strict pad18-v4 (back-to-back VDP store)
         BNE @ptn
 
         ; Colour table at $2000 - write group 0 only (chars 0-7 green on black).
         LDA #$00
         STA VDP_CTRL
-        JSR     tms9918_pad12   ; +12c silicon-strict pad12-v3 (before LDA #imm bridge)
+        JSR     tms9918_pad18   ; +18c silicon-strict pad18-v4 (before LDA #imm bridge)
         LDA #$60            ; $20 | $40 = write to $2000
         STA VDP_CTRL
-        JSR     tms9918_pad12   ; +12c silicon-strict pad12-v3 (before LDA #imm bridge)
+        JSR     tms9918_pad18   ; +18c silicon-strict pad18-v4 (before LDA #imm bridge)
         LDA #$21            ; fg=2 medium green, bg=1 black
         STA VDP_DATA
 
         ; Clear name table at $1800 (768 bytes = char 0 everywhere).
-        JSR     tms9918_pad12   ; +12c silicon-strict pad12-v3 (before LDA #imm bridge)
+        JSR     tms9918_pad18   ; +18c silicon-strict pad18-v4 (before LDA #imm bridge)
         LDA #$00
         STA VDP_CTRL
-        JSR     tms9918_pad12   ; +12c silicon-strict pad12-v3 (before LDA #imm bridge)
+        JSR     tms9918_pad18   ; +18c silicon-strict pad18-v4 (before LDA #imm bridge)
         LDA #$58            ; $18 | $40 = write to $1800
         STA VDP_CTRL
         LDX #3              ; 3 full pages = 768 bytes
@@ -376,10 +376,10 @@ init_vdp:
 @clr_pg:
         LDY #0
 @clr_b:
-        JSR     tms9918_pad12   ; +12c silicon-strict pad12-v3 (back-to-back VDP store)
+        JSR     tms9918_pad18   ; +18c silicon-strict pad18-v4 (back-to-back VDP store)
         STA VDP_DATA
         INY
-        JSR     tms9918_pad12   ; +12c silicon-strict pad12-v3 (back-to-back VDP store)
+        JSR     tms9918_pad18   ; +18c silicon-strict pad18-v4 (back-to-back VDP store)
         BNE @clr_b
         DEX
         BNE @clr_pg
@@ -394,18 +394,18 @@ init_vdp:
         ;     through the fast ScreenOff slot table.
         LDA #$00
         STA VDP_CTRL
-        JSR     tms9918_pad12
+        JSR     tms9918_pad18
         LDA #$5B                ; $1B | $40 = write at $1B00 (SAT base)
         STA VDP_CTRL
-        JSR     tms9918_pad12
+        JSR     tms9918_pad18
         LDA #$D0                ; SAT[0].Y = chain terminator
         STA VDP_DATA
-        JSR     tms9918_pad12
+        JSR     tms9918_pad18
         LDX #127
         LDA #$D1                ; SAT[1..127] = off-screen Y, no terminator
 @sat_clr:
         STA VDP_DATA
-        JSR     tms9918_pad12
+        JSR     tms9918_pad18
         DEX
         BNE @sat_clr
 
@@ -414,10 +414,10 @@ init_vdp:
         ;     so pattern / colour / name-table bursts ran with R1 = $80. ---
         LDA vdp_regs+1
         STA VDP_CTRL
-        JSR     tms9918_pad12
+        JSR     tms9918_pad18
         LDA #$81                ; reg 1 write cmd
         STA VDP_CTRL
-        JSR     tms9918_pad12
+        JSR     tms9918_pad18
         RTS
 
 ; =============================================
@@ -509,7 +509,7 @@ render:
         ; Set VDP write address = $1800 (name table base)
         LDA #$00
         STA VDP_CTRL
-        JSR     tms9918_pad12   ; +12c silicon-strict pad12-v3 (before LDA #imm bridge)
+        JSR     tms9918_pad18   ; +18c silicon-strict pad18-v4 (before LDA #imm bridge)
         LDA #$58            ; $18 | $40
         STA VDP_CTRL
 
@@ -532,7 +532,7 @@ render:
         STA VDP_DATA        ; cell value IS the char code
         INY
         CPY #33
-        JSR     tms9918_pad12   ; +12c silicon-strict pad12-v3 (back-to-back VDP store)
+        JSR     tms9918_pad18   ; +18c silicon-strict pad18-v4 (back-to-back VDP store)
         BNE @col_loop
 
         INC row_i

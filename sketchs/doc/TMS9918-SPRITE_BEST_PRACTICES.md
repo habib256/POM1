@@ -117,7 +117,7 @@ Toute routine qui réécrit la SAT en cours de jeu doit :
 4. Terminer par `Y = $D0`.
 
 Budget VBlank Mode I NTSC 60 Hz : ~4 554 cycles CPU. Largement
-suffisant pour ~22-32 entrées même avec `JSR tms9918_pad12` entre
+suffisant pour ~22-32 entrées même avec `JSR tms9918_pad18` entre
 chaque écriture.
 
 Anti-pattern : SAT rebuild en active-display sans gating. Génère du
@@ -128,12 +128,12 @@ Anti-pattern : SAT rebuild en active-display sans gating. Génère du
 - **8 cycles minimum** entre deux STA VDP_*. POM1 silicon-strict
   applique le contrat ; le silicium TI le respecte aussi sous certains
   phase alignments.
-- Pads canoniques : `JSR tms9918_pad12` (12c, 3 octets, plus dense que
+- Pads canoniques : `JSR tms9918_pad18` (12c, 3 octets, plus dense que
   6× NOP). Disponible dans `dev/lib/tms9918/tms9918_pad.asm`.
 - Macros prêtes : `WRT_DATA_REG` / `WRT_DATA_VAL` (`tms9918.inc`) —
-  encapsulent `STA VDP_DATA` + `JSR tms9918_pad12`.
+  encapsulent `STA VDP_DATA` + `JSR tms9918_pad18`.
 - Cushion cross-routine : avant la **première** `STA VDP_CTRL/DATA`
-  d'une routine (caller-gap), poser un `JSR tms9918_pad12` défensif.
+  d'une routine (caller-gap), poser un `JSR tms9918_pad18` défensif.
   L'auto-patcher ne voit pas les frontières JSR/RTS.
 
 ### 8. Polling F flag — pas d'IRQ
@@ -158,7 +158,7 @@ Pour tout nouveau code touchant à des sprites, vérifier :
 - [ ] Routine `render_*` se termine sur `Y = $D0`.
 - [ ] HUD : pas de groupe 5+ sprites au même Y.
 - [ ] `render_*` body wrappé par `WAIT_VBLANK`.
-- [ ] Pads `JSR tms9918_pad12` entre `STA VDP_*` consécutifs (ou via
+- [ ] Pads `JSR tms9918_pad18` entre `STA VDP_*` consécutifs (ou via
       macros `WRT_DATA_*`).
 - [ ] Pas de `CLI` + `WAI` en attente d'IRQ TMS9918.
 

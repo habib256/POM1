@@ -22,46 +22,50 @@ VDP_CTRL = $CC01        ; VDP register / address port (write twice = setup)
 ; ---------------------------------------------------------------------------
 ; VRAM access timing — silicon-strict back-to-back gating. Contract: 12c.
 ;
-; Real TMS9918A silicon opens a CPU access window only periodically in Mode I
-; with sprites active (cf. sketchs/doc/Programming_TMS9918.md §17 Bug N°1). The openMSX
-; slot-table model (May 2026) puts the worst case at ~7.5c. The contract is a
-; single JSR tms9918_pad12 between back-to-back VDP writes: a 12c minimum gap
-; (the pad alone), or 16c measured STA→STA (4c store + 12c pad) — a ~1.6×
-; margin over the ~7.5c worst case. 12c is the floor and the default: the
-; WRT_DATA_* macros below and all lib code use pad12.
+; Real TMS9918A silicon opens a CPU access window only periodically in Mode I/II
+; with the display active (cf. sketchs/doc/Programming_TMS9918.md §17 Bug N°1).
+; Validated on Claudio Parmigiani's Replica-1: the chip DROPS CPU writes spaced
+; under ~16c during active display — far stricter than the openMSX slot-table's
+; ~7.5c estimate. The contract is a single JSR tms9918_pad18 between back-to-back
+; VDP writes: an 18c gap (the pad alone), or 22c measured STA→STA (4c store + 18c
+; pad) — clearing the ~16c silicon floor with margin. The retired 12c pad gave
+; only a 16c STA→STA gap, exactly at the floor (no margin). 18c is the default:
+; the WRT_DATA_* macros below and all lib code use pad18; `tms9918_pad12` is a
+; legacy alias resolving to pad18.
 ;
 ; tms9918_pad24 stays as an optional cushion. tms9918_pad40 is LEGACY (a
-; paranoid 40c holdover the openMSX model made unnecessary — still used by
-; TMS_Rogue and the silicon_strict patcher's hardened mode; see tms9918_pad.asm).
+; paranoid holdover — still used by TMS_Rogue and the silicon_strict patcher's
+; hardened mode; see tms9918_pad.asm).
 ;
 ; POM1 enforces this when Hardware → Silicon Strict is ON (default for every
-; preset except Multiplexing Fantasy). Writes that arrive too fast are
-; silently DROPPED — exactly like silicon under unfavorable phase alignment.
+; preset except Multiplexing Fantasy): TMS9918.cpp floors the active-display
+; drain to 16c (kMinActiveDrainCycles). Writes that arrive too fast are silently
+; DROPPED — exactly like silicon.
 ;
-; Padding strategy: prefer `JSR tms9918_pad12` over NOPs (defined in
-; tms9918_pad.asm). 3 bytes for 12c idle vs 6 NOPs for the same 12c — 2×
-; denser at the call site, with a 1-byte helper (RTS).
+; Padding strategy: prefer `JSR tms9918_pad18` over NOPs (defined in
+; tms9918_pad.asm). 3 bytes for 18c idle vs 9 NOPs for the same 18c — 3×
+; denser at the call site, with a 4-byte helper.
 ;
 ;   STA VDP_DATA          ; 4c
-;   JSR tms9918_pad12     ; 12c (3 bytes) → next write lands 12c later
+;   JSR tms9918_pad18     ; 18c (3 bytes) → next write lands 18c later
 ;
 ; Use WRT_DATA_REG when A is already loaded with the byte to push (typical
 ; sprite-attribute and tile-stream loops). Use WRT_DATA_VAL for "load
-; immediate, then push" — same 12c gap to the next write.
+; immediate, then push" — same 18c gap to the next write.
 ; ---------------------------------------------------------------------------
-; Note: WRT_DATA_REG / WRT_DATA_VAL reference tms9918_pad12; callers using
-; these macros must `.import tms9918_pad12` themselves (the patcher does
-; this automatically when injecting JSR tms9918_pad12 — see Programming_TMS9918.md §25).
+; Note: WRT_DATA_REG / WRT_DATA_VAL reference tms9918_pad18; callers using
+; these macros must `.import tms9918_pad18` themselves (the patcher does
+; this automatically when injecting JSR tms9918_pad18 — see Programming_TMS9918.md §25).
 
 .macro WRT_DATA_REG
         STA     VDP_DATA        ; 4c
-        JSR     tms9918_pad12   ; 12c, 3 bytes — next write lands 12c later
+        JSR     tms9918_pad18   ; 18c, 3 bytes — next write lands 18c later
 .endmacro
 
 .macro WRT_DATA_VAL val
         LDA     #val            ; 2c
         STA     VDP_DATA        ; 4c
-        JSR     tms9918_pad12   ; 12c, 3 bytes — next write lands 12c later
+        JSR     tms9918_pad18   ; 18c, 3 bytes — next write lands 18c later
 .endmacro
 
 ; ---------------------------------------------------------------------------

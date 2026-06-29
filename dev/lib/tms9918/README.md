@@ -276,15 +276,15 @@ the right NOP padding between consecutive `STA VDP_DATA`:
 
 ```asm
 ; A already loaded with the byte to push (typical loop body).
-WRT_DATA_REG     ; expands to: STA VDP_DATA / JSR tms9918_pad12
+WRT_DATA_REG     ; expands to: STA VDP_DATA / JSR tms9918_pad18
 
 ; Or load-immediate then push.
-WRT_DATA_VAL #$AA  ; expands to: LDA #$AA / STA VDP_DATA / JSR tms9918_pad12
+WRT_DATA_VAL #$AA  ; expands to: LDA #$AA / STA VDP_DATA / JSR tms9918_pad18
 ```
 
 Both append a 12-cycle pad (a 4 + 12 + 4 = 20c gap between back-to-back
 `STA VDP_DATA`), comfortably above the worst-case window in Graphic I +
-sprites. Callers must `.import tms9918_pad12`. Use them in new code; for an
+sprites. Callers must `.import tms9918_pad18`. Use them in new code; for an
 existing project, retrofitting is mechanical — insert a `pad12` (or the
 equivalent NOP run) between every back-to-back VDP store that can fire
 during active display. Reference implementation:
@@ -316,7 +316,7 @@ without any padding:
 
 Reference implementation: `sketchs/tms9918/demo_plasma/TMS_Plasma.asm`'s
 `render_frame` and `upload_patterns` deliberately drop `JSR
-tms9918_pad12` in the hot path, taking the demo from ~22 fps to ~60 fps
+tms9918_pad18` in the hot path, taking the demo from ~22 fps to ~60 fps
 without dropping any writes. The lib's `init_vdp_g1` / `vdp_set_write`
 keep their `pad12` calls because they wrap `STA VDP_CTRL` register
 writes (different timing class) and run in contexts that can't make

@@ -4,7 +4,7 @@
 ; HPLOT / HCOLOR) wraps the project's TMS9918 Mode-II asm (init_vdp_g2 /
 ; disable_sprites / clear_bitmap / plot_set / line_xy from tms9918m2.asm).
 ; Lo-res (GR / COLOR= / PLOT / HLIN / VLIN / TEXT / HOME) drives Multicolor mode
-; with self-contained routines below -- needs only tms9918_pad12 from
+; with self-contained routines below -- needs only tms9918_pad18 from
 ; tms9918_pad.asm, not tms9918m2.o.
 ;
 ; Build: ca65 -I dev/lib/tms9918 -I dev/lib/apple1 ; link with tms9918_pad.o
@@ -112,8 +112,8 @@ rt_line:
 ; call sites for either card. The pixels live in the TMS9918's private VRAM
 ; (pattern table $0000, banded name table $0800) instead of a memory-mapped
 ; Apple-II framebuffer, so every cell is a read-modify-write through the two VDP
-; ports, with a silicon-strict 12c gap (JSR tms9918_pad12) between back-to-back
-; VDP stores. Self-contained: needs only tms9918_pad12 from tms9918_pad.asm (the
+; ports, with a silicon-strict 12c gap (JSR tms9918_pad18) between back-to-back
+; VDP stores. Self-contained: needs only tms9918_pad18 from tms9918_pad.asm (the
 ; hi-res VDP lib tms9918m2.o is NOT required for a lo-res-only program).
 ;
 ; Coordinate model mirrors sketchs/tms9918/applesoft_tms9918/tmsgfx.inc: Multicolor
@@ -125,7 +125,7 @@ RT_LR = .defined(RT_GR) .or .defined(RT_COLOR) .or .defined(RT_LORESPLOT) .or .d
 
 .if RT_LR
 .include "tms9918.inc"           ; VDP_DATA $CC00 / VDP_CTRL $CC01
-.import tms9918_pad12: absolute  ; silicon-strict 12c gap (tms9918_pad.asm)
+.import tms9918_pad18: absolute  ; silicon-strict 12c gap (tms9918_pad.asm)
 
 .segment "ZEROPAGE"
 lr_src: .res 2                   ; register-table pointer for lr_load_regs
@@ -147,19 +147,19 @@ lr_end:  .res 1                  ; HLIN/VLIN endpoint coordinate
 lr_setw:
         lda lr_al
         sta VDP_CTRL
-        jsr tms9918_pad12
+        jsr tms9918_pad18
         lda lr_ah
         ora #$40                 ; bit 6 = write
         sta VDP_CTRL
-        jsr tms9918_pad12
+        jsr tms9918_pad18
         rts
 lr_setr:
         lda lr_al
         sta VDP_CTRL
-        jsr tms9918_pad12
+        jsr tms9918_pad18
         lda lr_ah                ; bit 6 = 0 -> read
         sta VDP_CTRL
-        jsr tms9918_pad12
+        jsr tms9918_pad18
         rts
 
 ; lr_load_regs: write 8 VDP registers from (lr_src),y with R1's display bit forced
@@ -172,18 +172,18 @@ lr_load_regs:
         bne @st
         and #$BF                 ; R1 display OFF
 @st:    sta VDP_CTRL
-        jsr tms9918_pad12
+        jsr tms9918_pad18
         tya
         ora #$80                 ; cmd = $80 | reg index
         sta VDP_CTRL
-        jsr tms9918_pad12
+        jsr tms9918_pad18
         iny
         cpy #8
         bne @l
         rts
 
 ; lr_fill: fill VRAM. lr_al:lr_ah = start address, X = page count (256B units),
-; A = fill byte. tms9918_pad12 is a bare RTS, so A survives the inner loop.
+; A = fill byte. tms9918_pad18 is a bare RTS, so A survives the inner loop.
 lr_fill:
         stx lr_end               ; reuse lr_end as the page counter (no GR active)
         pha
@@ -191,7 +191,7 @@ lr_fill:
         pla
 @pg:    ldy #0
 @by:    sta VDP_DATA
-        jsr tms9918_pad12
+        jsr tms9918_pad18
         iny
         bne @by
         dec lr_end
@@ -201,10 +201,10 @@ lr_fill:
 ; lr_display_on: re-arm register 1 with A (the mode's display-ON value).
 lr_display_on:
         sta VDP_CTRL
-        jsr tms9918_pad12
+        jsr tms9918_pad18
         lda #$81                 ; cmd = $80 | reg 1
         sta VDP_CTRL
-        jsr tms9918_pad12
+        jsr tms9918_pad18
         rts
 
 .ifdef RT_GR
@@ -250,7 +250,7 @@ lr_nametab:
         clc
         adc lr_run
         sta VDP_DATA
-        jsr tms9918_pad12
+        jsr tms9918_pad18
         inc lr_run
         lda lr_run
         cmp #32
@@ -273,10 +273,10 @@ lr_parksat:
         lda #$0B
         sta lr_ah
         jsr lr_setw
-        jsr tms9918_pad12
+        jsr tms9918_pad18
         lda #$D0
         sta VDP_DATA
-        jsr tms9918_pad12
+        jsr tms9918_pad18
         rts
 .endif  ; RT_GR
 
@@ -335,7 +335,7 @@ rt_loresplot:
         bcs @skip
         jsr lr_addr
         jsr lr_setr
-        jsr tms9918_pad12        ; +12c before the data read
+        jsr tms9918_pad18        ; +12c before the data read
         lda VDP_DATA
         sta lr_byte
         lda rt_x0
@@ -359,10 +359,10 @@ rt_loresplot:
         ora lr_byte
 @wr:    sta lr_byte
         jsr lr_setw
-        jsr tms9918_pad12        ; +12c before the data write
+        jsr tms9918_pad18        ; +12c before the data write
         lda lr_byte
         sta VDP_DATA
-        jsr tms9918_pad12
+        jsr tms9918_pad18
 @skip:  rts
 .endif  ; LORESPLOT/HLIN/VLIN
 

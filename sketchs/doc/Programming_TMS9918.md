@@ -567,12 +567,12 @@ At 1.022 MHz: 1 cycle ≈ 0.978 µs.
 | `STA $CC00` ; `STA $CC00` (back-to-back) | 4c | **KO** — below floor |
 | `LDA #x` ; `STA $CC00` ; `LDA #y` ; `STA $CC00` | 6c | **KO** — below floor |
 | `STA $CC00` ; `NOP×2` ; `STA $CC00` (old strict 8c) | 8c | **borderline** |
-| `STA $CC00` ; `JSR tms9918_pad12` ; `STA $CC00` | 16c | **OK** (3 bytes, ratio winner) |
+| `STA $CC00` ; `JSR tms9918_pad18` ; `STA $CC00` | 16c | **OK** (3 bytes, ratio winner) |
 | `STA $CC00` ; `NOP×6` ; `STA $CC00` | 16c | **OK** (6 NOPs = 6 bytes) |
 | Tetris loop (`LDA / STA $CC00 / DEX / BNE`) | 11c | **OK** (silicon-validated) |
 | Loop `LDA tab,X / STA $CC00,X / DEX / BNE` | 14c | **OK** comfortable |
 
-`JSR tms9918_pad12` (12c pad → 16c STA→STA gap, 3 bytes at the call site)
+`JSR tms9918_pad18` (12c pad → 16c STA→STA gap, 3 bytes at the call site)
 is the dense winner: 4c/byte ratio, twice as dense as NOP×6 (2c/byte).
 `pad24` is an optional cushion; `pad40` is a legacy paranoid variant
 (superseded by the 12c contract — do not use in new code).
@@ -609,17 +609,17 @@ STA VDP_CTRL
 `dev/lib/tms9918/tms9918.inc` provides (12c contract — 16c STA→STA gap):
 
 ```asm
-.import tms9918_pad12, tms9918_pad24
+.import tms9918_pad18, tms9918_pad24
 
 .macro WRT_DATA_REG             ; A already loaded, 16c STA→STA gap on exit
         STA     VDP_DATA        ; 4c
-        JSR     tms9918_pad12   ; 12c pad — next write lands 12c later
+        JSR     tms9918_pad18   ; 12c pad — next write lands 12c later
 .endmacro
 
 .macro WRT_DATA_VAL val          ; immediate val, 16c STA→STA gap on exit
         LDA     #val            ; 2c
         STA     VDP_DATA        ; 4c
-        JSR     tms9918_pad12   ; 12c, 3 bytes
+        JSR     tms9918_pad18   ; 12c, 3 bytes
 .endmacro
 ```
 
@@ -665,7 +665,7 @@ loop) → retest → iterate.
 
 #### The pad helpers
 
-The helper `tms9918_pad12: rts` (1 byte) costs 12 cycles via JSR (3
+The helper `tms9918_pad18: rts` (1 byte) costs 12 cycles via JSR (3
 bytes at the site). 4 c/B ratio at the site, twice as dense as NOP. For a
 16c STA-STA gap, the JSR replaces 6 NOPs (saving: 3 bytes/site).
 
@@ -1022,7 +1022,7 @@ reusable across the other games in the repo (Sokoban, Snake, Connect4,
 Maze3D).
 
 Reusable script: **`tools/silicon_strict_patch.py`** (inserts
-`JSR tms9918_pad12` at detected sites). Idempotent — `--unpatch` strips
+`JSR tms9918_pad18` at detected sites). Idempotent — `--unpatch` strips
 the v1 (NOPs) and v2 (JSR) markers before fresh reinsertion.
 
 ```bash
@@ -1038,15 +1038,15 @@ python3 tools/silicon_strict_patch.py path/to/Game.asm --unpatch
 
 Applied rules (cumulative, deterministic order):
 
-| Case | Detected pattern | v2 insertion (`JSR tms9918_pad12`) | Bytes added |
+| Case | Detected pattern | v2 insertion (`JSR tms9918_pad18`) | Bytes added |
 |---|---|---|--:|
-| **A** | `ST? VDP_*` adjacent to `ST? VDP_*` | `JSR tms9918_pad12` between | 3 |
-| **B** | `ST? VDP_* / LDA #imm / ST? VDP_*` | `JSR tms9918_pad12` BEFORE the LDA | 3 |
-| **C** | `ST? VDP_* / LDA <zp/abs/zp,X> / ST? VDP_*` | `JSR tms9918_pad12` BEFORE the LDA | 3 |
+| **A** | `ST? VDP_*` adjacent to `ST? VDP_*` | `JSR tms9918_pad18` between | 3 |
+| **B** | `ST? VDP_* / LDA #imm / ST? VDP_*` | `JSR tms9918_pad18` BEFORE the LDA | 3 |
+| **C** | `ST? VDP_* / LDA <zp/abs/zp,X> / ST? VDP_*` | `JSR tms9918_pad18` BEFORE the LDA | 3 |
 
-The patcher injects `.import tms9918_pad12` once at the top of every
+The patcher injects `.import tms9918_pad18` once at the top of every
 patched file (for projects that don't include `tms9918.inc`). The
-`tms9918_pad12 / pad24` helper lives in `dev/lib/tms9918/tms9918_pad.asm`
+`tms9918_pad18 / pad24` helper lives in `dev/lib/tms9918/tms9918_pad.asm`
 and is linked automatically by `Makefile.common` (via `EXTRA_ASM`),
 `emit_woz.py` (auto-detection), and `build_codetank_rom.py`
 (auto-detection).

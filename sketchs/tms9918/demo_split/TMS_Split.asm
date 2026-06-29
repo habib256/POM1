@@ -41,7 +41,7 @@
         .import init_vdp_g1, clear_name_table, disable_sprites
         .import vdp_set_write
         .importzp vdp_lo, vdp_hi
-        .import tms9918_pad12
+        .import tms9918_pad18
         .import arm_5s_trigger
 
 .include "apple1.inc"
@@ -93,7 +93,7 @@ start:
 @pat_pg:
         LDY #$00
 @pat_b: STA VDP_DATA
-        JSR tms9918_pad12
+        JSR tms9918_pad18
         INY
         BNE @pat_b
         DEX
@@ -114,7 +114,7 @@ start:
         ASL
         ASL                     ; A = col * 8 (group_id << 3)
         STA VDP_DATA
-        JSR tms9918_pad12
+        JSR tms9918_pad18
         INY
         CPY #32
         BNE @ncol
@@ -204,7 +204,7 @@ push_palette:
         LDY #0
 @p_lp:  LDA (src_lo),Y          ; post-indexed indirect: reads from
         STA VDP_DATA            ; (src_lo:src_hi)+Y. Don't touch src_*.
-        JSR tms9918_pad12
+        JSR tms9918_pad18
         INY
         CPY #32
         BNE @p_lp
@@ -214,7 +214,7 @@ do_exit:
         ; Disable display, hand back to Woz Monitor.
         LDA #$80
         STA VDP_CTRL
-        JSR tms9918_pad12
+        JSR tms9918_pad18
         LDA #$81
         STA VDP_CTRL
         ; Disable sprites so a stray 5S doesn't bother whoever runs next

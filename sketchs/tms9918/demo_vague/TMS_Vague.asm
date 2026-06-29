@@ -31,7 +31,7 @@
 ; ============================================================================
 
         .import init_vdp_g1, disable_sprites, clear_name_table
-        .import tms9918_pad12
+        .import tms9918_pad18
 
 .include "apple1.inc"
 .include "tms9918.inc"
@@ -96,20 +96,20 @@ start:
         ; --- R1 = $C2 (16K + display ON + 16x16 sprites, no magnify) ---
         LDA #$C2
         STA VDP_CTRL
-        JSR tms9918_pad12
+        JSR tms9918_pad18
         LDA #$81
         STA VDP_CTRL
-        JSR tms9918_pad12
+        JSR tms9918_pad18
 
         ; --- R7 = $05 (backdrop = light blue; mostly invisible since every
         ;     tile in the name table covers it, but a clean value avoids
         ;     bleeding on the very first frame before init finishes).
         LDA #$05
         STA VDP_CTRL
-        JSR tms9918_pad12
+        JSR tms9918_pad18
         LDA #$87
         STA VDP_CTRL
-        JSR tms9918_pad12
+        JSR tms9918_pad18
 
         ; --- Colour table $2000:
         ;     entry 0 (tiles 0..7)  = $45  -> FG=dark blue, BG=light blue
@@ -119,20 +119,20 @@ start:
         ;                                     tile 8 (all 1) -> all FG = water
         LDA #$00
         STA VDP_CTRL
-        JSR tms9918_pad12
+        JSR tms9918_pad18
         LDA #$60                  ; $20 | $40 -> write at $2000
         STA VDP_CTRL
-        JSR tms9918_pad12
+        JSR tms9918_pad18
         LDA #$45
         STA VDP_DATA
-        JSR tms9918_pad12
+        JSR tms9918_pad18
         LDA #$44
         STA VDP_DATA
-        JSR tms9918_pad12
+        JSR tms9918_pad18
         LDX #30
         LDA #$00
 @ct:    STA VDP_DATA
-        JSR tms9918_pad12
+        JSR tms9918_pad18
         DEX
         BNE @ct
 
@@ -141,14 +141,14 @@ start:
         ;     $FF (water). Written via auto-increment from $0000.
         LDA #$00
         STA VDP_CTRL
-        JSR tms9918_pad12
+        JSR tms9918_pad18
         LDA #$40                  ; $00 | $40 -> write at $0000
         STA VDP_CTRL
-        JSR tms9918_pad12
+        JSR tms9918_pad18
         LDY #0
 @pt:    LDA tile_patterns,Y
         STA VDP_DATA
-        JSR tms9918_pad12
+        JSR tms9918_pad18
         INY
         CPY #72
         BNE @pt
@@ -156,14 +156,14 @@ start:
         ; --- Sprite pattern table $3800: upload boat (4 quadrants = 32 bytes).
         LDA #$00
         STA VDP_CTRL
-        JSR tms9918_pad12
+        JSR tms9918_pad18
         LDA #$78                  ; $38 | $40 -> write at $3800
         STA VDP_CTRL
-        JSR tms9918_pad12
+        JSR tms9918_pad18
         LDY #0
 @sp:    LDA boat_pattern,Y
         STA VDP_DATA
-        JSR tms9918_pad12
+        JSR tms9918_pad18
         INY
         CPY #32
         BNE @sp
@@ -173,21 +173,21 @@ start:
         ;     10 rows * 32 cols = 320 bytes (fits before SAT at $1B00).
         LDA #$C0
         STA VDP_CTRL
-        JSR tms9918_pad12
+        JSR tms9918_pad18
         LDA #$59                  ; $19 | $40 -> write at $19C0
         STA VDP_CTRL
-        JSR tms9918_pad12
+        JSR tms9918_pad18
         ; 320 bytes = 1 full page + 64 bytes
         LDY #0
         LDA #$08
 @w1:    STA VDP_DATA
-        JSR tms9918_pad12
+        JSR tms9918_pad18
         INY
         BNE @w1
         LDY #0
 @w2:    LDA #$08
         STA VDP_DATA
-        JSR tms9918_pad12
+        JSR tms9918_pad18
         INY
         CPY #64                   ; 320 - 256
         BNE @w2
@@ -219,14 +219,14 @@ main_loop:
         ;     addr = $1800 + 11*32 = $1960
         LDA #$60
         STA VDP_CTRL
-        JSR tms9918_pad12
+        JSR tms9918_pad18
         LDA #$59                  ; $19 | $40 -> write at $1960
         STA VDP_CTRL
-        JSR tms9918_pad12
+        JSR tms9918_pad18
         LDY #0
 @p3:    LDA tile_buf,Y
         STA VDP_DATA
-        JSR tms9918_pad12
+        JSR tms9918_pad18
         INY
         CPY #96
         BNE @p3
@@ -267,10 +267,10 @@ main_loop:
 exit:
         LDA #$80                  ; display OFF
         STA VDP_CTRL
-        JSR tms9918_pad12
+        JSR tms9918_pad18
         LDA #$81
         STA VDP_CTRL
-        JSR tms9918_pad12
+        JSR tms9918_pad18
         JSR disable_sprites
         LDA KBD
         JMP WOZMON
@@ -391,10 +391,10 @@ compute_tile_buf:
 write_boat_sat:
         LDA #$00
         STA VDP_CTRL
-        JSR tms9918_pad12
+        JSR tms9918_pad18
         LDA #$5B                  ; $1B | $40 -> write at $1B00
         STA VDP_CTRL
-        JSR tms9918_pad12
+        JSR tms9918_pad18
 
         LDA boat_x
         LSR
@@ -409,23 +409,23 @@ write_boat_sat:
         SEC
         SBC #BOAT_RISE
         STA VDP_DATA              ; Y_attr
-        JSR tms9918_pad12
+        JSR tms9918_pad18
 
         LDA boat_x
         STA VDP_DATA              ; X_attr
-        JSR tms9918_pad12
+        JSR tms9918_pad18
 
         LDA #0                    ; pattern name 0 -> patterns 0..3 (boat)
         STA VDP_DATA
-        JSR tms9918_pad12
+        JSR tms9918_pad18
 
         LDA #$0A                  ; colour = dark yellow (sail + hull)
         STA VDP_DATA
-        JSR tms9918_pad12
+        JSR tms9918_pad18
 
         LDA #$D0                  ; chain terminator -> chip stops at slot 1
         STA VDP_DATA
-        JSR tms9918_pad12
+        JSR tms9918_pad18
         RTS
 
 
