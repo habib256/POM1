@@ -393,6 +393,10 @@ std::optional<CliPlan> parseCli(int argc, char* argv[], bool& listPresetsOut)
             plan.dramRefreshOverride = false;
             continue;
         }
+        if (arg == "--vram-noise") {
+            plan.vramNoiseOnReset = true;
+            continue;
+        }
         if (arg == "--sid-chip") {
             if (!needArg(i, "--sid-chip")) return std::nullopt;
             const std::string v = argv[++i];

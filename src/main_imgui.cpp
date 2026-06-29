@@ -463,6 +463,30 @@ static int runHeadless(pom1::CliPlan& plan)
     if (plan.telemetryPort || !plan.telemetryLogPath.empty())
         emu.setTelemetryEnabled(true);
 
+    // VRAM power-on noise: set the flag then hardReset so the TMS9918 re-inits
+    // its VRAM with mt19937 noise (silicon-faithful) instead of the lenient
+    // bistable default. Must precede the CodeTank ROM override below — hardReset
+    // reloads the preset's default daughterboard ROM, so the override is applied
+    // AFTER the reset to survive.
+    if (plan.vramNoiseOnReset) {
+        emu.setVramNoiseOnReset(true);
+        emu.hardReset(/*animateBoot=*/false);
+        pom1::log().info("TMS9918", "VRAM power-on noise ON (--vram-noise): "
+                                    "silicon-faithful cold-boot VRAM");
+    }
+    // CodeTank ROM / jumper override (headless): the GUI path honours these via
+    // MainWindow; the headless path did not, so --codetank-rom/--codetank-jumper
+    // were silently ignored. Apply after any noise hardReset.
+    if (plan.codeTankJumperOverride)
+        emu.setCodeTankJumper(*plan.codeTankJumperOverride);
+    if (!plan.codeTankRomPath.empty()) {
+        std::string err;
+        if (!emu.loadCodeTankRom(plan.codeTankRomPath, err))
+            pom1::log().error("CodeTank", "--codetank-rom failed: " + err);
+        else
+            pom1::log().info("CodeTank", "--codetank-rom loaded: " + plan.codeTankRomPath);
+    }
+
     // Phase-C deferred verbs (load / run / paste / step / sd-* / rtc / snapshot / break).
     pom1::runDeferredActions(plan.deferredActions, emu);
 

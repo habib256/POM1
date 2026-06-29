@@ -133,6 +133,12 @@ struct CliPlan {
     // cycles stolen from the CPU; the video beam keeps running). Independent of
     // siliconStrictModeOverride so headless beam-race captures can isolate it.
     std::optional<bool>                dramRefreshOverride;
+    // --vram-noise: power-on the TMS9918 VRAM with true mt19937 noise (what warm
+    // P-LAB DRAM shows on cold boot) instead of the lenient bistable $FF/$00
+    // default. Surfaces uninitialised-SAT / ghost-terminator bugs (games that
+    // skip a defensive SAT fill render on POM1-default but break on real
+    // silicon). See sketchs/doc/TMS9918-SPRITE_INIT.md §4.2.
+    bool                               vramNoiseOnReset = false;
 
     // Phase-C — consumed after the card deferred-plug timer fires.
     std::vector<CliAction>             deferredActions;

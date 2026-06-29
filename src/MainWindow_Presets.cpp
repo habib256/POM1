@@ -605,6 +605,19 @@ void MainWindow_ImGui::applyMachineConfig(int presetIndex)
     emulation->setTerminalCardEnabled(false);
 #endif
 
+    // Silicon-fidelity power-on state (RAM size + VRAM/RAM cold-boot noise) is
+    // consumed by the hardReset() below — resetMemory() seeds main RAM and
+    // TMS9918::reset() seeds VRAM. ARM these BEFORE the reset, or the boot frame
+    // shows the lenient bistable VRAM and the silicon-faithful noise only lands
+    // on a later manual reset (user-visible bug: TMS sprites that depend on the
+    // uninitialised-SAT noise rendered too cleanly on silicon presets at boot).
+    const bool fantasyPreset =
+        std::string_view(cfg.name).find("Fantasy") != std::string_view::npos;
+    presetRamKB = cfg.ramKB;
+    emulation->setPresetRamKB(cfg.ramKB);
+    emulation->setVramNoiseOnReset(!fantasyPreset);
+    emulation->setSystemRamNoiseOnReset(!fantasyPreset);
+
     // Skip the full hard reset on the very first invocation — at that
     // point Memory::Memory() has just run initMemory() (default ROMs +
     // peripheral resets) so hardReset() would redo the exact same work
@@ -612,24 +625,26 @@ void MainWindow_ImGui::applyMachineConfig(int presetIndex)
     // From the second call onward (preset switch, user action) the
     // hardReset is mandatory: we need to wipe RAM, reload default ROMs,
     // and reset every peripheral before applying the new preset.
+    // Exception: a SILICON preset on the very first call still needs ONE reset
+    // so the just-armed power-on noise replaces the constructor's lenient seed
+    // (Fantasy first-boot keeps skipping it — no power-on noise wanted there).
+    // DevBench profiles (indices 0-2) are a compile-and-run workflow, not a
+    // cold-boot demo: skip the ~3 s power-on scenarization so the reset lands on
+    // a cleared screen immediately.
+    const bool isDevBench = (presetIndex >= 0 && presetIndex <= 2);
     if (presetAppliedOnce) {
-        // DevBench profiles (indices 0-2) are a compile-and-run workflow, not a
-        // cold-boot demo: skip the ~3 s power-on scenarization so the reset lands
-        // on a cleared screen immediately.
-        const bool isDevBench = (presetIndex >= 0 && presetIndex <= 2);
         emulation->hardReset(/*animateBoot=*/!isDevBench);
     } else {
+        if (!fantasyPreset)
+            emulation->hardReset(/*animateBoot=*/!isDevBench);
         presetAppliedOnce = true;
     }
     loadedPrograms.clear();
     loadedRoms.clear();
 
-    // RAM size for this preset. The address space stays 64 KB; the value is
-    // forwarded to Memory so out-of-range accesses past ramKB*1024 can be
-    // flagged in the status bar without blocking the program.
-    presetRamKB = cfg.ramKB;
-    emulation->setPresetRamKB(cfg.ramKB);
-    const bool fantasyPreset = std::string_view(cfg.name).find("Fantasy") != std::string_view::npos;
+    // RAM size for this preset + fantasyPreset were applied above (before the
+    // boot reset, so the power-on noise lands on the first frame). Continue
+    // arming the rest of the silicon-fidelity bundle.
     emulation->setSiliconStrictMode(!fantasyPreset);
     siliconStrictModeEnabled = !fantasyPreset;
     emulation->setOutOfRangeStrictMode(!fantasyPreset);
@@ -644,10 +659,8 @@ void MainWindow_ImGui::applyMachineConfig(int presetIndex)
     // preset reproduces the real-DRAM beam-race drift out of the box.
     dramRefreshEnabled = !fantasyPreset;
     emulation->setDramRefreshEnabled(!fantasyPreset);
-    vramNoiseOnResetEnabled = !fantasyPreset;
-    emulation->setVramNoiseOnReset(!fantasyPreset);
-    systemRamNoiseOnResetEnabled = !fantasyPreset;
-    emulation->setSystemRamNoiseOnReset(!fantasyPreset);
+    vramNoiseOnResetEnabled = !fantasyPreset;        // armed before the boot reset above
+    systemRamNoiseOnResetEnabled = !fantasyPreset;   // armed before the boot reset above
     // NMOS decimal ADC/SBC flag bug: original-chip behaviour on strict presets,
     // 65C02-corrected on the (fantasy) Multiplexing presets.
     emulation->setCpuDecimalBugNMOS(!fantasyPreset);
