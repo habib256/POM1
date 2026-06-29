@@ -5,6 +5,29 @@
 build/
 dist/
 
+# In-source CMake spill (canonical out-of-tree dir is build/ — some IDE
+# integrations configure from the repo root and leave these behind)
+/CMakeCache.txt
+/CMakeFiles/
+/cmake_install.cmake
+/CTestTestfile.cmake
+/Makefile
+/POM1
+/POM1.app/
+/POM1.dSYM/
+/basicc
+/tests/CMakeFiles/
+/tests/Makefile
+/tests/cmake_install.cmake
+/tests/CTestTestfile.cmake
+/tests/klaus_6502_functional_test.bin
+/tests/test_*
+/src/third_party/libresidfp/CMakeFiles/
+/src/third_party/libresidfp/Makefile
+/src/third_party/libresidfp/cmake_install.cmake
+/src/third_party/libresidfp/*.a
+/tools/make_iec_fixture
+
 # CTest runtime artefacts (written by `ctest` under build/, but also spilled
 # into the repo root by some IDE integrations)
 Testing/
