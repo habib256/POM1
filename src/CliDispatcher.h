@@ -139,6 +139,13 @@ struct CliPlan {
     // skip a defensive SAT fill render on POM1-default but break on real
     // silicon). See sketchs/doc/TMS9918-SPRITE_INIT.md §4.2.
     bool                               vramNoiseOnReset = false;
+    // --ram-poison HEX / --ram-trap: read-before-write trap. Fill system RAM
+    // with a deterministic sentinel byte instead of $00, and log the first CPU
+    // read of any RAM cell the program never wrote this run. Diagnostic harness
+    // for the TMS9918 "works on POM1, breaks on silicon" cause #2 (uninitialised
+    // RAM reads that POM1's zero-fill silently makes harmless).
+    std::optional<uint8_t>             ramPoisonByte;   // --ram-poison HEX
+    bool                               ramWriteTrap = false;   // --ram-trap
 
     // Phase-C — consumed after the card deferred-plug timer fires.
     std::vector<CliAction>             deferredActions;

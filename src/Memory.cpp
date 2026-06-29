@@ -561,11 +561,28 @@ void Memory::checkOutOfRangeAccess(uint16_t address, bool isWrite)
 void Memory::initMemory(){
     ramSize = 64;  // Ouaahh 64Kbytes !
     writeInRom = true;
-    if (mem.size() < (size_t)(ramSize * 1024)) {
+    if (mem.size() < (size_t)(ramSize * 1024))
         mem.resize(ramSize * 1024, 0);
+    // Power-on RAM fill. Mirror resetMemory() so the cold-boot profile is
+    // consistent across BOTH halves of a hard reset. CRUCIAL: hardReset() runs
+    // resetMemory() *then* initMemory(); a plain zero-fill here wipes the noise
+    // resetMemory() just laid down, so silicon presets used to boot with
+    // ZP/BSS = $00 and POM1 masked programs that read uninitialised RAM
+    // (TMS9918 cause #2 — Galaga/Rogue/Mandel). The ROM loads below overwrite
+    // their own windows regardless of the fill. Poison takes precedence (a
+    // deterministic sentinel for the --ram-poison read-before-write trap).
+    if (systemRamPoison) {
+        std::fill(mem.begin(), mem.begin() + ramSize * 1024, systemRamPoisonByte);
+    } else if (systemRamNoiseOnReset) {
+        std::random_device rd;
+        std::mt19937 gen(rd());
+        std::uniform_int_distribution<int> dist(0, 255);
+        for (int i = 0; i < ramSize * 1024; ++i)
+            mem[i] = static_cast<uint8_t>(dist(gen));
     } else {
         std::fill(mem.begin(), mem.end(), 0);
     }
+    resetRamWriteTrap();
     markAllPagesDirty();
     loadBasic();
     if (aciEnabled) loadAciRom();
@@ -616,6 +633,33 @@ void Memory::initMemory(){
     }
 
     setWriteInRom(0);
+}
+
+// --- Read-before-write trap (--ram-poison / --ram-trap) -------------------
+void Memory::resetRamWriteTrap()
+{
+    if (ramWriteTrap) {
+        ramWritten.assign(kRamTrapEnd, 0);
+        ramTrapLogged.assign(kRamTrapEnd, 0);
+    } else {
+        ramWritten.clear();
+        ramTrapLogged.clear();
+    }
+    ramTrapHitCount = 0;
+}
+
+void Memory::checkRamReadTrap(uint16_t address)
+{
+    if (address >= kRamTrapEnd || ramWritten.empty()) return;
+    if (ramWritten[address] || ramTrapLogged[address]) return;
+    ramTrapLogged[address] = 1;
+    ++ramTrapHitCount;
+    const uint16_t pc = cpuForIrq ? cpuForIrq->getProgramCounter() : 0;
+    char msg[128];
+    std::snprintf(msg, sizeof(msg),
+                  "[RAM TRAP #%llu] read uninitialised $%04X (value $%02X) from PC $%04X",
+                  (unsigned long long)ramTrapHitCount, address, mem[address], pc);
+    pom1::log().warn("RAMTRAP", msg);
 }
 
 void Memory::setHgrFramebufferAttached(bool e)
@@ -678,7 +722,10 @@ void Memory::resetMemory(void)
     // mt19937 noise — matches what real Apple-1 6502 RAM actually shows
     // at cold boot (bistable noise). Combined with silicon-strict mode
     // this surfaces programs that assume RAM = 0.
-    if (systemRamNoiseOnReset) {
+    if (systemRamPoison) {
+        // Deterministic sentinel fill — the --ram-poison read-before-write trap.
+        for (int i = 0; i < ramSize * 1024; ++i) mem[i] = systemRamPoisonByte;
+    } else if (systemRamNoiseOnReset) {
         std::random_device rd;
         std::mt19937 gen(rd());
         std::uniform_int_distribution<int> dist(0, 255);
@@ -690,6 +737,7 @@ void Memory::resetMemory(void)
             mem[i] = 0;
         }
     }
+    resetRamWriteTrap();
     // GEN2 HGR carries its own 8 KB DRAM at $2000-$3FFF. Real Uncle Bernie
     // hardware shows bistable noise on cold boot (matches GT-6144 and the
     // TMS9918 VRAM model). When the card is plugged AND gen2RandomDramNoise
@@ -1222,6 +1270,10 @@ uint8_t Memory::memRead(uint16_t address)
     if (anyWatch_ && !watchHit_.tripped && (watchFlags_[address] & 0x01))
         watchHit_ = { true, address, false };
 
+    // Read-before-write trap: flag uninitialised RAM reads ([0,$2000) is always
+    // RAM — ZP/stack/BSS/user — no peripherals there). --ram-trap only.
+    if (ramWriteTrap) checkRamReadTrap(address);
+
     // Memory-mapped peripherals (A1IO_RTC, CFFA1, microSD, WiFiModem, SID,
     // TMS9918, Cassette read) live on the PeripheralBus. The remaining
     // logic below handles the Apple-1 core that's not really a peripheral:
@@ -1305,6 +1357,9 @@ void Memory::memWrite(uint16_t address, uint8_t value)
         dirtyPages.set(static_cast<std::size_t>(address >> 8));
         return;
     }
+
+    // Read-before-write trap: mark this RAM cell as written this run (--ram-trap).
+    if (ramWriteTrap) noteRamWriteForTrap(address);
 
 // Watchpoint: latch the first write to a watched address this instruction.
     if (anyWatch_ && !watchHit_.tripped && (watchFlags_[address] & 0x02))

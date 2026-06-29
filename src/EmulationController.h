@@ -230,6 +230,11 @@ public:
     bool isVramNoiseOnReset() const;
     void setSystemRamNoiseOnReset(bool enabled);
     bool isSystemRamNoiseOnReset() const;
+    // Read-before-write trap (--ram-poison / --ram-trap): deterministic sentinel
+    // RAM fill + logging of uninitialised RAM reads. Diagnostic harness for the
+    // TMS9918 silicon-divergence investigation (cause #2). Consumed at reset.
+    void setRamPoison(bool enabled, uint8_t value = 0xA5);
+    void setRamWriteTrap(bool enabled);
     // GEN2 HGR "Random power-on state" — one knob for soft-switch latch,
     // floating-bus noise, scanner phase and DRAM ($2000-$3FFF) at cold plug
     // / hard reset. Defaults to !fantasyPreset in applyMachineConfig.

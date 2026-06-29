@@ -397,6 +397,16 @@ std::optional<CliPlan> parseCli(int argc, char* argv[], bool& listPresetsOut)
             plan.vramNoiseOnReset = true;
             continue;
         }
+        if (arg == "--ram-poison") {
+            if (!needArg(i, "--ram-poison")) return std::nullopt;
+            plan.ramPoisonByte =
+                static_cast<uint8_t>(std::strtoul(argv[++i], nullptr, 16) & 0xFF);
+            continue;
+        }
+        if (arg == "--ram-trap") {
+            plan.ramWriteTrap = true;
+            continue;
+        }
         if (arg == "--sid-chip") {
             if (!needArg(i, "--sid-chip")) return std::nullopt;
             const std::string v = argv[++i];

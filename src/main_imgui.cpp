@@ -463,17 +463,34 @@ static int runHeadless(pom1::CliPlan& plan)
     if (plan.telemetryPort || !plan.telemetryLogPath.empty())
         emu.setTelemetryEnabled(true);
 
-    // VRAM power-on noise: set the flag then hardReset so the TMS9918 re-inits
-    // its VRAM with mt19937 noise (silicon-faithful) instead of the lenient
-    // bistable default. Must precede the CodeTank ROM override below — hardReset
-    // reloads the preset's default daughterboard ROM, so the override is applied
-    // AFTER the reset to survive.
+    // Silicon-faithful cold-boot overrides (VRAM noise + RAM poison + the
+    // read-before-write trap). Arm the flags, then a single hardReset re-seeds
+    // memory accordingly. Must precede the CodeTank ROM override below —
+    // hardReset reloads the preset's default daughterboard ROM, so the override
+    // is applied AFTER the reset to survive.
+    bool needPowerOnReset = false;
     if (plan.vramNoiseOnReset) {
         emu.setVramNoiseOnReset(true);
-        emu.hardReset(/*animateBoot=*/false);
+        needPowerOnReset = true;
         pom1::log().info("TMS9918", "VRAM power-on noise ON (--vram-noise): "
                                     "silicon-faithful cold-boot VRAM");
     }
+    if (plan.ramPoisonByte) {
+        emu.setRamPoison(true, *plan.ramPoisonByte);
+        needPowerOnReset = true;
+        char m[96];
+        std::snprintf(m, sizeof(m), "system RAM poisoned with $%02X (--ram-poison)",
+                      (unsigned)*plan.ramPoisonByte);
+        pom1::log().info("RAMTRAP", m);
+    }
+    if (plan.ramWriteTrap) {
+        emu.setRamWriteTrap(true);
+        needPowerOnReset = true;
+        pom1::log().info("RAMTRAP", "read-before-write trap ARMED (--ram-trap): "
+                                    "logging uninitialised RAM reads in [0,$2000)");
+    }
+    if (needPowerOnReset)
+        emu.hardReset(/*animateBoot=*/false);
     // CodeTank ROM / jumper override (headless): the GUI path honours these via
     // MainWindow; the headless path did not, so --codetank-rom/--codetank-jumper
     // were silently ignored. Apply after any noise hardReset.

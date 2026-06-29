@@ -81,6 +81,17 @@ public:
     void setSystemRamNoiseOnReset(bool enabled) { systemRamNoiseOnReset = enabled; }
     bool isSystemRamNoiseOnReset() const { return systemRamNoiseOnReset; }
 
+    // Read-before-write trap (--ram-poison / --ram-trap). Diagnostic harness for
+    // the TMS9918 "works on POM1, breaks on silicon" cause #2: seed RAM with a
+    // deterministic sentinel byte (poison) instead of $00, and log the first CPU
+    // read of any RAM cell in [0, kRamTrapEnd) that the program never wrote this
+    // run — i.e. an uninitialised-RAM read that POM1's zero-fill silently makes
+    // harmless. setRamPoison arms the sentinel fill; setRamWriteTrap arms the
+    // logging. Both consumed at the next reset.
+    void setRamPoison(bool enabled, uint8_t value = 0xA5) { systemRamPoison = enabled; systemRamPoisonByte = value; }
+    void setRamWriteTrap(bool enabled) { ramWriteTrap = enabled; }
+    uint64_t ramWriteTrapHits() const { return ramTrapHitCount; }
+
     // Preset RAM size (KB). Address space stays 64 KB; this drives the
     // out-of-range warning for user programs that reach beyond the preset's
     // physical RAM. Default 64 (no warnings).
@@ -588,6 +599,17 @@ private :
     int oorAccessCount = 0;
     bool oorStrictMode = false;       // true: enforce bounds (reads→$FF, writes dropped)
     bool systemRamNoiseOnReset = false; // see setSystemRamNoiseOnReset()
+    // Read-before-write trap state (see setRamPoison / setRamWriteTrap).
+    static constexpr uint16_t kRamTrapEnd = 0x2000;  // watch ZP/stack/BSS/user RAM
+    bool     systemRamPoison    = false;
+    uint8_t  systemRamPoisonByte = 0xA5;
+    bool     ramWriteTrap       = false;
+    uint64_t ramTrapHitCount    = 0;
+    std::vector<uint8_t> ramWritten;   // 1 = written this run; sized lazily to kRamTrapEnd
+    std::vector<uint8_t> ramTrapLogged;// 1 = already logged (one line per address)
+    void resetRamWriteTrap();
+    void noteRamWriteForTrap(uint16_t address) { if (address < kRamTrapEnd && !ramWritten.empty()) ramWritten[address] = 1; }
+    void checkRamReadTrap(uint16_t address);
     bool hgrFramebufferAttached = false;  // GEN2 HGR card supplies RAM at $2000-$3FFF
     // GEN2 HGR cold-boot fidelity — four independent knobs (Silicon Strict
     // bundles all four ON; the SILICON STRICT inspector exposes each one).

@@ -778,6 +778,18 @@ bool EmulationController::isVramNoiseOnReset() const
     return memory->isVramNoiseOnReset();
 }
 
+void EmulationController::setRamPoison(bool enabled, uint8_t value)
+{
+    std::lock_guard<PriorityMutex> lock(stateMutex);
+    memory->setRamPoison(enabled, value);
+}
+
+void EmulationController::setRamWriteTrap(bool enabled)
+{
+    std::lock_guard<PriorityMutex> lock(stateMutex);
+    memory->setRamWriteTrap(enabled);
+}
+
 void EmulationController::setGen2RandomPowerOn(bool enabled)
 {
     std::lock_guard<PriorityMutex> lock(stateMutex);
