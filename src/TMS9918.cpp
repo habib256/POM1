@@ -349,6 +349,14 @@ void TMS9918::noteAcceptedAccess()
     }
     const int drainTicks = slotTick - posTicks;
     pendingDrainCycles   = (drainTicks + kVdpTicksPerCpuCycle - 1) / kVdpTicksPerCpuCycle;
+
+    // Enforce the silicon active-display floor: during visible Mode I/II display
+    // the real chip needs ~16c between CPU writes (the openMSX slot table alone
+    // only models ~8c). Scoped to Gfx12 — Text and Multicolor genuinely free
+    // more CPU bandwidth (denser slot tables), so their tight loops stay valid;
+    // VBlank / display-off ride the dense ScreenOff table.
+    if (activeSlotTableId() == kSlotTableGfx12 && pendingDrainCycles < kMinActiveDrainCycles)
+        pendingDrainCycles = kMinActiveDrainCycles;
 }
 
 // --------------------------------------------------------------------------

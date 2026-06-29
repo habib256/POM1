@@ -151,10 +151,14 @@ int main()
     }
 
     // ----------------------------------------------------------------------
-    // Phase B — Tetris floor: 11c gap in Mode I+sprites must accept.
-    // Silicon worst-case Gfx12 = D28+128 ticks = 156 ticks ≈ 7.5c. 11c has
-    // a comfortable ~50% margin. The user-validated empirical floor is the
-    // anchor — any change to the slot tables that breaks this must be caught.
+    // Phase B — Gfx12 active-display floor (16c). Real TMS9918A silicon
+    // (validated on Claudio Parmigiani's Replica-1) drops back-to-back CPU
+    // writes spaced under ~16c during visible Mode I/II display — the openMSX
+    // slot table alone modelled only ~8c, which masked the failure. So an
+    // 11c-gap burst (the OLD "Tetris floor ~7.5c" assumption) must now DROP,
+    // while a 16c gap lands. The lib pad moved 12c→18c (16c→22c STA->STA) to
+    // clear this floor with margin. Gfx12-scoped: Text/Multicolor stay dense
+    // (Phases D/E below still accept their tight loops).
     // ----------------------------------------------------------------------
     {
         TMS9918 vdp; vdp.reset();
@@ -162,7 +166,17 @@ int main()
         vdp.setSiliconStrictMode(true);
         cushionedSetWriteAddress(vdp, 0x1100);
         const uint64_t drops = runWriteLoop(vdp, 8, 11, 0xB0);
-        mustBeTrue(drops == 0, "PhaseB: 8 STA at 11c gap in Gfx+sprites — Tetris floor must accept all"); ++assertions;
+        mustBeTrue(drops > 0, "PhaseB: 8 STA at 11c gap in Gfx12 — below the 16c silicon floor, must drop"); ++assertions;
+    }
+    {
+        // 16c gap = the floor itself — writes must land. pad18 (22c STA->STA)
+        // clears it comfortably; the retired pad12 (16c) sat exactly here.
+        TMS9918 vdp; vdp.reset();
+        initGfxMode(vdp);
+        vdp.setSiliconStrictMode(true);
+        cushionedSetWriteAddress(vdp, 0x1100);
+        const uint64_t drops = runWriteLoop(vdp, 8, 16, 0xB0);
+        mustBeTrue(drops == 0, "PhaseB2: 8 STA at 16c gap in Gfx12 — at the floor, must accept all"); ++assertions;
     }
 
     // ----------------------------------------------------------------------
@@ -283,10 +297,10 @@ int main()
     }
 
     // ----------------------------------------------------------------------
-    // Phase I — comfortable gap (15c) is always safe regardless of phase.
-    // openMSX worst-case Gfx12 = 7.4c, so 15c covers any starting linePos.
+    // Phase I — the lib pad18 cushion (18c gap) is always safe regardless of
+    // phase. Above the 16c Gfx12 floor, so it covers any starting linePos.
     // Two runs with shifted starting frameCycleCounter must both accept all.
-    // Pins that the slot model is silicon-correct under reasonable patterns.
+    // Pins that the silicon floor leaves the documented pad contract valid.
     // ----------------------------------------------------------------------
     {
         for (int phaseShift : {0, 137, 421, 1009}) {
@@ -295,9 +309,9 @@ int main()
             vdp.advanceCycles(phaseShift);    // shift line position
             vdp.setSiliconStrictMode(true);
             cushionedSetWriteAddress(vdp, (uint16_t)(0x1900 + phaseShift));
-            const uint64_t drops = runWriteLoop(vdp, 8, 15, 0xA0);
+            const uint64_t drops = runWriteLoop(vdp, 8, 18, 0xA0);
             mustBeTrue(drops == 0,
-                       "PhaseI: 15c gap is silicon-safe at any starting phase"); ++assertions;
+                       "PhaseI: 18c pad18 gap is silicon-safe at any starting phase"); ++assertions;
         }
     }
 

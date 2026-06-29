@@ -414,6 +414,16 @@ private:
     static constexpr int kVdpTicksPerLine    = 1368;
     static constexpr int kVdpTicksPerCpuCycle = 21;
     static constexpr int kVdpDeltaD28Ticks   = 28;
+    // Active-display CPU-access floor. The openMSX slot table alone yields only
+    // a ~8c worst-case drain, but real TMS9918A silicon (validated on Claudio
+    // Parmigiani's Replica-1) drops back-to-back CPU writes spaced under ~16c
+    // during active Mode I/II display — the VDP holds the bus for pattern /
+    // colour / sprite fetches far longer than the dense slot table implies.
+    // Without this floor POM1 accepted under-padded bursts the real chip loses,
+    // masking the "works on POM1, garbled on silicon" class. The lib pad helper
+    // gives 18c (22c STA->STA) to clear it with margin; 12c (16c STA->STA) sat
+    // right at the edge.
+    static constexpr int kMinActiveDrainCycles = 16;
 
     static constexpr int kCyclesPerFrame = POM1_CPU_CYCLES_PER_FRAME_1X_60HZ;
     // Active display covers 192 of the 262 NTSC scanlines; the remaining 70
