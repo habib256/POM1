@@ -327,6 +327,13 @@ print_ptr_hi = str_hi
 ; main
 ; =============================================
 main:
+        ; Init the sprite-frame strobe before anything renders. draw_title_sprites
+        ; (below) reads anim_tick bit 4 to pulse the title aliens; on real silicon
+        ; BSS/ZP powers up as random DRAM noise, so an uninitialised anim_tick
+        ; gives a random initial pulse phase (works deterministically on POM1
+        ; where RAM=0, diverges on hardware). Same fix family as boss_cheat below.
+        LDA #0
+        STA anim_tick
         JSR init_vdp
         JSR draw_title_tms
         JSR     tms9918_pad12   ; +12c silicon-strict pad12-v3 (back-to-back VDP store)
