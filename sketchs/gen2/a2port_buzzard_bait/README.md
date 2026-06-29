@@ -18,9 +18,10 @@ avec `cadius EXTRACTFILE`.
 
 | Fichier | Rôle |
 |---------|------|
-| `buzzard_bait.s`   | Désassemblage da65 du binaire **porté** (entrée `$0940`). Se ré-assemble **byte-identique**. |
+| **[`DISASSEMBLY.md`](DISASSEMBLY.md)** | **Compréhension complète du jeu** : carte mémoire, chaque routine, assets/sprites, mécanique, et le **moteur de sprites XOR** en détail. Analyse en prose. |
+| `buzzard_bait.s`   | Désassemblage da65 **annoté fonctionnellement** (labels + commentaires par routine ; zones de données en `.byte`). Se ré-assemble **byte-identique**. Les renvois `3.5`, `8.6`… dans les commentaires pointent vers les sections de `DISASSEMBLY.md`. |
 | `buzzard_bait.bin` | Image portée de référence (entrée da65 + cible du round-trip). |
-| `buzzard_bait.info`| Fichier info da65 (labels matériels + hooks + zones de données) pour régénérer le `.s`. |
+| `buzzard_bait.info`| Fichier info da65 : labels matériels + hooks + **labels fonctionnels** (moteur, IA, mécanique) + zones de données. `make disasm` régénère le `.s` depuis ce fichier. |
 | `buzzard_bait.cfg` | Config ld65 (segment CODE en `$0940`). |
 | `gen2_port.s`      | Routines **ajoutées** par le portage (WAIT son + latch clavier), chargées en RAM basse `$9900+`. |
 | `gen2_port.cfg`    | Config ld65 pour `gen2_port.s` (`$9900..$9950`). |
@@ -96,13 +97,21 @@ Activer **Settings → « Keyboard autorepeat »** pour un déplacement continu
 (les jeux d'arcade Apple II s'appuient sur l'auto-répétition matérielle du
 clavier, absente par défaut sur l'Apple-1 TTL).
 
-## Limites du désassemblage
+## Comprendre le jeu lui-même
 
-`buzzard_bait.s` se ré-assemble à l'octet près. **Tous les sites du portage
-sont annotés** (graphisme / son / clavier / touches / boot / menu / hors-mémoire + relocalisation). En
-revanche ce **n'est pas** une reconstruction entièrement symbolique du *reste*
-du jeu : le code auto-modifiant, les données interprétées comme instructions
-(qui se ré-assemblent néanmoins identiques) et la zone relocalisée
-`$2800-$3FFF` (adresses décalées de +$5800) ne sont que partiellement
-documentés. C'est volontaire : la demande portait sur les zones **modifiées
-pour fonctionner sous Apple-1**, qui sont, elles, exhaustivement commentées.
+`buzzard_bait.s` est optimisé pour le **ré-assemblage** (round-trip à l'octet) et
+n'annote que les sites du *portage*. Pour **comprendre le jeu** — chaque routine,
+les assets/sprites, la mécanique, et surtout le **moteur de sprites XOR** (sprites
+pré-décalés en 7 phases, blit auto-modifiant, tables de lignes HGR) — voir
+**[`DISASSEMBLY.md`](DISASSEMBLY.md)** : carte mémoire complète, boucle de jeu,
+physique du tireur, oiseaux/personnages/nids, tir & score, galerie de sprites et
+page-zéro commentée. *(Le jeu est un **shoot de protection**, pas un Joust — voir
+l'errata en tête de DISASSEMBLY.md.)*
+
+### Limites
+La zone relocalisée `$2800-$3FFF` (adresses runtime décalées de `+$5800`), le code
+auto-modifiant et les données interprétées comme instructions se ré-assemblent
+identiques mais ne sont que partiellement *symbolisés* dans le `.s`.
+`DISASSEMBLY.md` documente leur **fonction** ; quelques points (articulation des deux
+systèmes de collision, identité exacte de 2-3 sprites) restent à confirmer par une
+trace à l'exécution.

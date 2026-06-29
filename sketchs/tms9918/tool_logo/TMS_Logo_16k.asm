@@ -3046,13 +3046,13 @@ cmd_bye:
         JMP WOZ_RST
 
 cmd_seth:
-        JSR erase_turtle
+        JSR turn_erase
         JSR mod360_arg
         LDA arg_lo
         STA th_lo
         LDA arg_hi
         STA th_hi
-        JSR draw_turtle
+        JSR turn_draw
         RTS
 
 cmd_setxy:
@@ -3087,7 +3087,7 @@ cmd_setxy:
         RTS
 
 cmd_tr:
-        JSR erase_turtle
+        JSR turn_erase
         JSR mod360_arg
         CLC
         LDA th_lo
@@ -3097,11 +3097,11 @@ cmd_tr:
         ADC arg_hi
         STA th_hi
         JSR norm360
-        JSR draw_turtle
+        JSR turn_draw
         RTS
 
 cmd_tl:
-        JSR erase_turtle
+        JSR turn_erase
         JSR mod360_arg
         LDA #<360
         SEC
@@ -3118,7 +3118,7 @@ cmd_tl:
         ADC tmp2
         STA th_hi
         JSR norm360
-        JSR draw_turtle
+        JSR turn_draw
         RTS
 
 ; (mod360_arg + norm360 moved to math.asm.)
@@ -3988,6 +3988,25 @@ erase_turtle:
         STA turtle_visible
 @done:  RTS
 
+; turn_erase / turn_draw: heading-only commands (SETH / TR / TL) call these
+;   instead of erase_turtle / draw_turtle. The classic triangle turtle
+;   (sprite_mode 0) rotates with the heading, so it must be erased+redrawn as
+;   before. A SETSHAPE emote (sprite_mode 1) is non-directional -- a pure turn
+;   changes NONE of its pixels (gen2_draw_emote ignores th; tx/ty are unchanged)
+;   -- so skip the XOR erase/redraw entirely. That removes the transient
+;   "erased" window the async HGR renderer would otherwise sample as a flicker
+;   (e.g. BIRDFLY's "TR 12" between flaps); the emote simply stays drawn as-is.
+turn_erase:
+        LDA sprite_mode
+        BNE @skip                 ; emote: turning is a visual no-op -> leave it
+        JMP erase_turtle          ; triangle: real erase (tail call)
+@skip:  RTS
+turn_draw:
+        LDA sprite_mode
+        BNE @skip
+        JMP draw_turtle
+@skip:  RTS
+
 ; gen2_draw_emote: XOR-blit the current SETSHAPE bitmap (shape_pat_lo:hi,
 ;   spr_size = 8 or 32) at the turtle, PIXEL-DOUBLED 2x (each source pixel ->
 ;   a 2x2 screen block). Doubling makes the emote solid white on HGR instead
@@ -4375,6 +4394,14 @@ erase_turtle:
         LDA #0
         STA turtle_visible
 @done:  RTS
+
+; TMS build: heading-only commands keep erasing+redrawing exactly as before.
+;   The HW sprite path has no flicker to fix (erase_turtle is a no-op for an
+;   emote and draw_turtle just re-emits the attribute byte; the bitmap path is
+;   already VBlank-synced), so turn_erase/turn_draw alias straight through and
+;   the CodeTank GAME3 ROM stays byte-for-byte identical.
+turn_erase = erase_turtle
+turn_draw  = draw_turtle
 
 ; ============================================================================
 ; cmd_setshape: SETSHAPE "NAME -- swap the dynamic-turtle sprite pattern.

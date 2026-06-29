@@ -32,6 +32,7 @@ GEN2C_PIXEL_SRCS   := $(GEN2C)/gen2_pixel.c     # gen2_hgr_plot/unplot
 GEN2C_RECT_SRCS    := $(GEN2C)/gen2_rect.c      # fill_rect / fill_pixrect / clear_pixrect / colorize
 GEN2C_TEXT_SRCS    := $(GEN2C)/gen2_text.c      # puts / puts_color / putu / putu_field / puti / putx / puts8 / putu8 + BBFont
 GEN2C_SPRITES_SRCS := $(GEN2C)/gen2_sprites.c   # hgr_blit / hgr_blit7
+GEN2C_PRESHIFT_SRCS:= $(GEN2C)/gen2_preshift.c  # hgr_sprite (Buzzard-Bait 7-phase pre-shift; needs only CORE -- reuses gen2_blit7_run)
 GEN2C_GEOM_SRCS    := $(GEN2C)/gen2_geom.c      # hline / vline / line / rect / circle / ellipse (uses dev/lib/gfx)
 GEN2C_LORES_SRCS   := $(GEN2C)/gen2_lores.c     # 40x48 colour-block runtime
 
@@ -42,6 +43,7 @@ GEN2C_ALL_SRCS := $(GEN2C_CORE_SRCS) \
                   $(GEN2C_RECT_SRCS) \
                   $(GEN2C_TEXT_SRCS) \
                   $(GEN2C_SPRITES_SRCS) \
+                  $(GEN2C_PRESHIFT_SRCS) \
                   $(GEN2C_GEOM_SRCS) \
                   $(GEN2C_LORES_SRCS)
 

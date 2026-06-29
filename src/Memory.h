@@ -51,6 +51,7 @@ class M6502;
 #include "IECCard.h"
 #include "MicroSD.h"
 #include "Gen2VideoScanner.h"
+#include <array>
 
 namespace pom1 { class SnapshotWriter; class SnapshotReader; }
 
@@ -138,6 +139,14 @@ public:
     Gen2VideoScanner::DisplayState gen2PublishedFrameStartState(void) const {
         return gen2PublishedFrameStart;
     }
+
+    // Frame-atomic GEN2 framebuffer latch (beam-accuracy Phase A): a copy of the
+    // displayed pages ($2000-$5FFF) FROZEN at the V-blank rollover, so the
+    // renderer always shows a self-consistent frame instead of an async, possibly
+    // mid-XOR-update dirty-page snapshot. Index 0 == $2000. Captured in
+    // advanceCycles() at frame rollover and seeded on plug; the renderer sources
+    // the framebuffer from here (SnapshotPublisher overlays it on the mirror).
+    const uint8_t* gen2FrameLatch(void) const { return gen2FrameLatchBuf.data(); }
 
     // Load Memory from file
     int loadROM(const char* filename, uint16_t startAddress, size_t maxSize, const char* label);
@@ -597,7 +606,10 @@ private :
     std::vector<Gen2VideoScanner::Event> gen2PublishedEvents;
     Gen2VideoScanner::DisplayState gen2RecordingFrameStart{};
     Gen2VideoScanner::DisplayState gen2PublishedFrameStart{};
+    std::array<uint8_t, 0x4000> gen2BeamLatchBuf{};   // $2000-$5FFF working latch, updated per scanline at beam time
+    std::array<uint8_t, 0x4000> gen2FrameLatchBuf{};  // the beam latch FROZEN at the V-blank rollover (what the renderer reads)
     uint8_t gen2SoftSwitchRead(uint16_t address);
+    void gen2LatchScanline(int line);   // beam-accuracy Phase B: latch one scanline (both pages)
     void resetGen2VideoEventJournal();
     std::unordered_set<uint32_t> oorWarned;  // key = (addr<<1)|isWrite; capped at 64
     void checkOutOfRangeAccess(uint16_t address, bool isWrite);

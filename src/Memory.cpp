@@ -663,6 +663,12 @@ void Memory::setHgrFramebufferAttached(bool e)
         }
         markPagesDirty(0x2000, 0x2000);
     }
+    // Seed both beam-accuracy latches (working + published) so the renderer has a
+    // complete frame to show before the first V-blank rollover captures one.
+    if (e) {
+        std::memcpy(gen2BeamLatchBuf.data(), mem.data() + 0x2000, gen2BeamLatchBuf.size());
+        gen2FrameLatchBuf = gen2BeamLatchBuf;
+    }
 }
 
 void Memory::resetMemory(void)
@@ -1857,6 +1863,25 @@ bool Memory::saveJukeBoxRom(const std::string& path, std::string& error) const
     return jukeBox->saveRomFile(path, error);
 }
 
+// Apple II HGR interleave offset (within an 8 KB page) of scanline `y`.
+static inline int gen2HgrRowOffset(int y)
+{
+    return ((y & 7) << 10) | (((y >> 3) & 7) << 7) | ((y >> 6) * 40);
+}
+
+// Beam-accuracy Phase B: latch one scanline of BOTH HGR pages into the frame
+// latch at the cycle the beam crossed it, so line Y reflects RAM at its own beam
+// time. The latch is $2000-$5FFF-shaped: page 1 line at `off`, page 2 at
+// 0x2000+off. The renderer reads either page per band, unchanged.
+void Memory::gen2LatchScanline(int line)
+{
+    const int off = gen2HgrRowOffset(line);
+    std::memcpy(gen2BeamLatchBuf.data() + off,
+                mem.data() + 0x2000 + off, 40);            // page 1 ($2000)
+    std::memcpy(gen2BeamLatchBuf.data() + 0x2000 + off,
+                mem.data() + 0x4000 + off, 40);            // page 2 ($4000)
+}
+
 void Memory::advanceCycles(int cycles)
 {
     if (cycles > 0 && displayBusyCycles > 0) {
@@ -1871,13 +1896,40 @@ void Memory::advanceCycles(int cycles)
     // model — the UI may re-render the same published frame at 60 Hz).
     if (hgrFramebufferAttached) {
         const uint64_t cpf    = gen2Scanner.cyclesPerFrame();
-        const uint64_t before = gen2Scanner.cycle() / cpf;
+        const uint64_t cyc0   = gen2Scanner.cycle();
+        const uint64_t before = cyc0 / cpf;
         gen2Scanner.advanceCycles(static_cast<uint64_t>(cycles));
-        if (gen2Scanner.cycle() / cpf != before) {
+        const uint64_t cyc1   = gen2Scanner.cycle();
+
+        // Beam-accuracy Phase B: latch each visible scanline the beam FINISHED in
+        // [cyc0, cyc1) at its own beam time, so a single-buffer program that
+        // updates the framebuffer mid-frame renders per-line-correct (like real
+        // hardware racing the beam) instead of from one async snapshot. A line is
+        // 65 cycles, instructions <= 7, so this is usually 0-1 lines per call; the
+        // cap keeps a huge delta (save-state / headless replay) at O(one frame).
+        constexpr uint64_t lpc = Gen2VideoScanner::kCyclesPerLine;   // 65
+        const uint64_t lpf = cpf / lpc;                              // lines/frame
+        uint64_t a0 = cyc0 / lpc;
+        const uint64_t a1 = cyc1 / lpc;
+        if (a1 - a0 > lpf) a0 = a1 - lpf;
+        for (uint64_t a = a0; a < a1; ++a) {
+            const int line = static_cast<int>(a % lpf);
+            if (line < Gen2VideoScanner::kVisibleLines) gen2LatchScanline(line);
+        }
+
+        if (cyc1 / cpf != before) {
             gen2PublishedEvents = std::move(gen2RecordingEvents);
             gen2RecordingEvents.clear();
             gen2PublishedFrameStart = gen2RecordingFrameStart;
             gen2RecordingFrameStart = gen2Scanner.displayState();
+            // Freeze the just-completed frame's per-scanline latch as the PUBLISHED
+            // frame. The working latch (gen2BeamLatchBuf) is a moving target: read
+            // mid-sweep (the SnapshotPublisher fires at slice boundaries, not frame
+            // boundaries) it is a top=this-frame / bottom=last-frame SPLIT, which
+            // tears a single-buffer sprite. Snapshotting it at the V-blank rollover
+            // hands the renderer a COMPLETE, self-consistent frame -- all 192 lines
+            // from one beam sweep -- while keeping per-scanline beam-time content.
+            gen2FrameLatchBuf = gen2BeamLatchBuf;
         }
     }
     if (tms9918Enabled) tms9918->advanceCycles(cycles);

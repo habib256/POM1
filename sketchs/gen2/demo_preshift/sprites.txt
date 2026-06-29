@@ -1,0 +1,28 @@
+; sprites.txt -- demo sprite sheet for the GEN2 HGR pre-shifted engine.
+; Baked into 7-phase pre-shifted banks by:
+;     python3 ../../../tools/build_preshift_sprites.py sprites.txt -o sprites_ps.h
+; then drawn 1px-precise (and erased) by gen2_hgr_sprite() in main.c.
+
+sprite ball 11x11
+....###....
+..#######..
+.#########.
+.#########.
+###########
+###########
+###########
+.#########.
+.#########.
+..#######..
+....###....
+
+sprite ship 21x9
+..........#..........
+.........###.........
+........#####........
+.......#######.......
+###################
+.#################.
+..####.#####.####..
+.......##.##.......
+......##...##......

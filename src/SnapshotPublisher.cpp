@@ -164,6 +164,13 @@ void SnapshotPublisher::publish(Memory& mem, const M6502& cpu, bool cpuRunning)
         snapshot.gen2DisplayState   = mem.gen2DisplayState();
         snapshot.gen2FrameStartState = mem.gen2PublishedFrameStartState();
         snapshot.gen2VideoEvents    = mem.gen2PublishedVideoEvents();
+        // Beam-accuracy Phase A: the GEN2 renderer must read the framebuffer from
+        // the frame-atomic latch (frozen at the V-blank rollover), NOT the async
+        // dirty-page copy above, so single-buffer animation never renders a
+        // half-drawn frame. Overlay the latch onto $2000-$5FFF of the render
+        // mirror (both HGR pages); the dirty-page copy still serves the hex/memory
+        // views for the rest of RAM.
+        std::memcpy(snapshot.memory.data() + 0x2000, mem.gen2FrameLatch(), 0x4000);
     } else {
         snapshot.gen2VideoEvents.clear();
     }

@@ -17,11 +17,15 @@
 #include <cctype>
 #include <cstdio>
 #include <cstdlib>
+#include <cstdio>
 #include <cstring>
 #include <filesystem>
+#include <fstream>
 #include <system_error>
 #include <utility>
 #include <vector>
+
+#include "HgrSpriteBank.h"
 
 using hgrpaint::HgrColor;
 
@@ -114,8 +118,9 @@ void hgrpaint::HgrPaintEditor::releaseGL()
         if (texture != 0)          host->destroyTexture(texture);
         if (importPreviewTex != 0) host->destroyTexture(importPreviewTex);
         if (importSrcTex != 0)     host->destroyTexture(importSrcTex);
+        if (spritePreviewTex != 0) host->destroyTexture(spritePreviewTex);
     }
-    texture = importPreviewTex = importSrcTex = 0;
+    texture = importPreviewTex = importSrcTex = spritePreviewTex = 0;
 }
 
 void hgrpaint::HgrPaintEditor::renderShadow(uint32_t* out, bool mono)
@@ -586,6 +591,15 @@ void hgrpaint::HgrPaintEditor::renderTopBar()
             "  P E L R O F I S M T   pencil eraser line rect ellipse fill eyedrop select palette text\n"
             "  1-6 colours   [ ] thickness   +/- zoom   G grid   X toggle filled (rect/ellipse)\n"
             "  Ctrl+Z / Ctrl+Y undo/redo   Ctrl+C/X/V copy/cut/paste");
+
+    // Sprite Bank toggle — opens the right-side pre-shift export panel.
+    ImGui::SameLine();
+    if (showSpriteBank) ImGui::PushStyleColor(ImGuiCol_Button, IM_COL32(58, 96, 150, 255));
+    if (ImGui::Button("Sprites")) showSpriteBank = !showSpriteBank;
+    if (showSpriteBank) ImGui::PopStyleColor();
+    if (ImGui::IsItemHovered())
+        ImGui::SetTooltip("Sprite Bank \xE2\x80\x94 carve regions of this HGR page into\n"
+                          "7-phase pre-shifted banks for gen2_hgr_sprite (Buzzard-Bait method)");
 
     renderFileRow();   // line 2: path + Load / Save / Save PNG / stamp / status
 }
@@ -1463,6 +1477,23 @@ void hgrpaint::HgrPaintEditor::renderFileBrowser()
                                            kHiresWidth, kHiresHeight, err);
                 status = ok ? ("Exported PNG: " + full)
                             : ("PNG export failed: " + (err.empty() ? std::string("(error)") : err));
+            } else if (browserSaveKind >= 2) {                // sprite-bank text export
+                // .h (2) / .s (3) / .txt sheet (4) — plain text, written directly
+                // (the host seam owns video-RAM I/O, not generated source files).
+                std::ofstream f(full, std::ios::binary);
+                ok = f.good();
+                if (ok) { f.write(spriteExportText.data(),
+                                  static_cast<std::streamsize>(spriteExportText.size()));
+                          ok = f.good(); }
+                f.close();
+                if (ok && browserSaveKind == 3 && !spriteExportInc.empty()) {
+                    const std::string inc = fs::path(full).replace_extension(".inc").string();
+                    std::ofstream g(inc, std::ios::binary);
+                    if (g.good()) g.write(spriteExportInc.data(),
+                                          static_cast<std::streamsize>(spriteExportInc.size()));
+                }
+                status = ok ? ("Exported sprite bank: " + full)
+                            : ("Export failed: " + full);
             } else {                                          // raw page dump
                 // HIRES only: bake the POM1HGR tag into the unused screen-hole bytes
                 // ($1FF8-$1FFF) — past the last displayed byte, so invisible. The
@@ -1650,9 +1681,19 @@ void hgrpaint::HgrPaintEditor::render(const std::vector<uint8_t>& memory)
 
         ImGui::SameLine();
 
-        ImGui::BeginChild("hgrcanvasside", ImVec2(0.0f, 0.0f), false);
+        // The Sprite Bank panel claims a fixed strip on the right when open; the
+        // canvas takes the rest (negative width = fill minus the reserved strip).
+        const float spriteW = showSpriteBank ? 236.0f : 0.0f;
+        ImGui::BeginChild("hgrcanvasside", ImVec2(showSpriteBank ? -spriteW : 0.0f, 0.0f), false);
         renderCanvas(memory);
         ImGui::EndChild();
+
+        if (showSpriteBank) {
+            ImGui::SameLine();
+            ImGui::BeginChild("hgrsprites", ImVec2(0.0f, 0.0f), true);
+            renderSpriteBankPanel();
+            ImGui::EndChild();
+        }
     }
     ImGui::EndChild();
 
@@ -1662,4 +1703,149 @@ void hgrpaint::HgrPaintEditor::render(const std::vector<uint8_t>& memory)
 
     renderFileBrowser();    // modal Load / Save / Save PNG / Import picker
     renderImportPreview();  // modal image-import preview with live sliders
+}
+
+// ── Sprite Bank mode ─────────────────────────────────────────────────────────
+void hgrpaint::HgrPaintEditor::addSpriteFromSelection()
+{
+    if (grMode) { status = "Sprite Bank works on HGR pages (switch off GR)."; return; }
+    if (!hasSel) { status = "Select a region first (S tool), then Add."; return; }
+    SpriteRegion r;
+    r.x = std::min(selX0, selX1);
+    r.y = std::min(selY0, selY1);
+    r.w = std::max(selX0, selX1) - r.x + 1;
+    r.h = std::max(selY0, selY1) - r.y + 1;
+    // Cap at the pre-shift bank width (40-byte row minus the 6px phase-6 spill):
+    // tools/build_preshift_sprites.py rejects w>273, so this keeps the exported
+    // sheet round-trippable. The runtime right-clips wider blits anyway.
+    if (r.w > 273) r.w = 273;
+    char nm[32];
+    std::snprintf(nm, sizeof nm, "spr%d", static_cast<int>(spriteBank.size()));
+    r.name = nm;
+    spriteBank.push_back(r);
+    spriteSel = static_cast<int>(spriteBank.size()) - 1;
+    std::snprintf(spriteNameBuf, sizeof spriteNameBuf, "%s", r.name.c_str());
+    status = "Added " + r.name + " (" + std::to_string(r.w) + "x" + std::to_string(r.h) + ")";
+}
+
+void hgrpaint::HgrPaintEditor::exportSpriteBank(int kind)
+{
+    if (spriteBank.empty()) { status = "Sprite bank is empty."; return; }
+    std::vector<BakedSprite> baked;
+    baked.reserve(spriteBank.size());
+    for (const SpriteRegion& r : spriteBank) baked.push_back(bakeRegion(shadow.data(), r));
+    spriteExportInc.clear();
+    const char* def = "sprites_ps.h";
+    if (kind == 2)      { spriteExportText = emitC(baked, "sprites");                 def = "sprites_ps.h"; }
+    else if (kind == 3) { spriteExportText = emitAsm(baked, "sprites", spriteExportInc); def = "sprites_ps.s"; }
+    else                { spriteExportText = emitSheet(shadow.data(), spriteBank);     def = "sprites.txt"; }
+    openFileBrowser(true, kind);                       // browserSaveKind = kind
+    std::snprintf(browserSaveName, sizeof browserSaveName, "%s", def);
+}
+
+void hgrpaint::HgrPaintEditor::renderSpriteBankPanel()
+{
+    ImGui::TextUnformatted("Sprite Bank");
+    ImGui::SameLine();
+    ImGui::TextDisabled("(?)");
+    if (ImGui::IsItemHovered())
+        ImGui::SetTooltip(
+            "Carve rects out of this HGR page into 7-phase pre-shifted banks\n"
+            "for gen2_hgr_sprite() (Buzzard-Bait method). The mask is the raw\n"
+            "lit bits, blitted as-is. Paint sprites in WHITE for phase-stable\n"
+            "colour: a chromatic HGR pixel recolours as x%%7 changes (NTSC parity).");
+    ImGui::Separator();
+
+    if (ImGui::Button("+ Add selection", ImVec2(-1, 0))) addSpriteFromSelection();
+    ImGui::TextDisabled("Select (S) a rect, then Add.");
+    ImGui::Separator();
+
+    // List of defined sprites.
+    ImGui::BeginChild("spritebanklist", ImVec2(0, 104), true);
+    for (int i = 0; i < static_cast<int>(spriteBank.size()); ++i) {
+        char lbl[80];
+        std::snprintf(lbl, sizeof lbl, "%s  %dx%d##sb%d",
+                      spriteBank[i].name.c_str(), spriteBank[i].w, spriteBank[i].h, i);
+        if (ImGui::Selectable(lbl, spriteSel == i)) {
+            spriteSel = i;
+            std::snprintf(spriteNameBuf, sizeof spriteNameBuf, "%s", spriteBank[i].name.c_str());
+        }
+    }
+    if (spriteBank.empty()) ImGui::TextDisabled("(no sprites yet)");
+    ImGui::EndChild();
+
+    // Selected-entry controls + live 7-phase preview.
+    if (spriteSel >= 0 && spriteSel < static_cast<int>(spriteBank.size())) {
+        SpriteRegion& r = spriteBank[spriteSel];
+        ImGui::SetNextItemWidth(-1);
+        if (ImGui::InputText("##spname", spriteNameBuf, sizeof spriteNameBuf))
+            r.name = spriteNameBuf;
+        bool deleted = false;
+        if (ImGui::Button("Delete")) {
+            spriteBank.erase(spriteBank.begin() + spriteSel);
+            spriteSel = -1;
+            deleted = true;
+        }
+        if (!deleted) {
+            ImGui::SameLine();
+            if (ImGui::Button("Re-pick") && hasSel) {
+                r.x = std::min(selX0, selX1);
+                r.y = std::min(selY0, selY1);
+                r.w = std::max(selX0, selX1) - r.x + 1;
+                r.h = std::max(selY0, selY1) - r.y + 1;
+                if (r.w > 273) r.w = 273;   // pre-shift bank max (see addSpriteFromSelection)
+            }
+            // The preview decodes one phase of the baked bank straight to RGBA, so
+            // dragging the slider shows the sprite sliding 1px per phase — exactly
+            // the pre-shift the runtime selects on x%7.
+            ImGui::SetNextItemWidth(-1);
+            ImGui::SliderInt("##phase", &spritePhase, 0, 6, "phase %d");
+            const BakedSprite s = bakeRegion(shadow.data(), r);
+            if (s.stride > 0 && s.h > 0 && host) {
+                const int pw = s.stride * 7, ph = s.h;
+                std::vector<uint32_t> rgba(static_cast<size_t>(pw) * ph, 0xFF202020u);
+                const size_t base = static_cast<size_t>(spritePhase) * s.h * s.stride;
+                for (int row = 0; row < s.h; ++row)
+                    for (int j = 0; j < s.stride; ++j) {
+                        const uint8_t b = s.bank[base + static_cast<size_t>(row) * s.stride + j];
+                        for (int k = 0; k < 7; ++k)
+                            if (b & (1u << k))
+                                rgba[static_cast<size_t>(row) * pw + j * 7 + k] = 0xFFFFFFFFu;
+                    }
+                spritePreviewTex = host->uploadTexture(spritePreviewTex, rgba.data(), pw, ph, false);
+                ImGui::Image((ImTextureID)(uintptr_t)spritePreviewTex,
+                             ImVec2(pw * 4.0f, ph * 4.0f));
+                ImGui::TextDisabled("stride %d B - %d B/bank", s.stride,
+                                    static_cast<int>(s.bank.size()));
+            }
+        }
+    }
+
+    ImGui::Separator();
+    ImGui::TextDisabled("Export bank:");
+    if (ImGui::Button("C .h"))   exportSpriteBank(2);
+    ImGui::SameLine();
+    if (ImGui::Button("ASM .s")) exportSpriteBank(3);
+    ImGui::SameLine();
+    if (ImGui::Button("Sheet"))  exportSpriteBank(4);
+
+    // Inline → clipboard: a paste-ready block for a single-buffer DevBench sketch
+    // (no sibling header to reach). Pair it with #include "gen2.h" in the buffer.
+    if (ImGui::Button("Inline \xE2\x86\x92 clipboard", ImVec2(-1, 0))) {
+        if (spriteBank.empty()) {
+            status = "Sprite bank is empty.";
+        } else {
+            std::vector<BakedSprite> baked;
+            baked.reserve(spriteBank.size());
+            for (const SpriteRegion& r : spriteBank)
+                baked.push_back(bakeRegion(shadow.data(), r));
+            const std::string inl = emitInline(baked);
+            ImGui::SetClipboardText(inl.c_str());
+            status = "Copied " + std::to_string(spriteBank.size()) +
+                     " sprite(s) inline — paste into a DevBench buffer.";
+        }
+    }
+    if (ImGui::IsItemHovered())
+        ImGui::SetTooltip("Copy the bank's data + gen2_sprite_t inline (no header).\n"
+                          "Paste into a DevBench GEN2 HGR buffer below #include \"gen2.h\".");
 }

@@ -2321,7 +2321,8 @@ bench::BuildResult Pom1BenchHost::build(int target, const std::string& src, cons
             spec = R"({"cfg":"/dev/cc65/apple1_gen2_c.cfg","defines":["POM1_GFX_GEN2"],"incDirs":["/dev/lib/gen2c","/dev/lib/apple1c","/dev/lib/gfx","/dev/lib/telemetry"],)"
                    R"("cSources":[{"path":"/dev/lib/gen2c/gen2_init.c","name":"gen2_init.c"},{"path":"/dev/lib/gen2c/gen2_pixel.c","name":"gen2_pixel.c"},)"
                    R"({"path":"/dev/lib/gen2c/gen2_rect.c","name":"gen2_rect.c"},{"path":"/dev/lib/gen2c/gen2_text.c","name":"gen2_text.c"},)"
-                   R"({"path":"/dev/lib/gen2c/gen2_sprites.c","name":"gen2_sprites.c"},{"path":"/dev/lib/gen2c/gen2_geom.c","name":"gen2_geom.c"},)"
+                   R"({"path":"/dev/lib/gen2c/gen2_sprites.c","name":"gen2_sprites.c"},{"path":"/dev/lib/gen2c/gen2_preshift.c","name":"gen2_preshift.c"},)"
+                   R"({"path":"/dev/lib/gen2c/gen2_geom.c","name":"gen2_geom.c"},)"
                    R"({"path":"/dev/lib/gen2c/gen2_lores.c","name":"gen2_lores.c"},{"path":"/dev/lib/apple1c/apple1io.c","name":"apple1io.c"},)"
                    R"({"path":"/dev/lib/gfx/gfx_line.c","name":"gfx_line.c"},{"path":"/dev/lib/gfx/gfx_rect.c","name":"gfx_rect.c"},)"
                    R"({"path":"/dev/lib/gfx/gfx_circle.c","name":"gfx_circle.c"},{"path":"/dev/lib/gfx/gfx_ellipse.c","name":"gfx_ellipse.c"},)"
@@ -2539,6 +2540,7 @@ bench::BuildResult Pom1BenchHost::build(int target, const std::string& src, cons
                 " " + bench::shellQuote(gen2cLib_ + "/gen2_rect.c") +
                 " " + bench::shellQuote(gen2cLib_ + "/gen2_text.c") +
                 " " + bench::shellQuote(gen2cLib_ + "/gen2_sprites.c") +
+                " " + bench::shellQuote(gen2cLib_ + "/gen2_preshift.c") +
                 " " + bench::shellQuote(gen2cLib_ + "/gen2_geom.c") +
                 " " + bench::shellQuote(gen2cLib_ + "/gen2_lores.c") +
                 " " + bench::shellQuote(gen2cLib_ + "/gen2_blit.s") +

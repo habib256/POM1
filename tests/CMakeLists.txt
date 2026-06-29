@@ -198,6 +198,21 @@ add_test(NAME hgr_paint_plot_smoke
          COMMAND test_hgr_paint_plot)
 set_tests_properties(hgr_paint_plot_smoke PROPERTIES TIMEOUT 5)
 
+# Pre-shifted (Buzzard-Bait) sprite baker behind the editor's Sprite Bank mode.
+# Pins the 7-phase pack to the exact ABI gen2_hgr_sprite() reads + the python
+# generator emits (phase k == phase 0 shifted by k). No GL/ImGui.
+add_executable(test_hgr_sprite_bank
+    hgr_sprite_bank_smoke_test.cpp
+    ${CMAKE_SOURCE_DIR}/hgrpaint/HgrSpriteBank.cpp
+    ${CMAKE_SOURCE_DIR}/hgrpaint/HgrPaintModel.cpp
+)
+target_include_directories(test_hgr_sprite_bank PRIVATE
+    ${CMAKE_SOURCE_DIR}/hgrpaint)
+
+add_test(NAME hgr_sprite_bank_smoke
+         COMMAND test_hgr_sprite_bank)
+set_tests_properties(hgr_sprite_bank_smoke PROPERTIES TIMEOUT 5)
+
 # -- HGR image converter (ii-pix-style: CAM16-UCS + NTSC analysis-by-synthesis) --
 # Pins CAM16-UCS, the NTSC decode == GraphicsCard, and Floyd-Steinberg tone
 # conservation. No GL/ImGui; image decoding (stb) is excluded so it stays pure.
@@ -243,6 +258,51 @@ target_include_directories(test_gen2_floatingbus PRIVATE ${CMAKE_SOURCE_DIR}/src
 add_test(NAME gen2_floatingbus_smoke
          COMMAND test_gen2_floatingbus)
 set_tests_properties(gen2_floatingbus_smoke PROPERTIES TIMEOUT 5)
+
+# -- GEN2 beam-accuracy Phase A: frame-atomic framebuffer latch ----------------
+# Pins that the renderer sources the framebuffer from a copy FROZEN at the
+# V-blank rollover, not the async dirty-page mirror -- so single-buffer XOR
+# animation is flicker-free. Needs full Memory (the latch lives in advanceCycles).
+add_executable(test_gen2_frame_latch
+    gen2_frame_latch_smoke_test.cpp
+    ${POM1_TEST_CORE_SOURCES}
+)
+target_include_directories(test_gen2_frame_latch PRIVATE
+    ${CMAKE_SOURCE_DIR}/src
+    ${CMAKE_SOURCE_DIR}/imgui)
+target_link_libraries(test_gen2_frame_latch PRIVATE libresidfp_static)
+if(APPLE)
+    target_compile_definitions(test_gen2_frame_latch PRIVATE GL_SILENCE_DEPRECATION)
+endif()
+if(WIN32)
+    target_link_libraries(test_gen2_frame_latch PRIVATE ws2_32)
+endif()
+
+add_test(NAME gen2_frame_latch_smoke
+         COMMAND test_gen2_frame_latch)
+set_tests_properties(gen2_frame_latch_smoke PROPERTIES TIMEOUT 10)
+
+# -- GEN2 beam-accuracy Phase B: per-scanline beam-time latch ------------------
+# Pins that each scanline is latched at its own beam-crossing cycle, so a
+# mid-frame framebuffer change renders per-line-correct (real beam racing).
+add_executable(test_gen2_beam_scanline
+    gen2_beam_scanline_smoke_test.cpp
+    ${POM1_TEST_CORE_SOURCES}
+)
+target_include_directories(test_gen2_beam_scanline PRIVATE
+    ${CMAKE_SOURCE_DIR}/src
+    ${CMAKE_SOURCE_DIR}/imgui)
+target_link_libraries(test_gen2_beam_scanline PRIVATE libresidfp_static)
+if(APPLE)
+    target_compile_definitions(test_gen2_beam_scanline PRIVATE GL_SILENCE_DEPRECATION)
+endif()
+if(WIN32)
+    target_link_libraries(test_gen2_beam_scanline PRIVATE ws2_32)
+endif()
+
+add_test(NAME gen2_beam_scanline_smoke
+         COMMAND test_gen2_beam_scanline)
+set_tests_properties(gen2_beam_scanline_smoke PROPERTIES TIMEOUT 10)
 
 # -- GEN2 release soft switches + HST0 MSB blank flag --------------------------
 # Phase 2 pin: $C250-$C257 read-only semantics (read toggles + returns HST0

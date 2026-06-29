@@ -58,6 +58,13 @@ extern unsigned char gen2_b_stride, gen2_b_y, gen2_b_mode;
 extern const unsigned char *gen2_b_src;
 extern void gen2_blit_run(void);
 extern void gen2_blit7_run(void);
+extern void gen2_preshift_xor_run(void);   /* dedicated XOR fast path (no mode dispatch) */
+
+/* gen2_hgr_sprite_xor's all-asm worker: the C entry only stores these zp args. */
+extern unsigned gen2_xs_x;
+extern unsigned char gen2_xs_y;
+extern const gen2_sprite_t *gen2_xs_spr;
+extern void gen2_xs_run(void);
 
 #pragma zpsym("gen2_g_glyph")
 #pragma zpsym("gen2_g_col")
@@ -102,12 +109,16 @@ extern void gen2_blit7_run(void);
 #pragma zpsym("gen2_b_y")
 #pragma zpsym("gen2_b_mode")
 #pragma zpsym("gen2_b_src")
+#pragma zpsym("gen2_xs_x")
+#pragma zpsym("gen2_xs_y")
+#pragma zpsym("gen2_xs_spr")
 
 /* --- Cross-module globals (defined in gen2_init.c) -------------------------- */
 extern unsigned char gen2_rowlo[192];          /* HIRES scanline base low byte  */
 extern unsigned char gen2_rowhi[192];          /* HIRES scanline base high byte */
 extern unsigned char gen2_col7[280];           /* x / 7 (byte column)           */
 extern unsigned char gen2_mask7[280];          /* 1 << (x % 7) (bit mask)       */
+extern unsigned char gen2_phase7[280];         /* x % 7 (sub-byte phase 0..6)    */
 extern unsigned char gen2_lo_rowlo[24];        /* LORES text-row base low byte  */
 extern unsigned char gen2_lo_rowhi[24];        /* LORES text-row base high byte */
 extern unsigned char gen2_lo_base;             /* LORES page base ($04 or $08)  */

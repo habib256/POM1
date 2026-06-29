@@ -1,0 +1,531 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>NEBUSSARD</title>
+<!--
+  ============================================================================
+   N E B U S S A R D            (clin d'oeil a "Buzzard Bait", Sirius 1983)
+  ============================================================================
+   Reimplementation PROPRE de la mecanique decodee de Buzzard Bait
+   (cf. DISASSEMBLY.md, meme dossier). Ce n'est PAS le code original 6502 :
+   c'est une reecriture moderne, lisible, mono-fichier, des memes regles de jeu.
+
+   Fidelite (ce qui vient du RE) :
+     * Tireur au sol qui se deplace, saute, et tire VERS LE HAUT.
+     * 3 nids en haut ; de petits personnages marchent en bas.
+     * Les oiseaux PLONGENT pour attraper un personnage et le REMONTENT dans un
+       nid ; un depot fait NAITRE un nouvel oiseau ("faire grandir leurs petits").
+     * Tirer un oiseau = score (+100 / +300 / +50 selon le tier) ; tirer un
+       oiseau PORTEUR libere le personnage (qui retombe -> sauvetage +100).
+     * 3 tiers d'oiseaux ; le tier rapide vole 2x plus vite (cf. $13F8 / ROL A).
+     * IA "data-driven" : trajectoires scriptees + transitions (cf. $749F/$7514).
+     * Sequenceur de vagues = timeline ; vague nettoyee -> niveau +1 (cf. $88A6).
+     * Rendu en resolution HGR authentique 280x192, palette Apple II.
+
+   Hygiene (l'inverse de l'original) : objets nommes au lieu de page-zero
+   surchargee et d'auto-modification ; une seule boucle de jeu claire.
+
+   Controles : Fleches / J L = gauche-droite, K ou Bas = stop, Espace = saut,
+               I ou Haut = TIR.  P = pause.  Toute touche pour demarrer.
+  ============================================================================
+-->
+<style>
+  html,body{margin:0;height:100%;background:#000;overflow:hidden;
+            font-family:"Courier New",monospace;color:#7fff7f}
+  #wrap{position:absolute;inset:0;display:flex;align-items:center;justify-content:center}
+  canvas{image-rendering:pixelated;image-rendering:crisp-edges;
+         box-shadow:0 0 0 2px #1a1a1a,0 0 40px #003300;background:#000}
+  #hint{position:absolute;bottom:6px;width:100%;text-align:center;
+        font-size:12px;color:#2f6f2f;letter-spacing:1px}
+</style>
+</head>
+<body>
+<div id="wrap"><canvas id="screen" width="280" height="192"></canvas></div>
+<div id="hint">NEBUSSARD &mdash; recode propre de Buzzard Bait (Sirius 1983) &middot; voir DISASSEMBLY.md</div>
+<script>
+"use strict";
+//======================================================================
+// 0. Constantes & palette (couleurs HGR Apple II / capture POM1)
+//======================================================================
+const W = 280, H = 192;           // resolution HGR exacte
+const GROUND_Y = 178;             // ligne de sol (le tireur y vit)
+const SCALE_MAX = 4;
+const PAL = {
+  black:'#000000', white:'#ffffff',
+  green:'#2fdf2f',                // sol, nids
+  orange:'#ff7f1f',              // ailes des oiseaux
+  blue:'#3f7fff',               // corps des oiseaux
+  violet:'#d040d0',             // vehicule joueur
+  violet2:'#ff80ff',
+  amber:'#ffb000',             // tirs / HUD
+  dim:'#1f5f1f'
+};
+
+//======================================================================
+// 1. Canvas / scaling pixel-perfect
+//======================================================================
+const cv = document.getElementById('screen');
+const ctx = cv.getContext('2d');
+ctx.imageSmoothingEnabled = false;
+function fitScale(){
+  const s = Math.max(1, Math.min(SCALE_MAX,
+            Math.floor(Math.min(window.innerWidth/W,(window.innerHeight-30)/H))));
+  cv.style.width  = (W*s)+'px';
+  cv.style.height = (H*s)+'px';
+}
+window.addEventListener('resize', fitScale); fitScale();
+
+//======================================================================
+// 2. Entree clavier
+//======================================================================
+const keys = {};
+const KEYMAP = {  // schema d'origine IJKL + fleches
+  left:['ArrowLeft','KeyJ'], right:['ArrowRight','KeyL'],
+  stop:['ArrowDown','KeyK'], jump:['Space'], fire:['ArrowUp','KeyI']
+};
+function down(act){ return KEYMAP[act].some(c=>keys[c]); }
+let anyKeyEdge = false;
+addEventListener('keydown',e=>{
+  if(!keys[e.code]) anyKeyEdge = true;
+  keys[e.code]=true;
+  if(['ArrowLeft','ArrowRight','ArrowUp','ArrowDown','Space'].includes(e.code)) e.preventDefault();
+  if(e.code==='KeyP' && state==='play') paused=!paused;
+});
+addEventListener('keyup',e=>{ keys[e.code]=false; });
+
+//======================================================================
+// 3. Petit moteur de "sprites" vectoriels (style HGR, pixels carres)
+//    px(x,y,c) pose un pixel ; les dessins restent lisibles et chunky.
+//======================================================================
+function px(x,y,c){ ctx.fillStyle=c; ctx.fillRect(x|0,y|0,1,1); }
+function rect(x,y,w,h,c){ ctx.fillStyle=c; ctx.fillRect(x|0,y|0,w,h); }
+
+// --- Joueur : petit vehicule en dome raye violet (cf. capture POM1) ---
+function drawPlayer(p){
+  const x=Math.round(p.x), baseY=Math.round(p.y);
+  // dome a 4 bandes, base la plus large
+  const bands=[ [ -6, PAL.violet],[ -5, PAL.violet2],[ -4, PAL.violet],
+                [ -3, PAL.violet2],[ -2, PAL.violet] ];
+  let half=7;
+  for(let i=0;i<bands.length;i++){
+    const yy=baseY+bands[i][0];
+    rect(x-half, yy, half*2, 1, bands[i][1]);
+    half = Math.max(2, half-1);
+  }
+  // canon (montre la direction du tir : vers le haut)
+  rect(x-1, baseY-9, 2, 3, PAL.amber);
+}
+
+// --- Oiseau : ailes orange en "W" + corps bleu (cf. capture) ---
+function drawBird(b){
+  const x=Math.round(b.x), y=Math.round(b.y);
+  const flap = (b.frame>>2)&1;                 // battement
+  const w = b.tier===2 ? 1 : 0;                // tier rapide un peu plus grand
+  // ailes : deux segments montants depuis le corps
+  for(let i=1;i<=5+w;i++){
+    const dy = (i<=3?-(i):-(6+w-i)) + (flap?1:0);
+    px(x-2-i, y+dy, PAL.orange);
+    px(x+2+i, y+dy, PAL.orange);
+  }
+  // corps
+  rect(x-2,y-1,5,3, PAL.orange);
+  px(x,y, PAL.blue); px(x-1,y,PAL.blue); px(x+1,y,PAL.blue);
+  // si porteur, un petit pixel blanc sous lui (le captif)
+  if(b.carry>=0) rect(x-1,y+3,3,3,PAL.white);
+}
+
+// --- Petit personnage : silhouette blanche ---
+function drawPerson(pe){
+  const x=Math.round(pe.x), y=Math.round(pe.y);
+  const step=(pe.walkPhase>>3)&1;
+  px(x,y-5,PAL.white);                    // tete
+  rect(x,y-4,1,3,PAL.white);              // torse
+  px(x-1,y-3,PAL.white); px(x+1,y-3,PAL.white); // bras
+  if(step){ px(x-1,y-1,PAL.white); px(x+1,y-1,PAL.white); }  // jambes
+  else    { px(x,  y-1,PAL.white); px(x,  y-1,PAL.white); }
+}
+
+// --- Nid : coupe verte + "petit" blanc qui grandit ---
+function drawNest(n){
+  const x=Math.round(n.x), y=Math.round(n.y);
+  // petit blanc (taille = croissance)
+  const r = 2 + Math.min(4, n.young);
+  for(let dy=-r;dy<=0;dy++){
+    const hw = Math.round(Math.sqrt(Math.max(0,r*r-dy*dy)));
+    rect(x-hw, y-2+dy, hw*2+1, 1, PAL.white);
+  }
+  // coupe
+  rect(x-r-1, y, (r+1)*2, 1, PAL.green);
+  rect(x-r,   y+1, r*2, 1, PAL.green);
+  px(x-r-2,y,PAL.green); px(x+r+1,y,PAL.green);
+}
+
+function drawBullet(bu){ rect(Math.round(bu.x), Math.round(bu.y), 1, 3, PAL.amber); }
+
+// --- Texte : police 4x6 minimale (chiffres + lettres utiles) ---
+const FONT = {}; // rempli plus bas ; rendu via fillText fallback chunky
+function text(str,x,y,c){
+  ctx.fillStyle=c; ctx.font='8px "Courier New",monospace';
+  ctx.textBaseline='top';
+  // dessin pixelise : on ecrit puis le canvas scale en pixelated
+  ctx.fillText(str, x|0, y|0);
+}
+function textCenter(str,y,c){
+  ctx.fillStyle=c; ctx.font='8px "Courier New",monospace';
+  const w = ctx.measureText(str).width;
+  ctx.fillText(str, ((W-w)/2)|0, y|0);
+}
+
+//======================================================================
+// 4. Etat du jeu  (objets NOMMES, pas de page-zero surchargee)
+//======================================================================
+let state='title';     // title | play | over
+let paused=false;
+// initialises (evite tout acces a un tableau undefined pendant l'ecran-titre)
+let score=0, hiScore=0, lives=0, level=1, waveTimer=0;
+let nests=[], birds=[], people=[], bullets=[];
+let waveActive=false, spawnQueue=[], messageTimer=0, message='';
+let demoMode=false, demoTimer=0;
+
+const NUM_PEOPLE = 5;
+const NEST_Y = 30;
+
+// IA : scripts de trajectoire (cf. $762C/$763C). Chaque script = liste de
+// pas {dx,dy}. Mirroir PROPRE du design data-driven de l'original.
+const CRUISE_SCRIPTS = [
+  // arc plongeant (etat 1)
+  gen((i)=>({dx: Math.cos(i*0.25)*1.4, dy: Math.sin(i*0.18)*0.9})),
+  // vol plane descendant (etat 2)
+  gen((i)=>({dx: 1.1, dy: 0.3+Math.sin(i*0.3)*0.4})),
+  // montee en battant (etat 3)
+  gen((i)=>({dx: 0.8, dy:-0.6+Math.sin(i*0.5)*0.5})),
+  // cloche agressive (etat 4)
+  gen((i)=>({dx: Math.cos(i*0.2)*1.6, dy: Math.sin(i*0.35)*1.2})),
+];
+function gen(f){ const a=[]; for(let i=0;i<48;i++)a.push(f(i)); return a; }
+
+function newGame(demo){
+  demoMode=!!demo;
+  score=0; lives=3; level=1;
+  nests = [70,140,210].map(x=>({x, y:NEST_Y, young:0, flash:0}));
+  birds=[]; bullets=[]; people=[];
+  for(let i=0;i<NUM_PEOPLE;i++) spawnPerson();
+  player.x=W/2; player.y=GROUND_Y; player.vx=0; player.vy=0; player.onGround=true;
+  player.cool=0; player.dead=0; player.dir=0;
+  startWave();
+}
+
+const player = {x:W/2,y:GROUND_Y,vx:0,vy:0,onGround:true,cool:0,dead:0,dir:0};
+
+function spawnPerson(){
+  people.push({ x: 10+Math.random()*(W-20), y:GROUND_Y, dir: Math.random()<.5?-1:1,
+                state:'walk', walkPhase:0, carrier:-1, fall:0 });
+}
+
+//======================================================================
+// 5. Sequenceur de vagues (cf. $88A6 / timeline $3F)
+//    Une vague = un quota d'oiseaux a faire apparaitre, par tiers.
+//======================================================================
+function startWave(){
+  waveActive=true;
+  // quota qui monte avec le niveau (cf. rampe $12, et difficulte $37)
+  const base = 3 + Math.min(6, level);
+  spawnQueue=[];
+  for(let i=0;i<base;i++){
+    // tiers : 0 (gros,+100), 1 (moyen,+50), 2 (rapide,+300)
+    const t = Math.random()<0.2?2 : (Math.random()<0.5?1:0);
+    spawnQueue.push({tier:t, delay: 30 + i*22});
+  }
+  waveTimer=0;
+  message="- "+level+" -"; messageTimer=90;   // affichage niveau facon "- N -"
+  nests.forEach(n=>n.flash=20);               // les nids s'animent (cf. $15C1)
+}
+
+function spawnBird(tier){
+  const fromLeft = Math.random()<.5;
+  birds.push({
+    x: fromLeft?-6:W+6, y: 40+Math.random()*60,
+    vx:0, vy:0, tier, state:'enter', frame:0, sframe:0,
+    facing: fromLeft?1:-1, carry:-1, target:-1, cool:0,
+    speed: tier===2?2:1                       // tier rapide = 2x (cf. $13F8 ROL)
+  });
+}
+
+//======================================================================
+// 6. IA des oiseaux (machine a etats, cf. $749F)
+//======================================================================
+function updateBird(b, dt){
+  b.frame++; b.sframe++;
+  const sp=b.speed;
+  switch(b.state){
+    case 'enter':            // entre dans l'aire de jeu
+      b.x += b.facing*1.2*sp;
+      b.y += Math.sin(b.frame*0.1)*0.4;
+      if(b.x>20 && b.x<W-20){ pickCruise(b); }
+      break;
+
+    case 'cruise': {         // rejoue un script de trajectoire (data-driven)
+      const s=CRUISE_SCRIPTS[b.script];
+      const step=s[b.sframe % s.length];
+      b.x += step.dx*b.facing*sp;
+      b.y += step.dy;
+      clampBird(b);
+      // decision : plonger sur un personnage (gate par difficulte)
+      b.cool--;
+      if(b.cool<=0 && Math.random()< (0.012+level*0.003)){
+        const tgt=nearestWalker(b.x);
+        if(tgt>=0){ b.state='swoop'; b.target=tgt; }
+      }
+      if(b.sframe % s.length===0){          // fin de script -> nouvelle manoeuvre
+        b.facing=-b.facing; pickCruise(b);
+      }
+    } break;
+
+    case 'swoop': {          // pique vers le personnage cible
+      const pe=people[b.target];
+      if(!pe || pe.state!=='walk'){ pickCruise(b); break; }
+      seek(b, pe.x, pe.y-2, 1.6*sp);
+      if(Math.abs(b.x-pe.x)<4 && Math.abs(b.y-(pe.y-2))<5){
+        // CAPTURE (cf. $72B9)
+        pe.state='carried'; pe.carrier=birds.indexOf(b);
+        b.carry=b.target; b.state='carry';
+        b.nest=nearestNest(b.x);
+      }
+    } break;
+
+    case 'carry': {          // remonte le captif vers un nid (cf. transport)
+      const n=nests[b.nest];
+      seek(b, n.x, n.y+4, 1.2*sp);
+      const pe=people[b.carry];
+      if(pe){ pe.x=b.x; pe.y=b.y+4; }
+      if(Math.abs(b.x-n.x)<4 && Math.abs(b.y-(n.y+4))<5){
+        // DEPOT au nid -> grandir le petit + NAITRE un oiseau (cf. $6F71 INC $36)
+        if(pe){ pe.state='lost'; }           // le slot reapparaitra (cf. update people)
+        n.young++; n.flash=25;
+        spawnBird(Math.random()<.3?2:0);     // "fait grandir leurs petits" (cf. $6F71 INC $36)
+        b.carry=-1; pickCruise(b);
+      }
+    } break;
+  }
+  if(b.x<-12||b.x>W+12) b.facing=-b.facing;
+}
+function pickCruise(b){ b.state='cruise'; b.script=(Math.random()*CRUISE_SCRIPTS.length)|0;
+                        b.sframe=0; b.cool=40+Math.random()*60; }
+function clampBird(b){ if(b.y<NEST_Y+8)b.y=NEST_Y+8; if(b.y>GROUND_Y-12)b.y=GROUND_Y-12;
+                       if(b.x<8){b.x=8;b.facing=1;} if(b.x>W-8){b.x=W-8;b.facing=-1;} }
+function seek(b,tx,ty,sp){ const a=Math.atan2(ty-b.y,tx-b.x);
+                           b.x+=Math.cos(a)*sp; b.y+=Math.sin(a)*sp;
+                           b.facing = tx<b.x?-1:1; }
+function nearestWalker(x){ let best=-1,bd=1e9;
+  people.forEach((p,i)=>{ if(p.state==='walk'){const d=Math.abs(p.x-x); if(d<bd){bd=d;best=i;}}});
+  return best; }
+function nearestNest(x){ let best=0,bd=1e9;
+  nests.forEach((n,i)=>{const d=Math.abs(n.x-x); if(d<bd){bd=d;best=i;}}); return best; }
+
+//======================================================================
+// 7. Mise a jour generale
+//======================================================================
+function update(){
+  // ---- timeline de spawn de la vague ----
+  if(waveActive){
+    waveTimer++;
+    while(spawnQueue.length && waveTimer>=spawnQueue[0].delay){
+      spawnBird(spawnQueue.shift().tier);
+    }
+    if(spawnQueue.length===0 && birds.length===0){
+      // vague nettoyee -> niveau suivant (cf. $7196 -> $3F=$FF -> level up)
+      level++; startWave();
+    }
+  }
+
+  // ---- joueur (tireur au sol) ----
+  if(player.dead>0){ player.dead--; if(player.dead===0){ player.x=W/2; player.y=GROUND_Y; player.onGround=true; player.vy=0; } }
+  else {
+    let dir = 0;                              // hold-to-move (K/Bas ou relacher = stop)
+    if(demoMode) dir = demoDir();
+    else if(down('left'))  dir = -1;
+    else if(down('right')) dir =  1;
+    player.vx = dir*1.6;
+    player.x = Math.max(8, Math.min(W-8, player.x+player.vx));
+    // saut + gravite (cf. $78FB : sol a GROUND_Y)
+    if((down('jump')||(demoMode&&Math.random()<0.02)) && player.onGround){ player.vy=-4.2; player.onGround=false; }
+    if(!player.onGround){ player.vy+=0.28; player.y+=player.vy;
+      if(player.y>=GROUND_Y){ player.y=GROUND_Y; player.vy=0; player.onGround=true; } }
+    // tir vers le haut (cf. $7AAF : 2 tirs max)
+    if(player.cool>0) player.cool--;
+    if((down('fire')||(demoMode&&Math.random()<0.06)) && player.cool===0 && bullets.length<2){
+      bullets.push({x:player.x, y:player.y-10}); player.cool=12;
+    }
+  }
+
+  // ---- tirs (montent) ----
+  for(let i=bullets.length-1;i>=0;i--){
+    const bu=bullets[i]; bu.y-=4;
+    if(bu.y<0){ bullets.splice(i,1); continue; }
+    // tir vs oiseau
+    for(let j=birds.length-1;j>=0;j--){
+      const b=birds[j];
+      if(Math.abs(bu.x-b.x)<5 && Math.abs(bu.y-b.y)<5){
+        killBird(j); bullets.splice(i,1); break;
+      }
+    }
+  }
+
+  // ---- oiseaux ----
+  for(let i=birds.length-1;i>=0;i--){
+    const b=birds[i]; updateBird(b);
+    // oiseau vs corps du joueur -> mort (cf. $7237)
+    if(player.dead===0 && !demoMode && Math.abs(b.x-player.x)<7 && Math.abs(b.y-player.y)<8){
+      playerHit();
+    }
+  }
+
+  // ---- personnages ----
+  for(let i=people.length-1;i>=0;i--){
+    const pe=people[i];
+    if(pe.state==='walk'){
+      pe.walkPhase++; pe.x+=pe.dir*0.4;
+      if(pe.x<6){pe.x=6;pe.dir=1;} if(pe.x>W-6){pe.x=W-6;pe.dir=-1;}
+      if(Math.random()<0.005) pe.dir=-pe.dir;
+    } else if(pe.state==='falling'){
+      pe.y+=pe.fall; pe.fall+=0.2;
+      if(pe.y>=GROUND_Y){ pe.y=GROUND_Y; pe.state='walk'; pe.fall=0;
+        // sauvetage : +100 (cf. $709A) si le joueur est proche
+        if(!demoMode && Math.abs(pe.x-player.x)<14 && player.onGround){ addScore(100); flashScore(); }
+      }
+    } else if(pe.state==='lost'){
+      // depot effectue : ce SLOT reapparait ailleurs. On NE splice PAS (les
+      // oiseaux referencent les personnes par index -> indices stables).
+      pe.x=10+Math.random()*(W-20); pe.y=GROUND_Y;
+      pe.dir=Math.random()<.5?-1:1; pe.state='walk'; pe.walkPhase=0;
+      pe.carrier=-1; pe.fall=0;
+    }
+  }
+
+  // ---- nids ----
+  nests.forEach(n=>{ if(n.flash>0)n.flash--; });
+
+  // message niveau
+  if(messageTimer>0) messageTimer--;
+
+  // demo : sortie au bout d'un moment ou sur touche
+  if(demoMode){ demoTimer++; if(anyKeyEdge){ state='title'; demoMode=false; } }
+}
+
+function killBird(j){
+  const b=birds[j];
+  // score par tier (cf. $71C1/$71D7/$71EA : +100 / +300 / +50)
+  addScore(b.tier===2?300 : b.tier===1?50 : 100);
+  // si porteur -> libere le personnage (il retombe -> sauvetage possible)
+  if(b.carry>=0 && people[b.carry]){ const pe=people[b.carry];
+    pe.state='falling'; pe.fall=0; pe.carrier=-1; }
+  // petit "puff"
+  birds.splice(j,1);
+}
+function playerHit(){
+  lives--; player.dead=70;
+  // detache un eventuel porteur ? non : la mort ne touche que le joueur
+  if(lives<0){ state='over'; if(score>hiScore)hiScore=score; messageTimer=240; }
+}
+function addScore(n){
+  const before=score; score+=n;
+  // vie bonus tous les 5000 (cf. logique $1AD0 / chiffre $03)
+  if(Math.floor(score/5000)>Math.floor(before/5000)) lives++;
+  if(score>hiScore) hiScore=score;
+}
+let scoreFlash=0; function flashScore(){ scoreFlash=12; }
+
+// IA de demo (auto-jeu) : poursuit l'oiseau le plus bas
+function demoDir(){
+  let lowest=null; birds.forEach(b=>{ if(!lowest||b.y>lowest.y)lowest=b; });
+  if(!lowest) return 0;
+  return lowest.x<player.x-4?-1: lowest.x>player.x+4?1:0;
+}
+
+//======================================================================
+// 8. Rendu
+//======================================================================
+function render(){
+  ctx.fillStyle=PAL.black; ctx.fillRect(0,0,W,H);
+
+  // sol
+  rect(0,GROUND_Y+1,W,1,PAL.green);
+  rect(0,GROUND_Y+2,W,1,PAL.dim);
+
+  // nids
+  nests.forEach(n=>{ if(n.flash>0 && (n.flash>>1&1)) {} drawNest(n); });
+
+  // personnages
+  people.forEach(pe=>{ if(pe.state!=='lost') drawPerson(pe); });
+
+  // joueur
+  if(state==='play'){ if(player.dead===0 || (player.dead>>2&1)) drawPlayer(player); }
+
+  // tirs
+  bullets.forEach(drawBullet);
+
+  // oiseaux
+  birds.forEach(drawBird);
+
+  // ---- HUD ----
+  text("SCORE "+pad(score,6), 2, 1, scoreFlash>0?PAL.white:PAL.green);
+  if(scoreFlash>0)scoreFlash--;
+  text("HIGH "+pad(hiScore,6), W-72, 1, PAL.green);
+  if(state==='play'||state==='over'){
+    // niveau au centre facon "- N -"
+    if(messageTimer>0 && message){ textCenter(message, 8, PAL.amber); }
+    else textCenter("- "+level+" -", 1, PAL.green);
+    // vies (petits domes)
+    for(let i=0;i<Math.max(0,lives);i++){ rect(2+i*8, 184, 6,3, PAL.violet); }
+  }
+
+  // ---- ecrans ----
+  if(state==='title'){
+    textCenter("N E B U S S A R D", 60, PAL.orange);
+    textCenter("protege les habitants", 86, PAL.green);
+    textCenter("des oiseaux voleurs !", 96, PAL.green);
+    textCenter("J/L deplacer  K stop  ESPACE sauter", 120, PAL.dim);
+    textCenter("I (ou Haut) = TIRER", 132, PAL.dim);
+    if((Date.now()>>9)&1) textCenter("PRESS ANY KEY", 156, PAL.white);
+  }
+  if(state==='over'){
+    textCenter("GAME OVER", 80, PAL.orange);
+    textCenter("SCORE "+pad(score,6), 96, PAL.white);
+    if((Date.now()>>9)&1) textCenter("PRESS ANY KEY", 120, PAL.green);
+  }
+  if(demoMode){ textCenter("DEMO", 1, PAL.amber); }
+  if(paused){ textCenter("PAUSE", 90, PAL.white); }
+}
+function pad(n,w){ let s=''+n; while(s.length<w)s='0'+s; return s; }
+
+//======================================================================
+// 9. Boucle principale (fixed timestep ~60Hz) + machine d'etats
+//======================================================================
+let acc=0, last=performance.now();
+const STEP=1000/60;
+let titleTimer=0;
+function loop(now){
+  let frame=now-last; last=now; if(frame>200)frame=200; acc+=frame;
+  while(acc>=STEP){
+    acc-=STEP;
+    if(state==='title'){
+      titleTimer++;
+      if(anyKeyEdge){ state='play'; newGame(false); }
+      else if(titleTimer>600){ state='play'; newGame(true); } // -> attract/demo
+    } else if(state==='play'){
+      if(!paused) update();
+    } else if(state==='over'){
+      if(messageTimer>0)messageTimer--;
+      if(anyKeyEdge && messageTimer<200){ state='title'; titleTimer=0; }
+    }
+    anyKeyEdge=false;
+  }
+  render();
+  requestAnimationFrame(loop);
+}
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>

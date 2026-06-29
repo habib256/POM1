@@ -180,6 +180,51 @@ void gen2_hgr_blit(unsigned x, unsigned char y, unsigned char w, unsigned char h
 void gen2_hgr_blit7(unsigned x, unsigned char y, unsigned char wbytes,
                     unsigned char h, const unsigned char *src, unsigned char mode);
 
+/* --- Pre-shifted sprite engine (the "Buzzard Bait" method) -----------------
+ * gen2_hgr_blit  is pixel-precise but walks pixel-by-pixel (slow).
+ * gen2_hgr_blit7 is byte-fast but snaps x to a 7px column grid (jumpy).
+ * gen2_hgr_sprite gives BOTH: byte-aligned blit speed AND 1px-precise x.
+ *
+ * The trick (lifted from Sirius' 1983 arcade engine, see
+ * sketchs/gen2/a2port_buzzard_bait/DISASSEMBLY.md S3): the sprite is baked
+ * OFFLINE into 7 PRE-SHIFTED copies, one per sub-byte phase (x % 7 == 0..6).
+ * At runtime the engine just selects the phase for x%7 and does a byte-aligned
+ * blit at column x/7 -- zero per-pixel shifting; the inner loop is gen2_blit7.
+ *
+ * Cost: 7x the sprite's bytes (static data -- "free"). Build the 7-phase bank
+ * with tools/build_preshift_sprites.py (emits a gen2_sprite_t + its data, C or
+ * asm). Same SET/CLEAR/XOR modes; XOR is the sweet spot (draw==erase, no
+ * backbuffer, decor preserved). Example:
+ *     #include "ball_ps.h"            // generated: gen2_sprite_t ball;
+ *     gen2_hgr_sprite(px, py, &ball, GEN2_XOR);   // draw
+ *     gen2_hgr_sprite(px, py, &ball, GEN2_XOR);   // erase (same x,y)
+ *
+ * Data ABI (what the generator emits and this reads):
+ *   stride = ceil((w + 6) / 7) bytes per row (uniform across the 7 phases;
+ *            phase 6 spills one extra byte to the right).
+ *   bits   = 7 contiguous phase blocks, each h*stride bytes, row-major,
+ *            7px/byte (bit 0 = leftmost, bit 7 = 0). Phase p starts at
+ *            offset p*(h*stride). Pixel (row,col) of phase p lives at packed
+ *            bit (col+p): byte (col+p)/7, bit (col+p)%7. */
+typedef struct {
+    const unsigned char *bits;   /* 7 phase blocks, contiguous (h*stride apart) */
+    unsigned char        stride; /* bytes per row per phase = ceil((w+6)/7)     */
+    unsigned char        h;      /* rows                                         */
+} gen2_sprite_t;
+
+/* Blit a pre-shifted sprite bank at pixel (x, y). x is 1px-precise; clipped to
+ * the right/bottom edges (keep x >= 0). mode is GEN2_SET / GEN2_CLEAR / GEN2_XOR. */
+void gen2_hgr_sprite(unsigned x, unsigned char y,
+                     const gen2_sprite_t *spr, unsigned char mode);
+
+/* XOR-only FAST path of gen2_hgr_sprite -- the whole draw (x/7, x%7, phase
+ * offset, edge clipping, blit) is hand-asm, skipping the cc65 wrapper's software
+ * divide/multiply/16-bit clip. ~3-4x less per-call overhead, which is what lets a
+ * SINGLE-buffer erase+redraw pair finish inside V-blank (no beam-race flicker) --
+ * the Buzzard-Bait way. Use this in tight animation loops; same data ABI as
+ * gen2_hgr_sprite, mode is always XOR (draw==erase). */
+void gen2_hgr_sprite_xor(unsigned x, unsigned char y, const gen2_sprite_t *spr);
+
 /* Draw an ASCII string at pixel (x, y) using the built-in Beautiful Boot 8x8
  * font, pixel-doubled so the text is solid white (no NTSC colour artifacts) in
  * 16x16 cells on an 18px pitch. Renders into HIRES page 1; call gen2_hgr_init

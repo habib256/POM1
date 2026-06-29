@@ -25,6 +25,7 @@
 #include <vector>
 
 #include "HgrPaintModel.h"
+#include "HgrSpriteBank.h"
 #include "IHgrPaintHost.h"
 
 // GLuint without dragging the GL headers into this header.
@@ -134,6 +135,20 @@ private:
     char filePath[512] = {0};
     std::string status;
 
+    // ── Sprite Bank mode (Buzzard-Bait pre-shift export) ───────────────────────
+    // A side panel (toggled from the top bar) that carves named rectangles out of
+    // the current HGR page and bakes them into 7-phase pre-shifted banks for
+    // gen2_hgr_sprite() (dev/lib/gen2c). Sprites are lifted from `shadow` via
+    // HgrSpriteBank; export goes through the file browser (save kinds 2/3/4).
+    bool showSpriteBank = false;
+    std::vector<SpriteRegion> spriteBank;   // defined sprite rectangles (logical px)
+    int  spriteSel = -1;                    // selected entry, or -1
+    int  spritePhase = 0;                   // 0..6, which pre-shift phase to preview
+    char spriteNameBuf[64] = {0};           // rename field for the selected entry
+    std::string spriteExportText;           // stashed payload for the pending export
+    std::string spriteExportInc;            // stashed .inc payload (asm export only)
+    GLuint spritePreviewTex = 0;            // 7-phase preview thumbnail
+
     // File browser popup (Load / Save / Save PNG). Portable: std::filesystem only,
     // so it ports to POM2 with the rest of hgrpaint/. HGR images have no standard
     // extension (e.g. `PIC#062000`), so it lists every file with its byte size and
@@ -222,6 +237,11 @@ private:
     void renderMinimap();       // navigator thumbnail, drawn in the left tool panel
     void renderStatusBar(int lx, int ly, bool hovered);
     void renderFileRow();
+
+    // Sprite Bank mode.
+    void renderSpriteBankPanel();        // right-side panel: list + preview + export
+    void addSpriteFromSelection();       // turn the current Select rect into a sprite
+    void exportSpriteBank(int kind);     // 2 = C .h, 3 = asm .s (+.inc), 4 = .txt sheet
 };
 
 } // namespace hgrpaint

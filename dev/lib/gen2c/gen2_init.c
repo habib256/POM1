@@ -40,14 +40,25 @@ static unsigned char gen2_blank(void)
     return (unsigned char)((GEN2_SS[7] | GEN2_SS[7]) & GEN2_HST0);
 }
 
+/* Tell V-blank (lines 192+, ~4550 CPU cycles of sustained blank) from a per-line
+ * H-blank (~25 cycles) by counting CONSECUTIVE blank samples. The threshold must
+ * sit between the two: gen2_blank() is a ~40-50 cycle call (pointer rebuild + two
+ * indirect reads + jsr/rts), so one H-blank yields at most ~1-2 samples while a
+ * V-blank yields ~90 (4550/50). 4 is safely above the H-blank noise yet returns
+ * EARLY in V-blank (~3 lines in) -- which maximises the V-blank time left for the
+ * caller's redraw, the difference between a single-buffer erase+redraw fitting
+ * (no beam-race tearing) or spilling into the visible scan. NB: the original
+ * value (400) was UNREACHABLE (needs ~20000 cyc of blank vs ~4550) so wait_vbl
+ * hung; 16 worked but returned ~30 lines into V-blank, eating the redraw budget. */
+#define GEN2_VBL_SAMPLES 4u
 void gen2_wait_vbl(void)
 {
     unsigned n;
     while (gen2_blank()) { }            /* wait for the live raster */
     for (;;) {
         while (!gen2_blank()) { }        /* wait for a blanking edge */
-        for (n = 0; n < 400u && gen2_blank(); ++n) { }
-        if (n >= 400u) return;          /* sustained blank => V-blank */
+        for (n = 0; n < GEN2_VBL_SAMPLES && gen2_blank(); ++n) { }
+        if (n >= GEN2_VBL_SAMPLES) return;   /* sustained blank => V-blank */
         /* short blank => it was just an H-blank; find the next edge */
     }
 }
@@ -57,6 +68,7 @@ unsigned char gen2_rowlo[192];
 unsigned char gen2_rowhi[192];
 unsigned char gen2_col7[280];
 unsigned char gen2_mask7[280];
+unsigned char gen2_phase7[280];   /* x % 7 (sub-byte phase 0..6) — no runtime divide */
 
 /* LORES tables + state live here so gen2_set_draw_page can shift them in
  * place without forcing gen2_lores.c to link. A HIRES-only program pays the
@@ -95,8 +107,9 @@ void gen2_build_tables(void)
     gen2_fill_rows();
     col = 0; bit = 0;
     for (x = 0; x < 280u; ++x) {
-        gen2_col7[x]  = col;
-        gen2_mask7[x] = (unsigned char)(1u << bit);
+        gen2_col7[x]   = col;
+        gen2_mask7[x]  = (unsigned char)(1u << bit);
+        gen2_phase7[x] = bit;
         if (++bit == 7u) { bit = 0; ++col; }
     }
     gen2_tables_ready = 1;

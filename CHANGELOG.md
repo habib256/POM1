@@ -10,6 +10,29 @@ is `git log`; the user-facing feature tour is `README.md`; open work lives in
 
 ## [Unreleased]
 
+### Fixed — 6502 software: GEN2 LOGO `BIRDFLY` sprite flicker
+
+- **GEN2 HGR LOGO (`sketchs/tms9918/tool_logo/TMS_Logo_16k.asm`, build
+  `software/Graphic HGR/GEN2Logo.txt`)**: the bird sprite in the `DEMO`
+  slideshow's final `BIRDFLY` scene flickered. The cap-only turtle commands
+  (`SETH` / `TR` / `TL`) ran the full XOR `erase_turtle` → `draw_turtle` cycle
+  even for a `SETSHAPE` **emote**, which is non-directional — turning changes
+  none of its pixels (`gen2_draw_emote` ignores the heading, and `tx/ty` are
+  unchanged). On a single live HGR page the transient "erased" window between
+  the erase and the redraw is what the async beam-race renderer caught as a
+  blink (each `BFR`/`BFL` flap does a `TR 12` between the two `FD 3` steps).
+  A new `turn_erase` / `turn_draw` seam skips the erase+redraw when
+  `sprite_mode ≠ 0` (emote → visual no-op, leave it drawn) and tail-calls the
+  real routines when `sprite_mode = 0` (the triangle turtle genuinely rotates),
+  removing ⅓ of the per-flap flicker windows (the two pure turns) while leaving
+  the real motion (`FD`, `SETSHAPE`) untouched. The "emote + invisible + turn"
+  state is unreachable (no `HIDETURTLE`; every `turtle_visible = 0` is either in
+  triangle mode or immediately redrawn), so the change is behaviourally
+  transparent apart from the fix. The **TMS9918 / CodeTank GAME3 LOGO** build is
+  **byte-for-byte unchanged**: it has no flicker to fix (HW sprites + VBlank
+  sync), so `turn_erase`/`turn_draw` alias straight through to the originals and
+  emit no extra code (verified by identical linked-binary SHA).
+
 ### Added — HGR Paint Editor window
 
 - **`HGR Paint Editor`**: an Apple II hi-res paint window for the GEN2 card.

@@ -41,6 +41,9 @@
         .export   _gen2_utoa
         .export   _gen2_blit_run
         .export   _gen2_blit7_run
+        .export   _gen2_preshift_xor_run
+        .export   _gen2_xs_run
+        .exportzp _gen2_xs_x, _gen2_xs_y, _gen2_xs_spr
         .exportzp _gen2_b_col, _gen2_b_mask, _gen2_b_w, _gen2_b_h
         .exportzp _gen2_b_stride, _gen2_b_y, _gen2_b_mode, _gen2_b_src
         .exportzp _gen2_t_col, _gen2_t_bit, _gen2_t_n, _gen2_t_color
@@ -53,7 +56,7 @@
         .exportzp _gen2_c_cx, _gen2_c_cy, _gen2_c_set
         .exportzp _gen2_z_col0, _gen2_z_ncols, _gen2_z_y0, _gen2_z_rows
         .exportzp _gen2_z_ce, _gen2_z_co, _gen2_z_hi
-        .import   _gen2_rowlo, _gen2_rowhi, _gen2_col7, _gen2_mask7
+        .import   _gen2_rowlo, _gen2_rowhi, _gen2_col7, _gen2_mask7, _gen2_phase7
         .import   _gen2_hgr_base          ; HIRES draw-page hi base ($20/$40)
         .importzp ptr1, ptr2, tmp1, tmp2, tmp3, tmp4
 
@@ -136,6 +139,12 @@ _gen2_b_y:     .res 1        ; current scanline (advanced per row)
 _gen2_b_mode:  .res 1        ; 0 SET (OR) / 1 CLEAR (AND ~) / 2 XOR (EOR)
 _gen2_b_src:   .res 2        ; source row pointer (advanced per row)
 b_srcidx:      .res 1        ; source byte index within the current row
+; gen2_hgr_sprite_xor (pre-shift XOR fast path) parameter block — the thin C
+; entry only stores these; _gen2_xs_run does ALL the work (tables, phase offset,
+; clip) in asm, so the cc65 wrapper cost (16-bit divide/multiply/clip) is gone.
+_gen2_xs_x:    .res 2        ; pixel x (0..279)
+_gen2_xs_y:    .res 1        ; pixel y (0..191)
+_gen2_xs_spr:  .res 2        ; pointer to the gen2_sprite_t {bits, stride, h}
 
 ; zero-page scratch aliases (cc65 leaves tmp1..tmp4 free for leaf asm routines):
 curcol  = tmp1               ; current byte column   (also Y during a store)
@@ -798,6 +807,141 @@ _gen2_blit7_run:
         eor (ptr1),y            ; XOR: dest ^= src
         sta (ptr1),y
 @cnext:
+        iny
+        cpy _gen2_b_w
+        bne @col
+        clc                     ; src += stride ; y += 1 ; rows--
+        lda _gen2_b_src
+        adc _gen2_b_stride
+        sta _gen2_b_src
+        bcc @nyc
+        inc _gen2_b_src+1
+@nyc:
+        inc _gen2_b_y
+        dec _gen2_b_h
+        bne @row
+        rts
+
+; --- _gen2_xs_run : 100% asm entry for gen2_hgr_sprite_xor ----------------------
+; The thin C wrapper only stores x/y/spr to zero page; everything the cc65
+; wrapper used to do with a software divide (x/7, x%7), a software multiply
+; (phase*h*stride) and 16-bit clip ternaries is done here in asm instead, then we
+; fall straight through into the XOR row loop. This keeps a sprite draw to a few
+; hundred cycles so a single-buffer erase+redraw pair fits inside V-blank (no
+; beam-race tearing). XOR mode only; clips to the right/bottom edges.
+_gen2_xs_run:
+        ; col = gen2_col7[x] -> _gen2_b_col ; phase = gen2_phase7[x] -> tmp1
+        lda _gen2_xs_x+1
+        bne @xhi
+        ldx _gen2_xs_x
+        lda _gen2_col7,x
+        ldy _gen2_phase7,x
+        jmp @xset
+@xhi:
+        ldx _gen2_xs_x
+        lda _gen2_col7+256,x
+        ldy _gen2_phase7+256,x
+@xset:
+        sta _gen2_b_col
+        sty tmp1                  ; tmp1 = phase (0..6)
+        ; deref spr -> ptr2 ; read bits/stride/h
+        lda _gen2_xs_spr
+        sta ptr2
+        lda _gen2_xs_spr+1
+        sta ptr2+1
+        ldy #0
+        lda (ptr2),y              ; bits low
+        sta _gen2_b_src
+        iny
+        lda (ptr2),y              ; bits high
+        sta _gen2_b_src+1
+        iny
+        lda (ptr2),y              ; stride
+        sta _gen2_b_stride
+        sta _gen2_b_w             ; default w = stride
+        sta tmp2                  ; tmp2 = stride
+        iny
+        lda (ptr2),y              ; h
+        sta _gen2_b_h             ; default h
+        sta tmp3                  ; tmp3 = full h (for the phase offset)
+        lda _gen2_xs_y
+        sta _gen2_b_y
+        ; right clip: col + stride > 40 ? w = 40 - col
+        lda _gen2_b_col
+        clc
+        adc tmp2
+        cmp #41
+        bcc @wok
+        lda #40
+        sec
+        sbc _gen2_b_col
+        sta _gen2_b_w
+@wok:
+        ; bottom clip: y + h > 192 ? h = 192 - y
+        lda _gen2_xs_y
+        clc
+        adc tmp3
+        bcs @clipb                ; y+h >= 256 -> clip
+        cmp #193
+        bcc @hok
+@clipb:
+        lda #192
+        sec
+        sbc _gen2_xs_y
+        sta _gen2_b_h
+@hok:
+        ; src += phase * (h * stride). phaseblock = h*stride via loop-add -> ptr1
+        lda #0
+        sta ptr1
+        sta ptr1+1
+        ldx tmp3                  ; full h
+@hloop:
+        clc
+        lda ptr1
+        adc tmp2                  ; + stride
+        sta ptr1
+        bcc @h2
+        inc ptr1+1
+@h2:
+        dex
+        bne @hloop
+        ldx tmp1                  ; phase
+        beq @offdone
+@ploop:
+        clc
+        lda _gen2_b_src
+        adc ptr1
+        sta _gen2_b_src
+        lda _gen2_b_src+1
+        adc ptr1+1
+        sta _gen2_b_src+1
+        dex
+        bne @ploop
+@offdone:
+        ; fall through into the XOR row loop below.
+
+; --- _gen2_preshift_xor_run : dedicated XOR blit for the pre-shift engine -------
+; Same as _gen2_blit7_run but mode is hardwired to XOR, so the per-byte mode
+; dispatch (ldx _gen2_b_mode / beq / cpx #2 / beq) is gone: the inner loop is the
+; Buzzard-Bait minimum -- lda (src),y / eor (dst),y / sta (dst),y (~24 cyc/byte
+; vs ~34 for the general path). gen2_hgr_sprite() calls this for GEN2_XOR (the hot
+; animation path) so an erase+redraw pair fits inside V-blank; SET/CLEAR still go
+; through _gen2_blit7_run. Same gen2_b_* zero-page block.
+_gen2_preshift_xor_run:
+@row:
+        ldy _gen2_b_y           ; ptr1 = rowbase(y) + col
+        lda _gen2_rowlo,y
+        clc
+        adc _gen2_b_col
+        sta ptr1
+        lda _gen2_rowhi,y
+        adc #0
+        sta ptr1+1
+        ldy #0                  ; Y indexes src[j] AND dest[col+j] together
+@col:
+        lda (_gen2_b_src),y     ; pre-shifted source byte
+        eor (ptr1),y            ; dest ^= src  (no mode test)
+        sta (ptr1),y
         iny
         cpy _gen2_b_w
         bne @col
