@@ -9,6 +9,7 @@
 
 #include "MainWindow_ImGui.h"
 #include "MainWindow_Internal.h"
+#include "NativeFileDialog.h"
 #include "POM1Build.h"
 
 #include "imgui.h"
@@ -30,98 +31,347 @@
 
 namespace {
 using namespace pom1::mainwindow::detail;
+
+// Probe the standard data dirs (cwd-relative, like the rest of Memory.cpp)
+// and return the canonical absolute path of the first hit. Empty when no
+// candidate exists. Used to seed the native picker's starting directory so
+// it lands inside the user's software/ or cassettes/ tree, not their $HOME.
+std::string resolveDataDir(std::initializer_list<const char*> probes)
+{
+    namespace fs = std::filesystem;
+    for (const char* p : probes) {
+        std::error_code ec;
+        if (fs::is_directory(p, ec)) {
+            auto canon = fs::canonical(p, ec);
+            if (!ec) return canon.string();
+        }
+    }
+    return std::string();
+}
+
+// "name.bin" → "bin" (lowercase). Empty when there's no extension.
+std::string lowerExt(const std::string& path)
+{
+    auto dot = path.find_last_of('.');
+    if (dot == std::string::npos) return std::string();
+    std::string ext = path.substr(dot + 1);
+    std::transform(ext.begin(), ext.end(), ext.begin(),
+                   [](unsigned char c) { return std::tolower(c); });
+    return ext;
+}
 }
 
 void MainWindow_ImGui::loadMemory()
 {
     loadDlg.reset();
+#if !POM1_IS_WASM
+    // Native picker path. WASM stays on the in-process ImGui browser (the
+    // browser's <input type=file> can't fill a server-side filesystem path,
+    // so the existing MEMFS browser is the only option there).
+    if (pom1::NativeFileDialog::isAvailable()) {
+        std::vector<pom1::FileFilter> filters = {
+            { "Apple-1 memory dumps (*.bin, *.txt)", {"bin", "txt"} },
+            { "Binary (*.bin)", {"bin"} },
+            { "Hex dump / Woz monitor (*.txt)", {"txt"} },
+        };
+        std::string defDir = resolveDataDir({"software", "../software", "../../software"});
+        std::string picked;
+        if (!pom1::NativeFileDialog::openFile(window, "Load Memory",
+                                              defDir, filters, picked))
+            return;
+
+        // Stash the chosen path so the same Load-button code path in
+        // renderLoadDialog (auto-card-enable, symbol load, status message,
+        // Memory Map regions, ...) runs unchanged.
+        std::strncpy(loadDlg.filePath, picked.c_str(),
+                     sizeof(loadDlg.filePath) - 1);
+        loadDlg.filePath[sizeof(loadDlg.filePath) - 1] = '\0';
+
+        const std::string ext = lowerExt(picked);
+        if (ext == "bin") {
+            // Binary blobs have no embedded address — pop a tiny ImGui
+            // follow-up that only asks "where do you want to load it?".
+            // renderLoadDialog honours addressPromptOnly by hiding the file
+            // list + type radio.
+            loadDlg.fileType = 0;
+            loadDlg.addressPromptOnly = true;
+            showLoadDialog = true;
+            return;
+        }
+        // Hex dump (.txt) carries its own address; load it straight away.
+        loadDlg.fileType = 1;
+        performMemoryLoad(picked, 1, 0);
+        return;
+    }
+#endif
+    // Fallback: existing ImGui browser (WASM, or zenity/kdialog missing).
     showLoadDialog = true;
+}
+
+bool MainWindow_ImGui::performMemoryLoad(const std::string& path,
+                                         int fileType, uint16_t address)
+{
+    // Force-fire any deferred preset plug-in first. applyMachineConfig
+    // queues card enables on a 15-frame countdown (~200 ms) to work around
+    // the silent-card-on-boot bug; if the user hits Load inside that window
+    // the new program's reset vector fires before the preset's cards reach
+    // the Memory bus, and early writes to e.g. $CC00/$CC01 vanish into RAM.
+    // Draining pending plugs here closes the race without changing the
+    // boot-time behaviour.
+    finalizePendingCardPlugs();
+
+    // Auto-enable hardware cards based on source directory.
+    // Folder layout under software/: "Graphic HGR", "Graphic TMS9918",
+    // "Apple-1_TMS_CC65" (cc65 CodeTank drop-ins), "Graphic gt-6144",
+    // "NET", "a1io_rtc", "SOUND SID", ... Match the canonical folder name
+    // (forward and backslash separators) and ALWAYS raise the corresponding
+    // window so loading from the folder opens the panel before interaction.
+    // This matters for the Fantasy preset, which leaves graphic cards
+    // unplugged by default — the user expects "open file from Graphic HGR/"
+    // to both plug HGR and pop the framebuffer window.
+    auto pathHas = [&](const char* fwd, const char* back) {
+        return path.find(fwd) != std::string::npos ||
+               path.find(back) != std::string::npos;
+    };
+    if (pathHas("/Graphic HGR/", "\\Graphic HGR\\")) {
+        if (!graphicsCardEnabled) {
+            graphicsCardEnabled = true;
+            emulation->setHgrFramebufferAttached(true);
+        }
+        showGraphicsCard = true;
+    } else if (pathHas("/SOUND SID/", "\\SOUND SID\\")) {
+        if (!sidEnabled) {
+            sidEnabled = true;
+            emulation->setSIDEnabled(true);
+            // Mirror the menu mutex: plugging A1-SID evicts A1-AUDIO SE
+            // (same MOS chip) and Juke-Box ($CA00 latch sits inside the
+            // SID window). See MainWindow_Menu.cpp:326.
+            sidSpecialEditionEnabled = false;
+            jukeBoxEnabled = false;
+            setStatusMessage("P-LAB A1-SID plugged", 2.0f);
+        }
+    } else if (pathHas("/Graphic TMS9918/", "\\Graphic TMS9918\\") ||
+               pathHas("/Apple-1_TMS_CC65/", "\\Apple-1_TMS_CC65\\")) {
+        if (!tms9918Enabled) {
+            tms9918Enabled = true;
+            emulation->setTMS9918Enabled(true);
+            setStatusMessage("P-LAB TMS9918 plugged", 2.0f);
+        }
+        showTMS9918 = true;
+    } else if (pathHas("/sdcard/", "\\sdcard\\")) {
+        if (!microSDEnabled) {
+            microSDEnabled = true;
+            emulation->setMicroSDEnabled(true);
+            setStatusMessage("P-LAB microSD Card plugged", 2.0f);
+        }
+    } else if (pathHas("/NET/", "\\NET\\")) {
+        if (!wifiModemEnabled) {
+            wifiModemEnabled = true;
+            emulation->setWiFiModemEnabled(true);
+            setStatusMessage("P-LAB Wi-Fi Modem plugged", 2.0f);
+        } else {
+            // Reload from software/NET/: drop any live BBS connection and
+            // clear ACIA state so the new auto-dial program starts fresh.
+            emulation->wifiModemReset();
+            setStatusMessage("P-LAB Wi-Fi Modem reset", 2.0f);
+        }
+        showWiFiModem = true;
+    } else if (pathHas("/a1io_rtc/", "\\a1io_rtc\\")) {
+        if (!a1ioRtcEnabled) {
+            a1ioRtcEnabled = true;
+            emulation->setA1IO_RTCEnabled(true);
+            setStatusMessage("P-LAB I/O Board & RTC plugged", 2.0f);
+        }
+        showA1IO_RTC = true;
+    } else if (pathHas("/Graphic gt-6144/", "\\Graphic gt-6144\\")) {
+        if (!gt6144Enabled) {
+            gt6144Enabled = true;
+            emulation->setGT6144Enabled(true);
+            setStatusMessage("SWTPC GT-6144 plugged (64x96 framebuffer at $D00A)", 3.0f);
+        }
+        showGT6144 = true;
+    }
+
+    uint16_t addr = address;
+    std::string error;
+    int bytesLoaded = 0;
+    std::vector<std::pair<uint16_t,uint16_t>> hexZones;
+    bool ok = false;
+    if (fileType == 0) {
+        ok = emulation->loadBinary(path, addr, error, &bytesLoaded);
+    } else {
+        ok = emulation->loadHexDump(path, addr, error, &bytesLoaded, &hexZones);
+        snprintf(loadDlg.addressStr, sizeof(loadDlg.addressStr), "%04X", addr);
+    }
+    if (!ok) {
+        setStatusMessage(error.empty() ? "Error: unable to load file" : error, 3.0f);
+        return false;
+    }
+
+    emulation->copySnapshot(uiSnapshot);
+    cpuRunning = true;
+    stepMode = false;
+    std::string filename = std::filesystem::path(path).filename().string();
+    // Track loaded program regions for the Memory Map. Multi-zone hex dumps
+    // (e.g. games_chess Chess.txt = $0280 lo + $E000 hi) emit one entry per
+    // zone so the high block doesn't get drawn as a bogus contiguous range
+    // that runs through ROM space. Binary loads always yield a single
+    // contiguous region.
+    if (!hexZones.empty()) {
+        auto overlapsAny = [&hexZones](const LoadedRegion& p) {
+            for (const auto& z : hexZones)
+                if (!(p.end < z.first || p.start > z.second)) return true;
+            return false;
+        };
+        loadedPrograms.erase(
+            std::remove_if(loadedPrograms.begin(), loadedPrograms.end(), overlapsAny),
+            loadedPrograms.end());
+        for (const auto& z : hexZones)
+            loadedPrograms.push_back({filename, z.first, z.second});
+    } else if (bytesLoaded > 0) {
+        uint16_t progEnd = static_cast<uint16_t>(addr + bytesLoaded - 1);
+        loadedPrograms.erase(
+            std::remove_if(loadedPrograms.begin(), loadedPrograms.end(),
+                [addr, progEnd](const LoadedRegion& p) {
+                    return !(p.end < addr || p.start > progEnd);
+                }),
+            loadedPrograms.end());
+        loadedPrograms.push_back({filename, addr, progEnd});
+    }
+    // Auto-load a sibling cc65/ld65 label file so the disassembly shows
+    // symbolic names for this program. Reset to the built-in Apple-1
+    // defaults first (one program at a time → no stale labels), then merge
+    // "<stem>.lbl", falling back to ".sym".
+    int symbolsLoaded = 0;
+    if (memoryViewer) {
+        memoryViewer->resetSymbolsToDefaults();
+        std::filesystem::path base(path);
+        for (const char* ext : {".lbl", ".sym"}) {
+            std::filesystem::path lbl = base;
+            lbl.replace_extension(ext);
+            if (std::filesystem::exists(lbl)) {
+                std::string symErr;
+                symbolsLoaded = memoryViewer->loadSymbolsFile(lbl.string(), symErr);
+                break;
+            }
+        }
+    }
+    std::stringstream ss;
+    ss << "Loaded " << filename << " at $" << std::hex << std::uppercase << addr;
+    if (symbolsLoaded > 0)
+        ss << std::dec << "  (+" << symbolsLoaded << " symbols)";
+    setStatusMessage(ss.str(), 3.0f);
+    showLoadDialog = false;
+    loadDlg.reset();
+    return true;
 }
 
 void MainWindow_ImGui::renderLoadDialog()
 {
-    // Tall enough for FileList + path, type radios, address row, and buttons.
-    ImGui::SetNextWindowSizeConstraints(ImVec2(520.0f, 580.0f),
+    // addressPromptOnly: native picker already chose the binary file; this
+    // dialog collapses to "show path + ask for address". Otherwise it stays
+    // the full FileList browser used as the WASM fallback and when the
+    // native picker is unavailable on a Linux box without zenity/kdialog.
+    const bool addressOnly = loadDlg.addressPromptOnly;
+    const ImVec2 fullSize  = ImVec2(640.0f, 720.0f);
+    const ImVec2 smallSize = ImVec2(480.0f, 220.0f);
+    const ImVec2 minFull   = ImVec2(520.0f, 580.0f);
+    const ImVec2 minSmall  = ImVec2(420.0f, 180.0f);
+    ImGui::SetNextWindowSizeConstraints(addressOnly ? minSmall : minFull,
                                         ImVec2(FLT_MAX, FLT_MAX));
-    ImGui::SetNextWindowSize(ImVec2(640.0f, 720.0f), ImGuiCond_FirstUseEver);
-    if (ImGui::Begin("Load Program", &showLoadDialog)) {
+    ImGui::SetNextWindowSize(addressOnly ? smallSize : fullSize,
+                             ImGuiCond_FirstUseEver);
+    const char* title = addressOnly ? "Load Binary — Address"
+                                    : "Load Program";
+    if (ImGui::Begin(title, &showLoadDialog)) {
 
-        if (!loadDlg.filesScanned) {
-            if (loadDlg.softAsmRoot.empty()) {
-                std::string dirs[] = {"software", "../software", "../../software"};
-                for (const auto& d : dirs) {
-                    if (std::filesystem::is_directory(d)) {
-                        loadDlg.softAsmRoot = std::filesystem::canonical(d).string();
-                        loadDlg.currentDir = loadDlg.softAsmRoot;
-                        break;
+        if (!addressOnly) {
+            if (!loadDlg.filesScanned) {
+                if (loadDlg.softAsmRoot.empty()) {
+                    std::string dirs[] = {"software", "../software", "../../software"};
+                    for (const auto& d : dirs) {
+                        if (std::filesystem::is_directory(d)) {
+                            loadDlg.softAsmRoot = std::filesystem::canonical(d).string();
+                            loadDlg.currentDir = loadDlg.softAsmRoot;
+                            break;
+                        }
                     }
                 }
-            }
-            loadDlg.dirList.clear();
-            loadDlg.fileList.clear();
-            if (!loadDlg.currentDir.empty() && std::filesystem::is_directory(loadDlg.currentDir)) {
-                for (const auto& entry : std::filesystem::directory_iterator(loadDlg.currentDir)) {
-                    if (entry.is_directory()) {
-                        std::string name = entry.path().filename().string();
-                        if (name[0] != '.')
-                            loadDlg.dirList.push_back(name);
-                    } else if (entry.is_regular_file()) {
-                        std::string ext = entry.path().extension().string();
-                        if (ext == ".txt" || ext == ".bin")
-                            loadDlg.fileList.push_back(entry.path().filename().string());
+                loadDlg.dirList.clear();
+                loadDlg.fileList.clear();
+                if (!loadDlg.currentDir.empty() && std::filesystem::is_directory(loadDlg.currentDir)) {
+                    for (const auto& entry : std::filesystem::directory_iterator(loadDlg.currentDir)) {
+                        if (entry.is_directory()) {
+                            std::string name = entry.path().filename().string();
+                            if (name[0] != '.')
+                                loadDlg.dirList.push_back(name);
+                        } else if (entry.is_regular_file()) {
+                            std::string ext = entry.path().extension().string();
+                            if (ext == ".txt" || ext == ".bin")
+                                loadDlg.fileList.push_back(entry.path().filename().string());
+                        }
                     }
+                    std::sort(loadDlg.dirList.begin(), loadDlg.dirList.end());
+                    std::sort(loadDlg.fileList.begin(), loadDlg.fileList.end());
                 }
-                std::sort(loadDlg.dirList.begin(), loadDlg.dirList.end());
-                std::sort(loadDlg.fileList.begin(), loadDlg.fileList.end());
+                loadDlg.filesScanned = true;
             }
-            loadDlg.filesScanned = true;
-        }
 
-        {
-            std::string displayPath = "software/";
-            if (loadDlg.currentDir.size() > loadDlg.softAsmRoot.size())
-                displayPath += loadDlg.currentDir.substr(loadDlg.softAsmRoot.size() + 1) + "/";
-            ImGui::Text("%s", displayPath.c_str());
-        }
-
-        ImGui::BeginChild("FileList", ImVec2(-1, 360), true);
-
-        if (loadDlg.currentDir != loadDlg.softAsmRoot) {
-            if (ImGui::Selectable(".. /", false)) {
-                loadDlg.currentDir = std::filesystem::path(loadDlg.currentDir).parent_path().string();
-                loadDlg.filesScanned = false;
+            {
+                std::string displayPath = "software/";
+                if (loadDlg.currentDir.size() > loadDlg.softAsmRoot.size())
+                    displayPath += loadDlg.currentDir.substr(loadDlg.softAsmRoot.size() + 1) + "/";
+                ImGui::Text("%s", displayPath.c_str());
             }
-        }
 
-        for (const auto& d : loadDlg.dirList) {
-            std::string label = d + "/";
-            if (ImGui::Selectable(label.c_str(), false)) {
-                loadDlg.currentDir = (std::filesystem::path(loadDlg.currentDir) / d).string();
-                loadDlg.filesScanned = false;
-            }
-        }
+            ImGui::BeginChild("FileList", ImVec2(-1, 360), true);
 
-        for (const auto& f : loadDlg.fileList) {
-            if (ImGui::Selectable(f.c_str())) {
-                std::string fullPath = (std::filesystem::path(loadDlg.currentDir) / f).string();
-                strncpy(loadDlg.filePath, fullPath.c_str(), sizeof(loadDlg.filePath) - 1);
-                loadDlg.filePath[sizeof(loadDlg.filePath) - 1] = '\0';
-                if (f.size() > 4 && f.substr(f.size() - 4) == ".bin")
-                    loadDlg.fileType = 0;
-                else
-                    loadDlg.fileType = 1;
+            if (loadDlg.currentDir != loadDlg.softAsmRoot) {
+                if (ImGui::Selectable(".. /", false)) {
+                    loadDlg.currentDir = std::filesystem::path(loadDlg.currentDir).parent_path().string();
+                    loadDlg.filesScanned = false;
+                }
             }
+
+            for (const auto& d : loadDlg.dirList) {
+                std::string label = d + "/";
+                if (ImGui::Selectable(label.c_str(), false)) {
+                    loadDlg.currentDir = (std::filesystem::path(loadDlg.currentDir) / d).string();
+                    loadDlg.filesScanned = false;
+                }
+            }
+
+            for (const auto& f : loadDlg.fileList) {
+                if (ImGui::Selectable(f.c_str())) {
+                    std::string fullPath = (std::filesystem::path(loadDlg.currentDir) / f).string();
+                    strncpy(loadDlg.filePath, fullPath.c_str(), sizeof(loadDlg.filePath) - 1);
+                    loadDlg.filePath[sizeof(loadDlg.filePath) - 1] = '\0';
+                    if (f.size() > 4 && f.substr(f.size() - 4) == ".bin")
+                        loadDlg.fileType = 0;
+                    else
+                        loadDlg.fileType = 1;
+                }
+            }
+            ImGui::EndChild();
         }
-        ImGui::EndChild();
 
         ImGui::Separator();
-        ImGui::Text("Selected file:");
-        ImGui::SetNextItemWidth(-1);
-        ImGui::InputText("##filepath", loadDlg.filePath, sizeof(loadDlg.filePath));
+        if (addressOnly) {
+            // Show just the chosen filename (read-only) so the user knows what
+            // they're loading. Path field stays editable in case they want to
+            // tweak it; full browser is gone — they can Cancel and re-pick.
+            ImGui::TextDisabled("File:");
+            ImGui::SameLine();
+            ImGui::TextWrapped("%s", loadDlg.filePath);
+        } else {
+            ImGui::Text("Selected file:");
+            ImGui::SetNextItemWidth(-1);
+            ImGui::InputText("##filepath", loadDlg.filePath, sizeof(loadDlg.filePath));
 
-        ImGui::RadioButton("Binary (.bin)", &loadDlg.fileType, 0);
-        ImGui::SameLine();
-        ImGui::RadioButton("Hex dump (.txt)", &loadDlg.fileType, 1);
+            ImGui::RadioButton("Binary (.bin)", &loadDlg.fileType, 0);
+            ImGui::SameLine();
+            ImGui::RadioButton("Hex dump (.txt)", &loadDlg.fileType, 1);
+        }
 
         if (loadDlg.fileType == 0) {
             ImGui::Text("Address (hex):");
@@ -133,160 +383,10 @@ void MainWindow_ImGui::renderLoadDialog()
 
         ImGui::Spacing();
         if (ImGui::Button("Load", ImVec2(120, 0))) {
-            // Force-fire any deferred preset plug-in first. applyMachineConfig
-            // queues card enables on a 15-frame countdown (~200 ms) to work
-            // around the silent-card-on-boot bug; if the user hits Load
-            // inside that window the new program's reset vector fires before
-            // the preset's cards reach the Memory bus, and early writes to
-            // e.g. $CC00/$CC01 vanish into RAM. Draining pending plugs here
-            // closes the race without changing the boot-time behaviour.
-            finalizePendingCardPlugs();
-
-            // Auto-enable hardware cards based on source directory.
-            // Folder layout under software/: "Graphic HGR", "Graphic TMS9918",
-            // "Apple-1_TMS_CC65" (cc65 CodeTank drop-ins), "Graphic gt-6144",
-            // "NET", "a1io_rtc", "SOUND SID", ... Match the
-            // canonical folder name (forward and backslash separators) and
-            // ALWAYS raise the corresponding window so loading from the folder
-            // opens the panel before interaction. This matters for the Fantasy
-            // preset, which leaves graphic cards unplugged by default — the
-            // user expects "open file from Graphic HGR/" to both plug HGR and
-            // pop the framebuffer window.
-            std::string loadPath(loadDlg.filePath);
-            auto pathHas = [&](const char* fwd, const char* back) {
-                return loadPath.find(fwd) != std::string::npos ||
-                       loadPath.find(back) != std::string::npos;
-            };
-            if (pathHas("/Graphic HGR/", "\\Graphic HGR\\")) {
-                if (!graphicsCardEnabled) {
-                    graphicsCardEnabled = true;
-                    emulation->setHgrFramebufferAttached(true);
-                }
-                showGraphicsCard = true;
-            } else if (pathHas("/SOUND SID/", "\\SOUND SID\\")) {
-                if (!sidEnabled) {
-                    sidEnabled = true;
-                    emulation->setSIDEnabled(true);
-                    // Mirror the menu mutex: plugging A1-SID evicts A1-AUDIO SE
-                    // (same MOS chip) and Juke-Box ($CA00 latch sits inside the
-                    // SID window). See MainWindow_Menu.cpp:326.
-                    sidSpecialEditionEnabled = false;
-                    jukeBoxEnabled = false;
-                    setStatusMessage("P-LAB A1-SID plugged", 2.0f);
-                }
-            } else if (pathHas("/Graphic TMS9918/", "\\Graphic TMS9918\\") ||
-                       pathHas("/Apple-1_TMS_CC65/", "\\Apple-1_TMS_CC65\\")) {
-                if (!tms9918Enabled) {
-                    tms9918Enabled = true;
-                    emulation->setTMS9918Enabled(true);
-                    setStatusMessage("P-LAB TMS9918 plugged", 2.0f);
-                }
-                showTMS9918 = true;
-            } else if (pathHas("/sdcard/", "\\sdcard\\")) {
-                if (!microSDEnabled) {
-                    microSDEnabled = true;
-                    emulation->setMicroSDEnabled(true);
-                    setStatusMessage("P-LAB microSD Card plugged", 2.0f);
-                }
-            } else if (pathHas("/NET/", "\\NET\\")) {
-                if (!wifiModemEnabled) {
-                    wifiModemEnabled = true;
-                    emulation->setWiFiModemEnabled(true);
-                    setStatusMessage("P-LAB Wi-Fi Modem plugged", 2.0f);
-                } else {
-                    // Reload from software/NET/: drop any live BBS connection
-                    // and clear ACIA state so the new auto-dial program starts fresh.
-                    emulation->wifiModemReset();
-                    setStatusMessage("P-LAB Wi-Fi Modem reset", 2.0f);
-                }
-                showWiFiModem = true;
-            } else if (pathHas("/a1io_rtc/", "\\a1io_rtc\\")) {
-                if (!a1ioRtcEnabled) {
-                    a1ioRtcEnabled = true;
-                    emulation->setA1IO_RTCEnabled(true);
-                    setStatusMessage("P-LAB I/O Board & RTC plugged", 2.0f);
-                }
-                showA1IO_RTC = true;
-            } else if (pathHas("/Graphic gt-6144/", "\\Graphic gt-6144\\")) {
-                if (!gt6144Enabled) {
-                    gt6144Enabled = true;
-                    emulation->setGT6144Enabled(true);
-                    setStatusMessage("SWTPC GT-6144 plugged (64x96 framebuffer at $D00A)", 3.0f);
-                }
-                showGT6144 = true;
-            }
-
             uint16_t addr = 0;
-            std::string error;
-            int bytesLoaded = 0;
-            std::vector<std::pair<uint16_t,uint16_t>> hexZones;
-            bool ok = false;
-            if (loadDlg.fileType == 0) {
+            if (loadDlg.fileType == 0)
                 addr = (uint16_t)strtol(loadDlg.addressStr, nullptr, 16);
-                ok = emulation->loadBinary(loadDlg.filePath, addr, error, &bytesLoaded);
-            } else {
-                ok = emulation->loadHexDump(loadDlg.filePath, addr, error, &bytesLoaded, &hexZones);
-                snprintf(loadDlg.addressStr, sizeof(loadDlg.addressStr), "%04X", addr);
-            }
-            if (ok) {
-                emulation->copySnapshot(uiSnapshot);
-                cpuRunning = true;
-                stepMode = false;
-                std::string filename = std::filesystem::path(loadDlg.filePath).filename().string();
-                // Track loaded program regions for the Memory Map. Multi-zone
-                // hex dumps (e.g. games_chess Chess.txt = $0280 lo + $E000 hi)
-                // emit one entry per zone so the high block doesn't get drawn
-                // as a bogus contiguous range that runs through ROM space.
-                // Binary loads always yield a single contiguous region.
-                if (!hexZones.empty()) {
-                    auto overlapsAny = [&hexZones](const LoadedRegion& p) {
-                        for (const auto& z : hexZones)
-                            if (!(p.end < z.first || p.start > z.second)) return true;
-                        return false;
-                    };
-                    loadedPrograms.erase(
-                        std::remove_if(loadedPrograms.begin(), loadedPrograms.end(), overlapsAny),
-                        loadedPrograms.end());
-                    for (const auto& z : hexZones)
-                        loadedPrograms.push_back({filename, z.first, z.second});
-                } else if (bytesLoaded > 0) {
-                    uint16_t progEnd = static_cast<uint16_t>(addr + bytesLoaded - 1);
-                    loadedPrograms.erase(
-                        std::remove_if(loadedPrograms.begin(), loadedPrograms.end(),
-                            [addr, progEnd](const LoadedRegion& p) {
-                                return !(p.end < addr || p.start > progEnd);
-                            }),
-                        loadedPrograms.end());
-                    loadedPrograms.push_back({filename, addr, progEnd});
-                }
-                // Auto-load a sibling cc65/ld65 label file so the disassembly
-                // shows symbolic names for this program. Reset to the built-in
-                // Apple-1 defaults first (one program at a time → no stale
-                // labels), then merge "<stem>.lbl", falling back to ".sym".
-                int symbolsLoaded = 0;
-                if (memoryViewer) {
-                    memoryViewer->resetSymbolsToDefaults();
-                    std::filesystem::path base(loadDlg.filePath);
-                    for (const char* ext : {".lbl", ".sym"}) {
-                        std::filesystem::path lbl = base;
-                        lbl.replace_extension(ext);
-                        if (std::filesystem::exists(lbl)) {
-                            std::string symErr;
-                            symbolsLoaded = memoryViewer->loadSymbolsFile(lbl.string(), symErr);
-                            break;
-                        }
-                    }
-                }
-                std::stringstream ss;
-                ss << "Loaded " << filename << " at $" << std::hex << std::uppercase << addr;
-                if (symbolsLoaded > 0)
-                    ss << std::dec << "  (+" << symbolsLoaded << " symbols)";
-                setStatusMessage(ss.str(), 3.0f);
-                showLoadDialog = false;
-                loadDlg.reset();
-            } else {
-                setStatusMessage(error.empty() ? "Error: unable to load file" : error, 3.0f);
-            }
+            performMemoryLoad(loadDlg.filePath, loadDlg.fileType, addr);
         }
         ImGui::SameLine();
         if (ImGui::Button("Cancel", ImVec2(120, 0))) {
@@ -299,6 +399,39 @@ void MainWindow_ImGui::renderLoadDialog()
 
 void MainWindow_ImGui::loadTape()
 {
+#if !POM1_IS_WASM
+    if (pom1::NativeFileDialog::isAvailable()) {
+        std::vector<pom1::FileFilter> filters = {
+            { "Cassette tapes (*.aci, *.wav, *.ogg, *.mp3, *.flac)",
+              {"aci", "wav", "ogg", "mp3", "flac"} },
+            { "ACI pulse dump (*.aci)", {"aci"} },
+            { "Audio (*.wav, *.ogg, *.mp3, *.flac)",
+              {"wav", "ogg", "mp3", "flac"} },
+        };
+        std::string defDir = resolveDataDir({"cassettes", "../cassettes",
+                                             "../../cassettes"});
+        std::string picked;
+        if (!pom1::NativeFileDialog::openFile(window, "Load Cassette Tape",
+                                              defDir, filters, picked))
+            return;
+        // Mirror the ImGui dialog's text-field for callers that re-open the
+        // legacy dialog later (Refresh / Save preview reads from filePath).
+        std::strncpy(loadTapeDlg.filePath, picked.c_str(),
+                     sizeof(loadTapeDlg.filePath) - 1);
+        loadTapeDlg.filePath[sizeof(loadTapeDlg.filePath) - 1] = '\0';
+        std::string error;
+        if (emulation->loadTape(picked, error)) {
+            emulation->copySnapshot(uiSnapshot);
+            std::stringstream ss;
+            ss << "Tape loaded: "
+               << uiSnapshot.cassetteLoadedTransitionCount << " transitions";
+            setStatusMessage(ss.str(), 3.0f);
+        } else {
+            setStatusMessage(error, 3.0f);
+        }
+        return;
+    }
+#endif
     showLoadTapeDialog = true;
 }
 
@@ -506,8 +639,11 @@ void MainWindow_ImGui::renderCassetteDeckWindow()
         // the device's new state immediately (e.g. cassettePlaybackActive).
         emulation->copySnapshot(uiSnapshot);
     }
-    if (result.requestLoadDialog) showLoadTapeDialog = true;
-    if (result.requestSaveDialog) showSaveTapeDialog = true;
+    // Route the cassette deck's Load/Save panel buttons through the same
+    // action methods as the File menu so they pick up the native picker on
+    // Windows/macOS/Linux (and stay on the ImGui dialog under WASM).
+    if (result.requestLoadDialog) loadTape();
+    if (result.requestSaveDialog) saveTape();
 }
 
 void MainWindow_ImGui::saveMemory()
@@ -553,8 +689,40 @@ void MainWindow_ImGui::renderSaveDialog()
 
         ImGui::Spacing();
         if (ImGui::Button("Save", ImVec2(120, 0)) && size > 0) {
-            // Build path in software directory
+            // Resolve the target file path. On non-WASM with a native picker
+            // available we pop GetSaveFileNameW / NSSavePanel / zenity so the
+            // user picks the destination directory + filename in their OS's
+            // localised dialog. Otherwise we fall back to "treat the filename
+            // field as a relative path" (legacy behaviour, also the only
+            // option on WASM where browser security blocks server-side paths).
             std::string path = filename;
+#if !POM1_IS_WASM
+            if (pom1::NativeFileDialog::isAvailable()) {
+                std::vector<pom1::FileFilter> filters;
+                if (saveFormat == 0)
+                    filters.push_back({"Binary (*.bin)", {"bin"}});
+                else
+                    filters.push_back({"Hex dump (*.txt)", {"txt"}});
+                std::string defDir = resolveDataDir({"software", "../software",
+                                                     "../../software"});
+                std::string picked;
+                if (!pom1::NativeFileDialog::saveFile(window, "Save Memory",
+                                                      defDir, path,
+                                                      filters, picked)) {
+                    // User cancelled — leave the dialog open so they can
+                    // tweak the range and re-try.
+                    ImGui::End();
+                    return;
+                }
+                path = picked;
+                // Mirror the chosen basename back into the filename field so
+                // a re-open shows the last choice.
+                std::strncpy(filename,
+                             std::filesystem::path(path).filename().string().c_str(),
+                             sizeof(filename) - 1);
+                filename[sizeof(filename) - 1] = '\0';
+            }
+#endif
             std::string error;
             if (emulation->saveMemoryRange(path, startAddr, endAddr, saveFormat == 0, error)) {
                 std::stringstream ss;
@@ -632,6 +800,27 @@ std::string defaultSnapshotFilename()
 void MainWindow_ImGui::loadSnapshot()
 {
     snapshotDlg.reset();
+#if !POM1_IS_WASM
+    if (pom1::NativeFileDialog::isAvailable()) {
+        std::vector<pom1::FileFilter> filters = {
+            { "POM1 snapshots (*.snap)", {"snap"} },
+        };
+        std::string defDir = resolveSnapshotsDir();
+        std::string picked;
+        if (!pom1::NativeFileDialog::openFile(window, "Load Snapshot",
+                                              defDir, filters, picked))
+            return;
+        std::string err;
+        if (emulation->loadSnapshot(picked, err)) {
+            emulation->copySnapshot(uiSnapshot);
+            std::string fname = std::filesystem::path(picked).filename().string();
+            setStatusMessage("Loaded snapshot: " + fname, 3.0f);
+        } else {
+            setStatusMessage(err.empty() ? "Error: cannot load snapshot" : err, 3.0f);
+        }
+        return;
+    }
+#endif
     showLoadSnapshotDialog = true;
 }
 
@@ -642,6 +831,29 @@ void MainWindow_ImGui::saveSnapshot()
                  defaultSnapshotFilename().c_str(),
                  sizeof(snapshotDlg.filename) - 1);
     snapshotDlg.filename[sizeof(snapshotDlg.filename) - 1] = '\0';
+#if !POM1_IS_WASM
+    if (pom1::NativeFileDialog::isAvailable()) {
+        std::vector<pom1::FileFilter> filters = {
+            { "POM1 snapshots (*.snap)", {"snap"} },
+        };
+        std::string defDir = resolveSnapshotsDir();
+        std::string picked;
+        if (!pom1::NativeFileDialog::saveFile(window, "Save Snapshot",
+                                              defDir, snapshotDlg.filename,
+                                              filters, picked))
+            return;
+        // The portable wrapper auto-appends .snap on Linux/macOS when the
+        // user typed a bare name; Win32 does the same via lpstrDefExt.
+        std::string err;
+        if (emulation->saveSnapshot(picked, err)) {
+            std::string fname = std::filesystem::path(picked).filename().string();
+            setStatusMessage("Saved snapshot: " + fname, 3.0f);
+        } else {
+            setStatusMessage(err.empty() ? "Error: cannot save snapshot" : err, 3.0f);
+        }
+        return;
+    }
+#endif
     showSaveSnapshotDialog = true;
 }
 
@@ -798,6 +1010,39 @@ void MainWindow_ImGui::renderSaveSnapshotDialog()
 
 void MainWindow_ImGui::saveTape()
 {
+#if !POM1_IS_WASM
+    if (pom1::NativeFileDialog::isAvailable()) {
+        std::vector<pom1::FileFilter> filters = {
+            { "ACI pulse dump (*.aci)", {"aci"} },
+            { "WAV audio (*.wav)", {"wav"} },
+        };
+        std::string defDir = resolveDataDir({"cassettes", "../cassettes",
+                                             "../../cassettes"});
+        // Honour the legacy default basename so users keep the same target
+        // when they alternate native and ImGui save paths.
+        std::string defName = saveTapeDlg.filePath[0]
+                                ? std::filesystem::path(saveTapeDlg.filePath).filename().string()
+                                : std::string("cassette.aci");
+        std::string picked;
+        if (!pom1::NativeFileDialog::saveFile(window, "Save Cassette Tape",
+                                              defDir, defName,
+                                              filters, picked))
+            return;
+        // Keep the dialog's text field in sync for the next ImGui-fallback
+        // session.
+        std::strncpy(saveTapeDlg.filePath, picked.c_str(),
+                     sizeof(saveTapeDlg.filePath) - 1);
+        saveTapeDlg.filePath[sizeof(saveTapeDlg.filePath) - 1] = '\0';
+        std::string error;
+        if (emulation->saveTape(picked, error)) {
+            emulation->copySnapshot(uiSnapshot);
+            setStatusMessage("Tape saved to " + picked, 3.0f);
+        } else {
+            setStatusMessage(error, 3.0f);
+        }
+        return;
+    }
+#endif
     showSaveTapeDialog = true;
 }
 

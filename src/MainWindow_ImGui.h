@@ -502,6 +502,13 @@ private:
     void saveTape();
     void loadSnapshot();
     void saveSnapshot();
+    // Side-effect bundle shared by the native-picker fast path and the ImGui
+    // fallback dialog: load the file, auto-enable matching cards based on the
+    // source directory (Graphic HGR/, sdcard/, SOUND SID/, ...), update the
+    // Memory Map regions, refresh symbols, and emit a status message. For
+    // binary loads `address` is the destination; for hex dumps the address
+    // comes from the file (pass 0). Returns true on success.
+    bool performMemoryLoad(const std::string& path, int fileType, uint16_t address);
     void pasteCode();
     // Feed text through the Apple-1 keyboard FIFO (CR-normalised, printable,
     // capped at 4096). Public: the WASM browser-paste hook (pom1_paste_text in
@@ -582,6 +589,10 @@ private:
         bool filesScanned = false;
         std::string softAsmRoot;
         std::string currentDir;
+        // When true the native picker already chose a binary file and the
+        // ImGui dialog only needs to prompt for the destination address (no
+        // file list, no type radio). Cleared on close.
+        bool addressPromptOnly = false;
         void reset() {
             filePath[0] = '\0';
             snprintf(addressStr, sizeof(addressStr), "0280");
@@ -591,6 +602,7 @@ private:
             filesScanned = false;
             softAsmRoot.clear();
             currentDir.clear();
+            addressPromptOnly = false;
         }
     };
     LoadDialogState loadDlg;

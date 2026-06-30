@@ -90,6 +90,7 @@ set(SOURCES
     ${POM1_SRC_DIR}/MainWindow_DebugWindows.cpp
     ${POM1_SRC_DIR}/MainWindow_TMS9918Inspector.cpp
     ${POM1_SRC_DIR}/MainWindow_Keyboard.cpp
+    ${POM1_SRC_DIR}/NativeFileDialog.cpp
     ${POM1_SRC_DIR}/Logger.cpp
     ${POM1_SRC_DIR}/third_party/ImGuiColorTextEdit/TextEditor.cpp
     ${POM1_SRC_DIR}/Pom1BenchHost.cpp
@@ -157,6 +158,7 @@ set(HEADERS
     ${POM1_SRC_DIR}/Symbols.h
     ${POM1_SRC_DIR}/DisplayDevice.h
     ${POM1_SRC_DIR}/MainWindow_Internal.h
+    ${POM1_SRC_DIR}/NativeFileDialog.h
     ${POM1_SRC_DIR}/Logger.h
 )
 
@@ -175,6 +177,15 @@ if(NOT EMSCRIPTEN)
     endif()
 endif()
 
+# Native file-dialog backend: the .mm Cocoa source compiles only on macOS
+# (Objective-C++), and Windows needs comdlg32 for the GetOpenFileNameW path.
+# Linux/WASM are handled entirely inside NativeFileDialog.cpp.
+set(POM1_NATIVE_FILE_DIALOG_SOURCES "")
+if(APPLE AND NOT EMSCRIPTEN)
+    list(APPEND POM1_NATIVE_FILE_DIALOG_SOURCES
+         "${POM1_SRC_DIR}/NativeFileDialog_Mac.mm")
+endif()
+
 # Create executable. MACOSX_BUNDLE makes CMake wrap the binary in POM1.app so
 # the Dock / Finder / ⌘-Tab pick up the icon from Info.plist (glfwSetWindowIcon
 # is a no-op on macOS). A POST_BUILD symlink below keeps `build/POM1` working
@@ -182,11 +193,13 @@ endif()
 if(APPLE AND NOT EMSCRIPTEN)
     add_executable(${PROJECT_NAME} MACOSX_BUNDLE
                    ${SOURCES} ${HEADERS} ${IMGUI_SOURCES}
-                   ${POM1_NATIVE_ICON_SOURCES})
+                   ${POM1_NATIVE_ICON_SOURCES}
+                   ${POM1_NATIVE_FILE_DIALOG_SOURCES})
 else()
     add_executable(${PROJECT_NAME}
                    ${SOURCES} ${HEADERS} ${IMGUI_SOURCES}
-                   ${POM1_NATIVE_ICON_SOURCES})
+                   ${POM1_NATIVE_ICON_SOURCES}
+                   ${POM1_NATIVE_FILE_DIALOG_SOURCES})
 endif()
 
 # Final artefact is branded "POM1" (POM1, POM1.exe on Windows,
@@ -458,7 +471,25 @@ else()
 
     # Windows-specific
     if(WIN32)
-        target_link_libraries(${PROJECT_NAME} opengl32 ws2_32)
+        # comdlg32 = GetOpenFileNameW / GetSaveFileNameW (NativeFileDialog).
+        target_link_libraries(${PROJECT_NAME} opengl32 ws2_32 comdlg32)
+    endif()
+
+    # macOS: the NSOpenPanel / NSSavePanel calls live in NativeFileDialog_Mac.mm.
+    # AppKit/Cocoa is already on the link line above; UniformTypeIdentifiers
+    # (UTType) ships with the macOS 11 SDK and is needed for the modern
+    # allowedContentTypes setter — the .mm guards the API by version, so
+    # framework linkage is optional on older SDKs. The header lookup is
+    # weak-linked through Cocoa so we don't have to gate the link line on
+    # the SDK version here.
+    if(APPLE)
+        target_compile_options(${PROJECT_NAME} PRIVATE
+            -Wno-deprecated-declarations)  # allowedFileTypes fallback
+        # Compile the .mm with ARC off (POM1 manages its own NSObject
+        # lifecycles through @autoreleasepool blocks).
+        set_source_files_properties(
+            "${POM1_SRC_DIR}/NativeFileDialog_Mac.mm"
+            PROPERTIES COMPILE_FLAGS "-fno-objc-arc")
     endif()
 
     if(MSVC)
