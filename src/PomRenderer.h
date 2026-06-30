@@ -68,11 +68,27 @@ public:
     // `asImTextureID` produces the value to hand to ImGui::Image. On GL it
     // casts the GLuint via uintptr_t; on Metal it pokes through a bridged
     // pointer.
+    //
+    // Backend-quirk note on Filter: the GL backend honours it via
+    // glTexParameteri (Nearest = crisp pixel art; Linear = bilinear). The
+    // Metal backend currently DROPS the parameter — imgui_impl_metal.mm
+    // binds a single sampler (linear) into its pipeline state, and
+    // ImDrawCmd::UserCallback can't reach the encoder from outside.
+    // Pixel-art surfaces created with Filter::Nearest therefore sample
+    // bilinear on macOS-Metal. See the TODO inside PomRenderer_Metal.mm
+    // ::createTexture for the path forward (per-cmd sampler hook).
     virtual Texture* createTexture(int w, int h, Filter,
                                    const uint32_t* pixels = nullptr) = 0;
     virtual void     updateTexture(Texture*, const uint32_t* pixels) = 0;
     virtual void     destroyTexture(Texture*) = 0;
     virtual ImTextureID asImTextureID(const Texture*) const = 0;
+
+    /// Texture dimensions, or 0 when `t == nullptr`. Lets callers (notably
+    /// the paint hosts) decide whether an incoming RGBA buffer can be sent
+    /// through `updateTexture` (cheap glTexSubImage2D / replaceRegion) or
+    /// whether the texture has to be reallocated via destroy+create.
+    virtual int  textureWidth(const Texture* t)  const = 0;
+    virtual int  textureHeight(const Texture* t) const = 0;
 
     // ── ImGui backend lifecycle ────────────────────────────────────────
     //

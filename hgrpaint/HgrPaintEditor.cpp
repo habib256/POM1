@@ -1127,6 +1127,11 @@ void hgrpaint::HgrPaintEditor::renderImportPreview()
         std::vector<uint8_t>().swap(importPage);
         std::vector<uint32_t>().swap(importPreview);
         if (importSrcTex && host) { host->destroyTexture(importSrcTex); importSrcTex = nullptr; }
+        // The preview GPU texture also follows the popup's lifetime — until
+        // we destroy it here, the ~210 KB RGBA8 stays resident on the
+        // renderer for the rest of the session even though no widget
+        // references it. Pair it with importSrcTex so both go together.
+        if (importPreviewTex && host) { host->destroyTexture(importPreviewTex); importPreviewTex = nullptr; }
         importSrcW = importSrcH = 0;
         importSrcTexDirty = true;
     }

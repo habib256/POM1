@@ -98,6 +98,9 @@ public:
         return (ImTextureID)(uintptr_t)t->glId;
     }
 
+    int  textureWidth(const Texture* t)  const override { return t ? t->w : 0; }
+    int  textureHeight(const Texture* t) const override { return t ? t->h : 0; }
+
     bool initImGuiBackend(const char* glslVersion) override
     {
         return ImGui_ImplOpenGL3_Init(glslVersion);

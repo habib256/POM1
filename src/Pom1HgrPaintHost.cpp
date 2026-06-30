@@ -83,19 +83,26 @@ bool Pom1HgrPaintHost::saveImage(const std::string& path, uint16_t baseAddr, int
         /*binaryFormat=*/true, err);
 }
 
-// Phase 3 / Metal: now routes every texture through PomRenderer so the
-// editor lights up on whichever backend the binary was built for. The
-// historical contract (one call serves both create and update; passing a
-// non-null handle is "may need to reallocate") is preserved by destroying
-// and recreating the texture each upload — matches what the prior
-// glTexImage2D path did (full reallocation on every call, not a sub-image
-// update).
+// Phase 3 / Metal: routes through PomRenderer so the editor lights up on
+// whichever backend the binary was built for. Same-size repeat uploads
+// (the steady state at ~60 Hz while painting) sub-update the existing
+// texture; only a dimension change destroys-and-recreates. This restores
+// the cheap-path that the historical glTexImage2D-each-call code had
+// implicitly (the driver elides storage reallocation when w/h/format
+// match — but the GLuint name itself was reused).
 void* Pom1HgrPaintHost::uploadTexture(void* tex, const void* rgba,
                                       int w, int h, bool linear)
 {
     auto* r = pom1::renderer();
     if (!r) return tex;   // headless / pre-init — keep the old handle (likely nullptr)
-    if (tex) r->destroyTexture(static_cast<pom1::Texture*>(tex));
+    auto* existing = static_cast<pom1::Texture*>(tex);
+    if (existing &&
+        r->textureWidth(existing)  == w &&
+        r->textureHeight(existing) == h) {
+        r->updateTexture(existing, static_cast<const uint32_t*>(rgba));
+        return existing;
+    }
+    if (existing) r->destroyTexture(existing);
     const auto filt = linear ? pom1::PomRenderer::Filter::Linear
                              : pom1::PomRenderer::Filter::Nearest;
     return r->createTexture(w, h, filt,

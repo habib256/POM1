@@ -973,6 +973,10 @@ void tmspaint::TmsPaintEditor::renderImportPreview()
         std::vector<uint8_t>().swap(importVram);
         std::vector<uint32_t>().swap(importPreview);
         if (importSrcTex && host) { host->destroyTexture(importSrcTex); importSrcTex = nullptr; }
+        // The 256×192 preview texture follows the same lifetime — drop it
+        // here so it doesn't stick around for the whole session after Apply
+        // / Cancel / Esc closes the popup.
+        if (importPreviewTex && host) { host->destroyTexture(importPreviewTex); importPreviewTex = nullptr; }
         importSrcW = importSrcH = 0;
         importSrcTexDirty = true;
     }

@@ -118,6 +118,14 @@ HWND parentHwnd(GLFWwindow* w)
     return w ? glfwGetWin32Window(w) : nullptr;
 }
 
+// Win32 paths can exceed MAX_PATH (260) — long OneDrive / AppData targets
+// commonly do. OFN_EXPLORER + a large lpstrFile buffer up to 32 768 wchars
+// is the documented way to make GetOpenFileNameW / GetSaveFileNameW return
+// the full path. Using a stock MAX_PATH buffer makes GetSaveFileNameW
+// return FALSE with CDERR_*/FNERR_BUFFERTOOSMALL, which we previously
+// treated as a silent cancel — the user saw their Save click do nothing.
+constexpr size_t kWin32PathBufWChars = 32768;
+
 } // namespace
 
 bool NativeFileDialog::isAvailable() { return true; }
@@ -128,7 +136,7 @@ bool NativeFileDialog::openFile(GLFWwindow* parent,
                                 const std::vector<FileFilter>& filters,
                                 std::string& outPath)
 {
-    wchar_t buf[MAX_PATH] = {0};
+    std::vector<wchar_t> buf(kWin32PathBufWChars, L'\0');
     std::wstring wtitle  = utf8ToWide(title);
     std::wstring wdir    = utf8ToWide(defaultDir);
     std::wstring wfilter = buildFilterBuffer(filters);
@@ -137,15 +145,15 @@ bool NativeFileDialog::openFile(GLFWwindow* parent,
     ofn.lStructSize = sizeof(ofn);
     ofn.hwndOwner   = parentHwnd(parent);
     ofn.lpstrFilter = wfilter.c_str();
-    ofn.lpstrFile   = buf;
-    ofn.nMaxFile    = MAX_PATH;
+    ofn.lpstrFile   = buf.data();
+    ofn.nMaxFile    = (DWORD)buf.size();
     ofn.lpstrTitle  = wtitle.empty() ? nullptr : wtitle.c_str();
     ofn.lpstrInitialDir = wdir.empty() ? nullptr : wdir.c_str();
     ofn.Flags = OFN_FILEMUSTEXIST | OFN_PATHMUSTEXIST | OFN_EXPLORER
               | OFN_NOCHANGEDIR;
 
     if (!GetOpenFileNameW(&ofn)) return false;
-    outPath = wideToUtf8(buf);
+    outPath = wideToUtf8(buf.data());
     return !outPath.empty();
 }
 
@@ -156,11 +164,11 @@ bool NativeFileDialog::saveFile(GLFWwindow* parent,
                                 const std::vector<FileFilter>& filters,
                                 std::string& outPath)
 {
-    wchar_t buf[MAX_PATH] = {0};
+    std::vector<wchar_t> buf(kWin32PathBufWChars, L'\0');
     std::wstring wname = utf8ToWide(defaultName);
     if (!wname.empty()) {
-        size_t n = std::min<size_t>(wname.size(), MAX_PATH - 1);
-        std::memcpy(buf, wname.data(), n * sizeof(wchar_t));
+        size_t n = std::min<size_t>(wname.size(), buf.size() - 1);
+        std::memcpy(buf.data(), wname.data(), n * sizeof(wchar_t));
         buf[n] = L'\0';
     }
     std::wstring wtitle  = utf8ToWide(title);
@@ -177,8 +185,8 @@ bool NativeFileDialog::saveFile(GLFWwindow* parent,
     ofn.lStructSize = sizeof(ofn);
     ofn.hwndOwner   = parentHwnd(parent);
     ofn.lpstrFilter = wfilter.c_str();
-    ofn.lpstrFile   = buf;
-    ofn.nMaxFile    = MAX_PATH;
+    ofn.lpstrFile   = buf.data();
+    ofn.nMaxFile    = (DWORD)buf.size();
     ofn.lpstrTitle  = wtitle.empty() ? nullptr : wtitle.c_str();
     ofn.lpstrInitialDir = wdir.empty() ? nullptr : wdir.c_str();
     ofn.lpstrDefExt = defExt.empty() ? nullptr : defExt.c_str();
@@ -186,7 +194,7 @@ bool NativeFileDialog::saveFile(GLFWwindow* parent,
               | OFN_NOCHANGEDIR;
 
     if (!GetSaveFileNameW(&ofn)) return false;
-    outPath = wideToUtf8(buf);
+    outPath = wideToUtf8(buf.data());
     return !outPath.empty();
 }
 

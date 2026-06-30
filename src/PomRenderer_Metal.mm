@@ -48,7 +48,6 @@
 
 #import <Cocoa/Cocoa.h>
 #import <Metal/Metal.h>
-#import <MetalKit/MetalKit.h>
 #import <QuartzCore/CAMetalLayer.h>
 
 #define GLFW_EXPOSE_NATIVE_COCOA
@@ -140,7 +139,19 @@ public:
         // plain (void*) cast is the correct way to type-pun the pointer.
         id<MTLTexture> mtl = [device_ newTextureWithDescriptor:desc];
         t->mtlTexture = (void*)mtl;
-        (void)f;   // sampler is owned by ImGui's pipeline; nothing to cache here
+        // TODO(macOS-Metal sampler): the Filter parameter is currently
+        // dropped on the Metal backend. imgui_impl_metal.mm binds a single
+        // sampler (linear) into its pipeline state for every draw call, and
+        // ImDrawCmd::UserCallback can't reach the encoder from outside the
+        // backend, so per-texture nearest/linear switching needs either a
+        // patched upstream backend or a forked one. The visible regression
+        // vs GL: pixel-art surfaces created with Filter::Nearest (HGR /
+        // TMS9918 / GT6144 framebuffers, glyph atlas, paint editor
+        // canvases) sample bilinear when scaled up by the window, looking
+        // blurrier than on the GL backend. Acceptable while the feature
+        // ships; revisit when ImGui exposes a per-cmd sampler hook (the
+        // ImTextureData migration in 1.91+ goes in that direction).
+        (void)f;
 
         if (pixels) {
             MTLRegion region = MTLRegionMake2D(0, 0, w, h);
@@ -185,6 +196,9 @@ public:
         if (!t || !t->mtlTexture) return (ImTextureID)0;
         return (ImTextureID)(uintptr_t)t->mtlTexture;
     }
+
+    int  textureWidth(const Texture* t)  const override { return t ? t->w : 0; }
+    int  textureHeight(const Texture* t) const override { return t ? t->h : 0; }
 
     // ─── ImGui backend lifecycle ───────────────────────────────────────
     bool initImGuiBackend(const char* /*glslVersion*/) override
@@ -256,6 +270,10 @@ public:
 
     void present() override
     {
+        // readBackbufferRGBA short-circuits the frame finalize (encodes
+        // the blit + presentDrawable on commandBuffer_ itself, then waits
+        // and releases). When that ran this frame, drawable_/commandBuffer_
+        // are already nil — nothing to do here.
         if (!drawable_) return;
         [commandBuffer_ presentDrawable:drawable_];
         [commandBuffer_ commit];
@@ -268,7 +286,7 @@ public:
     bool readBackbufferRGBA(int& outW, int& outH,
                             std::vector<uint8_t>& outPixels) override
     {
-        if (!drawable_) return false;
+        if (!drawable_ || !commandBuffer_) return false;
         @autoreleasepool {
             id<MTLTexture> src = drawable_.texture;
             const NSUInteger w = src.width;
@@ -287,8 +305,15 @@ public:
             desc.storageMode = MTLStorageModeShared;
             id<MTLTexture> staging = [device_ newTextureWithDescriptor:desc];
 
-            id<MTLCommandBuffer> cb = [commandQueue_ commandBuffer];
-            id<MTLBlitCommandEncoder> blit = [cb blitCommandEncoder];
+            // Encode the blit ONTO commandBuffer_ (the same buffer that
+            // holds this frame's ImGui draws), then presentDrawable + commit
+            // it here. A separate command buffer would commit out of order —
+            // the blit would read drawable.texture BEFORE the ImGui draws
+            // were even encoded, producing a stale/empty PNG. Inlining the
+            // blit on commandBuffer_ + presenting on the same buffer is the
+            // only way to read the just-rendered frame on Metal.
+            id<MTLBlitCommandEncoder> blit =
+                [commandBuffer_ blitCommandEncoder];
             [blit copyFromTexture:src
                       sourceSlice:0
                       sourceLevel:0
@@ -299,8 +324,9 @@ public:
                  destinationLevel:0
                 destinationOrigin:MTLOriginMake(0, 0, 0)];
             [blit endEncoding];
-            [cb commit];
-            [cb waitUntilCompleted];
+            [commandBuffer_ presentDrawable:drawable_];
+            [commandBuffer_ commit];
+            [commandBuffer_ waitUntilCompleted];
 
             outW = (int)w;
             outH = (int)h;
@@ -311,6 +337,14 @@ public:
                    fromRegion:MTLRegionMake2D(0, 0, w, h)
                   mipmapLevel:0];
             [staging release];   // balances the +1 from -newTextureWithDescriptor:
+
+            // commandBuffer_ + drawable_ are done with — release them now so
+            // present() (which always runs after this on the screenshot path)
+            // detects the frame is finalized and no-ops.
+            [commandBuffer_ release];
+            [drawable_      release];
+            commandBuffer_ = nil;
+            drawable_      = nil;
 
             // BGRA → RGBA in place. Metal drawables on Apple GPUs are BGRA8;
             // POM1's PNG writer expects RGBA8, so we swap the blue/red
@@ -329,7 +363,6 @@ private:
     MTLRenderPassDescriptor*  renderPassDescriptor_ = nil;
     id<CAMetalDrawable>       drawable_            = nil;   // alive between beginFrame/present
     id<MTLCommandBuffer>      commandBuffer_       = nil;   // ditto
-    Filter                    filterForCreate_     = Filter::Linear;
 };
 
 } // namespace

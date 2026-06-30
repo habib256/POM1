@@ -499,19 +499,32 @@ else()
             "-framework CoreVideo"
         )
         if(POM1_USE_METAL)
-            # PomRenderer_Metal.mm + imgui_impl_metal.mm need these three.
-            # QuartzCore brings CAMetalLayer; MetalKit is used by ImGui's
-            # backend for the per-frame autorelease/timing helpers.
+            # PomRenderer_Metal.mm + imgui_impl_metal.mm need these two
+            # frameworks. QuartzCore brings CAMetalLayer; MetalKit is NOT
+            # needed (neither file references any MTK* symbol — confirmed
+            # at the source via `grep MTK src/PomRenderer_Metal.mm
+            # imgui/backends/imgui_impl_metal.mm`). Linking it would add
+            # an unused dyld dependency.
             target_link_libraries(${PROJECT_NAME}
                 "-framework Metal"
-                "-framework MetalKit"
                 "-framework QuartzCore"
             )
             target_compile_definitions(${PROJECT_NAME} PRIVATE POM1_HAS_METAL=1)
+            # ARC discipline is asymmetric: PomRenderer_Metal.mm is hand-
+            # written with explicit retain/release (mirrors
+            # NativeFileDialog_Mac.mm), so it MUST be -fno-objc-arc.
+            # imgui_impl_metal.mm, on the other hand, is upstream-authored
+            # under ARC — every `@property (nonatomic, strong)` and bare
+            # `[[X alloc] init]` in there assumes the compiler inserts the
+            # release pairs. Forcing -fno-objc-arc on it leaks one
+            # FramebufferDescriptor per frame and crashes on shutdown.
+            # Keep the two TUs on opposite policies.
             set_source_files_properties(
                 "${POM1_SRC_DIR}/PomRenderer_Metal.mm"
-                "${IMGUI_DIR}/backends/imgui_impl_metal.mm"
                 PROPERTIES COMPILE_FLAGS "-fno-objc-arc")
+            set_source_files_properties(
+                "${IMGUI_DIR}/backends/imgui_impl_metal.mm"
+                PROPERTIES COMPILE_FLAGS "-fobjc-arc")
         else()
             # Apple deprecated the whole OpenGL API in 10.14 but it still
             # works on the legacy POM1_RENDERER=opengl macOS build. Silence
@@ -561,13 +574,15 @@ else()
     # weak-linked through Cocoa so we don't have to gate the link line on
     # the SDK version here.
     if(APPLE)
-        target_compile_options(${PROJECT_NAME} PRIVATE
-            -Wno-deprecated-declarations)  # allowedFileTypes fallback
-        # Compile the .mm with ARC off (POM1 manages its own NSObject
-        # lifecycles through @autoreleasepool blocks).
+        # Scope `-Wno-deprecated-declarations` and `-fno-objc-arc` to the
+        # single .mm that needs both: it falls back to the deprecated
+        # NSOpenPanel.allowedFileTypes setter on pre-11 SDKs, and manages
+        # its NSObject lifetimes by hand via @autoreleasepool. A repo-wide
+        # `-Wno-deprecated-declarations` would mask genuine deprecations
+        # in every other TU.
         set_source_files_properties(
             "${POM1_SRC_DIR}/NativeFileDialog_Mac.mm"
-            PROPERTIES COMPILE_FLAGS "-fno-objc-arc")
+            PROPERTIES COMPILE_FLAGS "-fno-objc-arc -Wno-deprecated-declarations")
     endif()
 
     if(MSVC)

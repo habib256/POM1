@@ -116,16 +116,23 @@ bool Pom1TmsPaintHost::savePng(const std::string& path, const uint32_t* rgba,
 }
 
 // Phase 3 / Metal: routes through PomRenderer so the TMS9918 paint editor
-// uses whichever backend the binary was built for. Mirror of
-// Pom1HgrPaintHost::uploadTexture — see that comment block for the contract
-// (destroy + recreate on each upload, matches the historical glTexImage2D
-// reallocate-each-time semantics).
+// uses whichever backend the binary was built for. Same-size repeat
+// uploads (the canvas at ~60 Hz while painting) sub-update the existing
+// texture; only a dimension change destroys-and-recreates. Mirror of
+// Pom1HgrPaintHost::uploadTexture.
 void* Pom1TmsPaintHost::uploadTexture(void* tex, const void* rgba,
                                       int w, int h, bool linear)
 {
     auto* r = pom1::renderer();
     if (!r) return tex;
-    if (tex) r->destroyTexture(static_cast<pom1::Texture*>(tex));
+    auto* existing = static_cast<pom1::Texture*>(tex);
+    if (existing &&
+        r->textureWidth(existing)  == w &&
+        r->textureHeight(existing) == h) {
+        r->updateTexture(existing, static_cast<const uint32_t*>(rgba));
+        return existing;
+    }
+    if (existing) r->destroyTexture(existing);
     const auto filt = linear ? pom1::PomRenderer::Filter::Linear
                              : pom1::PomRenderer::Filter::Nearest;
     return r->createTexture(w, h, filt,
