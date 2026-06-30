@@ -100,7 +100,6 @@ set(SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/hgrpaint/HgrPaintEditor.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/hgrpaint/HgrFont.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/hgrpaint/HgrPaintModel.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/hgrpaint/HgrSpriteBank.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/hgrpaint/Cam16.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/hgrpaint/HgrConvert.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/hgrpaint/HgrImageDecode.cpp

@@ -244,6 +244,119 @@ int main()
                    "PhaseF: late line border = R7 after mid-frame change (yellow)"); ++assertions;
     }
 
+    // ----------------------------------------------------------------------
+    // Phase G — Sub-scanline split (Étape 0, beam/CPU sync). WITHIN a single
+    // scanline, change R7 mid-line via renderBeamCatchUp (the exact idiom the
+    // Memory MMIO hook uses before a register write): the LEFT border of that
+    // line must keep the OLD R7, the RIGHT border the NEW R7 — a split that is
+    // impossible with line-major rendering. Lines fully before the change stay
+    // old; lines fully after stay new.
+    // ----------------------------------------------------------------------
+    {
+        TMS9918 vdp;
+        initVdp(vdp);
+        writeReg(vdp, 7, 0x0F);                        // backdrop = white
+        // Put the beam mid-line 80: frameCycleCounter≈5240 → active x≈98.
+        vdp.advanceCycles(5240);
+        vdp.renderBeamCatchUp(0);                      // commit line 80 left half + L border WHITE
+        writeReg(vdp, 7, 0x0A);                        // mid-SCANLINE change → yellow
+        vdp.advanceCycles(POM1_CPU_CYCLES_PER_FRAME_1X_60HZ);  // finish: line 80 right half + R border YELLOW
+
+        TMS9918::Snapshot snap;
+        vdp.copySnapshot(snap);
+
+        const int   kBorderTop = TMS9918::kBorderTop;
+        const int   kFullWidth = TMS9918::kFullWidth;
+        const ImU32 white  = TMS9918::kPalette[0x0F];
+        const ImU32 yellow = TMS9918::kPalette[0x0A];
+
+        const int splitRow = kBorderTop + 80;
+        const uint32_t splitLeft  = snap.framebuffer[splitRow * kFullWidth + 4];                // L border
+        const uint32_t splitRight = snap.framebuffer[splitRow * kFullWidth + (kFullWidth - 4)]; // R border
+        mustBeTrue(splitLeft  == white,
+                   "PhaseG: split line L-border = R7 before the mid-scanline change (white)"); ++assertions;
+        mustBeTrue(splitRight == yellow,
+                   "PhaseG: split line R-border = R7 after the mid-scanline change (yellow)"); ++assertions;
+        mustBeTrue(splitLeft != splitRight,
+                   "PhaseG: same scanline carries two backdrop colours (sub-line split)"); ++assertions;
+
+        // A line fully before the change stays white on both sides.
+        const int earlyRow = kBorderTop + 40;
+        mustBeTrue(snap.framebuffer[earlyRow * kFullWidth + 4] == white &&
+                   snap.framebuffer[earlyRow * kFullWidth + (kFullWidth - 4)] == white,
+                   "PhaseG: line before the change is uniformly white"); ++assertions;
+        // A line fully after the change stays yellow on both sides.
+        const int lateRow = kBorderTop + 150;
+        mustBeTrue(snap.framebuffer[lateRow * kFullWidth + 4] == yellow &&
+                   snap.framebuffer[lateRow * kFullWidth + (kFullWidth - 4)] == yellow,
+                   "PhaseG: line after the change is uniformly yellow"); ++assertions;
+    }
+
+    // ----------------------------------------------------------------------
+    // Phase H — Read-time sprite-scan sync (Étape 1). The 5S overflow flag must
+    // reflect the beam's scanline at the EXACT read cycle, not merely as of the
+    // last advanceCycles. 5 sprites sit on line 100. We stop the beam at ~line
+    // 96 (scan hasn't reached 100 → 5S clear), then push the scan past line 100
+    // purely via syncSpriteScanToBeam's in-flight offset — WITHOUT another
+    // advanceCycles — and 5S must latch. This is what makes the 5S raster-split
+    // poll loop cycle-precise.
+    // ----------------------------------------------------------------------
+    {
+        TMS9918 vdp;
+        initVdp(vdp);
+        fillSpritePatternFF(vdp);
+        for (int i = 0; i < 5; ++i)
+            pokeSAT(vdp, i, /*y=*/99, /*x=*/(uint8_t)(i * 16), /*name=*/0, /*color=*/0x0F);
+        pokeSAT(vdp, 5, 0xD0, 0, 0, 0);                // terminator
+
+        // Beam at ~line 96: the per-line scan has NOT reached line 100 yet.
+        vdp.advanceCycles(cyclesToBePastLine(96));
+        const uint8_t before = vdp.readControl();      // direct read — no sync
+        mustBeTrue((before & 0x40) == 0,
+                   "PhaseH: 5S clear while the beam is still above the sprite line"); ++assertions;
+
+        // Read-time catch-up: an in-flight offset of ~400 cycles (~6 lines)
+        // pushes the effective beam past line 100 → the scan latches 5S, with
+        // no further advanceCycles. (Memory's $CC01 read hook does exactly this
+        // with cpu->getCurrentInstructionCycles().)
+        vdp.syncSpriteScanToBeam(400);
+        const uint8_t after = vdp.readControl();
+        mustBeTrue((after & 0x40) != 0,
+                   "PhaseH: 5S latched by read-time beam sync (cycle-precise raster split)"); ++assertions;
+        mustBeTrue((after & 0x1F) == 4,
+                   "PhaseH: 5S index = SAT idx 4 (the 5th sprite on the line)"); ++assertions;
+    }
+
+    // ----------------------------------------------------------------------
+    // Phase I — Seamless mode split (Étape 2). A mid-scanline MODE change (here
+    // Graphics I → Text, which disables the sprite engine) must be LATCHED by
+    // the chip until the line ends: the line on which the write lands keeps its
+    // old mode for its whole width, the NEXT line gets the new mode. We place a
+    // sprite on line 80, switch to text mode mid-line 80, and check the sprite
+    // still shows on line 80 (latched) but is gone on line 81 (text mode).
+    // ----------------------------------------------------------------------
+    {
+        TMS9918 vdp;
+        initVdp(vdp);                                  // Graphics I, display ON
+        writeReg(vdp, 7, 0x04);                        // backdrop = dark blue
+        fillSpritePatternFF(vdp);                      // sprite name 0 = solid
+        pokeSAT(vdp, 0, /*y=*/79, /*x=*/110, /*name=*/0, /*color=*/0x0F);  // line 80, white
+        pokeSAT(vdp, 1, 0xD0, 0, 0, 0);                // terminator
+
+        vdp.advanceCycles(5240);                       // beam mid-line 80 (x≈98)
+        vdp.renderBeamCatchUp(0);                      // commit line 80 left half — latches mode 0
+        writeReg(vdp, 1, 0xF0);                        // mid-SCANLINE switch to Text mode (M1)
+        vdp.advanceCycles(POM1_CPU_CYCLES_PER_FRAME_1X_60HZ);  // finish the frame
+
+        static uint32_t active[256 * 192];
+        vdp.copyActiveFramebuffer(active);
+        const ImU32 white = TMS9918::kPalette[0x0F];
+        mustBeTrue(active[80 * 256 + 113] == white,
+                   "PhaseI: sprite still drawn on the split line — mode change latched to line end"); ++assertions;
+        mustBeTrue(active[81 * 256 + 113] != white,
+                   "PhaseI: next line is Text mode — sprite engine off (seamless split applied)"); ++assertions;
+    }
+
     std::printf("tms9918_per_scanline: all %d assertions passed\n", assertions);
     return 0;
 }

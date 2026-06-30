@@ -21,6 +21,7 @@
 #include <unordered_map>
 #include "CpuClock.h"
 #include "Peripheral.h"
+#include "BeamClock.h"
 #include "imgui.h"
 
 class TMS9918 : public pom1::Peripheral
@@ -251,6 +252,19 @@ public:
     // explicitly (debugging, cycle-precise demos).
     bool inHBlank() const;
 
+    // Étape 0 — beam/CPU sync. Call from the MMIO write path BEFORE a
+    // register/VRAM mutation so the change splits the scanline at the exact
+    // beam pixel. inFlightCycles = CPU cycles already accumulated for the
+    // in-flight instruction (sub-instruction accuracy; mirrors the GEN2
+    // video-event journal idiom). No-op when blanked or in VBlank.
+    void renderBeamCatchUp(int inFlightCycles);
+
+    // Étape 1 — beam/CPU sync for the sprite status. Call from the MMIO read
+    // path BEFORE returning $CC01 so 5S / collision / index reflect the beam's
+    // scanline at the exact read cycle (not just as of the last advanceCycles),
+    // making the 5S raster-split poll loop cycle-precise. Same in-flight idiom.
+    void syncSpriteScanToBeam(int inFlightCycles);
+
     // Public timing constants (per openMSX VDP.hh / VDP.cc TMS9918A NTSC).
     static constexpr int kHBlankLenText = 404;     // VDP ticks
     static constexpr int kHBlankLenGfx  = 312;     // VDP ticks
@@ -268,7 +282,20 @@ private:
     // affect lines crossed *after* the change — silicon-correct rasterisation
     // (cf. sketchs/doc/Programming_TMS9918.md §17 "rainbow demo" use cases).
     void renderActiveLine(int line);
-    void paintLeftRightBorderForActiveLine(int line);
+    // Étape 0 — sub-scanline beam/CPU sync. renderLineToTemp rasterises a line
+    // into a 256-px temp; commitActiveSegment blits a [xStart,xEnd) slice plus
+    // the L/R border beamed with it; renderUpToBeam advances the
+    // (beamRenderLine, beamRenderX) cursor to (targetLine, targetX), committing
+    // each newly-beamed slice from LIVE state.
+    void renderLineToTemp(int line, uint32_t* lineBuf, uint8_t latchR0, uint8_t latchR1);
+    void commitActiveSegment(int line, int xStart, int xEnd, const uint32_t* lineBuf);
+    void renderUpToBeam(int targetLine, int targetX);
+    // Étape 3 — this chip's NTSC raster geometry for the shared BeamClock seam.
+    pom1::BeamGeometry beamGeometry() const;
+    // Étape 1 — run the per-line sprite-status scan up to active line
+    // `activeNow` (exclusive), latching 5S/collision/index + the per-frame
+    // reset. Shared by advanceCycles and syncSpriteScanToBeam.
+    void advanceSpriteScanTo(int activeNow);
     void paintTopBorder();
     void paintBottomBorder();
     // Full-frame repaint of the live framebuffer from the current VRAM + regs.
@@ -390,6 +417,20 @@ private:
     // Tracks the last scanline rendered into framebuffer this frame.
     // Same semantics as lastScanlineProcessed but for the renderer.
     int lastScanlineRendered = -1;
+    // Étape 0 — sub-scanline render cursor. beamRenderLine ∈ [0,192] is the
+    // active line currently being committed; beamRenderX ∈ [0,256] the column
+    // committed on it. Lines below beamRenderLine are fully committed. Reset at
+    // frame rollover. Transient (not serialized — the framebuffer is rebuilt on
+    // load), as are the once-per-frame border guards below.
+    int  beamRenderLine = 0;
+    int  beamRenderX    = 0;
+    bool topBorderPainted    = false;
+    bool bottomBorderPainted = false;
+    // Étape 2 — mode + blank bits latched at the start of the current render
+    // line. R0 M3 / R1 M1/M2/blank splits are "seamless" (the chip defers them
+    // to the next line); table bases + R7 stay immediate (read live).
+    uint8_t lineLatchR0 = 0;
+    uint8_t lineLatchR1 = 0;
     bool siliconStrictMode  = false;
     // See setVramNoiseOnReset(). Default OFF — preserves the MSX1 bistable
     // power-on pattern that the test suite + recorded snapshots expect.
@@ -414,16 +455,30 @@ private:
     static constexpr int kVdpTicksPerLine    = 1368;
     static constexpr int kVdpTicksPerCpuCycle = 21;
     static constexpr int kVdpDeltaD28Ticks   = 28;
+    // Étape 0 — active-display horizontal window, used to map a within-line
+    // VDP tick to an active pixel column [0,256) for sub-scanline beam
+    // catch-up. kActiveLeftTick = openMSX getLeftSprites (gfx) — the tick where
+    // the visible area begins; 4 ticks/pixel (1024 ticks across 256 px).
+    static constexpr int kActiveLeftTick = 258;   // = kLeftSpritesGfx (inHBlank)
+    static constexpr int kTicksPerPixel  = 4;     // 1024 active ticks / 256 px
     // Active-display CPU-access floor. The openMSX slot table alone yields only
-    // a ~8c worst-case drain, but real TMS9918A silicon (validated on Claudio
-    // Parmigiani's Replica-1) drops back-to-back CPU writes spaced under ~16c
-    // during active Mode I/II display — the VDP holds the bus for pattern /
-    // colour / sprite fetches far longer than the dense slot table implies.
-    // Without this floor POM1 accepted under-padded bursts the real chip loses,
-    // masking the "works on POM1, garbled on silicon" class. The lib pad helper
-    // gives 18c (22c STA->STA) to clear it with margin; 12c (16c STA->STA) sat
-    // right at the edge.
-    static constexpr int kMinActiveDrainCycles = 16;
+    // a ~7.5c worst-case drain (128-tick window 6.1c + D28 prep 1.3c), which
+    // under-reports the silicon penalty: openMSX's D28 (~1.3 µs) is shorter than
+    // the real ~2 µs DRAM access settling, so dense sprites-ON Mode I/II tile
+    // streams (Snake/Sokoban) and bitmap fills (Mandel) slip through POM1 that
+    // the real chip drops.
+    //
+    // 9c is NOT a fudge — it is the TI datasheet's active-display rule expressed
+    // in 6502 cycles. The TMS9918A requires ~8 µs between successive data-port
+    // writes in Graphics I/II (window wait ≤5.95 µs + ~2 µs DRAM access). At the
+    // Apple-1 clock, ceil(8 µs × 1.022727 MHz) = ceil(8.18) = 9. So an 8c gap
+    // (7.8 µs) is below spec and drops; 9c (8.8 µs) is the first whole-cycle gap
+    // that clears it. This still catches the sprites-ON under-padded bursts
+    // (Galaga's 4c damiers, etc.) yet lets the sprites-OFF TMS_Plasma timings —
+    // tightest unpadded loop 9c, clean on Claudio Parmigiani's real Replica-1 —
+    // through, which the retired flat 16c floor (≈2× the datasheet, 15.6 µs)
+    // wrongly dropped. The lib pad helper gives 18c (22c STA->STA), margin to spare.
+    static constexpr int kMinActiveDrainCycles = 9;
 
     static constexpr int kCyclesPerFrame = POM1_CPU_CYCLES_PER_FRAME_1X_60HZ;
     // Active display covers 192 of the 262 NTSC scanlines; the remaining 70

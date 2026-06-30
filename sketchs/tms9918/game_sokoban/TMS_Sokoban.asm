@@ -369,6 +369,20 @@ init_vdp:
         LDA #$D0
         STA VDP_DATA
 
+        ; Defensive (TMS9918-SPRITE_INIT.md §4.2 gold standard): fill
+        ; SAT[1..127] = $D1 (off-screen Y, NOT a terminator) via auto-increment.
+        ; SAT[0].Y=$D0 alone leaves slots 1+ holding uninitialised VRAM — fine on
+        ; POM1's bistable power-on, but ghost sprites on real TMS9918A silicon
+        ; (and if SAT[0] is ever overwritten with a real sprite).
+        JSR     tms9918_pad18
+        LDX     #127
+        LDA     #$D1
+@satfill:
+        STA VDP_DATA
+        JSR     tms9918_pad18
+        DEX
+        BNE @satfill
+
         ; --- Final: re-arm R1 with display ON. Display stays OFF until the
         ;     cmd byte commits — threshold = 2c through both STAs, no pad
         ;     needed inline. The caller's next VDP write picks up 16c gating.

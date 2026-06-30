@@ -9,6 +9,7 @@
 
 #include "TMS9918.h"
 #include "SnapshotIO.h"
+#include "BeamClock.h"
 #include <algorithm>
 #include <cstdio>
 #include <cstring>
@@ -168,6 +169,10 @@ void TMS9918::reset()
     pendingDrainCycles = 0;
     lastScanlineProcessed = -1;
     lastScanlineRendered  = -1;
+    beamRenderLine   = 0;
+    beamRenderX      = 0;
+    topBorderPainted    = false;
+    bottomBorderPainted = false;
     framebuffer.fill(kPalette[15]);            // start with all-white screen (matches Replica-1 silicon)
     droppedWrites = 0;
     droppedWriteTraceCount = 0;
@@ -351,10 +356,12 @@ void TMS9918::noteAcceptedAccess()
     pendingDrainCycles   = (drainTicks + kVdpTicksPerCpuCycle - 1) / kVdpTicksPerCpuCycle;
 
     // Enforce the silicon active-display floor: during visible Mode I/II display
-    // the real chip needs ~16c between CPU writes (the openMSX slot table alone
-    // only models ~8c). Scoped to Gfx12 — Text and Multicolor genuinely free
-    // more CPU bandwidth (denser slot tables), so their tight loops stay valid;
-    // VBlank / display-off ride the dense ScreenOff table.
+    // the real chip needs ~9c between CPU writes (the openMSX slot table alone
+    // only models ~8c, but a flat 16c floor falsely dropped the sprites-OFF
+    // TMS_Plasma timings that run clean on real silicon). Scoped to Gfx12 — Text
+    // and Multicolor genuinely free more CPU bandwidth (denser slot tables), so
+    // their tight loops stay valid; VBlank / display-off ride the dense ScreenOff
+    // table.
     if (activeSlotTableId() == kSlotTableGfx12 && pendingDrainCycles < kMinActiveDrainCycles)
         pendingDrainCycles = kMinActiveDrainCycles;
 }
@@ -438,8 +445,16 @@ uint8_t TMS9918::readControl()
     noteAcceptedAccess();
     latchIsSecond = false;
     uint8_t result = statusReg;
-    // Clear frame flag (bit 7), collision flag (bit 5) on read
-    statusReg &= ~0xE0;
+    // Reading the status register latch-clears ONLY the frame flag (bit 7)
+    // and the collision flag (bit 5) — BiFi/Sean Young §2.2: "after reading
+    // it, bit 7 (INT) and bit 5 (C) are reset". The 5th-sprite flag (bit 6)
+    // and its SAT index (bits 0..4) are NOT cleared on read; they are
+    // recomputed from scratch each frame by the sprite scan (see the frame-top
+    // reset in advanceCycles + scanSpritesForLine / scanSpritesForStatus).
+    // The old ~0xE0 mask also cleared bit 6, so a second status read in the
+    // same frame wrongly reported "no overflow" — a silent divergence from
+    // the chip the document cites as canonical.
+    statusReg &= ~0xA0;
     return result;
 }
 
@@ -480,32 +495,12 @@ void TMS9918::advanceCycles(int cycles)
         const int totalScanlineNow = (int)((int64_t)frameCycleCounter * 262 / kCyclesPerFrame);
         const int activeNow = std::min(totalScanlineNow, kScreenHeight);
 
-        // Paint the top border once per frame, on the first non-zero progress.
-        if (lastScanlineRendered == -1 && activeNow >= 0) {
-            paintTopBorder();
-        }
-
-        if (activeNow > lastScanlineProcessed) {
-            for (int line = lastScanlineProcessed + 1; line < activeNow; ++line) {
-                scanSpritesForLine(line);
-            }
-            lastScanlineProcessed = activeNow - 1 < kScreenHeight - 1
-                                  ? activeNow - 1
-                                  : kScreenHeight - 1;
-            if (activeNow >= kScreenHeight) lastScanlineProcessed = kScreenHeight;
-        }
-        if (activeNow > lastScanlineRendered) {
-            for (int line = lastScanlineRendered + 1; line < activeNow; ++line) {
-                renderActiveLine(line);
-            }
-            lastScanlineRendered = activeNow - 1 < kScreenHeight - 1
-                                 ? activeNow - 1
-                                 : kScreenHeight - 1;
-            if (activeNow >= kScreenHeight) {
-                lastScanlineRendered = kScreenHeight;
-                paintBottomBorder();
-            }
-        }
+        advanceSpriteScanTo(activeNow);
+        // Progressive render: commit COMPLETE active lines up to the current
+        // beam line. Sub-scanline commits (mid-line register/VRAM splits) are
+        // driven separately by renderBeamCatchUp() from the MMIO write path.
+        // Top + bottom borders are handled inside renderUpToBeam (Étape 0).
+        renderUpToBeam(activeNow, 0);
     }
 
     // Count VBlank entries (boundaries at kActiveDisplayCycles + n*kCyclesPerFrame)
@@ -543,6 +538,10 @@ void TMS9918::advanceCycles(int cycles)
         frameCycleCounter -= kCyclesPerFrame;
         lastScanlineProcessed = -1;               // reset per-line scan progress
         lastScanlineRendered  = -1;               // reset per-line render progress
+        beamRenderLine   = 0;                     // reset the sub-scanline render cursor
+        beamRenderX      = 0;
+        topBorderPainted    = false;
+        bottomBorderPainted = false;
     }
 }
 
@@ -1052,80 +1051,197 @@ void TMS9918::renderCloneSpritesLineRaw(int line, uint32_t* lineBuf,
 }
 
 // --------------------------------------------------------------------------
-// renderActiveLine — instance method, paints one active scanline of the
-// live framebuffer (offset row = line + kBorderTop). Uses LIVE state so
-// mid-frame R7/R1/VRAM changes are silicon-correctly progressive.
+// renderLineToTemp — rasterise one active scanline into a 256-px temp buffer
+// using LIVE state (mode dispatch + sprites + cloning). No framebuffer commit:
+// the caller decides which horizontal slice to keep (full line, or a
+// [xStart,xEnd) segment for sub-scanline beam catch-up). Étape 0.
 // --------------------------------------------------------------------------
-void TMS9918::renderActiveLine(int line)
+void TMS9918::renderLineToTemp(int line, uint32_t* lineBuf, uint8_t latchR0, uint8_t latchR1)
 {
-    if (line < 0 || line >= kScreenHeight) return;
-
+    // R7 (backdrop) is read LIVE — backdrop / table-base changes take effect
+    // immediately mid-line (Étape 0). The display mode (M1/M2/M3) and the blank
+    // bit (R1.6) are read from latchR0/latchR1, captured at the START of this
+    // line: the chip latches mode + blank splits until the line ends ("seamless"
+    // splits, Grauw/ARTRAG; Étape 2), so a mid-line R0/R1 mode/blank write only
+    // takes effect on the NEXT line.
     const uint8_t backdropIdx = regs[7] & 0x0F;
     const ImU32   backdrop    = (backdropIdx == 0) ? kPalette[1] : kPalette[backdropIdx];
-
-    uint32_t lineBuf[kScreenWidth];
     for (int i = 0; i < kScreenWidth; ++i) lineBuf[i] = backdrop;
 
-    const bool blank = (regs[1] & 0x40) == 0;
-    if (!blank) {
-        const bool m1 = (regs[1] & 0x10) != 0;
-        const bool m2 = (regs[1] & 0x08) != 0;
-        const bool m3 = (regs[0] & 0x02) != 0;
-        const uint16_t mask = liveVramMask();
+    if ((latchR1 & 0x40) == 0) return;            // display blanked (latched) → backdrop only
 
-        // meisei vdp.c:419 mode encoding (port verbatim):
-        //   bit 0 = M1 (R1 bit 4)
-        //   bit 1 = M3 (R0 bit 1)
-        //   bit 2 = M2 (R1 bit 3)
-        int mode = (m1 ? 1 : 0) | (m3 ? 2 : 0) | (m2 ? 4 : 0);
+    const bool m1 = (latchR1 & 0x10) != 0;
+    const bool m2 = (latchR1 & 0x08) != 0;
+    const bool m3 = (latchR0 & 0x02) != 0;
+    const uint16_t mask = liveVramMask();
 
-        // Hybrid M3 + (M1 or M2): chip silently clears M3 internally
-        // (meisei vdp.c:443-444). Mode falls back to whatever M1/M2
-        // selects:  M1+M3 → text;  M3+M2 → multicolor;  all → text+M2
-        // (= mode 5, the "vertical bars" glitch).
-        if ((mode & 2) && (mode & 5)) mode ^= 2;
+    // meisei vdp.c:419 mode encoding (port verbatim):
+    //   bit 0 = M1 (R1 bit 4), bit 1 = M3 (R0 bit 1), bit 2 = M2 (R1 bit 3).
+    int mode = (m1 ? 1 : 0) | (m3 ? 2 : 0) | (m2 ? 4 : 0);
+    // Hybrid M3 + (M1 or M2): chip silently clears M3 internally (meisei
+    // vdp.c:443-444). M1+M3 → text; M3+M2 → multicolor; all → text+M2 (mode 5).
+    if ((mode & 2) && (mode & 5)) mode ^= 2;
 
-        switch (mode) {
-            case 0: renderGfxILineRaw      (line, lineBuf, vram.data(), regs.data(), mask, backdrop); break;
-            case 1: renderTextLineRaw      (line, lineBuf, vram.data(), regs.data(), mask, backdrop); break;
-            case 2: renderGfxIILineRaw     (line, lineBuf, vram.data(), regs.data(), mask, backdrop); break;
-            case 4: renderMulticolorLineRaw(line, lineBuf, vram.data(), regs.data(), mask, backdrop); break;
-            case 5: renderTextBarsLineRaw  (line, lineBuf, regs.data(), backdrop); break;
-            // No other modes possible after the XOR rule:
-            //   3 → 1 (text), 6 → 4 (multicolor), 7 → 5 (text+bars).
-            default: break;
-        }
-
-        // Sprite engine runs ONLY when M1 is clear — text mode
-        // (mode 1 or 5) disables sprite scanning on silicon
-        // (meisei vdp.c:571 `if (~mode&1)`). Cloning is part of
-        // the sprite engine and inherits the same gate.
-        if (!m1) {
-            renderSpritesLineRaw(line, lineBuf, vram.data(), regs.data(), mask);
-            // Bug N°8 cloning (meisei vdp.c:592 condition).
-            if (isCloningActive(regs.data(), chipType)) {
-                renderCloneSpritesLineRaw(line, lineBuf, vram.data(), regs.data(), mask);
-            }
-        }
+    switch (mode) {
+        case 0: renderGfxILineRaw      (line, lineBuf, vram.data(), regs.data(), mask, backdrop); break;
+        case 1: renderTextLineRaw      (line, lineBuf, vram.data(), regs.data(), mask, backdrop); break;
+        case 2: renderGfxIILineRaw     (line, lineBuf, vram.data(), regs.data(), mask, backdrop); break;
+        case 4: renderMulticolorLineRaw(line, lineBuf, vram.data(), regs.data(), mask, backdrop); break;
+        case 5: renderTextBarsLineRaw  (line, lineBuf, regs.data(), backdrop); break;
+        // After the XOR rule: 3 → 1 (text), 6 → 4 (multicolor), 7 → 5 (bars).
+        default: break;
     }
 
-    // Blit the 256-pixel active line into framebuffer at row (line + kBorderTop),
-    // cols [kBorderLeft, kBorderLeft + 256).
+    // Sprite engine runs ONLY when M1 is clear — text mode (1/5) disables
+    // sprite scanning on silicon (meisei vdp.c:571 `if (~mode&1)`). Cloning
+    // is part of the sprite engine and inherits the same gate.
+    if (!m1) {
+        renderSpritesLineRaw(line, lineBuf, vram.data(), regs.data(), mask);
+        if (isCloningActive(regs.data(), chipType)) {
+            renderCloneSpritesLineRaw(line, lineBuf, vram.data(), regs.data(), mask);
+        }
+    }
+}
+
+// commitActiveSegment — blit lineBuf[xStart,xEnd) into the framebuffer active
+// row, plus the L/R border beamed alongside (left with the first segment,
+// right with the last) using the CURRENT R7 so a mid-line backdrop change
+// splits the border too. Étape 0.
+void TMS9918::commitActiveSegment(int line, int xStart, int xEnd, const uint32_t* lineBuf)
+{
+    if (line < 0 || line >= kScreenHeight) return;
+    if (xStart < 0) xStart = 0;
+    if (xEnd > kScreenWidth) xEnd = kScreenWidth;
+    if (xEnd <= xStart) return;
     const int dstRow = line + kBorderTop;
-    std::memcpy(&framebuffer[dstRow * kFullWidth + kBorderLeft],
-                lineBuf, kScreenWidth * sizeof(uint32_t));
-    paintLeftRightBorderForActiveLine(line);
+    std::memcpy(&framebuffer[dstRow * kFullWidth + kBorderLeft + xStart],
+                &lineBuf[xStart], (size_t)(xEnd - xStart) * sizeof(uint32_t));
+    const uint8_t backdropIdx = regs[7] & 0x0F;
+    const ImU32   border      = (backdropIdx == 0) ? kPalette[1] : kPalette[backdropIdx];
+    uint32_t* row = &framebuffer[dstRow * kFullWidth];
+    if (xStart == 0)
+        for (int x = 0; x < kBorderLeft; ++x) row[x] = border;
+    if (xEnd >= kScreenWidth)
+        for (int x = kBorderLeft + kScreenWidth; x < kFullWidth; ++x) row[x] = border;
     snapshotDirty = true;
 }
 
-void TMS9918::paintLeftRightBorderForActiveLine(int line)
+// renderActiveLine — full-line commit (mode dispatch + sprites + both
+// borders). Used by rebuildFramebufferFromVram and any direct caller; the
+// live progressive path goes through renderUpToBeam / commitActiveSegment.
+void TMS9918::renderActiveLine(int line)
 {
-    const uint8_t backdropIdx = regs[7] & 0x0F;
-    const ImU32   border      = (backdropIdx == 0) ? kPalette[1] : kPalette[backdropIdx];
-    const int     dstRow      = line + kBorderTop;
-    uint32_t* row = &framebuffer[dstRow * kFullWidth];
-    for (int x = 0; x < kBorderLeft; ++x)                                   row[x] = border;
-    for (int x = kBorderLeft + kScreenWidth; x < kFullWidth; ++x)            row[x] = border;
+    if (line < 0 || line >= kScreenHeight) return;
+    uint32_t lineBuf[kScreenWidth];
+    // Full-line / rebuild path: no mid-line concept — latch = live regs.
+    renderLineToTemp(line, lineBuf, regs[0], regs[1]);
+    commitActiveSegment(line, 0, kScreenWidth, lineBuf);
+}
+
+// --------------------------------------------------------------------------
+// renderUpToBeam — Étape 0 of the beam/CPU sync. Advance the (beamRenderLine,
+// beamRenderX) render cursor up to (targetLine, targetX), committing each
+// newly-beamed horizontal slice from LIVE state. advanceCycles calls it with
+// targetX = 0 (complete lines only); renderBeamCatchUp calls it with a
+// sub-line targetX so a register/VRAM write splits the scanline at the exact
+// beam pixel. With no mid-line change a line is committed in one slice —
+// byte-identical to the old per-line path, so the static golden image holds.
+// --------------------------------------------------------------------------
+void TMS9918::renderUpToBeam(int targetLine, int targetX)
+{
+    if (targetLine < 0) return;
+    if (targetLine > kScreenHeight) targetLine = kScreenHeight;
+    if (targetX < 0) targetX = 0;
+    if (targetX > kScreenWidth) targetX = kScreenWidth;
+
+    if (beamRenderLine == 0 && beamRenderX == 0 && !topBorderPainted) {
+        paintTopBorder();
+        topBorderPainted = true;
+    }
+
+    uint32_t lineBuf[kScreenWidth];
+    while (beamRenderLine < targetLine ||
+           (beamRenderLine == targetLine && beamRenderX < targetX)) {
+        if (beamRenderLine >= kScreenHeight) break;
+        // Latch mode + blank (R0 M3, R1 M1/M2/blank) at the START of each line
+        // — a mid-line R0/R1 mode/blank write defers to the next line (Étape 2
+        // "seamless" splits). Captured once, on the first segment of the line.
+        if (beamRenderX == 0) { lineLatchR0 = regs[0]; lineLatchR1 = regs[1]; }
+        renderLineToTemp(beamRenderLine, lineBuf, lineLatchR0, lineLatchR1);
+        const int xEnd = (beamRenderLine == targetLine) ? targetX : kScreenWidth;
+        commitActiveSegment(beamRenderLine, beamRenderX, xEnd, lineBuf);
+        if (xEnd >= kScreenWidth) { ++beamRenderLine; beamRenderX = 0; }
+        else                      { beamRenderX = xEnd; break; }
+    }
+    lastScanlineRendered = beamRenderLine - 1;    // keep the serialized tracker sane
+
+    if (beamRenderLine >= kScreenHeight && !bottomBorderPainted) {
+        paintBottomBorder();
+        bottomBorderPainted = true;
+        lastScanlineRendered = kScreenHeight;
+    }
+}
+
+// renderBeamCatchUp — call from the MMIO write path BEFORE mutating regs/VRAM.
+// inFlightCycles = CPU cycles already accumulated for the in-flight instruction
+// (the write lands mid-instruction; advanceCycles books those cycles only
+// afterwards), giving sub-instruction beam accuracy — the same idiom the GEN2
+// video-event journal uses (Memory::gen2 pushVideoEventLocked). Maps the beam
+// cycle to (line, x) and commits the active slice beamed so far. Étape 0.
+pom1::BeamGeometry TMS9918::beamGeometry() const
+{
+    return pom1::BeamGeometry{
+        kCyclesPerFrame, 262, kScreenHeight, kScreenWidth,
+        kVdpTicksPerCpuCycle, kVdpTicksPerLine, kActiveLeftTick, kTicksPerPixel
+    };
+}
+
+void TMS9918::renderBeamCatchUp(int inFlightCycles)
+{
+    if ((regs[1] & 0x40) == 0) return;                      // blanked — no visible split
+    if (frameCycleCounter >= kActiveDisplayCycles) return;  // VBlank — beam past active
+
+    const int pos = frameCycleCounter + (inFlightCycles > 0 ? inFlightCycles : 0);
+    const pom1::BeamPos bp = pom1::beamPosAt(beamGeometry(), pos);   // shared BeamClock (Étape 3)
+    renderUpToBeam(bp.line, bp.x);
+}
+
+// --------------------------------------------------------------------------
+// advanceSpriteScanTo — run the per-line sprite-status scan up to (but not
+// including) active line `activeNow`, latching 5S / collision / index. The
+// per-frame 5S reset lives here, at the first scan of a new frame. Shared by
+// advanceCycles (beam cadence) and syncSpriteScanToBeam (read-time catch-up).
+// --------------------------------------------------------------------------
+void TMS9918::advanceSpriteScanTo(int activeNow)
+{
+    if (activeNow <= lastScanlineProcessed) return;
+    if (lastScanlineProcessed == -1) {
+        // New frame: the sprite comparator re-derives the 5th-sprite flag
+        // (bit 6) + index (bits 0..4) from scratch. Reading $CC01 does NOT
+        // reset them (only F + collision latch-clear on read — BiFi §2.2), so
+        // the per-frame reset lives here. Bit 7 (F) + bit 5 (collision) stay
+        // sticky-until-read.
+        statusReg &= ~0x5F;
+    }
+    for (int line = lastScanlineProcessed + 1; line < activeNow; ++line)
+        scanSpritesForLine(line);
+    lastScanlineProcessed = (activeNow - 1 < kScreenHeight - 1) ? activeNow - 1
+                                                                : kScreenHeight - 1;
+    if (activeNow >= kScreenHeight) lastScanlineProcessed = kScreenHeight;
+}
+
+// syncSpriteScanToBeam — Étape 1. Call from the MMIO read path BEFORE returning
+// the status register so 5S / collision / index reflect the beam's scanline at
+// the exact read cycle (not merely as of the last advanceCycles). inFlightCycles
+// = CPU cycles accumulated for the in-flight instruction — the same
+// sub-instruction idiom as renderBeamCatchUp. Makes the 5S raster-split poll
+// loop cycle-precise. No-op when blanked (the sprite engine is idle).
+void TMS9918::syncSpriteScanToBeam(int inFlightCycles)
+{
+    if ((regs[1] & 0x40) == 0) return;                      // blanked — scan skipped
+    if (frameCycleCounter >= kActiveDisplayCycles) return;  // VBlank — scan already complete
+    const int pos = frameCycleCounter + (inFlightCycles > 0 ? inFlightCycles : 0);
+    advanceSpriteScanTo(pom1::beamPosAt(beamGeometry(), pos).line);  // shared BeamClock (Étape 3)
 }
 
 void TMS9918::paintTopBorder()
@@ -1405,9 +1521,12 @@ void TMS9918::renderSprites(uint32_t* pixels, const Snapshot& s)
 // active line:
 //   bit 5 ($20) — sprite-sprite collision (ANY two opaque pattern bits
 //                 overlap, even when one or both sprites have color = 0).
-//                 Collision detection extends into the overscan zone
-//                 [-32, 288) to catch early-clock sprites colliding off
-//                 the visible screen (cf. sketchs/doc/Programming_TMS9918.md §11 Bug N°4).
+//                 Collision is clipped to the VISIBLE area [0, 256): pixels in
+//                 the L/R border (partially off-screen / early-clock sprites)
+//                 do NOT collide — matches openMSX/meisei (the [-32, 288)
+//                 overscan model was retired May 2026). Real-silicon ground
+//                 truth here is still unconfirmed; cf. Programming_TMS9918.md
+//                 §11 Bug N°4 + Test E.
 //   bit 6 ($40) — 5th-sprite-on-scanline overflow.
 //   bits 0..4   — when bit 6 is latched, the SAT index of the 5th sprite.
 //                 Otherwise, the index of the last sprite the chip walked
@@ -1589,6 +1708,12 @@ void TMS9918::scanSpritesForStatus(const uint8_t* vram, const uint8_t* regs,
         if (earlyClock) x -= 32;
         sprites[spriteCount++] = { y, x, name, earlyClock };
     }
+
+    // One-shot full-frame recompute: the 5th-sprite flag (bit 6) + index
+    // (bits 0..4) start fresh, exactly as the per-line scan resets them at the
+    // top of each frame. F (bit 7) and collision (bit 5) are preserved — they
+    // latch-clear only on a status read (BiFi §2.2).
+    statusOut &= ~0x5F;
 
     bool fiveAlreadyLatched = (statusOut & 0x40) != 0;
     bool collisionAlreadyLatched = (statusOut & 0x20) != 0;

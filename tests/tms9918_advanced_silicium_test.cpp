@@ -14,8 +14,9 @@
 //      scanline 5S overflow detection (Nouspikel).
 //   4. Sprite Y=$FF wraparound — y_raw > $D0 ⇒ line = y_raw - 256 + 1.
 //      Two opaque sprites at Y=$FF and Y=$00 must collide on overlap.
-//   5. Bug N°4 — overscan collision range is [-32, kScreenWidth+32),
-//      not [0, kScreenWidth).
+//   5. Bug N°4 — collision range is the VISIBLE area [0, kScreenWidth)
+//      ONLY; overscan-border overlaps do NOT collide (openMSX/meisei).
+//      Real-silicon ground truth still unconfirmed (Test E).
 //   6. Bug N°6 — bits 0..4 of statusReg = SAT index of last sprite
 //      walked when bit 6 (5S) is NOT latched.
 
@@ -81,19 +82,21 @@ void initMode0(TMS9918& vdp)
     writeReg(vdp, 7, 0x01);          // R7 = backdrop colour 1 (black)
 }
 
-// Helper: drive the chip through one full silicon-equivalent frame
-// (~17062 cycles) so the per-scanline scan walks every line and
-// statusReg is updated. Called after a SAT setup.
+// Helper: drive the chip into the VBlank of a single frame — far enough that
+// the per-scanline scan walked every active line and F is raised, but NOT past
+// the frame rollover (which would reset the per-frame 5S flag before the caller
+// reads it). 15000 sits inside the NTSC VBlank window [~12505, 17062).
 void tickFrame(TMS9918& vdp)
 {
-    vdp.advanceCycles(17062 + 200);  // overshoot to ensure F-flag fires
+    vdp.advanceCycles(15000);
 }
 
 // Helper: clear status sticky bits, then advance one frame, then
 // snapshot the status (without clearing it again — caller decides).
 uint8_t scanAndSnapshot(TMS9918& vdp)
 {
-    (void)vdp.readControl();          // clear sticky F + bits 5/6
+    (void)vdp.readControl();          // clear sticky F (bit 7) + collision (bit 5);
+                                      // 5S (bit 6) is re-derived by the scan below
     tickFrame(vdp);
     return vdp.readControl();         // returns post-scan status
 }

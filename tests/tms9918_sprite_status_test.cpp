@@ -7,13 +7,16 @@
 //
 //   - Status bit 6 ($40) — fifth-sprite-on-scanline overflow flag.
 //     Set when any scanline contains >4 sprites. Bits 0..4 latch the SAT
-//     index of the fifth sprite. Sticky until readControl() clears it.
+//     index of the fifth sprite. Re-derived by the sprite scan every frame
+//     and NOT cleared by a status read (pinned by T9).
 //   - Status bit 5 ($20) — sprite-sprite collision. Set on any opaque
 //     pattern-bit overlap, even when one (or both) sprites have color = 0
 //     (a real TMS9918A collides on pattern bits, not on rendered color).
-//     Sticky.
-//   - Both flags survive multiple frames; readControl() clears them via
-//     the existing ~0xE0 mask.
+//     Sticky until read.
+//   - Reading $CC01 latch-clears ONLY F (bit 7) and C (bit 5), via the
+//     ~0xA0 mask — BiFi/Sean Young §2.2. The 5S flag (bit 6) and its index
+//     survive the read; clearing them too (the old ~0xE0 mask) made a second
+//     in-frame read wrongly report no overflow.
 //
 // Each test runs in a fresh TMS9918 to avoid sticky-flag bleed.
 
@@ -96,11 +99,14 @@ void pokeSAT(TMS9918& vdp, int idx, uint8_t y, uint8_t x, uint8_t name, uint8_t 
     vramWrite(vdp, (uint16_t)(0x0300 + idx * 4), buf, 4);
 }
 
-// Drive one VBLANK worth of cycles. Use a value larger than any reasonable
-// kCyclesPerFrame so the rollover branch fires.
+// Drive enough cycles to complete the active-display sprite scan and enter
+// VBlank WITHOUT rolling into the next frame's active region (which would
+// reset the per-frame 5S flag — see TMS9918::advanceCycles). 15000 sits in
+// the NTSC VBlank window [~12505, 17062): full scan done, F raised, 5S + its
+// index stable for the read that follows.
 void tickFrame(TMS9918& vdp)
 {
-    vdp.advanceCycles(2'000'000);
+    vdp.advanceCycles(15000);
 }
 
 // Read status without disturbing latch state for subsequent control writes
@@ -265,6 +271,30 @@ int main()
         mustBeTrue(vdp.readData() == 0x33, "T8: too-fast middle write should be dropped");
     }
 
-    std::printf("tms9918_sprite_status: all 8 tests passed\n");
+    // -----------------------------------------------------------------
+    // T9 — a status read does NOT clear the 5S overflow flag (bit 6) or its
+    // SAT index (bits 0..4); only F (bit 7) and collision (bit 5) latch-clear
+    // on read (BiFi §2.2). 5S is re-derived per frame, so within one frame two
+    // consecutive reads must both report the overflow. Regression guard for
+    // the ~0xE0 → ~0xA0 readControl fix.
+    // -----------------------------------------------------------------
+    {
+        TMS9918 vdp;
+        initVdp(vdp);
+        for (int i = 0; i < 5; i++)
+            pokeSAT(vdp, i, 49, (uint8_t)(i * 16), 1, 0x0F);
+        pokeSAT(vdp, 5, 0xD0, 0, 0, 0);
+        tickFrame(vdp);                       // lands in VBlank, full scan done
+        uint8_t s1 = readStatus(vdp);
+        mustBeTrue((s1 & 0x40) != 0, "T9: 5S set after the frame scan");
+        mustBeTrue((s1 & 0x1F) == 4, "T9: 5S index = SAT idx 4");
+        // Second read, same frame (no advanceCycles in between): 5S + index
+        // must persist — the read does not clear them. The old ~0xE0 wiped 5S.
+        uint8_t s2 = readStatus(vdp);
+        mustBeTrue((s2 & 0x40) != 0, "T9: 5S NOT cleared by a status read (only F+C clear)");
+        mustBeTrue((s2 & 0x1F) == 4, "T9: 5S index preserved across the read too");
+    }
+
+    std::printf("tms9918_sprite_status: all 9 tests passed\n");
     return 0;
 }

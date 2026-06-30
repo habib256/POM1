@@ -1,0 +1,9 @@
+{
+  "profile": "gen2",
+  "language": "asm",
+  "cfg": "sketchs/gen2/a2port_buzzard_bait/apple1_buzzard_hgr.cfg",
+  "extraAsm": [
+    "sketchs/gen2/a2port_buzzard_bait/gen2_port.s"
+  ],
+  "dualBank": true
+}

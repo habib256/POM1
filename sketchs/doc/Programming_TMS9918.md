@@ -342,11 +342,17 @@ timing is not modelled by openMSX either, so cycle-precise splits remain
 beyond the canonical reference; for typical mid-screen splits the
 behaviour is silicon-correct.
 
-### 13. Status register reads are destructive
+### 13. Status register reads are destructive — F and C only
 
-**Silicon detail (still Bug N°5)** — the silicon clears bit 7 (F), bit 6
-(5S), and bit 5 (C) on **every** read of the status register. POM1
-reproduces this (`statusReg &= ~0xE0`). Therefore:
+**Silicon detail (Bug N°5, corrected)** — reading the status register
+latch-clears **only** bit 7 (F) and bit 5 (C). The 5th-sprite flag bit 6
+(5S) and its SAT index (bits 0..4) are **not** cleared by a read — they are
+re-derived by the sprite-scan comparator every frame (BiFi/Sean Young §2.2:
+*"after reading it, bit 7 (INT) and bit 5 (C) are reset"*). POM1 reproduces
+this with the `statusReg &= ~0xA0` mask plus a per-frame 5S/index reset at
+the top of the active scan (`advanceCycles`). The earlier `~0xE0` mask also
+wiped 5S, so a second status read in the same frame wrongly reported "no
+overflow". Therefore:
 
 - **Never read status mid-frame "just to check the collision"** — bit 7
   (VBlank flag) will be cleared before your sync routine catches it, the
@@ -772,7 +778,7 @@ VDP can no longer trigger a frame IRQ regardless of R1.5.
 
 ```asm
         ; Wait for next VBlank — silicon-correct polling pattern
-        BIT $CC01             ; drain stale F flag (clears bits 5/6/7)
+        BIT $CC01             ; drain stale F flag (clears F bit 7 + C bit 5)
 @v_wait:
         BIT $CC01
         BPL @v_wait           ; bit 7 = 0 → not yet VBlank
@@ -793,13 +799,15 @@ Polling is the pattern that the Nippur72 libs target and that all POM1
 games (Galaga, Sokoban, Snake, Life, Rogue, Asteroids, Connect4, etc.)
 use.
 
-#### Polling side effect on bits 5/6
+#### Polling side effect on bits 5/7
 
-Reading `$CC01` clears bits 5 (collision), 6 (5S overflow), **and** 7
-(F flag) together. If you use those flags, read them **before** the
-`WAIT_VBLANK`, or snapshot them into a variable (see §13 idiom).
+Reading `$CC01` latch-clears bits 5 (collision) **and** 7 (F flag)
+together. The 5S flag (bit 6) and its index are **not** cleared by the
+read — they are re-derived per frame — so a status read never loses a fresh
+overflow. If you rely on the **collision** flag, read it **before** the
+`WAIT_VBLANK`, or snapshot it into a variable (see §13 idiom).
 
-For games that only read F (the majority), the 5/6 clobber has no
+For games that only read F (the majority), the bit-5 clobber has no
 visible consequence.
 
 ### 19. The control-port flip-flop and IRQ safety
@@ -992,8 +1000,8 @@ Keep handy for any new TMS9918 code intended for silicon:
 - [ ] No `WAI` and no `CLI` + IRQ handler for VBlank synchronisation
       unless you specifically need IRQ-driven sync (P-LAB supports it
       but polling stays preferred).
-- [ ] **ONE single status read per frame** (the read clears bits 5, 6,
-      and 7 atomically).
+- [ ] **ONE single status read per frame** (the read latch-clears bits 5
+      and 7 — collision + F — atomically; 5S bit 6 is re-derived per frame).
 - [ ] Any IRQ routine that touches the VDP must **read status first**
       (resets the 1st/2nd-byte flip-flop).
 - [ ] Collision tested but **never in the overscan zone** (use software
@@ -1196,8 +1204,9 @@ TerminalCard ESC S after `--terminal`).
 | R6 | bits 2-0 = Sprite Pattern Table base × `$800` | Sprite Patterns address |
 | R7 | bits 7-4 = FG (text); bits 3-0 = BG / Backdrop | Colours |
 
-Status register (read `$CC01`, **destructive**: clears F/5S/C on every
-read):
+Status register (read `$CC01`: latch-clears **F (bit 7) + C (bit 5)** only;
+5S (bit 6) + index are re-derived per frame, **not** cleared on read —
+BiFi §2.2):
 
 | Bit | Name | Role |
 |---|---|---|
@@ -1294,8 +1303,8 @@ placed in POM1 as a pre-deployment validation tool.
 | **N°1** Slot-table timing | 🟢 SOLID | Tables verbatim copied from `openMSX VDPAccessSlots.cc`, `getTab` algorithm + Delta D28 identical. Test `tms9918_silicon_strict_runtime` (35 assertions). |
 | **N°2** /INT → /IRQ | 🟢 SOLID | The P-LAB card **wires** /INT → /IRQ (trace verified on real hardware by Parmigiani); the Nippur72 software doesn't use it (polling $CC01). POM1 default = `irqStrapped=true` → `irqAsserted()` = R1.5 ∧ status.7; the IRQ stays inert until the program does `CLI`. Toggle `setIrqStrapped(false)` for a hypothetical non-wired card. |
 | **N°3** R1.7 4K/16K | 🟢 SOLID | Mask `0x0FFF` vs `0x3FFF` depending on R1.7. Datasheet confirms. Pinned by T06. |
-| **N°4** Collision range | 🟢 SOLID | **Visible-only `[0, kScreenWidth)`** per openMSX `SpriteChecker.cc:187-191` (*"Sprites that are partially off-screen position can collide, but only on the in-screen pixels. Sprites cannot collide in the left or right border, only in the visible screen area"*). Confirmed by meisei vdp.c:587-589 (guard bytes at 0x80 outside 256). Fixed May 2026 (was `[-32, 288)` per Nouspikel — which contradicted both canonical refs). Pinned by T07 + ctest. |
-| **N°5** Per-scanline scan | 🟢 SOLID | Port of openMSX `SpriteChecker::checkSprites1` line-major (`SpriteChecker.cc:87`). Sub-cycle silicon details (exact order of SAT fetches, dummy reads after $D0) **not modelled by openMSX either** — POM1 has the same resolution as the canonical reference. Pinned by tests T07-T11, T18-T20 + ctest. |
+| **N°4** Collision range | 🔑 OPEN | POM1 picks **visible-only `[0, kScreenWidth)`** per openMSX `SpriteChecker.cc:187-191` (*"sprites cannot collide in the left or right border, only in the visible screen area"*) + meisei vdp.c:587-589 (guard bytes 0x80 outside 256). Nouspikel documents the **opposite** (`[-32, 288)` overscan collisions). The two canonical emulator refs agree with each other, but **real TMS9918A ground truth is unconfirmed** — Test E is the on-silicon calibration. POM1 pins the openMSX choice (T07 + ctest); flip if Test E says otherwise on the Replica-1. |
+| **N°5** Per-scanline scan | 🟢 SOLID | Port of openMSX `SpriteChecker::checkSprites1` line-major (`SpriteChecker.cc:87`). Sub-cycle silicon details (exact order of SAT fetches, dummy reads after $D0) **not modelled by openMSX either** — POM1 has the same resolution as the canonical reference. **Status clear-on-read corrected June 2026**: a read latch-clears only F (bit 7) + C (bit 5) (`~0xA0`) per BiFi §2.2; 5S (bit 6) + index are re-derived each frame, not cleared on read (was `~0xE0`). Pinned by tests T07-T11, T18-T20, sprite_status T9 + ctest. |
 | **N°6** Status bits 0..4 | 🟢 SOLID | "Last sprite walked" — simple logic confirmed by Nouspikel. T08 + ctest test 6. |
 | **N°7** Sprite scan in blank | 🟢 SOLID | POM1 skips the sprite scan in blank (consistent with meisei `vdp.c:437` `mode=9` → blank case = `memset bd 256` with no sprite). **May 2026**: POM1 also forces status bits 0..4 to `$1F` in blank (per meisei vdp.c:437 `statuslow=0x1f`) instead of preserving the last value. T12. |
 | **N°8** Sprite cloning | 🟢 SOLID | **Verbatim port of meisei `vdp.c:591-670`** (May 2026, hap — *"the only known correct implementation, tested side-by-side against real MSX1"*). Trigger condition = `M3 set ∧ (R4 & 3) ≠ 3` (R6 plays **no** role, contrary to POM1's earlier approximation). Algorithm by 4 blocks of 64 lines with `clonemask[6]` modulating `yc = (line & cm[0]) - ((y ^ cm[1]) | cm[2])`. Sprites 0..7 never cloned (preprocessed in HBlank). |

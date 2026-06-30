@@ -198,21 +198,6 @@ add_test(NAME hgr_paint_plot_smoke
          COMMAND test_hgr_paint_plot)
 set_tests_properties(hgr_paint_plot_smoke PROPERTIES TIMEOUT 5)
 
-# Pre-shifted (Buzzard-Bait) sprite baker behind the editor's Sprite Bank mode.
-# Pins the 7-phase pack to the exact ABI gen2_hgr_sprite() reads + the python
-# generator emits (phase k == phase 0 shifted by k). No GL/ImGui.
-add_executable(test_hgr_sprite_bank
-    hgr_sprite_bank_smoke_test.cpp
-    ${CMAKE_SOURCE_DIR}/hgrpaint/HgrSpriteBank.cpp
-    ${CMAKE_SOURCE_DIR}/hgrpaint/HgrPaintModel.cpp
-)
-target_include_directories(test_hgr_sprite_bank PRIVATE
-    ${CMAKE_SOURCE_DIR}/hgrpaint)
-
-add_test(NAME hgr_sprite_bank_smoke
-         COMMAND test_hgr_sprite_bank)
-set_tests_properties(hgr_sprite_bank_smoke PROPERTIES TIMEOUT 5)
-
 # -- HGR image converter (ii-pix-style: CAM16-UCS + NTSC analysis-by-synthesis) --
 # Pins CAM16-UCS, the NTSC decode == GraphicsCard, and Floyd-Steinberg tone
 # conservation. No GL/ImGui; image decoding (stb) is excluded so it stays pure.
@@ -1315,6 +1300,13 @@ target_include_directories(test_d64_parse PRIVATE ${CMAKE_SOURCE_DIR}/src)
 
 add_test(NAME d64_parse_smoke COMMAND test_d64_parse)
 set_tests_properties(d64_parse_smoke PROPERTIES TIMEOUT 5)
+
+# ── BeamClock — shared cycle→(line,x) raster-beam mapping (Étape 3) ───────────
+# Header-only (src/BeamClock.h); pins the TMS9918 beam/CPU sync geometry.
+add_executable(test_beam_clock beam_clock_smoke.cpp)
+target_include_directories(test_beam_clock PRIVATE ${CMAKE_SOURCE_DIR}/src)
+add_test(NAME beam_clock_smoke COMMAND test_beam_clock)
+set_tests_properties(beam_clock_smoke PROPERTIES TIMEOUT 5)
 
 # ── Graphics golden-image regression (headless --dump-*-frame) ───────────────
 # Renders the GEN2 HGR test card with no display and compares the captured PNG

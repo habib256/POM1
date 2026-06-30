@@ -222,10 +222,27 @@ Memory::Memory()
             // operand fetch) so a 3-byte `LDA $CC0X` shows PC = (LDA
             // address + 3); subtract 3 in the disassembly to find it.
             if (cpuForIrq) tms9918->setLastAccessPc(cpuForIrq->getProgramCounter());
-            return (a == 0xCC00) ? tms9918->readData() : tms9918->readControl();
+            if (a == 0xCC00) return tms9918->readData();
+            // Status read ($CC01): sync the sprite scan to the exact beam
+            // scanline first, so 5S / collision reflect the beam at the read
+            // cycle — makes the 5S raster-split poll loop cycle-precise
+            // (Étape 1). Same in-flight-cycle idiom as the write catch-up.
+            const int inFlight = cpuForIrq
+                ? static_cast<int>(cpuForIrq->getCurrentInstructionCycles()) : 0;
+            tms9918->syncSpriteScanToBeam(inFlight);
+            return tms9918->readControl();
         },
         [this](uint16_t a, uint8_t v) {
             if (cpuForIrq) tms9918->setLastAccessPc(cpuForIrq->getProgramCounter());
+            // Beam/CPU sync (Étape 0): commit the framebuffer up to the exact
+            // beam pixel BEFORE the register/VRAM mutation, so a mid-scanline
+            // R7/R5/R6/R4/VRAM change splits the line at the right column. The
+            // write lands mid-instruction; advanceCycles() books those cycles
+            // only afterwards, so add the in-flight count for sub-instruction
+            // accuracy (same idiom as the GEN2 video-event journal above).
+            const int inFlight = cpuForIrq
+                ? static_cast<int>(cpuForIrq->getCurrentInstructionCycles()) : 0;
+            tms9918->renderBeamCatchUp(inFlight);
             if (a == 0xCC00) tms9918->writeData(v);
             else tms9918->writeControl(v);
         });

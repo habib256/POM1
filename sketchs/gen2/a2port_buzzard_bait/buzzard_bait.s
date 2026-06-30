@@ -1240,11 +1240,15 @@ L108E:  lda     #$FF                            ; 108E A9 FF
         jsr     L1837                           ; 10A9 20 37 18
         jsr     Draw_Score                      ; 10AC 20 63 1A
         jsr     Draw_HiScore                    ; 10AF 20 AD 1A
-        lda     #$0C                            ; 10B2 A9 0C
+        ; [PORTAGE ATTRACT] Ecran-titre clignotant rallonge x3 (~7s -> ~20s).
+        ; L1061 stocke A dans $28 = nombre de flashs (Invert_HgrPage ~100ms/passe,
+        ; cf. $106B). Operande immediat seul -> taille code inchangee, aucune
+        ; adresse decalee. Valeurs PAIRES : l'ecran finit non-inverse. Etait $0C.
+        lda     #$24                            ; 10B2 A9 24
         jsr     L1061                           ; 10B4 20 61 10
         jsr     L119B                           ; 10B7 20 9B 11
         jsr     L115C                           ; 10BA 20 5C 11
-        lda     #$14                            ; 10BD A9 14
+        lda     #$3C                            ; 10BD A9 3C   ; [PORTAGE ATTRACT] etait $14
         jsr     L1061                           ; 10BF 20 61 10
         jsr     L115C                           ; 10C2 20 5C 11
         jsr     L11BE                           ; 10C5 20 BE 11
@@ -1252,7 +1256,7 @@ L108E:  lda     #$FF                            ; 108E A9 FF
         lda     #$01                            ; 10CB A9 01
         sta     $80                             ; 10CD 85 80
         jsr     L10E0                           ; 10CF 20 E0 10
-        lda     #$1E                            ; 10D2 A9 1E
+        lda     #$5A                            ; 10D2 A9 5A   ; [PORTAGE ATTRACT] etait $1E
         jsr     L1061                           ; 10D4 20 61 10
         lda     $C061                           ; 10D7 AD 61 C0
         sta     L09B6                           ; 10DA 8D B6 09

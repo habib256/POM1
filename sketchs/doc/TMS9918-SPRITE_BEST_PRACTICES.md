@@ -143,8 +143,9 @@ Anti-pattern : SAT rebuild en active-display sans gating. Génère du
   le pattern recommandé (plus simple, indépendant du flag I).
 - L'IRQ-on-VBlank fonctionne (R1 bit 5 = 1 + `CLI` + handler au vecteur
   `$FFFE` lisant `$CC01` atomiquement), mais le polling l'évite.
-- Effet collatéral : lire `$CC01` clear F, 5S, C — donc lire le status
-  **avant** la macro `WAIT_VBLANK` si on dépend de 5S ou C.
+- Effet collatéral : lire `$CC01` clear **F (bit 7) et C (bit 5)** — **pas**
+  5S (bit 6), qui est recalculé chaque frame (BiFi §2.2). Donc lire le status
+  **avant** la macro `WAIT_VBLANK` seulement si on dépend de **C** (collision).
 
 ### 9. Audit avant merge
 

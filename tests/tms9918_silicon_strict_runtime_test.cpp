@@ -6,8 +6,8 @@
 //
 // What's covered:
 //   Phase A  tolerant mode (strict=false)            — bursts always land
-//   Phase B  Tetris floor 11c gap in Mode I+sprites  — accept (silicon-safe)
-//   Phase C  Galaga 4c bursts in Mode I+sprites      — partial drops (mixed)
+//   Phase B  Gfx12 9c floor (8c drops / 9c lands)    — silicon Mode I/II floor
+//   Phase C  unpadded 4c burst in Mode I+sprites     — partial drops (mixed)
 //   Phase D  text-mode tight loop @ 5c gap           — accept (Text table dense)
 //   Phase E  multicolor @ 6c gap                     — accept (Gfx3 worst ~4.2c)
 //   Phase F  display blanked flood                   — accept (ScreenOff slot/8t)
@@ -151,39 +151,44 @@ int main()
     }
 
     // ----------------------------------------------------------------------
-    // Phase B — Gfx12 active-display floor (16c). Real TMS9918A silicon
-    // (validated on Claudio Parmigiani's Replica-1) drops back-to-back CPU
-    // writes spaced under ~16c during visible Mode I/II display — the openMSX
-    // slot table alone modelled only ~8c, which masked the failure. So an
-    // 11c-gap burst (the OLD "Tetris floor ~7.5c" assumption) must now DROP,
-    // while a 16c gap lands. The lib pad moved 12c→18c (16c→22c STA->STA) to
-    // clear this floor with margin. Gfx12-scoped: Text/Multicolor stay dense
-    // (Phases D/E below still accept their tight loops).
+    // Phase B — Gfx12 active-display floor (11c). The openMSX slot table alone
+    // modelled only ~8c, which under-reported the silicon penalty for dense
+    // sprites-ON tile streams; a flat 16c floor over-corrected and falsely
+    // dropped the sprites-OFF TMS_Plasma timings that run clean on Claudio
+    // Parmigiani's real Replica-1. 9c is the compromise: an 8c-gap burst
+    // (below the floor) must DROP, while a 9c gap lands. The lib pad helper
+    // gives 18c (22c STA->STA) to clear it with margin. Gfx12-scoped:
+    // Text/Multicolor stay dense (Phases D/E below still accept their tight loops).
     // ----------------------------------------------------------------------
     {
         TMS9918 vdp; vdp.reset();
         initGfxMode(vdp);
         vdp.setSiliconStrictMode(true);
         cushionedSetWriteAddress(vdp, 0x1100);
-        const uint64_t drops = runWriteLoop(vdp, 8, 11, 0xB0);
-        mustBeTrue(drops > 0, "PhaseB: 8 STA at 11c gap in Gfx12 — below the 16c silicon floor, must drop"); ++assertions;
+        const uint64_t drops = runWriteLoop(vdp, 8, 8, 0xB0);
+        mustBeTrue(drops > 0, "PhaseB: 8 STA at 8c gap in Gfx12 — below the 9c silicon floor, must drop"); ++assertions;
     }
     {
-        // 16c gap = the floor itself — writes must land. pad18 (22c STA->STA)
-        // clears it comfortably; the retired pad12 (16c) sat exactly here.
+        // 9c gap = the floor itself — writes must land. This is what lets the
+        // sprites-OFF TMS_Plasma colour-table upload (9c STA->STA) clear POM1 the
+        // same way it clears real silicon; pad18 (22c) clears it with margin.
         TMS9918 vdp; vdp.reset();
         initGfxMode(vdp);
         vdp.setSiliconStrictMode(true);
         cushionedSetWriteAddress(vdp, 0x1100);
-        const uint64_t drops = runWriteLoop(vdp, 8, 16, 0xB0);
-        mustBeTrue(drops == 0, "PhaseB2: 8 STA at 16c gap in Gfx12 — at the floor, must accept all"); ++assertions;
+        const uint64_t drops = runWriteLoop(vdp, 8, 9, 0xB0);
+        mustBeTrue(drops == 0, "PhaseB2: 8 STA at 9c gap in Gfx12 — at the floor, must accept all"); ++assertions;
     }
 
     // ----------------------------------------------------------------------
-    // Phase C — Galaga: 4c bursts in Mode I+sprites must produce *some* drops.
-    // The Gfx12 worst-case slot gap is 128 ticks ≈ 6c, so a 4c-only loop
-    // cannot sustain. Loose assertion (drop count > 0 and < N) — the slot
-    // pattern is bursty, so a precise count would over-pin the model.
+    // Phase C — a raw unpadded 4c burst in Mode I+sprites must produce *some*
+    // drops: 4c is below the 9c Gfx12 floor, so a 4c-only loop cannot sustain.
+    // This is NOT how the shipped games write — TMS_Galaga (and the rest of the
+    // lib) pad every back-to-back VDP store with tms9918_pad18 (22c STA->STA),
+    // which clears the floor with margin (Phase I pins the 18c-gap case). Phase C
+    // just pins that the floor still catches a genuinely under-padded stream.
+    // Loose assertion (drop count > 0 and < N) — the slot pattern is bursty, so
+    // a precise count would over-pin the model.
     // ----------------------------------------------------------------------
     {
         TMS9918 vdp; vdp.reset();
@@ -193,7 +198,7 @@ int main()
         const int n = 40;
         const uint64_t drops = runWriteLoop(vdp, n, 4, 0xC0);
         mustBeTrue(drops > 0,
-                   "PhaseC: 40 STA at 4c gap (Galaga damiers pattern) MUST drop at least once"); ++assertions;
+                   "PhaseC: 40 STA at 4c gap (unpadded burst) MUST drop at least once"); ++assertions;
         mustBeTrue(drops < (uint64_t)n,
                    "PhaseC: bursty silicon model — not every byte should drop"); ++assertions;
         mustBeTrue(vdp.dropDiagnostics().byTable[TMS9918::kSlotTableGfx12] == drops,
@@ -298,7 +303,7 @@ int main()
 
     // ----------------------------------------------------------------------
     // Phase I — the lib pad18 cushion (18c gap) is always safe regardless of
-    // phase. Above the 16c Gfx12 floor, so it covers any starting linePos.
+    // phase. Above the 9c Gfx12 floor, so it covers any starting linePos.
     // Two runs with shifted starting frameCycleCounter must both accept all.
     // Pins that the silicon floor leaves the documented pad contract valid.
     // ----------------------------------------------------------------------
