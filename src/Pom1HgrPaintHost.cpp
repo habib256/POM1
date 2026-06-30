@@ -84,6 +84,12 @@ bool Pom1HgrPaintHost::saveImage(const std::string& path, uint16_t baseAddr, int
         /*binaryFormat=*/true, err);
 }
 
+// TODO(Phase 2 / Metal): the portable hgrpaint::IHgrPaintHost interface
+// returns `unsigned int` for the texture handle, which fits a GLuint but
+// loses Metal's pointer-sized id<MTLTexture>. Migrating these two methods to
+// PomRenderer requires the IHgrPaintHost contract to switch to an opaque
+// pointer (the same shape POM2 will want anyway). Left on direct GL for
+// Phase 1 so the editor still works on every existing backend.
 unsigned int Pom1HgrPaintHost::uploadTexture(unsigned int tex, const void* rgba,
                                              int w, int h, bool linear)
 {

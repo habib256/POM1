@@ -29,6 +29,7 @@
 class Pom1BenchHost;                 // POM1 host for the portable bench editor
 namespace bench { class CodeBench; } // bench/CodeBench.h
 struct ImGuiSettingsHandler;         // imgui_internal.h — custom .ini section handler
+namespace pom1 { struct Texture; }   // PomRenderer.h — opaque texture handle
 
 class MainWindow_ImGui
 {
@@ -254,52 +255,55 @@ private:
     bool showSaveSnapshotDialog = false;
     bool showGraphicsCard = false;
     bool graphicsCardEnabled = false;
-    GLuint graphicsCardTexture = 0;
-    GLuint aboutPhotoTexture = 0;
+    // All texture handles are opaque pom1::Texture* — owned by the renderer
+    // (PomRenderer.h). Created lazily by the matching renderXxx / ensureXxx
+    // method, destroyed in releaseGLResources(). nullptr = not yet allocated.
+    pom1::Texture* graphicsCardTexture = nullptr;
+    pom1::Texture* aboutPhotoTexture = nullptr;
     int aboutPhotoWidth = 0;
     int aboutPhotoHeight = 0;
     bool aboutPhotoLoadTried = false;
-    GLuint apple50LogoTexture = 0;
+    pom1::Texture* apple50LogoTexture = nullptr;
     int apple50LogoWidth = 0;
     int apple50LogoHeight = 0;
     bool apple50LogoLoadTried = false;
-    GLuint appIconTexture = 0;
+    pom1::Texture* appIconTexture = nullptr;
     int appIconWidth = 0;
     int appIconHeight = 0;
     bool appIconLoadTried = false;
-    GLuint wozJobsPhotoTexture = 0;
+    pom1::Texture* wozJobsPhotoTexture = nullptr;
     int wozJobsPhotoWidth = 0;
     int wozJobsPhotoHeight = 0;
     bool wozJobsPhotoLoadTried = false;
     bool showWozJobsPhoto = false;
-    GLuint wozJobsRectPhotoTexture = 0;
+    pom1::Texture* wozJobsRectPhotoTexture = nullptr;
     int wozJobsRectPhotoWidth = 0;
     int wozJobsRectPhotoHeight = 0;
     bool wozJobsRectPhotoLoadTried = false;
     bool showWozJobsRectPhoto = false;
-    GLuint tmsBoardPhotoTexture = 0;
+    pom1::Texture* tmsBoardPhotoTexture = nullptr;
     int tmsBoardPhotoWidth = 0;
     int tmsBoardPhotoHeight = 0;
     bool tmsBoardPhotoLoadTried = false;
     bool showTmsBoardPhoto = false;
-    GLuint gen2WorkbenchPhotoTexture = 0;
+    pom1::Texture* gen2WorkbenchPhotoTexture = nullptr;
     int gen2WorkbenchPhotoWidth = 0;
     int gen2WorkbenchPhotoHeight = 0;
     bool gen2WorkbenchPhotoLoadTried = false;
     bool showGen2WorkbenchPhoto = false;
-    GLuint pr40MechPhotoTexture = 0;
+    pom1::Texture* pr40MechPhotoTexture = nullptr;
     int pr40MechPhotoWidth = 0;
     int pr40MechPhotoHeight = 0;
     bool pr40MechPhotoLoadTried = false;
     bool showTMS9918 = false;
     bool tms9918Enabled = false;
-    GLuint tms9918Texture = 0;
+    pom1::Texture* tms9918Texture = nullptr;
     // 288×216 buffer including R7-coloured border bands. The active 256×192
     // image lives at offset (kBorderLeft, kBorderTop) inside the buffer.
     std::array<uint32_t, TMS9918::kFullWidth * TMS9918::kFullHeight> tms9918PixelBuf{};
     bool showGT6144 = false;
     bool gt6144Enabled = false;
-    GLuint gt6144Texture = 0;
+    pom1::Texture* gt6144Texture = nullptr;
     std::array<uint32_t, GT6144::kWidth * GT6144::kHeight> gt6144PixelBuf{};
     bool showIECCard = false;
     bool iecCardEnabled = false;

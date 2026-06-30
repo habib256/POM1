@@ -116,6 +116,10 @@ bool Pom1TmsPaintHost::savePng(const std::string& path, const uint32_t* rgba,
     return true;
 }
 
+// TODO(Phase 2 / Metal): same carve-out as Pom1HgrPaintHost — the
+// IHgrPaintHost-style `unsigned int` texture handle here cannot hold a
+// Metal pointer, so this stays on direct GL until the portable tmspaint::
+// IHgrPaintHost contract migrates to an opaque handle.
 unsigned int Pom1TmsPaintHost::uploadTexture(unsigned int tex, const void* rgba,
                                              int w, int h, bool linear)
 {

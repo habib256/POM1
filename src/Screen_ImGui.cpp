@@ -1,4 +1,5 @@
 #include "Screen_ImGui.h"
+#include "PomRenderer.h"
 #include "SnapshotIO.h"
 #include "imgui.h"
 #include <cstring>
@@ -7,13 +8,7 @@
 #include <array>
 #include <fstream>
 
-// GL texture handle for the glyph atlas. Same convention as
-// MainWindow_HardwareWindows.cpp: include GLFW for the platform GL headers
-// and patch up the constants Win32's stock GL.h misses.
-#include <GLFW/glfw3.h>
-#ifndef GL_CLAMP_TO_EDGE
-#define GL_CLAMP_TO_EDGE 0x812F
-#endif
+// Glyph atlas now routes through PomRenderer — no direct GL includes needed.
 
 namespace {
 
@@ -38,10 +33,9 @@ Screen_ImGui::~Screen_ImGui()
 
 void Screen_ImGui::destroyGlyphAtlas()
 {
-    if (glyphAtlasTexture != 0) {
-        GLuint tex = static_cast<GLuint>(glyphAtlasTexture);
-        glDeleteTextures(1, &tex);
-        glyphAtlasTexture = 0;
+    if (glyphAtlasTexture) {
+        if (auto* r = pom1::renderer()) r->destroyTexture(glyphAtlasTexture);
+        glyphAtlasTexture = nullptr;
         glyphAtlasUploaded = false;
     }
 }
@@ -145,24 +139,16 @@ void Screen_ImGui::buildGlyphAtlas()
         glyphIsEmpty[static_cast<size_t>(g)] = empty;
     }
 
-    // Lazy GL allocation. Linear filtering is fine — the atlas already encodes
-    // a soft halo, and the per-cell scaling is large enough that point sampling
-    // would look chunky.
-    if (glyphAtlasTexture == 0) {
-        GLuint tx = 0;
-        glGenTextures(1, &tx);
-        glyphAtlasTexture = static_cast<unsigned int>(tx);
-        glBindTexture(GL_TEXTURE_2D, tx);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, kAtlasTexW, kAtlasTexH, 0,
-                     GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
+    // Lazy texture allocation through the renderer. Linear filtering is fine
+    // — the atlas already encodes a soft halo, and the per-cell scaling is
+    // large enough that point sampling would look chunky.
+    auto* r = pom1::renderer();
+    if (!r) return;          // headless / pre-init — atlas stays unuploaded
+    if (!glyphAtlasTexture) {
+        glyphAtlasTexture = r->createTexture(kAtlasTexW, kAtlasTexH,
+                                             pom1::PomRenderer::Filter::Linear);
     }
-    glBindTexture(GL_TEXTURE_2D, static_cast<GLuint>(glyphAtlasTexture));
-    glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, kAtlasTexW, kAtlasTexH,
-                    GL_RGBA, GL_UNSIGNED_BYTE, tex.data());
+    r->updateTexture(glyphAtlasTexture, tex.data());
     glyphAtlasUploaded = true;
 }
 
@@ -697,7 +683,9 @@ void Screen_ImGui::render()
         // Atlas UV step: each glyph occupies one cell of a 16×8 grid.
         const float uStep = 1.0f / static_cast<float>(kAtlasCols);
         const float vStep = 1.0f / static_cast<float>(kAtlasRows);
-        const ImTextureID atlasTex = (ImTextureID)(uintptr_t)glyphAtlasTexture;
+        const ImTextureID atlasTex = pom1::renderer()
+                                       ? pom1::renderer()->asImTextureID(glyphAtlasTexture)
+                                       : (ImTextureID)0;
         // During the power-on pattern phase, every '@' blinks in phase with the
         // cursor clock (shift-register initial state described by C. Parmigiani).
         // The cursor itself is not yet active — CLRSCR hasn't wiped the registers

@@ -10,6 +10,7 @@
 #include "MainWindow_ImGui.h"
 #include "MainWindow_Internal.h"
 #include "POM1Build.h"
+#include "PomRenderer.h"
 #include "WiFiModem.h"
 #include "TerminalCard.h"
 #include "PR40Printer.h"
@@ -19,15 +20,9 @@
 #include "IconsFontAwesome6.h"
 #include "Pom1BenchHost.h"  // POM1 host for the portable bench/CodeBench editor
 #include "CodeBench.h"      // bench/ portable editor window
-
-// renderTMS9918Window uploads a 256×192 RGBA texture each frame via raw GL
-// calls (glGenTextures / glBindTexture / glTexImage2D / glTexSubImage2D).
-// Including GLFW pulls in the platform GL headers on both desktop and WASM.
-#include <GLFW/glfw3.h>
-// MSVC + stock Win32 GL headers often omit these (they live in extension headers).
-#ifndef GL_CLAMP_TO_EDGE
-#define GL_CLAMP_TO_EDGE 0x812F
-#endif
+// Hardware framebuffer textures (HGR / TMS9918 / GT6144) used to drive GL
+// directly; they now go through PomRenderer so the same code path lights up
+// either OpenGL or Metal (Phase 2). No direct GL headers needed here.
 
 #include <algorithm>
 #include <cstdint>
@@ -58,16 +53,12 @@ void MainWindow_ImGui::renderGraphicsCardWindow()
 {
     // Lazy texture creation — same nearest-neighbour treatment as TMS9918 so
     // arbitrary window sizes still produce crisp pixel art.
-    if (graphicsCardTexture == 0) {
-        glGenTextures(1, &graphicsCardTexture);
-        glBindTexture(GL_TEXTURE_2D, graphicsCardTexture);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA,
-                     GraphicsCard::kHiresWidth, GraphicsCard::kHiresHeight,
-                     0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
+    auto* r = pom1::renderer();
+    if (!r) return;
+    if (!graphicsCardTexture) {
+        graphicsCardTexture = r->createTexture(
+            GraphicsCard::kHiresWidth, GraphicsCard::kHiresHeight,
+            pom1::PomRenderer::Filter::Nearest);
     }
 
     // Sync cosmetic monitor knobs into the rasterizer each frame — the UI
@@ -92,10 +83,8 @@ void MainWindow_ImGui::renderGraphicsCardWindow()
                             uiSnapshot.gen2FiftyHz
                                 ? Gen2VideoScanner::kLinesPerFrame50Hz
                                 : Gen2VideoScanner::kLinesPerFrame)) {
-        glBindTexture(GL_TEXTURE_2D, graphicsCardTexture);
-        glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0,
-                        GraphicsCard::kHiresWidth, GraphicsCard::kHiresHeight,
-                        GL_RGBA, GL_UNSIGNED_BYTE, graphicsCard.pixels());
+        r->updateTexture(graphicsCardTexture,
+                         reinterpret_cast<const uint32_t*>(graphicsCard.pixels()));
     }
 
     const float defPs = kVideoCardDefaultPixelScale;
@@ -118,7 +107,7 @@ void MainWindow_ImGui::renderGraphicsCardWindow()
             cursorPos.y + std::max(0.0f, (avail.y - size.y) * 0.5f)));
 
         const ImVec2 imgScreenPos = ImGui::GetCursorScreenPos();
-        ImGui::Image((ImTextureID)(uintptr_t)graphicsCardTexture, size);
+        ImGui::Image(r->asImTextureID(graphicsCardTexture), size);
 
         // Scanline overlay — drawn after the image so it sits on top of the
         // texture pixels. Reuses Screen_ImGui's "1-px dark row every 2 display
@@ -190,19 +179,15 @@ void MainWindow_ImGui::renderTMS9918Window()
         bringTms9918WindowToFront = false;
     }
 
-    // Lazy texture creation — nearest-neighbour GL_NEAREST so every window size
-    // gives a clean pixel-art result without the integer-scale black borders.
-    // Texture spans the FULL 288×216 frame (active 256×192 + R7 border bands).
-    if (tms9918Texture == 0) {
-        glGenTextures(1, &tms9918Texture);
-        glBindTexture(GL_TEXTURE_2D, tms9918Texture);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA,
-                     TMS9918::kFullWidth, TMS9918::kFullHeight,
-                     0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
+    // Lazy texture creation — nearest-neighbour so every window size gives a
+    // clean pixel-art result without the integer-scale black borders. Texture
+    // spans the FULL 288×216 frame (active 256×192 + R7 border bands).
+    auto* r = pom1::renderer();
+    if (!r) return;
+    if (!tms9918Texture) {
+        tms9918Texture = r->createTexture(
+            TMS9918::kFullWidth, TMS9918::kFullHeight,
+            pom1::PomRenderer::Filter::Nearest);
     }
 
     // The TMS9918 emulation already rasterises line-by-line into
@@ -210,12 +195,8 @@ void MainWindow_ImGui::renderTMS9918Window()
     // bands, mid-frame R7/R1/VRAM changes all reflected). Upload the
     // framebuffer directly to the GPU texture — no per-snapshot rendering
     // needed in the UI path. IM_COL32 byte order [R,G,B,A] on little-endian
-    // matches GL_RGBA/GL_UNSIGNED_BYTE.
-    glBindTexture(GL_TEXTURE_2D, tms9918Texture);
-    glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0,
-                    TMS9918::kFullWidth, TMS9918::kFullHeight,
-                    GL_RGBA, GL_UNSIGNED_BYTE,
-                    uiSnapshot.tms9918.framebuffer.data());
+    // matches the renderer's RGBA8 layout.
+    r->updateTexture(tms9918Texture, uiSnapshot.tms9918.framebuffer.data());
 
     const float defPs = kTMS9918DefaultPixelScale;
     const float winW = TMS9918::kFullWidth  * defPs + 16.0f;
@@ -239,7 +220,7 @@ void MainWindow_ImGui::renderTMS9918Window()
             cursor.x + std::max(0.0f, (avail.x - size.x) * 0.5f),
             cursor.y + std::max(0.0f, (avail.y - size.y) * 0.5f)));
 
-        ImGui::Image((ImTextureID)(uintptr_t)tms9918Texture, size);
+        ImGui::Image(r->asImTextureID(tms9918Texture), size);
     }
     ImGui::End();
     ImGui::PopStyleColor();
@@ -269,26 +250,19 @@ void GT6144_WindowAspectLock(ImGuiSizeCallbackData* data)
 
 void MainWindow_ImGui::renderGT6144Window()
 {
-    // Lazy texture creation — 64x96 monochrome framebuffer rendered through
-    // the same GL_NEAREST pipeline as GEN2 HGR / TMS9918 for crisp pixel art
-    // at arbitrary window sizes.
-    if (gt6144Texture == 0) {
-        glGenTextures(1, &gt6144Texture);
-        glBindTexture(GL_TEXTURE_2D, gt6144Texture);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA,
-                     GT6144::kWidth, GT6144::kHeight,
-                     0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
+    // Lazy texture creation — 64×96 monochrome framebuffer rendered through
+    // the same nearest-neighbour pipeline as GEN2 HGR / TMS9918 for crisp
+    // pixel art at arbitrary window sizes.
+    auto* r = pom1::renderer();
+    if (!r) return;
+    if (!gt6144Texture) {
+        gt6144Texture = r->createTexture(
+            GT6144::kWidth, GT6144::kHeight,
+            pom1::PomRenderer::Filter::Nearest);
     }
 
     GT6144::renderToBuffer(gt6144PixelBuf.data(), uiSnapshot.gt6144);
-    glBindTexture(GL_TEXTURE_2D, gt6144Texture);
-    glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0,
-                    GT6144::kWidth, GT6144::kHeight,
-                    GL_RGBA, GL_UNSIGNED_BYTE, gt6144PixelBuf.data());
+    r->updateTexture(gt6144Texture, gt6144PixelBuf.data());
 
     // Aspect correction: the GT-6144 sent its 64x96 logical matrix to a
     // stock 4:3 CRT (TV or composite monitor), so the visible pixels were
@@ -327,7 +301,7 @@ void MainWindow_ImGui::renderGT6144Window()
             cursorPos.x + std::max(0.0f, (avail.x - size.x) * 0.5f),
             cursorPos.y + std::max(0.0f, (avail.y - size.y) * 0.5f)));
 
-        ImGui::Image((ImTextureID)(uintptr_t)gt6144Texture, size);
+        ImGui::Image(r->asImTextureID(gt6144Texture), size);
     }
     ImGui::End();
     ImGui::PopStyleColor();
@@ -1193,12 +1167,13 @@ void MainWindow_ImGui::renderPR40Window()
         // Footer photo of the real PR-40 mechanism (top-down view of the
         // Sanders 240/M-style print head + paper roll + ribbon spools).
         // Fit to the full content width, aspect-preserved.
-        if (pr40MechPhotoTexture != 0 && pr40MechPhotoWidth > 0 && pr40MechPhotoHeight > 0) {
+        if (pr40MechPhotoTexture && pr40MechPhotoWidth > 0 && pr40MechPhotoHeight > 0
+            && pom1::renderer()) {
             ImGui::Separator();
             const float availW = ImGui::GetContentRegionAvail().x;
             const float aspect = static_cast<float>(pr40MechPhotoHeight)
                                / static_cast<float>(pr40MechPhotoWidth);
-            ImGui::Image((ImTextureID)(uintptr_t)pr40MechPhotoTexture,
+            ImGui::Image(pom1::renderer()->asImTextureID(pr40MechPhotoTexture),
                          ImVec2(availW, availW * aspect));
         }
     }

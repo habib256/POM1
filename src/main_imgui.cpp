@@ -3,7 +3,11 @@
 #include "POM1Build.h"
 #include "imgui.h"
 #include "imgui_impl_glfw.h"
-#include "imgui_impl_opengl3.h"
+// imgui_impl_opengl3.h is no longer included here directly — the rendering
+// backend is wired through PomRenderer (src/PomRenderer.h). PomRenderer_GL
+// owns the ImGui_ImplOpenGL3_* lifecycle; PomRenderer_Metal (Phase 2) will
+// pull in imgui_impl_metal instead.
+#include "PomRenderer.h"
 #include "CliDispatcher.h"
 #include "MainWindow_ImGui.h"
 #include "IconsFontAwesome6.h"
@@ -179,19 +183,32 @@ static std::string find_font_path(const char* kFile)
 /// sans fa-solid-900.ttf, ImGui affiche « ? » à la place des icônes Font Awesome.
 static std::string find_fa_solid_font_path() { return find_font_path("fa-solid-900.ttf"); }
 
-/// Read the entire back-buffer with glReadPixels and write a top-down PNG
+/// Read the entire back-buffer through the renderer and write a top-down PNG
 /// at `screenshots/pom1_latest.png`. Called from the render loop *after*
-/// ImGui_ImplOpenGL3_RenderDrawData() and *before* glfwSwapBuffers() so the
+/// renderer->renderDrawData() and *before* renderer->present() so the
 /// framebuffer holds the fully-rendered frame (every visible window, not
 /// just the active graphics card). Posts the absolute path back to
 /// TerminalCard so the telnet client gets the resolved location.
-static void capture_screenshot_to_png(int fbW, int fbH, TerminalCard& card)
+///
+/// The GL backend reads via glReadPixels + Y-flip (bottom-up source). The
+/// Metal backend (Phase 2) routes through a staging MTLTexture blit and
+/// returns the same top-down RGBA8 layout, so this function is renderer-
+/// agnostic.
+static void capture_screenshot_to_png(TerminalCard& card)
 {
     namespace fs = std::filesystem;
     const char* relPath = "screenshots/pom1_latest.png";
 
-    if (fbW < 1 || fbH < 1) {
-        card.setScreenshotResult("framebuffer size is zero", false);
+    auto* r = pom1::renderer();
+    if (!r) {
+        card.setScreenshotResult("renderer unavailable", false);
+        return;
+    }
+
+    int fbW = 0, fbH = 0;
+    std::vector<uint8_t> buf;
+    if (!r->readBackbufferRGBA(fbW, fbH, buf)) {
+        card.setScreenshotResult("framebuffer read failed", false);
         return;
     }
 
@@ -205,21 +222,7 @@ static void capture_screenshot_to_png(int fbW, int fbH, TerminalCard& card)
         return;
     }
 
-    std::vector<uint8_t> buf(static_cast<size_t>(fbW) * fbH * 4);
-    glPixelStorei(GL_PACK_ALIGNMENT, 1);
-    glReadPixels(0, 0, fbW, fbH, GL_RGBA, GL_UNSIGNED_BYTE, buf.data());
-
-    // Y-flip in place: glReadPixels gives bottom-up, PNG wants top-down.
     const size_t rowBytes = static_cast<size_t>(fbW) * 4;
-    std::vector<uint8_t> rowTmp(rowBytes);
-    for (int y = 0; y < fbH / 2; ++y) {
-        uint8_t* top = buf.data() + static_cast<size_t>(y) * rowBytes;
-        uint8_t* bot = buf.data() + static_cast<size_t>(fbH - 1 - y) * rowBytes;
-        std::memcpy(rowTmp.data(), top, rowBytes);
-        std::memcpy(top, bot, rowBytes);
-        std::memcpy(bot, rowTmp.data(), rowBytes);
-    }
-
     const int rc = stbi_write_png(relPath, fbW, fbH, 4, buf.data(),
                                   static_cast<int>(rowBytes));
     if (rc == 0) {
@@ -671,6 +674,13 @@ int main(int argc, char* argv[])
     // On applique l’intervalle dans le premier tick de la boucle (ci-dessous).
 #endif
 
+    // Construct the graphics backend now that the GL context is current.
+    // Phase 2 will switch this to a Metal renderer on macOS based on a CMake
+    // option; today every platform gets the OpenGL backend (and WASM stays
+    // there permanently — Metal doesn't exist in the browser).
+    auto rendererOwned = pom1::makeRenderer(window);
+    pom1::setRenderer(rendererOwned.get());
+
     // Setup Dear ImGui context
     IMGUI_CHECKVERSION();
     ImGui::CreateContext();
@@ -753,7 +763,7 @@ int main(int argc, char* argv[])
 
     // Setup Platform/Renderer backends
     ImGui_ImplGlfw_InitForOpenGL(window, true);
-    ImGui_ImplOpenGL3_Init(glsl_version);
+    rendererOwned->initImGuiBackend(glsl_version);
 
     // Create main application
     MainWindow_ImGui mainWindow;
@@ -869,7 +879,7 @@ int main(int argc, char* argv[])
             glfwSetWindowSize(c->window, targetW, targetH);
         }
 
-        ImGui_ImplOpenGL3_NewFrame();
+        pom1::renderer()->beginFrame();
         ImGui_ImplGlfw_NewFrame();
 
         ImGuiIO& io = ImGui::GetIO();
@@ -887,12 +897,9 @@ int main(int argc, char* argv[])
         c->mainWindow->render();
 
         ImGui::Render();
-        glViewport(0, 0, fbW, fbH);
-        glClearColor(0.45f, 0.55f, 0.60f, 1.00f);
-        glClear(GL_COLOR_BUFFER_BIT);
-        ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
-
-        glfwSwapBuffers(c->window);
+        pom1::renderer()->clear(fbW, fbH, 0.45f, 0.55f, 0.60f, 1.00f);
+        pom1::renderer()->renderDrawData(ImGui::GetDrawData());
+        pom1::renderer()->present();
 
         // Signale au shell HTML que la 1ʳᵉ frame est réellement peinte (après le
         // swap, contrairement au clear de statut en début de boucle). Le shell
@@ -911,7 +918,7 @@ int main(int argc, char* argv[])
         glfwPollEvents();
 
         // Start the Dear ImGui frame
-        ImGui_ImplOpenGL3_NewFrame();
+        pom1::renderer()->beginFrame();
         ImGui_ImplGlfw_NewFrame();
         ImGui::NewFrame();
 
@@ -922,20 +929,18 @@ int main(int argc, char* argv[])
         ImGui::Render();
         int display_w, display_h;
         glfwGetFramebufferSize(window, &display_w, &display_h);
-        glViewport(0, 0, display_w, display_h);
-        glClearColor(0.45f, 0.55f, 0.60f, 1.00f);
-        glClear(GL_COLOR_BUFFER_BIT);
-        ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+        pom1::renderer()->clear(display_w, display_h, 0.45f, 0.55f, 0.60f, 1.00f);
+        pom1::renderer()->renderDrawData(ImGui::GetDrawData());
 
         if (auto* card = mainWindow.getEmulationController()
                 ? mainWindow.getEmulationController()->getTerminalCardIfEnabled()
                 : nullptr) {
             if (card->consumeScreenshotPending()) {
-                capture_screenshot_to_png(display_w, display_h, *card);
+                capture_screenshot_to_png(*card);
             }
         }
 
-        glfwSwapBuffers(window);
+        pom1::renderer()->present();
     }
 
     // Cleanup — save the active preset's ini BEFORE DestroyContext() so
@@ -943,10 +948,15 @@ int main(int argc, char* argv[])
     if (mainWindow.getActivePresetIndex() >= 0) {
         mainWindow.savePresetLayout(mainWindow.getActivePresetIndex());
     }
-    mainWindow.releaseGLResources();   // delete HGR editor textures while ctx is live
-    ImGui_ImplOpenGL3_Shutdown();
+    mainWindow.releaseGLResources();   // delete editor / hardware textures while ctx is live
+    rendererOwned->shutdownImGuiBackend();
     ImGui_ImplGlfw_Shutdown();
     ImGui::DestroyContext();
+    // Drop the global pointer before the unique_ptr destroys the backend so
+    // any late teardown call (assertions, debug builds) doesn't dereference
+    // a stale renderer.
+    pom1::setRenderer(nullptr);
+    rendererOwned.reset();
 
     // Stop the signal handler from dereferencing a window we're about to free.
     g_signalWindow.store(nullptr, std::memory_order_release);

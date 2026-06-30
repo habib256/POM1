@@ -8,15 +8,12 @@
 #include "MainWindow_ImGui.h"
 #include "MainWindow_Internal.h"
 #include "POM1Build.h"
+#include "PomRenderer.h"
 #include "Logger.h"
 
 #include "imgui.h"
 
-// OpenGL texture upload (desktop + Emscripten): GLFW pulls in the platform GL headers.
-#include <GLFW/glfw3.h>
-#ifndef GL_CLAMP_TO_EDGE
-#define GL_CLAMP_TO_EDGE 0x812F
-#endif
+// Photo texture uploads route through PomRenderer — no direct GL needed here.
 
 #if POM1_IS_WASM
 #include <emscripten.h>
@@ -154,6 +151,23 @@ static std::string find_about_photo_jpeg_path()
 #endif
 }
 
+// Upload an stbi-loaded RGBA8 buffer into a freshly-created renderer texture
+// (Linear filtering, CLAMP_TO_EDGE wrap — the legacy GL path used the same
+// settings). Frees the stbi buffer unconditionally so callers don't repeat
+// that line. Returns nullptr when the renderer isn't initialised yet (e.g.
+// headless / pre-init) so the lazy "load on first window open" pattern keeps
+// working even if the photo is queued before the GL backend is up.
+pom1::Texture* uploadPhotoTextureRgba(unsigned char* pixels, int w, int h)
+{
+    pom1::Texture* tex = nullptr;
+    if (auto* r = pom1::renderer(); r && pixels && w > 0 && h > 0) {
+        tex = r->createTexture(w, h, pom1::PomRenderer::Filter::Linear,
+                               reinterpret_cast<const uint32_t*>(pixels));
+    }
+    if (pixels) stbi_image_free(pixels);
+    return tex;
+}
+
 } // namespace
 
 void MainWindow_ImGui::ensureAboutPhotoTexture()
@@ -179,19 +193,7 @@ void MainWindow_ImGui::ensureAboutPhotoTexture()
         return;
     }
 
-    GLuint tex = 0;
-    glGenTextures(1, &tex);
-    glBindTexture(GL_TEXTURE_2D, tex);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-    glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, w, h, 0, GL_RGBA, GL_UNSIGNED_BYTE, pixels);
-    glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
-    stbi_image_free(pixels);
-
-    aboutPhotoTexture = tex;
+    aboutPhotoTexture = uploadPhotoTextureRgba(pixels, w, h);
     aboutPhotoWidth = w;
     aboutPhotoHeight = h;
 }
@@ -217,19 +219,7 @@ void MainWindow_ImGui::ensureAppIconTexture()
         return;
     }
 
-    GLuint tex = 0;
-    glGenTextures(1, &tex);
-    glBindTexture(GL_TEXTURE_2D, tex);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-    glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, w, h, 0, GL_RGBA, GL_UNSIGNED_BYTE, pixels);
-    glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
-    stbi_image_free(pixels);
-
-    appIconTexture = tex;
+    appIconTexture = uploadPhotoTextureRgba(pixels, w, h);
     appIconWidth = w;
     appIconHeight = h;
 }
@@ -255,19 +245,7 @@ void MainWindow_ImGui::ensureApple50LogoTexture()
         return;
     }
 
-    GLuint tex = 0;
-    glGenTextures(1, &tex);
-    glBindTexture(GL_TEXTURE_2D, tex);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-    glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, w, h, 0, GL_RGBA, GL_UNSIGNED_BYTE, pixels);
-    glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
-    stbi_image_free(pixels);
-
-    apple50LogoTexture = tex;
+    apple50LogoTexture = uploadPhotoTextureRgba(pixels, w, h);
     apple50LogoWidth = w;
     apple50LogoHeight = h;
 }
@@ -293,19 +271,7 @@ void MainWindow_ImGui::ensureWozJobsPhotoTexture()
         return;
     }
 
-    GLuint tex = 0;
-    glGenTextures(1, &tex);
-    glBindTexture(GL_TEXTURE_2D, tex);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-    glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, w, h, 0, GL_RGBA, GL_UNSIGNED_BYTE, pixels);
-    glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
-    stbi_image_free(pixels);
-
-    wozJobsPhotoTexture = tex;
+    wozJobsPhotoTexture = uploadPhotoTextureRgba(pixels, w, h);
     wozJobsPhotoWidth = w;
     wozJobsPhotoHeight = h;
 }
@@ -331,19 +297,7 @@ void MainWindow_ImGui::ensureWozJobsRectPhotoTexture()
         return;
     }
 
-    GLuint tex = 0;
-    glGenTextures(1, &tex);
-    glBindTexture(GL_TEXTURE_2D, tex);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-    glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, w, h, 0, GL_RGBA, GL_UNSIGNED_BYTE, pixels);
-    glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
-    stbi_image_free(pixels);
-
-    wozJobsRectPhotoTexture = tex;
+    wozJobsRectPhotoTexture = uploadPhotoTextureRgba(pixels, w, h);
     wozJobsRectPhotoWidth = w;
     wozJobsRectPhotoHeight = h;
 }
@@ -353,7 +307,7 @@ void MainWindow_ImGui::ensureWozJobsRectPhotoTexture()
 // aspect ratio. Both Image-panel windows render identically; the only
 // differences are texture identity and the "not found" message.
 namespace {
-void drawFittedCenteredImage(GLuint tex, int texW, int texH)
+void drawFittedCenteredImage(pom1::Texture* tex, int texW, int texH)
 {
     const ImVec2 avail = ImGui::GetContentRegionAvail();
     const float iw = static_cast<float>(texW);
@@ -366,7 +320,9 @@ void drawFittedCenteredImage(GLuint tex, int texW, int texH)
         ImGui::Dummy(ImVec2(offX, 0.0f));
         ImGui::SameLine(0.0f, 0.0f);
     }
-    ImGui::Image((ImTextureID)(uintptr_t)tex, ImVec2(dw, dh));
+    auto* r = pom1::renderer();
+    if (!r || !tex) return;
+    ImGui::Image(r->asImTextureID(tex), ImVec2(dw, dh));
 }
 } // namespace
 
@@ -425,19 +381,7 @@ void MainWindow_ImGui::ensureTmsBoardPhotoTexture()
         return;
     }
 
-    GLuint tex = 0;
-    glGenTextures(1, &tex);
-    glBindTexture(GL_TEXTURE_2D, tex);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-    glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, w, h, 0, GL_RGBA, GL_UNSIGNED_BYTE, pixels);
-    glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
-    stbi_image_free(pixels);
-
-    tmsBoardPhotoTexture = tex;
+    tmsBoardPhotoTexture = uploadPhotoTextureRgba(pixels, w, h);
     tmsBoardPhotoWidth = w;
     tmsBoardPhotoHeight = h;
 }
@@ -463,19 +407,7 @@ void MainWindow_ImGui::ensureGen2WorkbenchPhotoTexture()
         return;
     }
 
-    GLuint tex = 0;
-    glGenTextures(1, &tex);
-    glBindTexture(GL_TEXTURE_2D, tex);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-    glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, w, h, 0, GL_RGBA, GL_UNSIGNED_BYTE, pixels);
-    glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
-    stbi_image_free(pixels);
-
-    gen2WorkbenchPhotoTexture = tex;
+    gen2WorkbenchPhotoTexture = uploadPhotoTextureRgba(pixels, w, h);
     gen2WorkbenchPhotoWidth = w;
     gen2WorkbenchPhotoHeight = h;
 }
@@ -501,19 +433,7 @@ void MainWindow_ImGui::ensurePR40MechPhotoTexture()
         return;
     }
 
-    GLuint tex = 0;
-    glGenTextures(1, &tex);
-    glBindTexture(GL_TEXTURE_2D, tex);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-    glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, w, h, 0, GL_RGBA, GL_UNSIGNED_BYTE, pixels);
-    glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
-    stbi_image_free(pixels);
-
-    pr40MechPhotoTexture = tex;
+    pr40MechPhotoTexture = uploadPhotoTextureRgba(pixels, w, h);
     pr40MechPhotoWidth = w;
     pr40MechPhotoHeight = h;
 }
@@ -586,9 +506,10 @@ void MainWindow_ImGui::renderAboutDialog()
         // Icon flush-left, header text block flows to its right (no wasted
         // whitespace above the title). Fallback to plain text when the icon
         // asset is missing.
-        if (appIconTexture != 0 && appIconWidth > 0 && appIconHeight > 0) {
+        if (appIconTexture && appIconWidth > 0 && appIconHeight > 0
+            && pom1::renderer()) {
             const float iconDisplay = 128.0f;
-            ImGui::Image((ImTextureID)(uintptr_t)appIconTexture,
+            ImGui::Image(pom1::renderer()->asImTextureID(appIconTexture),
                          ImVec2(iconDisplay, iconDisplay));
             ImGui::SameLine();
             ImGui::BeginGroup();
@@ -609,13 +530,14 @@ void MainWindow_ImGui::renderAboutDialog()
         }
         ImGui::Separator();
 
-        if (aboutPhotoTexture != 0 && aboutPhotoWidth > 0 && aboutPhotoHeight > 0) {
+        if (aboutPhotoTexture && aboutPhotoWidth > 0 && aboutPhotoHeight > 0
+            && pom1::renderer()) {
             const float availW = ImGui::GetContentRegionAvail().x;
             const float iw = static_cast<float>(aboutPhotoWidth);
             const float ih = static_cast<float>(aboutPhotoHeight);
             const float scale = std::min(1.0f, availW / iw);
             const ImVec2 imgSize(iw * scale, ih * scale);
-            ImGui::Image((ImTextureID)(uintptr_t)aboutPhotoTexture, imgSize);
+            ImGui::Image(pom1::renderer()->asImTextureID(aboutPhotoTexture), imgSize);
             ImGui::Spacing();
         }
 
@@ -1454,9 +1376,10 @@ void MainWindow_ImGui::renderWelcomeWindow()
         // ── Header ──────────────────────────────────────────────────
         // Icon flush-left (64 px, half the About badge) with greeting and
         // tagline flowing to its right so the top of the panel stays dense.
-        if (appIconTexture != 0 && appIconWidth > 0 && appIconHeight > 0) {
+        if (appIconTexture && appIconWidth > 0 && appIconHeight > 0
+            && pom1::renderer()) {
             const float iconDisplay = 64.0f;
-            ImGui::Image((ImTextureID)(uintptr_t)appIconTexture,
+            ImGui::Image(pom1::renderer()->asImTextureID(appIconTexture),
                          ImVec2(iconDisplay, iconDisplay));
             ImGui::SameLine();
             ImGui::BeginGroup();

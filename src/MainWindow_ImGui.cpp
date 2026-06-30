@@ -3,6 +3,7 @@
 #include "Pom1BenchHost.h"   // complete types for std::unique_ptr members (dtor)
 #include "CodeBench.h"
 #include "CliDispatcher.h"
+#include "PomRenderer.h"
 #include "WiFiModem.h"
 #include "TerminalCard.h"
 #include "POM1Build.h"
@@ -116,74 +117,40 @@ void MainWindow_ImGui::createPom1()
 
 void MainWindow_ImGui::destroyPom1()
 {
-    // Les unique_ptr se détruisent automatiquement
-    if (tms9918Texture) {
-        glDeleteTextures(1, &tms9918Texture);
-        tms9918Texture = 0;
-    }
-    if (graphicsCardTexture) {
-        glDeleteTextures(1, &graphicsCardTexture);
-        graphicsCardTexture = 0;
-    }
-    if (gt6144Texture) {
-        glDeleteTextures(1, &gt6144Texture);
-        gt6144Texture = 0;
-    }
-    if (aboutPhotoTexture) {
-        glDeleteTextures(1, &aboutPhotoTexture);
-        aboutPhotoTexture = 0;
-        aboutPhotoWidth = 0;
-        aboutPhotoHeight = 0;
-    }
+    // Les unique_ptr se détruisent automatiquement. Hand every texture back
+    // to the renderer — destroyTexture is null-safe on both backends so
+    // double-shutdown (releaseGLResources then ~MainWindow_ImGui) is OK.
+    auto* r = pom1::renderer();
+    auto drop = [&](pom1::Texture*& t) {
+        if (t && r) r->destroyTexture(t);
+        t = nullptr;
+    };
+    drop(tms9918Texture);
+    drop(graphicsCardTexture);
+    drop(gt6144Texture);
+    drop(aboutPhotoTexture);
+    aboutPhotoWidth = aboutPhotoHeight = 0;
     aboutPhotoLoadTried = false;
-    if (apple50LogoTexture) {
-        glDeleteTextures(1, &apple50LogoTexture);
-        apple50LogoTexture = 0;
-        apple50LogoWidth = 0;
-        apple50LogoHeight = 0;
-    }
+    drop(apple50LogoTexture);
+    apple50LogoWidth = apple50LogoHeight = 0;
     apple50LogoLoadTried = false;
-    if (appIconTexture) {
-        glDeleteTextures(1, &appIconTexture);
-        appIconTexture = 0;
-        appIconWidth = 0;
-        appIconHeight = 0;
-    }
+    drop(appIconTexture);
+    appIconWidth = appIconHeight = 0;
     appIconLoadTried = false;
-    if (wozJobsPhotoTexture) {
-        glDeleteTextures(1, &wozJobsPhotoTexture);
-        wozJobsPhotoTexture = 0;
-        wozJobsPhotoWidth = 0;
-        wozJobsPhotoHeight = 0;
-    }
+    drop(wozJobsPhotoTexture);
+    wozJobsPhotoWidth = wozJobsPhotoHeight = 0;
     wozJobsPhotoLoadTried = false;
-    if (wozJobsRectPhotoTexture) {
-        glDeleteTextures(1, &wozJobsRectPhotoTexture);
-        wozJobsRectPhotoTexture = 0;
-        wozJobsRectPhotoWidth = 0;
-        wozJobsRectPhotoHeight = 0;
-    }
+    drop(wozJobsRectPhotoTexture);
+    wozJobsRectPhotoWidth = wozJobsRectPhotoHeight = 0;
     wozJobsRectPhotoLoadTried = false;
-    if (tmsBoardPhotoTexture) {
-        glDeleteTextures(1, &tmsBoardPhotoTexture);
-        tmsBoardPhotoTexture = 0;
-        tmsBoardPhotoWidth = 0;
-        tmsBoardPhotoHeight = 0;
-    }
+    drop(tmsBoardPhotoTexture);
+    tmsBoardPhotoWidth = tmsBoardPhotoHeight = 0;
     tmsBoardPhotoLoadTried = false;
-    if (gen2WorkbenchPhotoTexture) {
-        glDeleteTextures(1, &gen2WorkbenchPhotoTexture);
-        gen2WorkbenchPhotoTexture = 0;
-        gen2WorkbenchPhotoWidth = 0;
-        gen2WorkbenchPhotoHeight = 0;
-    }
+    drop(gen2WorkbenchPhotoTexture);
+    gen2WorkbenchPhotoWidth = gen2WorkbenchPhotoHeight = 0;
     gen2WorkbenchPhotoLoadTried = false;
-    if (pr40MechPhotoTexture) {
-        glDeleteTextures(1, &pr40MechPhotoTexture);
-        pr40MechPhotoTexture = 0;
-        pr40MechPhotoWidth = 0;
-        pr40MechPhotoHeight = 0;
-    }
+    drop(pr40MechPhotoTexture);
+    pr40MechPhotoWidth = pr40MechPhotoHeight = 0;
     pr40MechPhotoLoadTried = false;
 }
 

@@ -8,6 +8,8 @@
 #include "imgui.h"
 #include "DisplayDevice.h"
 
+namespace pom1 { struct Texture; }   // PomRenderer.h — fwd-decl to keep this header GL-free
+
 class Screen_ImGui : public DisplayDevice
 {
 public:
@@ -125,7 +127,11 @@ private:
     static constexpr int kAtlasRows = 8;   // 16 × 8 = 128 glyphs
     static constexpr int kAtlasTexW = kAtlasCellW * kAtlasCols;
     static constexpr int kAtlasTexH = kAtlasCellH * kAtlasRows;
-    unsigned int glyphAtlasTexture = 0;     // GLuint, kept opaque to avoid GL.h in this header
+    // Opaque renderer texture (kept fully GL-free in this header so the
+    // Metal backend in Phase 2 doesn't need a Screen_ImGui change). The
+    // pointer is owned by the renderer, allocated lazily by buildGlyphAtlas
+    // and released by destroyGlyphAtlas. Forward-declared below.
+    pom1::Texture* glyphAtlasTexture = nullptr;
     bool glyphAtlasUploaded = false;
     // Per-glyph empty flag (true = all bits zero, no draw needed at the cell).
     // Lets render() skip e.g. the space character without an AddImage.

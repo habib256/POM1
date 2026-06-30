@@ -11,6 +11,7 @@
 #include "MainWindow_Internal.h"
 #include "NativeFileDialog.h"
 #include "POM1Build.h"
+#include "PomRenderer.h"
 
 #include "imgui.h"
 
@@ -622,8 +623,9 @@ void MainWindow_ImGui::renderLoadTapeDialog()
 void MainWindow_ImGui::renderCassetteDeckWindow()
 {
     ensureApple50LogoTexture();
+    auto* r = pom1::renderer();
     cassetteDeck.setLabelLogo(
-        static_cast<ImTextureID>(apple50LogoTexture),
+        r ? r->asImTextureID(apple50LogoTexture) : (ImTextureID)0,
         apple50LogoWidth, apple50LogoHeight);
 
     applyPendingLayout("Apple-1 Cassette Deck");

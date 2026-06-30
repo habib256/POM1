@@ -91,6 +91,7 @@ set(SOURCES
     ${POM1_SRC_DIR}/MainWindow_TMS9918Inspector.cpp
     ${POM1_SRC_DIR}/MainWindow_Keyboard.cpp
     ${POM1_SRC_DIR}/NativeFileDialog.cpp
+    ${POM1_SRC_DIR}/PomRenderer_GL.cpp
     ${POM1_SRC_DIR}/Logger.cpp
     ${POM1_SRC_DIR}/third_party/ImGuiColorTextEdit/TextEditor.cpp
     ${POM1_SRC_DIR}/Pom1BenchHost.cpp
@@ -159,6 +160,7 @@ set(HEADERS
     ${POM1_SRC_DIR}/DisplayDevice.h
     ${POM1_SRC_DIR}/MainWindow_Internal.h
     ${POM1_SRC_DIR}/NativeFileDialog.h
+    ${POM1_SRC_DIR}/PomRenderer.h
     ${POM1_SRC_DIR}/Logger.h
 )
 
