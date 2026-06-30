@@ -10,6 +10,68 @@ is `git log`; the user-facing feature tour is `README.md`; open work lives in
 
 ## [Unreleased]
 
+### Added — TMS9918 sub-scanline beam/CPU synchronisation
+
+- **renderUpToBeam + write catch-up**: `renderActiveLine` is split into
+  `renderLineToTemp` + `commitActiveSegment`, and the live raster commits only
+  the horizontal slice the beam has crossed. The `Memory` MMIO **write** hook
+  calls `TMS9918::renderBeamCatchUp(inFlight)` before each register/VRAM
+  mutation, with the in-flight offset = `cpu->getCurrentInstructionCycles()`
+  (sub-instruction accuracy, the same idiom as the GEN2 video-event journal). A
+  mid-scanline `R7`/`R5`/`R6`/`R4`/VRAM change now splits the line at the exact
+  pixel (horizontal rainbow, mid-line table swap); a static frame still commits
+  each line in one slice, so the golden image is byte-preserved. Pinned by
+  `tms9918_per_scanline` Phase G.
+- **5S/collision read-time sync**: `syncSpriteScanToBeam(inFlight)` advances the
+  per-line sprite scan to the beam's scanline before a `$CC01` read returns, so
+  the 5S overflow / collision / index reflect the beam at the **read cycle** —
+  the 5S raster-split poll loop is now cycle-precise. Pinned by Phase H.
+- **Seamless mode/blank split**: the display mode (R0 M3, R1 M1/M2) and the blank
+  bit (R1.6) are latched at the **start** of each render line (`lineLatchR0/R1`)
+  while table bases + R7 stay live, so a mid-line mode/blank write defers to the
+  next line (Grauw/ARTRAG "seamless" splits). Pinned by Phase I.
+- **Shared `BeamClock` seam** (`src/BeamClock.h`, `pom1::beamPosAt`): factors the
+  cycle→(line,x) raster mapping the catch-up paths compute inline — the shared
+  "BeamClock + renderUntil(beam)" foundation for the TMS9918 (now) and the GEN2
+  beam engine (to adopt). Pinned by `beam_clock_smoke`. (The decoupled
+  journal/replay renderer + GEN2 adoption remain open in `TODO.md`.)
+
+### Fixed — TMS9918 status-read semantics + active-display access floor
+
+- **Status read clears F + C only, not 5S** (`TMS9918::readControl`, `~0xE0` →
+  `~0xA0`): per BiFi/Sean Young §2.2 a `$CC01` read latch-clears only the frame
+  flag (bit 7) and collision (bit 5); the 5th-sprite flag (bit 6) and its SAT
+  index are re-derived by the sprite scan each frame (per-frame reset at the top
+  of the active scan), **not** cleared on read. The old mask wiped 5S, so a
+  second in-frame status read wrongly reported "no overflow". Pinned by
+  `tms9918_sprite_status` T9. Docs §13/§18/§24/§26 + `TMS9918-SPRITE_INIT` /
+  `-SPRITE_BEST_PRACTICES` made consistent; §30 Bug N°4 (overscan collision)
+  reclassified 🔑 OPEN (Test E, silicon-unconfirmed) and the contradictory
+  inline "overscan [-32,288)" comments corrected to visible-only [0,256).
+- **Active-display CPU-access floor = 9c = ⌈8 µs⌉** (`kMinActiveDrainCycles`
+  16c → 9c, Gfx12-scoped): the TI datasheet's ~8 µs between data-port writes in
+  Graphics I/II is `⌈8 µs × 1.022727 MHz⌉` = 9 cycles, so an 8c gap drops and 9c
+  lands. The retired flat 16c floor (≈2× spec) wrongly dropped the sprites-OFF
+  `TMS_Plasma` timings that run clean on Parmigiani's Replica-1.
+  `tms9918_silicon_strict_runtime` re-anchored.
+
+### Fixed — 6502 software: defensive SAT fill in Snake + Sokoban
+
+- **`TMS_Snake.asm` / `TMS_Sokoban.asm`** wrote only `SAT[0].Y=$D0` and omitted
+  the `SAT[1..127]=$D1` fill — the confirmed cause-#1 of ghost sprites on real
+  TMS9918A (renders fine on POM1's bistable power-on VRAM, breaks on silicon).
+  Added the inline `$D0 + 127×$D1` fill (gold standard, `TMS9918-SPRITE_INIT.md`
+  §4.2), and rebuilt `roms/codetank/Codetank_GAME1.rom`: the Tetris lower bank
+  (by **Nippur72 / Antonino Porcino**) is preserved byte-identical, Snake is
+  2476/2560 B and Sokoban 5077/5120 B, and the title screens are byte-identical
+  old/new under `--vram-noise` (the fill is defensive — neutral outside
+  gameplay). **CodeTank cartridge audit**: all 9 games now carry the fill —
+  Galaga/Life/Snake/Sokoban inline, Rogue/Mandel/Plasma/Logo/Nyan via the lib
+  `disable_sprites` helpers (`tms9918m1.asm` Mode I @ `$1B00` / `tms9918m2.asm`
+  Mode II @ `$3B00`). `SPRITE_INIT` §11 corrected: failures **diverge by
+  default** (POM1 hides the SAT-init class unless VRAM noise is armed), not
+  "shared silicon↔POM1".
+
 ### Fixed — 6502 software: GEN2 LOGO `BIRDFLY` sprite flicker
 
 - **GEN2 HGR LOGO (`sketchs/tms9918/tool_logo/TMS_Logo_16k.asm`, build
