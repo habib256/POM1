@@ -139,18 +139,14 @@ public:
         // plain (void*) cast is the correct way to type-pun the pointer.
         id<MTLTexture> mtl = [device_ newTextureWithDescriptor:desc];
         t->mtlTexture = (void*)mtl;
-        // TODO(macOS-Metal sampler): the Filter parameter is currently
-        // dropped on the Metal backend. imgui_impl_metal.mm binds a single
-        // sampler (linear) into its pipeline state for every draw call, and
-        // ImDrawCmd::UserCallback can't reach the encoder from outside the
-        // backend, so per-texture nearest/linear switching needs either a
-        // patched upstream backend or a forked one. The visible regression
-        // vs GL: pixel-art surfaces created with Filter::Nearest (HGR /
-        // TMS9918 / GT6144 framebuffers, glyph atlas, paint editor
-        // canvases) sample bilinear when scaled up by the window, looking
-        // blurrier than on the GL backend. Acceptable while the feature
-        // ships; revisit when ImGui exposes a per-cmd sampler hook (the
-        // ImTextureData migration in 1.91+ goes in that direction).
+        // Filter param: imgui_impl_metal's fragment shader hardcodes one
+        // inline sampler, so per-texture switching isn't available without
+        // forking the backend. POM1 instead patches the upstream copy at
+        // CMake configure time (linear→nearest) so every draw samples with
+        // nearest filtering — the right thing for HGR/TMS/GT6144/glyph
+        // atlas/paint canvases. Photos + fonts also get nearest; this is
+        // visually invisible at integer zoom and acceptable elsewhere.
+        // See CMakeLists.txt:`imgui_impl_metal.patched.mm`.
         (void)f;
 
         if (pixels) {

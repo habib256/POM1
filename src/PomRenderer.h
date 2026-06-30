@@ -69,14 +69,18 @@ public:
     // casts the GLuint via uintptr_t; on Metal it pokes through a bridged
     // pointer.
     //
-    // Backend-quirk note on Filter: the GL backend honours it via
-    // glTexParameteri (Nearest = crisp pixel art; Linear = bilinear). The
-    // Metal backend currently DROPS the parameter — imgui_impl_metal.mm
-    // binds a single sampler (linear) into its pipeline state, and
-    // ImDrawCmd::UserCallback can't reach the encoder from outside.
-    // Pixel-art surfaces created with Filter::Nearest therefore sample
-    // bilinear on macOS-Metal. See the TODO inside PomRenderer_Metal.mm
-    // ::createTexture for the path forward (per-cmd sampler hook).
+    // Backend-quirk note on Filter: the GL backend honours it per-texture
+    // (Nearest = crisp pixel art; Linear = bilinear). imgui_impl_metal's
+    // fragment shader bakes ONE sampler into its pipeline state, so per-
+    // draw switching needs an upstream patch we don't carry. POM1's
+    // workaround: CMakeLists.txt rewrites the inline sampler in the
+    // imgui_impl_metal.mm copy it compiles from `linear` to `nearest` at
+    // configure time. Net effect on macOS-Metal: every pixel-art surface
+    // (HGR / TMS9918 / GT6144 / glyph atlas / paint canvases) is crisp
+    // as intended; ImGui's font + About photos sample with nearest too,
+    // which is visually invisible at 1× and integer scales and only
+    // mildly less smooth at non-integer zooms. See the
+    // `imgui_impl_metal.patched.mm` block in CMakeLists.txt for details.
     virtual Texture* createTexture(int w, int h, Filter,
                                    const uint32_t* pixels = nullptr) = 0;
     virtual void     updateTexture(Texture*, const uint32_t* pixels) = 0;

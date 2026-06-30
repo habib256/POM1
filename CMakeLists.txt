@@ -71,7 +71,38 @@ set(IMGUI_SOURCES
     ${IMGUI_DIR}/backends/imgui_impl_glfw.cpp
 )
 if(POM1_USE_METAL)
-    list(APPEND IMGUI_SOURCES ${IMGUI_DIR}/backends/imgui_impl_metal.mm)
+    # ── per-texture-sampler workaround on Metal ────────────────────────
+    # imgui_impl_metal.mm hardcodes a single `constexpr sampler` with
+    # min_filter::linear + mag_filter::linear inside its fragment shader.
+    # That shader is compiled into the pipeline state at init time, so
+    # the sampler can't be swapped per draw call from outside the backend,
+    # and PomRenderer's Filter::Nearest contract has no way through.
+    #
+    # POM1's emulated framebuffers (HGR / TMS9918 / GT6144 + the Apple-1
+    # glyph atlas + the paint-editor canvases) are pixel-art and need
+    # nearest sampling; ImGui's font + photo textures need linear. The
+    # GL backend solves this per-texture via glTexParameteri. On Metal,
+    # without a per-cmd sampler hook in upstream ImGui, the most pragmatic
+    # fix is to flip the inline sampler from linear → nearest at build
+    # time and accept that fonts/photos lose bilinear smoothing at
+    # non-integer zooms. (At 1× and integer multiples the visual
+    # difference is invisible.) Patch is configure-time + pure-CMake so
+    # it works on every macOS host without `sed`/`patch` portability
+    # headaches; rerunning cmake re-applies the patch if upstream imgui
+    # is updated.
+    set(IMGUI_METAL_ORIG    "${IMGUI_DIR}/backends/imgui_impl_metal.mm")
+    set(IMGUI_METAL_PATCHED "${CMAKE_CURRENT_BINARY_DIR}/imgui_impl_metal.patched.mm")
+    if(EXISTS "${IMGUI_METAL_ORIG}")
+        file(READ "${IMGUI_METAL_ORIG}" _imgui_metal_src)
+        string(REPLACE "min_filter::linear, mag_filter::linear"
+                       "min_filter::nearest, mag_filter::nearest"
+                       _imgui_metal_src "${_imgui_metal_src}")
+        string(REPLACE "mip_filter::linear"
+                       "mip_filter::nearest"
+                       _imgui_metal_src "${_imgui_metal_src}")
+        file(WRITE "${IMGUI_METAL_PATCHED}" "${_imgui_metal_src}")
+    endif()
+    list(APPEND IMGUI_SOURCES "${IMGUI_METAL_PATCHED}")
 else()
     list(APPEND IMGUI_SOURCES ${IMGUI_DIR}/backends/imgui_impl_opengl3.cpp)
 endif()
@@ -522,9 +553,12 @@ else()
             set_source_files_properties(
                 "${POM1_SRC_DIR}/PomRenderer_Metal.mm"
                 PROPERTIES COMPILE_FLAGS "-fno-objc-arc")
+            # ARC on the PATCHED copy (the one we actually compile — see
+            # the linear-→-nearest sampler patch earlier in this file).
             set_source_files_properties(
-                "${IMGUI_DIR}/backends/imgui_impl_metal.mm"
-                PROPERTIES COMPILE_FLAGS "-fobjc-arc")
+                "${IMGUI_METAL_PATCHED}"
+                PROPERTIES COMPILE_FLAGS "-fobjc-arc"
+                           GENERATED TRUE)
         else()
             # Apple deprecated the whole OpenGL API in 10.14 but it still
             # works on the legacy POM1_RENDERER=opengl macOS build. Silence
