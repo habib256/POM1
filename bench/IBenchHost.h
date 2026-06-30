@@ -150,6 +150,24 @@ public:
     // tree). "" or "." = current working directory.
     virtual std::string browseDir() const { return "."; }
 
+    // Native OS file picker — see hgrpaint/IHgrPaintHost.h::pickFilePath for the
+    // contract. Returns true + writes the chosen path on a native desktop host;
+    // false (the default) -> CodeBench falls back to its built-in ImGui browser
+    // (WASM, or Linux without zenity/kdialog). `extCsv` is a comma-separated
+    // extension list WITHOUT dots ("c,s,asm,bas,apf,hex,txt,md").
+    virtual bool pickFilePath(bool forSave,
+                              const std::string& title,
+                              const std::string& filterDesc,
+                              const std::string& extCsv,
+                              const std::string& defaultDir,
+                              const std::string& defaultName,
+                              std::string& outPath)
+    {
+        (void)forSave; (void)title; (void)filterDesc; (void)extCsv;
+        (void)defaultDir; (void)defaultName; (void)outPath;
+        return false;
+    }
+
     // ---- Serial monitor (a separate window the host owns) ----
     virtual bool hasSerial() const { return false; }
     virtual void openSerial()      {}

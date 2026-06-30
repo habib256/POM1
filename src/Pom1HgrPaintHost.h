@@ -19,12 +19,17 @@
 #include <utility>
 #include <vector>
 
+struct GLFWwindow;
 class EmulationController;
 
 class Pom1HgrPaintHost : public hgrpaint::IHgrPaintHost
 {
 public:
-    explicit Pom1HgrPaintHost(EmulationController* emu);
+    // `windowSlot` points at the GLFWwindow* the app fills in AFTER this host is
+    // constructed (MainWindow::window, set at main_imgui.cpp's ctx.window=...).
+    // Dereferenced lazily at file-pick time so the value is current; may be null.
+    explicit Pom1HgrPaintHost(EmulationController* emu,
+                              GLFWwindow* const* windowSlot = nullptr);
 
     void pokeByte(uint16_t addr, uint8_t value) override;
     void beginBatch() override;
@@ -36,6 +41,10 @@ public:
                    std::string& err) override;
     bool savePng(const std::string& path, const uint32_t* rgba,
                  int w, int h, std::string& err) override;
+    bool pickFilePath(bool forSave, const std::string& title,
+                      const std::string& filterDesc, const std::string& extCsv,
+                      const std::string& defaultDir, const std::string& defaultName,
+                      std::string& outPath) override;
     void* uploadTexture(void* tex, const void* rgba,
                         int w, int h, bool linear) override;
     void  destroyTexture(void* tex) override;
@@ -43,6 +52,7 @@ public:
 
 private:
     EmulationController* emu_;
+    GLFWwindow* const* windowSlot_ = nullptr;  // → MainWindow::window (lazy, may be null)
     GraphicsCard gfx_;                 // owns the NTSC pipeline for the editor canvas
     std::vector<uint8_t> scratch_;     // 64 KB scratch the page is rendered through
     int  batchDepth_ = 0;              // begin/endBatch nesting depth (reentrant)

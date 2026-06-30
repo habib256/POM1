@@ -55,6 +55,24 @@ public:
                          const std::string& defaultName,
                          const std::vector<FileFilter>& filters,
                          std::string& outPath);
+
+    /// Convenience used by the portable paint/bench editors via their host
+    /// seams: pick a file with ONE filter expressed as a human description plus
+    /// a comma-separated extension list WITHOUT dots (e.g. "png,jpg,bmp" or
+    /// "hgr"; empty matches everything). `forSave` routes to saveFile, else
+    /// openFile. For loads an extra "All files (*.*)" filter is appended so the
+    /// user is never boxed in; for saves only the typed filter is passed so the
+    /// single-extension auto-append in saveFile still fires. Returns false when
+    /// no native backend is available — the caller then falls back to its own
+    /// in-process ImGui browser, so callers need not pre-check isAvailable().
+    static bool pickFiltered(GLFWwindow* parent,
+                             bool forSave,
+                             const std::string& title,
+                             const std::string& filterDesc,
+                             const std::string& extCsv,
+                             const std::string& defaultDir,
+                             const std::string& defaultName,
+                             std::string& outPath);
 };
 
 } // namespace pom1

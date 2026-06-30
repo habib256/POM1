@@ -1344,10 +1344,10 @@ void hgrpaint::HgrPaintEditor::renderImportPreview()
     ImGui::EndPopup();
 }
 
-void hgrpaint::HgrPaintEditor::openFileBrowser(bool forSave, int saveKind)
+void hgrpaint::HgrPaintEditor::openFileBrowser(bool forSave, int saveKind, bool importMode)
 {
     browserForSave = forSave;
-    browserImport = false;
+    browserImport = importMode;
     browserSaveKind = saveKind;
     if (browserDir.empty()) {
         std::error_code ec;
@@ -1355,12 +1355,89 @@ void hgrpaint::HgrPaintEditor::openFileBrowser(bool forSave, int saveKind)
         if (ec || browserDir.empty()) browserDir = ".";
     }
     // Seed a default filename for Save from the current path's basename.
+    std::string defName;
     if (forSave) {
         std::string base = std::filesystem::path(filePath).filename().string();
         if (base.empty()) base = (saveKind == 1) ? "image.png" : "image.hgr";
         std::snprintf(browserSaveName, sizeof(browserSaveName), "%s", base.c_str());
+        defName = base;
+    }
+
+    // Prefer the host's OS-native file picker; fall back to the in-process ImGui
+    // browser below when the host has none (WASM, Linux without zenity/kdialog,
+    // or a headless/test host). Matches the MainWindow dialogs' native+fallback.
+    if (host) {
+        std::string title, desc, ext;
+        if (importMode)        { title = "Import picture";  desc = "Images (PNG, JPG, BMP)"; ext = "png,jpg,jpeg,bmp,gif,tga"; }
+        else if (saveKind == 1){ title = "Export PNG";      desc = "PNG image";             ext = "png"; }
+        else                   { title = forSave ? "Save HGR image" : "Load HGR image";
+                                 desc  = "HGR/raw page";     ext = "hgr"; }
+        std::string picked;
+        if (host->pickFilePath(forSave, title, desc, ext, browserDir, defName, picked)) {
+            // Track where the user went so the next pick + the ImGui fallback
+            // start there too.
+            std::error_code ec;
+            std::filesystem::path pp(picked);
+            std::string dir = pp.parent_path().string();
+            if (!dir.empty()) browserDir = dir;
+            performFileAction(forSave, saveKind, importMode, picked);
+            return;
+        }
     }
     browserOpen = true;
+}
+
+bool hgrpaint::HgrPaintEditor::performFileAction(bool forSave, int saveKind,
+                                                 bool importMode,
+                                                 const std::string& fullPath)
+{
+    namespace fs = std::filesystem;
+    const std::string name = fs::path(fullPath).filename().string();
+
+    if (!forSave && importMode) {
+        // Don't touch filePath: openImportPreview takes the path directly, and a
+        // .jpg there would poison the next Save's default raw-HGR filename.
+        openImportPreview(fullPath);
+        return true;
+    }
+    if (!forSave) {                                       // Load raw page
+        std::snprintf(filePath, sizeof(filePath), "%s", fullPath.c_str());
+        std::string err;
+        if (host && host->loadImage(filePath, baseAddr(), err))
+            status = "Loaded " + name + " into $" + (page2 ? "4000" : "2000");
+        else
+            status = "Load failed: " + (err.empty() ? std::string("(bad file)") : err);
+        return true;
+    }
+
+    // Save (raw page dump or PNG export).
+    std::snprintf(filePath, sizeof(filePath), "%s", fullPath.c_str());
+    std::string err;
+    bool ok = false;
+    if (saveKind == 1) {                                  // PNG export
+        ok = host && host->savePng(fullPath, canvasRgba.data(),
+                                   kHiresWidth, kHiresHeight, err);
+        status = ok ? ("Exported PNG: " + fullPath)
+                    : ("PNG export failed: " + (err.empty() ? std::string("(error)") : err));
+    } else {                                              // raw page dump
+        // HIRES only: bake the POM1HGR tag into the unused screen-hole bytes
+        // ($1FF8-$1FFF) — past the last displayed byte, so invisible. The lo-res
+        // page is just 1 KB and has no such screen hole, so skip it.
+        if (!grMode) {
+            static const char kTag[8] = { 'P','O','M','1','H','G','R','\0' };
+            for (int i = 0; i < 8; ++i) {
+                const int off = 0x1FF8 + i;
+                shadow[off] = static_cast<uint8_t>(kTag[i]);
+                if (host) host->pokeByte(static_cast<uint16_t>(baseAddr() + off),
+                                         static_cast<uint8_t>(kTag[i]));
+            }
+        }
+        ok = host && host->saveImage(fullPath, baseAddr(), pageBytes(), err);
+        status = ok ? (grMode ? "Saved 1 KB lo-res GR page"
+                              : "Saved 8 KB HGR (+POM1HGR tag)")
+                    : ("Save failed: " + (err.empty() ? std::string("(error)") : err));
+    }
+    return ok;
 }
 
 void hgrpaint::HgrPaintEditor::renderFileBrowser()
@@ -1430,19 +1507,8 @@ void hgrpaint::HgrPaintEditor::renderFileBrowser()
             if (browserForSave) {
                 std::snprintf(filePath, sizeof(filePath), "%s", f.path().string().c_str());
                 std::snprintf(browserSaveName, sizeof(browserSaveName), "%s", name.c_str());
-            } else if (browserImport) {
-                // Don't touch filePath: openImportPreview takes the path directly,
-                // and leaving filePath as a .jpg would poison the next Save's
-                // default raw-HGR filename.
-                openImportPreview(f.path().string());
-                ImGui::CloseCurrentPopup();
-            } else {
-                std::snprintf(filePath, sizeof(filePath), "%s", f.path().string().c_str());
-                std::string err;
-                if (host && host->loadImage(filePath, baseAddr(), err))
-                    status = "Loaded " + name + " into $" + (page2 ? "4000" : "2000");
-                else
-                    status = "Load failed: " + (err.empty() ? std::string("(bad file)") : err);
+            } else {                       // Load or Import: act immediately
+                performFileAction(false, browserSaveKind, browserImport, f.path().string());
                 ImGui::CloseCurrentPopup();
             }
         }
@@ -1463,33 +1529,8 @@ void hgrpaint::HgrPaintEditor::renderFileBrowser()
         ImGui::SameLine();
         if (ImGui::Button("Save", ImVec2(70, 0)) && browserSaveName[0]) {
             const std::string full = (fs::path(browserDir) / browserSaveName).string();
-            std::snprintf(filePath, sizeof(filePath), "%s", full.c_str());
-            std::string err;
-            bool ok = false;
-            if (browserSaveKind == 1) {                       // PNG export
-                ok = host && host->savePng(full, canvasRgba.data(),
-                                           kHiresWidth, kHiresHeight, err);
-                status = ok ? ("Exported PNG: " + full)
-                            : ("PNG export failed: " + (err.empty() ? std::string("(error)") : err));
-            } else {                                          // raw page dump
-                // HIRES only: bake the POM1HGR tag into the unused screen-hole bytes
-                // ($1FF8-$1FFF) — past the last displayed byte, so invisible. The
-                // lo-res page is just 1 KB and has no such screen hole, so skip it.
-                if (!grMode) {
-                    static const char kTag[8] = { 'P','O','M','1','H','G','R','\0' };
-                    for (int i = 0; i < 8; ++i) {
-                        const int off = 0x1FF8 + i;
-                        shadow[off] = static_cast<uint8_t>(kTag[i]);
-                        if (host) host->pokeByte(static_cast<uint16_t>(baseAddr() + off),
-                                                 static_cast<uint8_t>(kTag[i]));
-                    }
-                }
-                ok = host && host->saveImage(full, baseAddr(), pageBytes(), err);
-                status = ok ? (grMode ? "Saved 1 KB lo-res GR page"
-                                      : "Saved 8 KB HGR (+POM1HGR tag)")
-                            : ("Save failed: " + (err.empty() ? std::string("(error)") : err));
-            }
-            if (ok) ImGui::CloseCurrentPopup();
+            if (performFileAction(true, browserSaveKind, false, full))
+                ImGui::CloseCurrentPopup();
         }
         ImGui::SameLine();
     }
@@ -1502,7 +1543,7 @@ void hgrpaint::HgrPaintEditor::renderFileRow()
     if (ImGui::Button("Load")) openFileBrowser(false);
     if (ImGui::IsItemHovered()) ImGui::SetTooltip("Open a file picker and load a raw 8 KB HGR image");
     ImGui::SameLine();
-    if (ImGui::Button("Import" ICON_FA_IMAGE)) { openFileBrowser(false); browserImport = true; }
+    if (ImGui::Button("Import" ICON_FA_IMAGE)) openFileBrowser(false, 0, /*importMode=*/true);
     if (ImGui::IsItemHovered())
         ImGui::SetTooltip("Import a PNG/JPG picture and convert it to HGR\n"
                           "(ii-pix-style: CAM16-UCS perceptual dithering vs the true NTSC colours)");

@@ -528,6 +528,12 @@ else()
             "-framework Cocoa"
             "-framework IOKit"
             "-framework CoreVideo"
+            # UniformTypeIdentifiers (UTType) is NOT re-exported by Cocoa, so
+            # NativeFileDialog_Mac.mm's `[UTType typeWithFilenameExtension:]`
+            # leaves _OBJC_CLASS_$_UTType undefined without it. Weak-link so
+            # pre-macOS-11 SDKs (where the framework is absent) still link;
+            # the .mm version-guards the API at runtime.
+            "-weak_framework UniformTypeIdentifiers"
         )
         if(POM1_USE_METAL)
             # PomRenderer_Metal.mm + imgui_impl_metal.mm need these two

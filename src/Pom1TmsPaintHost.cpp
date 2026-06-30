@@ -7,15 +7,30 @@
 
 #include "EmulationController.h"
 #include "TmsPaintModel.h"        // tmspaint:: geometry constants
+#include "NativeFileDialog.h"     // OS-native file picker for Load/Save/Import
 #include "PomRenderer.h"          // shared graphics backend (GL or Metal)
 #include "third_party/stb/stb_image_write.h"   // decl only; impl lives in main_imgui.cpp
 
 #include <algorithm>
 #include <cstdio>
 
-Pom1TmsPaintHost::Pom1TmsPaintHost(EmulationController* emu)
-    : emu_(emu), snap_(std::make_unique<TMS9918::Snapshot>())
+Pom1TmsPaintHost::Pom1TmsPaintHost(EmulationController* emu,
+                                   GLFWwindow* const* windowSlot)
+    : emu_(emu), windowSlot_(windowSlot), snap_(std::make_unique<TMS9918::Snapshot>())
 {
+}
+
+bool Pom1TmsPaintHost::pickFilePath(bool forSave, const std::string& title,
+                                    const std::string& filterDesc,
+                                    const std::string& extCsv,
+                                    const std::string& defaultDir,
+                                    const std::string& defaultName,
+                                    std::string& outPath)
+{
+    GLFWwindow* parent = windowSlot_ ? *windowSlot_ : nullptr;
+    return pom1::NativeFileDialog::pickFiltered(parent, forSave, title, filterDesc,
+                                                extCsv, defaultDir, defaultName,
+                                                outPath);
 }
 
 void Pom1TmsPaintHost::pokeVram(uint16_t addr, uint8_t value)

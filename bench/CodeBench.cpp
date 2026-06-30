@@ -478,6 +478,23 @@ void CodeBench::render(const char* title, bool* open)
     bool openBrowse = false;
     auto browse = [&](bool save) {
         if (browseDir_.empty()) browseDir_ = host_->browseDir();
+        // Prefer the host's OS-native file picker; fall back to the in-process
+        // ImGui browser below when the host has none (WASM, Linux without
+        // zenity/kdialog). Matches the MainWindow dialogs' native+fallback.
+        {
+            const std::string title = save ? "Save file" : "Open file";
+            const std::string desc  = "Source / data files";
+            const std::string ext   = "c,h,s,asm,inc,bas,apf,int,hex,txt,md,json,cfg";
+            const std::string defName = save ? doc.title : std::string();
+            std::string picked;
+            if (host_->pickFilePath(save, title, desc, ext, browseDir_, defName, picked)) {
+                namespace fs = std::filesystem;
+                const std::string dir = fs::path(picked).parent_path().string();
+                if (!dir.empty()) browseDir_ = dir;
+                if (save) saveFile(picked); else openFile(picked);
+                return;
+            }
+        }
         browseSave_ = save;
         openBrowse = true;
     };

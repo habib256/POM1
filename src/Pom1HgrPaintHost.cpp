@@ -7,14 +7,29 @@
 
 #include "EmulationController.h"
 #include "HgrPaintModel.h"        // hgrpaint:: geometry constants
+#include "NativeFileDialog.h"     // OS-native file picker for Load/Save/Import
 #include "PomRenderer.h"          // shared graphics backend (GL or Metal)
 #include "third_party/stb/stb_image_write.h"   // decl only; impl lives in main_imgui.cpp
 
 #include <algorithm>
 
-Pom1HgrPaintHost::Pom1HgrPaintHost(EmulationController* emu)
-    : emu_(emu), scratch_(0x10000, 0)
+Pom1HgrPaintHost::Pom1HgrPaintHost(EmulationController* emu,
+                                   GLFWwindow* const* windowSlot)
+    : emu_(emu), windowSlot_(windowSlot), scratch_(0x10000, 0)
 {
+}
+
+bool Pom1HgrPaintHost::pickFilePath(bool forSave, const std::string& title,
+                                    const std::string& filterDesc,
+                                    const std::string& extCsv,
+                                    const std::string& defaultDir,
+                                    const std::string& defaultName,
+                                    std::string& outPath)
+{
+    GLFWwindow* parent = windowSlot_ ? *windowSlot_ : nullptr;
+    return pom1::NativeFileDialog::pickFiltered(parent, forSave, title, filterDesc,
+                                                extCsv, defaultDir, defaultName,
+                                                outPath);
 }
 
 void Pom1HgrPaintHost::pokeByte(uint16_t addr, uint8_t value)

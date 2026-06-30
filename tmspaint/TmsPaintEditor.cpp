@@ -830,22 +830,76 @@ void tmspaint::TmsPaintEditor::renderCanvas()
     ImGui::EndChild();
 }
 
-void tmspaint::TmsPaintEditor::openFileBrowser(bool forSave, int saveKind)
+void tmspaint::TmsPaintEditor::openFileBrowser(bool forSave, int saveKind, bool importMode)
 {
     browserForSave = forSave;
-    browserImport = false;
+    browserImport = importMode;
     browserSaveKind = saveKind;
     if (browserDir.empty()) {
         std::error_code ec;
         browserDir = std::filesystem::current_path(ec).string();
         if (ec || browserDir.empty()) browserDir = ".";
     }
+    std::string defName;
     if (forSave) {
         std::string base = std::filesystem::path(filePath).filename().string();
         if (base.empty()) base = (saveKind == 1) ? "image.png" : "image.tms";
         std::snprintf(browserSaveName, sizeof(browserSaveName), "%s", base.c_str());
+        defName = base;
+    }
+
+    // Prefer the host's OS-native file picker; fall back to the in-process ImGui
+    // browser below when the host has none (WASM, Linux without zenity/kdialog,
+    // or a headless/test host). Matches the MainWindow dialogs' native+fallback.
+    if (host) {
+        std::string title, desc, ext;
+        if (importMode)        { title = "Import picture"; desc = "Images (PNG, JPG, BMP)"; ext = "png,jpg,jpeg,bmp,gif,tga"; }
+        else if (saveKind == 1){ title = "Export PNG";     desc = "PNG image";             ext = "png"; }
+        else                   { title = forSave ? "Save VRAM image" : "Load VRAM image";
+                                 desc  = "TMS VRAM image";  ext = "tms"; }
+        std::string picked;
+        if (host->pickFilePath(forSave, title, desc, ext, browserDir, defName, picked)) {
+            std::filesystem::path pp(picked);
+            std::string dir = pp.parent_path().string();
+            if (!dir.empty()) browserDir = dir;
+            performFileAction(forSave, saveKind, importMode, picked);
+            return;
+        }
     }
     browserOpen = true;
+}
+
+bool tmspaint::TmsPaintEditor::performFileAction(bool forSave, int saveKind,
+                                                 bool importMode,
+                                                 const std::string& fullPath)
+{
+    namespace fs = std::filesystem;
+    const std::string name = fs::path(fullPath).filename().string();
+
+    if (!forSave && importMode) {
+        openImportPreview(fullPath);          // leaves filePath alone
+        return true;
+    }
+    if (!forSave) {                            // Load raw 16 KB VRAM
+        std::snprintf(filePath, sizeof(filePath), "%s", fullPath.c_str());
+        std::string err;
+        if (host && host->loadVram(filePath, err)) status = "Loaded " + name;
+        else status = "Load failed: " + (err.empty() ? std::string("(bad file)") : err);
+        return true;
+    }
+
+    // Save (raw VRAM dump or PNG export).
+    std::snprintf(filePath, sizeof(filePath), "%s", fullPath.c_str());
+    std::string err;
+    bool ok = false;
+    if (saveKind == 1)
+        ok = host && host->savePng(fullPath, canvasRgba.data(), kGfx2Width, kGfx2Height, err);
+    else
+        ok = host && host->saveVram(fullPath, err);
+    status = ok ? ("Saved: " + fullPath)
+                : ((saveKind == 1 ? "PNG export failed: " : "Save failed: ")
+                   + (err.empty() ? std::string("(error)") : err));
+    return ok;
 }
 
 void tmspaint::TmsPaintEditor::renderFileBrowser()
@@ -908,14 +962,8 @@ void tmspaint::TmsPaintEditor::renderFileBrowser()
             if (browserForSave) {
                 std::snprintf(filePath, sizeof(filePath), "%s", f.path().string().c_str());
                 std::snprintf(browserSaveName, sizeof(browserSaveName), "%s", name.c_str());
-            } else if (browserImport) {
-                openImportPreview(f.path().string());   // leaves filePath alone
-                ImGui::CloseCurrentPopup();
-            } else {
-                std::snprintf(filePath, sizeof(filePath), "%s", f.path().string().c_str());
-                std::string err;
-                if (host && host->loadVram(filePath, err)) status = "Loaded " + name;
-                else status = "Load failed: " + (err.empty() ? std::string("(bad file)") : err);
+            } else {                       // Load or Import: act immediately
+                performFileAction(false, browserSaveKind, browserImport, f.path().string());
                 ImGui::CloseCurrentPopup();
             }
         }
@@ -929,17 +977,8 @@ void tmspaint::TmsPaintEditor::renderFileBrowser()
         ImGui::SameLine();
         if (ImGui::Button("Save", ImVec2(70, 0)) && browserSaveName[0]) {
             const std::string full = (fs::path(browserDir) / browserSaveName).string();
-            std::snprintf(filePath, sizeof(filePath), "%s", full.c_str());
-            std::string err;
-            bool ok = false;
-            if (browserSaveKind == 1)
-                ok = host && host->savePng(full, canvasRgba.data(), kGfx2Width, kGfx2Height, err);
-            else
-                ok = host && host->saveVram(full, err);
-            status = ok ? ("Saved: " + full)
-                        : ((browserSaveKind == 1 ? "PNG export failed: " : "Save failed: ")
-                           + (err.empty() ? std::string("(error)") : err));
-            if (ok) ImGui::CloseCurrentPopup();
+            if (performFileAction(true, browserSaveKind, false, full))
+                ImGui::CloseCurrentPopup();
         }
         ImGui::SameLine();
     }
@@ -1156,7 +1195,7 @@ void tmspaint::TmsPaintEditor::renderFileRow()
     if (ImGui::Button("Load")) openFileBrowser(false);
     if (ImGui::IsItemHovered()) ImGui::SetTooltip("Open a file picker and load a raw 16 KB VRAM image");
     ImGui::SameLine();
-    if (ImGui::Button("Import" ICON_FA_IMAGE)) { openFileBrowser(false); browserImport = true; }
+    if (ImGui::Button("Import" ICON_FA_IMAGE)) openFileBrowser(false, 0, /*importMode=*/true);
     if (ImGui::IsItemHovered())
         ImGui::SetTooltip("Import a PNG/JPG picture and convert it to TMS9918\n"
                           "(ii-pix style: CAM16-UCS perceptual dithering vs the 15 palette colours)");

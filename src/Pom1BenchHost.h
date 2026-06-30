@@ -56,6 +56,10 @@ public:
     void cpuRun() override;
     bool cpuIsRunning() const override;
     std::string browseDir() const override;
+    bool pickFilePath(bool forSave, const std::string& title,
+                      const std::string& filterDesc, const std::string& extCsv,
+                      const std::string& defaultDir, const std::string& defaultName,
+                      std::string& outPath) override;
 
     bool hasSerial() const override { return true; }
     void openSerial() override;

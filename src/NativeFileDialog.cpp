@@ -500,3 +500,46 @@ bool NativeFileDialog::saveFile(GLFWwindow* /*parent*/,
 } // namespace pom1
 
 #endif
+
+// ── Platform-independent convenience (delegates to the per-platform open/save
+//    above; on macOS those live in NativeFileDialog_Mac.mm but link the same). ─
+namespace pom1 {
+
+bool NativeFileDialog::pickFiltered(GLFWwindow* parent,
+                                    bool forSave,
+                                    const std::string& title,
+                                    const std::string& filterDesc,
+                                    const std::string& extCsv,
+                                    const std::string& defaultDir,
+                                    const std::string& defaultName,
+                                    std::string& outPath)
+{
+    if (!isAvailable()) return false;   // caller falls back to its ImGui browser
+
+    // Split "png,jpg,bmp" → {"png","jpg","bmp"}, trimming dots/spaces so callers
+    // can be sloppy. An empty list means "match everything".
+    std::vector<std::string> exts;
+    std::string cur;
+    auto flush = [&]() {
+        size_t a = cur.find_first_not_of(" .\t");
+        size_t b = cur.find_last_not_of(" .\t");
+        if (a != std::string::npos) exts.push_back(cur.substr(a, b - a + 1));
+        cur.clear();
+    };
+    for (char c : extCsv) { if (c == ',') flush(); else cur += c; }
+    flush();
+
+    std::vector<FileFilter> filters;
+    filters.push_back(FileFilter{ filterDesc, exts });
+    // For loads, append an "All files" filter so the user is never boxed in. For
+    // saves, leave it off: saveFile only auto-appends the extension when there is
+    // exactly one filter with one extension, and we want that auto-append.
+    if (!forSave)
+        filters.push_back(FileFilter{ "All files (*.*)", {} });
+
+    return forSave
+        ? saveFile(parent, title, defaultDir, defaultName, filters, outPath)
+        : openFile(parent, title, defaultDir, filters, outPath);
+}
+
+} // namespace pom1

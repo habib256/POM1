@@ -6,6 +6,7 @@
 #include "BasicCompilerApplesoft.h"         // basicnative::compile — native standalone 6502
 #include "MainWindow_ImGui.h"     // mw_ members (friend) + EmulationController
 #include "MainWindow_Internal.h"  // kMachinePresets / BasicType (ACI program-output presets)
+#include "NativeFileDialog.h"     // OS-native file picker for Open/Save source
 #include "ProcessUtil.h"          // bench::shellQuote / runCapture / whichExe
 #include "imgui.h"                // ImGui::GetTime for the CodeTank cold-boot
 
@@ -3030,6 +3031,21 @@ std::string Pom1BenchHost::browseDir() const
     for (const char* p : {"dev", "../dev", "../../dev"})
         if (fs::exists(p, ec)) return fs::absolute(p, ec).string();
     return ".";
+}
+
+bool Pom1BenchHost::pickFilePath(bool forSave, const std::string& title,
+                                 const std::string& filterDesc,
+                                 const std::string& extCsv,
+                                 const std::string& defaultDir,
+                                 const std::string& defaultName,
+                                 std::string& outPath)
+{
+    // mw_->window is set after window creation; reading it here (at pick time) is
+    // always current. Friend access to the private member.
+    GLFWwindow* parent = mw_ ? mw_->window : nullptr;
+    return pom1::NativeFileDialog::pickFiltered(parent, forSave, title, filterDesc,
+                                                extCsv, defaultDir, defaultName,
+                                                outPath);
 }
 
 void Pom1BenchHost::openSerial()

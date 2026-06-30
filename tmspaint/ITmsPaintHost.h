@@ -73,6 +73,23 @@ public:
     virtual bool savePng(const std::string& path, const uint32_t* rgba,
                          int w, int h, std::string& err) = 0;
 
+    // Native OS file picker — see hgrpaint/IHgrPaintHost.h::pickFilePath for the
+    // contract. Returns true + writes the chosen path on a native desktop host;
+    // false (the default) -> the editor falls back to its ImGui file browser.
+    // `extCsv` is a comma-separated extension list WITHOUT dots ("png,jpg" / "tms").
+    virtual bool pickFilePath(bool forSave,
+                              const std::string& title,
+                              const std::string& filterDesc,
+                              const std::string& extCsv,
+                              const std::string& defaultDir,
+                              const std::string& defaultName,
+                              std::string& outPath)
+    {
+        (void)forSave; (void)title; (void)filterDesc; (void)extCsv;
+        (void)defaultDir; (void)defaultName; (void)outPath;
+        return false;
+    }
+
     // Texture lifecycle — the HOST owns the graphics backend (see
     // hgrpaint/IHgrPaintHost.h for the design rationale). Opaque void* so a
     // Metal id<MTLTexture> fits the same slot as a GL GLuint. Pass

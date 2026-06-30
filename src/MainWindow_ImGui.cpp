@@ -100,9 +100,11 @@ void MainWindow_ImGui::createPom1()
     // Portable HGR Paint editor (hgrpaint/) driven by its POM1 host: pokes →
     // EmulationController, canvas render → GEN2 GraphicsCard, files → controller +
     // stb_image_write. See hgrpaint/IHgrPaintHost.h.
-    hgrPaintHost = std::make_unique<Pom1HgrPaintHost>(emulation.get());
+    // &window is the slot main_imgui.cpp fills in after window creation; the
+    // hosts dereference it lazily at file-pick time to parent the native dialog.
+    hgrPaintHost = std::make_unique<Pom1HgrPaintHost>(emulation.get(), &window);
     hgrPaintEditor = std::make_unique<hgrpaint::HgrPaintEditor>(hgrPaintHost.get());
-    tmsPaintHost = std::make_unique<Pom1TmsPaintHost>(emulation.get());
+    tmsPaintHost = std::make_unique<Pom1TmsPaintHost>(emulation.get(), &window);
     tmsPaintEditor = std::make_unique<tmspaint::TmsPaintEditor>(tmsPaintHost.get());
     // Republie cpuRunning=true (le constructeur publie une fois avant runRequested.store(true)).
     emulation->startCpu();

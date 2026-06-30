@@ -65,6 +65,27 @@ public:
     virtual bool savePng(const std::string& path, const uint32_t* rgba,
                          int w, int h, std::string& err) = 0;
 
+    // Native OS file picker. Returns true and writes the chosen absolute path
+    // into `outPath` when the host can show a native dialog (a desktop POM1/POM2
+    // host wired to its OS picker); false -> the editor falls back to its own
+    // built-in ImGui file browser (the default below, also taken on WASM or a
+    // Linux box without zenity/kdialog). `extCsv` is a comma-separated extension
+    // list WITHOUT dots, e.g. "png,jpg,bmp" or "hgr"; empty matches everything.
+    // The default keeps the portable editor self-contained — it never names a
+    // native dialog itself.
+    virtual bool pickFilePath(bool forSave,
+                              const std::string& title,
+                              const std::string& filterDesc,
+                              const std::string& extCsv,
+                              const std::string& defaultDir,
+                              const std::string& defaultName,
+                              std::string& outPath)
+    {
+        (void)forSave; (void)title; (void)filterDesc; (void)extCsv;
+        (void)defaultDir; (void)defaultName; (void)outPath;
+        return false;
+    }
+
     // Texture lifecycle — the HOST owns the graphics backend, so the portable
     // editor never names GL/GLFW/SDL/Metal. The editor hands over RGBA8 (w*h,
     // top-down) and draws the returned opaque handle via

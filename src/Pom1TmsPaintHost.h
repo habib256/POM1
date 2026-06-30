@@ -20,12 +20,16 @@
 #include <utility>
 #include <vector>
 
+struct GLFWwindow;
 class EmulationController;
 
 class Pom1TmsPaintHost : public tmspaint::ITmsPaintHost
 {
 public:
-    explicit Pom1TmsPaintHost(EmulationController* emu);
+    // `windowSlot` → MainWindow::window (filled in after construction; lazy,
+    // may be null). See Pom1HgrPaintHost.
+    explicit Pom1TmsPaintHost(EmulationController* emu,
+                              GLFWwindow* const* windowSlot = nullptr);
 
     void pokeVram(uint16_t addr, uint8_t value) override;
     void beginBatch() override;
@@ -39,6 +43,10 @@ public:
     bool saveVram(const std::string& path, std::string& err) override;
     bool savePng(const std::string& path, const uint32_t* rgba,
                  int w, int h, std::string& err) override;
+    bool pickFilePath(bool forSave, const std::string& title,
+                      const std::string& filterDesc, const std::string& extCsv,
+                      const std::string& defaultDir, const std::string& defaultName,
+                      std::string& outPath) override;
     void* uploadTexture(void* tex, const void* rgba,
                         int w, int h, bool linear) override;
     void  destroyTexture(void* tex) override;
@@ -46,6 +54,7 @@ public:
 
 private:
     EmulationController* emu_;
+    GLFWwindow* const* windowSlot_ = nullptr;            // → MainWindow::window (lazy)
     std::unique_ptr<TMS9918::Snapshot> snap_;            // staging for renderToBuffer
     int  batchDepth_ = 0;                                // begin/endBatch nesting depth (reentrant)
     std::vector<std::pair<uint16_t, uint8_t>> batch_;    // coalesced VRAM writes

@@ -212,7 +212,12 @@ private:
     void renderTopBar();        // page select + file ops + help (MacPaint-style menu strip)
     void renderToolPanel();     // left vertical palette of icon tool buttons + options
     void renderColorBar();      // horizontal colour palette along the bottom
-    void openFileBrowser(bool forSave, int saveKind = 0);
+    void openFileBrowser(bool forSave, int saveKind = 0, bool importMode = false);
+    // Carry out a Load / Save / Save PNG / Import on `fullPath` (shared by the
+    // native picker and the ImGui browser). Returns false only on a failed save
+    // (so the ImGui browser keeps its popup open); true otherwise.
+    bool performFileAction(bool forSave, int saveKind, bool importMode,
+                           const std::string& fullPath);
     void renderFileBrowser();   // modal file picker for Load / Save / Save PNG / Import
     void openImportPreview(const std::string& path); // decode + open the interactive preview
     void renderImportPreview();                       // modal: sliders + live preview + apply
