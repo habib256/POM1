@@ -29,13 +29,52 @@ check_ipo_supported(RESULT POM1_IPO_SUPPORTED OUTPUT POM1_IPO_ERROR)
 # src/third_party/libresidfp/CMakeLists.txt for the source list.
 add_subdirectory(src/third_party/libresidfp)
 
+# ── Graphics-backend selection ───────────────────────────────────────────
+# POM1_RENDERER picks the PomRenderer backend at configure time:
+#   * "opengl" (default everywhere except macOS-non-WASM) → PomRenderer_GL.cpp
+#     + imgui_impl_opengl3.cpp. The historical path, still used on Linux,
+#     Windows and WASM (Emscripten ports GL3 to WebGL2).
+#   * "metal"  (default on macOS-non-WASM) → PomRenderer_Metal.mm +
+#     imgui_impl_metal.mm. macOS only — Apple deprecated OpenGL in 10.14,
+#     this stops the deprecation warning and unlocks GPU-family-specific
+#     pipeline tuning later.
+# Setting POM1_RENDERER=metal on Linux/Windows/WASM is an error.
+if(APPLE AND NOT EMSCRIPTEN)
+    set(POM1_RENDERER_DEFAULT "metal")
+else()
+    set(POM1_RENDERER_DEFAULT "opengl")
+endif()
+set(POM1_RENDERER "${POM1_RENDERER_DEFAULT}"
+    CACHE STRING "POM1 graphics backend: opengl | metal")
+set_property(CACHE POM1_RENDERER PROPERTY STRINGS opengl metal)
+
+if(POM1_RENDERER STREQUAL "metal")
+    if(NOT APPLE OR EMSCRIPTEN)
+        message(FATAL_ERROR
+            "POM1_RENDERER=metal requires macOS (non-WASM). "
+            "Pass -DPOM1_RENDERER=opengl on this platform.")
+    endif()
+    set(POM1_USE_METAL ON)
+else()
+    set(POM1_USE_METAL OFF)
+endif()
+message(STATUS "POM1: graphics backend = ${POM1_RENDERER}")
+
 # ImGui
 set(IMGUI_DIR ${CMAKE_CURRENT_SOURCE_DIR}/imgui)
-file(GLOB IMGUI_SOURCES
-    ${IMGUI_DIR}/*.cpp
+# Core ImGui TUs are picked up by glob — they don't change between backends.
+file(GLOB IMGUI_CORE_SOURCES ${IMGUI_DIR}/*.cpp)
+# The platform (GLFW) backend is the same on every renderer. The rendering
+# backend swaps based on POM1_USE_METAL.
+set(IMGUI_SOURCES
+    ${IMGUI_CORE_SOURCES}
     ${IMGUI_DIR}/backends/imgui_impl_glfw.cpp
-    ${IMGUI_DIR}/backends/imgui_impl_opengl3.cpp
 )
+if(POM1_USE_METAL)
+    list(APPEND IMGUI_SOURCES ${IMGUI_DIR}/backends/imgui_impl_metal.mm)
+else()
+    list(APPEND IMGUI_SOURCES ${IMGUI_DIR}/backends/imgui_impl_opengl3.cpp)
+endif()
 
 # Project sources (all under src/)
 set(POM1_SRC_DIR ${CMAKE_CURRENT_SOURCE_DIR}/src)
@@ -91,7 +130,7 @@ set(SOURCES
     ${POM1_SRC_DIR}/MainWindow_TMS9918Inspector.cpp
     ${POM1_SRC_DIR}/MainWindow_Keyboard.cpp
     ${POM1_SRC_DIR}/NativeFileDialog.cpp
-    ${POM1_SRC_DIR}/PomRenderer_GL.cpp
+    ${POM1_SRC_DIR}/PomRenderer.cpp
     ${POM1_SRC_DIR}/Logger.cpp
     ${POM1_SRC_DIR}/third_party/ImGuiColorTextEdit/TextEditor.cpp
     ${POM1_SRC_DIR}/Pom1BenchHost.cpp
@@ -161,6 +200,7 @@ set(HEADERS
     ${POM1_SRC_DIR}/MainWindow_Internal.h
     ${POM1_SRC_DIR}/NativeFileDialog.h
     ${POM1_SRC_DIR}/PomRenderer.h
+    ${POM1_SRC_DIR}/PomRenderer_Internal.h
     ${POM1_SRC_DIR}/Logger.h
 )
 
@@ -188,6 +228,17 @@ if(APPLE AND NOT EMSCRIPTEN)
          "${POM1_SRC_DIR}/NativeFileDialog_Mac.mm")
 endif()
 
+# Renderer backend implementation: PomRenderer.cpp (factory/singleton) is
+# always compiled; the actual GL or Metal impl follows POM1_USE_METAL.
+set(POM1_RENDERER_SOURCES "")
+if(POM1_USE_METAL)
+    list(APPEND POM1_RENDERER_SOURCES
+         "${POM1_SRC_DIR}/PomRenderer_Metal.mm")
+else()
+    list(APPEND POM1_RENDERER_SOURCES
+         "${POM1_SRC_DIR}/PomRenderer_GL.cpp")
+endif()
+
 # Create executable. MACOSX_BUNDLE makes CMake wrap the binary in POM1.app so
 # the Dock / Finder / ⌘-Tab pick up the icon from Info.plist (glfwSetWindowIcon
 # is a no-op on macOS). A POST_BUILD symlink below keeps `build/POM1` working
@@ -196,12 +247,14 @@ if(APPLE AND NOT EMSCRIPTEN)
     add_executable(${PROJECT_NAME} MACOSX_BUNDLE
                    ${SOURCES} ${HEADERS} ${IMGUI_SOURCES}
                    ${POM1_NATIVE_ICON_SOURCES}
-                   ${POM1_NATIVE_FILE_DIALOG_SOURCES})
+                   ${POM1_NATIVE_FILE_DIALOG_SOURCES}
+                   ${POM1_RENDERER_SOURCES})
 else()
     add_executable(${PROJECT_NAME}
                    ${SOURCES} ${HEADERS} ${IMGUI_SOURCES}
                    ${POM1_NATIVE_ICON_SOURCES}
-                   ${POM1_NATIVE_FILE_DIALOG_SOURCES})
+                   ${POM1_NATIVE_FILE_DIALOG_SOURCES}
+                   ${POM1_RENDERER_SOURCES})
 endif()
 
 # Final artefact is branded "POM1" (POM1, POM1.exe on Windows,
@@ -415,7 +468,13 @@ if(EMSCRIPTEN)
 
 else()
     # ── Native build (Linux / macOS / Windows) ────────────────────────
-    find_package(OpenGL REQUIRED)
+    # OpenGL is only required on the GL path. On macOS-Metal we skip it
+    # entirely — Apple's GL framework would still resolve (10.14+ keeps the
+    # shim around) but linking against it brings back the deprecation warnings
+    # we are explicitly avoiding by going Metal.
+    if(NOT POM1_USE_METAL)
+        find_package(OpenGL REQUIRED)
+    endif()
 
     # Find GLFW: try find_package first (vcpkg, Homebrew), fall back to pkg-config (apt, dnf)
     find_package(glfw3 3.3 QUIET CONFIG)
@@ -427,10 +486,10 @@ else()
         set(GLFW_TARGET PkgConfig::GLFW3)
     endif()
 
-    target_link_libraries(${PROJECT_NAME}
-        ${GLFW_TARGET}
-        ${OPENGL_LIBRARIES}
-    )
+    target_link_libraries(${PROJECT_NAME} ${GLFW_TARGET})
+    if(NOT POM1_USE_METAL)
+        target_link_libraries(${PROJECT_NAME} ${OPENGL_LIBRARIES})
+    endif()
 
     # macOS-specific frameworks
     if(APPLE)
@@ -439,9 +498,26 @@ else()
             "-framework IOKit"
             "-framework CoreVideo"
         )
-        # Apple deprecated the whole OpenGL API in 10.14 but it still works.
-        # The compiler prints this exact hint — silence the noise repo-wide.
-        target_compile_definitions(${PROJECT_NAME} PRIVATE GL_SILENCE_DEPRECATION)
+        if(POM1_USE_METAL)
+            # PomRenderer_Metal.mm + imgui_impl_metal.mm need these three.
+            # QuartzCore brings CAMetalLayer; MetalKit is used by ImGui's
+            # backend for the per-frame autorelease/timing helpers.
+            target_link_libraries(${PROJECT_NAME}
+                "-framework Metal"
+                "-framework MetalKit"
+                "-framework QuartzCore"
+            )
+            target_compile_definitions(${PROJECT_NAME} PRIVATE POM1_HAS_METAL=1)
+            set_source_files_properties(
+                "${POM1_SRC_DIR}/PomRenderer_Metal.mm"
+                "${IMGUI_DIR}/backends/imgui_impl_metal.mm"
+                PROPERTIES COMPILE_FLAGS "-fno-objc-arc")
+        else()
+            # Apple deprecated the whole OpenGL API in 10.14 but it still
+            # works on the legacy POM1_RENDERER=opengl macOS build. Silence
+            # the deprecation hint in that specific case only.
+            target_compile_definitions(${PROJECT_NAME} PRIVATE GL_SILENCE_DEPRECATION)
+        endif()
 
         # Bundle metadata. POM1.icns lives in Contents/Resources/ via
         # MACOSX_PACKAGE_LOCATION; Info.plist is configured from the

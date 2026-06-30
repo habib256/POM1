@@ -608,7 +608,14 @@ int main(int argc, char* argv[])
         return -1;
 
     // OpenGL / GLSL context hints
-#if POM1_IS_WASM
+#if defined(POM1_HAS_METAL) && POM1_HAS_METAL
+    // macOS + Metal: tell GLFW we don't want a GL context — PomRenderer_Metal
+    // will own the back-buffer through a CAMetalLayer attached to the
+    // NSWindow's contentView. glsl_version is unused by the Metal ImGui
+    // backend (it ignores the parameter inside initImGuiBackend).
+    const char* glsl_version = nullptr;
+    glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
+#elif POM1_IS_WASM
     // WebGL 2.0 = OpenGL ES 3.0 — GLSL ES 300
     const char* glsl_version = "#version 300 es";
     glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
@@ -665,6 +672,11 @@ int main(int argc, char* argv[])
     }
 #endif
 
+#if defined(POM1_HAS_METAL) && POM1_HAS_METAL
+    // Metal owns the back-buffer through CAMetalLayer.displaySyncEnabled —
+    // no GL context to make current, no glfwSwapInterval to set. GLFW still
+    // delivers input events to the same window.
+#else
     glfwMakeContextCurrent(window);
 #if !POM1_IS_WASM
     glfwSwapInterval(1); // Vsync (desktop)
@@ -673,11 +685,12 @@ int main(int argc, char* argv[])
     // « emscripten_set_main_loop_timing: ... main loop does not exist ».
     // On applique l’intervalle dans le premier tick de la boucle (ci-dessous).
 #endif
+#endif
 
-    // Construct the graphics backend now that the GL context is current.
-    // Phase 2 will switch this to a Metal renderer on macOS based on a CMake
-    // option; today every platform gets the OpenGL backend (and WASM stays
-    // there permanently — Metal doesn't exist in the browser).
+    // Construct the graphics backend now that the window + (optional) GL
+    // context are ready. makeRenderer() dispatches to PomRenderer_GL or
+    // PomRenderer_Metal at compile time depending on POM1_HAS_METAL — the
+    // call site stays platform-agnostic.
     auto rendererOwned = pom1::makeRenderer(window);
     pom1::setRenderer(rendererOwned.get());
 
@@ -761,8 +774,14 @@ int main(int argc, char* argv[])
     // Setup Dear ImGui style
     ImGui::StyleColorsDark();
 
-    // Setup Platform/Renderer backends
+    // Setup Platform/Renderer backends. On Metal we skip InitForOpenGL —
+    // ImGui_ImplGlfw_InitForOther wires up the same input plumbing without
+    // requiring a live GL context (which we no longer create on macOS).
+#if defined(POM1_HAS_METAL) && POM1_HAS_METAL
+    ImGui_ImplGlfw_InitForOther(window, true);
+#else
     ImGui_ImplGlfw_InitForOpenGL(window, true);
+#endif
     rendererOwned->initImGuiBackend(glsl_version);
 
     // Create main application

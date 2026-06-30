@@ -18,7 +18,7 @@
 // the very same code compiles unchanged — GLES3 covers every entry point
 // we use here.
 
-#include "PomRenderer.h"
+#include "PomRenderer_Internal.h"   // also pulls in PomRenderer.h
 #include "POM1Build.h"
 
 #include "imgui.h"
@@ -32,15 +32,9 @@
 
 namespace pom1 {
 
-// ─────────────────────────────────────────────────────────────────────────
-// Opaque texture handle. The interface only ever sees Texture*, so we can
-// add Metal-specific fields in Phase 2 without touching the header.
-// ─────────────────────────────────────────────────────────────────────────
-struct Texture {
-    GLuint id = 0;
-    int    w  = 0;
-    int    h  = 0;
-};
+// `Texture` is defined in PomRenderer.cpp (single struct shared by both
+// backends — see the comment in there). This backend only touches `glId`,
+// `w`, `h`; the Metal field stays zero-init.
 
 namespace {
 
@@ -55,8 +49,8 @@ public:
         auto* t = new Texture{};
         t->w = w;
         t->h = h;
-        glGenTextures(1, &t->id);
-        glBindTexture(GL_TEXTURE_2D, t->id);
+        glGenTextures(1, &t->glId);
+        glBindTexture(GL_TEXTURE_2D, t->glId);
         const GLint filt = (f == Filter::Linear) ? GL_LINEAR : GL_NEAREST;
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, filt);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, filt);
@@ -77,8 +71,8 @@ public:
 
     void updateTexture(Texture* t, const uint32_t* pixels) override
     {
-        if (!t || t->id == 0 || !pixels) return;
-        glBindTexture(GL_TEXTURE_2D, t->id);
+        if (!t || t->glId == 0 || !pixels) return;
+        glBindTexture(GL_TEXTURE_2D, t->glId);
         GLint prevAlign = 4;
         glGetIntegerv(GL_UNPACK_ALIGNMENT, &prevAlign);
         glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
@@ -90,7 +84,7 @@ public:
     void destroyTexture(Texture* t) override
     {
         if (!t) return;
-        if (t->id != 0) glDeleteTextures(1, &t->id);
+        if (t->glId != 0) glDeleteTextures(1, &t->glId);
         delete t;
     }
 
@@ -101,7 +95,7 @@ public:
         // overrides). The cast funnels through uintptr_t so this works
         // identically on 32-bit and 64-bit hosts.
         if (!t) return (ImTextureID)0;
-        return (ImTextureID)(uintptr_t)t->id;
+        return (ImTextureID)(uintptr_t)t->glId;
     }
 
     bool initImGuiBackend(const char* glslVersion) override
@@ -171,16 +165,15 @@ private:
     GLFWwindow* window_ = nullptr;
 };
 
-PomRenderer* g_renderer = nullptr;
-
 } // namespace
 
-std::unique_ptr<PomRenderer> makeRenderer(GLFWwindow* window)
+// Called by makeRenderer (PomRenderer.cpp) when POM1_HAS_METAL is not set —
+// the OpenGL backend is the default everywhere except macOS-with-Metal and
+// stays the only option under WASM (Emscripten ports the GL3 backend to
+// WebGL2 / GLES3).
+std::unique_ptr<PomRenderer> makeGlRenderer(GLFWwindow* window)
 {
     return std::unique_ptr<PomRenderer>(new GlRenderer(window));
 }
-
-PomRenderer* renderer()              { return g_renderer; }
-void         setRenderer(PomRenderer* r) { g_renderer = r; }
 
 } // namespace pom1

@@ -40,8 +40,9 @@ struct GLFWwindow;
 
 namespace pom1 {
 
-/// Opaque texture handle. The backend stashes a GLuint (GL) or an
-/// id<MTLTexture> (Metal) inside; never dereferenced by callers.
+/// Opaque texture handle. Defined out-of-line in PomRenderer.cpp so every
+/// backend agrees on the layout (one of each underlying field is used per
+/// backend; the others are zero-init). Callers only ever see Texture*.
 struct Texture;
 
 class PomRenderer {
