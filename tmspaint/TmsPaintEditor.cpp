@@ -89,11 +89,11 @@ tmspaint::TmsPaintEditor::~TmsPaintEditor()
 void tmspaint::TmsPaintEditor::releaseGL()
 {
     if (host) {
-        if (texture != 0)          host->destroyTexture(texture);
-        if (importPreviewTex != 0) host->destroyTexture(importPreviewTex);
-        if (importSrcTex != 0)     host->destroyTexture(importSrcTex);
+        if (texture)          host->destroyTexture(texture);
+        if (importPreviewTex) host->destroyTexture(importPreviewTex);
+        if (importSrcTex)     host->destroyTexture(importSrcTex);
     }
-    texture = importPreviewTex = importSrcTex = 0;
+    texture = importPreviewTex = importSrcTex = nullptr;
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -409,7 +409,7 @@ void tmspaint::TmsPaintEditor::renderMinimap()
 
     ImDrawList* dl = ImGui::GetWindowDrawList();
     dl->AddRectFilled(mmMin, mmMax, IM_COL32(0, 0, 0, 255));
-    dl->AddImage((ImTextureID)(uintptr_t)texture, mmMin, mmMax);
+    dl->AddImage(host->textureToImTexture(texture), mmMin, mmMax);
     dl->AddRect(mmMin, mmMax, IM_COL32(160, 160, 160, 255));
 
     const float lx0 = canvasScrollX / canvasScale;
@@ -641,7 +641,7 @@ void tmspaint::TmsPaintEditor::renderCanvas()
                            ImGuiButtonFlags_MouseButtonMiddle);
     const bool hovered = ImGui::IsItemHovered();
     ImDrawList* dl = ImGui::GetWindowDrawList();
-    dl->AddImage((ImTextureID)(uintptr_t)texture, origin,
+    dl->AddImage(host->textureToImTexture(texture), origin,
                  ImVec2(origin.x + imgSize.x, origin.y + imgSize.y));
 
     if (hovered && ImGui::IsMouseClicked(ImGuiMouseButton_Middle)) panning = true;
@@ -972,7 +972,7 @@ void tmspaint::TmsPaintEditor::renderImportPreview()
         std::vector<uint8_t>().swap(importSrcRgba);
         std::vector<uint8_t>().swap(importVram);
         std::vector<uint32_t>().swap(importPreview);
-        if (importSrcTex != 0 && host) { host->destroyTexture(importSrcTex); importSrcTex = 0; }
+        if (importSrcTex && host) { host->destroyTexture(importSrcTex); importSrcTex = nullptr; }
         importSrcW = importSrcH = 0;
         importSrcTexDirty = true;
     }
@@ -1036,9 +1036,9 @@ void tmspaint::TmsPaintEditor::renderImportPreview()
     // ── Side-by-side: source (left, with crop) | result (right) ──────────────
     ImGui::BeginGroup();
     ImGui::TextDisabled("Source  \xE2\x80\x94  drag to select a crop region");
-    if (importSrcTex != 0 && importSrcW > 0 && importSrcH > 0) {
+    if (importSrcTex && importSrcW > 0 && importSrcH > 0) {
         const ImVec2 imgPos = ImGui::GetCursorScreenPos();
-        ImGui::Image((ImTextureID)(uintptr_t)importSrcTex, ImVec2(sw, sh));
+        ImGui::Image(host->textureToImTexture(importSrcTex), ImVec2(sw, sh));
         ImGui::SetCursorScreenPos(imgPos);
         ImGui::InvisibleButton("##cropsrc", ImVec2(sw, sh));
         const bool hov = ImGui::IsItemHovered();
@@ -1097,8 +1097,9 @@ void tmspaint::TmsPaintEditor::renderImportPreview()
     ImGui::SameLine();
     ImGui::BeginGroup();
     ImGui::TextDisabled("TMS9918 result");
-    if (importPreviewTex != 0)
-        ImGui::Image((ImTextureID)(uintptr_t)importPreviewTex, ImVec2(kGfx2Width * 2.0f, ph));
+    if (importPreviewTex && host)
+        ImGui::Image(host->textureToImTexture(importPreviewTex),
+                     ImVec2(kGfx2Width * 2.0f, ph));
     ImGui::EndGroup();
     ImGui::Separator();
 

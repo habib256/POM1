@@ -113,11 +113,11 @@ void hgrpaint::HgrPaintEditor::releaseGL()
     // down at shutdown — the destructor runs after that, so deleting here (and
     // zeroing the handles) avoids GL calls on a dead context.
     if (host) {
-        if (texture != 0)          host->destroyTexture(texture);
-        if (importPreviewTex != 0) host->destroyTexture(importPreviewTex);
-        if (importSrcTex != 0)     host->destroyTexture(importSrcTex);
+        if (texture)          host->destroyTexture(texture);
+        if (importPreviewTex) host->destroyTexture(importPreviewTex);
+        if (importSrcTex)     host->destroyTexture(importSrcTex);
     }
-    texture = importPreviewTex = importSrcTex = 0;
+    texture = importPreviewTex = importSrcTex = nullptr;
 }
 
 void hgrpaint::HgrPaintEditor::renderShadow(uint32_t* out, bool mono)
@@ -512,7 +512,7 @@ void hgrpaint::HgrPaintEditor::renderMinimap()
 
     ImDrawList* dl = ImGui::GetWindowDrawList();
     dl->AddRectFilled(mmMin, mmMax, IM_COL32(0, 0, 0, 255));
-    dl->AddImage((ImTextureID)(uintptr_t)texture, mmMin, mmMax);
+    dl->AddImage(host->textureToImTexture(texture), mmMin, mmMax);
     dl->AddRect(mmMin, mmMax, IM_COL32(160, 160, 160, 255));
 
     // Visible viewport box (logical coords) → thumbnail.
@@ -831,7 +831,7 @@ void hgrpaint::HgrPaintEditor::renderCanvas(const std::vector<uint8_t>& memory)
                            ImGuiButtonFlags_MouseButtonMiddle);
     const bool hovered = ImGui::IsItemHovered();
     ImDrawList* dl = ImGui::GetWindowDrawList();
-    dl->AddImage((ImTextureID)(uintptr_t)texture, origin,
+    dl->AddImage(host->textureToImTexture(texture), origin,
                  ImVec2(origin.x + imgSize.x, origin.y + imgSize.y));
 
     // ── Middle-button drag pans the canvas at any zoom. Start when pressed over
@@ -1126,7 +1126,7 @@ void hgrpaint::HgrPaintEditor::renderImportPreview()
         std::vector<uint8_t>().swap(importSrcRgba);
         std::vector<uint8_t>().swap(importPage);
         std::vector<uint32_t>().swap(importPreview);
-        if (importSrcTex != 0 && host) { host->destroyTexture(importSrcTex); importSrcTex = 0; }
+        if (importSrcTex && host) { host->destroyTexture(importSrcTex); importSrcTex = nullptr; }
         importSrcW = importSrcH = 0;
         importSrcTexDirty = true;
     }
@@ -1201,9 +1201,9 @@ void hgrpaint::HgrPaintEditor::renderImportPreview()
     // ── Side-by-side: source (left) | HGR result (right) — kept at the top ────
     ImGui::BeginGroup();
     ImGui::TextDisabled("Source  \xE2\x80\x94  drag to select a crop region");
-    if (importSrcTex != 0 && importSrcW > 0 && importSrcH > 0) {
+    if (importSrcTex && importSrcW > 0 && importSrcH > 0) {
         const ImVec2 imgPos = ImGui::GetCursorScreenPos();
-        ImGui::Image((ImTextureID)(uintptr_t)importSrcTex, ImVec2(sw, sh));
+        ImGui::Image(host->textureToImTexture(importSrcTex), ImVec2(sw, sh));
 
         // Overlay an invisible button at the same spot so we capture drags
         // without ImGui swallowing them as a window move.
@@ -1283,8 +1283,9 @@ void hgrpaint::HgrPaintEditor::renderImportPreview()
     ImGui::SameLine();
     ImGui::BeginGroup();
     ImGui::TextDisabled("HGR result");
-    if (importPreviewTex != 0)
-        ImGui::Image((ImTextureID)(uintptr_t)importPreviewTex, ImVec2(kHiresWidth * 2.0f, ph));
+    if (importPreviewTex && host)
+        ImGui::Image(host->textureToImTexture(importPreviewTex),
+                     ImVec2(kHiresWidth * 2.0f, ph));
     ImGui::EndGroup();
     ImGui::Separator();
 

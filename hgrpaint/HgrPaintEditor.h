@@ -27,9 +27,6 @@
 #include "HgrPaintModel.h"
 #include "IHgrPaintHost.h"
 
-// GLuint without dragging the GL headers into this header.
-typedef unsigned int GLuint;
-
 namespace hgrpaint {
 
 class HgrPaintEditor
@@ -65,9 +62,10 @@ private:
 
     IHgrPaintHost* host;            // emulator seam (poke / render / file I/O)
 
-    // Canvas rendering (host NTSC pipeline → local RGBA buffer → GL texture).
+    // Canvas rendering (host NTSC pipeline → local RGBA buffer → opaque
+    // texture handle owned by the host's graphics backend — see IHgrPaintHost).
     std::vector<uint32_t> canvasRgba;   // kHiresWidth*kHiresHeight, host-rendered
-    GLuint texture = 0;
+    void* texture = nullptr;
     bool ntscColor = true;          // false → monochrome preview
 
     // Editing state. The top-bar selector picks one of four pages from these two
@@ -168,8 +166,8 @@ private:
     int  importCropAnchorX = 0, importCropAnchorY = 0;   // drag anchor (source px)
     std::vector<uint8_t>  importPage;      // last converted 8 KB page
     std::vector<uint32_t> importPreview;   // rendered preview (kHiresWidth*Height)
-    GLuint importPreviewTex = 0;
-    GLuint importSrcTex = 0;               // source thumbnail (side-by-side preview)
+    void* importPreviewTex = nullptr;
+    void* importSrcTex = nullptr;          // source thumbnail (side-by-side preview)
 
     uint16_t baseAddr() const {
         if (grMode) return page2 ? 0x0800 : 0x0400;   // lo-res text page

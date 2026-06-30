@@ -22,6 +22,8 @@
 #include <cstdint>
 #include <string>
 
+#include "imgui.h"   // ImTextureID for textureToImTexture()
+
 namespace hgrpaint {
 
 class IHgrPaintHost {
@@ -64,15 +66,30 @@ public:
                          int w, int h, std::string& err) = 0;
 
     // Texture lifecycle — the HOST owns the graphics backend, so the portable
-    // editor never names GL/GLFW/SDL. The editor hands over RGBA8 (w*h, top-down)
-    // and draws the returned opaque handle via ImGui::Image((ImTextureID)handle).
-    // uploadTexture: pass tex==0 to create; reuse the returned handle to update.
-    // `linear` = bilinear filtering (true) vs crisp nearest (false). The default
-    // no-op impls let a headless/test host link without any graphics backend.
-    virtual unsigned int uploadTexture(unsigned int tex, const void* rgba,
-                                       int w, int h, bool linear)
-    { (void)tex; (void)rgba; (void)w; (void)h; (void)linear; return 0; }
-    virtual void destroyTexture(unsigned int tex) { (void)tex; }
+    // editor never names GL/GLFW/SDL/Metal. The editor hands over RGBA8 (w*h,
+    // top-down) and draws the returned opaque handle via
+    //   ImGui::Image(host->textureToImTexture(handle), ...);
+    // so the host can translate the handle into whatever ImTextureID its
+    // graphics backend expects (GLuint for OpenGL, id<MTLTexture> pointer for
+    // Metal, etc. — see PomRenderer::asImTextureID).
+    //
+    // uploadTexture: pass tex==nullptr to create; reuse the returned handle
+    // for follow-up uploads. The host MAY destroy + recreate internally when
+    // the dimensions change (matches the historical glTexImage2D semantics).
+    // `linear` selects bilinear filtering vs crisp nearest. Default no-op
+    // impls let a headless/test host link without any graphics backend.
+    virtual void* uploadTexture(void* tex, const void* rgba,
+                                int w, int h, bool linear)
+    { (void)tex; (void)rgba; (void)w; (void)h; (void)linear; return nullptr; }
+    virtual void  destroyTexture(void* tex) { (void)tex; }
+
+    // Translate an opaque texture handle into the ImTextureID accepted by
+    // ImGui::Image / AddImage. Default: bit-cast the pointer through
+    // uintptr_t (correct for backends whose ImTextureID *is* the texture
+    // pointer, e.g. Metal's id<MTLTexture>); the GL implementation overrides
+    // to return the underlying GLuint instead.
+    virtual ImTextureID textureToImTexture(void* tex) const
+    { return (ImTextureID)(uintptr_t)tex; }
 };
 
 } // namespace hgrpaint

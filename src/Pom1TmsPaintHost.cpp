@@ -7,9 +7,8 @@
 
 #include "EmulationController.h"
 #include "TmsPaintModel.h"        // tmspaint:: geometry constants
+#include "PomRenderer.h"          // shared graphics backend (GL or Metal)
 #include "third_party/stb/stb_image_write.h"   // decl only; impl lives in main_imgui.cpp
-
-#include <GLFW/glfw3.h>           // GL prototypes (the host owns the graphics backend)
 
 #include <algorithm>
 #include <cstdio>
@@ -116,34 +115,34 @@ bool Pom1TmsPaintHost::savePng(const std::string& path, const uint32_t* rgba,
     return true;
 }
 
-// TODO(Phase 2 / Metal): same carve-out as Pom1HgrPaintHost — the
-// IHgrPaintHost-style `unsigned int` texture handle here cannot hold a
-// Metal pointer, so this stays on direct GL until the portable tmspaint::
-// IHgrPaintHost contract migrates to an opaque handle.
-unsigned int Pom1TmsPaintHost::uploadTexture(unsigned int tex, const void* rgba,
-                                             int w, int h, bool linear)
+// Phase 3 / Metal: routes through PomRenderer so the TMS9918 paint editor
+// uses whichever backend the binary was built for. Mirror of
+// Pom1HgrPaintHost::uploadTexture — see that comment block for the contract
+// (destroy + recreate on each upload, matches the historical glTexImage2D
+// reallocate-each-time semantics).
+void* Pom1TmsPaintHost::uploadTexture(void* tex, const void* rgba,
+                                      int w, int h, bool linear)
 {
-    GLuint id = static_cast<GLuint>(tex);
-    if (id == 0) {
-        glGenTextures(1, &id);
-        glBindTexture(GL_TEXTURE_2D, id);
-        const GLint filt = linear ? GL_LINEAR : GL_NEAREST;
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, filt);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, filt);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-    } else {
-        glBindTexture(GL_TEXTURE_2D, id);
-    }
-    GLint prevAlign = 4;
-    glGetIntegerv(GL_UNPACK_ALIGNMENT, &prevAlign);
-    glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, w, h, 0, GL_RGBA, GL_UNSIGNED_BYTE, rgba);
-    glPixelStorei(GL_UNPACK_ALIGNMENT, prevAlign);
-    return static_cast<unsigned int>(id);
+    auto* r = pom1::renderer();
+    if (!r) return tex;
+    if (tex) r->destroyTexture(static_cast<pom1::Texture*>(tex));
+    const auto filt = linear ? pom1::PomRenderer::Filter::Linear
+                             : pom1::PomRenderer::Filter::Nearest;
+    return r->createTexture(w, h, filt,
+                            static_cast<const uint32_t*>(rgba));
 }
 
-void Pom1TmsPaintHost::destroyTexture(unsigned int tex)
+void Pom1TmsPaintHost::destroyTexture(void* tex)
 {
-    if (tex != 0) { GLuint id = static_cast<GLuint>(tex); glDeleteTextures(1, &id); }
+    if (!tex) return;
+    if (auto* r = pom1::renderer())
+        r->destroyTexture(static_cast<pom1::Texture*>(tex));
+}
+
+ImTextureID Pom1TmsPaintHost::textureToImTexture(void* tex) const
+{
+    if (!tex) return (ImTextureID)0;
+    if (auto* r = pom1::renderer())
+        return r->asImTextureID(static_cast<pom1::Texture*>(tex));
+    return (ImTextureID)0;
 }

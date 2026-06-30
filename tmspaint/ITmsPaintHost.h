@@ -22,6 +22,8 @@
 #include <cstdint>
 #include <string>
 
+#include "imgui.h"   // ImTextureID for textureToImTexture()
+
 namespace tmspaint {
 
 class ITmsPaintHost {
@@ -71,14 +73,22 @@ public:
     virtual bool savePng(const std::string& path, const uint32_t* rgba,
                          int w, int h, std::string& err) = 0;
 
-    // Texture lifecycle — the HOST owns the graphics backend (see hgrpaint for
-    // the rationale). uploadTexture: pass tex==0 to create; reuse the handle to
-    // update. `linear` = bilinear vs crisp nearest. The default no-op impls let
-    // a headless/test host link without any graphics backend.
-    virtual unsigned int uploadTexture(unsigned int tex, const void* rgba,
-                                       int w, int h, bool linear)
-    { (void)tex; (void)rgba; (void)w; (void)h; (void)linear; return 0; }
-    virtual void destroyTexture(unsigned int tex) { (void)tex; }
+    // Texture lifecycle — the HOST owns the graphics backend (see
+    // hgrpaint/IHgrPaintHost.h for the design rationale). Opaque void* so a
+    // Metal id<MTLTexture> fits the same slot as a GL GLuint. Pass
+    // tex==nullptr to create; the host MAY reallocate internally on
+    // dimension change. `linear` = bilinear filtering vs crisp nearest.
+    // Default no-op impls let a headless/test host link without graphics.
+    virtual void* uploadTexture(void* tex, const void* rgba,
+                                int w, int h, bool linear)
+    { (void)tex; (void)rgba; (void)w; (void)h; (void)linear; return nullptr; }
+    virtual void  destroyTexture(void* tex) { (void)tex; }
+
+    // Translate an opaque texture handle into the ImTextureID accepted by
+    // ImGui::Image. Default: pointer bit-cast; GL hosts override to return
+    // the underlying GLuint.
+    virtual ImTextureID textureToImTexture(void* tex) const
+    { return (ImTextureID)(uintptr_t)tex; }
 };
 
 } // namespace tmspaint

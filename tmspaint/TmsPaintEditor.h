@@ -30,9 +30,6 @@
 #include "TmsPaintModel.h"
 #include "ITmsPaintHost.h"
 
-// GLuint without dragging the GL headers into this header.
-typedef unsigned int GLuint;
-
 namespace tmspaint {
 
 class TmsPaintEditor
@@ -63,9 +60,10 @@ private:
 
     ITmsPaintHost* host;
 
-    // Canvas rendering (host TMS pipeline → local 256×192 RGBA → GL texture).
+    // Canvas rendering (host TMS pipeline → local 256×192 RGBA → opaque
+    // texture handle owned by the host's graphics backend, see ITmsPaintHost).
     std::vector<uint32_t> canvasRgba;   // kGfx2Width*kGfx2Height
-    GLuint texture = 0;
+    void* texture = nullptr;
 
     // Editing state.
     Mode mode_ = Mode::GraphicsII;
@@ -146,8 +144,8 @@ private:
     int importCropAnchorX = 0, importCropAnchorY = 0;
     std::vector<uint8_t>  importVram;      // last converted 16 KB VRAM
     std::vector<uint32_t> importPreview;   // rendered preview (256×192)
-    GLuint importPreviewTex = 0;
-    GLuint importSrcTex = 0;
+    void* importPreviewTex = nullptr;
+    void* importSrcTex = nullptr;
 
     // Logical canvas dimensions + the texture-pixels-per-logical-pixel factor
     // (1 in Graphics II, 4 in Multicolor — a block is 4×4 of the 256×192 frame).

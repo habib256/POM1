@@ -39,9 +39,10 @@ public:
     bool saveVram(const std::string& path, std::string& err) override;
     bool savePng(const std::string& path, const uint32_t* rgba,
                  int w, int h, std::string& err) override;
-    unsigned int uploadTexture(unsigned int tex, const void* rgba,
-                               int w, int h, bool linear) override;
-    void destroyTexture(unsigned int tex) override;
+    void* uploadTexture(void* tex, const void* rgba,
+                        int w, int h, bool linear) override;
+    void  destroyTexture(void* tex) override;
+    ImTextureID textureToImTexture(void* tex) const override;
 
 private:
     EmulationController* emu_;
