@@ -52,17 +52,23 @@ void writeReg(TMS9918& vdp, uint8_t reg, uint8_t value)
 }
 
 // Strict-aware helpers must advance enough cycles to clear the worst-case
-// access window (24c hardened in Mode I + sprites). 28c covers it with margin.
+// access window (24c hardened in Mode I + sprites). 44c covers it with margin.
+// In the openMSX-faithful deferred model a $CC00/$CC01 access is scheduled to
+// the next VRAM slot and only executes on a later advanceCycles() — so each
+// helper advances BEFORE (clear any prior pending) AND AFTER (fire the deferred
+// slot so the access actually lands before the next operation reads VRAM).
 void strictWriteControl(TMS9918& vdp, uint8_t value)
 {
     vdp.advanceCycles(44);
     vdp.writeControl(value);
+    vdp.advanceCycles(44);
 }
 
 void strictWriteData(TMS9918& vdp, uint8_t value)
 {
     vdp.advanceCycles(44);
     vdp.writeData(value);
+    vdp.advanceCycles(44);
 }
 
 void strictSetWriteAddress(TMS9918& vdp, uint16_t addr)
@@ -250,9 +256,11 @@ int main()
     }
 
     // -----------------------------------------------------------------
-    // T8 — silicon strict timing. Back-to-back VRAM writes in an active
-    // graphics mode are too fast; the second byte is dropped until enough
-    // 6502 cycles have elapsed.
+    // T8 — silicon strict timing, openMSX-faithful deferred model. A CPU VRAM
+    // write is scheduled to the next access slot; two writes too fast (no gap
+    // between them) collapse to ONE cell holding the NEWER byte (newest-wins),
+    // and the pointer advances only once — exactly as openMSX with
+    // allowTooFastAccess=off. Properly-spaced writes each land in sequence.
     // -----------------------------------------------------------------
     {
         TMS9918 vdp;
@@ -261,14 +269,18 @@ int main()
         strictWriteControl(vdp, 0xC0); // R1 = display on + 16K
         strictWriteControl(vdp, 0x81);
         strictSetWriteAddress(vdp, 0x0000);
-        strictWriteData(vdp, 0x11);
-        vdp.writeData(0x22); // no advanceCycles: too fast, dropped
-        strictWriteData(vdp, 0x33);
+        strictWriteData(vdp, 0x11);          // lands at $0000
+        strictWriteData(vdp, 0x33);          // lands at $0001
+        vdp.writeData(0x44);                 // schedules at $0002
+        vdp.writeData(0x55);                 // too fast: overwrites the pending byte
+        vdp.advanceCycles(44);               // slot fires -> $0002 = $55 (newest)
         strictSetReadAddress(vdp, 0x0000);
         vdp.advanceCycles(44);
-        mustBeTrue(vdp.readData() == 0x11, "T8: first strict VRAM write should land");
+        mustBeTrue(vdp.readData() == 0x11, "T8: spaced write @ $0000 landed");
         vdp.advanceCycles(44);
-        mustBeTrue(vdp.readData() == 0x33, "T8: too-fast middle write should be dropped");
+        mustBeTrue(vdp.readData() == 0x33, "T8: spaced write @ $0001 landed");
+        vdp.advanceCycles(44);
+        mustBeTrue(vdp.readData() == 0x55, "T8: too-fast pair -> newest ($55) wins, pointer advanced once");
     }
 
     // -----------------------------------------------------------------

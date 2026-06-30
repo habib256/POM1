@@ -54,6 +54,7 @@ Guides live in [`sketchs/doc/`](../sketchs/doc/). Source, libraries and build co
 | [`GEN2_RELEASE.md`](GEN2_RELEASE.md) | Uncle Bernie GEN2 colour card developer guide ("Bernie SDK") — `$C25x` switches, HST0, porting. |
 | [`GEN2_RELEASE_questions.md`](GEN2_RELEASE_questions.md) | GEN2 hardware spec Q&A (Q1–Q10, from Bernie's PDF). Referenced from `Gen2VideoScanner` / `GraphicsCard`. |
 | [`TELEMETRY_SIDE_CHANNEL.md`](TELEMETRY_SIDE_CHANNEL.md) | The `$C440-$C443` automated-testing bridge (protocol, lock-step, CLI). Referenced from `TelemetryPort`. |
+| [`TMS9918_TRANSFER_WINDOWS.md`](TMS9918_TRANSFER_WINDOWS.md) | **TMS9918 CPU→VRAM transmission zones** — the 5 access windows, how `TMS9918::transmissionZone()` detects them, per-zone minimum write spacing, and the zone-dependent drop model. Referenced from `TMS9918.cpp` + `tms9918m1/m2.asm`. |
 | [`sketchs/doc/TMS9918-SPRITE_INIT.md`](../sketchs/doc/TMS9918-SPRITE_INIT.md) | Canonical TMS9918 sprite-init semantics. Referenced from `TMS9918.cpp`. |
 | [`sketchs/doc/TMS9918-SPRITE_BEST_PRACTICES.md`](../sketchs/doc/TMS9918-SPRITE_BEST_PRACTICES.md) | Operational sprite checklist (complements SPRITE_INIT; timing → [`Programming_TMS9918.md`](../sketchs/doc/Programming_TMS9918.md)). |
 | [`TMS9918_Sprite_Emulation_FR.md`](TMS9918_Sprite_Emulation_FR.md) | French deep-dive: TMS9918 sprite-emulation problems & references. |

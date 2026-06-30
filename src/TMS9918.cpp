@@ -167,6 +167,8 @@ void TMS9918::reset()
     readAheadBuffer = 0;
     frameCycleCounter = 0;
     pendingDrainCycles = 0;
+    pendingCpuAccess   = false;
+    pendingKind        = PendingKind::None;
     lastScanlineProcessed = -1;
     lastScanlineRendered  = -1;
     beamRenderLine   = 0;
@@ -184,6 +186,8 @@ void TMS9918::setSiliconStrictMode(bool enabled)
 {
     siliconStrictMode = enabled;
     pendingDrainCycles = 0;         // chip frais — first access always lands
+    pendingCpuAccess   = false;
+    pendingKind        = PendingKind::None;
     droppedWrites = 0;
     droppedWriteTraceCount = 0;     // restart the counter on toggle so users see new drops only
     dropStats = DropDiagnostics{};
@@ -207,13 +211,21 @@ uint16_t TMS9918::liveVramMask() const
 }
 
 // --------------------------------------------------------------------------
-// Slot-table model (openMSX port)
+// Slot-table model — faithful port of openMSX's CPU↔VRAM access path
+// (src/video/VDP.cc scheduleCpuVramAccess / executeCpuVramAccess).
 //
-// Replaces the old min-distance threshold with openMSX's slot-position
-// approach. Each CPU access at $CC00/$CC01 looks up the next free slot in
-// the active scanline-tick table; if the chip is still draining a previous
-// access (`pendingDrainCycles > 0`) the new byte is silently overwritten
-// (== silicon's "tooFastCallback" behaviour with allowTooFastAccess=false).
+// A data-port access ($CC00), or a $CC01 read-address-setup prefetch, is NOT
+// executed immediately: it is DEFERRED to the next free VRAM slot of the
+// active transmission zone (D28 prep + slot-table lookup) and run later by
+// executeCpuVramAccess(). If another access arrives while one is still
+// pending it is "too fast": the newer request OVERWRITES the pending one
+// (newest-wins — `readAheadBuffer`/cpuVramData is shared) and the single
+// scheduled slot fires once with that newer byte — exactly openMSX with
+// allowTooFastAccess=off (its `tooFastCallback` is only a notification hook).
+// POM1 additionally counts every too-fast event as a "drop" for diagnostics.
+//
+// Timing is PURE slot-table + D28 — no artificial active-display floor (the
+// retired kMinActiveDrainCycles): POM1 follows openMSX's MSX1 timing exactly.
 //
 // Side note: openMSX does not split sprites-on/off on MSX1 — the same
 // `slotsMsx1Gfx12` table covers both. We follow suit and removed the
@@ -221,38 +233,73 @@ uint16_t TMS9918::liveVramMask() const
 //
 // Reference: src/video/VDPAccessSlots.cc in the openMSX repository.
 // --------------------------------------------------------------------------
+// Precise transmission-zone detection — the single source of truth for which
+// CPU→VRAM access window is open. selectSlotTable / activeSlotTableId /
+// noteDroppedAccess all derive from this so the slot gating and the drop
+// accounting can never disagree about what zone a write landed in.
+//
+// Detection inputs (see TMS9918.h::TransmissionZone for the full table):
+//   • display-enable = R1 bit 6      -> Blanked when 0, regardless of line.
+//   • vertical retrace = frameCycleCounter >= kActiveDisplayCycles. This is
+//     the SAME threshold that sets the F-flag in advanceCycles, so the zone
+//     boundary and the status-bit edge are bit-for-bit consistent. During
+//     retrace the pixel + sprite scans don't fetch VRAM, so the bus is free
+//     even with the display enabled.
+//   • while visible: M1 (R1 bit 4) = Text, else M2 (R1 bit 3) = Multicolor,
+//     else Graphics I/II. (Same priority openMSX uses; mode bits decoded off
+//     R1 only — R0.M3 doesn't change the access-slot family.)
+TMS9918::TransmissionZone TMS9918::transmissionZone() const
+{
+    if ((regs[1] & 0x40) == 0)                          // display OFF
+        return TransmissionZone::Blanked;
+    if (frameCycleCounter >= kActiveDisplayCycles)      // vertical retrace
+        return TransmissionZone::VBlank;
+    if (regs[1] & 0x10) return TransmissionZone::ActiveText;   // M1
+    if (regs[1] & 0x08) return TransmissionZone::ActiveMulti;  // M2
+    return TransmissionZone::ActiveGfx12;
+}
+
+std::string_view TMS9918::zoneName(TransmissionZone z)
+{
+    switch (z) {
+        case TransmissionZone::Blanked:     return "Blanked";
+        case TransmissionZone::VBlank:      return "VBlank";
+        case TransmissionZone::ActiveGfx12: return "ActiveGfx12";
+        case TransmissionZone::ActiveText:  return "ActiveText";
+        case TransmissionZone::ActiveMulti: return "ActiveMulti";
+    }
+    return "?";
+}
+
 TMS9918::SlotSpan TMS9918::selectSlotTable() const
 {
-    // Silicon-correct relaxation: during vertical retrace (VBlank, ~70 lines
-    // out of 262 NTSC) the chip's pixel scan + sprite scan don't fetch VRAM,
-    // so the CPU bandwidth becomes free regardless of R1.6. openMSX's stock
-    // `getTab(vdp)` does not model this — it always returns the mode-specific
-    // table. We deliberately diverge here because real silicon programs
-    // (Rogue, Galaga init) batch their VRAM uploads in VBlank and silicon
-    // accepts every byte, while the unmodified openMSX model would
-    // (incorrectly) drop bursts < ~7c gap during VBlank.
-    //
-    // Threshold: frameCycleCounter >= kActiveDisplayCycles. This is the same
-    // gate used by the F-flag set in advanceCycles (vertical-retrace edge
-    // detection) — keeps the two behaviours consistent.
-    const bool inVBlank = frameCycleCounter >= kActiveDisplayCycles;
-    const bool displayEnabled = (regs[1] & 0x40) != 0;
-    if (!displayEnabled || inVBlank)
-        return SlotSpan{slotsMsx1ScreenOff.data(), slotsMsx1ScreenOff.size()};
-    const bool m1 = (regs[1] & 0x10) != 0;   // text
-    const bool m2 = (regs[1] & 0x08) != 0;   // multicolor
-    if (m1) return SlotSpan{slotsMsx1Text.data(),  slotsMsx1Text.size()};
-    if (m2) return SlotSpan{slotsMsx1Gfx3.data(),  slotsMsx1Gfx3.size()};
+    // The two FREE zones (Blanked, VBlank) ride the dense ScreenOff table:
+    // real silicon programs (Rogue, Galaga init) batch their VRAM uploads
+    // there and the chip accepts every byte. The mode-specific tables only
+    // apply while the visible raster is actually fetching.
+    switch (transmissionZone()) {
+        case TransmissionZone::Blanked:
+        case TransmissionZone::VBlank:
+            return SlotSpan{slotsMsx1ScreenOff.data(), slotsMsx1ScreenOff.size()};
+        case TransmissionZone::ActiveText:
+            return SlotSpan{slotsMsx1Text.data(),  slotsMsx1Text.size()};
+        case TransmissionZone::ActiveMulti:
+            return SlotSpan{slotsMsx1Gfx3.data(),  slotsMsx1Gfx3.size()};
+        case TransmissionZone::ActiveGfx12:
+            break;
+    }
     return SlotSpan{slotsMsx1Gfx12.data(), slotsMsx1Gfx12.size()};
 }
 
 TMS9918::SlotTableId TMS9918::activeSlotTableId() const
 {
-    const bool inVBlank = frameCycleCounter >= kActiveDisplayCycles;
-    const bool displayEnabled = (regs[1] & 0x40) != 0;
-    if (!displayEnabled || inVBlank)  return kSlotTableScreenOff;
-    if (regs[1] & 0x10)               return kSlotTableText;
-    if (regs[1] & 0x08)               return kSlotTableGfx3;
+    switch (transmissionZone()) {
+        case TransmissionZone::Blanked:
+        case TransmissionZone::VBlank:      return kSlotTableScreenOff;
+        case TransmissionZone::ActiveText:  return kSlotTableText;
+        case TransmissionZone::ActiveMulti: return kSlotTableGfx3;
+        case TransmissionZone::ActiveGfx12: break;
+    }
     return kSlotTableGfx12;
 }
 
@@ -261,11 +308,25 @@ void TMS9918::noteDroppedAccess(char port, uint8_t value)
     ++droppedWrites;
     DropDiagnostics& d = dropStats;
     ++d.total;
-    if (port == 'D') ++d.writeData; else ++d.writeCtrl;
+    // port: 'D' = data-port write (newest-wins overwrite), 'r' = data-port read
+    // (prefetch overwritten), 'C' = control-port write (gated, discarded).
+    switch (port) {
+        case 'D': ++d.writeData; break;
+        case 'r': ++d.readData;  break;
+        default:  ++d.writeCtrl; break;   // 'C'
+    }
+    const TransmissionZone zone = transmissionZone();
     const SlotTableId tbl = activeSlotTableId();
     ++d.byTable[tbl];
-    const bool inVBlank = frameCycleCounter >= kActiveDisplayCycles;
-    if (inVBlank) ++d.inVBlank; else ++d.inActive;
+    // Classify the drop by its TRANSMISSION ZONE, not by raw frame position: a
+    // write while the display is blanked rides the same free ScreenOff window
+    // as VBlank even in the active-line region, so it must count as a
+    // free-zone drop. inActive therefore means "gated active-display zone"
+    // (the only place drops are expected) and inVBlank "free zone
+    // (Blanked|VBlank)" — a drop there is anomalous (program out-paced even the
+    // ~2c window). The two still partition d.total, as the suite pins.
+    const bool freeZone = zoneIsFree(zone);
+    if (freeZone) ++d.inVBlank; else ++d.inActive;
     ++d.byPc[lastAccessPc];
 
     // First N drops also dump a single-line trace so devs see the problem
@@ -278,15 +339,16 @@ void TMS9918::noteDroppedAccess(char port, uint8_t value)
         int slotTick = slots.back();
         for (int v : slots) { if (v >= targetTick) { slotTick = v; break; } }
         const int slotShortBy = pendingDrainCycles;     // cycles still owed to chip
+        const std::string_view zn = zoneName(zone);
         std::fprintf(stderr,
             "[TMS9918 DROP #%llu] %c val=%02X vramAddr=%04X latch2=%d "
-            "drain=%dc linePos=%d nextSlot=%d tbl=%s vblank=%d "
+            "drain=%dc linePos=%d nextSlot=%d tbl=%s zone=%.*s "
             "frameCycle=%d R1=%02X PC=$%04X\n",
             (unsigned long long)droppedWrites,
             (port == 'D' ? 'D' : 'C'),
             value, vramAddr, (int)latchIsSecond,
             slotShortBy, posTicks, slotTick, slotTableName(slots.data),
-            (int)inVBlank, frameCycleCounter, regs[1], lastAccessPc);
+            (int)zn.size(), zn.data(), frameCycleCounter, regs[1], lastAccessPc);
         ++droppedWriteTraceCount;
     }
 }
@@ -297,15 +359,17 @@ void TMS9918::dumpDropDiagnostics(std::FILE* out, int topN) const
     const DropDiagnostics& d = dropStats;
     std::fprintf(out, "===== TMS9918 drop diagnostics =====\n");
     std::fprintf(out, "  silicon strict   : %s\n", siliconStrictMode ? "ON" : "OFF");
-    std::fprintf(out, "  total drops      : %llu\n", (unsigned long long)d.total);
+    std::fprintf(out, "  total too-fast   : %llu  (newest-wins overwrites + gated control drops)\n",
+                 (unsigned long long)d.total);
     if (d.total == 0) {
-        std::fprintf(out, "  (no drops recorded since last reset / strict toggle)\n");
+        std::fprintf(out, "  (none recorded since last reset / strict toggle)\n");
         std::fprintf(out, "====================================\n");
         return;
     }
-    std::fprintf(out, "  by port          : data($CC00) %llu  ctrl($CC01) %llu\n",
-                 (unsigned long long)d.writeData, (unsigned long long)d.writeCtrl);
-    std::fprintf(out, "  by display phase : active %llu  vblank %llu\n",
+    std::fprintf(out, "  by port          : data-wr($CC00) %llu  data-rd($CC00) %llu  ctrl($CC01) %llu\n",
+                 (unsigned long long)d.writeData, (unsigned long long)d.readData,
+                 (unsigned long long)d.writeCtrl);
+    std::fprintf(out, "  by transmission zone : active-display(gated) %llu  free(blanked|vblank) %llu\n",
                  (unsigned long long)d.inActive, (unsigned long long)d.inVBlank);
     static const char* kTableNames[kSlotTableCount] = {
         "ScreenOff", "Gfx12 (Mode I/II)", "Gfx3 (Multicolor)", "Text"
@@ -339,12 +403,19 @@ void TMS9918::dumpDropDiagnostics(std::FILE* out, int topN) const
 
 bool TMS9918::canAcceptAccess() const
 {
-    return !siliconStrictMode || pendingDrainCycles <= 0;
+    // openMSX: a fresh access can be scheduled only when no access is still
+    // pending (`if (pendingCpuAccess) { ... tooFastCallback }`). In tolerant
+    // mode the chip latches everything.
+    return !siliconStrictMode || !pendingCpuAccess;
 }
 
-void TMS9918::noteAcceptedAccess()
+// Cycles from now to the next free VRAM slot of the current transmission zone.
+// openMSX `getAccessSlot(time, Delta::D28)` for MSX1: the chip needs the D28
+// prep delay, then waits for the next slot the active mode publishes. Pure
+// slot-table timing — NO artificial floor (decision: follow openMSX exactly).
+// Free zones (Blanked/VBlank) ride the dense ScreenOff table -> ~2c.
+int TMS9918::nextSlotDelayCycles() const
 {
-    if (!siliconStrictMode) return;
     const int posTicks   = (frameCycleCounter * kVdpTicksPerCpuCycle) % kVdpTicksPerLine;
     const int targetTick = posTicks + kVdpDeltaD28Ticks;
     auto slots = selectSlotTable();
@@ -353,17 +424,39 @@ void TMS9918::noteAcceptedAccess()
         if (v >= targetTick) { slotTick = v; break; }
     }
     const int drainTicks = slotTick - posTicks;
-    pendingDrainCycles   = (drainTicks + kVdpTicksPerCpuCycle - 1) / kVdpTicksPerCpuCycle;
+    int cyc = (drainTicks + kVdpTicksPerCpuCycle - 1) / kVdpTicksPerCpuCycle;
+    return cyc < 1 ? 1 : cyc;                 // always defer by >=1 cycle
+}
 
-    // Enforce the silicon active-display floor: during visible Mode I/II display
-    // the real chip needs ~9c between CPU writes (the openMSX slot table alone
-    // only models ~8c, but a flat 16c floor falsely dropped the sprites-OFF
-    // TMS_Plasma timings that run clean on real silicon). Scoped to Gfx12 — Text
-    // and Multicolor genuinely free more CPU bandwidth (denser slot tables), so
-    // their tight loops stay valid; VBlank / display-off ride the dense ScreenOff
-    // table.
-    if (activeSlotTableId() == kSlotTableGfx12 && pendingDrainCycles < kMinActiveDrainCycles)
-        pendingDrainCycles = kMinActiveDrainCycles;
+// openMSX `scheduleCpuVramAccess`: arm a deferred access at the next slot.
+void TMS9918::beginPendingAccess(PendingKind kind)
+{
+    pendingKind        = kind;
+    pendingCpuAccess   = true;
+    pendingDrainCycles = nextSlotDelayCycles();
+}
+
+// openMSX `executeCpuVramAccess`: the scheduled slot fired — perform the VRAM
+// op now (using the LIVE vramAddr, which only advances here) and disarm.
+void TMS9918::executeCpuVramAccess()
+{
+    const uint16_t mask = liveVramMask();
+    switch (pendingKind) {
+        case PendingKind::Write:
+            vram[vramAddr & mask] = readAheadBuffer;   // readAheadBuffer == cpuVramData
+            vramAddr = (vramAddr + 1) & mask;
+            snapshotDirty = true;
+            break;
+        case PendingKind::Read:
+            readAheadBuffer = vram[vramAddr & mask];
+            vramAddr = (vramAddr + 1) & mask;
+            break;
+        case PendingKind::Barrier:                     // $CC01 bus-occupier: no VRAM op
+        case PendingKind::None:
+            break;
+    }
+    pendingKind      = PendingKind::None;
+    pendingCpuAccess = false;
 }
 
 // --------------------------------------------------------------------------
@@ -372,27 +465,41 @@ void TMS9918::noteAcceptedAccess()
 void TMS9918::writeData(uint8_t value)
 {
     latchIsSecond = false;                    // data-port access resets latch state
-    if (!canAcceptAccess()) {
-        noteDroppedAccess('D', value);
+    readAheadBuffer = value;                  // cpuVramData = write (shared buffer)
+
+    if (!siliconStrictMode) {                 // tolerant: latch immediately
+        const uint16_t mask = liveVramMask();
+        vram[vramAddr & mask] = value;
+        vramAddr = (vramAddr + 1) & mask;
+        snapshotDirty = true;
         return;
     }
-    noteAcceptedAccess();
-    const uint16_t mask = liveVramMask();
-    vram[vramAddr & mask] = value;
-    readAheadBuffer = value;
-    vramAddr = (vramAddr + 1) & mask;
-    snapshotDirty = true;
+    if (pendingCpuAccess) {                    // too fast: newest data wins,
+        noteDroppedAccess('D', value);        //   the still-pending slot fires
+        if (pendingKind == PendingKind::Read) // once with this newer byte.
+            pendingKind = PendingKind::Write; //   (read→write retarget, as openMSX)
+        return;
+    }
+    beginPendingAccess(PendingKind::Write);   // execute at the next VRAM slot
 }
 
 uint8_t TMS9918::readData()
 {
     latchIsSecond = false;                    // data-port access resets latch state
-    if (!canAcceptAccess()) return readAheadBuffer;
-    noteAcceptedAccess();
-    const uint16_t mask = liveVramMask();
-    uint8_t result = readAheadBuffer;
-    readAheadBuffer = vram[vramAddr & mask];
-    vramAddr = (vramAddr + 1) & mask;
+    uint8_t result = readAheadBuffer;         // openMSX: return PREVIOUS read result
+
+    if (!siliconStrictMode) {                 // tolerant: prefetch immediately
+        const uint16_t mask = liveVramMask();
+        readAheadBuffer = vram[vramAddr & mask];
+        vramAddr = (vramAddr + 1) & mask;
+        return result;
+    }
+    if (pendingCpuAccess) {                    // too fast — old request overwritten
+        noteDroppedAccess('r', 0);
+        pendingKind = PendingKind::Read;
+        return result;
+    }
+    beginPendingAccess(PendingKind::Read);    // prefetch at the next VRAM slot
     return result;
 }
 
@@ -401,15 +508,22 @@ uint8_t TMS9918::readData()
 // --------------------------------------------------------------------------
 void TMS9918::writeControl(uint8_t value)
 {
+    // Control-port gating is a deliberate POM1 divergence kept on top of the
+    // openMSX model (openMSX does not slot-gate $99 register/address writes).
+    // A control write arriving while a VRAM access is still pending is dropped.
     if (!canAcceptAccess()) {
         noteDroppedAccess('C', value);
         return;
     }
-    noteAcceptedAccess();
+    // The control port itself touches no VRAM (register/address are internal),
+    // so it executes immediately; the read-address-setup case schedules a
+    // prefetch like openMSX. A Barrier occupies one slot so back-to-back
+    // control writes are gated (retained POM1 behaviour, pinned by Phase J).
     if (!latchIsSecond) {
         // First byte — store in latch
         controlLatch  = value;
         latchIsSecond = true;
+        if (siliconStrictMode) beginPendingAccess(PendingKind::Barrier);
         return;
     }
 
@@ -419,22 +533,27 @@ void TMS9918::writeControl(uint8_t value)
     uint8_t cmd = value & 0xC0;
 
     if (cmd == 0x00) {
-        // Set VRAM read address
+        // Set VRAM read address + prefetch first byte into the read-ahead buffer.
         vramAddr = ((uint16_t)(value & 0x3F) << 8) | controlLatch;
-        // Pre-fetch first byte into read-ahead buffer
-        const uint16_t mask = liveVramMask();
-        readAheadBuffer = vram[vramAddr & mask];
-        vramAddr = (vramAddr + 1) & mask;
+        if (!siliconStrictMode) {
+            const uint16_t mask = liveVramMask();
+            readAheadBuffer = vram[vramAddr & mask];
+            vramAddr = (vramAddr + 1) & mask;
+        } else {
+            beginPendingAccess(PendingKind::Read);   // deferred prefetch (openMSX)
+        }
     }
     else if (cmd == 0x40) {
         // Set VRAM write address
         vramAddr = ((uint16_t)(value & 0x3F) << 8) | controlLatch;
+        if (siliconStrictMode) beginPendingAccess(PendingKind::Barrier);
     }
     else if (cmd == 0x80) {
         // Write to register
         uint8_t regNum = value & 0x07;
         regs[regNum] = controlLatch;
         snapshotDirty = true;             // register change alters rendering
+        if (siliconStrictMode) beginPendingAccess(PendingKind::Barrier);
     }
     // cmd == 0xC0 is undefined on TMS9918, ignored
 }
@@ -442,7 +561,7 @@ void TMS9918::writeControl(uint8_t value)
 uint8_t TMS9918::readControl()
 {
     if (!canAcceptAccess()) return statusReg;
-    noteAcceptedAccess();
+    if (siliconStrictMode) beginPendingAccess(PendingKind::Barrier);
     latchIsSecond = false;
     uint8_t result = statusReg;
     // Reading the status register latch-clears ONLY the frame flag (bit 7)
@@ -463,9 +582,14 @@ uint8_t TMS9918::readControl()
 // --------------------------------------------------------------------------
 void TMS9918::advanceCycles(int cycles)
 {
-    if (pendingDrainCycles > 0) {
+    // Fire a deferred CPU↔VRAM access when its scheduled slot is reached
+    // (openMSX: the syncCpuVramAccess sync-point callback runs executeCpuVramAccess).
+    if (pendingCpuAccess && pendingDrainCycles > 0) {
         pendingDrainCycles -= cycles;
-        if (pendingDrainCycles < 0) pendingDrainCycles = 0;
+        if (pendingDrainCycles <= 0) {
+            pendingDrainCycles = 0;
+            executeCpuVramAccess();
+        }
     }
     const int prevCounter = frameCycleCounter;
     frameCycleCounter += cycles;
@@ -1815,6 +1939,11 @@ void TMS9918::deserialize(pom1::SnapshotReader& r)
     readAheadBuffer       = r.readU8();
     frameCycleCounter     = static_cast<int>(r.readU32());
     pendingDrainCycles    = static_cast<int>(r.readU32());
+    // Pending CPU↔VRAM access is transient (sub-instruction) and not part of
+    // the snapshot byte layout — clear it so a restored state never fires a
+    // stale deferred access. (pendingDrainCycles above is harmless with this off.)
+    pendingCpuAccess      = false;
+    pendingKind           = PendingKind::None;
     lastScanlineProcessed = static_cast<int>(r.readU32());
     lastScanlineRendered  = static_cast<int>(r.readU32());
     siliconStrictMode     = r.readU8() != 0;

@@ -102,13 +102,56 @@ public:
         kSlotTableText      = 3,
         kSlotTableCount     = 4,
     };
+
+    // ── VDP transmission zones (CPU → VRAM access windows) ───────────────────
+    // The 6502 may only push a byte to $CC00/$CC01 when the VDP's internal
+    // raster is not using the VRAM bus. Which window is open — and therefore
+    // the MINIMUM cycle gap a back-to-back burst must leave to avoid a dropped
+    // write — depends entirely on what the chip is doing *right now*. There are
+    // exactly five zones, detected by transmissionZone() from two inputs:
+    //   • display-enable  = R1 bit 6  (regs[1] & 0x40)
+    //   • vertical retrace = frameCycleCounter >= kActiveDisplayCycles
+    // and, while the visible area is being drawn, the active video mode.
+    //
+    //   Zone          Detection                              Slot table   min gap
+    //   ----          ---------                              ----------   -------
+    //   Blanked       display OFF (any line)                 ScreenOff    ~2 c
+    //   VBlank        display ON, in vertical retrace        ScreenOff    ~2 c
+    //   ActiveGfx12   display ON, visible, Graphics I/II     Gfx12        slot-derived
+    //   ActiveText    display ON, visible, Text (M1)         Text         slot-derived
+    //   ActiveMulti   display ON, visible, Multicolor (M2)   Gfx3         slot-derived
+    //
+    // Blanked + VBlank are the two FREE zones (dense ScreenOff slots, drain
+    // ~2 c) — a bulk burst there needs no per-byte silicon-strict pad. The
+    // three Active* zones gate the bus via their mode-specific slot tables;
+    // the minimum gap is whatever the next free slot yields (D28 + slot lookup,
+    // PURE openMSX timing — no artificial floor). See
+    // doc/TMS9918_TRANSFER_WINDOWS.md.
+    enum class TransmissionZone : uint8_t {
+        Blanked = 0,   // display off — free window
+        VBlank,        // display on, vertical retrace — free window
+        ActiveGfx12,   // display on, visible, Graphics I / II
+        ActiveText,    // display on, visible, Text
+        ActiveMulti,   // display on, visible, Multicolor
+    };
+    // Precise zone the chip is in at the current frameCycleCounter + regs.
+    TransmissionZone transmissionZone() const;
+    static bool zoneIsFree(TransmissionZone z) {
+        return z == TransmissionZone::Blanked || z == TransmissionZone::VBlank;
+    }
+    static std::string_view zoneName(TransmissionZone z);
     struct DropDiagnostics {
-        uint64_t total       = 0;          // == droppedWrites
-        uint64_t writeData   = 0;          // $CC00 writes dropped
-        uint64_t writeCtrl   = 0;          // $CC01 writes dropped
+        // A "drop" here is an openMSX too-fast event: an access arrived while a
+        // VRAM access was still pending. For a data write that means newest-wins
+        // (the pending byte was overwritten); for a read the prefetch was
+        // overwritten; for a control write the gated byte was discarded.
+        uint64_t total       = 0;          // == droppedWrites (all too-fast events)
+        uint64_t writeData   = 0;          // $CC00 data-port writes (newest-wins overwrite)
+        uint64_t readData    = 0;          // $CC00 data-port reads (prefetch overwritten)
+        uint64_t writeCtrl   = 0;          // $CC01 control-port writes (gated, discarded)
         uint64_t byTable[kSlotTableCount] = {0,0,0,0};
-        uint64_t inActive    = 0;          // dropped during active display (frameCycle < kActiveDisplayCycles)
-        uint64_t inVBlank    = 0;          // dropped during VBlank (frameCycle >= kActiveDisplayCycles)
+        uint64_t inActive    = 0;          // in a GATED active-display zone (ActiveGfx12/Text/Multi) — expected
+        uint64_t inVBlank    = 0;          // in a FREE zone (Blanked|VBlank, ScreenOff slots) — anomalous
         // PC histogram. STA $CC00 is 3 bytes — captured PC = STA addr + 3.
         // The disassembly site is at PC-3 (or PC-2 for STA absX/absY = 3 bytes
         // too, or PC-2 for STA $CC00,X via abs,X also 3 bytes). Always look at
@@ -360,10 +403,11 @@ private:
     // Silicon-strict timing: port verbatim of openMSX VDPAccessSlots.cc
     // (TMS9918/MSX1 branch). Each scanline holds 1368 VDP ticks; the active
     // table publishes the absolute tick positions where the chip grants the
-    // CPU a VRAM slot. A new CPU access drains for `pendingDrainCycles` 6502
-    // cycles before the chip is free again — a fresh access during that
-    // window is silently overwritten (silicon's `tooFastCallback`-equivalent
-    // is the dropped-write counter exposed via droppedWriteCount()).
+    // CPU a VRAM slot. A scheduled access fires `pendingDrainCycles` 6502
+    // cycles later (nextSlotDelayCycles); a fresh access arriving before then
+    // is "too fast" — it overwrites the pending request (newest-wins, openMSX
+    // scheduleCpuVramAccess) and is tallied by the dropped-write counter
+    // exposed via droppedWriteCount().
     //
     // Time conversion: 1 line = 63.7 µs = 1368 ticks (NTSC TMS9918, openMSX
     // `TICKS_PER_LINE`). 1 cycle 6502 ≈ 21 ticks at 1.022727 MHz. Position in
@@ -379,14 +423,26 @@ private:
         int16_t        back()  const { return data[size - 1]; }
     };
 
+    // What a scheduled VRAM access slot will do when it fires (openMSX has
+    // only Read/Write; Barrier is POM1's retained $CC01 control-port gating —
+    // it occupies the bus for one slot but touches no VRAM).
+    enum class PendingKind : uint8_t { None, Read, Write, Barrier };
+
     bool canAcceptAccess() const;
-    void noteAcceptedAccess();
+    // Cycles from now to the next free VRAM access slot of the current zone
+    // (D28 prep + slot-table lookup; openMSX `getAccessSlot(time, D28)` for
+    // MSX1). NO artificial floor — pure slot-table timing, as openMSX.
+    int  nextSlotDelayCycles() const;
+    // Schedule a deferred CPU↔VRAM access (openMSX `scheduleCpuVramAccess`).
+    void beginPendingAccess(PendingKind kind);
+    // Run the deferred access when its slot fires (openMSX `executeCpuVramAccess`).
+    void executeCpuVramAccess();
     SlotSpan selectSlotTable() const;
     SlotTableId activeSlotTableId() const;
-    // Record a dropped access into dropStats and emit a stderr trace line.
-    // `port` is 'D' for $CC00 (writeData), 'C' for $CC01 (writeControl).
-    // `value` is the byte the program tried to write. Bumps droppedWrites and
-    // updates the PC/port/table/active-vs-vblank histograms.
+    // Record a dropped (== too-fast, openMSX `tooFastCallback`) access into
+    // dropStats and emit a stderr trace line. `port` is 'D' for $CC00 data,
+    // 'C' for $CC01 control, 'r' for a data-port read. Bumps droppedWrites and
+    // the PC/port/table/zone histograms.
     void noteDroppedAccess(char port, uint8_t value);
 
 private:
@@ -396,13 +452,22 @@ private:
     uint8_t controlLatch    = 0;
     bool    latchIsSecond   = false;  // true = next write is the 2nd byte
     uint16_t vramAddr       = 0;
-    uint8_t readAheadBuffer = 0;
+    uint8_t readAheadBuffer = 0;   // == openMSX `cpuVramData`: shared read-result / pending-write byte
     int frameCycleCounter   = 0;
-    // 6502 cycles before the in-flight $CC00/$CC01 access has drained from
-    // the VDP latch. 0 = chip free, accepts a fresh access. >0 = a previous
-    // access is still being serviced; another byte arriving now is dropped
-    // (matches openMSX `pendingCpuAccess` + `tooFastCallback` default off).
-    int  pendingDrainCycles = 0;
+
+    // ── openMSX-faithful deferred CPU↔VRAM access (src/video/VDP.cc) ──────────
+    // A CPU access to $CC00 (or a $CC01 read-address-setup prefetch) is NOT
+    // executed immediately: it is scheduled to the next VRAM access slot and
+    // run later by executeCpuVramAccess(). `pendingCpuAccess` mirrors openMSX's
+    // flag; `pendingKind` records what the scheduled slot will do. If a new
+    // access arrives while one is still pending it is "too fast": the newer
+    // request OVERWRITES the pending one (newest-wins — `cpuVramData` is shared)
+    // and the slot fires once, exactly as openMSX with allowTooFastAccess=off.
+    // `pendingDrainCycles` counts down to the scheduled slot. Transient state —
+    // NOT serialized (sub-instruction lifetime, like the framebuffer cursors).
+    bool        pendingCpuAccess = false;
+    PendingKind pendingKind      = PendingKind::None;
+    int  pendingDrainCycles = 0;   // cycles until the pending access fires (0 = none)
 
     // Per-scanline sprite-scan progress. -1 = nothing scanned this frame;
     // 0..192 = highest scanline covered (192 means VBlank reached). Reset
@@ -461,24 +526,13 @@ private:
     // the visible area begins; 4 ticks/pixel (1024 ticks across 256 px).
     static constexpr int kActiveLeftTick = 258;   // = kLeftSpritesGfx (inHBlank)
     static constexpr int kTicksPerPixel  = 4;     // 1024 active ticks / 256 px
-    // Active-display CPU-access floor. The openMSX slot table alone yields only
-    // a ~7.5c worst-case drain (128-tick window 6.1c + D28 prep 1.3c), which
-    // under-reports the silicon penalty: openMSX's D28 (~1.3 µs) is shorter than
-    // the real ~2 µs DRAM access settling, so dense sprites-ON Mode I/II tile
-    // streams (Snake/Sokoban) and bitmap fills (Mandel) slip through POM1 that
-    // the real chip drops.
-    //
-    // 9c is NOT a fudge — it is the TI datasheet's active-display rule expressed
-    // in 6502 cycles. The TMS9918A requires ~8 µs between successive data-port
-    // writes in Graphics I/II (window wait ≤5.95 µs + ~2 µs DRAM access). At the
-    // Apple-1 clock, ceil(8 µs × 1.022727 MHz) = ceil(8.18) = 9. So an 8c gap
-    // (7.8 µs) is below spec and drops; 9c (8.8 µs) is the first whole-cycle gap
-    // that clears it. This still catches the sprites-ON under-padded bursts
-    // (Galaga's 4c damiers, etc.) yet lets the sprites-OFF TMS_Plasma timings —
-    // tightest unpadded loop 9c, clean on Claudio Parmigiani's real Replica-1 —
-    // through, which the retired flat 16c floor (≈2× the datasheet, 15.6 µs)
-    // wrongly dropped. The lib pad helper gives 18c (22c STA->STA), margin to spare.
-    static constexpr int kMinActiveDrainCycles = 9;
+    // RETIRED active-display floor (kept only for reference). POM1 used to add
+    // a 9c Graphics I/II minimum on top of the slot table, arguing the TI
+    // datasheet ~8 µs rule (ceil(8.18)=9) better matched real DRAM settling
+    // than openMSX's shorter D28. Decision (June 2026): openMSX is the source
+    // of truth — the floor is removed and nextSlotDelayCycles() uses pure
+    // slot-table + D28 timing. The constant is no longer applied anywhere.
+    static constexpr int kMinActiveDrainCycles = 9;   // unused — see note above
 
     static constexpr int kCyclesPerFrame = POM1_CPU_CYCLES_PER_FRAME_1X_60HZ;
     // Active display covers 192 of the 262 NTSC scanlines; the remaining 70

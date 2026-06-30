@@ -428,12 +428,22 @@ hgr_setup:
         lda     #$C0            ; R1 = Graphics II, display ON
         jmp     display_on
 
-; park_sat -- hide all sprites: write $D0 to sprite 0's Y at the SAT base in
-; GVL/GVH. The VDP stops scanning sprites at the first Y=$D0.
+; park_sat -- hide all sprites: defensive SAT fill at the base in GVL/GVH.
+; $D0 at SAT[0].Y terminates the scan; SAT[1..127].Y = $D1 (off-screen) scrubs
+; power-on noise. A lone $D0 was observed insufficient under POM1 silicon-strict
+; (ghost sprites from noise SAT entries past slot 0) -- matches
+; dev/lib/tms9918/tms9918m1.asm::disable_sprites.
 park_sat:
         jsr     vdp_waddr
-        lda     #$D0
+        lda     #$D0            ; SAT[0].Y = chain terminator
         sta     VDP_DATA
+        jsr     vpad
+        ldx     #127            ; SAT[1..127].Y = $D1 off-screen via auto-inc
+        lda     #$D1
+@d1:    sta     VDP_DATA
+        jsr     vpad
+        dex
+        bne     @d1
         rts
 
 g2_name_table:

@@ -278,7 +278,10 @@ vdp3_regs:
 
 
 ; ----------------------------------------------------------------------------
-; disable_sprites — Y=$D0 sentinel at SAT[0] = $1B00.
+; disable_sprites — defensive SAT init at $1B00. $D0 at SAT[0].Y terminates the
+;   chain; SAT[1..127].Y = $D1 (off-screen) scrubs power-on noise. A lone $D0
+;   was observed insufficient under POM1 silicon-strict (ghost sprites from
+;   noise SAT entries past slot 0) — matches dev/lib/tms9918/tms9918m1.asm.
 ; ----------------------------------------------------------------------------
 disable_sprites:
         LDA #$00
@@ -287,6 +290,13 @@ disable_sprites:
         LDA #$1B | $40
         STA VDP_CTRL
         JSR tms9918_pad18
-        LDA #$D0
+        LDA #$D0            ; SAT[0].Y = chain terminator
         STA VDP_DATA
+        JSR tms9918_pad18
+        LDX #127           ; SAT[1..127].Y = $D1 off-screen via auto-increment
+        LDA #$D1
+@sat:   STA VDP_DATA
+        JSR tms9918_pad18
+        DEX
+        BNE @sat
         RTS

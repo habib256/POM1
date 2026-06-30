@@ -182,6 +182,15 @@ void main(void)
 
         if (huddirty) { gen2_hgr_putu_field(HUDX, HUDY, bounces, HUDW); --huddirty; }
 
+        /* Flip ONLY during V-blank: the hidden page is now fully drawn, but the
+         * $C254/$C255 switch takes effect mid-scan if we flip while the beam is
+         * in the visible area -> the top of the screen shows the new page and
+         * the bottom still the old one, i.e. a brief ghost of the previous ball
+         * position (tearing). Waiting for V-blank lands the flip between frames
+         * so the whole next frame shows the freshly drawn page cleanly. This
+         * also paces the loop to one frame per refresh. (gen2_wait_vbl only
+         * became usable once its sample threshold was fixed — it hung before.) */
+        gen2_wait_vbl();
         gen2_show_page();
         page = (page == 1u) ? 2u : 1u;
 

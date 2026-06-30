@@ -88,7 +88,14 @@ void main(void)
         oldx[draw] = bx;
         oldy[draw] = by;
 
-        /* Flip it on screen (tear-free flip). */
+        /* Flip it on screen. The hidden page is now fully drawn, but the
+         * $C254/$C255 switch takes effect mid-scan if we flip while the beam is
+         * still in the visible area -> the top of the screen shows the new page
+         * and the bottom the old one (a brief ghost of the previous position).
+         * Wait for V-blank first so the flip lands between frames: the whole
+         * next frame shows the freshly drawn page, genuinely tear-free. Also
+         * paces the loop to one frame per refresh. */
+        gen2_wait_vbl();
         gen2_show_page();
 
         /* The next frame will go into the OTHER page. */

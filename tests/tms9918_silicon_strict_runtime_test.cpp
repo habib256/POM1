@@ -6,16 +6,17 @@
 //
 // What's covered:
 //   Phase A  tolerant mode (strict=false)            — bursts always land
-//   Phase B  Gfx12 9c floor (8c drops / 9c lands)    — silicon Mode I/II floor
+//   Phase B  Gfx12 pure slot-table gating            — 4c drops / 8c lands (no floor)
 //   Phase C  unpadded 4c burst in Mode I+sprites     — partial drops (mixed)
 //   Phase D  text-mode tight loop @ 5c gap           — accept (Text table dense)
 //   Phase E  multicolor @ 6c gap                     — accept (Gfx3 worst ~4.2c)
-//   Phase F  display blanked flood                   — accept (ScreenOff slot/8t)
-//   Phase G  VBlank flood, display ON                — drops (active table stays Gfx12)
+//   Phase F  display blanked flood @ 2c              — accept (ScreenOff slot/8t)
+//   Phase G  VBlank flood, display ON @ 2c           — accept (VBlank → ScreenOff)
 //   Phase H  strict toggle non-destructive (no reset)
 //   Phase I  slot-table phasing (different starting frameCycleCounter → different
 //            drain → silicon-correct phase dependency)
 //   Phase J  drop diagnostics: per-PC + per-port + per-table aggregation
+//   Phase K  newest-wins collision (openMSX deferred-overwrite source of truth)
 //
 // References:
 //   - TMS9918.cpp `slotsMsx1*` arrays (verbatim from openMSX VDPAccessSlots.cc)
@@ -151,33 +152,32 @@ int main()
     }
 
     // ----------------------------------------------------------------------
-    // Phase B — Gfx12 active-display floor (11c). The openMSX slot table alone
-    // modelled only ~8c, which under-reported the silicon penalty for dense
-    // sprites-ON tile streams; a flat 16c floor over-corrected and falsely
-    // dropped the sprites-OFF TMS_Plasma timings that run clean on Claudio
-    // Parmigiani's real Replica-1. 9c is the compromise: an 8c-gap burst
-    // (below the floor) must DROP, while a 9c gap lands. The lib pad helper
-    // gives 18c (22c STA->STA) to clear it with margin. Gfx12-scoped:
-    // Text/Multicolor stay dense (Phases D/E below still accept their tight loops).
+    // Phase B — Gfx12 active-display gating, PURE openMSX slot-table timing
+    // (no artificial floor — POM1 now follows openMSX exactly: D28 prep + the
+    // slotsMsx1Gfx12 access slots decide everything). At this start position a
+    // 4c burst out-paces the slots and drops; an 8c burst clears the worst
+    // Gfx12 slot gap and lands. The lib pad helper gives 18c (22c STA->STA),
+    // far above any Gfx12 slot gap. Gfx12-scoped: Text/Multicolor stay dense
+    // (Phases D/E below accept their tighter loops).
     // ----------------------------------------------------------------------
     {
         TMS9918 vdp; vdp.reset();
         initGfxMode(vdp);
         vdp.setSiliconStrictMode(true);
         cushionedSetWriteAddress(vdp, 0x1100);
-        const uint64_t drops = runWriteLoop(vdp, 8, 8, 0xB0);
-        mustBeTrue(drops > 0, "PhaseB: 8 STA at 8c gap in Gfx12 — below the 9c silicon floor, must drop"); ++assertions;
+        const uint64_t drops = runWriteLoop(vdp, 8, 4, 0xB0);
+        mustBeTrue(drops > 0, "PhaseB: 8 STA at 4c gap in Gfx12 — below the slot spacing, must drop"); ++assertions;
     }
     {
-        // 9c gap = the floor itself — writes must land. This is what lets the
-        // sprites-OFF TMS_Plasma colour-table upload (9c STA->STA) clear POM1 the
-        // same way it clears real silicon; pad18 (22c) clears it with margin.
+        // 8c gap clears the worst Gfx12 access-slot gap at this phase — writes
+        // must land. This is the openMSX-faithful boundary (the removed POM1
+        // 9c floor used to push it one cycle higher).
         TMS9918 vdp; vdp.reset();
         initGfxMode(vdp);
         vdp.setSiliconStrictMode(true);
         cushionedSetWriteAddress(vdp, 0x1100);
-        const uint64_t drops = runWriteLoop(vdp, 8, 9, 0xB0);
-        mustBeTrue(drops == 0, "PhaseB2: 8 STA at 9c gap in Gfx12 — at the floor, must accept all"); ++assertions;
+        const uint64_t drops = runWriteLoop(vdp, 8, 8, 0xB0);
+        mustBeTrue(drops == 0, "PhaseB2: 8 STA at 8c gap in Gfx12 — above the slot gap, must accept all"); ++assertions;
     }
 
     // ----------------------------------------------------------------------
@@ -345,8 +345,8 @@ int main()
         }
 
         const auto& d = vdp.dropDiagnostics();
-        mustBeTrue(d.total == d.writeData + d.writeCtrl,
-                   "PhaseJ: total = writeData + writeCtrl"); ++assertions;
+        mustBeTrue(d.total == d.writeData + d.readData + d.writeCtrl,
+                   "PhaseJ: total = writeData + readData + writeCtrl"); ++assertions;
         mustBeTrue(d.writeData > 0 && d.writeCtrl > 0,
                    "PhaseJ: drops on both ports"); ++assertions;
         mustBeTrue(d.byPc.count(0x5000) > 0 && d.byPc.count(0x6000) > 0,
@@ -362,6 +362,51 @@ int main()
             vdp.dumpDropDiagnostics(sink, 4);
             std::fclose(sink);
         }
+    }
+
+    // ----------------------------------------------------------------------
+    // Phase K — NEWEST-WINS collision semantics (openMSX source of truth).
+    // openMSX (allowTooFastAccess=off): a too-fast access OVERWRITES the still-
+    // pending request with the newer data (cpuVramData is shared) and the
+    // single scheduled slot fires once with that newer byte. So of two
+    // collided writes to the same cell, the LATER value lands and the pointer
+    // advances exactly once. (POM1 previously kept the OLDER byte — the old
+    // "drop the new write" model. This pins the corrected behaviour.)
+    // ----------------------------------------------------------------------
+    {
+        TMS9918 vdp; vdp.reset();
+        initGfxMode(vdp);                          // display ON, Gfx12 (gated)
+        vdp.setSiliconStrictMode(true);
+        cushionedSetWriteAddress(vdp, 0x1A00);
+        vdp.writeData(0x11);                       // schedules at the next slot
+        vdp.advanceCycles(2);                      // < slot gap -> collision
+        vdp.writeData(0x22);                       // newer byte overwrites pending
+        const uint64_t drops = vdp.dropDiagnostics().total;
+        vdp.advanceCycles(60);                     // let the slot fire
+        mustBeTrue(drops > 0, "PhaseK: the 2c-apart second write registered a too-fast event"); ++assertions;
+        mustBeTrue(cushionedReadVramAt(vdp, 0x1A00) == 0x22,
+                   "PhaseK: newest-wins — the LATER byte ($22) is what landed in VRAM"); ++assertions;
+        mustBeTrue(cushionedReadVramAt(vdp, 0x1A01) == 0x00,
+                   "PhaseK: the pointer advanced only once — $1A01 untouched"); ++assertions;
+    }
+
+    // ----------------------------------------------------------------------
+    // Phase L — a too-fast DATA-PORT READ is classified as readData, not
+    // writeCtrl. The detector tracks data-write / data-read / control-write
+    // separately (openMSX shares cpuVramData across read+write; POM1 keeps the
+    // three drop kinds distinct).
+    // ----------------------------------------------------------------------
+    {
+        TMS9918 vdp; vdp.reset();
+        initGfxMode(vdp);
+        vdp.setSiliconStrictMode(true);
+        cushionedSetReadAddress(vdp, 0x1000);
+        vdp.advanceCycles(44);
+        (void)vdp.readData();                 // schedules a prefetch (pending)
+        (void)vdp.readData();                 // too fast -> readData drop
+        const auto& d = vdp.dropDiagnostics();
+        mustBeTrue(d.readData > 0, "PhaseL: too-fast read counted in readData"); ++assertions;
+        mustBeTrue(d.writeCtrl == 0, "PhaseL: a read drop is NOT mis-counted as a control drop"); ++assertions;
     }
 
     // Sanity: getter must mirror the last setter call.

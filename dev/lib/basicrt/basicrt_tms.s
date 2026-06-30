@@ -265,8 +265,11 @@ lr_nametab:
         bne @band
         rts
 
-; lr_parksat: hide all sprites -- write $D0 to sprite 0's Y at the Multicolor SAT
-; base ($0B00). The VDP stops scanning sprites at the first Y=$D0.
+; lr_parksat: hide all sprites -- defensive SAT fill at the Multicolor SAT base
+; ($0B00). $D0 at SAT[0].Y terminates the scan; SAT[1..127].Y = $D1 (off-screen)
+; scrubs power-on noise. A lone $D0 was observed insufficient under POM1
+; silicon-strict (ghost sprites from noise SAT entries past slot 0) -- matches
+; dev/lib/tms9918/tms9918m1.asm::disable_sprites.
 lr_parksat:
         lda #$00
         sta lr_al
@@ -274,9 +277,15 @@ lr_parksat:
         sta lr_ah
         jsr lr_setw
         jsr tms9918_pad18
-        lda #$D0
+        lda #$D0           ; SAT[0].Y = chain terminator
         sta VDP_DATA
         jsr tms9918_pad18
+        ldx #127           ; SAT[1..127].Y = $D1 off-screen via auto-increment
+        lda #$D1
+@d1:    sta VDP_DATA
+        jsr tms9918_pad18
+        dex
+        bne @d1
         rts
 .endif  ; RT_GR
 

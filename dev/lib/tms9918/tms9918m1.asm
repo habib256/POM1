@@ -5,7 +5,9 @@
 ;                  TMS_Connect4, TMS_Snake, TMS_Galaga) currently re-derive.
 ;
 ; Public symbols:
-;   init_vdp_g1     -- 8 registers + tail-call disable_sprites
+;   init_vdp_g1     -- 8 registers + full 16 KB VRAM wipe + disable_sprites
+;                      (self-sufficient: no power-on garbage survives init)
+;   wipe_all_vram   -- zero all 16 KB $0000-$3FFF (display MUST be blanked)
 ;   disable_sprites -- write Y=$D0 to sprite #0 attribute (chip stops scan)
 ;   clear_name_table -- fill 768 bytes at $1800 with character 0
 ;   vdp_set_write   -- prep VRAM auto-increment write at vdp_lo:hi
@@ -46,7 +48,7 @@
 .importzp tmp
 
 ; --- exported routines -----------------------------------------------------
-.export init_vdp_g1, disable_sprites, clear_name_table
+.export init_vdp_g1, disable_sprites, clear_name_table, wipe_all_vram
 .export vdp_set_write, vdp_set_read, vdp_upload_a
 .export name_at_rc, print_at_rc
 
@@ -64,7 +66,10 @@ vdp_col:        .res 1
 ; ============================================================================
 
 ; ----------------------------------------------------------------------------
-; init_vdp_g1: write 8 Mode-1 registers, then disable sprites + re-arm R1.
+; init_vdp_g1: write 8 Mode-1 registers, wipe all 16 KB of VRAM, disable
+;   sprites, then re-arm R1. Self-sufficient — a caller that uploads nothing
+;   still gets a clean, garbage-free chip (the wipe + SAT terminator run while
+;   the display is blanked, so the burst rides the dense ScreenOff slots).
 ;   The auto-patcher injects pad40 between intra-pair (value→cmd) and
 ;   inter-iter (cmd→next-value via BNE @rg loop-back) writes. Even if the
 ;   caller leaves R1 with display ON (Rogue boot after a game-switch from
@@ -96,6 +101,7 @@ init_vdp_g1:
         CPX     #8
         JSR     tms9918_pad18   ; +18c silicon-strict pad18-v4 (back-to-back VDP store)
         BNE     @rg
+        JSR     wipe_all_vram   ; zero all 16 KB while display is still OFF
         JSR     disable_sprites ; SAT terminator with display still OFF
         ; --- Final: re-arm R1 with the table value (display ON typically).
         ;     Display stays OFF until the cmd byte commits — threshold = 2c
@@ -106,6 +112,37 @@ init_vdp_g1:
         JSR     tms9918_pad18   ; +18c silicon-strict pad18-v4 (before LDA #imm bridge)
         LDA     #$81            ; cmd = $80 | reg-1
         STA     VDP_CTRL
+        RTS
+
+; ----------------------------------------------------------------------------
+; wipe_all_vram: zero ALL 16 KB of VRAM ($0000-$3FFF). Power-on VRAM is
+;   undefined (CLAUDE.md gotcha), so a forgetful caller that skips the
+;   per-table uploads must still boot a clean chip — this closes that footgun.
+;
+;   *** Must be called with the display blanked (R1 bit 6 = 0). *** init_vdp_g1
+;   does exactly that (the @rg loop forces R1 OFF), so the chip serves the dense
+;   "ScreenOff" CPU access slots: drain ~2c, far below the inner STA/INY/BNE gap
+;   (>=9c). The burst therefore needs NO per-byte silicon-strict pad — ~3x
+;   faster than a padded clear (see doc/TMS9918_TRANSFER_WINDOWS.md). Calling it
+;   with the display ON would drop bytes under Gfx12 slot density.
+;   Clobbers A, X, Y.
+; ----------------------------------------------------------------------------
+wipe_all_vram:
+        JSR     tms9918_pad18   ; cushion before the addr-setup control writes
+        LDA     #$00
+        STA     VDP_CTRL
+        JSR     tms9918_pad18
+        LDA     #$40            ; $00 | $40 = auto-increment write from $0000
+        STA     VDP_CTRL
+        JSR     tms9918_pad18   ; cmd byte -> first STA VDP_DATA cushion
+        LDA     #$00
+        LDX     #64             ; 64 * 256 = 16384 bytes
+@wp:    LDY     #0
+@wb:    STA     VDP_DATA        ; no pad: ScreenOff drain ~2c << 9c inner gap
+        INY
+        BNE     @wb
+        DEX
+        BNE     @wp
         RTS
 
 ; ----------------------------------------------------------------------------

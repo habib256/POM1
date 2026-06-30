@@ -4,6 +4,8 @@
 ;
 ; Public symbols:
 ;   init_vdp_g2     -- 8 registers + linear name table + colour table
+;                      (caller MUST follow with clear_bitmap + disable_sprites;
+;                       both already in the canonical boot sequence)
 ;   clear_bitmap    -- zero the 6144 B pattern table at $0000
 ;   disable_sprites -- write Y=$D0 to sprite #0 attribute (chip stops scan)
 ;   vdp_set_write   -- prep VRAM auto-increment write at pix_addr_lo:hi
@@ -71,11 +73,17 @@ pen_color:    .res 1     ; 0..15 -- foreground colour written to colour
 .segment "CODE"
 ; ============================================================================
 
-; init_vdp_g2: 8 registers + linear name table + colour table = $F1.
-;   The @rg loop masks R1's display bit OFF on iter 1 (X=1); subsequent
-;   iters and bulk uploads run with the gate at 16c (display blanked).
-;   The auto-patcher injects pad40 intra-pair and inter-iter — strict
-;   means strict, no SKIP escape hatch.
+; init_vdp_g2: 8 registers + full 16 KB VRAM wipe + linear name table + colour
+;   table = $F1 + SAT park. Fully self-sufficient -- nothing relies on power-on
+;   VRAM. The @rg loop masks R1's display bit OFF on iter 1 (X=1), so the wipe,
+;   name-table and colour bursts all run with the display blanked. While blanked
+;   the chip serves the dense ScreenOff access slots (drain ~2c), so those
+;   bursts carry NO per-byte pad -- only their address-setup control writes keep
+;   the silicon-strict cushion. ~3x faster than the old padded loops.
+;   See doc/TMS9918_TRANSFER_WINDOWS.md for the transfer-window rationale.
+;
+;   The explicit clear_bitmap + disable_sprites calls in existing consumers
+;   (Mandel, Logo 8K/16K, basicrt rt_hgr) are now harmless redundant re-clears.
 init_vdp_g2:
         ; Caller-gap cushion: covers the case where init_vdp_g2 is
         ; called immediately after another VDP write in the caller.
@@ -95,7 +103,31 @@ init_vdp_g2:
         CPX #8
         JSR     tms9918_pad18   ; +18c silicon-strict pad18-v4 (back-to-back VDP store)
         BNE @rg
+        ; --- wipe ALL 16 KB of VRAM ($0000-$3FFF) while display is OFF ---
+        ; Self-sufficient init: nothing relies on power-on VRAM (CLAUDE.md
+        ; gotcha). Display is blanked (R1 bit6 cleared in @rg) -> dense ScreenOff
+        ; slots (drain ~2c), so the inner STA/INY/BNE burst (>=9c) needs NO pad.
+        ; The mode-2 name + colour tables below overwrite their regions; the SAT
+        ; is parked by disable_sprites before the display is re-enabled.
+        LDA #$00
+        STA VDP_CTRL
+        JSR     tms9918_pad18   ; addr lo -> hi cushion
+        LDA #$40                ; $00 | $40 = auto-inc write from $0000
+        STA VDP_CTRL
+        LDA #$00
+        LDX #64                 ; 64 * 256 = 16384 bytes
+@wz:    LDY #0
+@wb:    STA VDP_DATA            ; no pad: ScreenOff drain ~2c << 9c inner gap
+        INY
+        BNE @wb
+        DEX
+        BNE @wz
         ; --- write linear name table at $3800 (display still OFF) ---
+        ; Display is blanked here (R1 bit6 cleared in @rg), so the chip serves
+        ; the dense ScreenOff access slots (drain ~2c). The inner burst gap
+        ; (TYA/STA/INY/BNE >= 11c) covers that with margin, so NO per-byte pad
+        ; is needed -- only the address-setup control writes keep the cushion.
+        ; ~3x faster than the old padded loop (see doc/TMS9918_TRANSFER_WINDOWS.md).
         LDA #$00
         STA VDP_CTRL
         JSR     tms9918_pad18   ; +18c silicon-strict pad18-v4 (before LDA #imm bridge)
@@ -104,14 +136,12 @@ init_vdp_g2:
         LDX #3
 @th:    LDY #0
 @nm:    TYA
-        JSR     tms9918_pad18   ; +18c silicon-strict pad18-v4 (back-to-back VDP store)
-        STA VDP_DATA
+        STA VDP_DATA            ; no pad: display OFF -> ScreenOff slots
         INY
-        JSR     tms9918_pad18   ; +18c silicon-strict pad18-v4 (back-to-back VDP store)
         BNE @nm
         DEX
         BNE @th
-        ; --- color table: $F1 everywhere ($2000-$37FF, 6144 bytes) ---
+        ; --- color table: $F1 everywhere ($2000-$37FF, 6144 bytes, no pad) ---
         LDA #$00
         STA VDP_CTRL
         JSR     tms9918_pad18   ; +18c silicon-strict pad18-v4 (before LDA #imm bridge)
@@ -119,11 +149,9 @@ init_vdp_g2:
         STA VDP_CTRL
         LDX #24
         LDY #0
-@cl:    LDA #$F1
-        JSR     tms9918_pad18   ; +18c silicon-strict pad18-v4 (back-to-back VDP store)
-        STA VDP_DATA
+        LDA #$F1
+@cl:    STA VDP_DATA            ; no pad: display OFF -> ScreenOff slots
         INY
-        JSR     tms9918_pad18   ; +18c silicon-strict pad18-v4 (back-to-back VDP store)
         BNE @cl
         DEX
         BNE @cl
@@ -131,12 +159,12 @@ init_vdp_g2:
         ; mode to recolour the cell it just touched. SETPC overrides.
         LDA #$0F
         STA pen_color
-        ; NOTE: init_vdp_g2 deliberately does NOT call disable_sprites
-        ; (unlike init_vdp_g1's auto-call). The defensive disable_sprites
-        ; now does a full 128-byte SAT defensive fill (~36 bytes); inlining
-        ; the JSR here overflows Logo V2 CodeTank bank. All Mode II
-        ; consumers must call disable_sprites explicitly after this
-        ; routine — Mandel L168, Logo 8K L209, Logo 16K L340 all do.
+        ; Park the SAT (gold-standard $D0 + 127x $D1 fill) while the display is
+        ; still OFF, so the just-wiped SAT ($00 = on-screen Y!) cannot show
+        ; ghost sprites. init_vdp_g2 is now fully self-sufficient; the explicit
+        ; disable_sprites / clear_bitmap calls in existing consumers (Mandel,
+        ; Logo, basicrt) are harmless redundant re-clears.
+        JSR disable_sprites
         ; --- Final: re-arm R1 with table value (display ON). Display stays
         ;     OFF until the cmd byte commits, so threshold remains 2c.
         LDA vdp2_regs+1
