@@ -101,6 +101,41 @@ violet Z on flat black"}. {Si sujet organique/peau : le cacher derrière un
 [+ bloc de style « or » ci-dessus]
 ```
 
+## Génération automatisée (Chrome + Gemini / Nano Banana)
+
+Méthode pour générer les images directement depuis Claude Code en pilotant Gemini via
+l'extension **Claude for Chrome** (skill `claude-in-chrome`), validée 2026-07-01.
+
+**Pré-requis Chrome (une fois)** : dans `chrome://settings/downloads`, **décocher « Toujours
+demander où enregistrer »**. Sinon chaque download ouvre un dialogue natif « Enregistrer sous »
+que l'extension **ne peut pas piloter** (il est hors de la page web) → le batch se bloque.
+
+**Boucle par image** :
+1. `tabs_context_mcp` puis `navigate` vers `https://gemini.google.com/app` (session Google déjà
+   connectée). Modèle « Pro » par défaut convient.
+2. Cliquer le champ de saisie, `type` le prompt **en UNE seule ligne sans retour à la ligne**
+   (un `\n` déclenche l'envoi prématuré), préfixé de `Generate a single 4:3 landscape image. `.
+3. Cliquer le bouton d'envoi (flèche bleue), `wait` ~8 s, `screenshot` pour juger le rendu.
+4. **Récupérer l'image** — le `fetch` du blob échoue (« Failed to fetch »), et le résultat de
+   l'outil JS **bloque toute sortie base64**. La voie qui marche : dessiner l'`<img>` (déjà
+   chargée, `naturalWidth` ≈ 1024) sur un `canvas`, puis déclencher un download programmé avec
+   le bon nom :
+   ```js
+   const img = [...document.querySelectorAll('img')].find(i=>i.naturalWidth>200);
+   const c = document.createElement('canvas'); c.width=img.naturalWidth; c.height=img.naturalHeight;
+   c.getContext('2d').drawImage(img,0,0);
+   const a = document.createElement('a');
+   a.href = c.toDataURL('image/png'); a.download = 'N006.png';
+   document.body.appendChild(a); a.click(); a.remove();
+   ```
+   (Le canvas n'est pas « tainted » car le blob est same-origin `gemini.google.com`.)
+5. Avec le réglage Chrome ci-dessus, le fichier tombe dans `~/Téléchargements/N0xx.png` → le
+   déplacer vers `SCOSWAMP.MORE/PNG/N0xx.png` (`mv`). Vérifier l'octet-count > 0.
+
+**Gotchas** : le bouton « Télécharger » natif de Gemini n'affiche qu'un tooltip sous clic
+synthétique (pas de download fiable) → toujours passer par le canvas + `<a download>`. Si Gemini
+présente une vérification anti-bot, passer la main à l'utilisateur (ne pas la franchir).
+
 ## Prompts validés (calibrés sur les 4 styles, 2026-07-01)
 
 **Jeu vidéo / rétro** (excellent) :
