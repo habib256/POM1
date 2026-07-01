@@ -52,6 +52,7 @@ void pom1_paste_text(const char* s)
 #else
 #include <atomic>
 #include <chrono>
+#include <algorithm>
 #include <csignal>
 #include <cstdio>
 #include <cstring>
@@ -432,6 +433,46 @@ static bool dumpRgbaPng(const char* tag, const std::string& path,
     return true;
 }
 
+// Run the CPU for `totalCycles`, segmenting at each scheduled `--paste-at-cycle`
+// directive so the keys are injected at an exact cumulative cycle count. Pastes
+// are sorted by cycle (order-independent on the command line); any scheduled
+// past `totalCycles` are warned and skipped. With no pastes this is a single
+// runCyclesSync — identical to the previous behaviour. The point is determinism:
+// two headless runs (e.g. --vram-noise ON vs OFF) land on the SAME game frame
+// regardless of host speed, which the title-screen-gated TMS9918 sprite tests
+// could not reach with wall-clock --paste.
+static void runCyclesWithTimedPastes(EmulationController& emu, uint64_t totalCycles,
+                                     std::vector<pom1::CliTimedPaste> pastes)
+{
+    constexpr int kTimedPasteCap = 4096;   // mirrors --paste's kMaxPasteChars
+    std::sort(pastes.begin(), pastes.end(),
+              [](const pom1::CliTimedPaste& a, const pom1::CliTimedPaste& b) {
+                  return a.cycle < b.cycle;
+              });
+    uint64_t done = 0;
+    for (const auto& p : pastes) {
+        if (p.cycle > totalCycles) {
+            char m[160];
+            std::snprintf(m, sizeof(m),
+                          "--paste-at-cycle %llu is past the run budget (%llu cycles) — skipped",
+                          (unsigned long long)p.cycle, (unsigned long long)totalCycles);
+            pom1::log().warn("CLI", m);
+            continue;
+        }
+        if (p.cycle > done) {
+            emu.runCyclesSync(p.cycle - done);
+            done = p.cycle;
+        }
+        int sent = pom1::queueKeystrokes(emu, p.keys, kTimedPasteCap);
+        char m[128];
+        std::snprintf(m, sizeof(m), "--paste-at-cycle %llu: injected %d keys",
+                      (unsigned long long)p.cycle, sent);
+        pom1::log().info("CLI", m);
+    }
+    if (done < totalCycles)
+        emu.runCyclesSync(totalCycles - done);
+}
+
 static int runHeadless(pom1::CliPlan& plan)
 {
     pom1::log().info("POM1", "headless mode — no window (Ctrl-C / SIGTERM to exit)");
@@ -520,7 +561,22 @@ static int runHeadless(pom1::CliPlan& plan)
         // Settle the frame: deterministic (run exactly N emulated cycles —
         // host-independent) when --dump-after-cycles is given, else a wall-clock
         // sleep. The cycle path is the one to use for golden-image regression.
-        if (plan.dumpAfterCycles > 0)
+        // --paste-at-cycle forces the deterministic cycle path (wall-clock settle
+        // can't schedule cycle-exact injections); the budget is --dump-after-cycles
+        // if given, else the last scheduled injection cycle.
+        if (!plan.timedPastes.empty()) {
+            uint64_t maxPaste = 0;
+            for (const auto& p : plan.timedPastes) maxPaste = std::max(maxPaste, p.cycle);
+            uint64_t budget = plan.dumpAfterCycles > 0
+                                  ? static_cast<uint64_t>(plan.dumpAfterCycles)
+                                  : maxPaste;
+            if (plan.dumpAfterCycles == 0)
+                pom1::log().warn("CLI", "--paste-at-cycle without --dump-after-cycles: "
+                                        "capturing right after the last injection "
+                                        "(add --dump-after-cycles N for extra settle)");
+            runCyclesWithTimedPastes(emu, budget, plan.timedPastes);
+        }
+        else if (plan.dumpAfterCycles > 0)
             emu.runCyclesSync(static_cast<uint64_t>(plan.dumpAfterCycles));
         else if (plan.dumpSettleMs > 0)
             std::this_thread::sleep_for(std::chrono::milliseconds(plan.dumpSettleMs));
@@ -552,6 +608,15 @@ static int runHeadless(pom1::CliPlan& plan)
                               TMS9918::kFullWidth, TMS9918::kFullHeight);
         }
         return ok ? 0 : 1;
+    }
+
+    // No frame dump: if cycle-scheduled pastes were given (e.g. paired with
+    // --telemetry-log to capture the resulting output stream), replay them up to
+    // the last scheduled cycle before dropping into the idle wait.
+    if (!plan.timedPastes.empty()) {
+        uint64_t maxPaste = 0;
+        for (const auto& p : plan.timedPastes) maxPaste = std::max(maxPaste, p.cycle);
+        runCyclesWithTimedPastes(emu, maxPaste, plan.timedPastes);
     }
 
     std::signal(SIGINT,  pom1_headless_signal_handler);

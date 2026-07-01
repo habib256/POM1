@@ -295,6 +295,21 @@ private:
     int pr40MechPhotoWidth = 0;
     int pr40MechPhotoHeight = 0;
     bool pr40MechPhotoLoadTried = false;
+    pom1::Texture* keyboardPhotoTexture = nullptr;
+    int keyboardPhotoWidth = 0;
+    int keyboardPhotoHeight = 0;
+    bool keyboardPhotoLoadTried = false;
+    bool showKeyboardPhoto = false;
+    // Sticky modifier state for the clickable keyboard-photo overlay. SHIFT and
+    // CTRL latch on click and auto-release after the next character key.
+    bool keyboardPhotoShift = false;
+    bool keyboardPhotoCtrl = false;
+    char keyboardPhotoLastKey = 0;  // last byte sent — REPT re-sends it.
+    pom1::Texture* wozPhotoTexture = nullptr;
+    int wozPhotoWidth = 0;
+    int wozPhotoHeight = 0;
+    bool wozPhotoLoadTried = false;
+    bool showWozPhoto = false;
     bool showTMS9918 = false;
     bool tms9918Enabled = false;
     pom1::Texture* tms9918Texture = nullptr;
@@ -446,6 +461,11 @@ private:
     void renderTmsBoardPhotoWindow();
     void ensureGen2WorkbenchPhotoTexture();
     void renderGen2WorkbenchPhotoWindow();
+    void ensureKeyboardPhotoTexture();
+    void renderKeyboardPhotoWindow();
+    void sendKeyboardPhotoKey(int keyIndex);
+    void ensureWozPhotoTexture();
+    void renderWozPhotoWindow();
     void ensurePR40MechPhotoTexture();
     void renderSpecialThanksWindow();
     void renderHardwareReferenceWindow();

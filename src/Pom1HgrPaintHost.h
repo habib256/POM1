@@ -45,6 +45,7 @@ public:
                       const std::string& filterDesc, const std::string& extCsv,
                       const std::string& defaultDir, const std::string& defaultName,
                       std::string& outPath) override;
+    bool nativeFilePickerAvailable() const override;
     void* uploadTexture(void* tex, const void* rgba,
                         int w, int h, bool linear) override;
     void  destroyTexture(void* tex) override;

@@ -154,6 +154,12 @@ void MainWindow_ImGui::destroyPom1()
     drop(pr40MechPhotoTexture);
     pr40MechPhotoWidth = pr40MechPhotoHeight = 0;
     pr40MechPhotoLoadTried = false;
+    drop(keyboardPhotoTexture);
+    keyboardPhotoWidth = keyboardPhotoHeight = 0;
+    keyboardPhotoLoadTried = false;
+    drop(wozPhotoTexture);
+    wozPhotoWidth = wozPhotoHeight = 0;
+    wozPhotoLoadTried = false;
 }
 
 // Fire every deferred card plug queued by applyMachineConfig() immediately,
@@ -640,6 +646,8 @@ void MainWindow_ImGui::render()
     if (showWozJobsRectPhoto) renderWozJobsRectPhotoWindow();
     if (showTmsBoardPhoto) renderTmsBoardPhotoWindow();
     if (showGen2WorkbenchPhoto) renderGen2WorkbenchPhotoWindow();
+    if (showKeyboardPhoto) renderKeyboardPhotoWindow();
+    if (showWozPhoto) renderWozPhotoWindow();
     if (showScreenConfig) renderScreenConfigDialog();
     if (showMemoryConfig) renderMemoryConfigDialog();
     if (showLoadDialog) renderLoadDialog();

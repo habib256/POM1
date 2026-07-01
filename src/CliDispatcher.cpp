@@ -96,6 +96,29 @@ bool parseIntPositive(const std::string& s, int& out)
     } catch (...) { return false; }
 }
 
+// Parse an unsigned 64-bit count. Cycle counts for --paste-at-cycle routinely
+// exceed INT_MAX (a few seconds of Apple-1 time is millions of cycles; minutes
+// overflow int). Underscore digit separators are tolerated for readability
+// (e.g. 7_600_000) and stripped before the decimal parse.
+bool parseU64(const std::string& s, uint64_t& out)
+{
+    std::string digits;
+    digits.reserve(s.size());
+    for (char c : s) {
+        if (c == '_') continue;
+        if (c < '0' || c > '9') return false;
+        digits.push_back(c);
+    }
+    if (digits.empty()) return false;
+    try {
+        size_t idx = 0;
+        unsigned long long n = std::stoull(digits, &idx, 10);
+        if (idx != digits.size()) return false;
+        out = static_cast<uint64_t>(n);
+        return true;
+    } catch (...) { return false; }
+}
+
 bool parseTime(const std::string& s, std::time_t& out)
 {
     std::tm tm{};
@@ -486,6 +509,20 @@ std::optional<CliPlan> parseCli(int argc, char* argv[], bool& listPresetsOut)
             plan.deferredActions.push_back(std::move(a));
             continue;
         }
+        if (arg == "--paste-at-cycle") {
+            // --paste-at-cycle N "keys" : inject literal keystrokes when the
+            // emulated CPU reaches cycle N (headless only — deterministic A/B).
+            if (!needArg(i, "--paste-at-cycle")) return std::nullopt;
+            uint64_t cyc;
+            if (!parseU64(argv[++i], cyc)) {
+                logAndFail("--paste-at-cycle expects a cycle count then a key string "
+                           "(e.g. --paste-at-cycle 5000000 \"1\")");
+                return std::nullopt;
+            }
+            if (!needArg(i, "--paste-at-cycle")) return std::nullopt;
+            plan.timedPastes.push_back(CliTimedPaste{cyc, argv[++i]});
+            continue;
+        }
         if (arg == "--step") {
             if (!needArg(i, "--step")) return std::nullopt;
             int n;
@@ -629,19 +666,13 @@ void runPaste(const CliAction& a, EmulationController& emu)
         pom1::log().error("CLI", "--paste: cannot open '" + a.pathS + "'");
         return;
     }
-    int sent = 0;
-    char c;
-    while (sent < kMaxPasteChars && f.get(c)) {
-        if (c == '\n') c = '\r';
-        if (c == '\r' || (static_cast<unsigned char>(c) >= 32 &&
-                          static_cast<unsigned char>(c) <= 126)) {
-            emu.queueKey(c);
-            ++sent;
-        }
-    }
+    std::ostringstream buf;
+    buf << f.rdbuf();
+    const std::string content = buf.str();
+    int sent = queueKeystrokes(emu, content, kMaxPasteChars);
     std::ostringstream ss;
     ss << "--paste " << a.pathS << ": sent " << sent << " chars";
-    if (sent == kMaxPasteChars && f.get(c)) ss << " (truncated at " << kMaxPasteChars << ")";
+    if (sent == kMaxPasteChars) ss << " (capped at " << kMaxPasteChars << ")";
     pom1::log().info("CLI", ss.str());
 }
 
@@ -732,6 +763,21 @@ void runSdGet(const CliAction& a, EmulationController& emu)
 }
 
 } // namespace
+
+int queueKeystrokes(EmulationController& emu, std::string_view text, int maxChars)
+{
+    int sent = 0;
+    for (char c : text) {
+        if (sent >= maxChars) break;
+        if (c == '\n') c = '\r';                          // newline → Apple-1 CR
+        if (c == '\r' || (static_cast<unsigned char>(c) >= 32 &&
+                          static_cast<unsigned char>(c) <= 126)) {
+            emu.queueKey(c);
+            ++sent;
+        }
+    }
+    return sent;
+}
 
 void runDeferredActions(const std::vector<CliAction>& actions,
                         EmulationController&          emu)

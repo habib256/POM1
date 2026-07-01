@@ -30,10 +30,19 @@ struct FileFilter {
 
 class NativeFileDialog {
 public:
-    /// True when this build can pop a native dialog right now. Always false
-    /// on Emscripten/WASM; on Linux returns false until a zenity or kdialog
-    /// binary is detected on $PATH (probed and cached on first call).
+    /// True when a native dialog should be used right now — i.e. the user
+    /// preference is enabled AND this build can actually pop one. Every call
+    /// site keys off this: when it is false the Load/Save flows fall back to
+    /// POM1's in-process ImGui browser (instant, no XPC cold-start). Always
+    /// false on Emscripten/WASM, and on Linux until a zenity or kdialog binary
+    /// is detected on $PATH.
     static bool isAvailable();
+
+    /// User preference: when false, isAvailable() reports false even on a
+    /// platform that has a native picker, so the (faster) in-process ImGui
+    /// browser is used everywhere. Default true. Wired to a Settings checkbox.
+    static void setEnabled(bool enabled);
+    static bool isEnabled();
 
     /// Show an open-file dialog. Returns true and writes the selected path
     /// into `outPath` on success; false on cancel, error, or when no native
@@ -73,6 +82,13 @@ public:
                              const std::string& defaultDir,
                              const std::string& defaultName,
                              std::string& outPath);
+
+private:
+    /// Per-platform probe: true when this build CAN pop a native dialog,
+    /// ignoring the user preference. Defined in the platform backends
+    /// (NativeFileDialog_Mac.mm on macOS; NativeFileDialog.cpp elsewhere).
+    /// isAvailable() = isEnabled() && platformAvailable().
+    static bool platformAvailable();
 };
 
 } // namespace pom1

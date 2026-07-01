@@ -3048,6 +3048,11 @@ bool Pom1BenchHost::pickFilePath(bool forSave, const std::string& title,
                                                 outPath);
 }
 
+bool Pom1BenchHost::nativeFilePickerAvailable() const
+{
+    return pom1::NativeFileDialog::isAvailable();
+}
+
 void Pom1BenchHost::openSerial()
 {
     mw_->showTelemetry = true;

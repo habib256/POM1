@@ -90,6 +90,12 @@ public:
         return false;
     }
 
+    // True when the host can pop an OS-native picker right now — see
+    // hgrpaint/IHgrPaintHost.h::nativeFilePickerAvailable for the contract.
+    // When true a false return from pickFilePath means the user CANCELLED, so
+    // the editor must NOT fall back to its built-in ImGui browser.
+    virtual bool nativeFilePickerAvailable() const { return false; }
+
     // Texture lifecycle — the HOST owns the graphics backend (see
     // hgrpaint/IHgrPaintHost.h for the design rationale). Opaque void* so a
     // Metal id<MTLTexture> fits the same slot as a GL GLuint. Pass

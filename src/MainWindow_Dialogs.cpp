@@ -31,6 +31,7 @@
 #endif
 
 #include <algorithm>
+#include <cctype>
 #include <cstdint>
 #include <cstring>
 #include <string>
@@ -53,6 +54,8 @@ static const char kWozJobsRectPhotoFile[] = "woz_jobs_apple1-rect.jpg";
 static const char kTmsBoardPhotoFile[] = "Parmigiani.jpg";
 static const char kGen2WorkbenchPhotoFile[] = "Gen2_Video_Workbench.jpg";
 static const char kPR40MechPhotoFile[] = "SWTPC PR-40 Printer.png";
+static const char kKeyboardPhotoFile[] = "a-1_Keyboard.png";
+static const char kWozPhotoFile[] = "Woz.png";
 
 /** Generic cwd + exe-relative probe for files expected under pic/. */
 static std::string find_pic_file_path(const char* relBasename)
@@ -410,6 +413,296 @@ void MainWindow_ImGui::ensureGen2WorkbenchPhotoTexture()
     gen2WorkbenchPhotoTexture = uploadPhotoTextureRgba(pixels, w, h);
     gen2WorkbenchPhotoWidth = w;
     gen2WorkbenchPhotoHeight = h;
+}
+
+void MainWindow_ImGui::ensureKeyboardPhotoTexture()
+{
+    if (keyboardPhotoTexture != 0 || keyboardPhotoLoadTried)
+        return;
+    keyboardPhotoLoadTried = true;
+
+    const std::string path = find_pic_file_path(kKeyboardPhotoFile);
+    if (path.empty()) {
+        pom1::log().warn("Images",
+            std::string("Apple-1 keyboard photo not found (expected pic/") + kKeyboardPhotoFile + ")");
+        return;
+    }
+
+    int w = 0, h = 0, channels = 0;
+    unsigned char* pixels = stbi_load(path.c_str(), &w, &h, &channels, 4);
+    if (!pixels || w <= 0 || h <= 0) {
+        if (pixels) stbi_image_free(pixels);
+        pom1::log().warn("Images", "Could not decode Apple-1 keyboard photo: " + path);
+        return;
+    }
+
+    keyboardPhotoTexture = uploadPhotoTextureRgba(pixels, w, h);
+    keyboardPhotoWidth = w;
+    keyboardPhotoHeight = h;
+}
+
+namespace {
+// Clickable-overlay model for the Apple-1 keyboard photo. Each key is a
+// normalised rectangle (x,y,w,h in 0..1 over the a-1_Keyboard.png image — see
+// tools-derived coordinates, validated against the photo) plus what it sends.
+//
+//   Char      -> sends `base`; with SHIFT sends `shift` (if non-0); with CTRL
+//                sends (toupper(base) & 0x1F), the teletype control code the
+//                small key legends (X-ON, BELL, CR...) name.
+//   ShiftMod  -> latches SHIFT (sticky, auto-released after the next Char).
+//   CtrlMod   -> latches CTRL  (sticky, auto-released after the next Char).
+//   Fixed     -> sends `base` verbatim (ESC, RETURN, LINE FEED, RUB OUT, CLEAR,
+//                SPACE), ignoring SHIFT/CTRL.
+//   Repeat    -> re-sends the last byte (the real REPT key's hold-to-repeat).
+//   Reset     -> the prominent red key: warm-resets the Apple-1.
+//   None      -> decorative (HERE IS answer-back, blank beige key): no-op.
+enum class KKind : uint8_t { Char, ShiftMod, CtrlMod, Fixed, Repeat, Reset, None };
+struct KbdKey {
+    float x, y, w, h;
+    const char* glyphBot;  // main legend (for tooltip)
+    const char* glyphTop;  // shifted legend, or nullptr
+    KKind kind;
+    char base;
+    char shift;            // 0 => same as base
+};
+
+// kind: C=Char S=ShiftMod K=CtrlMod F=Fixed P=Repeat X=Reset N=None
+static const KbdKey kKbdKeys[] = {
+    // --- row 1 ---
+    {0.0822f,0.1822f,0.0587f,0.1194f, "1","!",   KKind::Char, '1','!' },
+    {0.1468f,0.1822f,0.0587f,0.1194f, "2","\"",  KKind::Char, '2','\"'},
+    {0.2107f,0.1822f,0.0587f,0.1194f, "3","#",   KKind::Char, '3','#' },
+    {0.2746f,0.1822f,0.0587f,0.1194f, "4","$",   KKind::Char, '4','$' },
+    {0.3377f,0.1822f,0.0587f,0.1194f, "5","%",   KKind::Char, '5','%' },
+    {0.4023f,0.1822f,0.0587f,0.1194f, "6","&",   KKind::Char, '6','&' },
+    {0.4648f,0.1822f,0.0587f,0.1194f, "7","'",   KKind::Char, '7','\''},
+    {0.5272f,0.1822f,0.0587f,0.1194f, "8","(",   KKind::Char, '8','(' },
+    {0.5910f,0.1822f,0.0587f,0.1194f, "9",")",   KKind::Char, '9',')' },
+    {0.6645f,0.1822f,0.0587f,0.1194f, "0",nullptr,KKind::Char, '0',0  },
+    {0.7203f,0.1822f,0.0587f,0.1194f, ":","*",   KKind::Char, ':','*' },
+    {0.7849f,0.1822f,0.0587f,0.1194f, "-","=",   KKind::Char, '-','=' },
+    {0.8407f,0.1822f,0.0529f,0.1194f, "HERE IS",nullptr,KKind::None,0,0},
+    // --- row 2 ---
+    {0.0543f,0.3155f,0.0529f,0.1194f, "ESC",nullptr,    KKind::Fixed, '\x1b',0},
+    {0.1160f,0.3155f,0.0587f,0.1194f, "Q",nullptr, KKind::Char, 'Q',0},
+    {0.1799f,0.3155f,0.0587f,0.1194f, "W",nullptr, KKind::Char, 'W',0},
+    {0.2438f,0.3155f,0.0587f,0.1194f, "E",nullptr, KKind::Char, 'E',0},
+    {0.3069f,0.3155f,0.0587f,0.1194f, "R",nullptr, KKind::Char, 'R',0},
+    {0.3708f,0.3155f,0.0587f,0.1194f, "T",nullptr, KKind::Char, 'T',0},
+    {0.4347f,0.3155f,0.0587f,0.1194f, "Y",nullptr, KKind::Char, 'Y',0},
+    {0.4978f,0.3155f,0.0587f,0.1194f, "U",nullptr, KKind::Char, 'U',0},
+    {0.5617f,0.3155f,0.0587f,0.1194f, "I",nullptr, KKind::Char, 'I',0},
+    {0.6256f,0.3155f,0.0587f,0.1194f, "O",nullptr, KKind::Char, 'O',0},
+    {0.6887f,0.3155f,0.0587f,0.1194f, "P","@",   KKind::Char, 'P','@'},
+    {0.7592f,0.3155f,0.0558f,0.1194f, "LINE FEED",nullptr,KKind::Fixed,'\x0a',0},
+    {0.8253f,0.3155f,0.0558f,0.1194f, "RETURN",nullptr, KKind::Fixed, '\r',0},
+    // --- row 3 ---
+    {0.0602f,0.4487f,0.0587f,0.1133f, "CTRL",nullptr,   KKind::CtrlMod, 0,0},
+    {0.1270f,0.4487f,0.0609f,0.1133f, "A",nullptr, KKind::Char, 'A',0},
+    {0.1924f,0.4487f,0.0602f,0.1133f, "S",nullptr, KKind::Char, 'S',0},
+    {0.2570f,0.4487f,0.0602f,0.1133f, "D",nullptr, KKind::Char, 'D',0},
+    {0.3216f,0.4487f,0.0602f,0.1133f, "F",nullptr, KKind::Char, 'F',0},
+    {0.3862f,0.4487f,0.0609f,0.1133f, "G",nullptr, KKind::Char, 'G',0},
+    {0.4515f,0.4487f,0.0602f,0.1133f, "H",nullptr, KKind::Char, 'H',0},
+    {0.5162f,0.4487f,0.0595f,0.1133f, "J",nullptr, KKind::Char, 'J',0},
+    {0.5800f,0.4487f,0.0602f,0.1133f, "K",nullptr, KKind::Char, 'K',0},
+    {0.6446f,0.4487f,0.0609f,0.1133f, "L",nullptr, KKind::Char, 'L',0},
+    {0.7100f,0.4487f,0.0602f,0.1133f, ";","+",   KKind::Char, ';','+'},
+    {0.7768f,0.4487f,0.0587f,0.1133f, "RUB OUT",nullptr,KKind::Fixed,'\x7f',0},
+    {0.8458f,0.4487f,0.0529f,0.1133f, "REPT",nullptr,   KKind::Repeat, 0,0},
+    {0.9075f,0.4487f,0.0529f,0.1133f, "CLEAR",nullptr,  KKind::Fixed, '\x0c',0},
+    // --- row 4 (x-centres re-measured from keycap gaps) ---
+    {0.0918f,0.5773f,0.0609f,0.1133f, "SHIFT",nullptr, KKind::ShiftMod, 0,0},
+    {0.1571f,0.5773f,0.0609f,0.1133f, "Z",nullptr, KKind::Char, 'Z',0},
+    {0.2225f,0.5773f,0.0617f,0.1133f, "X",nullptr, KKind::Char, 'X',0},
+    {0.2885f,0.5773f,0.0609f,0.1133f, "C",nullptr, KKind::Char, 'C',0},
+    {0.3539f,0.5773f,0.0602f,0.1133f, "V",nullptr, KKind::Char, 'V',0},
+    {0.4185f,0.5773f,0.0609f,0.1133f, "B",nullptr, KKind::Char, 'B',0},
+    {0.4838f,0.5773f,0.0602f,0.1133f, "N","^",   KKind::Char, 'N','^'},
+    {0.5485f,0.5773f,0.0609f,0.1133f, "M",nullptr, KKind::Char, 'M',0},
+    {0.6138f,0.5773f,0.0602f,0.1133f, ",","<",   KKind::Char, ',','<'},
+    {0.6784f,0.5773f,0.0609f,0.1133f, ".",">",   KKind::Char, '.','>'},
+    {0.7438f,0.5773f,0.0609f,0.1133f, "/","?",   KKind::Char, '/','?'},
+    {0.8091f,0.5773f,0.0609f,0.1133f, "SHIFT",nullptr, KKind::ShiftMod, 0,0},
+    // --- row 5 ---
+    {0.1542f,0.6998f,0.0661f,0.1317f, "",nullptr,       KKind::None, 0,0},
+    {0.2291f,0.6998f,0.4934f,0.1317f, "SPACE",nullptr,  KKind::Fixed, ' ',0},
+    {0.7276f,0.6998f,0.0808f,0.1317f, "RESET",nullptr,  KKind::Reset, 0,0},
+};
+} // namespace
+
+void MainWindow_ImGui::renderKeyboardPhotoWindow()
+{
+    ensureKeyboardPhotoTexture();
+
+    // Apple-1 ASCII keyboard (a-1_Keyboard.png) — a clickable virtual keyboard.
+    // Each keycap is a hot-zone (kKbdKeys) overlaid on the photo; clicking sends
+    // the key to the Apple-1 via the same queue the physical keyboard uses.
+    // Default to a wide frame matching the photo's ~2.09:1 aspect (only on
+    // first open; a saved preset/user layout takes precedence below).
+    ImGui::SetNextWindowSize(ImVec2(820, 430), ImGuiCond_FirstUseEver);
+    applyPendingLayout("Apple-1 Keyboard (Photo)");
+    ImGui::SetNextWindowSizeConstraints(ImVec2(360, 190), ImVec2(FLT_MAX, FLT_MAX));
+    if (ImGui::Begin("Apple-1 Keyboard (Photo)", &showKeyboardPhoto)) {
+        auto* r = pom1::renderer();
+        if (keyboardPhotoTexture != 0 && keyboardPhotoWidth > 0 && keyboardPhotoHeight > 0 && r) {
+            // Fill the whole content region with the photo (centred, letterboxed).
+            const ImVec2 avail = ImGui::GetContentRegionAvail();
+            const float iw = static_cast<float>(keyboardPhotoWidth);
+            const float ih = static_cast<float>(keyboardPhotoHeight);
+            const float scale = std::min(avail.x / iw, avail.y / ih);
+            const float dw = std::max(1.0f, iw * scale);
+            const float dh = std::max(1.0f, ih * scale);
+            const float offX = std::max(0.0f, (avail.x - dw) * 0.5f);
+            const float offY = std::max(0.0f, (avail.y - dh) * 0.5f);
+            const ImVec2 origin = ImGui::GetCursorScreenPos();
+            const ImVec2 imgMin(origin.x + offX, origin.y + offY);
+
+            ImGui::SetCursorScreenPos(imgMin);
+            ImGui::Image(r->asImTextureID(keyboardPhotoTexture), ImVec2(dw, dh));
+
+            // Overlay one InvisibleButton per keycap, with hover/active/latched
+            // tinting drawn into the window draw list.
+            ImDrawList* dl = ImGui::GetWindowDrawList();
+            const int n = static_cast<int>(sizeof(kKbdKeys) / sizeof(kKbdKeys[0]));
+            for (int i = 0; i < n; ++i) {
+                const KbdKey& k = kKbdKeys[i];
+                const ImVec2 a(imgMin.x + k.x * dw, imgMin.y + k.y * dh);
+                const ImVec2 sz(k.w * dw, k.h * dh);
+                const ImVec2 b(a.x + sz.x, a.y + sz.y);
+
+                ImGui::SetCursorScreenPos(a);
+                ImGui::PushID(i);
+                ImGui::InvisibleButton("k", sz);
+                const bool hovered = ImGui::IsItemHovered();
+                const bool active = ImGui::IsItemActive();
+                const bool clicked = ImGui::IsItemClicked();
+                ImGui::PopID();
+
+                const bool latched =
+                    (k.kind == KKind::ShiftMod && keyboardPhotoShift) ||
+                    (k.kind == KKind::CtrlMod && keyboardPhotoCtrl);
+
+                if (clicked)
+                    sendKeyboardPhotoKey(i);
+
+                ImU32 fill = 0;
+                if (active)        fill = IM_COL32(255, 200, 80, 110);
+                else if (hovered)  fill = IM_COL32(255, 255, 255, 70);
+                else if (latched)  fill = IM_COL32(110, 190, 255, 95);
+                if (fill) {
+                    dl->AddRectFilled(a, b, fill, 4.0f);
+                    dl->AddRect(a, b, IM_COL32(255, 220, 120, 220), 4.0f, 0, 2.0f);
+                }
+
+                if (hovered && k.glyphBot && k.glyphBot[0]) {
+                    if (k.glyphTop)
+                        ImGui::SetTooltip("%s  (SHIFT: %s)", k.glyphBot, k.glyphTop);
+                    else
+                        ImGui::SetTooltip("%s", k.glyphBot);
+                }
+            }
+        } else {
+            ImGui::TextWrapped(
+                "Apple-1 keyboard photo not found (expected pic/%s).", kKeyboardPhotoFile);
+        }
+    }
+    ImGui::End();
+}
+
+// Resolve one clickable keycap (index into kKbdKeys) into a byte and queue it,
+// honouring the sticky SHIFT/CTRL latches. Defined here so the kKbdKeys table
+// stays file-local; the index keeps the signature free of the local KbdKey type.
+void MainWindow_ImGui::sendKeyboardPhotoKey(int index)
+{
+    const int n = static_cast<int>(sizeof(kKbdKeys) / sizeof(kKbdKeys[0]));
+    if (index < 0 || index >= n)
+        return;
+    const KbdKey& k = kKbdKeys[index];
+
+    switch (k.kind) {
+    case KKind::ShiftMod:
+        keyboardPhotoShift = !keyboardPhotoShift;
+        if (keyboardPhotoShift) keyboardPhotoCtrl = false;
+        return;
+    case KKind::CtrlMod:
+        keyboardPhotoCtrl = !keyboardPhotoCtrl;
+        if (keyboardPhotoCtrl) keyboardPhotoShift = false;
+        return;
+    case KKind::Reset:
+        reset();
+        return;
+    case KKind::Repeat:
+        if (keyboardPhotoLastKey && emulation)
+            emulation->queueKey(keyboardPhotoLastKey);
+        return;
+    case KKind::None:
+        return;
+    case KKind::Fixed:
+        if (emulation) emulation->queueKey(k.base);
+        keyboardPhotoLastKey = k.base;
+        break;
+    case KKind::Char: {
+        char c = k.base;
+        if (keyboardPhotoCtrl) {
+            c = static_cast<char>(std::toupper(static_cast<unsigned char>(k.base)) & 0x1F);
+        } else if (keyboardPhotoShift && k.shift) {
+            c = k.shift;
+        }
+        if (emulation) emulation->queueKey(c);
+        keyboardPhotoLastKey = c;
+        break;
+    }
+    }
+
+    // A real character key consumes any latched sticky modifier.
+    keyboardPhotoShift = false;
+    keyboardPhotoCtrl = false;
+}
+
+void MainWindow_ImGui::ensureWozPhotoTexture()
+{
+    if (wozPhotoTexture != 0 || wozPhotoLoadTried)
+        return;
+    wozPhotoLoadTried = true;
+
+    const std::string path = find_pic_file_path(kWozPhotoFile);
+    if (path.empty()) {
+        pom1::log().warn("Images",
+            std::string("Steve Wozniak photo not found (expected pic/") + kWozPhotoFile + ")");
+        return;
+    }
+
+    int w = 0, h = 0, channels = 0;
+    unsigned char* pixels = stbi_load(path.c_str(), &w, &h, &channels, 4);
+    if (!pixels || w <= 0 || h <= 0) {
+        if (pixels) stbi_image_free(pixels);
+        pom1::log().warn("Images", "Could not decode Steve Wozniak photo: " + path);
+        return;
+    }
+
+    wozPhotoTexture = uploadPhotoTextureRgba(pixels, w, h);
+    wozPhotoWidth = w;
+    wozPhotoHeight = h;
+}
+
+void MainWindow_ImGui::renderWozPhotoWindow()
+{
+    ensureWozPhotoTexture();
+
+    // Steve Wozniak portrait (Woz.png) — companion to the Woz & Jobs photos
+    // and the Woz Monitor / ACI hardware references.
+    applyPendingLayout("Steve Wozniak (Photo)");
+    ImGui::SetNextWindowSizeConstraints(ImVec2(180, 200), ImVec2(FLT_MAX, FLT_MAX));
+    if (ImGui::Begin("Steve Wozniak (Photo)", &showWozPhoto)) {
+        if (wozPhotoTexture != 0 && wozPhotoWidth > 0 && wozPhotoHeight > 0) {
+            drawFittedCenteredImage(wozPhotoTexture, wozPhotoWidth, wozPhotoHeight);
+        } else {
+            ImGui::TextWrapped(
+                "Steve Wozniak photo not found (expected pic/%s).", kWozPhotoFile);
+        }
+    }
+    ImGui::End();
 }
 
 void MainWindow_ImGui::ensurePR40MechPhotoTexture()

@@ -33,6 +33,11 @@ bool Pom1TmsPaintHost::pickFilePath(bool forSave, const std::string& title,
                                                 outPath);
 }
 
+bool Pom1TmsPaintHost::nativeFilePickerAvailable() const
+{
+    return pom1::NativeFileDialog::isAvailable();
+}
+
 void Pom1TmsPaintHost::pokeVram(uint16_t addr, uint8_t value)
 {
     // While batching, defer to one writeTms9918VramBatch() so a bulk edit costs

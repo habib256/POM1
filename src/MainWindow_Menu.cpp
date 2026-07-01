@@ -7,6 +7,7 @@
 
 #include "MainWindow_ImGui.h"
 #include "MainWindow_Internal.h"
+#include "NativeFileDialog.h"
 #include "POM1Build.h"
 
 #include "imgui.h"
@@ -222,6 +223,24 @@ void MainWindow_ImGui::renderMenuBar()
             if (ImGui::IsItemHovered())
                 ImGui::SetTooltip("Off (default): matches a real TTL keyboard - holding a key asserts STROBE once.\n"
                                   "On: OS autorepeat reaches the Apple 1 (useful when using POM1 as a terminal).");
+#if !POM1_IS_WASM
+            {
+                bool nativeDialogs = pom1::NativeFileDialog::isEnabled();
+                if (ImGui::MenuItem("Native OS file dialogs", nullptr, &nativeDialogs)) {
+                    pom1::NativeFileDialog::setEnabled(nativeDialogs);
+                    setStatusMessage(nativeDialogs
+                                         ? "File dialogs: native OS picker"
+                                         : "File dialogs: fast in-process browser", 2.5f);
+                }
+                if (ImGui::IsItemHovered())
+                    ImGui::SetTooltip(
+                        "On (default): Load/Save use the OS-native file picker (Finder /\n"
+                        "Explorer / zenity) - integrated, but slower to appear (separate\n"
+                        "sandboxed process, cold-start lag on first open).\n"
+                        "Off: POM1's instant in-process browser. Applies to every Load/Save\n"
+                        "(memory, tape, snapshot, DevBench, Paint editors).");
+            }
+#endif
             ImGui::Separator();
             ImGui::MenuItem("Memory Viewer", shortcutLabel(GLFW_KEY_F1), &showMemoryViewer);
             ImGui::MenuItem("Memory Map Grid", shortcutLabel(GLFW_KEY_F2), &showMemoryMapGrid);
@@ -639,6 +658,8 @@ void MainWindow_ImGui::renderMenuBar()
                 ImGui::MenuItem("Apple-1 Demo Session (1976)", nullptr, &showWozJobsRectPhoto);
                 ImGui::MenuItem("P-LAB TMS9918 Card (Photo)", nullptr, &showTmsBoardPhoto);
                 ImGui::MenuItem("GEN2 Video Workbench (Photo)", nullptr, &showGen2WorkbenchPhoto);
+                ImGui::MenuItem("Apple-1 Keyboard (Photo)", nullptr, &showKeyboardPhoto);
+                ImGui::MenuItem("Steve Wozniak (Photo)", nullptr, &showWozPhoto);
                 ImGui::EndMenu();
             }
             ImGui::MenuItem("Ports & acknowledgements", nullptr, &showSpecialThanks);

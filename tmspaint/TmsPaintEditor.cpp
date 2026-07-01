@@ -865,6 +865,10 @@ void tmspaint::TmsPaintEditor::openFileBrowser(bool forSave, int saveKind, bool 
             performFileAction(forSave, saveKind, importMode, picked);
             return;
         }
+        // A native picker that returned false means the user CANCELLED (or it
+        // errored) — stay put. Only fall back to the ImGui browser when the host
+        // has no native picker at all (WASM, Linux without zenity/kdialog).
+        if (host->nativeFilePickerAvailable()) return;
     }
     browserOpen = true;
 }

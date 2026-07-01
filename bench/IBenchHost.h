@@ -168,6 +168,14 @@ public:
         return false;
     }
 
+    // True when the host can pop an OS-native picker right now. Lets CodeBench
+    // tell the two false-returns of pickFilePath apart: when this is true a
+    // false return means the user CANCELLED, so the editor must NOT fall back
+    // to the built-in ImGui browser (jarring to switch UIs mid-pick). When this
+    // is false (default: WASM, or Linux without zenity/kdialog) pickFilePath is
+    // never available and the ImGui browser is the only path.
+    virtual bool nativeFilePickerAvailable() const { return false; }
+
     // ---- Serial monitor (a separate window the host owns) ----
     virtual bool hasSerial() const { return false; }
     virtual void openSerial()      {}

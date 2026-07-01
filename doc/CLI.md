@@ -30,6 +30,7 @@ Three phases: **A** boot-time, **B** first-frame preset overrides, **C** deferre
 | `--load <addr>:<path>` | C | Raw binary, rewrite reset, `hardReset` + `start`. Hex/decimal addr. Repeatable. |
 | `--run <addr>` | C | `EmulationController::jumpTo()`. |
 | `--paste <file>` | C | ≤4096 chars to keyboard queue (`\n`→CR, printable ASCII). |
+| `--paste-at-cycle <N> "<keys>"` | C | **Headless only.** Inject `<keys>` to the keyboard queue when the emulated CPU reaches cumulative cycle `N` (underscores in `N` allowed: `5_000_000`). Repeatable; sorted by cycle, order-independent. Forces the deterministic cycle-driven run (segments at each injection), so two runs land on the **same** frame regardless of host speed — drives a TMS9918 game past its title screen into the sprite playfield, then `--dump-tms-frame`, for an `--vram-noise` ON-vs-OFF A/B (same filtering as `--paste`). Pairs with `--dump-after-cycles N` (settle/budget); without it, the capture happens right after the last injection. Directives past the budget are warned + skipped. |
 | `--step <N>` / `--trace-brk` | C | Step N + BRK trace dump. |
 | `--play` / `--rec` / `--rewind` | C | Cassette transport. `--rec` = `armRecording()` (no $C000 wait). |
 | `--sd-mkdir <path>` / `--sd-put <h>:<g>` / `--sd-get <g>:<h>` | C | SD fixture seeding. |

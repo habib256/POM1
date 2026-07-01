@@ -543,6 +543,8 @@ void MainWindow_ImGui::applyMachineConfig(int presetIndex)
     showWozJobsRectPhoto     = false;
     showTmsBoardPhoto        = false;
     showGen2WorkbenchPhoto   = false;
+    showKeyboardPhoto        = false;
+    showWozPhoto             = false;
     showScreenConfig         = false;
     showMemoryConfig         = false;
     showLoadDialog           = false;
@@ -747,6 +749,8 @@ void MainWindow_ImGui::applyMachineConfig(int presetIndex)
         else if (n == "Apple-1 Demo Session (1976)")          showWozJobsRectPhoto = true;
         else if (n == "P-LAB TMS9918 Card (Photo)")           showTmsBoardPhoto = true;
         else if (n == "GEN2 Video Workbench (Photo)")         showGen2WorkbenchPhoto = true;
+        else if (n == "Apple-1 Keyboard (Photo)")             showKeyboardPhoto = true;
+        else if (n == "Steve Wozniak (Photo)")                showWozPhoto = true;
         // Tutorial windows — names MUST match the titles used in
         // renderTutorialXxxWindow() calls (MainWindow_Dialogs.cpp).
         else if (n == "Tutorial: Integer BASIC")              showTutorialIntegerBasic = true;
@@ -1301,6 +1305,8 @@ MainWindow_ImGui::windowRegistry()
         { "WozJobsRectPhoto",     "Apple-1 Demo Session (1976)",               &MW::showWozJobsRectPhoto,   K::Info,        true  },
         { "TmsBoardPhoto",        "P-LAB TMS9918 Card (Photo)",                &MW::showTmsBoardPhoto,      K::Info,        true  },
         { "Gen2WorkbenchPhoto",   "GEN2 Video Workbench (Photo)",              &MW::showGen2WorkbenchPhoto, K::Info,        true  },
+        { "KeyboardPhoto",        "Apple-1 Keyboard (Photo)",                  &MW::showKeyboardPhoto,      K::Info,        true  },
+        { "WozPhoto",             "Steve Wozniak (Photo)",                     &MW::showWozPhoto,           K::Info,        true  },
         // ── Transient dialogs — NOT persisted (would re-pop a file/config op) ─────────────────────────────────────────────────
         { "ScreenConfig",         "Display Settings",                          &MW::showScreenConfig,       K::Dialog,      false },
         { "MemoryConfig",         "Memory Settings",                           &MW::showMemoryConfig,       K::Dialog,      false },

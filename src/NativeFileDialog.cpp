@@ -25,7 +25,7 @@
 #if POM1_IS_WASM
 // ── WASM: no native picker available, every call returns false. ─────────────
 namespace pom1 {
-bool NativeFileDialog::isAvailable() { return false; }
+bool NativeFileDialog::platformAvailable() { return false; }
 bool NativeFileDialog::openFile(GLFWwindow*, const std::string&,
                                 const std::string&,
                                 const std::vector<FileFilter>&, std::string&)
@@ -128,7 +128,7 @@ constexpr size_t kWin32PathBufWChars = 32768;
 
 } // namespace
 
-bool NativeFileDialog::isAvailable() { return true; }
+bool NativeFileDialog::platformAvailable() { return true; }
 
 bool NativeFileDialog::openFile(GLFWwindow* parent,
                                 const std::string& title,
@@ -451,7 +451,7 @@ std::string ensureExtension(std::string path,
 
 } // namespace
 
-bool NativeFileDialog::isAvailable()
+bool NativeFileDialog::platformAvailable()
 {
     return probeBackend() != Backend::None;
 }
@@ -504,6 +504,21 @@ bool NativeFileDialog::saveFile(GLFWwindow* /*parent*/,
 // ── Platform-independent convenience (delegates to the per-platform open/save
 //    above; on macOS those live in NativeFileDialog_Mac.mm but link the same). ─
 namespace pom1 {
+
+// User preference (Settings → "Use native OS file dialogs"). Default true:
+// native dialogs on. When false, isAvailable() reports false even where a
+// native picker exists, so every Load/Save flow uses the in-process ImGui
+// browser (instant, no NSOpenPanel/XPC cold-start). Plain global — only ever
+// touched from the UI thread.
+namespace { bool s_nativeEnabled = true; }
+
+void NativeFileDialog::setEnabled(bool enabled) { s_nativeEnabled = enabled; }
+bool NativeFileDialog::isEnabled() { return s_nativeEnabled; }
+
+bool NativeFileDialog::isAvailable()
+{
+    return s_nativeEnabled && platformAvailable();
+}
 
 bool NativeFileDialog::pickFiltered(GLFWwindow* parent,
                                     bool forSave,

@@ -127,7 +127,7 @@ NSInteger runPanelModal(NSSavePanel* panel, GLFWwindow* parent)
 
 } // namespace
 
-bool NativeFileDialog::isAvailable() { return true; }
+bool NativeFileDialog::platformAvailable() { return true; }
 
 bool NativeFileDialog::openFile(GLFWwindow* parent,
                                 const std::string& title,

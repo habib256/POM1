@@ -28,128 +28,64 @@ Screen_ImGui::Screen_ImGui()
 
 Screen_ImGui::~Screen_ImGui()
 {
-    destroyGlyphAtlas();
+    destroyScreenFramebuffer();
 }
 
-void Screen_ImGui::destroyGlyphAtlas()
+void Screen_ImGui::destroyScreenFramebuffer()
 {
-    if (glyphAtlasTexture) {
-        if (auto* r = pom1::renderer()) r->destroyTexture(glyphAtlasTexture);
-        glyphAtlasTexture = nullptr;
-        glyphAtlasUploaded = false;
+    if (screenFbTexture) {
+        if (auto* r = pom1::renderer()) r->destroyTexture(screenFbTexture);
+        screenFbTexture = nullptr;
     }
+    screenFbUploaded = false;
+    screenFbContentValid = false;
 }
 
-void Screen_ImGui::buildGlyphAtlas()
+void Screen_ImGui::buildScreenFramebuffer(const std::array<char, BUFFER_SIZE>& grid)
 {
-    // Pre-rasterise every charmap glyph into one RGBA texture. The pixel
-    // layout per cell follows drawCharmapGlyph()'s reference geometry exactly
-    // (5 columns × 8 rows of "fat" pixels with a soft horizontal halo around
-    // each one), so an AddImage of the cell looks visually identical to the
-    // per-pixel rect cascade. Glyphs are baked white; per-mode colour comes
-    // from the AddImage(col) tint, so we don't need a per-mode atlas.
-    if (!charmapLoaded) return;
+    // Rasterise the whole 40×24 grid into ONE native-resolution RGBA texture:
+    // every character cell is kNativeCellW × kNativeCellH dots, the 5×8 charmap
+    // glyph inset by kGlyphXOffset. White, fully-opaque dots on a transparent
+    // field — the per-mode colour + brightness/contrast come from the AddImage
+    // tint at draw time, so no per-mode bake and no rebuild on a colour change.
+    auto* r = pom1::renderer();
+    if (!r) return;          // headless / pre-init — caller falls back to per-cell
 
-    // Match the reference geometry computed inside drawCharmapGlyph() but
-    // for a fixed cell of kAtlasCellW × kAtlasCellH. The constants below are
-    // copied verbatim from drawCharmapGlyph() so visual proportions match;
-    // any future tweak to that function should be mirrored here.
-    const float cellW = static_cast<float>(kAtlasCellW);
-    const float cellH = static_cast<float>(kAtlasCellH);
-    const float glyphAreaW = cellW * 0.60f;
-    const float glyphAreaH = cellH * 0.72f;
-    const float gapX = std::max(1.0f, glyphAreaW / 22.0f);
-    const float gapY = std::max(1.0f, glyphAreaH / 28.0f);
-    const float pixelW = std::max(1.0f, (glyphAreaW - gapX * (kCharmapVisibleCols - 1)) / kCharmapVisibleCols);
-    const float pixelH = std::max(1.0f, (glyphAreaH - gapY * (kCharmapVisibleRows - 1)) / kCharmapVisibleRows);
-    const float glyphW = pixelW * kCharmapVisibleCols + gapX * (kCharmapVisibleCols - 1);
-    const float glyphH = pixelH * kCharmapVisibleRows + gapY * (kCharmapVisibleRows - 1);
-    const float offsetX = (cellW - glyphW) * 0.5f;
-    const float offsetY = (cellH - glyphH) * 0.5f;
+    const size_t fbCount = static_cast<size_t>(kFbWidth) * kFbHeight;
+    if (screenFb.size() != fbCount) screenFb.assign(fbCount, 0u);
+    else                            std::fill(screenFb.begin(), screenFb.end(), 0u);
 
-    // We bake a "neutral" glow alpha (~0.16) — the average across the three
-    // monitor modes. Per-mode glow nuance is sacrificed for the perf win.
-    constexpr float bakedGlowScaleX = 1.55f;
-    constexpr float bakedGlowScaleY = 0.25f;
-    constexpr float bakedGlowAlpha  = 0.16f * 0.45f;  // crispGlow scaling
-    constexpr float bakedGlowMinX   = 2.8f;
-    constexpr float bakedGlowMinY   = 0.40f;
-    const float glowPadX = std::max(bakedGlowMinX, pixelW * bakedGlowScaleX);
-    const float glowPadY = std::max(bakedGlowMinY, pixelH * bakedGlowScaleY);
-
-    // Texture buffer (RGBA, white tinted later by AddImage). max-blend rather
-    // than additive so overlapping halos don't blow out alpha.
-    std::vector<uint32_t> tex(static_cast<size_t>(kAtlasTexW) * kAtlasTexH, 0);
-
-    auto stamp = [&](int x0, int y0, int x1, int y1, uint8_t alpha) {
-        if (x0 < 0) x0 = 0;
-        if (y0 < 0) y0 = 0;
-        if (x1 > kAtlasTexW) x1 = kAtlasTexW;
-        if (y1 > kAtlasTexH) y1 = kAtlasTexH;
-        for (int yy = y0; yy < y1; ++yy) {
-            uint32_t* row = tex.data() + static_cast<size_t>(yy) * kAtlasTexW;
-            for (int xx = x0; xx < x1; ++xx) {
-                uint32_t cur = row[xx];
-                uint8_t curA = static_cast<uint8_t>((cur >> IM_COL32_A_SHIFT) & 0xFF);
-                if (alpha > curA) {
-                    row[xx] = IM_COL32(255, 255, 255, alpha);
-                }
-            }
-        }
-    };
-
-    const uint8_t glowAlpha8 = static_cast<uint8_t>(std::min(255.0f, std::round(bakedGlowAlpha * 255.0f)));
-
-    for (int g = 0; g < 128; ++g) {
-        const int cellCol = g % kAtlasCols;
-        const int cellRow = g / kAtlasCols;
-        const float baseX = static_cast<float>(cellCol * kAtlasCellW);
-        const float baseY = static_cast<float>(cellRow * kAtlasCellH);
-
-        // The charmap.rom only ships 128 glyphs but charmapGlyphs may have
-        // been resized to less if the file was short; bound check defensively.
-        bool empty = true;
-        if (g < static_cast<int>(charmapGlyphs.size())) {
-            const auto& glyph = charmapGlyphs[g];
+    const uint32_t on = IM_COL32(255, 255, 255, 255);
+    for (int cy = 0; cy < SCREEN_HEIGHT; ++cy) {
+        for (int cx = 0; cx < SCREEN_WIDTH; ++cx) {
+            const unsigned char c = static_cast<unsigned char>(grid[cy * SCREEN_WIDTH + cx]);
+            if (c == 0) continue;
+            const unsigned char gi = static_cast<unsigned char>(c & 0x7F);
+            if (gi >= charmapGlyphs.size()) continue;
+            const auto& glyph = charmapGlyphs[gi];
+            const int baseX = cx * kNativeCellW + kGlyphXOffset;
+            const int baseY = cy * kNativeCellH;
             for (int row = 0; row < kCharmapVisibleRows; ++row) {
                 const unsigned char bits = glyph[row];
+                if (!bits) continue;
+                uint32_t* dst = screenFb.data()
+                              + static_cast<size_t>(baseY + row) * kFbWidth + baseX;
                 for (int col = 0; col < kCharmapVisibleCols; ++col) {
                     const unsigned char mask = static_cast<unsigned char>(1u << (col + 1));
-                    if ((bits & mask) == 0) continue;
-                    empty = false;
-                    const float px = baseX + offsetX + col * (pixelW + gapX);
-                    const float py = baseY + offsetY + row * (pixelH + gapY);
-                    // Glow halo first…
-                    if (glowAlpha8 > 0) {
-                        stamp(static_cast<int>(std::floor(px - glowPadX)),
-                              static_cast<int>(std::floor(py - glowPadY)),
-                              static_cast<int>(std::ceil (px + pixelW + glowPadX)),
-                              static_cast<int>(std::ceil (py + pixelH + glowPadY)),
-                              glowAlpha8);
-                    }
-                    // …then the solid pixel on top.
-                    stamp(static_cast<int>(std::floor(px)),
-                          static_cast<int>(std::floor(py)),
-                          static_cast<int>(std::ceil (px + pixelW)),
-                          static_cast<int>(std::ceil (py + pixelH)),
-                          255);
+                    if (bits & mask) dst[col] = on;
                 }
             }
         }
-        glyphIsEmpty[static_cast<size_t>(g)] = empty;
     }
 
-    // Lazy texture allocation through the renderer. Linear filtering is fine
-    // — the atlas already encodes a soft halo, and the per-cell scaling is
-    // large enough that point sampling would look chunky.
-    auto* r = pom1::renderer();
-    if (!r) return;          // headless / pre-init — atlas stays unuploaded
-    if (!glyphAtlasTexture) {
-        glyphAtlasTexture = r->createTexture(kAtlasTexW, kAtlasTexH,
-                                             pom1::PomRenderer::Filter::Linear);
-    }
-    r->updateTexture(glyphAtlasTexture, tex.data());
-    glyphAtlasUploaded = true;
+    // Filter::Nearest matches the GEN2/TMS9918/GT-6144 framebuffers: crisp
+    // pixel-art under both backends (GL honours it; the Metal patch forces
+    // nearest globally anyway).
+    if (!screenFbTexture)
+        screenFbTexture = r->createTexture(kFbWidth, kFbHeight,
+                                           pom1::PomRenderer::Filter::Nearest);
+    r->updateTexture(screenFbTexture, screenFb.data());
+    screenFbUploaded = true;
 }
 
 ImVec2 Screen_ImGui::computeApple1CellDimensions(ImVec2 charSize)
@@ -654,13 +590,6 @@ void Screen_ImGui::render()
         return ((renderTopRow + logicalY) % SCREEN_HEIGHT) * SCREEN_WIDTH + x;
     };
 
-    // Lazy-build the glyph atlas the first frame the charmap renderer is used.
-    // GL context is guaranteed to exist by the time render() runs (the GLFW
-    // window was created before MainWindow_ImGui::createPom1).
-    if (useCharmapRenderer && !glyphAtlasUploaded) {
-        buildGlyphAtlas();
-    }
-
     // CRT pass 1/2 — phosphor-band backdrop. Drawn BEFORE the glyph pass so
     // the alternating tinted lines never cut across a character. The dark
     // scanlines are now a separate pass below, drawn AFTER the glyphs with a
@@ -680,12 +609,6 @@ void Screen_ImGui::render()
         const float scaledCellW = cellWidth * scale * layoutScale;
         const float scaledCellH = cellHeight * scale * layoutScale;
         const float textScale = scale * layoutScale;
-        // Atlas UV step: each glyph occupies one cell of a 16×8 grid.
-        const float uStep = 1.0f / static_cast<float>(kAtlasCols);
-        const float vStep = 1.0f / static_cast<float>(kAtlasRows);
-        const ImTextureID atlasTex = pom1::renderer()
-                                       ? pom1::renderer()->asImTextureID(glyphAtlasTexture)
-                                       : (ImTextureID)0;
         // During the power-on pattern phase, every '@' blinks in phase with the
         // cursor clock (shift-register initial state described by C. Parmigiani).
         // The cursor itself is not yet active — CLRSCR hasn't wiped the registers
@@ -693,10 +616,9 @@ void Screen_ImGui::render()
         const bool inPowerOnPhase = (garbageClearTimer > 0.0f);
 
         // Build the "effective" character grid (apply cursor override + power-on
-        // pattern) — this is what would have been drawn by the straightforward
-        // 40×24 loop. Comparing this against last frame tells us whether we can
-        // re-use the cached visibleCells list.
-        std::array<char, 40 * 24> effective{};
+        // pattern) — this is what the screen would show. Comparing it against
+        // last frame tells us whether the native framebuffer needs re-rasterising.
+        std::array<char, BUFFER_SIZE> effective{};
         for (int y = 0; y < SCREEN_HEIGHT; ++y) {
             for (int x = 0; x < SCREEN_WIDTH; ++x) {
                 unsigned char c = static_cast<unsigned char>(renderBuffer[renderBufferIndex(y, x)]);
@@ -710,50 +632,71 @@ void Screen_ImGui::render()
             }
         }
 
-        if (useCharmapRenderer && glyphAtlasUploaded) {
-            // Rebuild the visibleCells list only when the grid content actually
-            // changed. Idle Wozmon prompts or paused BASIC keep the cache
-            // valid for many consecutive frames — the render loop then only
-            // walks the non-space cells.
-            if (!visibleCellsValid || effective != lastEffectiveGrid) {
-                visibleCells.clear();
-                for (int y = 0; y < SCREEN_HEIGHT; ++y) {
-                    for (int x = 0; x < SCREEN_WIDTH; ++x) {
-                        const unsigned char c = static_cast<unsigned char>(effective[y * SCREEN_WIDTH + x]);
-                        if (c == 0) continue;
-                        const unsigned char glyph = static_cast<unsigned char>(c & 0x7F);
-                        if (glyphIsEmpty[glyph]) continue;
-                        visibleCells.push_back({
-                            static_cast<uint16_t>(x),
-                            static_cast<uint16_t>(y),
-                            glyph
-                        });
-                    }
-                }
+        if (useCharmapRenderer) {
+            // Re-rasterise the native-resolution framebuffer only when the grid
+            // content changed (idle Wozmon / paused BASIC keep it valid for many
+            // frames, so most frames are a single AddImage with no upload).
+            if (!screenFbContentValid || !screenFbUploaded || effective != lastEffectiveGrid) {
+                buildScreenFramebuffer(effective);
                 lastEffectiveGrid = effective;
-                visibleCellsValid = true;
-            }
-
-            for (const auto& cell : visibleCells) {
-                const float px = rasterMin.x + static_cast<float>(cell.x) * scaledCellW;
-                const float py = rasterMin.y + static_cast<float>(cell.y) * scaledCellH;
-                const int atlasCol = cell.glyph % kAtlasCols;
-                const int atlasRow = cell.glyph / kAtlasCols;
-                const float u0 = atlasCol * uStep;
-                const float v0 = atlasRow * vStep;
-                drawList->AddImage(
-                    atlasTex,
-                    ImVec2(px, py),
-                    ImVec2(px + scaledCellW, py + scaledCellH),
-                    ImVec2(u0, v0),
-                    ImVec2(u0 + uStep, v0 + vStep),
-                    col);
+                screenFbContentValid = true;
             }
         } else {
-            // Fallback paths: atlas not ready yet, or HostAscii mode. Each
-            // is rare (HostAscii is a debug convenience) and doesn't justify
-            // its own cache, so we walk the grid linearly.
-            visibleCellsValid = false; // force rebuild when atlas arrives
+            screenFbContentValid = false;   // force rebuild when charmap returns
+        }
+
+        if (useCharmapRenderer && screenFbUploaded) {
+            // One image, scaled to the display rect — the ONLY resample in the
+            // pipeline. The 280×192 native FB is squished to the
+            // kApple1RasterWidthScale aspect by the rect itself (the non-square
+            // Apple-1 dot), so no separate correction is needed.
+            const ImTextureID fbTex = pom1::renderer()
+                                        ? pom1::renderer()->asImTextureID(screenFbTexture)
+                                        : (ImTextureID)0;
+            const ImVec2 fbP0 = rasterMin;
+            const ImVec2 fbP1(rasterMin.x + screenSize.x, rasterMin.y + screenSize.y);
+
+            // Phosphor bloom — recovers the soft halo the old per-glyph atlas
+            // baked, now as an OVERLAY rather than a baked texture. Redraw the
+            // same FB a few times, spread by sub-dot offsets at low alpha, BEHIND
+            // the crisp pass below — so the lit-dot cores stay sharp (full-alpha
+            // image on top) while a faint halo blooms around them. Horizontal-
+            // dominant, matching the composite-video smear of real Apple-1 dots.
+            if (phosphorGlow) {
+                const float dotW = screenSize.x / static_cast<float>(kFbWidth);
+                const float dotH = screenSize.y / static_cast<float>(kFbHeight);
+                float glowA;   // per-mode base alpha (amber/mono phosphors bloom more)
+                switch (monitorMode) {
+                case MonitorMode::Amber:      glowA = 0.20f; break;
+                case MonitorMode::Monochrome: glowA = 0.22f; break;
+                case MonitorMode::Green:
+                default:                      glowA = 0.16f; break;
+                }
+                struct GlowTap { float dx, dy, w; };
+                static constexpr GlowTap kGlow[] = {
+                    {-0.7f,  0.0f, 1.00f}, { 0.7f,  0.0f, 1.00f},   // near horizontal
+                    {-1.4f,  0.0f, 0.45f}, { 1.4f,  0.0f, 0.45f},   // far horizontal
+                    { 0.0f, -0.7f, 0.55f}, { 0.0f,  0.7f, 0.55f},   // vertical
+                    {-0.7f, -0.7f, 0.30f}, { 0.7f, -0.7f, 0.30f},   // diagonals
+                    {-0.7f,  0.7f, 0.30f}, { 0.7f,  0.7f, 0.30f},   //  (rounds the halo)
+                };
+                for (const GlowTap& g : kGlow) {
+                    ImVec4 gf = textColor; gf.w = glowA * g.w;
+                    const ImU32 gc = ImGui::ColorConvertFloat4ToU32(gf);
+                    const float ox = g.dx * dotW, oy = g.dy * dotH;
+                    drawList->AddImage(fbTex,
+                        ImVec2(fbP0.x + ox, fbP0.y + oy),
+                        ImVec2(fbP1.x + ox, fbP1.y + oy),
+                        ImVec2(0.0f, 0.0f), ImVec2(1.0f, 1.0f), gc);
+                }
+            }
+
+            // Crisp dot cores on top of the bloom.
+            drawList->AddImage(fbTex, fbP0, fbP1,
+                               ImVec2(0.0f, 0.0f), ImVec2(1.0f, 1.0f), col);
+        } else {
+            // Fallback paths: HostAscii debug mode, or charmap without a live
+            // renderer (headless). Each is rare and walks the grid linearly.
             for (int y = 0; y < SCREEN_HEIGHT; ++y) {
                 for (int x = 0; x < SCREEN_WIDTH; ++x) {
                     unsigned char c = static_cast<unsigned char>(effective[y * SCREEN_WIDTH + x]);
@@ -886,8 +829,8 @@ void Screen_ImGui::deserialize(pom1::SnapshotReader& r)
     if (cursorX < 0 || cursorX >= SCREEN_WIDTH)  cursorX = 0;
     if (cursorY < 0 || cursorY >= SCREEN_HEIGHT) cursorY = 0;
     // Force a fresh render of the restored grid; cancel any boot-phase overlay.
-    dirty             = true;
-    visibleCellsValid = false;
+    dirty                = true;
+    screenFbContentValid = false;
     garbageClearTimer = -1.0f;
     blackScreenTimer  = -1.0f;
 }

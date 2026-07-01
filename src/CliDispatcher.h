@@ -27,6 +27,7 @@
 #include <ctime>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <vector>
 
 class EmulationController;
@@ -95,6 +96,19 @@ struct CliCardOverride {
 /// save path has no recognisable extension of its own.
 enum class CliSaveTapeFormat { NoHint, Aci, Wav };
 
+/// One `--paste-at-cycle N "keys"` directive: inject `keys` to the keyboard
+/// queue when the emulated CPU reaches cycle `cycle`. Unlike the Phase-C `Paste`
+/// action (which fires once, right after the deferred card plug), these are
+/// scheduled against an exact cumulative cycle count so a headless A/B run lands
+/// on the SAME game frame regardless of host speed — the deterministic keyboard
+/// injection the TMS9918 silicon-fidelity investigation needs (drive a game past
+/// its title screen into the sprite-bearing playfield, then `--dump-tms-frame`).
+/// Headless-only.
+struct CliTimedPaste {
+    uint64_t    cycle;   ///< emulated CPU cycle at which to inject
+    std::string keys;    ///< literal keystrokes (`\n`→CR, printable ASCII 32-126)
+};
+
 struct CliPlan {
     // Phase-A — consumed by main() before MainWindow_ImGui construction or on
     // the first render frame.
@@ -149,6 +163,11 @@ struct CliPlan {
 
     // Phase-C — consumed after the card deferred-plug timer fires.
     std::vector<CliAction>             deferredActions;
+
+    // --paste-at-cycle N "keys": cycle-scheduled keyboard injections (headless
+    // only). Driven by the headless cycle runner, which segments the run at each
+    // scheduled cycle. Order-independent — sorted by cycle before replay.
+    std::vector<CliTimedPaste>         timedPastes;
 };
 
 /// Parse argv.
@@ -172,6 +191,12 @@ std::optional<CliPlan> parseCli(int argc, char* argv[], bool& listPresetsOut);
 /// error short-circuits the rest of the deferred list.
 void runDeferredActions(const std::vector<CliAction>& actions,
                         EmulationController&         emu);
+
+/// Feed a literal keystroke string to the emulator's keyboard queue, applying
+/// the same filtering as `--paste` (`\n`→CR, keep CR + printable ASCII 32-126),
+/// capped at `maxChars`. Returns the number of keys actually queued. Shared by
+/// the `--paste` file path and the `--paste-at-cycle` cycle-scheduled path.
+int queueKeystrokes(EmulationController& emu, std::string_view text, int maxChars);
 
 /// Build a probable save-tape path honouring `--save-tape-format` when
 /// `--save-tape` was given a path without a recognisable extension. Applied by

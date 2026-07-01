@@ -494,6 +494,10 @@ void CodeBench::render(const char* title, bool* open)
                 if (save) saveFile(picked); else openFile(picked);
                 return;
             }
+            // A native picker that returned false means the user CANCELLED (or it
+            // errored) — stay put. Only fall back to the ImGui browser when the
+            // host has no native picker at all (WASM, Linux without zenity/kdialog).
+            if (host_->nativeFilePickerAvailable()) return;
         }
         browseSave_ = save;
         openBrowse = true;

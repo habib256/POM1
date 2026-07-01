@@ -31,7 +31,7 @@ public:
     // Free GL resources (the glyph atlas) while the context is still current.
     // Idempotent — the atlas rebuilds lazily on the next render. Call before
     // GLFW teardown so ~Screen_ImGui's delete doesn't run on a dead context.
-    void releaseGL() { destroyGlyphAtlas(); }
+    void releaseGL() { destroyScreenFramebuffer(); }
     void writeChar(char c);
     void clear();
     void resetDisplay();     // garbage screen → auto-clear → welcome (cold boot / hard reset)
@@ -79,6 +79,10 @@ public:
     /** Multiplicateur de la taille de police en mode Host ASCII uniquement. */
     float hostAsciiGlyphScale = 1.5f;
     bool crtEffect = false;          // off by default: no scanlines / phosphor tint
+    // Soft phosphor bloom around lit charmap dots (overlay pass behind the crisp
+    // text framebuffer). On by default — recovers the halo the old per-glyph
+    // atlas baked, without re-introducing its double-resample garbling.
+    bool phosphorGlow = true;
     float crtScanlineAlpha = 0.50f;
     float brightness = 1.0f;    // 0.0 = black, 1.0 = default, 2.0 = max
     float contrast = 1.0f;      // 0.5 = washed out, 1.0 = default, 2.0 = high contrast
@@ -113,41 +117,36 @@ private:
     bool charmapLoaded = false;
     std::vector<std::array<unsigned char, 8>> charmapGlyphs;
 
-    // Glyph atlas — pre-baked GL texture holding all 128 charmap glyphs in a
-    // 16×8 grid. Each cell is rasterised once with the full glow-halo / solid
-    // pixel pattern (matches the original drawCharmapGlyph pixel art); render()
-    // then emits one AddImage per visible cell instead of ~80 AddRectFilled,
-    // collapsing the screen pass from ~76 k draw primitives to ≤ 960. Atlas
-    // is white-on-transparent so the per-mode tint applied via AddImage(col)
-    // gives the right Green/Amber/Monochrome look without re-baking. The atlas
-    // is rebuilt only when the charmap reloads.
-    static constexpr int kAtlasCellW = 32;
-    static constexpr int kAtlasCellH = 40;
-    static constexpr int kAtlasCols = 16;
-    static constexpr int kAtlasRows = 8;   // 16 × 8 = 128 glyphs
-    static constexpr int kAtlasTexW = kAtlasCellW * kAtlasCols;
-    static constexpr int kAtlasTexH = kAtlasCellH * kAtlasRows;
-    // Opaque renderer texture (kept fully GL-free in this header so the
-    // Metal backend in Phase 2 doesn't need a Screen_ImGui change). The
-    // pointer is owned by the renderer, allocated lazily by buildGlyphAtlas
-    // and released by destroyGlyphAtlas. Forward-declared below.
-    pom1::Texture* glyphAtlasTexture = nullptr;
-    bool glyphAtlasUploaded = false;
-    // Per-glyph empty flag (true = all bits zero, no draw needed at the cell).
-    // Lets render() skip e.g. the space character without an AddImage.
-    std::array<bool, 128> glyphIsEmpty{};
-    void buildGlyphAtlas();
-    void destroyGlyphAtlas();
+    // Native-resolution screen framebuffer. The whole 40×24 text grid is
+    // rasterised into ONE RGBA texture at the Apple-1 dot resolution
+    // (kNativeCellW × kNativeCellH per character → kFbWidth × kFbHeight), then
+    // drawn with a single AddImage scaled to the display rect. This mirrors the
+    // GEN2/TMS9918/GT-6144 framebuffer cards: the ONLY resample is that final
+    // image scale, so glyphs never garble the way the old per-cell scaled
+    // AddImage did — especially under the Metal nearest-sampler patch, where a
+    // 32×40 cell pre-baked for linear got point-sampled to a non-integer size.
+    // Filter::Nearest (as the graphics cards use) keeps the dots crisp; the tint
+    // comes from the AddImage(col) parameter, so mode/brightness changes need no
+    // rebuild — the framebuffer is re-rasterised only when the grid changes.
+    static constexpr int kNativeCellW = 7;   // Apple-1 char cell = 7 dots wide
+    static constexpr int kNativeCellH = 8;   // …× 8 scanlines
+    static constexpr int kGlyphXOffset = 1;  // 5-dot glyph inset in the 7-dot cell
+    static constexpr int kFbWidth  = SCREEN_WIDTH  * kNativeCellW;   // 280
+    static constexpr int kFbHeight = SCREEN_HEIGHT * kNativeCellH;   // 192
+    // Opaque renderer texture (kept fully GL-free in this header). Owned by the
+    // renderer, allocated lazily by buildScreenFramebuffer, released by
+    // destroyScreenFramebuffer.
+    pom1::Texture* screenFbTexture = nullptr;
+    bool screenFbUploaded = false;
+    std::vector<uint32_t> screenFb;   // CPU-side native FB (kFbWidth*kFbHeight RGBA)
+    void buildScreenFramebuffer(const std::array<char, BUFFER_SIZE>& grid);
+    void destroyScreenFramebuffer();
 
-    // Cached list of on-screen non-empty glyphs. render() rebuilds it only when
-    // the effective character grid (screenBuffer + cursor override + power-on
-    // phase) changes between frames; otherwise the per-frame loop just walks
-    // this vector and emits ~100-200 AddImage calls instead of scanning all
-    // 40×24 = 960 cells (most of which are space in typical Apple-1 output).
-    struct VisibleCell { uint16_t x; uint16_t y; unsigned char glyph; };
-    std::vector<VisibleCell> visibleCells;
-    std::array<char, 40 * 24> lastEffectiveGrid{};
-    bool visibleCellsValid = false;
+    // The effective grid (screenBuffer + cursor override + power-on pattern)
+    // from last frame. The framebuffer is re-rasterised + re-uploaded only when
+    // this changes — idle Wozmon / paused BASIC cost zero uploads.
+    std::array<char, BUFFER_SIZE> lastEffectiveGrid{};
+    bool screenFbContentValid = false;
 
     // Map logical row (0..23) to buffer index accounting for circular offset
     int bufferIndex(int logicalY, int x) const {

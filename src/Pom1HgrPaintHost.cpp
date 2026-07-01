@@ -32,6 +32,11 @@ bool Pom1HgrPaintHost::pickFilePath(bool forSave, const std::string& title,
                                                 outPath);
 }
 
+bool Pom1HgrPaintHost::nativeFilePickerAvailable() const
+{
+    return pom1::NativeFileDialog::isAvailable();
+}
+
 void Pom1HgrPaintHost::pokeByte(uint16_t addr, uint8_t value)
 {
     // While batching, defer to one writeMemoryBatch() so a bulk edit costs one
