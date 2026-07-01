@@ -134,3 +134,33 @@ bright orange leaf, centered inside a thick violet (#E628FF magenta-purple,
 not blue) ring, on pure flat black. Thick black outlines, each shape one
 single uniform flat color.  [+ bloc « or »]
 ```
+
+## Cas A/B de référence (le *pourquoi*, une variable changée)
+
+Deux paires « avant → après » où **seule une variable a bougé** : elles isolent la cause et
+valent mieux qu'un long discours pour comprendre les règles 5 et 6.
+
+### A/B n°1 — les hex exacts (règle 5)
+
+Même détective, même palette « en gros », seule la teinte du manteau change.
+
+- **AVANT** — *« green trench coat »* (vert conceptuel, foncé/saturé) → tout le manteau
+  **hachure** : Pix dithère vert+noir pour approcher un vert absent de la palette.
+- **APRÈS** — *« bright green #19D700 trench coat, ONE single flat green, no darker folds »* →
+  **aplat lisse**.
+
+> Leçon : « la bonne couleur en gros » ne suffit pas — il faut **le hex exact** (`#19D700`), et
+> une seule nuance. Une teinte proche mais absente se dithère systématiquement.
+
+### A/B n°2 — la densité de détail (règle 6)
+
+Même éléphant, même bleu `#1990FF` stylisé (peau grise → bleu), seuls les ornements changent.
+
+- **AVANT** — coiffe indienne dentelée (paisley, perles, bijoux 1-2 px, touches de rose) →
+  **champ de bruit multicolore** : détail sub-pixel cassé en pointillés + rose hors-palette.
+- **APRÈS** — *« a SIMPLE bold headdress made of a FEW large flat shapes only — one orange
+  forehead plate, two violet ear discs, a green band. No tiny beads, no paisley, no pink »* →
+  **aplats nets**.
+
+> Leçon : à 280 px, **peu de grandes formes** bat toujours **beaucoup de petits motifs**. La
+> stylisation résout la *teinte* (gris→bleu), pas la *densité* — les deux sont indépendantes.
