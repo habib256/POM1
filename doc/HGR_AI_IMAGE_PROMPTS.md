@@ -30,17 +30,36 @@ trop clair/rose (au-delà de `#E628FF` vers le blanc) dithère avec du blanc. Vi
 `#E628FF`, côté magenta. De même, **il n'existe pas de bleu foncé/navy ni de vert forêt** en
 HGR : les versions sombres remontent en clair. Demander directement les teintes vives.
 
-## Les 5 règles d'or
+## Les 7 règles d'or
+
+Le **cœur couleur** (règles 1-5) — ce qui fait qu'une zone tombe propre ou se dithère :
 
 1. **Fond noir pur** `#000000` — jamais de « presque-noir » (bleu nuit, dégradé, étoiles,
-   brume) : tout ce qui est légèrement au-dessus du noir se dithère en mouchetis.
+   brume) : tout ce qui est légèrement au-dessus du noir se dithère en mouchetis. Une
+   silhouette « noire » doit être `#000000` *strict*, sans le moindre reflet clair (sinon
+   elle prend une couleur — cas des arbres morts du marais qui ressortent verts).
 2. **Exactement les 6 couleurs** — beige/sable/brun/gris/rose/jaune/navy sont des pièges : ils
    n'existent pas et se dithèrent (le sable d'un désert → rayures orange/noir).
 3. **Style flat vector / poster** — aplats francs, contours noirs épais, aucun dégradé.
-4. **Une seule nuance par zone** — pas de 2-tons (une mesa violet clair + violet foncé
-   dithère en hachures).
-5. **Teintes calées sur les hex exacts** — surtout le violet `#E628FF` (magenta, pas bleu) et
-   les vifs (bleu/vert). Demander les hex dans le prompt.
+4. **Une seule nuance par zone** — pas de 2-tons (une mesa violet clair + violet foncé, ou une
+   barbe orange avec mèches foncées, dithèrent en hachures). Définir les volumes par des
+   **contours noirs**, pas par un ombrage plus foncé.
+5. **Teintes calées sur les hex exacts** — le bon hex compte plus que « la bonne couleur en
+   gros ». Cas d'école : un manteau vert *foncé/saturé* hachure entièrement (Pix dithère
+   vert+noir pour approcher un vert absent) ; le même prompt en **vert `#19D700` plat** → aplat
+   lisse. Une seule variable, résultat du tout au tout. Attention surtout au violet `#E628FF`
+   (magenta, pas bleu) et aux vifs (bleu/vert — pas de versions sombres).
+
+La **composition** (règles 6-7) — ce qui répartit le bruit dans l'image :
+
+6. **Un gros sujet unique > une scène large détaillée.** Un sujet qui remplit le cadre (nain,
+   phénix, monstre) se convertit toujours plus proprement qu'une scène à éléments fins (arbres
+   fins, reflets). À 280 px, un trait d'1 px se casse en pointillés. Pour une scène : durcir
+   les silhouettes en noir pur, **épaissir** les éléments, supprimer reflets et détails fins.
+7. **Aplat = zéro tolérance, texture = le dither aide.** Sur une zone censée être lisse
+   (manteau, ciel, logo) le moindre hachurage trahit. Sur un sujet **organique/texturé**
+   (écailles, fourrure, pierre, feu) le dither résiduel *lit comme de la texture* et renforce
+   le sujet — le « défaut » devient une feature. Choisir le sujet en conséquence.
 
 ## Méta-astuces
 
@@ -50,10 +69,8 @@ HGR : les versions sombres remontent en clair. Demander directement les teintes 
     **astronaute** dont le visage est masqué par une visière bleue → aucune teinte chair.
   - **Styliser** : l'assumer dans une couleur de la palette. Ex. : un **détective au visage
     vert** `#19D700` → look noir monochrome, propre et volontaire.
-- **Le bon hex compte plus que la bonne couleur « en gros ».** Cas d'école : un détective en
-  manteau vert *foncé/saturé* hachurait entièrement (Pix dithère vert+noir pour approcher un
-  vert absent) ; le même prompt avec **vert `#19D700` plat, une seule nuance** → aplat lisse.
-  Une seule variable, résultat du tout au tout — c'est pourquoi les hex exacts sont ci-dessus.
+- **Les « glow » magiques** (éclair, flamme, halo, boule, feux follets) sont des dégradés
+  déguisés → exiger « hard-edged rays / sharp flat shapes, no glow », sinon ça dithère.
 - **Réglages importeur POM1** : Colour noise ~0.10, Dither + Serpentine ON, Diffusion 0.03.
   Mais ~90 % de la qualité vient de la **source**, pas des sliders.
 - **Aspect** : générer en **4:3 landscape** (Nano Banana sort souvent du 1:1 par défaut).
