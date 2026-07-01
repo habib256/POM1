@@ -464,6 +464,12 @@ static void runCyclesWithTimedPastes(EmulationController& emu, uint64_t totalCyc
             done = p.cycle;
         }
         int sent = pom1::queueKeystrokes(emu, p.keys, kTimedPasteCap);
+        // Deliver to $D010 NOW: runCyclesSync (below) pauses the async thread, so
+        // nothing would otherwise drain the queue into Memory and the CPU would
+        // never see the key. drainTo writes each queued char in turn (last wins on
+        // $D010) — inject one key per --paste-at-cycle when a program reads several
+        // prompts in sequence (each read needs its own strobe at its own cycle).
+        emu.deliverQueuedKeys();
         char m[128];
         std::snprintf(m, sizeof(m), "--paste-at-cycle %llu: injected %d keys",
                       (unsigned long long)p.cycle, sent);

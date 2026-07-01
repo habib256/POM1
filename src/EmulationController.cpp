@@ -395,6 +395,16 @@ void EmulationController::queueKey(char key)
     wakeCv.notify_all();
 }
 
+void EmulationController::deliverQueuedKeys()
+{
+    // stateMutex serialises against cpu->run(): drainTo() writes $D010, which the
+    // CPU reads. runCyclesSync pauses the async thread, so nothing else drains the
+    // queue on the headless path — this is the one place it reaches Memory there.
+    std::lock_guard<PriorityMutex> lock(stateMutex);
+    keyboard.drainTo(*memory);
+    publisher.publish(*memory, *cpu, runRequested.load());
+}
+
 bool EmulationController::hasPendingInjectedInput()
 {
     // stateMutex serialises against the emulation thread's drainTo()/cpu->run(),

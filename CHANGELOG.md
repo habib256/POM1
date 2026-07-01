@@ -10,6 +10,35 @@ is `git log`; the user-facing feature tour is `README.md`; open work lives in
 
 ## [Unreleased]
 
+### Added — Renderer abstraction, macOS Metal backend & OS-native file dialogs
+
+- **`PomRenderer` graphics-backend seam** (`src/PomRenderer.h` + `_GL.cpp` /
+  `_Metal.mm` / `_Internal.h`): a single opaque renderer interface
+  (`createTexture` / `updateTexture` / `destroyTexture` / `beginFrame` / `clear`
+  / `renderDrawData` / `present` / `readBackbufferRGBA` / ImGui backend init).
+  Every texture site in the codebase — Screen_ImGui glyph atlas + native-res
+  framebuffer, GEN2 HGR / TMS9918 / GT-6144 framebuffers, the 10 Help→Photos
+  textures incl. the interactive keyboard, and the HGR/TMS Paint editor canvases
+  — now routes through it; no `gl*` calls survive outside `PomRenderer_GL.cpp`.
+  Selected at configure time via the `POM1_RENDERER` cache option. Delivered as
+  Phase 1 (abstraction) → Phase 3 (HGR/TMS editors adopt the seam). This also
+  fulfils the **Shared video texture layer** item.
+- **macOS Metal backend** (`PomRenderer_Metal.mm`): `CAMetalLayer` on GLFW's
+  NSWindow, BGRA8 drawables (`framebufferOnly = NO` so the screenshot blit reads
+  them), `@autoreleasepool` per frame. **Default renderer on macOS-non-WASM**;
+  OpenGL stays the default on Linux/Windows/WASM and remains available on macOS
+  via `-DPOM1_RENDERER=opengl`. The upstream `imgui_impl_metal` inline sampler is
+  patched linear→nearest at configure time so pixel-art framebuffers/glyphs/
+  canvases stay crisp. Fulfils the **ImGui Metal backend on macOS** item.
+- **OS-native file dialogs** (`src/NativeFileDialog.{h,cpp}` + `_Mac.mm`): Load/
+  Save Memory, Tape, and Snapshot (plus the cassette deck buttons and the HGR/
+  TMS Paint editors + DevBench) open the platform's localised file picker —
+  Win32 `GetOpenFileNameW`/`GetSaveFileNameW`, Cocoa `NSOpen/NSSavePanel`, Linux
+  probing `$PATH` for `zenity` then `kdialog`. WASM and Linux-without-either fall
+  back to the existing in-app ImGui browser; the portable editor seams keep a
+  `pickFilePath(...)` that defaults to `false` so the modules stay standalone.
+  Fulfils the **Native file dialog** item.
+
 ### Added — TMS9918 sub-scanline beam/CPU synchronisation
 
 - **renderUpToBeam + write catch-up**: `renderActiveLine` is split into
@@ -54,6 +83,44 @@ is `git log`; the user-facing feature tour is `README.md`; open work lives in
   lands. The retired flat 16c floor (≈2× spec) wrongly dropped the sprites-OFF
   `TMS_Plasma` timings that run clean on Parmigiani's Replica-1.
   `tms9918_silicon_strict_runtime` re-anchored.
+
+### Fixed — headless keystroke injection (`--paste-at-cycle`) + TMS9918 silicon A/B validation
+
+- **`--paste-at-cycle` never reached the CPU.** `queueKeystrokes` → `queueKey`
+  enqueued the key, but the headless deterministic run path (`runCyclesSync`)
+  pauses the async emulation thread — the only thing that drained the keyboard
+  queue into Memory (`$D010`). So cycle-scheduled keys sat in the queue forever;
+  the CPU never saw them, and the earlier "noise ON vs OFF → identical hash"
+  check was trivially true (both runs stalled on the title screen). Fixed with
+  `EmulationController::deliverQueuedKeys()` (drains the queue into Memory under
+  `stateMutex`), called after each injection in `runCyclesWithTimedPastes`. Inject
+  one key per `--paste-at-cycle` for programs that read several prompts in turn
+  (each read needs its own `$D010` strobe at its own cycle).
+- **A/B validation of the TMS9918 silicon-fidelity fixes.** With the tool
+  actually working, Snake (`--run 7600`, keys `1`+`1`), Sokoban (`--run 6200`,
+  key `1`) and Galaga (`--run 4100`, keys `1`+space) now drive headless past their
+  keyboard-gated title screens into the sprite-bearing playfield. On the gameplay
+  frame the render is **pixel-identical with VRAM power-on noise OFF vs ON**
+  (`--vram-noise`) — the defensive SAT fill neutralises the ghost sprites the raw
+  DRAM noise would otherwise surface. Galaga is additionally **poison-invariant**
+  across `--ram-poison 00/FF/AA`, confirming the `anim_tick` (`$3F`) uninitialised-
+  RAM read is fixed. This is the empirical close-out the fidelity work was after.
+
+### Added — 6502 software: standalone `$0280` TMS9918 programs rebuilt (pad18)
+
+- The shipped standalone `software/Graphic TMS9918/*.txt` (Woz-hex, load/run at
+  `$0280`) had gone stale + orphaned: they carried the pre-pad18 timing and their
+  per-program build recipes were deleted in the 686fe03 refactor. Re-established a
+  committable, reproducible driver — `sketchs/tms9918/build_standalone_txt.py`
+  (goes through `dev/cc65/emit_woz.py`, auto-links `tms9918_pad.asm`) — plus the
+  restored `$0280` linker cfgs next to each source. Rebuilt 8 programs against the
+  current pad18 libs: Snake, Sokoban, Mandel, Plasma, Life, Vague, Split,
+  Logo_16k. Snake + Sokoban verified byte-behavior-identical to their CodeTank ROM
+  builds (same gameplay-frame hash); the demos render correctly. The driver is
+  idempotent (re-run → no diff). Five artefacts have no in-tree source any more
+  (Maze3D, OrbitalPool, SilBench, Stars, Nyan_Fantasy — sources removed in
+  686fe03, never migrated to `sketchs/`) and are left untouched; Galaga stays
+  CodeTank-only (`$4100`, outgrew the `$0280` window).
 
 ### Fixed — 6502 software: defensive SAT fill in Snake + Sokoban
 

@@ -149,6 +149,14 @@ public:
     /// it was retired when tokenisation replaced injection); kept as queueKey()'s
     /// companion query for any future drain-detection caller.
     bool hasPendingInjectedInput();
+    /// Deliver any keystrokes queued via queueKey() straight into Memory ($D010
+    /// strobe) NOW, under stateMutex. The async emulation thread drains the queue
+    /// on every slice, but the headless deterministic path (runCyclesSync) does
+    /// not — so cycle-scheduled injection (`--paste-at-cycle`) must call this
+    /// after queueing, otherwise the key sits in the queue and the CPU never sees
+    /// it. Delivers each queued key in turn (the last one wins on $D010, so call
+    /// once per key that must be observed by a distinct read).
+    void deliverQueuedKeys();
     void writeMemory(uint16_t address, uint8_t value);
     /// Apply many (address,value) writes as ONE locked, single-publish
     /// transaction. Lets the HGR Paint editor commit bulk edits (fill, clear,
